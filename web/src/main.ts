@@ -1,4 +1,5 @@
 import '@mdi/font/css/materialdesignicons.css'
+import '@/style.css'
 import { i18n } from '@/i18n'
 import { router } from '@/router'
 import { readStoredTheme } from '@/theme/theme-preference'

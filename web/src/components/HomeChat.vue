@@ -6,7 +6,7 @@ import {
 import { useConnectionStore } from '@/stores/connection'
 import { usePreferencesStore } from '@/stores/preferences'
 import { storeToRefs } from 'pinia'
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
@@ -73,8 +73,42 @@ async function scrollChatToBottom() {
   })
 }
 
+/**
+ * R 快捷键：切换鼠标 hover 所在 turn 的思维链；若不在 turn 上，切换最后一个 assistant turn 的思维链。
+ * 输入框/可编辑区域聚焦时不拦截。
+ */
+function onGlobalKeyR(e: KeyboardEvent) {
+  if (e.key !== 'r' && e.key !== 'R') return
+  if (e.ctrlKey || e.metaKey || e.altKey) return
+  const t = e.target as HTMLElement | null
+  if (
+    t &&
+    (t.tagName === 'INPUT' ||
+      t.tagName === 'TEXTAREA' ||
+      t.isContentEditable)
+  ) {
+    return
+  }
+  const hovered = document.querySelector(
+    '.turn--assistant:hover, .turn--assistant.is-hover',
+  ) as HTMLElement | null
+  const target =
+    hovered?.querySelector('details.reasoning-chain') ??
+    document.querySelector(
+      '.chat-body .turn--assistant:last-of-type details.reasoning-chain',
+    )
+  if (target instanceof HTMLDetailsElement) {
+    target.open = !target.open
+    e.preventDefault()
+  }
+}
+
 onMounted(() => {
   void scrollChatToBottom()
+  window.addEventListener('keydown', onGlobalKeyR)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onGlobalKeyR)
 })
 
 const canSend = computed(
@@ -882,6 +916,50 @@ const turnPromptError = ref('')
 const turnPromptDisplay = ref('')
 const turnPromptIsEmpty = ref(false)
 
+const assistantAvatarLetter = computed(() => {
+  const m = conn.alias.trim() || conn.model.trim()
+  if (!m) return 'N'
+  const ch = m.replace(/[^a-zA-Z\u4e00-\u9fa5]/g, '').charAt(0)
+  return ch ? ch.toUpperCase() : 'N'
+})
+
+const turnAvatarUrls = ref<Record<'user' | 'assistant', string | null>>({
+  user: null,
+  assistant: null,
+})
+
+const copiedTurnKey = ref<string | null>(null)
+let copiedTimer: ReturnType<typeof setTimeout> | null = null
+
+function reasoningCharsCount(text: string): number {
+  if (!text) return 0
+  return text.replace(/\s+/g, '').length
+}
+
+async function copyTurnText(text: string, key: string) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.left = '-9999px'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    copiedTurnKey.value = key
+    if (copiedTimer) clearTimeout(copiedTimer)
+    copiedTimer = setTimeout(() => {
+      copiedTurnKey.value = null
+    }, 1400)
+  } catch (e) {
+    console.warn('copy failed', e)
+  }
+}
+
 async function openTurnPromptSnapshot(turn: ChatTurnItem) {
   turnPromptDialogOpen.value = true
   turnPromptLoading.value = true
@@ -918,277 +996,447 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
     ref="chatScrollEl"
     class="chat-body chat-scroll"
   >
-      <template v-for="(turn, i) in turns" :key="`${turn.turnOrdinal}-${i}`">
-        <div class="turn-block">
-          <div class="turn-index text-caption text-medium-emphasis">
+    <template v-for="(turn, i) in turns" :key="`${turn.turnOrdinal}-${i}`">
+      <div class="turn-block">
+        <!-- 章回分隔 · ❦ 第 N 回 ❦ -->
+        <div class="turn-divider" role="separator">
+          <span class="turn-divider__line" />
+          <span class="turn-divider__ornament">❦</span>
+          <span class="turn-divider__label">
             {{ $t('chat.turnLabel', { n: turnLabelN(turn, i) }) }}
+          </span>
+          <span class="turn-divider__ornament">❦</span>
+          <span class="turn-divider__line" />
+        </div>
+
+        <!-- User turn -->
+        <div class="turn turn--user">
+          <div class="turn-avatar avatar avatar--user" aria-hidden="true">
+            <img v-if="turnAvatarUrls.user" :src="turnAvatarUrls.user" alt="" />
+            <span v-else>Y</span>
           </div>
-          <div class="d-flex justify-end w-100">
-            <div class="turn-card turn-card--user">
-              <div class="turn-card__header d-flex align-center justify-end flex-wrap gap-x-1 gap-y-1">
-                <span class="toolbar-role toolbar-role--user text-subtitle-2 font-weight-medium">
-                  {{ $t('chat.user') }}
-                </span>
-                <v-btn
-                  size="small"
-                  variant="text"
-                  prepend-icon="mdi-pencil-outline"
-                  :disabled="regeneratingTurnOrdinal !== null"
-                  @click="openEditUser(turn)"
-                >
-                  {{ $t('chat.edit') }}
-                </v-btn>
-                <v-btn
-                  size="small"
-                  variant="text"
-                  prepend-icon="mdi-delete-outline"
-                  color="error"
-                  :disabled="regeneratingTurnOrdinal !== null"
-                  @click="requestDeleteWholeTurnFromUser(i)"
-                >
-                  {{ $t('chat.delete') }}
-                </v-btn>
-              </div>
-              <div class="turn-card__body turn-card__body--user text-body-2">
-                <template v-if="editingTurnOrdinal === turn.turnOrdinal && editingSide === 'user'">
-                  <v-textarea
-                    v-model="editDraft"
-                    rows="4"
-                    auto-grow
-                    max-rows="16"
-                    variant="outlined"
-                    density="compact"
-                    hide-details="auto"
-                    class="mb-2"
-                  />
-                  <div class="d-flex gap-2">
-                    <v-btn
-                      size="small"
-                      variant="text"
-                      @click="cancelEdit"
-                    >
-                      {{ $t('settings.themeCancel') }}
-                    </v-btn>
-                    <v-btn
-                      size="small"
-                      color="primary"
-                      variant="flat"
-                      @click="saveEdit(i)"
-                    >
-                      {{ $t('settings.themeConfirm') }}
-                    </v-btn>
-                  </div>
-                </template>
-                <div
-                  v-else
-                  class="chat-rich-text"
-                  v-html="renderRichMessageToHtml(turn.user)"
-                ></div>
-              </div>
+          <div class="turn-role turn-role--user">
+            <span class="turn-role__label">
+              {{ $t('chat.userBrand') }}
+              <span class="meta">{{ $t('chat.turnLabel', { n: turnLabelN(turn, i) }) }}</span>
+            </span>
+            <div class="plugin-slots" data-plugin-slot="user-turn">
+              <button
+                type="button"
+                class="plugin-slot"
+                :data-tt="$t('chat.pluginPlaceholderBookmark')"
+                :aria-label="$t('chat.pluginPlaceholderBookmark')"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="plugin-slot"
+                :data-tt="$t('chat.pluginPlaceholderTranslate')"
+                :aria-label="$t('chat.pluginPlaceholderTranslate')"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="plugin-slot"
+                :data-tt="$t('chat.pluginPlaceholderMore')"
+                :aria-label="$t('chat.pluginPlaceholderMore')"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </button>
             </div>
           </div>
 
-          <div class="d-flex justify-start assistant-stack">
-            <div class="assistant-column">
-              <div class="turn-card turn-card--assistant">
-                <div class="turn-card__header d-flex align-center flex-wrap gap-x-1 gap-y-1">
-                  <span class="toolbar-role toolbar-role--assistant text-subtitle-2 font-weight-medium">
-                    {{ $t('chat.assistant') }}
-                  </span>
-                  <v-btn
-                    v-if="writeChatPromptSnapshot"
-                    size="small"
-                    variant="text"
-                    prepend-icon="mdi-text-box-search-outline"
-                    :disabled="regeneratingTurnOrdinal !== null"
-                    @click="openTurnPromptSnapshot(turn)"
-                  >
-                    {{ $t('chat.viewTurnPrompt') }}
-                  </v-btn>
-                  <v-btn
-                    size="small"
-                    variant="text"
-                    prepend-icon="mdi-pencil-outline"
-                    :disabled="regeneratingTurnOrdinal !== null"
-                    @click="openEditAssistant(turn)"
-                  >
-                    {{ $t('chat.edit') }}
-                  </v-btn>
-                  <v-btn
-                    size="small"
-                    variant="text"
-                    prepend-icon="mdi-delete-outline"
-                    color="error"
-                    :disabled="regeneratingTurnOrdinal !== null"
-                    @click="requestDelete(i)"
-                  >
-                    {{ $t('chat.delete') }}
-                  </v-btn>
-                  <div
-                    class="turn-card__plugins flex-grow-1 d-flex flex-wrap gap-1 justify-end align-center"
-                    data-plugin-slot="assistant-turn-toolbar"
-                  />
-                </div>
-
-                <div
-                  class="turn-card__body turn-card__body--assistant position-relative text-body-2"
-                  :class="{ 'turn-card__body--busy': regeneratingTurnOrdinal === turn.turnOrdinal }"
-                >
-                  <template v-if="editingTurnOrdinal === turn.turnOrdinal && editingSide === 'assistant'">
-                    <v-textarea
-                      v-model="editDraft"
-                      rows="4"
-                      auto-grow
-                      max-rows="16"
-                      variant="outlined"
-                      density="compact"
-                      hide-details="auto"
-                      class="mb-2"
-                    />
-                    <div class="d-flex gap-2">
-                      <v-btn
-                        size="small"
-                        variant="text"
-                        @click="cancelEdit"
-                      >
-                        {{ $t('settings.themeCancel') }}
-                      </v-btn>
-                      <v-btn
-                        size="small"
-                        color="primary"
-                        variant="flat"
-                        @click="saveEdit(i)"
-                      >
-                        {{ $t('settings.themeConfirm') }}
-                      </v-btn>
-                    </div>
-                  </template>
-                  <template v-else>
-                    <details
-                      v-if="conn.showReasoningChain && assistantReasoning(turn).length > 0"
-                      class="reasoning-chain mb-2"
-                    >
-                      <summary class="reasoning-chain__summary text-caption text-medium-emphasis">
-                        {{ $t('chat.reasoningSummary') }}
-                      </summary>
-                      <div
-                        class="reasoning-chain__body text-body-2 chat-rich-text"
-                        v-html="renderReasoningMarkdownToHtml(assistantReasoning(turn))"
-                      />
-                    </details>
-                    <div
-                      class="chat-rich-text"
-                      v-html="renderRichMessageToHtml(assistantText(turn))"
-                    />
-                  </template>
-
-                  <v-overlay
-                    v-if="regeneratingTurnOrdinal === turn.turnOrdinal"
-                    contained
-                    class="assistant-regen-overlay align-center justify-center"
-                    scrim="rgba(0,0,0,0.25)"
-                  >
-                    <v-progress-circular indeterminate size="28" width="2" />
-                  </v-overlay>
-                </div>
-
-                <div
-                  v-if="showAssistantSwipeFooter(turn, i)"
-                  class="turn-card__footer assistant-swipe-footer d-flex justify-end align-center"
-                  :aria-label="
-                    $t('chat.swipePosition', {
-                      current: turn.activeReceiveIndex + 1,
-                      total: turn.receives.length,
-                    })
-                  "
-                >
-                  <div class="assistant-nav d-flex align-center">
-                    <v-btn
-                      icon
-                      size="x-small"
-                      variant="tonal"
-                      density="compact"
-                      :aria-label="$t('chat.prevAssistant')"
-                      :disabled="regeneratingTurnOrdinal !== null"
-                      @click="slideAssistant(i, 'left')"
-                    >
-                      <v-icon size="18">
-                        mdi-chevron-left
-                      </v-icon>
-                    </v-btn>
-                    <span class="assistant-nav__count text-caption text-medium-emphasis tabular-nums">
-                      {{ turn.activeReceiveIndex + 1 }}/{{ turn.receives.length }}
-                    </span>
-                    <v-btn
-                      icon
-                      size="x-small"
-                      variant="tonal"
-                      density="compact"
-                      :aria-label="$t('chat.nextAssistant')"
-                      :disabled="regeneratingTurnOrdinal !== null"
-                      @click="slideAssistant(i, 'right')"
-                    >
-                      <v-icon size="18">
-                        mdi-chevron-right
-                      </v-icon>
-                    </v-btn>
-                  </div>
-                </div>
+          <template v-if="editingTurnOrdinal === turn.turnOrdinal && editingSide === 'user'">
+            <div class="turn-bubble turn-bubble--user turn-bubble--editing">
+              <v-textarea
+                v-model="editDraft"
+                rows="3"
+                auto-grow
+                max-rows="16"
+                variant="outlined"
+                density="compact"
+                hide-details="auto"
+                class="mb-2"
+              />
+              <div class="d-flex gap-2 justify-end">
+                <v-btn size="small" variant="text" @click="cancelEdit">
+                  {{ $t('settings.themeCancel') }}
+                </v-btn>
+                <v-btn size="small" color="primary" variant="flat" @click="saveEdit(i)">
+                  {{ $t('settings.themeConfirm') }}
+                </v-btn>
               </div>
             </div>
+          </template>
+          <div
+            v-else
+            class="turn-bubble turn-bubble--user"
+          >
+            <div
+              class="chat-rich-text"
+              v-html="renderRichMessageToHtml(turn.user)"
+            />
+          </div>
+
+          <div class="turn-toolbar turn-toolbar--user">
+            <button
+              type="button"
+              class="turn-toolbar__btn"
+              :disabled="regeneratingTurnOrdinal !== null"
+              :data-tt="$t('chat.edit')"
+              :aria-label="$t('chat.edit')"
+              @click="openEditUser(turn)"
+            >
+              <v-icon size="16">mdi-pencil-outline</v-icon>
+            </button>
+            <button
+              type="button"
+              class="turn-toolbar__btn"
+              :data-tt="copiedTurnKey === `u-${turn.turnOrdinal}` ? $t('chat.copied') : $t('chat.copy')"
+              :class="{ 'is-success': copiedTurnKey === `u-${turn.turnOrdinal}` }"
+              :aria-label="$t('chat.copy')"
+              @click="copyTurnText(turn.user, `u-${turn.turnOrdinal}`)"
+            >
+              <v-icon size="16">{{ copiedTurnKey === `u-${turn.turnOrdinal}` ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
+            </button>
+            <button
+              type="button"
+              class="turn-toolbar__btn turn-toolbar__btn--danger"
+              :disabled="regeneratingTurnOrdinal !== null"
+              :data-tt="$t('chat.delete')"
+              :aria-label="$t('chat.delete')"
+              @click="requestDeleteWholeTurnFromUser(i)"
+            >
+              <v-icon size="16">mdi-delete-outline</v-icon>
+            </button>
           </div>
         </div>
-      </template>
 
-      <div
-        v-if="streamingText"
-        class="turn-block"
-      >
-        <div class="turn-index text-caption text-medium-emphasis">
-          {{ $t('chat.turnLabel', { n: streamingTurnLabelN }) }}
-        </div>
-        <div class="d-flex justify-start assistant-stack">
-          <div class="assistant-column">
-            <div class="turn-card turn-card--assistant">
-              <div class="turn-card__header d-flex align-center flex-wrap gap-1">
-                <span class="toolbar-role toolbar-role--assistant text-subtitle-2 font-weight-medium">
-                  {{ $t('chat.assistant') }}
-                  <span class="text-disabled text-body-2 font-weight-regular">
-                    {{ $t('chat.streamingSuffix') }}
-                  </span>
-                </span>
-              </div>
-              <div class="turn-card__body turn-card__body--assistant turn-card__body--streaming text-body-2">
-                <details
-                  v-if="conn.showReasoningChain && streamingReasoning"
-                  class="reasoning-chain mb-2"
-                >
-                  <summary class="reasoning-chain__summary text-caption text-medium-emphasis">
-                    {{ $t('chat.reasoningSummary') }}
-                  </summary>
-                  <div
-                    class="reasoning-chain__body text-body-2 chat-rich-text"
-                    v-html="renderReasoningMarkdownToHtml(streamingReasoning)"
-                  />
-                </details>
-                <div
-                  class="chat-rich-text"
-                  v-html="renderRichMessageToHtml(streamingText)"
-                />
-              </div>
+        <!-- Assistant turn -->
+        <div class="turn turn--assistant">
+          <div class="turn-avatar avatar avatar--assistant" aria-hidden="true">
+            <img v-if="turnAvatarUrls.assistant" :src="turnAvatarUrls.assistant" alt="" />
+            <span v-else>{{ assistantAvatarLetter }}</span>
+          </div>
+          <div class="turn-role turn-role--assistant">
+            <span class="turn-role__label">
+              {{ $t('chat.assistantBrand') }}
+              <span class="meta">
+                {{ $t('chat.turnLabel', { n: turnLabelN(turn, i) }) }}
+                <template v-if="conn.model.trim()"> · {{ conn.model.trim() }}</template>
+              </span>
+            </span>
+            <div class="plugin-slots" data-plugin-slot="assistant-turn">
+              <button
+                type="button"
+                class="plugin-slot"
+                :class="{ 'is-filled': conn.showReasoningChain && assistantReasoning(turn).length > 0 }"
+                :data-tt="$t('chat.pluginIndicatorReasoning')"
+                :aria-label="$t('chat.pluginIndicatorReasoning')"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M9 11a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+                  <path d="M17.657 16.657L13.414 20.9a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="plugin-slot"
+                :class="{ 'is-filled': conn.stream }"
+                :data-tt="$t('chat.pluginIndicatorStream')"
+                :aria-label="$t('chat.pluginIndicatorStream')"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="plugin-slot"
+                :data-tt="$t('chat.pluginPlaceholderTts')"
+                :aria-label="$t('chat.pluginPlaceholderTts')"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="plugin-slot"
+                :data-tt="$t('chat.pluginPlaceholderMore')"
+                :aria-label="$t('chat.pluginPlaceholderMore')"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </button>
             </div>
+          </div>
+
+          <details
+            v-if="conn.showReasoningChain && assistantReasoning(turn).length > 0 && !(editingTurnOrdinal === turn.turnOrdinal && editingSide === 'assistant')"
+            class="reasoning-chain"
+          >
+            <summary class="reasoning-chain__summary">
+              <span class="reasoning-chain__caret">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <polyline points="9 6 15 12 9 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+              <span class="reasoning-chain__title">
+                {{ $t('chat.reasoningSummary') }}
+                <span class="reasoning-chain__meta">
+                  {{ $t('chat.reasoningCharsMeta', { n: reasoningCharsCount(assistantReasoning(turn)) }) }}
+                </span>
+              </span>
+              <span class="reasoning-chain__hint">
+                <span class="reasoning-chain__hint-expand">{{ $t('chat.expand') }}</span>
+                <span class="reasoning-chain__hint-collapse">{{ $t('chat.collapse') }}</span>
+                <kbd>{{ $t('chat.shortcutKey') }}</kbd>
+              </span>
+            </summary>
+            <div
+              class="reasoning-chain__body chat-rich-text"
+              v-html="renderReasoningMarkdownToHtml(assistantReasoning(turn))"
+            />
+          </details>
+
+          <div
+            class="turn-bubble turn-bubble--assistant position-relative"
+            :class="{ 'turn-bubble--busy': regeneratingTurnOrdinal === turn.turnOrdinal }"
+          >
+            <template v-if="editingTurnOrdinal === turn.turnOrdinal && editingSide === 'assistant'">
+              <v-textarea
+                v-model="editDraft"
+                rows="3"
+                auto-grow
+                max-rows="16"
+                variant="outlined"
+                density="compact"
+                hide-details="auto"
+                class="mb-2"
+              />
+              <div class="d-flex gap-2 justify-end">
+                <v-btn size="small" variant="text" @click="cancelEdit">
+                  {{ $t('settings.themeCancel') }}
+                </v-btn>
+                <v-btn size="small" color="primary" variant="flat" @click="saveEdit(i)">
+                  {{ $t('settings.themeConfirm') }}
+                </v-btn>
+              </div>
+            </template>
+            <template v-else>
+              <div
+                class="chat-rich-text"
+                v-html="renderRichMessageToHtml(assistantText(turn))"
+              />
+            </template>
+
+            <v-overlay
+              v-if="regeneratingTurnOrdinal === turn.turnOrdinal"
+              contained
+              class="assistant-regen-overlay align-center justify-center"
+              scrim="rgba(0,0,0,0.25)"
+            >
+              <v-progress-circular indeterminate size="28" width="2" />
+            </v-overlay>
+          </div>
+
+          <div class="turn-toolbar turn-toolbar--assistant">
+            <button
+              type="button"
+              class="turn-toolbar__btn"
+              :disabled="regeneratingTurnOrdinal !== null"
+              :data-tt="$t('chat.edit')"
+              :aria-label="$t('chat.edit')"
+              @click="openEditAssistant(turn)"
+            >
+              <v-icon size="16">mdi-pencil-outline</v-icon>
+            </button>
+            <button
+              type="button"
+              class="turn-toolbar__btn"
+              :disabled="regeneratingTurnOrdinal !== null || !turn.user.trim()"
+              :data-tt="$t('chat.regenerate')"
+              :aria-label="$t('chat.regenerate')"
+              @click="regenerateAssistant(i)"
+            >
+              <v-icon size="16">mdi-refresh</v-icon>
+            </button>
+            <button
+              type="button"
+              class="turn-toolbar__btn"
+              :data-tt="copiedTurnKey === `a-${turn.turnOrdinal}` ? $t('chat.copied') : $t('chat.copy')"
+              :class="{ 'is-success': copiedTurnKey === `a-${turn.turnOrdinal}` }"
+              :aria-label="$t('chat.copy')"
+              @click="copyTurnText(assistantText(turn), `a-${turn.turnOrdinal}`)"
+            >
+              <v-icon size="16">{{ copiedTurnKey === `a-${turn.turnOrdinal}` ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
+            </button>
+            <button
+              v-if="writeChatPromptSnapshot"
+              type="button"
+              class="turn-toolbar__btn"
+              :disabled="regeneratingTurnOrdinal !== null"
+              :data-tt="$t('chat.viewTurnPrompt')"
+              :aria-label="$t('chat.viewTurnPrompt')"
+              @click="openTurnPromptSnapshot(turn)"
+            >
+              <v-icon size="16">mdi-text-box-search-outline</v-icon>
+            </button>
+            <button
+              type="button"
+              class="turn-toolbar__btn turn-toolbar__btn--danger"
+              :disabled="regeneratingTurnOrdinal !== null"
+              :data-tt="$t('chat.delete')"
+              :aria-label="$t('chat.delete')"
+              @click="requestDelete(i)"
+            >
+              <v-icon size="16">mdi-delete-outline</v-icon>
+            </button>
+          </div>
+
+          <!-- swipe · 仅最后一轮 assistant -->
+          <div
+            v-if="showAssistantSwipeFooter(turn, i)"
+            class="swipe"
+            :aria-label="
+              $t('chat.swipePosition', {
+                current: turn.activeReceiveIndex + 1,
+                total: turn.receives.length,
+              })
+            "
+          >
+            <button
+              type="button"
+              class="swipe__btn"
+              :disabled="regeneratingTurnOrdinal !== null"
+              :aria-label="$t('chat.prevAssistant')"
+              @click="slideAssistant(i, 'left')"
+            >
+              <v-icon size="16">mdi-chevron-left</v-icon>
+            </button>
+            <span class="swipe__count tabular-nums">
+              {{ turn.activeReceiveIndex + 1 }} / {{ turn.receives.length }}
+            </span>
+            <button
+              type="button"
+              class="swipe__btn"
+              :disabled="regeneratingTurnOrdinal !== null"
+              :aria-label="$t('chat.nextAssistant')"
+              @click="slideAssistant(i, 'right')"
+            >
+              <v-icon size="16">mdi-chevron-right</v-icon>
+            </button>
           </div>
         </div>
       </div>
+    </template>
 
-      <div
-        v-if="!turns.length && !streamingText && !errorText"
-        class="text-body-2 text-medium-emphasis"
-      >
+    <!-- Streaming · 流式输出占位 -->
+    <div
+      v-if="streamingText"
+      class="turn-block"
+    >
+      <div class="turn-divider" role="separator">
+        <span class="turn-divider__line" />
+        <span class="turn-divider__ornament">❦</span>
+        <span class="turn-divider__label">
+          {{ $t('chat.turnLabel', { n: streamingTurnLabelN }) }}
+        </span>
+        <span class="turn-divider__ornament">❦</span>
+        <span class="turn-divider__line" />
+      </div>
+      <div class="turn turn--assistant">
+        <div class="turn-avatar avatar avatar--assistant" aria-hidden="true">
+          <span>{{ assistantAvatarLetter }}</span>
+        </div>
+        <div class="turn-role turn-role--assistant">
+          <span class="turn-role__label">
+            {{ $t('chat.assistantBrand') }}
+            <span class="meta">
+              {{ $t('chat.turnLabel', { n: streamingTurnLabelN }) }}
+              {{ $t('chat.streamingSuffix') }}
+            </span>
+          </span>
+          <div class="plugin-slots" data-plugin-slot="assistant-streaming">
+            <button
+              type="button"
+              class="plugin-slot is-filled"
+              :data-tt="$t('chat.pluginIndicatorStream')"
+              :aria-label="$t('chat.pluginIndicatorStream')"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <details
+          v-if="conn.showReasoningChain && streamingReasoning"
+          class="reasoning-chain"
+          open
+        >
+          <summary class="reasoning-chain__summary">
+            <span class="reasoning-chain__caret">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <polyline points="9 6 15 12 9 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </span>
+            <span class="reasoning-chain__title">
+              {{ $t('chat.reasoningSummary') }}
+              <span class="reasoning-chain__meta">
+                {{ $t('chat.reasoningCharsMeta', { n: reasoningCharsCount(streamingReasoning) }) }}
+              </span>
+            </span>
+            <span class="reasoning-chain__hint">
+              <span class="reasoning-chain__hint-expand">{{ $t('chat.expand') }}</span>
+              <span class="reasoning-chain__hint-collapse">{{ $t('chat.collapse') }}</span>
+              <kbd>{{ $t('chat.shortcutKey') }}</kbd>
+            </span>
+          </summary>
+          <div
+            class="reasoning-chain__body chat-rich-text"
+            v-html="renderReasoningMarkdownToHtml(streamingReasoning)"
+          />
+        </details>
+
+        <div class="turn-bubble turn-bubble--assistant turn-bubble--streaming">
+          <div
+            class="chat-rich-text"
+            v-html="renderRichMessageToHtml(streamingText)"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="!turns.length && !streamingText && !errorText"
+      class="chat-empty"
+    >
+      <div class="chat-empty__ornament">❦</div>
+      <div class="chat-empty__text">
         {{ $t('chat.emptyHint') }}
       </div>
+    </div>
   </div>
 
+  <!-- Composer · 底部输入栏 -->
   <div class="chat-footer">
     <div class="chat-footer__inner">
       <v-alert
@@ -1200,29 +1448,35 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
       >
         {{ errorText }}
       </v-alert>
-      <v-textarea
-        v-model="userInput"
-        :label="$t('chat.messageLabel')"
-        rows="3"
-        auto-grow
-        max-rows="12"
-        variant="outlined"
-        class="mb-3"
-        hide-details="auto"
-        @keydown="onComposerKeydown"
-      />
-      <div
-        class="chat-footer__tools d-flex flex-wrap align-center gap-2"
-        data-plugin-slot="composer-toolbar"
-      >
-        <v-btn
-          color="primary"
-          :loading="loading"
-          :disabled="!canSend"
-          @click="send"
+      <div class="composer">
+        <textarea
+          v-model="userInput"
+          class="composer__textarea"
+          rows="3"
+          :placeholder="$t('chat.messageLabel')"
+          @keydown="onComposerKeydown"
+        />
+        <div
+          class="composer__tools"
+          data-plugin-slot="composer-toolbar"
         >
-          {{ $t('chat.send') }}
-        </v-btn>
+          <span class="composer__hint">
+            <kbd>Ctrl</kbd> + <kbd>Enter</kbd> {{ $t('chat.send') }}
+          </span>
+          <v-btn
+            color="primary"
+            variant="flat"
+            size="small"
+            density="comfortable"
+            :loading="loading"
+            :disabled="!canSend"
+            class="composer__send-btn"
+            @click="send"
+          >
+            <v-icon size="16" start>mdi-send</v-icon>
+            {{ $t('chat.send') }}
+          </v-btn>
+        </div>
       </div>
     </div>
   </div>
@@ -1311,185 +1565,647 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 </template>
 
 <style scoped>
-/* 中性灰滑块；WebKit 悬停时用主题 primary（Firefox 的 scrollbar-color 无 hover，保持中性灰） */
+/* ========== Chat body 滚动 ========== */
 .chat-body {
-  --chat-scrollbar-neutral: rgba(128, 128, 136, 0.42);
   min-height: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: var(--chat-scrollbar-neutral) transparent;
+  padding: 16px 0;
 }
-
-.chat-body::-webkit-scrollbar {
-  width: 10px;
-}
-
-.chat-body::-webkit-scrollbar-track {
-  background: transparent;
-  margin-block: 0.25rem;
-}
-
-.chat-body::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  border: 3px solid transparent;
-  background-clip: content-box;
-  background-color: var(--chat-scrollbar-neutral);
-}
-
-.chat-body::-webkit-scrollbar-thumb:hover {
-  background-color: rgb(var(--v-theme-primary));
-}
-
-.chat-footer {
-  padding-top: 0.5rem;
-  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid rgb(var(--v-theme-surface-variant));
-  background: rgb(var(--v-theme-surface));
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.06);
-}
-
-.chat-footer__inner {
-  width: 100%;
-}
-
-.min-height-0 {
-  min-height: 0;
-}
-
 .chat-scroll {
-  padding-inline: 0.5rem;
+  padding-inline: 0;
 }
 
+/* ========== Turn block · 章节级容器 ========== */
 .turn-block {
   display: flex;
   flex-direction: column;
-  gap: 0.625rem;
-  margin-bottom: 1.25rem;
-}
-
-.turn-index {
-  text-align: center;
-  letter-spacing: 0.02em;
-}
-
-.assistant-stack {
+  gap: 16px;
+  margin: 0 auto 32px;
   width: 100%;
 }
 
-.assistant-column {
-  width: min(88%, 36rem);
-  max-width: 100%;
+/* ========== 章回分隔 ❦ 第 N 回 ❦ ========== */
+.turn-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 32px;
+  margin-bottom: 4px;
+  user-select: none;
+}
+.turn-divider__line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(var(--v-theme-primary), 0.35),
+    transparent
+  );
+}
+.turn-divider__ornament {
+  color: rgb(var(--v-theme-primary));
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-style: italic;
+  line-height: 1;
+}
+.turn-divider__label {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 13px;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
-.turn-card {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  border-radius: 0;
-  overflow: visible;
+/* ========== Turn · Grid 排版 ========== */
+.turn {
+  display: grid;
+  column-gap: 16px;
+  row-gap: 6px;
+  padding: 0 32px;
+}
+.turn--assistant {
+  grid-template-columns: 4rem minmax(0, 1fr);
+  grid-template-areas:
+    "avatar role"
+    "avatar reasoning"
+    "avatar bubble"
+    "avatar tools"
+    "avatar swipe";
+}
+.turn--user {
+  grid-template-columns: minmax(0, 1fr) 4rem;
+  grid-template-areas:
+    "role     avatar"
+    "bubble   avatar"
+    "tools    avatar";
+  justify-items: end;
 }
 
-.turn-card--user {
-  width: min(88%, 36rem);
-  max-width: 100%;
-}
+.turn > .turn-avatar    { grid-area: avatar; align-self: start; }
+.turn > .turn-role      { grid-area: role; align-self: center; }
+.turn > .turn-bubble    { grid-area: bubble; width: 100%; }
+.turn > .turn-toolbar   { grid-area: tools; }
+.turn > .reasoning-chain{ grid-area: reasoning; }
+.turn > .swipe          { grid-area: swipe; justify-self: start; }
+.turn--user > .turn-bubble  { width: fit-content; max-width: 100%; }
 
-.turn-card--assistant {
+/* ========== Avatar · 4rem 客栈名牌 ========== */
+.avatar {
+  width: 4rem;
+  height: 4rem;
+  border-radius: 50%;
+  border: 2px solid rgb(var(--v-theme-secondary));
+  background: rgb(var(--v-theme-surface-light));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 34px;
+  font-weight: 500;
+  color: rgb(var(--v-theme-secondary));
+  flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
+  box-shadow:
+    0 0 0 1px rgb(var(--v-theme-background)) inset,
+    0 4px 12px rgb(0 0 0 / 0.35),
+    0 1px 0 rgba(var(--v-theme-on-surface), 0.04);
+  background-image: radial-gradient(
+    circle at 30% 25%,
+    rgba(var(--v-theme-on-surface), 0.10),
+    transparent 55%
+  );
+  line-height: 1;
+}
+.avatar::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: linear-gradient(
+    160deg,
+    rgb(255 255 255 / 0.06) 0%,
+    transparent 35%,
+    transparent 65%,
+    rgb(0 0 0 / 0.15) 100%
+  );
+  pointer-events: none;
+}
+.avatar img {
   width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.avatar--user {
+  border-color: rgb(var(--v-theme-secondary));
+  color: rgb(var(--v-theme-secondary));
+}
+.avatar--assistant {
+  border-color: rgb(var(--v-theme-primary));
+  color: rgb(var(--v-theme-primary));
+  background-image: radial-gradient(
+    circle at 30% 25%,
+    rgba(var(--v-theme-primary), 0.20),
+    transparent 60%
+  );
 }
 
-.turn-card__header {
-  padding: 0.5rem 0.75rem 0.25rem;
+/* ========== Role 行 · label + plugin slots ========== */
+.turn-role {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  max-width: 100%;
+}
+.turn-role--user {
+  flex-direction: row-reverse;
+}
+.turn-role__label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1;
+  white-space: nowrap;
+}
+.turn-role--user .turn-role__label { color: rgb(var(--v-theme-secondary)); }
+.turn-role--assistant .turn-role__label { color: rgb(var(--v-theme-primary)); }
+.turn-role__label .meta {
+  color: rgba(var(--v-theme-on-surface), 0.45);
+  margin-left: 8px;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 12.5px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+
+/* Plugin slots 容器：未被插件填充时不占空间 */
+.plugin-slots {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.turn-role--user .plugin-slots { justify-content: flex-end; }
+.turn-role--assistant .plugin-slots { justify-content: flex-start; }
+.plugin-slots:empty { display: none; }
+
+/* 插件按钮（由插件渲染时使用此 class） */
+.plugin-slots :deep(.plugin-slot) {
+  width: 24px;
+  height: 24px;
+  border: 1px dashed rgba(var(--v-theme-on-surface), 0.10);
   background: transparent;
-  border: none;
+  border-radius: 50%;
+  color: rgba(var(--v-theme-on-surface), 0.35);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  padding: 0;
+}
+.plugin-slots :deep(.plugin-slot:hover) {
+  border-style: solid;
+  border-color: rgba(var(--v-theme-primary), 0.35);
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.05);
+}
+.plugin-slots :deep(.plugin-slot.is-filled) {
+  border-style: solid;
+  border-color: rgba(var(--v-theme-secondary), 0.45);
+  color: rgb(var(--v-theme-secondary));
+  background: rgba(var(--v-theme-secondary), 0.08);
+}
+.plugin-slots :deep(.plugin-slot svg) {
+  width: 13px;
+  height: 13px;
+  display: block;
+}
+.plugin-slots :deep(.plugin-slot:disabled) {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
-.turn-card__body {
-  padding: 0.75rem 1rem;
-  line-height: 1.55;
-  /* 主题未提供 outline 时 rgba(var(--v-theme-outline),…) 整句无效，边框会消失 */
-  border: 1px solid rgb(var(--v-theme-surface-variant));
-  border-radius: 0.75rem;
-  background: transparent;
-}
-
-.turn-card__body--user {
-  text-align: start;
+/* ========== 气泡 + 指向头像的小三角 ========== */
+.turn-bubble {
+  padding: 14px 18px;
+  border-radius: var(--radius);
+  line-height: 1.65;
+  font-size: 14.5px;
   color: rgb(var(--v-theme-on-surface));
-  border-color: rgba(var(--v-theme-primary), 0.55);
-}
-
-.turn-card__body--assistant {
+  position: relative;
   text-align: start;
-  color: rgb(var(--v-theme-on-surface));
-  min-height: 2.5rem;
 }
-
-.turn-card__body--streaming {
+.turn-bubble--user {
+  background: rgba(var(--v-theme-secondary), 0.06);
+  border: 1px solid rgba(var(--v-theme-secondary), 0.20);
+}
+.turn-bubble--user::before {
+  content: '';
+  position: absolute;
+  right: -7px;
+  top: 14px;
+  width: 12px;
+  height: 12px;
+  background: rgba(var(--v-theme-secondary), 0.06);
+  border-top: 1px solid rgba(var(--v-theme-secondary), 0.20);
+  border-right: 1px solid rgba(var(--v-theme-secondary), 0.20);
+  transform: rotate(45deg);
+}
+.turn-bubble--assistant {
+  background: rgb(var(--v-theme-surface-light));
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.10);
+}
+.turn-bubble--assistant::before {
+  content: '';
+  position: absolute;
+  left: -7px;
+  top: 14px;
+  width: 12px;
+  height: 12px;
+  background: rgb(var(--v-theme-surface-light));
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.10);
+  border-left: 1px solid rgba(var(--v-theme-on-surface), 0.10);
+  transform: rotate(45deg);
+}
+.turn-bubble--streaming {
   border-style: dashed;
 }
-
-.turn-card__body--busy {
+.turn-bubble--busy {
   min-height: 4rem;
 }
+.turn-bubble--editing {
+  background: rgb(var(--v-theme-surface-bright));
+}
 
-.turn-card__footer {
-  padding: 0.35rem 0.25rem 0;
+/* Tavern · 助手气泡内的 **xxx** 渲染为「角色名」赤土橙衬线斜体（对应 demo 的 em.character） */
+.turn-bubble--assistant .chat-rich-text :deep(strong),
+.turn-bubble--assistant .chat-rich-text :deep(b) {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1.02em;
+  color: rgb(var(--v-theme-primary));
+}
+/* `*xxx*` 单星斜体保留正文白色，避免误伤 */
+.turn-bubble--assistant .chat-rich-text :deep(em),
+.turn-bubble--assistant .chat-rich-text :deep(i) {
+  font-style: italic;
+  color: inherit;
+}
+
+.assistant-regen-overlay {
+  border-radius: var(--radius);
+}
+
+/* ========== Toolbar · icon-only + tooltip ========== */
+.turn-toolbar {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+.turn-toolbar--user { justify-content: flex-end; }
+.turn-toolbar--assistant { justify-content: flex-start; }
+
+.turn-toolbar__btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
   background: transparent;
   border: none;
+  border-radius: 4px;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s;
+  position: relative;
+}
+.turn-toolbar__btn:hover:not(:disabled) {
+  color: rgb(var(--v-theme-on-surface));
+  background: rgba(var(--v-theme-on-surface), 0.06);
+}
+.turn-toolbar__btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.turn-toolbar__btn--danger:hover:not(:disabled) {
+  color: rgb(var(--v-theme-error));
+  background: rgba(var(--v-theme-error), 0.10);
+}
+.turn-toolbar__btn.is-success {
+  color: rgb(var(--v-theme-success));
+  background: rgba(var(--v-theme-success), 0.12);
 }
 
-.assistant-swipe-footer {
-  min-height: 2.25rem;
+/* ========== Tooltip · 纯 CSS [data-tt] ========== */
+[data-tt] {
+  position: relative;
+}
+[data-tt]:hover:not(:disabled)::after {
+  content: attr(data-tt);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgb(var(--v-theme-surface-bright));
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  color: rgb(var(--v-theme-on-surface));
+  font: 500 11px var(--font-ui);
+  padding: 4px 9px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 20;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.35);
+}
+[data-tt]:hover:not(:disabled)::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: rgb(var(--v-theme-surface-bright));
+  pointer-events: none;
+  z-index: 20;
 }
 
-.toolbar-role--user {
-  color: rgb(var(--v-theme-primary));
+/* ========== Swipe · 可滑动变体 ========== */
+.swipe {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 5px;
+  background: rgb(var(--v-theme-surface-light));
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.10);
+  border-radius: 99px;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  font: 500 11px var(--font-mono);
+  letter-spacing: 0.04em;
+  margin-top: 4px;
 }
-
-.toolbar-role--assistant {
-  color: rgb(var(--v-theme-primary));
+.swipe__btn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: rgba(var(--v-theme-on-surface), 0.7);
+  cursor: pointer;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
-
-.assistant-nav {
-  column-gap: 0.125rem;
+.swipe__btn:hover:not(:disabled) {
+  background: rgba(var(--v-theme-on-surface), 0.06);
+  color: rgb(var(--v-theme-on-surface));
 }
-
-.assistant-nav__count {
-  min-width: 2.25rem;
+.swipe__btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.swipe__count {
+  min-width: 2.5rem;
   text-align: center;
   user-select: none;
   line-height: 1;
 }
 
-.assistant-regen-overlay {
-  border-radius: 0.75rem;
-}
-
+/* ========== 可折叠思维链 · 对齐 demo-v3（hair + accent-soft 左条 + 极淡赤土底） ========== */
 .reasoning-chain {
-  border: 1px solid rgb(var(--v-theme-surface-variant));
-  border-radius: 0.5rem;
-  padding: 0.25rem 0.5rem;
-  background: rgba(var(--v-theme-surface-variant), 0.15);
+  /* 原型：1px hair + 2px 压暗主色实线左边（非半透明 primary） */
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  border-left: 2px solid rgb(var(--v-theme-primary-darken-1));
+  border-radius: 4px var(--radius) var(--radius) 4px;
+  background: rgba(var(--v-theme-primary), 0.03);
+  overflow: hidden;
+  margin-bottom: 2px;
 }
-
 .reasoning-chain__summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
   cursor: pointer;
   user-select: none;
-  padding: 0.125rem 0.25rem;
-  border-radius: 0.25rem;
-  position: sticky;
-  top: 0;
-  background: rgb(var(--v-theme-surface));
+  font: 500 11px var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgb(var(--v-theme-primary));
+  /* 原型 summary：rgba(217,96,46,0.04) */
+  background: rgba(var(--v-theme-primary), 0.04);
+  transition: background 0.12s;
 }
-
+.reasoning-chain__summary::-webkit-details-marker {
+  display: none;
+}
+.reasoning-chain__summary:hover {
+  /* 原型 hover：0.08 */
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+.reasoning-chain__caret {
+  display: inline-flex;
+  width: 10px;
+  height: 10px;
+  transition: transform 0.2s ease;
+  color: rgb(var(--v-theme-primary));
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+.reasoning-chain__caret svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.reasoning-chain[open] .reasoning-chain__caret {
+  transform: rotate(90deg);
+}
+.reasoning-chain__title {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.reasoning-chain__sep {
+  opacity: 0.4;
+  font-weight: 400;
+}
+.reasoning-chain__meta {
+  margin-left: 6px;
+  /* 原型 reasoning-chain__meta：ink-faint */
+  color: rgba(var(--v-theme-on-surface), 0.38);
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  font-size: 10.5px;
+}
+.reasoning-chain__hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  font-size: 10.5px;
+  color: rgba(var(--v-theme-on-surface), 0.38);
+}
+.reasoning-chain__hint kbd {
+  font: 500 10px var(--font-mono);
+  padding: 1px 5px;
+  /* 原型：hair-strong 边框 + 最深底 + ink-muted 字 */
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  border-radius: 3px;
+  background: rgb(var(--v-theme-background));
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  line-height: 1;
+}
+.reasoning-chain:not([open]) .reasoning-chain__hint-collapse { display: none; }
+.reasoning-chain[open] .reasoning-chain__hint-expand { display: none; }
 .reasoning-chain__body {
-  margin: 0.35rem 0 0;
-  /* 不在此再限高，避免长思维链/内嵌 HTML 被误截断；整页由 .chat-body 滚动 */
-  min-width: 0;
+  padding: 14px 18px 16px;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 13.5px;
+  line-height: 1.8;
+  color: rgba(var(--v-theme-on-surface), 0.72);
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+}
+.reasoning-chain__body :deep(p) {
+  margin: 0 0 0.5em;
+}
+.reasoning-chain__body :deep(p:last-child) { margin-bottom: 0; }
+.reasoning-chain__body :deep(strong) {
+  color: rgb(var(--v-theme-on-surface));
+  font-weight: 600;
+  font-style: normal;
+}
+.reasoning-chain__body :deep(em) {
+  color: rgb(var(--v-theme-secondary));
+}
+/* markdown 解析出的 list 退化为普通段落（不要数字/项目符号） */
+.reasoning-chain__body :deep(ul),
+.reasoning-chain__body :deep(ol) {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.reasoning-chain__body :deep(li) {
+  margin: 0 0 0.5em;
+}
+.reasoning-chain__body :deep(li:last-child) { margin-bottom: 0; }
+.reasoning-chain__body :deep(code),
+.reasoning-chain__body :deep(pre) {
+  font-style: normal;
 }
 
+/* ========== Empty state ========== */
+.chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 64px 32px;
+  color: rgba(var(--v-theme-on-surface), 0.45);
+  text-align: center;
+  user-select: none;
+}
+.chat-empty__ornament {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-style: italic;
+  color: rgba(var(--v-theme-primary), 0.55);
+  margin-bottom: 12px;
+}
+.chat-empty__text {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 15px;
+  letter-spacing: 0.01em;
+}
+
+/* ========== Composer · 底部输入 ========== */
+.chat-footer {
+  padding: 12px 32px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(var(--v-theme-surface-light), 0.4)
+  );
+}
+.chat-footer__inner {
+  width: 100%;
+  margin: 0;
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.composer__textarea {
+  width: 100%;
+  background: rgb(var(--v-theme-surface-light));
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.10);
+  border-radius: var(--radius);
+  color: rgb(var(--v-theme-on-surface));
+  font: 400 14px var(--font-ui);
+  line-height: 1.55;
+  padding: 12px 14px;
+  min-height: 80px;
+  max-height: 320px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.18s, background 0.18s;
+  font-family: inherit;
+}
+.composer__textarea:focus {
+  border-color: rgba(var(--v-theme-primary), 0.45);
+  background: rgb(var(--v-theme-surface-bright));
+}
+.composer__textarea::placeholder {
+  color: rgba(var(--v-theme-on-surface), 0.35);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 15px;
+}
+
+.composer__tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.composer__hint {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: rgba(var(--v-theme-on-surface), 0.4);
+  text-transform: uppercase;
+}
+.composer__send-btn {
+  text-transform: none !important;
+  letter-spacing: 0.01em !important;
+  font-weight: 500 !important;
+}
+
+/* ========== Rich text · 通用渲染 ========== */
 .chat-rich-text {
   line-height: 1.55;
   overflow-wrap: anywhere;

@@ -1,83 +1,102 @@
 :root {
-  /* 与 App.vue 顶栏/底栏同步；挂载后由脚本写入实际像素值 */
-  --header-height: 64px;
-  --footer-height: 36px;
+  /* App chrome 高度（App.vue 挂载后由脚本写入实际像素值，下面是缺省值） */
+  --header-height: 56px;
+  --footer-height: 32px;
 
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+  /* 字型 · A+B 混合方向（Tavern × Linear） */
+  --font-display:
+    'EB Garamond', 'Source Serif 4', 'Noto Serif SC', Georgia, 'Iowan Old Style',
+    'Apple Garamond', serif;
+  --font-ui:
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-mono:
+    'Geist Mono', ui-monospace, 'SFMono-Regular', 'Cascadia Code',
+    Menlo, Consolas, 'Liberation Mono', monospace;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  /* 圆角 */
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-lg: 12px;
 
+  /* hairline · 极细分隔线（基于主题色，dark/light 自动适应） */
+  --hair: rgba(var(--v-theme-on-surface), 0.06);
+  --hair-strong: rgba(var(--v-theme-on-surface), 0.10);
+  --hair-accent: rgba(var(--v-theme-primary), 0.35);
+
+  font-family: var(--font-ui);
+  /* 注意：不要在 :root 上设 font-size——会破坏 rem 计算（1rem 应保持 16px 基准） */
+  line-height: 1.55;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  color-scheme: light dark;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
   min-height: 100vh;
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-.card {
-  padding: 2em;
+  font-size: 14px;
+  background: rgb(var(--v-theme-background));
+  color: rgb(var(--v-theme-on-background));
 }
 
 #app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  min-height: 100vh;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+/* 全局：keyboard hint · <kbd> 样式（toolbar / 思维链 / composer 共用） */
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  font-weight: 500;
+  padding: 1px 5px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 3px;
+  background: rgb(var(--v-theme-background));
+  color: rgba(var(--v-theme-on-surface), 0.7);
+  line-height: 1;
+}
+
+/* 极细滚动条（chat-body 内部仍有更细的覆盖） */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--v-theme-on-surface), 0.18) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background-clip: content-box;
+  background-color: rgba(var(--v-theme-on-surface), 0.18);
+  border: 3px solid transparent;
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(var(--v-theme-primary), 0.6);
+}
+
+/* 极淡的纸纹底（dark 主题下更明显，light 时几乎不可见） */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 0.93  0 0 0 0 0.85  0 0 0 0.025 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  opacity: 0.5;
+  mix-blend-mode: screen;
+}
+.v-theme--light body::before { opacity: 0; }
+
+/* Vuetify v-app 默认会铺满 body 的 background，覆盖时让 noise 透出 */
+.v-application {
+  background: transparent !important;
 }

@@ -116,46 +116,55 @@ watch(
     </div>
     <template v-else>
       <header class="chat-header">
-        <div class="chat-header__row">
-          <v-btn
-            icon="mdi-arrow-left"
-            variant="text"
-            density="comfortable"
-            :aria-label="$t('chatConversation.backHome')"
-            @click="router.push({ name: 'home' })"
-          />
-          <v-text-field
+        <v-btn
+          icon="mdi-arrow-left"
+          variant="text"
+          density="comfortable"
+          size="small"
+          class="chat-header__back"
+          :aria-label="$t('chatConversation.backHome')"
+          @click="router.push({ name: 'home' })"
+        />
+        <div class="chat-header__title-wrap">
+          <input
             v-model="title"
-            :label="$t('chatConversation.titleLabel')"
-            variant="underlined"
-            density="comfortable"
-            hide-details="auto"
-            class="chat-header__title flex-grow-1"
-            :loading="titleSaving"
+            type="text"
+            class="chat-header__title-input"
+            :placeholder="$t('chat.newConversation')"
+            :disabled="titleSaving"
             @blur="saveTitle"
             @keydown.enter.prevent="($event.target as HTMLInputElement)?.blur()"
           />
+          <v-progress-circular
+            v-if="titleSaving"
+            indeterminate
+            size="14"
+            width="2"
+            class="chat-header__saving"
+          />
         </div>
-        <div class="chat-header__config">
-          <p
+        <div class="chat-header__meta">
+          <span
             v-if="!conn.apiKey.trim()"
-            class="text-caption text-warning mb-0"
+            class="chat-header__pill chat-header__pill--warning"
           >
+            <span class="chat-header__dot chat-header__dot--warning" />
             {{ $t('chat.hintConfigureApi') }}
-          </p>
+          </span>
           <template v-else>
-            <p
-              v-if="conn.alias.trim()"
-              class="text-caption text-medium-emphasis mb-0"
-            >
-              {{ $t('chat.currentPreset') }}{{ conn.alias.trim() }}
-            </p>
-            <p
+            <span
               v-if="conn.model.trim()"
-              class="text-caption text-medium-emphasis mb-0"
+              class="chat-header__pill chat-header__pill--accent"
             >
-              {{ $t('chat.currentModel') }}{{ conn.model.trim() }}
-            </p>
+              <span class="chat-header__dot" />
+              {{ conn.model.trim() }}
+            </span>
+            <span
+              v-if="conn.alias.trim()"
+              class="chat-header__pill"
+            >
+              {{ conn.alias.trim() }}
+            </span>
           </template>
         </div>
       </header>
@@ -170,15 +179,22 @@ watch(
   grid-template-rows: auto 1fr auto;
   grid-template-columns: minmax(0, 1fr);
   height: calc(100vh - var(--header-height) - var(--footer-height));
-  max-width: 52rem;
+  /* 60% 宽度，下限 45rem、上限 100rem；小于 45rem 屏幕由下方媒体查询接管为 100% */
+  width: clamp(45rem, 60%, 100rem);
   margin-inline: auto;
-  width: 100%;
   min-width: 0;
   min-height: 0;
-  padding-inline: 1rem;
+  padding-inline: 16px;
   box-sizing: border-box;
-  /* 作为 v-main 的 flex 子项时参与分配剩余空间（勿在 router-view 上挂 d-flex） */
   flex: 1 1 auto;
+}
+
+@media (max-width: 720px) {
+  .chat_pane {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 12px;
+  }
 }
 
 .chat_pane--state {
@@ -190,34 +206,108 @@ watch(
   overflow: auto;
 }
 
+/* ========== Chat Header · Tavern × Linear ========== */
 .chat-header {
-  padding-top: 1rem;
-  padding-bottom: 0.5rem;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 1em;
+  gap: 12px;
+  padding: 14px 4px 12px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
   min-width: 0;
 }
 
-.chat-header__row {
+.chat-header__back {
+  color: rgba(var(--v-theme-on-surface), 0.7) !important;
+}
+
+.chat-header__title-wrap {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chat-header__title-input {
   flex: 1;
   min-width: 0;
+  background: transparent;
+  border: none;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 500;
+  color: rgb(var(--v-theme-on-surface));
+  letter-spacing: 0.005em;
+  padding: 4px 6px;
+  border-radius: 4px;
+  outline: none;
+  transition: background 0.15s;
+}
+.chat-header__title-input:hover {
+  background: rgba(var(--v-theme-on-surface), 0.03);
+}
+.chat-header__title-input:focus {
+  background: rgba(var(--v-theme-on-surface), 0.04);
+  box-shadow: inset 0 -1px 0 rgba(var(--v-theme-primary), 0.6);
+}
+.chat-header__title-input::placeholder {
+  color: rgba(var(--v-theme-on-surface), 0.35);
+  font-style: italic;
+}
+.chat-header__title-input:disabled {
+  opacity: 0.5;
 }
 
-.chat-header__config {
-  margin-top: 0.375rem;
+.chat-header__saving {
+  color: rgb(var(--v-theme-primary)) !important;
+}
+
+.chat-header__meta {
   display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
-.chat-header__title {
-  min-width: 12rem;
+.chat-header__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.10);
+  border-radius: 99px;
+  background: rgb(var(--v-theme-surface-light));
+  color: rgba(var(--v-theme-on-surface), 0.75);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.chat-header__pill--accent {
+  border-color: rgba(var(--v-theme-primary), 0.35);
+  background: rgba(var(--v-theme-primary), 0.06);
+  color: rgb(var(--v-theme-primary));
+}
+.chat-header__pill--warning {
+  border-color: rgba(var(--v-theme-warning), 0.5);
+  background: rgba(var(--v-theme-warning), 0.08);
+  color: rgb(var(--v-theme-warning));
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.chat-header__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-success, 122 143 106));
+  box-shadow: 0 0 0 3px rgb(var(--v-theme-success, 122 143 106) / 0.18);
+  flex-shrink: 0;
+}
+.chat-header__dot--warning {
+  background: rgb(var(--v-theme-warning));
+  box-shadow: 0 0 0 3px rgba(var(--v-theme-warning), 0.18);
 }
 </style>

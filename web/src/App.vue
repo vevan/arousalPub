@@ -130,23 +130,64 @@ onUnmounted(() => {
 
     <v-app-bar
       ref="appBarRef"
-      color="surface"
-      border="b"
+      color="transparent"
       flat
       density="comfortable"
       class="app-bar"
       app
     >
       <template #prepend>
-        <v-app-bar-nav-icon @click="drawerLeft = !drawerLeft" />
+        <v-btn
+          icon="mdi-menu"
+          variant="text"
+          size="small"
+          density="comfortable"
+          class="app-bar__nav-toggle"
+          @click="drawerLeft = !drawerLeft"
+        />
       </template>
 
       <div class="app-bar__brand-nav d-flex align-center flex-nowrap min-w-0">
-        <v-app-bar-title
-          class="app-bar__title text-subtitle-1 font-weight-medium"
-        >
-          {{ $t('app.title') }}
-        </v-app-bar-title>
+        <div class="app-bar__brand d-flex align-center flex-shrink-0">
+          <!-- 自绘火焰 logo · 不用 MDI 通用 icon -->
+          <svg
+            class="app-bar__brand-flame"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M12 3 C 13 6 16 8 16 12 C 16 15.5 14.2 18 12 18 C 9.8 18 8 15.5 8 12 C 8 9 10 7 12 3 Z"
+              fill="rgba(var(--v-theme-primary), 0.18)"
+              stroke="rgb(var(--v-theme-primary))"
+              stroke-width="1.4"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M11.6 9.5 C 11.8 10.8 12.8 11.5 12.6 13 C 12.4 14.2 11.6 14.6 11 14.5"
+              stroke="rgb(var(--v-theme-secondary))"
+              stroke-width="1.2"
+              stroke-linecap="round"
+            />
+            <path
+              d="M12 18 L 12 20"
+              stroke="rgb(var(--v-theme-secondary))"
+              stroke-width="1.4"
+              stroke-linecap="round"
+            />
+            <ellipse
+              cx="12"
+              cy="20.5"
+              rx="3"
+              ry="0.5"
+              fill="rgba(var(--v-theme-secondary), 0.45)"
+            />
+          </svg>
+          <span class="app-bar__brand-name">
+            Arousal <em>Pub</em>
+          </span>
+        </div>
+
         <nav
           class="app-bar__menu d-none d-sm-flex align-center flex-shrink-0"
           :aria-label="$t('app.mainNav')"
@@ -157,14 +198,25 @@ onUnmounted(() => {
             exact
             :active="route.name === 'home' || route.name === 'chat'"
             class="app-bar__menu-btn"
+            size="small"
           >
             {{ $t('app.chat') }}
           </v-btn>
-          <v-btn variant="text" disabled class="app-bar__menu-btn">
-            {{ $t('app.knowledgeBase') }}
-          </v-btn>
-          <v-btn variant="text" disabled class="app-bar__menu-btn">
+          <v-btn
+            variant="text"
+            disabled
+            class="app-bar__menu-btn"
+            size="small"
+          >
             {{ $t('app.characters') }}
+          </v-btn>
+          <v-btn
+            variant="text"
+            disabled
+            class="app-bar__menu-btn"
+            size="small"
+          >
+            {{ $t('app.knowledgeBase') }}
           </v-btn>
         </nav>
       </div>
@@ -172,25 +224,37 @@ onUnmounted(() => {
       <v-spacer />
 
       <div class="app-bar__actions d-flex align-center flex-shrink-0">
-        <v-btn
-          variant="text"
-          prepend-icon="mdi-cog-outline"
-          class="d-none d-sm-inline-flex app-bar__menu-btn"
-          :active="settingsDialogOpen"
-          @click="settingsDialogOpen = true"
+        <!-- 当前 model 状态 chip -->
+        <button
+          v-if="conn.model.trim()"
+          type="button"
+          class="app-bar__status-chip d-none d-md-inline-flex"
+          :title="$t('chat.currentModel') + conn.model.trim()"
+          @click="drawerRight = !drawerRight"
         >
-          {{ $t('app.settings') }}
-        </v-btn>
+          <span class="app-bar__status-dot" />
+          <span class="app-bar__status-model text-truncate">
+            {{ conn.model.trim() }}
+          </span>
+        </button>
+
         <v-btn
           icon="mdi-cog-outline"
           variant="text"
-          class="d-sm-none"
+          size="small"
+          density="comfortable"
           :active="settingsDialogOpen"
+          class="app-bar__icon-btn"
+          :aria-label="$t('app.settings')"
           @click="settingsDialogOpen = true"
         />
         <v-btn
           icon="mdi-page-layout-sidebar-right"
           variant="text"
+          size="small"
+          density="comfortable"
+          class="app-bar__icon-btn"
+          :aria-label="$t('app.apiConnection')"
           @click="drawerRight = !drawerRight"
         />
       </div>
@@ -204,9 +268,19 @@ onUnmounted(() => {
     <v-footer
       ref="footerRef"
       app
-      height="36"
-      class="pa-0 border-t"
-    />
+      height="28"
+      class="app-footer pa-0"
+    >
+      <div class="app-footer__inner">
+        <span class="app-footer__meta">
+          Arousal <em>Pub</em>
+        </span>
+        <span class="app-footer__hint">
+          <kbd>Ctrl</kbd> + <kbd>K</kbd> Command Palette ·
+          <kbd>Ctrl</kbd> + <kbd>Enter</kbd> Send
+        </span>
+      </div>
+    </v-footer>
 
     <v-dialog
       v-model="settingsDialogOpen"
@@ -240,41 +314,162 @@ onUnmounted(() => {
   min-height: 0;
 }
 
-/* 顶栏：标题与文本菜单同一行、垂直居中；避免 v-toolbar-title 与 v-btn 基线不齐 */
+/* ========== AppBar · Tavern × Linear ==========
+ * demo: linear-gradient(180deg, rgba(36, 31, 24, 0.4), transparent)
+ * 36/31/24 即 --v-theme-surface-bright (elev-3)
+ */
+.app-bar {
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.10) !important;
+  background: linear-gradient(
+    180deg,
+    rgba(var(--v-theme-surface-bright), 0.4),
+    transparent
+  ) !important;
+  backdrop-filter: blur(8px);
+}
 .app-bar :deep(.v-toolbar__content) {
   align-items: center;
+  padding-inline: 12px;
+  background: transparent;
+}
+
+.app-bar__nav-toggle {
+  color: rgba(var(--v-theme-on-surface), 0.7);
 }
 
 .app-bar__brand-nav {
-  column-gap: 0.25rem;
-  margin-inline-start: 0.25rem;
+  column-gap: 12px;
+  margin-inline-start: 4px;
 }
 
-.app-bar__title {
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.app-bar__brand {
+  gap: 8px;
+  padding-right: 12px;
+  border-right: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+}
+.app-bar__brand-flame {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+.app-bar__brand-name {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: rgb(var(--v-theme-on-surface));
+  line-height: 1;
   white-space: nowrap;
-  flex: 0 1 auto;
-  min-width: 0;
+}
+.app-bar__brand-name em {
+  font-style: italic;
+  color: rgb(var(--v-theme-primary));
+  font-weight: 500;
 }
 
-.app-bar__title :deep(.v-toolbar-title__placeholder) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
+/* nav 按钮 · demo: hover 4% ink 底；active = 8% accent 底 + inset bottom 2px accent + 顶圆下方 */
 .app-bar__menu {
-  column-gap: 0.125rem;
+  column-gap: 4px;
 }
-
 .app-bar__menu-btn {
-  letter-spacing: normal;
+  letter-spacing: 0.005em;
+  font-weight: 500;
+  text-transform: none;
+  border-radius: var(--radius-sm) !important;
+  color: rgba(var(--v-theme-on-surface), 0.78);
+}
+.app-bar__menu-btn :deep(.v-btn__content) {
+  font-family: var(--font-ui);
+  font-size: 13px;
+}
+.app-bar__menu-btn:not(.v-btn--active):hover :deep(.v-btn__overlay) {
+  background: rgba(var(--v-theme-on-surface), 0.04);
+  opacity: 1;
+}
+.app-bar__menu-btn.v-btn--active {
+  color: rgb(var(--v-theme-on-surface));
+  /* demo: inset 0 -2px 0 var(--accent) — 底部 2px 实线条作为视觉下划 */
+  box-shadow: inset 0 -2px 0 rgb(var(--v-theme-primary)) !important;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0 !important;
+}
+.app-bar__menu-btn.v-btn--active :deep(.v-btn__overlay) {
+  background: rgba(var(--v-theme-primary), 0.08);
+  opacity: 1;
 }
 
+/* 右侧 actions */
 .app-bar__actions {
-  column-gap: 0.125rem;
+  column-gap: 4px;
+}
+
+.app-bar__status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  height: 30px;
+  margin-right: 4px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.10);
+  border-radius: 4px;
+  background: rgb(var(--v-theme-surface-light));
+  color: rgba(var(--v-theme-on-surface), 0.7);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  max-width: 220px;
+}
+.app-bar__status-chip:hover {
+  border-color: rgba(var(--v-theme-primary), 0.45);
+  color: rgb(var(--v-theme-on-surface));
+}
+.app-bar__status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-success, 122 143 106));
+  box-shadow: 0 0 0 3px rgb(var(--v-theme-success, 122 143 106) / 0.18);
+  flex-shrink: 0;
+}
+.app-bar__status-model {
+  max-width: 180px;
+}
+.app-bar__icon-btn {
+  color: rgba(var(--v-theme-on-surface), 0.7);
+}
+.app-bar__icon-btn:hover {
+  color: rgb(var(--v-theme-on-surface));
+}
+
+/* ========== Footer ========== */
+.app-footer {
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.06) !important;
+  background: transparent !important;
+}
+.app-footer__inner {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: rgba(var(--v-theme-on-surface), 0.4);
+}
+.app-footer__meta {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+}
+.app-footer__meta em {
+  color: rgba(var(--v-theme-primary), 0.7);
+}
+.app-footer__hint {
+  margin-left: auto;
+  text-transform: uppercase;
 }
 </style>

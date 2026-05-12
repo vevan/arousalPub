@@ -55,3 +55,8 @@ coverage/
 
 # Local-only overrides
 *.local
+
+# Design iteration screenshots (设计稿 .html / .mjs 保留，截图过程产物忽略)
+_design/*.png
+_design/*.jpg
+_design/*.jpeg

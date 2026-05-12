@@ -1,0 +1,1396 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>Arousal Pub · 设计方向 v2 · A+B 混合（含头像 / 插件槽 / icon tooltip）</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Geist+Mono:wght@400;500&family=Inter:wght@400;450;500;600&family=Noto+Serif+SC:wght@500;600&display=swap" rel="stylesheet" />
+<style>
+  /* ----------- Design Tokens · A+B mix · Dark first ----------- */
+  :root {
+    /* 暖墨黑底色系（不是 #000 死黑，带壁炉温度） */
+    --bg:           #0E0B08;   /* 整体背景 · 暖墨黑 */
+    --bg-elev-1:   #15110D;   /* 一级抬升（侧栏/卡片底） */
+    --bg-elev-2:   #1C1813;   /* 二级抬升（弹窗/hover） */
+    --bg-elev-3:   #241F18;   /* 三级抬升 */
+
+    /* 文字层级 · 羊皮纸感的暖白阶 */
+    --ink:           #F4ECD8;   /* 主文字 · 羊皮纸米白 */
+    --ink-soft:      #C9BCA2;   /* 次级 · 旧纸张 */
+    --ink-muted:     #8A7B65;   /* 弱化 · 烟熏 */
+    --ink-faint:     #5A4F40;   /* 极弱 · 注脚 */
+
+    /* 品牌色 · Tavern 灵魂 */
+    --accent:       #D9602E;   /* 赤土橙 · 壁炉之火（主 accent） */
+    --accent-soft:  #B8511E;   /* hover 时压暗 */
+    --accent-glow:  rgba(217, 96, 46, 0.18);
+    --brass:        #B89770;   /* 黄铜 · 次级金属感 */
+    --moss:         #7A8F6A;   /* 青苔绿 · 成功/在线 */
+    --wine:         #A4332E;   /* 酒红 · 警示/错误 */
+
+    /* Hairline · 极细分隔线（Linear DNA） */
+    --hair:          rgba(244, 236, 216, 0.06);
+    --hair-strong:   rgba(244, 236, 216, 0.10);
+    --hair-accent:   rgba(217, 96, 46, 0.35);
+
+    /* 字型 */
+    --font-display: 'EB Garamond', 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+    --font-ui:      'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --font-mono:    'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+    /* 尺寸 */
+    --radius-sm: 4px;
+    --radius:    8px;
+    --radius-lg: 12px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* 极淡的纸纹底（不是纹理图，是 SVG 噪点） */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 0.93  0 0 0 0 0.85  0 0 0 0.025 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    opacity: 0.55;
+    mix-blend-mode: screen;
+  }
+
+  /* ----------- 顶层文档标签栏 ----------- */
+  .doc-header {
+    position: relative;
+    z-index: 1;
+    border-bottom: 1px solid var(--hair-strong);
+    padding: 28px 48px 24px;
+    background: linear-gradient(180deg, rgba(28, 24, 19, 0.7), transparent);
+  }
+  .doc-header h1 {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: 28px;
+    letter-spacing: 0.01em;
+    margin: 0;
+    color: var(--ink);
+  }
+  .doc-header h1 em {
+    color: var(--accent);
+    font-style: italic;
+    font-weight: 500;
+  }
+  .doc-header .meta {
+    display: flex;
+    gap: 16px;
+    margin-top: 10px;
+    color: var(--ink-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .doc-header .meta span::before {
+    content: '·';
+    margin-right: 16px;
+    color: var(--ink-faint);
+  }
+  .doc-header .meta span:first-child::before { display: none; }
+
+  /* ----------- Demo 区段 ----------- */
+  .scene {
+    position: relative;
+    z-index: 1;
+    padding: 48px 48px 16px;
+  }
+  .scene-label {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .scene-label .num {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.12em;
+  }
+  .scene-label .title {
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-style: italic;
+    color: var(--ink-soft);
+  }
+  .scene-label .desc {
+    color: var(--ink-muted);
+    font-size: 12px;
+    margin-left: auto;
+    font-family: var(--font-mono);
+    letter-spacing: 0.02em;
+  }
+
+  /* ----------- 通用「App Frame」承载 mockup ----------- */
+  .frame {
+    background: var(--bg-elev-1);
+    border: 1px solid var(--hair-strong);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow:
+      0 1px 0 var(--hair) inset,
+      0 24px 60px -20px rgba(0, 0, 0, 0.5),
+      0 8px 24px -12px rgba(0, 0, 0, 0.3);
+  }
+
+  /* ============ AppBar · 顶栏 ============ */
+  .app-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    height: 56px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--hair-strong);
+    background: linear-gradient(180deg, rgba(36, 31, 24, 0.4), transparent);
+  }
+  .app-bar__brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-right: 16px;
+    border-right: 1px solid var(--hair);
+    margin-right: 4px;
+  }
+  .brand-flame {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+  }
+  .app-bar__brand-name {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: var(--ink);
+    line-height: 1;
+  }
+  .app-bar__brand-name em {
+    font-style: italic;
+    color: var(--accent);
+  }
+
+  .app-bar__nav {
+    display: flex;
+    gap: 4px;
+  }
+  .nav-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    height: 32px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--ink-soft);
+    font: 500 13px var(--font-ui);
+    letter-spacing: 0.005em;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .nav-btn:hover {
+    background: rgba(244, 236, 216, 0.04);
+    color: var(--ink);
+  }
+  .nav-btn.is-active {
+    color: var(--ink);
+    background: rgba(217, 96, 46, 0.08);
+    box-shadow: inset 0 -2px 0 var(--accent);
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  }
+  .nav-btn.is-disabled {
+    color: var(--ink-faint);
+    cursor: not-allowed;
+  }
+
+  .app-bar__spacer { flex: 1; }
+
+  .app-bar__actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .kbd-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    height: 30px;
+    border: 1px solid var(--hair-strong);
+    border-radius: var(--radius-sm);
+    background: var(--bg-elev-2);
+    color: var(--ink-muted);
+    font: 500 12px var(--font-ui);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .kbd-hint:hover {
+    border-color: var(--hair-accent);
+    color: var(--ink-soft);
+  }
+  .kbd-hint kbd {
+    font: 500 10.5px var(--font-mono);
+    padding: 1px 5px;
+    border: 1px solid var(--hair-strong);
+    border-radius: 3px;
+    background: var(--bg);
+    color: var(--ink-muted);
+    line-height: 1;
+  }
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--ink-soft);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .icon-btn:hover {
+    background: rgba(244, 236, 216, 0.05);
+    color: var(--ink);
+  }
+  .icon-btn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+
+  .status-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--moss);
+    box-shadow: 0 0 0 3px rgba(122, 143, 106, 0.18);
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+
+  /* ============ 场景 1：会话列表 ============ */
+  .list-body {
+    padding: 36px 56px 56px;
+    min-height: 440px;
+  }
+  .list-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--hair);
+  }
+  .list-head h2 {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: 26px;
+    letter-spacing: 0.005em;
+    margin: 0;
+    color: var(--ink);
+  }
+  .list-head .sub {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--ink-muted);
+    text-transform: uppercase;
+  }
+
+  .list-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  .conv-card {
+    position: relative;
+    padding: 18px 18px 16px 22px;
+    background: var(--bg-elev-2);
+    border: 1px solid var(--hair-strong);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.18s ease;
+    overflow: hidden;
+  }
+  .conv-card::before {
+    /* 左侧门帘竖线 · Tavern 签名 */
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 14px;
+    bottom: 14px;
+    width: 2px;
+    background: var(--brass);
+    opacity: 0.35;
+    transition: all 0.18s;
+  }
+  .conv-card:hover {
+    background: var(--bg-elev-3);
+    border-color: var(--hair-accent);
+    transform: translateY(-1px);
+  }
+  .conv-card:hover::before {
+    background: var(--accent);
+    opacity: 1;
+    top: 8px;
+    bottom: 8px;
+  }
+  .conv-card__title {
+    font-family: var(--font-display);
+    font-size: 17px;
+    font-weight: 500;
+    color: var(--ink);
+    margin: 0 0 6px;
+    line-height: 1.35;
+    letter-spacing: 0.005em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .conv-card__meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    color: var(--ink-muted);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+  }
+  .conv-card__meta .dot {
+    width: 3px;
+    height: 3px;
+    background: var(--ink-faint);
+    border-radius: 50%;
+  }
+  .conv-card__preview {
+    color: var(--ink-soft);
+    font-size: 12.5px;
+    line-height: 1.55;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .conv-card__badge {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    font: 500 10px var(--font-mono);
+    color: var(--brass);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.7;
+  }
+
+  .conv-card--new {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 28px 18px;
+    background: transparent;
+    border: 1px dashed var(--hair-accent);
+    color: var(--ink-soft);
+  }
+  .conv-card--new::before { display: none; }
+  .conv-card--new:hover {
+    background: rgba(217, 96, 46, 0.04);
+    border-color: var(--accent);
+    color: var(--ink);
+  }
+  .conv-card--new .plus {
+    font-family: var(--font-display);
+    font-size: 32px;
+    font-weight: 400;
+    color: var(--accent);
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .conv-card--new span {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-style: italic;
+    letter-spacing: 0.01em;
+  }
+
+  /* ============ 场景 2：对话页 ============ */
+  .chat-frame {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    min-height: 720px;
+  }
+
+  /* 侧栏 */
+  .chat-side {
+    border-right: 1px solid var(--hair-strong);
+    padding: 12px 8px;
+    background: rgba(15, 11, 8, 0.4);
+  }
+  .side-section {
+    margin-bottom: 16px;
+  }
+  .side-title {
+    font: 500 10px var(--font-mono);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    padding: 8px 10px 4px;
+  }
+  .side-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    color: var(--ink-soft);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.12s;
+    position: relative;
+  }
+  .side-item:hover {
+    background: rgba(244, 236, 216, 0.04);
+    color: var(--ink);
+  }
+  .side-item.is-active {
+    background: rgba(217, 96, 46, 0.10);
+    color: var(--ink);
+  }
+  .side-item.is-active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+  .side-item .time {
+    margin-left: auto;
+    font: 400 10.5px var(--font-mono);
+    color: var(--ink-faint);
+  }
+
+  /* 对话主区 */
+  .chat-main {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    min-height: 0;
+  }
+  .chat-header {
+    padding: 16px 32px 14px;
+    border-bottom: 1px solid var(--hair);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .chat-header__title {
+    font-family: var(--font-display);
+    font-size: 19px;
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: 0.005em;
+    flex: 1;
+  }
+  .chat-header__title input {
+    background: transparent;
+    border: none;
+    color: inherit;
+    font: inherit;
+    width: 100%;
+    padding: 4px 0;
+    outline: none;
+  }
+  .chat-header__title input:focus {
+    border-bottom: 1px solid var(--hair-accent);
+  }
+  .chat-header__sub {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--ink-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+  .chat-header__sub .pill {
+    padding: 3px 8px;
+    border: 1px solid var(--hair-strong);
+    border-radius: 99px;
+    color: var(--ink-soft);
+  }
+  .chat-header__sub .pill--accent {
+    color: var(--accent);
+    border-color: rgba(217, 96, 46, 0.4);
+    background: rgba(217, 96, 46, 0.06);
+  }
+
+  .chat-body {
+    overflow-y: auto;
+    padding: 32px 0 16px;
+  }
+
+  /* 章回分隔（最有仪式感的细节） */
+  .chapter-divider {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin: 0 auto 28px;
+    padding: 0 32px;
+    max-width: 620px;
+  }
+  .chapter-divider .line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--hair-accent), transparent);
+  }
+  .chapter-divider .ornament {
+    color: var(--accent);
+    font: 400 14px var(--font-display);
+    font-style: italic;
+  }
+  .chapter-divider .label {
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-style: italic;
+    color: var(--ink-muted);
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+  .chapter-divider .label .num {
+    color: var(--brass);
+    font-weight: 500;
+    font-style: normal;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    margin-right: 8px;
+    letter-spacing: 0.12em;
+  }
+
+  /* 消息行 */
+  .turn {
+    max-width: 620px;
+    margin: 0 auto 24px;
+    padding: 0 32px;
+  }
+
+  /* 角色名行 = 头像 + label + 插件槽 */
+  .turn-role {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .turn-role--user {
+    flex-direction: row-reverse;
+  }
+
+  .turn-role__identity {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .turn-role--user .turn-role__identity {
+    flex-direction: row-reverse;
+  }
+
+  .turn-role__label {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+  .turn-role--user .turn-role__label { color: var(--brass); }
+  .turn-role--assistant .turn-role__label { color: var(--accent); }
+
+  /* 头像 · 客栈名牌感（衬线字母 + 黄铜环） */
+  .avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1.5px solid var(--brass);
+    background: var(--bg-elev-2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--brass);
+    flex-shrink: 0;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px var(--bg) inset, 0 1px 0 rgba(0,0,0,0.4);
+    background-image:
+      radial-gradient(circle at 30% 25%, rgba(244, 236, 216, 0.10), transparent 50%);
+  }
+  .avatar--user {
+    border-color: var(--brass);
+    color: var(--brass);
+  }
+  .avatar--assistant {
+    border-color: var(--accent);
+    color: var(--accent);
+    background-image:
+      radial-gradient(circle at 30% 25%, rgba(217, 96, 46, 0.15), transparent 55%);
+  }
+
+  /* 插件槽容器 */
+  .plugin-slots {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+  }
+  .turn-role--user .plugin-slots {
+    justify-content: flex-end;
+  }
+  .turn-role--assistant .plugin-slots {
+    justify-content: flex-start;
+  }
+
+  /* 单个插件槽按钮（占位状态） */
+  .plugin-slot {
+    width: 24px;
+    height: 24px;
+    border: 1px dashed var(--hair-strong);
+    background: transparent;
+    border-radius: 50%;
+    color: var(--ink-faint);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    padding: 0;
+    position: relative;
+  }
+  .plugin-slot:hover {
+    border-style: solid;
+    border-color: var(--hair-accent);
+    color: var(--accent);
+    background: rgba(217, 96, 46, 0.05);
+  }
+  .plugin-slot svg {
+    width: 12px;
+    height: 12px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.6;
+  }
+  /* "已激活的插件" 状态（示意） */
+  .plugin-slot.is-filled {
+    border-style: solid;
+    border-color: rgba(184, 151, 112, 0.45);
+    color: var(--brass);
+    background: rgba(184, 151, 112, 0.06);
+  }
+
+  /* 槽分组分隔（区分原生 / 插件区） */
+  .slot-divider {
+    width: 1px;
+    height: 14px;
+    background: var(--hair-strong);
+    margin: 0 4px;
+    flex-shrink: 0;
+  }
+
+  /* 气泡 */
+  .turn-bubble {
+    padding: 14px 18px;
+    border-radius: var(--radius);
+    line-height: 1.65;
+    font-size: 14.5px;
+    color: var(--ink);
+  }
+  .turn-bubble--user {
+    background: rgba(184, 151, 112, 0.06);
+    border: 1px solid rgba(184, 151, 112, 0.18);
+    margin-left: 40px;
+  }
+  .turn-bubble--assistant {
+    background: var(--bg-elev-2);
+    border: 1px solid var(--hair-strong);
+    margin-left: 40px; /* 让出头像位 */
+  }
+  .turn-bubble p { margin: 0 0 0.6em; }
+  .turn-bubble p:last-child { margin-bottom: 0; }
+  .turn-bubble em.character {
+    font-family: var(--font-display);
+    color: var(--accent);
+    font-style: italic;
+    font-size: 1.02em;
+  }
+
+  /* 气泡下 toolbar · icon-only + tooltip */
+  .turn-toolbar {
+    display: flex;
+    gap: 2px;
+    margin-top: 6px;
+  }
+  .turn-toolbar--user { justify-content: flex-end; }
+  .turn-toolbar--assistant { padding-left: 40px; }
+  .turn-toolbar button {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--ink-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s;
+  }
+  .turn-toolbar button:hover {
+    color: var(--ink);
+    background: rgba(244, 236, 216, 0.06);
+  }
+  .turn-toolbar button.is-danger:hover {
+    color: #E27068;
+    background: rgba(164, 51, 46, 0.10);
+  }
+  .turn-toolbar svg {
+    width: 15px;
+    height: 15px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.6;
+  }
+
+  /* ============ Tooltip ============ */
+  [data-tt] {
+    position: relative;
+  }
+  [data-tt]:hover::after,
+  [data-tt].show-tt::after {
+    content: attr(data-tt);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-elev-3);
+    border: 1px solid var(--hair-strong);
+    color: var(--ink);
+    font: 500 11px var(--font-ui);
+    padding: 4px 9px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 20;
+    letter-spacing: 0.02em;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  [data-tt]:hover::before,
+  [data-tt].show-tt::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: var(--bg-elev-3);
+    pointer-events: none;
+    z-index: 20;
+  }
+
+  /* swipe footer */
+  .swipe {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    margin-left: 28px;
+    padding: 4px 6px;
+    background: var(--bg-elev-2);
+    border: 1px solid var(--hair-strong);
+    border-radius: 99px;
+    color: var(--ink-muted);
+    font: 500 11px var(--font-mono);
+    letter-spacing: 0.04em;
+  }
+  .swipe button {
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    color: var(--ink-soft);
+    cursor: pointer;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .swipe button:hover { background: rgba(244, 236, 216, 0.06); color: var(--ink); }
+  .swipe svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; }
+
+  /* 底部输入栏 */
+  .composer {
+    padding: 16px 32px 20px;
+    border-top: 1px solid var(--hair-strong);
+    background: linear-gradient(180deg, transparent, rgba(15, 11, 8, 0.4));
+  }
+  .composer__inner {
+    max-width: 620px;
+    margin: 0 auto;
+  }
+  .composer__textarea {
+    width: 100%;
+    background: var(--bg-elev-2);
+    border: 1px solid var(--hair-strong);
+    border-radius: var(--radius);
+    color: var(--ink);
+    font: 400 14px var(--font-ui);
+    line-height: 1.55;
+    padding: 12px 14px;
+    min-height: 76px;
+    resize: none;
+    outline: none;
+    transition: border-color 0.18s;
+  }
+  .composer__textarea:focus {
+    border-color: var(--hair-accent);
+    background: var(--bg-elev-3);
+  }
+  .composer__textarea::placeholder {
+    color: var(--ink-faint);
+    font-style: italic;
+    font-family: var(--font-display);
+    font-size: 15px;
+  }
+  .composer__tools {
+    display: flex;
+    align-items: center;
+    margin-top: 10px;
+    gap: 10px;
+  }
+  .composer__hint {
+    color: var(--ink-faint);
+    font: 500 11px var(--font-mono);
+    letter-spacing: 0.04em;
+    flex: 1;
+  }
+  .composer__hint kbd {
+    font: 500 10.5px var(--font-mono);
+    padding: 1px 5px;
+    border: 1px solid var(--hair-strong);
+    border-radius: 3px;
+    background: var(--bg);
+    color: var(--ink-muted);
+  }
+  .btn-send {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    height: 34px;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: #1A1208;
+    font: 600 13px var(--font-ui);
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-send:hover {
+    background: #E8784A;
+    border-color: #E8784A;
+  }
+  .btn-send svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2.2; }
+
+  /* ============ 页脚说明 ============ */
+  .footer {
+    position: relative;
+    z-index: 1;
+    padding: 40px 48px 56px;
+    margin-top: 40px;
+    border-top: 1px solid var(--hair);
+    color: var(--ink-muted);
+    font-size: 12px;
+  }
+  .footer h3 {
+    font-family: var(--font-display);
+    font-size: 17px;
+    color: var(--ink-soft);
+    margin: 0 0 12px;
+    font-weight: 500;
+    font-style: italic;
+  }
+  .footer ul {
+    margin: 0; padding: 0; list-style: none;
+    columns: 2;
+    column-gap: 48px;
+  }
+  .footer li {
+    padding: 6px 0;
+    break-inside: avoid;
+  }
+  .footer li::before {
+    content: '·';
+    color: var(--accent);
+    margin-right: 10px;
+    font-weight: 700;
+  }
+  .footer code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-soft);
+    background: var(--bg-elev-2);
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid var(--hair);
+  }
+
+  /* ============ 三场景拼贴布局 ============ */
+  .layout {
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+</style>
+</head>
+<body>
+  <div class="layout">
+
+  <!-- 顶部文档说明 -->
+  <header class="doc-header">
+    <h1>Arousal <em>Pub</em> · UI 重构 · 方向 v2</h1>
+    <div class="meta">
+      <span>A + B 混合</span>
+      <span>+ Avatar</span>
+      <span>+ Plugin slots</span>
+      <span>+ Icon-only toolbar w/ tooltip</span>
+      <span>Demo · 2026-05-12</span>
+    </div>
+  </header>
+
+  <!-- ========== 场景 1：顶栏 + 会话列表 ========== -->
+  <section class="scene">
+    <div class="scene-label">
+      <span class="num">01</span>
+      <span class="title">Brand &amp; Conversation List</span>
+      <span class="desc">app-bar + grid · 章回卡 · 门帘竖线</span>
+    </div>
+
+    <div class="frame">
+      <!-- 顶栏 -->
+      <div class="app-bar">
+        <div class="app-bar__brand">
+          <!-- 自绘的火焰/蜡烛 icon -->
+          <svg class="brand-flame" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3 C 13 6 16 8 16 12 C 16 15.5 14.2 18 12 18 C 9.8 18 8 15.5 8 12 C 8 9 10 7 12 3 Z" fill="#D9602E" fill-opacity="0.15" stroke="#D9602E"/>
+            <path d="M11.6 9.5 C 11.8 10.8 12.8 11.5 12.6 13 C 12.4 14.2 11.6 14.6 11 14.5" stroke="#B89770" stroke-width="1.2"/>
+            <path d="M12 18 L 12 20" stroke="#B89770" stroke-width="1.6"/>
+            <ellipse cx="12" cy="20.5" rx="3" ry="0.5" fill="#B89770" fill-opacity="0.5"/>
+          </svg>
+          <span class="app-bar__brand-name">Arousal <em>Pub</em></span>
+        </div>
+
+        <nav class="app-bar__nav">
+          <button class="nav-btn is-active">对话</button>
+          <button class="nav-btn">角色</button>
+          <button class="nav-btn">知识库</button>
+          <button class="nav-btn is-disabled">插件 <span style="opacity:0.5; font-size: 9px; margin-left: 4px; letter-spacing: 0.08em;">SOON</span></button>
+        </nav>
+
+        <div class="app-bar__spacer"></div>
+
+        <div class="app-bar__actions">
+          <button class="kbd-hint">
+            <span class="status-dot"></span>
+            <span>gpt-4o-mini</span>
+            <kbd>⌘</kbd><kbd>K</kbd>
+          </button>
+          <button class="icon-btn" title="设置">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+          <button class="icon-btn" title="API 连接">
+            <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 列表主区 -->
+      <div class="list-body">
+        <div class="list-head">
+          <h2>对话</h2>
+          <span class="sub">12 conversations · sorted by last touched</span>
+        </div>
+
+        <div class="list-grid">
+          <!-- New -->
+          <div class="conv-card conv-card--new">
+            <div class="plus">+</div>
+            <span>新开一桌</span>
+          </div>
+
+          <!-- 卡 1 -->
+          <div class="conv-card">
+            <span class="conv-card__badge">CH 7</span>
+            <h3 class="conv-card__title">雨夜信使的来信</h3>
+            <div class="conv-card__meta">
+              <span>gpt-4o</span>
+              <span class="dot"></span>
+              <span>14 回</span>
+              <span class="dot"></span>
+              <span>3 分钟前</span>
+            </div>
+            <p class="conv-card__preview">炉火尚有余温，桌上摊着半张未写完的信。窗外雨势渐紧，远处传来马蹄……</p>
+          </div>
+
+          <!-- 卡 2 -->
+          <div class="conv-card">
+            <span class="conv-card__badge">CH 3</span>
+            <h3 class="conv-card__title">商队领队的盘问</h3>
+            <div class="conv-card__meta">
+              <span>claude-3.5-sonnet</span>
+              <span class="dot"></span>
+              <span>6 回</span>
+              <span class="dot"></span>
+              <span>2 小时前</span>
+            </div>
+            <p class="conv-card__preview">「你说从北边来？北边这季节早封了山，老兄。再编一个。」他放下酒杯，眼神锐利……</p>
+          </div>
+
+          <!-- 卡 3 -->
+          <div class="conv-card">
+            <span class="conv-card__badge">CH 12</span>
+            <h3 class="conv-card__title">关于古地图的破译笔记</h3>
+            <div class="conv-card__meta">
+              <span>deepseek-v3</span>
+              <span class="dot"></span>
+              <span>28 回</span>
+              <span class="dot"></span>
+              <span>昨天</span>
+            </div>
+            <p class="conv-card__preview">第三个符号应该是航海图常见的指北标，但旁边的星座配置不在北半球──这意味着……</p>
+          </div>
+
+          <!-- 卡 4 -->
+          <div class="conv-card">
+            <h3 class="conv-card__title">未命名对话</h3>
+            <div class="conv-card__meta">
+              <span>gpt-4o-mini</span>
+              <span class="dot"></span>
+              <span>2 回</span>
+              <span class="dot"></span>
+              <span>3 天前</span>
+            </div>
+            <p class="conv-card__preview">你好。我想测试一下这个对话工具的多分支功能，请问怎么操作？</p>
+          </div>
+
+          <!-- 卡 5 -->
+          <div class="conv-card">
+            <span class="conv-card__badge">CH 21</span>
+            <h3 class="conv-card__title">炼金术士与他的学徒</h3>
+            <div class="conv-card__meta">
+              <span>gpt-4o</span>
+              <span class="dot"></span>
+              <span>43 回</span>
+              <span class="dot"></span>
+              <span>上周</span>
+            </div>
+            <p class="conv-card__preview">「你的手指为什么颤抖？是炉火太热，还是想到要骗我？」老人没有抬头，专注地搅拌坩埚中的银液。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 场景 2：对话页 ========== -->
+  <section class="scene" id="chat">
+    <div class="scene-label">
+      <span class="num">02</span>
+      <span class="title">Chat &mdash; A conversation in chapter</span>
+      <span class="desc">头像 + 角色名 + 插件槽行 · 章回分隔 · icon-only toolbar + tooltip · swipe · composer</span>
+    </div>
+
+    <div class="frame chat-frame">
+
+      <!-- 侧栏（mini conversation list） -->
+      <aside class="chat-side">
+        <div class="side-section">
+          <div class="side-title">最近</div>
+          <div class="side-item is-active">
+            <span>雨夜信使的来信</span>
+            <span class="time">3m</span>
+          </div>
+          <div class="side-item">
+            <span>商队领队的盘问</span>
+            <span class="time">2h</span>
+          </div>
+          <div class="side-item">
+            <span>关于古地图的破译笔记</span>
+            <span class="time">1d</span>
+          </div>
+          <div class="side-item">
+            <span>未命名对话</span>
+            <span class="time">3d</span>
+          </div>
+        </div>
+
+        <div class="side-section">
+          <div class="side-title">本会话</div>
+          <div class="side-item">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="stroke: var(--ink-muted);"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span>提示词</span>
+          </div>
+          <div class="side-item">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="stroke: var(--ink-muted);"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span>历史快照</span>
+          </div>
+          <div class="side-item">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="stroke: var(--ink-muted);"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            <span>RAG 命中</span>
+            <span class="time" style="color: var(--accent); font-weight: 500;">3</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 主区 -->
+      <div class="chat-main">
+        <header class="chat-header">
+          <h2 class="chat-header__title">
+            <input value="雨夜信使的来信" />
+          </h2>
+          <div class="chat-header__sub">
+            <span class="pill pill--accent">
+              <span class="status-dot"></span>
+              gpt-4o
+            </span>
+            <span class="pill">temp 0.85</span>
+            <span class="pill">14 回</span>
+          </div>
+        </header>
+
+        <div class="chat-body">
+
+          <!-- 章回分隔 1 -->
+          <div class="chapter-divider">
+            <span class="line"></span>
+            <span class="ornament">❦</span>
+            <span class="label"><span class="num">第一回</span>初见</span>
+            <span class="ornament">❦</span>
+            <span class="line"></span>
+          </div>
+
+          <!-- Turn 1 · user -->
+          <div class="turn">
+            <div class="turn-role turn-role--user">
+              <div class="turn-role__identity">
+                <span class="avatar avatar--user" title="你">Y</span>
+                <span class="turn-role__label">YOU · 第 1 回</span>
+              </div>
+              <div class="plugin-slots" data-plugin-slot="user-turn">
+                <!-- 预留给插件填充的占位槽（user 行） -->
+                <button class="plugin-slot is-filled" data-tt="收藏（书签插件）">
+                  <svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                </button>
+                <button class="plugin-slot" data-tt="翻译（待安装）">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+                </button>
+                <button class="plugin-slot" data-tt="更多插件">
+                  <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="turn-bubble turn-bubble--user">
+              <p>我是路过的信使，能在炉边坐下来烤烤火吗？外面雨太大了。</p>
+            </div>
+            <div class="turn-toolbar turn-toolbar--user">
+              <button data-tt="编辑">
+                <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <button data-tt="复制">
+                <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              </button>
+              <button class="is-danger" data-tt="删除整轮">
+                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Turn 1 · assistant -->
+          <div class="turn">
+            <div class="turn-role turn-role--assistant">
+              <div class="turn-role__identity">
+                <span class="avatar avatar--assistant" title="叙述者">N</span>
+                <span class="turn-role__label">NARRATOR</span>
+              </div>
+              <div class="plugin-slots" data-plugin-slot="assistant-turn">
+                <button class="plugin-slot is-filled" data-tt="查看思维链">
+                  <svg viewBox="0 0 24 24"><path d="M9 11a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M17.657 16.657L13.414 20.9a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z"/></svg>
+                </button>
+                <button class="plugin-slot is-filled" data-tt="RAG 命中 · 3 条">
+                  <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                </button>
+                <button class="plugin-slot" data-tt="朗读（待安装）">
+                  <svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                </button>
+                <button class="plugin-slot" data-tt="更多插件">
+                  <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="turn-bubble turn-bubble--assistant">
+              <p><em class="character">老板</em>从柜台后抬起头，皱纹密布的脸庞在炉火下泛着古铜色。他打量了你一眼——湿透的斗篷、磨损的靴子、腰间不甚显眼的青铜信筒。</p>
+              <p>「坐吧，路上的孩子。」他用粗布擦着一只锡杯，「外面那种雨，连狼都会找洞躲。给你温一壶酒？」</p>
+            </div>
+            <div class="turn-toolbar turn-toolbar--assistant">
+              <button data-tt="编辑">
+                <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <button data-tt="再生" class="show-tt">
+                <svg viewBox="0 0 24 24"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              </button>
+              <button data-tt="复制">
+                <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              </button>
+              <button data-tt="查看 Prompt 快照">
+                <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+              </button>
+              <button class="is-danger" data-tt="删除此回复">
+                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- 章回分隔 2 -->
+          <div class="chapter-divider">
+            <span class="line"></span>
+            <span class="ornament">❦</span>
+            <span class="label"><span class="num">第二回</span>试探</span>
+            <span class="ornament">❦</span>
+            <span class="line"></span>
+          </div>
+
+          <!-- Turn 2 · user -->
+          <div class="turn">
+            <div class="turn-role turn-role--user">
+              <div class="turn-role__identity">
+                <span class="avatar avatar--user">Y</span>
+                <span class="turn-role__label">YOU · 第 2 回</span>
+              </div>
+              <div class="plugin-slots">
+                <button class="plugin-slot" data-tt="收藏">
+                  <svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                </button>
+                <button class="plugin-slot" data-tt="翻译">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+                </button>
+                <button class="plugin-slot" data-tt="更多">
+                  <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="turn-bubble turn-bubble--user">
+              <p>谢老板。一壶就好。不过——你这酒馆，每个客人都这么照顾吗？</p>
+            </div>
+          </div>
+
+          <!-- Turn 2 · assistant（含 swipe） -->
+          <div class="turn">
+            <div class="turn-role turn-role--assistant">
+              <div class="turn-role__identity">
+                <span class="avatar avatar--assistant">N</span>
+                <span class="turn-role__label">NARRATOR</span>
+              </div>
+              <div class="plugin-slots">
+                <button class="plugin-slot is-filled" data-tt="查看思维链">
+                  <svg viewBox="0 0 24 24"><path d="M9 11a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M17.657 16.657L13.414 20.9a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z"/></svg>
+                </button>
+                <button class="plugin-slot" data-tt="RAG 命中">
+                  <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                </button>
+                <button class="plugin-slot" data-tt="朗读">
+                  <svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                </button>
+                <button class="plugin-slot" data-tt="更多">
+                  <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="turn-bubble turn-bubble--assistant">
+              <p>老板的手停了一下，又继续擦那只杯子，慢条斯理。</p>
+              <p>「不。」他短短一字，然后看着你，「但你身上那个信筒——青铜的、带北面驿站的徽记。我十年前送过几年信，认得。」</p>
+              <p>炉火噼啪一声，火星溅起。</p>
+            </div>
+            <div class="swipe" style="margin-left: 40px;">
+              <button data-tt="上一条变体">
+                <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <span>2 / 3</span>
+              <button data-tt="下一条变体（在末位将触发再生）">
+                <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- composer -->
+        <div class="composer">
+          <div class="composer__inner">
+            <textarea class="composer__textarea" placeholder="说点什么——或者，递个眼神也行。"></textarea>
+            <div class="composer__tools">
+              <span class="composer__hint">
+                <kbd>Ctrl</kbd> + <kbd>Enter</kbd> 发送  ·  <kbd>↑</kbd> 编辑上一条
+              </span>
+              <button class="btn-send">
+                <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                发送
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 设计说明 ========== -->
+  <footer class="footer">
+    <h3>v2 新增（基于反馈）</h3>
+    <ul>
+      <li><strong style="color: var(--ink-soft)">头像（avatar）</strong>：圆形 30×30，<code>EB Garamond</code> 衬线斜体字母 + 黄铜环（user）/ 赤土橙环（assistant），客栈名牌感。未来可替换为真实图片，CSS 接口已留好。</li>
+      <li><strong style="color: var(--ink-soft)">用户名行插件槽（plugin slots）</strong>：每条消息的角色名行尾部预留 3-4 个 <code>.plugin-slot</code> 占位按钮——虚线圆环 = 空槽位、实线 = 已激活插件（如收藏 / 思维链 / RAG 命中）。容器带 <code>data-plugin-slot="user-turn|assistant-turn"</code>，对接 Vue 时 plugin 系统可直接 query 到位置。</li>
+      <li><strong style="color: var(--ink-soft)">气泡下 toolbar 全 icon-only</strong>：28×28 方按钮，去掉文字，hover 弹出 <code>tooltip</code>（暖墨黑底 + 上箭头 + 1px hairline），危险动作（删除）hover 变酒红。</li>
+      <li><strong style="color: var(--ink-soft)">Tooltip 设计</strong>：纯 CSS <code>[data-tt]</code> 属性驱动，落到 Vue 时换成 <code>v-tooltip</code> 即可，DOM 结构和样式都不动。Demo 上为了截图能看到，第二轮 assistant 的「再生」按钮做了 <code>.show-tt</code> force 显示。</li>
+    </ul>
+    <h3 style="margin-top: 28px;">保留的 v1 DNA</h3>
+    <ul>
+      <li><strong style="color: var(--ink-soft)">骨架（Linear）</strong>：1px <code>hairline</code> 极细分隔、暖墨黑 <code>#0E0B08</code> 底、信息密度高、键盘 hint chip、tabular 数字。</li>
+      <li><strong style="color: var(--ink-soft)">灵魂（Tavern）</strong>：赤土橙 <code>#D9602E</code> + 黄铜 <code>#B89770</code>、衬线 <code>EB Garamond</code> display、章回 <code>❦</code> 分隔、卡片左侧"门帘竖线"。</li>
+      <li><strong style="color: var(--ink-soft)">字型组合</strong>：UI / 数据 <code>Inter</code>；Display / 章回 / brand <code>EB Garamond</code>；标签 / 数字 <code>Geist Mono</code>。</li>
+      <li><strong style="color: var(--ink-soft)">反 AI slop</strong>：4 色系（暖墨黑、羊皮米、赤土橙、黄铜）+ 拒绝紫渐变 / emoji icon / 圆角左 border accent。</li>
+    </ul>
+  </footer>
+
+  </div>
+</body>
+</html>

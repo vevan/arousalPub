@@ -160,117 +160,104 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="list-view flex-grow-1 d-flex flex-column min-height-0 pa-4">
+  <div class="list-view flex-grow-1 d-flex flex-column min-height-0">
     <div class="list-view__inner mx-auto w-100">
-      <h1 class="text-h6 font-weight-medium mb-4">
-        {{ $t('conversationList.pageTitle') }}
-      </h1>
+      <header class="list-head">
+        <h1 class="list-head__title">
+          {{ $t('conversationList.pageTitle') }}
+        </h1>
+        <span class="list-head__sub">
+          {{ conversations.length }} conversations
+        </span>
+      </header>
 
       <v-alert
         v-if="errorText"
         type="error"
         variant="tonal"
         density="compact"
-        class="mb-4"
+        class="mb-4 mx-2"
       >
         {{ errorText }}
       </v-alert>
 
       <div
         v-if="loading"
-        class="text-body-2 text-medium-emphasis"
+        class="text-body-2 text-medium-emphasis pa-4"
       >
         {{ $t('conversationList.loading') }}
       </div>
 
-      <v-row v-else>
-        <v-col
-          cols="12"
-          sm="6"
-          md="4"
+      <div
+        v-else
+        class="conv-grid"
+      >
+        <button
+          type="button"
+          class="conv-card conv-card--new"
+          :class="{ 'is-loading': creating }"
+          :disabled="creating"
+          :aria-label="$t('conversationList.newChat')"
+          @click="createAndOpen"
         >
-          <v-card
-            variant="outlined"
-            class="conv-card conv-card--new h-100 d-flex flex-column align-center justify-center"
-            :class="{ 'cursor-pointer': !creating, 'opacity-50': creating }"
-            :ripple="!creating"
-            @click="createAndOpen"
-          >
-            <v-card-text class="text-center py-8 flex-grow-0">
-              <v-progress-circular
-                v-if="creating"
-                indeterminate
-                color="primary"
-                size="40"
-              />
-              <template v-else>
-                <v-icon
-                  size="40"
-                  color="primary"
-                >
-                  mdi-plus
-                </v-icon>
-                <div class="text-subtitle-2 mt-3">
-                  {{ $t('conversationList.newChat') }}
-                </div>
-              </template>
-            </v-card-text>
-          </v-card>
-        </v-col>
+          <v-progress-circular
+            v-if="creating"
+            indeterminate
+            color="primary"
+            size="36"
+          />
+          <template v-else>
+            <span class="conv-card--new__plus">+</span>
+            <span class="conv-card--new__label">{{
+              $t('conversationList.newChat')
+            }}</span>
+          </template>
+        </button>
 
-        <v-col
+        <article
           v-for="c in conversations"
           :key="c.conversationId"
-          cols="12"
-          sm="6"
-          md="4"
+          class="conv-card"
+          tabindex="0"
+          @click="open(c.conversationId)"
+          @keydown.enter="open(c.conversationId)"
         >
-          <v-card
-            variant="outlined"
-            class="conv-card h-100 position-relative"
-          >
-            <v-menu location="bottom end">
-              <template #activator="{ props: menuProps }">
-                <v-btn
-                  class="conv-card__menu"
-                  icon="mdi-dots-vertical"
-                  variant="text"
-                  size="small"
-                  density="comfortable"
-                  v-bind="menuProps"
-                  :aria-label="$t('conversationList.cardMenu')"
-                  @click.stop
-                />
-              </template>
-              <v-list density="compact">
-                <v-list-item
-                  :title="$t('conversationList.rename')"
-                  prepend-icon="mdi-pencil-outline"
-                  @click="openRename(c)"
-                />
-                <v-list-item
-                  :title="$t('conversationList.delete')"
-                  prepend-icon="mdi-delete-outline"
-                  class="text-error"
-                  @click="openDelete(c)"
-                />
-              </v-list>
-            </v-menu>
+          <v-menu location="bottom end">
+            <template #activator="{ props: menuProps }">
+              <v-btn
+                class="conv-card__menu"
+                icon="mdi-dots-vertical"
+                variant="text"
+                size="x-small"
+                density="comfortable"
+                v-bind="menuProps"
+                :aria-label="$t('conversationList.cardMenu')"
+                @click.stop
+              />
+            </template>
+            <v-list density="compact">
+              <v-list-item
+                :title="$t('conversationList.rename')"
+                prepend-icon="mdi-pencil-outline"
+                @click="openRename(c)"
+              />
+              <v-list-item
+                :title="$t('conversationList.delete')"
+                prepend-icon="mdi-delete-outline"
+                class="text-error"
+                @click="openDelete(c)"
+              />
+            </v-list>
+          </v-menu>
 
-            <div
-              class="conv-card__body pa-4 cursor-pointer"
-              @click="open(c.conversationId)"
-            >
-              <div class="text-subtitle-1 text-truncate pr-8">
-                {{ c.title || $t('chat.newConversation') }}
-              </div>
-              <div class="text-caption text-medium-emphasis mt-1">
-                {{ formatTime(c.updatedAt) }}
-              </div>
-            </div>
-          </v-card>
-        </v-col>
-      </v-row>
+          <h2 class="conv-card__title">
+            {{ c.title || $t('chat.newConversation') }}
+          </h2>
+          <div class="conv-card__meta">
+            <span>{{ formatTime(c.updatedAt) }}</span>
+          </div>
+        </article>
+      </div>
     </div>
 
     <v-dialog
@@ -353,40 +340,161 @@ onMounted(() => {
 <style scoped>
 .list-view {
   position: relative;
+  padding: 28px 32px 32px;
+  overflow-y: auto;
 }
 
 .list-view__inner {
-  max-width: 56rem;
+  max-width: 64rem;
 }
 
 .min-height-0 {
   min-height: 0;
 }
 
+/* ========== List header ========== */
+.list-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 0 24px;
+  padding: 0 4px 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+}
+.list-head__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 26px;
+  letter-spacing: 0.005em;
+  color: rgb(var(--v-theme-on-surface));
+}
+.list-head__sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), 0.45);
+}
+
+/* ========== Grid ========== */
+.conv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+/* ========== Card ========== */
 .conv-card {
-  transition: border-color 0.15s ease;
-}
-
-.conv-card:hover {
-  border-color: rgba(var(--v-theme-primary), 0.5);
-}
-
-.conv-card--new {
-  min-height: 7.5rem;
-}
-
-.cursor-pointer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 6.5rem;
+  padding: 16px 16px 14px 20px;
+  background: rgb(var(--v-theme-surface-light));
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 8px;
   cursor: pointer;
+  transition: all 0.18s ease;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  outline: none;
+  overflow: hidden;
+}
+
+/* 左侧门帘竖线 · Tavern 签名 */
+.conv-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 2px;
+  background: rgb(var(--v-theme-secondary));
+  opacity: 0.35;
+  transition: all 0.2s ease;
+  border-radius: 0 2px 2px 0;
+}
+.conv-card:hover,
+.conv-card:focus-visible {
+  border-color: rgba(var(--v-theme-primary), 0.35);
+  background: rgb(var(--v-theme-surface-bright));
+  transform: translateY(-1px);
+}
+.conv-card:hover::before,
+.conv-card:focus-visible::before {
+  background: rgb(var(--v-theme-primary));
+  opacity: 1;
+  top: 8px;
+  bottom: 8px;
+}
+
+.conv-card__title {
+  margin: 0 28px 6px 0;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: 0.005em;
+  color: rgb(var(--v-theme-on-surface));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conv-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: rgba(var(--v-theme-on-surface), 0.45);
+  text-transform: uppercase;
 }
 
 .conv-card__menu {
   position: absolute;
-  top: 0.125rem;
-  right: 0.125rem;
+  top: 6px;
+  right: 6px;
   z-index: 2;
+  color: rgba(var(--v-theme-on-surface), 0.5) !important;
 }
 
-.conv-card__body {
-  min-height: 5.5rem;
+/* ========== New card ========== */
+.conv-card--new {
+  align-items: center;
+  justify-content: center;
+  padding: 28px 16px;
+  background: transparent;
+  border: 1px dashed rgba(var(--v-theme-primary), 0.35);
+  color: rgba(var(--v-theme-on-surface), 0.7);
+}
+.conv-card--new::before { display: none; }
+.conv-card--new:not(:disabled):hover {
+  background: rgba(var(--v-theme-primary), 0.04);
+  border-color: rgb(var(--v-theme-primary));
+  border-style: dashed;
+  color: rgb(var(--v-theme-on-surface));
+}
+.conv-card--new__plus {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 400;
+  color: rgb(var(--v-theme-primary));
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.conv-card--new__label {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-style: italic;
+  letter-spacing: 0.01em;
+}
+.conv-card--new:disabled {
+  cursor: progress;
+  opacity: 0.5;
 }
 </style>

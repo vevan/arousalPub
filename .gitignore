@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+web/node_modules/
+server/node_modules/
+
+# Build output
+dist/
+web/dist/
+server/dist/
+
+# Vite / TypeScript cache
+web/.vite/
+**/.vite/
+*.tsbuildinfo
+
+# Environment & credentials (do not commit real API keys or tokens)
+.env
+.env.*
+!.env.example
+!.env*.example
+*.pem
+*.p12
+*.key
+
+# Server runtime data — contains api-settings.json (presets with API keys)
+server/data/*
+!server/data/.gitkeep
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Tests / coverage
+coverage/
+.nyc_output/
+
+# Local-only overrides
+*.local

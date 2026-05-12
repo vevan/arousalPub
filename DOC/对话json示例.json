@@ -1,0 +1,74 @@
+{
+  "previous": "aaa.json",
+  "message": [
+    {
+      "turnId": "001",
+      "dialog": [
+        {
+          "role": "user",
+          "msg": "aaaaa"
+        },
+        {
+          "role": "assistant",
+          "msg": "bbb"
+        }
+      ],
+      "plugins": [
+        {
+          "state": {
+            "name": "John Doe",
+            "age": 30,
+            "gender": "male"
+          }
+        },
+        {
+          "avatar": "avatar.png"
+        },
+        {
+          "weather": {
+            "temperature": 20,
+            "humidity": 50,
+            "wind": "gentle"
+          }
+        }
+      ]
+    },
+    {
+      "turnId": "002",
+      "dialog": [
+        {
+          "role": "user",
+          "msg": "aaaaa"
+        },
+        {
+          "role": "assistant",
+          "msg": "bbb"
+        }
+      ],
+      "plugins": [
+        {
+          "state": {
+            "name": "John Doe",
+            "age": 30,
+            "gender": "male"
+          }
+        },
+        {
+          "avatar": "avatar.png"
+        },
+        {
+          "weather": {
+            "temperature": 20,
+            "humidity": 50,
+            "wind": "gentle"
+          }
+        }
+      ],
+      "branch": [
+        "bbb.json",
+        "ccc.json"
+      ]
+    }
+  ],
+  "next": "ddd.json"
+}

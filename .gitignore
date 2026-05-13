@@ -22,9 +22,14 @@ web/.vite/
 *.p12
 *.key
 
-# Server runtime data — contains api-settings.json (presets with API keys)
-server/data/*
-!server/data/.gitkeep
+# 用户运行时数据（含 API key、提示词、对话、lorebook、角色卡等）
+/data/*
+!/data/README.md
+# 旧路径，保留 ignore，方便从老版本仓库切换不污染 git status
+server/data/
+
+# 本地配置（DATA_DIR 等），由 config.example.json 派生
+/config.json
 
 # Logs
 logs/

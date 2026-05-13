@@ -1,5 +1,6 @@
 import ChatConversationView from '@/views/ChatConversationView.vue'
 import ConversationListView from '@/views/ConversationListView.vue'
+import PromptsView from '@/views/PromptsView.vue'
 import { createRouter, createWebHistory } from 'vue-router'
 
 export const router = createRouter({
@@ -12,6 +13,7 @@ export const router = createRouter({
       component: ChatConversationView,
       props: true,
     },
+    { path: '/prompts', name: 'prompts', component: PromptsView },
     /** 设置改为 App 内全屏/模态，避免离开对话；旧链接仍可用 */
     { path: '/settings', redirect: '/' },
   ],

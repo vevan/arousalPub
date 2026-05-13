@@ -1,12 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { CHAT_ROOT } from './config.js'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+export { CHAT_ROOT }
 
 /** 与文档一致：数据根下 chat/ */
-export const CHAT_ROOT = path.join(__dirname, '..', 'data', 'chat')
 export const CHAT_LIST_FILE = path.join(CHAT_ROOT, 'chat.index.json')
 
 export const CHUNK_NAME_FIRST = 'turn-000000-000099.json'

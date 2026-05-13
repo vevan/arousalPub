@@ -1,0 +1,4 @@
+{
+  "_comment": "复制本文件为 config.json 后修改。dataDir 可填绝对路径或相对仓库根的相对路径。环境变量 DATA_DIR 优先级最高。",
+  "dataDir": "./data"
+}

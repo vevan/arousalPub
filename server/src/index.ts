@@ -24,6 +24,13 @@ import {
   updateTurnContentInTailChunk,
   type TurnReceive,
 } from './chat-storage.js'
+import { ensureDataSkeleton } from './config.js'
+import {
+  assertValidPromptsPayload,
+  readPromptsDocument,
+  writePromptsDocument,
+  type PromptsDocument,
+} from './prompts-file.js'
 
 const DEFAULT_BASE = 'https://api.openai.com/v1'
 
@@ -622,6 +629,41 @@ app.put<{ Body: SettingsPutBody }>('/api/settings', async (request, reply) => {
   return { ok: true as const, savedAt }
 })
 
+app.get('/api/prompts', async (_request, reply) => {
+  try {
+    const data = await readPromptsDocument()
+    return data ?? null
+  } catch (e) {
+    app.log.error(e)
+    return reply.status(500).send({ error: '读取提示词失败' })
+  }
+})
+
+app.put('/api/prompts', async (request, reply) => {
+  let validated: { activePresetId: string; presets: unknown[] }
+  try {
+    validated = assertValidPromptsPayload(request.body)
+  } catch (e) {
+    return reply.status(400).send({
+      error: e instanceof Error ? e.message : '提示词校验失败',
+    })
+  }
+  const savedAt = new Date().toISOString()
+  const doc: PromptsDocument = {
+    version: 2,
+    savedAt,
+    activePresetId: validated.activePresetId,
+    presets: validated.presets,
+  }
+  try {
+    await writePromptsDocument(doc)
+  } catch (e) {
+    app.log.error(e)
+    return reply.status(500).send({ error: '写入提示词失败' })
+  }
+  return { ok: true as const, savedAt }
+})
+
 app.post<{ Body: ModelsListBody }>('/api/models', async (request, reply) => {
   const b = request.body ?? ({} as ModelsListBody)
   const apiKey = b.apiKey
@@ -750,6 +792,8 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
     raw: data,
   })
 })
+
+ensureDataSkeleton()
 
 const port = Number(process.env.PORT) || 3399
 const host = process.env.HOST || '0.0.0.0'

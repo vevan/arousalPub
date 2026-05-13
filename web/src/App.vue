@@ -203,6 +203,15 @@ onUnmounted(() => {
             {{ $t('app.chat') }}
           </v-btn>
           <v-btn
+            to="/prompts"
+            variant="text"
+            :active="route.name === 'prompts'"
+            class="app-bar__menu-btn"
+            size="small"
+          >
+            {{ $t('app.prompts') }}
+          </v-btn>
+          <v-btn
             variant="text"
             disabled
             class="app-bar__menu-btn"

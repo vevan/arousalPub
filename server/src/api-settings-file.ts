@@ -1,9 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { API_SETTINGS_PATH, DATA_DIR } from './config.js'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+export { API_SETTINGS_PATH }
 
 /** 单条预设（与前端 ApiPreset 一致） */
 export interface ApiPreset {
@@ -56,8 +55,7 @@ interface LegacyFlatFile {
   requestReasoningChain?: boolean
 }
 
-const dataDir = path.join(__dirname, '..', 'data')
-export const API_SETTINGS_PATH = path.join(dataDir, 'api-settings.json')
+/** API_SETTINGS_PATH 由 ./config.ts 统一导出，本文件仅 re-export 给历史调用方使用。 */
 
 function presetFromLegacy(o: LegacyFlatFile, id: string): ApiPreset {
   return {
@@ -147,7 +145,7 @@ export async function readApiSettingsFromFile(): Promise<ApiSettingsDocument | n
 export async function writeApiSettingsToFile(
   data: ApiSettingsDocument,
 ): Promise<void> {
-  await mkdir(dataDir, { recursive: true })
+  await mkdir(DATA_DIR, { recursive: true })
   await writeFile(API_SETTINGS_PATH, `${JSON.stringify(data, null, 2)}\n`, 'utf8')
 }
 

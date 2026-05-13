@@ -5,6 +5,9 @@ import {
 } from '@/utils/render-rich-message'
 import { useConnectionStore } from '@/stores/connection'
 import { usePreferencesStore } from '@/stores/preferences'
+import { usePromptsStore } from '@/stores/prompts'
+import type { PromptTrigger } from '@/stores/prompts'
+import { assemblePrompts, type ChatMessage } from '@/utils/assemble-prompts'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -16,6 +19,7 @@ const props = defineProps<{
 const { t } = useI18n()
 const conn = useConnectionStore()
 const prefs = usePreferencesStore()
+const prompts = usePromptsStore()
 const { writeChatPromptSnapshot } = storeToRefs(prefs)
 
 interface ReceiveItem {
@@ -105,6 +109,7 @@ function onGlobalKeyR(e: KeyboardEvent) {
 
 onMounted(() => {
   void scrollChatToBottom()
+  void prompts.loadFromServer()
   window.addEventListener('keydown', onGlobalKeyR)
 })
 onBeforeUnmount(() => {
@@ -145,15 +150,19 @@ function assistantReasoning(turn: ChatTurnItem): string {
   return typeof s === 'string' ? s : ''
 }
 
-/** 与上游 chat/completions 对齐的多轮消息（仅正文，不含思维链） */
-type DialogMessage = { role: 'user' | 'assistant'; content: string }
+/**
+ * 与上游 chat/completions 对齐的多轮消息（仅正文，不含思维链）。
+ * 支持 system，因为提示词预设里的条目可以是 system / user / assistant。
+ */
+type DialogMessage = ChatMessage
 
 function orderedTurns(history: ChatTurnItem[]): ChatTurnItem[] {
   return [...history].sort((a, b) => a.turnOrdinal - b.turnOrdinal)
 }
 
-function turnsToDialogMessages(history: ChatTurnItem[]): DialogMessage[] {
-  const out: DialogMessage[] = []
+/** 把已存档的 turns 折叠成 user/assistant 顺序消息流（作为 history 喂给组装器） */
+function turnsToHistoryMessages(history: ChatTurnItem[]): ChatMessage[] {
+  const out: ChatMessage[] = []
   for (const turn of orderedTurns(history)) {
     const u = turn.user.trim()
     if (u.length > 0) {
@@ -169,17 +178,43 @@ function turnsToDialogMessages(history: ChatTurnItem[]): DialogMessage[] {
   return out
 }
 
+/**
+ * 通过当前激活的提示词预设组装本次发送给模型的消息。
+ * - history：本轮之前已存档的对话
+ * - userInput：本轮用户输入（user-input 占位组的内容）
+ * - maxTokens：连接里的 contextLength；超出则从最旧的历史消息开始裁剪
+ */
+function buildMessagesViaPreset(
+  history: ChatTurnItem[],
+  userInput: string,
+  trigger: PromptTrigger,
+): DialogMessage[] {
+  const result = assemblePrompts(prompts.activePreset, {
+    trigger,
+    history: turnsToHistoryMessages(history),
+    userInput,
+    maxTokens: conn.contextLength ?? undefined,
+  })
+  return result.messages
+}
+
 /** 当前输入作为最新一条 user（尚未写入 turns） */
 function messagesForSend(userText: string): DialogMessage[] {
-  return [...turnsToDialogMessages(turns.value), { role: 'user', content: userText }]
+  return buildMessagesViaPreset(turns.value, userText, 'normal')
 }
 
 /** 再生某轮：仅含此前对话 + 该轮 user，不含该轮旧 assistant */
-function messagesForRegenerateAt(listIndex: number): DialogMessage[] {
+function messagesForRegenerateAt(
+  listIndex: number,
+  trigger: PromptTrigger = 'regenerate',
+): DialogMessage[] {
   const turn = turns.value[listIndex]
   if (!turn) return []
-  const head = turns.value.slice(0, listIndex)
-  return [...turnsToDialogMessages(head), { role: 'user', content: turn.user }]
+  return buildMessagesViaPreset(
+    turns.value.slice(0, listIndex),
+    turn.user,
+    trigger,
+  )
 }
 
 function replaceTurnAt(listIndex: number, next: ChatTurnItem) {
@@ -660,7 +695,7 @@ function slideAssistant(listIndex: number, direction: 'left' | 'right') {
   }
 
   if (a === len - 1) {
-    void regenerateAssistant(listIndex)
+    void regenerateAssistant(listIndex, 'swipe')
     return
   }
   const next = { ...turn, activeReceiveIndex: a + 1 }
@@ -668,7 +703,10 @@ function slideAssistant(listIndex: number, direction: 'left' | 'right') {
   void persistTurnToServer(next)
 }
 
-async function regenerateAssistant(listIndex: number) {
+async function regenerateAssistant(
+  listIndex: number,
+  trigger: PromptTrigger = 'regenerate',
+) {
   const turn = turns.value[listIndex]
   if (!turn || !turn.user.trim()) return
   if (regeneratingTurnOrdinal.value !== null) return
@@ -685,7 +723,7 @@ async function regenerateAssistant(listIndex: number) {
       return
     }
 
-    const regenMessagesSnapshot = messagesForRegenerateAt(listIndex)
+    const regenMessagesSnapshot = messagesForRegenerateAt(listIndex, trigger)
 
     let assistantOut = ''
     let reasoningOut: string | undefined

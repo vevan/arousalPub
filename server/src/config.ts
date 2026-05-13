@@ -79,6 +79,7 @@ function resolveDataDir(): string {
 
 export const DATA_DIR = resolveDataDir()
 export const API_SETTINGS_PATH = path.join(DATA_DIR, 'api-settings.json')
+export const API_KEYS_PATH = path.join(DATA_DIR, 'api-keys.json')
 export const PROMPTS_PATH = path.join(DATA_DIR, 'prompts.json')
 export const CHAT_ROOT = path.join(DATA_DIR, 'chat')
 export const LOREBOOK_DIR = path.join(DATA_DIR, 'lorebook')

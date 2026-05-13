@@ -31,6 +31,12 @@ import {
   writePromptsDocument,
   type PromptsDocument,
 } from './prompts-file.js'
+import {
+  assertValidApiKeysPayload,
+  readApiKeysDocument,
+  writeApiKeysDocument,
+  type ApiKeysDocument,
+} from './api-keys-file.js'
 
 const DEFAULT_BASE = 'https://api.openai.com/v1'
 
@@ -660,6 +666,40 @@ app.put('/api/prompts', async (request, reply) => {
   } catch (e) {
     app.log.error(e)
     return reply.status(500).send({ error: '写入提示词失败' })
+  }
+  return { ok: true as const, savedAt }
+})
+
+app.get('/api/api-keys', async (_request, reply) => {
+  try {
+    const data = await readApiKeysDocument()
+    return data ?? null
+  } catch (e) {
+    app.log.error(e)
+    return reply.status(500).send({ error: '读取 API Keys 失败' })
+  }
+})
+
+app.put('/api/api-keys', async (request, reply) => {
+  let validated: { keys: ApiKeysDocument['keys'] }
+  try {
+    validated = assertValidApiKeysPayload(request.body)
+  } catch (e) {
+    return reply.status(400).send({
+      error: e instanceof Error ? e.message : 'API Keys 校验失败',
+    })
+  }
+  const savedAt = new Date().toISOString()
+  const doc: ApiKeysDocument = {
+    version: 1,
+    savedAt,
+    keys: validated.keys,
+  }
+  try {
+    await writeApiKeysDocument(doc)
+  } catch (e) {
+    app.log.error(e)
+    return reply.status(500).send({ error: '写入 API Keys 失败' })
   }
   return { ok: true as const, savedAt }
 })

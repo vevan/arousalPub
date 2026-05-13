@@ -557,6 +557,29 @@ export const usePromptsStore = defineStore('prompts', () => {
     return fresh.map((p) => p.id)
   }
 
+  /** 追加一条提示词预设的深拷贝（新 id），不改变当前全局激活的提示词预设；供 API 预设导入等使用 */
+  function appendPromptPresetCopy(src: PromptPreset): string {
+    const t = nowIso()
+    const copy: PromptPreset = {
+      id: makeId('preset'),
+      name: uniquePresetName(
+        (typeof src.name === 'string' && src.name.trim()
+          ? src.name.trim()
+          : 'Imported preset') + ' (imported)',
+      ),
+      groups: src.groups.map((g) => ({ ...g })),
+      prompts: src.prompts.map((p) => ({
+        ...p,
+        tags: Array.isArray(p.tags) ? p.tags.slice() : [],
+        triggers: Array.isArray(p.triggers) ? p.triggers.slice() : [],
+      })),
+      createdAt: t,
+      updatedAt: t,
+    }
+    presets.value = [...presets.value, copy]
+    return copy.id
+  }
+
   function renamePreset(presetId: string, name: string) {
     const idx = presets.value.findIndex((p) => p.id === presetId)
     if (idx === -1) return
@@ -850,6 +873,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     deletePreset,
     exportActivePreset,
     importPresetsFromJson,
+    appendPromptPresetCopy,
 
     addGroup,
     renameGroup,

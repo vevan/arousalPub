@@ -25,6 +25,10 @@ export interface ApiPreset {
   showReasoningChain: boolean
   /** 是否在请求体中请求思维链（合并进上游 body，可被自定义参数覆盖） */
   requestReasoningChain: boolean
+  /** 切换到此 API 预设时自动选中的提示词预设 id；null/缺省表示不关联 */
+  linkedPromptPresetId?: string | null
+  /** 引用 api-keys.json 中的条目 id；与内联 apiKey 二选一（持久化时内联可为空） */
+  apiKeyId?: string | null
 }
 
 export interface ApiSettingsDocument {
@@ -82,6 +86,8 @@ function presetFromLegacy(o: LegacyFlatFile, id: string): ApiPreset {
       typeof o.requestReasoningChain === 'boolean'
         ? o.requestReasoningChain
         : false,
+    linkedPromptPresetId: null,
+    apiKeyId: null,
   }
 }
 
@@ -95,14 +101,26 @@ function normalizeDocument(o: unknown): ApiSettingsDocument | null {
     return typeof o.id === 'string' && o.id.length > 0
   })
   if (presets.length === 0) return null
+  const presetsNorm: ApiPreset[] = presets.map((p) => ({
+    ...p,
+    linkedPromptPresetId:
+      typeof p.linkedPromptPresetId === 'string' &&
+      p.linkedPromptPresetId.trim()
+        ? p.linkedPromptPresetId.trim()
+        : null,
+    apiKeyId:
+      typeof p.apiKeyId === 'string' && p.apiKeyId.trim()
+        ? p.apiKeyId.trim()
+        : null,
+  }))
   let active =
-    typeof d.activePresetId === 'string' ? d.activePresetId : presets[0].id
-  if (!presets.some((p) => p.id === active)) active = presets[0].id
+    typeof d.activePresetId === 'string' ? d.activePresetId : presetsNorm[0].id
+  if (!presetsNorm.some((p) => p.id === active)) active = presetsNorm[0].id
   return {
     version: 1,
     savedAt: typeof d.savedAt === 'string' ? d.savedAt : new Date().toISOString(),
     activePresetId: active,
-    presets,
+    presets: presetsNorm,
   }
 }
 

@@ -8,7 +8,8 @@
 
 ```
 data/
-├── api-settings.json    # API 预设（含密钥），由 GET/PUT /api/settings 读写
+├── api-settings.json    # API 预设（可内联 API Key，或引用 api-keys.json#keys[].id），由 GET/PUT /api/settings 读写
+├── api-keys.json        # API Key 别名库（{ keys: [{ id, alias, key, ... }] }），由 GET/PUT /api/api-keys 读写
 ├── prompts.json         # 提示词预设（preset/group/entry 三层），由 GET/PUT /api/prompts 读写
 ├── chat/                # 对话历史（每个会话一个子目录）
 │   └── <conversationId>/...

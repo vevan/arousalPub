@@ -16,6 +16,11 @@ export type PromptRole = 'system' | 'user' | 'assistant'
 export type InjectionPosition = 'relative' | 'chat'
 export type PromptTrigger = 'normal' | 'continue' | 'swipe' | 'regenerate'
 
+/** 会话绑定角色卡槽位：正文由聊天侧注入，条目仅排序与启用 */
+export type PromptBindingSlot =
+  | 'boundCharacterSystem'
+  | 'boundCharacterPostHistory'
+
 export interface PromptGroup {
   id: string
   name: string
@@ -40,8 +45,41 @@ export interface PromptEntry {
   /** 同分组内上下顺序，从 0 开始 */
   order: number
   isSeed?: boolean
+  /** 若为绑定槽位，组装时使用会话角色卡字段而非 content */
+  bindingSlot?: PromptBindingSlot
+  /**
+   * @deprecated 角色组已改为仅用 `order` 与绑定槽混排；加载预设时由 normalize 剥离。
+   */
+  characterBundlePosition?: 'before' | 'after'
   createdAt: string
   updatedAt: string
+}
+
+/** 仅用于 normalize：旧版「卡前 / 槽 / 卡后」分区 → 展平为单一 order */
+function characterBundleListPartitionLegacy(e: PromptEntry): number {
+  if (e.bindingSlot === 'boundCharacterSystem') return 1
+  if (e.characterBundlePosition === 'after') return 2
+  return 0
+}
+
+function migrateCharacterGroupToFlatOrder(
+  prompts: PromptEntry[],
+  charGroupId: string,
+): PromptEntry[] {
+  const inGroup = prompts.filter((e) => e.groupId === charGroupId)
+  if (inGroup.length === 0) return prompts
+  const sorted = inGroup.slice().sort((a, b) => {
+    const pa = characterBundleListPartitionLegacy(a)
+    const pb = characterBundleListPartitionLegacy(b)
+    if (pa !== pb) return pa - pb
+    return a.order - b.order
+  })
+  const idOrder = new Map(sorted.map((e, i) => [e.id, i]))
+  return prompts.map((e) => {
+    if (e.groupId !== charGroupId) return e
+    const { characterBundlePosition: _drop, ...rest } = e
+    return { ...rest, order: idOrder.get(e.id)! }
+  })
 }
 
 export interface PromptPreset {
@@ -51,6 +89,11 @@ export interface PromptPreset {
   prompts: PromptEntry[]
   createdAt: string
   updatedAt: string
+}
+
+/** 可在提示词页维护条目列表的分组（其余为纯占位注入） */
+export function groupAllowsPromptEntries(kind: GroupKind): boolean {
+  return kind === 'normal' || kind === 'character' || kind === 'history'
 }
 
 interface PersistedState {
@@ -124,6 +167,89 @@ function makeSeedEntry(
   }
 }
 
+function makeBindingSlotEntry(
+  groupId: string,
+  slot: PromptBindingSlot,
+  order: number,
+  opts?: { enabled?: boolean; id?: string },
+): PromptEntry {
+  const t = nowIso()
+  const enabled = opts?.enabled !== false
+  return {
+    id: opts?.id ?? makeId('binding'),
+    groupId,
+    title: '',
+    content: '',
+    description: '',
+    tags: [],
+    enabled,
+    role: 'system',
+    injectionPosition: 'relative',
+    injectionDepth: 0,
+    injectionOrder: 100,
+    triggers: [],
+    order,
+    bindingSlot: slot,
+    createdAt: t,
+    updatedAt: t,
+  }
+}
+
+/**
+ * 去掉旧版预设级开关、补全两条绑定槽位条目（并继承旧开关为条目的 enabled）。
+ */
+export function normalizePreset(p: PromptPreset): PromptPreset {
+  const charG = p.groups.find((g) => g.kind === 'character')
+  const histG = p.groups.find((g) => g.kind === 'history')
+  const raw = p as PromptPreset & {
+    useBoundCharacterSystemPrompt?: boolean
+    useBoundCharacterPostHistory?: boolean
+  }
+  const sysOn = raw.useBoundCharacterSystemPrompt !== false
+  const postOn = raw.useBoundCharacterPostHistory !== false
+
+  const {
+    useBoundCharacterSystemPrompt: _a,
+    useBoundCharacterPostHistory: _b,
+    ...rest
+  } = raw
+
+  let prompts = p.prompts.map((e) => ({ ...e }))
+
+  if (charG && !prompts.some((e) => e.bindingSlot === 'boundCharacterSystem')) {
+    const maxO = prompts
+      .filter((e) => e.groupId === charG.id)
+      .reduce((m, e) => Math.max(m, e.order), -1)
+    prompts.push(
+      makeBindingSlotEntry(charG.id, 'boundCharacterSystem', maxO + 1, {
+        enabled: sysOn,
+      }),
+    )
+  }
+  if (
+    histG &&
+    !prompts.some((e) => e.bindingSlot === 'boundCharacterPostHistory')
+  ) {
+    const maxO = prompts
+      .filter((e) => e.groupId === histG.id)
+      .reduce((m, e) => Math.max(m, e.order), -1)
+    prompts.push(
+      makeBindingSlotEntry(histG.id, 'boundCharacterPostHistory', maxO + 1, {
+        enabled: postOn,
+      }),
+    )
+  }
+
+  if (charG) {
+    prompts = migrateCharacterGroupToFlatOrder(prompts, charG.id)
+  }
+
+  return {
+    ...rest,
+    prompts,
+  }
+}
+
 function buildDefaultPreset(): PromptPreset {
   const groups = buildDefaultGroups()
   const t = nowIso()
@@ -182,6 +308,18 @@ function buildDefaultPreset(): PromptPreset {
       tags: ['worldbuilding', 'structured'],
       createdAt: '2025-02-09T08:00:00.000Z',
     }),
+    makeBindingSlotEntry(
+      DEFAULT_GROUP_IDS.character,
+      'boundCharacterSystem',
+      0,
+      { id: 'binding-slot-character-system' },
+    ),
+    makeBindingSlotEntry(
+      DEFAULT_GROUP_IDS.history,
+      'boundCharacterPostHistory',
+      0,
+      { id: 'binding-slot-character-post-history' },
+    ),
   ]
   return {
     id: 'preset-default',
@@ -340,7 +478,7 @@ export const usePromptsStore = defineStore('prompts', () => {
           ? null
           : normalizeServerDoc(raw as PromptsServerDocument)
       if (fromServer) {
-        presets.value = fromServer.presets
+        presets.value = fromServer.presets.map(normalizePreset)
         activePresetId.value = fromServer.activePresetId
         loaded.value = true
         return
@@ -348,7 +486,7 @@ export const usePromptsStore = defineStore('prompts', () => {
       // 服务端为空：尝试从旧 localStorage 迁移；否则保留种子
       const legacy = readLegacyLocalStorage()
       if (legacy) {
-        presets.value = legacy.presets
+        presets.value = legacy.presets.map(normalizePreset)
         activePresetId.value = legacy.activePresetId
         loaded.value = true
         // 立即上传一次；成功后清掉 localStorage
@@ -399,14 +537,14 @@ export const usePromptsStore = defineStore('prompts', () => {
 
   function createPreset(name: string): PromptPreset {
     const t = nowIso()
-    const preset: PromptPreset = {
+    const preset = normalizePreset({
       id: makeId('preset'),
       name: name.trim() || 'Untitled preset',
       groups: buildDefaultGroups(),
       prompts: [],
       createdAt: t,
       updatedAt: t,
-    }
+    })
     presets.value = [...presets.value, preset]
     activePresetId.value = preset.id
     selectedPromptId.value = null
@@ -418,7 +556,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     const src = presets.value.find((p) => p.id === presetId)
     if (!src) return null
     const t = nowIso()
-    const copy: PromptPreset = {
+    const copy = normalizePreset({
       ...src,
       id: makeId('preset'),
       name: `${src.name} (copy)`,
@@ -430,7 +568,7 @@ export const usePromptsStore = defineStore('prompts', () => {
       })),
       createdAt: t,
       updatedAt: t,
-    }
+    })
     presets.value = [...presets.value, copy]
     activePresetId.value = copy.id
     return copy
@@ -534,22 +672,24 @@ export const usePromptsStore = defineStore('prompts', () => {
       throw new Error('文件中未找到有效的提示词预设')
     }
     const t = nowIso()
-    const fresh: PromptPreset[] = candidates.map((src) => ({
-      id: makeId('preset'),
-      name: uniquePresetName(
-        (typeof src.name === 'string' && src.name.trim()
-          ? src.name.trim()
-          : 'Imported preset') + ' (imported)',
-      ),
-      groups: src.groups.map((g) => ({ ...g })),
-      prompts: src.prompts.map((p) => ({
-        ...p,
-        tags: Array.isArray(p.tags) ? p.tags.slice() : [],
-        triggers: Array.isArray(p.triggers) ? p.triggers.slice() : [],
-      })),
-      createdAt: t,
-      updatedAt: t,
-    }))
+    const fresh: PromptPreset[] = candidates.map((src) =>
+      normalizePreset({
+        id: makeId('preset'),
+        name: uniquePresetName(
+          (typeof src.name === 'string' && src.name.trim()
+            ? src.name.trim()
+            : 'Imported preset') + ' (imported)',
+        ),
+        groups: src.groups.map((g) => ({ ...g })),
+        prompts: src.prompts.map((p) => ({
+          ...p,
+          tags: Array.isArray(p.tags) ? p.tags.slice() : [],
+          triggers: Array.isArray(p.triggers) ? p.triggers.slice() : [],
+        })),
+        createdAt: t,
+        updatedAt: t,
+      }),
+    )
     presets.value = [...presets.value, ...fresh]
     activePresetId.value = fresh[0].id
     selectedPromptId.value = null
@@ -560,7 +700,7 @@ export const usePromptsStore = defineStore('prompts', () => {
   /** 追加一条提示词预设的深拷贝（新 id），不改变当前全局激活的提示词预设；供 API 预设导入等使用 */
   function appendPromptPresetCopy(src: PromptPreset): string {
     const t = nowIso()
-    const copy: PromptPreset = {
+    const copy = normalizePreset({
       id: makeId('preset'),
       name: uniquePresetName(
         (typeof src.name === 'string' && src.name.trim()
@@ -575,7 +715,7 @@ export const usePromptsStore = defineStore('prompts', () => {
       })),
       createdAt: t,
       updatedAt: t,
-    }
+    })
     presets.value = [...presets.value, copy]
     return copy.id
   }
@@ -698,15 +838,23 @@ export const usePromptsStore = defineStore('prompts', () => {
     id: string,
     patch: Partial<Omit<PromptEntry, 'id' | 'createdAt' | 'isSeed'>>,
   ) {
+    const cur = activePreset.value.prompts.find((e) => e.id === id)
+    let nextPatch = patch
+    if (cur?.bindingSlot != null) {
+      nextPatch =
+        patch.enabled !== undefined ? { enabled: patch.enabled } : {}
+    }
     patchActivePreset((p) => ({
       ...p,
       prompts: p.prompts.map((e) =>
-        e.id === id ? { ...e, ...patch, updatedAt: nowIso() } : e,
+        e.id === id ? { ...e, ...nextPatch, updatedAt: nowIso() } : e,
       ),
     }))
   }
 
   function deletePrompt(id: string) {
+    const target = activePreset.value.prompts.find((e) => e.id === id)
+    if (target?.bindingSlot) return
     patchActivePreset((p) => ({
       ...p,
       prompts: p.prompts.filter((e) => e.id !== id),
@@ -716,7 +864,7 @@ export const usePromptsStore = defineStore('prompts', () => {
 
   function duplicatePrompt(id: string): PromptEntry | null {
     const src = activePreset.value.prompts.find((e) => e.id === id)
-    if (!src) return null
+    if (!src || src.bindingSlot) return null
     const t = nowIso()
     const sameGroup = activePreset.value.prompts.filter(
       (p) => p.groupId === src.groupId,
@@ -740,7 +888,7 @@ export const usePromptsStore = defineStore('prompts', () => {
 
   /**
    * 上下拖曳：把条目 id 移动到 targetGroupId 的第 targetIndex 个位置。
-   * 支持跨分组（targetGroupId 必须是 normal）。
+   * 支持跨分组（目标分组须为 normal / character / history）。
    */
   function reorderPrompt(
     id: string,
@@ -753,7 +901,19 @@ export const usePromptsStore = defineStore('prompts', () => {
     const targetGroup = activePreset.value.groups.find(
       (g) => g.id === targetGroupId,
     )
-    if (!targetGroup || targetGroup.kind !== 'normal') return
+    if (!targetGroup || !groupAllowsPromptEntries(targetGroup.kind)) return
+    if (
+      moved.bindingSlot === 'boundCharacterSystem' &&
+      targetGroup.kind !== 'character'
+    ) {
+      return
+    }
+    if (
+      moved.bindingSlot === 'boundCharacterPostHistory' &&
+      targetGroup.kind !== 'history'
+    ) {
+      return
+    }
 
     const targetList = list
       .filter((e) => e.groupId === targetGroupId && e.id !== id)
@@ -814,20 +974,35 @@ export const usePromptsStore = defineStore('prompts', () => {
     )
   })
 
-  /** 当前 activeGroupId 过滤；null = 所有 normal 分组；含 search */
+  /** 当前 activeGroupId 过滤；null = 所有可编辑条目分组合并；含 search */
   const visiblePrompts = computed<PromptEntry[]>(() => {
     const q = searchText.value.trim().toLowerCase()
     const groups = activeGroups.value
-    const normalIds = new Set(
-      groups.filter((g) => g.kind === 'normal').map((g) => g.id),
+    const entryGroupIds = new Set(
+      groups.filter((g) => groupAllowsPromptEntries(g.kind)).map((g) => g.id),
     )
     return activePrompts.value
-      .filter((e) => normalIds.has(e.groupId))
+      .filter((e) => entryGroupIds.has(e.groupId))
       .filter((e) =>
         activeGroupId.value ? e.groupId === activeGroupId.value : true,
       )
       .filter((e) => {
         if (!q) return true
+        if (
+          e.bindingSlot === 'boundCharacterSystem' &&
+          (q.includes('system') || q.includes('绑定') || q.includes('角色'))
+        ) {
+          return true
+        }
+        if (
+          e.bindingSlot === 'boundCharacterPostHistory' &&
+          (q.includes('post') ||
+            q.includes('历史') ||
+            q.includes('jailbreak') ||
+            q.includes('后置'))
+        ) {
+          return true
+        }
         return (
           e.title.toLowerCase().includes(q) ||
           e.description.toLowerCase().includes(q) ||

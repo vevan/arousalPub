@@ -10,9 +10,27 @@ export interface ChatMessage {
   content: string
 }
 
+/** 会话绑定的一张角色卡切片；多卡时顺序即 {{char}}、{{char2}}… */
+export interface BoundCharacterSlice {
+  /** 段首标题 / 占位替换用展示名 */
+  name?: string
+  cardBody: string
+  systemPrompt?: string
+  postHistory?: string
+}
+
 export interface AssembleContext {
   /** 当前触发场景；undefined = 预览模式，不按触发器过滤 */
   trigger?: PromptTrigger
+  /**
+   * 多卡：按顺序合并进绑定槽与角色正文（每人先人设再 system 的合并策略在合并函数内按字段分别拼接）。
+   * 非空时优先于 character / characterSystemPrompt / characterPostHistory。
+   */
+  characters?: BoundCharacterSlice[]
+  /** 绑定角色卡 system_prompt（会话侧提供；空则跳过） */
+  characterSystemPrompt?: string
+  /** 绑定角色卡 post_history_instructions（会话侧提供；空则跳过） */
+  characterPostHistory?: string
   /** 绑定角色注入文本；undefined 时使用占位符 */
   character?: string
   /** 绑定世界/lorebook 注入文本 */
@@ -39,6 +57,47 @@ const PLACEHOLDER = {
   history: '{{chat_history}}',
   userInput: '{{user_input}}',
 } as const
+
+function mergedBoundSystemPrompt(ctx: AssembleContext): string | undefined {
+  if (ctx.characters && ctx.characters.length > 0) {
+    const parts: string[] = []
+    for (const c of ctx.characters) {
+      const s = c.systemPrompt?.trim()
+      if (s) parts.push(s)
+    }
+    return parts.length > 0 ? parts.join('\n\n') : undefined
+  }
+  const one = ctx.characterSystemPrompt?.trim()
+  return one || undefined
+}
+
+function mergedBoundPostHistory(ctx: AssembleContext): string | undefined {
+  if (ctx.characters && ctx.characters.length > 0) {
+    const parts: string[] = []
+    for (const c of ctx.characters) {
+      const s = c.postHistory?.trim()
+      if (s) parts.push(s)
+    }
+    return parts.length > 0 ? parts.join('\n\n') : undefined
+  }
+  const one = ctx.characterPostHistory?.trim()
+  return one || undefined
+}
+
+function mergedCharacterCardBody(ctx: AssembleContext): string | undefined {
+  if (ctx.characters && ctx.characters.length > 0) {
+    const parts: string[] = []
+    for (const c of ctx.characters) {
+      const body = c.cardBody?.trim()
+      if (!body) continue
+      const title = c.name?.trim()
+      parts.push(title ? `## ${title}\n${body}` : body)
+    }
+    return parts.length > 0 ? parts.join('\n\n---\n\n') : undefined
+  }
+  const one = ctx.character?.trim()
+  return one || undefined
+}
 
 /** 粗略估算：英文约 4 字符 / 中文约 1.5 字符 = 1 token，统一用 / 3.5 近似 */
 export function estimateTokens(text: string): number {
@@ -85,7 +144,10 @@ function relativeEntriesForGroup(
 /**
  * 组装提示词：
  * 1. 先按分组顺序，对每个 normal 分组取 position='relative' 的条目；
- *    占位分组（character/world/history/userInput）按 kind 注入对应内容（或占位符）
+ *    角色分组：relative 条目按 order 排序；绑定 system 槽所在位置为界，之前为卡前、之后为卡后；
+ *      再合并注入卡级 system + 角色正文（不可分割，紧挨在槽位对应处）。
+ *    历史分组：绑定槽注入 mergedBoundPostHistory；其余 relative 条目照常；
+ *    其它占位分组（world/userInput）按 kind 注入对应内容（或占位符）
  * 2. 再把 position='chat' 的条目按 depth + order 插入 messages
  *    depth=0 → 最靠底部，depth=N → 倒数第 N+1 个位置之前
  * 3. 若 maxTokens 给出且超限：从 history 第一条开始一条条删，直到合法或无可删
@@ -108,10 +170,40 @@ export function assemblePrompts(
         messages.push({ role: e.role, content: e.content })
       }
     } else if (g.kind === 'character') {
+      const charExtras = relativeEntriesForGroup(preset, g.id, trigger)
+      const sorted = charExtras.slice().sort((a, b) => a.order - b.order)
+      const sysIdx = sorted.findIndex(
+        (e) => e.bindingSlot === 'boundCharacterSystem',
+      )
+      const sysEntry = sysIdx >= 0 ? sorted[sysIdx] : undefined
+      const beforeBundle =
+        sysIdx < 0
+          ? sorted.filter((e) => e.bindingSlot !== 'boundCharacterSystem')
+          : sorted
+              .slice(0, sysIdx)
+              .filter((e) => e.bindingSlot !== 'boundCharacterSystem')
+      const afterBundle =
+        sysIdx < 0
+          ? []
+          : sorted
+              .slice(sysIdx + 1)
+              .filter((e) => e.bindingSlot !== 'boundCharacterSystem')
+      for (const e of beforeBundle) {
+        messages.push({ role: e.role, content: e.content })
+      }
+      if (sysEntry) {
+        const sys = mergedBoundSystemPrompt(ctx)
+        if (sys) {
+          messages.push({ role: 'system', content: sys })
+        }
+      }
       messages.push({
         role: 'system',
-        content: ctx.character ?? PLACEHOLDER.character,
+        content: mergedCharacterCardBody(ctx) ?? PLACEHOLDER.character,
       })
+      for (const e of afterBundle) {
+        messages.push({ role: e.role, content: e.content })
+      }
     } else if (g.kind === 'world') {
       messages.push({
         role: 'system',
@@ -125,6 +217,17 @@ export function assemblePrompts(
         }
       } else {
         messages.push({ role: 'system', content: PLACEHOLDER.history })
+      }
+      const postHistory = relativeEntriesForGroup(preset, g.id, trigger)
+      for (const e of postHistory) {
+        if (e.bindingSlot === 'boundCharacterPostHistory') {
+          const post = mergedBoundPostHistory(ctx)
+          if (post) {
+            messages.push({ role: 'system', content: post })
+          }
+        } else {
+          messages.push({ role: e.role, content: e.content })
+        }
       }
       historyEnd = messages.length
     } else if (g.kind === 'userInput') {

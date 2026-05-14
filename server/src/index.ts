@@ -19,6 +19,7 @@ import {
   readChatPromptFile,
   saveFirstTurn,
   updateConversationTitle,
+  updateConversationCharacterBindings,
   updateConversationPromptDebugMax,
   getTurnUserText,
   updateTurnContentInTailChunk,
@@ -234,6 +235,8 @@ interface PatchConvBody {
   title?: string
   /** 调试：chat-prompt.json 保留条数上限，1～200 */
   promptDebug?: { maxStored?: number }
+  /** 会话绑定的多张角色卡 id，顺序即主槽、次槽…；传 [] 清空绑定 */
+  characterIds?: string[]
 }
 
 app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
@@ -250,10 +253,14 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       pd &&
       typeof pd === 'object' &&
       typeof (pd as { maxStored?: unknown }).maxStored === 'number'
-    if (!hasTitle && !hasPromptDebug) {
+    const hasCharIds = Array.isArray(b.characterIds)
+    if (!hasTitle && !hasPromptDebug && !hasCharIds) {
       return reply
         .status(400)
-        .send({ error: '须提供 title 和/或 promptDebug.maxStored' })
+        .send({
+          error:
+            '须提供 title、promptDebug.maxStored 和/或 characterIds（可为空数组）',
+        })
     }
     let idx = await readConversationIndex(id)
     if (!idx) return reply.status(404).send({ error: '会话不存在' })
@@ -265,6 +272,15 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
     if (hasPromptDebug) {
       const m = (pd as { maxStored: number }).maxStored
       const next = await updateConversationPromptDebugMax(id, m)
+      if (!next) return reply.status(404).send({ error: '会话不存在' })
+      idx = next
+    }
+    if (hasCharIds) {
+      const raw = b.characterIds as unknown[]
+      if (!raw.every((x) => typeof x === 'string')) {
+        return reply.status(400).send({ error: 'characterIds 须为字符串数组' })
+      }
+      const next = await updateConversationCharacterBindings(id, raw)
       if (!next) return reply.status(404).send({ error: '会话不存在' })
       idx = next
     }

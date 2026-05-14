@@ -16,7 +16,10 @@ export interface ChatListEntry {
   conversationId: string
   title: string
   updatedAt: string
+  /** 兼容：首张卡 id，等同于 characterIds[0] */
   characterId?: string | null
+  /** 会话绑定的多张角色卡 id，顺序即主槽 {{char}}、次槽 {{char2}}… */
+  characterIds?: string[]
   activeBranchPath?: string | null
 }
 
@@ -30,6 +33,8 @@ export interface ConversationIndex {
   conversationId: string
   title: string
   characterId?: string | null
+  /** 多卡绑定；优先于单独的 characterId。写盘时会同步 characterId = characterIds[0] ?? null */
+  characterIds?: string[]
   createdAt: string
   updatedAt: string
   headChunkFile: string | null
@@ -79,6 +84,81 @@ export interface ChatPromptEntry {
 export interface ChatPromptFile {
   schemaVersion: 1
   entries: ChatPromptEntry[]
+}
+
+/**
+ * 解析会话绑定的角色卡 id：优先 characterIds（顺序即 {{char}}、{{char2}}…），否则回退 legacy characterId。
+ */
+export function resolvedCharacterIds(
+  idx: Pick<ConversationIndex, 'characterId' | 'characterIds'>,
+): string[] {
+  /** 显式存了 characterIds（含空数组）时以之为准，不回退 legacy characterId */
+  if (Array.isArray(idx.characterIds)) {
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const raw of idx.characterIds) {
+      if (typeof raw !== 'string') continue
+      const id = raw.trim()
+      if (!id || seen.has(id)) continue
+      seen.add(id)
+      out.push(id)
+    }
+    return out
+  }
+  if (typeof idx.characterId === 'string' && idx.characterId.trim()) {
+    return [idx.characterId.trim()]
+  }
+  return []
+}
+
+/** 写盘前同步 characterId ↔ characterIds[0]，避免只存其一造成歧义 */
+export function syncConversationCharacterFields(
+  idx: ConversationIndex,
+): ConversationIndex {
+  const ids = resolvedCharacterIds(idx)
+  return {
+    ...idx,
+    characterIds: ids.length > 0 ? ids : undefined,
+    characterId: ids[0] ?? null,
+  }
+}
+
+export function chatListEntryFromIndex(idx: ConversationIndex): ChatListEntry {
+  const ids = resolvedCharacterIds(idx)
+  return {
+    conversationId: idx.conversationId,
+    title: idx.title,
+    updatedAt: idx.updatedAt,
+    characterId: ids[0] ?? null,
+    characterIds: ids.length > 0 ? ids : undefined,
+  }
+}
+
+export async function updateConversationCharacterBindings(
+  conversationId: string,
+  characterIds: string[],
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const seen = new Set<string>()
+  const cleaned: string[] = []
+  for (const raw of characterIds) {
+    if (typeof raw !== 'string') continue
+    const id = raw.trim()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    cleaned.push(id)
+  }
+  const t = nowIso()
+  const next: ConversationIndex = {
+    ...idx,
+    characterIds: cleaned,
+    characterId: cleaned[0] ?? null,
+    updatedAt: t,
+  }
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next))
+  return next
 }
 
 /** 从 send 块读取当前用户正文（兼容旧 sends 多版本） */
@@ -269,11 +349,7 @@ export async function updateConversationPromptDebugMax(
       'utf8',
     )
   }
-  await upsertChatListEntry({
-    conversationId,
-    title: idx.title,
-    updatedAt: idx.updatedAt,
-  })
+  await upsertChatListEntry(chatListEntryFromIndex(idx))
   return idx
 }
 
@@ -337,9 +413,10 @@ export async function writeConversationIndex(
 ): Promise<void> {
   const dir = conversationDir(id)
   await mkdir(dir, { recursive: true })
+  const normalized = syncConversationCharacterFields(data)
   await writeFile(
     conversationIndexPath(id),
-    JSON.stringify(data, null, 2),
+    JSON.stringify(normalized, null, 2),
     'utf8',
   )
 }
@@ -364,11 +441,7 @@ export async function createConversationStub(
     promptDebug: { maxStored: DEFAULT_PROMPT_DEBUG_MAX },
   }
   await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry({
-    conversationId,
-    title: idx.title,
-    updatedAt: t,
-  })
+  await upsertChatListEntry(chatListEntryFromIndex(idx))
   return idx
 }
 
@@ -382,11 +455,7 @@ export async function updateConversationTitle(
   idx.title = title.trim() || idx.title
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry({
-    conversationId,
-    title: idx.title,
-    updatedAt: t,
-  })
+  await upsertChatListEntry(chatListEntryFromIndex(idx))
   return idx
 }
 
@@ -446,11 +515,7 @@ export async function saveFirstTurn(params: {
   idx.tailChunkFile = CHUNK_NAME_FIRST
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry({
-    conversationId,
-    title: idx.title,
-    updatedAt: t,
-  })
+  await upsertChatListEntry(chatListEntryFromIndex(idx))
 
   void appendChatPromptDebugEntry(conversationId, {
     chunkName: CHUNK_NAME_FIRST,
@@ -515,11 +580,7 @@ export async function appendConversationTurn(params: {
   const t = nowIso()
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry({
-    conversationId,
-    title: idx.title,
-    updatedAt: t,
-  })
+  await upsertChatListEntry(chatListEntryFromIndex(idx))
   void appendChatPromptDebugEntry(conversationId, {
     chunkName,
     turnId: turn.turnId,
@@ -615,11 +676,7 @@ export async function updateTurnContentInTailChunk(
   const t = nowIso()
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry({
-    conversationId,
-    title: idx.title,
-    updatedAt: t,
-  })
+  await upsertChatListEntry(chatListEntryFromIndex(idx))
   if (debugPrompt !== undefined) {
     void appendChatPromptDebugEntry(conversationId, {
       chunkName,
@@ -665,11 +722,7 @@ export async function removeTurnAtOrdinalInTailChunk(
     idx.tailChunkFile = null
     idx.updatedAt = t
     await writeConversationIndex(conversationId, idx)
-    await upsertChatListEntry({
-      conversationId,
-      title: idx.title,
-      updatedAt: t,
-    })
+    await upsertChatListEntry(chatListEntryFromIndex(idx))
     if (victimTurnId) void removeChatPromptEntriesByTurnId(conversationId, victimTurnId)
     return true
   }
@@ -684,11 +737,7 @@ export async function removeTurnAtOrdinalInTailChunk(
   await writeChunkFile(conversationId, idx.tailChunkFile, chunk)
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry({
-    conversationId,
-    title: idx.title,
-    updatedAt: t,
-  })
+  await upsertChatListEntry(chatListEntryFromIndex(idx))
   if (victimTurnId) void removeChatPromptEntriesByTurnId(conversationId, victimTurnId)
   return true
 }

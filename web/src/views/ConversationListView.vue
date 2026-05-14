@@ -161,7 +161,7 @@ onMounted(() => {
 
 <template>
   <div class="list-view flex-grow-1 d-flex flex-column min-height-0">
-    <div class="list-view__inner mx-auto w-100">
+    <div class="list-view__inner app-page-shell">
       <header class="list-head">
         <h1 class="list-head__title">
           {{ $t('conversationList.pageTitle') }}
@@ -262,7 +262,6 @@ onMounted(() => {
 
     <v-dialog
       v-model="renameOpen"
-      max-width="28rem"
     >
       <v-card>
         <v-card-title class="text-subtitle-1">
@@ -302,7 +301,6 @@ onMounted(() => {
 
     <v-dialog
       v-model="deleteOpen"
-      max-width="24rem"
     >
       <v-card>
         <v-card-title class="text-subtitle-1">
@@ -340,12 +338,15 @@ onMounted(() => {
 <style scoped>
 .list-view {
   position: relative;
-  padding: 28px 32px 32px;
+  padding-block: 1.75rem 2rem;
   overflow-y: auto;
 }
 
 .list-view__inner {
-  max-width: 64rem;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .min-height-0 {
@@ -357,21 +358,21 @@ onMounted(() => {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin: 0 0 24px;
-  padding: 0 4px 14px;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  margin: 0 0 1.5rem;
+  padding: 0 0.25rem 0.875rem;
+  border-bottom: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.06);
 }
 .list-head__title {
   margin: 0;
   font-family: var(--font-display);
   font-weight: 500;
-  font-size: 26px;
+  font-size: 1.625rem;
   letter-spacing: 0.005em;
   color: rgb(var(--v-theme-on-surface));
 }
 .list-head__sub {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.6875rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(var(--v-theme-on-surface), 0.45);
@@ -380,8 +381,8 @@ onMounted(() => {
 /* ========== Grid ========== */
 .conv-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.75rem;
 }
 
 /* ========== Card ========== */
@@ -390,10 +391,10 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   min-height: 6.5rem;
-  padding: 16px 16px 14px 20px;
+  padding: 1rem 1rem 0.875rem 1.25rem;
   background: rgb(var(--v-theme-surface-light));
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  border-radius: 8px;
+  border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 0.5rem;
   cursor: pointer;
   transition: all 0.18s ease;
   text-align: start;
@@ -408,32 +409,32 @@ onMounted(() => {
   content: '';
   position: absolute;
   left: 0;
-  top: 14px;
-  bottom: 14px;
-  width: 2px;
+  top: 0.875rem;
+  bottom: 0.875rem;
+  width: 0.125rem;
   background: rgb(var(--v-theme-secondary));
   opacity: 0.35;
   transition: all 0.2s ease;
-  border-radius: 0 2px 2px 0;
+  border-radius: 0 0.125rem 0.125rem 0;
 }
 .conv-card:hover,
 .conv-card:focus-visible {
   border-color: rgba(var(--v-theme-primary), 0.35);
   background: rgb(var(--v-theme-surface-bright));
-  transform: translateY(-1px);
+  transform: translateY(-0.0625rem);
 }
 .conv-card:hover::before,
 .conv-card:focus-visible::before {
   background: rgb(var(--v-theme-primary));
   opacity: 1;
-  top: 8px;
-  bottom: 8px;
+  top: 0.5rem;
+  bottom: 0.5rem;
 }
 
 .conv-card__title {
-  margin: 0 28px 6px 0;
+  margin: 0 1.75rem 0.375rem 0;
   font-family: var(--font-display);
-  font-size: 17px;
+  font-size: 1.0625rem;
   font-weight: 500;
   line-height: 1.35;
   letter-spacing: 0.005em;
@@ -446,10 +447,10 @@ onMounted(() => {
 .conv-card__meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
   margin-top: auto;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 0.6563rem;
   letter-spacing: 0.04em;
   color: rgba(var(--v-theme-on-surface), 0.45);
   text-transform: uppercase;
@@ -457,8 +458,8 @@ onMounted(() => {
 
 .conv-card__menu {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 0.375rem;
+  right: 0.375rem;
   z-index: 2;
   color: rgba(var(--v-theme-on-surface), 0.5) !important;
 }
@@ -467,9 +468,9 @@ onMounted(() => {
 .conv-card--new {
   align-items: center;
   justify-content: center;
-  padding: 28px 16px;
+  padding: 1.75rem 1rem;
   background: transparent;
-  border: 1px dashed rgba(var(--v-theme-primary), 0.35);
+  border: 0.0625rem dashed rgba(var(--v-theme-primary), 0.35);
   color: rgba(var(--v-theme-on-surface), 0.7);
 }
 .conv-card--new::before { display: none; }
@@ -481,15 +482,15 @@ onMounted(() => {
 }
 .conv-card--new__plus {
   font-family: var(--font-display);
-  font-size: 32px;
+  font-size: 2rem;
   font-weight: 400;
   color: rgb(var(--v-theme-primary));
   line-height: 1;
-  margin-bottom: 6px;
+  margin-bottom: 0.375rem;
 }
 .conv-card--new__label {
   font-family: var(--font-display);
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-style: italic;
   letter-spacing: 0.01em;
 }

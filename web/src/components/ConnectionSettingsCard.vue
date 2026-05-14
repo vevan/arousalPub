@@ -722,7 +722,6 @@ function closeImportDialog() {
 
   <v-dialog
     v-model="apiKeyManagerOpen"
-    max-width="36rem"
     scrollable
   >
     <v-card>
@@ -810,7 +809,6 @@ function closeImportDialog() {
 
   <v-dialog
     v-model="exportDialogOpen"
-    max-width="28rem"
   >
     <v-card>
       <v-card-title class="text-subtitle-1">
@@ -863,7 +861,6 @@ function closeImportDialog() {
 
   <v-dialog
     v-model="importDialogOpen"
-    max-width="28rem"
   >
     <v-card v-if="pendingImportDoc">
       <v-card-title class="text-subtitle-1">
@@ -918,7 +915,6 @@ function closeImportDialog() {
 
   <v-dialog
     v-model="modelDialog"
-    max-width="560"
     scrollable
   >
     <v-card>
@@ -1031,7 +1027,7 @@ function closeImportDialog() {
 
 <style scoped>
 .settings-scroll {
-  max-height: calc(100vh - 120px);
+  max-height: calc(100vh - 7.5rem);
   overflow-y: auto;
 }
 
@@ -1040,7 +1036,7 @@ function closeImportDialog() {
 }
 
 .model-dialog-list {
-  max-height: min(50vh, 320px);
+  max-height: min(50vh, 20rem);
   overflow-y: auto;
 }
 

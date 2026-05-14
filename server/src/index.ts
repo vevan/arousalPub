@@ -1,4 +1,5 @@
 import cors from '@fastify/cors'
+import multipart from '@fastify/multipart'
 import Fastify from 'fastify'
 import { Readable } from 'node:stream'
 import {
@@ -38,6 +39,20 @@ import {
   writeApiKeysDocument,
   type ApiKeysDocument,
 } from './api-keys-file.js'
+import { isPngBuffer } from './character-png.js'
+import {
+  cardFromNewCharacterForm,
+  deleteCharacterFile,
+  importCharacterCard,
+  importCharacterCardPng,
+  importCharacterCardWithPortrait,
+  listCharacterSummaries,
+  normalizeImportCard,
+  readCharacterDocument,
+  readCharacterPngBuffer,
+  updateCharacterDocument,
+  updateCharacterPortrait,
+} from './character-storage.js'
 
 const DEFAULT_BASE = 'https://api.openai.com/v1'
 
@@ -180,9 +195,16 @@ function buildUpstreamPayload(body: ChatBody): Record<string, unknown> {
   return payload
 }
 
-const app = Fastify({ logger: true })
+/** 角色卡 PNG 等 multipart 可能超过默认 1MB，需与 @fastify/multipart 的 fileSize 上限一致 */
+const app = Fastify({
+  logger: true,
+  bodyLimit: 20 * 1024 * 1024,
+})
 
 await app.register(cors, { origin: true })
+await app.register(multipart, {
+  limits: { fileSize: 15 * 1024 * 1024 },
+})
 
 app.get('/health', async () => ({ ok: true as const }))
 
@@ -685,6 +707,206 @@ app.put('/api/prompts', async (request, reply) => {
   }
   return { ok: true as const, savedAt }
 })
+
+app.get('/api/characters', async (request, reply) => {
+  const q = request.query as Record<string, string | undefined>
+  const offset = Math.max(0, parseInt(q.offset ?? '0', 10) || 0)
+  const limit = Math.min(100, Math.max(1, parseInt(q.limit ?? '24', 10) || 24))
+  const search = typeof q.search === 'string' ? q.search : ''
+  const rawF = q.filter
+  const filter =
+    rawF === 'used' || rawF === 'unused' ? rawF : ('all' as const)
+  try {
+    const { items, total } = await listCharacterSummaries({
+      offset,
+      limit,
+      search,
+      filter,
+    })
+    const hasMore = offset + items.length < total
+    return { items, total, offset, limit, hasMore }
+  } catch (e) {
+    app.log.error(e)
+    return reply.status(500).send({ error: '读取角色库失败' })
+  }
+})
+
+app.post('/api/characters/import', async (request, reply) => {
+  try {
+    const card = normalizeImportCard(request.body)
+    const doc = await importCharacterCard(card)
+    return { ok: true as const, id: doc.id }
+  } catch (e) {
+    return reply.status(400).send({
+      error: e instanceof Error ? e.message : '导入失败',
+    })
+  }
+})
+
+app.post('/api/characters/import-png', async (request, reply) => {
+  try {
+    const file = await request.file()
+    if (!file) {
+      return reply.status(400).send({ error: '缺少文件字段（multipart 字段名 file）' })
+    }
+    const buf = await file.toBuffer()
+    const doc = await importCharacterCardPng(buf)
+    return { ok: true as const, id: doc.id }
+  } catch (e) {
+    return reply.status(400).send({
+      error: e instanceof Error ? e.message : '导入 PNG 失败',
+    })
+  }
+})
+
+app.post('/api/characters', async (request, reply) => {
+  const ct = request.headers['content-type'] ?? ''
+  if (ct.includes('multipart/form-data')) {
+    try {
+      let portraitBuf: Buffer | undefined
+      let payload = ''
+      const parts = request.parts()
+      for await (const part of parts) {
+        if (part.fieldname === 'portrait' && 'toBuffer' in part) {
+          portraitBuf = await part.toBuffer()
+        } else if (part.fieldname === 'payload') {
+          const v = (part as { value?: unknown }).value
+          payload = typeof v === 'string' ? v : ''
+        }
+      }
+      if (!payload.trim()) {
+        return reply.status(400).send({ error: 'multipart 须包含 payload 字段（JSON 字符串）' })
+      }
+      let body: unknown
+      try {
+        body = JSON.parse(payload) as unknown
+      } catch {
+        return reply.status(400).send({ error: 'payload 须为合法 JSON' })
+      }
+      const card = cardFromNewCharacterForm(body)
+      const doc = await importCharacterCardWithPortrait(card, portraitBuf)
+      return { ok: true as const, id: doc.id }
+    } catch (e) {
+      return reply.status(400).send({
+        error: e instanceof Error ? e.message : '创建失败',
+      })
+    }
+  }
+  try {
+    const card = cardFromNewCharacterForm(request.body)
+    const doc = await importCharacterCard(card)
+    return { ok: true as const, id: doc.id }
+  } catch (e) {
+    return reply.status(400).send({
+      error: e instanceof Error ? e.message : '创建失败',
+    })
+  }
+})
+
+app.get<{ Params: { id: string } }>(
+  '/api/characters/:id/image',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!uuidRe.test(id)) {
+      return reply.status(400).send({ error: '无效 id' })
+    }
+    const buf = await readCharacterPngBuffer(id)
+    if (!buf) return reply.status(404).send({ error: '角色不存在或无 PNG' })
+    return reply
+      .header('Content-Type', 'image/png')
+      .header('Cache-Control', 'private, max-age=60')
+      .send(buf)
+  },
+)
+
+app.post<{ Params: { id: string } }>(
+  '/api/characters/:id/portrait',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!uuidRe.test(id)) {
+      return reply.status(400).send({ error: '无效 id' })
+    }
+    try {
+      const file = await request.file()
+      if (!file) {
+        return reply
+          .status(400)
+          .send({ error: '缺少文件字段（multipart 字段名 portrait）' })
+      }
+      const buf = await file.toBuffer()
+      if (!isPngBuffer(buf)) {
+        return reply.status(400).send({ error: '须上传 PNG 图像' })
+      }
+      const doc = await updateCharacterPortrait(id, buf)
+      if (!doc) return reply.status(404).send({ error: '角色不存在' })
+      return doc
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(400).send({
+        error: e instanceof Error ? e.message : '上传立绘失败',
+      })
+    }
+  },
+)
+
+app.patch<{ Params: { id: string }; Body: { card?: unknown } }>(
+  '/api/characters/:id',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!uuidRe.test(id)) {
+      return reply.status(400).send({ error: '无效 id' })
+    }
+    const body = request.body as { card?: unknown }
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      !body.card ||
+      typeof body.card !== 'object' ||
+      Array.isArray(body.card)
+    ) {
+      return reply
+        .status(400)
+        .send({ error: '请求体须为 JSON 对象，且包含对象字段 card' })
+    }
+    try {
+      const doc = await updateCharacterDocument(
+        id,
+        body.card as Record<string, unknown>,
+      )
+      if (!doc) return reply.status(404).send({ error: '角色不存在' })
+      return doc
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: '更新角色失败' })
+    }
+  },
+)
+
+app.get<{ Params: { id: string } }>(
+  '/api/characters/:id',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!uuidRe.test(id)) {
+      return reply.status(400).send({ error: '无效 id' })
+    }
+    const doc = await readCharacterDocument(id)
+    if (!doc) return reply.status(404).send({ error: '角色不存在' })
+    return doc
+  },
+)
+
+app.delete<{ Params: { id: string } }>(
+  '/api/characters/:id',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!uuidRe.test(id)) {
+      return reply.status(400).send({ error: '无效 id' })
+    }
+    const ok = await deleteCharacterFile(id)
+    if (!ok) return reply.status(404).send({ error: '角色不存在' })
+    return { ok: true as const }
+  },
+)
 
 app.get('/api/api-keys', async (_request, reply) => {
   try {

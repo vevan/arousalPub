@@ -5,13 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>角色库 · Arousal Pub（设计原型）</title>
   <!--
-    Huashu-Design · Assumptions（花叔 Junior pass）
-    ─────────────────────────────────────────────
-    1. 产品语境：Arousal Pub 为暗色酒馆奇幻聊天应用；主导航已有「角色」入口，本页为独立「角色卡库」管理视图（非 SillyTavern 1:1）。
-    2. 受众：桌面端优先，1280+ 宽；次要支持窄屏单列堆叠。
-    3. 视觉温度：壁炉余烬般的暖意 + 克制信息密度；单 accent（赤土橙）贯穿，避免紫渐变与装饰性 icon 堆砌。
-    4. 素材：无官方角色立绘 → 头像区使用诚实灰块 +「头像待补」标签，不手画 SVG 肖像。
-    5. 本文件为静态 HTML 演示稿，双击或经 dev server 打开即可；不与 Vue 路由耦合。
+    Huashu-Design · Assumptions（更新）
+    ──────────────────────────────────
+    1. 库内约 50 张角色卡：列表必须落在独立滚动容器内，避免整页被撑爆；顶部固定预览当前选中卡。
+    2. 无限滚动：实现层用分页 + 触底追加；本原型用 IntersectionObserver 模拟加载至 50 条。
+    3. 其余假设同前版（暗色酒馆气质、诚实头像占位、单 accent）。
+    4. 角标「已使用 / 未使用」：表示是否存在任意会话的 characterIds 中包含本卡 ID（由聊天列表聚合得出，非角色文件字段）。删除会话后无需回写角色库，刷新/重算即可。
   -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -31,12 +30,26 @@
       --font-display: "Newsreader", Georgia, "Times New Roman", serif;
       --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif;
       --font-mono: ui-monospace, "Cascadia Code", monospace;
+      --scrollbar-track: rgba(12, 10, 8, 0.55);
+      --scrollbar-thumb: rgba(196, 92, 46, 0.42);
+      --scrollbar-thumb-hover: rgba(196, 92, 46, 0.62);
     }
 
     * { box-sizing: border-box; }
+    html {
+      height: 100%;
+      height: 100dvh;
+      overflow: hidden;
+    }
     body {
       margin: 0;
-      min-height: 100vh;
+      height: 100%;
+      height: 100dvh;
+      max-height: 100dvh;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
       background:
         radial-gradient(120% 80% at 10% 0%, var(--glow), transparent 55%),
         var(--surface);
@@ -47,7 +60,6 @@
       letter-spacing: 0.01em;
     }
 
-    /* 极淡纹理：一处质感签名，opacity 低不抢戏 */
     body::before {
       content: "";
       position: fixed;
@@ -61,15 +73,22 @@
     .shell {
       position: relative;
       z-index: 1;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
       max-width: 1240px;
+      width: 100%;
       margin: 0 auto;
-      padding: 28px 24px 48px;
+      padding: 20px 24px 20px;
     }
 
     header.page-head {
-      margin-bottom: 28px;
+      flex-shrink: 0;
+      margin-bottom: 16px;
       border-bottom: 1px solid var(--line);
-      padding-bottom: 20px;
+      padding-bottom: 14px;
     }
     .page-head__kicker {
       font-family: var(--font-mono);
@@ -79,37 +98,49 @@
       color: var(--accent);
       margin: 0 0 8px;
     }
+    .page-head__row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px 24px;
+    }
     .page-head__title {
       margin: 0;
       font-family: var(--font-display);
-      font-size: clamp(1.75rem, 3.2vw, 2.35rem);
+      font-size: clamp(1.5rem, 2.8vw, 2rem);
       font-weight: 600;
       font-style: italic;
       letter-spacing: -0.02em;
       line-height: 1.15;
+      flex: 0 0 auto;
     }
     .page-head__lede {
-      margin: 10px 0 0;
-      max-width: 52ch;
+      margin: 0;
+      flex: 0 1 auto;
+      min-width: min(100%, 220px);
+      max-width: min(60ch, 100%);
       color: var(--ink-dim);
-      font-size: 13.5px;
+      font-size: 13px;
+      line-height: 1.45;
       text-wrap: pretty;
     }
 
     .toolbar {
+      flex-shrink: 0;
       display: flex;
       flex-wrap: wrap;
-      gap: 12px;
+      gap: 10px;
       align-items: center;
-      margin-bottom: 22px;
+      margin-bottom: 14px;
     }
     .search {
-      flex: 1 1 220px;
+      flex: 1 1 200px;
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 0 14px;
-      height: 40px;
+      padding: 0 12px;
+      height: 38px;
       border-radius: 8px;
       border: 1px solid var(--line);
       background: var(--surface-raised);
@@ -130,8 +161,8 @@
       align-items: center;
       justify-content: center;
       gap: 8px;
-      height: 40px;
-      padding: 0 18px;
+      height: 38px;
+      padding: 0 16px;
       border-radius: 8px;
       font: inherit;
       font-weight: 500;
@@ -154,25 +185,162 @@
       background: var(--accent-soft);
     }
 
-    .layout {
+    /* —— 顶部：当前选中卡预览（紧凑横条）—— */
+    .preview-strip {
+      flex-shrink: 0;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      background: var(--surface-raised);
       display: grid;
-      grid-template-columns: 200px 1fr;
-      gap: 24px;
+      grid-template-columns: 88px 1fr auto;
+      gap: 14px 18px;
+      align-items: start;
     }
-    @media (max-width: 880px) {
-      .layout { grid-template-columns: 1fr; }
-      .rail { order: 2; }
+    @media (max-width: 720px) {
+      .preview-strip {
+        grid-template-columns: 72px 1fr;
+      }
+      .preview-strip__actions {
+        grid-column: 1 / -1;
+        justify-self: start;
+      }
+    }
+    .preview-strip__portrait {
+      width: 100%;
+      aspect-ratio: 3 / 4;
+      max-height: 118px;
+      border-radius: 8px;
+      border: 1px dashed rgba(232, 228, 220, 0.15);
+      background: #1a1815;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+      text-align: center;
+      padding: 6px;
+      line-height: 1.35;
+    }
+    .preview-strip h2 {
+      margin: 0 0 4px;
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-style: italic;
+      font-weight: 600;
+    }
+    .preview-strip__meta {
+      margin: 0 0 8px;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+    }
+    .preview-strip__summary {
+      margin: 0;
+      font-size: 12.5px;
+      color: var(--ink-dim);
+      max-width: 56ch;
+      text-wrap: pretty;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .preview-strip__block {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+    }
+    .preview-strip__block h3 {
+      margin: 0 0 4px;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .preview-strip__block p {
+      margin: 0;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--ink-dim);
+      max-height: 4.35em;
+      overflow: hidden;
+    }
+    .preview-strip__actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .preview-strip__actions .btn { width: 100%; justify-content: center; }
+
+    /* —— 下方：筛选 + 无限滚动列表区 —— */
+    .list-zone {
+      flex: 1 1 0%;
+      min-height: 0;
+      display: flex;
+      gap: 14px;
+    }
+    @media (max-width: 800px) {
+      .list-zone { flex-direction: column; }
+      .rail {
+        flex: 0 1 auto;
+        max-height: 200px;
+        width: 100%;
+      }
+      .list-scroll {
+        flex: 1 1 0%;
+        min-height: 0;
+      }
+    }
+
+    /* 细滚动条：Firefox scrollbar-color + WebKit 伪元素 */
+    .scroll-y-nice {
+      scrollbar-gutter: stable;
+      scrollbar-width: thin;
+      scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+    }
+    .scroll-y-nice::-webkit-scrollbar {
+      width: 8px;
+    }
+    .scroll-y-nice::-webkit-scrollbar-track {
+      background: var(--scrollbar-track);
+      border-radius: 100px;
+      margin-block: 4px;
+    }
+    .scroll-y-nice::-webkit-scrollbar-thumb {
+      background: var(--scrollbar-thumb);
+      border-radius: 100px;
+      border: 2px solid transparent;
+      background-clip: padding-box;
+    }
+    .scroll-y-nice::-webkit-scrollbar-thumb:hover {
+      background: var(--scrollbar-thumb-hover);
+      border: 2px solid transparent;
+      background-clip: padding-box;
     }
 
     .rail {
-      padding: 16px 14px;
+      flex: 0 0 168px;
+      min-height: 0;
+      padding: 12px 10px;
       border-radius: var(--radius);
       border: 1px dashed rgba(196, 92, 46, 0.35);
       background: rgba(28, 25, 22, 0.65);
-      align-self: start;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      align-self: stretch;
     }
     .rail h2 {
-      margin: 0 0 12px;
+      margin: 0 0 10px;
       font-family: var(--font-mono);
       font-size: 10px;
       letter-spacing: 0.16em;
@@ -183,13 +351,14 @@
       display: block;
       width: 100%;
       text-align: left;
-      padding: 8px 10px;
-      margin-bottom: 4px;
+      padding: 7px 8px;
+      margin-bottom: 3px;
       border-radius: 6px;
       border: 0;
       background: transparent;
       color: var(--ink-dim);
       font: inherit;
+      font-size: 13px;
       cursor: pointer;
     }
     .filter:hover { color: var(--ink); background: rgba(255,255,255,0.04); }
@@ -199,14 +368,70 @@
       box-shadow: inset 0 0 0 1px rgba(196, 92, 46, 0.35);
     }
 
+    .list-scroll {
+      flex: 1 1 0%;
+      min-width: 0;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 2px 4px 8px 2px;
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      background: rgba(20, 18, 16, 0.35);
+    }
+    .list-scroll:focus-visible { outline: 2px solid rgba(196, 92, 46, 0.5); outline-offset: 2px; }
+
+    .list-scroll__head {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px 16px;
+      padding: 10px 10px 12px;
+      margin: -2px -4px 10px -2px;
+      background: linear-gradient(180deg, rgba(20, 18, 16, 0.97) 60%, transparent);
+      border-bottom: 1px solid var(--line);
+    }
+    .list-scroll__head-main {
+      flex: 1 1 200px;
+      min-width: 0;
+    }
+    .list-scroll__head strong {
+      font-family: var(--font-display);
+      font-style: italic;
+      font-size: 15px;
+    }
+    .list-scroll__hint {
+      margin: 6px 0 0;
+      max-width: 62ch;
+      font-size: 11px;
+      line-height: 1.45;
+      color: rgba(232, 228, 220, 0.45);
+      font-weight: 400;
+      text-wrap: pretty;
+    }
+    .list-scroll__head-meta {
+      flex: 0 0 auto;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+      padding-top: 2px;
+    }
+
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-      gap: 16px;
+      grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+      gap: 10px;
+      padding: 0 8px 12px;
     }
 
     .card {
-      border-radius: var(--radius);
+      border-radius: 8px;
       border: 1px solid var(--line);
       background: var(--surface-card);
       overflow: hidden;
@@ -217,7 +442,7 @@
     }
     .card:hover {
       border-color: rgba(196, 92, 46, 0.4);
-      box-shadow: 0 0 0 1px rgba(196, 92, 46, 0.15);
+      box-shadow: 0 0 0 1px rgba(196, 92, 46, 0.12);
     }
     .card.is-active {
       border-color: rgba(196, 92, 46, 0.65);
@@ -225,7 +450,7 @@
     }
 
     .card__visual {
-      aspect-ratio: 4 / 3;
+      aspect-ratio: 5 / 4;
       background: linear-gradient(165deg, #2a2622, #181614);
       display: flex;
       align-items: center;
@@ -233,31 +458,31 @@
       position: relative;
     }
     .card__placeholder {
-      width: 72%;
-      height: 62%;
-      border-radius: 8px;
-      border: 1px dashed rgba(232, 228, 220, 0.18);
+      width: 70%;
+      height: 58%;
+      border-radius: 6px;
+      border: 1px dashed rgba(232, 228, 220, 0.16);
       background: rgba(0,0,0,0.25);
       display: flex;
       align-items: center;
       justify-content: center;
       font-family: var(--font-mono);
-      font-size: 10px;
-      letter-spacing: 0.08em;
+      font-size: 8px;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
       color: var(--ink-dim);
     }
     .card__badge {
       position: absolute;
-      top: 10px;
-      right: 10px;
+      top: 6px;
+      right: 6px;
       font-family: var(--font-mono);
-      font-size: 9px;
-      letter-spacing: 0.06em;
+      font-size: 8px;
+      letter-spacing: 0.05em;
       text-transform: uppercase;
-      padding: 3px 7px;
-      border-radius: 4px;
-      background: rgba(196, 92, 46, 0.9);
+      padding: 2px 5px;
+      border-radius: 3px;
+      background: rgba(196, 92, 46, 0.92);
       color: #fff;
     }
     .card__badge--muted {
@@ -265,115 +490,67 @@
       color: var(--ink-dim);
     }
 
-    .card__body { padding: 14px 14px 16px; }
+    .card__body { padding: 8px 10px 10px; }
     .card__name {
-      margin: 0 0 6px;
+      margin: 0 0 4px;
       font-family: var(--font-display);
-      font-size: 1.15rem;
+      font-size: 0.95rem;
       font-weight: 600;
       font-style: italic;
+      line-height: 1.2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .card__desc {
-      margin: 0 0 12px;
-      font-size: 12px;
+      margin: 0;
+      font-size: 11px;
       color: var(--ink-dim);
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
+      line-height: 1.35;
     }
     .chips {
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
+      gap: 4px;
+      margin-top: 6px;
     }
     .chip {
       font-family: var(--font-mono);
-      font-size: 9px;
-      letter-spacing: 0.04em;
+      font-size: 8px;
+      letter-spacing: 0.03em;
       text-transform: uppercase;
-      padding: 3px 7px;
-      border-radius: 3px;
+      padding: 2px 5px;
+      border-radius: 2px;
       border: 1px solid var(--line);
       color: var(--ink-dim);
     }
 
-    .detail {
-      margin-top: 28px;
-      padding: 22px;
-      border-radius: var(--radius);
-      border: 1px solid var(--line);
-      background: var(--surface-raised);
-    }
-    .detail__grid {
-      display: grid;
-      grid-template-columns: minmax(0, 200px) 1fr;
-      gap: 22px;
-    }
-    @media (max-width: 720px) {
-      .detail__grid { grid-template-columns: 1fr; }
-    }
-    .detail__portrait {
-      aspect-ratio: 3 / 4;
-      border-radius: 8px;
-      border: 1px dashed rgba(232, 228, 220, 0.15);
-      background: #1a1815;
+    .scroll-sentinel {
+      height: 24px;
+      margin: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-family: var(--font-mono);
-      font-size: 10px;
-      color: var(--ink-dim);
-      text-align: center;
-      padding: 12px;
-    }
-    .detail h3 {
-      margin: 0 0 8px;
-      font-family: var(--font-display);
-      font-size: 1.4rem;
-      font-style: italic;
-    }
-    .detail__meta {
-      font-family: var(--font-mono);
-      font-size: 10px;
+      font-size: 9px;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--ink-dim);
-      margin-bottom: 14px;
     }
-    .detail__actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 16px;
-    }
-    .detail__block {
-      margin-top: 18px;
-      padding-top: 18px;
-      border-top: 1px solid var(--line);
-    }
-    .detail__block h4 {
-      margin: 0 0 8px;
-      font-family: var(--font-mono);
-      font-size: 10px;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--accent);
-    }
-    .detail__block p {
-      margin: 0;
-      font-size: 13px;
-      color: var(--ink-dim);
-      max-width: 65ch;
-      text-wrap: pretty;
-    }
+    .scroll-sentinel.is-loading { color: var(--accent); }
+    .scroll-sentinel.is-end { opacity: 0.5; }
 
     footer.foot {
-      margin-top: 36px;
-      padding-top: 16px;
+      flex-shrink: 0;
+      margin-top: 12px;
+      padding-top: 12px;
       border-top: 1px solid var(--line);
       font-family: var(--font-mono);
-      font-size: 10px;
+      font-size: 9px;
       letter-spacing: 0.06em;
       text-transform: uppercase;
       color: var(--ink-dim);
@@ -384,10 +561,12 @@
   <div class="shell">
     <header class="page-head">
       <p class="page-head__kicker">Character library · prototype</p>
-      <h1 class="page-head__title">角色库</h1>
-      <p class="page-head__lede">
-        管理 Character Card V2 与绑定关系。左侧为筛选与视图切换；卡片区展示摘要，下方为详情面板示意（单选态）。实现时可接现有 API 与暗色主题 token。
-      </p>
+      <div class="page-head__row">
+        <h1 class="page-head__title">角色库</h1>
+        <p class="page-head__lede">
+          预览固定在顶部；下方列表置于独立滚动容器，支持大量卡片（示意 50 张）与触底分页加载。筛选栏与列表同高，仅列表区域滚动。
+        </p>
+      </div>
     </header>
 
     <div class="toolbar">
@@ -402,94 +581,191 @@
       <button type="button" class="btn btn--ghost">排序 · 最近使用</button>
     </div>
 
-    <div class="layout">
-      <aside class="rail" aria-label="筛选">
+    <section class="preview-strip" aria-label="当前选中角色预览">
+      <div class="preview-strip__portrait" id="previewPortrait" role="img" aria-label="立绘占位">
+        头像<br />待补
+      </div>
+      <div>
+        <h2 id="previewName">Lyra Veilstring</h2>
+        <p class="preview-strip__meta" id="previewMeta">v2 · 更新于 2025-11-04 · 本地文件 · 已使用</p>
+        <p class="preview-strip__summary" id="previewSummary">
+          漂泊吟游诗人 · 喜欢用问句作答，每三段必出一句即兴歌词。摘要来自 creator_notes 或首条 greeting，便于在大量卡片中辨认气质。
+        </p>
+        <div class="preview-strip__block">
+          <h3>system_prompt 预览</h3>
+          <p id="previewSystem">
+            I am Lyra Veilstring, a half-elven bard who has walked the road from Saltgate to the Stone Steps…（示意截断）
+          </p>
+        </div>
+      </div>
+      <div class="preview-strip__actions">
+        <button type="button" class="btn btn--primary">绑定到当前会话</button>
+        <button type="button" class="btn btn--ghost">导出 JSON</button>
+        <button type="button" class="btn btn--ghost">删除</button>
+      </div>
+    </section>
+
+    <div class="list-zone">
+      <aside class="rail scroll-y-nice" aria-label="筛选">
         <h2>筛选</h2>
-        <button type="button" class="filter is-on">全部 · 12</button>
-        <button type="button" class="filter">已绑定会话</button>
+        <button type="button" class="filter is-on">全部 · <span id="countTotal">50</span></button>
+        <button type="button" class="filter">已使用</button>
         <button type="button" class="filter">未使用</button>
         <button type="button" class="filter">标签 · 奇幻</button>
         <button type="button" class="filter">标签 · 成人向</button>
       </aside>
 
-      <section aria-label="角色卡片">
-        <div class="grid">
-          <article class="card is-active" tabindex="0">
-            <div class="card__visual">
-              <div class="card__placeholder">头像待补</div>
-              <span class="card__badge">已绑定</span>
-            </div>
-            <div class="card__body">
-              <h2 class="card__name">Lyra Veilstring</h2>
-              <p class="card__desc">漂泊吟游诗人 · 喜欢用问句作答，每三段必出一句即兴歌词。</p>
-              <div class="chips">
-                <span class="chip">CCV2</span>
-                <span class="chip">bard</span>
-                <span class="chip">first-person</span>
-              </div>
-            </div>
-          </article>
-
-          <article class="card" tabindex="0">
-            <div class="card__visual">
-              <div class="card__placeholder">头像待补</div>
-              <span class="card__badge card__badge--muted">未绑定</span>
-            </div>
-            <div class="card__body">
-              <h2 class="card__name">The Tavern Keeper</h2>
-              <p class="card__desc">酒馆主人 · 慢节奏奇幻基底，带壁炉、烟草与未说完的故事。</p>
-              <div class="chips">
-                <span class="chip">CCV2</span>
-                <span class="chip">fantasy</span>
-              </div>
-            </div>
-          </article>
-
-          <article class="card" tabindex="0">
-            <div class="card__visual">
-              <div class="card__placeholder">头像待补</div>
-              <span class="card__badge card__badge--muted">未绑定</span>
-            </div>
-            <div class="card__body">
-              <h2 class="card__name">Unfettered Storyteller</h2>
-              <p class="card__desc">无拘叙述者 · 优先叙事真实，守住人物动机一致性。</p>
-              <div class="chips">
-                <span class="chip">CCV2</span>
-                <span class="chip">adult</span>
-              </div>
-            </div>
-          </article>
-        </div>
-
-        <div class="detail" aria-label="详情示意">
-          <div class="detail__grid">
-            <div class="detail__portrait" role="img" aria-label="立绘占位">
-              立绘或方形头像<br />待接入资源
-            </div>
-            <div>
-              <h3>Lyra Veilstring</h3>
-              <p class="detail__meta">v2 · 更新于 2025-11-04 · 本地文件</p>
-              <p style="margin:0;color:var(--ink-dim);font-size:13px;max-width:62ch;text-wrap:pretty;">
-                摘要区可放 creator_notes 首段或首条 greeting，帮助在库内快速辨认角色气质；完整 system 与正文在展开或侧栏编辑。
-              </p>
-              <div class="detail__actions">
-                <button type="button" class="btn btn--primary">绑定到当前会话</button>
-                <button type="button" class="btn btn--ghost">导出 JSON</button>
-                <button type="button" class="btn btn--ghost">删除</button>
-              </div>
-              <div class="detail__block">
-                <h4>system_prompt 预览</h4>
-                <p>此处为只读折叠块示意——实际实现用 monospace 小字号与行数限制，避免整卡撑爆布局。</p>
-              </div>
-            </div>
+      <div
+        class="list-scroll scroll-y-nice"
+        id="listScroll"
+        tabindex="0"
+        role="region"
+        aria-label="角色卡列表"
+      >
+        <div class="list-scroll__head">
+          <div class="list-scroll__head-main">
+            <strong>全部角色</strong>
+            <p class="list-scroll__hint">
+              角标「已使用」表示至少一个会话的 <code style="font-size:10px;opacity:.85">characterIds</code> 含该卡；绑定存在会话侧。删除会话后不必写回角色文件，列表重新聚合即可变为「未使用」。
+            </p>
           </div>
+          <span class="list-scroll__head-meta">已加载 <span id="countLoaded">0</span> / 50 · 向下滚动加载更多</span>
         </div>
-      </section>
+        <div class="grid" id="cardGrid" aria-live="polite"></div>
+        <div class="scroll-sentinel" id="scrollSentinel" aria-hidden="true">触底加载</div>
+      </div>
     </div>
 
     <footer class="foot">
-      设计稿 · 非生产代码 · Huashu-Design 流程：假设已写明，头像诚实占位；accent 取自应用内「赤土橙」气质而非通用科技渐变。
+      设计稿 · 列表区 max-height 继承剩余视口；「已使用 / 未使用」由会话列表聚合派生。IntersectionObserver 模拟无限滚动。
     </footer>
   </div>
+
+  <script>
+    (function () {
+      var TOTAL = 50
+      var PAGE = 14
+      var loaded = 0
+      var loading = false
+      var grid = document.getElementById("cardGrid")
+      var sentinel = document.getElementById("scrollSentinel")
+      var listScroll = document.getElementById("listScroll")
+      var countLoaded = document.getElementById("countLoaded")
+
+      var seeds = [
+        { name: "Lyra Veilstring", desc: "漂泊吟游诗人 · 问句与即兴歌词。", tags: ["bard", "lyrical"], used: true },
+        { name: "The Tavern Keeper", desc: "酒馆主人 · 壁炉、烟草与慢节奏。", tags: ["fantasy", "sensory"], used: false },
+        { name: "Unfettered Storyteller", desc: "无拘叙述者 · 叙事真实与动机。", tags: ["adult", "plot"], used: false },
+        { name: "Cinematic Director", desc: "电影感导演 · 镜头与留白。", tags: ["cinematic"], used: false },
+        { name: "Plot Twist Generator", desc: "三种走向：保守 / 危险 / 颠覆。", tags: ["tool"], used: false },
+      ]
+
+      function cardData(index) {
+        var s = seeds[index % seeds.length]
+        return {
+          id: index,
+          name: index < seeds.length ? s.name : s.name + " · #" + (index + 1),
+          desc: s.desc,
+          tags: s.tags,
+          used: index % 7 === 0, // 示意：已使用；实装由聊天列表聚合
+        }
+      }
+
+      function renderCard(d, active) {
+        var el = document.createElement("article")
+        el.className = "card" + (active ? " is-active" : "")
+        el.tabIndex = 0
+        el.dataset.id = String(d.id)
+        el.innerHTML =
+          '<div class="card__visual">' +
+          '<div class="card__placeholder">待补</div>' +
+          '<span class="card__badge' + (d.used ? "" : " card__badge--muted") + '">' +
+          (d.used ? "已使用" : "未使用") +
+          "</span></div>" +
+          '<div class="card__body">' +
+          '<h2 class="card__name"></h2>' +
+          '<p class="card__desc"></p>' +
+          '<div class="chips"></div></div>'
+        el.querySelector(".card__name").textContent = d.name
+        el.querySelector(".card__desc").textContent = d.desc
+        var chips = el.querySelector(".chips")
+        d.tags.forEach(function (t) {
+          var c = document.createElement("span")
+          c.className = "chip"
+          c.textContent = t
+          chips.appendChild(c)
+        })
+        var cc = document.createElement("span")
+        cc.className = "chip"
+        cc.textContent = "CCV2"
+        chips.insertBefore(cc, chips.firstChild)
+        return el
+      }
+
+      function updatePreview(d) {
+        document.getElementById("previewName").textContent = d.name
+        document.getElementById("previewMeta").textContent =
+          "v2 · 卡片 #" + (d.id + 1) + " · " + (d.used ? "已使用" : "未使用")
+        document.getElementById("previewSummary").textContent = d.desc + "（示意摘要）"
+        document.getElementById("previewSystem").textContent =
+          "system_prompt 片段 · " + d.name + " — 实际实现为可折叠等宽区域或抽屉。"
+      }
+
+      function setActiveCard(el) {
+        grid.querySelectorAll(".card.is-active").forEach(function (c) {
+          c.classList.remove("is-active")
+        })
+        el.classList.add("is-active")
+        var id = parseInt(el.dataset.id, 10)
+        updatePreview(cardData(id))
+      }
+
+      function appendPage() {
+        if (loading || loaded >= TOTAL) return
+        loading = true
+        sentinel.textContent = "加载中…"
+        sentinel.classList.add("is-loading")
+        sentinel.classList.remove("is-end")
+
+        window.setTimeout(function () {
+          var end = Math.min(loaded + PAGE, TOTAL)
+          var frag = document.createDocumentFragment()
+          for (var i = loaded; i < end; i++) {
+            var d = cardData(i)
+            var active = i === 0 && loaded === 0
+            var node = renderCard(d, active)
+            node.addEventListener("click", function (ev) {
+              setActiveCard(ev.currentTarget)
+            })
+            frag.appendChild(node)
+          }
+          grid.appendChild(frag)
+          loaded = end
+          countLoaded.textContent = String(loaded)
+
+          loading = false
+          sentinel.classList.remove("is-loading")
+          if (loaded >= TOTAL) {
+            sentinel.textContent = "已加载全部 50 张"
+            sentinel.classList.add("is-end")
+          } else {
+            sentinel.textContent = "继续下滑加载"
+          }
+        }, 220)
+      }
+
+      var obs = new IntersectionObserver(
+        function (entries) {
+          entries.forEach(function (e) {
+            if (e.isIntersecting) appendPage()
+          })
+        },
+        { root: listScroll, rootMargin: "120px", threshold: 0 },
+      )
+      obs.observe(sentinel)
+
+      appendPage()
+    })()
+  </script>
 </body>
 </html>

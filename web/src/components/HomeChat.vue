@@ -982,7 +982,7 @@ async function copyTurnText(text: string, key: string) {
       const ta = document.createElement('textarea')
       ta.value = text
       ta.style.position = 'fixed'
-      ta.style.left = '-9999px'
+      ta.style.left = '-100vw'
       document.body.appendChild(ta)
       ta.select()
       document.execCommand('copy')
@@ -1521,7 +1521,6 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 
   <v-dialog
     v-model="deleteDialogOpen"
-    max-width="24rem"
   >
     <v-card>
       <v-card-title class="text-subtitle-1">
@@ -1551,7 +1550,6 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 
   <v-dialog
     v-model="turnPromptDialogOpen"
-    max-width="720"
     scrollable
   >
     <v-card>
@@ -1608,7 +1606,7 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
   min-height: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  padding: 16px 0;
+  padding: 1rem 0;
 }
 .chat-scroll {
   padding-inline: 0;
@@ -1618,8 +1616,8 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 .turn-block {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin: 0 auto 32px;
+  gap: 1rem;
+  margin: 0 auto 2rem;
   width: 100%;
 }
 
@@ -1627,14 +1625,14 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 .turn-divider {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 0 32px;
-  margin-bottom: 4px;
+  gap: 0.875rem;
+  padding: 0 2rem;
+  margin-bottom: 0.25rem;
   user-select: none;
 }
 .turn-divider__line {
   flex: 1;
-  height: 1px;
+  height: 0.0625rem;
   background: linear-gradient(
     90deg,
     transparent,
@@ -1645,14 +1643,14 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 .turn-divider__ornament {
   color: rgb(var(--v-theme-primary));
   font-family: var(--font-display);
-  font-size: 14px;
+  font-size: 0.875rem;
   font-style: italic;
   line-height: 1;
 }
 .turn-divider__label {
   font-family: var(--font-display);
   font-style: italic;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: rgba(var(--v-theme-on-surface), 0.55);
   letter-spacing: 0.04em;
   white-space: nowrap;
@@ -1661,9 +1659,9 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 /* ========== Turn · Grid 排版 ========== */
 .turn {
   display: grid;
-  column-gap: 16px;
-  row-gap: 6px;
-  padding: 0 32px;
+  column-gap: 1rem;
+  row-gap: 0.375rem;
+  padding: 0 2rem;
 }
 .turn--assistant {
   grid-template-columns: 4rem minmax(0, 1fr);
@@ -1696,23 +1694,23 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
   width: 4rem;
   height: 4rem;
   border-radius: 50%;
-  border: 2px solid rgb(var(--v-theme-secondary));
+  border: 0.125rem solid rgb(var(--v-theme-secondary));
   background: rgb(var(--v-theme-surface-light));
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-display);
   font-style: italic;
-  font-size: 34px;
+  font-size: 2.125rem;
   font-weight: 500;
   color: rgb(var(--v-theme-secondary));
   flex-shrink: 0;
   overflow: hidden;
   position: relative;
   box-shadow:
-    0 0 0 1px rgb(var(--v-theme-background)) inset,
-    0 4px 12px rgb(0 0 0 / 0.35),
-    0 1px 0 rgba(var(--v-theme-on-surface), 0.04);
+    0 0 0 0.0625rem rgb(var(--v-theme-background)) inset,
+    0 0.25rem 0.75rem rgb(0 0 0 / 0.35),
+    0 0.0625rem 0 rgba(var(--v-theme-on-surface), 0.04);
   background-image: radial-gradient(
     circle at 30% 25%,
     rgba(var(--v-theme-on-surface), 0.10),
@@ -1723,7 +1721,7 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 .avatar::after {
   content: '';
   position: absolute;
-  inset: 2px;
+  inset: 0.125rem;
   border-radius: 50%;
   background: linear-gradient(
     160deg,
@@ -1758,8 +1756,8 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 .turn-role {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 28px;
+  gap: 0.625rem;
+  min-height: 1.75rem;
   max-width: 100%;
 }
 .turn-role--user {
@@ -1767,7 +1765,7 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 }
 .turn-role__label {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.6875rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   line-height: 1;
@@ -1777,10 +1775,10 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 .turn-role--assistant .turn-role__label { color: rgb(var(--v-theme-primary)); }
 .turn-role__label .meta {
   color: rgba(var(--v-theme-on-surface), 0.45);
-  margin-left: 8px;
+  margin-left: 0.5rem;
   font-family: var(--font-display);
   font-style: italic;
-  font-size: 12.5px;
+  font-size: 0.7813rem;
   font-weight: 400;
   letter-spacing: 0.01em;
   text-transform: none;
@@ -1790,7 +1788,7 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 .plugin-slots {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 0.1875rem;
   flex: 1;
   min-width: 0;
 }
@@ -1800,9 +1798,9 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 
 /* 插件按钮（由插件渲染时使用此 class） */
 .plugin-slots :deep(.plugin-slot) {
-  width: 24px;
-  height: 24px;
-  border: 1px dashed rgba(var(--v-theme-on-surface), 0.10);
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 0.0625rem dashed rgba(var(--v-theme-on-surface), 0.10);
   background: transparent;
   border-radius: 50%;
   color: rgba(var(--v-theme-on-surface), 0.35);
@@ -1826,8 +1824,8 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
   background: rgba(var(--v-theme-secondary), 0.08);
 }
 .plugin-slots :deep(.plugin-slot svg) {
-  width: 13px;
-  height: 13px;
+  width: 0.8125rem;
+  height: 0.8125rem;
   display: block;
 }
 .plugin-slots :deep(.plugin-slot:disabled) {
@@ -1837,44 +1835,44 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 
 /* ========== 气泡 + 指向头像的小三角 ========== */
 .turn-bubble {
-  padding: 14px 18px;
+  padding: 0.875rem 1.125rem;
   border-radius: var(--radius);
   line-height: 1.65;
-  font-size: 14.5px;
+  font-size: 0.9063rem;
   color: rgb(var(--v-theme-on-surface));
   position: relative;
   text-align: start;
 }
 .turn-bubble--user {
   background: rgba(var(--v-theme-secondary), 0.06);
-  border: 1px solid rgba(var(--v-theme-secondary), 0.20);
+  border: 0.0625rem solid rgba(var(--v-theme-secondary), 0.20);
 }
 .turn-bubble--user::before {
   content: '';
   position: absolute;
-  right: -7px;
-  top: 14px;
-  width: 12px;
-  height: 12px;
+  right: -0.4375rem;
+  top: 0.875rem;
+  width: 0.75rem;
+  height: 0.75rem;
   background: rgba(var(--v-theme-secondary), 0.06);
-  border-top: 1px solid rgba(var(--v-theme-secondary), 0.20);
-  border-right: 1px solid rgba(var(--v-theme-secondary), 0.20);
+  border-top: 0.0625rem solid rgba(var(--v-theme-secondary), 0.20);
+  border-right: 0.0625rem solid rgba(var(--v-theme-secondary), 0.20);
   transform: rotate(45deg);
 }
 .turn-bubble--assistant {
   background: rgb(var(--v-theme-surface-light));
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.10);
+  border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.10);
 }
 .turn-bubble--assistant::before {
   content: '';
   position: absolute;
-  left: -7px;
-  top: 14px;
-  width: 12px;
-  height: 12px;
+  left: -0.4375rem;
+  top: 0.875rem;
+  width: 0.75rem;
+  height: 0.75rem;
   background: rgb(var(--v-theme-surface-light));
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.10);
-  border-left: 1px solid rgba(var(--v-theme-on-surface), 0.10);
+  border-bottom: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.10);
+  border-left: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.10);
   transform: rotate(45deg);
 }
 .turn-bubble--streaming {
@@ -1910,19 +1908,19 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 /* ========== Toolbar · icon-only + tooltip ========== */
 .turn-toolbar {
   display: flex;
-  gap: 2px;
+  gap: 0.125rem;
   align-items: center;
 }
 .turn-toolbar--user { justify-content: flex-end; }
 .turn-toolbar--assistant { justify-content: flex-start; }
 
 .turn-toolbar__btn {
-  width: 28px;
-  height: 28px;
+  width: 1.75rem;
+  height: 1.75rem;
   padding: 0;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: 0.25rem;
   color: rgba(var(--v-theme-on-surface), 0.55);
   cursor: pointer;
   display: inline-flex;
@@ -1955,28 +1953,28 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 [data-tt]:hover:not(:disabled)::after {
   content: attr(data-tt);
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + 0.5rem);
   left: 50%;
   transform: translateX(-50%);
   background: rgb(var(--v-theme-surface-bright));
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.12);
   color: rgb(var(--v-theme-on-surface));
-  font: 500 11px var(--font-ui);
-  padding: 4px 9px;
-  border-radius: 4px;
+  font: 500 0.6875rem var(--font-ui);
+  padding: 0.25rem 0.5625rem;
+  border-radius: 0.25rem;
   white-space: nowrap;
   pointer-events: none;
   z-index: 20;
   letter-spacing: 0.02em;
-  box-shadow: 0 4px 12px rgb(0 0 0 / 0.35);
+  box-shadow: 0 0.25rem 0.75rem rgb(0 0 0 / 0.35);
 }
 [data-tt]:hover:not(:disabled)::before {
   content: '';
   position: absolute;
-  bottom: calc(100% + 2px);
+  bottom: calc(100% + 0.125rem);
   left: 50%;
   transform: translateX(-50%);
-  border: 5px solid transparent;
+  border: 0.3125rem solid transparent;
   border-top-color: rgb(var(--v-theme-surface-bright));
   pointer-events: none;
   z-index: 20;
@@ -1986,19 +1984,19 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 .swipe {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 5px;
+  gap: 0.25rem;
+  padding: 0.1875rem 0.3125rem;
   background: rgb(var(--v-theme-surface-light));
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.10);
-  border-radius: 99px;
+  border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.10);
+  border-radius: 50%;
   color: rgba(var(--v-theme-on-surface), 0.55);
-  font: 500 11px var(--font-mono);
+  font: 500 0.6875rem var(--font-mono);
   letter-spacing: 0.04em;
-  margin-top: 4px;
+  margin-top: 0.25rem;
 }
 .swipe__btn {
-  width: 22px;
-  height: 22px;
+  width: 1.375rem;
+  height: 1.375rem;
   border: none;
   background: transparent;
   color: rgba(var(--v-theme-on-surface), 0.7);
@@ -2026,23 +2024,23 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 
 /* ========== 可折叠思维链 · 对齐 demo-v3（hair + accent-soft 左条 + 极淡赤土底） ========== */
 .reasoning-chain {
-  /* 原型：1px hair + 2px 压暗主色实线左边（非半透明 primary） */
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.06);
-  border-left: 2px solid rgb(var(--v-theme-primary-darken-1));
-  border-radius: 4px var(--radius) var(--radius) 4px;
+  /* 原型：0.0625rem hair + 0.125rem 压暗主色实线左边（非半透明 primary） */
+  border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.06);
+  border-left: 0.125rem solid rgb(var(--v-theme-primary-darken-1));
+  border-radius: 0.25rem var(--radius) var(--radius) 0.25rem;
   background: rgba(var(--v-theme-primary), 0.03);
   overflow: hidden;
-  margin-bottom: 2px;
+  margin-bottom: 0.125rem;
 }
 .reasoning-chain__summary {
   list-style: none;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 12px;
+  gap: 0.5rem;
+  padding: 0.4375rem 0.75rem;
   cursor: pointer;
   user-select: none;
-  font: 500 11px var(--font-mono);
+  font: 500 0.6875rem var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: rgb(var(--v-theme-primary));
@@ -2059,8 +2057,8 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 }
 .reasoning-chain__caret {
   display: inline-flex;
-  width: 10px;
-  height: 10px;
+  width: 0.625rem;
+  height: 0.625rem;
   transition: transform 0.2s ease;
   color: rgb(var(--v-theme-primary));
   flex-shrink: 0;
@@ -2079,37 +2077,37 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
   flex: 1;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.375rem;
 }
 .reasoning-chain__sep {
   opacity: 0.4;
   font-weight: 400;
 }
 .reasoning-chain__meta {
-  margin-left: 6px;
+  margin-left: 0.375rem;
   /* 原型 reasoning-chain__meta：ink-faint */
   color: rgba(var(--v-theme-on-surface), 0.38);
   font-weight: 400;
   letter-spacing: 0.06em;
   text-transform: none;
-  font-size: 10.5px;
+  font-size: 0.6563rem;
 }
 .reasoning-chain__hint {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 0.3125rem;
   font-weight: 400;
   letter-spacing: 0.04em;
   text-transform: none;
-  font-size: 10.5px;
+  font-size: 0.6563rem;
   color: rgba(var(--v-theme-on-surface), 0.38);
 }
 .reasoning-chain__hint kbd {
-  font: 500 10px var(--font-mono);
-  padding: 1px 5px;
+  font: 500 0.625rem var(--font-mono);
+  padding: 0.0625rem 0.3125rem;
   /* 原型：hair-strong 边框 + 最深底 + ink-muted 字 */
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
-  border-radius: 3px;
+  border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.1);
+  border-radius: 0.1875rem;
   background: rgb(var(--v-theme-background));
   color: rgba(var(--v-theme-on-surface), 0.55);
   line-height: 1;
@@ -2117,13 +2115,13 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 .reasoning-chain:not([open]) .reasoning-chain__hint-collapse { display: none; }
 .reasoning-chain[open] .reasoning-chain__hint-expand { display: none; }
 .reasoning-chain__body {
-  padding: 14px 18px 16px;
+  padding: 0.875rem 1.125rem 1rem;
   font-family: var(--font-display);
   font-style: italic;
-  font-size: 13.5px;
+  font-size: 0.8438rem;
   line-height: 1.8;
   color: rgba(var(--v-theme-on-surface), 0.72);
-  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  border-top: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.06);
 }
 .reasoning-chain__body :deep(p) {
   margin: 0 0 0.5em;
@@ -2158,29 +2156,29 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 64px 32px;
+  padding: 4rem 2rem;
   color: rgba(var(--v-theme-on-surface), 0.45);
   text-align: center;
   user-select: none;
 }
 .chat-empty__ornament {
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: 1.75rem;
   font-style: italic;
   color: rgba(var(--v-theme-primary), 0.55);
-  margin-bottom: 12px;
+  margin-bottom: 0.75rem;
 }
 .chat-empty__text {
   font-family: var(--font-display);
   font-style: italic;
-  font-size: 15px;
+  font-size: 0.9375rem;
   letter-spacing: 0.01em;
 }
 
 /* ========== Composer · 底部输入 ========== */
 .chat-footer {
-  padding: 12px 32px calc(12px + env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  padding: 0.75rem 2rem calc(0.75rem + env(safe-area-inset-bottom, 0));
+  border-top: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.06);
   background: linear-gradient(
     180deg,
     transparent,
@@ -2195,19 +2193,19 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 .composer {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0.5rem;
 }
 .composer__textarea {
   width: 100%;
   background: rgb(var(--v-theme-surface-light));
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.10);
+  border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.10);
   border-radius: var(--radius);
   color: rgb(var(--v-theme-on-surface));
-  font: 400 14px var(--font-ui);
+  font: 400 0.875rem var(--font-ui);
   line-height: 1.55;
-  padding: 12px 14px;
-  min-height: 80px;
-  max-height: 320px;
+  padding: 0.75rem 0.875rem;
+  min-height: 5rem;
+  max-height: 20rem;
   resize: vertical;
   outline: none;
   transition: border-color 0.18s, background 0.18s;
@@ -2221,18 +2219,18 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
   color: rgba(var(--v-theme-on-surface), 0.35);
   font-family: var(--font-display);
   font-style: italic;
-  font-size: 15px;
+  font-size: 0.9375rem;
 }
 
 .composer__tools {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 0.75rem;
 }
 .composer__hint {
   flex: 1;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 0.6563rem;
   letter-spacing: 0.04em;
   color: rgba(var(--v-theme-on-surface), 0.4);
   text-transform: uppercase;
@@ -2307,7 +2305,7 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 .chat-rich-text :deep(blockquote) {
   margin: 0.5em 0;
   padding-left: 0.85em;
-  border-left: 3px solid rgba(var(--v-theme-primary), 0.45);
+  border-left: 0.1875rem solid rgba(var(--v-theme-primary), 0.45);
   color: rgb(var(--v-theme-on-surface-variant));
 }
 
@@ -2324,14 +2322,14 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 
 .chat-rich-text :deep(th),
 .chat-rich-text :deep(td) {
-  border: 1px solid rgb(var(--v-theme-surface-variant));
+  border: 0.0625rem solid rgb(var(--v-theme-surface-variant));
   padding: 0.35em 0.5em;
 }
 
 .chat-rich-text :deep(hr) {
   margin: 0.75em 0;
   border: none;
-  border-top: 1px solid rgb(var(--v-theme-surface-variant));
+  border-top: 0.0625rem solid rgb(var(--v-theme-surface-variant));
 }
 
 .chat-rich-text :deep(.md-embedded-html) {

@@ -110,8 +110,11 @@ onMounted(() => {
 
 <template>
   <div
-    class="settings-page px-4 py-6"
-    :class="{ 'settings-page--embedded': embedded }"
+    class="settings-page"
+    :class="{
+      'settings-page--embedded': embedded,
+      'app-page-shell': !embedded,
+    }"
   >
     <div class="settings-page-inner">
       <h1
@@ -230,7 +233,6 @@ onMounted(() => {
 
   <v-dialog
     v-model="primaryDialogOpen"
-    max-width="420"
     scrollable
     @keydown.esc="closePrimaryDialog"
   >
@@ -305,8 +307,8 @@ onMounted(() => {
 
 <style scoped>
 .settings-page {
-  max-width: 40rem;
-  margin-inline: auto;
+  padding-block: 1.5rem;
+  padding-inline: 0;
   width: 100%;
 }
 
@@ -318,13 +320,14 @@ onMounted(() => {
   max-width: none;
   margin-inline: 0;
   padding-block: 1rem;
+  padding-inline: 1rem;
 }
 
 .primary-swatch {
   width: 3rem;
   height: 3rem;
-  border-radius: 8px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.2);
+  border-radius: 0.5rem;
+  border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.2);
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
@@ -333,12 +336,12 @@ onMounted(() => {
 
 .primary-swatch:hover {
   transform: scale(1.04);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.2);
 }
 
 .primary-swatch:focus-visible {
-  outline: 2px solid rgb(var(--v-theme-primary));
-  outline-offset: 2px;
+  outline: 0.125rem solid rgb(var(--v-theme-primary));
+  outline-offset: 0.125rem;
 }
 
 .primary-preview {

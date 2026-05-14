@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { CHAT_ROOT } from './config.js'
+import { CHATS_ROOT } from './config.js'
 
-export { CHAT_ROOT }
+/** 与 {@link CHATS_ROOT} 相同，保留旧名供外部引用 */
+export { CHATS_ROOT as CHAT_ROOT }
 
-/** 与文档一致：数据根下 chat/ */
-export const CHAT_LIST_FILE = path.join(CHAT_ROOT, 'chat.index.json')
+/** 与文档一致：数据根下 `chats/` */
+export const CHAT_LIST_FILE = path.join(CHATS_ROOT, 'chat.index.json')
 
 export const CHUNK_NAME_FIRST = 'turn-000000-000099.json'
 export const CHAT_PROMPT_FILE = 'chat-prompt.json'
@@ -354,7 +355,7 @@ export async function updateConversationPromptDebugMax(
 }
 
 async function ensureChatRoot(): Promise<void> {
-  await mkdir(CHAT_ROOT, { recursive: true })
+  await mkdir(CHATS_ROOT, { recursive: true })
 }
 
 export async function readChatList(): Promise<ChatListFile> {
@@ -389,7 +390,7 @@ export async function upsertChatListEntry(entry: ChatListEntry): Promise<void> {
 }
 
 export function conversationDir(id: string): string {
-  return path.join(CHAT_ROOT, id)
+  return path.join(CHATS_ROOT, id)
 }
 
 export function conversationIndexPath(id: string): string {

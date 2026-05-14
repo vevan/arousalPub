@@ -81,13 +81,19 @@ export const DATA_DIR = resolveDataDir()
 export const API_SETTINGS_PATH = path.join(DATA_DIR, 'api-settings.json')
 export const API_KEYS_PATH = path.join(DATA_DIR, 'api-keys.json')
 export const PROMPTS_PATH = path.join(DATA_DIR, 'prompts.json')
-export const CHAT_ROOT = path.join(DATA_DIR, 'chat')
-export const LOREBOOK_DIR = path.join(DATA_DIR, 'lorebook')
-export const CHARACTER_DIR = path.join(DATA_DIR, 'character')
+/** 对话与会话列表根目录：`data/chats/` */
+export const CHATS_ROOT = path.join(DATA_DIR, 'chats')
+/** 世界书根目录：`data/lorebooks/` */
+export const LOREBOOKS_DIR = path.join(DATA_DIR, 'lorebooks')
+/** 角色卡库根目录：`data/characters/` */
+export const CHARACTERS_DIR = path.join(DATA_DIR, 'characters')
+
+/** @deprecated 请使用 {@link CHATS_ROOT}（路径已为 `chats/`） */
+export const CHAT_ROOT = CHATS_ROOT
 
 /** 启动时确保骨架目录存在，避免后续每次写入都 mkdir。 */
 export function ensureDataSkeleton(): void {
-  for (const d of [DATA_DIR, CHAT_ROOT, LOREBOOK_DIR, CHARACTER_DIR]) {
+  for (const d of [DATA_DIR, CHATS_ROOT, LOREBOOKS_DIR, CHARACTERS_DIR]) {
     try {
       mkdirSync(d, { recursive: true })
     } catch (e) {

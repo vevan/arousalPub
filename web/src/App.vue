@@ -52,13 +52,13 @@ function syncAppChromeCssVars() {
   if (typeof hh === 'number' && hh > 0) {
     document.documentElement.style.setProperty(
       '--header-height',
-      `${Math.round(hh)}px`,
+      `${Math.round(hh) / 16}rem`,
     )
   }
   if (typeof fh === 'number' && fh > 0) {
     document.documentElement.style.setProperty(
       '--footer-height',
-      `${Math.round(fh)}px`,
+      `${Math.round(fh) / 16}rem`,
     )
   }
 }
@@ -96,6 +96,7 @@ onUnmounted(() => {
 
 <template>
   <v-app>
+    <!-- VNavigationDrawer :width 须为无单位数字（px）；rem/% 等字符串会破坏布局与开关（Vuetify #16705） -->
     <v-navigation-drawer
       v-model="drawerLeft"
       :width="280"
@@ -212,8 +213,9 @@ onUnmounted(() => {
             {{ $t('app.prompts') }}
           </v-btn>
           <v-btn
+            to="/characters"
             variant="text"
-            disabled
+            :active="route.name === 'characters'"
             class="app-bar__menu-btn"
             size="small"
           >
@@ -277,7 +279,7 @@ onUnmounted(() => {
     <v-footer
       ref="footerRef"
       app
-      height="28"
+      :height="28"
       class="app-footer pa-0"
     >
       <div class="app-footer__inner">
@@ -293,7 +295,6 @@ onUnmounted(() => {
 
     <v-dialog
       v-model="settingsDialogOpen"
-      max-width="640"
       scrollable
       @keydown.esc="settingsDialogOpen = false"
     >
@@ -328,17 +329,17 @@ onUnmounted(() => {
  * 36/31/24 即 --v-theme-surface-bright (elev-3)
  */
 .app-bar {
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.10) !important;
+  border-bottom: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.10) !important;
   background: linear-gradient(
     180deg,
     rgba(var(--v-theme-surface-bright), 0.4),
     transparent
   ) !important;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(0.5rem);
 }
 .app-bar :deep(.v-toolbar__content) {
   align-items: center;
-  padding-inline: 12px;
+  padding-inline: 0.75rem;
   background: transparent;
 }
 
@@ -347,23 +348,23 @@ onUnmounted(() => {
 }
 
 .app-bar__brand-nav {
-  column-gap: 12px;
-  margin-inline-start: 4px;
+  column-gap: 0.75rem;
+  margin-inline-start: 0.25rem;
 }
 
 .app-bar__brand {
-  gap: 8px;
-  padding-right: 12px;
-  border-right: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  gap: 0.5rem;
+  padding-right: 0.75rem;
+  border-right: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.06);
 }
 .app-bar__brand-flame {
-  width: 22px;
-  height: 22px;
+  width: 1.375rem;
+  height: 1.375rem;
   flex-shrink: 0;
 }
 .app-bar__brand-name {
   font-family: var(--font-display);
-  font-size: 18px;
+  font-size: 1.125rem;
   font-weight: 500;
   letter-spacing: 0.01em;
   color: rgb(var(--v-theme-on-surface));
@@ -376,9 +377,9 @@ onUnmounted(() => {
   font-weight: 500;
 }
 
-/* nav 按钮 · demo: hover 4% ink 底；active = 8% accent 底 + inset bottom 2px accent + 顶圆下方 */
+/* nav 按钮 · demo: hover 4% ink 底；active = 8% accent 底 + inset bottom 0.125rem accent + 顶圆下方 */
 .app-bar__menu {
-  column-gap: 4px;
+  column-gap: 0.25rem;
 }
 .app-bar__menu-btn {
   letter-spacing: 0.005em;
@@ -389,7 +390,7 @@ onUnmounted(() => {
 }
 .app-bar__menu-btn :deep(.v-btn__content) {
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .app-bar__menu-btn:not(.v-btn--active):hover :deep(.v-btn__overlay) {
   background: rgba(var(--v-theme-on-surface), 0.04);
@@ -397,8 +398,8 @@ onUnmounted(() => {
 }
 .app-bar__menu-btn.v-btn--active {
   color: rgb(var(--v-theme-on-surface));
-  /* demo: inset 0 -2px 0 var(--accent) — 底部 2px 实线条作为视觉下划 */
-  box-shadow: inset 0 -2px 0 rgb(var(--v-theme-primary)) !important;
+  /* demo: inset 0 -0.125rem 0 var(--accent) — 底部 0.125rem 实线条作为视觉下划 */
+  box-shadow: inset 0 -0.125rem 0 rgb(var(--v-theme-primary)) !important;
   border-radius: var(--radius-sm) var(--radius-sm) 0 0 !important;
 }
 .app-bar__menu-btn.v-btn--active :deep(.v-btn__overlay) {
@@ -408,41 +409,41 @@ onUnmounted(() => {
 
 /* 右侧 actions */
 .app-bar__actions {
-  column-gap: 4px;
+  column-gap: 0.25rem;
 }
 
 .app-bar__status-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 10px;
-  height: 30px;
-  margin-right: 4px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.10);
-  border-radius: 4px;
+  gap: 0.5rem;
+  padding: 0.3125rem 0.625rem;
+  height: 1.875rem;
+  margin-right: 0.25rem;
+  border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.10);
+  border-radius: 0.25rem;
   background: rgb(var(--v-theme-surface-light));
   color: rgba(var(--v-theme-on-surface), 0.7);
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 0.7188rem;
   letter-spacing: 0.02em;
   cursor: pointer;
   transition: all 0.15s ease;
-  max-width: 220px;
+  max-width: 13.75rem;
 }
 .app-bar__status-chip:hover {
   border-color: rgba(var(--v-theme-primary), 0.45);
   color: rgb(var(--v-theme-on-surface));
 }
 .app-bar__status-dot {
-  width: 6px;
-  height: 6px;
+  width: 0.375rem;
+  height: 0.375rem;
   border-radius: 50%;
   background: rgb(var(--v-theme-success, 122 143 106));
-  box-shadow: 0 0 0 3px rgb(var(--v-theme-success, 122 143 106) / 0.18);
+  box-shadow: 0 0 0 0.1875rem rgb(var(--v-theme-success, 122 143 106) / 0.18);
   flex-shrink: 0;
 }
 .app-bar__status-model {
-  max-width: 180px;
+  max-width: 11.25rem;
 }
 .app-bar__icon-btn {
   color: rgba(var(--v-theme-on-surface), 0.7);
@@ -453,23 +454,23 @@ onUnmounted(() => {
 
 /* ========== Footer ========== */
 .app-footer {
-  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.06) !important;
+  border-top: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.06) !important;
   background: transparent !important;
 }
 .app-footer__inner {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 0 16px;
+  gap: 1rem;
+  padding: 0 1rem;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 0.6563rem;
   letter-spacing: 0.04em;
   color: rgba(var(--v-theme-on-surface), 0.4);
 }
 .app-footer__meta {
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-style: italic;
   letter-spacing: 0.02em;
   color: rgba(var(--v-theme-on-surface), 0.5);

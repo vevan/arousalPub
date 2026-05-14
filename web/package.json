@@ -10,7 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fastify/multipart": "^10.0.0",
     "@mdi/font": "^7.4.47",
+    "crc-32": "^1.2.2",
     "culori": "^4.0.2",
     "dompurify": "^3.4.0",
     "marked": "^18.0.1",

@@ -1,13 +1,10 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { getCurrentUserId } from './user-context.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-/**
- * 仓库根 = 含 config.example.json 的最近祖先目录。
- * 启动时一次性查找；找不到则回退到 server/.. （即旧的 server 包根的上一级，约等于仓库根）。
- */
 function findRepoRoot(): string {
   let cur = __dirname
   for (let i = 0; i < 8; i++) {
@@ -58,12 +55,6 @@ function readConfigFile(): RawConfig {
   }
 }
 
-/**
- * 解析 DATA_DIR：
- * 1. 环境变量 DATA_DIR（绝对或相对，相对以 process.cwd() 为基准）
- * 2. config.json#dataDir（相对则以 config.json 所在目录 = REPO_ROOT 为基准）
- * 3. 默认 REPO_ROOT/data
- */
 function resolveDataDir(): string {
   const fromEnv = process.env.DATA_DIR?.trim()
   if (fromEnv) {
@@ -77,23 +68,55 @@ function resolveDataDir(): string {
   return path.join(REPO_ROOT, 'data')
 }
 
+/** 数据根目录：`data/` */
 export const DATA_DIR = resolveDataDir()
-export const API_SETTINGS_PATH = path.join(DATA_DIR, 'api-settings.json')
-export const API_KEYS_PATH = path.join(DATA_DIR, 'api-keys.json')
-export const PROMPTS_PATH = path.join(DATA_DIR, 'prompts.json')
-/** 对话与会话列表根目录：`data/chats/` */
-export const CHATS_ROOT = path.join(DATA_DIR, 'chats')
-/** 世界书根目录：`data/lorebooks/` */
-export const LOREBOOKS_DIR = path.join(DATA_DIR, 'lorebooks')
-/** 角色卡库根目录：`data/characters/` */
-export const CHARACTERS_DIR = path.join(DATA_DIR, 'characters')
 
-/** @deprecated 请使用 {@link CHATS_ROOT}（路径已为 `chats/`） */
-export const CHAT_ROOT = CHATS_ROOT
+/** 当前用户数据目录：`data/{userId}/`，未选用户时为 `default-user` */
+export function getUserDataDir(userId?: string): string {
+  return path.join(DATA_DIR, userId ?? getCurrentUserId())
+}
 
-/** 启动时确保骨架目录存在，避免后续每次写入都 mkdir。 */
+export function getApiSettingsPath(): string {
+  return path.join(getUserDataDir(), 'api-settings.json')
+}
+
+export function getApiKeysPath(): string {
+  return path.join(getUserDataDir(), 'api-keys.json')
+}
+
+export function getChatsRoot(): string {
+  return path.join(getUserDataDir(), 'chats')
+}
+
+export function getLorebooksDir(): string {
+  return path.join(getUserDataDir(), 'lorebooks')
+}
+
+export function getCharactersDir(): string {
+  return path.join(getUserDataDir(), 'characters')
+}
+
+export function getPromptsDir(): string {
+  return path.join(getUserDataDir(), 'prompts')
+}
+
+export function getPromptsIndexPath(): string {
+  return path.join(getPromptsDir(), 'index.json')
+}
+
+/** @deprecated 请使用 {@link getChatsRoot} */
+export const CHAT_ROOT = getChatsRoot
+
 export function ensureDataSkeleton(): void {
-  for (const d of [DATA_DIR, CHATS_ROOT, LOREBOOKS_DIR, CHARACTERS_DIR]) {
+  const userDir = getUserDataDir()
+  for (const d of [
+    DATA_DIR,
+    userDir,
+    getChatsRoot(),
+    getLorebooksDir(),
+    getCharactersDir(),
+    getPromptsDir(),
+  ]) {
     try {
       mkdirSync(d, { recursive: true })
     } catch (e) {

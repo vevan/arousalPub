@@ -2,6 +2,13 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+withDefaults(
+  defineProps<{
+    embedded?: boolean
+  }>(),
+  { embedded: false },
+)
+
 const { t } = useI18n()
 
 interface CharacterListItem {
@@ -686,19 +693,24 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="charlib flex-grow-1 d-flex flex-column min-height-0">
-    <div class="charlib__inner app-page-shell">
-      <header class="charlib-head">
-        <p class="charlib-head__kicker">
-          {{ $t('characters.kicker') }}
-        </p>
-        <div class="charlib-head__row">
-          <h1 class="charlib-head__title">
+  <div
+    class="charlib flex-grow-1 d-flex flex-column min-height-0"
+    :class="{ 'charlib--embedded': embedded }"
+  >
+    <div
+      class="charlib__inner"
+      :class="embedded ? 'charlib__inner--embedded' : 'app-page-shell'"
+    >
+      <header class="library-page-head">
+        <div class="library-page-head__row">
+          <h1 class="library-page-head__title">
             {{ $t('characters.pageTitle') }}
           </h1>
-          <p class="charlib-head__lede">
-            {{ $t('characters.lede') }}
-          </p>
+          <div class="library-page-head__aside">
+            <p class="library-page-head__lede">
+              {{ $t('characters.lede') }}
+            </p>
+          </div>
         </div>
       </header>
 
@@ -1216,48 +1228,17 @@ onUnmounted(() => {
   flex: 1;
 }
 
-.charlib-head {
-  flex-shrink: 0;
-  margin-bottom: 0.875rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.08);
+.charlib--embedded {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
 }
-
-.charlib-head__kicker {
-  font-family: ui-monospace, monospace;
-  font-size: 0.625rem;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: rgb(var(--v-theme-secondary));
-  margin: 0 0 0.375rem;
-}
-
-.charlib-head__row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.625rem 1.5rem;
-}
-
-.charlib-head__title {
-  margin: 0;
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: clamp(1.45rem, 2.5vw, 1.85rem);
-  font-style: italic;
-  font-weight: 600;
-  flex: 0 0 auto;
-}
-
-.charlib-head__lede {
-  margin: 0;
-  flex: 0 1 auto;
-  min-width: min(100%, 12.5rem);
-  max-width: min(58ch, 100%);
-  font-size: 0.8125rem;
-  line-height: 1.45;
-  color: rgba(var(--v-theme-on-surface), 0.55);
-  text-wrap: pretty;
+.charlib__inner--embedded {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+  padding-inline: 0;
+  box-sizing: border-box;
 }
 
 .charlib-toolbar {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ConversationContextSettings from '@/components/ConversationContextSettings.vue'
 import HomeChat from '@/components/HomeChat.vue'
 import { useConnectionStore } from '@/stores/connection'
 import { usePreferencesStore } from '@/stores/preferences'
@@ -19,6 +20,84 @@ const loading = ref(true)
 const errorText = ref('')
 const title = ref('')
 const titleSaving = ref(false)
+
+interface ConvContextBindings {
+  promptPresetId: string | null
+  characterIds: string[]
+  lorebookIds: string[]
+  /** 会话 `{{user}}`；null 表示未设置 */
+  userName: string | null
+  /** 用户 persona 卡 id；仅用于 UI 回显头像 */
+  userCharacterId: string | null
+}
+
+function clientResolvedCharacterIds(idx: Record<string, unknown>): string[] {
+  if (Array.isArray(idx.characterIds)) {
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const raw of idx.characterIds) {
+      if (typeof raw !== 'string') continue
+      const id = raw.trim()
+      if (!id || seen.has(id)) continue
+      seen.add(id)
+      out.push(id)
+    }
+    return out
+  }
+  if (typeof idx.characterId === 'string' && idx.characterId.trim()) {
+    return [idx.characterId.trim()]
+  }
+  return []
+}
+
+function bindingsFromIndex(idx: Record<string, unknown>): ConvContextBindings {
+  const pid = idx.promptPresetId
+  const promptPresetId =
+    typeof pid === 'string' && pid.trim() ? pid.trim() : null
+  const lb = idx.lorebookIds
+  const lorebookIds = Array.isArray(lb)
+    ? lb.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+    : []
+  const un = idx.userName
+  const userName =
+    typeof un === 'string' && un.trim() ? un.trim() : null
+  const uci = idx.userCharacterId
+  const userCharacterId =
+    typeof uci === 'string' && uci.trim() ? uci.trim() : null
+  return {
+    promptPresetId,
+    characterIds: clientResolvedCharacterIds(idx),
+    lorebookIds,
+    userName,
+    userCharacterId,
+  }
+}
+
+const convBindings = ref<ConvContextBindings>({
+  promptPresetId: null,
+  characterIds: [],
+  lorebookIds: [],
+  userName: null,
+  userCharacterId: null,
+})
+
+function onConvContextPatched(index: Record<string, unknown>) {
+  convBindings.value = bindingsFromIndex(index)
+}
+
+async function patchPromptDebugMaxToServer(id: string) {
+  await fetch(`/api/chat/conversations/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      promptDebug: {
+        maxStored: prefStore.writeChatPromptSnapshot
+          ? prefStore.promptDebugMaxStored
+          : 0,
+      },
+    }),
+  })
+}
 
 async function ensureConversation(id: string) {
   loading.value = true
@@ -44,15 +123,10 @@ async function ensureConversation(id: string) {
       errorText.value = t('chatConversation.loadFailed')
       return
     }
-    const idx = (await res.json()) as { title?: string }
+    const idx = (await res.json()) as Record<string, unknown>
     title.value = typeof idx.title === 'string' ? idx.title : t('chat.newConversation')
-    void fetch(`/api/chat/conversations/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        promptDebug: { maxStored: prefStore.promptDebugMaxStored },
-      }),
-    })
+    convBindings.value = bindingsFromIndex(idx)
+    void patchPromptDebugMaxToServer(id)
   } catch {
     errorText.value = t('chatConversation.loadFailed')
   } finally {
@@ -89,6 +163,20 @@ watch(
     void ensureConversation(id)
   },
   { immediate: true },
+)
+
+/** 偏好变更时同步会话索引中的 prompt 快照开关（maxStored=0 表示不写） */
+watch(
+  () =>
+    [
+      props.conversationId,
+      prefStore.writeChatPromptSnapshot,
+      prefStore.promptDebugMaxStored,
+    ] as const,
+  ([id]) => {
+    if (!id || loading.value) return
+    void patchPromptDebugMaxToServer(id)
+  },
 )
 </script>
 
@@ -168,7 +256,23 @@ watch(
           </template>
         </div>
       </header>
-      <HomeChat :conversation-id="conversationId" />
+      <ConversationContextSettings
+        class="chat-context-settings"
+        :conversation-id="conversationId"
+        :initial-prompt-preset-id="convBindings.promptPresetId"
+        :initial-character-ids="convBindings.characterIds"
+        :initial-lorebook-ids="convBindings.lorebookIds"
+        :initial-user-name="convBindings.userName"
+        @patched="onConvContextPatched"
+      />
+      <HomeChat
+        :conversation-id="conversationId"
+        :conversation-prompt-preset-id="convBindings.promptPresetId"
+        :conversation-character-ids="convBindings.characterIds"
+        :conversation-lorebook-ids="convBindings.lorebookIds"
+        :conversation-user-name="convBindings.userName"
+        :conversation-user-character-id="convBindings.userCharacterId"
+      />
     </template>
   </div>
 </template>
@@ -176,11 +280,16 @@ watch(
 <style scoped>
 .chat_pane {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto auto 1fr;
   grid-template-columns: minmax(0, 1fr);
   height: calc(100vh - var(--header-height) - var(--footer-height));
   min-height: 0;
   flex: 1 1 auto;
+}
+
+.chat-context-settings {
+  grid-column: 1 / -1;
+  min-width: 0;
 }
 
 .chat_pane--state {
@@ -261,7 +370,7 @@ watch(
   gap: 0.375rem;
   padding: 0.1875rem 0.5625rem;
   border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.10);
-  border-radius: 50%;
+  border-radius: var(--radius-sm);
   background: rgb(var(--v-theme-surface-light));
   color: rgba(var(--v-theme-on-surface), 0.75);
   font-family: var(--font-mono);

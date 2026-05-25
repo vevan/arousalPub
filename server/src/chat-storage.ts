@@ -1,13 +1,19 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { CHATS_ROOT } from './config.js'
+import { getChatsRoot } from './config.js'
 
-/** 与 {@link CHATS_ROOT} 相同，保留旧名供外部引用 */
-export { CHATS_ROOT as CHAT_ROOT }
+/** 与 {@link getChatsRoot} 相同，保留旧名供外部引用 */
+export function chatRoot(): string {
+  return getChatsRoot()
+}
 
-/** 与文档一致：数据根下 `chats/` */
-export const CHAT_LIST_FILE = path.join(CHATS_ROOT, 'chat.index.json')
+/** @deprecated 使用 {@link chatListFile} */
+export const CHAT_ROOT = chatRoot
+
+function chatListFile(): string {
+  return path.join(getChatsRoot(), 'chat.index.json')
+}
 
 export const CHUNK_NAME_FIRST = 'turn-000000-000099.json'
 export const CHAT_PROMPT_FILE = 'chat-prompt.json'
@@ -17,10 +23,16 @@ export interface ChatListEntry {
   conversationId: string
   title: string
   updatedAt: string
+  /** 用户 persona 卡 id（仅 UI 回显；宏使用 userName 快照） */
+  userCharacterId?: string
   /** 兼容：首张卡 id，等同于 characterIds[0] */
   characterId?: string | null
   /** 会话绑定的多张角色卡 id，顺序即主槽 {{char}}、次槽 {{char2}}… */
   characterIds?: string[]
+  /** 对话级提示词预设 id；缺省则客户端用全局激活预设 */
+  promptPresetId?: string | null
+  /** 世界书 id 列表（占位） */
+  lorebookIds?: string[]
   activeBranchPath?: string | null
 }
 
@@ -43,8 +55,28 @@ export interface ConversationIndex {
   apiPreset?: Record<string, unknown>
   backupSettings?: { everyNRounds: number; maxKeptBackups: number }
   branches?: unknown[]
-  /** 调试：chat-prompt.json 中每会话保留的 prompt 条数上限 */
+  /**
+   * 调试：chat-prompt.json 中每会话保留的 prompt 条数上限。
+   * `maxStored === 0` 表示不写入新快照（已有条目仍可保留供查看）。
+   */
   promptDebug?: { maxStored: number }
+  /**
+   * 对话级提示词预设（`data/{user}/prompts/` 内预设 `id`）。
+   * 缺省或未写入：客户端使用全局「当前激活预设」。
+   */
+  promptPresetId?: string | null
+  /**
+   * 对话绑定的世界书 / lorebook id 列表（占位；检索与注入未接前可恒为空数组）。
+   */
+  lorebookIds?: string[]
+  /**
+   * 对话内用户展示名（宏 `{{user}}`）；缺省由服务端用默认「用户」。
+   */
+  userName?: string
+  /**
+   * 用户 persona 卡 id：用于 UI 回显头像/来源。角色卡删除后，宏仍使用 userName 快照。
+   */
+  userCharacterId?: string
 }
 
 export interface TurnReceive {
@@ -126,13 +158,63 @@ export function syncConversationCharacterFields(
 
 export function chatListEntryFromIndex(idx: ConversationIndex): ChatListEntry {
   const ids = resolvedCharacterIds(idx)
+  const lb = idx.lorebookIds
+  const lorebookIds = Array.isArray(lb)
+    ? lb.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+    : []
   return {
     conversationId: idx.conversationId,
     title: idx.title,
     updatedAt: idx.updatedAt,
+    ...(typeof idx.userCharacterId === 'string' && idx.userCharacterId.trim()
+      ? { userCharacterId: idx.userCharacterId.trim() }
+      : {}),
     characterId: ids[0] ?? null,
     characterIds: ids.length > 0 ? ids : undefined,
+    ...(typeof idx.promptPresetId === 'string' && idx.promptPresetId.trim()
+      ? { promptPresetId: idx.promptPresetId.trim() }
+      : {}),
+    ...(lorebookIds.length > 0 ? { lorebookIds } : {}),
   }
+}
+
+export async function updateConversationUserCharacterId(
+  conversationId: string,
+  userCharacterId: string | null,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  if (
+    userCharacterId === null ||
+    (typeof userCharacterId === 'string' && !userCharacterId.trim())
+  ) {
+    delete next.userCharacterId
+  } else if (typeof userCharacterId === 'string') {
+    next.userCharacterId = userCharacterId.trim()
+  }
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next))
+  return next
+}
+
+export async function updateConversationUserName(
+  conversationId: string,
+  userName: string | null,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  if (userName === null || (typeof userName === 'string' && !userName.trim())) {
+    delete next.userName
+  } else if (typeof userName === 'string') {
+    next.userName = userName.trim()
+  }
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next))
+  return next
 }
 
 export async function updateConversationCharacterBindings(
@@ -156,6 +238,55 @@ export async function updateConversationCharacterBindings(
     characterIds: cleaned,
     characterId: cleaned[0] ?? null,
     updatedAt: t,
+  }
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next))
+  return next
+}
+
+/** 对话级提示词预设：传 `null` 或空字符串则移除字段（回退全局预设） */
+export async function updateConversationPromptPresetId(
+  conversationId: string,
+  promptPresetId: string | null,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  const trimmed =
+    typeof promptPresetId === 'string' ? promptPresetId.trim() : ''
+  if (!trimmed) {
+    delete next.promptPresetId
+  } else {
+    next.promptPresetId = trimmed
+  }
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next))
+  return next
+}
+
+/** 对话级世界书 id 列表（占位；传 `[]` 清空） */
+export async function updateConversationLorebookIds(
+  conversationId: string,
+  lorebookIds: string[],
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const seen = new Set<string>()
+  const cleaned: string[] = []
+  for (const raw of lorebookIds) {
+    if (typeof raw !== 'string') continue
+    const id = raw.trim()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    cleaned.push(id)
+  }
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  if (cleaned.length === 0) {
+    delete next.lorebookIds
+  } else {
+    next.lorebookIds = cleaned
   }
   await writeConversationIndex(conversationId, next)
   await upsertChatListEntry(chatListEntryFromIndex(next))
@@ -219,7 +350,7 @@ export function conversationPromptPath(id: string): string {
 
 export function getPromptDebugMaxStored(idx: ConversationIndex | null): number {
   const n = idx?.promptDebug?.maxStored
-  if (typeof n === 'number' && Number.isInteger(n) && n >= 1 && n <= 200) {
+  if (typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 200) {
     return n
   }
   return DEFAULT_PROMPT_DEBUG_MAX
@@ -291,10 +422,12 @@ export async function appendChatPromptDebugEntry(
     messages: unknown
   },
 ): Promise<void> {
-  const msgs = validatePromptMessages(params.messages)
-  if (!msgs) return
   const idx = await readConversationIndex(conversationId)
   const max = getPromptDebugMaxStored(idx)
+  /** 索引 maxStored=0：不写新快照（中断/未配置亦同） */
+  if (max < 1) return
+  const msgs = validatePromptMessages(params.messages)
+  if (!msgs) return
   const file = await readChatPromptFile(conversationId)
   const filtered = file.entries.filter((e) => e.turnId !== params.turnId)
   filtered.push({
@@ -337,12 +470,12 @@ export async function updateConversationPromptDebugMax(
 ): Promise<ConversationIndex | null> {
   const idx = await readConversationIndex(conversationId)
   if (!idx) return null
-  const clamped = Math.min(200, Math.max(1, Math.floor(maxStored)))
+  const clamped = Math.min(200, Math.max(0, Math.floor(maxStored)))
   idx.promptDebug = { maxStored: clamped }
   idx.updatedAt = nowIso()
   await writeConversationIndex(conversationId, idx)
   const file = await readChatPromptFile(conversationId)
-  if (file.entries.length > clamped) {
+  if (clamped >= 1 && file.entries.length > clamped) {
     file.entries = file.entries.slice(-clamped)
     await writeFile(
       conversationPromptPath(conversationId),
@@ -355,12 +488,12 @@ export async function updateConversationPromptDebugMax(
 }
 
 async function ensureChatRoot(): Promise<void> {
-  await mkdir(CHATS_ROOT, { recursive: true })
+  await mkdir(getChatsRoot(), { recursive: true })
 }
 
 export async function readChatList(): Promise<ChatListFile> {
   try {
-    const raw = await readFile(CHAT_LIST_FILE, 'utf8')
+    const raw = await readFile(chatListFile(), 'utf8')
     const j = JSON.parse(raw) as ChatListFile
     if (!j || j.schemaVersion !== 1 || !Array.isArray(j.conversations)) {
       return { schemaVersion: 1, conversations: [] }
@@ -373,7 +506,7 @@ export async function readChatList(): Promise<ChatListFile> {
 
 async function writeChatList(data: ChatListFile): Promise<void> {
   await ensureChatRoot()
-  await writeFile(CHAT_LIST_FILE, JSON.stringify(data, null, 2), 'utf8')
+  await writeFile(chatListFile(), JSON.stringify(data, null, 2), 'utf8')
 }
 
 export async function upsertChatListEntry(entry: ChatListEntry): Promise<void> {
@@ -390,7 +523,7 @@ export async function upsertChatListEntry(entry: ChatListEntry): Promise<void> {
 }
 
 export function conversationDir(id: string): string {
-  return path.join(CHATS_ROOT, id)
+  return path.join(getChatsRoot(), id)
 }
 
 export function conversationIndexPath(id: string): string {
@@ -518,13 +651,73 @@ export async function saveFirstTurn(params: {
   await writeConversationIndex(conversationId, idx)
   await upsertChatListEntry(chatListEntryFromIndex(idx))
 
-  void appendChatPromptDebugEntry(conversationId, {
-    chunkName: CHUNK_NAME_FIRST,
-    turnId,
-    turnOrdinal: 0,
-    messages: debugPrompt ?? [],
-  })
+  /** 对话落盘成功后再写快照；无有效 messages 或索引关闭写入时不落盘 */
+  if (debugPrompt !== undefined) {
+    await appendChatPromptDebugEntry(conversationId, {
+      chunkName: CHUNK_NAME_FIRST,
+      turnId,
+      turnOrdinal: 0,
+      messages: debugPrompt,
+    })
+  }
 
+  return { index: idx, chunk }
+}
+
+/** 角色卡开场白：仅助手 receives，无用户正文；用于新建对话的 first_mes / alternate_greetings。 */
+export async function saveOpeningTurn(params: {
+  conversationId: string
+  receives: TurnReceive[]
+  activeReceiveIndex?: number
+}): Promise<{ index: ConversationIndex; chunk: ChunkFile } | null> {
+  const { conversationId, receives, activeReceiveIndex = 0 } = params
+  if (!receives.length) return null
+  let idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  if (idx.headChunkFile) {
+    return null
+  }
+
+  const turn: TurnRecord = {
+    turnId: randomUUID(),
+    turnOrdinal: 0,
+    send: { userText: '' },
+    receives: receives.map((r) => {
+      const rec: TurnReceive = { id: r.id || randomUUID(), content: r.content }
+      if (typeof r.reasoning === 'string' && r.reasoning.trim()) {
+        rec.reasoning = r.reasoning.trim()
+      }
+      if (r.runtime && typeof r.runtime === 'object') {
+        rec.runtime = r.runtime
+      }
+      return rec
+    }),
+    activeReceiveIndex: Math.min(
+      Math.max(0, activeReceiveIndex),
+      receives.length - 1,
+    ),
+    plugins: [],
+  }
+
+  const chunk: ChunkFile = {
+    schemaVersion: 1,
+    meta: {
+      chunkId: 'turn-000000-000099',
+      ordinalRange: { start: 0, end: 0 },
+      links: { previous: null, next: null, branches: [] },
+    },
+    turns: [turn],
+  }
+
+  await mkdir(conversationDir(conversationId), { recursive: true })
+  await writeChunkFile(conversationId, CHUNK_NAME_FIRST, chunk)
+
+  const t = nowIso()
+  idx.headChunkFile = CHUNK_NAME_FIRST
+  idx.tailChunkFile = CHUNK_NAME_FIRST
+  idx.updatedAt = t
+  await writeConversationIndex(conversationId, idx)
+  await upsertChatListEntry(chatListEntryFromIndex(idx))
   return { index: idx, chunk }
 }
 
@@ -582,12 +775,14 @@ export async function appendConversationTurn(params: {
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
   await upsertChatListEntry(chatListEntryFromIndex(idx))
-  void appendChatPromptDebugEntry(conversationId, {
-    chunkName,
-    turnId: turn.turnId,
-    turnOrdinal: turn.turnOrdinal,
-    messages: debugPrompt ?? [],
-  })
+  if (debugPrompt !== undefined) {
+    await appendChatPromptDebugEntry(conversationId, {
+      chunkName,
+      turnId: turn.turnId,
+      turnOrdinal: turn.turnOrdinal,
+      messages: debugPrompt,
+    })
+  }
   return true
 }
 
@@ -679,7 +874,7 @@ export async function updateTurnContentInTailChunk(
   await writeConversationIndex(conversationId, idx)
   await upsertChatListEntry(chatListEntryFromIndex(idx))
   if (debugPrompt !== undefined) {
-    void appendChatPromptDebugEntry(conversationId, {
+    await appendChatPromptDebugEntry(conversationId, {
       chunkName,
       turnId,
       turnOrdinal,

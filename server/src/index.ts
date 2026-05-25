@@ -1,7 +1,8 @@
 import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
 import Fastify from 'fastify'
-import { Readable } from 'node:stream'
+import { randomUUID } from 'node:crypto'
+import { Readable, Transform } from 'node:stream'
 import {
   assertValidPresets,
   readApiSettingsFromFile,
@@ -18,15 +19,22 @@ import {
   removeTurnAtOrdinalInTailChunk,
   appendConversationTurn,
   readChatPromptFile,
+  saveOpeningTurn,
   saveFirstTurn,
   updateConversationTitle,
   updateConversationCharacterBindings,
   updateConversationPromptDebugMax,
+  updateConversationPromptPresetId,
+  updateConversationLorebookIds,
+  updateConversationUserCharacterId,
+  updateConversationUserName,
   getTurnUserText,
   updateTurnContentInTailChunk,
   type TurnReceive,
 } from './chat-storage.js'
 import { ensureDataSkeleton } from './config.js'
+import { migrateDataLayoutIfNeeded } from './data-migrate.js'
+import { enterRequestUser, userIdFromRequest } from './user-context.js'
 import {
   assertValidPromptsPayload,
   readPromptsDocument,
@@ -39,6 +47,9 @@ import {
   writeApiKeysDocument,
   type ApiKeysDocument,
 } from './api-keys-file.js'
+import { buildConversationOutboundMessages } from './chat-assemble.js'
+import { persistTurnAfterModelReply } from './chat-persist-after-chat.js'
+import { parseSseDataLine } from './sse-assistant.js'
 import { isPngBuffer } from './character-png.js'
 import {
   cardFromNewCharacterForm,
@@ -68,7 +79,19 @@ interface ChatBody {
   baseUrl?: string
   apiKey: string
   model: string
-  messages: ChatMessage[]
+  /** 直传 messages；与 conversationId 模式二选一 */
+  messages?: ChatMessage[]
+  /**
+   * 会话模式：服务端读取尾块与绑定角色、按当前用户 prompts 数据组装 messages。
+   * 与 messages 二选一（优先于空 messages）。
+   */
+  conversationId?: string
+  userText?: string
+  promptTrigger?: string
+  /** 再生等：仅带尾块中 turnOrdinal 小于该值的历史 */
+  historyBeforeTurnOrdinalExclusive?: number | null
+  /** 再生落盘：向该 turnOrdinal 追加 receive（须与 historyBeforeTurnOrdinalExclusive 一致） */
+  regenerateTurnOrdinal?: number | null
   contextLength?: number | null
   maxTokens?: number | null
   stream?: boolean
@@ -195,6 +218,24 @@ function buildUpstreamPayload(body: ChatBody): Record<string, unknown> {
   return payload
 }
 
+function validateChatMessages(
+  messages: unknown,
+): { ok: true; msgs: ChatMessage[] } | { ok: false; error: string } {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return { ok: false, error: 'messages 必须为非空数组' }
+  }
+  for (const m of messages) {
+    if (
+      !m ||
+      typeof (m as ChatMessage).content !== 'string' ||
+      !['system', 'user', 'assistant'].includes((m as ChatMessage).role)
+    ) {
+      return { ok: false, error: 'messages 项须为 { role, content }' }
+    }
+  }
+  return { ok: true, msgs: messages as ChatMessage[] }
+}
+
 /** 角色卡 PNG 等 multipart 可能超过默认 1MB，需与 @fastify/multipart 的 fileSize 上限一致 */
 const app = Fastify({
   logger: true,
@@ -255,10 +296,18 @@ app.post<{ Body: CreateConvBody }>(
 
 interface PatchConvBody {
   title?: string
-  /** 调试：chat-prompt.json 保留条数上限，1～200 */
+  /** 调试：chat-prompt.json 保留条数上限，0～200；0 表示不写入新快照 */
   promptDebug?: { maxStored?: number }
   /** 会话绑定的多张角色卡 id，顺序即主槽、次槽…；传 [] 清空绑定 */
   characterIds?: string[]
+  /** 对话级提示词预设 id；传 `null` 或未设置且显式清除时用 null 移除（见 handler） */
+  promptPresetId?: string | null
+  /** 世界书 id 列表；传 [] 清空 */
+  lorebookIds?: string[]
+  /** 用户 persona 卡 id；仅用于 UI 回显，宏仍依赖 userName 快照 */
+  userCharacterId?: string | null
+  /** 宏 `{{user}}` 展示名；传 `null` 清除以使用默认「用户」 */
+  userName?: string | null
 }
 
 app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
@@ -276,12 +325,16 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       typeof pd === 'object' &&
       typeof (pd as { maxStored?: unknown }).maxStored === 'number'
     const hasCharIds = Array.isArray(b.characterIds)
-    if (!hasTitle && !hasPromptDebug && !hasCharIds) {
+    const hasPromptPreset = Object.prototype.hasOwnProperty.call(b, 'promptPresetId')
+    const hasLorebookIds = Array.isArray(b.lorebookIds)
+    const hasUserCharacterId = Object.prototype.hasOwnProperty.call(b, 'userCharacterId')
+    const hasUserName = Object.prototype.hasOwnProperty.call(b, 'userName')
+    if (!hasTitle && !hasPromptDebug && !hasCharIds && !hasPromptPreset && !hasLorebookIds && !hasUserCharacterId && !hasUserName) {
       return reply
         .status(400)
         .send({
           error:
-            '须提供 title、promptDebug.maxStored 和/或 characterIds（可为空数组）',
+            '须提供 title、promptDebug.maxStored、characterIds、promptPresetId、lorebookIds、userCharacterId 和/或 userName',
         })
     }
     let idx = await readConversationIndex(id)
@@ -306,6 +359,51 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       if (!next) return reply.status(404).send({ error: '会话不存在' })
       idx = next
     }
+    if (hasPromptPreset) {
+      const raw = b.promptPresetId
+      if (raw !== null && typeof raw !== 'string') {
+        return reply.status(400).send({ error: 'promptPresetId 须为字符串或 null' })
+      }
+      const next = await updateConversationPromptPresetId(
+        id,
+        raw === null ? null : (raw as string),
+      )
+      if (!next) return reply.status(404).send({ error: '会话不存在' })
+      idx = next
+    }
+    if (hasLorebookIds) {
+      const raw = b.lorebookIds as unknown[]
+      if (!raw.every((x) => typeof x === 'string')) {
+        return reply.status(400).send({ error: 'lorebookIds 须为字符串数组' })
+      }
+      const next = await updateConversationLorebookIds(id, raw)
+      if (!next) return reply.status(404).send({ error: '会话不存在' })
+      idx = next
+    }
+    if (hasUserCharacterId) {
+      const raw = b.userCharacterId
+      if (raw !== null && typeof raw !== 'string') {
+        return reply.status(400).send({ error: 'userCharacterId 须为字符串或 null' })
+      }
+      const next = await updateConversationUserCharacterId(
+        id,
+        raw === null ? null : (raw as string),
+      )
+      if (!next) return reply.status(404).send({ error: '会话不存在' })
+      idx = next
+    }
+    if (hasUserName) {
+      const raw = b.userName
+      if (raw !== null && typeof raw !== 'string') {
+        return reply.status(400).send({ error: 'userName 须为字符串或 null' })
+      }
+      const next = await updateConversationUserName(
+        id,
+        raw === null ? null : (raw as string),
+      )
+      if (!next) return reply.status(404).send({ error: '会话不存在' })
+      idx = next
+    }
     return { ok: true as const, index: idx }
   },
 )
@@ -326,6 +424,66 @@ app.delete<{ Params: { id: string } }>(
     } catch (e) {
       app.log.error(e)
       return reply.status(500).send({ error: '删除会话失败' })
+    }
+  },
+)
+
+interface OpeningTurnBody {
+  receives?: { id?: unknown; content?: unknown; reasoning?: unknown }[]
+  activeReceiveIndex?: number
+}
+
+app.post<{ Params: { id: string }; Body: OpeningTurnBody }>(
+  '/api/chat/conversations/:id/opening',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!uuidRe.test(id)) {
+      return reply.status(400).send({ error: '无效 id' })
+    }
+    const b = request.body ?? {}
+    if (!Array.isArray(b.receives) || b.receives.length === 0) {
+      return reply.status(400).send({ error: 'receives 须为非空数组' })
+    }
+    const receives: TurnReceive[] = []
+    for (const raw of b.receives) {
+      if (!raw || typeof raw !== 'object') {
+        return reply.status(400).send({ error: 'receives 项格式错误' })
+      }
+      const content = raw.content
+      if (typeof content !== 'string' || !content.trim()) {
+        return reply.status(400).send({ error: 'receives.content 须为非空字符串' })
+      }
+      const rec: TurnReceive = {
+        id: typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : randomUUID(),
+        content: content.trim(),
+      }
+      if (typeof raw.reasoning === 'string' && raw.reasoning.trim()) {
+        rec.reasoning = raw.reasoning.trim()
+      }
+      receives.push(rec)
+    }
+    const active =
+      typeof b.activeReceiveIndex === 'number' && Number.isInteger(b.activeReceiveIndex)
+        ? b.activeReceiveIndex
+        : 0
+    try {
+      const result = await saveOpeningTurn({
+        conversationId: id,
+        receives,
+        activeReceiveIndex: active,
+      })
+      if (!result) {
+        const idx = await readConversationIndex(id)
+        if (!idx) return reply.status(404).send({ error: '会话不存在' })
+        if (idx.headChunkFile) {
+          return reply.status(409).send({ error: '首条已落盘' })
+        }
+        return reply.status(500).send({ error: '开场落盘失败' })
+      }
+      return { ok: true as const, index: result.index }
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: '写入开场失败' })
     }
   },
 )
@@ -532,6 +690,40 @@ app.get<{ Params: { id: string } }>(
   },
 )
 
+interface AssembleMessagesBody {
+  userText?: string
+  promptTrigger?: string
+  historyBeforeTurnOrdinalExclusive?: number | null
+  contextLength?: number | null
+}
+
+app.post<{ Params: { id: string }; Body: AssembleMessagesBody }>(
+  '/api/chat/conversations/:id/assemble-messages',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!uuidRe.test(id)) {
+      return reply.status(400).send({ error: '无效 id' })
+    }
+    const b = request.body ?? {}
+    const promptsDoc = await readPromptsDocument()
+    if (!promptsDoc) {
+      return reply.status(500).send({ error: '提示词数据不可用' })
+    }
+    const built = await buildConversationOutboundMessages({
+      conversationId: id,
+      userText: typeof b.userText === 'string' ? b.userText : '',
+      promptTrigger: b.promptTrigger,
+      historyBeforeTurnOrdinalExclusive: b.historyBeforeTurnOrdinalExclusive,
+      contextLength: b.contextLength,
+      promptsDoc,
+    })
+    if ('error' in built) {
+      return reply.status(built.status).send({ error: built.error })
+    }
+    return built
+  },
+)
+
 interface AppendTurnBody {
   userText: string
   receives: { id: string; content: string; reasoning?: string }[]
@@ -694,7 +886,7 @@ app.put('/api/prompts', async (request, reply) => {
   }
   const savedAt = new Date().toISOString()
   const doc: PromptsDocument = {
-    version: 2,
+    version: 3,
     savedAt,
     activePresetId: validated.activePresetId,
     presets: validated.presets,
@@ -986,7 +1178,7 @@ app.post<{ Body: ModelsListBody }>('/api/models', async (request, reply) => {
 
 app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   const body = request.body ?? ({} as ChatBody)
-  const { apiKey, model, messages } = body
+  const { apiKey, model } = body
   const baseUrl = normalizeBaseUrl(body.baseUrl)
 
   if (!apiKey || typeof apiKey !== 'string') {
@@ -995,22 +1187,57 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   if (!model || typeof model !== 'string') {
     return reply.status(400).send({ error: '缺少 model' })
   }
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return reply.status(400).send({ error: 'messages 必须为非空数组' })
+
+  const convId =
+    typeof body.conversationId === 'string' ? body.conversationId.trim() : ''
+  const userText = typeof body.userText === 'string' ? body.userText : ''
+  let messages: ChatMessage[]
+  if (convId) {
+    const promptsDoc = await readPromptsDocument()
+    if (!promptsDoc) {
+      return reply.status(500).send({ error: '提示词数据不可用' })
+    }
+    const built = await buildConversationOutboundMessages({
+      conversationId: convId,
+      userText,
+      promptTrigger: body.promptTrigger,
+      historyBeforeTurnOrdinalExclusive: body.historyBeforeTurnOrdinalExclusive,
+      contextLength: body.contextLength,
+      promptsDoc,
+    })
+    if ('error' in built) {
+      return reply.status(built.status).send({ error: built.error })
+    }
+    messages = built.messages
+  } else {
+    const v = validateChatMessages(body.messages)
+    if (!v.ok) {
+      return reply.status(400).send({ error: v.error })
+    }
+    messages = v.msgs
   }
 
-  for (const m of messages) {
-    if (
-      !m ||
-      typeof m.content !== 'string' ||
-      !['system', 'user', 'assistant'].includes(m.role)
-    ) {
-      return reply.status(400).send({ error: 'messages 项须为 { role, content }' })
-    }
-  }
+  const regenOrdRaw = body.regenerateTurnOrdinal
+  const regenerateTurnOrdinal =
+    typeof regenOrdRaw === 'number' &&
+    Number.isInteger(regenOrdRaw) &&
+    regenOrdRaw >= 0
+      ? regenOrdRaw
+      : undefined
+
+  const persistParams =
+    convId && userText.trim()
+      ? {
+          conversationId: convId,
+          userText: userText.trim(),
+          model: model.trim() || undefined,
+          assembledMessages: messages,
+          regenerateTurnOrdinal,
+        }
+      : null
 
   const wantStream = Boolean(body.stream)
-  const payload = buildUpstreamPayload({ ...body, stream: wantStream })
+  const payload = buildUpstreamPayload({ ...body, messages, stream: wantStream })
   const url = `${baseUrl}/chat/completions`
 
   const upstream = await fetch(url, {
@@ -1040,7 +1267,50 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
     reply.header('Cache-Control', 'no-cache')
     reply.header('Connection', 'keep-alive')
     reply.header('X-Accel-Buffering', 'no')
-    const nodeStream = Readable.fromWeb(upstream.body as import('stream/web').ReadableStream)
+
+    let sseBuffer = ''
+    let accContent = ''
+    let accReasoning = ''
+
+    const tap = new Transform({
+      transform(chunk, _enc, cb) {
+        sseBuffer += chunk.toString('utf8')
+        const parts = sseBuffer.split('\n')
+        sseBuffer = parts.pop() ?? ''
+        for (const line of parts) {
+          const d = parseSseDataLine(line)
+          if (!d) continue
+          if (d.text) accContent += d.text
+          if (d.reasoning) accReasoning += d.reasoning
+        }
+        cb(null, chunk)
+      },
+      flush(cb) {
+        if (!persistParams || !accContent.trim()) {
+          cb()
+          return
+        }
+        void persistTurnAfterModelReply({
+          ...persistParams,
+          assistantContent: accContent,
+          assistantReasoning: accReasoning.trim() || undefined,
+        })
+          .then((persist) => {
+            if (!persist.ok) {
+              request.log.warn({ persist }, 'stream persist failed')
+            }
+            cb()
+          })
+          .catch((err) => {
+            request.log.error(err, 'stream persist error')
+            cb()
+          })
+      },
+    })
+
+    const nodeStream = Readable.fromWeb(
+      upstream.body as import('stream/web').ReadableStream,
+    ).pipe(tap)
     return reply.send(nodeStream)
   }
 
@@ -1058,20 +1328,39 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
     first && typeof first === 'object' && first !== null && 'message' in first
       ? (first as { message?: { role?: string; content?: string } }).message
       : undefined
-  const content = msg?.content ?? ''
+  const content = typeof msg?.content === 'string' ? msg.content : ''
   const reasoning = extractReasoningFromMessage(msg)
+
+  let persist: Awaited<ReturnType<typeof persistTurnAfterModelReply>> | undefined
+  if (persistParams && content.trim()) {
+    persist = await persistTurnAfterModelReply({
+      ...persistParams,
+      assistantContent: content,
+      assistantReasoning: reasoning,
+    })
+    if (!persist.ok) {
+      request.log.warn({ persist }, 'persist after chat failed')
+    }
+  }
 
   return reply.send({
     message: {
       role: (msg?.role as ChatRole) ?? 'assistant',
-      content: typeof content === 'string' ? content : '',
+      content,
       ...(reasoning ? { reasoning } : {}),
     },
+    ...(persist !== undefined ? { persist } : {}),
     raw: data,
   })
 })
 
+await migrateDataLayoutIfNeeded()
 ensureDataSkeleton()
+
+app.addHook('onRequest', (request, _reply, done) => {
+  enterRequestUser(userIdFromRequest(request))
+  done()
+})
 
 const port = Number(process.env.PORT) || 3399
 const host = process.env.HOST || '0.0.0.0'

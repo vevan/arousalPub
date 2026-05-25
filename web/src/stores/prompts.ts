@@ -19,7 +19,9 @@ export type PromptTrigger = 'normal' | 'continue' | 'swipe' | 'regenerate'
 /** 会话绑定角色卡槽位：正文由聊天侧注入，条目仅排序与启用 */
 export type PromptBindingSlot =
   | 'boundCharacterSystem'
+  | 'boundWorld'
   | 'boundCharacterPostHistory'
+  | 'boundUserInput'
 
 export interface PromptGroup {
   id: string
@@ -93,7 +95,13 @@ export interface PromptPreset {
 
 /** 可在提示词页维护条目列表的分组（其余为纯占位注入） */
 export function groupAllowsPromptEntries(kind: GroupKind): boolean {
-  return kind === 'normal' || kind === 'character' || kind === 'history'
+  return (
+    kind === 'normal' ||
+    kind === 'character' ||
+    kind === 'world' ||
+    kind === 'history' ||
+    kind === 'userInput'
+  )
 }
 
 interface PersistedState {
@@ -195,12 +203,18 @@ function makeBindingSlotEntry(
   }
 }
 
+function bindingSlotIsRequired(slot: PromptBindingSlot | undefined): boolean {
+  return slot === 'boundWorld' || slot === 'boundUserInput'
+}
+
 /**
- * 去掉旧版预设级开关、补全两条绑定槽位条目（并继承旧开关为条目的 enabled）。
+ * 去掉旧版预设级开关、补全绑定槽位条目（并继承旧开关为条目的 enabled）。
  */
 export function normalizePreset(p: PromptPreset): PromptPreset {
   const charG = p.groups.find((g) => g.kind === 'character')
+  const worldG = p.groups.find((g) => g.kind === 'world')
   const histG = p.groups.find((g) => g.kind === 'history')
+  const userInputG = p.groups.find((g) => g.kind === 'userInput')
   const raw = p as PromptPreset & {
     useBoundCharacterSystemPrompt?: boolean
     useBoundCharacterPostHistory?: boolean
@@ -214,7 +228,10 @@ export function normalizePreset(p: PromptPreset): PromptPreset {
     ...rest
   } = raw
 
-  let prompts = p.prompts.map((e) => ({ ...e }))
+  let prompts = p.prompts.map((e) => ({
+    ...e,
+    enabled: bindingSlotIsRequired(e.bindingSlot) ? true : e.enabled,
+  }))
 
   if (charG && !prompts.some((e) => e.bindingSlot === 'boundCharacterSystem')) {
     const maxO = prompts
@@ -223,6 +240,16 @@ export function normalizePreset(p: PromptPreset): PromptPreset {
     prompts.push(
       makeBindingSlotEntry(charG.id, 'boundCharacterSystem', maxO + 1, {
         enabled: sysOn,
+      }),
+    )
+  }
+  if (worldG && !prompts.some((e) => e.bindingSlot === 'boundWorld')) {
+    prompts = prompts.map((e) =>
+      e.groupId === worldG.id ? { ...e, order: e.order + 1 } : e,
+    )
+    prompts.push(
+      makeBindingSlotEntry(worldG.id, 'boundWorld', 0, {
+        id: 'binding-slot-world',
       }),
     )
   }
@@ -236,6 +263,19 @@ export function normalizePreset(p: PromptPreset): PromptPreset {
     prompts.push(
       makeBindingSlotEntry(histG.id, 'boundCharacterPostHistory', maxO + 1, {
         enabled: postOn,
+      }),
+    )
+  }
+  if (
+    userInputG &&
+    !prompts.some((e) => e.bindingSlot === 'boundUserInput')
+  ) {
+    prompts = prompts.map((e) =>
+      e.groupId === userInputG.id ? { ...e, order: e.order + 1 } : e,
+    )
+    prompts.push(
+      makeBindingSlotEntry(userInputG.id, 'boundUserInput', 0, {
+        id: 'binding-slot-user-input',
       }),
     )
   }
@@ -315,10 +355,22 @@ function buildDefaultPreset(): PromptPreset {
       { id: 'binding-slot-character-system' },
     ),
     makeBindingSlotEntry(
+      DEFAULT_GROUP_IDS.world,
+      'boundWorld',
+      0,
+      { id: 'binding-slot-world' },
+    ),
+    makeBindingSlotEntry(
       DEFAULT_GROUP_IDS.history,
       'boundCharacterPostHistory',
       0,
       { id: 'binding-slot-character-post-history' },
+    ),
+    makeBindingSlotEntry(
+      DEFAULT_GROUP_IDS.userInput,
+      'boundUserInput',
+      0,
+      { id: 'binding-slot-user-input' },
     ),
   ]
   return {
@@ -775,7 +827,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     }))
   }
 
-  /** 仅可删除 normal 分组（占位三种 kind 不可删） */
+  /** 仅可删除 normal 分组（角色/世界/历史/用户输出等占位 kind 不可删；前置、后置可删） */
   function deleteGroup(groupId: string): boolean {
     const target = activePreset.value.groups.find((g) => g.id === groupId)
     if (!target || target.kind !== 'normal') return false
@@ -841,8 +893,12 @@ export const usePromptsStore = defineStore('prompts', () => {
     const cur = activePreset.value.prompts.find((e) => e.id === id)
     let nextPatch = patch
     if (cur?.bindingSlot != null) {
-      nextPatch =
-        patch.enabled !== undefined ? { enabled: patch.enabled } : {}
+      if (bindingSlotIsRequired(cur.bindingSlot)) {
+        nextPatch = {}
+      } else {
+        nextPatch =
+          patch.enabled !== undefined ? { enabled: patch.enabled } : {}
+      }
     }
     patchActivePreset((p) => ({
       ...p,
@@ -911,6 +967,15 @@ export const usePromptsStore = defineStore('prompts', () => {
     if (
       moved.bindingSlot === 'boundCharacterPostHistory' &&
       targetGroup.kind !== 'history'
+    ) {
+      return
+    }
+    if (moved.bindingSlot === 'boundWorld' && targetGroup.kind !== 'world') {
+      return
+    }
+    if (
+      moved.bindingSlot === 'boundUserInput' &&
+      targetGroup.kind !== 'userInput'
     ) {
       return
     }
@@ -995,11 +1060,23 @@ export const usePromptsStore = defineStore('prompts', () => {
           return true
         }
         if (
+          e.bindingSlot === 'boundWorld' &&
+          (q.includes('world') || q.includes('lore') || q.includes('世界'))
+        ) {
+          return true
+        }
+        if (
           e.bindingSlot === 'boundCharacterPostHistory' &&
           (q.includes('post') ||
             q.includes('历史') ||
             q.includes('jailbreak') ||
             q.includes('后置'))
+        ) {
+          return true
+        }
+        if (
+          e.bindingSlot === 'boundUserInput' &&
+          (q.includes('user') || q.includes('input') || q.includes('用户'))
         ) {
           return true
         }

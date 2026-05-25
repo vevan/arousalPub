@@ -26,7 +26,7 @@ const apiKeysStore = useApiKeysStore()
 const localeStore = useLocaleStore()
 const { effective: appLocale } = storeToRefs(localeStore)
 
-const settingsPath = 'data/api-settings.json'
+const settingsPath = 'data/default-user/api-settings.json'
 const KEY_DIRECT = '__direct__'
 
 onMounted(() => {

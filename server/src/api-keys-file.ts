@@ -1,7 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { API_KEYS_PATH, DATA_DIR } from './config.js'
-
-export { API_KEYS_PATH }
+import { getApiKeysPath, getUserDataDir } from './config.js'
 
 export interface ApiKeyEntry {
   id: string
@@ -52,7 +50,7 @@ function normalizeDocument(o: unknown): ApiKeysDocument | null {
 
 export async function readApiKeysDocument(): Promise<ApiKeysDocument | null> {
   try {
-    const raw = await readFile(API_KEYS_PATH, 'utf8')
+    const raw = await readFile(getApiKeysPath(), 'utf8')
     const parsed: unknown = JSON.parse(raw)
     return normalizeDocument(parsed)
   } catch (e) {
@@ -65,8 +63,8 @@ export async function readApiKeysDocument(): Promise<ApiKeysDocument | null> {
 export async function writeApiKeysDocument(
   doc: ApiKeysDocument,
 ): Promise<void> {
-  await mkdir(DATA_DIR, { recursive: true })
-  await writeFile(API_KEYS_PATH, `${JSON.stringify(doc, null, 2)}\n`, 'utf8')
+  await mkdir(getUserDataDir(), { recursive: true })
+  await writeFile(getApiKeysPath(), `${JSON.stringify(doc, null, 2)}\n`, 'utf8')
 }
 
 export function assertValidApiKeysPayload(body: unknown): {

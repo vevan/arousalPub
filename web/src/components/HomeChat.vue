@@ -5,21 +5,37 @@ import {
 } from '@/utils/render-rich-message'
 import { useConnectionStore } from '@/stores/connection'
 import { usePreferencesStore } from '@/stores/preferences'
-import { usePromptsStore } from '@/stores/prompts'
 import type { PromptTrigger } from '@/stores/prompts'
-import { assemblePrompts, type ChatMessage } from '@/utils/assemble-prompts'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const props = defineProps<{
-  conversationId: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    conversationId: string
+    /** 对话级提示词预设 id；未设置或 null 时用全局激活预设组装 */
+    conversationPromptPresetId?: string | null
+    /** 已绑定角色 UUID 列表（顺序即主槽）；组装注入将后续使用 */
+    conversationCharacterIds?: string[]
+    /** 世界书 id 占位，供后续 lore 注入 */
+    conversationLorebookIds?: string[]
+    /** 会话内 `{{user}}` 快照名 */
+    conversationUserName?: string | null
+    /** 用户 persona 卡 id；仅用于头像回显 */
+    conversationUserCharacterId?: string | null
+  }>(),
+  {
+    conversationPromptPresetId: null,
+    conversationCharacterIds: () => [],
+    conversationLorebookIds: () => [],
+    conversationUserName: null,
+    conversationUserCharacterId: null,
+  },
+)
 
 const { t } = useI18n()
 const conn = useConnectionStore()
 const prefs = usePreferencesStore()
-const prompts = usePromptsStore()
 const { writeChatPromptSnapshot } = storeToRefs(prefs)
 
 interface ReceiveItem {
@@ -40,6 +56,8 @@ const userInput = ref('')
 const turns = ref<ChatTurnItem[]>([])
 const streamingText = ref('')
 const streamingReasoning = ref('')
+/** 已乐观展示用户消息、等待助手回复的轮次 ordinal */
+const pendingSendTurnOrdinal = ref<number | null>(null)
 const loading = ref(false)
 const errorText = ref('')
 const regeneratingTurnOrdinal = ref<number | null>(null)
@@ -77,6 +95,13 @@ async function scrollChatToBottom() {
   })
 }
 
+/** 对话区内最后一条可见的思维链（按 DOM 顺序，即最近一轮助手） */
+function lastReasoningChainInChat(): HTMLDetailsElement | null {
+  const chains = document.querySelectorAll('.chat-body details.reasoning-chain')
+  const last = chains[chains.length - 1]
+  return last instanceof HTMLDetailsElement ? last : null
+}
+
 /**
  * R 快捷键：切换鼠标 hover 所在 turn 的思维链；若不在 turn 上，切换最后一个 assistant turn 的思维链。
  * 输入框/可编辑区域聚焦时不拦截。
@@ -97,10 +122,7 @@ function onGlobalKeyR(e: KeyboardEvent) {
     '.turn--assistant:hover, .turn--assistant.is-hover',
   ) as HTMLElement | null
   const target =
-    hovered?.querySelector('details.reasoning-chain') ??
-    document.querySelector(
-      '.chat-body .turn--assistant:last-of-type details.reasoning-chain',
-    )
+    hovered?.querySelector('details.reasoning-chain') ?? lastReasoningChainInChat()
   if (target instanceof HTMLDetailsElement) {
     target.open = !target.open
     e.preventDefault()
@@ -109,7 +131,6 @@ function onGlobalKeyR(e: KeyboardEvent) {
 
 onMounted(() => {
   void scrollChatToBottom()
-  void prompts.loadFromServer()
   window.addEventListener('keydown', onGlobalKeyR)
 })
 onBeforeUnmount(() => {
@@ -137,7 +158,31 @@ function turnLabelN(turn: ChatTurnItem, listIndex: number): number {
   return listIndex + 1
 }
 
-const streamingTurnLabelN = computed(() => nextTurnOrdinal0() + 1)
+function isTurnAwaitingAssistant(turn: ChatTurnItem): boolean {
+  return pendingSendTurnOrdinal.value === turn.turnOrdinal
+}
+
+function isAssistantBubbleLoading(turn: ChatTurnItem): boolean {
+  return (
+    isTurnAwaitingAssistant(turn) ||
+    regeneratingTurnOrdinal.value === turn.turnOrdinal
+  )
+}
+
+/** 等待首 token / 非流式请求中：显示骨架而非空白或转圈 */
+function showAssistantSkeleton(turn: ChatTurnItem): boolean {
+  if (!isAssistantBubbleLoading(turn)) return false
+  if (conn.stream && streamingText.value.trim()) return false
+  return true
+}
+
+function isAssistantStreamingBubble(turn: ChatTurnItem): boolean {
+  return isAssistantBubbleLoading(turn) && conn.stream && !!streamingText.value.trim()
+}
+
+function isOpeningTurn(turn: ChatTurnItem): boolean {
+  return !turn.user.trim() && turn.receives.length > 0
+}
 
 function assistantText(turn: ChatTurnItem): string {
   const r = turn.receives[turn.activeReceiveIndex]
@@ -154,77 +199,71 @@ function assistantReasoning(turn: ChatTurnItem): string {
  * 与上游 chat/completions 对齐的多轮消息（仅正文，不含思维链）。
  * 支持 system，因为提示词预设里的条目可以是 system / user / assistant。
  */
-type DialogMessage = ChatMessage
-
-function orderedTurns(history: ChatTurnItem[]): ChatTurnItem[] {
-  return [...history].sort((a, b) => a.turnOrdinal - b.turnOrdinal)
+type DialogMessage = {
+  role: 'system' | 'user' | 'assistant'
+  content: string
 }
 
-/** 把已存档的 turns 折叠成 user/assistant 顺序消息流（作为 history 喂给组装器） */
-function turnsToHistoryMessages(history: ChatTurnItem[]): ChatMessage[] {
-  const out: ChatMessage[] = []
-  for (const turn of orderedTurns(history)) {
-    const u = turn.user.trim()
-    if (u.length > 0) {
-      out.push({ role: 'user', content: turn.user })
-    }
-    if (turn.receives.length > 0) {
-      const assistant = assistantText(turn)
-      if (assistant.length > 0) {
-        out.push({ role: 'assistant', content: assistant })
-      }
-    }
+interface ChatPersistPayload {
+  ok: boolean
+  error?: string
+}
+
+function applyPersistWarning(persist: ChatPersistPayload | undefined) {
+  if (persist && !persist.ok) {
+    errorText.value =
+      (typeof persist.error === 'string' && persist.error.trim()
+        ? persist.error
+        : t('chat.errors.persistAppendTurnFailed')
+      ).slice(0, 500)
   }
-  return out
-}
-
-/**
- * 通过当前激活的提示词预设组装本次发送给模型的消息。
- * - history：本轮之前已存档的对话
- * - userInput：本轮用户输入（user-input 占位组的内容）
- * - maxTokens：连接里的 contextLength；超出则从最旧的历史消息开始裁剪
- */
-function buildMessagesViaPreset(
-  history: ChatTurnItem[],
-  userInput: string,
-  trigger: PromptTrigger,
-): DialogMessage[] {
-  const result = assemblePrompts(prompts.activePreset, {
-    trigger,
-    history: turnsToHistoryMessages(history),
-    userInput,
-    maxTokens: conn.contextLength ?? undefined,
-  })
-  return result.messages
-}
-
-/** 当前输入作为最新一条 user（尚未写入 turns） */
-function messagesForSend(userText: string): DialogMessage[] {
-  return buildMessagesViaPreset(turns.value, userText, 'normal')
-}
-
-/** 再生某轮：仅含此前对话 + 该轮 user，不含该轮旧 assistant */
-function messagesForRegenerateAt(
-  listIndex: number,
-  trigger: PromptTrigger = 'regenerate',
-): DialogMessage[] {
-  const turn = turns.value[listIndex]
-  if (!turn) return []
-  return buildMessagesViaPreset(
-    turns.value.slice(0, listIndex),
-    turn.user,
-    trigger,
-  )
 }
 
 function replaceTurnAt(listIndex: number, next: ChatTurnItem) {
   turns.value = turns.value.map((t, i) => (i === listIndex ? next : t))
 }
 
-async function persistTurnToServer(
-  turn: ChatTurnItem,
-  debugPrompt?: DialogMessage[],
-): Promise<boolean> {
+function clearPendingSend() {
+  pendingSendTurnOrdinal.value = null
+  streamingText.value = ''
+  streamingReasoning.value = ''
+}
+
+function appendPendingUserTurn(userText: string, ord: number) {
+  turns.value = [
+    ...turns.value,
+    {
+      user: userText,
+      receives: [],
+      activeReceiveIndex: 0,
+      turnOrdinal: ord,
+    },
+  ]
+  userInput.value = ''
+  pendingSendTurnOrdinal.value = ord
+  void scrollChatToBottom()
+}
+
+function rollbackPendingUserTurn(ord: number, restoreUserText?: string) {
+  turns.value = turns.value.filter((t) => t.turnOrdinal !== ord)
+  clearPendingSend()
+  if (restoreUserText) userInput.value = restoreUserText
+}
+
+function finalizePendingTurn(ord: number, receive: ReceiveItem) {
+  const idx = turns.value.findIndex((t) => t.turnOrdinal === ord)
+  if (idx >= 0) {
+    const cur = turns.value[idx]
+    replaceTurnAt(idx, {
+      ...cur,
+      receives: [receive],
+      activeReceiveIndex: 0,
+    })
+  }
+  clearPendingSend()
+}
+
+async function persistTurnToServer(turn: ChatTurnItem): Promise<boolean> {
   try {
     const res = await fetch(
       `/api/chat/conversations/${props.conversationId}/turns/${turn.turnOrdinal}`,
@@ -235,7 +274,6 @@ async function persistTurnToServer(
           userText: turn.user,
           receives: turn.receives,
           activeReceiveIndex: turn.activeReceiveIndex,
-          ...(debugPrompt !== undefined ? { debugPrompt } : {}),
         }),
       },
     )
@@ -324,8 +362,7 @@ watch(
   () => {
     turns.value = []
     userInput.value = ''
-    streamingText.value = ''
-    streamingReasoning.value = ''
+    clearPendingSend()
     errorText.value = ''
     editingTurnOrdinal.value = null
     editingSide.value = null
@@ -335,7 +372,12 @@ watch(
   { immediate: true },
 )
 
-function buildRequestBody(messages: DialogMessage[]) {
+function buildConversationChatRequestBody(params: {
+  userText: string
+  promptTrigger: PromptTrigger
+  historyBeforeTurnOrdinalExclusive?: number
+  regenerateTurnOrdinal?: number
+}) {
   let customParams: Record<string, unknown> | undefined
   if (conn.customParamsJson.trim()) {
     customParams = conn.parseCustomParams()
@@ -346,7 +388,18 @@ function buildRequestBody(messages: DialogMessage[]) {
     baseUrl: conn.baseUrl.trim() || undefined,
     apiKey: conn.apiKey.trim(),
     model: conn.model.trim(),
-    messages,
+    conversationId: props.conversationId,
+    userText: params.userText,
+    promptTrigger: params.promptTrigger,
+    ...(params.historyBeforeTurnOrdinalExclusive !== undefined
+      ? {
+          historyBeforeTurnOrdinalExclusive:
+            params.historyBeforeTurnOrdinalExclusive,
+        }
+      : {}),
+    ...(params.regenerateTurnOrdinal !== undefined
+      ? { regenerateTurnOrdinal: params.regenerateTurnOrdinal }
+      : {}),
     stream: conn.stream,
     contextLength: conn.contextLength ?? undefined,
     maxTokens: conn.maxTokens ?? undefined,
@@ -414,92 +467,20 @@ async function readSseStream(
   }
 }
 
-async function persistFirstTurnIfNeeded(
-  userText: string,
-  assistantText: string,
-  assistantReasoning: string | undefined,
-  debugPrompt: DialogMessage[],
-) {
-  try {
-    const res = await fetch(
-      `/api/chat/conversations/${props.conversationId}/first-turn`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userContent: userText,
-          assistantContent: assistantText,
-          assistantReasoning:
-            assistantReasoning?.trim() ? assistantReasoning.trim() : undefined,
-          model: conn.model.trim() || undefined,
-          ...(writeChatPromptSnapshot.value ? { debugPrompt } : {}),
-        }),
-      },
-    )
-    if (!res.ok && res.status !== 409) {
-      const text = await res.text()
-      let msg = text
-      try {
-        const j = JSON.parse(text) as { error?: string }
-        msg = j.error || text
-      } catch {
-        /* not JSON */
-      }
-      errorText.value =
-        msg.slice(0, 500) || t('chat.errors.persistFirstTurnFailed')
-    }
-  } catch {
-    errorText.value = t('chat.errors.persistFirstTurnFailed')
-  }
-}
-
-async function persistAppendTurn(
-  turn: ChatTurnItem,
-  debugPrompt: DialogMessage[],
-): Promise<void> {
-  try {
-    const res = await fetch(
-      `/api/chat/conversations/${props.conversationId}/append-turn`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userText: turn.user,
-          receives: turn.receives.map((r) => ({
-            id: r.id,
-            content: r.content,
-            ...(r.reasoning?.trim() ? { reasoning: r.reasoning.trim() } : {}),
-          })),
-          activeReceiveIndex: turn.activeReceiveIndex,
-          model: conn.model.trim() || undefined,
-          ...(writeChatPromptSnapshot.value ? { debugPrompt } : {}),
-        }),
-      },
-    )
-    if (!res.ok) {
-      const text = await res.text()
-      let msg = text
-      try {
-        const j = JSON.parse(text) as { error?: string }
-        msg = j.error || text
-      } catch {
-        /* not JSON */
-      }
-      errorText.value =
-        msg.slice(0, 500) || t('chat.errors.persistAppendTurnFailed')
-    }
-  } catch {
-    errorText.value = t('chat.errors.persistAppendTurnFailed')
-  }
-}
-
-async function runChatRequest(
-  messages: DialogMessage[],
-): Promise<{ content: string; reasoning?: string }> {
+async function runChatRequest(params: {
+  userText: string
+  promptTrigger: PromptTrigger
+  historyBeforeTurnOrdinalExclusive?: number
+  regenerateTurnOrdinal?: number
+}): Promise<{
+  content: string
+  reasoning?: string
+  persist?: ChatPersistPayload
+}> {
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(buildRequestBody(messages)),
+    body: JSON.stringify(buildConversationChatRequestBody(params)),
   })
 
   if (!res.ok) {
@@ -531,13 +512,14 @@ async function runChatRequest(
 
   const data = (await res.json()) as {
     message?: { content?: string; reasoning?: string; reasoning_content?: string }
+    persist?: ChatPersistPayload
   }
   const msg = data.message
   const content = typeof msg?.content === 'string' ? msg.content : ''
   const rawR = msg?.reasoning ?? msg?.reasoning_content
   const reasoning =
     typeof rawR === 'string' && rawR.trim() ? rawR.trim() : undefined
-  return { content, reasoning }
+  return { content, reasoning, persist: data.persist }
 }
 
 function onComposerKeydown(e: KeyboardEvent) {
@@ -548,32 +530,31 @@ function onComposerKeydown(e: KeyboardEvent) {
 
 async function send() {
   errorText.value = ''
-  streamingText.value = ''
-  streamingReasoning.value = ''
   const userText = userInput.value.trim()
+  try {
+    if (conn.customParamsJson.trim()) {
+      conn.parseCustomParams()
+    }
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.errors.invalidCustomJson')
+    return
+  }
+
+  const ord = nextTurnOrdinal0()
+  appendPendingUserTurn(userText, ord)
   loading.value = true
   try {
-    try {
-      if (conn.customParamsJson.trim()) {
-        conn.parseCustomParams()
-      }
-    } catch (e) {
-      errorText.value =
-        e instanceof Error ? e.message : t('chat.errors.invalidCustomJson')
-      return
-    }
-
-    const priorLen = turns.value.length
-    const ord = nextTurnOrdinal0()
-    const debugPrompt = messagesForSend(userText)
-
     if (conn.stream) {
-      streamingText.value = ''
-      streamingReasoning.value = ''
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildRequestBody(messagesForSend(userText))),
+        body: JSON.stringify(
+          buildConversationChatRequestBody({
+            userText,
+            promptTrigger: 'normal',
+          }),
+        ),
       })
       if (!res.ok) {
         const text = await res.text()
@@ -587,6 +568,7 @@ async function send() {
         errorText.value =
           msg.slice(0, 2000) ||
           t('chat.errors.requestFailedStatus', { status: String(res.status) })
+        rollbackPendingUserTurn(ord, userText)
         return
       }
       const ct = res.headers.get('content-type') ?? ''
@@ -606,74 +588,41 @@ async function send() {
       } else {
         const data = (await res.json()) as {
           message?: { content?: string; reasoning?: string; reasoning_content?: string }
+          persist?: ChatPersistPayload
         }
         assistantOut = data.message?.content ?? ''
         const rawR = data.message?.reasoning ?? data.message?.reasoning_content
         reasoningOut =
           typeof rawR === 'string' && rawR.trim() ? rawR.trim() : undefined
+        applyPersistWarning(data.persist)
       }
-      streamingText.value = ''
-      streamingReasoning.value = ''
-      const recId = crypto.randomUUID()
       const receive: ReceiveItem = {
-        id: recId,
+        id: crypto.randomUUID(),
         content: assistantOut,
         ...(reasoningOut ? { reasoning: reasoningOut } : {}),
       }
-      const newTurn: ChatTurnItem = {
-        user: userText,
-        receives: [receive],
-        activeReceiveIndex: 0,
-        turnOrdinal: ord,
-      }
-      turns.value = [...turns.value, newTurn]
-      userInput.value = ''
+      finalizePendingTurn(ord, receive)
       if (assistantOut.trim()) {
-        if (priorLen === 0) {
-          await persistFirstTurnIfNeeded(
-            userText,
-            assistantOut,
-            reasoningOut,
-            debugPrompt,
-          )
-          await loadMessages()
-        } else {
-          await persistAppendTurn(newTurn, debugPrompt)
-        }
+        await loadMessages()
       }
       return
     }
 
-    const { content: assistantOut, reasoning: reasoningOut } =
-      await runChatRequest(debugPrompt)
+    const { content: assistantOut, reasoning: reasoningOut, persist } =
+      await runChatRequest({ userText, promptTrigger: 'normal' })
+    applyPersistWarning(persist)
     const receive: ReceiveItem = {
       id: crypto.randomUUID(),
       content: assistantOut,
       ...(reasoningOut ? { reasoning: reasoningOut } : {}),
     }
-    const newTurn: ChatTurnItem = {
-      user: userText,
-      receives: [receive],
-      activeReceiveIndex: 0,
-      turnOrdinal: ord,
-    }
-    turns.value = [...turns.value, newTurn]
-    userInput.value = ''
+    finalizePendingTurn(ord, receive)
 
     if (assistantOut.trim()) {
-      if (priorLen === 0) {
-        await persistFirstTurnIfNeeded(
-          userText,
-          assistantOut,
-          reasoningOut,
-          debugPrompt,
-        )
-        await loadMessages()
-      } else {
-        await persistAppendTurn(newTurn, debugPrompt)
-      }
+      await loadMessages()
     }
   } catch (e) {
+    rollbackPendingUserTurn(ord, userText)
     errorText.value = e instanceof Error ? e.message : t('chat.errors.network')
   } finally {
     loading.value = false
@@ -695,6 +644,12 @@ function slideAssistant(listIndex: number, direction: 'left' | 'right') {
   }
 
   if (a === len - 1) {
+    if (isOpeningTurn(turn)) {
+      const next = { ...turn, activeReceiveIndex: 0 }
+      replaceTurnAt(listIndex, next)
+      void persistTurnToServer(next)
+      return
+    }
     void regenerateAssistant(listIndex, 'swipe')
     return
   }
@@ -711,6 +666,8 @@ async function regenerateAssistant(
   if (!turn || !turn.user.trim()) return
   if (regeneratingTurnOrdinal.value !== null) return
   regeneratingTurnOrdinal.value = turn.turnOrdinal
+  streamingText.value = ''
+  streamingReasoning.value = ''
   errorText.value = ''
   try {
     try {
@@ -723,15 +680,20 @@ async function regenerateAssistant(
       return
     }
 
-    const regenMessagesSnapshot = messagesForRegenerateAt(listIndex, trigger)
-
     let assistantOut = ''
     let reasoningOut: string | undefined
     if (conn.stream) {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildRequestBody(regenMessagesSnapshot)),
+        body: JSON.stringify(
+          buildConversationChatRequestBody({
+            userText: turn.user,
+            promptTrigger: trigger,
+            historyBeforeTurnOrdinalExclusive: turn.turnOrdinal,
+            regenerateTurnOrdinal: turn.turnOrdinal,
+          }),
+        ),
       })
       if (!res.ok) {
         const text = await res.text()
@@ -749,28 +711,41 @@ async function regenerateAssistant(
       }
       const ct = res.headers.get('content-type') ?? ''
       if (ct.includes('text/event-stream') && res.body) {
-        let acc = ''
         let accR = ''
         await readSseStream(res.body, (d) => {
-          if (d.text) acc += d.text
-          if (d.reasoning) accR += d.reasoning
+          if (d.text) streamingText.value += d.text
+          if (d.reasoning) {
+            accR += d.reasoning
+            streamingReasoning.value = accR
+          }
         })
-        assistantOut = acc
+        assistantOut = streamingText.value
         reasoningOut = accR.trim() || undefined
       } else {
         const data = (await res.json()) as {
           message?: { content?: string; reasoning?: string; reasoning_content?: string }
+          persist?: ChatPersistPayload
         }
         assistantOut = data.message?.content ?? ''
         const rawR = data.message?.reasoning ?? data.message?.reasoning_content
         reasoningOut =
           typeof rawR === 'string' && rawR.trim() ? rawR.trim() : undefined
+        applyPersistWarning(data.persist)
       }
     } else {
-      const r = await runChatRequest(regenMessagesSnapshot)
+      const r = await runChatRequest({
+        userText: turn.user,
+        promptTrigger: trigger,
+        historyBeforeTurnOrdinalExclusive: turn.turnOrdinal,
+        regenerateTurnOrdinal: turn.turnOrdinal,
+      })
       assistantOut = r.content
       reasoningOut = r.reasoning
+      applyPersistWarning(r.persist)
     }
+
+    streamingText.value = ''
+    streamingReasoning.value = ''
 
     const cur = turns.value[listIndex]
     if (!cur) return
@@ -785,17 +760,15 @@ async function regenerateAssistant(
       activeReceiveIndex: cur.receives.length,
     }
     replaceTurnAt(listIndex, next)
-    const ok = await persistTurnToServer(
-      next,
-      writeChatPromptSnapshot.value ? regenMessagesSnapshot : undefined,
-    )
-    if (!ok) {
-      /* 仅本地会话或未落盘轮次 */
+    if (assistantOut.trim()) {
+      await loadMessages()
     }
   } catch (e) {
     errorText.value = e instanceof Error ? e.message : t('chat.errors.network')
   } finally {
     regeneratingTurnOrdinal.value = null
+    streamingText.value = ''
+    streamingReasoning.value = ''
   }
 }
 
@@ -928,7 +901,8 @@ const deleteDialogMessage = computed(() => {
 
 /** 仅最后一轮助手回复显示 swipe；流式进行中不显示（当前最后一条尚未定稿） */
 function showAssistantSwipeFooter(turn: ChatTurnItem, listIndex: number): boolean {
-  if (streamingText.value) return false
+  if (pendingSendTurnOrdinal.value !== null) return false
+  if (regeneratingTurnOrdinal.value !== null) return false
   if (listIndex !== turns.value.length - 1) return false
   if (turn.receives.length === 0) return false
   if (
@@ -954,8 +928,26 @@ const turnPromptError = ref('')
 const turnPromptDisplay = ref('')
 const turnPromptIsEmpty = ref(false)
 
+const assistantDisplayName = ref('')
+
+const userDisplayName = computed(() => {
+  const n = props.conversationUserName?.trim()
+  return n || t('chat.userBrand')
+})
+
+const assistantRoleName = computed(() => {
+  const n = assistantDisplayName.value.trim()
+  return n || t('chat.assistantBrand')
+})
+
+const userAvatarLetter = computed(() => {
+  const m = userDisplayName.value
+  const ch = m.replace(/[^a-zA-Z\u4e00-\u9fa5]/g, '').charAt(0)
+  return ch ? ch.toUpperCase() : 'Y'
+})
+
 const assistantAvatarLetter = computed(() => {
-  const m = conn.alias.trim() || conn.model.trim()
+  const m = assistantRoleName.value || conn.alias.trim() || conn.model.trim()
   if (!m) return 'N'
   const ch = m.replace(/[^a-zA-Z\u4e00-\u9fa5]/g, '').charAt(0)
   return ch ? ch.toUpperCase() : 'N'
@@ -965,6 +957,40 @@ const turnAvatarUrls = ref<Record<'user' | 'assistant', string | null>>({
   user: null,
   assistant: null,
 })
+
+function characterImageUrl(id: string | null | undefined): string | null {
+  const clean = typeof id === 'string' ? id.trim() : ''
+  return clean ? `/api/characters/${clean}/image` : null
+}
+
+async function loadPrimaryAssistantName(id: string | null | undefined) {
+  const clean = typeof id === 'string' ? id.trim() : ''
+  assistantDisplayName.value = ''
+  if (!clean) return
+  try {
+    const res = await fetch(`/api/characters/${clean}`)
+    if (!res.ok) return
+    const doc = (await res.json()) as { card?: Record<string, unknown> }
+    const name = doc.card?.name
+    assistantDisplayName.value =
+      typeof name === 'string' && name.trim() ? name.trim() : ''
+  } catch {
+    /* 卡可能已删除；回退到默认助手名 */
+  }
+}
+
+watch(
+  () => [props.conversationUserCharacterId, props.conversationCharacterIds] as const,
+  ([userId, charIds]) => {
+    const primaryId = Array.isArray(charIds) ? charIds[0] : undefined
+    turnAvatarUrls.value = {
+      user: characterImageUrl(userId),
+      assistant: characterImageUrl(primaryId),
+    }
+    void loadPrimaryAssistantName(primaryId)
+  },
+  { immediate: true, deep: true },
+)
 
 const copiedTurnKey = ref<string | null>(null)
 let copiedTimer: ReturnType<typeof setTimeout> | null = null
@@ -1048,14 +1074,17 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
         </div>
 
         <!-- User turn -->
-        <div class="turn turn--user">
+        <div
+          v-if="!isOpeningTurn(turn)"
+          class="turn turn--user"
+        >
           <div class="turn-avatar avatar avatar--user" aria-hidden="true">
             <img v-if="turnAvatarUrls.user" :src="turnAvatarUrls.user" alt="" />
-            <span v-else>Y</span>
+            <span v-else>{{ userAvatarLetter }}</span>
           </div>
           <div class="turn-role turn-role--user">
             <span class="turn-role__label">
-              {{ $t('chat.userBrand') }}
+              {{ userDisplayName }}
               <span class="meta">{{ $t('chat.turnLabel', { n: turnLabelN(turn, i) }) }}</span>
             </span>
             <div class="plugin-slots" data-plugin-slot="user-turn">
@@ -1130,7 +1159,7 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
             <button
               type="button"
               class="turn-toolbar__btn"
-              :disabled="regeneratingTurnOrdinal !== null"
+              :disabled="regeneratingTurnOrdinal !== null || isTurnAwaitingAssistant(turn)"
               :data-tt="$t('chat.edit')"
               :aria-label="$t('chat.edit')"
               @click="openEditUser(turn)"
@@ -1150,7 +1179,7 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
             <button
               type="button"
               class="turn-toolbar__btn turn-toolbar__btn--danger"
-              :disabled="regeneratingTurnOrdinal !== null"
+              :disabled="regeneratingTurnOrdinal !== null || isTurnAwaitingAssistant(turn)"
               :data-tt="$t('chat.delete')"
               :aria-label="$t('chat.delete')"
               @click="requestDeleteWholeTurnFromUser(i)"
@@ -1168,17 +1197,24 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
           </div>
           <div class="turn-role turn-role--assistant">
             <span class="turn-role__label">
-              {{ $t('chat.assistantBrand') }}
+              {{ assistantRoleName }}
               <span class="meta">
                 {{ $t('chat.turnLabel', { n: turnLabelN(turn, i) }) }}
                 <template v-if="conn.model.trim()"> · {{ conn.model.trim() }}</template>
+                <template v-if="isAssistantStreamingBubble(turn)">
+                  {{ $t('chat.streamingSuffix') }}
+                </template>
               </span>
             </span>
             <div class="plugin-slots" data-plugin-slot="assistant-turn">
               <button
                 type="button"
                 class="plugin-slot"
-                :class="{ 'is-filled': conn.showReasoningChain && assistantReasoning(turn).length > 0 }"
+                :class="{
+                  'is-filled':
+                    (conn.showReasoningChain && assistantReasoning(turn).length > 0) ||
+                    (isAssistantBubbleLoading(turn) && !!streamingReasoning),
+                }"
                 :data-tt="$t('chat.pluginIndicatorReasoning')"
                 :aria-label="$t('chat.pluginIndicatorReasoning')"
               >
@@ -1190,7 +1226,7 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
               <button
                 type="button"
                 class="plugin-slot"
-                :class="{ 'is-filled': conn.stream }"
+                :class="{ 'is-filled': isAssistantStreamingBubble(turn) }"
                 :data-tt="$t('chat.pluginIndicatorStream')"
                 :aria-label="$t('chat.pluginIndicatorStream')"
               >
@@ -1225,7 +1261,45 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
           </div>
 
           <details
-            v-if="conn.showReasoningChain && assistantReasoning(turn).length > 0 && !(editingTurnOrdinal === turn.turnOrdinal && editingSide === 'assistant')"
+            v-if="
+              conn.showReasoningChain &&
+              isAssistantBubbleLoading(turn) &&
+              streamingReasoning &&
+              !(editingTurnOrdinal === turn.turnOrdinal && editingSide === 'assistant')
+            "
+            class="reasoning-chain"
+          >
+            <summary class="reasoning-chain__summary">
+              <span class="reasoning-chain__caret">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <polyline points="9 6 15 12 9 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+              <span class="reasoning-chain__title">
+                {{ $t('chat.reasoningSummary') }}
+                <span class="reasoning-chain__meta">
+                  {{ $t('chat.reasoningCharsMeta', { n: reasoningCharsCount(streamingReasoning) }) }}
+                </span>
+              </span>
+              <span class="reasoning-chain__hint">
+                <span class="reasoning-chain__hint-expand">{{ $t('chat.expand') }}</span>
+                <span class="reasoning-chain__hint-collapse">{{ $t('chat.collapse') }}</span>
+                <kbd>{{ $t('chat.shortcutKey') }}</kbd>
+              </span>
+            </summary>
+            <div
+              class="reasoning-chain__body chat-rich-text"
+              v-html="renderReasoningMarkdownToHtml(streamingReasoning)"
+            />
+          </details>
+
+          <details
+            v-if="
+              conn.showReasoningChain &&
+              assistantReasoning(turn).length > 0 &&
+              !isAssistantBubbleLoading(turn) &&
+              !(editingTurnOrdinal === turn.turnOrdinal && editingSide === 'assistant')
+            "
             class="reasoning-chain"
           >
             <summary class="reasoning-chain__summary">
@@ -1254,7 +1328,9 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 
           <div
             class="turn-bubble turn-bubble--assistant position-relative"
-            :class="{ 'turn-bubble--busy': regeneratingTurnOrdinal === turn.turnOrdinal }"
+            :class="{
+              'turn-bubble--streaming': isAssistantStreamingBubble(turn),
+            }"
           >
             <template v-if="editingTurnOrdinal === turn.turnOrdinal && editingSide === 'assistant'">
               <v-textarea
@@ -1276,6 +1352,19 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
                 </v-btn>
               </div>
             </template>
+            <template v-else-if="isAssistantBubbleLoading(turn)">
+              <div
+                v-if="isAssistantStreamingBubble(turn)"
+                class="chat-rich-text"
+                v-html="renderRichMessageToHtml(streamingText)"
+              />
+              <v-skeleton-loader
+                v-else
+                type="paragraph"
+                class="assistant-bubble-skeleton"
+                :aria-label="$t('chat.assistantLoading')"
+              />
+            </template>
             <template v-else>
               <div
                 class="chat-rich-text"
@@ -1283,17 +1372,13 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
               />
             </template>
 
-            <v-overlay
-              v-if="regeneratingTurnOrdinal === turn.turnOrdinal"
-              contained
-              class="assistant-regen-overlay align-center justify-center"
-              scrim="rgba(0,0,0,0.25)"
-            >
-              <v-progress-circular indeterminate size="28" width="2" />
-            </v-overlay>
+
           </div>
 
-          <div class="turn-toolbar turn-toolbar--assistant">
+          <div
+            v-if="!isAssistantBubbleLoading(turn)"
+            class="turn-toolbar turn-toolbar--assistant"
+          >
             <button
               type="button"
               class="turn-toolbar__btn"
@@ -1384,87 +1469,9 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
       </div>
     </template>
 
-    <!-- Streaming · 流式输出占位 -->
-    <div
-      v-if="streamingText"
-      class="turn-block"
-    >
-      <div class="turn-divider" role="separator">
-        <span class="turn-divider__line" />
-        <span class="turn-divider__ornament">❦</span>
-        <span class="turn-divider__label">
-          {{ $t('chat.turnLabel', { n: streamingTurnLabelN }) }}
-        </span>
-        <span class="turn-divider__ornament">❦</span>
-        <span class="turn-divider__line" />
-      </div>
-      <div class="turn turn--assistant">
-        <div class="turn-avatar avatar avatar--assistant" aria-hidden="true">
-          <span>{{ assistantAvatarLetter }}</span>
-        </div>
-        <div class="turn-role turn-role--assistant">
-          <span class="turn-role__label">
-            {{ $t('chat.assistantBrand') }}
-            <span class="meta">
-              {{ $t('chat.turnLabel', { n: streamingTurnLabelN }) }}
-              {{ $t('chat.streamingSuffix') }}
-            </span>
-          </span>
-          <div class="plugin-slots" data-plugin-slot="assistant-streaming">
-            <button
-              type="button"
-              class="plugin-slot is-filled"
-              :data-tt="$t('chat.pluginIndicatorStream')"
-              :aria-label="$t('chat.pluginIndicatorStream')"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <details
-          v-if="conn.showReasoningChain && streamingReasoning"
-          class="reasoning-chain"
-          open
-        >
-          <summary class="reasoning-chain__summary">
-            <span class="reasoning-chain__caret">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <polyline points="9 6 15 12 9 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-            </span>
-            <span class="reasoning-chain__title">
-              {{ $t('chat.reasoningSummary') }}
-              <span class="reasoning-chain__meta">
-                {{ $t('chat.reasoningCharsMeta', { n: reasoningCharsCount(streamingReasoning) }) }}
-              </span>
-            </span>
-            <span class="reasoning-chain__hint">
-              <span class="reasoning-chain__hint-expand">{{ $t('chat.expand') }}</span>
-              <span class="reasoning-chain__hint-collapse">{{ $t('chat.collapse') }}</span>
-              <kbd>{{ $t('chat.shortcutKey') }}</kbd>
-            </span>
-          </summary>
-          <div
-            class="reasoning-chain__body chat-rich-text"
-            v-html="renderReasoningMarkdownToHtml(streamingReasoning)"
-          />
-        </details>
-
-        <div class="turn-bubble turn-bubble--assistant turn-bubble--streaming">
-          <div
-            class="chat-rich-text"
-            v-html="renderRichMessageToHtml(streamingText)"
-          />
-        </div>
-      </div>
-    </div>
 
     <div
-      v-if="!turns.length && !streamingText && !errorText"
+      v-if="!turns.length && !errorText"
       class="chat-empty"
     >
       <div class="chat-empty__ornament">❦</div>
@@ -1878,8 +1885,13 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
 .turn-bubble--streaming {
   border-style: dashed;
 }
-.turn-bubble--busy {
-  min-height: 4rem;
+.assistant-bubble-skeleton {
+  background: transparent;
+  padding: 0;
+  margin: 0;
+}
+.assistant-bubble-skeleton :deep(.v-skeleton-loader__bone) {
+  margin-block: 0.375rem;
 }
 .turn-bubble--editing {
   background: rgb(var(--v-theme-surface-bright));
@@ -1901,9 +1913,6 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
   color: inherit;
 }
 
-.assistant-regen-overlay {
-  border-radius: var(--radius);
-}
 
 /* ========== Toolbar · icon-only + tooltip ========== */
 .turn-toolbar {
@@ -1988,7 +1997,7 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
   padding: 0.1875rem 0.3125rem;
   background: rgb(var(--v-theme-surface-light));
   border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.10);
-  border-radius: 50%;
+  border-radius: var(--radius-sm);
   color: rgba(var(--v-theme-on-surface), 0.55);
   font: 500 0.6875rem var(--font-mono);
   letter-spacing: 0.04em;

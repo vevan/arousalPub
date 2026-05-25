@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { API_SETTINGS_PATH, DATA_DIR } from './config.js'
+import { getApiSettingsPath, getUserDataDir } from './config.js'
 
-export { API_SETTINGS_PATH }
+export function getApiSettingsPathForUser(): string {
+  return getApiSettingsPath()
+}
 
 /** 单条预设（与前端 ApiPreset 一致） */
 export interface ApiPreset {
@@ -59,7 +61,6 @@ interface LegacyFlatFile {
   requestReasoningChain?: boolean
 }
 
-/** API_SETTINGS_PATH 由 ./config.ts 统一导出，本文件仅 re-export 给历史调用方使用。 */
 
 function presetFromLegacy(o: LegacyFlatFile, id: string): ApiPreset {
   return {
@@ -147,7 +148,7 @@ function migrateLegacyFlat(o: unknown): ApiSettingsDocument | null {
 
 export async function readApiSettingsFromFile(): Promise<ApiSettingsDocument | null> {
   try {
-    const raw = await readFile(API_SETTINGS_PATH, 'utf8')
+    const raw = await readFile(getApiSettingsPath(), 'utf8')
     const parsed: unknown = JSON.parse(raw)
     return (
       normalizeDocument(parsed) ??
@@ -163,8 +164,8 @@ export async function readApiSettingsFromFile(): Promise<ApiSettingsDocument | n
 export async function writeApiSettingsToFile(
   data: ApiSettingsDocument,
 ): Promise<void> {
-  await mkdir(DATA_DIR, { recursive: true })
-  await writeFile(API_SETTINGS_PATH, `${JSON.stringify(data, null, 2)}\n`, 'utf8')
+  await mkdir(getUserDataDir(), { recursive: true })
+  await writeFile(getApiSettingsPath(), `${JSON.stringify(data, null, 2)}\n`, 'utf8')
 }
 
 export function assertValidCustomParamsJson(customParamsJson: string): void {

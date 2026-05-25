@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import {
-  DEFAULT_GROUP_IDS,
   groupAllowsPromptEntries,
   usePromptsStore,
 } from '@/stores/prompts'
@@ -12,8 +11,21 @@ import type {
   PromptTrigger,
 } from '@/stores/prompts'
 import { assemblePrompts } from '@/utils/assemble-prompts'
+import { buildPromptMacroContext } from '@/utils/prompt-macros'
+import {
+  ASSEMBLE_INJECT_PLACEHOLDER,
+  cardRecordToCharXmlBlock,
+} from '@/utils/prompt-xml'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+
+withDefaults(
+  defineProps<{
+    /** 在 App 模态内展示：放宽宽度并压缩依赖视口高度的区域 */
+    embedded?: boolean
+  }>(),
+  { embedded: false },
+)
 
 const store = usePromptsStore()
 onMounted(() => {
@@ -173,7 +185,7 @@ function submitRenameGroup() {
   groupRenameOpen.value = false
 }
 function openDeleteGroup(g: PromptGroup) {
-  if (g.kind !== 'normal') return
+  if (!canDeleteGroup(g)) return
   groupDeleteTarget.value = g
   groupDeleteOpen.value = true
 }
@@ -287,6 +299,7 @@ const tagsInput = computed<string>({
 
 function onEnabledToggle() {
   if (!selected.value) return
+  if (bindingSlotIsRequired(selected.value.bindingSlot)) return
   store.updatePrompt(selected.value.id, { enabled: !selected.value.enabled })
 }
 
@@ -359,10 +372,36 @@ const previewResult = computed(() => {
   return assemblePrompts(p, {
     trigger:
       previewTrigger.value === 'all' ? undefined : previewTrigger.value,
-    characterSystemPrompt: useSys ? '{{bound_character.system_prompt}}' : undefined,
-    characterPostHistory: usePost
-      ? '{{bound_character.post_history_instructions}}'
+    characterSystemPrompt: useSys
+      ? ASSEMBLE_INJECT_PLACEHOLDER.boundCharacterSystem
       : undefined,
+    characterPostHistory: usePost
+      ? ASSEMBLE_INJECT_PLACEHOLDER.boundCharacterPostHistory
+      : undefined,
+    characters: [
+      {
+        name: 'moka',
+        cardBody: cardRecordToCharXmlBlock({
+          name: 'moka',
+          description: 'Sample description',
+          personality: 'Sample personality',
+        }),
+        systemPrompt: 'Sample system_prompt',
+        postHistory: 'Sample post_history',
+      },
+      {
+        name: 'cocoa',
+        cardBody: cardRecordToCharXmlBlock({
+          name: 'cocoa',
+          description: 'Sample description',
+          personality: 'Sample personality',
+        }),
+      },
+    ],
+    macroContext: buildPromptMacroContext({
+      conversationUserName: 'User',
+      characters: [{ name: 'moka' }, { name: 'cocoa' }],
+    }),
   })
 })
 
@@ -395,6 +434,55 @@ function placeholderDescKey(kind: GroupKind): string {
       return 'prompts.groupBoundDescUserInput'
     default:
       return ''
+  }
+}
+
+function bindingSlotLabelKey(slot: string | undefined): string {
+  switch (slot) {
+    case 'boundCharacterSystem':
+      return 'prompts.boundCharacterSystemLabel'
+    case 'boundWorld':
+      return 'prompts.boundWorldLabel'
+    case 'boundCharacterPostHistory':
+      return 'prompts.boundCharacterPostHistoryLabel'
+    case 'boundUserInput':
+      return 'prompts.boundUserInputLabel'
+    default:
+      return 'prompts.untitled'
+  }
+}
+
+function bindingSlotIsRequired(slot: string | undefined): boolean {
+  return slot === 'boundWorld' || slot === 'boundUserInput'
+}
+
+function bindingSlotListHintKey(slot: string | undefined): string {
+  switch (slot) {
+    case 'boundCharacterSystem':
+      return 'prompts.boundCharacterListHintSystem'
+    case 'boundWorld':
+      return 'prompts.boundWorldListHint'
+    case 'boundCharacterPostHistory':
+      return 'prompts.boundCharacterListHintPost'
+    case 'boundUserInput':
+      return 'prompts.boundUserInputListHint'
+    default:
+      return 'prompts.emptyHint'
+  }
+}
+
+function bindingSlotEditorDescKey(slot: string | undefined): string {
+  switch (slot) {
+    case 'boundCharacterSystem':
+      return 'prompts.boundCharacterEditorDescSystem'
+    case 'boundWorld':
+      return 'prompts.boundWorldEditorDesc'
+    case 'boundCharacterPostHistory':
+      return 'prompts.boundCharacterEditorDescPost'
+    case 'boundUserInput':
+      return 'prompts.boundUserInputEditorDesc'
+    default:
+      return 'prompts.editorEmptyHint'
   }
 }
 
@@ -454,27 +542,41 @@ const isEntryListGroup = computed(() =>
   currentGroup.value ? groupAllowsPromptEntries(currentGroup.value.kind) : false,
 )
 
-const isDefaultGroup = (id: string) =>
-  id === DEFAULT_GROUP_IDS.pre ||
-  id === DEFAULT_GROUP_IDS.character ||
-  id === DEFAULT_GROUP_IDS.world ||
-  id === DEFAULT_GROUP_IDS.history ||
-  id === DEFAULT_GROUP_IDS.userInput ||
-  id === DEFAULT_GROUP_IDS.post
+/** 占位分组（角色/世界/历史/用户输出）不可删除；前置、后置及用户新建的 normal 分组可删 */
+const isPlaceholderGroup = (g: PromptGroup) =>
+  g.kind === 'character' ||
+  g.kind === 'world' ||
+  g.kind === 'history' ||
+  g.kind === 'userInput'
+
+const canDeleteGroup = (g: PromptGroup) =>
+  g.kind === 'normal' && !isPlaceholderGroup(g)
 </script>
 
 <template>
-  <div class="prompts-view flex-grow-1 d-flex flex-column min-height-0">
-    <div class="prompts-view__inner app-page-shell">
+  <div
+    class="prompts-view flex-grow-1 d-flex flex-column min-height-0"
+    :class="{ 'prompts-view--embedded': embedded }"
+  >
+    <div
+      class="prompts-view__inner"
+      :class="embedded ? 'prompts-view__inner--embedded' : 'app-page-shell'"
+    >
       <!-- ============ Head ============ -->
-      <header class="list-head">
-        <div class="d-flex align-baseline" style="gap: 0.875rem">
-          <h1 class="list-head__title">{{ $t('prompts.pageTitle') }}</h1>
-          <span class="list-head__tag">{{ $t('prompts.brand') }}</span>
+      <header class="library-page-head">
+        <div class="library-page-head__row">
+          <h1 class="library-page-head__title">
+            {{ $t('prompts.pageTitle') }}
+          </h1>
+          <div class="library-page-head__aside">
+            <p class="library-page-head__lede">
+              {{ $t('prompts.lede') }}
+            </p>
+            <p class="library-page-head__count">
+              {{ $t('prompts.count', { n: activePreset.prompts.length }) }}
+            </p>
+          </div>
         </div>
-        <span class="list-head__sub">
-          {{ $t('prompts.count', { n: activePreset.prompts.length }) }}
-        </span>
       </header>
 
       <!-- ============ Preset bar ============ -->
@@ -592,10 +694,10 @@ const isDefaultGroup = (id: string) =>
             v-if="groupDragOverIdx === idx"
             class="groups-bar__drop-indicator"
           />
-          <button
-            type="button"
+          <div
             role="tab"
             :aria-selected="activeGroupId === g.id"
+            :tabindex="activeGroupId === g.id ? 0 : -1"
             class="group-chip"
             :class="{
               'is-active': activeGroupId === g.id,
@@ -605,6 +707,8 @@ const isDefaultGroup = (id: string) =>
             draggable="true"
             @click="selectGroup(g)"
             @dblclick="openRenameGroup(g)"
+            @keydown.enter.prevent="selectGroup(g)"
+            @keydown.space.prevent="selectGroup(g)"
             @dragstart="onGroupDragStart(g.id, $event)"
             @dragover="onGroupDragOver(idx, $event)"
             @drop="onGroupDrop(idx)"
@@ -614,10 +718,7 @@ const isDefaultGroup = (id: string) =>
               {{ groupIcon(g.kind) }}
             </v-icon>
             <span class="group-chip__name">{{ g.name }}</span>
-            <span
-              v-if="g.kind === 'normal'"
-              class="group-chip__count"
-            >{{ groupCounts[g.id] ?? 0 }}</span>
+            <span class="group-chip__count">{{ groupCounts[g.id] ?? 0 }}</span>
             <button
               type="button"
               class="group-chip__edit"
@@ -628,13 +729,13 @@ const isDefaultGroup = (id: string) =>
               <v-icon size="11">mdi-pencil-outline</v-icon>
             </button>
             <button
-              v-if="g.kind === 'normal' && !isDefaultGroup(g.id)"
+              v-if="canDeleteGroup(g)"
               type="button"
               class="group-chip__close"
               :aria-label="$t('prompts.groupDelete')"
               @click.stop="openDeleteGroup(g)"
             >×</button>
-          </button>
+          </div>
         </template>
         <span
           v-if="groupDragOverIdx === activeGroups.length"
@@ -685,25 +786,8 @@ const isDefaultGroup = (id: string) =>
           </div>
 
           <div class="prompts-list__scroll">
-            <template v-if="currentGroup && currentGroup.kind === 'history'">
-              <div class="bound-card">
-                <v-icon size="20" class="bound-card__icon">{{ groupIcon(currentGroup.kind) }}</v-icon>
-                <div class="bound-card__title">{{ $t('prompts.groupBoundFromChat') }}</div>
-                <div class="bound-card__desc">{{ $t(placeholderDescKey(currentGroup.kind)) }}</div>
-              </div>
-            </template>
-            <template
-              v-else-if="currentGroup && (currentGroup.kind === 'world' || currentGroup.kind === 'userInput')"
-            >
-              <div class="bound-card">
-                <v-icon size="20" class="bound-card__icon">{{ groupIcon(currentGroup.kind) }}</v-icon>
-                <div class="bound-card__title">{{ $t('prompts.groupBoundFromChat') }}</div>
-                <div class="bound-card__desc">{{ $t(placeholderDescKey(currentGroup.kind)) }}</div>
-              </div>
-            </template>
-
             <button
-              v-if="isEntryListGroup && currentGroup?.kind !== 'character'"
+              v-if="isEntryListGroup"
               type="button"
               class="entry-card entry-card--new"
               @click="createEntry"
@@ -719,8 +803,22 @@ const isDefaultGroup = (id: string) =>
               />
               <div
                 v-if="
-                  p.bindingSlot === 'boundCharacterSystem' &&
-                  currentGroup?.kind === 'character'
+                  (
+                    p.bindingSlot === 'boundCharacterSystem' &&
+                    currentGroup?.kind === 'character'
+                  ) ||
+                  (
+                    p.bindingSlot === 'boundWorld' &&
+                    currentGroup?.kind === 'world'
+                  ) ||
+                  (
+                    p.bindingSlot === 'boundCharacterPostHistory' &&
+                    currentGroup?.kind === 'history'
+                  ) ||
+                  (
+                    p.bindingSlot === 'boundUserInput' &&
+                    currentGroup?.kind === 'userInput'
+                  )
                 "
                 class="character-system-bundle"
                 :class="{
@@ -746,13 +844,13 @@ const isDefaultGroup = (id: string) =>
                     mdi-drag-vertical
                   </v-icon>
                   <v-icon size="20" class="character-system-bundle__icon">
-                    {{ groupIcon('character') }}
+                    {{ groupIcon(currentGroup.kind) }}
                   </v-icon>
                   <div class="character-system-bundle__title">
                     {{ $t('prompts.groupBoundFromChat') }}
                   </div>
                   <div class="character-system-bundle__desc">
-                    {{ $t('prompts.groupBoundDescCharacter') }}
+                    {{ $t(placeholderDescKey(currentGroup.kind)) }}
                   </div>
                 </div>
                 <article
@@ -766,6 +864,7 @@ const isDefaultGroup = (id: string) =>
                 >
                   <div class="entry-card__row">
                     <button
+                      v-if="!bindingSlotIsRequired(p.bindingSlot)"
                       type="button"
                       class="entry-card__enabled"
                       :class="{ 'is-on': p.enabled }"
@@ -776,7 +875,7 @@ const isDefaultGroup = (id: string) =>
                       <span class="entry-card__enabled-dot" />
                     </button>
                     <h2 class="entry-card__title entry-card__title--bundle-inner">
-                      {{ $t('prompts.boundCharacterSystemLabel') }}
+                      {{ $t(bindingSlotLabelKey(p.bindingSlot)) }}
                     </h2>
                     <span class="entry-card__binding">{{ $t('prompts.bindingSlotTag') }}</span>
                   </div>
@@ -817,11 +916,8 @@ const isDefaultGroup = (id: string) =>
                     <span class="entry-card__enabled-dot" />
                   </button>
                   <h2 class="entry-card__title">
-                    <template v-if="p.bindingSlot === 'boundCharacterSystem'">{{
-                      $t('prompts.boundCharacterSystemLabel')
-                    }}</template>
-                    <template v-else-if="p.bindingSlot === 'boundCharacterPostHistory'">{{
-                      $t('prompts.boundCharacterPostHistoryLabel')
+                    <template v-if="p.bindingSlot">{{
+                      $t(bindingSlotLabelKey(p.bindingSlot))
                     }}</template>
                     <template v-else>{{ p.title || $t('prompts.untitled') }}</template>
                   </h2>
@@ -861,19 +957,6 @@ const isDefaultGroup = (id: string) =>
                   <span class="entry-card__pos">{{ $t('prompts.positionRelative') }}</span>
                 </div>
               </article>
-              <button
-                v-if="
-                  isEntryListGroup &&
-                  currentGroup?.kind === 'character' &&
-                  p.bindingSlot === 'boundCharacterSystem'
-                "
-                type="button"
-                class="entry-card entry-card--new"
-                @click="createEntry"
-              >
-                <span class="entry-card--new__plus">+</span>
-                <span class="entry-card--new__label">{{ $t('prompts.newPrompt') }}</span>
-              </button>
             </template>
             <span
               v-if="entryDragOverIdx === visiblePrompts.length && isEntryListGroup"
@@ -897,6 +980,7 @@ const isDefaultGroup = (id: string) =>
               <header class="editor-card__head">
                 <div class="editor-card__head-row editor-card__head-row--binding">
                   <button
+                    v-if="!bindingSlotIsRequired(selected.bindingSlot)"
                     type="button"
                     class="editor-card__enabled"
                     :class="{ 'is-on': selected.enabled }"
@@ -909,10 +993,7 @@ const isDefaultGroup = (id: string) =>
                     <span class="editor-card__enabled-thumb" />
                   </button>
                   <h2 class="editor-card__binding-title">
-                    <template v-if="selected.bindingSlot === 'boundCharacterSystem'">{{
-                      $t('prompts.boundCharacterSystemLabel')
-                    }}</template>
-                    <template v-else>{{ $t('prompts.boundCharacterPostHistoryLabel') }}</template>
+                    {{ $t(bindingSlotLabelKey(selected.bindingSlot)) }}
                   </h2>
                   <span class="editor-card__seed">{{ $t('prompts.bindingSlotTag') }}</span>
                 </div>
@@ -925,14 +1006,8 @@ const isDefaultGroup = (id: string) =>
               </header>
 
               <div class="binding-editor__desc">
-                <template v-if="selected.bindingSlot === 'boundCharacterSystem'">
-                  <p>{{ $t('prompts.boundCharacterListHintSystem') }}</p>
-                  <p>{{ $t('prompts.boundCharacterEditorDescSystem') }}</p>
-                </template>
-                <template v-else>
-                  <p>{{ $t('prompts.boundCharacterListHintPost') }}</p>
-                  <p>{{ $t('prompts.boundCharacterEditorDescPost') }}</p>
-                </template>
+                <p>{{ $t(bindingSlotListHintKey(selected.bindingSlot)) }}</p>
+                <p>{{ $t(bindingSlotEditorDescKey(selected.bindingSlot)) }}</p>
               </div>
 
               <footer class="editor-card__foot">
@@ -1391,39 +1466,20 @@ const isDefaultGroup = (id: string) =>
 }
 .min-height-0 { min-height: 0; }
 
-/* ========== Head ========== */
-.list-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin: 0 0 0.25rem;
-  padding: 0 0.25rem 0.75rem;
-  border-bottom: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.06);
+.prompts-view--embedded {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
 }
-.list-head__title {
-  margin: 0;
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: 1.625rem;
-  letter-spacing: 0.005em;
-  color: rgb(var(--v-theme-on-surface));
+.prompts-view__inner--embedded {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+  padding-inline: 0;
+  box-sizing: border-box;
 }
-.list-head__tag {
-  font-family: var(--font-mono);
-  font-size: 0.6563rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: rgba(var(--v-theme-primary), 0.85);
-  border: 0.0625rem solid rgba(var(--v-theme-primary), 0.4);
-  padding: 0.125rem 0.5rem;
-  border-radius: 0.1875rem;
-}
-.list-head__sub {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(var(--v-theme-on-surface), 0.45);
+.prompts-view--embedded .prompts-list__scroll {
+  max-height: min(38vh, 24rem);
 }
 
 /* ========== Preset bar ========== */
@@ -1549,6 +1605,10 @@ const isDefaultGroup = (id: string) =>
   user-select: none;
 }
 .group-chip:active { cursor: grabbing; }
+.group-chip:focus-visible {
+  outline: 0.125rem solid rgba(var(--v-theme-primary), 0.55);
+  outline-offset: 0.125rem;
+}
 .group-chip:hover {
   border-color: rgba(var(--v-theme-primary), 0.4);
   color: rgb(var(--v-theme-on-surface));
@@ -2086,7 +2146,7 @@ const isDefaultGroup = (id: string) =>
   position: relative;
   width: 2rem;
   height: 1.125rem;
-  border-radius: 50%;
+  border-radius: 9999px;
   background: rgba(var(--v-theme-on-surface), 0.18);
   border: 0;
   cursor: pointer;

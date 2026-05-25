@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { CHARACTERS_DIR } from './config.js'
+import { getCharactersDir } from './config.js'
 import { readChatList, resolvedCharacterIds } from './chat-storage.js'
 import {
   embedCharaInPng,
@@ -20,7 +20,9 @@ const UUID_PNG =
 const UUID_ONLY =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
-const CHARACTER_INDEX_FILE = path.join(CHARACTERS_DIR, 'index.json')
+function characterIndexFile(): string {
+  return path.join(getCharactersDir(), 'index.json')
+}
 
 /** 打包在 server 内的默认立绘（非用户数据） */
 export function resolveDefaultAvatarPath(): string {
@@ -143,7 +145,7 @@ function entryFromDoc(doc: CharacterStoredDocument): CharacterIndexEntry {
 }
 
 async function listCharacterIdsOnDisk(): Promise<Set<string>> {
-  const names = await readdir(CHARACTERS_DIR).catch(() => [] as string[])
+  const names = await readdir(getCharactersDir()).catch(() => [] as string[])
   const ids = new Set<string>()
   for (const n of names) {
     const mj = UUID_JSON.exec(n)
@@ -161,7 +163,7 @@ async function countCharacterDataIds(): Promise<number> {
 async function readIndexFile(): Promise<CharacterIndexFile | null> {
   try {
     const raw = JSON.parse(
-      await readFile(CHARACTER_INDEX_FILE, 'utf8'),
+      await readFile(characterIndexFile(), 'utf8'),
     ) as unknown
     if (
       !raw ||
@@ -180,7 +182,7 @@ async function readIndexFile(): Promise<CharacterIndexFile | null> {
 async function writeIndexFile(data: CharacterIndexFile): Promise<void> {
   data.generatedAt = nowIso()
   await writeFile(
-    CHARACTER_INDEX_FILE,
+    characterIndexFile(),
     `${JSON.stringify(data, null, 2)}\n`,
     'utf8',
   )
@@ -190,8 +192,8 @@ async function writeIndexFile(data: CharacterIndexFile): Promise<void> {
 async function readDocFromDiskForRebuild(
   id: string,
 ): Promise<CharacterStoredDocument | null> {
-  const pngPath = path.join(CHARACTERS_DIR, `${id}.png`)
-  const jsonPath = path.join(CHARACTERS_DIR, `${id}.json`)
+  const pngPath = path.join(getCharactersDir(), `${id}.png`)
+  const jsonPath = path.join(getCharactersDir(), `${id}.json`)
   try {
     const buf = await readFile(pngPath)
     const card = extractCardFromPng(buf)
@@ -219,7 +221,7 @@ async function readDocFromDiskForRebuild(
 }
 
 export async function rebuildCharacterIndexFromDisk(): Promise<CharacterIndexFile> {
-  await mkdir(CHARACTERS_DIR, { recursive: true })
+  await mkdir(getCharactersDir(), { recursive: true })
   const ids = await listCharacterIdsOnDisk()
   const entries: CharacterIndexEntry[] = []
   for (const id of ids) {
@@ -247,8 +249,8 @@ async function loadOrRebuildIndex(): Promise<CharacterIndexFile> {
     return rebuildCharacterIndexFromDisk()
   }
   for (const e of fromDisk.entries) {
-    const png = path.join(CHARACTERS_DIR, `${e.id}.png`)
-    const json = path.join(CHARACTERS_DIR, `${e.id}.json`)
+    const png = path.join(getCharactersDir(), `${e.id}.png`)
+    const json = path.join(getCharactersDir(), `${e.id}.json`)
     try {
       await stat(png)
       continue
@@ -381,8 +383,8 @@ export function cardFromNewCharacterForm(body: unknown): Record<string, unknown>
 
 async function readOneFile(id: string): Promise<CharacterStoredDocument | null> {
   if (!isUuid(id)) return null
-  const pngPath = path.join(CHARACTERS_DIR, `${id}.png`)
-  const jsonPath = path.join(CHARACTERS_DIR, `${id}.json`)
+  const pngPath = path.join(getCharactersDir(), `${id}.png`)
+  const jsonPath = path.join(getCharactersDir(), `${id}.json`)
 
   try {
     const buf = await readFile(pngPath)
@@ -430,7 +432,7 @@ export async function importCharacterCardWithPortrait(
   card: Record<string, unknown>,
   portraitPng?: Buffer | null,
 ): Promise<CharacterStoredDocument> {
-  await mkdir(CHARACTERS_DIR, { recursive: true })
+  await mkdir(getCharactersDir(), { recursive: true })
   let base: Buffer
   if (portraitPng && isPngBuffer(portraitPng)) {
     base = portraitPng
@@ -448,7 +450,7 @@ export async function importCharacterCardWithPortrait(
     updatedAt: t,
     card: normalCard,
   }
-  await writeFile(path.join(CHARACTERS_DIR, `${id}.png`), pngOut)
+  await writeFile(path.join(getCharactersDir(), `${id}.png`), pngOut)
   await upsertIndexEntry(doc)
   return doc
 }
@@ -467,7 +469,7 @@ export async function importCharacterCardPng(
     throw new Error('须为 PNG 文件')
   }
   const card = extractCardFromPng(pngBuffer)
-  await mkdir(CHARACTERS_DIR, { recursive: true })
+  await mkdir(getCharactersDir(), { recursive: true })
   const t = nowIso()
   const id = randomUUID()
   const doc: CharacterStoredDocument = {
@@ -477,7 +479,7 @@ export async function importCharacterCardPng(
     updatedAt: t,
     card,
   }
-  await writeFile(path.join(CHARACTERS_DIR, `${id}.png`), pngBuffer)
+  await writeFile(path.join(getCharactersDir(), `${id}.png`), pngBuffer)
   await upsertIndexEntry(doc)
   return doc
 }
@@ -487,7 +489,7 @@ export async function deleteCharacterFile(id: string): Promise<boolean> {
   let removed = false
   for (const ext of ['png', 'json'] as const) {
     try {
-      await unlink(path.join(CHARACTERS_DIR, `${id}.${ext}`))
+      await unlink(path.join(getCharactersDir(), `${id}.${ext}`))
       removed = true
     } catch {
       /* */
@@ -513,7 +515,7 @@ export async function updateCharacterDocument(
     merged[k] = v
   }
   const normalCard = normalizeTavernCardV2Data(merged)
-  const pngPath = path.join(CHARACTERS_DIR, `${id}.png`)
+  const pngPath = path.join(getCharactersDir(), `${id}.png`)
   const buf = await readFile(pngPath)
   const out = embedCharaInPng(buf, normalCard)
   await writeFile(pngPath, out)
@@ -538,7 +540,7 @@ export async function updateCharacterPortrait(
     doc.card as Record<string, unknown>,
   )
   const out = embedCharaInPng(portraitPng, normalCard)
-  const pngPath = path.join(CHARACTERS_DIR, `${id}.png`)
+  const pngPath = path.join(getCharactersDir(), `${id}.png`)
   await writeFile(pngPath, out)
   const next: CharacterStoredDocument = {
     ...doc,
@@ -554,7 +556,7 @@ export async function listCharacterSummaries(params: {
   search?: string
   filter?: 'all' | 'used' | 'unused'
 }): Promise<{ items: CharacterListItem[]; total: number }> {
-  await mkdir(CHARACTERS_DIR, { recursive: true })
+  await mkdir(getCharactersDir(), { recursive: true })
   const counts = await refCounts()
   const idx = await loadOrRebuildIndex()
   const rows: CharacterListItem[] = []
@@ -562,8 +564,8 @@ export async function listCharacterSummaries(params: {
   for (const e of idx.entries) {
     const id = e.id
     let updatedAt = e.updatedAt
-    const pngPath = path.join(CHARACTERS_DIR, `${id}.png`)
-    const jsonPath = path.join(CHARACTERS_DIR, `${id}.json`)
+    const pngPath = path.join(getCharactersDir(), `${id}.png`)
+    const jsonPath = path.join(getCharactersDir(), `${id}.json`)
     try {
       const st = await stat(pngPath)
       updatedAt = new Date(st.mtimeMs).toISOString()
@@ -626,7 +628,7 @@ export async function readCharacterPngBuffer(id: string): Promise<Buffer | null>
   if (!isUuid(id)) return null
   const doc = await readOneFile(id)
   if (!doc) return null
-  const pngPath = path.join(CHARACTERS_DIR, `${id}.png`)
+  const pngPath = path.join(getCharactersDir(), `${id}.png`)
   try {
     return await readFile(pngPath)
   } catch {

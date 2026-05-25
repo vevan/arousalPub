@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import ConnectionSettingsCard from '@/components/ConnectionSettingsCard.vue'
+import CharactersView from '@/views/CharactersView.vue'
+import PromptsView from '@/views/PromptsView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 import { htmlLangTag } from '@/i18n/locale'
 import { useConnectionStore } from '@/stores/connection'
@@ -8,12 +10,13 @@ import { storeToRefs } from 'pinia'
 import type { ComponentPublicInstance } from 'vue'
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 const { locale } = useI18n()
 const localeStore = useLocaleStore()
 const { effective: effectiveLocale } = storeToRefs(localeStore)
 const route = useRoute()
+const router = useRouter()
 
 watch(
   effectiveLocale,
@@ -37,7 +40,45 @@ function onBrowserLanguageChange() {
 const drawerLeft = ref(false)
 const drawerRight = ref(false)
 const settingsDialogOpen = ref(false)
+const promptsDialogOpen = ref(false)
+const charactersDialogOpen = ref(false)
 const conn = useConnectionStore()
+
+function clearPanelQuery() {
+  if (route.query.panel === undefined) return
+  const { panel: _p, ...rest } = route.query
+  void router.replace({
+    path: route.path,
+    query: Object.keys(rest).length > 0 ? rest : {},
+  })
+}
+
+function openPromptsDialog() {
+  charactersDialogOpen.value = false
+  promptsDialogOpen.value = true
+}
+
+function openCharactersDialog() {
+  promptsDialogOpen.value = false
+  charactersDialogOpen.value = true
+}
+
+watch(
+  () => route.query.panel,
+  (panelRaw) => {
+    const panel = Array.isArray(panelRaw) ? panelRaw[0] : panelRaw
+    if (panel === 'prompts') {
+      promptsDialogOpen.value = true
+      charactersDialogOpen.value = false
+      void nextTick(() => clearPanelQuery())
+    } else if (panel === 'characters') {
+      charactersDialogOpen.value = true
+      promptsDialogOpen.value = false
+      void nextTick(() => clearPanelQuery())
+    }
+  },
+  { immediate: true },
+)
 
 const appBarRef = ref<ComponentPublicInstance | null>(null)
 const footerRef = ref<ComponentPublicInstance | null>(null)
@@ -204,20 +245,20 @@ onUnmounted(() => {
             {{ $t('app.chat') }}
           </v-btn>
           <v-btn
-            to="/prompts"
             variant="text"
-            :active="route.name === 'prompts'"
+            :active="promptsDialogOpen"
             class="app-bar__menu-btn"
             size="small"
+            @click="openPromptsDialog"
           >
             {{ $t('app.prompts') }}
           </v-btn>
           <v-btn
-            to="/characters"
             variant="text"
-            :active="route.name === 'characters'"
+            :active="charactersDialogOpen"
             class="app-bar__menu-btn"
             size="small"
+            @click="openCharactersDialog"
           >
             {{ $t('app.characters') }}
           </v-btn>
@@ -316,10 +357,76 @@ onUnmounted(() => {
         </v-card-text>
       </v-card>
     </v-dialog>
+
+    <v-dialog
+      v-model="promptsDialogOpen"
+      scrollable
+      content-class="library-dialog-surface"
+      @keydown.esc="promptsDialogOpen = false"
+    >
+      <v-card rounded="lg" class="library-dialog-card">
+        <v-toolbar density="compact" color="transparent" flat class="library-dialog-toolbar">
+          <v-spacer />
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            density="comfortable"
+            :aria-label="$t('settings.closeModal')"
+            @click="promptsDialogOpen = false"
+          />
+        </v-toolbar>
+        <v-divider />
+        <v-card-text class="pa-0 library-dialog-body">
+          <PromptsView embedded />
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog
+      v-model="charactersDialogOpen"
+      scrollable
+      content-class="library-dialog-surface"
+      @keydown.esc="charactersDialogOpen = false"
+    >
+      <v-card rounded="lg" class="library-dialog-card">
+        <v-toolbar density="compact" color="transparent" flat class="library-dialog-toolbar">
+          <v-spacer />
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            density="comfortable"
+            :aria-label="$t('settings.closeModal')"
+            @click="charactersDialogOpen = false"
+          />
+        </v-toolbar>
+        <v-divider />
+        <v-card-text class="pa-0 library-dialog-body">
+          <CharactersView embedded />
+        </v-card-text>
+      </v-card>
+    </v-dialog>
   </v-app>
 </template>
 
 <style scoped>
+.library-dialog-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+}
+.library-dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.library-dialog-toolbar {
+  border-bottom: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.08);
+}
+
 .main-chat {
   min-height: 0;
 }
@@ -420,7 +527,7 @@ onUnmounted(() => {
   height: 1.875rem;
   margin-right: 0.25rem;
   border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.10);
-  border-radius: 0.25rem;
+  border-radius: var(--radius-sm);
   background: rgb(var(--v-theme-surface-light));
   color: rgba(var(--v-theme-on-surface), 0.7);
   font-family: var(--font-mono);

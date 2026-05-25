@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import {
+  applyPromptMacroPipeline,
+  buildPromptMacroContext,
+} from '@/utils/prompt-macros'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -16,6 +20,26 @@ const loading = ref(true)
 const creating = ref(false)
 const errorText = ref('')
 const conversations = ref<ChatListEntry[]>([])
+
+interface CharacterPickerItem {
+  id: string
+  name: string
+  summary: string
+}
+
+interface CharacterStoredDocument {
+  id: string
+  card: Record<string, unknown>
+}
+
+const createOpen = ref(false)
+const createErrorText = ref('')
+const charItems = ref<CharacterPickerItem[]>([])
+const charItemsLoading = ref(false)
+const selectedUserCard = ref<CharacterPickerItem | null>(null)
+const selectedCharacterCards = ref<(CharacterPickerItem | null)[]>([null])
+const pickerOpen = ref(false)
+const pickerTarget = ref<{ kind: 'user' } | { kind: 'character'; index: number } | null>(null)
 
 const renameOpen = ref(false)
 const renameDraft = ref('')
@@ -45,9 +69,17 @@ async function load() {
 }
 
 async function createAndOpen() {
-  if (creating.value || loading.value) return
+  if (creating.value || loading.value || !canStartCreate.value) return
   creating.value = true
   const id = crypto.randomUUID()
+  const userCard = selectedUserCard.value
+  const characters = selectedCharacters.value
+  const mainCharacter = characters[0]
+  createErrorText.value = ''
+  if (!userCard || !mainCharacter) {
+    creating.value = false
+    return
+  }
   try {
     const res = await fetch('/api/chat/conversations', {
       method: 'POST',
@@ -58,15 +90,164 @@ async function createAndOpen() {
       }),
     })
     if (!res.ok) {
-      errorText.value = t('conversationList.createFailed')
+      createErrorText.value = t('conversationList.createFailed')
       return
     }
+    const patch = await fetch(`/api/chat/conversations/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userCharacterId: userCard.id,
+        userName: userCard.name,
+        characterIds: characters.map((c) => c.id),
+      }),
+    })
+    if (!patch.ok) {
+      createErrorText.value = t('conversationList.createFailed')
+      return
+    }
+    const mainDoc = await fetchCharacterDetail(mainCharacter.id)
+    const greetings = collectOpeningGreetings(mainDoc?.card)
+    if (greetings.length > 0) {
+      const macroContext = buildPromptMacroContext({
+        conversationUserName: userCard.name,
+        characters,
+      })
+      const opening = await fetch(`/api/chat/conversations/${id}/opening`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          receives: greetings.map((content) => ({
+            id: crypto.randomUUID(),
+            content: applyPromptMacroPipeline(content, macroContext),
+          })),
+          activeReceiveIndex: 0,
+        }),
+      })
+      if (!opening.ok) {
+        createErrorText.value = t('conversationList.createFailed')
+        return
+      }
+    }
+    closeCreateDialog()
     await router.push({ name: 'chat', params: { conversationId: id } })
   } catch {
-    errorText.value = t('conversationList.createFailed')
+    createErrorText.value = t('conversationList.createFailed')
   } finally {
     creating.value = false
   }
+}
+
+const selectedCharacters = computed(() =>
+  selectedCharacterCards.value.filter((c): c is CharacterPickerItem => Boolean(c)),
+)
+
+const canStartCreate = computed(
+  () => Boolean(selectedUserCard.value && selectedCharacterCards.value[0]) && !creating.value,
+)
+
+function openCreateDialog() {
+  createErrorText.value = ''
+  selectedUserCard.value = null
+  selectedCharacterCards.value = [null]
+  createOpen.value = true
+  void loadCharacterItems()
+}
+
+function closeCreateDialog() {
+  createOpen.value = false
+  pickerOpen.value = false
+  pickerTarget.value = null
+}
+
+async function loadCharacterItems() {
+  if (charItemsLoading.value || charItems.value.length > 0) return
+  charItemsLoading.value = true
+  try {
+    const res = await fetch('/api/characters?limit=200&offset=0')
+    if (!res.ok) return
+    const j = (await res.json()) as {
+      items?: { id?: string; name?: string; summary?: string }[]
+    }
+    charItems.value = (j.items ?? [])
+      .filter((x) => typeof x.id === 'string' && x.id.trim())
+      .map((x) => ({
+        id: x.id as string,
+        name: typeof x.name === 'string' && x.name.trim() ? x.name.trim() : (x.id as string),
+        summary: typeof x.summary === 'string' ? x.summary : '',
+      }))
+  } finally {
+    charItemsLoading.value = false
+  }
+}
+
+function openUserPicker() {
+  pickerTarget.value = { kind: 'user' }
+  pickerOpen.value = true
+  void loadCharacterItems()
+}
+
+function openCharacterPicker(index: number) {
+  pickerTarget.value = { kind: 'character', index }
+  pickerOpen.value = true
+  void loadCharacterItems()
+}
+
+function selectCharacter(item: CharacterPickerItem) {
+  const target = pickerTarget.value
+  if (!target) return
+  if (target.kind === 'user') {
+    selectedUserCard.value = item
+  } else {
+    selectedCharacterCards.value[target.index] = item
+  }
+  pickerOpen.value = false
+  pickerTarget.value = null
+}
+
+function addCharacterSlot() {
+  selectedCharacterCards.value.push(null)
+}
+
+function removeCharacterSlot(index: number) {
+  if (selectedCharacterCards.value.length <= 1) {
+    selectedCharacterCards.value = [null]
+    return
+  }
+  selectedCharacterCards.value.splice(index, 1)
+}
+
+function characterImage(id: string) {
+  return `/api/characters/${id}/image`
+}
+
+async function fetchCharacterDetail(id: string): Promise<CharacterStoredDocument | null> {
+  try {
+    const res = await fetch(`/api/characters/${id}`)
+    if (!res.ok) return null
+    return (await res.json()) as CharacterStoredDocument
+  } catch {
+    return null
+  }
+}
+
+function stringField(card: Record<string, unknown> | undefined, key: string): string {
+  const v = card?.[key]
+  return typeof v === 'string' ? v.trim() : ''
+}
+
+function collectOpeningGreetings(card: Record<string, unknown> | undefined): string[] {
+  const out: string[] = []
+  const first = stringField(card, 'first_mes')
+  if (first) out.push(first)
+  const alt = card?.alternate_greetings
+  if (Array.isArray(alt)) {
+    for (const raw of alt) {
+      const text = typeof raw === 'string' ? raw.trim() : ''
+      if (text) out.push(text)
+    }
+  }
+  return out
 }
 
 function open(id: string) {
@@ -198,7 +379,7 @@ onMounted(() => {
           :class="{ 'is-loading': creating }"
           :disabled="creating"
           :aria-label="$t('conversationList.newChat')"
-          @click="createAndOpen"
+          @click="openCreateDialog"
         >
           <v-progress-circular
             v-if="creating"
@@ -259,6 +440,179 @@ onMounted(() => {
         </article>
       </div>
     </div>
+
+    <v-dialog
+      v-model="createOpen"
+      max-width="58rem"
+      scrollable
+    >
+      <v-card class="create-chat-card">
+        <v-card-title class="text-subtitle-1">
+          {{ $t('conversationList.createDialogTitle') }}
+        </v-card-title>
+        <v-card-text>
+          <v-alert
+            v-if="createErrorText"
+            type="error"
+            density="compact"
+            variant="tonal"
+            class="mb-3"
+          >
+            {{ createErrorText }}
+          </v-alert>
+
+          <p class="create-chat-card__hint">
+            {{ $t('conversationList.createDialogHint') }}
+          </p>
+
+          <div class="create-slots">
+            <section class="create-slot-section">
+              <h3 class="create-slot-section__title">
+                {{ $t('conversationList.userSlotTitle') }}
+              </h3>
+              <button
+                type="button"
+                class="create-slot-card"
+                :class="{ 'is-filled': selectedUserCard }"
+                @click="openUserPicker"
+              >
+                <template v-if="selectedUserCard">
+                  <img
+                    class="create-slot-card__avatar"
+                    :src="characterImage(selectedUserCard.id)"
+                    alt=""
+                  />
+                  <span class="create-slot-card__name">{{ selectedUserCard.name }}</span>
+                  <span class="create-slot-card__meta">{{ $t('conversationList.userSlotMeta') }}</span>
+                </template>
+                <template v-else>
+                  <span class="create-slot-card__plus">+</span>
+                  <span>{{ $t('conversationList.pickUserCard') }}</span>
+                </template>
+              </button>
+            </section>
+
+            <section class="create-slot-section">
+              <div class="create-slot-section__head">
+                <h3 class="create-slot-section__title">
+                  {{ $t('conversationList.characterSlotsTitle') }}
+                </h3>
+                <v-btn
+                  size="small"
+                  variant="text"
+                  prepend-icon="mdi-plus"
+                  @click="addCharacterSlot"
+                >
+                  {{ $t('conversationList.addCharacterSlot') }}
+                </v-btn>
+              </div>
+              <div class="create-character-slots">
+                <button
+                  v-for="(card, i) in selectedCharacterCards"
+                  :key="i"
+                  type="button"
+                  class="create-slot-card"
+                  :class="{ 'is-filled': card }"
+                  @click="openCharacterPicker(i)"
+                >
+                  <template v-if="card">
+                    <img
+                      class="create-slot-card__avatar"
+                      :src="characterImage(card.id)"
+                      alt=""
+                    />
+                    <span class="create-slot-card__name">{{ card.name }}</span>
+                    <span class="create-slot-card__meta">
+                      {{ i === 0 ? $t('conversationList.primaryCharacterMeta') : $t('conversationList.extraCharacterMeta', { n: i + 1 }) }}
+                    </span>
+                  </template>
+                  <template v-else>
+                    <span class="create-slot-card__plus">+</span>
+                    <span>
+                      {{ i === 0 ? $t('conversationList.pickPrimaryCharacter') : $t('conversationList.pickExtraCharacter', { n: i + 1 }) }}
+                    </span>
+                  </template>
+                  <v-btn
+                    v-if="selectedCharacterCards.length > 1"
+                    class="create-slot-card__remove"
+                    icon="mdi-close"
+                    variant="text"
+                    size="x-small"
+                    @click.stop="removeCharacterSlot(i)"
+                  />
+                </button>
+              </div>
+            </section>
+          </div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn
+            variant="text"
+            @click="closeCreateDialog"
+          >
+            {{ $t('settings.themeCancel') }}
+          </v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            :loading="creating"
+            :disabled="!canStartCreate"
+            @click="createAndOpen"
+          >
+            {{ $t('conversationList.startChat') }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog
+      v-model="pickerOpen"
+      max-width="34rem"
+      scrollable
+    >
+      <v-card>
+        <v-card-title class="text-subtitle-1">
+          {{ $t('conversationList.pickCharacterDialogTitle') }}
+        </v-card-title>
+        <v-card-text>
+          <div
+            v-if="charItemsLoading"
+            class="text-body-2 text-medium-emphasis pa-3"
+          >
+            {{ $t('conversationList.loadingCharacters') }}
+          </div>
+          <v-list
+            v-else
+            class="create-picker-list"
+            density="comfortable"
+          >
+            <v-list-item
+              v-for="item in charItems"
+              :key="item.id"
+              :title="item.name"
+              :subtitle="item.summary"
+              @click="selectCharacter(item)"
+            >
+              <template #prepend>
+                <v-avatar size="40">
+                  <v-img :src="characterImage(item.id)" />
+                </v-avatar>
+              </template>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn
+            variant="text"
+            @click="pickerOpen = false"
+          >
+            {{ $t('settings.themeCancel') }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <v-dialog
       v-model="renameOpen"
@@ -497,5 +851,100 @@ onMounted(() => {
 .conv-card--new:disabled {
   cursor: progress;
   opacity: 0.5;
+}
+
+.create-chat-card__hint {
+  margin: 0 0 1rem;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.create-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 1.125rem;
+}
+.create-slot-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.create-slot-section__title {
+  margin: 0 0 0.5rem;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 500;
+  color: rgb(var(--v-theme-on-surface));
+}
+.create-slot-section__head .create-slot-section__title {
+  margin-bottom: 0;
+}
+.create-character-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  gap: 0.75rem;
+}
+.create-slot-card {
+  position: relative;
+  min-height: 8rem;
+  padding: 0.875rem;
+  border: 0.0625rem dashed rgba(var(--v-theme-on-surface), 0.18);
+  border-radius: var(--radius);
+  background: rgba(var(--v-theme-surface-light), 0.6);
+  color: rgba(var(--v-theme-on-surface), 0.7);
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  text-align: center;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.create-slot-card:hover {
+  border-color: rgba(var(--v-theme-primary), 0.5);
+  background: rgba(var(--v-theme-primary), 0.05);
+}
+.create-slot-card.is-filled {
+  border-style: solid;
+  border-color: rgba(var(--v-theme-on-surface), 0.10);
+  background: rgb(var(--v-theme-surface-light));
+  color: rgb(var(--v-theme-on-surface));
+}
+.create-slot-card__plus {
+  color: rgb(var(--v-theme-primary));
+  font-family: var(--font-display);
+  font-size: 2rem;
+  line-height: 1;
+}
+.create-slot-card__avatar {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.10);
+}
+.create-slot-card__name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.create-slot-card__meta {
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+}
+.create-slot-card__remove {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+}
+.create-picker-list {
+  background: transparent;
 }
 </style>

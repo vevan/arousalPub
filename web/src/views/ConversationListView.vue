@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { generateConversationId } from '@/utils/conversation-id'
 import {
   applyPromptMacroPipeline,
   buildPromptMacroContext,
@@ -71,7 +72,7 @@ async function load() {
 async function createAndOpen() {
   if (creating.value || loading.value || !canStartCreate.value) return
   creating.value = true
-  const id = crypto.randomUUID()
+  const id = generateConversationId()
   const userCard = selectedUserCard.value
   const characters = selectedCharacters.value
   const mainCharacter = characters[0]

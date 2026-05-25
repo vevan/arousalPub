@@ -33,6 +33,9 @@ import {
   type TurnReceive,
 } from './chat-storage.js'
 import { ensureDataSkeleton } from './config.js'
+import {
+  isValidConversationId,
+} from './conversation-id.js'
 import { enterRequestUser, userIdFromRequest } from './user-context.js'
 import {
   assertValidPromptsPayload,
@@ -273,8 +276,8 @@ app.post<{ Body: CreateConvBody }>(
     if (!b?.conversationId || typeof b.conversationId !== 'string') {
       return reply.status(400).send({ error: '缺少 conversationId' })
     }
-    if (!uuidRe.test(b.conversationId)) {
-      return reply.status(400).send({ error: 'conversationId 须为 UUID' })
+    if (!isValidConversationId(b.conversationId)) {
+      return reply.status(400).send({ error: 'conversationId 格式无效' })
     }
     const existing = await readConversationIndex(b.conversationId)
     if (existing) {
@@ -313,7 +316,7 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
   '/api/chat/conversations/:id',
   async (request, reply) => {
     const id = request.params.id
-    if (!uuidRe.test(id)) {
+    if (!isValidConversationId(id)) {
       return reply.status(400).send({ error: '无效 id' })
     }
     const b = request.body ?? {}
@@ -411,7 +414,7 @@ app.delete<{ Params: { id: string } }>(
   '/api/chat/conversations/:id',
   async (request, reply) => {
     const id = request.params.id
-    if (!uuidRe.test(id)) {
+    if (!isValidConversationId(id)) {
       return reply.status(400).send({ error: '无效 id' })
     }
     try {
@@ -436,7 +439,7 @@ app.post<{ Params: { id: string }; Body: OpeningTurnBody }>(
   '/api/chat/conversations/:id/opening',
   async (request, reply) => {
     const id = request.params.id
-    if (!uuidRe.test(id)) {
+    if (!isValidConversationId(id)) {
       return reply.status(400).send({ error: '无效 id' })
     }
     const b = request.body ?? {}
@@ -500,7 +503,7 @@ app.post<{ Params: { id: string }; Body: FirstTurnBody }>(
   '/api/chat/conversations/:id/first-turn',
   async (request, reply) => {
     const id = request.params.id
-    if (!uuidRe.test(id)) {
+    if (!isValidConversationId(id)) {
       return reply.status(400).send({ error: '无效 id' })
     }
     const b = request.body
@@ -561,7 +564,7 @@ app.patch<{
   '/api/chat/conversations/:id/turns/:turnOrdinal',
   async (request, reply) => {
     const id = request.params.id
-    if (!uuidRe.test(id)) {
+    if (!isValidConversationId(id)) {
       return reply.status(400).send({ error: '无效 id' })
     }
     const ord = Number.parseInt(request.params.turnOrdinal, 10)
@@ -617,7 +620,7 @@ app.delete<{ Params: { id: string; turnOrdinal: string } }>(
   '/api/chat/conversations/:id/turns/:turnOrdinal',
   async (request, reply) => {
     const id = request.params.id
-    if (!uuidRe.test(id)) {
+    if (!isValidConversationId(id)) {
       return reply.status(400).send({ error: '无效 id' })
     }
     const ord = Number.parseInt(request.params.turnOrdinal, 10)
@@ -641,7 +644,7 @@ app.get<{ Params: { id: string } }>(
   '/api/chat/conversations/:id/messages',
   async (request, reply) => {
     const id = request.params.id
-    if (!uuidRe.test(id)) {
+    if (!isValidConversationId(id)) {
       return reply.status(400).send({ error: '无效 id' })
     }
     const chunk = await readTailChunk(id)
@@ -700,7 +703,7 @@ app.post<{ Params: { id: string }; Body: AssembleMessagesBody }>(
   '/api/chat/conversations/:id/assemble-messages',
   async (request, reply) => {
     const id = request.params.id
-    if (!uuidRe.test(id)) {
+    if (!isValidConversationId(id)) {
       return reply.status(400).send({ error: '无效 id' })
     }
     const b = request.body ?? {}
@@ -735,7 +738,7 @@ app.post<{ Params: { id: string }; Body: AppendTurnBody }>(
   '/api/chat/conversations/:id/append-turn',
   async (request, reply) => {
     const id = request.params.id
-    if (!uuidRe.test(id)) {
+    if (!isValidConversationId(id)) {
       return reply.status(400).send({ error: '无效 id' })
     }
     const b = request.body
@@ -789,7 +792,7 @@ app.get<{ Params: { id: string } }>(
   '/api/chat/conversations/:id',
   async (request, reply) => {
     const id = request.params.id
-    if (!uuidRe.test(id)) {
+    if (!isValidConversationId(id)) {
       return reply.status(400).send({ error: '无效 id' })
     }
     const idx = await readConversationIndex(id)
@@ -803,7 +806,7 @@ app.get<{ Params: { id: string } }>(
   '/api/chat/conversations/:id/chat-prompt',
   async (request, reply) => {
     const id = request.params.id
-    if (!uuidRe.test(id)) {
+    if (!isValidConversationId(id)) {
       return reply.status(400).send({ error: '无效 id' })
     }
     const idx = await readConversationIndex(id)
@@ -1189,6 +1192,9 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
 
   const convId =
     typeof body.conversationId === 'string' ? body.conversationId.trim() : ''
+  if (convId && !isValidConversationId(convId)) {
+    return reply.status(400).send({ error: 'conversationId 格式无效' })
+  }
   const userText = typeof body.userText === 'string' ? body.userText : ''
   let messages: ChatMessage[]
   if (convId) {

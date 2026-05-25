@@ -33,7 +33,6 @@ import {
   type TurnReceive,
 } from './chat-storage.js'
 import { ensureDataSkeleton } from './config.js'
-import { migrateDataLayoutIfNeeded } from './data-migrate.js'
 import { enterRequestUser, userIdFromRequest } from './user-context.js'
 import {
   assertValidPromptsPayload,
@@ -1354,7 +1353,6 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   })
 })
 
-await migrateDataLayoutIfNeeded()
 ensureDataSkeleton()
 
 app.addHook('onRequest', (request, _reply, done) => {

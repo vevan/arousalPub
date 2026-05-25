@@ -37,12 +37,3 @@ data/
 ## 备份
 
 拷贝整个 `data/`（或单个 `data/{userId}/`）即可备份该用户的对话、提示词、角色卡与 API 配置。
-
-## 从旧版平铺布局迁移
-
-服务端启动时会自动：
-
-1. 将 `data/api-settings.json`、`data/chats/` 等迁入 `data/default-user/`
-2. 将 `data/default-user/prompts.json` 拆分为 `data/default-user/prompts/index.json` + 各 `preset-*.json`
-
-无需手动操作；若目标路径已存在则跳过对应项并打日志。

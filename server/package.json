@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
-    "migrate:data": "tsx src/data-migrate.ts"
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

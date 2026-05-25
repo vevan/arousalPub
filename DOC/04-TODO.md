@@ -9,8 +9,8 @@
 - [ ] 建立 `feature_bindings` 集合与 CRUD 接口 — **未按文档 §1.2 独立集合实现**
 - [x] 对话发送与 SSE 流式返回（`/api/chat` 等，见 `server/src/index.ts`）
 - [ ] 消息树结构（parentId）与「从此分支继续」— **chunk/分支目录部分按 `DOC/03` 设计，产品级分支 UI 待对齐**
-- [x] 角色管理（文件库）：主存 **`data/characters/{uuid}.png`**（内嵌 ST `chara`）；遗留 **`{uuid}.json`** 首次读取时迁移；列表/筛选/导入/表单新建/删除/导出 API + Web **`/characters`**（见 `DOC/03` §12）
-- [x] Prompt 预设：服务端 `prompts.json` + `GET/PUT /api/prompts`；前端 **`/prompts`** 与 SillyTavern 式组装（`assemble-prompts`）
+- [x] 角色管理（文件库）：主存 **`data/{userId}/characters/{uuid}.png`**（内嵌 ST `chara`）；遗留 **`{uuid}.json`** 首次读取时迁移为 PNG；列表/筛选/导入/表单新建/删除/导出 API + Web **`/characters`**（见 `DOC/03` §12）
+- [x] Prompt 预设：服务端 `data/{userId}/prompts/`（`index.json` + 各预设 JSON）+ `GET/PUT /api/prompts`；前端 **`/prompts`** 与 SillyTavern 式组装（`assemble-prompts`）
 - [ ] 知识库导入、切片、检索、重排序 — **`lorebooks/` 骨架存在，RAG 链路未完整**
 - [ ] RAG/模型调用日志（耗时、token、命中明细）— **部分字段在 turn `runtime` 等，未达需求文档 §4 全量**
 
@@ -20,11 +20,11 @@
 
 ## 角色卡（ST v2 PNG 与生态 — 当前迭代）
 
-与讨论一致：**会话绑定始终用 UUID**；磁盘主文件目标形态为 **`data/characters/{uuid}.png`**（内嵌 Character Card V2 JSON）；列表依赖 **`data/characters/index.json`** 加速（与全量扫盘互为重建来源）。
+与讨论一致：**会话绑定始终用 UUID**；磁盘主文件目标形态为 **`data/{userId}/characters/{uuid}.png`**（内嵌 Character Card V2 JSON）；列表依赖 **`characters/index.json`** 加速（与全量扫盘互为重建来源）。
 
 ### 存储与索引
 
-- [x] **`data/characters/index.json`**：维护列表摘要（`id`、`name`、`summary`、`systemPromptPreview`、`tags`、`importedAt`、`updatedAt`），创建/导入/编辑/删除后同步；缺失或损坏时从磁盘 **重建**（扫描 **`*.png`** 与遗留 **`*.json`**）。
+- [x] **`characters/index.json`**（在 `data/{userId}/characters/` 下）：维护列表摘要（`id`、`name`、`summary`、`systemPromptPreview`、`tags`、`importedAt`、`updatedAt`），创建/导入/编辑/删除后同步；缺失或损坏时从磁盘 **重建**（扫描 **`*.png`** 与遗留 **`*.json`**）。
 - [x] **主存 `{uuid}.png`**：`server/src/character-png.ts` 读写 PNG `tEXt`/`zTXt` **`chara`**（Base64 的 `chara_card_v2`）；新建/导入/编辑均落盘 PNG；**`normalizeTavernCardV2Data`** 补全 TavernCardV2 `data` 约定字段（含 `creator`、`alternate_greetings`、`extensions` 等）。
 - [x] **服务端默认头像资源**：打包路径 **`server/assets/characters/default-avatar.png`**（非 `data/`）；无用户图或 JSON 迁移时用其打底写入 `chara`。
 

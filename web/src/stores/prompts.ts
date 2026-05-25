@@ -1,9 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
-/** 历史的 localStorage 键。仅用于一次性迁移到服务端，迁移成功后清掉。 */
-const LEGACY_STORAGE_KEY = 'arousal-prompts-presets-v2'
-
 /** ============== Types ============== */
 
 export type GroupKind =
@@ -390,42 +387,6 @@ function buildInitialState(): PersistedState {
 
 /** ============== Storage ============== */
 
-/** 仅在一次性迁移流程使用：读取旧 localStorage 数据。 */
-function readLegacyLocalStorage(): PersistedState | null {
-  try {
-    const raw = localStorage.getItem(LEGACY_STORAGE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as unknown
-    if (!parsed || typeof parsed !== 'object') return null
-    const obj = parsed as Partial<PersistedState>
-    if (!Array.isArray(obj.presets) || obj.presets.length === 0) return null
-    const presets = obj.presets.filter(
-      (p): p is PromptPreset =>
-        !!p &&
-        typeof (p as PromptPreset).id === 'string' &&
-        Array.isArray((p as PromptPreset).groups) &&
-        Array.isArray((p as PromptPreset).prompts),
-    )
-    if (presets.length === 0) return null
-    const activeId =
-      typeof obj.activePresetId === 'string' &&
-      presets.some((p) => p.id === obj.activePresetId)
-        ? obj.activePresetId
-        : presets[0].id
-    return { presets, activePresetId: activeId }
-  } catch {
-    return null
-  }
-}
-
-function clearLegacyLocalStorage() {
-  try {
-    localStorage.removeItem(LEGACY_STORAGE_KEY)
-  } catch {
-    /* ignore */
-  }
-}
-
 interface PromptsServerDocument {
   version?: number
   savedAt?: string
@@ -535,19 +496,7 @@ export const usePromptsStore = defineStore('prompts', () => {
         loaded.value = true
         return
       }
-      // 服务端为空：尝试从旧 localStorage 迁移；否则保留种子
-      const legacy = readLegacyLocalStorage()
-      if (legacy) {
-        presets.value = legacy.presets.map(normalizePreset)
-        activePresetId.value = legacy.activePresetId
-        loaded.value = true
-        // 立即上传一次；成功后清掉 localStorage
-        pendingSave = true
-        await flushSave()
-        if (!lastError.value) clearLegacyLocalStorage()
-        return
-      }
-      // 完全空：把种子写一次到服务端
+      // 服务端为空：把种子写一次到服务端
       loaded.value = true
       pendingSave = true
       await flushSave()

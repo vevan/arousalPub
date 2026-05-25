@@ -5,7 +5,7 @@
 - 项目定位：类 SillyTavern 的现代化产品（中兼容）
 - MVP 周期：1-2 周，优先打通核心链路
 - 用户形态：内网多用户
-- 技术栈：Vue3 + Pinia + Vuetify；Node.js（Fastify）；数据以可同步目录 + JSON 为主（对话 chunk / `index.json`、**`data/characters/{uuid}.png`（内嵌角色卡）+ `index.json`**、`prompts.json` 等）
+- 技术栈：Vue3 + Pinia + Vuetify；Node.js（Fastify）；数据以可同步目录 + JSON 为主（**`data/{userId}/`**，默认 `default-user`：对话 chunk、`chats/`、**`prompts/index.json` + 各预设 JSON**、**`characters/{uuid}.png` + `index.json`** 等）
 - 核心能力：对话、**角色库（列表 / JSON·PNG 导入 / 表单新建·立绘 / 导出 JSON）**、Prompt、知识库/RAG（骨架与文档先行）、流式输出（SSE）
 - 关键原则：API 预设与密钥在服务端文件型配置中维护；对话可绑定 **`characterId` / `characterIds`**
 

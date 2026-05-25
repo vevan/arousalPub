@@ -20,14 +20,10 @@ export interface PromptsIndexDocument {
 
 /** GET/PUT API 与前端 PersistedState 对齐的聚合文档 */
 export interface PromptsDocument {
-  version: 2 | 3
+  version: 3
   savedAt: string
   activePresetId: string
   presets: unknown[]
-}
-
-export function legacyPromptsMonolithPath(): string {
-  return path.join(getUserDataDir(), 'prompts.json')
 }
 
 function presetFilePath(presetId: string): string {
@@ -60,7 +56,7 @@ async function readPresetFile(presetId: string): Promise<unknown | null> {
   }
 }
 
-async function readPromptsFromDir(): Promise<PromptsDocument | null> {
+export async function readPromptsDocument(): Promise<PromptsDocument | null> {
   const indexPath = getPromptsIndexPath()
   if (!existsSync(indexPath)) return null
   try {
@@ -87,33 +83,6 @@ async function readPromptsFromDir(): Promise<PromptsDocument | null> {
     if (err.code === 'ENOENT') return null
     throw e
   }
-}
-
-async function readPromptsMonolith(): Promise<PromptsDocument | null> {
-  const monolith = legacyPromptsMonolithPath()
-  if (!existsSync(monolith)) return null
-  try {
-    const raw = await readFile(monolith, 'utf8')
-    const parsed = JSON.parse(raw) as Partial<PromptsDocument>
-    if (!Array.isArray(parsed.presets)) return null
-    if (typeof parsed.activePresetId !== 'string') return null
-    return {
-      version: parsed.version === 3 ? 3 : 2,
-      savedAt: typeof parsed.savedAt === 'string' ? parsed.savedAt : '',
-      activePresetId: parsed.activePresetId,
-      presets: parsed.presets,
-    }
-  } catch (e) {
-    const err = e as NodeJS.ErrnoException
-    if (err.code === 'ENOENT') return null
-    throw e
-  }
-}
-
-export async function readPromptsDocument(): Promise<PromptsDocument | null> {
-  const fromDir = await readPromptsFromDir()
-  if (fromDir) return fromDir
-  return readPromptsMonolith()
 }
 
 export async function writePromptsDocument(data: PromptsDocument): Promise<void> {
@@ -161,11 +130,6 @@ export async function writePromptsDocument(data: PromptsDocument): Promise<void>
     if (!keepIds.has(id)) {
       await rm(path.join(dir, name), { force: true })
     }
-  }
-
-  const monolith = legacyPromptsMonolithPath()
-  if (existsSync(monolith)) {
-    await rm(monolith, { force: true })
   }
 }
 

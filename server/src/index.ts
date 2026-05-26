@@ -2,6 +2,7 @@ import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
 import Fastify from 'fastify'
 import { randomUUID } from 'node:crypto'
+import { isValidShortId } from './short-id.js'
 import { Readable, Transform } from 'node:stream'
 import {
   assertValidPresets,
@@ -250,9 +251,6 @@ await app.register(multipart, {
 })
 
 app.get('/health', async () => ({ ok: true as const }))
-
-const uuidRe =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 app.get('/api/chat/index', async (_request, reply) => {
   try {
@@ -1001,7 +999,7 @@ app.get<{ Params: { id: string } }>(
   '/api/characters/:id/image',
   async (request, reply) => {
     const id = request.params.id
-    if (!uuidRe.test(id)) {
+    if (!isValidShortId(id)) {
       return reply.status(400).send({ error: '无效 id' })
     }
     const buf = await readCharacterPngBuffer(id)
@@ -1017,7 +1015,7 @@ app.post<{ Params: { id: string } }>(
   '/api/characters/:id/portrait',
   async (request, reply) => {
     const id = request.params.id
-    if (!uuidRe.test(id)) {
+    if (!isValidShortId(id)) {
       return reply.status(400).send({ error: '无效 id' })
     }
     try {
@@ -1047,7 +1045,7 @@ app.patch<{ Params: { id: string }; Body: { card?: unknown } }>(
   '/api/characters/:id',
   async (request, reply) => {
     const id = request.params.id
-    if (!uuidRe.test(id)) {
+    if (!isValidShortId(id)) {
       return reply.status(400).send({ error: '无效 id' })
     }
     const body = request.body as { card?: unknown }
@@ -1080,7 +1078,7 @@ app.get<{ Params: { id: string } }>(
   '/api/characters/:id',
   async (request, reply) => {
     const id = request.params.id
-    if (!uuidRe.test(id)) {
+    if (!isValidShortId(id)) {
       return reply.status(400).send({ error: '无效 id' })
     }
     const doc = await readCharacterDocument(id)
@@ -1093,7 +1091,7 @@ app.delete<{ Params: { id: string } }>(
   '/api/characters/:id',
   async (request, reply) => {
     const id = request.params.id
-    if (!uuidRe.test(id)) {
+    if (!isValidShortId(id)) {
       return reply.status(400).send({ error: '无效 id' })
     }
     const ok = await deleteCharacterFile(id)

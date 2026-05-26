@@ -26,12 +26,12 @@ data/
     │   └── preset-….json    # 每个预设一份完整 JSON
     ├── chats/               # 对话（chat.index.json + 每会话子目录）
     ├── lorebooks/           # 世界书（骨架，预留）
-    └── characters/          # 角色卡库（{uuid}.png + index.json）
+    └── characters/          # 角色卡库（{id}.png + index.json，id 为 8 位 hex）
 ```
 
 ### `characters/` 角色卡文件
 
-- **文件名**：`{uuid}.png`（内嵌 Character Card V2 元数据）。
+- **文件名**：`{id}.png`（`id` 为 8 位十六进制，与会话 id 同规则；内嵌 Character Card V2 元数据）。
 - **API**：`GET /api/characters`、导入/新建/更新/删除等，见 `DOC/03-实现细节.md` §12。
 
 ## 备份

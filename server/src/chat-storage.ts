@@ -119,29 +119,21 @@ export interface ChatPromptFile {
   entries: ChatPromptEntry[]
 }
 
-/**
- * 解析会话绑定的角色卡 id：优先 characterIds（顺序即 {{char}}、{{char2}}…），否则回退 legacy characterId。
- */
+/** 解析会话绑定的角色卡 id（顺序即 {{char}}、{{char2}}…） */
 export function resolvedCharacterIds(
-  idx: Pick<ConversationIndex, 'characterId' | 'characterIds'>,
+  idx: Pick<ConversationIndex, 'characterIds'>,
 ): string[] {
-  /** 显式存了 characterIds（含空数组）时以之为准，不回退 legacy characterId */
-  if (Array.isArray(idx.characterIds)) {
-    const seen = new Set<string>()
-    const out: string[] = []
-    for (const raw of idx.characterIds) {
-      if (typeof raw !== 'string') continue
-      const id = raw.trim()
-      if (!id || seen.has(id)) continue
-      seen.add(id)
-      out.push(id)
-    }
-    return out
+  if (!Array.isArray(idx.characterIds)) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of idx.characterIds) {
+    if (typeof raw !== 'string') continue
+    const id = raw.trim()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
   }
-  if (typeof idx.characterId === 'string' && idx.characterId.trim()) {
-    return [idx.characterId.trim()]
-  }
-  return []
+  return out
 }
 
 /** 写盘前同步 characterId ↔ characterIds[0]，避免只存其一造成歧义 */
@@ -293,28 +285,9 @@ export async function updateConversationLorebookIds(
   return next
 }
 
-/** 从 send 块读取当前用户正文（兼容旧 sends 多版本） */
+/** 从 send 块读取当前用户正文 */
 export function getTurnUserText(turn: Pick<TurnRecord, 'send' | 'turnId'>): string {
   const raw = turn.send
-  if (
-    raw &&
-    typeof raw === 'object' &&
-    'sends' in raw &&
-    Array.isArray((raw as { sends: unknown }).sends) &&
-    (raw as { sends: { userText?: string }[] }).sends.length > 0
-  ) {
-    const b = raw as {
-      sends: { userText?: string }[]
-      activeSendIndex?: number
-    }
-    const ai =
-      typeof b.activeSendIndex === 'number' && Number.isInteger(b.activeSendIndex)
-        ? b.activeSendIndex
-        : 0
-    const idx = Math.min(Math.max(0, ai), b.sends.length - 1)
-    const ut = b.sends[idx]?.userText
-    return typeof ut === 'string' ? ut : ''
-  }
   if (
     raw &&
     typeof raw === 'object' &&

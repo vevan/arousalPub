@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,15 +9,9 @@ import {
   isPngBuffer,
   normalizeTavernCardV2Data,
 } from './character-png.js'
+import { generateShortId, isValidShortId } from './short-id.js'
 
-const UUID_JSON =
-  /^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.json$/i
-
-const UUID_PNG =
-  /^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.png$/i
-
-const UUID_ONLY =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const SHORT_PNG = /^([0-9a-f]{8})\.png$/i
 
 function characterIndexFile(): string {
   return path.join(getCharactersDir(), 'index.json')
@@ -75,7 +68,7 @@ async function refCounts(): Promise<Map<string, number>> {
   const counts = new Map<string, number>()
   for (const entry of list.conversations) {
     const ids = resolvedCharacterIds(
-      entry as { characterId?: string | null; characterIds?: string[] },
+      entry as { characterIds?: string[] },
     )
     for (const cid of ids) {
       counts.set(cid, (counts.get(cid) ?? 0) + 1)
@@ -128,9 +121,6 @@ function pickTags(card: Record<string, unknown>): string[] {
   return []
 }
 
-function isUuid(id: string): boolean {
-  return UUID_ONLY.test(id.trim())
-}
 
 function entryFromDoc(doc: CharacterStoredDocument): CharacterIndexEntry {
   return {
@@ -148,9 +138,7 @@ async function listCharacterIdsOnDisk(): Promise<Set<string>> {
   const names = await readdir(getCharactersDir()).catch(() => [] as string[])
   const ids = new Set<string>()
   for (const n of names) {
-    const mj = UUID_JSON.exec(n)
-    const mp = UUID_PNG.exec(n)
-    if (mj) ids.add(mj[1])
+    const mp = SHORT_PNG.exec(n)
     if (mp) ids.add(mp[1])
   }
   return ids
@@ -188,12 +176,11 @@ async function writeIndexFile(data: CharacterIndexFile): Promise<void> {
   )
 }
 
-/** 重建索引：扫描 *.png / 遗留 *.json */
+/** 重建索引：扫描 `{id}.png` */
 async function readDocFromDiskForRebuild(
   id: string,
 ): Promise<CharacterStoredDocument | null> {
   const pngPath = path.join(getCharactersDir(), `${id}.png`)
-  const jsonPath = path.join(getCharactersDir(), `${id}.json`)
   try {
     const buf = await readFile(pngPath)
     const card = extractCardFromPng(buf)
@@ -209,12 +196,6 @@ async function readDocFromDiskForRebuild(
       updatedAt,
       card,
     }
-  } catch {
-    /* try json */
-  }
-  try {
-    const raw = JSON.parse(await readFile(jsonPath, 'utf8')) as unknown
-    return parseDoc(raw)
   } catch {
     return null
   }
@@ -250,17 +231,10 @@ async function loadOrRebuildIndex(): Promise<CharacterIndexFile> {
   }
   for (const e of fromDisk.entries) {
     const png = path.join(getCharactersDir(), `${e.id}.png`)
-    const json = path.join(getCharactersDir(), `${e.id}.json`)
     try {
       await stat(png)
-      continue
     } catch {
-      try {
-        await stat(json)
-        continue
-      } catch {
-        return rebuildCharacterIndexFromDisk()
-      }
+      return rebuildCharacterIndexFromDisk()
     }
   }
   return fromDisk
@@ -281,20 +255,6 @@ async function removeIndexEntry(id: string): Promise<void> {
   if (!idx) return
   idx.entries = idx.entries.filter((e) => e.id !== id)
   await writeIndexFile(idx)
-}
-
-function parseDoc(raw: unknown): CharacterStoredDocument | null {
-  if (!raw || typeof raw !== 'object') return null
-  const o = raw as Partial<CharacterStoredDocument>
-  if (
-    o.schemaVersion !== 1 ||
-    typeof o.id !== 'string' ||
-    !o.card ||
-    typeof o.card !== 'object'
-  ) {
-    return null
-  }
-  return o as CharacterStoredDocument
 }
 
 export function normalizeImportCard(body: unknown): Record<string, unknown> {
@@ -382,10 +342,8 @@ export function cardFromNewCharacterForm(body: unknown): Record<string, unknown>
 }
 
 async function readOneFile(id: string): Promise<CharacterStoredDocument | null> {
-  if (!isUuid(id)) return null
+  if (!isValidShortId(id)) return null
   const pngPath = path.join(getCharactersDir(), `${id}.png`)
-  const jsonPath = path.join(getCharactersDir(), `${id}.json`)
-
   try {
     const buf = await readFile(pngPath)
     const card = extractCardFromPng(buf)
@@ -404,28 +362,12 @@ async function readOneFile(id: string): Promise<CharacterStoredDocument | null> 
       card,
     }
   } catch {
-    /* no png */
-  }
-
-  try {
-    const raw = JSON.parse(await readFile(jsonPath, 'utf8')) as unknown
-    const doc = parseDoc(raw)
-    if (!doc || doc.id !== id) return null
-    const template = await readFile(resolveDefaultAvatarPath())
-    const normalCard = normalizeTavernCardV2Data(
-      doc.card as Record<string, unknown>,
-    )
-    const out = embedCharaInPng(template, normalCard)
-    await writeFile(pngPath, out)
-    await unlink(jsonPath).catch(() => {})
-    return { ...doc, card: normalCard }
-  } catch {
     return null
   }
 }
 
 /**
- * 新建角色：写入 `data/characters/{uuid}.png`（内嵌 chara）。
+ * 新建角色：写入 `data/characters/{id}.png`（8 位 hex id，内嵌 chara）。
  * `portraitPng` 为可选用户 PNG；缺省则用内置默认立绘。
  */
 export async function importCharacterCardWithPortrait(
@@ -442,7 +384,7 @@ export async function importCharacterCardWithPortrait(
   const normalCard = normalizeTavernCardV2Data(card)
   const pngOut = embedCharaInPng(base, normalCard)
   const t = nowIso()
-  const id = randomUUID()
+  const id = generateShortId()
   const doc: CharacterStoredDocument = {
     schemaVersion: 1,
     id,
@@ -461,7 +403,7 @@ export async function importCharacterCard(
   return importCharacterCardWithPortrait(card, null)
 }
 
-/** 导入完整 ST 角色卡 PNG（字节落盘，分配新 UUID 文件名） */
+/** 导入完整 ST 角色卡 PNG（字节落盘，分配新 8 位 id 文件名） */
 export async function importCharacterCardPng(
   pngBuffer: Buffer,
 ): Promise<CharacterStoredDocument> {
@@ -471,7 +413,7 @@ export async function importCharacterCardPng(
   const card = extractCardFromPng(pngBuffer)
   await mkdir(getCharactersDir(), { recursive: true })
   const t = nowIso()
-  const id = randomUUID()
+  const id = generateShortId()
   const doc: CharacterStoredDocument = {
     schemaVersion: 1,
     id,
@@ -485,15 +427,13 @@ export async function importCharacterCardPng(
 }
 
 export async function deleteCharacterFile(id: string): Promise<boolean> {
-  if (!isUuid(id)) return false
+  if (!isValidShortId(id)) return false
   let removed = false
-  for (const ext of ['png', 'json'] as const) {
-    try {
-      await unlink(path.join(getCharactersDir(), `${id}.${ext}`))
-      removed = true
-    } catch {
-      /* */
-    }
+  try {
+    await unlink(path.join(getCharactersDir(), `${id}.png`))
+    removed = true
+  } catch {
+    /* */
   }
   if (!removed) return false
   await removeIndexEntry(id)
@@ -507,7 +447,7 @@ export async function updateCharacterDocument(
   id: string,
   cardPatch: Record<string, unknown>,
 ): Promise<CharacterStoredDocument | null> {
-  if (!isUuid(id)) return null
+  if (!isValidShortId(id)) return null
   const doc = await readOneFile(id)
   if (!doc) return null
   const merged: Record<string, unknown> = { ...doc.card }
@@ -533,7 +473,7 @@ export async function updateCharacterPortrait(
   id: string,
   portraitPng: Buffer,
 ): Promise<CharacterStoredDocument | null> {
-  if (!isUuid(id) || !isPngBuffer(portraitPng)) return null
+  if (!isValidShortId(id) || !isPngBuffer(portraitPng)) return null
   const doc = await readCharacterDocument(id)
   if (!doc) return null
   const normalCard = normalizeTavernCardV2Data(
@@ -565,17 +505,11 @@ export async function listCharacterSummaries(params: {
     const id = e.id
     let updatedAt = e.updatedAt
     const pngPath = path.join(getCharactersDir(), `${id}.png`)
-    const jsonPath = path.join(getCharactersDir(), `${id}.json`)
     try {
       const st = await stat(pngPath)
       updatedAt = new Date(st.mtimeMs).toISOString()
     } catch {
-      try {
-        const st = await stat(jsonPath)
-        updatedAt = new Date(st.mtimeMs).toISOString()
-      } catch {
-        /* keep index */
-      }
+      /* keep index */
     }
     const usedN = counts.get(id) ?? 0
     rows.push({
@@ -619,13 +553,13 @@ export async function listCharacterSummaries(params: {
 export async function readCharacterDocument(
   id: string,
 ): Promise<CharacterStoredDocument | null> {
-  if (!isUuid(id)) return null
+  if (!isValidShortId(id)) return null
   return readOneFile(id)
 }
 
-/** 读取磁盘上的角色卡 PNG 字节（无则 null；会先迁移遗留 JSON） */
+/** 读取磁盘上的角色卡 PNG 字节（无则 null） */
 export async function readCharacterPngBuffer(id: string): Promise<Buffer | null> {
-  if (!isUuid(id)) return null
+  if (!isValidShortId(id)) return null
   const doc = await readOneFile(id)
   if (!doc) return null
   const pngPath = path.join(getCharactersDir(), `${id}.png`)

@@ -65,3 +65,6 @@ coverage/
 _design/*.png
 _design/*.jpg
 _design/*.jpeg
+
+# Agent / scratch
+.tmp/

@@ -13,6 +13,8 @@ npm run typecheck
 
 开发与生产环境需能访问同源或代理下的 **后端 API**（如 `/api/chat/...`、`/api/characters`）；具体与根目录启动方式一致。
 
+**提示词组装**（含示例角色 XML、`{{user}}` 等宏展开）仅在服务端完成；前端通过 `POST /api/prompts/assemble-preview`（提示词页预览，无需传 `characters`）与 `POST /api/chat/conversations/:id/assemble-messages`（对话发送前预览）获取 `messages`，见 `DOC/03` §15。
+
 ## 与文档的对应关系
 
 | 主题 | 文档 |

@@ -1,5 +1,7 @@
 import DOMPurify from 'dompurify'
 import { Marked, marked } from 'marked'
+import { markedSmartypants } from 'marked-smartypants'
+import { wrapCurlyQuotesInHtml } from './wrap-quote-lines.js'
 
 /**
  * 与聊天内嵌展示匹配：允许常见排版与内联样式；脚本等仍由 DOMPurify 剔除。
@@ -23,7 +25,12 @@ const PURIFY_HTML: Record<string, unknown> = {
     'role',
     'aria-label',
   ],
-  ADD_TAGS: ['style'],
+  /** 保留 HTML 注释（如 ASST_BLOCK 边界）；内容仍经 DOMPurify 校验 */
+  ADD_TAGS: ['style', '#comment'],
+}
+
+function sanitizeChatHtml(html: string): string {
+  return String(DOMPurify.sanitize(html, PURIFY_HTML))
 }
 
 /**
@@ -54,8 +61,7 @@ function prepareHtmlBeforeSanitize(html: string): string {
 
 function sanitizeHtmlFragment(html: string): string {
   const prepared = prepareHtmlBeforeSanitize(html)
-  const out = DOMPurify.sanitize(prepared, PURIFY_HTML)
-  return String(out)
+  return sanitizeChatHtml(prepared)
 }
 
 /** 无语言围栏 / 缩进代码块：判断是否为应直接渲染的 HTML/XML 片段（避免被标成 <pre><code>） */
@@ -90,6 +96,8 @@ marked.use({
   gfm: true,
   breaks: true,
 })
+/** 直引号 → 弯引号等；跳过 pre/code 等（扩展内置） */
+marked.use(markedSmartypants({ config: 2 }))
 
 {
   const base = new marked.Renderer()
@@ -144,9 +152,9 @@ export function renderRichMessageToHtml(source: string): string {
     const pre = preprocessCodeSampleTags(s)
     const parsed = marked.parse(pre, { async: false })
     const html = typeof parsed === 'string' ? parsed : ''
-    return String(DOMPurify.sanitize(html, PURIFY_HTML))
+    return sanitizeChatHtml(wrapCurlyQuotesInHtml(html))
   } catch {
-    return String(DOMPurify.sanitize(s, PURIFY_HTML))
+    return sanitizeChatHtml(s)
   }
 }
 
@@ -160,8 +168,8 @@ export function renderReasoningMarkdownToHtml(source: string): string {
   try {
     const parsed = reasoningMarked.parse(s, { async: false })
     const html = typeof parsed === 'string' ? parsed : ''
-    return String(DOMPurify.sanitize(html, PURIFY_HTML))
+    return sanitizeChatHtml(html)
   } catch {
-    return String(DOMPurify.sanitize(s, PURIFY_HTML))
+    return sanitizeChatHtml(s)
   }
 }

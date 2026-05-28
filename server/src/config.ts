@@ -104,6 +104,10 @@ export function getPromptsIndexPath(): string {
   return path.join(getPromptsDir(), 'index.json')
 }
 
+export function getLorebooksIndexPath(): string {
+  return path.join(getLorebooksDir(), 'index.json')
+}
+
 /** @deprecated 请使用 {@link getChatsRoot} */
 export const CHAT_ROOT = getChatsRoot
 

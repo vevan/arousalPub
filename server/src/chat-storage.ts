@@ -2,6 +2,19 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { getChatsRoot } from './config.js'
+import {
+  lorebookSettingsOverrideFromEffective,
+  normalizeLorebookSettings,
+  resolveLorebookSettings,
+  type LorebookSettings,
+} from './lorebook-settings.js'
+import {
+  historySettingsOverrideFromEffective,
+  normalizeHistorySettings,
+  resolveHistorySettings,
+  type HistorySettings,
+} from './history-settings.js'
+import { readGlobalHistorySettings, readGlobalLorebookSettings } from './user-preferences-file.js'
 
 /** 与 {@link getChatsRoot} 相同，保留旧名供外部引用 */
 export function chatRoot(): string {
@@ -23,7 +36,7 @@ export interface ChatListEntry {
   conversationId: string
   title: string
   updatedAt: string
-  /** 用户 persona 卡 id（仅 UI 回显；宏使用 userName 快照） */
+  /** 用户 persona 卡 id；组装时注入 `<user>` 块，宏仍用 userName 快照 */
   userCharacterId?: string
   /** 兼容：首张卡 id，等同于 characterIds[0] */
   characterId?: string | null
@@ -69,12 +82,16 @@ export interface ConversationIndex {
    * 对话绑定的世界书 / lorebook id 列表（占位；检索与注入未接前可恒为空数组）。
    */
   lorebookIds?: string[]
+  /** 资料库递归稀疏覆盖（未写字段继承全局 user-preferences） */
+  lorebookSettings?: Partial<LorebookSettings>
+  /** 历史轮数稀疏覆盖（未写字段继承全局 user-preferences） */
+  historySettings?: Partial<HistorySettings>
   /**
    * 对话内用户展示名（宏 `{{user}}`）；缺省由服务端用默认「用户」。
    */
   userName?: string
   /**
-   * 用户 persona 卡 id：用于 UI 回显头像/来源。角色卡删除后，宏仍使用 userName 快照。
+   * 用户 persona 卡 id：UI 回显 + 组装注入 persona。卡删除后仅保留 userName 快照与宏。
    */
   userCharacterId?: string
 }
@@ -279,6 +296,80 @@ export async function updateConversationLorebookIds(
     delete next.lorebookIds
   } else {
     next.lorebookIds = cleaned
+  }
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next))
+  return next
+}
+
+/** 清除会话资料库递归覆盖（恢复继承全局） */
+export async function clearConversationLorebookSettings(
+  conversationId: string,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  delete next.lorebookSettings
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next))
+  return next
+}
+
+/** 资料库递归：在「全局 + 当前覆盖」上合并 patch，稀疏写盘 */
+export async function updateConversationLorebookSettings(
+  conversationId: string,
+  patch: Partial<LorebookSettings>,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const global = await readGlobalLorebookSettings()
+  const current = resolveLorebookSettings(global, idx.lorebookSettings)
+  const effective = normalizeLorebookSettings({ ...current, ...patch })
+  const sparse = lorebookSettingsOverrideFromEffective(effective, global)
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  if (sparse) {
+    next.lorebookSettings = sparse
+  } else {
+    delete next.lorebookSettings
+  }
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next))
+  return next
+}
+
+/** 清除会话历史轮数覆盖（恢复继承全局） */
+export async function clearConversationHistorySettings(
+  conversationId: string,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  delete next.historySettings
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next))
+  return next
+}
+
+/** 历史轮数：在「全局 + 当前覆盖」上合并 patch，稀疏写盘 */
+export async function updateConversationHistorySettings(
+  conversationId: string,
+  patch: Partial<HistorySettings>,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const global = await readGlobalHistorySettings()
+  const current = resolveHistorySettings(global, idx.historySettings)
+  const effective = normalizeHistorySettings({ ...current, ...patch })
+  const sparse = historySettingsOverrideFromEffective(effective, global)
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  if (sparse) {
+    next.historySettings = sparse
+  } else {
+    delete next.historySettings
   }
   await writeConversationIndex(conversationId, next)
   await upsertChatListEntry(chatListEntryFromIndex(next))

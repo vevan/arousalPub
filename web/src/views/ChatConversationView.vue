@@ -1,9 +1,23 @@
 <script setup lang="ts">
 import ConversationContextSettings from '@/components/ConversationContextSettings.vue'
 import HomeChat from '@/components/HomeChat.vue'
+import { bootstrapAppData } from '@/bootstrap/app-data'
 import { useConnectionStore } from '@/stores/connection'
 import { usePreferencesStore } from '@/stores/preferences'
-import { ref, watch } from 'vue'
+import {
+  hasHistorySettingsOverride,
+  normalizeHistorySettings,
+  resolveHistorySettings,
+  type HistorySettings,
+} from '@/utils/history-settings'
+import {
+  hasLorebookSettingsOverride,
+  normalizeLorebookSettings,
+  resolveLorebookSettings,
+  type LorebookSettings,
+} from '@/utils/lorebook-settings'
+import { storeToRefs } from 'pinia'
+import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -15,20 +29,84 @@ const { t } = useI18n()
 const router = useRouter()
 const conn = useConnectionStore()
 const prefStore = usePreferencesStore()
+const {
+  lorebookRecursiveEnabled,
+  lorebookMaxRecursionDepth,
+  historyLimitEnabled,
+  historyMaxTurns,
+} = storeToRefs(prefStore)
 
 const loading = ref(true)
 const errorText = ref('')
 const title = ref('')
 const titleSaving = ref(false)
 
+interface LorebookContextBinding {
+  useGlobal: boolean
+  effective: LorebookSettings
+}
+
+interface HistoryContextBinding {
+  useGlobal: boolean
+  effective: HistorySettings
+}
+
 interface ConvContextBindings {
   promptPresetId: string | null
   characterIds: string[]
   lorebookIds: string[]
+  lorebook: LorebookContextBinding
+  history: HistoryContextBinding
   /** 会话 `{{user}}`；null 表示未设置 */
   userName: string | null
   /** 用户 persona 卡 id；仅用于 UI 回显头像 */
   userCharacterId: string | null
+}
+
+function globalLoreFromStore(): LorebookSettings {
+  return normalizeLorebookSettings({
+    recursiveEnabled: prefStore.lorebookRecursiveEnabled,
+    maxRecursionDepth: prefStore.lorebookMaxRecursionDepth,
+  })
+}
+
+function globalHistoryFromStore(): HistorySettings {
+  return normalizeHistorySettings({
+    limitEnabled: prefStore.historyLimitEnabled,
+    maxTurns: prefStore.historyMaxTurns,
+  })
+}
+
+function historyContextFromIndex(
+  idx: Record<string, unknown>,
+): HistoryContextBinding {
+  const global = globalHistoryFromStore()
+  const raw = idx.historySettings
+  const override =
+    raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? (raw as Partial<HistorySettings>)
+      : undefined
+  const useGlobal = !hasHistorySettingsOverride(override)
+  return {
+    useGlobal,
+    effective: resolveHistorySettings(global, override),
+  }
+}
+
+function lorebookContextFromIndex(
+  idx: Record<string, unknown>,
+): LorebookContextBinding {
+  const global = globalLoreFromStore()
+  const raw = idx.lorebookSettings
+  const override =
+    raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? (raw as Partial<LorebookSettings>)
+      : undefined
+  const useGlobal = !hasLorebookSettingsOverride(override)
+  return {
+    useGlobal,
+    effective: resolveLorebookSettings(global, override),
+  }
 }
 
 function clientResolvedCharacterIds(idx: Record<string, unknown>): string[] {
@@ -68,6 +146,8 @@ function bindingsFromIndex(idx: Record<string, unknown>): ConvContextBindings {
     promptPresetId,
     characterIds: clientResolvedCharacterIds(idx),
     lorebookIds,
+    lorebook: lorebookContextFromIndex(idx),
+    history: historyContextFromIndex(idx),
     userName,
     userCharacterId,
   }
@@ -77,6 +157,14 @@ const convBindings = ref<ConvContextBindings>({
   promptPresetId: null,
   characterIds: [],
   lorebookIds: [],
+  lorebook: {
+    useGlobal: true,
+    effective: { recursiveEnabled: false, maxRecursionDepth: 2 },
+  },
+  history: {
+    useGlobal: true,
+    effective: { limitEnabled: false, maxTurns: 20 },
+  },
   userName: null,
   userCharacterId: null,
 })
@@ -99,10 +187,39 @@ async function patchPromptDebugMaxToServer(id: string) {
   })
 }
 
+onMounted(() => {
+  void bootstrapAppData()
+})
+
+watch([lorebookRecursiveEnabled, lorebookMaxRecursionDepth], () => {
+  if (!convBindings.value.lorebook.useGlobal) return
+  const global = globalLoreFromStore()
+  convBindings.value = {
+    ...convBindings.value,
+    lorebook: {
+      useGlobal: true,
+      effective: global,
+    },
+  }
+})
+
+watch([historyLimitEnabled, historyMaxTurns], () => {
+  if (!convBindings.value.history.useGlobal) return
+  const global = globalHistoryFromStore()
+  convBindings.value = {
+    ...convBindings.value,
+    history: {
+      useGlobal: true,
+      effective: global,
+    },
+  }
+})
+
 async function ensureConversation(id: string) {
   loading.value = true
   errorText.value = ''
   try {
+    await bootstrapAppData()
     let res = await fetch(`/api/chat/conversations/${id}`)
     if (res.status === 404) {
       const created = await fetch('/api/chat/conversations', {
@@ -262,6 +379,16 @@ watch(
         :initial-prompt-preset-id="convBindings.promptPresetId"
         :initial-character-ids="convBindings.characterIds"
         :initial-lorebook-ids="convBindings.lorebookIds"
+        :initial-lorebook-settings-use-global="convBindings.lorebook.useGlobal"
+        :global-lore-recursive-enabled="lorebookRecursiveEnabled"
+        :global-lore-max-recursion-depth="lorebookMaxRecursionDepth"
+        :initial-lorebook-recursive-enabled="convBindings.lorebook.effective.recursiveEnabled"
+        :initial-lorebook-max-recursion-depth="convBindings.lorebook.effective.maxRecursionDepth"
+        :initial-history-settings-use-global="convBindings.history.useGlobal"
+        :global-history-limit-enabled="historyLimitEnabled"
+        :global-history-max-turns="historyMaxTurns"
+        :initial-history-limit-enabled="convBindings.history.effective.limitEnabled"
+        :initial-history-max-turns="convBindings.history.effective.maxTurns"
         :initial-user-name="convBindings.userName"
         @patched="onConvContextPatched"
       />

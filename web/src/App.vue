@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import ConnectionSettingsCard from '@/components/ConnectionSettingsCard.vue'
 import CharactersView from '@/views/CharactersView.vue'
+import LorebooksView from '@/views/LorebooksView.vue'
 import PromptsView from '@/views/PromptsView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 import { htmlLangTag } from '@/i18n/locale'
+import { bootstrapAppData } from '@/bootstrap/app-data'
 import { useConnectionStore } from '@/stores/connection'
 import { useLocaleStore } from '@/stores/locale'
 import { storeToRefs } from 'pinia'
@@ -42,6 +44,7 @@ const drawerRight = ref(false)
 const settingsDialogOpen = ref(false)
 const promptsDialogOpen = ref(false)
 const charactersDialogOpen = ref(false)
+const lorebooksDialogOpen = ref(false)
 const conn = useConnectionStore()
 
 function clearPanelQuery() {
@@ -55,12 +58,20 @@ function clearPanelQuery() {
 
 function openPromptsDialog() {
   charactersDialogOpen.value = false
+  lorebooksDialogOpen.value = false
   promptsDialogOpen.value = true
 }
 
 function openCharactersDialog() {
   promptsDialogOpen.value = false
+  lorebooksDialogOpen.value = false
   charactersDialogOpen.value = true
+}
+
+function openLorebooksDialog() {
+  promptsDialogOpen.value = false
+  charactersDialogOpen.value = false
+  lorebooksDialogOpen.value = true
 }
 
 watch(
@@ -70,10 +81,17 @@ watch(
     if (panel === 'prompts') {
       promptsDialogOpen.value = true
       charactersDialogOpen.value = false
+      lorebooksDialogOpen.value = false
       void nextTick(() => clearPanelQuery())
     } else if (panel === 'characters') {
       charactersDialogOpen.value = true
       promptsDialogOpen.value = false
+      lorebooksDialogOpen.value = false
+      void nextTick(() => clearPanelQuery())
+    } else if (panel === 'lorebooks') {
+      lorebooksDialogOpen.value = true
+      promptsDialogOpen.value = false
+      charactersDialogOpen.value = false
       void nextTick(() => clearPanelQuery())
     }
   },
@@ -105,10 +123,7 @@ function syncAppChromeCssVars() {
 }
 
 onMounted(() => {
-  conn.ensureDefaultPresets()
-  void conn.loadFromServer().catch(() => {
-    conn.ensureDefaultPresets()
-  })
+  void bootstrapAppData()
   if (typeof window !== 'undefined') {
     window.addEventListener('languagechange', onBrowserLanguageChange)
   }
@@ -264,11 +279,12 @@ onUnmounted(() => {
           </v-btn>
           <v-btn
             variant="text"
-            disabled
+            :active="lorebooksDialogOpen"
             class="app-bar__menu-btn"
             size="small"
+            @click="openLorebooksDialog"
           >
-            {{ $t('app.knowledgeBase') }}
+            {{ $t('app.lorebooks') }}
           </v-btn>
         </nav>
       </div>
@@ -337,9 +353,10 @@ onUnmounted(() => {
     <v-dialog
       v-model="settingsDialogOpen"
       scrollable
+      content-class="settings-dialog-surface"
       @keydown.esc="settingsDialogOpen = false"
     >
-      <v-card rounded="lg">
+      <v-card rounded="lg" class="settings-dialog-card">
         <v-card-title class="d-flex align-center py-3 flex-wrap">
           <span class="text-h6 font-weight-medium">{{ $t('settings.pageTitle') }}</span>
           <v-spacer />
@@ -352,7 +369,7 @@ onUnmounted(() => {
           />
         </v-card-title>
         <v-divider />
-        <v-card-text class="pa-0">
+        <v-card-text class="pa-3 pa-sm-4 settings-dialog-body">
           <SettingsView embedded />
         </v-card-text>
       </v-card>
@@ -405,17 +422,46 @@ onUnmounted(() => {
         </v-card-text>
       </v-card>
     </v-dialog>
+
+    <v-dialog
+      v-model="lorebooksDialogOpen"
+      scrollable
+      content-class="library-dialog-surface"
+      @keydown.esc="lorebooksDialogOpen = false"
+    >
+      <v-card rounded="lg" class="library-dialog-card">
+        <v-toolbar density="compact" color="transparent" flat class="library-dialog-toolbar">
+          <v-spacer />
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            density="comfortable"
+            :aria-label="$t('settings.closeModal')"
+            @click="lorebooksDialogOpen = false"
+          />
+        </v-toolbar>
+        <v-divider />
+        <v-card-text class="pa-0 library-dialog-body">
+          <LorebooksView embedded />
+        </v-card-text>
+      </v-card>
+    </v-dialog>
   </v-app>
 </template>
 
 <style scoped>
-.library-dialog-card {
+.library-dialog-card,
+.settings-dialog-card {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
   height: 100%;
   max-height: 100%;
+}
+
+.settings-dialog-body {
+  flex: 0 1 auto;
 }
 .library-dialog-body {
   flex: 1 1 auto;

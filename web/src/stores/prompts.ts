@@ -476,35 +476,43 @@ export const usePromptsStore = defineStore('prompts', () => {
     }
   }
 
+  let loadInflight: Promise<void> | null = null
+
   async function loadFromServer(): Promise<void> {
-    if (loading.value || loaded.value) return
-    loading.value = true
-    lastError.value = null
-    try {
-      const res = await fetch('/api/prompts')
-      if (!res.ok) {
-        throw new Error(`GET /api/prompts ${res.status}`)
-      }
-      const raw: unknown = await res.json()
-      const fromServer =
-        raw === null
-          ? null
-          : normalizeServerDoc(raw as PromptsServerDocument)
-      if (fromServer) {
-        presets.value = fromServer.presets.map(normalizePreset)
-        activePresetId.value = fromServer.activePresetId
+    if (loaded.value) return
+    if (loadInflight) return loadInflight
+    loadInflight = (async () => {
+      if (loaded.value) return
+      loading.value = true
+      lastError.value = null
+      try {
+        const res = await fetch('/api/prompts')
+        if (!res.ok) {
+          throw new Error(`GET /api/prompts ${res.status}`)
+        }
+        const raw: unknown = await res.json()
+        const fromServer =
+          raw === null
+            ? null
+            : normalizeServerDoc(raw as PromptsServerDocument)
+        if (fromServer) {
+          presets.value = fromServer.presets.map(normalizePreset)
+          activePresetId.value = fromServer.activePresetId
+          loaded.value = true
+          return
+        }
         loaded.value = true
-        return
+        pendingSave = true
+        await flushSave()
+      } catch (e) {
+        lastError.value = e instanceof Error ? e.message : String(e)
+      } finally {
+        loading.value = false
       }
-      // 服务端为空：把种子写一次到服务端
-      loaded.value = true
-      pendingSave = true
-      await flushSave()
-    } catch (e) {
-      lastError.value = e instanceof Error ? e.message : String(e)
-    } finally {
-      loading.value = false
-    }
+    })().finally(() => {
+      loadInflight = null
+    })
+    return loadInflight
   }
 
   watch(

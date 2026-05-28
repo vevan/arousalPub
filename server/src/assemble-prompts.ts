@@ -1,13 +1,14 @@
-/** 与 web/src/utils/assemble-prompts.ts 对齐；类型自洽，不依赖前端 store */
+/** 提示词组装唯一实现（Web 通过 API 调用，不保留前端副本） */
 
-import { applyPromptMacroPipeline } from './prompt-macros.js'
-import type { PromptMacroContext } from './prompt-macros.js'
+import { applyPromptMacroPipeline } from './prompt-macros/index.js'
+import type { PromptMacroContext } from './prompt-macros/index.js'
 
-export type { PromptMacroContext } from './prompt-macros.js'
+export type { PromptMacroContext } from './prompt-macros/index.js'
 import {
   ASSEMBLE_INJECT_PLACEHOLDER,
   loreTextToXmlBlock,
 } from './prompt-xml.js'
+import { countChatMessagesTokens } from './token-count.js'
 
 export type GroupKind =
   | 'normal'
@@ -77,6 +78,8 @@ export interface BoundCharacterSlice {
 
 export interface AssembleContext {
   trigger?: PromptTrigger
+  /** 会话绑定的用户 persona 卡（新建对话时选定；与 `characters` 中的 AI 卡分开） */
+  userCharacter?: BoundCharacterSlice
   characters?: BoundCharacterSlice[]
   characterSystemPrompt?: string
   characterPostHistory?: string
@@ -85,6 +88,8 @@ export interface AssembleContext {
   history?: ChatMessage[]
   userInput?: string
   maxTokens?: number
+  /** OpenAI 风格模型名，用于 tiktoken 词表选择（默认 gpt-4o / o200k） */
+  tokenModel?: string
   /** 若给出，在 token 裁剪前替换各条 message 中的 `{{user}}` / `{{char}}` 等 */
   macroContext?: PromptMacroContext
 }
@@ -103,14 +108,16 @@ const PLACEHOLDER = {
 } as const
 
 function mergedBoundSystemPrompt(ctx: AssembleContext): string | undefined {
+  const parts: string[] = []
+  const userSp = ctx.userCharacter?.systemPrompt?.trim()
+  if (userSp) parts.push(userSp)
   if (ctx.characters && ctx.characters.length > 0) {
-    const parts: string[] = []
     for (const c of ctx.characters) {
       const s = c.systemPrompt?.trim()
       if (s) parts.push(s)
     }
-    return parts.length > 0 ? parts.join('\n\n') : undefined
   }
+  if (parts.length > 0) return parts.join('\n\n')
   const one = ctx.characterSystemPrompt?.trim()
   return one || undefined
 }
@@ -128,43 +135,45 @@ function mergedBoundPostHistory(ctx: AssembleContext): string | undefined {
   return one || undefined
 }
 
-function looksLikeCharXml(s: string): boolean {
-  return /^\s*<char\b/i.test(s)
+function looksLikePersonaXml(s: string): boolean {
+  return /^\s*<(char|user)\b/i.test(s)
 }
 
 function mergedCharacterCardBody(ctx: AssembleContext): string | undefined {
+  const blocks: string[] = []
+  const userBody = ctx.userCharacter?.cardBody?.trim()
+  if (userBody) blocks.push(userBody)
+
   if (ctx.characters && ctx.characters.length > 0) {
     const bodies = ctx.characters
       .map((c) => c.cardBody?.trim())
       .filter((b): b is string => Boolean(b && b.length > 0))
-    if (bodies.length === 0) return undefined
-    if (bodies.some((b) => looksLikeCharXml(b))) {
-      return bodies.join('\n\n')
+    if (bodies.length > 0) {
+      if (bodies.some((b) => looksLikePersonaXml(b))) {
+        blocks.push(...bodies)
+      } else {
+        const parts: string[] = []
+        for (const c of ctx.characters) {
+          const body = c.cardBody?.trim()
+          if (!body) continue
+          const title = c.name?.trim()
+          parts.push(title ? `## ${title}\n${body}` : body)
+        }
+        if (parts.length > 0) blocks.push(parts.join('\n\n---\n\n'))
+      }
     }
-    const parts: string[] = []
-    for (const c of ctx.characters) {
-      const body = c.cardBody?.trim()
-      if (!body) continue
-      const title = c.name?.trim()
-      parts.push(title ? `## ${title}\n${body}` : body)
-    }
-    return parts.length > 0 ? parts.join('\n\n---\n\n') : undefined
   }
-  const one = ctx.character?.trim()
-  return one || undefined
+  if (blocks.length === 0) {
+    const one = ctx.character?.trim()
+    return one || undefined
+  }
+  return blocks.join('\n\n')
 }
 
-export function estimateTokens(text: string): number {
-  if (!text) return 0
-  return Math.max(1, Math.ceil(text.length / 3.5))
-}
+export { estimateTokens, countChatMessagesTokens } from './token-count.js'
 
-function messagesTokens(msgs: ChatMessage[]): number {
-  let total = 0
-  for (const m of msgs) {
-    total += estimateTokens(m.content) + 4
-  }
-  return total + 2
+function messagesTokens(msgs: ChatMessage[], tokenModel?: string): number {
+  return countChatMessagesTokens(msgs, { model: tokenModel })
 }
 
 function entryMatchesTrigger(
@@ -368,7 +377,7 @@ export function assemblePrompts(
     historyStart >= 0
   ) {
     while (
-      messagesTokens(messages) > ctx.maxTokens &&
+      messagesTokens(messages, ctx.tokenModel) > ctx.maxTokens &&
       historyEnd - historyStart > 0
     ) {
       messages.splice(historyStart, 1)
@@ -379,7 +388,7 @@ export function assemblePrompts(
 
   return {
     messages,
-    estimatedTokens: messagesTokens(messages),
+    estimatedTokens: messagesTokens(messages, ctx.tokenModel),
     droppedHistoryCount,
   }
 }

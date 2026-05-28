@@ -5,8 +5,8 @@ import {
   type PromptPreset,
   type PromptTrigger,
 } from './assemble-prompts.js'
-import { buildPromptMacroContext } from './prompt-macros.js'
-import { cardRecordToCharXmlBlock } from './prompt-xml.js'
+import { buildPromptMacroContext } from './prompt-macros/index.js'
+import { cardRecordToCharXmlBlock, cardRecordToUserXmlBlock } from './prompt-xml.js'
 import {
   getTurnUserText,
   readConversationIndex,
@@ -18,6 +18,19 @@ import {
 } from './chat-storage.js'
 import { readCharacterDocument } from './character-storage.js'
 import type { PromptsDocument } from './prompts-file.js'
+import { listLorebookIds } from './lorebook-file.js'
+import { resolveLorebookSettings } from './lorebook-settings.js'
+import { resolveLorebookInjectionText } from './lorebook-resolve.js'
+import {
+  limitHistoryTurnRows,
+  resolveHistorySettings,
+  type HistorySettings,
+} from './history-settings.js'
+import {
+  readGlobalHistorySettings,
+  readGlobalLorebookSettings,
+} from './user-preferences-file.js'
+import { normalizePresetForAssemble } from './prompt-preset-normalize.js'
 
 function asPromptPreset(raw: unknown): PromptPreset | null {
   if (!raw || typeof raw !== 'object') return null
@@ -87,6 +100,7 @@ function assistantTextFromTurn(t: TurnRecord): string {
 export function chunkTurnsToHistoryMessages(
   chunk: ChunkFile | null,
   historyBeforeTurnOrdinalExclusive?: number,
+  historySettings?: HistorySettings,
 ): ChatMessage[] {
   if (!chunk || !Array.isArray(chunk.turns)) return []
   let rows = chunk.turns.slice()
@@ -99,6 +113,9 @@ export function chunkTurnsToHistoryMessages(
     )
   }
   rows.sort((a, b) => a.turnOrdinal - b.turnOrdinal)
+  if (historySettings) {
+    rows = limitHistoryTurnRows(rows, historySettings)
+  }
   const out: ChatMessage[] = []
   for (const turn of rows) {
     const u = getTurnUserText(turn)
@@ -125,6 +142,34 @@ async function loadBoundCharacterSlices(ids: string[]): Promise<BoundCharacterSl
   return out
 }
 
+/** 会话 userCharacterId → persona 切片；展示名优先用 userName 快照 */
+async function loadUserCharacterSlice(
+  idx: Pick<ConversationIndex, 'userCharacterId' | 'userName'>,
+): Promise<BoundCharacterSlice | undefined> {
+  const id =
+    typeof idx.userCharacterId === 'string' ? idx.userCharacterId.trim() : ''
+  if (!id) return undefined
+  const doc = await readCharacterDocument(id)
+  if (!doc?.card || typeof doc.card !== 'object') return undefined
+  const card = doc.card as Record<string, unknown>
+  const snap =
+    typeof idx.userName === 'string' && idx.userName.trim()
+      ? idx.userName.trim()
+      : ''
+  const nameRaw = card.name
+  const nameFromCard =
+    typeof nameRaw === 'string' && nameRaw.trim() ? nameRaw.trim() : ''
+  const name = snap || nameFromCard || undefined
+  const sp = card.system_prompt
+  const systemPrompt =
+    typeof sp === 'string' && sp.trim() ? sp.trim() : undefined
+  return {
+    name,
+    cardBody: cardRecordToUserXmlBlock(card),
+    systemPrompt,
+  }
+}
+
 const TRIGGERS: PromptTrigger[] = [
   'normal',
   'continue',
@@ -146,6 +191,8 @@ export interface BuildConversationMessagesParams {
   /** 仅包含尾块中 turnOrdinal 小于该值的轮次作为 history（再生时传当前轮的 ordinal） */
   historyBeforeTurnOrdinalExclusive?: number | null
   contextLength?: number | null
+  /** 连接配置中的模型名，用于 tiktoken 词表 */
+  tokenModel?: string | null
 }
 
 export interface BuildConversationMessagesResult {
@@ -171,21 +218,35 @@ export async function buildConversationOutboundMessages(
   }
 
   const doc = params.promptsDoc
-  const preset = pickPresetForConversation(idx, doc)
-  if (!preset) {
+  const picked = pickPresetForConversation(idx, doc)
+  if (!picked) {
     return { error: '无法解析提示词预设', status: 400 }
   }
+  const preset = normalizePresetForAssemble(picked)
 
   const chunk = await readTailChunk(conversationId)
+  const globalHistory = await readGlobalHistorySettings()
+  const effectiveHistory = resolveHistorySettings(
+    globalHistory,
+    idx.historySettings,
+  )
   const history = chunkTurnsToHistoryMessages(
     chunk,
     params.historyBeforeTurnOrdinalExclusive ?? undefined,
+    effectiveHistory,
   )
 
   const charIds = resolvedCharacterIds(idx)
-  const characters = await loadBoundCharacterSlices(charIds)
-  const charCtx =
-    characters.length > 0 ? { characters } satisfies { characters: BoundCharacterSlice[] } : {}
+  const [userCharacter, characters] = await Promise.all([
+    loadUserCharacterSlice(idx),
+    loadBoundCharacterSlices(charIds),
+  ])
+  const charCtx: {
+    userCharacter?: BoundCharacterSlice
+    characters?: BoundCharacterSlice[]
+  } = {}
+  if (userCharacter) charCtx.userCharacter = userCharacter
+  if (characters.length > 0) charCtx.characters = characters
 
   const userInput = typeof params.userText === 'string' ? params.userText : ''
   const trigger = normalizeTrigger(params.promptTrigger)
@@ -198,14 +259,39 @@ export async function buildConversationOutboundMessages(
   const macroContext = buildPromptMacroContext({
     conversationUserName: idx.userName,
     characters,
+    model: params.tokenModel ?? undefined,
+    contextLength: maxTokens,
   })
+
+  const boundLorebookIds = Array.isArray(idx.lorebookIds)
+    ? idx.lorebookIds.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+    : []
+  // 会话未显式绑定时，回退为全部已保存世界书（避免编辑了世界书却忘记在对话设置里勾选）
+  const lorebookIds =
+    boundLorebookIds.length > 0 ? boundLorebookIds : await listLorebookIds()
+  const globalLore = await readGlobalLorebookSettings()
+  const effectiveLore = resolveLorebookSettings(globalLore, idx.lorebookSettings)
+  const worldText =
+    lorebookIds.length > 0
+      ? await resolveLorebookInjectionText(lorebookIds, {
+          userText: userInput,
+          lorebookSettings: effectiveLore,
+        })
+      : undefined
+
+  const tokenModel =
+    typeof params.tokenModel === 'string' && params.tokenModel.trim().length > 0
+      ? params.tokenModel.trim()
+      : undefined
 
   const result = assemblePrompts(preset, {
     trigger,
     history,
     userInput,
     maxTokens,
+    tokenModel,
     macroContext,
+    ...(worldText !== undefined && worldText.length > 0 ? { world: worldText } : {}),
     ...charCtx,
   })
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { bootstrapAppData } from '@/bootstrap/app-data'
 import { usePromptsStore } from '@/stores/prompts'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -10,6 +11,17 @@ const props = defineProps<{
   initialPromptPresetId?: string | null
   initialCharacterIds: string[]
   initialLorebookIds: string[]
+  /** 未覆盖时继承全局 */
+  initialLorebookSettingsUseGlobal?: boolean
+  globalLoreRecursiveEnabled?: boolean
+  globalLoreMaxRecursionDepth?: number
+  initialLorebookRecursiveEnabled?: boolean
+  initialLorebookMaxRecursionDepth?: number
+  initialHistorySettingsUseGlobal?: boolean
+  globalHistoryLimitEnabled?: boolean
+  globalHistoryMaxTurns?: number
+  initialHistoryLimitEnabled?: boolean
+  initialHistoryMaxTurns?: number
   /** 会话内 `{{user}}` 展示名；空表示用默认「用户」 */
   initialUserName?: string | null
 }>()
@@ -29,15 +41,39 @@ const characterModel = ref<string[]>([])
 
 const savingPreset = ref(false)
 const savingChars = ref(false)
+const savingLorebooks = ref(false)
+const savingLoreSettings = ref(false)
+const savingHistorySettings = ref(false)
 const errorText = ref('')
+
+const lorebookModel = ref<string[]>([])
+const loreUseGlobal = ref(true)
+const loreRecursiveEnabled = ref(false)
+const loreMaxRecursionDepth = ref(2)
+
+const loreDepthItems = [0, 1, 2, 3] as const
+
+/** 提示词宏名；勿写入 i18n（vue-i18n 会将 `{{` 当作占位符） */
+const PROMPT_USER_MACRO = '{{user}}'
+
+const historyUseGlobal = ref(true)
+const historyLimitEnabled = ref(false)
+const historyMaxTurns = ref(20)
 
 interface CharItem {
   id: string
   name: string
 }
 
+interface LorebookItem {
+  id: string
+  name: string
+}
+
 const charItems = ref<CharItem[]>([])
 const charItemsLoading = ref(false)
+const lorebookItems = ref<LorebookItem[]>([])
+const lorebookItemsLoading = ref(false)
 
 const presetItems = computed(() => {
   const inherit = {
@@ -62,10 +98,75 @@ function propsPresetTarget(): string | null {
   return typeof s === 'string' && s.trim() ? s.trim() : null
 }
 
+function propsLoreUseGlobal(): boolean {
+  return props.initialLorebookSettingsUseGlobal !== false
+}
+
+function propsGlobalLoreRecursiveEnabled(): boolean {
+  return props.globalLoreRecursiveEnabled === true
+}
+
+function propsGlobalLoreMaxRecursionDepth(): number {
+  const d = props.globalLoreMaxRecursionDepth
+  if (typeof d !== 'number' || !Number.isFinite(d)) return 2
+  return Math.max(0, Math.min(3, Math.floor(d)))
+}
+
+function propsLoreRecursiveEnabled(): boolean {
+  return props.initialLorebookRecursiveEnabled === true
+}
+
+function propsLoreMaxRecursionDepth(): number {
+  const d = props.initialLorebookMaxRecursionDepth
+  if (typeof d !== 'number' || !Number.isFinite(d)) return 2
+  return Math.max(0, Math.min(3, Math.floor(d)))
+}
+
+function propsHistoryUseGlobal(): boolean {
+  return props.initialHistorySettingsUseGlobal !== false
+}
+
+function propsGlobalHistoryLimitEnabled(): boolean {
+  return props.globalHistoryLimitEnabled === true
+}
+
+function propsGlobalHistoryMaxTurns(): number {
+  const d = props.globalHistoryMaxTurns
+  if (typeof d !== 'number' || !Number.isFinite(d)) return 20
+  return Math.max(1, Math.min(200, Math.floor(d)))
+}
+
+function propsHistoryLimitEnabled(): boolean {
+  return props.initialHistoryLimitEnabled === true
+}
+
+function propsHistoryMaxTurns(): number {
+  const d = props.initialHistoryMaxTurns
+  if (typeof d !== 'number' || !Number.isFinite(d)) return 20
+  return Math.max(1, Math.min(200, Math.floor(d)))
+}
+
 function syncFromProps() {
   errorText.value = ''
   presetModel.value = propsPresetTarget() ?? INHERIT_VALUE
   characterModel.value = [...props.initialCharacterIds]
+  lorebookModel.value = [...props.initialLorebookIds]
+  loreUseGlobal.value = propsLoreUseGlobal()
+  if (loreUseGlobal.value) {
+    loreRecursiveEnabled.value = propsGlobalLoreRecursiveEnabled()
+    loreMaxRecursionDepth.value = propsGlobalLoreMaxRecursionDepth()
+  } else {
+    loreRecursiveEnabled.value = propsLoreRecursiveEnabled()
+    loreMaxRecursionDepth.value = propsLoreMaxRecursionDepth()
+  }
+  historyUseGlobal.value = propsHistoryUseGlobal()
+  if (historyUseGlobal.value) {
+    historyLimitEnabled.value = propsGlobalHistoryLimitEnabled()
+    historyMaxTurns.value = propsGlobalHistoryMaxTurns()
+  } else {
+    historyLimitEnabled.value = propsHistoryLimitEnabled()
+    historyMaxTurns.value = propsHistoryMaxTurns()
+  }
 }
 
 watch(
@@ -74,6 +175,16 @@ watch(
     props.initialPromptPresetId,
     props.initialCharacterIds,
     props.initialLorebookIds,
+    props.initialLorebookSettingsUseGlobal,
+    props.globalLoreRecursiveEnabled,
+    props.globalLoreMaxRecursionDepth,
+    props.initialLorebookRecursiveEnabled,
+    props.initialLorebookMaxRecursionDepth,
+    props.initialHistorySettingsUseGlobal,
+    props.globalHistoryLimitEnabled,
+    props.globalHistoryMaxTurns,
+    props.initialHistoryLimitEnabled,
+    props.initialHistoryMaxTurns,
     props.initialUserName,
   ],
   () => syncFromProps(),
@@ -120,11 +231,193 @@ watch(
   { deep: true },
 )
 
+watch(
+  lorebookModel,
+  async (ids) => {
+    const a = [...ids].sort().join('\u0000')
+    const b = [...props.initialLorebookIds].sort().join('\u0000')
+    if (a === b) return
+    savingLorebooks.value = true
+    errorText.value = ''
+    try {
+      await patchConversation({ lorebookIds: [...ids] })
+    } catch (e) {
+      errorText.value =
+        e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+      syncFromProps()
+    } finally {
+      savingLorebooks.value = false
+    }
+  },
+  { deep: true },
+)
+
+watch(loreUseGlobal, async (useGlobal) => {
+  if (useGlobal === propsLoreUseGlobal()) return
+  savingLoreSettings.value = true
+  errorText.value = ''
+  try {
+    if (useGlobal) {
+      await patchConversation({ lorebookSettings: null })
+    } else {
+      await patchConversation({
+        lorebookSettings: {
+          recursiveEnabled: loreRecursiveEnabled.value,
+          maxRecursionDepth: loreMaxRecursionDepth.value,
+        },
+      })
+    }
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingLoreSettings.value = false
+  }
+})
+
+async function saveLoreOverride() {
+  await patchConversation({
+    lorebookSettings: {
+      recursiveEnabled: loreRecursiveEnabled.value,
+      maxRecursionDepth: loreMaxRecursionDepth.value,
+    },
+  })
+}
+
+watch(loreRecursiveEnabled, async (enabled) => {
+  const target = loreUseGlobal.value
+    ? propsGlobalLoreRecursiveEnabled()
+    : propsLoreRecursiveEnabled()
+  if (enabled === target) return
+  savingLoreSettings.value = true
+  errorText.value = ''
+  try {
+    await saveLoreOverride()
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingLoreSettings.value = false
+  }
+})
+
+watch(loreMaxRecursionDepth, async (depth) => {
+  const target = loreUseGlobal.value
+    ? propsGlobalLoreMaxRecursionDepth()
+    : propsLoreMaxRecursionDepth()
+  if (depth === target) return
+  savingLoreSettings.value = true
+  errorText.value = ''
+  try {
+    await saveLoreOverride()
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingLoreSettings.value = false
+  }
+})
+
+watch(historyUseGlobal, async (useGlobal) => {
+  if (useGlobal === propsHistoryUseGlobal()) return
+  savingHistorySettings.value = true
+  errorText.value = ''
+  try {
+    if (useGlobal) {
+      await patchConversation({ historySettings: null })
+    } else {
+      await patchConversation({
+        historySettings: {
+          limitEnabled: historyLimitEnabled.value,
+          maxTurns: historyMaxTurns.value,
+        },
+      })
+    }
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingHistorySettings.value = false
+  }
+})
+
+async function saveHistoryOverride() {
+  await patchConversation({
+    historySettings: {
+      limitEnabled: historyLimitEnabled.value,
+      maxTurns: historyMaxTurns.value,
+    },
+  })
+}
+
+watch(historyLimitEnabled, async (enabled) => {
+  const target = historyUseGlobal.value
+    ? propsGlobalHistoryLimitEnabled()
+    : propsHistoryLimitEnabled()
+  if (enabled === target) return
+  savingHistorySettings.value = true
+  errorText.value = ''
+  try {
+    await saveHistoryOverride()
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingHistorySettings.value = false
+  }
+})
+
+watch(historyMaxTurns, async (turns) => {
+  const target = historyUseGlobal.value
+    ? propsGlobalHistoryMaxTurns()
+    : propsHistoryMaxTurns()
+  if (turns === target) return
+  savingHistorySettings.value = true
+  errorText.value = ''
+  try {
+    await saveHistoryOverride()
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingHistorySettings.value = false
+  }
+})
+
 onMounted(() => {
   syncFromProps()
-  void promptsStore.loadFromServer().catch(() => {})
+  void bootstrapAppData()
   void loadCharacters()
+  void loadLorebooks()
 })
+
+async function loadLorebooks() {
+  lorebookItemsLoading.value = true
+  try {
+    const res = await fetch('/api/lorebooks')
+    if (!res.ok) return
+    const raw: unknown = await res.json()
+    if (!raw || typeof raw !== 'object') return
+    const list = (raw as { lorebooks?: { id?: string; name?: string }[] })
+      .lorebooks
+    lorebookItems.value = (list ?? [])
+      .filter((x) => typeof x.id === 'string' && x.id.trim())
+      .map((x) => ({
+        id: x.id as string,
+        name: typeof x.name === 'string' ? x.name : (x.id as string),
+      }))
+  } catch {
+    /* ignore */
+  } finally {
+    lorebookItemsLoading.value = false
+  }
+}
 
 async function loadCharacters() {
   charItemsLoading.value = true
@@ -210,7 +503,7 @@ async function patchConversation(body: Record<string, unknown>) {
             variant="tonal"
             type="info"
           >
-            {{ $t('chat.convSettings.userNameSnapshot', { name: initialUserName }) }}
+            {{ $t('chat.convSettings.userNameSnapshotPrefix') }}<strong>{{ initialUserName }}</strong>{{ $t('chat.convSettings.userNameSnapshotSuffix') }}<code class="user-macro-tag">{{ PROMPT_USER_MACRO }}</code>{{ $t('chat.convSettings.userNameSnapshotSuffixEnd') }}
           </v-alert>
         </div>
 
@@ -235,17 +528,120 @@ async function patchConversation(body: Record<string, unknown>) {
         </div>
 
         <div class="conv-context-settings__field">
-          <p class="text-caption text-medium-emphasis mb-1">
-            {{ $t('chat.convSettings.lorebooks') }}
-          </p>
-          <v-alert
-            type="info"
-            variant="tonal"
+          <v-select
+            v-model="lorebookModel"
+            :items="lorebookItems"
+            item-title="name"
+            item-value="id"
+            :label="$t('chat.convSettings.lorebooks')"
             density="compact"
-            class="mb-0"
-          >
+            variant="outlined"
+            multiple
+            chips
+            closable-chips
+            hide-details="auto"
+            :loading="lorebookItemsLoading || savingLorebooks"
+          />
+          <p class="text-caption text-medium-emphasis mt-1 mb-0">
             {{ $t('chat.convSettings.lorebooksHint') }}
-          </v-alert>
+          </p>
+        </div>
+
+        <div class="conv-context-settings__field">
+          <v-switch
+            v-model="loreUseGlobal"
+            :label="$t('chat.convSettings.loreUseGlobal')"
+            density="compact"
+            hide-details
+            color="primary"
+            :loading="savingLoreSettings"
+            :disabled="savingLoreSettings"
+          />
+          <p
+            v-if="loreUseGlobal"
+            class="text-caption text-medium-emphasis mt-1 mb-2"
+          >
+            {{ $t('chat.convSettings.loreInheritGlobalHint') }}
+          </p>
+          <v-switch
+            v-model="loreRecursiveEnabled"
+            :label="$t('chat.convSettings.loreRecursiveEnabled')"
+            density="compact"
+            hide-details
+            color="primary"
+            class="mt-1"
+            :loading="savingLoreSettings"
+            :disabled="loreUseGlobal || savingLoreSettings"
+          />
+          <p class="text-caption text-medium-emphasis mt-1 mb-2">
+            {{ $t('chat.convSettings.loreRecursiveHint') }}
+          </p>
+          <v-select
+            v-model="loreMaxRecursionDepth"
+            :items="[...loreDepthItems]"
+            :label="$t('chat.convSettings.loreMaxRecursionDepth')"
+            density="compact"
+            variant="outlined"
+            hide-details="auto"
+            :disabled="loreUseGlobal || !loreRecursiveEnabled || savingLoreSettings"
+            :loading="savingLoreSettings"
+          />
+          <p
+            v-if="loreRecursiveEnabled"
+            class="text-caption text-medium-emphasis mt-1 mb-0"
+          >
+            {{ $t('chat.convSettings.loreMaxRecursionDepthHint') }}
+          </p>
+        </div>
+
+        <div class="conv-context-settings__field">
+          <v-switch
+            v-model="historyUseGlobal"
+            :label="$t('chat.convSettings.historyUseGlobal')"
+            density="compact"
+            hide-details
+            color="primary"
+            :loading="savingHistorySettings"
+            :disabled="savingHistorySettings"
+          />
+          <p
+            v-if="historyUseGlobal"
+            class="text-caption text-medium-emphasis mt-1 mb-2"
+          >
+            {{ $t('chat.convSettings.historyInheritGlobalHint') }}
+          </p>
+          <v-switch
+            v-model="historyLimitEnabled"
+            :label="$t('chat.convSettings.historyLimitEnabled')"
+            density="compact"
+            hide-details
+            color="primary"
+            class="mt-1"
+            :loading="savingHistorySettings"
+            :disabled="historyUseGlobal || savingHistorySettings"
+          />
+          <p class="text-caption text-medium-emphasis mt-1 mb-2">
+            {{ $t('chat.convSettings.historyLimitHint') }}
+          </p>
+          <v-text-field
+            v-model.number="historyMaxTurns"
+            type="number"
+            min="1"
+            max="200"
+            step="1"
+            :label="$t('chat.convSettings.historyMaxTurns')"
+            density="compact"
+            variant="outlined"
+            hide-details="auto"
+            :disabled="historyUseGlobal || !historyLimitEnabled || savingHistorySettings"
+            :loading="savingHistorySettings"
+          />
+          <p
+            v-if="historyLimitEnabled"
+            class="text-caption text-medium-emphasis mt-1 mb-0"
+          >
+            {{ $t('chat.convSettings.historyMaxTurnsHint') }}
+          </p>
         </div>
       </v-expansion-panel-text>
     </v-expansion-panel>
@@ -263,5 +659,10 @@ async function patchConversation(body: Record<string, unknown>) {
 }
 .conv-context-settings__field + .conv-context-settings__field {
   margin-top: 0.75rem;
+}
+.user-macro-tag {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85em;
+  padding: 0 0.15em;
 }
 </style>

@@ -27,13 +27,23 @@ import {
   updateConversationPromptDebugMax,
   updateConversationPromptPresetId,
   updateConversationLorebookIds,
+  updateConversationLorebookSettings,
+  clearConversationLorebookSettings,
+  clearConversationHistorySettings,
+  updateConversationHistorySettings,
   updateConversationUserCharacterId,
   updateConversationUserName,
   getTurnUserText,
+  resolvedCharacterIds,
   updateTurnContentInTailChunk,
   type TurnReceive,
 } from './chat-storage.js'
 import { ensureDataSkeleton } from './config.js'
+import {
+  readUserPreferencesDocument,
+  updateGlobalHistorySettings,
+  updateGlobalLorebookSettings,
+} from './user-preferences-file.js'
 import {
   isValidConversationId,
 } from './conversation-id.js'
@@ -45,12 +55,29 @@ import {
   type PromptsDocument,
 } from './prompts-file.js'
 import {
+  assertValidLorebooksPayload,
+  buildDefaultLorebook,
+  readLorebookById,
+  readLorebooksDocument,
+  writeLorebooksDocument,
+  LOREBOOK_ID_RE,
+  type LorebooksDocument,
+} from './lorebook-file.js'
+import {
   assertValidApiKeysPayload,
   readApiKeysDocument,
   writeApiKeysDocument,
   type ApiKeysDocument,
 } from './api-keys-file.js'
 import { buildConversationOutboundMessages } from './chat-assemble.js'
+import {
+  applyPromptMacroPipeline,
+  buildPromptMacroContext,
+} from './prompt-macros/index.js'
+import {
+  runPromptsAssemblePreview,
+  type PromptsAssemblePreviewBody,
+} from './prompts-assemble-preview.js'
 import { persistTurnAfterModelReply } from './chat-persist-after-chat.js'
 import { parseSseDataLine } from './sse-assistant.js'
 import { isPngBuffer } from './character-png.js'
@@ -304,7 +331,17 @@ interface PatchConvBody {
   promptPresetId?: string | null
   /** 世界书 id 列表；传 [] 清空 */
   lorebookIds?: string[]
-  /** 用户 persona 卡 id；仅用于 UI 回显，宏仍依赖 userName 快照 */
+  /** 资料库递归：`recursiveEnabled`、`maxRecursionDepth`（0～3） */
+  lorebookSettings?: {
+    recursiveEnabled?: boolean
+    maxRecursionDepth?: number
+  } | null
+  /** 历史轮数：`limitEnabled`、`maxTurns`；`null` 清除覆盖 */
+  historySettings?: {
+    limitEnabled?: boolean
+    maxTurns?: number
+  } | null
+  /** 用户 persona 卡 id；组装注入 persona，宏仍依赖 userName 快照 */
   userCharacterId?: string | null
   /** 宏 `{{user}}` 展示名；传 `null` 清除以使用默认「用户」 */
   userName?: string | null
@@ -327,14 +364,22 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
     const hasCharIds = Array.isArray(b.characterIds)
     const hasPromptPreset = Object.prototype.hasOwnProperty.call(b, 'promptPresetId')
     const hasLorebookIds = Array.isArray(b.lorebookIds)
+    const hasLorebookSettings = Object.prototype.hasOwnProperty.call(
+      b,
+      'lorebookSettings',
+    )
+    const hasHistorySettings = Object.prototype.hasOwnProperty.call(
+      b,
+      'historySettings',
+    )
     const hasUserCharacterId = Object.prototype.hasOwnProperty.call(b, 'userCharacterId')
     const hasUserName = Object.prototype.hasOwnProperty.call(b, 'userName')
-    if (!hasTitle && !hasPromptDebug && !hasCharIds && !hasPromptPreset && !hasLorebookIds && !hasUserCharacterId && !hasUserName) {
+    if (!hasTitle && !hasPromptDebug && !hasCharIds && !hasPromptPreset && !hasLorebookIds && !hasLorebookSettings && !hasHistorySettings && !hasUserCharacterId && !hasUserName) {
       return reply
         .status(400)
         .send({
           error:
-            '须提供 title、promptDebug.maxStored、characterIds、promptPresetId、lorebookIds、userCharacterId 和/或 userName',
+            '须提供 title、promptDebug.maxStored、characterIds、promptPresetId、lorebookIds、lorebookSettings、historySettings、userCharacterId 和/或 userName',
         })
     }
     let idx = await readConversationIndex(id)
@@ -379,6 +424,98 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       const next = await updateConversationLorebookIds(id, raw)
       if (!next) return reply.status(404).send({ error: '会话不存在' })
       idx = next
+    }
+    if (hasLorebookSettings) {
+      const raw = b.lorebookSettings
+      if (raw === null) {
+        const next = await clearConversationLorebookSettings(id)
+        if (!next) return reply.status(404).send({ error: '会话不存在' })
+        idx = next
+      } else if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return reply.status(400).send({ error: 'lorebookSettings 须为对象或 null' })
+      } else {
+        const patch: {
+          recursiveEnabled?: boolean
+          maxRecursionDepth?: number
+        } = {}
+        if (Object.prototype.hasOwnProperty.call(raw, 'recursiveEnabled')) {
+          if (
+            typeof (raw as { recursiveEnabled?: unknown }).recursiveEnabled !==
+            'boolean'
+          ) {
+            return reply
+              .status(400)
+              .send({ error: 'lorebookSettings.recursiveEnabled 须为布尔' })
+          }
+          patch.recursiveEnabled = (
+            raw as { recursiveEnabled: boolean }
+          ).recursiveEnabled
+        }
+        if (Object.prototype.hasOwnProperty.call(raw, 'maxRecursionDepth')) {
+          const d = (raw as { maxRecursionDepth?: unknown }).maxRecursionDepth
+          if (typeof d !== 'number' || !Number.isFinite(d)) {
+            return reply
+              .status(400)
+              .send({ error: 'lorebookSettings.maxRecursionDepth 须为数字' })
+          }
+          patch.maxRecursionDepth = d
+        }
+        if (
+          !Object.prototype.hasOwnProperty.call(patch, 'recursiveEnabled') &&
+          !Object.prototype.hasOwnProperty.call(patch, 'maxRecursionDepth')
+        ) {
+          return reply.status(400).send({
+            error:
+              'lorebookSettings 须含 recursiveEnabled 和/或 maxRecursionDepth',
+          })
+        }
+        const next = await updateConversationLorebookSettings(id, patch)
+        if (!next) return reply.status(404).send({ error: '会话不存在' })
+        idx = next
+      }
+    }
+    if (hasHistorySettings) {
+      const raw = b.historySettings
+      if (raw === null) {
+        const next = await clearConversationHistorySettings(id)
+        if (!next) return reply.status(404).send({ error: '会话不存在' })
+        idx = next
+      } else if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return reply.status(400).send({ error: 'historySettings 须为对象或 null' })
+      } else {
+        const patch: {
+          limitEnabled?: boolean
+          maxTurns?: number
+        } = {}
+        if (Object.prototype.hasOwnProperty.call(raw, 'limitEnabled')) {
+          if (typeof (raw as { limitEnabled?: unknown }).limitEnabled !== 'boolean') {
+            return reply
+              .status(400)
+              .send({ error: 'historySettings.limitEnabled 须为布尔' })
+          }
+          patch.limitEnabled = (raw as { limitEnabled: boolean }).limitEnabled
+        }
+        if (Object.prototype.hasOwnProperty.call(raw, 'maxTurns')) {
+          const d = (raw as { maxTurns?: unknown }).maxTurns
+          if (typeof d !== 'number' || !Number.isFinite(d)) {
+            return reply
+              .status(400)
+              .send({ error: 'historySettings.maxTurns 须为数字' })
+          }
+          patch.maxTurns = d
+        }
+        if (
+          !Object.prototype.hasOwnProperty.call(patch, 'limitEnabled') &&
+          !Object.prototype.hasOwnProperty.call(patch, 'maxTurns')
+        ) {
+          return reply.status(400).send({
+            error: 'historySettings 须含 limitEnabled 和/或 maxTurns',
+          })
+        }
+        const next = await updateConversationHistorySettings(id, patch)
+        if (!next) return reply.status(404).send({ error: '会话不存在' })
+        idx = next
+      }
     }
     if (hasUserCharacterId) {
       const raw = b.userCharacterId
@@ -444,6 +581,24 @@ app.post<{ Params: { id: string }; Body: OpeningTurnBody }>(
     if (!Array.isArray(b.receives) || b.receives.length === 0) {
       return reply.status(400).send({ error: 'receives 须为非空数组' })
     }
+    const idxForMacro = await readConversationIndex(id)
+    const macroChars: { name?: string }[] = []
+    if (idxForMacro) {
+      for (const cid of resolvedCharacterIds(idxForMacro)) {
+        const doc = await readCharacterDocument(cid)
+        if (doc?.card && typeof doc.card === 'object') {
+          const name = (doc.card as Record<string, unknown>).name
+          macroChars.push({
+            name: typeof name === 'string' ? name : undefined,
+          })
+        }
+      }
+    }
+    const openingMacroCtx = buildPromptMacroContext({
+      conversationUserName: idxForMacro?.userName,
+      characters: macroChars,
+    })
+
     const receives: TurnReceive[] = []
     for (const raw of b.receives) {
       if (!raw || typeof raw !== 'object') {
@@ -455,7 +610,7 @@ app.post<{ Params: { id: string }; Body: OpeningTurnBody }>(
       }
       const rec: TurnReceive = {
         id: typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : randomUUID(),
-        content: content.trim(),
+        content: applyPromptMacroPipeline(content.trim(), openingMacroCtx),
       }
       if (typeof raw.reasoning === 'string' && raw.reasoning.trim()) {
         rec.reasoning = raw.reasoning.trim()
@@ -695,6 +850,8 @@ interface AssembleMessagesBody {
   promptTrigger?: string
   historyBeforeTurnOrdinalExclusive?: number | null
   contextLength?: number | null
+  /** 连接模型名，用于 tiktoken 词表选择 */
+  model?: string
 }
 
 app.post<{ Params: { id: string }; Body: AssembleMessagesBody }>(
@@ -715,6 +872,7 @@ app.post<{ Params: { id: string }; Body: AssembleMessagesBody }>(
       promptTrigger: b.promptTrigger,
       historyBeforeTurnOrdinalExclusive: b.historyBeforeTurnOrdinalExclusive,
       contextLength: b.contextLength,
+      tokenModel: typeof b.model === 'string' ? b.model : undefined,
       promptsDoc,
     })
     if ('error' in built) {
@@ -814,6 +972,114 @@ app.get<{ Params: { id: string } }>(
   },
 )
 
+app.get('/api/user-preferences', async (_request, reply) => {
+  try {
+    return await readUserPreferencesDocument()
+  } catch (e) {
+    app.log.error(e)
+    return reply.status(500).send({ error: '读取用户偏好失败' })
+  }
+})
+
+interface PatchUserPreferencesBody {
+  lorebook?: {
+    recursiveEnabled?: boolean
+    maxRecursionDepth?: number
+  }
+  history?: {
+    limitEnabled?: boolean
+    maxTurns?: number
+  }
+}
+
+app.patch<{ Body: PatchUserPreferencesBody }>(
+  '/api/user-preferences',
+  async (request, reply) => {
+    const b = request.body ?? {}
+    const hasLore = b.lorebook && typeof b.lorebook === 'object'
+    const hasHist = b.history && typeof b.history === 'object'
+    if (!hasLore && !hasHist) {
+      return reply.status(400).send({ error: '须提供 lorebook 和/或 history 对象' })
+    }
+    try {
+      let lorebook
+      let history
+      if (hasLore) {
+        const patch: {
+          recursiveEnabled?: boolean
+          maxRecursionDepth?: number
+        } = {}
+        if (Object.prototype.hasOwnProperty.call(b.lorebook, 'recursiveEnabled')) {
+          if (typeof b.lorebook!.recursiveEnabled !== 'boolean') {
+            return reply
+              .status(400)
+              .send({ error: 'lorebook.recursiveEnabled 须为布尔' })
+          }
+          patch.recursiveEnabled = b.lorebook!.recursiveEnabled
+        }
+        if (Object.prototype.hasOwnProperty.call(b.lorebook, 'maxRecursionDepth')) {
+          const d = b.lorebook!.maxRecursionDepth
+          if (typeof d !== 'number' || !Number.isFinite(d)) {
+            return reply
+              .status(400)
+              .send({ error: 'lorebook.maxRecursionDepth 须为数字' })
+          }
+          patch.maxRecursionDepth = d
+        }
+        if (
+          !Object.prototype.hasOwnProperty.call(patch, 'recursiveEnabled') &&
+          !Object.prototype.hasOwnProperty.call(patch, 'maxRecursionDepth')
+        ) {
+          return reply.status(400).send({
+            error: 'lorebook 须含 recursiveEnabled 和/或 maxRecursionDepth',
+          })
+        }
+        lorebook = await updateGlobalLorebookSettings(patch)
+      }
+      if (hasHist) {
+        const patch: {
+          limitEnabled?: boolean
+          maxTurns?: number
+        } = {}
+        if (Object.prototype.hasOwnProperty.call(b.history, 'limitEnabled')) {
+          if (typeof b.history!.limitEnabled !== 'boolean') {
+            return reply
+              .status(400)
+              .send({ error: 'history.limitEnabled 须为布尔' })
+          }
+          patch.limitEnabled = b.history!.limitEnabled
+        }
+        if (Object.prototype.hasOwnProperty.call(b.history, 'maxTurns')) {
+          const d = b.history!.maxTurns
+          if (typeof d !== 'number' || !Number.isFinite(d)) {
+            return reply.status(400).send({ error: 'history.maxTurns 须为数字' })
+          }
+          patch.maxTurns = d
+        }
+        if (
+          !Object.prototype.hasOwnProperty.call(patch, 'limitEnabled') &&
+          !Object.prototype.hasOwnProperty.call(patch, 'maxTurns')
+        ) {
+          return reply.status(400).send({
+            error: 'history 须含 limitEnabled 和/或 maxTurns',
+          })
+        }
+        history = await updateGlobalHistorySettings(patch)
+      }
+      const doc = await readUserPreferencesDocument()
+      return {
+        ok: true as const,
+        lorebook: lorebook ?? doc.lorebook,
+        history: history ?? doc.history,
+        savedAt: doc.savedAt,
+      }
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: '保存用户偏好失败' })
+    }
+  },
+)
+
 app.get('/api/settings', async (_request, reply) => {
   try {
     const data = await readApiSettingsFromFile()
@@ -899,6 +1165,78 @@ app.put('/api/prompts', async (request, reply) => {
   }
   return { ok: true as const, savedAt }
 })
+
+app.post<{ Body: PromptsAssemblePreviewBody }>(
+  '/api/prompts/assemble-preview',
+  async (request, reply) => {
+    try {
+      const doc = await readPromptsDocument()
+      if (!doc) {
+        return reply.status(500).send({ error: '提示词数据不可用' })
+      }
+      const result = runPromptsAssemblePreview(doc, request.body ?? {})
+      if ('error' in result) {
+        return reply.status(400).send({ error: result.error })
+      }
+      return result
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: '预览组装失败' })
+    }
+  },
+)
+
+app.get('/api/lorebooks', async (_request, reply) => {
+  try {
+    const data = await readLorebooksDocument()
+    return data ?? null
+  } catch (e) {
+    app.log.error(e)
+    return reply.status(500).send({ error: '读取世界书失败' })
+  }
+})
+
+app.put('/api/lorebooks', async (request, reply) => {
+  let validated: { lorebooks: LorebooksDocument['lorebooks'] }
+  try {
+    validated = assertValidLorebooksPayload(request.body)
+  } catch (e) {
+    return reply.status(400).send({
+      error: e instanceof Error ? e.message : '世界书校验失败',
+    })
+  }
+  const savedAt = new Date().toISOString()
+  const doc: LorebooksDocument = {
+    schemaVersion: 1,
+    savedAt,
+    lorebooks: validated.lorebooks,
+  }
+  try {
+    await writeLorebooksDocument(doc)
+  } catch (e) {
+    app.log.error(e)
+    return reply.status(500).send({ error: '写入世界书失败' })
+  }
+  return { ok: true as const, savedAt }
+})
+
+app.get<{ Params: { id: string } }>(
+  '/api/lorebooks/:id',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!LOREBOOK_ID_RE.test(id)) {
+      return reply.status(400).send({ error: '无效 id' })
+    }
+    try {
+      const lb = await readLorebookById(id)
+      if (!lb) return reply.status(404).send({ error: '世界书不存在' })
+      return lb
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: '读取世界书失败' })
+    }
+  },
+)
 
 app.get('/api/characters', async (request, reply) => {
   const q = request.query as Record<string, string | undefined>
@@ -1206,6 +1544,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
       promptTrigger: body.promptTrigger,
       historyBeforeTurnOrdinalExclusive: body.historyBeforeTurnOrdinalExclusive,
       contextLength: body.contextLength,
+      tokenModel: model,
       promptsDoc,
     })
     if ('error' in built) {

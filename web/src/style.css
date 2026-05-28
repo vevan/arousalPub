@@ -1,3 +1,5 @@
+@import './styles/prompts-library.css';
+
 :root {
   /* App chrome 高度（App.vue 挂载后由脚本按测量高度写入 rem，下面是缺省值） */
   --header-height: 3.5rem;
@@ -210,6 +212,25 @@ body::before {
 @media (max-width: 45rem) {
   .v-overlay-container > .v-overlay.v-dialog > .v-overlay__content.library-dialog-surface,
   .v-overlay.v-dialog > .v-overlay__content.library-dialog-surface {
+    width: 100% !important;
+    padding-inline: 0.75rem !important;
+  }
+}
+
+/* 设置模态：左右分栏，中等宽度 */
+.v-overlay-container > .v-overlay.v-dialog > .v-overlay__content.settings-dialog-surface,
+.v-overlay.v-dialog > .v-overlay__content.settings-dialog-surface {
+  width: clamp(36rem, 52%, 48rem) !important;
+  max-width: 100% !important;
+  margin-inline: auto !important;
+  min-width: 0 !important;
+  padding-inline: 1rem !important;
+  box-sizing: border-box !important;
+}
+
+@media (max-width: 36rem) {
+  .v-overlay-container > .v-overlay.v-dialog > .v-overlay__content.settings-dialog-surface,
+  .v-overlay.v-dialog > .v-overlay__content.settings-dialog-surface {
     width: 100% !important;
     padding-inline: 0.75rem !important;
   }

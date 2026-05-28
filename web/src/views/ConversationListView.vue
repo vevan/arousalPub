@@ -1,9 +1,5 @@
 <script setup lang="ts">
 import { generateConversationId } from '@/utils/conversation-id'
-import {
-  applyPromptMacroPipeline,
-  buildPromptMacroContext,
-} from '@/utils/prompt-macros'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -110,17 +106,13 @@ async function createAndOpen() {
     const mainDoc = await fetchCharacterDetail(mainCharacter.id)
     const greetings = collectOpeningGreetings(mainDoc?.card)
     if (greetings.length > 0) {
-      const macroContext = buildPromptMacroContext({
-        conversationUserName: userCard.name,
-        characters,
-      })
       const opening = await fetch(`/api/chat/conversations/${id}/opening`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           receives: greetings.map((content) => ({
             id: crypto.randomUUID(),
-            content: applyPromptMacroPipeline(content, macroContext),
+            content,
           })),
           activeReceiveIndex: 0,
         }),

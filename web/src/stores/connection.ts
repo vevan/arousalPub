@@ -566,39 +566,47 @@ export const useConnectionStore = defineStore('connection', () => {
     }
   }
 
+  let loadSettingsInflight: Promise<boolean> | null = null
+
   async function loadFromServer(): Promise<boolean> {
-    const res = await fetch('/api/settings')
-    if (!res.ok) {
-      ensureDefaultPresets()
-      return false
-    }
-    const raw: unknown = await res.json()
-    if (raw === null) {
-      ensureDefaultPresets()
-      return false
-    }
-    if (typeof raw !== 'object' || raw === null) return false
+    if (loadSettingsInflight) return loadSettingsInflight
+    loadSettingsInflight = (async () => {
+      const res = await fetch('/api/settings')
+      if (!res.ok) {
+        ensureDefaultPresets()
+        return false
+      }
+      const raw: unknown = await res.json()
+      if (raw === null) {
+        ensureDefaultPresets()
+        return false
+      }
+      if (typeof raw !== 'object' || raw === null) return false
 
-    const doc = raw as Partial<ApiSettingsDocument>
-    if (doc.version !== 1 || !Array.isArray(doc.presets)) {
-      ensureDefaultPresets()
-      return false
-    }
+      const doc = raw as Partial<ApiSettingsDocument>
+      if (doc.version !== 1 || !Array.isArray(doc.presets)) {
+        ensureDefaultPresets()
+        return false
+      }
 
-    presets.value = (doc.presets as ApiPreset[]).map(normalizePreset)
-    activePresetId.value =
-      typeof doc.activePresetId === 'string' ? doc.activePresetId : null
-    if (
-      !activePresetId.value ||
-      !presets.value.some((p) => p.id === activePresetId.value)
-    ) {
-      activePresetId.value = presets.value[0]?.id ?? null
-    }
-    applyActivePresetToForm()
-    if (typeof doc.savedAt === 'string') lastSavedAt.value = doc.savedAt
-    const aid = activePresetId.value
-    if (aid) void applyLinkedPromptPresetForApiPreset(aid)
-    return true
+      presets.value = (doc.presets as ApiPreset[]).map(normalizePreset)
+      activePresetId.value =
+        typeof doc.activePresetId === 'string' ? doc.activePresetId : null
+      if (
+        !activePresetId.value ||
+        !presets.value.some((p) => p.id === activePresetId.value)
+      ) {
+        activePresetId.value = presets.value[0]?.id ?? null
+      }
+      applyActivePresetToForm()
+      if (typeof doc.savedAt === 'string') lastSavedAt.value = doc.savedAt
+      const aid = activePresetId.value
+      if (aid) await applyLinkedPromptPresetForApiPreset(aid)
+      return true
+    })().finally(() => {
+      loadSettingsInflight = null
+    })
+    return loadSettingsInflight
   }
 
   async function saveToServer(): Promise<void> {

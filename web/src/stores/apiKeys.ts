@@ -87,44 +87,53 @@ export const useApiKeysStore = defineStore('apiKeys', () => {
     }
   }
 
+  let loadInflight: Promise<void> | null = null
+
   async function loadFromServer(): Promise<void> {
-    if (loading.value || loaded.value) return
-    loading.value = true
-    lastError.value = null
-    try {
-      const res = await fetch('/api/api-keys')
-      if (!res.ok) {
-        if (res.status === 500) throw new Error(`GET /api/api-keys ${res.status}`)
+    if (loaded.value) return
+    if (loadInflight) return loadInflight
+    loadInflight = (async () => {
+      if (loaded.value) return
+      loading.value = true
+      lastError.value = null
+      try {
+        const res = await fetch('/api/api-keys')
+        if (!res.ok) {
+          if (res.status === 500) throw new Error(`GET /api/api-keys ${res.status}`)
+          loaded.value = true
+          return
+        }
+        const raw: unknown = await res.json()
+        if (raw === null) {
+          loaded.value = true
+          return
+        }
+        if (typeof raw !== 'object' || raw === null) {
+          loaded.value = true
+          return
+        }
+        const doc = raw as Partial<ApiKeysDocument>
+        if (doc.version !== 1 || !Array.isArray(doc.keys)) {
+          loaded.value = true
+          return
+        }
+        const list: ApiKeyEntry[] = []
+        for (const o of doc.keys) {
+          const n = normalizeEntry(o)
+          if (n) list.push(n)
+        }
+        keys.value = list
+        if (typeof doc.savedAt === 'string') lastSavedAt.value = doc.savedAt
         loaded.value = true
-        return
+      } catch (e) {
+        lastError.value = e instanceof Error ? e.message : String(e)
+      } finally {
+        loading.value = false
       }
-      const raw: unknown = await res.json()
-      if (raw === null) {
-        loaded.value = true
-        return
-      }
-      if (typeof raw !== 'object' || raw === null) {
-        loaded.value = true
-        return
-      }
-      const doc = raw as Partial<ApiKeysDocument>
-      if (doc.version !== 1 || !Array.isArray(doc.keys)) {
-        loaded.value = true
-        return
-      }
-      const list: ApiKeyEntry[] = []
-      for (const o of doc.keys) {
-        const n = normalizeEntry(o)
-        if (n) list.push(n)
-      }
-      keys.value = list
-      if (typeof doc.savedAt === 'string') lastSavedAt.value = doc.savedAt
-      loaded.value = true
-    } catch (e) {
-      lastError.value = e instanceof Error ? e.message : String(e)
-    } finally {
-      loading.value = false
-    }
+    })().finally(() => {
+      loadInflight = null
+    })
+    return loadInflight
   }
 
   watch(keys, () => scheduleSave(), { deep: true, flush: 'post' })

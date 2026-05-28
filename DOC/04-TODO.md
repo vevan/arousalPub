@@ -1,6 +1,8 @@
 # TODO
 
-## P0（MVP 必须）
+> **项目阶段**：已脱离 MVP（见 `cursor.md`、`DOC/02` §1.1）。下列 P0/P1 为当前排期标签，**不是** MVP 裁剪清单。
+
+## P0（当前优先）
 
 - [x] 初始化后端 Fastify 项目结构（`server/`）
 - [x] 初始化前端 Vue3 + Pinia + Vuetify 项目结构（`web/`）
@@ -10,8 +12,12 @@
 - [x] 对话发送与 SSE 流式返回（`/api/chat` 等，见 `server/src/index.ts`）
 - [ ] 消息树结构（parentId）与「从此分支继续」— **chunk/分支目录部分按 `DOC/03` 设计，产品级分支 UI 待对齐**
 - [x] 角色管理（文件库）：主存 **`data/{userId}/characters/{uuid}.png`**（内嵌 ST `chara`）；遗留 **`{uuid}.json`** 首次读取时迁移为 PNG；列表/筛选/导入/表单新建/删除/导出 API + Web **`/characters`**（见 `DOC/03` §12）
-- [x] Prompt 预设：服务端 `data/{userId}/prompts/`（`index.json` + 各预设 JSON）+ `GET/PUT /api/prompts`；前端 **`/prompts`** 与 SillyTavern 式组装（`assemble-prompts`）
-- [ ] 知识库导入、切片、检索、重排序 — **`lorebooks/` 骨架存在，RAG 链路未完整**
+- [x] Prompt 预设：服务端 `data/{userId}/prompts/`（`index.json` + 各预设 JSON）+ `GET/PUT /api/prompts`；前端 **`/prompts`**；组装仅服务端（`assemble-preview` / `assemble-messages` API）
+- [x] 世界书框架：`lorebooks/` 分文件存储、`GET/PUT /api/lorebooks`、Web 编辑与对话 `lorebookIds` 绑定、关键字/恒定注入（见 `DOC/03` §13）
+- [ ] **对话记忆（§14）**：LanceDB 索引、`resolveTurnById`、`boundMemory` + `boundRecentHistory`（history/memory 各一条 system）、`chat-assemble` 合并、对话设置 N / TopK、索引增量与 reindex
+- [ ] **组装管线 §14.9**：`userText`→memory+history→`scanCorpus` 匹配 lore（递归 2、`loreScanScope`、去重与 token 上限）；`resolveLoreRecursive` / `buildScanText`
+- [x] **宏管线 §15**：server `prompt-macros/handlers`、仅服务端展宏、`POST /api/prompts/assemble-preview`、opening 服务端展宏、删除 web `prompt-macros`
+- [ ] 知识库 RAG：向量切片、检索、重排序 — **在 §13 框架之上扩展**（与 §14 turn 表分离）
 - [ ] RAG/模型调用日志（耗时、token、命中明细）— **部分字段在 turn `runtime` 等，未达需求文档 §4 全量**
 
 ## 前端工程（当前仓库）
@@ -46,7 +52,7 @@
 - [ ] **extensions / Character Hub 全字段**：与 ST 完全对齐的导入导出策略（按需迭代）；当前写入侧已保证 **`extensions`** 对象存在，Hub 级扩展仍待产品定义。
 - [x] **PNG chunk 读写**：当前为 **`crc-32` + 手写 chunk 组装**（`character-png.ts`），未引入 `pngjs`/`sharp`；超大 `chara` 可考虑后续改 `zTXt` 写入以控体积。
 
-## P1（MVP 后优先）
+## P1（次优先）
 
 - [ ] API 配置连通性测试接口（test）
 - [ ] API 配置引用检查与安全删除

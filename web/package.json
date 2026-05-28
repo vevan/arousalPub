@@ -16,6 +16,7 @@
     "culori": "^4.0.2",
     "dompurify": "^3.4.0",
     "marked": "^18.0.1",
+    "marked-smartypants": "^1.1.12",
     "pinia": "^2.3.0",
     "vue": "^3.5.13",
     "vue-i18n": "^9.14.5",

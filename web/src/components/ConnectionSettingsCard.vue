@@ -29,10 +29,12 @@ const { effective: appLocale } = storeToRefs(localeStore)
 const settingsPath = 'data/default-user/api-settings.json'
 const KEY_DIRECT = '__direct__'
 
-onMounted(() => {
-  void prompts.loadFromServer()
-  void apiKeysStore.loadFromServer()
-})
+/** 勿写入 i18n：JSON 花括号会触发 vue-i18n 占位符解析错误 */
+const CUSTOM_PARAMS_JSON_EXAMPLE = '{"stop":["\\n"]}'
+
+const customParamsHint = computed(
+  () => t('conn.customParamsHint') + CUSTOM_PARAMS_JSON_EXAMPLE,
+)
 
 /** ============ API Key 别名管理 ============ */
 const apiKeyManagerOpen = ref(false)
@@ -694,7 +696,7 @@ function closeImportDialog() {
     <v-textarea
       v-model="conn.customParamsJson"
       :label="$t('conn.customParams')"
-      :hint="$t('conn.customParamsHint')"
+      :hint="customParamsHint"
       persistent-hint
       variant="outlined"
       rows="4"

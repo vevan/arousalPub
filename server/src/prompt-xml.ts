@@ -30,7 +30,6 @@ const CARD_TEXT_FIELDS = [
   ['personality', 'personality'],
   ['scenario', 'scenario'],
   ['mes_example', 'mes_example'],
-  ['first_mes', 'first_mes'],
   ['creator_notes', 'creator_notes'],
 ] as const
 
@@ -42,11 +41,20 @@ function el(tag: string, text: string): string {
  * 单张角色卡 → `<char name="...">` 片段（字段级转义后再拼接，不做宏替换）。
  */
 export function cardRecordToCharXmlBlock(card: Record<string, unknown>): string {
+  return cardRecordToPersonaXmlBlock(card, 'char')
+}
+
+function cardRecordToPersonaXmlBlock(
+  card: Record<string, unknown>,
+  rootTag: 'char' | 'user',
+): string {
   const nameRaw = card.name
   const display =
     typeof nameRaw === 'string' && nameRaw.trim()
       ? nameRaw.trim()
-      : '角色'
+      : rootTag === 'user'
+        ? '用户'
+        : '角色'
   const attr = escapeXmlText(display)
   const lines: string[] = []
   for (const [tag, ck] of CARD_TEXT_FIELDS) {
@@ -57,12 +65,41 @@ export function cardRecordToCharXmlBlock(card: Record<string, unknown>): string 
   if (lines.length === 0) {
     lines.push(el('description', '(No description)'))
   }
-  return `<char name="${attr}">\n${lines.join('\n')}\n</char>`
+  return `<${rootTag} name="${attr}">\n${lines.join('\n')}\n</${rootTag}>`
 }
 
-/** 世界书 / lore 注入正文：转义后包一层 `<lore>` */
+/** 用户 persona 卡 → `<user name="…">`（与 AI 角色 `<char>` 区分） */
+export function cardRecordToUserXmlBlock(card: Record<string, unknown>): string {
+  return cardRecordToPersonaXmlBlock(card, 'user')
+}
+
+/**
+ * 命中条目 → `<lores>` 块（每条 `<lore name="标题">` + 正文，正文按行转义）。
+ */
+export function formatLoresXmlBlock(
+  entries: Array<{ name: string; content: string }>,
+): string {
+  if (entries.length === 0) return ''
+  const lines: string[] = ['<lores>']
+  for (const e of entries) {
+    const name = e.name.trim() || '未命名'
+    const body = e.content.trim()
+    if (!body) continue
+    lines.push(`  <lore name="${escapeXmlText(name)}">`)
+    for (const line of body.split('\n')) {
+      lines.push(`  ${escapeXmlText(line)}`)
+    }
+    lines.push('  </lore>')
+  }
+  if (lines.length === 1) return ''
+  lines.push('</lores>')
+  return lines.join('\n')
+}
+
+/** 世界书注入：已为 `<lores>` 时原样返回，否则兼容旧单块包裹 */
 export function loreTextToXmlBlock(text: string): string {
   const t = text.trim()
   if (!t) return ''
+  if (t.startsWith('<lores')) return t
   return `<lore>\n${escapeXmlText(t)}\n</lore>`
 }

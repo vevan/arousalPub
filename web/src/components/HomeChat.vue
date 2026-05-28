@@ -1024,6 +1024,102 @@ async function copyTurnText(text: string, key: string) {
   }
 }
 
+interface AssembleMessagesResult {
+  messages: { role: string; content: string }[]
+  estimatedTokens: number
+  droppedHistoryCount: number
+}
+
+const assemblePreviewOpen = ref(false)
+const assemblePreviewLoading = ref(false)
+const assemblePreviewError = ref('')
+const assemblePreviewJson = ref('')
+const assemblePreviewMeta = ref({
+  messages: 0,
+  estimatedTokens: 0,
+  droppedHistoryCount: 0,
+})
+const assemblePreviewCopied = ref(false)
+
+const canPreviewAssemble = computed(
+  () =>
+    !assemblePreviewLoading.value &&
+    props.conversationId.trim().length > 0,
+)
+
+async function fetchAssemblePreview(): Promise<void> {
+  assemblePreviewLoading.value = true
+  assemblePreviewError.value = ''
+  assemblePreviewJson.value = ''
+  assemblePreviewMeta.value = {
+    messages: 0,
+    estimatedTokens: 0,
+    droppedHistoryCount: 0,
+  }
+  const id = props.conversationId.trim()
+  try {
+    const res = await fetch(
+      `/api/chat/conversations/${id}/assemble-messages`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userText: userInput.value.trim(),
+          promptTrigger: 'normal',
+          contextLength: conn.contextLength ?? undefined,
+          model: conn.model.trim() || undefined,
+        }),
+      },
+    )
+    if (!res.ok) {
+      let msg = t('chat.previewAssembleLoadFailed')
+      try {
+        const j = (await res.json()) as { error?: string; detail?: string }
+        msg = j.detail || j.error || msg
+      } catch {
+        const text = await res.text()
+        if (text.trim()) msg = text.slice(0, 500)
+      }
+      assemblePreviewError.value = msg
+      return
+    }
+    const data = (await res.json()) as AssembleMessagesResult
+    const messages = Array.isArray(data.messages) ? data.messages : []
+    assemblePreviewMeta.value = {
+      messages: messages.length,
+      estimatedTokens:
+        typeof data.estimatedTokens === 'number' ? data.estimatedTokens : 0,
+      droppedHistoryCount:
+        typeof data.droppedHistoryCount === 'number'
+          ? data.droppedHistoryCount
+          : 0,
+    }
+    assemblePreviewJson.value = JSON.stringify(messages, null, 2)
+  } catch {
+    assemblePreviewError.value = t('chat.previewAssembleLoadFailed')
+  } finally {
+    assemblePreviewLoading.value = false
+  }
+}
+
+async function openAssemblePreview() {
+  assemblePreviewOpen.value = true
+  await fetchAssemblePreview()
+}
+
+async function copyAssemblePreviewJson() {
+  if (!assemblePreviewJson.value) return
+  try {
+    await navigator.clipboard.writeText(assemblePreviewJson.value)
+    assemblePreviewCopied.value = true
+    setTimeout(() => {
+      assemblePreviewCopied.value = false
+    }, 1200)
+  } catch {
+    /* ignore */
+  }
+}
+
 async function openTurnPromptSnapshot(turn: ChatTurnItem) {
   turnPromptDialogOpen.value = true
   turnPromptLoading.value = true
@@ -1508,19 +1604,34 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
           <span class="composer__hint">
             <kbd>Ctrl</kbd> + <kbd>Enter</kbd> {{ $t('chat.send') }}
           </span>
-          <v-btn
-            color="primary"
-            variant="flat"
-            size="small"
-            density="comfortable"
-            :loading="loading"
-            :disabled="!canSend"
-            class="composer__send-btn"
-            @click="send"
-          >
-            <v-icon size="16" start>mdi-send</v-icon>
-            {{ $t('chat.send') }}
-          </v-btn>
+          <div class="composer__actions">
+            <v-btn
+              variant="outlined"
+              size="small"
+              density="comfortable"
+              :loading="assemblePreviewLoading"
+              :disabled="!canPreviewAssemble"
+              class="composer__preview-btn"
+              :aria-label="$t('chat.previewAssemble')"
+              @click="openAssemblePreview"
+            >
+              <v-icon size="16" start>mdi-text-search</v-icon>
+              {{ $t('chat.previewAssemble') }}
+            </v-btn>
+            <v-btn
+              color="primary"
+              variant="flat"
+              size="small"
+              density="comfortable"
+              :loading="loading"
+              :disabled="!canSend"
+              class="composer__send-btn"
+              @click="send"
+            >
+              <v-icon size="16" start>mdi-send</v-icon>
+              {{ $t('chat.send') }}
+            </v-btn>
+          </div>
         </div>
       </div>
     </div>
@@ -1550,6 +1661,86 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
           @click="confirmDelete"
         >
           {{ $t('chat.delete') }}
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <v-dialog
+    v-model="assemblePreviewOpen"
+    scrollable
+    max-width="52rem"
+  >
+    <v-card class="preview-card">
+      <v-card-title class="preview-card__title">
+        <span>{{ $t('chat.previewAssembleTitle') }}</span>
+        <v-spacer />
+        <v-btn
+          icon="mdi-close"
+          variant="text"
+          density="comfortable"
+          @click="assemblePreviewOpen = false"
+        />
+      </v-card-title>
+      <p class="preview-card__lede text-body-2 text-medium-emphasis px-4 pb-2 mb-0">
+        {{ $t('chat.previewAssembleHint') }}
+      </p>
+      <div
+        v-if="!assemblePreviewLoading && !assemblePreviewError"
+        class="preview-card__topbar"
+      >
+        <span class="preview-card__meta">
+          <span class="preview-card__meta-label">{{ $t('prompts.previewMessagesLabel') }}</span>
+          {{ assemblePreviewMeta.messages }}
+        </span>
+        <span class="preview-card__meta">
+          <span class="preview-card__meta-label">{{ $t('prompts.previewTokensLabel') }}</span>
+          {{ assemblePreviewMeta.estimatedTokens }}
+        </span>
+        <span
+          v-if="assemblePreviewMeta.droppedHistoryCount > 0"
+          class="preview-card__meta preview-card__meta--warn"
+        >
+          {{ $t('prompts.previewDropped', { n: assemblePreviewMeta.droppedHistoryCount }) }}
+        </span>
+      </div>
+      <v-card-text class="preview-card__body">
+        <v-progress-linear
+          v-if="assemblePreviewLoading"
+          indeterminate
+          class="mb-2 rounded"
+          color="primary"
+        />
+        <v-alert
+          v-else-if="assemblePreviewError"
+          type="error"
+          variant="tonal"
+          density="compact"
+          class="mb-0"
+        >
+          {{ assemblePreviewError }}
+        </v-alert>
+        <pre
+          v-else-if="assemblePreviewJson"
+          class="preview-card__json"
+        >{{ assemblePreviewJson }}</pre>
+      </v-card-text>
+      <v-card-actions class="preview-card__foot">
+        <v-spacer />
+        <button
+          v-if="assemblePreviewJson && !assemblePreviewError"
+          type="button"
+          class="editor-card__btn"
+          :class="{ 'is-flash': assemblePreviewCopied }"
+          @click="copyAssemblePreviewJson"
+        >
+          {{ assemblePreviewCopied ? $t('prompts.previewCopied') : $t('prompts.previewCopy') }}
+        </button>
+        <v-btn
+          variant="text"
+          @click="assemblePreviewOpen = false"
+        >
+          {{ $t('prompts.previewClose') }}
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -2244,6 +2435,13 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
   color: rgba(var(--v-theme-on-surface), 0.4);
   text-transform: uppercase;
 }
+.composer__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+.composer__preview-btn,
 .composer__send-btn {
   text-transform: none !important;
   letter-spacing: 0.01em !important;
@@ -2309,6 +2507,11 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
   padding: 0;
   background: none;
   font-size: inherit;
+}
+
+.chat-rich-text :deep(.lines) {
+  color: rgb(var(--v-theme-primary));
+  letter-spacing: 0.02em;
 }
 
 .chat-rich-text :deep(blockquote) {

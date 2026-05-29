@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { getApiKeysPath, getUserDataDir } from './config.js'
+import { getCurrentUserId } from './user-context.js'
 
 export interface ApiKeyEntry {
   id: string
@@ -63,7 +64,7 @@ export async function readApiKeysDocument(): Promise<ApiKeysDocument | null> {
 export async function writeApiKeysDocument(
   doc: ApiKeysDocument,
 ): Promise<void> {
-  await mkdir(getUserDataDir(), { recursive: true })
+  await mkdir(getUserDataDir(getCurrentUserId()), { recursive: true })
   await writeFile(getApiKeysPath(), `${JSON.stringify(doc, null, 2)}\n`, 'utf8')
 }
 

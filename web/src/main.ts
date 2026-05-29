@@ -12,6 +12,7 @@ import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 import 'vuetify/styles'
 import App from './App.vue'
+import { installAuthenticatedFetch } from '@/utils/install-authenticated-fetch'
 
 const vuetify = createVuetify({
   components,
@@ -24,6 +25,7 @@ const vuetify = createVuetify({
 
 const app = createApp(App)
 app.use(createPinia())
+installAuthenticatedFetch()
 app.use(router)
 app.use(i18n)
 app.use(vuetify)

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { characterImageUrl } from '@/utils/authenticated-media-url'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -108,7 +109,7 @@ function bumpPortraitTick() {
 }
 
 function characterImageSrc(id: string) {
-  return `/api/characters/${id}/image?v=${portraitTick.value}`
+  return characterImageUrl(id, portraitTick.value) ?? ''
 }
 
 const editPortraitSrc = computed(() => {

@@ -2,6 +2,7 @@ import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import * as lancedb from '@lancedb/lancedb'
 import { getUserDataDir } from './config.js'
+import { getCurrentUserId } from './user-context.js'
 
 const TABLE_NAME = 'lore_entries'
 
@@ -20,7 +21,12 @@ function rowToRecord(row: LoreEntryVectorRow): Record<string, unknown> {
 }
 
 function lorebookDbUri(lorebookId: string): string {
-  return path.join(getUserDataDir(), 'memory', 'lorebooks', lorebookId)
+  return path.join(
+    getUserDataDir(getCurrentUserId()),
+    'memory',
+    'lorebooks',
+    lorebookId,
+  )
 }
 
 async function connectDb(lorebookId: string) {

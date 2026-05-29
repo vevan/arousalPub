@@ -21,7 +21,10 @@ import {
 } from '@/utils/memory-settings'
 import {
   CHAT_FONT_SIZE_REM_DEFAULT,
+  COMPOSER_ENTER_MODE_DEFAULT,
   normalizeChatFontSizeRem,
+  normalizeComposerEnterMode,
+  type ComposerEnterMode,
 } from '@/utils/chat-display-settings'
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
@@ -42,6 +45,7 @@ export const EMBEDDING_API_KEY_ID_STORAGE_KEY = 'arousal-embedding-api-key-id'
 export const EMBEDDING_MODEL_STORAGE_KEY = 'arousal-embedding-model'
 export const EMBEDDING_DIMENSIONS_STORAGE_KEY = 'arousal-embedding-dimensions'
 export const CHAT_FONT_SIZE_REM_STORAGE_KEY = 'arousal-chat-font-size-rem'
+export const COMPOSER_ENTER_MODE_STORAGE_KEY = 'arousal-composer-enter-mode'
 
 const DEFAULT_PROMPT_MAX_STORED = 10
 
@@ -228,6 +232,16 @@ function readStoredChatFontSizeRem(): number {
   }
 }
 
+function readStoredComposerEnterMode(): ComposerEnterMode {
+  try {
+    const raw = localStorage.getItem(COMPOSER_ENTER_MODE_STORAGE_KEY)
+    if (raw == null || raw === '') return COMPOSER_ENTER_MODE_DEFAULT
+    return normalizeComposerEnterMode(raw)
+  } catch {
+    return COMPOSER_ENTER_MODE_DEFAULT
+  }
+}
+
 /** 应用偏好（与连接配置分离） */
 export const usePreferencesStore = defineStore('preferences', () => {
   const writeChatPromptSnapshot = ref(readStoredWriteChatPrompt())
@@ -246,6 +260,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
   const embeddingModel = ref(readStoredEmbeddingModel())
   const embeddingDimensions = ref<number | null>(readStoredEmbeddingDimensions())
   const chatFontSizeRem = ref(readStoredChatFontSizeRem())
+  const composerEnterMode = ref(readStoredComposerEnterMode())
   const userPreferencesLoaded = ref(false)
   let lorebookPatchInFlight = false
   let historyPatchInFlight = false
@@ -291,6 +306,23 @@ export const usePreferencesStore = defineStore('preferences', () => {
       }
       try {
         localStorage.setItem(CHAT_FONT_SIZE_REM_STORAGE_KEY, String(n))
+      } catch {
+        /* ignore */
+      }
+    },
+    { flush: 'post' },
+  )
+
+  watch(
+    composerEnterMode,
+    (v) => {
+      const mode = normalizeComposerEnterMode(v)
+      if (mode !== v) {
+        composerEnterMode.value = mode
+        return
+      }
+      try {
+        localStorage.setItem(COMPOSER_ENTER_MODE_STORAGE_KEY, mode)
       } catch {
         /* ignore */
       }
@@ -729,6 +761,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     setEmbeddingDimensions,
     chatFontSizeRem,
     setChatFontSizeRem,
+    composerEnterMode,
     userPreferencesLoaded,
     loadUserPreferencesFromServer,
   }

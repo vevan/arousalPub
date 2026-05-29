@@ -2,6 +2,7 @@ import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import * as lancedb from '@lancedb/lancedb'
 import { getUserDataDir } from './config.js'
+import { getCurrentUserId } from './user-context.js'
 
 const TABLE_NAME = 'turn_memory'
 
@@ -23,7 +24,7 @@ function rowToRecord(row: TurnMemoryRow): Record<string, unknown> {
 
 function memoryDbUri(conversationId: string): string {
   return path.join(
-    getUserDataDir(),
+    getUserDataDir(getCurrentUserId()),
     'memory',
     'conversations',
     conversationId,

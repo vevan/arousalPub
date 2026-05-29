@@ -132,7 +132,10 @@ export interface TurnReceive {
 export function buildReceiveRuntime(opts: {
   model?: string
   durationMs?: number
+  /** 发往模型的 messages 估算（tiktoken） */
   estimatedTokens?: number
+  /** 上游 usage.completion_tokens，缺省时由落盘逻辑 tiktoken 估算助手正文 */
+  completionTokens?: number
 }): Record<string, unknown> | undefined {
   const runtime: Record<string, unknown> = {}
   if (opts.model) runtime.model = opts.model
@@ -145,6 +148,13 @@ export function buildReceiveRuntime(opts: {
     opts.estimatedTokens > 0
   ) {
     runtime.estimatedTokens = Math.round(opts.estimatedTokens)
+  }
+  if (
+    typeof opts.completionTokens === 'number' &&
+    Number.isFinite(opts.completionTokens) &&
+    opts.completionTokens > 0
+  ) {
+    runtime.completionTokens = Math.round(opts.completionTokens)
   }
   return Object.keys(runtime).length > 0 ? runtime : undefined
 }
@@ -825,6 +835,7 @@ export async function saveFirstTurn(params: {
   model?: string
   durationMs?: number
   estimatedTokens?: number
+  completionTokens?: number
   /** 与发往 /api/chat 的 messages 一致，写入 chat-prompt.json（调试用） */
   debugPrompt?: unknown
 }): Promise<{ index: ConversationIndex; chunk: ChunkFile } | null> {
@@ -836,6 +847,7 @@ export async function saveFirstTurn(params: {
     model,
     durationMs,
     estimatedTokens,
+    completionTokens,
     debugPrompt,
   } = params
   let idx = await readConversationIndex(conversationId)
@@ -846,7 +858,12 @@ export async function saveFirstTurn(params: {
 
   const used = new Set<string>()
   const turnId = allocateShortId(used)
-  const receiveRuntime = buildReceiveRuntime({ model, durationMs, estimatedTokens })
+  const receiveRuntime = buildReceiveRuntime({
+    model,
+    durationMs,
+    estimatedTokens,
+    completionTokens,
+  })
   const turn: TurnRecord = {
     turnId,
     turnOrdinal: 0,

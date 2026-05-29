@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import type { useChatSession } from '@/composables/useChatSession'
+import { usePreferencesStore } from '@/stores/preferences'
+import { storeToRefs } from 'pinia'
 import { toRefs } from 'vue'
 
 const props = defineProps<{
   session: ReturnType<typeof useChatSession>
 }>()
+
+const { composerEnterMode } = storeToRefs(usePreferencesStore())
 
 const { userInput, errorText, loading, assemblePreviewLoading } = toRefs(props.session)
 
@@ -39,7 +43,16 @@ const { send, onComposerKeydown, openAssemblePreview } = props.session
           data-plugin-slot="composer-toolbar"
         >
           <span class="composer__hint">
-            <kbd>Ctrl</kbd> + <kbd>Enter</kbd> {{ $t('chat.send') }}
+            <template v-if="composerEnterMode === 'enter-send'">
+              <kbd>Enter</kbd> {{ $t('chat.send') }}
+              <span class="composer__hint-sep">·</span>
+              <kbd>Ctrl</kbd>+<kbd>Enter</kbd> {{ $t('chat.newline') }}
+            </template>
+            <template v-else>
+              <kbd>Ctrl</kbd>+<kbd>Enter</kbd> {{ $t('chat.send') }}
+              <span class="composer__hint-sep">·</span>
+              <kbd>Enter</kbd> {{ $t('chat.newline') }}
+            </template>
           </span>
           <div class="composer__actions">
             <v-btn

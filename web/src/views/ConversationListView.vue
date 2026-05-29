@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { characterImageUrl } from '@/utils/authenticated-media-url'
 import { generateConversationId } from '@/utils/conversation-id'
 import { allocateShortId } from '@/utils/short-id'
 import { pickDefaultLorebookIds, fetchLorebookPickerItems } from '@/utils/default-lorebook'
@@ -239,7 +240,7 @@ function removeCharacterSlot(index: number) {
 }
 
 function characterImage(id: string) {
-  return `/api/characters/${id}/image`
+  return characterImageUrl(id) ?? ''
 }
 
 async function fetchCharacterDetail(id: string): Promise<CharacterStoredDocument | null> {

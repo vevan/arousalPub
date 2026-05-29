@@ -4,13 +4,16 @@ import CharactersView from '@/views/CharactersView.vue'
 import LorebooksView from '@/views/LorebooksView.vue'
 import PromptsView from '@/views/PromptsView.vue'
 import SettingsView from '@/views/SettingsView.vue'
+import AuthView from '@/views/AuthView.vue'
 import { htmlLangTag } from '@/i18n/locale'
-import { bootstrapAppData } from '@/bootstrap/app-data'
+import { bootstrapAppData, resetBootstrapAppData } from '@/bootstrap/app-data'
+import { useAuthStore } from '@/stores/auth'
+import { userAvatarUrl } from '@/utils/authenticated-media-url'
 import { useConnectionStore } from '@/stores/connection'
 import { useLocaleStore } from '@/stores/locale'
 import { storeToRefs } from 'pinia'
 import type { ComponentPublicInstance } from 'vue'
-import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -19,6 +22,40 @@ const localeStore = useLocaleStore()
 const { effective: effectiveLocale } = storeToRefs(localeStore)
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
+
+const userBarAvatarSrc = computed(() =>
+  auth.user ? userAvatarUrl(auth.user.id) : null,
+)
+
+const authPhase = ref<'loading' | 'setup' | 'login' | 'app'>('loading')
+const settingsInitialTab = ref<'system' | 'display' | 'account' | 'lorebook' | 'history' | 'debug'>('system')
+
+async function enterApp() {
+  authPhase.value = 'app'
+  auth.startSessionRefreshLoop()
+  resetBootstrapAppData()
+  await bootstrapAppData()
+}
+
+async function initAuth() {
+  authPhase.value = 'loading'
+  const phase = await auth.initSession()
+  if (phase === 'setup') {
+    authPhase.value = 'setup'
+    return
+  }
+  if (phase === 'login') {
+    authPhase.value = 'login'
+    return
+  }
+  await enterApp()
+}
+
+function openAccountSettings() {
+  settingsInitialTab.value = 'account'
+  settingsDialogOpen.value = true
+}
 
 watch(
   effectiveLocale,
@@ -123,7 +160,7 @@ function syncAppChromeCssVars() {
 }
 
 onMounted(() => {
-  void bootstrapAppData()
+  void initAuth()
   if (typeof window !== 'undefined') {
     window.addEventListener('languagechange', onBrowserLanguageChange)
   }
@@ -151,7 +188,24 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <v-app>
+  <v-app v-if="authPhase === 'loading'" class="auth-loading">
+    <div class="d-flex fill-height align-center justify-center">
+      <v-progress-circular indeterminate color="primary" />
+    </div>
+  </v-app>
+
+  <AuthView
+    v-else-if="authPhase === 'setup'"
+    mode="setup"
+    @done="enterApp"
+  />
+  <AuthView
+    v-else-if="authPhase === 'login'"
+    mode="login"
+    @done="enterApp"
+  />
+
+  <v-app v-else>
     <!-- VNavigationDrawer :width 须为无单位数字（px）；rem/% 等字符串会破坏布局与开关（Vuetify #16705） -->
     <v-navigation-drawer
       v-model="drawerLeft"
@@ -307,6 +361,19 @@ onUnmounted(() => {
         </button>
 
         <v-btn
+          v-if="auth.user"
+          variant="text"
+          size="small"
+          class="app-bar__user-btn text-none"
+          @click="openAccountSettings"
+        >
+          <v-avatar size="28" rounded="circle" class="me-2">
+            <v-img :src="userBarAvatarSrc ?? undefined" cover />
+          </v-avatar>
+          <span class="d-none d-sm-inline">{{ auth.user.displayName || auth.user.username }}</span>
+        </v-btn>
+
+        <v-btn
           icon="mdi-cog-outline"
           variant="text"
           size="small"
@@ -314,7 +381,12 @@ onUnmounted(() => {
           :active="settingsDialogOpen"
           class="app-bar__icon-btn"
           :aria-label="$t('app.settings')"
-          @click="settingsDialogOpen = true"
+          @click="
+            () => {
+              settingsInitialTab = 'system'
+              settingsDialogOpen = true
+            }
+          "
         />
         <v-btn
           icon="mdi-page-layout-sidebar-right"
@@ -370,7 +442,18 @@ onUnmounted(() => {
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-3 pa-sm-4 settings-dialog-body">
-          <SettingsView embedded />
+          <SettingsView
+            embedded
+            :initial-tab="settingsInitialTab"
+            @logout="
+              () => {
+                auth.logout()
+                resetBootstrapAppData()
+                settingsDialogOpen = false
+                authPhase = 'login'
+              }
+            "
+          />
         </v-card-text>
       </v-card>
     </v-dialog>

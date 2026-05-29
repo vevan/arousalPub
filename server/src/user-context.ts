@@ -1,39 +1,40 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { isValidShortId, RESERVED_USER_ID } from './short-id.js'
 
-/** 未指定用户时的默认数据目录名：`data/default-user/` */
-export const DEFAULT_USER_ID = 'default-user'
+export { RESERVED_USER_ID }
 
 const userStorage = new AsyncLocalStorage<string>()
 
-const USER_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
-
-/** 规范化用户 id，非法或空则回退 default-user */
-export function resolveUserId(raw?: string | null): string {
-  const s = (raw ?? '').trim()
-  if (!s || !USER_ID_RE.test(s)) return DEFAULT_USER_ID
+function assertValidRequestUserId(userId: string): string {
+  const s = userId.trim()
+  if (!isValidShortId(s)) {
+    throw new Error('无效的用户 id')
+  }
   return s
 }
 
 export function getCurrentUserId(): string {
-  return userStorage.getStore() ?? DEFAULT_USER_ID
+  const id = userStorage.getStore()
+  if (!id) {
+    throw new Error('未登录或请求未携带有效用户上下文')
+  }
+  return id
 }
 
-/** 在 Fastify onRequest 中调用，使本请求后续异步链路带上用户上下文 */
-export function enterRequestUser(raw?: string | null): void {
-  userStorage.enterWith(resolveUserId(raw))
+/**
+ * 在 Fastify onRequest 内用 `userStorage.run` 包裹 `done()`，使后续路由处理器能读到用户 id。
+ * `enterWith`  alone 在 Fastify 5 下不会传递到 route handler。
+ */
+export function runRequestUser<T>(userId: string, fn: () => T): T {
+  return userStorage.run(assertValidRequestUserId(userId), fn)
 }
 
-export function userIdFromRequest(request: {
-  headers: Record<string, unknown>
-  query?: unknown
-}): string | undefined {
-  const h = request.headers['x-user-id']
-  const header = Array.isArray(h) ? h[0] : h
-  if (typeof header === 'string' && header.trim()) return header.trim()
-  const q =
-    request.query && typeof request.query === 'object'
-      ? (request.query as Record<string, unknown>).user
-      : undefined
-  if (typeof q === 'string' && q.trim()) return q.trim()
-  return undefined
+/** @deprecated 优先使用 {@link runRequestUser} */
+export function enterRequestUser(userId: string): void {
+  userStorage.enterWith(assertValidRequestUserId(userId))
+}
+
+/** 可选：读取当前请求用户，未登录时为 undefined */
+export function tryGetCurrentUserId(): string | undefined {
+  return userStorage.getStore()
 }

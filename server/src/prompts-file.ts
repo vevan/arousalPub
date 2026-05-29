@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { getPromptsDir, getPromptsIndexPath, getUserDataDir } from './config.js'
+import { getCurrentUserId } from './user-context.js'
 
 const PRESET_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/
 
@@ -88,7 +89,7 @@ export async function readPromptsDocument(): Promise<PromptsDocument | null> {
 export async function writePromptsDocument(data: PromptsDocument): Promise<void> {
   const dir = getPromptsDir()
   await mkdir(dir, { recursive: true })
-  await mkdir(getUserDataDir(), { recursive: true })
+  await mkdir(getUserDataDir(getCurrentUserId()), { recursive: true })
 
   const savedAt = data.savedAt || new Date().toISOString()
   const indexEntries: PromptPresetIndexEntry[] = []

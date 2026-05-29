@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { intlLocaleTag } from '@/i18n/locale'
 import { useApiKeysStore, type ApiKeyEntry } from '@/stores/apiKeys'
+import { useAuthStore } from '@/stores/auth'
 import { useConnectionStore } from '@/stores/connection'
 import { useLocaleStore } from '@/stores/locale'
 import { usePromptsStore } from '@/stores/prompts'
@@ -26,7 +27,10 @@ const apiKeysStore = useApiKeysStore()
 const localeStore = useLocaleStore()
 const { effective: appLocale } = storeToRefs(localeStore)
 
-const settingsPath = 'data/default-user/api-settings.json'
+const auth = useAuthStore()
+const settingsPath = computed(
+  () => `data/${auth.user?.id ?? '…'}/api-settings.json`,
+)
 const KEY_DIRECT = '__direct__'
 
 /** 勿写入 i18n：JSON 花括号会触发 vue-i18n 占位符解析错误 */
@@ -275,7 +279,7 @@ async function save() {
     }
     await conn.saveToServer()
     snackbarColor.value = 'success'
-    snackbarText.value = t('conn.savedSnackbar', { path: settingsPath })
+    snackbarText.value = t('conn.savedSnackbar', { path: settingsPath.value })
     snackbar.value = true
   } catch (e) {
     snackbarColor.value = 'error'

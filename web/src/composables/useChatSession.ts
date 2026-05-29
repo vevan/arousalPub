@@ -1,5 +1,7 @@
+import { useAuthStore } from '@/stores/auth'
 import { useConnectionStore } from '@/stores/connection'
 import { usePreferencesStore } from '@/stores/preferences'
+import { normalizeComposerEnterMode } from '@/utils/chat-display-settings'
 import type { PromptTrigger } from '@/stores/prompts'
 import type {
   AssembleMessagesResult,
@@ -24,7 +26,8 @@ import {
   assistantReasoning,
   assistantText,
   assistantDurationMs,
-  assistantEstimatedTokens,
+  assistantCompletionTokens,
+  turnSendEstimatedTokens,
   characterImageUrl,
   isOpeningTurn,
   reasoningCharsCount,
@@ -39,6 +42,7 @@ export type { ChatSessionProps } from '@/types/chat-turn'
 
 export function useChatSession(props: ChatSessionProps) {
 const { t } = useI18n()
+const auth = useAuthStore()
 const conn = useConnectionStore()
 const prefs = usePreferencesStore()
 const { writeChatPromptSnapshot } = storeToRefs(prefs)
@@ -81,6 +85,12 @@ async function requestChatCompletion(
       t('chat.errors.requestFailedStatus', { status }),
     noStreamMessage: t('chat.errors.noStream'),
     onStreamDelta: conn.stream ? streamDeltaHandler : undefined,
+    onPromptEstimatedTokens: (n) => {
+      pendingSendEstimatedTokens.value = n
+    },
+    onCompletionTokens: (n) => {
+      pendingReceiveCompletionTokens.value = n
+    },
   })
 }
 
@@ -90,6 +100,10 @@ const streamingText = ref('')
 const streamingReasoning = ref('')
 /** 已乐观展示用户消息、等待助手回复的轮次 ordinal */
 const pendingSendTurnOrdinal = ref<number | null>(null)
+/** 本轮发往模型的 messages 估算 token（流式头 / 非流式 JSON） */
+const pendingSendEstimatedTokens = ref<number | null>(null)
+/** 本轮助手回复 completion_tokens（SSE 末包 / 非流式 JSON） */
+const pendingReceiveCompletionTokens = ref<number | null>(null)
 const loading = ref(false)
 const errorText = ref('')
 const regeneratingTurnOrdinal = ref<number | null>(null)
@@ -136,8 +150,29 @@ function assistantTimerLabel(turn: ChatTurnItem): string | null {
   return d != null ? formatDurationMs(d) : null
 }
 
-function assistantTokenLabel(turn: ChatTurnItem): string | null {
-  const n = assistantEstimatedTokens(turn)
+/** 该轮用户发送时组装的 prompt 估算 token（turn-role meta） */
+function userSendTokenLabel(turn: ChatTurnItem): string | null {
+  const awaiting =
+    pendingSendTurnOrdinal.value === turn.turnOrdinal ||
+    regeneratingTurnOrdinal.value === turn.turnOrdinal
+  if (awaiting) {
+    const pending = pendingSendEstimatedTokens.value
+    if (pending != null && pending > 0) return String(pending)
+  }
+  const n = turnSendEstimatedTokens(turn)
+  return n != null ? String(n) : null
+}
+
+/** 该轮助手回复 token（turn-role meta） */
+function assistantReceiveTokenLabel(turn: ChatTurnItem): string | null {
+  const awaiting =
+    pendingSendTurnOrdinal.value === turn.turnOrdinal ||
+    regeneratingTurnOrdinal.value === turn.turnOrdinal
+  if (awaiting) {
+    const n = pendingReceiveCompletionTokens.value
+    if (n != null && n > 0) return String(n)
+  }
+  const n = assistantCompletionTokens(turn)
   return n != null ? String(n) : null
 }
 
@@ -262,6 +297,8 @@ function replaceTurnAt(listIndex: number, next: ChatTurnItem) {
 
 function clearPendingSend() {
   pendingSendTurnOrdinal.value = null
+  pendingSendEstimatedTokens.value = null
+  pendingReceiveCompletionTokens.value = null
   streamingText.value = ''
   streamingReasoning.value = ''
 }
@@ -288,12 +325,23 @@ function rollbackPendingUserTurn(ord: number, restoreUserText?: string) {
 }
 
 function finalizePendingTurn(ord: number, receive: ReceiveItem) {
+  const sendEt = pendingSendEstimatedTokens.value
+  const recvCt = pendingReceiveCompletionTokens.value
+  const merged: ReceiveItem = {
+    ...receive,
+    ...(sendEt != null && sendEt > 0 && !receive.estimatedTokens
+      ? { estimatedTokens: sendEt }
+      : {}),
+    ...(recvCt != null && recvCt > 0 && !receive.completionTokens
+      ? { completionTokens: recvCt }
+      : {}),
+  }
   const idx = turns.value.findIndex((t) => t.turnOrdinal === ord)
   if (idx >= 0) {
     const cur = turns.value[idx]
     replaceTurnAt(idx, {
       ...cur,
-      receives: [receive],
+      receives: [merged],
       activeReceiveIndex: 0,
     })
   }
@@ -342,8 +390,37 @@ watch(
   { immediate: true },
 )
 
+function insertComposerNewline(e: KeyboardEvent) {
+  const el = e.target
+  if (!(el instanceof HTMLTextAreaElement)) return
+  e.preventDefault()
+  const start = el.selectionStart ?? userInput.value.length
+  const end = el.selectionEnd ?? start
+  const v = userInput.value
+  userInput.value = `${v.slice(0, start)}\n${v.slice(end)}`
+  void nextTick(() => {
+    el.selectionStart = el.selectionEnd = start + 1
+  })
+}
+
 function onComposerKeydown(e: KeyboardEvent) {
-  if (e.key !== 'Enter' || !e.ctrlKey) return
+  if (e.key !== 'Enter' || e.isComposing) return
+
+  const mode = normalizeComposerEnterMode(prefs.composerEnterMode)
+  const mod = e.ctrlKey || e.metaKey
+
+  if (mode === 'enter-send') {
+    if (mod) {
+      insertComposerNewline(e)
+      return
+    }
+    if (e.shiftKey) return
+    e.preventDefault()
+    if (canSend.value) void send()
+    return
+  }
+
+  if (!mod) return
   e.preventDefault()
   if (canSend.value) void send()
 }
@@ -366,11 +443,17 @@ async function send() {
   loading.value = true
   startGenerationTimer()
   try {
-    const { content: assistantOut, reasoning: reasoningOut, persist, durationMs, estimatedTokens } =
-      await requestChatCompletion({
-        userText,
-        promptTrigger: 'normal',
-      })
+    const {
+      content: assistantOut,
+      reasoning: reasoningOut,
+      persist,
+      durationMs,
+      estimatedTokens,
+      completionTokens,
+    } = await requestChatCompletion({
+      userText,
+      promptTrigger: 'normal',
+    })
     setPersistWarning(persist)
     const elapsed = durationMs ?? stopGenerationTimer()
     const receive: ReceiveItem = {
@@ -379,10 +462,11 @@ async function send() {
       ...(reasoningOut ? { reasoning: reasoningOut } : {}),
       ...(elapsed > 0 ? { durationMs: elapsed } : {}),
       ...(estimatedTokens && estimatedTokens > 0 ? { estimatedTokens } : {}),
+      ...(completionTokens && completionTokens > 0 ? { completionTokens } : {}),
     }
     finalizePendingTurn(ord, receive)
 
-    if (assistantOut.trim()) {
+    if (assistantOut.trim() && (!persist || persist.ok)) {
       await loadMessages()
     }
   } catch (e) {
@@ -431,6 +515,8 @@ async function regenerateAssistant(
   if (!turn || !turn.user.trim()) return
   if (regeneratingTurnOrdinal.value !== null) return
   regeneratingTurnOrdinal.value = turn.turnOrdinal
+  pendingSendEstimatedTokens.value = null
+  pendingReceiveCompletionTokens.value = null
   streamingText.value = ''
   streamingReasoning.value = ''
   errorText.value = ''
@@ -446,8 +532,14 @@ async function regenerateAssistant(
       return
     }
 
-    const { content: assistantOut, reasoning: reasoningOut, persist, durationMs, estimatedTokens } =
-      await requestChatCompletion({
+    const {
+      content: assistantOut,
+      reasoning: reasoningOut,
+      persist,
+      durationMs,
+      estimatedTokens,
+      completionTokens,
+    } = await requestChatCompletion({
         userText: turn.user,
         promptTrigger: trigger,
         historyBeforeTurnOrdinalExclusive: turn.turnOrdinal,
@@ -467,6 +559,7 @@ async function regenerateAssistant(
       ...(reasoningOut ? { reasoning: reasoningOut } : {}),
       ...(elapsed > 0 ? { durationMs: elapsed } : {}),
       ...(estimatedTokens && estimatedTokens > 0 ? { estimatedTokens } : {}),
+      ...(completionTokens && completionTokens > 0 ? { completionTokens } : {}),
     }
     const next: ChatTurnItem = {
       ...cur,
@@ -474,7 +567,7 @@ async function regenerateAssistant(
       activeReceiveIndex: cur.receives.length,
     }
     replaceTurnAt(listIndex, next)
-    if (assistantOut.trim()) {
+    if (assistantOut.trim() && (!persist || persist.ok)) {
       await loadMessages()
     }
   } catch (e) {
@@ -482,6 +575,8 @@ async function regenerateAssistant(
   } finally {
     stopGenerationTimer()
     regeneratingTurnOrdinal.value = null
+    pendingSendEstimatedTokens.value = null
+    pendingReceiveCompletionTokens.value = null
     streamingText.value = ''
     streamingReasoning.value = ''
   }
@@ -614,8 +709,9 @@ const deleteDialogMessage = computed(() => {
   return t('chat.deleteTurnConfirm')
 })
 
-/** 仅最后一轮助手回复显示 swipe；流式进行中不显示（当前最后一条尚未定稿） */
+/** 仅最后一轮助手回复显示 swipe；加载/流式进行中不显示 */
 function showAssistantSwipeFooter(turn: ChatTurnItem, listIndex: number): boolean {
+  if (isAssistantBubbleLoading(turn)) return false
   if (pendingSendTurnOrdinal.value !== null) return false
   if (regeneratingTurnOrdinal.value !== null) return false
   if (listIndex !== turns.value.length - 1) return false
@@ -682,7 +778,12 @@ async function loadPrimaryAssistantName(id: string | null | undefined) {
 }
 
 watch(
-  () => [props.conversationUserCharacterId, props.conversationCharacterIds] as const,
+  () =>
+    [
+      props.conversationUserCharacterId,
+      props.conversationCharacterIds,
+      auth.token,
+    ] as const,
   ([userId, charIds]) => {
     const primaryId = Array.isArray(charIds) ? charIds[0] : undefined
     turnAvatarUrls.value = {
@@ -889,7 +990,8 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
     assistantReasoning,
     reasoningCharsCount,
     assistantTimerLabel,
-    assistantTokenLabel,
+    userSendTokenLabel,
+    assistantReceiveTokenLabel,
     showAssistantSwipeFooter,
     send,
     onComposerKeydown,

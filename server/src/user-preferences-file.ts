@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { getUserDataDir } from './config.js'
+import { getCurrentUserId } from './user-context.js'
 import {
   HISTORY_SETTINGS_DEFAULTS,
   normalizeHistorySettings,
@@ -32,7 +33,7 @@ export interface UserPreferencesDocument {
 }
 
 function userPreferencesPath(): string {
-  return path.join(getUserDataDir(), 'user-preferences.json')
+  return path.join(getUserDataDir(getCurrentUserId()), 'user-preferences.json')
 }
 
 async function readPreferencesFileRaw(): Promise<UserPreferencesDocument | null> {
@@ -67,20 +68,7 @@ export async function readGlobalMemorySettings(): Promise<MemorySettings> {
 export async function readGlobalEmbeddingApiSettings(): Promise<EmbeddingApiSettings> {
   const doc = await readPreferencesFileRaw()
   if (!doc) return { ...EMBEDDING_API_SETTINGS_DEFAULTS }
-  const raw = doc.embeddingApi
-  const normalized = normalizeEmbeddingApiSettings(raw)
-  // 兼容旧版 memory.embeddingModel
-  const legacyModel =
-    typeof doc.memory === 'object' &&
-    doc.memory &&
-    typeof (doc.memory as { embeddingModel?: unknown }).embeddingModel ===
-      'string'
-      ? String((doc.memory as { embeddingModel: string }).embeddingModel).trim()
-      : ''
-  if (legacyModel && !raw?.embeddingModel) {
-    return { ...normalized, embeddingModel: legacyModel }
-  }
-  return normalized
+  return normalizeEmbeddingApiSettings(doc?.embeddingApi)
 }
 
 export async function readUserPreferencesDocument(): Promise<UserPreferencesDocument> {
@@ -115,7 +103,7 @@ async function writeUserPreferencesDocument(
     memory: partial.memory ?? prev.memory,
     embeddingApi: partial.embeddingApi ?? prev.embeddingApi,
   }
-  await mkdir(getUserDataDir(), { recursive: true })
+  await mkdir(getUserDataDir(getCurrentUserId()), { recursive: true })
   await writeFile(userPreferencesPath(), JSON.stringify(doc, null, 2), 'utf8')
   return doc
 }

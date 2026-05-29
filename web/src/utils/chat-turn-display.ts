@@ -28,9 +28,28 @@ export function assistantDurationMs(turn: ChatTurnItem): number | null {
   return typeof ms === 'number' && ms > 0 ? ms : null
 }
 
+/** 该轮发送时组装的 prompt token（对应当前选中的助手变体） */
+export function turnSendEstimatedTokens(turn: ChatTurnItem): number | null {
+  const active = turn.receives[turn.activeReceiveIndex]
+  const fromActive = active?.estimatedTokens
+  if (typeof fromActive === 'number' && fromActive > 0) {
+    return Math.round(fromActive)
+  }
+  for (const r of turn.receives) {
+    const n = r?.estimatedTokens
+    if (typeof n === 'number' && n > 0) return Math.round(n)
+  }
+  return null
+}
+
+/** @deprecated 使用 turnSendEstimatedTokens；保留别名避免误用 active receive */
 export function assistantEstimatedTokens(turn: ChatTurnItem): number | null {
+  return turnSendEstimatedTokens(turn)
+}
+
+export function assistantCompletionTokens(turn: ChatTurnItem): number | null {
   const r = turn.receives[turn.activeReceiveIndex]
-  const n = r?.estimatedTokens
+  const n = r?.completionTokens
   return typeof n === 'number' && n > 0 ? Math.round(n) : null
 }
 
@@ -39,7 +58,4 @@ export function reasoningCharsCount(text: string): number {
   return text.replace(/\s+/g, '').length
 }
 
-export function characterImageUrl(id: string | null | undefined): string | null {
-  const clean = typeof id === 'string' ? id.trim() : ''
-  return clean ? `/api/characters/${clean}/image` : null
-}
+export { characterImageUrl } from '@/utils/authenticated-media-url'

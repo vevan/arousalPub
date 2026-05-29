@@ -15,6 +15,8 @@ export interface ReceiveItem {
   durationMs?: number
   /** 发往模型的 messages 估算 token（tiktoken），来自 runtime.estimatedTokens */
   estimatedTokens?: number
+  /** 助手回复 token（上游 usage.completion_tokens，缺省为 tiktoken 估算） */
+  completionTokens?: number
 }
 
 export interface ChatTurnItem {

@@ -1,6 +1,7 @@
-import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { generateShortId } from './short-id.js'
 import { getApiSettingsPath, getUserDataDir } from './config.js'
+import { getCurrentUserId } from './user-context.js'
 
 export function getApiSettingsPathForUser(): string {
   return getApiSettingsPath()
@@ -23,13 +24,9 @@ export interface ApiPreset {
   frequencyPenalty: number | null
   presencePenalty: number | null
   customParamsJson: string
-  /** 是否在界面展示思维链（仅前端） */
   showReasoningChain: boolean
-  /** 是否在请求体中请求思维链（合并进上游 body，可被自定义参数覆盖） */
   requestReasoningChain: boolean
-  /** 切换到此 API 预设时自动选中的提示词预设 id；null/缺省表示不关联 */
   linkedPromptPresetId?: string | null
-  /** 引用 api-keys.json 中的条目 id；与内联 apiKey 二选一（持久化时内联可为空） */
   apiKeyId?: string | null
 }
 
@@ -38,58 +35,6 @@ export interface ApiSettingsDocument {
   savedAt: string
   activePresetId: string
   presets: ApiPreset[]
-}
-
-/** @deprecated 旧版单条扁平结构，读取时自动迁移 */
-interface LegacyFlatFile {
-  savedAt?: string
-  alias?: string
-  baseUrl?: string
-  apiKey?: string
-  model?: string
-  contextLength?: number | null
-  maxTokens?: number | null
-  stream?: boolean
-  temperature?: number | null
-  topP?: number | null
-  topK?: number | null
-  dry?: number | null
-  frequencyPenalty?: number | null
-  presencePenalty?: number | null
-  customParamsJson?: string
-  showReasoningChain?: boolean
-  requestReasoningChain?: boolean
-}
-
-
-function presetFromLegacy(o: LegacyFlatFile, id: string): ApiPreset {
-  return {
-    id,
-    alias: typeof o.alias === 'string' ? o.alias : '',
-    baseUrl:
-      typeof o.baseUrl === 'string' ? o.baseUrl : 'https://api.openai.com/v1',
-    apiKey: typeof o.apiKey === 'string' ? o.apiKey : '',
-    model: typeof o.model === 'string' ? o.model : 'gpt-4o-mini',
-    contextLength: o.contextLength ?? null,
-    maxTokens: o.maxTokens ?? null,
-    stream: Boolean(o.stream),
-    temperature: o.temperature ?? null,
-    topP: o.topP ?? null,
-    topK: o.topK ?? null,
-    dry: o.dry ?? null,
-    frequencyPenalty: o.frequencyPenalty ?? null,
-    presencePenalty: o.presencePenalty ?? null,
-    customParamsJson:
-      typeof o.customParamsJson === 'string' ? o.customParamsJson : '',
-    showReasoningChain:
-      typeof o.showReasoningChain === 'boolean' ? o.showReasoningChain : true,
-    requestReasoningChain:
-      typeof o.requestReasoningChain === 'boolean'
-        ? o.requestReasoningChain
-        : false,
-    linkedPromptPresetId: null,
-    apiKeyId: null,
-  }
 }
 
 function normalizeDocument(o: unknown): ApiSettingsDocument | null {
@@ -125,35 +70,11 @@ function normalizeDocument(o: unknown): ApiSettingsDocument | null {
   }
 }
 
-function migrateLegacyFlat(o: unknown): ApiSettingsDocument | null {
-  if (!o || typeof o !== 'object') return null
-  const flat = o as LegacyFlatFile
-  if ('presets' in flat && Array.isArray((flat as ApiSettingsDocument).presets)) {
-    return null
-  }
-  const keys = flat as Record<string, unknown>
-  if (!('baseUrl' in keys) && !('model' in keys)) {
-    return null
-  }
-  const id = randomUUID()
-  const preset = presetFromLegacy(flat, id)
-  return {
-    version: 1,
-    savedAt:
-      typeof flat.savedAt === 'string' ? flat.savedAt : new Date().toISOString(),
-    activePresetId: id,
-    presets: [preset],
-  }
-}
-
 export async function readApiSettingsFromFile(): Promise<ApiSettingsDocument | null> {
   try {
     const raw = await readFile(getApiSettingsPath(), 'utf8')
     const parsed: unknown = JSON.parse(raw)
-    return (
-      normalizeDocument(parsed) ??
-      migrateLegacyFlat(parsed)
-    )
+    return normalizeDocument(parsed)
   } catch (e) {
     const err = e as NodeJS.ErrnoException
     if (err.code === 'ENOENT') return null
@@ -164,7 +85,7 @@ export async function readApiSettingsFromFile(): Promise<ApiSettingsDocument | n
 export async function writeApiSettingsToFile(
   data: ApiSettingsDocument,
 ): Promise<void> {
-  await mkdir(getUserDataDir(), { recursive: true })
+  await mkdir(getUserDataDir(getCurrentUserId()), { recursive: true })
   await writeFile(getApiSettingsPath(), `${JSON.stringify(data, null, 2)}\n`, 'utf8')
 }
 
@@ -179,16 +100,13 @@ export function assertValidCustomParamsJson(customParamsJson: string): void {
 
 export function assertValidPresets(presets: ApiPreset[]): void {
   if (!Array.isArray(presets) || presets.length === 0) {
-    throw new Error('至少保留一条预设')
+    throw new Error('至少保留一条 API 预设')
   }
-  const ids = new Set<string>()
   for (const p of presets) {
-    if (!p || typeof p !== 'object') throw new Error('预设格式无效')
-    if (typeof p.id !== 'string' || !p.id) throw new Error('预设缺少 id')
-    if (ids.has(p.id)) throw new Error('预设 id 重复')
-    ids.add(p.id)
-    assertValidCustomParamsJson(
-      typeof p.customParamsJson === 'string' ? p.customParamsJson : '',
-    )
+    assertValidCustomParamsJson(p.customParamsJson)
   }
+}
+
+export function newApiPresetId(): string {
+  return generateShortId()
 }

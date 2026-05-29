@@ -1,54 +1,37 @@
-# Runtime data
+# 数据目录
 
-本目录由服务端运行时维护，**整体被 .gitignore 忽略**，只有这份 README 进 git。
+应用运行时数据根目录，默认位于仓库根下的 `data/`（可在 `config.json` 的 `dataDir` 或环境变量中覆盖）。
 
-实际位置可在仓库根 `config.json` 里通过 `dataDir` 字段更改，或通过环境变量 `DATA_DIR` 覆盖。优先级：`DATA_DIR` > `config.json#dataDir` > 默认 `./data`（相对仓库根，见 `server/src/config.ts`）。
-
-开发端口同样在 `config.json`：`serverPort`（后端，默认 3450）、`webPort`（Vite 前端，默认 3451）；可被环境变量 `PORT` / `SERVER_PORT`、`WEB_PORT` 覆盖。示例见仓库根 `config.example.json`。
-
-## 多用户目录
-
-用户数据按 **`data/{userId}/`** 存放。未指定用户（或请求头/查询未带用户 id）时使用 **`default-user`**。
-
-指定用户（任选其一）：
-
-- 请求头：`X-User-Id: my-user`
-- 查询参数：`?user=my-user`
-
-## 目录结构（单用户示例）
+## 多用户布局
 
 ```
 data/
-└── default-user/
-    ├── api-settings.json    # API 预设，GET/PUT /api/settings
-    ├── api-keys.json        # API Key 别名库，GET/PUT /api/api-keys
-    ├── prompts/
-    │   ├── index.json       # 索引：activePresetId + 各预设 id/name/updatedAt
-    │   ├── preset-default.json
-    │   └── preset-….json    # 每个预设一份完整 JSON
-    ├── chats/               # 对话（chat.index.json + 每会话子目录）
-    ├── lorebooks/           # 资料库（index.json + 各 {id}.json）
-    ├── memory/              # （规划）LanceDB 对话 turn 向量索引，派生数据，可删后按 chunk 重建；见 DOC/03 §14
-    └── characters/          # 角色卡库（{id}.png + index.json，id 为 8 位 hex）
+  users.index.json          # 用户注册表（用户名、密码哈希、显示名等）
+  00000000/                 # 种子账号（首次安装自动创建，需完成 setup）
+  {8位hex}/                 # 其它用户目录（allocateUserId 分配，跳过 00000000）
 ```
 
-### `lorebooks/` 资料库
+- **用户 ID**：8 位小写十六进制，与业务实体 ID（会话、角色卡等）命名空间独立。
+- **种子账号 `00000000`**：安装后自动生成；在 Web 引导中设置用户名/密码后 `setupComplete: true`。
+- **认证**：除 `/api/auth/*`、`/health`、`/api/users/:id/avatar` 外，其余 `/api/*` 需 JWT（`Authorization: Bearer`）。不再使用 `X-User-Id` 或 `default-user` 目录名。
+- **本机默认用户**：仅浏览器 `localStorage`（`arousal-default-user-id` + refresh 会话），不写入 `users.index.json`。勾选后使用 **persisted** 会话（`data/auth-sessions.json`，重启仍有效）；未勾选为 **ephemeral** 会话（仅内存，**重启失效**；**15 分钟**无活动后 refresh 失败需重登）。
+- **`data/auth-sessions.json`**：默认用户的 refresh 会话索引（不含明文 refresh，仅存哈希）。
 
-- **结构**：`index.json` 索引 + 每本资料库一份 `{id}.json`（内含 `groups[]` 与 `entries[]`）。
-- **默认**：首次写入时生成 `lore-default.json`。
-- **API**：`GET/PUT /api/lorebooks`、`GET /api/lorebooks/:id`；会话绑定字段 `lorebookIds`（见 `chats/{conversationId}/index.json`）。
-- **注入**：组装对话时按绑定顺序合并命中条目（常量 + 用户输入关键字），填入提示词预设的「资料库」槽位。详见 `DOC/03-实现细节.md` §13。
+## 单用户目录结构
 
-### `characters/` 角色卡文件
+每个 `{userId}/` 下典型内容：
 
-- **文件名**：`{id}.png`（`id` 为 8 位十六进制，与会话 id 同规则；内嵌 Character Card V2 元数据）。
-- **API**：`GET /api/characters`、导入/新建/更新/删除等，见 `DOC/03-实现细节.md` §12。
-
-## 对话记忆索引（规划）
-
-- 路径：`memory/`（LanceDB，**非权威**）；权威对话正文仍在 `chats/` chunk。
-- **Syncthing**：优先同步 `chats/`；`memory/` 建议各机本地重建，或单写者生成后再同步（见 `DOC/03-实现细节.md` §14.5）。
+| 路径 | 说明 |
+|------|------|
+| `avatar.png` | 用户头像（首装从 `server/assets/users/default-avatar.png` 复制） |
+| `chats/` | 对话会话与消息 |
+| `prompts/` | `index.json` + `preset-*.json` |
+| `characters/` | 角色卡 PNG 与 `index.json` |
+| `lorebooks/` | 资料库 JSON |
+| `api-settings.json` | 连接/API 预设 |
+| `api-keys.json` | API Key 别名 |
+| `preferences.json` | 用户偏好（主题、语言等） |
 
 ## 备份
 
-拷贝整个 `data/`（或单个 `data/{userId}/`）即可备份该用户的对话、提示词、角色卡与 API 配置。若未拷贝 `memory/`，恢复后可通过 re-embed 重建向量索引。
+以整个 `data/` 为单元备份即可；含 API Key 与密码哈希，须与生产环境同等访问控制。

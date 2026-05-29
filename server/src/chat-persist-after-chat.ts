@@ -1,4 +1,5 @@
 import type { ChatMessage } from './assemble-prompts.js'
+import { estimateTokens } from './token-count.js'
 import { allocateShortId } from './short-id.js'
 import {
   appendConversationTurn,
@@ -32,8 +33,34 @@ function receiveRuntime(
   model?: string,
   durationMs?: number,
   estimatedTokens?: number,
+  completionTokens?: number,
 ): Record<string, unknown> | undefined {
-  return buildReceiveRuntime({ model, durationMs, estimatedTokens })
+  return buildReceiveRuntime({
+    model,
+    durationMs,
+    estimatedTokens,
+    completionTokens,
+  })
+}
+
+function resolveCompletionTokens(
+  upstream: number | undefined,
+  assistantContent: string,
+  assistantReasoning: string | undefined,
+  model?: string,
+): number | undefined {
+  if (typeof upstream === 'number' && upstream > 0) {
+    return Math.round(upstream)
+  }
+  const corpus = [
+    assistantContent.trim(),
+    assistantReasoning?.trim() ?? '',
+  ]
+    .filter((s) => s.length > 0)
+    .join('\n\n')
+  if (!corpus) return undefined
+  const n = estimateTokens(corpus, { model })
+  return n > 0 ? n : undefined
 }
 
 /**
@@ -48,6 +75,7 @@ export async function persistTurnAfterModelReply(params: {
   model?: string
   durationMs?: number
   estimatedTokens?: number
+  completionTokens?: number
   assembledMessages: ChatMessage[]
   /** 再生：向该轮追加 receive，不新开 turn */
   regenerateTurnOrdinal?: number | null
@@ -77,7 +105,18 @@ export async function persistTurnAfterModelReply(params: {
     typeof params.model === 'string' && params.model.trim()
       ? params.model.trim()
       : undefined
-  const runtime = receiveRuntime(model, params.durationMs, params.estimatedTokens)
+  const completionTokens = resolveCompletionTokens(
+    params.completionTokens,
+    assistantContent,
+    reasoning,
+    model,
+  )
+  const runtime = receiveRuntime(
+    model,
+    params.durationMs,
+    params.estimatedTokens,
+    completionTokens,
+  )
 
   const regenOrd = params.regenerateTurnOrdinal
   if (
@@ -145,6 +184,7 @@ export async function persistTurnAfterModelReply(params: {
       model,
       durationMs: params.durationMs,
       estimatedTokens: params.estimatedTokens,
+      completionTokens,
       debugPrompt,
     })
     if (!saved) {

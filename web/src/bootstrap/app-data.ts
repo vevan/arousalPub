@@ -5,6 +5,10 @@ import { usePromptsStore } from '@/stores/prompts'
 
 let bootstrapPromise: Promise<void> | null = null
 
+export function resetBootstrapAppData(): void {
+  bootstrapPromise = null
+}
+
 /**
  * 应用级数据一次性初始化（偏好、API Key、提示词预设、连接预设）。
  * 多次调用共享同一 Promise，避免首屏重复请求与连接面板连环重渲染。

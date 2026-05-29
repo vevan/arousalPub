@@ -27,6 +27,7 @@ const {
   saveEdit,
   copyTurnText,
   requestDeleteWholeTurnFromUser,
+  userSendTokenLabel,
 } = props.session
 
 const { userDisplayName, userAvatarLetter } = toRefs(props.session)
@@ -41,7 +42,20 @@ const { userDisplayName, userAvatarLetter } = toRefs(props.session)
     <div class="turn-role turn-role--user">
       <span class="turn-role__label">
         {{ userDisplayName }}
-        <span class="meta">{{ $t('chat.turnLabel', { n: turnLabelN(turn, listIndex) }) }}</span>
+        <span class="meta">
+          {{ $t('chat.turnLabel', { n: turnLabelN(turn, listIndex) }) }}
+          <template
+            v-if="
+              userSendTokenLabel(turn) &&
+              !(editingTurnOrdinal === turn.turnOrdinal && editingSide === 'user')
+            "
+          >
+            ·
+            <span class="turn-tokens">
+              {{ $t('chat.sendTokens', { n: userSendTokenLabel(turn) }) }}
+            </span>
+          </template>
+        </span>
       </span>
       <div class="plugin-slots" data-plugin-slot="user-turn">
         <button

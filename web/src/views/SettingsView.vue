@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { useAuthStore } from '@/stores/auth'
 import { useLocaleStore } from '@/stores/locale'
-import { bootstrapAppData } from '@/bootstrap/app-data'
+import { apiFetch } from '@/utils/api-fetch'
+import { userAvatarUrl } from '@/utils/authenticated-media-url'
 import { useApiKeysStore } from '@/stores/apiKeys'
 import { usePreferencesStore } from '@/stores/preferences'
 import { useThemeOklchStore } from '@/stores/theme-oklch'
@@ -23,15 +25,26 @@ import {
   CHAT_FONT_SIZE_REM_MIN,
 } from '@/utils/chat-display-settings'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTheme } from 'vuetify'
 
-withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
+const props = withDefaults(
+  defineProps<{ embedded?: boolean; initialTab?: SettingsTab }>(),
+  { embedded: false, initialTab: 'system' },
+)
 
-type SettingsTab = 'system' | 'display' | 'lorebook' | 'history' | 'debug'
+const emit = defineEmits<{ logout: [] }>()
 
-const { t } = useI18n()
+type SettingsTab = 'system' | 'display' | 'account' | 'lorebook' | 'history' | 'debug'
+
+const { t, te } = useI18n()
+
+function accountApiErrorMessage(codeOrMsg: string): string {
+  const key = `settings.accountApiErrors.${codeOrMsg}`
+  return te(key) ? t(key) : codeOrMsg
+}
+const auth = useAuthStore()
 const localeStore = useLocaleStore()
 const { preference } = storeToRefs(localeStore)
 const prefStore = usePreferencesStore()
@@ -54,7 +67,19 @@ const {
   embeddingModel,
   embeddingDimensions,
   chatFontSizeRem,
+  composerEnterMode,
 } = storeToRefs(prefStore)
+
+const composerEnterModeItems = computed(() => [
+  {
+    value: 'enter-send' as const,
+    title: t('settings.composerEnterSend'),
+  },
+  {
+    value: 'ctrl-enter-send' as const,
+    title: t('settings.composerCtrlEnterSend'),
+  },
+])
 
 const embeddingApiKeySelectItems = computed(() => [
   { value: EMBED_KEY_DIRECT, title: t('conn.apiKeyDirectOption') },
@@ -156,10 +181,18 @@ async function runEmbeddingTest(): Promise<void> {
 const themeOklch = useThemeOklchStore()
 const vuetifyTheme = useTheme()
 
-const activeTab = ref<SettingsTab>('system')
+const activeTab = ref<SettingsTab>(props.initialTab)
+
+watch(
+  () => props.initialTab,
+  (tab) => {
+    if (tab) activeTab.value = tab
+  },
+)
 
 const navItems = computed(() => [
   { id: 'system' as const, title: t('settings.navSystem'), icon: 'mdi-cog-outline' },
+  { id: 'account' as const, title: t('settings.navAccount'), icon: 'mdi-account-outline' },
   { id: 'display' as const, title: t('settings.navDisplay'), icon: 'mdi-palette-outline' },
   { id: 'lorebook' as const, title: t('settings.navLorebook'), icon: 'mdi-book-open-page-variant-outline' },
   { id: 'history' as const, title: t('settings.navHistory'), icon: 'mdi-history' },
@@ -236,6 +269,137 @@ async function confirmPrimaryDialog() {
   primaryDialogOpen.value = false
 }
 
+const accountStats = ref<{
+  bytes: number
+  conversationCount: number
+  dataDir: string
+} | null>(null)
+const accountStatsLoading = ref(false)
+const pwdCurrent = ref('')
+const pwdNew = ref('')
+const pwdBusy = ref(false)
+const pwdMsg = ref('')
+const deleteConfirmUsername = ref('')
+const deleteBusy = ref(false)
+const avatarBusy = ref(false)
+const defaultUserBusy = ref(false)
+
+async function loadAccountStats() {
+  accountStatsLoading.value = true
+  try {
+    const res = await apiFetch('/api/users/me/stats')
+    if (!res.ok) throw new Error(String(res.status))
+    accountStats.value = (await res.json()) as typeof accountStats.value
+  } catch {
+    accountStats.value = null
+  } finally {
+    accountStatsLoading.value = false
+  }
+}
+
+async function changePassword() {
+  pwdMsg.value = ''
+  pwdBusy.value = true
+  try {
+    const res = await apiFetch('/api/users/me/password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        currentPassword: pwdCurrent.value,
+        newPassword: pwdNew.value,
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      const raw =
+        typeof data.error === 'string' ? data.error : 'password_change_failed'
+      throw new Error(accountApiErrorMessage(raw))
+    }
+    pwdCurrent.value = ''
+    pwdNew.value = ''
+    pwdMsg.value = t('settings.accountPasswordOk')
+    if ((data as { requireLogin?: boolean }).requireLogin) {
+      emit('logout')
+    }
+  } catch (e) {
+    pwdMsg.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    pwdBusy.value = false
+  }
+}
+
+async function onDefaultUserToggle(enabled: boolean | null) {
+  if (enabled === null) return
+  defaultUserBusy.value = true
+  pwdMsg.value = ''
+  try {
+    await auth.setDeviceDefault(enabled)
+    pwdMsg.value = enabled
+      ? t('settings.accountDefaultUserOn')
+      : t('settings.accountDefaultUserOff')
+  } catch (e) {
+    pwdMsg.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    defaultUserBusy.value = false
+  }
+}
+
+async function uploadAvatar(file: File) {
+  avatarBusy.value = true
+  try {
+    const fd = new FormData()
+    fd.append('avatar', file)
+    const res = await apiFetch('/api/users/me/avatar', { method: 'POST', body: fd })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(typeof data.error === 'string' ? data.error : '失败')
+    }
+    await auth.fetchMe()
+  } finally {
+    avatarBusy.value = false
+  }
+}
+
+function onAvatarPick(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) void uploadAvatar(file)
+  input.value = ''
+}
+
+async function deleteAccount() {
+  deleteBusy.value = true
+  try {
+    const res = await apiFetch('/api/users/me', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmUsername: deleteConfirmUsername.value }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      const raw =
+        typeof data.error === 'string' ? data.error : 'delete_account_failed'
+      throw new Error(accountApiErrorMessage(raw))
+    }
+    emit('logout')
+  } catch (e) {
+    pwdMsg.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    deleteBusy.value = false
+  }
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`
+}
+
+watch(activeTab, (tab) => {
+  if (tab === 'account') void loadAccountStats()
+})
+
 async function resetPrimary() {
   themeOklch.resetPrimary(activeMode())
   await reapplyVuetifyThemeFromStorage(vuetifyTheme)
@@ -247,7 +411,6 @@ onMounted(() => {
   if (stored !== activeMode()) {
     vuetifyTheme.change(stored)
   }
-  void bootstrapAppData()
 })
 </script>
 
@@ -342,6 +505,150 @@ onMounted(() => {
                 })
               }}
             </p>
+
+            <v-divider class="my-6" />
+
+            <h2 class="text-subtitle-1 font-weight-medium mb-2">
+              {{ $t('settings.composerEnterSection') }}
+            </h2>
+            <p class="text-body-2 text-medium-emphasis mb-3">
+              {{ $t('settings.composerEnterHint') }}
+            </p>
+            <v-radio-group
+              v-model="composerEnterMode"
+              :items="composerEnterModeItems"
+              item-title="title"
+              item-value="value"
+              density="comfortable"
+              hide-details
+            />
+          </section>
+
+          <section
+            v-show="activeTab === 'account'"
+            class="settings-section"
+          >
+            <h2 class="text-subtitle-1 font-weight-medium mb-3">
+              {{ $t('settings.accountSection') }}
+            </h2>
+            <div v-if="auth.user" class="d-flex align-center ga-3 mb-4">
+              <v-avatar size="64" rounded="lg">
+                <v-img :src="userAvatarUrl(auth.user.id) ?? undefined" cover />
+              </v-avatar>
+              <div>
+                <div class="text-body-1 font-weight-medium">
+                  {{ auth.user.displayName || auth.user.username }}
+                </div>
+                <div class="text-caption text-medium-emphasis font-mono">
+                  @{{ auth.user.username }} · {{ auth.user.id }}
+                </div>
+              </div>
+            </div>
+            <v-btn
+              variant="outlined"
+              size="small"
+              class="mb-4"
+              :loading="avatarBusy"
+              @click="($refs.avatarInput as HTMLInputElement)?.click()"
+            >
+              {{ $t('settings.accountChangeAvatar') }}
+            </v-btn>
+            <input
+              ref="avatarInput"
+              type="file"
+              accept="image/png"
+              class="d-none"
+              @change="onAvatarPick"
+            >
+
+            <v-divider class="my-4" />
+
+            <h3 class="text-subtitle-2 font-weight-medium mb-2">
+              {{ $t('settings.accountPassword') }}
+            </h3>
+            <v-text-field
+              v-model="pwdCurrent"
+              :label="t('settings.accountCurrentPassword')"
+              type="password"
+              density="comfortable"
+              variant="outlined"
+              hide-details="auto"
+              class="mb-2"
+            />
+            <v-text-field
+              v-model="pwdNew"
+              :label="t('settings.accountNewPassword')"
+              type="password"
+              density="comfortable"
+              variant="outlined"
+              hide-details="auto"
+              class="mb-2"
+            />
+            <v-btn
+              color="primary"
+              variant="tonal"
+              :loading="pwdBusy"
+              @click="changePassword"
+            >
+              {{ $t('settings.accountPasswordSubmit') }}
+            </v-btn>
+
+            <v-divider class="my-4" />
+
+            <h3 class="text-subtitle-2 font-weight-medium mb-2">
+              {{ $t('settings.accountStorage') }}
+            </h3>
+            <p v-if="accountStatsLoading" class="text-body-2">
+              {{ $t('settings.accountStatsLoading') }}
+            </p>
+            <ul v-else-if="accountStats" class="text-body-2 mb-4">
+              <li>{{ $t('settings.accountStatsSize', { size: formatBytes(accountStats.bytes) }) }}</li>
+              <li>{{ $t('settings.accountStatsChats', { n: accountStats.conversationCount }) }}</li>
+              <li class="font-mono text-caption">{{ accountStats.dataDir }}</li>
+            </ul>
+
+            <v-switch
+              :model-value="auth.isDefaultUserOnDevice"
+              :label="t('settings.accountDefaultUser')"
+              :hint="t('settings.accountDefaultUserHint')"
+              persistent-hint
+              color="primary"
+              density="comfortable"
+              class="mb-2"
+              :disabled="defaultUserBusy"
+              :loading="defaultUserBusy"
+              @update:model-value="onDefaultUserToggle"
+            />
+            <v-btn variant="outlined" color="warning" class="mb-4" @click="emit('logout')">
+              {{ $t('settings.accountLogout') }}
+            </v-btn>
+
+            <v-divider class="my-4" />
+
+            <h3 class="text-subtitle-2 font-weight-medium mb-2 text-error">
+              {{ $t('settings.accountDelete') }}
+            </h3>
+            <p class="text-body-2 text-medium-emphasis mb-2">
+              {{ $t('settings.accountDeleteHint') }}
+            </p>
+            <v-text-field
+              v-model="deleteConfirmUsername"
+              :label="t('settings.accountDeleteConfirm')"
+              density="comfortable"
+              variant="outlined"
+              hide-details="auto"
+              class="mb-2"
+            />
+            <v-btn
+              color="error"
+              variant="flat"
+              :loading="deleteBusy"
+              :disabled="!deleteConfirmUsername.trim()"
+              @click="deleteAccount"
+            >
+              {{ $t('settings.accountDeleteSubmit') }}
+            </v-btn>
+            <p v-if="pwdMsg" class="text-caption mt-3">{{ pwdMsg }}</p>
           </section>
 
           <section

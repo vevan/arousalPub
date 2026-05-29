@@ -45,10 +45,10 @@ const {
   copyTurnText,
   openTurnPromptSnapshot,
   assistantTimerLabel,
+  assistantReceiveTokenLabel,
 } = props.session
 
 const { assistantRoleName, assistantAvatarLetter } = toRefs(props.session)
-const { assistantTokenLabel } = props.session
 </script>
 
 <template>
@@ -72,10 +72,10 @@ const { assistantTokenLabel } = props.session
               {{ assistantTimerLabel(turn) }}
             </span>
           </template>
-          <template v-if="assistantTokenLabel(turn)">
+          <template v-if="assistantReceiveTokenLabel(turn)">
             ·
             <span class="turn-tokens">
-              {{ $t('chat.promptTokens', { n: assistantTokenLabel(turn) }) }}
+              {{ $t('chat.receiveTokens', { n: assistantReceiveTokenLabel(turn) }) }}
             </span>
           </template>
           <template v-if="isAssistantStreamingBubble(turn)">

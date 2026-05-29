@@ -1,8 +1,11 @@
+import { extractCompletionTokens } from './chat-usage.js'
+
 /** 从 OpenAI 兼容 SSE 行解析 assistant 增量（与前端 readSseStream 对齐） */
 
 export function parseSseDataLine(line: string): {
   text?: string
   reasoning?: string
+  completionTokens?: number
 } | null {
   const trimmed = line.trim()
   if (!trimmed.startsWith('data:')) return null
@@ -21,7 +24,8 @@ export function parseSseDataLine(line: string): {
     }
     const d = j.choices?.[0]?.delta
     if (!d) return null
-    const out: { text?: string; reasoning?: string } = {}
+    const out: { text?: string; reasoning?: string; completionTokens?: number } =
+      {}
     if (typeof d.content === 'string' && d.content.length > 0) {
       out.text = d.content
     }
@@ -34,7 +38,15 @@ export function parseSseDataLine(line: string): {
             ? d.thinking
             : ''
     if (rs.length > 0) out.reasoning = rs
-    if (out.text !== undefined || out.reasoning !== undefined) return out
+    const completionTokens = extractCompletionTokens(j)
+    if (completionTokens) out.completionTokens = completionTokens
+    if (
+      out.text !== undefined ||
+      out.reasoning !== undefined ||
+      out.completionTokens !== undefined
+    ) {
+      return out
+    }
     return null
   } catch {
     return null

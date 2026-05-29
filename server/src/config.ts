@@ -94,55 +94,63 @@ function resolveDataDir(): string {
 /** 数据根目录：`data/` */
 export const DATA_DIR = resolveDataDir()
 
-/** 当前用户数据目录：`data/{userId}/`，未选用户时为 `default-user` */
-export function getUserDataDir(userId?: string): string {
-  return path.join(DATA_DIR, userId ?? getCurrentUserId())
+/** 用户数据目录：`data/{userId}/` */
+export function getUserDataDir(userId: string): string {
+  return path.join(DATA_DIR, userId)
 }
 
-export function getApiSettingsPath(): string {
-  return path.join(getUserDataDir(), 'api-settings.json')
+export function getUsersIndexPath(): string {
+  return path.join(DATA_DIR, 'users.index.json')
 }
 
-export function getApiKeysPath(): string {
-  return path.join(getUserDataDir(), 'api-keys.json')
+export function getUserAvatarPath(userId: string): string {
+  return path.join(getUserDataDir(userId), 'avatar.png')
 }
 
-export function getChatsRoot(): string {
-  return path.join(getUserDataDir(), 'chats')
+export function getApiSettingsPath(userId?: string): string {
+  return path.join(getUserDataDir(userId ?? getCurrentUserId()), 'api-settings.json')
 }
 
-export function getLorebooksDir(): string {
-  return path.join(getUserDataDir(), 'lorebooks')
+export function getApiKeysPath(userId?: string): string {
+  return path.join(getUserDataDir(userId ?? getCurrentUserId()), 'api-keys.json')
 }
 
-export function getCharactersDir(): string {
-  return path.join(getUserDataDir(), 'characters')
+export function getChatsRoot(userId?: string): string {
+  return path.join(getUserDataDir(userId ?? getCurrentUserId()), 'chats')
 }
 
-export function getPromptsDir(): string {
-  return path.join(getUserDataDir(), 'prompts')
+export function getLorebooksDir(userId?: string): string {
+  return path.join(getUserDataDir(userId ?? getCurrentUserId()), 'lorebooks')
 }
 
-export function getPromptsIndexPath(): string {
-  return path.join(getPromptsDir(), 'index.json')
+export function getCharactersDir(userId?: string): string {
+  return path.join(getUserDataDir(userId ?? getCurrentUserId()), 'characters')
 }
 
-export function getLorebooksIndexPath(): string {
-  return path.join(getLorebooksDir(), 'index.json')
+export function getPromptsDir(userId?: string): string {
+  return path.join(getUserDataDir(userId ?? getCurrentUserId()), 'prompts')
+}
+
+export function getPromptsIndexPath(userId?: string): string {
+  return path.join(getPromptsDir(userId), 'index.json')
+}
+
+export function getLorebooksIndexPath(userId?: string): string {
+  return path.join(getLorebooksDir(userId), 'index.json')
 }
 
 /** @deprecated 请使用 {@link getChatsRoot} */
 export const CHAT_ROOT = getChatsRoot
 
-export function ensureDataSkeleton(): void {
-  const userDir = getUserDataDir()
+export function ensureDataSkeletonForUser(userId: string): void {
+  const userDir = getUserDataDir(userId)
   for (const d of [
     DATA_DIR,
     userDir,
-    getChatsRoot(),
-    getLorebooksDir(),
-    getCharactersDir(),
-    getPromptsDir(),
+    getChatsRoot(userId),
+    getLorebooksDir(userId),
+    getCharactersDir(userId),
+    getPromptsDir(userId),
   ]) {
     try {
       mkdirSync(d, { recursive: true })
@@ -151,6 +159,11 @@ export function ensureDataSkeleton(): void {
       console.warn(`[config] failed to create ${d}:`, e)
     }
   }
+}
+
+/** @deprecated 使用 {@link ensureDataSkeletonForUser}；须在已 enterRequestUser 后调用 */
+export function ensureDataSkeleton(): void {
+  ensureDataSkeletonForUser(getCurrentUserId())
 }
 
 // eslint-disable-next-line no-console

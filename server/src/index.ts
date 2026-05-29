@@ -54,7 +54,8 @@ import { normalizeEmbeddingDimensions } from './embedding-api-settings.js'
 import {
   isValidConversationId,
 } from './conversation-id.js'
-import { enterRequestUser, userIdFromRequest } from './user-context.js'
+import { registerAuth } from './auth.js'
+import { ensureUsersRegistry } from './users-index.js'
 import {
   assertValidPromptsPayload,
   readPromptsDocument,
@@ -87,6 +88,7 @@ import {
   type PromptsAssemblePreviewBody,
 } from './prompts-assemble-preview.js'
 import { persistTurnAfterModelReply } from './chat-persist-after-chat.js'
+import { extractCompletionTokens } from './chat-usage.js'
 import { parseSseDataLine } from './sse-assistant.js'
 import { isPngBuffer } from './character-png.js'
 import {
@@ -284,6 +286,8 @@ await app.register(cors, { origin: true })
 await app.register(multipart, {
   limits: { fileSize: 15 * 1024 * 1024 },
 })
+await registerAuth(app)
+await ensureUsersRegistry()
 
 app.get('/health', async () => ({ ok: true as const }))
 
@@ -820,6 +824,7 @@ app.patch<{
         reasoning?: unknown
         durationMs?: unknown
         estimatedTokens?: unknown
+        completionTokens?: unknown
       }
       if (typeof o.id !== 'string' || typeof o.content !== 'string') {
         return reply.status(400).send({ error: 'receives 项须含 id、content 字符串' })
@@ -839,6 +844,16 @@ app.patch<{
         rec.runtime = {
           ...(rec.runtime ?? {}),
           estimatedTokens: Math.round(o.estimatedTokens),
+        }
+      }
+      if (
+        typeof o.completionTokens === 'number' &&
+        Number.isFinite(o.completionTokens) &&
+        o.completionTokens > 0
+      ) {
+        rec.runtime = {
+          ...(rec.runtime ?? {}),
+          completionTokens: Math.round(o.completionTokens),
         }
       }
       mapped.push(rec)
@@ -910,6 +925,7 @@ app.get<{ Params: { id: string } }>(
           reasoning?: string
           durationMs?: number
           estimatedTokens?: number
+          completionTokens?: number
         } = {
           id: typeof r.id === 'string' ? r.id : '',
           content: typeof r.content === 'string' ? r.content : '',
@@ -928,6 +944,10 @@ app.get<{ Params: { id: string } }>(
           const et = (runtime as { estimatedTokens?: unknown }).estimatedTokens
           if (typeof et === 'number' && Number.isFinite(et) && et > 0) {
             base.estimatedTokens = Math.round(et)
+          }
+          const ct = (runtime as { completionTokens?: unknown }).completionTokens
+          if (typeof ct === 'number' && Number.isFinite(ct) && ct > 0) {
+            base.completionTokens = Math.round(ct)
           }
         }
         return base
@@ -1942,10 +1962,14 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
     reply.header('Cache-Control', 'no-cache')
     reply.header('Connection', 'keep-alive')
     reply.header('X-Accel-Buffering', 'no')
+    if (typeof estimatedTokens === 'number' && estimatedTokens > 0) {
+      reply.header('X-Prompt-Estimated-Tokens', String(Math.round(estimatedTokens)))
+    }
 
     let sseBuffer = ''
     let accContent = ''
     let accReasoning = ''
+    let accCompletionTokens: number | undefined
 
     const tap = new Transform({
       transform(chunk, _enc, cb) {
@@ -1957,10 +1981,21 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
           if (!d) continue
           if (d.text) accContent += d.text
           if (d.reasoning) accReasoning += d.reasoning
+          if (d.completionTokens) accCompletionTokens = d.completionTokens
         }
         cb(null, chunk)
       },
       flush(cb) {
+        if (sseBuffer.trim()) {
+          for (const line of sseBuffer.split('\n')) {
+            const d = parseSseDataLine(line)
+            if (!d) continue
+            if (d.text) accContent += d.text
+            if (d.reasoning) accReasoning += d.reasoning
+            if (d.completionTokens) accCompletionTokens = d.completionTokens
+          }
+          sseBuffer = ''
+        }
         if (!persistParams || !accContent.trim()) {
           cb()
           return
@@ -1970,6 +2005,8 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
           assistantContent: accContent,
           assistantReasoning: accReasoning.trim() || undefined,
           durationMs: Math.round(performance.now() - upstreamStartedAt),
+          estimatedTokens: persistParams.estimatedTokens,
+          completionTokens: accCompletionTokens,
         })
           .then((persist) => {
             if (!persist.ok) {
@@ -2006,6 +2043,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
       : undefined
   const content = typeof msg?.content === 'string' ? msg.content : ''
   const reasoning = extractReasoningFromMessage(msg)
+  const completionTokens = extractCompletionTokens(data)
 
   let persist: Awaited<ReturnType<typeof persistTurnAfterModelReply>> | undefined
   if (persistParams && content.trim()) {
@@ -2014,6 +2052,8 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
       assistantContent: content,
       assistantReasoning: reasoning,
       durationMs: Math.round(performance.now() - upstreamStartedAt),
+      estimatedTokens: persistParams.estimatedTokens,
+      completionTokens,
     })
     if (!persist.ok) {
       request.log.warn({ persist }, 'persist after chat failed')
@@ -2030,15 +2070,11 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
     ...(typeof estimatedTokens === 'number' && estimatedTokens > 0
       ? { estimatedTokens }
       : {}),
+    ...(typeof completionTokens === 'number' && completionTokens > 0
+      ? { completionTokens }
+      : {}),
     raw: data,
   })
-})
-
-ensureDataSkeleton()
-
-app.addHook('onRequest', (request, _reply, done) => {
-  enterRequestUser(userIdFromRequest(request))
-  done()
 })
 
 const port = resolveServerPort()

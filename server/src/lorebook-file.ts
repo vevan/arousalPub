@@ -11,6 +11,7 @@ import {
   type LorebooksIndexDocument,
 } from './lorebook-types.js'
 import { getLorebooksDir, getLorebooksIndexPath, getUserDataDir } from './config.js'
+import { getCurrentUserId } from './user-context.js'
 
 export {
   LOREBOOK_ID_RE,
@@ -115,7 +116,7 @@ export async function readLorebooksDocument(): Promise<LorebooksDocument | null>
     }
     const lorebooks: Lorebook[] = []
     for (const entry of idx.lorebooks) {
-      if (!entry?.id) continue
+      if (!entry?.id || !LOREBOOK_ID_RE.test(entry.id)) continue
       const lb = await readLorebookFile(entry.id)
       if (lb && isLorebookShape(lb)) lorebooks.push(lb)
     }
@@ -146,7 +147,7 @@ export async function writeLorebooksDocument(
 ): Promise<void> {
   const dir = getLorebooksDir()
   await mkdir(dir, { recursive: true })
-  await mkdir(getUserDataDir(), { recursive: true })
+  await mkdir(getUserDataDir(getCurrentUserId()), { recursive: true })
 
   const savedAt = data.savedAt || new Date().toISOString()
   const indexEntries: LorebookIndexEntry[] = []

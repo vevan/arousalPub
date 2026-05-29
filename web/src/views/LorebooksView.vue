@@ -2,9 +2,13 @@
 import { useLorebooksStore } from '@/stores/lorebooks'
 import type { LorebookGroup } from '@/stores/lorebooks'
 import {
+  entryKeysInputDisabled,
   formatLorebookKeysInput,
   lorebookEntryMissingKeywords,
   parseLorebookKeysInput,
+  patchForTriggerMode,
+  resolveEntryTriggerMode,
+  type LorebookTriggerMode,
 } from '@/utils/lorebook-entry'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
@@ -203,7 +207,7 @@ function syncKeysDraftFromEntry(): void {
 
 function commitKeysForEntry(entryId: string, raw: string): void {
   const e = activeLorebook.value.entries.find((x) => x.id === entryId)
-  if (!e || e.constant) return
+  if (!e || entryKeysInputDisabled(e)) return
   const parsed = parseLorebookKeysInput(raw)
   const same =
     parsed.length === e.keys.length &&
@@ -246,11 +250,21 @@ function formatDate(iso: string): string {
   }
 }
 
-function entryMetaLine(e: { constant: boolean; keys: string[] }): string {
-  if (e.constant) return t('lorebooks.constant')
+function entryMetaLine(e: {
+  constant: boolean
+  triggerMode?: LorebookTriggerMode
+  keys: string[]
+}): string {
+  const mode = resolveEntryTriggerMode(e)
+  if (mode === 'constant') return t('lorebooks.constant')
+  if (mode === 'vector') return t('lorebooks.triggerVector')
   if (lorebookEntryMissingKeywords(e)) return t('lorebooks.entryMissingKeys')
   if (e.keys.length) return e.keys.join(' · ')
   return '—'
+}
+
+function setEntryTriggerMode(entryId: string, mode: LorebookTriggerMode) {
+  store.updateEntry(entryId, patchForTriggerMode(mode))
 }
 </script>
 
@@ -569,22 +583,34 @@ function entryMetaLine(e: { constant: boolean; keys: string[] }): string {
               </header>
 
               <div class="editor-card__field-row">
-                <div class="editor-card__field-block">
-                  <label class="editor-card__field-label">{{ $t('lorebooks.constant') }}</label>
+                <div class="editor-card__field-block editor-card__field-block--wide">
+                  <label class="editor-card__field-label">{{ $t('lorebooks.triggerMode') }}</label>
                   <div class="pill-group">
                     <button
                       type="button"
                       class="pill"
-                      :class="{ 'is-on': !selectedEntry.constant }"
-                      @click="store.updateEntry(selectedEntry.id, { constant: false })"
+                      :class="{ 'is-on': resolveEntryTriggerMode(selectedEntry) === 'keyword' }"
+                      @click="setEntryTriggerMode(selectedEntry.id, 'keyword')"
                     >{{ $t('lorebooks.triggerKeyword') }}</button>
                     <button
                       type="button"
                       class="pill"
-                      :class="{ 'is-on': selectedEntry.constant }"
-                      @click="store.updateEntry(selectedEntry.id, { constant: true })"
+                      :class="{ 'is-on': resolveEntryTriggerMode(selectedEntry) === 'constant' }"
+                      @click="setEntryTriggerMode(selectedEntry.id, 'constant')"
                     >{{ $t('lorebooks.constant') }}</button>
+                    <button
+                      type="button"
+                      class="pill"
+                      :class="{ 'is-on': resolveEntryTriggerMode(selectedEntry) === 'vector' }"
+                      @click="setEntryTriggerMode(selectedEntry.id, 'vector')"
+                    >{{ $t('lorebooks.triggerVector') }}</button>
                   </div>
+                  <p
+                    v-if="resolveEntryTriggerMode(selectedEntry) === 'vector'"
+                    class="text-caption text-medium-emphasis mt-1 mb-0"
+                  >
+                    {{ $t('lorebooks.triggerVectorHint') }}
+                  </p>
                 </div>
                 <div class="editor-card__field-block">
                   <label class="editor-card__field-label">{{ $t('lorebooks.priority') }}</label>
@@ -619,7 +645,7 @@ function entryMetaLine(e: { constant: boolean; keys: string[] }): string {
                   type="text"
                   class="editor-card__tags-input"
                   :class="{ 'editor-card__tags-input--warn': lorebookEntryMissingKeywords(selectedEntry) }"
-                  :disabled="selectedEntry.constant"
+                  :disabled="entryKeysInputDisabled(selectedEntry)"
                   :placeholder="$t('lorebooks.entryKeysPlaceholder')"
                   @blur="commitKeysDraft"
                   @keydown="onKeysInputKeydown"

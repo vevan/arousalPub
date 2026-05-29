@@ -1,0 +1,40 @@
+<script setup lang="ts">
+import ChatTurnAssistant from '@/components/chat/ChatTurnAssistant.vue'
+import ChatTurnUser from '@/components/chat/ChatTurnUser.vue'
+import type { useChatSession } from '@/composables/useChatSession'
+import type { ChatTurnItem } from '@/types/chat-turn'
+
+const props = defineProps<{
+  turn: ChatTurnItem
+  listIndex: number
+  session: ReturnType<typeof useChatSession>
+}>()
+
+const { turnLabelN, isOpeningTurn } = props.session
+</script>
+
+<template>
+  <div class="turn-block">
+    <div class="turn-divider" role="separator">
+      <span class="turn-divider__line" />
+      <span class="turn-divider__ornament">❦</span>
+      <span class="turn-divider__label">
+        {{ $t('chat.turnLabel', { n: turnLabelN(turn, listIndex) }) }}
+      </span>
+      <span class="turn-divider__ornament">❦</span>
+      <span class="turn-divider__line" />
+    </div>
+
+    <ChatTurnUser
+      v-if="!isOpeningTurn(turn)"
+      :turn="turn"
+      :list-index="listIndex"
+      :session="session"
+    />
+    <ChatTurnAssistant
+      :turn="turn"
+      :list-index="listIndex"
+      :session="session"
+    />
+  </div>
+</template>

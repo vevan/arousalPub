@@ -68,6 +68,14 @@
 - [ ] 插件调用审计日志
 - [ ] fallback 与健康检查策略
 
+## P3（备忘 / 最低优先级）
+
+> 来自实现与选型讨论，**不排期**；细节见 `DOC/03` **§14.10**。
+
+- [ ] **Embedding MRL / 降维**：系统设置已支持 `embeddingDimensions`（留空=不传 OpenAI `dimensions`）；部分本地网关会忽略该参数仍返回满维。备选：换 TEI/vLLM 等支持 MRL 的推理端，或客户端截断前 N 维 + L2 归一化后入库。
+- [ ] **Reranker 精排**：记忆/资料库当前仅 Lance 向量 TopK；API 层已预留 `rerank` capability，组装管线未接。TopK 较小时收益有限，资料库规模大时更值得做。
+- [ ] **Qwen query instruct**：官方建议 query 侧加任务指令前缀（约 +1～5% 检索），索引与检索均未实现。
+
 ## 文档维护 TODO
 
 - [x] 原独立草稿已合并至 `DOC/02`、`DOC/03`

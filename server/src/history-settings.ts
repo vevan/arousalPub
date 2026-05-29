@@ -31,11 +31,7 @@ export function normalizeHistorySettings(
 export function hasHistorySettingsOverride(
   raw?: HistorySettingsOverride | null,
 ): boolean {
-  if (!raw || typeof raw !== 'object') return false
-  return (
-    Object.prototype.hasOwnProperty.call(raw, 'limitEnabled') ||
-    Object.prototype.hasOwnProperty.call(raw, 'maxTurns')
-  )
+  return raw != null && typeof raw === 'object' && !Array.isArray(raw)
 }
 
 export function resolveHistorySettings(

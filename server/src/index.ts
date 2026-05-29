@@ -1,7 +1,7 @@
 import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
 import Fastify from 'fastify'
-import { randomUUID } from 'node:crypto'
+import { generateShortId } from './short-id.js'
 import { isValidShortId } from './short-id.js'
 import { Readable, Transform } from 'node:stream'
 import {
@@ -31,6 +31,8 @@ import {
   clearConversationLorebookSettings,
   clearConversationHistorySettings,
   updateConversationHistorySettings,
+  clearConversationMemorySettings,
+  updateConversationMemorySettings,
   updateConversationUserCharacterId,
   updateConversationUserName,
   getTurnUserText,
@@ -38,12 +40,17 @@ import {
   updateTurnContentInTailChunk,
   type TurnReceive,
 } from './chat-storage.js'
+import { reindexConversationMemory } from './memory-index.js'
+import { startConversationMemoryReindexSse } from './memory-reindex-sse.js'
 import { ensureDataSkeleton } from './config.js'
 import {
   readUserPreferencesDocument,
   updateGlobalHistorySettings,
   updateGlobalLorebookSettings,
+  updateGlobalMemorySettings,
+  updateGlobalEmbeddingApiSettings,
 } from './user-preferences-file.js'
+import { normalizeEmbeddingDimensions } from './embedding-api-settings.js'
 import {
   isValidConversationId,
 } from './conversation-id.js'
@@ -70,6 +77,7 @@ import {
   type ApiKeysDocument,
 } from './api-keys-file.js'
 import { buildConversationOutboundMessages } from './chat-assemble.js'
+import { scheduleLorebookVectorReindex } from './lorebook-vector-index.js'
 import {
   applyPromptMacroPipeline,
   buildPromptMacroContext,
@@ -331,15 +339,22 @@ interface PatchConvBody {
   promptPresetId?: string | null
   /** 世界书 id 列表；传 [] 清空 */
   lorebookIds?: string[]
-  /** 资料库递归：`recursiveEnabled`、`maxRecursionDepth`（0～3） */
+  /** 资料库递归 / 向量：`recursiveEnabled`、`maxRecursionDepth`、`vectorEnabled`、`vectorTopK` */
   lorebookSettings?: {
     recursiveEnabled?: boolean
     maxRecursionDepth?: number
+    vectorEnabled?: boolean
+    vectorTopK?: number
   } | null
   /** 历史轮数：`limitEnabled`、`maxTurns`；`null` 清除覆盖 */
   historySettings?: {
     limitEnabled?: boolean
     maxTurns?: number
+  } | null
+  /** 对话记忆：`memoryEnabled`、`memoryTopK`；`null` 清除覆盖 */
+  memorySettings?: {
+    memoryEnabled?: boolean
+    memoryTopK?: number
   } | null
   /** 用户 persona 卡 id；组装注入 persona，宏仍依赖 userName 快照 */
   userCharacterId?: string | null
@@ -372,14 +387,18 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       b,
       'historySettings',
     )
+    const hasMemorySettings = Object.prototype.hasOwnProperty.call(
+      b,
+      'memorySettings',
+    )
     const hasUserCharacterId = Object.prototype.hasOwnProperty.call(b, 'userCharacterId')
     const hasUserName = Object.prototype.hasOwnProperty.call(b, 'userName')
-    if (!hasTitle && !hasPromptDebug && !hasCharIds && !hasPromptPreset && !hasLorebookIds && !hasLorebookSettings && !hasHistorySettings && !hasUserCharacterId && !hasUserName) {
+    if (!hasTitle && !hasPromptDebug && !hasCharIds && !hasPromptPreset && !hasLorebookIds && !hasLorebookSettings && !hasHistorySettings && !hasMemorySettings && !hasUserCharacterId && !hasUserName) {
       return reply
         .status(400)
         .send({
           error:
-            '须提供 title、promptDebug.maxStored、characterIds、promptPresetId、lorebookIds、lorebookSettings、historySettings、userCharacterId 和/或 userName',
+            '须提供 title、promptDebug.maxStored、characterIds、promptPresetId、lorebookIds、lorebookSettings、historySettings、memorySettings、userCharacterId 和/或 userName',
         })
     }
     let idx = await readConversationIndex(id)
@@ -437,6 +456,8 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
         const patch: {
           recursiveEnabled?: boolean
           maxRecursionDepth?: number
+          vectorEnabled?: boolean
+          vectorTopK?: number
         } = {}
         if (Object.prototype.hasOwnProperty.call(raw, 'recursiveEnabled')) {
           if (
@@ -460,13 +481,27 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
           }
           patch.maxRecursionDepth = d
         }
-        if (
-          !Object.prototype.hasOwnProperty.call(patch, 'recursiveEnabled') &&
-          !Object.prototype.hasOwnProperty.call(patch, 'maxRecursionDepth')
-        ) {
+        if (Object.prototype.hasOwnProperty.call(raw, 'vectorEnabled')) {
+          if (typeof (raw as { vectorEnabled?: unknown }).vectorEnabled !== 'boolean') {
+            return reply
+              .status(400)
+              .send({ error: 'lorebookSettings.vectorEnabled 须为布尔' })
+          }
+          patch.vectorEnabled = (raw as { vectorEnabled: boolean }).vectorEnabled
+        }
+        if (Object.prototype.hasOwnProperty.call(raw, 'vectorTopK')) {
+          const d = (raw as { vectorTopK?: unknown }).vectorTopK
+          if (typeof d !== 'number' || !Number.isFinite(d)) {
+            return reply
+              .status(400)
+              .send({ error: 'lorebookSettings.vectorTopK 须为数字' })
+          }
+          patch.vectorTopK = d
+        }
+        if (Object.keys(patch).length === 0) {
           return reply.status(400).send({
             error:
-              'lorebookSettings 须含 recursiveEnabled 和/或 maxRecursionDepth',
+              'lorebookSettings 须含 recursiveEnabled、maxRecursionDepth、vectorEnabled 和/或 vectorTopK',
           })
         }
         const next = await updateConversationLorebookSettings(id, patch)
@@ -513,6 +548,49 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
           })
         }
         const next = await updateConversationHistorySettings(id, patch)
+        if (!next) return reply.status(404).send({ error: '会话不存在' })
+        idx = next
+      }
+    }
+    if (hasMemorySettings) {
+      const raw = b.memorySettings
+      if (raw === null) {
+        const next = await clearConversationMemorySettings(id)
+        if (!next) return reply.status(404).send({ error: '会话不存在' })
+        idx = next
+      } else if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return reply.status(400).send({ error: 'memorySettings 须为对象或 null' })
+      } else {
+        const patch: {
+          memoryEnabled?: boolean
+          memoryTopK?: number
+        } = {}
+        if (Object.prototype.hasOwnProperty.call(raw, 'memoryEnabled')) {
+          if (typeof (raw as { memoryEnabled?: unknown }).memoryEnabled !== 'boolean') {
+            return reply
+              .status(400)
+              .send({ error: 'memorySettings.memoryEnabled 须为布尔' })
+          }
+          patch.memoryEnabled = (raw as { memoryEnabled: boolean }).memoryEnabled
+        }
+        if (Object.prototype.hasOwnProperty.call(raw, 'memoryTopK')) {
+          const d = (raw as { memoryTopK?: unknown }).memoryTopK
+          if (typeof d !== 'number' || !Number.isFinite(d)) {
+            return reply
+              .status(400)
+              .send({ error: 'memorySettings.memoryTopK 须为数字' })
+          }
+          patch.memoryTopK = d
+        }
+        if (
+          !Object.prototype.hasOwnProperty.call(patch, 'memoryEnabled') &&
+          !Object.prototype.hasOwnProperty.call(patch, 'memoryTopK')
+        ) {
+          return reply.status(400).send({
+            error: 'memorySettings 须含 memoryEnabled 和/或 memoryTopK',
+          })
+        }
+        const next = await updateConversationMemorySettings(id, patch)
         if (!next) return reply.status(404).send({ error: '会话不存在' })
         idx = next
       }
@@ -609,7 +687,7 @@ app.post<{ Params: { id: string }; Body: OpeningTurnBody }>(
         return reply.status(400).send({ error: 'receives.content 须为非空字符串' })
       }
       const rec: TurnReceive = {
-        id: typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : randomUUID(),
+        id: typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : generateShortId(),
         content: applyPromptMacroPipeline(content.trim(), openingMacroCtx),
       }
       if (typeof raw.reasoning === 'string' && raw.reasoning.trim()) {
@@ -736,13 +814,32 @@ app.patch<{
       if (!r || typeof r !== 'object') {
         return reply.status(400).send({ error: 'receives 项格式错误' })
       }
-      const o = r as { id?: unknown; content?: unknown; reasoning?: unknown }
+      const o = r as {
+        id?: unknown
+        content?: unknown
+        reasoning?: unknown
+        durationMs?: unknown
+        estimatedTokens?: unknown
+      }
       if (typeof o.id !== 'string' || typeof o.content !== 'string') {
         return reply.status(400).send({ error: 'receives 项须含 id、content 字符串' })
       }
       const rec: TurnReceive = { id: o.id, content: o.content }
       if (typeof o.reasoning === 'string' && o.reasoning.length > 0) {
         rec.reasoning = o.reasoning
+      }
+      if (typeof o.durationMs === 'number' && Number.isFinite(o.durationMs) && o.durationMs > 0) {
+        rec.runtime = { ...(rec.runtime ?? {}), durationMs: Math.round(o.durationMs) }
+      }
+      if (
+        typeof o.estimatedTokens === 'number' &&
+        Number.isFinite(o.estimatedTokens) &&
+        o.estimatedTokens > 0
+      ) {
+        rec.runtime = {
+          ...(rec.runtime ?? {}),
+          estimatedTokens: Math.round(o.estimatedTokens),
+        }
       }
       mapped.push(rec)
     }
@@ -807,7 +904,13 @@ app.get<{ Params: { id: string } }>(
     const turns: MessagesTurnDto[] = chunk.turns.map((t, i) => {
       const activeUserText = getTurnUserText(t)
       const recs = (t.receives ?? []).map((r) => {
-        const base = {
+        const base: {
+          id: string
+          content: string
+          reasoning?: string
+          durationMs?: number
+          estimatedTokens?: number
+        } = {
           id: typeof r.id === 'string' ? r.id : '',
           content: typeof r.content === 'string' ? r.content : '',
         }
@@ -815,7 +918,19 @@ app.get<{ Params: { id: string } }>(
           typeof r.reasoning === 'string' && r.reasoning.length > 0
             ? r.reasoning
             : undefined
-        return rs !== undefined ? { ...base, reasoning: rs } : base
+        if (rs !== undefined) base.reasoning = rs
+        const runtime = r.runtime
+        if (runtime && typeof runtime === 'object') {
+          const dm = (runtime as { durationMs?: unknown }).durationMs
+          if (typeof dm === 'number' && Number.isFinite(dm) && dm > 0) {
+            base.durationMs = Math.round(dm)
+          }
+          const et = (runtime as { estimatedTokens?: unknown }).estimatedTokens
+          if (typeof et === 'number' && Number.isFinite(et) && et > 0) {
+            base.estimatedTokens = Math.round(et)
+          }
+        }
+        return base
       })
       const ord =
         typeof t.turnOrdinal === 'number' && !Number.isNaN(t.turnOrdinal)
@@ -957,6 +1072,34 @@ app.get<{ Params: { id: string } }>(
   },
 )
 
+app.post<{ Params: { id: string }; Querystring: { stream?: string } }>(
+  '/api/chat/conversations/:id/memory/rebuild',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!isValidConversationId(id)) {
+      return reply.status(400).send({ error: '无效 id' })
+    }
+    const idx = await readConversationIndex(id)
+    if (!idx) return reply.status(404).send({ error: '会话不存在' })
+    const wantStream =
+      request.query.stream === '1' || request.query.stream === 'true'
+    if (wantStream) {
+      const stream = startConversationMemoryReindexSse(id, reply)
+      return reply.send(stream)
+    }
+    try {
+      const result = await reindexConversationMemory(id)
+      if (!result.ok) {
+        return reply.status(502).send(result)
+      }
+      return result
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ ok: false, error: '重建远期记忆索引失败' })
+    }
+  },
+)
+
 /** 调试：读取会话目录下 chat-prompt.json（仅最近 N 条 prompt 快照） */
 app.get<{ Params: { id: string } }>(
   '/api/chat/conversations/:id/chat-prompt',
@@ -985,10 +1128,22 @@ interface PatchUserPreferencesBody {
   lorebook?: {
     recursiveEnabled?: boolean
     maxRecursionDepth?: number
+    vectorEnabled?: boolean
+    vectorTopK?: number
   }
   history?: {
     limitEnabled?: boolean
     maxTurns?: number
+  }
+  memory?: {
+    memoryEnabled?: boolean
+    memoryTopK?: number
+  }
+  embeddingApi?: {
+    baseUrl?: string
+    apiKey?: string
+    apiKeyId?: string | null
+    embeddingModel?: string
   }
 }
 
@@ -998,16 +1153,24 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
     const b = request.body ?? {}
     const hasLore = b.lorebook && typeof b.lorebook === 'object'
     const hasHist = b.history && typeof b.history === 'object'
-    if (!hasLore && !hasHist) {
-      return reply.status(400).send({ error: '须提供 lorebook 和/或 history 对象' })
+    const hasMem = b.memory && typeof b.memory === 'object'
+    const hasEmbed = b.embeddingApi && typeof b.embeddingApi === 'object'
+    if (!hasLore && !hasHist && !hasMem && !hasEmbed) {
+      return reply.status(400).send({
+        error: '须提供 lorebook、history、memory 和/或 embeddingApi 对象',
+      })
     }
     try {
       let lorebook
       let history
+      let memory
+      let embeddingApi
       if (hasLore) {
         const patch: {
           recursiveEnabled?: boolean
           maxRecursionDepth?: number
+          vectorEnabled?: boolean
+          vectorTopK?: number
         } = {}
         if (Object.prototype.hasOwnProperty.call(b.lorebook, 'recursiveEnabled')) {
           if (typeof b.lorebook!.recursiveEnabled !== 'boolean') {
@@ -1026,12 +1189,25 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
           }
           patch.maxRecursionDepth = d
         }
-        if (
-          !Object.prototype.hasOwnProperty.call(patch, 'recursiveEnabled') &&
-          !Object.prototype.hasOwnProperty.call(patch, 'maxRecursionDepth')
-        ) {
+        if (Object.prototype.hasOwnProperty.call(b.lorebook, 'vectorEnabled')) {
+          if (typeof b.lorebook!.vectorEnabled !== 'boolean') {
+            return reply
+              .status(400)
+              .send({ error: 'lorebook.vectorEnabled 须为布尔' })
+          }
+          patch.vectorEnabled = b.lorebook!.vectorEnabled
+        }
+        if (Object.prototype.hasOwnProperty.call(b.lorebook, 'vectorTopK')) {
+          const d = b.lorebook!.vectorTopK
+          if (typeof d !== 'number' || !Number.isFinite(d)) {
+            return reply.status(400).send({ error: 'lorebook.vectorTopK 须为数字' })
+          }
+          patch.vectorTopK = d
+        }
+        if (Object.keys(patch).length === 0) {
           return reply.status(400).send({
-            error: 'lorebook 须含 recursiveEnabled 和/或 maxRecursionDepth',
+            error:
+              'lorebook 须含 recursiveEnabled、maxRecursionDepth、vectorEnabled 和/或 vectorTopK',
           })
         }
         lorebook = await updateGlobalLorebookSettings(patch)
@@ -1066,16 +1242,162 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         }
         history = await updateGlobalHistorySettings(patch)
       }
+      if (hasMem) {
+        const patch: {
+          memoryEnabled?: boolean
+          memoryTopK?: number
+        } = {}
+        if (Object.prototype.hasOwnProperty.call(b.memory, 'memoryEnabled')) {
+          if (typeof b.memory!.memoryEnabled !== 'boolean') {
+            return reply
+              .status(400)
+              .send({ error: 'memory.memoryEnabled 须为布尔' })
+          }
+          patch.memoryEnabled = b.memory!.memoryEnabled
+        }
+        if (Object.prototype.hasOwnProperty.call(b.memory, 'memoryTopK')) {
+          const d = b.memory!.memoryTopK
+          if (typeof d !== 'number' || !Number.isFinite(d)) {
+            return reply.status(400).send({ error: 'memory.memoryTopK 须为数字' })
+          }
+          patch.memoryTopK = d
+        }
+        if (
+          !Object.prototype.hasOwnProperty.call(patch, 'memoryEnabled') &&
+          !Object.prototype.hasOwnProperty.call(patch, 'memoryTopK')
+        ) {
+          return reply.status(400).send({
+            error: 'memory 须含 memoryEnabled 和/或 memoryTopK',
+          })
+        }
+        memory = await updateGlobalMemorySettings(patch)
+      }
+      if (hasEmbed) {
+        const raw = b.embeddingApi! as {
+          baseUrl?: string
+          apiKey?: string
+          apiKeyId?: string | null
+          embeddingModel?: string
+          embeddingDimensions?: number | null
+        }
+        const patch: {
+          baseUrl?: string
+          apiKey?: string
+          apiKeyId?: string | null
+          embeddingModel?: string
+          embeddingDimensions?: number | null
+        } = {}
+        if (Object.prototype.hasOwnProperty.call(raw, 'baseUrl')) {
+          if (typeof raw.baseUrl !== 'string') {
+            return reply.status(400).send({ error: 'embeddingApi.baseUrl 须为字符串' })
+          }
+          patch.baseUrl = raw.baseUrl
+        }
+        if (Object.prototype.hasOwnProperty.call(raw, 'apiKey')) {
+          if (typeof raw.apiKey !== 'string') {
+            return reply.status(400).send({ error: 'embeddingApi.apiKey 须为字符串' })
+          }
+          patch.apiKey = raw.apiKey
+        }
+        if (Object.prototype.hasOwnProperty.call(raw, 'apiKeyId')) {
+          const kid = raw.apiKeyId
+          if (kid !== null && typeof kid !== 'string') {
+            return reply.status(400).send({ error: 'embeddingApi.apiKeyId 须为字符串或 null' })
+          }
+          patch.apiKeyId = kid
+        }
+        if (Object.prototype.hasOwnProperty.call(raw, 'embeddingModel')) {
+          if (typeof raw.embeddingModel !== 'string') {
+            return reply
+              .status(400)
+              .send({ error: 'embeddingApi.embeddingModel 须为字符串' })
+          }
+          patch.embeddingModel = raw.embeddingModel
+        }
+        if (Object.prototype.hasOwnProperty.call(raw, 'embeddingDimensions')) {
+          const dim = raw.embeddingDimensions
+          if (dim !== null && typeof dim !== 'number') {
+            return reply
+              .status(400)
+              .send({ error: 'embeddingApi.embeddingDimensions 须为数字或 null' })
+          }
+          patch.embeddingDimensions =
+            dim === null ? null : normalizeEmbeddingDimensions(dim)
+        }
+        if (Object.keys(patch).length === 0) {
+          return reply.status(400).send({
+            error:
+              'embeddingApi 须含 baseUrl、apiKey、apiKeyId、embeddingModel 和/或 embeddingDimensions',
+          })
+        }
+        embeddingApi = await updateGlobalEmbeddingApiSettings(patch)
+      }
       const doc = await readUserPreferencesDocument()
       return {
         ok: true as const,
         lorebook: lorebook ?? doc.lorebook,
         history: history ?? doc.history,
+        memory: memory ?? doc.memory,
+        embeddingApi: embeddingApi ?? doc.embeddingApi,
         savedAt: doc.savedAt,
       }
     } catch (e) {
       app.log.error(e)
       return reply.status(500).send({ error: '保存用户偏好失败' })
+    }
+  },
+)
+
+interface EmbeddingTestBody {
+  text?: string
+  embeddingApi?: {
+    baseUrl?: string
+    apiKey?: string
+    apiKeyId?: string | null
+    embeddingModel?: string
+  }
+}
+
+app.post<{ Body: EmbeddingTestBody }>(
+  '/api/embedding/test',
+  async (request, reply) => {
+    try {
+      const b = request.body ?? {}
+      const text =
+        typeof b.text === 'string' && b.text.trim()
+          ? b.text.trim()
+          : '这是一句用于测试 embedding 的短句。'
+      const { resolveEmbeddingApiCredentialsFrom } = await import(
+        './embedding-credential-resolve.js'
+      )
+      const { createEmbeddingWithCredentials, buildEmbeddingRequestUrl } =
+        await import('./embedding-client.js')
+      const creds = await resolveEmbeddingApiCredentialsFrom(
+        b.embeddingApi && typeof b.embeddingApi === 'object'
+          ? b.embeddingApi
+          : undefined,
+      )
+      const result = await createEmbeddingWithCredentials(creds, text)
+      if ('error' in result) {
+        return reply.status(502).send({
+          ok: false as const,
+          error: result.error,
+          status: result.status,
+          detail: result.detail,
+          requestUrl: buildEmbeddingRequestUrl(creds.baseUrl),
+        })
+      }
+      return {
+        ok: true as const,
+        model: result.model,
+        dimensions: result.vector.length,
+        inputText: text,
+        requestUrl: buildEmbeddingRequestUrl(creds.baseUrl),
+        vector: result.vector,
+      }
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ ok: false, error: 'Embedding 测试失败' })
     }
   },
 )
@@ -1213,6 +1535,7 @@ app.put('/api/lorebooks', async (request, reply) => {
   }
   try {
     await writeLorebooksDocument(doc)
+    scheduleLorebookVectorReindex(validated.lorebooks)
   } catch (e) {
     app.log.error(e)
     return reply.status(500).send({ error: '写入世界书失败' })
@@ -1533,6 +1856,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   }
   const userText = typeof body.userText === 'string' ? body.userText : ''
   let messages: ChatMessage[]
+  let estimatedTokens: number | undefined
   if (convId) {
     const promptsDoc = await readPromptsDocument()
     if (!promptsDoc) {
@@ -1551,6 +1875,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
       return reply.status(built.status).send({ error: built.error })
     }
     messages = built.messages
+    estimatedTokens = built.estimatedTokens
   } else {
     const v = validateChatMessages(body.messages)
     if (!v.ok) {
@@ -1575,12 +1900,14 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
           model: model.trim() || undefined,
           assembledMessages: messages,
           regenerateTurnOrdinal,
+          estimatedTokens,
         }
       : null
 
   const wantStream = Boolean(body.stream)
   const payload = buildUpstreamPayload({ ...body, messages, stream: wantStream })
   const url = `${baseUrl}/chat/completions`
+  const upstreamStartedAt = performance.now()
 
   const upstream = await fetch(url, {
     method: 'POST',
@@ -1636,6 +1963,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
           ...persistParams,
           assistantContent: accContent,
           assistantReasoning: accReasoning.trim() || undefined,
+          durationMs: Math.round(performance.now() - upstreamStartedAt),
         })
           .then((persist) => {
             if (!persist.ok) {
@@ -1679,6 +2007,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
       ...persistParams,
       assistantContent: content,
       assistantReasoning: reasoning,
+      durationMs: Math.round(performance.now() - upstreamStartedAt),
     })
     if (!persist.ok) {
       request.log.warn({ persist }, 'persist after chat failed')
@@ -1692,6 +2021,9 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
       ...(reasoning ? { reasoning } : {}),
     },
     ...(persist !== undefined ? { persist } : {}),
+    ...(typeof estimatedTokens === 'number' && estimatedTokens > 0
+      ? { estimatedTokens }
+      : {}),
     raw: data,
   })
 })

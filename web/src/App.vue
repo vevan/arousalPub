@@ -353,7 +353,7 @@ onUnmounted(() => {
     <v-dialog
       v-model="settingsDialogOpen"
       scrollable
-      content-class="settings-dialog-surface"
+      content-class="app-config-dialog-surface"
       @keydown.esc="settingsDialogOpen = false"
     >
       <v-card rounded="lg" class="settings-dialog-card">
@@ -461,7 +461,11 @@ onUnmounted(() => {
 }
 
 .settings-dialog-body {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .library-dialog-body {
   flex: 1 1 auto;

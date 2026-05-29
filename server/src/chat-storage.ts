@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { allocateShortId } from './short-id.js'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { getChatsRoot } from './config.js'
@@ -14,7 +14,22 @@ import {
   resolveHistorySettings,
   type HistorySettings,
 } from './history-settings.js'
-import { readGlobalHistorySettings, readGlobalLorebookSettings } from './user-preferences-file.js'
+import {
+  memorySettingsOverrideFromEffective,
+  normalizeMemorySettings,
+  resolveMemorySettings,
+  type MemorySettings,
+} from './memory-settings.js'
+import {
+  readGlobalHistorySettings,
+  readGlobalLorebookSettings,
+  readGlobalMemorySettings,
+} from './user-preferences-file.js'
+import {
+  scheduleMemoryIndexDelete,
+  scheduleMemoryIndexUpsert,
+} from './memory-index.js'
+import { deleteConversationMemoryIndex } from './memory-store.js'
 
 /** 与 {@link getChatsRoot} 相同，保留旧名供外部引用 */
 export function chatRoot(): string {
@@ -86,6 +101,15 @@ export interface ConversationIndex {
   lorebookSettings?: Partial<LorebookSettings>
   /** 历史轮数稀疏覆盖（未写字段继承全局 user-preferences） */
   historySettings?: Partial<HistorySettings>
+  /** 对话记忆稀疏覆盖（未写字段继承全局 user-preferences） */
+  memorySettings?: Partial<MemorySettings>
+  /**
+   * 远期记忆向量索引所用 embedding 模型（与全局 embeddingApi.embeddingModel 对齐）。
+   * 未写入表示尚未按当前模型完成索引或需重建。
+   */
+  memoryEmbeddingModel?: string | null
+  /** 与 memoryEmbeddingModel 一并记录；null 表示索引时未指定 dimensions */
+  memoryEmbeddingDimensions?: number | null
   /**
    * 对话内用户展示名（宏 `{{user}}`）；缺省由服务端用默认「用户」。
    */
@@ -104,6 +128,27 @@ export interface TurnReceive {
   runtime?: Record<string, unknown>
 }
 
+/** 助手 receive 运行时元数据（模型、耗时、组装 token 估算等） */
+export function buildReceiveRuntime(opts: {
+  model?: string
+  durationMs?: number
+  estimatedTokens?: number
+}): Record<string, unknown> | undefined {
+  const runtime: Record<string, unknown> = {}
+  if (opts.model) runtime.model = opts.model
+  if (typeof opts.durationMs === 'number' && opts.durationMs > 0) {
+    runtime.durationMs = Math.round(opts.durationMs)
+  }
+  if (
+    typeof opts.estimatedTokens === 'number' &&
+    Number.isFinite(opts.estimatedTokens) &&
+    opts.estimatedTokens > 0
+  ) {
+    runtime.estimatedTokens = Math.round(opts.estimatedTokens)
+  }
+  return Object.keys(runtime).length > 0 ? runtime : undefined
+}
+
 /** 存盘仅 { userText }；读盘兼容历史 sends[] */
 export type TurnSendBlock =
   | { userText: string }
@@ -116,6 +161,40 @@ export interface TurnRecord {
   receives: TurnReceive[]
   activeReceiveIndex: number
   plugins: unknown[]
+}
+
+/** 收集 chunk 内已有 turnId / receive.id，供短 id 分配去重 */
+export function collectChunkEntityIds(chunk: ChunkFile | null): Set<string> {
+  const used = new Set<string>()
+  if (!chunk?.turns?.length) return used
+  for (const t of chunk.turns) {
+    const tid = typeof t.turnId === 'string' ? t.turnId.trim() : ''
+    if (tid) used.add(tid)
+    for (const r of t.receives ?? []) {
+      const rid = typeof r.id === 'string' ? r.id.trim() : ''
+      if (rid) used.add(rid)
+    }
+  }
+  return used
+}
+
+function mapReceivesWithShortIds(
+  receives: TurnReceive[],
+  used: Set<string>,
+): TurnReceive[] {
+  return receives.map((r) => {
+    const rec: TurnReceive = {
+      id: r.id?.trim() ? r.id.trim() : allocateShortId(used),
+      content: r.content,
+    }
+    if (typeof r.reasoning === 'string' && r.reasoning.length > 0) {
+      rec.reasoning = r.reasoning
+    }
+    if (r.runtime && typeof r.runtime === 'object') {
+      rec.runtime = r.runtime
+    }
+    return rec
+  })
 }
 
 export interface ChatPromptMessage {
@@ -144,6 +223,23 @@ export function resolvedCharacterIds(
   const seen = new Set<string>()
   const out: string[] = []
   for (const raw of idx.characterIds) {
+    if (typeof raw !== 'string') continue
+    const id = raw.trim()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
+}
+
+/** 解析会话绑定的资料库 id 列表 */
+export function resolvedLorebookIds(
+  idx: Pick<ConversationIndex, 'lorebookIds'>,
+): string[] {
+  if (!Array.isArray(idx.lorebookIds)) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of idx.lorebookIds) {
     if (typeof raw !== 'string') continue
     const id = raw.trim()
     if (!id || seen.has(id)) continue
@@ -332,7 +428,8 @@ export async function updateConversationLorebookSettings(
   if (sparse) {
     next.lorebookSettings = sparse
   } else {
-    delete next.lorebookSettings
+    // 会话显式覆盖：与全局相同也保留快照，避免被误判为「继承全局」
+    next.lorebookSettings = { ...effective }
   }
   await writeConversationIndex(conversationId, next)
   await upsertChatListEntry(chatListEntryFromIndex(next))
@@ -369,7 +466,69 @@ export async function updateConversationHistorySettings(
   if (sparse) {
     next.historySettings = sparse
   } else {
-    delete next.historySettings
+    next.historySettings = { ...effective }
+  }
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next))
+  return next
+}
+
+/** 清除会话记忆覆盖（恢复继承全局） */
+export async function clearConversationMemorySettings(
+  conversationId: string,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  delete next.memorySettings
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next))
+  return next
+}
+
+/** 对话记忆：在「全局 + 当前覆盖」上合并 patch，稀疏写盘 */
+export async function updateConversationMemorySettings(
+  conversationId: string,
+  patch: Partial<MemorySettings>,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const global = await readGlobalMemorySettings()
+  const current = resolveMemorySettings(global, idx.memorySettings)
+  const effective = normalizeMemorySettings({ ...current, ...patch })
+  const sparse = memorySettingsOverrideFromEffective(effective, global)
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  if (sparse) {
+    next.memorySettings = sparse
+  } else {
+    next.memorySettings = { ...effective }
+  }
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next))
+  return next
+}
+
+/** 记录本会话远期记忆向量索引所用的 embedding 模型与维度 */
+export async function updateConversationMemoryEmbeddingModel(
+  conversationId: string,
+  embeddingModel: string,
+  embeddingDimensions?: number | null,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const model = embeddingModel.trim()
+  const t = nowIso()
+  const dims =
+    embeddingDimensions === undefined
+      ? idx.memoryEmbeddingDimensions ?? null
+      : embeddingDimensions
+  const next: ConversationIndex = {
+    ...idx,
+    updatedAt: t,
+    memoryEmbeddingModel: model || null,
+    memoryEmbeddingDimensions: dims,
   }
   await writeConversationIndex(conversationId, next)
   await upsertChatListEntry(chatListEntryFromIndex(next))
@@ -664,33 +823,47 @@ export async function saveFirstTurn(params: {
   assistantText: string
   reasoning?: string
   model?: string
+  durationMs?: number
+  estimatedTokens?: number
   /** 与发往 /api/chat 的 messages 一致，写入 chat-prompt.json（调试用） */
   debugPrompt?: unknown
 }): Promise<{ index: ConversationIndex; chunk: ChunkFile } | null> {
-  const { conversationId, userText, assistantText, reasoning, model, debugPrompt } =
-    params
+  const {
+    conversationId,
+    userText,
+    assistantText,
+    reasoning,
+    model,
+    durationMs,
+    estimatedTokens,
+    debugPrompt,
+  } = params
   let idx = await readConversationIndex(conversationId)
   if (!idx) return null
   if (idx.headChunkFile) {
     return null
   }
 
-  const turnId = randomUUID()
-  const receiveId = randomUUID()
+  const used = new Set<string>()
+  const turnId = allocateShortId(used)
+  const receiveRuntime = buildReceiveRuntime({ model, durationMs, estimatedTokens })
   const turn: TurnRecord = {
     turnId,
     turnOrdinal: 0,
     send: { userText },
-    receives: [
-      {
-        id: receiveId,
-        content: assistantText,
-        ...(reasoning != null && reasoning !== ''
-          ? { reasoning: reasoning.trim() }
-          : {}),
-        runtime: model ? { model } : undefined,
-      },
-    ],
+    receives: mapReceivesWithShortIds(
+      [
+        {
+          id: '',
+          content: assistantText,
+          ...(reasoning != null && reasoning !== ''
+            ? { reasoning: reasoning.trim() }
+            : {}),
+          runtime: receiveRuntime,
+        },
+      ],
+      used,
+    ),
     activeReceiveIndex: 0,
     plugins: [],
   }
@@ -725,6 +898,8 @@ export async function saveFirstTurn(params: {
     })
   }
 
+  scheduleMemoryIndexUpsert(conversationId, turn)
+
   return { index: idx, chunk }
 }
 
@@ -742,20 +917,12 @@ export async function saveOpeningTurn(params: {
     return null
   }
 
+  const used = new Set<string>()
   const turn: TurnRecord = {
-    turnId: randomUUID(),
+    turnId: allocateShortId(used),
     turnOrdinal: 0,
     send: { userText: '' },
-    receives: receives.map((r) => {
-      const rec: TurnReceive = { id: r.id || randomUUID(), content: r.content }
-      if (typeof r.reasoning === 'string' && r.reasoning.trim()) {
-        rec.reasoning = r.reasoning.trim()
-      }
-      if (r.runtime && typeof r.runtime === 'object') {
-        rec.runtime = r.runtime
-      }
-      return rec
-    }),
+    receives: mapReceivesWithShortIds(receives, used),
     activeReceiveIndex: Math.min(
       Math.max(0, activeReceiveIndex),
       receives.length - 1,
@@ -811,20 +978,12 @@ export async function appendConversationTurn(params: {
     chunk.turns.length === 0
       ? 0
       : Math.max(...chunk.turns.map((t) => t.turnOrdinal)) + 1
+  const used = collectChunkEntityIds(chunk)
   const turn: TurnRecord = {
-    turnId: randomUUID(),
+    turnId: allocateShortId(used),
     turnOrdinal: nextOrd,
     send: { userText },
-    receives: receives.map((r) => {
-      const rec: TurnReceive = { id: r.id, content: r.content }
-      if (typeof r.reasoning === 'string' && r.reasoning.length > 0) {
-        rec.reasoning = r.reasoning
-      }
-      if (r.runtime && typeof r.runtime === 'object') {
-        rec.runtime = r.runtime
-      }
-      return rec
-    }),
+    receives: mapReceivesWithShortIds(receives, used),
     activeReceiveIndex: Math.min(
       Math.max(0, activeReceiveIndex),
       receives.length - 1,
@@ -847,6 +1006,7 @@ export async function appendConversationTurn(params: {
       messages: debugPrompt,
     })
   }
+  scheduleMemoryIndexUpsert(conversationId, turn)
   return true
 }
 
@@ -860,6 +1020,7 @@ export async function deleteConversation(
   } catch {
     return false
   }
+  void deleteConversationMemoryIndex(conversationId).catch(() => {})
   const list = await readChatList()
   list.conversations = list.conversations.filter(
     (c) => c.conversationId !== conversationId,
@@ -918,16 +1079,13 @@ export async function updateTurnContentInTailChunk(
   const turnId = turn.turnId
   const chunkName = idx.tailChunkFile
   turn.send = { userText }
-  turn.receives = receives.map((r) => {
-    const rec: TurnReceive = { id: r.id, content: r.content }
-    if (typeof r.reasoning === 'string' && r.reasoning.length > 0) {
-      rec.reasoning = r.reasoning
-    }
-    if (r.runtime && typeof r.runtime === 'object') {
-      rec.runtime = r.runtime
-    }
-    return rec
-  })
+  const used = collectChunkEntityIds(chunk)
+  for (const r of turn.receives ?? []) {
+    const rid = typeof r.id === 'string' ? r.id.trim() : ''
+    if (rid) used.delete(rid)
+  }
+  if (turn.turnId) used.delete(turn.turnId)
+  turn.receives = mapReceivesWithShortIds(receives, used)
   turn.activeReceiveIndex = Math.min(
     Math.max(0, activeReceiveIndex),
     turn.receives.length - 1,
@@ -945,6 +1103,7 @@ export async function updateTurnContentInTailChunk(
       messages: debugPrompt,
     })
   }
+  scheduleMemoryIndexUpsert(conversationId, turn)
   return true
 }
 
@@ -983,7 +1142,10 @@ export async function removeTurnAtOrdinalInTailChunk(
     idx.updatedAt = t
     await writeConversationIndex(conversationId, idx)
     await upsertChatListEntry(chatListEntryFromIndex(idx))
-    if (victimTurnId) void removeChatPromptEntriesByTurnId(conversationId, victimTurnId)
+    if (victimTurnId) {
+      void removeChatPromptEntriesByTurnId(conversationId, victimTurnId)
+      scheduleMemoryIndexDelete(conversationId, victimTurnId)
+    }
     return true
   }
 
@@ -998,6 +1160,9 @@ export async function removeTurnAtOrdinalInTailChunk(
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
   await upsertChatListEntry(chatListEntryFromIndex(idx))
-  if (victimTurnId) void removeChatPromptEntriesByTurnId(conversationId, victimTurnId)
+  if (victimTurnId) {
+    void removeChatPromptEntriesByTurnId(conversationId, victimTurnId)
+    scheduleMemoryIndexDelete(conversationId, victimTurnId)
+  }
   return true
 }

@@ -217,20 +217,32 @@ body::before {
   }
 }
 
-/* 设置模态：左右分栏，中等宽度 */
+/* 全局设置 / 对话设置 · 统一弹窗尺寸 */
+.v-overlay-container > .v-overlay.v-dialog > .v-overlay__content.app-config-dialog-surface,
+.v-overlay.v-dialog > .v-overlay__content.app-config-dialog-surface,
 .v-overlay-container > .v-overlay.v-dialog > .v-overlay__content.settings-dialog-surface,
-.v-overlay.v-dialog > .v-overlay__content.settings-dialog-surface {
-  width: clamp(36rem, 52%, 48rem) !important;
-  max-width: 100% !important;
+.v-overlay.v-dialog > .v-overlay__content.settings-dialog-surface,
+.v-overlay-container > .v-overlay.v-dialog > .v-overlay__content.conv-settings-dialog-surface,
+.v-overlay.v-dialog > .v-overlay__content.conv-settings-dialog-surface {
+  width: clamp(48rem, 62%, 72rem) !important;
+  max-width: calc(100% - 2rem) !important;
+  height: 80vh !important;
+  max-height: 80vh !important;
   margin-inline: auto !important;
   min-width: 0 !important;
   padding-inline: 1rem !important;
   box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 
-@media (max-width: 36rem) {
+@media (max-width: 48rem) {
+  .v-overlay-container > .v-overlay.v-dialog > .v-overlay__content.app-config-dialog-surface,
+  .v-overlay.v-dialog > .v-overlay__content.app-config-dialog-surface,
   .v-overlay-container > .v-overlay.v-dialog > .v-overlay__content.settings-dialog-surface,
-  .v-overlay.v-dialog > .v-overlay__content.settings-dialog-surface {
+  .v-overlay.v-dialog > .v-overlay__content.settings-dialog-surface,
+  .v-overlay-container > .v-overlay.v-dialog > .v-overlay__content.conv-settings-dialog-surface,
+  .v-overlay.v-dialog > .v-overlay__content.conv-settings-dialog-surface {
     width: 100% !important;
     padding-inline: 0.75rem !important;
   }

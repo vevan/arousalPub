@@ -1,10 +1,14 @@
-/** 资料库关键字匹配 / 递归级联（全局 user-preferences + 会话稀疏覆盖） */
+/** 资料库关键字匹配 / 递归级联 / 向量触发（全局 user-preferences + 会话稀疏覆盖） */
 
 export interface LorebookSettings {
   /** 是否在首轮匹配后用已注入正文继续扫关键字 */
   recursiveEnabled: boolean
   /** 递归轮次上限（0 = 仅首轮）；启用递归时有效，硬顶 3 */
   maxRecursionDepth: number
+  /** 是否启用「向量触发」条目检索 */
+  vectorEnabled: boolean
+  /** 向量触发 TopK（跨绑定资料库合并后取前 K） */
+  vectorTopK: number
 }
 
 export type LorebookSettingsOverride = Partial<LorebookSettings>
@@ -12,9 +16,13 @@ export type LorebookSettingsOverride = Partial<LorebookSettings>
 export const LOREBOOK_SETTINGS_DEFAULTS: LorebookSettings = {
   recursiveEnabled: false,
   maxRecursionDepth: 2,
+  vectorEnabled: false,
+  vectorTopK: 5,
 }
 
 export const LOREBOOK_MAX_RECURSION_DEPTH = 3
+export const LOREBOOK_VECTOR_TOPK_MIN = 1
+export const LOREBOOK_VECTOR_TOPK_MAX = 20
 
 export function normalizeLorebookSettings(
   raw?: Partial<LorebookSettings> | null,
@@ -26,20 +34,25 @@ export function normalizeLorebookSettings(
       ? Math.floor(raw.maxRecursionDepth)
       : LOREBOOK_SETTINGS_DEFAULTS.maxRecursionDepth
   depth = Math.max(0, Math.min(LOREBOOK_MAX_RECURSION_DEPTH, depth))
+  const vectorEnabled = raw?.vectorEnabled === true
+  let vectorTopK =
+    typeof raw?.vectorTopK === 'number' && Number.isFinite(raw.vectorTopK)
+      ? Math.floor(raw.vectorTopK)
+      : LOREBOOK_SETTINGS_DEFAULTS.vectorTopK
+  vectorTopK = Math.max(
+    LOREBOOK_VECTOR_TOPK_MIN,
+    Math.min(LOREBOOK_VECTOR_TOPK_MAX, vectorTopK),
+  )
   if (!recursiveEnabled) {
-    return { recursiveEnabled: false, maxRecursionDepth: depth }
+    return { recursiveEnabled: false, maxRecursionDepth: depth, vectorEnabled, vectorTopK }
   }
-  return { recursiveEnabled: true, maxRecursionDepth: depth }
+  return { recursiveEnabled: true, maxRecursionDepth: depth, vectorEnabled, vectorTopK }
 }
 
 export function hasLorebookSettingsOverride(
   raw?: LorebookSettingsOverride | null,
 ): boolean {
-  if (!raw || typeof raw !== 'object') return false
-  return (
-    Object.prototype.hasOwnProperty.call(raw, 'recursiveEnabled') ||
-    Object.prototype.hasOwnProperty.call(raw, 'maxRecursionDepth')
-  )
+  return raw != null && typeof raw === 'object' && !Array.isArray(raw)
 }
 
 export function resolveLorebookSettings(
@@ -54,6 +67,12 @@ export function resolveLorebookSettings(
   }
   if (Object.prototype.hasOwnProperty.call(override, 'maxRecursionDepth')) {
     patch.maxRecursionDepth = override.maxRecursionDepth
+  }
+  if (Object.prototype.hasOwnProperty.call(override, 'vectorEnabled')) {
+    patch.vectorEnabled = override.vectorEnabled === true
+  }
+  if (Object.prototype.hasOwnProperty.call(override, 'vectorTopK')) {
+    patch.vectorTopK = override.vectorTopK
   }
   return normalizeLorebookSettings({ ...g, ...patch })
 }
@@ -70,6 +89,12 @@ export function lorebookSettingsOverrideFromEffective(
   if (effective.maxRecursionDepth !== global.maxRecursionDepth) {
     o.maxRecursionDepth = effective.maxRecursionDepth
   }
+  if (effective.vectorEnabled !== global.vectorEnabled) {
+    o.vectorEnabled = effective.vectorEnabled
+  }
+  if (effective.vectorTopK !== global.vectorTopK) {
+    o.vectorTopK = effective.vectorTopK
+  }
   return Object.keys(o).length > 0 ? o : undefined
 }
 
@@ -78,7 +103,12 @@ export function lorebookSettingsForResolve(
 ): LorebookSettings {
   const n = normalizeLorebookSettings(settings)
   if (!n.recursiveEnabled) {
-    return { recursiveEnabled: false, maxRecursionDepth: 0 }
+    return {
+      recursiveEnabled: false,
+      maxRecursionDepth: 0,
+      vectorEnabled: n.vectorEnabled,
+      vectorTopK: n.vectorTopK,
+    }
   }
   return n
 }

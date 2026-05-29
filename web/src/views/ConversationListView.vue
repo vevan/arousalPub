@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { generateConversationId } from '@/utils/conversation-id'
+import { allocateShortId } from '@/utils/short-id'
+import { pickDefaultLorebookIds, fetchLorebookPickerItems } from '@/utils/default-lorebook'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -37,6 +39,15 @@ const selectedUserCard = ref<CharacterPickerItem | null>(null)
 const selectedCharacterCards = ref<(CharacterPickerItem | null)[]>([null])
 const pickerOpen = ref(false)
 const pickerTarget = ref<{ kind: 'user' } | { kind: 'character'; index: number } | null>(null)
+
+interface LorebookPickerItem {
+  id: string
+  name: string
+}
+
+const lorebookItems = ref<LorebookPickerItem[]>([])
+const lorebookItemsLoading = ref(false)
+const selectedLorebookIds = ref<string[]>([])
 
 const renameOpen = ref(false)
 const renameDraft = ref('')
@@ -97,6 +108,7 @@ async function createAndOpen() {
         userCharacterId: userCard.id,
         userName: userCard.name,
         characterIds: characters.map((c) => c.id),
+        lorebookIds: [...selectedLorebookIds.value],
       }),
     })
     if (!patch.ok) {
@@ -106,12 +118,13 @@ async function createAndOpen() {
     const mainDoc = await fetchCharacterDetail(mainCharacter.id)
     const greetings = collectOpeningGreetings(mainDoc?.card)
     if (greetings.length > 0) {
+      const used = new Set<string>()
       const opening = await fetch(`/api/chat/conversations/${id}/opening`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           receives: greetings.map((content) => ({
-            id: crypto.randomUUID(),
+            id: allocateShortId(used),
             content,
           })),
           activeReceiveIndex: 0,
@@ -143,8 +156,23 @@ function openCreateDialog() {
   createErrorText.value = ''
   selectedUserCard.value = null
   selectedCharacterCards.value = [null]
+  selectedLorebookIds.value = pickDefaultLorebookIds(lorebookItems.value)
   createOpen.value = true
   void loadCharacterItems()
+  void loadLorebookItems()
+}
+
+async function loadLorebookItems() {
+  if (lorebookItemsLoading.value) return
+  lorebookItemsLoading.value = true
+  try {
+    lorebookItems.value = await fetchLorebookPickerItems()
+    if (createOpen.value && selectedLorebookIds.value.length === 0) {
+      selectedLorebookIds.value = pickDefaultLorebookIds(lorebookItems.value)
+    }
+  } finally {
+    lorebookItemsLoading.value = false
+  }
 }
 
 function closeCreateDialog() {
@@ -535,6 +563,28 @@ onMounted(() => {
                   />
                 </button>
               </div>
+            </section>
+
+            <section class="create-slot-section">
+              <h3 class="create-slot-section__title">
+                {{ $t('conversationList.lorebookSlotTitle') }}
+              </h3>
+              <v-select
+                v-model="selectedLorebookIds"
+                :items="lorebookItems"
+                item-title="name"
+                item-value="id"
+                :label="$t('conversationList.lorebookSelectLabel')"
+                :hint="$t('conversationList.lorebookSelectHint')"
+                persistent-hint
+                multiple
+                chips
+                closable-chips
+                density="comfortable"
+                variant="outlined"
+                hide-details="auto"
+                :loading="lorebookItemsLoading"
+              />
             </section>
           </div>
         </v-card-text>

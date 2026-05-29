@@ -23,7 +23,9 @@ export type PromptTrigger = 'normal' | 'continue' | 'swipe' | 'regenerate'
 export type PromptBindingSlot =
   | 'boundCharacterSystem'
   | 'boundWorld'
+  | 'boundMemory'
   | 'boundCharacterPostHistory'
+  | 'boundRecentHistory'
   | 'boundUserInput'
 
 export interface PromptGroup {
@@ -85,6 +87,10 @@ export interface AssembleContext {
   characterPostHistory?: string
   character?: string
   world?: string
+  /** §14：已格式化的 `<memory>…</memory>` */
+  memoryText?: string
+  /** §14：已格式化的 `<history>…</history>` */
+  recentHistoryText?: string
   history?: ChatMessage[]
   userInput?: string
   maxTokens?: number
@@ -182,7 +188,9 @@ function entryMatchesTrigger(
 ): boolean {
   if (
     entry.bindingSlot === 'boundWorld' ||
-    entry.bindingSlot === 'boundUserInput'
+    entry.bindingSlot === 'boundUserInput' ||
+    entry.bindingSlot === 'boundMemory' ||
+    entry.bindingSlot === 'boundRecentHistory'
   ) {
     return true
   }
@@ -207,6 +215,13 @@ function relativeEntriesForGroup(
     )
     .slice()
     .sort((a, b) => a.order - b.order)
+}
+
+function presetHasBinding(
+  preset: PromptPreset,
+  slot: PromptBindingSlot,
+): boolean {
+  return preset.prompts.some((e) => e.bindingSlot === slot)
 }
 
 export function assemblePrompts(
@@ -274,6 +289,7 @@ export function assemblePrompts(
             : loreTextToXmlBlock(String(w)),
         })
       }
+      let memoryInjected = false
       for (const e of entries) {
         if (e.bindingSlot === 'boundWorld') {
           messages.push({
@@ -282,16 +298,35 @@ export function assemblePrompts(
               ? PLACEHOLDER.world
               : loreTextToXmlBlock(String(w)),
           })
+        } else if (e.bindingSlot === 'boundMemory') {
+          const mem = ctx.memoryText?.trim()
+          if (mem) {
+            messages.push({ role: 'system', content: mem })
+            memoryInjected = true
+          }
         } else {
           messages.push({ role: e.role, content: e.content })
         }
       }
+      if (
+        !memoryInjected &&
+        !presetHasBinding(preset, 'boundMemory') &&
+        ctx.memoryText?.trim()
+      ) {
+        messages.push({ role: 'system', content: ctx.memoryText.trim() })
+      }
     } else if (g.kind === 'history') {
       historyStart = messages.length
-      if (ctx.history && ctx.history.length > 0) {
+      const recent = ctx.recentHistoryText?.trim()
+      let historyInjected = false
+      if (recent) {
+        messages.push({ role: 'system', content: recent })
+        historyInjected = true
+      } else if (ctx.history && ctx.history.length > 0) {
         for (const m of ctx.history) {
           messages.push({ role: m.role, content: m.content })
         }
+        historyInjected = true
       } else {
         messages.push({ role: 'system', content: PLACEHOLDER.history })
       }
@@ -302,9 +337,23 @@ export function assemblePrompts(
           if (post) {
             messages.push({ role: 'system', content: post })
           }
+        } else if (e.bindingSlot === 'boundRecentHistory') {
+          const h = ctx.recentHistoryText?.trim()
+          if (h && !historyInjected) {
+            messages.push({ role: 'system', content: h })
+            historyInjected = true
+          }
         } else {
           messages.push({ role: e.role, content: e.content })
         }
+      }
+      if (
+        !historyInjected &&
+        !presetHasBinding(preset, 'boundRecentHistory') &&
+        recent
+      ) {
+        messages.splice(historyStart, 0, { role: 'system', content: recent })
+        historyInjected = true
       }
       historyEnd = messages.length
     } else if (g.kind === 'userInput') {

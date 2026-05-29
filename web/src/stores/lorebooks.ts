@@ -8,6 +8,8 @@ export interface LorebookGroup {
   description?: string
 }
 
+export type LorebookTriggerMode = 'keyword' | 'constant' | 'vector'
+
 export interface LorebookEntry {
   id: string
   groupId: string
@@ -18,6 +20,7 @@ export interface LorebookEntry {
   order: number
   keys: string[]
   constant: boolean
+  triggerMode?: LorebookTriggerMode
   priority: number
   createdAt: string
   updatedAt: string
@@ -328,8 +331,9 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
 
   function selectGroup(id: string | null) {
     activeGroupId.value = id
-    const cur = selectedEntryId.value
-      ? activeLorebook.value.entries.find((e) => e.id === cur)
+    const entryId = selectedEntryId.value
+    const cur = entryId
+      ? activeLorebook.value.entries.find((e) => e.id === entryId)
       : null
     if (!cur || cur.groupId !== id) selectedEntryId.value = null
   }
@@ -341,22 +345,22 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
   function addGroup(name: string): LorebookGroup | null {
     const trimmed = name.trim()
     if (!trimmed) return null
-    let created: LorebookGroup | null = null
-    patchActiveLorebook((lb) => {
-      const order =
-        lb.groups.length > 0
-          ? Math.max(...lb.groups.map((g) => g.order)) + 1
-          : 0
-      const g: LorebookGroup = {
-        id: makeId('group'),
-        name: trimmed,
-        order,
-      }
-      created = g
-      return { ...lb, groups: [...lb.groups, g] }
-    })
-    if (created) activeGroupId.value = created.id
-    return created
+    const lb = activeLorebook.value
+    const order =
+      lb.groups.length > 0
+        ? Math.max(...lb.groups.map((g) => g.order)) + 1
+        : 0
+    const g: LorebookGroup = {
+      id: makeId('group'),
+      name: trimmed,
+      order,
+    }
+    patchActiveLorebook((book) => ({
+      ...book,
+      groups: [...book.groups, g],
+    }))
+    activeGroupId.value = g.id
+    return g
   }
 
   function renameGroup(groupId: string, name: string) {
@@ -465,7 +469,8 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
       order: activeLorebook.value.entries.filter((e) => e.groupId === groupId)
         .length,
       keys: [],
-      constant: true,
+      constant: false,
+      triggerMode: 'keyword',
       priority: 0,
       createdAt: t,
       updatedAt: t,
@@ -551,6 +556,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     createLorebook,
     deleteLorebook,
     renameLorebook,
+    selectLorebook,
     duplicateLorebook,
     addGroup,
     renameGroup,

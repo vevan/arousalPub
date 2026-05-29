@@ -244,6 +244,14 @@ function validateEntryShape(
   }
   if (!Array.isArray(e.keys)) throw new Error(`条目 ${e.id} keys 须为数组`)
   if (typeof e.constant !== 'boolean') throw new Error(`条目 ${e.id} constant 无效`)
+  if (
+    e.triggerMode !== undefined &&
+    e.triggerMode !== 'keyword' &&
+    e.triggerMode !== 'constant' &&
+    e.triggerMode !== 'vector'
+  ) {
+    throw new Error(`条目 ${e.id} triggerMode 无效`)
+  }
   if (typeof e.priority !== 'number' || !Number.isFinite(e.priority)) {
     throw new Error(`条目 ${e.id} priority 无效`)
   }

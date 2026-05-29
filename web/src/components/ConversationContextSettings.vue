@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { bootstrapAppData } from '@/bootstrap/app-data'
+import { useMemoryRebuild } from '@/composables/useMemoryRebuild'
 import { usePromptsStore } from '@/stores/prompts'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -22,17 +23,32 @@ const props = defineProps<{
   globalHistoryMaxTurns?: number
   initialHistoryLimitEnabled?: boolean
   initialHistoryMaxTurns?: number
+  initialMemorySettingsUseGlobal?: boolean
+  globalMemoryEnabled?: boolean
+  globalMemoryTopK?: number
+  initialMemoryEnabled?: boolean
+  initialMemoryTopK?: number
+  /** 全局 Embedding 模型（用于提示是否需要重建） */
+  globalEmbeddingModel?: string
+  /** 本会话已索引的 Embedding 模型 */
+  conversationMemoryEmbeddingModel?: string | null
   /** 会话内 `{{user}}` 展示名；空表示用默认「用户」 */
   initialUserName?: string | null
 }>()
 
 const emit = defineEmits<{
   (e: 'patched', index: Record<string, unknown>): void
+  (e: 'memoryRebuilt', embeddingModel: string): void
 }>()
+
+type SettingsSection = 'bindings' | 'lore' | 'context'
 
 const { t } = useI18n()
 const promptsStore = usePromptsStore()
 const { presets, loaded: promptsLoaded } = storeToRefs(promptsStore)
+
+const dialogOpen = ref(false)
+const activeSection = ref<SettingsSection>('bindings')
 
 const INHERIT_VALUE = ''
 
@@ -44,14 +60,16 @@ const savingChars = ref(false)
 const savingLorebooks = ref(false)
 const savingLoreSettings = ref(false)
 const savingHistorySettings = ref(false)
+const savingMemorySettings = ref(false)
 const errorText = ref('')
 
 const lorebookModel = ref<string[]>([])
 const loreUseGlobal = ref(true)
 const loreRecursiveEnabled = ref(false)
-const loreMaxRecursionDepth = ref(2)
+type LoreRecursionDepth = 0 | 1 | 2 | 3
+const loreMaxRecursionDepth = ref<LoreRecursionDepth>(2)
 
-const loreDepthItems = [0, 1, 2, 3] as const
+const loreDepthItems: LoreRecursionDepth[] = [0, 1, 2, 3]
 
 /** 提示词宏名；勿写入 i18n（vue-i18n 会将 `{{` 当作占位符） */
 const PROMPT_USER_MACRO = '{{user}}'
@@ -59,6 +77,40 @@ const PROMPT_USER_MACRO = '{{user}}'
 const historyUseGlobal = ref(true)
 const historyLimitEnabled = ref(false)
 const historyMaxTurns = ref(20)
+
+const memoryUseGlobal = ref(true)
+const memoryEnabled = ref(false)
+const memoryTopK = ref(4)
+
+const {
+  loading: memoryRebuildLoading,
+  error: memoryRebuildError,
+  done: memoryRebuildDone,
+  total: memoryRebuildTotal,
+  turns: memoryRebuildTurns,
+  loreEntries: memoryRebuildLoreEntries,
+  percent: memoryRebuildPercent,
+  rebuild: rebuildMemoryIndex,
+} = useMemoryRebuild(() => props.conversationId)
+
+const effectiveMemoryEnabled = computed(() =>
+  memoryUseGlobal.value
+    ? props.globalMemoryEnabled === true
+    : memoryEnabled.value,
+)
+
+const memoryRebuildNeedsAttention = computed(() => {
+  if (!effectiveMemoryEnabled.value) return false
+  const global = props.globalEmbeddingModel?.trim() ?? ''
+  if (!global) return false
+  const stored = props.conversationMemoryEmbeddingModel?.trim() ?? ''
+  return !stored || stored !== global
+})
+
+async function onRebuildMemoryClick() {
+  const model = await rebuildMemoryIndex()
+  if (model) emit('memoryRebuilt', model)
+}
 
 interface CharItem {
   id: string
@@ -75,6 +127,24 @@ const charItemsLoading = ref(false)
 const lorebookItems = ref<LorebookItem[]>([])
 const lorebookItemsLoading = ref(false)
 
+const sectionItems = computed(() => [
+  {
+    id: 'bindings' as const,
+    title: t('chat.convSettings.tabBindings'),
+    icon: 'mdi-link-variant',
+  },
+  {
+    id: 'lore' as const,
+    title: t('chat.convSettings.tabLore'),
+    icon: 'mdi-book-open-page-variant-outline',
+  },
+  {
+    id: 'context' as const,
+    title: t('chat.convSettings.tabContext'),
+    icon: 'mdi-tune-variant',
+  },
+])
+
 const presetItems = computed(() => {
   const inherit = {
     title: t('chat.convSettings.useGlobalPreset'),
@@ -86,6 +156,28 @@ const presetItems = computed(() => {
   }))
   return [inherit, ...rest]
 })
+
+const isSaving = computed(
+  () =>
+    savingPreset.value ||
+    savingChars.value ||
+    savingLorebooks.value ||
+    savingLoreSettings.value ||
+    savingHistorySettings.value ||
+    savingMemorySettings.value,
+)
+
+function open(): void {
+  syncFromProps()
+  activeSection.value = 'bindings'
+  dialogOpen.value = true
+}
+
+function close(): void {
+  dialogOpen.value = false
+}
+
+defineExpose({ open })
 
 function currentPresetTarget(): string | null {
   const v = presetModel.value.trim()
@@ -106,20 +198,23 @@ function propsGlobalLoreRecursiveEnabled(): boolean {
   return props.globalLoreRecursiveEnabled === true
 }
 
-function propsGlobalLoreMaxRecursionDepth(): number {
-  const d = props.globalLoreMaxRecursionDepth
-  if (typeof d !== 'number' || !Number.isFinite(d)) return 2
-  return Math.max(0, Math.min(3, Math.floor(d)))
+function clampLoreDepth(raw: number | undefined | null): LoreRecursionDepth {
+  const d =
+    typeof raw === 'number' && Number.isFinite(raw) ? Math.floor(raw) : 2
+  const v = Math.max(0, Math.min(3, d))
+  return v as LoreRecursionDepth
+}
+
+function propsGlobalLoreMaxRecursionDepth(): LoreRecursionDepth {
+  return clampLoreDepth(props.globalLoreMaxRecursionDepth)
 }
 
 function propsLoreRecursiveEnabled(): boolean {
   return props.initialLorebookRecursiveEnabled === true
 }
 
-function propsLoreMaxRecursionDepth(): number {
-  const d = props.initialLorebookMaxRecursionDepth
-  if (typeof d !== 'number' || !Number.isFinite(d)) return 2
-  return Math.max(0, Math.min(3, Math.floor(d)))
+function propsLoreMaxRecursionDepth(): LoreRecursionDepth {
+  return clampLoreDepth(props.initialLorebookMaxRecursionDepth)
 }
 
 function propsHistoryUseGlobal(): boolean {
@@ -146,6 +241,30 @@ function propsHistoryMaxTurns(): number {
   return Math.max(1, Math.min(200, Math.floor(d)))
 }
 
+function propsMemoryUseGlobal(): boolean {
+  return props.initialMemorySettingsUseGlobal !== false
+}
+
+function propsGlobalMemoryEnabled(): boolean {
+  return props.globalMemoryEnabled === true
+}
+
+function propsGlobalMemoryTopK(): number {
+  const d = props.globalMemoryTopK
+  if (typeof d !== 'number' || !Number.isFinite(d)) return 4
+  return Math.max(1, Math.min(20, Math.floor(d)))
+}
+
+function propsMemoryEnabled(): boolean {
+  return props.initialMemoryEnabled === true
+}
+
+function propsMemoryTopK(): number {
+  const d = props.initialMemoryTopK
+  if (typeof d !== 'number' || !Number.isFinite(d)) return 4
+  return Math.max(1, Math.min(20, Math.floor(d)))
+}
+
 function syncFromProps() {
   errorText.value = ''
   presetModel.value = propsPresetTarget() ?? INHERIT_VALUE
@@ -167,6 +286,14 @@ function syncFromProps() {
     historyLimitEnabled.value = propsHistoryLimitEnabled()
     historyMaxTurns.value = propsHistoryMaxTurns()
   }
+  memoryUseGlobal.value = propsMemoryUseGlobal()
+  if (memoryUseGlobal.value) {
+    memoryEnabled.value = propsGlobalMemoryEnabled()
+    memoryTopK.value = propsGlobalMemoryTopK()
+  } else {
+    memoryEnabled.value = propsMemoryEnabled()
+    memoryTopK.value = propsMemoryTopK()
+  }
 }
 
 watch(
@@ -185,6 +312,11 @@ watch(
     props.globalHistoryMaxTurns,
     props.initialHistoryLimitEnabled,
     props.initialHistoryMaxTurns,
+    props.initialMemorySettingsUseGlobal,
+    props.globalMemoryEnabled,
+    props.globalMemoryTopK,
+    props.initialMemoryEnabled,
+    props.initialMemoryTopK,
     props.initialUserName,
   ],
   () => syncFromProps(),
@@ -390,6 +522,75 @@ watch(historyMaxTurns, async (turns) => {
   }
 })
 
+watch(memoryUseGlobal, async (useGlobal) => {
+  if (useGlobal === propsMemoryUseGlobal()) return
+  savingMemorySettings.value = true
+  errorText.value = ''
+  try {
+    if (useGlobal) {
+      await patchConversation({ memorySettings: null })
+    } else {
+      await patchConversation({
+        memorySettings: {
+          memoryEnabled: memoryEnabled.value,
+          memoryTopK: memoryTopK.value,
+        },
+      })
+    }
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingMemorySettings.value = false
+  }
+})
+
+async function saveMemoryOverride() {
+  await patchConversation({
+    memorySettings: {
+      memoryEnabled: memoryEnabled.value,
+      memoryTopK: memoryTopK.value,
+    },
+  })
+}
+
+watch(memoryEnabled, async (enabled) => {
+  const target = memoryUseGlobal.value
+    ? propsGlobalMemoryEnabled()
+    : propsMemoryEnabled()
+  if (enabled === target) return
+  savingMemorySettings.value = true
+  errorText.value = ''
+  try {
+    await saveMemoryOverride()
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingMemorySettings.value = false
+  }
+})
+
+watch(memoryTopK, async (k) => {
+  const target = memoryUseGlobal.value
+    ? propsGlobalMemoryTopK()
+    : propsMemoryTopK()
+  if (k === target) return
+  savingMemorySettings.value = true
+  errorText.value = ''
+  try {
+    await saveMemoryOverride()
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingMemorySettings.value = false
+  }
+})
+
 onMounted(() => {
   syncFromProps()
   void bootstrapAppData()
@@ -457,212 +658,541 @@ async function patchConversation(body: Record<string, unknown>) {
 </script>
 
 <template>
-  <v-expansion-panels
-    class="conv-context-settings"
-    variant="accordion"
-    density="compact"
+  <v-dialog
+    v-model="dialogOpen"
+    scrollable
+    content-class="app-config-dialog-surface"
   >
-    <v-expansion-panel rounded="lg">
-      <v-expansion-panel-title class="text-body-2 font-weight-medium py-2">
-        {{ $t('chat.convSettings.title') }}
-      </v-expansion-panel-title>
-      <v-expansion-panel-text class="conv-context-settings__body">
+    <v-card class="conv-settings-dialog">
+      <v-card-title class="conv-settings-dialog__title d-flex align-center">
+        <span class="text-body-1 font-weight-medium">
+          {{ $t('chat.convSettings.title') }}
+        </span>
+        <v-spacer />
+        <v-progress-circular
+          v-if="isSaving"
+          indeterminate
+          size="18"
+          width="2"
+          class="mr-2"
+        />
+        <v-btn
+          icon="mdi-close"
+          variant="text"
+          density="comfortable"
+          :aria-label="$t('chat.turnPromptClose')"
+          @click="close"
+        />
+      </v-card-title>
+
+      <v-divider />
+
+      <v-card-text class="pa-0 conv-settings-dialog__body">
         <v-alert
           v-if="errorText"
           type="error"
           density="compact"
           variant="tonal"
-          class="mb-3"
+          class="ma-4 mb-0"
           closable
           @click:close="errorText = ''"
         >
           {{ errorText }}
         </v-alert>
 
-        <div class="conv-context-settings__field">
-          <v-select
-            v-model="presetModel"
-            :items="presetItems"
-            item-title="title"
-            item-value="value"
-            :label="$t('chat.convSettings.promptPreset')"
-            density="compact"
-            variant="outlined"
-            hide-details="auto"
-            :loading="savingPreset || !promptsLoaded"
-            :disabled="!promptsLoaded"
-          />
-        </div>
+        <div class="conv-settings-layout">
+          <nav class="conv-settings-nav">
+            <v-list
+              density="compact"
+              nav
+              class="conv-settings-nav__list"
+            >
+              <v-list-item
+                v-for="item in sectionItems"
+                :key="item.id"
+                :title="item.title"
+                :prepend-icon="item.icon"
+                :active="activeSection === item.id"
+                rounded="lg"
+                @click="activeSection = item.id"
+              />
+            </v-list>
+          </nav>
 
-        <div
-          v-if="initialUserName"
-          class="conv-context-settings__field"
+          <div class="conv-settings-panel">
+            <div
+              v-show="activeSection === 'bindings'"
+              class="conv-settings-section"
+            >
+              <h3 class="conv-settings-section__title">
+                {{ $t('chat.convSettings.tabBindings') }}
+              </h3>
+              <p class="conv-settings-section__hint">
+                {{ $t('chat.convSettings.tabBindingsHint') }}
+              </p>
+
+              <div class="conv-settings-field">
+                <v-select
+                  v-model="presetModel"
+                  :items="presetItems"
+                  item-title="title"
+                  item-value="value"
+                  :label="$t('chat.convSettings.promptPreset')"
+                  density="comfortable"
+                  variant="outlined"
+                  hide-details="auto"
+                  :loading="savingPreset || !promptsLoaded"
+                  :disabled="!promptsLoaded"
+                />
+              </div>
+
+              <div
+                v-if="initialUserName"
+                class="conv-settings-field"
+              >
+                <v-alert
+                  density="compact"
+                  variant="tonal"
+                  type="info"
+                >
+                  {{ $t('chat.convSettings.userNameSnapshotPrefix') }}<strong>{{ initialUserName }}</strong>{{ $t('chat.convSettings.userNameSnapshotSuffix') }}<code class="user-macro-tag">{{ PROMPT_USER_MACRO }}</code>{{ $t('chat.convSettings.userNameSnapshotSuffixEnd') }}
+                </v-alert>
+              </div>
+
+              <div class="conv-settings-field">
+                <v-select
+                  v-model="characterModel"
+                  :items="charItems"
+                  item-title="name"
+                  item-value="id"
+                  :label="$t('chat.convSettings.characters')"
+                  density="comfortable"
+                  variant="outlined"
+                  multiple
+                  chips
+                  closable-chips
+                  hide-details="auto"
+                  :loading="charItemsLoading || savingChars"
+                />
+                <p class="conv-settings-field__hint">
+                  {{ $t('chat.convSettings.charactersHint') }}
+                </p>
+              </div>
+
+              <div class="conv-settings-field">
+                <v-select
+                  v-model="lorebookModel"
+                  :items="lorebookItems"
+                  item-title="name"
+                  item-value="id"
+                  :label="$t('chat.convSettings.lorebooks')"
+                  density="comfortable"
+                  variant="outlined"
+                  multiple
+                  chips
+                  closable-chips
+                  hide-details="auto"
+                  :loading="lorebookItemsLoading || savingLorebooks"
+                />
+                <p class="conv-settings-field__hint">
+                  {{ $t('chat.convSettings.lorebooksHint') }}
+                </p>
+              </div>
+            </div>
+
+            <div
+              v-show="activeSection === 'lore'"
+              class="conv-settings-section"
+            >
+              <h3 class="conv-settings-section__title">
+                {{ $t('chat.convSettings.tabLore') }}
+              </h3>
+              <p class="conv-settings-section__hint">
+                {{ $t('chat.convSettings.tabLoreHint') }}
+              </p>
+
+              <div class="conv-settings-field">
+                <v-switch
+                  v-model="loreUseGlobal"
+                  :label="$t('chat.convSettings.loreUseGlobal')"
+                  density="comfortable"
+                  hide-details
+                  color="primary"
+                  :loading="savingLoreSettings"
+                  :disabled="savingLoreSettings"
+                />
+                <p
+                  v-if="loreUseGlobal"
+                  class="conv-settings-field__hint"
+                >
+                  {{ $t('chat.convSettings.loreInheritGlobalHint') }}
+                </p>
+              </div>
+
+              <div class="conv-settings-field">
+                <v-switch
+                  v-model="loreRecursiveEnabled"
+                  :label="$t('chat.convSettings.loreRecursiveEnabled')"
+                  density="comfortable"
+                  hide-details
+                  color="primary"
+                  :loading="savingLoreSettings"
+                  :disabled="loreUseGlobal || savingLoreSettings"
+                />
+                <p class="conv-settings-field__hint">
+                  {{ $t('chat.convSettings.loreRecursiveHint') }}
+                </p>
+              </div>
+
+              <div class="conv-settings-field">
+                <v-select
+                  v-model="loreMaxRecursionDepth"
+                  :items="[...loreDepthItems]"
+                  :label="$t('chat.convSettings.loreMaxRecursionDepth')"
+                  density="comfortable"
+                  variant="outlined"
+                  hide-details="auto"
+                  :disabled="loreUseGlobal || !loreRecursiveEnabled || savingLoreSettings"
+                  :loading="savingLoreSettings"
+                />
+                <p
+                  v-if="loreRecursiveEnabled"
+                  class="conv-settings-field__hint"
+                >
+                  {{ $t('chat.convSettings.loreMaxRecursionDepthHint') }}
+                </p>
+              </div>
+            </div>
+
+            <div
+              v-show="activeSection === 'context'"
+              class="conv-settings-section"
+            >
+              <h3 class="conv-settings-section__title">
+                {{ $t('chat.convSettings.tabContext') }}
+              </h3>
+              <p class="conv-settings-section__hint">
+                {{ $t('chat.convSettings.tabContextHint') }}
+              </p>
+
+              <div class="conv-settings-subsection">
+                <h4 class="conv-settings-subsection__title">
+                  {{ $t('chat.convSettings.sectionHistory') }}
+                </h4>
+                <div class="conv-settings-field">
+                  <v-switch
+                    v-model="historyUseGlobal"
+                    :label="$t('chat.convSettings.historyUseGlobal')"
+                    density="comfortable"
+                    hide-details
+                    color="primary"
+                    :loading="savingHistorySettings"
+                    :disabled="savingHistorySettings"
+                  />
+                  <p
+                    v-if="historyUseGlobal"
+                    class="conv-settings-field__hint"
+                  >
+                    {{ $t('chat.convSettings.historyInheritGlobalHint') }}
+                  </p>
+                </div>
+                <div class="conv-settings-field">
+                  <v-switch
+                    v-model="historyLimitEnabled"
+                    :label="$t('chat.convSettings.historyLimitEnabled')"
+                    density="comfortable"
+                    hide-details
+                    color="primary"
+                    :loading="savingHistorySettings"
+                    :disabled="historyUseGlobal || savingHistorySettings"
+                  />
+                  <p class="conv-settings-field__hint">
+                    {{ $t('chat.convSettings.historyLimitHint') }}
+                  </p>
+                </div>
+                <div class="conv-settings-field">
+                  <v-text-field
+                    v-model.number="historyMaxTurns"
+                    type="number"
+                    min="1"
+                    max="200"
+                    step="1"
+                    :label="$t('chat.convSettings.historyMaxTurns')"
+                    density="comfortable"
+                    variant="outlined"
+                    hide-details="auto"
+                    :disabled="historyUseGlobal || !historyLimitEnabled || savingHistorySettings"
+                    :loading="savingHistorySettings"
+                  />
+                  <p
+                    v-if="historyLimitEnabled"
+                    class="conv-settings-field__hint"
+                  >
+                    {{ $t('chat.convSettings.historyMaxTurnsHint') }}
+                  </p>
+                </div>
+              </div>
+
+              <v-divider class="my-4" />
+
+              <div class="conv-settings-subsection">
+                <h4 class="conv-settings-subsection__title">
+                  {{ $t('chat.convSettings.sectionMemory') }}
+                </h4>
+                <div class="conv-settings-field">
+                  <v-switch
+                    v-model="memoryUseGlobal"
+                    :label="$t('chat.convSettings.memoryUseGlobal')"
+                    density="comfortable"
+                    hide-details
+                    color="primary"
+                    :loading="savingMemorySettings"
+                    :disabled="savingMemorySettings"
+                  />
+                  <p
+                    v-if="memoryUseGlobal"
+                    class="conv-settings-field__hint"
+                  >
+                    {{ $t('chat.convSettings.memoryInheritGlobalHint') }}
+                  </p>
+                </div>
+                <div class="conv-settings-field">
+                  <v-switch
+                    v-model="memoryEnabled"
+                    :label="$t('chat.convSettings.memoryEnabled')"
+                    density="comfortable"
+                    hide-details
+                    color="primary"
+                    :loading="savingMemorySettings"
+                    :disabled="memoryUseGlobal || savingMemorySettings"
+                  />
+                  <p class="conv-settings-field__hint">
+                    {{ $t('chat.convSettings.memoryEnabledHint') }}
+                  </p>
+                </div>
+                <div class="conv-settings-field">
+                  <v-text-field
+                    v-model.number="memoryTopK"
+                    type="number"
+                    min="1"
+                    max="20"
+                    step="1"
+                    :label="$t('chat.convSettings.memoryTopK')"
+                    density="comfortable"
+                    variant="outlined"
+                    hide-details="auto"
+                    :disabled="memoryUseGlobal || !memoryEnabled || savingMemorySettings"
+                    :loading="savingMemorySettings"
+                  />
+                  <p
+                    v-if="memoryEnabled"
+                    class="conv-settings-field__hint"
+                  >
+                    {{ $t('chat.convSettings.memoryTopKHint') }}
+                  </p>
+                </div>
+                <div
+                  v-if="effectiveMemoryEnabled"
+                  class="conv-settings-field"
+                >
+                  <v-btn
+                    variant="outlined"
+                    color="primary"
+                    prepend-icon="mdi-database-refresh-outline"
+                    :loading="memoryRebuildLoading"
+                    :disabled="memoryRebuildLoading"
+                    @click="onRebuildMemoryClick"
+                  >
+                    {{ $t('chat.convSettings.memoryRebuildButton') }}
+                  </v-btn>
+                  <p
+                    class="conv-settings-field__hint"
+                    :class="{ 'text-warning': memoryRebuildNeedsAttention }"
+                  >
+                    {{
+                      memoryRebuildNeedsAttention
+                        ? $t('chat.convSettings.memoryRebuildMismatchHint')
+                        : $t('chat.convSettings.memoryRebuildHint')
+                    }}
+                  </p>
+                  <div
+                    v-if="memoryRebuildLoading"
+                    class="mt-2"
+                  >
+                    <p class="text-caption text-medium-emphasis mb-1">
+                      {{
+                        $t('chatConversation.memoryRebuildProgress', {
+                          done: memoryRebuildDone,
+                          total: memoryRebuildTotal,
+                        })
+                      }}
+                    </p>
+                    <p
+                      v-if="memoryRebuildTotal > 0"
+                      class="text-caption text-medium-emphasis mb-1"
+                    >
+                      {{
+                        $t('chatConversation.memoryRebuildProgressDetail', {
+                          turns: memoryRebuildTurns,
+                          loreEntries: memoryRebuildLoreEntries,
+                        })
+                      }}
+                    </p>
+                    <v-progress-linear
+                      :model-value="memoryRebuildTotal > 0 ? memoryRebuildPercent : undefined"
+                      :indeterminate="memoryRebuildTotal < 1"
+                      height="6"
+                      rounded
+                      color="primary"
+                    />
+                  </div>
+                  <v-alert
+                    v-if="memoryRebuildError"
+                    type="error"
+                    variant="tonal"
+                    density="compact"
+                    class="mt-2"
+                  >
+                    {{ memoryRebuildError }}
+                  </v-alert>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </v-card-text>
+
+      <v-divider />
+
+      <v-card-actions class="px-4 py-3">
+        <span class="text-caption text-medium-emphasis">
+          {{ $t('chat.convSettings.autoSaveHint') }}
+        </span>
+        <v-spacer />
+        <v-btn
+          variant="flat"
+          color="primary"
+          @click="close"
         >
-          <v-alert
-            density="compact"
-            variant="tonal"
-            type="info"
-          >
-            {{ $t('chat.convSettings.userNameSnapshotPrefix') }}<strong>{{ initialUserName }}</strong>{{ $t('chat.convSettings.userNameSnapshotSuffix') }}<code class="user-macro-tag">{{ PROMPT_USER_MACRO }}</code>{{ $t('chat.convSettings.userNameSnapshotSuffixEnd') }}
-          </v-alert>
-        </div>
-
-        <div class="conv-context-settings__field">
-          <v-select
-            v-model="characterModel"
-            :items="charItems"
-            item-title="name"
-            item-value="id"
-            :label="$t('chat.convSettings.characters')"
-            density="compact"
-            variant="outlined"
-            multiple
-            chips
-            closable-chips
-            hide-details="auto"
-            :loading="charItemsLoading || savingChars"
-          />
-          <p class="text-caption text-medium-emphasis mt-1 mb-0">
-            {{ $t('chat.convSettings.charactersHint') }}
-          </p>
-        </div>
-
-        <div class="conv-context-settings__field">
-          <v-select
-            v-model="lorebookModel"
-            :items="lorebookItems"
-            item-title="name"
-            item-value="id"
-            :label="$t('chat.convSettings.lorebooks')"
-            density="compact"
-            variant="outlined"
-            multiple
-            chips
-            closable-chips
-            hide-details="auto"
-            :loading="lorebookItemsLoading || savingLorebooks"
-          />
-          <p class="text-caption text-medium-emphasis mt-1 mb-0">
-            {{ $t('chat.convSettings.lorebooksHint') }}
-          </p>
-        </div>
-
-        <div class="conv-context-settings__field">
-          <v-switch
-            v-model="loreUseGlobal"
-            :label="$t('chat.convSettings.loreUseGlobal')"
-            density="compact"
-            hide-details
-            color="primary"
-            :loading="savingLoreSettings"
-            :disabled="savingLoreSettings"
-          />
-          <p
-            v-if="loreUseGlobal"
-            class="text-caption text-medium-emphasis mt-1 mb-2"
-          >
-            {{ $t('chat.convSettings.loreInheritGlobalHint') }}
-          </p>
-          <v-switch
-            v-model="loreRecursiveEnabled"
-            :label="$t('chat.convSettings.loreRecursiveEnabled')"
-            density="compact"
-            hide-details
-            color="primary"
-            class="mt-1"
-            :loading="savingLoreSettings"
-            :disabled="loreUseGlobal || savingLoreSettings"
-          />
-          <p class="text-caption text-medium-emphasis mt-1 mb-2">
-            {{ $t('chat.convSettings.loreRecursiveHint') }}
-          </p>
-          <v-select
-            v-model="loreMaxRecursionDepth"
-            :items="[...loreDepthItems]"
-            :label="$t('chat.convSettings.loreMaxRecursionDepth')"
-            density="compact"
-            variant="outlined"
-            hide-details="auto"
-            :disabled="loreUseGlobal || !loreRecursiveEnabled || savingLoreSettings"
-            :loading="savingLoreSettings"
-          />
-          <p
-            v-if="loreRecursiveEnabled"
-            class="text-caption text-medium-emphasis mt-1 mb-0"
-          >
-            {{ $t('chat.convSettings.loreMaxRecursionDepthHint') }}
-          </p>
-        </div>
-
-        <div class="conv-context-settings__field">
-          <v-switch
-            v-model="historyUseGlobal"
-            :label="$t('chat.convSettings.historyUseGlobal')"
-            density="compact"
-            hide-details
-            color="primary"
-            :loading="savingHistorySettings"
-            :disabled="savingHistorySettings"
-          />
-          <p
-            v-if="historyUseGlobal"
-            class="text-caption text-medium-emphasis mt-1 mb-2"
-          >
-            {{ $t('chat.convSettings.historyInheritGlobalHint') }}
-          </p>
-          <v-switch
-            v-model="historyLimitEnabled"
-            :label="$t('chat.convSettings.historyLimitEnabled')"
-            density="compact"
-            hide-details
-            color="primary"
-            class="mt-1"
-            :loading="savingHistorySettings"
-            :disabled="historyUseGlobal || savingHistorySettings"
-          />
-          <p class="text-caption text-medium-emphasis mt-1 mb-2">
-            {{ $t('chat.convSettings.historyLimitHint') }}
-          </p>
-          <v-text-field
-            v-model.number="historyMaxTurns"
-            type="number"
-            min="1"
-            max="200"
-            step="1"
-            :label="$t('chat.convSettings.historyMaxTurns')"
-            density="compact"
-            variant="outlined"
-            hide-details="auto"
-            :disabled="historyUseGlobal || !historyLimitEnabled || savingHistorySettings"
-            :loading="savingHistorySettings"
-          />
-          <p
-            v-if="historyLimitEnabled"
-            class="text-caption text-medium-emphasis mt-1 mb-0"
-          >
-            {{ $t('chat.convSettings.historyMaxTurnsHint') }}
-          </p>
-        </div>
-      </v-expansion-panel-text>
-    </v-expansion-panel>
-  </v-expansion-panels>
+          {{ $t('chat.turnPromptClose') }}
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <style scoped>
-.conv-context-settings {
-  border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.08);
-  border-radius: var(--radius, 0.5rem);
-  background: rgb(var(--v-theme-surface-light));
+.conv-settings-dialog {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
 }
-.conv-context-settings__body {
-  padding-top: 0.5rem !important;
+
+.conv-settings-dialog__title {
+  padding-block: 0.875rem 0.75rem;
+  flex-shrink: 0;
 }
-.conv-context-settings__field + .conv-context-settings__field {
-  margin-top: 0.75rem;
+
+.conv-settings-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
+
+.conv-settings-layout {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.conv-settings-nav {
+  flex: 0 0 9.5rem;
+  border-right: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.08);
+  background: rgba(var(--v-theme-on-surface), 0.02);
+}
+
+.conv-settings-nav__list {
+  padding: 0.5rem;
+}
+
+.conv-settings-panel {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem 1.125rem 1.25rem;
+}
+
+.conv-settings-section__title {
+  margin: 0 0 0.375rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.conv-settings-section__hint {
+  margin: 0 0 1rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+}
+
+.conv-settings-subsection__title {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(var(--v-theme-on-surface), 0.78);
+}
+
+.conv-settings-field + .conv-settings-field {
+  margin-top: 0.875rem;
+}
+
+.conv-settings-field__hint {
+  margin: 0.375rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: rgba(var(--v-theme-on-surface), 0.58);
+}
+
 .user-macro-tag {
   font-family: ui-monospace, monospace;
   font-size: 0.85em;
   padding: 0 0.15em;
+}
+
+@media (max-width: 600px) {
+  .conv-settings-layout {
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .conv-settings-nav {
+    flex: 0 0 auto;
+    border-right: none;
+    border-bottom: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.08);
+  }
+
+  .conv-settings-nav__list {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 0.25rem;
+  }
+
+  .conv-settings-nav__list :deep(.v-list-item) {
+    flex: 0 0 auto;
+    min-width: max-content;
+  }
+
+  .conv-settings-panel {
+    max-height: none;
+  }
 }
 </style>

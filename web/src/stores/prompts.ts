@@ -1,3 +1,4 @@
+import { allocateShortId, generateShortId } from '@/utils/short-id'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
@@ -121,11 +122,18 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
-function makeId(prefix: string): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return `${prefix}-${crypto.randomUUID()}`
+function collectAllPromptIds(presets: PromptPreset[]): Set<string> {
+  const used = new Set<string>()
+  for (const p of presets) {
+    used.add(p.id)
+    for (const g of p.groups) used.add(g.id)
+    for (const e of p.prompts) used.add(e.id)
   }
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  return used
+}
+
+function makeId(presets: PromptPreset[]): string {
+  return allocateShortId(collectAllPromptIds(presets))
 }
 
 function buildDefaultGroups(): PromptGroup[] {
@@ -181,7 +189,7 @@ function makeBindingSlotEntry(
   const t = nowIso()
   const enabled = opts?.enabled !== false
   return {
-    id: opts?.id ?? makeId('binding'),
+    id: opts?.id ?? generateShortId(),
     groupId,
     title: '',
     content: '',
@@ -547,7 +555,7 @@ export const usePromptsStore = defineStore('prompts', () => {
   function createPreset(name: string): PromptPreset {
     const t = nowIso()
     const preset = normalizePreset({
-      id: makeId('preset'),
+      id: makeId(presets.value),
       name: name.trim() || 'Untitled preset',
       groups: buildDefaultGroups(),
       prompts: [],
@@ -567,7 +575,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     const t = nowIso()
     const copy = normalizePreset({
       ...src,
-      id: makeId('preset'),
+      id: makeId(presets.value),
       name: `${src.name} (copy)`,
       groups: src.groups.map((g) => ({ ...g })),
       prompts: src.prompts.map((p) => ({
@@ -683,7 +691,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     const t = nowIso()
     const fresh: PromptPreset[] = candidates.map((src) =>
       normalizePreset({
-        id: makeId('preset'),
+        id: makeId(presets.value),
         name: uniquePresetName(
           (typeof src.name === 'string' && src.name.trim()
             ? src.name.trim()
@@ -710,7 +718,7 @@ export const usePromptsStore = defineStore('prompts', () => {
   function appendPromptPresetCopy(src: PromptPreset): string {
     const t = nowIso()
     const copy = normalizePreset({
-      id: makeId('preset'),
+      id: makeId(presets.value),
       name: uniquePresetName(
         (typeof src.name === 'string' && src.name.trim()
           ? src.name.trim()
@@ -766,7 +774,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     const groups = activePreset.value.groups
     const maxOrder = groups.reduce((m, g) => Math.max(m, g.order), -1)
     const g: PromptGroup = {
-      id: makeId('group'),
+      id: makeId(presets.value),
       name: trimmed,
       kind: 'normal',
       order: maxOrder + 1,
@@ -820,7 +828,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     )
     const maxOrder = sameGroup.reduce((m, p) => Math.max(m, p.order), -1)
     const entry: PromptEntry = {
-      id: makeId('entry'),
+      id: makeId(presets.value),
       groupId,
       title: '',
       content: '',
@@ -885,7 +893,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     const maxOrder = sameGroup.reduce((m, p) => Math.max(m, p.order), -1)
     const copy: PromptEntry = {
       ...src,
-      id: makeId('entry'),
+      id: makeId(presets.value),
       title: src.title ? `${src.title} (copy)` : '',
       tags: src.tags.slice(),
       triggers: src.triggers.slice(),

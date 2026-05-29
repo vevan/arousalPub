@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 
-/** 实体 id（会话目录名、角色卡文件名）：8 位十六进制 */
+/** 8 位十六进制（会话、角色卡、turnId、receive.id、prompt 条目等） */
 export const SHORT_ID_RE = /^[0-9a-f]{8}$/i
 
 const LEGACY_UUID_RE =
@@ -35,4 +35,14 @@ export function mapToShortId(oldId: string, used: Set<string>): string {
     return t
   }
   return allocateShortId(used)
+}
+
+/** 是否应将 id 从 UUID / prefix-uuid 迁为 8 位 hex（保留 preset-default、binding-slot-* 等语义 id） */
+export function shouldMigrateToShortId(id: string): boolean {
+  const t = id.trim()
+  if (!t || isValidShortId(t)) return false
+  if (isLegacyUuid(t)) return true
+  const m = t.match(/^(preset|group|entry|binding)-(.+)$/i)
+  if (m && isLegacyUuid(m[2]!)) return true
+  return false
 }

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import ConversationContextSettings from '@/components/ConversationContextSettings.vue'
 import HomeChat from '@/components/HomeChat.vue'
+import { useMemoryRebuild } from '@/composables/useMemoryRebuild'
 import { bootstrapAppData } from '@/bootstrap/app-data'
+import { fetchDefaultLorebookIds, fetchLorebookPickerItems } from '@/utils/default-lorebook'
 import { useConnectionStore } from '@/stores/connection'
 import { usePreferencesStore } from '@/stores/preferences'
 import {
@@ -11,13 +13,19 @@ import {
   type HistorySettings,
 } from '@/utils/history-settings'
 import {
+  hasMemorySettingsOverride,
+  normalizeMemorySettings,
+  resolveMemorySettings,
+  type MemorySettings,
+} from '@/utils/memory-settings'
+import {
   hasLorebookSettingsOverride,
   normalizeLorebookSettings,
   resolveLorebookSettings,
   type LorebookSettings,
 } from '@/utils/lorebook-settings'
 import { storeToRefs } from 'pinia'
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -32,14 +40,120 @@ const prefStore = usePreferencesStore()
 const {
   lorebookRecursiveEnabled,
   lorebookMaxRecursionDepth,
+  lorebookVectorEnabled,
+  lorebookVectorTopK,
   historyLimitEnabled,
   historyMaxTurns,
+  memoryEnabled,
+  memoryTopK,
+  embeddingModel,
+  embeddingDimensions,
 } = storeToRefs(prefStore)
 
 const loading = ref(true)
 const errorText = ref('')
 const title = ref('')
 const titleSaving = ref(false)
+const lorebookNameById = ref<Record<string, string>>({})
+const convContextSettingsRef = ref<InstanceType<
+  typeof ConversationContextSettings
+> | null>(null)
+const hasConversationTurns = ref(false)
+const conversationMemoryEmbeddingModel = ref<string | null>(null)
+const conversationMemoryEmbeddingDimensions = ref<number | null>(null)
+const memoryRebuildDialogOpen = ref(false)
+let memoryRebuildDismissKey = ''
+
+const {
+  loading: memoryRebuildLoading,
+  error: memoryRebuildError,
+  done: memoryRebuildDone,
+  total: memoryRebuildTotal,
+  turns: memoryRebuildTurns,
+  loreEntries: memoryRebuildLoreEntries,
+  percent: memoryRebuildPercent,
+  rebuild: rebuildMemoryIndex,
+} = useMemoryRebuild(() => props.conversationId)
+
+function memoryRebuildDismissToken(
+  storedModel: string | null,
+  globalModel: string,
+  storedDims: number | null,
+  globalDims: number | null,
+): string {
+  return `${storedModel ?? ''}|${globalModel}|${storedDims ?? ''}|${globalDims ?? ''}`
+}
+
+function embeddingDimsMatch(a: number | null, b: number | null): boolean {
+  return (a ?? null) === (b ?? null)
+}
+
+function shouldOfferMemoryRebuild(): boolean {
+  if (!hasConversationTurns.value) return false
+  if (!convBindings.value.memory.effective.memoryEnabled) return false
+  const globalModel = embeddingModel.value.trim()
+  if (!globalModel) return false
+  const globalDims = embeddingDimensions.value
+  const storedModel = conversationMemoryEmbeddingModel.value
+  const storedDims = conversationMemoryEmbeddingDimensions.value
+  if (
+    storedModel &&
+    storedModel === globalModel &&
+    embeddingDimsMatch(storedDims, globalDims)
+  ) {
+    return false
+  }
+  const token = memoryRebuildDismissToken(
+    storedModel,
+    globalModel,
+    storedDims,
+    globalDims,
+  )
+  if (memoryRebuildDismissKey === token) return false
+  return true
+}
+
+function maybePromptMemoryRebuild(): void {
+  if (shouldOfferMemoryRebuild()) {
+    memoryRebuildError.value = ''
+    memoryRebuildDialogOpen.value = true
+  }
+}
+
+function dismissMemoryRebuild(): void {
+  memoryRebuildDismissKey = memoryRebuildDismissToken(
+    conversationMemoryEmbeddingModel.value,
+    embeddingModel.value.trim(),
+    conversationMemoryEmbeddingDimensions.value,
+    embeddingDimensions.value,
+  )
+  memoryRebuildDialogOpen.value = false
+  memoryRebuildError.value = ''
+}
+
+async function confirmMemoryRebuild(): Promise<void> {
+  const nextModel = await rebuildMemoryIndex()
+  if (!nextModel) return
+  conversationMemoryEmbeddingModel.value = nextModel
+  memoryRebuildDismissKey = memoryRebuildDismissToken(
+    nextModel,
+    embeddingModel.value.trim(),
+    embeddingDimensions.value,
+    embeddingDimensions.value,
+  )
+  memoryRebuildDialogOpen.value = false
+}
+
+function onMemoryRebuiltFromSettings(model: string): void {
+  conversationMemoryEmbeddingModel.value = model
+  conversationMemoryEmbeddingDimensions.value = embeddingDimensions.value
+  memoryRebuildDismissKey = memoryRebuildDismissToken(
+    model,
+    embeddingModel.value.trim(),
+    embeddingDimensions.value,
+    embeddingDimensions.value,
+  )
+}
 
 interface LorebookContextBinding {
   useGlobal: boolean
@@ -51,12 +165,18 @@ interface HistoryContextBinding {
   effective: HistorySettings
 }
 
+interface MemoryContextBinding {
+  useGlobal: boolean
+  effective: MemorySettings
+}
+
 interface ConvContextBindings {
   promptPresetId: string | null
   characterIds: string[]
   lorebookIds: string[]
   lorebook: LorebookContextBinding
   history: HistoryContextBinding
+  memory: MemoryContextBinding
   /** 会话 `{{user}}`；null 表示未设置 */
   userName: string | null
   /** 用户 persona 卡 id；仅用于 UI 回显头像 */
@@ -67,6 +187,8 @@ function globalLoreFromStore(): LorebookSettings {
   return normalizeLorebookSettings({
     recursiveEnabled: prefStore.lorebookRecursiveEnabled,
     maxRecursionDepth: prefStore.lorebookMaxRecursionDepth,
+    vectorEnabled: prefStore.lorebookVectorEnabled,
+    vectorTopK: prefStore.lorebookVectorTopK,
   })
 }
 
@@ -75,6 +197,29 @@ function globalHistoryFromStore(): HistorySettings {
     limitEnabled: prefStore.historyLimitEnabled,
     maxTurns: prefStore.historyMaxTurns,
   })
+}
+
+function globalMemoryFromStore(): MemorySettings {
+  return normalizeMemorySettings({
+    memoryEnabled: prefStore.memoryEnabled,
+    memoryTopK: prefStore.memoryTopK,
+  })
+}
+
+function memoryContextFromIndex(
+  idx: Record<string, unknown>,
+): MemoryContextBinding {
+  const global = globalMemoryFromStore()
+  const raw = idx.memorySettings
+  const override =
+    raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? (raw as Partial<MemorySettings>)
+      : undefined
+  const useGlobal = !hasMemorySettingsOverride(override)
+  return {
+    useGlobal,
+    effective: resolveMemorySettings(global, override),
+  }
 }
 
 function historyContextFromIndex(
@@ -148,6 +293,7 @@ function bindingsFromIndex(idx: Record<string, unknown>): ConvContextBindings {
     lorebookIds,
     lorebook: lorebookContextFromIndex(idx),
     history: historyContextFromIndex(idx),
+    memory: memoryContextFromIndex(idx),
     userName,
     userCharacterId,
   }
@@ -159,18 +305,55 @@ const convBindings = ref<ConvContextBindings>({
   lorebookIds: [],
   lorebook: {
     useGlobal: true,
-    effective: { recursiveEnabled: false, maxRecursionDepth: 2 },
+    effective: {
+      recursiveEnabled: false,
+      maxRecursionDepth: 2,
+      vectorEnabled: false,
+      vectorTopK: 5,
+    },
   },
   history: {
     useGlobal: true,
     effective: { limitEnabled: false, maxTurns: 20 },
   },
+  memory: {
+    useGlobal: true,
+    effective: { memoryEnabled: false, memoryTopK: 4 },
+  },
   userName: null,
   userCharacterId: null,
 })
 
+const boundLorebookLabels = computed(() =>
+  convBindings.value.lorebookIds.map(
+    (id) => lorebookNameById.value[id] ?? id,
+  ),
+)
+
+async function loadLorebookNameMap(): Promise<void> {
+  const items = await fetchLorebookPickerItems()
+  const map: Record<string, string> = {}
+  for (const item of items) {
+    map[item.id] = item.name
+  }
+  lorebookNameById.value = map
+}
+
+function applyConversationMemoryIndexMeta(index: Record<string, unknown>): void {
+  const memModel = index.memoryEmbeddingModel
+  conversationMemoryEmbeddingModel.value =
+    typeof memModel === 'string' && memModel.trim() ? memModel.trim() : null
+  const memDims = index.memoryEmbeddingDimensions
+  conversationMemoryEmbeddingDimensions.value =
+    typeof memDims === 'number' && Number.isFinite(memDims) && memDims > 0
+      ? Math.floor(memDims)
+      : null
+}
+
 function onConvContextPatched(index: Record<string, unknown>) {
+  applyConversationMemoryIndexMeta(index)
   convBindings.value = bindingsFromIndex(index)
+  maybePromptMemoryRebuild()
 }
 
 async function patchPromptDebugMaxToServer(id: string) {
@@ -191,7 +374,9 @@ onMounted(() => {
   void bootstrapAppData()
 })
 
-watch([lorebookRecursiveEnabled, lorebookMaxRecursionDepth], () => {
+watch(
+  [lorebookRecursiveEnabled, lorebookMaxRecursionDepth, lorebookVectorEnabled, lorebookVectorTopK],
+  () => {
   if (!convBindings.value.lorebook.useGlobal) return
   const global = globalLoreFromStore()
   convBindings.value = {
@@ -215,11 +400,24 @@ watch([historyLimitEnabled, historyMaxTurns], () => {
   }
 })
 
+watch([memoryEnabled, memoryTopK], () => {
+  if (!convBindings.value.memory.useGlobal) return
+  const global = globalMemoryFromStore()
+  convBindings.value = {
+    ...convBindings.value,
+    memory: {
+      useGlobal: true,
+      effective: global,
+    },
+  }
+})
+
 async function ensureConversation(id: string) {
   loading.value = true
   errorText.value = ''
   try {
     await bootstrapAppData()
+    await loadLorebookNameMap()
     let res = await fetch(`/api/chat/conversations/${id}`)
     if (res.status === 404) {
       const created = await fetch('/api/chat/conversations', {
@@ -234,6 +432,14 @@ async function ensureConversation(id: string) {
         errorText.value = t('chatConversation.loadFailed')
         return
       }
+      const defaultLorebookIds = await fetchDefaultLorebookIds()
+      if (defaultLorebookIds.length > 0) {
+        await fetch(`/api/chat/conversations/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lorebookIds: defaultLorebookIds }),
+        })
+      }
       res = await fetch(`/api/chat/conversations/${id}`)
     }
     if (!res.ok) {
@@ -242,8 +448,12 @@ async function ensureConversation(id: string) {
     }
     const idx = (await res.json()) as Record<string, unknown>
     title.value = typeof idx.title === 'string' ? idx.title : t('chat.newConversation')
+    hasConversationTurns.value =
+      typeof idx.headChunkFile === 'string' && idx.headChunkFile.length > 0
+    applyConversationMemoryIndexMeta(idx)
     convBindings.value = bindingsFromIndex(idx)
     void patchPromptDebugMaxToServer(id)
+    maybePromptMemoryRebuild()
   } catch {
     errorText.value = t('chatConversation.loadFailed')
   } finally {
@@ -277,6 +487,8 @@ async function saveTitle() {
 watch(
   () => props.conversationId,
   (id) => {
+    memoryRebuildDismissKey = ''
+    memoryRebuildDialogOpen.value = false
     void ensureConversation(id)
   },
   { immediate: true },
@@ -293,6 +505,19 @@ watch(
   ([id]) => {
     if (!id || loading.value) return
     void patchPromptDebugMaxToServer(id)
+  },
+)
+
+watch([embeddingModel, embeddingDimensions], () => {
+  if (loading.value) return
+  maybePromptMemoryRebuild()
+})
+
+watch(
+  () => convBindings.value.memory.effective.memoryEnabled,
+  () => {
+    if (loading.value) return
+    maybePromptMemoryRebuild()
   },
 )
 </script>
@@ -349,6 +574,15 @@ watch(
           />
         </div>
         <div class="chat-header__meta">
+          <v-btn
+            icon="mdi-cog-outline"
+            variant="text"
+            density="comfortable"
+            size="small"
+            class="chat-header__settings"
+            :aria-label="$t('chat.convSettings.openButton')"
+            @click="convContextSettingsRef?.open()"
+          />
           <span
             v-if="!conn.apiKey.trim()"
             class="chat-header__pill chat-header__pill--warning"
@@ -370,11 +604,122 @@ watch(
             >
               {{ conn.alias.trim() }}
             </span>
+            <span
+              v-for="name in boundLorebookLabels"
+              :key="name"
+              class="chat-header__pill chat-header__pill--lorebook"
+              :title="$t('chatConversation.boundLorebook')"
+            >
+              <v-icon
+                icon="mdi-book-open-page-variant-outline"
+                size="14"
+                class="mr-1"
+              />
+              {{ name }}
+            </span>
           </template>
         </div>
       </header>
+      <HomeChat
+        :conversation-id="conversationId"
+        :conversation-prompt-preset-id="convBindings.promptPresetId"
+        :conversation-character-ids="convBindings.characterIds"
+        :conversation-lorebook-ids="convBindings.lorebookIds"
+        :conversation-user-name="convBindings.userName"
+        :conversation-user-character-id="convBindings.userCharacterId"
+      />
+      <v-dialog
+        v-model="memoryRebuildDialogOpen"
+        max-width="32rem"
+        persistent
+      >
+        <v-card>
+          <v-card-title class="text-body-1 font-weight-medium">
+            {{ $t('chatConversation.memoryRebuildTitle') }}
+          </v-card-title>
+          <v-card-text>
+            <p class="text-body-2 mb-3">
+              {{ $t('chatConversation.memoryRebuildBody') }}
+            </p>
+            <div class="text-body-2 text-medium-emphasis">
+              <div v-if="conversationMemoryEmbeddingModel">
+                {{ $t('chatConversation.memoryRebuildStoredModel') }}:
+                <code>{{ conversationMemoryEmbeddingModel }}</code>
+              </div>
+              <div v-else>
+                {{ $t('chatConversation.memoryRebuildStoredUnknown') }}
+              </div>
+              <div class="mt-1">
+                {{ $t('chatConversation.memoryRebuildCurrentModel') }}:
+                <code>{{ embeddingModel }}</code>
+                <template v-if="embeddingDimensions != null">
+                  · {{ embeddingDimensions }}d
+                </template>
+              </div>
+            </div>
+            <v-alert
+              v-if="memoryRebuildError"
+              type="error"
+              variant="tonal"
+              density="compact"
+              class="mt-3"
+            >
+              {{ memoryRebuildError }}
+            </v-alert>
+            <div
+              v-if="memoryRebuildLoading"
+              class="mt-3"
+            >
+              <div class="text-body-2 text-medium-emphasis mb-1">
+                {{
+                  $t('chatConversation.memoryRebuildProgress', {
+                    done: memoryRebuildDone,
+                    total: memoryRebuildTotal,
+                  })
+                }}
+              </div>
+              <div
+                v-if="memoryRebuildTotal > 0"
+                class="text-caption text-medium-emphasis mb-2"
+              >
+                {{
+                  $t('chatConversation.memoryRebuildProgressDetail', {
+                    turns: memoryRebuildTurns,
+                    loreEntries: memoryRebuildLoreEntries,
+                  })
+                }}
+              </div>
+              <v-progress-linear
+                :model-value="memoryRebuildTotal > 0 ? memoryRebuildPercent : undefined"
+                :indeterminate="memoryRebuildTotal < 1"
+                height="8"
+                rounded
+                color="primary"
+              />
+            </div>
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer />
+            <v-btn
+              variant="text"
+              :disabled="memoryRebuildLoading"
+              @click="dismissMemoryRebuild"
+            >
+              {{ $t('chatConversation.memoryRebuildLater') }}
+            </v-btn>
+            <v-btn
+              color="primary"
+              variant="flat"
+              :loading="memoryRebuildLoading"
+              @click="confirmMemoryRebuild"
+            >
+              {{ $t('chatConversation.memoryRebuildConfirm') }}
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
       <ConversationContextSettings
-        class="chat-context-settings"
+        ref="convContextSettingsRef"
         :conversation-id="conversationId"
         :initial-prompt-preset-id="convBindings.promptPresetId"
         :initial-character-ids="convBindings.characterIds"
@@ -389,16 +734,16 @@ watch(
         :global-history-max-turns="historyMaxTurns"
         :initial-history-limit-enabled="convBindings.history.effective.limitEnabled"
         :initial-history-max-turns="convBindings.history.effective.maxTurns"
+        :initial-memory-settings-use-global="convBindings.memory.useGlobal"
+        :global-memory-enabled="memoryEnabled"
+        :global-memory-top-k="memoryTopK"
+        :initial-memory-enabled="convBindings.memory.effective.memoryEnabled"
+        :initial-memory-top-k="convBindings.memory.effective.memoryTopK"
+        :global-embedding-model="embeddingModel"
+        :conversation-memory-embedding-model="conversationMemoryEmbeddingModel"
         :initial-user-name="convBindings.userName"
         @patched="onConvContextPatched"
-      />
-      <HomeChat
-        :conversation-id="conversationId"
-        :conversation-prompt-preset-id="convBindings.promptPresetId"
-        :conversation-character-ids="convBindings.characterIds"
-        :conversation-lorebook-ids="convBindings.lorebookIds"
-        :conversation-user-name="convBindings.userName"
-        :conversation-user-character-id="convBindings.userCharacterId"
+        @memory-rebuilt="onMemoryRebuiltFromSettings"
       />
     </template>
   </div>
@@ -407,16 +752,11 @@ watch(
 <style scoped>
 .chat_pane {
   display: grid;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto 1fr;
   grid-template-columns: minmax(0, 1fr);
   height: calc(100vh - var(--header-height) - var(--footer-height));
   min-height: 0;
   flex: 1 1 auto;
-}
-
-.chat-context-settings {
-  grid-column: 1 / -1;
-  min-width: 0;
 }
 
 .chat_pane--state {

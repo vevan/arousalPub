@@ -1,3 +1,5 @@
+export type LorebookTriggerMode = 'keyword' | 'constant' | 'vector'
+
 /** 将关键字数组格式化为输入框展示（英文逗号 + 空格） */
 export function formatLorebookKeysInput(keys: string[]): string {
   return keys.join(', ')
@@ -11,11 +13,38 @@ export function parseLorebookKeysInput(raw: string): string[] {
     .filter(Boolean)
 }
 
-/** 关键字触发模式下是否缺少有效关键字（此类条目不会参与注入） */
+export function resolveEntryTriggerMode(entry: {
+  constant: boolean
+  triggerMode?: LorebookTriggerMode
+}): LorebookTriggerMode {
+  const m = entry.triggerMode
+  if (m === 'keyword' || m === 'constant' || m === 'vector') return m
+  return entry.constant ? 'constant' : 'keyword'
+}
+
+/** 关键字触发模式下是否缺少有效关键字 */
 export function lorebookEntryMissingKeywords(entry: {
   constant: boolean
+  triggerMode?: LorebookTriggerMode
   keys: string[]
 }): boolean {
-  if (entry.constant) return false
+  if (resolveEntryTriggerMode(entry) !== 'keyword') return false
   return !entry.keys.some((k) => k.trim().length > 0)
+}
+
+export function entryKeysInputDisabled(entry: {
+  constant: boolean
+  triggerMode?: LorebookTriggerMode
+}): boolean {
+  const mode = resolveEntryTriggerMode(entry)
+  return mode === 'constant' || mode === 'vector'
+}
+
+export function patchForTriggerMode(
+  mode: LorebookTriggerMode,
+): { triggerMode: LorebookTriggerMode; constant: boolean } {
+  return {
+    triggerMode: mode,
+    constant: mode === 'constant',
+  }
 }

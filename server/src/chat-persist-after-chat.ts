@@ -1,7 +1,9 @@
-import { randomUUID } from 'node:crypto'
 import type { ChatMessage } from './assemble-prompts.js'
+import { allocateShortId } from './short-id.js'
 import {
   appendConversationTurn,
+  buildReceiveRuntime,
+  collectChunkEntityIds,
   getPromptDebugMaxStored,
   readConversationIndex,
   readTailChunk,
@@ -26,6 +28,14 @@ function debugPromptFromIndex(
   return messages
 }
 
+function receiveRuntime(
+  model?: string,
+  durationMs?: number,
+  estimatedTokens?: number,
+): Record<string, unknown> | undefined {
+  return buildReceiveRuntime({ model, durationMs, estimatedTokens })
+}
+
 /**
  * 上游成功且 assistant 有正文后：首条 / 追加轮 / 再生追加 receive；
  * 快照在落盘成功后写入（由 saveFirstTurn / append / update 内部处理）。
@@ -36,6 +46,8 @@ export async function persistTurnAfterModelReply(params: {
   assistantContent: string
   assistantReasoning?: string
   model?: string
+  durationMs?: number
+  estimatedTokens?: number
   assembledMessages: ChatMessage[]
   /** 再生：向该轮追加 receive，不新开 turn */
   regenerateTurnOrdinal?: number | null
@@ -65,6 +77,7 @@ export async function persistTurnAfterModelReply(params: {
     typeof params.model === 'string' && params.model.trim()
       ? params.model.trim()
       : undefined
+  const runtime = receiveRuntime(model, params.durationMs, params.estimatedTokens)
 
   const regenOrd = params.regenerateTurnOrdinal
   if (
@@ -77,11 +90,15 @@ export async function persistTurnAfterModelReply(params: {
     if (!turn) {
       return { ok: false, error: '未找到再生轮次' }
     }
-    const receiveId = randomUUID()
+    const used = collectChunkEntityIds(chunk)
+    const receiveId = allocateShortId(used)
     const receives: TurnReceive[] = [
       ...(turn.receives ?? []).map((r) => {
         const rec: TurnReceive = {
-          id: typeof r.id === 'string' ? r.id : randomUUID(),
+          id:
+            typeof r.id === 'string' && r.id.trim()
+              ? r.id.trim()
+              : allocateShortId(used),
           content: typeof r.content === 'string' ? r.content : '',
         }
         if (typeof r.reasoning === 'string' && r.reasoning.length > 0) {
@@ -96,7 +113,7 @@ export async function persistTurnAfterModelReply(params: {
         id: receiveId,
         content: assistantContent,
         ...(reasoning ? { reasoning } : {}),
-        ...(model ? { runtime: { model } } : {}),
+        ...(runtime ? { runtime } : {}),
       },
     ]
     const activeReceiveIndex = receives.length - 1
@@ -126,6 +143,8 @@ export async function persistTurnAfterModelReply(params: {
       assistantText: assistantContent,
       reasoning,
       model,
+      durationMs: params.durationMs,
+      estimatedTokens: params.estimatedTokens,
       debugPrompt,
     })
     if (!saved) {
@@ -140,13 +159,15 @@ export async function persistTurnAfterModelReply(params: {
     }
   }
 
-  const receiveId = randomUUID()
+  const tailChunk = await readTailChunk(conversationId)
+  const used = tailChunk ? collectChunkEntityIds(tailChunk) : new Set<string>()
+  const receiveId = allocateShortId(used)
   const receives: TurnReceive[] = [
     {
       id: receiveId,
       content: assistantContent,
       ...(reasoning ? { reasoning } : {}),
-      ...(model ? { runtime: { model } } : {}),
+      ...(runtime ? { runtime } : {}),
     },
   ]
   const ok = await appendConversationTurn({

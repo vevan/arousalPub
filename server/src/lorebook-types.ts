@@ -8,6 +8,9 @@ export interface LorebookGroup {
   description?: string
 }
 
+/** 条目触发方式：关键字 / 恒定 / 向量语义 */
+export type LorebookTriggerMode = 'keyword' | 'constant' | 'vector'
+
 /**
  * 世界书条目（单条 lore）。
  * 触发与注入细则后续接组装管线；框架期先落盘结构与 CRUD。
@@ -23,8 +26,10 @@ export interface LorebookEntry {
   order: number
   /** 关键字触发（空 = 仅依赖 constant / 后续扩展） */
   keys: string[]
-  /** 是否恒定注入（忽略关键字） */
+  /** 是否恒定注入（忽略关键字）；与 triggerMode 同步，读盘可仅看 triggerMode */
   constant: boolean
+  /** 触发方式；缺省时由 constant 推断 */
+  triggerMode?: LorebookTriggerMode
   /** 同轮多条命中时的优先级，数值越大越优先 */
   priority: number
   createdAt: string

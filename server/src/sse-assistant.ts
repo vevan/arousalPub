@@ -1,4 +1,12 @@
+import type { ChatPersistResult } from './chat-persist-after-chat.js'
 import { extractCompletionTokens } from './chat-usage.js'
+
+/** 流式聊天结束后追加的落盘结果（前端 readSseStream 识别 arousal.persist） */
+export function formatArousalPersistSseLine(
+  persist: ChatPersistResult,
+): string {
+  return `data: ${JSON.stringify({ arousal: { persist } })}\n\n`
+}
 
 /** 从 OpenAI 兼容 SSE 行解析 assistant 增量（与前端 readSseStream 对齐） */
 

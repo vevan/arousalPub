@@ -47,12 +47,26 @@ body {
   min-width: 20rem;
   min-height: 100vh;
   font-size: 0.875rem;
-  background: rgb(var(--v-theme-background));
+  /* 无 v-app 时（登录/setup）仍有兜底，避免 var 未定义时出现异色块 */
+  background-color: #0e0b08;
+  background-color: rgb(var(--v-theme-background));
   color: rgb(var(--v-theme-on-background));
 }
 
 #app {
+  position: relative;
+  z-index: 1;
   min-height: 100vh;
+}
+
+/**
+ * v-app 已透明以透出 body 纸纹；v-main 默认仍用 surface，与 background 色差会在宽屏侧栏区形成「灰块」。
+ * 登录 / 主页 / 对话页统一为透明，只保留 body 一层暖墨黑底。
+ */
+.v-application,
+.v-application__wrap,
+.v-main {
+  background: transparent !important;
 }
 
 /**
@@ -173,15 +187,12 @@ body::before {
   pointer-events: none;
   z-index: 0;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 0.93  0 0 0 0 0.85  0 0 0 0.025 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-  opacity: 0.5;
+  background-repeat: repeat;
+  background-size: 400px 400px;
+  opacity: 0.45;
   mix-blend-mode: screen;
 }
 .v-theme--light body::before { opacity: 0; }
-
-/* Vuetify v-app 默认会铺满 body 的 background，覆盖时让 noise 透出 */
-.v-application {
-  background: transparent !important;
-}
 
 /*
  * 全站 v-dialog 默认内容区宽度（VDialog 继承 VOverlay，根节点常见为 .v-overlay.v-dialog）

@@ -33,6 +33,7 @@ import {
   reasoningCharsCount,
   turnLabelN,
 } from '@/utils/chat-turn-display'
+import { translateApiError } from '@/utils/api-error-message'
 import { formatDurationMs } from '@/utils/format-duration'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
@@ -869,7 +870,10 @@ async function fetchAssemblePreview(): Promise<void> {
       let msg = t('chat.previewAssembleLoadFailed')
       try {
         const j = (await res.json()) as { error?: string; detail?: string }
-        msg = j.detail || j.error || msg
+        msg =
+          (typeof j.error === 'string' && j.error.trim()
+            ? translateApiError(j.error.trim())
+            : j.detail) || msg
       } catch {
         const text = await res.text()
         if (text.trim()) msg = text.slice(0, 500)

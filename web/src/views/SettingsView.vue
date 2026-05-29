@@ -2,6 +2,7 @@
 import { useAuthStore } from '@/stores/auth'
 import { useLocaleStore } from '@/stores/locale'
 import { apiFetch } from '@/utils/api-fetch'
+import { translateApiError } from '@/utils/api-error-message'
 import { userAvatarUrl } from '@/utils/authenticated-media-url'
 import { useApiKeysStore } from '@/stores/apiKeys'
 import { usePreferencesStore } from '@/stores/preferences'
@@ -38,11 +39,10 @@ const emit = defineEmits<{ logout: [] }>()
 
 type SettingsTab = 'system' | 'display' | 'account' | 'lorebook' | 'history' | 'debug'
 
-const { t, te } = useI18n()
+const { t } = useI18n()
 
 function accountApiErrorMessage(codeOrMsg: string): string {
-  const key = `settings.accountApiErrors.${codeOrMsg}`
-  return te(key) ? t(key) : codeOrMsg
+  return translateApiError(codeOrMsg)
 }
 const auth = useAuthStore()
 const localeStore = useLocaleStore()

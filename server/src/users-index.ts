@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { hashPassword, verifyPassword } from './auth-password.js'
@@ -87,11 +87,10 @@ export async function readUsersIndex(): Promise<UsersIndexDocument> {
 
 export async function writeUsersIndex(doc: UsersIndexDocument): Promise<void> {
   await mkdir(DATA_DIR, { recursive: true })
-  await writeFile(
-    getUsersIndexPath(),
-    `${JSON.stringify(doc, null, 2)}\n`,
-    'utf8',
-  )
+  const target = getUsersIndexPath()
+  const tmp = `${target}.${process.pid}.${Date.now()}.tmp`
+  await writeFile(tmp, `${JSON.stringify(doc, null, 2)}\n`, 'utf8')
+  await rename(tmp, target)
 }
 
 export function validateUsername(username: string): string {
@@ -272,12 +271,13 @@ export async function deleteUserAccount(
     throw new UserAccountError(UserAccountErrorCodes.CANNOT_DELETE_SEED_ONLY)
   }
 
+  doc.users = doc.users.filter((u) => u.id !== userId)
+  await writeUsersIndex(doc)
+
   const dir = getUserDataDir(userId)
   if (existsSync(dir)) {
     rmSync(dir, { recursive: true, force: true })
   }
-  doc.users = doc.users.filter((u) => u.id !== userId)
-  await writeUsersIndex(doc)
 }
 
 async function dirSizeBytes(root: string): Promise<number> {

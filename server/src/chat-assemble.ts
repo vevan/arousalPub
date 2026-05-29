@@ -1,3 +1,4 @@
+import { ApiErrorCodes } from './api-error-codes.js'
 import {
   assemblePrompts,
   type BoundCharacterSlice,
@@ -147,18 +148,18 @@ export async function buildConversationOutboundMessages(
 ): Promise<BuildConversationMessagesResult | { error: string; status: number }> {
   const conversationId = params.conversationId.trim()
   if (!conversationId) {
-    return { error: 'conversationId 无效', status: 400 }
+    return { error: ApiErrorCodes.invalid_conversation_id, status: 400 }
   }
 
   const idx = await readConversationIndex(conversationId)
   if (!idx) {
-    return { error: '会话不存在', status: 404 }
+    return { error: ApiErrorCodes.conversation_not_found, status: 404 }
   }
 
   const doc = params.promptsDoc
   const picked = pickPresetForConversation(idx, doc)
   if (!picked) {
-    return { error: '无法解析提示词预设', status: 400 }
+    return { error: ApiErrorCodes.prompt_preset_unresolved, status: 400 }
   }
   const preset = normalizePresetForAssemble(picked)
 

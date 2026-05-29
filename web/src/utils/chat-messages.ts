@@ -1,4 +1,5 @@
 import type { ChatPersistPayload, ChatTurnItem, ReceiveItem } from '@/types/chat-turn'
+import { translateApiError } from '@/utils/api-error-message'
 import { allocateShortId } from '@/utils/short-id'
 
 type MessagesApiTurn = {
@@ -128,11 +129,12 @@ export function applyPersistWarning(
   fallbackMessage: string,
 ): void {
   if (persist && !persist.ok) {
+    const code =
+      typeof persist.error === 'string' && persist.error.trim()
+        ? persist.error.trim()
+        : ''
     onError(
-      (typeof persist.error === 'string' && persist.error.trim()
-        ? persist.error
-        : fallbackMessage
-      ).slice(0, 500),
+      (code ? translateApiError(code) : fallbackMessage).slice(0, 500),
     )
   }
 }

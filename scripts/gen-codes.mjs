@@ -1,0 +1,156 @@
+import { writeFileSync } from 'node:fs'
+
+const props = `active_preset_id_mismatch
+active_receive_index_must_be_integer
+api_keys_read_failed
+api_keys_write_failed
+append_turn_failed
+auth_required
+auth_session_expired
+avatar_must_be_png
+avatar_not_found
+card_body_invalid
+character_ids_must_be_string_array
+character_not_found
+character_not_found_or_no_png
+character_update_failed
+characters_read_failed
+chat_list_read_failed
+conversation_already_exists
+conversation_create_failed
+conversation_delete_error
+conversation_delete_failed
+conversation_no_tail_chunk
+conversation_not_found
+delete_account_failed
+embedding_api_api_key_id_invalid
+embedding_api_api_key_string
+embedding_api_base_url_string
+embedding_api_embedding_dimensions_invalid
+embedding_api_embedding_model_string
+embedding_test_failed
+first_turn_already_saved
+first_turn_write_failed
+global_embedding_api_requires_field
+global_history_requires_field
+global_lorebook_requires_field
+global_memory_requires_field
+history_limit_enabled_boolean
+history_max_turns_number
+history_settings_invalid
+history_settings_limit_enabled_boolean
+history_settings_max_turns_number
+history_settings_requires_field
+invalid_conversation_id
+invalid_credentials
+invalid_id
+invalid_request_body
+invalid_turn_ordinal
+invalid_user
+lorebook_ids_must_be_string_array
+lorebook_max_recursion_depth_number
+lorebook_not_found
+lorebook_recursive_enabled_boolean
+lorebook_settings_invalid
+lorebook_settings_max_recursion_depth_number
+lorebook_settings_recursive_enabled_boolean
+lorebook_settings_requires_field
+lorebook_settings_vector_enabled_boolean
+lorebook_settings_vector_top_k_number
+lorebook_vector_enabled_boolean
+lorebook_vector_top_k_number
+lorebooks_read_failed
+lorebooks_write_failed
+memory_enabled_boolean
+memory_rebuild_failed
+memory_settings_invalid
+memory_settings_memory_enabled_boolean
+memory_settings_memory_top_k_number
+memory_settings_requires_field
+memory_top_k_number
+messages_item_role_content
+messages_required_nonempty
+missing_api_key
+missing_assistant_content
+missing_avatar_field
+missing_confirm_username
+missing_conversation_id
+missing_file_field
+missing_model
+missing_password_fields
+missing_portrait_field
+missing_presets_array
+missing_refresh_token
+missing_user_content
+missing_user_text
+missing_username_or_password
+models_list_failed
+multipart_payload_required
+opening_persist_failed
+opening_write_failed
+password_change_failed
+patch_conversation_requires_field
+payload_invalid_json
+persist_error
+persist_failed
+png_image_required
+prompt_preset_id_invalid
+prompt_preset_unresolved
+prompts_preview_failed
+prompts_read_failed
+prompts_unavailable
+prompts_write_failed
+receives_content_required
+receives_item_id_content_required
+receives_item_invalid
+receives_required_nonempty
+refresh_token_expired
+settings_read_failed
+settings_write_failed
+turn_chunk_not_found
+turn_delete_failed
+turn_delete_not_found
+turn_update_failed
+upstream_api_error
+upstream_non_json
+user_character_id_invalid
+user_name_invalid
+user_not_ready
+user_preferences_read_failed
+user_preferences_requires_section
+user_preferences_save_failed
+user_text_must_be_string
+missing_conversation_or_user_text
+assistant_content_empty_no_persist
+regenerate_turn_not_found
+first_turn_persist_maybe_exists
+preset_validation_failed
+prompts_validation_failed
+lorebooks_validation_failed
+character_import_failed
+character_import_png_failed
+character_create_failed
+portrait_upload_failed
+api_keys_validation_failed
+validation_failed`
+  .trim()
+  .split('\n')
+  .sort()
+
+const lines = props.map((p) => `  ${p}: '${p}',`).join('\n')
+writeFileSync(
+  'server/src/api-error-codes.ts',
+  `/** API 可本地化错误码（前端 api.errors.*） */
+export const ApiErrorCodes = {
+${lines}
+} as const
+
+export type ApiErrorCode = (typeof ApiErrorCodes)[keyof typeof ApiErrorCodes]
+
+export {
+  UserAccountErrorCodes,
+  type UserAccountErrorCode,
+} from './user-account-error.js'
+`,
+)
+console.log('ok', props.length)

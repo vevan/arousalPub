@@ -1,3 +1,4 @@
+import { translateApiError } from '@/utils/api-error-message'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
@@ -208,7 +209,9 @@ export const useAuthStore = defineStore('auth', () => {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       throw new Error(
-        typeof data.error === 'string' ? data.error : '初始设置失败',
+        typeof data.error === 'string'
+          ? translateApiError(data.error)
+          : translateApiError('validation_failed'),
       )
     }
     applyAuthResponse(data as AuthResponse)
@@ -233,7 +236,9 @@ export const useAuthStore = defineStore('auth', () => {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       throw new Error(
-        typeof data.error === 'string' ? data.error : '登录失败',
+        typeof data.error === 'string'
+          ? translateApiError(data.error)
+          : translateApiError('validation_failed'),
       )
     }
     applyAuthResponse(data as AuthResponse)
@@ -260,7 +265,9 @@ export const useAuthStore = defineStore('auth', () => {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       throw new Error(
-        typeof data.error === 'string' ? data.error : '注册失败',
+        typeof data.error === 'string'
+          ? translateApiError(data.error)
+          : translateApiError('validation_failed'),
       )
     }
     applyAuthResponse(data as AuthResponse)
@@ -281,7 +288,9 @@ export const useAuthStore = defineStore('auth', () => {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       throw new Error(
-        typeof data.error === 'string' ? data.error : '更新失败',
+        typeof data.error === 'string'
+          ? translateApiError(data.error)
+          : translateApiError('validation_failed'),
       )
     }
     applyAuthResponse(data as AuthResponse)

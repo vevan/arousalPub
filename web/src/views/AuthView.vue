@@ -83,7 +83,7 @@ async function submit() {
 </script>
 
 <template>
-  <v-container class="auth-view fill-height" max-width="440">
+  <v-container class="auth-view pa-0" max-width="440">
     <v-card class="pa-6" variant="outlined" rounded="lg">
       <div class="text-h5 font-weight-medium mb-1">
         {{ title }}
@@ -188,12 +188,3 @@ async function submit() {
   </v-container>
 </template>
 
-<style scoped>
-.auth-view {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  min-height: 100dvh;
-}
-</style>

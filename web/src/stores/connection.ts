@@ -7,6 +7,7 @@ import {
   type ApiPresetExportDoc,
   isPromptPresetLike,
 } from '@/utils/api-preset-export'
+import { translateApiError } from '@/utils/api-error-message'
 
 export interface ApiSettingsSnapshot {
   alias: string
@@ -620,7 +621,7 @@ export const useConnectionStore = defineStore('connection', () => {
       let msg = `保存失败 (${res.status})`
       try {
         const j = (await res.json()) as { error?: string }
-        if (j.error) msg = j.error
+        if (j.error) msg = translateApiError(j.error)
       } catch {
         /*  */
       }

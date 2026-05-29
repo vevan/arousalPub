@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import { ApiErrorCodes } from './api-error-codes.js'
 import fastifyJwt from '@fastify/jwt'
 import { createReadStream, existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
@@ -141,11 +142,14 @@ function verifyJwtPayload(payload: JwtPayload): boolean {
 }
 
 export async function registerAuth(app: FastifyInstance): Promise<void> {
-  initAuthSessions()
+  await initAuthSessions()
 
+  const secretFromEnv = process.env.JWT_SECRET?.trim()
+  if (!secretFromEnv && process.env.NODE_ENV === 'production') {
+    throw new Error('生产环境必须设置 JWT_SECRET 环境变量')
+  }
   const secret =
-    process.env.JWT_SECRET?.trim() ||
-    'arousal-pub-dev-secret-change-in-production'
+    secretFromEnv || 'arousal-pub-dev-secret-change-in-production'
 
   await app.register(fastifyJwt, {
     secret,
@@ -158,11 +162,11 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
       try {
         const payload = await request.jwtVerify<JwtPayload>()
         if (!verifyJwtPayload(payload)) {
-          return reply.status(401).send({ error: '未登录或登录已过期' })
+          return reply.status(401).send({ error: ApiErrorCodes.auth_session_expired })
         }
         touchSessionById(payload.sid)
       } catch {
-        return reply.status(401).send({ error: '未登录或登录已过期' })
+        return reply.status(401).send({ error: ApiErrorCodes.auth_session_expired })
       }
     },
   )
@@ -189,7 +193,7 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
     const { username, password, displayName, rememberDefault } =
       request.body ?? {}
     if (typeof username !== 'string' || typeof password !== 'string') {
-      return reply.status(400).send({ error: '缺少用户名或密码' })
+      return reply.status(400).send({ error: ApiErrorCodes.missing_username_or_password })
     }
     try {
       const user = await completeSeedUserSetup({
@@ -216,7 +220,7 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
     const { username, password, displayName, rememberDefault } =
       request.body ?? {}
     if (typeof username !== 'string' || typeof password !== 'string') {
-      return reply.status(400).send({ error: '缺少用户名或密码' })
+      return reply.status(400).send({ error: ApiErrorCodes.missing_username_or_password })
     }
     try {
       const user = await registerUser({ username, password, displayName })
@@ -233,11 +237,11 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
   }>('/api/auth/login', async (request, reply) => {
     const { username, password, rememberDefault } = request.body ?? {}
     if (typeof username !== 'string' || typeof password !== 'string') {
-      return reply.status(400).send({ error: '缺少用户名或密码' })
+      return reply.status(400).send({ error: ApiErrorCodes.missing_username_or_password })
     }
     const user = await authenticateUser(username, password)
     if (!user) {
-      return reply.status(401).send({ error: '用户名或密码错误' })
+      return reply.status(401).send({ error: ApiErrorCodes.invalid_credentials })
     }
     return issueAuthPair(reply, user, Boolean(rememberDefault))
   })
@@ -247,16 +251,16 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const refreshToken = request.body?.refreshToken
       if (typeof refreshToken !== 'string' || !refreshToken.trim()) {
-        return reply.status(400).send({ error: '缺少 refreshToken' })
+        return reply.status(400).send({ error: ApiErrorCodes.missing_refresh_token })
       }
       const rotated = refreshAuthSession(refreshToken.trim())
       if (!rotated) {
-        return reply.status(401).send({ error: '登录已过期，请重新登录' })
+        return reply.status(401).send({ error: ApiErrorCodes.refresh_token_expired })
       }
       const doc = await readUsersIndex()
       const user = findUserById(doc, rotated.session.userId)
       if (!user || !user.setupComplete) {
-        return reply.status(401).send({ error: '用户不存在或未完成设置' })
+        return reply.status(401).send({ error: ApiErrorCodes.user_not_ready })
       }
       const token = await signAccessToken(
         reply,
@@ -293,7 +297,7 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
       const doc = await readUsersIndex()
       const user = findUserById(doc, payload.sub)
       if (!user || !user.setupComplete) {
-        return reply.status(400).send({ error: '用户无效' })
+        return reply.status(400).send({ error: ApiErrorCodes.invalid_user })
       }
 
       revokeSessionById(payload.sid)
@@ -333,7 +337,7 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
         typeof currentPassword !== 'string' ||
         typeof newPassword !== 'string'
       ) {
-        return reply.status(400).send({ error: '缺少当前密码或新密码' })
+        return reply.status(400).send({ error: ApiErrorCodes.missing_password_fields })
       }
       try {
         await updateUserPassword(
@@ -347,7 +351,7 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
         if (e instanceof UserAccountError) {
           return reply.status(400).send({ error: e.code })
         }
-        return reply.status(400).send({ error: 'password_change_failed' })
+        return reply.status(400).send({ error: ApiErrorCodes.password_change_failed })
       }
     },
   )
@@ -370,7 +374,7 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
       const payload = request.user as JwtPayload
       const confirmUsername = request.body?.confirmUsername
       if (typeof confirmUsername !== 'string') {
-        return reply.status(400).send({ error: '请提供 confirmUsername' })
+        return reply.status(400).send({ error: ApiErrorCodes.missing_confirm_username })
       }
       try {
         await deleteUserAccount(payload.sub, confirmUsername)
@@ -380,7 +384,7 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
         if (e instanceof UserAccountError) {
           return reply.status(400).send({ error: e.code })
         }
-        return reply.status(400).send({ error: 'delete_account_failed' })
+        return reply.status(400).send({ error: ApiErrorCodes.delete_account_failed })
       }
     },
   )
@@ -392,11 +396,11 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
       const payload = request.user as JwtPayload
       const part = await request.file()
       if (!part) {
-        return reply.status(400).send({ error: '缺少文件字段 avatar' })
+        return reply.status(400).send({ error: ApiErrorCodes.missing_avatar_field })
       }
       const buf = await part.toBuffer()
       if (buf.length < 8 || buf[0] !== 0x89) {
-        return reply.status(400).send({ error: '头像须为 PNG' })
+        return reply.status(400).send({ error: ApiErrorCodes.avatar_must_be_png })
       }
       await writeFile(getUserAvatarPath(payload.sub), buf)
       return { ok: true as const }
@@ -409,7 +413,7 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
       const id = request.params.id
       const avatarPath = getUserAvatarPath(id)
       if (!existsSync(avatarPath)) {
-        return reply.status(404).send({ error: '无头像' })
+        return reply.status(404).send({ error: ApiErrorCodes.avatar_not_found })
       }
       return reply
         .type('image/png')
@@ -431,20 +435,20 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
 
     const token = resolveRequestBearerToken(request)
     if (!token) {
-      void reply.status(401).send({ error: '需要登录' })
+      void reply.status(401).send({ error: ApiErrorCodes.auth_required })
       return
     }
 
     try {
       const payload = app.jwt.verify<JwtPayload>(token)
       if (!verifyJwtPayload(payload)) {
-        void reply.status(401).send({ error: '未登录或登录已过期' })
+        void reply.status(401).send({ error: ApiErrorCodes.auth_session_expired })
         return
       }
       touchSessionById(payload.sid)
       runRequestUser(payload.sub, () => done())
     } catch {
-      void reply.status(401).send({ error: '未登录或登录已过期' })
+      void reply.status(401).send({ error: ApiErrorCodes.auth_session_expired })
     }
   })
 }

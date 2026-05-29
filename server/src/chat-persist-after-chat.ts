@@ -1,3 +1,4 @@
+import { ApiErrorCodes } from './api-error-codes.js'
 import type { ChatMessage } from './assemble-prompts.js'
 import { estimateTokens } from './token-count.js'
 import { allocateShortId } from './short-id.js'
@@ -84,15 +85,15 @@ export async function persistTurnAfterModelReply(params: {
   const userText = params.userText.trim()
   const assistantContent = params.assistantContent.trim()
   if (!conversationId || !userText) {
-    return { ok: false, error: '缺少 conversationId 或 userText' }
+    return { ok: false, error: ApiErrorCodes.missing_conversation_or_user_text }
   }
   if (!assistantContent) {
-    return { ok: false, error: '助手正文为空，不落盘' }
+    return { ok: false, error: ApiErrorCodes.assistant_content_empty_no_persist }
   }
 
   const idx = await readConversationIndex(conversationId)
   if (!idx) {
-    return { ok: false, error: '会话不存在' }
+    return { ok: false, error: ApiErrorCodes.conversation_not_found }
   }
 
   const debugPrompt = debugPromptFromIndex(idx, params.assembledMessages)
@@ -127,7 +128,7 @@ export async function persistTurnAfterModelReply(params: {
     const chunk = await readTailChunk(conversationId)
     const turn = chunk?.turns.find((t) => t.turnOrdinal === regenOrd)
     if (!turn) {
-      return { ok: false, error: '未找到再生轮次' }
+      return { ok: false, error: ApiErrorCodes.regenerate_turn_not_found }
     }
     const used = collectChunkEntityIds(chunk)
     const receiveId = allocateShortId(used)
@@ -165,7 +166,7 @@ export async function persistTurnAfterModelReply(params: {
       debugPrompt,
     )
     if (!ok) {
-      return { ok: false, error: '更新轮次失败' }
+      return { ok: false, error: ApiErrorCodes.turn_update_failed }
     }
     return {
       ok: true,
@@ -188,7 +189,7 @@ export async function persistTurnAfterModelReply(params: {
       debugPrompt,
     })
     if (!saved) {
-      return { ok: false, error: '首条落盘失败（可能已存在）' }
+      return { ok: false, error: ApiErrorCodes.first_turn_persist_maybe_exists }
     }
     const rec = saved.chunk.turns[0]?.receives[0]
     return {
@@ -218,7 +219,7 @@ export async function persistTurnAfterModelReply(params: {
     debugPrompt,
   })
   if (!ok) {
-    return { ok: false, error: '追加轮次失败' }
+    return { ok: false, error: ApiErrorCodes.append_turn_failed }
   }
   const chunk = await readTailChunk(conversationId)
   const last = chunk?.turns[chunk.turns.length - 1]

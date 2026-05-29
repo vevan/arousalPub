@@ -44,10 +44,10 @@ export function getServerEpoch(): number {
   return serverEpoch
 }
 
-export function initAuthSessions(): void {
+export async function initAuthSessions(): Promise<void> {
   serverEpoch = Date.now()
   ephemeralByHash.clear()
-  void loadPersistedSessions()
+  await loadPersistedSessions()
 }
 
 async function loadPersistedSessions(): Promise<void> {

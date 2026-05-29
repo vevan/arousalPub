@@ -194,16 +194,16 @@ onUnmounted(() => {
     </div>
   </v-app>
 
-  <AuthView
-    v-else-if="authPhase === 'setup'"
-    mode="setup"
-    @done="enterApp"
-  />
-  <AuthView
-    v-else-if="authPhase === 'login'"
-    mode="login"
-    @done="enterApp"
-  />
+  <v-app v-else-if="authPhase === 'setup'" class="auth-app">
+    <v-main class="auth-app__main d-flex align-center justify-center">
+      <AuthView mode="setup" @done="enterApp" />
+    </v-main>
+  </v-app>
+  <v-app v-else-if="authPhase === 'login'" class="auth-app">
+    <v-main class="auth-app__main d-flex align-center justify-center">
+      <AuthView mode="login" @done="enterApp" />
+    </v-main>
+  </v-app>
 
   <v-app v-else>
     <!-- VNavigationDrawer :width 须为无单位数字（px）；rem/% 等字符串会破坏布局与开关（Vuetify #16705） -->
@@ -562,6 +562,10 @@ onUnmounted(() => {
 
 .main-chat {
   min-height: 0;
+}
+
+.auth-app__main {
+  min-height: 100dvh;
 }
 
 /* ========== AppBar · Tavern × Linear ==========

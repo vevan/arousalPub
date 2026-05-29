@@ -1,6 +1,7 @@
 import type { useConnectionStore } from '@/stores/connection'
 import type { PromptTrigger } from '@/stores/prompts'
 import type { ChatPersistPayload } from '@/types/chat-turn'
+import { translateApiError } from '@/utils/api-error-message'
 
 type ConnectionStore = ReturnType<typeof useConnectionStore>
 
@@ -74,6 +75,7 @@ export async function readSseStream(
   onDelta: (d: { text?: string; reasoning?: string }) => void,
   noStreamMessage: string,
   onCompletionTokens?: (n: number) => void,
+  onPersist?: (persist: ChatPersistPayload) => void,
 ): Promise<void> {
   if (!body) throw new Error(noStreamMessage)
   const reader = body.getReader()
@@ -92,6 +94,7 @@ export async function readSseStream(
       if (data === '[DONE]') continue
       try {
         const j = JSON.parse(data) as {
+          arousal?: { persist?: ChatPersistPayload }
           choices?: {
             delta?: {
               content?: string
@@ -100,6 +103,11 @@ export async function readSseStream(
               thinking?: string
             }
           }[]
+        }
+        const persist = j.arousal?.persist
+        if (persist && typeof persist === 'object' && 'ok' in persist) {
+          onPersist?.(persist)
+          continue
         }
         const ct = completionTokensFromSsePayload(j)
         if (ct) onCompletionTokens?.(ct)
@@ -161,7 +169,11 @@ export async function runChatRequest(options: {
     let msg = text
     try {
       const j = JSON.parse(text) as { detail?: string; error?: string }
-      msg = j.detail || j.error || text
+      if (typeof j.error === 'string' && j.error.trim()) {
+        msg = translateApiError(j.error.trim())
+      } else {
+        msg = j.detail || text
+      }
     } catch {
       /* not JSON */
     }
@@ -184,6 +196,7 @@ export async function runChatRequest(options: {
     let acc = ''
     let accR = ''
     let completionTokens: number | undefined
+    let streamPersist: ChatPersistPayload | undefined
     await readSseStream(
       res.body,
       (d) => {
@@ -196,11 +209,15 @@ export async function runChatRequest(options: {
         completionTokens = n
         options.onCompletionTokens?.(n)
       },
+      (persist) => {
+        streamPersist = persist
+      },
     )
     const reasoning = accR.trim() || undefined
     return {
       content: acc,
       reasoning,
+      persist: streamPersist,
       durationMs: Math.round(performance.now() - startedAt),
       estimatedTokens: streamEstimatedTokens,
       completionTokens,

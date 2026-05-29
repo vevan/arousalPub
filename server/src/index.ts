@@ -1,4 +1,5 @@
 import cors from '@fastify/cors'
+import { ApiErrorCodes } from './api-error-codes.js'
 import multipart from '@fastify/multipart'
 import Fastify from 'fastify'
 import { generateShortId } from './short-id.js'
@@ -89,7 +90,10 @@ import {
 } from './prompts-assemble-preview.js'
 import { persistTurnAfterModelReply } from './chat-persist-after-chat.js'
 import { extractCompletionTokens } from './chat-usage.js'
-import { parseSseDataLine } from './sse-assistant.js'
+import {
+  formatArousalPersistSseLine,
+  parseSseDataLine,
+} from './sse-assistant.js'
 import { isPngBuffer } from './character-png.js'
 import {
   cardFromNewCharacterForm,
@@ -262,7 +266,7 @@ function validateChatMessages(
   messages: unknown,
 ): { ok: true; msgs: ChatMessage[] } | { ok: false; error: string } {
   if (!Array.isArray(messages) || messages.length === 0) {
-    return { ok: false, error: 'messages 必须为非空数组' }
+    return { ok: false, error: ApiErrorCodes.messages_required_nonempty }
   }
   for (const m of messages) {
     if (
@@ -270,7 +274,7 @@ function validateChatMessages(
       typeof (m as ChatMessage).content !== 'string' ||
       !['system', 'user', 'assistant'].includes((m as ChatMessage).role)
     ) {
-      return { ok: false, error: 'messages 项须为 { role, content }' }
+      return { ok: false, error: ApiErrorCodes.messages_item_role_content }
     }
   }
   return { ok: true, msgs: messages as ChatMessage[] }
@@ -297,7 +301,7 @@ app.get('/api/chat/index', async (_request, reply) => {
     return list
   } catch (e) {
     app.log.error(e)
-    return reply.status(500).send({ error: '读取会话列表失败' })
+    return reply.status(500).send({ error: ApiErrorCodes.chat_list_read_failed })
   }
 })
 
@@ -311,14 +315,14 @@ app.post<{ Body: CreateConvBody }>(
   async (request, reply) => {
     const b = request.body
     if (!b?.conversationId || typeof b.conversationId !== 'string') {
-      return reply.status(400).send({ error: '缺少 conversationId' })
+      return reply.status(400).send({ error: ApiErrorCodes.missing_conversation_id })
     }
     if (!isValidConversationId(b.conversationId)) {
-      return reply.status(400).send({ error: 'conversationId 格式无效' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_conversation_id })
     }
     const existing = await readConversationIndex(b.conversationId)
     if (existing) {
-      return reply.status(409).send({ error: '会话已存在' })
+      return reply.status(409).send({ error: ApiErrorCodes.conversation_already_exists })
     }
     try {
       const idx = await createConversationStub(
@@ -328,7 +332,7 @@ app.post<{ Body: CreateConvBody }>(
       return { ok: true as const, index: idx }
     } catch (e) {
       app.log.error(e)
-      return reply.status(500).send({ error: '创建会话失败' })
+      return reply.status(500).send({ error: ApiErrorCodes.conversation_create_failed })
     }
   },
 )
@@ -371,7 +375,7 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
   async (request, reply) => {
     const id = request.params.id
     if (!isValidConversationId(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     const b = request.body ?? {}
     const hasTitle = typeof b.title === 'string'
@@ -401,61 +405,60 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       return reply
         .status(400)
         .send({
-          error:
-            '须提供 title、promptDebug.maxStored、characterIds、promptPresetId、lorebookIds、lorebookSettings、historySettings、memorySettings、userCharacterId 和/或 userName',
+          error: ApiErrorCodes.patch_conversation_requires_field,
         })
     }
     let idx = await readConversationIndex(id)
-    if (!idx) return reply.status(404).send({ error: '会话不存在' })
+    if (!idx) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
     if (hasTitle) {
       const next = await updateConversationTitle(id, b.title as string)
-      if (!next) return reply.status(404).send({ error: '会话不存在' })
+      if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       idx = next
     }
     if (hasPromptDebug) {
       const m = (pd as { maxStored: number }).maxStored
       const next = await updateConversationPromptDebugMax(id, m)
-      if (!next) return reply.status(404).send({ error: '会话不存在' })
+      if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       idx = next
     }
     if (hasCharIds) {
       const raw = b.characterIds as unknown[]
       if (!raw.every((x) => typeof x === 'string')) {
-        return reply.status(400).send({ error: 'characterIds 须为字符串数组' })
+        return reply.status(400).send({ error: ApiErrorCodes.character_ids_must_be_string_array })
       }
       const next = await updateConversationCharacterBindings(id, raw)
-      if (!next) return reply.status(404).send({ error: '会话不存在' })
+      if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       idx = next
     }
     if (hasPromptPreset) {
       const raw = b.promptPresetId
       if (raw !== null && typeof raw !== 'string') {
-        return reply.status(400).send({ error: 'promptPresetId 须为字符串或 null' })
+        return reply.status(400).send({ error: ApiErrorCodes.prompt_preset_id_invalid })
       }
       const next = await updateConversationPromptPresetId(
         id,
         raw === null ? null : (raw as string),
       )
-      if (!next) return reply.status(404).send({ error: '会话不存在' })
+      if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       idx = next
     }
     if (hasLorebookIds) {
       const raw = b.lorebookIds as unknown[]
       if (!raw.every((x) => typeof x === 'string')) {
-        return reply.status(400).send({ error: 'lorebookIds 须为字符串数组' })
+        return reply.status(400).send({ error: ApiErrorCodes.lorebook_ids_must_be_string_array })
       }
       const next = await updateConversationLorebookIds(id, raw)
-      if (!next) return reply.status(404).send({ error: '会话不存在' })
+      if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       idx = next
     }
     if (hasLorebookSettings) {
       const raw = b.lorebookSettings
       if (raw === null) {
         const next = await clearConversationLorebookSettings(id)
-        if (!next) return reply.status(404).send({ error: '会话不存在' })
+        if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
         idx = next
       } else if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-        return reply.status(400).send({ error: 'lorebookSettings 须为对象或 null' })
+        return reply.status(400).send({ error: ApiErrorCodes.lorebook_settings_invalid })
       } else {
         const patch: {
           recursiveEnabled?: boolean
@@ -470,7 +473,7 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
           ) {
             return reply
               .status(400)
-              .send({ error: 'lorebookSettings.recursiveEnabled 须为布尔' })
+              .send({ error: ApiErrorCodes.lorebook_settings_recursive_enabled_boolean })
           }
           patch.recursiveEnabled = (
             raw as { recursiveEnabled: boolean }
@@ -481,7 +484,7 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
           if (typeof d !== 'number' || !Number.isFinite(d)) {
             return reply
               .status(400)
-              .send({ error: 'lorebookSettings.maxRecursionDepth 须为数字' })
+              .send({ error: ApiErrorCodes.lorebook_settings_max_recursion_depth_number })
           }
           patch.maxRecursionDepth = d
         }
@@ -489,7 +492,7 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
           if (typeof (raw as { vectorEnabled?: unknown }).vectorEnabled !== 'boolean') {
             return reply
               .status(400)
-              .send({ error: 'lorebookSettings.vectorEnabled 须为布尔' })
+              .send({ error: ApiErrorCodes.lorebook_settings_vector_enabled_boolean })
           }
           patch.vectorEnabled = (raw as { vectorEnabled: boolean }).vectorEnabled
         }
@@ -498,18 +501,17 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
           if (typeof d !== 'number' || !Number.isFinite(d)) {
             return reply
               .status(400)
-              .send({ error: 'lorebookSettings.vectorTopK 须为数字' })
+              .send({ error: ApiErrorCodes.lorebook_settings_vector_top_k_number })
           }
           patch.vectorTopK = d
         }
         if (Object.keys(patch).length === 0) {
           return reply.status(400).send({
-            error:
-              'lorebookSettings 须含 recursiveEnabled、maxRecursionDepth、vectorEnabled 和/或 vectorTopK',
+            error: ApiErrorCodes.lorebook_settings_requires_field,
           })
         }
         const next = await updateConversationLorebookSettings(id, patch)
-        if (!next) return reply.status(404).send({ error: '会话不存在' })
+        if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
         idx = next
       }
     }
@@ -517,10 +519,10 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       const raw = b.historySettings
       if (raw === null) {
         const next = await clearConversationHistorySettings(id)
-        if (!next) return reply.status(404).send({ error: '会话不存在' })
+        if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
         idx = next
       } else if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-        return reply.status(400).send({ error: 'historySettings 须为对象或 null' })
+        return reply.status(400).send({ error: ApiErrorCodes.history_settings_invalid })
       } else {
         const patch: {
           limitEnabled?: boolean
@@ -530,7 +532,7 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
           if (typeof (raw as { limitEnabled?: unknown }).limitEnabled !== 'boolean') {
             return reply
               .status(400)
-              .send({ error: 'historySettings.limitEnabled 须为布尔' })
+              .send({ error: ApiErrorCodes.history_settings_limit_enabled_boolean })
           }
           patch.limitEnabled = (raw as { limitEnabled: boolean }).limitEnabled
         }
@@ -539,7 +541,7 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
           if (typeof d !== 'number' || !Number.isFinite(d)) {
             return reply
               .status(400)
-              .send({ error: 'historySettings.maxTurns 须为数字' })
+              .send({ error: ApiErrorCodes.history_settings_max_turns_number })
           }
           patch.maxTurns = d
         }
@@ -548,11 +550,11 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
           !Object.prototype.hasOwnProperty.call(patch, 'maxTurns')
         ) {
           return reply.status(400).send({
-            error: 'historySettings 须含 limitEnabled 和/或 maxTurns',
+            error: ApiErrorCodes.history_settings_requires_field,
           })
         }
         const next = await updateConversationHistorySettings(id, patch)
-        if (!next) return reply.status(404).send({ error: '会话不存在' })
+        if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
         idx = next
       }
     }
@@ -560,10 +562,10 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       const raw = b.memorySettings
       if (raw === null) {
         const next = await clearConversationMemorySettings(id)
-        if (!next) return reply.status(404).send({ error: '会话不存在' })
+        if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
         idx = next
       } else if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-        return reply.status(400).send({ error: 'memorySettings 须为对象或 null' })
+        return reply.status(400).send({ error: ApiErrorCodes.memory_settings_invalid })
       } else {
         const patch: {
           memoryEnabled?: boolean
@@ -573,7 +575,7 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
           if (typeof (raw as { memoryEnabled?: unknown }).memoryEnabled !== 'boolean') {
             return reply
               .status(400)
-              .send({ error: 'memorySettings.memoryEnabled 须为布尔' })
+              .send({ error: ApiErrorCodes.memory_settings_memory_enabled_boolean })
           }
           patch.memoryEnabled = (raw as { memoryEnabled: boolean }).memoryEnabled
         }
@@ -582,7 +584,7 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
           if (typeof d !== 'number' || !Number.isFinite(d)) {
             return reply
               .status(400)
-              .send({ error: 'memorySettings.memoryTopK 须为数字' })
+              .send({ error: ApiErrorCodes.memory_settings_memory_top_k_number })
           }
           patch.memoryTopK = d
         }
@@ -591,36 +593,36 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
           !Object.prototype.hasOwnProperty.call(patch, 'memoryTopK')
         ) {
           return reply.status(400).send({
-            error: 'memorySettings 须含 memoryEnabled 和/或 memoryTopK',
+            error: ApiErrorCodes.memory_settings_requires_field,
           })
         }
         const next = await updateConversationMemorySettings(id, patch)
-        if (!next) return reply.status(404).send({ error: '会话不存在' })
+        if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
         idx = next
       }
     }
     if (hasUserCharacterId) {
       const raw = b.userCharacterId
       if (raw !== null && typeof raw !== 'string') {
-        return reply.status(400).send({ error: 'userCharacterId 须为字符串或 null' })
+        return reply.status(400).send({ error: ApiErrorCodes.user_character_id_invalid })
       }
       const next = await updateConversationUserCharacterId(
         id,
         raw === null ? null : (raw as string),
       )
-      if (!next) return reply.status(404).send({ error: '会话不存在' })
+      if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       idx = next
     }
     if (hasUserName) {
       const raw = b.userName
       if (raw !== null && typeof raw !== 'string') {
-        return reply.status(400).send({ error: 'userName 须为字符串或 null' })
+        return reply.status(400).send({ error: ApiErrorCodes.user_name_invalid })
       }
       const next = await updateConversationUserName(
         id,
         raw === null ? null : (raw as string),
       )
-      if (!next) return reply.status(404).send({ error: '会话不存在' })
+      if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       idx = next
     }
     return { ok: true as const, index: idx }
@@ -632,17 +634,17 @@ app.delete<{ Params: { id: string } }>(
   async (request, reply) => {
     const id = request.params.id
     if (!isValidConversationId(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     try {
       const ok = await deleteConversation(id)
       if (!ok) {
-        return reply.status(404).send({ error: '会话不存在或删除失败' })
+        return reply.status(404).send({ error: ApiErrorCodes.conversation_delete_failed })
       }
       return { ok: true as const }
     } catch (e) {
       app.log.error(e)
-      return reply.status(500).send({ error: '删除会话失败' })
+      return reply.status(500).send({ error: ApiErrorCodes.conversation_delete_error })
     }
   },
 )
@@ -657,11 +659,11 @@ app.post<{ Params: { id: string }; Body: OpeningTurnBody }>(
   async (request, reply) => {
     const id = request.params.id
     if (!isValidConversationId(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     const b = request.body ?? {}
     if (!Array.isArray(b.receives) || b.receives.length === 0) {
-      return reply.status(400).send({ error: 'receives 须为非空数组' })
+      return reply.status(400).send({ error: ApiErrorCodes.receives_required_nonempty })
     }
     const idxForMacro = await readConversationIndex(id)
     const macroChars: { name?: string }[] = []
@@ -684,11 +686,11 @@ app.post<{ Params: { id: string }; Body: OpeningTurnBody }>(
     const receives: TurnReceive[] = []
     for (const raw of b.receives) {
       if (!raw || typeof raw !== 'object') {
-        return reply.status(400).send({ error: 'receives 项格式错误' })
+        return reply.status(400).send({ error: ApiErrorCodes.receives_item_invalid })
       }
       const content = raw.content
       if (typeof content !== 'string' || !content.trim()) {
-        return reply.status(400).send({ error: 'receives.content 须为非空字符串' })
+        return reply.status(400).send({ error: ApiErrorCodes.receives_content_required })
       }
       const rec: TurnReceive = {
         id: typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : generateShortId(),
@@ -711,16 +713,16 @@ app.post<{ Params: { id: string }; Body: OpeningTurnBody }>(
       })
       if (!result) {
         const idx = await readConversationIndex(id)
-        if (!idx) return reply.status(404).send({ error: '会话不存在' })
+        if (!idx) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
         if (idx.headChunkFile) {
-          return reply.status(409).send({ error: '首条已落盘' })
+          return reply.status(409).send({ error: ApiErrorCodes.first_turn_already_saved })
         }
-        return reply.status(500).send({ error: '开场落盘失败' })
+        return reply.status(500).send({ error: ApiErrorCodes.opening_persist_failed })
       }
       return { ok: true as const, index: result.index }
     } catch (e) {
       app.log.error(e)
-      return reply.status(500).send({ error: '写入开场失败' })
+      return reply.status(500).send({ error: ApiErrorCodes.opening_write_failed })
     }
   },
 )
@@ -730,6 +732,9 @@ interface FirstTurnBody {
   assistantContent: string
   assistantReasoning?: string
   model?: string
+  durationMs?: number
+  estimatedTokens?: number
+  completionTokens?: number
   /** 与本次请求 /api/chat 的 messages 一致，写入 chat-prompt.json */
   debugPrompt?: unknown
 }
@@ -739,43 +744,62 @@ app.post<{ Params: { id: string }; Body: FirstTurnBody }>(
   async (request, reply) => {
     const id = request.params.id
     if (!isValidConversationId(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     const b = request.body
     if (!b || typeof b.userContent !== 'string' || !b.userContent.trim()) {
-      return reply.status(400).send({ error: '缺少 userContent' })
+      return reply.status(400).send({ error: ApiErrorCodes.missing_user_content })
     }
     if (
       typeof b.assistantContent !== 'string' ||
       !b.assistantContent.trim()
     ) {
-      return reply.status(400).send({ error: '缺少 assistantContent' })
+      return reply.status(400).send({ error: ApiErrorCodes.missing_assistant_content })
     }
     try {
       const ar =
         typeof b.assistantReasoning === 'string'
           ? b.assistantReasoning.trim()
           : ''
+      const durationMs =
+        typeof b.durationMs === 'number' && Number.isFinite(b.durationMs)
+          ? Math.round(b.durationMs)
+          : undefined
+      const estimatedTokens =
+        typeof b.estimatedTokens === 'number' &&
+        Number.isFinite(b.estimatedTokens) &&
+        b.estimatedTokens > 0
+          ? Math.round(b.estimatedTokens)
+          : undefined
+      const completionTokens =
+        typeof b.completionTokens === 'number' &&
+        Number.isFinite(b.completionTokens) &&
+        b.completionTokens > 0
+          ? Math.round(b.completionTokens)
+          : undefined
       const result = await saveFirstTurn({
         conversationId: id,
         userText: b.userContent.trim(),
         assistantText: b.assistantContent.trim(),
         reasoning: ar || undefined,
         model: typeof b.model === 'string' ? b.model : undefined,
+        durationMs,
+        estimatedTokens,
+        completionTokens,
         debugPrompt: b.debugPrompt,
       })
       if (!result) {
         const idx = await readConversationIndex(id)
-        if (!idx) return reply.status(404).send({ error: '会话不存在' })
+        if (!idx) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
         if (idx.headChunkFile) {
-          return reply.status(409).send({ error: '首条已落盘' })
+          return reply.status(409).send({ error: ApiErrorCodes.first_turn_already_saved })
         }
-        return reply.status(500).send({ error: '落盘失败' })
+        return reply.status(500).send({ error: ApiErrorCodes.persist_failed })
       }
       return { ok: true as const, index: result.index }
     } catch (e) {
       app.log.error(e)
-      return reply.status(500).send({ error: '写入对话失败' })
+      return reply.status(500).send({ error: ApiErrorCodes.first_turn_write_failed })
     }
   },
 )
@@ -800,23 +824,23 @@ app.patch<{
   async (request, reply) => {
     const id = request.params.id
     if (!isValidConversationId(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     const ord = Number.parseInt(request.params.turnOrdinal, 10)
     if (!Number.isInteger(ord) || ord < 0) {
-      return reply.status(400).send({ error: '无效 turnOrdinal' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_turn_ordinal })
     }
     const b = request.body ?? {}
     if (typeof b.userText !== 'string') {
-      return reply.status(400).send({ error: 'userText 须为字符串' })
+      return reply.status(400).send({ error: ApiErrorCodes.user_text_must_be_string })
     }
     if (!Array.isArray(b.receives) || b.receives.length === 0) {
-      return reply.status(400).send({ error: 'receives 须为非空数组' })
+      return reply.status(400).send({ error: ApiErrorCodes.receives_required_nonempty })
     }
     const mapped: TurnReceive[] = []
     for (const r of b.receives) {
       if (!r || typeof r !== 'object') {
-        return reply.status(400).send({ error: 'receives 项格式错误' })
+        return reply.status(400).send({ error: ApiErrorCodes.receives_item_invalid })
       }
       const o = r as {
         id?: unknown
@@ -827,7 +851,7 @@ app.patch<{
         completionTokens?: unknown
       }
       if (typeof o.id !== 'string' || typeof o.content !== 'string') {
-        return reply.status(400).send({ error: 'receives 项须含 id、content 字符串' })
+        return reply.status(400).send({ error: ApiErrorCodes.receives_item_id_content_required })
       }
       const rec: TurnReceive = { id: o.id, content: o.content }
       if (typeof o.reasoning === 'string' && o.reasoning.length > 0) {
@@ -859,7 +883,7 @@ app.patch<{
       mapped.push(rec)
     }
     if (typeof b.activeReceiveIndex !== 'number' || !Number.isInteger(b.activeReceiveIndex)) {
-      return reply.status(400).send({ error: 'activeReceiveIndex 须为整数' })
+      return reply.status(400).send({ error: ApiErrorCodes.active_receive_index_must_be_integer })
     }
     try {
       const ok = await updateTurnContentInTailChunk(
@@ -871,12 +895,12 @@ app.patch<{
         b.debugPrompt,
       )
       if (!ok) {
-        return reply.status(404).send({ error: '未找到该轮或尚无落盘 chunk' })
+        return reply.status(404).send({ error: ApiErrorCodes.turn_chunk_not_found })
       }
       return { ok: true as const }
     } catch (e) {
       app.log.error(e)
-      return reply.status(500).send({ error: '更新失败' })
+      return reply.status(500).send({ error: ApiErrorCodes.turn_update_failed })
     }
   },
 )
@@ -886,21 +910,21 @@ app.delete<{ Params: { id: string; turnOrdinal: string } }>(
   async (request, reply) => {
     const id = request.params.id
     if (!isValidConversationId(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     const ord = Number.parseInt(request.params.turnOrdinal, 10)
     if (!Number.isInteger(ord) || ord < 0) {
-      return reply.status(400).send({ error: '无效 turnOrdinal' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_turn_ordinal })
     }
     try {
       const ok = await removeTurnAtOrdinalInTailChunk(id, ord)
       if (!ok) {
-        return reply.status(404).send({ error: '无法删除该轮' })
+        return reply.status(404).send({ error: ApiErrorCodes.turn_delete_not_found })
       }
       return { ok: true as const }
     } catch (e) {
       app.log.error(e)
-      return reply.status(500).send({ error: '删除失败' })
+      return reply.status(500).send({ error: ApiErrorCodes.turn_delete_failed })
     }
   },
 )
@@ -910,7 +934,7 @@ app.get<{ Params: { id: string } }>(
   async (request, reply) => {
     const id = request.params.id
     if (!isValidConversationId(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     const chunk = await readTailChunk(id)
     if (!chunk?.turns?.length) {
@@ -994,12 +1018,12 @@ app.post<{ Params: { id: string }; Body: AssembleMessagesBody }>(
   async (request, reply) => {
     const id = request.params.id
     if (!isValidConversationId(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     const b = request.body ?? {}
     const promptsDoc = await readPromptsDocument()
     if (!promptsDoc) {
-      return reply.status(500).send({ error: '提示词数据不可用' })
+      return reply.status(500).send({ error: ApiErrorCodes.prompts_unavailable })
     }
     const built = await buildConversationOutboundMessages({
       conversationId: id,
@@ -1030,20 +1054,20 @@ app.post<{ Params: { id: string }; Body: AppendTurnBody }>(
   async (request, reply) => {
     const id = request.params.id
     if (!isValidConversationId(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     const b = request.body
     if (!b || typeof b.userText !== 'string' || !b.userText.trim()) {
-      return reply.status(400).send({ error: '缺少 userText' })
+      return reply.status(400).send({ error: ApiErrorCodes.missing_user_text })
     }
     if (!Array.isArray(b.receives) || b.receives.length === 0) {
-      return reply.status(400).send({ error: 'receives 须为非空数组' })
+      return reply.status(400).send({ error: ApiErrorCodes.receives_required_nonempty })
     }
     const mapped: TurnReceive[] = []
     for (let i = 0; i < b.receives.length; i++) {
       const r = b.receives[i]
       if (!r || typeof r.id !== 'string' || typeof r.content !== 'string') {
-        return reply.status(400).send({ error: 'receives 项格式错误' })
+        return reply.status(400).send({ error: ApiErrorCodes.receives_item_invalid })
       }
       const rec: TurnReceive = { id: r.id, content: r.content }
       if (typeof r.reasoning === 'string' && r.reasoning.length > 0) {
@@ -1058,7 +1082,7 @@ app.post<{ Params: { id: string }; Body: AppendTurnBody }>(
       typeof b.activeReceiveIndex !== 'number' ||
       !Number.isInteger(b.activeReceiveIndex)
     ) {
-      return reply.status(400).send({ error: 'activeReceiveIndex 须为整数' })
+      return reply.status(400).send({ error: ApiErrorCodes.active_receive_index_must_be_integer })
     }
     try {
       const ok = await appendConversationTurn({
@@ -1069,12 +1093,12 @@ app.post<{ Params: { id: string }; Body: AppendTurnBody }>(
         debugPrompt: b.debugPrompt,
       })
       if (!ok) {
-        return reply.status(404).send({ error: '会话不存在或尚无尾块' })
+        return reply.status(404).send({ error: ApiErrorCodes.conversation_no_tail_chunk })
       }
       return { ok: true as const }
     } catch (e) {
       app.log.error(e)
-      return reply.status(500).send({ error: '追加轮次失败' })
+      return reply.status(500).send({ error: ApiErrorCodes.append_turn_failed })
     }
   },
 )
@@ -1084,10 +1108,10 @@ app.get<{ Params: { id: string } }>(
   async (request, reply) => {
     const id = request.params.id
     if (!isValidConversationId(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     const idx = await readConversationIndex(id)
-    if (!idx) return reply.status(404).send({ error: '会话不存在' })
+    if (!idx) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
     return idx
   },
 )
@@ -1097,10 +1121,10 @@ app.post<{ Params: { id: string }; Querystring: { stream?: string } }>(
   async (request, reply) => {
     const id = request.params.id
     if (!isValidConversationId(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     const idx = await readConversationIndex(id)
-    if (!idx) return reply.status(404).send({ error: '会话不存在' })
+    if (!idx) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
     const wantStream =
       request.query.stream === '1' || request.query.stream === 'true'
     if (wantStream) {
@@ -1115,7 +1139,7 @@ app.post<{ Params: { id: string }; Querystring: { stream?: string } }>(
       return result
     } catch (e) {
       app.log.error(e)
-      return reply.status(500).send({ ok: false, error: '重建远期记忆索引失败' })
+      return reply.status(500).send({ ok: false, error: ApiErrorCodes.memory_rebuild_failed })
     }
   },
 )
@@ -1126,10 +1150,10 @@ app.get<{ Params: { id: string } }>(
   async (request, reply) => {
     const id = request.params.id
     if (!isValidConversationId(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     const idx = await readConversationIndex(id)
-    if (!idx) return reply.status(404).send({ error: '会话不存在' })
+    if (!idx) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
     const file = await readChatPromptFile(id)
     return file
   },
@@ -1140,7 +1164,7 @@ app.get('/api/user-preferences', async (_request, reply) => {
     return await readUserPreferencesDocument()
   } catch (e) {
     app.log.error(e)
-    return reply.status(500).send({ error: '读取用户偏好失败' })
+    return reply.status(500).send({ error: ApiErrorCodes.user_preferences_read_failed })
   }
 })
 
@@ -1177,7 +1201,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
     const hasEmbed = b.embeddingApi && typeof b.embeddingApi === 'object'
     if (!hasLore && !hasHist && !hasMem && !hasEmbed) {
       return reply.status(400).send({
-        error: '须提供 lorebook、history、memory 和/或 embeddingApi 对象',
+        error: ApiErrorCodes.user_preferences_requires_section,
       })
     }
     try {
@@ -1196,7 +1220,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
           if (typeof b.lorebook!.recursiveEnabled !== 'boolean') {
             return reply
               .status(400)
-              .send({ error: 'lorebook.recursiveEnabled 须为布尔' })
+              .send({ error: ApiErrorCodes.lorebook_recursive_enabled_boolean })
           }
           patch.recursiveEnabled = b.lorebook!.recursiveEnabled
         }
@@ -1205,7 +1229,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
           if (typeof d !== 'number' || !Number.isFinite(d)) {
             return reply
               .status(400)
-              .send({ error: 'lorebook.maxRecursionDepth 须为数字' })
+              .send({ error: ApiErrorCodes.lorebook_max_recursion_depth_number })
           }
           patch.maxRecursionDepth = d
         }
@@ -1213,21 +1237,20 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
           if (typeof b.lorebook!.vectorEnabled !== 'boolean') {
             return reply
               .status(400)
-              .send({ error: 'lorebook.vectorEnabled 须为布尔' })
+              .send({ error: ApiErrorCodes.lorebook_vector_enabled_boolean })
           }
           patch.vectorEnabled = b.lorebook!.vectorEnabled
         }
         if (Object.prototype.hasOwnProperty.call(b.lorebook, 'vectorTopK')) {
           const d = b.lorebook!.vectorTopK
           if (typeof d !== 'number' || !Number.isFinite(d)) {
-            return reply.status(400).send({ error: 'lorebook.vectorTopK 须为数字' })
+            return reply.status(400).send({ error: ApiErrorCodes.lorebook_vector_top_k_number })
           }
           patch.vectorTopK = d
         }
         if (Object.keys(patch).length === 0) {
           return reply.status(400).send({
-            error:
-              'lorebook 须含 recursiveEnabled、maxRecursionDepth、vectorEnabled 和/或 vectorTopK',
+            error: ApiErrorCodes.global_lorebook_requires_field,
           })
         }
         lorebook = await updateGlobalLorebookSettings(patch)
@@ -1241,14 +1264,14 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
           if (typeof b.history!.limitEnabled !== 'boolean') {
             return reply
               .status(400)
-              .send({ error: 'history.limitEnabled 须为布尔' })
+              .send({ error: ApiErrorCodes.history_limit_enabled_boolean })
           }
           patch.limitEnabled = b.history!.limitEnabled
         }
         if (Object.prototype.hasOwnProperty.call(b.history, 'maxTurns')) {
           const d = b.history!.maxTurns
           if (typeof d !== 'number' || !Number.isFinite(d)) {
-            return reply.status(400).send({ error: 'history.maxTurns 须为数字' })
+            return reply.status(400).send({ error: ApiErrorCodes.history_max_turns_number })
           }
           patch.maxTurns = d
         }
@@ -1257,7 +1280,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
           !Object.prototype.hasOwnProperty.call(patch, 'maxTurns')
         ) {
           return reply.status(400).send({
-            error: 'history 须含 limitEnabled 和/或 maxTurns',
+            error: ApiErrorCodes.global_history_requires_field,
           })
         }
         history = await updateGlobalHistorySettings(patch)
@@ -1271,14 +1294,14 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
           if (typeof b.memory!.memoryEnabled !== 'boolean') {
             return reply
               .status(400)
-              .send({ error: 'memory.memoryEnabled 须为布尔' })
+              .send({ error: ApiErrorCodes.memory_enabled_boolean })
           }
           patch.memoryEnabled = b.memory!.memoryEnabled
         }
         if (Object.prototype.hasOwnProperty.call(b.memory, 'memoryTopK')) {
           const d = b.memory!.memoryTopK
           if (typeof d !== 'number' || !Number.isFinite(d)) {
-            return reply.status(400).send({ error: 'memory.memoryTopK 须为数字' })
+            return reply.status(400).send({ error: ApiErrorCodes.memory_top_k_number })
           }
           patch.memoryTopK = d
         }
@@ -1287,7 +1310,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
           !Object.prototype.hasOwnProperty.call(patch, 'memoryTopK')
         ) {
           return reply.status(400).send({
-            error: 'memory 须含 memoryEnabled 和/或 memoryTopK',
+            error: ApiErrorCodes.global_memory_requires_field,
           })
         }
         memory = await updateGlobalMemorySettings(patch)
@@ -1309,20 +1332,20 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         } = {}
         if (Object.prototype.hasOwnProperty.call(raw, 'baseUrl')) {
           if (typeof raw.baseUrl !== 'string') {
-            return reply.status(400).send({ error: 'embeddingApi.baseUrl 须为字符串' })
+            return reply.status(400).send({ error: ApiErrorCodes.embedding_api_base_url_string })
           }
           patch.baseUrl = raw.baseUrl
         }
         if (Object.prototype.hasOwnProperty.call(raw, 'apiKey')) {
           if (typeof raw.apiKey !== 'string') {
-            return reply.status(400).send({ error: 'embeddingApi.apiKey 须为字符串' })
+            return reply.status(400).send({ error: ApiErrorCodes.embedding_api_api_key_string })
           }
           patch.apiKey = raw.apiKey
         }
         if (Object.prototype.hasOwnProperty.call(raw, 'apiKeyId')) {
           const kid = raw.apiKeyId
           if (kid !== null && typeof kid !== 'string') {
-            return reply.status(400).send({ error: 'embeddingApi.apiKeyId 须为字符串或 null' })
+            return reply.status(400).send({ error: ApiErrorCodes.embedding_api_api_key_id_invalid })
           }
           patch.apiKeyId = kid
         }
@@ -1330,7 +1353,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
           if (typeof raw.embeddingModel !== 'string') {
             return reply
               .status(400)
-              .send({ error: 'embeddingApi.embeddingModel 须为字符串' })
+              .send({ error: ApiErrorCodes.embedding_api_embedding_model_string })
           }
           patch.embeddingModel = raw.embeddingModel
         }
@@ -1339,15 +1362,14 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
           if (dim !== null && typeof dim !== 'number') {
             return reply
               .status(400)
-              .send({ error: 'embeddingApi.embeddingDimensions 须为数字或 null' })
+              .send({ error: ApiErrorCodes.embedding_api_embedding_dimensions_invalid })
           }
           patch.embeddingDimensions =
             dim === null ? null : normalizeEmbeddingDimensions(dim)
         }
         if (Object.keys(patch).length === 0) {
           return reply.status(400).send({
-            error:
-              'embeddingApi 须含 baseUrl、apiKey、apiKeyId、embeddingModel 和/或 embeddingDimensions',
+            error: ApiErrorCodes.global_embedding_api_requires_field,
           })
         }
         embeddingApi = await updateGlobalEmbeddingApiSettings(patch)
@@ -1363,7 +1385,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
       }
     } catch (e) {
       app.log.error(e)
-      return reply.status(500).send({ error: '保存用户偏好失败' })
+      return reply.status(500).send({ error: ApiErrorCodes.user_preferences_save_failed })
     }
   },
 )
@@ -1417,7 +1439,7 @@ app.post<{ Body: EmbeddingTestBody }>(
       }
     } catch (e) {
       app.log.error(e)
-      return reply.status(500).send({ ok: false, error: 'Embedding 测试失败' })
+      return reply.status(500).send({ ok: false, error: ApiErrorCodes.embedding_test_failed })
     }
   },
 )
@@ -1428,7 +1450,7 @@ app.get('/api/settings', async (_request, reply) => {
     return data ?? null
   } catch (e) {
     app.log.error(e)
-    return reply.status(500).send({ error: '读取设置失败' })
+    return reply.status(500).send({ error: ApiErrorCodes.settings_read_failed })
   }
 })
 
@@ -1437,22 +1459,22 @@ type SettingsPutBody = Pick<ApiSettingsDocument, 'activePresetId' | 'presets'>
 app.put<{ Body: SettingsPutBody }>('/api/settings', async (request, reply) => {
   const b = request.body
   if (!b || typeof b !== 'object') {
-    return reply.status(400).send({ error: '无效请求体' })
+    return reply.status(400).send({ error: ApiErrorCodes.invalid_request_body })
   }
   if (!Array.isArray(b.presets)) {
-    return reply.status(400).send({ error: '缺少 presets 数组' })
+    return reply.status(400).send({ error: ApiErrorCodes.missing_presets_array })
   }
   try {
     assertValidPresets(b.presets as ApiPreset[])
   } catch (e) {
     return reply.status(400).send({
-      error: e instanceof Error ? e.message : '预设校验失败',
+      error: ApiErrorCodes.preset_validation_failed,
     })
   }
   const activePresetId =
     typeof b.activePresetId === 'string' ? b.activePresetId : ''
   if (!(b.presets as ApiPreset[]).some((p) => p.id === activePresetId)) {
-    return reply.status(400).send({ error: 'activePresetId 与 presets 不匹配' })
+    return reply.status(400).send({ error: ApiErrorCodes.active_preset_id_mismatch })
   }
 
   const savedAt = new Date().toISOString()
@@ -1467,7 +1489,7 @@ app.put<{ Body: SettingsPutBody }>('/api/settings', async (request, reply) => {
     await writeApiSettingsToFile(doc)
   } catch (e) {
     app.log.error(e)
-    return reply.status(500).send({ error: '写入设置失败' })
+    return reply.status(500).send({ error: ApiErrorCodes.settings_write_failed })
   }
 
   return { ok: true as const, savedAt }
@@ -1479,7 +1501,7 @@ app.get('/api/prompts', async (_request, reply) => {
     return data ?? null
   } catch (e) {
     app.log.error(e)
-    return reply.status(500).send({ error: '读取提示词失败' })
+    return reply.status(500).send({ error: ApiErrorCodes.prompts_read_failed })
   }
 })
 
@@ -1489,7 +1511,7 @@ app.put('/api/prompts', async (request, reply) => {
     validated = assertValidPromptsPayload(request.body)
   } catch (e) {
     return reply.status(400).send({
-      error: e instanceof Error ? e.message : '提示词校验失败',
+      error: ApiErrorCodes.prompts_validation_failed,
     })
   }
   const savedAt = new Date().toISOString()
@@ -1503,7 +1525,7 @@ app.put('/api/prompts', async (request, reply) => {
     await writePromptsDocument(doc)
   } catch (e) {
     app.log.error(e)
-    return reply.status(500).send({ error: '写入提示词失败' })
+    return reply.status(500).send({ error: ApiErrorCodes.prompts_write_failed })
   }
   return { ok: true as const, savedAt }
 })
@@ -1514,7 +1536,7 @@ app.post<{ Body: PromptsAssemblePreviewBody }>(
     try {
       const doc = await readPromptsDocument()
       if (!doc) {
-        return reply.status(500).send({ error: '提示词数据不可用' })
+        return reply.status(500).send({ error: ApiErrorCodes.prompts_unavailable })
       }
       const result = runPromptsAssemblePreview(doc, request.body ?? {})
       if ('error' in result) {
@@ -1523,7 +1545,7 @@ app.post<{ Body: PromptsAssemblePreviewBody }>(
       return result
     } catch (e) {
       app.log.error(e)
-      return reply.status(500).send({ error: '预览组装失败' })
+      return reply.status(500).send({ error: ApiErrorCodes.prompts_preview_failed })
     }
   },
 )
@@ -1540,7 +1562,7 @@ app.get('/api/lorebooks', async (_request, reply) => {
     )
   } catch (e) {
     app.log.error(e)
-    return reply.status(500).send({ error: '读取世界书失败' })
+    return reply.status(500).send({ error: ApiErrorCodes.lorebooks_read_failed })
   }
 })
 
@@ -1550,7 +1572,7 @@ app.put('/api/lorebooks', async (request, reply) => {
     validated = assertValidLorebooksPayload(request.body)
   } catch (e) {
     return reply.status(400).send({
-      error: e instanceof Error ? e.message : '世界书校验失败',
+      error: ApiErrorCodes.lorebooks_validation_failed,
     })
   }
   const savedAt = new Date().toISOString()
@@ -1564,7 +1586,7 @@ app.put('/api/lorebooks', async (request, reply) => {
     scheduleLorebookVectorReindex(validated.lorebooks)
   } catch (e) {
     app.log.error(e)
-    return reply.status(500).send({ error: '写入世界书失败' })
+    return reply.status(500).send({ error: ApiErrorCodes.lorebooks_write_failed })
   }
   return { ok: true as const, savedAt }
 })
@@ -1574,15 +1596,15 @@ app.get<{ Params: { id: string } }>(
   async (request, reply) => {
     const id = request.params.id
     if (!LOREBOOK_ID_RE.test(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     try {
       const lb = await readLorebookById(id)
-      if (!lb) return reply.status(404).send({ error: '世界书不存在' })
+      if (!lb) return reply.status(404).send({ error: ApiErrorCodes.lorebook_not_found })
       return lb
     } catch (e) {
       app.log.error(e)
-      return reply.status(500).send({ error: '读取世界书失败' })
+      return reply.status(500).send({ error: ApiErrorCodes.lorebooks_read_failed })
     }
   },
 )
@@ -1606,7 +1628,7 @@ app.get('/api/characters', async (request, reply) => {
     return { items, total, offset, limit, hasMore }
   } catch (e) {
     app.log.error(e)
-    return reply.status(500).send({ error: '读取角色库失败' })
+    return reply.status(500).send({ error: ApiErrorCodes.characters_read_failed })
   }
 })
 
@@ -1617,7 +1639,7 @@ app.post('/api/characters/import', async (request, reply) => {
     return { ok: true as const, id: doc.id }
   } catch (e) {
     return reply.status(400).send({
-      error: e instanceof Error ? e.message : '导入失败',
+      error: ApiErrorCodes.character_import_failed,
     })
   }
 })
@@ -1626,14 +1648,14 @@ app.post('/api/characters/import-png', async (request, reply) => {
   try {
     const file = await request.file()
     if (!file) {
-      return reply.status(400).send({ error: '缺少文件字段（multipart 字段名 file）' })
+      return reply.status(400).send({ error: ApiErrorCodes.missing_file_field })
     }
     const buf = await file.toBuffer()
     const doc = await importCharacterCardPng(buf)
     return { ok: true as const, id: doc.id }
   } catch (e) {
     return reply.status(400).send({
-      error: e instanceof Error ? e.message : '导入 PNG 失败',
+      error: ApiErrorCodes.character_import_png_failed,
     })
   }
 })
@@ -1654,20 +1676,20 @@ app.post('/api/characters', async (request, reply) => {
         }
       }
       if (!payload.trim()) {
-        return reply.status(400).send({ error: 'multipart 须包含 payload 字段（JSON 字符串）' })
+        return reply.status(400).send({ error: ApiErrorCodes.multipart_payload_required })
       }
       let body: unknown
       try {
         body = JSON.parse(payload) as unknown
       } catch {
-        return reply.status(400).send({ error: 'payload 须为合法 JSON' })
+        return reply.status(400).send({ error: ApiErrorCodes.payload_invalid_json })
       }
       const card = cardFromNewCharacterForm(body)
       const doc = await importCharacterCardWithPortrait(card, portraitBuf)
       return { ok: true as const, id: doc.id }
     } catch (e) {
       return reply.status(400).send({
-        error: e instanceof Error ? e.message : '创建失败',
+        error: ApiErrorCodes.character_create_failed,
       })
     }
   }
@@ -1677,7 +1699,7 @@ app.post('/api/characters', async (request, reply) => {
     return { ok: true as const, id: doc.id }
   } catch (e) {
     return reply.status(400).send({
-      error: e instanceof Error ? e.message : '创建失败',
+      error: ApiErrorCodes.character_create_failed,
     })
   }
 })
@@ -1687,10 +1709,10 @@ app.get<{ Params: { id: string } }>(
   async (request, reply) => {
     const id = request.params.id
     if (!isValidShortId(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     const buf = await readCharacterPngBuffer(id)
-    if (!buf) return reply.status(404).send({ error: '角色不存在或无 PNG' })
+    if (!buf) return reply.status(404).send({ error: ApiErrorCodes.character_not_found_or_no_png })
     return reply
       .header('Content-Type', 'image/png')
       .header('Cache-Control', 'private, max-age=60')
@@ -1703,26 +1725,26 @@ app.post<{ Params: { id: string } }>(
   async (request, reply) => {
     const id = request.params.id
     if (!isValidShortId(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     try {
       const file = await request.file()
       if (!file) {
         return reply
           .status(400)
-          .send({ error: '缺少文件字段（multipart 字段名 portrait）' })
+          .send({ error: ApiErrorCodes.missing_portrait_field })
       }
       const buf = await file.toBuffer()
       if (!isPngBuffer(buf)) {
-        return reply.status(400).send({ error: '须上传 PNG 图像' })
+        return reply.status(400).send({ error: ApiErrorCodes.png_image_required })
       }
       const doc = await updateCharacterPortrait(id, buf)
-      if (!doc) return reply.status(404).send({ error: '角色不存在' })
+      if (!doc) return reply.status(404).send({ error: ApiErrorCodes.character_not_found })
       return doc
     } catch (e) {
       app.log.error(e)
       return reply.status(400).send({
-        error: e instanceof Error ? e.message : '上传立绘失败',
+        error: ApiErrorCodes.portrait_upload_failed,
       })
     }
   },
@@ -1733,7 +1755,7 @@ app.patch<{ Params: { id: string }; Body: { card?: unknown } }>(
   async (request, reply) => {
     const id = request.params.id
     if (!isValidShortId(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     const body = request.body as { card?: unknown }
     if (
@@ -1745,18 +1767,18 @@ app.patch<{ Params: { id: string }; Body: { card?: unknown } }>(
     ) {
       return reply
         .status(400)
-        .send({ error: '请求体须为 JSON 对象，且包含对象字段 card' })
+        .send({ error: ApiErrorCodes.card_body_invalid })
     }
     try {
       const doc = await updateCharacterDocument(
         id,
         body.card as Record<string, unknown>,
       )
-      if (!doc) return reply.status(404).send({ error: '角色不存在' })
+      if (!doc) return reply.status(404).send({ error: ApiErrorCodes.character_not_found })
       return doc
     } catch (e) {
       app.log.error(e)
-      return reply.status(500).send({ error: '更新角色失败' })
+      return reply.status(500).send({ error: ApiErrorCodes.character_update_failed })
     }
   },
 )
@@ -1766,10 +1788,10 @@ app.get<{ Params: { id: string } }>(
   async (request, reply) => {
     const id = request.params.id
     if (!isValidShortId(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     const doc = await readCharacterDocument(id)
-    if (!doc) return reply.status(404).send({ error: '角色不存在' })
+    if (!doc) return reply.status(404).send({ error: ApiErrorCodes.character_not_found })
     return doc
   },
 )
@@ -1779,10 +1801,10 @@ app.delete<{ Params: { id: string } }>(
   async (request, reply) => {
     const id = request.params.id
     if (!isValidShortId(id)) {
-      return reply.status(400).send({ error: '无效 id' })
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     const ok = await deleteCharacterFile(id)
-    if (!ok) return reply.status(404).send({ error: '角色不存在' })
+    if (!ok) return reply.status(404).send({ error: ApiErrorCodes.character_not_found })
     return { ok: true as const }
   },
 )
@@ -1793,7 +1815,7 @@ app.get('/api/api-keys', async (_request, reply) => {
     return data ?? null
   } catch (e) {
     app.log.error(e)
-    return reply.status(500).send({ error: '读取 API Keys 失败' })
+    return reply.status(500).send({ error: ApiErrorCodes.api_keys_read_failed })
   }
 })
 
@@ -1803,7 +1825,7 @@ app.put('/api/api-keys', async (request, reply) => {
     validated = assertValidApiKeysPayload(request.body)
   } catch (e) {
     return reply.status(400).send({
-      error: e instanceof Error ? e.message : 'API Keys 校验失败',
+      error: ApiErrorCodes.api_keys_validation_failed,
     })
   }
   const savedAt = new Date().toISOString()
@@ -1816,7 +1838,7 @@ app.put('/api/api-keys', async (request, reply) => {
     await writeApiKeysDocument(doc)
   } catch (e) {
     app.log.error(e)
-    return reply.status(500).send({ error: '写入 API Keys 失败' })
+    return reply.status(500).send({ error: ApiErrorCodes.api_keys_write_failed })
   }
   return { ok: true as const, savedAt }
 })
@@ -1825,7 +1847,7 @@ app.post<{ Body: ModelsListBody }>('/api/models', async (request, reply) => {
   const b = request.body ?? ({} as ModelsListBody)
   const apiKey = b.apiKey
   if (!apiKey || typeof apiKey !== 'string') {
-    return reply.status(400).send({ error: '缺少 apiKey' })
+    return reply.status(400).send({ error: ApiErrorCodes.missing_api_key })
   }
   const baseUrl = normalizeBaseUrl(b.baseUrl)
   const url = `${baseUrl}/models`
@@ -1844,7 +1866,7 @@ app.post<{ Body: ModelsListBody }>('/api/models', async (request, reply) => {
       'models list upstream error',
     )
     return reply.status(502).send({
-      error: '获取模型列表失败',
+      error: ApiErrorCodes.models_list_failed,
       status: upstream.status,
       detail: text.slice(0, 1500),
     })
@@ -1854,7 +1876,7 @@ app.post<{ Body: ModelsListBody }>('/api/models', async (request, reply) => {
   try {
     json = JSON.parse(text) as unknown
   } catch {
-    return reply.status(502).send({ error: '上游返回非 JSON' })
+    return reply.status(502).send({ error: ApiErrorCodes.upstream_non_json })
   }
 
   const models = extractModelIds(json).sort((a, b) =>
@@ -1869,16 +1891,16 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   const baseUrl = normalizeBaseUrl(body.baseUrl)
 
   if (!apiKey || typeof apiKey !== 'string') {
-    return reply.status(400).send({ error: '缺少 apiKey' })
+    return reply.status(400).send({ error: ApiErrorCodes.missing_api_key })
   }
   if (!model || typeof model !== 'string') {
-    return reply.status(400).send({ error: '缺少 model' })
+    return reply.status(400).send({ error: ApiErrorCodes.missing_model })
   }
 
   const convId =
     typeof body.conversationId === 'string' ? body.conversationId.trim() : ''
   if (convId && !isValidConversationId(convId)) {
-    return reply.status(400).send({ error: 'conversationId 格式无效' })
+    return reply.status(400).send({ error: ApiErrorCodes.invalid_conversation_id })
   }
   const userText = typeof body.userText === 'string' ? body.userText : ''
   let messages: ChatMessage[]
@@ -1886,7 +1908,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   if (convId) {
     const promptsDoc = await readPromptsDocument()
     if (!promptsDoc) {
-      return reply.status(500).send({ error: '提示词数据不可用' })
+      return reply.status(500).send({ error: ApiErrorCodes.prompts_unavailable })
     }
     const built = await buildConversationOutboundMessages({
       conversationId: convId,
@@ -1951,7 +1973,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
       'upstream error',
     )
     return reply.status(502).send({
-      error: '上游 API 错误',
+      error: ApiErrorCodes.upstream_api_error,
       status: upstream.status,
       detail: text.slice(0, 2000),
     })
@@ -2012,10 +2034,17 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
             if (!persist.ok) {
               request.log.warn({ persist }, 'stream persist failed')
             }
+            this.push(formatArousalPersistSseLine(persist))
             cb()
           })
           .catch((err) => {
             request.log.error(err, 'stream persist error')
+            this.push(
+              formatArousalPersistSseLine({
+                ok: false,
+                error: ApiErrorCodes.persist_error,
+              }),
+            )
             cb()
           })
       },
@@ -2032,7 +2061,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   try {
     data = JSON.parse(text) as Record<string, unknown>
   } catch {
-    return reply.status(502).send({ error: '上游返回非 JSON' })
+    return reply.status(502).send({ error: ApiErrorCodes.upstream_non_json })
   }
 
   const choices = (data as { choices?: unknown }).choices

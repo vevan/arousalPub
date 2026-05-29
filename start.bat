@@ -5,7 +5,8 @@ if not exist node_modules (
   call npm install
 )
 echo.
-echo 启动完成后在浏览器打开 http://localhost:3366/ （须保持本窗口运行）
+for /f "delims=" %%u in ('node scripts/print-dev-url.mjs') do set DEV_URL=%%u
+echo 启动完成后在浏览器打开 %DEV_URL% （须保持本窗口运行；端口见 config.json）
 echo.
 call npm run dev
 pause

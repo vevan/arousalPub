@@ -42,7 +42,7 @@ import {
 } from './chat-storage.js'
 import { reindexConversationMemory } from './memory-index.js'
 import { startConversationMemoryReindexSse } from './memory-reindex-sse.js'
-import { ensureDataSkeleton } from './config.js'
+import { ensureDataSkeleton, resolveServerPort } from './config.js'
 import {
   readUserPreferencesDocument,
   updateGlobalHistorySettings,
@@ -1511,7 +1511,13 @@ app.post<{ Body: PromptsAssemblePreviewBody }>(
 app.get('/api/lorebooks', async (_request, reply) => {
   try {
     const data = await readLorebooksDocument()
-    return data ?? null
+    return (
+      data ?? {
+        schemaVersion: 1,
+        savedAt: '',
+        lorebooks: [],
+      }
+    )
   } catch (e) {
     app.log.error(e)
     return reply.status(500).send({ error: '读取世界书失败' })
@@ -2035,7 +2041,7 @@ app.addHook('onRequest', (request, _reply, done) => {
   done()
 })
 
-const port = Number(process.env.PORT) || 3399
+const port = resolveServerPort()
 const host = process.env.HOST || '0.0.0.0'
 
 try {

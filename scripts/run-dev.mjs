@@ -1,11 +1,9 @@
 import { spawn } from 'node:child_process'
 import { createConnection } from 'node:net'
-import path from 'node:path'
 import process from 'node:process'
-import { fileURLToPath } from 'node:url'
+import { loadDevConfig } from './dev-config.mjs'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const root = path.resolve(__dirname, '..')
+const { serverPort, webPort, repoRoot: root } = loadDevConfig()
 
 function waitForPort(port, { host = '127.0.0.1', timeoutMs = 90_000 } = {}) {
   const start = Date.now()
@@ -32,22 +30,33 @@ function waitForPort(port, { host = '127.0.0.1', timeoutMs = 90_000 } = {}) {
   })
 }
 
+const childEnv = {
+  ...process.env,
+  PORT: String(serverPort),
+  WEB_PORT: String(webPort),
+}
+
 const server = spawn('npm', ['run', 'dev', '-w', 'server'], {
   cwd: root,
   stdio: 'inherit',
   shell: true,
+  env: childEnv,
 })
 
 let webProc = null
 
 try {
-  await waitForPort(3399)
+  await waitForPort(serverPort)
   console.log('\n[dev] 后端已就绪，启动前端……')
-  console.log('[dev] 浏览器打开: http://localhost:3366/\n')
+  console.log(
+    `[dev] 端口：后端 ${serverPort}，前端 ${webPort}（可在 config.json 修改 serverPort / webPort）`,
+  )
+  console.log(`[dev] 浏览器打开: http://localhost:${webPort}/\n`)
   webProc = spawn('npm', ['run', 'dev', '-w', 'web'], {
     cwd: root,
     stdio: 'inherit',
     shell: true,
+    env: childEnv,
   })
 } catch (e) {
   console.error(e instanceof Error ? e.message : e)

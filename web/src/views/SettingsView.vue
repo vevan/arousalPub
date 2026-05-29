@@ -209,7 +209,11 @@ const dialogOklchCss = computed(() =>
 const dialogHex = computed(() => oklchToHex(dialogOklchCss.value))
 
 const dialogPreviewStyle = computed(() => ({
-  backgroundColor: dialogHex.value,
+  'background-color': dialogHex.value,
+}))
+
+const primarySwatchStyle = computed(() => ({
+  'background-color': savedPrimaryHex.value,
 }))
 
 function openPrimaryDialog() {
@@ -637,7 +641,7 @@ onMounted(() => {
               <button
                 type="button"
                 class="primary-swatch"
-                :style="{ backgroundColor: savedPrimaryHex }"
+                :style="primarySwatchStyle"
                 :aria-label="$t('settings.themePrimaryOpen')"
                 @click="openPrimaryDialog"
               />

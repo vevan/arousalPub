@@ -22,6 +22,8 @@
 
 ## 前端工程（当前仓库）
 
+- [x] **npm audit 安全项**（`marked` ≥18.0.4、`fast-uri` ≥3.1.2）— 2026-05-29，见 `DOC/00-alert.md`
+- [x] **vue-i18n v9 → v11**（11.4.4）— 2026-05-29，见 `DOC/07-vue-i18n-migration.md`
 - [ ] **拆分** `web/src/components/HomeChat.vue` **为多个子组件**（单文件体积过大；可按消息列表 / 输入区 / 各 `v-dialog`、工具函数注入等边界拆分，并保持 `chat-body` + `chat-footer` 根结构约定，见 `DOC/06-工作交接.md` §2.2）
 
 ## 角色卡（ST v2 PNG 与生态 — 当前迭代）

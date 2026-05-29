@@ -5,6 +5,6 @@ if [ ! -d node_modules ]; then
   npm install
 fi
 echo ""
-echo "启动完成后打开 http://localhost:3366/ （须保持本终端运行）"
+echo "启动完成后打开 $(node scripts/print-dev-url.mjs) （须保持本终端运行；端口见 config.json）"
 echo ""
 npm run dev

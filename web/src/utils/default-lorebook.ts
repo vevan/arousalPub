@@ -10,7 +10,10 @@ export function pickDefaultLorebookIds(items: { id: string }[]): string[] {
 export async function fetchLorebookPickerItems(): Promise<{ id: string; name: string }[]> {
   const res = await fetch('/api/lorebooks')
   if (!res.ok) return []
-  const raw = (await res.json()) as { lorebooks?: { id?: string; name?: string }[] }
+  const raw = (await res.json()) as {
+    lorebooks?: { id?: string; name?: string }[]
+  } | null
+  if (!raw || typeof raw !== 'object') return []
   return (raw.lorebooks ?? [])
     .filter((x) => typeof x.id === 'string' && x.id.trim())
     .map((x) => ({

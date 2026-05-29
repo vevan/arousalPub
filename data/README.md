@@ -4,6 +4,8 @@
 
 实际位置可在仓库根 `config.json` 里通过 `dataDir` 字段更改，或通过环境变量 `DATA_DIR` 覆盖。优先级：`DATA_DIR` > `config.json#dataDir` > 默认 `./data`（相对仓库根，见 `server/src/config.ts`）。
 
+开发端口同样在 `config.json`：`serverPort`（后端，默认 3450）、`webPort`（Vite 前端，默认 3451）；可被环境变量 `PORT` / `SERVER_PORT`、`WEB_PORT` 覆盖。示例见仓库根 `config.example.json`。
+
 ## 多用户目录
 
 用户数据按 **`data/{userId}/`** 存放。未指定用户（或请求头/查询未带用户 id）时使用 **`default-user`**。

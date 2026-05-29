@@ -23,6 +23,29 @@ const CONFIG_EXAMPLE_PATH = path.join(REPO_ROOT, 'config.example.json')
 
 interface RawConfig {
   dataDir?: string
+  serverPort?: number | string
+}
+
+/** 避开 Windows 常见保留段 3326–3425（Hyper-V 等） */
+export const DEFAULT_SERVER_PORT = 3450
+
+function parseServerPort(value: unknown, source: string): number {
+  const n = typeof value === 'number' ? value : Number(String(value).trim())
+  if (!Number.isInteger(n) || n < 1 || n > 65535) {
+    throw new Error(`无效的 ${source}：${value}（须为 1–65535 的整数）`)
+  }
+  return n
+}
+
+/** 监听端口：环境变量 PORT / SERVER_PORT > config.json serverPort > 默认 */
+export function resolveServerPort(): number {
+  const fromEnv = process.env.PORT?.trim() || process.env.SERVER_PORT?.trim()
+  if (fromEnv) return parseServerPort(fromEnv, 'PORT/SERVER_PORT')
+  const cfg = readConfigFile()
+  if (cfg.serverPort != null) {
+    return parseServerPort(cfg.serverPort, 'config.json serverPort')
+  }
+  return DEFAULT_SERVER_PORT
 }
 
 function ensureConfigFileFromExample(): void {

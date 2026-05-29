@@ -1,4 +1,6 @@
 {
-  "_comment": "复制本文件为 config.json 后修改。dataDir 可填绝对路径或相对仓库根的相对路径。环境变量 DATA_DIR 优先级最高。",
-  "dataDir": "./data"
+  "_comment": "复制为 config.json 后修改。dataDir：数据目录（绝对或相对仓库根）。serverPort/webPort：开发时后端/前端端口，须避开 Windows 保留段（如 3326–3425）。环境变量 DATA_DIR、PORT（或 SERVER_PORT）、WEB_PORT 可覆盖对应项。",
+  "dataDir": "./data",
+  "serverPort": 3450,
+  "webPort": 3451
 }

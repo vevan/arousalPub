@@ -476,7 +476,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
       keys: [],
       constant: false,
       triggerMode: 'keyword',
-      priority: 0,
+      priority: 100,
       createdAt: t,
       updatedAt: t,
     }
@@ -489,24 +489,88 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     return entry
   }
 
-  function duplicateEntry(entryId: string) {
+  function duplicateEntry(entryId: string, targetGroupId?: string) {
     const src = activeLorebook.value.entries.find((e) => e.id === entryId)
-    if (!src) return
+    if (!src) return null
+    const gid = targetGroupId?.trim() || src.groupId
+    if (!activeLorebook.value.groups.some((g) => g.id === gid)) return null
+
     const t = nowIso()
-    const sameGroup = activeLorebook.value.entries.filter(
-      (e) => e.groupId === src.groupId,
-    )
-    const maxOrder = sameGroup.reduce((m, e) => Math.max(m, e.order), -1)
+    const inTarget = activeLorebook.value.entries.filter((e) => e.groupId === gid)
+    const maxOrder = inTarget.reduce((m, e) => Math.max(m, e.order), -1)
     const entry: LorebookEntry = {
       ...src,
       id: makeId('entry'),
+      groupId: gid,
       title: src.title ? `${src.title} (副本)` : '',
       order: maxOrder + 1,
       createdAt: t,
       updatedAt: t,
     }
     patchActiveLorebook((lb) => ({ ...lb, entries: [...lb.entries, entry] }))
+    activeGroupId.value = gid
     selectedEntryId.value = entry.id
+    return entry
+  }
+
+  function moveEntryToGroup(entryId: string, targetGroupId: string): boolean {
+    const gid = targetGroupId.trim()
+    if (!activeLorebook.value.groups.some((g) => g.id === gid)) return false
+
+    const lb = activeLorebook.value
+    const moved = lb.entries.find((e) => e.id === entryId)
+    if (!moved) return false
+
+    const fromGroupId = moved.groupId
+    if (fromGroupId === gid) {
+      const inGroup = lb.entries
+        .filter((e) => e.groupId === gid)
+        .slice()
+        .sort((a, b) => a.order - b.order)
+      const fromIdx = inGroup.findIndex((e) => e.id === entryId)
+      if (fromIdx < 0) return false
+      const [item] = inGroup.splice(fromIdx, 1)
+      inGroup.push(item)
+      const orderMap = new Map(inGroup.map((e, i) => [e.id, i]))
+      patchActiveLorebook((book) => ({
+        ...book,
+        entries: book.entries.map((e) =>
+          e.groupId === gid && orderMap.has(e.id)
+            ? { ...e, order: orderMap.get(e.id)! }
+            : e,
+        ),
+      }))
+      activeGroupId.value = gid
+      selectedEntryId.value = entryId
+      return true
+    }
+
+    const targetList = lb.entries
+      .filter((e) => e.groupId === gid)
+      .slice()
+      .sort((a, b) => a.order - b.order)
+    const newOrder = targetList.length
+
+    const fromList = lb.entries
+      .filter((e) => e.groupId === fromGroupId && e.id !== entryId)
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((e, i) => ({ ...e, order: i }))
+
+    const targetWithMoved = [
+      ...targetList,
+      { ...moved, groupId: gid, order: newOrder, updatedAt: nowIso() },
+    ]
+
+    patchActiveLorebook((book) => ({
+      ...book,
+      entries: book.entries
+        .filter((e) => e.groupId !== fromGroupId && e.groupId !== gid)
+        .concat(fromList, targetWithMoved),
+    }))
+    activeGroupId.value = gid
+    selectedEntryId.value = entryId
+    return true
   }
 
   function updateEntry(entryId: string, patch: Partial<LorebookEntry>) {
@@ -633,6 +697,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     updateEntry,
     deleteEntry,
     duplicateEntry,
+    moveEntryToGroup,
     reorderEntry,
     selectEntry,
     setSearchText,

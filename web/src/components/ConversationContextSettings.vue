@@ -34,6 +34,8 @@ const props = defineProps<{
   conversationMemoryEmbeddingModel?: string | null
   /** 会话内 `{{user}}` 展示名；空表示用默认「用户」 */
   initialUserName?: string | null
+  /** 用户 persona 角色卡 id */
+  initialUserCharacterId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -54,9 +56,11 @@ const INHERIT_VALUE = ''
 
 const presetModel = ref<string>(INHERIT_VALUE)
 const characterModel = ref<string[]>([])
+const userCharacterModel = ref<string | null>(null)
 
 const savingPreset = ref(false)
 const savingChars = ref(false)
+const savingUserCharacter = ref(false)
 const savingLorebooks = ref(false)
 const savingLoreSettings = ref(false)
 const savingHistorySettings = ref(false)
@@ -162,6 +166,7 @@ const isSaving = computed(
   () =>
     savingPreset.value ||
     savingChars.value ||
+    savingUserCharacter.value ||
     savingLorebooks.value ||
     savingLoreSettings.value ||
     savingHistorySettings.value ||
@@ -266,10 +271,16 @@ function propsMemoryTopK(): number {
   return Math.max(1, Math.min(20, Math.floor(d)))
 }
 
+function propsUserCharacterId(): string | null {
+  const id = props.initialUserCharacterId
+  return typeof id === 'string' && id.trim() ? id.trim() : null
+}
+
 function syncFromProps() {
   errorText.value = ''
   presetModel.value = propsPresetTarget() ?? INHERIT_VALUE
   characterModel.value = [...props.initialCharacterIds]
+  userCharacterModel.value = propsUserCharacterId()
   lorebookModel.value = [...props.initialLorebookIds]
   loreUseGlobal.value = propsLoreUseGlobal()
   if (loreUseGlobal.value) {
@@ -319,10 +330,36 @@ watch(
     props.initialMemoryEnabled,
     props.initialMemoryTopK,
     props.initialUserName,
+    props.initialUserCharacterId,
   ],
   () => syncFromProps(),
   { deep: true },
 )
+
+watch(userCharacterModel, async (id) => {
+  const next =
+    typeof id === 'string' && id.trim() ? id.trim() : null
+  if (next === propsUserCharacterId()) return
+  savingUserCharacter.value = true
+  errorText.value = ''
+  try {
+    const card = next
+      ? charItems.value.find((c) => c.id === next)
+      : undefined
+    const userName =
+      card && card.name.trim() ? card.name.trim() : null
+    await patchConversation({
+      userCharacterId: next,
+      userName,
+    })
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingUserCharacter.value = false
+  }
+})
 
 watch(presetModel, async () => {
   const target = currentPresetTarget()
@@ -747,17 +784,29 @@ async function patchConversation(body: Record<string, unknown>) {
                 />
               </div>
 
-              <div
-                v-if="initialUserName"
-                class="conv-settings-field"
-              >
-                <v-alert
-                  density="compact"
-                  variant="tonal"
-                  type="info"
+              <div class="conv-settings-field">
+                <v-select
+                  v-model="userCharacterModel"
+                  :items="charItems"
+                  item-title="name"
+                  item-value="id"
+                  :label="$t('chat.convSettings.userCharacter')"
+                  density="comfortable"
+                  variant="outlined"
+                  hide-details="auto"
+                  clearable
+                  :loading="charItemsLoading || savingUserCharacter"
+                />
+                <p class="conv-settings-field__hint">
+                  {{ $t('chat.convSettings.userCharacterHint') }}
+                </p>
+                <p
+                  v-if="initialUserName"
+                  class="conv-settings-field__hint text-medium-emphasis"
                 >
-                  {{ $t('chat.convSettings.userNameSnapshotPrefix') }}<strong>{{ initialUserName }}</strong>{{ $t('chat.convSettings.userNameSnapshotSuffix') }}<code class="user-macro-tag">{{ PROMPT_USER_MACRO }}</code>{{ $t('chat.convSettings.userNameSnapshotSuffixEnd') }}
-                </v-alert>
+                  {{ $t('chat.convSettings.userNameCurrent', { name: initialUserName }) }}
+                  <code class="user-macro-tag">{{ PROMPT_USER_MACRO }}</code>
+                </p>
               </div>
 
               <div class="conv-settings-field">

@@ -883,18 +883,24 @@ export const usePromptsStore = defineStore('prompts', () => {
     if (selectedPromptId.value === id) selectedPromptId.value = null
   }
 
-  function duplicatePrompt(id: string): PromptEntry | null {
+  function duplicatePrompt(
+    id: string,
+    targetGroupId?: string,
+  ): PromptEntry | null {
     const src = activePreset.value.prompts.find((e) => e.id === id)
     if (!src || src.bindingSlot) return null
+    const gid = targetGroupId?.trim() || src.groupId
+    const targetGroup = activePreset.value.groups.find((g) => g.id === gid)
+    if (!targetGroup || !groupAllowsPromptEntries(targetGroup.kind)) return null
+
     const t = nowIso()
-    const sameGroup = activePreset.value.prompts.filter(
-      (p) => p.groupId === src.groupId,
-    )
-    const maxOrder = sameGroup.reduce((m, p) => Math.max(m, p.order), -1)
+    const inTarget = activePreset.value.prompts.filter((p) => p.groupId === gid)
+    const maxOrder = inTarget.reduce((m, p) => Math.max(m, p.order), -1)
     const copy: PromptEntry = {
       ...src,
       id: makeId(presets.value),
-      title: src.title ? `${src.title} (copy)` : '',
+      groupId: gid,
+      title: src.title ? `${src.title} (副本)` : '',
       tags: src.tags.slice(),
       triggers: src.triggers.slice(),
       isSeed: false,
@@ -903,8 +909,25 @@ export const usePromptsStore = defineStore('prompts', () => {
       updatedAt: t,
     }
     patchActivePreset((p) => ({ ...p, prompts: [...p.prompts, copy] }))
+    activeGroupId.value = gid
     selectedPromptId.value = copy.id
     return copy
+  }
+
+  function movePromptToGroup(id: string, targetGroupId: string): boolean {
+    const src = activePreset.value.prompts.find((e) => e.id === id)
+    if (!src || src.bindingSlot) return false
+    const gid = targetGroupId.trim()
+    const targetGroup = activePreset.value.groups.find((g) => g.id === gid)
+    if (!targetGroup || !groupAllowsPromptEntries(targetGroup.kind)) return false
+
+    const targetLen = activePreset.value.prompts.filter(
+      (p) => p.groupId === gid && p.id !== id,
+    ).length
+    reorderPrompt(id, gid, targetLen)
+    activeGroupId.value = gid
+    selectedPromptId.value = id
+    return true
   }
 
   /**
@@ -1102,6 +1125,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     updatePrompt,
     deletePrompt,
     duplicatePrompt,
+    movePromptToGroup,
     reorderPrompt,
     selectPrompt,
 

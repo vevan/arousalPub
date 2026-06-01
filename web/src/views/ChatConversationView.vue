@@ -742,6 +742,7 @@ watch(
         :global-embedding-model="embeddingModel"
         :conversation-memory-embedding-model="conversationMemoryEmbeddingModel"
         :initial-user-name="convBindings.userName"
+        :initial-user-character-id="convBindings.userCharacterId"
         @patched="onConvContextPatched"
         @memory-rebuilt="onMemoryRebuiltFromSettings"
       />

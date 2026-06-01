@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import GroupTargetPickerDialog from '@/components/GroupTargetPickerDialog.vue'
 import {
   groupAllowsPromptEntries,
   usePromptsStore,
 } from '@/stores/prompts'
+import { promptGroupPickerItems } from '@/utils/entry-group-transfer'
 import type {
   GroupKind,
   PromptEntry,
@@ -243,15 +245,28 @@ function duplicateCurrent() {
   store.duplicatePrompt(selected.value.id)
 }
 
-const copiedFlash = ref(false)
-async function copyCurrent() {
+const groupTransferOpen = ref(false)
+const groupTransferMode = ref<'copy' | 'move'>('copy')
+const groupPickerItems = computed(() =>
+  promptGroupPickerItems(
+    activeGroups.value,
+    groupCounts.value,
+    selected.value,
+  ),
+)
+
+function openGroupTransfer(mode: 'copy' | 'move') {
+  if (!selected.value || selected.value.bindingSlot) return
+  groupTransferMode.value = mode
+  groupTransferOpen.value = true
+}
+
+function onGroupTransferPick(targetGroupId: string) {
   if (!selected.value) return
-  try {
-    await navigator.clipboard.writeText(selected.value.content)
-    copiedFlash.value = true
-    setTimeout(() => (copiedFlash.value = false), 1200)
-  } catch {
-    /* ignore */
+  if (groupTransferMode.value === 'copy') {
+    store.duplicatePrompt(selected.value.id, targetGroupId)
+  } else {
+    store.movePromptToGroup(selected.value.id, targetGroupId)
   }
 }
 
@@ -1198,14 +1213,18 @@ const canDeleteGroup = (g: PromptGroup) =>
                   <button
                     type="button"
                     class="editor-card__btn"
-                    :class="{ 'is-flash': copiedFlash }"
-                    @click="copyCurrent"
-                  >{{ copiedFlash ? $t('prompts.copied') : $t('prompts.copyContent') }}</button>
+                    @click="duplicateCurrent"
+                  >{{ $t('entryTransfer.copy') }}</button>
                   <button
                     type="button"
                     class="editor-card__btn"
-                    @click="duplicateCurrent"
-                  >{{ $t('prompts.duplicate') }}</button>
+                    @click="openGroupTransfer('copy')"
+                  >{{ $t('entryTransfer.copyTo') }}</button>
+                  <button
+                    type="button"
+                    class="editor-card__btn"
+                    @click="openGroupTransfer('move')"
+                  >{{ $t('entryTransfer.moveTo') }}</button>
                   <button
                     type="button"
                     class="editor-card__btn editor-card__btn--danger"
@@ -1382,6 +1401,14 @@ const canDeleteGroup = (g: PromptGroup) =>
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <GroupTargetPickerDialog
+      v-model:open="groupTransferOpen"
+      :mode="groupTransferMode"
+      :groups="groupPickerItems"
+      :current-group-id="activeGroupId ?? undefined"
+      @pick="onGroupTransferPick"
+    />
 
     <v-dialog v-model="entryDeleteOpen">
       <v-card>

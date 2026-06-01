@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import GroupTargetPickerDialog from '@/components/GroupTargetPickerDialog.vue'
 import { useLorebooksStore } from '@/stores/lorebooks'
+import { lorebookGroupPickerItems } from '@/utils/entry-group-transfer'
 import type { LorebookGroup } from '@/stores/lorebooks'
 import {
   entryKeysInputDisabled,
@@ -185,6 +187,32 @@ function createEntry() {
   if (!gid) return
   store.createEntry(gid)
   void nextTick(() => titleInputRef.value?.focus())
+}
+
+const groupTransferOpen = ref(false)
+const groupTransferMode = ref<'copy' | 'move'>('copy')
+const groupPickerItems = computed(() =>
+  lorebookGroupPickerItems(activeGroups.value, groupCounts.value),
+)
+
+function duplicateCurrentEntry() {
+  if (!selectedEntry.value) return
+  store.duplicateEntry(selectedEntry.value.id)
+}
+
+function openGroupTransfer(mode: 'copy' | 'move') {
+  if (!selectedEntry.value) return
+  groupTransferMode.value = mode
+  groupTransferOpen.value = true
+}
+
+function onGroupTransferPick(targetGroupId: string) {
+  if (!selectedEntry.value) return
+  if (groupTransferMode.value === 'copy') {
+    store.duplicateEntry(selectedEntry.value.id, targetGroupId)
+  } else {
+    store.moveEntryToGroup(selectedEntry.value.id, targetGroupId)
+  }
 }
 
 const entryDeleteOpen = ref(false)
@@ -748,8 +776,18 @@ async function confirmImportLorebook() {
                   <button
                     type="button"
                     class="editor-card__btn"
-                    @click="store.duplicateEntry(selectedEntry.id)"
-                  >{{ $t('lorebooks.duplicate') }}</button>
+                    @click="duplicateCurrentEntry"
+                  >{{ $t('entryTransfer.copy') }}</button>
+                  <button
+                    type="button"
+                    class="editor-card__btn"
+                    @click="openGroupTransfer('copy')"
+                  >{{ $t('entryTransfer.copyTo') }}</button>
+                  <button
+                    type="button"
+                    class="editor-card__btn"
+                    @click="openGroupTransfer('move')"
+                  >{{ $t('entryTransfer.moveTo') }}</button>
                   <button
                     type="button"
                     class="editor-card__btn editor-card__btn--danger"
@@ -889,6 +927,14 @@ async function confirmImportLorebook() {
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <GroupTargetPickerDialog
+      v-model:open="groupTransferOpen"
+      :mode="groupTransferMode"
+      :groups="groupPickerItems"
+      :current-group-id="activeGroupId ?? undefined"
+      @pick="onGroupTransferPick"
+    />
 
     <v-dialog v-model="entryDeleteOpen" max-width="24rem">
       <v-card>

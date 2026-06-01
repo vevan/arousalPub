@@ -10,6 +10,20 @@ const { serverPort, repoRoot, startCountdownSeconds } = loadDevConfig()
 
 const webIndex = path.join(repoRoot, 'web', 'dist', 'index.html')
 const serverEntry = path.join(repoRoot, 'server', 'dist', 'index.js')
+/** 与当前源码配套的 server 产物标记（拉代码后旧 dist 可能仍存在 index.js 但缺此文件） */
+const serverAuthSecret = path.join(repoRoot, 'server', 'dist', 'auth-secret.js')
+
+function ensureDependencies() {
+  const staticPkg = path.join(repoRoot, 'node_modules', '@fastify', 'static')
+  if (existsSync(staticPkg)) return
+  console.log('[start] 依赖不完整，正在 npm install …\n')
+  const r = spawnSync('npm', ['install'], {
+    cwd: repoRoot,
+    stdio: 'inherit',
+    shell: true,
+  })
+  if (r.status !== 0) process.exit(r.status ?? 1)
+}
 
 function runBuild() {
   console.log('[start] 正在构建 web + server …\n')
@@ -23,14 +37,20 @@ function runBuild() {
   }
 }
 
+ensureDependencies()
+
 const rebuild = await runBuildCountdownPrompt({
   seconds: startCountdownSeconds,
 })
 const missingDist =
   !existsSync(webIndex) || !existsSync(serverEntry)
+const staleServerDist =
+  existsSync(serverEntry) && !existsSync(serverAuthSecret)
 
-if (rebuild || missingDist) {
-  if (missingDist && !rebuild) {
+if (rebuild || missingDist || staleServerDist) {
+  if (staleServerDist && !rebuild && !missingDist) {
+    console.log('[start] server 构建产物过旧，将自动 build …')
+  } else if (missingDist && !rebuild) {
     console.log('[start] 未找到构建产物，将自动 build …')
   }
   runBuild()

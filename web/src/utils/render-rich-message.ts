@@ -96,8 +96,11 @@ marked.use({
   gfm: true,
   breaks: true,
 })
-/** 直引号 → 弯引号等；跳过 pre/code 等（扩展内置） */
-marked.use(markedSmartypants({ config: 2 }))
+/**
+ * 旧版 config:2 会把半角 " 全局交替成弯引号，连续多对时第二对常变成 &#8221;…&#8221;，
+ * 与 wrap-quote-lines 的开闭配对不一致。De = 仅破折号 + 省略号，引号保留 ASCII 供 .lines 包裹。
+ */
+marked.use(markedSmartypants({ config: 'De' }))
 
 {
   const base = new marked.Renderer()

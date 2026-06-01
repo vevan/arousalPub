@@ -1,16 +1,16 @@
 /**
  * 对话引号 → <span class="lines">（仅处理纯文本；跳过代码块与已有 .lines）
- * 支持 “…” (U+201C/201D)、"…" (ASCII)、以及 smartypants 输出的 &#8220; 等（经 DOM 解析后为 Unicode）。
+ * 支持半角 "…"、弯引号 “…”、以及 smartypants 误配成的 ”…”（闭+闭）。
  */
-const OPEN_QUOTE = '[\u201C\u0022\u2018]' // “ " ‘
-const CLOSE_QUOTE = '[\u201D\u0022\u2019]' // ” " ’
-const DIALOGUE_QUOTE_RE = new RegExp(
-  `(?<!=)(${OPEN_QUOTE})((?:(?!${CLOSE_QUOTE})[^\\n])+?)(${CLOSE_QUOTE})`,
-  'g',
-)
+const DIALOGUE_QUOTE_RE =
+  /(?<!=)(?:"[^"\n]+?"|\u201C[^\u201C\u201D\n]+?\u201D|\u201D[^\u201C\u201D\n]+?\u201D|\u2018[^\u2018\u2019\n]+?\u2019|\u2019[^\u2018\u2019\n]+?\u2019)/g
 
 const SKIP_SELECTOR =
   'pre, code, kbd, script, style, textarea, .md-embedded-html, .ASST, .lines'
+
+/** 避免 Node.js 全局 `Node` 与 DOM Node 混淆（如 jsdom/部分 SSR 环境） */
+const ELEMENT_NODE = 1
+const TEXT_NODE = 3
 
 /** marked-smartypants 常输出实体而非 Unicode 字符 */
 const HTML_QUOTE_ENTITY_RE =
@@ -32,8 +32,7 @@ export function wrapCurlyQuotesInPlainText(text: string): string {
   resetDialogueQuoteRe()
   return text.replace(
     DIALOGUE_QUOTE_RE,
-    (_m, open: string, inner: string, close: string) =>
-      `<span class="lines">${open}${inner}${close}</span>`,
+    (quoted) => `<span class="lines">${quoted}</span>`,
   )
 }
 
@@ -61,13 +60,13 @@ export function wrapCurlyQuotesInHtml(html: string): string {
     if (!root) return html
 
     const walk = (node: Node): void => {
-      if (node.nodeType === Node.ELEMENT_NODE) {
+      if (node.nodeType === ELEMENT_NODE) {
         const el = node as Element
         if (el.matches(SKIP_SELECTOR) || el.closest(SKIP_SELECTOR)) return
         for (const child of [...el.childNodes]) walk(child)
         return
       }
-      if (node.nodeType !== Node.TEXT_NODE) return
+      if (node.nodeType !== TEXT_NODE) return
       const parent = node.parentElement
       if (!parent || parent.closest(SKIP_SELECTOR)) return
       const raw = node.textContent ?? ''

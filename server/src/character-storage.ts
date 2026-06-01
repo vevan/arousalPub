@@ -9,6 +9,7 @@ import {
   isPngBuffer,
   normalizeTavernCardV2Data,
 } from './character-png.js'
+import { compareCharacterNamesAsc } from './character-name-sort.js'
 import { generateShortId, isValidShortId } from './short-id.js'
 
 const SHORT_PNG = /^([0-9a-f]{8})\.png$/i
@@ -49,7 +50,17 @@ export interface CharacterListItem {
   tags: string[]
   updatedAt: string
   usedInConversationCount: number
+  /** 绑定该卡的会话中，最近一次 `updatedAt`（无绑定则为 null） */
+  lastConversationAt: string | null
 }
+
+export type CharacterListSort =
+  | 'recentChat'
+  | 'recentUpdate'
+  | 'name'
+  | 'usageCount'
+
+export type CharacterListSortOrder = 'asc' | 'desc'
 
 export interface CharacterStoredDocument {
   schemaVersion: 1
@@ -63,18 +74,92 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
-async function refCounts(): Promise<Map<string, number>> {
+async function refStats(): Promise<
+  Map<string, { count: number; lastConversationAt: string | null }>
+> {
   const list = await readChatList()
-  const counts = new Map<string, number>()
+  const stats = new Map<
+    string,
+    { count: number; lastConversationAt: string | null }
+  >()
   for (const entry of list.conversations) {
     const ids = resolvedCharacterIds(
-      entry as { characterIds?: string[] },
+      entry as { characterIds?: string[]; characterId?: string | null },
     )
+    const convUpdated =
+      typeof entry.updatedAt === 'string' ? entry.updatedAt : null
     for (const cid of ids) {
-      counts.set(cid, (counts.get(cid) ?? 0) + 1)
+      const prev = stats.get(cid)
+      if (!prev) {
+        stats.set(cid, { count: 1, lastConversationAt: convUpdated })
+        continue
+      }
+      prev.count++
+      if (
+        convUpdated &&
+        (!prev.lastConversationAt ||
+          convUpdated.localeCompare(prev.lastConversationAt, 'en') > 0)
+      ) {
+        prev.lastConversationAt = convUpdated
+      }
     }
   }
-  return counts
+  return stats
+}
+
+function compareCharacterRowsAsc(
+  a: CharacterListItem,
+  b: CharacterListItem,
+  sort: CharacterListSort,
+): number {
+  switch (sort) {
+    case 'recentChat': {
+      const ta = a.lastConversationAt ?? ''
+      const tb = b.lastConversationAt ?? ''
+      if (ta !== tb) return ta.localeCompare(tb, 'en')
+      return a.updatedAt.localeCompare(b.updatedAt, 'en')
+    }
+    case 'name': {
+      const byName = compareCharacterNamesAsc(a.name, b.name)
+      if (byName !== 0) return byName
+      return a.updatedAt.localeCompare(b.updatedAt, 'en')
+    }
+    case 'usageCount': {
+      const d = a.usedInConversationCount - b.usedInConversationCount
+      if (d !== 0) return d
+      return a.updatedAt.localeCompare(b.updatedAt, 'en')
+    }
+    case 'recentUpdate':
+    default:
+      return a.updatedAt.localeCompare(b.updatedAt, 'en')
+  }
+}
+
+function sortCharacterRows(
+  rows: CharacterListItem[],
+  sort: CharacterListSort,
+  order: CharacterListSortOrder = 'asc',
+): void {
+  const sign = order === 'asc' ? 1 : -1
+  rows.sort((a, b) => sign * compareCharacterRowsAsc(a, b, sort))
+}
+
+export function parseCharacterListSort(raw: unknown): CharacterListSort {
+  if (
+    raw === 'recentChat' ||
+    raw === 'recentUpdate' ||
+    raw === 'name' ||
+    raw === 'usageCount'
+  ) {
+    return raw
+  }
+  return 'name'
+}
+
+export function parseCharacterListSortOrder(
+  raw: unknown,
+): CharacterListSortOrder {
+  return raw === 'desc' ? 'desc' : 'asc'
 }
 
 function pickName(card: Record<string, unknown>): string {
@@ -495,9 +580,15 @@ export async function listCharacterSummaries(params: {
   limit: number
   search?: string
   filter?: 'all' | 'used' | 'unused'
-}): Promise<{ items: CharacterListItem[]; total: number }> {
+  sort?: CharacterListSort
+  order?: CharacterListSortOrder
+}): Promise<{
+  items: CharacterListItem[]
+  total: number
+  filterCounts: { all: number; used: number; unused: number }
+}> {
   await mkdir(getCharactersDir(), { recursive: true })
-  const counts = await refCounts()
+  const stats = await refStats()
   const idx = await loadOrRebuildIndex()
   const rows: CharacterListItem[] = []
 
@@ -511,7 +602,8 @@ export async function listCharacterSummaries(params: {
     } catch {
       /* keep index */
     }
-    const usedN = counts.get(id) ?? 0
+    const ref = stats.get(id)
+    const usedN = ref?.count ?? 0
     rows.push({
       id,
       name: e.name,
@@ -520,16 +612,15 @@ export async function listCharacterSummaries(params: {
       tags: e.tags,
       updatedAt,
       usedInConversationCount: usedN,
+      lastConversationAt: ref?.lastConversationAt ?? null,
     })
   }
 
-  rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt, 'en'))
-
   const q = (params.search ?? '').trim().toLowerCase()
   const filter = params.filter ?? 'all'
-  let filtered = rows
+  let searchFiltered = rows
   if (q) {
-    filtered = filtered.filter(
+    searchFiltered = searchFiltered.filter(
       (r) =>
         r.name.toLowerCase().includes(q) ||
         r.summary.toLowerCase().includes(q) ||
@@ -537,17 +628,31 @@ export async function listCharacterSummaries(params: {
         r.tags.some((t) => t.toLowerCase().includes(q)),
     )
   }
+
+  const filterCounts = {
+    all: searchFiltered.length,
+    used: searchFiltered.filter((r) => r.usedInConversationCount > 0).length,
+    unused: searchFiltered.filter((r) => r.usedInConversationCount === 0).length,
+  }
+
+  let filtered = searchFiltered
   if (filter === 'used') {
     filtered = filtered.filter((r) => r.usedInConversationCount > 0)
   } else if (filter === 'unused') {
     filtered = filtered.filter((r) => r.usedInConversationCount === 0)
   }
 
+  sortCharacterRows(
+    filtered,
+    params.sort ?? 'name',
+    params.order ?? 'asc',
+  )
+
   const total = filtered.length
   const offset = Math.max(0, Math.floor(params.offset) || 0)
   const limit = Math.min(100, Math.max(1, Math.floor(params.limit) || 24))
   const items = filtered.slice(offset, offset + limit)
-  return { items, total }
+  return { items, total, filterCounts }
 }
 
 export async function readCharacterDocument(
@@ -555,6 +660,37 @@ export async function readCharacterDocument(
 ): Promise<CharacterStoredDocument | null> {
   if (!isValidShortId(id)) return null
   return readOneFile(id)
+}
+
+/** 导出文件名基底（去 Windows 非法字符；空则回退 id） */
+export function buildCharacterExportBasename(
+  card: Record<string, unknown>,
+  id: string,
+): string {
+  const raw = pickName(card).trim()
+  let base = raw
+    .replace(/[\x00-\x1f\\/:*?"<>|]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!base) base = id
+  if (base.length > 100) base = base.slice(0, 100)
+  return base
+}
+
+export function buildCharacterExportFilename(
+  card: Record<string, unknown>,
+  id: string,
+  ext: 'png' | 'json',
+): string {
+  return `${buildCharacterExportBasename(card, id)}.${ext}`
+}
+
+export function contentDispositionAttachment(filename: string): string {
+  const ext = filename.includes('.') ? filename.slice(filename.lastIndexOf('.')) : ''
+  const ascii =
+    filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '') ||
+    `download${ext || '.bin'}`
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`
 }
 
 /** 读取磁盘上的角色卡 PNG 字节（无则 null） */

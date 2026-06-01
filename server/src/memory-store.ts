@@ -1,6 +1,6 @@
-import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
-import * as lancedb from '@lancedb/lancedb'
+import type { Table } from '@lancedb/lancedb'
+import { closeLanceDb, openLanceDb } from './lance-connection-pool.js'
 import { getUserDataDir } from './config.js'
 import { getCurrentUserId } from './user-context.js'
 
@@ -33,14 +33,13 @@ function memoryDbUri(conversationId: string): string {
 
 async function connectDb(conversationId: string) {
   const uri = memoryDbUri(conversationId)
-  await mkdir(uri, { recursive: true })
-  return lancedb.connect(uri)
+  return openLanceDb(uri)
 }
 
 async function openOrCreateTable(
   conversationId: string,
   sampleVector: number[],
-): Promise<lancedb.Table> {
+): Promise<Table> {
   const db = await connectDb(conversationId)
   const names = await db.tableNames()
   if (names.includes(TABLE_NAME)) {
@@ -87,10 +86,12 @@ export async function deleteTurnMemoryVector(
 export async function deleteConversationMemoryIndex(
   conversationId: string,
 ): Promise<void> {
+  const uri = memoryDbUri(conversationId)
   const db = await connectDb(conversationId)
   const names = await db.tableNames()
   if (!names.includes(TABLE_NAME)) return
   await db.dropTable(TABLE_NAME)
+  closeLanceDb(uri)
 }
 
 export async function replaceConversationMemoryIndex(

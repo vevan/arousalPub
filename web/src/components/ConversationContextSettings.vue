@@ -104,7 +104,8 @@ const memoryRebuildNeedsAttention = computed(() => {
   const global = props.globalEmbeddingModel?.trim() ?? ''
   if (!global) return false
   const stored = props.conversationMemoryEmbeddingModel?.trim() ?? ''
-  return !stored || stored !== global
+  if (!stored) return false
+  return stored !== global
 })
 
 async function onRebuildMemoryClick() {

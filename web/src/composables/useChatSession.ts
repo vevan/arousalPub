@@ -35,6 +35,11 @@ import {
 } from '@/utils/chat-turn-display'
 import { translateApiError } from '@/utils/api-error-message'
 import { formatDurationMs } from '@/utils/format-duration'
+import {
+  clearComposerDraft,
+  readComposerDraft,
+  writeComposerDraft,
+} from '@/utils/composer-draft-storage'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -96,6 +101,34 @@ async function requestChatCompletion(
 }
 
 const userInput = ref('')
+const COMPOSER_DRAFT_SAVE_MS = 400
+let composerDraftSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+function composerDraftUserId(): string {
+  return auth.user?.id ?? auth.defaultUserId ?? 'anonymous'
+}
+
+function flushComposerDraftNow(conversationId: string, text: string): void {
+  writeComposerDraft(conversationId, text, composerDraftUserId())
+}
+
+function scheduleComposerDraftSave(conversationId: string, text: string): void {
+  const cid = conversationId.trim()
+  if (!cid) return
+  if (composerDraftSaveTimer) clearTimeout(composerDraftSaveTimer)
+  composerDraftSaveTimer = setTimeout(() => {
+    composerDraftSaveTimer = null
+    flushComposerDraftNow(cid, text)
+  }, COMPOSER_DRAFT_SAVE_MS)
+}
+
+function cancelComposerDraftSaveTimer(): void {
+  if (composerDraftSaveTimer) {
+    clearTimeout(composerDraftSaveTimer)
+    composerDraftSaveTimer = null
+  }
+}
+
 const turns = ref<ChatTurnItem[]>([])
 const streamingText = ref('')
 const streamingReasoning = ref('')
@@ -247,9 +280,14 @@ function onGlobalKeyR(e: KeyboardEvent) {
 onMounted(() => {
   void scrollChatToBottom()
   window.addEventListener('keydown', onGlobalKeyR)
+  window.addEventListener('pagehide', flushComposerDraftOnPageHide)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onGlobalKeyR)
+  window.removeEventListener('pagehide', flushComposerDraftOnPageHide)
+  cancelComposerDraftSaveTimer()
+  const cid = props.conversationId.trim()
+  if (cid) flushComposerDraftNow(cid, userInput.value)
   if (generationTimerHandle) {
     clearInterval(generationTimerHandle)
     generationTimerHandle = null
@@ -315,6 +353,7 @@ function appendPendingUserTurn(userText: string, ord: number) {
     },
   ]
   userInput.value = ''
+  clearComposerDraft(props.conversationId, composerDraftUserId())
   pendingSendTurnOrdinal.value = ord
   void scrollChatToBottom()
 }
@@ -378,9 +417,15 @@ watch(streamingText, () => {
 
 watch(
   () => props.conversationId,
-  () => {
+  (newId, oldId) => {
+    if (oldId?.trim()) {
+      cancelComposerDraftSaveTimer()
+      flushComposerDraftNow(oldId, userInput.value)
+    }
     turns.value = []
-    userInput.value = ''
+    userInput.value = newId?.trim()
+      ? readComposerDraft(newId, composerDraftUserId())
+      : ''
     clearPendingSend()
     errorText.value = ''
     editingTurnOrdinal.value = null
@@ -390,6 +435,16 @@ watch(
   },
   { immediate: true },
 )
+
+watch(userInput, (text) => {
+  scheduleComposerDraftSave(props.conversationId, text)
+})
+
+function flushComposerDraftOnPageHide(): void {
+  cancelComposerDraftSaveTimer()
+  const cid = props.conversationId.trim()
+  if (cid) flushComposerDraftNow(cid, userInput.value)
+}
 
 function insertComposerNewline(e: KeyboardEvent) {
   const el = e.target

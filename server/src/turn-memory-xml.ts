@@ -1,12 +1,8 @@
 import { getTurnUserText, type TurnRecord } from './chat-storage.js'
-
-function escapeXml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
+import {
+  escapeXmlAttribute,
+  prepareXmlElementText,
+} from './prompt-xml.js'
 
 export function assistantTextFromTurn(t: TurnRecord): string {
   const rs = t.receives
@@ -27,13 +23,13 @@ function turnToXmlInner(turn: TurnRecord, score?: number): string {
       ? ` score="${score.toFixed(4)}"`
       : ''
   const lines: string[] = [
-    `  <turn id="${escapeXml(turn.turnId)}" ordinal="${turn.turnOrdinal}"${scoreAttr}>`,
+    `  <turn id="${escapeXmlAttribute(turn.turnId)}" ordinal="${turn.turnOrdinal}"${scoreAttr}>`,
   ]
   if (user.trim()) {
-    lines.push(`    <user>${escapeXml(user)}</user>`)
+    lines.push(`    <user>${prepareXmlElementText(user)}</user>`)
   }
   if (assistant.trim()) {
-    lines.push(`    <assistant>${escapeXml(assistant)}</assistant>`)
+    lines.push(`    <assistant>${prepareXmlElementText(assistant)}</assistant>`)
   }
   lines.push('  </turn>')
   return lines.join('\n')

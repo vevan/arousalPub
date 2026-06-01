@@ -14,7 +14,12 @@ interface ChatListEntry {
   conversationId: string
   title: string
   updatedAt: string
+  userCharacterId?: string
+  characterId?: string | null
+  characterIds?: string[]
 }
+
+const createTitleDraft = ref('')
 
 const loading = ref(true)
 const creating = ref(false)
@@ -95,7 +100,7 @@ async function createAndOpen() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         conversationId: id,
-        title: t('chat.newConversation'),
+        title: createTitleDraft.value.trim(),
       }),
     })
     if (!res.ok) {
@@ -150,11 +155,17 @@ const selectedCharacters = computed(() =>
 )
 
 const canStartCreate = computed(
-  () => Boolean(selectedUserCard.value && selectedCharacterCards.value[0]) && !creating.value,
+  () =>
+    Boolean(
+      selectedUserCard.value &&
+        selectedCharacterCards.value[0] &&
+        createTitleDraft.value.trim(),
+    ) && !creating.value,
 )
 
 function openCreateDialog() {
   createErrorText.value = ''
+  createTitleDraft.value = ''
   selectedUserCard.value = null
   selectedCharacterCards.value = [null]
   selectedLorebookIds.value = pickDefaultLorebookIds(lorebookItems.value)
@@ -222,6 +233,9 @@ function selectCharacter(item: CharacterPickerItem) {
     selectedUserCard.value = item
   } else {
     selectedCharacterCards.value[target.index] = item
+    if (target.index === 0 && !createTitleDraft.value.trim()) {
+      createTitleDraft.value = item.name
+    }
   }
   pickerOpen.value = false
   pickerTarget.value = null
@@ -241,6 +255,22 @@ function removeCharacterSlot(index: number) {
 
 function characterImage(id: string) {
   return characterImageUrl(id) ?? ''
+}
+
+function primaryCharacterId(c: ChatListEntry): string | null {
+  const fromList = c.characterIds?.find((id) => typeof id === 'string' && id.trim())
+  if (fromList) return fromList.trim()
+  if (typeof c.characterId === 'string' && c.characterId.trim()) {
+    return c.characterId.trim()
+  }
+  return null
+}
+
+function userCharacterId(c: ChatListEntry): string | null {
+  if (typeof c.userCharacterId === 'string' && c.userCharacterId.trim()) {
+    return c.userCharacterId.trim()
+  }
+  return null
 }
 
 async function fetchCharacterDetail(id: string): Promise<CharacterStoredDocument | null> {
@@ -370,7 +400,7 @@ onMounted(() => {
           {{ $t('conversationList.pageTitle') }}
         </h1>
         <span class="list-head__sub">
-          {{ conversations.length }} conversations
+          {{ $t('conversationList.count', { n: conversations.length }) }}
         </span>
       </header>
 
@@ -453,6 +483,25 @@ onMounted(() => {
             </v-list>
           </v-menu>
 
+          <div
+            v-if="userCharacterId(c) || primaryCharacterId(c)"
+            class="conv-card__avatars"
+            aria-hidden="true"
+          >
+            <img
+              v-if="userCharacterId(c)"
+              class="conv-card__avatar conv-card__avatar--user"
+              :src="characterImage(userCharacterId(c)!)"
+              alt=""
+            />
+            <img
+              v-if="primaryCharacterId(c)"
+              class="conv-card__avatar conv-card__avatar--char"
+              :src="characterImage(primaryCharacterId(c)!)"
+              alt=""
+            />
+          </div>
+
           <h2 class="conv-card__title">
             {{ c.title || $t('chat.newConversation') }}
           </h2>
@@ -486,6 +535,18 @@ onMounted(() => {
           <p class="create-chat-card__hint">
             {{ $t('conversationList.createDialogHint') }}
           </p>
+
+          <v-text-field
+            v-model="createTitleDraft"
+            :label="$t('chatConversation.titleLabel')"
+            :placeholder="$t('conversationList.createTitlePlaceholder')"
+            variant="outlined"
+            density="comfortable"
+            hide-details="auto"
+            class="mb-4"
+            autofocus
+            @keydown.enter.prevent="canStartCreate && createAndOpen()"
+          />
 
           <div class="create-slots">
             <section class="create-slot-section">
@@ -860,6 +921,29 @@ onMounted(() => {
   right: 0.375rem;
   z-index: 2;
   color: rgba(var(--v-theme-on-surface), 0.5) !important;
+}
+
+.conv-card__avatars {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.625rem;
+}
+
+.conv-card__avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 0.125rem solid rgb(var(--v-theme-surface-light));
+  background: rgba(var(--v-theme-on-surface), 0.06);
+}
+
+.conv-card__avatar--char {
+  margin-left: -0.5rem;
+}
+
+.conv-card__avatar--user {
+  z-index: 1;
 }
 
 /* ========== New card ========== */

@@ -320,7 +320,7 @@ export function assemblePrompts(
       const recent = ctx.recentHistoryText?.trim()
       let historyInjected = false
       if (recent) {
-        messages.push({ role: 'system', content: recent })
+        messages.push({ role: 'assistant', content: recent })
         historyInjected = true
       } else if (ctx.history && ctx.history.length > 0) {
         for (const m of ctx.history) {
@@ -340,7 +340,7 @@ export function assemblePrompts(
         } else if (e.bindingSlot === 'boundRecentHistory') {
           const h = ctx.recentHistoryText?.trim()
           if (h && !historyInjected) {
-            messages.push({ role: 'system', content: h })
+            messages.push({ role: 'assistant', content: h })
             historyInjected = true
           }
         } else {
@@ -352,7 +352,7 @@ export function assemblePrompts(
         !presetHasBinding(preset, 'boundRecentHistory') &&
         recent
       ) {
-        messages.splice(historyStart, 0, { role: 'system', content: recent })
+        messages.splice(historyStart, 0, { role: 'assistant', content: recent })
         historyInjected = true
       }
       historyEnd = messages.length

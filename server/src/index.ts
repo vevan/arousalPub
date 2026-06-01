@@ -2,8 +2,8 @@ import cors from '@fastify/cors'
 import { ApiErrorCodes } from './api-error-codes.js'
 import multipart from '@fastify/multipart'
 import Fastify from 'fastify'
-import { generateShortId } from './short-id.js'
-import { isValidShortId } from './short-id.js'
+import { closeAllLanceConnections } from './lance-connection-pool.js'
+import { generateShortId, isValidShortId } from './short-id.js'
 import { Readable, Transform } from 'node:stream'
 import {
   assertValidPresets,
@@ -94,15 +94,19 @@ import {
   formatArousalPersistSseLine,
   parseSseDataLine,
 } from './sse-assistant.js'
-import { isPngBuffer } from './character-png.js'
+import { buildStV2CharacterExport, isPngBuffer } from './character-png.js'
 import {
+  buildCharacterExportFilename,
   cardFromNewCharacterForm,
+  contentDispositionAttachment,
   deleteCharacterFile,
   importCharacterCard,
   importCharacterCardPng,
   importCharacterCardWithPortrait,
   listCharacterSummaries,
   normalizeImportCard,
+  parseCharacterListSort,
+  parseCharacterListSortOrder,
   readCharacterDocument,
   readCharacterPngBuffer,
   updateCharacterDocument,
@@ -290,6 +294,16 @@ await app.register(cors, { origin: true })
 await app.register(multipart, {
   limits: { fileSize: 15 * 1024 * 1024 },
 })
+
+app.addHook('onClose', async () => {
+  closeAllLanceConnections()
+})
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => {
+    closeAllLanceConnections()
+  })
+}
 await registerAuth(app)
 await ensureUsersRegistry()
 
@@ -1617,15 +1631,19 @@ app.get('/api/characters', async (request, reply) => {
   const rawF = q.filter
   const filter =
     rawF === 'used' || rawF === 'unused' ? rawF : ('all' as const)
+  const sort = parseCharacterListSort(q.sort)
+  const order = parseCharacterListSortOrder(q.order)
   try {
-    const { items, total } = await listCharacterSummaries({
+    const { items, total, filterCounts } = await listCharacterSummaries({
       offset,
       limit,
       search,
       filter,
+      sort,
+      order,
     })
     const hasMore = offset + items.length < total
-    return { items, total, offset, limit, hasMore }
+    return { items, total, filterCounts, offset, limit, hasMore }
   } catch (e) {
     app.log.error(e)
     return reply.status(500).send({ error: ApiErrorCodes.characters_read_failed })
@@ -1717,6 +1735,51 @@ app.get<{ Params: { id: string } }>(
       .header('Content-Type', 'image/png')
       .header('Cache-Control', 'private, max-age=60')
       .send(buf)
+  },
+)
+
+app.get<{ Params: { id: string } }>(
+  '/api/characters/:id/export-png',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!isValidShortId(id)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    const doc = await readCharacterDocument(id)
+    if (!doc) {
+      return reply.status(404).send({ error: ApiErrorCodes.character_not_found })
+    }
+    const buf = await readCharacterPngBuffer(id)
+    if (!buf) {
+      return reply.status(404).send({ error: ApiErrorCodes.character_not_found_or_no_png })
+    }
+    const filename = buildCharacterExportFilename(doc.card, id, 'png')
+    return reply
+      .header('Content-Type', 'image/png')
+      .header('Content-Disposition', contentDispositionAttachment(filename))
+      .header('Cache-Control', 'private, no-store')
+      .send(buf)
+  },
+)
+
+app.get<{ Params: { id: string } }>(
+  '/api/characters/:id/export-json',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!isValidShortId(id)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    const doc = await readCharacterDocument(id)
+    if (!doc) {
+      return reply.status(404).send({ error: ApiErrorCodes.character_not_found })
+    }
+    const payload = buildStV2CharacterExport(doc.card)
+    const filename = buildCharacterExportFilename(doc.card, id, 'json')
+    return reply
+      .header('Content-Type', 'application/json; charset=utf-8')
+      .header('Content-Disposition', contentDispositionAttachment(filename))
+      .header('Cache-Control', 'private, no-store')
+      .send(JSON.stringify(payload, null, 2))
   },
 )
 

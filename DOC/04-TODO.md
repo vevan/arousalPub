@@ -40,8 +40,8 @@
 
 - [x] **导入 v2 角色卡 PNG**：`POST /api/characters/import-png`（multipart 字段 **`file`**）；解析 `chara` → 新 **`uuid`** → 原字节落盘 `{uuid}.png` + 更新索引。（大文件需服务端 **`bodyLimit`** 与 multipart `fileSize` 上限一致，见 `server/src/index.ts`。）
 - [x] **导入 JSON / 表单新建**：经同一套规范化后写入 **`{uuid}.png`**；可选 **`multipart`**：`payload`（JSON 字符串）+ **`portrait`**（PNG）→ `POST /api/characters`。
-- [ ] **导出 v2 PNG**：`GET` 流式返回，`Content-Disposition` 文件名 **`charName.png`**（`card.name` slug + 冲突加时间戳）；体为 `{uuid}.png`。
-- [x] **导出整包 JSON**（已有 `schemaVersion` + `card`）：保留作调试或与 ST JSON 通道并存。
+- [x] **导出 v2 PNG**：`GET /api/characters/:id/export-png` 流式返回，`Content-Disposition` 文件名 **`charName.png`**（`card.name` slug + 冲突加时间戳）；体为 `{uuid}.png` 字节。
+- [x] **导出整包 JSON**：`GET /api/characters/:id/export-json`（`schemaVersion` + ST v2 `card` 形态）；保留作调试或与 ST JSON 通道并存。
 
 ### 编辑与绑定
 
@@ -52,7 +52,15 @@
 ### 其它
 
 - [ ] **extensions / Character Hub 全字段**：与 ST 完全对齐的导入导出策略（按需迭代）；当前写入侧已保证 **`extensions`** 对象存在，Hub 级扩展仍待产品定义。
+- [x] **角色库排序 / 筛选计数**：`GET /api/characters?sort=&order=`（默认 `name` + `asc`；名称按拉丁优先 + 中文拼音）；响应 `filterCounts`（搜索后、used/unused 筛选前统计）；Web 侧栏三项计数与排序 UI（见 `DOC/03` §12）
 - [x] **PNG chunk 读写**：当前为 **`crc-32` + 手写 chunk 组装**（`character-png.ts`），未引入 `pngjs`/`sharp`；超大 `chara` 可考虑后续改 `zTXt` 写入以控体积。
+
+### 对话列表与对话页（2026-05-26）
+
+- [x] **会话列表卡片**：展示 user / 主角色头像（`userCharacterId` + `characterIds[0]`）；新建对话弹窗输入标题（非默认「新对话」）；选主角色可自动填标题
+- [x] **记忆向量重建提示**：仅当会话**已有** `memoryEmbeddingModel` 且与全局 embedding 配置不一致时弹窗（新建会话不触发）
+- [x] **思维链复制**：reasoning summary 旁一键复制纯文本
+- [x] **输入框草稿**：各会话 `localStorage` 持久化未发送内容（`composer-draft-storage.ts`）
 
 ## P1（次优先）
 
@@ -60,7 +68,7 @@
 - [ ] API 配置引用检查与安全删除
 - [ ] 会话级模型参数覆盖能力
 - [ ] RAG 参数调优面板（TopK、阈值等）
-- [ ] 导入导出（会话全量、角色批量等）— **单卡 JSON 导出已有；PNG 批量见上**
+- [ ] 导入导出（会话全量、角色批量等）— **单卡 PNG/JSON 导出已有；批量见 P1**
 - [ ] 数据目录备份示例脚本与说明（规范见 `DOC/03-实现细节.md` §8.7）
 
 ## P2（V2）
@@ -82,5 +90,5 @@
 
 - [x] 原独立草稿已合并至 `DOC/02`、`DOC/03`
 - [ ] 每次架构决策变更后更新 `DOC/01-架构设计.md`
-- [ ] 每次需求变更后更新 `DOC/02-需求说明.md`
-- [x] 每次接口变更后更新 `DOC/03-实现细节.md`（**含 §12 角色库、index.json、PATCH、PNG**）— 2026-05-14 已同步 PNG 主存与 API
+- [x] 每次需求变更后更新 `DOC/02-需求说明.md` — 2026-05-26 会话列表与角色库排序简述
+- [x] 每次接口变更后更新 `DOC/03-实现细节.md`（**含 §12 角色库、index.json、PATCH、PNG、排序/导出**）— 2026-05-26 已同步 filterCounts、export-png/json、会话列表 UI

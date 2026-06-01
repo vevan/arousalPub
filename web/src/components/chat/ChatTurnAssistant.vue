@@ -163,6 +163,18 @@ const { assistantRoleName, assistantAvatarLetter } = toRefs(props.session)
           <span class="reasoning-chain__hint-collapse">{{ $t('chat.collapse') }}</span>
           <kbd>{{ $t('chat.shortcutKey') }}</kbd>
         </span>
+        <button
+          type="button"
+          class="turn-toolbar__btn reasoning-chain__copy"
+          :data-tt="copiedTurnKey === `r-${turn.turnOrdinal}-live` ? $t('chat.copied') : $t('chat.copy')"
+          :class="{ 'is-success': copiedTurnKey === `r-${turn.turnOrdinal}-live` }"
+          :aria-label="$t('chat.copy')"
+          @click.stop="copyTurnText(streamingReasoning, `r-${turn.turnOrdinal}-live`)"
+        >
+          <v-icon size="14">
+            {{ copiedTurnKey === `r-${turn.turnOrdinal}-live` ? 'mdi-check' : 'mdi-content-copy' }}
+          </v-icon>
+        </button>
       </summary>
       <div
         class="reasoning-chain__body chat-rich-text"
@@ -196,6 +208,18 @@ const { assistantRoleName, assistantAvatarLetter } = toRefs(props.session)
           <span class="reasoning-chain__hint-collapse">{{ $t('chat.collapse') }}</span>
           <kbd>{{ $t('chat.shortcutKey') }}</kbd>
         </span>
+        <button
+          type="button"
+          class="turn-toolbar__btn reasoning-chain__copy"
+          :data-tt="copiedTurnKey === `r-${turn.turnOrdinal}` ? $t('chat.copied') : $t('chat.copy')"
+          :class="{ 'is-success': copiedTurnKey === `r-${turn.turnOrdinal}` }"
+          :aria-label="$t('chat.copy')"
+          @click.stop="copyTurnText(assistantReasoning(turn), `r-${turn.turnOrdinal}`)"
+        >
+          <v-icon size="14">
+            {{ copiedTurnKey === `r-${turn.turnOrdinal}` ? 'mdi-check' : 'mdi-content-copy' }}
+          </v-icon>
+        </button>
       </summary>
       <div
         class="reasoning-chain__body chat-rich-text"

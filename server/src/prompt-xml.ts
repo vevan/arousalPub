@@ -11,17 +11,49 @@ export const ASSEMBLE_INJECT_PLACEHOLDER = {
     '<inject slot="bound_character.post_history_instructions" />',
 } as const
 
-/**
- * 仅用于「不可信长文本」进 XML 结构：角色卡字段、世界书正文等。
- * 属性值与元素文本均可用（属性内须同时处理引号）。
- */
-export function escapeXmlText(raw: string): string {
+/** XML 属性值：须转义引号，避免破坏 `name="…"` 等结构。 */
+export function escapeXmlAttribute(raw: string): string {
   return raw
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;')
+}
+
+/** XML 元素正文：仅转义结构字符；引号在文本节点中合法，勿转成 &quot;。 */
+export function escapeXmlElementText(raw: string): string {
+  return raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function decodeXmlEntitiesOnce(raw: string): string {
+  return raw
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+}
+
+/**
+ * 元素正文：先还原历史误存的实体（最多 3 轮），再 escape，避免 &quot; → &amp;quot; 叠层。
+ */
+export function prepareXmlElementText(raw: string): string {
+  let s = raw
+  for (let i = 0; i < 3; i++) {
+    const next = decodeXmlEntitiesOnce(s)
+    if (next === s) break
+    s = next
+  }
+  return escapeXmlElementText(s)
+}
+
+/** @deprecated 使用 escapeXmlAttribute / prepareXmlElementText */
+export function escapeXmlText(raw: string): string {
+  return escapeXmlAttribute(raw)
 }
 
 const CARD_TEXT_FIELDS = [
@@ -34,7 +66,7 @@ const CARD_TEXT_FIELDS = [
 ] as const
 
 function el(tag: string, text: string): string {
-  return `  <${tag}>${escapeXmlText(text)}</${tag}>`
+  return `  <${tag}>${prepareXmlElementText(text)}</${tag}>`
 }
 
 /**
@@ -55,7 +87,7 @@ function cardRecordToPersonaXmlBlock(
       : rootTag === 'user'
         ? '用户'
         : '角色'
-  const attr = escapeXmlText(display)
+  const attr = escapeXmlAttribute(display)
   const lines: string[] = []
   for (const [tag, ck] of CARD_TEXT_FIELDS) {
     const v = card[ck]
@@ -85,9 +117,9 @@ export function formatLoresXmlBlock(
     const name = e.name.trim() || '未命名'
     const body = e.content.trim()
     if (!body) continue
-    lines.push(`  <lore name="${escapeXmlText(name)}">`)
+    lines.push(`  <lore name="${escapeXmlAttribute(name)}">`)
     for (const line of body.split('\n')) {
-      lines.push(`  ${escapeXmlText(line)}`)
+      lines.push(`  ${prepareXmlElementText(line)}`)
     }
     lines.push('  </lore>')
   }
@@ -101,5 +133,5 @@ export function loreTextToXmlBlock(text: string): string {
   const t = text.trim()
   if (!t) return ''
   if (t.startsWith('<lores')) return t
-  return `<lore>\n${escapeXmlText(t)}\n</lore>`
+  return `<lore>\n${prepareXmlElementText(t)}\n</lore>`
 }

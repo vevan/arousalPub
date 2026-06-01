@@ -227,19 +227,23 @@ export interface ChatPromptFile {
 
 /** 解析会话绑定的角色卡 id（顺序即 {{char}}、{{char2}}…） */
 export function resolvedCharacterIds(
-  idx: Pick<ConversationIndex, 'characterIds'>,
+  idx: Pick<ConversationIndex, 'characterIds' | 'characterId'>,
 ): string[] {
-  if (!Array.isArray(idx.characterIds)) return []
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const raw of idx.characterIds) {
-    if (typeof raw !== 'string') continue
-    const id = raw.trim()
-    if (!id || seen.has(id)) continue
-    seen.add(id)
-    out.push(id)
+  if (Array.isArray(idx.characterIds)) {
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const raw of idx.characterIds) {
+      if (typeof raw !== 'string') continue
+      const id = raw.trim()
+      if (!id || seen.has(id)) continue
+      seen.add(id)
+      out.push(id)
+    }
+    if (out.length > 0) return out
   }
-  return out
+  const legacy = idx.characterId
+  if (typeof legacy === 'string' && legacy.trim()) return [legacy.trim()]
+  return []
 }
 
 /** 解析会话绑定的资料库 id 列表 */

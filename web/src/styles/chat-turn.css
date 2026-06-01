@@ -579,6 +579,11 @@
 }
 .reasoning-chain:not([open]) .reasoning-chain__hint-collapse { display: none; }
 .reasoning-chain[open] .reasoning-chain__hint-expand { display: none; }
+.reasoning-chain__copy {
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+}
 .reasoning-chain__body {
   padding: 0.875rem 1.125rem 1rem;
   font-family: var(--font-display);

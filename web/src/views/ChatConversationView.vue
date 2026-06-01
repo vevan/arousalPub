@@ -96,8 +96,8 @@ function shouldOfferMemoryRebuild(): boolean {
   const globalDims = embeddingDimensions.value
   const storedModel = conversationMemoryEmbeddingModel.value
   const storedDims = conversationMemoryEmbeddingDimensions.value
+  if (!storedModel) return false
   if (
-    storedModel &&
     storedModel === globalModel &&
     embeddingDimsMatch(storedDims, globalDims)
   ) {

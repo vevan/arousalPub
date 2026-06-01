@@ -1,6 +1,6 @@
-import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
-import * as lancedb from '@lancedb/lancedb'
+import type { Table } from '@lancedb/lancedb'
+import { closeLanceDb, openLanceDb } from './lance-connection-pool.js'
 import { getUserDataDir } from './config.js'
 import { getCurrentUserId } from './user-context.js'
 
@@ -31,8 +31,7 @@ function lorebookDbUri(lorebookId: string): string {
 
 async function connectDb(lorebookId: string) {
   const uri = lorebookDbUri(lorebookId)
-  await mkdir(uri, { recursive: true })
-  return lancedb.connect(uri)
+  return openLanceDb(uri)
 }
 
 function toSqlString(s: string): string {
@@ -42,7 +41,7 @@ function toSqlString(s: string): string {
 async function openOrCreateTable(
   lorebookId: string,
   sampleVector: number[],
-): Promise<lancedb.Table> {
+): Promise<Table> {
   const db = await connectDb(lorebookId)
   const names = await db.tableNames()
   if (names.includes(TABLE_NAME)) {
@@ -62,12 +61,16 @@ export async function replaceLorebookVectorIndex(
   lorebookId: string,
   rows: LoreEntryVectorRow[],
 ): Promise<void> {
+  const uri = lorebookDbUri(lorebookId)
   const db = await connectDb(lorebookId)
   const names = await db.tableNames()
   if (names.includes(TABLE_NAME)) {
     await db.dropTable(TABLE_NAME)
   }
-  if (!rows.length) return
+  if (!rows.length) {
+    closeLanceDb(uri)
+    return
+  }
   const sample = rows[0]!.vector
   const table = await openOrCreateTable(lorebookId, sample)
   await table.add(rows.map(rowToRecord))
@@ -76,10 +79,12 @@ export async function replaceLorebookVectorIndex(
 export async function deleteLorebookVectorIndex(
   lorebookId: string,
 ): Promise<void> {
+  const uri = lorebookDbUri(lorebookId)
   const db = await connectDb(lorebookId)
   const names = await db.tableNames()
   if (!names.includes(TABLE_NAME)) return
   await db.dropTable(TABLE_NAME)
+  closeLanceDb(uri)
 }
 
 export interface LoreEntryVectorHit {

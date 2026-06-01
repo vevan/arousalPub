@@ -175,14 +175,18 @@ export function normalizeTavernCardV2Data(
   return out
 }
 
-export function wrapCardForCharaChunk(card: Record<string, unknown>): string {
-  const data = normalizeTavernCardV2Data(card)
-  const payload = {
-    spec: 'chara_card_v2' as const,
-    spec_version: '2.0' as const,
-    data,
+export function buildStV2CharacterExport(
+  card: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    spec: 'chara_card_v2',
+    spec_version: '2.0',
+    data: normalizeTavernCardV2Data(card),
   }
-  return JSON.stringify(payload)
+}
+
+export function wrapCardForCharaChunk(card: Record<string, unknown>): string {
+  return JSON.stringify(buildStV2CharacterExport(card))
 }
 
 export function cardFromCharaJson(parsed: unknown): Record<string, unknown> {

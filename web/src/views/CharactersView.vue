@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { characterImageUrl } from '@/utils/authenticated-media-url'
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { apiFetch } from '@/utils/api-fetch'
+import { computed, mergeProps, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 withDefaults(
@@ -10,7 +11,7 @@ withDefaults(
   { embedded: false },
 )
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 interface CharacterListItem {
   id: string
@@ -33,6 +34,7 @@ interface CharacterDoc {
 interface ListResponse {
   items: CharacterListItem[]
   total: number
+  filterCounts: { all: number; used: number; unused: number }
   offset: number
   limit: number
   hasMore: boolean
@@ -42,11 +44,16 @@ const PAGE = 24
 
 const items = ref<CharacterListItem[]>([])
 const total = ref(0)
+const filterCounts = ref({ all: 0, used: 0, unused: 0 })
 const hasMore = ref(true)
 const loading = ref(false)
 const loadingMore = ref(false)
 const errorText = ref('')
 const filter = ref<'all' | 'used' | 'unused'>('all')
+const sort = ref<
+  'recentChat' | 'recentUpdate' | 'name' | 'usageCount'
+>('name')
+const sortOrder = ref<'asc' | 'desc'>('asc')
 const search = ref('')
 const searchDebounced = ref('')
 let searchTimer: ReturnType<typeof setTimeout> | null = null
@@ -57,6 +64,7 @@ const detailLoading = ref(false)
 
 const deleteOpen = ref(false)
 const deleteDoing = ref(false)
+const exportDoing = ref(false)
 
 type CharFormMode = 'create' | 'edit'
 const charFormOpen = ref(false)
@@ -157,7 +165,46 @@ watch(search, (s) => {
   }, 280)
 })
 
-watch([filter, searchDebounced], () => {
+const SORT_OPTIONS = [
+  'recentChat',
+  'recentUpdate',
+  'name',
+  'usageCount',
+] as const
+
+type CharacterSort = (typeof SORT_OPTIONS)[number]
+
+function sortOptionLabel(opt: CharacterSort): string {
+  const keys: Record<CharacterSort, string> = {
+    recentChat: 'characters.sortRecentChat',
+    recentUpdate: 'characters.sortRecent',
+    name: 'characters.sortName',
+    usageCount: 'characters.sortUsageCount',
+  }
+  return t(keys[opt])
+}
+
+const sortLabel = computed(() => sortOptionLabel(sort.value))
+
+const sortSelectLabelRef = ref<HTMLElement | null>(null)
+const sortLabelTruncated = ref(false)
+
+function updateSortLabelTruncated() {
+  const el = sortSelectLabelRef.value
+  sortLabelTruncated.value = Boolean(
+    el && el.scrollWidth > el.clientWidth + 1,
+  )
+}
+
+watch(sortLabel, () => {
+  void nextTick(updateSortLabelTruncated)
+})
+
+watch(locale, () => {
+  void nextTick(updateSortLabelTruncated)
+})
+
+watch([filter, searchDebounced, sort, sortOrder], () => {
   void reloadFromStart()
 })
 
@@ -183,6 +230,8 @@ function buildQuery(offset: number) {
   u.searchParams.set('limit', String(PAGE))
   if (searchDebounced.value) u.searchParams.set('search', searchDebounced.value)
   if (filter.value !== 'all') u.searchParams.set('filter', filter.value)
+  u.searchParams.set('sort', sort.value)
+  u.searchParams.set('order', sortOrder.value)
   return u.pathname + u.search
 }
 
@@ -202,6 +251,9 @@ async function fetchSlice(offset: number, append: boolean) {
     }
     const data = (await res.json()) as ListResponse
     total.value = data.total
+    if (data.filterCounts) {
+      filterCounts.value = data.filterCounts
+    }
     hasMore.value = data.hasMore
     if (append) {
       items.value = items.value.concat(data.items)
@@ -225,6 +277,7 @@ async function fetchSlice(offset: number, append: boolean) {
 async function reloadFromStart() {
   items.value = []
   total.value = 0
+  filterCounts.value = { all: 0, used: 0, unused: 0 }
   hasMore.value = true
   selectedId.value = null
   detail.value = null
@@ -289,6 +342,14 @@ function selectCard(id: string) {
 
 function setFilter(f: 'all' | 'used' | 'unused') {
   filter.value = f
+}
+
+function setSort(next: CharacterSort) {
+  sort.value = next
+}
+
+function setSortOrder(next: 'asc' | 'desc') {
+  sortOrder.value = next
 }
 
 function triggerImport() {
@@ -614,17 +675,68 @@ async function onImportFile(ev: Event) {
   }
 }
 
-function exportJson() {
-  if (!detail.value) return
-  const blob = new Blob([JSON.stringify(detail.value, null, 2)], {
-    type: 'application/json',
-  })
+function parseContentDispositionFilename(header: string | null): string | null {
+  if (!header) return null
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(header)
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1].trim())
+    } catch {
+      /* ignore */
+    }
+  }
+  const plain = /filename="([^"]+)"/i.exec(header)
+  return plain?.[1] ?? null
+}
+
+function triggerDownloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `${detail.value.id}.json`
+  a.download = filename
+  document.body.appendChild(a)
   a.click()
-  URL.revokeObjectURL(url)
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+async function downloadCharacterExport(path: string, fallbackFilename: string) {
+  exportDoing.value = true
+  errorText.value = ''
+  try {
+    const res = await apiFetch(path)
+    if (!res.ok) {
+      errorText.value = t('characters.exportFailed')
+      return
+    }
+    const blob = await res.blob()
+    const filename =
+      parseContentDispositionFilename(res.headers.get('Content-Disposition')) ??
+      fallbackFilename
+    triggerDownloadBlob(blob, filename)
+  } catch {
+    errorText.value = t('characters.exportFailed')
+  } finally {
+    exportDoing.value = false
+  }
+}
+
+async function exportJson() {
+  if (!selectedId.value || !detail.value) return
+  const fallback = `${selected.value?.name?.trim() || selectedId.value}.json`
+  await downloadCharacterExport(
+    `/api/characters/${selectedId.value}/export-json`,
+    fallback,
+  )
+}
+
+async function exportPng() {
+  if (!selectedId.value || !detail.value) return
+  const fallback = `${selected.value?.name?.trim() || selectedId.value}.png`
+  await downloadCharacterExport(
+    `/api/characters/${selectedId.value}/export-png`,
+    fallback,
+  )
 }
 
 function openDelete() {
@@ -684,6 +796,7 @@ async function refreshListKeepSelection() {
 
 onMounted(() => {
   void reloadFromStart()
+  void nextTick(updateSortLabelTruncated)
 })
 
 onUnmounted(() => {
@@ -716,6 +829,63 @@ onUnmounted(() => {
       </header>
 
       <div class="charlib-toolbar">
+        <div class="charlib-sort-group">
+          <v-menu location="bottom start">
+            <template #activator="{ props: menuProps }">
+              <v-tooltip
+                location="top"
+                :text="sortLabel"
+                :disabled="!sortLabelTruncated"
+              >
+                <template #activator="{ props: tipProps }">
+                  <v-btn
+                    variant="outlined"
+                    size="small"
+                    class="charlib-sort-select"
+                    v-bind="mergeProps(menuProps, tipProps)"
+                  >
+                    <span
+                      ref="sortSelectLabelRef"
+                      class="charlib-sort-select__label"
+                    >{{ sortLabel }}</span>
+                    <v-icon
+                      class="charlib-sort-select__caret"
+                      size="16"
+                    >
+                      mdi-chevron-down
+                    </v-icon>
+                  </v-btn>
+                </template>
+              </v-tooltip>
+            </template>
+            <v-list density="compact" min-width="11rem">
+              <v-list-item
+                v-for="opt in SORT_OPTIONS"
+                :key="opt"
+                :active="sort === opt"
+                @click="setSort(opt)"
+              >
+                <v-list-item-title>{{ sortOptionLabel(opt) }}</v-list-item-title>
+              </v-list-item>
+            </v-list>
+          </v-menu>
+          <v-btn-toggle
+            :model-value="sortOrder"
+            mandatory
+            divided
+            density="compact"
+            variant="outlined"
+            class="charlib-sort-order"
+            @update:model-value="setSortOrder($event as 'asc' | 'desc')"
+          >
+            <v-btn value="asc" size="small">
+              {{ $t('characters.sortAsc') }}
+            </v-btn>
+            <v-btn value="desc" size="small">
+              {{ $t('characters.sortDesc') }}
+            </v-btn>
+          </v-btn-toggle>
+        </div>
         <label class="charlib-search">
           <v-icon size="16" class="charlib-search__icon">mdi-magnify</v-icon>
           <input
@@ -737,9 +907,6 @@ onUnmounted(() => {
         </v-btn>
         <v-btn color="primary" size="small" @click="triggerImport">
           {{ $t('characters.import') }}
-        </v-btn>
-        <v-btn variant="outlined" size="small" disabled>
-          {{ $t('characters.sortRecent') }}
         </v-btn>
       </div>
 
@@ -781,7 +948,10 @@ onUnmounted(() => {
                 <v-btn variant="outlined" size="small" :disabled="!detail" @click="openCharForm('edit')">
                   {{ $t('characters.edit') }}
                 </v-btn>
-                <v-btn variant="outlined" size="small" :disabled="!detail" @click="exportJson">
+                <v-btn variant="outlined" size="small" :disabled="!detail || exportDoing" @click="exportPng">
+                  {{ $t('characters.exportPng') }}
+                </v-btn>
+                <v-btn variant="outlined" size="small" :disabled="!detail || exportDoing" @click="exportJson">
                   {{ $t('characters.exportJson') }}
                 </v-btn>
                 <v-btn variant="outlined" size="small" color="error" @click="openDelete">
@@ -837,7 +1007,7 @@ onUnmounted(() => {
             :class="{ 'is-on': filter === 'all' }"
             @click="setFilter('all')"
           >
-            {{ $t('characters.filterAll') }} · {{ total }}
+            {{ $t('characters.filterAll') }} · {{ filterCounts.all }}
           </button>
           <button
             type="button"
@@ -845,7 +1015,7 @@ onUnmounted(() => {
             :class="{ 'is-on': filter === 'used' }"
             @click="setFilter('used')"
           >
-            {{ $t('characters.filterUsed') }}
+            {{ $t('characters.filterUsed') }} · {{ filterCounts.used }}
           </button>
           <button
             type="button"
@@ -853,7 +1023,7 @@ onUnmounted(() => {
             :class="{ 'is-on': filter === 'unused' }"
             @click="setFilter('unused')"
           >
-            {{ $t('characters.filterUnused') }}
+            {{ $t('characters.filterUnused') }} · {{ filterCounts.unused }}
           </button>
           <button type="button" class="charlib-filter" disabled>
             {{ $t('characters.filterTagFantasy') }}
@@ -1251,6 +1421,48 @@ onUnmounted(() => {
   margin-bottom: 0.75rem;
 }
 
+.charlib-sort-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+}
+
+/* 固定宽度按 en 最长项 "Recently updated" + 下拉箭头 */
+.charlib-sort-select {
+  width: 11.75rem;
+  max-width: 11.75rem;
+  min-width: 11.75rem !important;
+  padding-inline: 0.625rem 0.375rem !important;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.charlib-sort-select :deep(.v-btn__content) {
+  width: 100%;
+  justify-content: space-between;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.charlib-sort-select__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: start;
+}
+
+.charlib-sort-select__caret {
+  flex-shrink: 0;
+}
+
+.charlib-sort-order :deep(.v-btn) {
+  min-width: 3.25rem;
+  letter-spacing: 0.02em;
+}
+
 .charlib-edit-card {
   width: 100%;
   max-width: 100%;
@@ -1399,12 +1611,19 @@ onUnmounted(() => {
   height: 2.25rem;
   padding: 0 0.75rem;
   border-radius: 0.5rem;
-  border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.12);
+  border: 0.0625rem solid rgba(var(--v-theme-primary), 0.45);
   background: rgba(var(--v-theme-on-surface), 0.04);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.charlib-search:focus-within {
+  border-color: rgb(var(--v-theme-primary));
+  box-shadow: 0 0 0 0.125rem rgba(var(--v-theme-primary), 0.12);
 }
 
 .charlib-search__icon {
-  opacity: 0.45;
+  color: rgb(var(--v-theme-primary));
+  opacity: 0.85;
 }
 
 .charlib-search__input {

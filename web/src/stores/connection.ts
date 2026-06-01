@@ -8,6 +8,11 @@ import {
   isPromptPresetLike,
 } from '@/utils/api-preset-export'
 import { translateApiError } from '@/utils/api-error-message'
+import {
+  type DrySamplerFields,
+  migrateLegacyDryField,
+  normalizeDrySequenceBreakers,
+} from '@/utils/dry-sampler'
 
 export interface ApiSettingsSnapshot {
   alias: string
@@ -20,7 +25,11 @@ export interface ApiSettingsSnapshot {
   temperature: number | null
   topP: number | null
   topK: number | null
-  dry: number | null
+  dryMultiplier: number | null
+  dryBase: number | null
+  dryAllowedLength: number | null
+  dryPenaltyLastN: number | null
+  drySequenceBreakers: string[]
   frequencyPenalty: number | null
   presencePenalty: number | null
   customParamsJson: string
@@ -47,6 +56,16 @@ function newId(): string {
   return crypto.randomUUID()
 }
 
+function defaultDryFields(): DrySamplerFields {
+  return {
+    dryMultiplier: null,
+    dryBase: null,
+    dryAllowedLength: null,
+    dryPenaltyLastN: null,
+    drySequenceBreakers: [],
+  }
+}
+
 function defaultPresetFields(): ApiSettingsSnapshot {
   return {
     alias: '默认',
@@ -59,7 +78,7 @@ function defaultPresetFields(): ApiSettingsSnapshot {
     temperature: 0.7,
     topP: null,
     topK: null,
-    dry: null,
+    ...defaultDryFields(),
     frequencyPenalty: null,
     presencePenalty: null,
     customParamsJson: '',
@@ -69,6 +88,9 @@ function defaultPresetFields(): ApiSettingsSnapshot {
 }
 
 function normalizePreset(p: ApiPreset): ApiPreset {
+  const legacy = migrateLegacyDryField(p as unknown as Record<string, unknown>)
+  const raw = { ...p, ...legacy } as ApiPreset & { dry?: number }
+  const { dry: _legacyDry, ...rest } = raw
   const link =
     typeof p.linkedPromptPresetId === 'string' && p.linkedPromptPresetId.trim()
       ? p.linkedPromptPresetId.trim()
@@ -78,7 +100,8 @@ function normalizePreset(p: ApiPreset): ApiPreset {
       ? p.apiKeyId.trim()
       : null
   return {
-    ...p,
+    ...rest,
+    drySequenceBreakers: normalizeDrySequenceBreakers(rest.drySequenceBreakers),
     linkedPromptPresetId: link,
     apiKeyId: keyId,
     showReasoningChain:
@@ -105,7 +128,11 @@ export const useConnectionStore = defineStore('connection', () => {
   const temperature = ref<number | null>(0.7)
   const topP = ref<number | null>(null)
   const topK = ref<number | null>(null)
-  const dry = ref<number | null>(null)
+  const dryMultiplier = ref<number | null>(null)
+  const dryBase = ref<number | null>(null)
+  const dryAllowedLength = ref<number | null>(null)
+  const dryPenaltyLastN = ref<number | null>(null)
+  const drySequenceBreakers = ref<string[]>([])
   const frequencyPenalty = ref<number | null>(null)
   const presencePenalty = ref<number | null>(null)
   const customParamsJson = ref('')
@@ -149,7 +176,11 @@ export const useConnectionStore = defineStore('connection', () => {
       temperature: temperature.value,
       topP: topP.value,
       topK: topK.value,
-      dry: dry.value,
+      dryMultiplier: dryMultiplier.value,
+      dryBase: dryBase.value,
+      dryAllowedLength: dryAllowedLength.value,
+      dryPenaltyLastN: dryPenaltyLastN.value,
+      drySequenceBreakers: [...drySequenceBreakers.value],
       frequencyPenalty: frequencyPenalty.value,
       presencePenalty: presencePenalty.value,
       customParamsJson: customParamsJson.value,
@@ -175,7 +206,28 @@ export const useConnectionStore = defineStore('connection', () => {
     }
     if (o.topP === null || typeof o.topP === 'number') topP.value = o.topP ?? null
     if (o.topK === null || typeof o.topK === 'number') topK.value = o.topK ?? null
-    if (o.dry === null || typeof o.dry === 'number') dry.value = o.dry ?? null
+    if (o.dryMultiplier === null || typeof o.dryMultiplier === 'number') {
+      dryMultiplier.value = o.dryMultiplier ?? null
+    }
+    if (o.dryBase === null || typeof o.dryBase === 'number') {
+      dryBase.value = o.dryBase ?? null
+    }
+    if (o.dryAllowedLength === null || typeof o.dryAllowedLength === 'number') {
+      dryAllowedLength.value = o.dryAllowedLength ?? null
+    }
+    if (o.dryPenaltyLastN === null || typeof o.dryPenaltyLastN === 'number') {
+      dryPenaltyLastN.value = o.dryPenaltyLastN ?? null
+    }
+    if (Array.isArray(o.drySequenceBreakers)) {
+      drySequenceBreakers.value = normalizeDrySequenceBreakers(o.drySequenceBreakers)
+    }
+    const legacyDry = migrateLegacyDryField(o as Record<string, unknown>)
+    if (
+      legacyDry.dryMultiplier !== undefined &&
+      dryMultiplier.value === null
+    ) {
+      dryMultiplier.value = legacyDry.dryMultiplier ?? null
+    }
     if (o.frequencyPenalty === null || typeof o.frequencyPenalty === 'number') {
       frequencyPenalty.value = o.frequencyPenalty ?? null
     }
@@ -412,6 +464,7 @@ export const useConnectionStore = defineStore('connection', () => {
       const v = raw[k as string]
       return typeof v === 'string' ? v : def
     }
+    const legacyDry = migrateLegacyDryField(raw)
     return {
       alias:
         typeof raw.alias === 'string' && raw.alias.trim()
@@ -435,7 +488,15 @@ export const useConnectionStore = defineStore('connection', () => {
       temperature: num('temperature'),
       topP: num('topP'),
       topK: num('topK'),
-      dry: num('dry'),
+      dryMultiplier: num('dryMultiplier') ?? legacyDry.dryMultiplier ?? null,
+      dryBase: num('dryBase') ?? legacyDry.dryBase ?? null,
+      dryAllowedLength:
+        num('dryAllowedLength') ?? legacyDry.dryAllowedLength ?? null,
+      dryPenaltyLastN:
+        num('dryPenaltyLastN') ?? legacyDry.dryPenaltyLastN ?? null,
+      drySequenceBreakers: Array.isArray(raw.drySequenceBreakers)
+        ? normalizeDrySequenceBreakers(raw.drySequenceBreakers)
+        : d.drySequenceBreakers,
       frequencyPenalty: num('frequencyPenalty'),
       presencePenalty: num('presencePenalty'),
       customParamsJson: str('customParamsJson', d.customParamsJson),
@@ -467,7 +528,11 @@ export const useConnectionStore = defineStore('connection', () => {
       temperature: snap.temperature,
       topP: snap.topP,
       topK: snap.topK,
-      dry: snap.dry,
+      dryMultiplier: snap.dryMultiplier,
+      dryBase: snap.dryBase,
+      dryAllowedLength: snap.dryAllowedLength,
+      dryPenaltyLastN: snap.dryPenaltyLastN,
+      drySequenceBreakers: snap.drySequenceBreakers,
       frequencyPenalty: snap.frequencyPenalty,
       presencePenalty: snap.presencePenalty,
       customParamsJson: snap.customParamsJson,
@@ -644,7 +709,11 @@ export const useConnectionStore = defineStore('connection', () => {
     temperature,
     topP,
     topK,
-    dry,
+    dryMultiplier,
+    dryBase,
+    dryAllowedLength,
+    dryPenaltyLastN,
+    drySequenceBreakers,
     frequencyPenalty,
     presencePenalty,
     customParamsJson,

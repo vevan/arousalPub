@@ -12,6 +12,10 @@ import {
   parseApiPresetExportDoc,
   type ApiPresetExportDoc,
 } from '@/utils/api-preset-export'
+import {
+  formatDryBreakersForTextarea,
+  parseDryBreakersFromTextarea,
+} from '@/utils/dry-sampler'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -271,6 +275,13 @@ function bindOptionalNumber(get: () => number | null, set: (n: number | null) =>
     },
   }
 }
+
+const dryBreakersText = computed({
+  get: () => formatDryBreakersForTextarea(conn.drySequenceBreakers),
+  set: (v: string) => {
+    conn.drySequenceBreakers = parseDryBreakersFromTextarea(v)
+  },
+})
 
 async function save() {
   try {
@@ -664,16 +675,72 @@ function closeImportDialog() {
       step="1"
     />
 
-    <v-text-field
-      v-bind="bindOptionalNumber(() => conn.dry, (n) => { conn.dry = n })"
-      :label="$t('conn.dry')"
-      type="number"
-      :hint="$t('conn.dryHint')"
-      persistent-hint
-      density="compact"
+    <v-expansion-panels
+      variant="accordion"
       class="mb-3"
-      step="0.1"
-    />
+    >
+      <v-expansion-panel>
+        <v-expansion-panel-title>
+          {{ $t('conn.drySection') }}
+        </v-expansion-panel-title>
+        <v-expansion-panel-text>
+          <p class="text-caption text-medium-emphasis mb-3">
+            {{ $t('conn.dryHint') }}
+          </p>
+
+          <v-text-field
+            v-bind="bindOptionalNumber(() => conn.dryMultiplier, (n) => { conn.dryMultiplier = n })"
+            :label="$t('conn.dryMultiplier')"
+            type="number"
+            density="compact"
+            class="mb-3"
+            step="0.1"
+          />
+
+          <v-text-field
+            v-bind="bindOptionalNumber(() => conn.dryBase, (n) => { conn.dryBase = n })"
+            :label="$t('conn.dryBase')"
+            type="number"
+            density="compact"
+            class="mb-3"
+            step="0.01"
+          />
+
+          <v-text-field
+            v-bind="bindOptionalNumber(() => conn.dryAllowedLength, (n) => { conn.dryAllowedLength = n })"
+            :label="$t('conn.dryAllowedLength')"
+            type="number"
+            density="compact"
+            class="mb-3"
+            min="0"
+            step="1"
+          />
+
+          <v-text-field
+            v-bind="bindOptionalNumber(() => conn.dryPenaltyLastN, (n) => { conn.dryPenaltyLastN = n })"
+            :label="$t('conn.dryPenaltyLastN')"
+            type="number"
+            :hint="$t('conn.dryPenaltyLastNHint')"
+            persistent-hint
+            density="compact"
+            class="mb-3"
+            min="0"
+            step="1"
+          />
+
+          <v-textarea
+            v-model="dryBreakersText"
+            :label="$t('conn.drySequenceBreakers')"
+            :hint="$t('conn.drySequenceBreakersHint')"
+            persistent-hint
+            variant="outlined"
+            rows="4"
+            auto-grow
+            spellcheck="false"
+          />
+        </v-expansion-panel-text>
+      </v-expansion-panel>
+    </v-expansion-panels>
 
     <v-text-field
       v-bind="bindOptionalNumber(() => conn.frequencyPenalty, (n) => { conn.frequencyPenalty = n })"

@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { generateShortId } from './short-id.js'
 import { getApiSettingsPath, getUserDataDir } from './config.js'
 import { getCurrentUserId } from './user-context.js'
+import { migrateLegacyDryOnPreset } from './dry-sampler.js'
 
 export function getApiSettingsPathForUser(): string {
   return getApiSettingsPath()
@@ -20,7 +21,11 @@ export interface ApiPreset {
   temperature: number | null
   topP: number | null
   topK: number | null
-  dry: number | null
+  dryMultiplier: number | null
+  dryBase: number | null
+  dryAllowedLength: number | null
+  dryPenaltyLastN: number | null
+  drySequenceBreakers: string[]
   frequencyPenalty: number | null
   presencePenalty: number | null
   customParamsJson: string
@@ -47,18 +52,26 @@ function normalizeDocument(o: unknown): ApiSettingsDocument | null {
     return typeof o.id === 'string' && o.id.length > 0
   })
   if (presets.length === 0) return null
-  const presetsNorm: ApiPreset[] = presets.map((p) => ({
-    ...p,
-    linkedPromptPresetId:
-      typeof p.linkedPromptPresetId === 'string' &&
-      p.linkedPromptPresetId.trim()
-        ? p.linkedPromptPresetId.trim()
-        : null,
-    apiKeyId:
-      typeof p.apiKeyId === 'string' && p.apiKeyId.trim()
-        ? p.apiKeyId.trim()
-        : null,
-  }))
+  const presetsNorm: ApiPreset[] = presets.map((p) => {
+    const migrated = migrateLegacyDryOnPreset(p as unknown as Record<string, unknown>)
+    const m = migrated as Partial<ApiPreset>
+    const breakers = Array.isArray(m.drySequenceBreakers)
+      ? m.drySequenceBreakers.filter((x): x is string => typeof x === 'string')
+      : []
+    return {
+      ...(m as ApiPreset),
+      drySequenceBreakers: breakers,
+      linkedPromptPresetId:
+        typeof m.linkedPromptPresetId === 'string' &&
+        m.linkedPromptPresetId.trim()
+          ? m.linkedPromptPresetId.trim()
+          : null,
+      apiKeyId:
+        typeof m.apiKeyId === 'string' && m.apiKeyId.trim()
+          ? m.apiKeyId.trim()
+          : null,
+    }
+  })
   let active =
     typeof d.activePresetId === 'string' ? d.activePresetId : presetsNorm[0].id
   if (!presetsNorm.some((p) => p.id === active)) active = presetsNorm[0].id

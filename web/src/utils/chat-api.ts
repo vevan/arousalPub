@@ -2,6 +2,7 @@ import type { useConnectionStore } from '@/stores/connection'
 import type { PromptTrigger } from '@/stores/prompts'
 import type { ChatPersistPayload } from '@/types/chat-turn'
 import { translateApiError } from '@/utils/api-error-message'
+import { hasAnyDrySamplerField } from '@/utils/dry-sampler'
 
 type ConnectionStore = ReturnType<typeof useConnectionStore>
 
@@ -20,6 +21,14 @@ export function buildConversationChatRequestBody(
   let customParams: Record<string, unknown> | undefined
   if (conn.customParamsJson.trim()) {
     customParams = conn.parseCustomParams()
+  }
+
+  const dryFields = {
+    dryMultiplier: conn.dryMultiplier,
+    dryBase: conn.dryBase,
+    dryAllowedLength: conn.dryAllowedLength,
+    dryPenaltyLastN: conn.dryPenaltyLastN,
+    drySequenceBreakers: conn.drySequenceBreakers,
   }
 
   return {
@@ -45,7 +54,18 @@ export function buildConversationChatRequestBody(
     temperature: conn.temperature ?? undefined,
     topP: conn.topP ?? undefined,
     topK: conn.topK ?? undefined,
-    dry: conn.dry ?? undefined,
+    ...(hasAnyDrySamplerField(dryFields)
+      ? {
+          dryMultiplier: dryFields.dryMultiplier ?? undefined,
+          dryBase: dryFields.dryBase ?? undefined,
+          dryAllowedLength: dryFields.dryAllowedLength ?? undefined,
+          dryPenaltyLastN: dryFields.dryPenaltyLastN ?? undefined,
+          drySequenceBreakers:
+            dryFields.drySequenceBreakers.length > 0
+              ? dryFields.drySequenceBreakers
+              : undefined,
+        }
+      : {}),
     frequencyPenalty: conn.frequencyPenalty ?? undefined,
     presencePenalty: conn.presencePenalty ?? undefined,
     customParams,

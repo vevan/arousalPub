@@ -12,6 +12,7 @@ import {
   type ApiPreset,
   type ApiSettingsDocument,
 } from './api-settings-file.js'
+import { appendDrySamplerToPayload } from './dry-sampler.js'
 import {
   createConversationStub,
   deleteConversation,
@@ -149,7 +150,11 @@ interface ChatBody {
   temperature?: number | null
   topP?: number | null
   topK?: number | null
-  dry?: number | null
+  dryMultiplier?: number | null
+  dryBase?: number | null
+  dryAllowedLength?: number | null
+  dryPenaltyLastN?: number | null
+  drySequenceBreakers?: string[] | null
   frequencyPenalty?: number | null
   presencePenalty?: number | null
   customParams?: Record<string, unknown>
@@ -219,7 +224,6 @@ function buildUpstreamPayload(body: ChatBody): Record<string, unknown> {
     temperature,
     topP,
     topK,
-    dry,
     frequencyPenalty,
     presencePenalty,
     maxTokens,
@@ -236,7 +240,7 @@ function buildUpstreamPayload(body: ChatBody): Record<string, unknown> {
   }
   if (topP !== undefined && topP !== null) payload.top_p = topP
   if (topK !== undefined && topK !== null) payload.top_k = topK
-  if (dry !== undefined && dry !== null) payload.dry = dry
+  appendDrySamplerToPayload(payload, body)
   if (frequencyPenalty !== undefined && frequencyPenalty !== null) {
     payload.frequency_penalty = frequencyPenalty
   }

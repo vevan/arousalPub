@@ -64,6 +64,7 @@
 
 ## P1（次优先）
 
+- [x] **单端口生产启动（`DOC/01` §9）**：`npm start` / `run-prod.mjs`、`static-web.ts`、`start.bat`/`start.sh`、`README.md`；根目录 `build`（web + server）；保留 `npm run dev`
 - [ ] API 配置连通性测试接口（test）
 - [ ] API 配置引用检查与安全删除
 - [ ] 会话级模型参数覆盖能力

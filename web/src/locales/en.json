@@ -197,7 +197,12 @@
     "entryDelete": "Delete",
     "entryDeleteDialog": "Delete entry",
     "entryDeleteBody": "Delete “{title}”?",
-    "untitled": "Untitled"
+    "untitled": "Untitled",
+    "packageExport": "Export current lorebook (JSON)",
+    "packageImport": "Import lorebook (append one)",
+    "packageImportConfirmTitle": "Import lorebook",
+    "packageImportConfirmBody": "Append “{name}” from the file to your list (renamed if id or name conflicts) and save to the server. Continue?",
+    "packageImportFailed": "Import failed"
   },
   "characters": {
     "pageTitle": "Character library",

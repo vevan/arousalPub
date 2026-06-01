@@ -10,6 +10,7 @@ import {
   resolveEntryTriggerMode,
   type LorebookTriggerMode,
 } from '@/utils/lorebook-entry'
+import { parseLorebookImport } from '@/utils/lorebooks-package'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -266,6 +267,54 @@ function entryMetaLine(e: {
 function setEntryTriggerMode(entryId: string, mode: LorebookTriggerMode) {
   store.updateEntry(entryId, patchForTriggerMode(mode))
 }
+
+/** ============== 当前资料库导入 / 导出 ============== */
+const importFileRef = ref<HTMLInputElement | null>(null)
+const importErrorOpen = ref(false)
+const importErrorMsg = ref('')
+const importConfirmOpen = ref(false)
+const importPendingText = ref('')
+const importPreviewName = ref('')
+const importDoing = ref(false)
+
+function performExportActiveLorebook() {
+  store.exportActiveLorebook()
+}
+
+function performImportPickFile() {
+  importFileRef.value?.click()
+}
+
+async function onImportFileChange(evt: Event) {
+  const input = evt.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  try {
+    const text = await file.text()
+    const lb = parseLorebookImport(JSON.parse(text))
+    importPendingText.value = text
+    importPreviewName.value = lb.name.trim() || lb.id
+    importConfirmOpen.value = true
+  } catch (e) {
+    importErrorMsg.value = e instanceof Error ? e.message : String(e)
+    importErrorOpen.value = true
+  }
+}
+
+async function confirmImportLorebook() {
+  importDoing.value = true
+  try {
+    await store.importLorebookFromJson(importPendingText.value)
+    importConfirmOpen.value = false
+    importPendingText.value = ''
+  } catch (e) {
+    importErrorMsg.value = e instanceof Error ? e.message : String(e)
+    importErrorOpen.value = true
+  } finally {
+    importDoing.value = false
+  }
+}
 </script>
 
 <template>
@@ -363,6 +412,33 @@ function setEntryTriggerMode(entryId: string, mode: LorebookTriggerMode) {
           >
             <v-icon size="16">mdi-trash-can-outline</v-icon>
           </button>
+          <button
+            type="button"
+            class="preset-bar__icon-btn"
+            :title="$t('lorebooks.packageImport')"
+            :aria-label="$t('lorebooks.packageImport')"
+            :disabled="loading || importDoing"
+            @click="performImportPickFile"
+          >
+            <v-icon size="16">mdi-tray-arrow-down</v-icon>
+          </button>
+          <button
+            type="button"
+            class="preset-bar__icon-btn"
+            :title="$t('lorebooks.packageExport')"
+            :aria-label="$t('lorebooks.packageExport')"
+            :disabled="loading"
+            @click="performExportActiveLorebook"
+          >
+            <v-icon size="16">mdi-tray-arrow-up</v-icon>
+          </button>
+          <input
+            ref="importFileRef"
+            type="file"
+            accept="application/json,.json"
+            style="display: none"
+            @change="onImportFileChange"
+          />
         </div>
         <div class="preset-bar__right">
           <span
@@ -822,6 +898,42 @@ function setEntryTriggerMode(entryId: string, mode: LorebookTriggerMode) {
           <v-spacer />
           <v-btn variant="text" @click="entryDeleteOpen = false">{{ $t('settings.themeCancel') }}</v-btn>
           <v-btn color="error" variant="flat" @click="performDeleteEntry">{{ $t('settings.themeConfirm') }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="importConfirmOpen" max-width="28rem">
+      <v-card>
+        <v-card-title class="text-subtitle-1">{{ $t('lorebooks.packageImportConfirmTitle') }}</v-card-title>
+        <v-card-text class="text-body-2">
+          {{ $t('lorebooks.packageImportConfirmBody', { name: importPreviewName }) }}
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="importDoing" @click="importConfirmOpen = false">
+            {{ $t('settings.themeCancel') }}
+          </v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            :loading="importDoing"
+            @click="confirmImportLorebook"
+          >
+            {{ $t('settings.themeConfirm') }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="importErrorOpen" max-width="28rem">
+      <v-card>
+        <v-card-title class="text-subtitle-1">{{ $t('lorebooks.packageImportFailed') }}</v-card-title>
+        <v-card-text class="text-body-2">{{ importErrorMsg }}</v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn color="primary" variant="flat" @click="importErrorOpen = false">
+            {{ $t('settings.themeConfirm') }}
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

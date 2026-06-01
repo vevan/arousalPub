@@ -197,7 +197,12 @@
     "entryDelete": "删除",
     "entryDeleteDialog": "删除条目",
     "entryDeleteBody": "确定删除「{title}」吗？",
-    "untitled": "未命名"
+    "untitled": "未命名",
+    "packageExport": "导出当前资料库（JSON）",
+    "packageImport": "导入资料库（追加一本）",
+    "packageImportConfirmTitle": "导入资料库",
+    "packageImportConfirmBody": "将把文件中的资料库「{name}」追加到列表（若 id 或名称冲突会自动改名），并保存到服务器。是否继续？",
+    "packageImportFailed": "导入失败"
   },
   "characters": {
     "pageTitle": "角色库",

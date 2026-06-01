@@ -1,3 +1,8 @@
+import {
+  buildLorebookExportDocument,
+  downloadLorebookExport,
+  parseLorebookImport,
+} from '@/utils/lorebooks-package'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
@@ -534,6 +539,65 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     selectedEntryId.value = null
   })
 
+  function allocateLorebookId(): string {
+    let id = `lore-${Date.now().toString(36)}`
+    while (lorebooks.value.some((x) => x.id === id)) {
+      id = `lore-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+    }
+    return id
+  }
+
+  function uniqueImportedLorebookName(name: string): string {
+    const base = name.trim() || 'Imported lorebook'
+    if (!lorebooks.value.some((x) => x.name === base)) return base
+    const candidate = `${base} (imported)`
+    if (!lorebooks.value.some((x) => x.name === candidate)) return candidate
+    let i = 2
+    while (lorebooks.value.some((x) => x.name === `${base} (imported ${i})`)) {
+      i += 1
+    }
+    return `${base} (imported ${i})`
+  }
+
+  function exportActiveLorebook(): void {
+    const doc = buildLorebookExportDocument(activeLorebook.value)
+    downloadLorebookExport(doc)
+  }
+
+  async function importLorebookFromJson(text: string): Promise<Lorebook> {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(text)
+    } catch (e) {
+      throw new Error(
+        `JSON 解析失败：${e instanceof Error ? e.message : String(e)}`,
+      )
+    }
+    const t = nowIso()
+    let src = normalizeLorebook(parseLorebookImport(parsed))
+    const idTaken = lorebooks.value.some((x) => x.id === src.id)
+    const nameTaken = lorebooks.value.some((x) => x.name === src.name.trim())
+    const lb: Lorebook = {
+      ...src,
+      id: idTaken ? allocateLorebookId() : src.id,
+      name: nameTaken ? uniqueImportedLorebookName(src.name) : src.name.trim(),
+      createdAt: t,
+      updatedAt: t,
+    }
+    lorebooks.value.unshift(lb)
+    activeLorebookId.value = lb.id
+    activeGroupId.value =
+      lb.groups.slice().sort((a, b) => a.order - b.order)[0]?.id ?? null
+    selectedEntryId.value = null
+    loaded.value = true
+    pendingSave = true
+    await flushSave()
+    if (lastError.value) {
+      throw new Error(lastError.value)
+    }
+    return lb
+  }
+
   return {
     lorebooks,
     activeLorebookId,
@@ -553,6 +617,8 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     lastError,
     loadFromServer,
     flushSave,
+    exportActiveLorebook,
+    importLorebookFromJson,
     createLorebook,
     deleteLorebook,
     renameLorebook,

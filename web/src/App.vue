@@ -226,7 +226,7 @@ onUnmounted(() => {
 
     <v-navigation-drawer
       v-model="drawerRight"
-      :width="380"
+      :width="440"
       temporary
       location="end"
       border="start"
@@ -389,7 +389,7 @@ onUnmounted(() => {
           "
         />
         <v-btn
-          icon="mdi-page-layout-sidebar-right"
+          icon="mdi-link-variant"
           variant="text"
           size="small"
           density="comfortable"

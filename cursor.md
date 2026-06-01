@@ -18,6 +18,7 @@
 - TODO 清单：`DOC/04-TODO.md`
 - 技术栈：`DOC/05-技术栈.md`
 - **工作交接（新 Agent 入口）**：`DOC/06-工作交接.md`
+- **Chunk 链切分实现方案（待开发）**：`DOC/08-chunk-chain-implementation.md`
 - 运行时数据目录说明：`data/README.md`
 - 前端子项目说明：`web/README.md`
 

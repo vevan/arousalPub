@@ -11,6 +11,7 @@
 - [ ] 建立 `feature_bindings` 集合与 CRUD 接口 — **未按文档 §1.2 独立集合实现**
 - [x] 对话发送与 SSE 流式返回（`/api/chat` 等，见 `server/src/index.ts`）
 - [ ] 消息树结构（parentId）与「从此分支继续」— **chunk/分支目录部分按 `DOC/03` 设计，产品级分支 UI 待对齐**
+- [ ] **Chunk 链按 100 轮切分与全链读取** — 方案见 **`DOC/08-chunk-chain-implementation.md`**（S1–S7：滚动 tail、`readAllTurns`、messages/memory/PATCH/迁移）
 - [x] 角色管理（文件库）：主存 **`data/{userId}/characters/{uuid}.png`**（内嵌 ST `chara`）；遗留 **`{uuid}.json`** 首次读取时迁移为 PNG；列表/筛选/导入/表单新建/删除/导出 API + Web **`/characters`**（见 `DOC/03` §12）
 - [x] Prompt 预设：服务端 `data/{userId}/prompts/`（`index.json` + 各预设 JSON）+ `GET/PUT /api/prompts`；前端 **`/prompts`**；组装仅服务端（`assemble-preview` / `assemble-messages` API）
 - [x] 世界书框架：`lorebooks/` 分文件存储、`GET/PUT /api/lorebooks`、Web 编辑与对话 `lorebookIds` 绑定、关键字/恒定注入（见 `DOC/03` §13）

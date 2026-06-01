@@ -24,6 +24,8 @@ const CONFIG_EXAMPLE_PATH = path.join(REPO_ROOT, 'config.example.json')
 interface RawConfig {
   dataDir?: string
   serverPort?: number | string
+  host?: string
+  staticDir?: string
 }
 
 /** 避开 Windows 常见保留段 3326–3425（Hyper-V 等） */
@@ -46,6 +48,16 @@ export function resolveServerPort(): number {
     return parseServerPort(cfg.serverPort, 'config.json serverPort')
   }
   return DEFAULT_SERVER_PORT
+}
+
+/** 监听地址：环境变量 HOST > config.json host > 0.0.0.0 */
+export function resolveListenHost(): string {
+  const fromEnv = process.env.HOST?.trim()
+  if (fromEnv) return fromEnv
+  const cfg = readConfigFile()
+  const fromCfg = typeof cfg.host === 'string' ? cfg.host.trim() : ''
+  if (fromCfg) return fromCfg
+  return '0.0.0.0'
 }
 
 function ensureConfigFileFromExample(): void {
@@ -93,6 +105,27 @@ function resolveDataDir(): string {
 
 /** 数据根目录：`data/` */
 export const DATA_DIR = resolveDataDir()
+
+/** 前端构建目录 `web/dist`（存在 index.html 时返回路径） */
+export function resolveWebDistDir(): string | null {
+  const fromEnv = process.env.STATIC_DIR?.trim()
+  if (fromEnv) {
+    const dir = path.isAbsolute(fromEnv)
+      ? fromEnv
+      : path.resolve(REPO_ROOT, fromEnv)
+    return existsSync(path.join(dir, 'index.html')) ? dir : null
+  }
+  const cfg = readConfigFile()
+  const fromCfg = typeof cfg.staticDir === 'string' ? cfg.staticDir.trim() : ''
+  if (fromCfg) {
+    const dir = path.isAbsolute(fromCfg)
+      ? fromCfg
+      : path.resolve(REPO_ROOT, fromCfg)
+    return existsSync(path.join(dir, 'index.html')) ? dir : null
+  }
+  const dir = path.join(REPO_ROOT, 'web', 'dist')
+  return existsSync(path.join(dir, 'index.html')) ? dir : null
+}
 
 /** 用户数据目录：`data/{userId}/` */
 export function getUserDataDir(userId: string): string {

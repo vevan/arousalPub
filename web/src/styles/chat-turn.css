@@ -75,8 +75,7 @@
     "avatar role"
     "avatar reasoning"
     "avatar bubble"
-    "avatar tools"
-    "avatar swipe";
+    "avatar tools";
 }
 .turn--user {
   grid-template-columns: minmax(0, 1fr) 4rem;
@@ -92,8 +91,16 @@
 .turn > .turn-bubble    { grid-area: bubble; width: 100%; }
 .turn > .turn-toolbar   { grid-area: tools; }
 .turn > .reasoning-chain{ grid-area: reasoning; }
-.turn > .swipe          { grid-area: swipe; justify-self: start; }
-.turn--user > .turn-bubble  { width: fit-content; max-width: 100%; }
+.turn--assistant > .turn-bubble,
+.turn--assistant > .reasoning-chain {
+  width: 90%;
+  max-width: 90%;
+}
+.turn--user > .turn-bubble  { width: fit-content; max-width: 90%; }
+.turn--user > .turn-bubble--editing {
+  width: 90%;
+  max-width: 90%;
+}
 
 /* ========== Avatar · 4rem 客栈名牌 ========== */
 .avatar {
@@ -349,6 +356,9 @@
 .turn-bubble--editing {
   background: rgb(var(--v-theme-surface-bright));
 }
+.turn-bubble--editing .v-input {
+  width: 100%;
+}
 
 /* Tavern · 助手气泡内的 **xxx** 渲染为「角色名」赤土橙衬线斜体（对应 demo 的 em.character） */
 .turn-bubble--assistant .chat-rich-text strong,
@@ -374,7 +384,15 @@
   align-items: center;
 }
 .turn-toolbar--user { justify-content: flex-end; }
-.turn-toolbar--assistant { justify-content: flex-start; }
+.turn-toolbar--assistant {
+  justify-content: flex-start;
+  width: 90%;
+  max-width: 90%;
+}
+.turn-toolbar--assistant > .swipe {
+  margin-left: auto;
+  margin-top: 0;
+}
 
 .turn-toolbar__btn {
   width: 1.75rem;

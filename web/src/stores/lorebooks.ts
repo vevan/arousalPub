@@ -58,18 +58,18 @@ function buildDefaultLorebook(): Lorebook {
   const mainGroupId = 'group-main'
   return {
     id: 'lore-default',
-    name: '默认资料库',
-    description: '示例分组与条目结构。',
+    name: 'Default lorebook',
+    description: 'Sample groups and entries.',
     groups: [
-      { id: mainGroupId, name: '主要设定', order: 0 },
-      { id: 'group-characters', name: '角色', order: 1 },
-      { id: 'group-locations', name: '地点', order: 2 },
+      { id: mainGroupId, name: 'Main', order: 0 },
+      { id: 'group-characters', name: 'Characters', order: 1 },
+      { id: 'group-locations', name: 'Locations', order: 2 },
     ],
     entries: [
       {
         id: 'entry-pub-tone',
         groupId: mainGroupId,
-        title: '酒馆基调',
+        title: 'Tavern tone',
         content:
           'Arousal Pub 坐落于三王国岔路口，灯火昏黄、木梁吱呀。叙事偏慢节奏奇幻，重视气味与触感。',
         enabled: true,
@@ -285,8 +285,8 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     const id = `lore-${Date.now().toString(36)}`
     const lb: Lorebook = {
       id,
-      name: name.trim() || '新资料库',
-      groups: [{ id: makeId('group'), name: '默认分组', order: 0 }],
+      name: name.trim() || 'New lorebook',
+      groups: [{ id: makeId('group'), name: 'Default group', order: 0 }],
       entries: [],
       createdAt: t,
       updatedAt: t,

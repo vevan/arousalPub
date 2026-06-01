@@ -5,8 +5,11 @@ if not exist node_modules (
   call npm install
 )
 echo.
-for /f "delims=" %%u in ('node scripts/print-dev-url.mjs') do set DEV_URL=%%u
-echo 启动完成后在浏览器打开 %DEV_URL% （须保持本窗口运行；端口见 config.json）
+echo 启动前倒计时见 config.json 的 startCountdownSeconds（按 R 可重新 build）
+echo 启动完成后在浏览器打开:
+node scripts/print-prod-url.mjs
+echo （须保持本窗口运行；端口见 config.json serverPort）
+echo 开发模式请使用: npm run dev
 echo.
-call npm run dev
+call npm start
 pause

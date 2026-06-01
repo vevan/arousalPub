@@ -56,23 +56,23 @@ export function buildDefaultLorebook(): Lorebook {
   const mainGroupId = 'group-main'
   return {
     id: 'lore-default',
-    name: '默认资料库',
-    description: '示例分组与条目结构；可在资料库页编辑。',
+    name: 'Default lorebook',
+    description: 'Sample groups and entries; edit on the Lorebooks page.',
     groups: [
       {
         id: mainGroupId,
-        name: '主要设定',
+        name: 'Main',
         order: 0,
-        description: '世界观、规则与常驻背景',
+        description: 'World rules and ever-present background',
       },
       {
         id: 'group-characters',
-        name: '角色',
+        name: 'Characters',
         order: 1,
       },
       {
         id: 'group-locations',
-        name: '地点',
+        name: 'Locations',
         order: 2,
       },
     ],
@@ -80,10 +80,10 @@ export function buildDefaultLorebook(): Lorebook {
       {
         id: 'entry-pub-tone',
         groupId: mainGroupId,
-        title: '酒馆基调',
+        title: 'Tavern tone',
         content:
           'Arousal Pub 坐落于三王国岔路口，灯火昏黄、木梁吱呀。叙事偏慢节奏奇幻，重视气味与触感，避免现代俚语。',
-        comment: '种子条目 · 恒定',
+        comment: 'Seed entry · constant',
         enabled: true,
         order: 0,
         keys: [],

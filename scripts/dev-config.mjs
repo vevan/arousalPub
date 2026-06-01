@@ -17,6 +17,15 @@ function parsePort(value, label) {
   return n
 }
 
+function parseNonNegativeInt(value, label, fallback) {
+  const n = Number(value)
+  if (!Number.isInteger(n) || n < 0) {
+    if (value == null || value === '') return fallback
+    throw new Error(`无效的 ${label}：${value}（须为 ≥0 的整数）`)
+  }
+  return n
+}
+
 function readConfigFile() {
   const configPath = path.join(REPO_ROOT, 'config.json')
   if (!existsSync(configPath)) return {}
@@ -29,15 +38,16 @@ function readConfigFile() {
 }
 
 /**
- * 开发/预览端口：环境变量 > config.json > 默认值
- * - 后端：PORT 或 SERVER_PORT
- * - 前端：WEB_PORT
+ * 应用配置：环境变量 > config.json > 默认值
+ * - 端口：PORT/SERVER_PORT、WEB_PORT
+ * - 启动：startCountdownSeconds（START_COUNTDOWN_SEC 可覆盖）
  */
 export function loadDevConfig() {
   const cfg = readConfigFile()
 
   const serverFromEnv = process.env.PORT?.trim() || process.env.SERVER_PORT?.trim()
   const webFromEnv = process.env.WEB_PORT?.trim()
+  const countdownFromEnv = process.env.START_COUNTDOWN_SEC?.trim()
 
   const serverPort = serverFromEnv
     ? parsePort(serverFromEnv, 'PORT/SERVER_PORT')
@@ -51,5 +61,19 @@ export function loadDevConfig() {
       ? parsePort(cfg.webPort, 'config.json webPort')
       : DEFAULT_WEB_PORT
 
-  return { serverPort, webPort, repoRoot: REPO_ROOT }
+  const startCountdownSeconds = countdownFromEnv
+    ? parseNonNegativeInt(
+        countdownFromEnv,
+        'START_COUNTDOWN_SEC',
+        5,
+      )
+    : cfg.startCountdownSeconds != null
+      ? parseNonNegativeInt(
+          cfg.startCountdownSeconds,
+          'config.json startCountdownSeconds',
+          5,
+        )
+      : 5
+
+  return { serverPort, webPort, startCountdownSeconds, repoRoot: REPO_ROOT }
 }

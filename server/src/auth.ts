@@ -33,6 +33,7 @@ import {
 } from './users-index.js'
 import { RESERVED_USER_ID } from './short-id.js'
 import { UserAccountError } from './user-account-error.js'
+import { resolveJwtSecret } from './auth-secret.js'
 
 export interface JwtPayload {
   sub: string
@@ -144,12 +145,7 @@ function verifyJwtPayload(payload: JwtPayload): boolean {
 export async function registerAuth(app: FastifyInstance): Promise<void> {
   await initAuthSessions()
 
-  const secretFromEnv = process.env.JWT_SECRET?.trim()
-  if (!secretFromEnv && process.env.NODE_ENV === 'production') {
-    throw new Error('生产环境必须设置 JWT_SECRET 环境变量')
-  }
-  const secret =
-    secretFromEnv || 'arousal-pub-dev-secret-change-in-production'
+  const secret = resolveJwtSecret()
 
   await app.register(fastifyJwt, {
     secret,

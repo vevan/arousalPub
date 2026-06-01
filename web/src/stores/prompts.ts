@@ -138,12 +138,12 @@ function makeId(presets: PromptPreset[]): string {
 
 function buildDefaultGroups(): PromptGroup[] {
   return [
-    { id: DEFAULT_GROUP_IDS.pre, name: '前置', kind: 'normal', order: 0 },
-    { id: DEFAULT_GROUP_IDS.character, name: '角色', kind: 'character', order: 1 },
-    { id: DEFAULT_GROUP_IDS.world, name: '世界', kind: 'world', order: 2 },
-    { id: DEFAULT_GROUP_IDS.history, name: '历史消息', kind: 'history', order: 3 },
-    { id: DEFAULT_GROUP_IDS.userInput, name: '用户输出', kind: 'userInput', order: 4 },
-    { id: DEFAULT_GROUP_IDS.post, name: '后置', kind: 'normal', order: 5 },
+    { id: DEFAULT_GROUP_IDS.pre, name: 'Pre', kind: 'normal', order: 0 },
+    { id: DEFAULT_GROUP_IDS.character, name: 'Character', kind: 'character', order: 1 },
+    { id: DEFAULT_GROUP_IDS.world, name: 'World', kind: 'world', order: 2 },
+    { id: DEFAULT_GROUP_IDS.history, name: 'History', kind: 'history', order: 3 },
+    { id: DEFAULT_GROUP_IDS.userInput, name: 'User input', kind: 'userInput', order: 4 },
+    { id: DEFAULT_GROUP_IDS.post, name: 'Post', kind: 'normal', order: 5 },
   ]
 }
 

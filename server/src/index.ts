@@ -43,7 +43,8 @@ import {
 } from './chat-storage.js'
 import { reindexConversationMemory } from './memory-index.js'
 import { startConversationMemoryReindexSse } from './memory-reindex-sse.js'
-import { ensureDataSkeleton, resolveServerPort } from './config.js'
+import { ensureDataSkeleton, resolveListenHost, resolveServerPort } from './config.js'
+import { registerStaticWeb } from './static-web.js'
 import {
   readUserPreferencesDocument,
   updateGlobalHistorySettings,
@@ -2169,8 +2170,10 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   })
 })
 
+await registerStaticWeb(app)
+
 const port = resolveServerPort()
-const host = process.env.HOST || '0.0.0.0'
+const host = resolveListenHost()
 
 try {
   await app.listen({ port, host })

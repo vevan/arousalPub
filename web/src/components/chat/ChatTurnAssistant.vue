@@ -329,39 +329,38 @@ const { assistantRoleName, assistantAvatarLetter } = toRefs(props.session)
       >
         <v-icon size="16">mdi-delete-outline</v-icon>
       </button>
-    </div>
-
-    <div
-      v-if="showAssistantSwipeFooter(turn, listIndex)"
-      class="swipe"
-      :aria-label="
-        $t('chat.swipePosition', {
-          current: turn.activeReceiveIndex + 1,
-          total: turn.receives.length,
-        })
-      "
-    >
-      <button
-        type="button"
-        class="swipe__btn"
-        :disabled="regeneratingTurnOrdinal !== null"
-        :aria-label="$t('chat.prevAssistant')"
-        @click="slideAssistant(listIndex, 'left')"
+      <div
+        v-if="showAssistantSwipeFooter(turn, listIndex)"
+        class="swipe"
+        :aria-label="
+          $t('chat.swipePosition', {
+            current: turn.activeReceiveIndex + 1,
+            total: turn.receives.length,
+          })
+        "
       >
-        <v-icon size="16">mdi-chevron-left</v-icon>
-      </button>
-      <span class="swipe__count tabular-nums">
-        {{ turn.activeReceiveIndex + 1 }} / {{ turn.receives.length }}
-      </span>
-      <button
-        type="button"
-        class="swipe__btn"
-        :disabled="regeneratingTurnOrdinal !== null"
-        :aria-label="$t('chat.nextAssistant')"
-        @click="slideAssistant(listIndex, 'right')"
-      >
-        <v-icon size="16">mdi-chevron-right</v-icon>
-      </button>
+        <button
+          type="button"
+          class="swipe__btn"
+          :disabled="regeneratingTurnOrdinal !== null"
+          :aria-label="$t('chat.prevAssistant')"
+          @click="slideAssistant(listIndex, 'left')"
+        >
+          <v-icon size="16">mdi-chevron-left</v-icon>
+        </button>
+        <span class="swipe__count tabular-nums">
+          {{ turn.activeReceiveIndex + 1 }} / {{ turn.receives.length }}
+        </span>
+        <button
+          type="button"
+          class="swipe__btn"
+          :disabled="regeneratingTurnOrdinal !== null"
+          :aria-label="$t('chat.nextAssistant')"
+          @click="slideAssistant(listIndex, 'right')"
+        >
+          <v-icon size="16">mdi-chevron-right</v-icon>
+        </button>
+      </div>
     </div>
   </div>
 </template>

@@ -507,7 +507,7 @@
     "deleteFailed": "删除失败",
     "createDialogTitle": "新建对话",
     "createTitlePlaceholder": "输入对话名称",
-    "createDialogHint": "先从角色库选择用户卡与主角色卡；资料库默认勾选「默认资料库」，可清空表示本对话不使用资料库。\\{\\{user\\}\\} 会保存为用户卡名称快照；开场只来自第一个角色槽。",
+    "createDialogHint": "先从角色库选择用户卡与主角色卡；资料库默认勾选「Default lorebook」，可清空表示本对话不使用资料库。\\{\\{user\\}\\} 会保存为用户卡名称快照；开场只来自第一个角色槽。",
     "userSlotTitle": "用户 · \\{\\{user\\}\\}",
     "userSlotMeta": "用户卡",
     "pickUserCard": "选择用户卡",
@@ -519,7 +519,7 @@
     "pickExtraCharacter": "选择角色槽 {n}",
     "lorebookSlotTitle": "资料库",
     "lorebookSelectLabel": "绑定资料库",
-    "lorebookSelectHint": "默认选中「默认资料库」；可多选。清空表示本对话不注入资料库。",
+    "lorebookSelectHint": "默认选中「Default lorebook」；可多选。清空表示本对话不注入资料库。",
     "startChat": "开始对话",
     "pickCharacterDialogTitle": "选择角色卡",
     "loadingCharacters": "加载角色库…"

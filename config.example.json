@@ -1,8 +1,11 @@
 {
-  "_comment": "复制为 config.json 后修改。dataDir：数据目录（绝对或相对仓库根）。serverPort/webPort：开发时后端/前端端口，须避开 Windows 保留段（如 3326–3425）。环境变量 DATA_DIR、PORT（或 SERVER_PORT）、WEB_PORT 可覆盖对应项。",
+  "_comment": "复制为 config.json 后修改。优先级：环境变量 > 本文件 > 默认值。jwtSecret：可选，≥16 字符；留空则生产首次启动自动写入 data/.jwt-secret。dataDir/serverPort/webPort：数据目录与端口（start.bat 用 serverPort；npm run dev 用双端口）。startCountdownSeconds：start 启动前倒计时秒数，0=跳过；期间按 R 重新 build。host/staticDir：可选。auth*：登录会话。环境变量仍可覆盖：JWT_SECRET、DATA_DIR、PORT、WEB_PORT、START_COUNTDOWN_SEC、HOST、STATIC_DIR。",
   "dataDir": "./data",
   "serverPort": 6633,
   "webPort": 6699,
+  "startCountdownSeconds": 5,
+  "host": "0.0.0.0",
+  "staticDir": "./web/dist",
   "authIdleMinutes": 15,
   "authDefaultRefreshDays": 7,
   "authAccessMinutes": 30

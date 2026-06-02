@@ -31,6 +31,15 @@ data/
 | `api-settings.json` | 连接/API 预设 |
 | `api-keys.json` | API Key 别名 |
 | `preferences.json` | 用户偏好（主题、语言等） |
+| `plugin-registry.json` | 插件启用列表与 hook 排序（见 `DOC/09`） |
+| `plugins/<pluginId>/` | 插件包、settings、secrets（Syncthing 可信环境下可同步密钥） |
+
+## 插件与 Syncthing
+
+- **轮次插件 state**：在 `chats/.../turn-*.json` 的 **`turn.plugins[]`**，随 chunk 同步。
+- **插件配置 / 代码 / 密钥**：`plugins/<pluginId>/` 与 `plugin-registry.json`；详见 **`DOC/09-plugin-system-and-guidance-generate.md` §5**。
+- **派生**：`memory/` Lance、插件 `.cache/` 可删重建；勿同步半写入中的 Lance 目录。
+- **大二进制**：`chats/{conversationId}/plugin-data/{turnId}/{pluginId}/`，chunk 内只存引用。
 
 ## 备份
 

@@ -77,6 +77,7 @@
 
 - [x] 插件系统最小框架 — **`DOC/09-plugin-system-and-guidance-generate.md`**（2026-05-26 已实现：registry、settingsSchema、设置页）
 - [x] 内置插件 `guidance-generate`、`reply-complete-sound` — **同上 §7**
+- [ ] **`host.conversation` 对话读写 API**（单批 ≤50 轮、批处理写锁）— **`DOC/10-plugin-conversation-host.md`**
 - [ ] 插件实例与 API 配置绑定
 - [ ] 插件调用审计日志
 - [ ] fallback 与健康检查策略

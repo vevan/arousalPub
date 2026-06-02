@@ -26,6 +26,8 @@ plugins/{pluginId}/
 
 详见 **`DOC/09-plugin-system-and-guidance-generate.md`**。
 
+对话批量 read/patch（清理滑动、regex 等）规划见 **`DOC/10-plugin-conversation-host.md`**（尚未实现）。
+
 ## 新增 bundled 插件
 
 1. 在本目录新增 `{pluginId}/` 并写好 `manifest.json`、`dist/`。

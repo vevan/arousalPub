@@ -134,6 +134,10 @@ data/
 - **设置**按钮：按 `manifest.settingsSchema` 自动生成表单（`PluginSchemaForm`）。
 - **enabled** 只写在 **registry**，不写 settings。
 
+### 5.3 对话读写宿主（规划）
+
+批量读写在 chunk 上的 turn 字段（清理滑动、regex 等）**不**开放直接读盘；由 **`host.conversation`** 提供 read / patch / `runBatch`（单批 **≤50 轮**、批处理期间对话写锁）。详见 **`DOC/10-plugin-conversation-host.md`**（尚未实现）。
+
 ---
 
 ## 6. 服务端 PluginHost

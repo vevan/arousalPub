@@ -22,6 +22,11 @@ import {
   normalizeMemorySettings,
   type MemorySettings,
 } from './memory-settings.js'
+import {
+  CHUNK_SETTINGS_DEFAULTS,
+  normalizeChunkSettings,
+  type ChunkSettings,
+} from './chunk-settings.js'
 
 export interface UserPreferencesDocument {
   version: 1
@@ -30,6 +35,7 @@ export interface UserPreferencesDocument {
   history?: Partial<HistorySettings>
   memory?: Partial<MemorySettings>
   embeddingApi?: Partial<EmbeddingApiSettings>
+  chunk?: Partial<ChunkSettings>
 }
 
 function userPreferencesPath(): string {
@@ -71,12 +77,19 @@ export async function readGlobalEmbeddingApiSettings(): Promise<EmbeddingApiSett
   return normalizeEmbeddingApiSettings(doc?.embeddingApi)
 }
 
+export async function readGlobalChunkSettings(): Promise<ChunkSettings> {
+  const doc = await readPreferencesFileRaw()
+  if (!doc) return { ...CHUNK_SETTINGS_DEFAULTS }
+  return normalizeChunkSettings(doc.chunk)
+}
+
 export async function readUserPreferencesDocument(): Promise<UserPreferencesDocument> {
   const doc = await readPreferencesFileRaw()
   const lorebook = normalizeLorebookSettings(doc?.lorebook)
   const history = normalizeHistorySettings(doc?.history)
   const memory = normalizeMemorySettings(doc?.memory)
   const embeddingApi = await readGlobalEmbeddingApiSettings()
+  const chunk = normalizeChunkSettings(doc?.chunk)
   return {
     version: 1,
     savedAt:
@@ -85,13 +98,14 @@ export async function readUserPreferencesDocument(): Promise<UserPreferencesDocu
     history,
     memory,
     embeddingApi,
+    chunk,
   }
 }
 
 async function writeUserPreferencesDocument(
   partial: Pick<
     UserPreferencesDocument,
-    'lorebook' | 'history' | 'memory' | 'embeddingApi'
+    'lorebook' | 'history' | 'memory' | 'embeddingApi' | 'chunk'
   >,
 ): Promise<UserPreferencesDocument> {
   const prev = await readUserPreferencesDocument()
@@ -102,6 +116,7 @@ async function writeUserPreferencesDocument(
     history: partial.history ?? prev.history,
     memory: partial.memory ?? prev.memory,
     embeddingApi: partial.embeddingApi ?? prev.embeddingApi,
+    chunk: partial.chunk ?? prev.chunk,
   }
   await mkdir(getUserDataDir(getCurrentUserId()), { recursive: true })
   await writeFile(userPreferencesPath(), JSON.stringify(doc, null, 2), 'utf8')
@@ -121,6 +136,7 @@ export async function updateGlobalLorebookSettings(
     history: prev.history,
     memory: prev.memory,
     embeddingApi: prev.embeddingApi,
+    chunk: prev.chunk,
   })
   return lorebook
 }
@@ -138,6 +154,7 @@ export async function updateGlobalHistorySettings(
     history,
     memory: prev.memory,
     embeddingApi: prev.embeddingApi,
+    chunk: prev.chunk,
   })
   return history
 }
@@ -155,6 +172,7 @@ export async function updateGlobalMemorySettings(
     history: prev.history,
     memory,
     embeddingApi: prev.embeddingApi,
+    chunk: prev.chunk,
   })
   return memory
 }
@@ -172,6 +190,25 @@ export async function updateGlobalEmbeddingApiSettings(
     history: prev.history,
     memory: prev.memory,
     embeddingApi,
+    chunk: prev.chunk,
   })
   return embeddingApi
+}
+
+export async function updateGlobalChunkSettings(
+  patch: Partial<ChunkSettings>,
+): Promise<ChunkSettings> {
+  const prev = await readUserPreferencesDocument()
+  const chunk = normalizeChunkSettings({
+    ...prev.chunk,
+    ...patch,
+  })
+  await writeUserPreferencesDocument({
+    lorebook: prev.lorebook,
+    history: prev.history,
+    memory: prev.memory,
+    embeddingApi: prev.embeddingApi,
+    chunk,
+  })
+  return chunk
 }

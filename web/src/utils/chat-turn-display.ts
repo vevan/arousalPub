@@ -1,10 +1,11 @@
 import type { ChatTurnItem } from '@/types/chat-turn'
 
+/** 界面章回编号：与磁盘 turnOrdinal / chunk 文件名区间一致（0 起算，开场为第 0 回） */
 export function turnLabelN(turn: ChatTurnItem, listIndex: number): number {
   if (typeof turn.turnOrdinal === 'number' && !Number.isNaN(turn.turnOrdinal)) {
-    return turn.turnOrdinal + 1
+    return turn.turnOrdinal
   }
-  return listIndex + 1
+  return listIndex
 }
 
 export function isOpeningTurn(turn: ChatTurnItem): boolean {

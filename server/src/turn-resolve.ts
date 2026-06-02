@@ -1,18 +1,31 @@
 import {
+  readConversationIndex,
   readTailChunk,
   type ChunkFile,
   type TurnRecord,
 } from './chat-storage.js'
+import { readAllTurns, readChunkFile } from './chunk-chain.js'
 
-/** 在尾块中按 turnId 查找完整 turn（MVP：仅尾块） */
+/** 沿 chunk 链按 turnId 查找完整 turn */
 export async function resolveTurnById(
   conversationId: string,
   turnId: string,
 ): Promise<TurnRecord | null> {
   const id = turnId.trim()
   if (!id) return null
-  const chunk = await readTailChunk(conversationId)
-  return findTurnInChunk(chunk, id)
+  const idx = await readConversationIndex(conversationId)
+  if (!idx?.tailChunkFile) return null
+  let fileName: string | null = idx.tailChunkFile
+  const guard = new Set<string>()
+  while (fileName) {
+    if (guard.has(fileName)) break
+    guard.add(fileName)
+    const chunk = await readChunkFile(conversationId, fileName)
+    const hit = findTurnInChunk(chunk, id)
+    if (hit) return hit
+    fileName = chunk?.meta.links.previous ?? null
+  }
+  return null
 }
 
 export function findTurnInChunk(

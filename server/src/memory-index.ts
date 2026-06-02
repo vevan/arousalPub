@@ -1,7 +1,6 @@
 import { createEmbedding, createEmbeddingWithCredentials } from './embedding-client.js'
 import {
   readConversationIndex,
-  readTailChunk,
   resolvedLorebookIds,
   updateConversationMemoryEmbeddingModel,
   type TurnRecord,
@@ -12,17 +11,27 @@ import {
   reindexLorebooksByIds,
 } from './lorebook-vector-index.js'
 import {
+  deleteConversationMemoryIndex,
   deleteTurnMemoryVector,
-  replaceConversationMemoryIndex,
-  upsertTurnMemoryVector,
+  replaceChunkMemoryIndex,
   type TurnMemoryRow,
 } from './memory-store.js'
+import {
+  clearConversationMemoryBuffers,
+  queueTurnMemoryUpsert,
+  removeBufferedTurnMemory,
+} from './memory-tail-buffer.js'
 import {
   readGlobalEmbeddingApiSettings,
   readGlobalMemorySettings,
 } from './user-preferences-file.js'
 import { turnEmbeddingCorpus } from './turn-memory-xml.js'
-import { sortedTurnsFromChunk } from './turn-resolve.js'
+import {
+  isTailChunkFile,
+  listChunkFileNames,
+  readAllTurns,
+  readChunkFile,
+} from './chunk-chain.js'
 
 export interface MemoryReindexPlan {
   turns: number
@@ -66,8 +75,7 @@ export async function planConversationMemoryReindex(
 ): Promise<MemoryReindexPlan> {
   const idx = await readConversationIndex(conversationId)
   const lorebookIds = lorebookIdsFromIndex(idx)
-  const chunk = await readTailChunk(conversationId)
-  const turns = embeddableTurns(sortedTurnsFromChunk(chunk))
+  const turns = embeddableTurns(await readAllTurns(conversationId))
   const loreEntries = await countLorebookVectorEntriesByIds(lorebookIds)
   return {
     turns: turns.length,
@@ -76,12 +84,23 @@ export async function planConversationMemoryReindex(
   }
 }
 
+export { sealChunkMemorySegment } from './memory-tail-buffer.js'
+
+/** 清除缓冲 + Lance 表（删会话 / 全量重建前） */
+export async function wipeConversationMemoryIndex(
+  conversationId: string,
+): Promise<void> {
+  clearConversationMemoryBuffers(conversationId)
+  await deleteConversationMemoryIndex(conversationId)
+}
+
 /** 落盘后异步索引单轮（失败仅打日志） */
 export function scheduleMemoryIndexUpsert(
   conversationId: string,
   turn: TurnRecord,
+  chunkFileName: string,
 ): void {
-  void indexTurnMemory(conversationId, turn).catch((e) => {
+  void indexTurnMemory(conversationId, turn, chunkFileName).catch((e) => {
     // eslint-disable-next-line no-console
     console.warn('[memory-index] upsert failed:', e)
   })
@@ -91,6 +110,7 @@ export function scheduleMemoryIndexDelete(
   conversationId: string,
   turnId: string,
 ): void {
+  removeBufferedTurnMemory(conversationId, turnId)
   void deleteTurnMemoryVector(conversationId, turnId).catch((e) => {
     // eslint-disable-next-line no-console
     console.warn('[memory-index] delete failed:', e)
@@ -113,6 +133,7 @@ async function markConversationMemoryEmbeddingModel(
 async function indexTurnMemory(
   conversationId: string,
   turn: TurnRecord,
+  chunkFileName: string,
 ): Promise<void> {
   const global = await readGlobalMemorySettings()
   if (!global.memoryEnabled) return
@@ -120,12 +141,21 @@ async function indexTurnMemory(
   if (!corpus.trim()) return
   const emb = await createEmbedding(corpus)
   if (!emb) return
-  await upsertTurnMemoryVector(conversationId, {
-    turnId: turn.turnId,
+
+  const idx = await readConversationIndex(conversationId)
+  const isTail = idx != null && isTailChunkFile(idx, chunkFileName)
+
+  await queueTurnMemoryUpsert(
     conversationId,
-    turnOrdinal: turn.turnOrdinal,
-    vector: emb.vector,
-  })
+    chunkFileName,
+    {
+      turnId: turn.turnId,
+      conversationId,
+      turnOrdinal: turn.turnOrdinal,
+      vector: emb.vector,
+    },
+    isTail,
+  )
   await markConversationMemoryEmbeddingModel(conversationId)
 }
 
@@ -149,29 +179,40 @@ export async function reindexConversationMemory(
     await readGlobalEmbeddingApiSettings()
   const idx = await readConversationIndex(conversationId)
   const lorebookIds = lorebookIdsFromIndex(idx)
-  const chunk = await readTailChunk(conversationId)
-  const turns = embeddableTurns(sortedTurnsFromChunk(chunk))
-  const rows: TurnMemoryRow[] = []
-  for (const turn of turns) {
-    const corpus = turnEmbeddingCorpus(turn)
-    const emb = await createEmbeddingWithCredentials(creds, corpus)
-    if ('error' in emb) {
-      return {
-        ok: false,
-        error: emb.error,
-        detail: emb.detail,
+
+  await wipeConversationMemoryIndex(conversationId)
+
+  const chunkFiles = await listChunkFileNames(conversationId)
+  let indexed = 0
+  for (const chunkFileName of chunkFiles) {
+    const chunk = await readChunkFile(conversationId, chunkFileName)
+    const turns = embeddableTurns(chunk?.turns ?? [])
+    const rows: TurnMemoryRow[] = []
+    for (const turn of turns) {
+      const corpus = turnEmbeddingCorpus(turn)
+      const emb = await createEmbeddingWithCredentials(creds, corpus)
+      if ('error' in emb) {
+        return {
+          ok: false,
+          error: emb.error,
+          detail: emb.detail,
+        }
       }
+      rows.push({
+        turnId: turn.turnId,
+        conversationId,
+        turnOrdinal: turn.turnOrdinal,
+        vector: emb.vector,
+      })
+      done += 1
+      indexed += 1
+      tick()
     }
-    rows.push({
-      turnId: turn.turnId,
-      conversationId,
-      turnOrdinal: turn.turnOrdinal,
-      vector: emb.vector,
-    })
-    done += 1
-    tick()
+    if (rows.length > 0) {
+      await replaceChunkMemoryIndex(conversationId, chunkFileName, rows)
+    }
   }
-  await replaceConversationMemoryIndex(conversationId, rows)
+
   let lorebooksReindexed = 0
   let lorebookEntriesIndexed = 0
   if (lorebookIds.length > 0) {
@@ -197,6 +238,7 @@ export async function reindexConversationMemory(
     lorebooksReindexed = loreResult.lorebooksReindexed
     lorebookEntriesIndexed = loreResult.lorebookEntriesIndexed
   }
+
   await updateConversationMemoryEmbeddingModel(
     conversationId,
     embeddingModel,
@@ -204,7 +246,7 @@ export async function reindexConversationMemory(
   )
   return {
     ok: true,
-    indexed: rows.length,
+    indexed,
     embeddingModel,
     lorebooksReindexed,
     lorebookEntriesIndexed,

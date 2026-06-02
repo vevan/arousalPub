@@ -41,6 +41,8 @@ export const ApiErrorCodes = {
   global_history_requires_field: 'global_history_requires_field',
   global_lorebook_requires_field: 'global_lorebook_requires_field',
   global_memory_requires_field: 'global_memory_requires_field',
+  global_chunk_requires_field: 'global_chunk_requires_field',
+  chunk_turns_per_file_number: 'chunk_turns_per_file_number',
   history_limit_enabled_boolean: 'history_limit_enabled_boolean',
   history_max_turns_number: 'history_max_turns_number',
   history_settings_invalid: 'history_settings_invalid',

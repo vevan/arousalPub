@@ -13,12 +13,12 @@ import {
   type ApiSettingsDocument,
 } from './api-settings-file.js'
 import { appendDrySamplerToPayload } from './dry-sampler.js'
+import { readAllTurns } from './chunk-chain.js'
 import {
   createConversationStub,
   deleteConversation,
   readChatList,
   readConversationIndex,
-  readTailChunk,
   removeTurnAtOrdinalInTailChunk,
   appendConversationTurn,
   readChatPromptFile,
@@ -52,6 +52,7 @@ import {
   updateGlobalLorebookSettings,
   updateGlobalMemorySettings,
   updateGlobalEmbeddingApiSettings,
+  updateGlobalChunkSettings,
 } from './user-preferences-file.js'
 import { normalizeEmbeddingDimensions } from './embedding-api-settings.js'
 import {
@@ -955,11 +956,11 @@ app.get<{ Params: { id: string } }>(
     if (!isValidConversationId(id)) {
       return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
-    const chunk = await readTailChunk(id)
-    if (!chunk?.turns?.length) {
+    const allTurnRecords = await readAllTurns(id)
+    if (!allTurnRecords.length) {
       return { turns: [] as MessagesTurnDto[] }
     }
-    const turns: MessagesTurnDto[] = chunk.turns.map((t, i) => {
+    const turns: MessagesTurnDto[] = allTurnRecords.map((t, i) => {
       const activeUserText = getTurnUserText(t)
       const recs = (t.receives ?? []).map((r) => {
         const base: {
@@ -1208,6 +1209,9 @@ interface PatchUserPreferencesBody {
     apiKeyId?: string | null
     embeddingModel?: string
   }
+  chunk?: {
+    turnsPerFile?: number
+  }
 }
 
 app.patch<{ Body: PatchUserPreferencesBody }>(
@@ -1218,7 +1222,8 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
     const hasHist = b.history && typeof b.history === 'object'
     const hasMem = b.memory && typeof b.memory === 'object'
     const hasEmbed = b.embeddingApi && typeof b.embeddingApi === 'object'
-    if (!hasLore && !hasHist && !hasMem && !hasEmbed) {
+    const hasChunk = b.chunk && typeof b.chunk === 'object'
+    if (!hasLore && !hasHist && !hasMem && !hasEmbed && !hasChunk) {
       return reply.status(400).send({
         error: ApiErrorCodes.user_preferences_requires_section,
       })
@@ -1228,6 +1233,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
       let history
       let memory
       let embeddingApi
+      let chunk
       if (hasLore) {
         const patch: {
           recursiveEnabled?: boolean
@@ -1393,6 +1399,20 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         }
         embeddingApi = await updateGlobalEmbeddingApiSettings(patch)
       }
+      if (hasChunk) {
+        if (!Object.prototype.hasOwnProperty.call(b.chunk, 'turnsPerFile')) {
+          return reply.status(400).send({
+            error: ApiErrorCodes.global_chunk_requires_field,
+          })
+        }
+        const d = b.chunk!.turnsPerFile
+        if (typeof d !== 'number' || !Number.isFinite(d)) {
+          return reply
+            .status(400)
+            .send({ error: ApiErrorCodes.chunk_turns_per_file_number })
+        }
+        chunk = await updateGlobalChunkSettings({ turnsPerFile: d })
+      }
       const doc = await readUserPreferencesDocument()
       return {
         ok: true as const,
@@ -1400,6 +1420,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         history: history ?? doc.history,
         memory: memory ?? doc.memory,
         embeddingApi: embeddingApi ?? doc.embeddingApi,
+        chunk: chunk ?? doc.chunk,
         savedAt: doc.savedAt,
       }
     } catch (e) {

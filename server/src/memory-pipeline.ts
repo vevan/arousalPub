@@ -14,8 +14,9 @@ import {
   formatMemoryXml,
   buildMemoryRecallQuery,
 } from './turn-memory-xml.js'
-import { resolveTurnById, sortedTurnsFromChunk } from './turn-resolve.js'
-import { readTailChunk, type TurnRecord } from './chat-storage.js'
+import { resolveTurnById } from './turn-resolve.js'
+import { readAllTurns } from './chunk-chain.js'
+import { type TurnRecord } from './chat-storage.js'
 
 export interface MemoryPipelineInput {
   conversationId: string
@@ -69,8 +70,7 @@ function selectRecentTurns(
 export async function runMemoryPipeline(
   input: MemoryPipelineInput,
 ): Promise<MemoryPipelineResult> {
-  const chunk = await readTailChunk(input.conversationId)
-  const allTurns = sortedTurnsFromChunk(chunk)
+  const allTurns = await readAllTurns(input.conversationId)
   const historyCount = resolveHistoryXmlTurnCount(input.historySettings)
   const recentTurns = selectRecentTurns(
     allTurns,

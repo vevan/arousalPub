@@ -25,6 +25,10 @@ import {
   CHAT_FONT_SIZE_REM_MAX,
   CHAT_FONT_SIZE_REM_MIN,
 } from '@/utils/chat-display-settings'
+import {
+  CHUNK_TURNS_PER_FILE_MAX,
+  CHUNK_TURNS_PER_FILE_MIN,
+} from '@/utils/chunk-settings'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -68,6 +72,7 @@ const {
   embeddingDimensions,
   chatFontSizeRem,
   composerEnterMode,
+  chunkTurnsPerFile,
 } = storeToRefs(prefStore)
 
 const composerEnterModeItems = computed(() => [
@@ -521,6 +526,28 @@ onMounted(() => {
               item-value="value"
               density="comfortable"
               hide-details
+            />
+
+            <v-divider class="my-6" />
+
+            <h2 class="text-subtitle-1 font-weight-medium mb-2">
+              {{ $t('settings.chunkSection') }}
+            </h2>
+            <p class="text-body-2 text-medium-emphasis mb-3">
+              {{ $t('settings.chunkSectionHint') }}
+            </p>
+            <v-text-field
+              v-model.number="chunkTurnsPerFile"
+              type="number"
+              :min="CHUNK_TURNS_PER_FILE_MIN"
+              :max="CHUNK_TURNS_PER_FILE_MAX"
+              step="1"
+              density="comfortable"
+              variant="outlined"
+              :label="$t('settings.chunkTurnsPerFile')"
+              :hint="$t('settings.chunkTurnsPerFileHint')"
+              persistent-hint
+              hide-details="auto"
             />
           </section>
 

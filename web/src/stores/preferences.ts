@@ -26,6 +26,11 @@ import {
   normalizeComposerEnterMode,
   type ComposerEnterMode,
 } from '@/utils/chat-display-settings'
+import {
+  CHUNK_SETTINGS_DEFAULTS,
+  normalizeChunkSettings,
+  type ChunkSettings,
+} from '@/utils/chunk-settings'
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 
@@ -46,6 +51,7 @@ export const EMBEDDING_MODEL_STORAGE_KEY = 'arousal-embedding-model'
 export const EMBEDDING_DIMENSIONS_STORAGE_KEY = 'arousal-embedding-dimensions'
 export const CHAT_FONT_SIZE_REM_STORAGE_KEY = 'arousal-chat-font-size-rem'
 export const COMPOSER_ENTER_MODE_STORAGE_KEY = 'arousal-composer-enter-mode'
+export const CHUNK_TURNS_PER_FILE_STORAGE_KEY = 'arousal-chunk-turns-per-file'
 
 const DEFAULT_PROMPT_MAX_STORED = 10
 
@@ -242,6 +248,26 @@ function readStoredComposerEnterMode(): ComposerEnterMode {
   }
 }
 
+function readStoredChunkTurnsPerFile(): number {
+  try {
+    const raw = localStorage.getItem(CHUNK_TURNS_PER_FILE_STORAGE_KEY)
+    if (raw == null || raw === '') return CHUNK_SETTINGS_DEFAULTS.turnsPerFile
+    return normalizeChunkSettings({
+      turnsPerFile: Number.parseInt(raw, 10),
+    }).turnsPerFile
+  } catch {
+    return CHUNK_SETTINGS_DEFAULTS.turnsPerFile
+  }
+}
+
+function persistChunkLocal(turnsPerFile: number) {
+  try {
+    localStorage.setItem(CHUNK_TURNS_PER_FILE_STORAGE_KEY, String(turnsPerFile))
+  } catch {
+    /* ignore */
+  }
+}
+
 /** 应用偏好（与连接配置分离） */
 export const usePreferencesStore = defineStore('preferences', () => {
   const writeChatPromptSnapshot = ref(readStoredWriteChatPrompt())
@@ -261,11 +287,13 @@ export const usePreferencesStore = defineStore('preferences', () => {
   const embeddingDimensions = ref<number | null>(readStoredEmbeddingDimensions())
   const chatFontSizeRem = ref(readStoredChatFontSizeRem())
   const composerEnterMode = ref(readStoredComposerEnterMode())
+  const chunkTurnsPerFile = ref(readStoredChunkTurnsPerFile())
   const userPreferencesLoaded = ref(false)
   let lorebookPatchInFlight = false
   let historyPatchInFlight = false
   let memoryPatchInFlight = false
   let embeddingPatchInFlight = false
+  let chunkPatchInFlight = false
 
   watch(
     writeChatPromptSnapshot,
@@ -496,6 +524,52 @@ export const usePreferencesStore = defineStore('preferences', () => {
     }
   }
 
+  async function patchGlobalChunkToServer(
+    patch: Partial<ChunkSettings>,
+  ): Promise<void> {
+    const res = await fetch('/api/user-preferences', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chunk: patch }),
+    })
+    if (!res.ok) {
+      const txt = await res.text()
+      throw new Error(txt.slice(0, 200))
+    }
+    const j = (await res.json()) as { chunk?: Partial<ChunkSettings> }
+    if (j.chunk) {
+      const n = normalizeChunkSettings(j.chunk)
+      chunkPatchInFlight = true
+      chunkTurnsPerFile.value = n.turnsPerFile
+      persistChunkLocal(n.turnsPerFile)
+      chunkPatchInFlight = false
+    }
+  }
+
+  watch(
+    chunkTurnsPerFile,
+    async () => {
+      if (!userPreferencesLoaded.value || chunkPatchInFlight) return
+      const n = normalizeChunkSettings({
+        turnsPerFile: chunkTurnsPerFile.value,
+      })
+      if (n.turnsPerFile !== chunkTurnsPerFile.value) {
+        chunkTurnsPerFile.value = n.turnsPerFile
+        return
+      }
+      persistChunkLocal(n.turnsPerFile)
+      chunkPatchInFlight = true
+      try {
+        await patchGlobalChunkToServer({ turnsPerFile: n.turnsPerFile })
+      } catch {
+        /* 设置页可重试 */
+      } finally {
+        chunkPatchInFlight = false
+      }
+    },
+    { flush: 'post' },
+  )
+
   watch(
     [lorebookRecursiveEnabled, lorebookMaxRecursionDepth, lorebookVectorEnabled, lorebookVectorTopK],
     async () => {
@@ -632,11 +706,13 @@ export const usePreferencesStore = defineStore('preferences', () => {
           history?: Partial<HistorySettings>
           memory?: Partial<MemorySettings>
           embeddingApi?: Partial<EmbeddingApiSettings>
+          chunk?: Partial<ChunkSettings>
         }
         lorebookPatchInFlight = true
         historyPatchInFlight = true
         memoryPatchInFlight = true
         embeddingPatchInFlight = true
+        chunkPatchInFlight = true
         const lore = normalizeLorebookSettings(doc.lorebook)
         lorebookRecursiveEnabled.value = lore.recursiveEnabled
         lorebookMaxRecursionDepth.value = lore.maxRecursionDepth
@@ -652,6 +728,9 @@ export const usePreferencesStore = defineStore('preferences', () => {
         memoryTopK.value = mem.memoryTopK
         persistMemoryLocal()
         applyEmbeddingFromServer(doc.embeddingApi)
+        const chunk = normalizeChunkSettings(doc.chunk)
+        chunkTurnsPerFile.value = chunk.turnsPerFile
+        persistChunkLocal(chunk.turnsPerFile)
       } catch {
         /* 使用 localStorage 缓存 */
       } finally {
@@ -659,6 +738,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
         historyPatchInFlight = false
         memoryPatchInFlight = false
         embeddingPatchInFlight = false
+        chunkPatchInFlight = false
         userPreferencesLoaded.value = true
       }
     })().finally(() => {
@@ -731,6 +811,12 @@ export const usePreferencesStore = defineStore('preferences', () => {
     chatFontSizeRem.value = normalizeChatFontSizeRem(n)
   }
 
+  function setChunkTurnsPerFile(n: number) {
+    chunkTurnsPerFile.value = normalizeChunkSettings({
+      turnsPerFile: n,
+    }).turnsPerFile
+  }
+
   return {
     writeChatPromptSnapshot,
     setWriteChatPromptSnapshot,
@@ -762,6 +848,8 @@ export const usePreferencesStore = defineStore('preferences', () => {
     chatFontSizeRem,
     setChatFontSizeRem,
     composerEnterMode,
+    chunkTurnsPerFile,
+    setChunkTurnsPerFile,
     userPreferencesLoaded,
     loadUserPreferencesFromServer,
   }

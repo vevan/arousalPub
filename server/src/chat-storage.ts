@@ -28,8 +28,11 @@ import {
 import {
   scheduleMemoryIndexDelete,
   scheduleMemoryIndexUpsert,
+  sealChunkMemorySegment,
+  wipeConversationMemoryIndex,
 } from './memory-index.js'
-import { deleteConversationMemoryIndex } from './memory-store.js'
+import { buildFirstChunkDescriptor, prepareTailChunkForAppend } from './chunk-chain.js'
+import { readGlobalChunkSettings } from './user-preferences-file.js'
 
 /** 与 {@link getChatsRoot} 相同，保留旧名供外部引用 */
 export function chatRoot(): string {
@@ -43,6 +46,7 @@ function chatListFile(): string {
   return path.join(getChatsRoot(), 'chat.index.json')
 }
 
+/** @deprecated 首块文件名请用 {@link buildFirstChunkDescriptor} */
 export const CHUNK_NAME_FIRST = 'turn-000000-000099.json'
 export const CHAT_PROMPT_FILE = 'chat-prompt.json'
 export const DEFAULT_PROMPT_DEBUG_MAX = 10
@@ -568,6 +572,8 @@ export interface ChunkFile {
   meta: {
     chunkId: string
     ordinalRange: { start: number; end: number }
+    /** 本块创建时的轮数容量；缺省从文件名推断 */
+    turnsPerFile?: number
     links: {
       previous: string | null
       next: string | null
@@ -605,7 +611,7 @@ function stripTurnForDisk(t: TurnRecord): TurnRecord {
   }
 }
 
-async function writeChunkFile(
+export async function writeChunkFile(
   conversationId: string,
   chunkFileName: string,
   chunk: ChunkFile,
@@ -889,22 +895,23 @@ export async function saveFirstTurn(params: {
     plugins: [],
   }
 
+  const chunkSettings = await readGlobalChunkSettings()
+  const { fileName: firstChunkFile, meta: firstMeta } = buildFirstChunkDescriptor(
+    chunkSettings.turnsPerFile,
+  )
+
   const chunk: ChunkFile = {
     schemaVersion: 1,
-    meta: {
-      chunkId: 'turn-000000-000099',
-      ordinalRange: { start: 0, end: 0 },
-      links: { previous: null, next: null, branches: [] },
-    },
+    meta: firstMeta,
     turns: [turn],
   }
 
   await mkdir(conversationDir(conversationId), { recursive: true })
-  await writeChunkFile(conversationId, CHUNK_NAME_FIRST, chunk)
+  await writeChunkFile(conversationId, firstChunkFile, chunk)
 
   const t = nowIso()
-  idx.headChunkFile = CHUNK_NAME_FIRST
-  idx.tailChunkFile = CHUNK_NAME_FIRST
+  idx.headChunkFile = firstChunkFile
+  idx.tailChunkFile = firstChunkFile
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
   await upsertChatListEntry(chatListEntryFromIndex(idx))
@@ -912,14 +919,14 @@ export async function saveFirstTurn(params: {
   /** 对话落盘成功后再写快照；无有效 messages 或索引关闭写入时不落盘 */
   if (debugPrompt !== undefined) {
     await appendChatPromptDebugEntry(conversationId, {
-      chunkName: CHUNK_NAME_FIRST,
+      chunkName: firstChunkFile,
       turnId,
       turnOrdinal: 0,
       messages: debugPrompt,
     })
   }
 
-  scheduleMemoryIndexUpsert(conversationId, turn)
+  scheduleMemoryIndexUpsert(conversationId, turn, firstChunkFile)
 
   return { index: idx, chunk }
 }
@@ -951,22 +958,23 @@ export async function saveOpeningTurn(params: {
     plugins: [],
   }
 
+  const chunkSettings = await readGlobalChunkSettings()
+  const { fileName: firstChunkFile, meta: firstMeta } = buildFirstChunkDescriptor(
+    chunkSettings.turnsPerFile,
+  )
+
   const chunk: ChunkFile = {
     schemaVersion: 1,
-    meta: {
-      chunkId: 'turn-000000-000099',
-      ordinalRange: { start: 0, end: 0 },
-      links: { previous: null, next: null, branches: [] },
-    },
+    meta: firstMeta,
     turns: [turn],
   }
 
   await mkdir(conversationDir(conversationId), { recursive: true })
-  await writeChunkFile(conversationId, CHUNK_NAME_FIRST, chunk)
+  await writeChunkFile(conversationId, firstChunkFile, chunk)
 
   const t = nowIso()
-  idx.headChunkFile = CHUNK_NAME_FIRST
-  idx.tailChunkFile = CHUNK_NAME_FIRST
+  idx.headChunkFile = firstChunkFile
+  idx.tailChunkFile = firstChunkFile
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
   await upsertChatListEntry(chatListEntryFromIndex(idx))
@@ -984,20 +992,18 @@ export async function appendConversationTurn(params: {
   const { conversationId, userText, receives, activeReceiveIndex, debugPrompt } =
     params
   if (!receives.length) return false
-  const idx = await readConversationIndex(conversationId)
-  if (!idx?.tailChunkFile) return false
-  const chunkPath = tailChunkPath(conversationId, idx)
-  if (!chunkPath) return false
-  let chunk: ChunkFile
-  try {
-    const raw = await readFile(chunkPath, 'utf8')
-    chunk = JSON.parse(raw) as ChunkFile
-  } catch {
-    return false
+  const prepared = await prepareTailChunkForAppend(conversationId)
+  if (!prepared) return false
+  const { idx, tailFile: chunkName, tail: chunk, sealedChunkFiles } = prepared
+  for (const sealed of sealedChunkFiles) {
+    void sealChunkMemorySegment(conversationId, sealed).catch((e) => {
+      // eslint-disable-next-line no-console
+      console.warn('[chat-storage] seal chunk memory failed:', e)
+    })
   }
   const nextOrd =
     chunk.turns.length === 0
-      ? 0
+      ? chunk.meta.ordinalRange.start
       : Math.max(...chunk.turns.map((t) => t.turnOrdinal)) + 1
   const used = collectChunkEntityIds(chunk)
   const turn: TurnRecord = {
@@ -1012,8 +1018,13 @@ export async function appendConversationTurn(params: {
     plugins: [],
   }
   chunk.turns.push(turn)
-  chunk.meta.ordinalRange = { start: 0, end: turn.turnOrdinal }
-  const chunkName = idx.tailChunkFile
+  chunk.meta.ordinalRange = {
+    start:
+      chunk.turns.length === 1
+        ? turn.turnOrdinal
+        : Math.min(chunk.meta.ordinalRange.start, turn.turnOrdinal),
+    end: turn.turnOrdinal,
+  }
   await writeChunkFile(conversationId, chunkName, chunk)
   const t = nowIso()
   idx.updatedAt = t
@@ -1027,7 +1038,7 @@ export async function appendConversationTurn(params: {
       messages: debugPrompt,
     })
   }
-  scheduleMemoryIndexUpsert(conversationId, turn)
+  scheduleMemoryIndexUpsert(conversationId, turn, chunkName)
   return true
 }
 
@@ -1041,7 +1052,7 @@ export async function deleteConversation(
   } catch {
     return false
   }
-  void deleteConversationMemoryIndex(conversationId).catch(() => {})
+  void wipeConversationMemoryIndex(conversationId).catch(() => {})
   const list = await readChatList()
   list.conversations = list.conversations.filter(
     (c) => c.conversationId !== conversationId,
@@ -1124,7 +1135,7 @@ export async function updateTurnContentInTailChunk(
       messages: debugPrompt,
     })
   }
-  scheduleMemoryIndexUpsert(conversationId, turn)
+  scheduleMemoryIndexUpsert(conversationId, turn, chunkName)
   return true
 }
 

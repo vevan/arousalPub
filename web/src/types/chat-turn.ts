@@ -29,6 +29,9 @@ export interface ChatTurnItem {
 export interface ChatPersistPayload {
   ok: boolean
   error?: string
+  turnOrdinal?: number
+  receiveId?: string
+  isFirstTurn?: boolean
 }
 
 export interface ChatPromptSnapshotEntry {

@@ -176,6 +176,8 @@ export async function runChatRequest(options: {
   onPromptEstimatedTokens?: (n: number) => void
   /** 流式 SSE 末包 usage.completion_tokens */
   onCompletionTokens?: (n: number) => void
+  /** 流式：服务端落盘完成后经 SSE 推送；非流式：随 JSON 一并返回时也会调用 */
+  onPersist?: (persist: ChatPersistPayload) => void
 }): Promise<{
   content: string
   reasoning?: string
@@ -242,6 +244,7 @@ export async function runChatRequest(options: {
       },
       (persist) => {
         streamPersist = persist
+        options.onPersist?.(persist)
       },
     )
     const reasoning = accR.trim() || undefined
@@ -279,6 +282,9 @@ export async function runChatRequest(options: {
       : undefined
   if (completionTokens) {
     options.onCompletionTokens?.(completionTokens)
+  }
+  if (data.persist && typeof data.persist === 'object' && 'ok' in data.persist) {
+    options.onPersist?.(data.persist)
   }
   return {
     content,

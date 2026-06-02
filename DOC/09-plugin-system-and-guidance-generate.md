@@ -126,7 +126,9 @@ data/
 - `usePluginHost`：拉 registry → merge locales → blob 动态 import `web.mjs` → `register(host)`。
 - **Slot**：`PluginSlotMount`，`data-plugin-slot` 如 `composer-toolbar`、`user-turn-footer`。
 - **动作弹框**：`PluginFormDialogHost`（指导生成 send/regenerate，与 settings 表单分离）。
-- **生命周期**：`host.lifecycle.onAssistantReplyComplete`（完成提示音等）。
+- **生命周期**：
+  - `host.lifecycle.onAssistantReplyPersisted` — 流式结束后服务端落盘成功（SSE `arousal.persist` 或非流式 JSON 的 `persist.ok`）时触发；**早于** `loadMessages` 与 UI 全量刷新。
+  - `host.lifecycle.onAssistantReplyComplete` — `send` / `regenerate` 流程结束（含 `loadMessages` 之后）；适合不依赖落盘时刻的收尾逻辑。
 
 ### 5.2 设置页 → 插件 Tab
 
@@ -159,10 +161,12 @@ data/
 ### 7.2 `reply-complete-sound`（完成提示音）
 
 - **纯 Web**（无 server hook）；registry 启用后加载 `web.mjs`。
-- **触发**：`onAssistantReplyComplete`（send / regenerate 成功完成）。
+- **主触发**：`onAssistantReplyPersisted`（落盘成功即播，避免后台标签在 `loadMessages` / 滚动节流期间延迟数分钟）。
+- **兜底**：`onAssistantReplyComplete`；同一请求的 `traceId` 已播则跳过（去重）。
 - **默认音**：`assets/default.mp3`（bundled）。
 - **settings**：`soundSource`（default/custom）、`soundFile`（fileAsset 上传）、`repeatCount`、`repeatGapMs`、`volume`（slider 0–1）。
 - **Composer**：试听按钮（▶），非启用开关。
+- **部署**：运行时加载 `data/plugins/<id>/dist/web.mjs`；改仓库 `plugins/` 后需同步到 `data/plugins/` 并刷新页面。
 
 ---
 

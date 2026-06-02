@@ -21,6 +21,16 @@ export interface PluginSlotButtonDef {
 
 export interface AssistantReplyCompleteEvent {
   mode: 'send' | 'regenerate'
+  traceId?: string
+}
+
+/** 服务端落盘成功（SSE arousal.persist 或等价 JSON） */
+export interface AssistantReplyPersistedEvent {
+  mode: 'send' | 'regenerate'
+  traceId?: string
+  turnOrdinal?: number
+  receiveId?: string
+  isFirstTurn?: boolean
 }
 
 export interface PluginFormFieldDef {
@@ -66,6 +76,9 @@ export interface PluginWebHost {
   lifecycle: {
     onAssistantReplyComplete: (
       handler: (event: AssistantReplyCompleteEvent) => void,
+    ) => () => void
+    onAssistantReplyPersisted: (
+      handler: (event: AssistantReplyPersistedEvent) => void,
     ) => () => void
   }
   /** 插件切换 slot 按钮外观后调用，触发 UI 刷新 */

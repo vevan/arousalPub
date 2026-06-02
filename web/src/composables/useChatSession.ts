@@ -53,6 +53,20 @@ export interface ComposerRef {
 
 export interface AssistantReplyCompleteEvent {
   mode: 'send' | 'regenerate'
+  traceId?: string
+}
+
+export interface AssistantReplyPersistedEvent {
+  mode: 'send' | 'regenerate'
+  traceId?: string
+  turnOrdinal?: number
+  receiveId?: string
+  isFirstTurn?: boolean
+}
+
+function makeReplyTraceId(mode: 'send' | 'regenerate'): string {
+  const rand = Math.random().toString(36).slice(2, 8)
+  return `${mode}-${Date.now()}-${rand}`
 }
 
 export function useChatSession(props: ChatSessionProps) {
@@ -91,8 +105,12 @@ function streamDeltaHandler(d: { text?: string; reasoning?: string }) {
 
 async function requestChatCompletion(
   params: Parameters<typeof buildConversationChatRequestBody>[2],
+  trace?: { traceId?: string; mode: 'send' | 'regenerate' },
 ) {
-  return runChatRequest({
+  const mode = trace?.mode ?? 'send'
+  const traceId = trace?.traceId ?? makeReplyTraceId(mode)
+
+  const result = await runChatRequest({
     conn,
     conversationId: props.conversationId,
     params,
@@ -106,13 +124,48 @@ async function requestChatCompletion(
     onCompletionTokens: (n) => {
       pendingReceiveCompletionTokens.value = n
     },
+    onPersist: (persist) => {
+      if (persist.ok) {
+        emitAssistantReplyPersisted({
+          mode,
+          traceId,
+          turnOrdinal: persist.turnOrdinal,
+          receiveId: persist.receiveId,
+          isFirstTurn: persist.isFirstTurn,
+        })
+      }
+    },
   })
+
+  return { ...result, traceId }
 }
 
 const userInput = ref('')
 const assistantReplyCompleteListeners = new Set<
   (event: AssistantReplyCompleteEvent) => void
 >()
+const assistantReplyPersistedListeners = new Set<
+  (event: AssistantReplyPersistedEvent) => void
+>()
+
+function onAssistantReplyPersisted(
+  listener: (event: AssistantReplyPersistedEvent) => void,
+): () => void {
+  assistantReplyPersistedListeners.add(listener)
+  return () => {
+    assistantReplyPersistedListeners.delete(listener)
+  }
+}
+
+function emitAssistantReplyPersisted(event: AssistantReplyPersistedEvent): void {
+  for (const listener of assistantReplyPersistedListeners) {
+    try {
+      listener(event)
+    } catch {
+      /* ignore plugin listener errors */
+    }
+  }
+}
 
 function onAssistantReplyComplete(
   listener: (event: AssistantReplyCompleteEvent) => void,
@@ -254,25 +307,35 @@ const deleteListIndex = ref<number | null>(null)
 
 const chatScrollEl = ref<HTMLElement | null>(null)
 
+function scrollChatElToBottom(el: HTMLElement) {
+  const max = Math.max(0, el.scrollHeight - el.clientHeight)
+  el.scrollTop = max
+}
+
 async function scrollChatToBottom() {
   await nextTick()
-  await nextTick()
-  const apply = () => {
-    const el = chatScrollEl.value
-    if (!el) return
-    el.scrollTop = el.scrollHeight
-  }
+  const el = chatScrollEl.value
+  if (!el) return
+  const apply = () => scrollChatElToBottom(el)
+  apply()
   await new Promise<void>((resolve) => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         apply()
-        setTimeout(() => {
-          apply()
-          resolve()
-        }, 0)
+        resolve()
       })
     })
   })
+  apply()
+}
+
+/** 生成结束、即将 reload/滚动前：退出骨架/流式态，避免滚到底时仍按 loading 高度计算 */
+function endRegeneratingUi() {
+  streamingText.value = ''
+  streamingReasoning.value = ''
+  regeneratingTurnOrdinal.value = null
+  pendingSendEstimatedTokens.value = null
+  pendingReceiveCompletionTokens.value = null
 }
 
 /** 对话区内最后一条可见的思维链（按 DOM 顺序，即最近一轮助手） */
@@ -447,6 +510,12 @@ watch(streamingText, () => {
   void scrollChatToBottom()
 }, { flush: 'post' })
 
+watch(regeneratingTurnOrdinal, (cur, prev) => {
+  if (prev !== null && cur === null) {
+    void nextTick().then(() => scrollChatToBottom())
+  }
+})
+
 watch(
   () => props.conversationId,
   (newId, oldId) => {
@@ -538,10 +607,14 @@ async function send() {
       durationMs,
       estimatedTokens,
       completionTokens,
-    } = await requestChatCompletion({
-      userText,
-      promptTrigger: 'normal',
-    })
+      traceId,
+    } = await requestChatCompletion(
+      {
+        userText,
+        promptTrigger: 'normal',
+      },
+      { mode: 'send' },
+    )
     setPersistWarning(persist)
     const elapsed = durationMs ?? stopGenerationTimer()
     const receive: ReceiveItem = {
@@ -557,7 +630,7 @@ async function send() {
     if (assistantOut.trim() && (!persist || persist.ok)) {
       await loadMessages()
     }
-    emitAssistantReplyComplete({ mode: 'send' })
+    emitAssistantReplyComplete({ mode: 'send', traceId })
   } catch (e) {
     rollbackPendingUserTurn(ord, userText)
     errorText.value = e instanceof Error ? e.message : t('chat.errors.network')
@@ -573,27 +646,27 @@ function slideAssistant(listIndex: number, direction: 'left' | 'right') {
   const len = turn.receives.length
   const a = turn.activeReceiveIndex
 
-  if (direction === 'left') {
-    const nextIdx = a === 0 ? len - 1 : a - 1
-    const next = { ...turn, activeReceiveIndex: nextIdx }
+  const applyVariantSwitch = (next: ChatTurnItem) => {
     replaceTurnAt(listIndex, next)
     void persistTurnToServer(next)
+    void nextTick().then(() => scrollChatToBottom())
+  }
+
+  if (direction === 'left') {
+    const nextIdx = a === 0 ? len - 1 : a - 1
+    applyVariantSwitch({ ...turn, activeReceiveIndex: nextIdx })
     return
   }
 
   if (a === len - 1) {
     if (isOpeningTurn(turn)) {
-      const next = { ...turn, activeReceiveIndex: 0 }
-      replaceTurnAt(listIndex, next)
-      void persistTurnToServer(next)
+      applyVariantSwitch({ ...turn, activeReceiveIndex: 0 })
       return
     }
     void regenerateAssistant(listIndex, 'swipe')
     return
   }
-  const next = { ...turn, activeReceiveIndex: a + 1 }
-  replaceTurnAt(listIndex, next)
-  void persistTurnToServer(next)
+  applyVariantSwitch({ ...turn, activeReceiveIndex: a + 1 })
 }
 
 async function regenerateAssistant(
@@ -628,16 +701,17 @@ async function regenerateAssistant(
       durationMs,
       estimatedTokens,
       completionTokens,
-    } = await requestChatCompletion({
+      traceId,
+    } = await requestChatCompletion(
+      {
         userText: turn.user,
         promptTrigger: trigger,
         historyBeforeTurnOrdinalExclusive: turn.turnOrdinal,
         regenerateTurnOrdinal: turn.turnOrdinal,
-      })
+      },
+      { mode: 'regenerate' },
+    )
     setPersistWarning(persist)
-
-    streamingText.value = ''
-    streamingReasoning.value = ''
 
     const cur = turns.value[listIndex]
     if (!cur) return
@@ -656,19 +730,19 @@ async function regenerateAssistant(
       activeReceiveIndex: cur.receives.length,
     }
     replaceTurnAt(listIndex, next)
+    endRegeneratingUi()
+    await nextTick()
     if (assistantOut.trim() && (!persist || persist.ok)) {
       await loadMessages()
+    } else {
+      await scrollChatToBottom()
     }
-    emitAssistantReplyComplete({ mode: 'regenerate' })
+    emitAssistantReplyComplete({ mode: 'regenerate', traceId })
   } catch (e) {
     errorText.value = e instanceof Error ? e.message : t('chat.errors.network')
   } finally {
     stopGenerationTimer()
-    regeneratingTurnOrdinal.value = null
-    pendingSendEstimatedTokens.value = null
-    pendingReceiveCompletionTokens.value = null
-    streamingText.value = ''
-    streamingReasoning.value = ''
+    endRegeneratingUi()
   }
 }
 
@@ -1082,11 +1156,15 @@ async function sendWithPlugins(
       durationMs,
       estimatedTokens,
       completionTokens,
-    } = await requestChatCompletion({
-      userText: trimmed,
-      promptTrigger: 'normal',
-      plugins,
-    })
+      traceId,
+    } = await requestChatCompletion(
+      {
+        userText: trimmed,
+        promptTrigger: 'normal',
+        plugins,
+      },
+      { mode: 'send' },
+    )
     setPersistWarning(persist)
     const elapsed = durationMs ?? stopGenerationTimer()
     const receive: ReceiveItem = {
@@ -1101,7 +1179,7 @@ async function sendWithPlugins(
     if (assistantOut.trim() && (!persist || persist.ok)) {
       await loadMessages()
     }
-    emitAssistantReplyComplete({ mode: 'send' })
+    emitAssistantReplyComplete({ mode: 'send', traceId })
   } catch (e) {
     rollbackPendingUserTurn(ord, trimmed)
     errorText.value = e instanceof Error ? e.message : t('chat.errors.network')
@@ -1151,17 +1229,18 @@ async function regenerateWithPlugins(
       durationMs,
       estimatedTokens,
       completionTokens,
-    } = await requestChatCompletion({
-      userText: trimmed,
-      promptTrigger: 'regenerate',
-      historyBeforeTurnOrdinalExclusive: turn.turnOrdinal,
-      regenerateTurnOrdinal: turn.turnOrdinal,
-      plugins,
-    })
+      traceId,
+    } = await requestChatCompletion(
+      {
+        userText: trimmed,
+        promptTrigger: 'regenerate',
+        historyBeforeTurnOrdinalExclusive: turn.turnOrdinal,
+        regenerateTurnOrdinal: turn.turnOrdinal,
+        plugins,
+      },
+      { mode: 'regenerate' },
+    )
     setPersistWarning(persist)
-
-    streamingText.value = ''
-    streamingReasoning.value = ''
 
     const cur = turns.value[listIndex]
     if (!cur) return
@@ -1181,19 +1260,19 @@ async function regenerateWithPlugins(
       activeReceiveIndex: cur.receives.length,
     }
     replaceTurnAt(listIndex, next)
+    endRegeneratingUi()
+    await nextTick()
     if (assistantOut.trim() && (!persist || persist.ok)) {
       await loadMessages()
+    } else {
+      await scrollChatToBottom()
     }
-    emitAssistantReplyComplete({ mode: 'regenerate' })
+    emitAssistantReplyComplete({ mode: 'regenerate', traceId })
   } catch (e) {
     errorText.value = e instanceof Error ? e.message : t('chat.errors.network')
   } finally {
     stopGenerationTimer()
-    regeneratingTurnOrdinal.value = null
-    pendingSendEstimatedTokens.value = null
-    pendingReceiveCompletionTokens.value = null
-    streamingText.value = ''
-    streamingReasoning.value = ''
+    endRegeneratingUi()
   }
 }
   return reactive({
@@ -1264,5 +1343,6 @@ async function regenerateWithPlugins(
     regenerateWithPlugins,
     isLastUserTurn,
     onAssistantReplyComplete,
+    onAssistantReplyPersisted,
   })
 }

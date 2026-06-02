@@ -1,6 +1,24 @@
 const PLUGIN_ID = 'reply-complete-sound'
 const DEFAULT_ASSET = 'default.mp3'
 const TOKEN_KEY = 'arousal-auth-token'
+const PLAYED_TRACE_MAX = 64
+
+/** 同一轮对话只播一次（persist 主路径，complete 兜底去重） */
+const playedTraceIds = new Set()
+
+function rememberPlayedTrace(traceId) {
+  if (!traceId) return
+  playedTraceIds.add(traceId)
+  while (playedTraceIds.size > PLAYED_TRACE_MAX) {
+    const first = playedTraceIds.values().next().value
+    if (first === undefined) break
+    playedTraceIds.delete(first)
+  }
+}
+
+function hasPlayedTrace(traceId) {
+  return Boolean(traceId && playedTraceIds.has(traceId))
+}
 
 function readToken() {
   try {
@@ -74,15 +92,25 @@ async function playNotification(settings) {
   }
 }
 
+async function maybePlayForTrace(event) {
+  const traceId = event?.traceId
+  if (hasPlayedTrace(traceId)) return
+  rememberPlayedTrace(traceId)
+
+  const settings = await fetchSettings()
+  if (!settings) return
+  await playNotification(settings)
+}
+
 export function register(host) {
   const k = (key) => host.pluginKey(key)
 
-  host.lifecycle.onAssistantReplyComplete(() => {
-    void (async () => {
-      const settings = await fetchSettings()
-      if (!settings) return
-      await playNotification(settings)
-    })()
+  host.lifecycle.onAssistantReplyPersisted((event) => {
+    void maybePlayForTrace(event)
+  })
+
+  host.lifecycle.onAssistantReplyComplete((event) => {
+    void maybePlayForTrace(event)
   })
 
   host.registerSlotButton('composer-toolbar', {

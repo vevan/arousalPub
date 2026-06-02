@@ -79,6 +79,8 @@ export function createPluginWebHost(session: ChatSession): {
     lifecycle: {
       onAssistantReplyComplete: (handler) =>
         session.onAssistantReplyComplete(handler),
+      onAssistantReplyPersisted: (handler) =>
+        session.onAssistantReplyPersisted(handler),
     },
     refreshSlotButtons() {
       slotButtonRevision.value += 1

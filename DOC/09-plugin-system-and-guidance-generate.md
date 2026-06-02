@@ -1,227 +1,191 @@
-# 插件系统与首个插件「指导生成」— 设计定案
+# 插件系统 — 设计与实现
 
-> **状态**：设计已定；**代码进行中**（首个插件 `guidance-generate`）。  
-> **关联**：`DOC/01` §7、`DOC/03` §1.2–1.4、`DOC/03` §6.8 `turn.plugins[]`；Web 预留 `data-plugin-slot`。
+> **状态**：**已实现**（动态加载、`settingsSchema` 设置页、两个内置插件）。  
+> **关联**：`DOC/01` §7、`DOC/03` §1.4、`DOC/03` §6.8 `turn.plugins[]`；`plugins/README.md`。
 
 ---
 
-## 1. 已定原则
+## 1. 原则
 
 | 项 | 定案 |
 |----|------|
-| 插件代码位置 | **`data/{userId}/plugins/<pluginId>/` 动态加载**（首版可内置 `server/src/plugins/` 验证后再迁出） |
-| Hook 冲突 | **`plugin-registry.json` 内 `order` 排序**，同 phase 内小者优先，后者看到已更新的 `ctx` |
-| Syncthing | **默认可信圈**；`settings.json`、**`secrets/`（加密）**、代码包与 registry **可同步** |
-| 轮次 state | **跟 `turnId`**；存 chunk **`turn.plugins[]`**，不污染可见 `send.userText` |
-| Opening / 预览 | **与正常发消息共用 `PluginHost` pipeline**；预览 / dryRun 不写盘 |
+| 插件代码 | **`data/plugins/<pluginId>/`** 全局安装一次（`manifest`、`dist`、`locales`、`assets`） |
+| 启用 / 排序 | **`data/{userId}/plugin-registry.json`**（分用户，设置页管理） |
+| 插件参数 | **`data/plugins/<pluginId>/{userId}/settings.json`**（schema 在 manifest） |
+| Hook 顺序 | registry 内 **`order` 升序**；同 phase 内小者优先 |
+| 轮次 state | **`turn.plugins[]`**，跟 `turnId`；不污染可见 `userText` |
+| i18n | 插件自带 **`locales/{en,zh}.json`** → 宿主 merge 到 **`plugins.{pluginId}.*`** |
 
 ---
 
 ## 2. 目录布局
 
 ```text
-data/{userId}/
-  plugin-registry.json
+data/
+  {userId}/
+    plugin-registry.json     # 该用户：enabled + order
   plugins/
-    guidance-generate/
+    {pluginId}/
       manifest.json
-      settings.json          # 用户可改（可选：记住上次指导等）
-      secrets/               # 服务端读；Syncthing 同步（可信环境）
-      dist/
-        server.mjs           # export hooks
-        web.mjs              # export UI slot 组件
+      dist/server.mjs | web.mjs
+      locales/en.json | zh.json
+      assets/                # 可选，全局默认资源（如 default.mp3）
+      {userId}/
+        settings.json        # 该用户插件参数
+        assets/              # fileAsset 上传（自定义 mp3 等）
+        secrets/             # 可选
 ```
 
-### 2.1 `plugin-registry.json`
+**迁移**：旧版全局 `data/plugin-registry.json` 会在用户首次访问时复制到 `data/{userId}/plugin-registry.json`。
 
-```json
-{
-  "version": 1,
-  "plugins": [
-    { "id": "guidance-generate", "enabled": true, "order": 10 }
-  ]
-}
-```
+---
 
-- **`order`**：全局 hook 优先级（升序执行）。
-- **`enabled: false`**：不加载代码，不跑 hook。
-
-### 2.2 `manifest.json`（每插件）
+## 3. manifest.json
 
 ```json
 {
   "id": "guidance-generate",
   "name": "指导生成",
   "version": "1.0.0",
-  "permissions": ["turn.read", "turn.plugins.write", "prompt.inject"],
-  "hooks": ["afterAssemblePrompts", "onTurnPersisted"],
-  "ui": {
-    "slots": [
-      { "name": "composer-toolbar", "entry": "./dist/web.mjs" },
-      { "name": "user-turn-footer", "entry": "./dist/web.mjs" }
+  "hooks": ["afterAssemblePrompts"],
+  "settingsSchema": {
+    "version": 1,
+    "fields": [
+      {
+        "key": "systemPrefix",
+        "type": "text",
+        "labelKey": "systemPrefixLabel",
+        "descriptionKey": "systemPrefixDesc",
+        "default": "Please generate a reply according to this guidance together with the user's message: ",
+        "maxLength": 4000
+      }
     ]
   },
-  "connection": { "policy": "userFirst" }
+  "ui": {
+    "slots": [
+      { "name": "composer-toolbar", "entry": "./dist/web.mjs" }
+    ]
+  }
 }
 ```
 
----
+### 3.1 settingsSchema 字段类型
 
-## 3. PluginHost 与 Hook Phase
+| type | 说明 | 常用属性 |
+|------|------|----------|
+| `boolean` | 开关 | `default` |
+| `integer` / `number` | 数字 | `min`, `max`, `default` |
+| `string` | 单行 | `maxLength` |
+| `text` | 多行 | `maxLength` |
+| `enum` | 下拉 | `enum`, `default` |
+| `fileAsset` | 用户上传文件 | `accept`, `purpose`, `visibleWhen` |
 
-参考 **`prompt-macros/handlers`** 的有序 handler 表；各 phase 对 `ctx` 只通过声明式字段合并（同 `pluginId` payload 覆盖）。
+可选：
 
-| Phase | 时机 | 典型用途 |
-|-------|------|----------|
-| `beforeAssemble` | memory / lore 之前 | 改 scan 语料 |
-| `afterMemoryPipeline` | memory 之后 | 追加 memory 文本 |
-| `afterLoreResolve` | lore 之后 | 动态 world |
-| `beforeAssemblePrompts` | `assemblePrompts` 前 | 扩展 `AssembleContext` |
-| **`afterAssemblePrompts`** | 宏 / token 裁切前后 | **插入 messages（指导生成）** |
-| `beforeChatRequest` | 上游前 | 改 sampling |
-| `afterChatComplete` | 流结束 | 统计 |
-| `onTurnPersisted` | chunk 落盘后 | 异步任务 |
+- **`widget: "slider"`** — 与 `number`/`integer` 合用，设置页渲染滑块（如音量 0–1）。
+- **`step`** — slider / 数字步进。
+- **`visibleWhen`** — `{ "field": "soundSource", "equals": "custom" }` 条件显示。
 
-**Opening**：`POST .../opening` 与 `buildConversationOutboundMessages` 均调用同一 pipeline（`ctx.dryRun` 区分预览）。
-
-**ctx 合并**：
-
-- 改 `messages[]`：优先 **append** 或带 `injectionKey` 的 replace。
-- 改 `turn.plugins`：按 `pluginId` 键合并。
+文案键写在插件 **`locales/*.json`**，表单用 `labelKey` / `descriptionKey`（宿主 `t('plugins.{id}.{key}')`）。
 
 ---
 
-## 4. API 与出站
+## 4. HTTP API
 
-- 插件 HTTP：**仅** `POST /api/plugins/:pluginId/invoke`（及 manifest 声明的 proxy）。
-- 发消息扩展（指导生成等）：
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/plugins/registry` | 当前用户**已启用**插件（聊天页加载 web.mjs） |
+| GET | `/api/plugins/manage` | 设置页完整列表 + `settingsSchema` |
+| PUT | `/api/plugins/registry` | 保存 `{ plugins: [{ id, enabled, order }] }` |
+| GET/PUT | `/api/plugins/:id/settings` | 读写合并后的 settings |
+| GET | `/api/plugins/:id/dist/web.mjs` | 动态加载 Web 模块（需 JWT） |
+| GET | `/api/plugins/:id/locales/:locale.json` | 插件 i18n |
+| GET | `/api/plugins/:id/assets/:name` | 全局 bundled 资源 |
+| GET | `/api/plugins/:id/user-assets/:name` | 用户上传资源（支持 `?access_token=`） |
+| POST | `/api/plugins/:id/user-assets` | multipart 上传（`file` + 可选 `fieldKey`） |
+
+发消息扩展（指导生成等）：
 
 ```json
 {
-  "conversationId": "...",
-  "userText": "user举起了剑",
-  "regenerateTurnOrdinal": 12,
   "plugins": {
     "guidance-generate": {
       "mode": "send",
-      "guidanceText": "user手滑了一下"
+      "guidanceText": "…"
     }
   }
 }
 ```
 
-- `mode`: `"send"` | `"regenerate"`。
-- 密钥解析仍走 `DOC/03` §1.2.1 `resolvedPlugin(pluginId)`（本插件首版无出站）。
+---
+
+## 5. Web 宿主
+
+### 5.1 聊天页 PluginHost
+
+- `usePluginHost`：拉 registry → merge locales → blob 动态 import `web.mjs` → `register(host)`。
+- **Slot**：`PluginSlotMount`，`data-plugin-slot` 如 `composer-toolbar`、`user-turn-footer`。
+- **动作弹框**：`PluginFormDialogHost`（指导生成 send/regenerate，与 settings 表单分离）。
+- **生命周期**：`host.lifecycle.onAssistantReplyComplete`（完成提示音等）。
+
+### 5.2 设置页 → 插件 Tab
+
+- 列表：名称、版本、hooks；**拖曳排序**、**启用开关**。
+- **设置**按钮：按 `manifest.settingsSchema` 自动生成表单（`PluginSchemaForm`）。
+- **enabled** 只写在 **registry**，不写 settings。
 
 ---
 
-## 5. Syncthing 分层
+## 6. 服务端 PluginHost
 
-| 层级 | 路径 | 策略 |
-|------|------|------|
-| **权威** | `chats/**/turn-*.json`（含 `turn.plugins`） | 必须同步 |
-| **权威** | `plugin-registry.json`、`plugins/*/manifest.json`、`settings.json` | 必须同步 |
-| **可信同步** | `plugins/*/secrets/` | 用户确认 Syncthing 圈可信 |
-| **派生** | `memory/` Lance、`plugins/*/.cache/`、向量索引 | 可删重建；勿依赖半写 Lance |
-| **Sidecar** | `chats/{id}/plugin-data/{turnId}/{pluginId}/` | 大二进制；chunk 内只存 ref |
-
-写盘：整文件 `writeFile`；chunk 滚动顺序见 `DOC/08`。
+- `loadEnabledServerPlugins(userId)`：读该用户 registry，动态 import `dist/server.mjs`。
+- Hook 已实现：**`afterAssemblePrompts`**、`resolveTurnPluginEntries`（指导生成落盘）。
+- **`api.getUserPluginSettings(pluginId)`**：读合并后的 `{userId}/settings.json` + schema 默认值。
 
 ---
 
-## 6. 首个插件：`guidance-generate`（指导生成）
+## 7. 内置插件
 
-### 6.1 行为摘要
+### 7.1 `guidance-generate`（指导生成）
 
-- **用户输入**（可见）：进入 chunk `send.userText`，显示为 user 气泡。
-- **指导输入**（隐藏）：作为 **最后一条 `system`** 插在 **本轮 `user` 消息之前** 注入 `messages[]`；**不**显示为气泡。
-- 示例：用户「user举起了剑」+ 指导「user手滑了一下」→ 模型可回复「圣剑掉在地上…」；界面无指导句。
+- **UI**：composer + 最后 user turn 弹框（用户文 + 指导文）。
+- **Prompt**：指导 append 到 **messages 末尾** hidden system；前缀可配置 **`settings.systemPrefix`**（多行 text）。
+- **落盘**：`turn.plugins[].payload.guidanceText`。
 
-### 6.2 Prompt 插入位置
+### 7.2 `reply-complete-sound`（完成提示音）
 
-```text
-… character / world / memory / history …
-→ [system] 指导内容（插件）
-→ [user] 用户输入（可见、落盘）
-```
+- **纯 Web**（无 server hook）；registry 启用后加载 `web.mjs`。
+- **触发**：`onAssistantReplyComplete`（send / regenerate 成功完成）。
+- **默认音**：`assets/default.mp3`（bundled）。
+- **settings**：`soundSource`（default/custom）、`soundFile`（fileAsset 上传）、`repeatCount`、`repeatGapMs`、`volume`（slider 0–1）。
+- **Composer**：试听按钮（▶），非启用开关。
 
-指导正文走 **`applyPromptMacroPipeline`**（与 opening 一致）。
+---
 
-### 6.3 持久化
+## 8. 插件作者清单
 
-```json
-{
-  "pluginId": "guidance-generate",
-  "schemaVersion": 1,
-  "payload": {
-    "guidanceText": "user手滑了一下"
-  }
-}
-```
+1. `plugins/{id}/manifest.json` + `dist/` + `locales/`。
+2. 注册 `BUNDLED_PLUGIN_IDS`（见 `plugins/README.md`）。
+3. Web：`host.pluginKey('…')` 引用文案；slot / lifecycle / 动作弹框按需注册。
+4. Server：export hook；读 `api.getUserPluginSettings`。
+5. 需要上传文件：`fileAsset` + `accept: [".mp3", ".wav"]`。
 
-- 写入 **`turn.plugins[]`**（按 `turnId` / 该轮落盘）。
-- **再生**：默认复用同 turn 已存 `guidanceText`；本次弹框可覆盖。
-- **`chat-prompt.json`**（debug）：可见完整 messages（含 hidden system）。
+---
 
-### 6.4 界面（两个入口、一个弹框）
+## 9. Syncthing
 
-**弹框**（始终可通过按钮打开）：
-
-| 区域 | 说明 |
+| 层级 | 路径 |
 |------|------|
-| 上方 | **用户输入**（多行） |
-| 下方 | **指导输入**（多行） |
-| 按钮 | 取消；**发送** 或 **重新生成**（随模式变文案） |
-
-**发送启用条件**：弹框内 **用户输入与指导输入均非空**（打开按钮本身始终可点）。
-
-#### 入口 A — Composer 工具栏
-
-- **位置**：`data-plugin-slot="composer-toolbar"`（输入框下方）。
-- **按钮**：始终可点击 → 打开弹框。
-- **预填**：若底部 **`userInput` 非空**，同步到弹框上方用户输入。
-- **模式**：`send`（新发一轮）。
-- **流程**：与 `send()` 类似 — `appendPendingUserTurn` → `POST /api/chat`（带 plugins）→ 落盘 → `loadMessages`；成功后清空 composer（可选）。
-
-#### 入口 B — 最后一条用户气泡下
-
-- **位置**：**仅列表最后一条 `user.trim()` 非空的 turn** 下方（`user-turn-footer` slot）。
-- **预填**：该 turn 的 `user` → 弹框上方。
-- **模式**：`regenerate`（不新增 turn）。
-- **流程**：对齐 `regenerateAssistant` — `regenerateTurnOrdinal` + `historyBeforeTurnOrdinalExclusive`；**追加**新 `receive`。
-- **若弹框内用户文与磁盘不一致**：服务端 **先 PATCH/更新 turn.user** 再组装（避免气泡与 prompt 不一致）。
-
-### 6.5 与普通发送的关系
-
-- 底部主 **「发送」**：无指导的普通发送（不变）。
-- **指导发送**：仅经弹框确认，避免混淆。
-
-### 6.6 边界
-
-| 场景 | 行为 |
-|------|------|
-| 预览组装 | 未带 `plugins.guidance-generate` 时不注入指导 |
-| 开场仅助手 | 无 user 气泡 → 不显示入口 B |
-| loading / 再生中 | 可开弹框，弹框内发送禁用 |
-| opening 路由 | 走同一 hook 链；本插件 UI 不绑 opening |
+| 权威 | `{userId}/plugin-registry.json`、`plugins/*/manifest.json`、`plugins/*/{userId}/settings.json` |
+| 权威 | `plugins/*/{userId}/assets/`（用户上传） |
+| 权威 | `chats/**/turn-*.json`（含 `turn.plugins`） |
+| 全局代码 | `data/plugins/{id}/`（manifest/dist/locales/assets，通常各节点一致） |
 
 ---
 
-## 7. 实现顺序（代码）
+## 10. 验收参考
 
-1. **`PluginHost` 骨架** + 内置 `guidance-generate` server hook（`afterAssemblePrompts`）。
-2. **`ChatBody.plugins`** + 落盘 **`turn.plugins`** + regenerate 路径。
-3. **Web**：共用弹框 + composer 按钮 + 最后 user footer 按钮 + i18n。
-4. **`plugin-registry.json` 样例** + `data/README` 路径说明。
-5. （后续）动态 `import` 用户目录 `plugins/*/dist/server.mjs`；Web slot 动态加载。
-
----
-
-## 8. 验收清单
-
-- [ ] Composer 指导按钮始终可开弹框；composer 有字时预填用户框。
-- [ ] 弹框双输入；两者非空才可发送。
-- [ ] 新发：仅 user 气泡可见；模型受指导影响；`turn.plugins` 有 payload。
-- [ ] 最后 user 下按钮仅最后一个 user turn 显示；带指导再生追加 receive。
-- [ ] `assemble-messages` / opening 共用 hook；预览无 plugins 时不注入。
-- [ ] `chat-prompt.json` debug 可见 hidden system。
+- [x] 设置 → 插件：列表、排序、启用、schema 表单保存。
+- [x] 指导生成：弹框、注入、可配置 `systemPrefix`。
+- [x] 完成提示音：默认 mp3、自定义上传、重复次数、音量 slider。
+- [x] 分用户 registry 互不影响。

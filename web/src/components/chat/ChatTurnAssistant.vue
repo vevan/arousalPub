@@ -276,8 +276,10 @@ const { assistantRoleName, assistantAvatarLetter } = toRefs(props.session)
 
     <div
       v-if="!isAssistantBubbleLoading(turn)"
-      class="turn-toolbar turn-toolbar--assistant"
+      class="turn-actions turn-actions--assistant"
     >
+      <div class="plugin-slots" data-plugin-slot="assistant-turn-footer" />
+      <div class="turn-toolbar turn-toolbar--assistant">
       <button
         type="button"
         class="turn-toolbar__btn"
@@ -360,6 +362,7 @@ const { assistantRoleName, assistantAvatarLetter } = toRefs(props.session)
         >
           <v-icon size="16">mdi-chevron-right</v-icon>
         </button>
+      </div>
       </div>
     </div>
   </div>

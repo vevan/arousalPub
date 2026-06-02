@@ -7,40 +7,47 @@
 ```
 data/
   users.index.json          # 用户注册表（用户名、密码哈希、显示名等）
-  00000000/                 # 种子账号（首次安装自动创建，需完成 setup）
-  {8位hex}/                 # 其它用户目录（allocateUserId 分配，跳过 00000000）
+  plugins/                  # 全局插件包（安装一次，全用户共用代码）
+    <pluginId>/
+      manifest.json
+      dist/
+      locales/
+      assets/               # 可选：如 default.mp3
+      {userId}/             # 该用户在此插件下的配置与上传
+        settings.json
+        assets/
+        secrets/
+  00000000/                 # 种子账号
+    plugin-registry.json    # 该用户插件启用与 hook 排序
+    chats/
+    ...
+  {8位hex}/
+    plugin-registry.json
+    ...
 ```
 
-- **用户 ID**：8 位小写十六进制，与业务实体 ID（会话、角色卡等）命名空间独立。
-- **种子账号 `00000000`**：安装后自动生成；在 Web 引导中设置用户名/密码后 `setupComplete: true`。
-- **认证**：除 `/api/auth/*`、`/health`、`/api/users/:id/avatar` 外，其余 `/api/*` 需 JWT（`Authorization: Bearer`）。不再使用 `X-User-Id` 或 `default-user` 目录名。
-- **本机默认用户**：仅浏览器 `localStorage`（`arousal-default-user-id` + refresh 会话），不写入 `users.index.json`。勾选后使用 **persisted** 会话（`data/auth-sessions.json`，重启仍有效）；未勾选为 **ephemeral** 会话（仅内存，**重启失效**；**15 分钟**无活动后 refresh 失败需重登）。
-- **`data/auth-sessions.json`**：默认用户的 refresh 会话索引（不含明文 refresh，仅存哈希）。
+- **用户 ID**：8 位小写十六进制。
+- **插件 registry**：**每个用户一份** `data/{userId}/plugin-registry.json`（非全局根目录）。旧版 `data/plugin-registry.json` 会在首次 seed 时迁移到用户目录。
+- **认证**：除公开路由外，`/api/*` 需 JWT。
 
-## 单用户目录结构
-
-每个 `{userId}/` 下典型内容：
+## 单用户目录 `{userId}/`
 
 | 路径 | 说明 |
 |------|------|
-| `avatar.png` | 用户头像（首装从 `server/assets/users/default-avatar.png` 复制） |
+| `plugin-registry.json` | 该用户插件 enabled / order |
+| `avatar.png` | 用户头像 |
 | `chats/` | 对话会话与消息 |
-| `prompts/` | `index.json` + `preset-*.json` |
-| `characters/` | 角色卡 PNG 与 `index.json` |
-| `lorebooks/` | 资料库 JSON |
-| `api-settings.json` | 连接/API 预设 |
-| `api-keys.json` | API Key 别名 |
-| `preferences.json` | 用户偏好（主题、语言等） |
-| `plugin-registry.json` | 插件启用列表与 hook 排序（见 `DOC/09`） |
-| `plugins/<pluginId>/` | 插件包、settings、secrets（Syncthing 可信环境下可同步密钥） |
+| `prompts/`、`characters/`、`lorebooks/` | 资料与预设 |
+| `api-settings.json`、`api-keys.json` | API 配置 |
+| `preferences.json` | 主题、语言等 |
 
 ## 插件与 Syncthing
 
-- **轮次插件 state**：在 `chats/.../turn-*.json` 的 **`turn.plugins[]`**，随 chunk 同步。
-- **插件配置 / 代码 / 密钥**：`plugins/<pluginId>/` 与 `plugin-registry.json`；详见 **`DOC/09-plugin-system-and-guidance-generate.md` §5**。
-- **派生**：`memory/` Lance、插件 `.cache/` 可删重建；勿同步半写入中的 Lance 目录。
-- **大二进制**：`chats/{conversationId}/plugin-data/{turnId}/{pluginId}/`，chunk 内只存引用。
+- **轮次 state**：`chats/.../turn-*.json` 的 **`turn.plugins[]`**。
+- **插件代码**：`data/plugins/<pluginId>/`（全局）。
+- **插件配置**：`data/plugins/<pluginId>/{userId}/settings.json`；上传文件在 **`.../{userId}/assets/`**。
+- 详见 **`DOC/09-plugin-system-and-guidance-generate.md`**。
 
 ## 备份
 
-以整个 `data/` 为单元备份即可；含 API Key 与密码哈希，须与生产环境同等访问控制。
+以整个 `data/` 为单元备份；含 API Key 与密码哈希，须与生产环境同等访问控制。

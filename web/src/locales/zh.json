@@ -300,6 +300,7 @@
     "navDisplay": "显示",
     "navLorebook": "资料库",
     "navHistory": "对话历史",
+    "navPlugins": "插件",
     "navDebug": "调试",
     "language": "语言",
     "chatFontSizeSection": "对话字体大小",
@@ -358,6 +359,20 @@
       "password_change_failed": "修改密码失败"
     },
     "debugSection": "调试与数据",
+    "plugins": {
+      "title": "插件",
+      "intro": "启用或禁用插件、调整 hook 执行顺序，并配置各插件选项。顺序仅影响当前账号。",
+      "loadFailed": "无法加载插件列表",
+      "saveFailed": "无法保存插件列表",
+      "settingsLoadFailed": "无法加载插件设置",
+      "settingsSaveFailed": "无法保存插件设置",
+      "configure": "设置",
+      "saveSettings": "保存",
+      "empty": "暂无已安装插件。",
+      "enabledAria": "启用 {name}",
+      "upload": "上传",
+      "uploadFailed": "上传失败"
+    },
     "writeChatPromptSnapshot": "保存对话 Prompt 快照",
     "writeChatPromptHint": "开启后，在发送消息、追加轮次与助手再生时，将当次发往模型的 messages 写入服务端会话目录下的 chat-prompt.json。关闭后不再写入；已保存条目仍可在每条助手消息旁查看。",
     "promptSnapshotMaxStored": "最多保留快照条数",

@@ -14,6 +14,7 @@ import type {
 import {
   buildConversationChatRequestBody,
   runChatRequest,
+  type ConversationChatRequestPlugins,
 } from '@/utils/chat-api'
 import { allocateShortId } from '@/utils/short-id'
 import {
@@ -45,6 +46,14 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useI18n } from 'vue-i18n'
 
 export type { ChatSessionProps } from '@/types/chat-turn'
+
+export interface ComposerRef {
+  get userInput(): string
+}
+
+export interface AssistantReplyCompleteEvent {
+  mode: 'send' | 'regenerate'
+}
 
 export function useChatSession(props: ChatSessionProps) {
 const { t } = useI18n()
@@ -101,6 +110,29 @@ async function requestChatCompletion(
 }
 
 const userInput = ref('')
+const assistantReplyCompleteListeners = new Set<
+  (event: AssistantReplyCompleteEvent) => void
+>()
+
+function onAssistantReplyComplete(
+  listener: (event: AssistantReplyCompleteEvent) => void,
+): () => void {
+  assistantReplyCompleteListeners.add(listener)
+  return () => {
+    assistantReplyCompleteListeners.delete(listener)
+  }
+}
+
+function emitAssistantReplyComplete(event: AssistantReplyCompleteEvent): void {
+  for (const listener of assistantReplyCompleteListeners) {
+    try {
+      listener(event)
+    } catch {
+      /* ignore plugin listener errors */
+    }
+  }
+}
+
 const COMPOSER_DRAFT_SAVE_MS = 400
 let composerDraftSaveTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -525,6 +557,7 @@ async function send() {
     if (assistantOut.trim() && (!persist || persist.ok)) {
       await loadMessages()
     }
+    emitAssistantReplyComplete({ mode: 'send' })
   } catch (e) {
     rollbackPendingUserTurn(ord, userText)
     errorText.value = e instanceof Error ? e.message : t('chat.errors.network')
@@ -626,6 +659,7 @@ async function regenerateAssistant(
     if (assistantOut.trim() && (!persist || persist.ok)) {
       await loadMessages()
     }
+    emitAssistantReplyComplete({ mode: 'regenerate' })
   } catch (e) {
     errorText.value = e instanceof Error ? e.message : t('chat.errors.network')
   } finally {
@@ -1004,6 +1038,164 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
     turnPromptLoading.value = false
   }
 }
+
+function isLastUserTurn(turn: ChatTurnItem): boolean {
+  const list = turns.value
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i].user.trim()) {
+      return list[i].turnOrdinal === turn.turnOrdinal
+    }
+  }
+  return false
+}
+
+async function sendWithPlugins(
+  userText: string,
+  plugins: ConversationChatRequestPlugins,
+) {
+  errorText.value = ''
+  const trimmed = userText.trim()
+  if (!trimmed) return
+  try {
+    if (conn.customParamsJson.trim()) {
+      conn.parseCustomParams()
+    }
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.errors.invalidCustomJson')
+    return
+  }
+  if (conn.apiKey.trim().length === 0 || conn.model.trim().length === 0) {
+    errorText.value = t('chat.errors.requestFailedStatus', { status: 400 })
+    return
+  }
+
+  const ord = nextTurnOrdinal0()
+  appendPendingUserTurn(trimmed, ord)
+  loading.value = true
+  startGenerationTimer()
+  try {
+    const {
+      content: assistantOut,
+      reasoning: reasoningOut,
+      persist,
+      durationMs,
+      estimatedTokens,
+      completionTokens,
+    } = await requestChatCompletion({
+      userText: trimmed,
+      promptTrigger: 'normal',
+      plugins,
+    })
+    setPersistWarning(persist)
+    const elapsed = durationMs ?? stopGenerationTimer()
+    const receive: ReceiveItem = {
+      id: allocateShortId(collectUsedReceiveIds(turns.value)),
+      content: assistantOut,
+      ...(reasoningOut ? { reasoning: reasoningOut } : {}),
+      ...(elapsed > 0 ? { durationMs: elapsed } : {}),
+      ...(estimatedTokens && estimatedTokens > 0 ? { estimatedTokens } : {}),
+      ...(completionTokens && completionTokens > 0 ? { completionTokens } : {}),
+    }
+    finalizePendingTurn(ord, receive)
+    if (assistantOut.trim() && (!persist || persist.ok)) {
+      await loadMessages()
+    }
+    emitAssistantReplyComplete({ mode: 'send' })
+  } catch (e) {
+    rollbackPendingUserTurn(ord, trimmed)
+    errorText.value = e instanceof Error ? e.message : t('chat.errors.network')
+  } finally {
+    stopGenerationTimer()
+    loading.value = false
+  }
+}
+
+async function regenerateWithPlugins(
+  listIndex: number,
+  userText: string,
+  plugins: ConversationChatRequestPlugins,
+) {
+  const turn = turns.value[listIndex]
+  if (!turn) return
+  const trimmed = userText.trim()
+  if (!trimmed) return
+  if (regeneratingTurnOrdinal.value !== null || loading.value) return
+
+  errorText.value = ''
+  try {
+    if (conn.customParamsJson.trim()) {
+      conn.parseCustomParams()
+    }
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.errors.invalidCustomJson')
+    return
+  }
+  if (conn.apiKey.trim().length === 0 || conn.model.trim().length === 0) {
+    errorText.value = t('chat.errors.requestFailedStatus', { status: 400 })
+    return
+  }
+
+  regeneratingTurnOrdinal.value = turn.turnOrdinal
+  pendingSendEstimatedTokens.value = null
+  pendingReceiveCompletionTokens.value = null
+  streamingText.value = ''
+  streamingReasoning.value = ''
+  startGenerationTimer()
+  try {
+    const {
+      content: assistantOut,
+      reasoning: reasoningOut,
+      persist,
+      durationMs,
+      estimatedTokens,
+      completionTokens,
+    } = await requestChatCompletion({
+      userText: trimmed,
+      promptTrigger: 'regenerate',
+      historyBeforeTurnOrdinalExclusive: turn.turnOrdinal,
+      regenerateTurnOrdinal: turn.turnOrdinal,
+      plugins,
+    })
+    setPersistWarning(persist)
+
+    streamingText.value = ''
+    streamingReasoning.value = ''
+
+    const cur = turns.value[listIndex]
+    if (!cur) return
+    const elapsed = durationMs ?? stopGenerationTimer()
+    const newRec: ReceiveItem = {
+      id: allocateShortId(collectUsedReceiveIds(turns.value)),
+      content: assistantOut,
+      ...(reasoningOut ? { reasoning: reasoningOut } : {}),
+      ...(elapsed > 0 ? { durationMs: elapsed } : {}),
+      ...(estimatedTokens && estimatedTokens > 0 ? { estimatedTokens } : {}),
+      ...(completionTokens && completionTokens > 0 ? { completionTokens } : {}),
+    }
+    const next: ChatTurnItem = {
+      ...cur,
+      user: trimmed,
+      receives: [...cur.receives, newRec],
+      activeReceiveIndex: cur.receives.length,
+    }
+    replaceTurnAt(listIndex, next)
+    if (assistantOut.trim() && (!persist || persist.ok)) {
+      await loadMessages()
+    }
+    emitAssistantReplyComplete({ mode: 'regenerate' })
+  } catch (e) {
+    errorText.value = e instanceof Error ? e.message : t('chat.errors.network')
+  } finally {
+    stopGenerationTimer()
+    regeneratingTurnOrdinal.value = null
+    pendingSendEstimatedTokens.value = null
+    pendingReceiveCompletionTokens.value = null
+    streamingText.value = ''
+    streamingReasoning.value = ''
+  }
+}
   return reactive({
     chatScrollEl,
     turns,
@@ -1068,5 +1260,9 @@ async function openTurnPromptSnapshot(turn: ChatTurnItem) {
     openAssemblePreview,
     copyAssemblePreviewJson,
     openTurnPromptSnapshot,
+    sendWithPlugins,
+    regenerateWithPlugins,
+    isLastUserTurn,
+    onAssistantReplyComplete,
   })
 }

@@ -7,6 +7,7 @@ import { userAvatarUrl } from '@/utils/authenticated-media-url'
 import { useApiKeysStore } from '@/stores/apiKeys'
 import { usePreferencesStore } from '@/stores/preferences'
 import { useThemeOklchStore } from '@/stores/theme-oklch'
+import PluginSettingsPanel from '@/components/settings/PluginSettingsPanel.vue'
 import {
   componentsToOklchCss,
   oklchToHex,
@@ -41,7 +42,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{ logout: [] }>()
 
-type SettingsTab = 'system' | 'display' | 'account' | 'lorebook' | 'history' | 'debug'
+type SettingsTab = 'system' | 'display' | 'account' | 'lorebook' | 'history' | 'plugins' | 'debug'
 
 const { t } = useI18n()
 
@@ -201,6 +202,7 @@ const navItems = computed(() => [
   { id: 'display' as const, title: t('settings.navDisplay'), icon: 'mdi-palette-outline' },
   { id: 'lorebook' as const, title: t('settings.navLorebook'), icon: 'mdi-book-open-page-variant-outline' },
   { id: 'history' as const, title: t('settings.navHistory'), icon: 'mdi-history' },
+  { id: 'plugins' as const, title: t('settings.navPlugins'), icon: 'mdi-puzzle-outline' },
   { id: 'debug' as const, title: t('settings.navDebug'), icon: 'mdi-bug-outline' },
 ])
 
@@ -914,6 +916,8 @@ onMounted(() => {
               :disabled="!memoryEnabled"
             />
           </section>
+
+          <PluginSettingsPanel v-show="activeTab === 'plugins'" />
 
           <section
             v-show="activeTab === 'debug'"

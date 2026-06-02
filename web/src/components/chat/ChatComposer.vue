@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { useChatSession } from '@/composables/useChatSession'
+import PluginSlotMount from '@/plugins/PluginSlotMount.vue'
 import { usePreferencesStore } from '@/stores/preferences'
 import { storeToRefs } from 'pinia'
 import { toRefs } from 'vue'
@@ -16,7 +17,6 @@ const { canSend, canPreviewAssemble } = toRefs(props.session)
 
 const { send, onComposerKeydown, openAssemblePreview } = props.session
 </script>
-
 <template>
 <!-- Composer · 底部输入栏 -->
   <div class="chat-footer">
@@ -55,8 +55,10 @@ const { send, onComposerKeydown, openAssemblePreview } = props.session
             </template>
           </span>
           <div class="composer__actions">
-            <v-btn
-              variant="outlined"
+            <div class="plugin-slots composer__plugin-slots">
+              <PluginSlotMount slot-name="composer-toolbar" />
+            </div>
+            <v-btn              variant="outlined"
               size="small"
               density="comfortable"
               :loading="assemblePreviewLoading"

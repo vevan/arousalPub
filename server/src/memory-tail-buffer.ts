@@ -15,6 +15,8 @@ interface BufferState {
 }
 
 const buffers = new Map<string, BufferState>()
+/** 同一 chunk 串行 flush，避免并发 mergeInsert + PK 竞态 */
+const flushChains = new Map<string, Promise<void>>()
 
 function bufferKey(conversationId: string, chunkFileName: string): string {
   return `${conversationId}\0${chunkFileName}`
@@ -53,6 +55,24 @@ function scheduleDebounceFlush(
 }
 
 export async function flushTurnMemoryBuffer(
+  conversationId: string,
+  chunkFileName: string,
+): Promise<void> {
+  const key = bufferKey(conversationId, chunkFileName)
+  const prev = flushChains.get(key) ?? Promise.resolve()
+  const run = prev.then(() =>
+    flushTurnMemoryBufferOnce(conversationId, chunkFileName),
+  )
+  flushChains.set(
+    key,
+    run.finally(() => {
+      if (flushChains.get(key) === run) flushChains.delete(key)
+    }),
+  )
+  await run
+}
+
+async function flushTurnMemoryBufferOnce(
   conversationId: string,
   chunkFileName: string,
 ): Promise<void> {

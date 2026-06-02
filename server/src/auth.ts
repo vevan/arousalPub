@@ -72,6 +72,8 @@ function authHeaderToken(request: FastifyRequest): string | undefined {
 const IMAGE_GET_WITH_QUERY_TOKEN_RE =
   /^\/api\/characters\/[0-9a-f]{8}\/image$/i
 const USER_AVATAR_GET_RE = /^\/api\/users\/[0-9a-f]{8}\/avatar$/i
+const PLUGIN_ASSET_GET_RE =
+  /^\/api\/plugins\/[^/]+\/(assets|user-assets)\/[^/]+$/i
 
 function accessTokenFromQuery(request: FastifyRequest): string | undefined {
   const q = request.query as { access_token?: unknown }
@@ -85,7 +87,8 @@ function allowsQueryAccessToken(pathOnly: string, method: string): boolean {
   if (method !== 'GET') return false
   return (
     IMAGE_GET_WITH_QUERY_TOKEN_RE.test(pathOnly) ||
-    USER_AVATAR_GET_RE.test(pathOnly)
+    USER_AVATAR_GET_RE.test(pathOnly) ||
+    PLUGIN_ASSET_GET_RE.test(pathOnly)
   )
 }
 

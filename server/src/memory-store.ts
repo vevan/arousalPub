@@ -79,7 +79,13 @@ async function ensureTurnIdPrimaryKey(
 ): Promise<void> {
   const key = primaryKeyCacheKey(conversationId, tableName)
   if (primaryKeyReady.has(key)) return
-  await table.setUnenforcedPrimaryKey('turnId')
+  try {
+    await table.setUnenforcedPrimaryKey('turnId')
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    // 表已设过 PK（重启后内存缓存丢失、或并发 flush 竞态）— 视为就绪
+    if (!msg.includes('already set')) throw e
+  }
   primaryKeyReady.add(key)
 }
 

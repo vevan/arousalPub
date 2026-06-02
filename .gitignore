@@ -5,6 +5,7 @@ server/node_modules/
 
 # Build output
 dist/
+!plugins/*/dist/
 web/dist/
 server/dist/
 

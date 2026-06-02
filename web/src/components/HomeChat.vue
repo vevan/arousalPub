@@ -5,10 +5,13 @@ import ChatComposer from '@/components/chat/ChatComposer.vue'
 import ChatDeleteDialog from '@/components/chat/ChatDeleteDialog.vue'
 import ChatMessageList from '@/components/chat/ChatMessageList.vue'
 import ChatTurnPromptDialog from '@/components/chat/ChatTurnPromptDialog.vue'
+import PluginFormDialogHost from '@/plugins/PluginFormDialogHost.vue'
+import { PLUGIN_HOST_KEY } from '@/plugins/injection'
+import { usePluginHost } from '@/plugins/usePluginHost'
 import { useChatSession, type ChatSessionProps } from '@/composables/useChatSession'
 import { usePreferencesStore } from '@/stores/preferences'
 import { storeToRefs } from 'pinia'
-import { computed } from 'vue'
+import { computed, provide } from 'vue'
 
 const props = withDefaults(defineProps<ChatSessionProps>(), {
   conversationPromptPresetId: null,
@@ -19,6 +22,9 @@ const props = withDefaults(defineProps<ChatSessionProps>(), {
 })
 
 const session = useChatSession(props)
+const pluginHost = usePluginHost(session)
+provide(PLUGIN_HOST_KEY, pluginHost)
+
 const { chatFontSizeRem } = storeToRefs(usePreferencesStore())
 
 const chatSessionStyle = computed(() => ({
@@ -36,5 +42,6 @@ const chatSessionStyle = computed(() => ({
     <ChatDeleteDialog :session="session" />
     <ChatAssemblePreviewDialog :session="session" />
     <ChatTurnPromptDialog :session="session" />
+    <PluginFormDialogHost />
   </div>
 </template>

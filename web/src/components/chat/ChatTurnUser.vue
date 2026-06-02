@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type { useChatSession } from '@/composables/useChatSession'
 import type { ChatTurnItem } from '@/types/chat-turn'
+import PluginSlotMount from '@/plugins/PluginSlotMount.vue'
 import { renderRichMessageToHtml } from '@/utils/render-rich-message'
 import { toRefs } from 'vue'
-
 const props = defineProps<{
   turn: ChatTurnItem
   listIndex: number
@@ -18,7 +18,6 @@ const {
   turnAvatarUrls,
   copiedTurnKey,
 } = toRefs(props.session)
-
 const {
   turnLabelN,
   isTurnAwaitingAssistant,
@@ -125,37 +124,45 @@ const { userDisplayName, userAvatarLetter } = toRefs(props.session)
       />
     </div>
 
-    <div class="turn-toolbar turn-toolbar--user">
-      <button
-        type="button"
-        class="turn-toolbar__btn"
-        :disabled="regeneratingTurnOrdinal !== null || isTurnAwaitingAssistant(turn)"
-        :data-tt="$t('chat.edit')"
-        :aria-label="$t('chat.edit')"
-        @click="openEditUser(turn)"
-      >
-        <v-icon size="16">mdi-pencil-outline</v-icon>
-      </button>
-      <button
-        type="button"
-        class="turn-toolbar__btn"
-        :data-tt="copiedTurnKey === `u-${turn.turnOrdinal}` ? $t('chat.copied') : $t('chat.copy')"
-        :class="{ 'is-success': copiedTurnKey === `u-${turn.turnOrdinal}` }"
-        :aria-label="$t('chat.copy')"
-        @click="copyTurnText(turn.user, `u-${turn.turnOrdinal}`)"
-      >
-        <v-icon size="16">{{ copiedTurnKey === `u-${turn.turnOrdinal}` ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
-      </button>
-      <button
-        type="button"
-        class="turn-toolbar__btn turn-toolbar__btn--danger"
-        :disabled="regeneratingTurnOrdinal !== null || isTurnAwaitingAssistant(turn)"
-        :data-tt="$t('chat.delete')"
-        :aria-label="$t('chat.delete')"
-        @click="requestDeleteWholeTurnFromUser(listIndex)"
-      >
-        <v-icon size="16">mdi-delete-outline</v-icon>
-      </button>
+    <div class="turn-actions turn-actions--user">
+      <div class="plugin-slots" data-plugin-slot="user-turn-footer">
+        <PluginSlotMount
+          slot-name="user-turn-footer"
+          :turn="turn"
+          :list-index="listIndex"
+        />
+      </div>      <div class="turn-toolbar turn-toolbar--user">
+        <button
+          type="button"
+          class="turn-toolbar__btn"
+          :disabled="regeneratingTurnOrdinal !== null || isTurnAwaitingAssistant(turn)"
+          :data-tt="$t('chat.edit')"
+          :aria-label="$t('chat.edit')"
+          @click="openEditUser(turn)"
+        >
+          <v-icon size="16">mdi-pencil-outline</v-icon>
+        </button>
+        <button
+          type="button"
+          class="turn-toolbar__btn"
+          :data-tt="copiedTurnKey === `u-${turn.turnOrdinal}` ? $t('chat.copied') : $t('chat.copy')"
+          :class="{ 'is-success': copiedTurnKey === `u-${turn.turnOrdinal}` }"
+          :aria-label="$t('chat.copy')"
+          @click="copyTurnText(turn.user, `u-${turn.turnOrdinal}`)"
+        >
+          <v-icon size="16">{{ copiedTurnKey === `u-${turn.turnOrdinal}` ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
+        </button>
+        <button
+          type="button"
+          class="turn-toolbar__btn turn-toolbar__btn--danger"
+          :disabled="regeneratingTurnOrdinal !== null || isTurnAwaitingAssistant(turn)"
+          :data-tt="$t('chat.delete')"
+          :aria-label="$t('chat.delete')"
+          @click="requestDeleteWholeTurnFromUser(listIndex)"
+        >
+          <v-icon size="16">mdi-delete-outline</v-icon>
+        </button>
+      </div>
     </div>
   </div>
 </template>

@@ -1,0 +1,62 @@
+{
+  "id": "reply-complete-sound",
+  "name": "完成提示音",
+  "version": "1.0.0",
+  "permissions": [],
+  "hooks": [],
+  "settingsSchema": {
+    "version": 1,
+    "fields": [
+      {
+        "key": "soundSource",
+        "type": "enum",
+        "labelKey": "soundSourceLabel",
+        "descriptionKey": "soundSourceDesc",
+        "enum": ["default", "custom"],
+        "default": "default"
+      },
+      {
+        "key": "soundFile",
+        "type": "fileAsset",
+        "labelKey": "soundFileLabel",
+        "descriptionKey": "soundFileDesc",
+        "accept": [".mp3", ".wav"],
+        "purpose": "playback",
+        "default": "",
+        "visibleWhen": { "field": "soundSource", "equals": "custom" }
+      },
+      {
+        "key": "repeatCount",
+        "type": "integer",
+        "labelKey": "repeatCountLabel",
+        "descriptionKey": "repeatCountDesc",
+        "min": 1,
+        "max": 10,
+        "default": 1
+      },
+      {
+        "key": "repeatGapMs",
+        "type": "integer",
+        "labelKey": "repeatGapMsLabel",
+        "descriptionKey": "repeatGapMsDesc",
+        "min": 0,
+        "max": 5000,
+        "default": 400
+      },
+      {
+        "key": "volume",
+        "type": "number",
+        "widget": "slider",
+        "step": 0.05,
+        "labelKey": "volumeLabel",
+        "descriptionKey": "volumeDesc",
+        "min": 0,
+        "max": 1,
+        "default": 1
+      }
+    ]
+  },
+  "ui": {
+    "slots": [{ "name": "composer-toolbar", "entry": "./dist/web.mjs" }]
+  }
+}

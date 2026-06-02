@@ -1,0 +1,27 @@
+{
+  "id": "guidance-generate",
+  "name": "指导生成",
+  "version": "1.0.0",
+  "permissions": ["turn.read", "turn.plugins.write", "prompt.inject"],
+  "hooks": ["afterAssemblePrompts"],
+  "settingsSchema": {
+    "version": 1,
+    "fields": [
+      {
+        "key": "systemPrefix",
+        "type": "text",
+        "labelKey": "systemPrefixLabel",
+        "descriptionKey": "systemPrefixDesc",
+        "default": "Please generate a reply according to this guidance together with the user's message: ",
+        "maxLength": 4000
+      }
+    ]
+  },
+  "ui": {
+    "slots": [
+      { "name": "composer-toolbar", "entry": "./dist/web.mjs" },
+      { "name": "user-turn-footer", "entry": "./dist/web.mjs" }
+    ]
+  },
+  "connection": { "policy": "userFirst" }
+}

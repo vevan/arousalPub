@@ -28,6 +28,9 @@ import {
   readGlobalMemorySettings,
 } from './user-preferences-file.js'
 import { normalizePresetForAssemble } from './prompt-preset-normalize.js'
+import { applyPluginsAfterAssemblePrompts } from './plugin-host.js'
+import type { ChatPluginsBody } from './plugin-types.js'
+import { countChatMessagesTokens } from './token-count.js'
 
 function asPromptPreset(raw: unknown): PromptPreset | null {
   if (!raw || typeof raw !== 'object') return null
@@ -132,6 +135,7 @@ export interface BuildConversationMessagesParams {
   historyBeforeTurnOrdinalExclusive?: number | null
   contextLength?: number | null
   tokenModel?: string | null
+  plugins?: ChatPluginsBody | null
 }
 
 export interface BuildConversationMessagesResult {
@@ -243,9 +247,19 @@ export async function buildConversationOutboundMessages(
     ...charCtx,
   })
 
-  return {
+  const messages = await applyPluginsAfterAssemblePrompts({
     messages: result.messages,
-    estimatedTokens: result.estimatedTokens,
+    macroContext,
+    plugins: params.plugins,
+  })
+  const estimatedTokens =
+    messages.length === result.messages.length
+      ? result.estimatedTokens
+      : countChatMessagesTokens(messages, { model: tokenModel })
+
+  return {
+    messages,
+    estimatedTokens,
     droppedHistoryCount: result.droppedHistoryCount,
     memoryTurnIds: memoryPipeline.memoryTurnIds,
     recentHistoryText: memoryPipeline.recentHistoryText || undefined,

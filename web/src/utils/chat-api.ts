@@ -6,11 +6,21 @@ import { hasAnyDrySamplerField } from '@/utils/dry-sampler'
 
 type ConnectionStore = ReturnType<typeof useConnectionStore>
 
+export interface GuidanceGeneratePluginPayload {
+  mode: 'send' | 'regenerate'
+  guidanceText: string
+}
+
+export interface ConversationChatRequestPlugins {
+  'guidance-generate'?: GuidanceGeneratePluginPayload
+}
+
 export interface ConversationChatRequestParams {
   userText: string
   promptTrigger: PromptTrigger
   historyBeforeTurnOrdinalExclusive?: number
   regenerateTurnOrdinal?: number
+  plugins?: ConversationChatRequestPlugins
 }
 
 export function buildConversationChatRequestBody(
@@ -48,6 +58,7 @@ export function buildConversationChatRequestBody(
     ...(params.regenerateTurnOrdinal !== undefined
       ? { regenerateTurnOrdinal: params.regenerateTurnOrdinal }
       : {}),
+    ...(params.plugins ? { plugins: params.plugins } : {}),
     stream: conn.stream,
     contextLength: conn.contextLength ?? undefined,
     maxTokens: conn.maxTokens ?? undefined,

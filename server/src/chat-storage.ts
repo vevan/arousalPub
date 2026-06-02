@@ -1,4 +1,6 @@
 import { allocateShortId } from './short-id.js'
+import { mergeTurnPluginEntry } from './turn-plugin-utils.js'
+import type { TurnPluginEntry } from './plugin-types.js'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { getChatsRoot } from './config.js'
@@ -848,6 +850,7 @@ export async function saveFirstTurn(params: {
   completionTokens?: number
   /** 与发往 /api/chat 的 messages 一致，写入 chat-prompt.json（调试用） */
   debugPrompt?: unknown
+  turnPluginEntries?: TurnPluginEntry[]
 }): Promise<{ index: ConversationIndex; chunk: ChunkFile } | null> {
   const {
     conversationId,
@@ -859,6 +862,7 @@ export async function saveFirstTurn(params: {
     estimatedTokens,
     completionTokens,
     debugPrompt,
+    turnPluginEntries,
   } = params
   let idx = await readConversationIndex(conversationId)
   if (!idx) return null
@@ -892,7 +896,10 @@ export async function saveFirstTurn(params: {
       used,
     ),
     activeReceiveIndex: 0,
-    plugins: [],
+    plugins: (turnPluginEntries ?? []).reduce<unknown[]>(
+      (acc, entry) => mergeTurnPluginEntry(acc, entry),
+      [],
+    ),
   }
 
   const chunkSettings = await readGlobalChunkSettings()
@@ -988,9 +995,16 @@ export async function appendConversationTurn(params: {
   receives: TurnReceive[]
   activeReceiveIndex: number
   debugPrompt?: unknown
+  turnPluginEntries?: TurnPluginEntry[]
 }): Promise<boolean> {
-  const { conversationId, userText, receives, activeReceiveIndex, debugPrompt } =
-    params
+  const {
+    conversationId,
+    userText,
+    receives,
+    activeReceiveIndex,
+    debugPrompt,
+    turnPluginEntries,
+  } = params
   if (!receives.length) return false
   const prepared = await prepareTailChunkForAppend(conversationId)
   if (!prepared) return false
@@ -1015,7 +1029,10 @@ export async function appendConversationTurn(params: {
       Math.max(0, activeReceiveIndex),
       receives.length - 1,
     ),
-    plugins: [],
+    plugins: (turnPluginEntries ?? []).reduce<unknown[]>(
+      (acc, entry) => mergeTurnPluginEntry(acc, entry),
+      [],
+    ),
   }
   chunk.turns.push(turn)
   chunk.meta.ordinalRange = {
@@ -1092,6 +1109,7 @@ export async function updateTurnContentInTailChunk(
   activeReceiveIndex: number,
   /** 与当次 /api/chat 的 messages 一致时写入 chat-prompt（如再生） */
   debugPrompt?: unknown,
+  turnPluginEntries?: TurnPluginEntry[],
 ): Promise<boolean> {
   if (!receives.length) return false
   const idx = await readConversationIndex(conversationId)
@@ -1122,6 +1140,13 @@ export async function updateTurnContentInTailChunk(
     Math.max(0, activeReceiveIndex),
     turn.receives.length - 1,
   )
+  if (turnPluginEntries?.length) {
+    let plugins = Array.isArray(turn.plugins) ? turn.plugins : []
+    for (const entry of turnPluginEntries) {
+      plugins = mergeTurnPluginEntry(plugins, entry)
+    }
+    turn.plugins = plugins
+  }
   await writeChunkFile(conversationId, idx.tailChunkFile, chunk)
   const t = nowIso()
   idx.updatedAt = t

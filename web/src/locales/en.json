@@ -300,6 +300,7 @@
     "navDisplay": "Display",
     "navLorebook": "Lorebooks",
     "navHistory": "History",
+    "navPlugins": "Plugins",
     "navDebug": "Debug",
     "language": "Language",
     "chatFontSizeSection": "Chat font size",
@@ -358,6 +359,20 @@
       "password_change_failed": "Could not change password"
     },
     "debugSection": "Debug & data",
+    "plugins": {
+      "title": "Plugins",
+      "intro": "Enable or disable plugins, reorder hook execution, and configure per-plugin options. Order applies to your account only.",
+      "loadFailed": "Could not load plugin list",
+      "saveFailed": "Could not save plugin list",
+      "settingsLoadFailed": "Could not load plugin settings",
+      "settingsSaveFailed": "Could not save plugin settings",
+      "configure": "Settings",
+      "saveSettings": "Save",
+      "empty": "No installed plugins.",
+      "enabledAria": "Enable {name}",
+      "upload": "Upload",
+      "uploadFailed": "Upload failed"
+    },
     "writeChatPromptSnapshot": "Save chat prompt snapshots",
     "writeChatPromptHint": "When enabled, sends, new turns, and regenerates write the model messages to chat-prompt.json on the server. When disabled, no new snapshots are written; existing entries stay viewable from each assistant turn.",
     "promptSnapshotMaxStored": "Max stored snapshots",

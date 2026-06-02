@@ -82,6 +82,23 @@ import {
   type ApiKeysDocument,
 } from './api-keys-file.js'
 import { buildConversationOutboundMessages } from './chat-assemble.js'
+import { resolveTurnPluginEntriesFromBody } from './plugin-host.js'
+import {
+  listPublicPluginRegistry,
+  listPluginsManage,
+  readMergedPluginUserSettings,
+  readPluginDistFile,
+  readPluginLocaleFile,
+  savePluginRegistry,
+  writePluginUserSettings,
+} from './plugin-system/loader.js'
+import {
+  readPluginBundledAsset,
+  readPluginUserAsset,
+  savePluginUserAssetUpload,
+} from './plugin-system/plugin-assets.js'
+import { readPluginManifest } from './plugin-system/manifest.js'
+import { getCurrentUserId } from './user-context.js'
 import { scheduleLorebookVectorReindex } from './lorebook-vector-index.js'
 import {
   applyPromptMacroPipeline,
@@ -143,6 +160,8 @@ interface ChatBody {
   historyBeforeTurnOrdinalExclusive?: number | null
   /** 再生落盘：向该 turnOrdinal 追加 receive（须与 historyBeforeTurnOrdinalExclusive 一致） */
   regenerateTurnOrdinal?: number | null
+  /** 插件请求体（如 guidance-generate） */
+  plugins?: Record<string, unknown>
   contextLength?: number | null
   maxTokens?: number | null
   stream?: boolean
@@ -1974,6 +1993,176 @@ app.post<{ Body: ModelsListBody }>('/api/models', async (request, reply) => {
   return { models }
 })
 
+app.get('/api/plugins/registry', async (_request, reply) => {
+  const plugins = await listPublicPluginRegistry()
+  return { plugins }
+})
+
+app.get('/api/plugins/manage', async (_request, reply) => {
+  const plugins = await listPluginsManage()
+  return { plugins }
+})
+
+app.put<{ Body: { plugins?: Array<{ id: string; enabled?: boolean; order?: number }> } }>(
+  '/api/plugins/registry',
+  async (request, reply) => {
+    const body = request.body ?? {}
+    const raw = body.plugins
+    if (!Array.isArray(raw)) {
+      return reply.status(400).send({ error: 'invalid_body' })
+    }
+    const doc = await savePluginRegistry({
+      version: 1,
+      plugins: raw.map((p, i) => ({
+        id: String(p.id ?? '').trim(),
+        enabled: p.enabled !== false,
+        order:
+          typeof p.order === 'number' && Number.isFinite(p.order)
+            ? Math.round(p.order)
+            : (i + 1) * 10,
+      })),
+    })
+    return { plugins: doc.plugins }
+  },
+)
+
+app.get<{ Params: { pluginId: string } }>(
+  '/api/plugins/:pluginId/settings',
+  async (request, reply) => {
+    const settings = await readMergedPluginUserSettings(request.params.pluginId)
+    return { settings }
+  },
+)
+
+app.put<{ Params: { pluginId: string }; Body: Record<string, unknown> }>(
+  '/api/plugins/:pluginId/settings',
+  async (request, reply) => {
+    try {
+      const settings = await writePluginUserSettings(
+        request.params.pluginId,
+        request.body ?? {},
+      )
+      return { settings }
+    } catch {
+      return reply.status(404).send({ error: 'not_found' })
+    }
+  },
+)
+
+app.get<{ Params: { pluginId: string; name: string } }>(
+  '/api/plugins/:pluginId/assets/:name',
+  async (request, reply) => {
+    const manifest = await readPluginManifest(request.params.pluginId)
+    const asset = await readPluginBundledAsset(
+      request.params.pluginId,
+      request.params.name,
+    )
+    if (!asset) {
+      return reply.status(404).send({ error: 'not_found' })
+    }
+    void manifest
+    reply.header('Content-Type', asset.contentType)
+    reply.header('Cache-Control', 'no-cache')
+    return reply.send(asset.body)
+  },
+)
+
+app.get<{ Params: { pluginId: string; name: string } }>(
+  '/api/plugins/:pluginId/user-assets/:name',
+  async (request, reply) => {
+    const uid = getCurrentUserId()
+    const asset = await readPluginUserAsset(
+      request.params.pluginId,
+      request.params.name,
+      uid,
+    )
+    if (!asset) {
+      return reply.status(404).send({ error: 'not_found' })
+    }
+    reply.header('Content-Type', asset.contentType)
+    reply.header('Cache-Control', 'no-cache')
+    return reply.send(asset.body)
+  },
+)
+
+app.post<{ Params: { pluginId: string } }>(
+  '/api/plugins/:pluginId/user-assets',
+  async (request, reply) => {
+    const parts = request.parts()
+    let fileBuffer: Buffer | null = null
+    let filename = ''
+    let fieldKey = ''
+    for await (const part of parts) {
+      if (part.fieldname === 'file' && 'toBuffer' in part) {
+        fileBuffer = await part.toBuffer()
+        filename = part.filename ?? 'upload.bin'
+      } else if (part.fieldname === 'fieldKey') {
+        const v = (part as { value?: unknown }).value
+        fieldKey = typeof v === 'string' ? v : ''
+      }
+    }
+    if (!fileBuffer) {
+      return reply.status(400).send({ error: 'file_required' })
+    }
+    try {
+      const saved = await savePluginUserAssetUpload({
+        pluginId: request.params.pluginId,
+        userId: getCurrentUserId(),
+        filename,
+        buffer: fileBuffer,
+        fieldKey: fieldKey || undefined,
+      })
+      return saved
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'upload_failed'
+      if (msg === 'file_too_large') {
+        return reply.status(413).send({ error: msg })
+      }
+      if (msg === 'invalid_extension' || msg === 'invalid_filename') {
+        return reply.status(400).send({ error: msg })
+      }
+      return reply.status(404).send({ error: 'not_found' })
+    }
+  },
+)
+
+app.get<{ Params: { pluginId: string; file: string } }>(
+  '/api/plugins/:pluginId/dist/:file',
+  async (request, reply) => {
+    const file = request.params.file?.trim()
+    if (file !== 'web.mjs' && file !== 'server.mjs') {
+      return reply.status(404).send({ error: 'not_found' })
+    }
+    const asset = await readPluginDistFile(
+      request.params.pluginId,
+      `dist/${file}`,
+    )
+    if (!asset) {
+      return reply.status(404).send({ error: 'not_found' })
+    }
+    reply.header('Content-Type', asset.contentType)
+    reply.header('Cache-Control', 'no-cache')
+    return reply.send(asset.body)
+  },
+)
+
+app.get<{ Params: { pluginId: string; locale: string } }>(
+  '/api/plugins/:pluginId/locales/:locale',
+  async (request, reply) => {
+    const localeRaw = request.params.locale?.trim() ?? ''
+    const locale = localeRaw.endsWith('.json')
+      ? localeRaw.slice(0, -5)
+      : localeRaw
+    const asset = await readPluginLocaleFile(request.params.pluginId, locale)
+    if (!asset) {
+      return reply.status(404).send({ error: 'not_found' })
+    }
+    reply.header('Content-Type', 'application/json; charset=utf-8')
+    reply.header('Cache-Control', 'no-cache')
+    return reply.send(asset.body)
+  },
+)
+
 app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   const body = request.body ?? ({} as ChatBody)
   const { apiKey, model } = body
@@ -2007,6 +2196,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
       contextLength: body.contextLength,
       tokenModel: model,
       promptsDoc,
+      plugins: body.plugins,
     })
     if ('error' in built) {
       return reply.status(built.status).send({ error: built.error })
@@ -2029,6 +2219,8 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
       ? regenOrdRaw
       : undefined
 
+  const turnPluginEntries = await resolveTurnPluginEntriesFromBody(body.plugins)
+
   const persistParams =
     convId && userText.trim()
       ? {
@@ -2038,6 +2230,8 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
           assembledMessages: messages,
           regenerateTurnOrdinal,
           estimatedTokens,
+          turnPluginEntries:
+            turnPluginEntries.length > 0 ? turnPluginEntries : undefined,
         }
       : null
 

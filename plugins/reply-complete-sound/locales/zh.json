@@ -1,0 +1,19 @@
+{
+  "previewSound": "试听提示音",
+  "soundSourceLabel": "音源",
+  "soundSourceDesc": "使用内置默认提示音，或上传自定义文件。",
+  "soundSourceDefault": "默认",
+  "soundSourceCustom": "自定义文件",
+  "soundFileLabel": "自定义音频",
+  "soundFileDesc": "上传 MP3 或 WAV（最大 5 MB）；仅在音源为「自定义」时生效。",
+  "repeatCountLabel": "重复次数",
+  "repeatCountDesc": "回复完成后播放几遍（1–10）。",
+  "repeatGapMsLabel": "重复间隔（毫秒）",
+  "repeatGapMsDesc": "两次播放之间的停顿。",
+  "volumeLabel": "音量",
+  "volumeDesc": "播放音量，0 到 1。",
+  "upload": "上传",
+  "uploading": "上传中…",
+  "uploadFailed": "上传失败",
+  "preview": "试听"
+}

@@ -13,6 +13,7 @@ import {
   updateTurnContentInTailChunk,
   type TurnReceive,
 } from './chat-storage.js'
+import type { TurnPluginEntry } from './plugin-types.js'
 
 export interface ChatPersistResult {
   ok: boolean
@@ -80,6 +81,7 @@ export async function persistTurnAfterModelReply(params: {
   assembledMessages: ChatMessage[]
   /** 再生：向该轮追加 receive，不新开 turn */
   regenerateTurnOrdinal?: number | null
+  turnPluginEntries?: TurnPluginEntry[]
 }): Promise<ChatPersistResult> {
   const conversationId = params.conversationId.trim()
   const userText = params.userText.trim()
@@ -164,6 +166,7 @@ export async function persistTurnAfterModelReply(params: {
       receives,
       activeReceiveIndex,
       debugPrompt,
+      params.turnPluginEntries,
     )
     if (!ok) {
       return { ok: false, error: ApiErrorCodes.turn_update_failed }
@@ -187,6 +190,7 @@ export async function persistTurnAfterModelReply(params: {
       estimatedTokens: params.estimatedTokens,
       completionTokens,
       debugPrompt,
+      turnPluginEntries: params.turnPluginEntries,
     })
     if (!saved) {
       return { ok: false, error: ApiErrorCodes.first_turn_persist_maybe_exists }
@@ -217,6 +221,7 @@ export async function persistTurnAfterModelReply(params: {
     receives,
     activeReceiveIndex: 0,
     debugPrompt,
+    turnPluginEntries: params.turnPluginEntries,
   })
   if (!ok) {
     return { ok: false, error: ApiErrorCodes.append_turn_failed }

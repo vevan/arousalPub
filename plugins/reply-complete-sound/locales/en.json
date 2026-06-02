@@ -1,0 +1,19 @@
+{
+  "previewSound": "Preview sound",
+  "soundSourceLabel": "Sound source",
+  "soundSourceDesc": "Use the bundled default clip or your uploaded file.",
+  "soundSourceDefault": "Default",
+  "soundSourceCustom": "Custom file",
+  "soundFileLabel": "Custom audio file",
+  "soundFileDesc": "Upload MP3 or WAV (max 5 MB). Used when source is Custom.",
+  "repeatCountLabel": "Repeat count",
+  "repeatCountDesc": "How many times to play when a reply completes (1–10).",
+  "repeatGapMsLabel": "Gap between repeats (ms)",
+  "repeatGapMsDesc": "Pause between repeats in milliseconds.",
+  "volumeLabel": "Volume",
+  "volumeDesc": "Playback volume from 0 to 1.",
+  "upload": "Upload",
+  "uploading": "Uploading…",
+  "uploadFailed": "Upload failed",
+  "preview": "Preview"
+}

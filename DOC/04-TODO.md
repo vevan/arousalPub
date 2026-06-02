@@ -75,8 +75,8 @@
 
 ## P2（V2）
 
-- [ ] 插件系统最小框架 — **设计见 `DOC/09-plugin-system-and-guidance-generate.md`**
-- [ ] 首个插件 `guidance-generate`（指导生成）— **同上 §6，实现中**
+- [x] 插件系统最小框架 — **`DOC/09-plugin-system-and-guidance-generate.md`**（2026-05-26 已实现：registry、settingsSchema、设置页）
+- [x] 内置插件 `guidance-generate`、`reply-complete-sound` — **同上 §7**
 - [ ] 插件实例与 API 配置绑定
 - [ ] 插件调用审计日志
 - [ ] fallback 与健康检查策略
@@ -96,3 +96,4 @@
 - [x] 每次需求变更后更新 `DOC/02-需求说明.md` — 2026-05-26 会话列表与角色库排序简述
 - [x] 每次接口变更后更新 `DOC/03-实现细节.md`（**含 §12 角色库、index.json、PATCH、PNG、排序/导出**）— 2026-05-26 已同步 filterCounts、export-png/json、会话列表 UI
 - [x] 插件系统与指导生成定案 — `DOC/09-plugin-system-and-guidance-generate.md`（2026-05-26）
+- [x] 插件系统实现文档 — `DOC/09`、`plugins/README.md`、`data/README.md` §插件（2026-05-26）

@@ -33,7 +33,7 @@ import {
   sealChunkMemorySegment,
   wipeConversationMemoryIndex,
 } from './memory-index.js'
-import { buildFirstChunkDescriptor, prepareTailChunkForAppend } from './chunk-chain.js'
+import { buildFirstChunkDescriptor, prepareTailChunkForAppend, readChunkContainingOrdinal } from './chunk-chain.js'
 import { readGlobalChunkSettings } from './user-preferences-file.js'
 
 /** 与 {@link getChatsRoot} 相同，保留旧名供外部引用 */
@@ -1100,7 +1100,7 @@ function tailChunkPath(
   return path.join(conversationDir(conversationId), idx.tailChunkFile)
 }
 
-/** 更新尾块中某轮：用户正文 + 助手 receives（全量替换） */
+/** 更新任意 chunk 中某轮：用户正文 + 助手 receives（全量替换） */
 export async function updateTurnContentInTailChunk(
   conversationId: string,
   turnOrdinal: number,
@@ -1112,22 +1112,15 @@ export async function updateTurnContentInTailChunk(
   turnPluginEntries?: TurnPluginEntry[],
 ): Promise<boolean> {
   if (!receives.length) return false
+  const located = await readChunkContainingOrdinal(conversationId, turnOrdinal)
+  if (!located) return false
+  const { chunk, fileName: chunkName } = located
   const idx = await readConversationIndex(conversationId)
-  if (!idx?.tailChunkFile) return false
-  const chunkPath = tailChunkPath(conversationId, idx)
-  if (!chunkPath) return false
-  let chunk: ChunkFile
-  try {
-    const raw = await readFile(chunkPath, 'utf8')
-    chunk = JSON.parse(raw) as ChunkFile
-  } catch {
-    return false
-  }
+  if (!idx) return false
   const ti = chunk.turns.findIndex((t) => t.turnOrdinal === turnOrdinal)
   if (ti < 0) return false
   const turn = chunk.turns[ti]
   const turnId = turn.turnId
-  const chunkName = idx.tailChunkFile
   turn.send = { userText }
   const used = collectChunkEntityIds(chunk)
   for (const r of turn.receives ?? []) {
@@ -1147,7 +1140,7 @@ export async function updateTurnContentInTailChunk(
     }
     turn.plugins = plugins
   }
-  await writeChunkFile(conversationId, idx.tailChunkFile, chunk)
+  await writeChunkFile(conversationId, chunkName, chunk)
   const t = nowIso()
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)

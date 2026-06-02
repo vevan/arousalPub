@@ -1,5 +1,6 @@
 import { ApiErrorCodes } from './api-error-codes.js'
 import type { ChatMessage } from './assemble-prompts.js'
+import { readChunkContainingOrdinal } from './chunk-chain.js'
 import { estimateTokens } from './token-count.js'
 import { allocateShortId } from './short-id.js'
 import {
@@ -127,30 +128,93 @@ export async function persistTurnAfterModelReply(params: {
     Number.isInteger(regenOrd) &&
     regenOrd >= 0
   ) {
-    const chunk = await readTailChunk(conversationId)
-    const turn = chunk?.turns.find((t) => t.turnOrdinal === regenOrd)
-    if (!turn) {
-      return { ok: false, error: ApiErrorCodes.regenerate_turn_not_found }
+    const located = await readChunkContainingOrdinal(conversationId, regenOrd)
+    if (located) {
+      const { chunk } = located
+      const turn = chunk.turns.find((t) => t.turnOrdinal === regenOrd)
+      if (!turn) {
+        return { ok: false, error: ApiErrorCodes.regenerate_turn_not_found }
+      }
+      const used = collectChunkEntityIds(chunk)
+      const receiveId = allocateShortId(used)
+      const receives: TurnReceive[] = [
+        ...(turn.receives ?? []).map((r) => {
+          const rec: TurnReceive = {
+            id:
+              typeof r.id === 'string' && r.id.trim()
+                ? r.id.trim()
+                : allocateShortId(used),
+            content: typeof r.content === 'string' ? r.content : '',
+          }
+          if (typeof r.reasoning === 'string' && r.reasoning.length > 0) {
+            rec.reasoning = r.reasoning
+          }
+          if (r.runtime && typeof r.runtime === 'object') {
+            rec.runtime = r.runtime
+          }
+          return rec
+        }),
+        {
+          id: receiveId,
+          content: assistantContent,
+          ...(reasoning ? { reasoning } : {}),
+          ...(runtime ? { runtime } : {}),
+        },
+      ]
+      const activeReceiveIndex = receives.length - 1
+      const ok = await updateTurnContentInTailChunk(
+        conversationId,
+        regenOrd,
+        userText,
+        receives,
+        activeReceiveIndex,
+        debugPrompt,
+        params.turnPluginEntries,
+      )
+      if (!ok) {
+        return { ok: false, error: ApiErrorCodes.turn_update_failed }
+      }
+      return {
+        ok: true,
+        turnOrdinal: regenOrd,
+        receiveId,
+        isFirstTurn: false,
+      }
     }
-    const used = collectChunkEntityIds(chunk)
+
+    /** 首轮空回复未落盘时，再生按首次/追加写入，避免「未找到再生轮次」 */
+    if (!idx.headChunkFile) {
+      if (regenOrd !== 0) {
+        return { ok: false, error: ApiErrorCodes.regenerate_turn_not_found }
+      }
+      const saved = await saveFirstTurn({
+        conversationId,
+        userText,
+        assistantText: assistantContent,
+        reasoning,
+        model,
+        durationMs: params.durationMs,
+        estimatedTokens: params.estimatedTokens,
+        completionTokens,
+        debugPrompt,
+        turnPluginEntries: params.turnPluginEntries,
+      })
+      if (!saved) {
+        return { ok: false, error: ApiErrorCodes.first_turn_persist_maybe_exists }
+      }
+      const rec = saved.chunk.turns[0]?.receives[0]
+      return {
+        ok: true,
+        turnOrdinal: 0,
+        receiveId: typeof rec?.id === 'string' ? rec.id : undefined,
+        isFirstTurn: true,
+      }
+    }
+
+    const tailChunk = await readTailChunk(conversationId)
+    const used = tailChunk ? collectChunkEntityIds(tailChunk) : new Set<string>()
     const receiveId = allocateShortId(used)
     const receives: TurnReceive[] = [
-      ...(turn.receives ?? []).map((r) => {
-        const rec: TurnReceive = {
-          id:
-            typeof r.id === 'string' && r.id.trim()
-              ? r.id.trim()
-              : allocateShortId(used),
-          content: typeof r.content === 'string' ? r.content : '',
-        }
-        if (typeof r.reasoning === 'string' && r.reasoning.length > 0) {
-          rec.reasoning = r.reasoning
-        }
-        if (r.runtime && typeof r.runtime === 'object') {
-          rec.runtime = r.runtime
-        }
-        return rec
-      }),
       {
         id: receiveId,
         content: assistantContent,
@@ -158,22 +222,22 @@ export async function persistTurnAfterModelReply(params: {
         ...(runtime ? { runtime } : {}),
       },
     ]
-    const activeReceiveIndex = receives.length - 1
-    const ok = await updateTurnContentInTailChunk(
+    const ok = await appendConversationTurn({
       conversationId,
-      regenOrd,
       userText,
       receives,
-      activeReceiveIndex,
+      activeReceiveIndex: 0,
       debugPrompt,
-      params.turnPluginEntries,
-    )
+      turnPluginEntries: params.turnPluginEntries,
+    })
     if (!ok) {
-      return { ok: false, error: ApiErrorCodes.turn_update_failed }
+      return { ok: false, error: ApiErrorCodes.append_turn_failed }
     }
+    const chunk = await readTailChunk(conversationId)
+    const last = chunk?.turns[chunk.turns.length - 1]
     return {
       ok: true,
-      turnOrdinal: regenOrd,
+      turnOrdinal: last?.turnOrdinal ?? regenOrd,
       receiveId,
       isFirstTurn: false,
     }

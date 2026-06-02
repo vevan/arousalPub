@@ -62,7 +62,6 @@ const CARD_TEXT_FIELDS = [
   ['personality', 'personality'],
   ['scenario', 'scenario'],
   ['mes_example', 'mes_example'],
-  ['creator_notes', 'creator_notes'],
 ] as const
 
 function el(tag: string, text: string): string {

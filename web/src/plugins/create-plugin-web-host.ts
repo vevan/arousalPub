@@ -1,11 +1,28 @@
 import type { ComposerRef, useChatSession } from '@/composables/useChatSession'
 import type {
   OpenPluginFormState,
+  PluginConfirmOptions,
   PluginFormDialogDef,
+  PluginNotifyOptions,
+  PluginProgressOptions,
   PluginSlotButtonDef,
   PluginSlotContext,
+  PluginToastOptions,
   PluginWebHost,
 } from '@/plugins/types'
+import {
+  showPluginConfirm,
+  showPluginToast,
+  showPluginProgress,
+  clearPluginProgress,
+} from '@/plugins/plugin-ui-state'
+import {
+  fetchConversationMeta,
+} from '@/plugins/conversation-meta'
+import {
+  renderRichMessageToHtml,
+  renderReasoningMarkdownToHtml,
+} from '@/utils/render-rich-message'
 import { useI18n } from 'vue-i18n'
 import { ref } from 'vue'
 
@@ -84,6 +101,59 @@ export function createPluginWebHost(session: ChatSession): {
     },
     refreshSlotButtons() {
       slotButtonRevision.value += 1
+    },
+    conversation: {
+      getId() {
+        return session.conversationId
+      },
+      getMeta() {
+        return fetchConversationMeta(session.conversationId, {
+          userDisplayName: session.userDisplayName,
+          assistantDisplayName: session.assistantRoleName,
+        })
+      },
+      runScope(opts, fn) {
+        return session.runConversationScope(opts, fn)
+      },
+      runBatch(fn) {
+        return session.runConversationBatch(fn)
+      },
+      refresh() {
+        return session.refreshConversation()
+      },
+    },
+    render: {
+      richMessageToHtml: renderRichMessageToHtml,
+      reasoningToHtml: renderReasoningMarkdownToHtml,
+    },
+    ui: {
+      toast(message, opts?: PluginToastOptions) {
+        showPluginToast(message, opts)
+      },
+      notify(title, body?, opts?: PluginNotifyOptions) {
+        const text = body?.trim() ? `${title}\n${body}` : title
+        showPluginToast(text, opts)
+      },
+      confirm(opts: PluginConfirmOptions) {
+        return showPluginConfirm(opts)
+      },
+      openFormDialog(pluginId, model) {
+        openForm.value = {
+          pluginId,
+          model: { ...model },
+        }
+      },
+      progress(opts: PluginProgressOptions) {
+        showPluginProgress({
+          message: opts.message ?? '',
+          phase: opts.phase,
+          done: opts.done,
+          total: opts.total,
+        })
+      },
+      clearProgress() {
+        clearPluginProgress()
+      },
     },
   }
 

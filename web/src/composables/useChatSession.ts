@@ -24,6 +24,13 @@ import {
   persistTurnToServer as persistTurnOnServer,
 } from '@/utils/chat-messages'
 import {
+  patchConversationTurns,
+  readConversationTurnsRange,
+  ConversationHostError,
+  type ConversationBatchContext,
+} from '@/plugins/conversation-host'
+import type { ConversationScopeOptions } from '@/plugins/types'
+import {
   assistantReasoning,
   assistantText,
   assistantDurationMs,
@@ -47,6 +54,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useI18n } from 'vue-i18n'
 
 export type { ChatSessionProps } from '@/types/chat-turn'
+export { ConversationHostError } from '@/plugins/conversation-host'
 
 export interface ComposerRef {
   get userInput(): string
@@ -390,14 +398,56 @@ onBeforeUnmount(() => {
   }
 })
 
+const conversationWriteLocked = ref(false)
+
 const canSend = computed(
   () =>
+    !conversationWriteLocked.value &&
     !loading.value &&
     regeneratingTurnOrdinal.value === null &&
     conn.apiKey.trim().length > 0 &&
     conn.model.trim().length > 0 &&
     userInput.value.trim().length > 0,
 )
+
+function isConversationWritable(): boolean {
+  return !conversationWriteLocked.value
+}
+
+async function runConversationScope(
+  opts: ConversationScopeOptions,
+  fn: (ctx: ConversationBatchContext) => Promise<void>,
+): Promise<void> {
+  const writeLock = opts.writeLock !== false
+  const requireIdle = opts.requireIdle !== false
+  if (writeLock && conversationWriteLocked.value) {
+    throw new ConversationHostError('conversation_locked')
+  }
+  if (requireIdle && (loading.value || regeneratingTurnOrdinal.value !== null)) {
+    throw new ConversationHostError('conversation_busy')
+  }
+  if (writeLock) conversationWriteLocked.value = true
+  try {
+    const cid = props.conversationId
+    await fn({
+      conversationId: cid,
+      read: (readOpts) => readConversationTurnsRange(cid, readOpts.range),
+      patchTurns: (dtos) => patchConversationTurns(cid, dtos),
+    })
+  } finally {
+    if (writeLock) conversationWriteLocked.value = false
+  }
+}
+
+async function runConversationBatch(
+  fn: (ctx: ConversationBatchContext) => Promise<void>,
+): Promise<void> {
+  return runConversationScope({ writeLock: true, requireIdle: true }, fn)
+}
+
+async function refreshConversation(): Promise<void> {
+  await loadMessages()
+}
 
 function nextTurnOrdinal0(): number {
   if (turns.value.length === 0) return 0
@@ -610,6 +660,7 @@ function onComposerKeydown(e: KeyboardEvent) {
 }
 
 async function send() {
+  if (!isConversationWritable()) return
   errorText.value = ''
   const userText = userInput.value.trim()
   try {
@@ -670,6 +721,7 @@ async function send() {
 }
 
 function slideAssistant(listIndex: number, direction: 'left' | 'right') {
+  if (!isConversationWritable()) return
   const turn = turns.value[listIndex]
   if (!turn || turn.receives.length === 0) return
   const len = turn.receives.length
@@ -702,6 +754,7 @@ async function regenerateAssistant(
   listIndex: number,
   trigger: PromptTrigger = 'regenerate',
 ) {
+  if (!isConversationWritable()) return
   const turn = turns.value[listIndex]
   if (!turn || !turn.user.trim()) return
   if (regeneratingTurnOrdinal.value !== null) return
@@ -796,6 +849,7 @@ function cancelEdit() {
 }
 
 function saveEdit(listIndex: number) {
+  if (!isConversationWritable()) return
   const turn = turns.value[listIndex]
   if (!turn || editingTurnOrdinal.value !== turn.turnOrdinal) return
   const text = editDraft.value
@@ -844,6 +898,7 @@ function cancelDelete() {
 }
 
 async function confirmDelete() {
+  if (!isConversationWritable()) return
   const listIndex = deleteListIndex.value
   const target = deleteTarget.value
   if (listIndex === null || !target) return
@@ -1158,6 +1213,7 @@ async function sendWithPlugins(
   userText: string,
   plugins: ConversationChatRequestPlugins,
 ) {
+  if (!isConversationWritable()) return
   errorText.value = ''
   const trimmed = userText.trim()
   if (!trimmed) return
@@ -1227,6 +1283,7 @@ async function regenerateWithPlugins(
   userText: string,
   plugins: ConversationChatRequestPlugins,
 ) {
+  if (!isConversationWritable()) return
   const turn = turns.value[listIndex]
   if (!turn) return
   const trimmed = userText.trim()
@@ -1344,6 +1401,11 @@ async function regenerateWithPlugins(
     assemblePreviewCopied,
     canSend,
     canPreviewAssemble,
+    conversationId: props.conversationId,
+    conversationWriteLocked,
+    runConversationScope,
+    runConversationBatch,
+    refreshConversation,
     writeChatPromptSnapshot,
     turnLabelN,
     isTurnAwaitingAssistant,

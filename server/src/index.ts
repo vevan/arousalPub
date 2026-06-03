@@ -84,6 +84,7 @@ import {
 import { buildConversationOutboundMessages } from './chat-assemble.js'
 import { resolveTurnPluginEntriesFromBody } from './plugin-host.js'
 import {
+  bootstrapBundledPluginsAtStartup,
   listPublicPluginRegistry,
   listPluginsManage,
   readMergedPluginUserSettings,
@@ -331,6 +332,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 }
 await registerAuth(app)
 await ensureUsersRegistry()
+await bootstrapBundledPluginsAtStartup()
 
 app.get('/health', async () => ({ ok: true as const }))
 
@@ -2013,9 +2015,16 @@ app.post<{ Body: ModelsListBody }>('/api/models', async (request, reply) => {
   return { models }
 })
 
-app.get('/api/plugins/registry', async (_request, reply) => {
-  const plugins = await listPublicPluginRegistry()
-  return { plugins }
+app.get('/api/plugins/registry', async (request, reply) => {
+  try {
+    const plugins = await listPublicPluginRegistry()
+    return { plugins }
+  } catch (e) {
+    app.log.error(e)
+    return reply
+      .status(500)
+      .send({ error: ApiErrorCodes.plugin_registry_read_failed })
+  }
 })
 
 app.get('/api/plugins/manage', async (_request, reply) => {

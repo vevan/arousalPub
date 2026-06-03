@@ -1,0 +1,43 @@
+{
+  "id": "conversation-export",
+  "name": "对话导出",
+  "version": "1.0.0",
+  "permissions": ["conversation.read"],
+  "settingsSchema": {
+    "version": 1,
+    "fields": [
+      {
+        "key": "includeReasoning",
+        "type": "boolean",
+        "labelKey": "includeReasoningLabel",
+        "descriptionKey": "includeReasoningDesc",
+        "default": false
+      },
+      {
+        "key": "includeMeta",
+        "type": "boolean",
+        "labelKey": "includeMetaLabel",
+        "descriptionKey": "includeMetaDesc",
+        "default": true
+      },
+      {
+        "key": "includeAvatars",
+        "type": "boolean",
+        "labelKey": "includeAvatarsLabel",
+        "descriptionKey": "includeAvatarsDesc",
+        "default": true
+      },
+      {
+        "key": "customCss",
+        "type": "text",
+        "labelKey": "customCssLabel",
+        "descriptionKey": "customCssDesc",
+        "default": "",
+        "maxLength": 32000
+      }
+    ]
+  },
+  "ui": {
+    "slots": [{ "name": "composer-toolbar", "entry": "./dist/web.mjs" }]
+  }
+}

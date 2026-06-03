@@ -1,0 +1,26 @@
+{
+  "id": "swipe-cleaner",
+  "name": "滑动清理",
+  "version": "1.0.0",
+  "permissions": ["conversation.read", "turn.receive.prune"],
+  "settingsSchema": {
+    "version": 1,
+    "fields": [
+      {
+        "key": "batchSize",
+        "type": "integer",
+        "labelKey": "batchSizeLabel",
+        "descriptionKey": "batchSizeDesc",
+        "default": 30,
+        "min": 1,
+        "max": 50
+      }
+    ]
+  },
+  "ui": {
+    "slots": [
+      { "name": "composer-toolbar", "entry": "./dist/web.mjs" },
+      { "name": "assistant-turn-footer", "entry": "./dist/web.mjs" }
+    ]
+  }
+}

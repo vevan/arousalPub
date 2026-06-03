@@ -108,6 +108,7 @@ export const ApiErrorCodes = {
   preset_validation_failed: 'preset_validation_failed',
   prompt_preset_id_invalid: 'prompt_preset_id_invalid',
   prompt_preset_unresolved: 'prompt_preset_unresolved',
+  plugin_registry_read_failed: 'plugin_registry_read_failed',
   prompts_preview_failed: 'prompts_preview_failed',
   prompts_read_failed: 'prompts_read_failed',
   prompts_unavailable: 'prompts_unavailable',

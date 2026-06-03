@@ -7,7 +7,6 @@ import {
   getBundledPluginSourceDir,
   getGlobalPluginsDir,
   getInstalledPluginDir,
-  getInstalledPluginManifestPath,
   getInstalledPluginServerEntry,
   getLegacyUserPluginDir,
   getLegacyUserPluginSettingsPath,
@@ -29,14 +28,24 @@ import {
   writePluginUserSettings,
 } from './settings.js'
 
-const BUNDLED_PLUGIN_IDS = ['guidance-generate', 'reply-complete-sound'] as const
+const BUNDLED_PLUGIN_IDS = [
+  'guidance-generate',
+  'reply-complete-sound',
+  'swipe-cleaner',
+  'conversation-export',
+] as const
 
 const BUNDLED_PLUGIN_ORDERS: Record<(typeof BUNDLED_PLUGIN_IDS)[number], number> = {
   'guidance-generate': 10,
   'reply-complete-sound': 20,
+  'swipe-cleaner': 30,
+  'conversation-export': 40,
 }
 
 const moduleCache = new Map<string, LoadedServerPlugin[]>()
+
+let bundledPluginsSeeded = false
+let bundledSeedInFlight: Promise<void> | null = null
 
 async function importServerModule(
   entryPath: string,
@@ -55,80 +64,66 @@ async function importServerModule(
 }
 
 async function copyPluginPackage(srcDir: string, destDir: string): Promise<void> {
+  const opts = { recursive: true, force: true } as const
   await mkdir(destDir, { recursive: true })
   await cp(
     path.join(srcDir, 'manifest.json'),
     path.join(destDir, 'manifest.json'),
+    opts,
   )
   const distSrc = path.join(srcDir, 'dist')
   if (existsSync(distSrc)) {
-    await cp(distSrc, path.join(destDir, 'dist'), { recursive: true })
+    await cp(distSrc, path.join(destDir, 'dist'), opts)
   }
   const localesSrc = path.join(srcDir, 'locales')
   if (existsSync(localesSrc)) {
-    await cp(localesSrc, path.join(destDir, 'locales'), { recursive: true })
+    await cp(localesSrc, path.join(destDir, 'locales'), opts)
   }
   const assetsSrc = path.join(srcDir, 'assets')
   if (existsSync(assetsSrc)) {
-    await cp(assetsSrc, path.join(destDir, 'assets'), { recursive: true })
+    await cp(assetsSrc, path.join(destDir, 'assets'), opts)
   }
 }
 
-async function ensureInstalledPluginAssets(pluginId: string): Promise<void> {
-  const dest = getInstalledPluginDir(pluginId)
-  const src = getBundledPluginSourceDir(pluginId)
-  if (!existsSync(path.join(src, 'manifest.json'))) return
-
-  if (!existsSync(getInstalledPluginManifestPath(pluginId))) {
-    await copyPluginPackage(src, dest)
+/** 从仓库 plugins/{id}/ 全量覆盖已安装包（不删用户 settings 子目录） */
+export async function seedBundledPlugins(): Promise<void> {
+  if (bundledPluginsSeeded) return
+  if (bundledSeedInFlight) {
+    await bundledSeedInFlight
     return
   }
 
-  const distSrc = path.join(src, 'dist')
-  const distDest = path.join(dest, 'dist')
-  if (existsSync(distSrc) && !existsSync(path.join(distDest, 'server.mjs'))) {
-    await cp(distSrc, distDest, { recursive: true })
-  }
+  bundledSeedInFlight = (async () => {
+    await mkdir(getGlobalPluginsDir(), { recursive: true })
 
-  const localesSrc = path.join(src, 'locales')
-  const localesDest = path.join(dest, 'locales')
-  if (existsSync(localesSrc)) {
-    await cp(localesSrc, localesDest, { recursive: true })
-  }
+    for (const pluginId of BUNDLED_PLUGIN_IDS) {
+      const src = getBundledPluginSourceDir(pluginId)
+      if (!existsSync(path.join(src, 'manifest.json'))) {
+        // eslint-disable-next-line no-console
+        console.warn('[plugin-loader] bundled source missing:', pluginId, src)
+        continue
+      }
+      try {
+        await copyPluginPackage(src, getInstalledPluginDir(pluginId))
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[plugin-loader] bundled sync failed:', pluginId, e)
+      }
+    }
+    bundledPluginsSeeded = true
+  })()
 
-  const assetsSrc = path.join(src, 'assets')
-  const assetsDest = path.join(dest, 'assets')
-  if (existsSync(assetsSrc)) {
-    await cp(assetsSrc, assetsDest, { recursive: true })
-  }
-
-  const manifestSrc = path.join(src, 'manifest.json')
-  if (existsSync(manifestSrc)) {
-    await cp(manifestSrc, path.join(dest, 'manifest.json'))
+  try {
+    await bundledSeedInFlight
+  } finally {
+    bundledSeedInFlight = null
   }
 }
 
-/** 全局安装 bundled 插件包（manifest + dist + locales + assets） */
-export async function seedBundledPlugins(): Promise<void> {
-  await mkdir(getGlobalPluginsDir(), { recursive: true })
-
-  for (const pluginId of BUNDLED_PLUGIN_IDS) {
-    if (existsSync(getInstalledPluginManifestPath(pluginId))) {
-      await ensureInstalledPluginAssets(pluginId)
-      continue
-    }
-
-    const legacyGlobal = getLegacyUserPluginDir(pluginId, '00000000')
-    if (existsSync(path.join(legacyGlobal, 'manifest.json'))) {
-      await copyPluginPackage(legacyGlobal, getInstalledPluginDir(pluginId))
-      await ensureInstalledPluginAssets(pluginId)
-      continue
-    }
-
-    const src = getBundledPluginSourceDir(pluginId)
-    if (!existsSync(path.join(src, 'manifest.json'))) continue
-    await copyPluginPackage(src, getInstalledPluginDir(pluginId))
-  }
+/** 开发 / 强制同步后调用，允许下次 seedBundledPlugins 再跑 */
+export function invalidateBundledPluginSeedCache(): void {
+  bundledPluginsSeeded = false
+  bundledSeedInFlight = null
 }
 
 async function ensureBundledRegistryEntries(userId: string): Promise<void> {
@@ -148,11 +143,7 @@ async function ensureBundledRegistryEntries(userId: string): Promise<void> {
   await writePluginRegistry(doc, userId)
 }
 
-/** 确保当前用户在每个插件目录下有独立 settings（及 secrets 迁移） */
-export async function ensurePluginUserData(userId: string): Promise<void> {
-  await seedBundledPlugins()
-  await ensureBundledRegistryEntries(userId)
-
+async function ensureBundledPluginUserSettings(userId: string): Promise<void> {
   for (const pluginId of BUNDLED_PLUGIN_IDS) {
     const settingsPath = getPluginUserSettingsPath(pluginId, userId)
     if (existsSync(settingsPath)) continue
@@ -175,12 +166,40 @@ export async function ensurePluginUserData(userId: string): Promise<void> {
     }
 
     const template = path.join(getBundledPluginSourceDir(pluginId), 'settings.json')
-    if (existsSync(template)) {
-      await cp(template, settingsPath)
-    } else {
-      await writeFile(settingsPath, '{"schemaVersion":1}\n', 'utf8')
+    try {
+      if (existsSync(template)) {
+        await cp(template, settingsPath)
+      } else {
+        await writeFile(settingsPath, '{"schemaVersion":1}\n', 'utf8')
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[plugin-loader] settings seed failed:', pluginId, userId, e)
     }
   }
+}
+
+/** 启动时：安装 bundled 包到 data/plugins，并为所有用户补 registry / settings */
+export async function bootstrapBundledPluginsAtStartup(): Promise<void> {
+  await seedBundledPlugins()
+  const { readUsersIndex } = await import('../users-index.js')
+  const index = await readUsersIndex()
+  const userIds = new Set<string>()
+  for (const user of index.users) {
+    const uid = typeof user.id === 'string' ? user.id.trim() : ''
+    if (uid) userIds.add(uid)
+  }
+  for (const uid of userIds) {
+    await ensureBundledRegistryEntries(uid)
+    await ensureBundledPluginUserSettings(uid)
+  }
+}
+
+/** 确保当前用户在每个插件目录下有独立 settings（及 secrets 迁移） */
+export async function ensurePluginUserData(userId: string): Promise<void> {
+  await seedBundledPlugins()
+  await ensureBundledRegistryEntries(userId)
+  await ensureBundledPluginUserSettings(userId)
 }
 
 function cacheKey(userId: string): string {

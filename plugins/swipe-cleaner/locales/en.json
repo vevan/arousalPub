@@ -1,0 +1,15 @@
+{
+  "tooltip": "Clean inactive swipes in this turn",
+  "tooltipAll": "Clean inactive swipes in this chat",
+  "confirmTurnTitle": "Clean swipes in this turn",
+  "confirmTurnBody": "This will delete {nRemove} other candidate replies in this turn and keep the current one ({current} / {total}). This cannot be undone.",
+  "confirmAllTitle": "Clean swipes in this chat",
+  "confirmAllBody": "This will delete {swipeRemoveTotal} unselected swipes across {turnCount} turns and keep what you currently see in each turn. This cannot be undone.",
+  "confirmOk": "Clean",
+  "confirmCancel": "Cancel",
+  "toastTurnDone": "Swipes cleaned for this turn",
+  "toastAllDone": "Swipes cleaned for this chat",
+  "toastFailed": "Could not clean swipes",
+  "batchSizeLabel": "Batch size",
+  "batchSizeDesc": "Turns processed per batch when cleaning the whole chat (max 50)"
+}

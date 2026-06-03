@@ -77,3 +77,21 @@ export function loadDevConfig() {
 
   return { serverPort, webPort, startCountdownSeconds, repoRoot: REPO_ROOT }
 }
+
+/** 数据目录：环境变量 DATA_DIR > config.json dataDir > 仓库 data/ */
+export function resolveDataDir() {
+  const fromEnv = process.env.DATA_DIR?.trim()
+  if (fromEnv) {
+    return path.isAbsolute(fromEnv)
+      ? fromEnv
+      : path.resolve(process.cwd(), fromEnv)
+  }
+  const cfg = readConfigFile()
+  const fromCfg = typeof cfg.dataDir === 'string' ? cfg.dataDir.trim() : ''
+  if (fromCfg) {
+    return path.isAbsolute(fromCfg)
+      ? fromCfg
+      : path.resolve(REPO_ROOT, fromCfg)
+  }
+  return path.join(REPO_ROOT, 'data')
+}

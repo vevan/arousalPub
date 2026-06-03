@@ -1,0 +1,15 @@
+{
+  "tooltip": "清理本回合其它滑动",
+  "tooltipAll": "清理本聊天全部滑动",
+  "confirmTurnTitle": "清理本回合滑动",
+  "confirmTurnBody": "将删除本回合其余 {nRemove} 条候选回复，仅保留当前第 {current} / {total} 条。此操作不可撤销。",
+  "confirmAllTitle": "清理本聊天滑动",
+  "confirmAllBody": "将在 {turnCount} 个回合中删除共 {swipeRemoveTotal} 条未选中的 swipe，保留每轮当前显示的内容。此操作不可撤销。",
+  "confirmOk": "清理",
+  "confirmCancel": "取消",
+  "toastTurnDone": "已清理本回合滑动",
+  "toastAllDone": "已清理本聊天滑动",
+  "toastFailed": "清理滑动失败",
+  "batchSizeLabel": "批大小",
+  "batchSizeDesc": "清理整聊时每批处理的轮次数（最多 50）"
+}

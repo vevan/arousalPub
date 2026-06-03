@@ -6,7 +6,7 @@ import type { PluginSlotButtonDef, PluginSlotContext } from '@/plugins/types'
 
 import type { ChatTurnItem } from '@/types/chat-turn'
 
-import { computed, inject } from 'vue'
+import { computed, inject, onMounted, watch } from 'vue'
 
 import { useI18n } from 'vue-i18n'
 
@@ -28,7 +28,16 @@ const pluginHost = inject(PLUGIN_HOST_KEY)
 
 const { t } = useI18n()
 
+onMounted(() => {
+  void pluginHost?.ensureSlotPlugins(props.slotName)
+})
 
+watch(
+  () => props.slotName,
+  (slotName) => {
+    void pluginHost?.ensureSlotPlugins(slotName)
+  },
+)
 
 const buttons = computed(() =>
 

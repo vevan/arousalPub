@@ -5,6 +5,7 @@ import {
   renderReasoningMarkdownToHtml,
   renderRichMessageToHtml,
 } from '@/utils/render-rich-message'
+import PluginSlotMount from '@/plugins/PluginSlotMount.vue'
 import { useConnectionStore } from '@/stores/connection'
 import { storeToRefs } from 'pinia'
 import { computed, toRefs } from 'vue'
@@ -292,7 +293,13 @@ const displayModelName = computed(() => {
       v-if="!isAssistantBubbleLoading(turn)"
       class="turn-actions turn-actions--assistant"
     >
-      <div class="plugin-slots" data-plugin-slot="assistant-turn-footer" />
+      <div class="plugin-slots" data-plugin-slot="assistant-turn-footer">
+        <PluginSlotMount
+          slot-name="assistant-turn-footer"
+          :turn="turn"
+          :list-index="listIndex"
+        />
+      </div>
       <div class="turn-toolbar turn-toolbar--assistant">
       <button
         type="button"

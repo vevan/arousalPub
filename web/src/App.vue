@@ -32,10 +32,11 @@ const authPhase = ref<'loading' | 'setup' | 'login' | 'app'>('loading')
 const settingsInitialTab = ref<'system' | 'display' | 'account' | 'lorebook' | 'history' | 'debug'>('system')
 
 async function enterApp() {
+  resetBootstrapAppData()
+  const boot = bootstrapAppData()
   authPhase.value = 'app'
   auth.startSessionRefreshLoop()
-  resetBootstrapAppData()
-  await bootstrapAppData()
+  await boot
 }
 
 async function initAuth() {
@@ -477,7 +478,7 @@ onUnmounted(() => {
         </v-toolbar>
         <v-divider />
         <v-card-text class="pa-0 library-dialog-body">
-          <PromptsView embedded />
+          <PromptsView v-if="promptsDialogOpen" embedded />
         </v-card-text>
       </v-card>
     </v-dialog>

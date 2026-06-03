@@ -317,7 +317,7 @@ export const useConnectionStore = defineStore('connection', () => {
       await prompts.loadIndexFromServer()
     }
     if (prompts.indexEntries.some((p) => p.id === link)) {
-      await prompts.selectPreset(link)
+      await prompts.setActivePresetId(link, { persist: true })
     }
   }
 

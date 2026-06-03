@@ -534,6 +534,20 @@ export const usePromptsStore = defineStore('prompts', () => {
     }, 600)
   }
 
+  async function persistActivePresetId(): Promise<void> {
+    const res = await fetch('/api/prompts', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ activePresetId: activePresetId.value }),
+    })
+    if (!res.ok) {
+      const txt = await res.text()
+      throw new Error(`PATCH /api/prompts ${res.status}: ${txt.slice(0, 200)}`)
+    }
+    const j = (await res.json()) as { savedAt?: string }
+    if (typeof j.savedAt === 'string') lastSavedAt.value = j.savedAt
+  }
+
   async function persistIndex(): Promise<void> {
     const res = await fetch('/api/prompts', {
       method: 'PATCH',
@@ -1012,6 +1026,32 @@ export const usePromptsStore = defineStore('prompts', () => {
     }
   }
 
+  /**
+   * 仅切换全局激活 id（供 API 预设关联等）；不拉取预设正文。
+   * persist 为 true 时写入服务端 index（组装管线读盘用）。
+   */
+  async function setActivePresetId(
+    presetId: string,
+    opts?: { persist?: boolean },
+  ): Promise<void> {
+    if (!indexEntries.value.some((p) => p.id === presetId)) return
+    if (activePresetId.value === presetId) {
+      if (opts?.persist && loaded.value) await persistActivePresetId()
+      return
+    }
+    activePresetId.value = presetId
+    selectedPromptId.value = null
+    activeGroupId.value = null
+    if (opts?.persist && loaded.value) {
+      try {
+        await persistActivePresetId()
+      } catch (e) {
+        lastError.value = e instanceof Error ? e.message : String(e)
+      }
+    }
+  }
+
+  /** 提示词编辑页：切换预设并强制从服务端加载正文 */
   async function selectPreset(presetId: string): Promise<void> {
     if (!indexEntries.value.some((p) => p.id === presetId)) return
     if (presetId !== activePresetId.value) {
@@ -1368,6 +1408,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     visiblePrompts,
     groupCounts,
 
+    setActivePresetId,
     selectPreset,
     createPreset,
     duplicatePreset,

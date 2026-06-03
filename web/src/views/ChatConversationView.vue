@@ -370,10 +370,6 @@ async function patchPromptDebugMaxToServer(id: string) {
   })
 }
 
-onMounted(() => {
-  void bootstrapAppData()
-})
-
 watch(
   [lorebookRecursiveEnabled, lorebookMaxRecursionDepth, lorebookVectorEnabled, lorebookVectorTopK],
   () => {

@@ -694,10 +694,15 @@ export const usePreferencesStore = defineStore('preferences', () => {
 
   let loadPrefsInflight: Promise<void> | null = null
 
+  function resetUserPreferencesLoadState(): void {
+    userPreferencesLoaded.value = false
+    loadPrefsInflight = null
+  }
+
   async function loadUserPreferencesFromServer(): Promise<void> {
     if (userPreferencesLoaded.value) return
-    if (loadPrefsInflight) return loadPrefsInflight
-    loadPrefsInflight = (async () => {
+    if (!loadPrefsInflight) {
+      loadPrefsInflight = (async () => {
       try {
         const res = await fetch('/api/user-preferences')
         if (!res.ok) return
@@ -740,10 +745,10 @@ export const usePreferencesStore = defineStore('preferences', () => {
         embeddingPatchInFlight = false
         chunkPatchInFlight = false
         userPreferencesLoaded.value = true
+        loadPrefsInflight = null
       }
-    })().finally(() => {
-      loadPrefsInflight = null
-    })
+      })()
+    }
     return loadPrefsInflight
   }
 
@@ -851,6 +856,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     chunkTurnsPerFile,
     setChunkTurnsPerFile,
     userPreferencesLoaded,
+    resetUserPreferencesLoadState,
     loadUserPreferencesFromServer,
   }
 })

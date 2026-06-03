@@ -7,6 +7,7 @@ let bootstrapPromise: Promise<void> | null = null
 
 export function resetBootstrapAppData(): void {
   bootstrapPromise = null
+  usePreferencesStore().resetUserPreferencesLoadState()
 }
 
 /**
@@ -14,8 +15,8 @@ export function resetBootstrapAppData(): void {
  * 多次调用共享同一 Promise，避免首屏重复请求与连接面板连环重渲染。
  */
 export function bootstrapAppData(): Promise<void> {
-  if (bootstrapPromise) return bootstrapPromise
-  bootstrapPromise = (async () => {
+  if (!bootstrapPromise) {
+    bootstrapPromise = (async () => {
     const pref = usePreferencesStore()
     const apiKeys = useApiKeysStore()
     const prompts = usePromptsStore()
@@ -30,6 +31,7 @@ export function bootstrapAppData(): Promise<void> {
     conn.ensureDefaultPresets()
     const ok = await conn.loadFromServer()
     if (!ok) conn.ensureDefaultPresets()
-  })()
+    })()
+  }
   return bootstrapPromise
 }

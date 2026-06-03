@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { bootstrapAppData } from '@/bootstrap/app-data'
 import { useMemoryRebuild } from '@/composables/useMemoryRebuild'
 import { usePromptsStore } from '@/stores/prompts'
 import { storeToRefs } from 'pinia'
@@ -631,7 +630,6 @@ watch(memoryTopK, async (k) => {
 
 onMounted(() => {
   syncFromProps()
-  void bootstrapAppData()
   void loadCharacters()
   void loadLorebooks()
 })

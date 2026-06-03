@@ -237,6 +237,7 @@ data/
 - **Slot 按钮**：`host.registerSlotButton(slot, { id, icon, tooltipKey, when, disabled, onClick })`
 - **动作弹框**：`host.registerFormDialog` + `host.openFormDialog`（字段类型见 §3.1；宿主 `PluginFormDialogHost` 支持 `radio` / `integer` / `textarea`）
 - **对话批处理**：`host.conversation.runScope` / `runBatch`、`getMeta`、`host.render.*`、`host.ui.progress` — 见 DOC/10
+- **插件间协作（规划）**：`host.capabilities.register` / `get` — 见 §8.7
 - **Toast / Confirm**：`host.ui.toast` / `host.ui.confirm`
 - **发消息扩展**：`host.chat.sendWithPlugins` / `regenerateWithPlugins` + server `resolveTurnPluginEntries`
 
@@ -256,6 +257,129 @@ data/
 - [ ] `register()` 在 DevTools Performance 里 < 几 ms 级
 - [ ] 禁用插件后聊天页无该插件请求（Network 无对应 `web.mjs`）
 - [ ] locales 键在 `locales/en.json` 与 `zh.json` 成对存在
+
+### 8.7 插件间协作：能力注册表（规划）
+
+> **状态**：**未实现**。定案扩展方向：提供方向宿主 **注册能力**，消费方经宿主 **查询并转发**，禁止插件直接 `import` 另一插件的 `web.mjs`。
+
+#### 背景
+
+- 今日 Web 插件仅在 `register(host)` 里挂 slot / 表单 / lifecycle；**无**插件互调 API。
+- 消费方若需复用他方逻辑（如导出时应用 regex 规则），临时方案是 `GET /api/plugins/{id}/settings` 并**自行 duplicate apply 逻辑**——易漂移、难维护。
+- Server 侧已有 **hook 链**（`afterAssemblePrompts` 等），按 registry `order` 串联；Web 侧需要对称的 **显式能力面**，而非隐式耦合。
+
+#### 模型
+
+```text
+┌─────────────────────┐     registerCapabilities      ┌──────────────────┐
+│ regex-transform       │ ────────────────────────────► │ Web 宿主         │
+│ (能力提供方)          │     { listRules, applyRules } │ capabilities 表  │
+└─────────────────────┘                               └────────┬─────────┘
+                                                                 │ get / invoke
+┌─────────────────────┐     host.capabilities.get(...)          │
+│ conversation-export │ ◄───────────────────────────────────────┘
+│ (能力消费方)          │
+└─────────────────────┘
+```
+
+**原则**：
+
+| 项 | 定案 |
+|----|------|
+| 注册 | 能力提供方在 **`register(host)`**（或模块加载后一次性）向宿主提交 **具名能力对象** |
+| 查询 | 消费方 **`host.capabilities.get(providerPluginId)`**；无则 `null`（未安装 / 未启用 / 未加载 / 未注册） |
+| 调用 | **仅经宿主转发**（校验 enabled、捕获异常、可选 toast）；消费方不得持有提供方模块引用 |
+| 数据 | 能力实现仍读 **提供方** `settings.json`；消费方传 **ruleId / 选项** 等参数，避免复制整份 rules |
+| 与 hook 区别 | hook 改 outgoing / 落盘链路；capabilities 为 **任意可复用函数面**（含只读 transform） |
+
+#### 拟定 API（Web）
+
+```ts
+/** 宿主侧（规划） */
+interface PluginCapabilitiesRegistry {
+  /** 提供方注册；同一 pluginId 重复 register 覆盖或 merge（实现时二选一并写死） */
+  register(providerId: string, caps: Record<string, unknown>): void
+  /** 已启用且已 register 的 provider；否则 null */
+  get(providerId: string): Record<string, unknown> | null
+  /** 列出当前可用的 providerId + 可选元数据（name、version） */
+  list(): { id: string; name?: string; version?: string }[]
+}
+
+/** PluginWebHost 扩展（规划） */
+host.capabilities: PluginCapabilitiesRegistry
+```
+
+**提供方示例**（`regex-transform`，拟）：
+
+```js
+export function register(host) {
+  host.capabilities.register('regex-transform', {
+    listRules: async () => { /* 读本插件 settings，返回 { id, label }[] */ },
+    applyRules: async (text, ruleIds, opts) => { /* 只读 transform，不改盘 */ },
+  })
+  // …slot / 批处理 UI
+}
+```
+
+**消费方示例**（`conversation-export`，拟）：
+
+```js
+const regex = host.capabilities.get('regex-transform')
+if (regex?.listRules && regex?.applyRules) {
+  const rules = await regex.listRules()
+  // 导出对话框多选 ruleIds …
+  text = await regex.applyRules(text, selectedRuleIds, { fields: ['assistant'] })
+}
+```
+
+#### 加载与 enabled
+
+| 场景 | 行为（规划） |
+|------|----------------|
+| provider **未启用** | `get` 返回 `null`；消费方隐藏相关 UI |
+| provider 已启用但 **web.mjs 未加载** | 消费方在需要前 `await host.ensurePluginById('regex-transform')`（已有 API），再 `get` |
+| provider 无 slot、仅 capabilities | manifest `slots: []` → 进聊天 **eager** 加载，以便 `register` 提交能力 |
+| 卸载 / 禁用 | 宿主从表移除；消费方 `get` 立即为 `null` |
+
+#### manifest（可选，后续）
+
+可在 `manifest.json` 增加声明，供设置页或消费方静态发现（**非** v1 必需）：
+
+```json
+{
+  "capabilities": {
+    "provides": ["regex.apply", "regex.listRules"],
+    "requires": []
+  }
+}
+```
+
+enforce 与版本协商留待实现；v1 以运行时 `register` + `get` 为准。
+
+#### 与 DOC/10 场景
+
+| 场景 | 推荐路径 |
+|------|----------|
+| regex **改盘**（批量 PATCH） | 仍用 `host.conversation.runScope` + 提供方自实现 patch 逻辑 |
+| export **只读**清理后再 HTML | 消费方 `get('regex-transform')` → `applyRules`（**不改 chunk**） |
+| 仅 outgoing 不改盘 | 仍可用 server `afterAssemblePrompts`；与 capabilities 正交 |
+
+详见 **`DOC/10`** §6.2（export）、§6.3（regex-transform）。
+
+#### 实现清单（Web）
+
+- [ ] `createPluginWebHost`：`capabilities` 注册表 + `get` / `list`
+- [ ] `createScopedPluginHost`：`register` 时绑定 **当前 pluginId** 为 provider
+- [ ] `usePluginHost`：禁用插件时 unregister；`ensurePluginById` 与 capabilities 联动
+- [ ] `PluginWebHost` 类型与 DOC/09 §8.4 速查
+- [ ] 试点：`regex-transform` 提供 + `conversation-export` 消费（导出对话框勾选规则）
+- [ ] Server 侧 capabilities（可选，后续）
+
+#### 非目标（v1）
+
+- 插件间直接 `import` / 共享闭包
+- 宿主替插件实现业务逻辑
+- 跨浏览器标签 / 跨用户的 RPC
 
 ---
 

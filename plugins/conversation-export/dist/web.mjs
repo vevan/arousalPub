@@ -10,7 +10,7 @@ const DEFAULT_CSS = `
   --export-muted: #71717a;
   --export-border: #e4e4e7;
   --export-user: #2563eb;
-  --export-assistant: #059669;
+  --export-assistant: #960505;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -115,7 +115,7 @@ body {
 .export-role--user { color: var(--export-user); text-align: right; }
 .export-role--assistant { color: var(--export-assistant); text-align: left; }
 .export-body {
-  font-size: 0.9375rem;
+  font-size: 1rem;
   word-break: break-word;
   padding: 0.65rem 0.85rem;
   border-radius: 12px;
@@ -178,6 +178,9 @@ body {
   color: var(--export-muted);
   background: color-mix(in srgb, var(--export-border) 35%, transparent);
   border: 1px dashed var(--export-border);
+}
+.lines {
+  color: #3170ff;
 }
 `.trim()
 
@@ -418,10 +421,10 @@ function renderTurnHtml(host, turn, ctx) {
     html += `<div class="export-msg export-msg--assistant">`
     html += `<div class="${avatarClass('assistant', showAssistantPhoto)}">${showAssistantPhoto ? '' : assistantLetter}</div>`
     html += `<div class="export-col">`
+    html += `<div class="export-role export-role--assistant">${escapeHtml(meta.assistantDisplayName)}</div>`
     if (settings.includeReasoning && receive.reasoning?.trim()) {
       html += renderReasoningDetails(host, receive.reasoning)
     }
-    html += `<div class="export-role export-role--assistant">${escapeHtml(meta.assistantDisplayName)}</div>`
     html += `<div class="export-body">${renderRichForExport(host, receive.content)}</div>`
     html += buildReceiveMeta(receive, settings.includeMeta)
     html += `</div></div>`

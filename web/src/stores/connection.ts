@@ -314,10 +314,10 @@ export const useConnectionStore = defineStore('connection', () => {
     if (typeof raw !== 'string' || !raw.trim()) return
     const link = raw.trim()
     if (!prompts.loaded) {
-      await prompts.loadFromServer()
+      await prompts.loadIndexFromServer()
     }
-    if (prompts.presets.some((p) => p.id === link)) {
-      prompts.selectPreset(link)
+    if (prompts.indexEntries.some((p) => p.id === link)) {
+      await prompts.selectPreset(link)
     }
   }
 
@@ -549,11 +549,13 @@ export const useConnectionStore = defineStore('connection', () => {
     }
     if (opts.includeLinkedPromptPreset && cur.linkedPromptPresetId) {
       const promptsSt = usePromptsStore()
-      if (!promptsSt.loaded) await promptsSt.loadFromServer()
-      const pp = promptsSt.presets.find(
-        (p) => p.id === cur.linkedPromptPresetId,
-      )
-      if (pp) doc.linkedPromptPreset = JSON.parse(JSON.stringify(pp))
+      if (!promptsSt.loaded) await promptsSt.loadIndexFromServer()
+      const linkId = cur.linkedPromptPresetId
+      if (linkId) {
+        await promptsSt.ensurePresetLoaded(linkId)
+        const pp = promptsSt.presetBodies[linkId]
+        if (pp) doc.linkedPromptPreset = JSON.parse(JSON.stringify(pp))
+      }
     }
     const aliasSafe =
       (snap.alias || 'api-preset').replace(/[\\/:*?"<>|]/g, '_').slice(0, 60) ||
@@ -588,7 +590,7 @@ export const useConnectionStore = defineStore('connection', () => {
       isPromptPresetLike(doc.linkedPromptPreset)
     ) {
       const promptsSt = usePromptsStore()
-      if (!promptsSt.loaded) await promptsSt.loadFromServer()
+      if (!promptsSt.loaded) await promptsSt.loadIndexFromServer()
       linkedId = promptsSt.appendPromptPresetCopy(
         doc.linkedPromptPreset as PromptPreset,
       )

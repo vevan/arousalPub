@@ -24,7 +24,7 @@ export function bootstrapAppData(): Promise<void> {
     await Promise.all([
       pref.loadUserPreferencesFromServer(),
       apiKeys.loadFromServer(),
-      prompts.loadFromServer(),
+      prompts.loadIndexFromServer(),
     ])
 
     conn.ensureDefaultPresets()

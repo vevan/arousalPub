@@ -124,7 +124,16 @@
 
 ---
 
-## 8. 文档维护
+## 8. 提示词懒加载（2026-06 已实现，与 Key 隔离并列）
+
+- **`GET /api/prompts`**：仅返回 `index.json`（`id` / `name` / `updatedAt` / `activePresetId`），不含条目 `content`。
+- **`GET /api/prompts/:presetId`**：单预设全文；**`PUT`** 写单文件；**`PATCH`** 更新索引；**`DELETE`** 删预设。
+- **bootstrap**：`loadIndexFromServer()`；提示词编辑页 `loadEditorFromServer()` 再拉当前激活预设。
+- **对话组装**仍仅服务端 `readPromptsDocument()`，不依赖浏览器持有全文。
+
+---
+
+## 9. 文档维护
 
 实施后须同步：
 

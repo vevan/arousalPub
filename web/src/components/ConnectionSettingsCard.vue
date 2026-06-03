@@ -341,7 +341,7 @@ function triggerDownload(text: string, filename: string) {
 
 async function confirmExport() {
   try {
-    await prompts.loadFromServer()
+    if (!prompts.loaded) await prompts.loadIndexFromServer()
     const { json, filename } = await conn.exportActiveApiPresetDocument({
       includeBaseUrl: exportIncludeBaseUrl.value,
       includeApiKey: exportIncludeApiKey.value,

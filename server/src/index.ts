@@ -62,8 +62,15 @@ import {
 import { registerAuth } from './auth.js'
 import { ensureUsersRegistry } from './users-index.js'
 import {
+  assertValidPromptPresetBody,
   assertValidPromptsPayload,
+  deletePromptPreset,
+  isValidPromptPresetId,
+  patchPromptsIndex,
+  readPromptPresetById,
   readPromptsDocument,
+  readPromptsIndexDocument,
+  writePromptPreset,
   writePromptsDocument,
   type PromptsDocument,
 } from './prompts-file.js'
@@ -1581,13 +1588,138 @@ app.put<{ Body: SettingsPutBody }>('/api/settings', async (request, reply) => {
 
 app.get('/api/prompts', async (_request, reply) => {
   try {
-    const data = await readPromptsDocument()
+    const data = await readPromptsIndexDocument()
     return data ?? null
   } catch (e) {
     app.log.error(e)
     return reply.status(500).send({ error: ApiErrorCodes.prompts_read_failed })
   }
 })
+
+app.get<{ Params: { presetId: string } }>(
+  '/api/prompts/:presetId',
+  async (request, reply) => {
+    const presetId = request.params.presetId?.trim() ?? ''
+    if (!isValidPromptPresetId(presetId)) {
+      return reply.status(400).send({ error: ApiErrorCodes.prompt_preset_id_invalid })
+    }
+    try {
+      const preset = await readPromptPresetById(presetId)
+      if (!preset) {
+        return reply.status(404).send({ error: ApiErrorCodes.prompts_preset_not_found })
+      }
+      return preset
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.prompts_read_failed })
+    }
+  },
+)
+
+app.put<{ Params: { presetId: string } }>(
+  '/api/prompts/:presetId',
+  async (request, reply) => {
+    const presetId = request.params.presetId?.trim() ?? ''
+    if (!isValidPromptPresetId(presetId)) {
+      return reply.status(400).send({ error: ApiErrorCodes.prompt_preset_id_invalid })
+    }
+    let body: Record<string, unknown>
+    try {
+      body = assertValidPromptPresetBody(request.body)
+    } catch {
+      return reply.status(400).send({ error: ApiErrorCodes.prompts_validation_failed })
+    }
+    if (body.id !== presetId) {
+      return reply.status(400).send({ error: ApiErrorCodes.prompts_validation_failed })
+    }
+    try {
+      const savedAt = await writePromptPreset(body)
+      return { ok: true as const, savedAt }
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.prompts_write_failed })
+    }
+  },
+)
+
+app.patch('/api/prompts', async (request, reply) => {
+  const b = request.body
+  if (!b || typeof b !== 'object') {
+    return reply.status(400).send({ error: ApiErrorCodes.invalid_request_body })
+  }
+  const raw = b as {
+    activePresetId?: unknown
+    presets?: unknown
+  }
+  const patch: {
+    activePresetId?: string
+    presets?: { id: string; name: string; updatedAt: string }[]
+  } = {}
+  if (Object.prototype.hasOwnProperty.call(raw, 'activePresetId')) {
+    if (typeof raw.activePresetId !== 'string' || !raw.activePresetId) {
+      return reply.status(400).send({ error: ApiErrorCodes.prompts_validation_failed })
+    }
+    if (!isValidPromptPresetId(raw.activePresetId)) {
+      return reply.status(400).send({ error: ApiErrorCodes.prompt_preset_id_invalid })
+    }
+    patch.activePresetId = raw.activePresetId
+  }
+  if (Object.prototype.hasOwnProperty.call(raw, 'presets')) {
+    if (!Array.isArray(raw.presets)) {
+      return reply.status(400).send({ error: ApiErrorCodes.prompts_validation_failed })
+    }
+    const presets: { id: string; name: string; updatedAt: string }[] = []
+    for (const item of raw.presets) {
+      if (!item || typeof item !== 'object') {
+        return reply.status(400).send({ error: ApiErrorCodes.prompts_validation_failed })
+      }
+      const o = item as { id?: unknown; name?: unknown; updatedAt?: unknown }
+      if (typeof o.id !== 'string' || !isValidPromptPresetId(o.id)) {
+        return reply.status(400).send({ error: ApiErrorCodes.prompt_preset_id_invalid })
+      }
+      presets.push({
+        id: o.id,
+        name: typeof o.name === 'string' ? o.name : '',
+        updatedAt:
+          typeof o.updatedAt === 'string'
+            ? o.updatedAt
+            : new Date().toISOString(),
+      })
+    }
+    patch.presets = presets
+  }
+  if (patch.activePresetId === undefined && patch.presets === undefined) {
+    return reply.status(400).send({ error: ApiErrorCodes.prompts_validation_failed })
+  }
+  try {
+    const savedAt = await patchPromptsIndex(patch)
+    return { ok: true as const, savedAt }
+  } catch (e) {
+    app.log.error(e)
+    return reply.status(500).send({ error: ApiErrorCodes.prompts_write_failed })
+  }
+})
+
+app.delete<{ Params: { presetId: string } }>(
+  '/api/prompts/:presetId',
+  async (request, reply) => {
+    const presetId = request.params.presetId?.trim() ?? ''
+    if (!isValidPromptPresetId(presetId)) {
+      return reply.status(400).send({ error: ApiErrorCodes.prompt_preset_id_invalid })
+    }
+    try {
+      await deletePromptPreset(presetId)
+      return { ok: true as const }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (msg.includes('至少保留')) {
+        return reply.status(400).send({ error: ApiErrorCodes.prompts_validation_failed })
+      }
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.prompts_write_failed })
+    }
+  },
+)
 
 app.put('/api/prompts', async (request, reply) => {
   let validated: { activePresetId: string; presets: unknown[] }

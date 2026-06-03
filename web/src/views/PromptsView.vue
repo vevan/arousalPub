@@ -26,7 +26,7 @@ withDefaults(
 
 const store = usePromptsStore()
 onMounted(() => {
-  void store.loadFromServer()
+  void store.loadEditorFromServer()
 })
 const {
   presets,
@@ -66,18 +66,18 @@ function submitRenamePreset() {
   presetRenameOpen.value = false
 }
 function performDuplicatePreset() {
-  store.duplicatePreset(activePresetId.value)
+  void store.duplicatePreset(activePresetId.value)
 }
 function openDeletePreset() {
   if (presets.value.length <= 1) return
   presetDeleteOpen.value = true
 }
 function performDeletePreset() {
-  store.deletePreset(activePresetId.value)
+  void store.deletePreset(activePresetId.value)
   presetDeleteOpen.value = false
 }
 function switchPreset(id: string) {
-  store.selectPreset(id)
+  void store.selectPreset(id)
   presetSwitchOpen.value = false
 }
 

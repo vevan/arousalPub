@@ -91,6 +91,13 @@ export interface PromptPreset {
   updatedAt: string
 }
 
+/** GET /api/prompts 索引项（不含条目正文） */
+export interface PromptPresetIndexEntry {
+  id: string
+  name: string
+  updatedAt: string
+}
+
 /** 可在提示词页维护条目列表的分组（其余为纯占位注入） */
 export function groupAllowsPromptEntries(kind: GroupKind): boolean {
   return (
@@ -122,9 +129,9 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
-function collectAllPromptIds(presets: PromptPreset[]): Set<string> {
+function collectAllPromptIds(bodies: Record<string, PromptPreset>): Set<string> {
   const used = new Set<string>()
-  for (const p of presets) {
+  for (const p of Object.values(bodies)) {
     used.add(p.id)
     for (const g of p.groups) used.add(g.id)
     for (const e of p.prompts) used.add(e.id)
@@ -132,8 +139,19 @@ function collectAllPromptIds(presets: PromptPreset[]): Set<string> {
   return used
 }
 
-function makeId(presets: PromptPreset[]): string {
-  return allocateShortId(collectAllPromptIds(presets))
+function makeId(bodies: Record<string, PromptPreset>): string {
+  return allocateShortId(collectAllPromptIds(bodies))
+}
+
+function stubPresetFromIndex(e: PromptPresetIndexEntry): PromptPreset {
+  return {
+    id: e.id,
+    name: e.name,
+    groups: [],
+    prompts: [],
+    createdAt: e.updatedAt,
+    updatedAt: e.updatedAt,
+  }
 }
 
 function buildDefaultGroups(): PromptGroup[] {
@@ -395,58 +413,109 @@ function buildInitialState(): PersistedState {
 
 /** ============== Storage ============== */
 
-interface PromptsServerDocument {
+interface PromptsIndexResponse {
   version?: number
   savedAt?: string
   activePresetId?: string
   presets?: unknown
 }
 
-function normalizeServerDoc(doc: PromptsServerDocument | null): PersistedState | null {
+function normalizeIndexResponse(
+  doc: PromptsIndexResponse | null,
+): { activePresetId: string; presets: PromptPresetIndexEntry[] } | null {
   if (!doc || typeof doc !== 'object') return null
   if (!Array.isArray(doc.presets) || doc.presets.length === 0) return null
-  const presets = doc.presets.filter(
-    (p): p is PromptPreset =>
-      !!p &&
-      typeof (p as PromptPreset).id === 'string' &&
-      Array.isArray((p as PromptPreset).groups) &&
-      Array.isArray((p as PromptPreset).prompts),
-  )
+  const presets: PromptPresetIndexEntry[] = []
+  for (const item of doc.presets) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Partial<PromptPresetIndexEntry>
+    if (typeof o.id !== 'string' || !o.id) continue
+    presets.push({
+      id: o.id,
+      name: typeof o.name === 'string' ? o.name : '',
+      updatedAt:
+        typeof o.updatedAt === 'string' ? o.updatedAt : new Date().toISOString(),
+    })
+  }
   if (presets.length === 0) return null
   const activeId =
     typeof doc.activePresetId === 'string' &&
     presets.some((p) => p.id === doc.activePresetId)
       ? doc.activePresetId
       : presets[0].id
-  return { presets, activePresetId: activeId }
+  return { activePresetId: activeId, presets }
+}
+
+function normalizePresetPayload(raw: unknown): PromptPreset | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const p = raw as Partial<PromptPreset>
+  if (typeof p.id !== 'string' || !p.id) return null
+  if (!Array.isArray(p.groups) || !Array.isArray(p.prompts)) return null
+  return normalizePreset(p as PromptPreset)
 }
 
 /** ============== Store ============== */
 
 export const usePromptsStore = defineStore('prompts', () => {
-  /** 初始化用种子；真实数据在 loadFromServer 完成后注入。 */
   const initial = buildInitialState()
-  const presets = ref<PromptPreset[]>(initial.presets)
+  const def = initial.presets[0]
+  const indexEntries = ref<PromptPresetIndexEntry[]>([
+    { id: def.id, name: def.name, updatedAt: def.updatedAt },
+  ])
+  /** 仅缓存已从服务端拉取的正文；不用本地种子占位，避免与磁盘不一致 */
+  const presetBodies = ref<Record<string, PromptPreset>>({})
   const activePresetId = ref<string>(initial.activePresetId)
 
+  const presets = computed(() =>
+    indexEntries.value.map(
+      (e) => presetBodies.value[e.id] ?? stubPresetFromIndex(e),
+    ),
+  )
+
   const selectedPromptId = ref<string | null>(null)
-  /** 当前在右上区显示哪个分组的条目；null = 所有 normal 分组合并 */
   const activeGroupId = ref<string | null>(null)
   const searchText = ref('')
 
-  /** 服务端持久化状态 */
+  /** 索引已加载（bootstrap 仅需此项） */
   const loaded = ref(false)
   const loading = ref(false)
+  const presetDetailLoading = ref(false)
   const saving = ref(false)
   const lastSavedAt = ref<string | null>(null)
   const lastError = ref<string | null>(null)
 
+  const activePresetReady = computed(
+    () => Boolean(presetBodies.value[activePresetId.value]),
+  )
+
+  function syncIndexEntryFromBody(p: PromptPreset) {
+    const idx = indexEntries.value.findIndex((e) => e.id === p.id)
+    const entry: PromptPresetIndexEntry = {
+      id: p.id,
+      name: p.name,
+      updatedAt: p.updatedAt,
+    }
+    if (idx < 0) {
+      indexEntries.value = [...indexEntries.value, entry]
+    } else {
+      const next = indexEntries.value.slice()
+      next[idx] = entry
+      indexEntries.value = next
+    }
+  }
+
+  function setPresetBody(p: PromptPreset) {
+    syncIndexEntryFromBody(p)
+    presetBodies.value = { ...presetBodies.value, [p.id]: p }
+  }
+
   /** ====== 服务端 IO ====== */
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   let pendingSave = false
+  let pendingIndexPatch = false
 
   function scheduleSave() {
-    if (!loaded.value) return
+    if (!loaded.value || !activePresetReady.value) return
     if (saveTimer) clearTimeout(saveTimer)
     pendingSave = true
     saveTimer = setTimeout(() => {
@@ -455,18 +524,47 @@ export const usePromptsStore = defineStore('prompts', () => {
     }, 600)
   }
 
-  async function flushSave(): Promise<void> {
-    if (!pendingSave) return
-    pendingSave = false
+  function scheduleIndexPatch() {
+    if (!loaded.value) return
+    pendingIndexPatch = true
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => {
+      saveTimer = null
+      void flushPending()
+    }, 600)
+  }
+
+  async function persistIndex(): Promise<void> {
+    const res = await fetch('/api/prompts', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        activePresetId: activePresetId.value,
+        presets: indexEntries.value,
+      }),
+    })
+    if (!res.ok) {
+      const txt = await res.text()
+      throw new Error(`PATCH /api/prompts ${res.status}: ${txt.slice(0, 200)}`)
+    }
+    const j = (await res.json()) as { savedAt?: string }
+    if (typeof j.savedAt === 'string') lastSavedAt.value = j.savedAt
+  }
+
+  async function flushSaveFull(): Promise<void> {
     saving.value = true
     lastError.value = null
+    const bodies = Object.values(presetBodies.value)
+    if (bodies.length === 0) {
+      setPresetBody(normalizePreset(buildDefaultPreset()))
+    }
     try {
       const res = await fetch('/api/prompts', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           activePresetId: activePresetId.value,
-          presets: presets.value,
+          presets: Object.values(presetBodies.value),
         }),
       })
       if (!res.ok) {
@@ -477,19 +575,61 @@ export const usePromptsStore = defineStore('prompts', () => {
       if (typeof j.savedAt === 'string') lastSavedAt.value = j.savedAt
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e)
-      // 失败不丢本地编辑：保留 pending，下一次任何变更又会 schedule
-      pendingSave = true
+      throw e
     } finally {
       saving.value = false
     }
   }
 
-  let loadInflight: Promise<void> | null = null
+  async function flushSave(): Promise<void> {
+    const body = presetBodies.value[activePresetId.value]
+    if (!body) return
+    const res = await fetch(
+      `/api/prompts/${encodeURIComponent(activePresetId.value)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    )
+    if (!res.ok) {
+      const txt = await res.text()
+      throw new Error(
+        `PUT /api/prompts/${activePresetId.value} ${res.status}: ${txt.slice(0, 200)}`,
+      )
+    }
+    const j = (await res.json()) as { savedAt?: string }
+    if (typeof j.savedAt === 'string') lastSavedAt.value = j.savedAt
+    syncIndexEntryFromBody(body)
+  }
 
-  async function loadFromServer(): Promise<void> {
+  async function flushPending(): Promise<void> {
+    if (!pendingSave && !pendingIndexPatch) return
+    const doBody = pendingSave
+    const doIndex = pendingIndexPatch
+    pendingSave = false
+    pendingIndexPatch = false
+    saving.value = true
+    lastError.value = null
+    try {
+      if (doBody) await flushSave()
+      if (doIndex) await persistIndex()
+    } catch (e) {
+      lastError.value = e instanceof Error ? e.message : String(e)
+      if (doBody) pendingSave = true
+      if (doIndex) pendingIndexPatch = true
+    } finally {
+      saving.value = false
+    }
+  }
+
+  let loadIndexInflight: Promise<void> | null = null
+  let loadPresetInflight = new Map<string, Promise<void>>()
+
+  async function loadIndexFromServer(): Promise<void> {
     if (loaded.value) return
-    if (loadInflight) return loadInflight
-    loadInflight = (async () => {
+    if (loadIndexInflight) return loadIndexInflight
+    loadIndexInflight = (async () => {
       if (loaded.value) return
       loading.value = true
       lastError.value = null
@@ -502,37 +642,110 @@ export const usePromptsStore = defineStore('prompts', () => {
         const fromServer =
           raw === null
             ? null
-            : normalizeServerDoc(raw as PromptsServerDocument)
+            : normalizeIndexResponse(raw as PromptsIndexResponse)
         if (fromServer) {
-          presets.value = fromServer.presets.map(normalizePreset)
+          indexEntries.value = fromServer.presets
           activePresetId.value = fromServer.activePresetId
+          presetBodies.value = {}
           loaded.value = true
           return
         }
         loaded.value = true
-        pendingSave = true
-        await flushSave()
+        const seed = normalizePreset(buildDefaultPreset())
+        setPresetBody(seed)
+        activePresetId.value = seed.id
+        await flushSaveFull()
+        const again = await fetch('/api/prompts')
+        if (again.ok) {
+          const j: unknown = await again.json()
+          const idx = normalizeIndexResponse(j as PromptsIndexResponse)
+          if (idx) {
+            indexEntries.value = idx.presets
+            activePresetId.value = idx.activePresetId
+          }
+        }
       } catch (e) {
         lastError.value = e instanceof Error ? e.message : String(e)
       } finally {
         loading.value = false
       }
     })().finally(() => {
+      loadIndexInflight = null
+    })
+    return loadIndexInflight
+  }
+
+  async function loadPresetFromServer(
+    presetId: string,
+    opts?: { force?: boolean },
+  ): Promise<void> {
+    if (!opts?.force && presetBodies.value[presetId]) return
+    const cacheKey = `${presetId}:${opts?.force ? '1' : '0'}`
+    let inflight = loadPresetInflight.get(cacheKey)
+    if (!inflight) {
+      inflight = (async () => {
+        if (!opts?.force && presetBodies.value[presetId]) return
+        presetDetailLoading.value = true
+        try {
+          const res = await fetch(
+            `/api/prompts/${encodeURIComponent(presetId)}`,
+          )
+          if (!res.ok) {
+            throw new Error(`GET /api/prompts/${presetId} ${res.status}`)
+          }
+          const raw: unknown = await res.json()
+          const p = normalizePresetPayload(raw)
+          if (p) setPresetBody(p)
+        } finally {
+          presetDetailLoading.value = false
+          loadPresetInflight.delete(cacheKey)
+        }
+      })()
+      loadPresetInflight.set(cacheKey, inflight)
+    }
+    return inflight
+  }
+
+  async function ensurePresetLoaded(
+    presetId: string,
+    opts?: { force?: boolean },
+  ): Promise<void> {
+    await loadPresetFromServer(presetId, opts)
+  }
+
+  async function loadFromServer(opts?: { forceActive?: boolean }): Promise<void> {
+    await loadIndexFromServer()
+    if (!loaded.value) return
+    await loadPresetFromServer(activePresetId.value, {
+      force: opts?.forceActive,
+    })
+  }
+
+  let loadInflight: Promise<void> | null = null
+
+  async function loadEditorFromServer(): Promise<void> {
+    if (loadInflight) return loadInflight
+    loadInflight = loadFromServer({ forceActive: true }).finally(() => {
       loadInflight = null
     })
     return loadInflight
   }
 
   watch(
-    [presets, activePresetId],
+    () => presetBodies.value[activePresetId.value],
     () => scheduleSave(),
     { deep: true, flush: 'post' },
   )
 
   /** ====== preset ====== */
   const activePreset = computed<PromptPreset>(() => {
-    const p = presets.value.find((x) => x.id === activePresetId.value)
-    return p ?? presets.value[0]
+    const p = presetBodies.value[activePresetId.value]
+    if (p) return p
+    const e = indexEntries.value.find((x) => x.id === activePresetId.value)
+    if (e) return stubPresetFromIndex(e)
+    const first = indexEntries.value[0]
+    if (first) return stubPresetFromIndex(first)
+    return buildDefaultPreset()
   })
 
   const activeGroups = computed<PromptGroup[]>(() =>
@@ -544,38 +757,39 @@ export const usePromptsStore = defineStore('prompts', () => {
   )
 
   function patchActivePreset(patch: (p: PromptPreset) => PromptPreset) {
-    const idx = presets.value.findIndex((x) => x.id === activePresetId.value)
-    if (idx === -1) return
-    const next = presets.value.slice()
-    const updated = patch(next[idx])
-    next[idx] = { ...updated, updatedAt: nowIso() }
-    presets.value = next
+    const cur = presetBodies.value[activePresetId.value]
+    if (!cur) return
+    setPresetBody({ ...patch(cur), updatedAt: nowIso() })
   }
 
   function createPreset(name: string): PromptPreset {
     const t = nowIso()
     const preset = normalizePreset({
-      id: makeId(presets.value),
+      id: makeId(presetBodies.value),
       name: name.trim() || 'Untitled preset',
       groups: buildDefaultGroups(),
       prompts: [],
       createdAt: t,
       updatedAt: t,
     })
-    presets.value = [...presets.value, preset]
+    setPresetBody(preset)
     activePresetId.value = preset.id
     selectedPromptId.value = null
     activeGroupId.value = null
+    scheduleIndexPatch()
+    pendingSave = true
+    void flushPending()
     return preset
   }
 
-  function duplicatePreset(presetId: string): PromptPreset | null {
-    const src = presets.value.find((p) => p.id === presetId)
+  async function duplicatePreset(presetId: string): Promise<PromptPreset | null> {
+    await ensurePresetLoaded(presetId)
+    const src = presetBodies.value[presetId]
     if (!src) return null
     const t = nowIso()
     const copy = normalizePreset({
       ...src,
-      id: makeId(presets.value),
+      id: makeId(presetBodies.value),
       name: `${src.name} (copy)`,
       groups: src.groups.map((g) => ({ ...g })),
       prompts: src.prompts.map((p) => ({
@@ -586,8 +800,11 @@ export const usePromptsStore = defineStore('prompts', () => {
       createdAt: t,
       updatedAt: t,
     })
-    presets.value = [...presets.value, copy]
+    setPresetBody(copy)
     activePresetId.value = copy.id
+    scheduleIndexPatch()
+    pendingSave = true
+    void flushPending()
     return copy
   }
 
@@ -630,7 +847,7 @@ export const usePromptsStore = defineStore('prompts', () => {
   }
 
   function uniquePresetName(base: string): string {
-    const taken = new Set(presets.value.map((p) => p.name))
+    const taken = new Set(indexEntries.value.map((p) => p.name))
     if (!taken.has(base)) return base
     for (let i = 2; i < 1000; i++) {
       const candidate = `${base} (${i})`
@@ -689,28 +906,34 @@ export const usePromptsStore = defineStore('prompts', () => {
       throw new Error('文件中未找到有效的提示词预设')
     }
     const t = nowIso()
-    const fresh: PromptPreset[] = candidates.map((src) =>
-      normalizePreset({
-        id: makeId(presets.value),
-        name: uniquePresetName(
-          (typeof src.name === 'string' && src.name.trim()
-            ? src.name.trim()
-            : 'Imported preset') + ' (imported)',
-        ),
-        groups: src.groups.map((g) => ({ ...g })),
-        prompts: src.prompts.map((p) => ({
-          ...p,
-          tags: Array.isArray(p.tags) ? p.tags.slice() : [],
-          triggers: Array.isArray(p.triggers) ? p.triggers.slice() : [],
-        })),
-        createdAt: t,
-        updatedAt: t,
-      }),
-    )
-    presets.value = [...presets.value, ...fresh]
+    const fresh: PromptPreset[] = []
+    for (const src of candidates) {
+      fresh.push(
+        normalizePreset({
+          id: makeId(presetBodies.value),
+          name: uniquePresetName(
+            (typeof src.name === 'string' && src.name.trim()
+              ? src.name.trim()
+              : 'Imported preset') + ' (imported)',
+          ),
+          groups: src.groups.map((g) => ({ ...g })),
+          prompts: src.prompts.map((p) => ({
+            ...p,
+            tags: Array.isArray(p.tags) ? p.tags.slice() : [],
+            triggers: Array.isArray(p.triggers) ? p.triggers.slice() : [],
+          })),
+          createdAt: t,
+          updatedAt: t,
+        }),
+      )
+    }
+    for (const p of fresh) setPresetBody(p)
     activePresetId.value = fresh[0].id
     selectedPromptId.value = null
     activeGroupId.value = null
+    scheduleIndexPatch()
+    pendingSave = true
+    void flushPending()
     return fresh.map((p) => p.id)
   }
 
@@ -718,7 +941,7 @@ export const usePromptsStore = defineStore('prompts', () => {
   function appendPromptPresetCopy(src: PromptPreset): string {
     const t = nowIso()
     const copy = normalizePreset({
-      id: makeId(presets.value),
+      id: makeId(presetBodies.value),
       name: uniquePresetName(
         (typeof src.name === 'string' && src.name.trim()
           ? src.name.trim()
@@ -733,38 +956,77 @@ export const usePromptsStore = defineStore('prompts', () => {
       createdAt: t,
       updatedAt: t,
     })
-    presets.value = [...presets.value, copy]
+    setPresetBody(copy)
+    scheduleIndexPatch()
+    pendingSave = true
+    void flushPending()
     return copy.id
   }
 
   function renamePreset(presetId: string, name: string) {
-    const idx = presets.value.findIndex((p) => p.id === presetId)
-    if (idx === -1) return
-    const next = presets.value.slice()
+    const body = presetBodies.value[presetId]
+    if (body) {
+      setPresetBody({
+        ...body,
+        name: name.trim() || 'Untitled preset',
+        updatedAt: nowIso(),
+      })
+      scheduleSave()
+      return
+    }
+    const idx = indexEntries.value.findIndex((p) => p.id === presetId)
+    if (idx < 0) return
+    const next = indexEntries.value.slice()
     next[idx] = {
       ...next[idx],
       name: name.trim() || 'Untitled preset',
       updatedAt: nowIso(),
     }
-    presets.value = next
+    indexEntries.value = next
+    scheduleIndexPatch()
   }
 
-  function deletePreset(presetId: string) {
-    if (presets.value.length <= 1) return
-    const next = presets.value.filter((p) => p.id !== presetId)
-    presets.value = next
+  async function deletePreset(presetId: string): Promise<void> {
+    if (indexEntries.value.length <= 1) return
+    try {
+      const res = await fetch(
+        `/api/prompts/${encodeURIComponent(presetId)}`,
+        { method: 'DELETE' },
+      )
+      if (!res.ok) {
+        const txt = await res.text()
+        throw new Error(`DELETE /api/prompts/${presetId} ${res.status}: ${txt}`)
+      }
+    } catch (e) {
+      lastError.value = e instanceof Error ? e.message : String(e)
+      return
+    }
+    indexEntries.value = indexEntries.value.filter((p) => p.id !== presetId)
+    const { [presetId]: _drop, ...rest } = presetBodies.value
+    presetBodies.value = rest
     if (activePresetId.value === presetId) {
-      activePresetId.value = next[0].id
+      activePresetId.value = indexEntries.value[0]?.id ?? activePresetId.value
       selectedPromptId.value = null
       activeGroupId.value = null
+      void loadPresetFromServer(activePresetId.value)
     }
   }
 
-  function selectPreset(presetId: string) {
-    if (!presets.value.find((p) => p.id === presetId)) return
+  async function selectPreset(presetId: string): Promise<void> {
+    if (!indexEntries.value.some((p) => p.id === presetId)) return
+    if (presetId !== activePresetId.value) {
+      if (saveTimer) {
+        clearTimeout(saveTimer)
+        saveTimer = null
+      }
+      await flushPending()
+    }
     activePresetId.value = presetId
     selectedPromptId.value = null
     activeGroupId.value = null
+    await loadPresetFromServer(presetId, { force: true })
+    scheduleIndexPatch()
+    void flushPending()
   }
 
   /** ====== group ====== */
@@ -774,7 +1036,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     const groups = activePreset.value.groups
     const maxOrder = groups.reduce((m, g) => Math.max(m, g.order), -1)
     const g: PromptGroup = {
-      id: makeId(presets.value),
+      id: makeId(presetBodies.value),
       name: trimmed,
       kind: 'normal',
       order: maxOrder + 1,
@@ -828,7 +1090,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     )
     const maxOrder = sameGroup.reduce((m, p) => Math.max(m, p.order), -1)
     const entry: PromptEntry = {
-      id: makeId(presets.value),
+      id: makeId(presetBodies.value),
       groupId,
       title: '',
       content: '',
@@ -898,7 +1160,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     const maxOrder = inTarget.reduce((m, p) => Math.max(m, p.order), -1)
     const copy: PromptEntry = {
       ...src,
-      id: makeId(presets.value),
+      id: makeId(presetBodies.value),
       groupId: gid,
       title: src.title ? `${src.title} (副本)` : '',
       tags: src.tags.slice(),
@@ -1131,12 +1393,21 @@ export const usePromptsStore = defineStore('prompts', () => {
 
     setSearchText,
 
+    indexEntries,
+    presetBodies,
+    activePresetReady,
+    presetDetailLoading,
+
     loaded,
     loading,
     saving,
     lastSavedAt,
     lastError,
+    loadIndexFromServer,
+    loadPresetFromServer,
+    ensurePresetLoaded,
     loadFromServer,
+    loadEditorFromServer,
     flushSave,
   }
 })

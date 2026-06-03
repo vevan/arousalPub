@@ -359,6 +359,10 @@
       "password_change_failed": "修改密码失败"
     },
     "debugSection": "调试与数据",
+    "buildVersion": "版本",
+    "buildVersionHint": "对应 git 提交时间；更新代码后重新启动会自动编译。",
+    "buildVersionUnknown": "未知（尚未 production build）",
+    "buildCommitHint": "提交 {commit}",
     "plugins": {
       "title": "插件",
       "intro": "启用或禁用插件、调整 hook 执行顺序，并配置各插件选项。顺序仅影响当前账号。",

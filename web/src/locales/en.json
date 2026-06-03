@@ -359,6 +359,10 @@
       "password_change_failed": "Could not change password"
     },
     "debugSection": "Debug & data",
+    "buildVersion": "Version",
+    "buildVersionHint": "Git commit time; auto-rebuild after pull when you start the app.",
+    "buildVersionUnknown": "Unknown (no production build yet)",
+    "buildCommitHint": "Commit {commit}",
     "plugins": {
       "title": "Plugins",
       "intro": "Enable or disable plugins, reorder hook execution, and configure per-plugin options. Order applies to your account only.",

@@ -2,6 +2,12 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
+import {
+  buildMetaPath,
+  getGitHeadCommit,
+  isBuildStaleForGit,
+  readBuildMeta,
+} from './build-meta.mjs'
 import { loadDevConfig } from './dev-config.mjs'
 import { runBuildCountdownPrompt } from './prompt-build-countdown.mjs'
 import { printTerminalLink } from './terminal-link.mjs'
@@ -10,8 +16,6 @@ const { serverPort, repoRoot, startCountdownSeconds } = loadDevConfig()
 
 const webIndex = path.join(repoRoot, 'web', 'dist', 'index.html')
 const serverEntry = path.join(repoRoot, 'server', 'dist', 'index.js')
-/** 与当前源码配套的 server 产物标记（拉代码后旧 dist 可能仍存在 index.js 但缺此文件） */
-const serverAuthSecret = path.join(repoRoot, 'server', 'dist', 'auth-secret.js')
 
 function ensureDependencies() {
   const staticPkg = path.join(repoRoot, 'node_modules', '@fastify', 'static')
@@ -37,23 +41,36 @@ function runBuild() {
   }
 }
 
+function logGitStaleReason() {
+  const current = getGitHeadCommit(repoRoot)
+  const meta = readBuildMeta(buildMetaPath(repoRoot))
+  const built = meta?.gitCommit?.slice(0, 7) ?? '(none)'
+  const now = current?.slice(0, 7) ?? '?'
+  console.log(
+    `[start] Git commit changed (${built} → ${now}), rebuilding …`,
+  )
+}
+
 ensureDependencies()
 
-const rebuild = await runBuildCountdownPrompt({
-  seconds: startCountdownSeconds,
-})
 const missingDist =
   !existsSync(webIndex) || !existsSync(serverEntry)
-const staleServerDist =
-  existsSync(serverEntry) && !existsSync(serverAuthSecret)
+const gitStale = isBuildStaleForGit({ repoRoot })
 
-if (rebuild || missingDist || staleServerDist) {
-  if (staleServerDist && !rebuild && !missingDist) {
-    console.log('[start] Server build output is stale, rebuilding …')
-  } else if (missingDist && !rebuild) {
+if (missingDist || gitStale) {
+  if (missingDist) {
     console.log('[start] Build output not found, building …')
+  } else {
+    logGitStaleReason()
   }
   runBuild()
+} else {
+  const rebuild = await runBuildCountdownPrompt({
+    seconds: startCountdownSeconds,
+  })
+  if (rebuild) {
+    runBuild()
+  }
 }
 
 if (!existsSync(serverEntry)) {

@@ -118,6 +118,45 @@ const embeddingTestText = ref(DEFAULT_EMBEDDING_TEST_TEXT)
 const embeddingTestLoading = ref(false)
 const embeddingTestError = ref<string | null>(null)
 const embeddingTestDetail = ref<string | null>(null)
+
+type BuildInfo = {
+  version: string | null
+  gitCommit: string | null
+  gitCommitDate: string | null
+  builtAt: string | null
+}
+
+const buildInfo = ref<BuildInfo | null>(null)
+const buildInfoLoading = ref(false)
+
+const buildVersionDisplay = computed(() => {
+  const raw = buildInfo.value?.version ?? buildInfo.value?.gitCommitDate
+  if (!raw) return t('settings.buildVersionUnknown')
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return raw
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(d)
+})
+
+const buildVersionHint = computed(() => {
+  const commit = buildInfo.value?.gitCommit?.slice(0, 7)
+  if (commit) return t('settings.buildCommitHint', { commit })
+  return t('settings.buildVersionHint')
+})
+
+async function loadBuildInfo() {
+  buildInfoLoading.value = true
+  try {
+    const res = await apiFetch('/api/build-info')
+    if (res.ok) {
+      buildInfo.value = (await res.json()) as BuildInfo
+    }
+  } finally {
+    buildInfoLoading.value = false
+  }
+}
 const embeddingTestResult = ref<{
   model: string
   dimensions: number
@@ -405,6 +444,9 @@ function formatBytes(n: number): string {
 
 watch(activeTab, (tab) => {
   if (tab === 'account') void loadAccountStats()
+  if (tab === 'debug' && !buildInfo.value && !buildInfoLoading.value) {
+    void loadBuildInfo()
+  }
 })
 
 async function resetPrimary() {
@@ -417,6 +459,9 @@ onMounted(() => {
   const stored = readStoredTheme()
   if (stored !== activeMode()) {
     vuetifyTheme.change(stored)
+  }
+  if (activeTab.value === 'debug') {
+    void loadBuildInfo()
   }
 })
 </script>
@@ -926,6 +971,18 @@ onMounted(() => {
             <h2 class="text-subtitle-1 font-weight-medium mb-2">
               {{ $t('settings.debugSection') }}
             </h2>
+            <v-text-field
+              :model-value="buildVersionDisplay"
+              :label="$t('settings.buildVersion')"
+              :hint="buildVersionHint"
+              persistent-hint
+              density="comfortable"
+              variant="outlined"
+              class="mb-4"
+              readonly
+              hide-details="auto"
+              :loading="buildInfoLoading"
+            />
             <p class="text-body-2 text-medium-emphasis mb-4">
               {{ $t('settings.writeChatPromptHint') }}
             </p>

@@ -45,6 +45,7 @@ import {
 import { reindexConversationMemory } from './memory-index.js'
 import { startConversationMemoryReindexSse } from './memory-reindex-sse.js'
 import { ensureDataSkeleton, resolveListenHost, resolveServerPort } from './config.js'
+import { readBuildInfoDocument } from './build-meta.js'
 import { registerStaticWeb } from './static-web.js'
 import {
   readUserPreferencesDocument,
@@ -1524,6 +1525,8 @@ app.post<{ Body: EmbeddingTestBody }>(
     }
   },
 )
+
+app.get('/api/build-info', async () => readBuildInfoDocument())
 
 app.get('/api/settings', async (_request, reply) => {
   try {

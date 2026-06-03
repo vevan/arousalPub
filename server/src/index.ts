@@ -846,7 +846,15 @@ app.post<{ Params: { id: string }; Body: FirstTurnBody }>(
 interface MessagesTurnDto {
   turnOrdinal: number
   user: string
-  receives: { id: string; content: string; reasoning?: string }[]
+  receives: {
+    id: string
+    content: string
+    reasoning?: string
+    durationMs?: number
+    estimatedTokens?: number
+    completionTokens?: number
+    model?: string
+  }[]
   activeReceiveIndex: number
 }
 
@@ -888,6 +896,7 @@ app.patch<{
         durationMs?: unknown
         estimatedTokens?: unknown
         completionTokens?: unknown
+        model?: unknown
       }
       if (typeof o.id !== 'string' || typeof o.content !== 'string') {
         return reply.status(400).send({ error: ApiErrorCodes.receives_item_id_content_required })
@@ -917,6 +926,12 @@ app.patch<{
         rec.runtime = {
           ...(rec.runtime ?? {}),
           completionTokens: Math.round(o.completionTokens),
+        }
+      }
+      if (typeof o.model === 'string' && o.model.trim()) {
+        rec.runtime = {
+          ...(rec.runtime ?? {}),
+          model: o.model.trim(),
         }
       }
       mapped.push(rec)
@@ -989,6 +1004,7 @@ app.get<{ Params: { id: string } }>(
           durationMs?: number
           estimatedTokens?: number
           completionTokens?: number
+          model?: string
         } = {
           id: typeof r.id === 'string' ? r.id : '',
           content: typeof r.content === 'string' ? r.content : '',
@@ -1011,6 +1027,10 @@ app.get<{ Params: { id: string } }>(
           const ct = (runtime as { completionTokens?: unknown }).completionTokens
           if (typeof ct === 'number' && Number.isFinite(ct) && ct > 0) {
             base.completionTokens = Math.round(ct)
+          }
+          const m = (runtime as { model?: unknown }).model
+          if (typeof m === 'string' && m.trim()) {
+            base.model = m.trim()
           }
         }
         return base

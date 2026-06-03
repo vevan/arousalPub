@@ -54,6 +54,13 @@ export function assistantCompletionTokens(turn: ChatTurnItem): number | null {
   return typeof n === 'number' && n > 0 ? Math.round(n) : null
 }
 
+/** 当前选中助手变体落盘时的模型名（runtime.model） */
+export function assistantModelName(turn: ChatTurnItem): string {
+  const r = turn.receives[turn.activeReceiveIndex]
+  const m = r?.model
+  return typeof m === 'string' && m.trim() ? m.trim() : ''
+}
+
 export function reasoningCharsCount(text: string): number {
   if (!text) return 0
   return text.replace(/\s+/g, '').length

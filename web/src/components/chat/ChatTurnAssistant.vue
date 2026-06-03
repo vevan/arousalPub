@@ -6,7 +6,8 @@ import {
   renderRichMessageToHtml,
 } from '@/utils/render-rich-message'
 import { useConnectionStore } from '@/stores/connection'
-import { toRefs } from 'vue'
+import { storeToRefs } from 'pinia'
+import { computed, toRefs } from 'vue'
 
 const props = defineProps<{
   turn: ChatTurnItem
@@ -15,6 +16,7 @@ const props = defineProps<{
 }>()
 
 const conn = useConnectionStore()
+const { model: connModel } = storeToRefs(conn)
 
 const {
   streamingText,
@@ -49,6 +51,18 @@ const {
 } = props.session
 
 const { assistantRoleName, assistantAvatarLetter } = toRefs(props.session)
+
+const displayModelName = computed(() => {
+  const t = props.turn
+  if (isAssistantBubbleLoading(t)) {
+    return connModel.value.trim()
+  }
+  const idx = t.activeReceiveIndex
+  const r = t.receives[idx]
+  const stored =
+    typeof r?.model === 'string' && r.model.trim() ? r.model.trim() : ''
+  return stored || connModel.value.trim()
+})
 </script>
 
 <template>
@@ -62,7 +76,7 @@ const { assistantRoleName, assistantAvatarLetter } = toRefs(props.session)
         {{ assistantRoleName }}
         <span class="meta">
           {{ $t('chat.turnLabel', { n: turnLabelN(turn, listIndex) }) }}
-          <template v-if="conn.model.trim()"> · {{ conn.model.trim() }}</template>
+          <template v-if="displayModelName"> · {{ displayModelName }}</template>
           <template v-if="assistantTimerLabel(turn)">
             ·
             <span

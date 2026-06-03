@@ -1128,7 +1128,21 @@ export async function updateTurnContentInTailChunk(
     if (rid) used.delete(rid)
   }
   if (turn.turnId) used.delete(turn.turnId)
-  turn.receives = mapReceivesWithShortIds(receives, used)
+  const prevReceives = turn.receives ?? []
+  turn.receives = mapReceivesWithShortIds(receives, used).map((rec) => {
+    const rid = typeof rec.id === 'string' ? rec.id.trim() : ''
+    const prev = prevReceives.find(
+      (p) => typeof p.id === 'string' && p.id.trim() === rid,
+    )
+    if (!prev?.runtime || typeof prev.runtime !== 'object') return rec
+    return {
+      ...rec,
+      runtime: {
+        ...(prev.runtime as Record<string, unknown>),
+        ...(rec.runtime ?? {}),
+      },
+    }
+  })
   turn.activeReceiveIndex = Math.min(
     Math.max(0, activeReceiveIndex),
     turn.receives.length - 1,

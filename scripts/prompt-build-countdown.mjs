@@ -1,6 +1,6 @@
 /**
- * 启动前倒计时；TTY 下按 R 触发重新 build。
- * @returns {Promise<boolean>} 是否应执行 build
+ * Pre-start countdown; on TTY: B=rebuild, Space=skip countdown.
+ * @returns {Promise<boolean>} whether to run build
  */
 export async function runBuildCountdownPrompt(options = {}) {
   const seconds = Math.max(0, Number(options.seconds) ?? 5)
@@ -25,8 +25,12 @@ export async function runBuildCountdownPrompt(options = {}) {
 
     const onData = (chunk) => {
       const key = String(chunk)
-      if (key === 'r' || key === 'R') {
+      if (key === 'b' || key === 'B') {
         finish(true)
+        return
+      }
+      if (key === ' ' || key === '\u0020') {
+        finish(false)
         return
       }
       if (key === '\u0003') {
@@ -50,7 +54,7 @@ export async function runBuildCountdownPrompt(options = {}) {
 
     const writeLine = () => {
       process.stdout.write(
-        `\r[启动] ${remaining} 秒后启动（按 R 重新 build）…   `,
+        `\r[start] Starting in ${remaining}s (B=rebuild, Space=skip)…   `,
       )
     }
 

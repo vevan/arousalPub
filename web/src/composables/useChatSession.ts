@@ -28,6 +28,7 @@ import {
   assistantText,
   assistantDurationMs,
   assistantCompletionTokens,
+  assistantModelName,
   turnSendEstimatedTokens,
   characterImageUrl,
   isOpeningTurn,
@@ -483,6 +484,32 @@ function finalizePendingTurn(ord: number, receive: ReceiveItem) {
   clearPendingSend()
 }
 
+function buildReceiveItem(
+  id: string,
+  content: string,
+  opts: {
+    reasoning?: string
+    durationMs?: number
+    estimatedTokens?: number
+    completionTokens?: number
+  } = {},
+): ReceiveItem {
+  const model = conn.model.trim()
+  return {
+    id,
+    content,
+    ...(opts.reasoning ? { reasoning: opts.reasoning } : {}),
+    ...(opts.durationMs && opts.durationMs > 0 ? { durationMs: opts.durationMs } : {}),
+    ...(opts.estimatedTokens && opts.estimatedTokens > 0
+      ? { estimatedTokens: opts.estimatedTokens }
+      : {}),
+    ...(opts.completionTokens && opts.completionTokens > 0
+      ? { completionTokens: opts.completionTokens }
+      : {}),
+    ...(model ? { model } : {}),
+  }
+}
+
 async function persistTurnToServer(turn: ChatTurnItem): Promise<boolean> {
   return persistTurnOnServer(props.conversationId, turn)
 }
@@ -617,14 +644,16 @@ async function send() {
     )
     setPersistWarning(persist)
     const elapsed = durationMs ?? stopGenerationTimer()
-    const receive: ReceiveItem = {
-      id: allocateShortId(collectUsedReceiveIds(turns.value)),
-      content: assistantOut,
-      ...(reasoningOut ? { reasoning: reasoningOut } : {}),
-      ...(elapsed > 0 ? { durationMs: elapsed } : {}),
-      ...(estimatedTokens && estimatedTokens > 0 ? { estimatedTokens } : {}),
-      ...(completionTokens && completionTokens > 0 ? { completionTokens } : {}),
-    }
+    const receive = buildReceiveItem(
+      allocateShortId(collectUsedReceiveIds(turns.value)),
+      assistantOut,
+      {
+        reasoning: reasoningOut,
+        durationMs: elapsed,
+        estimatedTokens,
+        completionTokens,
+      },
+    )
     finalizePendingTurn(ord, receive)
 
     if (assistantOut.trim() && (!persist || persist.ok)) {
@@ -716,14 +745,16 @@ async function regenerateAssistant(
     const cur = turns.value[listIndex]
     if (!cur) return
     const elapsed = durationMs ?? stopGenerationTimer()
-    const newRec: ReceiveItem = {
-      id: allocateShortId(collectUsedReceiveIds(turns.value)),
-      content: assistantOut,
-      ...(reasoningOut ? { reasoning: reasoningOut } : {}),
-      ...(elapsed > 0 ? { durationMs: elapsed } : {}),
-      ...(estimatedTokens && estimatedTokens > 0 ? { estimatedTokens } : {}),
-      ...(completionTokens && completionTokens > 0 ? { completionTokens } : {}),
-    }
+    const newRec = buildReceiveItem(
+      allocateShortId(collectUsedReceiveIds(turns.value)),
+      assistantOut,
+      {
+        reasoning: reasoningOut,
+        durationMs: elapsed,
+        estimatedTokens,
+        completionTokens,
+      },
+    )
     const next: ChatTurnItem = {
       ...cur,
       receives: [...cur.receives, newRec],
@@ -1167,14 +1198,16 @@ async function sendWithPlugins(
     )
     setPersistWarning(persist)
     const elapsed = durationMs ?? stopGenerationTimer()
-    const receive: ReceiveItem = {
-      id: allocateShortId(collectUsedReceiveIds(turns.value)),
-      content: assistantOut,
-      ...(reasoningOut ? { reasoning: reasoningOut } : {}),
-      ...(elapsed > 0 ? { durationMs: elapsed } : {}),
-      ...(estimatedTokens && estimatedTokens > 0 ? { estimatedTokens } : {}),
-      ...(completionTokens && completionTokens > 0 ? { completionTokens } : {}),
-    }
+    const receive = buildReceiveItem(
+      allocateShortId(collectUsedReceiveIds(turns.value)),
+      assistantOut,
+      {
+        reasoning: reasoningOut,
+        durationMs: elapsed,
+        estimatedTokens,
+        completionTokens,
+      },
+    )
     finalizePendingTurn(ord, receive)
     if (assistantOut.trim() && (!persist || persist.ok)) {
       await loadMessages()
@@ -1245,14 +1278,16 @@ async function regenerateWithPlugins(
     const cur = turns.value[listIndex]
     if (!cur) return
     const elapsed = durationMs ?? stopGenerationTimer()
-    const newRec: ReceiveItem = {
-      id: allocateShortId(collectUsedReceiveIds(turns.value)),
-      content: assistantOut,
-      ...(reasoningOut ? { reasoning: reasoningOut } : {}),
-      ...(elapsed > 0 ? { durationMs: elapsed } : {}),
-      ...(estimatedTokens && estimatedTokens > 0 ? { estimatedTokens } : {}),
-      ...(completionTokens && completionTokens > 0 ? { completionTokens } : {}),
-    }
+    const newRec = buildReceiveItem(
+      allocateShortId(collectUsedReceiveIds(turns.value)),
+      assistantOut,
+      {
+        reasoning: reasoningOut,
+        durationMs: elapsed,
+        estimatedTokens,
+        completionTokens,
+      },
+    )
     const next: ChatTurnItem = {
       ...cur,
       user: trimmed,
@@ -1322,6 +1357,7 @@ async function regenerateWithPlugins(
     assistantTimerLabel,
     userSendTokenLabel,
     assistantReceiveTokenLabel,
+    assistantModelName,
     showAssistantSwipeFooter,
     send,
     onComposerKeydown,

@@ -16,7 +16,7 @@ const serverAuthSecret = path.join(repoRoot, 'server', 'dist', 'auth-secret.js')
 function ensureDependencies() {
   const staticPkg = path.join(repoRoot, 'node_modules', '@fastify', 'static')
   if (existsSync(staticPkg)) return
-  console.log('[start] 依赖不完整，正在 npm install …\n')
+  console.log('[start] Dependencies incomplete, running npm install …\n')
   const r = spawnSync('npm', ['install'], {
     cwd: repoRoot,
     stdio: 'inherit',
@@ -26,7 +26,7 @@ function ensureDependencies() {
 }
 
 function runBuild() {
-  console.log('[start] 正在构建 web + server …\n')
+  console.log('[start] Building web + server …\n')
   const r = spawnSync('npm', ['run', 'build'], {
     cwd: repoRoot,
     stdio: 'inherit',
@@ -49,25 +49,25 @@ const staleServerDist =
 
 if (rebuild || missingDist || staleServerDist) {
   if (staleServerDist && !rebuild && !missingDist) {
-    console.log('[start] server 构建产物过旧，将自动 build …')
+    console.log('[start] Server build output is stale, rebuilding …')
   } else if (missingDist && !rebuild) {
-    console.log('[start] 未找到构建产物，将自动 build …')
+    console.log('[start] Build output not found, building …')
   }
   runBuild()
 }
 
 if (!existsSync(serverEntry)) {
-  console.error('[start] 构建失败：缺少 server/dist/index.js')
+  console.error('[start] Build failed: missing server/dist/index.js')
   process.exit(1)
 }
 if (!existsSync(webIndex)) {
-  console.error('[start] 构建失败：缺少 web/dist/index.html')
+  console.error('[start] Build failed: missing web/dist/index.html')
   process.exit(1)
 }
 
 const url = `http://localhost:${serverPort}/`
 console.log(
-  '[start] 浏览器打开（须保持本窗口运行；端口见 config.json serverPort）',
+  '[start] Open in browser (keep this window running; port in config.json serverPort)',
 )
 printTerminalLink(url)
 console.log('')

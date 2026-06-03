@@ -12,6 +12,7 @@ type MessagesApiTurn = {
     durationMs?: number
     estimatedTokens?: number
     completionTokens?: number
+    model?: string
   }[]
   activeReceiveIndex?: number
 }
@@ -46,6 +47,9 @@ export function parseConversationTurnsFromApi(
           }
           if (typeof r.completionTokens === 'number' && r.completionTokens > 0) {
             item.completionTokens = r.completionTokens
+          }
+          if (typeof r.model === 'string' && r.model.trim()) {
+            item.model = r.model.trim()
           }
           return item
         })
@@ -101,6 +105,7 @@ export async function persistTurnToServer(
             ...(r.durationMs ? { durationMs: r.durationMs } : {}),
             ...(r.estimatedTokens ? { estimatedTokens: r.estimatedTokens } : {}),
             ...(r.completionTokens ? { completionTokens: r.completionTokens } : {}),
+            ...(r.model ? { model: r.model } : {}),
           })),
           activeReceiveIndex: turn.activeReceiveIndex,
         }),

@@ -5,11 +5,11 @@ if not exist node_modules (
   call npm install
 )
 echo.
-echo 启动前倒计时见 config.json 的 startCountdownSeconds（按 R 可重新 build）
-echo 启动完成后在浏览器打开:
+echo Countdown before start: config.json startCountdownSeconds (B=rebuild, Space=skip)
+echo Open in browser after start:
 node scripts/print-prod-url.mjs
-echo （须保持本窗口运行；端口见 config.json serverPort）
-echo 开发模式请使用: npm run dev
+echo (Keep this window running; port in config.json serverPort)
+echo For development use: npm run dev
 echo.
 call npm start
 pause

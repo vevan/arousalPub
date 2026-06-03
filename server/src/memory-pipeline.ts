@@ -10,9 +10,10 @@ import {
   type MemorySearchHit,
 } from './memory-store.js'
 import {
-  formatHistoryXml,
   formatMemoryXml,
   buildMemoryRecallQuery,
+  turnsToHistoryMessages,
+  turnsToHistoryScanPlainText,
 } from './turn-memory-xml.js'
 import { resolveTurnById } from './turn-resolve.js'
 import { readAllTurns } from './chunk-chain.js'
@@ -28,7 +29,9 @@ export interface MemoryPipelineInput {
 }
 
 export interface MemoryPipelineResult {
-  recentHistoryText: string
+  recentHistoryMessages: { role: 'user' | 'assistant'; content: string }[]
+  /** 供 lore 扫描，非注入 XML */
+  recentHistoryScanText: string
   memoryText: string
   memoryTurnIds: string[]
   memoryHits: MemorySearchHit[]
@@ -77,7 +80,8 @@ export async function runMemoryPipeline(
     historyCount,
     input.historyBeforeTurnOrdinalExclusive,
   )
-  const recentHistoryText = formatHistoryXml(recentTurns)
+  const recentHistoryMessages = turnsToHistoryMessages(recentTurns)
+  const recentHistoryScanText = turnsToHistoryScanPlainText(recentTurns)
   const recentTurnIds = new Set(recentTurns.map((t) => t.turnId))
 
   let memoryText = ''
@@ -115,7 +119,8 @@ export async function runMemoryPipeline(
   }
 
   return {
-    recentHistoryText,
+    recentHistoryMessages,
+    recentHistoryScanText,
     memoryText,
     memoryTurnIds,
     memoryHits,

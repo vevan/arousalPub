@@ -143,7 +143,6 @@ export interface BuildConversationMessagesResult {
   estimatedTokens: number
   droppedHistoryCount: number
   memoryTurnIds?: string[]
-  recentHistoryText?: string
   memoryText?: string
 }
 
@@ -220,7 +219,7 @@ export async function buildConversationOutboundMessages(
   const scanCorpus = buildScanText(
     userInput,
     memoryPipeline.memoryText,
-    memoryPipeline.recentHistoryText,
+    memoryPipeline.recentHistoryScanText,
   )
   const worldText =
     lorebookIds.length > 0
@@ -241,7 +240,10 @@ export async function buildConversationOutboundMessages(
     maxTokens,
     tokenModel,
     macroContext,
-    recentHistoryText: memoryPipeline.recentHistoryText || undefined,
+    history:
+      memoryPipeline.recentHistoryMessages.length > 0
+        ? memoryPipeline.recentHistoryMessages
+        : undefined,
     memoryText: memoryPipeline.memoryText || undefined,
     ...(worldText !== undefined && worldText.length > 0 ? { world: worldText } : {}),
     ...charCtx,
@@ -262,7 +264,6 @@ export async function buildConversationOutboundMessages(
     estimatedTokens,
     droppedHistoryCount: result.droppedHistoryCount,
     memoryTurnIds: memoryPipeline.memoryTurnIds,
-    recentHistoryText: memoryPipeline.recentHistoryText || undefined,
     memoryText: memoryPipeline.memoryText || undefined,
   }
 }

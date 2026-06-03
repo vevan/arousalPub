@@ -15,8 +15,8 @@
 - [x] 角色管理（文件库）：主存 **`data/{userId}/characters/{uuid}.png`**（内嵌 ST `chara`）；遗留 **`{uuid}.json`** 首次读取时迁移为 PNG；列表/筛选/导入/表单新建/删除/导出 API + Web **`/characters`**（见 `DOC/03` §12）
 - [x] Prompt 预设：服务端 `data/{userId}/prompts/`（`index.json` + 各预设 JSON）+ `GET/PUT /api/prompts`；前端 **`/prompts`**；组装仅服务端（`assemble-preview` / `assemble-messages` API）
 - [x] 世界书框架：`lorebooks/` 分文件存储、`GET/PUT /api/lorebooks`、Web 编辑与对话 `lorebookIds` 绑定、关键字/恒定注入（见 `DOC/03` §13）
-- [ ] **对话记忆（§14）**：LanceDB 索引、`resolveTurnById`、`boundMemory` + `boundRecentHistory`（history/memory 各一条 system）、`chat-assemble` 合并、对话设置 N / TopK、索引增量与 reindex
-- [ ] **组装管线 §14.9**：`userText`→memory+history→`scanCorpus` 匹配 lore（递归 2、`loreScanScope`、去重与 token 上限）；`resolveLoreRecursive` / `buildScanText`
+- [ ] **对话记忆（§14）收尾**：对话设置 UI（N / TopK）、索引增量与 reindex 完善、assemble 侧 memory/history token 预算裁切（§14.4 规划项）
+- [x] **组装管线 §14.9 主干**：`runMemoryPipeline`、`boundMemory`（`<memory>` system）、`boundRecentHistory` / `history` 分组（**user/assistant 链**，非 `<history>` XML）、`buildScanText` + lore 递归（`lorebook-resolve`）
 - [x] **宏管线 §15**：server `prompt-macros/handlers`、仅服务端展宏、`POST /api/prompts/assemble-preview`、opening 服务端展宏、删除 web `prompt-macros`
 - [ ] 知识库 RAG：向量切片、检索、重排序 — **在 §13 框架之上扩展**（与 §14 turn 表分离）
 - [ ] RAG/模型调用日志（耗时、token、命中明细）— **部分字段在 turn `runtime` 等，未达需求文档 §4 全量**

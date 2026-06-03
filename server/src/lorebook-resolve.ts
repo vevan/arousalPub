@@ -1,4 +1,7 @@
-import { formatLoresXmlBlock } from './prompt-xml.js'
+import {
+  formatLoresInjectionXml,
+  type LorebookXmlGroup,
+} from './prompt-xml.js'
 import { readLorebooksDocument } from './lorebook-file.js'
 import type { Lorebook, LorebookEntry } from './lorebook-types.js'
 import { resolveEntryTriggerMode } from './lorebook-entry-utils.js'
@@ -31,9 +34,12 @@ export interface LorebookResolveContext {
 
 const MAX_MATCHED_ENTRIES = 64
 
+type TaggedLoreEntry = { lorebookId: string; entry: LorebookEntry }
+
 /**
  * 按会话绑定的资料库 id 顺序合并条目，筛选 enabled 条目并生成注入文本。
  * 关键字/恒定 → 可选递归；向量触发 → 单次 TopK（与关键字结果合并）。
+ * 绑定多本时 XML 按资料库名分组（见 `formatLoresInjectionXml`）。
  */
 export async function resolveLorebookInjectionText(
   lorebookIds: string[],
@@ -54,7 +60,7 @@ export async function resolveLorebookInjectionText(
   const byId = new Map(doc.lorebooks.map((lb) => [lb.id, lb]))
   const scanSeed = (context.scanCorpus ?? context.userText ?? '').trim()
   const seenEntryIds = new Set<string>()
-  const ordered: LorebookEntry[] = []
+  const ordered: TaggedLoreEntry[] = []
 
   const maxRounds = settings.recursiveEnabled
     ? settings.maxRecursionDepth + 1
@@ -70,7 +76,7 @@ export async function resolveLorebookInjectionText(
       for (const e of batch) {
         if (ordered.length >= MAX_MATCHED_ENTRIES) break
         seenEntryIds.add(e.id)
-        ordered.push(e)
+        ordered.push({ lorebookId: lid, entry: e })
         addedThisRound = true
       }
       if (ordered.length >= MAX_MATCHED_ENTRIES) break
@@ -100,21 +106,38 @@ export async function resolveLorebookInjectionText(
       settings.vectorTopK,
       seenEntryIds,
     )
-    for (const e of vectorHits) {
+    for (const hit of vectorHits) {
       if (ordered.length >= MAX_MATCHED_ENTRIES) break
-      seenEntryIds.add(e.id)
-      ordered.push(e)
+      seenEntryIds.add(hit.entry.id)
+      ordered.push(hit)
     }
   }
 
-  const entries = ordered
-    .map((e) => ({
-      name: e.title.trim() || '未命名',
-      content: e.content.trim(),
-    }))
-    .filter((e) => e.content.length > 0)
+  const groups = buildLorebookXmlGroups(lorebookIds, byId, ordered)
+  return formatLoresInjectionXml(groups)
+}
 
-  return formatLoresXmlBlock(entries)
+function buildLorebookXmlGroups(
+  lorebookIds: string[],
+  byId: Map<string, Lorebook>,
+  ordered: TaggedLoreEntry[],
+): LorebookXmlGroup[] {
+  const groups: LorebookXmlGroup[] = []
+  for (const lid of lorebookIds) {
+    const lb = byId.get(lid)
+    if (!lb) continue
+    const entries = ordered
+      .filter((t) => t.lorebookId === lid)
+      .map((t) => ({
+        name: t.entry.title.trim() || '未命名',
+        content: t.entry.content.trim(),
+      }))
+      .filter((e) => e.content.length > 0)
+    if (entries.length === 0) continue
+    const displayName = lb.name.trim() || lid
+    groups.push({ lorebookName: displayName, entries })
+  }
+  return groups
 }
 
 async function collectVectorMatches(
@@ -123,11 +146,11 @@ async function collectVectorMatches(
   queryText: string,
   topK: number,
   seenEntryIds: Set<string>,
-): Promise<LorebookEntry[]> {
+): Promise<TaggedLoreEntry[]> {
   const emb = await createEmbedding(queryText)
   if (!emb) return []
 
-  type Ranked = { entry: LorebookEntry; score: number }
+  type Ranked = { lorebookId: string; entry: LorebookEntry; score: number }
   const ranked: Ranked[] = []
 
   for (const lid of lorebookIds) {
@@ -145,7 +168,7 @@ async function collectVectorMatches(
       if (!e || !e.enabled || seenEntryIds.has(e.id)) continue
       if (resolveEntryTriggerMode(e) !== 'vector') continue
       if (!e.content.trim()) continue
-      ranked.push({ entry: e, score: hit.score })
+      ranked.push({ lorebookId: lid, entry: e, score: hit.score })
     }
   }
 
@@ -154,13 +177,13 @@ async function collectVectorMatches(
     return b.entry.priority - a.entry.priority
   })
 
-  const out: LorebookEntry[] = []
+  const out: TaggedLoreEntry[] = []
   const taken = new Set<string>()
   for (const r of ranked) {
     if (out.length >= topK) break
     if (taken.has(r.entry.id)) continue
     taken.add(r.entry.id)
-    out.push(r.entry)
+    out.push({ lorebookId: r.lorebookId, entry: r.entry })
   }
   return out
 }

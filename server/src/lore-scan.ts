@@ -15,6 +15,7 @@ export function xmlBlockToPlainText(xml?: string | null): string {
 export function buildScanText(
   userText: string,
   memoryText?: string | null,
+  /** 近期 history 纯文本（或旧版 XML，经 xmlBlockToPlainText 剥标签） */
   historyText?: string | null,
   maxChars = DEFAULT_MAX_SCAN_CHARS,
 ): string {

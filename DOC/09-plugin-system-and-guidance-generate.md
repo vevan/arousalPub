@@ -164,6 +164,16 @@ data/
 
 批量 read/patch 见 **`DOC/10-plugin-conversation-host.md`**（`host.conversation`、`runScope`、`render`、`ui.progress` 等）。
 
+### 5.5 出站补全与资料库条目（规划）
+
+摘要、Tracker 等插件**自建 prompt 与解析**；宿主仅提供：
+
+- **`POST /api/plugins/:pluginId/complete`** — 按 `apiConfigId` 转发 `messages[]`（**非** `host.ai.*`，**非** `/api/chat` 组装）
+- **Lorebook 条目** `POST` / `PATCH` — 插入摘要、覆盖 sidecar
+- **会话 `pluginSettings`** — 每对话目标 lorebook、触发计数等
+
+**第三方作者主入口**：**`DOC/11-plugin-host-completion-and-lorebook.md`** §0（`host.lorebook` / `host.api` / `host.plugin` / 会话 `pluginSettings`；**禁止**插件内直 `fetch` 本体 lorebook/settings API）。策展记忆示例：**`DOC/12-plugin-curated-memory.md`**。
+
 ---
 
 ## 6. 服务端 PluginHost

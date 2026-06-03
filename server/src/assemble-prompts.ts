@@ -89,8 +89,7 @@ export interface AssembleContext {
   world?: string
   /** §14：已格式化的 `<memory>…</memory>` */
   memoryText?: string
-  /** §14：已格式化的 `<history>…</history>` */
-  recentHistoryText?: string
+  /** §14：近期 N 轮，按 turn 展开为 user/assistant 消息 */
   history?: ChatMessage[]
   userInput?: string
   maxTokens?: number
@@ -112,6 +111,28 @@ const PLACEHOLDER = {
   history: ASSEMBLE_INJECT_PLACEHOLDER.chatHistory,
   userInput: ASSEMBLE_INJECT_PLACEHOLDER.userInput,
 } as const
+
+function injectRecentHistoryMessages(
+  messages: ChatMessage[],
+  ctx: AssembleContext,
+  insertAt?: number,
+): boolean {
+  const hist = ctx.history
+  if (!hist?.length) return false
+  const batch: ChatMessage[] = []
+  for (const m of hist) {
+    const c = m.content.trim()
+    if (!c) continue
+    batch.push({ role: m.role, content: m.content })
+  }
+  if (batch.length === 0) return false
+  if (typeof insertAt === 'number') {
+    messages.splice(insertAt, 0, ...batch)
+  } else {
+    for (const m of batch) messages.push(m)
+  }
+  return true
+}
 
 function mergedBoundSystemPrompt(ctx: AssembleContext): string | undefined {
   const parts: string[] = []
@@ -317,17 +338,8 @@ export function assemblePrompts(
       }
     } else if (g.kind === 'history') {
       historyStart = messages.length
-      const recent = ctx.recentHistoryText?.trim()
-      let historyInjected = false
-      if (recent) {
-        messages.push({ role: 'assistant', content: recent })
-        historyInjected = true
-      } else if (ctx.history && ctx.history.length > 0) {
-        for (const m of ctx.history) {
-          messages.push({ role: m.role, content: m.content })
-        }
-        historyInjected = true
-      } else {
+      let historyInjected = injectRecentHistoryMessages(messages, ctx)
+      if (!historyInjected) {
         messages.push({ role: 'system', content: PLACEHOLDER.history })
       }
       const postHistory = relativeEntriesForGroup(preset, g.id, trigger)
@@ -338,10 +350,8 @@ export function assemblePrompts(
             messages.push({ role: 'system', content: post })
           }
         } else if (e.bindingSlot === 'boundRecentHistory') {
-          const h = ctx.recentHistoryText?.trim()
-          if (h && !historyInjected) {
-            messages.push({ role: 'assistant', content: h })
-            historyInjected = true
+          if (!historyInjected) {
+            historyInjected = injectRecentHistoryMessages(messages, ctx)
           }
         } else {
           messages.push({ role: e.role, content: e.content })
@@ -349,11 +359,9 @@ export function assemblePrompts(
       }
       if (
         !historyInjected &&
-        !presetHasBinding(preset, 'boundRecentHistory') &&
-        recent
+        !presetHasBinding(preset, 'boundRecentHistory')
       ) {
-        messages.splice(historyStart, 0, { role: 'assistant', content: recent })
-        historyInjected = true
+        historyInjected = injectRecentHistoryMessages(messages, ctx, historyStart)
       }
       historyEnd = messages.length
     } else if (g.kind === 'userInput') {

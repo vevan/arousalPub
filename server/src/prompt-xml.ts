@@ -104,27 +104,74 @@ export function cardRecordToUserXmlBlock(card: Record<string, unknown>): string 
   return cardRecordToPersonaXmlBlock(card, 'user')
 }
 
-/**
- * 命中条目 → `<lores>` 块（每条 `<lore name="标题">` + 正文，正文按行转义）。
- */
-export function formatLoresXmlBlock(
-  entries: Array<{ name: string; content: string }>,
-): string {
-  if (entries.length === 0) return ''
-  const lines: string[] = ['<lores>']
+export type LoreXmlEntry = { name: string; content: string }
+
+export type LorebookXmlGroup = {
+  lorebookName: string
+  entries: LoreXmlEntry[]
+}
+
+function formatLoreEntryLines(
+  entries: LoreXmlEntry[],
+  indent: string,
+): string[] {
+  const lines: string[] = []
   for (const e of entries) {
     const name = e.name.trim() || '未命名'
     const body = e.content.trim()
     if (!body) continue
-    lines.push(`  <lore name="${escapeXmlAttribute(name)}">`)
+    lines.push(`${indent}<lore name="${escapeXmlAttribute(name)}">`)
     for (const line of body.split('\n')) {
-      lines.push(`  ${prepareXmlElementText(line)}`)
+      lines.push(`${indent}  ${prepareXmlElementText(line)}`)
     }
-    lines.push('  </lore>')
+    lines.push(`${indent}</lore>`)
   }
-  if (lines.length === 1) return ''
+  return lines
+}
+
+/**
+ * 命中条目 → `<lores>` 块（每条 `<lore name="标题">` + 正文，正文按行转义）。
+ */
+export function formatLoresXmlBlock(entries: LoreXmlEntry[]): string {
+  if (entries.length === 0) return ''
+  const inner = formatLoreEntryLines(entries, '  ')
+  if (inner.length === 0) return ''
+  return ['<lores>', ...inner, '</lores>'].join('\n')
+}
+
+/**
+ * 多本资料库绑定：按书分组 `<lorebook name="显示名">` + 内层 `<lore>`。
+ */
+export function formatLoresXmlGroupedBlock(groups: LorebookXmlGroup[]): string {
+  const nonEmpty = groups
+    .map((g) => ({
+      lorebookName: g.lorebookName.trim() || '未命名',
+      entries: g.entries.filter((e) => e.content.trim().length > 0),
+    }))
+    .filter((g) => g.entries.length > 0)
+  if (nonEmpty.length === 0) return ''
+  const lines: string[] = ['<lores>']
+  for (const g of nonEmpty) {
+    lines.push(`  <lorebook name="${escapeXmlAttribute(g.lorebookName)}">`)
+    lines.push(...formatLoreEntryLines(g.entries, '    '))
+    lines.push('  </lorebook>')
+  }
   lines.push('</lores>')
   return lines.join('\n')
+}
+
+/**
+ * 单本扁平 / 多本分组：由 resolve 按绑定数量选择。
+ */
+export function formatLoresInjectionXml(groups: LorebookXmlGroup[]): string {
+  const nonEmpty = groups.filter((g) =>
+    g.entries.some((e) => e.content.trim().length > 0),
+  )
+  if (nonEmpty.length === 0) return ''
+  if (nonEmpty.length === 1) {
+    return formatLoresXmlBlock(nonEmpty[0].entries)
+  }
+  return formatLoresXmlGroupedBlock(nonEmpty)
 }
 
 /** 世界书注入：已为 `<lores>` 时原样返回，否则兼容旧单块包裹 */

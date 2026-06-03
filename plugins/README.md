@@ -34,6 +34,10 @@ plugins/{pluginId}/
 
 对话批量 read/patch 见 **`DOC/10-plugin-conversation-host.md`**。
 
+出站补全转发、Lorebook 条目 API、会话 `pluginSettings` 见 **`DOC/11-plugin-host-completion-and-lorebook.md`**。
+
+策展式记忆插件（规划）见 **`DOC/12-plugin-curated-memory.md`**。
+
 ## 新增 bundled 插件
 
 1. 在本目录新增 `{pluginId}/` 并写好 `manifest.json`、`dist/`。

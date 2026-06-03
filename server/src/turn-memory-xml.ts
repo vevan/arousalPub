@@ -41,6 +41,28 @@ export function formatHistoryXml(turns: TurnRecord[]): string {
   return `<history>\n${inner}\n</history>`
 }
 
+/** 近期 N 轮 → 组装用 user/assistant 消息链（非 XML）。 */
+export function turnsToHistoryMessages(
+  turns: TurnRecord[],
+): { role: 'user' | 'assistant'; content: string }[] {
+  const out: { role: 'user' | 'assistant'; content: string }[] = []
+  for (const turn of turns) {
+    const user = getTurnUserText(turn).trim()
+    if (user) out.push({ role: 'user', content: user })
+    const assistant = assistantTextFromTurn(turn).trim()
+    if (assistant) out.push({ role: 'assistant', content: assistant })
+  }
+  return out
+}
+
+/** 资料库关键字扫描语料（与 XML history 块正文等价，不含标签）。 */
+export function turnsToHistoryScanPlainText(turns: TurnRecord[]): string {
+  return turns
+    .map((t) => turnEmbeddingCorpus(t))
+    .filter((s) => s.length > 0)
+    .join('\n\n')
+}
+
 export function formatMemoryXml(
   items: { turn: TurnRecord; score?: number }[],
 ): string {

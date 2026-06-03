@@ -11,6 +11,7 @@
 
 ## 文档索引
 
+- **【P0 最高】API Key 服务端隔离（待实施）**：`DOC/13-api-key-server-side-isolation.md`
 - **用户安装与启动**：根目录 `README.md`
 - 架构设计：`DOC/01-架构设计.md`（**§9 运行时与部署**）
 - 需求说明：`DOC/02-需求说明.md`

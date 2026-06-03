@@ -4,6 +4,17 @@
 
 ## P0（当前优先）
 
+### API Key 服务端隔离（最高优先级 — 待实施）
+
+> 需求定案：**`DOC/13-api-key-server-side-isolation.md`**（2026-06-02）。实施排期：下一迭代。
+
+- [ ] **GET 脱敏**：`/api/api-keys`、`/api/settings`、`/api/user-preferences`（embedding）不返回明文 key
+- [ ] **PUT merge 写**：api-keys / settings / embedding PATCH 省略 key 时保留磁盘
+- [ ] **`api-credential-resolve`**：`POST /api/chat`、`POST /api/models` 服务端解析 `apiPresetId` / `apiKeyId`，body 不要求 `apiKey`
+- [ ] **`POST /api/api-keys/:id/reveal`**：校验登录密码后一次性返回 key
+- [ ] **前端隔离**：`apiKeys` / `connection` / `chat-api` / `useChatSession` / `ConnectionSettingsCard` / Embedding 设置
+- [ ] **验收与文档**：按 `DOC/13` §6 勾选；同步 `DOC/03` §4
+
 - [x] 初始化后端 Fastify 项目结构（`server/`）
 - [x] 初始化前端 Vue3 + Pinia + Vuetify 项目结构（`web/`）
 - [ ] 完成 JWT 登录（用户表、密码 hash、登录态校验）— **当前仓库未实现**
@@ -59,6 +70,10 @@
 ### 对话列表与对话页（2026-05-26）
 
 - [x] **会话列表卡片**：展示 user / 主角色头像（`userCharacterId` + `characterIds[0]`）；新建对话弹窗输入标题（非默认「新对话」）；选主角色可自动填标题
+- [x] **`chat.index` 快查冗余**：`userName`、`characterNames`、`searchTags`；`enrichChatListEntry` + 角色 PATCH/删除刷新；`readChatList` 缺字段迁移（见 `DOC/03` §7.1）
+- [x] **会话列表快查 UI**：`ConversationListView` 搜索框（标题 + 冗余名/标签）
+- [x] **首页双视图**：对话列表 / 角色网格切换；**仅设置页**持久 `homeListMode`、`homeCharacterSource`（`usedInChats` / `allLibrary`）；进 `/` 重置 toggle 与快查框
+- [x] **角色视图快查**：网格复用 `GET /api/characters?search=`；点角色 → 关联会话弹窗 → `/chat/:id`
 - [x] **记忆向量重建提示**：仅当会话**已有** `memoryEmbeddingModel` 且与全局 embedding 配置不一致时弹窗（新建会话不触发）
 - [x] **思维链复制**：reasoning summary 旁一键复制纯文本
 - [x] **输入框草稿**：各会话 `localStorage` 持久化未发送内容（`composer-draft-storage.ts`）
@@ -71,7 +86,7 @@
 - [ ] 会话级模型参数覆盖能力
 - [ ] RAG 参数调优面板（TopK、阈值等）
 - [ ] 导入导出（会话全量、角色批量等）— **单卡 PNG/JSON 导出已有；批量见 P1**
-- [ ] 数据目录备份示例脚本与说明（规范见 `DOC/03-实现细节.md` §8.7）
+- [ ] 数据目录备份示例脚本与说明（规范见 `DOC/03` §8.7；**全量 zip 冷备见 §8.8，优先级靠后**）
 
 ## P2（V2）
 
@@ -84,17 +99,19 @@
 
 ## P3（备忘 / 最低优先级）
 
-> 来自实现与选型讨论，**不排期**；细节见 `DOC/03` **§14.10**。
+> 来自实现与选型讨论，**不排期**；细节见 `DOC/03` **§14.10**、**§8.8**。
 
+- [ ] **全量冷备 zip（`data/backups`）**：启动时若距上次成功备份 > N 天 → 服务端流式打包整棵 `data`（含 `memory/`）→ 冻 UI + 503 写锁；`backupIntervalDays` / `backupMaxKept`；Syncthing **ignore `backups`**；无下载。见 **`DOC/03` §8.8**。
 - [ ] **Embedding MRL / 降维**：系统设置已支持 `embeddingDimensions`（留空=不传 OpenAI `dimensions`）；部分本地网关会忽略该参数仍返回满维。备选：换 TEI/vLLM 等支持 MRL 的推理端，或客户端截断前 N 维 + L2 归一化后入库。
 - [ ] **Reranker 精排**：记忆/资料库当前仅 Lance 向量 TopK；API 层已预留 `rerank` capability，组装管线未接。TopK 较小时收益有限，资料库规模大时更值得做。
 - [ ] **Qwen query instruct**：官方建议 query 侧加任务指令前缀（约 +1～5% 检索），索引与检索均未实现。
 
 ## 文档维护 TODO
 
+- [x] **API Key 隔离需求定案** — `DOC/13-api-key-server-side-isolation.md`（2026-06-02）
 - [x] 原独立草稿已合并至 `DOC/02`、`DOC/03`
 - [ ] 每次架构决策变更后更新 `DOC/01-架构设计.md`
-- [x] 每次需求变更后更新 `DOC/02-需求说明.md` — 2026-05-26 会话列表与角色库排序简述
-- [x] 每次接口变更后更新 `DOC/03-实现细节.md`（**含 §12 角色库、index.json、PATCH、PNG、排序/导出**）— 2026-05-26 已同步 filterCounts、export-png/json、会话列表 UI
+- [x] 每次需求变更后更新 `DOC/02-需求说明.md` — 2026-06 会话列表快查冗余（§7）
+- [x] 每次接口变更后更新 `DOC/03-实现细节.md`（**含 §7.1 列表冗余、§11.6 快查**）— 2026-06
 - [x] 插件系统与指导生成定案 — `DOC/09-plugin-system-and-guidance-generate.md`（2026-05-26）
 - [x] 插件系统实现文档 — `DOC/09`、`plugins/README.md`、`data/README.md` §插件（2026-05-26）

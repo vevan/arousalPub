@@ -1,5 +1,5 @@
 {
-  "_comment": "复制为 config.json 后修改。优先级：环境变量 > 本文件 > 默认值。jwtSecret：可选，≥16 字符；留空则生产首次启动自动写入 data/.jwt-secret。dataDir/serverPort/webPort：数据目录与端口（start.bat 用 serverPort；npm run dev 用双端口）。startCountdownSeconds：start 启动前倒计时秒数，0=跳过；期间 B 重新 build、空格跳过倒计时。host/staticDir：可选。auth*：登录会话。环境变量仍可覆盖：JWT_SECRET、DATA_DIR、PORT、WEB_PORT、START_COUNTDOWN_SEC、HOST、STATIC_DIR。",
+  "_comment": "复制为 config.json 后修改。优先级：环境变量 > 本文件 > 默认值。jwtSecret：可选，≥16 字符；留空则生产首次启动自动写入 data/.jwt-secret。dataDir/serverPort/webPort：数据目录与端口（start.bat 用 serverPort；npm run dev 用双端口）。startCountdownSeconds：start 启动前倒计时秒数，0=跳过；期间 B 重新 build、空格跳过倒计时。host/staticDir：可选。auth*：登录会话。backupIntervalDays/backupMaxKept：规划见 DOC/03 §8.8（未实现）。环境变量仍可覆盖：JWT_SECRET、DATA_DIR、PORT、WEB_PORT、START_COUNTDOWN_SEC、HOST、STATIC_DIR。",
   "dataDir": "./data",
   "serverPort": 6633,
   "webPort": 6699,

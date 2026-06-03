@@ -1,9 +1,10 @@
 import { allocateShortId } from './short-id.js'
 import { mergeTurnPluginEntry } from './turn-plugin-utils.js'
 import type { TurnPluginEntry } from './plugin-types.js'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { getChatsRoot } from './config.js'
+import { isValidConversationId } from './conversation-id.js'
 import {
   lorebookSettingsOverrideFromEffective,
   normalizeLorebookSettings,
@@ -68,6 +69,12 @@ export interface ChatListEntry {
   /** 世界书 id 列表（占位） */
   lorebookIds?: string[]
   activeBranchPath?: string | null
+  /** 宏 {{user}} 快照；来自会话根 index.json */
+  userName?: string
+  /** 与 characterIds 同序；卡已删时为「已删除」 */
+  characterNames?: string[]
+  /** 绑定卡 + user persona 的 tags 去重合并，供列表快查 */
+  searchTags?: string[]
 }
 
 export interface ChatListFile {
@@ -294,6 +301,9 @@ export function chatListEntryFromIndex(idx: ConversationIndex): ChatListEntry {
     ...(typeof idx.userCharacterId === 'string' && idx.userCharacterId.trim()
       ? { userCharacterId: idx.userCharacterId.trim() }
       : {}),
+    ...(typeof idx.userName === 'string' && idx.userName.trim()
+      ? { userName: idx.userName.trim() }
+      : {}),
     characterId: ids[0] ?? null,
     characterIds: ids.length > 0 ? ids : undefined,
     ...(typeof idx.promptPresetId === 'string' && idx.promptPresetId.trim()
@@ -320,7 +330,7 @@ export async function updateConversationUserCharacterId(
     next.userCharacterId = userCharacterId.trim()
   }
   await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next))
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
   return next
 }
 
@@ -338,7 +348,7 @@ export async function updateConversationUserName(
     next.userName = userName.trim()
   }
   await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next))
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
   return next
 }
 
@@ -365,7 +375,7 @@ export async function updateConversationCharacterBindings(
     updatedAt: t,
   }
   await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next))
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
   return next
 }
 
@@ -386,7 +396,7 @@ export async function updateConversationPromptPresetId(
     next.promptPresetId = trimmed
   }
   await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next))
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
   return next
 }
 
@@ -414,7 +424,7 @@ export async function updateConversationLorebookIds(
     next.lorebookIds = cleaned
   }
   await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next))
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
   return next
 }
 
@@ -428,7 +438,7 @@ export async function clearConversationLorebookSettings(
   const next: ConversationIndex = { ...idx, updatedAt: t }
   delete next.lorebookSettings
   await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next))
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
   return next
 }
 
@@ -452,7 +462,7 @@ export async function updateConversationLorebookSettings(
     next.lorebookSettings = { ...effective }
   }
   await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next))
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
   return next
 }
 
@@ -466,7 +476,7 @@ export async function clearConversationHistorySettings(
   const next: ConversationIndex = { ...idx, updatedAt: t }
   delete next.historySettings
   await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next))
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
   return next
 }
 
@@ -489,7 +499,7 @@ export async function updateConversationHistorySettings(
     next.historySettings = { ...effective }
   }
   await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next))
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
   return next
 }
 
@@ -503,7 +513,7 @@ export async function clearConversationMemorySettings(
   const next: ConversationIndex = { ...idx, updatedAt: t }
   delete next.memorySettings
   await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next))
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
   return next
 }
 
@@ -526,7 +536,7 @@ export async function updateConversationMemorySettings(
     next.memorySettings = { ...effective }
   }
   await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next))
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
   return next
 }
 
@@ -551,7 +561,7 @@ export async function updateConversationMemoryEmbeddingModel(
     memoryEmbeddingDimensions: dims,
   }
   await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next))
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
   return next
 }
 
@@ -728,7 +738,7 @@ export async function updateConversationPromptDebugMax(
       'utf8',
     )
   }
-  await upsertChatListEntry(chatListEntryFromIndex(idx))
+  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
   return idx
 }
 
@@ -736,7 +746,7 @@ async function ensureChatRoot(): Promise<void> {
   await mkdir(getChatsRoot(), { recursive: true })
 }
 
-export async function readChatList(): Promise<ChatListFile> {
+async function readChatListRaw(): Promise<ChatListFile> {
   try {
     const raw = await readFile(chatListFile(), 'utf8')
     const j = JSON.parse(raw) as ChatListFile
@@ -749,18 +759,104 @@ export async function readChatList(): Promise<ChatListFile> {
   }
 }
 
+/**
+ * `chats/{id}/index.json` 存在但 `chat.index.json` 缺条目时补写（Syncthing 冲突、历史 bug 等）。
+ */
+export async function reconcileChatListWithDisk(): Promise<boolean> {
+  const list = await readChatListRaw()
+  const known = new Set(
+    list.conversations.map((c) => c.conversationId).filter(Boolean),
+  )
+  await ensureChatRoot()
+  let entries
+  try {
+    entries = await readdir(getChatsRoot(), { withFileTypes: true })
+  } catch {
+    return false
+  }
+  const { enrichChatListEntry } = await import('./character-storage.js')
+  let dirty = false
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue
+    const id = String(ent.name)
+    if (!isValidConversationId(id) || known.has(id)) continue
+    const idx = await readConversationIndex(id)
+    if (!idx) continue
+    list.conversations.push(
+      await enrichChatListEntry(chatListEntryFromIndex(idx), idx),
+    )
+    known.add(id)
+    dirty = true
+  }
+  if (!dirty) return false
+  list.conversations.sort((a, b) =>
+    b.updatedAt.localeCompare(a.updatedAt, 'en'),
+  )
+  await writeChatList(list)
+  return true
+}
+
+export async function readChatList(): Promise<ChatListFile> {
+  await reconcileChatListWithDisk()
+  const list = await readChatListRaw()
+  const {
+    chatListEntryNeedsEnrich,
+    enrichChatListEntry,
+  } = await import('./character-storage.js')
+  let dirty = false
+  for (let i = 0; i < list.conversations.length; i++) {
+    const c = list.conversations[i]
+    if (!chatListEntryNeedsEnrich(c)) continue
+    list.conversations[i] = await enrichChatListEntry(c)
+    dirty = true
+  }
+  if (dirty) await writeChatList(list)
+  return list
+}
+
+/** 角色卡元数据变更后，刷新引用该 id 的列表项快查字段 */
+export async function refreshChatListEntriesForCharacter(
+  characterId: string,
+): Promise<void> {
+  const cid = characterId.trim()
+  if (!cid) return
+  const { enrichChatListEntry } = await import('./character-storage.js')
+  const list = await readChatListRaw()
+  let dirty = false
+  for (let i = 0; i < list.conversations.length; i++) {
+    const c = list.conversations[i]
+    const ids = resolvedCharacterIds(c)
+    const userCid =
+      typeof c.userCharacterId === 'string' && c.userCharacterId.trim()
+        ? c.userCharacterId.trim()
+        : ''
+    if (!ids.includes(cid) && userCid !== cid) continue
+    const idx = await readConversationIndex(c.conversationId)
+    const enriched = await enrichChatListEntry(c, idx ?? undefined)
+    list.conversations[i] = enriched
+    dirty = true
+  }
+  if (dirty) await writeChatList(list)
+}
+
 async function writeChatList(data: ChatListFile): Promise<void> {
   await ensureChatRoot()
   await writeFile(chatListFile(), JSON.stringify(data, null, 2), 'utf8')
 }
 
-export async function upsertChatListEntry(entry: ChatListEntry): Promise<void> {
-  const list = await readChatList()
+export async function upsertChatListEntry(
+  entry: ChatListEntry,
+  source?: ConversationIndex,
+): Promise<void> {
+  const { enrichChatListEntry } = await import('./character-storage.js')
+  const enriched = await enrichChatListEntry(entry, source)
+  await reconcileChatListWithDisk()
+  const list = await readChatListRaw()
   const i = list.conversations.findIndex(
-    (c) => c.conversationId === entry.conversationId,
+    (c) => c.conversationId === enriched.conversationId,
   )
-  if (i >= 0) list.conversations[i] = entry
-  else list.conversations.unshift(entry)
+  if (i >= 0) list.conversations[i] = enriched
+  else list.conversations.unshift(enriched)
   list.conversations.sort((a, b) =>
     b.updatedAt.localeCompare(a.updatedAt, 'en'),
   )
@@ -820,7 +916,7 @@ export async function createConversationStub(
     promptDebug: { maxStored: DEFAULT_PROMPT_DEBUG_MAX },
   }
   await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry(chatListEntryFromIndex(idx))
+  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
   return idx
 }
 
@@ -834,7 +930,7 @@ export async function updateConversationTitle(
   idx.title = title.trim() || idx.title
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry(chatListEntryFromIndex(idx))
+  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
   return idx
 }
 
@@ -921,7 +1017,7 @@ export async function saveFirstTurn(params: {
   idx.tailChunkFile = firstChunkFile
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry(chatListEntryFromIndex(idx))
+  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
 
   /** 对话落盘成功后再写快照；无有效 messages 或索引关闭写入时不落盘 */
   if (debugPrompt !== undefined) {
@@ -984,7 +1080,7 @@ export async function saveOpeningTurn(params: {
   idx.tailChunkFile = firstChunkFile
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry(chatListEntryFromIndex(idx))
+  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
   return { index: idx, chunk }
 }
 
@@ -1046,7 +1142,7 @@ export async function appendConversationTurn(params: {
   const t = nowIso()
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry(chatListEntryFromIndex(idx))
+  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
   if (debugPrompt !== undefined) {
     await appendChatPromptDebugEntry(conversationId, {
       chunkName,
@@ -1158,7 +1254,7 @@ export async function updateTurnContentInTailChunk(
   const t = nowIso()
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry(chatListEntryFromIndex(idx))
+  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
   if (debugPrompt !== undefined) {
     await appendChatPromptDebugEntry(conversationId, {
       chunkName,
@@ -1205,7 +1301,7 @@ export async function removeTurnAtOrdinalInTailChunk(
     idx.tailChunkFile = null
     idx.updatedAt = t
     await writeConversationIndex(conversationId, idx)
-    await upsertChatListEntry(chatListEntryFromIndex(idx))
+    await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
     if (victimTurnId) {
       void removeChatPromptEntriesByTurnId(conversationId, victimTurnId)
       scheduleMemoryIndexDelete(conversationId, victimTurnId)
@@ -1223,7 +1319,7 @@ export async function removeTurnAtOrdinalInTailChunk(
   await writeChunkFile(conversationId, idx.tailChunkFile, chunk)
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry(chatListEntryFromIndex(idx))
+  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
   if (victimTurnId) {
     void removeChatPromptEntriesByTurnId(conversationId, victimTurnId)
     scheduleMemoryIndexDelete(conversationId, victimTurnId)

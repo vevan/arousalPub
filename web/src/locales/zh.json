@@ -10,7 +10,8 @@
     "lorebooks": "资料库",
     "knowledgeBase": "知识库",
     "characters": "角色",
-    "settings": "设置"
+    "settings": "设置",
+    "closeModal": "关闭"
   },
   "entryTransfer": {
     "copy": "复制",
@@ -328,6 +329,15 @@
     "themeConfirm": "确认",
     "themeCancel": "取消",
     "themeResetPrimary": "恢复默认",
+    "homeSection": "首页",
+    "homeSectionHint": "进入首页或从对话返回时采用的默认视图与角色网格范围；首页上的切换与搜索不会保存，每次回到首页会恢复此处设置并清空搜索。",
+    "homeListModeDefault": "默认视图",
+    "homeListModeConversations": "对话列表",
+    "homeListModeCharacters": "角色网格",
+    "homeCharacterSourceDefault": "角色网格范围",
+    "homeCharacterSourceUsed": "仅对话中出现的角色",
+    "homeCharacterSourceAll": "全部角色库",
+    "homeCharacterSourceHint": "仅影响首页「角色」视图；完整角色库仍从侧栏进入。",
     "closeModal": "关闭",
     "accountSection": "账号与安全",
     "accountChangeAvatar": "更换头像（PNG）",
@@ -531,6 +541,9 @@
   "conversationList": {
     "pageTitle": "对话列表",
     "count": "{n} 个对话",
+    "countFiltered": "显示 {n} / {total} 个对话",
+    "searchPlaceholder": "搜索标题、角色名或标签",
+    "searchClear": "清空搜索",
     "loading": "加载中…",
     "newChat": "新建对话",
     "cardMenu": "更多操作",
@@ -561,6 +574,22 @@
     "startChat": "开始对话",
     "pickCharacterDialogTitle": "选择角色卡",
     "loadingCharacters": "加载角色库…"
+  },
+  "home": {
+    "listModeConversations": "对话",
+    "listModeCharacters": "角色",
+    "charactersPageTitle": "角色",
+    "characterSearchPlaceholder": "搜索角色名、摘要或标签",
+    "charactersLoading": "加载角色…",
+    "charactersLoadFailed": "加载角色失败",
+    "charactersEmpty": "没有匹配的角色",
+    "charactersLoaded": "已加载 {n} / {total}",
+    "characterSourceUsedHint": "仅对话中已使用",
+    "characterSourceAllHint": "全部角色库"
+  },
+  "characterConversations": {
+    "dialogTitle": "「{name}」的对话",
+    "empty": "暂无绑定该角色的对话"
   },
   "chatConversation": {
     "loading": "加载会话…",

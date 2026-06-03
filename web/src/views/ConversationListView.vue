@@ -3,20 +3,42 @@ import { characterImageUrl } from '@/utils/authenticated-media-url'
 import { generateConversationId } from '@/utils/conversation-id'
 import { allocateShortId } from '@/utils/short-id'
 import { pickDefaultLorebookIds, fetchLorebookPickerItems } from '@/utils/default-lorebook'
-import { computed, onMounted, ref, watch } from 'vue'
+import CharacterConversationsDialog from '@/components/home/CharacterConversationsDialog.vue'
+import HomeCharacterGrid from '@/components/home/HomeCharacterGrid.vue'
+import {
+  readHomeCharacterSourceDefault,
+  readHomeListModeDefault,
+  type HomeListMode,
+} from '@/utils/home-preferences'
+import {
+  consumeHomeReturnFromChat,
+  markHomeReturnFromChat,
+} from '@/utils/home-navigation'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 const { t } = useI18n()
 const router = useRouter()
 
+const listMode = ref<HomeListMode>('conversations')
+const characterSource = ref(readHomeCharacterSourceDefault())
+const characterSearchQuery = ref('')
+
+const charConvDialogOpen = ref(false)
+const charConvPickId = ref<string | null>(null)
+const charConvPickName = ref('')
+
 interface ChatListEntry {
   conversationId: string
   title: string
   updatedAt: string
+  userName?: string
   userCharacterId?: string
   characterId?: string | null
   characterIds?: string[]
+  characterNames?: string[]
+  searchTags?: string[]
 }
 
 const createTitleDraft = ref('')
@@ -25,6 +47,55 @@ const loading = ref(true)
 const creating = ref(false)
 const errorText = ref('')
 const conversations = ref<ChatListEntry[]>([])
+const searchQuery = ref('')
+
+function matchesConversationSearch(c: ChatListEntry, q: string): boolean {
+  if (!q) return true
+  if (c.title.toLowerCase().includes(q)) return true
+  const userName = c.userName?.trim()
+  if (userName && userName.toLowerCase().includes(q)) return true
+  if (c.characterNames?.some((n) => n.toLowerCase().includes(q))) return true
+  if (c.searchTags?.some((t) => t.toLowerCase().includes(q))) return true
+  return false
+}
+
+const filteredConversations = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return conversations.value
+  return conversations.value.filter((c) => matchesConversationSearch(c, q))
+})
+
+const displayedCount = computed(() => filteredConversations.value.length)
+
+const pageTitle = computed(() =>
+  listMode.value === 'characters'
+    ? t('home.charactersPageTitle')
+    : t('conversationList.pageTitle'),
+)
+
+const headCountLabel = computed(() => {
+  if (listMode.value === 'characters') return ''
+  if (searchQuery.value.trim()) {
+    return t('conversationList.countFiltered', {
+      n: displayedCount.value,
+      total: conversations.value.length,
+    })
+  }
+  return t('conversationList.count', { n: conversations.value.length })
+})
+
+function applyHomeSessionDefaults() {
+  listMode.value = readHomeListModeDefault()
+  characterSource.value = readHomeCharacterSourceDefault()
+  searchQuery.value = ''
+  characterSearchQuery.value = ''
+}
+
+function onCharacterPick(payload: { id: string; name: string }) {
+  charConvPickId.value = payload.id
+  charConvPickName.value = payload.name
+  charConvDialogOpen.value = true
+}
 
 interface CharacterPickerItem {
   id: string
@@ -142,6 +213,7 @@ async function createAndOpen() {
       }
     }
     closeCreateDialog()
+    markHomeReturnFromChat()
     await router.push({ name: 'chat', params: { conversationId: id } })
   } catch {
     createErrorText.value = t('conversationList.createFailed')
@@ -303,6 +375,7 @@ function collectOpeningGreetings(card: Record<string, unknown> | undefined): str
 }
 
 function open(id: string) {
+  markHomeReturnFromChat()
   void router.push({ name: 'chat', params: { conversationId: id } })
 }
 
@@ -387,8 +460,44 @@ async function submitDelete() {
   }
 }
 
-onMounted(() => {
+/** 从侧栏/其它路由进入首页：恢复设置默认 + 清空快查 */
+function enterHomeWithDefaults() {
+  applyHomeSessionDefaults()
   void load()
+}
+
+/** 从对话页返回：恢复设置默认视图并刷新列表（仍后台拉取 conversations） */
+function restoreHomeAfterChat() {
+  applyHomeSessionDefaults()
+  void load()
+}
+
+function setupHomeRouteHooks() {
+  return router.afterEach((to, from) => {
+    if (to.name !== 'home') return
+    if (from.name === 'chat') {
+      restoreHomeAfterChat()
+      return
+    }
+    if (from.name && from.name !== 'home') {
+      enterHomeWithDefaults()
+    }
+  })
+}
+
+let removeHomeRouteHook: (() => void) | undefined
+
+onMounted(() => {
+  removeHomeRouteHook = setupHomeRouteHooks()
+  if (consumeHomeReturnFromChat()) {
+    restoreHomeAfterChat()
+  } else {
+    enterHomeWithDefaults()
+  }
+})
+
+onUnmounted(() => {
+  removeHomeRouteHook?.()
 })
 </script>
 
@@ -396,13 +505,79 @@ onMounted(() => {
   <div class="list-view flex-grow-1 d-flex flex-column min-height-0">
     <div class="list-view__inner app-page-shell">
       <header class="list-head">
-        <h1 class="list-head__title">
-          {{ $t('conversationList.pageTitle') }}
-        </h1>
-        <span class="list-head__sub">
-          {{ $t('conversationList.count', { n: conversations.length }) }}
-        </span>
+        <div class="list-head__main">
+          <h1 class="list-head__title">
+            {{ pageTitle }}
+          </h1>
+          <span
+            v-if="headCountLabel"
+            class="list-head__sub"
+          >
+            {{ headCountLabel }}
+          </span>
+        </div>
+        <v-btn-toggle
+          v-model="listMode"
+          mandatory
+          divided
+          density="compact"
+          variant="outlined"
+          class="list-head__toggle"
+        >
+          <v-btn value="conversations" size="small">
+            {{ $t('home.listModeConversations') }}
+          </v-btn>
+          <v-btn value="characters" size="small">
+            {{ $t('home.listModeCharacters') }}
+          </v-btn>
+        </v-btn-toggle>
       </header>
+
+      <label
+        v-if="listMode === 'conversations' && !loading && conversations.length > 0"
+        class="list-search"
+      >
+        <v-icon size="16" class="list-search__icon">mdi-magnify</v-icon>
+        <input
+          v-model="searchQuery"
+          type="search"
+          class="list-search__input"
+          :placeholder="$t('conversationList.searchPlaceholder')"
+          :aria-label="$t('conversationList.searchPlaceholder')"
+        />
+        <button
+          v-if="searchQuery.trim()"
+          type="button"
+          class="list-search__clear"
+          :aria-label="$t('conversationList.searchClear')"
+          @click="searchQuery = ''"
+        >
+          <v-icon size="16">mdi-close</v-icon>
+        </button>
+      </label>
+
+      <label
+        v-if="listMode === 'characters'"
+        class="list-search"
+      >
+        <v-icon size="16" class="list-search__icon">mdi-magnify</v-icon>
+        <input
+          v-model="characterSearchQuery"
+          type="search"
+          class="list-search__input"
+          :placeholder="$t('home.characterSearchPlaceholder')"
+          :aria-label="$t('home.characterSearchPlaceholder')"
+        />
+        <button
+          v-if="characterSearchQuery.trim()"
+          type="button"
+          class="list-search__clear"
+          :aria-label="$t('conversationList.searchClear')"
+          @click="characterSearchQuery = ''"
+        >
+          <v-icon size="16">mdi-close</v-icon>
+        </button>
+      </label>
 
       <v-alert
         v-if="errorText"
@@ -414,8 +589,15 @@ onMounted(() => {
         {{ errorText }}
       </v-alert>
 
+      <HomeCharacterGrid
+        v-if="listMode === 'characters'"
+        :character-source="characterSource"
+        :search-query="characterSearchQuery"
+        @pick="onCharacterPick"
+      />
+
       <div
-        v-if="loading"
+        v-else-if="loading"
         class="text-body-2 text-medium-emphasis pa-4"
       >
         {{ $t('conversationList.loading') }}
@@ -448,7 +630,7 @@ onMounted(() => {
         </button>
 
         <article
-          v-for="c in conversations"
+          v-for="c in filteredConversations"
           :key="c.conversationId"
           class="conv-card"
           tabindex="0"
@@ -511,6 +693,13 @@ onMounted(() => {
         </article>
       </div>
     </div>
+
+    <CharacterConversationsDialog
+      v-model="charConvDialogOpen"
+      :character-id="charConvPickId"
+      :character-name="charConvPickName"
+      :conversations="conversations"
+    />
 
     <v-dialog
       v-model="createOpen"
@@ -808,18 +997,87 @@ onMounted(() => {
   min-height: 0;
 }
 
+.list-search {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2.25rem;
+  margin: 0 0.25rem 0.75rem;
+  padding: 0 0.75rem;
+  border-radius: 0.5rem;
+  border: 0.0625rem solid rgba(var(--v-theme-primary), 0.45);
+  background: rgba(var(--v-theme-on-surface), 0.04);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.list-search:focus-within {
+  border-color: rgb(var(--v-theme-primary));
+  box-shadow: 0 0 0 0.125rem rgba(var(--v-theme-primary), 0.12);
+}
+
+.list-search__icon {
+  flex-shrink: 0;
+  color: rgb(var(--v-theme-primary));
+  opacity: 0.85;
+}
+
+.list-search__input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: rgb(var(--v-theme-on-surface));
+  font: inherit;
+}
+
+.list-search__input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.list-search__clear {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  cursor: pointer;
+  border-radius: 0.25rem;
+}
+
+.list-search__clear:hover {
+  color: rgb(var(--v-theme-on-surface));
+}
+
 .min-height-0 {
   min-height: 0;
 }
 
 /* ========== List header ========== */
 .list-head {
+  flex: 0 0 auto;
   display: flex;
-  align-items: baseline;
+  align-items: flex-end;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
   margin: 0 0 1.5rem;
   padding: 0 0.25rem 0.875rem;
   border-bottom: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.06);
+}
+.list-head__main {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.list-head__toggle {
+  flex-shrink: 0;
 }
 .list-head__title {
   margin: 0;
@@ -839,6 +1097,7 @@ onMounted(() => {
 
 /* ========== Grid ========== */
 .conv-grid {
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
   gap: 0.75rem;

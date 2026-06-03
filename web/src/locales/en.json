@@ -10,7 +10,8 @@
     "lorebooks": "Lorebooks",
     "knowledgeBase": "Knowledge base",
     "characters": "Characters",
-    "settings": "Settings"
+    "settings": "Settings",
+    "closeModal": "Close"
   },
   "entryTransfer": {
     "copy": "Duplicate",
@@ -328,6 +329,15 @@
     "themeConfirm": "Confirm",
     "themeCancel": "Cancel",
     "themeResetPrimary": "Reset to default",
+    "homeSection": "Home",
+    "homeSectionHint": "Default view and character grid scope when you open home or return from a chat. Toggles and search on home are not saved; each return to home restores these defaults and clears search.",
+    "homeListModeDefault": "Default view",
+    "homeListModeConversations": "Conversations",
+    "homeListModeCharacters": "Character grid",
+    "homeCharacterSourceDefault": "Character grid scope",
+    "homeCharacterSourceUsed": "Characters used in chats only",
+    "homeCharacterSourceAll": "Full character library",
+    "homeCharacterSourceHint": "Applies only to the home “Characters” view; use the sidebar for the full library.",
     "closeModal": "Close",
     "accountSection": "Account & security",
     "accountChangeAvatar": "Change avatar (PNG)",
@@ -531,6 +541,9 @@
   "conversationList": {
     "pageTitle": "Conversations",
     "count": "{n} conversations",
+    "countFiltered": "Showing {n} of {total}",
+    "searchPlaceholder": "Search title, character names, or tags",
+    "searchClear": "Clear search",
     "loading": "Loading…",
     "newChat": "New chat",
     "cardMenu": "More actions",
@@ -561,6 +574,22 @@
     "startChat": "Start chat",
     "pickCharacterDialogTitle": "Pick a character card",
     "loadingCharacters": "Loading character library…"
+  },
+  "home": {
+    "listModeConversations": "Chats",
+    "listModeCharacters": "Characters",
+    "charactersPageTitle": "Characters",
+    "characterSearchPlaceholder": "Search name, summary, or tags",
+    "charactersLoading": "Loading characters…",
+    "charactersLoadFailed": "Failed to load characters",
+    "charactersEmpty": "No matching characters",
+    "charactersLoaded": "Loaded {n} / {total}",
+    "characterSourceUsedHint": "Used in chats only",
+    "characterSourceAllHint": "Full library"
+  },
+  "characterConversations": {
+    "dialogTitle": "Chats with “{name}”",
+    "empty": "No conversations bound to this character"
   },
   "chatConversation": {
     "loading": "Loading conversation…",

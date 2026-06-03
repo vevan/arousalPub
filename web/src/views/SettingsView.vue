@@ -30,6 +30,14 @@ import {
   CHUNK_TURNS_PER_FILE_MAX,
   CHUNK_TURNS_PER_FILE_MIN,
 } from '@/utils/chunk-settings'
+import {
+  readHomeCharacterSourceDefault,
+  readHomeListModeDefault,
+  writeHomeCharacterSourceDefault,
+  writeHomeListModeDefault,
+  type HomeCharacterSource,
+  type HomeListMode,
+} from '@/utils/home-preferences'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -75,6 +83,41 @@ const {
   composerEnterMode,
   chunkTurnsPerFile,
 } = storeToRefs(prefStore)
+
+const homeListModeDefault = ref<HomeListMode>(readHomeListModeDefault())
+const homeCharacterSourceDefault = ref<HomeCharacterSource>(
+  readHomeCharacterSourceDefault(),
+)
+
+watch(homeListModeDefault, (v) => {
+  writeHomeListModeDefault(v)
+})
+
+watch(homeCharacterSourceDefault, (v) => {
+  writeHomeCharacterSourceDefault(v)
+})
+
+const homeListModeItems = computed(() => [
+  {
+    value: 'conversations' as const,
+    title: t('settings.homeListModeConversations'),
+  },
+  {
+    value: 'characters' as const,
+    title: t('settings.homeListModeCharacters'),
+  },
+])
+
+const homeCharacterSourceItems = computed(() => [
+  {
+    value: 'usedInChats' as const,
+    title: t('settings.homeCharacterSourceUsed'),
+  },
+  {
+    value: 'allLibrary' as const,
+    title: t('settings.homeCharacterSourceAll'),
+  },
+])
 
 const composerEnterModeItems = computed(() => [
   {
@@ -1063,6 +1106,40 @@ onMounted(() => {
             <p class="text-caption text-medium-emphasis mt-2 mb-0">
               {{ $t('settings.themePrimaryHint') }}
             </p>
+
+            <v-divider class="my-6" />
+
+            <h2 class="text-subtitle-1 font-weight-medium mb-2">
+              {{ $t('settings.homeSection') }}
+            </h2>
+            <p class="text-body-2 text-medium-emphasis mb-4">
+              {{ $t('settings.homeSectionHint') }}
+            </p>
+
+            <v-select
+              v-model="homeListModeDefault"
+              :items="homeListModeItems"
+              item-title="title"
+              item-value="value"
+              :label="$t('settings.homeListModeDefault')"
+              density="comfortable"
+              variant="outlined"
+              class="mb-4"
+              hide-details="auto"
+            />
+
+            <v-select
+              v-model="homeCharacterSourceDefault"
+              :items="homeCharacterSourceItems"
+              item-title="title"
+              item-value="value"
+              :label="$t('settings.homeCharacterSourceDefault')"
+              :hint="$t('settings.homeCharacterSourceHint')"
+              persistent-hint
+              density="comfortable"
+              variant="outlined"
+              hide-details="auto"
+            />
           </section>
         </div>
       </div>

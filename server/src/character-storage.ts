@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promi
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getCharactersDir } from './config.js'
+import type { ChatListEntry, ConversationIndex } from './chat-storage.js'
 import { readChatList, resolvedCharacterIds } from './chat-storage.js'
 import {
   embedCharaInPng,
@@ -522,7 +523,115 @@ export async function deleteCharacterFile(id: string): Promise<boolean> {
   }
   if (!removed) return false
   await removeIndexEntry(id)
+  const { refreshChatListEntriesForCharacter } = await import(
+    './chat-storage.js'
+  )
+  await refreshChatListEntriesForCharacter(id)
   return true
+}
+
+const DELETED_CHARACTER_LABEL = '已删除'
+
+export interface CharacterIndexMeta {
+  name: string
+  tags: string[]
+}
+
+export async function getCharacterIndexMetaMap(): Promise<
+  Map<string, CharacterIndexMeta>
+> {
+  const idx = await loadOrRebuildIndex()
+  const m = new Map<string, CharacterIndexMeta>()
+  for (const e of idx.entries) {
+    m.set(e.id, { name: e.name, tags: e.tags })
+  }
+  return m
+}
+
+function bindingIdsForEnrich(
+  entry: ChatListEntry,
+  source?: Pick<
+    ConversationIndex,
+    'userName' | 'userCharacterId' | 'characterIds' | 'characterId'
+  >,
+): string[] {
+  if (source) return resolvedCharacterIds(source)
+  return resolvedCharacterIds({
+    characterIds: entry.characterIds,
+    characterId: entry.characterId ?? null,
+  })
+}
+
+/** 列表项是否缺少快查冗余（用于 readChatList 迁移） */
+export function chatListEntryNeedsEnrich(entry: ChatListEntry): boolean {
+  const ids = bindingIdsForEnrich(entry)
+  const userCid =
+    typeof entry.userCharacterId === 'string' && entry.userCharacterId.trim()
+      ? entry.userCharacterId.trim()
+      : null
+  if (ids.length === 0 && !userCid) return false
+  if (ids.length > 0) {
+    const names = entry.characterNames
+    if (!Array.isArray(names) || names.length !== ids.length) return true
+  }
+  const hasTagSources = ids.length > 0 || !!userCid
+  if (hasTagSources && !Array.isArray(entry.searchTags)) return true
+  return false
+}
+
+/**
+ * 用 characters/index.json 填充列表快查字段（名、合并 tags）。
+ * `source` 为会话根 index 时可带上最新 userName。
+ */
+export async function enrichChatListEntry(
+  entry: ChatListEntry,
+  source?: Pick<
+    ConversationIndex,
+    'userName' | 'userCharacterId' | 'characterIds' | 'characterId'
+  >,
+): Promise<ChatListEntry> {
+  const map = await getCharacterIndexMetaMap()
+  const ids = bindingIdsForEnrich(entry, source)
+  const userCid =
+    (typeof source?.userCharacterId === 'string' &&
+      source.userCharacterId.trim()) ||
+    (typeof entry.userCharacterId === 'string' && entry.userCharacterId.trim()
+      ? entry.userCharacterId.trim()
+      : '')
+  const userNameRaw =
+    (typeof source?.userName === 'string' && source.userName.trim()) ||
+    (typeof entry.userName === 'string' && entry.userName.trim()
+      ? entry.userName.trim()
+      : '')
+  const characterNames =
+    ids.length > 0
+      ? ids.map((id) => map.get(id)?.name ?? DELETED_CHARACTER_LABEL)
+      : undefined
+  const tagSet = new Set<string>()
+  for (const id of ids) {
+    const tags = map.get(id)?.tags
+    if (!tags) continue
+    for (const t of tags) {
+      const s = typeof t === 'string' ? t.trim() : ''
+      if (s) tagSet.add(s)
+    }
+  }
+  if (userCid) {
+    const tags = map.get(userCid)?.tags
+    if (tags) {
+      for (const t of tags) {
+        const s = typeof t === 'string' ? t.trim() : ''
+        if (s) tagSet.add(s)
+      }
+    }
+  }
+  const searchTags = tagSet.size > 0 ? [...tagSet] : undefined
+  return {
+    ...entry,
+    ...(userNameRaw ? { userName: userNameRaw } : {}),
+    ...(characterNames?.length ? { characterNames } : {}),
+    ...(searchTags ? { searchTags } : {}),
+  }
 }
 
 /**
@@ -550,6 +659,10 @@ export async function updateCharacterDocument(
     updatedAt: nowIso(),
   }
   await upsertIndexEntry(next)
+  const { refreshChatListEntriesForCharacter } = await import(
+    './chat-storage.js'
+  )
+  await refreshChatListEntriesForCharacter(id)
   return next
 }
 

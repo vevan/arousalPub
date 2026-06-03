@@ -1,0 +1,16 @@
+services:
+  arousalpub:
+    build: .
+    image: arousalpub:local
+    pull_policy: build
+    ports:
+      - "${AROUSALPUB_PORT:-6633}:6633"
+    environment:
+      NODE_ENV: production
+      SERVE_STATIC: "1"
+      HOST: "0.0.0.0"
+      PORT: "6633"
+      DATA_DIR: /data
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

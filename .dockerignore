@@ -1,0 +1,31 @@
+# Dependencies & build output (rebuilt inside the image)
+node_modules
+web/node_modules
+server/node_modules
+web/dist
+server/dist
+
+# Runtime data & local config (mounted as volume)
+data
+config.json
+
+# Dev / scratch
+.git
+.tmp
+.env
+.env.*
+!.env.example
+
+# IDE & OS
+.idea
+.vscode
+.DS_Store
+Thumbs.db
+
+# Design scratch
+_design
+
+# Logs
+*.log
+logs
+coverage

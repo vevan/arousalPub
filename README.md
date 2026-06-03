@@ -6,7 +6,7 @@
 
 ## 环境要求
 
-- **Node.js 20 或更高**（[nodejs.org](https://nodejs.org/) 安装 LTS 即可）
+- **Node.js 22 或更高**（[nodejs.org](https://nodejs.org/) 安装 LTS 即可；与 `vue-i18n` 等依赖要求一致）
 - 现代浏览器（Chrome、Edge、Firefox 等）
 - Windows 可直接双击 `start.bat`；macOS / Linux 使用 `start.sh`
 
@@ -45,6 +45,7 @@ http://localhost:6633/
 | 方式 | 适用 |
 |------|------|
 | **`start.bat` / `start.sh`** | 日常使用（推荐） |
+| **Docker** | NAS / Linux 服务器等容器环境 |
 | **`npm run dev`** | 开发者改代码时使用（双端口 + 热更新） |
 
 ### 启动倒计时
@@ -56,6 +57,54 @@ http://localhost:6633/
 - **按空格**：跳过倒计时，立即启动（不重新 build）。
 
 若缺少 `web/dist` 或 `server/dist`，或当前 git 版本与上次编译记录不一致（例如 `git pull` 更新后），会自动编译。开发者本地改代码未提交时，倒计时期间按 **B** 手动重新编译即可。
+
+---
+
+## Docker 部署
+
+需要已安装 [Docker](https://docs.docker.com/get-docker/) 与 Docker Compose。
+
+### 构建并启动
+
+```bash
+docker compose up -d --build
+```
+
+首次或代码更新后请带 **`--build`**。若本地还没有镜像，Compose 会自行构建，**不会**从 Docker Hub 拉取 `arousalpub:local`（该 tag 仅用于本地）。
+
+浏览器访问 **`http://127.0.0.1:6633/`**（**不是** dev 的 `webPort` 6699）。改端口：`AROUSALPUB_PORT=8080 docker compose up -d --build`
+
+### 浏览器打不开？
+
+1. 确认地址为 **`http://127.0.0.1:6633/`**（带 `http://`，勿用 https；勿用 6699）。
+2. 运行 **`docker compose ps`**，应看到 `0.0.0.0:6633->6633/tcp` 且状态为 **Up**（healthy）。
+3. 若本机 **`start.bat` 已在跑**，可能占用 6633：先关掉 bat 窗口，再 `docker compose up -d`。
+4. 查看日志：**`docker compose logs -f`**，应有 `static web:` 与 `listening on`。
+5. 快速自检：**`curl http://127.0.0.1:6633/health`** 应返回 `{"ok":true}`。
+
+### 数据持久化
+
+默认将项目内的 **`./data`** 挂载到容器内 `/data`（对话、角色、API 密钥等），与 `start.bat` 使用本地 `data/` 时路径一致，便于直接备份或 Syncthing 同步。
+
+**请勿**让多个容器实例同时读写同一数据目录。
+
+### 常用命令
+
+| 命令 | 说明 |
+|------|------|
+| `docker compose logs -f` | 查看日志 |
+| `docker compose down` | 停止并移除容器 |
+| `docker compose up -d --build` | 更新镜像后重建并启动 |
+
+镜像内已预编译前端与后端，**不会**在容器启动时执行 `git pull` 或本地 rebuild。升级版本请重新 `docker compose up -d --build` 或拉取新镜像。
+
+可选环境变量（在 `docker-compose.yml` 的 `environment` 中设置）：
+
+| 变量 | 说明 |
+|------|------|
+| `JWT_SECRET` | JWT 密钥（≥16 字符）；未设时首次启动写入 `/data/.jwt-secret` |
+| `DATA_DIR` | 数据目录，默认 `/data` |
+| `PORT` | 监听端口，默认 `6633` |
 
 ---
 
@@ -127,7 +176,7 @@ API 密钥保存在本机数据目录，不会写入浏览器公开存储。
 
 **改代码后界面没变化**
 
-- 重新 `start.bat`，倒计时期间按 **`R`** 强制重新编译。
+- 重新 `start.bat`，倒计时期间按 **`B`** 强制重新编译。
 
 **忘记密码**
 

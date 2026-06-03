@@ -1,0 +1,2 @@
+# Shell scripts must use LF for Linux containers (avoid exec … no such file)
+*.sh text eol=lf

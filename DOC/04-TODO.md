@@ -29,6 +29,7 @@
 - [ ] **对话记忆（§14）收尾**：对话设置 UI（N / TopK）、索引增量与 reindex 完善、assemble 侧 memory/history token 预算裁切（§14.4 规划项）
 - [x] **组装管线 §14.9 主干**：`runMemoryPipeline`、`boundMemory`（`<memory>` system）、`boundRecentHistory` / `history` 分组（**user/assistant 链**，非 `<history>` XML）、`buildScanText` + lore 递归（`lorebook-resolve`）
 - [x] **宏管线 §15**：server `prompt-macros/handlers`、仅服务端展宏、`POST /api/prompts/assemble-preview`、opening 服务端展宏、删除 web `prompt-macros`
+- [ ] **ST 宏扩展（备忘，未排期）**：可行性分级见 `DOC/14-st-macros-porting.md`
 - [ ] 知识库 RAG：向量切片、检索、重排序 — **在 §13 框架之上扩展**（与 §14 turn 表分离）
 - [ ] RAG/模型调用日志（耗时、token、命中明细）— **部分字段在 turn `runtime` 等，未达需求文档 §4 全量**
 

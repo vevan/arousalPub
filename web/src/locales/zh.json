@@ -826,6 +826,8 @@
       "prompts_unavailable": "提示词数据不可用",
       "prompts_validation_failed": "提示词校验失败",
       "prompts_write_failed": "写入提示词失败",
+      "prompts_seed_put_rejected": "禁止通过接口写入种子预设；提示词库仅在创建用户时初始化",
+      "prompts_not_initialized": "提示词库未初始化，请重新登录或联系管理员",
       "receives_content_required": "receives.content 须为非空字符串",
       "receives_item_id_content_required": "receives 项须含 id、content 字符串",
       "receives_item_invalid": "receives 项格式错误",

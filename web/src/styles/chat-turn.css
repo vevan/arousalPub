@@ -853,15 +853,22 @@
   gap           : 0.5rem;
 }
 
+.composer__field {
+  display: grid;
+}
+
 .composer__textarea {
+  grid-area    : 1 / 1;
+  display      : block;
   width        : 100%;
+  box-sizing   : border-box;
   background   : rgb(var(--v-theme-surface-light));
   border       : 0.0625rem solid rgba(var(--v-theme-on-surface), 0.10);
   border-radius: var(--radius);
   color        : rgb(var(--v-theme-on-surface));
   font         : 400 1em var(--font-ui);
   line-height  : 1.55;
-  padding      : 0.75rem 0.875rem;
+  padding      : 0.75rem 3.75rem 0.75rem 0.875rem;
   min-height   : 5rem;
   max-height   : 20rem;
   resize       : vertical;
@@ -883,9 +890,10 @@
 }
 
 .composer__tools {
-  display    : flex;
-  align-items: center;
-  gap        : 0.75rem;
+  display       : flex;
+  flex-direction: column;
+  align-items   : stretch;
+  gap           : 0.5rem;
 }
 
 .composer__hint {
@@ -903,14 +911,46 @@
 }
 
 .composer__actions {
-  display    : flex;
-  align-items: center;
-  gap        : 0.5rem;
-  flex-shrink: 0;
+  display        : flex;
+  align-items    : center;
+  justify-content: flex-end;
+  gap            : 0.5rem;
+  flex-shrink    : 0;
 }
 
-.composer__preview-btn,
 .composer__send-btn {
+  grid-area      : 1 / 1;
+  justify-self   : end;
+  align-self     : center;
+  margin-right   : 1rem;
+  width          : 2.75rem !important;
+  height         : 2.75rem !important;
+  min-width      : 2.75rem !important;
+  border-radius  : 50% !important;
+  flex-shrink    : 0;
+  z-index        : 1;
+  pointer-events : auto;
+}
+
+.composer__send-btn.v-btn--disabled {
+  opacity: 1 !important;
+  background-color: color-mix(
+    in srgb,
+    rgb(var(--v-theme-primary)) 22%,
+    rgb(var(--v-theme-surface-light)) 78%
+  ) !important;
+  color: color-mix(
+    in srgb,
+    rgb(var(--v-theme-primary)) 38%,
+    rgba(var(--v-theme-on-surface), 0.35) 62%
+  ) !important;
+}
+
+.composer__send-btn.v-btn--disabled .v-btn__overlay {
+  opacity: 0 !important;
+}
+
+.composer__preview-btn {
   text-transform: none !important;
   letter-spacing: 0.01em !important;
   font-weight   : 500 !important;

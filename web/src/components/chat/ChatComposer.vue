@@ -31,13 +31,27 @@ const { send, onComposerKeydown, openAssemblePreview } = props.session
         {{ errorText }}
       </v-alert>
       <div class="composer">
-        <textarea
-          v-model="userInput"
-          class="composer__textarea"
-          rows="3"
-          :placeholder="$t('chat.messageLabel')"
-          @keydown="onComposerKeydown"
-        />
+        <div class="composer__field">
+          <textarea
+            v-model="userInput"
+            class="composer__textarea"
+            rows="3"
+            :placeholder="$t('chat.messageLabel')"
+            @keydown="onComposerKeydown"
+          />
+          <v-btn
+            icon
+            color="primary"
+            variant="flat"
+            :loading="loading"
+            :disabled="!canSend"
+            class="composer__send-btn"
+            :aria-label="$t('chat.send')"
+            @click="send"
+          >
+            <v-icon size="22">mdi-send</v-icon>
+          </v-btn>
+        </div>
         <div
           class="composer__tools"
           data-plugin-slot="composer-toolbar"
@@ -58,7 +72,8 @@ const { send, onComposerKeydown, openAssemblePreview } = props.session
             <div class="plugin-slots composer__plugin-slots">
               <PluginSlotMount slot-name="composer-toolbar" />
             </div>
-            <v-btn              variant="outlined"
+            <v-btn
+              variant="outlined"
               size="small"
               density="comfortable"
               :loading="assemblePreviewLoading"
@@ -69,19 +84,6 @@ const { send, onComposerKeydown, openAssemblePreview } = props.session
             >
               <v-icon size="16" start>mdi-text-search</v-icon>
               {{ $t('chat.previewAssemble') }}
-            </v-btn>
-            <v-btn
-              color="primary"
-              variant="flat"
-              size="small"
-              density="comfortable"
-              :loading="loading"
-              :disabled="!canSend"
-              class="composer__send-btn"
-              @click="send"
-            >
-              <v-icon size="16" start>mdi-send</v-icon>
-              {{ $t('chat.send') }}
             </v-btn>
           </div>
         </div>

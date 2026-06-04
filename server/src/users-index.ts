@@ -14,6 +14,7 @@ import {
   getUserDataDir,
   getUsersIndexPath,
 } from './config.js'
+import { seedDefaultPromptsForUser } from './prompts-default-seed.js'
 import {
   allocateUserId,
   isValidShortId,
@@ -137,6 +138,7 @@ export async function ensureUsersRegistry(): Promise<UsersIndexDocument> {
     await writeUsersIndex(doc)
     ensureDataSkeletonForUser(RESERVED_USER_ID)
     seedDefaultAvatar(RESERVED_USER_ID)
+    await seedDefaultPromptsForUser(RESERVED_USER_ID)
     return doc
   }
   doc = await readUsersIndex()
@@ -158,6 +160,7 @@ export async function ensureUsersRegistry(): Promise<UsersIndexDocument> {
   if (!existsSync(getUserAvatarPath(RESERVED_USER_ID))) {
     seedDefaultAvatar(RESERVED_USER_ID)
   }
+  await seedDefaultPromptsForUser(RESERVED_USER_ID)
   return doc
 }
 
@@ -225,6 +228,7 @@ export async function registerUser(body: {
   await writeUsersIndex(doc)
   ensureDataSkeletonForUser(id)
   seedDefaultAvatar(id)
+  await seedDefaultPromptsForUser(id)
   return entry
 }
 

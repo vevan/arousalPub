@@ -32,11 +32,11 @@ export interface PromptsDocument {
   presets: unknown[]
 }
 
-function presetFilePath(presetId: string): string {
+function presetFilePath(presetId: string, userId?: string): string {
   if (!PRESET_ID_RE.test(presetId)) {
     throw new Error(`预设 id 非法: ${presetId}`)
   }
-  return path.join(getPromptsDir(), `${presetId}.json`)
+  return path.join(getPromptsDir(userId), `${presetId}.json`)
 }
 
 function indexEntryFromPreset(p: Record<string, unknown>): PromptPresetIndexEntry {
@@ -248,10 +248,13 @@ export async function readPromptsDocument(): Promise<PromptsDocument | null> {
   }
 }
 
-export async function writePromptsDocument(data: PromptsDocument): Promise<void> {
-  const dir = getPromptsDir()
+export async function writePromptsDocumentForUser(
+  userId: string,
+  data: PromptsDocument,
+): Promise<void> {
+  const dir = getPromptsDir(userId)
   await mkdir(dir, { recursive: true })
-  await mkdir(getUserDataDir(getCurrentUserId()), { recursive: true })
+  await mkdir(getUserDataDir(userId), { recursive: true })
 
   const savedAt = data.savedAt || new Date().toISOString()
   const indexEntries: PromptPresetIndexEntry[] = []
@@ -267,7 +270,7 @@ export async function writePromptsDocument(data: PromptsDocument): Promise<void>
     keepIds.add(id)
     const body = { ...po, id, updatedAt: savedAt }
     await writeFile(
-      presetFilePath(id),
+      presetFilePath(id, userId),
       `${JSON.stringify(body, null, 2)}\n`,
       'utf8',
     )
@@ -281,7 +284,7 @@ export async function writePromptsDocument(data: PromptsDocument): Promise<void>
     presets: indexEntries,
   }
   await writeFile(
-    getPromptsIndexPath(),
+    getPromptsIndexPath(userId),
     `${JSON.stringify(indexDoc, null, 2)}\n`,
     'utf8',
   )
@@ -294,6 +297,10 @@ export async function writePromptsDocument(data: PromptsDocument): Promise<void>
       await rm(path.join(dir, name), { force: true })
     }
   }
+}
+
+export async function writePromptsDocument(data: PromptsDocument): Promise<void> {
+  return writePromptsDocumentForUser(getCurrentUserId(), data)
 }
 
 export function assertValidPromptsPayload(body: unknown): {

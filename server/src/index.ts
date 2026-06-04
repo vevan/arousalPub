@@ -73,6 +73,7 @@ import {
   writePromptsDocument,
   type PromptsDocument,
 } from './prompts-file.js'
+import { isPromptsSeedPut } from './prompts-default-seed.js'
 import {
   assertValidLorebooksPayload,
   buildDefaultLorebook,
@@ -1793,6 +1794,11 @@ app.put('/api/prompts', async (request, reply) => {
   } catch (e) {
     return reply.status(400).send({
       error: ApiErrorCodes.prompts_validation_failed,
+    })
+  }
+  if (isPromptsSeedPut(validated)) {
+    return reply.status(400).send({
+      error: ApiErrorCodes.prompts_seed_put_rejected,
     })
   }
   const savedAt = new Date().toISOString()

@@ -565,36 +565,6 @@ export const usePromptsStore = defineStore('prompts', () => {
     if (typeof j.savedAt === 'string') lastSavedAt.value = j.savedAt
   }
 
-  async function flushSaveFull(): Promise<void> {
-    saving.value = true
-    lastError.value = null
-    const bodies = Object.values(presetBodies.value)
-    if (bodies.length === 0) {
-      setPresetBody(normalizePreset(buildDefaultPreset()))
-    }
-    try {
-      const res = await fetch('/api/prompts', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          activePresetId: activePresetId.value,
-          presets: Object.values(presetBodies.value),
-        }),
-      })
-      if (!res.ok) {
-        const txt = await res.text()
-        throw new Error(`PUT /api/prompts ${res.status}: ${txt.slice(0, 200)}`)
-      }
-      const j = (await res.json()) as { savedAt?: string }
-      if (typeof j.savedAt === 'string') lastSavedAt.value = j.savedAt
-    } catch (e) {
-      lastError.value = e instanceof Error ? e.message : String(e)
-      throw e
-    } finally {
-      saving.value = false
-    }
-  }
-
   async function flushSave(): Promise<void> {
     const body = presetBodies.value[activePresetId.value]
     if (!body) return
@@ -665,19 +635,7 @@ export const usePromptsStore = defineStore('prompts', () => {
           return
         }
         loaded.value = true
-        const seed = normalizePreset(buildDefaultPreset())
-        setPresetBody(seed)
-        activePresetId.value = seed.id
-        await flushSaveFull()
-        const again = await fetch('/api/prompts')
-        if (again.ok) {
-          const j: unknown = await again.json()
-          const idx = normalizeIndexResponse(j as PromptsIndexResponse)
-          if (idx) {
-            indexEntries.value = idx.presets
-            activePresetId.value = idx.activePresetId
-          }
-        }
+        lastError.value = 'prompts_not_initialized'
       } catch (e) {
         lastError.value = e instanceof Error ? e.message : String(e)
       } finally {

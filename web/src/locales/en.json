@@ -826,6 +826,8 @@
       "prompts_unavailable": "prompts unavailable",
       "prompts_validation_failed": "prompts validation failed",
       "prompts_write_failed": "prompts write failed",
+      "prompts_seed_put_rejected": "Seed preset PUT is not allowed; prompts are initialized only when a user is created",
+      "prompts_not_initialized": "Prompt library is not initialized; sign in again or contact an administrator",
       "receives_content_required": "receives content required",
       "receives_item_id_content_required": "receives item id content required",
       "receives_item_invalid": "receives item invalid",

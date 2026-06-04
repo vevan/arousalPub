@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { characterImageUrl } from '@/utils/authenticated-media-url'
 import type { HomeCharacterSource } from '@/utils/home-preferences'
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
@@ -69,16 +69,17 @@ watch(
   { immediate: true },
 )
 
-watch([filter, searchDebounced], () => {
-  void reloadFromStart()
-})
-
 watch(
   () => props.characterSource,
   () => {
     applySourceDefaults()
   },
+  { immediate: true },
 )
+
+watch([filter, searchDebounced], () => {
+  void reloadFromStart()
+}, { immediate: true })
 
 function buildQuery(offset: number) {
   const u = new URL('/api/characters', window.location.origin)
@@ -123,6 +124,10 @@ async function reloadFromStart() {
   total.value = 0
   hasMore.value = true
   await fetchSlice(0, false)
+  await setupObserverAfterReload()
+}
+
+async function setupObserverAfterReload() {
   await nextTick()
   setupObserver()
 }
@@ -177,11 +182,6 @@ const sourceHint = computed(() =>
     ? t('home.characterSourceUsedHint')
     : t('home.characterSourceAllHint'),
 )
-
-onMounted(() => {
-  applySourceDefaults()
-  void reloadFromStart()
-})
 
 onUnmounted(() => {
   io?.disconnect()

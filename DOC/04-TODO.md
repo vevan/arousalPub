@@ -4,16 +4,16 @@
 
 ## P0（当前优先）
 
-### API Key 服务端隔离（最高优先级 — 待实施）
+### API Key 服务端隔离（已完成）
 
-> 需求定案：**`DOC/13-api-key-server-side-isolation.md`**（2026-06-02）。实施排期：下一迭代。
+> 定案与验收：**`DOC/13-api-key-server-side-isolation.md`**（2026-06-02 定案，2026-06 落地）。
 
-- [ ] **GET 脱敏**：`/api/api-keys`、`/api/settings`、`/api/user-preferences`（embedding）不返回明文 key
-- [ ] **PUT merge 写**：api-keys / settings / embedding PATCH 省略 key 时保留磁盘
-- [ ] **`api-credential-resolve`**：`POST /api/chat`、`POST /api/models` 服务端解析 `apiPresetId` / `apiKeyId`，body 不要求 `apiKey`
-- [ ] **`POST /api/api-keys/:id/reveal`**：校验登录密码后一次性返回 key
-- [ ] **前端隔离**：`apiKeys` / `connection` / `chat-api` / `useChatSession` / `ConnectionSettingsCard` / Embedding 设置
-- [ ] **验收与文档**：按 `DOC/13` §6 勾选；同步 `DOC/03` §4
+- [x] **GET 脱敏**：`/api/api-keys`、`/api/settings`、`/api/user-preferences`（embedding）不返回明文 key
+- [x] **PUT merge 写**：api-keys / settings / embedding PATCH 省略 key 时保留磁盘
+- [x] **`api-credential-resolve`**：`POST /api/chat`、`POST /api/models` 服务端解析 `apiPresetId` / `apiKeyId`，body 不要求 `apiKey`
+- [x] **`POST /api/api-keys/:id/reveal`**：校验登录密码后一次性返回 key
+- [x] **前端隔离**：`apiKeys` / `connection` / `chat-api` / `useChatSession` / `ConnectionSettingsCard` / Embedding 设置
+- [x] **验收与文档**：`DOC/13` §6、`DOC/03` §4、`cursor.md`
 
 - [x] 初始化后端 Fastify 项目结构（`server/`）
 - [x] 初始化前端 Vue3 + Pinia + Vuetify 项目结构（`web/`）
@@ -22,7 +22,7 @@
 - [ ] 建立 `feature_bindings` 集合与 CRUD 接口 — **未按文档 §1.2 独立集合实现**
 - [x] 对话发送与 SSE 流式返回（`/api/chat` 等，见 `server/src/index.ts`）
 - [ ] 消息树结构（parentId）与「从此分支继续」— **chunk/分支目录部分按 `DOC/03` 设计，产品级分支 UI 待对齐**
-- [ ] **Chunk 链按 100 轮切分与全链读取** — 方案见 **`DOC/08-chunk-chain-implementation.md`**（S1–S7：滚动 tail、`readAllTurns`、messages/memory/PATCH/迁移）
+- [x] **Chunk 链按轮数切分与全链读取** — **`DOC/08`** 已实现（含 head/tail 修复 API、删空 tail 回退、单测）
 - [x] 角色管理（文件库）：主存 **`data/{userId}/characters/{uuid}.png`**（内嵌 ST `chara`）；遗留 **`{uuid}.json`** 首次读取时迁移为 PNG；列表/筛选/导入/表单新建/删除/导出 API + Web **`/characters`**（见 `DOC/03` §12）
 - [x] Prompt 预设：服务端 `data/{userId}/prompts/`（`index.json` + 各预设 JSON）+ `GET/PUT /api/prompts`；前端 **`/prompts`**；组装仅服务端（`assemble-preview` / `assemble-messages` API）
 - [x] 世界书框架：`lorebooks/` 分文件存储、`GET/PUT /api/lorebooks`、Web 编辑与对话 `lorebookIds` 绑定、关键字/恒定注入（见 `DOC/03` §13）

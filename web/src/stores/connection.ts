@@ -43,6 +43,8 @@ export interface ApiPreset extends ApiSettingsSnapshot {
   linkedPromptPresetId?: string | null
   /** 引用的 API Key 别名条目 id；null/缺省表示直接使用 apiKey 字段 */
   apiKeyId?: string | null
+  /** GET /api/settings 返回：服务端是否已配置密钥 */
+  keyConfigured?: boolean
 }
 
 export interface ApiSettingsDocument {
@@ -110,6 +112,7 @@ function normalizePreset(p: ApiPreset): ApiPreset {
       typeof p.requestReasoningChain === 'boolean'
         ? p.requestReasoningChain
         : false,
+    keyConfigured: Boolean(p.keyConfigured),
   }
 }
 
@@ -146,8 +149,23 @@ export const useConnectionStore = defineStore('connection', () => {
    * - 空：使用临时直接键入的 apiKey（直存预设）
    */
   const apiKeyId = ref<string | null>(null)
+  /** 当前表单 apiKey 相对服务端的改动；undefined = 未改 */
+  const apiKeyDraftDirty = ref(false)
 
   const lastSavedAt = ref<string | null>(null)
+
+  const isApiKeyConfigured = computed(() => {
+    if (apiKeyDraftDirty.value && apiKey.value.trim()) return true
+    const id = activePresetId.value
+    const p = id ? presets.value.find((x) => x.id === id) : null
+    if (p?.keyConfigured) return true
+    if (apiKeyId.value) {
+      const keychain = useApiKeysStore()
+      const entry = keychain.findById(apiKeyId.value)
+      if (entry?.keyConfigured) return true
+    }
+    return false
+  })
 
   const presetSelectItems = computed(() =>
     presets.value.map((p) => ({
@@ -244,29 +262,10 @@ export const useConnectionStore = defineStore('connection', () => {
   }
 
   function applyPresetToForm(p: ApiPreset) {
-    applySnapshot(p)
+    applySnapshot({ ...p, apiKey: '' })
+    apiKeyDraftDirty.value = false
     linkedPromptPresetId.value = p.linkedPromptPresetId ?? null
-    const kid = p.apiKeyId ?? null
-    apiKeyId.value = kid
-    if (kid) {
-      const keychain = useApiKeysStore()
-      const entry = keychain.findById(kid)
-      if (entry) {
-        apiKey.value = entry.key
-      } else if (keychain.loaded) {
-        // keychain 已加载但找不到 id：把引用清空，回退到原 apiKey 字段
-        apiKeyId.value = null
-      } else {
-        // keychain 还没加载：先用现成的 apiKey 字段顶着，加载完再 hydrate
-        void keychain.loadFromServer().then(() => {
-          if (apiKeyId.value === kid) {
-            const e2 = keychain.findById(kid)
-            if (e2) apiKey.value = e2.key
-            else apiKeyId.value = null
-          }
-        })
-      }
-    }
+    apiKeyId.value = p.apiKeyId ?? null
   }
 
   /** 将当前表单写回当前激活的预设条目 */
@@ -279,24 +278,23 @@ export const useConnectionStore = defineStore('connection', () => {
       typeof apiKeyId.value === 'string' && apiKeyId.value
         ? apiKeyId.value
         : null
-    if (kid) {
-      const keychain = useApiKeysStore()
-      if (keychain.findById(kid)) {
-        keychain.updateKey(kid, { key: apiKey.value })
-      }
-    }
     const snap = snapshot()
-    presets.value[i] = {
+    const prev = presets.value[i]
+    const nextPreset: ApiPreset = {
       id,
       ...snap,
-      apiKey: kid ? '' : snap.apiKey,
+      apiKey: '',
       linkedPromptPresetId:
         linkedPromptPresetId.value == null ||
         linkedPromptPresetId.value === ''
           ? null
           : String(linkedPromptPresetId.value),
       apiKeyId: kid,
+      keyConfigured: apiKeyDraftDirty.value
+        ? snap.apiKey.trim().length > 0
+        : (prev.keyConfigured ?? false),
     }
+    presets.value[i] = nextPreset
   }
 
   function applyActivePresetToForm() {
@@ -343,52 +341,17 @@ export const useConnectionStore = defineStore('connection', () => {
     applyPresetToForm(p)
   }
 
-  /** 切换当前预设引用的 API Key 别名 id；null 代表使用预设内联的 apiKey 字段 */
+  /** 切换当前预设引用的 API Key 别名 id；null 代表使用预设内联 apiKey */
   function setApiKeyId(id: string | null) {
-    if (!id) {
-      apiKeyId.value = null
-      const aid = activePresetId.value
-      const p = aid ? presets.value.find((x) => x.id === aid) : null
-      apiKey.value = p?.apiKey ?? ''
-      syncFormToActivePreset()
-      return
-    }
-    const keychain = useApiKeysStore()
-    const apply = (entry: ReturnType<typeof keychain.findById>) => {
-      if (entry) {
-        apiKeyId.value = id
-        apiKey.value = entry.key
-      } else {
-        apiKeyId.value = null
-        const aid = activePresetId.value
-        const p = aid ? presets.value.find((x) => x.id === aid) : null
-        apiKey.value = p?.apiKey ?? ''
-      }
-      syncFormToActivePreset()
-    }
-    const e0 = keychain.findById(id)
-    if (e0) {
-      apply(e0)
-      return
-    }
-    void keychain.loadFromServer().then(() => {
-      apply(keychain.findById(id))
-    })
+    apiKeyId.value = id
+    apiKey.value = ''
+    apiKeyDraftDirty.value = false
+    syncFormToActivePreset()
   }
 
-  /** 监听 keychain 中当前引用条目的 key 变化，让表单 apiKey ref 自动同步 */
-  function bindKeychainSync() {
-    const keychain = useApiKeysStore()
-    watch(
-      () => (apiKeyId.value ? keychain.findById(apiKeyId.value)?.key : null),
-      (k) => {
-        if (apiKeyId.value && typeof k === 'string') {
-          apiKey.value = k
-        }
-      },
-    )
+  function markApiKeyDraftDirty() {
+    apiKeyDraftDirty.value = true
   }
-  bindKeychainSync()
 
   function addPreset() {
     syncFormToActivePreset()
@@ -618,6 +581,10 @@ export const useConnectionStore = defineStore('connection', () => {
     presets.value.push(next)
     activePresetId.value = id
     applyPresetToForm(next)
+    if (!importKeyId && merged.apiKey.trim()) {
+      apiKey.value = merged.apiKey
+      apiKeyDraftDirty.value = true
+    }
     void applyLinkedPromptPresetForApiPreset(id)
   }
 
@@ -630,7 +597,15 @@ export const useConnectionStore = defineStore('connection', () => {
     if (!id) throw new Error('未选择预设')
     return {
       activePresetId: id,
-      presets: presets.value.map((p) => ({ ...p })),
+      presets: presets.value.map((p) => {
+        const row: Record<string, unknown> = { ...p }
+        if (p.id === id && apiKeyDraftDirty.value) {
+          row.apiKey = apiKey.value
+        } else {
+          delete row.apiKey
+        }
+        return row as ApiPreset
+      }),
     }
   }
 
@@ -696,6 +671,18 @@ export const useConnectionStore = defineStore('connection', () => {
     }
     const j = (await res.json()) as { savedAt?: string }
     if (typeof j.savedAt === 'string') lastSavedAt.value = j.savedAt
+    if (apiKeyDraftDirty.value) {
+      const aid = activePresetId.value
+      const idx = presets.value.findIndex((p) => p.id === aid)
+      if (idx >= 0) {
+        presets.value[idx] = {
+          ...presets.value[idx],
+          keyConfigured: apiKey.value.trim().length > 0,
+        }
+      }
+      apiKey.value = ''
+      apiKeyDraftDirty.value = false
+    }
   }
 
   return {
@@ -723,6 +710,9 @@ export const useConnectionStore = defineStore('connection', () => {
     requestReasoningChain,
     linkedPromptPresetId,
     apiKeyId,
+    isApiKeyConfigured,
+    markApiKeyDraftDirty,
+    apiKeyDraftDirty,
     setApiKeyId,
     lastSavedAt,
     presetSelectItems,

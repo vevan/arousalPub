@@ -44,7 +44,7 @@ export function buildConversationChatRequestBody(
   return {
     alias: conn.alias.trim() || undefined,
     baseUrl: conn.baseUrl.trim() || undefined,
-    apiKey: conn.apiKey.trim(),
+    apiPresetId: conn.activePresetId ?? undefined,
     model: conn.model.trim(),
     conversationId,
     userText: params.userText,

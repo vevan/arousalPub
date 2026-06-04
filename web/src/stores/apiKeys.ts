@@ -1,18 +1,24 @@
 import { defineStore } from 'pinia'
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
+import { translateApiError } from '@/utils/api-error-message'
 
-export interface ApiKeyEntry {
+export interface ApiKeyEntryPublic {
   id: string
   alias: string
-  key: string
   createdAt: string
   updatedAt: string
+  keyConfigured: boolean
 }
 
-interface ApiKeysDocument {
+interface ApiKeyEntryLocal extends ApiKeyEntryPublic {
+  /** 本地草稿；undefined 表示 PUT 时不发送 key（保留服务端） */
+  keyDraft?: string
+}
+
+interface ApiKeysDocumentPublic {
   version: 1
   savedAt: string
-  keys: ApiKeyEntry[]
+  keys: ApiKeyEntryPublic[]
 }
 
 function nowIso(): string {
@@ -26,22 +32,33 @@ function makeId(): string {
   return `key-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-function normalizeEntry(o: unknown): ApiKeyEntry | null {
+function normalizeEntry(o: unknown): ApiKeyEntryLocal | null {
   if (!o || typeof o !== 'object' || Array.isArray(o)) return null
-  const e = o as Partial<ApiKeyEntry>
+  const e = o as Partial<ApiKeyEntryPublic & { key?: string }>
   if (typeof e.id !== 'string' || !e.id) return null
-  if (typeof e.key !== 'string') return null
   return {
     id: e.id,
     alias: typeof e.alias === 'string' ? e.alias : '',
-    key: e.key,
     createdAt: typeof e.createdAt === 'string' ? e.createdAt : nowIso(),
     updatedAt: typeof e.updatedAt === 'string' ? e.updatedAt : nowIso(),
+    keyConfigured: Boolean(e.keyConfigured),
   }
 }
 
+function toPutPayload(entry: ApiKeyEntryLocal): {
+  id: string
+  alias: string
+  key?: string
+} {
+  const base = { id: entry.id, alias: entry.alias }
+  if (entry.keyDraft !== undefined) {
+    return { ...base, key: entry.keyDraft }
+  }
+  return base
+}
+
 export const useApiKeysStore = defineStore('apiKeys', () => {
-  const keys = ref<ApiKeyEntry[]>([])
+  const keys = ref<ApiKeyEntryLocal[]>([])
 
   const loaded = ref(false)
   const loading = ref(false)
@@ -51,9 +68,11 @@ export const useApiKeysStore = defineStore('apiKeys', () => {
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   let pending = false
+  /** 仅用户/显式 mutator 改动后为 true；避免 load / flush 后误触发 PUT */
+  const keysDirty = ref(false)
 
   function scheduleSave() {
-    if (!loaded.value) return
+    if (!loaded.value || !keysDirty.value) return
     if (saveTimer) clearTimeout(saveTimer)
     pending = true
     saveTimer = setTimeout(() => {
@@ -63,7 +82,7 @@ export const useApiKeysStore = defineStore('apiKeys', () => {
   }
 
   async function flushSave(): Promise<void> {
-    if (!pending) return
+    if (!pending && !keysDirty.value) return
     pending = false
     saving.value = true
     lastError.value = null
@@ -71,7 +90,7 @@ export const useApiKeysStore = defineStore('apiKeys', () => {
       const res = await fetch('/api/api-keys', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keys: keys.value }),
+        body: JSON.stringify({ keys: keys.value.map(toPutPayload) }),
       })
       if (!res.ok) {
         const txt = await res.text()
@@ -79,6 +98,17 @@ export const useApiKeysStore = defineStore('apiKeys', () => {
       }
       const j = (await res.json()) as { savedAt?: string }
       if (typeof j.savedAt === 'string') lastSavedAt.value = j.savedAt
+      keysDirty.value = false
+      const hasDraft = keys.value.some((k) => k.keyDraft !== undefined)
+      if (hasDraft) {
+        keys.value = keys.value.map((k) => {
+          if (k.keyDraft === undefined) return k
+          const next = { ...k }
+          next.keyConfigured = next.keyDraft!.trim().length > 0
+          delete next.keyDraft
+          return next
+        })
+      }
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e)
       pending = true
@@ -112,17 +142,18 @@ export const useApiKeysStore = defineStore('apiKeys', () => {
           loaded.value = true
           return
         }
-        const doc = raw as Partial<ApiKeysDocument>
+        const doc = raw as Partial<ApiKeysDocumentPublic>
         if (doc.version !== 1 || !Array.isArray(doc.keys)) {
           loaded.value = true
           return
         }
-        const list: ApiKeyEntry[] = []
+        const list: ApiKeyEntryLocal[] = []
         for (const o of doc.keys) {
           const n = normalizeEntry(o)
           if (n) list.push(n)
         }
         keys.value = list
+        keysDirty.value = false
         if (typeof doc.savedAt === 'string') lastSavedAt.value = doc.savedAt
         loaded.value = true
       } catch (e) {
@@ -136,9 +167,7 @@ export const useApiKeysStore = defineStore('apiKeys', () => {
     return loadInflight
   }
 
-  watch(keys, () => scheduleSave(), { deep: true, flush: 'post' })
-
-  function findById(id: string | null | undefined): ApiKeyEntry | undefined {
+  function findById(id: string | null | undefined): ApiKeyEntryLocal | undefined {
     if (!id) return undefined
     return keys.value.find((k) => k.id === id)
   }
@@ -159,41 +188,68 @@ export const useApiKeysStore = defineStore('apiKeys', () => {
     return `Key-${Date.now()}`
   }
 
-  function createKey(partial?: Partial<Pick<ApiKeyEntry, 'alias' | 'key'>>): ApiKeyEntry {
+  function createKey(partial?: Partial<Pick<ApiKeyEntryLocal, 'alias' | 'keyDraft'>>): ApiKeyEntryLocal {
     const t = nowIso()
-    const entry: ApiKeyEntry = {
+    const keyDraft = typeof partial?.keyDraft === 'string' ? partial.keyDraft : ''
+    const entry: ApiKeyEntryLocal = {
       id: makeId(),
       alias:
         typeof partial?.alias === 'string' && partial.alias.trim()
           ? partial.alias.trim()
           : nextDefaultAlias(),
-      key: typeof partial?.key === 'string' ? partial.key : '',
+      keyConfigured: keyDraft.trim().length > 0,
+      keyDraft,
       createdAt: t,
       updatedAt: t,
     }
     keys.value = [...keys.value, entry]
+    keysDirty.value = true
+    scheduleSave()
     return entry
   }
 
   function updateKey(
     id: string,
-    patch: Partial<Pick<ApiKeyEntry, 'alias' | 'key'>>,
+    patch: Partial<Pick<ApiKeyEntryLocal, 'alias' | 'keyDraft'>>,
   ): void {
     const idx = keys.value.findIndex((k) => k.id === id)
     if (idx < 0) return
+    const cur = keys.value[idx]
+    const alias =
+      typeof patch.alias === 'string' ? patch.alias.trim() : cur.alias
+    const hasKeyDraft = Object.prototype.hasOwnProperty.call(patch, 'keyDraft')
+    const keyDraft = hasKeyDraft ? patch.keyDraft : cur.keyDraft
+    if (alias === cur.alias && keyDraft === cur.keyDraft) return
     const next = keys.value.slice()
     next[idx] = {
-      ...next[idx],
-      alias:
-        typeof patch.alias === 'string' ? patch.alias.trim() : next[idx].alias,
-      key: typeof patch.key === 'string' ? patch.key : next[idx].key,
+      ...cur,
+      alias,
+      ...(hasKeyDraft ? { keyDraft: patch.keyDraft } : {}),
       updatedAt: nowIso(),
     }
     keys.value = next
+    keysDirty.value = true
+    scheduleSave()
   }
 
   function deleteKey(id: string): void {
     keys.value = keys.value.filter((k) => k.id !== id)
+    keysDirty.value = true
+    scheduleSave()
+  }
+
+  async function revealKey(id: string, password: string): Promise<string> {
+    const res = await fetch(`/api/api-keys/${encodeURIComponent(id)}/reveal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    })
+    const j = (await res.json()) as { key?: string; error?: string }
+    if (!res.ok || typeof j.key !== 'string') {
+      const code = typeof j.error === 'string' ? j.error : 'api_key_reveal_failed'
+      throw new Error(translateApiError(code))
+    }
+    return j.key
   }
 
   return {
@@ -210,5 +266,8 @@ export const useApiKeysStore = defineStore('apiKeys', () => {
     createKey,
     updateKey,
     deleteKey,
+    revealKey,
   }
 })
+
+export type ApiKeyEntry = ApiKeyEntryLocal

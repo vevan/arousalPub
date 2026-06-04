@@ -61,6 +61,7 @@ const auth = useAuthStore()
 const localeStore = useLocaleStore()
 const { preference } = storeToRefs(localeStore)
 const prefStore = usePreferencesStore()
+const { markEmbeddingApiKeyDirty } = prefStore
 const apiKeysStore = useApiKeysStore()
 const EMBED_KEY_DIRECT = '__direct__'
 const {
@@ -77,6 +78,9 @@ const {
   embeddingBaseUrl,
   embeddingApiKey,
   embeddingApiKeyId,
+  embeddingKeyConfigured,
+  embeddingApiKeyDirty,
+  isEmbeddingKeyConfigured,
   embeddingModel,
   embeddingDimensions,
   chatFontSizeRem,
@@ -227,7 +231,6 @@ async function runEmbeddingTest(): Promise<void> {
         text: embeddingTestText.value,
         embeddingApi: {
           baseUrl: embeddingBaseUrl.value,
-          apiKey: embeddingApiKeyId.value ? '' : embeddingApiKey.value,
           apiKeyId: embeddingApiKeyId.value,
           embeddingModel: embeddingModel.value,
           embeddingDimensions: embeddingDimensions.value,
@@ -890,6 +893,10 @@ onMounted(() => {
               hide-details="auto"
               class="mb-2"
               :disabled="!embeddingApiKeyEditable"
+              :placeholder="isEmbeddingKeyConfigured && !embeddingApiKeyDirty && !embeddingApiKey.trim()
+                ? '••••••'
+                : undefined"
+              @update:model-value="markEmbeddingApiKeyDirty()"
             />
             <v-text-field
               v-model="embeddingModel"

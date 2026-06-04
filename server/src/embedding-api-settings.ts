@@ -55,3 +55,18 @@ export function normalizeEmbeddingApiSettings(
     : EMBEDDING_API_SETTINGS_DEFAULTS.embeddingDimensions
   return { baseUrl, apiKey, apiKeyId, embeddingModel, embeddingDimensions }
 }
+
+/** PATCH merge：省略 apiKey 时保留 saved 侧原值 */
+export function mergeEmbeddingApiPatch(
+  saved: EmbeddingApiSettings,
+  patch: Partial<EmbeddingApiSettings>,
+): EmbeddingApiSettings {
+  const merged: EmbeddingApiSettings = {
+    ...saved,
+    ...patch,
+  }
+  if (!Object.prototype.hasOwnProperty.call(patch, 'apiKey')) {
+    merged.apiKey = saved.apiKey
+  }
+  return merged
+}

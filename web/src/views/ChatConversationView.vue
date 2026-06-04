@@ -580,7 +580,7 @@ watch(
             @click="convContextSettingsRef?.open()"
           />
           <span
-            v-if="!conn.apiKey.trim()"
+            v-if="!conn.isApiKeyConfigured"
             class="chat-header__pill chat-header__pill--warning"
           >
             <span class="chat-header__dot chat-header__dot--warning" />

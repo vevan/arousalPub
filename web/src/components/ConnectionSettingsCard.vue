@@ -62,15 +62,24 @@ interface KeyDraft {
   id: string
   alias: string
   key: string
+  keyConfigured: boolean
+  keyDirty: boolean
 }
 const keyDrafts = ref<KeyDraft[]>([])
 const keyVisible = ref<Record<string, boolean>>({})
+const revealDialogOpen = ref(false)
+const revealPassword = ref('')
+const revealTargetId = ref<string | null>(null)
+const revealLoading = ref(false)
+const revealError = ref('')
 
 function openApiKeyManager() {
   keyDrafts.value = apiKeysStore.keys.map((k) => ({
     id: k.id,
     alias: k.alias,
-    key: k.key,
+    key: '',
+    keyConfigured: k.keyConfigured,
+    keyDirty: false,
   }))
   keyVisible.value = {}
   apiKeyManagerOpen.value = true
@@ -81,6 +90,8 @@ function addDraftKey() {
     id: `__new__-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     alias: '',
     key: '',
+    keyConfigured: false,
+    keyDirty: false,
   }
   keyDrafts.value = [...keyDrafts.value, draft]
 }
@@ -110,11 +121,15 @@ async function saveApiKeyManager() {
   }
   for (const d of keyDrafts.value) {
     if (d.id.startsWith('__new__-')) {
-      const created = apiKeysStore.createKey({ alias: d.alias, key: d.key })
-      // 让用户在草稿里看到分配后的 id；不强求
+      if (!d.key.trim()) continue
+      const created = apiKeysStore.createKey({ alias: d.alias, keyDraft: d.key })
       d.id = created.id
     } else {
-      apiKeysStore.updateKey(d.id, { alias: d.alias, key: d.key })
+      const patch: Partial<Pick<ApiKeyEntry, 'alias' | 'keyDraft'>> = {
+        alias: d.alias,
+      }
+      if (d.keyDirty) patch.keyDraft = d.key
+      apiKeysStore.updateKey(d.id, patch)
     }
   }
   await apiKeysStore.flushSave()
@@ -134,7 +149,7 @@ function saveCurrentKeyAs() {
     snackbar.value = true
     return
   }
-  const created = apiKeysStore.createKey({ key: txt })
+  const created = apiKeysStore.createKey({ keyDraft: txt })
   conn.setApiKeyId(created.id)
   snackbarColor.value = 'success'
   snackbarText.value = t('conn.apiKeySavedSnackbar', { alias: created.alias })
@@ -198,14 +213,70 @@ const filteredModels = computed(() => {
   return modelsList.value.filter((id) => id.toLowerCase().includes(q))
 })
 
+function markDraftKeyDirty(d: KeyDraft) {
+  d.keyDirty = true
+}
+
+function onKeyDraftEyeClick(d: KeyDraft) {
+  if (
+    !d.id.startsWith('__new__-') &&
+    d.keyConfigured &&
+    !d.keyDirty &&
+    !d.key.trim()
+  ) {
+    openRevealDialog(d.id)
+    return
+  }
+  toggleKeyVisible(d.id)
+}
+
+function keyDraftEyeTitle(d: KeyDraft): string {
+  if (
+    !d.id.startsWith('__new__-') &&
+    d.keyConfigured &&
+    !d.keyDirty &&
+    !d.key.trim()
+  ) {
+    return t('conn.apiKeyReveal')
+  }
+  return isKeyVisible(d.id) ? t('conn.hideApiKey') : t('conn.showApiKey')
+}
+
+function openRevealDialog(id: string) {
+  revealTargetId.value = id
+  revealPassword.value = ''
+  revealError.value = ''
+  revealDialogOpen.value = true
+}
+
+async function confirmRevealKey() {
+  const id = revealTargetId.value
+  if (!id) return
+  revealLoading.value = true
+  revealError.value = ''
+  try {
+    const key = await apiKeysStore.revealKey(id, revealPassword.value)
+    const d = keyDrafts.value.find((x) => x.id === id)
+    if (d) {
+      d.key = key
+      d.keyDirty = false
+      keyVisible.value = { ...keyVisible.value, [id]: true }
+    }
+    revealDialogOpen.value = false
+  } catch (e) {
+    revealError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    revealLoading.value = false
+  }
+}
+
 const canFetchModels = computed(
-  () => Boolean(conn.baseUrl.trim() && conn.apiKey.trim()),
+  () => Boolean(conn.baseUrl.trim() && conn.isApiKeyConfigured),
 )
 
 async function fetchModels() {
   const bu = conn.baseUrl.trim()
-  const key = conn.apiKey.trim()
-  if (!bu || !key) {
+  if (!bu || !conn.isApiKeyConfigured) {
     modelsList.value = []
     modelsError.value = ''
     return
@@ -216,7 +287,10 @@ async function fetchModels() {
     const res = await fetch('/api/models', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ baseUrl: bu || undefined, apiKey: key }),
+      body: JSON.stringify({
+        baseUrl: bu || undefined,
+        apiPresetId: conn.activePresetId ?? undefined,
+      }),
     })
     const data = (await res.json()) as {
       models?: string[]
@@ -547,6 +621,9 @@ function closeImportDialog() {
       data-1p-ignore="true"
       density="compact"
       :readonly="!apiKeyEditable"
+      :placeholder="conn.isApiKeyConfigured && !conn.apiKeyDraftDirty && !conn.apiKey.trim()
+        ? '••••••'
+        : undefined"
       :hint="apiKeyEditable
         ? $t('conn.apiKeyDirectHint')
         : $t('conn.apiKeyFromAliasHint', { alias: referencedKeyEntry?.alias ?? '' })"
@@ -556,10 +633,11 @@ function closeImportDialog() {
       :append-inner-icon="showApiKey ? 'mdi-eye-off' : 'mdi-eye'"
       :title="showApiKey ? $t('conn.hideApiKey') : $t('conn.showApiKey')"
       @click:append-inner.stop="showApiKey = !showApiKey"
+      @update:model-value="conn.markApiKeyDraftDirty()"
     />
 
     <div
-      v-if="apiKeyEditable && conn.apiKey.trim()"
+      v-if="apiKeyEditable && (conn.apiKey.trim() || conn.isApiKeyConfigured)"
       class="d-flex justify-end mb-3"
     >
       <v-btn
@@ -849,8 +927,11 @@ function closeImportDialog() {
             :class="{ 'conn-api-key-field--masked': !isKeyVisible(d.id) }"
             autocomplete="off"
             spellcheck="false"
+            :placeholder="d.keyConfigured && !d.keyDirty && !d.key ? '••••••' : undefined"
             :append-inner-icon="isKeyVisible(d.id) ? 'mdi-eye-off' : 'mdi-eye'"
-            @click:append-inner.stop="toggleKeyVisible(d.id)"
+            :title="keyDraftEyeTitle(d)"
+            @click:append-inner.stop="onKeyDraftEyeClick(d)"
+            @update:model-value="markDraftKeyDirty(d)"
           />
         </div>
         <p
@@ -875,6 +956,52 @@ function closeImportDialog() {
           @click="saveApiKeyManager"
         >
           {{ $t('conn.apiKeyManagerSave') }}
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <v-dialog
+    v-model="revealDialogOpen"
+    max-width="24rem"
+  >
+    <v-card>
+      <v-card-title class="text-subtitle-1">
+        {{ $t('conn.apiKeyRevealTitle') }}
+      </v-card-title>
+      <v-card-text>
+        <v-text-field
+          v-model="revealPassword"
+          :label="$t('conn.apiKeyRevealPassword')"
+          type="password"
+          density="compact"
+          variant="outlined"
+          hide-details="auto"
+          autocomplete="current-password"
+          @keyup.enter="confirmRevealKey"
+        />
+        <v-alert
+          v-if="revealError"
+          type="error"
+          variant="tonal"
+          density="compact"
+          class="mt-3"
+        >
+          {{ revealError }}
+        </v-alert>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="text" @click="revealDialogOpen = false">
+          {{ $t('conn.close') }}
+        </v-btn>
+        <v-btn
+          color="primary"
+          variant="flat"
+          :loading="revealLoading"
+          @click="confirmRevealKey"
+        >
+          {{ $t('conn.apiKeyRevealConfirm') }}
         </v-btn>
       </v-card-actions>
     </v-card>

@@ -405,7 +405,7 @@ const canSend = computed(
     !conversationWriteLocked.value &&
     !loading.value &&
     regeneratingTurnOrdinal.value === null &&
-    conn.apiKey.trim().length > 0 &&
+    conn.isApiKeyConfigured &&
     conn.model.trim().length > 0 &&
     userInput.value.trim().length > 0,
 )
@@ -1226,7 +1226,7 @@ async function sendWithPlugins(
       e instanceof Error ? e.message : t('chat.errors.invalidCustomJson')
     return
   }
-  if (conn.apiKey.trim().length === 0 || conn.model.trim().length === 0) {
+  if (!conn.isApiKeyConfigured || conn.model.trim().length === 0) {
     errorText.value = t('chat.errors.requestFailedStatus', { status: 400 })
     return
   }
@@ -1300,7 +1300,7 @@ async function regenerateWithPlugins(
       e instanceof Error ? e.message : t('chat.errors.invalidCustomJson')
     return
   }
-  if (conn.apiKey.trim().length === 0 || conn.model.trim().length === 0) {
+  if (!conn.isApiKeyConfigured || conn.model.trim().length === 0) {
     errorText.value = t('chat.errors.requestFailedStatus', { status: 400 })
     return
   }

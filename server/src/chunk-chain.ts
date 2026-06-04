@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import {
   conversationDir,
@@ -155,6 +155,7 @@ export function isTailChunkFile(
 export async function readAllTurns(
   conversationId: string,
 ): Promise<TurnRecord[]> {
+  await syncChunkIndexIfDrifted(conversationId)
   const idx = await readConversationIndex(conversationId)
   if (!idx?.tailChunkFile) return []
   const collected: TurnRecord[] = []
@@ -391,6 +392,168 @@ export async function readChunkContainingOrdinal(
     fileName = chunk.meta.links.previous
   }
   return null
+}
+
+export type ChunkIndexRepairResult = {
+  headChunkFile: string | null
+  tailChunkFile: string | null
+  repaired: boolean
+  brokenChain: boolean
+  chunkFileCount: number
+}
+
+/** 纯函数：由 links 图计算 head/tail（单测用） */
+export function computeHeadTailFromLinks(
+  graph: ReadonlyMap<string, { previous: string | null; next: string | null }>,
+): { head: string | null; tail: string | null; broken: boolean } {
+  const files = [...graph.keys()]
+  if (files.length === 0) return { head: null, tail: null, broken: false }
+  if (files.length === 1) {
+    return { head: files[0]!, tail: files[0]!, broken: false }
+  }
+
+  const incoming = new Map<string, number>()
+  for (const f of files) incoming.set(f, 0)
+  for (const [, links] of graph) {
+    if (links.next && incoming.has(links.next)) {
+      incoming.set(links.next, (incoming.get(links.next) ?? 0) + 1)
+    }
+  }
+  const heads = files.filter((f) => (incoming.get(f) ?? 0) === 0)
+  const tails = files.filter((f) => {
+    const next = graph.get(f)?.next
+    return !next || !graph.has(next)
+  })
+
+  if (heads.length !== 1 || tails.length !== 1) {
+    return { head: heads[0] ?? null, tail: tails[0] ?? null, broken: true }
+  }
+
+  const head = heads[0]!
+  const tail = tails[0]!
+  let cur: string | null = head
+  const visited = new Set<string>()
+  while (cur) {
+    if (visited.has(cur)) return { head, tail, broken: true }
+    visited.add(cur)
+    const nextFile: string | null = graph.get(cur)?.next ?? null
+    if (nextFile && !graph.has(nextFile)) break
+    cur = nextFile
+  }
+  if (visited.size !== files.length) {
+    return { head, tail, broken: true }
+  }
+  return { head, tail, broken: false }
+}
+
+async function loadMainPathChunkLinkGraph(
+  conversationId: string,
+): Promise<Map<string, { previous: string | null; next: string | null }>> {
+  const dir = conversationDir(conversationId)
+  let entries: string[]
+  try {
+    entries = await readdir(dir)
+  } catch {
+    return new Map()
+  }
+  const graph = new Map<string, { previous: string | null; next: string | null }>()
+  for (const name of entries) {
+    if (!TURN_CHUNK_FILE_RE.test(name)) continue
+    const chunk = await readChunkFile(conversationId, name)
+    if (!chunk) continue
+    graph.set(name, {
+      previous: chunk.meta.links.previous ?? null,
+      next: chunk.meta.links.next ?? null,
+    })
+  }
+  return graph
+}
+
+/** 扫描 `turn-*.json` 的 meta.links，计算 head/tail（不写盘） */
+export async function rebuildHeadTailFromLinks(
+  conversationId: string,
+): Promise<ChunkIndexRepairResult> {
+  const graph = await loadMainPathChunkLinkGraph(conversationId)
+  const { head, tail, broken } = computeHeadTailFromLinks(graph)
+  return {
+    headChunkFile: head,
+    tailChunkFile: tail,
+    repaired: false,
+    brokenChain: broken,
+    chunkFileCount: graph.size,
+  }
+}
+
+/** 读盘时 index 与 links 不一致则静默修正（链断裂时不改） */
+export async function syncChunkIndexIfDrifted(
+  conversationId: string,
+): Promise<boolean> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return false
+  const computed = await rebuildHeadTailFromLinks(conversationId)
+  if (computed.brokenChain) return false
+  if (computed.chunkFileCount === 0) {
+    if (idx.headChunkFile !== null || idx.tailChunkFile !== null) {
+      idx.headChunkFile = null
+      idx.tailChunkFile = null
+      idx.updatedAt = new Date().toISOString()
+      await writeConversationIndex(conversationId, idx)
+      return true
+    }
+    return false
+  }
+  if (
+    idx.headChunkFile === computed.headChunkFile &&
+    idx.tailChunkFile === computed.tailChunkFile
+  ) {
+    return false
+  }
+  idx.headChunkFile = computed.headChunkFile
+  idx.tailChunkFile = computed.tailChunkFile
+  idx.updatedAt = new Date().toISOString()
+  await writeConversationIndex(conversationId, idx)
+  return true
+}
+
+/** 显式修复 index.json 的 head/tail（调试 / repair API） */
+export async function repairConversationChunkIndex(
+  conversationId: string,
+): Promise<ChunkIndexRepairResult & { ok: boolean }> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) {
+    return {
+      ok: false,
+      headChunkFile: null,
+      tailChunkFile: null,
+      repaired: false,
+      brokenChain: false,
+      chunkFileCount: 0,
+    }
+  }
+  const computed = await rebuildHeadTailFromLinks(conversationId)
+  if (computed.brokenChain) {
+    return { ok: false, ...computed }
+  }
+  if (computed.chunkFileCount === 0) {
+    const needsClear = idx.headChunkFile !== null || idx.tailChunkFile !== null
+    if (needsClear) {
+      idx.headChunkFile = null
+      idx.tailChunkFile = null
+      idx.updatedAt = new Date().toISOString()
+      await writeConversationIndex(conversationId, idx)
+    }
+    return { ok: true, ...computed, repaired: needsClear }
+  }
+  const needsRepair =
+    idx.headChunkFile !== computed.headChunkFile ||
+    idx.tailChunkFile !== computed.tailChunkFile
+  if (needsRepair) {
+    idx.headChunkFile = computed.headChunkFile
+    idx.tailChunkFile = computed.tailChunkFile
+    idx.updatedAt = new Date().toISOString()
+    await writeConversationIndex(conversationId, idx)
+  }
+  return { ok: true, ...computed, repaired: needsRepair }
 }
 
 export type { ChunkSettings }

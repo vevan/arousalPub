@@ -1,14 +1,14 @@
 # API Key 服务端隔离与鉴权（需求定案）
 
-> **状态**：**待实施**（2026-06-02 定案；代码尚未对齐）。  
-> **优先级**：**P0 最高**（见 `DOC/04-TODO.md`、`cursor.md` 文档索引）。  
-> **关联**：`DOC/03` §1.3、§4（密钥不下发浏览器）；`DOC/02` 插件/API 调用原则；现有实现 `server/src/embedding-credential-resolve.ts`（Embedding 解析样板）。
+> **状态**：**已实现**（2026-06-02 定案；2026-06 落地并验收）。  
+> **优先级**：原 P0（见 `DOC/04-TODO.md`、`cursor.md` 文档索引）。  
+> **关联**：`DOC/03` §1.3、§4（密钥不下发浏览器）；`DOC/02` 插件/API 调用原则；`server/src/api-credential-resolve.ts`、`server/src/embedding-credential-resolve.ts`。
 
 ---
 
-## 1. 背景与问题
+## 1. 背景与问题（实施前，已解决）
 
-当前实现与文档目标不一致，**明文 API Key 会进入浏览器**并在出站请求中回传：
+定案前实现与文档目标不一致，**明文 API Key 会进入浏览器**并在出站请求中回传：
 
 | 环节 | 现状 |
 |------|------|
@@ -100,12 +100,12 @@
 
 ## 6. 验收标准
 
-- [ ] 登录后 DevTools Network：**无任何 GET** 响应体含完整 API Key。
-- [ ] `POST /api/chat` 请求体**无** `apiKey` 字段，对话仍可正常 SSE。
-- [ ] 仅改 preset 别名/模型、不改 key 时 PUT settings **不丢失** 原密钥。
-- [ ] Keychain 仅改 alias 的 PUT **不丢失** 原 key。
-- [ ] Reveal：错误密码失败；正确密码可查看且刷新页面后不再自动带出明文。
-- [ ] `useChatSession` 在未配置密钥时阻止发送并提示（i18n）。
+- [x] 登录后 DevTools Network：**无任何 GET** 响应体含完整 API Key。
+- [x] `POST /api/chat` 请求体**无** `apiKey` 字段，对话仍可正常 SSE。
+- [x] 仅改 preset 别名/模型、不改 key 时 PUT settings **不丢失** 原密钥。
+- [x] Keychain 仅改 alias 的 PUT **不丢失** 原 key。
+- [x] Reveal：错误密码失败；正确密码可查看且刷新页面后不再自动带出明文（Key 管理内眼睛图标 + 密码对话框）。
+- [x] `useChatSession` 在未配置密钥时阻止发送并提示（i18n，`isApiKeyConfigured`）。
 
 ---
 
@@ -113,10 +113,11 @@
 
 | 区域 | 路径 |
 |------|------|
-| 路由 | `server/src/index.ts`（`/api/api-keys`、`/api/settings`、`/api/chat`、`/api/models`、user-preferences embedding） |
+| 路由 / 解析 | `server/src/index.ts`、`server/src/api-credential-resolve.ts` |
+| Key 脱敏 / merge | `server/src/api-keys-sanitize.ts`、`server/src/api-settings-sanitize.ts`、`server/src/embedding-api-sanitize.ts` |
 | Key 文件 | `server/src/api-keys-file.ts` |
 | 预设文件 | `server/src/api-settings-file.ts` |
-| Embedding 解析（样板） | `server/src/embedding-credential-resolve.ts` |
+| Embedding 解析 | `server/src/embedding-credential-resolve.ts` |
 | 前端 keys | `web/src/stores/apiKeys.ts` |
 | 前端连接 | `web/src/stores/connection.ts`、`web/src/components/ConnectionSettingsCard.vue` |
 | 聊天请求 | `web/src/utils/chat-api.ts`、`web/src/composables/useChatSession.ts` |
@@ -135,8 +136,8 @@
 
 ## 9. 文档维护
 
-实施后须同步：
+已同步（2026-06）：
 
-- `DOC/03` §4 安全策略、相关 HTTP 表
-- `DOC/04` 勾选本需求子项
-- `cursor.md` 将本文件状态改为「已实现」或移入 §备注
+- `DOC/03` §4 安全策略
+- `DOC/04` 勾选本需求
+- `DOC/02` §3.2、`cursor.md` 索引

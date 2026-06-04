@@ -6,14 +6,13 @@ import { closeAllLanceConnections } from './lance-connection-pool.js'
 import { generateShortId, isValidShortId } from './short-id.js'
 import { Readable, Transform } from 'node:stream'
 import {
-  assertValidPresets,
   readApiSettingsFromFile,
   writeApiSettingsToFile,
   type ApiPreset,
   type ApiSettingsDocument,
 } from './api-settings-file.js'
 import { appendDrySamplerToPayload } from './dry-sampler.js'
-import { readAllTurns } from './chunk-chain.js'
+import { readAllTurns, repairConversationChunkIndex } from './chunk-chain.js'
 import {
   createConversationStub,
   deleteConversation,
@@ -55,12 +54,12 @@ import {
   updateGlobalEmbeddingApiSettings,
   updateGlobalChunkSettings,
 } from './user-preferences-file.js'
-import { normalizeEmbeddingDimensions } from './embedding-api-settings.js'
+import { normalizeEmbeddingDimensions, normalizeEmbeddingApiSettings } from './embedding-api-settings.js'
 import {
   isValidConversationId,
 } from './conversation-id.js'
 import { registerAuth } from './auth.js'
-import { ensureUsersRegistry } from './users-index.js'
+import { ensureUsersRegistry, findUserById, readUsersIndex } from './users-index.js'
 import {
   assertValidPromptPresetBody,
   assertValidPromptsPayload,
@@ -84,11 +83,27 @@ import {
   type LorebooksDocument,
 } from './lorebook-file.js'
 import {
-  assertValidApiKeysPayload,
   readApiKeysDocument,
   writeApiKeysDocument,
   type ApiKeysDocument,
 } from './api-keys-file.js'
+import {
+  mergeApiKeysPutPayload,
+  parseApiKeysPutPayload,
+  sanitizeApiKeysDocumentForGet,
+} from './api-keys-sanitize.js'
+import {
+  mergeApiSettingsPut,
+  sanitizeApiSettingsDocumentForGet,
+  type ApiSettingsPutBody,
+} from './api-settings-sanitize.js'
+import {
+  ApiCredentialError,
+  resolveChatCredentials,
+} from './api-credential-resolve.js'
+import { sanitizeEmbeddingApiForGet } from './embedding-api-sanitize.js'
+import { verifyPassword } from './auth-password.js'
+import { getCurrentUserId } from './user-context.js'
 import { buildConversationOutboundMessages } from './chat-assemble.js'
 import { resolveTurnPluginEntriesFromBody } from './plugin-host.js'
 import {
@@ -107,7 +122,6 @@ import {
   savePluginUserAssetUpload,
 } from './plugin-system/plugin-assets.js'
 import { readPluginManifest } from './plugin-system/manifest.js'
-import { getCurrentUserId } from './user-context.js'
 import { scheduleLorebookVectorReindex } from './lorebook-vector-index.js'
 import {
   applyPromptMacroPipeline,
@@ -154,7 +168,11 @@ interface ChatMessage {
 interface ChatBody {
   alias?: string
   baseUrl?: string
-  apiKey: string
+  /** @deprecated 服务端读盘解析；客户端不应再传 */
+  apiKey?: string
+  /** 默认 activePresetId */
+  apiPresetId?: string
+  apiKeyId?: string | null
   model: string
   /** 直传 messages；与 conversationId 模式二选一 */
   messages?: ChatMessage[]
@@ -196,7 +214,10 @@ function normalizeBaseUrl(raw: string | undefined): string {
 
 interface ModelsListBody {
   baseUrl?: string
-  apiKey: string
+  /** @deprecated 服务端读盘解析 */
+  apiKey?: string
+  apiPresetId?: string
+  apiKeyId?: string | null
 }
 
 function extractModelIds(json: unknown): string[] {
@@ -1185,6 +1206,43 @@ app.get<{ Params: { id: string } }>(
   },
 )
 
+app.post<{ Params: { id: string } }>(
+  '/api/chat/conversations/:id/repair-chunk-index',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!isValidConversationId(id)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    try {
+      const result = await repairConversationChunkIndex(id)
+      if (!result.ok) {
+        if (!result.chunkFileCount) {
+          return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+        }
+        if (result.brokenChain) {
+          return reply.status(409).send({
+            error: ApiErrorCodes.chunk_chain_broken,
+            headChunkFile: result.headChunkFile,
+            tailChunkFile: result.tailChunkFile,
+            chunkFileCount: result.chunkFileCount,
+          })
+        }
+        return reply.status(500).send({ error: ApiErrorCodes.chunk_index_repair_failed })
+      }
+      return {
+        ok: true as const,
+        repaired: result.repaired,
+        headChunkFile: result.headChunkFile,
+        tailChunkFile: result.tailChunkFile,
+        chunkFileCount: result.chunkFileCount,
+      }
+    } catch (e) {
+      request.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.chunk_index_repair_failed })
+    }
+  },
+)
+
 app.post<{ Params: { id: string }; Querystring: { stream?: string } }>(
   '/api/chat/conversations/:id/memory/rebuild',
   async (request, reply) => {
@@ -1230,7 +1288,11 @@ app.get<{ Params: { id: string } }>(
 
 app.get('/api/user-preferences', async (_request, reply) => {
   try {
-    return await readUserPreferencesDocument()
+    const doc = await readUserPreferencesDocument()
+    const embeddingApi = await sanitizeEmbeddingApiForGet(
+      normalizeEmbeddingApiSettings(doc.embeddingApi),
+    )
+    return { ...doc, embeddingApi }
   } catch (e) {
     app.log.error(e)
     return reply.status(500).send({ error: ApiErrorCodes.user_preferences_read_failed })
@@ -1463,12 +1525,17 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         chunk = await updateGlobalChunkSettings({ turnsPerFile: d })
       }
       const doc = await readUserPreferencesDocument()
+      const embeddingPublic = embeddingApi
+        ? await sanitizeEmbeddingApiForGet(embeddingApi)
+        : await sanitizeEmbeddingApiForGet(
+            normalizeEmbeddingApiSettings(doc.embeddingApi),
+          )
       return {
         ok: true as const,
         lorebook: lorebook ?? doc.lorebook,
         history: history ?? doc.history,
         memory: memory ?? doc.memory,
-        embeddingApi: embeddingApi ?? doc.embeddingApi,
+        embeddingApi: embeddingPublic,
         chunk: chunk ?? doc.chunk,
         savedAt: doc.savedAt,
       }
@@ -1538,14 +1605,15 @@ app.get('/api/build-info', async () => readBuildInfoDocument())
 app.get('/api/settings', async (_request, reply) => {
   try {
     const data = await readApiSettingsFromFile()
-    return data ?? null
+    if (!data) return null
+    return await sanitizeApiSettingsDocumentForGet(data)
   } catch (e) {
     app.log.error(e)
     return reply.status(500).send({ error: ApiErrorCodes.settings_read_failed })
   }
 })
 
-type SettingsPutBody = Pick<ApiSettingsDocument, 'activePresetId' | 'presets'>
+type SettingsPutBody = ApiSettingsPutBody
 
 app.put<{ Body: SettingsPutBody }>('/api/settings', async (request, reply) => {
   const b = request.body
@@ -1555,25 +1623,22 @@ app.put<{ Body: SettingsPutBody }>('/api/settings', async (request, reply) => {
   if (!Array.isArray(b.presets)) {
     return reply.status(400).send({ error: ApiErrorCodes.missing_presets_array })
   }
-  try {
-    assertValidPresets(b.presets as ApiPreset[])
-  } catch (e) {
-    return reply.status(400).send({
-      error: ApiErrorCodes.preset_validation_failed,
-    })
-  }
   const activePresetId =
     typeof b.activePresetId === 'string' ? b.activePresetId : ''
   if (!(b.presets as ApiPreset[]).some((p) => p.id === activePresetId)) {
     return reply.status(400).send({ error: ApiErrorCodes.active_preset_id_mismatch })
   }
 
-  const savedAt = new Date().toISOString()
-  const doc: ApiSettingsDocument = {
-    version: 1,
-    savedAt,
-    activePresetId,
-    presets: b.presets as ApiPreset[],
+  let doc: ApiSettingsDocument
+  try {
+    doc = await mergeApiSettingsPut({
+      activePresetId,
+      presets: b.presets,
+    })
+  } catch (e) {
+    return reply.status(400).send({
+      error: ApiErrorCodes.preset_validation_failed,
+    })
   }
 
   try {
@@ -1583,7 +1648,7 @@ app.put<{ Body: SettingsPutBody }>('/api/settings', async (request, reply) => {
     return reply.status(500).send({ error: ApiErrorCodes.settings_write_failed })
   }
 
-  return { ok: true as const, savedAt }
+  return { ok: true as const, savedAt: doc.savedAt }
 })
 
 app.get('/api/prompts', async (_request, reply) => {
@@ -2077,7 +2142,8 @@ app.delete<{ Params: { id: string } }>(
 app.get('/api/api-keys', async (_request, reply) => {
   try {
     const data = await readApiKeysDocument()
-    return data ?? null
+    if (!data) return null
+    return sanitizeApiKeysDocumentForGet(data)
   } catch (e) {
     app.log.error(e)
     return reply.status(500).send({ error: ApiErrorCodes.api_keys_read_failed })
@@ -2085,9 +2151,17 @@ app.get('/api/api-keys', async (_request, reply) => {
 })
 
 app.put('/api/api-keys', async (request, reply) => {
-  let validated: { keys: ApiKeysDocument['keys'] }
+  let validated: { keys: ReturnType<typeof parseApiKeysPutPayload>['keys'] }
   try {
-    validated = assertValidApiKeysPayload(request.body)
+    validated = parseApiKeysPutPayload(request.body)
+  } catch (e) {
+    return reply.status(400).send({
+      error: ApiErrorCodes.api_keys_validation_failed,
+    })
+  }
+  let mergedKeys: ApiKeysDocument['keys']
+  try {
+    mergedKeys = await mergeApiKeysPutPayload(validated.keys)
   } catch (e) {
     return reply.status(400).send({
       error: ApiErrorCodes.api_keys_validation_failed,
@@ -2097,7 +2171,7 @@ app.put('/api/api-keys', async (request, reply) => {
   const doc: ApiKeysDocument = {
     version: 1,
     savedAt,
-    keys: validated.keys,
+    keys: mergedKeys,
   }
   try {
     await writeApiKeysDocument(doc)
@@ -2108,13 +2182,61 @@ app.put('/api/api-keys', async (request, reply) => {
   return { ok: true as const, savedAt }
 })
 
+app.post<{ Params: { id: string }; Body: { password?: string } }>(
+  '/api/api-keys/:id/reveal',
+  async (request, reply) => {
+    const keyId = request.params.id?.trim()
+    if (!keyId) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    const password = request.body?.password
+    if (typeof password !== 'string' || !password) {
+      return reply.status(400).send({ error: ApiErrorCodes.missing_password_fields })
+    }
+    try {
+      const userId = getCurrentUserId()
+      const doc = await readUsersIndex()
+      const user = findUserById(doc, userId)
+      if (!user) {
+        return reply.status(401).send({ error: ApiErrorCodes.invalid_user })
+      }
+      const ok = await verifyPassword(password, user.passwordHash)
+      if (!ok) {
+        return reply.status(403).send({
+          error: ApiErrorCodes.api_key_reveal_wrong_password,
+        })
+      }
+      const keysDoc = await readApiKeysDocument()
+      const hit = keysDoc?.keys.find((k) => k.id === keyId)
+      if (!hit) {
+        return reply.status(404).send({ error: ApiErrorCodes.api_key_not_found })
+      }
+      return { key: hit.key }
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.api_key_reveal_failed })
+    }
+  },
+)
+
 app.post<{ Body: ModelsListBody }>('/api/models', async (request, reply) => {
   const b = request.body ?? ({} as ModelsListBody)
-  const apiKey = b.apiKey
-  if (!apiKey || typeof apiKey !== 'string') {
-    return reply.status(400).send({ error: ApiErrorCodes.missing_api_key })
+  let apiKey: string
+  let baseUrl: string
+  try {
+    const creds = await resolveChatCredentials({
+      apiPresetId: b.apiPresetId,
+      apiKeyId: b.apiKeyId,
+      baseUrl: b.baseUrl,
+    })
+    apiKey = creds.apiKey
+    baseUrl = creds.baseUrl
+  } catch (e) {
+    if (e instanceof ApiCredentialError) {
+      return reply.status(400).send({ error: e.code })
+    }
+    throw e
   }
-  const baseUrl = normalizeBaseUrl(b.baseUrl)
   const url = `${baseUrl}/models`
 
   const upstream = await fetch(url, {
@@ -2329,12 +2451,24 @@ app.get<{ Params: { pluginId: string; locale: string } }>(
 
 app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   const body = request.body ?? ({} as ChatBody)
-  const { apiKey, model } = body
-  const baseUrl = normalizeBaseUrl(body.baseUrl)
-
-  if (!apiKey || typeof apiKey !== 'string') {
-    return reply.status(400).send({ error: ApiErrorCodes.missing_api_key })
+  const { model } = body
+  let apiKey: string
+  let baseUrl: string
+  try {
+    const creds = await resolveChatCredentials({
+      apiPresetId: body.apiPresetId,
+      apiKeyId: body.apiKeyId,
+      baseUrl: body.baseUrl,
+    })
+    apiKey = creds.apiKey
+    baseUrl = creds.baseUrl
+  } catch (e) {
+    if (e instanceof ApiCredentialError) {
+      return reply.status(400).send({ error: e.code })
+    }
+    throw e
   }
+
   if (!model || typeof model !== 'string') {
     return reply.status(400).send({ error: ApiErrorCodes.missing_model })
   }

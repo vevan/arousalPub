@@ -14,6 +14,7 @@ import {
 } from './lorebook-settings.js'
 import {
   EMBEDDING_API_SETTINGS_DEFAULTS,
+  mergeEmbeddingApiPatch,
   normalizeEmbeddingApiSettings,
   type EmbeddingApiSettings,
 } from './embedding-api-settings.js'
@@ -181,10 +182,12 @@ export async function updateGlobalEmbeddingApiSettings(
   patch: Partial<EmbeddingApiSettings>,
 ): Promise<EmbeddingApiSettings> {
   const prev = await readUserPreferencesDocument()
-  const embeddingApi = normalizeEmbeddingApiSettings({
-    ...prev.embeddingApi,
-    ...patch,
-  })
+  const embeddingApi = normalizeEmbeddingApiSettings(
+    mergeEmbeddingApiPatch(
+      normalizeEmbeddingApiSettings(prev.embeddingApi),
+      patch,
+    ),
+  )
   await writeUserPreferencesDocument({
     lorebook: prev.lorebook,
     history: prev.history,

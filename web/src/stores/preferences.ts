@@ -32,7 +32,8 @@ import {
   type ChunkSettings,
 } from '@/utils/chunk-settings'
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useApiKeysStore } from '@/stores/apiKeys'
 
 export const CHAT_PROMPT_WRITE_STORAGE_KEY = 'arousal-chat-write-prompt-snapshot'
 export const PROMPT_DEBUG_MAX_STORED_KEY = 'arousal-chat-prompt-debug-max-stored'
@@ -281,7 +282,9 @@ export const usePreferencesStore = defineStore('preferences', () => {
   const memoryEnabled = ref(readStoredMemoryEnabled())
   const memoryTopK = ref(readStoredMemoryTopK())
   const embeddingBaseUrl = ref(readStoredEmbeddingBaseUrl())
-  const embeddingApiKey = ref(readStoredEmbeddingApiKey())
+  const embeddingApiKey = ref('')
+  const embeddingKeyConfigured = ref(false)
+  const embeddingApiKeyDirty = ref(false)
   const embeddingApiKeyId = ref<string | null>(readStoredEmbeddingApiKeyId())
   const embeddingModel = ref(readStoredEmbeddingModel())
   const embeddingDimensions = ref<number | null>(readStoredEmbeddingDimensions())
@@ -428,7 +431,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
   function persistEmbeddingLocal() {
     try {
       localStorage.setItem(EMBEDDING_BASE_URL_STORAGE_KEY, embeddingBaseUrl.value)
-      localStorage.setItem(EMBEDDING_API_KEY_STORAGE_KEY, embeddingApiKey.value)
+      localStorage.removeItem(EMBEDDING_API_KEY_STORAGE_KEY)
       if (embeddingApiKeyId.value) {
         localStorage.setItem(EMBEDDING_API_KEY_ID_STORAGE_KEY, embeddingApiKeyId.value)
       } else {
@@ -448,10 +451,12 @@ export const usePreferencesStore = defineStore('preferences', () => {
     }
   }
 
-  function applyEmbeddingFromServer(raw?: Partial<EmbeddingApiSettings>) {
+  function applyEmbeddingFromServer(raw?: Partial<EmbeddingApiSettings> & { keyConfigured?: boolean }) {
     const n = normalizeEmbeddingApiSettings(raw)
     embeddingBaseUrl.value = n.baseUrl
-    embeddingApiKey.value = n.apiKey
+    embeddingApiKey.value = ''
+    embeddingApiKeyDirty.value = false
+    embeddingKeyConfigured.value = Boolean(raw?.keyConfigured)
     embeddingApiKeyId.value = n.apiKeyId ?? null
     embeddingModel.value = n.embeddingModel
     embeddingDimensions.value = n.embeddingDimensions
@@ -676,13 +681,21 @@ export const usePreferencesStore = defineStore('preferences', () => {
       persistEmbeddingLocal()
       embeddingPatchInFlight = true
       try {
-        await patchGlobalEmbeddingApiToServer({
+        const patch: Partial<EmbeddingApiSettings> = {
           baseUrl: n.baseUrl,
-          apiKey: embeddingApiKeyId.value ? '' : n.apiKey,
           apiKeyId: embeddingApiKeyId.value,
           embeddingModel: n.embeddingModel,
           embeddingDimensions: n.embeddingDimensions,
-        })
+        }
+        if (embeddingApiKeyDirty.value && !embeddingApiKeyId.value) {
+          patch.apiKey = embeddingApiKey.value
+        }
+        await patchGlobalEmbeddingApiToServer(patch)
+        if (embeddingApiKeyDirty.value) {
+          embeddingKeyConfigured.value = embeddingApiKey.value.trim().length > 0
+          embeddingApiKey.value = ''
+          embeddingApiKeyDirty.value = false
+        }
       } catch {
         /* 设置页可重试 */
       } finally {
@@ -806,7 +819,24 @@ export const usePreferencesStore = defineStore('preferences', () => {
 
   function setEmbeddingApiKeyId(id: string | null) {
     embeddingApiKeyId.value = id
+    embeddingApiKey.value = ''
+    embeddingApiKeyDirty.value = false
   }
+
+  function markEmbeddingApiKeyDirty() {
+    embeddingApiKeyDirty.value = true
+  }
+
+  const isEmbeddingKeyConfigured = computed(() => {
+    if (embeddingApiKeyDirty.value && embeddingApiKey.value.trim()) return true
+    if (embeddingKeyConfigured.value) return true
+    if (embeddingApiKeyId.value) {
+      const keychain = useApiKeysStore()
+      const entry = keychain.findById(embeddingApiKeyId.value)
+      if (entry?.keyConfigured) return true
+    }
+    return false
+  })
 
   function setEmbeddingDimensions(n: number | null) {
     embeddingDimensions.value = normalizeEmbeddingDimensions(n)
@@ -846,6 +876,10 @@ export const usePreferencesStore = defineStore('preferences', () => {
     embeddingBaseUrl,
     embeddingApiKey,
     embeddingApiKeyId,
+    embeddingKeyConfigured,
+    embeddingApiKeyDirty,
+    isEmbeddingKeyConfigured,
+    markEmbeddingApiKeyDirty,
     embeddingModel,
     setEmbeddingApiKeyId,
     embeddingDimensions,

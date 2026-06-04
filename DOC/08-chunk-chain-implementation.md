@@ -1,7 +1,6 @@
 # Chunk 链切分 — 实现方案
 
-> **状态**：方案已定，**代码未实现**（截至文档编写时）。实现时以本文 + `DOC/03` §6–§7 为准。  
-> **背景**：当前所有轮次落在单一文件 `turn-000000-000099.json`，`appendConversationTurn` 不滚动 tail；`readTailChunk` / `resolveTurnById` / `GET .../messages` 仅见尾块。
+> **状态**：**已实现**（2026-06）。滚动 tail、全链读、跨块 PATCH、超大单块迁移、**head/tail 索引修复**、**删空 tail 链式回退**、`repair-chunk-index` API、基础单测均已落地。
 
 ---
 
@@ -18,11 +17,11 @@
 | **索引修复** | 启动或写盘后可从 `meta.links` 重建 head/tail（§7.4） |
 | **存量迁移** | 已有「单文件 >100 轮」的会话，在首次写操作或显式修复时拆成多块（§6） |
 
-### 1.2 本期不做（后续迭代）
+### 1.2 后续迭代（未做）
 
 - 分支子目录 `branch*/` 与 `meta.links.branches` 的产品 UI（仍保留字段，不写新分支逻辑）
 - `GET .../messages` 分页 / 按 chunk 懒加载（可先一次返回全链 turn，与现 UX 一致）
-- 跨 chunk 的「删中间轮」后自动合并块（删轮仍只动 tail；tail 空则链式回退，见 §5.3）
+- 跨 chunk 的「删中间轮」后自动合并块（删轮仍只动 tail；**删空 tail 链式回退已实现**，见 §5.3）
 
 ---
 
@@ -120,7 +119,7 @@ export function ordinalRangeForTurn(turnOrdinal: number): { start: number; end: 
 在以下时机调用（幂等）：
 
 - `readConversationIndex` 后发现 `headChunkFile`/`tailChunkFile` 与链不一致  
-- 或提供 `POST /api/chat/conversations/:id/repair-chunk-index`（管理员/调试用，可选）
+- 或提供 `POST /api/chat/conversations/:id/repair-chunk-index`（调试用，**已实现**）
 
 算法：
 
@@ -194,6 +193,13 @@ async function splitOversizedTailChunkIfNeeded(conversationId: string): Promise<
 
 ## 7. 测试清单
 
+**自动化（`server`：`npm test`）**
+
+- [x] `computeHeadTailFromLinks`：线性链 head/tail、单块、断链检测 — `chunk-chain.test.ts`
+- [x] `chunkFileNameForRange` / `ordinalRangeForNewChunk` / `inferTurnsPerFileFromFileName`
+
+**手动回归（发版前建议跑一遍）**
+
 - [ ] 0→99 轮全在 `turn-000000-000099.json`，`links.next === null`  
 - [ ] 第 100 轮（`turnOrdinal` 100）落入 `turn-000100-000199.json`，旧块 `next` 指向新块  
 - [ ] `GET messages` 返回 101 条 turn，ordinal 连续  
@@ -202,7 +208,7 @@ async function splitOversizedTailChunkIfNeeded(conversationId: string): Promise<
 - [ ] 编辑 `turnOrdinal=5` 的 user 文本落盘到块 0  
 - [ ] 删除最后一轮后 tail 文件名回退到上一块（若新块已空）  
 - [ ] 迁移：单文件 150 轮 → 发送新消息后 2 个 chunk 文件且链完整  
-- [ ] `rebuildHeadTailFromLinks`：手动改坏 index 后修复成功  
+- [ ] `POST .../repair-chunk-index`：手动改坏 index 后修复成功  
 
 ---
 
@@ -216,8 +222,5 @@ async function splitOversizedTailChunkIfNeeded(conversationId: string): Promise<
 
 ## 9. 与 `DOC/04` 的对应
 
-实现完成后勾选：
-
-- `DOC/04-TODO.md` → **「Chunk 链按 100 轮切分与全链读取」**
-
-并在 `DOC/03` §6 开头增加一行实现状态指向本文。
+- [x] `DOC/04-TODO.md` → **「Chunk 链按轮数切分与全链读取」**
+- [x] `DOC/03` §6 实现状态指向本文

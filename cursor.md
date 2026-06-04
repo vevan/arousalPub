@@ -11,7 +11,7 @@
 
 ## 文档索引
 
-- **【P0 最高】API Key 服务端隔离（待实施）**：`DOC/13-api-key-server-side-isolation.md`
+- **API Key 服务端隔离（已实现）**：`DOC/13-api-key-server-side-isolation.md`
 - **用户安装与启动**：根目录 `README.md`
 - 架构设计：`DOC/01-架构设计.md`（**§9 运行时与部署**）
 - 需求说明：`DOC/02-需求说明.md`
@@ -19,7 +19,7 @@
 - TODO 清单：`DOC/04-TODO.md`
 - 技术栈：`DOC/05-技术栈.md`
 - **工作交接（新 Agent 入口）**：`DOC/06-工作交接.md`
-- **Chunk 链切分实现方案（待开发）**：`DOC/08-chunk-chain-implementation.md`
+- **Chunk 链切分（已实现）**：`DOC/08-chunk-chain-implementation.md`
 - 运行时数据目录说明：`data/README.md`
 - 前端子项目说明：`web/README.md`
 

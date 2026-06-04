@@ -1267,13 +1267,14 @@ export async function updateTurnContentInTailChunk(
   return true
 }
 
-/** 删除尾块中的整轮（用户+助手），并重排 turnOrdinal；若无剩余轮次则删除 chunk 文件并清空 head/tail */
+/** 删除尾块中的整轮；若删空 tail 且存在 previous 则链式回退 tail 指针 */
 export async function removeTurnAtOrdinalInTailChunk(
   conversationId: string,
   turnOrdinal: number,
 ): Promise<boolean> {
   const idx = await readConversationIndex(conversationId)
   if (!idx?.tailChunkFile) return false
+  const tailFileName = idx.tailChunkFile
   const chunkPath = tailChunkPath(conversationId, idx)
   if (!chunkPath) return false
   let chunk: ChunkFile
@@ -1292,13 +1293,33 @@ export async function removeTurnAtOrdinalInTailChunk(
   const t = nowIso()
 
   if (filtered.length === 0) {
+    const previousFile = chunk.meta.links.previous
     try {
       await rm(chunkPath, { force: true })
     } catch {
       return false
     }
-    idx.headChunkFile = null
-    idx.tailChunkFile = null
+    if (previousFile) {
+      let prevChunk: ChunkFile
+      try {
+        const raw = await readFile(
+          path.join(conversationDir(conversationId), previousFile),
+          'utf8',
+        )
+        prevChunk = JSON.parse(raw) as ChunkFile
+      } catch {
+        return false
+      }
+      prevChunk.meta.links.next = null
+      await writeChunkFile(conversationId, previousFile, prevChunk)
+      idx.tailChunkFile = previousFile
+      if (idx.headChunkFile === tailFileName) {
+        idx.headChunkFile = previousFile
+      }
+    } else {
+      idx.headChunkFile = null
+      idx.tailChunkFile = null
+    }
     idx.updatedAt = t
     await writeConversationIndex(conversationId, idx)
     await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
@@ -1309,14 +1330,13 @@ export async function removeTurnAtOrdinalInTailChunk(
     return true
   }
 
-  filtered.forEach((turn, i) => {
-    turn.turnOrdinal = i
-  })
   chunk.turns = filtered
-  const end = filtered.length - 1
-  chunk.meta.ordinalRange = { start: 0, end }
+  chunk.meta.ordinalRange = {
+    start: filtered[0]!.turnOrdinal,
+    end: filtered[filtered.length - 1]!.turnOrdinal,
+  }
 
-  await writeChunkFile(conversationId, idx.tailChunkFile, chunk)
+  await writeChunkFile(conversationId, tailFileName, chunk)
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
   await upsertChatListEntry(chatListEntryFromIndex(idx), idx)

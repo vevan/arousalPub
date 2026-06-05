@@ -146,6 +146,7 @@ export interface BuildConversationMessagesResult {
   messages: ChatMessage[]
   estimatedTokens: number
   droppedHistoryCount: number
+  droppedMemoryCount: number
   memoryTurnIds?: string[]
   memoryText?: string
 }
@@ -182,6 +183,12 @@ export async function buildConversationOutboundMessages(
   )
 
   const userInput = typeof params.userText === 'string' ? params.userText : ''
+  const maxT = params.contextLength
+  const maxTokens =
+    typeof maxT === 'number' && !Number.isNaN(maxT) && maxT > 0
+      ? maxT
+      : undefined
+
   const memoryPipeline = await runMemoryPipeline({
     conversationId,
     userText: userInput,
@@ -189,6 +196,8 @@ export async function buildConversationOutboundMessages(
     historySettings: effectiveHistory,
     historyBeforeTurnOrdinalExclusive:
       params.historyBeforeTurnOrdinalExclusive ?? undefined,
+    contextLength: maxTokens,
+    tokenModel: params.tokenModel ?? undefined,
   })
 
   const charIds = resolvedCharacterIds(idx)
@@ -204,11 +213,6 @@ export async function buildConversationOutboundMessages(
   if (characters.length > 0) charCtx.characters = characters
 
   const trigger = normalizeTrigger(params.promptTrigger)
-  const maxT = params.contextLength
-  const maxTokens =
-    typeof maxT === 'number' && !Number.isNaN(maxT) && maxT > 0
-      ? maxT
-      : undefined
 
   const macroContext = buildPromptMacroContext({
     conversationUserName: idx.userName,
@@ -271,6 +275,7 @@ export async function buildConversationOutboundMessages(
     messages,
     estimatedTokens,
     droppedHistoryCount: result.droppedHistoryCount,
+    droppedMemoryCount: memoryPipeline.droppedMemoryCount,
     memoryTurnIds: memoryPipeline.memoryTurnIds,
     memoryText: memoryPipeline.memoryText || undefined,
   }

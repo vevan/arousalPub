@@ -25,6 +25,7 @@ import {
   readGlobalEmbeddingApiSettings,
   readGlobalMemorySettings,
 } from './user-preferences-file.js'
+import { resolveMemorySettings } from './memory-settings.js'
 import { turnEmbeddingCorpus } from './turn-memory-xml.js'
 import {
   isTailChunkFile,
@@ -135,14 +136,15 @@ async function indexTurnMemory(
   turn: TurnRecord,
   chunkFileName: string,
 ): Promise<void> {
+  const idx = await readConversationIndex(conversationId)
   const global = await readGlobalMemorySettings()
-  if (!global.memoryEnabled) return
+  const effective = resolveMemorySettings(global, idx?.memorySettings)
+  if (!effective.memoryEnabled) return
   const corpus = turnEmbeddingCorpus(turn)
   if (!corpus.trim()) return
   const emb = await createEmbedding(corpus)
   if (!emb) return
 
-  const idx = await readConversationIndex(conversationId)
   const isTail = idx != null && isTailChunkFile(idx, chunkFileName)
 
   await queueTurnMemoryUpsert(

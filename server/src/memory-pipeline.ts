@@ -19,6 +19,11 @@ import { resolveTurnById } from './turn-resolve.js'
 import { readAllTurns } from './chunk-chain.js'
 import { type TurnRecord } from './chat-storage.js'
 
+import {
+  memoryTokenBudget,
+  trimMemoryItemsByTokenBudget,
+} from './memory-token-trim.js'
+
 export interface MemoryPipelineInput {
   conversationId: string
   userText: string
@@ -26,6 +31,9 @@ export interface MemoryPipelineInput {
   historySettings: HistorySettings
   /** 再生等：不含 turnOrdinal >= 该值的轮次 */
   historyBeforeTurnOrdinalExclusive?: number | null
+  /** 连接 contextLength；用于 memory 槽 token 预算裁切（§14.4） */
+  contextLength?: number | null
+  tokenModel?: string | null
 }
 
 export interface MemoryPipelineResult {
@@ -35,6 +43,7 @@ export interface MemoryPipelineResult {
   memoryText: string
   memoryTurnIds: string[]
   memoryHits: MemorySearchHit[]
+  droppedMemoryCount: number
 }
 
 /** 近期 history XML 窗口轮数 */
@@ -87,6 +96,7 @@ export async function runMemoryPipeline(
   let memoryText = ''
   let memoryTurnIds: string[] = []
   let memoryHits: MemorySearchHit[] = []
+  let droppedMemoryCount = 0
 
   const query = buildMemoryRecallQuery(
     input.userText,
@@ -112,9 +122,29 @@ export async function runMemoryPipeline(
         const turn = await resolveTurnById(input.conversationId, hit.turnId)
         if (!turn || recentTurnIds.has(turn.turnId)) continue
         items.push({ turn, score: hit.score })
-        memoryTurnIds.push(turn.turnId)
       }
-      memoryText = formatMemoryXml(items)
+      const ctxLen = input.contextLength
+      const budget =
+        typeof ctxLen === 'number' && ctxLen > 0
+          ? memoryTokenBudget(ctxLen)
+          : 0
+      const tokenModel =
+        typeof input.tokenModel === 'string' && input.tokenModel.trim()
+          ? input.tokenModel.trim()
+          : undefined
+      if (budget > 0 && items.length > 0) {
+        const trimmed = trimMemoryItemsByTokenBudget(
+          items,
+          budget,
+          tokenModel,
+        )
+        memoryText = trimmed.memoryText
+        memoryTurnIds = trimmed.memoryTurnIds
+        droppedMemoryCount = trimmed.droppedMemoryCount
+      } else {
+        memoryText = formatMemoryXml(items)
+        memoryTurnIds = items.map((x) => x.turn.turnId)
+      }
     }
   }
 
@@ -124,5 +154,6 @@ export async function runMemoryPipeline(
     memoryText,
     memoryTurnIds,
     memoryHits,
+    droppedMemoryCount,
   }
 }

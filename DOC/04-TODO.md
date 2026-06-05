@@ -26,7 +26,7 @@
 - [x] 角色管理（文件库）：主存 **`data/{userId}/characters/{uuid}.png`**（内嵌 ST `chara`）；遗留 **`{uuid}.json`** 首次读取时迁移为 PNG；列表/筛选/导入/表单新建/删除/导出 API + Web **`/characters`**（见 `DOC/03` §12）
 - [x] Prompt 预设：服务端 `data/{userId}/prompts/`（`index.json` + 各预设 JSON）+ `GET/PUT /api/prompts`；前端 **`/prompts`**；组装仅服务端（`assemble-preview` / `assemble-messages` API）
 - [x] 世界书框架：`lorebooks/` 分文件存储、`GET/PUT /api/lorebooks`、Web 编辑与对话 `lorebookIds` 绑定、关键字/恒定注入（见 `DOC/03` §13）
-- [ ] **对话记忆（§14）收尾**：对话设置 UI（N / TopK）、索引增量与 reindex 完善、assemble 侧 memory/history token 预算裁切（§14.4 规划项）
+- [x] **对话记忆（§14）收尾**：会话设置 UI（N / TopK）、落盘增量索引、memory 槽 contextLength 预算裁切；assemble-messages 返回 `droppedMemoryCount`
 - [x] **组装管线 §14.9 主干**：`runMemoryPipeline`、`boundMemory`（`<memory>` system）、`boundRecentHistory` / `history` 分组（**user/assistant 链**，非 `<history>` XML）、`buildScanText` + lore 递归（`lorebook-resolve`）
 - [x] **宏管线 §15**：server `prompt-macros/handlers`、仅服务端展宏、`POST /api/prompts/assemble-preview`、opening 服务端展宏、删除 web `prompt-macros`
 - [ ] **ST 宏扩展（备忘，未排期）**：可行性分级见 `DOC/14-st-macros-porting.md`
@@ -82,8 +82,8 @@
 ## P1（次优先）
 
 - [x] **单端口生产启动（`DOC/01` §9）**：`npm start` / `run-prod.mjs`、`static-web.ts`、`start.bat`/`start.sh`、`README.md`；根目录 `build`（web + server）；保留 `npm run dev`
-- [ ] API 配置连通性测试接口（test）
-- [ ] API 配置引用检查与安全删除
+- [x] API 配置连通性测试接口（test）— `POST /api/settings/presets/:id/test`（两阶段：models + chat）
+- [x] API 配置引用检查与安全删除 — `GET/DELETE …/presets/:id`、`GET/DELETE /api/api-keys/:id`；PUT api-keys 拦截被引用 key 删除
 - [ ] 会话级模型参数覆盖能力
 - [ ] RAG 参数调优面板（TopK、阈值等）
 - [ ] 导入导出（会话全量、角色批量等）— **单卡 PNG/JSON 导出已有；批量见 P1**

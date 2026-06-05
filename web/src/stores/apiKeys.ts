@@ -5,6 +5,7 @@ import {
   translateApiError,
 } from '@/utils/api-error-message'
 import type { ApiConfigReference } from '@/utils/api-config-references'
+import { allocateShortId } from '@/utils/short-id'
 
 export interface ApiKeyEntryPublic {
   id: string
@@ -27,13 +28,6 @@ interface ApiKeysDocumentPublic {
 
 function nowIso(): string {
   return new Date().toISOString()
-}
-
-function makeId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return `key-${crypto.randomUUID()}`
-  }
-  return `key-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 function normalizeEntry(o: unknown): ApiKeyEntryLocal | null {
@@ -220,7 +214,7 @@ export const useApiKeysStore = defineStore('apiKeys', () => {
     const t = nowIso()
     const keyDraft = typeof partial?.keyDraft === 'string' ? partial.keyDraft : ''
     const entry: ApiKeyEntryLocal = {
-      id: makeId(),
+      id: allocateShortId(new Set(keys.value.map((k) => k.id))),
       alias:
         typeof partial?.alias === 'string' && partial.alias.trim()
           ? partial.alias.trim()

@@ -92,7 +92,6 @@ import {
 import { isPromptsSeedPut } from './prompts-default-seed.js'
 import {
   assertValidLorebooksPayload,
-  buildDefaultLorebook,
   readLorebookById,
   readLorebooksDocument,
   writeLorebooksDocument,

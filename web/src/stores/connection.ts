@@ -14,6 +14,7 @@ import {
   migrateLegacyDryField,
   normalizeDrySequenceBreakers,
 } from '@/utils/dry-sampler'
+import { allocateShortId } from '@/utils/short-id'
 
 export interface ApiSettingsSnapshot {
   alias: string
@@ -55,11 +56,8 @@ export interface ApiSettingsDocument {
   presets: ApiPreset[]
 }
 
-function newId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+function collectUsedApiPresetIds(list: ApiPreset[]): Set<string> {
+  return new Set(list.map((p) => p.id))
 }
 
 function defaultDryFields(): DrySamplerFields {
@@ -331,20 +329,6 @@ export const useConnectionStore = defineStore('connection', () => {
     void applyLinkedPromptPresetForApiPreset(newId)
   }
 
-  function ensureDefaultPresets() {
-    if (presets.value.length > 0 && activePresetId.value) return
-    const id = newId()
-    const p: ApiPreset = {
-      id,
-      ...defaultPresetFields(),
-      linkedPromptPresetId: null,
-      apiKeyId: null,
-    }
-    presets.value = [p]
-    activePresetId.value = id
-    applyPresetToForm(p)
-  }
-
   /** 切换当前预设引用的 API Key 别名 id；null 代表使用预设内联 apiKey */
   function setApiKeyId(id: string | null) {
     apiKeyId.value = id
@@ -359,7 +343,7 @@ export const useConnectionStore = defineStore('connection', () => {
 
   function addPreset() {
     syncFormToActivePreset()
-    const id = newId()
+    const id = allocateShortId(collectUsedApiPresetIds(presets.value))
     const p: ApiPreset = {
       id,
       ...defaultPresetFields(),
@@ -729,7 +713,7 @@ export const useConnectionStore = defineStore('connection', () => {
       if (keychain.findById(rawKid)) importKeyId = rawKid
     }
     syncFormToActivePreset()
-    const id = newId()
+    const id = allocateShortId(collectUsedApiPresetIds(presets.value))
     const next: ApiPreset = {
       id,
       ...merged,
@@ -775,20 +759,25 @@ export const useConnectionStore = defineStore('connection', () => {
     loadSettingsInflight = (async () => {
       const res = await fetch('/api/settings')
       if (!res.ok) {
-        ensureDefaultPresets()
         return false
       }
       const raw: unknown = await res.json()
       if (raw === null) {
-        ensureDefaultPresets()
-        return false
+        presets.value = []
+        activePresetId.value = null
+        return true
       }
       if (typeof raw !== 'object' || raw === null) return false
 
       const doc = raw as Partial<ApiSettingsDocument>
       if (doc.version !== 1 || !Array.isArray(doc.presets)) {
-        ensureDefaultPresets()
         return false
+      }
+
+      if (doc.presets.length === 0) {
+        presets.value = []
+        activePresetId.value = null
+        return true
       }
 
       presets.value = (doc.presets as ApiPreset[]).map(normalizePreset)
@@ -881,7 +870,6 @@ export const useConnectionStore = defineStore('connection', () => {
     removeActivePreset,
     removePresetById,
     testActivePresetConnection,
-    ensureDefaultPresets,
     loadFromServer,
     saveToServer,
     parseCustomParams,

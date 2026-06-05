@@ -29,6 +29,6 @@ export async function fetchDefaultLorebookIds(): Promise<string[]> {
   try {
     return pickDefaultLorebookIds(await fetchLorebookPickerItems())
   } catch {
-    return [DEFAULT_LOREBOOK_ID]
+    return []
   }
 }

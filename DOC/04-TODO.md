@@ -36,7 +36,7 @@
 - [x] 对话发送与 SSE 流式返回（`/api/chat` 等，见 `server/src/index.ts`）
 - [ ] 消息树结构（parentId）与「从此分支继续」— **chunk/分支目录部分按 `DOC/03` 设计，产品级分支 UI 待对齐**
 - [x] **Chunk 链按轮数切分与全链读取** — **`DOC/08`** 已实现（含 head/tail 修复 API、删空 tail 回退、单测）
-- [x] 角色管理（文件库）：主存 **`data/{userId}/characters/{uuid}.png`**（内嵌 ST `chara`）；遗留 **`{uuid}.json`** 首次读取时迁移为 PNG；列表/筛选/导入/表单新建/删除/导出 API + Web **`/characters`**（见 `DOC/03` §12）
+- [x] 角色管理（文件库）：主存 **`data/{userId}/characters/{id}.png`**（`id` 为 8 位 hex，见 `DOC/03` §6.7；内嵌 ST `chara`）；遗留 **`{id}.json`** 首次读取时迁移为 PNG；列表/筛选/导入/表单新建/删除/导出 API + Web **`/characters`**（见 `DOC/03` §12）
 - [x] Prompt 预设：服务端 `data/{userId}/prompts/`（`index.json` + 各预设 JSON）+ `GET/PUT /api/prompts`；前端 **`/prompts`**；组装仅服务端（`assemble-preview` / `assemble-messages` API）
 - [x] 世界书框架：`lorebooks/` 分文件存储、`GET/PUT /api/lorebooks`、Web 编辑与对话 `lorebookIds` 绑定、关键字/恒定注入（见 `DOC/03` §13）
 - [x] **对话记忆（§14）收尾**：会话设置 UI（N / TopK）、落盘增量索引、**§14.4.1 统一 token 预算裁切**（lore → memory → history）；`assemble-messages` 返回 `droppedLoreCount` / `droppedMemoryCount` / `droppedHistoryCount`
@@ -56,24 +56,24 @@
 
 ## 角色卡（ST v2 PNG 与生态 — 当前迭代）
 
-与讨论一致：**会话绑定始终用 UUID**；磁盘主文件目标形态为 **`data/{userId}/characters/{uuid}.png`**（内嵌 Character Card V2 JSON）；列表依赖 **`characters/index.json`** 加速（与全量扫盘互为重建来源）。
+与讨论一致：**会话绑定始终用角色 id**（**8 位 hex 短 id**，见 `DOC/03` §6.7）；磁盘主文件目标形态为 **`data/{userId}/characters/{id}.png`**（内嵌 Character Card V2 JSON）；列表依赖 **`characters/index.json`** 加速（与全量扫盘互为重建来源）。
 
 ### 存储与索引
 
 - [x] **`characters/index.json`**（在 `data/{userId}/characters/` 下）：维护列表摘要（`id`、`name`、`summary`、`systemPromptPreview`、`tags`、`importedAt`、`updatedAt`），创建/导入/编辑/删除后同步；缺失或损坏时从磁盘 **重建**（扫描 **`*.png`** 与遗留 **`*.json`**）。
-- [x] **主存 `{uuid}.png`**：`server/src/character-png.ts` 读写 PNG `tEXt`/`zTXt` **`chara`**（Base64 的 `chara_card_v2`）；新建/导入/编辑均落盘 PNG；**`normalizeTavernCardV2Data`** 补全 TavernCardV2 `data` 约定字段（含 `creator`、`alternate_greetings`、`extensions` 等）。
+- [x] **主存 `{id}.png`**：`server/src/character-png.ts` 读写 PNG `tEXt`/`zTXt` **`chara`**（Base64 的 `chara_card_v2`）；新建/导入/编辑均落盘 PNG；**`normalizeTavernCardV2Data`** 补全 TavernCardV2 `data` 约定字段（含 `creator`、`alternate_greetings`、`extensions` 等）。
 - [x] **服务端默认头像资源**：打包路径 **`server/assets/characters/default-avatar.png`**（非 `data/`）；无用户图或 JSON 迁移时用其打底写入 `chara`。
 
 ### 导入 / 导出
 
-- [x] **导入 v2 角色卡 PNG**：`POST /api/characters/import-png`（multipart 字段 **`file`**）；解析 `chara` → 新 **`uuid`** → 原字节落盘 `{uuid}.png` + 更新索引。（大文件需服务端 **`bodyLimit`** 与 multipart `fileSize` 上限一致，见 `server/src/index.ts`。）
-- [x] **导入 JSON / 表单新建**：经同一套规范化后写入 **`{uuid}.png`**；可选 **`multipart`**：`payload`（JSON 字符串）+ **`portrait`**（PNG）→ `POST /api/characters`。
-- [x] **导出 v2 PNG**：`GET /api/characters/:id/export-png` 流式返回，`Content-Disposition` 文件名 **`charName.png`**（`card.name` slug + 冲突加时间戳）；体为 `{uuid}.png` 字节。
+- [x] **导入 v2 角色卡 PNG**：`POST /api/characters/import-png`（multipart 字段 **`file`**）；解析 `chara` → 分配新 **8 位 id** → 原字节落盘 `{id}.png` + 更新索引。（大文件需服务端 **`bodyLimit`** 与 multipart `fileSize` 上限一致，见 `server/src/index.ts`。）
+- [x] **导入 JSON / 表单新建**：经同一套规范化后写入 **`{id}.png`**；可选 **`multipart`**：`payload`（JSON 字符串）+ **`portrait`**（PNG）→ `POST /api/characters`。
+- [x] **导出 v2 PNG**：`GET /api/characters/:id/export-png` 流式返回，`Content-Disposition` 文件名 **`charName.png`**（`card.name` slug + 冲突加时间戳）；体为 `{id}.png` 字节。
 - [x] **导出整包 JSON**：`GET /api/characters/:id/export-json`（`schemaVersion` + ST v2 `card` 形态）；保留作调试或与 ST JSON 通道并存。
 
 ### 编辑与绑定
 
-- [x] **在线编辑 `card`**：`PATCH /api/characters/:id`（`{ card }` 浅合并）；写回 **`{uuid}.png`** 内 `chara` 并刷新索引。
+- [x] **在线编辑 `card`**：`PATCH /api/characters/:id`（`{ card }` 浅合并）；写回 **`{id}.png`** 内 `chara` 并刷新索引。
 - [x] **立绘 / 头像上传**：`POST /api/characters/:id/portrait`（multipart **`portrait`**，须 PNG）；保留当前 `card` 重嵌图像；`GET /api/characters/:id/image` 供前端展示。
 - [ ] **会话侧栏**：从角色库选卡写回 **`characterIds`**（替代仅 Snackbar 引导）。
 

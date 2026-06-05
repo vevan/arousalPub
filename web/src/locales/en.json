@@ -250,7 +250,7 @@
     "createOk": "Character created.",
     "edit": "Edit",
     "editDialogTitle": "Edit character",
-    "editDialogHint": "Changes are merged into the card and saved on the server; chats still reference this card by the same UUID.",
+    "editDialogHint": "Changes are merged into the card and saved on the server; chats still reference this card by the same character id.",
     "editSave": "Save",
     "editFailed": "Save failed.",
     "editOk": "Saved.",

@@ -406,9 +406,13 @@ function buildDefaultPreset(): PromptPreset {
   }
 }
 
-function buildInitialState(): PersistedState {
-  const def = buildDefaultPreset()
-  return { presets: [def], activePresetId: def.id }
+const EMPTY_PRESET: PromptPreset = {
+  id: '',
+  name: '',
+  groups: [],
+  prompts: [],
+  createdAt: '',
+  updatedAt: '',
 }
 
 /** ============== Storage ============== */
@@ -457,14 +461,10 @@ function normalizePresetPayload(raw: unknown): PromptPreset | null {
 /** ============== Store ============== */
 
 export const usePromptsStore = defineStore('prompts', () => {
-  const initial = buildInitialState()
-  const def = initial.presets[0]
-  const indexEntries = ref<PromptPresetIndexEntry[]>([
-    { id: def.id, name: def.name, updatedAt: def.updatedAt },
-  ])
+  const indexEntries = ref<PromptPresetIndexEntry[]>([])
   /** 仅缓存已从服务端拉取的正文；不用本地种子占位，避免与磁盘不一致 */
   const presetBodies = ref<Record<string, PromptPreset>>({})
-  const activePresetId = ref<string>(initial.activePresetId)
+  const activePresetId = ref<string>('')
 
   const presets = computed(() =>
     indexEntries.value.map(
@@ -525,7 +525,7 @@ export const usePromptsStore = defineStore('prompts', () => {
   }
 
   function scheduleIndexPatch() {
-    if (!loaded.value) return
+    if (!loaded.value || indexEntries.value.length === 0) return
     pendingIndexPatch = true
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(() => {
@@ -634,6 +634,9 @@ export const usePromptsStore = defineStore('prompts', () => {
           loaded.value = true
           return
         }
+        indexEntries.value = []
+        activePresetId.value = ''
+        presetBodies.value = {}
         loaded.value = true
         lastError.value = 'prompts_not_initialized'
       } catch (e) {
@@ -687,7 +690,7 @@ export const usePromptsStore = defineStore('prompts', () => {
 
   async function loadFromServer(opts?: { forceActive?: boolean }): Promise<void> {
     await loadIndexFromServer()
-    if (!loaded.value) return
+    if (!loaded.value || !activePresetId.value) return
     await loadPresetFromServer(activePresetId.value, {
       force: opts?.forceActive,
     })
@@ -717,7 +720,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     if (e) return stubPresetFromIndex(e)
     const first = indexEntries.value[0]
     if (first) return stubPresetFromIndex(first)
-    return buildDefaultPreset()
+    return EMPTY_PRESET
   })
 
   const activeGroups = computed<PromptGroup[]>(() =>
@@ -977,10 +980,12 @@ export const usePromptsStore = defineStore('prompts', () => {
     const { [presetId]: _drop, ...rest } = presetBodies.value
     presetBodies.value = rest
     if (activePresetId.value === presetId) {
-      activePresetId.value = indexEntries.value[0]?.id ?? activePresetId.value
+      activePresetId.value = indexEntries.value[0]?.id ?? ''
       selectedPromptId.value = null
       activeGroupId.value = null
-      void loadPresetFromServer(activePresetId.value)
+      if (activePresetId.value) {
+        void loadPresetFromServer(activePresetId.value)
+      }
     }
   }
 

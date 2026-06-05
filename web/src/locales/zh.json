@@ -250,7 +250,7 @@
     "createOk": "角色已创建。",
     "edit": "编辑",
     "editDialogTitle": "编辑角色",
-    "editDialogHint": "修改会合并到当前角色卡并保存到服务器；会话绑定仍使用同一 UUID。",
+    "editDialogHint": "修改会合并到当前角色卡并保存到服务器；会话绑定仍使用同一角色 id。",
     "editSave": "保存",
     "editFailed": "保存失败。",
     "editOk": "已保存。",

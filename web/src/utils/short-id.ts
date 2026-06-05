@@ -1,6 +1,10 @@
 /** 与 server/src/short-id.ts 对齐：8 位十六进制 */
 export const SHORT_ID_RE = /^[0-9a-f]{8}$/i
 
+export function isValidShortId(id: string): boolean {
+  return SHORT_ID_RE.test(id.trim())
+}
+
 export function generateShortId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
     const arr = new Uint8Array(4)

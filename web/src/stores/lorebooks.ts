@@ -3,6 +3,7 @@ import {
   downloadLorebookExport,
   parseLorebookImport,
 } from '@/utils/lorebooks-package'
+import { allocateShortId } from '@/utils/short-id'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
@@ -51,44 +52,14 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
-function makeId(prefix: string): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return `${prefix}-${crypto.randomUUID()}`
+function collectAllLorebookIds(lorebooks: Lorebook[]): Set<string> {
+  const used = new Set<string>()
+  for (const lb of lorebooks) {
+    used.add(lb.id)
+    for (const g of lb.groups) used.add(g.id)
+    for (const e of lb.entries) used.add(e.id)
   }
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function buildDefaultLorebook(): Lorebook {
-  const t = nowIso()
-  const mainGroupId = 'group-main'
-  return {
-    id: 'lore-default',
-    name: 'Default lorebook',
-    description: 'Sample groups and entries.',
-    groups: [
-      { id: mainGroupId, name: 'Main', order: 0 },
-      { id: 'group-characters', name: 'Characters', order: 1 },
-      { id: 'group-locations', name: 'Locations', order: 2 },
-    ],
-    entries: [
-      {
-        id: 'entry-pub-tone',
-        groupId: mainGroupId,
-        title: 'Tavern tone',
-        content:
-          'Arousal Pub 坐落于三王国岔路口，灯火昏黄、木梁吱呀。叙事偏慢节奏奇幻，重视气味与触感。',
-        enabled: true,
-        order: 0,
-        keys: [],
-        constant: true,
-        priority: 100,
-        createdAt: t,
-        updatedAt: t,
-      },
-    ],
-    createdAt: t,
-    updatedAt: t,
-  }
+  return used
 }
 
 function firstGroupIdOf(lb: Lorebook): string | null {
@@ -99,17 +70,13 @@ function firstGroupIdOf(lb: Lorebook): string | null {
   )
 }
 
-function buildInitialState(): {
-  lorebooks: Lorebook[]
-  activeLorebookId: string
-  activeGroupId: string | null
-} {
-  const lb = buildDefaultLorebook()
-  return {
-    lorebooks: [lb],
-    activeLorebookId: lb.id,
-    activeGroupId: firstGroupIdOf(lb),
-  }
+const EMPTY_LOREBOOK: Lorebook = {
+  id: '',
+  name: '',
+  groups: [],
+  entries: [],
+  createdAt: '',
+  updatedAt: '',
 }
 
 function normalizeLorebook(lb: Lorebook): Lorebook {
@@ -148,10 +115,9 @@ function normalizeServerDoc(raw: unknown): {
 }
 
 export const useLorebooksStore = defineStore('lorebooks', () => {
-  const initial = buildInitialState()
-  const lorebooks = ref<Lorebook[]>(initial.lorebooks)
-  const activeLorebookId = ref(initial.activeLorebookId)
-  const activeGroupId = ref<string | null>(initial.activeGroupId)
+  const lorebooks = ref<Lorebook[]>([])
+  const activeLorebookId = ref('')
+  const activeGroupId = ref<string | null>(null)
   const selectedEntryId = ref<string | null>(null)
   const searchText = ref('')
 
@@ -166,6 +132,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
   let loadPromise: Promise<void> | null = null
 
   const activeLorebook = computed<Lorebook>(() => {
+    if (lorebooks.value.length === 0) return EMPTY_LOREBOOK
     const lb =
       lorebooks.value.find((x) => x.id === activeLorebookId.value) ??
       lorebooks.value[0]
@@ -220,7 +187,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
   })
 
   function scheduleSave() {
-    if (!loaded.value) return
+    if (!loaded.value || lorebooks.value.length === 0) return
     if (saveTimer) clearTimeout(saveTimer)
     pendingSave = true
     saveTimer = setTimeout(() => {
@@ -231,6 +198,10 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
 
   async function flushSave(): Promise<void> {
     if (!pendingSave) return
+    if (lorebooks.value.length === 0) {
+      pendingSave = false
+      return
+    }
     pendingSave = false
     saving.value = true
     lastError.value = null
@@ -264,6 +235,17 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
         const res = await fetch('/api/lorebooks')
         if (!res.ok) throw new Error(`GET /api/lorebooks ${res.status}`)
         const raw: unknown = await res.json()
+        if (raw && typeof raw === 'object') {
+          const doc = raw as LorebooksServerDocument
+          if (Array.isArray(doc.lorebooks) && doc.lorebooks.length === 0) {
+            lorebooks.value = []
+            activeLorebookId.value = ''
+            activeGroupId.value = null
+            selectedEntryId.value = null
+            loaded.value = true
+            return
+          }
+        }
         const fromServer = raw === null ? null : normalizeServerDoc(raw)
         if (fromServer) {
           lorebooks.value = fromServer.lorebooks
@@ -281,12 +263,12 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
           loaded.value = true
           return
         }
-        if (!activeGroupId.value) {
-          activeGroupId.value = firstGroupIdOf(activeLorebook.value)
-        }
+        lorebooks.value = []
+        activeLorebookId.value = ''
+        activeGroupId.value = null
+        selectedEntryId.value = null
         loaded.value = true
-        pendingSave = true
-        await flushSave()
+        lastError.value = 'lorebooks_not_initialized'
       } catch (e) {
         lastError.value = e instanceof Error ? e.message : String(e)
       } finally {
@@ -309,13 +291,18 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     scheduleSave()
   }
 
+  function allocateLorebookId(): string {
+    return allocateShortId(collectAllLorebookIds(lorebooks.value))
+  }
+
   function createLorebook(name: string): Lorebook {
     const t = nowIso()
-    const id = `lore-${Date.now().toString(36)}`
+    const used = collectAllLorebookIds(lorebooks.value)
+    const id = allocateShortId(used)
     const lb: Lorebook = {
       id,
       name: name.trim() || 'New lorebook',
-      groups: [{ id: makeId('group'), name: 'Default group', order: 0 }],
+      groups: [{ id: allocateShortId(used), name: 'Default group', order: 0 }],
       entries: [],
       createdAt: t,
       updatedAt: t,
@@ -324,6 +311,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     activeLorebookId.value = id
     activeGroupId.value = lb.groups[0].id
     selectedEntryId.value = null
+    loaded.value = true
     scheduleSave()
     return lb
   }
@@ -430,7 +418,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
         ? Math.max(...lb.groups.map((g) => g.order)) + 1
         : 0
     const g: LorebookGroup = {
-      id: makeId('group'),
+      id: allocateShortId(collectAllLorebookIds(lorebooks.value)),
       name: trimmed,
       order,
     }
@@ -506,16 +494,17 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     const src = lorebooks.value.find((x) => x.id === id)
     if (!src) return null
     const t = nowIso()
-    const newId = `lore-${Date.now().toString(36)}`
+    const used = collectAllLorebookIds(lorebooks.value)
+    const newId = allocateShortId(used)
     const groupIdMap = new Map<string, string>()
     const groups = src.groups.map((g) => {
-      const nid = makeId('group')
+      const nid = allocateShortId(used)
       groupIdMap.set(g.id, nid)
       return { ...g, id: nid }
     })
     const entries = src.entries.map((e) => ({
       ...e,
-      id: makeId('entry'),
+      id: allocateShortId(used),
       groupId: groupIdMap.get(e.groupId) ?? e.groupId,
       createdAt: t,
       updatedAt: t,
@@ -540,7 +529,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
   function createEntry(groupId: string) {
     const t = nowIso()
     const entry: LorebookEntry = {
-      id: makeId('entry'),
+      id: allocateShortId(collectAllLorebookIds(lorebooks.value)),
       groupId,
       title: '',
       content: '',
@@ -574,7 +563,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     const maxOrder = inTarget.reduce((m, e) => Math.max(m, e.order), -1)
     const entry: LorebookEntry = {
       ...src,
-      id: makeId('entry'),
+      id: allocateShortId(collectAllLorebookIds(lorebooks.value)),
       groupId: gid,
       title: src.title ? `${src.title} (副本)` : '',
       order: maxOrder + 1,
@@ -676,14 +665,6 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     }
     selectedEntryId.value = null
   })
-
-  function allocateLorebookId(): string {
-    let id = `lore-${Date.now().toString(36)}`
-    while (lorebooks.value.some((x) => x.id === id)) {
-      id = `lore-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
-    }
-    return id
-  }
 
   function uniqueImportedLorebookName(name: string): string {
     const base = name.trim() || 'Imported lorebook'

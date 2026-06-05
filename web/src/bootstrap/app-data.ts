@@ -28,9 +28,7 @@ export function bootstrapAppData(): Promise<void> {
       prompts.loadIndexFromServer(),
     ])
 
-    conn.ensureDefaultPresets()
-    const ok = await conn.loadFromServer()
-    if (!ok) conn.ensureDefaultPresets()
+    await conn.loadFromServer()
     })()
   }
   return bootstrapPromise

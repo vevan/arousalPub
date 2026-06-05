@@ -37,7 +37,7 @@ data/
 | `plugin-registry.json` | 该用户插件 enabled / order |
 | `avatar.png` | 用户头像 |
 | `chats/` | 对话会话与消息 |
-| `prompts/`、`characters/`、`lorebooks/` | 资料与预设 |
+| `prompts/`、`characters/`、`lorebooks/` | 资料与预设（角色主存 **`characters/{id}.png`**，`id` 为 8 位 hex，见 `DOC/03` §6.7） |
 | `api-settings.json`、`api-keys.json` | API 配置 |
 | `preferences.json` | 主题、语言等 |
 

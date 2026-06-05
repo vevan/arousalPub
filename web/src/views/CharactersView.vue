@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { characterImageUrl } from '@/utils/authenticated-media-url'
 import { apiFetch } from '@/utils/api-fetch'
+import { generateShortId } from '@/utils/short-id'
 import { computed, mergeProps, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -81,10 +82,7 @@ const charFormCreator = ref('')
 type AltGreetRow = { id: string; text: string }
 
 function altGreetRowId(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID()
-  }
-  return `ag-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  return generateShortId()
 }
 
 const charFormAlternateGreetings = ref<AltGreetRow[]>([

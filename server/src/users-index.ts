@@ -15,6 +15,8 @@ import {
   getUsersIndexPath,
 } from './config.js'
 import { seedDefaultPromptsForUser } from './prompts-default-seed.js'
+import { seedDefaultApiSettingsForUser } from './api-settings-default-seed.js'
+import { seedDefaultLorebooksForUser } from './lorebooks-default-seed.js'
 import {
   allocateUserId,
   isValidShortId,
@@ -139,6 +141,8 @@ export async function ensureUsersRegistry(): Promise<UsersIndexDocument> {
     ensureDataSkeletonForUser(RESERVED_USER_ID)
     seedDefaultAvatar(RESERVED_USER_ID)
     await seedDefaultPromptsForUser(RESERVED_USER_ID)
+    await seedDefaultApiSettingsForUser(RESERVED_USER_ID)
+    await seedDefaultLorebooksForUser(RESERVED_USER_ID)
     return doc
   }
   doc = await readUsersIndex()
@@ -161,6 +165,8 @@ export async function ensureUsersRegistry(): Promise<UsersIndexDocument> {
     seedDefaultAvatar(RESERVED_USER_ID)
   }
   await seedDefaultPromptsForUser(RESERVED_USER_ID)
+  await seedDefaultApiSettingsForUser(RESERVED_USER_ID)
+  await seedDefaultLorebooksForUser(RESERVED_USER_ID)
   return doc
 }
 
@@ -229,6 +235,8 @@ export async function registerUser(body: {
   ensureDataSkeletonForUser(id)
   seedDefaultAvatar(id)
   await seedDefaultPromptsForUser(id)
+  await seedDefaultApiSettingsForUser(id)
+  await seedDefaultLorebooksForUser(id)
   return entry
 }
 

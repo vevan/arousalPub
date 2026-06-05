@@ -605,13 +605,6 @@ watch(
           </span>
           <template v-else>
             <span
-              v-if="conn.model.trim()"
-              class="chat-header__pill chat-header__pill--accent"
-            >
-              <span class="chat-header__dot" />
-              {{ conn.model.trim() }}
-            </span>
-            <span
               v-if="conn.alias.trim()"
               class="chat-header__pill"
             >
@@ -862,11 +855,6 @@ watch(
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
-.chat-header__pill--accent {
-  border-color: rgba(var(--v-theme-primary), 0.35);
-  background: rgba(var(--v-theme-primary), 0.06);
-  color: rgb(var(--v-theme-primary));
-}
 .chat-header__pill--warning {
   border-color: rgba(var(--v-theme-warning), 0.5);
   background: rgba(var(--v-theme-warning), 0.08);
@@ -877,14 +865,6 @@ watch(
   text-transform: none;
 }
 
-.chat-header__dot {
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 50%;
-  background: rgb(var(--v-theme-success, 122 143 106));
-  box-shadow: 0 0 0 0.1875rem rgb(var(--v-theme-success, 122 143 106) / 0.18);
-  flex-shrink: 0;
-}
 .chat-header__dot--warning {
   background: rgb(var(--v-theme-warning));
   box-shadow: 0 0 0 0.1875rem rgba(var(--v-theme-warning), 0.18);

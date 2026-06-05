@@ -16,6 +16,7 @@ import {
   formatDryBreakersForTextarea,
   parseDryBreakersFromTextarea,
 } from '@/utils/dry-sampler'
+import type { ApiConfigReference } from '@/utils/api-config-references'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -24,6 +25,60 @@ const { t } = useI18n()
 const snackbar = ref(false)
 const snackbarText = ref('')
 const snackbarColor = ref<'success' | 'error' | 'warning'>('success')
+
+const connectionTestLoading = ref(false)
+const referencesDialogOpen = ref(false)
+const referencesDialogTitle = ref('')
+const referencesDialogItems = ref<string[]>([])
+
+type TestResultDialogKind = 'success' | 'partial' | 'failed'
+const testResultDialogOpen = ref(false)
+const testResultDialogKind = ref<TestResultDialogKind>('success')
+const testResultDialog = ref<{
+  modelsCount?: number
+  modelsMs?: number
+  chatModel?: string
+  chatMs?: number
+  totalMs?: number
+  reply?: string
+  replyWarning?: 'truncated'
+  error?: string
+  detail?: string
+} | null>(null)
+
+function openTestResultDialog(
+  kind: TestResultDialogKind,
+  data: NonNullable<typeof testResultDialog.value>,
+) {
+  testResultDialogKind.value = kind
+  testResultDialog.value = data
+  testResultDialogOpen.value = true
+}
+
+function formatReferenceLine(ref: ApiConfigReference): string {
+  if (ref.kind === 'conversation_api_preset') {
+    return t('conn.refConversation', {
+      title: ref.conversationTitle ?? ref.conversationId ?? '—',
+      id: ref.conversationId ?? '—',
+      path: ref.path ?? '—',
+    })
+  }
+  if (ref.kind === 'api_preset_api_key') {
+    return t('conn.refPresetKey', {
+      alias: ref.presetAlias ?? ref.presetId ?? '—',
+    })
+  }
+  if (ref.kind === 'embedding_api_key') {
+    return t('conn.refEmbeddingKey')
+  }
+  return ref.kind
+}
+
+function openReferencesDialog(title: string, refs: ApiConfigReference[]) {
+  referencesDialogTitle.value = title
+  referencesDialogItems.value = refs.map(formatReferenceLine)
+  referencesDialogOpen.value = true
+}
 
 const conn = useConnectionStore()
 const prompts = usePromptsStore()
@@ -132,8 +187,21 @@ async function saveApiKeyManager() {
       apiKeysStore.updateKey(d.id, patch)
     }
   }
-  await apiKeysStore.flushSave()
-  // 若当前预设引用的 keyId 被删了：清空
+  try {
+    await apiKeysStore.flushSave()
+  } catch (e) {
+    await apiKeysStore.reloadFromServer()
+    openApiKeyManager()
+    const refs = (e as Error & { references?: ApiConfigReference[] }).references
+    if (refs?.length) {
+      openReferencesDialog(t('conn.deleteKeyBlocked'), refs)
+    } else {
+      snackbarColor.value = 'error'
+      snackbarText.value = e instanceof Error ? e.message : String(e)
+      snackbar.value = true
+    }
+    return
+  }
   if (conn.apiKeyId && !apiKeysStore.findById(conn.apiKeyId)) {
     conn.setApiKeyId(null)
   }
@@ -273,6 +341,86 @@ async function confirmRevealKey() {
 const canFetchModels = computed(
   () => Boolean(conn.baseUrl.trim() && conn.isApiKeyConfigured),
 )
+
+const canTestConnection = computed(
+  () => canFetchModels.value && Boolean(conn.model.trim()),
+)
+
+async function onTestConnection() {
+  if (!canFetchModels.value) {
+    snackbarColor.value = 'warning'
+    snackbarText.value = t('conn.needBaseAndKey')
+    snackbar.value = true
+    return
+  }
+  if (!conn.model.trim()) {
+    snackbarColor.value = 'warning'
+    snackbarText.value = t('conn.needModelForTest')
+    snackbar.value = true
+    return
+  }
+  connectionTestLoading.value = true
+  try {
+    await conn.saveToServer()
+    const result = await conn.testActivePresetConnection()
+    if (result.ok) {
+      openTestResultDialog('success', {
+        modelsCount: result.models.modelCount,
+        modelsMs: result.models.latencyMs,
+        chatModel: result.chat.model,
+        chatMs: result.chat.latencyMs,
+        totalMs: result.totalLatencyMs,
+        reply: result.chat.replyPreview,
+        replyWarning: result.chat.replyWarning,
+      })
+    } else if (result.phase === 'chat' && result.models) {
+      openTestResultDialog('partial', {
+        modelsCount: result.models.modelCount,
+        modelsMs: result.models.latencyMs,
+        chatModel: result.model ?? conn.model,
+        error: result.error,
+        detail: result.detail,
+      })
+    } else {
+      openTestResultDialog('failed', {
+        error: result.error,
+        detail: result.detail,
+      })
+    }
+  } catch (e) {
+    snackbarColor.value = 'error'
+    snackbarText.value = e instanceof Error ? e.message : String(e)
+    snackbar.value = true
+  } finally {
+    connectionTestLoading.value = false
+  }
+}
+
+async function onDeleteCurrentPreset() {
+  if (conn.presets.length <= 1) return
+  try {
+    await conn.saveToServer()
+  } catch (e) {
+    snackbarColor.value = 'error'
+    snackbarText.value = e instanceof Error ? e.message : String(e)
+    snackbar.value = true
+    return
+  }
+  const result = await conn.removeActivePreset()
+  if (result.ok) {
+    snackbarColor.value = 'success'
+    snackbarText.value = t('conn.deletePresetOk')
+    snackbar.value = true
+    return
+  }
+  if (result.references?.length) {
+    openReferencesDialog(t('conn.deletePresetBlocked'), result.references)
+    return
+  }
+  snackbarColor.value = 'error'
+  snackbarText.value = result.error
+  snackbar.value = true
+}
 
 async function fetchModels() {
   const bu = conn.baseUrl.trim()
@@ -519,9 +667,19 @@ function closeImportDialog() {
         variant="text"
         color="error"
         :disabled="conn.presets.length <= 1"
-        @click="conn.removeActivePreset()"
+        @click="onDeleteCurrentPreset"
       >
         {{ $t('conn.deleteCurrent') }}
+      </v-btn>
+      <v-btn
+        size="small"
+        variant="tonal"
+        prepend-icon="mdi-lan-connect"
+        :loading="connectionTestLoading"
+        :disabled="!canTestConnection"
+        @click="onTestConnection"
+      >
+        {{ $t('conn.testConnection') }}
       </v-btn>
       <v-btn
         size="small"
@@ -1215,6 +1373,152 @@ function closeImportDialog() {
     </v-card>
   </v-dialog>
 
+  <v-dialog
+    v-model="testResultDialogOpen"
+    max-width="560"
+    scrollable
+  >
+    <v-card v-if="testResultDialog">
+      <v-card-title>{{ $t('conn.testResultDialogTitle') }}</v-card-title>
+      <v-card-text>
+        <v-alert
+          v-if="testResultDialogKind === 'success'"
+          type="success"
+          variant="tonal"
+          density="compact"
+          class="mb-3"
+        >
+          {{ $t('conn.testResultSuccessHint') }}
+        </v-alert>
+        <v-alert
+          v-else-if="testResultDialogKind === 'partial'"
+          type="warning"
+          variant="tonal"
+          density="compact"
+          class="mb-3"
+        >
+          {{ $t('conn.testResultPartialHint') }}
+        </v-alert>
+        <v-alert
+          v-else
+          type="error"
+          variant="tonal"
+          density="compact"
+          class="mb-3"
+        >
+          {{ testResultDialog.error }}
+        </v-alert>
+
+        <template v-if="testResultDialog.modelsCount != null">
+          <p class="text-subtitle-2 mb-1">
+            {{ $t('conn.testResultPhaseModels') }}
+          </p>
+          <p class="text-body-2 mb-3">
+            {{
+              $t('conn.testResultModelsLine', {
+                count: String(testResultDialog.modelsCount),
+                ms: String(testResultDialog.modelsMs ?? '—'),
+              })
+            }}
+          </p>
+        </template>
+
+        <template
+          v-if="testResultDialogKind !== 'failed' && testResultDialog.chatModel"
+        >
+          <p class="text-subtitle-2 mb-1">
+            {{ $t('conn.testResultPhaseChat') }}
+          </p>
+          <p class="text-body-2 mb-1">
+            {{
+              $t('conn.testResultChatLine', {
+                model: testResultDialog.chatModel,
+                ms: String(testResultDialog.chatMs ?? '—'),
+              })
+            }}
+          </p>
+          <v-alert
+            v-if="testResultDialog.replyWarning === 'truncated'"
+            type="warning"
+            variant="tonal"
+            density="compact"
+            class="mb-2 text-body-2"
+          >
+            {{ $t('conn.testResultReplyTruncated') }}
+          </v-alert>
+          <p
+            v-if="testResultDialog.reply"
+            class="text-body-2 text-pre-wrap test-result-reply mb-3"
+          >
+            {{ testResultDialog.reply }}
+          </p>
+        </template>
+
+        <p
+          v-if="testResultDialog.totalMs != null"
+          class="text-caption text-medium-emphasis"
+        >
+          {{
+            $t('conn.testResultTotalMs', {
+              ms: String(testResultDialog.totalMs),
+            })
+          }}
+        </p>
+
+        <p
+          v-if="testResultDialog.detail"
+          class="text-body-2 text-pre-wrap text-error mt-2"
+        >
+          {{ testResultDialog.detail.slice(0, 1200) }}
+        </p>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn
+          variant="flat"
+          color="primary"
+          @click="testResultDialogOpen = false"
+        >
+          {{ $t('conn.close') }}
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <v-dialog
+    v-model="referencesDialogOpen"
+    max-width="520"
+  >
+    <v-card>
+      <v-card-title>{{ referencesDialogTitle }}</v-card-title>
+      <v-card-text>
+        <p class="text-body-2 text-medium-emphasis mb-3">
+          {{ $t('conn.referencesDialogHint') }}
+        </p>
+        <v-list
+          density="compact"
+          class="border rounded"
+        >
+          <v-list-item
+            v-for="(line, i) in referencesDialogItems"
+            :key="i"
+            :title="line"
+            prepend-icon="mdi-link-variant"
+          />
+        </v-list>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn
+          variant="text"
+          @click="referencesDialogOpen = false"
+        >
+          {{ $t('conn.close') }}
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
   <v-snackbar
     v-model="snackbar"
     :color="snackbarColor"
@@ -1238,6 +1542,15 @@ function closeImportDialog() {
 .model-dialog-list {
   max-height: min(50vh, 20rem);
   overflow-y: auto;
+}
+
+.test-result-reply {
+  max-height: 12rem;
+  overflow-y: auto;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  background: rgba(var(--v-theme-on-surface), 0.04);
+  word-break: break-word;
 }
 
 /* 圆点掩码（Chromium / WebKit）；非 WebKit 浏览器在隐藏模式下可能为明文，可点眼睛图标查看 */

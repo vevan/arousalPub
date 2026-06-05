@@ -1,6 +1,10 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { translateApiError } from '@/utils/api-error-message'
+import {
+  apiErrorFromResponseBody,
+  translateApiError,
+} from '@/utils/api-error-message'
+import type { ApiConfigReference } from '@/utils/api-config-references'
 
 export interface ApiKeyEntryPublic {
   id: string
@@ -93,8 +97,32 @@ export const useApiKeysStore = defineStore('apiKeys', () => {
         body: JSON.stringify({ keys: keys.value.map(toPutPayload) }),
       })
       if (!res.ok) {
-        const txt = await res.text()
-        throw new Error(`PUT /api/api-keys ${res.status}: ${txt.slice(0, 200)}`)
+        let payload: unknown = null
+        try {
+          payload = await res.json()
+        } catch {
+          const txt = await res.text()
+          throw new Error(`PUT /api/api-keys ${res.status}: ${txt.slice(0, 200)}`)
+        }
+        if (
+          res.status === 409 &&
+          payload &&
+          typeof payload === 'object' &&
+          'error' in payload
+        ) {
+          const err = payload as { error?: string; references?: unknown }
+          const e = new Error(
+            typeof err.error === 'string'
+              ? translateApiError(err.error)
+              : translateApiError('api_key_in_use'),
+          ) as Error & { references?: ApiConfigReference[]; code?: string }
+          e.code = typeof err.error === 'string' ? err.error : 'api_key_in_use'
+          if (Array.isArray(err.references)) {
+            e.references = err.references as ApiConfigReference[]
+          }
+          throw e
+        }
+        throw new Error(apiErrorFromResponseBody(payload, 'api_keys_write_failed'))
       }
       const j = (await res.json()) as { savedAt?: string }
       if (typeof j.savedAt === 'string') lastSavedAt.value = j.savedAt
@@ -252,6 +280,12 @@ export const useApiKeysStore = defineStore('apiKeys', () => {
     return j.key
   }
 
+  async function reloadFromServer(): Promise<void> {
+    loaded.value = false
+    keysDirty.value = false
+    await loadFromServer()
+  }
+
   return {
     keys,
     loaded,
@@ -261,6 +295,7 @@ export const useApiKeysStore = defineStore('apiKeys', () => {
     lastError,
     selectItems,
     loadFromServer,
+    reloadFromServer,
     flushSave,
     findById,
     createKey,

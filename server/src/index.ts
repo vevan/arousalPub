@@ -101,9 +101,19 @@ import {
   type ApiSettingsPutBody,
 } from './api-settings-sanitize.js'
 import {
+  ApiConfigInUseError,
+  assertRemovedApiKeysNotInUse,
+  deleteApiKeyFromFile,
+  deleteApiPresetFromFile,
+  findApiKeyReferences,
+  findApiPresetReferences,
+} from './api-config-references.js'
+import {
   ApiCredentialError,
   resolveChatCredentials,
 } from './api-credential-resolve.js'
+import { testApiPresetConnectivity } from './api-preset-test.js'
+import { fetchUpstreamModelsList } from './upstream-models.js'
 import { sanitizeEmbeddingApiForGet } from './embedding-api-sanitize.js'
 import { verifyPassword } from './auth-password.js'
 import { getCurrentUserId } from './user-context.js'
@@ -221,43 +231,6 @@ interface ModelsListBody {
   apiKey?: string
   apiPresetId?: string
   apiKeyId?: string | null
-}
-
-function extractModelIds(json: unknown): string[] {
-  if (!json || typeof json !== 'object') return []
-  const o = json as Record<string, unknown>
-  if (Array.isArray(o.data)) {
-    const ids = o.data
-      .map((x) => {
-        if (x && typeof x === 'object' && x !== null && 'id' in x) {
-          const id = (x as { id: unknown }).id
-          return typeof id === 'string' ? id : ''
-        }
-        return ''
-      })
-      .filter((s): s is string => s.length > 0)
-    return [...new Set(ids)]
-  }
-  if (Array.isArray(o.models)) {
-    const ids = o.models
-      .map((x) => {
-        if (typeof x === 'string') return x
-        if (x && typeof x === 'object' && x !== null) {
-          if ('id' in x) {
-            const id = (x as { id: unknown }).id
-            if (typeof id === 'string') return id
-          }
-          if ('name' in x) {
-            const n = (x as { name: unknown }).name
-            if (typeof n === 'string') return n
-          }
-        }
-        return ''
-      })
-      .filter((s): s is string => s.length > 0)
-    return [...new Set(ids)]
-  }
-  return []
 }
 
 function extractReasoningFromMessage(msg: unknown): string | undefined {
@@ -1674,6 +1647,93 @@ app.put<{ Body: SettingsPutBody }>('/api/settings', async (request, reply) => {
   return { ok: true as const, savedAt: doc.savedAt }
 })
 
+app.post<{ Params: { id: string }; Body: { baseUrl?: string; model?: string } }>(
+  '/api/settings/presets/:id/test',
+  async (request, reply) => {
+    const presetId = request.params.id?.trim() ?? ''
+    if (!presetId) {
+      return reply.status(400).send({ ok: false, error: ApiErrorCodes.invalid_id })
+    }
+    const body = request.body ?? {}
+    const baseUrl =
+      typeof body.baseUrl === 'string' ? body.baseUrl : undefined
+    const model = typeof body.model === 'string' ? body.model : undefined
+    try {
+      const result = await testApiPresetConnectivity({
+        apiPresetId: presetId,
+        baseUrl,
+        model,
+      })
+      if (!result.ok) {
+        const status =
+          result.error === 'missing_api_key' ||
+          result.error === 'api_credential_not_configured' ||
+          result.error === 'missing_model' ||
+          result.error === 'invalid_id'
+            ? 400
+            : 502
+        return reply.status(status).send(result)
+      }
+      return result
+    } catch (e) {
+      app.log.error(e)
+      return reply
+        .status(500)
+        .send({ ok: false, error: ApiErrorCodes.api_preset_test_failed })
+    }
+  },
+)
+
+app.get<{ Params: { id: string } }>(
+  '/api/settings/presets/:id/references',
+  async (request, reply) => {
+    const presetId = request.params.id?.trim() ?? ''
+    if (!presetId) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    try {
+      const settings = await readApiSettingsFromFile()
+      if (!settings?.presets.some((p) => p.id === presetId)) {
+        return reply.status(404).send({ error: ApiErrorCodes.api_preset_not_found })
+      }
+      const references = await findApiPresetReferences(presetId)
+      return { references }
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.settings_read_failed })
+    }
+  },
+)
+
+app.delete<{ Params: { id: string } }>(
+  '/api/settings/presets/:id',
+  async (request, reply) => {
+    const presetId = request.params.id?.trim() ?? ''
+    if (!presetId) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    try {
+      const { activePresetId } = await deleteApiPresetFromFile(presetId)
+      return { ok: true as const, activePresetId }
+    } catch (e) {
+      if (e instanceof ApiConfigInUseError) {
+        const status =
+          e.code === 'api_preset_not_found'
+            ? 404
+            : e.code === 'api_preset_last_one'
+              ? 400
+              : 409
+        return reply.status(status).send({
+          error: e.code,
+          references: e.references,
+        })
+      }
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.settings_write_failed })
+    }
+  },
+)
+
 app.get('/api/prompts', async (_request, reply) => {
   try {
     const data = await readPromptsIndexDocument()
@@ -2189,8 +2249,17 @@ app.put('/api/api-keys', async (request, reply) => {
   }
   let mergedKeys: ApiKeysDocument['keys']
   try {
+    const existing = await readApiKeysDocument()
+    const incomingIds = new Set(validated.keys.map((k) => k.id))
+    await assertRemovedApiKeysNotInUse(incomingIds, existing?.keys ?? [])
     mergedKeys = await mergeApiKeysPutPayload(validated.keys)
   } catch (e) {
+    if (e instanceof ApiConfigInUseError) {
+      return reply.status(409).send({
+        error: e.code,
+        references: e.references,
+      })
+    }
     return reply.status(400).send({
       error: ApiErrorCodes.api_keys_validation_failed,
     })
@@ -2209,6 +2278,51 @@ app.put('/api/api-keys', async (request, reply) => {
   }
   return { ok: true as const, savedAt }
 })
+
+app.get<{ Params: { id: string } }>(
+  '/api/api-keys/:id/references',
+  async (request, reply) => {
+    const keyId = request.params.id?.trim() ?? ''
+    if (!keyId) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    try {
+      const doc = await readApiKeysDocument()
+      if (!doc?.keys.some((k) => k.id === keyId)) {
+        return reply.status(404).send({ error: ApiErrorCodes.api_key_not_found })
+      }
+      const references = await findApiKeyReferences(keyId)
+      return { references }
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.api_keys_read_failed })
+    }
+  },
+)
+
+app.delete<{ Params: { id: string } }>(
+  '/api/api-keys/:id',
+  async (request, reply) => {
+    const keyId = request.params.id?.trim() ?? ''
+    if (!keyId) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    try {
+      await deleteApiKeyFromFile(keyId)
+      return { ok: true as const }
+    } catch (e) {
+      if (e instanceof ApiConfigInUseError) {
+        const status = e.code === 'api_key_not_found' ? 404 : 409
+        return reply.status(status).send({
+          error: e.code,
+          references: e.references,
+        })
+      }
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.api_keys_write_failed })
+    }
+  },
+)
 
 app.post<{ Params: { id: string }; Body: { password?: string } }>(
   '/api/api-keys/:id/reveal',
@@ -2265,39 +2379,19 @@ app.post<{ Body: ModelsListBody }>('/api/models', async (request, reply) => {
     }
     throw e
   }
-  const url = `${baseUrl}/models`
-
-  const upstream = await fetch(url, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-  })
-
-  const text = await upstream.text()
-  if (!upstream.ok) {
+  const result = await fetchUpstreamModelsList({ baseUrl, apiKey })
+  if (!result.ok) {
     request.log.warn(
-      { status: upstream.status, body: text.slice(0, 400) },
+      { status: result.status, body: result.detail?.slice(0, 400) },
       'models list upstream error',
     )
     return reply.status(502).send({
       error: ApiErrorCodes.models_list_failed,
-      status: upstream.status,
-      detail: text.slice(0, 1500),
+      status: result.status,
+      detail: result.detail,
     })
   }
-
-  let json: unknown
-  try {
-    json = JSON.parse(text) as unknown
-  } catch {
-    return reply.status(502).send({ error: ApiErrorCodes.upstream_non_json })
-  }
-
-  const models = extractModelIds(json).sort((a, b) =>
-    a.localeCompare(b, undefined, { sensitivity: 'base' }),
-  )
-  return { models }
+  return { models: result.models }
 })
 
 app.get('/api/plugins/registry', async (request, reply) => {

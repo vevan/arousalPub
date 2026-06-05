@@ -8,6 +8,7 @@ import {
   isPromptPresetLike,
 } from '@/utils/api-preset-export'
 import { translateApiError } from '@/utils/api-error-message'
+import type { ApiConfigReference } from '@/utils/api-config-references'
 import {
   type DrySamplerFields,
   migrateLegacyDryField,
@@ -368,18 +369,173 @@ export const useConnectionStore = defineStore('connection', () => {
     applyPresetToForm(p)
   }
 
-  function removeActivePreset() {
-    if (presets.value.length <= 1) return
+  function removeActivePreset(): Promise<{
+    ok: true
+  } | {
+    ok: false
+    error: string
+    references?: ApiConfigReference[]
+  }> {
+    return removePresetById(activePresetId.value)
+  }
+
+  async function removePresetById(
+    id: string | null | undefined,
+  ): Promise<
+    | { ok: true }
+    | { ok: false; error: string; references?: ApiConfigReference[] }
+  > {
+    if (presets.value.length <= 1) {
+      return { ok: false, error: translateApiError('api_preset_last_one') }
+    }
     syncFormToActivePreset()
-    const id = activePresetId.value
-    if (!id) return
-    const idx = presets.value.findIndex((p) => p.id === id)
-    if (idx < 0) return
-    presets.value.splice(idx, 1)
-    activePresetId.value = presets.value[0]?.id ?? null
-    applyActivePresetToForm()
-    const nextId = activePresetId.value
-    if (nextId) void applyLinkedPromptPresetForApiPreset(nextId)
+    const presetId = id?.trim()
+    if (!presetId) {
+      return { ok: false, error: translateApiError('invalid_id') }
+    }
+    const res = await fetch(
+      `/api/settings/presets/${encodeURIComponent(presetId)}`,
+      { method: 'DELETE' },
+    )
+    let payload: unknown = null
+    try {
+      payload = await res.json()
+    } catch {
+      payload = null
+    }
+    if (!res.ok) {
+      const err =
+        payload && typeof payload === 'object' && 'error' in payload
+          ? String((payload as { error?: unknown }).error ?? '')
+          : ''
+      return {
+        ok: false,
+        error: translateApiError(err || 'settings_write_failed'),
+        references:
+          payload &&
+          typeof payload === 'object' &&
+          Array.isArray((payload as { references?: unknown }).references)
+            ? ((payload as { references: ApiConfigReference[] }).references)
+            : undefined,
+      }
+    }
+    await loadFromServer()
+    return { ok: true }
+  }
+
+  async function testActivePresetConnection(): Promise<
+    | {
+        ok: true
+        totalLatencyMs: number
+        models: {
+          modelCount: number
+          latencyMs: number
+          sampleModels: string[]
+        }
+        chat: {
+          model: string
+          latencyMs: number
+          replyPreview: string
+          replyWarning?: 'truncated'
+        }
+      }
+    | {
+        ok: false
+        error: string
+        phase?: 'models' | 'chat'
+        detail?: string
+        status?: number
+        requestUrl?: string
+        latencyMs?: number
+        model?: string
+        models?: {
+          modelCount: number
+          latencyMs: number
+        }
+      }
+  > {
+    syncFormToActivePreset()
+    const presetId = activePresetId.value
+    if (!presetId) {
+      return { ok: false, error: translateApiError('invalid_id'), phase: 'models' }
+    }
+    const res = await fetch(
+      `/api/settings/presets/${encodeURIComponent(presetId)}/test`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseUrl: baseUrl.value.trim() || undefined,
+          model: model.value.trim() || undefined,
+        }),
+      },
+    )
+    const data = (await res.json()) as {
+      ok?: boolean
+      error?: string
+      phase?: 'models' | 'chat'
+      detail?: string
+      status?: number
+      requestUrl?: string
+      latencyMs?: number
+      model?: string
+      totalLatencyMs?: number
+      models?: {
+        modelCount: number
+        latencyMs: number
+        sampleModels: string[]
+      }
+      phases?: {
+        models: {
+          modelCount: number
+          latencyMs: number
+          sampleModels: string[]
+        }
+        chat: {
+          model: string
+          latencyMs: number
+          replyPreview: string
+          replyWarning?: 'truncated'
+        }
+      }
+    }
+    if (!res.ok || !data.ok) {
+      return {
+        ok: false,
+        error: translateApiError(data.error ?? 'api_preset_test_failed'),
+        phase: data.phase,
+        detail: data.detail,
+        status: data.status,
+        requestUrl: data.requestUrl,
+        latencyMs: data.latencyMs,
+        model: data.model,
+        models: data.models
+          ? {
+              modelCount: data.models.modelCount,
+              latencyMs: data.models.latencyMs,
+            }
+          : undefined,
+      }
+    }
+    const phases = data.phases
+    if (!phases) {
+      return { ok: false, error: translateApiError('api_preset_test_failed') }
+    }
+    return {
+      ok: true,
+      totalLatencyMs: data.totalLatencyMs ?? 0,
+      models: {
+        modelCount: phases.models.modelCount,
+        latencyMs: phases.models.latencyMs,
+        sampleModels: phases.models.sampleModels,
+      },
+      chat: {
+        model: phases.chat.model,
+        latencyMs: phases.chat.latencyMs,
+        replyPreview: phases.chat.replyPreview,
+        replyWarning: phases.chat.replyWarning,
+      },
+    }
   }
 
   function parseCustomParams(): Record<string, unknown> | undefined {
@@ -720,6 +876,8 @@ export const useConnectionStore = defineStore('connection', () => {
     switchPreset,
     addPreset,
     removeActivePreset,
+    removePresetById,
+    testActivePresetConnection,
     ensureDefaultPresets,
     loadFromServer,
     saveToServer,

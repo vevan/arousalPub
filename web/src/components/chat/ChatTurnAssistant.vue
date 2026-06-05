@@ -32,7 +32,6 @@ const {
 } = toRefs(props.session)
 
 const {
-  turnLabelN,
   isAssistantBubbleLoading,
   isAssistantStreamingBubble,
   assistantReasoning,
@@ -75,11 +74,18 @@ const displayModelName = computed(() => {
     <div class="turn-role turn-role--assistant">
       <span class="turn-role__label">
         {{ assistantRoleName }}
-        <span class="meta">
-          {{ $t('chat.turnLabel', { n: turnLabelN(turn, listIndex) }) }}
-          <template v-if="displayModelName"> · {{ displayModelName }}</template>
+        <span
+          v-if="
+            displayModelName ||
+            assistantTimerLabel(turn) ||
+            assistantReceiveTokenLabel(turn) ||
+            isAssistantStreamingBubble(turn)
+          "
+          class="meta"
+        >
+          <template v-if="displayModelName">{{ displayModelName }}</template>
           <template v-if="assistantTimerLabel(turn)">
-            ·
+            <template v-if="displayModelName"> · </template>
             <span
               class="turn-timer"
               :class="{ 'turn-timer--live': isAssistantBubbleLoading(turn) }"
@@ -88,7 +94,7 @@ const displayModelName = computed(() => {
             </span>
           </template>
           <template v-if="assistantReceiveTokenLabel(turn)">
-            ·
+            <template v-if="displayModelName || assistantTimerLabel(turn)"> · </template>
             <span class="turn-tokens">
               {{ $t('chat.receiveTokens', { n: assistantReceiveTokenLabel(turn) }) }}
             </span>

@@ -1078,3 +1078,108 @@
   max-height : min(60vh, 28rem);
   overflow   : auto;
 }
+
+/* ========== Mobile · 窄屏回合布局 ========== */
+@media (max-width: 36rem) {
+  .chat-body {
+    scrollbar-gutter: auto;
+    overflow-y      : overlay;
+  }
+
+  @supports not (overflow: overlay) {
+    .chat-body {
+      overflow-y: auto;
+    }
+  }
+
+  .chat-scroll {
+    padding-inline: 0.75rem;
+  }
+
+  .turn-divider {
+    padding-inline: 0.75rem;
+  }
+
+  .turn {
+    padding: 0;
+  }
+
+  .turn--user {
+    grid-template-columns: minmax(0, 1fr) 4rem;
+    grid-template-areas  :
+      "role     avatar"
+      "bubble   bubble"
+      "actions  actions";
+  }
+
+  .turn--assistant {
+    grid-template-columns: 4rem minmax(0, 1fr);
+    grid-template-areas  :
+      "avatar role"
+      "reasoning reasoning"
+      "bubble bubble"
+      "actions actions";
+  }
+
+  .turn--assistant>.turn-bubble,
+  .turn--assistant>.reasoning-chain,
+  .turn--assistant>.turn-role,
+  .turn--assistant>.turn-actions {
+    width    : 100%;
+    max-width: 100%;
+  }
+
+  .turn--user>.turn-bubble,
+  .turn--user>.turn-bubble--editing {
+    width    : 100%;
+    max-width: 100%;
+  }
+
+  .turn--user>.turn-role,
+  .turn--user>.turn-actions {
+    width    : 100%;
+    max-width: 100%;
+  }
+
+  .turn-role {
+    flex-wrap: wrap;
+    min-width: 0;
+    width    : 100%;
+    max-width: 100%;
+  }
+
+  .turn-role__label {
+    white-space  : normal;
+    max-width    : 100%;
+    min-width    : 0;
+    flex         : 1 1 auto;
+    display      : flex;
+    flex-direction: column;
+    align-items  : flex-start;
+    gap          : 0.125rem;
+    line-height  : 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  .turn-role--user .turn-role__label {
+    align-items: flex-end;
+    text-align : right;
+  }
+
+  .turn-role__label .meta {
+    margin-left  : 0;
+    display      : block;
+    max-width    : 100%;
+    white-space  : normal;
+    overflow-wrap: anywhere;
+  }
+
+  .turn-bubble--user::before,
+  .turn-bubble--assistant::before {
+    display: none;
+  }
+
+  .chat-footer {
+    padding-inline: 0.75rem;
+  }
+}

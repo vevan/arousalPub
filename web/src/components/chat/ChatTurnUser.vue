@@ -19,7 +19,6 @@ const {
   copiedTurnKey,
 } = toRefs(props.session)
 const {
-  turnLabelN,
   isTurnAwaitingAssistant,
   openEditUser,
   cancelEdit,
@@ -41,19 +40,16 @@ const { userDisplayName, userAvatarLetter } = toRefs(props.session)
     <div class="turn-role turn-role--user">
       <span class="turn-role__label">
         {{ userDisplayName }}
-        <span class="meta">
-          {{ $t('chat.turnLabel', { n: turnLabelN(turn, listIndex) }) }}
-          <template
-            v-if="
-              userSendTokenLabel(turn) &&
-              !(editingTurnOrdinal === turn.turnOrdinal && editingSide === 'user')
-            "
-          >
-            ·
-            <span class="turn-tokens">
-              {{ $t('chat.sendTokens', { n: userSendTokenLabel(turn) }) }}
-            </span>
-          </template>
+        <span
+          v-if="
+            userSendTokenLabel(turn) &&
+            !(editingTurnOrdinal === turn.turnOrdinal && editingSide === 'user')
+          "
+          class="meta"
+        >
+          <span class="turn-tokens">
+            {{ $t('chat.sendTokens', { n: userSendTokenLabel(turn) }) }}
+          </span>
         </span>
       </span>
       <div class="plugin-slots" data-plugin-slot="user-turn">

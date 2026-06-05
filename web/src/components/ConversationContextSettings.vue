@@ -4,6 +4,12 @@ import { usePromptsStore } from '@/stores/prompts'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import {
+  AUTHORS_NOTE_MAX_DEPTH,
+  normalizeAuthorsNote,
+  type AuthorsNoteRole,
+  type AuthorsNoteSettings,
+} from '@/utils/authors-note-settings'
 
 const props = defineProps<{
   conversationId: string
@@ -35,6 +41,7 @@ const props = defineProps<{
   initialUserName?: string | null
   /** 用户 persona 角色卡 id */
   initialUserCharacterId?: string | null
+  initialAuthorsNote?: AuthorsNoteSettings
 }>()
 
 const emit = defineEmits<{
@@ -42,7 +49,7 @@ const emit = defineEmits<{
   (e: 'memoryRebuilt', embeddingModel: string): void
 }>()
 
-type SettingsSection = 'bindings' | 'lore' | 'context'
+type SettingsSection = 'bindings' | 'lore' | 'context' | 'authorsNote'
 
 const { t } = useI18n()
 const promptsStore = usePromptsStore()
@@ -64,6 +71,7 @@ const savingLorebooks = ref(false)
 const savingLoreSettings = ref(false)
 const savingHistorySettings = ref(false)
 const savingMemorySettings = ref(false)
+const savingAuthorsNote = ref(false)
 const errorText = ref('')
 
 const lorebookModel = ref<string[]>([])
@@ -84,6 +92,16 @@ const historyMaxTurns = ref(20)
 const memoryUseGlobal = ref(true)
 const memoryEnabled = ref(false)
 const memoryTopK = ref(4)
+
+const authorsNoteEnabled = ref(false)
+const authorsNoteContent = ref('')
+const authorsNoteDepth = ref(4)
+const authorsNoteRole = ref<AuthorsNoteRole>('system')
+
+const authorsNoteContentTrimmed = computed(() => authorsNoteContent.value.trim())
+const canToggleAuthorsNoteEnabled = computed(
+  () => authorsNoteContentTrimmed.value.length > 0,
+)
 
 const {
   loading: memoryRebuildLoading,
@@ -147,6 +165,11 @@ const sectionItems = computed(() => [
     title: t('chat.convSettings.tabContext'),
     icon: 'mdi-tune-variant',
   },
+  {
+    id: 'authorsNote' as const,
+    title: t('chat.convSettings.tabAuthorsNote'),
+    icon: 'mdi-note-text-outline',
+  },
 ])
 
 const presetItems = computed(() => {
@@ -169,12 +192,13 @@ const isSaving = computed(
     savingLorebooks.value ||
     savingLoreSettings.value ||
     savingHistorySettings.value ||
-    savingMemorySettings.value,
+    savingMemorySettings.value ||
+    savingAuthorsNote.value,
 )
 
-function open(): void {
+function open(section?: SettingsSection): void {
   syncFromProps()
-  activeSection.value = 'bindings'
+  activeSection.value = section ?? 'bindings'
   dialogOpen.value = true
 }
 
@@ -275,6 +299,10 @@ function propsUserCharacterId(): string | null {
   return typeof id === 'string' && id.trim() ? id.trim() : null
 }
 
+function propsAuthorsNote(): AuthorsNoteSettings {
+  return normalizeAuthorsNote(props.initialAuthorsNote)
+}
+
 function syncFromProps() {
   errorText.value = ''
   presetModel.value = propsPresetTarget() ?? INHERIT_VALUE
@@ -305,6 +333,11 @@ function syncFromProps() {
     memoryEnabled.value = propsMemoryEnabled()
     memoryTopK.value = propsMemoryTopK()
   }
+  const an = propsAuthorsNote()
+  authorsNoteEnabled.value = an.enabled
+  authorsNoteContent.value = an.content
+  authorsNoteDepth.value = an.injectionDepth
+  authorsNoteRole.value = an.role
 }
 
 watch(
@@ -330,6 +363,7 @@ watch(
     props.initialMemoryTopK,
     props.initialUserName,
     props.initialUserCharacterId,
+    props.initialAuthorsNote,
   ],
   () => syncFromProps(),
   { deep: true },
@@ -625,6 +659,108 @@ watch(memoryTopK, async (k) => {
     syncFromProps()
   } finally {
     savingMemorySettings.value = false
+  }
+})
+
+function authorsNotePatchFromForm(): AuthorsNoteSettings {
+  return normalizeAuthorsNote({
+    enabled: authorsNoteEnabled.value,
+    content: authorsNoteContent.value,
+    injectionDepth: authorsNoteDepth.value,
+    role: authorsNoteRole.value,
+  })
+}
+
+function authorsNoteMatchesProps(): boolean {
+  const cur = authorsNotePatchFromForm()
+  const stored = propsAuthorsNote()
+  return (
+    cur.enabled === stored.enabled &&
+    cur.content === stored.content &&
+    cur.injectionDepth === stored.injectionDepth &&
+    cur.role === stored.role
+  )
+}
+
+async function saveAuthorsNote(): Promise<void> {
+  const note = authorsNotePatchFromForm()
+  await patchConversation({
+    authorsNote: {
+      enabled: note.enabled,
+      content: note.content,
+      injectionDepth: note.injectionDepth,
+      role: note.role,
+    },
+  })
+}
+
+watch(authorsNoteContent, (content) => {
+  if (!content.trim()) {
+    authorsNoteEnabled.value = false
+  }
+})
+
+async function onAuthorsNoteContentBlur(): Promise<void> {
+  if (authorsNoteMatchesProps()) return
+  savingAuthorsNote.value = true
+  errorText.value = ''
+  try {
+    await saveAuthorsNote()
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingAuthorsNote.value = false
+  }
+}
+
+watch(authorsNoteEnabled, async (enabled) => {
+  if (enabled === propsAuthorsNote().enabled) return
+  if (enabled && !canToggleAuthorsNoteEnabled.value) {
+    authorsNoteEnabled.value = false
+    return
+  }
+  savingAuthorsNote.value = true
+  errorText.value = ''
+  try {
+    await saveAuthorsNote()
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingAuthorsNote.value = false
+  }
+})
+
+watch(authorsNoteDepth, async (depth) => {
+  if (depth === propsAuthorsNote().injectionDepth) return
+  savingAuthorsNote.value = true
+  errorText.value = ''
+  try {
+    await saveAuthorsNote()
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingAuthorsNote.value = false
+  }
+})
+
+watch(authorsNoteRole, async (role) => {
+  if (role === propsAuthorsNote().role) return
+  savingAuthorsNote.value = true
+  errorText.value = ''
+  try {
+    await saveAuthorsNote()
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingAuthorsNote.value = false
   }
 })
 
@@ -1104,6 +1240,90 @@ async function patchConversation(body: Record<string, unknown>) {
                     {{ memoryRebuildError }}
                   </v-alert>
                 </div>
+              </div>
+            </div>
+
+            <div
+              v-show="activeSection === 'authorsNote'"
+              class="conv-settings-section"
+            >
+              <h3 class="conv-settings-section__title">
+                {{ $t('chat.convSettings.tabAuthorsNote') }}
+              </h3>
+              <p class="conv-settings-section__hint">
+                {{ $t('chat.convSettings.tabAuthorsNoteHint') }}
+              </p>
+              <p class="conv-settings-section__hint text-medium-emphasis">
+                {{ $t('chat.convSettings.autoSaveHint') }}
+              </p>
+
+              <div class="conv-settings-field">
+                <v-textarea
+                  v-model="authorsNoteContent"
+                  :label="$t('chat.convSettings.authorsNoteContent')"
+                  rows="6"
+                  auto-grow
+                  variant="outlined"
+                  density="comfortable"
+                  hide-details="auto"
+                  :loading="savingAuthorsNote"
+                  @blur="onAuthorsNoteContentBlur"
+                />
+                <p class="conv-settings-field__hint">
+                  {{ $t('chat.convSettings.authorsNoteContentHint') }}
+                </p>
+              </div>
+
+              <div class="conv-settings-field">
+                <v-switch
+                  v-model="authorsNoteEnabled"
+                  :label="$t('chat.convSettings.authorsNoteEnabled')"
+                  density="comfortable"
+                  hide-details
+                  color="primary"
+                  :loading="savingAuthorsNote"
+                  :disabled="!canToggleAuthorsNoteEnabled || savingAuthorsNote"
+                />
+                <p class="conv-settings-field__hint">
+                  {{ $t('chat.convSettings.authorsNoteEnabledHint') }}
+                </p>
+              </div>
+
+              <div class="conv-settings-field">
+                <v-text-field
+                  v-model.number="authorsNoteDepth"
+                  type="number"
+                  min="0"
+                  :max="AUTHORS_NOTE_MAX_DEPTH"
+                  step="1"
+                  :label="$t('chat.convSettings.authorsNoteDepth')"
+                  density="comfortable"
+                  variant="outlined"
+                  hide-details="auto"
+                  :loading="savingAuthorsNote"
+                  :disabled="savingAuthorsNote"
+                />
+                <p class="conv-settings-field__hint">
+                  {{ $t('chat.convSettings.authorsNoteDepthHint') }}
+                </p>
+              </div>
+
+              <div class="conv-settings-field">
+                <v-select
+                  v-model="authorsNoteRole"
+                  :items="[
+                    { title: $t('chat.convSettings.authorsNoteRoleSystem'), value: 'system' },
+                    { title: $t('chat.convSettings.authorsNoteRoleUser'), value: 'user' },
+                  ]"
+                  item-title="title"
+                  item-value="value"
+                  :label="$t('chat.convSettings.authorsNoteRole')"
+                  density="comfortable"
+                  variant="outlined"
+                  hide-details="auto"
+                  :loading="savingAuthorsNote"
+                  :disabled="savingAuthorsNote"
+                />
               </div>
             </div>
           </div>

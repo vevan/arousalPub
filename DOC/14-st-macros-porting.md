@@ -104,7 +104,8 @@
 |--------------|------|------|
 | `{{group}}` `{{groupNotMuted}}` `{{charIfNotGroup}}` | ❌ | 无 ST 群聊；仅有 `characterIds[]` 多卡注入 |
 | 全套 `{{instruct*}}` `{{chatSeparator}}` `{{chatStart}}` 等 | ❌ | 无 instruct 模式字符串层 |
-| `{{authorsNote}}` `{{charAuthorsNote}}` `{{defaultAuthorsNote}}` | ❌ | 无 Author's Note 功能位 |
+| `{{authorsNote}}` | ✅ | 会话 `index.json` `authorsNote`（已启用时正文） |
+| `{{charAuthorsNote}}` `{{defaultAuthorsNote}}` | 后续 | 角色/全局默认 AN 模板（本期仅会话级） |
 | `{{systemPrompt}}` `{{defaultSystemPrompt}}` | 不对齐 | 预设条目 + 绑定槽，非 ST 单一 system 字段 |
 | `{{outlet::key}}` | ❌ | 世界书无 ST **outlet** 概念 |
 | `{{summary}}` | ❌ | 无 ST Summarize 扩展对接 |

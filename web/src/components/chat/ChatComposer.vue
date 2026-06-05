@@ -3,13 +3,32 @@ import type { useChatSession } from '@/composables/useChatSession'
 import PluginSlotMount from '@/plugins/PluginSlotMount.vue'
 import { usePreferencesStore } from '@/stores/preferences'
 import { storeToRefs } from 'pinia'
-import { toRefs } from 'vue'
+import { computed, toRefs } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
   session: ReturnType<typeof useChatSession>
+  authorsNoteActive?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'openAuthorsNote'): void
 }>()
 
 const { composerEnterMode } = storeToRefs(usePreferencesStore())
+const { t } = useI18n()
+
+const authorsNoteTooltip = computed(() =>
+  props.authorsNoteActive
+    ? t('chat.authorsNoteTooltipOn')
+    : t('chat.authorsNoteTooltipOff'),
+)
+
+const messagePlaceholder = computed(() =>
+  composerEnterMode.value === 'enter-send'
+    ? t('chat.composerPlaceholderEnterSend')
+    : t('chat.composerPlaceholderCtrlEnterSend'),
+)
 
 const { userInput, errorText, loading, assemblePreviewLoading } = toRefs(props.session)
 
@@ -36,7 +55,7 @@ const { send, onComposerKeydown, openAssemblePreview } = props.session
             v-model="userInput"
             class="composer__textarea"
             rows="3"
-            :placeholder="$t('chat.messageLabel')"
+            :placeholder="messagePlaceholder"
             @keydown="onComposerKeydown"
           />
           <v-btn
@@ -56,19 +75,27 @@ const { send, onComposerKeydown, openAssemblePreview } = props.session
           class="composer__tools"
           data-plugin-slot="composer-toolbar"
         >
-          <span class="composer__hint">
-            <template v-if="composerEnterMode === 'enter-send'">
-              <kbd>Enter</kbd> {{ $t('chat.send') }}
-              <span class="composer__hint-sep">·</span>
-              <kbd>Ctrl</kbd>+<kbd>Enter</kbd> {{ $t('chat.newline') }}
-            </template>
-            <template v-else>
-              <kbd>Ctrl</kbd>+<kbd>Enter</kbd> {{ $t('chat.send') }}
-              <span class="composer__hint-sep">·</span>
-              <kbd>Enter</kbd> {{ $t('chat.newline') }}
-            </template>
-          </span>
           <div class="composer__actions">
+            <v-tooltip
+              location="top"
+              :text="authorsNoteTooltip"
+            >
+              <template #activator="{ props: tooltipProps }">
+                <v-btn
+                  icon
+                  variant="text"
+                  size="small"
+                  density="comfortable"
+                  class="composer__authors-note-btn"
+                  :class="{ 'composer__authors-note-btn--active': authorsNoteActive }"
+                  v-bind="tooltipProps"
+                  :aria-label="authorsNoteTooltip"
+                  @click="emit('openAuthorsNote')"
+                >
+                  <v-icon size="20">mdi-note-text-outline</v-icon>
+                </v-btn>
+              </template>
+            </v-tooltip>
             <div class="plugin-slots composer__plugin-slots">
               <PluginSlotMount slot-name="composer-toolbar" />
             </div>

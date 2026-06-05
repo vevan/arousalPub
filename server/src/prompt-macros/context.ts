@@ -10,6 +10,7 @@ export function buildPromptMacroContext(params: {
   contextLength?: number | null
   now?: Date
   locale?: string | null
+  authorsNote?: string | null
 }): PromptMacroContext {
   const raw = params.conversationUserName
   const userName =
@@ -33,6 +34,11 @@ export function buildPromptMacroContext(params: {
     typeof params.locale === 'string' && params.locale.trim()
       ? params.locale.trim()
       : 'zh-CN'
+  const authorsNoteRaw = params.authorsNote
+  const authorsNote =
+    typeof authorsNoteRaw === 'string' && authorsNoteRaw.trim()
+      ? authorsNoteRaw
+      : undefined
   return {
     userName,
     characterNames,
@@ -40,5 +46,6 @@ export function buildPromptMacroContext(params: {
     contextLength,
     now: params.now ?? new Date(),
     locale,
+    authorsNote,
   }
 }

@@ -890,24 +890,9 @@
 }
 
 .composer__tools {
-  display       : flex;
-  flex-direction: column;
-  align-items   : stretch;
-  gap           : 0.5rem;
-}
-
-.composer__hint {
-  flex          : 1;
-  font-family   : var(--font-mono);
-  font-size     : 0.6563rem;
-  letter-spacing: 0.04em;
-  color         : rgba(var(--v-theme-on-surface), 0.4);
-  text-transform: uppercase;
-}
-
-.composer__hint-sep {
-  margin : 0 0.35em;
-  opacity: 0.65;
+  display        : flex;
+  align-items    : center;
+  justify-content: flex-end;
 }
 
 .composer__actions {
@@ -934,6 +919,8 @@
 
 .composer__send-btn.v-btn--disabled {
   opacity: 1 !important;
+  cursor: not-allowed;
+  pointer-events: auto;
   background-color: color-mix(
     in srgb,
     rgb(var(--v-theme-primary)) 22%,
@@ -954,6 +941,18 @@
   text-transform: none !important;
   letter-spacing: 0.01em !important;
   font-weight   : 500 !important;
+}
+
+.composer__authors-note-btn {
+  flex-shrink: 0;
+}
+
+.composer__authors-note-btn--active {
+  color: rgb(var(--v-theme-primary)) !important;
+}
+
+.composer__authors-note-btn--active .v-icon {
+  opacity: 1;
 }
 
 .composer__plugin-slots {

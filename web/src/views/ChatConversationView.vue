@@ -24,6 +24,12 @@ import {
   resolveLorebookSettings,
   type LorebookSettings,
 } from '@/utils/lorebook-settings'
+import {
+  authorsNoteComposerActive,
+  authorsNoteFromIndex,
+  normalizeAuthorsNote,
+  type AuthorsNoteSettings,
+} from '@/utils/authors-note-settings'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -181,6 +187,7 @@ interface ConvContextBindings {
   userName: string | null
   /** 用户 persona 卡 id；仅用于 UI 回显头像 */
   userCharacterId: string | null
+  authorsNote: AuthorsNoteSettings
 }
 
 function globalLoreFromStore(): LorebookSettings {
@@ -296,6 +303,7 @@ function bindingsFromIndex(idx: Record<string, unknown>): ConvContextBindings {
     memory: memoryContextFromIndex(idx),
     userName,
     userCharacterId,
+    authorsNote: authorsNoteFromIndex(idx),
   }
 }
 
@@ -322,6 +330,7 @@ const convBindings = ref<ConvContextBindings>({
   },
   userName: null,
   userCharacterId: null,
+  authorsNote: normalizeAuthorsNote(),
 })
 
 const boundLorebookLabels = computed(() =>
@@ -329,6 +338,14 @@ const boundLorebookLabels = computed(() =>
     (id) => lorebookNameById.value[id] ?? id,
   ),
 )
+
+const authorsNoteActive = computed(() =>
+  authorsNoteComposerActive(convBindings.value.authorsNote),
+)
+
+function openAuthorsNoteSettings(): void {
+  convContextSettingsRef.value?.open('authorsNote')
+}
 
 async function loadLorebookNameMap(): Promise<void> {
   const items = await fetchLorebookPickerItems()
@@ -623,6 +640,8 @@ watch(
         :conversation-lorebook-ids="convBindings.lorebookIds"
         :conversation-user-name="convBindings.userName"
         :conversation-user-character-id="convBindings.userCharacterId"
+        :authors-note-active="authorsNoteActive"
+        @open-authors-note="openAuthorsNoteSettings"
       />
       <v-dialog
         v-model="memoryRebuildDialogOpen"
@@ -739,6 +758,7 @@ watch(
         :conversation-memory-embedding-model="conversationMemoryEmbeddingModel"
         :initial-user-name="convBindings.userName"
         :initial-user-character-id="convBindings.userCharacterId"
+        :initial-authors-note="convBindings.authorsNote"
         @patched="onConvContextPatched"
         @memory-rebuilt="onMemoryRebuiltFromSettings"
       />

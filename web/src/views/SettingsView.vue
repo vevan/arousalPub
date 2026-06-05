@@ -614,12 +614,18 @@ onMounted(() => {
             </p>
             <v-radio-group
               v-model="composerEnterMode"
-              :items="composerEnterModeItems"
-              item-title="title"
-              item-value="value"
+              inline
+              class="settings-composer-enter-group"
               density="comfortable"
               hide-details
-            />
+            >
+              <v-radio
+                v-for="item in composerEnterModeItems"
+                :key="item.value"
+                :label="item.title"
+                :value="item.value"
+              />
+            </v-radio-group>
 
             <v-divider class="my-6" />
 
@@ -1307,6 +1313,26 @@ onMounted(() => {
 
 .settings-section {
   max-width: 36rem;
+}
+
+/* v-radio-group：避免 .v-selection-control-group 的 grid-area 落在 flex 父级上错位 */
+.settings-composer-enter-group :deep(.v-input__control) {
+  display: grid;
+  grid-template-areas: 'input';
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.settings-composer-enter-group :deep(.v-selection-control-group) {
+  grid-area: input;
+  display: flex;
+  flex-flow: row wrap;
+  align-items: center;
+  gap: 0.375rem 1.25rem;
+}
+
+.settings-composer-enter-group :deep(.v-selection-control) {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .primary-swatch {

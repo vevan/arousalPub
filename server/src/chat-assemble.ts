@@ -7,6 +7,10 @@ import {
   type PromptTrigger,
 } from './assemble-prompts.js'
 import { buildPromptMacroContext } from './prompt-macros/index.js'
+import {
+  authorsNoteForInjection,
+  authorsNoteMacroText,
+} from './authors-note-settings.js'
 import { cardRecordToCharXmlBlock, cardRecordToUserXmlBlock } from './prompt-xml.js'
 import {
   readConversationIndex,
@@ -211,7 +215,10 @@ export async function buildConversationOutboundMessages(
     characters,
     model: params.tokenModel ?? undefined,
     contextLength: maxTokens,
+    authorsNote: authorsNoteMacroText(idx.authorsNote),
   })
+
+  const authorsNote = authorsNoteForInjection(idx.authorsNote)
 
   const lorebookIds = resolvedLorebookIds(idx)
   const globalLore = await readGlobalLorebookSettings()
@@ -240,6 +247,7 @@ export async function buildConversationOutboundMessages(
     maxTokens,
     tokenModel,
     macroContext,
+    authorsNote: authorsNote ?? undefined,
     history:
       memoryPipeline.recentHistoryMessages.length > 0
         ? memoryPipeline.recentHistoryMessages

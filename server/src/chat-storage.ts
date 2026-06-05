@@ -1,6 +1,11 @@
 import { allocateShortId } from './short-id.js'
 import { mergeTurnPluginEntry } from './turn-plugin-utils.js'
 import type { TurnPluginEntry } from './plugin-types.js'
+import {
+  mergeAuthorsNote,
+  type AuthorsNotePatch,
+  type AuthorsNoteSettings,
+} from './authors-note-settings.js'
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { getChatsRoot } from './config.js'
@@ -131,6 +136,8 @@ export interface ConversationIndex {
    * 用户 persona 卡 id：UI 回显 + 组装注入 persona。卡删除后仅保留 userName 快照与宏。
    */
   userCharacterId?: string
+  /** 会话级 Author's Note（作者注） */
+  authorsNote?: AuthorsNoteSettings
 }
 
 export interface TurnReceive {
@@ -534,6 +541,25 @@ export async function updateConversationMemorySettings(
     next.memorySettings = sparse
   } else {
     next.memorySettings = { ...effective }
+  }
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
+  return next
+}
+
+/** 更新会话 Author's Note；`patch === null` 清除字段 */
+export async function updateConversationAuthorsNote(
+  conversationId: string,
+  patch: AuthorsNotePatch | null,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  if (patch === null) {
+    delete next.authorsNote
+  } else {
+    next.authorsNote = mergeAuthorsNote(idx.authorsNote, patch)
   }
   await writeConversationIndex(conversationId, next)
   await upsertChatListEntry(chatListEntryFromIndex(next), next)

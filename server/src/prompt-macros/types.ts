@@ -10,6 +10,8 @@ export interface PromptMacroContext {
   now: Date
   /** BCP 47，默认 zh-CN */
   locale: string
+  /** 宏 `{{authorsNote}}`：已启用作者注正文，否则空串 */
+  authorsNote?: string
 }
 
 export type MacroHandler = (text: string, ctx: PromptMacroContext) => string

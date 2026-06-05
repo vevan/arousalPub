@@ -4,6 +4,7 @@ import { applyPromptMacroPipeline } from './prompt-macros/index.js'
 import type { PromptMacroContext } from './prompt-macros/index.js'
 
 export type { PromptMacroContext } from './prompt-macros/index.js'
+import type { AuthorsNoteRole } from './authors-note-settings.js'
 import {
   ASSEMBLE_INJECT_PLACEHOLDER,
   loreTextToXmlBlock,
@@ -97,6 +98,12 @@ export interface AssembleContext {
   tokenModel?: string
   /** 若给出，在 token 裁剪前替换各条 message 中的 `{{user}}` / `{{char}}` 等 */
   macroContext?: PromptMacroContext
+  /** 会话 Author's Note：在 chat-depth 条目之后、宏展开之前注入 */
+  authorsNote?: {
+    content: string
+    injectionDepth: number
+    role: AuthorsNoteRole
+  } | null
 }
 
 export interface AssembleResult {
@@ -243,6 +250,31 @@ function presetHasBinding(
   slot: PromptBindingSlot,
 ): boolean {
   return preset.prompts.some((e) => e.bindingSlot === slot)
+}
+
+function injectAuthorsNoteAtDepth(
+  messages: ChatMessage[],
+  note: NonNullable<AssembleContext['authorsNote']>,
+  historyStart: number,
+  historyEnd: number,
+): { historyStart: number; historyEnd: number } {
+  const depth = Math.max(0, Math.floor(note.injectionDepth))
+  const insertAt = Math.max(0, messages.length - depth)
+  messages.splice(insertAt, 0, {
+    role: note.role,
+    content: note.content,
+  })
+  let hs = historyStart
+  let he = historyEnd
+  if (hs >= 0) {
+    if (insertAt <= hs) {
+      hs += 1
+      he += 1
+    } else if (insertAt < he) {
+      he += 1
+    }
+  }
+  return { historyStart: hs, historyEnd: he }
 }
 
 export function assemblePrompts(
@@ -418,6 +450,22 @@ export function assemblePrompts(
         historyEnd += items.length
       }
     }
+  }
+
+  const an = ctx.authorsNote
+  if (an?.content?.trim()) {
+    const shifted = injectAuthorsNoteAtDepth(
+      messages,
+      {
+        content: an.content.trim(),
+        injectionDepth: an.injectionDepth,
+        role: an.role,
+      },
+      historyStart,
+      historyEnd,
+    )
+    historyStart = shifted.historyStart
+    historyEnd = shifted.historyEnd
   }
 
   const macro = ctx.macroContext

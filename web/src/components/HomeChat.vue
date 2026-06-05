@@ -14,13 +14,20 @@ import { usePreferencesStore } from '@/stores/preferences'
 import { storeToRefs } from 'pinia'
 import { computed, provide } from 'vue'
 
-const props = withDefaults(defineProps<ChatSessionProps>(), {
+const props = withDefaults(defineProps<ChatSessionProps & {
+  authorsNoteActive?: boolean
+}>(), {
   conversationPromptPresetId: null,
   conversationCharacterIds: () => [],
   conversationLorebookIds: () => [],
   conversationUserName: null,
   conversationUserCharacterId: null,
+  authorsNoteActive: false,
 })
+
+const emit = defineEmits<{
+  (e: 'openAuthorsNote'): void
+}>()
 
 const session = useChatSession(props)
 const pluginHost = usePluginHost(session)
@@ -39,7 +46,11 @@ const chatSessionStyle = computed(() => ({
     :style="chatSessionStyle"
   >
     <ChatMessageList :session="session" />
-    <ChatComposer :session="session" />
+    <ChatComposer
+      :session="session"
+      :authors-note-active="authorsNoteActive"
+      @open-authors-note="emit('openAuthorsNote')"
+    />
     <ChatDeleteDialog :session="session" />
     <ChatAssemblePreviewDialog :session="session" />
     <ChatTurnPromptDialog :session="session" />

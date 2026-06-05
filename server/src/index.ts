@@ -12,6 +12,7 @@ import {
   type ApiSettingsDocument,
 } from './api-settings-file.js'
 import { appendDrySamplerToPayload } from './dry-sampler.js'
+import { parseAuthorsNotePatch } from './authors-note-settings.js'
 import { readAllTurns, repairConversationChunkIndex } from './chunk-chain.js'
 import {
   createConversationStub,
@@ -36,6 +37,7 @@ import {
   updateConversationMemorySettings,
   updateConversationUserCharacterId,
   updateConversationUserName,
+  updateConversationAuthorsNote,
   getTurnUserText,
   resolvedCharacterIds,
   updateTurnContentInTailChunk,
@@ -439,6 +441,13 @@ interface PatchConvBody {
   userCharacterId?: string | null
   /** 宏 `{{user}}` 展示名；传 `null` 清除以使用默认「用户」 */
   userName?: string | null
+  /** Author's Note；`null` 清除 */
+  authorsNote?: {
+    enabled?: boolean
+    content?: string
+    injectionDepth?: number
+    role?: 'system' | 'user'
+  } | null
 }
 
 app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
@@ -472,7 +481,8 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
     )
     const hasUserCharacterId = Object.prototype.hasOwnProperty.call(b, 'userCharacterId')
     const hasUserName = Object.prototype.hasOwnProperty.call(b, 'userName')
-    if (!hasTitle && !hasPromptDebug && !hasCharIds && !hasPromptPreset && !hasLorebookIds && !hasLorebookSettings && !hasHistorySettings && !hasMemorySettings && !hasUserCharacterId && !hasUserName) {
+    const hasAuthorsNote = Object.prototype.hasOwnProperty.call(b, 'authorsNote')
+    if (!hasTitle && !hasPromptDebug && !hasCharIds && !hasPromptPreset && !hasLorebookIds && !hasLorebookSettings && !hasHistorySettings && !hasMemorySettings && !hasUserCharacterId && !hasUserName && !hasAuthorsNote) {
       return reply
         .status(400)
         .send({
@@ -693,6 +703,18 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
         id,
         raw === null ? null : (raw as string),
       )
+      if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+      idx = next
+    }
+    if (hasAuthorsNote) {
+      const parsed = parseAuthorsNotePatch(b.authorsNote)
+      if (!parsed.ok) {
+        const code = parsed.error as keyof typeof ApiErrorCodes
+        return reply
+          .status(400)
+          .send({ error: ApiErrorCodes[code] ?? ApiErrorCodes.authors_note_invalid })
+      }
+      const next = await updateConversationAuthorsNote(id, parsed.patch)
       if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       idx = next
     }

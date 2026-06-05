@@ -1,4 +1,5 @@
 import type { MacroHandler } from '../types.js'
+import { expandAuthorsNoteMacros } from './authors-note.js'
 import { expandConnectionMacros } from './connection.js'
 import { expandDatetimeMacros } from './datetime.js'
 import { expandNewlineMacros } from './newline.js'
@@ -11,5 +12,6 @@ export const MACRO_HANDLERS: MacroHandler[] = [
   expandDatetimeMacros,
   expandConnectionMacros,
   expandNewlineMacros,
+  expandAuthorsNoteMacros,
   replaceUnsetMacroPlaceholders,
 ]

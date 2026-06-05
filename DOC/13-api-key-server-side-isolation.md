@@ -83,7 +83,7 @@
 ## 4. 非目标（本迭代不做）
 
 - 将 `api-settings.json` 迁移为独立 `api_configs` 集合（`DOC/03` §1.1 长期形态）；本需求在**现有文件模型**上完成隔离。
-- API Key 磁盘加密（`apiKeyEncrypted`）；可后续迭代，本需求先做到**不出浏览器**。
+- ~~API Key 磁盘加密（`apiKeyEncrypted`）~~ → **已升为 P0 备忘**，见 **`DOC/04-TODO.md`** §P0「API Key 磁盘加密」。
 - 插件包内密钥转发（`DOC/03` §1.3 V2）— 与对话 API 预设并行，不阻塞本项。
 
 ---

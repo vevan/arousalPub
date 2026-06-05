@@ -12,6 +12,7 @@
 ## 文档索引
 
 - **API Key 服务端隔离（已实现）**：`DOC/13-api-key-server-side-isolation.md`
+- **API Key 磁盘加密（P0 备忘）**：`DOC/04-TODO.md` §P0「API Key 磁盘加密」
 - **用户安装与启动**：根目录 `README.md`
 - 架构设计：`DOC/01-架构设计.md`（**§9 运行时与部署**）
 - 需求说明：`DOC/02-需求说明.md`

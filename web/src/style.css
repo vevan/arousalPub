@@ -247,6 +247,35 @@ body::before {
   flex-direction: column !important;
 }
 
+/* 角色编辑弹窗 · 桌面居中模态；窄屏全屏 */
+.v-overlay-container > .v-overlay.v-dialog > .v-overlay__content.char-edit-dialog-surface,
+.v-overlay.v-dialog > .v-overlay__content.char-edit-dialog-surface {
+  width: clamp(48rem, 82%, 90rem) !important;
+  max-width: calc(100% - 2rem) !important;
+  height: min(90vh, 52rem) !important;
+  max-height: 90vh !important;
+  margin: auto !important;
+  padding: 0 !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  border-radius: 0.625rem !important;
+}
+
+@media (max-width: 48rem) {
+  .v-overlay-container > .v-overlay.v-dialog > .v-overlay__content.char-edit-dialog-surface,
+  .v-overlay.v-dialog > .v-overlay__content.char-edit-dialog-surface {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+  }
+}
+
 @media (max-width: 48rem) {
   .v-overlay-container > .v-overlay.v-dialog > .v-overlay__content.app-config-dialog-surface,
   .v-overlay.v-dialog > .v-overlay__content.app-config-dialog-surface,

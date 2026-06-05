@@ -886,28 +886,40 @@ onUnmounted(() => {
             </v-btn>
           </v-btn-toggle>
         </div>
-        <label class="charlib-search">
-          <v-icon size="16" class="charlib-search__icon">mdi-magnify</v-icon>
+        <div class="charlib-toolbar__row">
+          <label class="charlib-search">
+            <v-icon size="16" class="charlib-search__icon">mdi-magnify</v-icon>
+            <input
+              v-model="search"
+              type="search"
+              class="charlib-search__input"
+              :placeholder="$t('characters.searchPlaceholder')"
+            />
+          </label>
           <input
-            v-model="search"
-            type="search"
-            class="charlib-search__input"
-            :placeholder="$t('characters.searchPlaceholder')"
+            ref="fileInputRef"
+            type="file"
+            accept="application/json,.json,image/png,.png"
+            class="d-none"
+            @change="onImportFile"
           />
-        </label>
-        <input
-          ref="fileInputRef"
-          type="file"
-          accept="application/json,.json,image/png,.png"
-          class="d-none"
-          @change="onImportFile"
-        />
-        <v-btn variant="tonal" size="small" @click="openCharForm('create')">
-          {{ $t('characters.newCharacter') }}
-        </v-btn>
-        <v-btn color="primary" size="small" @click="triggerImport">
-          {{ $t('characters.import') }}
-        </v-btn>
+          <v-btn
+            variant="tonal"
+            size="small"
+            class="charlib-toolbar__btn"
+            @click="openCharForm('create')"
+          >
+            {{ $t('characters.toolbarNew') }}
+          </v-btn>
+          <v-btn
+            color="primary"
+            size="small"
+            class="charlib-toolbar__btn"
+            @click="triggerImport"
+          >
+            {{ $t('characters.toolbarImport') }}
+          </v-btn>
+        </div>
       </div>
 
       <v-alert
@@ -1122,10 +1134,15 @@ onUnmounted(() => {
       </footer>
     </div>
 
-    <v-dialog v-model="charFormOpen">
+    <v-dialog
+      v-model="charFormOpen"
+      scrollable
+      content-class="char-edit-dialog-surface"
+      @keydown.esc="charFormOpen = false"
+    >
       <v-card class="charlib-edit-card">
-        <v-card-title>{{ charFormTitle }}</v-card-title>
-        <v-card-text class="charlib-edit-card__body">
+        <v-card-title class="charlib-edit-card__title">{{ charFormTitle }}</v-card-title>
+        <v-card-text class="charlib-edit-card__body scroll-y-nice">
           <p class="text-body-2 text-medium-emphasis mb-3">
             {{ charFormHint }}
           </p>
@@ -1402,7 +1419,7 @@ onUnmounted(() => {
 .charlib--embedded {
   flex: 1 1 auto;
   min-height: 0;
-  max-height: 100%;
+  overflow: hidden;
 }
 .charlib__inner--embedded {
   width: 100%;
@@ -1410,15 +1427,31 @@ onUnmounted(() => {
   margin-inline: 0;
   padding-inline: 0;
   box-sizing: border-box;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .charlib-toolbar {
   flex-shrink: 0;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 0.625rem;
-  align-items: center;
+  align-items: stretch;
   margin-bottom: 0.75rem;
+}
+
+.charlib-toolbar__row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.charlib-toolbar__btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .charlib-sort-group {
@@ -1466,18 +1499,67 @@ onUnmounted(() => {
 .charlib-edit-card {
   width: 100%;
   max-width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  min-height: 0;
+  border-radius: 0.625rem !important;
+  overflow: hidden;
+}
+
+@media (max-width: 48rem) {
+  .charlib-edit-card {
+    border-radius: 0 !important;
+  }
+
+  .charlib-edit-card :deep(.v-card-text) {
+    padding: 1em 0.5em 0.5em !important;
+  }
+
+  .charlib-edit-card :deep(.v-field__input) {
+    padding-inline: 0.5rem;
+  }
+}
+
+.charlib-edit-card__title {
+  flex-shrink: 0;
+  padding-inline: 1.125rem;
 }
 
 .charlib-edit-card__body {
-  padding-top: 0.5rem;
-  overflow: hidden;
+  padding: 1.125rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.charlib-edit-card :deep(.v-card-actions) {
+  flex-shrink: 0;
+  padding-inline: 1.125rem;
+}
+
+.charlib-edit-card :deep(.v-field.v-field--active .v-label.v-field-label--floating) {
+  position: sticky;
+  top: 0;
+  background: rgb(var(--v-theme-surface));
+  padding: 0.5em;
+  opacity: 1;
+  z-index: 1;
+  border-radius: var(--radius-sm);
+}
+
+.charlib-edit-card :deep(.v-field) {
+  border-radius: 0.375rem;
 }
 
 .charlib-edit-grid {
   display: grid;
   grid-template-columns: minmax(8.25rem, 0.42fr) minmax(16.25rem, 1.58fr);
-  gap: 1rem 1.375rem;
+  gap: 1.375rem 1.625rem;
   align-items: start;
+  width: 100%;
 }
 
 @media (max-width: 45rem) {
@@ -1489,18 +1571,16 @@ onUnmounted(() => {
 .charlib-edit-col {
   display: flex;
   flex-direction: column;
-  gap: 0.875rem;
+  gap: 1.25rem;
   min-width: 0;
 }
 
 .charlib-edit-col--right {
-  padding-top: 0.5rem;
+  padding-top: 0.25rem;
 }
 
 .charlib-edit-col--scroll {
-  max-height: min(80vh, 52rem);
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: visible;
   min-height: 0;
   padding-right: 0.25rem;
 }
@@ -1604,7 +1684,8 @@ onUnmounted(() => {
 }
 
 .charlib-search {
-  flex: 1 1 12.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -1657,16 +1738,10 @@ onUnmounted(() => {
 
 @media (max-width: 45rem) {
   .charlib-preview {
-    grid-template-columns: 4.5rem 1fr;
-  }
-
-  .charlib-preview__head {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .charlib-preview__actions {
-    justify-content: flex-start;
+    grid-template-columns: 3.25rem 1fr;
+    gap: 0.5rem 0.625rem;
+    padding: 0.5rem 0.625rem;
+    margin-bottom: 0.5rem;
   }
 }
 
@@ -1766,21 +1841,6 @@ onUnmounted(() => {
   gap: 0.875rem;
 }
 
-@media (max-width: 50rem) {
-  .charlib-zone {
-    flex-direction: column;
-  }
-  .charlib-rail {
-    max-height: 12.5rem;
-    flex: 0 1 auto;
-    width: 100%;
-  }
-  .charlib-scroll {
-    flex: 1 1 0%;
-    min-height: 12.5rem;
-  }
-}
-
 .charlib-rail {
   flex: 0 0 10.5rem;
   min-height: 0;
@@ -1823,6 +1883,146 @@ onUnmounted(() => {
   color: rgb(var(--v-theme-on-surface));
   background: rgba(var(--v-theme-secondary), 0.15);
   box-shadow: inset 0 0 0 0.0625rem rgba(var(--v-theme-secondary), 0.35);
+}
+
+@media (max-width: 50rem) {
+  .charlib--embedded {
+    padding-block: 0.5rem 0.625rem;
+  }
+
+  .charlib--embedded .library-page-head {
+    margin-bottom: 0.5rem;
+    padding: 0 0.625rem 0.5rem;
+  }
+
+  .charlib--embedded .library-page-head__lede {
+    display: none;
+  }
+
+  .charlib--embedded .charlib-preview {
+    margin-bottom: 0.4375rem;
+    padding: 0.4375rem 0.625rem;
+  }
+
+  .charlib--embedded .charlib-preview--empty {
+    min-height: 2.75rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .charlib--embedded .charlib-foot {
+    display: none;
+  }
+
+  .charlib-zone {
+    flex-direction: column;
+    flex: 1 1 0%;
+    min-height: 0;
+  }
+
+  .charlib-rail {
+    flex: 0 0 auto;
+    width: 100%;
+    max-height: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.4375rem 0.5rem;
+    overflow: visible;
+  }
+
+  .charlib-rail__title {
+    display: none;
+  }
+
+  .charlib-filter {
+    display: inline-flex;
+    width: auto;
+    margin-bottom: 0;
+    padding: 0.3125rem 0.625rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
+  .charlib-filter:disabled {
+    display: none;
+  }
+
+  .charlib-scroll {
+    flex: 1 1 0%;
+    min-height: 0;
+  }
+
+  .charlib-scroll__hint {
+    display: none;
+  }
+
+  .charlib-preview:not(.charlib-preview--empty) {
+    grid-template-columns: 3rem 1fr;
+    gap: 0.4375rem 0.625rem;
+    padding: 0.4375rem 0.625rem;
+    margin-bottom: 0.4375rem;
+    align-items: start;
+  }
+
+  .charlib-preview__portrait {
+    max-height: 3.75rem;
+  }
+
+  .charlib-preview__head {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.375rem;
+    margin-bottom: 0;
+  }
+
+  .charlib-preview__name {
+    font-size: 0.9375rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .charlib-preview__actions {
+    flex: 1 1 100%;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 0.25rem;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    padding-bottom: 0.0625rem;
+  }
+
+  .charlib-preview__actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .charlib-preview__actions :deep(.v-btn) {
+    flex: 0 0 auto;
+    height: 1.625rem !important;
+    min-width: 0 !important;
+    padding-inline: 0.4375rem !important;
+    font-size: 0.6875rem !important;
+  }
+
+  .charlib-preview__meta,
+  .charlib-preview__summary,
+  .charlib-preview__block {
+    display: none;
+  }
+
+  .charlib-preview__intro {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 }
 
 .charlib-scroll {

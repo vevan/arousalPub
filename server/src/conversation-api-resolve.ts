@@ -15,6 +15,24 @@ import {
   type ResolvedConversationChatParams,
 } from './conversation-api-settings.js'
 
+type ChatBodyFallback = ResolveChatCredentialsInput & {
+  model?: string
+  contextLength?: number | null
+  maxTokens?: number | null
+  stream?: boolean
+  temperature?: number | null
+  topP?: number | null
+  topK?: number | null
+  dryMultiplier?: number | null
+  dryBase?: number | null
+  dryAllowedLength?: number | null
+  dryPenaltyLastN?: number | null
+  drySequenceBreakers?: string[] | null
+  frequencyPenalty?: number | null
+  presencePenalty?: number | null
+  requestReasoning?: boolean
+}
+
 export interface ResolvedConversationChatCall {
   baseUrl: string
   apiKey: string
@@ -26,23 +44,7 @@ export interface ResolvedConversationChatCall {
 
 export async function resolveConversationChatCall(
   conversationId: string,
-  bodyFallback?: ResolveChatCredentialsInput & {
-    model?: string
-    contextLength?: number | null
-    maxTokens?: number | null
-    stream?: boolean
-    temperature?: number | null
-    topP?: number | null
-    topK?: number | null
-    dryMultiplier?: number | null
-    dryBase?: number | null
-    dryAllowedLength?: number | null
-    dryPenaltyLastN?: number | null
-    drySequenceBreakers?: string[] | null
-    frequencyPenalty?: number | null
-    presencePenalty?: number | null
-    requestReasoning?: boolean
-  },
+  bodyFallback?: ChatBodyFallback,
 ): Promise<ResolvedConversationChatCall> {
   const idx = await readConversationIndex(conversationId)
   const binding = idx ? readConversationChatBinding(idx.apiPreset) : null
@@ -103,7 +105,7 @@ export async function resolveConversationChatCall(
 }
 
 function bodyBindingFromFallback(
-  body?: ResolveChatCredentialsInput & Record<string, unknown>,
+  body?: ChatBodyFallback,
 ): ConversationChatBinding | null {
   if (!body) return null
   const b: ConversationChatBinding = {}

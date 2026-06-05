@@ -221,6 +221,8 @@
     "loading": "Loading…",
     "loadFailed": "Could not load. Check your connection and try again.",
     "searchPlaceholder": "Search name, summary, or tags…",
+    "toolbarNew": "New",
+    "toolbarImport": "Import",
     "import": "Import JSON / PNG",
     "newCharacter": "New character",
     "createDialogTitle": "New character",

@@ -57,6 +57,7 @@ import {
 import { reindexConversationMemory } from './memory-index.js'
 import { startConversationMemoryReindexSse } from './memory-reindex-sse.js'
 import { ensureDataSkeleton, resolveListenHost, resolveServerPort } from './config.js'
+import { appendDrySamplerToPayload } from './dry-sampler.js'
 import { readBuildInfoDocument } from './build-meta.js'
 import { registerStaticWeb } from './static-web.js'
 import {

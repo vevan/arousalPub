@@ -686,8 +686,8 @@ async function confirmImportLorebook() {
                 </div>
               </header>
 
-              <div class="editor-card__field-row">
-                <div class="editor-card__field-block editor-card__field-block--wide">
+              <div class="editor-card__field-row editor-card__field-row--side-compact">
+                <div class="editor-card__field-block">
                   <label class="editor-card__field-label">{{ $t('lorebooks.triggerMode') }}</label>
                   <div class="pill-group">
                     <button

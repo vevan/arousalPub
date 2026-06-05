@@ -221,6 +221,8 @@
     "loading": "加载中…",
     "loadFailed": "加载失败，请检查网络或稍后重试。",
     "searchPlaceholder": "搜索名称、摘要或标签…",
+    "toolbarNew": "新建",
+    "toolbarImport": "导入",
     "import": "导入 JSON / PNG",
     "newCharacter": "新建角色",
     "createDialogTitle": "新建角色",

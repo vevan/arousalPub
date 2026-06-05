@@ -96,7 +96,7 @@ export async function runMemoryPipeline(
     input.historyBeforeTurnOrdinalExclusive,
   )
   if (input.memorySettings.memoryEnabled && query.length > 0) {
-    const emb = await createEmbedding(query)
+      const emb = await createEmbedding(query, input.conversationId)
     if (emb) {
       const minRecentOrdinal =
         recentTurns.length > 0

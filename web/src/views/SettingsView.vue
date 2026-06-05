@@ -45,8 +45,13 @@ import { useI18n } from 'vue-i18n'
 import { useTheme } from 'vuetify'
 
 const props = withDefaults(
-  defineProps<{ embedded?: boolean; initialTab?: SettingsTab }>(),
-  { embedded: false, initialTab: 'system' },
+  defineProps<{
+    embedded?: boolean
+    initialTab?: SettingsTab
+    /** 设置对话框每次打开递增，用于 embedded 下刷新账号统计 */
+    openCount?: number
+  }>(),
+  { embedded: false, initialTab: 'system', openCount: 0 },
 )
 
 const emit = defineEmits<{ logout: [] }>()
@@ -496,7 +501,14 @@ watch(activeTab, (tab) => {
   if (tab === 'debug' && !buildInfo.value && !buildInfoLoading.value) {
     void loadBuildInfo()
   }
-})
+}, { immediate: true })
+
+watch(
+  () => props.openCount,
+  () => {
+    if (props.embedded && activeTab.value === 'account') void loadAccountStats()
+  },
+)
 
 async function resetPrimary() {
   themeOklch.resetPrimary(activeMode())
@@ -727,14 +739,20 @@ onMounted(() => {
             <h3 class="text-subtitle-2 font-weight-medium mb-2">
               {{ $t('settings.accountStorage') }}
             </h3>
-            <p v-if="accountStatsLoading" class="text-body-2">
+            <div v-if="accountStatsLoading" class="account-stats text-body-2 mb-4">
               {{ $t('settings.accountStatsLoading') }}
-            </p>
-            <ul v-else-if="accountStats" class="text-body-2 mb-4">
-              <li>{{ $t('settings.accountStatsSize', { size: formatBytes(accountStats.bytes) }) }}</li>
-              <li>{{ $t('settings.accountStatsChats', { n: accountStats.conversationCount }) }}</li>
-              <li class="font-mono text-caption">{{ accountStats.dataDir }}</li>
-            </ul>
+            </div>
+            <div v-else-if="accountStats" class="account-stats text-body-2 mb-4">
+              <p class="account-stats__line">
+                {{ $t('settings.accountStatsSize', { size: formatBytes(accountStats.bytes) }) }}
+              </p>
+              <p class="account-stats__line">
+                {{ $t('settings.accountStatsChats', { n: accountStats.conversationCount }) }}
+              </p>
+              <p class="account-stats__path text-caption text-medium-emphasis">
+                {{ accountStats.dataDir }}
+              </p>
+            </div>
 
             <v-switch
               :model-value="auth.isDefaultUserOnDevice"
@@ -1380,6 +1398,23 @@ onMounted(() => {
 
 .font-mono {
   font-family: ui-monospace, monospace;
+}
+
+.account-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.account-stats__line {
+  margin: 0;
+}
+
+.account-stats__path {
+  margin: 0.25rem 0 0;
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+  line-height: 1.45;
 }
 
 @media (max-width: 36rem) {

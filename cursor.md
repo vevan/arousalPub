@@ -6,7 +6,7 @@
 - **项目阶段**：**已脱离 MVP**（2026-05 起）；按产品完整度迭代。阶段说明见 `DOC/02` §1.1、`DOC/01-架构设计.md` §0。
 - 用户形态：内网多用户
 - 技术栈：Vue3 + Pinia + Vuetify；Node.js（Fastify）；**提示词组装 / 宏 / tiktoken 仅服务端**；数据以可同步目录 + JSON 为主（**`data/{userId}/`** …）
-- 核心能力：对话、**角色库**、**Prompt**、**资料库（世界书）**、**对话记忆 history/memory + LanceDB（§14 设计已定）**、知识库 RAG（待接）、流式输出（SSE）
+- 核心能力：对话、**角色库**、**Prompt**、**资料库（世界书，手工条目 + 可选 vector）**、**对话 memory/history + Lance 向量召回（§14）**、流式输出（SSE）；**用户上传文档式知识库 RAG / Rerank 未接（后者低优先级）**
 - 关键原则：API 预设与密钥在服务端文件型配置中维护；对话可绑定 **`characterId` / `characterIds`**
 
 ## 文档索引

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApiModelPickerDialog from '@/components/settings/ApiModelPickerDialog.vue'
 import { intlLocaleTag } from '@/i18n/locale'
 import { useApiKeysStore, type ApiKeyEntry } from '@/stores/apiKeys'
 import { useAuthStore } from '@/stores/auth'
@@ -18,7 +19,7 @@ import {
 } from '@/utils/dry-sampler'
 import type { ApiConfigReference } from '@/utils/api-config-references'
 import { storeToRefs } from 'pinia'
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -270,16 +271,10 @@ function formatSavedAt(iso: string) {
 const showApiKey = ref(false)
 
 const modelDialog = ref(false)
-const modelsList = ref<string[]>([])
-const modelsLoading = ref(false)
-const modelsError = ref('')
-const modelFilter = ref('')
 
-const filteredModels = computed(() => {
-  const q = modelFilter.value.trim().toLowerCase()
-  if (!q) return modelsList.value
-  return modelsList.value.filter((id) => id.toLowerCase().includes(q))
-})
+const canFetchModels = computed(
+  () => Boolean(conn.baseUrl.trim() && conn.isApiKeyConfigured),
+)
 
 function markDraftKeyDirty(d: KeyDraft) {
   d.keyDirty = true
@@ -337,10 +332,6 @@ async function confirmRevealKey() {
     revealLoading.value = false
   }
 }
-
-const canFetchModels = computed(
-  () => Boolean(conn.baseUrl.trim() && conn.isApiKeyConfigured),
-)
 
 const canTestConnection = computed(
   () => canFetchModels.value && Boolean(conn.model.trim()),
@@ -422,67 +413,9 @@ async function onDeleteCurrentPreset() {
   snackbar.value = true
 }
 
-async function fetchModels() {
-  const bu = conn.baseUrl.trim()
-  if (!bu || !conn.isApiKeyConfigured) {
-    modelsList.value = []
-    modelsError.value = ''
-    return
-  }
-  modelsLoading.value = true
-  modelsError.value = ''
-  try {
-    const res = await fetch('/api/models', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        baseUrl: bu || undefined,
-        apiPresetId: conn.activePresetId ?? undefined,
-      }),
-    })
-    const data = (await res.json()) as {
-      models?: string[]
-      error?: string
-      detail?: string
-    }
-    if (!res.ok) {
-      modelsList.value = []
-      modelsError.value =
-        data.detail || data.error || t('chat.errors.requestFailedStatus', { status: String(res.status) })
-      return
-    }
-    modelsList.value = data.models ?? []
-  } catch (e) {
-    modelsList.value = []
-    modelsError.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    modelsLoading.value = false
-  }
-}
-
-async function openModelPicker() {
-  if (!canFetchModels.value) {
-    snackbarColor.value = 'warning'
-    snackbarText.value = t('conn.needBaseAndKey')
-    snackbar.value = true
-    return
-  }
-  modelFilter.value = ''
+function openModelPicker() {
   modelDialog.value = true
-  await fetchModels()
 }
-
-function selectModelAndClose(id: string) {
-  conn.model = id
-  modelDialog.value = false
-}
-
-watch(
-  () => conn.activePresetId,
-  () => {
-    modelFilter.value = ''
-  },
-)
 
 function bindOptionalNumber(get: () => number | null, set: (n: number | null) => void) {
   return {
@@ -1271,107 +1204,12 @@ function closeImportDialog() {
     </v-card>
   </v-dialog>
 
-  <v-dialog
+  <ApiModelPickerDialog
     v-model="modelDialog"
-    scrollable
-  >
-    <v-card>
-      <v-card-title class="d-flex align-center flex-wrap ga-2">
-        <span>{{ $t('conn.pickModel') }}</span>
-        <v-spacer />
-        <v-btn
-          size="small"
-          variant="text"
-          :loading="modelsLoading"
-          :disabled="!canFetchModels"
-          @click="fetchModels"
-        >
-          {{ $t('conn.reloadModels') }}
-        </v-btn>
-      </v-card-title>
-      <v-divider />
-      <v-card-text class="pa-4">
-        <v-text-field
-          v-model="modelFilter"
-          :label="$t('conn.filterModels')"
-          density="compact"
-          variant="outlined"
-          clearable
-          prepend-inner-icon="mdi-magnify"
-          hide-details
-          class="mb-3"
-          :disabled="!modelsList.length && !modelsLoading"
-        />
-
-        <v-progress-linear
-          v-if="modelsLoading"
-          indeterminate
-          class="mb-2"
-        />
-
-        <v-alert
-          v-if="modelsError"
-          type="warning"
-          variant="tonal"
-          density="compact"
-          class="text-pre-wrap mb-3"
-        >
-          {{ modelsError }}
-        </v-alert>
-
-        <v-list
-          v-if="modelsList.length && !modelsLoading"
-          class="model-dialog-list border rounded"
-          density="compact"
-          nav
-        >
-          <template v-if="filteredModels.length">
-            <v-list-item
-              v-for="id in filteredModels"
-              :key="id"
-              :title="id"
-              :active="conn.model === id"
-              @click="selectModelAndClose(id)"
-            />
-          </template>
-          <v-list-item
-            v-else
-            disabled
-            :title="$t('conn.noFilterMatches')"
-          />
-        </v-list>
-
-        <p
-          v-else-if="!modelsLoading && !modelsError"
-          class="text-body-2 text-medium-emphasis mb-3"
-        >
-          {{ $t('conn.emptyModels') }}
-        </p>
-
-        <v-divider class="my-3" />
-
-        <v-text-field
-          v-model="conn.model"
-          :label="$t('conn.manualModelId')"
-          :hint="$t('conn.manualModelHint')"
-          persistent-hint
-          density="compact"
-          variant="outlined"
-          class="mb-2"
-        />
-      </v-card-text>
-      <v-divider />
-      <v-card-actions class="pa-3">
-        <v-spacer />
-        <v-btn
-          variant="text"
-          @click="modelDialog = false"
-        >
-          {{ $t('conn.close') }}
-        </v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+    :model-id="conn.model"
+    :api-preset-id="conn.activePresetId"
+    @update:model-id="(v) => { conn.model = v }"
+  />
 
   <v-dialog
     v-model="testResultDialogOpen"
@@ -1537,11 +1375,6 @@ function closeImportDialog() {
 
 .cursor-pointer :deep(.v-field) {
   cursor: pointer;
-}
-
-.model-dialog-list {
-  max-height: min(50vh, 20rem);
-  overflow-y: auto;
 }
 
 .test-result-reply {

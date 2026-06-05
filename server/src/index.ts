@@ -11,7 +11,10 @@ import {
   type ApiPreset,
   type ApiSettingsDocument,
 } from './api-settings-file.js'
-import { appendDrySamplerToPayload } from './dry-sampler.js'
+import {
+  resolveConversationChatCall,
+  resolvedParamsToChatBodyFields,
+} from './conversation-api-resolve.js'
 import { parseAuthorsNotePatch } from './authors-note-settings.js'
 import { readAllTurns, repairConversationChunkIndex } from './chunk-chain.js'
 import {
@@ -40,6 +43,12 @@ import {
   updateConversationUserCharacterId,
   updateConversationUserName,
   updateConversationAuthorsNote,
+  clearConversationChatApiSettings,
+  updateConversationChatApiSettings,
+  clearConversationEmbeddingApiSettings,
+  updateConversationEmbeddingApiSettings,
+  parseConversationChatBinding,
+  parseConversationEmbeddingApiOverride,
   getTurnUserText,
   resolvedCharacterIds,
   updateTurnContentInTailChunk,
@@ -434,6 +443,13 @@ interface PatchConvBody {
     injectionDepth?: number
     role?: 'system' | 'user'
   } | null
+  /** 对话级 chat API 覆盖（apiPreset.chat）；`null` 清除 chat 覆盖 */
+  apiPreset?: { chat?: Record<string, unknown> | null } | null
+  /** 对话级 Embedding 模型参数；`null` 清除 */
+  embeddingApiSettings?: {
+    embeddingModel?: string
+    embeddingDimensions?: number | null
+  } | null
 }
 
 app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
@@ -472,7 +488,27 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
     const hasUserCharacterId = Object.prototype.hasOwnProperty.call(b, 'userCharacterId')
     const hasUserName = Object.prototype.hasOwnProperty.call(b, 'userName')
     const hasAuthorsNote = Object.prototype.hasOwnProperty.call(b, 'authorsNote')
-    if (!hasTitle && !hasPromptDebug && !hasCharIds && !hasPromptPreset && !hasLorebookIds && !hasLorebookSettings && !hasHistorySettings && !hasMemorySettings && !hasBudgetTrimSettings && !hasUserCharacterId && !hasUserName && !hasAuthorsNote) {
+    const hasApiPreset = Object.prototype.hasOwnProperty.call(b, 'apiPreset')
+    const hasEmbeddingApiSettings = Object.prototype.hasOwnProperty.call(
+      b,
+      'embeddingApiSettings',
+    )
+    if (
+      !hasTitle &&
+      !hasPromptDebug &&
+      !hasCharIds &&
+      !hasPromptPreset &&
+      !hasLorebookIds &&
+      !hasLorebookSettings &&
+      !hasHistorySettings &&
+      !hasMemorySettings &&
+      !hasBudgetTrimSettings &&
+      !hasUserCharacterId &&
+      !hasUserName &&
+      !hasAuthorsNote &&
+      !hasApiPreset &&
+      !hasEmbeddingApiSettings
+    ) {
       return reply
         .status(400)
         .send({
@@ -714,6 +750,89 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       )
       if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       idx = next
+    }
+    if (hasApiPreset) {
+      const raw = b.apiPreset
+      if (raw === null) {
+        const next = await clearConversationChatApiSettings(id)
+        if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+        idx = next
+      } else if (typeof raw === 'object' && !Array.isArray(raw)) {
+        if (Object.prototype.hasOwnProperty.call(raw, 'chat')) {
+          const chatRaw = (raw as { chat?: unknown }).chat
+          if (chatRaw === null) {
+            const next = await clearConversationChatApiSettings(id)
+            if (!next) {
+              return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+            }
+            idx = next
+          } else {
+            const parsed = parseConversationChatBinding(chatRaw)
+            if (!parsed.ok) {
+              const code = parsed.error as keyof typeof ApiErrorCodes
+              return reply
+                .status(400)
+                .send({
+                  error:
+                    ApiErrorCodes[code] ??
+                    ApiErrorCodes.conversation_api_preset_chat_invalid,
+                })
+            }
+            try {
+              const next = await updateConversationChatApiSettings(
+                id,
+                parsed.binding,
+              )
+              if (!next) {
+                return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+              }
+              idx = next
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : ''
+              if (msg === 'api_preset_not_found') {
+                return reply.status(400).send({ error: ApiErrorCodes.api_preset_not_found })
+              }
+              throw e
+            }
+          }
+        }
+      } else {
+        return reply
+          .status(400)
+          .send({ error: ApiErrorCodes.conversation_api_preset_chat_invalid })
+      }
+    }
+    if (hasEmbeddingApiSettings) {
+      const raw = b.embeddingApiSettings
+      if (raw === null) {
+        const next = await clearConversationEmbeddingApiSettings(id)
+        if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+        idx = next
+      } else if (typeof raw === 'object' && !Array.isArray(raw)) {
+        const parsed = parseConversationEmbeddingApiOverride(raw)
+        if (!parsed.ok) {
+          const code = parsed.error as keyof typeof ApiErrorCodes
+          return reply
+            .status(400)
+            .send({
+              error:
+                ApiErrorCodes[code] ?? ApiErrorCodes.conversation_embedding_api_invalid,
+            })
+        }
+        if (parsed.patch === null || Object.keys(parsed.patch).length === 0) {
+          const next = await clearConversationEmbeddingApiSettings(id)
+          if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+          idx = next
+        } else {
+          const next = await updateConversationEmbeddingApiSettings(id, parsed.patch)
+          if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+          idx = next
+        }
+      } else {
+        return reply
+          .status(400)
+          .send({ error: ApiErrorCodes.conversation_embedding_api_invalid })
+      }
     }
     if (hasAuthorsNote) {
       const parsed = parseAuthorsNotePatch(b.authorsNote)
@@ -2630,17 +2749,38 @@ app.get<{ Params: { pluginId: string; locale: string } }>(
 
 app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   const body = request.body ?? ({} as ChatBody)
-  const { model } = body
+  const convId =
+    typeof body.conversationId === 'string' ? body.conversationId.trim() : ''
+  if (convId && !isValidConversationId(convId)) {
+    return reply.status(400).send({ error: ApiErrorCodes.invalid_conversation_id })
+  }
+
   let apiKey: string
   let baseUrl: string
+  let mergedBody: ChatBody = body
   try {
-    const creds = await resolveChatCredentials({
-      apiPresetId: body.apiPresetId,
-      apiKeyId: body.apiKeyId,
-      baseUrl: body.baseUrl,
-    })
-    apiKey = creds.apiKey
-    baseUrl = creds.baseUrl
+    if (convId) {
+      const resolved = await resolveConversationChatCall(convId, body)
+      apiKey = resolved.apiKey
+      baseUrl = resolved.baseUrl
+      const fields = resolvedParamsToChatBodyFields(resolved.params)
+      mergedBody = {
+        ...body,
+        ...fields,
+        apiPresetId: resolved.presetId,
+        baseUrl: undefined,
+        apiKeyId: undefined,
+        apiKey: undefined,
+      }
+    } else {
+      const creds = await resolveChatCredentials({
+        apiPresetId: body.apiPresetId,
+        apiKeyId: body.apiKeyId,
+        baseUrl: body.baseUrl,
+      })
+      apiKey = creds.apiKey
+      baseUrl = creds.baseUrl
+    }
   } catch (e) {
     if (e instanceof ApiCredentialError) {
       return reply.status(400).send({ error: e.code })
@@ -2648,15 +2788,11 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
     throw e
   }
 
+  const model = mergedBody.model
   if (!model || typeof model !== 'string') {
     return reply.status(400).send({ error: ApiErrorCodes.missing_model })
   }
 
-  const convId =
-    typeof body.conversationId === 'string' ? body.conversationId.trim() : ''
-  if (convId && !isValidConversationId(convId)) {
-    return reply.status(400).send({ error: ApiErrorCodes.invalid_conversation_id })
-  }
   const userText = typeof body.userText === 'string' ? body.userText : ''
   let messages: ChatMessage[]
   let estimatedTokens: number | undefined
@@ -2670,7 +2806,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
       userText,
       promptTrigger: body.promptTrigger,
       historyBeforeTurnOrdinalExclusive: body.historyBeforeTurnOrdinalExclusive,
-      contextLength: body.contextLength,
+      contextLength: mergedBody.contextLength,
       tokenModel: model,
       promptsDoc,
       plugins: body.plugins,
@@ -2712,8 +2848,12 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
         }
       : null
 
-  const wantStream = Boolean(body.stream)
-  const payload = buildUpstreamPayload({ ...body, messages, stream: wantStream })
+  const wantStream = Boolean(mergedBody.stream)
+  const payload = buildUpstreamPayload({
+    ...mergedBody,
+    messages,
+    stream: wantStream,
+  })
   const url = `${baseUrl}/chat/completions`
   const upstreamStartedAt = performance.now()
 

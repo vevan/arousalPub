@@ -35,6 +35,21 @@ import {
   type BudgetTrimSettingsOverride,
 } from './budget-trim-settings.js'
 import {
+  chatBindingOverrideFromEffective,
+  conversationChatBindingSnapshot,
+  conversationEmbeddingOverrideFromEffective,
+  hasConversationChatBinding,
+  hasConversationEmbeddingApiOverride,
+  mergePresetWithChatBinding,
+  parseConversationChatBinding,
+  parseConversationEmbeddingApiOverride,
+  readConversationChatBinding,
+  resolveConversationEmbeddingModelSettings,
+  type ConversationChatBinding,
+  type ConversationEmbeddingApiSettingsOverride,
+} from './conversation-api-settings.js'
+import { readApiSettingsFromFile } from './api-settings-file.js'
+import {
   readGlobalBudgetTrimSettings,
   readGlobalHistorySettings,
   readGlobalLorebookSettings,
@@ -130,6 +145,10 @@ export interface ConversationIndex {
   memorySettings?: Partial<MemorySettings>
   /** §14.4.1 预算裁切稀疏覆盖（未写字段继承全局 user-preferences） */
   budgetTrimSettings?: BudgetTrimSettingsOverride
+  /**
+   * 对话级 Embedding 模型参数稀疏覆盖（连接仍用全局 embeddingApi）。
+   */
+  embeddingApiSettings?: ConversationEmbeddingApiSettingsOverride
   /**
    * 远期记忆向量索引所用 embedding 模型（与全局 embeddingApi.embeddingModel 对齐）。
    * 未写入表示尚未按当前模型完成索引或需重建。
@@ -554,6 +573,134 @@ export async function updateConversationMemorySettings(
   await writeConversationIndex(conversationId, next)
   await upsertChatListEntry(chatListEntryFromIndex(next), next)
   return next
+}
+
+/** 清除会话 chat API 覆盖 */
+export async function clearConversationChatApiSettings(
+  conversationId: string,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  if (next.apiPreset && typeof next.apiPreset === 'object') {
+    const ap = { ...(next.apiPreset as Record<string, unknown>) }
+    delete ap.chat
+    if (Object.keys(ap).length === 0) {
+      delete next.apiPreset
+    } else {
+      next.apiPreset = ap
+    }
+  }
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
+  return next
+}
+
+/** 更新会话 chat API 覆盖（apiPreset.chat） */
+export async function updateConversationChatApiSettings(
+  conversationId: string,
+  patch: ConversationChatBinding | null,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const settings = await readApiSettingsFromFile()
+  const globalPresetId = settings?.activePresetId ?? ''
+  const globalPreset =
+    settings?.presets.find((p) => p.id === globalPresetId) ?? null
+
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  const ap =
+    next.apiPreset && typeof next.apiPreset === 'object' && !Array.isArray(next.apiPreset)
+      ? { ...(next.apiPreset as Record<string, unknown>) }
+      : {}
+
+  if (patch === null) {
+    delete ap.chat
+  } else {
+    const presetId = (patch.apiConfigId?.trim() || globalPresetId).trim()
+    const preset =
+      settings?.presets.find((p) => p.id === presetId) ?? globalPreset
+    if (!preset) {
+      throw new Error('api_preset_not_found')
+    }
+    const effective = mergePresetWithChatBinding(preset, patch)
+    const sparse = chatBindingOverrideFromEffective(
+      preset,
+      effective,
+      patch.apiConfigId?.trim(),
+    )
+    if (sparse) {
+      ap.chat = sparse
+    } else {
+      // 会话显式覆盖：与 preset 相同也保留快照，避免被误判为「继承全局」
+      ap.chat = conversationChatBindingSnapshot(preset, effective, patch)
+    }
+  }
+
+  if (Object.keys(ap).length === 0) {
+    delete next.apiPreset
+  } else {
+    next.apiPreset = ap
+  }
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
+  return next
+}
+
+/** 清除会话 Embedding 参数覆盖 */
+export async function clearConversationEmbeddingApiSettings(
+  conversationId: string,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  delete next.embeddingApiSettings
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
+  return next
+}
+
+/** 对话 Embedding 参数：稀疏写盘 */
+export async function updateConversationEmbeddingApiSettings(
+  conversationId: string,
+  patch: ConversationEmbeddingApiSettingsOverride,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const { readGlobalEmbeddingApiSettings } = await import(
+    './user-preferences-file.js'
+  )
+  const global = await readGlobalEmbeddingApiSettings()
+  const effective = resolveConversationEmbeddingModelSettings(global, {
+    ...idx.embeddingApiSettings,
+    ...patch,
+  })
+  const sparse = conversationEmbeddingOverrideFromEffective(effective, global)
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  if (sparse) {
+    next.embeddingApiSettings = sparse
+  } else {
+    // 会话显式覆盖：与全局相同也保留快照
+    next.embeddingApiSettings = {
+      embeddingModel: effective.embeddingModel,
+      embeddingDimensions: effective.embeddingDimensions,
+    }
+  }
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
+  return next
+}
+
+export {
+  hasConversationChatBinding,
+  hasConversationEmbeddingApiOverride,
+  parseConversationChatBinding,
+  parseConversationEmbeddingApiOverride,
+  readConversationChatBinding,
 }
 
 /** 更新会话 Author's Note；`patch === null` 清除字段 */

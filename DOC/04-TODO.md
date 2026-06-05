@@ -2,6 +2,19 @@
 
 > **项目阶段**：已脱离 MVP（见 `cursor.md`、`DOC/02` §1.1）。下列 P0/P1 为当前排期标签，**不是** MVP 裁剪清单。
 
+### P0 完成度概览（2026-05-26 核对 · JWT/RAG 二次核实）
+
+| 类别 | 状态 | 说明 |
+|------|------|------|
+| 基础工程 | ✅ | `server/` Fastify + `web/` Vue3/Pinia/Vuetify |
+| **JWT 多用户认证** | ✅ | `users.index.json` + scrypt；`/api/auth/*`；全局 `/api/*` 鉴权（`auth.ts`） |
+| 对话核心 | ✅ | SSE `/api/chat`、chunk 链（`DOC/08`）、角色 / Prompt / 世界书 |
+| 组装与记忆 | ✅ | §14.9 管线、§14.4.1 budget trim（全局 + 会话设置 UI）、§15 宏 |
+| **向量检索（部分 RAG）** | ✅ | 对话 **memory** Lance TopK；资料库 **vector** 条目 TopK（可选 `vectorEnabled`） |
+| API Key 隔离 | ✅ | 定案与落地见 `DOC/13` |
+| 前端对话 UI | ✅ | `HomeChat` 已拆子组件 + `useChatSession`（见 §前端工程） |
+| **仍待 P0** | ⏳ | 独立知识库 RAG（见下）、§1.2 独立 `api_configs`/`feature_bindings` 集合、分支 UI、全量调用日志 |
+
 ## P0（当前优先）
 
 ### API Key 服务端隔离（已完成）
@@ -17,7 +30,7 @@
 
 - [x] 初始化后端 Fastify 项目结构（`server/`）
 - [x] 初始化前端 Vue3 + Pinia + Vuetify 项目结构（`web/`）
-- [ ] 完成 JWT 登录（用户表、密码 hash、登录态校验）— **当前仓库未实现**
+- [x] **JWT 多用户登录**（2026-06 已实现）：`data/users.index.json` 用户表；`auth-password.ts` scrypt 哈希；`auth.ts` + `@fastify/jwt`（access + refresh、`persisted`/`ephemeral` 会话）；`/api/auth/setup|register|login|refresh|logout|status`；除公开路由外 **`/api/*` 全局 JWT**（`runRequestUser` 解析 `sub`）；Web **`AuthView`** + `stores/auth.ts` + `install-authenticated-fetch.ts`
 - [ ] 建立 `api_configs` 集合与 CRUD 接口 — **当前为文件型 `api-settings.json` + `/api/settings`，非独立 api_configs 服务**
 - [ ] 建立 `feature_bindings` 集合与 CRUD 接口 — **未按文档 §1.2 独立集合实现**
 - [x] 对话发送与 SSE 流式返回（`/api/chat` 等，见 `server/src/index.ts`）
@@ -30,14 +43,16 @@
 - [x] **组装管线 §14.9 主干**：`runMemoryPipeline`、`boundMemory`（`<memory>` system）、`boundRecentHistory` / `history` 分组（**user/assistant 链**，非 `<history>` XML）、`buildScanText` + lore 递归（`lorebook-resolve`）
 - [x] **宏管线 §15**：server `prompt-macros/handlers`、仅服务端展宏、`POST /api/prompts/assemble-preview`、opening 服务端展宏、删除 web `prompt-macros`
 - [ ] **ST 宏扩展（备忘，未排期）**：可行性分级见 `DOC/14-st-macros-porting.md`
-- [ ] 知识库 RAG：向量切片、检索、重排序 — **在 §13 框架之上扩展**（与 §14 turn 表分离）
-- [ ] RAG/模型调用日志（耗时、token、命中明细）— **部分字段在 turn `runtime` 等，未达需求文档 §4 全量**
+- [x] **对话 memory 向量召回**（§14）：Lance `memory/conversations/{id}` + `createEmbedding` + `searchTurnMemoryVectors`（`memory-pipeline.ts` / `memory-store.ts`）
+- [x] **资料库向量检索**（§13，可选）：`vectorEnabled` + 条目 `triggerMode=vector` → `lorebook-vector-store` / `lorebook-resolve` TopK；保存后 `scheduleLorebookVectorReindex`
+- [ ] **独立知识库 RAG**（**≠ 现有世界书**）：用户上传/导入 **长文档**（PDF、Markdown、txt 等）→ 自动 **切片** → embedding → 独立 Lance 表（与 turn memory、资料库条目 **分表**）→ 对话时向量 TopK 检索注入；`rag_generate` 能力接线。**未实现**。若设定资料只靠世界书手工条目维护，本项可长期不做。
+- [ ] RAG/模型调用日志（耗时、token、**命中明细**）— **部分**：turn `receive.runtime`（model/durationMs/tokens）；`assemble-messages` 返回 dropped 计数与 `memoryTurnIds`；**未达**需求 §4 全量审计
 
 ## 前端工程（当前仓库）
 
 - [x] **npm audit 安全项**（`marked` ≥18.0.4、`fast-uri` ≥3.1.2）— 2026-05-29，见 `DOC/00-alert.md`
 - [x] **vue-i18n v9 → v11**（11.4.4）— 2026-05-29，见 `DOC/07-vue-i18n-migration.md`
-- [ ] **拆分** `web/src/components/HomeChat.vue` **为多个子组件**（单文件体积过大；可按消息列表 / 输入区 / 各 `v-dialog`、工具函数注入等边界拆分，并保持 `chat-body` + `chat-footer` 根结构约定，见 `DOC/06-工作交接.md` §2.2）
+- [x] **拆分** `web/src/components/HomeChat.vue` **为多个子组件**（2026-05-26：`useChatSession.ts` 承载会话逻辑；`ChatMessageList` / `ChatComposer` / `ChatDeleteDialog` / `ChatAssemblePreviewDialog` / `ChatTurnPromptDialog`；`HomeChat.vue` 约 60 行壳层，根 **`chat-session`**，见 `DOC/03` §11.2、`DOC/06` §2.2）
 
 ## 角色卡（ST v2 PNG 与生态 — 当前迭代）
 
@@ -84,7 +99,7 @@
 - [x] **单端口生产启动（`DOC/01` §9）**：`npm start` / `run-prod.mjs`、`static-web.ts`、`start.bat`/`start.sh`、`README.md`；根目录 `build`（web + server）；保留 `npm run dev`
 - [x] API 配置连通性测试接口（test）— `POST /api/settings/presets/:id/test`（两阶段：models + chat）
 - [x] API 配置引用检查与安全删除 — `GET/DELETE …/presets/:id`、`GET/DELETE /api/api-keys/:id`；PUT api-keys 拦截被引用 key 删除
-- [ ] 会话级模型参数覆盖能力
+- [x] **对话级 API 覆盖**（`DOC/03` §1.2.2）：主 API = 选已有 preset + 采样参数覆盖（**不可**自定义连接）；Embedding = 继承全局连接 + 可覆盖 model/dimensions；`ConversationContextSettings` + 服务端 resolve
 - [ ] RAG 参数调优面板（TopK、阈值等）
 - [ ] 导入导出（会话全量、角色批量等）— **单卡 PNG/JSON 导出已有；批量见 P1**
 - [ ] 数据目录备份示例脚本与说明（规范见 `DOC/03` §8.7；**全量 zip 冷备见 §8.8，优先级靠后**）
@@ -104,7 +119,7 @@
 
 - [ ] **全量冷备 zip（`data/backups`）**：启动时若距上次成功备份 > N 天 → 服务端流式打包整棵 `data`（含 `memory/`）→ 冻 UI + 503 写锁；`backupIntervalDays` / `backupMaxKept`；Syncthing **ignore `backups`**；无下载。见 **`DOC/03` §8.8**。
 - [ ] **Embedding MRL / 降维**：系统设置已支持 `embeddingDimensions`（留空=不传 OpenAI `dimensions`）；部分本地网关会忽略该参数仍返回满维。备选：换 TEI/vLLM 等支持 MRL 的推理端，或客户端截断前 N 维 + L2 归一化后入库。
-- [ ] **Reranker 精排**：记忆/资料库当前仅 Lance 向量 TopK；API 层已预留 `rerank` capability，组装管线未接。TopK 较小时收益有限，资料库规模大时更值得做。
+- [ ] **Reranker 精排（P3 · 低优先级）**：cross-encoder 二阶段精排；`api-settings.json` 已预留 `rerank` capability，组装管线未接。**当前 memoryTopK / 资料库 vector TopK 较小，收益有限，不排期**（见 P3）。
 - [ ] **Qwen query instruct**：官方建议 query 侧加任务指令前缀（约 +1～5% 检索），索引与检索均未实现。
 
 ## 文档维护 TODO
@@ -113,6 +128,6 @@
 - [x] 原独立草稿已合并至 `DOC/02`、`DOC/03`
 - [ ] 每次架构决策变更后更新 `DOC/01-架构设计.md`
 - [x] 每次需求变更后更新 `DOC/02-需求说明.md` — 2026-06 会话列表快查冗余（§7）
-- [x] 每次接口变更后更新 `DOC/03-实现细节.md`（**含 §7.1 列表冗余、§11.6 快查**）— 2026-06
+- [x] 每次接口变更后更新 `DOC/03-实现细节.md`（**含 §7.1 列表冗余、§11.6 快查、§14.4.1 budget trim**）— 2026-06
 - [x] 插件系统与指导生成定案 — `DOC/09-plugin-system-and-guidance-generate.md`（2026-05-26）
 - [x] 插件系统实现文档 — `DOC/09`、`plugins/README.md`、`data/README.md` §插件（2026-05-26）

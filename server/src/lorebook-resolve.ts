@@ -25,6 +25,7 @@ export {
 export interface LorebookResolveContext {
   userText?: string
   scanCorpus?: string
+  conversationId?: string
   lorebookSettings?: LorebookSettings | null
   lorebookSettingsOverride?: Partial<LorebookSettings> | null
 }
@@ -148,6 +149,7 @@ export async function resolveLorebookInjectionParts(
       scanSeed,
       settings.vectorTopK,
       seenEntryIds,
+      context.conversationId,
     )
     for (const hit of vectorHits) {
       if (matchedLore.length >= MAX_MATCHED_ENTRIES) break
@@ -197,8 +199,9 @@ async function collectVectorMatches(
   queryText: string,
   topK: number,
   seenEntryIds: Set<string>,
+  conversationId?: string,
 ): Promise<Array<TaggedLoreEntry & { score: number }>> {
-  const emb = await createEmbedding(queryText)
+  const emb = await createEmbedding(queryText, conversationId)
   if (!emb) return []
 
   type Ranked = { lorebookId: string; entry: LorebookEntry; score: number }

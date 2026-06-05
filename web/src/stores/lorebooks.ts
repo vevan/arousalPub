@@ -91,9 +91,25 @@ function buildDefaultLorebook(): Lorebook {
   }
 }
 
-function buildInitialState(): { lorebooks: Lorebook[]; activeLorebookId: string } {
+function firstGroupIdOf(lb: Lorebook): string | null {
+  return (
+    lb.groups
+      .slice()
+      .sort((a, b) => a.order - b.order)[0]?.id ?? null
+  )
+}
+
+function buildInitialState(): {
+  lorebooks: Lorebook[]
+  activeLorebookId: string
+  activeGroupId: string | null
+} {
   const lb = buildDefaultLorebook()
-  return { lorebooks: [lb], activeLorebookId: lb.id }
+  return {
+    lorebooks: [lb],
+    activeLorebookId: lb.id,
+    activeGroupId: firstGroupIdOf(lb),
+  }
 }
 
 function normalizeLorebook(lb: Lorebook): Lorebook {
@@ -135,7 +151,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
   const initial = buildInitialState()
   const lorebooks = ref<Lorebook[]>(initial.lorebooks)
   const activeLorebookId = ref(initial.activeLorebookId)
-  const activeGroupId = ref<string | null>(null)
+  const activeGroupId = ref<string | null>(initial.activeGroupId)
   const selectedEntryId = ref<string | null>(null)
   const searchText = ref('')
 
@@ -147,6 +163,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   let pendingSave = false
+  let loadPromise: Promise<void> | null = null
 
   const activeLorebook = computed<Lorebook>(() => {
     const lb =
@@ -238,41 +255,48 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
   }
 
   async function loadFromServer(): Promise<void> {
-    if (loading.value || loaded.value) return
-    loading.value = true
-    lastError.value = null
-    try {
-      const res = await fetch('/api/lorebooks')
-      if (!res.ok) throw new Error(`GET /api/lorebooks ${res.status}`)
-      const raw: unknown = await res.json()
-      const fromServer = raw === null ? null : normalizeServerDoc(raw)
-      if (fromServer) {
-        lorebooks.value = fromServer.lorebooks
-        activeLorebookId.value = fromServer.activeLorebookId
-        if (
-          activeGroupId.value &&
-          !activeLorebook.value.groups.some((g) => g.id === activeGroupId.value)
-        ) {
-          activeGroupId.value = activeLorebook.value.groups[0]?.id ?? null
+    if (loaded.value) return
+    if (loadPromise) return loadPromise
+    loadPromise = (async () => {
+      loading.value = true
+      lastError.value = null
+      try {
+        const res = await fetch('/api/lorebooks')
+        if (!res.ok) throw new Error(`GET /api/lorebooks ${res.status}`)
+        const raw: unknown = await res.json()
+        const fromServer = raw === null ? null : normalizeServerDoc(raw)
+        if (fromServer) {
+          lorebooks.value = fromServer.lorebooks
+          activeLorebookId.value = fromServer.activeLorebookId
+          const lb = activeLorebook.value
+          if (
+            activeGroupId.value &&
+            !lb.groups.some((g) => g.id === activeGroupId.value)
+          ) {
+            activeGroupId.value = firstGroupIdOf(lb)
+          }
+          if (!activeGroupId.value) {
+            activeGroupId.value = firstGroupIdOf(lb)
+          }
+          loaded.value = true
+          return
         }
         if (!activeGroupId.value) {
-          activeGroupId.value =
-            activeLorebook.value.groups[0]?.id ?? null
+          activeGroupId.value = firstGroupIdOf(activeLorebook.value)
         }
         loaded.value = true
-        return
+        pendingSave = true
+        await flushSave()
+      } catch (e) {
+        lastError.value = e instanceof Error ? e.message : String(e)
+      } finally {
+        loading.value = false
       }
-      if (!activeGroupId.value) {
-        activeGroupId.value =
-          activeLorebook.value.groups[0]?.id ?? null
-      }
-      loaded.value = true
-      pendingSave = true
-      await flushSave()
-    } catch (e) {
-      lastError.value = e instanceof Error ? e.message : String(e)
+    })()
+    try {
+      await loadPromise
     } finally {
-      loading.value = false
+      loadPromise = null
     }
   }
 
@@ -329,9 +353,59 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
   function selectLorebook(id: string) {
     activeLorebookId.value = id
     const lb = lorebooks.value.find((x) => x.id === id)
-    activeGroupId.value =
-      lb?.groups.slice().sort((a, b) => a.order - b.order)[0]?.id ?? null
+    activeGroupId.value = lb ? firstGroupIdOf(lb) : null
     selectedEntryId.value = null
+  }
+
+  /** 选中指定资料库及其第一个分组；不存在则 false */
+  function focusLorebookById(lorebookId: string | null | undefined): boolean {
+    const id = lorebookId?.trim()
+    if (!id) return false
+    const lb = lorebooks.value.find((x) => x.id === id)
+    if (!lb) return false
+    activeLorebookId.value = lb.id
+    activeGroupId.value = firstGroupIdOf(lb)
+    selectedEntryId.value = null
+    searchText.value = ''
+    return true
+  }
+
+  /**
+   * 优先选中 conversation 绑定列表中的第一本资料库 + 第一分组；
+   * 若无匹配则回退到库中第一本。
+   */
+  function focusConversationLorebooks(
+    ids: string[],
+    preferredId?: string | null,
+  ): void {
+    const candidates: string[] = []
+    if (preferredId?.trim()) candidates.push(preferredId.trim())
+    for (const id of ids) {
+      const t = id.trim()
+      if (t && !candidates.includes(t)) candidates.push(t)
+    }
+    for (const id of candidates) {
+      if (focusLorebookById(id)) return
+    }
+    const fallback = lorebooks.value[0]
+    if (fallback) {
+      activeLorebookId.value = fallback.id
+      activeGroupId.value = firstGroupIdOf(fallback)
+      selectedEntryId.value = null
+      searchText.value = ''
+    }
+  }
+
+  async function ensureLoaded(): Promise<void> {
+    if (!loaded.value) await loadFromServer()
+  }
+
+  async function applyOpenFocus(
+    conversationIds: string[],
+    preferredId?: string | null,
+  ): Promise<void> {
+    await ensureLoaded()
+    focusConversationLorebooks(conversationIds, preferredId)
   }
 
   function selectGroup(id: string | null) {
@@ -680,6 +754,10 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     lastSavedAt,
     lastError,
     loadFromServer,
+    ensureLoaded,
+    applyOpenFocus,
+    focusLorebookById,
+    focusConversationLorebooks,
     flushSave,
     exportActiveLorebook,
     importLorebookFromJson,

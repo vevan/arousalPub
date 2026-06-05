@@ -89,11 +89,12 @@ export async function createEmbeddingWithCredentials(
  */
 export async function createEmbedding(
   text: string,
+  conversationId?: string | null,
 ): Promise<EmbeddingResult | null> {
   const { resolveEmbeddingApiCredentials } = await import(
     './embedding-credential-resolve.js'
   )
-  const creds = await resolveEmbeddingApiCredentials()
+  const creds = await resolveEmbeddingApiCredentials(conversationId)
   if (!creds) return null
   const out = await createEmbeddingWithCredentials(creds, text)
   if ('error' in out) {

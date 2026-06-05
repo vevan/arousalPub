@@ -11,6 +11,12 @@ import {
   type AuthorsNoteSettings,
 } from '@/utils/authors-note-settings'
 import BudgetTrimSettingsPanel from '@/components/settings/BudgetTrimSettingsPanel.vue'
+import ConversationApiSettingsPanel from '@/components/settings/ConversationApiSettingsPanel.vue'
+import {
+  readConversationChatBinding,
+  type ConversationChatBinding,
+  type ConversationEmbeddingApiSettingsOverride,
+} from '@/utils/conversation-api-settings'
 import {
   BUDGET_TRIM_SETTINGS_DEFAULTS,
   budgetTrimSettingsEqual,
@@ -53,6 +59,12 @@ const props = defineProps<{
   /** 用户 persona 角色卡 id */
   initialUserCharacterId?: string | null
   initialAuthorsNote?: AuthorsNoteSettings
+  /** 会话 index.apiPreset（含 chat 覆盖） */
+  initialApiPreset?: unknown
+  initialChatApiUseGlobal?: boolean
+  initialEmbeddingApiUseGlobal?: boolean
+  initialEmbeddingApiSettings?: ConversationEmbeddingApiSettingsOverride
+  globalEmbeddingDimensions?: number | null
 }>()
 
 const emit = defineEmits<{
@@ -60,7 +72,7 @@ const emit = defineEmits<{
   (e: 'memoryRebuilt', embeddingModel: string): void
 }>()
 
-type SettingsSection = 'bindings' | 'lore' | 'context' | 'budgetTrim' | 'authorsNote'
+type SettingsSection = 'bindings' | 'api' | 'lore' | 'context' | 'budgetTrim' | 'authorsNote'
 
 const { t } = useI18n()
 const promptsStore = usePromptsStore()
@@ -84,6 +96,11 @@ const savingHistorySettings = ref(false)
 const savingMemorySettings = ref(false)
 const savingBudgetTrimSettings = ref(false)
 const savingAuthorsNote = ref(false)
+const savingApiSettings = ref(false)
+const apiChatDraftActive = ref(false)
+const apiEmbeddingDraftActive = ref(false)
+const chatApiUseGlobal = ref(true)
+const embeddingApiUseGlobal = ref(true)
 const errorText = ref('')
 
 const lorebookModel = ref<string[]>([])
@@ -173,6 +190,11 @@ const sectionItems = computed(() => [
     icon: 'mdi-link-variant',
   },
   {
+    id: 'api' as const,
+    title: t('chat.convSettings.tabApi'),
+    icon: 'mdi-api',
+  },
+  {
     id: 'lore' as const,
     title: t('chat.convSettings.tabLore'),
     icon: 'mdi-book-open-page-variant-outline',
@@ -216,7 +238,8 @@ const isSaving = computed(
     savingHistorySettings.value ||
     savingMemorySettings.value ||
     savingBudgetTrimSettings.value ||
-    savingAuthorsNote.value,
+    savingAuthorsNote.value ||
+    savingApiSettings.value,
 )
 
 function open(section?: SettingsSection): void {
@@ -227,6 +250,24 @@ function open(section?: SettingsSection): void {
 
 function close(): void {
   dialogOpen.value = false
+}
+
+watch(dialogOpen, (open) => {
+  if (!open) {
+    apiChatDraftActive.value = false
+    apiEmbeddingDraftActive.value = false
+    syncFromProps()
+  }
+})
+
+function onChatUseGlobalLocalChange(useGlobal: boolean) {
+  chatApiUseGlobal.value = useGlobal
+  apiChatDraftActive.value = !useGlobal
+}
+
+function onEmbeddingUseGlobalLocalChange(useGlobal: boolean) {
+  embeddingApiUseGlobal.value = useGlobal
+  apiEmbeddingDraftActive.value = !useGlobal
 }
 
 defineExpose({ open })
@@ -338,6 +379,14 @@ function propsAuthorsNote(): AuthorsNoteSettings {
   return normalizeAuthorsNote(props.initialAuthorsNote)
 }
 
+function propsChatBinding(): ConversationChatBinding | null {
+  return readConversationChatBinding(props.initialApiPreset)
+}
+
+function propsEmbeddingOverride(): ConversationEmbeddingApiSettingsOverride | undefined {
+  return props.initialEmbeddingApiSettings
+}
+
 function syncFromProps() {
   errorText.value = ''
   presetModel.value = propsPresetTarget() ?? INHERIT_VALUE
@@ -381,6 +430,12 @@ function syncFromProps() {
   authorsNoteContent.value = an.content
   authorsNoteDepth.value = an.injectionDepth
   authorsNoteRole.value = an.role
+  if (!apiChatDraftActive.value && !savingApiSettings.value) {
+    chatApiUseGlobal.value = props.initialChatApiUseGlobal !== false
+  }
+  if (!apiEmbeddingDraftActive.value && !savingApiSettings.value) {
+    embeddingApiUseGlobal.value = props.initialEmbeddingApiUseGlobal !== false
+  }
 }
 
 watch(
@@ -410,6 +465,10 @@ watch(
     props.initialUserName,
     props.initialUserCharacterId,
     props.initialAuthorsNote,
+    props.initialApiPreset,
+    props.initialChatApiUseGlobal,
+    props.initialEmbeddingApiUseGlobal,
+    props.initialEmbeddingApiSettings,
   ],
   () => syncFromProps(),
   { deep: true },
@@ -911,6 +970,54 @@ async function loadCharacters() {
   }
 }
 
+async function saveChatApiOverride(binding: ConversationChatBinding | null) {
+  await patchConversation({
+    apiPreset: { chat: binding },
+  })
+}
+
+async function saveEmbeddingApiOverride(
+  patch: ConversationEmbeddingApiSettingsOverride | null,
+) {
+  await patchConversation({
+    embeddingApiSettings: patch,
+  })
+}
+
+async function onSaveChatApi(binding: ConversationChatBinding | null) {
+  savingApiSettings.value = true
+  errorText.value = ''
+  try {
+    await saveChatApiOverride(binding)
+    apiChatDraftActive.value = false
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    apiChatDraftActive.value = false
+    syncFromProps()
+  } finally {
+    savingApiSettings.value = false
+  }
+}
+
+async function onSaveEmbeddingApi(
+  patch: ConversationEmbeddingApiSettingsOverride | null,
+) {
+  savingApiSettings.value = true
+  errorText.value = ''
+  try {
+    await saveEmbeddingApiOverride(patch)
+    apiEmbeddingDraftActive.value = false
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    apiEmbeddingDraftActive.value = false
+    syncFromProps()
+  } finally {
+    savingApiSettings.value = false
+  }
+}
+
 async function patchConversation(body: Record<string, unknown>) {
   const res = await fetch(`/api/chat/conversations/${props.conversationId}`, {
     method: 'PATCH',
@@ -1080,6 +1187,26 @@ async function patchConversation(body: Record<string, unknown>) {
                   {{ $t('chat.convSettings.lorebooksHint') }}
                 </p>
               </div>
+            </div>
+
+            <div
+              v-show="activeSection === 'api'"
+              class="conv-settings-section"
+            >
+              <ConversationApiSettingsPanel
+                :chat-use-global="chatApiUseGlobal"
+                :chat-binding="propsChatBinding()"
+                :embedding-use-global="embeddingApiUseGlobal"
+                :embedding-override="propsEmbeddingOverride()"
+                :global-embedding-model="props.globalEmbeddingModel ?? ''"
+                :global-embedding-dimensions="props.globalEmbeddingDimensions ?? null"
+                :allow-prop-sync="!apiChatDraftActive && !apiEmbeddingDraftActive && !savingApiSettings"
+                :disabled="savingApiSettings"
+                @update:chat-use-global="onChatUseGlobalLocalChange"
+                @update:embedding-use-global="onEmbeddingUseGlobalLocalChange"
+                @save-chat="onSaveChatApi"
+                @save-embedding="onSaveEmbeddingApi"
+              />
             </div>
 
             <div

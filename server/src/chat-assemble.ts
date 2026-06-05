@@ -248,6 +248,7 @@ export async function buildConversationOutboundMessages(
     lorebookIds.length > 0
       ? await resolveLorebookInjectionParts(lorebookIds, {
           scanCorpus,
+          conversationId,
           lorebookSettings: effectiveLore,
         })
       : { constantLoreGroups: [], matchedLore: [] }

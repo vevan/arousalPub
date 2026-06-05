@@ -6,6 +6,7 @@ import { bootstrapAppData } from '@/bootstrap/app-data'
 import { fetchDefaultLorebookIds, fetchLorebookPickerItems } from '@/utils/default-lorebook'
 import { useConnectionStore } from '@/stores/connection'
 import { usePreferencesStore } from '@/stores/preferences'
+import { useUiContextStore } from '@/stores/ui-context'
 import {
   hasHistorySettingsOverride,
   normalizeHistorySettings,
@@ -36,8 +37,17 @@ import {
   normalizeAuthorsNote,
   type AuthorsNoteSettings,
 } from '@/utils/authors-note-settings'
+import {
+  hasConversationChatOverride,
+  hasConversationEmbeddingOverride,
+  readConversationEmbeddingOverride,
+  resolveConversationChatDisplay,
+  resolveConversationEmbeddingModelSettings,
+  type ConversationEmbeddingApiSettingsOverride,
+  type ResolvedConversationChatDisplay,
+} from '@/utils/conversation-api-settings'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -49,6 +59,7 @@ const { t } = useI18n()
 const router = useRouter()
 const conn = useConnectionStore()
 const prefStore = usePreferencesStore()
+const uiContext = useUiContextStore()
 const {
   lorebookRecursiveEnabled,
   lorebookMaxRecursionDepth,
@@ -107,12 +118,13 @@ function shouldOfferMemoryRebuild(): boolean {
   const globalModel = embeddingModel.value.trim()
   if (!globalModel) return false
   const globalDims = embeddingDimensions.value
+  const effectiveEmbedding = convBindings.value.embeddingApi.effective
   const storedModel = conversationMemoryEmbeddingModel.value
   const storedDims = conversationMemoryEmbeddingDimensions.value
   if (!storedModel) return false
   if (
-    storedModel === globalModel &&
-    embeddingDimsMatch(storedDims, globalDims)
+    storedModel === effectiveEmbedding.embeddingModel &&
+    embeddingDimsMatch(storedDims, effectiveEmbedding.embeddingDimensions)
   ) {
     return false
   }
@@ -188,6 +200,18 @@ interface BudgetTrimContextBinding {
   effective: BudgetTrimSettings
 }
 
+interface ApiContextBinding {
+  useGlobal: boolean
+  effective: ResolvedConversationChatDisplay | null
+  apiPresetRaw: unknown
+}
+
+interface EmbeddingApiContextBinding {
+  useGlobal: boolean
+  effective: { embeddingModel: string; embeddingDimensions: number | null }
+  override?: ConversationEmbeddingApiSettingsOverride
+}
+
 interface ConvContextBindings {
   promptPresetId: string | null
   characterIds: string[]
@@ -196,6 +220,8 @@ interface ConvContextBindings {
   history: HistoryContextBinding
   memory: MemoryContextBinding
   budgetTrim: BudgetTrimContextBinding
+  chatApi: ApiContextBinding
+  embeddingApi: EmbeddingApiContextBinding
   /** 会话 `{{user}}`；null 表示未设置 */
   userName: string | null
   /** 用户 persona 卡 id；仅用于 UI 回显头像 */
@@ -313,6 +339,37 @@ function clientResolvedCharacterIds(idx: Record<string, unknown>): string[] {
   return []
 }
 
+function globalEmbeddingFromStore() {
+  return {
+    embeddingModel: embeddingModel.value.trim(),
+    embeddingDimensions: embeddingDimensions.value,
+  }
+}
+
+function chatApiContextFromIndex(idx: Record<string, unknown>): ApiContextBinding {
+  const apiPresetRaw = idx.apiPreset
+  const useGlobal = !hasConversationChatOverride(apiPresetRaw)
+  const effective = resolveConversationChatDisplay(
+    conn.presets,
+    conn.activePresetId,
+    apiPresetRaw,
+  )
+  return { useGlobal, effective, apiPresetRaw }
+}
+
+function embeddingApiContextFromIndex(
+  idx: Record<string, unknown>,
+): EmbeddingApiContextBinding {
+  const global = globalEmbeddingFromStore()
+  const override = readConversationEmbeddingOverride(idx)
+  const useGlobal = !hasConversationEmbeddingOverride(override)
+  return {
+    useGlobal,
+    effective: resolveConversationEmbeddingModelSettings(global, override),
+    override,
+  }
+}
+
 function bindingsFromIndex(idx: Record<string, unknown>): ConvContextBindings {
   const pid = idx.promptPresetId
   const promptPresetId =
@@ -335,6 +392,8 @@ function bindingsFromIndex(idx: Record<string, unknown>): ConvContextBindings {
     history: historyContextFromIndex(idx),
     memory: memoryContextFromIndex(idx),
     budgetTrim: budgetTrimContextFromIndex(idx),
+    chatApi: chatApiContextFromIndex(idx),
+    embeddingApi: embeddingApiContextFromIndex(idx),
     userName,
     userCharacterId,
     authorsNote: authorsNoteFromIndex(idx),
@@ -366,15 +425,48 @@ const convBindings = ref<ConvContextBindings>({
     useGlobal: true,
     effective: normalizeBudgetTrimSettings(),
   },
+  chatApi: {
+    useGlobal: true,
+    effective: null,
+    apiPresetRaw: undefined,
+  },
+  embeddingApi: {
+    useGlobal: true,
+    effective: { embeddingModel: '', embeddingDimensions: null },
+  },
   userName: null,
   userCharacterId: null,
   authorsNote: normalizeAuthorsNote(),
 })
 
-const boundLorebookLabels = computed(() =>
-  convBindings.value.lorebookIds.map(
-    (id) => lorebookNameById.value[id] ?? id,
-  ),
+const headerChatLabel = computed(() => {
+  if (!conn.isApiKeyConfigured) return ''
+  if (convBindings.value.chatApi.useGlobal) return ''
+  const chat = convBindings.value.chatApi.effective
+  if (chat?.alias.trim()) {
+    const model = chat.model.trim()
+    return model ? `${chat.alias.trim()} · ${model}` : chat.alias.trim()
+  }
+  return ''
+})
+
+const boundLorebooks = computed(() =>
+  convBindings.value.lorebookIds.map((id) => ({
+    id,
+    label: lorebookNameById.value[id] ?? id,
+  })),
+)
+
+function openBoundLorebook(lorebookId: string): void {
+  uiContext.requestOpenLorebooksDialog(lorebookId)
+}
+
+watch(
+  () => convBindings.value.lorebookIds,
+  (ids) => {
+    uiContext.setConversationLorebookIds(ids)
+  },
+  { immediate: true },
 )
 
 const authorsNoteActive = computed(() =>
@@ -643,24 +735,26 @@ watch(
           </span>
           <template v-else>
             <span
-              v-if="conn.alias.trim()"
+              v-if="headerChatLabel"
               class="chat-header__pill"
             >
-              {{ conn.alias.trim() }}
+              {{ headerChatLabel }}
             </span>
-            <span
-              v-for="name in boundLorebookLabels"
-              :key="name"
-              class="chat-header__pill chat-header__pill--lorebook"
+            <button
+              v-for="lb in boundLorebooks"
+              :key="lb.id"
+              type="button"
+              class="chat-header__pill chat-header__pill--lorebook chat-header__pill--clickable"
               :title="$t('chatConversation.boundLorebook')"
+              @click="openBoundLorebook(lb.id)"
             >
               <v-icon
                 icon="mdi-book-open-page-variant-outline"
                 size="14"
                 class="mr-1"
               />
-              {{ name }}
-            </span>
+              {{ lb.label }}
+            </button>
           </template>
         </div>
       </header>
@@ -789,10 +883,15 @@ watch(
         :global-budget-trim-settings="budgetTrimSettings"
         :initial-budget-trim-settings="convBindings.budgetTrim.effective"
         :global-embedding-model="embeddingModel"
+        :global-embedding-dimensions="embeddingDimensions"
         :conversation-memory-embedding-model="conversationMemoryEmbeddingModel"
         :initial-user-name="convBindings.userName"
         :initial-user-character-id="convBindings.userCharacterId"
         :initial-authors-note="convBindings.authorsNote"
+        :initial-api-preset="convBindings.chatApi.apiPresetRaw"
+        :initial-chat-api-use-global="convBindings.chatApi.useGlobal"
+        :initial-embedding-api-use-global="convBindings.embeddingApi.useGlobal"
+        :initial-embedding-api-settings="convBindings.embeddingApi.override"
         @patched="onConvContextPatched"
         @memory-rebuilt="onMemoryRebuiltFromSettings"
       />
@@ -904,6 +1003,19 @@ watch(
   font-size: 0.71875rem;
   letter-spacing: 0;
   text-transform: none;
+}
+
+.chat-header__pill--clickable {
+  cursor: pointer;
+  font: inherit;
+  appearance: none;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+.chat-header__pill--clickable:hover {
+  border-color: rgba(var(--v-theme-primary), 0.35);
+  background: rgba(var(--v-theme-primary), 0.06);
 }
 
 .chat-header__dot--warning {

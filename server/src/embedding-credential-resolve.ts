@@ -73,13 +73,26 @@ async function settingsToCredentials(
 
 
 /** 读取 Embeddings API 连接（独立于对话 API 预设） */
-
-export async function resolveEmbeddingApiCredentials(): Promise<ResolvedEmbeddingCredentials | null> {
-
+export async function resolveEmbeddingApiCredentials(
+  conversationId?: string | null,
+): Promise<ResolvedEmbeddingCredentials | null> {
   const settings = await readGlobalEmbeddingApiSettings()
-
+  if (conversationId?.trim()) {
+    const { readConversationIndex } = await import('./chat-storage.js')
+    const { resolveConversationEmbeddingModelSettings } = await import(
+      './conversation-api-settings.js'
+    )
+    const idx = await readConversationIndex(conversationId.trim())
+    const modelPart = resolveConversationEmbeddingModelSettings(
+      settings,
+      idx?.embeddingApiSettings,
+    )
+    return settingsToCredentials({
+      ...settings,
+      ...modelPart,
+    })
+  }
   return settingsToCredentials(settings)
-
 }
 
 

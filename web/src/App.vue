@@ -11,6 +11,8 @@ import { useAuthStore } from '@/stores/auth'
 import { userAvatarUrl } from '@/utils/authenticated-media-url'
 import { useConnectionStore } from '@/stores/connection'
 import { useLocaleStore } from '@/stores/locale'
+import { useLorebooksStore } from '@/stores/lorebooks'
+import { useUiContextStore } from '@/stores/ui-context'
 import { storeToRefs } from 'pinia'
 import type { ComponentPublicInstance } from 'vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -80,10 +82,34 @@ function onBrowserLanguageChange() {
 const drawerLeft = ref(false)
 const drawerRight = ref(false)
 const settingsDialogOpen = ref(false)
+const settingsDialogOpenCount = ref(0)
+
+watch(settingsDialogOpen, (open) => {
+  if (open) settingsDialogOpenCount.value += 1
+})
 const promptsDialogOpen = ref(false)
 const charactersDialogOpen = ref(false)
 const lorebooksDialogOpen = ref(false)
 const conn = useConnectionStore()
+const lorebooksStore = useLorebooksStore()
+const uiContext = useUiContextStore()
+
+const appBarApiLabel = computed(() => {
+  const alias = conn.alias.trim()
+  const model = conn.model.trim()
+  if (alias && model) return `${alias} · ${model}`
+  if (alias) return alias
+  return model
+})
+
+const appBarApiStatusTitle = computed(() => {
+  const alias = conn.alias.trim()
+  const model = conn.model.trim()
+  const parts: string[] = []
+  if (alias) parts.push(`${alias}`)
+  if (model) parts.push(model)
+  return parts.join(' · ')
+})
 
 function clearPanelQuery() {
   if (route.query.panel === undefined) return
@@ -111,6 +137,27 @@ function openLorebooksDialog() {
   charactersDialogOpen.value = false
   lorebooksDialogOpen.value = true
 }
+
+async function focusLorebooksForOpen(): Promise<void> {
+  const preferred = uiContext.consumePendingLorebookFocusId()
+  await lorebooksStore.applyOpenFocus(
+    uiContext.conversationLorebookIds,
+    preferred,
+  )
+}
+
+watch(lorebooksDialogOpen, (open) => {
+  if (open) void focusLorebooksForOpen()
+})
+
+watch(
+  () => uiContext.openLorebooksSignal,
+  () => {
+    const wasOpen = lorebooksDialogOpen.value
+    openLorebooksDialog()
+    if (wasOpen) void focusLorebooksForOpen()
+  },
+)
 
 watch(
   () => route.query.panel,
@@ -349,15 +396,15 @@ onUnmounted(() => {
       <div class="app-bar__actions d-flex align-center flex-shrink-0">
         <!-- 当前 model 状态 chip -->
         <button
-          v-if="conn.model.trim()"
+          v-if="appBarApiLabel"
           type="button"
           class="app-bar__status-chip d-none d-md-inline-flex"
-          :title="$t('chat.currentModel') + conn.model.trim()"
+          :title="appBarApiStatusTitle"
           @click="drawerRight = !drawerRight"
         >
           <span class="app-bar__status-dot" />
           <span class="app-bar__status-model text-truncate">
-            {{ conn.model.trim() }}
+            {{ appBarApiLabel }}
           </span>
         </button>
 
@@ -446,6 +493,7 @@ onUnmounted(() => {
           <SettingsView
             embedded
             :initial-tab="settingsInitialTab"
+            :open-count="settingsDialogOpenCount"
             @logout="
               () => {
                 auth.logout()
@@ -673,7 +721,7 @@ onUnmounted(() => {
   letter-spacing: 0.02em;
   cursor: pointer;
   transition: all 0.15s ease;
-  max-width: 13.75rem;
+  max-width: 18rem;
 }
 .app-bar__status-chip:hover {
   border-color: rgba(var(--v-theme-primary), 0.45);

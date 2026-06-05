@@ -8,6 +8,7 @@ import { useApiKeysStore } from '@/stores/apiKeys'
 import { usePreferencesStore } from '@/stores/preferences'
 import { useThemeOklchStore } from '@/stores/theme-oklch'
 import PluginSettingsPanel from '@/components/settings/PluginSettingsPanel.vue'
+import BudgetTrimSettingsPanel from '@/components/settings/BudgetTrimSettingsPanel.vue'
 import {
   componentsToOklchCss,
   oklchToHex,
@@ -50,7 +51,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{ logout: [] }>()
 
-type SettingsTab = 'system' | 'display' | 'account' | 'lorebook' | 'history' | 'plugins' | 'debug'
+type SettingsTab = 'system' | 'display' | 'account' | 'lorebook' | 'history' | 'budgetTrim' | 'plugins' | 'debug'
 
 const { t } = useI18n()
 
@@ -75,6 +76,7 @@ const {
   historyMaxTurns,
   memoryEnabled,
   memoryTopK,
+  budgetTrimSettings,
   embeddingBaseUrl,
   embeddingApiKey,
   embeddingApiKeyId,
@@ -287,6 +289,7 @@ const navItems = computed(() => [
   { id: 'display' as const, title: t('settings.navDisplay'), icon: 'mdi-palette-outline' },
   { id: 'lorebook' as const, title: t('settings.navLorebook'), icon: 'mdi-book-open-page-variant-outline' },
   { id: 'history' as const, title: t('settings.navHistory'), icon: 'mdi-history' },
+  { id: 'budgetTrim' as const, title: t('settings.navBudgetTrim'), icon: 'mdi-scissors-cutting' },
   { id: 'plugins' as const, title: t('settings.navPlugins'), icon: 'mdi-puzzle-outline' },
   { id: 'debug' as const, title: t('settings.navDebug'), icon: 'mdi-bug-outline' },
 ])
@@ -1016,6 +1019,19 @@ onMounted(() => {
               hide-details="auto"
               :disabled="!memoryEnabled"
             />
+          </section>
+
+          <section
+            v-show="activeTab === 'budgetTrim'"
+            class="settings-section"
+          >
+            <h2 class="text-subtitle-1 font-weight-medium mb-2">
+              {{ $t('settings.budgetTrimSection') }}
+            </h2>
+            <p class="text-body-2 text-medium-emphasis mb-4">
+              {{ $t('settings.budgetTrimSectionHint') }}
+            </p>
+            <BudgetTrimSettingsPanel v-model="budgetTrimSettings" />
           </section>
 
           <PluginSettingsPanel v-show="activeTab === 'plugins'" />

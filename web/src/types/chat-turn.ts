@@ -47,6 +47,8 @@ export interface ChatPromptSnapshotEntry {
 export interface AssembleMessagesResult {
   messages: { role: string; content: string }[]
   estimatedTokens: number
+  droppedLoreCount?: number
   droppedHistoryCount: number
+  droppedMemoryCount?: number
   memoryTurnIds?: string[]
 }

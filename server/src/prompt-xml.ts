@@ -174,6 +174,37 @@ export function formatLoresInjectionXml(groups: LorebookXmlGroup[]): string {
   return formatLoresXmlGroupedBlock(nonEmpty)
 }
 
+/** 合并恒定与匹配 lore 分组（按 lorebookName 合并 entries，保持恒定在前） */
+export function mergeLorebookXmlGroups(
+  constantGroups: LorebookXmlGroup[],
+  matchedGroups: LorebookXmlGroup[],
+): LorebookXmlGroup[] {
+  const byName = new Map<string, LorebookXmlGroup>()
+  const touch = (g: LorebookXmlGroup) => {
+    const name = g.lorebookName.trim() || '未命名'
+    const prev = byName.get(name)
+    if (!prev) {
+      byName.set(name, {
+        lorebookName: name,
+        entries: g.entries.map((e) => ({ ...e })),
+      })
+      return
+    }
+    const seen = new Set(prev.entries.map((e) => `${e.name}\0${e.content}`))
+    for (const e of g.entries) {
+      const k = `${e.name}\0${e.content}`
+      if (seen.has(k)) continue
+      seen.add(k)
+      prev.entries.push({ ...e })
+    }
+  }
+  for (const g of constantGroups) touch(g)
+  for (const g of matchedGroups) touch(g)
+  return [...byName.values()].filter((g) =>
+    g.entries.some((e) => e.content.trim().length > 0),
+  )
+}
+
 /** 世界书注入：已为 `<lores>` 时原样返回，否则兼容旧单块包裹 */
 export function loreTextToXmlBlock(text: string): string {
   const t = text.trim()

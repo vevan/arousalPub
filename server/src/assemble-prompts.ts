@@ -104,6 +104,8 @@ export interface AssembleContext {
     injectionDepth: number
     role: AuthorsNoteRole
   } | null
+  /** §14.4：为 true 时跳过 assemble 内 history 条级裁切（由 `runPromptBudgetTrimLoop` 统一处理） */
+  skipInternalBudgetTrim?: boolean
 }
 
 export interface AssembleResult {
@@ -477,6 +479,7 @@ export function assemblePrompts(
 
   let droppedHistoryCount = 0
   if (
+    !ctx.skipInternalBudgetTrim &&
     typeof ctx.maxTokens === 'number' &&
     ctx.maxTokens > 0 &&
     historyStart >= 0

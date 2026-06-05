@@ -29,7 +29,7 @@ const userBarAvatarSrc = computed(() =>
 )
 
 const authPhase = ref<'loading' | 'setup' | 'login' | 'app'>('loading')
-const settingsInitialTab = ref<'system' | 'display' | 'account' | 'lorebook' | 'history' | 'debug'>('system')
+const settingsInitialTab = ref<'system' | 'display' | 'account' | 'lorebook' | 'history' | 'budgetTrim' | 'plugins' | 'debug'>('system')
 
 async function enterApp() {
   resetBootstrapAppData()

@@ -10,6 +10,14 @@ import {
   type AuthorsNoteRole,
   type AuthorsNoteSettings,
 } from '@/utils/authors-note-settings'
+import BudgetTrimSettingsPanel from '@/components/settings/BudgetTrimSettingsPanel.vue'
+import {
+  BUDGET_TRIM_SETTINGS_DEFAULTS,
+  budgetTrimSettingsEqual,
+  cloneBudgetTrimSettings,
+  normalizeBudgetTrimSettings,
+  type BudgetTrimSettings,
+} from '@/utils/budget-trim-settings'
 
 const props = defineProps<{
   conversationId: string
@@ -33,6 +41,9 @@ const props = defineProps<{
   globalMemoryTopK?: number
   initialMemoryEnabled?: boolean
   initialMemoryTopK?: number
+  initialBudgetTrimSettingsUseGlobal?: boolean
+  globalBudgetTrimSettings?: BudgetTrimSettings
+  initialBudgetTrimSettings?: BudgetTrimSettings
   /** 全局 Embedding 模型（用于提示是否需要重建） */
   globalEmbeddingModel?: string
   /** 本会话已索引的 Embedding 模型 */
@@ -49,7 +60,7 @@ const emit = defineEmits<{
   (e: 'memoryRebuilt', embeddingModel: string): void
 }>()
 
-type SettingsSection = 'bindings' | 'lore' | 'context' | 'authorsNote'
+type SettingsSection = 'bindings' | 'lore' | 'context' | 'budgetTrim' | 'authorsNote'
 
 const { t } = useI18n()
 const promptsStore = usePromptsStore()
@@ -71,6 +82,7 @@ const savingLorebooks = ref(false)
 const savingLoreSettings = ref(false)
 const savingHistorySettings = ref(false)
 const savingMemorySettings = ref(false)
+const savingBudgetTrimSettings = ref(false)
 const savingAuthorsNote = ref(false)
 const errorText = ref('')
 
@@ -92,6 +104,11 @@ const historyMaxTurns = ref(20)
 const memoryUseGlobal = ref(true)
 const memoryEnabled = ref(false)
 const memoryTopK = ref(4)
+
+const budgetTrimUseGlobal = ref(true)
+const budgetTrimModel = ref<BudgetTrimSettings>(
+  cloneBudgetTrimSettings(BUDGET_TRIM_SETTINGS_DEFAULTS),
+)
 
 const authorsNoteEnabled = ref(false)
 const authorsNoteContent = ref('')
@@ -166,6 +183,11 @@ const sectionItems = computed(() => [
     icon: 'mdi-tune-variant',
   },
   {
+    id: 'budgetTrim' as const,
+    title: t('chat.convSettings.tabBudgetTrim'),
+    icon: 'mdi-scissors-cutting',
+  },
+  {
     id: 'authorsNote' as const,
     title: t('chat.convSettings.tabAuthorsNote'),
     icon: 'mdi-note-text-outline',
@@ -193,6 +215,7 @@ const isSaving = computed(
     savingLoreSettings.value ||
     savingHistorySettings.value ||
     savingMemorySettings.value ||
+    savingBudgetTrimSettings.value ||
     savingAuthorsNote.value,
 )
 
@@ -294,6 +317,18 @@ function propsMemoryTopK(): number {
   return Math.max(1, Math.min(20, Math.floor(d)))
 }
 
+function propsBudgetTrimUseGlobal(): boolean {
+  return props.initialBudgetTrimSettingsUseGlobal !== false
+}
+
+function propsGlobalBudgetTrimSettings(): BudgetTrimSettings {
+  return normalizeBudgetTrimSettings(props.globalBudgetTrimSettings)
+}
+
+function propsBudgetTrimSettings(): BudgetTrimSettings {
+  return normalizeBudgetTrimSettings(props.initialBudgetTrimSettings)
+}
+
 function propsUserCharacterId(): string | null {
   const id = props.initialUserCharacterId
   return typeof id === 'string' && id.trim() ? id.trim() : null
@@ -333,6 +368,14 @@ function syncFromProps() {
     memoryEnabled.value = propsMemoryEnabled()
     memoryTopK.value = propsMemoryTopK()
   }
+  budgetTrimUseGlobal.value = propsBudgetTrimUseGlobal()
+  if (budgetTrimUseGlobal.value) {
+    budgetTrimModel.value = cloneBudgetTrimSettings(
+      propsGlobalBudgetTrimSettings(),
+    )
+  } else {
+    budgetTrimModel.value = cloneBudgetTrimSettings(propsBudgetTrimSettings())
+  }
   const an = propsAuthorsNote()
   authorsNoteEnabled.value = an.enabled
   authorsNoteContent.value = an.content
@@ -361,6 +404,9 @@ watch(
     props.globalMemoryTopK,
     props.initialMemoryEnabled,
     props.initialMemoryTopK,
+    props.initialBudgetTrimSettingsUseGlobal,
+    props.globalBudgetTrimSettings,
+    props.initialBudgetTrimSettings,
     props.initialUserName,
     props.initialUserCharacterId,
     props.initialAuthorsNote,
@@ -662,6 +708,57 @@ watch(memoryTopK, async (k) => {
   }
 })
 
+watch(budgetTrimUseGlobal, async (useGlobal) => {
+  if (useGlobal === propsBudgetTrimUseGlobal()) return
+  savingBudgetTrimSettings.value = true
+  errorText.value = ''
+  try {
+    if (useGlobal) {
+      await patchConversation({ budgetTrimSettings: null })
+    } else {
+      await saveBudgetTrimOverride()
+    }
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingBudgetTrimSettings.value = false
+  }
+})
+
+async function saveBudgetTrimOverride() {
+  const n = normalizeBudgetTrimSettings(budgetTrimModel.value)
+  await patchConversation({
+    budgetTrimSettings: {
+      trimOrder: [...n.trimOrder],
+      minRetain: { ...n.minRetain },
+    },
+  })
+}
+
+watch(
+  budgetTrimModel,
+  async (v) => {
+    if (budgetTrimUseGlobal.value) return
+    const target = propsBudgetTrimSettings()
+    const n = normalizeBudgetTrimSettings(v)
+    if (budgetTrimSettingsEqual(n, target)) return
+    savingBudgetTrimSettings.value = true
+    errorText.value = ''
+    try {
+      await saveBudgetTrimOverride()
+    } catch (e) {
+      errorText.value =
+        e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+      syncFromProps()
+    } finally {
+      savingBudgetTrimSettings.value = false
+    }
+  },
+  { deep: true },
+)
+
 function authorsNotePatchFromForm(): AuthorsNoteSettings {
   return normalizeAuthorsNote({
     enabled: authorsNoteEnabled.value,
@@ -886,6 +983,7 @@ async function patchConversation(body: Record<string, unknown>) {
                 :prepend-icon="item.icon"
                 :active="activeSection === item.id"
                 rounded="lg"
+                color="primary"
                 @click="activeSection = item.id"
               />
             </v-list>
@@ -1244,6 +1342,39 @@ async function patchConversation(body: Record<string, unknown>) {
             </div>
 
             <div
+              v-show="activeSection === 'budgetTrim'"
+              class="conv-settings-section"
+            >
+              <h3 class="conv-settings-section__title">
+                {{ $t('chat.convSettings.tabBudgetTrim') }}
+              </h3>
+              <p class="conv-settings-section__hint">
+                {{ $t('chat.convSettings.tabBudgetTrimHint') }}
+              </p>
+              <div class="conv-settings-field">
+                <v-switch
+                  v-model="budgetTrimUseGlobal"
+                  :label="$t('chat.convSettings.budgetTrimUseGlobal')"
+                  density="comfortable"
+                  hide-details
+                  color="primary"
+                  :loading="savingBudgetTrimSettings"
+                  :disabled="savingBudgetTrimSettings"
+                />
+                <p
+                  v-if="budgetTrimUseGlobal"
+                  class="conv-settings-field__hint"
+                >
+                  {{ $t('chat.convSettings.budgetTrimInheritGlobalHint') }}
+                </p>
+              </div>
+              <BudgetTrimSettingsPanel
+                v-model="budgetTrimModel"
+                :disabled="budgetTrimUseGlobal || savingBudgetTrimSettings"
+              />
+            </div>
+
+            <div
               v-show="activeSection === 'authorsNote'"
               class="conv-settings-section"
             >
@@ -1380,13 +1511,15 @@ async function patchConversation(body: Record<string, unknown>) {
 }
 
 .conv-settings-nav {
-  flex: 0 0 9.5rem;
-  border-right: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.08);
+  flex: 0 0 11.5rem;
+  border-inline-end: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.12);
   background: rgba(var(--v-theme-on-surface), 0.02);
+  padding: 0.5rem;
 }
 
 .conv-settings-nav__list {
-  padding: 0.5rem;
+  padding: 0;
+  background: transparent;
 }
 
 .conv-settings-panel {
@@ -1435,7 +1568,7 @@ async function patchConversation(body: Record<string, unknown>) {
   padding: 0 0.15em;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 36rem) {
   .conv-settings-layout {
     flex-direction: column;
     min-height: 0;
@@ -1443,8 +1576,9 @@ async function patchConversation(body: Record<string, unknown>) {
 
   .conv-settings-nav {
     flex: 0 0 auto;
-    border-right: none;
-    border-bottom: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.08);
+    border-inline-end: none;
+    border-bottom: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.12);
+    padding: 0.375rem 0.5rem;
   }
 
   .conv-settings-nav__list {

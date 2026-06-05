@@ -19,11 +19,6 @@ import { resolveTurnById } from './turn-resolve.js'
 import { readAllTurns } from './chunk-chain.js'
 import { type TurnRecord } from './chat-storage.js'
 
-import {
-  memoryTokenBudget,
-  trimMemoryItemsByTokenBudget,
-} from './memory-token-trim.js'
-
 export interface MemoryPipelineInput {
   conversationId: string
   userText: string
@@ -31,19 +26,18 @@ export interface MemoryPipelineInput {
   historySettings: HistorySettings
   /** 再生等：不含 turnOrdinal >= 该值的轮次 */
   historyBeforeTurnOrdinalExclusive?: number | null
-  /** 连接 contextLength；用于 memory 槽 token 预算裁切（§14.4） */
-  contextLength?: number | null
-  tokenModel?: string | null
 }
 
 export interface MemoryPipelineResult {
   recentHistoryMessages: { role: 'user' | 'assistant'; content: string }[]
   /** 供 lore 扫描，非注入 XML */
   recentHistoryScanText: string
+  /** 向量召回项（裁切前全量；§14.4 统一预算循环在 assemble 侧处理） */
+  memoryItems: { turn: TurnRecord; score: number }[]
+  /** 由 memoryItems 格式化的 XML，供 lore scanCorpus */
   memoryText: string
   memoryTurnIds: string[]
   memoryHits: MemorySearchHit[]
-  droppedMemoryCount: number
 }
 
 /** 近期 history XML 窗口轮数 */
@@ -93,10 +87,8 @@ export async function runMemoryPipeline(
   const recentHistoryScanText = turnsToHistoryScanPlainText(recentTurns)
   const recentTurnIds = new Set(recentTurns.map((t) => t.turnId))
 
-  let memoryText = ''
-  let memoryTurnIds: string[] = []
+  let memoryItems: { turn: TurnRecord; score: number }[] = []
   let memoryHits: MemorySearchHit[] = []
-  let droppedMemoryCount = 0
 
   const query = buildMemoryRecallQuery(
     input.userText,
@@ -117,43 +109,23 @@ export async function runMemoryPipeline(
         recentTurnIds,
         minRecentOrdinal,
       )
-      const items: { turn: TurnRecord; score: number }[] = []
       for (const hit of memoryHits) {
         const turn = await resolveTurnById(input.conversationId, hit.turnId)
         if (!turn || recentTurnIds.has(turn.turnId)) continue
-        items.push({ turn, score: hit.score })
-      }
-      const ctxLen = input.contextLength
-      const budget =
-        typeof ctxLen === 'number' && ctxLen > 0
-          ? memoryTokenBudget(ctxLen)
-          : 0
-      const tokenModel =
-        typeof input.tokenModel === 'string' && input.tokenModel.trim()
-          ? input.tokenModel.trim()
-          : undefined
-      if (budget > 0 && items.length > 0) {
-        const trimmed = trimMemoryItemsByTokenBudget(
-          items,
-          budget,
-          tokenModel,
-        )
-        memoryText = trimmed.memoryText
-        memoryTurnIds = trimmed.memoryTurnIds
-        droppedMemoryCount = trimmed.droppedMemoryCount
-      } else {
-        memoryText = formatMemoryXml(items)
-        memoryTurnIds = items.map((x) => x.turn.turnId)
+        memoryItems.push({ turn, score: hit.score })
       }
     }
   }
 
+  const memoryText = formatMemoryXml(memoryItems)
+  const memoryTurnIds = memoryItems.map((x) => x.turn.turnId)
+
   return {
     recentHistoryMessages,
     recentHistoryScanText,
+    memoryItems,
     memoryText,
     memoryTurnIds,
     memoryHits,
-    droppedMemoryCount,
   }
 }

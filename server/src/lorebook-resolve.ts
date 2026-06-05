@@ -1,5 +1,4 @@
 import {
-  formatLoresInjectionXml,
   type LorebookXmlGroup,
 } from './prompt-xml.js'
 import { readLorebooksDocument } from './lorebook-file.js'
@@ -13,6 +12,8 @@ import {
   resolveLorebookSettings,
 } from './lorebook-settings.js'
 import { readGlobalLorebookSettings } from './user-preferences-file.js'
+import type { TrimmableLoreEntry } from './prompt-budget-trim.js'
+import { worldTextFromTrimState } from './prompt-budget-trim.js'
 
 export type { LorebookSettings } from './lorebook-settings.js'
 export {
@@ -22,32 +23,49 @@ export {
 } from './lorebook-settings.js'
 
 export interface LorebookResolveContext {
-  /** 当前轮用户输入（无 scanCorpus 时的回退） */
   userText?: string
-  /** §13.5：userText + memory + history 合并语料 */
   scanCorpus?: string
-  /** 已解析的生效设置；省略则读全局 user-preferences */
   lorebookSettings?: LorebookSettings | null
-  /** 会话稀疏覆盖（与全局合并）；与 lorebookSettings 二选一 */
   lorebookSettingsOverride?: Partial<LorebookSettings> | null
+}
+
+export interface LorebookInjectionParts {
+  constantLoreGroups: LorebookXmlGroup[]
+  matchedLore: TrimmableLoreEntry[]
 }
 
 const MAX_MATCHED_ENTRIES = 64
 
 type TaggedLoreEntry = { lorebookId: string; entry: LorebookEntry }
 
-/**
- * 按会话绑定的资料库 id 顺序合并条目，筛选 enabled 条目并生成注入文本。
- * 关键字/恒定 → 可选递归；向量触发 → 单次 TopK（与关键字结果合并）。
- * 绑定多本时 XML 按资料库名分组（见 `formatLoresInjectionXml`）。
- */
 export async function resolveLorebookInjectionText(
   lorebookIds: string[],
   context: LorebookResolveContext = {},
 ): Promise<string> {
-  if (!lorebookIds.length) return ''
+  const parts = await resolveLorebookInjectionParts(lorebookIds, context)
+  return formatWorldFromLoreParts(parts)
+}
+
+export function formatWorldFromLoreParts(parts: LorebookInjectionParts): string {
+  return worldTextFromTrimState({
+    constantLoreGroups: parts.constantLoreGroups,
+    matchedLore: parts.matchedLore,
+    memoryItems: [],
+    historyMessages: [],
+  })
+}
+
+export async function resolveLorebookInjectionParts(
+  lorebookIds: string[],
+  context: LorebookResolveContext = {},
+): Promise<LorebookInjectionParts> {
+  if (!lorebookIds.length) {
+    return { constantLoreGroups: [], matchedLore: [] }
+  }
   const doc = await readLorebooksDocument()
-  if (!doc) return ''
+  if (!doc) {
+    return { constantLoreGroups: [], matchedLore: [] }
+  }
 
   let resolved: LorebookSettings
   if (context.lorebookSettings) {
@@ -60,8 +78,21 @@ export async function resolveLorebookInjectionText(
   const byId = new Map(doc.lorebooks.map((lb) => [lb.id, lb]))
   const scanSeed = (context.scanCorpus ?? context.userText ?? '').trim()
   const seenEntryIds = new Set<string>()
-  const ordered: TaggedLoreEntry[] = []
 
+  const constantTagged: TaggedLoreEntry[] = []
+  for (const lid of lorebookIds) {
+    const lb = byId.get(lid)
+    if (!lb) continue
+    for (const e of lb.entries) {
+      if (!e.enabled || !e.content.trim()) continue
+      if (resolveEntryTriggerMode(e) !== 'constant') continue
+      if (seenEntryIds.has(e.id)) continue
+      seenEntryIds.add(e.id)
+      constantTagged.push({ lorebookId: lid, entry: e })
+    }
+  }
+
+  const keywordOrdered: TaggedLoreEntry[] = []
   const maxRounds = settings.recursiveEnabled
     ? settings.maxRecursionDepth + 1
     : 1
@@ -74,14 +105,14 @@ export async function resolveLorebookInjectionText(
       if (!lb) continue
       const batch = collectNewKeywordMatchesForRound(lb, scanLower, seenEntryIds)
       for (const e of batch) {
-        if (ordered.length >= MAX_MATCHED_ENTRIES) break
+        if (keywordOrdered.length >= MAX_MATCHED_ENTRIES) break
         seenEntryIds.add(e.id)
-        ordered.push({ lorebookId: lid, entry: e })
+        keywordOrdered.push({ lorebookId: lid, entry: e })
         addedThisRound = true
       }
-      if (ordered.length >= MAX_MATCHED_ENTRIES) break
+      if (keywordOrdered.length >= MAX_MATCHED_ENTRIES) break
     }
-    if (ordered.length >= MAX_MATCHED_ENTRIES) break
+    if (keywordOrdered.length >= MAX_MATCHED_ENTRIES) break
     if (!addedThisRound) break
     if (round + 1 >= maxRounds) break
     const appendParts: string[] = []
@@ -98,7 +129,19 @@ export async function resolveLorebookInjectionText(
     scanLower = `${scanLower}\n\n${appendParts.join('\n\n')}`.toLowerCase()
   }
 
-  if (settings.vectorEnabled && scanSeed.length > 0 && ordered.length < MAX_MATCHED_ENTRIES) {
+  const matchedLore: TrimmableLoreEntry[] = keywordOrdered.map((t) => ({
+    lorebookId: t.lorebookId,
+    lorebookName: byId.get(t.lorebookId)?.name.trim() || t.lorebookId,
+    entry: t.entry,
+    mode: 'keyword' as const,
+    score: t.entry.priority,
+  }))
+
+  if (
+    settings.vectorEnabled &&
+    scanSeed.length > 0 &&
+    matchedLore.length < MAX_MATCHED_ENTRIES
+  ) {
     const vectorHits = await collectVectorMatches(
       lorebookIds,
       byId,
@@ -107,14 +150,22 @@ export async function resolveLorebookInjectionText(
       seenEntryIds,
     )
     for (const hit of vectorHits) {
-      if (ordered.length >= MAX_MATCHED_ENTRIES) break
+      if (matchedLore.length >= MAX_MATCHED_ENTRIES) break
       seenEntryIds.add(hit.entry.id)
-      ordered.push(hit)
+      matchedLore.push({
+        lorebookId: hit.lorebookId,
+        lorebookName: byId.get(hit.lorebookId)?.name.trim() || hit.lorebookId,
+        entry: hit.entry,
+        mode: 'vector',
+        score: hit.score,
+      })
     }
   }
 
-  const groups = buildLorebookXmlGroups(lorebookIds, byId, ordered)
-  return formatLoresInjectionXml(groups)
+  return {
+    constantLoreGroups: buildLorebookXmlGroups(lorebookIds, byId, constantTagged),
+    matchedLore,
+  }
 }
 
 function buildLorebookXmlGroups(
@@ -146,7 +197,7 @@ async function collectVectorMatches(
   queryText: string,
   topK: number,
   seenEntryIds: Set<string>,
-): Promise<TaggedLoreEntry[]> {
+): Promise<Array<TaggedLoreEntry & { score: number }>> {
   const emb = await createEmbedding(queryText)
   if (!emb) return []
 
@@ -177,18 +228,18 @@ async function collectVectorMatches(
     return b.entry.priority - a.entry.priority
   })
 
-  const out: TaggedLoreEntry[] = []
+  const out: Array<TaggedLoreEntry & { score: number }> = []
   const taken = new Set<string>()
   for (const r of ranked) {
     if (out.length >= topK) break
     if (taken.has(r.entry.id)) continue
     taken.add(r.entry.id)
-    out.push({ lorebookId: r.lorebookId, entry: r.entry })
+    out.push(r)
   }
   return out
 }
 
-/** 本轮在 scanLower 上新命中、且未在 seen 中的条目（关键字 + 恒定；不含向量） */
+/** 本轮 keyword 新命中（不含 constant / vector） */
 function collectNewKeywordMatchesForRound(
   lb: Lorebook,
   scanLower: string,
@@ -219,8 +270,7 @@ function collectNewKeywordMatchesForRound(
 
 function entryMatchesKeywordScan(e: LorebookEntry, scanLower: string): boolean {
   const mode = resolveEntryTriggerMode(e)
-  if (mode === 'vector') return false
-  if (mode === 'constant') return true
+  if (mode !== 'keyword') return false
   const keys = e.keys
     .map((k) => k.trim().toLowerCase())
     .filter((k) => k.length > 0)

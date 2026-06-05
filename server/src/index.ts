@@ -35,6 +35,8 @@ import {
   updateConversationHistorySettings,
   clearConversationMemorySettings,
   updateConversationMemorySettings,
+  clearConversationBudgetTrimSettings,
+  updateConversationBudgetTrimSettings,
   updateConversationUserCharacterId,
   updateConversationUserName,
   updateConversationAuthorsNote,
@@ -53,9 +55,11 @@ import {
   updateGlobalHistorySettings,
   updateGlobalLorebookSettings,
   updateGlobalMemorySettings,
+  updateGlobalBudgetTrimSettings,
   updateGlobalEmbeddingApiSettings,
   updateGlobalChunkSettings,
 } from './user-preferences-file.js'
+import { parseBudgetTrimSettingsPatch } from './budget-trim-settings.js'
 import { normalizeEmbeddingDimensions, normalizeEmbeddingApiSettings } from './embedding-api-settings.js'
 import {
   isValidConversationId,
@@ -410,6 +414,15 @@ interface PatchConvBody {
     memoryEnabled?: boolean
     memoryTopK?: number
   } | null
+  /** §14.4.1 预算裁切：`trimOrder`、`minRetain`；`null` 清除覆盖 */
+  budgetTrimSettings?: {
+    trimOrder?: ('lore' | 'memory' | 'history')[]
+    minRetain?: {
+      lore?: number
+      memory?: number
+      history?: number
+    }
+  } | null
   /** 用户 persona 卡 id；组装注入 persona，宏仍依赖 userName 快照 */
   userCharacterId?: string | null
   /** 宏 `{{user}}` 展示名；传 `null` 清除以使用默认「用户」 */
@@ -452,10 +465,14 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       b,
       'memorySettings',
     )
+    const hasBudgetTrimSettings = Object.prototype.hasOwnProperty.call(
+      b,
+      'budgetTrimSettings',
+    )
     const hasUserCharacterId = Object.prototype.hasOwnProperty.call(b, 'userCharacterId')
     const hasUserName = Object.prototype.hasOwnProperty.call(b, 'userName')
     const hasAuthorsNote = Object.prototype.hasOwnProperty.call(b, 'authorsNote')
-    if (!hasTitle && !hasPromptDebug && !hasCharIds && !hasPromptPreset && !hasLorebookIds && !hasLorebookSettings && !hasHistorySettings && !hasMemorySettings && !hasUserCharacterId && !hasUserName && !hasAuthorsNote) {
+    if (!hasTitle && !hasPromptDebug && !hasCharIds && !hasPromptPreset && !hasLorebookIds && !hasLorebookSettings && !hasHistorySettings && !hasMemorySettings && !hasBudgetTrimSettings && !hasUserCharacterId && !hasUserName && !hasAuthorsNote) {
       return reply
         .status(400)
         .send({
@@ -651,6 +668,25 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
           })
         }
         const next = await updateConversationMemorySettings(id, patch)
+        if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+        idx = next
+      }
+    }
+    if (hasBudgetTrimSettings) {
+      const raw = b.budgetTrimSettings
+      if (raw === null) {
+        const next = await clearConversationBudgetTrimSettings(id)
+        if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+        idx = next
+      } else {
+        const parsed = parseBudgetTrimSettingsPatch(raw)
+        if (!parsed.ok) {
+          const code = parsed.error as keyof typeof ApiErrorCodes
+          return reply
+            .status(400)
+            .send({ error: ApiErrorCodes[code] ?? ApiErrorCodes.budget_trim_settings_invalid })
+        }
+        const next = await updateConversationBudgetTrimSettings(id, parsed.patch)
         if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
         idx = next
       }
@@ -1310,6 +1346,14 @@ interface PatchUserPreferencesBody {
     memoryEnabled?: boolean
     memoryTopK?: number
   }
+  budgetTrim?: {
+    trimOrder?: ('lore' | 'memory' | 'history')[]
+    minRetain?: {
+      lore?: number
+      memory?: number
+      history?: number
+    }
+  }
   embeddingApi?: {
     baseUrl?: string
     apiKey?: string
@@ -1328,9 +1372,10 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
     const hasLore = b.lorebook && typeof b.lorebook === 'object'
     const hasHist = b.history && typeof b.history === 'object'
     const hasMem = b.memory && typeof b.memory === 'object'
+    const hasBudgetTrim = b.budgetTrim && typeof b.budgetTrim === 'object'
     const hasEmbed = b.embeddingApi && typeof b.embeddingApi === 'object'
     const hasChunk = b.chunk && typeof b.chunk === 'object'
-    if (!hasLore && !hasHist && !hasMem && !hasEmbed && !hasChunk) {
+    if (!hasLore && !hasHist && !hasMem && !hasBudgetTrim && !hasEmbed && !hasChunk) {
       return reply.status(400).send({
         error: ApiErrorCodes.user_preferences_requires_section,
       })
@@ -1339,6 +1384,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
       let lorebook
       let history
       let memory
+      let budgetTrim
       let embeddingApi
       let chunk
       if (hasLore) {
@@ -1447,6 +1493,16 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         }
         memory = await updateGlobalMemorySettings(patch)
       }
+      if (hasBudgetTrim) {
+        const parsed = parseBudgetTrimSettingsPatch(b.budgetTrim)
+        if (!parsed.ok) {
+          const code = parsed.error as keyof typeof ApiErrorCodes
+          return reply
+            .status(400)
+            .send({ error: ApiErrorCodes[code] ?? ApiErrorCodes.budget_trim_settings_invalid })
+        }
+        budgetTrim = await updateGlobalBudgetTrimSettings(parsed.patch)
+      }
       if (hasEmbed) {
         const raw = b.embeddingApi! as {
           baseUrl?: string
@@ -1531,6 +1587,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         lorebook: lorebook ?? doc.lorebook,
         history: history ?? doc.history,
         memory: memory ?? doc.memory,
+        budgetTrim: budgetTrim ?? doc.budgetTrim,
         embeddingApi: embeddingPublic,
         chunk: chunk ?? doc.chunk,
         savedAt: doc.savedAt,

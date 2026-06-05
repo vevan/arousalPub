@@ -29,6 +29,13 @@ import {
   type MemorySettings,
 } from './memory-settings.js'
 import {
+  budgetTrimSettingsOverrideFromEffective,
+  normalizeBudgetTrimSettings,
+  resolveBudgetTrimSettings,
+  type BudgetTrimSettingsOverride,
+} from './budget-trim-settings.js'
+import {
+  readGlobalBudgetTrimSettings,
   readGlobalHistorySettings,
   readGlobalLorebookSettings,
   readGlobalMemorySettings,
@@ -121,6 +128,8 @@ export interface ConversationIndex {
   historySettings?: Partial<HistorySettings>
   /** 对话记忆稀疏覆盖（未写字段继承全局 user-preferences） */
   memorySettings?: Partial<MemorySettings>
+  /** §14.4.1 预算裁切稀疏覆盖（未写字段继承全局 user-preferences） */
+  budgetTrimSettings?: BudgetTrimSettingsOverride
   /**
    * 远期记忆向量索引所用 embedding 模型（与全局 embeddingApi.embeddingModel 对齐）。
    * 未写入表示尚未按当前模型完成索引或需重建。
@@ -560,6 +569,54 @@ export async function updateConversationAuthorsNote(
     delete next.authorsNote
   } else {
     next.authorsNote = mergeAuthorsNote(idx.authorsNote, patch)
+  }
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
+  return next
+}
+
+/** 清除会话预算裁切覆盖（恢复继承全局） */
+export async function clearConversationBudgetTrimSettings(
+  conversationId: string,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  delete next.budgetTrimSettings
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
+  return next
+}
+
+/** 预算裁切：在「全局 + 当前覆盖」上合并 patch，稀疏写盘 */
+export async function updateConversationBudgetTrimSettings(
+  conversationId: string,
+  patch: BudgetTrimSettingsOverride,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const global = await readGlobalBudgetTrimSettings()
+  const current = resolveBudgetTrimSettings(global, idx.budgetTrimSettings)
+  const effective = normalizeBudgetTrimSettings({
+    trimOrder: Object.prototype.hasOwnProperty.call(patch, 'trimOrder')
+      ? patch.trimOrder
+      : current.trimOrder,
+    minRetain: {
+      ...current.minRetain,
+      ...(patch.minRetain ?? {}),
+    },
+  })
+  const sparse = budgetTrimSettingsOverrideFromEffective(effective, global)
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  if (sparse) {
+    next.budgetTrimSettings = sparse
+  } else {
+    next.budgetTrimSettings = {
+      trimOrder: [...effective.trimOrder],
+      minRetain: { ...effective.minRetain },
+    }
   }
   await writeConversationIndex(conversationId, next)
   await upsertChatListEntry(chatListEntryFromIndex(next), next)

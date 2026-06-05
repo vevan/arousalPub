@@ -19,6 +19,12 @@ import {
   type MemorySettings,
 } from '@/utils/memory-settings'
 import {
+  hasBudgetTrimSettingsOverride,
+  normalizeBudgetTrimSettings,
+  resolveBudgetTrimSettings,
+  type BudgetTrimSettings,
+} from '@/utils/budget-trim-settings'
+import {
   hasLorebookSettingsOverride,
   normalizeLorebookSettings,
   resolveLorebookSettings,
@@ -52,6 +58,7 @@ const {
   historyMaxTurns,
   memoryEnabled,
   memoryTopK,
+  budgetTrimSettings,
   embeddingModel,
   embeddingDimensions,
 } = storeToRefs(prefStore)
@@ -176,6 +183,11 @@ interface MemoryContextBinding {
   effective: MemorySettings
 }
 
+interface BudgetTrimContextBinding {
+  useGlobal: boolean
+  effective: BudgetTrimSettings
+}
+
 interface ConvContextBindings {
   promptPresetId: string | null
   characterIds: string[]
@@ -183,6 +195,7 @@ interface ConvContextBindings {
   lorebook: LorebookContextBinding
   history: HistoryContextBinding
   memory: MemoryContextBinding
+  budgetTrim: BudgetTrimContextBinding
   /** 会话 `{{user}}`；null 表示未设置 */
   userName: string | null
   /** 用户 persona 卡 id；仅用于 UI 回显头像 */
@@ -211,6 +224,10 @@ function globalMemoryFromStore(): MemorySettings {
     memoryEnabled: prefStore.memoryEnabled,
     memoryTopK: prefStore.memoryTopK,
   })
+}
+
+function globalBudgetTrimFromStore(): BudgetTrimSettings {
+  return normalizeBudgetTrimSettings(budgetTrimSettings.value)
 }
 
 function memoryContextFromIndex(
@@ -242,6 +259,22 @@ function historyContextFromIndex(
   return {
     useGlobal,
     effective: resolveHistorySettings(global, override),
+  }
+}
+
+function budgetTrimContextFromIndex(
+  idx: Record<string, unknown>,
+): BudgetTrimContextBinding {
+  const global = globalBudgetTrimFromStore()
+  const raw = idx.budgetTrimSettings
+  const override =
+    raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? (raw as Partial<BudgetTrimSettings>)
+      : undefined
+  const useGlobal = !hasBudgetTrimSettingsOverride(override)
+  return {
+    useGlobal,
+    effective: resolveBudgetTrimSettings(global, override),
   }
 }
 
@@ -301,6 +334,7 @@ function bindingsFromIndex(idx: Record<string, unknown>): ConvContextBindings {
     lorebook: lorebookContextFromIndex(idx),
     history: historyContextFromIndex(idx),
     memory: memoryContextFromIndex(idx),
+    budgetTrim: budgetTrimContextFromIndex(idx),
     userName,
     userCharacterId,
     authorsNote: authorsNoteFromIndex(idx),
@@ -327,6 +361,10 @@ const convBindings = ref<ConvContextBindings>({
   memory: {
     useGlobal: true,
     effective: { memoryEnabled: false, memoryTopK: 4 },
+  },
+  budgetTrim: {
+    useGlobal: true,
+    effective: normalizeBudgetTrimSettings(),
   },
   userName: null,
   userCharacterId: null,
@@ -747,6 +785,9 @@ watch(
         :global-memory-top-k="memoryTopK"
         :initial-memory-enabled="convBindings.memory.effective.memoryEnabled"
         :initial-memory-top-k="convBindings.memory.effective.memoryTopK"
+        :initial-budget-trim-settings-use-global="convBindings.budgetTrim.useGlobal"
+        :global-budget-trim-settings="budgetTrimSettings"
+        :initial-budget-trim-settings="convBindings.budgetTrim.effective"
         :global-embedding-model="embeddingModel"
         :conversation-memory-embedding-model="conversationMemoryEmbeddingModel"
         :initial-user-name="convBindings.userName"

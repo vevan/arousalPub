@@ -20,6 +20,13 @@ import {
   type MemorySettings,
 } from '@/utils/memory-settings'
 import {
+  BUDGET_TRIM_SETTINGS_DEFAULTS,
+  budgetTrimSettingsEqual,
+  cloneBudgetTrimSettings,
+  normalizeBudgetTrimSettings,
+  type BudgetTrimSettings,
+} from '@/utils/budget-trim-settings'
+import {
   CHAT_FONT_SIZE_REM_DEFAULT,
   COMPOSER_ENTER_MODE_DEFAULT,
   normalizeChatFontSizeRem,
@@ -281,6 +288,9 @@ export const usePreferencesStore = defineStore('preferences', () => {
   const historyMaxTurns = ref(readStoredHistoryMaxTurns())
   const memoryEnabled = ref(readStoredMemoryEnabled())
   const memoryTopK = ref(readStoredMemoryTopK())
+  const budgetTrimSettings = ref<BudgetTrimSettings>(
+    cloneBudgetTrimSettings(BUDGET_TRIM_SETTINGS_DEFAULTS),
+  )
   const embeddingBaseUrl = ref(readStoredEmbeddingBaseUrl())
   const embeddingApiKey = ref('')
   const embeddingKeyConfigured = ref(false)
@@ -295,8 +305,25 @@ export const usePreferencesStore = defineStore('preferences', () => {
   let lorebookPatchInFlight = false
   let historyPatchInFlight = false
   let memoryPatchInFlight = false
+  let budgetTrimPatchInFlight = false
   let embeddingPatchInFlight = false
   let chunkPatchInFlight = false
+  let budgetTrimLastSynced = cloneBudgetTrimSettings(
+    budgetTrimSettings.value,
+  )
+
+  function applyBudgetTrimLocal(
+    next: BudgetTrimSettings,
+    markSynced: boolean,
+  ): void {
+    const n = normalizeBudgetTrimSettings(next)
+    budgetTrimPatchInFlight = true
+    budgetTrimSettings.value = cloneBudgetTrimSettings(n)
+    if (markSynced) {
+      budgetTrimLastSynced = cloneBudgetTrimSettings(n)
+    }
+    budgetTrimPatchInFlight = false
+  }
 
   watch(
     writeChatPromptSnapshot,
@@ -506,6 +533,29 @@ export const usePreferencesStore = defineStore('preferences', () => {
     }
   }
 
+  async function patchGlobalBudgetTrimToServer(
+    patch: Partial<BudgetTrimSettings>,
+  ): Promise<void> {
+    const res = await fetch('/api/user-preferences', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ budgetTrim: patch }),
+    })
+    if (!res.ok) {
+      const txt = await res.text()
+      throw new Error(txt.slice(0, 200))
+    }
+    const j = (await res.json()) as { budgetTrim?: Partial<BudgetTrimSettings> }
+    if (j.budgetTrim) {
+      const n = normalizeBudgetTrimSettings(j.budgetTrim)
+      if (!budgetTrimSettingsEqual(n, budgetTrimSettings.value)) {
+        applyBudgetTrimLocal(n, true)
+      } else {
+        budgetTrimLastSynced = cloneBudgetTrimSettings(n)
+      }
+    }
+  }
+
   async function patchGlobalHistoryToServer(
     patch: Partial<HistorySettings>,
   ): Promise<void> {
@@ -664,6 +714,34 @@ export const usePreferencesStore = defineStore('preferences', () => {
   )
 
   watch(
+    budgetTrimSettings,
+    async (v) => {
+      if (!userPreferencesLoaded.value || budgetTrimPatchInFlight) return
+      const n = normalizeBudgetTrimSettings(v)
+      if (!budgetTrimSettingsEqual(n, v)) {
+        applyBudgetTrimLocal(n, false)
+        return
+      }
+      if (budgetTrimSettingsEqual(n, budgetTrimLastSynced)) return
+      budgetTrimPatchInFlight = true
+      try {
+        await patchGlobalBudgetTrimToServer({
+          trimOrder: [...n.trimOrder],
+          minRetain: { ...n.minRetain },
+        })
+        budgetTrimLastSynced = cloneBudgetTrimSettings(
+          budgetTrimSettings.value,
+        )
+      } catch {
+        /* 设置页可重试 */
+      } finally {
+        budgetTrimPatchInFlight = false
+      }
+    },
+    { deep: true, flush: 'post' },
+  )
+
+  watch(
     [embeddingBaseUrl, embeddingApiKey, embeddingApiKeyId, embeddingModel, embeddingDimensions],
     async () => {
       if (!userPreferencesLoaded.value || embeddingPatchInFlight) return
@@ -723,6 +801,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
           lorebook?: Partial<LorebookSettings>
           history?: Partial<HistorySettings>
           memory?: Partial<MemorySettings>
+          budgetTrim?: Partial<BudgetTrimSettings>
           embeddingApi?: Partial<EmbeddingApiSettings>
           chunk?: Partial<ChunkSettings>
         }
@@ -731,6 +810,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
         memoryPatchInFlight = true
         embeddingPatchInFlight = true
         chunkPatchInFlight = true
+        budgetTrimPatchInFlight = true
         const lore = normalizeLorebookSettings(doc.lorebook)
         lorebookRecursiveEnabled.value = lore.recursiveEnabled
         lorebookMaxRecursionDepth.value = lore.maxRecursionDepth
@@ -745,6 +825,8 @@ export const usePreferencesStore = defineStore('preferences', () => {
         memoryEnabled.value = mem.memoryEnabled
         memoryTopK.value = mem.memoryTopK
         persistMemoryLocal()
+        const bt = normalizeBudgetTrimSettings(doc.budgetTrim)
+        applyBudgetTrimLocal(bt, true)
         applyEmbeddingFromServer(doc.embeddingApi)
         const chunk = normalizeChunkSettings(doc.chunk)
         chunkTurnsPerFile.value = chunk.turnsPerFile
@@ -755,6 +837,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
         lorebookPatchInFlight = false
         historyPatchInFlight = false
         memoryPatchInFlight = false
+        budgetTrimPatchInFlight = false
         embeddingPatchInFlight = false
         chunkPatchInFlight = false
         userPreferencesLoaded.value = true
@@ -873,6 +956,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     memoryTopK,
     setMemoryEnabled,
     setMemoryTopK,
+    budgetTrimSettings,
     embeddingBaseUrl,
     embeddingApiKey,
     embeddingApiKeyId,

@@ -28,6 +28,12 @@ import {
   normalizeChunkSettings,
   type ChunkSettings,
 } from './chunk-settings.js'
+import {
+  BUDGET_TRIM_SETTINGS_DEFAULTS,
+  normalizeBudgetTrimSettings,
+  type BudgetTrimSettings,
+  type BudgetTrimSettingsOverride,
+} from './budget-trim-settings.js'
 
 export interface UserPreferencesDocument {
   version: 1
@@ -35,6 +41,7 @@ export interface UserPreferencesDocument {
   lorebook?: Partial<LorebookSettings>
   history?: Partial<HistorySettings>
   memory?: Partial<MemorySettings>
+  budgetTrim?: Partial<BudgetTrimSettings>
   embeddingApi?: Partial<EmbeddingApiSettings>
   chunk?: Partial<ChunkSettings>
 }
@@ -72,6 +79,12 @@ export async function readGlobalMemorySettings(): Promise<MemorySettings> {
   return normalizeMemorySettings(doc.memory)
 }
 
+export async function readGlobalBudgetTrimSettings(): Promise<BudgetTrimSettings> {
+  const doc = await readPreferencesFileRaw()
+  if (!doc) return { ...BUDGET_TRIM_SETTINGS_DEFAULTS }
+  return normalizeBudgetTrimSettings(doc.budgetTrim)
+}
+
 export async function readGlobalEmbeddingApiSettings(): Promise<EmbeddingApiSettings> {
   const doc = await readPreferencesFileRaw()
   if (!doc) return { ...EMBEDDING_API_SETTINGS_DEFAULTS }
@@ -89,6 +102,7 @@ export async function readUserPreferencesDocument(): Promise<UserPreferencesDocu
   const lorebook = normalizeLorebookSettings(doc?.lorebook)
   const history = normalizeHistorySettings(doc?.history)
   const memory = normalizeMemorySettings(doc?.memory)
+  const budgetTrim = normalizeBudgetTrimSettings(doc?.budgetTrim)
   const embeddingApi = await readGlobalEmbeddingApiSettings()
   const chunk = normalizeChunkSettings(doc?.chunk)
   return {
@@ -98,6 +112,7 @@ export async function readUserPreferencesDocument(): Promise<UserPreferencesDocu
     lorebook,
     history,
     memory,
+    budgetTrim,
     embeddingApi,
     chunk,
   }
@@ -106,7 +121,7 @@ export async function readUserPreferencesDocument(): Promise<UserPreferencesDocu
 async function writeUserPreferencesDocument(
   partial: Pick<
     UserPreferencesDocument,
-    'lorebook' | 'history' | 'memory' | 'embeddingApi' | 'chunk'
+    'lorebook' | 'history' | 'memory' | 'budgetTrim' | 'embeddingApi' | 'chunk'
   >,
 ): Promise<UserPreferencesDocument> {
   const prev = await readUserPreferencesDocument()
@@ -116,6 +131,7 @@ async function writeUserPreferencesDocument(
     lorebook: partial.lorebook ?? prev.lorebook,
     history: partial.history ?? prev.history,
     memory: partial.memory ?? prev.memory,
+    budgetTrim: partial.budgetTrim ?? prev.budgetTrim,
     embeddingApi: partial.embeddingApi ?? prev.embeddingApi,
     chunk: partial.chunk ?? prev.chunk,
   }
@@ -136,6 +152,7 @@ export async function updateGlobalLorebookSettings(
     lorebook,
     history: prev.history,
     memory: prev.memory,
+    budgetTrim: prev.budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
   })
@@ -154,6 +171,7 @@ export async function updateGlobalHistorySettings(
     lorebook: prev.lorebook,
     history,
     memory: prev.memory,
+    budgetTrim: prev.budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
   })
@@ -172,10 +190,36 @@ export async function updateGlobalMemorySettings(
     lorebook: prev.lorebook,
     history: prev.history,
     memory,
+    budgetTrim: prev.budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
   })
   return memory
+}
+
+export async function updateGlobalBudgetTrimSettings(
+  patch: BudgetTrimSettingsOverride,
+): Promise<BudgetTrimSettings> {
+  const prev = await readUserPreferencesDocument()
+  const prevTrim = normalizeBudgetTrimSettings(prev.budgetTrim)
+  const budgetTrim = normalizeBudgetTrimSettings({
+    trimOrder: Object.prototype.hasOwnProperty.call(patch, 'trimOrder')
+      ? patch.trimOrder
+      : prevTrim.trimOrder,
+    minRetain: {
+      ...prevTrim.minRetain,
+      ...(patch.minRetain ?? {}),
+    },
+  })
+  await writeUserPreferencesDocument({
+    lorebook: prev.lorebook,
+    history: prev.history,
+    memory: prev.memory,
+    budgetTrim,
+    embeddingApi: prev.embeddingApi,
+    chunk: prev.chunk,
+  })
+  return budgetTrim
 }
 
 export async function updateGlobalEmbeddingApiSettings(
@@ -192,6 +236,7 @@ export async function updateGlobalEmbeddingApiSettings(
     lorebook: prev.lorebook,
     history: prev.history,
     memory: prev.memory,
+    budgetTrim: prev.budgetTrim,
     embeddingApi,
     chunk: prev.chunk,
   })
@@ -210,6 +255,7 @@ export async function updateGlobalChunkSettings(
     lorebook: prev.lorebook,
     history: prev.history,
     memory: prev.memory,
+    budgetTrim: prev.budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk,
   })

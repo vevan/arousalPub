@@ -21,20 +21,28 @@ import {
 import { readCharacterDocument } from './character-storage.js'
 import type { PromptsDocument } from './prompts-file.js'
 import { resolveLorebookSettings } from './lorebook-settings.js'
-import { resolveLorebookInjectionText } from './lorebook-resolve.js'
+import { resolveLorebookInjectionParts } from './lorebook-resolve.js'
 import { resolveHistorySettings } from './history-settings.js'
 import { resolveMemorySettings } from './memory-settings.js'
 import { buildScanText } from './lore-scan.js'
 import { runMemoryPipeline } from './memory-pipeline.js'
 import {
+  readGlobalBudgetTrimSettings,
   readGlobalHistorySettings,
   readGlobalLorebookSettings,
   readGlobalMemorySettings,
 } from './user-preferences-file.js'
+import { resolveBudgetTrimSettings } from './budget-trim-settings.js'
 import { normalizePresetForAssemble } from './prompt-preset-normalize.js'
 import { applyPluginsAfterAssemblePrompts } from './plugin-host.js'
 import type { ChatPluginsBody } from './plugin-types.js'
 import { countChatMessagesTokens } from './token-count.js'
+import {
+  memoryTextFromTrimState,
+  runPromptBudgetTrimLoop,
+  type PromptBudgetTrimState,
+  worldTextFromTrimState,
+} from './prompt-budget-trim.js'
 
 function asPromptPreset(raw: unknown): PromptPreset | null {
   if (!raw || typeof raw !== 'object') return null
@@ -145,6 +153,7 @@ export interface BuildConversationMessagesParams {
 export interface BuildConversationMessagesResult {
   messages: ChatMessage[]
   estimatedTokens: number
+  droppedLoreCount: number
   droppedHistoryCount: number
   droppedMemoryCount: number
   memoryTurnIds?: string[]
@@ -173,6 +182,7 @@ export async function buildConversationOutboundMessages(
 
   const globalHistory = await readGlobalHistorySettings()
   const globalMemory = await readGlobalMemorySettings()
+  const globalBudgetTrim = await readGlobalBudgetTrimSettings()
   const effectiveHistory = resolveHistorySettings(
     globalHistory,
     idx.historySettings,
@@ -180,6 +190,10 @@ export async function buildConversationOutboundMessages(
   const effectiveMemory = resolveMemorySettings(
     globalMemory,
     idx.memorySettings,
+  )
+  const effectiveBudgetTrim = resolveBudgetTrimSettings(
+    globalBudgetTrim,
+    idx.budgetTrimSettings,
   )
 
   const userInput = typeof params.userText === 'string' ? params.userText : ''
@@ -196,8 +210,6 @@ export async function buildConversationOutboundMessages(
     historySettings: effectiveHistory,
     historyBeforeTurnOrdinalExclusive:
       params.historyBeforeTurnOrdinalExclusive ?? undefined,
-    contextLength: maxTokens,
-    tokenModel: params.tokenModel ?? undefined,
   })
 
   const charIds = resolvedCharacterIds(idx)
@@ -232,51 +244,94 @@ export async function buildConversationOutboundMessages(
     memoryPipeline.memoryText,
     memoryPipeline.recentHistoryScanText,
   )
-  const worldText =
+  const loreParts =
     lorebookIds.length > 0
-      ? await resolveLorebookInjectionText(lorebookIds, {
+      ? await resolveLorebookInjectionParts(lorebookIds, {
           scanCorpus,
           lorebookSettings: effectiveLore,
         })
-      : undefined
+      : { constantLoreGroups: [], matchedLore: [] }
 
   const tokenModel =
     typeof params.tokenModel === 'string' && params.tokenModel.trim().length > 0
       ? params.tokenModel.trim()
       : undefined
 
-  const result = assemblePrompts(preset, {
+  const trimState: PromptBudgetTrimState = {
+    constantLoreGroups: loreParts.constantLoreGroups,
+    matchedLore: loreParts.matchedLore.slice(),
+    memoryItems: memoryPipeline.memoryItems.slice(),
+    historyMessages: memoryPipeline.recentHistoryMessages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    })),
+  }
+
+  const assembleCtxBase = {
     trigger,
     userInput,
-    maxTokens,
     tokenModel,
     macroContext,
     authorsNote: authorsNote ?? undefined,
-    history:
-      memoryPipeline.recentHistoryMessages.length > 0
-        ? memoryPipeline.recentHistoryMessages
-        : undefined,
-    memoryText: memoryPipeline.memoryText || undefined,
-    ...(worldText !== undefined && worldText.length > 0 ? { world: worldText } : {}),
+    skipInternalBudgetTrim: true as const,
     ...charCtx,
-  })
+  }
 
-  const messages = await applyPluginsAfterAssemblePrompts({
-    messages: result.messages,
+  const assembleFromState = (state: PromptBudgetTrimState): ChatMessage[] => {
+    const worldText = worldTextFromTrimState(state)
+    const memoryText = memoryTextFromTrimState(state)
+    return assemblePrompts(preset, {
+      ...assembleCtxBase,
+      history:
+        state.historyMessages.length > 0 ? state.historyMessages : undefined,
+      memoryText: memoryText || undefined,
+      ...(worldText.length > 0 ? { world: worldText } : {}),
+    }).messages
+  }
+
+  let messages: ChatMessage[]
+  let estimatedTokens: number
+  let droppedLoreCount = 0
+  let droppedMemoryCount = 0
+  let droppedHistoryCount = 0
+
+  if (maxTokens) {
+    const trimmed = runPromptBudgetTrimLoop({
+      maxTokens,
+      tokenModel,
+      trimSettings: effectiveBudgetTrim,
+      state: trimState,
+      assembleMessages: assembleFromState,
+    })
+    messages = trimmed.messages
+    estimatedTokens = trimmed.estimatedTokens
+    droppedLoreCount = trimmed.drops.droppedLoreCount
+    droppedMemoryCount = trimmed.drops.droppedMemoryCount
+    droppedHistoryCount = trimmed.drops.droppedHistoryCount
+  } else {
+    messages = assembleFromState(trimState)
+    estimatedTokens = countChatMessagesTokens(messages, { model: tokenModel })
+  }
+
+  const messagesAfterPlugins = await applyPluginsAfterAssemblePrompts({
+    messages,
     macroContext,
     plugins: params.plugins,
   })
-  const estimatedTokens =
-    messages.length === result.messages.length
-      ? result.estimatedTokens
-      : countChatMessagesTokens(messages, { model: tokenModel })
+  const finalEstimatedTokens =
+    messagesAfterPlugins.length === messages.length
+      ? estimatedTokens
+      : countChatMessagesTokens(messagesAfterPlugins, { model: tokenModel })
+
+  const finalMemoryText = memoryTextFromTrimState(trimState)
 
   return {
-    messages,
-    estimatedTokens,
-    droppedHistoryCount: result.droppedHistoryCount,
-    droppedMemoryCount: memoryPipeline.droppedMemoryCount,
-    memoryTurnIds: memoryPipeline.memoryTurnIds,
-    memoryText: memoryPipeline.memoryText || undefined,
+    messages: messagesAfterPlugins,
+    estimatedTokens: finalEstimatedTokens,
+    droppedLoreCount,
+    droppedHistoryCount,
+    droppedMemoryCount,
+    memoryTurnIds: trimState.memoryItems.map((x) => x.turn.turnId),
+    memoryText: finalMemoryText || undefined,
   }
 }

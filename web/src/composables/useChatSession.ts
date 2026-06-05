@@ -1079,6 +1079,8 @@ const assemblePreviewJson = ref('')
 const assemblePreviewMeta = ref({
   messages: 0,
   estimatedTokens: 0,
+  droppedLoreCount: 0,
+  droppedMemoryCount: 0,
   droppedHistoryCount: 0,
   memoryTurnIds: [] as string[],
 })
@@ -1097,6 +1099,8 @@ async function fetchAssemblePreview(): Promise<void> {
   assemblePreviewMeta.value = {
     messages: 0,
     estimatedTokens: 0,
+    droppedLoreCount: 0,
+    droppedMemoryCount: 0,
     droppedHistoryCount: 0,
     memoryTurnIds: [],
   }
@@ -1136,6 +1140,12 @@ async function fetchAssemblePreview(): Promise<void> {
       messages: messages.length,
       estimatedTokens:
         typeof data.estimatedTokens === 'number' ? data.estimatedTokens : 0,
+      droppedLoreCount:
+        typeof data.droppedLoreCount === 'number' ? data.droppedLoreCount : 0,
+      droppedMemoryCount:
+        typeof data.droppedMemoryCount === 'number'
+          ? data.droppedMemoryCount
+          : 0,
       droppedHistoryCount:
         typeof data.droppedHistoryCount === 'number'
           ? data.droppedHistoryCount

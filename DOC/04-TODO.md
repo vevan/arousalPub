@@ -26,7 +26,7 @@
 - [x] 角色管理（文件库）：主存 **`data/{userId}/characters/{uuid}.png`**（内嵌 ST `chara`）；遗留 **`{uuid}.json`** 首次读取时迁移为 PNG；列表/筛选/导入/表单新建/删除/导出 API + Web **`/characters`**（见 `DOC/03` §12）
 - [x] Prompt 预设：服务端 `data/{userId}/prompts/`（`index.json` + 各预设 JSON）+ `GET/PUT /api/prompts`；前端 **`/prompts`**；组装仅服务端（`assemble-preview` / `assemble-messages` API）
 - [x] 世界书框架：`lorebooks/` 分文件存储、`GET/PUT /api/lorebooks`、Web 编辑与对话 `lorebookIds` 绑定、关键字/恒定注入（见 `DOC/03` §13）
-- [x] **对话记忆（§14）收尾**：会话设置 UI（N / TopK）、落盘增量索引、memory 槽 contextLength 预算裁切；assemble-messages 返回 `droppedMemoryCount`
+- [x] **对话记忆（§14）收尾**：会话设置 UI（N / TopK）、落盘增量索引、**§14.4.1 统一 token 预算裁切**（lore → memory → history）；`assemble-messages` 返回 `droppedLoreCount` / `droppedMemoryCount` / `droppedHistoryCount`
 - [x] **组装管线 §14.9 主干**：`runMemoryPipeline`、`boundMemory`（`<memory>` system）、`boundRecentHistory` / `history` 分组（**user/assistant 链**，非 `<history>` XML）、`buildScanText` + lore 递归（`lorebook-resolve`）
 - [x] **宏管线 §15**：server `prompt-macros/handlers`、仅服务端展宏、`POST /api/prompts/assemble-preview`、opening 服务端展宏、删除 web `prompt-macros`
 - [ ] **ST 宏扩展（备忘，未排期）**：可行性分级见 `DOC/14-st-macros-porting.md`

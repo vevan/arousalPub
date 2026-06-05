@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { useChatSession } from '@/composables/useChatSession'
-import { toRefs } from 'vue'
+import { computed, toRefs } from 'vue'
 
 const props = defineProps<{
   session: ReturnType<typeof useChatSession>
@@ -9,6 +9,15 @@ const props = defineProps<{
 const { assemblePreviewOpen, assemblePreviewLoading, assemblePreviewError, assemblePreviewJson, assemblePreviewMeta, assemblePreviewCopied } = toRefs(props.session)
 
 const { copyAssemblePreviewJson } = props.session
+
+const hasBudgetDrops = computed(() => {
+  const m = assemblePreviewMeta.value
+  return (
+    m.droppedLoreCount > 0 ||
+    m.droppedMemoryCount > 0 ||
+    m.droppedHistoryCount > 0
+  )
+})
 </script>
 
 <template>
@@ -44,17 +53,35 @@ const { copyAssemblePreviewJson } = props.session
           {{ assemblePreviewMeta.estimatedTokens }}
         </span>
         <span
-          v-if="assemblePreviewMeta.droppedHistoryCount > 0"
-          class="preview-card__meta preview-card__meta--warn"
-        >
-          {{ $t('prompts.previewDropped', { n: assemblePreviewMeta.droppedHistoryCount }) }}
-        </span>
-        <span
           v-if="assemblePreviewMeta.memoryTurnIds.length > 0"
           class="preview-card__meta"
         >
           <span class="preview-card__meta-label">{{ $t('chat.previewMemoryTurns') }}</span>
           {{ assemblePreviewMeta.memoryTurnIds.length }}
+        </span>
+      </div>
+      <div
+        v-if="!assemblePreviewLoading && !assemblePreviewError && hasBudgetDrops"
+        class="preview-card__topbar preview-card__topbar--drops"
+      >
+        <span class="preview-card__meta-label">{{ $t('prompts.previewDroppedLabel') }}</span>
+        <span
+          v-if="assemblePreviewMeta.droppedLoreCount > 0"
+          class="preview-card__meta preview-card__meta--warn"
+        >
+          {{ $t('prompts.previewDroppedLore', { n: assemblePreviewMeta.droppedLoreCount }) }}
+        </span>
+        <span
+          v-if="assemblePreviewMeta.droppedMemoryCount > 0"
+          class="preview-card__meta preview-card__meta--warn"
+        >
+          {{ $t('prompts.previewDroppedMemory', { n: assemblePreviewMeta.droppedMemoryCount }) }}
+        </span>
+        <span
+          v-if="assemblePreviewMeta.droppedHistoryCount > 0"
+          class="preview-card__meta preview-card__meta--warn"
+        >
+          {{ $t('prompts.previewDropped', { n: assemblePreviewMeta.droppedHistoryCount }) }}
         </span>
       </div>
       <v-card-text class="preview-card__body">

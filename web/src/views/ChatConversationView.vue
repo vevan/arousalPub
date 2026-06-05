@@ -6,6 +6,7 @@ import { bootstrapAppData } from '@/bootstrap/app-data'
 import { fetchDefaultLorebookIds, fetchLorebookPickerItems } from '@/utils/default-lorebook'
 import { useConnectionStore } from '@/stores/connection'
 import { usePreferencesStore } from '@/stores/preferences'
+import { usePromptsStore } from '@/stores/prompts'
 import { useUiContextStore } from '@/stores/ui-context'
 import {
   hasHistorySettingsOverride,
@@ -59,7 +60,10 @@ const { t } = useI18n()
 const router = useRouter()
 const conn = useConnectionStore()
 const prefStore = usePreferencesStore()
+const promptsStore = usePromptsStore()
 const uiContext = useUiContextStore()
+const { activePresetId: globalPromptPresetId, indexEntries: promptIndexEntries } =
+  storeToRefs(promptsStore)
 const {
   lorebookRecursiveEnabled,
   lorebookMaxRecursionDepth,
@@ -457,14 +461,43 @@ const boundLorebooks = computed(() =>
   })),
 )
 
+/** 会话显式绑定优先，否则与组装管线一致使用全局激活预设 */
+const effectivePromptPresetId = computed(() => {
+  const explicit = convBindings.value.promptPresetId
+  if (explicit) return explicit
+  const global = globalPromptPresetId.value?.trim()
+  return global || null
+})
+
+const boundPromptLabel = computed(() => {
+  const id = effectivePromptPresetId.value
+  if (!id) return ''
+  const hit = promptIndexEntries.value.find((p) => p.id === id)
+  return hit?.name?.trim() || id
+})
+
 function openBoundLorebook(lorebookId: string): void {
   uiContext.requestOpenLorebooksDialog(lorebookId)
+}
+
+function openBoundPrompt(): void {
+  const id = effectivePromptPresetId.value
+  if (!id) return
+  uiContext.requestOpenPromptsDialog(id)
 }
 
 watch(
   () => convBindings.value.lorebookIds,
   (ids) => {
     uiContext.setConversationLorebookIds(ids)
+  },
+  { immediate: true },
+)
+
+watch(
+  effectivePromptPresetId,
+  (id) => {
+    uiContext.setConversationPromptPresetId(id)
   },
   { immediate: true },
 )
@@ -560,6 +593,9 @@ async function ensureConversation(id: string) {
   errorText.value = ''
   try {
     await bootstrapAppData()
+    if (!promptsStore.loaded) {
+      await promptsStore.loadIndexFromServer()
+    }
     await loadLorebookNameMap()
     let res = await fetch(`/api/chat/conversations/${id}`)
     if (res.status === 404) {
@@ -740,6 +776,20 @@ watch(
             >
               {{ headerChatLabel }}
             </span>
+            <button
+              v-if="boundPromptLabel"
+              type="button"
+              class="chat-header__pill chat-header__pill--prompt chat-header__pill--clickable"
+              :title="$t('chatConversation.boundPrompt')"
+              @click="openBoundPrompt"
+            >
+              <v-icon
+                icon="mdi-text-box-outline"
+                size="14"
+                class="mr-1"
+              />
+              {{ boundPromptLabel }}
+            </button>
             <button
               v-for="lb in boundLorebooks"
               :key="lb.id"

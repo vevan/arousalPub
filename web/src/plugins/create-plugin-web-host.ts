@@ -24,7 +24,7 @@ import {
   renderReasoningMarkdownToHtml,
 } from '@/utils/render-rich-message'
 import { useI18n } from 'vue-i18n'
-import { ref } from 'vue'
+import { ref, type Ref } from 'vue'
 
 type ChatSession = ReturnType<typeof useChatSession>
 
@@ -45,9 +45,9 @@ export function createPluginWebHost(session: ChatSession): {
   host: PluginWebHost
   slotButtons: Map<string, PluginSlotButtonDef[]>
   formDialogs: Map<string, PluginFormDialogDef>
-  openForm: ReturnType<typeof ref<OpenPluginFormState | null>>
-  formSubmitting: ReturnType<typeof ref<boolean>>
-  slotButtonRevision: ReturnType<typeof ref<number>>
+  openForm: Ref<OpenPluginFormState | null>
+  formSubmitting: Ref<boolean>
+  slotButtonRevision: Ref<number>
 } {
   const { t } = useI18n()
   const slotButtons = new Map<string, PluginSlotButtonDef[]>()

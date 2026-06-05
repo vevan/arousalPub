@@ -25,6 +25,44 @@
   padding-inline: 0;
   box-sizing: border-box;
 }
+.prompts-view--embedded .preset-bar,
+.prompts-view--embedded .groups-bar {
+  flex-shrink: 0;
+}
+/* 移动单列：整页在对话框内滚动，列表与编辑器自然堆叠 */
+@media (max-width: 57.4375rem) {
+  .prompts-view--embedded {
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+/* 桌面双栏：锁定高度，仅左侧列表区滚动，避免分组栏出现纵滚 */
+@media (min-width: 57.5rem) {
+  .prompts-view--embedded {
+    overflow: hidden;
+  }
+  .prompts-view__inner--embedded {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .prompts-view--embedded .prompts-layout {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .prompts-view--embedded .prompts-list,
+  .prompts-view--embedded .prompts-editor {
+    min-height: 0;
+    overflow: hidden;
+  }
+  .prompts-view--embedded .prompts-list__scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+  }
+}
 
 /* ========== Preset bar ========== */
 .preset-bar {
@@ -126,7 +164,9 @@
   gap: 0.375rem;
   padding: 0.25rem 0.25rem 0.5rem;
   border-bottom: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.06);
+  flex-shrink: 0;
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: thin;
 }
 .group-chip {
@@ -134,6 +174,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
+  box-sizing: border-box;
   height: 1.875rem;
   padding: 0 0.625rem;
   background: transparent;
@@ -160,8 +201,9 @@
 .group-chip.is-active {
   background: rgba(var(--v-theme-primary), 0.14);
   border-color: rgba(var(--v-theme-primary), 0.6);
+  border-bottom-color: rgb(var(--v-theme-primary));
+  border-bottom-width: 0.125rem;
   color: rgb(var(--v-theme-on-surface));
-  box-shadow: inset 0 -0.125rem 0 rgb(var(--v-theme-primary));
 }
 .group-chip.is-placeholder {
   background: rgb(var(--v-theme-surface-light));

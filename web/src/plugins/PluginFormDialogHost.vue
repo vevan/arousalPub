@@ -64,10 +64,10 @@ function fieldValue(key: string): string {
   return typeof v === 'string' ? v : v != null ? String(v) : ''
 }
 
-function setFieldValue(key: string, value: string) {
+function setFieldValue(key: string, value: string | null) {
   const state = pluginHost?.openForm.value
   if (!state) return
-  state.model[key] = value
+  state.model[key] = value ?? ''
 }
 </script>
 

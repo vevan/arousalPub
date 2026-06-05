@@ -21,6 +21,7 @@
 - 技术栈：`DOC/05-技术栈.md`
 - **工作交接（新 Agent 入口）**：`DOC/06-工作交接.md`
 - **Chunk 链切分（已实现）**：`DOC/08-chunk-chain-implementation.md`
+- **会话消息分页与懒加载（P1 规划）**：`DOC/15-conversation-messages-lazy-load.md`
 - 运行时数据目录说明：`data/README.md`
 - 前端子项目说明：`web/README.md`
 

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { conversationUsesCharacter } from '@/utils/chat-list-character-ids'
 import { markHomeReturnFromChat } from '@/utils/home-navigation'
@@ -25,7 +24,6 @@ const emit = defineEmits<{
   'update:modelValue': [open: boolean]
 }>()
 
-const { t } = useI18n()
 const router = useRouter()
 
 const linked = computed(() => {

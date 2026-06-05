@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { usePromptsStore, type PromptPreset } from '@/stores/prompts'
 import { useApiKeysStore } from '@/stores/apiKeys'
 import {
@@ -747,7 +747,7 @@ export const useConnectionStore = defineStore('connection', () => {
         } else {
           delete row.apiKey
         }
-        return row as ApiPreset
+        return row as unknown as ApiPreset
       }),
     }
   }

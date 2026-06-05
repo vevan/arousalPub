@@ -12,6 +12,7 @@ import { userAvatarUrl } from '@/utils/authenticated-media-url'
 import { useConnectionStore } from '@/stores/connection'
 import { useLocaleStore } from '@/stores/locale'
 import { useLorebooksStore } from '@/stores/lorebooks'
+import { usePromptsStore } from '@/stores/prompts'
 import { useUiContextStore } from '@/stores/ui-context'
 import { storeToRefs } from 'pinia'
 import type { ComponentPublicInstance } from 'vue'
@@ -93,6 +94,7 @@ const lorebooksDialogOpen = ref(false)
 const mobileNavOpen = ref(false)
 const conn = useConnectionStore()
 const lorebooksStore = useLorebooksStore()
+const promptsStore = usePromptsStore()
 const uiContext = useUiContextStore()
 
 const appBarApiLabel = computed(() => {
@@ -171,8 +173,20 @@ async function focusLorebooksForOpen(): Promise<void> {
   )
 }
 
+async function focusPromptsForOpen(): Promise<void> {
+  const preferred = uiContext.consumePendingPromptFocusPresetId()
+  await promptsStore.applyOpenFocus(
+    uiContext.conversationPromptPresetId,
+    preferred,
+  )
+}
+
 watch(lorebooksDialogOpen, (open) => {
   if (open) void focusLorebooksForOpen()
+})
+
+watch(promptsDialogOpen, (open) => {
+  if (open) void focusPromptsForOpen()
 })
 
 watch(
@@ -181,6 +195,15 @@ watch(
     const wasOpen = lorebooksDialogOpen.value
     openLorebooksDialog()
     if (wasOpen) void focusLorebooksForOpen()
+  },
+)
+
+watch(
+  () => uiContext.openPromptsSignal,
+  () => {
+    const wasOpen = promptsDialogOpen.value
+    openPromptsDialog()
+    if (wasOpen) void focusPromptsForOpen()
   },
 )
 

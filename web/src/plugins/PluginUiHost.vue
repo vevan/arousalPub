@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import {
   clearPluginSnackbar,
-  clearPluginProgress,
   pluginConfirmOpen,
   pluginProgressOpen,
   pluginSnackbar,

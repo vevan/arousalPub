@@ -106,6 +106,7 @@
 
 ## P1（次优先）
 
+- [ ] **会话消息分页与前端懒加载** — **`DOC/15-conversation-messages-lazy-load.md`**（`GET .../messages?tail|before|from/to`、chunk 区间读、默认尾部 80 轮、上滚追加；插件 `readConversationTurnsRange` 改真分页；Phase 2 可选虚拟滚动）
 - [x] **单端口生产启动（`DOC/01` §9）**：`npm start` / `run-prod.mjs`、`static-web.ts`、`start.bat`/`start.sh`、`README.md`；根目录 `build`（web + server）；保留 `npm run dev`
 - [x] API 配置连通性测试接口（test）— `POST /api/settings/presets/:id/test`（两阶段：models + chat）
 - [x] API 配置引用检查与安全删除 — `GET/DELETE …/presets/:id`、`GET/DELETE /api/api-keys/:id`；PUT api-keys 拦截被引用 key 删除

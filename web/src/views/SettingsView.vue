@@ -85,7 +85,6 @@ const {
   embeddingBaseUrl,
   embeddingApiKey,
   embeddingApiKeyId,
-  embeddingKeyConfigured,
   embeddingApiKeyDirty,
   isEmbeddingKeyConfigured,
   embeddingModel,

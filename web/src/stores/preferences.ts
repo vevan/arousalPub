@@ -196,16 +196,6 @@ function readStoredEmbeddingBaseUrl(): string {
   return EMBEDDING_API_SETTINGS_DEFAULTS.baseUrl
 }
 
-function readStoredEmbeddingApiKey(): string {
-  try {
-    const raw = localStorage.getItem(EMBEDDING_API_KEY_STORAGE_KEY)
-    if (typeof raw === 'string') return raw
-  } catch {
-    /* ignore */
-  }
-  return ''
-}
-
 function readStoredEmbeddingApiKeyId(): string | null {
   try {
     const raw = localStorage.getItem(EMBEDDING_API_KEY_ID_STORAGE_KEY)

@@ -650,7 +650,8 @@
     "memoryRebuildFailed": "重建失败",
     "memoryRebuildProgress": "已完成 {done} / {total} 条",
     "memoryRebuildProgressDetail": "含 {turns} 轮对话 + {loreEntries} 条资料向量",
-    "boundLorebook": "绑定的资料库"
+    "boundLorebook": "绑定的资料库",
+    "boundPrompt": "绑定的提示词预设"
   },
   "conn": {
     "needBaseAndKey": "请先填写 Base URL 与 API Key",

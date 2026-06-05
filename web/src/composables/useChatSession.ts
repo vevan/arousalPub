@@ -1,1382 +1,312 @@
 import { useAuthStore } from '@/stores/auth'
 import { useConnectionStore } from '@/stores/connection'
 import { usePreferencesStore } from '@/stores/preferences'
-import { normalizeComposerEnterMode } from '@/utils/chat-display-settings'
-import type { PromptTrigger } from '@/stores/prompts'
-import type {
-  AssembleMessagesResult,
-  ChatPersistPayload,
-  ChatPromptSnapshotEntry,
-  ChatSessionProps,
-  ChatTurnItem,
-  ReceiveItem,
-} from '@/types/chat-turn'
-import {
-  buildConversationChatRequestBody,
-  runChatRequest,
-  type ConversationChatRequestPlugins,
-} from '@/utils/chat-api'
-import { allocateShortId } from '@/utils/short-id'
-import {
-  applyPersistWarning,
-  deleteTurnOnServer,
-  fetchConversationTurns,
-  persistTurnToServer as persistTurnOnServer,
-} from '@/utils/chat-messages'
-import {
-  patchConversationTurns,
-  readConversationTurnsRange,
-  ConversationHostError,
-  type ConversationBatchContext,
-} from '@/plugins/conversation-host'
-import type { ConversationScopeOptions } from '@/plugins/types'
+import type { ChatPersistPayload, ChatSessionProps, ChatTurnItem } from '@/types/chat-turn'
+import { applyPersistWarning } from '@/utils/chat-messages'
 import {
   assistantReasoning,
   assistantText,
-  assistantDurationMs,
-  assistantCompletionTokens,
   assistantModelName,
-  turnSendEstimatedTokens,
-  characterImageUrl,
   isOpeningTurn,
   reasoningCharsCount,
   turnLabelN,
 } from '@/utils/chat-turn-display'
-import { translateApiError } from '@/utils/api-error-message'
-import { formatDurationMs } from '@/utils/format-duration'
-import {
-  clearComposerDraft,
-  readComposerDraft,
-  writeComposerDraft,
-} from '@/utils/composer-draft-storage'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { createChatCompletionRunner } from './chat-session/completion.js'
+import { createReplyEventHub } from './chat-session/reply-events.js'
+import { isLastUserTurn } from './chat-session/turn-helpers.js'
+import { useAssemblePreview } from './chat-session/use-assemble-preview.js'
+import { useChatDisplay } from './chat-session/use-chat-display.js'
+import { useChatOutbound } from './chat-session/use-chat-outbound.js'
+import { useChatScroll } from './chat-session/use-chat-scroll.js'
+import { useComposerDraft } from './chat-session/use-composer-draft.js'
+import { useComposerKeydown } from './chat-session/use-composer-keydown.js'
+import { useConversationWriteLock } from './chat-session/use-conversation-write-lock.js'
+import { useCopyFeedback } from './chat-session/use-copy-feedback.js'
+import { useGenerationTimer } from './chat-session/use-generation-timer.js'
+import { useTurnBubbleUi } from './chat-session/use-turn-bubble-ui.js'
+import { useTurnEditDelete } from './chat-session/use-turn-edit-delete.js'
+import { useTurnList } from './chat-session/use-turn-list.js'
+import { useTurnPrompt } from './chat-session/use-turn-prompt.js'
 
-export type { ChatSessionProps } from '@/types/chat-turn'
-export { ConversationHostError } from '@/plugins/conversation-host'
-
-export interface ComposerRef {
-  get userInput(): string
-}
-
-export interface AssistantReplyCompleteEvent {
-  mode: 'send' | 'regenerate'
-  traceId?: string
-}
-
-export interface AssistantReplyPersistedEvent {
-  mode: 'send' | 'regenerate'
-  traceId?: string
-  turnOrdinal?: number
-  receiveId?: string
-  isFirstTurn?: boolean
-}
-
-function makeReplyTraceId(mode: 'send' | 'regenerate'): string {
-  const rand = Math.random().toString(36).slice(2, 8)
-  return `${mode}-${Date.now()}-${rand}`
-}
+export type {
+  ChatSessionProps,
+  ComposerRef,
+  AssistantReplyCompleteEvent,
+  AssistantReplyPersistedEvent,
+} from './chat-session/types.js'
+export { ConversationHostError } from './chat-session/types.js'
 
 export function useChatSession(props: ChatSessionProps) {
-const { t } = useI18n()
-const auth = useAuthStore()
-const conn = useConnectionStore()
-const prefs = usePreferencesStore()
-const { writeChatPromptSnapshot } = storeToRefs(prefs)
+  const { t } = useI18n()
+  const auth = useAuthStore()
+  const conn = useConnectionStore()
+  const prefs = usePreferencesStore()
+  const { writeChatPromptSnapshot } = storeToRefs(prefs)
 
-function collectUsedReceiveIds(turns: ChatTurnItem[]): Set<string> {
-  const used = new Set<string>()
-  for (const t of turns) {
-    for (const r of t.receives) {
-      if (r.id?.trim()) used.add(r.id.trim())
-    }
+  const replyEvents = createReplyEventHub()
+  const {
+    onAssistantReplyComplete,
+    onAssistantReplyPersisted,
+    emitAssistantReplyComplete,
+    emitAssistantReplyPersisted,
+  } = replyEvents
+
+  const userInput = ref('')
+  const turns = ref<ChatTurnItem[]>([])
+  const streamingText = ref('')
+  const streamingReasoning = ref('')
+  const pendingSendTurnOrdinal = ref<number | null>(null)
+  const pendingSendEstimatedTokens = ref<number | null>(null)
+  const pendingReceiveCompletionTokens = ref<number | null>(null)
+  const loading = ref(false)
+  const errorText = ref('')
+  const regeneratingTurnOrdinal = ref<number | null>(null)
+
+  const timer = useGenerationTimer()
+  const { startGenerationTimer, stopGenerationTimer, generationElapsedMs, dispose: disposeTimer } =
+    timer
+
+  const scroll = useChatScroll()
+  const { chatScrollEl, scrollChatToBottom, onGlobalKeyR } = scroll
+
+  const composerDraft = useComposerDraft({
+    getConversationId: () => props.conversationId,
+    userInput,
+    getUserId: () => auth.user?.id ?? auth.defaultUserId ?? 'anonymous',
+  })
+
+  const writeLock = useConversationWriteLock({
+    getConversationId: () => props.conversationId,
+    loading,
+    regeneratingTurnOrdinal,
+  })
+  const {
+    conversationWriteLocked,
+    isConversationWritable,
+    runConversationScope,
+    runConversationBatch,
+  } = writeLock
+
+  const turnList = useTurnList({
+    getConversationId: () => props.conversationId,
+    turns,
+    userInput,
+    pendingSendTurnOrdinal,
+    pendingSendEstimatedTokens,
+    pendingReceiveCompletionTokens,
+    streamingText,
+    streamingReasoning,
+    clearDraftAfterSend: composerDraft.clearDraftAfterSend,
+    scrollChatToBottom,
+  })
+  const {
+    replaceTurnAt,
+    clearPendingSend,
+    appendPendingUserTurn,
+    rollbackPendingUserTurn,
+    finalizePendingTurn,
+    persistTurnToServer,
+    loadMessages,
+    refreshConversation,
+  } = turnList
+
+  const completion = createChatCompletionRunner({
+    conn,
+    getConversationId: () => props.conversationId,
+    t,
+    turns,
+    streamingText,
+    streamingReasoning,
+    pendingSendEstimatedTokens,
+    pendingReceiveCompletionTokens,
+    emitAssistantReplyPersisted,
+    resolveDurationMs: stopGenerationTimer,
+  })
+  const {
+    parseCustomParamsOrThrow,
+    customParamsErrorMessage,
+    assertApiReady,
+    runSend,
+    runRegenerate,
+  } = completion
+
+  function setPersistWarning(persist: ChatPersistPayload | undefined) {
+    applyPersistWarning(
+      persist,
+      (msg) => {
+        errorText.value = msg
+      },
+      t('chat.errors.persistAppendTurnFailed'),
+    )
   }
-  return used
-}
 
-function setPersistWarning(persist: ChatPersistPayload | undefined) {
-  applyPersistWarning(
-    persist,
-    (msg) => {
+  function endRegeneratingUi() {
+    streamingText.value = ''
+    streamingReasoning.value = ''
+    regeneratingTurnOrdinal.value = null
+    pendingSendEstimatedTokens.value = null
+    pendingReceiveCompletionTokens.value = null
+  }
+
+  const turnEditDelete = useTurnEditDelete({
+    turns,
+    isConversationWritable,
+    replaceTurnAt,
+    persistTurnToServer,
+    getConversationId: () => props.conversationId,
+    loadMessages,
+    setErrorText: (msg) => {
       errorText.value = msg
     },
-    t('chat.errors.persistAppendTurnFailed'),
-  )
-}
-
-function streamDeltaHandler(d: { text?: string; reasoning?: string }) {
-  if (d.text) streamingText.value += d.text
-  if (d.reasoning) {
-    streamingReasoning.value = (streamingReasoning.value || '') + d.reasoning
-  }
-}
-
-async function requestChatCompletion(
-  params: Parameters<typeof buildConversationChatRequestBody>[2],
-  trace?: { traceId?: string; mode: 'send' | 'regenerate' },
-) {
-  const mode = trace?.mode ?? 'send'
-  const traceId = trace?.traceId ?? makeReplyTraceId(mode)
-
-  const result = await runChatRequest({
-    conn,
-    conversationId: props.conversationId,
-    params,
-    requestFailedMessage: (status) =>
-      t('chat.errors.requestFailedStatus', { status }),
-    noStreamMessage: t('chat.errors.noStream'),
-    onStreamDelta: conn.stream ? streamDeltaHandler : undefined,
-    onPromptEstimatedTokens: (n) => {
-      pendingSendEstimatedTokens.value = n
-    },
-    onCompletionTokens: (n) => {
-      pendingReceiveCompletionTokens.value = n
-    },
-    onPersist: (persist) => {
-      if (persist.ok) {
-        emitAssistantReplyPersisted({
-          mode,
-          traceId,
-          turnOrdinal: persist.turnOrdinal,
-          receiveId: persist.receiveId,
-          isFirstTurn: persist.isFirstTurn,
-        })
-      }
-    },
+    t,
   })
 
-  return { ...result, traceId }
-}
-
-const userInput = ref('')
-const assistantReplyCompleteListeners = new Set<
-  (event: AssistantReplyCompleteEvent) => void
->()
-const assistantReplyPersistedListeners = new Set<
-  (event: AssistantReplyPersistedEvent) => void
->()
-
-function onAssistantReplyPersisted(
-  listener: (event: AssistantReplyPersistedEvent) => void,
-): () => void {
-  assistantReplyPersistedListeners.add(listener)
-  return () => {
-    assistantReplyPersistedListeners.delete(listener)
-  }
-}
-
-function emitAssistantReplyPersisted(event: AssistantReplyPersistedEvent): void {
-  for (const listener of assistantReplyPersistedListeners) {
-    try {
-      listener(event)
-    } catch {
-      /* ignore plugin listener errors */
-    }
-  }
-}
-
-function onAssistantReplyComplete(
-  listener: (event: AssistantReplyCompleteEvent) => void,
-): () => void {
-  assistantReplyCompleteListeners.add(listener)
-  return () => {
-    assistantReplyCompleteListeners.delete(listener)
-  }
-}
-
-function emitAssistantReplyComplete(event: AssistantReplyCompleteEvent): void {
-  for (const listener of assistantReplyCompleteListeners) {
-    try {
-      listener(event)
-    } catch {
-      /* ignore plugin listener errors */
-    }
-  }
-}
-
-const COMPOSER_DRAFT_SAVE_MS = 400
-let composerDraftSaveTimer: ReturnType<typeof setTimeout> | null = null
-
-function composerDraftUserId(): string {
-  return auth.user?.id ?? auth.defaultUserId ?? 'anonymous'
-}
-
-function flushComposerDraftNow(conversationId: string, text: string): void {
-  writeComposerDraft(conversationId, text, composerDraftUserId())
-}
-
-function scheduleComposerDraftSave(conversationId: string, text: string): void {
-  const cid = conversationId.trim()
-  if (!cid) return
-  if (composerDraftSaveTimer) clearTimeout(composerDraftSaveTimer)
-  composerDraftSaveTimer = setTimeout(() => {
-    composerDraftSaveTimer = null
-    flushComposerDraftNow(cid, text)
-  }, COMPOSER_DRAFT_SAVE_MS)
-}
-
-function cancelComposerDraftSaveTimer(): void {
-  if (composerDraftSaveTimer) {
-    clearTimeout(composerDraftSaveTimer)
-    composerDraftSaveTimer = null
-  }
-}
-
-const turns = ref<ChatTurnItem[]>([])
-const streamingText = ref('')
-const streamingReasoning = ref('')
-/** 已乐观展示用户消息、等待助手回复的轮次 ordinal */
-const pendingSendTurnOrdinal = ref<number | null>(null)
-/** 本轮发往模型的 messages 估算 token（流式头 / 非流式 JSON） */
-const pendingSendEstimatedTokens = ref<number | null>(null)
-/** 本轮助手回复 completion_tokens（SSE 末包 / 非流式 JSON） */
-const pendingReceiveCompletionTokens = ref<number | null>(null)
-const loading = ref(false)
-const errorText = ref('')
-const regeneratingTurnOrdinal = ref<number | null>(null)
-
-const generationTimerAnchor = ref<number | null>(null)
-const generationTimerTick = ref(0)
-let generationTimerHandle: ReturnType<typeof setInterval> | null = null
-
-function startGenerationTimer() {
-  if (generationTimerHandle) {
-    clearInterval(generationTimerHandle)
-    generationTimerHandle = null
-  }
-  generationTimerAnchor.value = performance.now()
-  generationTimerTick.value = performance.now()
-  generationTimerHandle = setInterval(() => {
-    generationTimerTick.value = performance.now()
-  }, 100)
-}
-
-function stopGenerationTimer(): number {
-  if (generationTimerHandle) {
-    clearInterval(generationTimerHandle)
-    generationTimerHandle = null
-  }
-  const anchor = generationTimerAnchor.value
-  generationTimerAnchor.value = null
-  if (anchor == null) return 0
-  return Math.round(generationTimerTick.value - anchor)
-}
-
-function generationElapsedMs(): number {
-  const anchor = generationTimerAnchor.value
-  if (anchor == null) return 0
-  return Math.round(generationTimerTick.value - anchor)
-}
-
-function assistantTimerLabel(turn: ChatTurnItem): string | null {
-  if (isAssistantBubbleLoading(turn)) {
-    const ms = generationElapsedMs()
-    return ms > 0 ? formatDurationMs(ms) : null
-  }
-  const d = assistantDurationMs(turn)
-  return d != null ? formatDurationMs(d) : null
-}
-
-/** 该轮用户发送时组装的 prompt 估算 token（turn-role meta） */
-function userSendTokenLabel(turn: ChatTurnItem): string | null {
-  const awaiting =
-    pendingSendTurnOrdinal.value === turn.turnOrdinal ||
-    regeneratingTurnOrdinal.value === turn.turnOrdinal
-  if (awaiting) {
-    const pending = pendingSendEstimatedTokens.value
-    if (pending != null && pending > 0) return String(pending)
-  }
-  const n = turnSendEstimatedTokens(turn)
-  return n != null ? String(n) : null
-}
-
-/** 该轮助手回复 token（turn-role meta） */
-function assistantReceiveTokenLabel(turn: ChatTurnItem): string | null {
-  const awaiting =
-    pendingSendTurnOrdinal.value === turn.turnOrdinal ||
-    regeneratingTurnOrdinal.value === turn.turnOrdinal
-  if (awaiting) {
-    const n = pendingReceiveCompletionTokens.value
-    if (n != null && n > 0) return String(n)
-  }
-  const n = assistantCompletionTokens(turn)
-  return n != null ? String(n) : null
-}
-
-const editingTurnOrdinal = ref<number | null>(null)
-const editingSide = ref<'user' | 'assistant' | null>(null)
-const editDraft = ref('')
-
-/** assistant：删助手变体或整轮；wholeTurn：从用户条工具栏删整轮 */
-const deleteTarget = ref<'assistant' | 'wholeTurn' | null>(null)
-
-const deleteDialogOpen = ref(false)
-const deleteListIndex = ref<number | null>(null)
-
-const chatScrollEl = ref<HTMLElement | null>(null)
-
-function scrollChatElToBottom(el: HTMLElement) {
-  const max = Math.max(0, el.scrollHeight - el.clientHeight)
-  el.scrollTop = max
-}
-
-async function scrollChatToBottom() {
-  await nextTick()
-  const el = chatScrollEl.value
-  if (!el) return
-  const apply = () => scrollChatElToBottom(el)
-  apply()
-  await new Promise<void>((resolve) => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        apply()
-        resolve()
-      })
-    })
+  const bubbleUi = useTurnBubbleUi({
+    turns,
+    pendingSendTurnOrdinal,
+    pendingSendEstimatedTokens,
+    pendingReceiveCompletionTokens,
+    regeneratingTurnOrdinal,
+    streamingText,
+    streamEnabled: () => conn.stream,
+    generationElapsedMs,
+    editingTurnOrdinal: turnEditDelete.editingTurnOrdinal,
+    editingSide: turnEditDelete.editingSide,
   })
-  apply()
-}
 
-/** 生成结束、即将 reload/滚动前：退出骨架/流式态，避免滚到底时仍按 loading 高度计算 */
-function endRegeneratingUi() {
-  streamingText.value = ''
-  streamingReasoning.value = ''
-  regeneratingTurnOrdinal.value = null
-  pendingSendEstimatedTokens.value = null
-  pendingReceiveCompletionTokens.value = null
-}
+  const outbound = useChatOutbound({
+    turns,
+    userInput,
+    loading,
+    errorText,
+    regeneratingTurnOrdinal,
+    pendingSendEstimatedTokens,
+    pendingReceiveCompletionTokens,
+    streamingText,
+    streamingReasoning,
+    isConversationWritable,
+    parseCustomParamsOrThrow,
+    customParamsErrorMessage,
+    assertApiReady,
+    runSend,
+    runRegenerate,
+    startGenerationTimer,
+    stopGenerationTimer,
+    setPersistWarning,
+    appendPendingUserTurn,
+    rollbackPendingUserTurn,
+    finalizePendingTurn,
+    replaceTurnAt,
+    persistTurnToServer,
+    loadMessages,
+    scrollChatToBottom,
+    endRegeneratingUi,
+    emitAssistantReplyComplete,
+    t,
+  })
+  const { send, sendWithPlugins, regenerateAssistant, regenerateWithPlugins, slideAssistant } =
+    outbound
 
-/** 对话区内最后一条可见的思维链（按 DOM 顺序，即最近一轮助手） */
-function lastReasoningChainInChat(): HTMLDetailsElement | null {
-  const chains = document.querySelectorAll('.chat-body details.reasoning-chain')
-  const last = chains[chains.length - 1]
-  return last instanceof HTMLDetailsElement ? last : null
-}
+  const { onComposerKeydown } = useComposerKeydown({
+    userInput,
+    canSend: computed(
+      () =>
+        !conversationWriteLocked.value &&
+        !loading.value &&
+        regeneratingTurnOrdinal.value === null &&
+        conn.isApiKeyConfigured &&
+        conn.model.trim().length > 0 &&
+        userInput.value.trim().length > 0,
+    ),
+    composerEnterMode: () => prefs.composerEnterMode,
+    send,
+  })
 
-/**
- * R 快捷键：切换鼠标 hover 所在 turn 的思维链；若不在 turn 上，切换最后一个 assistant turn 的思维链。
- * 输入框/可编辑区域聚焦时不拦截。
- */
-function onGlobalKeyR(e: KeyboardEvent) {
-  if (e.key !== 'r' && e.key !== 'R') return
-  if (e.ctrlKey || e.metaKey || e.altKey) return
-  const t = e.target as HTMLElement | null
-  if (
-    t &&
-    (t.tagName === 'INPUT' ||
-      t.tagName === 'TEXTAREA' ||
-      t.isContentEditable)
-  ) {
-    return
-  }
-  const hovered = document.querySelector(
-    '.turn--assistant:hover, .turn--assistant.is-hover',
-  ) as HTMLElement | null
-  const target =
-    hovered?.querySelector('details.reasoning-chain') ?? lastReasoningChainInChat()
-  if (target instanceof HTMLDetailsElement) {
-    target.open = !target.open
-    e.preventDefault()
-  }
-}
+  const assemblePreview = useAssemblePreview({
+    getConversationId: () => props.conversationId,
+    userInput,
+    getContextLength: () => conn.contextLength,
+    getModel: () => conn.model,
+    t,
+  })
 
-onMounted(() => {
-  void scrollChatToBottom()
-  window.addEventListener('keydown', onGlobalKeyR)
-  window.addEventListener('pagehide', flushComposerDraftOnPageHide)
-})
-onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onGlobalKeyR)
-  window.removeEventListener('pagehide', flushComposerDraftOnPageHide)
-  cancelComposerDraftSaveTimer()
-  const cid = props.conversationId.trim()
-  if (cid) flushComposerDraftNow(cid, userInput.value)
-  if (generationTimerHandle) {
-    clearInterval(generationTimerHandle)
-    generationTimerHandle = null
-  }
-})
+  const turnPrompt = useTurnPrompt({
+    getConversationId: () => props.conversationId,
+    t,
+  })
 
-const conversationWriteLocked = ref(false)
+  const display = useChatDisplay({
+    conversationUserName: props.conversationUserName,
+    getUserCharacterId: () => props.conversationUserCharacterId,
+    getCharacterIds: () => props.conversationCharacterIds,
+    getAuthToken: () => auth.token,
+    getConnAlias: () => conn.alias,
+    getConnModel: () => conn.model,
+    t,
+  })
 
-const canSend = computed(
-  () =>
-    !conversationWriteLocked.value &&
-    !loading.value &&
-    regeneratingTurnOrdinal.value === null &&
-    conn.isApiKeyConfigured &&
-    conn.model.trim().length > 0 &&
-    userInput.value.trim().length > 0,
-)
+  const { copiedTurnKey, copyTurnText } = useCopyFeedback()
 
-function isConversationWritable(): boolean {
-  return !conversationWriteLocked.value
-}
-
-async function runConversationScope(
-  opts: ConversationScopeOptions,
-  fn: (ctx: ConversationBatchContext) => Promise<void>,
-): Promise<void> {
-  const writeLock = opts.writeLock !== false
-  const requireIdle = opts.requireIdle !== false
-  if (writeLock && conversationWriteLocked.value) {
-    throw new ConversationHostError('conversation_locked')
-  }
-  if (requireIdle && (loading.value || regeneratingTurnOrdinal.value !== null)) {
-    throw new ConversationHostError('conversation_busy')
-  }
-  if (writeLock) conversationWriteLocked.value = true
-  try {
-    const cid = props.conversationId
-    await fn({
-      conversationId: cid,
-      read: (readOpts) => readConversationTurnsRange(cid, readOpts.range),
-      patchTurns: (dtos) => patchConversationTurns(cid, dtos),
-    })
-  } finally {
-    if (writeLock) conversationWriteLocked.value = false
-  }
-}
-
-async function runConversationBatch(
-  fn: (ctx: ConversationBatchContext) => Promise<void>,
-): Promise<void> {
-  return runConversationScope({ writeLock: true, requireIdle: true }, fn)
-}
-
-async function refreshConversation(): Promise<void> {
-  await loadMessages()
-}
-
-function nextTurnOrdinal0(): number {
-  if (turns.value.length === 0) return 0
-  return Math.max(...turns.value.map((t) => t.turnOrdinal)) + 1
-}
-
-function isTurnAwaitingAssistant(turn: ChatTurnItem): boolean {
-  return pendingSendTurnOrdinal.value === turn.turnOrdinal
-}
-
-function isAssistantBubbleLoading(turn: ChatTurnItem): boolean {
-  return (
-    isTurnAwaitingAssistant(turn) ||
-    regeneratingTurnOrdinal.value === turn.turnOrdinal
+  const canSend = computed(
+    () =>
+      !conversationWriteLocked.value &&
+      !loading.value &&
+      regeneratingTurnOrdinal.value === null &&
+      conn.isApiKeyConfigured &&
+      conn.model.trim().length > 0 &&
+      userInput.value.trim().length > 0,
   )
-}
 
-/** 等待首 token / 非流式请求中：显示骨架而非空白或转圈 */
-function showAssistantSkeleton(turn: ChatTurnItem): boolean {
-  if (!isAssistantBubbleLoading(turn)) return false
-  if (conn.stream && streamingText.value.trim()) return false
-  return true
-}
-
-function isAssistantStreamingBubble(turn: ChatTurnItem): boolean {
-  return isAssistantBubbleLoading(turn) && conn.stream && !!streamingText.value.trim()
-}
-
-function replaceTurnAt(listIndex: number, next: ChatTurnItem) {
-  turns.value = turns.value.map((t, i) => (i === listIndex ? next : t))
-}
-
-function clearPendingSend() {
-  pendingSendTurnOrdinal.value = null
-  pendingSendEstimatedTokens.value = null
-  pendingReceiveCompletionTokens.value = null
-  streamingText.value = ''
-  streamingReasoning.value = ''
-}
-
-function appendPendingUserTurn(userText: string, ord: number) {
-  turns.value = [
-    ...turns.value,
-    {
-      user: userText,
-      receives: [],
-      activeReceiveIndex: 0,
-      turnOrdinal: ord,
-    },
-  ]
-  userInput.value = ''
-  clearComposerDraft(props.conversationId, composerDraftUserId())
-  pendingSendTurnOrdinal.value = ord
-  void scrollChatToBottom()
-}
-
-function rollbackPendingUserTurn(ord: number, restoreUserText?: string) {
-  turns.value = turns.value.filter((t) => t.turnOrdinal !== ord)
-  clearPendingSend()
-  if (restoreUserText) userInput.value = restoreUserText
-}
-
-function finalizePendingTurn(ord: number, receive: ReceiveItem) {
-  const sendEt = pendingSendEstimatedTokens.value
-  const recvCt = pendingReceiveCompletionTokens.value
-  const merged: ReceiveItem = {
-    ...receive,
-    ...(sendEt != null && sendEt > 0 && !receive.estimatedTokens
-      ? { estimatedTokens: sendEt }
-      : {}),
-    ...(recvCt != null && recvCt > 0 && !receive.completionTokens
-      ? { completionTokens: recvCt }
-      : {}),
-  }
-  const idx = turns.value.findIndex((t) => t.turnOrdinal === ord)
-  if (idx >= 0) {
-    const cur = turns.value[idx]
-    replaceTurnAt(idx, {
-      ...cur,
-      receives: [merged],
-      activeReceiveIndex: 0,
-    })
-  }
-  clearPendingSend()
-}
-
-function buildReceiveItem(
-  id: string,
-  content: string,
-  opts: {
-    reasoning?: string
-    durationMs?: number
-    estimatedTokens?: number
-    completionTokens?: number
-  } = {},
-): ReceiveItem {
-  const model = conn.model.trim()
-  return {
-    id,
-    content,
-    ...(opts.reasoning ? { reasoning: opts.reasoning } : {}),
-    ...(opts.durationMs && opts.durationMs > 0 ? { durationMs: opts.durationMs } : {}),
-    ...(opts.estimatedTokens && opts.estimatedTokens > 0
-      ? { estimatedTokens: opts.estimatedTokens }
-      : {}),
-    ...(opts.completionTokens && opts.completionTokens > 0
-      ? { completionTokens: opts.completionTokens }
-      : {}),
-    ...(model ? { model } : {}),
-  }
-}
-
-async function persistTurnToServer(turn: ChatTurnItem): Promise<boolean> {
-  return persistTurnOnServer(props.conversationId, turn)
-}
-
-async function loadMessages() {
-  try {
-    turns.value = await fetchConversationTurns(props.conversationId)
-  } catch {
-    /* ignore */
-  } finally {
-    await nextTick()
-    await scrollChatToBottom()
-  }
-}
-
-watch(
-  () => turns.value.length,
-  () => {
+  onMounted(() => {
     void scrollChatToBottom()
-  },
-  { flush: 'post' },
-)
-
-watch(streamingText, () => {
-  void scrollChatToBottom()
-}, { flush: 'post' })
-
-watch(regeneratingTurnOrdinal, (cur, prev) => {
-  if (prev !== null && cur === null) {
-    void nextTick().then(() => scrollChatToBottom())
-  }
-})
-
-watch(
-  () => props.conversationId,
-  (newId, oldId) => {
-    if (oldId?.trim()) {
-      cancelComposerDraftSaveTimer()
-      flushComposerDraftNow(oldId, userInput.value)
-    }
-    turns.value = []
-    userInput.value = newId?.trim()
-      ? readComposerDraft(newId, composerDraftUserId())
-      : ''
-    clearPendingSend()
-    errorText.value = ''
-    editingTurnOrdinal.value = null
-    editingSide.value = null
-    deleteTarget.value = null
-    void loadMessages()
-  },
-  { immediate: true },
-)
-
-watch(userInput, (text) => {
-  scheduleComposerDraftSave(props.conversationId, text)
-})
-
-function flushComposerDraftOnPageHide(): void {
-  cancelComposerDraftSaveTimer()
-  const cid = props.conversationId.trim()
-  if (cid) flushComposerDraftNow(cid, userInput.value)
-}
-
-function insertComposerNewline(e: KeyboardEvent) {
-  const el = e.target
-  if (!(el instanceof HTMLTextAreaElement)) return
-  e.preventDefault()
-  const start = el.selectionStart ?? userInput.value.length
-  const end = el.selectionEnd ?? start
-  const v = userInput.value
-  userInput.value = `${v.slice(0, start)}\n${v.slice(end)}`
-  void nextTick(() => {
-    el.selectionStart = el.selectionEnd = start + 1
+    window.addEventListener('keydown', onGlobalKeyR)
+    window.addEventListener('pagehide', composerDraft.flushComposerDraftOnPageHide)
   })
-}
+  onBeforeUnmount(() => {
+    window.removeEventListener('keydown', onGlobalKeyR)
+    window.removeEventListener('pagehide', composerDraft.flushComposerDraftOnPageHide)
+    composerDraft.dispose()
+    disposeTimer()
+  })
 
-function onComposerKeydown(e: KeyboardEvent) {
-  if (e.key !== 'Enter' || e.isComposing) return
+  watch(
+    () => turns.value.length,
+    () => {
+      void scrollChatToBottom()
+    },
+    { flush: 'post' },
+  )
 
-  const mode = normalizeComposerEnterMode(prefs.composerEnterMode)
-  const mod = e.ctrlKey || e.metaKey
+  watch(streamingText, () => {
+    void scrollChatToBottom()
+  }, { flush: 'post' })
 
-  if (mode === 'enter-send') {
-    if (mod) {
-      insertComposerNewline(e)
-      return
+  watch(regeneratingTurnOrdinal, (cur, prev) => {
+    if (prev !== null && cur === null) {
+      void nextTick().then(() => scrollChatToBottom())
     }
-    if (e.shiftKey) return
-    e.preventDefault()
-    if (canSend.value) void send()
-    return
-  }
+  })
 
-  if (!mod) return
-  e.preventDefault()
-  if (canSend.value) void send()
-}
+  watch(
+    () => props.conversationId,
+    (newId, oldId) => {
+      composerDraft.switchConversationDraft(oldId, newId ?? '')
+      turns.value = []
+      clearPendingSend()
+      errorText.value = ''
+      turnEditDelete.resetState()
+      void loadMessages()
+    },
+    { immediate: true },
+  )
 
-async function send() {
-  if (!isConversationWritable()) return
-  errorText.value = ''
-  const userText = userInput.value.trim()
-  try {
-    if (conn.customParamsJson.trim()) {
-      conn.parseCustomParams()
-    }
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.errors.invalidCustomJson')
-    return
-  }
+  watch(userInput, (text) => {
+    composerDraft.scheduleComposerDraftSave(props.conversationId, text)
+  })
 
-  const ord = nextTurnOrdinal0()
-  appendPendingUserTurn(userText, ord)
-  loading.value = true
-  startGenerationTimer()
-  try {
-    const {
-      content: assistantOut,
-      reasoning: reasoningOut,
-      persist,
-      durationMs,
-      estimatedTokens,
-      completionTokens,
-      traceId,
-    } = await requestChatCompletion(
-      {
-        userText,
-        promptTrigger: 'normal',
-      },
-      { mode: 'send' },
-    )
-    setPersistWarning(persist)
-    const elapsed = durationMs ?? stopGenerationTimer()
-    const receive = buildReceiveItem(
-      allocateShortId(collectUsedReceiveIds(turns.value)),
-      assistantOut,
-      {
-        reasoning: reasoningOut,
-        durationMs: elapsed,
-        estimatedTokens,
-        completionTokens,
-      },
-    )
-    finalizePendingTurn(ord, receive)
-
-    if (assistantOut.trim() && (!persist || persist.ok)) {
-      await loadMessages()
-    }
-    emitAssistantReplyComplete({ mode: 'send', traceId })
-  } catch (e) {
-    rollbackPendingUserTurn(ord, userText)
-    errorText.value = e instanceof Error ? e.message : t('chat.errors.network')
-  } finally {
-    stopGenerationTimer()
-    loading.value = false
-  }
-}
-
-function slideAssistant(listIndex: number, direction: 'left' | 'right') {
-  if (!isConversationWritable()) return
-  const turn = turns.value[listIndex]
-  if (!turn || turn.receives.length === 0) return
-  const len = turn.receives.length
-  const a = turn.activeReceiveIndex
-
-  const applyVariantSwitch = (next: ChatTurnItem) => {
-    replaceTurnAt(listIndex, next)
-    void persistTurnToServer(next)
-    void nextTick().then(() => scrollChatToBottom())
-  }
-
-  if (direction === 'left') {
-    const nextIdx = a === 0 ? len - 1 : a - 1
-    applyVariantSwitch({ ...turn, activeReceiveIndex: nextIdx })
-    return
-  }
-
-  if (a === len - 1) {
-    if (isOpeningTurn(turn)) {
-      applyVariantSwitch({ ...turn, activeReceiveIndex: 0 })
-      return
-    }
-    void regenerateAssistant(listIndex, 'swipe')
-    return
-  }
-  applyVariantSwitch({ ...turn, activeReceiveIndex: a + 1 })
-}
-
-async function regenerateAssistant(
-  listIndex: number,
-  trigger: PromptTrigger = 'regenerate',
-) {
-  if (!isConversationWritable()) return
-  const turn = turns.value[listIndex]
-  if (!turn || !turn.user.trim()) return
-  if (regeneratingTurnOrdinal.value !== null) return
-  regeneratingTurnOrdinal.value = turn.turnOrdinal
-  pendingSendEstimatedTokens.value = null
-  pendingReceiveCompletionTokens.value = null
-  streamingText.value = ''
-  streamingReasoning.value = ''
-  errorText.value = ''
-  startGenerationTimer()
-  try {
-    try {
-      if (conn.customParamsJson.trim()) {
-        conn.parseCustomParams()
-      }
-    } catch (e) {
-      errorText.value =
-        e instanceof Error ? e.message : t('chat.errors.invalidCustomJson')
-      return
-    }
-
-    const {
-      content: assistantOut,
-      reasoning: reasoningOut,
-      persist,
-      durationMs,
-      estimatedTokens,
-      completionTokens,
-      traceId,
-    } = await requestChatCompletion(
-      {
-        userText: turn.user,
-        promptTrigger: trigger,
-        historyBeforeTurnOrdinalExclusive: turn.turnOrdinal,
-        regenerateTurnOrdinal: turn.turnOrdinal,
-      },
-      { mode: 'regenerate' },
-    )
-    setPersistWarning(persist)
-
-    const cur = turns.value[listIndex]
-    if (!cur) return
-    const elapsed = durationMs ?? stopGenerationTimer()
-    const newRec = buildReceiveItem(
-      allocateShortId(collectUsedReceiveIds(turns.value)),
-      assistantOut,
-      {
-        reasoning: reasoningOut,
-        durationMs: elapsed,
-        estimatedTokens,
-        completionTokens,
-      },
-    )
-    const next: ChatTurnItem = {
-      ...cur,
-      receives: [...cur.receives, newRec],
-      activeReceiveIndex: cur.receives.length,
-    }
-    replaceTurnAt(listIndex, next)
-    endRegeneratingUi()
-    await nextTick()
-    if (assistantOut.trim() && (!persist || persist.ok)) {
-      await loadMessages()
-    } else {
-      await scrollChatToBottom()
-    }
-    emitAssistantReplyComplete({ mode: 'regenerate', traceId })
-  } catch (e) {
-    errorText.value = e instanceof Error ? e.message : t('chat.errors.network')
-  } finally {
-    stopGenerationTimer()
-    endRegeneratingUi()
-  }
-}
-
-function openEditAssistant(turn: ChatTurnItem) {
-  editingTurnOrdinal.value = turn.turnOrdinal
-  editingSide.value = 'assistant'
-  editDraft.value = assistantText(turn)
-}
-
-function openEditUser(turn: ChatTurnItem) {
-  editingTurnOrdinal.value = turn.turnOrdinal
-  editingSide.value = 'user'
-  editDraft.value = turn.user
-}
-
-function cancelEdit() {
-  editingTurnOrdinal.value = null
-  editingSide.value = null
-  editDraft.value = ''
-}
-
-function saveEdit(listIndex: number) {
-  if (!isConversationWritable()) return
-  const turn = turns.value[listIndex]
-  if (!turn || editingTurnOrdinal.value !== turn.turnOrdinal) return
-  const text = editDraft.value
-  const side = editingSide.value
-  if (side === 'user') {
-    const next: ChatTurnItem = {
-      ...turn,
-      user: text,
-    }
-    replaceTurnAt(listIndex, next)
-    cancelEdit()
-    void persistTurnToServer(next)
-    return
-  }
-  if (side === 'assistant') {
-    const ai = turn.activeReceiveIndex
-    const newReceives = turn.receives.map((r, j) =>
-      j === ai ? { ...r, content: text } : r,
-    )
-    const next: ChatTurnItem = {
-      ...turn,
-      receives: newReceives,
-    }
-    replaceTurnAt(listIndex, next)
-    cancelEdit()
-    void persistTurnToServer(next)
-  }
-}
-
-function requestDelete(listIndex: number) {
-  deleteListIndex.value = listIndex
-  deleteTarget.value = 'assistant'
-  deleteDialogOpen.value = true
-}
-
-function requestDeleteWholeTurnFromUser(listIndex: number) {
-  deleteListIndex.value = listIndex
-  deleteTarget.value = 'wholeTurn'
-  deleteDialogOpen.value = true
-}
-
-function cancelDelete() {
-  deleteDialogOpen.value = false
-  deleteListIndex.value = null
-  deleteTarget.value = null
-}
-
-async function confirmDelete() {
-  if (!isConversationWritable()) return
-  const listIndex = deleteListIndex.value
-  const target = deleteTarget.value
-  if (listIndex === null || !target) return
-  const turn = turns.value[listIndex]
-  if (!turn) {
-    cancelDelete()
-    return
-  }
-
-  if (target === 'assistant' && turn.receives.length > 1) {
-    const active = turn.activeReceiveIndex
-    const newReceives = turn.receives.filter((_, j) => j !== active)
-    const newActive = Math.min(active, newReceives.length - 1)
-    const next: ChatTurnItem = {
-      ...turn,
-      receives: newReceives,
-      activeReceiveIndex: newActive,
-    }
-    replaceTurnAt(listIndex, next)
-    cancelDelete()
-    void persistTurnToServer(next)
-    return
-  }
-
-  try {
-    const { ok, status } = await deleteTurnOnServer(
-      props.conversationId,
-      turn.turnOrdinal,
-    )
-    if (ok) {
-      cancelDelete()
-      await loadMessages()
-      return
-    }
-    if (status === 404) {
-      turns.value = turns.value
-        .filter((_, i) => i !== listIndex)
-        .map((t, i) => ({ ...t, turnOrdinal: i }))
-      cancelDelete()
-      return
-    }
-    errorText.value = t('chat.errors.deleteTurnFailed')
-  } catch {
-    errorText.value = t('chat.errors.deleteTurnFailed')
-  }
-  cancelDelete()
-}
-
-const deleteDialogMessage = computed(() => {
-  const i = deleteListIndex.value
-  const tgt = deleteTarget.value
-  if (i === null || !tgt) return ''
-  const turn = turns.value[i]
-  if (!turn) return ''
-  if (tgt === 'assistant' && turn.receives.length > 1) {
-    return t('chat.deleteVariantConfirm')
-  }
-  return t('chat.deleteTurnConfirm')
-})
-
-/** 仅最后一轮助手回复显示 swipe；加载/流式进行中不显示 */
-function showAssistantSwipeFooter(turn: ChatTurnItem, listIndex: number): boolean {
-  if (isAssistantBubbleLoading(turn)) return false
-  if (pendingSendTurnOrdinal.value !== null) return false
-  if (regeneratingTurnOrdinal.value !== null) return false
-  if (listIndex !== turns.value.length - 1) return false
-  if (turn.receives.length === 0) return false
-  if (
-    editingTurnOrdinal.value === turn.turnOrdinal &&
-    editingSide.value === 'assistant'
-  ) {
-    return false
-  }
-  return true
-}
-
-const turnPromptDialogOpen = ref(false)
-const turnPromptLoading = ref(false)
-const turnPromptError = ref('')
-const turnPromptDisplay = ref('')
-const turnPromptIsEmpty = ref(false)
-
-const assistantDisplayName = ref('')
-
-const userDisplayName = computed(() => {
-  const n = props.conversationUserName?.trim()
-  return n || t('chat.userBrand')
-})
-
-const assistantRoleName = computed(() => {
-  const n = assistantDisplayName.value.trim()
-  return n || t('chat.assistantBrand')
-})
-
-const userAvatarLetter = computed(() => {
-  const m = userDisplayName.value
-  const ch = m.replace(/[^a-zA-Z\u4e00-\u9fa5]/g, '').charAt(0)
-  return ch ? ch.toUpperCase() : 'Y'
-})
-
-const assistantAvatarLetter = computed(() => {
-  const m = assistantRoleName.value || conn.alias.trim() || conn.model.trim()
-  if (!m) return 'N'
-  const ch = m.replace(/[^a-zA-Z\u4e00-\u9fa5]/g, '').charAt(0)
-  return ch ? ch.toUpperCase() : 'N'
-})
-
-const turnAvatarUrls = ref<Record<'user' | 'assistant', string | null>>({
-  user: null,
-  assistant: null,
-})
-
-async function loadPrimaryAssistantName(id: string | null | undefined) {
-  const clean = typeof id === 'string' ? id.trim() : ''
-  assistantDisplayName.value = ''
-  if (!clean) return
-  try {
-    const res = await fetch(`/api/characters/${clean}`)
-    if (!res.ok) return
-    const doc = (await res.json()) as { card?: Record<string, unknown> }
-    const name = doc.card?.name
-    assistantDisplayName.value =
-      typeof name === 'string' && name.trim() ? name.trim() : ''
-  } catch {
-    /* 卡可能已删除；回退到默认助手名 */
-  }
-}
-
-watch(
-  () =>
-    [
-      props.conversationUserCharacterId,
-      props.conversationCharacterIds,
-      auth.token,
-    ] as const,
-  ([userId, charIds]) => {
-    const primaryId = Array.isArray(charIds) ? charIds[0] : undefined
-    turnAvatarUrls.value = {
-      user: characterImageUrl(userId),
-      assistant: characterImageUrl(primaryId),
-    }
-    void loadPrimaryAssistantName(primaryId)
-  },
-  { immediate: true, deep: true },
-)
-
-const copiedTurnKey = ref<string | null>(null)
-let copiedTimer: ReturnType<typeof setTimeout> | null = null
-
-async function copyTurnText(text: string, key: string) {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text)
-    } else {
-      const ta = document.createElement('textarea')
-      ta.value = text
-      ta.style.position = 'fixed'
-      ta.style.left = '-100vw'
-      document.body.appendChild(ta)
-      ta.select()
-      document.execCommand('copy')
-      document.body.removeChild(ta)
-    }
-    copiedTurnKey.value = key
-    if (copiedTimer) clearTimeout(copiedTimer)
-    copiedTimer = setTimeout(() => {
-      copiedTurnKey.value = null
-    }, 1400)
-  } catch (e) {
-    console.warn('copy failed', e)
-  }
-}
-
-const assemblePreviewOpen = ref(false)
-const assemblePreviewLoading = ref(false)
-const assemblePreviewError = ref('')
-const assemblePreviewJson = ref('')
-const assemblePreviewMeta = ref({
-  messages: 0,
-  estimatedTokens: 0,
-  droppedLoreCount: 0,
-  droppedMemoryCount: 0,
-  droppedHistoryCount: 0,
-  memoryTurnIds: [] as string[],
-})
-const assemblePreviewCopied = ref(false)
-
-const canPreviewAssemble = computed(
-  () =>
-    !assemblePreviewLoading.value &&
-    props.conversationId.trim().length > 0,
-)
-
-async function fetchAssemblePreview(): Promise<void> {
-  assemblePreviewLoading.value = true
-  assemblePreviewError.value = ''
-  assemblePreviewJson.value = ''
-  assemblePreviewMeta.value = {
-    messages: 0,
-    estimatedTokens: 0,
-    droppedLoreCount: 0,
-    droppedMemoryCount: 0,
-    droppedHistoryCount: 0,
-    memoryTurnIds: [],
-  }
-  const id = props.conversationId.trim()
-  try {
-    const res = await fetch(
-      `/api/chat/conversations/${id}/assemble-messages`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userText: userInput.value.trim(),
-          promptTrigger: 'normal',
-          contextLength: conn.contextLength ?? undefined,
-          model: conn.model.trim() || undefined,
-        }),
-      },
-    )
-    if (!res.ok) {
-      let msg = t('chat.previewAssembleLoadFailed')
-      try {
-        const j = (await res.json()) as { error?: string; detail?: string }
-        msg =
-          (typeof j.error === 'string' && j.error.trim()
-            ? translateApiError(j.error.trim())
-            : j.detail) || msg
-      } catch {
-        const text = await res.text()
-        if (text.trim()) msg = text.slice(0, 500)
-      }
-      assemblePreviewError.value = msg
-      return
-    }
-    const data = (await res.json()) as AssembleMessagesResult
-    const messages = Array.isArray(data.messages) ? data.messages : []
-    assemblePreviewMeta.value = {
-      messages: messages.length,
-      estimatedTokens:
-        typeof data.estimatedTokens === 'number' ? data.estimatedTokens : 0,
-      droppedLoreCount:
-        typeof data.droppedLoreCount === 'number' ? data.droppedLoreCount : 0,
-      droppedMemoryCount:
-        typeof data.droppedMemoryCount === 'number'
-          ? data.droppedMemoryCount
-          : 0,
-      droppedHistoryCount:
-        typeof data.droppedHistoryCount === 'number'
-          ? data.droppedHistoryCount
-          : 0,
-      memoryTurnIds: Array.isArray(data.memoryTurnIds)
-        ? data.memoryTurnIds.filter((x): x is string => typeof x === 'string')
-        : [],
-    }
-    assemblePreviewJson.value = JSON.stringify(messages, null, 2)
-  } catch {
-    assemblePreviewError.value = t('chat.previewAssembleLoadFailed')
-  } finally {
-    assemblePreviewLoading.value = false
-  }
-}
-
-async function openAssemblePreview() {
-  assemblePreviewOpen.value = true
-  await fetchAssemblePreview()
-}
-
-async function copyAssemblePreviewJson() {
-  if (!assemblePreviewJson.value) return
-  try {
-    await navigator.clipboard.writeText(assemblePreviewJson.value)
-    assemblePreviewCopied.value = true
-    setTimeout(() => {
-      assemblePreviewCopied.value = false
-    }, 1200)
-  } catch {
-    /* ignore */
-  }
-}
-
-async function openTurnPromptSnapshot(turn: ChatTurnItem) {
-  turnPromptDialogOpen.value = true
-  turnPromptLoading.value = true
-  turnPromptError.value = ''
-  turnPromptDisplay.value = ''
-  turnPromptIsEmpty.value = false
-  const id = props.conversationId
-  try {
-    const res = await fetch(`/api/chat/conversations/${id}/chat-prompt`)
-    if (!res.ok) {
-      turnPromptError.value = t('chat.turnPromptLoadFailed')
-      return
-    }
-    const data = (await res.json()) as { entries?: ChatPromptSnapshotEntry[] }
-    const entries = Array.isArray(data.entries) ? data.entries : []
-    const match = entries.filter((e) => e.turnOrdinal === turn.turnOrdinal)
-    const entry = match.length ? match[match.length - 1] : null
-    if (!entry) {
-      turnPromptIsEmpty.value = true
-      return
-    }
-    turnPromptDisplay.value = JSON.stringify(entry, null, 2)
-  } catch {
-    turnPromptError.value = t('chat.turnPromptLoadFailed')
-  } finally {
-    turnPromptLoading.value = false
-  }
-}
-
-function isLastUserTurn(turn: ChatTurnItem): boolean {
-  const list = turns.value
-  for (let i = list.length - 1; i >= 0; i--) {
-    if (list[i].user.trim()) {
-      return list[i].turnOrdinal === turn.turnOrdinal
-    }
-  }
-  return false
-}
-
-async function sendWithPlugins(
-  userText: string,
-  plugins: ConversationChatRequestPlugins,
-) {
-  if (!isConversationWritable()) return
-  errorText.value = ''
-  const trimmed = userText.trim()
-  if (!trimmed) return
-  try {
-    if (conn.customParamsJson.trim()) {
-      conn.parseCustomParams()
-    }
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.errors.invalidCustomJson')
-    return
-  }
-  if (!conn.isApiKeyConfigured || conn.model.trim().length === 0) {
-    errorText.value = t('chat.errors.requestFailedStatus', { status: 400 })
-    return
-  }
-
-  const ord = nextTurnOrdinal0()
-  appendPendingUserTurn(trimmed, ord)
-  loading.value = true
-  startGenerationTimer()
-  try {
-    const {
-      content: assistantOut,
-      reasoning: reasoningOut,
-      persist,
-      durationMs,
-      estimatedTokens,
-      completionTokens,
-      traceId,
-    } = await requestChatCompletion(
-      {
-        userText: trimmed,
-        promptTrigger: 'normal',
-        plugins,
-      },
-      { mode: 'send' },
-    )
-    setPersistWarning(persist)
-    const elapsed = durationMs ?? stopGenerationTimer()
-    const receive = buildReceiveItem(
-      allocateShortId(collectUsedReceiveIds(turns.value)),
-      assistantOut,
-      {
-        reasoning: reasoningOut,
-        durationMs: elapsed,
-        estimatedTokens,
-        completionTokens,
-      },
-    )
-    finalizePendingTurn(ord, receive)
-    if (assistantOut.trim() && (!persist || persist.ok)) {
-      await loadMessages()
-    }
-    emitAssistantReplyComplete({ mode: 'send', traceId })
-  } catch (e) {
-    rollbackPendingUserTurn(ord, trimmed)
-    errorText.value = e instanceof Error ? e.message : t('chat.errors.network')
-  } finally {
-    stopGenerationTimer()
-    loading.value = false
-  }
-}
-
-async function regenerateWithPlugins(
-  listIndex: number,
-  userText: string,
-  plugins: ConversationChatRequestPlugins,
-) {
-  if (!isConversationWritable()) return
-  const turn = turns.value[listIndex]
-  if (!turn) return
-  const trimmed = userText.trim()
-  if (!trimmed) return
-  if (regeneratingTurnOrdinal.value !== null || loading.value) return
-
-  errorText.value = ''
-  try {
-    if (conn.customParamsJson.trim()) {
-      conn.parseCustomParams()
-    }
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.errors.invalidCustomJson')
-    return
-  }
-  if (!conn.isApiKeyConfigured || conn.model.trim().length === 0) {
-    errorText.value = t('chat.errors.requestFailedStatus', { status: 400 })
-    return
-  }
-
-  regeneratingTurnOrdinal.value = turn.turnOrdinal
-  pendingSendEstimatedTokens.value = null
-  pendingReceiveCompletionTokens.value = null
-  streamingText.value = ''
-  streamingReasoning.value = ''
-  startGenerationTimer()
-  try {
-    const {
-      content: assistantOut,
-      reasoning: reasoningOut,
-      persist,
-      durationMs,
-      estimatedTokens,
-      completionTokens,
-      traceId,
-    } = await requestChatCompletion(
-      {
-        userText: trimmed,
-        promptTrigger: 'regenerate',
-        historyBeforeTurnOrdinalExclusive: turn.turnOrdinal,
-        regenerateTurnOrdinal: turn.turnOrdinal,
-        plugins,
-      },
-      { mode: 'regenerate' },
-    )
-    setPersistWarning(persist)
-
-    const cur = turns.value[listIndex]
-    if (!cur) return
-    const elapsed = durationMs ?? stopGenerationTimer()
-    const newRec = buildReceiveItem(
-      allocateShortId(collectUsedReceiveIds(turns.value)),
-      assistantOut,
-      {
-        reasoning: reasoningOut,
-        durationMs: elapsed,
-        estimatedTokens,
-        completionTokens,
-      },
-    )
-    const next: ChatTurnItem = {
-      ...cur,
-      user: trimmed,
-      receives: [...cur.receives, newRec],
-      activeReceiveIndex: cur.receives.length,
-    }
-    replaceTurnAt(listIndex, next)
-    endRegeneratingUi()
-    await nextTick()
-    if (assistantOut.trim() && (!persist || persist.ok)) {
-      await loadMessages()
-    } else {
-      await scrollChatToBottom()
-    }
-    emitAssistantReplyComplete({ mode: 'regenerate', traceId })
-  } catch (e) {
-    errorText.value = e instanceof Error ? e.message : t('chat.errors.network')
-  } finally {
-    stopGenerationTimer()
-    endRegeneratingUi()
-  }
-}
   return reactive({
     chatScrollEl,
     turns,
@@ -1387,30 +317,16 @@ async function regenerateWithPlugins(
     loading,
     errorText,
     regeneratingTurnOrdinal,
-    editingTurnOrdinal,
-    editingSide,
-    editDraft,
-    deleteDialogOpen,
-    deleteDialogMessage,
-    turnPromptDialogOpen,
-    turnPromptLoading,
-    turnPromptError,
-    turnPromptDisplay,
-    turnPromptIsEmpty,
-    turnAvatarUrls,
-    userDisplayName,
-    assistantRoleName,
-    userAvatarLetter,
-    assistantAvatarLetter,
+    editingTurnOrdinal: turnEditDelete.editingTurnOrdinal,
+    editingSide: turnEditDelete.editingSide,
+    editDraft: turnEditDelete.editDraft,
+    deleteDialogOpen: turnEditDelete.deleteDialogOpen,
+    deleteDialogMessage: turnEditDelete.deleteDialogMessage,
+    ...turnPrompt,
+    ...display,
     copiedTurnKey,
-    assemblePreviewOpen,
-    assemblePreviewLoading,
-    assemblePreviewError,
-    assemblePreviewJson,
-    assemblePreviewMeta,
-    assemblePreviewCopied,
+    ...assemblePreview,
     canSend,
-    canPreviewAssemble,
     conversationId: props.conversationId,
     conversationWriteLocked,
     runConversationScope,
@@ -1418,38 +334,28 @@ async function regenerateWithPlugins(
     refreshConversation,
     writeChatPromptSnapshot,
     turnLabelN,
-    isTurnAwaitingAssistant,
-    isAssistantBubbleLoading,
-    showAssistantSkeleton,
-    isAssistantStreamingBubble,
+    ...bubbleUi,
     isOpeningTurn,
     assistantText,
     assistantReasoning,
     reasoningCharsCount,
-    assistantTimerLabel,
-    userSendTokenLabel,
-    assistantReceiveTokenLabel,
     assistantModelName,
-    showAssistantSwipeFooter,
     send,
     onComposerKeydown,
     slideAssistant,
     regenerateAssistant,
-    openEditAssistant,
-    openEditUser,
-    cancelEdit,
-    saveEdit,
-    requestDelete,
-    requestDeleteWholeTurnFromUser,
-    cancelDelete,
-    confirmDelete,
+    openEditAssistant: turnEditDelete.openEditAssistant,
+    openEditUser: turnEditDelete.openEditUser,
+    cancelEdit: turnEditDelete.cancelEdit,
+    saveEdit: turnEditDelete.saveEdit,
+    requestDelete: turnEditDelete.requestDelete,
+    requestDeleteWholeTurnFromUser: turnEditDelete.requestDeleteWholeTurnFromUser,
+    cancelDelete: turnEditDelete.cancelDelete,
+    confirmDelete: turnEditDelete.confirmDelete,
     copyTurnText,
-    openAssemblePreview,
-    copyAssemblePreviewJson,
-    openTurnPromptSnapshot,
     sendWithPlugins,
     regenerateWithPlugins,
-    isLastUserTurn,
+    isLastUserTurn: (turn: ChatTurnItem) => isLastUserTurn(turns.value, turn),
     onAssistantReplyComplete,
     onAssistantReplyPersisted,
   })

@@ -650,7 +650,8 @@
     "memoryRebuildFailed": "Rebuild failed",
     "memoryRebuildProgress": "{done} / {total} items done",
     "memoryRebuildProgressDetail": "{turns} turns + {loreEntries} lorebook vector entries",
-    "boundLorebook": "Bound lorebook"
+    "boundLorebook": "Bound lorebook",
+    "boundPrompt": "Bound prompt preset"
   },
   "conn": {
     "needBaseAndKey": "Enter Base URL and API Key first",

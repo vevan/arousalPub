@@ -3,6 +3,12 @@ import { generateShortId } from './short-id.js'
 import { getApiSettingsPath, getUserDataDir } from './config.js'
 import { getCurrentUserId } from './user-context.js'
 import { migrateLegacyDryOnPreset } from './dry-sampler.js'
+import {
+  isEncryptedSecretV1,
+  resolveSecretFromDisk,
+  secretToDiskFields,
+  type EncryptedSecretV1,
+} from './secret-encryption.js'
 
 export function getApiSettingsPathForUser(): string {
   return getApiSettingsPath()
@@ -42,24 +48,68 @@ export interface ApiSettingsDocument {
   presets: ApiPreset[]
 }
 
-function normalizeDocument(o: unknown): ApiSettingsDocument | null {
-  if (!o || typeof o !== 'object') return null
-  const d = o as Partial<ApiSettingsDocument>
-  if (d.version !== 1 || !Array.isArray(d.presets)) return null
-  const presets = (d.presets as unknown[]).filter((p): p is ApiPreset => {
-    if (!p || typeof p !== 'object' || Array.isArray(p)) return false
-    const o = p as Partial<ApiPreset>
-    return typeof o.id === 'string' && o.id.length > 0
+type ApiPresetDisk = Omit<ApiPreset, 'apiKey'> & {
+  apiKey?: string
+  apiKeyEnc?: EncryptedSecretV1
+}
+
+interface ApiSettingsDocumentDisk {
+  version: 1
+  savedAt: string
+  activePresetId: string
+  presets: ApiPresetDisk[]
+}
+
+function aadForPresetApiKey(userId: string, presetId: string): string {
+  return `arousal:${userId}:preset:${presetId}`
+}
+
+function presetDiskToMemory(raw: ApiPresetDisk, userId: string): ApiPreset {
+  const apiKey = resolveSecretFromDisk(raw.apiKey, raw.apiKeyEnc, {
+    aad: aadForPresetApiKey(userId, raw.id),
   })
-  if (presets.length === 0) return null
-  const presetsNorm: ApiPreset[] = presets.map((p) => {
+  const { apiKey: _p, apiKeyEnc: _e, ...rest } = raw
+  return { ...rest, apiKey } as ApiPreset
+}
+
+function presetMemoryToDisk(preset: ApiPreset, userId: string): ApiPresetDisk {
+  const { apiKey, ...rest } = preset
+  const { keyEnc: apiKeyEnc } = secretToDiskFields(apiKey, {
+    aad: aadForPresetApiKey(userId, preset.id),
+  })
+  const disk: ApiPresetDisk = { ...rest }
+  if (apiKeyEnc) disk.apiKeyEnc = apiKeyEnc
+  return disk
+}
+
+function isApiPresetDisk(p: unknown): p is ApiPresetDisk {
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return false
+  const o = p as Partial<ApiPresetDisk>
+  if (typeof o.id !== 'string' || !o.id.length) return false
+  if (o.apiKey !== undefined && typeof o.apiKey !== 'string') return false
+  if (o.apiKeyEnc !== undefined && !isEncryptedSecretV1(o.apiKeyEnc)) {
+    return false
+  }
+  return true
+}
+
+function normalizeDocumentFromDisk(
+  o: unknown,
+  userId: string,
+): ApiSettingsDocument | null {
+  if (!o || typeof o !== 'object') return null
+  const d = o as Partial<ApiSettingsDocumentDisk>
+  if (d.version !== 1 || !Array.isArray(d.presets)) return null
+  const presetsRaw = (d.presets as unknown[]).filter(isApiPresetDisk)
+  if (presetsRaw.length === 0) return null
+  const presets: ApiPreset[] = presetsRaw.map((p) => {
     const migrated = migrateLegacyDryOnPreset(p as unknown as Record<string, unknown>)
-    const m = migrated as Partial<ApiPreset>
+    const m = migrated as Partial<ApiPresetDisk>
     const breakers = Array.isArray(m.drySequenceBreakers)
       ? m.drySequenceBreakers.filter((x): x is string => typeof x === 'string')
       : []
-    return {
-      ...(m as ApiPreset),
+    const withMeta: ApiPresetDisk = {
+      ...(m as ApiPresetDisk),
       drySequenceBreakers: breakers,
       linkedPromptPresetId:
         typeof m.linkedPromptPresetId === 'string' &&
@@ -71,15 +121,28 @@ function normalizeDocument(o: unknown): ApiSettingsDocument | null {
           ? m.apiKeyId.trim()
           : null,
     }
+    return presetDiskToMemory(withMeta, userId)
   })
   let active =
-    typeof d.activePresetId === 'string' ? d.activePresetId : presetsNorm[0].id
-  if (!presetsNorm.some((p) => p.id === active)) active = presetsNorm[0].id
+    typeof d.activePresetId === 'string' ? d.activePresetId : presets[0].id
+  if (!presets.some((p) => p.id === active)) active = presets[0].id
   return {
     version: 1,
     savedAt: typeof d.savedAt === 'string' ? d.savedAt : new Date().toISOString(),
     activePresetId: active,
-    presets: presetsNorm,
+    presets,
+  }
+}
+
+function documentToDisk(
+  data: ApiSettingsDocument,
+  userId: string,
+): ApiSettingsDocumentDisk {
+  return {
+    version: 1,
+    savedAt: data.savedAt,
+    activePresetId: data.activePresetId,
+    presets: data.presets.map((p) => presetMemoryToDisk(p, userId)),
   }
 }
 
@@ -87,7 +150,7 @@ export async function readApiSettingsFromFile(): Promise<ApiSettingsDocument | n
   try {
     const raw = await readFile(getApiSettingsPath(), 'utf8')
     const parsed: unknown = JSON.parse(raw)
-    return normalizeDocument(parsed)
+    return normalizeDocumentFromDisk(parsed, getCurrentUserId())
   } catch (e) {
     const err = e as NodeJS.ErrnoException
     if (err.code === 'ENOENT') return null
@@ -98,8 +161,10 @@ export async function readApiSettingsFromFile(): Promise<ApiSettingsDocument | n
 export async function writeApiSettingsToFile(
   data: ApiSettingsDocument,
 ): Promise<void> {
-  await mkdir(getUserDataDir(getCurrentUserId()), { recursive: true })
-  await writeFile(getApiSettingsPath(), `${JSON.stringify(data, null, 2)}\n`, 'utf8')
+  const userId = getCurrentUserId()
+  await mkdir(getUserDataDir(userId), { recursive: true })
+  const disk = documentToDisk(data, userId)
+  await writeFile(getApiSettingsPath(), `${JSON.stringify(disk, null, 2)}\n`, 'utf8')
 }
 
 export function assertValidCustomParamsJson(customParamsJson: string): void {

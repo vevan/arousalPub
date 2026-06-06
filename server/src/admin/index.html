@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Arousal Pub · 本机运维</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; padding: 1.5rem; max-width: 960px; line-height: 1.5; }
+    h1 { font-size: 1.25rem; margin: 0 0 0.5rem; }
+    .muted { opacity: 0.7; font-size: 0.875rem; }
+    .card { border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+    label { display: block; font-size: 0.875rem; margin-bottom: 0.25rem; }
+    input { width: 100%; max-width: 320px; padding: 0.4rem 0.5rem; margin-bottom: 0.75rem; box-sizing: border-box; }
+    button { padding: 0.4rem 0.75rem; margin-right: 0.5rem; cursor: pointer; }
+    button.danger { color: #c62828; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th, td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+    .err { color: #c62828; font-size: 0.875rem; }
+    .ok { color: #2e7d32; font-size: 0.875rem; }
+    #app { display: none; }
+    .row-actions button { font-size: 0.75rem; padding: 0.2rem 0.4rem; }
+  </style>
+</head>
+<body>
+  <h1>本机运维台</h1>
+  <p class="muted">仅本机 loopback + 种子账号（00000000）可访问。</p>
+
+  <div id="login" class="card">
+    <h2 style="font-size:1rem;margin:0 0 0.75rem">登录</h2>
+    <label>用户名</label>
+    <input id="loginUser" autocomplete="username" />
+    <label>密码</label>
+    <input id="loginPass" type="password" autocomplete="current-password" />
+    <button type="button" id="loginBtn">登录</button>
+    <p id="loginErr" class="err"></p>
+  </div>
+
+  <div id="app">
+    <div class="card">
+      <p id="statusLine" class="muted"></p>
+      <button type="button" id="logoutBtn">登出</button>
+      <button type="button" id="refreshBtn">刷新用户列表</button>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size:1rem;margin:0 0 0.75rem">创建用户</h2>
+      <label>用户名</label>
+      <input id="newUser" />
+      <label>密码</label>
+      <input id="newPass" type="password" />
+      <label>显示名（可选）</label>
+      <input id="newDisplay" />
+      <button type="button" id="createBtn">创建</button>
+      <p id="createMsg"></p>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size:1rem;margin:0 0 0.75rem">数据加密密钥（DEK）轮换</h2>
+      <p class="muted" id="dekInfo"></p>
+      <label>新密钥材料（至少 16 字符，推荐 64 位 hex）</label>
+      <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.75rem;max-width:520px">
+        <input id="newDekMaterial" type="password" autocomplete="new-password" style="flex:1;min-width:200px;margin-bottom:0" />
+        <button type="button" id="suggestDekBtn">生成推荐</button>
+        <button type="button" id="toggleDekVisBtn">显示</button>
+      </div>
+      <label>
+        <input id="dekConfirm" type="checkbox" />
+        我确认要在维护模式下重加密全部用户的 API Key
+      </label>
+      <button type="button" id="rotateBtn">开始轮换</button>
+      <p id="rotateMsg"></p>
+      <pre id="rotateProgress" class="muted" style="white-space:pre-wrap;font-size:0.8rem"></pre>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size:1rem;margin:0 0 0.75rem">用户列表</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>用户</th>
+            <th>ID</th>
+            <th>状态</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="userRows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const TOKEN_KEY = 'arousal-admin-token'
+    const SEED_ID = '00000000'
+
+    function token() { return localStorage.getItem(TOKEN_KEY) }
+    function setToken(t) {
+      if (t) localStorage.setItem(TOKEN_KEY, t)
+      else localStorage.removeItem(TOKEN_KEY)
+    }
+
+    async function api(path, opts = {}) {
+      const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {})
+      const t = token()
+      if (t) headers.Authorization = 'Bearer ' + t
+      const res = await fetch(path, Object.assign({}, opts, { headers }))
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || res.statusText || String(res.status))
+      return data
+    }
+
+    function formatBytes(n) {
+      if (n < 1024) return n + ' B'
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB'
+      if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB'
+      return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB'
+    }
+
+    function showApp(on) {
+      document.getElementById('login').style.display = on ? 'none' : 'block'
+      document.getElementById('app').style.display = on ? 'block' : 'none'
+    }
+
+    let rotatePollTimer = null
+
+    function stopRotatePoll() {
+      if (rotatePollTimer) {
+        clearInterval(rotatePollTimer)
+        rotatePollTimer = null
+      }
+    }
+
+    function renderRotateStatus(st) {
+      const el = document.getElementById('rotateProgress')
+      if (!st || st.phase === 'idle') {
+        el.textContent = ''
+        return
+      }
+      const lines = [
+        '阶段: ' + st.phase,
+        '进度: ' + st.done + ' / ' + st.total,
+        st.message || '',
+      ]
+      if (st.manualKeySteps) lines.push('⚠ ' + st.manualKeySteps)
+      if (st.errors && st.errors.length) lines.push('错误: ' + st.errors.join('; '))
+      el.textContent = lines.filter(Boolean).join('\n')
+      if (st.phase === 'done' || st.phase === 'failed') stopRotatePoll()
+    }
+
+    async function pollRotateStatus() {
+      try {
+        const st = await api('/api/admin/crypto/rotate-data-key/status')
+        renderRotateStatus(st)
+      } catch (e) {
+        document.getElementById('rotateProgress').textContent = e.message
+        stopRotatePoll()
+      }
+    }
+
+    function startRotatePoll() {
+      stopRotatePoll()
+      void pollRotateStatus()
+      rotatePollTimer = setInterval(() => { void pollRotateStatus() }, 800)
+    }
+
+    async function loadStatus() {
+      const s = await api('/api/admin/status')
+      document.getElementById('statusLine').textContent =
+        '数据目录: ' + s.dataDir + ' · DEK: ' + (s.dekConfigured ? '已配置' : '待生成') +
+        (s.dekSource ? ' · 来源: ' + s.dekSource : '')
+      const dekEl = document.getElementById('dekInfo')
+      if (dekEl) {
+        dekEl.textContent =
+          '当前 DEK 来源: ' + (s.dekSource || 'unknown') +
+          '。轮换期间主站写操作将返回 503 maintenance。'
+      }
+      if (s.rotateStatus) renderRotateStatus(s.rotateStatus)
+      if (s.rotateStatus && s.rotateStatus.phase &&
+          s.rotateStatus.phase !== 'idle' &&
+          s.rotateStatus.phase !== 'done' &&
+          s.rotateStatus.phase !== 'failed') {
+        startRotatePoll()
+      }
+    }
+
+    async function loadUsers() {
+      const { users } = await api('/api/admin/users')
+      const tbody = document.getElementById('userRows')
+      tbody.innerHTML = ''
+      for (const u of users) {
+        const tr = document.createElement('tr')
+        const setup = u.setupComplete ? '就绪' : '待设置'
+        tr.innerHTML =
+          '<td>' + escapeHtml(u.displayName || u.username) + '<br><span class="muted">@' + escapeHtml(u.username) + '</span></td>' +
+          '<td class="muted">' + escapeHtml(u.id) + '</td>' +
+          '<td>' + setup + '</td>' +
+          '<td class="row-actions"></td>'
+        const actions = tr.querySelector('.row-actions')
+        const statsBtn = document.createElement('button')
+        statsBtn.textContent = '占用'
+        statsBtn.onclick = () => showStats(u.id)
+        actions.appendChild(statsBtn)
+        if (u.id !== SEED_ID) {
+          const delBtn = document.createElement('button')
+          delBtn.textContent = '删除'
+          delBtn.className = 'danger'
+          delBtn.onclick = () => deleteUser(u)
+          actions.appendChild(delBtn)
+        }
+        tbody.appendChild(tr)
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    }
+
+    async function showStats(id) {
+      try {
+        const s = await api('/api/admin/users/' + id + '/stats')
+        alert('占用: ' + formatBytes(s.bytes) + '\n对话: ' + s.conversationCount + '\n' + s.dataDir)
+      } catch (e) {
+        alert(e.message)
+      }
+    }
+
+    async function deleteUser(u) {
+      if (!confirm('删除用户 ' + u.username + '（' + u.id + '）？不可恢复。')) return
+      try {
+        await api('/api/admin/users/' + u.id, { method: 'DELETE' })
+        await loadUsers()
+      } catch (e) {
+        alert(e.message)
+      }
+    }
+
+    document.getElementById('loginBtn').onclick = async () => {
+      const el = document.getElementById('loginErr')
+      el.textContent = ''
+      try {
+        const res = await api('/api/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({
+            username: document.getElementById('loginUser').value,
+            password: document.getElementById('loginPass').value,
+            rememberDefault: true,
+          }),
+        })
+        if (res.user?.id !== SEED_ID) {
+          setToken(null)
+          el.textContent = '须使用种子账号登录（' + SEED_ID + '）'
+          return
+        }
+        setToken(res.token)
+        showApp(true)
+        await loadStatus()
+        await loadUsers()
+      } catch (e) {
+        el.textContent = e.message
+      }
+    }
+
+    document.getElementById('logoutBtn').onclick = () => {
+      setToken(null)
+      showApp(false)
+    }
+
+    document.getElementById('refreshBtn').onclick = () => loadUsers().catch((e) => alert(e.message))
+
+    document.getElementById('suggestDekBtn').onclick = async () => {
+      const msg = document.getElementById('rotateMsg')
+      msg.textContent = ''
+      msg.className = ''
+      try {
+        const res = await api('/api/admin/crypto/suggest-key')
+        const input = document.getElementById('newDekMaterial')
+        input.value = res.keyMaterial || ''
+        input.type = 'text'
+        document.getElementById('toggleDekVisBtn').textContent = '隐藏'
+        msg.textContent = '已填入推荐密钥，请复制备份后再轮换'
+        msg.className = 'ok'
+      } catch (e) {
+        msg.textContent = e.message
+        msg.className = 'err'
+      }
+    }
+
+    document.getElementById('toggleDekVisBtn').onclick = () => {
+      const input = document.getElementById('newDekMaterial')
+      const btn = document.getElementById('toggleDekVisBtn')
+      if (input.type === 'password') {
+        input.type = 'text'
+        btn.textContent = '隐藏'
+      } else {
+        input.type = 'password'
+        btn.textContent = '显示'
+      }
+    }
+
+    document.getElementById('rotateBtn').onclick = async () => {
+      const msg = document.getElementById('rotateMsg')
+      msg.textContent = ''
+      msg.className = ''
+      if (!document.getElementById('dekConfirm').checked) {
+        msg.textContent = '请勾选确认'
+        msg.className = 'err'
+        return
+      }
+      const material = document.getElementById('newDekMaterial').value
+      if (!material || material.trim().length < 16) {
+        msg.textContent = '新密钥至少 16 字符'
+        msg.className = 'err'
+        return
+      }
+      if (!confirm('将进入维护模式并重加密全部密钥，继续？')) return
+      try {
+        await api('/api/admin/crypto/rotate-data-key', {
+          method: 'POST',
+          body: JSON.stringify({ newKeyMaterial: material, confirm: true }),
+        })
+        msg.textContent = '轮换已启动'
+        msg.className = 'ok'
+        document.getElementById('newDekMaterial').value = ''
+        document.getElementById('dekConfirm').checked = false
+        startRotatePoll()
+      } catch (e) {
+        msg.textContent = e.message
+        msg.className = 'err'
+      }
+    }
+
+    document.getElementById('createBtn').onclick = async () => {
+      const msg = document.getElementById('createMsg')
+      msg.textContent = ''
+      msg.className = ''
+      try {
+        await api('/api/admin/users', {
+          method: 'POST',
+          body: JSON.stringify({
+            username: document.getElementById('newUser').value,
+            password: document.getElementById('newPass').value,
+            displayName: document.getElementById('newDisplay').value || undefined,
+          }),
+        })
+        msg.textContent = '已创建'
+        msg.className = 'ok'
+        document.getElementById('newUser').value = ''
+        document.getElementById('newPass').value = ''
+        document.getElementById('newDisplay').value = ''
+        await loadUsers()
+      } catch (e) {
+        msg.textContent = e.message
+        msg.className = 'err'
+      }
+    }
+
+    ;(async function boot() {
+      if (!token()) { showApp(false); return }
+      try {
+        await loadStatus()
+        await loadUsers()
+        showApp(true)
+      } catch {
+        setToken(null)
+        showApp(false)
+      }
+    })()
+  </script>
+</body>
+</html>

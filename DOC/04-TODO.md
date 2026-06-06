@@ -12,9 +12,9 @@
 | 组装与记忆 | ✅ | §14.9 管线、§14.4.1 budget trim（全局 + 会话设置 UI）、§15 宏 |
 | **向量检索（部分 RAG）** | ✅ | 对话 **memory** Lance TopK；资料库 **vector** 条目 TopK（可选 `vectorEnabled`） |
 | API Key 隔离（不出浏览器） | ✅ | 定案与落地见 `DOC/13` |
-| API Key 磁盘加密 | ⏳ | **P0 备忘**；`api-keys.json` 等仍为服务端明文 JSON，见下 §「API Key 磁盘加密」 |
+| API Key 磁盘加密 | ✅ | AES-256-GCM 落盘 + 运维台 DEK 轮换（`DOC/16`、`DOC/17`） |
 | 前端对话 UI | ✅ | `HomeChat` 已拆子组件 + `useChatSession`（见 §前端工程） |
-| **仍待 P0** | ⏳ | **API Key 磁盘加密**、独立知识库 RAG（见下）、§1.2 独立 `api_configs`/`feature_bindings` 集合、分支 UI、全量调用日志 |
+| **仍待 P0** | ⏳ | 独立知识库 RAG（见下）、§1.2 独立 `api_configs`/`feature_bindings` 集合、分支 UI、全量调用日志 |
 
 ## P0（当前优先）
 
@@ -29,14 +29,16 @@
 - [x] **前端隔离**：`apiKeys` / `connection` / `chat-api` / `useChatSession` / `ConnectionSettingsCard` / Embedding 设置
 - [x] **验收与文档**：`DOC/13` §6、`DOC/03` §4、`cursor.md`
 
-### API Key 磁盘加密（P0 · 备忘）
+### API Key 磁盘加密（P0 · **`DOC/16`**）
 
-> **前置已完成**：`DOC/13` 服务端隔离（密钥不出浏览器、reveal 需登录密码）。**仍缺**：磁盘侧 `api-keys.json`、`api-settings.json` 预设内联 key、`embeddingApi` 等仍为**明文 JSON**（`DOC/03` §4；`DOC/13` §4 原列为非目标，现升为 P0）。
+> **前置已完成**：`DOC/13` 服务端隔离。**2026-06 落地**：`api-keys.json` / `api-settings.json` 内联 key / `user-preferences.json` embedding key 落盘 **AES-256-GCM**（`keyEnc` / `apiKeyEnc`）；惰性迁移（读明文、写密文）。
 
-- [ ] **定案**：加密粒度（按用户 / 全局）、主密钥来源（登录密码派生 vs 服务端 `secrets/` vs OS keychain）、与 reveal / 改密 / 多机 Syncthing 的关系
-- [ ] **磁盘格式**：`apiKeyEncrypted`（或等价字段）+ 算法/IV/nonce；读写路径经 `api-credential-resolve`、PUT merge、reveal 统一加解密
-- [ ] **迁移**：存量明文 key 首次启动或首次写入时加密升级（可逆、失败回滚策略）
-- [ ] **备份边界**：`data/backups` zip、Syncthing 同步目录的权限与密钥轮换说明
+- [x] **定案**：服务端 DEK（`DATA_ENCRYPTION_KEY` → `config.json` → `data/.data-encryption-key`）；AAD 绑定 `userId`；reveal 仍校验登录密码
+- [x] **磁盘格式**：`EncryptedSecretV1`（`v/iv/tag/ct`）；`secret-encryption.ts` + 三处 file 读写
+- [x] **迁移**：首次写入后加密；读路径兼容 legacy 明文
+- [x] **DEK 轮换**：运维台 `rotate-data-key` + `suggest-key`（`DOC/17`）
+- [ ] **备份边界**：`data/backups` zip 与 Syncthing 运维说明补充（见 `data/README.md` §密钥）
+
 
 - [x] 初始化后端 Fastify 项目结构（`server/`）
 - [x] 初始化前端 Vue3 + Pinia + Vuetify 项目结构（`web/`）
@@ -106,6 +108,7 @@
 
 ## P1（次优先）
 
+- [x] **本机运维台（Admin Console）** — **`DOC/17-admin-console.md`**（loopback + `00000000`；用户 CRUD；DEK 轮换 + 推荐密钥）
 - [ ] **会话消息分页与前端懒加载** — **`DOC/15-conversation-messages-lazy-load.md`**（`GET .../messages?tail|before|from/to`、chunk 区间读、默认尾部 80 轮、上滚追加；插件 `readConversationTurnsRange` 改真分页；Phase 2 可选虚拟滚动）
 - [x] **单端口生产启动（`DOC/01` §9）**：`npm start` / `run-prod.mjs`、`static-web.ts`、`start.bat`/`start.sh`、`README.md`；根目录 `build`（web + server）；保留 `npm run dev`
 - [x] API 配置连通性测试接口（test）— `POST /api/settings/presets/:id/test`（两阶段：models + chat）

@@ -1,6 +1,6 @@
 # API Key 服务端隔离与鉴权（需求定案）
 
-> **状态**：**已实现**（2026-06-02 定案；2026-06 落地并验收）。  
+> **状态**：**已实现**（2026-06-02 定案；2026-06 落地并验收）。磁盘 AES-256-GCM 见 **`DOC/16-api-key-disk-encryption.md`**。  
 > **优先级**：原 P0（见 `DOC/04-TODO.md`、`cursor.md` 文档索引）。  
 > **关联**：`DOC/03` §1.3、§4（密钥不下发浏览器）；`DOC/02` 插件/API 调用原则；`server/src/api-credential-resolve.ts`、`server/src/embedding-credential-resolve.ts`。
 
@@ -83,7 +83,7 @@
 ## 4. 非目标（本迭代不做）
 
 - 将 `api-settings.json` 迁移为独立 `api_configs` 集合（`DOC/03` §1.1 长期形态）；本需求在**现有文件模型**上完成隔离。
-- ~~API Key 磁盘加密（`apiKeyEncrypted`）~~ → **已升为 P0 备忘**，见 **`DOC/04-TODO.md`** §P0「API Key 磁盘加密」。
+- ~~API Key 磁盘加密（`apiKeyEncrypted`）~~ → **`DOC/16`** + 运维台轮换（**`DOC/17`**）。
 - 插件包内密钥转发（`DOC/03` §1.3 V2）— 与对话 API 预设并行，不阻塞本项。
 
 ---

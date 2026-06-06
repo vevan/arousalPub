@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "tsc && node --input-type=module -e \"import {mkdirSync,copyFileSync} from 'node:fs'; mkdirSync('dist/admin',{recursive:true}); copyFileSync('src/admin/index.html','dist/admin/index.html')\"",
     "start": "node dist/index.js",
     "test": "node --import tsx --test src/**/*.test.ts"
   },

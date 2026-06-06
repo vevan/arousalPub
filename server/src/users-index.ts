@@ -269,6 +269,39 @@ export async function updateUserPassword(
   await writeUsersIndex(doc)
 }
 
+/** 运维台删除用户（无需确认用户名；不可删种子账号） */
+export async function deleteUserByAdmin(targetUserId: string): Promise<void> {
+  if (targetUserId === RESERVED_USER_ID) {
+    throw new UserAccountError(UserAccountErrorCodes.CANNOT_DELETE_SEED_ONLY)
+  }
+  const doc = await readUsersIndex()
+  const user = findUserById(doc, targetUserId)
+  if (!user) throw new UserAccountError(UserAccountErrorCodes.USER_NOT_FOUND)
+
+  doc.users = doc.users.filter((u) => u.id !== targetUserId)
+  await writeUsersIndex(doc)
+
+  const dir = getUserDataDir(targetUserId)
+  if (existsSync(dir)) {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+export async function adminResetUserPassword(
+  userId: string,
+  newPassword: string,
+): Promise<void> {
+  if (!newPassword || newPassword.length < 6) {
+    throw new UserAccountError(UserAccountErrorCodes.PASSWORD_TOO_SHORT)
+  }
+  const doc = await readUsersIndex()
+  const user = findUserById(doc, userId)
+  if (!user) throw new UserAccountError(UserAccountErrorCodes.USER_NOT_FOUND)
+  user.passwordHash = await hashPassword(newPassword)
+  user.updatedAt = new Date().toISOString()
+  await writeUsersIndex(doc)
+}
+
 export async function deleteUserAccount(
   userId: string,
   confirmUsername: string,

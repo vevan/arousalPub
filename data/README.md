@@ -38,8 +38,23 @@ data/
 | `avatar.png` | 用户头像 |
 | `chats/` | 对话会话与消息 |
 | `prompts/`、`characters/`、`lorebooks/` | 资料与预设（角色主存 **`characters/{id}.png`**，`id` 为 8 位 hex，见 `DOC/03` §6.7） |
-| `api-settings.json`、`api-keys.json` | API 配置 |
-| `preferences.json` | 主题、语言等 |
+| `api-settings.json`、`api-keys.json` | API 配置（内联 key 落盘为 **`apiKeyEnc` / `keyEnc`**，见 `DOC/16`） |
+| `user-preferences.json` | 全局偏好（含 embedding **`apiKeyEnc`**） |
+
+## 密钥文件（`data/` 根目录）
+
+| 文件 / 环境变量 | 用途 |
+|----------------|------|
+| `.jwt-secret` | JWT 签名密钥（生产可首次自动生成） |
+| `.data-encryption-key` | API Key **磁盘加密**主密钥（AES-256-GCM） |
+| `JWT_SECRET` / `config.json` → `jwtSecret` | 覆盖 JWT 密钥 |
+| `DATA_ENCRYPTION_KEY` / `config.json` → `dataEncryptionKey` | 覆盖磁盘加密密钥 |
+
+**Syncthing / 多机**：同步 `data/{userId}/` 下 JSON 密文即可；各实例须使用**相同** `DATA_ENCRYPTION_KEY`（或同步 `.data-encryption-key`），否则无法解密 API Key。
+
+**dev / prod**：无 env/config 时，开发与生产均读写 `data/.data-encryption-key`（首次启动自动生成 64 位 hex，勿再依赖固定 dev 默认钥）。
+
+**轮换 DEK**：本机 `http://127.0.0.1:<serverPort>/admin`（种子用户）→「生成推荐」+「开始轮换」；见 `DOC/17`。
 
 ## 插件与 Syncthing
 

@@ -34,6 +34,11 @@ import {
   type BudgetTrimSettings,
   type BudgetTrimSettingsOverride,
 } from './budget-trim-settings.js'
+import {
+  resolveSecretFromDisk,
+  secretToDiskFields,
+  type EncryptedSecretV1,
+} from './secret-encryption.js'
 
 export interface UserPreferencesDocument {
   version: 1
@@ -44,6 +49,70 @@ export interface UserPreferencesDocument {
   budgetTrim?: Partial<BudgetTrimSettings>
   embeddingApi?: Partial<EmbeddingApiSettings>
   chunk?: Partial<ChunkSettings>
+}
+
+type EmbeddingApiSettingsDisk = Partial<EmbeddingApiSettings> & {
+  apiKeyEnc?: EncryptedSecretV1
+}
+
+interface UserPreferencesDocumentDisk {
+  version: 1
+  savedAt: string
+  lorebook?: Partial<LorebookSettings>
+  history?: Partial<HistorySettings>
+  memory?: Partial<MemorySettings>
+  budgetTrim?: Partial<BudgetTrimSettings>
+  embeddingApi?: EmbeddingApiSettingsDisk
+  chunk?: Partial<ChunkSettings>
+}
+
+function aadForEmbeddingApiKey(userId: string): string {
+  return `arousal:${userId}:embedding`
+}
+
+function embeddingApiFromDisk(
+  raw: EmbeddingApiSettingsDisk | undefined,
+  userId: string,
+): Partial<EmbeddingApiSettings> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const apiKey = resolveSecretFromDisk(
+    typeof raw.apiKey === 'string' ? raw.apiKey : undefined,
+    raw.apiKeyEnc,
+    { aad: aadForEmbeddingApiKey(userId) },
+  )
+  const { apiKeyEnc: _e, apiKey: _p, ...rest } = raw
+  return { ...rest, apiKey }
+}
+
+function embeddingApiToDisk(
+  settings: Partial<EmbeddingApiSettings> | undefined,
+  userId: string,
+): EmbeddingApiSettingsDisk | undefined {
+  if (!settings) return undefined
+  const normalized = normalizeEmbeddingApiSettings(settings)
+  const { apiKey, ...rest } = normalized
+  const { keyEnc: apiKeyEnc } = secretToDiskFields(apiKey, {
+    aad: aadForEmbeddingApiKey(userId),
+  })
+  const disk: EmbeddingApiSettingsDisk = { ...rest }
+  if (apiKeyEnc) disk.apiKeyEnc = apiKeyEnc
+  return disk
+}
+
+function preferencesToDisk(
+  doc: UserPreferencesDocument,
+  userId: string,
+): UserPreferencesDocumentDisk {
+  return {
+    version: 1,
+    savedAt: doc.savedAt,
+    lorebook: doc.lorebook,
+    history: doc.history,
+    memory: doc.memory,
+    budgetTrim: doc.budgetTrim,
+    embeddingApi: embeddingApiToDisk(doc.embeddingApi, userId),
+    chunk: doc.chunk,
+  }
 }
 
 function userPreferencesPath(): string {
@@ -88,7 +157,11 @@ export async function readGlobalBudgetTrimSettings(): Promise<BudgetTrimSettings
 export async function readGlobalEmbeddingApiSettings(): Promise<EmbeddingApiSettings> {
   const doc = await readPreferencesFileRaw()
   if (!doc) return { ...EMBEDDING_API_SETTINGS_DEFAULTS }
-  return normalizeEmbeddingApiSettings(doc?.embeddingApi)
+  const fromDisk = embeddingApiFromDisk(
+    doc.embeddingApi as EmbeddingApiSettingsDisk | undefined,
+    getCurrentUserId(),
+  )
+  return normalizeEmbeddingApiSettings(fromDisk)
 }
 
 export async function readGlobalChunkSettings(): Promise<ChunkSettings> {
@@ -136,7 +209,9 @@ async function writeUserPreferencesDocument(
     chunk: partial.chunk ?? prev.chunk,
   }
   await mkdir(getUserDataDir(getCurrentUserId()), { recursive: true })
-  await writeFile(userPreferencesPath(), JSON.stringify(doc, null, 2), 'utf8')
+  const userId = getCurrentUserId()
+  const disk = preferencesToDisk(doc, userId)
+  await writeFile(userPreferencesPath(), JSON.stringify(disk, null, 2), 'utf8')
   return doc
 }
 

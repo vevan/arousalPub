@@ -30,6 +30,8 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<AuthUser | null>(null)
   const setupRequired = ref(false)
   const statusLoaded = ref(false)
+  const seedUserId = ref<string | null>(null)
+  const adminConsoleUrl = ref<string | null>(null)
   const defaultUserId = ref<string | null>(readDefaultUserId())
 
   let refreshTimer: ReturnType<typeof setInterval> | null = null
@@ -44,6 +46,15 @@ export const useAuthStore = defineStore('auth', () => {
         defaultUserId.value &&
           user.value &&
           defaultUserId.value === user.value.id,
+      ),
+  )
+
+  const isSeedAdmin = computed(
+    () =>
+      Boolean(
+        seedUserId.value &&
+          user.value &&
+          user.value.id === seedUserId.value,
       ),
   )
 
@@ -110,8 +121,16 @@ export const useAuthStore = defineStore('auth', () => {
   async function fetchStatus(): Promise<void> {
     const res = await fetch('/api/auth/status')
     if (!res.ok) throw new Error(`auth status ${res.status}`)
-    const data = (await res.json()) as { setupRequired?: boolean }
+    const data = (await res.json()) as {
+      setupRequired?: boolean
+      seedUserId?: string
+      adminConsoleUrl?: string
+    }
     setupRequired.value = Boolean(data.setupRequired)
+    seedUserId.value =
+      typeof data.seedUserId === 'string' ? data.seedUserId : null
+    adminConsoleUrl.value =
+      typeof data.adminConsoleUrl === 'string' ? data.adminConsoleUrl : null
     statusLoaded.value = true
   }
 
@@ -353,9 +372,12 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     setupRequired,
     statusLoaded,
+    seedUserId,
+    adminConsoleUrl,
     defaultUserId,
     isAuthenticated,
     isDefaultUserOnDevice,
+    isSeedAdmin,
     fetchStatus,
     fetchMe,
     refreshSession,

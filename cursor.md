@@ -12,7 +12,7 @@
 ## 文档索引
 
 - **API Key 服务端隔离（已实现）**：`DOC/13-api-key-server-side-isolation.md`
-- **API Key 磁盘加密（P0 备忘）**：`DOC/04-TODO.md` §P0「API Key 磁盘加密」
+- **API Key 磁盘加密（已实现）**：`DOC/16-api-key-disk-encryption.md`
 - **用户安装与启动**：根目录 `README.md`
 - 架构设计：`DOC/01-架构设计.md`（**§9 运行时与部署**）
 - 需求说明：`DOC/02-需求说明.md`
@@ -22,6 +22,7 @@
 - **工作交接（新 Agent 入口）**：`DOC/06-工作交接.md`
 - **Chunk 链切分（已实现）**：`DOC/08-chunk-chain-implementation.md`
 - **会话消息分页与懒加载（P1 规划）**：`DOC/15-conversation-messages-lazy-load.md`
+- **本机运维台（已实现）**：`DOC/17-admin-console.md`（loopback + `00000000`；用户管理 + DEK 轮换）
 - 运行时数据目录说明：`data/README.md`
 - 前端子项目说明：`web/README.md`
 

@@ -701,6 +701,25 @@ onMounted(() => {
               @change="onAvatarPick"
             >
 
+            <div
+              v-if="auth.isSeedAdmin && auth.adminConsoleUrl"
+              class="mb-4"
+            >
+              <p class="text-body-2 text-medium-emphasis mb-2">
+                {{ $t('settings.accountAdminConsoleHint') }}
+              </p>
+              <v-btn
+                :href="auth.adminConsoleUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                variant="outlined"
+                size="small"
+                prepend-icon="mdi-shield-account-outline"
+              >
+                {{ $t('settings.accountAdminConsole') }}
+              </v-btn>
+            </div>
+
             <v-divider class="my-4" />
 
             <h3 class="text-subtitle-2 font-weight-medium mb-2">

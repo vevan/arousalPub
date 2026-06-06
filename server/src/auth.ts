@@ -34,6 +34,7 @@ import {
 import { RESERVED_USER_ID } from './short-id.js'
 import { UserAccountError } from './user-account-error.js'
 import { resolveJwtSecret } from './auth-secret.js'
+import { buildAdminConsoleUrl } from './admin/console-url.js'
 
 export interface JwtPayload {
   sub: string
@@ -178,6 +179,7 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
       setupRequired,
       userCount: doc.users.filter((u) => u.setupComplete).length,
       seedUserId: RESERVED_USER_ID,
+      adminConsoleUrl: buildAdminConsoleUrl(),
     }
   })
 

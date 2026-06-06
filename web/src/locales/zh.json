@@ -356,6 +356,8 @@
     "accountStatsLoading": "正在统计…",
     "accountStatsSize": "数据目录约 {size}",
     "accountStatsChats": "对话数 {n}",
+    "accountAdminConsole": "本机运维台",
+    "accountAdminConsoleHint": "仅在本机通过 127.0.0.1 打开；须使用种子账号登录。",
     "accountDefaultUser": "设为默认用户",
     "accountDefaultUserHint": "开启后本机可免密进入；关闭后若超过 15 分钟无活动或服务器重启，需重新输入密码。",
     "accountDefaultUserOn": "已开启本机默认用户",

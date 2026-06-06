@@ -356,6 +356,8 @@
     "accountStatsLoading": "Calculating…",
     "accountStatsSize": "Data folder ~ {size}",
     "accountStatsChats": "{n} conversations",
+    "accountAdminConsole": "Local admin console",
+    "accountAdminConsoleHint": "Open via 127.0.0.1 on this machine only; sign in with the seed account.",
     "accountDefaultUser": "Default user on this device",
     "accountDefaultUserHint": "When on, you stay signed in locally across server restarts. When off, sign in again after 15 minutes idle or a server restart.",
     "accountDefaultUserOn": "Default user enabled on this device",

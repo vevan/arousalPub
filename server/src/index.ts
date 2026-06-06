@@ -74,7 +74,10 @@ import { normalizeEmbeddingDimensions, normalizeEmbeddingApiSettings } from './e
 import {
   isValidConversationId,
 } from './conversation-id.js'
+import { registerAdminConsole } from './admin/routes.js'
 import { registerAuth } from './auth.js'
+import { resolveDataEncryptionKey } from './data-encryption-key.js'
+import { registerMaintenanceGuard } from './maintenance-guard.js'
 import { ensureUsersRegistry, findUserById, readUsersIndex } from './users-index.js'
 import {
   assertValidPromptPresetBody,
@@ -348,8 +351,11 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     closeAllLanceConnections()
   })
 }
+registerMaintenanceGuard(app)
 await registerAuth(app)
+await registerAdminConsole(app)
 await ensureUsersRegistry()
+resolveDataEncryptionKey()
 await bootstrapBundledPluginsAtStartup()
 
 app.get('/health', async () => ({ ok: true as const }))

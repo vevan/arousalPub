@@ -7,10 +7,15 @@ import type {
   LorebookEntryCreateBody,
   LorebookEntryDto,
   LorebookEntryPatchBody,
+  LorebookNormalizeEntryRefsRequest,
   LorebookSummaryDto,
+  PluginCompleteDraftRequest,
+  PluginCompleteDraftResponse,
   PluginCompleteRequest,
   PluginCompleteResponse,
   PluginCompletePreflightResult,
+  PluginPrepareContextRequest,
+  PluginPrepareContextResponse,
 } from '@/plugins/types'
 
 async function throwIfNotOk(res: Response, fallbackCode: string): Promise<void> {
@@ -149,6 +154,74 @@ export async function fetchApiPresets(): Promise<{ id: string; alias: string }[]
       return { id, alias }
     })
     .filter((x): x is { id: string; alias: string } => x !== null)
+}
+
+export async function runPluginPrepareContext(
+  pluginId: string,
+  conversationId: string,
+  req: PluginPrepareContextRequest,
+  signal?: AbortSignal,
+): Promise<PluginPrepareContextResponse> {
+  const res = await apiFetch(
+    `/api/plugins/${encodeURIComponent(pluginId)}/prepare-context`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId, ...req }),
+      signal,
+    },
+  )
+  await throwIfNotOk(res, 'plugin_prepare_context_failed')
+  const data = (await res.json()) as PluginPrepareContextResponse
+  if (!data.ok || typeof data.userContent !== 'string') {
+    throw new PluginHostApiError('plugin_prepare_context_failed', res.status)
+  }
+  return data
+}
+
+export async function normalizeLorebookEntryRefs(
+  pluginId: string,
+  req: LorebookNormalizeEntryRefsRequest,
+  signal?: AbortSignal,
+): Promise<Record<string, string>> {
+  const res = await apiFetch(
+    `/api/plugins/${encodeURIComponent(pluginId)}/lorebooks/normalize-entry-refs`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+      signal,
+    },
+  )
+  await throwIfNotOk(res, 'lorebook_entry_refs_failed')
+  const data = (await res.json()) as { ok?: boolean; entryIds?: Record<string, string> }
+  if (!data.ok || !data.entryIds || typeof data.entryIds !== 'object') {
+    throw new PluginHostApiError('lorebook_entry_refs_failed', res.status)
+  }
+  return data.entryIds
+}
+
+export async function runPluginCompleteDraft(
+  pluginId: string,
+  conversationId: string,
+  req: PluginCompleteDraftRequest,
+  signal?: AbortSignal,
+): Promise<PluginCompleteDraftResponse> {
+  const res = await apiFetch(
+    `/api/plugins/${encodeURIComponent(pluginId)}/complete-draft`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId, ...req }),
+      signal,
+    },
+  )
+  await throwIfNotOk(res, 'plugin_complete_draft_failed')
+  const data = (await res.json()) as PluginCompleteDraftResponse
+  if (!data.ok || !data.draft || typeof data.draft.content !== 'string') {
+    throw new PluginHostApiError('plugin_complete_draft_failed', res.status)
+  }
+  return data
 }
 
 export async function runPluginComplete(

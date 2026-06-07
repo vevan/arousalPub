@@ -87,6 +87,11 @@ export interface PluginManifest {
   settingsSchema?: PluginSettingsSchema
 }
 
+export interface PluginCompleteDraftMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
 export interface PluginServerHostApi {
   applyPromptMacroPipeline: (
     text: string,
@@ -95,6 +100,48 @@ export interface PluginServerHostApi {
   getUserPluginSettings: (
     pluginId: string,
   ) => Promise<Record<string, unknown>>
+  runPluginComplete: (req: {
+    apiConfigId: string
+    messages: PluginCompleteDraftMessage[]
+    responseFormat?: 'json_object' | 'text'
+  }) => Promise<
+    | { ok: true; content: string; usage?: { promptTokens?: number; completionTokens?: number }; latencyMs: number }
+    | { ok: false; code: string; status?: number; detail?: string }
+  >
+  runPluginCompletePreflight: (req: {
+    apiConfigId: string
+    messages: PluginCompleteDraftMessage[]
+  }) => Promise<{
+    ok: boolean
+    promptTokens: number
+    budget: number
+    contextLength: number | null
+    code?: string
+  }>
+  runPluginMacroExpand: (req: {
+    text: string
+    conversationId?: string
+    apiConfigId?: string
+  }) => Promise<string>
+}
+
+export interface PluginCompleteDraftContext {
+  pluginId: string
+  conversationId: string
+  apiConfigId: string
+  kind: 'memory' | 'sidecar'
+  userContent: string
+  systemPromptTemplate: string
+  fromTurn?: number
+  toTurn?: number
+  titleFormat?: 'plain' | 'range-suffix'
+  sidecarName?: string
+}
+
+export interface PluginCompleteDraftResult {
+  draft: { title: string; content: string; keywords: string[] }
+  usage?: { promptTokens?: number; completionTokens?: number }
+  latencyMs?: number
 }
 
 export interface AfterAssemblePromptsPluginContext {
@@ -119,6 +166,10 @@ export interface PluginServerModule {
     plugins: ChatPluginsBody | null | undefined,
     api: PluginServerHostApi,
   ) => TurnPluginEntry[] | Promise<TurnPluginEntry[]>
+  completeDraft?: (
+    ctx: PluginCompleteDraftContext,
+    api: PluginServerHostApi,
+  ) => PluginCompleteDraftResult | Promise<PluginCompleteDraftResult>
 }
 
 export interface PluginRegistryPublicEntry {

@@ -8,12 +8,16 @@
   "engines": {
     "node": ">=22"
   },
+  "devDependencies": {
+    "esbuild": "^0.25.12"
+  },
   "scripts": {
     "dev": "node scripts/run-dev.mjs",
     "dev:server": "npm run dev -w server",
     "dev:web": "npm run dev -w web",
+    "build:plugins:curated-memory": "node plugins/curated-memory/build.mjs",
     "typecheck": "vue-tsc -p web/tsconfig.app.json --noEmit",
-    "build": "npm run build -w web && npm run build -w server && node scripts/sync-bundled-plugins.mjs && node scripts/write-build-meta.mjs",
+    "build": "npm run build:plugins:curated-memory && npm run build -w web && npm run build -w server && node scripts/sync-bundled-plugins.mjs && node scripts/write-build-meta.mjs",
     "start": "node scripts/run-prod.mjs"
   }
 }

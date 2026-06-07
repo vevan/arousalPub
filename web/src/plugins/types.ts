@@ -10,6 +10,16 @@ export interface PluginSlotContext {
   listIndex?: number
 }
 
+export interface PluginSlotMenuItemDef {
+  id: string
+  labelKey: string | ((ctx: PluginSlotContext) => string)
+  icon?: string | ((ctx: PluginSlotContext) => string)
+  filled?: boolean | ((ctx: PluginSlotContext) => boolean)
+  when?: (ctx: PluginSlotContext) => boolean
+  disabled?: (ctx: PluginSlotContext) => boolean
+  onClick: (ctx: PluginSlotContext) => void
+}
+
 export interface PluginSlotButtonDef {
   id: string
   icon: string | ((ctx: PluginSlotContext) => string)
@@ -17,7 +27,12 @@ export interface PluginSlotButtonDef {
   filled?: boolean | ((ctx: PluginSlotContext) => boolean)
   when?: (ctx: PluginSlotContext) => boolean
   disabled?: (ctx: PluginSlotContext) => boolean
-  onClick: (ctx: PluginSlotContext) => void
+  /** 平铺按钮；与 menu 二选一 */
+  onClick?: (ctx: PluginSlotContext) => void
+  /** 悬停或点击展开子菜单 */
+  menu?: PluginSlotMenuItemDef[]
+  /** 默认 hover+click 均可展开 */
+  menuOpenOn?: 'hover' | 'click' | 'both'
 }
 
 export interface AssistantReplyCompleteEvent {
@@ -217,6 +232,49 @@ export interface PluginCompleteResponse {
   latencyMs?: number
 }
 
+export interface PluginPrepareContextRequest {
+  fromTurn: number
+  toTurn: number
+  targetLorebookId: string
+  includePreviousMemories?: boolean
+  previousMemoriesLimit?: number
+}
+
+export interface PluginPrepareContextResponse {
+  ok: true
+  userContent: string
+  transcript: string
+  turnCount: number
+  meta: {
+    userDisplayName: string
+    assistantDisplayName: string
+  }
+}
+
+export interface LorebookNormalizeEntryRefsRequest {
+  lorebookId: string
+  entryIds: Record<string, string>
+  validKeys: string[]
+}
+
+export interface PluginCompleteDraftRequest {
+  apiConfigId: string
+  kind: 'memory' | 'sidecar'
+  userContent: string
+  systemPromptTemplate: string
+  fromTurn?: number
+  toTurn?: number
+  titleFormat?: 'plain' | 'range-suffix'
+  sidecarName?: string
+}
+
+export interface PluginCompleteDraftResponse {
+  ok: true
+  draft: { title: string; content: string; keywords: string[] }
+  usage?: { promptTokens?: number; completionTokens?: number }
+  latencyMs?: number
+}
+
 export interface PluginCompletePreflightResult {
   ok: boolean
   promptTokens: number
@@ -300,12 +358,21 @@ export interface PluginWebHost {
       entryId: string,
       body: LorebookEntryPatchBody,
     ): Promise<LorebookEntryDto>
+    normalizeEntryRefs(
+      req: LorebookNormalizeEntryRefsRequest,
+    ): Promise<Record<string, string>>
   }
   api: {
     listPresets(): Promise<{ id: string; alias: string }[]>
   }
   plugin: {
     complete(req: PluginCompleteRequest): Promise<PluginCompleteResponse>
+    prepareContext(
+      req: PluginPrepareContextRequest,
+    ): Promise<PluginPrepareContextResponse>
+    completeDraft(
+      req: PluginCompleteDraftRequest,
+    ): Promise<PluginCompleteDraftResponse>
   }
   token: {
     preflightComplete(req: {

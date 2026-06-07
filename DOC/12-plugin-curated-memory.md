@@ -242,12 +242,13 @@ await host.plugin.complete({
 
 ## 9. 实现清单（插件包）
 
-- [ ] `plugins/curated-memory/` manifest、locales、settings 模板  
-- [ ] `web.mjs`：lifecycle 触发、手动摘要、会话设置 PATCH  
-- [ ] 解析 JSON + `titleFormat` range-suffix  
-- [ ] insert / patch lorebook 调用  
-- [ ] 注册 `BUNDLED_PLUGIN_IDS` + sync  
-- [ ] 依赖宿主：`DOC/11` 全部 API 落地后再联调  
+- [x] `plugins/curated-memory/` manifest、locales、settings 模板  
+- [x] `src/` → esbuild → `dist/web.mjs` + `dist/server.mjs`（`completeDraft` hook）  
+- [x] `web.mjs`：lifecycle 触发（Web）、手动摘要、会话设置 PATCH、预览确认  
+- [x] 解析 JSON + `titleFormat` range-suffix（服务端 `completeDraft`）  
+- [x] insert / patch lorebook；`prepareContext` + `normalizeEntryRefs` 宿主 API  
+- [x] 注册 `BUNDLED_PLUGIN_IDS` + sync  
+- [ ] **P0**：`host.lorebook.create/ensure` 自动建目标书（见 `DOC/04`）  
 
 ---
 

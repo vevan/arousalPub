@@ -27,11 +27,14 @@ import {
   fetchLorebookById,
   fetchLorebookList,
   fetchPluginUserSettings,
+  normalizeLorebookEntryRefs,
   patchConversationPluginSettings,
   patchLorebookEntry,
   expandPluginMacros,
   runPluginComplete,
+  runPluginCompleteDraft,
   runPluginCompletePreflight,
+  runPluginPrepareContext,
 } from '@/plugins/plugin-host-api'
 import {
   renderRichMessageToHtml,
@@ -81,6 +84,9 @@ export function createScopedPluginHost(
       patchEntry(lorebookId, entryId, body) {
         return patchLorebookEntry(id, lorebookId, entryId, body)
       },
+      normalizeEntryRefs(req) {
+        return normalizeLorebookEntryRefs(id, req, getPluginProgressAbortSignal())
+      },
     },
     api: {
       listPresets: fetchApiPresets,
@@ -88,6 +94,22 @@ export function createScopedPluginHost(
     plugin: {
       complete(req) {
         return runPluginComplete(id, req, getPluginProgressAbortSignal())
+      },
+      prepareContext(req) {
+        return runPluginPrepareContext(
+          id,
+          convId(),
+          req,
+          getPluginProgressAbortSignal(),
+        )
+      },
+      completeDraft(req) {
+        return runPluginCompleteDraft(
+          id,
+          convId(),
+          req,
+          getPluginProgressAbortSignal(),
+        )
       },
     },
     token: {
@@ -219,6 +241,9 @@ export function createPluginWebHost(session: ChatSession): {
       patchEntry() {
         throw new Error('plugin_host_requires_scoped_host')
       },
+      normalizeEntryRefs() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
     },
     api: {
       listPresets() {
@@ -227,6 +252,12 @@ export function createPluginWebHost(session: ChatSession): {
     },
     plugin: {
       complete() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+      prepareContext() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+      completeDraft() {
         throw new Error('plugin_host_requires_scoped_host')
       },
     },
@@ -293,7 +324,17 @@ export function getSlotButtonsFor(
   slot: string,
   ctx: PluginSlotContext,
 ): PluginSlotButtonDef[] {
-  return (slotButtons.get(slot) ?? []).filter((b) => !b.when || b.when(ctx))
+  return (slotButtons.get(slot) ?? [])
+    .filter((b) => !b.when || b.when(ctx))
+    .map((b) => {
+      if (!b.menu?.length) return b
+      const menu = b.menu.filter((item) => !item.when || item.when(ctx))
+      return { ...b, menu }
+    })
+    .filter((b) => {
+      if (b.menu?.length) return b.menu.length > 0
+      return typeof b.onClick === 'function'
+    })
 }
 
 export async function submitOpenPluginForm(params: {

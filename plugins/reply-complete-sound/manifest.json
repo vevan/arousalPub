@@ -57,6 +57,6 @@
     ]
   },
   "ui": {
-    "slots": [{ "name": "composer-toolbar", "entry": "./dist/web.mjs" }]
+    "slots": []
   }
 }

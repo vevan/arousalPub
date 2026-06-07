@@ -1,7 +1,7 @@
 # 插件宿主 API — 出站补全、资料库与会话设置
 
-> **状态**：**规划定案**；下文 **Web `PluginWebHost` 扩展**与 **服务端新路由** 尚未全部实现。  
-> **读者**：**第三方插件作者请优先阅读本文 + `DOC/10`**；**不要**在 `web.mjs` 里直接 `fetch('/api/lorebooks')`、`fetch('/api/settings')` 等本体 REST（由宿主统一封装并随权限演进）。  
+> **状态**：**已定案且大部分已落地**（2026-06-02）。  
+> **读者**：**第三方插件作者请优先阅读 [`DOC/18-plugin-host-developer-api.md`](18-plugin-host-developer-api.md)**（宿主 API 单一入口）；本文保留产品与边界定案。  
 > **关联**：`DOC/03` §1.3、`DOC/09` §5、`DOC/10`、`DOC/12`（策展记忆插件示例）。
 
 ---
@@ -24,20 +24,19 @@
 | `host.render` | `richMessageToHtml` / `reasoningToHtml` | |
 | 注册 | `registerSlotButton` / `registerFormDialog` | 见 `DOC/09` §8 |
 
-### 0.2 规划扩展（实现后由 host 封装，对应本文 §2–§4）
+### 0.2 扩展 API（`DOC/11` 规划项 + 2026-06-02 落地）
 
-| 命名空间 | 方法 | 插件用途 | 宿主背后（实现细节，作者无需记 URL） |
-|----------|------|----------|--------------------------------------|
-| **`host.lorebook`** | `list()` | 设置页 / 会话表单选目标书 | `GET /api/lorebooks` → `{ id, name, updatedAt }[]` |
-| | `get(lorebookId)` | 读条目、拼只读上下文 | `GET /api/lorebooks/:id` |
-| | `createEntry(lorebookId, body)` | 摘要记忆 **新增** | `POST …/entries` |
-| | `patchEntry(lorebookId, entryId, body)` | **Sidecar 覆盖** | `PATCH …/entries/:id` |
-| | `create` / `ensure`（规划） | 自动模式按模板建 `{{conversationTitle}}-summary` 等 | `POST /api/lorebooks` 或等价 |
-| **`host.api`** | `listPresets()` | 下拉展示 **alias**，提交用 **id** | `GET /api/settings` → `{ id, alias }[]` |
-| **`host.plugin`** | `complete(req)` | 转发 `{ apiConfigId, messages[] }` | `POST /api/plugins/:pluginId/complete` |
-| **`host.conversation`** | `getPluginSettings()` | 读本对话 `pluginSettings[pluginId]` | `GET …/conversations/:id` |
-| | `patchPluginSettings(partial)` | 写会话级覆盖（目标 lorebook、N 等） | `PATCH …/conversations/:id` |
-| **`host.plugins`** | `getUserSettings()` | 读合并后的全局插件 settings | `GET /api/plugins/:pluginId/settings`（规划一并纳入 host，避免插件直 fetch） |
+| 命名空间 | 方法 | 状态 | 宿主背后 |
+|----------|------|------|----------|
+| **`host.lorebook`** | `list()` / `get()` / `createEntry()` / `patchEntry()` | ✅ | `GET/POST/PATCH /api/plugins/:id/lorebooks/…` |
+| | `normalizeEntryRefs(req)` | ✅ | `POST …/lorebooks/normalize-entry-refs` |
+| | `create` / `ensure` | ⏳ P0 | 自动建 summary 书，见 `DOC/04` |
+| **`host.api`** | `listPresets()` | ✅ | `GET /api/settings` |
+| **`host.plugin`** | `complete(req)` | ✅ | `POST …/complete` |
+| | `prepareContext(req)` | ✅ | `POST …/prepare-context`（读 turn + 拼 `<history>` / `<previous-memories>`） |
+| | `completeDraft(req)` | ✅ | `POST …/complete-draft`（插件 `server.mjs` 的 `completeDraft` hook） |
+| **`host.conversation`** | `getPluginSettings()` / `patchPluginSettings()` | ✅ | `GET/PATCH …/conversations/:id` |
+| **`host.plugins`** | `getUserSettings()` | ✅ | `GET /api/plugins/:pluginId/settings` |
 
 类型契约（实现时写入 `web/src/plugins/types.ts`）：
 

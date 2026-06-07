@@ -1,6 +1,7 @@
 # 插件 — 对话读写宿主 API（规划）
 
-> **状态**：**已实现（v1）**；`runScope` / `getMeta` / `render` / `ui.progress` 与内置插件 `swipe-cleaner`、`conversation-export` 已落地。字段级 `manifest.permissions` enforce 仍为后续项。
+> **状态**：**已实现（v1）**；`runScope` / `getMeta` / `render` / `ui.progress` 与内置插件 `swipe-cleaner`、`conversation-export` 已落地。  
+> **宿主 API 速查**：[`DOC/18-plugin-host-developer-api.md`](18-plugin-host-developer-api.md) §3.5。  
 > **关联**：`DOC/09` §5 Web 宿主、`DOC/03` §6.8 `turns[]` / swipe、`web/src/utils/chat-messages.ts`（现有 `GET .../messages`、`PATCH .../turns/:turnOrdinal`）。
 
 ---

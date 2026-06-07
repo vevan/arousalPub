@@ -367,6 +367,20 @@
   font-size: 0.8125rem;
 }
 
+.plugin-slot-menu {
+  min-width: 11rem;
+  padding: 0.25rem 0 !important;
+}
+
+.plugin-slot-menu__item--filled .v-list-item-title {
+  font-weight: 600;
+  color: rgb(var(--v-theme-primary));
+}
+
+.plugin-slot-menu__icon {
+  opacity: 0.85;
+}
+
 .plugin-slots .plugin-slot:disabled {
   cursor : not-allowed;
   opacity: 0.5;

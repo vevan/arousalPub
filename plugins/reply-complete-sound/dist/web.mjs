@@ -103,27 +103,11 @@ async function maybePlayForTrace(event) {
 }
 
 export function register(host) {
-  const k = (key) => host.pluginKey(key)
-
   host.lifecycle.onAssistantReplyPersisted((event) => {
     void maybePlayForTrace(event)
   })
 
   host.lifecycle.onAssistantReplyComplete((event) => {
     void maybePlayForTrace(event)
-  })
-
-  host.registerSlotButton('composer-toolbar', {
-    id: `${PLUGIN_ID}-preview`,
-    icon: 'mdi-play-circle-outline',
-    tooltipKey: k('previewSound'),
-    filled: false,
-    onClick: () => {
-      void (async () => {
-        const settings = await fetchSettings()
-        if (!settings) return
-        await playNotification(settings)
-      })()
-    },
   })
 }

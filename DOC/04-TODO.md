@@ -72,7 +72,19 @@
 
 **P0 — Sidecar 设置 UI**
 
-- [ ] **替换全局设置中的 Sidecar JSON textarea**（`settingsSchema` 字段 `sidecars`）：改为结构化 UI（列表增删改 Sidecar：名称、启用、独立 system 模板等），**不再要求用户手写 JSON**；与会话级 Sidecar 开关、手动摘要多选、lorebook 条目标题语义对齐（`name` = 条目 title）。
+- [x] **替换全局设置中的 Sidecar JSON textarea**（`settingsSchema` 字段 `sidecars` → `objectList` 结构化 UI）
+
+**P0 — 目标资料库自动 ensure（`DOC/12` §2.3 · `DOC/11`）**
+
+- [ ] **`host.lorebook.create` / `host.lorebook.ensure`**：按 `autoLorebookNameTemplate` 自动建 summary 书
+- [ ] 权限：manifest 新增 `lorebook.write`（或扩展 `lorebook.entry.write` 语义，实现时定案）
+- [ ] 路由：`POST /api/plugins/:pluginId/lorebooks` 或 `…/lorebooks/ensure`
+- [ ] 插件：`ensureTargetLorebook` 支持 `targetLorebookMode: auto`，替代仅弹框选手动书
+
+**工程（2026-06-02）**
+
+- [x] 插件 `src/` 拆分 + esbuild 打包（`dist/web.mjs` + `dist/server.mjs`）
+- [x] 宿主 `host.plugin.prepareContext` / `completeDraft`、`host.lorebook.normalizeEntryRefs`
 
 ## 前端工程（当前仓库）
 

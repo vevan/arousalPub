@@ -1,5 +1,7 @@
 {
 
+  "tooltipCuratedMemory": "Curated memory",
+
   "tooltipMemorybook": "Memorybook auto-summarize (toggle)",
 
   "tooltipManualSummarize": "Manual summarize",

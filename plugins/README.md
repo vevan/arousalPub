@@ -27,16 +27,13 @@ plugins/{pluginId}/
 | `reply-complete-sound` | 完成提示音：LLM 回复结束后播放音频（默认 `assets/default.mp3`） |
 | `swipe-cleaner` | 滑动清理：删除未选中的 swipe 候选（轮次级 / 整聊） |
 | `conversation-export` | 对话导出 HTML（分批 read、`runScope`、导出对话框） |
+| `curated-memory` | 策展记忆：摘要、sidecar、预览确认、`prepareContext` / `completeDraft` |
 
-**作者指南**（manifest、slot 懒加载、`register` 性能约定）：**`DOC/09-plugin-system-and-guidance-generate.md`** §8。
+**插件作者主文档（宿主 API 单一入口）**：**`DOC/18-plugin-host-developer-api.md`**。
 
-**插件间协作**（能力注册表，规划）：**`DOC/09`** §8.7。
+**插件系统**（manifest、懒加载、设置页）：**`DOC/09-plugin-system-and-guidance-generate.md`**。
 
-对话批量 read/patch 见 **`DOC/10-plugin-conversation-host.md`**。
-
-出站补全转发、Lorebook 条目 API、会话 `pluginSettings` 见 **`DOC/11-plugin-host-completion-and-lorebook.md`**。
-
-策展式记忆插件（规划）见 **`DOC/12-plugin-curated-memory.md`**。
+**业务示例**：策展记忆 **`DOC/12-plugin-curated-memory.md`**；对话 read/patch 细节 **`DOC/10-plugin-conversation-host.md`**；补全/lorebook 产品定案 **`DOC/11-plugin-host-completion-and-lorebook.md`**。
 
 ## 新增 bundled 插件
 
@@ -45,4 +42,4 @@ plugins/{pluginId}/
 3. 在 `scripts/sync-bundled-plugins.mjs` 的 `BUNDLED_PLUGIN_IDS` 中加入 id。
 4. 重启服务 / 跑 sync 后安装到 `data/plugins/`；各用户 registry 会自动补条目。
 5. **`manifest.ui.slots` 列齐所有用到的 slot 名**，否则宿主不会懒加载你的 `web.mjs`。
-
+

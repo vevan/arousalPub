@@ -1,11 +1,27 @@
 <script setup lang="ts">
-import type { PluginSettingsFieldSchema } from '@/plugins/plugin-settings-types'
+import type {
+  PluginSettingsFieldSchema,
+  PluginSettingsItemFieldSchema,
+} from '@/plugins/plugin-settings-types'
 import {
   pluginI18nKey,
   pluginMediaUrl,
   uploadPluginUserAsset,
 } from '@/utils/plugin-settings-api'
-import { computed, ref } from 'vue'
+import {
+  defaultTextForField,
+  newObjectListItem,
+  parseObjectListField,
+  serializeObjectListField,
+} from '@/utils/plugin-settings-validate'
+import {
+  loadApiPresetSelectItems,
+  loadLorebookSelectItems,
+  needsApiPresetSelect,
+  needsLorebookSelect,
+  type PluginSchemaSelectItem,
+} from '@/utils/plugin-schema-selects'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
@@ -21,6 +37,36 @@ const emit = defineEmits<{
 const { t, te } = useI18n()
 const uploadingKey = ref<string | null>(null)
 const uploadError = ref('')
+const apiPresetItems = ref<PluginSchemaSelectItem[]>([])
+const lorebookItems = ref<PluginSchemaSelectItem[]>([])
+const selectsLoading = ref(false)
+
+onMounted(async () => {
+  const needApi = needsApiPresetSelect(props.fields)
+  const needLb = needsLorebookSelect(props.fields)
+  if (!needApi && !needLb) return
+  selectsLoading.value = true
+  try {
+    const [api, lb] = await Promise.all([
+      needApi ? loadApiPresetSelectItems() : Promise.resolve([]),
+      needLb ? loadLorebookSelectItems() : Promise.resolve([]),
+    ])
+    apiPresetItems.value = api
+    lorebookItems.value = lb
+  } finally {
+    selectsLoading.value = false
+  }
+})
+
+function resourceSelectItems(field: PluginSettingsFieldSchema): PluginSchemaSelectItem[] {
+  if (field.type === 'apiPreset') return apiPresetItems.value
+  if (field.type === 'lorebook') return lorebookItems.value
+  return []
+}
+
+function resourceSelectClearable(field: PluginSettingsFieldSchema): boolean {
+  return field.type === 'lorebook'
+}
 
 function labelFor(field: PluginSettingsFieldSchema): string {
   const key = pluginI18nKey(props.pluginId, field.labelKey)
@@ -31,6 +77,58 @@ function hintFor(field: PluginSettingsFieldSchema): string | undefined {
   if (!field.descriptionKey) return undefined
   const key = pluginI18nKey(props.pluginId, field.descriptionKey)
   return te(key) ? t(key) : field.descriptionKey
+}
+
+function itemLabelFor(field: PluginSettingsItemFieldSchema): string {
+  const key = pluginI18nKey(props.pluginId, field.labelKey)
+  return te(key) ? t(key) : field.labelKey
+}
+
+function itemHintFor(field: PluginSettingsItemFieldSchema): string | undefined {
+  if (!field.descriptionKey) return undefined
+  const key = pluginI18nKey(props.pluginId, field.descriptionKey)
+  return te(key) ? t(key) : field.descriptionKey
+}
+
+function itemEnumLabel(
+  field: PluginSettingsItemFieldSchema,
+  value: string,
+): string {
+  const suffix = value.charAt(0).toUpperCase() + value.slice(1)
+  const key = pluginI18nKey(props.pluginId, `${field.key}${suffix}`)
+  return te(key) ? t(key) : value
+}
+
+function itemEnumItems(field: PluginSettingsItemFieldSchema) {
+  return (field.enum ?? []).map((v) => ({
+    title: itemEnumLabel(field, v),
+    value: v,
+  }))
+}
+
+function displayTextValue(
+  field: PluginSettingsFieldSchema | PluginSettingsItemFieldSchema,
+  value: unknown,
+): string {
+  const s = String(value ?? '')
+  if (s.trim()) return s
+  return defaultTextForField(field, props.pluginId, t, te)
+}
+
+function restoreDefaultPrompt(
+  field: PluginSettingsFieldSchema | PluginSettingsItemFieldSchema,
+  setValue: (v: string) => void,
+) {
+  const text = defaultTextForField(field, props.pluginId, t, te)
+  if (text) setValue(text)
+}
+
+function restoreDefaultLabel(): string {
+  const key = pluginI18nKey(props.pluginId, 'promptTemplateRestoreDefault')
+  if (te(key)) return t(key)
+  return te('settings.plugins.restoreDefault')
+    ? t('settings.plugins.restoreDefault')
+    : 'Restore default'
 }
 
 function fieldValue(key: string): unknown {
@@ -113,6 +211,58 @@ function sliderReadout(field: PluginSettingsFieldSchema): string {
     return `${Math.round(v * 100)}%`
   }
   return String(v)
+}
+
+function objectListItems(field: PluginSettingsFieldSchema): Record<string, unknown>[] {
+  return parseObjectListField(fieldValue(field.key))
+}
+
+function setObjectListItems(
+  field: PluginSettingsFieldSchema,
+  items: Record<string, unknown>[],
+) {
+  setField(field.key, serializeObjectListField(items))
+}
+
+function addObjectListItem(field: PluginSettingsFieldSchema) {
+  const itemFields = field.itemFields ?? []
+  const items = [...objectListItems(field)]
+  items.push(newObjectListItem(itemFields, props.pluginId, t, te))
+  setObjectListItems(field, items)
+}
+
+function removeObjectListItem(field: PluginSettingsFieldSchema, index: number) {
+  const items = objectListItems(field).filter((_, i) => i !== index)
+  setObjectListItems(field, items)
+}
+
+function updateObjectListItem(
+  field: PluginSettingsFieldSchema,
+  index: number,
+  itemKey: string,
+  value: unknown,
+) {
+  const items = objectListItems(field).map((item, i) =>
+    i === index ? { ...item, [itemKey]: value } : item,
+  )
+  setObjectListItems(field, items)
+}
+
+function objectListItemTitle(
+  item: Record<string, unknown>,
+  index: number,
+): string {
+  const name = String(item.name ?? '').trim()
+  if (name) return name
+  const addKey = pluginI18nKey(props.pluginId, 'sidecarItemUntitled')
+  const untitled = te(addKey) ? t(addKey) : `Sidecar ${index + 1}`
+  return untitled
+}
+
+function addObjectListLabel(): string {
+  const key = pluginI18nKey(props.pluginId, 'sidecarAddItem')
+  if (te(key)) return t(key)
+  return te('settings.plugins.addItem') ? t('settings.plugins.addItem') : 'Add'
 }
 </script>
 
@@ -197,6 +347,56 @@ function sliderReadout(field: PluginSettingsFieldSchema): string {
           @update:model-value="setField(field.key, $event)"
         />
 
+        <v-select
+          v-else-if="field.type === 'apiPreset' || field.type === 'lorebook'"
+          :model-value="String(fieldValue(field.key) ?? '') || null"
+          :items="resourceSelectItems(field)"
+          item-title="title"
+          item-value="value"
+          :label="labelFor(field)"
+          :hint="hintFor(field)"
+          persistent-hint
+          variant="outlined"
+          density="compact"
+          hide-details="auto"
+          :loading="selectsLoading"
+          :clearable="resourceSelectClearable(field)"
+          :placeholder="
+            field.type === 'lorebook'
+              ? t('settings.plugins.selectEmptyDefault')
+              : t('settings.plugins.selectApiPreset')
+          "
+          @update:model-value="setField(field.key, $event ?? '')"
+        />
+
+        <div
+          v-else-if="field.type === 'text' && field.widget === 'promptTemplate'"
+          class="plugin-prompt-template"
+        >
+          <v-textarea
+            :model-value="displayTextValue(field, fieldValue(field.key))"
+            :label="labelFor(field)"
+            :hint="hintFor(field)"
+            persistent-hint
+            variant="outlined"
+            density="compact"
+            auto-grow
+            rows="4"
+            :max-rows="16"
+            hide-details="auto"
+            @update:model-value="setField(field.key, $event)"
+          />
+          <v-btn
+            v-if="field.defaultKey"
+            variant="text"
+            size="small"
+            class="mt-1"
+            @click="restoreDefaultPrompt(field, (v) => setField(field.key, v))"
+          >
+            {{ restoreDefaultLabel() }}
+          </v-btn>
+        </div>
+
         <v-textarea
           v-else-if="field.type === 'text'"
           :model-value="String(fieldValue(field.key) ?? '')"
@@ -211,6 +411,160 @@ function sliderReadout(field: PluginSettingsFieldSchema): string {
           hide-details="auto"
           @update:model-value="setField(field.key, $event)"
         />
+
+        <div
+          v-else-if="field.type === 'objectList'"
+          class="plugin-object-list"
+        >
+          <div class="text-body-2 font-weight-medium mb-1">
+            {{ labelFor(field) }}
+          </div>
+          <p
+            v-if="hintFor(field)"
+            class="text-caption text-medium-emphasis mb-3"
+          >
+            {{ hintFor(field) }}
+          </p>
+          <v-card
+            v-for="(item, index) in objectListItems(field)"
+            :key="String(item.id ?? index)"
+            variant="outlined"
+            class="plugin-object-list__item mb-3"
+          >
+            <v-card-title class="text-subtitle-2 d-flex align-center py-2 px-3">
+              <span>{{ objectListItemTitle(item, index) }}</span>
+              <v-spacer />
+              <v-btn
+                icon="mdi-delete-outline"
+                variant="text"
+                size="small"
+                :aria-label="$t('settings.plugins.removeItem')"
+                @click="removeObjectListItem(field, index)"
+              />
+            </v-card-title>
+            <v-card-text class="pt-0 pb-3 px-3 d-flex flex-column ga-3">
+              <template
+                v-for="sub in field.itemFields ?? []"
+                :key="sub.key"
+              >
+                <v-switch
+                  v-if="sub.type === 'boolean'"
+                  :model-value="Boolean(item[sub.key])"
+                  :label="itemLabelFor(sub)"
+                  :hint="itemHintFor(sub)"
+                  persistent-hint
+                  color="primary"
+                  hide-details="auto"
+                  @update:model-value="
+                    updateObjectListItem(field, index, sub.key, $event)
+                  "
+                />
+                <v-text-field
+                  v-else-if="sub.type === 'string'"
+                  :model-value="String(item[sub.key] ?? '')"
+                  :label="itemLabelFor(sub)"
+                  :hint="itemHintFor(sub)"
+                  persistent-hint
+                  variant="outlined"
+                  density="compact"
+                  hide-details="auto"
+                  @update:model-value="
+                    updateObjectListItem(field, index, sub.key, $event)
+                  "
+                />
+                <v-text-field
+                  v-else-if="sub.type === 'integer' || sub.type === 'number'"
+                  :model-value="item[sub.key]"
+                  type="number"
+                  :label="itemLabelFor(sub)"
+                  :hint="itemHintFor(sub)"
+                  persistent-hint
+                  variant="outlined"
+                  density="compact"
+                  hide-details="auto"
+                  :min="sub.min"
+                  :max="sub.max"
+                  @update:model-value="
+                    updateObjectListItem(field, index, sub.key, $event)
+                  "
+                />
+                <v-select
+                  v-else-if="sub.type === 'enum'"
+                  :model-value="String(item[sub.key] ?? '')"
+                  :items="itemEnumItems(sub)"
+                  item-title="title"
+                  item-value="value"
+                  :label="itemLabelFor(sub)"
+                  :hint="itemHintFor(sub)"
+                  persistent-hint
+                  variant="outlined"
+                  density="compact"
+                  hide-details="auto"
+                  @update:model-value="
+                    updateObjectListItem(field, index, sub.key, $event)
+                  "
+                />
+                <div
+                  v-else-if="sub.type === 'text' && sub.widget === 'promptTemplate'"
+                  class="plugin-prompt-template"
+                >
+                  <v-textarea
+                    :model-value="displayTextValue(sub, item[sub.key])"
+                    :label="itemLabelFor(sub)"
+                    :hint="itemHintFor(sub)"
+                    persistent-hint
+                    variant="outlined"
+                    density="compact"
+                    auto-grow
+                    rows="3"
+                    :max-rows="12"
+                    hide-details="auto"
+                    @update:model-value="
+                      updateObjectListItem(field, index, sub.key, $event)
+                    "
+                  />
+                  <v-btn
+                    v-if="sub.defaultKey"
+                    variant="text"
+                    size="small"
+                    class="mt-1"
+                    @click="
+                      restoreDefaultPrompt(sub, (v) =>
+                        updateObjectListItem(field, index, sub.key, v),
+                      )
+                    "
+                  >
+                    {{ restoreDefaultLabel() }}
+                  </v-btn>
+                </div>
+                <v-textarea
+                  v-else-if="sub.type === 'text'"
+                  :model-value="String(item[sub.key] ?? '')"
+                  :label="itemLabelFor(sub)"
+                  :hint="itemHintFor(sub)"
+                  persistent-hint
+                  variant="outlined"
+                  density="compact"
+                  auto-grow
+                  rows="3"
+                  :max-rows="12"
+                  hide-details="auto"
+                  @update:model-value="
+                    updateObjectListItem(field, index, sub.key, $event)
+                  "
+                />
+              </template>
+            </v-card-text>
+          </v-card>
+          <v-btn
+            variant="tonal"
+            size="small"
+            prepend-icon="mdi-plus"
+            @click="addObjectListItem(field)"
+          >
+            {{ addObjectListLabel() }}
+          </v-btn>
+        </div>
 
         <v-text-field
           v-else-if="field.type === 'string'"

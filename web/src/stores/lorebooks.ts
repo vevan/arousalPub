@@ -291,6 +291,37 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     scheduleSave()
   }
 
+  /** 插件经 API 写入条目后同步本地缓存（不触发 PUT 回写） */
+  function upsertEntryFromPlugin(
+    lorebookId: string,
+    entry: LorebookEntry,
+    mode: 'create' | 'patch',
+  ): void {
+    if (!loaded.value) return
+    const i = lorebooks.value.findIndex((x) => x.id === lorebookId)
+    if (i < 0) return
+    const lb = lorebooks.value[i]
+    const t = entry.updatedAt || nowIso()
+    if (mode === 'create') {
+      const exists = lb.entries.some((e) => e.id === entry.id)
+      const entries = exists
+        ? lb.entries.map((e) => (e.id === entry.id ? { ...e, ...entry } : e))
+        : [...lb.entries, entry]
+      lorebooks.value[i] = normalizeLorebook({ ...lb, entries, updatedAt: t })
+    } else {
+      let entries = lb.entries.map((e) =>
+        e.id === entry.id ? { ...e, ...entry, updatedAt: t } : e,
+      )
+      if (!entries.some((e) => e.id === entry.id)) {
+        entries = [...entries, entry]
+      }
+      lorebooks.value[i] = normalizeLorebook({ ...lb, entries, updatedAt: t })
+    }
+    if (activeLorebookId.value === lorebookId) {
+      selectedEntryId.value = entry.id
+    }
+  }
+
   function allocateLorebookId(): string {
     return allocateShortId(collectAllLorebookIds(lorebooks.value))
   }
@@ -735,6 +766,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     lastSavedAt,
     lastError,
     loadFromServer,
+    upsertEntryFromPlugin,
     ensureLoaded,
     applyOpenFocus,
     focusLorebookById,

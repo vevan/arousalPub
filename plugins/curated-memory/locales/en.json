@@ -1,0 +1,206 @@
+{
+
+  "tooltipMemorybook": "Memorybook auto-summarize (toggle)",
+
+  "tooltipManualSummarize": "Manual summarize",
+
+  "tooltipSessionSettings": "Session curated memory settings",
+
+  "tooltipSummarizeNow": "Summarize to lorebook now",
+
+  "tooltipSummarizeTurn": "Summarize through this turn",
+
+  "sessionDialogTitle": "Session curated memory",
+
+  "sessionTargetLorebookLabel": "Target lorebook",
+
+  "sessionTargetLorebookHint": "Leave empty to use global default.",
+
+  "sessionBlockTurnsLabel": "Turns per block (N)",
+
+  "sessionBufferTurnsLabel": "Buffer turns",
+
+  "sessionSidecarEnabledLabel": "Sidecar",
+
+  "sessionSidecarInherit": "Use global",
+
+  "sessionSidecarOn": "On",
+
+  "sessionSidecarOff": "Off",
+
+  "sessionSubmit": "Save",
+
+  "sessionCancel": "Cancel",
+
+  "manualDialogTitle": "Manual summarize",
+
+  "manualDialogBody": "Pick plot summary and/or Sidecars; re-summarizing the same range is allowed.",
+  "manualDialogBodyPlotOnly": "Summarize the selected turns as a plot entry; re-summarizing the same range is allowed.",
+
+  "manualStartTurnLabel": "Start turn (0-based)",
+
+  "manualEndTurnLabel": "End turn (inclusive)",
+
+  "manualTasksLabel": "Tasks",
+
+  "manualTasksHint": "Runs serially: plot first, then selected Sidecars.",
+
+  "manualTaskMemory": "Plot summary",
+
+  "manualSubmit": "Run",
+
+  "reviewDialogTitle": "Confirm summary",
+
+  "reviewDialogBody": "Edit title, body, and keywords before saving to the lorebook.",
+
+  "reviewDialogBodySidecar": "Title is locked to the Sidecar name. Edit body and keywords; confirm to overwrite the lorebook entry.",
+
+  "reviewTitleLabel": "Title",
+
+  "reviewContentLabel": "Body",
+
+  "reviewKeywordsLabel": "Keywords",
+
+  "reviewKeywordsHint": "Comma-separated",
+
+  "reviewConfirm": "Save to lorebook",
+
+  "reviewCancel": "Cancel",
+
+  "toastReviewCancelled": "Save cancelled",
+
+  "enableDialogTitle": "Enable Memorybook",
+
+  "enableDialogBody": "Summarize the range below and enable auto blocks. Earlier turns: use manual summarize. Range is fixed; Sidecars are optional.",
+
+  "enableTasksHint": "Plot summary is required. Selected Sidecars apply to future auto blocks in this chat.",
+
+  "enableSubmit": "Enable & summarize",
+
+  "toastMemorybookEnabled": "Memorybook auto-summarize enabled",
+
+  "toastMemorybookScheduled": "Auto summarize will start at turn {turn}",
+
+  "pickLorebookDialogTitle": "Choose target lorebook",
+
+  "pickLorebookDialogBody": "No target lorebook is set. Pick one to save summaries (e.g. if the book was deleted).",
+
+  "pickLorebookConfirm": "Confirm",
+
+  "toastTargetLorebookMissingWarn": "Target lorebook missing — select one before summarizing",
+
+  "memorybookDefaultEnabledLabel": "Enable Memorybook on new chats",
+
+  "memorybookDefaultEnabledDesc": "New conversations only. Schedules auto summarize after the first turn. Manual off persists for that chat.",
+
+  "sessionAutoSidecarsLabel": "Auto Sidecars",
+
+  "sessionAutoSidecarsHint": "Plot summary is always included; pick Sidecars to update on each auto block.",
+
+  "toastMemorybookDisabled": "Memorybook auto-summarize disabled",
+
+  "toastNoTargetLorebook": "No target lorebook configured",
+
+  "toastNoApiConfig": "No API preset configured for summarization",
+
+  "toastSummarizeDone": "Summarize complete",
+
+  "toastSummarizeFailed": "Summarize failed",
+
+  "toastParseFailed": "Could not parse model JSON",
+
+  "toastContextExceeded": "About {used} tokens, exceeds budget {budget}. Shorten the range.",
+
+  "toastContextLengthMissing": "Configure context length on the API preset",
+  "toastSidecarEntryMissing": "Sidecar entry was deleted; recreating",
+  "toastSummarizePartial": "Completed {done}/{total}; later steps failed",
+  "toastNoTasksSelected": "Select at least one summarize task",
+  "toastInvalidRange": "Start turn cannot exceed end turn",
+
+  "toastBusy": "Conversation busy; skipped auto summarize",
+
+  "progressSummarize": "Generating summary…",
+
+  "apiConfigIdLabel": "Summary API preset",
+
+  "apiConfigIdDesc": "API preset used for summarization.",
+
+  "triggerEveryNTurnsLabel": "Turns per block (N)",
+
+  "triggerEveryNTurnsDesc": "Auto-summarize one block every N turns (after buffer). Independent from manual ranges.",
+
+  "bufferTurnsLabel": "Buffer turns",
+
+  "bufferTurnsDesc": "Recent turns excluded from auto blocks (still in chat history). Prefer ≤ global history injection turns.",
+
+  "defaultTargetLorebookIdLabel": "Default target lorebook",
+
+  "defaultTargetLorebookIdDesc": "Used when session override is empty.",
+
+  "titleFormatLabel": "Entry title format",
+
+  "titleFormatDesc": "“Title + turn suffix” appends “-start-end” turn numbers after the model title.",
+
+  "titleFormatPlain": "Title only",
+
+  "titleFormatRange-suffix": "Title + turn suffix",
+
+  "defaultEntryTriggerModeLabel": "New entry trigger mode",
+
+  "defaultEntryTriggerModeDesc": "Recommended order: semantic (vector) > keyword > always inject. Vector recalls relevant summaries by meaning; keyword needs trigger words; always inject runs every turn.",
+
+  "defaultEntryTriggerModeConstant": "Always inject",
+
+  "defaultEntryTriggerModeKeyword": "Keyword trigger",
+
+  "defaultEntryTriggerModeVector": "Semantic (vector) trigger",
+
+  "sidecarEnabledLabel": "Enable Sidecar",
+
+  "sidecarEnabledDesc": "Auto runs patch fixed Sidecar entries after each plot block (overwrite, not append).",
+
+  "sidecarsLabel": "Sidecar list",
+
+  "sidecarsDesc": "Each item maps to one fixed lorebook entry. Removing a block does not delete the entry. Trigger mode and priority apply on the next summarize.",
+
+  "sidecarAddItem": "Add Sidecar",
+
+  "sidecarItemUntitled": "Untitled Sidecar",
+
+  "sidecarItemNameLabel": "Name",
+
+  "sidecarItemPromptLabel": "Prompt",
+
+  "sidecarItemPromptDesc": "System message for the summary model. Supports \\{\\{user\\}\\}, \\{\\{char\\}\\}, \\{\\{date\\}\\}, etc.",
+
+  "sidecarItemPriorityLabel": "Priority",
+
+  "sidecarItemPriorityDesc": "Lorebook entry priority; default 90.",
+
+  "sidecarItemTriggerModeLabel": "Trigger mode",
+
+  "sidecarItemTriggerModeDesc": "Constant inject recommended; changes apply on next summarize.",
+
+  "sidecarItemEnabledLabel": "Enabled",
+
+  "triggerModeConstant": "Always inject",
+
+  "triggerModeKeyword": "Keyword trigger",
+
+  "triggerModeVector": "Semantic (vector) trigger",
+
+  "systemPromptTemplateLabel": "Plot summary system prompt",
+
+  "systemPromptTemplateDesc": "System message for plot summarization. Supports \\{\\{user\\}\\}, \\{\\{char\\}\\}, \\{\\{date\\}\\}, \\{\\{authorsNote\\}\\}, etc.",
+
+  "systemPromptTemplateDefault": "You are a professional dialogue summarizer. Read the conversation history and extract key plot, character state, and facts.\n\nReturn a JSON object with only:\n- title: short title (string)\n- content: summary body (string, may be multi-paragraph)\n- keywords: array of strings (may be empty)\n\nOutput nothing outside JSON.",
+
+  "sidecarSystemPromptTemplateDefault": "You are a dialogue state tracker. Update relationships, goals, and key state for the current scene from the history.\n\nReturn JSON with only title, content, keywords (string array; include searchable keywords).",
+
+  "promptTemplateRequired": "Prompt cannot be empty",
+
+  "promptTemplateRestoreDefault": "Restore default"
+
+}
+
+

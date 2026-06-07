@@ -165,7 +165,11 @@ export function usePluginHost(session: ChatSession) {
         formSubmitting: formSubmitting as { value: boolean },
       }),
     cancelOpenForm: () =>
-      cancelOpenPluginForm(openForm as { value: OpenPluginFormState | null }),
+      cancelOpenPluginForm({
+        openForm: openForm as { value: OpenPluginFormState | null },
+        formDialogs,
+        host,
+      }),
   }
 }
 

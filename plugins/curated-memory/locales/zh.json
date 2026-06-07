@@ -1,0 +1,212 @@
+{
+
+  "tooltipMemorybook": "Memorybook 自动摘要（开/关）",
+
+  "tooltipManualSummarize": "手动摘要",
+
+  "tooltipSessionSettings": "本会话策展设置",
+
+  "tooltipSummarizeNow": "立即摘要到资料库",
+
+  "tooltipSummarizeTurn": "摘要至本回合",
+
+  "sessionDialogTitle": "本会话策展记忆",
+
+  "sessionTargetLorebookLabel": "目标资料库",
+
+  "sessionTargetLorebookHint": "留空则使用全局默认。",
+
+  "sessionBlockTurnsLabel": "每块摘要轮数 N",
+
+  "sessionBufferTurnsLabel": "缓冲轮数",
+
+  "sessionSidecarEnabledLabel": "Sidecar",
+
+  "sessionSidecarInherit": "继承全局",
+
+  "sessionSidecarOn": "开启",
+
+  "sessionSidecarOff": "关闭",
+
+  "sessionAutoSidecarsLabel": "自动摘要 Sidecar",
+
+  "sessionAutoSidecarsHint": "剧情摘要始终执行；此处仅选择自动块要更新的 Sidecar。",
+
+  "sessionSubmit": "保存",
+
+  "sessionCancel": "取消",
+
+  "manualDialogTitle": "手动摘要",
+
+  "manualDialogBody": "可选剧情摘要与 Sidecar；同一区间可重复摘要。",
+  "manualDialogBodyPlotOnly": "将所选轮次摘要为剧情条目写入资料库；同一区间可重复摘要。",
+
+  "manualStartTurnLabel": "起始轮（0 起）",
+
+  "manualEndTurnLabel": "结束轮（含）",
+
+  "manualTasksLabel": "摘要项",
+
+  "manualTasksHint": "按顺序串行执行：先剧情，再所选 Sidecar。",
+
+  "manualTaskMemory": "剧情摘要",
+
+  "manualSubmit": "开始",
+
+  "reviewDialogTitle": "确认摘要",
+
+  "reviewDialogBody": "可编辑标题、正文与关键词，确认后写入资料库。",
+
+  "reviewDialogBodySidecar": "标题已锁定为 Sidecar 名称；可编辑正文与关键词，确认后覆盖写入资料库。",
+
+
+  "reviewTitleLabel": "标题",
+
+  "reviewContentLabel": "正文",
+
+  "reviewKeywordsLabel": "关键词",
+
+  "reviewKeywordsHint": "多个词用逗号分隔",
+
+  "reviewConfirm": "确认写入",
+
+  "reviewCancel": "取消",
+
+  "toastReviewCancelled": "已取消写入",
+
+  "enableDialogTitle": "开启 Memorybook",
+
+  "enableDialogBody": "将摘要下列轮次并开启自动摘要；此前轮次请用手动摘要补录。起止轮不可改，Sidecar 可取消。",
+
+  "enableTasksHint": "剧情摘要必选；所选 Sidecar 将用于本会话后续自动摘要。",
+
+  "enableSubmit": "开启并摘要",
+
+  "toastMemorybookEnabled": "已开启 Memorybook 自动摘要",
+
+  "toastMemorybookScheduled": "将在第 {turn} 轮开始自动摘要",
+
+  "pickLorebookDialogTitle": "选择目标资料库",
+
+  "pickLorebookDialogBody": "未配置目标资料库，无法写入摘要。请选择资料库（若已删除请重新指定）。",
+
+  "pickLorebookConfirm": "确认",
+
+  "toastTargetLorebookMissingWarn": "目标资料库缺失，请选择后再摘要",
+
+  "memorybookDefaultEnabledLabel": "新对话默认开启 Memorybook",
+
+  "memorybookDefaultEnabledDesc": "仅对新建会话生效；首条落盘后预约自动摘要。用户手动关闭后本会话不再自动打开。",
+
+  "sessionAutoSidecarsLabel": "自动摘要 Sidecar",
+
+  "sessionAutoSidecarsHint": "剧情摘要始终包含；此处仅选择自动块要更新的 Sidecar。",
+
+  "toastMemorybookDisabled": "已关闭 Memorybook 自动摘要",
+
+  "toastNoTargetLorebook": "未配置目标资料库",
+
+  "toastNoApiConfig": "未配置摘要 API 预设",
+
+  "toastSummarizeDone": "摘要完成",
+
+  "toastSummarizeFailed": "摘要失败",
+
+  "toastParseFailed": "无法解析模型返回的 JSON",
+
+  "toastContextExceeded": "约 {used} tokens，超过预算 {budget}，请缩短区间",
+
+  "toastContextLengthMissing": "请在该 API 预设中配置 context length",
+  "toastSidecarEntryMissing": "Sidecar 条目已不存在，将重新创建",
+  "toastSummarizePartial": "已完成 {done}/{total} 项，后续步骤失败",
+  "toastNoTasksSelected": "请至少选择一项摘要任务",
+  "toastInvalidRange": "起始轮次不能大于结束轮次",
+  "toastNoTurnsInRange": "所选轮次范围内没有可读 turn",
+
+  "toastBusy": "对话忙碌，已跳过自动摘要",
+
+  "progressSummarize": "正在生成摘要…",
+
+  "apiConfigIdLabel": "摘要 API 预设",
+
+  "apiConfigIdDesc": "用于生成摘要的 API 预设。",
+
+  "triggerEveryNTurnsLabel": "每块摘要轮数 N",
+
+  "triggerEveryNTurnsDesc": "每累计 N 轮（满足缓冲后）自动摘要一块；与手动摘要区间独立。",
+
+  "bufferTurnsLabel": "缓冲轮数",
+
+  "bufferTurnsDesc": "最近若干轮不纳入自动摘要（仍在对话 history 中）。建议不超过全局历史注入轮数。",
+
+  "defaultTargetLorebookIdLabel": "默认目标资料库",
+
+  "defaultTargetLorebookIdDesc": "未在会话中覆盖时使用。",
+
+  "titleFormatLabel": "条目标题格式",
+
+  "titleFormatDesc": "「标题 + 轮次后缀」会在模型生成的标题后追加「-起始-结束」轮次编号，便于区分各块摘要。",
+
+  "titleFormatPlain": "仅标题",
+
+  "titleFormatRange-suffix": "标题 + 轮次后缀",
+
+  "defaultEntryTriggerModeLabel": "新建条目触发方式",
+
+  "defaultEntryTriggerModeDesc": "推荐顺序：向量触发 > 关键字触发 > 恒定注入。向量按对话语义召回相关摘要；关键字需配置触发词；恒定每轮均注入。",
+
+  "defaultEntryTriggerModeConstant": "恒定注入",
+
+  "defaultEntryTriggerModeKeyword": "关键字触发",
+
+  "defaultEntryTriggerModeVector": "向量触发",
+
+  "sidecarEnabledLabel": "启用 Sidecar",
+
+  "sidecarEnabledDesc": "自动摘要时串行更新 Sidecar 条目（固定条目覆盖写，非每块新建）。",
+
+  "sidecarsLabel": "Sidecar 列表",
+
+  "sidecarsDesc": "每项对应资料库中一条固定状态条目；删除配置不会删除资料库条目。注入方式与优先级在下次摘要时写入。",
+
+  "sidecarAddItem": "添加 Sidecar",
+
+  "sidecarItemUntitled": "未命名 Sidecar",
+
+  "sidecarItemNameLabel": "名称",
+
+  "sidecarItemPromptLabel": "提示词",
+
+  "sidecarItemPromptDesc": "发往摘要模型的 system 消息。支持宏：\\{\\{user\\}\\}、\\{\\{char\\}\\}、\\{\\{date\\}\\} 等。",
+
+  "sidecarItemPriorityLabel": "优先级",
+
+  "sidecarItemPriorityDesc": "写入资料库条目的 priority，默认 90。",
+
+  "sidecarItemTriggerModeLabel": "注入方式",
+
+  "sidecarItemTriggerModeDesc": "推荐恒定注入；变更后下次摘要时生效。",
+
+  "sidecarItemEnabledLabel": "启用",
+
+  "triggerModeConstant": "恒定注入",
+
+  "triggerModeKeyword": "关键字触发",
+
+  "triggerModeVector": "向量触发",
+
+  "systemPromptTemplateLabel": "剧情摘要 System 模板",
+
+  "systemPromptTemplateDesc": "发往摘要模型的 system 消息。支持宏：\\{\\{user\\}\\}、\\{\\{char\\}\\}、\\{\\{date\\}\\}、\\{\\{authorsNote\\}\\} 等（与主对话一致）。",
+
+  "systemPromptTemplateDefault": "你是一个专业的对话摘要编写者。阅读用户提供的对话历史，提炼关键情节、人物状态与事实。\n\n返回格式必须为 JSON 对象，且仅包含键：\n- title：简短标题（字符串）\n- content：摘要正文（字符串，可多段）\n- keywords：关键词数组（字符串数组，可为空）\n\n不要输出 JSON 以外的任何文字。",
+
+  "sidecarSystemPromptTemplateDefault": "你是一个对话状态追踪器。根据历史更新当前场景下人物关系、目标与关键状态。\n\n返回 JSON 对象，仅含键 title、content、keywords（字符串数组，请填写便于检索的关键词）。",
+
+  "promptTemplateRequired": "提示词不能为空",
+
+  "promptTemplateRestoreDefault": "恢复默认"
+
+}
+
+

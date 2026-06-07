@@ -1,0 +1,557 @@
+{
+
+
+
+  "id": "curated-memory",
+
+
+
+  "name": "策展记忆",
+
+
+
+  "version": "1.2.0",
+
+
+
+  "permissions": [
+
+
+
+    "plugin.complete",
+
+
+
+    "lorebook.read",
+
+
+
+    "lorebook.entry.write",
+
+
+
+    "conversation.read"
+
+
+
+  ],
+
+
+
+  "settingsSchema": {
+
+
+
+    "version": 1,
+
+
+
+    "fields": [
+
+
+
+      {
+
+
+
+        "key": "apiConfigId",
+
+
+
+        "type": "apiPreset",
+
+
+
+        "labelKey": "apiConfigIdLabel",
+
+
+
+        "descriptionKey": "apiConfigIdDesc",
+
+
+
+        "default": ""
+
+
+
+      },
+
+
+
+      {
+
+
+
+        "key": "memorybookDefaultEnabled",
+
+
+
+        "type": "boolean",
+
+
+
+        "labelKey": "memorybookDefaultEnabledLabel",
+
+
+
+        "descriptionKey": "memorybookDefaultEnabledDesc",
+
+
+
+        "default": false
+
+
+
+      },
+
+
+
+      {
+
+
+
+        "key": "triggerEveryNTurns",
+
+
+
+        "type": "integer",
+
+
+
+        "labelKey": "triggerEveryNTurnsLabel",
+
+
+
+        "descriptionKey": "triggerEveryNTurnsDesc",
+
+
+
+        "default": 15,
+
+
+
+        "min": 1,
+
+
+
+        "max": 500
+
+
+
+      },
+
+
+
+      {
+
+
+
+        "key": "bufferTurns",
+
+
+
+        "type": "integer",
+
+
+
+        "labelKey": "bufferTurnsLabel",
+
+
+
+        "descriptionKey": "bufferTurnsDesc",
+
+
+
+        "default": 5,
+
+
+
+        "min": 0,
+
+
+
+        "max": 500
+
+
+
+      },
+
+
+
+      {
+
+
+
+        "key": "defaultTargetLorebookId",
+
+
+
+        "type": "lorebook",
+
+
+
+        "labelKey": "defaultTargetLorebookIdLabel",
+
+
+
+        "descriptionKey": "defaultTargetLorebookIdDesc",
+
+
+
+        "default": ""
+
+
+
+      },
+
+
+
+      {
+
+
+
+        "key": "titleFormat",
+
+
+
+        "type": "enum",
+
+
+
+        "labelKey": "titleFormatLabel",
+
+
+
+        "descriptionKey": "titleFormatDesc",
+
+
+
+        "enum": ["plain", "range-suffix"],
+
+
+
+        "default": "range-suffix"
+
+
+
+      },
+
+
+
+      {
+
+
+
+        "key": "defaultEntryTriggerMode",
+
+
+
+        "type": "enum",
+
+
+
+        "labelKey": "defaultEntryTriggerModeLabel",
+
+
+
+        "descriptionKey": "defaultEntryTriggerModeDesc",
+
+
+
+        "enum": ["vector", "keyword", "constant"],
+
+
+
+        "default": "vector"
+
+
+
+      },
+
+
+
+      {
+
+
+
+        "key": "systemPromptTemplate",
+
+
+
+        "type": "text",
+
+
+
+        "labelKey": "systemPromptTemplateLabel",
+
+
+
+        "descriptionKey": "systemPromptTemplateDesc",
+
+
+
+        "widget": "promptTemplate",
+
+
+
+        "required": true,
+
+
+
+        "defaultKey": "systemPromptTemplateDefault",
+
+
+
+        "default": ""
+
+
+
+      },
+
+
+
+      {
+
+
+
+        "key": "sidecarEnabled",
+
+
+
+        "type": "boolean",
+
+
+
+        "labelKey": "sidecarEnabledLabel",
+
+
+
+        "descriptionKey": "sidecarEnabledDesc",
+
+
+
+        "default": false
+
+
+
+      },
+
+
+
+      {
+
+
+
+        "key": "sidecars",
+
+
+
+        "type": "objectList",
+
+
+
+        "labelKey": "sidecarsLabel",
+
+
+
+        "descriptionKey": "sidecarsDesc",
+
+
+
+        "default": "[]",
+
+
+
+        "visibleWhen": { "field": "sidecarEnabled", "equals": true },
+
+
+
+        "itemFields": [
+
+
+
+          {
+
+
+
+            "key": "name",
+
+
+
+            "type": "string",
+
+
+
+            "labelKey": "sidecarItemNameLabel",
+
+
+
+            "required": true
+
+
+
+          },
+
+
+
+          {
+
+
+
+            "key": "systemPromptTemplate",
+
+
+
+            "type": "text",
+
+
+
+            "labelKey": "sidecarItemPromptLabel",
+
+
+
+            "descriptionKey": "sidecarItemPromptDesc",
+
+
+
+            "widget": "promptTemplate",
+
+
+
+            "required": true,
+
+
+
+            "defaultKey": "sidecarSystemPromptTemplateDefault"
+
+
+
+          },
+
+
+
+          {
+
+
+
+            "key": "priority",
+
+
+
+            "type": "integer",
+
+
+
+            "labelKey": "sidecarItemPriorityLabel",
+
+
+
+            "descriptionKey": "sidecarItemPriorityDesc",
+
+
+
+            "default": 90,
+
+
+
+            "min": 0,
+
+
+
+            "max": 200
+
+
+
+          },
+
+
+
+          {
+
+
+
+            "key": "triggerMode",
+
+
+
+            "type": "enum",
+
+
+
+            "labelKey": "sidecarItemTriggerModeLabel",
+
+
+
+            "descriptionKey": "sidecarItemTriggerModeDesc",
+
+
+
+            "enum": ["constant", "keyword", "vector"],
+
+
+
+            "default": "constant"
+
+
+
+          },
+
+
+
+          {
+
+
+
+            "key": "enabled",
+
+
+
+            "type": "boolean",
+
+
+
+            "labelKey": "sidecarItemEnabledLabel",
+
+
+
+            "default": true
+
+
+
+          }
+
+
+
+        ]
+
+
+
+      }
+
+
+
+    ]
+
+
+
+  },
+
+
+
+  "ui": {
+
+
+
+    "slots": [{ "name": "composer-toolbar", "entry": "./dist/web.mjs" }]
+
+
+
+  }
+
+
+
+}
+
+
+
+

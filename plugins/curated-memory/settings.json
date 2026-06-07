@@ -1,0 +1,53 @@
+{
+
+
+
+  "schemaVersion": 1,
+
+
+
+  "apiConfigId": "",
+
+
+
+  "memorybookDefaultEnabled": false,
+
+
+
+  "triggerEveryNTurns": 15,
+
+
+
+  "bufferTurns": 5,
+
+
+
+  "defaultTargetLorebookId": "",
+
+
+
+  "titleFormat": "range-suffix",
+
+
+
+  "defaultEntryTriggerMode": "vector",
+
+
+
+  "sidecarEnabled": false,
+
+
+
+  "sidecars": "[]",
+
+
+
+  "systemPromptTemplate": ""
+
+
+
+}
+
+
+
+

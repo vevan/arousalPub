@@ -1,4 +1,5 @@
 import type { ConversationMeta } from '@/plugins/types'
+import { apiFetch } from '@/utils/api-fetch'
 
 export async function fetchConversationMeta(
   conversationId: string,
@@ -8,7 +9,7 @@ export async function fetchConversationMeta(
   let characterIds: string[] = []
   let userCharacterId: string | null = null
   try {
-    const res = await fetch(`/api/chat/conversations/${conversationId}`)
+    const res = await apiFetch(`/api/chat/conversations/${conversationId}`)
     if (res.ok) {
       const idx = (await res.json()) as Record<string, unknown>
       title = typeof idx.title === 'string' ? idx.title : ''

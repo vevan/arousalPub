@@ -1,0 +1,178 @@
+import type {
+  PluginSettingsItemFieldSchema,
+  PluginSettingsSchema,
+} from '@/plugins/plugin-settings-types'
+import { pluginI18nKey } from '@/utils/plugin-settings-api'
+
+export function parseObjectListField(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) {
+    return value.filter(
+      (x): x is Record<string, unknown> =>
+        Boolean(x) && typeof x === 'object' && !Array.isArray(x),
+    )
+  }
+  if (typeof value === 'string') {
+    const s = value.trim()
+    if (!s) return []
+    try {
+      const parsed = JSON.parse(s) as unknown
+      if (!Array.isArray(parsed)) return []
+      return parsed.filter(
+        (x): x is Record<string, unknown> =>
+          Boolean(x) && typeof x === 'object' && !Array.isArray(x),
+      )
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
+export function serializeObjectListField(
+  items: Record<string, unknown>[],
+): string {
+  return JSON.stringify(items)
+}
+
+function isNonEmptyText(value: unknown): boolean {
+  if (value == null) return false
+  return String(value).trim().length > 0
+}
+
+function itemFieldRequiredEmpty(
+  field: PluginSettingsItemFieldSchema,
+  value: unknown,
+): boolean {
+  if (!field.required) return false
+  if (field.type === 'boolean' || field.type === 'integer' || field.type === 'number') {
+    return false
+  }
+  return !isNonEmptyText(value)
+}
+
+export function validatePluginSettingsModel(
+  schema: PluginSettingsSchema | null | undefined,
+  model: Record<string, unknown>,
+  t: (key: string) => string,
+  te: (key: string) => boolean,
+  pluginId: string,
+): string | null {
+  if (!schema) return null
+  for (const field of schema.fields) {
+    if (field.type === 'objectList') {
+      const items = parseObjectListField(model[field.key])
+      const itemFields = field.itemFields ?? []
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]!
+        for (const sub of itemFields) {
+          if (itemFieldRequiredEmpty(sub, item[sub.key])) {
+            const labelKey = pluginI18nKey(pluginId, sub.labelKey)
+            const label = te(labelKey) ? t(labelKey) : sub.labelKey
+            const reqKey = pluginI18nKey(pluginId, 'promptTemplateRequired')
+            const req =
+              te(reqKey) ? t(reqKey) : te('settings.plugins.promptRequired')
+                ? t('settings.plugins.promptRequired')
+                : 'Required'
+            return `${label}: ${req}`
+          }
+        }
+      }
+      continue
+    }
+    if (field.required && !isNonEmptyText(model[field.key])) {
+      const labelKey = pluginI18nKey(pluginId, field.labelKey)
+      const label = te(labelKey) ? t(labelKey) : field.labelKey
+      const reqKey = pluginI18nKey(pluginId, 'promptTemplateRequired')
+      const req =
+        te(reqKey) ? t(reqKey) : te('settings.plugins.promptRequired')
+          ? t('settings.plugins.promptRequired')
+          : 'Required'
+      return `${label}: ${req}`
+    }
+  }
+  return null
+}
+
+export function defaultTextForField(
+  field: { defaultKey?: string },
+  pluginId: string,
+  t: (key: string) => string,
+  te: (key: string) => boolean,
+): string {
+  if (!field.defaultKey) return ''
+  const key = pluginI18nKey(pluginId, field.defaultKey)
+  return te(key) ? t(key) : ''
+}
+
+export function hydratePluginSettingsDefaults(
+  model: Record<string, unknown>,
+  schema: PluginSettingsSchema | null | undefined,
+  pluginId: string,
+  t: (key: string) => string,
+  te: (key: string) => boolean,
+): void {
+  if (!schema) return
+  for (const field of schema.fields) {
+    if (
+      field.type === 'text' &&
+      field.widget === 'promptTemplate' &&
+      field.defaultKey &&
+      !String(model[field.key] ?? '').trim()
+    ) {
+      const text = defaultTextForField(field, pluginId, t, te)
+      if (text) model[field.key] = text
+    }
+    if (field.type === 'objectList') {
+      const items = parseObjectListField(model[field.key])
+      let changed = false
+      for (const item of items) {
+        for (const sub of field.itemFields ?? []) {
+          if (
+            sub.widget === 'promptTemplate' &&
+            sub.defaultKey &&
+            !String(item[sub.key] ?? '').trim()
+          ) {
+            const text = defaultTextForField(sub, pluginId, t, te)
+            if (text) {
+              item[sub.key] = text
+              changed = true
+            }
+          }
+        }
+      }
+      if (changed) {
+        model[field.key] = serializeObjectListField(items)
+      }
+    }
+  }
+}
+
+export function newObjectListItem(
+  itemFields: PluginSettingsItemFieldSchema[],
+  pluginId: string,
+  t: (key: string) => string,
+  te: (key: string) => boolean,
+): Record<string, unknown> {
+  const item: Record<string, unknown> = {
+    id: `sidecar-${Date.now().toString(36)}`,
+  }
+  for (const sub of itemFields) {
+    if (sub.type === 'boolean') {
+      item[sub.key] = sub.default === true
+    } else if (sub.type === 'integer' || sub.type === 'number') {
+      item[sub.key] = typeof sub.default === 'number' ? sub.default : 0
+    } else if (sub.type === 'enum') {
+      item[sub.key] =
+        typeof sub.default === 'string'
+          ? sub.default
+          : (sub.enum?.[0] ?? '')
+    } else if (sub.defaultKey) {
+      item[sub.key] = defaultTextForField(sub, pluginId, t, te)
+    } else if (typeof sub.default === 'string') {
+      item[sub.key] = sub.default
+    } else {
+      item[sub.key] = ''
+    }
+  }
+  return item
+}

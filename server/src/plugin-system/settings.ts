@@ -7,8 +7,10 @@ import {
   getPluginUserSettingsPath,
 } from './paths.js'
 import {
+  PluginSettingsValidationError,
   schemaDefaults,
   validatePluginSettings,
+  validatePluginSettingsStrict,
 } from './settings-schema.js'
 import type { PluginSettingsSchema } from './types.js'
 
@@ -41,7 +43,13 @@ export async function writePluginUserSettings(
   const manifest = await readPluginManifest(pluginId)
   if (!manifest) throw new Error('plugin_not_found')
   const schema = manifest.settingsSchema ?? null
-  const doc = validatePluginSettings(schema, raw)
+  let doc: Record<string, unknown>
+  try {
+    doc = validatePluginSettingsStrict(schema, raw)
+  } catch (e) {
+    if (e instanceof PluginSettingsValidationError) throw e
+    throw e
+  }
   const dir = getPluginUserDataDir(pluginId, uid)
   await mkdir(dir, { recursive: true })
   await writeFile(

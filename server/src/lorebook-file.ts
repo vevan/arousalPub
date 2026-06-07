@@ -98,6 +98,25 @@ export function buildDefaultLorebook(): Lorebook {
   }
 }
 
+/** 仅读 index.json，不加载整本条目（插件 list / 设置下拉） */
+export async function readLorebooksIndexSummary(): Promise<LorebookIndexEntry[]> {
+  const indexPath = getLorebooksIndexPath()
+  if (!existsSync(indexPath)) return []
+  try {
+    const raw = await readFile(indexPath, 'utf8')
+    const idx = JSON.parse(raw) as Partial<LorebooksIndexDocument>
+    if (idx.schemaVersion !== 1 || !Array.isArray(idx.lorebooks)) return []
+    return idx.lorebooks.filter(
+      (e): e is LorebookIndexEntry =>
+        Boolean(e?.id && LOREBOOK_ID_RE.test(e.id) && typeof e.name === 'string'),
+    )
+  } catch (e) {
+    const err = e as NodeJS.ErrnoException
+    if (err.code === 'ENOENT') return []
+    throw e
+  }
+}
+
 /** 索引中所有世界书 id（顺序与 index.json 一致） */
 export async function listLorebookIds(): Promise<string[]> {
   const doc = await readLorebooksDocument()
@@ -256,6 +275,47 @@ function validateEntryShape(
   if (typeof e.priority !== 'number' || !Number.isFinite(e.priority)) {
     throw new Error(`条目 ${e.id} priority 无效`)
   }
+}
+
+/** 写入单本世界书并更新 index.json 中对应条目的 updatedAt */
+export async function writeLorebook(lb: Lorebook): Promise<string> {
+  validateLorebookShape(lb)
+  const dir = getLorebooksDir()
+  await mkdir(dir, { recursive: true })
+  await mkdir(getUserDataDir(getCurrentUserId()), { recursive: true })
+
+  const savedAt = lb.updatedAt || new Date().toISOString()
+  const body: Lorebook = { ...lb, updatedAt: savedAt }
+  await writeFile(
+    lorebookFilePath(body.id),
+    `${JSON.stringify(body, null, 2)}\n`,
+    'utf8',
+  )
+
+  const indexPath = getLorebooksIndexPath()
+  let indexDoc: LorebooksIndexDocument
+  if (existsSync(indexPath)) {
+    const raw = await readFile(indexPath, 'utf8')
+    const idx = JSON.parse(raw) as Partial<LorebooksIndexDocument>
+    indexDoc = {
+      schemaVersion: 1,
+      savedAt,
+      lorebooks: Array.isArray(idx.lorebooks) ? [...idx.lorebooks] : [],
+    }
+  } else {
+    indexDoc = { schemaVersion: 1, savedAt, lorebooks: [] }
+  }
+
+  const entry = indexEntryFromLorebook(body as unknown as Record<string, unknown>)
+  const pos = indexDoc.lorebooks.findIndex((e) => e.id === body.id)
+  if (pos >= 0) {
+    indexDoc.lorebooks[pos] = entry
+  } else {
+    indexDoc.lorebooks.push(entry)
+  }
+  indexDoc.savedAt = savedAt
+  await writeFile(indexPath, `${JSON.stringify(indexDoc, null, 2)}\n`, 'utf8')
+  return savedAt
 }
 
 export function assertValidLorebooksPayload(body: unknown): {

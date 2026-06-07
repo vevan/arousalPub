@@ -33,6 +33,7 @@ const BUNDLED_PLUGIN_IDS = [
   'reply-complete-sound',
   'swipe-cleaner',
   'conversation-export',
+  'curated-memory',
 ] as const
 
 const BUNDLED_PLUGIN_ORDERS: Record<(typeof BUNDLED_PLUGIN_IDS)[number], number> = {
@@ -40,6 +41,7 @@ const BUNDLED_PLUGIN_ORDERS: Record<(typeof BUNDLED_PLUGIN_IDS)[number], number>
   'reply-complete-sound': 20,
   'swipe-cleaner': 30,
   'conversation-export': 40,
+  'curated-memory': 50,
 }
 
 const moduleCache = new Map<string, LoadedServerPlugin[]>()

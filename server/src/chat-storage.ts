@@ -166,6 +166,11 @@ export interface ConversationIndex {
   userCharacterId?: string
   /** 会话级 Author's Note（作者注） */
   authorsNote?: AuthorsNoteSettings
+  /**
+   * 会话级插件配置。键为 pluginId，值为插件自定义 JSON；
+   * 宿主只做对象校验与 PATCH 浅合并，不解释业务字段。
+   */
+  pluginSettings?: Record<string, Record<string, unknown>>
 }
 
 export interface TurnReceive {
@@ -429,6 +434,72 @@ export async function updateConversationPromptPresetId(
     delete next.promptPresetId
   } else {
     next.promptPresetId = trimmed
+  }
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
+  return next
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return Boolean(v) && typeof v === 'object' && !Array.isArray(v)
+}
+
+/** 读取会话级某插件 settings；缺省返回空对象 */
+export function readConversationPluginSettings(
+  idx: ConversationIndex,
+  pluginId: string,
+): Record<string, unknown> {
+  const id = pluginId.trim()
+  if (!id) return {}
+  const bag = idx.pluginSettings?.[id]
+  return isPlainObject(bag) ? { ...bag } : {}
+}
+
+/**
+ * 会话级插件 settings 浅合并；`partial` 中值为 `null` 的键将被删除。
+ */
+export function mergePluginSettingsPartial(
+  prev: Record<string, unknown>,
+  partial: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...prev }
+  for (const [k, v] of Object.entries(partial)) {
+    if (v === null) delete next[k]
+    else next[k] = v
+  }
+  return next
+}
+
+/**
+ * 合并会话级插件 settings（每个 pluginId 一层浅合并）。
+ * `patches` 的值为该插件的 partial 对象；字段传 `null` 表示删除该键。
+ */
+export async function updateConversationPluginSettings(
+  conversationId: string,
+  patches: Record<string, Record<string, unknown>>,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const t = nowIso()
+  const next: ConversationIndex = { ...idx, updatedAt: t }
+  const merged: Record<string, Record<string, unknown>> = {
+    ...(idx.pluginSettings ?? {}),
+  }
+  for (const [pluginId, partial] of Object.entries(patches)) {
+    const pid = pluginId.trim()
+    if (!pid || !isPlainObject(partial)) continue
+    const prev = merged[pid] ?? {}
+    const bag = mergePluginSettingsPartial(prev, partial)
+    if (Object.keys(bag).length === 0) {
+      delete merged[pid]
+    } else {
+      merged[pid] = bag
+    }
+  }
+  if (Object.keys(merged).length === 0) {
+    delete next.pluginSettings
+  } else {
+    next.pluginSettings = merged
   }
   await writeConversationIndex(conversationId, next)
   await upsertChatListEntry(chatListEntryFromIndex(next), next)

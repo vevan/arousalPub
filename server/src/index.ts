@@ -47,6 +47,7 @@ import {
   updateConversationChatApiSettings,
   clearConversationEmbeddingApiSettings,
   updateConversationEmbeddingApiSettings,
+  updateConversationPluginSettings,
   parseConversationChatBinding,
   parseConversationEmbeddingApiOverride,
   getTurnUserText,
@@ -97,6 +98,7 @@ import {
   assertValidLorebooksPayload,
   readLorebookById,
   readLorebooksDocument,
+  readLorebooksIndexSummary,
   writeLorebooksDocument,
   LOREBOOK_ID_RE,
   type LorebooksDocument,
@@ -152,6 +154,15 @@ import {
 } from './plugin-system/plugin-assets.js'
 import { readPluginManifest } from './plugin-system/manifest.js'
 import { scheduleLorebookVectorReindex } from './lorebook-vector-index.js'
+import {
+  createLorebookEntry,
+  patchLorebookEntry,
+  LOREBOOK_ENTRY_ID_RE,
+} from './lorebook-entries.js'
+import { runPluginComplete } from './plugin-complete.js'
+import { runPluginCompletePreflight } from './plugin-complete-preflight.js'
+import { runPluginMacroExpand } from './plugin-macro-expand.js'
+import { assertPluginRoutePermission } from './plugin-route-auth.js'
 import {
   applyPromptMacroPipeline,
   buildPromptMacroContext,
@@ -456,6 +467,8 @@ interface PatchConvBody {
     embeddingModel?: string
     embeddingDimensions?: number | null
   } | null
+  /** 会话级插件配置；每个 pluginId 一层浅合并 */
+  pluginSettings?: Record<string, Record<string, unknown>>
 }
 
 app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
@@ -499,6 +512,7 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       b,
       'embeddingApiSettings',
     )
+    const hasPluginSettings = Object.prototype.hasOwnProperty.call(b, 'pluginSettings')
     if (
       !hasTitle &&
       !hasPromptDebug &&
@@ -513,7 +527,8 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       !hasUserName &&
       !hasAuthorsNote &&
       !hasApiPreset &&
-      !hasEmbeddingApiSettings
+      !hasEmbeddingApiSettings &&
+      !hasPluginSettings
     ) {
       return reply
         .status(400)
@@ -849,6 +864,27 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
           .send({ error: ApiErrorCodes[code] ?? ApiErrorCodes.authors_note_invalid })
       }
       const next = await updateConversationAuthorsNote(id, parsed.patch)
+      if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+      idx = next
+    }
+    if (hasPluginSettings) {
+      const raw = b.pluginSettings
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return reply.status(400).send({ error: ApiErrorCodes.plugin_settings_invalid })
+      }
+      const patches: Record<string, Record<string, unknown>> = {}
+      for (const [pluginId, value] of Object.entries(raw)) {
+        const pid = pluginId.trim()
+        if (!pid) continue
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+          return reply.status(400).send({ error: ApiErrorCodes.plugin_settings_invalid })
+        }
+        patches[pid] = value as Record<string, unknown>
+      }
+      if (Object.keys(patches).length === 0) {
+        return reply.status(400).send({ error: ApiErrorCodes.plugin_settings_invalid })
+      }
+      const next = await updateConversationPluginSettings(id, patches)
       if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       idx = next
     }
@@ -2117,6 +2153,16 @@ app.get('/api/lorebooks', async (_request, reply) => {
   }
 })
 
+app.get('/api/lorebooks/summary', async (_request, reply) => {
+  try {
+    const lorebooks = await readLorebooksIndexSummary()
+    return { lorebooks }
+  } catch (e) {
+    app.log.error(e)
+    return reply.status(500).send({ error: ApiErrorCodes.lorebooks_read_failed })
+  }
+})
+
 app.put('/api/lorebooks', async (request, reply) => {
   let validated: { lorebooks: LorebooksDocument['lorebooks'] }
   try {
@@ -2633,9 +2679,323 @@ app.put<{ Params: { pluginId: string }; Body: Record<string, unknown> }>(
         request.body ?? {},
       )
       return { settings }
-    } catch {
+    } catch (e) {
+      if (
+        e &&
+        typeof e === 'object' &&
+        'code' in e &&
+        (e as { code: string }).code === 'plugin_settings_invalid'
+      ) {
+        return reply.status(400).send({ error: ApiErrorCodes.plugin_settings_invalid })
+      }
       return reply.status(404).send({ error: 'not_found' })
     }
+  },
+)
+
+app.get<{ Params: { pluginId: string } }>(
+  '/api/plugins/:pluginId/lorebooks',
+  async (request, reply) => {
+    const pluginId = request.params.pluginId.trim()
+    const auth = await assertPluginRoutePermission(pluginId, 'lorebook.read')
+    if (!auth.ok) {
+      return reply.status(auth.status).send({ error: ApiErrorCodes[auth.code] })
+    }
+    try {
+      const lorebooks = await readLorebooksIndexSummary()
+      return { lorebooks }
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.lorebooks_read_failed })
+    }
+  },
+)
+
+app.get<{ Params: { pluginId: string; lorebookId: string } }>(
+  '/api/plugins/:pluginId/lorebooks/:lorebookId',
+  async (request, reply) => {
+    const pluginId = request.params.pluginId.trim()
+    const lorebookId = request.params.lorebookId
+    if (!LOREBOOK_ID_RE.test(lorebookId)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    const auth = await assertPluginRoutePermission(pluginId, 'lorebook.read')
+    if (!auth.ok) {
+      return reply.status(auth.status).send({ error: ApiErrorCodes[auth.code] })
+    }
+    try {
+      const lb = await readLorebookById(lorebookId)
+      if (!lb) return reply.status(404).send({ error: ApiErrorCodes.lorebook_not_found })
+      return lb
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.lorebooks_read_failed })
+    }
+  },
+)
+
+app.post<{
+  Params: { pluginId: string; lorebookId: string }
+  Body: Record<string, unknown>
+}>(
+  '/api/plugins/:pluginId/lorebooks/:lorebookId/entries',
+  async (request, reply) => {
+    const pluginId = request.params.pluginId.trim()
+    const lorebookId = request.params.lorebookId
+    if (!LOREBOOK_ID_RE.test(lorebookId)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    const auth = await assertPluginRoutePermission(pluginId, 'lorebook.entry.write')
+    if (!auth.ok) {
+      return reply.status(auth.status).send({ error: ApiErrorCodes[auth.code] })
+    }
+    const body = request.body ?? {}
+    try {
+      const result = await createLorebookEntry(lorebookId, {
+        groupId: typeof body.groupId === 'string' ? body.groupId : undefined,
+        title: typeof body.title === 'string' ? body.title : '',
+        content: typeof body.content === 'string' ? body.content : '',
+        keys: Array.isArray(body.keys) ? (body.keys as string[]) : undefined,
+        comment: typeof body.comment === 'string' ? body.comment : undefined,
+        enabled: typeof body.enabled === 'boolean' ? body.enabled : undefined,
+        constant: typeof body.constant === 'boolean' ? body.constant : undefined,
+        triggerMode:
+          body.triggerMode === 'keyword' ||
+          body.triggerMode === 'constant' ||
+          body.triggerMode === 'vector'
+            ? body.triggerMode
+            : undefined,
+        priority:
+          typeof body.priority === 'number' ? body.priority : undefined,
+        order: typeof body.order === 'number' ? body.order : undefined,
+      })
+      if (!result) {
+        return reply.status(404).send({ error: ApiErrorCodes.lorebook_not_found })
+      }
+      const lb = await readLorebookById(lorebookId)
+      if (lb) scheduleLorebookVectorReindex([lb])
+      return { ok: true as const, entry: result.entry, savedAt: result.savedAt }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ''
+      app.log.error(e)
+      if (msg.includes('title')) {
+        return reply
+          .status(400)
+          .send({ error: ApiErrorCodes.lorebook_entry_validation_failed })
+      }
+      return reply.status(500).send({ error: ApiErrorCodes.lorebook_entry_create_failed })
+    }
+  },
+)
+
+app.patch<{
+  Params: { pluginId: string; lorebookId: string; entryId: string }
+  Body: Record<string, unknown>
+}>(
+  '/api/plugins/:pluginId/lorebooks/:lorebookId/entries/:entryId',
+  async (request, reply) => {
+    const pluginId = request.params.pluginId.trim()
+    const lorebookId = request.params.lorebookId
+    const entryId = request.params.entryId
+    if (!LOREBOOK_ID_RE.test(lorebookId)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    if (!LOREBOOK_ENTRY_ID_RE.test(entryId)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    const auth = await assertPluginRoutePermission(pluginId, 'lorebook.entry.write')
+    if (!auth.ok) {
+      return reply.status(auth.status).send({ error: ApiErrorCodes[auth.code] })
+    }
+    const body = request.body ?? {}
+    try {
+      const result = await patchLorebookEntry(lorebookId, entryId, {
+        title: typeof body.title === 'string' ? body.title : undefined,
+        content: typeof body.content === 'string' ? body.content : undefined,
+        keys: Array.isArray(body.keys) ? (body.keys as string[]) : undefined,
+        comment: typeof body.comment === 'string' ? body.comment : undefined,
+        enabled: typeof body.enabled === 'boolean' ? body.enabled : undefined,
+        constant: typeof body.constant === 'boolean' ? body.constant : undefined,
+        triggerMode:
+          body.triggerMode === 'keyword' ||
+          body.triggerMode === 'constant' ||
+          body.triggerMode === 'vector'
+            ? body.triggerMode
+            : undefined,
+        priority:
+          typeof body.priority === 'number' ? body.priority : undefined,
+        order: typeof body.order === 'number' ? body.order : undefined,
+        groupId: typeof body.groupId === 'string' ? body.groupId : undefined,
+      })
+      if (!result) {
+        return reply.status(404).send({ error: ApiErrorCodes.lorebook_entry_not_found })
+      }
+      const lb = await readLorebookById(lorebookId)
+      if (lb) scheduleLorebookVectorReindex([lb])
+      return { ok: true as const, entry: result.entry, savedAt: result.savedAt }
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.lorebook_entry_patch_failed })
+    }
+  },
+)
+
+app.post<{
+  Params: { pluginId: string }
+  Body: {
+    apiConfigId?: string
+    messages?: { role: string; content: string }[]
+    modelOverride?: string
+    stream?: boolean
+    responseFormat?: string
+  }
+}>(
+  '/api/plugins/:pluginId/complete',
+  async (request, reply) => {
+    const pluginId = request.params.pluginId.trim()
+    const auth = await assertPluginRoutePermission(pluginId, 'plugin.complete')
+    if (!auth.ok) {
+      return reply.status(auth.status).send({ error: ApiErrorCodes[auth.code] })
+    }
+    const body = request.body ?? {}
+    const result = await runPluginComplete({
+      apiConfigId: typeof body.apiConfigId === 'string' ? body.apiConfigId : '',
+      messages: Array.isArray(body.messages)
+        ? (body.messages as { role: 'system' | 'user' | 'assistant'; content: string }[])
+        : [],
+      modelOverride:
+        typeof body.modelOverride === 'string' ? body.modelOverride : undefined,
+      stream: body.stream === true,
+      responseFormat:
+        body.responseFormat === 'json_object' || body.responseFormat === 'text'
+          ? body.responseFormat
+          : undefined,
+    })
+    if (!result.ok) {
+      if (result.code === 'upstream_error') {
+        return reply.status(502).send({
+          error: ApiErrorCodes.upstream_api_error,
+          status: result.status,
+          detail: result.detail,
+        })
+      }
+      if (result.code === 'messages_empty') {
+        return reply.status(400).send({ error: ApiErrorCodes.messages_required_nonempty })
+      }
+      if (result.code === 'messages_invalid') {
+        return reply.status(400).send({ error: ApiErrorCodes.messages_item_role_content })
+      }
+      if (result.code === 'stream_not_supported') {
+        return reply
+          .status(400)
+          .send({ error: ApiErrorCodes.plugin_complete_stream_not_supported })
+      }
+      if (
+        result.code === 'api_config_not_found' ||
+        result.code === 'api_credential_not_configured' ||
+        result.code === 'missing_model'
+      ) {
+        const code = result.code as keyof typeof ApiErrorCodes
+        return reply.status(400).send({ error: ApiErrorCodes[code] })
+      }
+      if (result.code === 'upstream_non_json' || result.code === 'upstream_empty_content') {
+        return reply.status(502).send({
+          error: ApiErrorCodes.upstream_non_json,
+          detail: result.detail,
+        })
+      }
+      return reply.status(502).send({
+        error: ApiErrorCodes.plugin_complete_failed,
+        detail: result.detail,
+      })
+    }
+    return {
+      ok: true as const,
+      content: result.content,
+      usage: result.usage,
+      latencyMs: result.latencyMs,
+    }
+  },
+)
+
+app.post<{
+  Params: { pluginId: string }
+  Body: {
+    apiConfigId?: string
+    messages?: { role: string; content: string }[]
+  }
+}>(
+  '/api/plugins/:pluginId/complete/preflight',
+  async (request, reply) => {
+    const pluginId = request.params.pluginId.trim()
+    const auth = await assertPluginRoutePermission(pluginId, 'plugin.complete')
+    if (!auth.ok) {
+      return reply.status(auth.status).send({ error: ApiErrorCodes[auth.code] })
+    }
+    const body = request.body ?? {}
+    const result = await runPluginCompletePreflight({
+      apiConfigId: typeof body.apiConfigId === 'string' ? body.apiConfigId : '',
+      messages: Array.isArray(body.messages)
+        ? (body.messages as { role: 'system' | 'user' | 'assistant'; content: string }[])
+        : [],
+    })
+    if (result.code === 'messages_empty') {
+      return reply.status(400).send({ error: ApiErrorCodes.messages_required_nonempty })
+    }
+    if (result.code === 'messages_invalid') {
+      return reply.status(400).send({ error: ApiErrorCodes.messages_item_role_content })
+    }
+    if (result.code === 'api_config_not_found') {
+      return reply.status(400).send({ error: ApiErrorCodes.api_preset_not_found })
+    }
+    if (result.code === 'context_length_unconfigured') {
+      return reply.status(400).send({
+        error: ApiErrorCodes.plugin_complete_context_length_unconfigured,
+        promptTokens: result.promptTokens,
+      })
+    }
+    return {
+      ok: result.ok,
+      promptTokens: result.promptTokens,
+      budget: result.budget,
+      contextLength: result.contextLength,
+      outputReserve: result.outputReserve,
+      model: result.model,
+      encoding: result.encoding,
+      code: result.code,
+    }
+  },
+)
+
+app.post<{
+  Params: { pluginId: string }
+  Body: {
+    text?: string
+    conversationId?: string
+    apiConfigId?: string
+    locale?: string
+  }
+}>(
+  '/api/plugins/:pluginId/macros/expand',
+  async (request, reply) => {
+    const pluginId = request.params.pluginId.trim()
+    const auth = await assertPluginRoutePermission(pluginId, 'conversation.read')
+    if (!auth.ok) {
+      return reply.status(auth.status).send({ error: ApiErrorCodes[auth.code] })
+    }
+    const body = request.body ?? {}
+    const result = await runPluginMacroExpand({
+      text: typeof body.text === 'string' ? body.text : '',
+      conversationId:
+        typeof body.conversationId === 'string' ? body.conversationId : undefined,
+      apiConfigId:
+        typeof body.apiConfigId === 'string' ? body.apiConfigId : undefined,
+      locale: typeof body.locale === 'string' ? body.locale : undefined,
+    })
+    if (!result.ok) {
+      return reply.status(400).send({ error: ApiErrorCodes.messages_required_nonempty })
+    }
+    return { ok: true as const, text: result.text }
   },
 )
 

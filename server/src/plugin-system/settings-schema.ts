@@ -1,7 +1,17 @@
 import type {
   PluginSettingsFieldSchema,
+  PluginSettingsItemFieldSchema,
   PluginSettingsSchema,
 } from './types.js'
+
+export class PluginSettingsValidationError extends Error {
+  readonly code = 'plugin_settings_invalid' as const
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'PluginSettingsValidationError'
+  }
+}
 
 export function normalizeSettingsSchema(
   raw: unknown,
@@ -21,6 +31,49 @@ export function normalizeSettingsSchema(
   return { version: Math.round(doc.version), fields }
 }
 
+function normalizeItemField(
+  raw: unknown,
+): PluginSettingsItemFieldSchema | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const key = typeof o.key === 'string' ? o.key.trim() : ''
+  const type = typeof o.type === 'string' ? o.type.trim() : ''
+  const labelKey = typeof o.labelKey === 'string' ? o.labelKey.trim() : ''
+  if (!key || !labelKey) return null
+  const allowed = new Set([
+    'boolean',
+    'integer',
+    'number',
+    'string',
+    'text',
+    'enum',
+  ])
+  if (!allowed.has(type)) return null
+  const field: PluginSettingsItemFieldSchema = {
+    key,
+    type: type as PluginSettingsItemFieldSchema['type'],
+    labelKey,
+  }
+  if (typeof o.descriptionKey === 'string' && o.descriptionKey.trim()) {
+    field.descriptionKey = o.descriptionKey.trim()
+  }
+  if ('default' in o) field.default = o.default
+  if (typeof o.min === 'number' && Number.isFinite(o.min)) field.min = o.min
+  if (typeof o.max === 'number' && Number.isFinite(o.max)) field.max = o.max
+  if (typeof o.maxLength === 'number' && Number.isFinite(o.maxLength)) {
+    field.maxLength = Math.round(o.maxLength)
+  }
+  if (Array.isArray(o.enum)) {
+    field.enum = o.enum.filter((x): x is string => typeof x === 'string')
+  }
+  if (o.required === true) field.required = true
+  if (typeof o.defaultKey === 'string' && o.defaultKey.trim()) {
+    field.defaultKey = o.defaultKey.trim()
+  }
+  if (o.widget === 'promptTemplate') field.widget = 'promptTemplate'
+  return field
+}
+
 function normalizeField(raw: unknown): PluginSettingsFieldSchema | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
@@ -36,6 +89,9 @@ function normalizeField(raw: unknown): PluginSettingsFieldSchema | null {
     'text',
     'enum',
     'fileAsset',
+    'apiPreset',
+    'lorebook',
+    'objectList',
   ])
   if (!allowed.has(type)) return null
   const field: PluginSettingsFieldSchema = {
@@ -69,8 +125,21 @@ function normalizeField(raw: unknown): PluginSettingsFieldSchema | null {
     }
   }
   if (o.widget === 'slider') field.widget = 'slider'
+  if (o.widget === 'promptTemplate') field.widget = 'promptTemplate'
   if (typeof o.step === 'number' && Number.isFinite(o.step) && o.step > 0) {
     field.step = o.step
+  }
+  if (o.required === true) field.required = true
+  if (typeof o.defaultKey === 'string' && o.defaultKey.trim()) {
+    field.defaultKey = o.defaultKey.trim()
+  }
+  if (Array.isArray(o.itemFields)) {
+    const items: PluginSettingsItemFieldSchema[] = []
+    for (const item of o.itemFields) {
+      const f = normalizeItemField(item)
+      if (f) items.push(f)
+    }
+    if (items.length > 0) field.itemFields = items
   }
   return field
 }
@@ -102,6 +171,80 @@ export function validatePluginSettings(
     out[field.key] = coerceField(field, input[field.key], base[field.key])
   }
   return out
+}
+
+export function validatePluginSettingsStrict(
+  schema: PluginSettingsSchema | null | undefined,
+  raw: unknown,
+): Record<string, unknown> {
+  const doc = validatePluginSettings(schema, raw)
+  if (!schema) return doc
+  for (const field of schema.fields) {
+    assertFieldValid(field, doc[field.key])
+  }
+  return doc
+}
+
+function assertFieldValid(
+  field: PluginSettingsFieldSchema,
+  value: unknown,
+): void {
+  if (field.type === 'objectList') {
+    const items = parseObjectListValue(value)
+    const itemFields = field.itemFields ?? []
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        throw new PluginSettingsValidationError(
+          `${field.key}[${i}] invalid`,
+        )
+      }
+      for (const sub of itemFields) {
+        assertItemFieldValid(sub, (item as Record<string, unknown>)[sub.key], i)
+      }
+    }
+    return
+  }
+  if (!field.required) return
+  if (!isNonEmptyText(value)) {
+    throw new PluginSettingsValidationError(`${field.key} required`)
+  }
+}
+
+function assertItemFieldValid(
+  field: PluginSettingsItemFieldSchema,
+  value: unknown,
+  index: number,
+): void {
+  if (!field.required) return
+  if (field.type === 'boolean' || field.type === 'integer' || field.type === 'number') {
+    return
+  }
+  if (!isNonEmptyText(value)) {
+    throw new PluginSettingsValidationError(
+      `${field.key}[${index}].${field.key} required`,
+    )
+  }
+}
+
+function isNonEmptyText(value: unknown): boolean {
+  if (value == null) return false
+  return String(value).trim().length > 0
+}
+
+function parseObjectListValue(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value
+  if (typeof value === 'string') {
+    const s = value.trim()
+    if (!s) return []
+    try {
+      const parsed = JSON.parse(s) as unknown
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+  return []
 }
 
 function coerceField(
@@ -137,13 +280,30 @@ function coerceField(
       if (typeof field.max === 'number') v = Math.min(field.max, v)
       return v
     }
+    case 'objectList': {
+      const items = parseObjectListValue(value)
+      const itemFields = field.itemFields ?? []
+      const coerced = items
+        .filter((x) => x && typeof x === 'object' && !Array.isArray(x))
+        .map((rawItem, index) =>
+          coerceObjectListItem(itemFields, rawItem as Record<string, unknown>, index),
+        )
+      return JSON.stringify(coerced)
+    }
     case 'string':
-    case 'text': {
+    case 'text':
+    case 'apiPreset':
+    case 'lorebook': {
       const s = typeof value === 'string' ? value : value != null ? String(value) : ''
       const trimmed = field.type === 'text' ? s : s.trim()
       const maxLen = field.maxLength ?? (field.type === 'text' ? 8000 : 500)
       const clipped = trimmed.length > maxLen ? trimmed.slice(0, maxLen) : trimmed
-      if (!clipped && typeof fallback === 'string' && fallback.trim()) {
+      if (
+        !clipped &&
+        !field.required &&
+        typeof fallback === 'string' &&
+        fallback.trim()
+      ) {
         return fallback
       }
       return clipped
@@ -160,6 +320,78 @@ function coerceField(
       const base = pathBasename(s)
       if (!base || base.includes('..')) return ''
       return base
+    }
+    default:
+      return fallback
+  }
+}
+
+function coerceObjectListItem(
+  itemFields: PluginSettingsItemFieldSchema[],
+  raw: Record<string, unknown>,
+  index: number,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  if (typeof raw.id === 'string' && raw.id.trim()) {
+    out.id = raw.id.trim()
+  } else {
+    out.id = `sidecar-${index}-${Date.now().toString(36)}`
+  }
+  for (const sub of itemFields) {
+    out[sub.key] = coerceItemField(sub, raw[sub.key])
+  }
+  return out
+}
+
+function coerceItemField(
+  field: PluginSettingsItemFieldSchema,
+  value: unknown,
+): unknown {
+  const fallback = 'default' in field ? field.default : undefined
+  switch (field.type) {
+    case 'boolean':
+      return typeof value === 'boolean' ? value : Boolean(fallback ?? false)
+    case 'integer': {
+      const n =
+        typeof value === 'number'
+          ? Math.round(value)
+          : typeof value === 'string'
+            ? Math.round(Number(value))
+            : NaN
+      if (!Number.isFinite(n)) {
+        return typeof fallback === 'number' ? Math.round(fallback) : 0
+      }
+      let v = n
+      if (typeof field.min === 'number') v = Math.max(field.min, v)
+      if (typeof field.max === 'number') v = Math.min(field.max, v)
+      return v
+    }
+    case 'number': {
+      const n = typeof value === 'number' ? value : Number(String(value))
+      if (!Number.isFinite(n)) {
+        return typeof fallback === 'number' ? fallback : 0
+      }
+      let v = n
+      if (typeof field.min === 'number') v = Math.max(field.min, v)
+      if (typeof field.max === 'number') v = Math.min(field.max, v)
+      return v
+    }
+    case 'string':
+    case 'text': {
+      const s = typeof value === 'string' ? value : value != null ? String(value) : ''
+      const trimmed = field.type === 'text' ? s : s.trim()
+      const maxLen = field.maxLength ?? (field.type === 'text' ? 8000 : 200)
+      const clipped = trimmed.length > maxLen ? trimmed.slice(0, maxLen) : trimmed
+      if (!clipped && typeof fallback === 'string' && fallback.trim()) {
+        return fallback
+      }
+      return clipped
+    }
+    case 'enum': {
+      const opts = field.enum ?? []
+      if (typeof value === 'string' && opts.includes(value)) return value
+      if (typeof fallback === 'string' && opts.includes(fallback)) return fallback
+      return opts[0] ?? ''
     }
     default:
       return fallback

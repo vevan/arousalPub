@@ -6,6 +6,32 @@ export type PluginSettingsFieldType =
   | 'text'
   | 'enum'
   | 'fileAsset'
+  | 'apiPreset'
+  | 'lorebook'
+  | 'objectList'
+
+export type PluginSettingsItemFieldType =
+  | 'boolean'
+  | 'integer'
+  | 'number'
+  | 'string'
+  | 'text'
+  | 'enum'
+
+export interface PluginSettingsItemFieldSchema {
+  key: string
+  type: PluginSettingsItemFieldType
+  labelKey: string
+  descriptionKey?: string
+  default?: unknown
+  min?: number
+  max?: number
+  maxLength?: number
+  enum?: string[]
+  required?: boolean
+  defaultKey?: string
+  widget?: 'promptTemplate'
+}
 
 export interface PluginSettingsFieldSchema {
   key: string
@@ -20,8 +46,11 @@ export interface PluginSettingsFieldSchema {
   accept?: string[]
   purpose?: string
   visibleWhen?: { field: string; equals: unknown }
-  widget?: 'slider'
+  widget?: 'slider' | 'promptTemplate'
   step?: number
+  required?: boolean
+  defaultKey?: string
+  itemFields?: PluginSettingsItemFieldSchema[]
 }
 
 export interface PluginSettingsSchema {

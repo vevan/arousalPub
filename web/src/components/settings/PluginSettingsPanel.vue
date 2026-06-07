@@ -7,10 +7,14 @@ import {
   savePluginRegistry,
   savePluginSettings,
 } from '@/utils/plugin-settings-api'
+import {
+  hydratePluginSettingsDefaults,
+  validatePluginSettingsModel,
+} from '@/utils/plugin-settings-validate'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const loading = ref(true)
 const saving = ref(false)
@@ -92,6 +96,13 @@ async function openSettings(plugin: PluginManageEntry) {
   settingsOpen.value = true
   try {
     settingsModel.value = await fetchPluginSettings(plugin.id)
+    hydratePluginSettingsDefaults(
+      settingsModel.value,
+      plugin.settingsSchema,
+      plugin.id,
+      t,
+      te,
+    )
   } catch {
     settingsError.value = t('settings.plugins.settingsLoadFailed')
     settingsModel.value = {}
@@ -106,6 +117,17 @@ function closeSettings() {
 async function submitSettings() {
   const plugin = settingsPlugin.value
   if (!plugin) return
+  const validationError = validatePluginSettingsModel(
+    plugin.settingsSchema,
+    settingsModel.value,
+    t,
+    te,
+    plugin.id,
+  )
+  if (validationError) {
+    settingsError.value = validationError
+    return
+  }
   settingsSaving.value = true
   settingsError.value = ''
   try {

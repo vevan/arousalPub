@@ -20,6 +20,19 @@ import {
   fetchConversationMeta,
 } from '@/plugins/conversation-meta'
 import {
+  createLorebookEntry,
+  fetchApiPresets,
+  fetchConversationPluginSettings,
+  fetchLorebookById,
+  fetchLorebookList,
+  fetchPluginUserSettings,
+  patchConversationPluginSettings,
+  patchLorebookEntry,
+  expandPluginMacros,
+  runPluginComplete,
+  runPluginCompletePreflight,
+} from '@/plugins/plugin-host-api'
+import {
   renderRichMessageToHtml,
   renderReasoningMarkdownToHtml,
 } from '@/utils/render-rich-message'
@@ -28,15 +41,68 @@ import { ref, type Ref } from 'vue'
 
 type ChatSession = ReturnType<typeof useChatSession>
 
+export function formDialogKey(pluginId: string, dialogId?: string): string {
+  const pid = pluginId.trim()
+  const did = dialogId?.trim()
+  return did ? `${pid}::${did}` : pid
+}
+
 export function createScopedPluginHost(
   base: PluginWebHost,
   pluginId: string,
 ): PluginWebHost {
   const id = pluginId.trim()
+  const convId = () => base.conversation.getId()
   return {
     ...base,
     pluginKey(key: string) {
       return `plugins.${id}.${key}`
+    },
+    conversation: {
+      ...base.conversation,
+      getPluginSettings() {
+        return fetchConversationPluginSettings(convId(), id)
+      },
+      patchPluginSettings(partial) {
+        return patchConversationPluginSettings(convId(), id, partial)
+      },
+    },
+    lorebook: {
+      list() {
+        return fetchLorebookList(id)
+      },
+      get(lorebookId) {
+        return fetchLorebookById(id, lorebookId)
+      },
+      createEntry(lorebookId, body) {
+        return createLorebookEntry(id, lorebookId, body)
+      },
+      patchEntry(lorebookId, entryId, body) {
+        return patchLorebookEntry(id, lorebookId, entryId, body)
+      },
+    },
+    api: {
+      listPresets: fetchApiPresets,
+    },
+    plugin: {
+      complete(req) {
+        return runPluginComplete(id, req)
+      },
+    },
+    token: {
+      preflightComplete(req) {
+        return runPluginCompletePreflight(id, req)
+      },
+    },
+    plugins: {
+      getUserSettings() {
+        return fetchPluginUserSettings(id)
+      },
+    },
+    macros: {
+      expand(text, opts) {
+        return expandPluginMacros(id, convId(), text, opts)
+      },
     },
   }
 }
@@ -68,12 +134,14 @@ export function createPluginWebHost(session: ChatSession): {
       list.push(def)
       slotButtons.set(slot, list)
     },
-    registerFormDialog(pluginId, def) {
-      formDialogs.set(pluginId, def)
+    registerFormDialog(pluginId, def, dialogId) {
+      formDialogs.set(formDialogKey(pluginId, dialogId), def)
     },
-    openFormDialog(pluginId, model) {
+    openFormDialog(pluginId, model, dialogId) {
+      formSubmitting.value = false
       openForm.value = {
         pluginId,
+        dialogId,
         model: { ...model },
       }
     },
@@ -121,6 +189,54 @@ export function createPluginWebHost(session: ChatSession): {
       refresh() {
         return session.refreshConversation()
       },
+      getPluginSettings() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+      patchPluginSettings() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+      setPluginHold(hold: boolean) {
+        session.setPluginHold(hold)
+      },
+    },
+    lorebook: {
+      list() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+      get() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+      createEntry() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+      patchEntry() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+    },
+    api: {
+      listPresets() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+    },
+    plugin: {
+      complete() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+    },
+    token: {
+      preflightComplete() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+    },
+    plugins: {
+      getUserSettings() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+    },
+    macros: {
+      expand() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
     },
     render: {
       richMessageToHtml: renderRichMessageToHtml,
@@ -137,9 +253,11 @@ export function createPluginWebHost(session: ChatSession): {
       confirm(opts: PluginConfirmOptions) {
         return showPluginConfirm(opts)
       },
-      openFormDialog(pluginId, model) {
+      openFormDialog(pluginId, model, dialogId) {
+        formSubmitting.value = false
         openForm.value = {
           pluginId,
+          dialogId,
           model: { ...model },
         }
       },
@@ -176,19 +294,32 @@ export async function submitOpenPluginForm(params: {
 }): Promise<void> {
   const state = params.openForm.value
   if (!state) return
-  const def = params.formDialogs.get(state.pluginId)
+  const def = params.formDialogs.get(formDialogKey(state.pluginId, state.dialogId))
   if (!def || !def.canSubmit(state.model)) return
   params.formSubmitting.value = true
   try {
-    await def.onSubmit(params.host, state.model)
+    const scopedHost = createScopedPluginHost(params.host, state.pluginId)
+    await def.onSubmit(scopedHost, state.model)
     params.openForm.value = null
   } finally {
     params.formSubmitting.value = false
   }
 }
 
-export function cancelOpenPluginForm(openForm: {
-  value: OpenPluginFormState | null
+export function cancelOpenPluginForm(params: {
+  openForm: { value: OpenPluginFormState | null }
+  formDialogs: Map<string, PluginFormDialogDef>
+  host: PluginWebHost
 }): void {
-  openForm.value = null
+  const state = params.openForm.value
+  if (state) {
+    const def = params.formDialogs.get(
+      formDialogKey(state.pluginId, state.dialogId),
+    )
+    if (def?.onCancel) {
+      const scopedHost = createScopedPluginHost(params.host, state.pluginId)
+      void def.onCancel(scopedHost, state.model)
+    }
+  }
+  params.openForm.value = null
 }

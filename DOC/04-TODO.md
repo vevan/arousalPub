@@ -60,6 +60,20 @@
 - [ ] **独立知识库 RAG**（**≠ 现有世界书**）：用户上传/导入 **长文档**（PDF、Markdown、txt 等）→ 自动 **切片** → embedding → 独立 Lance 表（与 turn memory、资料库条目 **分表**）→ 对话时向量 TopK 检索注入；`rag_generate` 能力接线。**未实现**。若设定资料只靠世界书手工条目维护，本项可长期不做。
 - [ ] RAG/模型调用日志（耗时、token、**命中明细**）— **部分**：turn `receive.runtime`（model/durationMs/tokens）；`assemble-messages` 返回 dropped 计数与 `memoryTurnIds`；**未达**需求 §4 全量审计
 
+### 策展记忆插件（`curated-memory` · 2026-06-03）
+
+> 实现指南：`DOC/12-plugin-curated-memory.md`（部分字段/流程已随 v1.1 迭代，以代码与联调为准）。
+
+**联调进度（2026-06-03）**
+
+- [x] 手动摘要 + 确认预览落盘 + lorebook 前端缓存同步
+- [x] keywords 硬性写入 `keys`（与触发方式无关）
+- [ ] **自动摘要（Memorybook）** — 明日继续联调（N + buffer 块、指针 `lastSummarizedEnd` / `nextBlockStart`）
+
+**P0 — Sidecar 设置 UI**
+
+- [ ] **替换全局设置中的 Sidecar JSON textarea**（`settingsSchema` 字段 `sidecars`）：改为结构化 UI（列表增删改 Sidecar：名称、启用、独立 system 模板等），**不再要求用户手写 JSON**；与会话级 Sidecar 开关、手动摘要多选、lorebook 条目标题语义对齐（`name` = 条目 title）。
+
 ## 前端工程（当前仓库）
 
 - [x] **npm audit 安全项**（`marked` ≥18.0.4、`fast-uri` ≥3.1.2）— 2026-05-29，见 `DOC/00-alert.md`

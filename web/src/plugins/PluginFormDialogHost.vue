@@ -1,11 +1,23 @@
 <script setup lang="ts">
-import type { PluginFormFieldDef } from '@/plugins/types'
+import type { PluginFormFieldDef, PluginFormFieldOption } from '@/plugins/types'
+import { formDialogKey } from '@/plugins/create-plugin-web-host'
 import { PLUGIN_HOST_KEY } from '@/plugins/injection'
-import { computed, inject } from 'vue'
+import {
+  loadApiPresetSelectItems,
+  loadLorebookSelectItems,
+  needsApiPresetSelect,
+  needsLorebookSelect,
+  type PluginSchemaSelectItem,
+} from '@/utils/plugin-schema-selects'
+import { computed, inject, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const pluginHost = inject(PLUGIN_HOST_KEY)
 const { t } = useI18n()
+
+const apiPresetItems = ref<PluginSchemaSelectItem[]>([])
+const lorebookItems = ref<PluginSchemaSelectItem[]>([])
+const selectsLoading = ref(false)
 
 const open = computed({
   get: () => pluginHost?.openForm.value != null,
@@ -17,7 +29,7 @@ const open = computed({
 const activeDef = computed(() => {
   const state = pluginHost?.openForm.value
   if (!state || !pluginHost) return null
-  return pluginHost.formDialogs.get(state.pluginId) ?? null
+  return pluginHost.formDialogs.get(formDialogKey(state.pluginId, state.dialogId)) ?? null
 })
 
 const model = computed(() => pluginHost?.openForm.value?.model ?? {})
@@ -50,6 +62,29 @@ const cancelLabel = computed(() => {
 
 const submitting = computed(() => pluginHost?.formSubmitting.value ?? false)
 
+watch(
+  () => pluginHost?.openForm.value,
+  async (state) => {
+    if (!state || !pluginHost) return
+    const def = pluginHost.formDialogs.get(formDialogKey(state.pluginId, state.dialogId))
+    if (!def) return
+    const needApi = needsApiPresetSelect(def.fields)
+    const needLb = needsLorebookSelect(def.fields)
+    if (!needApi && !needLb) return
+    selectsLoading.value = true
+    try {
+      const [api, lb] = await Promise.all([
+        needApi ? loadApiPresetSelectItems() : Promise.resolve([]),
+        needLb ? loadLorebookSelectItems() : Promise.resolve([]),
+      ])
+      apiPresetItems.value = api
+      lorebookItems.value = lb
+    } finally {
+      selectsLoading.value = false
+    }
+  },
+)
+
 function isFieldVisible(
   field: PluginFormFieldDef,
   m: Record<string, unknown>,
@@ -64,10 +99,50 @@ function fieldValue(key: string): string {
   return typeof v === 'string' ? v : v != null ? String(v) : ''
 }
 
-function setFieldValue(key: string, value: string | null) {
+function setFieldValue(key: string, value: string | null, readOnly?: boolean) {
+  const state = pluginHost?.openForm.value
+  if (!state || readOnly) return
+  state.model[key] = value ?? ''
+}
+
+function optionLabel(opt: PluginFormFieldOption): string {
+  if (opt.label) return opt.label
+  if (opt.labelKey) return t(opt.labelKey)
+  return opt.value
+}
+
+function checkboxValues(key: string): string[] {
+  const v = model.value[key]
+  if (!Array.isArray(v)) return []
+  return v.filter((x): x is string => typeof x === 'string')
+}
+
+function isCheckboxSelected(key: string, value: string): boolean {
+  return checkboxValues(key).includes(value)
+}
+
+function toggleCheckbox(
+  key: string,
+  value: string,
+  checked: boolean | null,
+  locked?: boolean,
+) {
   const state = pluginHost?.openForm.value
   if (!state) return
-  state.model[key] = value ?? ''
+  if (locked && checked !== true) return
+  const cur = checkboxValues(key)
+  state.model[key] =
+    checked === true ? [...new Set([...cur, value])] : cur.filter((x) => x !== value)
+}
+
+function resourceSelectItems(field: PluginFormFieldDef): PluginSchemaSelectItem[] {
+  if (field.type === 'apiPreset') return apiPresetItems.value
+  if (field.type === 'lorebook') return lorebookItems.value
+  return []
+}
+
+function resourceSelectClearable(field: PluginFormFieldDef): boolean {
+  return field.type === 'lorebook'
 }
 </script>
 
@@ -105,10 +180,53 @@ function setFieldValue(key: string, value: string | null) {
               <v-radio
                 v-for="opt in field.options"
                 :key="opt.value"
-                :label="t(opt.labelKey)"
+                :label="optionLabel(opt)"
                 :value="opt.value"
               />
             </v-radio-group>
+
+            <div
+              v-else-if="field.type === 'checkboxGroup' && field.options?.length"
+              class="plugin-form-dialog__checkbox-group"
+            >
+              <div class="text-body-2 font-weight-medium mb-1">
+                {{ t(field.labelKey) }}
+              </div>
+              <v-checkbox
+                v-for="opt in field.options"
+                :key="opt.value"
+                :model-value="isCheckboxSelected(field.key, opt.value)"
+                :label="optionLabel(opt)"
+                :disabled="opt.locked === true"
+                hide-details
+                density="compact"
+                @update:model-value="toggleCheckbox(field.key, opt.value, $event, opt.locked)"
+              />
+              <p
+                v-if="field.hintKey"
+                class="plugin-form-dialog__hint text-caption text-medium-emphasis"
+              >
+                {{ t(field.hintKey) }}
+              </p>
+            </div>
+
+            <template v-else-if="field.type === 'text'">
+              <v-text-field
+                :model-value="fieldValue(field.key)"
+                :label="t(field.labelKey)"
+                variant="outlined"
+                density="comfortable"
+                hide-details="auto"
+                :readonly="field.readOnly === true"
+                @update:model-value="setFieldValue(field.key, $event, field.readOnly)"
+              />
+              <p
+                v-if="field.hintKey"
+                class="plugin-form-dialog__hint text-caption text-medium-emphasis"
+              >
+                {{ t(field.hintKey) }}
+              </p>
+            </template>
 
             <template v-else-if="field.type === 'integer'">
               <v-text-field
@@ -119,6 +237,34 @@ function setFieldValue(key: string, value: string | null) {
                 variant="outlined"
                 density="comfortable"
                 hide-details
+                :readonly="field.readOnly === true"
+                @update:model-value="setFieldValue(field.key, $event, field.readOnly)"
+              />
+              <p
+                v-if="field.hintKey"
+                class="plugin-form-dialog__hint text-caption text-medium-emphasis"
+              >
+                {{ t(field.hintKey) }}
+              </p>
+            </template>
+
+            <template v-else-if="field.type === 'apiPreset' || field.type === 'lorebook'">
+              <v-select
+                :model-value="fieldValue(field.key) || null"
+                :items="resourceSelectItems(field)"
+                item-title="title"
+                item-value="value"
+                :label="t(field.labelKey)"
+                variant="outlined"
+                density="comfortable"
+                hide-details="auto"
+                :loading="selectsLoading"
+                :clearable="resourceSelectClearable(field)"
+                :placeholder="
+                  field.type === 'lorebook'
+                    ? t('settings.plugins.selectEmptyDefault')
+                    : t('settings.plugins.selectApiPreset')
+                "
                 @update:model-value="setFieldValue(field.key, $event)"
               />
               <p
@@ -139,7 +285,8 @@ function setFieldValue(key: string, value: string | null) {
               variant="outlined"
               density="comfortable"
               hide-details="auto"
-              @update:model-value="setFieldValue(field.key, $event)"
+              :readonly="field.readOnly === true"
+              @update:model-value="setFieldValue(field.key, $event, field.readOnly)"
             />
           </div>
         </template>

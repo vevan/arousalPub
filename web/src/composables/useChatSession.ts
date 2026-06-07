@@ -64,6 +64,8 @@ export function useChatSession(props: ChatSessionProps) {
   const loading = ref(false)
   const errorText = ref('')
   const regeneratingTurnOrdinal = ref<number | null>(null)
+  /** 插件占用（如摘要预览），禁止发送 */
+  const pluginHoldConversation = ref(false)
 
   const timer = useGenerationTimer()
   const { startGenerationTimer, stopGenerationTimer, generationElapsedMs, dispose: disposeTimer } =
@@ -215,6 +217,7 @@ export function useChatSession(props: ChatSessionProps) {
     canSend: computed(
       () =>
         !conversationWriteLocked.value &&
+        !pluginHoldConversation.value &&
         !loading.value &&
         regeneratingTurnOrdinal.value === null &&
         conn.isApiKeyConfigured &&
@@ -253,6 +256,7 @@ export function useChatSession(props: ChatSessionProps) {
   const canSend = computed(
     () =>
       !conversationWriteLocked.value &&
+      !pluginHoldConversation.value &&
       !loading.value &&
       regeneratingTurnOrdinal.value === null &&
       conn.isApiKeyConfigured &&
@@ -329,6 +333,10 @@ export function useChatSession(props: ChatSessionProps) {
     canSend,
     conversationId: props.conversationId,
     conversationWriteLocked,
+    pluginHoldConversation,
+    setPluginHold(hold: boolean) {
+      pluginHoldConversation.value = hold
+    },
     runConversationScope,
     runConversationBatch,
     refreshConversation,

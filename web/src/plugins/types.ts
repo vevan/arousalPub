@@ -63,12 +63,26 @@ export interface PluginFormDialogDef {
   /** 单按钮对话框（如导出） */
   submitKey?: string
   cancelKey?: string
+  /** 可选第三按钮（如预览「跳过」） */
+  skipKey?: string
+  /** 禁止点击遮罩或 Esc 关闭（避免误触中断） */
+  persistent?: boolean
   canSubmit: (model: Record<string, unknown>) => boolean
   onSubmit: (
     host: PluginWebHost,
     model: Record<string, unknown>,
   ) => void | Promise<void>
   onCancel?: (
+    host: PluginWebHost,
+    model: Record<string, unknown>,
+  ) => void | Promise<void>
+  onSkip?: (
+    host: PluginWebHost,
+    model: Record<string, unknown>,
+  ) => void | Promise<void>
+  /** 可选第四按钮（如预览「重新生成」） */
+  regenerateKey?: string
+  onRegenerate?: (
     host: PluginWebHost,
     model: Record<string, unknown>,
   ) => void | Promise<void>
@@ -97,6 +111,11 @@ export interface PluginProgressOptions {
   phase?: string
   done: number
   total: number
+  /** 等待阶段使用不确定进度动画 */
+  indeterminate?: boolean
+  /** 显示「强制中断」并中止进行中的插件 API 请求 */
+  abortable?: boolean
+  abortLabel?: string
 }
 
 export interface ConversationMeta {

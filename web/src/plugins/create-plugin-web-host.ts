@@ -15,6 +15,7 @@ import {
   showPluginToast,
   showPluginProgress,
   clearPluginProgress,
+  getPluginProgressAbortSignal,
 } from '@/plugins/plugin-ui-state'
 import {
   fetchConversationMeta,
@@ -86,12 +87,12 @@ export function createScopedPluginHost(
     },
     plugin: {
       complete(req) {
-        return runPluginComplete(id, req)
+        return runPluginComplete(id, req, getPluginProgressAbortSignal())
       },
     },
     token: {
       preflightComplete(req) {
-        return runPluginCompletePreflight(id, req)
+        return runPluginCompletePreflight(id, req, getPluginProgressAbortSignal())
       },
     },
     plugins: {
@@ -101,7 +102,13 @@ export function createScopedPluginHost(
     },
     macros: {
       expand(text, opts) {
-        return expandPluginMacros(id, convId(), text, opts)
+        return expandPluginMacros(
+          id,
+          convId(),
+          text,
+          opts,
+          getPluginProgressAbortSignal(),
+        )
       },
     },
   }
@@ -267,6 +274,9 @@ export function createPluginWebHost(session: ChatSession): {
           phase: opts.phase,
           done: opts.done,
           total: opts.total,
+          indeterminate: opts.indeterminate,
+          abortable: opts.abortable,
+          abortLabel: opts.abortLabel,
         })
       },
       clearProgress() {
@@ -322,4 +332,41 @@ export function cancelOpenPluginForm(params: {
     }
   }
   params.openForm.value = null
+}
+
+export function skipOpenPluginForm(params: {
+  openForm: { value: OpenPluginFormState | null }
+  formDialogs: Map<string, PluginFormDialogDef>
+  host: PluginWebHost
+}): void {
+  const state = params.openForm.value
+  if (state) {
+    const def = params.formDialogs.get(
+      formDialogKey(state.pluginId, state.dialogId),
+    )
+    if (def?.onSkip) {
+      const scopedHost = createScopedPluginHost(params.host, state.pluginId)
+      void def.onSkip(scopedHost, state.model)
+    }
+  }
+  params.openForm.value = null
+}
+
+export async function regenerateOpenPluginForm(params: {
+  openForm: { value: OpenPluginFormState | null }
+  formDialogs: Map<string, PluginFormDialogDef>
+  host: PluginWebHost
+  formSubmitting: { value: boolean }
+}): Promise<void> {
+  const state = params.openForm.value
+  if (!state) return
+  const def = params.formDialogs.get(formDialogKey(state.pluginId, state.dialogId))
+  if (!def?.onRegenerate) return
+  params.formSubmitting.value = true
+  try {
+    const scopedHost = createScopedPluginHost(params.host, state.pluginId)
+    await def.onRegenerate(scopedHost, state.model)
+  } finally {
+    params.formSubmitting.value = false
+  }
 }

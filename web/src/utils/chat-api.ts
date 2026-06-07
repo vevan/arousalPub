@@ -107,61 +107,73 @@ export async function readSseStream(
   noStreamMessage: string,
   onCompletionTokens?: (n: number) => void,
   onPersist?: (persist: ChatPersistPayload) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (!body) throw new Error(noStreamMessage)
   const reader = body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const parts = buffer.split('\n')
-    buffer = parts.pop() ?? ''
-    for (const line of parts) {
-      const trimmed = line.trim()
-      if (!trimmed.startsWith('data:')) continue
-      const data = trimmed.slice(5).trim()
-      if (data === '[DONE]') continue
-      try {
-        const j = JSON.parse(data) as {
-          arousal?: { persist?: ChatPersistPayload }
-          choices?: {
-            delta?: {
-              content?: string
-              reasoning_content?: string
-              reasoning?: string
-              thinking?: string
-            }
-          }[]
+  const onAbort = () => {
+    void reader.cancel()
+  }
+  signal?.addEventListener('abort', onAbort)
+  try {
+    while (true) {
+      if (signal?.aborted) {
+        throw new DOMException('Aborted', 'AbortError')
+      }
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const parts = buffer.split('\n')
+      buffer = parts.pop() ?? ''
+      for (const line of parts) {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith('data:')) continue
+        const data = trimmed.slice(5).trim()
+        if (data === '[DONE]') continue
+        try {
+          const j = JSON.parse(data) as {
+            arousal?: { persist?: ChatPersistPayload }
+            choices?: {
+              delta?: {
+                content?: string
+                reasoning_content?: string
+                reasoning?: string
+                thinking?: string
+              }
+            }[]
+          }
+          const persist = j.arousal?.persist
+          if (persist && typeof persist === 'object' && 'ok' in persist) {
+            onPersist?.(persist)
+            continue
+          }
+          const ct = completionTokensFromSsePayload(j)
+          if (ct) onCompletionTokens?.(ct)
+          const d = j.choices?.[0]?.delta
+          if (!d) continue
+          const out: { text?: string; reasoning?: string } = {}
+          if (typeof d.content === 'string' && d.content.length > 0) {
+            out.text = d.content
+          }
+          const rs =
+            typeof d.reasoning_content === 'string'
+              ? d.reasoning_content
+              : typeof d.reasoning === 'string'
+                ? d.reasoning
+                : typeof d.thinking === 'string'
+                  ? d.thinking
+                  : ''
+          if (rs.length > 0) out.reasoning = rs
+          if (out.text !== undefined || out.reasoning !== undefined) onDelta(out)
+        } catch {
+          /* ignore non-JSON lines */
         }
-        const persist = j.arousal?.persist
-        if (persist && typeof persist === 'object' && 'ok' in persist) {
-          onPersist?.(persist)
-          continue
-        }
-        const ct = completionTokensFromSsePayload(j)
-        if (ct) onCompletionTokens?.(ct)
-        const d = j.choices?.[0]?.delta
-        if (!d) continue
-        const out: { text?: string; reasoning?: string } = {}
-        if (typeof d.content === 'string' && d.content.length > 0) {
-          out.text = d.content
-        }
-        const rs =
-          typeof d.reasoning_content === 'string'
-            ? d.reasoning_content
-            : typeof d.reasoning === 'string'
-              ? d.reasoning
-              : typeof d.thinking === 'string'
-                ? d.thinking
-                : ''
-        if (rs.length > 0) out.reasoning = rs
-        if (out.text !== undefined || out.reasoning !== undefined) onDelta(out)
-      } catch {
-        /* ignore non-JSON lines */
       }
     }
+  } finally {
+    signal?.removeEventListener('abort', onAbort)
   }
 }
 
@@ -178,6 +190,7 @@ export async function runChatRequest(options: {
   onCompletionTokens?: (n: number) => void
   /** 流式：服务端落盘完成后经 SSE 推送；非流式：随 JSON 一并返回时也会调用 */
   onPersist?: (persist: ChatPersistPayload) => void
+  signal?: AbortSignal
 }): Promise<{
   content: string
   reasoning?: string
@@ -195,6 +208,7 @@ export async function runChatRequest(options: {
     body: JSON.stringify(
       buildConversationChatRequestBody(conn, conversationId, params),
     ),
+    signal: options.signal,
   })
 
   if (!res.ok) {
@@ -246,6 +260,7 @@ export async function runChatRequest(options: {
         streamPersist = persist
         options.onPersist?.(persist)
       },
+      options.signal,
     )
     const reasoning = accR.trim() || undefined
     return {

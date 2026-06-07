@@ -1,8 +1,10 @@
 import type { PromptTrigger } from '@/stores/prompts'
 import type { ChatPersistPayload, ChatTurnItem } from '@/types/chat-turn'
+import { isAbortError } from '@/utils/abort-error'
 import type { ConversationChatRequestPlugins } from '@/utils/chat-api'
+import { allocateShortId } from '@/utils/short-id'
 import { isOpeningTurn } from '@/utils/chat-turn-display'
-import { nextTurnOrdinal0 } from './turn-helpers.js'
+import { buildReceiveItem, collectUsedReceiveIds, nextTurnOrdinal0 } from './turn-helpers.js'
 import type { createChatCompletionRunner } from './completion.js'
 import type { createReplyEventHub } from './reply-events.js'
 import { nextTick, type Ref } from 'vue'
@@ -27,6 +29,8 @@ export function useChatOutbound(opts: {
   assertApiReady: CompletionRunner['assertApiReady']
   runSend: CompletionRunner['runSend']
   runRegenerate: CompletionRunner['runRegenerate']
+  abortChatGeneration: CompletionRunner['abortChatGeneration']
+  getModel: () => string
   startGenerationTimer: () => void
   stopGenerationTimer: () => number
   setPersistWarning: (persist?: ChatPersistPayload) => void
@@ -41,6 +45,33 @@ export function useChatOutbound(opts: {
   emitAssistantReplyComplete: ReplyEventHub['emitAssistantReplyComplete']
   t: ComposerTranslation
 }) {
+  function partialReceiveFromStream(durationMs: number) {
+    const content = opts.streamingText.value
+    const reasoning = opts.streamingReasoning.value.trim() || undefined
+    if (!content.trim() && !reasoning) return null
+    return buildReceiveItem(
+      opts.getModel(),
+      allocateShortId(collectUsedReceiveIds(opts.turns.value)),
+      content,
+      {
+        reasoning,
+        durationMs,
+      },
+    )
+  }
+
+  function finalizeAbortedRegenerate(listIndex: number, durationMs: number) {
+    const receive = partialReceiveFromStream(durationMs)
+    if (!receive) return
+    const cur = opts.turns.value[listIndex]
+    if (!cur) return
+    opts.replaceTurnAt(listIndex, {
+      ...cur,
+      receives: [...cur.receives, receive],
+      activeReceiveIndex: cur.receives.length,
+    })
+  }
+
   function beginRegeneratingUi(turnOrdinal: number) {
     opts.regeneratingTurnOrdinal.value = turnOrdinal
     opts.pendingSendEstimatedTokens.value = null
@@ -73,12 +104,24 @@ export function useChatOutbound(opts: {
       if (shouldReload) await opts.loadMessages()
       opts.emitAssistantReplyComplete({ mode: 'send', traceId })
     } catch (e) {
-      opts.rollbackPendingUserTurn(ord, userText)
-      opts.errorText.value =
-        e instanceof Error ? e.message : opts.t('chat.errors.network')
+      if (isAbortError(e)) {
+        const durationMs = opts.stopGenerationTimer()
+        const receive = partialReceiveFromStream(durationMs)
+        if (receive) {
+          opts.finalizePendingTurn(ord, receive)
+        } else {
+          opts.rollbackPendingUserTurn(ord, userText)
+        }
+      } else {
+        opts.rollbackPendingUserTurn(ord, userText)
+        opts.errorText.value =
+          e instanceof Error ? e.message : opts.t('chat.errors.network')
+      }
     } finally {
-      opts.stopGenerationTimer()
-      opts.loading.value = false
+      if (opts.loading.value) {
+        opts.stopGenerationTimer()
+        opts.loading.value = false
+      }
     }
   }
 
@@ -117,12 +160,24 @@ export function useChatOutbound(opts: {
       if (shouldReload) await opts.loadMessages()
       opts.emitAssistantReplyComplete({ mode: 'send', traceId })
     } catch (e) {
-      opts.rollbackPendingUserTurn(ord, trimmed)
-      opts.errorText.value =
-        e instanceof Error ? e.message : opts.t('chat.errors.network')
+      if (isAbortError(e)) {
+        const durationMs = opts.stopGenerationTimer()
+        const receive = partialReceiveFromStream(durationMs)
+        if (receive) {
+          opts.finalizePendingTurn(ord, receive)
+        } else {
+          opts.rollbackPendingUserTurn(ord, trimmed)
+        }
+      } else {
+        opts.rollbackPendingUserTurn(ord, trimmed)
+        opts.errorText.value =
+          e instanceof Error ? e.message : opts.t('chat.errors.network')
+      }
     } finally {
-      opts.stopGenerationTimer()
-      opts.loading.value = false
+      if (opts.loading.value) {
+        opts.stopGenerationTimer()
+        opts.loading.value = false
+      }
     }
   }
 
@@ -169,11 +224,20 @@ export function useChatOutbound(opts: {
       }
       opts.emitAssistantReplyComplete({ mode: 'regenerate', traceId })
     } catch (e) {
-      opts.errorText.value =
-        e instanceof Error ? e.message : opts.t('chat.errors.network')
+      if (isAbortError(e)) {
+        const durationMs = opts.stopGenerationTimer()
+        finalizeAbortedRegenerate(listIndex, durationMs)
+        await nextTick()
+        await opts.scrollChatToBottom()
+      } else {
+        opts.errorText.value =
+          e instanceof Error ? e.message : opts.t('chat.errors.network')
+      }
     } finally {
-      opts.stopGenerationTimer()
-      opts.endRegeneratingUi()
+      if (opts.regeneratingTurnOrdinal.value !== null) {
+        opts.stopGenerationTimer()
+        opts.endRegeneratingUi()
+      }
     }
   }
 
@@ -232,12 +296,25 @@ export function useChatOutbound(opts: {
       }
       opts.emitAssistantReplyComplete({ mode: 'regenerate', traceId })
     } catch (e) {
-      opts.errorText.value =
-        e instanceof Error ? e.message : opts.t('chat.errors.network')
+      if (isAbortError(e)) {
+        const durationMs = opts.stopGenerationTimer()
+        finalizeAbortedRegenerate(listIndex, durationMs)
+        await nextTick()
+        await opts.scrollChatToBottom()
+      } else {
+        opts.errorText.value =
+          e instanceof Error ? e.message : opts.t('chat.errors.network')
+      }
     } finally {
-      opts.stopGenerationTimer()
-      opts.endRegeneratingUi()
+      if (opts.regeneratingTurnOrdinal.value !== null) {
+        opts.stopGenerationTimer()
+        opts.endRegeneratingUi()
+      }
     }
+  }
+
+  function abortCurrentReply() {
+    opts.abortChatGeneration()
   }
 
   function slideAssistant(listIndex: number, direction: 'left' | 'right') {
@@ -276,5 +353,6 @@ export function useChatOutbound(opts: {
     regenerateAssistant,
     regenerateWithPlugins,
     slideAssistant,
+    abortCurrentReply,
   }
 }

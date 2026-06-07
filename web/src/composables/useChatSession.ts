@@ -133,6 +133,7 @@ export function useChatSession(props: ChatSessionProps) {
     assertApiReady,
     runSend,
     runRegenerate,
+    abortChatGeneration,
   } = completion
 
   function setPersistWarning(persist: ChatPersistPayload | undefined) {
@@ -195,6 +196,8 @@ export function useChatSession(props: ChatSessionProps) {
     assertApiReady,
     runSend,
     runRegenerate,
+    abortChatGeneration,
+    getModel: () => conn.model,
     startGenerationTimer,
     stopGenerationTimer,
     setPersistWarning,
@@ -209,8 +212,18 @@ export function useChatSession(props: ChatSessionProps) {
     emitAssistantReplyComplete,
     t,
   })
-  const { send, sendWithPlugins, regenerateAssistant, regenerateWithPlugins, slideAssistant } =
-    outbound
+  const {
+    send,
+    sendWithPlugins,
+    regenerateAssistant,
+    regenerateWithPlugins,
+    slideAssistant,
+    abortCurrentReply,
+  } = outbound
+
+  const isGenerating = computed(
+    () => loading.value || regeneratingTurnOrdinal.value !== null,
+  )
 
   const { onComposerKeydown } = useComposerKeydown({
     userInput,
@@ -331,6 +344,8 @@ export function useChatSession(props: ChatSessionProps) {
     copiedTurnKey,
     ...assemblePreview,
     canSend,
+    isGenerating,
+    abortCurrentReply,
     conversationId: props.conversationId,
     conversationWriteLocked,
     pluginHoldConversation,

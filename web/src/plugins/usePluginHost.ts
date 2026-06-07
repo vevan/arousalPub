@@ -1,8 +1,10 @@
 import {
   cancelOpenPluginForm,
+  regenerateOpenPluginForm,
   createPluginWebHost,
   createScopedPluginHost,
   getSlotButtonsFor,
+  skipOpenPluginForm,
   submitOpenPluginForm,
 } from '@/plugins/create-plugin-web-host'
 import { loadPluginWebModule } from '@/plugins/load-plugin-web-module'
@@ -169,6 +171,19 @@ export function usePluginHost(session: ChatSession) {
         openForm: openForm as { value: OpenPluginFormState | null },
         formDialogs,
         host,
+      }),
+    skipOpenForm: () =>
+      skipOpenPluginForm({
+        openForm: openForm as { value: OpenPluginFormState | null },
+        formDialogs,
+        host,
+      }),
+    regenerateOpenForm: () =>
+      regenerateOpenPluginForm({
+        openForm: openForm as { value: OpenPluginFormState | null },
+        formDialogs,
+        host,
+        formSubmitting: formSubmitting as { value: boolean },
       }),
   }
 }

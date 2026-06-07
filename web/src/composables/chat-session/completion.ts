@@ -38,6 +38,12 @@ export interface ChatCompletionDeps {
   resolveDurationMs: () => number
 }
 
+let chatAbortController: AbortController | null = null
+
+export function abortChatGeneration(): void {
+  chatAbortController?.abort()
+}
+
 export function createChatCompletionRunner(deps: ChatCompletionDeps) {
   function streamDeltaHandler(d: { text?: string; reasoning?: string }) {
     if (d.text) deps.streamingText.value += d.text
@@ -54,34 +60,44 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
     const mode = trace?.mode ?? 'send'
     const traceId = trace?.traceId ?? makeReplyTraceId(mode)
 
-    const result = await runChatRequest({
-      conn: deps.conn,
-      conversationId: deps.getConversationId(),
-      params,
-      requestFailedMessage: (status) =>
-        deps.t('chat.errors.requestFailedStatus', { status }),
-      noStreamMessage: deps.t('chat.errors.noStream'),
-      onStreamDelta: deps.conn.stream ? streamDeltaHandler : undefined,
-      onPromptEstimatedTokens: (n) => {
-        deps.pendingSendEstimatedTokens.value = n
-      },
-      onCompletionTokens: (n) => {
-        deps.pendingReceiveCompletionTokens.value = n
-      },
-      onPersist: (persist) => {
-        if (persist.ok) {
-          deps.emitAssistantReplyPersisted({
-            mode,
-            traceId,
-            turnOrdinal: persist.turnOrdinal,
-            receiveId: persist.receiveId,
-            isFirstTurn: persist.isFirstTurn,
-          })
-        }
-      },
-    })
+    chatAbortController?.abort()
+    chatAbortController = new AbortController()
+    const signal = chatAbortController.signal
+    try {
+      const result = await runChatRequest({
+        conn: deps.conn,
+        conversationId: deps.getConversationId(),
+        params,
+        requestFailedMessage: (status) =>
+          deps.t('chat.errors.requestFailedStatus', { status }),
+        noStreamMessage: deps.t('chat.errors.noStream'),
+        onStreamDelta: deps.conn.stream ? streamDeltaHandler : undefined,
+        onPromptEstimatedTokens: (n) => {
+          deps.pendingSendEstimatedTokens.value = n
+        },
+        onCompletionTokens: (n) => {
+          deps.pendingReceiveCompletionTokens.value = n
+        },
+        onPersist: (persist) => {
+          if (persist.ok) {
+            deps.emitAssistantReplyPersisted({
+              mode,
+              traceId,
+              turnOrdinal: persist.turnOrdinal,
+              receiveId: persist.receiveId,
+              isFirstTurn: persist.isFirstTurn,
+            })
+          }
+        },
+        signal,
+      })
+      return { ...result, traceId }
+    } finally {
+      if (chatAbortController?.signal === signal) {
+        chatAbortController = null
+      }
+    }
 
-    return { ...result, traceId }
   }
 
   function parseCustomParamsOrThrow(): void {
@@ -216,5 +232,6 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
     assertApiReady,
     runSend,
     runRegenerate,
+    abortChatGeneration,
   }
 }

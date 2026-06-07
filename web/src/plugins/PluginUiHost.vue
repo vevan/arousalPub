@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  abortPluginProgress,
   clearPluginSnackbar,
   pluginConfirmOpen,
   pluginProgressOpen,
@@ -7,6 +8,9 @@ import {
   resolvePluginConfirm,
 } from '@/plugins/plugin-ui-state'
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const confirmOpen = computed({
   get: () => pluginConfirmOpen.value != null,
@@ -35,6 +39,16 @@ const progressPercent = computed(() => {
   if (!p || p.total <= 0) return 0
   return Math.min(100, Math.round((p.done / p.total) * 100))
 })
+
+const progressIndeterminate = computed(
+  () => progressState.value?.indeterminate === true,
+)
+
+const progressAbortable = computed(() => progressState.value?.abortable === true)
+
+const progressAbortLabel = computed(
+  () => progressState.value?.abortLabel?.trim() || t('pluginHost.progressAbort'),
+)
 </script>
 
 <template>
@@ -80,7 +94,8 @@ const progressPercent = computed(() => {
       </v-card-title>
       <v-card-text>
         <v-progress-linear
-          :model-value="progressPercent"
+          :model-value="progressIndeterminate ? undefined : progressPercent"
+          :indeterminate="progressIndeterminate"
           color="primary"
           height="8"
           rounded
@@ -90,6 +105,19 @@ const progressPercent = computed(() => {
           {{ progressState.done }} / {{ progressState.total }}
         </div>
       </v-card-text>
+      <v-card-actions
+        v-if="progressAbortable"
+        class="pa-3 pt-0"
+      >
+        <v-spacer />
+        <v-btn
+          variant="text"
+          color="error"
+          @click="abortPluginProgress()"
+        >
+          {{ progressAbortLabel }}
+        </v-btn>
+      </v-card-actions>
     </v-card>
   </v-dialog>
 

@@ -154,6 +154,7 @@ export async function fetchApiPresets(): Promise<{ id: string; alias: string }[]
 export async function runPluginComplete(
   pluginId: string,
   req: PluginCompleteRequest,
+  signal?: AbortSignal,
 ): Promise<PluginCompleteResponse> {
   const res = await apiFetch(
     `/api/plugins/${encodeURIComponent(pluginId)}/complete`,
@@ -161,6 +162,7 @@ export async function runPluginComplete(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
+      signal,
     },
   )
   await throwIfNotOk(res, 'plugin_complete_failed')
@@ -176,6 +178,7 @@ export async function expandPluginMacros(
   conversationId: string,
   text: string,
   opts?: { apiConfigId?: string },
+  signal?: AbortSignal,
 ): Promise<string> {
   const res = await apiFetch(
     `/api/plugins/${encodeURIComponent(pluginId)}/macros/expand`,
@@ -187,6 +190,7 @@ export async function expandPluginMacros(
         conversationId,
         apiConfigId: opts?.apiConfigId?.trim() || undefined,
       }),
+      signal,
     },
   )
   await throwIfNotOk(res, 'plugin_macro_expand_failed')
@@ -200,6 +204,7 @@ export async function runPluginCompletePreflight(
     apiConfigId: string
     messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
   },
+  signal?: AbortSignal,
 ): Promise<PluginCompletePreflightResult> {
   const res = await apiFetch(
     `/api/plugins/${encodeURIComponent(pluginId)}/complete/preflight`,
@@ -207,6 +212,7 @@ export async function runPluginCompletePreflight(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
+      signal,
     },
   )
   await throwIfNotOk(res, 'plugin_complete_preflight_failed')

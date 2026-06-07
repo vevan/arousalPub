@@ -494,6 +494,7 @@
     "composerPlaceholderEnterSend": "输入消息 · Enter 发送，Ctrl+Enter 换行",
     "composerPlaceholderCtrlEnterSend": "输入消息 · Ctrl+Enter 发送，Enter 换行",
     "send": "发送",
+    "abortGeneration": "中断回复",
     "newline": "换行",
     "previewAssemble": "预览",
     "authorsNoteOpen": "作者注设置",
@@ -969,5 +970,8 @@
       "user_text_must_be_string": "userText 须为字符串",
       "validation_failed": "校验失败"
     }
+  },
+  "pluginHost": {
+    "progressAbort": "强制中断"
   }
 }

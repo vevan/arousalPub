@@ -494,6 +494,7 @@
     "composerPlaceholderEnterSend": "Message · Enter to send, Ctrl+Enter for new line",
     "composerPlaceholderCtrlEnterSend": "Message · Ctrl+Enter to send, Enter for new line",
     "send": "Send",
+    "abortGeneration": "Stop generating",
     "newline": "New line",
     "previewAssemble": "Preview",
     "authorsNoteOpen": "Author's note settings",
@@ -969,5 +970,8 @@
       "user_text_must_be_string": "user text must be string",
       "validation_failed": "validation failed"
     }
+  },
+  "pluginHost": {
+    "progressAbort": "Force abort"
   }
 }

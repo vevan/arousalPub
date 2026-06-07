@@ -937,6 +937,11 @@
   opacity: 0 !important;
 }
 
+.composer__send-btn--abort {
+  background-color: rgb(var(--v-theme-error)) !important;
+  color: rgb(var(--v-theme-on-error)) !important;
+}
+
 .composer__preview-btn {
   text-transform: none !important;
   letter-spacing: 0.01em !important;

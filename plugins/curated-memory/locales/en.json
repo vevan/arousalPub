@@ -65,9 +65,21 @@
 
   "reviewConfirm": "Save to lorebook",
 
-  "reviewCancel": "Cancel",
+  "reviewSkip": "Skip",
 
-  "toastReviewCancelled": "Save cancelled",
+  "reviewAbort": "Abort",
+
+  "reviewRegenerate": "Regenerate",
+
+  "toastReviewRegenerateFailed": "Regenerate failed; retry or skip",
+
+  "toastReviewSkipped": "Skipped this item",
+
+  "toastReviewAborted": "Summarize aborted",
+
+  "toastTaskSkipped": "This step failed; skipped and continuing",
+
+  "toastSummarizeSummary": "Done {done}, skipped {skipped} of {total}",
 
   "enableDialogTitle": "Enable Memorybook",
 
@@ -120,6 +132,10 @@
   "toastBusy": "Conversation busy; skipped auto summarize",
 
   "progressSummarize": "Generating summary…",
+
+  "progressAbort": "Force abort",
+
+  "toastProgressAborted": "Summarize force-aborted",
 
   "apiConfigIdLabel": "Summary API preset",
 

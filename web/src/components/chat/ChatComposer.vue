@@ -3,7 +3,7 @@ import type { useChatSession } from '@/composables/useChatSession'
 import PluginSlotMount from '@/plugins/PluginSlotMount.vue'
 import { usePreferencesStore } from '@/stores/preferences'
 import { storeToRefs } from 'pinia'
-import { computed, toRefs } from 'vue'
+import { computed, ref, toRefs } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
@@ -30,11 +30,34 @@ const messagePlaceholder = computed(() =>
     : t('chat.composerPlaceholderCtrlEnterSend'),
 )
 
-const { userInput, errorText, loading, assemblePreviewLoading } = toRefs(props.session)
+const { userInput, errorText, assemblePreviewLoading } = toRefs(props.session)
 
-const { canSend, canPreviewAssemble } = toRefs(props.session)
+const { canSend, canPreviewAssemble, isGenerating } = toRefs(props.session)
 
-const { send, onComposerKeydown, openAssemblePreview } = props.session
+const { send, abortCurrentReply, onComposerKeydown, openAssemblePreview } = props.session
+
+const sendHovered = ref(false)
+
+const sendBtnLoading = computed(() => isGenerating.value && !sendHovered.value)
+
+const sendBtnIcon = computed(() => {
+  if (isGenerating.value && sendHovered.value) return 'mdi-stop'
+  return 'mdi-send'
+})
+
+const sendBtnAriaLabel = computed(() =>
+  isGenerating.value ? t('chat.abortGeneration') : t('chat.send'),
+)
+
+const sendBtnAbortHover = computed(() => isGenerating.value && sendHovered.value)
+
+function onSendClick() {
+  if (isGenerating.value) {
+    abortCurrentReply()
+    return
+  }
+  void send()
+}
 </script>
 <template>
 <!-- Composer · 底部输入栏 -->
@@ -62,13 +85,21 @@ const { send, onComposerKeydown, openAssemblePreview } = props.session
             icon
             color="primary"
             variant="flat"
-            :loading="loading"
-            :disabled="!canSend"
+            :loading="sendBtnLoading"
+            :disabled="!canSend && !isGenerating"
             class="composer__send-btn"
-            :aria-label="$t('chat.send')"
-            @click="send"
+            :class="{ 'composer__send-btn--abort': sendBtnAbortHover }"
+            :aria-label="sendBtnAriaLabel"
+            @mouseenter="sendHovered = true"
+            @mouseleave="sendHovered = false"
+            @click="onSendClick"
           >
-            <v-icon size="22">mdi-send</v-icon>
+            <v-icon
+              v-if="!sendBtnLoading"
+              size="22"
+            >
+              {{ sendBtnIcon }}
+            </v-icon>
           </v-btn>
         </div>
         <div

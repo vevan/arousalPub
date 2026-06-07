@@ -22,6 +22,7 @@ const selectsLoading = ref(false)
 const open = computed({
   get: () => pluginHost?.openForm.value != null,
   set: (v: boolean) => {
+    if (!v && activeDef.value?.persistent) return
     if (!v) pluginHost?.cancelOpenForm()
   },
 })
@@ -59,6 +60,31 @@ const cancelLabel = computed(() => {
   if (!def?.cancelKey) return t('settings.themeCancel')
   return t(def.cancelKey)
 })
+
+const skipLabel = computed(() => {
+  const def = activeDef.value
+  if (!def?.skipKey) return ''
+  return t(def.skipKey)
+})
+
+const hasSkip = computed(() => Boolean(activeDef.value?.skipKey && activeDef.value?.onSkip))
+
+const regenerateLabel = computed(() => {
+  const def = activeDef.value
+  if (!def?.regenerateKey) return ''
+  return t(def.regenerateKey)
+})
+
+const hasRegenerate = computed(
+  () => Boolean(activeDef.value?.regenerateKey && activeDef.value?.onRegenerate),
+)
+
+const isPersistent = computed(() => activeDef.value?.persistent === true)
+
+function onDialogOutside() {
+  if (isPersistent.value) return
+  pluginHost?.cancelOpenForm()
+}
 
 const submitting = computed(() => pluginHost?.formSubmitting.value ?? false)
 
@@ -151,7 +177,8 @@ function resourceSelectClearable(field: PluginFormFieldDef): boolean {
     v-model="open"
     max-width="640"
     scrollable
-    @click:outside="pluginHost?.cancelOpenForm()"
+    :persistent="isPersistent"
+    @click:outside="onDialogOutside"
   >
     <v-card v-if="activeDef && pluginHost">
       <v-card-title class="text-h6">
@@ -293,7 +320,6 @@ function resourceSelectClearable(field: PluginFormFieldDef): boolean {
       </v-card-text>
       <v-divider />
       <v-card-actions class="pa-3">
-        <v-spacer />
         <v-btn
           variant="text"
           :disabled="submitting"
@@ -302,10 +328,29 @@ function resourceSelectClearable(field: PluginFormFieldDef): boolean {
           {{ cancelLabel }}
         </v-btn>
         <v-btn
+          v-if="hasSkip"
+          variant="text"
+          :disabled="submitting"
+          class="ml-1"
+          @click="pluginHost.skipOpenForm()"
+        >
+          {{ skipLabel }}
+        </v-btn>
+        <v-spacer />
+        <v-btn
+          v-if="hasRegenerate"
+          variant="text"
+          :loading="submitting"
+          :disabled="submitting"
+          @click="pluginHost.regenerateOpenForm()"
+        >
+          {{ regenerateLabel }}
+        </v-btn>
+        <v-btn
           color="primary"
           variant="flat"
           :loading="submitting"
-          :disabled="!canSubmit"
+          :disabled="!canSubmit || submitting"
           @click="pluginHost.submitOpenForm()"
         >
           {{ submitLabel }}

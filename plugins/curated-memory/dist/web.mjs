@@ -47,6 +47,9 @@ let memorybookEnabledCache = false
 /** @type {{ resolve: (v: object) => void, reject: (e: Error) => void } | null} */
 let reviewResolver = null
 
+/** @type {((host: object) => Promise<{ title: string, content: string, keywords: string[] }>) | null} */
+let reviewRegenerate = null
+
 /** @type {{ resolve: (v: string) => void, reject: (e: Error) => void } | null} */
 let lorebookPickResolver = null
 
@@ -876,6 +879,52 @@ async function assertPreflight(host, apiConfigId, system, userContent) {
 
 
 
+const UPSTREAM_RETRY_MAX = 3
+
+const PIPELINE_FATAL_ERRORS = new Set([
+
+  'context_exceeded',
+
+  'context_length_unconfigured',
+
+])
+
+const UPSTREAM_RETRY_ERRORS = new Set([
+
+  'plugin_complete_failed',
+
+  'preflight_failed',
+
+])
+
+
+
+function isPipelineFatalError(e) {
+
+  return e instanceof Error && PIPELINE_FATAL_ERRORS.has(e.message)
+
+}
+
+
+
+function isAbortError(e) {
+
+  return (
+
+    (typeof DOMException !== 'undefined' &&
+
+      e instanceof DOMException &&
+
+      e.name === 'AbortError') ||
+
+    (e instanceof Error && e.name === 'AbortError')
+
+  )
+
+}
+
+
+
 async function callComplete(host, apiConfigId, system, userContent) {
 
   const [expandedSystem, expandedUser] = await Promise.all([
@@ -907,6 +956,266 @@ async function callComplete(host, apiConfigId, system, userContent) {
   })
 
   return parseModelJson(result.content)
+
+}
+
+
+
+async function callCompleteWithRetry(host, apiConfigId, system, userContent) {
+
+  let lastErr = null
+
+  for (let attempt = 1; attempt <= UPSTREAM_RETRY_MAX; attempt++) {
+
+    try {
+
+      return await callComplete(host, apiConfigId, system, userContent)
+
+    } catch (e) {
+
+      if (isAbortError(e)) throw e
+
+      if (isPipelineFatalError(e)) throw e
+
+      const msg = e instanceof Error ? e.message : ''
+
+      if (UPSTREAM_RETRY_ERRORS.has(msg) && attempt < UPSTREAM_RETRY_MAX) {
+
+        lastErr = e
+
+        continue
+
+      }
+
+      throw e
+
+    }
+
+  }
+
+  throw lastErr ?? new Error('plugin_complete_failed')
+
+}
+
+
+
+function clearReviewSession() {
+
+  reviewResolver = null
+
+  reviewRegenerate = null
+
+}
+
+
+
+async function runReviewRegenerate(host, dialogId) {
+
+  if (!reviewRegenerate || !reviewResolver) return
+
+  try {
+
+    const draft = await reviewRegenerate(host)
+
+    host.ui.openFormDialog(
+
+      PLUGIN_ID,
+
+      {
+
+        title: draft.title,
+
+        content: draft.content,
+
+        keywordsText: keywordsToText(draft.keywords),
+
+      },
+
+      dialogId,
+
+    )
+
+  } catch (e) {
+
+    if (isAbortError(e)) {
+
+      const resolver = reviewResolver
+
+      clearReviewSession()
+
+      resolver.reject(new Error('review_aborted'))
+
+      return
+
+    }
+
+    console.warn('[curated-memory] review regenerate failed', e)
+
+    host.ui.toast(host.t(k(host, 'toastReviewRegenerateFailed')), { color: 'warning' })
+
+  }
+
+}
+
+
+
+async function generateMemoryReviewDraft(
+
+  host,
+
+  settings,
+
+  userContent,
+
+  fromTurn,
+
+  toTurn,
+
+) {
+
+  host.ui.progress({
+
+    message: host.t(k(host, 'progressSummarize')),
+
+    done: 0,
+
+    total: 1,
+
+    indeterminate: true,
+
+    abortable: true,
+
+    abortLabel: host.t(k(host, 'progressAbort')),
+
+  })
+
+  try {
+
+    const summaryRaw = await callCompleteWithRetry(
+
+      host,
+
+      settings.apiConfigId,
+
+      settings.systemPromptTemplate,
+
+      userContent,
+
+    )
+
+    const summary = normalizeSummaryPayload(summaryRaw)
+
+    const entryTitle = formatEntryTitle(
+
+      summary.title,
+
+      settings.titleFormat,
+
+      fromTurn,
+
+      toTurn,
+
+    )
+
+    return {
+
+      title: entryTitle,
+
+      content: summary.content,
+
+      keywords: summary.keywords,
+
+    }
+
+  } finally {
+
+    host.ui.clearProgress()
+
+  }
+
+}
+
+
+
+async function generateSidecarReviewDraft(host, settings, sc, userContent) {
+
+  host.ui.progress({
+
+    message: host.t(k(host, 'progressSummarize')),
+
+    done: 0,
+
+    total: 1,
+
+    indeterminate: true,
+
+    abortable: true,
+
+    abortLabel: host.t(k(host, 'progressAbort')),
+
+  })
+
+  try {
+
+    const sidecarRaw = await callCompleteWithRetry(
+
+      host,
+
+      settings.apiConfigId,
+
+      sidecarPromptTemplate(host, sc),
+
+      userContent,
+
+    )
+
+    const sidecar = normalizeSummaryPayload({
+
+      title: sc.name,
+
+      content: sidecarRaw.content ?? sidecarRaw.title,
+
+      keywords: sidecarRaw.keywords,
+
+    })
+
+    return {
+
+      title: sc.name,
+
+      content: sidecar.content,
+
+      keywords: sidecar.keywords,
+
+    }
+
+  } finally {
+
+    host.ui.clearProgress()
+
+  }
+
+}
+
+
+
+function bumpTaskProgress(host, done, total) {
+
+  host.ui.progress({
+
+    message: host.t(k(host, 'progressSummarize')),
+
+    done,
+
+    total,
+
+    indeterminate: true,
+
+    abortable: true,
+
+    abortLabel: host.t(k(host, 'progressAbort')),
+
+  })
 
 }
 
@@ -1062,7 +1371,13 @@ function registerReviewDialog(host) {
 
       submitKey: k(host, 'reviewConfirm'),
 
-      cancelKey: k(host, 'reviewCancel'),
+      skipKey: k(host, 'reviewSkip'),
+
+      cancelKey: k(host, 'reviewAbort'),
+
+      regenerateKey: k(host, 'reviewRegenerate'),
+
+      persistent: true,
 
       canSubmit: (m) =>
 
@@ -1074,7 +1389,7 @@ function registerReviewDialog(host) {
 
         const resolver = reviewResolver
 
-        reviewResolver = null
+        clearReviewSession()
 
         resolver.resolve({
 
@@ -1088,15 +1403,33 @@ function registerReviewDialog(host) {
 
       },
 
+      onSkip: () => {
+
+        if (!reviewResolver) return
+
+        const resolver = reviewResolver
+
+        clearReviewSession()
+
+        resolver.reject(new Error('review_skipped'))
+
+      },
+
       onCancel: () => {
 
         if (!reviewResolver) return
 
         const resolver = reviewResolver
 
-        reviewResolver = null
+        clearReviewSession()
 
-        resolver.reject(new Error('review_cancelled'))
+        resolver.reject(new Error('review_aborted'))
+
+      },
+
+      onRegenerate: async (h) => {
+
+        await runReviewRegenerate(h, DIALOG_REVIEW)
 
       },
 
@@ -1110,11 +1443,13 @@ function registerReviewDialog(host) {
 
 
 
-function promptReviewEntry(host, draft) {
+function promptReviewEntry(host, draft, regenerateFn) {
 
   return new Promise((resolve, reject) => {
 
     reviewResolver = { resolve, reject }
+
+    reviewRegenerate = regenerateFn ?? null
 
     host.openFormDialog(
 
@@ -1192,7 +1527,13 @@ function registerReviewSidecarDialog(host) {
 
       submitKey: k(host, 'reviewConfirm'),
 
-      cancelKey: k(host, 'reviewCancel'),
+      skipKey: k(host, 'reviewSkip'),
+
+      cancelKey: k(host, 'reviewAbort'),
+
+      regenerateKey: k(host, 'reviewRegenerate'),
+
+      persistent: true,
 
       canSubmit: (m) => asString(m.content).length > 0,
 
@@ -1202,7 +1543,7 @@ function registerReviewSidecarDialog(host) {
 
         const resolver = reviewResolver
 
-        reviewResolver = null
+        clearReviewSession()
 
         resolver.resolve({
 
@@ -1216,15 +1557,33 @@ function registerReviewSidecarDialog(host) {
 
       },
 
+      onSkip: () => {
+
+        if (!reviewResolver) return
+
+        const resolver = reviewResolver
+
+        clearReviewSession()
+
+        resolver.reject(new Error('review_skipped'))
+
+      },
+
       onCancel: () => {
 
         if (!reviewResolver) return
 
         const resolver = reviewResolver
 
-        reviewResolver = null
+        clearReviewSession()
 
-        resolver.reject(new Error('review_cancelled'))
+        resolver.reject(new Error('review_aborted'))
+
+      },
+
+      onRegenerate: async (h) => {
+
+        await runReviewRegenerate(h, DIALOG_REVIEW_SIDECAR)
 
       },
 
@@ -1238,11 +1597,13 @@ function registerReviewSidecarDialog(host) {
 
 
 
-function promptReviewSidecarEntry(host, draft) {
+function promptReviewSidecarEntry(host, draft, regenerateFn) {
 
   return new Promise((resolve, reject) => {
 
     reviewResolver = { resolve, reject }
+
+    reviewRegenerate = regenerateFn ?? null
 
     host.openFormDialog(
 
@@ -1311,6 +1672,12 @@ async function runSummarizeTasks(host, opts) {
     done: 0,
 
     total: tasks.length,
+
+    indeterminate: true,
+
+    abortable: true,
+
+    abortLabel: host.t(k(host, 'progressAbort')),
 
   })
 
@@ -1406,17 +1773,15 @@ async function runSummarizeTasks(host, opts) {
 
     )
 
-    const sidecarIdsChanged =
-
-      JSON.stringify(sidecarEntryIds) !== JSON.stringify(settings.sidecarEntryIds)
-
-
-
     const patch = {}
 
     let done = 0
 
     let ranMemory = false
+
+    let skippedTasks = 0
+
+    let aborted = false
 
 
 
@@ -1426,25 +1791,13 @@ async function runSummarizeTasks(host, opts) {
 
         if (task.kind === 'memory') {
 
-          const summaryRaw = await callComplete(
+          const memoryDraft = await generateMemoryReviewDraft(
 
             host,
 
-            settings.apiConfigId,
-
-            settings.systemPromptTemplate,
+            settings,
 
             userContent,
-
-          )
-
-          const summary = normalizeSummaryPayload(summaryRaw)
-
-          const entryTitle = formatEntryTitle(
-
-            summary.title,
-
-            settings.titleFormat,
 
             fromTurn,
 
@@ -1452,49 +1805,31 @@ async function runSummarizeTasks(host, opts) {
 
           )
 
-          host.ui.clearProgress()
+          const reviewed = await promptReviewEntry(
 
-          let reviewed
+            host,
 
-          try {
+            memoryDraft,
 
-            reviewed = await promptReviewEntry(host, {
+            (h) =>
 
-              title: entryTitle,
+              generateMemoryReviewDraft(
 
-              content: summary.content,
+                h,
 
-              keywords: summary.keywords,
+                settings,
 
-            })
+                userContent,
 
-          } catch (e) {
+                fromTurn,
 
-            if (e instanceof Error && e.message === 'review_cancelled') {
+                toTurn,
 
-              host.ui.toast(host.t(k(host, 'toastReviewCancelled')), {
+              ),
 
-                color: 'info',
+          )
 
-              })
-
-              break
-
-            }
-
-            throw e
-
-          }
-
-          host.ui.progress({
-
-            message: host.t(k(host, 'progressSummarize')),
-
-            done,
-
-            total: tasks.length,
-
-          })
+          bumpTaskProgress(host, done, tasks.length)
 
           await host.lorebook.createEntry(settings.targetLorebookId, {
 
@@ -1516,71 +1851,29 @@ async function runSummarizeTasks(host, opts) {
 
           const sc = task.sidecar
 
-          const sidecarRaw = await callComplete(
+          const sidecarDraft = await generateSidecarReviewDraft(
 
             host,
 
-            settings.apiConfigId,
+            settings,
 
-            sidecarPromptTemplate(host, sc),
+            sc,
 
             userContent,
 
           )
 
-          const sidecar = normalizeSummaryPayload({
+          const reviewed = await promptReviewSidecarEntry(
 
-            title: sc.name,
+            host,
 
-            content: sidecarRaw.content ?? sidecarRaw.title,
+            sidecarDraft,
 
-            keywords: sidecarRaw.keywords,
+            (h) => generateSidecarReviewDraft(h, settings, sc, userContent),
 
-          })
+          )
 
-          host.ui.clearProgress()
-
-          let reviewed
-
-          try {
-
-            reviewed = await promptReviewSidecarEntry(host, {
-
-              title: sc.name,
-
-              content: sidecar.content,
-
-              keywords: sidecar.keywords,
-
-            })
-
-          } catch (e) {
-
-            if (e instanceof Error && e.message === 'review_cancelled') {
-
-              host.ui.toast(host.t(k(host, 'toastReviewCancelled')), {
-
-                color: 'info',
-
-              })
-
-              break
-
-            }
-
-            throw e
-
-          }
-
-          host.ui.progress({
-
-            message: host.t(k(host, 'progressSummarize')),
-
-            done,
-
-            total: tasks.length,
-
-          })
+          bumpTaskProgress(host, done, tasks.length)
 
           await writeSidecarEntry(
 
@@ -1604,43 +1897,69 @@ async function runSummarizeTasks(host, opts) {
 
       } catch (e) {
 
-        console.warn('[curated-memory] task failed', task, e)
+        if (isAbortError(e)) {
 
-        preflightToast(host, e)
+          aborted = true
 
-        if (completedTasks > 0) {
+          host.ui.toast(host.t(k(host, 'toastProgressAborted')), { color: 'info' })
 
-          host.ui.toast(
-
-            host.t(k(host, 'toastSummarizePartial'), {
-
-              done: completedTasks,
-
-              total: tasks.length,
-
-            }),
-
-            { color: 'warning' },
-
-          )
+          break
 
         }
 
-        break
+        if (e instanceof Error && e.message === 'review_skipped') {
+
+          skippedTasks += 1
+
+          host.ui.toast(host.t(k(host, 'toastReviewSkipped')), { color: 'info' })
+
+          done += 1
+
+          bumpTaskProgress(host, done, tasks.length)
+
+          continue
+
+        }
+
+        if (e instanceof Error && e.message === 'review_aborted') {
+
+          aborted = true
+
+          host.ui.toast(host.t(k(host, 'toastReviewAborted')), { color: 'info' })
+
+          break
+
+        }
+
+        console.warn('[curated-memory] task failed', task, e)
+
+        if (isPipelineFatalError(e)) {
+
+          preflightToast(host, e)
+
+          aborted = true
+
+          break
+
+        }
+
+        preflightToast(host, e)
+
+        skippedTasks += 1
+
+        host.ui.toast(host.t(k(host, 'toastTaskSkipped')), { color: 'warning' })
+
+        done += 1
+
+        bumpTaskProgress(host, done, tasks.length)
+
+        continue
 
       }
 
       done += 1
 
-      host.ui.progress({
-
-        message: host.t(k(host, 'progressSummarize')),
-
-        done,
-
-        total: tasks.length,
-
-      })
+      bumpTaskProgress(host, done, tasks.length)
 
     }
 
@@ -1648,7 +1967,37 @@ async function runSummarizeTasks(host, opts) {
 
     if (completedTasks === 0) {
 
-      return { ok: false, reason: 'error' }
+      if (skippedTasks > 0) {
+
+        host.ui.toast(
+
+          host.t(k(host, 'toastSummarizeSummary'), {
+
+            done: 0,
+
+            skipped: skippedTasks,
+
+            total: tasks.length,
+
+          }),
+
+          { color: aborted ? 'warning' : 'info' },
+
+        )
+
+      }
+
+      return {
+
+        ok: false,
+
+        reason: skippedTasks >= tasks.length ? 'all_skipped' : 'error',
+
+        skipped: skippedTasks,
+
+        aborted,
+
+      }
 
     }
 
@@ -1676,7 +2025,7 @@ async function runSummarizeTasks(host, opts) {
 
 
 
-    if (sidecarIdsChanged) {
+    if (JSON.stringify(sidecarEntryIds) !== JSON.stringify(settings.sidecarEntryIds)) {
 
       patch.sidecarEntryIds =
 
@@ -1702,15 +2051,49 @@ async function runSummarizeTasks(host, opts) {
 
 
 
-    if (completedTasks === tasks.length) {
+    if (completedTasks === tasks.length && skippedTasks === 0) {
 
       host.ui.toast(host.t(k(host, 'toastSummarizeDone')), { color: 'success' })
 
+    } else if (completedTasks > 0 || skippedTasks > 0) {
+
+      host.ui.toast(
+
+        host.t(k(host, 'toastSummarizeSummary'), {
+
+          done: completedTasks,
+
+          skipped: skippedTasks,
+
+          total: tasks.length,
+
+        }),
+
+        { color: aborted ? 'warning' : 'info' },
+
+      )
+
     }
 
-    return { ok: completedTasks === tasks.length, partial: completedTasks < tasks.length }
+    return {
+
+      ok: completedTasks === tasks.length && skippedTasks === 0,
+
+      partial: completedTasks > 0 && completedTasks < tasks.length,
+
+      skipped: skippedTasks,
+
+      aborted,
+
+    }
 
   } catch (e) {
+
+    if (isAbortError(e)) {
+
+      return { ok: false, reason: 'aborted', aborted: true }
+
+    }
 
     console.warn('[curated-memory] summarize failed', e)
 

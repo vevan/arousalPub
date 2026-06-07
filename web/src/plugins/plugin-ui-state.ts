@@ -63,14 +63,43 @@ export interface PluginProgressState {
   phase?: string
   done: number
   total: number
+  indeterminate?: boolean
+  /** 显示「强制中断」并中止进行中的插件 API 请求 */
+  abortable?: boolean
+  abortLabel?: string
 }
 
 export const pluginProgressOpen = ref<PluginProgressState | null>(null)
 
+let progressAbortController: AbortController | null = null
+
+export function getPluginProgressAbortSignal(): AbortSignal | undefined {
+  return progressAbortController?.signal
+}
+
 export function showPluginProgress(opts: PluginProgressState): void {
+  const prev = pluginProgressOpen.value
+  const keepAbort =
+    Boolean(prev?.abortable && opts.abortable && progressAbortController) &&
+    !progressAbortController!.signal.aborted
+
+  if (opts.abortable && !keepAbort) {
+    progressAbortController?.abort()
+    progressAbortController = new AbortController()
+  } else if (!opts.abortable) {
+    progressAbortController = null
+  }
+
   pluginProgressOpen.value = opts
+}
+
+export function abortPluginProgress(): void {
+  if (!pluginProgressOpen.value?.abortable) return
+  progressAbortController?.abort()
+  clearPluginProgress()
 }
 
 export function clearPluginProgress(): void {
   pluginProgressOpen.value = null
+  progressAbortController = null
 }

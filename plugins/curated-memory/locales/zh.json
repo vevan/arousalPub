@@ -70,9 +70,21 @@
 
   "reviewConfirm": "确认写入",
 
-  "reviewCancel": "取消",
+  "reviewSkip": "跳过",
 
-  "toastReviewCancelled": "已取消写入",
+  "reviewAbort": "中断",
+
+  "reviewRegenerate": "重新生成",
+
+  "toastReviewRegenerateFailed": "重新生成失败，请重试或跳过",
+
+  "toastReviewSkipped": "已跳过该项",
+
+  "toastReviewAborted": "已中断摘要",
+
+  "toastTaskSkipped": "该项失败，已跳过并继续",
+
+  "toastSummarizeSummary": "已完成 {done} 项，跳过 {skipped} 项（共 {total} 项）",
 
   "enableDialogTitle": "开启 Memorybook",
 
@@ -126,6 +138,10 @@
   "toastBusy": "对话忙碌，已跳过自动摘要",
 
   "progressSummarize": "正在生成摘要…",
+
+  "progressAbort": "强制中断",
+
+  "toastProgressAborted": "已强制中断摘要",
 
   "apiConfigIdLabel": "摘要 API 预设",
 

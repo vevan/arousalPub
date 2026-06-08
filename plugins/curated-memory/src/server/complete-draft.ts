@@ -11,7 +11,8 @@ const UPSTREAM_RETRY = new Set(['plugin_complete_failed', 'preflight_failed'])
 
 type DraftApi = {
   runPluginComplete: (req: {
-    apiConfigId: string
+    apiConfigId?: string
+    conversationId?: string
     messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
     responseFormat?: 'json_object' | 'text'
   }) => Promise<
@@ -19,7 +20,8 @@ type DraftApi = {
     | { ok: false; code: string }
   >
   runPluginCompletePreflight: (req: {
-    apiConfigId: string
+    apiConfigId?: string
+    conversationId?: string
     messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
   }) => Promise<{ ok: boolean; code?: string; promptTokens: number; budget: number }>
   runPluginMacroExpand: (req: {
@@ -42,12 +44,14 @@ async function expandText(
 
 async function assertPreflight(
   api: DraftApi,
-  apiConfigId: string,
+  conversationId: string,
+  apiConfigId: string | undefined,
   system: string,
   userContent: string,
 ): Promise<void> {
   const pf = await api.runPluginCompletePreflight({
     apiConfigId,
+    conversationId,
     messages: [
       { role: 'system', content: system },
       { role: 'user', content: userContent },
@@ -72,17 +76,24 @@ async function assertPreflight(
 async function callCompleteOnce(
   api: DraftApi,
   conversationId: string,
-  apiConfigId: string,
+  apiConfigId: string | undefined,
   system: string,
   userContent: string,
 ) {
   const [expandedSystem, expandedUser] = await Promise.all([
-    expandText(api, system, conversationId, apiConfigId),
-    expandText(api, userContent, conversationId, apiConfigId),
+    expandText(api, system, conversationId, apiConfigId ?? ''),
+    expandText(api, userContent, conversationId, apiConfigId ?? ''),
   ])
-  await assertPreflight(api, apiConfigId, expandedSystem, expandedUser)
+  await assertPreflight(
+    api,
+    conversationId,
+    apiConfigId,
+    expandedSystem,
+    expandedUser,
+  )
   const result = await api.runPluginComplete({
     apiConfigId,
+    conversationId,
     messages: [
       { role: 'system', content: expandedSystem },
       { role: 'user', content: expandedUser },
@@ -98,7 +109,7 @@ async function callCompleteOnce(
 async function callCompleteWithRetry(
   api: DraftApi,
   conversationId: string,
-  apiConfigId: string,
+  apiConfigId: string | undefined,
   system: string,
   userContent: string,
 ) {
@@ -123,13 +134,12 @@ export async function completeDraft(
   ctx: {
     pluginId: string
     conversationId: string
-    apiConfigId: string
+    apiConfigId?: string
     kind: 'memory' | 'sidecar'
     userContent: string
     systemPromptTemplate: string
     fromTurn?: number
     toTurn?: number
-    titleFormat?: 'plain' | 'range-suffix'
     sidecarName?: string
   },
   api: DraftApi,
@@ -164,12 +174,7 @@ export async function completeDraft(
   const summary = normalizeSummaryPayload(raw)
   const fromTurn = typeof ctx.fromTurn === 'number' ? ctx.fromTurn : 0
   const toTurn = typeof ctx.toTurn === 'number' ? ctx.toTurn : fromTurn
-  const entryTitle = formatEntryTitle(
-    summary.title,
-    ctx.titleFormat ?? 'range-suffix',
-    fromTurn,
-    toTurn,
-  )
+  const entryTitle = formatEntryTitle(summary.title, fromTurn, toTurn)
   return {
     draft: {
       title: entryTitle,

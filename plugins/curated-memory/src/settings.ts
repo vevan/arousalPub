@@ -95,10 +95,23 @@ export async function loadMergedSettings(host: PluginHost): Promise<MergedSettin
     500,
   )
   const bufferTurns = asInt(conv.bufferTurns ?? global.bufferTurns, 5, 500)
-  const titleFormat =
-    asString(conv.titleFormat) || asString(global.titleFormat) || 'range-suffix'
-  const targetLorebookId =
-    asString(conv.targetLorebookId) || asString(global.defaultTargetLorebookId)
+  const previousSummariesLimit = asInt(global.previousSummariesLimit, 8, 50)
+  const entrySortModeRaw = asString(conv.entrySortMode)
+  const entrySortMode: 'manual' | 'auto-turn-suffix' =
+    entrySortModeRaw === 'manual' ? 'manual' : 'auto-turn-suffix'
+  const targetLorebookId = asString(conv.targetLorebookId)
+  const convMode = asString(conv.targetLorebookMode)
+  const globalMode = asString(global.targetLorebookMode)
+  const targetLorebookMode: 'manual' | 'auto' =
+    convMode === 'auto' || convMode === 'manual'
+      ? convMode
+      : globalMode === 'auto' || globalMode === 'manual'
+        ? globalMode
+        : 'manual'
+  const autoLorebookNameTemplate =
+    asString(conv.autoLorebookNameTemplate) ||
+    asString(global.autoLorebookNameTemplate) ||
+    '{{conversationTitle}}-summary'
   const apiConfigId = asString(global.apiConfigId)
   const defaultEntryTriggerMode = asString(global.defaultEntryTriggerMode) || 'vector'
   const sidecarEntryIds =
@@ -113,7 +126,8 @@ export async function loadMergedSettings(host: PluginHost): Promise<MergedSettin
     targetLorebookId,
     blockTurns,
     bufferTurns,
-    titleFormat,
+    previousSummariesLimit,
+    entrySortMode,
     defaultEntryTriggerMode,
     systemPromptTemplate:
       asString(global.systemPromptTemplate) || resolveDefaultSystemPrompt(host),
@@ -132,6 +146,8 @@ export async function loadMergedSettings(host: PluginHost): Promise<MergedSettin
     sidecars,
     autoSidecarIds: parseAutoSidecarIdsRaw(conv.autoSidecarIds, sidecars),
     memorybookDefaultEnabled: asBool(global.memorybookDefaultEnabled, false),
+    targetLorebookMode,
+    autoLorebookNameTemplate,
   }
 }
 

@@ -2,6 +2,7 @@
 export interface ApiConfigReference {
   kind:
     | 'conversation_api_preset'
+    | 'global_feature_binding'
     | 'api_preset_api_key'
     | 'embedding_api_key'
   presetId?: string

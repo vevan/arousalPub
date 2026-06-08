@@ -8,15 +8,37 @@
 
   "tooltipSessionSettings": "本会话策展设置",
 
+  "tooltipRangeStart": "选择摘要起始轮",
+
+  "tooltipRangeEnd": "选择摘要结束轮并打开手动摘要",
+
+  "toastRangeStartRequired": "请先点击右侧图标选择起始轮",
+
   "tooltipSummarizeNow": "立即摘要到资料库",
 
   "tooltipSummarizeTurn": "摘要至本回合",
 
   "sessionDialogTitle": "本会话策展记忆",
 
-  "sessionTargetLorebookLabel": "目标资料库",
+  "sessionTargetLorebookLabel": "摘要资料库",
 
-  "sessionTargetLorebookHint": "留空则使用全局默认。",
+  "sessionTargetLorebookHint": "留空则摘要时选择资料库。",
+
+  "convTargetLorebookIdLabel": "摘要资料库",
+
+  "convTargetLorebookIdDesc": "摘要条目写入本书；留空则摘要或自动块触发时弹框选择。与绑定 Tab 的「资料库」注入无关。",
+
+  "convMemorybookEnabledLabel": "Memorybook 自动摘要",
+
+  "convMemorybookEnabledDesc": "开启后按块长自动预约摘要（仍须预览确认）。",
+
+  "convBlockTurnsLabel": "每块摘要轮数",
+
+  "convBlockTurnsDesc": "本会话覆盖；清空则继承全局默认。",
+
+  "convBufferTurnsLabel": "缓冲轮数",
+
+  "convBufferTurnsDesc": "块尾后保留最近 N 轮不纳入本块；清空则继承全局默认。",
 
   "sessionBlockTurnsLabel": "每块摘要轮数 N",
 
@@ -55,7 +77,7 @@
 
   "manualSubmit": "开始",
 
-  "reviewDialogTitle": "确认摘要",
+  "reviewDialogTitle": "确认并写入摘要：{name}",
 
   "reviewDialogBody": "可编辑标题、正文与关键词，确认后写入资料库。",
 
@@ -106,6 +128,20 @@
 
   "pickLorebookConfirm": "确认",
 
+  "recoverLorebookDialogTitle": "摘要资料库已删除",
+
+  "recoverLorebookDialogBody": "原摘要资料库已不存在。请指定另一本资料库，或按模板新建一本；Sidecar 条目映射将重置。",
+
+  "recoverLorebookModeLabel": "处理方式",
+
+  "recoverLorebookModePick": "指定另一本资料库",
+
+  "recoverLorebookModeCreate": "新建资料库",
+
+  "recoverLorebookConfirm": "确认",
+
+  "toastTargetLorebookDeleted": "摘要资料库已删除，请重新指定或新建",
+
   "toastTargetLorebookMissingWarn": "目标资料库缺失，请选择后再摘要",
 
   "memorybookDefaultEnabledLabel": "新对话默认开启 Memorybook",
@@ -147,7 +183,7 @@
 
   "apiConfigIdLabel": "摘要 API 预设",
 
-  "apiConfigIdDesc": "用于生成摘要的 API 预设。",
+  "apiConfigIdDesc": "用于生成摘要的 API 预设；留空时使用本对话 apiPreset.plugins 覆盖（若有）。",
 
   "triggerEveryNTurnsLabel": "每块摘要轮数 N",
 
@@ -157,17 +193,39 @@
 
   "bufferTurnsDesc": "最近若干轮不纳入自动摘要（仍在对话 history 中）。建议不超过全局历史注入轮数。",
 
-  "defaultTargetLorebookIdLabel": "默认目标资料库",
+  "targetLorebookModeLabel": "摘要资料库模式",
 
-  "defaultTargetLorebookIdDesc": "未在会话中覆盖时使用。",
+  "targetLorebookModeDesc": "手动：未指定摘要资料库时弹框选书。自动：按模板自动创建资料库并写入本会话。",
 
-  "titleFormatLabel": "条目标题格式",
+  "targetLorebookModeManual": "手动选书",
 
-  "titleFormatDesc": "「标题 + 轮次后缀」会在模型生成的标题后追加「-起始-结束」轮次编号，便于区分各块摘要。",
+  "targetLorebookModeAuto": "自动建书",
 
-  "titleFormatPlain": "仅标题",
+  "autoLorebookNameTemplateLabel": "自动建书名称模板",
 
-  "titleFormatRange-suffix": "标题 + 轮次后缀",
+  "autoLorebookNameTemplateDesc": "支持宏 \\{\\{conversationTitle\\}\\}；重名时在名称后追加当前对话 id。",
+
+  "toastAutoLorebookCreated": "已自动创建摘要资料库：{name}",
+
+  "toastAutoLorebookFailed": "自动创建摘要资料库失败",
+
+  "previousSummariesLimitLabel": "摘要时附带最近条数",
+
+  "previousSummariesLimitDesc": "向摘要模型发送目标资料库中最近 N 条剧情摘要正文（按轮次后缀排序，靠后表示时间更近）。0 表示不附带。",
+
+  "entrySortModeLabel": "条目自动排序",
+
+  "entrySortModeDesc": "开启后，每次摘要批次（剧情摘要与 Sidecar）全部处理完毕后自动整理目标资料库顺序：无后缀设定 → Sidecar → 按轮次后缀排序的摘要。",
+
+  "entrySortModeManual": "手动（仅拖拽）",
+
+  "entrySortModeAuto-turn-suffix": "按轮次后缀自动排序",
+
+  "tooltipReorderLorebook": "整理目标资料库顺序",
+
+  "toastReorderLorebookDone": "已整理目标资料库条目顺序",
+
+  "toastReorderLorebookNoTarget": "请先指定摘要资料库",
 
   "defaultEntryTriggerModeLabel": "新建条目触发方式",
 

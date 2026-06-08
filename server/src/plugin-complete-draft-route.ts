@@ -1,4 +1,5 @@
 import { isValidConversationId } from './conversation-id.js'
+import { resolvePluginCompleteApi } from './plugin-api-resolve.js'
 import { createPluginServerHostApi } from './plugin-system/host-api.js'
 import { loadEnabledServerPlugins } from './plugin-system/loader.js'
 import type {
@@ -16,7 +17,6 @@ export interface PluginCompleteDraftRequestBody {
   systemPromptTemplate?: string
   fromTurn?: number
   toTurn?: number
-  titleFormat?: string
   sidecarName?: string
 }
 
@@ -32,12 +32,6 @@ function parseDraftContext(
     typeof body.conversationId === 'string' ? body.conversationId.trim() : ''
   if (!conversationId || !isValidConversationId(conversationId)) {
     return { ok: false, code: 'invalid_conversation_id' }
-  }
-
-  const apiConfigId =
-    typeof body.apiConfigId === 'string' ? body.apiConfigId.trim() : ''
-  if (!apiConfigId) {
-    return { ok: false, code: 'api_config_not_found' }
   }
 
   const kind = body.kind === 'sidecar' ? 'sidecar' : body.kind === 'memory' ? 'memory' : null
@@ -57,19 +51,16 @@ function parseDraftContext(
     return { ok: false, code: 'system_prompt_required' }
   }
 
-  const titleFormat =
-    body.titleFormat === 'plain' || body.titleFormat === 'range-suffix'
-      ? body.titleFormat
-      : 'range-suffix'
+  const apiConfigId =
+    typeof body.apiConfigId === 'string' ? body.apiConfigId.trim() : undefined
 
   const ctx: PluginCompleteDraftContext = {
     pluginId,
     conversationId,
-    apiConfigId,
+    apiConfigId: apiConfigId || undefined,
     kind,
     userContent,
     systemPromptTemplate,
-    titleFormat,
   }
 
   if (typeof body.fromTurn === 'number' && Number.isInteger(body.fromTurn)) {
@@ -97,7 +88,18 @@ export async function runPluginCompleteDraftRoute(
     return parsed
   }
 
-  const ctx = parsed as PluginCompleteDraftContext
+  let ctx = parsed as PluginCompleteDraftContext
+
+  const resolved = await resolvePluginCompleteApi({
+    pluginId,
+    conversationId: ctx.conversationId,
+    apiConfigId: ctx.apiConfigId,
+    userId,
+  })
+  if (!resolved.ok) {
+    return { ok: false, code: resolved.code }
+  }
+  ctx = { ...ctx, apiConfigId: resolved.resolved.apiConfigId }
 
   const loaded = await loadEnabledServerPlugins(userId)
   const plugin = loaded.find((p) => p.id === pluginId)
@@ -105,7 +107,7 @@ export async function runPluginCompleteDraftRoute(
     return { ok: false, code: 'plugin_hook_not_supported', status: 404 }
   }
 
-  const api = createPluginServerHostApi(userId)
+  const api = createPluginServerHostApi(pluginId, userId)
   try {
     const result = await plugin.module.completeDraft(ctx, api)
     if (!result?.draft || typeof result.draft.content !== 'string') {

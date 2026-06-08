@@ -22,7 +22,7 @@
 | `host.chat` | `sendWithPlugins` / `regenerateWithPlugins` | **正常聊天**（含组装），**不是**摘要 |
 | `host.ui` | `toast` / `confirm` / `progress` / … | |
 | `host.render` | `richMessageToHtml` / `reasoningToHtml` | |
-| 注册 | `registerSlotButton` / `registerFormDialog` | 见 `DOC/09` §8 |
+| 注册 | `registerSlotButton` / `registerFormDialog` / `registerStyles` | 见 `DOC/09` §8、`DOC/18` §3.1 |
 
 ### 0.2 扩展 API（`DOC/11` 规划项 + 2026-06-02 落地）
 
@@ -30,7 +30,8 @@
 |----------|------|------|----------|
 | **`host.lorebook`** | `list()` / `get()` / `createEntry()` / `patchEntry()` | ✅ | `GET/POST/PATCH /api/plugins/:id/lorebooks/…` |
 | | `normalizeEntryRefs(req)` | ✅ | `POST …/lorebooks/normalize-entry-refs` |
-| | `create` / `ensure` | ⏳ P0 | 自动建 summary 书，见 `DOC/04` |
+| | `reorderCurated(lorebookId, req?)` | ✅ | `POST …/lorebooks/:id/reorder-curated`，单次读+写重排 order（`DOC/12` §4.2） |
+| | `ensure(req?)` | ✅ | `POST …/lorebooks/ensure`，自动建 summary 书，见 `DOC/12` §2.3 |
 | **`host.api`** | `listPresets()` | ✅ | `GET /api/settings` |
 | **`host.plugin`** | `complete(req)` | ✅ | `POST …/complete` |
 | | `prepareContext(req)` | ✅ | `POST …/prepare-context`（读 turn + 拼 `<history>` / `<previous-memories>`） |
@@ -247,8 +248,8 @@ interface ConversationIndex {
       "targetLorebookId": "lore-mem-main",
       "triggerEveryNTurns": 4,
       "lastTriggeredTurnOrdinal": 12,
-      "sidecarEntryId": "entry-tracker-01",
-      "titleFormat": "range-suffix"
+      "sidecarEntryIds": { "tracker": "entry-tracker-01" },
+      "entrySortMode": "auto-turn-suffix"
     }
   }
 }

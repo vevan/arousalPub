@@ -45,7 +45,6 @@ async function tryBootstrapDefaultMemorybook(
 async function handleAutoSummarizeTurn(host: PluginHost, turnOrdinal: number) {
   const settings = await loadMergedSettings(host)
   if (!settings.memorybookEnabled) return
-  if (!settings.apiConfigId) return
   if (!shouldAutoTrigger(turnOrdinal, settings)) return
   const range = currentAutoRange(settings)
   const tasks = resolveAutoTasks(settings)

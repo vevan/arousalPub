@@ -10,6 +10,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { getChatsRoot } from './config.js'
 import { isValidConversationId } from './conversation-id.js'
+import type { ResolvedFeatureAudit } from './feature-binding-resolve.js'
 import {
   lorebookSettingsOverrideFromEffective,
   normalizeLorebookSettings,
@@ -189,6 +190,8 @@ export function buildReceiveRuntime(opts: {
   estimatedTokens?: number
   /** 上游 usage.completion_tokens，缺省时由落盘逻辑 tiktoken 估算助手正文 */
   completionTokens?: number
+  /** 出站 chat 等功能键解析结果（审计用，不含密钥） */
+  resolvedFeature?: ResolvedFeatureAudit
 }): Record<string, unknown> | undefined {
   const runtime: Record<string, unknown> = {}
   if (opts.model) runtime.model = opts.model
@@ -208,6 +211,9 @@ export function buildReceiveRuntime(opts: {
     opts.completionTokens > 0
   ) {
     runtime.completionTokens = Math.round(opts.completionTokens)
+  }
+  if (opts.resolvedFeature) {
+    runtime.resolvedFeature = opts.resolvedFeature
   }
   return Object.keys(runtime).length > 0 ? runtime : undefined
 }
@@ -1245,6 +1251,7 @@ export async function saveFirstTurn(params: {
   durationMs?: number
   estimatedTokens?: number
   completionTokens?: number
+  resolvedFeature?: ResolvedFeatureAudit
   /** 与发往 /api/chat 的 messages 一致，写入 chat-prompt.json（调试用） */
   debugPrompt?: unknown
   turnPluginEntries?: TurnPluginEntry[]
@@ -1258,6 +1265,7 @@ export async function saveFirstTurn(params: {
     durationMs,
     estimatedTokens,
     completionTokens,
+    resolvedFeature,
     debugPrompt,
     turnPluginEntries,
   } = params
@@ -1274,6 +1282,7 @@ export async function saveFirstTurn(params: {
     durationMs,
     estimatedTokens,
     completionTokens,
+    resolvedFeature,
   })
   const turn: TurnRecord = {
     turnId,

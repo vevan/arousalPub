@@ -65,3 +65,9 @@ export function pluginHasSettingsSchema(
 ): boolean {
   return Boolean(schema && schema.fields.length > 0)
 }
+
+export function pluginHasConversationSettingsSchema(
+  schema: PluginSettingsSchema | null | undefined,
+): boolean {
+  return Boolean(schema && schema.fields.length > 0)
+}

@@ -4,13 +4,41 @@ import {
   clearReviewSession,
   getReviewRegenerate,
   getReviewResolver,
+  getReviewTitleParams,
   setReviewRegenerate,
   setReviewResolver,
+  setReviewTitleParams,
   summarizeBatchProgress,
 } from './state.js'
 import { k, sidecarPromptTemplate } from './settings.js'
 import { keywordsToText, parseKeywordsText, asString } from './shared/utils.js'
 import type { MergedSettings, PluginHost, SidecarConfig } from './types.js'
+
+function hasHistoryBlock(userContent: string): boolean {
+  return /<history>[\s\S]*<\/history>/i.test(userContent)
+}
+
+function resolveSystemPrompt(
+  host: PluginHost,
+  settings: MergedSettings,
+  opts: {
+    kind: 'memory' | 'sidecar'
+    userContent: string
+    sc?: SidecarConfig
+  },
+): string {
+  if (
+    opts.kind === 'sidecar' &&
+    opts.sc &&
+    hasHistoryBlock(opts.userContent)
+  ) {
+    return settings.systemPromptTemplate
+  }
+  if (opts.kind === 'sidecar' && opts.sc) {
+    return sidecarPromptTemplate(host, opts.sc)
+  }
+  return settings.systemPromptTemplate
+}
 
 function bumpTaskProgress(host: PluginHost, done: number, total: number) {
   host.ui.progress({
@@ -29,21 +57,46 @@ export function showCurrentBatchTaskProgress(host: PluginHost) {
   bumpTaskProgress(host, p.taskIndex + 1, p.total)
 }
 
+function reviewDialogOpenOpts() {
+  const titleParams = getReviewTitleParams()
+  return titleParams ? { titleParams } : undefined
+}
+
+export async function resolveTargetLorebookName(
+  host: PluginHost,
+  lorebookId: string,
+): Promise<string> {
+  const id = asString(lorebookId)
+  if (!id) return ''
+  try {
+    const lb = await host.lorebook.get(id)
+    const name = asString(lb.name)
+    return name || id
+  } catch {
+    return id
+  }
+}
+
+function openReviewFormDialog(
+  host: PluginHost,
+  draft: { title: string; content: string; keywords: string[] },
+  dialogId: string,
+) {
+  const model = {
+    title: draft.title,
+    content: draft.content,
+    keywordsText: keywordsToText(draft.keywords),
+  }
+  host.openFormDialog(PLUGIN_ID, model, dialogId, reviewDialogOpenOpts())
+}
+
 async function runReviewRegenerate(host: PluginHost, dialogId: string) {
   const regen = getReviewRegenerate()
   const resolver = getReviewResolver()
   if (!regen || !resolver) return
   try {
     const draft = await regen(host)
-    host.ui.openFormDialog(
-      PLUGIN_ID,
-      {
-        title: draft.title,
-        content: draft.content,
-        keywordsText: keywordsToText(draft.keywords),
-      },
-      dialogId,
-    )
+    openReviewFormDialog(host, draft, dialogId)
   } catch (e) {
     if (isAbortError(e)) {
       clearReviewSession()
@@ -69,14 +122,10 @@ export async function generateReviewDraft(
   showCurrentBatchTaskProgress(host)
   try {
     const req = {
-      apiConfigId: settings.apiConfigId,
+      ...(settings.apiConfigId ? { apiConfigId: settings.apiConfigId } : {}),
       kind: opts.kind,
       userContent: opts.userContent,
-      systemPromptTemplate:
-        opts.kind === 'sidecar' && opts.sc
-          ? sidecarPromptTemplate(host, opts.sc)
-          : settings.systemPromptTemplate,
-      titleFormat: settings.titleFormat as 'plain' | 'range-suffix',
+      systemPromptTemplate: resolveSystemPrompt(host, settings, opts),
       fromTurn: opts.fromTurn,
       toTurn: opts.toTurn,
       sidecarName: opts.sc?.name,
@@ -179,6 +228,7 @@ export function promptReview(
     content: string
     keywords: string[]
   }>) | null,
+  lorebookName: string,
 ) {
   return new Promise<{
     title: string
@@ -187,14 +237,7 @@ export function promptReview(
   }>((resolve, reject) => {
     setReviewResolver({ resolve, reject })
     setReviewRegenerate(regenerateFn)
-    host.openFormDialog(
-      PLUGIN_ID,
-      {
-        title: draft.title,
-        content: draft.content,
-        keywordsText: keywordsToText(draft.keywords),
-      },
-      dialogId,
-    )
+    setReviewTitleParams({ name: lorebookName })
+    openReviewFormDialog(host, draft, dialogId)
   })
 }

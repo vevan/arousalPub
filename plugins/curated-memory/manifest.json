@@ -1,561 +1,241 @@
 {
-
-
-
   "id": "curated-memory",
-
-
-
   "name": "策展记忆",
-
-
-
-  "version": "1.3.0",
-
-
-
-  "hooks": ["completeDraft"],
-
-
-
-  "permissions": [
-
-
-
-    "plugin.complete",
-
-
-
-    "lorebook.read",
-
-
-
-    "lorebook.entry.write",
-
-
-
-    "conversation.read"
-
-
-
+  "version": "1.5.0",
+  "hooks": [
+    "completeDraft"
   ],
-
-
-
+  "permissions": [
+    "plugin.complete",
+    "lorebook.read",
+    "lorebook.entry.write",
+    "conversation.read",
+    "lorebook.write"
+  ],
   "settingsSchema": {
-
-
-
     "version": 1,
-
-
-
     "fields": [
-
-
-
       {
-
-
-
         "key": "apiConfigId",
-
-
-
         "type": "apiPreset",
-
-
-
         "labelKey": "apiConfigIdLabel",
-
-
-
         "descriptionKey": "apiConfigIdDesc",
-
-
-
         "default": ""
-
-
-
       },
-
-
-
       {
-
-
-
         "key": "memorybookDefaultEnabled",
-
-
-
         "type": "boolean",
-
-
-
         "labelKey": "memorybookDefaultEnabledLabel",
-
-
-
         "descriptionKey": "memorybookDefaultEnabledDesc",
-
-
-
         "default": false
-
-
-
       },
-
-
-
       {
-
-
-
         "key": "triggerEveryNTurns",
-
-
-
         "type": "integer",
-
-
-
         "labelKey": "triggerEveryNTurnsLabel",
-
-
-
         "descriptionKey": "triggerEveryNTurnsDesc",
-
-
-
         "default": 15,
-
-
-
         "min": 1,
-
-
-
         "max": 500
-
-
-
       },
-
-
-
       {
-
-
-
         "key": "bufferTurns",
-
-
-
         "type": "integer",
-
-
-
         "labelKey": "bufferTurnsLabel",
-
-
-
         "descriptionKey": "bufferTurnsDesc",
-
-
-
         "default": 5,
-
-
-
         "min": 0,
-
-
-
         "max": 500
-
-
-
       },
-
-
-
       {
-
-
-
-        "key": "defaultTargetLorebookId",
-
-
-
-        "type": "lorebook",
-
-
-
-        "labelKey": "defaultTargetLorebookIdLabel",
-
-
-
-        "descriptionKey": "defaultTargetLorebookIdDesc",
-
-
-
-        "default": ""
-
-
-
+        "key": "autoLorebookNameTemplate",
+        "type": "string",
+        "labelKey": "autoLorebookNameTemplateLabel",
+        "descriptionKey": "autoLorebookNameTemplateDesc",
+        "default": "{{conversationTitle}}-summary",
+        "visibleWhen": {
+          "field": "targetLorebookMode",
+          "equals": "auto"
+        }
       },
-
-
-
       {
-
-
-
-        "key": "titleFormat",
-
-
-
+        "key": "targetLorebookMode",
         "type": "enum",
-
-
-
-        "labelKey": "titleFormatLabel",
-
-
-
-        "descriptionKey": "titleFormatDesc",
-
-
-
-        "enum": ["plain", "range-suffix"],
-
-
-
-        "default": "range-suffix"
-
-
-
+        "labelKey": "targetLorebookModeLabel",
+        "descriptionKey": "targetLorebookModeDesc",
+        "enum": [
+          "manual",
+          "auto"
+        ],
+        "default": "manual"
       },
-
-
-
       {
-
-
-
+        "key": "previousSummariesLimit",
+        "type": "integer",
+        "labelKey": "previousSummariesLimitLabel",
+        "descriptionKey": "previousSummariesLimitDesc",
+        "default": 8,
+        "min": 0,
+        "max": 50
+      },
+      {
         "key": "defaultEntryTriggerMode",
-
-
-
         "type": "enum",
-
-
-
         "labelKey": "defaultEntryTriggerModeLabel",
-
-
-
         "descriptionKey": "defaultEntryTriggerModeDesc",
-
-
-
-        "enum": ["vector", "keyword", "constant"],
-
-
-
+        "enum": [
+          "vector",
+          "keyword",
+          "constant"
+        ],
         "default": "vector"
-
-
-
       },
-
-
-
       {
-
-
-
         "key": "systemPromptTemplate",
-
-
-
         "type": "text",
-
-
-
         "labelKey": "systemPromptTemplateLabel",
-
-
-
         "descriptionKey": "systemPromptTemplateDesc",
-
-
-
         "widget": "promptTemplate",
-
-
-
         "required": true,
-
-
-
         "defaultKey": "systemPromptTemplateDefault",
-
-
-
         "default": ""
-
-
-
       },
-
-
-
       {
-
-
-
         "key": "sidecarEnabled",
-
-
-
         "type": "boolean",
-
-
-
         "labelKey": "sidecarEnabledLabel",
-
-
-
         "descriptionKey": "sidecarEnabledDesc",
-
-
-
         "default": false
-
-
-
       },
-
-
-
       {
-
-
-
         "key": "sidecars",
-
-
-
         "type": "objectList",
-
-
-
         "labelKey": "sidecarsLabel",
-
-
-
         "descriptionKey": "sidecarsDesc",
-
-
-
         "default": "[]",
-
-
-
-        "visibleWhen": { "field": "sidecarEnabled", "equals": true },
-
-
-
+        "visibleWhen": {
+          "field": "sidecarEnabled",
+          "equals": true
+        },
         "itemFields": [
-
-
-
           {
-
-
-
             "key": "name",
-
-
-
             "type": "string",
-
-
-
             "labelKey": "sidecarItemNameLabel",
-
-
-
             "required": true
-
-
-
           },
-
-
-
           {
-
-
-
             "key": "systemPromptTemplate",
-
-
-
             "type": "text",
-
-
-
             "labelKey": "sidecarItemPromptLabel",
-
-
-
             "descriptionKey": "sidecarItemPromptDesc",
-
-
-
             "widget": "promptTemplate",
-
-
-
             "required": true,
-
-
-
             "defaultKey": "sidecarSystemPromptTemplateDefault"
-
-
-
           },
-
-
-
           {
-
-
-
             "key": "priority",
-
-
-
             "type": "integer",
-
-
-
             "labelKey": "sidecarItemPriorityLabel",
-
-
-
             "descriptionKey": "sidecarItemPriorityDesc",
-
-
-
             "default": 90,
-
-
-
             "min": 0,
-
-
-
             "max": 200
-
-
-
           },
-
-
-
           {
-
-
-
             "key": "triggerMode",
-
-
-
             "type": "enum",
-
-
-
             "labelKey": "sidecarItemTriggerModeLabel",
-
-
-
             "descriptionKey": "sidecarItemTriggerModeDesc",
-
-
-
-            "enum": ["constant", "keyword", "vector"],
-
-
-
+            "enum": [
+              "constant",
+              "keyword",
+              "vector"
+            ],
             "default": "constant"
-
-
-
           },
-
-
-
           {
-
-
-
             "key": "enabled",
-
-
-
             "type": "boolean",
-
-
-
             "labelKey": "sidecarItemEnabledLabel",
-
-
-
             "default": true
-
-
-
           }
-
-
-
         ]
-
-
-
       }
-
-
-
     ]
-
-
-
   },
-
-
-
   "ui": {
-
-
-
-    "slots": [{ "name": "composer-toolbar", "entry": "./dist/web.mjs" }]
-
-
-
+    "slots": [
+      {
+        "name": "composer-toolbar",
+        "entry": "./dist/web.mjs"
+      },
+      {
+        "name": "turn-block-head",
+        "entry": "./dist/web.mjs"
+      }
+    ]
+  },
+  "conversationSettingsSchema": {
+    "version": 1,
+    "fields": [
+      {
+        "key": "targetLorebookId",
+        "type": "lorebook",
+        "labelKey": "convTargetLorebookIdLabel",
+        "descriptionKey": "convTargetLorebookIdDesc",
+        "default": ""
+      },
+      {
+        "key": "memorybookEnabled",
+        "type": "boolean",
+        "labelKey": "convMemorybookEnabledLabel",
+        "descriptionKey": "convMemorybookEnabledDesc",
+        "default": false
+      },
+      {
+        "key": "blockTurns",
+        "type": "integer",
+        "labelKey": "convBlockTurnsLabel",
+        "descriptionKey": "convBlockTurnsDesc",
+        "min": 1,
+        "max": 500,
+        "conversationInherit": true,
+        "inheritFromGlobalKey": "triggerEveryNTurns"
+      },
+      {
+        "key": "bufferTurns",
+        "type": "integer",
+        "labelKey": "convBufferTurnsLabel",
+        "descriptionKey": "convBufferTurnsDesc",
+        "min": 0,
+        "max": 500,
+        "conversationInherit": true,
+        "inheritFromGlobalKey": "bufferTurns"
+      },
+      {
+        "key": "targetLorebookMode",
+        "type": "enum",
+        "labelKey": "targetLorebookModeLabel",
+        "descriptionKey": "targetLorebookModeDesc",
+        "enum": [
+          "manual",
+          "auto"
+        ],
+        "conversationInherit": true,
+        "inheritFromGlobalKey": "targetLorebookMode"
+      },
+      {
+        "key": "entrySortMode",
+        "type": "enum",
+        "labelKey": "entrySortModeLabel",
+        "descriptionKey": "entrySortModeDesc",
+        "enum": [
+          "manual",
+          "auto-turn-suffix"
+        ],
+        "default": "auto-turn-suffix"
+      }
+    ]
   }
-
-
-
 }
-
-
-
-

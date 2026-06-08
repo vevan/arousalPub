@@ -22,9 +22,15 @@ export interface PluginSlotMenuItemDef {
 
 export interface PluginSlotButtonDef {
   id: string
+  /** 宿主注入：注册该按钮的插件 id，用于按 registry order 排序 */
+  pluginId?: string
   icon: string | ((ctx: PluginSlotContext) => string)
   tooltipKey: string | ((ctx: PluginSlotContext) => string)
   filled?: boolean | ((ctx: PluginSlotContext) => boolean)
+  /** 追加到宿主 `.plugin-slot` 的 class（空格分隔）；插件样式建议带插件前缀并通过 `registerStyles` 注入 */
+  class?: string | ((ctx: PluginSlotContext) => string)
+  /** `v-icon` 字号（px）；默认 13 */
+  iconSize?: number | ((ctx: PluginSlotContext) => number)
   when?: (ctx: PluginSlotContext) => boolean
   disabled?: (ctx: PluginSlotContext) => boolean
   /** 平铺按钮；与 menu 二选一 */
@@ -218,7 +224,8 @@ export interface LorebookEntryPatchBody {
 }
 
 export interface PluginCompleteRequest {
-  apiConfigId: string
+  /** 省略时由宿主按对话 apiPreset.plugins → 插件设置解析 */
+  apiConfigId?: string
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
   modelOverride?: string
   stream?: boolean
@@ -238,6 +245,9 @@ export interface PluginPrepareContextRequest {
   targetLorebookId: string
   includePreviousMemories?: boolean
   previousMemoriesLimit?: number
+  previousSummariesLimit?: number
+  sidecarEntryIds?: Record<string, string>
+  sidecarIds?: string[]
 }
 
 export interface PluginPrepareContextResponse {
@@ -257,14 +267,36 @@ export interface LorebookNormalizeEntryRefsRequest {
   validKeys: string[]
 }
 
+export interface LorebookReorderCuratedRequest {
+  sidecarEntryIds?: Record<string, string>
+  sidecarIds?: string[]
+}
+
+export interface LorebookReorderCuratedResult {
+  ok: true
+  lorebook: LorebookDto
+  changed: number
+  savedAt: string
+}
+
+export interface LorebookEnsureRequest {
+  nameTemplate?: string
+}
+
+export interface LorebookEnsureResult {
+  id: string
+  name: string
+  created: boolean
+}
+
 export interface PluginCompleteDraftRequest {
-  apiConfigId: string
+  /** 省略时由宿主解析（对话覆盖 → 插件设置） */
+  apiConfigId?: string
   kind: 'memory' | 'sidecar'
   userContent: string
   systemPromptTemplate: string
   fromTurn?: number
   toTurn?: number
-  titleFormat?: 'plain' | 'range-suffix'
   sidecarName?: string
 }
 
@@ -300,6 +332,7 @@ export interface PluginWebHost {
     pluginId: string,
     model: Record<string, unknown>,
     dialogId?: string,
+    opts?: PluginFormDialogOpenOpts,
   ): void
   composer: ComposerRef
   session: ChatSession
@@ -340,6 +373,12 @@ export interface PluginWebHost {
     runBatch(fn: (ctx: ConversationBatchContext) => Promise<void>): Promise<void>
     refresh(): Promise<void>
     getPluginSettings(): Promise<Record<string, unknown>>
+    /** 当前会话插件设置的同步快照（来自宿主 store） */
+    getPluginSettingsSnapshot(): Record<string, unknown>
+    /** 会话 pluginSettings 变更时回调（含 Tab 与 footer 等写入） */
+    onPluginSettingsChanged(
+      handler: (settings: Record<string, unknown>) => void,
+    ): () => void
     patchPluginSettings(
       partial: Record<string, unknown>,
     ): Promise<Record<string, unknown>>
@@ -361,6 +400,11 @@ export interface PluginWebHost {
     normalizeEntryRefs(
       req: LorebookNormalizeEntryRefsRequest,
     ): Promise<Record<string, string>>
+    reorderCurated(
+      lorebookId: string,
+      req?: LorebookReorderCuratedRequest,
+    ): Promise<LorebookReorderCuratedResult>
+    ensure(req?: LorebookEnsureRequest): Promise<LorebookEnsureResult>
   }
   api: {
     listPresets(): Promise<{ id: string; alias: string }[]>
@@ -376,7 +420,7 @@ export interface PluginWebHost {
   }
   token: {
     preflightComplete(req: {
-      apiConfigId: string
+      apiConfigId?: string
       messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
     }): Promise<PluginCompletePreflightResult>
   }
@@ -402,12 +446,18 @@ export interface PluginWebHost {
       pluginId: string,
       model: Record<string, unknown>,
       dialogId?: string,
+      opts?: PluginFormDialogOpenOpts,
     ): void
     progress(opts: PluginProgressOptions): void
     clearProgress(): void
   }
   /** 插件切换 slot 按钮外观后调用，触发 UI 刷新 */
   refreshSlotButtons: () => void
+  /**
+   * 注入本插件 CSS（写入 `<style data-plugin-styles="{pluginId}">`，同 id 重复调用为覆盖更新）。
+   * 仅在 `createScopedPluginHost` 作用域内可用。
+   */
+  registerStyles(css: string): void
 }
 
 export interface PluginWebModule {
@@ -423,8 +473,14 @@ export interface PluginRegistryPublicEntry {
   webEntry: string | null
 }
 
+export interface PluginFormDialogOpenOpts {
+  /** 传给 `titleKey` 的 i18n 插值参数 */
+  titleParams?: Record<string, unknown>
+}
+
 export interface OpenPluginFormState {
   pluginId: string
   dialogId?: string
   model: Record<string, unknown>
+  titleParams?: Record<string, unknown>
 }

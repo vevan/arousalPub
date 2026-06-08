@@ -142,7 +142,7 @@ data/
 
 **对作者的含义**：
 
-1. **`manifest.ui.slots[].name` 必须列齐**本插件用到的 slot（如 `composer-toolbar`、`assistant-turn-footer`）；漏声明则该 slot 出现时**不会**加载你的 `web.mjs`。
+1. **`manifest.ui.slots[].name` 必须列齐**本插件用到的 slot（如 `composer-toolbar`、`turn-block-head`、`assistant-turn-footer`）；漏声明则该 slot 出现时**不会**加载你的 `web.mjs`。
 2. **`register(host)` 必须轻量**：只注册 slot 按钮 / 表单 / lifecycle；重逻辑放在 `onClick`、`onSubmit`、`runScope` 等 handler 内。
 3. **大依赖**在 handler 里再 `import()`，不要写在模块顶层。
 4. **仅 lifecycle、无 slot** 的插件（未来）：manifest 不写 slots → 进聊天即加载；适合 `reply-complete-sound` 若去掉 composer 试听钮仍要听音的场景。
@@ -163,6 +163,14 @@ data/
 ### 5.3 对话读写宿主
 
 批量 read/patch 见 **`DOC/10-plugin-conversation-host.md`**（`host.conversation`、`runScope`、`render`、`ui.progress` 等）。
+
+### 5.6 对话设置 → 插件 Tab（`DOC/21`）
+
+- manifest 可选 **`conversationSettingsSchema`**（结构与 `settingsSchema` 相同）。
+- `GET /api/plugins/manage` 返回 `conversationSettingsSchema`、`hasConversationSettings`。
+- 对话齿轮 **`ConversationContextSettings`** 增加 **插件** Tab：仅 **enabled** 且含会话 schema 的插件；`PluginSchemaForm` 自动保存到 `pluginSettings[pluginId]`。
+- 字段可选 **`conversationInherit`** + **`inheritFromGlobalKey`**：清空表单项 → PATCH 传 `null` 删键，运行时继承全局 `settings.json`。
+- **不得**在其它宿主 Tab（绑定、资料库等）硬编码插件字段。
 
 ### 5.5 出站补全与资料库条目
 
@@ -238,7 +246,7 @@ data/
 
 ### 8.4 Web 能力速查
 
-- **Slot 按钮**：`host.registerSlotButton(slot, { id, icon, tooltipKey, when, disabled, onClick })`
+- **Slot 按钮**：`host.registerSlotButton(slot, { id, icon, tooltipKey, class, when, disabled, onClick })`；外观扩展：`host.registerStyles(css)`（见 `DOC/18` §3.1）
 - **动作弹框**：`host.registerFormDialog` + `host.openFormDialog`（字段类型见 §3.1；宿主 `PluginFormDialogHost` 支持 `radio` / `integer` / `textarea`）
 - **对话批处理**：`host.conversation.runScope` / `runBatch`、`getMeta`、`host.render.*`、`host.ui.progress` — 见 DOC/10
 - **插件间协作（规划）**：`host.capabilities.register` / `get` — 见 §8.7
@@ -250,6 +258,7 @@ data/
 | 插件类型 | 何时加载 `web.mjs` |
 |----------|-------------------|
 | 声明了 `composer-toolbar` | 输入区挂载时（进聊天即有） |
+| `turn-block-head` | 每轮 `ChatTurnBlock` 章回 divider 下方首次渲染时 |
 | 仅 `assistant-turn-footer` | 助手气泡 footer 首次渲染时 |
 | 仅 `user-turn-footer` | 用户气泡 footer 首次渲染时 |
 | `slots: []` 且无 slot 名 | 进聊天页 registry 后 eager |

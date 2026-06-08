@@ -44,7 +44,11 @@ export function usePluginHost(session: ChatSession) {
           return
         }
         const data = (await res.json()) as { plugins?: PluginRegistryPublicEntry[] }
-        registry.value = Array.isArray(data.plugins) ? data.plugins : []
+        registry.value = Array.isArray(data.plugins)
+          ? [...data.plugins].sort(
+              (a, b) => a.order - b.order || a.id.localeCompare(b.id),
+            )
+          : []
         registryLoaded.value = true
       } catch (e) {
         console.warn('[plugin-host] registry load failed', e)
@@ -143,7 +147,8 @@ export function usePluginHost(session: ChatSession) {
   function getSlotButtons(slot: string, ctx: PluginSlotContext = {}) {
     if (!registryLoaded.value) return []
     void slotButtonRevision.value
-    return getSlotButtonsFor(slotButtons, slot, ctx)
+    const pluginOrder = new Map(registry.value.map((e) => [e.id, e.order]))
+    return getSlotButtonsFor(slotButtons, slot, ctx, pluginOrder)
   }
 
   return {

@@ -8,6 +8,7 @@ import type {
   PluginSlotButtonDef,
   PluginSlotContext,
   PluginToastOptions,
+  PluginFormDialogOpenOpts,
   PluginWebHost,
 } from '@/plugins/types'
 import {
@@ -22,12 +23,14 @@ import {
 } from '@/plugins/conversation-meta'
 import {
   createLorebookEntry,
+  ensureLorebook,
   fetchApiPresets,
   fetchConversationPluginSettings,
   fetchLorebookById,
   fetchLorebookList,
   fetchPluginUserSettings,
   normalizeLorebookEntryRefs,
+  reorderCuratedLorebookEntries,
   patchConversationPluginSettings,
   patchLorebookEntry,
   expandPluginMacros,
@@ -40,6 +43,8 @@ import {
   renderRichMessageToHtml,
   renderReasoningMarkdownToHtml,
 } from '@/utils/render-rich-message'
+import { registerPluginStyles } from '@/plugins/plugin-slot-styles'
+import { useConversationPluginSettingsStore } from '@/stores/conversation-plugin-settings'
 import { useI18n } from 'vue-i18n'
 import { ref, type Ref } from 'vue'
 
@@ -49,6 +54,23 @@ export function formDialogKey(pluginId: string, dialogId?: string): string {
   const pid = pluginId.trim()
   const did = dialogId?.trim()
   return did ? `${pid}::${did}` : pid
+}
+
+function openPluginFormState(
+  pluginId: string,
+  model: Record<string, unknown>,
+  dialogId?: string,
+  opts?: PluginFormDialogOpenOpts,
+): OpenPluginFormState {
+  const state: OpenPluginFormState = {
+    pluginId,
+    dialogId,
+    model: { ...model },
+  }
+  if (opts?.titleParams && Object.keys(opts.titleParams).length > 0) {
+    state.titleParams = { ...opts.titleParams }
+  }
+  return state
 }
 
 export function createScopedPluginHost(
@@ -65,7 +87,22 @@ export function createScopedPluginHost(
     conversation: {
       ...base.conversation,
       getPluginSettings() {
-        return fetchConversationPluginSettings(convId(), id)
+        const store = useConversationPluginSettingsStore()
+        const cid = convId()
+        if (store.isLoaded(cid, id)) {
+          return Promise.resolve(store.getSnapshot(cid, id))
+        }
+        return fetchConversationPluginSettings(cid, id)
+      },
+      getPluginSettingsSnapshot() {
+        return useConversationPluginSettingsStore().getSnapshot(convId(), id)
+      },
+      onPluginSettingsChanged(handler) {
+        return useConversationPluginSettingsStore().subscribe(
+          convId(),
+          id,
+          handler,
+        )
       },
       patchPluginSettings(partial) {
         return patchConversationPluginSettings(convId(), id, partial)
@@ -87,13 +124,29 @@ export function createScopedPluginHost(
       normalizeEntryRefs(req) {
         return normalizeLorebookEntryRefs(id, req, getPluginProgressAbortSignal())
       },
+      reorderCurated(lorebookId, req) {
+        return reorderCuratedLorebookEntries(
+          id,
+          lorebookId,
+          req,
+          getPluginProgressAbortSignal(),
+        )
+      },
+      ensure(req) {
+        return ensureLorebook(id, convId(), req?.nameTemplate)
+      },
     },
     api: {
       listPresets: fetchApiPresets,
     },
     plugin: {
       complete(req) {
-        return runPluginComplete(id, req, getPluginProgressAbortSignal())
+        return runPluginComplete(
+          id,
+          convId(),
+          req,
+          getPluginProgressAbortSignal(),
+        )
       },
       prepareContext(req) {
         return runPluginPrepareContext(
@@ -114,7 +167,12 @@ export function createScopedPluginHost(
     },
     token: {
       preflightComplete(req) {
-        return runPluginCompletePreflight(id, req, getPluginProgressAbortSignal())
+        return runPluginCompletePreflight(
+          id,
+          convId(),
+          req,
+          getPluginProgressAbortSignal(),
+        )
       },
     },
     plugins: {
@@ -132,6 +190,12 @@ export function createScopedPluginHost(
           getPluginProgressAbortSignal(),
         )
       },
+    },
+    registerStyles(css: string) {
+      registerPluginStyles(id, css)
+    },
+    registerSlotButton(slot, def) {
+      base.registerSlotButton(slot, { ...def, pluginId: id })
     },
   }
 }
@@ -166,13 +230,9 @@ export function createPluginWebHost(session: ChatSession): {
     registerFormDialog(pluginId, def, dialogId) {
       formDialogs.set(formDialogKey(pluginId, dialogId), def)
     },
-    openFormDialog(pluginId, model, dialogId) {
+    openFormDialog(pluginId, model, dialogId, opts) {
       formSubmitting.value = false
-      openForm.value = {
-        pluginId,
-        dialogId,
-        model: { ...model },
-      }
+      openForm.value = openPluginFormState(pluginId, model, dialogId, opts)
     },
     composer,
     session,
@@ -199,6 +259,9 @@ export function createPluginWebHost(session: ChatSession): {
     refreshSlotButtons() {
       slotButtonRevision.value += 1
     },
+    registerStyles() {
+      /* 仅 scoped host；插件应通过 createScopedPluginHost 注入 */
+    },
     conversation: {
       getId() {
         return session.conversationId
@@ -219,6 +282,12 @@ export function createPluginWebHost(session: ChatSession): {
         return session.refreshConversation()
       },
       getPluginSettings() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+      getPluginSettingsSnapshot() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+      onPluginSettingsChanged() {
         throw new Error('plugin_host_requires_scoped_host')
       },
       patchPluginSettings() {
@@ -242,6 +311,12 @@ export function createPluginWebHost(session: ChatSession): {
         throw new Error('plugin_host_requires_scoped_host')
       },
       normalizeEntryRefs() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+      reorderCurated() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+      ensure() {
         throw new Error('plugin_host_requires_scoped_host')
       },
     },
@@ -291,13 +366,9 @@ export function createPluginWebHost(session: ChatSession): {
       confirm(opts: PluginConfirmOptions) {
         return showPluginConfirm(opts)
       },
-      openFormDialog(pluginId, model, dialogId) {
+      openFormDialog(pluginId, model, dialogId, opts) {
         formSubmitting.value = false
-        openForm.value = {
-          pluginId,
-          dialogId,
-          model: { ...model },
-        }
+        openForm.value = openPluginFormState(pluginId, model, dialogId, opts)
       },
       progress(opts: PluginProgressOptions) {
         showPluginProgress({
@@ -319,12 +390,24 @@ export function createPluginWebHost(session: ChatSession): {
   return { host, slotButtons, formDialogs, openForm, formSubmitting, slotButtonRevision }
 }
 
+function compareSlotButtons(
+  a: PluginSlotButtonDef,
+  b: PluginSlotButtonDef,
+  pluginOrder: Map<string, number>,
+): number {
+  const oa = pluginOrder.get(a.pluginId ?? '') ?? 999_999
+  const ob = pluginOrder.get(b.pluginId ?? '') ?? 999_999
+  if (oa !== ob) return oa - ob
+  return a.id.localeCompare(b.id)
+}
+
 export function getSlotButtonsFor(
   slotButtons: Map<string, PluginSlotButtonDef[]>,
   slot: string,
   ctx: PluginSlotContext,
+  pluginOrder?: Map<string, number>,
 ): PluginSlotButtonDef[] {
-  return (slotButtons.get(slot) ?? [])
+  const list = (slotButtons.get(slot) ?? [])
     .filter((b) => !b.when || b.when(ctx))
     .map((b) => {
       if (!b.menu?.length) return b
@@ -335,6 +418,8 @@ export function getSlotButtonsFor(
       if (b.menu?.length) return b.menu.length > 0
       return typeof b.onClick === 'function'
     })
+  if (!pluginOrder || pluginOrder.size === 0) return list
+  return list.slice().sort((a, b) => compareSlotButtons(a, b, pluginOrder))
 }
 
 export async function submitOpenPluginForm(params: {

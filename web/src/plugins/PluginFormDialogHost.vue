@@ -35,6 +35,13 @@ const activeDef = computed(() => {
 
 const model = computed(() => pluginHost?.openForm.value?.model ?? {})
 
+const dialogTitle = computed(() => {
+  const def = activeDef.value
+  const state = pluginHost?.openForm.value
+  if (!def || !state) return ''
+  return t(def.titleKey, state.titleParams ?? {})
+})
+
 const visibleFields = computed(() => {
   const def = activeDef.value
   if (!def) return []
@@ -182,7 +189,7 @@ function resourceSelectClearable(field: PluginFormFieldDef): boolean {
   >
     <v-card v-if="activeDef && pluginHost">
       <v-card-title class="text-h6">
-        {{ t(activeDef.titleKey) }}
+        {{ dialogTitle }}
       </v-card-title>
       <v-card-text
         v-if="activeDef.bodyKey"

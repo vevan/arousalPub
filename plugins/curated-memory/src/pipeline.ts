@@ -3,8 +3,10 @@ import { isAbortError, isPipelineFatalError, preflightToast } from './errors.js'
 import {
   generateReviewDraft,
   promptReview,
+  resolveTargetLorebookName,
   showCurrentBatchTaskProgress,
 } from './review.js'
+import { applyCuratedLorebookEntrySort } from './shared/entry-sort.js'
 import { entryKeys, writeSidecarEntry } from './sidecar.js'
 import { k, loadMergedSettings } from './settings.js'
 import {
@@ -14,7 +16,12 @@ import {
 } from './state.js'
 import { asString } from './shared/utils.js'
 import type { PluginHost, SummarizeTask } from './types.js'
-import { ensureTargetLorebook, refreshMemorybookState } from './dialogs.js'
+import {
+  ensureTargetLorebook,
+  promptRecoverLorebook,
+  refreshMemorybookUi,
+} from './dialogs.js'
+import { isLorebookNotFoundError } from './errors.js'
 
 function setPluginHold(host: PluginHost, hold: boolean) {
   if (typeof host.conversation.setPluginHold === 'function') {
@@ -56,28 +63,17 @@ export async function runSummarizeTasks(
   setSummarizeRunning(true)
   host.refreshSlotButtons()
   setPluginHold(host, true)
-  host.ui.progress({
-    message: host.t(k(host, 'progressSummarize')),
-    done: 0,
-    total: tasks.length,
-    indeterminate: true,
-    abortable: true,
-    abortLabel: host.t(k(host, 'progressAbort')),
-  })
 
   let completedTasks = 0
 
   try {
     const settings = await loadMergedSettings(host)
-    if (!settings.apiConfigId) {
-      host.ui.toast(host.t(k(host, 'toastNoApiConfig')), { color: 'warning' })
-      return { ok: false, reason: 'no_api' }
-    }
     const targetId = await ensureTargetLorebook(host, settings)
     if (!targetId) {
       return { ok: false, reason: 'no_lorebook' }
     }
     settings.targetLorebookId = targetId
+    let lorebookName = await resolveTargetLorebookName(host, targetId)
 
     const fromTurn = opts.fromTurn
     const toTurn = opts.toTurn
@@ -86,10 +82,36 @@ export async function runSummarizeTasks(
       return { ok: false, reason: 'invalid_range' }
     }
 
+    let sidecarEntryIds: Record<string, string>
+    try {
+      sidecarEntryIds = await host.lorebook.normalizeEntryRefs({
+        lorebookId: settings.targetLorebookId,
+        entryIds: settings.sidecarEntryIds,
+        validKeys: settings.sidecars.map((s) => s.id),
+      })
+    } catch (e) {
+      if (!isLorebookNotFoundError(e)) throw e
+      const recovered = await promptRecoverLorebook(host, settings)
+      if (!recovered) {
+        return { ok: false, reason: 'no_lorebook' }
+      }
+      settings.targetLorebookId = recovered
+      lorebookName = await resolveTargetLorebookName(host, recovered)
+      sidecarEntryIds = await host.lorebook.normalizeEntryRefs({
+        lorebookId: settings.targetLorebookId,
+        entryIds: {},
+        validKeys: settings.sidecars.map((s) => s.id),
+      })
+    }
+
+    const sidecarConfigIds = settings.sidecars.map((s) => s.id)
     const prepared = await host.plugin.prepareContext({
       fromTurn,
       toTurn,
       targetLorebookId: settings.targetLorebookId,
+      previousSummariesLimit: settings.previousSummariesLimit,
+      sidecarEntryIds,
+      sidecarIds: sidecarConfigIds,
     })
     if (!prepared.userContent?.trim()) {
       host.ui.toast(host.t(k(host, 'toastNoTurnsInRange')), { color: 'warning' })
@@ -97,18 +119,21 @@ export async function runSummarizeTasks(
     }
     const userContent = prepared.userContent
 
-    const sidecarEntryIds = await host.lorebook.normalizeEntryRefs({
-      lorebookId: settings.targetLorebookId,
-      entryIds: settings.sidecarEntryIds,
-      validKeys: settings.sidecars.map((s) => s.id),
-    })
-
     const patch: Record<string, unknown> = {}
     let done = 0
     let ranMemory = false
+    let wroteToLorebook = false
     let skippedTasks = 0
     let aborted = false
 
+    host.ui.progress({
+      message: host.t(k(host, 'progressSummarize')),
+      done: 0,
+      total: tasks.length,
+      indeterminate: true,
+      abortable: true,
+      abortLabel: host.t(k(host, 'progressAbort')),
+    })
     setSummarizeBatchProgress({ taskIndex: 0, total: tasks.length })
 
     for (let taskIndex = 0; taskIndex < tasks.length; taskIndex++) {
@@ -135,6 +160,7 @@ export async function runSummarizeTasks(
                 fromTurn,
                 toTurn,
               }),
+            lorebookName,
           )
           bumpTaskProgress(host, done, tasks.length)
           await host.lorebook.createEntry(settings.targetLorebookId, {
@@ -145,6 +171,7 @@ export async function runSummarizeTasks(
             priority: 100,
           })
           ranMemory = true
+          wroteToLorebook = true
         } else if (task.kind === 'sidecar') {
           const sc = task.sidecar
           const sidecarDraft = await generateReviewDraft(host, settings, {
@@ -162,6 +189,7 @@ export async function runSummarizeTasks(
                 userContent,
                 sc,
               }),
+            lorebookName,
           )
           bumpTaskProgress(host, done, tasks.length)
           await writeSidecarEntry(
@@ -172,6 +200,7 @@ export async function runSummarizeTasks(
             reviewed,
             entryKeys(reviewed.keywords),
           )
+          wroteToLorebook = true
         }
         completedTasks += 1
       } catch (e) {
@@ -228,6 +257,18 @@ export async function runSummarizeTasks(
       }
     }
 
+    if (
+      settings.entrySortMode === 'auto-turn-suffix' &&
+      wroteToLorebook
+    ) {
+      await applyCuratedLorebookEntrySort(
+        host,
+        settings.targetLorebookId,
+        sidecarEntryIds,
+        sidecarConfigIds,
+      )
+    }
+
     if (ranMemory && opts.updatePointers !== false) {
       const last = Math.max(
         typeof settings.lastSummarizedEnd === 'number' ? settings.lastSummarizedEnd : -1,
@@ -247,7 +288,7 @@ export async function runSummarizeTasks(
     }
 
     if (opts.updateMemorybookCache) {
-      await refreshMemorybookState(host)
+      refreshMemorybookUi(host)
     }
 
     if (completedTasks === tasks.length && skippedTasks === 0) {

@@ -78,16 +78,39 @@ export function register(host) {
 
 | 成员 | 说明 |
 |------|------|
-| `registerSlotButton(slot, def)` | 注册工具栏等 slot 按钮；支持 `menu[]` 子菜单、`when` / `disabled` / 动态 `icon` |
+| `registerSlotButton(slot, def)` | 注册工具栏等 slot 按钮；支持 `menu[]` 子菜单、`when` / `disabled` / 动态 `icon` / 动态 **`class`** |
 | `registerFormDialog(pluginId, def, dialogId?)` | 注册动作弹框（与设置页 schema 表单分离） |
 | `openFormDialog(pluginId, model, dialogId?)` | 打开已注册弹框 |
 | `refreshSlotButtons()` | 动态改按钮状态后刷新 UI |
+| `registerStyles(css)` | 注入 `<style data-plugin-styles="{pluginId}">`；同插件重复调用为**覆盖**更新（仅 scoped host） |
 | `t(key, params?)` | i18n |
 | `pluginKey(key)` | → `plugins.{id}.{key}` |
 | `composer` | 输入区引用（如 `userInput`） |
 | `session` | 当前 `useChatSession`（`turns`、`loading`、写锁等） |
 
-**Slot 名称（常用）**：`composer-toolbar`、`assistant-turn-footer`（以 manifest 声明为准）。
+**Slot 名称（常用）**：`composer-toolbar`、`turn-block-head`（章回 divider 下）、`assistant-turn-footer`、`user-turn-footer`（以 manifest 声明为准）。
+
+**Slot 按钮 `def.class`**：可选 `string | (ctx) => string`，追加到宿主 `.plugin-slot`（与 `is-filled` 并存）。插件应用 **带插件前缀** 的 class 名，配合 `registerStyles` 定义颜色/布局，避免改宿主全局 CSS。
+
+**`registerStyles` 示例**：
+
+```ts
+export function register(host: PluginWebHost) {
+  host.registerStyles(`
+    .plugin-slot.my-plugin-start--active {
+      color: rgb(var(--v-theme-primary));
+      border-color: rgba(var(--v-theme-primary), 0.45);
+    }
+  `)
+  host.registerSlotButton('turn-block-head', {
+    id: 'my-plugin-start',
+    icon: (ctx) => (isStart(ctx) ? 'mdi-play' : 'mdi-play-outline'),
+    class: (ctx) => (isStart(ctx) ? 'my-plugin-start--active' : ''),
+    tooltipKey: host.pluginKey('rangeStart'),
+    onClick: (ctx) => { /* … */ },
+  })
+}
+```
 
 **表单字段 `type`**：`text`、`textarea`、`integer`、`radio`、`apiPreset`、`lorebook`、`checkboxGroup`；支持 `visibleWhen`、`readOnly`、`persistent`、`skipKey` / `regenerateKey` 等（见 `PluginFormDialogDef`）。
 
@@ -160,6 +183,7 @@ interface ConversationBatchContext {
 | `createEntry(lorebookId, body)` | 新增条目 |
 | `patchEntry(lorebookId, entryId, body)` | 更新条目（sidecar 覆盖等） |
 | `normalizeEntryRefs(req)` | 校验并清理无效 entry id 映射（服务端读盘） |
+| `reorderCurated(lorebookId, req?)` | 策展记忆用：按 `DOC/12` §4.2 规则重算组内 `order`，**单次读盘 + 单次写盘** |
 
 **`normalizeEntryRefs` 请求**：
 
@@ -172,7 +196,17 @@ interface ConversationBatchContext {
 // → 返回清理后的 Record<string, string>
 ```
 
-**权限**：`lorebook.read`（list/get/normalize）；`lorebook.entry.write`（create/patch）。
+**`reorderCurated` 请求**（`POST …/lorebooks/:lorebookId/reorder-curated`）：
+
+```ts
+{
+  sidecarEntryIds?: Record<string, string>
+  sidecarIds?: string[]   // Sidecar 配置 id 顺序
+}
+// → { ok: true, lorebook, changed: number, savedAt }
+```
+
+**权限**：`lorebook.read`（list/get/normalize）；`lorebook.entry.write`（create/patch/reorderCurated）。
 
 **⏳ 规划（P0，未实现）**：`create` / `ensure` 自动按模板建 summary 书 → 见 `DOC/04`、`DOC/12` §2.3。
 
@@ -188,7 +222,7 @@ interface ConversationBatchContext {
 
 | 方法 | 说明 |
 |------|------|
-| `complete(req)` | 通用出站补全：转发 `apiConfigId` + `messages[]` |
+| `complete(req)` | 通用出站补全：`messages[]`；`apiConfigId` 可省略，由宿主解析 |
 | `prepareContext(req)` | 服务端读 turn + 拼摘要用 `userContent`（含 `<history>` / 可选 `<previous-memories>`） |
 | `completeDraft(req)` | 调用插件 `server.mjs` 的 `completeDraft` hook（扩宏 → preflight → complete → 解析） |
 
@@ -196,7 +230,7 @@ interface ConversationBatchContext {
 
 ```ts
 {
-  apiConfigId: string
+  apiConfigId?: string      // 省略时：对话 apiPreset.plugins[pluginId] → apiPreset.plugin → 插件 settings
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
   modelOverride?: string
   stream?: boolean          // v1 仅非流式可靠
@@ -204,6 +238,8 @@ interface ConversationBatchContext {
 }
 // → { ok: true, content, usage?, latencyMs }
 ```
+
+宿主 HTTP 路由另接受 `conversationId`（Web 侧由 `convId()` 自动注入）；服务端实现见 `plugin-api-resolve.ts`。
 
 **`prepareContext` 请求**（`conversationId` 由宿主注入）：
 
@@ -213,8 +249,12 @@ interface ConversationBatchContext {
   toTurn: number
   targetLorebookId: string
   includePreviousMemories?: boolean  // 默认 true
-  previousMemoriesLimit?: number     // 默认 8
+  previousMemoriesLimit?: number     // 兼容旧名；默认 8
+  previousSummariesLimit?: number    // 同 previousMemoriesLimit
+  sidecarEntryIds?: Record<string, string>
+  sidecarIds?: string[]              // Sidecar 配置 id 顺序
 }
+// userContent：`<previous-summaries>` → `<sidecars>` → `<history>`（见 DOC/12 §3.3）
 // → { ok: true, userContent, transcript, turnCount, meta: { userDisplayName, assistantDisplayName } }
 ```
 
@@ -222,15 +262,15 @@ interface ConversationBatchContext {
 
 ```ts
 {
-  apiConfigId: string
+  apiConfigId?: string      // 省略时同上；complete-draft 路由会先解析再调 hook
   kind: 'memory' | 'sidecar'
   userContent: string
   systemPromptTemplate: string
   fromTurn?: number
   toTurn?: number
-  titleFormat?: 'plain' | 'range-suffix'
   sidecarName?: string
 }
+// memory 写入标题恒为「模型 title + -fromTurn-toTurn」
 // → { ok: true, draft: { title, content, keywords[] }, usage?, latencyMs? }
 ```
 
@@ -366,6 +406,12 @@ interface ConversationBatchContext {
 
 会话级覆盖：在插件逻辑里 `host.conversation.patchPluginSettings({ ... })`，字段由插件自定（如 `targetLorebookId`、`lastSummarizedEnd`）。
 
+### 6.1.1 `conversationSettingsSchema`（对话齿轮 → 插件 Tab）
+
+- manifest 可选 **`conversationSettingsSchema`**（字段类型与 §6.1 相同）；完整定案见 **`DOC/21`**。
+- 对话 **`ConversationContextSettings`** 仅渲染 **enabled** 且含该 schema 的插件；**不得**在其它宿主 Tab 硬编码 `pluginId` 字段。
+- 可选字段属性：**`conversationInherit`**、**`inheritFromGlobalKey`**（清空 → PATCH `null` 删键，继承全局 `settings.json`）。
+
 ### 6.2 打包与部署
 
 - 源码：`plugins/{id}/`；运行：`data/plugins/{id}/`（`npm run build` 会 sync）。
@@ -434,7 +480,7 @@ class PluginHostApiError {
 
 | 能力 | 说明 |
 |------|------|
-| `host.lorebook.create` / `ensure` | 自动建 summary 目标书 |
+| `host.lorebook.ensure({ nameTemplate? })` | `POST …/lorebooks/ensure`，自动建 summary 目标书（需 `lorebook.write`） |
 | 服务端 `onAssistantReplyPersisted` | 自动触发摘要流水线（当前由 Web lifecycle 负责） |
 | 字段级 permissions 与 turn.plugins 写权限细分 | 部分 enforce 仍随路由演进 |
 

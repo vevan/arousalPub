@@ -35,12 +35,10 @@ export function normalizeSummaryPayload(obj: unknown): {
 
 export function formatEntryTitle(
   rawTitle: string,
-  titleFormat: string,
   startTurn: number,
   endTurn: number,
 ): string {
   const base = rawTitle.trim()
-  if (titleFormat !== 'range-suffix') return base
   const suffix = `-${startTurn}-${endTurn}`
   if (/-\d+-\d+$/.test(base)) {
     return base.replace(/-\d+-\d+$/, suffix)

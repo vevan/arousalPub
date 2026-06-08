@@ -14,7 +14,7 @@
 | API Key 隔离（不出浏览器） | ✅ | 定案与落地见 `DOC/13` |
 | API Key 磁盘加密 | ✅ | AES-256-GCM 落盘 + 运维台 DEK 轮换（`DOC/16`、`DOC/17`） |
 | 前端对话 UI | ✅ | `HomeChat` 已拆子组件 + `useChatSession`（见 §前端工程） |
-| **仍待 P0** | ⏳ | 独立知识库 RAG（见下）、§1.2 独立 `api_configs`/`feature_bindings` 集合、分支 UI、全量调用日志 |
+| **仍待 P0** | ⏳ | §1.2 独立 `api_configs`/`feature_bindings` 集合、全量调用日志 |
 
 ## P0（当前优先）
 
@@ -43,10 +43,9 @@
 - [x] 初始化后端 Fastify 项目结构（`server/`）
 - [x] 初始化前端 Vue3 + Pinia + Vuetify 项目结构（`web/`）
 - [x] **JWT 多用户登录**（2026-06 已实现）：`data/users.index.json` 用户表；`auth-password.ts` scrypt 哈希；`auth.ts` + `@fastify/jwt`（access + refresh、`persisted`/`ephemeral` 会话）；`/api/auth/setup|register|login|refresh|logout|status`；除公开路由外 **`/api/*` 全局 JWT**（`runRequestUser` 解析 `sub`）；Web **`AuthView`** + `stores/auth.ts` + `install-authenticated-fetch.ts`
-- [ ] 建立 `api_configs` 集合与 CRUD 接口 — **当前为文件型 `api-settings.json` + `/api/settings`，非独立 api_configs 服务**
-- [ ] 建立 `feature_bindings` 集合与 CRUD 接口 — **未按文档 §1.2 独立集合实现**
+- [ ] 建立 `api_configs` 集合与 CRUD 接口 — **实施方案 `DOC/19`**；当前为文件型 `api-settings.json` + `/api/settings`，目标为 `presets[]` + `featureBindings[]` 语义落地
+- [ ] 建立 `feature_bindings` 集合与 CRUD 接口 — **实施方案 `DOC/19`**；目标 `GET/PUT /api/feature-bindings` + 统一 `feature-binding-resolve.ts`
 - [x] 对话发送与 SSE 流式返回（`/api/chat` 等，见 `server/src/index.ts`）
-- [ ] 消息树结构（parentId）与「从此分支继续」— **chunk/分支目录部分按 `DOC/03` 设计，产品级分支 UI 待对齐**
 - [x] **Chunk 链按轮数切分与全链读取** — **`DOC/08`** 已实现（含 head/tail 修复 API、删空 tail 回退、单测）
 - [x] 角色管理（文件库）：主存 **`data/{userId}/characters/{id}.png`**（`id` 为 8 位 hex，见 `DOC/03` §6.7；内嵌 ST `chara`）；遗留 **`{id}.json`** 首次读取时迁移为 PNG；列表/筛选/导入/表单新建/删除/导出 API + Web **`/characters`**（见 `DOC/03` §12）
 - [x] Prompt 预设：服务端 `data/{userId}/prompts/`（`index.json` + 各预设 JSON）+ `GET/PUT /api/prompts`；前端 **`/prompts`**；组装仅服务端（`assemble-preview` / `assemble-messages` API）
@@ -57,29 +56,35 @@
 - [ ] **ST 宏扩展（备忘，未排期）**：可行性分级见 `DOC/14-st-macros-porting.md`
 - [x] **对话 memory 向量召回**（§14）：Lance `memory/conversations/{id}` + `createEmbedding` + `searchTurnMemoryVectors`（`memory-pipeline.ts` / `memory-store.ts`）
 - [x] **资料库向量检索**（§13，可选）：`vectorEnabled` + 条目 `triggerMode=vector` → `lorebook-vector-store` / `lorebook-resolve` TopK；保存后 `scheduleLorebookVectorReindex`
-- [ ] **独立知识库 RAG**（**≠ 现有世界书**）：用户上传/导入 **长文档**（PDF、Markdown、txt 等）→ 自动 **切片** → embedding → 独立 Lance 表（与 turn memory、资料库条目 **分表**）→ 对话时向量 TopK 检索注入；`rag_generate` 能力接线。**未实现**。若设定资料只靠世界书手工条目维护，本项可长期不做。
 - [ ] RAG/模型调用日志（耗时、token、**命中明细**）— **部分**：turn `receive.runtime`（model/durationMs/tokens）；`assemble-messages` 返回 dropped 计数与 `memoryTurnIds`；**未达**需求 §4 全量审计
 
 ### 策展记忆插件（`curated-memory` · 2026-06-03）
 
 > 实现指南：`DOC/12-plugin-curated-memory.md`（部分字段/流程已随 v1.1 迭代，以代码与联调为准）。
 
-**联调进度（2026-06-03）**
+**联调进度（2026-06-08 文档对齐代码）**
 
 - [x] 手动摘要 + 确认预览落盘 + lorebook 前端缓存同步
 - [x] keywords 硬性写入 `keys`（与触发方式无关）
-- [ ] **自动摘要（Memorybook）** — 明日继续联调（N + buffer 块、指针 `lastSummarizedEnd` / `nextBlockStart`）
+- [x] **Memorybook 自动块**（`blockTurns` + `bufferTurns`、指针 `lastSummarizedEnd` / `nextBlockStart`；自动触发仍经预览确认；无目标书弹框选书 — 见 `DOC/12` §1.2）
+- [ ] **Memorybook 端到端联调验收**（长对话首次 enable、块边界、跳过/中止不推进指针、busy 延后）
 
 **P0 — Sidecar 设置 UI**
 
 - [x] **替换全局设置中的 Sidecar JSON textarea**（`settingsSchema` 字段 `sidecars` → `objectList` 结构化 UI）
 
-**P0 — 目标资料库自动 ensure（`DOC/12` §2.3 · `DOC/11`）**
+**P0 — 目标资料库自动 ensure（`DOC/12` §2.3 · `DOC/11` · 前置）**
 
-- [ ] **`host.lorebook.create` / `host.lorebook.ensure`**：按 `autoLorebookNameTemplate` 自动建 summary 书
-- [ ] 权限：manifest 新增 `lorebook.write`（或扩展 `lorebook.entry.write` 语义，实现时定案）
-- [ ] 路由：`POST /api/plugins/:pluginId/lorebooks` 或 `…/lorebooks/ensure`
-- [ ] 插件：`ensureTargetLorebook` 支持 `targetLorebookMode: auto`，替代仅弹框选手动书
+> **未做前**：无 `targetLorebookId` 时弹框选已有书为**定案行为**（非静默、非跳过预览）。auto 模式落地后，**仅**在 `targetLorebookMode: auto` 时可免弹框建书。
+
+- [x] **`host.lorebook.ensure`**：`POST /api/plugins/:pluginId/lorebooks/ensure`，按 `autoLorebookNameTemplate` 自动建 summary 书
+- [x] 权限：`curated-memory` manifest `lorebook.write` + `conversation.read`
+- [x] 插件：`targetLorebookMode` / `autoLorebookNameTemplate` schema；`ensureTargetLorebook` 在 **auto** 时走 ensure；**manual 仍弹框选书**
+
+**区间选择 UI（`DOC/12` §7.2）**
+
+- [x] 宿主 **`turn-block-head`** slot 挂载点 + slot 按钮 **`class`** + **`registerStyles`**（`DOC/18` §3.1、`DOC/09` §8）
+- [x] 插件：`turn-block-head` ▷/◁ 状态机；◁ → 手动摘要对话框预填起止轮
 
 **工程（2026-06-02）**
 
@@ -134,7 +139,10 @@
 
 ## P1（次优先）
 
+- [x] **会话级插件 Tab** — **`DOC/21-conversation-plugin-settings.md`**（`conversationSettingsSchema`、对话齿轮 → 插件 Tab、`curated-memory` 摘要资料库仅会话级）
 - [x] **本机运维台（Admin Console）** — **`DOC/17-admin-console.md`**（loopback + `00000000`；用户 CRUD；DEK 轮换 + 推荐密钥）
+- [ ] **独立知识库 RAG**（**≠ 现有世界书**）：用户上传/导入 **长文档**（PDF、Markdown、txt 等）→ 自动 **切片** → embedding → 独立 Lance 表（与 turn memory、资料库条目 **分表**）→ 对话时向量 TopK 检索注入；`rag_generate` 能力接线。**未实现**。**文档管线前置**：用户文件库 **`DOC/20`** M1+M4。若设定资料只靠世界书手工条目维护，本项可长期不做。
+- [ ] **消息树 / 分支 UI**：消息树结构（`parentId`）与「从此分支继续」— **chunk/分支目录部分按 `DOC/03` 设计，产品级分支 UI 待对齐**
 - [ ] **会话消息分页与前端懒加载** — **`DOC/15-conversation-messages-lazy-load.md`**（`GET .../messages?tail|before|from/to`、chunk 区间读、默认尾部 80 轮、上滚追加；插件 `readConversationTurnsRange` 改真分页；Phase 2 可选虚拟滚动）
 - [x] **单端口生产启动（`DOC/01` §9）**：`npm start` / `run-prod.mjs`、`static-web.ts`、`start.bat`/`start.sh`、`README.md`；根目录 `build`（web + server）；保留 `npm run dev`
 - [x] API 配置连通性测试接口（test）— `POST /api/settings/presets/:id/test`（两阶段：models + chat）
@@ -157,6 +165,16 @@
 
 > 来自实现与选型讨论，**不排期**；细节见 `DOC/03` **§14.10**、**§8.8**。
 
+### 用户文件库与 charFile（**`DOC/20-user-file-library.md`** · 2026-06-08 定案）
+
+> 用户级统一媒体库（图/文档/音频/视频）+ 角色 `{{charFileN}}` 图片槽 + 对话 BGM/背景 + 文档 RAG 底座。展示鉴权与立绘对齐（`/api/files/{fileId}/content` + `withAccessToken`）；assemble 仅展宏 **无 token** path。
+
+- [ ] **M1 文件库底座**：`data/{userId}/files/`、`index.json`、REST CRUD、`allowsQueryAccessToken`、Web `/files` 列表/上传
+- [ ] **M2 charFile 宏**：角色 `imageFiles` + `{{charFileN}}` / `{{char2FileN}}` assemble 展宏 + `fileContentUrl`
+- [ ] **M3 展示与对话媒体**：`render-rich-message` 鉴权包装；对话 `index.json` 背景图 / BGM `fileId`
+- [ ] **M4 文档 RAG**（可与 P1 独立 RAG 合并）：切片 + 独立 Lance + 对话绑知识库（**不进 charFile**）
+- [ ] **M5 打磨**：删除引用检查、批量导入、视频预览等
+
 - [ ] **全量冷备 zip（`data/backups`）**：启动时若距上次成功备份 > N 天 → 服务端流式打包整棵 `data`（含 `memory/`）→ 冻 UI + 503 写锁；`backupIntervalDays` / `backupMaxKept`；Syncthing **ignore `backups`**；无下载。见 **`DOC/03` §8.8**。
 - [ ] **Embedding MRL / 降维**：系统设置已支持 `embeddingDimensions`（留空=不传 OpenAI `dimensions`）；部分本地网关会忽略该参数仍返回满维。备选：换 TEI/vLLM 等支持 MRL 的推理端，或客户端截断前 N 维 + L2 归一化后入库。
 - [ ] **Reranker 精排（P3 · 低优先级）**：cross-encoder 二阶段精排；`api-settings.json` 已预留 `rerank` capability，组装管线未接。**当前 memoryTopK / 资料库 vector TopK 较小，收益有限，不排期**（见 P3）。
@@ -171,3 +189,6 @@
 - [x] 每次接口变更后更新 `DOC/03-实现细节.md`（**含 §7.1 列表冗余、§11.6 快查、§14.4.1 budget trim**）— 2026-06
 - [x] 插件系统与指导生成定案 — `DOC/09-plugin-system-and-guidance-generate.md`（2026-05-26）
 - [x] 插件系统实现文档 — `DOC/09`、`plugins/README.md`、`data/README.md` §插件（2026-05-26）
+- [x] **用户文件库与 charFile 定案** — `DOC/20-user-file-library.md`（2026-06-08，列入 P3）
+- [x] **策展记忆 Memorybook 语义对齐** — `DOC/12` §1.2（自动≠静默、预览必选、ensure 前置）（2026-06-08）
+- [x] **插件 slot `class` / `registerStyles` + `turn-block-head`** — `DOC/12` §7.2、`DOC/18` §3.1（2026-06-08）

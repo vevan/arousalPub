@@ -141,6 +141,10 @@ function normalizeField(raw: unknown): PluginSettingsFieldSchema | null {
     }
     if (items.length > 0) field.itemFields = items
   }
+  if (o.conversationInherit === true) field.conversationInherit = true
+  if (typeof o.inheritFromGlobalKey === 'string' && o.inheritFromGlobalKey.trim()) {
+    field.inheritFromGlobalKey = o.inheritFromGlobalKey.trim()
+  }
   return field
 }
 

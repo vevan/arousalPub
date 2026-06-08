@@ -15,6 +15,11 @@ import {
   normalizeDrySequenceBreakers,
 } from '@/utils/dry-sampler'
 import { allocateShortId } from '@/utils/short-id'
+import type {
+  FeatureBinding,
+  FeatureBindingPutInput,
+} from '@/types/feature-bindings'
+import { apiErrorFromResponseBody } from '@/utils/api-error-message'
 
 export interface ApiSettingsSnapshot {
   alias: string
@@ -54,6 +59,7 @@ export interface ApiSettingsDocument {
   savedAt: string
   activePresetId: string
   presets: ApiPreset[]
+  featureBindings?: FeatureBinding[]
 }
 
 function collectUsedApiPresetIds(list: ApiPreset[]): Set<string> {
@@ -121,6 +127,7 @@ function normalizePreset(p: ApiPreset): ApiPreset {
 export const useConnectionStore = defineStore('connection', () => {
   const presets = ref<ApiPreset[]>([])
   const activePresetId = ref<string | null>(null)
+  const featureBindings = ref<FeatureBinding[]>([])
 
   const alias = ref('')
   const baseUrl = ref('https://api.openai.com/v1')
@@ -167,6 +174,13 @@ export const useConnectionStore = defineStore('connection', () => {
       if (entry?.keyConfigured) return true
     }
     return false
+  })
+
+  const chatGlobalApiConfigId = computed(() => {
+    const hit = featureBindings.value.find(
+      (b) => b.featureType === 'chat' && b.featureRefId === 'global',
+    )
+    return hit?.apiConfigId ?? activePresetId.value
   })
 
   const presetSelectItems = computed(() =>
@@ -790,6 +804,9 @@ export const useConnectionStore = defineStore('connection', () => {
         activePresetId.value = presets.value[0]?.id ?? null
       }
       applyActivePresetToForm()
+      featureBindings.value = Array.isArray(doc.featureBindings)
+        ? (doc.featureBindings as FeatureBinding[])
+        : []
       if (typeof doc.savedAt === 'string') lastSavedAt.value = doc.savedAt
       const aid = activePresetId.value
       if (aid) await applyLinkedPromptPresetForApiPreset(aid)
@@ -798,6 +815,74 @@ export const useConnectionStore = defineStore('connection', () => {
       loadSettingsInflight = null
     })
     return loadSettingsInflight
+  }
+
+  function applyFeatureBindingsPayload(payload: {
+    bindings?: FeatureBinding[]
+    activePresetId?: string
+    savedAt?: string
+  }) {
+    if (Array.isArray(payload.bindings)) {
+      featureBindings.value = payload.bindings
+    }
+    if (typeof payload.activePresetId === 'string' && payload.activePresetId) {
+      if (presets.value.some((p) => p.id === payload.activePresetId)) {
+        activePresetId.value = payload.activePresetId
+        applyActivePresetToForm()
+      }
+    }
+    if (typeof payload.savedAt === 'string') {
+      lastSavedAt.value = payload.savedAt
+    }
+  }
+
+  async function upsertFeatureBindings(
+    inputs: FeatureBindingPutInput[],
+  ): Promise<void> {
+    const res = await fetch('/api/feature-bindings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bindings: inputs }),
+    })
+    if (!res.ok) {
+      let msg = `保存失败 (${res.status})`
+      try {
+        const j = await res.json()
+        msg = apiErrorFromResponseBody(j, 'feature_bindings_write_failed')
+      } catch {
+        /*  */
+      }
+      throw new Error(msg)
+    }
+    const j = (await res.json()) as {
+      bindings?: FeatureBinding[]
+      activePresetId?: string
+      savedAt?: string
+    }
+    applyFeatureBindingsPayload(j)
+  }
+
+  async function deleteFeatureBinding(bindingId: string): Promise<void> {
+    const res = await fetch(
+      `/api/feature-bindings/${encodeURIComponent(bindingId)}`,
+      { method: 'DELETE' },
+    )
+    if (!res.ok) {
+      let msg = `删除失败 (${res.status})`
+      try {
+        const j = await res.json()
+        msg = apiErrorFromResponseBody(j, 'feature_bindings_write_failed')
+      } catch {
+        /*  */
+      }
+      throw new Error(msg)
+    }
+    const j = (await res.json()) as {
+      bindings?: FeatureBinding[]
+      activePresetId?: string
+      savedAt?: string
+    }
+    applyFeatureBindingsPayload(j)
   }
 
   async function saveToServer(): Promise<void> {
@@ -836,6 +921,10 @@ export const useConnectionStore = defineStore('connection', () => {
   return {
     presets,
     activePresetId,
+    featureBindings,
+    chatGlobalApiConfigId,
+    upsertFeatureBindings,
+    deleteFeatureBinding,
     alias,
     baseUrl,
     apiKey,

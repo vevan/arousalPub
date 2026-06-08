@@ -4,6 +4,12 @@ import { getApiSettingsPath, getUserDataDir } from './config.js'
 import { getCurrentUserId } from './user-context.js'
 import { migrateLegacyDryOnPreset } from './dry-sampler.js'
 import {
+  normalizeFeatureBindingsOnRead,
+  parseFeatureBindingsFromDisk,
+  syncActivePresetWithChatBinding,
+  type FeatureBinding,
+} from './feature-binding-types.js'
+import {
   isEncryptedSecretV1,
   resolveSecretFromDisk,
   secretToDiskFields,
@@ -46,6 +52,7 @@ export interface ApiSettingsDocument {
   savedAt: string
   activePresetId: string
   presets: ApiPreset[]
+  featureBindings?: FeatureBinding[]
 }
 
 type ApiPresetDisk = Omit<ApiPreset, 'apiKey'> & {
@@ -58,6 +65,7 @@ interface ApiSettingsDocumentDisk {
   savedAt: string
   activePresetId: string
   presets: ApiPresetDisk[]
+  featureBindings?: FeatureBinding[]
 }
 
 function aadForPresetApiKey(userId: string, presetId: string): string {
@@ -126,11 +134,46 @@ function normalizeDocumentFromDisk(
   let active =
     typeof d.activePresetId === 'string' ? d.activePresetId : presets[0].id
   if (!presets.some((p) => p.id === active)) active = presets[0].id
+  const bindingsRaw = parseFeatureBindingsFromDisk(d.featureBindings)
+  const presetIds = new Set(presets.map((p) => p.id))
+  const normalizedBindings = normalizeFeatureBindingsOnRead(
+    bindingsRaw,
+    active,
+    presetIds,
+    typeof d.savedAt === 'string' ? d.savedAt : new Date().toISOString(),
+  )
   return {
     version: 1,
     savedAt: typeof d.savedAt === 'string' ? d.savedAt : new Date().toISOString(),
-    activePresetId: active,
+    activePresetId: normalizedBindings.activePresetId,
     presets,
+    featureBindings: normalizedBindings.bindings,
+  }
+}
+
+export function normalizeApiSettingsDocument(
+  data: ApiSettingsDocument,
+): ApiSettingsDocument {
+  assertValidPresets(data.presets)
+  const presetIds = new Set(data.presets.map((p) => p.id))
+  let active = data.activePresetId.trim()
+  if (!presetIds.has(active)) {
+    active = data.presets[0]?.id ?? active
+  }
+  const bindings = data.featureBindings ?? []
+  const synced = syncActivePresetWithChatBinding(bindings, active)
+  const normalizedBindings = normalizeFeatureBindingsOnRead(
+    synced.bindings,
+    synced.activePresetId,
+    presetIds,
+    data.savedAt,
+  )
+  return {
+    version: 1,
+    savedAt: data.savedAt,
+    activePresetId: normalizedBindings.activePresetId,
+    presets: data.presets,
+    featureBindings: normalizedBindings.bindings,
   }
 }
 
@@ -138,12 +181,17 @@ function documentToDisk(
   data: ApiSettingsDocument,
   userId: string,
 ): ApiSettingsDocumentDisk {
-  return {
+  const normalized = normalizeApiSettingsDocument(data)
+  const disk: ApiSettingsDocumentDisk = {
     version: 1,
-    savedAt: data.savedAt,
-    activePresetId: data.activePresetId,
-    presets: data.presets.map((p) => presetMemoryToDisk(p, userId)),
+    savedAt: normalized.savedAt,
+    activePresetId: normalized.activePresetId,
+    presets: normalized.presets.map((p) => presetMemoryToDisk(p, userId)),
   }
+  if (normalized.featureBindings?.length) {
+    disk.featureBindings = normalized.featureBindings
+  }
+  return disk
 }
 
 export async function readApiSettingsFromFile(): Promise<ApiSettingsDocument | null> {

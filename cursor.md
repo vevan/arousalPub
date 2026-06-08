@@ -13,6 +13,8 @@
 
 - **API Key 服务端隔离（已实现）**：`DOC/13-api-key-server-side-isolation.md`
 - **API Key 磁盘加密（已实现）**：`DOC/16-api-key-disk-encryption.md`
+- **API 配置与功能绑定（P0 规划）**：`DOC/19-api-configs-feature-bindings.md`
+- **用户文件库与 charFile（P3 定案）**：`DOC/20-user-file-library.md`
 - **用户安装与启动**：根目录 `README.md`
 - 架构设计：`DOC/01-架构设计.md`（**§9 运行时与部署**）
 - 需求说明：`DOC/02-需求说明.md`

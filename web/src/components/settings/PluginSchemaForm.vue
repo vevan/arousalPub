@@ -28,6 +28,8 @@ const props = defineProps<{
   pluginId: string
   fields: PluginSettingsFieldSchema[]
   modelValue: Record<string, unknown>
+  /** 会话 schema：展示 inheritFromGlobalKey 对应的全局值 */
+  globalSettings?: Record<string, unknown>
 }>()
 
 const emit = defineEmits<{
@@ -77,6 +79,56 @@ function hintFor(field: PluginSettingsFieldSchema): string | undefined {
   if (!field.descriptionKey) return undefined
   const key = pluginI18nKey(props.pluginId, field.descriptionKey)
   return te(key) ? t(key) : field.descriptionKey
+}
+
+function inheritGlobalHint(field: PluginSettingsFieldSchema): string | undefined {
+  if (!field.conversationInherit || !field.inheritFromGlobalKey) return undefined
+  const global = props.globalSettings
+  if (!global) return undefined
+  const raw = global[field.inheritFromGlobalKey]
+  if (raw === undefined || raw === null || raw === '') return undefined
+  return t('chat.convSettings.pluginInheritGlobal', { value: String(raw) })
+}
+
+function fullHintFor(field: PluginSettingsFieldSchema): string | undefined {
+  const parts: string[] = []
+  const base = hintFor(field)
+  if (base) parts.push(base)
+  const inh = inheritGlobalHint(field)
+  if (inh) parts.push(inh)
+  return parts.length > 0 ? parts.join(' ') : undefined
+}
+
+function isInheritNumberEmpty(value: unknown): boolean {
+  return value === undefined || value === null || value === ''
+}
+
+function inheritNumberDisplay(field: PluginSettingsFieldSchema): string | number {
+  const v = fieldValue(field.key)
+  if (isInheritNumberEmpty(v)) return ''
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  const n = Number(String(v))
+  return Number.isFinite(n) ? n : ''
+}
+
+function setInheritNumberField(
+  field: PluginSettingsFieldSchema,
+  value: string | number | null,
+) {
+  const next = { ...props.modelValue }
+  const raw = value === null ? '' : String(value).trim()
+  if (!raw) {
+    delete next[field.key]
+  } else {
+    const n = field.type === 'integer' ? Math.round(Number(raw)) : Number(raw)
+    if (Number.isFinite(n)) {
+      let v = n
+      if (typeof field.min === 'number') v = Math.max(field.min, v)
+      if (typeof field.max === 'number') v = Math.min(field.max, v)
+      next[field.key] = v
+    }
+  }
+  emit('update:modelValue', next)
 }
 
 function itemLabelFor(field: PluginSettingsItemFieldSchema): string {
@@ -277,7 +329,7 @@ function addObjectListLabel(): string {
           v-if="field.type === 'boolean'"
           :model-value="Boolean(fieldValue(field.key))"
           :label="labelFor(field)"
-          :hint="hintFor(field)"
+          :hint="fullHintFor(field)"
           persistent-hint
           color="primary"
           hide-details="auto"
@@ -317,11 +369,31 @@ function addObjectListLabel(): string {
         </div>
 
         <v-text-field
+          v-else-if="
+            field.conversationInherit &&
+            (field.type === 'integer' || field.type === 'number')
+          "
+          :model-value="inheritNumberDisplay(field)"
+          type="number"
+          :label="labelFor(field)"
+          :hint="fullHintFor(field)"
+          persistent-hint
+          variant="outlined"
+          density="compact"
+          hide-details="auto"
+          clearable
+          :min="field.min"
+          :max="field.max"
+          :step="field.type === 'integer' ? 1 : 0.05"
+          @update:model-value="setInheritNumberField(field, $event)"
+        />
+
+        <v-text-field
           v-else-if="field.type === 'integer' || field.type === 'number'"
           :model-value="fieldValue(field.key)"
           type="number"
           :label="labelFor(field)"
-          :hint="hintFor(field)"
+          :hint="fullHintFor(field)"
           persistent-hint
           variant="outlined"
           density="compact"
@@ -425,24 +497,27 @@ function addObjectListLabel(): string {
           >
             {{ hintFor(field) }}
           </p>
-          <v-card
-            v-for="(item, index) in objectListItems(field)"
-            :key="String(item.id ?? index)"
-            variant="outlined"
-            class="plugin-object-list__item mb-3"
+          <v-expansion-panels
+            multiple
+            class="plugin-object-list__panels mb-3"
           >
-            <v-card-title class="text-subtitle-2 d-flex align-center py-2 px-3">
-              <span>{{ objectListItemTitle(item, index) }}</span>
-              <v-spacer />
-              <v-btn
-                icon="mdi-delete-outline"
-                variant="text"
-                size="small"
-                :aria-label="$t('settings.plugins.removeItem')"
-                @click="removeObjectListItem(field, index)"
-              />
-            </v-card-title>
-            <v-card-text class="pt-0 pb-3 px-3 d-flex flex-column ga-3">
+            <v-expansion-panel
+              v-for="(item, index) in objectListItems(field)"
+              :key="String(item.id ?? index)"
+              class="plugin-object-list__item"
+            >
+              <v-expansion-panel-title class="text-subtitle-2 py-2">
+                <span class="text-truncate">{{ objectListItemTitle(item, index) }}</span>
+                <v-spacer />
+                <v-btn
+                  icon="mdi-delete-outline"
+                  variant="text"
+                  size="small"
+                  :aria-label="$t('settings.plugins.removeItem')"
+                  @click.stop="removeObjectListItem(field, index)"
+                />
+              </v-expansion-panel-title>
+              <v-expansion-panel-text class="d-flex flex-column ga-3 pt-1">
               <template
                 v-for="sub in field.itemFields ?? []"
                 :key="sub.key"
@@ -554,8 +629,9 @@ function addObjectListLabel(): string {
                   "
                 />
               </template>
-            </v-card-text>
-          </v-card>
+              </v-expansion-panel-text>
+            </v-expansion-panel>
+          </v-expansion-panels>
           <v-btn
             variant="tonal"
             size="small"
@@ -659,5 +735,15 @@ function addObjectListLabel(): string {
 .plugin-slider-readout {
   min-width: 3rem;
   text-align: right;
+}
+.plugin-object-list__panels {
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 8px;
+}
+.plugin-object-list__panels :deep(.v-expansion-panel) {
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.plugin-object-list__panels :deep(.v-expansion-panel:last-child) {
+  border-bottom: none;
 }
 </style>

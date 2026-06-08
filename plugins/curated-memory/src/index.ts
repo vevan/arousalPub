@@ -3,33 +3,44 @@ import {
   isBusy,
   openManualSummarize,
   openSessionSettings,
-  refreshMemorybookState,
+  reorderTargetLorebookNow,
+  refreshMemorybookUi,
   registerPickLorebookDialog,
+  registerRecoverLorebookDialog,
   summarizeRunning,
   toggleMemorybook,
 } from './dialogs.js'
 import { registerLifecycle } from './lifecycle.js'
+import { registerRangePicker } from './range-picker.js'
 import { registerReviewDialogs } from './review.js'
 import { k } from './settings.js'
-import { memorybookEnabledCache } from './state.js'
 import type { PluginHost } from './types.js'
+
+function isMemorybookEnabled(host: PluginHost): boolean {
+  return host.conversation.getPluginSettingsSnapshot().memorybookEnabled === true
+}
 
 export function register(host: PluginHost) {
   registerReviewDialogs(host)
   registerPickLorebookDialog(host)
-  void refreshMemorybookState(host)
+  registerRecoverLorebookDialog(host)
+
+  host.conversation.onPluginSettingsChanged(() => {
+    refreshMemorybookUi(host)
+  })
+  void host.conversation.getPluginSettings()
 
   host.registerSlotButton('composer-toolbar', {
     id: `${PLUGIN_ID}-menu`,
     icon: 'mdi-book-open-page-variant',
     tooltipKey: k(host, 'tooltipCuratedMemory'),
-    filled: () => memorybookEnabledCache,
+    filled: () => isMemorybookEnabled(host),
     menu: [
       {
         id: `${PLUGIN_ID}-memorybook`,
         labelKey: k(host, 'tooltipMemorybook'),
         icon: 'mdi-book-open-page-variant',
-        filled: () => memorybookEnabledCache,
+        filled: () => isMemorybookEnabled(host),
         disabled: () => summarizeRunning,
         onClick: () => {
           void toggleMemorybook(host)
@@ -48,8 +59,18 @@ export function register(host: PluginHost) {
         icon: 'mdi-tune-variant',
         onClick: () => openSessionSettings(host),
       },
+      {
+        id: `${PLUGIN_ID}-reorder`,
+        labelKey: k(host, 'tooltipReorderLorebook'),
+        icon: 'mdi-sort',
+        disabled: () => isBusy(host) || summarizeRunning,
+        onClick: () => {
+          void reorderTargetLorebookNow(host)
+        },
+      },
     ],
   })
 
+  registerRangePicker(host)
   registerLifecycle(host)
 }

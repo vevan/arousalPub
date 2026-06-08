@@ -22,13 +22,6 @@ export function formatSummarizeTranscript(
   return lines.join('\n')
 }
 
-export function buildPreviousMemoriesBlock(
-  titles: string[],
-): string {
-  if (titles.length === 0) return ''
-  return `<previous-memories readonly>\n${titles.map((t) => `- ${t}`).join('\n')}\n</previous-memories>\n\n`
-}
-
 export function asPluginString(v: unknown): string {
   return typeof v === 'string' ? v.trim() : ''
 }
@@ -68,12 +61,10 @@ export function normalizeSummaryPayload(obj: unknown): {
 
 export function formatEntryTitle(
   rawTitle: string,
-  titleFormat: string,
   startTurn: number,
   endTurn: number,
 ): string {
   const base = rawTitle.trim()
-  if (titleFormat !== 'range-suffix') return base
   const suffix = `-${startTurn}-${endTurn}`
   if (/-\d+-\d+$/.test(base)) {
     return base.replace(/-\d+-\d+$/, suffix)

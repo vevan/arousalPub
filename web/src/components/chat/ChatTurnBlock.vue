@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ChatTurnAssistant from '@/components/chat/ChatTurnAssistant.vue'
 import ChatTurnUser from '@/components/chat/ChatTurnUser.vue'
+import PluginSlotMount from '@/plugins/PluginSlotMount.vue'
 import type { useChatSession } from '@/composables/useChatSession'
 import type { ChatTurnItem } from '@/types/chat-turn'
 
@@ -23,6 +24,16 @@ const { turnLabelN, isOpeningTurn } = props.session
       </span>
       <span class="turn-divider__ornament">❦</span>
       <span class="turn-divider__line" />
+    </div>
+
+    <div class="turn-block-head" data-plugin-slot="turn-block-head">
+      <div class="plugin-slots turn-block-head__slots">
+        <PluginSlotMount
+          slot-name="turn-block-head"
+          :turn="turn"
+          :list-index="listIndex"
+        />
+      </div>
     </div>
 
     <ChatTurnUser

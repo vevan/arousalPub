@@ -3,17 +3,18 @@ import {
   DIALOG_ENABLE,
   DIALOG_MANUAL,
   DIALOG_PICK_LOREBOOK,
+  DIALOG_RECOVER_LOREBOOK,
   DIALOG_SESSION,
 } from './constants.js'
+import { isLorebookNotFoundError } from './errors.js'
 import { runSummarizeTasks } from './pipeline.js'
 import {
   clearLorebookPickResolver,
   getLorebookPickResolver,
-  memorybookEnabledCache,
   setLorebookPickResolver,
-  setMemorybookEnabledCache,
   summarizeRunning,
 } from './state.js'
+import { applyCuratedLorebookEntrySort } from './shared/entry-sort.js'
 import { asInt, asString } from './shared/utils.js'
 import {
   firstAutoTriggerTurnOrdinal,
@@ -26,19 +27,71 @@ import {
 } from './settings.js'
 import type { MergedSettings, PluginHost } from './types.js'
 
-export async function refreshMemorybookState(host: PluginHost) {
-  try {
-    const conv = await host.conversation.getPluginSettings()
-    setMemorybookEnabledCache(conv.memorybookEnabled === true)
-  } catch {
-    setMemorybookEnabledCache(false)
-  }
+function isMemorybookEnabled(host: PluginHost): boolean {
+  return host.conversation.getPluginSettingsSnapshot().memorybookEnabled === true
+}
+
+export function refreshMemorybookUi(host: PluginHost) {
   host.refreshSlotButtons()
+}
+
+async function isTargetLorebookAvailable(host: PluginHost, lorebookId: string) {
+  try {
+    await host.lorebook.get(lorebookId)
+    return true
+  } catch (e) {
+    if (isLorebookNotFoundError(e)) return false
+    throw e
+  }
+}
+
+async function applyRecoveredTargetLorebook(host: PluginHost, lorebookId: string) {
+  await host.conversation.patchPluginSettings({
+    targetLorebookId: lorebookId,
+    sidecarEntryIds: null,
+  })
+}
+
+async function createTargetLorebookFromTemplate(host: PluginHost, settings: MergedSettings) {
+  const ensured = await host.lorebook.ensure({
+    nameTemplate: settings.autoLorebookNameTemplate,
+  })
+  const id = asString(ensured?.id)
+  if (!id) {
+    host.ui.toast(host.t(k(host, 'toastAutoLorebookFailed')), { color: 'error' })
+    return ''
+  }
+  host.ui.toast(
+    host.t(k(host, 'toastAutoLorebookCreated'), { name: ensured.name || id }),
+    { color: 'success' },
+  )
+  return id
 }
 
 export async function ensureTargetLorebook(host: PluginHost, settings: MergedSettings) {
   const existing = asString(settings.targetLorebookId)
-  if (existing) return existing
+  if (existing) {
+    if (await isTargetLorebookAvailable(host, existing)) return existing
+    host.ui.toast(host.t(k(host, 'toastTargetLorebookDeleted')), { color: 'warning' })
+    try {
+      return await promptRecoverLorebook(host, settings)
+    } catch {
+      return ''
+    }
+  }
+
+  if (settings.targetLorebookMode === 'auto') {
+    try {
+      const id = await createTargetLorebookFromTemplate(host, settings)
+      if (!id) return ''
+      await host.conversation.patchPluginSettings({ targetLorebookId: id })
+      return id
+    } catch {
+      host.ui.toast(host.t(k(host, 'toastAutoLorebookFailed')), { color: 'error' })
+      return ''
+    }
+  }
+
   host.ui.toast(host.t(k(host, 'toastTargetLorebookMissingWarn')), { color: 'warning' })
   try {
     return await promptPickLorebook(host)
@@ -72,6 +125,20 @@ function buildAutoSidecarTaskOptions(settings: MergedSettings) {
   }))
 }
 
+function finishLorebookPick(id: string) {
+  const resolver = getLorebookPickResolver()
+  if (!resolver) return
+  clearLorebookPickResolver()
+  resolver.resolve(id)
+}
+
+function cancelLorebookPick() {
+  const resolver = getLorebookPickResolver()
+  if (!resolver) return
+  clearLorebookPickResolver()
+  resolver.reject(new Error('pick_cancelled'))
+}
+
 export function registerPickLorebookDialog(host: PluginHost) {
   host.registerFormDialog(
     PLUGIN_ID,
@@ -92,27 +159,93 @@ export function registerPickLorebookDialog(host: PluginHost) {
         const id = asString(model.targetLorebookId)
         if (!id) return
         await h.conversation.patchPluginSettings({ targetLorebookId: id })
-        const resolver = getLorebookPickResolver()
-        if (resolver) {
-          clearLorebookPickResolver()
-          resolver.resolve(id)
-        }
+        finishLorebookPick(id)
       },
       onCancel: () => {
-        const resolver = getLorebookPickResolver()
-        if (!resolver) return
-        clearLorebookPickResolver()
-        resolver.reject(new Error('pick_cancelled'))
+        cancelLorebookPick()
       },
     },
     DIALOG_PICK_LOREBOOK,
   )
 }
 
+export function registerRecoverLorebookDialog(host: PluginHost) {
+  host.registerFormDialog(
+    PLUGIN_ID,
+    {
+      titleKey: k(host, 'recoverLorebookDialogTitle'),
+      bodyKey: k(host, 'recoverLorebookDialogBody'),
+      fields: [
+        {
+          key: 'mode',
+          labelKey: k(host, 'recoverLorebookModeLabel'),
+          type: 'radio',
+          options: [
+            { value: 'pick', labelKey: k(host, 'recoverLorebookModePick') },
+            { value: 'create', labelKey: k(host, 'recoverLorebookModeCreate') },
+          ],
+        },
+        {
+          key: 'targetLorebookId',
+          labelKey: k(host, 'sessionTargetLorebookLabel'),
+          type: 'lorebook',
+          visibleWhen: { field: 'mode', equals: 'pick' },
+        },
+      ],
+      submitKey: k(host, 'recoverLorebookConfirm'),
+      cancelKey: k(host, 'sessionCancel'),
+      canSubmit: (m: Record<string, unknown>) => {
+        const mode = asString(m.mode)
+        if (mode === 'create') return true
+        return mode === 'pick' && asString(m.targetLorebookId).length > 0
+      },
+      onSubmit: async (h: PluginHost, model: Record<string, unknown>) => {
+        const mode = asString(model.mode)
+        let id = ''
+        if (mode === 'create') {
+          const settings = await loadMergedSettings(h)
+          try {
+            id = await createTargetLorebookFromTemplate(h, settings)
+          } catch {
+            h.ui.toast(h.t(k(h, 'toastAutoLorebookFailed')), { color: 'error' })
+            return
+          }
+          if (!id) return
+        } else {
+          id = asString(model.targetLorebookId)
+          if (!id) return
+        }
+        await applyRecoveredTargetLorebook(h, id)
+        finishLorebookPick(id)
+      },
+      onCancel: () => {
+        cancelLorebookPick()
+      },
+    },
+    DIALOG_RECOVER_LOREBOOK,
+  )
+}
+
 function promptPickLorebook(host: PluginHost) {
   return new Promise<string>((resolve, reject) => {
+    host.ui.clearProgress()
     setLorebookPickResolver({ resolve, reject })
     host.openFormDialog(PLUGIN_ID, { targetLorebookId: '' }, DIALOG_PICK_LOREBOOK)
+  })
+}
+
+export function promptRecoverLorebook(host: PluginHost, settings: MergedSettings) {
+  return new Promise<string>((resolve, reject) => {
+    host.ui.clearProgress()
+    setLorebookPickResolver({ resolve, reject })
+    host.openFormDialog(
+      PLUGIN_ID,
+      {
+        mode: settings.targetLorebookMode === 'auto' ? 'create' : 'pick',
+        targetLorebookId: '',
+      },
+      DIALOG_RECOVER_LOREBOOK,
+    )
   })
 }
 
@@ -143,6 +276,16 @@ function registerSessionDialog(host: PluginHost, settings: MergedSettings) {
         { value: 'on', labelKey: k(host, 'sessionSidecarOn') },
         { value: 'off', labelKey: k(host, 'sessionSidecarOff') },
       ],
+    },
+    {
+      key: 'entrySortMode',
+      labelKey: k(host, 'entrySortModeLabel'),
+      type: 'radio',
+      options: [
+        { value: 'manual', labelKey: k(host, 'entrySortModeManual') },
+        { value: 'auto-turn-suffix', labelKey: k(host, 'entrySortModeAuto-turn-suffix') },
+      ],
+      hintKey: k(host, 'entrySortModeDesc'),
     },
   ]
   if (settings.sidecars.length > 0) {
@@ -175,6 +318,10 @@ function registerSessionDialog(host: PluginHost, settings: MergedSettings) {
         else patch.sidecarEnabled = null
         if (settings.sidecars.length > 0) {
           patch.autoSidecarIds = sidecarIdsFromTaskSelection(model.autoSidecarTasks)
+        }
+        const sortMode = asString(model.entrySortMode)
+        if (sortMode === 'auto-turn-suffix' || sortMode === 'manual') {
+          patch.entrySortMode = sortMode
         }
         await h.conversation.patchPluginSettings(patch)
         h.ui.toast(h.t(k(h, 'sessionSubmit')), { color: 'success' })
@@ -262,7 +409,7 @@ function registerSummarizeDialog(
             nextBlockStart: fromTurn,
             autoSidecarIds,
           })
-          await refreshMemorybookState(h)
+          refreshMemorybookUi(h)
         }
         await runSummarizeTasks(h, {
           fromTurn,
@@ -277,6 +424,32 @@ function registerSummarizeDialog(
   )
 }
 
+export async function reorderTargetLorebookNow(host: PluginHost) {
+  const settings = await loadMergedSettings(host)
+  const targetId = asString(settings.targetLorebookId)
+  if (!targetId) {
+    host.ui.toast(host.t(k(host, 'toastReorderLorebookNoTarget')), { color: 'warning' })
+    return
+  }
+  try {
+    const sidecarEntryIds = await host.lorebook.normalizeEntryRefs({
+      lorebookId: targetId,
+      entryIds: settings.sidecarEntryIds,
+      validKeys: settings.sidecars.map((s) => s.id),
+    })
+    await applyCuratedLorebookEntrySort(
+      host,
+      targetId,
+      sidecarEntryIds,
+      settings.sidecars.map((s) => s.id),
+    )
+    host.ui.toast(host.t(k(host, 'toastReorderLorebookDone')), { color: 'success' })
+  } catch (e) {
+    console.warn('[curated-memory] reorder lorebook failed', e)
+    host.ui.toast(host.t(k(host, 'toastTaskSkipped')), { color: 'warning' })
+  }
+}
+
 export function openSessionSettings(host: PluginHost) {
   loadMergedSettings(host).then((s) => {
     registerSessionDialog(host, s)
@@ -288,6 +461,7 @@ export function openSessionSettings(host: PluginHost) {
       blockTurns: s.blockTurns,
       bufferTurns: s.bufferTurns,
       sidecarEnabled,
+      entrySortMode: s.entrySortMode,
     }
     if (s.sidecars.length > 0) {
       model.autoSidecarTasks = s.autoSidecarIds.map((id) => `sidecar:${id}`)
@@ -296,13 +470,20 @@ export function openSessionSettings(host: PluginHost) {
   })
 }
 
-export function openManualSummarize(host: PluginHost) {
+export function openManualSummarize(
+  host: PluginHost,
+  preset?: { startTurn: number; endTurn: number },
+) {
   loadMergedSettings(host).then((s) => {
     registerSummarizeDialog(host, s, 'manual')
     const maxOrd = Math.max(0, maxTurnOrdinal(host))
     host.openFormDialog(
       PLUGIN_ID,
-      { startTurn: 0, endTurn: maxOrd, selectedTasks: ['memory'] },
+      {
+        startTurn: preset?.startTurn ?? 0,
+        endTurn: preset?.endTurn ?? maxOrd,
+        selectedTasks: ['memory'],
+      },
       DIALOG_MANUAL,
     )
   })
@@ -330,7 +511,7 @@ export async function applyShortMemorybookEnable(host: PluginHost, settings: Mer
     nextBlockStart: 0,
     autoSidecarIds,
   })
-  await refreshMemorybookState(host)
+  refreshMemorybookUi(host)
   host.ui.toast(host.t(k(host, 'toastMemorybookScheduled'), { turn: X }), {
     color: 'success',
   })
@@ -349,9 +530,8 @@ async function tryEnableMemorybook(host: PluginHost) {
 }
 
 export async function toggleMemorybook(host: PluginHost) {
-  if (memorybookEnabledCache) {
+  if (isMemorybookEnabled(host)) {
     await host.conversation.patchPluginSettings({ memorybookEnabled: false })
-    await refreshMemorybookState(host)
     host.ui.toast(host.t(k(host, 'toastMemorybookDisabled')), { color: 'info' })
     return
   }

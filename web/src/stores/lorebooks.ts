@@ -322,6 +322,18 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     }
   }
 
+  /** 插件 ensure 新建资料库后同步本地缓存（不触发 PUT 回写） */
+  function upsertLorebookFromPlugin(lb: Lorebook): void {
+    if (!loaded.value) return
+    const normalized = normalizeLorebook(lb)
+    const i = lorebooks.value.findIndex((x) => x.id === normalized.id)
+    if (i >= 0) {
+      lorebooks.value[i] = normalized
+    } else {
+      lorebooks.value.unshift(normalized)
+    }
+  }
+
   function allocateLorebookId(): string {
     return allocateShortId(collectAllLorebookIds(lorebooks.value))
   }
@@ -767,6 +779,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     lastError,
     loadFromServer,
     upsertEntryFromPlugin,
+    upsertLorebookFromPlugin,
     ensureLoaded,
     applyOpenFocus,
     focusLorebookById,

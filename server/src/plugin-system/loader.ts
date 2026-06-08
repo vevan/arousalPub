@@ -23,6 +23,7 @@ import type {
 } from './types.js'
 import { readPluginManifest } from './manifest.js'
 import {
+  pluginHasConversationSettingsSchema,
   pluginHasSettingsSchema,
   readMergedPluginUserSettings,
   writePluginUserSettings,
@@ -286,6 +287,7 @@ export async function listPluginsManage(
         ?.map((s) => (typeof s.name === 'string' ? s.name.trim() : ''))
         .filter((s) => s.length > 0) ?? []
     const schema = manifest.settingsSchema ?? null
+    const convSchema = manifest.conversationSettingsSchema ?? null
     out.push({
       id: manifest.id,
       name: manifest.name,
@@ -296,6 +298,8 @@ export async function listPluginsManage(
       slots,
       settingsSchema: schema,
       hasSettings: pluginHasSettingsSchema(schema),
+      conversationSettingsSchema: convSchema,
+      hasConversationSettings: pluginHasConversationSettingsSchema(convSchema),
     })
   }
   out.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))

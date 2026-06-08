@@ -6,6 +6,7 @@ import {
   readApiSettingsFromFile,
   type ApiPreset,
 } from './api-settings-file.js'
+import { resolveChatApiConfigId } from './feature-binding-resolve.js'
 
 const DEFAULT_BASE = 'https://api.openai.com/v1'
 
@@ -68,8 +69,10 @@ export async function resolveChatCredentials(
     throw new ApiCredentialError('api_credential_not_configured')
   }
 
+  const resolvedChat = resolveChatApiConfigId(settings)
   const presetId = (
     input.apiPresetId?.trim() ||
+    resolvedChat?.apiConfigId ||
     settings.activePresetId ||
     ''
   ).trim()

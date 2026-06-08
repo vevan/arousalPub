@@ -12,6 +12,8 @@ import {
 } from '@/utils/authors-note-settings'
 import BudgetTrimSettingsPanel from '@/components/settings/BudgetTrimSettingsPanel.vue'
 import ConversationApiSettingsPanel from '@/components/settings/ConversationApiSettingsPanel.vue'
+import ConversationPluginSettingsPanel from '@/components/settings/ConversationPluginSettingsPanel.vue'
+import { fetchPluginsManage } from '@/utils/plugin-settings-api'
 import {
   readConversationChatBinding,
   type ConversationChatBinding,
@@ -27,6 +29,8 @@ import {
 
 const props = defineProps<{
   conversationId: string
+  /** 对话标题（页脚展示；空则用「新对话」） */
+  conversationTitle?: string | null
   /** `null` / 未绑定：使用全局激活预设 */
   initialPromptPresetId?: string | null
   initialCharacterIds: string[]
@@ -72,7 +76,14 @@ const emit = defineEmits<{
   (e: 'memoryRebuilt', embeddingModel: string): void
 }>()
 
-type SettingsSection = 'bindings' | 'api' | 'lore' | 'context' | 'budgetTrim' | 'authorsNote'
+type SettingsSection =
+  | 'bindings'
+  | 'api'
+  | 'lore'
+  | 'context'
+  | 'budgetTrim'
+  | 'authorsNote'
+  | 'plugins'
 
 const { t } = useI18n()
 const promptsStore = usePromptsStore()
@@ -137,6 +148,11 @@ const canToggleAuthorsNoteEnabled = computed(
   () => authorsNoteContentTrimmed.value.length > 0,
 )
 
+const displayConversationTitle = computed(() => {
+  const raw = props.conversationTitle?.trim()
+  return raw || t('chat.newConversation')
+})
+
 const {
   loading: memoryRebuildLoading,
   error: memoryRebuildError,
@@ -182,39 +198,58 @@ const charItems = ref<CharItem[]>([])
 const charItemsLoading = ref(false)
 const lorebookItems = ref<LorebookItem[]>([])
 const lorebookItemsLoading = ref(false)
+const showPluginsTab = ref(false)
+const savingPluginSettings = ref(false)
+const pluginSettingsPanelRef = ref<InstanceType<
+  typeof ConversationPluginSettingsPanel
+> | null>(null)
 
-const sectionItems = computed(() => [
-  {
-    id: 'bindings' as const,
-    title: t('chat.convSettings.tabBindings'),
-    icon: 'mdi-link-variant',
-  },
-  {
-    id: 'api' as const,
-    title: t('chat.convSettings.tabApi'),
-    icon: 'mdi-api',
-  },
-  {
-    id: 'lore' as const,
-    title: t('chat.convSettings.tabLore'),
-    icon: 'mdi-book-open-page-variant-outline',
-  },
-  {
-    id: 'context' as const,
-    title: t('chat.convSettings.tabContext'),
-    icon: 'mdi-tune-variant',
-  },
-  {
-    id: 'budgetTrim' as const,
-    title: t('chat.convSettings.tabBudgetTrim'),
-    icon: 'mdi-scissors-cutting',
-  },
-  {
-    id: 'authorsNote' as const,
-    title: t('chat.convSettings.tabAuthorsNote'),
-    icon: 'mdi-note-text-outline',
-  },
-])
+const sectionItems = computed(() => {
+  const items: Array<{
+    id: SettingsSection
+    title: string
+    icon: string
+  }> = [
+    {
+      id: 'bindings',
+      title: t('chat.convSettings.tabBindings'),
+      icon: 'mdi-link-variant',
+    },
+    {
+      id: 'api',
+      title: t('chat.convSettings.tabApi'),
+      icon: 'mdi-api',
+    },
+    {
+      id: 'lore',
+      title: t('chat.convSettings.tabLore'),
+      icon: 'mdi-book-open-page-variant-outline',
+    },
+    {
+      id: 'context',
+      title: t('chat.convSettings.tabContext'),
+      icon: 'mdi-tune-variant',
+    },
+    {
+      id: 'budgetTrim',
+      title: t('chat.convSettings.tabBudgetTrim'),
+      icon: 'mdi-scissors-cutting',
+    },
+    {
+      id: 'authorsNote',
+      title: t('chat.convSettings.tabAuthorsNote'),
+      icon: 'mdi-note-text-outline',
+    },
+  ]
+  if (showPluginsTab.value) {
+    items.push({
+      id: 'plugins',
+      title: t('chat.convSettings.tabPlugins'),
+      icon: 'mdi-puzzle-outline',
+    })
+  }
+  return items
+})
 
 const presetItems = computed(() => {
   const inherit = {
@@ -239,13 +274,22 @@ const isSaving = computed(
     savingMemorySettings.value ||
     savingBudgetTrimSettings.value ||
     savingAuthorsNote.value ||
-    savingApiSettings.value,
+    savingApiSettings.value ||
+    savingPluginSettings.value,
 )
 
 function open(section?: SettingsSection): void {
   syncFromProps()
-  activeSection.value = section ?? 'bindings'
+  void refreshPluginsTabVisibility()
+  if (section === 'plugins' && !showPluginsTab.value) {
+    activeSection.value = 'bindings'
+  } else {
+    activeSection.value = section ?? 'bindings'
+  }
   dialogOpen.value = true
+  if (activeSection.value === 'plugins') {
+    void pluginSettingsPanelRef.value?.reload()
+  }
 }
 
 function close(): void {
@@ -920,10 +964,29 @@ watch(authorsNoteRole, async (role) => {
   }
 })
 
+async function refreshPluginsTabVisibility() {
+  try {
+    const all = await fetchPluginsManage()
+    showPluginsTab.value = all.some(
+      (p) => p.enabled && p.hasConversationSettings,
+    )
+    if (activeSection.value === 'plugins' && !showPluginsTab.value) {
+      activeSection.value = 'bindings'
+    }
+  } catch {
+    showPluginsTab.value = false
+  }
+}
+
+function onPluginSettingsError(message: string) {
+  errorText.value = message
+}
+
 onMounted(() => {
   syncFromProps()
   void loadCharacters()
   void loadLorebooks()
+  void refreshPluginsTabVisibility()
 })
 
 async function loadLorebooks() {
@@ -1584,16 +1647,47 @@ async function patchConversation(body: Record<string, unknown>) {
                 />
               </div>
             </div>
+
+            <div
+              v-show="activeSection === 'plugins'"
+              class="conv-settings-section"
+            >
+              <h3 class="conv-settings-section__title">
+                {{ $t('chat.convSettings.tabPlugins') }}
+              </h3>
+              <p class="conv-settings-section__hint">
+                {{ $t('chat.convSettings.tabPluginsHint') }}
+              </p>
+              <p class="conv-settings-section__hint text-medium-emphasis">
+                {{ $t('chat.convSettings.autoSaveHint') }}
+              </p>
+              <ConversationPluginSettingsPanel
+                ref="pluginSettingsPanelRef"
+                :conversation-id="conversationId"
+                @saving-change="savingPluginSettings = $event"
+                @error="onPluginSettingsError"
+              />
+            </div>
           </div>
         </div>
       </v-card-text>
 
       <v-divider />
 
-      <v-card-actions class="px-4 py-3">
-        <span class="text-caption text-medium-emphasis">
-          {{ $t('chat.convSettings.autoSaveHint') }}
-        </span>
+      <v-card-actions class="px-4 py-3 conv-settings-dialog__footer">
+        <div class="conv-settings-dialog__footer-meta">
+          <div
+            class="conv-settings-dialog__footer-title text-body-2 font-weight-medium"
+            :title="displayConversationTitle"
+          >
+            {{ displayConversationTitle }}
+          </div>
+          <div class="text-caption text-medium-emphasis conv-settings-dialog__footer-sub">
+            <code class="conv-settings-dialog__footer-id">{{ conversationId }}</code>
+            <span class="conv-settings-dialog__footer-sep">·</span>
+            {{ $t('chat.convSettings.autoSaveHint') }}
+          </div>
+        </div>
         <v-spacer />
         <v-btn
           variant="flat"
@@ -1620,6 +1714,43 @@ async function patchConversation(body: Record<string, unknown>) {
 .conv-settings-dialog__title {
   padding-block: 0.875rem 0.75rem;
   flex-shrink: 0;
+}
+
+.conv-settings-dialog__footer {
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.conv-settings-dialog__footer-meta {
+  min-width: 0;
+  max-width: min(100%, 28rem);
+}
+
+.conv-settings-dialog__footer-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conv-settings-dialog__footer-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.125rem;
+  line-height: 1.4;
+}
+
+.conv-settings-dialog__footer-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  padding: 0.0625rem 0.25rem;
+  border-radius: 0.25rem;
+  background: rgba(var(--v-theme-on-surface), 0.06);
+}
+
+.conv-settings-dialog__footer-sep {
+  opacity: 0.55;
 }
 
 .conv-settings-dialog__body {

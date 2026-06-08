@@ -28,9 +28,8 @@ function normalizeSummaryPayload(obj) {
   }
   return { title, content: content.trim(), keywords };
 }
-function formatEntryTitle(rawTitle, titleFormat, startTurn, endTurn) {
+function formatEntryTitle(rawTitle, startTurn, endTurn) {
   const base = rawTitle.trim();
-  if (titleFormat !== "range-suffix") return base;
   const suffix = `-${startTurn}-${endTurn}`;
   if (/-\d+-\d+$/.test(base)) {
     return base.replace(/-\d+-\d+$/, suffix);
@@ -47,9 +46,10 @@ async function expandText(api, text, conversationId, apiConfigId) {
   if (!raw.includes("{{")) return raw;
   return api.runPluginMacroExpand({ text: raw, conversationId, apiConfigId });
 }
-async function assertPreflight(api, apiConfigId, system, userContent) {
+async function assertPreflight(api, conversationId, apiConfigId, system, userContent) {
   const pf = await api.runPluginCompletePreflight({
     apiConfigId,
+    conversationId,
     messages: [
       { role: "system", content: system },
       { role: "user", content: userContent }
@@ -69,12 +69,19 @@ async function assertPreflight(api, apiConfigId, system, userContent) {
 }
 async function callCompleteOnce(api, conversationId, apiConfigId, system, userContent) {
   const [expandedSystem, expandedUser] = await Promise.all([
-    expandText(api, system, conversationId, apiConfigId),
-    expandText(api, userContent, conversationId, apiConfigId)
+    expandText(api, system, conversationId, apiConfigId ?? ""),
+    expandText(api, userContent, conversationId, apiConfigId ?? "")
   ]);
-  await assertPreflight(api, apiConfigId, expandedSystem, expandedUser);
+  await assertPreflight(
+    api,
+    conversationId,
+    apiConfigId,
+    expandedSystem,
+    expandedUser
+  );
   const result = await api.runPluginComplete({
     apiConfigId,
+    conversationId,
     messages: [
       { role: "system", content: expandedSystem },
       { role: "user", content: expandedUser }
@@ -132,12 +139,7 @@ async function completeDraft(ctx, api) {
   const summary = normalizeSummaryPayload(raw);
   const fromTurn = typeof ctx.fromTurn === "number" ? ctx.fromTurn : 0;
   const toTurn = typeof ctx.toTurn === "number" ? ctx.toTurn : fromTurn;
-  const entryTitle = formatEntryTitle(
-    summary.title,
-    ctx.titleFormat ?? "range-suffix",
-    fromTurn,
-    toTurn
-  );
+  const entryTitle = formatEntryTitle(summary.title, fromTurn, toTurn);
   return {
     draft: {
       title: entryTitle,

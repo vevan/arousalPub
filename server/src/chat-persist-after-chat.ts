@@ -14,6 +14,7 @@ import {
   updateTurnContentInTailChunk,
   type TurnReceive,
 } from './chat-storage.js'
+import type { ResolvedFeatureAudit } from './feature-binding-resolve.js'
 import type { TurnPluginEntry } from './plugin-types.js'
 
 export interface ChatPersistResult {
@@ -37,12 +38,14 @@ function receiveRuntime(
   durationMs?: number,
   estimatedTokens?: number,
   completionTokens?: number,
+  resolvedFeature?: ResolvedFeatureAudit,
 ): Record<string, unknown> | undefined {
   return buildReceiveRuntime({
     model,
     durationMs,
     estimatedTokens,
     completionTokens,
+    resolvedFeature,
   })
 }
 
@@ -79,6 +82,7 @@ export async function persistTurnAfterModelReply(params: {
   durationMs?: number
   estimatedTokens?: number
   completionTokens?: number
+  resolvedFeature?: ResolvedFeatureAudit
   assembledMessages: ChatMessage[]
   /** 再生：向该轮追加 receive，不新开 turn */
   regenerateTurnOrdinal?: number | null
@@ -120,6 +124,7 @@ export async function persistTurnAfterModelReply(params: {
     params.durationMs,
     params.estimatedTokens,
     completionTokens,
+    params.resolvedFeature,
   )
 
   const regenOrd = params.regenerateTurnOrdinal
@@ -196,6 +201,7 @@ export async function persistTurnAfterModelReply(params: {
         durationMs: params.durationMs,
         estimatedTokens: params.estimatedTokens,
         completionTokens,
+        resolvedFeature: params.resolvedFeature,
         debugPrompt,
         turnPluginEntries: params.turnPluginEntries,
       })
@@ -253,6 +259,7 @@ export async function persistTurnAfterModelReply(params: {
       durationMs: params.durationMs,
       estimatedTokens: params.estimatedTokens,
       completionTokens,
+      resolvedFeature: params.resolvedFeature,
       debugPrompt,
       turnPluginEntries: params.turnPluginEntries,
     })

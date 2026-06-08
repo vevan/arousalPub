@@ -6,6 +6,7 @@ var DIALOG_ENABLE = "enable";
 var DIALOG_REVIEW = "review";
 var DIALOG_REVIEW_SIDECAR = "review-sidecar";
 var DIALOG_PICK_LOREBOOK = "pick-lorebook";
+var DIALOG_RECOVER_LOREBOOK = "recover-lorebook";
 
 // plugins/curated-memory/src/shared/utils.ts
 function asString(v) {
@@ -103,8 +104,14 @@ async function loadMergedSettings(host) {
     500
   );
   const bufferTurns = asInt(conv.bufferTurns ?? global.bufferTurns, 5, 500);
-  const titleFormat = asString(conv.titleFormat) || asString(global.titleFormat) || "range-suffix";
-  const targetLorebookId = asString(conv.targetLorebookId) || asString(global.defaultTargetLorebookId);
+  const previousSummariesLimit = asInt(global.previousSummariesLimit, 8, 50);
+  const entrySortModeRaw = asString(conv.entrySortMode);
+  const entrySortMode = entrySortModeRaw === "manual" ? "manual" : "auto-turn-suffix";
+  const targetLorebookId = asString(conv.targetLorebookId);
+  const convMode = asString(conv.targetLorebookMode);
+  const globalMode = asString(global.targetLorebookMode);
+  const targetLorebookMode = convMode === "auto" || convMode === "manual" ? convMode : globalMode === "auto" || globalMode === "manual" ? globalMode : "manual";
+  const autoLorebookNameTemplate = asString(conv.autoLorebookNameTemplate) || asString(global.autoLorebookNameTemplate) || "{{conversationTitle}}-summary";
   const apiConfigId = asString(global.apiConfigId);
   const defaultEntryTriggerMode = asString(global.defaultEntryTriggerMode) || "vector";
   const sidecarEntryIds = conv.sidecarEntryIds && typeof conv.sidecarEntryIds === "object" ? { ...conv.sidecarEntryIds } : {};
@@ -116,7 +123,8 @@ async function loadMergedSettings(host) {
     targetLorebookId,
     blockTurns,
     bufferTurns,
-    titleFormat,
+    previousSummariesLimit,
+    entrySortMode,
     defaultEntryTriggerMode,
     systemPromptTemplate: asString(global.systemPromptTemplate) || resolveDefaultSystemPrompt(host),
     memorybookEnabled: conv.memorybookEnabled === true,
@@ -125,7 +133,9 @@ async function loadMergedSettings(host) {
     sidecarEntryIds,
     sidecars,
     autoSidecarIds: parseAutoSidecarIdsRaw(conv.autoSidecarIds, sidecars),
-    memorybookDefaultEnabled: asBool(global.memorybookDefaultEnabled, false)
+    memorybookDefaultEnabled: asBool(global.memorybookDefaultEnabled, false),
+    targetLorebookMode,
+    autoLorebookNameTemplate
   };
 }
 function sidecarPromptTemplate(host, sc) {
@@ -135,11 +145,11 @@ function sidecarPromptTemplate(host, sc) {
 function blockEndFromStart(start, blockTurns) {
   return start + blockTurns - 1;
 }
-function shouldAutoTrigger(turnOrdinal, settings) {
+function shouldAutoTrigger(turnOrdinal2, settings) {
   if (!settings.memorybookEnabled) return false;
   const start = settings.nextBlockStart ?? 0;
   const end = blockEndFromStart(start, settings.blockTurns);
-  return turnOrdinal >= end + settings.bufferTurns;
+  return turnOrdinal2 >= end + settings.bufferTurns;
 }
 function currentAutoRange(settings) {
   const start = settings.nextBlockStart ?? 0;
@@ -192,12 +202,22 @@ function isPipelineFatalError(e) {
 function isAbortError(e) {
   return typeof DOMException !== "undefined" && e instanceof DOMException && e.name === "AbortError" || e instanceof Error && e.name === "AbortError";
 }
+function lorebookErrorCode(e) {
+  if (!e || typeof e !== "object") return "";
+  const o = e;
+  if (typeof o.code === "string" && o.code) return o.code;
+  if (e instanceof Error && e.message) return e.message;
+  return "";
+}
+function isLorebookNotFoundError(e) {
+  return lorebookErrorCode(e) === "lorebook_not_found";
+}
 function isLorebookEntryMissingError(e) {
   if (!e || typeof e !== "object") return false;
   const o = e;
-  const code = typeof o.code === "string" ? o.code : "";
+  const code = lorebookErrorCode(e) || (typeof o.code === "string" ? o.code : "");
   const status = typeof o.status === "number" ? o.status : 0;
-  return code === "lorebook_entry_not_found" || code === "lorebook_not_found" || code === "lorebook_entry_patch_failed" && status === 404;
+  return code === "lorebook_entry_not_found" || code === "lorebook_entry_patch_failed" && status === 404;
 }
 function preflightToast(host, e) {
   if (e instanceof Error && e.message === "context_exceeded") {
@@ -215,6 +235,10 @@ function preflightToast(host, e) {
     host.ui.toast(host.t(k(host, "toastContextLengthMissing")), { color: "warning" });
     return;
   }
+  if (isLorebookNotFoundError(e)) {
+    host.ui.toast(host.t(k(host, "toastTargetLorebookDeleted")), { color: "warning" });
+    return;
+  }
   if (isLorebookEntryMissingError(e)) {
     host.ui.toast(host.t(k(host, "toastSidecarEntryMissing")), { color: "warning" });
     return;
@@ -228,16 +252,20 @@ function preflightToast(host, e) {
 
 // plugins/curated-memory/src/state.ts
 var summarizeRunning = false;
-var memorybookEnabledCache = false;
 var _reviewResolver = null;
 var _reviewRegenerate = null;
+var _reviewTitleParams = null;
 var _lorebookPickResolver = null;
 var summarizeBatchProgress = null;
+var rangeStartTurn = null;
+function getRangeStartTurn() {
+  return rangeStartTurn;
+}
+function setRangeStartTurn(v) {
+  rangeStartTurn = v;
+}
 function setSummarizeRunning(v) {
   summarizeRunning = v;
-}
-function setMemorybookEnabledCache(v) {
-  memorybookEnabledCache = v;
 }
 function setSummarizeBatchProgress(v) {
   summarizeBatchProgress = v;
@@ -254,9 +282,16 @@ function getReviewRegenerate() {
 function setReviewRegenerate(v) {
   _reviewRegenerate = v;
 }
+function getReviewTitleParams() {
+  return _reviewTitleParams;
+}
+function setReviewTitleParams(v) {
+  _reviewTitleParams = v;
+}
 function clearReviewSession() {
   _reviewResolver = null;
   _reviewRegenerate = null;
+  _reviewTitleParams = null;
 }
 function getLorebookPickResolver() {
   return _lorebookPickResolver;
@@ -269,6 +304,18 @@ function clearLorebookPickResolver() {
 }
 
 // plugins/curated-memory/src/review.ts
+function hasHistoryBlock(userContent) {
+  return /<history>[\s\S]*<\/history>/i.test(userContent);
+}
+function resolveSystemPrompt(host, settings, opts) {
+  if (opts.kind === "sidecar" && opts.sc && hasHistoryBlock(opts.userContent)) {
+    return settings.systemPromptTemplate;
+  }
+  if (opts.kind === "sidecar" && opts.sc) {
+    return sidecarPromptTemplate(host, opts.sc);
+  }
+  return settings.systemPromptTemplate;
+}
 function bumpTaskProgress(host, done, total) {
   host.ui.progress({
     message: host.t(k(host, "progressSummarize")),
@@ -284,21 +331,36 @@ function showCurrentBatchTaskProgress(host) {
   if (!p) return;
   bumpTaskProgress(host, p.taskIndex + 1, p.total);
 }
+function reviewDialogOpenOpts() {
+  const titleParams = getReviewTitleParams();
+  return titleParams ? { titleParams } : void 0;
+}
+async function resolveTargetLorebookName(host, lorebookId) {
+  const id = asString(lorebookId);
+  if (!id) return "";
+  try {
+    const lb = await host.lorebook.get(id);
+    const name = asString(lb.name);
+    return name || id;
+  } catch {
+    return id;
+  }
+}
+function openReviewFormDialog(host, draft, dialogId) {
+  const model = {
+    title: draft.title,
+    content: draft.content,
+    keywordsText: keywordsToText(draft.keywords)
+  };
+  host.openFormDialog(PLUGIN_ID, model, dialogId, reviewDialogOpenOpts());
+}
 async function runReviewRegenerate(host, dialogId) {
   const regen = getReviewRegenerate();
   const resolver = getReviewResolver();
   if (!regen || !resolver) return;
   try {
     const draft = await regen(host);
-    host.ui.openFormDialog(
-      PLUGIN_ID,
-      {
-        title: draft.title,
-        content: draft.content,
-        keywordsText: keywordsToText(draft.keywords)
-      },
-      dialogId
-    );
+    openReviewFormDialog(host, draft, dialogId);
   } catch (e) {
     if (isAbortError(e)) {
       clearReviewSession();
@@ -313,11 +375,10 @@ async function generateReviewDraft(host, settings, opts) {
   showCurrentBatchTaskProgress(host);
   try {
     const req = {
-      apiConfigId: settings.apiConfigId,
+      ...settings.apiConfigId ? { apiConfigId: settings.apiConfigId } : {},
       kind: opts.kind,
       userContent: opts.userContent,
-      systemPromptTemplate: opts.kind === "sidecar" && opts.sc ? sidecarPromptTemplate(host, opts.sc) : settings.systemPromptTemplate,
-      titleFormat: settings.titleFormat,
+      systemPromptTemplate: resolveSystemPrompt(host, settings, opts),
       fromTurn: opts.fromTurn,
       toTurn: opts.toTurn,
       sidecarName: opts.sc?.name
@@ -399,20 +460,24 @@ function registerReviewDialogs(host) {
     lockTitle: true
   });
 }
-function promptReview(host, draft, dialogId, regenerateFn) {
+function promptReview(host, draft, dialogId, regenerateFn, lorebookName) {
   return new Promise((resolve, reject) => {
     setReviewResolver({ resolve, reject });
     setReviewRegenerate(regenerateFn);
-    host.openFormDialog(
-      PLUGIN_ID,
-      {
-        title: draft.title,
-        content: draft.content,
-        keywordsText: keywordsToText(draft.keywords)
-      },
-      dialogId
-    );
+    setReviewTitleParams({ name: lorebookName });
+    openReviewFormDialog(host, draft, dialogId);
   });
+}
+
+// plugins/curated-memory/src/shared/entry-sort.ts
+async function applyCuratedLorebookEntrySort(host, lorebookId, sidecarEntryIds, sidecarConfigIds) {
+  const id = lorebookId.trim();
+  if (!id) return false;
+  await host.lorebook.reorderCurated(id, {
+    sidecarEntryIds,
+    sidecarIds: sidecarConfigIds
+  });
+  return true;
 }
 
 // plugins/curated-memory/src/sidecar.ts
@@ -469,52 +534,70 @@ async function runSummarizeTasks(host, opts) {
   setSummarizeRunning(true);
   host.refreshSlotButtons();
   setPluginHold(host, true);
-  host.ui.progress({
-    message: host.t(k(host, "progressSummarize")),
-    done: 0,
-    total: tasks.length,
-    indeterminate: true,
-    abortable: true,
-    abortLabel: host.t(k(host, "progressAbort"))
-  });
   let completedTasks = 0;
   try {
     const settings = await loadMergedSettings(host);
-    if (!settings.apiConfigId) {
-      host.ui.toast(host.t(k(host, "toastNoApiConfig")), { color: "warning" });
-      return { ok: false, reason: "no_api" };
-    }
     const targetId = await ensureTargetLorebook(host, settings);
     if (!targetId) {
       return { ok: false, reason: "no_lorebook" };
     }
     settings.targetLorebookId = targetId;
+    let lorebookName = await resolveTargetLorebookName(host, targetId);
     const fromTurn = opts.fromTurn;
     const toTurn = opts.toTurn;
     if (fromTurn > toTurn) {
       host.ui.toast(host.t(k(host, "toastInvalidRange")), { color: "warning" });
       return { ok: false, reason: "invalid_range" };
     }
+    let sidecarEntryIds;
+    try {
+      sidecarEntryIds = await host.lorebook.normalizeEntryRefs({
+        lorebookId: settings.targetLorebookId,
+        entryIds: settings.sidecarEntryIds,
+        validKeys: settings.sidecars.map((s) => s.id)
+      });
+    } catch (e) {
+      if (!isLorebookNotFoundError(e)) throw e;
+      const recovered = await promptRecoverLorebook(host, settings);
+      if (!recovered) {
+        return { ok: false, reason: "no_lorebook" };
+      }
+      settings.targetLorebookId = recovered;
+      lorebookName = await resolveTargetLorebookName(host, recovered);
+      sidecarEntryIds = await host.lorebook.normalizeEntryRefs({
+        lorebookId: settings.targetLorebookId,
+        entryIds: {},
+        validKeys: settings.sidecars.map((s) => s.id)
+      });
+    }
+    const sidecarConfigIds = settings.sidecars.map((s) => s.id);
     const prepared = await host.plugin.prepareContext({
       fromTurn,
       toTurn,
-      targetLorebookId: settings.targetLorebookId
+      targetLorebookId: settings.targetLorebookId,
+      previousSummariesLimit: settings.previousSummariesLimit,
+      sidecarEntryIds,
+      sidecarIds: sidecarConfigIds
     });
     if (!prepared.userContent?.trim()) {
       host.ui.toast(host.t(k(host, "toastNoTurnsInRange")), { color: "warning" });
       return { ok: false, reason: "no_turns" };
     }
     const userContent = prepared.userContent;
-    const sidecarEntryIds = await host.lorebook.normalizeEntryRefs({
-      lorebookId: settings.targetLorebookId,
-      entryIds: settings.sidecarEntryIds,
-      validKeys: settings.sidecars.map((s) => s.id)
-    });
     const patch = {};
     let done = 0;
     let ranMemory = false;
+    let wroteToLorebook = false;
     let skippedTasks = 0;
     let aborted = false;
+    host.ui.progress({
+      message: host.t(k(host, "progressSummarize")),
+      done: 0,
+      total: tasks.length,
+      indeterminate: true,
+      abortable: true,
+      abortLabel: host.t(k(host, "progressAbort"))
+    });
     setSummarizeBatchProgress({ taskIndex: 0, total: tasks.length });
     for (let taskIndex = 0; taskIndex < tasks.length; taskIndex++) {
       const task = tasks[taskIndex];
@@ -537,7 +620,8 @@ async function runSummarizeTasks(host, opts) {
               userContent,
               fromTurn,
               toTurn
-            })
+            }),
+            lorebookName
           );
           bumpTaskProgress2(host, done, tasks.length);
           await host.lorebook.createEntry(settings.targetLorebookId, {
@@ -548,6 +632,7 @@ async function runSummarizeTasks(host, opts) {
             priority: 100
           });
           ranMemory = true;
+          wroteToLorebook = true;
         } else if (task.kind === "sidecar") {
           const sc = task.sidecar;
           const sidecarDraft = await generateReviewDraft(host, settings, {
@@ -563,7 +648,8 @@ async function runSummarizeTasks(host, opts) {
               kind: "sidecar",
               userContent,
               sc
-            })
+            }),
+            lorebookName
           );
           bumpTaskProgress2(host, done, tasks.length);
           await writeSidecarEntry(
@@ -574,6 +660,7 @@ async function runSummarizeTasks(host, opts) {
             reviewed,
             entryKeys(reviewed.keywords)
           );
+          wroteToLorebook = true;
         }
         completedTasks += 1;
       } catch (e) {
@@ -628,6 +715,14 @@ async function runSummarizeTasks(host, opts) {
         aborted
       };
     }
+    if (settings.entrySortMode === "auto-turn-suffix" && wroteToLorebook) {
+      await applyCuratedLorebookEntrySort(
+        host,
+        settings.targetLorebookId,
+        sidecarEntryIds,
+        sidecarConfigIds
+      );
+    }
     if (ranMemory && opts.updatePointers !== false) {
       const last = Math.max(
         typeof settings.lastSummarizedEnd === "number" ? settings.lastSummarizedEnd : -1,
@@ -643,7 +738,7 @@ async function runSummarizeTasks(host, opts) {
       await host.conversation.patchPluginSettings(patch);
     }
     if (opts.updateMemorybookCache) {
-      await refreshMemorybookState(host);
+      refreshMemorybookUi(host);
     }
     if (completedTasks === tasks.length && skippedTasks === 0) {
       host.ui.toast(host.t(k(host, "toastSummarizeDone")), { color: "success" });
@@ -680,18 +775,64 @@ async function runSummarizeTasks(host, opts) {
 }
 
 // plugins/curated-memory/src/dialogs.ts
-async function refreshMemorybookState(host) {
-  try {
-    const conv = await host.conversation.getPluginSettings();
-    setMemorybookEnabledCache(conv.memorybookEnabled === true);
-  } catch {
-    setMemorybookEnabledCache(false);
-  }
+function isMemorybookEnabled(host) {
+  return host.conversation.getPluginSettingsSnapshot().memorybookEnabled === true;
+}
+function refreshMemorybookUi(host) {
   host.refreshSlotButtons();
+}
+async function isTargetLorebookAvailable(host, lorebookId) {
+  try {
+    await host.lorebook.get(lorebookId);
+    return true;
+  } catch (e) {
+    if (isLorebookNotFoundError(e)) return false;
+    throw e;
+  }
+}
+async function applyRecoveredTargetLorebook(host, lorebookId) {
+  await host.conversation.patchPluginSettings({
+    targetLorebookId: lorebookId,
+    sidecarEntryIds: null
+  });
+}
+async function createTargetLorebookFromTemplate(host, settings) {
+  const ensured = await host.lorebook.ensure({
+    nameTemplate: settings.autoLorebookNameTemplate
+  });
+  const id = asString(ensured?.id);
+  if (!id) {
+    host.ui.toast(host.t(k(host, "toastAutoLorebookFailed")), { color: "error" });
+    return "";
+  }
+  host.ui.toast(
+    host.t(k(host, "toastAutoLorebookCreated"), { name: ensured.name || id }),
+    { color: "success" }
+  );
+  return id;
 }
 async function ensureTargetLorebook(host, settings) {
   const existing = asString(settings.targetLorebookId);
-  if (existing) return existing;
+  if (existing) {
+    if (await isTargetLorebookAvailable(host, existing)) return existing;
+    host.ui.toast(host.t(k(host, "toastTargetLorebookDeleted")), { color: "warning" });
+    try {
+      return await promptRecoverLorebook(host, settings);
+    } catch {
+      return "";
+    }
+  }
+  if (settings.targetLorebookMode === "auto") {
+    try {
+      const id = await createTargetLorebookFromTemplate(host, settings);
+      if (!id) return "";
+      await host.conversation.patchPluginSettings({ targetLorebookId: id });
+      return id;
+    } catch {
+      host.ui.toast(host.t(k(host, "toastAutoLorebookFailed")), { color: "error" });
+      return "";
+    }
+  }
   host.ui.toast(host.t(k(host, "toastTargetLorebookMissingWarn")), { color: "warning" });
   try {
     return await promptPickLorebook(host);
@@ -718,6 +859,18 @@ function buildAutoSidecarTaskOptions(settings) {
     label: sc.name
   }));
 }
+function finishLorebookPick(id) {
+  const resolver = getLorebookPickResolver();
+  if (!resolver) return;
+  clearLorebookPickResolver();
+  resolver.resolve(id);
+}
+function cancelLorebookPick() {
+  const resolver = getLorebookPickResolver();
+  if (!resolver) return;
+  clearLorebookPickResolver();
+  resolver.reject(new Error("pick_cancelled"));
+}
 function registerPickLorebookDialog(host) {
   host.registerFormDialog(
     PLUGIN_ID,
@@ -738,26 +891,90 @@ function registerPickLorebookDialog(host) {
         const id = asString(model.targetLorebookId);
         if (!id) return;
         await h.conversation.patchPluginSettings({ targetLorebookId: id });
-        const resolver = getLorebookPickResolver();
-        if (resolver) {
-          clearLorebookPickResolver();
-          resolver.resolve(id);
-        }
+        finishLorebookPick(id);
       },
       onCancel: () => {
-        const resolver = getLorebookPickResolver();
-        if (!resolver) return;
-        clearLorebookPickResolver();
-        resolver.reject(new Error("pick_cancelled"));
+        cancelLorebookPick();
       }
     },
     DIALOG_PICK_LOREBOOK
   );
 }
+function registerRecoverLorebookDialog(host) {
+  host.registerFormDialog(
+    PLUGIN_ID,
+    {
+      titleKey: k(host, "recoverLorebookDialogTitle"),
+      bodyKey: k(host, "recoverLorebookDialogBody"),
+      fields: [
+        {
+          key: "mode",
+          labelKey: k(host, "recoverLorebookModeLabel"),
+          type: "radio",
+          options: [
+            { value: "pick", labelKey: k(host, "recoverLorebookModePick") },
+            { value: "create", labelKey: k(host, "recoverLorebookModeCreate") }
+          ]
+        },
+        {
+          key: "targetLorebookId",
+          labelKey: k(host, "sessionTargetLorebookLabel"),
+          type: "lorebook",
+          visibleWhen: { field: "mode", equals: "pick" }
+        }
+      ],
+      submitKey: k(host, "recoverLorebookConfirm"),
+      cancelKey: k(host, "sessionCancel"),
+      canSubmit: (m) => {
+        const mode = asString(m.mode);
+        if (mode === "create") return true;
+        return mode === "pick" && asString(m.targetLorebookId).length > 0;
+      },
+      onSubmit: async (h, model) => {
+        const mode = asString(model.mode);
+        let id = "";
+        if (mode === "create") {
+          const settings = await loadMergedSettings(h);
+          try {
+            id = await createTargetLorebookFromTemplate(h, settings);
+          } catch {
+            h.ui.toast(h.t(k(h, "toastAutoLorebookFailed")), { color: "error" });
+            return;
+          }
+          if (!id) return;
+        } else {
+          id = asString(model.targetLorebookId);
+          if (!id) return;
+        }
+        await applyRecoveredTargetLorebook(h, id);
+        finishLorebookPick(id);
+      },
+      onCancel: () => {
+        cancelLorebookPick();
+      }
+    },
+    DIALOG_RECOVER_LOREBOOK
+  );
+}
 function promptPickLorebook(host) {
   return new Promise((resolve, reject) => {
+    host.ui.clearProgress();
     setLorebookPickResolver({ resolve, reject });
     host.openFormDialog(PLUGIN_ID, { targetLorebookId: "" }, DIALOG_PICK_LOREBOOK);
+  });
+}
+function promptRecoverLorebook(host, settings) {
+  return new Promise((resolve, reject) => {
+    host.ui.clearProgress();
+    setLorebookPickResolver({ resolve, reject });
+    host.openFormDialog(
+      PLUGIN_ID,
+      {
+        mode: settings.targetLorebookMode === "auto" ? "create" : "pick",
+        targetLorebookId: ""
+      },
+      DIALOG_RECOVER_LOREBOOK
+    );
   });
 }
 function registerSessionDialog(host, settings) {
@@ -787,6 +1004,16 @@ function registerSessionDialog(host, settings) {
         { value: "on", labelKey: k(host, "sessionSidecarOn") },
         { value: "off", labelKey: k(host, "sessionSidecarOff") }
       ]
+    },
+    {
+      key: "entrySortMode",
+      labelKey: k(host, "entrySortModeLabel"),
+      type: "radio",
+      options: [
+        { value: "manual", labelKey: k(host, "entrySortModeManual") },
+        { value: "auto-turn-suffix", labelKey: k(host, "entrySortModeAuto-turn-suffix") }
+      ],
+      hintKey: k(host, "entrySortModeDesc")
     }
   ];
   if (settings.sidecars.length > 0) {
@@ -819,6 +1046,10 @@ function registerSessionDialog(host, settings) {
         else patch.sidecarEnabled = null;
         if (settings.sidecars.length > 0) {
           patch.autoSidecarIds = sidecarIdsFromTaskSelection(model.autoSidecarTasks);
+        }
+        const sortMode = asString(model.entrySortMode);
+        if (sortMode === "auto-turn-suffix" || sortMode === "manual") {
+          patch.entrySortMode = sortMode;
         }
         await h.conversation.patchPluginSettings(patch);
         h.ui.toast(h.t(k(h, "sessionSubmit")), { color: "success" });
@@ -899,7 +1130,7 @@ function registerSummarizeDialog(host, settings, mode) {
             nextBlockStart: fromTurn,
             autoSidecarIds
           });
-          await refreshMemorybookState(h);
+          refreshMemorybookUi(h);
         }
         await runSummarizeTasks(h, {
           fromTurn,
@@ -913,6 +1144,31 @@ function registerSummarizeDialog(host, settings, mode) {
     dialogId
   );
 }
+async function reorderTargetLorebookNow(host) {
+  const settings = await loadMergedSettings(host);
+  const targetId = asString(settings.targetLorebookId);
+  if (!targetId) {
+    host.ui.toast(host.t(k(host, "toastReorderLorebookNoTarget")), { color: "warning" });
+    return;
+  }
+  try {
+    const sidecarEntryIds = await host.lorebook.normalizeEntryRefs({
+      lorebookId: targetId,
+      entryIds: settings.sidecarEntryIds,
+      validKeys: settings.sidecars.map((s) => s.id)
+    });
+    await applyCuratedLorebookEntrySort(
+      host,
+      targetId,
+      sidecarEntryIds,
+      settings.sidecars.map((s) => s.id)
+    );
+    host.ui.toast(host.t(k(host, "toastReorderLorebookDone")), { color: "success" });
+  } catch (e) {
+    console.warn("[curated-memory] reorder lorebook failed", e);
+    host.ui.toast(host.t(k(host, "toastTaskSkipped")), { color: "warning" });
+  }
+}
 function openSessionSettings(host) {
   loadMergedSettings(host).then((s) => {
     registerSessionDialog(host, s);
@@ -923,7 +1179,8 @@ function openSessionSettings(host) {
       targetLorebookId: s.targetLorebookId,
       blockTurns: s.blockTurns,
       bufferTurns: s.bufferTurns,
-      sidecarEnabled
+      sidecarEnabled,
+      entrySortMode: s.entrySortMode
     };
     if (s.sidecars.length > 0) {
       model.autoSidecarTasks = s.autoSidecarIds.map((id) => `sidecar:${id}`);
@@ -931,13 +1188,17 @@ function openSessionSettings(host) {
     host.openFormDialog(PLUGIN_ID, model, DIALOG_SESSION);
   });
 }
-function openManualSummarize(host) {
+function openManualSummarize(host, preset) {
   loadMergedSettings(host).then((s) => {
     registerSummarizeDialog(host, s, "manual");
     const maxOrd = Math.max(0, maxTurnOrdinal(host));
     host.openFormDialog(
       PLUGIN_ID,
-      { startTurn: 0, endTurn: maxOrd, selectedTasks: ["memory"] },
+      {
+        startTurn: preset?.startTurn ?? 0,
+        endTurn: preset?.endTurn ?? maxOrd,
+        selectedTasks: ["memory"]
+      },
       DIALOG_MANUAL
     );
   });
@@ -963,7 +1224,7 @@ async function applyShortMemorybookEnable(host, settings) {
     nextBlockStart: 0,
     autoSidecarIds
   });
-  await refreshMemorybookState(host);
+  refreshMemorybookUi(host);
   host.ui.toast(host.t(k(host, "toastMemorybookScheduled"), { turn: X }), {
     color: "success"
   });
@@ -980,9 +1241,8 @@ async function tryEnableMemorybook(host) {
   await applyShortMemorybookEnable(host, settings);
 }
 async function toggleMemorybook(host) {
-  if (memorybookEnabledCache) {
+  if (isMemorybookEnabled(host)) {
     await host.conversation.patchPluginSettings({ memorybookEnabled: false });
-    await refreshMemorybookState(host);
     host.ui.toast(host.t(k(host, "toastMemorybookDisabled")), { color: "info" });
     return;
   }
@@ -1015,11 +1275,10 @@ async function tryBootstrapDefaultMemorybook(host, event) {
   const settings = await loadMergedSettings(host);
   await applyShortMemorybookEnable(host, settings);
 }
-async function handleAutoSummarizeTurn(host, turnOrdinal) {
+async function handleAutoSummarizeTurn(host, turnOrdinal2) {
   const settings = await loadMergedSettings(host);
   if (!settings.memorybookEnabled) return;
-  if (!settings.apiConfigId) return;
-  if (!shouldAutoTrigger(turnOrdinal, settings)) return;
+  if (!shouldAutoTrigger(turnOrdinal2, settings)) return;
   const range = currentAutoRange(settings);
   const tasks = resolveAutoTasks(settings);
   await runSummarizeTasks(host, {
@@ -1032,12 +1291,12 @@ async function handleAutoSummarizeTurn(host, turnOrdinal) {
 }
 function registerLifecycle(host) {
   host.lifecycle.onAssistantReplyPersisted((event) => {
-    const turnOrdinal = event.turnOrdinal;
-    if (typeof turnOrdinal !== "number" || turnOrdinal < 0) return;
+    const turnOrdinal2 = event.turnOrdinal;
+    if (typeof turnOrdinal2 !== "number" || turnOrdinal2 < 0) return;
     scheduleWhenConversationIdle(host, async () => {
       try {
         await tryBootstrapDefaultMemorybook(host, event);
-        await handleAutoSummarizeTurn(host, turnOrdinal);
+        await handleAutoSummarizeTurn(host, turnOrdinal2);
       } catch (e) {
         console.warn("[curated-memory] auto summarize failed", e);
       }
@@ -1045,22 +1304,110 @@ function registerLifecycle(host) {
   });
 }
 
+// plugins/curated-memory/src/range-picker.ts
+var RANGE_STYLES = `
+.plugin-slot.cm-range-start--active {
+  color: rgb(var(--v-theme-primary));
+  border-color: rgba(var(--v-theme-primary), 0.45);
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+.plugin-slot.cm-range-end--ready:not(:disabled) {
+  color: rgb(var(--v-theme-primary));
+  border-color: rgba(var(--v-theme-primary), 0.35);
+}
+`;
+function turnOrdinal(ctx) {
+  const n = ctx.turn?.turnOrdinal;
+  if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return null;
+  return Math.round(n);
+}
+function controlsDisabled(host) {
+  return summarizeRunning || isBusy(host);
+}
+function onRangeStartClick(host, ctx) {
+  const ord = turnOrdinal(ctx);
+  if (ord === null || controlsDisabled(host)) return;
+  setRangeStartTurn(ord);
+  host.refreshSlotButtons();
+}
+function onRangeEndClick(host, ctx) {
+  const ord = turnOrdinal(ctx);
+  const start = getRangeStartTurn();
+  if (controlsDisabled(host)) return;
+  if (start === null) {
+    host.ui.toast(host.t(k(host, "toastRangeStartRequired")), { color: "warning" });
+    return;
+  }
+  if (ord === null || ord < start) {
+    host.ui.toast(host.t(k(host, "toastInvalidRange")), { color: "warning" });
+    return;
+  }
+  openManualSummarize(host, { startTurn: start, endTurn: ord });
+}
+function registerRangePicker(host) {
+  host.registerStyles(RANGE_STYLES);
+  host.registerSlotButton("turn-block-head", {
+    id: `${PLUGIN_ID}-range-start`,
+    icon: (ctx) => {
+      const ord = turnOrdinal(ctx);
+      const start = getRangeStartTurn();
+      return ord !== null && start === ord ? "mdi-arrow-right-drop-circle" : "mdi-arrow-right-drop-circle-outline";
+    },
+    class: (ctx) => {
+      const ord = turnOrdinal(ctx);
+      const start = getRangeStartTurn();
+      return ord !== null && start === ord ? "cm-range-start--active" : "";
+    },
+    tooltipKey: k(host, "tooltipRangeStart"),
+    when: (ctx) => turnOrdinal(ctx) !== null,
+    disabled: () => controlsDisabled(host),
+    onClick: (ctx) => onRangeStartClick(host, ctx)
+  });
+  host.registerSlotButton("turn-block-head", {
+    id: `${PLUGIN_ID}-range-end`,
+    icon: "mdi-arrow-left-drop-circle-outline",
+    class: (ctx) => {
+      const ord = turnOrdinal(ctx);
+      const start = getRangeStartTurn();
+      if (start === null || ord === null) return "";
+      return ord >= start ? "cm-range-end--ready" : "";
+    },
+    tooltipKey: k(host, "tooltipRangeEnd"),
+    when: (ctx) => turnOrdinal(ctx) !== null,
+    disabled: (ctx) => {
+      if (controlsDisabled(host)) return true;
+      const ord = turnOrdinal(ctx);
+      const start = getRangeStartTurn();
+      if (start === null || ord === null) return true;
+      return ord < start;
+    },
+    onClick: (ctx) => onRangeEndClick(host, ctx)
+  });
+}
+
 // plugins/curated-memory/src/index.ts
+function isMemorybookEnabled2(host) {
+  return host.conversation.getPluginSettingsSnapshot().memorybookEnabled === true;
+}
 function register(host) {
   registerReviewDialogs(host);
   registerPickLorebookDialog(host);
-  void refreshMemorybookState(host);
+  registerRecoverLorebookDialog(host);
+  host.conversation.onPluginSettingsChanged(() => {
+    refreshMemorybookUi(host);
+  });
+  void host.conversation.getPluginSettings();
   host.registerSlotButton("composer-toolbar", {
     id: `${PLUGIN_ID}-menu`,
     icon: "mdi-book-open-page-variant",
     tooltipKey: k(host, "tooltipCuratedMemory"),
-    filled: () => memorybookEnabledCache,
+    filled: () => isMemorybookEnabled2(host),
     menu: [
       {
         id: `${PLUGIN_ID}-memorybook`,
         labelKey: k(host, "tooltipMemorybook"),
         icon: "mdi-book-open-page-variant",
-        filled: () => memorybookEnabledCache,
+        filled: () => isMemorybookEnabled2(host),
         disabled: () => summarizeRunning,
         onClick: () => {
           void toggleMemorybook(host);
@@ -1078,9 +1425,19 @@ function register(host) {
         labelKey: k(host, "tooltipSessionSettings"),
         icon: "mdi-tune-variant",
         onClick: () => openSessionSettings(host)
+      },
+      {
+        id: `${PLUGIN_ID}-reorder`,
+        labelKey: k(host, "tooltipReorderLorebook"),
+        icon: "mdi-sort",
+        disabled: () => isBusy(host) || summarizeRunning,
+        onClick: () => {
+          void reorderTargetLorebookNow(host);
+        }
       }
     ]
   });
+  registerRangePicker(host);
   registerLifecycle(host);
 }
 export {

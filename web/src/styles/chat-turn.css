@@ -65,6 +65,19 @@
   white-space   : nowrap;
 }
 
+/* 章回分隔下方 · 每轮插件 slot（如策展记忆区间选择） */
+.turn-block-head {
+  display        : flex;
+  justify-content: flex-start;
+  align-items    : center;
+  padding        : 0 2rem 0.25rem;
+  min-height     : 0;
+}
+
+.turn-block-head:not(:has(.plugin-slot)) {
+  display: none;
+}
+
 /* ========== Turn · Grid 排版 ========== */
 .turn {
   display   : grid;
@@ -384,6 +397,20 @@
 .plugin-slots .plugin-slot:disabled {
   cursor : not-allowed;
   opacity: 0.5;
+}
+
+/* turn-block-head：区间选择等，靠左且略大（须包在 .plugin-slots 内） */
+.turn-block-head__slots {
+  gap: 0.5rem;
+}
+
+.turn-block-head__slots .plugin-slot {
+  width : 2.25rem;
+  height: 2.25rem;
+}
+
+.turn-block-head__slots .plugin-slot .v-icon {
+  font-size: 1.25rem !important;
 }
 
 /* ========== 气泡 + 指向头像的小三角 ========== */

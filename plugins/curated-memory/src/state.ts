@@ -1,5 +1,4 @@
 export let summarizeRunning = false
-export let memorybookEnabledCache = false
 
 type ReviewDraft = { title: string; content: string; keywords: string[] }
 
@@ -10,6 +9,8 @@ let _reviewResolver: {
 
 let _reviewRegenerate: ((host: object) => Promise<ReviewDraft>) | null = null
 
+let _reviewTitleParams: Record<string, unknown> | null = null
+
 let _lorebookPickResolver: {
   resolve: (v: string) => void
   reject: (e: Error) => void
@@ -17,12 +18,19 @@ let _lorebookPickResolver: {
 
 export let summarizeBatchProgress: { taskIndex: number; total: number } | null = null
 
-export function setSummarizeRunning(v: boolean) {
-  summarizeRunning = v
+/** 区间选择：手动摘要起始 turnOrdinal；null 表示未选 */
+export let rangeStartTurn: number | null = null
+
+export function getRangeStartTurn() {
+  return rangeStartTurn
 }
 
-export function setMemorybookEnabledCache(v: boolean) {
-  memorybookEnabledCache = v
+export function setRangeStartTurn(v: number | null) {
+  rangeStartTurn = v
+}
+
+export function setSummarizeRunning(v: boolean) {
+  summarizeRunning = v
 }
 
 export function setSummarizeBatchProgress(
@@ -47,9 +55,18 @@ export function setReviewRegenerate(v: typeof _reviewRegenerate) {
   _reviewRegenerate = v
 }
 
+export function getReviewTitleParams() {
+  return _reviewTitleParams
+}
+
+export function setReviewTitleParams(v: Record<string, unknown> | null) {
+  _reviewTitleParams = v
+}
+
 export function clearReviewSession() {
   _reviewResolver = null
   _reviewRegenerate = null
+  _reviewTitleParams = null
 }
 
 export function getLorebookPickResolver() {

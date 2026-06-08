@@ -7,6 +7,11 @@ import {
   readApiSettingsFromFile,
   type ApiPreset,
 } from './api-settings-file.js'
+import {
+  resolveChatApiConfigId,
+  toResolvedFeatureAudit,
+  type ResolvedFeatureAudit,
+} from './feature-binding-resolve.js'
 import { readConversationIndex } from './chat-storage.js'
 import {
   mergePresetWithChatBinding,
@@ -40,6 +45,21 @@ export interface ResolvedConversationChatCall {
   presetId: string
   params: ResolvedConversationChatParams
   usedConversationOverride: boolean
+}
+
+export async function resolveChatFeatureAudit(
+  conversationId?: string,
+): Promise<ResolvedFeatureAudit | undefined> {
+  const settings = await readApiSettingsFromFile()
+  if (!settings) return undefined
+  let conversationApiPreset: unknown
+  const cid = typeof conversationId === 'string' ? conversationId.trim() : ''
+  if (cid) {
+    const idx = await readConversationIndex(cid)
+    conversationApiPreset = idx?.apiPreset
+  }
+  const meta = resolveChatApiConfigId(settings, conversationApiPreset)
+  return meta ? toResolvedFeatureAudit(meta) : undefined
 }
 
 export async function resolveConversationChatCall(
@@ -79,8 +99,10 @@ export async function resolveConversationChatCall(
     }
   }
 
+  const resolvedChat = resolveChatApiConfigId(settings, idx?.apiPreset)
   const presetId = (
     binding.apiConfigId?.trim() ||
+    resolvedChat?.apiConfigId ||
     settings.activePresetId ||
     ''
   ).trim()

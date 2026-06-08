@@ -8,15 +8,37 @@
 
   "tooltipSessionSettings": "Session curated memory settings",
 
+  "tooltipRangeStart": "Select summary start turn",
+
+  "tooltipRangeEnd": "Select end turn and open manual summarize",
+
+  "toastRangeStartRequired": "Select a start turn with the right icon first",
+
   "tooltipSummarizeNow": "Summarize to lorebook now",
 
   "tooltipSummarizeTurn": "Summarize through this turn",
 
   "sessionDialogTitle": "Session curated memory",
 
-  "sessionTargetLorebookLabel": "Target lorebook",
+  "sessionTargetLorebookLabel": "Summary lorebook",
 
-  "sessionTargetLorebookHint": "Leave empty to use global default.",
+  "sessionTargetLorebookHint": "Leave empty to pick a book when summarizing.",
+
+  "convTargetLorebookIdLabel": "Summary lorebook",
+
+  "convTargetLorebookIdDesc": "Summary entries are written here. Empty = pick when summarizing or on auto block. Not the same as inject lorebooks in Bindings.",
+
+  "convMemorybookEnabledLabel": "Memorybook auto summarize",
+
+  "convMemorybookEnabledDesc": "Schedules block-based auto summarize (preview still required).",
+
+  "convBlockTurnsLabel": "Turns per block",
+
+  "convBlockTurnsDesc": "Session override; clear to inherit global default.",
+
+  "convBufferTurnsLabel": "Buffer turns",
+
+  "convBufferTurnsDesc": "Recent turns kept out of the current block; clear to inherit global default.",
 
   "sessionBlockTurnsLabel": "Turns per block (N)",
 
@@ -51,7 +73,7 @@
 
   "manualSubmit": "Run",
 
-  "reviewDialogTitle": "Confirm summary",
+  "reviewDialogTitle": "Confirm and save summary: {name}",
 
   "reviewDialogBody": "Edit title, body, and keywords before saving to the lorebook.",
 
@@ -101,6 +123,20 @@
 
   "pickLorebookConfirm": "Confirm",
 
+  "recoverLorebookDialogTitle": "Summary lorebook deleted",
+
+  "recoverLorebookDialogBody": "The target lorebook no longer exists. Pick another book or create one from the template; Sidecar entry mappings will be reset.",
+
+  "recoverLorebookModeLabel": "Action",
+
+  "recoverLorebookModePick": "Use another lorebook",
+
+  "recoverLorebookModeCreate": "Create new lorebook",
+
+  "recoverLorebookConfirm": "Confirm",
+
+  "toastTargetLorebookDeleted": "Summary lorebook was deleted — pick or create one",
+
   "toastTargetLorebookMissingWarn": "Target lorebook missing — select one before summarizing",
 
   "memorybookDefaultEnabledLabel": "Enable Memorybook on new chats",
@@ -141,7 +177,7 @@
 
   "apiConfigIdLabel": "Summary API preset",
 
-  "apiConfigIdDesc": "API preset used for summarization.",
+  "apiConfigIdDesc": "API preset for summarization; leave empty to use this conversation's apiPreset.plugins override when set.",
 
   "triggerEveryNTurnsLabel": "Turns per block (N)",
 
@@ -151,17 +187,39 @@
 
   "bufferTurnsDesc": "Recent turns excluded from auto blocks (still in chat history). Prefer ≤ global history injection turns.",
 
-  "defaultTargetLorebookIdLabel": "Default target lorebook",
+  "targetLorebookModeLabel": "Summary lorebook mode",
 
-  "defaultTargetLorebookIdDesc": "Used when session override is empty.",
+  "targetLorebookModeDesc": "Manual: pick an existing book when unset. Auto: create a lorebook from the template for this chat.",
 
-  "titleFormatLabel": "Entry title format",
+  "targetLorebookModeManual": "Manual",
 
-  "titleFormatDesc": "“Title + turn suffix” appends “-start-end” turn numbers after the model title.",
+  "targetLorebookModeAuto": "Auto create",
 
-  "titleFormatPlain": "Title only",
+  "autoLorebookNameTemplateLabel": "Auto lorebook name template",
 
-  "titleFormatRange-suffix": "Title + turn suffix",
+  "autoLorebookNameTemplateDesc": "Supports \\{\\{conversationTitle\\}\\}; appends the current conversation id if the name already exists.",
+
+  "toastAutoLorebookCreated": "Created summary lorebook: {name}",
+
+  "toastAutoLorebookFailed": "Failed to auto-create summary lorebook",
+
+  "previousSummariesLimitLabel": "Recent summaries in context",
+
+  "previousSummariesLimitDesc": "Include the latest N plot summary bodies when calling the summary model (sorted by turn suffix; later = more recent). 0 disables.",
+
+  "entrySortModeLabel": "Auto-sort entries",
+
+  "entrySortModeDesc": "When enabled, reorders the target lorebook after each summarize batch finishes (plot + Sidecar): prefix entries → Sidecars → summaries by turn suffix.",
+
+  "entrySortModeManual": "Manual (drag only)",
+
+  "entrySortModeAuto-turn-suffix": "Auto by turn suffix",
+
+  "tooltipReorderLorebook": "Reorder target lorebook entries",
+
+  "toastReorderLorebookDone": "Target lorebook entries reordered",
+
+  "toastReorderLorebookNoTarget": "Set a target lorebook first",
 
   "defaultEntryTriggerModeLabel": "New entry trigger mode",
 

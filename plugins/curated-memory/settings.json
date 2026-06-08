@@ -1,53 +1,12 @@
 {
-
-
-
   "schemaVersion": 1,
-
-
-
   "apiConfigId": "",
-
-
-
   "memorybookDefaultEnabled": false,
-
-
-
   "triggerEveryNTurns": 15,
-
-
-
   "bufferTurns": 5,
-
-
-
-  "defaultTargetLorebookId": "",
-
-
-
-  "titleFormat": "range-suffix",
-
-
-
+  "previousSummariesLimit": 8,
   "defaultEntryTriggerMode": "vector",
-
-
-
   "sidecarEnabled": false,
-
-
-
   "sidecars": "[]",
-
-
-
   "systemPromptTemplate": ""
-
-
-
 }
-
-
-
-

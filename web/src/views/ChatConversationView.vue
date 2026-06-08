@@ -911,6 +911,7 @@ watch(
       <ConversationContextSettings
         ref="convContextSettingsRef"
         :conversation-id="conversationId"
+        :conversation-title="title"
         :initial-prompt-preset-id="convBindings.promptPresetId"
         :initial-character-ids="convBindings.characterIds"
         :initial-lorebook-ids="convBindings.lorebookIds"

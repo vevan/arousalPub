@@ -1,13 +1,17 @@
 import { apiFetch } from '@/utils/api-fetch'
 import { useLorebooksStore } from '@/stores/lorebooks'
 import type { LorebookEntry } from '@/stores/lorebooks'
+import { useConversationPluginSettingsStore } from '@/stores/conversation-plugin-settings'
 import { PluginHostApiError } from '@/plugins/plugin-host-api-error'
 import type {
   LorebookDto,
   LorebookEntryCreateBody,
   LorebookEntryDto,
   LorebookEntryPatchBody,
+  LorebookEnsureResult,
   LorebookNormalizeEntryRefsRequest,
+  LorebookReorderCuratedRequest,
+  LorebookReorderCuratedResult,
   LorebookSummaryDto,
   PluginCompleteDraftRequest,
   PluginCompleteDraftResponse,
@@ -91,6 +95,51 @@ function syncLorebookEntryToStore(
     )
   } catch {
     /* pinia 未就绪时忽略 */
+  }
+}
+
+function syncLorebookToStore(lorebook: LorebookDto): void {
+  try {
+    useLorebooksStore().upsertLorebookFromPlugin(lorebook as import('@/stores/lorebooks').Lorebook)
+  } catch {
+    /* pinia 未就绪时忽略 */
+  }
+}
+
+export async function ensureLorebook(
+  pluginId: string,
+  conversationId: string,
+  nameTemplate?: string,
+): Promise<LorebookEnsureResult> {
+  const res = await apiFetch(
+    `/api/plugins/${encodeURIComponent(pluginId)}/lorebooks/ensure`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversationId,
+        ...(nameTemplate !== undefined ? { nameTemplate } : {}),
+      }),
+    },
+  )
+  await throwIfNotOk(res, 'lorebooks_write_failed')
+  const data = (await res.json()) as {
+    id?: string
+    name?: string
+    created?: boolean
+    lorebook?: LorebookDto
+  }
+  const id = typeof data.id === 'string' ? data.id.trim() : ''
+  if (!id) {
+    throw new PluginHostApiError('lorebooks_write_failed', res.status)
+  }
+  if (data.lorebook && typeof data.lorebook === 'object') {
+    syncLorebookToStore(data.lorebook)
+  }
+  return {
+    id,
+    name: typeof data.name === 'string' ? data.name : id,
+    created: data.created === true,
   }
 }
 
@@ -201,6 +250,30 @@ export async function normalizeLorebookEntryRefs(
   return data.entryIds
 }
 
+export async function reorderCuratedLorebookEntries(
+  pluginId: string,
+  lorebookId: string,
+  req?: LorebookReorderCuratedRequest,
+  signal?: AbortSignal,
+): Promise<LorebookReorderCuratedResult> {
+  const res = await apiFetch(
+    `/api/plugins/${encodeURIComponent(pluginId)}/lorebooks/${encodeURIComponent(lorebookId)}/reorder-curated`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req ?? {}),
+      signal,
+    },
+  )
+  await throwIfNotOk(res, 'lorebook_entry_patch_failed')
+  const data = (await res.json()) as LorebookReorderCuratedResult & { ok?: boolean }
+  if (!data.ok || !data.lorebook || typeof data.lorebook !== 'object') {
+    throw new PluginHostApiError('lorebook_entry_patch_failed', res.status)
+  }
+  syncLorebookToStore(data.lorebook)
+  return data
+}
+
 export async function runPluginCompleteDraft(
   pluginId: string,
   conversationId: string,
@@ -226,6 +299,7 @@ export async function runPluginCompleteDraft(
 
 export async function runPluginComplete(
   pluginId: string,
+  conversationId: string,
   req: PluginCompleteRequest,
   signal?: AbortSignal,
 ): Promise<PluginCompleteResponse> {
@@ -234,7 +308,7 @@ export async function runPluginComplete(
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req),
+      body: JSON.stringify({ conversationId, ...req }),
       signal,
     },
   )
@@ -273,8 +347,9 @@ export async function expandPluginMacros(
 
 export async function runPluginCompletePreflight(
   pluginId: string,
+  conversationId: string,
   req: {
-    apiConfigId: string
+    apiConfigId?: string
     messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
   },
   signal?: AbortSignal,
@@ -284,7 +359,7 @@ export async function runPluginCompletePreflight(
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req),
+      body: JSON.stringify({ conversationId, ...req }),
       signal,
     },
   )
@@ -315,7 +390,10 @@ export async function fetchConversationPluginSettings(
     pluginSettings?: Record<string, Record<string, unknown>>
   }
   const bag = idx.pluginSettings?.[pluginId]
-  return bag && typeof bag === 'object' && !Array.isArray(bag) ? { ...bag } : {}
+  const saved =
+    bag && typeof bag === 'object' && !Array.isArray(bag) ? { ...bag } : {}
+  useConversationPluginSettingsStore().setBag(conversationId, pluginId, saved)
+  return saved
 }
 
 export async function patchConversationPluginSettings(
@@ -338,5 +416,8 @@ export async function patchConversationPluginSettings(
     index?: { pluginSettings?: Record<string, Record<string, unknown>> }
   }
   const bag = data.index?.pluginSettings?.[pluginId]
-  return bag && typeof bag === 'object' && !Array.isArray(bag) ? { ...bag } : {}
+  const saved =
+    bag && typeof bag === 'object' && !Array.isArray(bag) ? { ...bag } : {}
+  useConversationPluginSettingsStore().setBag(conversationId, pluginId, saved)
+  return saved
 }

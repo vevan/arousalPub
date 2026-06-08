@@ -47,6 +47,21 @@ function resolveIcon(icon: string | ((ctx: PluginSlotContext) => string)): strin
   return typeof icon === 'function' ? icon(slotCtx()) : icon
 }
 
+function resolveExtraClass(
+  value: string | ((ctx: PluginSlotContext) => string) | undefined,
+): string {
+  if (!value) return ''
+  return typeof value === 'function' ? value(slotCtx()) : value
+}
+
+function resolveIconSize(btn: PluginSlotButtonDef): number {
+  const raw = btn.iconSize
+  if (raw == null) {
+    return props.slotName === 'turn-block-head' ? 20 : 13
+  }
+  return typeof raw === 'function' ? raw(slotCtx()) : raw
+}
+
 function resolveTooltipKey(btn: PluginSlotButtonDef): string {
   return typeof btn.tooltipKey === 'function'
     ? btn.tooltipKey(slotCtx())
@@ -112,13 +127,13 @@ function onPlainClick(btn: PluginSlotButtonDef) {
         <button
           type="button"
           class="plugin-slot"
-          :class="{ 'is-filled': isFilled(btn.filled) }"
+          :class="[resolveExtraClass(btn.class), { 'is-filled': isFilled(btn.filled) }]"
           :disabled="isDisabled(btn.disabled)"
           v-bind="menuProps"
           :data-tt="t(resolveTooltipKey(btn))"
           :aria-label="t(resolveTooltipKey(btn))"
         >
-          <v-icon size="13">{{ resolveIcon(btn.icon) }}</v-icon>
+          <v-icon :size="resolveIconSize(btn)">{{ resolveIcon(btn.icon) }}</v-icon>
         </button>
       </template>
       <v-list
@@ -155,13 +170,13 @@ function onPlainClick(btn: PluginSlotButtonDef) {
       v-else
       type="button"
       class="plugin-slot"
-      :class="{ 'is-filled': isFilled(btn.filled) }"
+      :class="[resolveExtraClass(btn.class), { 'is-filled': isFilled(btn.filled) }]"
       :disabled="isDisabled(btn.disabled)"
       :data-tt="t(resolveTooltipKey(btn))"
       :aria-label="t(resolveTooltipKey(btn))"
       @click="onPlainClick(btn)"
     >
-      <v-icon size="13">{{ resolveIcon(btn.icon) }}</v-icon>
+      <v-icon :size="resolveIconSize(btn)">{{ resolveIcon(btn.icon) }}</v-icon>
     </button>
   </template>
 </template>

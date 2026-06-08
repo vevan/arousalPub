@@ -67,6 +67,10 @@ export interface PluginSettingsFieldSchema {
   required?: boolean
   defaultKey?: string
   itemFields?: PluginSettingsItemFieldSchema[]
+  /** 会话 schema：清空表单项时 PATCH null，继承全局 settings.json */
+  conversationInherit?: boolean
+  /** 与全局 settings 键名对应，用于 inherit hint */
+  inheritFromGlobalKey?: string
 }
 
 export interface PluginSettingsSchema {
@@ -85,6 +89,7 @@ export interface PluginManifest {
   }
   connection?: { policy?: string }
   settingsSchema?: PluginSettingsSchema
+  conversationSettingsSchema?: PluginSettingsSchema
 }
 
 export interface PluginCompleteDraftMessage {
@@ -101,15 +106,18 @@ export interface PluginServerHostApi {
     pluginId: string,
   ) => Promise<Record<string, unknown>>
   runPluginComplete: (req: {
-    apiConfigId: string
+    apiConfigId?: string
+    conversationId?: string
     messages: PluginCompleteDraftMessage[]
+    modelOverride?: string
     responseFormat?: 'json_object' | 'text'
   }) => Promise<
     | { ok: true; content: string; usage?: { promptTokens?: number; completionTokens?: number }; latencyMs: number }
     | { ok: false; code: string; status?: number; detail?: string }
   >
   runPluginCompletePreflight: (req: {
-    apiConfigId: string
+    apiConfigId?: string
+    conversationId?: string
     messages: PluginCompleteDraftMessage[]
   }) => Promise<{
     ok: boolean
@@ -128,13 +136,13 @@ export interface PluginServerHostApi {
 export interface PluginCompleteDraftContext {
   pluginId: string
   conversationId: string
-  apiConfigId: string
+  /** 解析后填入；插件 hook 内 complete/preflight 可省略 apiConfigId */
+  apiConfigId?: string
   kind: 'memory' | 'sidecar'
   userContent: string
   systemPromptTemplate: string
   fromTurn?: number
   toTurn?: number
-  titleFormat?: 'plain' | 'range-suffix'
   sidecarName?: string
 }
 
@@ -191,4 +199,6 @@ export interface PluginManageEntry {
   slots: string[]
   settingsSchema: PluginSettingsSchema | null
   hasSettings: boolean
+  conversationSettingsSchema: PluginSettingsSchema | null
+  hasConversationSettings: boolean
 }

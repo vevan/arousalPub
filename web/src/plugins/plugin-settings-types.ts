@@ -51,6 +51,8 @@ export interface PluginSettingsFieldSchema {
   required?: boolean
   defaultKey?: string
   itemFields?: PluginSettingsItemFieldSchema[]
+  conversationInherit?: boolean
+  inheritFromGlobalKey?: string
 }
 
 export interface PluginSettingsSchema {
@@ -68,4 +70,6 @@ export interface PluginManageEntry {
   slots: string[]
   settingsSchema: PluginSettingsSchema | null
   hasSettings: boolean
+  conversationSettingsSchema: PluginSettingsSchema | null
+  hasConversationSettings: boolean
 }

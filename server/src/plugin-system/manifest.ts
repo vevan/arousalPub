@@ -17,6 +17,9 @@ export async function readPluginManifest(
     if (typeof m.name !== 'string' || !m.name.trim()) return null
     if (typeof m.version !== 'string' || !m.version.trim()) return null
     const settingsSchema = normalizeSettingsSchema(m.settingsSchema)
+    const conversationSettingsSchema = normalizeSettingsSchema(
+      m.conversationSettingsSchema,
+    )
     return {
       id: m.id.trim(),
       name: m.name.trim(),
@@ -30,6 +33,7 @@ export async function readPluginManifest(
       ui: m.ui,
       connection: m.connection,
       settingsSchema: settingsSchema ?? undefined,
+      conversationSettingsSchema: conversationSettingsSchema ?? undefined,
     }
   } catch {
     return null

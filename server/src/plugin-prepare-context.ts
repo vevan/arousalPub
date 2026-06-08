@@ -4,7 +4,12 @@ import { readAllTurns } from './chunk-chain.js'
 import { isValidConversationId } from './conversation-id.js'
 import { readLorebookById } from './lorebook-file.js'
 import {
-  buildPreviousMemoriesBlock,
+  buildPreviousSummariesBlock,
+  buildSidecarsBlock,
+  pickRecentSummaryEntries,
+  sortCuratedEntriesInGroup,
+} from './plugin-curated-lorebook.js'
+import {
   formatSummarizeTranscript,
   PLUGIN_SUMMARIZE_BATCH_MAX,
 } from './plugin-summarize-format.js'
@@ -19,6 +24,9 @@ export interface PluginPrepareContextRequest {
   targetLorebookId: string
   includePreviousMemories?: boolean
   previousMemoriesLimit?: number
+  previousSummariesLimit?: number
+  sidecarEntryIds?: Record<string, string>
+  sidecarIds?: string[]
 }
 
 export interface PluginPrepareContextSuccess {
@@ -62,6 +70,25 @@ async function resolveDisplayNames(conversationId: string): Promise<{
   const charIds = resolvedCharacterIds(idx)
   const assistantDisplayName = await loadAssistantDisplayName(charIds)
   return { userDisplayName, assistantDisplayName }
+}
+
+function normalizeSidecarEntryIds(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof k === 'string' && typeof v === 'string' && v.trim()) {
+      out[k.trim()] = v.trim()
+    }
+  }
+  return out
+}
+
+function normalizeSidecarIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((x): x is string => typeof x === 'string')
+    .map((x) => x.trim())
+    .filter(Boolean)
 }
 
 export async function runPluginPrepareContext(
@@ -117,26 +144,58 @@ export async function runPluginPrepareContext(
   )
 
   const includePrevious = req.includePreviousMemories !== false
+  const limitRaw =
+    typeof req.previousSummariesLimit === 'number'
+      ? req.previousSummariesLimit
+      : req.previousMemoriesLimit
+  const limit =
+    typeof limitRaw === 'number' && Number.isFinite(limitRaw)
+      ? Math.max(0, Math.min(50, Math.round(limitRaw)))
+      : 8
+
+  const sidecarEntryIds = normalizeSidecarEntryIds(req.sidecarEntryIds)
+  const sidecarConfigIds = normalizeSidecarIds(req.sidecarIds)
+  const sidecarEntryIdSet = new Set(Object.values(sidecarEntryIds))
+
   let prevBlock = ''
+  let sidecarBlock = ''
   if (includePrevious) {
-    const limit =
-      typeof req.previousMemoriesLimit === 'number' &&
-      Number.isFinite(req.previousMemoriesLimit)
-        ? Math.max(0, Math.min(50, Math.round(req.previousMemoriesLimit)))
-        : 8
     try {
       const lb = await readLorebookById(targetLorebookId)
-      const titles = (lb?.entries ?? [])
-        .slice(-limit)
-        .map((e) => (typeof e.title === 'string' ? e.title.trim() : ''))
-        .filter(Boolean)
-      prevBlock = buildPreviousMemoriesBlock(titles)
+      const entries = lb?.entries ?? []
+
+      const recent = pickRecentSummaryEntries(
+        entries,
+        sidecarEntryIdSet,
+        limit,
+        sidecarEntryIds,
+        sidecarConfigIds,
+      )
+      prevBlock = buildPreviousSummariesBlock(
+        recent.map((e) => ({
+          title: typeof e.title === 'string' ? e.title : '',
+          content: typeof e.content === 'string' ? e.content : '',
+        })),
+      )
+
+      const sidecarEntries = sortCuratedEntriesInGroup(
+        entries.filter((e) => sidecarEntryIdSet.has(e.id)),
+        sidecarEntryIds,
+        sidecarConfigIds,
+      )
+      sidecarBlock = buildSidecarsBlock(
+        sidecarEntries.map((e) => ({
+          title: typeof e.title === 'string' ? e.title : '',
+          content: typeof e.content === 'string' ? e.content : '',
+        })),
+      )
     } catch {
       prevBlock = ''
+      sidecarBlock = ''
     }
   }
 
-  const userContent = `${prevBlock}<history>\n${transcript}\n</history>`
+  const userContent = `${prevBlock}${sidecarBlock}<history>\n${transcript}\n</history>`
 
   return {
     ok: true,

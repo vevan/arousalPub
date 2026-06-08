@@ -34,6 +34,12 @@ import {
 } from './user-preferences-file.js'
 import { resolveBudgetTrimSettings } from './budget-trim-settings.js'
 import { normalizePresetForAssemble } from './prompt-preset-normalize.js'
+import { readApiSettingsFromFile } from './api-settings-file.js'
+import {
+  resolveFeatureApi,
+  toResolvedFeatureAudit,
+  type ResolvedFeatureAudit,
+} from './feature-binding-resolve.js'
 import { applyPluginsAfterAssemblePrompts } from './plugin-host.js'
 import type { ChatPluginsBody } from './plugin-types.js'
 import { countChatMessagesTokens } from './token-count.js'
@@ -158,6 +164,8 @@ export interface BuildConversationMessagesResult {
   droppedMemoryCount: number
   memoryTurnIds?: string[]
   memoryText?: string
+  /** 已配置 rag_generate 时返回；独立知识库 RAG 未接线前仅作占位审计 */
+  resolvedRagGenerate?: ResolvedFeatureAudit
 }
 
 export async function buildConversationOutboundMessages(
@@ -171,6 +179,18 @@ export async function buildConversationOutboundMessages(
   const idx = await readConversationIndex(conversationId)
   if (!idx) {
     return { error: ApiErrorCodes.conversation_not_found, status: 404 }
+  }
+
+  let resolvedRagGenerate: ResolvedFeatureAudit | undefined
+  const apiSettings = await readApiSettingsFromFile()
+  if (apiSettings) {
+    const ragMeta = resolveFeatureApi(apiSettings, 'rag_generate', {
+      conversationApiPreset: idx.apiPreset,
+    })
+    if (ragMeta) {
+      resolvedRagGenerate = toResolvedFeatureAudit(ragMeta)
+      // P4.1 占位：独立知识库 RAG 未落地前不向 messages 注入检索结果
+    }
   }
 
   const doc = params.promptsDoc
@@ -334,5 +354,6 @@ export async function buildConversationOutboundMessages(
     droppedMemoryCount,
     memoryTurnIds: trimState.memoryItems.map((x) => x.turn.turnId),
     memoryText: finalMemoryText || undefined,
+    ...(resolvedRagGenerate ? { resolvedRagGenerate } : {}),
   }
 }

@@ -2,6 +2,7 @@ import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import {
   conversationDir,
+  readBranchConversationIndex,
   readConversationIndex,
   writeChunkFile,
   writeConversationIndex,
@@ -15,6 +16,13 @@ import {
   type ChunkSettings,
 } from './chunk-settings.js'
 import { readGlobalChunkSettings } from './user-preferences-file.js'
+import {
+  chunkStorageRelativePath,
+  normalizeBranchPath,
+  normalizeChunkBasename,
+  resolveNestedBranchPath,
+  splitChunkStoragePath,
+} from './chunk-path.js'
 
 const TURN_CHUNK_FILE_RE = /^turn-(\d{6})-(\d{6})\.json$/
 
@@ -90,6 +98,16 @@ export async function readChunkFile(
   }
 }
 
+/** 按 branchPath + basename 读取 chunk（memory v2 召回用） */
+export async function readChunkFileAt(
+  conversationId: string,
+  branchPath: string,
+  chunkFileName: string,
+): Promise<ChunkFile | null> {
+  const rel = chunkStorageRelativePath(branchPath, chunkFileName)
+  return readChunkFile(conversationId, rel)
+}
+
 function sortTurnsUnique(turns: TurnRecord[]): TurnRecord[] {
   const sorted = turns.slice().sort((a, b) => a.turnOrdinal - b.turnOrdinal)
   const seen = new Set<string>()
@@ -102,23 +120,111 @@ function sortTurnsUnique(turns: TurnRecord[]): TurnRecord[] {
   return out
 }
 
-/** 从 tail 沿 previous 列出 chunk 文件名（旧 → 新） */
-export async function listChunkFileNames(
+/** 从 branches[] 单条解析相对子目录 path */
+export function parseBranchRegistryPath(entry: unknown): string | null {
+  if (!entry || typeof entry !== 'object') return null
+  const raw = (entry as { path?: unknown }).path
+  if (typeof raw !== 'string' || !raw.trim()) return null
+  try {
+    return normalizeBranchPath(raw.trim())
+  } catch {
+    return null
+  }
+}
+
+/** 从 index branches[] 递归收集已注册分支（会话根相对路径） */
+export async function collectRegisteredBranchPaths(
   conversationId: string,
 ): Promise<string[]> {
-  const idx = await readConversationIndex(conversationId)
+  const out = new Set<string>()
+
+  async function walk(
+    parentBranchPath: string,
+    branches: unknown[] | undefined,
+  ): Promise<void> {
+    if (!Array.isArray(branches)) return
+    for (const entry of branches) {
+      const rel = parseBranchRegistryPath(entry)
+      if (!rel) continue
+      const full = resolveNestedBranchPath(parentBranchPath, rel)
+      if (!full || out.has(full)) continue
+      out.add(full)
+      const branchIdx = await readBranchConversationIndex(conversationId, full)
+      await walk(full, branchIdx?.branches)
+    }
+  }
+
+  const root = await readConversationIndex(conversationId)
+  await walk('', root?.branches)
+  return [...out].sort()
+}
+
+export interface ChunkChainLocation {
+  branchPath: string
+  chunkFileName: string
+}
+
+function normalizeTailChunkBasename(
+  tailChunkFile: string,
+  branchPath: string,
+): string {
+  const bp = normalizeBranchPath(branchPath)
+  if (!bp) {
+    return normalizeChunkBasename(tailChunkFile)
+  }
+  const split = splitChunkStoragePath(tailChunkFile)
+  return split.chunkFileName
+}
+
+/** 沿指定 branchPath 的 tail → previous 列出 chunk basename（旧 → 新） */
+export async function listChunkFileNamesAt(
+  conversationId: string,
+  branchPath: string,
+): Promise<string[]> {
+  const bp = normalizeBranchPath(branchPath)
+  const idx = bp
+    ? await readBranchConversationIndex(conversationId, bp)
+    : await readConversationIndex(conversationId)
   if (!idx?.tailChunkFile) return []
+
+  let fileName: string | null = normalizeTailChunkBasename(idx.tailChunkFile, bp)
   const reversed: string[] = []
-  let fileName: string | null = idx.tailChunkFile
   const guard = new Set<string>()
   while (fileName) {
     if (guard.has(fileName)) break
     guard.add(fileName)
     reversed.push(fileName)
-    const chunk = await readChunkFile(conversationId, fileName)
-    fileName = chunk?.meta.links.previous ?? null
+    const chunk = await readChunkFileAt(conversationId, bp, fileName)
+    const prev = chunk?.meta.links.previous
+    fileName = prev ? normalizeTailChunkBasename(prev, bp) : null
   }
   return reversed.reverse()
+}
+
+/** 从 tail 沿 previous 列出主路径 chunk 文件名（旧 → 新） */
+export async function listChunkFileNames(
+  conversationId: string,
+): Promise<string[]> {
+  return listChunkFileNamesAt(conversationId, '')
+}
+
+/** 主路径 + 已注册分支子树的全部 (branchPath, chunkFileName) */
+export async function enumerateAllChunkChains(
+  conversationId: string,
+): Promise<ChunkChainLocation[]> {
+  const out: ChunkChainLocation[] = []
+  const mainFiles = await listChunkFileNamesAt(conversationId, '')
+  for (const chunkFileName of mainFiles) {
+    out.push({ branchPath: '', chunkFileName })
+  }
+  const branchPaths = await collectRegisteredBranchPaths(conversationId)
+  for (const branchPath of branchPaths) {
+    const files = await listChunkFileNamesAt(conversationId, branchPath)
+    for (const chunkFileName of files) {
+      out.push({ branchPath, chunkFileName })
+    }
+  }
+  return out
 }
 
 /** 沿 chunk 链按 turnId 定位块文件 */
@@ -151,11 +257,120 @@ export function isTailChunkFile(
   return idx.tailChunkFile === chunkFileName
 }
 
-/** 从 tail 沿 previous 读取全链 turn */
+function chunkOrdinalRangeOverlaps(
+  chunk: ChunkFile,
+  from: number,
+  to: number,
+): boolean {
+  const start = chunk.meta.ordinalRange?.start ?? 0
+  const end = chunk.meta.ordinalRange?.end ?? start
+  return end >= from && start <= to
+}
+
+/** 尾部 N 轮的 ordinal 闭区间（纯函数，单测用） */
+export function computeTailOrdinalReadRange(
+  maxOrdinal: number,
+  limit: number,
+): { from: number; to: number; hasMoreBefore: boolean } {
+  const cap = Math.max(1, Math.floor(limit))
+  const to = Math.max(0, Math.floor(maxOrdinal))
+  const from = Math.max(0, to - cap + 1)
+  return { from, to, hasMoreBefore: from > 0 }
+}
+
+export interface ReadTurnsTailResult {
+  turns: TurnRecord[]
+  hasMoreBefore: boolean
+  minOrdinal: number | null
+  maxOrdinal: number | null
+}
+
+/** 读取对话尾部最多 limit 轮（沿 tail → previous，仅加载相交 chunk） */
+export async function readTurnsTail(
+  conversationId: string,
+  limit: number,
+): Promise<ReadTurnsTailResult> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx?.tailChunkFile) {
+    return {
+      turns: [],
+      hasMoreBefore: false,
+      minOrdinal: null,
+      maxOrdinal: null,
+    }
+  }
+  const tailChunk = await readChunkFile(conversationId, idx.tailChunkFile)
+  if (!tailChunk?.turns?.length) {
+    return {
+      turns: [],
+      hasMoreBefore: !!tailChunk?.meta.links.previous,
+      minOrdinal: null,
+      maxOrdinal: null,
+    }
+  }
+  const maxOrdinal = Math.max(...tailChunk.turns.map((t) => t.turnOrdinal))
+  const { from, to, hasMoreBefore } = computeTailOrdinalReadRange(
+    maxOrdinal,
+    limit,
+  )
+  const turns = await readTurnsInOrdinalRange(conversationId, from, to)
+  const minOrdinal =
+    turns.length > 0 ? Math.min(...turns.map((t) => t.turnOrdinal)) : null
+  return {
+    turns,
+    hasMoreBefore,
+    minOrdinal,
+    maxOrdinal,
+  }
+}
+
+/** 加载与 [from,to] 可能相交的 chunk（每文件至多读一次） */
+export async function loadConversationChunksForOrdinalRange(
+  conversationId: string,
+  from: number,
+  to: number,
+): Promise<Map<string, ChunkFile>> {
+  const idx = await readConversationIndex(conversationId)
+  const map = new Map<string, ChunkFile>()
+  if (!idx?.tailChunkFile) return map
+  let fileName: string | null = idx.tailChunkFile
+  const guard = new Set<string>()
+  while (fileName) {
+    if (guard.has(fileName)) break
+    guard.add(fileName)
+    const chunk = await readChunkFile(conversationId, fileName)
+    if (!chunk) break
+    if (chunkOrdinalRangeOverlaps(chunk, from, to)) {
+      map.set(fileName, chunk)
+    }
+    fileName = chunk.meta.links.previous ?? null
+  }
+  return map
+}
+
+/** 仅读取 ordinal 闭区间 [from, to] 内的 turn（不加载全对话） */
+export async function readTurnsInOrdinalRange(
+  conversationId: string,
+  from: number,
+  to: number,
+): Promise<TurnRecord[]> {
+  if (from > to || from < 0) return []
+  const chunks = await loadConversationChunksForOrdinalRange(conversationId, from, to)
+  const collected: TurnRecord[] = []
+  for (const chunk of chunks.values()) {
+    for (const t of chunk.turns) {
+      if (t.turnOrdinal >= from && t.turnOrdinal <= to) {
+        collected.push(t)
+      }
+    }
+  }
+  return sortTurnsUnique(collected)
+}
+
+/** 从 tail 沿 previous 读取全链 turn（运维/兼容；热路径请用 readTurnsTail / readTurnsInOrdinalRange） */
 export async function readAllTurns(
   conversationId: string,
 ): Promise<TurnRecord[]> {
-  await syncChunkIndexIfDrifted(conversationId)
   const idx = await readConversationIndex(conversationId)
   if (!idx?.tailChunkFile) return []
   const collected: TurnRecord[] = []
@@ -484,34 +699,57 @@ export async function rebuildHeadTailFromLinks(
   }
 }
 
-/** 读盘时 index 与 links 不一致则静默修正（链断裂时不改） */
+/** 默认 5 分钟内不对同一会话重复全目录扫盘 */
+export const CHUNK_INDEX_SYNC_TTL_MS = 5 * 60 * 1000
+
+const chunkIndexSyncAt = new Map<string, number>()
+
+export function invalidateChunkIndexSyncCache(conversationId: string): void {
+  chunkIndexSyncAt.delete(conversationId)
+}
+
+/** 读盘时 index 与 links 不一致则静默修正（链断裂时不改）；热路径默认跳过，repair API 传 force */
 export async function syncChunkIndexIfDrifted(
   conversationId: string,
+  options?: { force?: boolean },
 ): Promise<boolean> {
+  if (!options?.force) {
+    const last = chunkIndexSyncAt.get(conversationId) ?? 0
+    if (Date.now() - last < CHUNK_INDEX_SYNC_TTL_MS) {
+      return false
+    }
+  }
   const idx = await readConversationIndex(conversationId)
   if (!idx) return false
   const computed = await rebuildHeadTailFromLinks(conversationId)
-  if (computed.brokenChain) return false
+  if (computed.brokenChain) {
+    chunkIndexSyncAt.set(conversationId, Date.now())
+    return false
+  }
   if (computed.chunkFileCount === 0) {
     if (idx.headChunkFile !== null || idx.tailChunkFile !== null) {
       idx.headChunkFile = null
       idx.tailChunkFile = null
       idx.updatedAt = new Date().toISOString()
       await writeConversationIndex(conversationId, idx)
+      chunkIndexSyncAt.set(conversationId, Date.now())
       return true
     }
+    chunkIndexSyncAt.set(conversationId, Date.now())
     return false
   }
   if (
     idx.headChunkFile === computed.headChunkFile &&
     idx.tailChunkFile === computed.tailChunkFile
   ) {
+    chunkIndexSyncAt.set(conversationId, Date.now())
     return false
   }
   idx.headChunkFile = computed.headChunkFile
   idx.tailChunkFile = computed.tailChunkFile
   idx.updatedAt = new Date().toISOString()
   await writeConversationIndex(conversationId, idx)
+  chunkIndexSyncAt.set(conversationId, Date.now())
   return true
 }
 
@@ -519,6 +757,7 @@ export async function syncChunkIndexIfDrifted(
 export async function repairConversationChunkIndex(
   conversationId: string,
 ): Promise<ChunkIndexRepairResult & { ok: boolean }> {
+  invalidateChunkIndexSyncCache(conversationId)
   const idx = await readConversationIndex(conversationId)
   if (!idx) {
     return {
@@ -553,6 +792,7 @@ export async function repairConversationChunkIndex(
     idx.updatedAt = new Date().toISOString()
     await writeConversationIndex(conversationId, idx)
   }
+  chunkIndexSyncAt.set(conversationId, Date.now())
   return { ok: true, ...computed, repaired: needsRepair }
 }
 

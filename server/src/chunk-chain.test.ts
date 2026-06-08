@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   chunkFileNameForRange,
   computeHeadTailFromLinks,
+  computeTailOrdinalReadRange,
   inferTurnsPerFileFromFileName,
   ordinalRangeForNewChunk,
 } from './chunk-chain.js'
@@ -34,6 +35,21 @@ describe('inferTurnsPerFileFromFileName', () => {
       100,
     )
     assert.equal(inferTurnsPerFileFromFileName('not-a-chunk.json'), null)
+  })
+})
+
+describe('computeTailOrdinalReadRange', () => {
+  it('covers last N ordinals', () => {
+    assert.deepEqual(computeTailOrdinalReadRange(99, 16), {
+      from: 84,
+      to: 99,
+      hasMoreBefore: true,
+    })
+    assert.deepEqual(computeTailOrdinalReadRange(5, 20), {
+      from: 0,
+      to: 5,
+      hasMoreBefore: false,
+    })
   })
 })
 

@@ -252,6 +252,9 @@ export interface PluginPrepareContextRequest {
 
 export interface PluginPrepareContextResponse {
   ok: true
+  /** 参考上下文（previous-summaries / sidecars / context-history），拼入 system */
+  systemReferenceContext: string
+  /** 待摘要 `<history>`，作为 user 消息 */
   userContent: string
   transcript: string
   turnCount: number
@@ -293,6 +296,8 @@ export interface PluginCompleteDraftRequest {
   /** 省略时由宿主解析（对话覆盖 → 插件设置） */
   apiConfigId?: string
   kind: 'memory' | 'sidecar'
+  /** 参考上下文，与 systemPromptTemplate 拼成 system 消息 */
+  systemReferenceContext?: string
   userContent: string
   systemPromptTemplate: string
   fromTurn?: number
@@ -392,6 +397,10 @@ export interface PluginWebHost {
       lorebookId: string,
       body: LorebookEntryCreateBody,
     ): Promise<LorebookEntryDto>
+    createEntriesBatch(
+      lorebookId: string,
+      entries: LorebookEntryCreateBody[],
+    ): Promise<LorebookEntryDto[]>
     patchEntry(
       lorebookId: string,
       entryId: string,

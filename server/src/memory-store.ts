@@ -1,13 +1,12 @@
 import path from 'node:path'
 import type { OptimizeStats, Table } from '@lancedb/lancedb'
 import { closeLanceDb, openLanceDb } from './lance-connection-pool.js'
+import {
+  buildAllowedBranchPathsWhereSql,
+  normalizeBranchPath,
+} from './chunk-path.js'
 import { getUserDataDir } from './config.js'
 import { getCurrentUserId } from './user-context.js'
-import {
-  chunkIdFromFileName,
-  listChunkFileNames,
-  readChunkContainingTurnId,
-} from './chunk-chain.js'
 import {
   isTurnIdNullable,
   readTurnMemoryRowsFromTable,
@@ -17,10 +16,12 @@ import {
 
 export type { TurnMemoryRow } from './turn-memory-arrow.js'
 
-const LEGACY_TABLE_NAME = 'turn_memory'
-const CHUNK_TABLE_PREFIX = 'mem_'
+const TABLE_NAME = 'turn_memory'
+/** 旧版每 chunk 一表；wipe 时一并删除 */
+const LEGACY_CHUNK_TABLE_PREFIX = 'mem_'
 
 const primaryKeyReady = new Set<string>()
+const legacyMemoryWarned = new Set<string>()
 
 function memoryDbUri(conversationId: string): string {
   return path.join(
@@ -31,59 +32,50 @@ function memoryDbUri(conversationId: string): string {
   )
 }
 
-function primaryKeyCacheKey(conversationId: string, tableName: string): string {
-  return `${conversationId}\0${tableName}`
-}
-
-/** JSON chunk 文件名 → Lance 表名（1 chunk ↔ 1 表） */
-export function memoryTableNameForChunkFile(chunkFileName: string): string {
-  return `${CHUNK_TABLE_PREFIX}${chunkIdFromFileName(chunkFileName)}`
-}
-
-function isChunkMemoryTableName(name: string): boolean {
-  return name.startsWith(CHUNK_TABLE_PREFIX)
+function primaryKeyCacheKey(conversationId: string): string {
+  return `${conversationId}\0${TABLE_NAME}`
 }
 
 async function connectDb(conversationId: string) {
   return openLanceDb(memoryDbUri(conversationId))
 }
 
-async function openTableByName(
+function warnLegacyMemoryTablesOnce(
   conversationId: string,
-  tableName: string,
-): Promise<Table | null> {
-  const db = await connectDb(conversationId)
-  const names = await db.tableNames()
-  if (!names.includes(tableName)) return null
-  return db.openTable(tableName)
-}
-
-async function openChunkTable(
-  conversationId: string,
-  chunkFileName: string,
-): Promise<Table | null> {
-  return openTableByName(
-    conversationId,
-    memoryTableNameForChunkFile(chunkFileName),
+  tableNames: string[],
+): void {
+  const key = conversationId
+  if (legacyMemoryWarned.has(key)) return
+  const hasLegacy = tableNames.some((n) => n.startsWith(LEGACY_CHUNK_TABLE_PREFIX))
+  const hasV2 = tableNames.includes(TABLE_NAME)
+  if (!hasLegacy || hasV2) return
+  legacyMemoryWarned.add(key)
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[memory] conversation ${conversationId} has legacy mem_* tables without v2 turn_memory; rebuild recommended`,
   )
 }
 
-async function openLegacyTable(conversationId: string): Promise<Table | null> {
-  return openTableByName(conversationId, LEGACY_TABLE_NAME)
+async function openMemoryTable(
+  conversationId: string,
+): Promise<Table | null> {
+  const db = await connectDb(conversationId)
+  const names = await db.tableNames()
+  warnLegacyMemoryTablesOnce(conversationId, names)
+  if (!names.includes(TABLE_NAME)) return null
+  return db.openTable(TABLE_NAME)
 }
 
 async function ensureTurnIdPrimaryKey(
   table: Table,
   conversationId: string,
-  tableName: string,
 ): Promise<void> {
-  const key = primaryKeyCacheKey(conversationId, tableName)
+  const key = primaryKeyCacheKey(conversationId)
   if (primaryKeyReady.has(key)) return
   try {
     await table.setUnenforcedPrimaryKey('turnId')
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    // 表已设过 PK（重启后内存缓存丢失、或并发 flush 竞态）— 视为就绪
     if (!msg.includes('already set')) throw e
   }
   primaryKeyReady.add(key)
@@ -97,44 +89,43 @@ async function dropTableByName(
   const names = await db.tableNames()
   if (!names.includes(tableName)) return
   await db.dropTable(tableName)
-  primaryKeyReady.delete(primaryKeyCacheKey(conversationId, tableName))
+  if (tableName === TABLE_NAME) {
+    primaryKeyReady.delete(primaryKeyCacheKey(conversationId))
+  }
 }
 
 async function migrateNullableTable(
   conversationId: string,
-  tableName: string,
   table: Table,
 ): Promise<Table | null> {
-  const rows = await readTurnMemoryRowsFromTable(table, conversationId)
-  await dropTableByName(conversationId, tableName)
+  const rows = await readTurnMemoryRowsFromTable(table)
+  await dropTableByName(conversationId, TABLE_NAME)
   if (rows.length === 0) return null
-  return createChunkMemoryTable(conversationId, tableName, rows)
+  return createTurnMemoryTable(conversationId, rows)
 }
 
 async function ensureMergeReadyTable(
   conversationId: string,
-  tableName: string,
   table: Table,
 ): Promise<Table | null> {
   if (await isTurnIdNullable(table)) {
-    return migrateNullableTable(conversationId, tableName, table)
+    return migrateNullableTable(conversationId, table)
   }
-  await ensureTurnIdPrimaryKey(table, conversationId, tableName)
+  await ensureTurnIdPrimaryKey(table, conversationId)
   return table
 }
 
-async function createChunkMemoryTable(
+async function createTurnMemoryTable(
   conversationId: string,
-  tableName: string,
   rows: TurnMemoryRow[],
 ): Promise<Table> {
   if (rows.length === 0) {
-    throw new Error('createChunkMemoryTable requires at least one row')
+    throw new Error('createTurnMemoryTable requires at least one row')
   }
   const db = await connectDb(conversationId)
   const arrowTable = rowsToTurnMemoryArrowTable(rows)
-  const table = await db.createTable(tableName, arrowTable)
-  await ensureTurnIdPrimaryKey(table, conversationId, tableName)
+  const table = await db.createTable(TABLE_NAME, arrowTable)
+  await ensureTurnIdPrimaryKey(table, conversationId)
   return table
 }
 
@@ -143,18 +134,15 @@ function toSqlString(s: string): string {
 }
 
 export interface OptimizeTurnMemoryOptions {
-  immediate?: boolean
   aggressiveCleanup?: boolean
 }
 
-export async function optimizeChunkMemoryTable(
+export async function optimizeTurnMemoryTable(
   conversationId: string,
-  chunkFileName: string,
   options?: OptimizeTurnMemoryOptions,
 ): Promise<OptimizeStats | null> {
   const uri = memoryDbUri(conversationId)
-  const tableName = memoryTableNameForChunkFile(chunkFileName)
-  const table = await openTableByName(conversationId, tableName)
+  const table = await openMemoryTable(conversationId)
   if (!table) return null
 
   const optimizeOptions =
@@ -167,23 +155,21 @@ export async function optimizeChunkMemoryTable(
   return stats
 }
 
-/** 批量 mergeInsert 到指定 chunk 表 */
+/** 批量 mergeInsert 到会话单表 turn_memory */
 export async function upsertTurnMemoryRowsBatch(
   conversationId: string,
-  chunkFileName: string,
   rows: TurnMemoryRow[],
 ): Promise<void> {
   if (!rows.length) return
   const valid = rows.filter((r) => r.vector.length > 0)
   if (!valid.length) return
 
-  const tableName = memoryTableNameForChunkFile(chunkFileName)
-  let existing = await openTableByName(conversationId, tableName)
+  let existing = await openMemoryTable(conversationId)
   if (existing) {
-    existing = await ensureMergeReadyTable(conversationId, tableName, existing)
+    existing = await ensureMergeReadyTable(conversationId, existing)
   }
   if (!existing) {
-    await createChunkMemoryTable(conversationId, tableName, valid)
+    await createTurnMemoryTable(conversationId, valid)
     return
   }
   await existing
@@ -193,19 +179,18 @@ export async function upsertTurnMemoryRowsBatch(
     .execute(rowsToTurnMemoryArrowTable(valid))
 }
 
-/** 替换单个 chunk 的 memory 表（全量重建该块） */
-export async function replaceChunkMemoryIndex(
+/** 弃用分支子树时删除对应 Lance 行（含嵌套 branchPath） */
+export async function deleteTurnMemoryByBranchSubtree(
   conversationId: string,
-  chunkFileName: string,
-  rows: TurnMemoryRow[],
+  branchPath: string,
 ): Promise<void> {
-  const tableName = memoryTableNameForChunkFile(chunkFileName)
-  await dropTableByName(conversationId, tableName)
-  if (!rows.length) return
-  await createChunkMemoryTable(conversationId, tableName, rows)
-  await optimizeChunkMemoryTable(conversationId, chunkFileName, {
-    aggressiveCleanup: true,
-  })
+  const bp = normalizeBranchPath(branchPath)
+  if (!bp) return
+
+  const table = await openMemoryTable(conversationId)
+  if (!table) return
+  const esc = toSqlString(bp)
+  await table.delete(`branchPath = '${esc}' OR branchPath LIKE '${esc}/%'`)
 }
 
 export async function deleteTurnMemoryVector(
@@ -215,18 +200,29 @@ export async function deleteTurnMemoryVector(
   const id = turnId.trim()
   if (!id) return
 
-  const located = await readChunkContainingTurnId(conversationId, id)
-  if (located) {
-    const table = await openChunkTable(conversationId, located.fileName)
-    if (table) {
-      await table.delete(`turnId = '${toSqlString(id)}'`)
-    }
-    return
-  }
+  const table = await openMemoryTable(conversationId)
+  if (!table) return
+  await table.delete(`turnId = '${toSqlString(id)}'`)
+}
 
-  const legacy = await openLegacyTable(conversationId)
-  if (legacy) {
-    await legacy.delete(`turnId = '${toSqlString(id)}'`)
+const REPLACE_TURN_MEMORY_BATCH = 50
+
+/**
+ * 全量替换 turn_memory（重建成功路径；调用方须已完成 embed）。
+ * embed / API 失败时不应调用，以免清空旧索引。
+ */
+export async function replaceTurnMemoryIndex(
+  conversationId: string,
+  rows: TurnMemoryRow[],
+  batchSize = REPLACE_TURN_MEMORY_BATCH,
+): Promise<void> {
+  await deleteConversationMemoryIndex(conversationId)
+  const valid = rows.filter((r) => r.vector.length > 0)
+  for (let i = 0; i < valid.length; i += batchSize) {
+    await upsertTurnMemoryRowsBatch(
+      conversationId,
+      valid.slice(i, i + batchSize),
+    )
   }
 }
 
@@ -237,9 +233,11 @@ export async function deleteConversationMemoryIndex(
   const db = await connectDb(conversationId)
   const names = await db.tableNames()
   for (const name of names) {
-    if (name === LEGACY_TABLE_NAME || isChunkMemoryTableName(name)) {
+    if (name === TABLE_NAME || name.startsWith(LEGACY_CHUNK_TABLE_PREFIX)) {
       await db.dropTable(name)
-      primaryKeyReady.delete(primaryKeyCacheKey(conversationId, name))
+      if (name === TABLE_NAME) {
+        primaryKeyReady.delete(primaryKeyCacheKey(conversationId))
+      }
     }
   }
   closeLanceDb(uri)
@@ -248,19 +246,48 @@ export async function deleteConversationMemoryIndex(
 export interface MemorySearchHit {
   turnId: string
   turnOrdinal: number
+  branchPath: string
+  chunkFileName: string
   score: number
+}
+
+/** Lance vectorSearch 预过滤 SQL（分支链 + 排除近期 history ordinal） */
+export function buildMemoryVectorSearchWhereClause(
+  allowedBranchPaths: Set<string> | undefined,
+  maxOrdinalExclusive: number | undefined,
+): string | undefined {
+  const parts: string[] = []
+  const branchWhere = buildAllowedBranchPathsWhereSql(allowedBranchPaths)
+  if (branchWhere) parts.push(branchWhere)
+  if (
+    typeof maxOrdinalExclusive === 'number' &&
+    !Number.isNaN(maxOrdinalExclusive)
+  ) {
+    parts.push(`turnOrdinal < ${maxOrdinalExclusive}`)
+  }
+  if (parts.length === 0) return undefined
+  return parts.join(' AND ')
 }
 
 function collectSearchHits(
   raw: Record<string, unknown>[],
   excludeTurnIds: Set<string>,
   maxOrdinalExclusive: number | undefined,
+  allowedBranchPaths: Set<string> | undefined,
   out: MemorySearchHit[],
   topK: number,
 ): void {
   for (const row of raw) {
     const turnId = String(row.turnId ?? '')
     if (!turnId || turnId === '__seed__' || excludeTurnIds.has(turnId)) {
+      continue
+    }
+    const branchPath = String(row.branchPath ?? '')
+    if (
+      allowedBranchPaths &&
+      allowedBranchPaths.size > 0 &&
+      !allowedBranchPaths.has(branchPath)
+    ) {
       continue
     }
     const turnOrdinal = Number(row.turnOrdinal ?? 0)
@@ -271,65 +298,48 @@ function collectSearchHits(
     ) {
       continue
     }
+    const chunkFileName = String(row.chunkFileName ?? '')
+    if (!chunkFileName) continue
     const dist = Number(row._distance ?? 0)
     const score = 1 / (1 + dist)
-    out.push({ turnId, turnOrdinal, score })
+    out.push({ turnId, turnOrdinal, branchPath, chunkFileName, score })
     if (out.length >= topK * 8) break
   }
 }
 
-async function searchOneTable(
-  table: Table,
-  queryVector: number[],
-  k: number,
-  excludeTurnIds: Set<string>,
-  maxOrdinalExclusive: number | undefined,
-  out: MemorySearchHit[],
-  topK: number,
-): Promise<void> {
-  const raw = await table.vectorSearch(queryVector).limit(k).toArray()
-  collectSearchHits(raw, excludeTurnIds, maxOrdinalExclusive, out, topK)
-}
-
-/** 跨 chunk 表向量 TopK；兼容旧版单表 turn_memory */
+/** 单表向量 TopK（Memory v2） */
 export async function searchTurnMemoryVectors(
   conversationId: string,
   queryVector: number[],
   topK: number,
   excludeTurnIds: Set<string> = new Set(),
   maxOrdinalExclusive?: number,
+  allowedBranchPaths?: Set<string>,
 ): Promise<MemorySearchHit[]> {
   if (!queryVector.length || topK < 1) return []
   const k = Math.min(64, Math.max(topK * 3, topK))
+
+  const table = await openMemoryTable(conversationId)
+  if (!table) return []
+
+  let vectorQuery = table.vectorSearch(queryVector)
+  const whereClause = buildMemoryVectorSearchWhereClause(
+    allowedBranchPaths,
+    maxOrdinalExclusive,
+  )
+  if (whereClause) {
+    vectorQuery = vectorQuery.where(whereClause)
+  }
+  const raw = await vectorQuery.limit(k).toArray()
   const hits: MemorySearchHit[] = []
-
-  const chunkFiles = await listChunkFileNames(conversationId)
-  for (const chunkFile of chunkFiles) {
-    const table = await openChunkTable(conversationId, chunkFile)
-    if (!table) continue
-    await searchOneTable(
-      table,
-      queryVector,
-      k,
-      excludeTurnIds,
-      maxOrdinalExclusive,
-      hits,
-      topK,
-    )
-  }
-
-  const legacy = await openLegacyTable(conversationId)
-  if (legacy) {
-    await searchOneTable(
-      legacy,
-      queryVector,
-      k,
-      excludeTurnIds,
-      maxOrdinalExclusive,
-      hits,
-      topK,
-    )
-  }
+  collectSearchHits(
+    raw as Record<string, unknown>[],
+    excludeTurnIds,
+    maxOrdinalExclusive,
+    allowedBranchPaths,
+    hits,
+    topK,
+  )
 
   hits.sort((a, b) => b.score - a.score)
   const seen = new Set<string>()

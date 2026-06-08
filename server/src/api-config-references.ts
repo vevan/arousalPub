@@ -8,14 +8,9 @@ import { conversationDir } from './chat-storage.js'
 import { getChatsRoot } from './config.js'
 import { isValidConversationId } from './conversation-id.js'
 import { readUserPreferencesDocument } from './user-preferences-file.js'
-import {
-  featureBindingReferencePath,
-  type FeatureBinding,
-} from './feature-binding-types.js'
-
 export type ApiConfigReferenceKind =
   | 'conversation_api_preset'
-  | 'global_feature_binding'
+  | 'global_active_preset'
   | 'api_preset_api_key'
   | 'embedding_api_key'
 
@@ -145,29 +140,11 @@ export async function listConversationIndexScans(): Promise<
   return acc
 }
 
-export function findGlobalFeatureBindingReferences(
-  presetId: string,
-  featureBindings: FeatureBinding[] | undefined,
-): ApiConfigReference[] {
-  const refs: ApiConfigReference[] = []
-  const pid = presetId.trim()
-  if (!pid) return refs
-  for (const binding of featureBindings ?? []) {
-    if (binding.apiConfigId !== pid) continue
-    refs.push({
-      kind: 'global_feature_binding',
-      path: featureBindingReferencePath(binding),
-    })
-  }
-  return refs
-}
-
 export function findPresetReferencesInSettings(
   presetId: string,
   settings: {
     activePresetId: string
     presets: ApiPreset[]
-    featureBindings?: FeatureBinding[]
   },
   conversationScans: ConversationIndexScan[],
 ): ApiConfigReference[] {
@@ -175,9 +152,12 @@ export function findPresetReferencesInSettings(
   const pid = presetId.trim()
   if (!pid) return refs
 
-  refs.push(
-    ...findGlobalFeatureBindingReferences(pid, settings.featureBindings),
-  )
+  if (settings.activePresetId.trim() === pid) {
+    refs.push({
+      kind: 'global_active_preset',
+      path: 'activePresetId',
+    })
+  }
 
   for (const scan of conversationScans) {
     if (!scan.apiPreset) continue
@@ -278,18 +258,12 @@ export async function deleteApiPresetFromFile(
     nextActive = nextPresets[0]?.id ?? nextActive
   }
   const savedAt = new Date().toISOString()
-  const { upsertChatGlobalBinding } = await import('./feature-binding-types.js')
-  let nextBindings = (settings.featureBindings ?? []).filter(
-    (b) => b.apiConfigId !== pid,
-  )
-  nextBindings = upsertChatGlobalBinding(nextBindings, nextActive, savedAt)
   const { writeApiSettingsToFile } = await import('./api-settings-file.js')
   await writeApiSettingsToFile({
     version: 1,
     savedAt,
     activePresetId: nextActive,
     presets: nextPresets,
-    featureBindings: nextBindings,
   })
   return { activePresetId: nextActive }
 }

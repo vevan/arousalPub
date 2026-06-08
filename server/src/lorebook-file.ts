@@ -161,6 +161,22 @@ export async function readLorebookById(
   return raw
 }
 
+/** 按 id 列表读取世界书（注入解析用，避免 readLorebooksDocument 全库加载） */
+export async function readLorebooksByIds(
+  lorebookIds: string[],
+): Promise<Lorebook[]> {
+  const out: Lorebook[] = []
+  const seen = new Set<string>()
+  for (const raw of lorebookIds) {
+    const id = raw.trim()
+    if (!id || !LOREBOOK_ID_RE.test(id) || seen.has(id)) continue
+    seen.add(id)
+    const lb = await readLorebookById(id)
+    if (lb) out.push(lb)
+  }
+  return out
+}
+
 export async function writeLorebooksDocument(
   data: LorebooksDocument,
 ): Promise<void> {
@@ -318,6 +334,14 @@ export async function writeLorebook(lb: Lorebook): Promise<string> {
   return savedAt
 }
 
+/** 整包 PUT `/api/lorebooks` 上限（DOC/22 M4）；插件条目级 API 不受此限 */
+export const LOREBOOKS_BULK_PUT_MAX_BOOKS = 64
+export const LOREBOOKS_BULK_PUT_MAX_ENTRIES = 3000
+export const LOREBOOKS_BULK_PUT_MAX_JSON_BYTES = 8 * 1024 * 1024
+
+/** 同一用户两次整包 PUT 最小间隔（防抖连续全量写） */
+export const LOREBOOKS_BULK_PUT_MIN_INTERVAL_MS = 2000
+
 export function assertValidLorebooksPayload(body: unknown): {
   lorebooks: Lorebook[]
 } {
@@ -328,12 +352,20 @@ export function assertValidLorebooksPayload(body: unknown): {
   if (!Array.isArray(o.lorebooks) || o.lorebooks.length === 0) {
     throw new Error('至少保留一本世界书')
   }
+  if (o.lorebooks.length > LOREBOOKS_BULK_PUT_MAX_BOOKS) {
+    throw new Error(`整包保存最多 ${LOREBOOKS_BULK_PUT_MAX_BOOKS} 本世界书`)
+  }
   const ids = new Set<string>()
+  let totalEntries = 0
   for (const lb of o.lorebooks) {
     if (!isLorebookShape(lb)) throw new Error('世界书格式无效')
     if (ids.has(lb.id)) throw new Error('世界书 id 重复')
     ids.add(lb.id)
     validateLorebookShape(lb)
+    totalEntries += lb.entries.length
+  }
+  if (totalEntries > LOREBOOKS_BULK_PUT_MAX_ENTRIES) {
+    throw new Error(`整包保存最多 ${LOREBOOKS_BULK_PUT_MAX_ENTRIES} 条条目`)
   }
   return { lorebooks: o.lorebooks }
 }

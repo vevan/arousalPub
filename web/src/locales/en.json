@@ -573,6 +573,7 @@
       "tabPlugins": "Plugins",
       "tabPluginsHint": "Per-conversation settings for enabled plugins; separate from global defaults in Settings → Plugins.",
       "pluginTabEmpty": "No enabled plugins with conversation settings. Enable plugins in Settings → Plugins.",
+      "memorybookProgressTitle": "Summary progress",
       "pluginConfigure": "Configure",
       "pluginBackToList": "Back to plugin list",
       "pluginLoadFailed": "Failed to load plugin conversation settings",
@@ -669,17 +670,6 @@
     "boundLorebook": "Bound lorebook",
     "boundPrompt": "Bound prompt preset"
   },
-  "featureBindings": {
-    "title": "Feature API bindings",
-    "hint": "Assign default API presets per feature (keys stay server-side only).",
-    "chatGlobal": "Default chat API",
-    "advancedTitle": "Advanced bindings",
-    "ragGenerate": "Knowledge RAG (rag_generate)",
-    "ragHint": "Takes effect when standalone knowledge-base RAG is wired",
-    "rerank": "Rerank",
-    "saved": "Feature bindings saved",
-    "saveFailed": "Failed to save feature bindings"
-  },
   "conn": {
     "needBaseAndKey": "Enter Base URL and API Key first",
     "savedSnackbar": "Saved to server file {path}",
@@ -688,7 +678,7 @@
     "preset": "API preset",
     "presetEdit": "Preset being edited",
     "presetEditHint": "Choose which preset entry to edit for connection and model fields",
-    "refGlobalBinding": "Global feature binding — {path}",
+    "refActivePreset": "Global default API preset — {path}",
     "newPreset": "New preset",
     "deleteCurrent": "Delete current",
     "testConnection": "Test connection",

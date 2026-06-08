@@ -184,6 +184,7 @@ interface ConversationBatchContext {
 | `patchEntry(lorebookId, entryId, body)` | 更新条目（sidecar 覆盖等） |
 | `normalizeEntryRefs(req)` | 校验并清理无效 entry id 映射（服务端读盘） |
 | `reorderCurated(lorebookId, req?)` | 策展记忆用：按 `DOC/12` §4.2 规则重算组内 `order`，**单次读盘 + 单次写盘** |
+| `ensure(req?)` | 按模板自动创建 summary 目标书（策展记忆 auto 模式）；需 `lorebook.write` |
 
 **`normalizeEntryRefs` 请求**：
 
@@ -206,9 +207,16 @@ interface ConversationBatchContext {
 // → { ok: true, lorebook, changed: number, savedAt }
 ```
 
-**权限**：`lorebook.read`（list/get/normalize）；`lorebook.entry.write`（create/patch/reorderCurated）。
+**`ensure` 请求**（`POST …/lorebooks/ensure`）：
 
-**⏳ 规划（P0，未实现）**：`create` / `ensure` 自动按模板建 summary 书 → 见 `DOC/04`、`DOC/12` §2.3。
+```ts
+{
+  nameTemplate?: string   // 默认取插件 settings.autoLorebookNameTemplate；支持 {{conversationTitle}}
+}
+// → { ok: true, lorebook: { id, name, ... } }
+```
+
+**权限**：`lorebook.read`（list/get/normalize）；`lorebook.entry.write`（create/patch/reorderCurated）；`lorebook.write`（ensure）。
 
 ### 3.7 `host.api`
 
@@ -223,7 +231,7 @@ interface ConversationBatchContext {
 | 方法 | 说明 |
 |------|------|
 | `complete(req)` | 通用出站补全：`messages[]`；`apiConfigId` 可省略，由宿主解析 |
-| `prepareContext(req)` | 服务端读 turn + 拼摘要用 `userContent`（含 `<history>` / 可选 `<previous-memories>`） |
+| `prepareContext(req)` | 服务端读 turn + 返回 `systemReferenceContext`（参考块）与 `userContent`（仅 `<history>`） |
 | `completeDraft(req)` | 调用插件 `server.mjs` 的 `completeDraft` hook（扩宏 → preflight → complete → 解析） |
 
 **`complete` 请求**：
@@ -254,8 +262,9 @@ interface ConversationBatchContext {
   sidecarEntryIds?: Record<string, string>
   sidecarIds?: string[]              // Sidecar 配置 id 顺序
 }
-// userContent：`<previous-summaries>` → `<sidecars>` → `<history>`（见 DOC/12 §3.3）
-// → { ok: true, userContent, transcript, turnCount, meta: { userDisplayName, assistantDisplayName } }
+// systemReferenceContext：`<previous-summaries>` → `<sidecars>` → `<context-history>`?（见 DOC/12 §3.3）
+// userContent：仅 `<history>`
+// → { ok: true, systemReferenceContext, userContent, transcript, turnCount, meta: { userDisplayName, assistantDisplayName } }
 ```
 
 **`completeDraft` 请求**：
@@ -264,7 +273,8 @@ interface ConversationBatchContext {
 {
   apiConfigId?: string      // 省略时同上；complete-draft 路由会先解析再调 hook
   kind: 'memory' | 'sidecar'
-  userContent: string
+  systemReferenceContext?: string  // 参考块，与 systemPromptTemplate 拼成 system
+  userContent: string              // 仅 <history>
   systemPromptTemplate: string
   fromTurn?: number
   toTurn?: number
@@ -365,6 +375,8 @@ interface ConversationBatchContext {
 | POST | `/api/plugins/:id/lorebooks/:lorebookId/entries` | `lorebook.entry.write` |
 | PATCH | `/api/plugins/:id/lorebooks/:lorebookId/entries/:entryId` | `lorebook.entry.write` |
 | POST | `/api/plugins/:id/lorebooks/normalize-entry-refs` | `lorebook.read` |
+| POST | `/api/plugins/:id/lorebooks/ensure` | `lorebook.write` |
+| POST | `/api/plugins/:id/lorebooks/:lorebookId/reorder-curated` | `lorebook.entry.write` |
 | POST | `/api/plugins/:id/complete` | `plugin.complete` |
 | POST | `/api/plugins/:id/complete/preflight` | `plugin.complete` |
 | POST | `/api/plugins/:id/prepare-context` | `conversation.read` + `lorebook.read` |
@@ -384,6 +396,7 @@ interface ConversationBatchContext {
 | `prompt.inject` | 注入组装 messages（guidance-generate） |
 | `lorebook.read` | 读 lorebook |
 | `lorebook.entry.write` | 创建/更新 lore 条目 |
+| `lorebook.write` | 插件 ensure 自动建 lorebook |
 | `plugin.complete` | 出站 LLM 转发 |
 
 未声明权限却调用对应 `host.*` → 服务端返回 **403** `plugin_permission_denied`。
@@ -480,7 +493,6 @@ class PluginHostApiError {
 
 | 能力 | 说明 |
 |------|------|
-| `host.lorebook.ensure({ nameTemplate? })` | `POST …/lorebooks/ensure`，自动建 summary 目标书（需 `lorebook.write`） |
 | 服务端 `onAssistantReplyPersisted` | 自动触发摘要流水线（当前由 Web lifecycle 负责） |
 | 字段级 permissions 与 turn.plugins 写权限细分 | 部分 enforce 仍随路由演进 |
 
@@ -503,3 +515,4 @@ class PluginHostApiError {
 | 日期 | 说明 |
 |------|------|
 | 2026-06-02 | 首版：合并 DOC/10–11 已实现 API；新增 `prepareContext`、`normalizeEntryRefs`、`completeDraft` |
+| 2026-06-02 | 核对 `lorebook.ensure` / `reorderCurated` 已实现；补 REST 与 `lorebook.write` 权限说明 |

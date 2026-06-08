@@ -14,6 +14,7 @@ import {
   parseObjectListField,
   serializeObjectListField,
 } from '@/utils/plugin-settings-validate'
+import { translatePluginI18nKey } from '@/utils/plugin-locale-text'
 import {
   loadApiPresetSelectItems,
   loadLorebookSelectItems,
@@ -30,6 +31,8 @@ const props = defineProps<{
   modelValue: Record<string, unknown>
   /** 会话 schema：展示 inheritFromGlobalKey 对应的全局值 */
   globalSettings?: Record<string, unknown>
+  /** 某字段下方的补充说明行（如 curated-memory 自动摘要进度） */
+  fieldCompanionLines?: (fieldKey: string) => string[] | undefined
 }>()
 
 const emit = defineEmits<{
@@ -70,15 +73,23 @@ function resourceSelectClearable(field: PluginSettingsFieldSchema): boolean {
   return field.type === 'lorebook'
 }
 
+function pluginText(key: string, params?: Record<string, unknown>): string {
+  return translatePluginI18nKey(key, t, te, params)
+}
+
+function companionLinesFor(fieldKey: string): string[] {
+  return props.fieldCompanionLines?.(fieldKey) ?? []
+}
+
 function labelFor(field: PluginSettingsFieldSchema): string {
   const key = pluginI18nKey(props.pluginId, field.labelKey)
-  return te(key) ? t(key) : field.labelKey
+  return te(key) ? pluginText(key) : field.labelKey
 }
 
 function hintFor(field: PluginSettingsFieldSchema): string | undefined {
   if (!field.descriptionKey) return undefined
   const key = pluginI18nKey(props.pluginId, field.descriptionKey)
-  return te(key) ? t(key) : field.descriptionKey
+  return te(key) ? pluginText(key) : field.descriptionKey
 }
 
 function inheritGlobalHint(field: PluginSettingsFieldSchema): string | undefined {
@@ -133,13 +144,13 @@ function setInheritNumberField(
 
 function itemLabelFor(field: PluginSettingsItemFieldSchema): string {
   const key = pluginI18nKey(props.pluginId, field.labelKey)
-  return te(key) ? t(key) : field.labelKey
+  return te(key) ? pluginText(key) : field.labelKey
 }
 
 function itemHintFor(field: PluginSettingsItemFieldSchema): string | undefined {
   if (!field.descriptionKey) return undefined
   const key = pluginI18nKey(props.pluginId, field.descriptionKey)
-  return te(key) ? t(key) : field.descriptionKey
+  return te(key) ? pluginText(key) : field.descriptionKey
 }
 
 function itemEnumLabel(
@@ -325,16 +336,45 @@ function addObjectListLabel(): string {
       :key="field.key"
     >
       <template v-if="isFieldVisible(field)">
-        <v-switch
-          v-if="field.type === 'boolean'"
-          :model-value="Boolean(fieldValue(field.key))"
-          :label="labelFor(field)"
-          :hint="fullHintFor(field)"
-          persistent-hint
-          color="primary"
-          hide-details="auto"
-          @update:model-value="setField(field.key, $event)"
-        />
+        <div v-if="field.type === 'boolean'">
+          <v-switch
+            :model-value="Boolean(fieldValue(field.key))"
+            :label="labelFor(field)"
+            :hint="fullHintFor(field)"
+            persistent-hint
+            color="primary"
+            hide-details="auto"
+            @update:model-value="setField(field.key, $event)"
+          />
+          <slot
+            v-if="$slots['field-companion-panel']"
+            name="field-companion-panel"
+            :field-key="field.key"
+          />
+          <template v-else>
+            <div
+              v-if="companionLinesFor(field.key).length > 0"
+              class="plugin-field-companion ps-1 mt-n1 mb-3"
+            >
+              <p
+                v-for="(line, ci) in companionLinesFor(field.key)"
+                :key="ci"
+                class="text-caption text-medium-emphasis mb-0"
+              >
+                {{ line }}
+              </p>
+            </div>
+            <div
+              v-if="$slots['field-companion-extra']"
+              class="plugin-field-companion-extra ps-1 mb-3"
+            >
+              <slot
+                name="field-companion-extra"
+                :field-key="field.key"
+              />
+            </div>
+          </template>
+        </div>
 
         <div
           v-else-if="

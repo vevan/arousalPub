@@ -14,7 +14,7 @@
 | API Key 隔离（不出浏览器） | ✅ | 定案与落地见 `DOC/13` |
 | API Key 磁盘加密 | ✅ | AES-256-GCM 落盘 + 运维台 DEK 轮换（`DOC/16`、`DOC/17`） |
 | 前端对话 UI | ✅ | `HomeChat` 已拆子组件 + `useChatSession`（见 §前端工程） |
-| **仍待 P0** | ⏳ | §1.2 独立 `api_configs`/`feature_bindings` 集合、全量调用日志 |
+| **仍待 P0** | ⏳ | 全量调用日志（部分已有 turn runtime） |
 
 ## P0（当前优先）
 
@@ -43,8 +43,8 @@
 - [x] 初始化后端 Fastify 项目结构（`server/`）
 - [x] 初始化前端 Vue3 + Pinia + Vuetify 项目结构（`web/`）
 - [x] **JWT 多用户登录**（2026-06 已实现）：`data/users.index.json` 用户表；`auth-password.ts` scrypt 哈希；`auth.ts` + `@fastify/jwt`（access + refresh、`persisted`/`ephemeral` 会话）；`/api/auth/setup|register|login|refresh|logout|status`；除公开路由外 **`/api/*` 全局 JWT**（`runRequestUser` 解析 `sub`）；Web **`AuthView`** + `stores/auth.ts` + `install-authenticated-fetch.ts`
-- [ ] 建立 `api_configs` 集合与 CRUD 接口 — **实施方案 `DOC/19`**；当前为文件型 `api-settings.json` + `/api/settings`，目标为 `presets[]` + `featureBindings[]` 语义落地
-- [ ] 建立 `feature_bindings` 集合与 CRUD 接口 — **实施方案 `DOC/19`**；目标 `GET/PUT /api/feature-bindings` + 统一 `feature-binding-resolve.ts`
+- [x] API 预设登记与 CRUD — 文件型 `api-settings.json` + `/api/settings`（`presets[]` + `activePresetId`）
+- [x] 出站 API 解析 — `feature-binding-resolve.ts` / `conversation-api-resolve.ts`；chat 用 `activePresetId` + 对话覆盖；插件/RAG 等在各功能页或对话 `apiPreset` 维护（无全局 `featureBindings[]`）
 - [x] 对话发送与 SSE 流式返回（`/api/chat` 等，见 `server/src/index.ts`）
 - [x] **Chunk 链按轮数切分与全链读取** — **`DOC/08`** 已实现（含 head/tail 修复 API、删空 tail 回退、单测）
 - [x] 角色管理（文件库）：主存 **`data/{userId}/characters/{id}.png`**（`id` 为 8 位 hex，见 `DOC/03` §6.7；内嵌 ST `chara`）；遗留 **`{id}.json`** 首次读取时迁移为 PNG；列表/筛选/导入/表单新建/删除/导出 API + Web **`/characters`**（见 `DOC/03` §12）
@@ -139,10 +139,28 @@
 
 ## P1（次优先）
 
+### 性能审计与 Memory v2（`DOC/22` · 2026-06）
+
+> 完整审计表、Memory v2 schema（`branchPath` + `chunkFileName` 拆列）、实施顺序见 **`DOC/22-performance-audit-and-optimization.md`**（**P0–P3 已勾完**）。旧 Lance `mem_*` / legacy **不兼容**，落地后全量重建向量。  
+> **另列**：会话消息 UI 懒加载（`DOC/15` S2–S4）**不属于** `DOC/22` 路线图，仅复用 P1 的 `readTurnsTail` 等原语。
+
+- [x] Turn 批量写 / 区间读（`DOC/10` §3.3、`batchUpdateConversationTurns`、`readTurnsInOrdinalRange`）
+- [x] Lorebook `reorder-curated` 1 读 1 写
+- [x] **Memory v2**：单表 `turn_memory` + `branchPath`/`chunkFileName` + `loadTurnsForMemoryHits`（`DOC/22` P0；**部署后须重建索引**）
+- [x] **`syncChunkIndexIfDrifted` 节流**：热路径移除 sync；`CHUNK_INDEX_SYNC_TTL_MS`（`DOC/22` P1）
+- [x] **`memory-pipeline` / `plugin-prepare-context` 区间读**：`readTurnsTail` + `readTurnsInOrdinalRange`（`DOC/22` P1）
+- [x] **Embedding 重建并发/批量**（`embedding-batch.ts`、`embedTextsInBatches`）
+- [x] **预算裁切增量 token**（`estimateTrimTokenDelta` + `TRIM_TOKEN_REVERIFY_EVERY`）
+- [x] **资料库按 id 加载**（`readLorebooksByIds`）+ **批量 entry API**（`POST .../entries/batch`）
+- [x] **curated-memory 插件改用 `createEntriesBatch`**（本轮摘要落盘批量 1 读 1 写；sidecar patch 仍逐条）
+- [x] **分支 chunk 链 + `enumerateAllChunkChains`**（服务端：注册表递归枚举、memory reindex/召回 activeBranch 过滤；消息树 UI 仍待做）
+- [x] **M4 整包 PUT 护栏**（`LOREBOOKS_BULK_PUT_*`、2s 限流、`lorebooks_bulk_put_*` 错误码）
+- [x] **M5 preferences 请求 memo**（`request-preferences-memo.ts`，经 `runRequestUser` 自动启用）
+
 - [x] **会话级插件 Tab** — **`DOC/21-conversation-plugin-settings.md`**（`conversationSettingsSchema`、对话齿轮 → 插件 Tab、`curated-memory` 摘要资料库仅会话级）
 - [x] **本机运维台（Admin Console）** — **`DOC/17-admin-console.md`**（loopback + `00000000`；用户 CRUD；DEK 轮换 + 推荐密钥）
 - [ ] **独立知识库 RAG**（**≠ 现有世界书**）：用户上传/导入 **长文档**（PDF、Markdown、txt 等）→ 自动 **切片** → embedding → 独立 Lance 表（与 turn memory、资料库条目 **分表**）→ 对话时向量 TopK 检索注入；`rag_generate` 能力接线。**未实现**。**文档管线前置**：用户文件库 **`DOC/20`** M1+M4。若设定资料只靠世界书手工条目维护，本项可长期不做。
-- [ ] **消息树 / 分支 UI**：消息树结构（`parentId`）与「从此分支继续」— **chunk/分支目录部分按 `DOC/03` 设计，产品级分支 UI 待对齐**
+- [ ] **消息树 / 分支 UI**：消息树结构（`parentId`）与「从此分支继续」— **实现指南 `DOC/23-conversation-branches.md`**（§6 待办清单；服务端 memory/枚举已就绪）
 - [ ] **会话消息分页与前端懒加载** — **`DOC/15-conversation-messages-lazy-load.md`**（`GET .../messages?tail|before|from/to`、chunk 区间读、默认尾部 80 轮、上滚追加；插件 `readConversationTurnsRange` 改真分页；Phase 2 可选虚拟滚动）
 - [x] **单端口生产启动（`DOC/01` §9）**：`npm start` / `run-prod.mjs`、`static-web.ts`、`start.bat`/`start.sh`、`README.md`；根目录 `build`（web + server）；保留 `npm run dev`
 - [x] API 配置连通性测试接口（test）— `POST /api/settings/presets/:id/test`（两阶段：models + chat）

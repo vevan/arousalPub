@@ -1,7 +1,7 @@
 import type { ChatTurnItem } from '@/types/chat-turn'
 import {
-  fetchConversationTurns,
-  persistTurnToServer,
+  fetchConversationTurnsRange,
+  persistTurnsBatchToServer,
 } from '@/utils/chat-messages'
 
 export const CONVERSATION_BATCH_MAX_TURNS = 50
@@ -115,13 +115,12 @@ export async function readConversationTurnsRange(
   ) {
     throw new ConversationHostError('range_too_large')
   }
-  const turns = await fetchConversationTurns(conversationId)
-  return turns
-    .filter(
-      (t) => t.turnOrdinal >= range.from && t.turnOrdinal <= range.to,
-    )
-    .map(turnToConversationDto)
-    .sort((a, b) => a.turnOrdinal - b.turnOrdinal)
+  const turns = await fetchConversationTurnsRange(
+    conversationId,
+    range.from,
+    range.to,
+  )
+  return turns.map(turnToConversationDto).sort((a, b) => a.turnOrdinal - b.turnOrdinal)
 }
 
 export async function patchConversationTurns(
@@ -132,22 +131,6 @@ export async function patchConversationTurns(
   if (dtos.length > CONVERSATION_BATCH_MAX_TURNS) {
     throw new ConversationHostError('range_too_large')
   }
-  let ok = 0
-  const failed: { turnOrdinal: number; error: string }[] = []
-  for (const dto of dtos) {
-    try {
-      const success = await persistTurnToServer(
-        conversationId,
-        conversationDtoToTurnItem(dto),
-      )
-      if (success) ok += 1
-      else failed.push({ turnOrdinal: dto.turnOrdinal, error: 'patch_failed' })
-    } catch (e) {
-      failed.push({
-        turnOrdinal: dto.turnOrdinal,
-        error: e instanceof Error ? e.message : 'patch_failed',
-      })
-    }
-  }
-  return { ok, failed }
+  const turns = dtos.map(conversationDtoToTurnItem)
+  return persistTurnsBatchToServer(conversationId, turns)
 }

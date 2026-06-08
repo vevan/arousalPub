@@ -86,6 +86,36 @@ export function sidecarIdsFromTaskSelection(selected: unknown) {
     .map((x) => (x as string).slice('sidecar:'.length))
 }
 
+/** 手动摘要弹窗：记忆上次勾选的剧情 + Sidecar（过滤已删除的 sidecar 配置） */
+export function parseManualTaskSelectionRaw(
+  raw: unknown,
+  sidecars: SidecarConfig[],
+): string[] {
+  if (!Array.isArray(raw)) return ['memory']
+  const configured = new Set(sidecars.map((s) => s.id))
+  const out: string[] = []
+  for (const x of raw) {
+    if (typeof x !== 'string') continue
+    if (x === 'memory') {
+      if (!out.includes('memory')) out.push('memory')
+      continue
+    }
+    if (!x.startsWith('sidecar:')) continue
+    const id = x.slice('sidecar:'.length).trim()
+    if (!configured.has(id)) continue
+    const token = `sidecar:${id}`
+    if (!out.includes(token)) out.push(token)
+  }
+  return out.length > 0 ? out : ['memory']
+}
+
+export function normalizeManualTaskSelection(
+  selected: unknown,
+  sidecars: SidecarConfig[],
+): string[] {
+  return parseManualTaskSelectionRaw(selected, sidecars)
+}
+
 export async function loadMergedSettings(host: PluginHost): Promise<MergedSettings> {
   const global = await host.plugins.getUserSettings()
   const conv = await host.conversation.getPluginSettings()
@@ -145,6 +175,10 @@ export async function loadMergedSettings(host: PluginHost): Promise<MergedSettin
     sidecarEntryIds,
     sidecars,
     autoSidecarIds: parseAutoSidecarIdsRaw(conv.autoSidecarIds, sidecars),
+    manualSummarizeTasks: parseManualTaskSelectionRaw(
+      conv.manualSummarizeTasks,
+      sidecars,
+    ),
     memorybookDefaultEnabled: asBool(global.memorybookDefaultEnabled, false),
     targetLorebookMode,
     autoLorebookNameTemplate,

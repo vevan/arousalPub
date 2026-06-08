@@ -165,6 +165,30 @@ export async function createLorebookEntry(
   return data.entry
 }
 
+export async function createLorebookEntriesBatch(
+  pluginId: string,
+  lorebookId: string,
+  entries: LorebookEntryCreateBody[],
+): Promise<LorebookEntryDto[]> {
+  const res = await apiFetch(
+    `/api/plugins/${encodeURIComponent(pluginId)}/lorebooks/${encodeURIComponent(lorebookId)}/entries/batch`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entries }),
+    },
+  )
+  await throwIfNotOk(res, 'lorebook_entry_create_failed')
+  const data = (await res.json()) as { entries?: LorebookEntryDto[] }
+  if (!Array.isArray(data.entries)) {
+    throw new PluginHostApiError('lorebook_entry_create_failed', res.status)
+  }
+  for (const entry of data.entries) {
+    syncLorebookEntryToStore(lorebookId, entry, 'create')
+  }
+  return data.entries
+}
+
 export async function patchLorebookEntry(
   pluginId: string,
   lorebookId: string,

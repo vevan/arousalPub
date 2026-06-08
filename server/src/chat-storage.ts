@@ -9,6 +9,7 @@ import {
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { getChatsRoot } from './config.js'
+import { normalizeBranchPath } from './chunk-path.js'
 import { isValidConversationId } from './conversation-id.js'
 import type { ResolvedFeatureAudit } from './feature-binding-resolve.js'
 import {
@@ -62,7 +63,16 @@ import {
   sealChunkMemorySegment,
   wipeConversationMemoryIndex,
 } from './memory-index.js'
-import { buildFirstChunkDescriptor, prepareTailChunkForAppend, readChunkContainingOrdinal } from './chunk-chain.js'
+import {
+  buildFirstChunkDescriptor,
+  loadConversationChunksForOrdinalRange,
+  prepareTailChunkForAppend,
+  readChunkContainingOrdinal,
+} from './chunk-chain.js'
+import {
+  CONVERSATION_BATCH_MAX_TURNS,
+  type TurnContentPatchInput,
+} from './turn-patch-body.js'
 import { readGlobalChunkSettings } from './user-preferences-file.js'
 
 /** 与 {@link getChatsRoot} 相同，保留旧名供外部引用 */
@@ -121,6 +131,8 @@ export interface ConversationIndex {
   updatedAt: string
   headChunkFile: string | null
   tailChunkFile: string | null
+  /** 当前选中分支（会话根相对；主路径 "" 或省略） */
+  activeBranchPath?: string | null
   apiPreset?: Record<string, unknown>
   backupSettings?: { everyNRounds: number; maxKeptBackups: number }
   branches?: unknown[]
@@ -266,6 +278,149 @@ function mapReceivesWithShortIds(
   })
 }
 
+function releaseTurnEntityIds(turn: TurnRecord, used: Set<string>): void {
+  for (const r of turn.receives ?? []) {
+    const rid = typeof r.id === 'string' ? r.id.trim() : ''
+    if (rid) used.delete(rid)
+  }
+  const tid = typeof turn.turnId === 'string' ? turn.turnId.trim() : ''
+  if (tid) used.delete(tid)
+}
+
+/** 在内存中更新单轮正文与 receives（调用方维护 chunk 级 used 集合） */
+function applyTurnContentUpdate(
+  turn: TurnRecord,
+  used: Set<string>,
+  userText: string,
+  receives: TurnReceive[],
+  activeReceiveIndex: number,
+): void {
+  if (!receives.length) return
+  releaseTurnEntityIds(turn, used)
+  const prevReceives = turn.receives ?? []
+  turn.send = { userText }
+  turn.receives = mapReceivesWithShortIds(receives, used).map((rec) => {
+    const rid = typeof rec.id === 'string' ? rec.id.trim() : ''
+    const prev = prevReceives.find(
+      (p) => typeof p.id === 'string' && p.id.trim() === rid,
+    )
+    if (!prev?.runtime || typeof prev.runtime !== 'object') return rec
+    return {
+      ...rec,
+      runtime: {
+        ...(prev.runtime as Record<string, unknown>),
+        ...(rec.runtime ?? {}),
+      },
+    }
+  })
+  turn.activeReceiveIndex = Math.min(
+    Math.max(0, activeReceiveIndex),
+    turn.receives.length - 1,
+  )
+}
+
+export interface BatchTurnUpdateResult {
+  ok: number
+  failed: { turnOrdinal: number; error: string }[]
+}
+
+/**
+ * 批量更新多轮：每个 chunk 至多 read+write 一次，index 至多写一次。
+ * 用于插件 patchTurns（如 swipe-cleaner），避免逐轮 PATCH 重复读写同一 chunk。
+ */
+export async function batchUpdateConversationTurns(
+  conversationId: string,
+  patches: TurnContentPatchInput[],
+): Promise<BatchTurnUpdateResult> {
+  if (!patches.length) return { ok: 0, failed: [] }
+  if (patches.length > CONVERSATION_BATCH_MAX_TURNS) {
+    throw new Error('turns_batch_too_large')
+  }
+
+  const ordinals = patches.map((p) => p.turnOrdinal)
+  const minOrd = Math.min(...ordinals)
+  const maxOrd = Math.max(...ordinals)
+  const chunkMap = await loadConversationChunksForOrdinalRange(
+    conversationId,
+    minOrd,
+    maxOrd,
+  )
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) {
+    return {
+      ok: 0,
+      failed: patches.map((p) => ({
+        turnOrdinal: p.turnOrdinal,
+        error: 'conversation_not_found',
+      })),
+    }
+  }
+
+  type Located = {
+    patch: TurnContentPatchInput
+    fileName: string
+    turn: TurnRecord
+  }
+  const located: Located[] = []
+  const failed: { turnOrdinal: number; error: string }[] = []
+
+  for (const patch of patches) {
+    let hit: Located | null = null
+    for (const [fileName, chunk] of chunkMap) {
+      const turn = chunk.turns.find((t) => t.turnOrdinal === patch.turnOrdinal)
+      if (turn) {
+        hit = { patch, fileName, turn }
+        break
+      }
+    }
+    if (!hit) {
+      failed.push({ turnOrdinal: patch.turnOrdinal, error: 'turn_chunk_not_found' })
+      continue
+    }
+    located.push(hit)
+  }
+
+  const byFile = new Map<string, Located[]>()
+  for (const item of located) {
+    const list = byFile.get(item.fileName) ?? []
+    list.push(item)
+    byFile.set(item.fileName, list)
+  }
+
+  const memoryUpserts: { turn: TurnRecord; chunkName: string }[] = []
+  let ok = 0
+
+  for (const [fileName, items] of byFile) {
+    const chunk = chunkMap.get(fileName)
+    if (!chunk) continue
+    const used = collectChunkEntityIds(chunk)
+    for (const { patch, turn } of items) {
+      applyTurnContentUpdate(
+        turn,
+        used,
+        patch.userText,
+        patch.receives,
+        patch.activeReceiveIndex,
+      )
+      memoryUpserts.push({ turn, chunkName: fileName })
+      ok += 1
+    }
+    await writeChunkFile(conversationId, fileName, chunk)
+  }
+
+  if (ok > 0) {
+    const t = nowIso()
+    idx.updatedAt = t
+    await writeConversationIndex(conversationId, idx)
+    await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
+    for (const { turn, chunkName } of memoryUpserts) {
+      scheduleMemoryIndexUpsert(conversationId, turn, chunkName)
+    }
+  }
+
+  return { ok, failed }
+}
+
 export interface ChatPromptMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
@@ -356,6 +511,20 @@ export function chatListEntryFromIndex(idx: ConversationIndex): ChatListEntry {
       ? { promptPresetId: idx.promptPresetId.trim() }
       : {}),
     ...(lorebookIds.length > 0 ? { lorebookIds } : {}),
+    ...(function activeBranchListField():
+      | { activeBranchPath: string }
+      | { activeBranchPath: null }
+      | Record<string, never> {
+      if (idx.activeBranchPath === null) return { activeBranchPath: null }
+      if (typeof idx.activeBranchPath !== 'string' || !idx.activeBranchPath.trim()) {
+        return {}
+      }
+      try {
+        return { activeBranchPath: normalizeBranchPath(idx.activeBranchPath) }
+      } catch {
+        return {}
+      }
+    })(),
   }
 }
 
@@ -1178,6 +1347,30 @@ export function conversationIndexPath(id: string): string {
   return path.join(conversationDir(id), 'index.json')
 }
 
+/** 分支子目录 index.json（branchPath 为空时会话根） */
+export function branchConversationIndexPath(
+  id: string,
+  branchPath: string,
+): string {
+  const bp = normalizeBranchPath(branchPath)
+  if (!bp) return conversationIndexPath(id)
+  return path.join(conversationDir(id), bp, 'index.json')
+}
+
+export async function readBranchConversationIndex(
+  id: string,
+  branchPath: string,
+): Promise<ConversationIndex | null> {
+  const bp = normalizeBranchPath(branchPath)
+  if (!bp) return readConversationIndex(id)
+  try {
+    const raw = await readFile(branchConversationIndexPath(id, bp), 'utf8')
+    return JSON.parse(raw) as ConversationIndex
+  } catch {
+    return null
+  }
+}
+
 export async function readConversationIndex(
   id: string,
 ): Promise<ConversationIndex | null> {
@@ -1527,32 +1720,8 @@ export async function updateTurnContentInTailChunk(
   if (ti < 0) return false
   const turn = chunk.turns[ti]
   const turnId = turn.turnId
-  turn.send = { userText }
   const used = collectChunkEntityIds(chunk)
-  for (const r of turn.receives ?? []) {
-    const rid = typeof r.id === 'string' ? r.id.trim() : ''
-    if (rid) used.delete(rid)
-  }
-  if (turn.turnId) used.delete(turn.turnId)
-  const prevReceives = turn.receives ?? []
-  turn.receives = mapReceivesWithShortIds(receives, used).map((rec) => {
-    const rid = typeof rec.id === 'string' ? rec.id.trim() : ''
-    const prev = prevReceives.find(
-      (p) => typeof p.id === 'string' && p.id.trim() === rid,
-    )
-    if (!prev?.runtime || typeof prev.runtime !== 'object') return rec
-    return {
-      ...rec,
-      runtime: {
-        ...(prev.runtime as Record<string, unknown>),
-        ...(rec.runtime ?? {}),
-      },
-    }
-  })
-  turn.activeReceiveIndex = Math.min(
-    Math.max(0, activeReceiveIndex),
-    turn.receives.length - 1,
-  )
+  applyTurnContentUpdate(turn, used, userText, receives, activeReceiveIndex)
   if (turnPluginEntries?.length) {
     let plugins = Array.isArray(turn.plugins) ? turn.plugins : []
     for (const entry of turnPluginEntries) {

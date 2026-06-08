@@ -1,7 +1,5 @@
-import {
-  createEmbedding,
-  createEmbeddingWithCredentials,
-} from './embedding-client.js'
+import { createEmbedding } from './embedding-client.js'
+import { embedTextsInBatches, isEmbeddingBatchOk } from './embedding-batch.js'
 import type { ResolvedEmbeddingCredentials } from './embedding-credential-resolve.js'
 import { readLorebookById } from './lorebook-file.js'
 import type { Lorebook } from './lorebook-types.js'
@@ -116,32 +114,41 @@ async function reindexOneLorebookVector(
     return { indexed: 0 }
   }
   const rows: LoreEntryVectorRow[] = []
-  for (const e of vectorEntries) {
-    const corpus = lorebookEntryEmbeddingCorpus(e)
-    if (creds) {
-      const emb = await createEmbeddingWithCredentials(creds, corpus)
-      if ('error' in emb) {
-        return {
-          error: emb.error,
-          detail: emb.detail,
-          lorebookId: lb.id,
-        }
+  if (creds) {
+    const items = vectorEntries.map((e) => ({
+      key: e.id,
+      text: lorebookEntryEmbeddingCorpus(e),
+    }))
+    const batch = await embedTextsInBatches(creds, items)
+    if (!isEmbeddingBatchOk(batch)) {
+      return {
+        error: batch.error,
+        detail: batch.detail,
+        lorebookId: lb.id,
       }
+    }
+    for (const e of vectorEntries) {
+      const vector = batch.vectors.get(e.id)
+      if (!vector?.length) continue
+      rows.push({
+        entryId: e.id,
+        lorebookId: lb.id,
+        vector,
+      })
+      options?.onEntryDone?.()
+    }
+  } else {
+    for (const e of vectorEntries) {
+      const corpus = lorebookEntryEmbeddingCorpus(e)
+      const emb = await createEmbedding(corpus)
+      if (!emb) continue
       rows.push({
         entryId: e.id,
         lorebookId: lb.id,
         vector: emb.vector,
       })
       options?.onEntryDone?.()
-      continue
     }
-    const emb = await createEmbedding(corpus)
-    if (!emb) continue
-    rows.push({
-      entryId: e.id,
-      lorebookId: lb.id,
-      vector: emb.vector,
-    })
   }
   if (!rows.length) {
     await deleteLorebookVectorIndex(lb.id)

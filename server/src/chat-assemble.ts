@@ -230,6 +230,7 @@ export async function buildConversationOutboundMessages(
     historySettings: effectiveHistory,
     historyBeforeTurnOrdinalExclusive:
       params.historyBeforeTurnOrdinalExclusive ?? undefined,
+    activeBranchPath: idx.activeBranchPath ?? '',
   })
 
   const charIds = resolvedCharacterIds(idx)

@@ -8,7 +8,11 @@ import {
   normalizeEntryTriggerFields,
   resolveEntryTriggerMode,
 } from './lorebook-entry-utils.js'
-import type { LorebookEntry, LorebookTriggerMode } from './lorebook-types.js'
+import type {
+  Lorebook,
+  LorebookEntry,
+  LorebookTriggerMode,
+} from './lorebook-types.js'
 
 export const LOREBOOK_ENTRY_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/
 
@@ -73,10 +77,16 @@ function resolveTriggerFromBody(body: {
   return 'keyword'
 }
 
+export type LorebookEntryWriteResult = {
+  entry: LorebookEntry
+  savedAt: string
+  lorebook: Lorebook
+}
+
 export async function createLorebookEntry(
   lorebookId: string,
   body: LorebookEntryCreateBody,
-): Promise<{ entry: LorebookEntry; savedAt: string } | null> {
+): Promise<LorebookEntryWriteResult | null> {
   if (!LOREBOOK_ID_RE.test(lorebookId)) return null
   const lb = await readLorebookById(lorebookId)
   if (!lb) return null
@@ -115,19 +125,80 @@ export async function createLorebookEntry(
     updatedAt: t,
   })
 
-  const savedAt = await writeLorebook({
+  const lorebook: Lorebook = {
     ...lb,
     entries: [...lb.entries, entry],
     updatedAt: t,
-  })
-  return { entry, savedAt }
+  }
+  const savedAt = await writeLorebook(lorebook)
+  return { entry, savedAt, lorebook }
+}
+
+/** 单次读盘 + 写盘，批量创建条目（策展 Memorybook 等多条落盘场景） */
+export async function createLorebookEntriesBatch(
+  lorebookId: string,
+  bodies: LorebookEntryCreateBody[],
+): Promise<{ entries: LorebookEntry[]; savedAt: string; lorebook: Lorebook } | null> {
+  if (!LOREBOOK_ID_RE.test(lorebookId)) return null
+  if (!bodies.length) return null
+  const lb = await readLorebookById(lorebookId)
+  if (!lb) return null
+
+  const t = new Date().toISOString()
+  const groupIds = new Set(lb.groups.map((g) => g.id))
+  const newEntries: LorebookEntry[] = []
+  let workingEntries = [...lb.entries]
+
+  for (const body of bodies) {
+    const title = typeof body.title === 'string' ? body.title.trim() : ''
+    const content = typeof body.content === 'string' ? body.content : ''
+    if (!title) throw new Error('条目缺少 title')
+
+    const groupId =
+      typeof body.groupId === 'string' && groupIds.has(body.groupId)
+        ? body.groupId
+        : defaultGroupId(lb.groups)
+
+    const triggerMode = resolveTriggerFromBody(body)
+    const entry: LorebookEntry = normalizeEntryTriggerFields({
+      id: `entry-${generateShortId()}`,
+      groupId,
+      title,
+      content,
+      comment: typeof body.comment === 'string' ? body.comment : undefined,
+      enabled: body.enabled !== false,
+      order:
+        typeof body.order === 'number' && Number.isFinite(body.order)
+          ? body.order
+          : nextEntryOrder(workingEntries, groupId),
+      keys: normalizeKeys(body.keys),
+      constant: triggerMode === 'constant',
+      triggerMode,
+      priority:
+        typeof body.priority === 'number' && Number.isFinite(body.priority)
+          ? body.priority
+          : 100,
+      createdAt: t,
+      updatedAt: t,
+    })
+    newEntries.push(entry)
+    workingEntries.push(entry)
+  }
+
+  const lorebook: Lorebook = {
+    ...lb,
+    entries: workingEntries,
+    updatedAt: t,
+  }
+  const savedAt = await writeLorebook(lorebook)
+  return { entries: newEntries, savedAt, lorebook }
 }
 
 export async function patchLorebookEntry(
   lorebookId: string,
   entryId: string,
   body: LorebookEntryPatchBody,
-): Promise<{ entry: LorebookEntry; savedAt: string } | null> {
+): Promise<LorebookEntryWriteResult | null> {
   if (!LOREBOOK_ID_RE.test(lorebookId)) return null
   if (!LOREBOOK_ENTRY_ID_RE.test(entryId)) return null
   const lb = await readLorebookById(lorebookId)
@@ -175,10 +246,11 @@ export async function patchLorebookEntry(
   const entries = [...lb.entries]
   entries[idx] = next
 
-  const savedAt = await writeLorebook({
+  const lorebook: Lorebook = {
     ...lb,
     entries,
     updatedAt: t,
-  })
-  return { entry: next, savedAt }
+  }
+  const savedAt = await writeLorebook(lorebook)
+  return { entry: next, savedAt, lorebook }
 }

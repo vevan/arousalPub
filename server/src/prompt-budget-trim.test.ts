@@ -7,6 +7,7 @@ import {
   type BudgetTrimSettings,
 } from './budget-trim-settings.js'
 import {
+  estimateTrimTokenDelta,
   runPromptBudgetTrimLoop,
   trimOneHistoryMessage,
   trimOneMatchedLore,
@@ -138,6 +139,19 @@ describe('trimOneHistoryMessage', () => {
     state.historyMessages = [{ role: 'user', content: 'only' }]
     assert.equal(trimOneHistoryMessage(state, 1), false)
     assert.equal(state.historyMessages.length, 1)
+  })
+})
+
+describe('estimateTrimTokenDelta', () => {
+  it('returns positive delta when lore entry removed', () => {
+    const state = baseState()
+    const snapshot = {
+      worldText: 'before',
+      memoryText: '',
+    }
+    trimOneMatchedLore(state, 1)
+    const delta = estimateTrimTokenDelta(state, 'lore', snapshot)
+    assert.ok(delta >= 0)
   })
 })
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CuratedMemoryMemorybookBlock from '@/components/settings/CuratedMemoryMemorybookBlock.vue'
 import PluginSchemaForm from '@/components/settings/PluginSchemaForm.vue'
 import type { PluginManageEntry } from '@/plugins/plugin-settings-types'
 import {
@@ -6,6 +7,7 @@ import {
   patchConversationPluginSettings,
 } from '@/plugins/plugin-host-api'
 import { useConversationPluginSettingsStore } from '@/stores/conversation-plugin-settings'
+import { mergePluginLocales } from '@/plugins/merge-plugin-locales'
 import {
   fetchPluginSettings,
   fetchPluginsManage,
@@ -13,6 +15,8 @@ import {
 import { validatePluginSettingsModel } from '@/utils/plugin-settings-validate'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+
+const CURATED_MEMORY_PLUGIN_ID = 'curated-memory'
 
 const props = defineProps<{
   conversationId: string
@@ -166,12 +170,17 @@ function onModelUpdate(plugin: PluginManageEntry, model: Record<string, unknown>
   scheduleSave(plugin)
 }
 
-function openPlugin(plugin: PluginManageEntry) {
+async function openPlugin(plugin: PluginManageEntry) {
   selectedPluginId.value = plugin.id
+  await mergePluginLocales(plugin.id)
 }
 
 function backToList() {
   selectedPluginId.value = null
+}
+
+function onPointerResetError(message: string) {
+  emit('error', message)
 }
 
 watch(
@@ -262,7 +271,20 @@ defineExpose({ reload: load, backToList })
           :model-value="convModels[selectedPlugin.id]!"
           :global-settings="globalModels[selectedPlugin.id]"
           @update:model-value="onModelUpdate(selectedPlugin, $event)"
-        />
+        >
+          <template #field-companion-panel="{ fieldKey }">
+            <CuratedMemoryMemorybookBlock
+              v-if="
+                selectedPlugin.id === CURATED_MEMORY_PLUGIN_ID &&
+                fieldKey === 'memorybookEnabled'
+              "
+              :conversation-id="conversationId"
+              :conv-model="convModels[CURATED_MEMORY_PLUGIN_ID]"
+              :global-model="globalModels[CURATED_MEMORY_PLUGIN_ID]"
+              @error="onPointerResetError"
+            />
+          </template>
+        </PluginSchemaForm>
       </div>
     </template>
 

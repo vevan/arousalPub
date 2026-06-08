@@ -1,6 +1,10 @@
 import { LOREBOOK_ID_RE, readLorebookById, writeLorebook } from './lorebook-file.js'
 import type { Lorebook } from './lorebook-types.js'
 import { computeCuratedEntryOrders } from './plugin-curated-lorebook.js'
+import {
+  normalizeSidecarConfigIds,
+  normalizeSidecarEntryIds,
+} from './plugin-sidecar-refs.js'
 
 export interface ReorderCuratedLorebookInput {
   lorebookId: string
@@ -11,25 +15,6 @@ export interface ReorderCuratedLorebookInput {
 export type ReorderCuratedLorebookResult =
   | { ok: true; lorebook: Lorebook; changed: number; savedAt: string }
   | { ok: false; code: string }
-
-function normalizeSidecarEntryIds(raw: unknown): Record<string, string> {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
-  const out: Record<string, string> = {}
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof k === 'string' && typeof v === 'string' && v.trim()) {
-      out[k.trim()] = v.trim()
-    }
-  }
-  return out
-}
-
-function normalizeSidecarConfigIds(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return []
-  return raw
-    .filter((x): x is string => typeof x === 'string')
-    .map((x) => x.trim())
-    .filter(Boolean)
-}
 
 export async function runReorderCuratedLorebookEntries(
   req: ReorderCuratedLorebookInput,

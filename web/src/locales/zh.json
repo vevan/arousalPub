@@ -573,6 +573,7 @@
       "tabPlugins": "插件",
       "tabPluginsHint": "已启用插件的本会话配置；与系统设置 → 插件中的全局默认相互独立。",
       "pluginTabEmpty": "当前无已启用且支持会话配置的插件。可在系统设置 → 插件中启用。",
+      "memorybookProgressTitle": "摘要进度",
       "pluginConfigure": "配置",
       "pluginBackToList": "返回插件列表",
       "pluginLoadFailed": "加载插件会话配置失败",
@@ -669,17 +670,6 @@
     "boundLorebook": "绑定的资料库",
     "boundPrompt": "绑定的提示词预设"
   },
-  "featureBindings": {
-    "title": "功能与 API 绑定",
-    "hint": "为对话、插件等功能指定默认使用的 API 预设（密钥仍仅存服务端）。",
-    "chatGlobal": "默认对话 API",
-    "advancedTitle": "高级功能绑定",
-    "ragGenerate": "知识库 RAG（rag_generate）",
-    "ragHint": "独立知识库 RAG 接入后生效",
-    "rerank": "Rerank",
-    "saved": "功能绑定已保存",
-    "saveFailed": "保存功能绑定失败"
-  },
   "conn": {
     "needBaseAndKey": "请先填写 Base URL 与 API Key",
     "savedSnackbar": "已保存到服务端文件 {path}",
@@ -688,7 +678,7 @@
     "preset": "API 预设",
     "presetEdit": "编辑中的 API 预设",
     "presetEditHint": "选择要编辑连接参数与模型的预设条目",
-    "refGlobalBinding": "全局功能绑定 — {path}",
+    "refActivePreset": "全局默认 API 预设 — {path}",
     "newPreset": "新建预设",
     "deleteCurrent": "删除当前",
     "testConnection": "测试连接",

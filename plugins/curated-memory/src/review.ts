@@ -14,26 +14,14 @@ import { k, sidecarPromptTemplate } from './settings.js'
 import { keywordsToText, parseKeywordsText, asString } from './shared/utils.js'
 import type { MergedSettings, PluginHost, SidecarConfig } from './types.js'
 
-function hasHistoryBlock(userContent: string): boolean {
-  return /<history>[\s\S]*<\/history>/i.test(userContent)
-}
-
 function resolveSystemPrompt(
   host: PluginHost,
   settings: MergedSettings,
   opts: {
     kind: 'memory' | 'sidecar'
-    userContent: string
     sc?: SidecarConfig
   },
 ): string {
-  if (
-    opts.kind === 'sidecar' &&
-    opts.sc &&
-    hasHistoryBlock(opts.userContent)
-  ) {
-    return settings.systemPromptTemplate
-  }
   if (opts.kind === 'sidecar' && opts.sc) {
     return sidecarPromptTemplate(host, opts.sc)
   }
@@ -113,6 +101,7 @@ export async function generateReviewDraft(
   settings: MergedSettings,
   opts: {
     kind: 'memory' | 'sidecar'
+    systemReferenceContext?: string
     userContent: string
     fromTurn?: number
     toTurn?: number
@@ -124,6 +113,7 @@ export async function generateReviewDraft(
     const req = {
       ...(settings.apiConfigId ? { apiConfigId: settings.apiConfigId } : {}),
       kind: opts.kind,
+      systemReferenceContext: opts.systemReferenceContext ?? '',
       userContent: opts.userContent,
       systemPromptTemplate: resolveSystemPrompt(host, settings, opts),
       fromTurn: opts.fromTurn,

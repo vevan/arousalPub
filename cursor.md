@@ -13,7 +13,6 @@
 
 - **API Key 服务端隔离（已实现）**：`DOC/13-api-key-server-side-isolation.md`
 - **API Key 磁盘加密（已实现）**：`DOC/16-api-key-disk-encryption.md`
-- **API 配置与功能绑定（P0 规划）**：`DOC/19-api-configs-feature-bindings.md`
 - **用户文件库与 charFile（P3 定案）**：`DOC/20-user-file-library.md`
 - **用户安装与启动**：根目录 `README.md`
 - 架构设计：`DOC/01-架构设计.md`（**§9 运行时与部署**）
@@ -24,6 +23,8 @@
 - **工作交接（新 Agent 入口）**：`DOC/06-工作交接.md`
 - **Chunk 链切分（已实现）**：`DOC/08-chunk-chain-implementation.md`
 - **会话消息分页与懒加载（P1 规划）**：`DOC/15-conversation-messages-lazy-load.md`
+- **性能审计与 Memory v2 优化（P0–P3 已落地）**：`DOC/22-performance-audit-and-optimization.md`
+- **对话分支（服务端原语已落地 · UI/写入待做）**：`DOC/23-conversation-branches.md`
 - **本机运维台（已实现）**：`DOC/17-admin-console.md`（loopback + `00000000`；用户管理 + DEK 轮换）
 - 运行时数据目录说明：`data/README.md`
 - 前端子项目说明：`web/README.md`

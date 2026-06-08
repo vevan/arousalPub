@@ -42,39 +42,27 @@ function mockSettings(
     savedAt: '2026-06-08T00:00:00.000Z',
     activePresetId: 'legacy-id',
     presets: [mockPreset('legacy-id'), mockPreset('global-id')],
-    featureBindings: [
-      {
-        id: 'f1',
-        featureType: 'chat',
-        featureRefId: 'global',
-        apiConfigId: 'global-id',
-        updatedAt: 't',
-      },
-    ],
     ...partial,
   }
 }
 
 describe('feature-binding-resolve', () => {
-  it('resolves chat from global binding before legacy activePresetId', () => {
+  it('resolves chat from activePresetId when no conversation override', () => {
     const hit = resolveChatApiConfigId(mockSettings())
-    assert.equal(hit?.apiConfigId, 'global-id')
+    assert.equal(hit?.apiConfigId, 'legacy-id')
     assert.equal(hit?.source, 'global')
   })
 
-  it('conversation chat binding wins over global', () => {
+  it('conversation chat binding wins over activePresetId', () => {
     const hit = resolveChatApiConfigId(mockSettings(), {
-      chat: { apiConfigId: 'legacy-id', temperature: 0.5 },
+      chat: { apiConfigId: 'global-id', temperature: 0.5 },
     })
-    assert.equal(hit?.apiConfigId, 'legacy-id')
+    assert.equal(hit?.apiConfigId, 'global-id')
     assert.equal(hit?.source, 'conversation')
   })
 
-  it('does not resolve plugin from global featureBindings', () => {
-    const hit = resolvePluginFeatureBindingMeta(
-      mockSettings({ featureBindings: [] }),
-      'curated-memory',
-    )
+  it('does not resolve plugin from activePresetId', () => {
+    const hit = resolvePluginFeatureBindingMeta(mockSettings(), 'curated-memory')
     assert.equal(hit, null)
   })
 
@@ -83,17 +71,16 @@ describe('feature-binding-resolve', () => {
       mockSettings(),
       'curated-memory',
       {
-        plugins: { 'curated-memory': { apiConfigId: 'legacy-id' } },
+        plugins: { 'curated-memory': { apiConfigId: 'global-id' } },
       },
     )
-    assert.equal(hit?.apiConfigId, 'legacy-id')
+    assert.equal(hit?.apiConfigId, 'global-id')
     assert.equal(hit?.source, 'conversation')
   })
 
   it('falls back to plugin settings apiConfigId', () => {
-    const settings = mockSettings({ featureBindings: [] })
     const hit = resolvePluginFeatureBindingMeta(
-      settings,
+      mockSettings(),
       'curated-memory',
       undefined,
       'legacy-id',
@@ -106,17 +93,17 @@ describe('feature-binding-resolve', () => {
     const audit = toResolvedFeatureAudit({
       featureType: 'chat',
       featureRefId: 'global',
-      apiConfigId: 'global-id',
+      apiConfigId: 'legacy-id',
       source: 'global',
     })
     assert.deepEqual(audit, {
       featureType: 'chat',
-      apiConfigId: 'global-id',
+      apiConfigId: 'legacy-id',
       source: 'global',
     })
   })
 
-  it('resolves rag_generate from conversation rag key', () => {
+  it('resolves rag_generate from conversation rag key only', () => {
     const hit = resolveFeatureBindingMeta(mockSettings(), 'rag_generate', {
       conversationApiPreset: {
         rag: { apiConfigId: 'global-id', modelOverride: 'embed-model' },
@@ -125,5 +112,10 @@ describe('feature-binding-resolve', () => {
     assert.equal(hit?.apiConfigId, 'global-id')
     assert.equal(hit?.modelOverride, 'embed-model')
     assert.equal(hit?.source, 'conversation')
+  })
+
+  it('does not resolve rag_generate without conversation binding', () => {
+    const hit = resolveFeatureBindingMeta(mockSettings(), 'rag_generate')
+    assert.equal(hit, null)
   })
 })

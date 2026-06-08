@@ -32,6 +32,34 @@
 
   "convMemorybookEnabledDesc": "开启后按块长自动预约摘要（仍须预览确认）。",
 
+  "convMemorybookProgressTitle": "摘要进度",
+
+  "convMemorybookProgressNever": "尚无剧情摘要条目",
+
+  "convMemorybookProgressDone": "已剧情摘要至第 {end} 轮（含）",
+
+  "convMemorybookProgressPending": "待摘要块：第 {from}–{to} 轮",
+
+  "convMemorybookProgressNext": "下次触发：第 {turn} 轮落盘后",
+
+  "convMemorybookProgressOff": "自动摘要已关闭，不会自动预约",
+
+  "convMemorybookResetBtn": "校正摘要进度",
+
+  "convMemorybookResetTitle": "校正自动摘要进度",
+
+  "convMemorybookResetHint": "仅更新自动预约指针，不删除资料库已有条目。请按你实际已摘要到的轮次填写（0 起，含该轮）。",
+
+  "convMemorybookResetEndLabel": "已摘要至第 N 轮（含，0 起）",
+
+  "convMemorybookResetMaxHint": "当前对话最大轮次：{max}",
+
+  "convMemorybookResetAheadWarn": "填写值大于当前最大轮次 {max}，自动块将延后触发。",
+
+  "convMemorybookResetNever": "尚未摘要（清空指针）",
+
+  "convMemorybookResetConfirm": "确认",
+
   "convBlockTurnsLabel": "每块摘要轮数",
 
   "convBlockTurnsDesc": "本会话覆盖；清空则继承全局默认。",
@@ -211,7 +239,7 @@
 
   "previousSummariesLimitLabel": "摘要时附带最近条数",
 
-  "previousSummariesLimitDesc": "向摘要模型发送目标资料库中最近 N 条剧情摘要正文（按轮次后缀排序，靠后表示时间更近）。0 表示不附带。",
+  "previousSummariesLimitDesc": "参考上下文：① 结束轮次早于本次摘要起始轮的最近 N 条剧情摘要；② 从起始轮向前（含起始轮）最多 N 轮对话放入 <context-history>（待摘要区间仍在 <history>）。0 表示均不附带。",
 
   "entrySortModeLabel": "条目自动排序",
 
@@ -273,11 +301,11 @@
 
   "systemPromptTemplateLabel": "剧情摘要 System 模板",
 
-  "systemPromptTemplateDesc": "发往摘要模型的 system 消息。支持宏：\\{\\{user\\}\\}、\\{\\{char\\}\\}、\\{\\{date\\}\\}、\\{\\{authorsNote\\}\\} 等（与主对话一致）。",
+  "systemPromptTemplateDesc": "摘要指令模板，与宿主组装的参考块（previous-summaries / sidecars / context-history）一并作为 system 消息。用户消息仅为待摘要的 <history>。支持宏：{{user}}、{{char}}、{{date}}、{{authorsNote}} 等。",
 
-  "systemPromptTemplateDefault": "你是一个专业的对话摘要编写者。阅读用户提供的对话历史，提炼关键情节、人物状态与事实。\n\n返回格式必须为 JSON 对象，且仅包含键：\n- title：简短标题（字符串）\n- content：摘要正文（字符串，可多段）\n- keywords：关键词数组（字符串数组，可为空）\n\n不要输出 JSON 以外的任何文字。",
+  "systemPromptTemplateDefault": "你是一位才华横溢的摘要家, 擅长全面捕捉故事场景与剧情时间线。上文 system 可能包含只读参考块: <previous-summaries>、<sidecars>、<context-history>; 用户消息仅为待摘要正文 <history>。**仅**根据 <history> 内的角色扮演对话撰写摘要; 参考块仅供理解背景, 勿将其内容逐字写入摘要正文。\n\n你必须仅以这种确切的格式返回有效的 JSON:\n{\n  \"title\": \"简短的场景标题(1-3 个词)\",\n  \"content\": \"详细的、按时间顺序的叙事散文摘要……\",\n  \"keywords\": [\"关键词1\", \"关键词2\"]\n}\n\n对于 content 字段:\n- **剧情时间节点为必填信息**: 若对话中出现年月日、时辰、季节、相对时间(如「三天后」「翌晨」)或场景切换提示, 须在摘要**开头**明确写出, 并与 <previous-summaries> 中的时间线衔接, 避免矛盾。\n- 随后按时间顺序准确捕捉本段场景, 不遗漏重要情节; 排除对摘要无用的 [OOC] 对话或元互动。\n- 本摘要将进入资料库并参与向量检索, 须包含: 重要情节与事件、关键互动与角色发展、值得记住的细节与代表性台词、对 {{user}} 与 {{char}} 后续互动有影响的结果与伏笔。\n- 全面、易懂, 勿大段照抄原文。\n\n对于 keywords 字段: 提供 15-30 个具体、可检索的关键词(地点、物件、专有名词、独特行动、剧情时间节点词等)。避免空泛主题词(如「悲伤」「爱」); 避免单独使用角色姓名(可用地名、事件名、物品名)。\n\n对于 title 字段: 简短场景名即可; 系统会在写入资料库时自动追加轮次后缀, 勿在 title 中自行添加数字区间。\n\n仅返回 JSON, 不要返回其他任何文字。",
 
-  "sidecarSystemPromptTemplateDefault": "你是一个对话状态追踪器。根据历史更新当前场景下人物关系、目标与关键状态。\n\n返回 JSON 对象，仅含键 title、content、keywords（字符串数组，请填写便于检索的关键词）。",
+  "sidecarSystemPromptTemplateDefault": "你是一个对话状态追踪器。上文 system 含只读参考块; 用户消息仅为 <history>。根据 <history> 更新当前场景下人物关系、目标与关键状态, 可参考 system 中的 sidecar 旧状态。\n\n返回 JSON 对象, 仅含键 title、content、keywords(字符串数组, 请填写便于检索的关键词).",
 
   "promptTemplateRequired": "提示词不能为空",
 

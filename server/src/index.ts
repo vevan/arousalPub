@@ -17,7 +17,11 @@ import {
   resolvedParamsToChatBodyFields,
 } from './conversation-api-resolve.js'
 import { parseAuthorsNotePatch } from './authors-note-settings.js'
-import { readAllTurns, repairConversationChunkIndex } from './chunk-chain.js'
+import {
+  readAllTurns,
+  readTurnsInOrdinalRange,
+  repairConversationChunkIndex,
+} from './chunk-chain.js'
 import {
   createConversationStub,
   deleteConversation,
@@ -53,9 +57,14 @@ import {
   parseConversationEmbeddingApiOverride,
   getTurnUserText,
   resolvedCharacterIds,
+  batchUpdateConversationTurns,
   updateTurnContentInTailChunk,
   type TurnReceive,
 } from './chat-storage.js'
+import {
+  CONVERSATION_BATCH_MAX_TURNS,
+  parseTurnPatchBody,
+} from './turn-patch-body.js'
 import { reindexConversationMemory } from './memory-index.js'
 import { startConversationMemoryReindexSse } from './memory-reindex-sse.js'
 import { ensureDataSkeleton, resolveListenHost, resolveServerPort } from './config.js'
@@ -97,6 +106,7 @@ import {
 import { isPromptsSeedPut } from './prompts-default-seed.js'
 import {
   assertValidLorebooksPayload,
+  LOREBOOKS_BULK_PUT_MAX_JSON_BYTES,
   readLorebookById,
   readLorebooksDocument,
   readLorebooksIndexSummary,
@@ -104,6 +114,7 @@ import {
   LOREBOOK_ID_RE,
   type LorebooksDocument,
 } from './lorebook-file.js'
+import { tryAcquireLorebooksBulkPutSlot } from './lorebooks-bulk-put-limit.js'
 import {
   readApiKeysDocument,
   writeApiKeysDocument,
@@ -119,12 +130,6 @@ import {
   sanitizeApiSettingsDocumentForGet,
   type ApiSettingsPutBody,
 } from './api-settings-sanitize.js'
-import {
-  deleteFeatureBindingById,
-  FeatureBindingServiceError,
-  listFeatureBindings,
-  mergeFeatureBindingsPut,
-} from './feature-bindings-service.js'
 import {
   ApiConfigInUseError,
   assertRemovedApiKeysNotInUse,
@@ -162,9 +167,11 @@ import {
 import { readPluginManifest } from './plugin-system/manifest.js'
 import { scheduleLorebookVectorReindex } from './lorebook-vector-index.js'
 import {
+  createLorebookEntriesBatch,
   createLorebookEntry,
   patchLorebookEntry,
   LOREBOOK_ENTRY_ID_RE,
+  type LorebookEntryCreateBody,
 } from './lorebook-entries.js'
 import { resolvePluginCompleteApi } from './plugin-api-resolve.js'
 import { runPluginCompleteDraftRoute } from './plugin-complete-draft-route.js'
@@ -1115,74 +1122,22 @@ app.patch<{
       return reply.status(400).send({ error: ApiErrorCodes.invalid_turn_ordinal })
     }
     const b = request.body ?? {}
-    if (typeof b.userText !== 'string') {
-      return reply.status(400).send({ error: ApiErrorCodes.user_text_must_be_string })
+    const parsed = parseTurnPatchBody({ ...b, turnOrdinal: ord })
+    if (!parsed.ok) {
+      const code =
+        parsed.error in ApiErrorCodes
+          ? (parsed.error as (typeof ApiErrorCodes)[keyof typeof ApiErrorCodes])
+          : ApiErrorCodes.validation_failed
+      return reply.status(400).send({ error: code })
     }
-    if (!Array.isArray(b.receives) || b.receives.length === 0) {
-      return reply.status(400).send({ error: ApiErrorCodes.receives_required_nonempty })
-    }
-    const mapped: TurnReceive[] = []
-    for (const r of b.receives) {
-      if (!r || typeof r !== 'object') {
-        return reply.status(400).send({ error: ApiErrorCodes.receives_item_invalid })
-      }
-      const o = r as {
-        id?: unknown
-        content?: unknown
-        reasoning?: unknown
-        durationMs?: unknown
-        estimatedTokens?: unknown
-        completionTokens?: unknown
-        model?: unknown
-      }
-      if (typeof o.id !== 'string' || typeof o.content !== 'string') {
-        return reply.status(400).send({ error: ApiErrorCodes.receives_item_id_content_required })
-      }
-      const rec: TurnReceive = { id: o.id, content: o.content }
-      if (typeof o.reasoning === 'string' && o.reasoning.length > 0) {
-        rec.reasoning = o.reasoning
-      }
-      if (typeof o.durationMs === 'number' && Number.isFinite(o.durationMs) && o.durationMs > 0) {
-        rec.runtime = { ...(rec.runtime ?? {}), durationMs: Math.round(o.durationMs) }
-      }
-      if (
-        typeof o.estimatedTokens === 'number' &&
-        Number.isFinite(o.estimatedTokens) &&
-        o.estimatedTokens > 0
-      ) {
-        rec.runtime = {
-          ...(rec.runtime ?? {}),
-          estimatedTokens: Math.round(o.estimatedTokens),
-        }
-      }
-      if (
-        typeof o.completionTokens === 'number' &&
-        Number.isFinite(o.completionTokens) &&
-        o.completionTokens > 0
-      ) {
-        rec.runtime = {
-          ...(rec.runtime ?? {}),
-          completionTokens: Math.round(o.completionTokens),
-        }
-      }
-      if (typeof o.model === 'string' && o.model.trim()) {
-        rec.runtime = {
-          ...(rec.runtime ?? {}),
-          model: o.model.trim(),
-        }
-      }
-      mapped.push(rec)
-    }
-    if (typeof b.activeReceiveIndex !== 'number' || !Number.isInteger(b.activeReceiveIndex)) {
-      return reply.status(400).send({ error: ApiErrorCodes.active_receive_index_must_be_integer })
-    }
+    const patch = parsed.patch
     try {
       const ok = await updateTurnContentInTailChunk(
         id,
         ord,
-        b.userText,
-        mapped,
-        b.activeReceiveIndex,
+        patch.userText,
+        patch.receives,
+        patch.activeReceiveIndex,
         b.debugPrompt,
       )
       if (!ok) {
@@ -1190,6 +1145,51 @@ app.patch<{
       }
       return { ok: true as const }
     } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.turn_update_failed })
+    }
+  },
+)
+
+app.patch<{
+  Params: { id: string }
+  Body: { turns?: unknown }
+}>(
+  '/api/chat/conversations/:id/turns/batch',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!isValidConversationId(id)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    const raw = request.body?.turns
+    if (!Array.isArray(raw)) {
+      return reply.status(400).send({ error: ApiErrorCodes.turns_batch_required })
+    }
+    if (raw.length === 0) {
+      return { ok: 0, failed: [] as { turnOrdinal: number; error: string }[] }
+    }
+    if (raw.length > CONVERSATION_BATCH_MAX_TURNS) {
+      return reply.status(400).send({ error: ApiErrorCodes.turns_batch_too_large })
+    }
+    const patches = []
+    for (const item of raw) {
+      const parsed = parseTurnPatchBody(item)
+      if (!parsed.ok) {
+        const code =
+          parsed.error in ApiErrorCodes
+            ? (parsed.error as (typeof ApiErrorCodes)[keyof typeof ApiErrorCodes])
+            : ApiErrorCodes.validation_failed
+        return reply.status(400).send({ error: code })
+      }
+      patches.push(parsed.patch)
+    }
+    try {
+      const result = await batchUpdateConversationTurns(id, patches)
+      return result
+    } catch (e) {
+      if (e instanceof Error && e.message === 'turns_batch_too_large') {
+        return reply.status(400).send({ error: ApiErrorCodes.turns_batch_too_large })
+      }
       app.log.error(e)
       return reply.status(500).send({ error: ApiErrorCodes.turn_update_failed })
     }
@@ -1220,14 +1220,37 @@ app.delete<{ Params: { id: string; turnOrdinal: string } }>(
   },
 )
 
-app.get<{ Params: { id: string } }>(
+app.get<{
+  Params: { id: string }
+  Querystring: { from?: string; to?: string }
+}>(
   '/api/chat/conversations/:id/messages',
   async (request, reply) => {
     const id = request.params.id
     if (!isValidConversationId(id)) {
       return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
-    const allTurnRecords = await readAllTurns(id)
+    const qFrom = request.query.from
+    const qTo = request.query.to
+    const hasFrom = qFrom !== undefined && qFrom !== ''
+    const hasTo = qTo !== undefined && qTo !== ''
+    let allTurnRecords
+    if (hasFrom || hasTo) {
+      if (!hasFrom || !hasTo) {
+        return reply.status(400).send({ error: ApiErrorCodes.messages_range_incomplete })
+      }
+      const from = Number.parseInt(String(qFrom), 10)
+      const to = Number.parseInt(String(qTo), 10)
+      if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < from) {
+        return reply.status(400).send({ error: ApiErrorCodes.messages_range_invalid })
+      }
+      if (to - from + 1 > CONVERSATION_BATCH_MAX_TURNS) {
+        return reply.status(400).send({ error: ApiErrorCodes.range_too_large })
+      }
+      allTurnRecords = await readTurnsInOrdinalRange(id, from, to)
+    } else {
+      allTurnRecords = await readAllTurns(id)
+    }
     if (!allTurnRecords.length) {
       return { turns: [] as MessagesTurnDto[] }
     }
@@ -1878,74 +1901,6 @@ app.put<{ Body: SettingsPutBody }>('/api/settings', async (request, reply) => {
   return { ok: true as const, savedAt: doc.savedAt }
 })
 
-app.get('/api/feature-bindings', async (_request, reply) => {
-  try {
-    const bindings = await listFeatureBindings()
-    return { bindings }
-  } catch (e) {
-    app.log.error(e)
-    return reply
-      .status(500)
-      .send({ error: ApiErrorCodes.feature_bindings_read_failed })
-  }
-})
-
-app.put<{ Body: { bindings?: unknown[] } }>(
-  '/api/feature-bindings',
-  async (request, reply) => {
-    const body = request.body
-    if (!body || typeof body !== 'object' || !Array.isArray(body.bindings)) {
-      return reply.status(400).send({ error: ApiErrorCodes.invalid_request_body })
-    }
-    try {
-      const result = await mergeFeatureBindingsPut(body.bindings)
-      return { ok: true as const, ...result }
-    } catch (e) {
-      if (e instanceof FeatureBindingServiceError) {
-        const status =
-          e.code === 'api_preset_not_found' ||
-          e.code === 'feature_binding_type_invalid' ||
-          e.code === 'feature_binding_ref_invalid' ||
-          e.code === 'feature_binding_api_config_invalid' ||
-          e.code === 'feature_bindings_empty' ||
-          e.code === 'feature_binding_invalid'
-            ? 400
-            : e.code === 'feature_binding_duplicate'
-              ? 409
-              : 500
-        return reply.status(status).send({ error: e.code })
-      }
-      app.log.error(e)
-      return reply
-        .status(500)
-        .send({ error: ApiErrorCodes.feature_bindings_write_failed })
-    }
-  },
-)
-
-app.delete<{ Params: { id: string } }>(
-  '/api/feature-bindings/:id',
-  async (request, reply) => {
-    const id = request.params.id?.trim() ?? ''
-    if (!id) {
-      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
-    }
-    try {
-      const result = await deleteFeatureBindingById(id)
-      return { ok: true as const, ...result }
-    } catch (e) {
-      if (e instanceof FeatureBindingServiceError) {
-        const status = e.code === 'feature_binding_not_found' ? 404 : 500
-        return reply.status(status).send({ error: e.code })
-      }
-      app.log.error(e)
-      return reply
-        .status(500)
-        .send({ error: ApiErrorCodes.feature_bindings_write_failed })
-    }
-  },
-)
-
 app.post<{ Params: { id: string }; Body: { baseUrl?: string; model?: string } }>(
   '/api/settings/presets/:id/test',
   async (request, reply) => {
@@ -2245,6 +2200,20 @@ app.get('/api/lorebooks/summary', async (_request, reply) => {
 })
 
 app.put('/api/lorebooks', async (request, reply) => {
+  const contentLength = Number(request.headers['content-length'])
+  if (
+    Number.isFinite(contentLength) &&
+    contentLength > LOREBOOKS_BULK_PUT_MAX_JSON_BYTES
+  ) {
+    return reply.status(413).send({
+      error: ApiErrorCodes.lorebooks_bulk_put_payload_too_large,
+    })
+  }
+  if (!tryAcquireLorebooksBulkPutSlot(getCurrentUserId())) {
+    return reply.status(429).send({
+      error: ApiErrorCodes.lorebooks_bulk_put_rate_limited,
+    })
+  }
   let validated: { lorebooks: LorebooksDocument['lorebooks'] }
   try {
     validated = assertValidLorebooksPayload(request.body)
@@ -2895,9 +2864,75 @@ app.post<{
       if (!result) {
         return reply.status(404).send({ error: ApiErrorCodes.lorebook_not_found })
       }
-      const lb = await readLorebookById(lorebookId)
-      if (lb) scheduleLorebookVectorReindex([lb])
+      scheduleLorebookVectorReindex([result.lorebook])
       return { ok: true as const, entry: result.entry, savedAt: result.savedAt }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ''
+      app.log.error(e)
+      if (msg.includes('title')) {
+        return reply
+          .status(400)
+          .send({ error: ApiErrorCodes.lorebook_entry_validation_failed })
+      }
+      return reply.status(500).send({ error: ApiErrorCodes.lorebook_entry_create_failed })
+    }
+  },
+)
+
+app.post<{
+  Params: { pluginId: string; lorebookId: string }
+  Body: { entries?: unknown }
+}>(
+  '/api/plugins/:pluginId/lorebooks/:lorebookId/entries/batch',
+  async (request, reply) => {
+    const pluginId = request.params.pluginId.trim()
+    const lorebookId = request.params.lorebookId
+    if (!LOREBOOK_ID_RE.test(lorebookId)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    const auth = await assertPluginRoutePermission(pluginId, 'lorebook.entry.write')
+    if (!auth.ok) {
+      return reply.status(auth.status).send({ error: ApiErrorCodes[auth.code] })
+    }
+    const raw = request.body?.entries
+    if (!Array.isArray(raw) || raw.length === 0) {
+      return reply.status(400).send({ error: ApiErrorCodes.lorebook_entry_validation_failed })
+    }
+    if (raw.length > CONVERSATION_BATCH_MAX_TURNS) {
+      return reply.status(400).send({ error: ApiErrorCodes.range_too_large })
+    }
+    const bodies: LorebookEntryCreateBody[] = raw.map((item) => {
+      const body = (item ?? {}) as Record<string, unknown>
+      return {
+        groupId: typeof body.groupId === 'string' ? body.groupId : undefined,
+        title: typeof body.title === 'string' ? body.title : '',
+        content: typeof body.content === 'string' ? body.content : '',
+        keys: Array.isArray(body.keys) ? (body.keys as string[]) : undefined,
+        comment: typeof body.comment === 'string' ? body.comment : undefined,
+        enabled: typeof body.enabled === 'boolean' ? body.enabled : undefined,
+        constant: typeof body.constant === 'boolean' ? body.constant : undefined,
+        triggerMode:
+          body.triggerMode === 'keyword' ||
+          body.triggerMode === 'constant' ||
+          body.triggerMode === 'vector'
+            ? body.triggerMode
+            : undefined,
+        priority:
+          typeof body.priority === 'number' ? body.priority : undefined,
+        order: typeof body.order === 'number' ? body.order : undefined,
+      }
+    })
+    try {
+      const result = await createLorebookEntriesBatch(lorebookId, bodies)
+      if (!result) {
+        return reply.status(404).send({ error: ApiErrorCodes.lorebook_not_found })
+      }
+      scheduleLorebookVectorReindex([result.lorebook])
+      return {
+        ok: true as const,
+        entries: result.entries,
+        savedAt: result.savedAt,
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : ''
       app.log.error(e)
@@ -2953,8 +2988,7 @@ app.patch<{
       if (!result) {
         return reply.status(404).send({ error: ApiErrorCodes.lorebook_entry_not_found })
       }
-      const lb = await readLorebookById(lorebookId)
-      if (lb) scheduleLorebookVectorReindex([lb])
+      scheduleLorebookVectorReindex([result.lorebook])
       return { ok: true as const, entry: result.entry, savedAt: result.savedAt }
     } catch (e) {
       app.log.error(e)

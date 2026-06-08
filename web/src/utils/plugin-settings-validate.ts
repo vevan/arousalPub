@@ -3,6 +3,10 @@ import type {
   PluginSettingsSchema,
 } from '@/plugins/plugin-settings-types'
 import { pluginI18nKey } from '@/utils/plugin-settings-api'
+import {
+  hasPluginLocaleMessage,
+  readPluginLocaleMessage,
+} from '@/utils/plugin-locale-text'
 
 export function parseObjectListField(value: unknown): Record<string, unknown>[] {
   if (Array.isArray(value)) {
@@ -96,12 +100,15 @@ export function validatePluginSettingsModel(
 export function defaultTextForField(
   field: { defaultKey?: string },
   pluginId: string,
-  t: (key: string) => string,
-  te: (key: string) => boolean,
+  _t: (key: string) => string,
+  _te: (key: string) => boolean,
 ): string {
   if (!field.defaultKey) return ''
+  if (hasPluginLocaleMessage(pluginId, field.defaultKey)) {
+    return readPluginLocaleMessage(pluginId, field.defaultKey) ?? ''
+  }
   const key = pluginI18nKey(pluginId, field.defaultKey)
-  return te(key) ? t(key) : ''
+  return _te(key) ? _t(key) : ''
 }
 
 export function hydratePluginSettingsDefaults(

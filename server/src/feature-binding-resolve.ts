@@ -1,16 +1,13 @@
 import { extractApiConfigIdFromBinding } from './api-config-references.js'
 import type { ApiPreset, ApiSettingsDocument } from './api-settings-file.js'
-import {
-  type FeatureBinding,
-  type FeatureType,
-  findFeatureBinding,
-} from './feature-binding-types.js'
 import { readConversationChatBinding } from './conversation-api-settings.js'
+
+export const FEATURE_TYPES = ['chat', 'rag_generate', 'rerank'] as const
+export type FeatureType = (typeof FEATURE_TYPES)[number]
 
 export type ResolvedFeatureSource =
   | 'conversation'
   | 'global'
-  | 'legacy_active'
   | 'plugin_settings'
 
 export type ResolvedFeatureType = FeatureType | 'plugin'
@@ -131,23 +128,13 @@ function readConversationPluginBinding(
   return { apiConfigId: fallback, modelOverride }
 }
 
-export function resolveGlobalFeatureBinding(
-  bindings: FeatureBinding[],
-  featureType: FeatureType,
-  featureRefId: string,
-): FeatureBinding | null {
-  return findFeatureBinding(bindings, featureType, featureRefId)
-}
-
 export function resolveFeatureBindingMeta(
-  settings: Pick<ApiSettingsDocument, 'activePresetId' | 'featureBindings'>,
+  settings: Pick<ApiSettingsDocument, 'activePresetId'>,
   featureType: FeatureType,
   options?: {
     conversationApiPreset?: unknown
-    featureRefId?: string
   },
 ): ResolvedFeatureBinding | null {
-  const bindings = settings.featureBindings ?? []
   const fromConversation = readConversationFeatureBinding(
     options?.conversationApiPreset,
     featureType,
@@ -163,21 +150,6 @@ export function resolveFeatureBindingMeta(
     }
   }
 
-  const global = resolveGlobalFeatureBinding(
-    bindings,
-    featureType,
-    NON_PLUGIN_GLOBAL_REF,
-  )
-  if (global) {
-    return {
-      featureType,
-      featureRefId: global.featureRefId,
-      apiConfigId: global.apiConfigId,
-      modelOverride: global.modelOverride,
-      source: 'global',
-    }
-  }
-
   if (featureType === 'chat') {
     const active = settings.activePresetId?.trim()
     if (active) {
@@ -185,7 +157,7 @@ export function resolveFeatureBindingMeta(
         featureType: 'chat',
         featureRefId: NON_PLUGIN_GLOBAL_REF,
         apiConfigId: active,
-        source: 'legacy_active',
+        source: 'global',
       }
     }
   }
@@ -194,14 +166,14 @@ export function resolveFeatureBindingMeta(
 }
 
 export function resolveChatApiConfigId(
-  settings: Pick<ApiSettingsDocument, 'activePresetId' | 'featureBindings'>,
+  settings: Pick<ApiSettingsDocument, 'activePresetId'>,
   conversationApiPreset?: unknown,
 ): ResolvedFeatureBinding | null {
   return resolveFeatureBindingMeta(settings, 'chat', { conversationApiPreset })
 }
 
 export function resolvePluginFeatureBindingMeta(
-  settings: Pick<ApiSettingsDocument, 'activePresetId' | 'featureBindings'>,
+  settings: Pick<ApiSettingsDocument, 'activePresetId'>,
   pluginId: string,
   conversationApiPreset?: unknown,
   pluginSettingsApiConfigId?: string | null,
@@ -243,7 +215,6 @@ export function resolveFeatureApi(
   featureType: FeatureType,
   options?: {
     conversationApiPreset?: unknown
-    featureRefId?: string
   },
 ): ResolvedFeatureApi | null {
   const meta = resolveFeatureBindingMeta(settings, featureType, options)

@@ -1,9 +1,9 @@
-// plugins/curated-memory/src/shared/utils.ts
+// src/shared/utils.ts
 function asString(v) {
   return typeof v === "string" ? v.trim() : "";
 }
 
-// plugins/curated-memory/src/shared/summarize.ts
+// src/shared/summarize.ts
 function parseModelJson(text) {
   let raw = (text ?? "").trim();
   const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -37,7 +37,7 @@ function formatEntryTitle(rawTitle, startTurn, endTurn) {
   return `${base}${suffix}`;
 }
 
-// plugins/curated-memory/src/server/complete-draft.ts
+// src/server/complete-draft.ts
 var UPSTREAM_RETRY_MAX = 3;
 var PIPELINE_FATAL = /* @__PURE__ */ new Set(["context_exceeded", "context_length_unconfigured"]);
 var UPSTREAM_RETRY = /* @__PURE__ */ new Set(["plugin_complete_failed", "preflight_failed"]);
@@ -67,11 +67,22 @@ async function assertPreflight(api, conversationId, apiConfigId, system, userCon
   }
   throw new Error("preflight_failed");
 }
-async function callCompleteOnce(api, conversationId, apiConfigId, system, userContent) {
-  const [expandedSystem, expandedUser] = await Promise.all([
-    expandText(api, system, conversationId, apiConfigId ?? ""),
+function joinSystemMessage(reference, instruction) {
+  const ref = reference.trim();
+  const inst = instruction.trim();
+  if (!ref) return inst;
+  if (!inst) return ref;
+  return `${ref}
+
+${inst}`;
+}
+async function callCompleteOnce(api, conversationId, apiConfigId, systemReferenceContext, systemPromptTemplate, userContent) {
+  const [expandedRef, expandedInstruction, expandedUser] = await Promise.all([
+    systemReferenceContext.trim() ? expandText(api, systemReferenceContext, conversationId, apiConfigId ?? "") : Promise.resolve(""),
+    expandText(api, systemPromptTemplate, conversationId, apiConfigId ?? ""),
     expandText(api, userContent, conversationId, apiConfigId ?? "")
   ]);
+  const expandedSystem = joinSystemMessage(expandedRef, expandedInstruction);
   await assertPreflight(
     api,
     conversationId,
@@ -93,11 +104,18 @@ async function callCompleteOnce(api, conversationId, apiConfigId, system, userCo
   }
   return result;
 }
-async function callCompleteWithRetry(api, conversationId, apiConfigId, system, userContent) {
+async function callCompleteWithRetry(api, conversationId, apiConfigId, systemReferenceContext, systemPromptTemplate, userContent) {
   let lastErr = null;
   for (let attempt = 1; attempt <= UPSTREAM_RETRY_MAX; attempt++) {
     try {
-      return await callCompleteOnce(api, conversationId, apiConfigId, system, userContent);
+      return await callCompleteOnce(
+        api,
+        conversationId,
+        apiConfigId,
+        systemReferenceContext,
+        systemPromptTemplate,
+        userContent
+      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       if (PIPELINE_FATAL.has(msg)) throw e;
@@ -115,6 +133,7 @@ async function completeDraft(ctx, api) {
     api,
     ctx.conversationId,
     ctx.apiConfigId,
+    ctx.systemReferenceContext ?? "",
     ctx.systemPromptTemplate,
     ctx.userContent
   );

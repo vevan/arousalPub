@@ -39,6 +39,11 @@ import {
   secretToDiskFields,
   type EncryptedSecretV1,
 } from './secret-encryption.js'
+import {
+  getMemoizedPreferencesDoc,
+  invalidateRequestPreferencesMemo,
+  setMemoizedPreferencesDoc,
+} from './request-preferences-memo.js'
 
 export interface UserPreferencesDocument {
   version: 1
@@ -119,7 +124,7 @@ function userPreferencesPath(): string {
   return path.join(getUserDataDir(getCurrentUserId()), 'user-preferences.json')
 }
 
-async function readPreferencesFileRaw(): Promise<UserPreferencesDocument | null> {
+async function readPreferencesFileFromDisk(): Promise<UserPreferencesDocument | null> {
   try {
     const raw = await readFile(userPreferencesPath(), 'utf8')
     const doc = JSON.parse(raw) as UserPreferencesDocument
@@ -128,6 +133,14 @@ async function readPreferencesFileRaw(): Promise<UserPreferencesDocument | null>
     /* missing */
   }
   return null
+}
+
+async function readPreferencesFileRaw(): Promise<UserPreferencesDocument | null> {
+  const cached = getMemoizedPreferencesDoc()
+  if (cached !== undefined) return cached
+  const doc = await readPreferencesFileFromDisk()
+  setMemoizedPreferencesDoc(doc)
+  return doc
 }
 
 export async function readGlobalLorebookSettings(): Promise<LorebookSettings> {
@@ -212,6 +225,7 @@ async function writeUserPreferencesDocument(
   const userId = getCurrentUserId()
   const disk = preferencesToDisk(doc, userId)
   await writeFile(userPreferencesPath(), JSON.stringify(disk, null, 2), 'utf8')
+  invalidateRequestPreferencesMemo()
   return doc
 }
 

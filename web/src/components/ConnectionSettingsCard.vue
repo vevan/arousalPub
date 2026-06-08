@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import ApiModelPickerDialog from '@/components/settings/ApiModelPickerDialog.vue'
-import FeatureBindingsCard from '@/components/settings/FeatureBindingsCard.vue'
 import { intlLocaleTag } from '@/i18n/locale'
 import { useApiKeysStore, type ApiKeyEntry } from '@/stores/apiKeys'
 import { useAuthStore } from '@/stores/auth'
@@ -73,8 +72,8 @@ function formatReferenceLine(ref: ApiConfigReference): string {
   if (ref.kind === 'embedding_api_key') {
     return t('conn.refEmbeddingKey')
   }
-  if (ref.kind === 'global_feature_binding') {
-    return t('conn.refGlobalBinding', { path: ref.path ?? '—' })
+  if (ref.kind === 'global_active_preset') {
+    return t('conn.refActivePreset', { path: ref.path ?? '—' })
   }
   return ref.kind
 }
@@ -578,8 +577,6 @@ function closeImportDialog() {
     <p class="text-body-2 text-medium-emphasis mb-4">
       {{ $t('conn.storageHint', { path: settingsPath }) }}
     </p>
-
-    <FeatureBindingsCard />
 
     <v-select
       :model-value="conn.activePresetId ?? undefined"

@@ -21,6 +21,7 @@ import {
   k,
   loadMergedSettings,
   maxTurnOrdinal,
+  normalizeManualTaskSelection,
   parseAutoSidecarIdsRaw,
   sidecarIdsFromTaskSelection,
   tasksFromSelection,
@@ -410,6 +411,13 @@ function registerSummarizeDialog(
             autoSidecarIds,
           })
           refreshMemorybookUi(h)
+        } else {
+          await h.conversation.patchPluginSettings({
+            manualSummarizeTasks: normalizeManualTaskSelection(
+              model.selectedTasks,
+              settings.sidecars,
+            ),
+          })
         }
         await runSummarizeTasks(h, {
           fromTurn,
@@ -482,7 +490,7 @@ export function openManualSummarize(
       {
         startTurn: preset?.startTurn ?? 0,
         endTurn: preset?.endTurn ?? maxOrd,
-        selectedTasks: ['memory'],
+        selectedTasks: [...s.manualSummarizeTasks],
       },
       DIALOG_MANUAL,
     )

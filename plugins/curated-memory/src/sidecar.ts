@@ -1,5 +1,6 @@
 import { isLorebookEntryMissingError } from './errors.js'
 import { asString, entryKeys } from './shared/utils.js'
+import type { PendingLorebookCreate } from './batch-write.js'
 import type { MergedSettings, PluginHost, SidecarConfig } from './types.js'
 
 export async function writeSidecarEntry(
@@ -9,6 +10,7 @@ export async function writeSidecarEntry(
   sc: SidecarConfig,
   reviewed: { title: string; content: string; keywords: string[] },
   sidecarKeys: string[],
+  pendingCreates?: PendingLorebookCreate[],
 ) {
   const body = {
     title: sc.name,
@@ -27,6 +29,10 @@ export async function writeSidecarEntry(
       delete sidecarEntryIds[sc.id]
       entryId = ''
     }
+  }
+  if (pendingCreates) {
+    pendingCreates.push({ body, sidecarId: sc.id })
+    return ''
   }
   const created = await host.lorebook.createEntry(settings.targetLorebookId, body)
   sidecarEntryIds[sc.id] = created.id

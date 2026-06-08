@@ -19,7 +19,7 @@
 
 ### 1.2 后续迭代（未做）
 
-- 分支子目录 `branch*/` 与 `meta.links.branches` 的产品 UI（仍保留字段，不写新分支逻辑）
+- 分支子目录 `branch*/` 与 `meta.links.branches` 的产品 UI与写入路径 — **完整参考见 `DOC/23-conversation-branches.md`**（memory 枚举 / 召回过滤等服务端原语已落地）
 - `GET .../messages` 分页 / 按 chunk 懒加载 — **方案见 `DOC/15-conversation-messages-lazy-load.md`（P1）**
 - 跨 chunk 的「删中间轮」后自动合并块（删轮仍只动 tail；**删空 tail 链式回退已实现**，见 §5.3）
 
@@ -56,7 +56,7 @@ export function ordinalRangeForTurn(turnOrdinal: number): { start: number; end: 
 |------|------|
 | `server/src/chunk-chain.ts` | 命名、`readChunkFile`、`readChunkChain`、`readAllTurns`、`rebuildHeadTailFromLinks`、`splitOversizedTailChunk`（迁移） |
 | `server/src/chat-storage.ts` | 保留写盘原语；`appendConversationTurn` / `saveFirstTurn` 调用 chain 模块的 `ensureTailHasRoom` + `writeTurn` |
-| `server/src/turn-resolve.ts` | `resolveTurnById` 改为链上查找（tail → previous） |
+| ~~`turn-resolve.ts`~~（已移除） | memory 命中用 `memory-hits.ts`；按 turnId 全链扫描用 `readAllTurns` |
 | `server/src/memory-pipeline.ts` | `allTurns` 来自 `readAllTurns` |
 | `server/src/memory-index.ts` | 全量 reindex 遍历全链 |
 | `server/src/index.ts` | `GET .../messages` 映射全链 turns |

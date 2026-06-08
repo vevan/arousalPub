@@ -19,6 +19,12 @@ export type ResolvePluginCompleteApiResult =
   | { ok: true; resolved: ResolvedFeatureApi }
   | { ok: false; code: 'api_config_not_found' }
 
+export interface ResolvePluginCompleteApiSources {
+  settings: Awaited<ReturnType<typeof readApiSettingsFromFile>>
+  conversationApiPreset?: unknown
+  pluginSettings: Record<string, unknown>
+}
+
 function pluginSettingsApiConfigId(
   settings: Record<string, unknown>,
 ): string | null {
@@ -26,9 +32,11 @@ function pluginSettingsApiConfigId(
   return typeof id === 'string' && id.trim() ? id.trim() : null
 }
 
-export async function resolvePluginCompleteApi(
+/** 纯解析（单测 / 预加载数据）；`resolvePluginCompleteApi` 读盘后调用 */
+export function resolvePluginCompleteApiFromSources(
   input: ResolvePluginCompleteApiInput,
-): Promise<ResolvePluginCompleteApiResult> {
+  sources: ResolvePluginCompleteApiSources,
+): ResolvePluginCompleteApiResult {
   const pluginId = input.pluginId.trim()
   if (!pluginId) {
     return { ok: false, code: 'api_config_not_found' }
@@ -37,8 +45,7 @@ export async function resolvePluginCompleteApi(
   const explicit =
     typeof input.apiConfigId === 'string' ? input.apiConfigId.trim() : ''
   if (explicit) {
-    const settings = await readApiSettingsFromFile()
-    const preset = settings?.presets.find((p) => p.id === explicit) ?? null
+    const preset = sources.settings?.presets.find((p) => p.id === explicit) ?? null
     if (!preset) {
       return { ok: false, code: 'api_config_not_found' }
     }
@@ -56,10 +63,30 @@ export async function resolvePluginCompleteApi(
     }
   }
 
-  const settings = await readApiSettingsFromFile()
+  const settings = sources.settings
   if (!settings) {
     return { ok: false, code: 'api_config_not_found' }
   }
+
+  const resolved = resolvePluginFeatureApi(settings, pluginId, {
+    conversationApiPreset: sources.conversationApiPreset,
+    pluginSettingsApiConfigId: pluginSettingsApiConfigId(sources.pluginSettings),
+  })
+  if (!resolved) {
+    return { ok: false, code: 'api_config_not_found' }
+  }
+  return { ok: true, resolved }
+}
+
+export async function resolvePluginCompleteApi(
+  input: ResolvePluginCompleteApiInput,
+): Promise<ResolvePluginCompleteApiResult> {
+  const pluginId = input.pluginId.trim()
+  if (!pluginId) {
+    return { ok: false, code: 'api_config_not_found' }
+  }
+
+  const settings = await readApiSettingsFromFile()
 
   let conversationApiPreset: unknown
   const convId =
@@ -72,12 +99,9 @@ export async function resolvePluginCompleteApi(
   const uid = input.userId ?? getCurrentUserId()
   const pluginSettings = await readMergedPluginUserSettings(pluginId, uid)
 
-  const resolved = resolvePluginFeatureApi(settings, pluginId, {
+  return resolvePluginCompleteApiFromSources(input, {
+    settings,
     conversationApiPreset,
-    pluginSettingsApiConfigId: pluginSettingsApiConfigId(pluginSettings),
+    pluginSettings,
   })
-  if (!resolved) {
-    return { ok: false, code: 'api_config_not_found' }
-  }
-  return { ok: true, resolved }
 }

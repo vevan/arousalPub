@@ -13,6 +13,7 @@ export interface PluginCompleteDraftRequestBody {
   conversationId?: string
   apiConfigId?: string
   kind?: string
+  systemReferenceContext?: string
   userContent?: string
   systemPromptTemplate?: string
   fromTurn?: number
@@ -39,6 +40,9 @@ function parseDraftContext(
     return { ok: false, code: 'draft_kind_invalid' }
   }
 
+  const systemReferenceContext =
+    typeof body.systemReferenceContext === 'string' ? body.systemReferenceContext : ''
+
   const userContent =
     typeof body.userContent === 'string' ? body.userContent : ''
   if (!userContent.trim()) {
@@ -59,6 +63,7 @@ function parseDraftContext(
     conversationId,
     apiConfigId: apiConfigId || undefined,
     kind,
+    systemReferenceContext,
     userContent,
     systemPromptTemplate,
   }

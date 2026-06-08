@@ -139,6 +139,8 @@ export interface PluginCompleteDraftContext {
   /** 解析后填入；插件 hook 内 complete/preflight 可省略 apiConfigId */
   apiConfigId?: string
   kind: 'memory' | 'sidecar'
+  /** 参考上下文，与 systemPromptTemplate 拼成 system 消息 */
+  systemReferenceContext: string
   userContent: string
   systemPromptTemplate: string
   fromTurn?: number

@@ -12,7 +12,7 @@ import {
 
 } from './budget-trim-settings.js'
 
-import { countChatMessagesTokens } from './token-count.js'
+import { countChatMessagesTokens, estimateTokens } from './token-count.js'
 
 import { formatMemoryXml } from './turn-memory-xml.js'
 
@@ -358,9 +358,46 @@ function recordDrop(drops: PromptBudgetTrimResult, slot: BudgetTrimSlot): void {
 
 
 
+/** 每 N 轮裁切用全量 assemble+tiktoken 校准一次（防止增量估算漂移） */
+export const TRIM_TOKEN_REVERIFY_EVERY = 4
+
+interface TrimTokenSnapshot {
+  worldText: string
+  memoryText: string
+  removedHistory?: ChatMessage
+}
+
+/** 估算单次裁切减少的 token（world / memory XML 差分 + history 单条） */
+export function estimateTrimTokenDelta(
+  state: PromptBudgetTrimState,
+  slot: BudgetTrimSlot,
+  snapshot: TrimTokenSnapshot,
+  tokenModel?: string,
+): number {
+  const opt = { model: tokenModel }
+  if (slot === 'lore') {
+    const after = worldTextFromTrimState(state)
+    return Math.max(
+      0,
+      estimateTokens(snapshot.worldText, opt) - estimateTokens(after, opt),
+    )
+  }
+  if (slot === 'memory') {
+    const after = memoryTextFromTrimState(state)
+    return Math.max(
+      0,
+      estimateTokens(snapshot.memoryText, opt) - estimateTokens(after, opt),
+    )
+  }
+  if (slot === 'history' && snapshot.removedHistory) {
+    return countChatMessagesTokens([snapshot.removedHistory], opt)
+  }
+  return 0
+}
+
 /**
 
- * §14.4 统一预算裁切：每删一条可裁项后重算 token，直到 ≤ maxTokens 或无可删项。
+ * §14.4 统一预算裁切：增量估算 token，周期性全量校准；结束时一次 assemble。
 
  * 顺序与下限由 `BudgetTrimSettings` 决定。
 
@@ -426,29 +463,83 @@ export function runPromptBudgetTrimLoop(opts: {
 
     let trimmed = false
 
+    let trimmedSlot: BudgetTrimSlot | null = null
+
     for (const slot of order) {
 
-      if (trimOneForSlot(opts.state, slot, opts.trimSettings)) {
+      const snapshot: TrimTokenSnapshot = {
 
-        recordDrop(drops, slot)
+        worldText: worldTextFromTrimState(opts.state),
 
-        trimmed = true
+        memoryText: memoryTextFromTrimState(opts.state),
 
-        break
+        removedHistory:
+
+          slot === 'history' ? opts.state.historyMessages[0] : undefined,
 
       }
+
+      if (!trimOneForSlot(opts.state, slot, opts.trimSettings)) continue
+
+      recordDrop(drops, slot)
+
+      tokens = Math.max(
+
+        0,
+
+        tokens -
+
+          estimateTrimTokenDelta(
+
+            opts.state,
+
+            slot,
+
+            snapshot,
+
+            opts.tokenModel,
+
+          ),
+
+      )
+
+      trimmed = true
+
+      trimmedSlot = slot
+
+      break
 
     }
 
     if (!trimmed) break
 
-    messages = opts.assembleMessages(opts.state)
+    const needsVerify =
 
-    tokens = count(messages)
+      tokens <= budget ||
+
+      (round + 1) % TRIM_TOKEN_REVERIFY_EVERY === 0
+
+    if (needsVerify) {
+
+      messages = opts.assembleMessages(opts.state)
+
+      tokens = count(messages)
+
+    } else if (trimmedSlot === 'history') {
+
+      // history 裁切影响 messages 链结构，下一轮前需刷新 messages 引用
+
+      messages = opts.assembleMessages(opts.state)
+
+    }
 
   }
 
 
+
+  messages = opts.assembleMessages(opts.state)
+
+  tokens = count(messages)
 
   return { messages, estimatedTokens: tokens, drops }
 

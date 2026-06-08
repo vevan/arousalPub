@@ -3,7 +3,6 @@ import { describe, it } from 'node:test'
 import {
   collectApiConfigIdsFromApiPreset,
   extractApiConfigIdFromBinding,
-  findGlobalFeatureBindingReferences,
   findKeyReferencesInSettings,
   findPresetReferencesInSettings,
 } from './api-config-references.js'
@@ -41,32 +40,8 @@ describe('collectApiConfigIdsFromApiPreset', () => {
   })
 })
 
-describe('findGlobalFeatureBindingReferences', () => {
-  it('finds global feature binding references', () => {
-    const refs = findGlobalFeatureBindingReferences('keep-me', [
-      {
-        id: 'f1',
-        featureType: 'chat',
-        featureRefId: 'global',
-        apiConfigId: 'keep-me',
-        updatedAt: 't',
-      },
-      {
-        id: 'f2',
-        featureType: 'rerank',
-        featureRefId: 'global',
-        apiConfigId: 'other',
-        updatedAt: 't',
-      },
-    ])
-    assert.equal(refs.length, 1)
-    assert.equal(refs[0]?.kind, 'global_feature_binding')
-    assert.equal(refs[0]?.path, 'chat')
-  })
-})
-
 describe('findPresetReferencesInSettings', () => {
-  it('finds conversation apiPreset references', () => {
+  it('finds activePresetId and conversation apiPreset references', () => {
     const presets: ApiPreset[] = [
       {
         id: 'keep-me',
@@ -94,7 +69,7 @@ describe('findPresetReferencesInSettings', () => {
     ]
     const refs = findPresetReferencesInSettings(
       'keep-me',
-      { activePresetId: 'other', presets, featureBindings: [] },
+      { activePresetId: 'keep-me', presets },
       [
         {
           conversationId: 'a1b2c3d4',
@@ -107,10 +82,9 @@ describe('findPresetReferencesInSettings', () => {
         },
       ],
     )
-    assert.equal(refs.length, 1)
-    assert.equal(refs[0]?.kind, 'conversation_api_preset')
-    assert.equal(refs[0]?.conversationId, 'a1b2c3d4')
-    assert.equal(refs[0]?.path, 'chat')
+    assert.equal(refs.length, 2)
+    assert.ok(refs.some((r) => r.kind === 'global_active_preset'))
+    assert.ok(refs.some((r) => r.kind === 'conversation_api_preset'))
   })
 })
 

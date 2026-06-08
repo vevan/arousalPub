@@ -1,48 +1,122 @@
 # 会话消息分页与前端懒加载 — 实现方案
 
-> **状态**：**规划中**（P1，见 `DOC/04-TODO.md`）  
-> **前置**：Chunk 链全链读已实现（`DOC/08`）；当前 `GET .../messages` 与 Web 聊天区为**一次性全量**。  
-> **关联**：`DOC/03` §6.8、`DOC/08` §1.2 / §8、`DOC/10` 插件 `readConversationTurnsRange`、`web/src/composables/chat-session/use-turn-list.ts`。
+> **状态**：**部分已落地**（2026-06）— 服务端 chunk 原语、区间 GET、`assemble` 热路径已就绪；**UI 懒加载与 `tail`/`before` query 仍待做**（见 §5 待办）。  
+> **定位**：**会话消息产品能力**（打开对话默认尾部 N 轮、上滚加载更早消息），**不是** `DOC/22` 性能审计路线图中的 P0–P3 项。  
+> **前置**：Chunk 链（`DOC/08`）。`DOC/22` P1 已交付的 `readTurnsTail` / 区间读等原语供本文 **S1 / S1b** 复用；**S2–S4**（`tail`/`before` API、Web 分页、上滚锚点）仍属本文待办。  
+> **关联**：`DOC/03` §6.8、`DOC/08`、`DOC/10` §3.3、`DOC/22`、`web/src/composables/chat-session/use-turn-list.ts`。
+
+---
+
+## 0. 已完成能力（供 lazy load 实施时直接复用）
+
+> 下列能力**已实现**，实施本文 §4 前端分页时**无需再改**底层读盘；仅需在 `GET .../messages` 上挂 query 分支并改 Web 调用方。
+
+### 0.1 Chunk 读原语（`server/src/chunk-chain.ts`）
+
+| 函数 | 状态 | 行为摘要 |
+|------|------|----------|
+| `readTurnsInOrdinalRange(convId, from, to)` | ✅ | 闭区间 `[from, to]`；从 `index.tailChunkFile` 沿 `previous` 只读**相交** chunk；**不**调用 `syncChunkIndexIfDrifted` |
+| `readTurnsTail(convId, limit)` | ✅ | 读 tail 块得 `maxOrdinal` → `readTurnsInOrdinalRange(from, to)`；返回 `{ turns, hasMoreBefore, minOrdinal, maxOrdinal }` |
+| `computeTailOrdinalReadRange(maxOrdinal, limit)` | ✅ | 纯函数；单测见 `chunk-chain.test.ts` |
+| `readAllTurns(convId)` | ✅ 保留 | **运维/兼容**；无参 `GET .../messages` 仍用；热路径（assemble / 摘要）**已迁出** |
+| `syncChunkIndexIfDrifted` | ✅ 节流 | 热路径**不调用**；`CHUNK_INDEX_SYNC_TTL_MS = 5min`；`repairConversationChunkIndex` 强制全扫 |
+
+**`hasMoreBefore` 语义（当前实现）**：`computeTailOrdinalReadRange` 下为 `from > 0`（即最小 ordinal 仍大于 0 时认为前面还有）。lazy load 挂 API 时可原样透出，或结合 `messages/meta` 再精确化。
+
+**未做**：按文件名推算相交块、不沿链 walk 的进一步优化（现实现已够用，长对话通常只读 1～2 块）。
+
+### 0.2 HTTP：`GET .../messages` 区间读（`server/src/index.ts`）
+
+| Query | 状态 | 实现 |
+|-------|------|------|
+| `from` + `to` | ✅ | `readTurnsInOrdinalRange`；`to - from + 1 > 50` → `400 range_too_large`（`CONVERSATION_BATCH_MAX_TURNS`） |
+| （无参） | ✅ 仍全量 | `readAllTurns` |
+| `tail` / `before` / `limit` / `full=1` | ⏳ | 见 §2.2 定案，路由**未接** |
+| 响应 `range` / `page.hasMoreBefore` | ⏳ | 见 §2.2，**未接** |
+
+错误码（已有）：`messages_range_incomplete`、`messages_range_invalid`、`range_too_large`（`api-error-codes.ts`）。
+
+### 0.3 Web 客户端（`web/src/utils/chat-messages.ts`）
+
+| 函数 | 状态 | 行为 |
+|------|------|------|
+| `fetchConversationTurnsRange(id, from, to)` | ✅ | `GET .../messages?from=&to=`，解析为 `ChatTurnItem[]` |
+| `fetchConversationTurns(id)` | ✅ 全量 | 无参 GET；**聊天页仍用此路径** → lazy load 待改 |
+| `fetchConversationTurnsPage` / `tail` | ⏳ | 见 §4.3 |
+
+### 0.4 插件宿主（`web/src/plugins/conversation-host.ts`）
+
+| API | 状态 | 行为 |
+|-----|------|------|
+| `readConversationTurnsRange` | ✅ | 内部 `fetchConversationTurnsRange`，**真区间读**，不再全量 filter |
+| `patchTurns` / batch | ✅ | `DOC/10` §3.3；`CONVERSATION_BATCH_MAX_TURNS = 50` |
+
+### 0.5 其它服务端热路径（与 UI 分页独立，但共用原语）
+
+| 调用方 | 读法 | 文件 |
+|--------|------|------|
+| `runMemoryPipeline` / assemble | `loadTurnsForMemoryPipeline` → `readTurnsTail` 或区间读（再生） | `memory-pipeline.ts` |
+| `runPluginPrepareContext`（策展摘要） | `readTurnsInOrdinalRange(rangeFrom, toTurn)` 单次 | `plugin-prepare-context.ts` |
+| Memory 向量命中正文 | `loadTurnsForMemoryHits`（按 `branchPath`+`chunkFileName` 批量读 chunk） | `memory-hits.ts` |
+| `planConversationMemoryReindex` 计数 | 沿 `listChunkFileNames` 按块计数，非 `readAllTurns` | `memory-index.ts` |
+
+**与 lazy load 关系**：发给模型的 history/memory **不依赖** UI 已加载的 turns；两者读盘可并行演进，**无冲突**（见 `DOC/22` §5 lazy load 说明）。
+
+### 0.6 常量（当前代码）
+
+```ts
+// server/src/turn-patch-body.ts
+export const CONVERSATION_BATCH_MAX_TURNS = 50  // PATCH batch + GET from/to 上限
+
+// server/src/chunk-chain.ts
+export const CHUNK_INDEX_SYNC_TTL_MS = 5 * 60 * 1000
+```
+
+`MESSAGES_DEFAULT_TAIL` / `MESSAGES_READ_MAX_SPAN`（§2.3）**尚未**抽到 `messages-page.ts`；实施 S2 时建议新建并与 Web 镜像。
+
+### 0.7 分支对话
+
+Memory v2 已在 Lance 行预留 `branchPath` + `chunkFileName`（`DOC/22`）；枚举与召回过滤见 **`DOC/23-conversation-branches.md`**。**messages 区间读仍仅主路径**（`index.tailChunkFile` 链）。分支 lazy load 须在 `readTurnsTail` / `readTurnsInOrdinalRange` 分支化后实施（`DOC/23` §6.2）。
 
 ---
 
 ## 1. 背景与问题
 
-### 1.1 现状
+### 1.1 现状（2026-06 更新）
 
 | 层 | 行为 |
 |----|------|
-| **服务端** | `GET /api/chat/conversations/:id/messages` → `readAllTurns` 沿 chunk 链读**全部** turn，映射为 JSON 一次返回 |
-| **前端** | `fetchConversationTurns` 全量写入 `turns`；`ChatMessageList` `v-for` 渲染**全部** `ChatTurnBlock` |
-| **磁盘** | 已按 `turnsPerFile`（默认 100）分块，但 API **未利用**块边界做区间读 |
-| **发给模型** | `assemble-messages` / history 上限 / budget trim **仅裁 prompt**，与 UI 加载无关 |
+| **服务端读盘** | ✅ 区间原语 + `from/to` GET 已就绪；⏳ `tail`/`before` query 与分页响应字段未接 |
+| **服务端无参 GET** | 仍 `readAllTurns` 全量（兼容） |
+| **前端聊天区** | `fetchConversationTurns` 全量；`ChatMessageList` 渲染全部 `ChatTurnBlock` |
+| **插件批读** | ✅ `readConversationTurnsRange` 真区间 HTTP |
+| **发给模型** | ✅ `assemble` 经 `memory-pipeline` 尾部/区间读，不扫全链 |
 
 ### 1.2 超长会话（如 1000+ 轮）的影响
 
-- **网络**：单次响应体可达数 MB（视单轮正文长度）。
-- **服务端**：每次打开对话都 `readAllTurns` + 全量 DTO 映射，CPU/IO 随轮次线性增长。
-- **前端**：1000+ DOM 节点 + 富文本/markdown，滚动与内存明显变差。
-- **插件**：`readConversationTurnsRange` 表面支持区间，底层仍 `fetchConversationTurns` 全量再 filter（`DOC/10` §3.2）。
+- **网络（UI）**：打开对话仍一次拉全量 → **待 §4 前端 lazy load**。
+- **服务端 assemble**：已改为尾部窗口，**不再**随总轮次线性扫全链。
+- **前端 DOM**：仍随全量 turns 增长 → **待 §4**。
 
 ### 1.3 目标
 
 1. **打开对话**：默认只加载**尾部最近 N 轮**（用户立即可见区域）。
 2. **上滚加载更早**：按批追加，不重复请求已加载区间。
-3. **服务端区间读**：按 `turnOrdinal` 范围只读相交 chunk，避免为 UI 扫全链。
-4. **与插件批读对齐**：同一套 range 语义与上限常量（读侧可略大于写侧 50 轮批上限）。
-5. **向后兼容**：迁移期保留无参全量响应（或 `?full=1`），避免未改动的调用方立刻损坏。
+3. **服务端区间读**：按 `turnOrdinal` 范围只读相交 chunk — **原语已完成**，挂到默认 GET 即可。
+4. **与插件批读对齐**：同一套 `from/to` 语义；插件侧 **已对齐**。
+5. **向后兼容**：迁移期保留无参全量（或 `?full=1`）。
 
 ### 1.4 非目标（本期不做）
 
-- 首页 **`/api/chat/index` 对话列表**分页（元数据轻量，另项）。
-- 虚拟列表 / 可变高度项的完整方案（可作为 **Phase 2** 优化项）。
+- 首页 **`/api/chat/index` 对话列表**分页。
+- 虚拟列表完整方案（**Phase 2**）。
 - 改变 chunk **存储格式**或 `index.json` 字段语义。
 
 ---
 
 ## 2. API 定案
 
-### 2.1 元数据（可选，建议 Phase 1 一并做）
+### 2.1 元数据（可选，建议 Phase 1 一并做）— ⏳
 
 ```http
 GET /api/chat/conversations/:id/messages/meta
@@ -50,169 +124,119 @@ GET /api/chat/conversations/:id/messages/meta
 
 ```ts
 interface MessagesMetaResponse {
-  /** 实际存在的 turn 条数（去重后） */
   turnCount: number
   minOrdinal: number | null
   maxOrdinal: number | null
-  /** 与 chunk 设置一致，供客户端估算批次数 */
   turnsPerFile: number
 }
 ```
 
-实现：`readAllTurns` 仅收集 ordinal 统计，或从 `index.json` + tail 块 `meta.ordinalRange` 推导（优先轻量路径，避免为 meta 扫全链正文）。
+实现建议：读 tail 块 `meta.ordinalRange` + 沿链累加 `turns.length`（与 `planConversationMemoryReindex` 计数类似），**避免** `readAllTurns`。
 
 ### 2.2 区间读取（主接口扩展）
 
 在现有路由上增加 **query**，不新增路径：
 
 ```http
-GET /api/chat/conversations/:id/messages?from=0&to=49
-GET /api/chat/conversations/:id/messages?before=100&limit=50
-GET /api/chat/conversations/:id/messages?tail=80
-GET /api/chat/conversations/:id/messages?full=1
+GET /api/chat/conversations/:id/messages?from=0&to=49          # ✅ 已实现
+GET /api/chat/conversations/:id/messages?before=100&limit=50   # ⏳
+GET /api/chat/conversations/:id/messages?tail=80               # ⏳
+GET /api/chat/conversations/:id/messages?full=1                  # ⏳
 ```
 
-| 参数 | 含义 | 优先级 |
-|------|------|--------|
-| `tail=N` | 最近 N 轮（按 `turnOrdinal` 降序取 N 条再升序返回） | 打开对话默认 |
-| `before=K&limit=L` | `turnOrdinal < K` 的最近 L 轮（上滚加载更早） | 上滚 |
-| `from` + `to` | 闭区间 `[from, to]`，与 `DOC/10` 一致 | 插件 / 调试 |
-| `full=1` | **兼容**：等价今日无参全量 | 迁移期 |
-| （无参） | **Phase 3 前**：仍全量；**Phase 3 后**：改为等同 `tail=DEFAULT` 并打 deprecation 日志 | 分阶段 |
+| 参数 | 含义 | 状态 |
+|------|------|------|
+| `from` + `to` | 闭区间 `[from, to]` | ✅ |
+| `tail=N` | 最近 N 轮 | ⏳ 实现时调用 **`readTurnsTail`** |
+| `before=K&limit=L` | `turnOrdinal < K` 的最近 L 轮 | ⏳ 可用 `readTurnsInOrdinalRange(K-L, K-1)` 或 tail 推导 |
+| `full=1` | 等价无参全量 | ⏳ |
+| （无参） | Phase 3 前仍全量 | ✅ 当前行为 |
 
-响应体扩展：
+响应体扩展（⏳）：
 
 ```ts
 interface MessagesPageResponse {
-  turns: MessagesTurnDto[]          // 与今日字段一致
-  range: {
-    from: number | null             // 本批最小 ordinal
-    to: number | null               // 本批最大 ordinal
-  }
+  turns: MessagesTurnDto[]
+  range: { from: number | null; to: number | null }
   page: {
-    hasMoreBefore: boolean          // 是否还有更早轮次
-    hasMoreAfter: boolean           // 是否还有更新轮次（多 tab 场景）
-    totalCount?: number             // 可选，来自 meta 缓存
+    hasMoreBefore: boolean
+    hasMoreAfter: boolean
+    totalCount?: number
   }
 }
 ```
 
-### 2.3 常量（建议 `server/src/messages-page.ts` + `web` 复用导出或镜像）
+### 2.3 常量（建议 `server/src/messages-page.ts` + `web` 镜像）— ⏳
 
 ```ts
-/** 打开对话默认加载轮数 */
 export const MESSAGES_DEFAULT_TAIL = 80
-
-/** 上滚单次追加 */
 export const MESSAGES_LOAD_MORE = 50
-
-/** 单次 GET 区间上限（只读，可大于插件 PATCH 批 50） */
-export const MESSAGES_READ_MAX_SPAN = 100
-
-/** 与 DOC/10 插件写批对齐 */
-export const CONVERSATION_BATCH_MAX_TURNS = 50
+export const MESSAGES_READ_MAX_SPAN = 100   // 可大于插件写批 50
+export const CONVERSATION_BATCH_MAX_TURNS = 50  // ✅ 已有
 ```
-
-校验：
-
-- `tail`：`1 .. MESSAGES_READ_MAX_SPAN`（或允许到 200，实现时固定并单测）。
-- `from/to`：`to - from + 1 <= MESSAGES_READ_MAX_SPAN`，否则 `400 range_too_large`（与 `DOC/10` 错误码风格一致）。
-- 非法组合（同时 `tail` 与 `from`）→ `400 invalid_query`。
 
 ### 2.4 错误码
 
-在 `api-error-codes.ts` 增补（示例）：
-
-- `messages_range_too_large`
-- `messages_invalid_query`
-- `messages_conversation_not_found`（沿用现有 404 语义）
+已有：`messages_range_incomplete`、`messages_range_invalid`、`range_too_large`。  
+待增（可选）：`messages_invalid_query`（`tail` 与 `from` 互斥等）。
 
 ---
 
 ## 3. 服务端实现
 
-### 3.1 新区间读：`readTurnsInOrdinalRange`
+### 3.1 区间读原语 — ✅ 见 §0.1
 
-**文件**：`server/src/chunk-chain.ts`（或 `messages-read.ts` 薄封装）
-
-```ts
-export async function readTurnsInOrdinalRange(
-  conversationId: string,
-  range: { from: number; to: number },
-): Promise<TurnRecord[]>
-```
-
-算法要点：
-
-1. `syncChunkIndexIfDrifted` + `readConversationIndex`。
-2. 由 `ordinalRangeForNewChunk` / 文件名 `turn-000000-000099.json` 推算**可能相交**的 chunk 文件列表，**不必**从 tail 扫到 head 再 filter。
-3. 只 `readChunkFile` 相交块，合并 `turns`，`sortTurnsUnique`，再 `filter(ord in [from, to])`。
-4. 快路径：若 `index` 仅单块且 range 覆盖整块，只读一次。
-
-另实现：
+实施 S2 时 `?tail=N` 分支示例：
 
 ```ts
-export async function readTurnsTail(
-  conversationId: string,
-  limit: number,
-): Promise<{ turns: TurnRecord[]; hasMoreBefore: boolean }>
+const { turns, hasMoreBefore, minOrdinal, maxOrdinal } =
+  await readTurnsTail(conversationId, tailN)
+// mapTurnRecordsToMessagesDto(turns) + page.hasMoreBefore = hasMoreBefore
 ```
 
-内部可先 `maxOrdinal`（tail 块 `meta.ordinalRange.end`），再 `readTurnsInOrdinalRange(max - limit + 1, max)`。
-
-`readAllTurns` **降级为兼容/运维路径**（`?full=1`、调试、少数需枚举全量的工具），**不再**作为 assemble / memory 热路径的默认实现。
-
-### 3.2 组装与 memory：同样应按 chunk 读，而非全链
-
-当前 `runMemoryPipeline` 调用 `readAllTurns` 是**历史写法**（单 tail 块时代遗留），按代码实际需求**不必**扫全链：
-
-| 用途 | 实际需要的 turn | 可行读法 |
-|------|-----------------|----------|
-| **近期 history**（`selectRecentTurns`） | 尾部 `historyCount` 轮（`limitEnabled` 时 ≤200，否则默认 16） | `readTurnsTail(convId, historyCount + slack)`，通常 **1～2 个 chunk** |
-| **memory 召回 query**（`buildMemoryRecallQuery`） | 仅**上一轮** assistant + 本轮 user | 读 tail 块最后 1～2 条即可，**无需** `allTurns` |
-| **向量命中正文**（`resolveTurnById`） | Lance 返回的 `turnId` | **已实现**：从 `tailChunkFile` 沿 `previous` 按块查找，命中即停 |
-| **lore `buildScanText`** | `memoryText` + `recentHistoryScanText`（由上面两项生成） | 不直接读 turn 列表 |
-| **memory 全量重建**（`reindexConversationMemory`） | 全部可嵌入 turn | **已实现按块**：`listChunkFileNames` + 逐块 `readChunkFile`（见 `memory-index.ts`） |
-| **重建计划计数**（`planConversationMemoryReindex`） | 仅统计条数 | 可改为扫块 `turns.length` 累加，**不必** `readAllTurns` 拼全表 |
-
-结论：**assemble / 每次发消息**应改为 `readTurnsTail`（或 `readTurnsInOrdinalRange` 尾部窗口），与 UI 分页共用同一套 chunk 原语；1000+ 轮会话发消息时不应再触发全链 IO。
+`?before=K&limit=L` 示例：
 
 ```ts
-// memory-pipeline.ts 改造方向（示意）
-const window = resolveHistoryXmlTurnCount(input.historySettings) + 2
-const { turns: tailTurns } = await readTurnsTail(input.conversationId, window)
-const recentTurns = selectRecentTurns(tailTurns, historyCount, beforeExclusive)
-const query = buildMemoryRecallQuery(input.userText, tailTurns, beforeExclusive)
+const end = K - 1
+if (end < 0) return empty
+const from = Math.max(0, end - L + 1)
+const turns = await readTurnsInOrdinalRange(conversationId, from, end)
+// hasMoreBefore: from > 0
 ```
 
-注意：`beforeExclusive`（再生）时须保证窗口仍覆盖「上一轮」；`window` 取 `max(historyCount, 2) + 1` 即可。
+### 3.2 组装与 memory — ✅ 已落地（`DOC/22` P1）
 
-### 3.3 路由改造
+`memory-pipeline.ts` 使用 `loadTurnsForMemoryPipeline`：
 
-`server/src/index.ts` 中 `GET .../messages`：
+- 正常发消息 → `readTurnsTail(window)`，`window = max(historyCount, 2) + 1`
+- 再生（`historyBeforeTurnOrdinalExclusive`）→ `readTurnsInOrdinalRange(from, end)`
 
-1. 解析 query → 分支调用 `readTurnsTail` / `readTurnsInOrdinalRange` / `readAllTurns`。
-2. DTO 映射逻辑**抽函数** `mapTurnRecordsToMessagesDto(records)`，避免三处复制。
-3. 计算 `hasMoreBefore`：`minOrdinal > 0` 或存在 `turnOrdinal < range.from` 的 turn（以索引/meta 为准）。
+向量命中正文走 `loadTurnsForMemoryHits`，**不再** `resolveTurnById` 链式扫盘。
 
-### 3.4 插件宿主
+### 3.3 路由改造 — 部分 ✅
 
-`web/src/plugins/conversation-host.ts`：
+`server/src/index.ts` `GET .../messages`：
 
-- `readConversationTurnsRange` 改为 `fetch(...?from=&to=)`，**不再**全量拉取。
-- 批上限仍 `CONVERSATION_BATCH_MAX_TURNS = 50`；服务端 `MESSAGES_READ_MAX_SPAN` 须 ≥ 50。
+| 项 | 状态 |
+|----|------|
+| `from/to` → `readTurnsInOrdinalRange` | ✅ |
+| `tail` / `before` / `full=1` 分支 | ⏳ |
+| `mapTurnRecordsToMessagesDto` 抽取 | ⏳ |
+| 响应 `range` + `page` | ⏳ |
 
-服务端插件批处理若走内部 TS 调用，可直接 `readTurnsInOrdinalRange`，不走 HTTP。
+### 3.4 插件宿主 — ✅ 见 §0.4
+
+服务端插件若走内部 TS，可直接 `readTurnsInOrdinalRange`，不必 HTTP。
 
 ---
 
-## 4. 前端实现
+## 4. 前端实现 — ⏳ 待做
 
 ### 4.1 数据模型（`use-turn-list` 扩展或 `use-turn-page.ts`）
 
 ```ts
 interface TurnPageState {
-  turns: ChatTurnItem[]              // 已加载，按 turnOrdinal 升序
+  turns: ChatTurnItem[]
   loadedMin: number | null
   loadedMax: number | null
   hasMoreBefore: boolean
@@ -221,60 +245,45 @@ interface TurnPageState {
 }
 ```
 
-原则：
-
-- **已加载区间连续**：`[loadedMin, loadedMax]` 无洞（上滚只向更小 ordinal 扩展）。
-- **发送/再生/滑动**：在尾部追加或 PATCH 已加载项；若操作落在未加载区间，触发 `refreshTail()`。
-- **切换 conversationId**：清空 state，再 `loadInitial()`。
-
 ### 4.2 加载流程
 
 ```
 打开对话
-  → GET ?tail=MESSAGES_DEFAULT_TAIL
+  → GET ?tail=MESSAGES_DEFAULT_TAIL     // 待 S2+S3
   → 渲染 + scrollChatToBottom
 
-用户滚到顶部附近（rootMargin / IntersectionObserver sentinel）
+上滚
   → GET ?before={loadedMin}&limit=MESSAGES_LOAD_MORE
-  → prepend 到 turns，保持 scroll 锚点（记录旧 scrollHeight，追加后修正 scrollTop）
 
 refreshConversation / 写锁释放后
-  → 若尾部 ordinal 变化：合并 tail 或局部 reload ?tail=…
+  → 比对 maxOrdinal，必要时 reload tail
 ```
 
-### 4.3 UI
+**过渡方案**：在 S2 完成前，可先用 `fetchConversationTurnsRange(loadedMin - 50, loadedMax)` 手工拼批（需已知 `loadedMin/Max`）；正式方案仍用 `tail`/`before`。
+
+### 4.3 UI 改动清单
 
 | 组件 | 改动 |
 |------|------|
-| `ChatMessageList.vue` | 顶部 loading 条 / sentinel；可选「加载更早消息」按钮（移动端友好） |
-| `use-chat-scroll.ts` | `preserveScrollOnPrepend` 辅助 |
-| `useChatSession.ts` | 编排 `loadInitial` / `loadOlder` / 替换原 `loadMessages` 全量逻辑 |
-| `chat-messages.ts` | `fetchConversationTurnsPage(opts)` |
-
-**Phase 1**：仅渲染已加载 turns（DOM 规模 ≈ 80–200），已解决主痛点。  
-**Phase 2（可选 P1+）**：`v-virtual-scroll` 或自研虚拟列表，应对用户连续上滚加载 500+ 轮后 DOM 仍偏大的情况。
-
-### 4.4 边界
-
-- **空会话**：`turns=[]`，`hasMoreBefore=false`。
-- **不足 tail 轮**：返回实际条数，不 padding。
-- **并发的上滚**：忽略过期响应（`requestId` / `conversationId` 校验）。
-- **编辑第 10 轮**：若 `loadedMin <= 10 <= loadedMax`，PATCH 后本地更新；否则可选提示「请上滚加载该轮」或自动 expand range。
+| `chat-messages.ts` | `fetchConversationTurnsPage({ tail \| before, limit })` |
+| `useChatSession.ts` | `loadInitial` / `loadOlder` 替代全量 `loadMessages` |
+| `ChatMessageList.vue` | 顶部 sentinel / loading |
+| `use-chat-scroll.ts` | `preserveScrollOnPrepend` |
 
 ---
 
 ## 5. 实施顺序
 
-| 步骤 | 内容 | 验收 |
+| 步骤 | 内容 | 状态 |
 |------|------|------|
-| **S1** | `readTurnsInOrdinalRange` + `readTurnsTail` + 单测（2～3 块 fixture，1000 轮 mock） | 区间读不读无关 chunk |
-| **S1b** | `runMemoryPipeline` 改 `readTurnsTail`；`planConversationMemoryReindex` 改按块计数 | 1000 轮会话 `assemble-messages` 不扫全链 |
-| **S2** | `GET .../messages` query 分支 + `messages/meta` + 错误码 | curl：`tail=80`、`before=`、`from/to`；`full=1` 仍全量 |
-| **S3** | `chat-messages.ts` 分页 client + `use-turn-list` 分页状态 | 打开 500 轮会话：网络仅 ~80 条；滚顶再 +50 |
-| **S4** | 上滚锚点、`refreshConversation` 与 send/regenerate 合并逻辑 | 加载更早后视口不跳；发消息后尾部正确 |
-| **S5** | `conversation-host.ts` 改区间 API | 插件批处理不再拉全量 |
-| **S6** | 文档：`DOC/03` §6.8、`DOC/08` §1.2、`DOC/10` §3 | — |
-| **S7（可选）** | 虚拟滚动 Phase 2 | 连续加载 300+ 轮仍流畅 |
+| **S1** | `readTurnsInOrdinalRange` + `readTurnsTail` + `computeTailOrdinalReadRange` 单测 | ✅ |
+| **S1b** | `memory-pipeline` / `plugin-prepare-context` / plan 计数改区间或按链 | ✅ |
+| **S2** | `GET .../messages` 增加 `tail` / `before` / `full` + 响应 `page` + 可选 `messages/meta` | ⏳ |
+| **S3** | Web 分页 client + `use-turn-list` 状态 | ⏳ |
+| **S4** | 上滚锚点、send/regenerate 与 tail 合并 | ⏳ |
+| **S5** | `conversation-host` 真区间读 | ✅ |
+| **S6** | 文档：`DOC/03` §6.8、`DOC/08`、`DOC/10` 对齐 | ⏳ 部分（本文 + `DOC/22`） |
+| **S7（可选）** | 虚拟滚动 Phase 2 | ⏳ |
 
 ---
 
@@ -282,23 +291,25 @@ refreshConversation / 写锁释放后
 
 **自动化（server）**
 
-- [ ] `readTurnsInOrdinalRange`：跨 3 块、单块、空会话、损坏链
-- [ ] `tail=50` 在 120 轮会话返回 ordinal 70–119 且 `hasMoreBefore=true`
-- [ ] `before=70&limit=50` 返回 20–69
-- [ ] `from/to` 超 `MESSAGES_READ_MAX_SPAN` → 400
+- [x] `computeTailOrdinalReadRange` 单测
+- [ ] `readTurnsInOrdinalRange`：跨 3 块 fixture 集成测
+- [ ] `tail=50` HTTP：120 轮会话返回 ordinal 70–119 且 `hasMoreBefore=true`
+- [ ] `before=70&limit=50` HTTP
+- [x] `from/to` 超 50 → `400 range_too_large`（路由已有）
 
 **手动（web）**
 
-- [ ] 1000+ 轮会话：首屏请求体积明显小于全量（DevTools Network）
-- [ ] 上滚 5 次后最早轮次可见，scroll 不剧烈跳动
-- [ ] 发送、再生、滑动、编辑、删最后一轮：与全量模式行为一致
-- [ ] 切换对话再切回：状态重置正确
-- [ ] 插件 swipe-cleaner / conversation-export 批处理仍正常
+- [ ] 1000+ 轮：首屏请求体积明显小于全量
+- [ ] 上滚 5 次、scroll 锚点
+- [ ] 发送 / 再生 / 滑动 / 编辑 / 删最后一轮
+- [ ] 切换对话状态重置
+- [x] 插件 swipe-cleaner 批处理（区间读）
 
 **回归**
 
-- [ ] `assemble-messages` 在 1000+ 轮会话上仍正确注入 history / memory（与全链读结果一致）
-- [ ] memory 全量重建仍按块遍历，行为不变
+- [x] `assemble-messages` 热路径不 `readAllTurns`（`memory-pipeline`）
+- [x] memory 重建按块遍历
+- [ ] `assemble` 与旧全链读结果一致（长会话抽样）
 - [ ] `POST .../repair-chunk-index` 不受影响
 
 ---
@@ -307,17 +318,28 @@ refreshConversation / 写锁释放后
 
 | 风险 | 缓解 |
 |------|------|
-| 上滚 prepend 导致 scroll 跳动 | 固定锚点算法 + 单测/手测用例 |
-| 多窗口同时写，另一窗口 tail 落后 | `refreshConversation` 比对 `maxOrdinal`；可选 SSE/轮询后续项 |
-| 插件与 UI 参数不一致 | 共用 `from/to` 语义；常量集中导出 |
-| `无参 GET` 行为变更破坏外部脚本 | 分 Phase：`full=1` 显式全量；无参保持全量直至 Phase 3 |
-| 虚拟列表与可变高度气泡 | Phase 2 再引入；Phase 1 靠限制已加载条数 |
+| 上滚 prepend scroll 跳动 | 锚点算法 + 手测 |
+| 多窗口 tail 落后 | `refreshConversation` 比对 `maxOrdinal` |
+| 无参 GET 行为变更 | Phase 3 前保持全量；`full=1` 显式 |
+| index head/tail 漂移 | `repair-chunk-index`；区间读沿 tail 链，不依赖每次全目录 sync |
 
 ---
 
 ## 8. 与现有文档的对应
 
-- `DOC/08` §1.2「`GET .../messages` 分页」→ 本方案落地。
-- `DOC/04-TODO.md` P1 → 勾选项指向本文。
-- `DOC/10` `readConversationTurnsRange` → S5 改为真区间读。
-- `DOC/03` §6.8 → 实现后补充 API query 与前端分页状态说明。
+| 文档 | 关系 |
+|------|------|
+| `DOC/08` §1.2 | `GET .../messages` 分页 → 本文 S2–S4 |
+| `DOC/22` | P1 热路径优化 = 本文 S1b；§0 与之重复处以**本文**为 lazy load 入口索引 |
+| `DOC/10` §3.3 | 插件区间读 ✅ |
+| `DOC/04-TODO.md` | P1 lazy load 勾选项 → 完成 S2–S4 后更新 |
+| `DOC/03` §6.8 | S6：补充 query 与前端分页状态 |
+
+---
+
+## 9. 修订记录
+
+| 日期 | 说明 |
+|------|------|
+| 2026-06（初） | 规划全文 |
+| 2026-06 | 增补 **§0 已完成能力**：`readTurnsTail`、`区间 GET`、插件 host、assemble 热路径；更新 §1/§5/§6 状态 |

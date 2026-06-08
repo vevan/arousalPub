@@ -226,11 +226,21 @@ host.conversation.runScope({ writeLock: false, requireIdle: true }, async (ctx) 
 
 
 
-### 3.3 组装摘要提示词（v1.5 定案）
+### 3.3 组装摘要提示词（v1.6 定案）
 
 
 
-`host.plugin.prepareContext` 返回的 **`userContent`** 由宿主按下列顺序拼接（插件不传 system）：
+`host.plugin.prepareContext` 将参考与待摘要内容**拆分**；`completeDraft` 组装为两条消息：
+
+
+
+- **system** = `systemReferenceContext` + `systemPromptTemplate`（中间空行分隔）
+
+- **user** = `userContent`（仅 `<history>`）
+
+
+
+**`systemReferenceContext`**（宿主拼接，顺序固定）：
 
 
 
@@ -262,11 +272,29 @@ host.conversation.runScope({ writeLock: false, requireIdle: true }, async (ctx) 
 
 
 
+<context-history readonly>
+
+<user name="{{user}}"><![CDATA[…]]></user>
+
+<char name="{{char}}"><![CDATA[…]]></char>
+
+</context-history>
+
+```
+
+
+
+**`userContent`**（turn 内按发言拆为 `<user>` / `<char>`，正文 CDATA；`name` 为宏 `{{user}}` / `{{char}}`，出站前由宿主展开）：
+
+
+
+```text
+
 <history>
 
-用户: …
+<user name="{{user}}"><![CDATA[…]]></user>
 
-助手: …
+<char name="{{char}}"><![CDATA[…]]></char>
 
 </history>
 
@@ -274,15 +302,17 @@ host.conversation.runScope({ writeLock: false, requireIdle: true }, async (ctx) 
 
 
 
-| 块 | 来源 | 规则 |
+| 块 | 消息 | 来源 | 规则 |
 
-|----|------|------|
+|----|------|------|------|
 
-| `<previous-summaries>` | 目标书中 **剧情摘要类**条目 | 见 §4.1 分类；组内按 §4.2 排序后取**时间线上最近 N 条**（`previousSummariesLimit`，含 **title + content**）；`N=0` 则省略整块 |
+| `<previous-summaries>` | system | 目标书中 **剧情摘要类**条目 | 仅 **结束轮 &lt; fromTurn** 的条目；组内按 §4.2 排序后取最近 **N** 条（`previousSummariesLimit`）；`N=0` 省略 |
 
-| `<sidecars>` | `sidecarEntryIds` 映射条目 | 按 Sidecar 配置列表顺序；仅当前 **content**（及标题作 `##` 行） |
+| `<sidecars>` | system | `sidecarEntryIds` 映射条目 | 按 Sidecar 配置列表顺序；当前 **content**（及标题作 `##` 行） |
 
-| `<history>` | 本次 `fromTurn..toTurn` transcript | 不变 |
+| `<context-history>` | system | 对话 turn | 可选；`max(0, fromTurn−N+1) .. fromTurn−1` 的 transcript（`N=previousSummariesLimit`）；`fromTurn=0` 或 `N=0` 时省略 |
+
+| `<history>` | user | 对话 turn | 本次待摘要闭区间 **`fromTurn..toTurn`** transcript |
 
 
 
@@ -290,13 +320,13 @@ host.conversation.runScope({ writeLock: false, requireIdle: true }, async (ctx) 
 
 
 
-**System 模板**：
+**System 指令模板**：
 
 
 
-- 剧情摘要任务：`systemPromptTemplate`  
+- 剧情摘要：`systemPromptTemplate`（拼在参考块之后）
 
-- Sidecar 任务：当 `userContent` 含 `<history>` 时 **沿用剧情摘要** `systemPromptTemplate`；无 history 时可用 Sidecar 条目自定义 prompt（高级路径）  
+- Sidecar：各 Sidecar 的 `systemPromptTemplate`（同样拼在参考块之后）
 
 - 写入语义不变：Sidecar 仍 **patch** 固定条目，`title` 强制为 Sidecar 名称
 

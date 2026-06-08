@@ -30,7 +30,6 @@ export async function sanitizeApiSettingsDocumentForGet(
     savedAt: doc.savedAt,
     activePresetId: doc.activePresetId,
     presets,
-    featureBindings: doc.featureBindings ?? [],
   }
 }
 
@@ -41,7 +40,6 @@ export type ApiPresetPut = Omit<ApiPreset, 'apiKey'> & {
 export interface ApiSettingsPutBody {
   activePresetId: string
   presets: ApiPresetPut[]
-  featureBindings?: unknown[]
 }
 
 export async function mergeApiSettingsPut(
@@ -73,27 +71,10 @@ export async function mergeApiSettingsPut(
 
   assertValidPresets(presets)
 
-  const { mergeFeatureBindingsIntoSettingsPut } = await import(
-    './feature-bindings-service.js'
-  )
-  let featureBindings: import('./feature-binding-types.js').FeatureBinding[]
-  try {
-    featureBindings = mergeFeatureBindingsIntoSettingsPut(
-      existing?.featureBindings,
-      body.featureBindings,
-      body.activePresetId,
-      savedAt,
-    )
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'feature_bindings_invalid'
-    throw new Error(msg)
-  }
-
   return {
     version: 1,
     savedAt,
     activePresetId: body.activePresetId,
     presets,
-    featureBindings,
   }
 }

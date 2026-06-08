@@ -1,7 +1,7 @@
 import {
   type LorebookXmlGroup,
 } from './prompt-xml.js'
-import { readLorebooksDocument } from './lorebook-file.js'
+import { readLorebooksByIds } from './lorebook-file.js'
 import type { Lorebook, LorebookEntry } from './lorebook-types.js'
 import { resolveEntryTriggerMode } from './lorebook-entry-utils.js'
 import { createEmbedding } from './embedding-client.js'
@@ -63,8 +63,8 @@ export async function resolveLorebookInjectionParts(
   if (!lorebookIds.length) {
     return { constantLoreGroups: [], matchedLore: [] }
   }
-  const doc = await readLorebooksDocument()
-  if (!doc) {
+  const lorebooks = await readLorebooksByIds(lorebookIds)
+  if (!lorebooks.length) {
     return { constantLoreGroups: [], matchedLore: [] }
   }
 
@@ -76,7 +76,7 @@ export async function resolveLorebookInjectionParts(
     resolved = resolveLorebookSettings(global, context.lorebookSettingsOverride)
   }
   const settings = lorebookSettingsForResolve(resolved)
-  const byId = new Map(doc.lorebooks.map((lb) => [lb.id, lb]))
+  const byId = new Map(lorebooks.map((lb) => [lb.id, lb]))
   const scanSeed = (context.scanCorpus ?? context.userText ?? '').trim()
   const seenEntryIds = new Set<string>()
 

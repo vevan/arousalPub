@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { runWithRequestPreferencesMemo } from './request-preferences-memo.js'
 import { isValidShortId, RESERVED_USER_ID } from './short-id.js'
 
 export { RESERVED_USER_ID }
@@ -26,7 +27,9 @@ export function getCurrentUserId(): string {
  * `enterWith`  alone 在 Fastify 5 下不会传递到 route handler。
  */
 export function runRequestUser<T>(userId: string, fn: () => T): T {
-  return userStorage.run(assertValidRequestUserId(userId), fn)
+  return userStorage.run(assertValidRequestUserId(userId), () =>
+    runWithRequestPreferencesMemo(fn),
+  )
 }
 
 /** @deprecated 优先使用 {@link runRequestUser} */

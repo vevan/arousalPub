@@ -9,19 +9,23 @@ import {
 } from 'apache-arrow'
 import { makeArrowTable } from '@lancedb/lancedb'
 import type { Table as LanceTable } from '@lancedb/lancedb'
+import { normalizeBranchPath, normalizeChunkBasename } from './chunk-path.js'
 
+/** Memory v2 行；conversationId 由 Lance 库路径隐含 */
 export interface TurnMemoryRow {
   turnId: string
-  conversationId: string
   turnOrdinal: number
+  branchPath: string
+  chunkFileName: string
   vector: number[]
 }
 
 function rowToRecord(row: TurnMemoryRow): Record<string, unknown> {
   return {
     turnId: row.turnId,
-    conversationId: row.conversationId,
     turnOrdinal: row.turnOrdinal,
+    branchPath: normalizeBranchPath(row.branchPath),
+    chunkFileName: normalizeChunkBasename(row.chunkFileName),
     vector: row.vector,
   }
 }
@@ -30,8 +34,9 @@ function rowToRecord(row: TurnMemoryRow): Record<string, unknown> {
 export function turnMemorySchema(vectorDimensions: number): Schema {
   return new Schema([
     new Field('turnId', new Utf8(), false),
-    new Field('conversationId', new Utf8(), false),
     new Field('turnOrdinal', new Int32(), false),
+    new Field('branchPath', new Utf8(), false),
+    new Field('chunkFileName', new Utf8(), false),
     new Field(
       'vector',
       new FixedSizeList(
@@ -87,7 +92,6 @@ function vectorToNumberArray(raw: unknown): number[] | null {
 /** 从 Lance 表读出全部 turn 行（跳过 seed） */
 export async function readTurnMemoryRowsFromTable(
   table: LanceTable,
-  conversationId: string,
 ): Promise<TurnMemoryRow[]> {
   const raw = await table.query().toArray()
   const rows: TurnMemoryRow[] = []
@@ -96,10 +100,19 @@ export async function readTurnMemoryRowsFromTable(
     if (!turnId || turnId === '__seed__') continue
     const vector = vectorToNumberArray(r.vector)
     if (!vector?.length) continue
+    let branchPath = ''
+    let chunkFileName = ''
+    try {
+      branchPath = normalizeBranchPath(String(r.branchPath ?? ''))
+      chunkFileName = normalizeChunkBasename(String(r.chunkFileName ?? ''))
+    } catch {
+      continue
+    }
     rows.push({
       turnId,
-      conversationId: String(r.conversationId ?? conversationId),
       turnOrdinal: Number(r.turnOrdinal ?? 0),
+      branchPath,
+      chunkFileName,
       vector,
     })
   }

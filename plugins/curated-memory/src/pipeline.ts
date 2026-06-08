@@ -7,6 +7,7 @@ import {
   showCurrentBatchTaskProgress,
 } from './review.js'
 import { applyCuratedLorebookEntrySort } from './shared/entry-sort.js'
+import { flushPendingLorebookCreates, type PendingLorebookCreate } from './batch-write.js'
 import { entryKeys, writeSidecarEntry } from './sidecar.js'
 import { k, loadMergedSettings } from './settings.js'
 import {
@@ -117,6 +118,7 @@ export async function runSummarizeTasks(
       host.ui.toast(host.t(k(host, 'toastNoTurnsInRange')), { color: 'warning' })
       return { ok: false, reason: 'no_turns' }
     }
+    const systemReferenceContext = prepared.systemReferenceContext ?? ''
     const userContent = prepared.userContent
 
     const patch: Record<string, unknown> = {}
@@ -125,6 +127,7 @@ export async function runSummarizeTasks(
     let wroteToLorebook = false
     let skippedTasks = 0
     let aborted = false
+    const pendingCreates: PendingLorebookCreate[] = []
 
     host.ui.progress({
       message: host.t(k(host, 'progressSummarize')),
@@ -145,6 +148,7 @@ export async function runSummarizeTasks(
         if (task.kind === 'memory') {
           const memoryDraft = await generateReviewDraft(host, settings, {
             kind: 'memory',
+            systemReferenceContext,
             userContent,
             fromTurn,
             toTurn,
@@ -156,6 +160,7 @@ export async function runSummarizeTasks(
             (h) =>
               generateReviewDraft(h, settings, {
                 kind: 'memory',
+                systemReferenceContext,
                 userContent,
                 fromTurn,
                 toTurn,
@@ -163,12 +168,14 @@ export async function runSummarizeTasks(
             lorebookName,
           )
           bumpTaskProgress(host, done, tasks.length)
-          await host.lorebook.createEntry(settings.targetLorebookId, {
-            title: reviewed.title,
-            content: reviewed.content,
-            keys: entryKeys(reviewed.keywords),
-            triggerMode: settings.defaultEntryTriggerMode,
-            priority: 100,
+          pendingCreates.push({
+            body: {
+              title: reviewed.title,
+              content: reviewed.content,
+              keys: entryKeys(reviewed.keywords),
+              triggerMode: settings.defaultEntryTriggerMode,
+              priority: 100,
+            },
           })
           ranMemory = true
           wroteToLorebook = true
@@ -176,6 +183,7 @@ export async function runSummarizeTasks(
           const sc = task.sidecar
           const sidecarDraft = await generateReviewDraft(host, settings, {
             kind: 'sidecar',
+            systemReferenceContext,
             userContent,
             sc,
           })
@@ -186,6 +194,7 @@ export async function runSummarizeTasks(
             (h) =>
               generateReviewDraft(h, settings, {
                 kind: 'sidecar',
+                systemReferenceContext,
                 userContent,
                 sc,
               }),
@@ -199,6 +208,7 @@ export async function runSummarizeTasks(
             sc,
             reviewed,
             entryKeys(reviewed.keywords),
+            pendingCreates,
           )
           wroteToLorebook = true
         }
@@ -236,6 +246,15 @@ export async function runSummarizeTasks(
       }
       done += 1
       bumpTaskProgress(host, done, tasks.length)
+    }
+
+    if (pendingCreates.length > 0) {
+      await flushPendingLorebookCreates(
+        host,
+        settings.targetLorebookId,
+        pendingCreates,
+        sidecarEntryIds,
+      )
     }
 
     if (completedTasks === 0) {

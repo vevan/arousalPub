@@ -105,7 +105,9 @@ interface ConversationReadOptions {
 ### 3.3 patch 参数
 
 - **`patchTurns(dtos[])`**：唯一写入口；**单次调用** `1 <= dtos.length <= 50`。
-- **单轮**：`patchTurns([dto])`，等价于今日 `persistTurnToServer(turn)`；宿主内部仍走同一实现，**不**另暴露 `patchTurn`。
+- **批量写（v1.1）**：`PATCH /api/chat/conversations/:id/turns/batch`；服务端按 chunk **每文件至多 read+write 一次**，`index.json` 至多写一次（避免 swipe-cleaner 等逐轮 PATCH 重复读写同一 chunk）。
+- **区间读（v1.1）**：`GET .../messages?from=&to=`（`to-from+1 <= 50`）；仅加载与区间相交的 chunk，避免每批 `readAllTurns`。
+- **单轮**：`patchTurns([dto])` 走 batch 接口；单轮编辑/regenerate 仍可用 `PATCH .../turns/:turnOrdinal`（含 `debugPrompt`）。
 - **`dtos.length === 0`**：no-op，返回 `{ ok: 0, failed: [] }`（便于插件在「本批无变更」时统一调用）。
 - 校验与现有 API 一致：`receives.length >= 1`；`activeReceiveIndex` 合法；`id` + `content` 必填项完整。
 - **部分失败**：返回 `{ ok: number; failed: { turnOrdinal, error }[] }`；已成功轮次**不回滚**（v1 无事务）。

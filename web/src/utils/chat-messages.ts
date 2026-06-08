@@ -86,6 +86,88 @@ export async function fetchConversationTurns(
   return parseConversationTurnsFromApi(j.turns ?? [])
 }
 
+/** 仅拉取 ordinal 闭区间 [from, to]（最多 50 轮，与插件 runBatch 一致） */
+export async function fetchConversationTurnsRange(
+  conversationId: string,
+  from: number,
+  to: number,
+): Promise<ChatTurnItem[]> {
+  const qs = new URLSearchParams({
+    from: String(from),
+    to: String(to),
+  })
+  const res = await fetch(
+    `/api/chat/conversations/${conversationId}/messages?${qs.toString()}`,
+  )
+  if (!res.ok) return []
+  const j = (await res.json()) as { turns?: MessagesApiTurn[] }
+  return parseConversationTurnsFromApi(j.turns ?? [])
+}
+
+function turnToPatchPayload(turn: ChatTurnItem) {
+  return {
+    turnOrdinal: turn.turnOrdinal,
+    userText: turn.user,
+    receives: turn.receives.map((r) => ({
+      id: r.id,
+      content: r.content,
+      ...(r.reasoning ? { reasoning: r.reasoning } : {}),
+      ...(r.durationMs ? { durationMs: r.durationMs } : {}),
+      ...(r.estimatedTokens ? { estimatedTokens: r.estimatedTokens } : {}),
+      ...(r.completionTokens ? { completionTokens: r.completionTokens } : {}),
+      ...(r.model ? { model: r.model } : {}),
+    })),
+    activeReceiveIndex: turn.activeReceiveIndex,
+  }
+}
+
+export interface BatchTurnPatchResult {
+  ok: number
+  failed: { turnOrdinal: number; error: string }[]
+}
+
+/** 批量 PATCH 多轮（服务端按 chunk 合并读写） */
+export async function persistTurnsBatchToServer(
+  conversationId: string,
+  turns: ChatTurnItem[],
+): Promise<BatchTurnPatchResult> {
+  if (turns.length === 0) return { ok: 0, failed: [] }
+  try {
+    const res = await fetch(
+      `/api/chat/conversations/${conversationId}/turns/batch`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          turns: turns.map(turnToPatchPayload),
+        }),
+      },
+    )
+    if (!res.ok) {
+      return {
+        ok: 0,
+        failed: turns.map((t) => ({
+          turnOrdinal: t.turnOrdinal,
+          error: `http_${res.status}`,
+        })),
+      }
+    }
+    const data = (await res.json()) as BatchTurnPatchResult
+    return {
+      ok: typeof data.ok === 'number' ? data.ok : 0,
+      failed: Array.isArray(data.failed) ? data.failed : [],
+    }
+  } catch {
+    return {
+      ok: 0,
+      failed: turns.map((t) => ({
+        turnOrdinal: t.turnOrdinal,
+        error: 'patch_failed',
+      })),
+    }
+  }
+}
+
 export async function persistTurnToServer(
   conversationId: string,
   turn: ChatTurnItem,

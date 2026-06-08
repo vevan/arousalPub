@@ -30,6 +30,10 @@ export interface PluginHost {
       }[]
     }>
     createEntry: (lorebookId: string, body: Record<string, unknown>) => Promise<{ id: string }>
+    createEntriesBatch?: (
+      lorebookId: string,
+      entries: Record<string, unknown>[],
+    ) => Promise<{ id: string }[]>
     patchEntry: (lorebookId: string, entryId: string, body: Record<string, unknown>) => Promise<unknown>
     normalizeEntryRefs: (req: {
       lorebookId: string
@@ -50,10 +54,15 @@ export interface PluginHost {
       previousSummariesLimit?: number
       sidecarEntryIds?: Record<string, string>
       sidecarIds?: string[]
-    }) => Promise<{ userContent: string; meta: { userDisplayName: string; assistantDisplayName: string } }>
+    }) => Promise<{
+      systemReferenceContext: string
+      userContent: string
+      meta: { userDisplayName: string; assistantDisplayName: string }
+    }>
     completeDraft: (req: {
       apiConfigId?: string
       kind: 'memory' | 'sidecar'
+      systemReferenceContext?: string
       userContent: string
       systemPromptTemplate: string
       fromTurn?: number
@@ -117,6 +126,8 @@ export interface MergedSettings {
   sidecarEntryIds: Record<string, string>
   sidecars: SidecarConfig[]
   autoSidecarIds: string[]
+  /** 手动摘要弹窗上次勾选：memory + sidecar:id */
+  manualSummarizeTasks: string[]
   memorybookDefaultEnabled: boolean
   targetLorebookMode: 'manual' | 'auto'
   autoLorebookNameTemplate: string

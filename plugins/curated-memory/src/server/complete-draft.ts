@@ -73,17 +73,30 @@ async function assertPreflight(
   throw new Error('preflight_failed')
 }
 
+function joinSystemMessage(reference: string, instruction: string): string {
+  const ref = reference.trim()
+  const inst = instruction.trim()
+  if (!ref) return inst
+  if (!inst) return ref
+  return `${ref}\n\n${inst}`
+}
+
 async function callCompleteOnce(
   api: DraftApi,
   conversationId: string,
   apiConfigId: string | undefined,
-  system: string,
+  systemReferenceContext: string,
+  systemPromptTemplate: string,
   userContent: string,
 ) {
-  const [expandedSystem, expandedUser] = await Promise.all([
-    expandText(api, system, conversationId, apiConfigId ?? ''),
+  const [expandedRef, expandedInstruction, expandedUser] = await Promise.all([
+    systemReferenceContext.trim()
+      ? expandText(api, systemReferenceContext, conversationId, apiConfigId ?? '')
+      : Promise.resolve(''),
+    expandText(api, systemPromptTemplate, conversationId, apiConfigId ?? ''),
     expandText(api, userContent, conversationId, apiConfigId ?? ''),
   ])
+  const expandedSystem = joinSystemMessage(expandedRef, expandedInstruction)
   await assertPreflight(
     api,
     conversationId,
@@ -110,13 +123,21 @@ async function callCompleteWithRetry(
   api: DraftApi,
   conversationId: string,
   apiConfigId: string | undefined,
-  system: string,
+  systemReferenceContext: string,
+  systemPromptTemplate: string,
   userContent: string,
 ) {
   let lastErr: unknown = null
   for (let attempt = 1; attempt <= UPSTREAM_RETRY_MAX; attempt++) {
     try {
-      return await callCompleteOnce(api, conversationId, apiConfigId, system, userContent)
+      return await callCompleteOnce(
+        api,
+        conversationId,
+        apiConfigId,
+        systemReferenceContext,
+        systemPromptTemplate,
+        userContent,
+      )
     } catch (e) {
       const msg = e instanceof Error ? e.message : ''
       if (PIPELINE_FATAL.has(msg)) throw e
@@ -136,6 +157,7 @@ export async function completeDraft(
     conversationId: string
     apiConfigId?: string
     kind: 'memory' | 'sidecar'
+    systemReferenceContext?: string
     userContent: string
     systemPromptTemplate: string
     fromTurn?: number
@@ -148,6 +170,7 @@ export async function completeDraft(
     api,
     ctx.conversationId,
     ctx.apiConfigId,
+    ctx.systemReferenceContext ?? '',
     ctx.systemPromptTemplate,
     ctx.userContent,
   )

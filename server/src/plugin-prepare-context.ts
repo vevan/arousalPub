@@ -1,14 +1,21 @@
 import { readCharacterDocument } from './character-storage.js'
 import { readConversationIndex, resolvedCharacterIds } from './chat-storage.js'
-import { readAllTurns } from './chunk-chain.js'
+import { readTurnsInOrdinalRange } from './chunk-chain.js'
 import { isValidConversationId } from './conversation-id.js'
 import { readLorebookById } from './lorebook-file.js'
 import {
+  buildContextHistoryBlock,
+  buildHistoryBlock,
   buildPreviousSummariesBlock,
   buildSidecarsBlock,
-  pickRecentSummaryEntries,
+  pickRecentSummaryEntriesBeforeTurn,
+  resolveContextHistoryStart,
   sortCuratedEntriesInGroup,
 } from './plugin-curated-lorebook.js'
+import {
+  normalizeSidecarConfigIds,
+  normalizeSidecarEntryIds,
+} from './plugin-sidecar-refs.js'
 import {
   formatSummarizeTranscript,
   PLUGIN_SUMMARIZE_BATCH_MAX,
@@ -31,6 +38,9 @@ export interface PluginPrepareContextRequest {
 
 export interface PluginPrepareContextSuccess {
   ok: true
+  /** 参考上下文：previous-summaries + sidecars + context-history，拼入 system */
+  systemReferenceContext: string
+  /** 待摘要对话，仅 `<history>` 块，作为 user 消息 */
   userContent: string
   transcript: string
   turnCount: number
@@ -72,25 +82,6 @@ async function resolveDisplayNames(conversationId: string): Promise<{
   return { userDisplayName, assistantDisplayName }
 }
 
-function normalizeSidecarEntryIds(raw: unknown): Record<string, string> {
-  if (!raw || typeof raw !== 'object') return {}
-  const out: Record<string, string> = {}
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof k === 'string' && typeof v === 'string' && v.trim()) {
-      out[k.trim()] = v.trim()
-    }
-  }
-  return out
-}
-
-function normalizeSidecarIds(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return []
-  return raw
-    .filter((x): x is string => typeof x === 'string')
-    .map((x) => x.trim())
-    .filter(Boolean)
-}
-
 export async function runPluginPrepareContext(
   req: PluginPrepareContextRequest,
 ): Promise<PluginPrepareContextResult> {
@@ -128,33 +119,54 @@ export async function runPluginPrepareContext(
     return { ok: false, code: 'conversation_not_found' }
   }
 
-  const allTurns = await readAllTurns(conversationId)
-  const turns = allTurns
-    .filter((t) => t.turnOrdinal >= fromTurn && t.turnOrdinal <= toTurn)
-    .sort((a, b) => a.turnOrdinal - b.turnOrdinal)
-
-  if (turns.length === 0) {
-    return { ok: false, code: 'no_turns_in_range' }
-  }
-
-  const transcript = formatSummarizeTranscript(
-    turns,
-    meta.userDisplayName,
-    meta.assistantDisplayName,
-  )
-
   const includePrevious = req.includePreviousMemories !== false
   const limitRaw =
     typeof req.previousSummariesLimit === 'number'
       ? req.previousSummariesLimit
       : req.previousMemoriesLimit
-  const limit =
+  const contextLimit =
     typeof limitRaw === 'number' && Number.isFinite(limitRaw)
       ? Math.max(0, Math.min(50, Math.round(limitRaw)))
       : 8
 
+  const historyStart = resolveContextHistoryStart(fromTurn, contextLimit)
+  const rangeFrom = Math.min(historyStart, fromTurn)
+  const rangeTurns = await readTurnsInOrdinalRange(
+    conversationId,
+    rangeFrom,
+    toTurn,
+  )
+  const summaryTurns = rangeTurns
+    .filter((t) => t.turnOrdinal >= fromTurn && t.turnOrdinal <= toTurn)
+    .sort((a, b) => a.turnOrdinal - b.turnOrdinal)
+
+  if (summaryTurns.length === 0) {
+    return { ok: false, code: 'no_turns_in_range' }
+  }
+
+  const contextTurns =
+    historyStart < fromTurn
+      ? rangeTurns
+          .filter(
+            (t) =>
+              t.turnOrdinal >= historyStart && t.turnOrdinal < fromTurn,
+          )
+          .sort((a, b) => a.turnOrdinal - b.turnOrdinal)
+      : []
+
+  const contextTranscript = formatSummarizeTranscript(
+    contextTurns,
+    meta.userDisplayName,
+    meta.assistantDisplayName,
+  )
+  const transcript = formatSummarizeTranscript(
+    summaryTurns,
+    meta.userDisplayName,
+    meta.assistantDisplayName,
+  )
+
   const sidecarEntryIds = normalizeSidecarEntryIds(req.sidecarEntryIds)
-  const sidecarConfigIds = normalizeSidecarIds(req.sidecarIds)
+  const sidecarConfigIds = normalizeSidecarConfigIds(req.sidecarIds)
   const sidecarEntryIdSet = new Set(Object.values(sidecarEntryIds))
 
   let prevBlock = ''
@@ -164,10 +176,11 @@ export async function runPluginPrepareContext(
       const lb = await readLorebookById(targetLorebookId)
       const entries = lb?.entries ?? []
 
-      const recent = pickRecentSummaryEntries(
+      const recent = pickRecentSummaryEntriesBeforeTurn(
         entries,
+        fromTurn,
         sidecarEntryIdSet,
-        limit,
+        contextLimit,
         sidecarEntryIds,
         sidecarConfigIds,
       )
@@ -195,13 +208,15 @@ export async function runPluginPrepareContext(
     }
   }
 
-  const userContent = `${prevBlock}${sidecarBlock}<history>\n${transcript}\n</history>`
+  const systemReferenceContext = `${prevBlock}${sidecarBlock}${buildContextHistoryBlock(contextTranscript)}`
+  const userContent = buildHistoryBlock(transcript)
 
   return {
     ok: true,
+    systemReferenceContext,
     userContent,
     transcript,
-    turnCount: turns.length,
+    turnCount: summaryTurns.length,
     meta,
   }
 }

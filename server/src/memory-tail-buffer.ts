@@ -1,8 +1,9 @@
 import type { TurnMemoryRow } from './turn-memory-arrow.js'
 import {
-  optimizeChunkMemoryTable,
+  optimizeTurnMemoryTable,
   upsertTurnMemoryRowsBatch,
 } from './memory-store.js'
+import { chunkLocationKey } from './chunk-path.js'
 
 /** 尾块缓冲：每 N 轮批量 mergeInsert */
 export const TAIL_MEMORY_BATCH_SIZE = 10
@@ -18,8 +19,12 @@ const buffers = new Map<string, BufferState>()
 /** 同一 chunk 串行 flush，避免并发 mergeInsert + PK 竞态 */
 const flushChains = new Map<string, Promise<void>>()
 
-function bufferKey(conversationId: string, chunkFileName: string): string {
-  return `${conversationId}\0${chunkFileName}`
+function bufferKey(
+  conversationId: string,
+  branchPath: string,
+  chunkFileName: string,
+): string {
+  return `${conversationId}\0${chunkLocationKey(branchPath, chunkFileName)}`
 }
 
 function getBufferState(key: string): BufferState {
@@ -40,14 +45,19 @@ function clearDebounce(state: BufferState): void {
 
 function scheduleDebounceFlush(
   conversationId: string,
+  branchPath: string,
   chunkFileName: string,
 ): void {
-  const key = bufferKey(conversationId, chunkFileName)
+  const key = bufferKey(conversationId, branchPath, chunkFileName)
   const state = getBufferState(key)
   clearDebounce(state)
   state.debounceTimer = setTimeout(() => {
     state.debounceTimer = null
-    void flushTurnMemoryBuffer(conversationId, chunkFileName).catch((e) => {
+    void flushTurnMemoryBuffer(
+      conversationId,
+      branchPath,
+      chunkFileName,
+    ).catch((e) => {
       // eslint-disable-next-line no-console
       console.warn('[memory-tail-buffer] debounce flush failed:', e)
     })
@@ -56,12 +66,13 @@ function scheduleDebounceFlush(
 
 export async function flushTurnMemoryBuffer(
   conversationId: string,
+  branchPath: string,
   chunkFileName: string,
 ): Promise<void> {
-  const key = bufferKey(conversationId, chunkFileName)
+  const key = bufferKey(conversationId, branchPath, chunkFileName)
   const prev = flushChains.get(key) ?? Promise.resolve()
   const run = prev.then(() =>
-    flushTurnMemoryBufferOnce(conversationId, chunkFileName),
+    flushTurnMemoryBufferOnce(conversationId, branchPath, chunkFileName),
   )
   flushChains.set(
     key,
@@ -74,9 +85,10 @@ export async function flushTurnMemoryBuffer(
 
 async function flushTurnMemoryBufferOnce(
   conversationId: string,
+  branchPath: string,
   chunkFileName: string,
 ): Promise<void> {
-  const key = bufferKey(conversationId, chunkFileName)
+  const key = bufferKey(conversationId, branchPath, chunkFileName)
   const state = buffers.get(key)
   if (!state || state.rows.size === 0) return
 
@@ -84,18 +96,23 @@ async function flushTurnMemoryBufferOnce(
   const rows = [...state.rows.values()]
   state.rows.clear()
 
-  await upsertTurnMemoryRowsBatch(conversationId, chunkFileName, rows)
+  await upsertTurnMemoryRowsBatch(conversationId, rows)
 }
 
-/** chunk 封存（滚动/拆分）：flush 尾缓冲 + optimize 收成单文件 */
+/** chunk 封存（滚动/拆分）：flush 尾缓冲；全表 optimize 可选 */
 export async function sealChunkMemorySegment(
   conversationId: string,
   chunkFileName: string,
+  branchPath = '',
 ): Promise<void> {
-  await flushTurnMemoryBuffer(conversationId, chunkFileName)
-  await optimizeChunkMemoryTable(conversationId, chunkFileName, {
-    aggressiveCleanup: true,
-  })
+  await flushTurnMemoryBuffer(conversationId, branchPath, chunkFileName)
+}
+
+/** 全量重建或删会话后可对整个 turn_memory 表 optimize */
+export async function optimizeConversationMemoryTable(
+  conversationId: string,
+): Promise<void> {
+  await optimizeTurnMemoryTable(conversationId, { aggressiveCleanup: true })
 }
 
 export function removeBufferedTurnMemory(
@@ -124,6 +141,7 @@ export function clearConversationMemoryBuffers(conversationId: string): void {
  */
 export async function queueTurnMemoryUpsert(
   conversationId: string,
+  branchPath: string,
   chunkFileName: string,
   row: TurnMemoryRow,
   isTailChunk: boolean,
@@ -131,16 +149,16 @@ export async function queueTurnMemoryUpsert(
   if (!row.vector.length) return
 
   if (!isTailChunk) {
-    await upsertTurnMemoryRowsBatch(conversationId, chunkFileName, [row])
+    await upsertTurnMemoryRowsBatch(conversationId, [row])
     return
   }
 
-  const key = bufferKey(conversationId, chunkFileName)
+  const key = bufferKey(conversationId, branchPath, chunkFileName)
   const state = getBufferState(key)
   state.rows.set(row.turnId, row)
-  scheduleDebounceFlush(conversationId, chunkFileName)
+  scheduleDebounceFlush(conversationId, branchPath, chunkFileName)
 
   if (state.rows.size >= TAIL_MEMORY_BATCH_SIZE) {
-    await flushTurnMemoryBuffer(conversationId, chunkFileName)
+    await flushTurnMemoryBuffer(conversationId, branchPath, chunkFileName)
   }
 }

@@ -5,6 +5,7 @@ import {
   type MemorySettings,
 } from './memory-settings.js'
 import { createEmbedding } from './embedding-client.js'
+import { loadTurnsForMemoryHits } from './memory-hits.js'
 import {
   searchTurnMemoryVectors,
   type MemorySearchHit,
@@ -15,9 +16,12 @@ import {
   turnsToHistoryMessages,
   turnsToHistoryScanPlainText,
 } from './turn-memory-xml.js'
-import { resolveTurnById } from './turn-resolve.js'
-import { readAllTurns } from './chunk-chain.js'
+import {
+  readTurnsInOrdinalRange,
+  readTurnsTail,
+} from './chunk-chain.js'
 import { type TurnRecord } from './chat-storage.js'
+import { buildAllowedBranchPathsForActive } from './chunk-path.js'
 
 export interface MemoryPipelineInput {
   conversationId: string
@@ -26,6 +30,8 @@ export interface MemoryPipelineInput {
   historySettings: HistorySettings
   /** 再生等：不含 turnOrdinal >= 该值的轮次 */
   historyBeforeTurnOrdinalExclusive?: number | null
+  /** 当前 active 分支；默认主路径 ""，召回含祖先路径 */
+  activeBranchPath?: string | null
 }
 
 export interface MemoryPipelineResult {
@@ -70,16 +76,41 @@ function selectRecentTurns(
   return limited
 }
 
+/** 组装 / memory 热路径：尾部或再生前窗口，避免 readAllTurns */
+export async function loadTurnsForMemoryPipeline(
+  conversationId: string,
+  historyCount: number,
+  beforeExclusive?: number | null,
+): Promise<TurnRecord[]> {
+  const slack = 2
+  if (
+    typeof beforeExclusive === 'number' &&
+    !Number.isNaN(beforeExclusive)
+  ) {
+    const end = beforeExclusive - 1
+    if (end < 0) return []
+    const from = Math.max(0, end - historyCount - slack)
+    return readTurnsInOrdinalRange(conversationId, from, end)
+  }
+  const window = Math.max(historyCount, slack) + 1
+  const { turns } = await readTurnsTail(conversationId, window)
+  return turns
+}
+
 /**
  * §14.9 阶段一：由 userInput 驱动 memory + history（lore 在之后用 scanCorpus）。
  */
 export async function runMemoryPipeline(
   input: MemoryPipelineInput,
 ): Promise<MemoryPipelineResult> {
-  const allTurns = await readAllTurns(input.conversationId)
   const historyCount = resolveHistoryXmlTurnCount(input.historySettings)
+  const pipelineTurns = await loadTurnsForMemoryPipeline(
+    input.conversationId,
+    historyCount,
+    input.historyBeforeTurnOrdinalExclusive,
+  )
   const recentTurns = selectRecentTurns(
-    allTurns,
+    pipelineTurns,
     historyCount,
     input.historyBeforeTurnOrdinalExclusive,
   )
@@ -92,11 +123,11 @@ export async function runMemoryPipeline(
 
   const query = buildMemoryRecallQuery(
     input.userText,
-    allTurns,
+    pipelineTurns,
     input.historyBeforeTurnOrdinalExclusive,
   )
   if (input.memorySettings.memoryEnabled && query.length > 0) {
-      const emb = await createEmbedding(query, input.conversationId)
+    const emb = await createEmbedding(query, input.conversationId)
     if (emb) {
       const minRecentOrdinal =
         recentTurns.length > 0
@@ -108,12 +139,13 @@ export async function runMemoryPipeline(
         input.memorySettings.memoryTopK,
         recentTurnIds,
         minRecentOrdinal,
+        buildAllowedBranchPathsForActive(input.activeBranchPath),
       )
-      for (const hit of memoryHits) {
-        const turn = await resolveTurnById(input.conversationId, hit.turnId)
-        if (!turn || recentTurnIds.has(turn.turnId)) continue
-        memoryItems.push({ turn, score: hit.score })
-      }
+      memoryItems = await loadTurnsForMemoryHits(
+        input.conversationId,
+        memoryHits,
+        recentTurnIds,
+      )
     }
   }
 

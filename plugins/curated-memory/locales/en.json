@@ -32,6 +32,34 @@
 
   "convMemorybookEnabledDesc": "Schedules block-based auto summarize (preview still required).",
 
+  "convMemorybookProgressTitle": "Summary progress",
+
+  "convMemorybookProgressNever": "No plot summary entries yet",
+
+  "convMemorybookProgressDone": "Plot summarized through turn {end} (inclusive)",
+
+  "convMemorybookProgressPending": "Pending block: turns {from}–{to}",
+
+  "convMemorybookProgressNext": "Next trigger: after turn {turn} is persisted",
+
+  "convMemorybookProgressOff": "Auto summarize is off; no scheduled runs",
+
+  "convMemorybookResetBtn": "Adjust progress",
+
+  "convMemorybookResetTitle": "Adjust auto-summarize progress",
+
+  "convMemorybookResetHint": "Updates scheduling pointers only; lorebook entries are not deleted. Enter the last turn you have actually summarized (0-based, inclusive).",
+
+  "convMemorybookResetEndLabel": "Summarized through turn N (inclusive, 0-based)",
+
+  "convMemorybookResetMaxHint": "Current conversation max turn: {max}",
+
+  "convMemorybookResetAheadWarn": "Value exceeds max turn {max}; auto runs will wait for more turns.",
+
+  "convMemorybookResetNever": "Not summarized yet (clear pointers)",
+
+  "convMemorybookResetConfirm": "Confirm",
+
   "convBlockTurnsLabel": "Turns per block",
 
   "convBlockTurnsDesc": "Session override; clear to inherit global default.",
@@ -205,7 +233,7 @@
 
   "previousSummariesLimitLabel": "Recent summaries in context",
 
-  "previousSummariesLimitDesc": "Include the latest N plot summary bodies when calling the summary model (sorted by turn suffix; later = more recent). 0 disables.",
+  "previousSummariesLimitDesc": "Reference context: ① latest N plot summaries whose end turn is before this batch start; ② up to N conversation turns before start (inclusive) in <context-history> (batch range stays in <history>). 0 disables both.",
 
   "entrySortModeLabel": "Auto-sort entries",
 
@@ -267,11 +295,11 @@
 
   "systemPromptTemplateLabel": "Plot summary system prompt",
 
-  "systemPromptTemplateDesc": "System message for plot summarization. Supports \\{\\{user\\}\\}, \\{\\{char\\}\\}, \\{\\{date\\}\\}, \\{\\{authorsNote\\}\\}, etc.",
+  "systemPromptTemplateDesc": "Instruction template appended after host-built reference blocks (previous-summaries / sidecars / context-history) in the system message. The user message is only <history>. Supports {{user}}, {{char}}, {{date}}, {{authorsNote}}, etc.",
 
-  "systemPromptTemplateDefault": "You are a professional dialogue summarizer. Read the conversation history and extract key plot, character state, and facts.\n\nReturn a JSON object with only:\n- title: short title (string)\n- content: summary body (string, may be multi-paragraph)\n- keywords: array of strings (may be empty)\n\nOutput nothing outside JSON.",
+  "systemPromptTemplateDefault": "You are a skilled scene summarizer who captures plot and **in-story timelines** thoroughly. The system message above may include read-only blocks: <previous-summaries>, <sidecars>, <context-history>; the user message is only the batch to summarize: <history>. Summarize **only** the role-play dialogue inside <history>. Reference blocks are for context only—do not copy them into the summary body.\n\nReturn valid JSON in exactly this shape:\n{\n  \"title\": \"Short scene title (1-3 words)\",\n  \"content\": \"Detailed chronological narrative prose…\",\n  \"keywords\": [\"keyword1\", \"keyword2\"]\n}\n\nFor content:\n- **Plot timeline is required**: If the dialogue states calendar dates, times of day, seasons, relative time (e.g. \"three days later\", \"next morning\"), or scene/time jumps, state them clearly at the **start** of the summary and stay consistent with <previous-summaries>.\n- Then recount the scene in chronological order without losing important beats; omit [OOC] or meta chatter useless for summarization.\n- This summary is stored and vector-retrieved: include major events, key interactions and character development, memorable details and lines, and outcomes or foreshadowing that matter for future {{user}}–{{char}} play.\n- Be comprehensive and readable; do not quote the transcript at length.\n\nFor keywords: provide 15-30 specific, searchable terms (places, objects, proper nouns, distinctive actions, timeline phrases). Avoid abstract themes (e.g. \"sadness\", \"love\") and bare character names (prefer place/event/object names).\n\nFor title: short scene name only; the host appends a turn-range suffix when saving—do not add numeric ranges yourself.\n\nReturn JSON only—no other text.",
 
-  "sidecarSystemPromptTemplateDefault": "You are a dialogue state tracker. Update relationships, goals, and key state for the current scene from the history.\n\nReturn JSON with only title, content, keywords (string array; include searchable keywords).",
+  "sidecarSystemPromptTemplateDefault": "You are a dialogue state tracker. Read-only reference blocks appear in the system message above; the user message is only <history>. Update relationships, goals, and key state for the current scene from <history>, using prior sidecar state in system when helpful.\n\nReturn JSON with only title, content, keywords (string array; include searchable keywords).",
 
   "promptTemplateRequired": "Prompt cannot be empty",
 

@@ -22,6 +22,7 @@ import {
   fetchConversationMeta,
 } from '@/plugins/conversation-meta'
 import {
+  createLorebookEntriesBatch,
   createLorebookEntry,
   ensureLorebook,
   fetchApiPresets,
@@ -45,6 +46,7 @@ import {
 } from '@/utils/render-rich-message'
 import { registerPluginStyles } from '@/plugins/plugin-slot-styles'
 import { useConversationPluginSettingsStore } from '@/stores/conversation-plugin-settings'
+import { translatePluginI18nKey } from '@/utils/plugin-locale-text'
 import { useI18n } from 'vue-i18n'
 import { ref, type Ref } from 'vue'
 
@@ -117,6 +119,9 @@ export function createScopedPluginHost(
       },
       createEntry(lorebookId, body) {
         return createLorebookEntry(id, lorebookId, body)
+      },
+      createEntriesBatch(lorebookId, entries) {
+        return createLorebookEntriesBatch(id, lorebookId, entries)
       },
       patchEntry(lorebookId, entryId, body) {
         return patchLorebookEntry(id, lorebookId, entryId, body)
@@ -208,7 +213,9 @@ export function createPluginWebHost(session: ChatSession): {
   formSubmitting: Ref<boolean>
   slotButtonRevision: Ref<number>
 } {
-  const { t } = useI18n()
+  const { t, te } = useI18n()
+  const pluginT = (key: string, params?: Record<string, unknown>) =>
+    translatePluginI18nKey(key, t, te, params)
   const slotButtons = new Map<string, PluginSlotButtonDef[]>()
   const formDialogs = new Map<string, PluginFormDialogDef>()
   const openForm = ref<OpenPluginFormState | null>(null)
@@ -236,7 +243,7 @@ export function createPluginWebHost(session: ChatSession): {
     },
     composer,
     session,
-    t,
+    t: pluginT,
     pluginKey(key: string) {
       return key
     },

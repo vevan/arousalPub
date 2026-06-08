@@ -288,7 +288,7 @@ PATCH /api/chat/conversations/:id
 
 - **浅合并**：`pluginSettings[pluginId]` 与磁盘已有对象 merge（实现时写死 deep 或 one-level merge）。  
 - 插件只调 **`host.conversation.getPluginSettings` / `patchPluginSettings`**（§0.2）。  
-- 插件 **不得** 直接改 `apiPreset` / `feature_bindings`（`DOC/03` §1.3）。
+- 插件 **不得** 直接改 `apiPreset` 或其它功能的连接设定（`DOC/03` §1.3）。
 
 ### 4.5 触发状态
 

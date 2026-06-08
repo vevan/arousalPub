@@ -2,22 +2,37 @@ import { getTurnUserText, type TurnRecord } from './chat-storage.js'
 
 export const PLUGIN_SUMMARIZE_BATCH_MAX = 50
 
+/** 摘要 history / context-history 内单条发言的 XML 包裹（name 由宏展开） */
+export function wrapSummarizeTurnLine(
+  role: 'user' | 'char',
+  text: string,
+): string {
+  const body = (text ?? '').trim()
+  if (!body) return ''
+  const nameMacro = role === 'user' ? '{{user}}' : '{{char}}'
+  const cdata = body.replace(/\]\]>/g, ']]]]><![CDATA[>')
+  return `<${role} name="${nameMacro}"><![CDATA[${cdata}]]></${role}>`
+}
+
 export function formatSummarizeTranscript(
   turns: TurnRecord[],
-  userName: string,
-  assistantName: string,
+  _userName: string,
+  _assistantName: string,
 ): string {
   const lines: string[] = []
   for (const t of turns) {
-    lines.push(`${userName}: ${getTurnUserText(t)}`)
+    const userLine = wrapSummarizeTurnLine('user', getTurnUserText(t))
+    if (userLine) lines.push(userLine)
     const idx = Math.min(
       Math.max(0, t.activeReceiveIndex ?? 0),
       Math.max(0, (t.receives?.length ?? 1) - 1),
     )
     const r = t.receives?.[idx]
-    if (r?.content?.trim()) {
-      lines.push(`${assistantName}: ${r.content.trim()}`)
-    }
+    const charLine = wrapSummarizeTurnLine(
+      'char',
+      typeof r?.content === 'string' ? r.content : '',
+    )
+    if (charLine) lines.push(charLine)
   }
   return lines.join('\n')
 }

@@ -69,9 +69,15 @@
 
 - 导航：**插件**（`mdi-puzzle-outline`）
 - 无已启用且含 `conversationSettingsSchema` 的插件 → **隐藏**该 Tab
-- 先展示**插件列表**（名称、版本、id）；点「配置」进入该插件表单（与系统设置 → 插件 Tab 同模式）
-- 表单内自动保存（debounce）；「返回插件列表」回到列表
+- 先展示**插件列表**（名称、版本、id）；点 **配置**（`v-icon-btn` + tooltip）进入该插件表单（与系统设置 → 插件 Tab 同模式）
+- 表单内自动保存（debounce）；「返回插件列表」在 **Tab 主体内**（tonal 按钮），回到列表
 - 打开对话设置时 `mergePluginLocales(pluginId)`（与系统设置插件页一致）
+
+### 3.1.1 本对话设置顶栏（2026-06-08）
+
+- **所有 Tab** 共用 head 布局：`本对话设置` | 竖线 | **当前 Tab 标题 + 说明** | 保存指示 | 关闭
+- 正文区**不再**重复 Tab 级 `h3`/说明（含 API 子面板）
+- 插件详情时 head 仍显示「插件」Tab 说明；插件名/id 在详情区标题展示
 
 ### 3.2 与 composer 菜单
 
@@ -120,3 +126,4 @@
 - [x] `PluginSchemaForm` 支持 `conversationInherit` / `inheritFromGlobalKey`
 - [x] `plot-summary`：删全局默认目标书、会话 schema、 `loadMergedSettings` 仅读会话 `targetLorebookId`
 - [x] `host.lorebook.ensure`（见 `DOC/04`）
+- [x] 本对话设置顶栏 Tab 标题/说明并排；插件列表 `v-icon-btn` 配置入口（`web/src/main.ts` 注册 `VIconBtn`）

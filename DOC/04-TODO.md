@@ -62,14 +62,21 @@
 
 ### Historian（剧情纪要）插件（`plot-summary` · 2026-06-03）
 
-> 实现指南：`DOC/12-plugin-plot-summary.md`（部分字段/流程已随 v1.1 迭代，以代码与联调为准）。
+> 实现指南：`DOC/12-plugin-plot-summary.md`。**状态（2026-06-08）**：**可验收** — 功能、宿主 API、UI/命名收尾已齐；存量数据 `memorybook*` → `autoSummarize*` 需自行对齐。
 
-**联调进度（2026-06-08 文档对齐代码）**
+**联调与验收（2026-06-08）**
 
 - [x] 手动摘要 + 确认预览落盘 + lorebook 前端缓存同步
 - [x] keywords 硬性写入 `keys`（与触发方式无关）
 - [x] **自动摘要块**（`blockTurns` + `bufferTurns`、指针 `lastSummarizedEnd` / `nextBlockStart`；自动触发仍经预览确认；无目标书弹框选书 — 见 `DOC/12` §1.2）
-- [ ] **自动摘要端到端联调验收**（长对话首次 enable、块边界、跳过/中止不推进指针、busy 延后）
+- [x] **端到端联调验收**（长对话首次 enable、块边界、跳过/中止不推进指针、busy 延后）
+
+**v1.6 UI 与命名（2026-06-08）**
+
+- [x] **设置键更名**：`memorybookEnabled` / `memorybookDefaultEnabled` → `autoSummarizeEnabled` / `autoSummarizeDefaultEnabled`（代码与 locales；存量 `pluginSettings` / `settings.json` 需用户或迁移脚本手动对齐）
+- [x] **文案去 Memorybook**：composer 菜单、设置 schema、Toast/弹窗等用户可见文案统一为「自动摘要 / 剧情纪要」
+- [x] **本对话设置顶栏**：所有 Tab 的标题+说明移至对话框 head，与「本对话设置」并排；正文区去掉重复 `h3`/说明
+- [x] **插件 Tab UX**：详情页「返回插件列表」在 Tab 主体内；系统/会话插件列表「配置」改为 Vuetify Labs **`v-icon-btn`**（`mdi-cog`、无底色、小按钮+大图标）；开关与配置按钮间距；设置相关低对比按钮统一提升可视性
 
 **P0 — Sidecar 设置 UI**
 
@@ -214,3 +221,5 @@
 - [x] **用户文件库与 charFile 定案** — `DOC/20-user-file-library.md`（2026-06-08，列入 P3）
 - [x] **Historian（剧情纪要）自动摘要语义对齐** — `DOC/12` §1.2（自动≠静默、预览必选、ensure 前置）（2026-06-08）
 - [x] **插件 slot `class` / `registerStyles` + `turn-block-head`** — `DOC/12` §7.2、`DOC/18` §3.1（2026-06-08）
+- [x] **plot-summary v1.6 更名/UI 收尾** — `autoSummarize*` 字段、本对话设置顶栏、插件 `v-icon-btn`；`DOC/12` §9、`DOC/21` §3（2026-06-08）
+- [x] **plot-summary 端到端验收** — `DOC/04` Historian 段、`DOC/12` §9（2026-06-08）

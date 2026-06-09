@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc && node --input-type=module -e \"import {mkdirSync,copyFileSync} from 'node:fs'; mkdirSync('dist/admin',{recursive:true}); copyFileSync('src/admin/index.html','dist/admin/index.html')\"",
+    "dev": "node ../scripts/sync-plot-summary-shared.mjs && tsx watch src/index.ts",
+    "build": "node ../scripts/sync-plot-summary-shared.mjs && tsc && node --input-type=module -e \"import {mkdirSync,copyFileSync} from 'node:fs'; mkdirSync('dist/admin',{recursive:true}); copyFileSync('src/admin/index.html','dist/admin/index.html')\"",
     "start": "node dist/index.js",
-    "test": "node --import tsx --test src/**/*.test.ts"
+    "test": "node ../scripts/sync-plot-summary-shared.mjs && node --import tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

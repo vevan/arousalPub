@@ -10,8 +10,8 @@ import type {
   LorebookEntryPatchBody,
   LorebookEnsureResult,
   LorebookNormalizeEntryRefsRequest,
-  LorebookReorderCuratedRequest,
-  LorebookReorderCuratedResult,
+  LorebookApplyOrderRequest,
+  LorebookApplyOrderResult,
   LorebookSummaryDto,
   PluginCompleteDraftRequest,
   PluginCompleteDraftResponse,
@@ -274,23 +274,23 @@ export async function normalizeLorebookEntryRefs(
   return data.entryIds
 }
 
-export async function reorderCuratedLorebookEntries(
+export async function applyLorebookOrder(
   pluginId: string,
   lorebookId: string,
-  req?: LorebookReorderCuratedRequest,
+  req: LorebookApplyOrderRequest,
   signal?: AbortSignal,
-): Promise<LorebookReorderCuratedResult> {
+): Promise<LorebookApplyOrderResult> {
   const res = await apiFetch(
-    `/api/plugins/${encodeURIComponent(pluginId)}/lorebooks/${encodeURIComponent(lorebookId)}/reorder-curated`,
+    `/api/plugins/${encodeURIComponent(pluginId)}/lorebooks/${encodeURIComponent(lorebookId)}/apply-order`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req ?? {}),
+      body: JSON.stringify(req),
       signal,
     },
   )
   await throwIfNotOk(res, 'lorebook_entry_patch_failed')
-  const data = (await res.json()) as LorebookReorderCuratedResult & { ok?: boolean }
+  const data = (await res.json()) as LorebookApplyOrderResult & { ok?: boolean }
   if (!data.ok || !data.lorebook || typeof data.lorebook !== 'object') {
     throw new PluginHostApiError('lorebook_entry_patch_failed', res.status)
   }

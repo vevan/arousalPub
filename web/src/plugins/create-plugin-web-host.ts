@@ -31,7 +31,7 @@ import {
   fetchLorebookList,
   fetchPluginUserSettings,
   normalizeLorebookEntryRefs,
-  reorderCuratedLorebookEntries,
+  applyLorebookOrder,
   patchConversationPluginSettings,
   patchLorebookEntry,
   expandPluginMacros,
@@ -129,8 +129,8 @@ export function createScopedPluginHost(
       normalizeEntryRefs(req) {
         return normalizeLorebookEntryRefs(id, req, getPluginProgressAbortSignal())
       },
-      reorderCurated(lorebookId, req) {
-        return reorderCuratedLorebookEntries(
+      applyOrder(lorebookId, req) {
+        return applyLorebookOrder(
           id,
           lorebookId,
           req,
@@ -320,7 +320,7 @@ export function createPluginWebHost(session: ChatSession): {
       normalizeEntryRefs() {
         throw new Error('plugin_host_requires_scoped_host')
       },
-      reorderCurated() {
+      applyOrder() {
         throw new Error('plugin_host_requires_scoped_host')
       },
       ensure() {

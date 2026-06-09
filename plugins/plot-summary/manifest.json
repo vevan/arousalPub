@@ -1,6 +1,6 @@
 {
-  "id": "curated-memory",
-  "name": "策展记忆",
+  "id": "plot-summary",
+  "name": "Historian",
   "version": "1.5.0",
   "hooks": [
     "completeDraft"
@@ -23,10 +23,10 @@
         "default": ""
       },
       {
-        "key": "memorybookDefaultEnabled",
+        "key": "autoSummarizeDefaultEnabled",
         "type": "boolean",
-        "labelKey": "memorybookDefaultEnabledLabel",
-        "descriptionKey": "memorybookDefaultEnabledDesc",
+        "labelKey": "autoSummarizeDefaultEnabledLabel",
+        "descriptionKey": "autoSummarizeDefaultEnabledDesc",
         "default": false
       },
       {
@@ -187,10 +187,10 @@
         "default": ""
       },
       {
-        "key": "memorybookEnabled",
+        "key": "autoSummarizeEnabled",
         "type": "boolean",
-        "labelKey": "convMemorybookEnabledLabel",
-        "descriptionKey": "convMemorybookEnabledDesc",
+        "labelKey": "convAutoSummarizeEnabledLabel",
+        "descriptionKey": "convAutoSummarizeEnabledDesc",
         "default": false
       },
       {

@@ -1,5 +1,22 @@
 import { i18n } from '@/i18n'
 
+/** 设置页 / 对话插件 Tab 展示名（各插件 `locales/*.json` 可选提供） */
+export const PLUGIN_DISPLAY_NAME_KEY = 'pluginDisplayName'
+
+/** manifest `name` 的本地化回退：无 `pluginDisplayName` 时用 fallback */
+export function resolvePluginDisplayName(
+  pluginId: string,
+  fallbackName: string,
+  locale?: string,
+): string {
+  const localized = readPluginLocaleMessage(
+    pluginId,
+    PLUGIN_DISPLAY_NAME_KEY,
+    locale,
+  )
+  return localized?.trim() || fallbackName
+}
+
 /** 从已合并的 `plugins.{pluginId}` 命名空间读取字面量，不经 message compiler */
 export function readPluginLocaleMessage(
   pluginId: string,

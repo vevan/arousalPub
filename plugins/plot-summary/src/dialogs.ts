@@ -14,7 +14,7 @@ import {
   setLorebookPickResolver,
   summarizeRunning,
 } from './state.js'
-import { applyCuratedLorebookEntrySort } from './shared/entry-sort.js'
+import { applyPlotSummaryEntrySort } from './shared/entry-sort.js'
 import { asInt, asString } from './shared/utils.js'
 import {
   firstAutoTriggerTurnOrdinal,
@@ -28,11 +28,11 @@ import {
 } from './settings.js'
 import type { MergedSettings, PluginHost } from './types.js'
 
-function isMemorybookEnabled(host: PluginHost): boolean {
-  return host.conversation.getPluginSettingsSnapshot().memorybookEnabled === true
+function isAutoSummarizeEnabled(host: PluginHost): boolean {
+  return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true
 }
 
-export function refreshMemorybookUi(host: PluginHost) {
+export function refreshAutoSummarizeUi(host: PluginHost) {
   host.refreshSlotButtons()
 }
 
@@ -406,11 +406,11 @@ function registerSummarizeDialog(
         if (isEnable) {
           const autoSidecarIds = sidecarIdsFromTaskSelection(model.selectedTasks)
           await h.conversation.patchPluginSettings({
-            memorybookEnabled: true,
+            autoSummarizeEnabled: true,
             nextBlockStart: fromTurn,
             autoSidecarIds,
           })
-          refreshMemorybookUi(h)
+          refreshAutoSummarizeUi(h)
         } else {
           await h.conversation.patchPluginSettings({
             manualSummarizeTasks: normalizeManualTaskSelection(
@@ -424,7 +424,7 @@ function registerSummarizeDialog(
           toTurn,
           tasks,
           updatePointers: isEnable || tasks.some((t) => t.kind === 'memory'),
-          updateMemorybookCache: false,
+          updateAutoSummarizeCache: false,
         })
       },
     },
@@ -445,7 +445,7 @@ export async function reorderTargetLorebookNow(host: PluginHost) {
       entryIds: settings.sidecarEntryIds,
       validKeys: settings.sidecars.map((s) => s.id),
     })
-    await applyCuratedLorebookEntrySort(
+    await applyPlotSummaryEntrySort(
       host,
       targetId,
       sidecarEntryIds,
@@ -453,7 +453,7 @@ export async function reorderTargetLorebookNow(host: PluginHost) {
     )
     host.ui.toast(host.t(k(host, 'toastReorderLorebookDone')), { color: 'success' })
   } catch (e) {
-    console.warn('[curated-memory] reorder lorebook failed', e)
+    console.warn('[plot-summary] reorder lorebook failed', e)
     host.ui.toast(host.t(k(host, 'toastTaskSkipped')), { color: 'warning' })
   }
 }
@@ -511,21 +511,21 @@ function openEnableLongDialog(host: PluginHost, settings: MergedSettings) {
   host.openFormDialog(PLUGIN_ID, { startTurn, endTurn, selectedTasks }, DIALOG_ENABLE)
 }
 
-export async function applyShortMemorybookEnable(host: PluginHost, settings: MergedSettings) {
+export async function applyShortAutoSummarizeEnable(host: PluginHost, settings: MergedSettings) {
   const X = firstAutoTriggerTurnOrdinal({ ...settings, nextBlockStart: 0 })
   const autoSidecarIds = parseAutoSidecarIdsRaw(null, settings.sidecars)
   await host.conversation.patchPluginSettings({
-    memorybookEnabled: true,
+    autoSummarizeEnabled: true,
     nextBlockStart: 0,
     autoSidecarIds,
   })
-  refreshMemorybookUi(host)
-  host.ui.toast(host.t(k(host, 'toastMemorybookScheduled'), { turn: X }), {
+  refreshAutoSummarizeUi(host)
+  host.ui.toast(host.t(k(host, 'toastAutoSummarizeScheduled'), { turn: X }), {
     color: 'success',
   })
 }
 
-async function tryEnableMemorybook(host: PluginHost) {
+async function tryEnableAutoSummarize(host: PluginHost) {
   const settings = await loadMergedSettings(host)
   const T = maxTurnOrdinal(host)
   const N = settings.blockTurns
@@ -534,16 +534,16 @@ async function tryEnableMemorybook(host: PluginHost) {
     openEnableLongDialog(host, settings)
     return
   }
-  await applyShortMemorybookEnable(host, settings)
+  await applyShortAutoSummarizeEnable(host, settings)
 }
 
-export async function toggleMemorybook(host: PluginHost) {
-  if (isMemorybookEnabled(host)) {
-    await host.conversation.patchPluginSettings({ memorybookEnabled: false })
-    host.ui.toast(host.t(k(host, 'toastMemorybookDisabled')), { color: 'info' })
+export async function toggleAutoSummarize(host: PluginHost) {
+  if (isAutoSummarizeEnabled(host)) {
+    await host.conversation.patchPluginSettings({ autoSummarizeEnabled: false })
+    host.ui.toast(host.t(k(host, 'toastAutoSummarizeDisabled')), { color: 'info' })
     return
   }
-  await tryEnableMemorybook(host)
+  await tryEnableAutoSummarize(host)
 }
 
 export function isBusy(host: PluginHost) {

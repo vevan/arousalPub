@@ -203,7 +203,6 @@ const savingPluginSettings = ref(false)
 const pluginSettingsPanelRef = ref<InstanceType<
   typeof ConversationPluginSettingsPanel
 > | null>(null)
-
 const sectionItems = computed(() => {
   const items: Array<{
     id: SettingsSection
@@ -251,6 +250,35 @@ const sectionItems = computed(() => {
   return items
 })
 
+const activeSectionHeader = computed(() => {
+  const keyBySection: Record<
+    SettingsSection,
+    { titleKey: string; hintKey: string }
+  > = {
+    bindings: {
+      titleKey: 'tabBindings',
+      hintKey: 'tabBindingsHint',
+    },
+    api: { titleKey: 'tabApi', hintKey: 'tabApiHint' },
+    lore: { titleKey: 'tabLore', hintKey: 'tabLoreHint' },
+    context: { titleKey: 'tabContext', hintKey: 'tabContextHint' },
+    budgetTrim: {
+      titleKey: 'tabBudgetTrim',
+      hintKey: 'tabBudgetTrimHint',
+    },
+    authorsNote: {
+      titleKey: 'tabAuthorsNote',
+      hintKey: 'tabAuthorsNoteHint',
+    },
+    plugins: { titleKey: 'tabPlugins', hintKey: 'tabPluginsHint' },
+  }
+  const keys = keyBySection[activeSection.value]
+  return {
+    title: t(`chat.convSettings.${keys.titleKey}`),
+    hint: t(`chat.convSettings.${keys.hintKey}`),
+  }
+})
+
 const presetItems = computed(() => {
   const inherit = {
     title: t('chat.convSettings.useGlobalPreset'),
@@ -295,6 +323,12 @@ function open(section?: SettingsSection): void {
 function close(): void {
   dialogOpen.value = false
 }
+
+watch(activeSection, (section) => {
+  if (section !== 'plugins') {
+    pluginSettingsPanelRef.value?.backToList()
+  }
+})
 
 watch(dialogOpen, (open) => {
   if (!open) {
@@ -1103,25 +1137,40 @@ async function patchConversation(body: Record<string, unknown>) {
     content-class="app-config-dialog-surface"
   >
     <v-card class="conv-settings-dialog">
-      <v-card-title class="conv-settings-dialog__title d-flex align-center">
-        <span class="text-body-1 font-weight-medium">
-          {{ $t('chat.convSettings.title') }}
-        </span>
-        <v-spacer />
-        <v-progress-circular
-          v-if="isSaving"
-          indeterminate
-          size="18"
-          width="2"
-          class="mr-2"
-        />
-        <v-btn
-          icon="mdi-close"
-          variant="text"
-          density="comfortable"
-          :aria-label="$t('chat.turnPromptClose')"
-          @click="close"
-        />
+      <v-card-title class="conv-settings-dialog__title">
+        <div class="conv-settings-dialog__title-row">
+          <span class="conv-settings-dialog__main-title text-body-1 font-weight-medium">
+            {{ $t('chat.convSettings.title') }}
+          </span>
+          <div
+            class="conv-settings-dialog__title-sep"
+            aria-hidden="true"
+          />
+          <div class="conv-settings-dialog__section-head min-w-0">
+            <div class="conv-settings-dialog__section-title">
+              {{ activeSectionHeader.title }}
+            </div>
+            <p class="conv-settings-dialog__section-hint mb-0">
+              {{ activeSectionHeader.hint }}
+            </p>
+          </div>
+          <v-spacer />
+          <v-progress-circular
+            v-if="isSaving"
+            indeterminate
+            size="18"
+            width="2"
+            class="mr-2 flex-shrink-0"
+          />
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            density="comfortable"
+            class="flex-shrink-0"
+            :aria-label="$t('chat.turnPromptClose')"
+            @click="close"
+          />
+        </div>
       </v-card-title>
 
       <v-divider />
@@ -1164,13 +1213,6 @@ async function patchConversation(body: Record<string, unknown>) {
               v-show="activeSection === 'bindings'"
               class="conv-settings-section"
             >
-              <h3 class="conv-settings-section__title">
-                {{ $t('chat.convSettings.tabBindings') }}
-              </h3>
-              <p class="conv-settings-section__hint">
-                {{ $t('chat.convSettings.tabBindingsHint') }}
-              </p>
-
               <div class="conv-settings-field">
                 <v-select
                   v-model="presetModel"
@@ -1276,13 +1318,6 @@ async function patchConversation(body: Record<string, unknown>) {
               v-show="activeSection === 'lore'"
               class="conv-settings-section"
             >
-              <h3 class="conv-settings-section__title">
-                {{ $t('chat.convSettings.tabLore') }}
-              </h3>
-              <p class="conv-settings-section__hint">
-                {{ $t('chat.convSettings.tabLoreHint') }}
-              </p>
-
               <div class="conv-settings-field">
                 <v-switch
                   v-model="loreUseGlobal"
@@ -1340,13 +1375,6 @@ async function patchConversation(body: Record<string, unknown>) {
               v-show="activeSection === 'context'"
               class="conv-settings-section"
             >
-              <h3 class="conv-settings-section__title">
-                {{ $t('chat.convSettings.tabContext') }}
-              </h3>
-              <p class="conv-settings-section__hint">
-                {{ $t('chat.convSettings.tabContextHint') }}
-              </p>
-
               <div class="conv-settings-subsection">
                 <h4 class="conv-settings-subsection__title">
                   {{ $t('chat.convSettings.sectionHistory') }}
@@ -1535,12 +1563,6 @@ async function patchConversation(body: Record<string, unknown>) {
               v-show="activeSection === 'budgetTrim'"
               class="conv-settings-section"
             >
-              <h3 class="conv-settings-section__title">
-                {{ $t('chat.convSettings.tabBudgetTrim') }}
-              </h3>
-              <p class="conv-settings-section__hint">
-                {{ $t('chat.convSettings.tabBudgetTrimHint') }}
-              </p>
               <div class="conv-settings-field">
                 <v-switch
                   v-model="budgetTrimUseGlobal"
@@ -1568,16 +1590,6 @@ async function patchConversation(body: Record<string, unknown>) {
               v-show="activeSection === 'authorsNote'"
               class="conv-settings-section"
             >
-              <h3 class="conv-settings-section__title">
-                {{ $t('chat.convSettings.tabAuthorsNote') }}
-              </h3>
-              <p class="conv-settings-section__hint">
-                {{ $t('chat.convSettings.tabAuthorsNoteHint') }}
-              </p>
-              <p class="conv-settings-section__hint text-medium-emphasis">
-                {{ $t('chat.convSettings.autoSaveHint') }}
-              </p>
-
               <div class="conv-settings-field">
                 <v-textarea
                   v-model="authorsNoteContent"
@@ -1652,15 +1664,6 @@ async function patchConversation(body: Record<string, unknown>) {
               v-show="activeSection === 'plugins'"
               class="conv-settings-section"
             >
-              <h3 class="conv-settings-section__title">
-                {{ $t('chat.convSettings.tabPlugins') }}
-              </h3>
-              <p class="conv-settings-section__hint">
-                {{ $t('chat.convSettings.tabPluginsHint') }}
-              </p>
-              <p class="conv-settings-section__hint text-medium-emphasis">
-                {{ $t('chat.convSettings.autoSaveHint') }}
-              </p>
               <ConversationPluginSettingsPanel
                 ref="pluginSettingsPanelRef"
                 :conversation-id="conversationId"
@@ -1712,8 +1715,47 @@ async function patchConversation(body: Record<string, unknown>) {
 }
 
 .conv-settings-dialog__title {
-  padding-block: 0.875rem 0.75rem;
+  padding-block: 0.75rem;
   flex-shrink: 0;
+}
+
+.conv-settings-dialog__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.conv-settings-dialog__main-title {
+  flex-shrink: 0;
+}
+
+.conv-settings-dialog__title-sep {
+  flex-shrink: 0;
+  align-self: stretch;
+  width: 0.0625rem;
+  min-height: 2.25rem;
+  background: rgba(var(--v-theme-on-surface), 0.14);
+}
+
+.conv-settings-dialog__section-head {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.conv-settings-dialog__section-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.conv-settings-dialog__section-hint {
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  font-weight: 400;
+  color: rgba(var(--v-theme-on-surface), 0.62);
 }
 
 .conv-settings-dialog__footer {
@@ -1786,19 +1828,6 @@ async function patchConversation(body: Record<string, unknown>) {
   min-height: 0;
   overflow: auto;
   padding: 1rem 1.125rem 1.25rem;
-}
-
-.conv-settings-section__title {
-  margin: 0 0 0.375rem;
-  font-size: 0.9375rem;
-  font-weight: 600;
-}
-
-.conv-settings-section__hint {
-  margin: 0 0 1rem;
-  font-size: 0.8125rem;
-  line-height: 1.45;
-  color: rgba(var(--v-theme-on-surface), 0.62);
 }
 
 .conv-settings-subsection__title {

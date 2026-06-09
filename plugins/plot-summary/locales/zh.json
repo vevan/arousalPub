@@ -1,12 +1,14 @@
 {
 
-  "tooltipCuratedMemory": "策展记忆",
+  "pluginDisplayName": "剧情纪要",
 
-  "tooltipMemorybook": "Memorybook 自动摘要（开/关）",
+  "tooltipPlugin": "剧情纪要",
+
+  "tooltipAutoSummarize": "自动摘要（开/关）",
 
   "tooltipManualSummarize": "手动摘要",
 
-  "tooltipSessionSettings": "本会话策展设置",
+  "tooltipSessionSettings": "本会话剧情纪要设置",
 
   "tooltipRangeStart": "选择摘要起始轮",
 
@@ -18,7 +20,7 @@
 
   "tooltipSummarizeTurn": "摘要至本回合",
 
-  "sessionDialogTitle": "本会话策展记忆",
+  "sessionDialogTitle": "本会话剧情纪要",
 
   "sessionTargetLorebookLabel": "摘要资料库",
 
@@ -28,37 +30,37 @@
 
   "convTargetLorebookIdDesc": "摘要条目写入本书；留空则摘要或自动块触发时弹框选择。与绑定 Tab 的「资料库」注入无关。",
 
-  "convMemorybookEnabledLabel": "Memorybook 自动摘要",
+  "convAutoSummarizeEnabledLabel": "自动摘要",
 
-  "convMemorybookEnabledDesc": "开启后按块长自动预约摘要（仍须预览确认）。",
+  "convAutoSummarizeEnabledDesc": "开启后按块长自动预约摘要（仍须预览确认）。",
 
-  "convMemorybookProgressTitle": "摘要进度",
+  "convAutoSummarizeProgressTitle": "摘要进度",
 
-  "convMemorybookProgressNever": "尚无剧情摘要条目",
+  "convAutoSummarizeProgressNever": "尚无剧情纪要条目",
 
-  "convMemorybookProgressDone": "已剧情摘要至第 {end} 轮（含）",
+  "convAutoSummarizeProgressDone": "已剧情纪要至第 {end} 轮（含）",
 
-  "convMemorybookProgressPending": "待摘要块：第 {from}–{to} 轮",
+  "convAutoSummarizeProgressPending": "待摘要块：第 {from}–{to} 轮",
 
-  "convMemorybookProgressNext": "下次触发：第 {turn} 轮落盘后",
+  "convAutoSummarizeProgressNext": "下次触发：第 {turn} 轮落盘后",
 
-  "convMemorybookProgressOff": "自动摘要已关闭，不会自动预约",
+  "convAutoSummarizeProgressOff": "自动摘要已关闭，不会自动预约",
 
-  "convMemorybookResetBtn": "校正摘要进度",
+  "convAutoSummarizeResetBtn": "校正摘要进度",
 
-  "convMemorybookResetTitle": "校正自动摘要进度",
+  "convAutoSummarizeResetTitle": "校正自动摘要进度",
 
-  "convMemorybookResetHint": "仅更新自动预约指针，不删除资料库已有条目。请按你实际已摘要到的轮次填写（0 起，含该轮）。",
+  "convAutoSummarizeResetHint": "仅更新自动预约指针，不删除资料库已有条目。请按你实际已摘要到的轮次填写（0 起，含该轮）。",
 
-  "convMemorybookResetEndLabel": "已摘要至第 N 轮（含，0 起）",
+  "convAutoSummarizeResetEndLabel": "已摘要至第 N 轮（含，0 起）",
 
-  "convMemorybookResetMaxHint": "当前对话最大轮次：{max}",
+  "convAutoSummarizeResetMaxHint": "当前对话最大轮次：{max}",
 
-  "convMemorybookResetAheadWarn": "填写值大于当前最大轮次 {max}，自动块将延后触发。",
+  "convAutoSummarizeResetAheadWarn": "填写值大于当前最大轮次 {max}，自动块将延后触发。",
 
-  "convMemorybookResetNever": "尚未摘要（清空指针）",
+  "convAutoSummarizeResetNever": "尚未摘要（清空指针）",
 
-  "convMemorybookResetConfirm": "确认",
+  "convAutoSummarizeResetConfirm": "确认",
 
   "convBlockTurnsLabel": "每块摘要轮数",
 
@@ -82,7 +84,7 @@
 
   "sessionAutoSidecarsLabel": "自动摘要 Sidecar",
 
-  "sessionAutoSidecarsHint": "剧情摘要始终执行；此处仅选择自动块要更新的 Sidecar。",
+  "sessionAutoSidecarsHint": "剧情纪要始终执行；此处仅选择自动块要更新的 Sidecar。",
 
   "sessionSubmit": "保存",
 
@@ -90,7 +92,7 @@
 
   "manualDialogTitle": "手动摘要",
 
-  "manualDialogBody": "可选剧情摘要与 Sidecar；同一区间可重复摘要。",
+  "manualDialogBody": "可选剧情纪要与 Sidecar；同一区间可重复摘要。",
   "manualDialogBodyPlotOnly": "将所选轮次摘要为剧情条目写入资料库；同一区间可重复摘要。",
 
   "manualStartTurnLabel": "起始轮（0 起）",
@@ -101,7 +103,7 @@
 
   "manualTasksHint": "按顺序串行执行：先剧情，再所选 Sidecar。",
 
-  "manualTaskMemory": "剧情摘要",
+  "manualTaskMemory": "剧情纪要",
 
   "manualSubmit": "开始",
 
@@ -138,17 +140,17 @@
 
   "toastSummarizeSummary": "已完成 {done} 项，跳过 {skipped} 项（共 {total} 项）",
 
-  "enableDialogTitle": "开启 Memorybook",
+  "enableDialogTitle": "开启自动摘要",
 
   "enableDialogBody": "将摘要下列轮次并开启自动摘要；此前轮次请用手动摘要补录。起止轮不可改，Sidecar 可取消。",
 
-  "enableTasksHint": "剧情摘要必选；所选 Sidecar 将用于本会话后续自动摘要。",
+  "enableTasksHint": "剧情纪要必选；所选 Sidecar 将用于本会话后续自动摘要。",
 
   "enableSubmit": "开启并摘要",
 
-  "toastMemorybookEnabled": "已开启 Memorybook 自动摘要",
+  "toastAutoSummarizeEnabled": "已开启自动摘要",
 
-  "toastMemorybookScheduled": "将在第 {turn} 轮开始自动摘要",
+  "toastAutoSummarizeScheduled": "将在第 {turn} 轮开始自动摘要",
 
   "pickLorebookDialogTitle": "选择目标资料库",
 
@@ -172,15 +174,15 @@
 
   "toastTargetLorebookMissingWarn": "目标资料库缺失，请选择后再摘要",
 
-  "memorybookDefaultEnabledLabel": "新对话默认开启 Memorybook",
+  "autoSummarizeDefaultEnabledLabel": "新对话默认开启自动摘要",
 
-  "memorybookDefaultEnabledDesc": "仅对新建会话生效；首条落盘后预约自动摘要。用户手动关闭后本会话不再自动打开。",
+  "autoSummarizeDefaultEnabledDesc": "仅对新建会话生效；首条落盘后预约自动摘要。用户手动关闭后本会话不再自动打开。",
 
   "sessionAutoSidecarsLabel": "自动摘要 Sidecar",
 
-  "sessionAutoSidecarsHint": "剧情摘要始终包含；此处仅选择自动块要更新的 Sidecar。",
+  "sessionAutoSidecarsHint": "剧情纪要始终包含；此处仅选择自动块要更新的 Sidecar。",
 
-  "toastMemorybookDisabled": "已关闭 Memorybook 自动摘要",
+  "toastAutoSummarizeDisabled": "已关闭自动摘要",
 
   "toastNoTargetLorebook": "未配置目标资料库",
 
@@ -239,11 +241,11 @@
 
   "previousSummariesLimitLabel": "摘要时附带最近条数",
 
-  "previousSummariesLimitDesc": "参考上下文：① 结束轮次早于本次摘要起始轮的最近 N 条剧情摘要；② 从起始轮向前（含起始轮）最多 N 轮对话放入 <context-history>（待摘要区间仍在 <history>）。0 表示均不附带。",
+  "previousSummariesLimitDesc": "参考上下文：① 结束轮次早于本次摘要起始轮的最近 N 条剧情纪要；② 从起始轮向前（含起始轮）最多 N 轮对话放入 <context-history>（待摘要区间仍在 <history>）。0 表示均不附带。",
 
   "entrySortModeLabel": "条目自动排序",
 
-  "entrySortModeDesc": "开启后，每次摘要批次（剧情摘要与 Sidecar）全部处理完毕后自动整理目标资料库顺序：无后缀设定 → Sidecar → 按轮次后缀排序的摘要。",
+  "entrySortModeDesc": "开启后，每次摘要批次（剧情纪要与 Sidecar）全部处理完毕后自动整理目标资料库顺序：无后缀设定 → Sidecar → 按轮次后缀排序的摘要。",
 
   "entrySortModeManual": "手动（仅拖拽）",
 
@@ -299,7 +301,7 @@
 
   "triggerModeVector": "向量触发",
 
-  "systemPromptTemplateLabel": "剧情摘要 System 模板",
+  "systemPromptTemplateLabel": "剧情纪要 System 模板",
 
   "systemPromptTemplateDesc": "摘要指令模板，与宿主组装的参考块（previous-summaries / sidecars / context-history）一并作为 system 消息。用户消息仅为待摘要的 <history>。支持宏：{{user}}、{{char}}、{{date}}、{{authorsNote}} 等。",
 

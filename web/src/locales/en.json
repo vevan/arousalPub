@@ -585,7 +585,7 @@
       "tabPlugins": "Plugins",
       "tabPluginsHint": "Per-conversation settings for enabled plugins; separate from global defaults in Settings → Plugins.",
       "pluginTabEmpty": "No enabled plugins with conversation settings. Enable plugins in Settings → Plugins.",
-      "memorybookProgressTitle": "Summary progress",
+      "plotSummaryProgressTitle": "Summary progress",
       "pluginConfigure": "Configure",
       "pluginBackToList": "Back to plugin list",
       "pluginLoadFailed": "Failed to load plugin conversation settings",

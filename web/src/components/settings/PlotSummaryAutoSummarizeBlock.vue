@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { patchConversationPluginSettings } from '@/plugins/plugin-host-api'
 import {
-  buildMemorybookPointerResetPatch,
-  computeMemorybookProgress,
+  buildAutoSummarizePointerResetPatch,
+  computeAutoSummarizeProgress,
   readLastSummarizedEnd,
-} from '@/utils/curated-memory-memorybook-status'
+} from '@/utils/plot-summary-auto-summarize-status'
 import { fetchConversationTurns } from '@/utils/chat-messages'
 import { translatePluginI18nKey } from '@/utils/plugin-locale-text'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const PLUGIN_ID = 'curated-memory'
+const PLUGIN_ID = 'plot-summary'
 
 const props = defineProps<{
   conversationId: string
@@ -35,16 +35,16 @@ function pluginT(key: string, params?: Record<string, unknown>): string {
   const fullKey = `plugins.${PLUGIN_ID}.${key}`
   const text = translatePluginI18nKey(fullKey, t, te, params)
   if (!text.startsWith('plugins.')) return text
-  if (key === 'convMemorybookProgressTitle') {
-    return t('chat.convSettings.memorybookProgressTitle')
+  if (key === 'convAutoSummarizeProgressTitle') {
+    return t('chat.convSettings.plotSummaryProgressTitle')
   }
   return text
 }
 
-const progressTitle = computed(() => pluginT('convMemorybookProgressTitle'))
+const progressTitle = computed(() => pluginT('convAutoSummarizeProgressTitle'))
 
 const progress = computed(() =>
-  computeMemorybookProgress(props.convModel ?? {}, props.globalModel ?? {}),
+  computeAutoSummarizeProgress(props.convModel ?? {}, props.globalModel ?? {}),
 )
 
 const statusRows = computed(() => {
@@ -54,34 +54,34 @@ const statusRows = computed(() => {
   if (p.lastSummarizedEnd !== null && p.lastSummarizedEnd >= 0) {
     rows.push({
       icon: 'mdi-check-circle-outline',
-      text: pluginT('convMemorybookProgressDone', { end: p.lastSummarizedEnd }),
+      text: pluginT('convAutoSummarizeProgressDone', { end: p.lastSummarizedEnd }),
     })
   } else {
     rows.push({
       icon: 'mdi-circle-outline',
-      text: pluginT('convMemorybookProgressNever'),
+      text: pluginT('convAutoSummarizeProgressNever'),
       tone: 'muted',
     })
   }
 
   rows.push({
     icon: 'mdi-format-list-bulleted',
-    text: pluginT('convMemorybookProgressPending', {
+    text: pluginT('convAutoSummarizeProgressPending', {
       from: p.pendingFromTurn,
       to: p.pendingToTurn,
     }),
   })
 
-  if (p.memorybookEnabled) {
+  if (p.autoSummarizeEnabled) {
     rows.push({
       icon: 'mdi-calendar-clock',
-      text: pluginT('convMemorybookProgressNext', { turn: p.nextTriggerTurn }),
+      text: pluginT('convAutoSummarizeProgressNext', { turn: p.nextTriggerTurn }),
       tone: 'accent',
     })
   } else {
     rows.push({
       icon: 'mdi-pause-circle-outline',
-      text: pluginT('convMemorybookProgressOff'),
+      text: pluginT('convAutoSummarizeProgressOff'),
       tone: 'muted',
     })
   }
@@ -146,7 +146,7 @@ function applyNever() {
 
 async function submit() {
   if (!canSubmit.value) return
-  const patch = buildMemorybookPointerResetPatch(
+  const patch = buildAutoSummarizePointerResetPatch(
     neverMode.value ? null : (parsedEnd.value as number),
   )
   saving.value = true
@@ -162,42 +162,42 @@ async function submit() {
 </script>
 
 <template>
-  <div class="memorybook-status-panel">
-    <div class="memorybook-status-panel__body">
-      <div class="memorybook-status-panel__title text-caption font-weight-medium">
+  <div class="auto-summarize-status-panel">
+    <div class="auto-summarize-status-panel__body">
+      <div class="auto-summarize-status-panel__title text-caption font-weight-medium">
         {{ progressTitle }}
       </div>
 
       <div
         v-for="(row, i) in statusRows"
         :key="i"
-        class="memorybook-status-panel__row"
+        class="auto-summarize-status-panel__row"
         :class="{
-          'memorybook-status-panel__row--muted': row.tone === 'muted',
-          'memorybook-status-panel__row--accent': row.tone === 'accent',
+          'auto-summarize-status-panel__row--muted': row.tone === 'muted',
+          'auto-summarize-status-panel__row--accent': row.tone === 'accent',
         }"
       >
         <v-icon
           :icon="row.icon"
           size="16"
-          class="memorybook-status-panel__row-icon"
+          class="auto-summarize-status-panel__row-icon"
         />
-        <span class="memorybook-status-panel__row-text">{{ row.text }}</span>
+        <span class="auto-summarize-status-panel__row-text">{{ row.text }}</span>
       </div>
     </div>
 
-    <v-divider class="memorybook-status-panel__divider" />
+    <v-divider class="auto-summarize-status-panel__divider" />
 
     <v-btn
       variant="outlined"
       size="small"
       color="primary"
       prepend-icon="mdi-tune-vertical"
-      class="memorybook-status-panel__reset-btn text-none"
+      class="auto-summarize-status-panel__reset-btn text-none"
       block
       @click="openDialog"
     >
-      {{ pluginT('convMemorybookResetBtn') }}
+      {{ pluginT('convAutoSummarizeResetBtn') }}
     </v-btn>
 
     <v-dialog
@@ -206,21 +206,21 @@ async function submit() {
     >
       <v-card>
         <v-card-title class="text-subtitle-1">
-          {{ pluginT('convMemorybookResetTitle') }}
+          {{ pluginT('convAutoSummarizeResetTitle') }}
         </v-card-title>
-        <v-card-text class="memorybook-reset-dialog__body">
-          <p class="memorybook-reset-dialog__hint text-body-2 text-medium-emphasis">
-            {{ pluginT('convMemorybookResetHint') }}
+        <v-card-text class="auto-summarize-reset-dialog__body">
+          <p class="auto-summarize-reset-dialog__hint text-body-2 text-medium-emphasis">
+            {{ pluginT('convAutoSummarizeResetHint') }}
           </p>
           <v-text-field
             v-model="endTurnInput"
             type="number"
-            class="memorybook-reset-dialog__field"
-            :label="pluginT('convMemorybookResetEndLabel')"
+            class="auto-summarize-reset-dialog__field"
+            :label="pluginT('convAutoSummarizeResetEndLabel')"
             :disabled="neverMode || saving"
             :hint="
               maxTurnOrdinal !== null
-                ? pluginT('convMemorybookResetMaxHint', { max: maxTurnOrdinal })
+                ? pluginT('convAutoSummarizeResetMaxHint', { max: maxTurnOrdinal })
                 : undefined
             "
             persistent-hint
@@ -233,27 +233,29 @@ async function submit() {
             type="warning"
             variant="tonal"
             density="compact"
-            class="memorybook-reset-dialog__alert"
+            class="auto-summarize-reset-dialog__alert"
           >
-            {{ pluginT('convMemorybookResetAheadWarn', { max: maxTurnOrdinal }) }}
+            {{ pluginT('convAutoSummarizeResetAheadWarn', { max: maxTurnOrdinal }) }}
           </v-alert>
           <v-btn
             variant="outlined"
             size="small"
             color="primary"
             prepend-icon="mdi-backspace-outline"
-            class="memorybook-reset-dialog__never-btn text-none"
+            class="auto-summarize-reset-dialog__never-btn text-none"
             block
             :disabled="saving"
             @click="applyNever"
           >
-            {{ pluginT('convMemorybookResetNever') }}
+            {{ pluginT('convAutoSummarizeResetNever') }}
           </v-btn>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
           <v-btn
-            variant="text"
+            variant="tonal"
+            size="small"
+            class="text-none"
             :disabled="saving"
             @click="dialogOpen = false"
           >
@@ -266,7 +268,7 @@ async function submit() {
             :disabled="!canSubmit || loadingMax"
             @click="submit"
           >
-            {{ pluginT('convMemorybookResetConfirm') }}
+            {{ pluginT('convAutoSummarizeResetConfirm') }}
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -275,9 +277,9 @@ async function submit() {
 </template>
 
 <style scoped>
-.memorybook-status-panel {
-  --memorybook-icon-col: 20px;
-  --memorybook-row-gap: 8px;
+.auto-summarize-status-panel {
+  --auto-summarize-icon-col: 20px;
+  --auto-summarize-row-gap: 8px;
 
   margin-top: 10px;
   margin-bottom: 4px;
@@ -288,68 +290,68 @@ async function submit() {
   background: rgba(var(--v-theme-on-surface), 0.04);
 }
 
-.memorybook-status-panel__body {
+.auto-summarize-status-panel__body {
   display: grid;
-  grid-template-columns: var(--memorybook-icon-col) 1fr;
-  column-gap: var(--memorybook-row-gap);
-  row-gap: var(--memorybook-row-gap);
+  grid-template-columns: var(--auto-summarize-icon-col) 1fr;
+  column-gap: var(--auto-summarize-row-gap);
+  row-gap: var(--auto-summarize-row-gap);
   align-items: start;
 }
 
-.memorybook-status-panel__title {
+.auto-summarize-status-panel__title {
   grid-column: 1 / -1;
   color: rgba(var(--v-theme-on-surface), 0.72);
   letter-spacing: 0.02em;
   margin-bottom: 2px;
 }
 
-.memorybook-status-panel__row {
+.auto-summarize-status-panel__row {
   display: contents;
 }
 
-.memorybook-status-panel__row-icon {
+.auto-summarize-status-panel__row-icon {
   grid-column: 1;
   margin-top: 2px;
   opacity: 0.85;
 }
 
-.memorybook-status-panel__row-text {
+.auto-summarize-status-panel__row-text {
   grid-column: 2;
   font-size: 0.8125rem;
   line-height: 1.45;
   color: rgba(var(--v-theme-on-surface), 0.88);
 }
 
-.memorybook-status-panel__row--muted .memorybook-status-panel__row-text {
+.auto-summarize-status-panel__row--muted .auto-summarize-status-panel__row-text {
   color: rgba(var(--v-theme-on-surface), 0.58);
 }
 
-.memorybook-status-panel__row--accent .memorybook-status-panel__row-text {
+.auto-summarize-status-panel__row--accent .auto-summarize-status-panel__row-text {
   color: rgb(var(--v-theme-primary));
 }
 
-.memorybook-status-panel__divider {
+.auto-summarize-status-panel__divider {
   margin: 12px 0 10px;
   opacity: 0.35;
 }
 
-.memorybook-status-panel__reset-btn {
+.auto-summarize-status-panel__reset-btn {
   margin-top: 2px;
 }
 
-.memorybook-reset-dialog__body {
+.auto-summarize-reset-dialog__body {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.memorybook-reset-dialog__body > .memorybook-reset-dialog__hint {
+.auto-summarize-reset-dialog__body > .auto-summarize-reset-dialog__hint {
   margin: 0;
 }
 
-.memorybook-reset-dialog__body > .memorybook-reset-dialog__field,
-.memorybook-reset-dialog__body > .memorybook-reset-dialog__alert,
-.memorybook-reset-dialog__body > .memorybook-reset-dialog__never-btn {
+.auto-summarize-reset-dialog__body > .auto-summarize-reset-dialog__field,
+.auto-summarize-reset-dialog__body > .auto-summarize-reset-dialog__alert,
+.auto-summarize-reset-dialog__body > .auto-summarize-reset-dialog__never-btn {
   margin: 0;
   width: 100%;
 }

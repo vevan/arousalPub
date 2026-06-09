@@ -56,7 +56,7 @@
 | 调用方 | 读法 | 文件 |
 |--------|------|------|
 | `runMemoryPipeline` / assemble | `loadTurnsForMemoryPipeline` → `readTurnsTail` 或区间读（再生） | `memory-pipeline.ts` |
-| `runPluginPrepareContext`（策展摘要） | `readTurnsInOrdinalRange(rangeFrom, toTurn)` 单次 | `plugin-prepare-context.ts` |
+| `runPluginPrepareContext`（剧情纪要） | `readTurnsInOrdinalRange(rangeFrom, toTurn)` 单次 | `plugin-prepare-context.ts` |
 | Memory 向量命中正文 | `loadTurnsForMemoryHits`（按 `branchPath`+`chunkFileName` 批量读 chunk） | `memory-hits.ts` |
 | `planConversationMemoryReindex` 计数 | 沿 `listChunkFileNames` 按块计数，非 `readAllTurns` | `memory-index.ts` |
 

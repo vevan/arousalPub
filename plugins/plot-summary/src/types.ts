@@ -40,9 +40,13 @@ export interface PluginHost {
       entryIds: Record<string, string>
       validKeys: string[]
     }) => Promise<Record<string, string>>
-    reorderCurated: (
+    applyOrder: (
       lorebookId: string,
-      req?: { sidecarEntryIds?: Record<string, string>; sidecarIds?: string[] },
+      req: {
+        scope?: 'full' | 'partial'
+        groupIds?: string[]
+        entriesByGroup?: Record<string, string[]>
+      },
     ) => Promise<{ ok: true; changed: number }>
     ensure: (req?: { nameTemplate?: string }) => Promise<{ id: string; name: string; created: boolean }>
   }
@@ -120,7 +124,7 @@ export interface MergedSettings {
   entrySortMode: 'manual' | 'auto-turn-suffix'
   defaultEntryTriggerMode: string
   systemPromptTemplate: string
-  memorybookEnabled: boolean
+  autoSummarizeEnabled: boolean
   nextBlockStart: number
   lastSummarizedEnd?: number
   sidecarEntryIds: Record<string, string>
@@ -128,7 +132,7 @@ export interface MergedSettings {
   autoSidecarIds: string[]
   /** 手动摘要弹窗上次勾选：memory + sidecar:id */
   manualSummarizeTasks: string[]
-  memorybookDefaultEnabled: boolean
+  autoSummarizeDefaultEnabled: boolean
   targetLorebookMode: 'manual' | 'auto'
   autoLorebookNameTemplate: string
 }

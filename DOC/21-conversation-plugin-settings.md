@@ -1,7 +1,8 @@
 # 会话级插件设置（Conversation Plugin Settings Tab）
 
-> **状态**：**v1 已落地**（`conversationSettingsSchema`、对话齿轮 → 插件 Tab、`curated-memory` 迁移）。  
-> **关联**：`DOC/09` §5.6、`DOC/11` §4、`DOC/18` §6、`DOC/12` 策展记忆字段拆分。  
+> **状态**：**v1 已落地**（`conversationSettingsSchema`、对话齿轮 → 插件 Tab、`plot-summary` 迁移）。  
+> **更名（v1.6）**：插件 id 自 `curated-memory` 改为 `plot-summary`；宿主启动时迁移 registry / `pluginSettings` / 用户 settings（`migrate-plot-summary.ts`）。  
+> **关联**：`DOC/09` §5.6、`DOC/11` §4、`DOC/18` §6、`DOC/12` Historian（剧情纪要）字段拆分。  
 > **auto ensure**：**v1.4 已落地**（`host.lorebook.ensure`）；manual 无摘要资料库时仍弹框选书。
 
 ---
@@ -75,16 +76,16 @@
 ### 3.2 与 composer 菜单
 
 - **插件 Tab** = 会话级配置主入口（可发现）
-- **composer 菜单** = 流程快捷（Memorybook 开关、手动摘要、区间选择、复杂 dialog）
+- **composer 菜单** = 流程快捷（自动摘要开关、手动摘要、区间选择、复杂 dialog）
 - 二者读写同一 `pluginSettings`；复杂控件（Sidecar 三态、自动 Sidecar 多选）可暂留插件 dialog
 
 ---
 
-## 4. 策展记忆（`curated-memory`）字段定案
+## 4. Historian（剧情纪要）（`plot-summary`）字段定案
 
 ### 4.1 全局 `settingsSchema`（系统设置 → 插件 → 配置）
 
-保留：API、Memorybook 新对话默认、块长/buffer **默认**、Sidecar 库、prompt 模板、标题格式、触发方式等。
+保留：API、自动摘要新对话默认、块长/buffer **默认**、Sidecar 库、prompt 模板、标题格式、触发方式等。
 
 **删除**：`defaultTargetLorebookId`（不再提供全局默认摘要目标书）。
 
@@ -93,7 +94,7 @@
 | 字段 | 说明 |
 |------|------|
 | `targetLorebookId` | **摘要资料库**（写入目标；空 = 未配置，摘要时弹框选书） |
-| `memorybookEnabled` | 本会话 Memorybook 自动块 |
+| `autoSummarizeEnabled` | 本会话自动摘要（自动块） |
 | `blockTurns` | 可清空继承全局 `triggerEveryNTurns` |
 | `bufferTurns` | 可清空继承全局 `bufferTurns` |
 
@@ -106,7 +107,7 @@
 
 ### 4.4 auto ensure（v1.4 · 已做）
 
-- 全局设置 → 插件 → 策展记忆：`targetLorebookMode: auto` + `autoLorebookNameTemplate`
+- 全局设置 → 插件 → Historian（剧情纪要）：`targetLorebookMode: auto` + `autoLorebookNameTemplate`
 - 无 `targetLorebookId` 时 `host.lorebook.ensure` 建书并 `patchPluginSettings`
 - **manual**（默认）：仍弹框选已有书
 
@@ -117,5 +118,5 @@
 - [x] `PluginManifest.conversationSettingsSchema` + `listPluginsManage` 暴露
 - [x] `ConversationPluginSettingsPanel` + `ConversationContextSettings` 插件 Tab
 - [x] `PluginSchemaForm` 支持 `conversationInherit` / `inheritFromGlobalKey`
-- [x] `curated-memory`：删全局默认目标书、会话 schema、 `loadMergedSettings` 仅读会话 `targetLorebookId`
+- [x] `plot-summary`：删全局默认目标书、会话 schema、 `loadMergedSettings` 仅读会话 `targetLorebookId`
 - [x] `host.lorebook.ensure`（见 `DOC/04`）

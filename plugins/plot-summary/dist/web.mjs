@@ -1,5 +1,5 @@
-// src/constants.ts
-var PLUGIN_ID = "curated-memory";
+// plugins/plot-summary/src/constants.ts
+var PLUGIN_ID = "plot-summary";
 var DIALOG_SESSION = "session";
 var DIALOG_MANUAL = "manual";
 var DIALOG_ENABLE = "enable";
@@ -8,7 +8,7 @@ var DIALOG_REVIEW_SIDECAR = "review-sidecar";
 var DIALOG_PICK_LOREBOOK = "pick-lorebook";
 var DIALOG_RECOVER_LOREBOOK = "recover-lorebook";
 
-// src/shared/utils.ts
+// plugins/plot-summary/src/shared/utils.ts
 function asString(v) {
   return typeof v === "string" ? v.trim() : "";
 }
@@ -33,7 +33,7 @@ function entryKeys(keywords) {
   return keywords.filter((x) => typeof x === "string").map((x) => x.trim()).filter(Boolean);
 }
 
-// src/settings.ts
+// plugins/plot-summary/src/settings.ts
 function k(host, key) {
   return host.pluginKey(key);
 }
@@ -148,7 +148,7 @@ async function loadMergedSettings(host) {
     entrySortMode,
     defaultEntryTriggerMode,
     systemPromptTemplate: asString(global.systemPromptTemplate) || resolveDefaultSystemPrompt(host),
-    memorybookEnabled: conv.memorybookEnabled === true,
+    autoSummarizeEnabled: conv.autoSummarizeEnabled === true,
     nextBlockStart: typeof conv.nextBlockStart === "number" ? Math.max(0, Math.round(conv.nextBlockStart)) : 0,
     lastSummarizedEnd: typeof conv.lastSummarizedEnd === "number" ? conv.lastSummarizedEnd : typeof conv.lastTriggeredTurnOrdinal === "number" ? conv.lastTriggeredTurnOrdinal : void 0,
     sidecarEntryIds,
@@ -158,7 +158,7 @@ async function loadMergedSettings(host) {
       conv.manualSummarizeTasks,
       sidecars
     ),
-    memorybookDefaultEnabled: asBool(global.memorybookDefaultEnabled, false),
+    autoSummarizeDefaultEnabled: asBool(global.autoSummarizeDefaultEnabled, false),
     targetLorebookMode,
     autoLorebookNameTemplate
   };
@@ -171,7 +171,7 @@ function blockEndFromStart(start, blockTurns) {
   return start + blockTurns - 1;
 }
 function shouldAutoTrigger(turnOrdinal2, settings) {
-  if (!settings.memorybookEnabled) return false;
+  if (!settings.autoSummarizeEnabled) return false;
   const start = settings.nextBlockStart ?? 0;
   const end = blockEndFromStart(start, settings.blockTurns);
   return turnOrdinal2 >= end + settings.bufferTurns;
@@ -216,7 +216,7 @@ function firstAutoTriggerTurnOrdinal(settings) {
   return blockEndFromStart(start, settings.blockTurns) + settings.bufferTurns;
 }
 
-// src/errors.ts
+// plugins/plot-summary/src/errors.ts
 var PIPELINE_FATAL_ERRORS = /* @__PURE__ */ new Set([
   "context_exceeded",
   "context_length_unconfigured"
@@ -275,7 +275,7 @@ function preflightToast(host, e) {
   host.ui.toast(host.t(k(host, "toastSummarizeFailed")), { color: "error" });
 }
 
-// src/state.ts
+// plugins/plot-summary/src/state.ts
 var summarizeRunning = false;
 var _reviewResolver = null;
 var _reviewRegenerate = null;
@@ -328,7 +328,7 @@ function clearLorebookPickResolver() {
   _lorebookPickResolver = null;
 }
 
-// src/review.ts
+// plugins/plot-summary/src/review.ts
 function resolveSystemPrompt(host, settings, opts) {
   if (opts.kind === "sidecar" && opts.sc) {
     return sidecarPromptTemplate(host, opts.sc);
@@ -386,7 +386,7 @@ async function runReviewRegenerate(host, dialogId) {
       resolver.reject(new Error("review_aborted"));
       return;
     }
-    console.warn("[curated-memory] review regenerate failed", e);
+    console.warn("[plot-summary] review regenerate failed", e);
     host.ui.toast(host.t(k(host, "toastReviewRegenerateFailed")), { color: "warning" });
   }
 }
@@ -489,18 +489,105 @@ function promptReview(host, draft, dialogId, regenerateFn, lorebookName) {
   });
 }
 
-// src/shared/entry-sort.ts
-async function applyCuratedLorebookEntrySort(host, lorebookId, sidecarEntryIds, sidecarConfigIds) {
+// plugins/plot-summary/src/shared/lorebook-sort.ts
+var TURN_RANGE_SUFFIX_RE = /-(\d+)-(\d+)$/;
+function parseTurnRangeSuffix(title) {
+  const t = (title ?? "").trim();
+  const m = t.match(TURN_RANGE_SUFFIX_RE);
+  if (!m) return null;
+  const start = Number(m[1]);
+  const end = Number(m[2]);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  return { start, end };
+}
+function classifyPlotSummaryEntry(entry, sidecarEntryIdSet) {
+  if (sidecarEntryIdSet.has(entry.id)) return "sidecar";
+  if (parseTurnRangeSuffix(entry.title)) return "summary";
+  return "other";
+}
+function kindRank(kind) {
+  if (kind === "other") return 0;
+  if (kind === "sidecar") return 1;
+  return 2;
+}
+function sidecarConfigIndex(entryId, sidecarEntryIds, sidecarConfigIds) {
+  for (let i = 0; i < sidecarConfigIds.length; i++) {
+    const cfgId = sidecarConfigIds[i];
+    if (sidecarEntryIds[cfgId] === entryId) return i;
+  }
+  return 9999;
+}
+function sortPlotSummaryEntriesInGroup(entries, sidecarEntryIds, sidecarConfigIds) {
+  const sidecarSet = new Set(Object.values(sidecarEntryIds));
+  return entries.slice().sort((a, b) => {
+    const ka = classifyPlotSummaryEntry(a, sidecarSet);
+    const kb = classifyPlotSummaryEntry(b, sidecarSet);
+    const dr = kindRank(ka) - kindRank(kb);
+    if (dr !== 0) return dr;
+    if (ka === "other") {
+      const ca = a.createdAt ?? "";
+      const cb = b.createdAt ?? "";
+      if (ca !== cb) return ca < cb ? -1 : 1;
+      return a.id.localeCompare(b.id);
+    }
+    if (ka === "sidecar") {
+      return sidecarConfigIndex(a.id, sidecarEntryIds, sidecarConfigIds) - sidecarConfigIndex(b.id, sidecarEntryIds, sidecarConfigIds);
+    }
+    const ra = parseTurnRangeSuffix(a.title);
+    const rb = parseTurnRangeSuffix(b.title);
+    if (!ra && !rb) return a.id.localeCompare(b.id);
+    if (!ra) return 1;
+    if (!rb) return -1;
+    if (ra.start !== rb.start) return ra.start - rb.start;
+    if (ra.end !== rb.end) return ra.end - rb.end;
+    return a.id.localeCompare(b.id);
+  });
+}
+function computePlotSummaryApplyOrderLayout(lb, sidecarEntryIds, sidecarConfigIds) {
+  const groups = lb.groups.slice().sort((a, b) => a.order - b.order);
+  const entriesByGroup = {};
+  for (const g of groups) {
+    const inGroup = lb.entries.filter((e) => e.groupId === g.id);
+    entriesByGroup[g.id] = sortPlotSummaryEntriesInGroup(
+      inGroup,
+      sidecarEntryIds,
+      sidecarConfigIds
+    ).map((e) => e.id);
+  }
+  return { entriesByGroup };
+}
+
+// plugins/plot-summary/src/shared/entry-sort.ts
+async function applyPlotSummaryEntrySort(host, lorebookId, sidecarEntryIds, sidecarConfigIds) {
   const id = lorebookId.trim();
   if (!id) return false;
-  await host.lorebook.reorderCurated(id, {
+  const lb = await host.lorebook.get(id);
+  const groups = Array.isArray(lb.groups) ? lb.groups : [];
+  const entries = Array.isArray(lb.entries) ? lb.entries : [];
+  const { entriesByGroup } = computePlotSummaryApplyOrderLayout(
+    {
+      groups: groups.map((g) => ({
+        id: String(g.id),
+        order: typeof g.order === "number" ? g.order : 0
+      })),
+      entries: entries.map((e) => ({
+        id: String(e.id),
+        groupId: typeof e.groupId === "string" ? e.groupId : "",
+        title: typeof e.title === "string" ? e.title : "",
+        createdAt: typeof e.createdAt === "string" ? e.createdAt : void 0
+      }))
+    },
     sidecarEntryIds,
-    sidecarIds: sidecarConfigIds
+    sidecarConfigIds
+  );
+  await host.lorebook.applyOrder(id, {
+    scope: "full",
+    entriesByGroup
   });
   return true;
 }
 
-// src/batch-write.ts
+// plugins/plot-summary/src/batch-write.ts
 async function flushPendingLorebookCreates(host, lorebookId, pending, sidecarEntryIds) {
   if (!pending.length) return;
   if (typeof host.lorebook.createEntriesBatch !== "function") {
@@ -524,7 +611,7 @@ async function flushPendingLorebookCreates(host, lorebookId, pending, sidecarEnt
   pending.length = 0;
 }
 
-// src/sidecar.ts
+// plugins/plot-summary/src/sidecar.ts
 async function writeSidecarEntry(host, settings, sidecarEntryIds, sc, reviewed, sidecarKeys, pendingCreates) {
   const body = {
     title: sc.name,
@@ -553,7 +640,7 @@ async function writeSidecarEntry(host, settings, sidecarEntryIds, sc, reviewed, 
   return created.id;
 }
 
-// src/pipeline.ts
+// plugins/plot-summary/src/pipeline.ts
 function setPluginHold(host, hold) {
   if (typeof host.conversation.setPluginHold === "function") {
     host.conversation.setPluginHold(hold);
@@ -738,7 +825,7 @@ async function runSummarizeTasks(host, opts) {
           host.ui.toast(host.t(k(host, "toastReviewAborted")), { color: "info" });
           break;
         }
-        console.warn("[curated-memory] task failed", task, e);
+        console.warn("[plot-summary] task failed", task, e);
         if (isPipelineFatalError(e)) {
           preflightToast(host, e);
           aborted = true;
@@ -781,7 +868,7 @@ async function runSummarizeTasks(host, opts) {
       };
     }
     if (settings.entrySortMode === "auto-turn-suffix" && wroteToLorebook) {
-      await applyCuratedLorebookEntrySort(
+      await applyPlotSummaryEntrySort(
         host,
         settings.targetLorebookId,
         sidecarEntryIds,
@@ -802,8 +889,8 @@ async function runSummarizeTasks(host, opts) {
     if (Object.keys(patch).length > 0) {
       await host.conversation.patchPluginSettings(patch);
     }
-    if (opts.updateMemorybookCache) {
-      refreshMemorybookUi(host);
+    if (opts.updateAutoSummarizeCache) {
+      refreshAutoSummarizeUi(host);
     }
     if (completedTasks === tasks.length && skippedTasks === 0) {
       host.ui.toast(host.t(k(host, "toastSummarizeDone")), { color: "success" });
@@ -827,7 +914,7 @@ async function runSummarizeTasks(host, opts) {
     if (isAbortError(e)) {
       return { ok: false, reason: "aborted", aborted: true };
     }
-    console.warn("[curated-memory] summarize failed", e);
+    console.warn("[plot-summary] summarize failed", e);
     preflightToast(host, e);
     return { ok: false, reason: "error" };
   } finally {
@@ -839,11 +926,11 @@ async function runSummarizeTasks(host, opts) {
   }
 }
 
-// src/dialogs.ts
-function isMemorybookEnabled(host) {
-  return host.conversation.getPluginSettingsSnapshot().memorybookEnabled === true;
+// plugins/plot-summary/src/dialogs.ts
+function isAutoSummarizeEnabled(host) {
+  return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true;
 }
-function refreshMemorybookUi(host) {
+function refreshAutoSummarizeUi(host) {
   host.refreshSlotButtons();
 }
 async function isTargetLorebookAvailable(host, lorebookId) {
@@ -1191,11 +1278,11 @@ function registerSummarizeDialog(host, settings, mode) {
         if (isEnable) {
           const autoSidecarIds = sidecarIdsFromTaskSelection(model.selectedTasks);
           await h.conversation.patchPluginSettings({
-            memorybookEnabled: true,
+            autoSummarizeEnabled: true,
             nextBlockStart: fromTurn,
             autoSidecarIds
           });
-          refreshMemorybookUi(h);
+          refreshAutoSummarizeUi(h);
         } else {
           await h.conversation.patchPluginSettings({
             manualSummarizeTasks: normalizeManualTaskSelection(
@@ -1209,7 +1296,7 @@ function registerSummarizeDialog(host, settings, mode) {
           toTurn,
           tasks,
           updatePointers: isEnable || tasks.some((t) => t.kind === "memory"),
-          updateMemorybookCache: false
+          updateAutoSummarizeCache: false
         });
       }
     },
@@ -1229,7 +1316,7 @@ async function reorderTargetLorebookNow(host) {
       entryIds: settings.sidecarEntryIds,
       validKeys: settings.sidecars.map((s) => s.id)
     });
-    await applyCuratedLorebookEntrySort(
+    await applyPlotSummaryEntrySort(
       host,
       targetId,
       sidecarEntryIds,
@@ -1237,7 +1324,7 @@ async function reorderTargetLorebookNow(host) {
     );
     host.ui.toast(host.t(k(host, "toastReorderLorebookDone")), { color: "success" });
   } catch (e) {
-    console.warn("[curated-memory] reorder lorebook failed", e);
+    console.warn("[plot-summary] reorder lorebook failed", e);
     host.ui.toast(host.t(k(host, "toastTaskSkipped")), { color: "warning" });
   }
 }
@@ -1288,20 +1375,20 @@ function openEnableLongDialog(host, settings) {
   registerSummarizeDialog(host, settings, "enable");
   host.openFormDialog(PLUGIN_ID, { startTurn, endTurn, selectedTasks }, DIALOG_ENABLE);
 }
-async function applyShortMemorybookEnable(host, settings) {
+async function applyShortAutoSummarizeEnable(host, settings) {
   const X = firstAutoTriggerTurnOrdinal({ ...settings, nextBlockStart: 0 });
   const autoSidecarIds = parseAutoSidecarIdsRaw(null, settings.sidecars);
   await host.conversation.patchPluginSettings({
-    memorybookEnabled: true,
+    autoSummarizeEnabled: true,
     nextBlockStart: 0,
     autoSidecarIds
   });
-  refreshMemorybookUi(host);
-  host.ui.toast(host.t(k(host, "toastMemorybookScheduled"), { turn: X }), {
+  refreshAutoSummarizeUi(host);
+  host.ui.toast(host.t(k(host, "toastAutoSummarizeScheduled"), { turn: X }), {
     color: "success"
   });
 }
-async function tryEnableMemorybook(host) {
+async function tryEnableAutoSummarize(host) {
   const settings = await loadMergedSettings(host);
   const T = maxTurnOrdinal(host);
   const N = settings.blockTurns;
@@ -1310,21 +1397,21 @@ async function tryEnableMemorybook(host) {
     openEnableLongDialog(host, settings);
     return;
   }
-  await applyShortMemorybookEnable(host, settings);
+  await applyShortAutoSummarizeEnable(host, settings);
 }
-async function toggleMemorybook(host) {
-  if (isMemorybookEnabled(host)) {
-    await host.conversation.patchPluginSettings({ memorybookEnabled: false });
-    host.ui.toast(host.t(k(host, "toastMemorybookDisabled")), { color: "info" });
+async function toggleAutoSummarize(host) {
+  if (isAutoSummarizeEnabled(host)) {
+    await host.conversation.patchPluginSettings({ autoSummarizeEnabled: false });
+    host.ui.toast(host.t(k(host, "toastAutoSummarizeDisabled")), { color: "info" });
     return;
   }
-  await tryEnableMemorybook(host);
+  await tryEnableAutoSummarize(host);
 }
 function isBusy(host) {
   return host.session.conversationWriteLocked || host.session.loading || host.session.regeneratingTurnOrdinal !== null;
 }
 
-// src/lifecycle.ts
+// plugins/plot-summary/src/lifecycle.ts
 function isPersistBusy(host) {
   return host.session.conversationWriteLocked || host.session.loading || host.session.regeneratingTurnOrdinal !== null;
 }
@@ -1338,18 +1425,18 @@ function scheduleWhenConversationIdle(host, fn) {
   };
   setTimeout(attempt, 0);
 }
-async function tryBootstrapDefaultMemorybook(host, event) {
+async function tryBootstrapDefaultAutoSummarize(host, event) {
   if (!event.isFirstTurn) return;
   const conv = await host.conversation.getPluginSettings();
-  if (conv.memorybookEnabled === true || conv.memorybookEnabled === false) return;
+  if (conv.autoSummarizeEnabled === true || conv.autoSummarizeEnabled === false) return;
   const global = await host.plugins.getUserSettings();
-  if (!asBool(global.memorybookDefaultEnabled, false)) return;
+  if (!asBool(global.autoSummarizeDefaultEnabled, false)) return;
   const settings = await loadMergedSettings(host);
-  await applyShortMemorybookEnable(host, settings);
+  await applyShortAutoSummarizeEnable(host, settings);
 }
 async function handleAutoSummarizeTurn(host, turnOrdinal2) {
   const settings = await loadMergedSettings(host);
-  if (!settings.memorybookEnabled) return;
+  if (!settings.autoSummarizeEnabled) return;
   if (!shouldAutoTrigger(turnOrdinal2, settings)) return;
   const range = currentAutoRange(settings);
   const tasks = resolveAutoTasks(settings);
@@ -1358,7 +1445,7 @@ async function handleAutoSummarizeTurn(host, turnOrdinal2) {
     toTurn: range.toTurn,
     tasks,
     updatePointers: true,
-    updateMemorybookCache: false
+    updateAutoSummarizeCache: false
   });
 }
 function registerLifecycle(host) {
@@ -1367,16 +1454,16 @@ function registerLifecycle(host) {
     if (typeof turnOrdinal2 !== "number" || turnOrdinal2 < 0) return;
     scheduleWhenConversationIdle(host, async () => {
       try {
-        await tryBootstrapDefaultMemorybook(host, event);
+        await tryBootstrapDefaultAutoSummarize(host, event);
         await handleAutoSummarizeTurn(host, turnOrdinal2);
       } catch (e) {
-        console.warn("[curated-memory] auto summarize failed", e);
+        console.warn("[plot-summary] auto summarize failed", e);
       }
     });
   });
 }
 
-// src/range-picker.ts
+// plugins/plot-summary/src/range-picker.ts
 var RANGE_STYLES = `
 .plugin-slot.cm-range-start--active {
   color: rgb(var(--v-theme-primary));
@@ -1457,32 +1544,32 @@ function registerRangePicker(host) {
   });
 }
 
-// src/index.ts
-function isMemorybookEnabled2(host) {
-  return host.conversation.getPluginSettingsSnapshot().memorybookEnabled === true;
+// plugins/plot-summary/src/index.ts
+function isAutoSummarizeEnabled2(host) {
+  return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true;
 }
 function register(host) {
   registerReviewDialogs(host);
   registerPickLorebookDialog(host);
   registerRecoverLorebookDialog(host);
   host.conversation.onPluginSettingsChanged(() => {
-    refreshMemorybookUi(host);
+    refreshAutoSummarizeUi(host);
   });
   void host.conversation.getPluginSettings();
   host.registerSlotButton("composer-toolbar", {
     id: `${PLUGIN_ID}-menu`,
     icon: "mdi-book-open-page-variant",
-    tooltipKey: k(host, "tooltipCuratedMemory"),
-    filled: () => isMemorybookEnabled2(host),
+    tooltipKey: k(host, "tooltipPlugin"),
+    filled: () => isAutoSummarizeEnabled2(host),
     menu: [
       {
-        id: `${PLUGIN_ID}-memorybook`,
-        labelKey: k(host, "tooltipMemorybook"),
+        id: `${PLUGIN_ID}-auto-summarize`,
+        labelKey: k(host, "tooltipAutoSummarize"),
         icon: "mdi-book-open-page-variant",
-        filled: () => isMemorybookEnabled2(host),
+        filled: () => isAutoSummarizeEnabled2(host),
         disabled: () => summarizeRunning,
         onClick: () => {
-          void toggleMemorybook(host);
+          void toggleAutoSummarize(host);
         }
       },
       {

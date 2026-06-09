@@ -60,16 +60,16 @@
 - [x] **资料库向量检索**（§13，可选）：`vectorEnabled` + 条目 `triggerMode=vector` → `lorebook-vector-store` / `lorebook-resolve` TopK；保存后 `scheduleLorebookVectorReindex`
 - [ ] RAG/模型调用日志（耗时、token、**命中明细**）— **部分**：turn `receive.runtime`（model/durationMs/tokens）；`assemble-messages` 返回 dropped 计数与 `memoryTurnIds`；**未达**需求 §4 全量审计
 
-### 策展记忆插件（`curated-memory` · 2026-06-03）
+### Historian（剧情纪要）插件（`plot-summary` · 2026-06-03）
 
-> 实现指南：`DOC/12-plugin-curated-memory.md`（部分字段/流程已随 v1.1 迭代，以代码与联调为准）。
+> 实现指南：`DOC/12-plugin-plot-summary.md`（部分字段/流程已随 v1.1 迭代，以代码与联调为准）。
 
 **联调进度（2026-06-08 文档对齐代码）**
 
 - [x] 手动摘要 + 确认预览落盘 + lorebook 前端缓存同步
 - [x] keywords 硬性写入 `keys`（与触发方式无关）
-- [x] **Memorybook 自动块**（`blockTurns` + `bufferTurns`、指针 `lastSummarizedEnd` / `nextBlockStart`；自动触发仍经预览确认；无目标书弹框选书 — 见 `DOC/12` §1.2）
-- [ ] **Memorybook 端到端联调验收**（长对话首次 enable、块边界、跳过/中止不推进指针、busy 延后）
+- [x] **自动摘要块**（`blockTurns` + `bufferTurns`、指针 `lastSummarizedEnd` / `nextBlockStart`；自动触发仍经预览确认；无目标书弹框选书 — 见 `DOC/12` §1.2）
+- [ ] **自动摘要端到端联调验收**（长对话首次 enable、块边界、跳过/中止不推进指针、busy 延后）
 
 **P0 — Sidecar 设置 UI**
 
@@ -80,7 +80,9 @@
 > **未做前**：无 `targetLorebookId` 时弹框选已有书为**定案行为**（非静默、非跳过预览）。auto 模式落地后，**仅**在 `targetLorebookMode: auto` 时可免弹框建书。
 
 - [x] **`host.lorebook.ensure`**：`POST /api/plugins/:pluginId/lorebooks/ensure`，按 `autoLorebookNameTemplate` 自动建 summary 书
-- [x] 权限：`curated-memory` manifest `lorebook.write` + `conversation.read`
+- [x] 权限：`plot-summary` manifest `lorebook.write` + `conversation.read`
+- [x] **v1.6 更名**：`curated-memory` → `plot-summary`；manifest `Historian`；中文 **剧情纪要**；启动迁移 `migrate-plot-summary.ts`
+- [x] **v1.6 资料库排序**：通用 `apply-order`；算法 `shared/lorebook-sort.ts`；移除 `reorder-curated`
 - [x] 插件：`targetLorebookMode` / `autoLorebookNameTemplate` schema；`ensureTargetLorebook` 在 **auto** 时走 ensure；**manual 仍弹框选书**
 
 **区间选择 UI（`DOC/12` §7.2）**
@@ -147,19 +149,19 @@
 > **另列**：会话消息 UI 懒加载（`DOC/15` S2–S4）**不属于** `DOC/22` 路线图，仅复用 P1 的 `readTurnsTail` 等原语。
 
 - [x] Turn 批量写 / 区间读（`DOC/10` §3.3、`batchUpdateConversationTurns`、`readTurnsInOrdinalRange`）
-- [x] Lorebook `reorder-curated` 1 读 1 写
+- [x] Lorebook `apply-order` 1 读 1 写
 - [x] **Memory v2**：单表 `turn_memory` + `branchPath`/`chunkFileName` + `loadTurnsForMemoryHits`（`DOC/22` P0；**部署后须重建索引**）
 - [x] **`syncChunkIndexIfDrifted` 节流**：热路径移除 sync；`CHUNK_INDEX_SYNC_TTL_MS`（`DOC/22` P1）
 - [x] **`memory-pipeline` / `plugin-prepare-context` 区间读**：`readTurnsTail` + `readTurnsInOrdinalRange`（`DOC/22` P1）
 - [x] **Embedding 重建并发/批量**（`embedding-batch.ts`、`embedTextsInBatches`）
 - [x] **预算裁切增量 token**（`estimateTrimTokenDelta` + `TRIM_TOKEN_REVERIFY_EVERY`）
 - [x] **资料库按 id 加载**（`readLorebooksByIds`）+ **批量 entry API**（`POST .../entries/batch`）
-- [x] **curated-memory 插件改用 `createEntriesBatch`**（本轮摘要落盘批量 1 读 1 写；sidecar patch 仍逐条）
+- [x] **plot-summary 插件改用 `createEntriesBatch`**（本轮摘要落盘批量 1 读 1 写；sidecar patch 仍逐条）
 - [x] **分支 chunk 链 + `enumerateAllChunkChains`**（服务端：注册表递归枚举、memory reindex/召回 activeBranch 过滤；消息树 UI 仍待做）
 - [x] **M4 整包 PUT 护栏**（`LOREBOOKS_BULK_PUT_*`、2s 限流、`lorebooks_bulk_put_*` 错误码）
 - [x] **M5 preferences 请求 memo**（`request-preferences-memo.ts`，经 `runRequestUser` 自动启用）
 
-- [x] **会话级插件 Tab** — **`DOC/21-conversation-plugin-settings.md`**（`conversationSettingsSchema`、对话齿轮 → 插件 Tab、`curated-memory` 摘要资料库仅会话级）
+- [x] **会话级插件 Tab** — **`DOC/21-conversation-plugin-settings.md`**（`conversationSettingsSchema`、对话齿轮 → 插件 Tab、`plot-summary` 摘要资料库仅会话级）
 - [x] **本机运维台（Admin Console）** — **`DOC/17-admin-console.md`**（loopback + `00000000`；用户 CRUD；DEK 轮换 + 推荐密钥）
 - [ ] **独立知识库 RAG**（**≠ 现有世界书**）：用户上传/导入 **长文档**（PDF、Markdown、txt 等）→ 自动 **切片** → embedding → 独立 Lance 表（与 turn memory、资料库条目 **分表**）→ 对话时向量 TopK 检索注入；`rag_generate` 能力接线。**未实现**。**文档管线前置**：用户文件库 **`DOC/20`** M1+M4。若设定资料只靠世界书手工条目维护，本项可长期不做。
 - [ ] **消息树 / 分支 UI**：消息树结构（`parentId`）与「从此分支继续」— **实现指南 `DOC/23-conversation-branches.md`**（§6 待办清单；服务端 memory/枚举已就绪）
@@ -210,5 +212,5 @@
 - [x] 插件系统与指导生成定案 — `DOC/09-plugin-system-and-guidance-generate.md`（2026-05-26）
 - [x] 插件系统实现文档 — `DOC/09`、`plugins/README.md`、`data/README.md` §插件（2026-05-26）
 - [x] **用户文件库与 charFile 定案** — `DOC/20-user-file-library.md`（2026-06-08，列入 P3）
-- [x] **策展记忆 Memorybook 语义对齐** — `DOC/12` §1.2（自动≠静默、预览必选、ensure 前置）（2026-06-08）
+- [x] **Historian（剧情纪要）自动摘要语义对齐** — `DOC/12` §1.2（自动≠静默、预览必选、ensure 前置）（2026-06-08）
 - [x] **插件 slot `class` / `registerStyles` + `turn-block-head`** — `DOC/12` §7.2、`DOC/18` §3.1（2026-06-08）

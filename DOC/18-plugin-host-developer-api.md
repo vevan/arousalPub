@@ -2,7 +2,7 @@
 
 > **状态**：**已实现**（2026-06-02 核对）。本文是第三方插件作者的**单一入口**：Web `PluginWebHost`、服务端 hook、REST 路由与权限一览。  
 > **类型契约源码**：`web/src/plugins/types.ts`、`web/src/plugins/conversation-host.ts`、`server/src/plugin-system/types.ts`  
-> **示例插件**：`curated-memory`（出站补全 + lorebook + 摘要）、`guidance-generate`（聊天管线 hook）、`conversation-export`（对话 read）
+> **示例插件**：`plot-summary`（出站补全 + lorebook + 摘要）、`guidance-generate`（聊天管线 hook）、`conversation-export`（对话 read）
 
 ---
 
@@ -183,8 +183,8 @@ interface ConversationBatchContext {
 | `createEntry(lorebookId, body)` | 新增条目 |
 | `patchEntry(lorebookId, entryId, body)` | 更新条目（sidecar 覆盖等） |
 | `normalizeEntryRefs(req)` | 校验并清理无效 entry id 映射（服务端读盘） |
-| `reorderCurated(lorebookId, req?)` | 策展记忆用：按 `DOC/12` §4.2 规则重算组内 `order`，**单次读盘 + 单次写盘** |
-| `ensure(req?)` | 按模板自动创建 summary 目标书（策展记忆 auto 模式）；需 `lorebook.write` |
+| `applyOrder(lorebookId, req)` | 通用：按插件提交的 layout 写回 `group.order` / `entry.order`，**单次读盘 + 单次写盘** |
+| `ensure(req?)` | 按模板自动创建 summary 目标书（Historian（剧情纪要） auto 模式）；需 `lorebook.write` |
 
 **`normalizeEntryRefs` 请求**：
 
@@ -197,15 +197,20 @@ interface ConversationBatchContext {
 // → 返回清理后的 Record<string, string>
 ```
 
-**`reorderCurated` 请求**（`POST …/lorebooks/:lorebookId/reorder-curated`）：
+**`applyOrder` 请求**（`POST …/lorebooks/:lorebookId/apply-order`）：
 
 ```ts
 {
-  sidecarEntryIds?: Record<string, string>
-  sidecarIds?: string[]   // Sidecar 配置 id 顺序
+  scope?: 'full' | 'partial'   // 默认 partial；full 要求 entriesByGroup 覆盖全书每个 group
+  groupIds?: string[]          // 可选：组的新顺序（省略则不改 group.order）
+  entriesByGroup?: Record<string, string[]>  // 每组完整条目 id 列表（列出某组则必须列全）
 }
 // → { ok: true, lorebook, changed: number, savedAt }
 ```
+
+排序算法由插件自行实现（如 Historian 的 `computePlotSummaryApplyOrderLayout`）；宿主只校验并落盘。
+
+**校验失败**（`400`，`error: lorebook_order_invalid`）：`order_empty_request`、`order_unknown_group`、`order_unknown_entry`、`order_entry_group_mismatch`、`order_duplicate_entry`、`order_incomplete` 等（见 `validateApplyLorebookOrderLayout`）。
 
 **`ensure` 请求**（`POST …/lorebooks/ensure`）：
 
@@ -216,7 +221,7 @@ interface ConversationBatchContext {
 // → { ok: true, lorebook: { id, name, ... } }
 ```
 
-**权限**：`lorebook.read`（list/get/normalize）；`lorebook.entry.write`（create/patch/reorderCurated）；`lorebook.write`（ensure）。
+**权限**：`lorebook.read`（list/get/normalize）；`lorebook.entry.write`（create/patch/applyOrder）；`lorebook.write`（ensure）。
 
 ### 3.7 `host.api`
 
@@ -376,7 +381,7 @@ interface ConversationBatchContext {
 | PATCH | `/api/plugins/:id/lorebooks/:lorebookId/entries/:entryId` | `lorebook.entry.write` |
 | POST | `/api/plugins/:id/lorebooks/normalize-entry-refs` | `lorebook.read` |
 | POST | `/api/plugins/:id/lorebooks/ensure` | `lorebook.write` |
-| POST | `/api/plugins/:id/lorebooks/:lorebookId/reorder-curated` | `lorebook.entry.write` |
+| POST | `/api/plugins/:id/lorebooks/:lorebookId/apply-order` | `lorebook.entry.write` |
 | POST | `/api/plugins/:id/complete` | `plugin.complete` |
 | POST | `/api/plugins/:id/complete/preflight` | `plugin.complete` |
 | POST | `/api/plugins/:id/prepare-context` | `conversation.read` + `lorebook.read` |
@@ -405,6 +410,12 @@ interface ConversationBatchContext {
 
 ## 6. 设置与 manifest
 
+### 6.0 插件展示名（多语言）
+
+- manifest **`name`**：英文回退名（必填）。
+- 可选在 `locales/{locale}.json` 提供 **`pluginDisplayName`**；宿主在加载 `fetchPluginsManage` 时 `mergePluginLocales`，设置页与对话插件 Tab 用 `resolvePluginDisplayName(id, manifest.name)` 显示。
+- 无 `pluginDisplayName` 时继续显示 manifest `name`。
+
 ### 6.1 `settingsSchema` 字段类型
 
 | type | 设置页控件 |
@@ -429,7 +440,7 @@ interface ConversationBatchContext {
 
 - 源码：`plugins/{id}/`；运行：`data/plugins/{id}/`（`npm run build` 会 sync）。
 - Web entry：`export function register(host)`。
-- 可选 TypeScript + esbuild 打出 `dist/web.mjs`、`dist/server.mjs`（参考 `curated-memory`）。
+- 可选 TypeScript + esbuild 打出 `dist/web.mjs`、`dist/server.mjs`（参考 `plot-summary`）。
 
 ---
 
@@ -462,7 +473,7 @@ class PluginHostApiError {
 3. 用户确认后 `createEntry` / `patchEntry`，`patchPluginSettings` 更新指针
 4. `finally`：`clearProgress()`、`setPluginHold(false)`
 
-参考：`plugins/curated-memory/`。
+参考：`plugins/plot-summary/`。
 
 ### 8.2 批量改写对话
 
@@ -505,7 +516,7 @@ class PluginHostApiError {
 | `DOC/09-plugin-system-and-guidance-generate.md` | 插件系统、manifest、懒加载、设置页 |
 | `DOC/10-plugin-conversation-host.md` | 对话 DTO、runScope 细节、swipe/export |
 | `DOC/11-plugin-host-completion-and-lorebook.md` | 补全与 lorebook 产品设计定案 |
-| `DOC/12-plugin-curated-memory.md` | 策展记忆完整业务示例 |
+| `DOC/12-plugin-plot-summary.md` | Historian（剧情纪要）完整业务示例 |
 | `plugins/README.md` | 内置插件列表与打包说明 |
 
 ---
@@ -515,4 +526,5 @@ class PluginHostApiError {
 | 日期 | 说明 |
 |------|------|
 | 2026-06-02 | 首版：合并 DOC/10–11 已实现 API；新增 `prepareContext`、`normalizeEntryRefs`、`completeDraft` |
-| 2026-06-02 | 核对 `lorebook.ensure` / `reorderCurated` 已实现；补 REST 与 `lorebook.write` 权限说明 |
+| 2026-06-02 | 核对 `lorebook.ensure` / `applyOrder` 已实现；补 REST 与 `lorebook.write` 权限说明 |
+| 2026-06-08 | `plot-summary` 更名；`reorder-curated` 移除，改为通用 `apply-order`；Historian 排序算法在 `plugins/plot-summary/src/shared/` |

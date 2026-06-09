@@ -1,4 +1,4 @@
-export const PLUGIN_ID = 'curated-memory'
+export const PLUGIN_ID = 'plot-summary'
 
 export const DIALOG_SESSION = 'session'
 export const DIALOG_MANUAL = 'manual'

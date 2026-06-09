@@ -134,7 +134,7 @@ export async function createLorebookEntry(
   return { entry, savedAt, lorebook }
 }
 
-/** 单次读盘 + 写盘，批量创建条目（策展 Memorybook 等多条落盘场景） */
+/** 单次读盘 + 写盘，批量创建条目（剧情纪要等多条落盘场景） */
 export async function createLorebookEntriesBatch(
   lorebookId: string,
   bodies: LorebookEntryCreateBody[],

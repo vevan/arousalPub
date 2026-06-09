@@ -143,7 +143,10 @@ watch(
         <v-spacer />
         <v-btn
           size="small"
-          variant="text"
+          variant="tonal"
+          color="primary"
+          prepend-icon="mdi-refresh"
+          class="text-none"
           :loading="modelsLoading"
           :disabled="!canFetchModels"
           @click="fetchModels"
@@ -253,7 +256,9 @@ watch(
       <v-card-actions class="pa-3">
         <v-spacer />
         <v-btn
-          variant="text"
+          variant="tonal"
+          size="small"
+          class="text-none"
           @click="close"
         >
           {{ $t('conn.close') }}

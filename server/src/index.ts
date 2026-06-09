@@ -182,7 +182,7 @@ import { runPluginCompleteDraftRoute } from './plugin-complete-draft-route.js'
 import { runPluginComplete } from './plugin-complete.js'
 import { runPluginCompletePreflight } from './plugin-complete-preflight.js'
 import { runNormalizeLorebookEntryRefs } from './plugin-lorebook-entry-refs.js'
-import { runReorderCuratedLorebookEntries } from './plugin-lorebook-reorder-curated.js'
+import { runApplyLorebookOrder } from './plugin-lorebook-apply-order.js'
 import { ensurePluginLorebook } from './plugin-lorebook-ensure.js'
 import { runPluginMacroExpand } from './plugin-macro-expand.js'
 import { runPluginPrepareContext } from './plugin-prepare-context.js'
@@ -3282,11 +3282,12 @@ app.post<{
 app.post<{
   Params: { pluginId: string; lorebookId: string }
   Body: {
-    sidecarEntryIds?: Record<string, string>
-    sidecarIds?: string[]
+    scope?: 'full' | 'partial'
+    groupIds?: string[]
+    entriesByGroup?: Record<string, string[]>
   }
 }>(
-  '/api/plugins/:pluginId/lorebooks/:lorebookId/reorder-curated',
+  '/api/plugins/:pluginId/lorebooks/:lorebookId/apply-order',
   async (request, reply) => {
     const pluginId = request.params.pluginId.trim()
     const lorebookId = request.params.lorebookId
@@ -3298,13 +3299,14 @@ app.post<{
       return reply.status(auth.status).send({ error: ApiErrorCodes[auth.code] })
     }
     const body = request.body ?? {}
-    const result = await runReorderCuratedLorebookEntries({
+    const result = await runApplyLorebookOrder({
       lorebookId,
-      sidecarEntryIds:
-        body.sidecarEntryIds && typeof body.sidecarEntryIds === 'object'
-          ? body.sidecarEntryIds
-          : {},
-      sidecarConfigIds: Array.isArray(body.sidecarIds) ? body.sidecarIds : [],
+      scope: body.scope === 'full' ? 'full' : 'partial',
+      groupIds: Array.isArray(body.groupIds) ? body.groupIds : undefined,
+      entriesByGroup:
+        body.entriesByGroup && typeof body.entriesByGroup === 'object'
+          ? body.entriesByGroup
+          : undefined,
     })
     if (!result.ok) {
       if (result.code === 'lorebook_not_found') {
@@ -3312,6 +3314,9 @@ app.post<{
       }
       if (result.code === 'lorebook_id_required') {
         return reply.status(400).send({ error: ApiErrorCodes.lorebook_id_required })
+      }
+      if (result.code.startsWith('order_')) {
+        return reply.status(400).send({ error: ApiErrorCodes.lorebook_order_invalid })
       }
       return reply.status(400).send({ error: ApiErrorCodes.lorebook_entry_patch_failed })
     }

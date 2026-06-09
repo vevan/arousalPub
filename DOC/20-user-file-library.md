@@ -13,7 +13,7 @@
 - **角色立绘**：`GET /api/characters/:id/image`，JWT + 可选 `access_token` 查询参数展示；
 - **世界书**：手工条目 + 可选条目级 vector（`lorebook-vector-store`）；
 - **对话 memory**：turn 级 Lance 向量召回（§14）；
-- **插件 `fileAsset`**：策展记忆等侧车 JSON 内嵌小文件，**非**统一用户媒体库。
+- **插件 `fileAsset`**：Historian（剧情纪要）等侧车 JSON 内嵌小文件，**非**统一用户媒体库。
 
 产品缺口：
 
@@ -38,7 +38,7 @@
 | **文档** | 文件库 kind=`document` → RAG 索引（独立 Lance 表） | `rag_generate` + 对话 `knowledgeBaseIds`（字段名实现时定） |
 | **对话 BGM** | `conversation.index` 存音频 `fileId` | 对话页播放器 |
 | **对话背景** | `conversation.index` 存图片 `fileId` | 对话页样式 |
-| **插件 `fileAsset`** | 短期保留；长期可迁到 `fileId` 引用（非 P3 必做） | curated-memory 等 |
+| **插件 `fileAsset`** | 短期保留；长期可迁到 `fileId` 引用（非 P3 必做） | plot-summary 等 |
 
 ---
 

@@ -18,20 +18,20 @@ describe('readConversationPluginSettings', () => {
   }
 
   it('returns empty object when missing', () => {
-    assert.deepEqual(readConversationPluginSettings(base, 'curated-memory'), {})
+    assert.deepEqual(readConversationPluginSettings(base, 'plot-summary'), {})
   })
 
   it('returns shallow copy of plugin bag', () => {
     const idx: ConversationIndex = {
       ...base,
       pluginSettings: {
-        'curated-memory': { targetLorebookId: 'lore-1', triggerEveryNTurns: 4 },
+        'plot-summary': { targetLorebookId: 'lore-1', triggerEveryNTurns: 4 },
       },
     }
-    const got = readConversationPluginSettings(idx, 'curated-memory')
+    const got = readConversationPluginSettings(idx, 'plot-summary')
     assert.deepEqual(got, { targetLorebookId: 'lore-1', triggerEveryNTurns: 4 })
     got.triggerEveryNTurns = 99
-    assert.equal(idx.pluginSettings?.['curated-memory']?.triggerEveryNTurns, 4)
+    assert.equal(idx.pluginSettings?.['plot-summary']?.triggerEveryNTurns, 4)
   })
 })
 

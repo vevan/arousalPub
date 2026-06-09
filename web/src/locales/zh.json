@@ -585,7 +585,7 @@
       "tabPlugins": "插件",
       "tabPluginsHint": "已启用插件的本会话配置；与系统设置 → 插件中的全局默认相互独立。",
       "pluginTabEmpty": "当前无已启用且支持会话配置的插件。可在系统设置 → 插件中启用。",
-      "memorybookProgressTitle": "摘要进度",
+      "plotSummaryProgressTitle": "摘要进度",
       "pluginConfigure": "配置",
       "pluginBackToList": "返回插件列表",
       "pluginLoadFailed": "加载插件会话配置失败",

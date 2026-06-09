@@ -270,12 +270,13 @@ export interface LorebookNormalizeEntryRefsRequest {
   validKeys: string[]
 }
 
-export interface LorebookReorderCuratedRequest {
-  sidecarEntryIds?: Record<string, string>
-  sidecarIds?: string[]
+export interface LorebookApplyOrderRequest {
+  scope?: 'full' | 'partial'
+  groupIds?: string[]
+  entriesByGroup?: Record<string, string[]>
 }
 
-export interface LorebookReorderCuratedResult {
+export interface LorebookApplyOrderResult {
   ok: true
   lorebook: LorebookDto
   changed: number
@@ -409,10 +410,10 @@ export interface PluginWebHost {
     normalizeEntryRefs(
       req: LorebookNormalizeEntryRefsRequest,
     ): Promise<Record<string, string>>
-    reorderCurated(
+    applyOrder(
       lorebookId: string,
-      req?: LorebookReorderCuratedRequest,
-    ): Promise<LorebookReorderCuratedResult>
+      req: LorebookApplyOrderRequest,
+    ): Promise<LorebookApplyOrderResult>
     ensure(req?: LorebookEnsureRequest): Promise<LorebookEnsureResult>
   }
   api: {

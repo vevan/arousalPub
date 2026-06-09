@@ -4,11 +4,11 @@ import {
   openManualSummarize,
   openSessionSettings,
   reorderTargetLorebookNow,
-  refreshMemorybookUi,
+  refreshAutoSummarizeUi,
   registerPickLorebookDialog,
   registerRecoverLorebookDialog,
   summarizeRunning,
-  toggleMemorybook,
+  toggleAutoSummarize,
 } from './dialogs.js'
 import { registerLifecycle } from './lifecycle.js'
 import { registerRangePicker } from './range-picker.js'
@@ -16,8 +16,8 @@ import { registerReviewDialogs } from './review.js'
 import { k } from './settings.js'
 import type { PluginHost } from './types.js'
 
-function isMemorybookEnabled(host: PluginHost): boolean {
-  return host.conversation.getPluginSettingsSnapshot().memorybookEnabled === true
+function isAutoSummarizeEnabled(host: PluginHost): boolean {
+  return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true
 }
 
 export function register(host: PluginHost) {
@@ -26,24 +26,24 @@ export function register(host: PluginHost) {
   registerRecoverLorebookDialog(host)
 
   host.conversation.onPluginSettingsChanged(() => {
-    refreshMemorybookUi(host)
+    refreshAutoSummarizeUi(host)
   })
   void host.conversation.getPluginSettings()
 
   host.registerSlotButton('composer-toolbar', {
     id: `${PLUGIN_ID}-menu`,
     icon: 'mdi-book-open-page-variant',
-    tooltipKey: k(host, 'tooltipCuratedMemory'),
-    filled: () => isMemorybookEnabled(host),
+    tooltipKey: k(host, 'tooltipPlugin'),
+    filled: () => isAutoSummarizeEnabled(host),
     menu: [
       {
-        id: `${PLUGIN_ID}-memorybook`,
-        labelKey: k(host, 'tooltipMemorybook'),
+        id: `${PLUGIN_ID}-auto-summarize`,
+        labelKey: k(host, 'tooltipAutoSummarize'),
         icon: 'mdi-book-open-page-variant',
-        filled: () => isMemorybookEnabled(host),
+        filled: () => isAutoSummarizeEnabled(host),
         disabled: () => summarizeRunning,
         onClick: () => {
-          void toggleMemorybook(host)
+          void toggleAutoSummarize(host)
         },
       },
       {

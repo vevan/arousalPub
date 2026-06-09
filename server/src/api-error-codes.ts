@@ -187,6 +187,7 @@ export const ApiErrorCodes = {
   lorebook_entry_not_found: 'lorebook_entry_not_found',
   lorebook_entry_create_failed: 'lorebook_entry_create_failed',
   lorebook_entry_patch_failed: 'lorebook_entry_patch_failed',
+  lorebook_order_invalid: 'lorebook_order_invalid',
   lorebook_entry_validation_failed: 'lorebook_entry_validation_failed',
   prompts_preview_failed: 'prompts_preview_failed',
   prompts_preset_not_found: 'prompts_preset_not_found',

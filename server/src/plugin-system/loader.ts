@@ -13,6 +13,7 @@ import {
   getPluginUserDataDir,
   getPluginUserSettingsPath,
 } from './paths.js'
+import { migrateCuratedMemoryToPlotSummary } from './migrate-plot-summary.js'
 import { readPluginRegistry, writePluginRegistry } from './registry.js'
 import type {
   LoadedServerPlugin,
@@ -34,7 +35,7 @@ const BUNDLED_PLUGIN_IDS = [
   'reply-complete-sound',
   'swipe-cleaner',
   'conversation-export',
-  'curated-memory',
+  'plot-summary',
 ] as const
 
 const BUNDLED_PLUGIN_ORDERS: Record<(typeof BUNDLED_PLUGIN_IDS)[number], number> = {
@@ -42,7 +43,7 @@ const BUNDLED_PLUGIN_ORDERS: Record<(typeof BUNDLED_PLUGIN_IDS)[number], number>
   'reply-complete-sound': 20,
   'swipe-cleaner': 30,
   'conversation-export': 40,
-  'curated-memory': 50,
+  'plot-summary': 50,
 }
 
 const moduleCache = new Map<string, LoadedServerPlugin[]>()
@@ -193,6 +194,7 @@ export async function bootstrapBundledPluginsAtStartup(): Promise<void> {
     if (uid) userIds.add(uid)
   }
   for (const uid of userIds) {
+    await migrateCuratedMemoryToPlotSummary(uid)
     await ensureBundledRegistryEntries(uid)
     await ensureBundledPluginUserSettings(uid)
   }
@@ -201,6 +203,7 @@ export async function bootstrapBundledPluginsAtStartup(): Promise<void> {
 /** 确保当前用户在每个插件目录下有独立 settings（及 secrets 迁移） */
 export async function ensurePluginUserData(userId: string): Promise<void> {
   await seedBundledPlugins()
+  await migrateCuratedMemoryToPlotSummary(userId)
   await ensureBundledRegistryEntries(userId)
   await ensureBundledPluginUserSettings(userId)
 }

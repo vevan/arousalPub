@@ -10,12 +10,16 @@ import { createApp } from 'vue'
 import { createVuetify } from 'vuetify'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
+import { VIconBtn } from 'vuetify/labs/VIconBtn'
 import 'vuetify/styles'
 import App from './App.vue'
 import { installAuthenticatedFetch } from '@/utils/install-authenticated-fetch'
 
 const vuetify = createVuetify({
-  components,
+  components: {
+    ...components,
+    VIconBtn,
+  },
   directives,
   theme: {
     defaultTheme: readStoredTheme(),

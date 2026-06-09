@@ -2,7 +2,7 @@
 
 > **状态**：**已定案且大部分已落地**（2026-06-02）。  
 > **读者**：**第三方插件作者请优先阅读 [`DOC/18-plugin-host-developer-api.md`](18-plugin-host-developer-api.md)**（宿主 API 单一入口）；本文保留产品与边界定案。  
-> **关联**：`DOC/03` §1.3、`DOC/09` §5、`DOC/10`、`DOC/12`（策展记忆插件示例）。
+> **关联**：`DOC/03` §1.3、`DOC/09` §5、`DOC/10`、`DOC/12`（Historian（剧情纪要）插件示例）。
 
 ---
 
@@ -30,11 +30,11 @@
 |----------|------|------|----------|
 | **`host.lorebook`** | `list()` / `get()` / `createEntry()` / `patchEntry()` | ✅ | `GET/POST/PATCH /api/plugins/:id/lorebooks/…` |
 | | `normalizeEntryRefs(req)` | ✅ | `POST …/lorebooks/normalize-entry-refs` |
-| | `reorderCurated(lorebookId, req?)` | ✅ | `POST …/lorebooks/:id/reorder-curated`，单次读+写重排 order（`DOC/12` §4.2） |
+| | `applyOrder(lorebookId, req)` | ✅ | `POST …/lorebooks/:id/apply-order`，按 layout 写 `group.order` / `entry.order`（`DOC/12` §4.2–§4.3） |
 | | `ensure(req?)` | ✅ | `POST …/lorebooks/ensure`，自动建 summary 书，见 `DOC/12` §2.3 |
 | **`host.api`** | `listPresets()` | ✅ | `GET /api/settings` |
 | **`host.plugin`** | `complete(req)` | ✅ | `POST …/complete` |
-| | `prepareContext(req)` | ✅ | `POST …/prepare-context`（读 turn + 拼 `<history>` / `<previous-memories>`） |
+| | `prepareContext(req)` | ✅ | `POST …/prepare-context`（读 turn + 拼 `<history>` / `<previous-summaries>` 等；块规则见 `DOC/12` §4.3） |
 | | `completeDraft(req)` | ✅ | `POST …/complete-draft`（插件 `server.mjs` 的 `completeDraft` hook） |
 | **`host.conversation`** | `getPluginSettings()` / `patchPluginSettings()` | ✅ | `GET/PATCH …/conversations/:id` |
 | **`host.plugins`** | `getUserSettings()` | ✅ | `GET /api/plugins/:pluginId/settings` |
@@ -69,7 +69,8 @@ host.conversation.patchPluginSettings(partial): Promise<Record<string, unknown>>
 |----|------|
 | 摘要 / Tracker | **插件业务**；宿主**不**提供 `summarize`、不内置摘要 prompt |
 | 出站模型调用 | 宿主提供 **通用「按已登记 API 预设转发 messages」**；插件提交 `apiConfigId` + `messages[]` |
-| 资料库 | 宿主提供 **Lorebook 条目级读写**（insert / patch）；**不**要求插件整本 `PUT /api/lorebooks` |
+| 资料库 | 宿主提供 **Lorebook 条目级读写**（insert / patch）与 **通用 `apply-order`**（按插件 layout 写 `order`）；**不**要求插件整本 `PUT /api/lorebooks` |
+| 资料库排序 | **插件**提供 `entriesByGroup` / `groupIds` layout；**宿主**只校验并 1 读 1 写（见 §2.5） |
 | 会话差异 | 宿主在 **`index.json`** 存 **会话级插件设置**（如目标 lorebook）；与全局 `settings.json`、对话 `lorebookIds`（注入用）分离 |
 | 密钥 | 仅服务端查 `api-settings` 出站；浏览器插件**不**持明文 key |
 
@@ -215,6 +216,33 @@ interface LorebookEntryPatchBody {
 
 插件 **不得** `PUT` 整库替换他人条目（v1 可禁止插件角色调用 `PUT /api/lorebooks`）。
 
+### 3.5 按 layout 写顺序 `apply-order`（v1.6 · 已落地）
+
+```http
+POST /api/plugins/:pluginId/lorebooks/:lorebookId/apply-order
+```
+
+```ts
+interface ApplyLorebookOrderRequest {
+  scope?: 'full' | 'partial'   // 默认 partial；full 要求 entriesByGroup 覆盖全书每个 group
+  groupIds?: string[]            // 可选：组的新顺序（order = 下标）；省略则不改 group.order
+  entriesByGroup?: Record<string, string[]>  // 每组完整 entry id 列表；**列出某组则必须列全**
+}
+```
+
+**宿主行为**（`server/src/plugin-lorebook-apply-order.ts`）：
+
+1. `readLorebookById` 一次；  
+2. `validateApplyLorebookOrderLayout`（未知 id、组内缺项、entry 与 group 不匹配 → `order_*` 错误码）；  
+3. 写 `groups[].order` / `entries[].order`；  
+4. `writeLorebook` 一次。
+
+**非目标**：宿主 **不** 实现 Historian 的 other → sidecar → summary 排序规则；示例见 `DOC/12` §4.2（`computePlotSummaryApplyOrderLayout`）。
+
+**权限**：`lorebook.entry.write`（与 create/patch 相同）。
+
+**已移除**：`POST …/reorder-curated`（宿主内置策展排序，v1.5 及以前）。
+
 ---
 
 ## 4. 会话级插件设置（Conversation Plugin Settings）
@@ -239,12 +267,12 @@ interface ConversationIndex {
 }
 ```
 
-示例（策展记忆类插件 `curated-memory`，id 实现时确定）：
+示例（Historian（剧情纪要）类插件 `plot-summary`，id 实现时确定）：
 
 ```json
 {
   "pluginSettings": {
-    "curated-memory": {
+    "plot-summary": {
       "targetLorebookId": "lore-mem-main",
       "triggerEveryNTurns": 4,
       "lastTriggeredTurnOrdinal": 12,
@@ -268,7 +296,7 @@ interface ConversationIndex {
 
 **多书绑定 XML（已实现，见 `DOC/03` §13.2）**：`lorebookIds.length > 1` 时，命中条目按 **资料库 `name`** 分组为 `<lorebook name="…">` 子块；单本仍用扁平 `<lores><lore>…</lore></lores>` 以兼容旧 prompt。
 
-**插件新建条目**：`createEntry` 的 `triggerMode` / `keys` 由插件 settings 默认（策展记忆见 `DOC/12` `defaultEntryTriggerMode`）；与注入扫描规则一致。
+**插件新建条目**：`createEntry` 的 `triggerMode` / `keys` 由插件 settings 默认（Historian（剧情纪要）见 `DOC/12` `defaultEntryTriggerMode`）；与注入扫描规则一致。
 
 ### 4.4 HTTP（规划）
 
@@ -281,7 +309,7 @@ PATCH /api/chat/conversations/:id
 ```json
 {
   "pluginSettings": {
-    "curated-memory": { "targetLorebookId": "lore-abc", "triggerEveryNTurns": 3 }
+    "plot-summary": { "targetLorebookId": "lore-abc", "triggerEveryNTurns": 3 }
   }
 }
 ```

@@ -6,7 +6,7 @@ import {
   resolveTargetLorebookName,
   showCurrentBatchTaskProgress,
 } from './review.js'
-import { applyCuratedLorebookEntrySort } from './shared/entry-sort.js'
+import { applyPlotSummaryEntrySort } from './shared/entry-sort.js'
 import { flushPendingLorebookCreates, type PendingLorebookCreate } from './batch-write.js'
 import { entryKeys, writeSidecarEntry } from './sidecar.js'
 import { k, loadMergedSettings } from './settings.js'
@@ -20,7 +20,7 @@ import type { PluginHost, SummarizeTask } from './types.js'
 import {
   ensureTargetLorebook,
   promptRecoverLorebook,
-  refreshMemorybookUi,
+  refreshAutoSummarizeUi,
 } from './dialogs.js'
 import { isLorebookNotFoundError } from './errors.js'
 
@@ -48,7 +48,7 @@ export async function runSummarizeTasks(
     toTurn: number
     tasks?: SummarizeTask[]
     updatePointers?: boolean
-    updateMemorybookCache?: boolean
+    updateAutoSummarizeCache?: boolean
   },
 ) {
   if (summarizeRunning) {
@@ -231,7 +231,7 @@ export async function runSummarizeTasks(
           host.ui.toast(host.t(k(host, 'toastReviewAborted')), { color: 'info' })
           break
         }
-        console.warn('[curated-memory] task failed', task, e)
+        console.warn('[plot-summary] task failed', task, e)
         if (isPipelineFatalError(e)) {
           preflightToast(host, e)
           aborted = true
@@ -280,7 +280,7 @@ export async function runSummarizeTasks(
       settings.entrySortMode === 'auto-turn-suffix' &&
       wroteToLorebook
     ) {
-      await applyCuratedLorebookEntrySort(
+      await applyPlotSummaryEntrySort(
         host,
         settings.targetLorebookId,
         sidecarEntryIds,
@@ -306,8 +306,8 @@ export async function runSummarizeTasks(
       await host.conversation.patchPluginSettings(patch)
     }
 
-    if (opts.updateMemorybookCache) {
-      refreshMemorybookUi(host)
+    if (opts.updateAutoSummarizeCache) {
+      refreshAutoSummarizeUi(host)
     }
 
     if (completedTasks === tasks.length && skippedTasks === 0) {
@@ -332,7 +332,7 @@ export async function runSummarizeTasks(
     if (isAbortError(e)) {
       return { ok: false, reason: 'aborted', aborted: true }
     }
-    console.warn('[curated-memory] summarize failed', e)
+    console.warn('[plot-summary] summarize failed', e)
     preflightToast(host, e)
     return { ok: false, reason: 'error' }
   } finally {

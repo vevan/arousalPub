@@ -8,10 +8,12 @@ import {
   buildHistoryBlock,
   buildPreviousSummariesBlock,
   buildSidecarsBlock,
-  pickRecentSummaryEntriesBeforeTurn,
   resolveContextHistoryStart,
-  sortCuratedEntriesInGroup,
-} from './plugin-curated-lorebook.js'
+} from './plot-summary/prepare-context-blocks.js'
+import {
+  pickRecentSummaryEntriesBeforeTurn,
+  sortPlotSummaryEntriesInGroup,
+} from './plot-summary/lorebook-sort.js'
 import {
   normalizeSidecarConfigIds,
   normalizeSidecarEntryIds,
@@ -191,7 +193,7 @@ export async function runPluginPrepareContext(
         })),
       )
 
-      const sidecarEntries = sortCuratedEntriesInGroup(
+      const sidecarEntries = sortPlotSummaryEntriesInGroup(
         entries.filter((e) => sidecarEntryIdSet.has(e.id)),
         sidecarEntryIds,
         sidecarConfigIds,

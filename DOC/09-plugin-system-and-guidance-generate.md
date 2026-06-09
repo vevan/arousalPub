@@ -174,7 +174,7 @@ data/
 
 ### 5.5 出站补全与资料库条目
 
-已实现；完整 API 表见 **`DOC/18-plugin-host-developer-api.md`** §3.6–§3.8、§5。产品定案见 **`DOC/11`**；策展记忆示例 **`DOC/12`**。
+已实现；完整 API 表见 **`DOC/18-plugin-host-developer-api.md`** §3.6–§3.8、§5。产品定案见 **`DOC/11`**；Historian（剧情纪要）示例 **`DOC/12`**。
 
 ---
 

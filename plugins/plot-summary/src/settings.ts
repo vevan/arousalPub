@@ -161,7 +161,7 @@ export async function loadMergedSettings(host: PluginHost): Promise<MergedSettin
     defaultEntryTriggerMode,
     systemPromptTemplate:
       asString(global.systemPromptTemplate) || resolveDefaultSystemPrompt(host),
-    memorybookEnabled: conv.memorybookEnabled === true,
+    autoSummarizeEnabled: conv.autoSummarizeEnabled === true,
     nextBlockStart:
       typeof conv.nextBlockStart === 'number'
         ? Math.max(0, Math.round(conv.nextBlockStart))
@@ -179,7 +179,7 @@ export async function loadMergedSettings(host: PluginHost): Promise<MergedSettin
       conv.manualSummarizeTasks,
       sidecars,
     ),
-    memorybookDefaultEnabled: asBool(global.memorybookDefaultEnabled, false),
+    autoSummarizeDefaultEnabled: asBool(global.autoSummarizeDefaultEnabled, false),
     targetLorebookMode,
     autoLorebookNameTemplate,
   }
@@ -195,7 +195,7 @@ export function blockEndFromStart(start: number, blockTurns: number) {
 }
 
 export function shouldAutoTrigger(turnOrdinal: number, settings: MergedSettings) {
-  if (!settings.memorybookEnabled) return false
+  if (!settings.autoSummarizeEnabled) return false
   const start = settings.nextBlockStart ?? 0
   const end = blockEndFromStart(start, settings.blockTurns)
   return turnOrdinal >= end + settings.bufferTurns

@@ -25,7 +25,7 @@ async function build() {
     outfile: path.join(here, 'dist/server.mjs'),
   })
 
-  console.log('[curated-memory] built dist/web.mjs + dist/server.mjs')
+  console.log('[plot-summary] built dist/web.mjs + dist/server.mjs')
 }
 
 build().catch((e) => {

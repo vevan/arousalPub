@@ -11,10 +11,16 @@ import {
   hydratePluginSettingsDefaults,
   validatePluginSettingsModel,
 } from '@/utils/plugin-settings-validate'
+import { resolvePluginDisplayName } from '@/utils/plugin-locale-text'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const { t, te } = useI18n()
+const { t, te, locale } = useI18n()
+
+function pluginDisplayName(pluginId: string, fallback: string): string {
+  void locale.value
+  return resolvePluginDisplayName(pluginId, fallback)
+}
 
 const loading = ref(true)
 const saving = ref(false)
@@ -199,7 +205,7 @@ onMounted(() => {
         </template>
 
         <v-list-item-title class="font-weight-medium">
-          {{ plugin.name }}
+          {{ pluginDisplayName(plugin.id, plugin.name) }}
           <span class="text-caption text-medium-emphasis ms-2">v{{ plugin.version }}</span>
         </v-list-item-title>
         <v-list-item-subtitle class="text-caption">
@@ -210,24 +216,33 @@ onMounted(() => {
         </v-list-item-subtitle>
 
         <template #append>
-          <div class="d-flex align-center ga-2">
+          <div class="plugin-settings-list__actions">
             <v-switch
               :model-value="plugin.enabled"
               color="primary"
               density="compact"
               hide-details
-              :aria-label="$t('settings.plugins.enabledAria', { name: plugin.name })"
+              :aria-label="$t('settings.plugins.enabledAria', { name: pluginDisplayName(plugin.id, plugin.name) })"
               @update:model-value="onToggleEnabled(plugin, $event)"
             />
-            <v-btn
+            <v-tooltip
               v-if="plugin.hasSettings"
-              variant="text"
-              size="small"
-              :disabled="!plugin.enabled"
-              @click="openSettings(plugin)"
+              location="top"
+              :text="$t('settings.plugins.configure')"
             >
-              {{ $t('settings.plugins.configure') }}
-            </v-btn>
+              <template #activator="{ props: tooltipProps }">
+                <v-icon-btn
+                  v-bind="tooltipProps"
+                  icon="mdi-cog"
+                  variant="text"
+                  color="primary"
+                  size="small"
+                  :icon-size="24"
+                  :disabled="!plugin.enabled"
+                  @click="openSettings(plugin)"
+                />
+              </template>
+            </v-tooltip>
           </div>
         </template>
       </v-list-item>
@@ -248,7 +263,7 @@ onMounted(() => {
     >
       <v-card v-if="settingsPlugin">
         <v-card-title class="text-h6">
-          {{ settingsPlugin.name }}
+          {{ pluginDisplayName(settingsPlugin.id, settingsPlugin.name) }}
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-4">
@@ -271,7 +286,9 @@ onMounted(() => {
         <v-card-actions class="pa-3">
           <v-spacer />
           <v-btn
-            variant="text"
+            variant="tonal"
+            size="small"
+            class="text-none"
             :disabled="settingsSaving"
             @click="closeSettings"
           >
@@ -301,5 +318,20 @@ onMounted(() => {
 .plugin-settings-list__drag {
   opacity: 0.45;
   margin-inline-end: 0.25rem;
+}
+
+.plugin-settings-list__item :deep(.v-list-item__append) {
+  padding-inline-start: 0.5rem;
+}
+
+.plugin-settings-list__actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+.plugin-settings-list__actions :deep(.v-switch) {
+  flex-shrink: 0;
 }
 </style>

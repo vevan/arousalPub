@@ -311,13 +311,6 @@ onUnmounted(() => {
 
 <template>
   <div class="conv-api-settings">
-    <h3 class="conv-api-settings__title">
-      {{ $t('chat.convSettings.tabApi') }}
-    </h3>
-    <p class="conv-api-settings__hint">
-      {{ $t('chat.convSettings.tabApiHint') }}
-    </p>
-
     <div class="conv-api-settings__field">
       <v-switch
         :model-value="chatUseGlobal"
@@ -671,20 +664,6 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.conv-api-settings__title {
-  margin: 0 0 0.375rem;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-.conv-api-settings__hint {
-  margin: 0 0 1rem;
-  font-size: 0.8125rem;
-  line-height: 1.45;
-  color: rgba(var(--v-theme-on-surface), 0.62);
-}
-
 .conv-api-settings__field + .conv-api-settings__field,
 .conv-api-settings__group-label + .conv-api-settings__field,
 .conv-api-settings__divider + .conv-api-settings__field,

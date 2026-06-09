@@ -11,7 +11,7 @@ const BUNDLED_PLUGIN_IDS = [
   'reply-complete-sound',
   'swipe-cleaner',
   'conversation-export',
-  'curated-memory',
+  'plot-summary',
 ]
 
 const CP_OPTS = { recursive: true, force: true }

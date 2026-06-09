@@ -1,4 +1,4 @@
-/** 与 curated-memory 插件 settings.ts 中自动块逻辑对齐（纯函数，供对话设置 UI） */
+/** 与 plot-summary 插件 settings.ts 中自动块逻辑对齐（纯函数，供对话设置 UI） */
 
 function asInt(
   value: unknown,
@@ -24,8 +24,8 @@ function effectiveInt(
   return asInt(raw, fallback, min, max)
 }
 
-export interface MemorybookProgressView {
-  memorybookEnabled: boolean
+export interface AutoSummarizeProgressView {
+  autoSummarizeEnabled: boolean
   lastSummarizedEnd: number | null
   nextBlockStart: number
   pendingFromTurn: number
@@ -45,11 +45,11 @@ export function firstAutoTriggerTurnOrdinal(
   return blockEndFromStart(nextBlockStart, blockTurns) + bufferTurns
 }
 
-export function computeMemorybookProgress(
+export function computeAutoSummarizeProgress(
   conv: Record<string, unknown>,
   global: Record<string, unknown>,
-): MemorybookProgressView {
-  const memorybookEnabled = conv.memorybookEnabled === true
+): AutoSummarizeProgressView {
+  const autoSummarizeEnabled = conv.autoSummarizeEnabled === true
   const blockTurns = effectiveInt(
     conv,
     global,
@@ -80,7 +80,7 @@ export function computeMemorybookProgress(
     bufferTurns,
   )
   return {
-    memorybookEnabled,
+    autoSummarizeEnabled,
     lastSummarizedEnd,
     nextBlockStart,
     pendingFromTurn: nextBlockStart,
@@ -90,7 +90,7 @@ export function computeMemorybookProgress(
 }
 
 /** 用户手动校正自动摘要指针；null 表示尚未摘要 */
-export function buildMemorybookPointerResetPatch(
+export function buildAutoSummarizePointerResetPatch(
   lastSummarizedEnd: number | null,
 ): Record<string, unknown> {
   if (lastSummarizedEnd === null) {

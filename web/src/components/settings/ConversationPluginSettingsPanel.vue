@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import CuratedMemoryMemorybookBlock from '@/components/settings/CuratedMemoryMemorybookBlock.vue'
+import PlotSummaryAutoSummarizeBlock from '@/components/settings/PlotSummaryAutoSummarizeBlock.vue'
 import PluginSchemaForm from '@/components/settings/PluginSchemaForm.vue'
 import type { PluginManageEntry } from '@/plugins/plugin-settings-types'
 import {
@@ -12,11 +12,12 @@ import {
   fetchPluginSettings,
   fetchPluginsManage,
 } from '@/utils/plugin-settings-api'
+import { resolvePluginDisplayName } from '@/utils/plugin-locale-text'
 import { validatePluginSettingsModel } from '@/utils/plugin-settings-validate'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const CURATED_MEMORY_PLUGIN_ID = 'curated-memory'
+const PLOT_SUMMARY_PLUGIN_ID = 'plot-summary'
 
 const props = defineProps<{
   conversationId: string
@@ -27,7 +28,12 @@ const emit = defineEmits<{
   (e: 'error', message: string): void
 }>()
 
-const { t, te } = useI18n()
+const { t, te, locale } = useI18n()
+
+function pluginDisplayName(pluginId: string, fallback: string): string {
+  void locale.value
+  return resolvePluginDisplayName(pluginId, fallback)
+}
 const settingsStore = useConversationPluginSettingsStore()
 
 const loading = ref(true)
@@ -219,7 +225,7 @@ defineExpose({ reload: load, backToList })
           class="conv-plugin-settings-list__item"
         >
           <v-list-item-title class="font-weight-medium">
-            {{ plugin.name }}
+            {{ pluginDisplayName(plugin.id, plugin.name) }}
             <span class="text-caption text-medium-emphasis ms-2">
               v{{ plugin.version }}
             </span>
@@ -232,13 +238,22 @@ defineExpose({ reload: load, backToList })
           </v-list-item-subtitle>
 
           <template #append>
-            <v-btn
-              variant="text"
-              size="small"
-              @click="openPlugin(plugin)"
+            <v-tooltip
+              location="top"
+              :text="$t('chat.convSettings.pluginConfigure')"
             >
-              {{ $t('chat.convSettings.pluginConfigure') }}
-            </v-btn>
+              <template #activator="{ props: tooltipProps }">
+                <v-icon-btn
+                  v-bind="tooltipProps"
+                  icon="mdi-cog"
+                  variant="text"
+                  color="primary"
+                  size="small"
+                  :icon-size="24"
+                  @click="openPlugin(plugin)"
+                />
+              </template>
+            </v-tooltip>
           </template>
         </v-list-item>
       </v-list>
@@ -248,19 +263,20 @@ defineExpose({ reload: load, backToList })
         class="conv-plugin-settings-detail"
       >
         <v-btn
-          variant="text"
+          variant="tonal"
+          color="primary"
           size="small"
           prepend-icon="mdi-arrow-left"
-          class="mb-3 px-0"
+          class="conv-plugin-settings-detail__back mb-3"
           @click="backToList"
         >
           {{ $t('chat.convSettings.pluginBackToList') }}
         </v-btn>
 
-        <h4 class="text-subtitle-1 font-weight-medium mb-1">
-          {{ selectedPlugin.name }}
+        <h4 class="conv-plugin-settings-detail__name text-subtitle-1 font-weight-medium mb-1">
+          {{ pluginDisplayName(selectedPlugin.id, selectedPlugin.name) }}
         </h4>
-        <p class="text-caption text-medium-emphasis mb-4">
+        <p class="conv-plugin-settings-detail__id text-caption text-medium-emphasis mb-4">
           {{ selectedPlugin.id }}
         </p>
 
@@ -273,14 +289,14 @@ defineExpose({ reload: load, backToList })
           @update:model-value="onModelUpdate(selectedPlugin, $event)"
         >
           <template #field-companion-panel="{ fieldKey }">
-            <CuratedMemoryMemorybookBlock
+            <PlotSummaryAutoSummarizeBlock
               v-if="
-                selectedPlugin.id === CURATED_MEMORY_PLUGIN_ID &&
-                fieldKey === 'memorybookEnabled'
+                selectedPlugin.id === PLOT_SUMMARY_PLUGIN_ID &&
+                fieldKey === 'autoSummarizeEnabled'
               "
               :conversation-id="conversationId"
-              :conv-model="convModels[CURATED_MEMORY_PLUGIN_ID]"
-              :global-model="globalModels[CURATED_MEMORY_PLUGIN_ID]"
+              :conv-model="convModels[PLOT_SUMMARY_PLUGIN_ID]"
+              :global-model="globalModels[PLOT_SUMMARY_PLUGIN_ID]"
               @error="onPointerResetError"
             />
           </template>
@@ -300,5 +316,13 @@ defineExpose({ reload: load, backToList })
 <style scoped>
 .conv-plugin-settings-list {
   border-color: rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.conv-plugin-settings-detail__back {
+  align-self: flex-start;
+}
+
+.conv-plugin-settings-detail__id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 </style>

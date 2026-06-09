@@ -67,7 +67,7 @@ describe('resolvePluginCompleteApiFromSources', () => {
 
   it('uses explicit apiConfigId when preset exists', () => {
     const hit = resolvePluginCompleteApiFromSources(
-      { pluginId: 'curated-memory', apiConfigId: 'preset-b' },
+      { pluginId: 'plot-summary', apiConfigId: 'preset-b' },
       { settings, pluginSettings: { apiConfigId: 'preset-a' } },
     )
     assert.equal(hit.ok, true)
@@ -79,7 +79,7 @@ describe('resolvePluginCompleteApiFromSources', () => {
 
   it('rejects explicit apiConfigId when preset missing', () => {
     const hit = resolvePluginCompleteApiFromSources(
-      { pluginId: 'curated-memory', apiConfigId: 'missing' },
+      { pluginId: 'plot-summary', apiConfigId: 'missing' },
       { settings, pluginSettings: {} },
     )
     assert.equal(hit.ok, false)
@@ -87,11 +87,11 @@ describe('resolvePluginCompleteApiFromSources', () => {
 
   it('prefers conversation plugin binding over plugin settings', () => {
     const hit = resolvePluginCompleteApiFromSources(
-      { pluginId: 'curated-memory', conversationId: 'abc12345' },
+      { pluginId: 'plot-summary', conversationId: 'abc12345' },
       {
         settings,
         conversationApiPreset: {
-          plugins: { 'curated-memory': { apiConfigId: 'preset-b' } },
+          plugins: { 'plot-summary': { apiConfigId: 'preset-b' } },
         },
         pluginSettings: { apiConfigId: 'preset-a' },
       },
@@ -105,7 +105,7 @@ describe('resolvePluginCompleteApiFromSources', () => {
 
   it('falls back to plugin settings apiConfigId', () => {
     const hit = resolvePluginCompleteApiFromSources(
-      { pluginId: 'curated-memory' },
+      { pluginId: 'plot-summary' },
       {
         settings,
         pluginSettings: { apiConfigId: 'preset-a' },
@@ -120,7 +120,7 @@ describe('resolvePluginCompleteApiFromSources', () => {
 
   it('returns not found when settings missing and no explicit id', () => {
     const hit = resolvePluginCompleteApiFromSources(
-      { pluginId: 'curated-memory' },
+      { pluginId: 'plot-summary' },
       { settings: null, pluginSettings: { apiConfigId: 'preset-a' } },
     )
     assert.equal(hit.ok, false)

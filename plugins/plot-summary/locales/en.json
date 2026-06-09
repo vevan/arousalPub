@@ -1,12 +1,14 @@
 {
 
-  "tooltipCuratedMemory": "Curated memory",
+  "pluginDisplayName": "Historian",
 
-  "tooltipMemorybook": "Memorybook auto-summarize (toggle)",
+  "tooltipPlugin": "Historian",
+
+  "tooltipAutoSummarize": "Auto summarize (toggle)",
 
   "tooltipManualSummarize": "Manual summarize",
 
-  "tooltipSessionSettings": "Session curated memory settings",
+  "tooltipSessionSettings": "Session Historian settings",
 
   "tooltipRangeStart": "Select summary start turn",
 
@@ -18,7 +20,7 @@
 
   "tooltipSummarizeTurn": "Summarize through this turn",
 
-  "sessionDialogTitle": "Session curated memory",
+  "sessionDialogTitle": "Session Historian",
 
   "sessionTargetLorebookLabel": "Summary lorebook",
 
@@ -28,37 +30,37 @@
 
   "convTargetLorebookIdDesc": "Summary entries are written here. Empty = pick when summarizing or on auto block. Not the same as inject lorebooks in Bindings.",
 
-  "convMemorybookEnabledLabel": "Memorybook auto summarize",
+  "convAutoSummarizeEnabledLabel": "Auto summarize",
 
-  "convMemorybookEnabledDesc": "Schedules block-based auto summarize (preview still required).",
+  "convAutoSummarizeEnabledDesc": "Schedules block-based auto summarize (preview still required).",
 
-  "convMemorybookProgressTitle": "Summary progress",
+  "convAutoSummarizeProgressTitle": "Summary progress",
 
-  "convMemorybookProgressNever": "No plot summary entries yet",
+  "convAutoSummarizeProgressNever": "No plot summary entries yet",
 
-  "convMemorybookProgressDone": "Plot summarized through turn {end} (inclusive)",
+  "convAutoSummarizeProgressDone": "Plot summarized through turn {end} (inclusive)",
 
-  "convMemorybookProgressPending": "Pending block: turns {from}–{to}",
+  "convAutoSummarizeProgressPending": "Pending block: turns {from}–{to}",
 
-  "convMemorybookProgressNext": "Next trigger: after turn {turn} is persisted",
+  "convAutoSummarizeProgressNext": "Next trigger: after turn {turn} is persisted",
 
-  "convMemorybookProgressOff": "Auto summarize is off; no scheduled runs",
+  "convAutoSummarizeProgressOff": "Auto summarize is off; no scheduled runs",
 
-  "convMemorybookResetBtn": "Adjust progress",
+  "convAutoSummarizeResetBtn": "Adjust progress",
 
-  "convMemorybookResetTitle": "Adjust auto-summarize progress",
+  "convAutoSummarizeResetTitle": "Adjust auto-summarize progress",
 
-  "convMemorybookResetHint": "Updates scheduling pointers only; lorebook entries are not deleted. Enter the last turn you have actually summarized (0-based, inclusive).",
+  "convAutoSummarizeResetHint": "Updates scheduling pointers only; lorebook entries are not deleted. Enter the last turn you have actually summarized (0-based, inclusive).",
 
-  "convMemorybookResetEndLabel": "Summarized through turn N (inclusive, 0-based)",
+  "convAutoSummarizeResetEndLabel": "Summarized through turn N (inclusive, 0-based)",
 
-  "convMemorybookResetMaxHint": "Current conversation max turn: {max}",
+  "convAutoSummarizeResetMaxHint": "Current conversation max turn: {max}",
 
-  "convMemorybookResetAheadWarn": "Value exceeds max turn {max}; auto runs will wait for more turns.",
+  "convAutoSummarizeResetAheadWarn": "Value exceeds max turn {max}; auto runs will wait for more turns.",
 
-  "convMemorybookResetNever": "Not summarized yet (clear pointers)",
+  "convAutoSummarizeResetNever": "Not summarized yet (clear pointers)",
 
-  "convMemorybookResetConfirm": "Confirm",
+  "convAutoSummarizeResetConfirm": "Confirm",
 
   "convBlockTurnsLabel": "Turns per block",
 
@@ -133,7 +135,7 @@
 
   "toastSummarizeSummary": "Done {done}, skipped {skipped} of {total}",
 
-  "enableDialogTitle": "Enable Memorybook",
+  "enableDialogTitle": "Enable auto summarize",
 
   "enableDialogBody": "Summarize the range below and enable auto blocks. Earlier turns: use manual summarize. Range is fixed; Sidecars are optional.",
 
@@ -141,9 +143,9 @@
 
   "enableSubmit": "Enable & summarize",
 
-  "toastMemorybookEnabled": "Memorybook auto-summarize enabled",
+  "toastAutoSummarizeEnabled": "Auto summarize enabled",
 
-  "toastMemorybookScheduled": "Auto summarize will start at turn {turn}",
+  "toastAutoSummarizeScheduled": "Auto summarize will start at turn {turn}",
 
   "pickLorebookDialogTitle": "Choose target lorebook",
 
@@ -167,15 +169,15 @@
 
   "toastTargetLorebookMissingWarn": "Target lorebook missing — select one before summarizing",
 
-  "memorybookDefaultEnabledLabel": "Enable Memorybook on new chats",
+  "autoSummarizeDefaultEnabledLabel": "Enable auto summarize on new chats",
 
-  "memorybookDefaultEnabledDesc": "New conversations only. Schedules auto summarize after the first turn. Manual off persists for that chat.",
+  "autoSummarizeDefaultEnabledDesc": "New conversations only. Schedules auto summarize after the first turn. Manual off persists for that chat.",
 
   "sessionAutoSidecarsLabel": "Auto Sidecars",
 
   "sessionAutoSidecarsHint": "Plot summary is always included; pick Sidecars to update on each auto block.",
 
-  "toastMemorybookDisabled": "Memorybook auto-summarize disabled",
+  "toastAutoSummarizeDisabled": "Auto summarize disabled",
 
   "toastNoTargetLorebook": "No target lorebook configured",
 

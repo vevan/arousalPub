@@ -91,7 +91,7 @@ async function runReviewRegenerate(host: PluginHost, dialogId: string) {
       resolver.reject(new Error('review_aborted'))
       return
     }
-    console.warn('[curated-memory] review regenerate failed', e)
+    console.warn('[plot-summary] review regenerate failed', e)
     host.ui.toast(host.t(k(host, 'toastReviewRegenerateFailed')), { color: 'warning' })
   }
 }

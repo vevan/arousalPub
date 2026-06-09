@@ -9,7 +9,7 @@
 
 ## 1. 背景与目标
 
-在 Memorybook 进度校正、策展记忆与 swipe 批处理等能力落地后，对服务端 **chunk 读写、memory 召回、组装裁切、资料库与 embedding** 做了一轮性能审计。目标：
+在自动摘要进度校正、Historian（剧情纪要）与 swipe 批处理等能力落地后，对服务端 **chunk 读写、memory 召回、组装裁切、资料库与 embedding** 做了一轮性能审计。目标：
 
 1. 降低**热路径**（每次发消息 / assemble）的磁盘 IO 与重复计算；
 2. 消除 memory 召回的 **N+1 链式扫盘**；
@@ -26,12 +26,12 @@
 |----|------|------|
 | Turn **批量写** | `PATCH .../turns/batch`、`batchUpdateConversationTurns` | 多轮 PATCH 按 chunk 合并，每 chunk 至多 1 次写盘 + index 至多 1 次写 |
 | Turn **区间读** | `GET .../messages?from=&to=`、`readTurnsInOrdinalRange` | 插件 host / messages API 可按 ordinal 读，避免全链 |
-| Lorebook **reorder-curated** | `runReorderCuratedLorebookEntries` | 1 读 1 写，替代逐条读写整本资料库 |
-| Memorybook **进度与指针校正** | Web `CuratedMemoryMemorybookBlock`、指针 reset API | 修复 `lastSummarizedEnd` 只增不减导致的显示漂移 |
+| Lorebook **apply-order** | `runApplyLorebookOrder` | 1 读 1 写，替代逐条 `patchEntry` 改 order |
+| 自动摘要 **进度与指针校正** | Web `PlotSummaryAutoSummarizeBlock`、指针 reset API | 修复 `lastSummarizedEnd` 只增不减导致的显示漂移 |
 | 插件 host **v1.1** | `DOC/10` §3.3、`conversation-host.ts` | `read`/`patch` 接入区间读与批量写 |
 | **Memory v2（P0）** | `chunk-path.ts`、`memory-store.ts`、`memory-hits.ts`、`memory-pipeline.ts` | 单表 `turn_memory`；`branchPath`+`chunkFileName` 拆列；按 chunk 批量解析命中；`markConversationMemoryEmbeddingModel` 仅变化时写盘 |
 | **热路径区间读（P1）** | `readTurnsTail`、`memory-pipeline.ts`、`plugin-prepare-context.ts` | assemble 尾部窗口；摘要 prepare 单次 `readTurnsInOrdinalRange`；plan reindex 按链计数 |
-| **P2 重建与裁切** | `embedding-batch.ts`、`prompt-budget-trim.ts`、`lorebook-entries.ts`、`lorebook-resolve.ts`、`curated-memory/batch-write.ts` | 批量 embed；增量 budget trim；按 id 加载 lore；批量 entry API；策展摘要合并落盘 |
+| **P2 重建与裁切** | `embedding-batch.ts`、`prompt-budget-trim.ts`、`lorebook-entries.ts`、`lorebook-resolve.ts`、`plot-summary/batch-write.ts` | 批量 embed；增量 budget trim；按 id 加载 lore；批量 entry API；剧情纪要摘要合并落盘 |
 | **P3 分支 memory** | `enumerateAllChunkChains`、`collectRegisteredBranchPaths`、`buildAllowedBranchPathsForActive` | 全分支 reindex；assemble 按 activeBranch 过滤向量召回；`deleteTurnMemoryByBranchSubtree` |
 | **M4 整包 PUT 护栏** | `lorebook-file.ts`、`lorebooks-bulk-put-limit.ts`、`index.ts` | 64 书 / 3000 条 / 8MB + 2s 防抖；插件条目 API 不受影响 |
 | **M5 preferences memo** | `request-preferences-memo.ts`、`user-preferences-file.ts` | 单次请求内 `user-preferences.json` 只读一次盘 |
@@ -51,7 +51,7 @@
 | H4 | **`syncChunkIndexIfDrifted` 扫全目录** | ~~每次读 turn 前全目录扫~~ | — | ✅ P1：热路径移除 sync；`CHUNK_INDEX_SYNC_TTL_MS` 节流；repair API `force` |
 | H5 | **预算裁切重算** | ~~每删一条全量 assemble+tiktoken~~ | — | ✅ P2：`estimateTrimTokenDelta` + 周期性校准 |
 | H6 | **Embedding 串行** | ~~逐条 createEmbedding~~ | — | ✅ P2：`embedTextsInBatches`（批量 API + 并发批 + 回退） |
-| H7 | **curated-memory 资料库 N+1** | ~~每 task 单条 create~~ | sidecar patch 仍逐条 | ✅ P2：宿主 `entries/batch` + 插件 `flushPendingLorebookCreates` 本轮新建合并落盘 |
+| H7 | **plot-summary 资料库 N+1** | ~~每 task 单条 create~~ | sidecar patch 仍逐条 | ✅ P2：宿主 `entries/batch` + 插件 `flushPendingLorebookCreates` 本轮新建合并落盘 |
 
 ### 3.2 中优先级
 
@@ -241,7 +241,7 @@ enumerateAllChunkChains(conversationId):
 | **P1-c** | `syncChunkIndexIfDrifted` 节流 / 跳过全扫 | 无 | H4 |
 | **P2-a** | Embedding 批量/并发 reindex | 无 | H6 |
 | **P2-b** | 预算裁切增量 token | 无 | H5 |
-| **P2-c** | Lorebook 按 id 加载 + curated-memory 批量写 | 无 | H7、M1 |
+| **P2-c** | Lorebook 按 id 加载 + plot-summary 批量写 | 无 | H7、M1 |
 | **P3** | 分支 chunk 链 + `enumerateAllChunkChains` + activeBranch 过滤 | — | ✅ §5 memory 闭环（UI/写入仍待 `DOC/08` §1.2） |
 
 ### 6.1 迁移与运维
@@ -295,6 +295,6 @@ enumerateAllChunkChains(conversationId):
 | 2026-06 | P0 代码落地：`chunk-path`、`memory-store` 单表、`memory-hits`、`memory-pipeline`；`chunk-path.test.ts` |
 | 2026-06 | P1：`readTurnsTail`、`loadTurnsForMemoryPipeline`、prepare 区间读、sync TTL、plan 按链计数 |
 | 2026-06 | P2：`embedding-batch`、`embedTextsInBatches`、budget trim 增量、`readLorebooksByIds`、`entries/batch` |
-| 2026-06 | P2 收尾：`curated-memory` `flushPendingLorebookCreates`；`isEmbeddingBatchOk` 类型收窄 |
+| 2026-06 | P2 收尾：`plot-summary` `flushPendingLorebookCreates`；`isEmbeddingBatchOk` 类型收窄 |
 | 2026-06 | P3：`enumerateAllChunkChains`、`activeBranchPath` 召回过滤、分支 reindex、`deleteTurnMemoryByBranchSubtree` |
 | 2026-06 | M4/M5：整包 PUT 上限与限流、preferences 请求 memo、legacy `mem_*` warn |

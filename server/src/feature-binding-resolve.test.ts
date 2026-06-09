@@ -62,16 +62,16 @@ describe('feature-binding-resolve', () => {
   })
 
   it('does not resolve plugin from activePresetId', () => {
-    const hit = resolvePluginFeatureBindingMeta(mockSettings(), 'curated-memory')
+    const hit = resolvePluginFeatureBindingMeta(mockSettings(), 'plot-summary')
     assert.equal(hit, null)
   })
 
   it('conversation plugin binding wins', () => {
     const hit = resolvePluginFeatureBindingMeta(
       mockSettings(),
-      'curated-memory',
+      'plot-summary',
       {
-        plugins: { 'curated-memory': { apiConfigId: 'global-id' } },
+        plugins: { 'plot-summary': { apiConfigId: 'global-id' } },
       },
     )
     assert.equal(hit?.apiConfigId, 'global-id')
@@ -81,7 +81,7 @@ describe('feature-binding-resolve', () => {
   it('falls back to plugin settings apiConfigId', () => {
     const hit = resolvePluginFeatureBindingMeta(
       mockSettings(),
-      'curated-memory',
+      'plot-summary',
       undefined,
       'legacy-id',
     )

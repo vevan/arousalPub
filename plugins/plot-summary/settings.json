@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "apiConfigId": "",
-  "memorybookDefaultEnabled": false,
+  "autoSummarizeDefaultEnabled": false,
   "triggerEveryNTurns": 15,
   "bufferTurns": 5,
   "previousSummariesLimit": 8,

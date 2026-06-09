@@ -31,7 +31,7 @@ const props = defineProps<{
   modelValue: Record<string, unknown>
   /** 会话 schema：展示 inheritFromGlobalKey 对应的全局值 */
   globalSettings?: Record<string, unknown>
-  /** 某字段下方的补充说明行（如 curated-memory 自动摘要进度） */
+  /** 某字段下方的补充说明行（如 plot-summary 自动摘要进度） */
   fieldCompanionLines?: (fieldKey: string) => string[] | undefined
 }>()
 
@@ -546,9 +546,11 @@ function confirmRemoveObjectListItem() {
           />
           <v-btn
             v-if="field.defaultKey"
-            variant="text"
+            variant="tonal"
+            color="primary"
             size="small"
-            class="mt-1"
+            prepend-icon="mdi-backup-restore"
+            class="mt-1 text-none"
             @click="restoreDefaultPrompt(field, (v) => setField(field.key, v))"
           >
             {{ restoreDefaultLabel() }}
@@ -680,9 +682,11 @@ function confirmRemoveObjectListItem() {
                   />
                   <v-btn
                     v-if="sub.defaultKey"
-                    variant="text"
+                    variant="tonal"
+                    color="primary"
                     size="small"
-                    class="mt-1"
+                    prepend-icon="mdi-backup-restore"
+                    class="mt-1 text-none"
                     @click="
                       restoreDefaultPrompt(sub, (v) =>
                         updateObjectListItem(field, index, sub.key, v),
@@ -727,8 +731,10 @@ function confirmRemoveObjectListItem() {
           </v-expansion-panels>
           <v-btn
             variant="tonal"
+            color="primary"
             size="small"
             prepend-icon="mdi-plus"
+            class="text-none"
             @click="addObjectListItem(field)"
           >
             {{ addObjectListLabel() }}
@@ -836,7 +842,9 @@ function confirmRemoveObjectListItem() {
         <v-card-actions>
           <v-spacer />
           <v-btn
-            variant="text"
+            variant="tonal"
+            size="small"
+            class="text-none"
             @click="cancelRemoveObjectListItem"
           >
             {{ t('settings.plugins.removeItemCancel') }}

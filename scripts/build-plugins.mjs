@@ -1,5 +1,5 @@
 /**
- * 构建 plugins/{id}/ 下所有带 build.mjs 的插件包（当前仅 curated-memory）。
+ * 构建 plugins/{id}/ 下所有带 build.mjs 的插件包（当前含 plot-summary）。
  */
 import { existsSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'

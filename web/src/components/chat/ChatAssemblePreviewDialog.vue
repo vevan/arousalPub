@@ -6,9 +6,17 @@ const props = defineProps<{
   session: ReturnType<typeof useChatSession>
 }>()
 
-const { assemblePreviewOpen, assemblePreviewLoading, assemblePreviewError, assemblePreviewJson, assemblePreviewMeta, assemblePreviewCopied } = toRefs(props.session)
+const {
+  assemblePreviewOpen,
+  assemblePreviewLoading,
+  assemblePreviewError,
+  assemblePreviewJson,
+  assemblePreviewMeta,
+  assemblePreviewCopied,
+  assemblePreviewRawCopied,
+} = toRefs(props.session)
 
-const { copyAssemblePreviewJson } = props.session
+const { copyAssemblePreviewJson, copyAssemblePreviewRaw } = props.session
 
 const hasBudgetDrops = computed(() => {
   const m = assemblePreviewMeta.value
@@ -107,15 +115,32 @@ const hasBudgetDrops = computed(() => {
       </v-card-text>
       <v-card-actions class="preview-card__foot">
         <v-spacer />
-        <button
-          v-if="assemblePreviewJson && !assemblePreviewError"
-          type="button"
-          class="editor-card__btn"
-          :class="{ 'is-flash': assemblePreviewCopied }"
-          @click="copyAssemblePreviewJson"
-        >
-          {{ assemblePreviewCopied ? $t('prompts.previewCopied') : $t('prompts.previewCopy') }}
-        </button>
+        <template v-if="assemblePreviewJson && !assemblePreviewError">
+          <button
+            type="button"
+            class="editor-card__btn"
+            :class="{ 'is-flash': assemblePreviewCopied }"
+            @click="copyAssemblePreviewJson"
+          >
+            {{
+              assemblePreviewCopied
+                ? $t('prompts.previewCopied')
+                : $t('prompts.previewCopy')
+            }}
+          </button>
+          <button
+            type="button"
+            class="editor-card__btn"
+            :class="{ 'is-flash': assemblePreviewRawCopied }"
+            @click="copyAssemblePreviewRaw"
+          >
+            {{
+              assemblePreviewRawCopied
+                ? $t('prompts.previewCopied')
+                : $t('prompts.previewCopyRaw')
+            }}
+          </button>
+        </template>
         <v-btn
           variant="text"
           @click="assemblePreviewOpen = false"

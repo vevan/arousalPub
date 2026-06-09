@@ -1,5 +1,6 @@
 import type { AssembleMessagesResult } from '@/types/chat-turn'
 import { translateApiError } from '@/utils/api-error-message'
+import { formatChatMessagesForDisplay } from '@/utils/format-prompt-json-display'
 import { computed, ref, type Ref } from 'vue'
 import type { ComposerTranslation } from 'vue-i18n'
 
@@ -14,6 +15,7 @@ export function useAssemblePreview(opts: {
   const assemblePreviewLoading = ref(false)
   const assemblePreviewError = ref('')
   const assemblePreviewJson = ref('')
+  const assemblePreviewRawJson = ref('')
   const assemblePreviewMeta = ref({
     messages: 0,
     estimatedTokens: 0,
@@ -23,6 +25,7 @@ export function useAssemblePreview(opts: {
     memoryTurnIds: [] as string[],
   })
   const assemblePreviewCopied = ref(false)
+  const assemblePreviewRawCopied = ref(false)
 
   const canPreviewAssemble = computed(
     () =>
@@ -34,6 +37,9 @@ export function useAssemblePreview(opts: {
     assemblePreviewLoading.value = true
     assemblePreviewError.value = ''
     assemblePreviewJson.value = ''
+    assemblePreviewRawJson.value = ''
+    assemblePreviewCopied.value = false
+    assemblePreviewRawCopied.value = false
     assemblePreviewMeta.value = {
       messages: 0,
       estimatedTokens: 0,
@@ -92,7 +98,8 @@ export function useAssemblePreview(opts: {
           ? data.memoryTurnIds.filter((x): x is string => typeof x === 'string')
           : [],
       }
-      assemblePreviewJson.value = JSON.stringify(messages, null, 2)
+      assemblePreviewRawJson.value = JSON.stringify(messages, null, 2)
+      assemblePreviewJson.value = formatChatMessagesForDisplay(messages)
     } catch {
       assemblePreviewError.value = opts.t('chat.previewAssembleLoadFailed')
     } finally {
@@ -105,17 +112,34 @@ export function useAssemblePreview(opts: {
     await fetchAssemblePreview()
   }
 
-  async function copyAssemblePreviewJson() {
-    if (!assemblePreviewJson.value) return
+  async function copyAssemblePreviewText(
+    text: string,
+    flag: { value: boolean },
+  ): Promise<void> {
+    if (!text) return
     try {
-      await navigator.clipboard.writeText(assemblePreviewJson.value)
-      assemblePreviewCopied.value = true
+      await navigator.clipboard.writeText(text)
+      flag.value = true
       setTimeout(() => {
-        assemblePreviewCopied.value = false
+        flag.value = false
       }, 1200)
     } catch {
       /* ignore */
     }
+  }
+
+  async function copyAssemblePreviewJson() {
+    await copyAssemblePreviewText(
+      assemblePreviewJson.value,
+      assemblePreviewCopied,
+    )
+  }
+
+  async function copyAssemblePreviewRaw() {
+    await copyAssemblePreviewText(
+      assemblePreviewRawJson.value,
+      assemblePreviewRawCopied,
+    )
   }
 
   return {
@@ -125,8 +149,10 @@ export function useAssemblePreview(opts: {
     assemblePreviewJson,
     assemblePreviewMeta,
     assemblePreviewCopied,
+    assemblePreviewRawCopied,
     canPreviewAssemble,
     openAssemblePreview,
     copyAssemblePreviewJson,
+    copyAssemblePreviewRaw,
   }
 }

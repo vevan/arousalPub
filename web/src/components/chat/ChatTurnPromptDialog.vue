@@ -6,7 +6,17 @@ const props = defineProps<{
   session: ReturnType<typeof useChatSession>
 }>()
 
-const { turnPromptDialogOpen, turnPromptLoading, turnPromptError, turnPromptDisplay, turnPromptIsEmpty } = toRefs(props.session)
+const {
+  turnPromptDialogOpen,
+  turnPromptLoading,
+  turnPromptError,
+  turnPromptDisplay,
+  turnPromptIsEmpty,
+  turnPromptCopied,
+  turnPromptRawCopied,
+} = toRefs(props.session)
+
+const { copyTurnPromptDisplay, copyTurnPromptRaw } = props.session
 </script>
 
 <template>
@@ -51,6 +61,30 @@ const { turnPromptDialogOpen, turnPromptLoading, turnPromptError, turnPromptDisp
       <v-divider />
       <v-card-actions class="pa-3">
         <v-spacer />
+        <template v-if="turnPromptDisplay && !turnPromptLoading && !turnPromptError">
+          <v-btn
+            variant="text"
+            :class="{ 'text-primary': turnPromptCopied }"
+            @click="copyTurnPromptDisplay"
+          >
+            {{
+              turnPromptCopied
+                ? $t('chat.turnPromptCopied')
+                : $t('chat.turnPromptCopy')
+            }}
+          </v-btn>
+          <v-btn
+            variant="text"
+            :class="{ 'text-primary': turnPromptRawCopied }"
+            @click="copyTurnPromptRaw"
+          >
+            {{
+              turnPromptRawCopied
+                ? $t('chat.turnPromptCopied')
+                : $t('chat.turnPromptCopyRaw')
+            }}
+          </v-btn>
+        </template>
         <v-btn
           variant="text"
           @click="turnPromptDialogOpen = false"

@@ -7,7 +7,6 @@ import {
   appendConversationTurn,
   buildReceiveRuntime,
   collectChunkEntityIds,
-  getPromptDebugMaxStored,
   readConversationIndex,
   readTailChunk,
   saveFirstTurn,
@@ -16,6 +15,12 @@ import {
 } from './chat-storage.js'
 import type { ResolvedFeatureAudit } from './feature-binding-resolve.js'
 import type { TurnPluginEntry } from './plugin-types.js'
+import type {
+  AssemblyAudit,
+  CallAuditEntry,
+  ChatAuditSnapshotInput,
+} from './chat-audit-types.js'
+import { isAuditDebugWriteEnabled } from './chat-audit-file.js'
 
 export interface ChatPersistResult {
   ok: boolean
@@ -25,12 +30,50 @@ export interface ChatPersistResult {
   isFirstTurn?: boolean
 }
 
-function debugPromptFromIndex(
+/** 出站 token：上游 usage.prompt_tokens，缺省用组装估算 */
+function resolveAuditPromptTokens(params: {
+  promptTokens?: number
+  estimatedTokens?: number
+  assemblyAudit?: AssemblyAudit
+}): number | undefined {
+  if (
+    typeof params.promptTokens === 'number' &&
+    Number.isFinite(params.promptTokens) &&
+    params.promptTokens > 0
+  ) {
+    return Math.round(params.promptTokens)
+  }
+  if (
+    typeof params.estimatedTokens === 'number' &&
+    Number.isFinite(params.estimatedTokens) &&
+    params.estimatedTokens > 0
+  ) {
+    return Math.round(params.estimatedTokens)
+  }
+  const asm = params.assemblyAudit?.estimatedTokens
+  if (typeof asm === 'number' && Number.isFinite(asm) && asm > 0) {
+    return Math.round(asm)
+  }
+  return undefined
+}
+
+function auditSnapshotFromPersist(
   idx: Awaited<ReturnType<typeof readConversationIndex>>,
   messages: ChatMessage[],
-): ChatMessage[] | undefined {
-  if (getPromptDebugMaxStored(idx) < 1) return undefined
-  return messages
+  assemblyAudit?: AssemblyAudit,
+  assemblyEmbeddingCalls?: CallAuditEntry[],
+  chatCall?: CallAuditEntry,
+): ChatAuditSnapshotInput | undefined {
+  if (!isAuditDebugWriteEnabled(idx)) return undefined
+  const calls: CallAuditEntry[] = [
+    ...(assemblyEmbeddingCalls ?? []),
+    ...(chatCall ? [chatCall] : []),
+  ]
+  return {
+    messages,
+    ...(assemblyAudit ? { assembly: assemblyAudit } : {}),
+    ...(calls.length > 0 ? { calls } : {}),
+  }
 }
 
 function receiveRuntime(
@@ -71,7 +114,7 @@ function resolveCompletionTokens(
 
 /**
  * 上游成功且 assistant 有正文后：首条 / 追加轮 / 再生追加 receive；
- * 快照在落盘成功后写入（由 saveFirstTurn / append / update 内部处理）。
+ * 审计快照在落盘成功后写入（由 saveFirstTurn / append / update 内部处理）。
  */
 export async function persistTurnAfterModelReply(params: {
   conversationId: string
@@ -82,8 +125,11 @@ export async function persistTurnAfterModelReply(params: {
   durationMs?: number
   estimatedTokens?: number
   completionTokens?: number
+  promptTokens?: number
   resolvedFeature?: ResolvedFeatureAudit
   assembledMessages: ChatMessage[]
+  assemblyAudit?: AssemblyAudit
+  assemblyEmbeddingCalls?: CallAuditEntry[]
   /** 再生：向该轮追加 receive，不新开 turn */
   regenerateTurnOrdinal?: number | null
   turnPluginEntries?: TurnPluginEntry[]
@@ -103,21 +149,57 @@ export async function persistTurnAfterModelReply(params: {
     return { ok: false, error: ApiErrorCodes.conversation_not_found }
   }
 
-  const debugPrompt = debugPromptFromIndex(idx, params.assembledMessages)
+  const model =
+    typeof params.model === 'string' && params.model.trim()
+      ? params.model.trim()
+      : undefined
+
   const reasoning =
     typeof params.assistantReasoning === 'string' &&
     params.assistantReasoning.trim()
       ? params.assistantReasoning.trim()
-      : undefined
-  const model =
-    typeof params.model === 'string' && params.model.trim()
-      ? params.model.trim()
       : undefined
   const completionTokens = resolveCompletionTokens(
     params.completionTokens,
     assistantContent,
     reasoning,
     model,
+  )
+
+  const promptTokensForAudit = resolveAuditPromptTokens(params)
+  const chatUsage =
+    promptTokensForAudit !== undefined || completionTokens !== undefined
+      ? {
+          ...(promptTokensForAudit !== undefined
+            ? { promptTokens: promptTokensForAudit }
+            : {}),
+          ...(completionTokens !== undefined
+            ? { completionTokens }
+            : {}),
+        }
+      : undefined
+
+  const chatCall: CallAuditEntry | undefined =
+    model || params.durationMs || params.resolvedFeature || chatUsage
+      ? {
+          kind: 'chat',
+          ...(params.resolvedFeature?.apiConfigId
+            ? { apiConfigId: params.resolvedFeature.apiConfigId }
+            : {}),
+          ...(model ? { model } : {}),
+          ...(typeof params.durationMs === 'number' && params.durationMs > 0
+            ? { latencyMs: Math.round(params.durationMs) }
+            : {}),
+          ...(chatUsage ? { usage: chatUsage } : {}),
+        }
+      : undefined
+
+  const auditSnapshot = auditSnapshotFromPersist(
+    idx,
+    params.assembledMessages,
+    params.assemblyAudit,
+    params.assemblyEmbeddingCalls,
+    chatCall,
   )
   const runtime = receiveRuntime(
     model,
@@ -173,7 +255,7 @@ export async function persistTurnAfterModelReply(params: {
         userText,
         receives,
         activeReceiveIndex,
-        debugPrompt,
+        auditSnapshot,
         params.turnPluginEntries,
       )
       if (!ok) {
@@ -202,7 +284,7 @@ export async function persistTurnAfterModelReply(params: {
         estimatedTokens: params.estimatedTokens,
         completionTokens,
         resolvedFeature: params.resolvedFeature,
-        debugPrompt,
+        auditSnapshot,
         turnPluginEntries: params.turnPluginEntries,
       })
       if (!saved) {
@@ -233,7 +315,7 @@ export async function persistTurnAfterModelReply(params: {
       userText,
       receives,
       activeReceiveIndex: 0,
-      debugPrompt,
+      auditSnapshot,
       turnPluginEntries: params.turnPluginEntries,
     })
     if (!ok) {
@@ -260,7 +342,7 @@ export async function persistTurnAfterModelReply(params: {
       estimatedTokens: params.estimatedTokens,
       completionTokens,
       resolvedFeature: params.resolvedFeature,
-      debugPrompt,
+      auditSnapshot,
       turnPluginEntries: params.turnPluginEntries,
     })
     if (!saved) {
@@ -291,7 +373,7 @@ export async function persistTurnAfterModelReply(params: {
     userText,
     receives,
     activeReceiveIndex: 0,
-    debugPrompt,
+    auditSnapshot,
     turnPluginEntries: params.turnPluginEntries,
   })
   if (!ok) {

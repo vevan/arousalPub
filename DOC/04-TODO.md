@@ -14,7 +14,7 @@
 | API Key 隔离（不出浏览器） | ✅ | 定案与落地见 `DOC/13` |
 | API Key 磁盘加密 | ✅ | AES-256-GCM 落盘 + 运维台 DEK 轮换（`DOC/16`、`DOC/17`） |
 | 前端对话 UI | ✅ | `HomeChat` 已拆子组件 + `useChatSession`（见 §前端工程） |
-| **仍待 P0** | ⏳ | 全量调用日志（部分已有 turn runtime） |
+| **仍待 P0** | ⏳ | 原生正则替换、会话 debug 审计（`DOC/24`） |
 
 ## P0（当前优先）
 
@@ -58,7 +58,30 @@
 - [ ] **ST 宏扩展（备忘，未排期）**：可行性分级见 `DOC/14-st-macros-porting.md`
 - [x] **对话 memory 向量召回**（§14）：Lance `memory/conversations/{id}` + `createEmbedding` + `searchTurnMemoryVectors`（`memory-pipeline.ts` / `memory-store.ts`）
 - [x] **资料库向量检索**（§13，可选）：`vectorEnabled` + 条目 `triggerMode=vector` → `lorebook-vector-store` / `lorebook-resolve` TopK；保存后 `scheduleLorebookVectorReindex`
-- [ ] RAG/模型调用日志（耗时、token、**命中明细**）— **部分**：turn `receive.runtime`（model/durationMs/tokens）；`assemble-messages` 返回 dropped 计数与 `memoryTurnIds`；**未达**需求 §4 全量审计
+- [x] **会话 debug 审计**（`DOC/24` §3）— **P0 已验收**：`chat-audit.json`、`assembly`、`chat`+`embedding` `calls[]`、服务端自写 `messages`、审计 UI 三 Tab；**未排期**：`plugin.complete` / `plugins[]`（见 `DOC/24` §3.6）
+
+### 正则替换（原生 · P0 · **`DOC/24`** §2）
+
+> **废止**：`regex-transform` 插件与 `host.capabilities` regex 试点（`DOC/09` §8.7、`DOC/10` 原 §6.3）。
+
+- [ ] **规则存储**：`data/{userId}/regex-rules.json`；`order` / `phases` / `fields` / `skipLastNTurns`；`GET/PUT /api/regex-rules`
+- [ ] **三阶段**：`display` / `outgoing`（含 **system**）/ `persist`；outgoing 在 budget trim 之后、`afterAssemblePrompts` 之前
+- [ ] **近轮保留**：`skipLastNTurns` 为**规则级**选项，与 outgoing/persist/display 配合（tracker 等）
+- [ ] **写盘合并**：多规则内存串联后一次提交；历史批量 `batchUpdateConversationTurns`（**禁止**一条规则写一次盘）
+- [ ] **流式落盘**：persist 完成后 SSE/UI **立刻**展示最终正文（display 或 persist 规则均适用）
+- [ ] **拖曳优先级**：设置页拖曳调整 `order`；debounce **1 次**写规则文件
+- [ ] **`host.regex` / server `api.regex`**：供 `conversation-export`、插件只读/改文
+- [ ] **历史批量**：`POST .../regex/apply`（dry-run、区间、写锁）；导出可选规则
+
+### 会话 debug 审计（P0 · **`DOC/24`** §3）
+
+- [x] **`chat-audit.json`**：合并原 `chat-prompt.json`（`messages`）+ `assembly` + `calls`；废止 `chat-prompt` 新写入；读盘兼容旧文件
+- [x] **双开关**：`auditDebug.enabled` + `auditDebug.maxStored`（设置页 + 进入会话时 PATCH 同步）
+- [x] **仅 debug 写入**：关闭时不写；开启时 `/api/chat` 落盘成功后服务端自写（不依赖 `debugPrompt`）
+- [x] **`GET .../chat-audit`** + 轮次审计 UI（Tab：提示词 / 组装命中 / 出站调用）
+- [x] **组装审计**：`buildAssemblyAudit`；memory/lore/history 命中 + `included` + dropped；embedding 进 `calls[]`
+- [x] **出站 token 展示**：`calls[].usage` 出站 tokens（上游或组装估算）+ 接收 tokens（上游或 tiktoken）
+- [ ] **`plugin.complete` / `plugins[]`**（**未排期 · 非 P0**）：`calls` / `plugins` 字段已预留；当前无插件在 `/api/chat` 落盘同步链路内出站 LLM，见 `DOC/24` §3.6
 
 ### Historian（剧情纪要）插件（`plot-summary` · 2026-06-03）
 
@@ -223,3 +246,4 @@
 - [x] **插件 slot `class` / `registerStyles` + `turn-block-head`** — `DOC/12` §7.2、`DOC/18` §3.1（2026-06-08）
 - [x] **plot-summary v1.6 更名/UI 收尾** — `autoSummarize*` 字段、本对话设置顶栏、插件 `v-icon-btn`；`DOC/12` §9、`DOC/21` §3（2026-06-08）
 - [x] **plot-summary 端到端验收** — `DOC/04` Historian 段、`DOC/12` §9（2026-06-08）
+- [x] **正则原生 + 会话审计定案** — `DOC/24-regex-and-session-audit.md`（2026-06-08）

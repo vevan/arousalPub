@@ -24,6 +24,8 @@ export interface PluginSlotButtonDef {
   id: string
   /** 宿主注入：注册该按钮的插件 id，用于按 registry order 排序 */
   pluginId?: string
+  /** 同 slot、同插件内顺序；未设时按 `registerSlotButton` 注册先后 */
+  order?: number
   icon: string | ((ctx: PluginSlotContext) => string)
   tooltipKey: string | ((ctx: PluginSlotContext) => string)
   filled?: boolean | ((ctx: PluginSlotContext) => boolean)

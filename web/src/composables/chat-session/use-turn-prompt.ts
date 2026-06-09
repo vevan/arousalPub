@@ -1,5 +1,5 @@
-import type { ChatPromptSnapshotEntry, ChatTurnItem } from '@/types/chat-turn'
-import { formatPromptSnapshotForDisplay } from '@/utils/format-prompt-json-display'
+import type { ChatAuditSnapshotEntry, ChatTurnItem } from '@/types/chat-turn'
+import { formatChatMessagesForDisplay } from '@/utils/format-prompt-json-display'
 import { ref } from 'vue'
 import type { ComposerTranslation } from 'vue-i18n'
 
@@ -10,7 +10,7 @@ export function useTurnPrompt(opts: {
   const turnPromptDialogOpen = ref(false)
   const turnPromptLoading = ref(false)
   const turnPromptError = ref('')
-  const turnPromptDisplay = ref('')
+  const turnAuditEntry = ref<ChatAuditSnapshotEntry | null>(null)
   const turnPromptRawJson = ref('')
   const turnPromptIsEmpty = ref(false)
   const turnPromptCopied = ref(false)
@@ -33,7 +33,12 @@ export function useTurnPrompt(opts: {
   }
 
   async function copyTurnPromptDisplay() {
-    await copyTurnPromptText(turnPromptDisplay.value, turnPromptCopied)
+    const entry = turnAuditEntry.value
+    if (!entry?.messages?.length) return
+    await copyTurnPromptText(
+      formatChatMessagesForDisplay(entry.messages),
+      turnPromptCopied,
+    )
   }
 
   async function copyTurnPromptRaw() {
@@ -44,19 +49,19 @@ export function useTurnPrompt(opts: {
     turnPromptDialogOpen.value = true
     turnPromptLoading.value = true
     turnPromptError.value = ''
-    turnPromptDisplay.value = ''
+    turnAuditEntry.value = null
     turnPromptRawJson.value = ''
     turnPromptIsEmpty.value = false
     turnPromptCopied.value = false
     turnPromptRawCopied.value = false
     const id = opts.getConversationId()
     try {
-      const res = await fetch(`/api/chat/conversations/${id}/chat-prompt`)
+      const res = await fetch(`/api/chat/conversations/${id}/chat-audit`)
       if (!res.ok) {
         turnPromptError.value = opts.t('chat.turnPromptLoadFailed')
         return
       }
-      const data = (await res.json()) as { entries?: ChatPromptSnapshotEntry[] }
+      const data = (await res.json()) as { entries?: ChatAuditSnapshotEntry[] }
       const entries = Array.isArray(data.entries) ? data.entries : []
       const match = entries.filter((e) => e.turnOrdinal === turn.turnOrdinal)
       const entry = match.length ? match[match.length - 1] : null
@@ -64,8 +69,8 @@ export function useTurnPrompt(opts: {
         turnPromptIsEmpty.value = true
         return
       }
+      turnAuditEntry.value = entry
       turnPromptRawJson.value = JSON.stringify(entry, null, 2)
-      turnPromptDisplay.value = formatPromptSnapshotForDisplay(entry)
     } catch {
       turnPromptError.value = opts.t('chat.turnPromptLoadFailed')
     } finally {
@@ -77,7 +82,7 @@ export function useTurnPrompt(opts: {
     turnPromptDialogOpen,
     turnPromptLoading,
     turnPromptError,
-    turnPromptDisplay,
+    turnAuditEntry,
     turnPromptRawJson,
     turnPromptIsEmpty,
     turnPromptCopied,

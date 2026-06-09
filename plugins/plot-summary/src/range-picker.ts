@@ -11,12 +11,10 @@ import type { PluginHost } from './types.js'
 const RANGE_STYLES = `
 .plugin-slot.cm-range-start--active {
   color: rgb(var(--v-theme-primary));
-  border-color: rgba(var(--v-theme-primary), 0.45);
   background: rgba(var(--v-theme-primary), 0.08);
 }
 .plugin-slot.cm-range-end--ready:not(:disabled) {
   color: rgb(var(--v-theme-primary));
-  border-color: rgba(var(--v-theme-primary), 0.35);
 }
 `
 

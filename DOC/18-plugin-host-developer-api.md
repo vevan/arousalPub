@@ -92,6 +92,8 @@ export function register(host) {
 
 **Slot 按钮 `def.class`**：可选 `string | (ctx) => string`，追加到宿主 `.plugin-slot`（与 `is-filled` 并存）。插件应用 **带插件前缀** 的 class 名，配合 `registerStyles` 定义颜色/布局，避免改宿主全局 CSS。
 
+**Slot 按钮 `def.order`**（可选）：同 slot、同插件内排序；未设时按 **`registerSlotButton` 注册先后**（0、1、…）。**不要**依赖 `id` 字母序（例如 `range-end` 会排在 `range-start` 前）。
+
 **`registerStyles` 示例**：
 
 ```ts
@@ -330,6 +332,18 @@ interface ConversationBatchContext {
 | `openFormDialog(...)` | 同顶层 `openFormDialog` |
 | `progress(opts)` | 进度条；`indeterminate`、`abortable` + `abortLabel` |
 | `clearProgress()` | 清除进度（预览弹框前应调用，避免遮罩挡住对话框） |
+
+### 3.14 `host.regex`（规划 · **`DOC/24`** §2）
+
+> **未实现**。宿主原生正则引擎；**非**插件、**非** `host.capabilities`。
+
+| 方法 | 说明 |
+|------|------|
+| `listRules(opts?)` | 读 `regex-rules.json`；可按 `phases` 过滤 |
+| `applyText(text, ruleIds, ctx)` | 内存替换；`ctx` 含 `phase`、`field`、`tailOrdinal`、`turnOrdinal?` |
+| `applyMessages(messages, ruleIds, ctx)` | 对 `messages[]` 按 `role` 映射 `field` 后 `applyText` |
+
+服务端 hook 内对称 API：`api.regex.applyText` / `applyMessages`（`PluginServerHostApi` 扩展）。
 
 ---
 

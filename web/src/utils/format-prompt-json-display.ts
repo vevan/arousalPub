@@ -32,6 +32,34 @@ export function formatChatMessagesForDisplay(
   return `[\n${items.join(',\n')}\n]`
 }
 
+export function formatAuditEntryForDisplay(entry: {
+  savedAt: string
+  chunkName: string
+  turnId: string
+  turnOrdinal: number
+  messages: { role: string; content: string }[]
+  assembly?: Record<string, unknown>
+  calls?: unknown[]
+  plugins?: unknown[]
+}): string {
+  const parts: string[] = [
+    formatPromptSnapshotForDisplay(entry),
+  ]
+  if (entry.assembly) {
+    parts.push(
+      '\n--- assembly ---\n' + JSON.stringify(entry.assembly, null, 2),
+    )
+  }
+  if (entry.calls?.length) {
+    parts.push('\n--- calls ---\n' + JSON.stringify(entry.calls, null, 2))
+  }
+  if (entry.plugins?.length) {
+    parts.push('\n--- plugins ---\n' + JSON.stringify(entry.plugins, null, 2))
+  }
+  return parts.join('')
+}
+
+/** @deprecated 使用 formatAuditEntryForDisplay */
 export function formatPromptSnapshotForDisplay(entry: {
   savedAt: string
   chunkName: string

@@ -1,5 +1,22 @@
 /** OpenAI 兼容 chat/completions 的 usage 字段解析 */
 
+export function extractPromptTokens(payload: unknown): number | undefined {
+  if (!payload || typeof payload !== 'object') return undefined
+  const usage = (payload as { usage?: unknown }).usage
+  if (!usage || typeof usage !== 'object') return undefined
+  const u = usage as Record<string, unknown>
+  const raw =
+    typeof u.prompt_tokens === 'number'
+      ? u.prompt_tokens
+      : typeof u.promptTokens === 'number'
+        ? u.promptTokens
+        : undefined
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) {
+    return undefined
+  }
+  return Math.round(raw)
+}
+
 export function extractCompletionTokens(payload: unknown): number | undefined {
   if (!payload || typeof payload !== 'object') return undefined
   const usage = (payload as { usage?: unknown }).usage

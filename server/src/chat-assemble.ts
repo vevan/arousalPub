@@ -22,6 +22,10 @@ import { readCharacterDocument } from './character-storage.js'
 import type { PromptsDocument } from './prompts-file.js'
 import { resolveLorebookSettings } from './lorebook-settings.js'
 import { resolveLorebookInjectionParts } from './lorebook-resolve.js'
+import { readLorebooksByIds } from './lorebook-file.js'
+import { buildAssemblyAudit } from './build-assembly-audit.js'
+import type { AssemblyAudit } from './chat-audit-types.js'
+import type { CallAuditEntry } from './chat-audit-types.js'
 import { resolveHistorySettings } from './history-settings.js'
 import { resolveMemorySettings } from './memory-settings.js'
 import { buildScanText } from './lore-scan.js'
@@ -166,6 +170,10 @@ export interface BuildConversationMessagesResult {
   memoryText?: string
   /** 已配置 rag_generate 时返回；独立知识库 RAG 未接线前仅作占位审计 */
   resolvedRagGenerate?: ResolvedFeatureAudit
+  /** debug 审计：组装命中明细（由调用方决定是否落盘） */
+  assemblyAudit?: AssemblyAudit
+  /** debug 审计：本轮组装阶段的 embedding 调用 */
+  assemblyEmbeddingCalls?: CallAuditEntry[]
 }
 
 export async function buildConversationOutboundMessages(
@@ -265,6 +273,11 @@ export async function buildConversationOutboundMessages(
     memoryPipeline.memoryText,
     memoryPipeline.recentHistoryScanText,
   )
+  const lorebooks =
+    lorebookIds.length > 0 ? await readLorebooksByIds(lorebookIds) : []
+  const lorebookNameToId = new Map(
+    lorebooks.map((lb) => [lb.name.trim() || lb.id, lb.id]),
+  )
   const loreParts =
     lorebookIds.length > 0
       ? await resolveLorebookInjectionParts(lorebookIds, {
@@ -273,6 +286,8 @@ export async function buildConversationOutboundMessages(
           lorebookSettings: effectiveLore,
         })
       : { constantLoreGroups: [], matchedLore: [] }
+  const initialMatchedLore = loreParts.matchedLore.slice()
+  const initialMemoryItems = memoryPipeline.memoryItems.slice()
 
   const tokenModel =
     typeof params.tokenModel === 'string' && params.tokenModel.trim().length > 0
@@ -347,6 +362,33 @@ export async function buildConversationOutboundMessages(
 
   const finalMemoryText = memoryTextFromTrimState(trimState)
 
+  const assemblyAudit = buildAssemblyAudit({
+    estimatedTokens: finalEstimatedTokens,
+    tokenModel,
+    maxTokens,
+    lorebookIds,
+    lorebookNameToId,
+    memoryPipeline,
+    loreParts,
+    initialMatchedLore,
+    initialMemoryItems,
+    trimState,
+    droppedLoreCount,
+    droppedMemoryCount,
+    droppedHistoryCount,
+    memoryEnabled: effectiveMemory.memoryEnabled,
+  })
+
+  const assemblyEmbeddingCalls: CallAuditEntry[] = []
+  if (memoryPipeline.embeddingCall) {
+    assemblyEmbeddingCalls.push({
+      kind: 'embedding',
+      purpose: 'memory_recall',
+      model: memoryPipeline.embeddingCall.model,
+      latencyMs: memoryPipeline.embeddingCall.latencyMs,
+    })
+  }
+
   return {
     messages: messagesAfterPlugins,
     estimatedTokens: finalEstimatedTokens,
@@ -355,6 +397,8 @@ export async function buildConversationOutboundMessages(
     droppedMemoryCount,
     memoryTurnIds: trimState.memoryItems.map((x) => x.turn.turnId),
     memoryText: finalMemoryText || undefined,
+    assemblyAudit,
+    assemblyEmbeddingCalls,
     ...(resolvedRagGenerate ? { resolvedRagGenerate } : {}),
   }
 }

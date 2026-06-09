@@ -536,15 +536,14 @@ function onConvContextPatched(index: Record<string, unknown>) {
   maybePromptMemoryRebuild()
 }
 
-async function patchPromptDebugMaxToServer(id: string) {
+async function patchAuditDebugToServer(id: string) {
   await fetch(`/api/chat/conversations/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      promptDebug: {
-        maxStored: prefStore.writeChatPromptSnapshot
-          ? prefStore.promptDebugMaxStored
-          : 0,
+      auditDebug: {
+        enabled: prefStore.writeChatPromptSnapshot,
+        maxStored: prefStore.promptDebugMaxStored,
       },
     }),
   })
@@ -631,7 +630,7 @@ async function ensureConversation(id: string) {
       typeof idx.headChunkFile === 'string' && idx.headChunkFile.length > 0
     applyConversationMemoryIndexMeta(idx)
     convBindings.value = bindingsFromIndex(idx)
-    void patchPromptDebugMaxToServer(id)
+    void patchAuditDebugToServer(id)
     maybePromptMemoryRebuild()
   } catch {
     errorText.value = t('chatConversation.loadFailed')
@@ -683,7 +682,7 @@ watch(
     ] as const,
   ([id]) => {
     if (!id || loading.value) return
-    void patchPromptDebugMaxToServer(id)
+    void patchAuditDebugToServer(id)
   },
 )
 

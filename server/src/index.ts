@@ -30,6 +30,7 @@ import {
   removeTurnAtOrdinalInTailChunk,
   appendConversationTurn,
   readChatPromptFile,
+  updateConversationAuditDebug,
   saveOpeningTurn,
   saveFirstTurn,
   updateConversationTitle,
@@ -196,7 +197,8 @@ import {
   type PromptsAssemblePreviewBody,
 } from './prompts-assemble-preview.js'
 import { persistTurnAfterModelReply } from './chat-persist-after-chat.js'
-import { extractCompletionTokens } from './chat-usage.js'
+import { extractCompletionTokens, extractPromptTokens } from './chat-usage.js'
+import { readChatAuditFile } from './chat-audit-file.js'
 import {
   formatArousalPersistSseLine,
   parseSseDataLine,
@@ -441,7 +443,9 @@ app.post<{ Body: CreateConvBody }>(
 
 interface PatchConvBody {
   title?: string
-  /** 调试：chat-prompt.json 保留条数上限，0～200；0 表示不写入新快照 */
+  /** 调试：chat-audit.json；`enabled` + `maxStored`（1～200） */
+  auditDebug?: { enabled?: boolean; maxStored?: number }
+  /** @deprecated 使用 auditDebug */
   promptDebug?: { maxStored?: number }
   /** 会话绑定的多张角色卡 id，顺序即主槽、次槽…；传 [] 清空绑定 */
   characterIds?: string[]
@@ -506,6 +510,12 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
     }
     const b = request.body ?? {}
     const hasTitle = typeof b.title === 'string'
+    const ad = b.auditDebug
+    const hasAuditDebug =
+      ad &&
+      typeof ad === 'object' &&
+      (typeof (ad as { enabled?: unknown }).enabled === 'boolean' ||
+        typeof (ad as { maxStored?: unknown }).maxStored === 'number')
     const pd = b.promptDebug
     const hasPromptDebug =
       pd &&
@@ -541,6 +551,7 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
     const hasPluginSettings = Object.prototype.hasOwnProperty.call(b, 'pluginSettings')
     if (
       !hasTitle &&
+      !hasAuditDebug &&
       !hasPromptDebug &&
       !hasCharIds &&
       !hasPromptPreset &&
@@ -569,7 +580,21 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       idx = next
     }
-    if (hasPromptDebug) {
+    if (hasAuditDebug) {
+      const raw = ad as { enabled?: boolean; maxStored?: number }
+      const prev = idx.auditDebug
+      const enabled =
+        typeof raw.enabled === 'boolean'
+          ? raw.enabled
+          : (prev?.enabled ?? false)
+      const maxStored =
+        typeof raw.maxStored === 'number'
+          ? raw.maxStored
+          : (prev?.maxStored ?? 10)
+      const next = await updateConversationAuditDebug(id, { enabled, maxStored })
+      if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+      idx = next
+    } else if (hasPromptDebug) {
       const m = (pd as { maxStored: number }).maxStored
       const next = await updateConversationPromptDebugMax(id, m)
       if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
@@ -1024,8 +1049,6 @@ interface FirstTurnBody {
   durationMs?: number
   estimatedTokens?: number
   completionTokens?: number
-  /** 与本次请求 /api/chat 的 messages 一致，写入 chat-prompt.json */
-  debugPrompt?: unknown
 }
 
 app.post<{ Params: { id: string }; Body: FirstTurnBody }>(
@@ -1075,7 +1098,6 @@ app.post<{ Params: { id: string }; Body: FirstTurnBody }>(
         durationMs,
         estimatedTokens,
         completionTokens,
-        debugPrompt: b.debugPrompt,
       })
       if (!result) {
         const idx = await readConversationIndex(id)
@@ -1114,7 +1136,6 @@ app.patch<{
     userText?: unknown
     receives?: unknown
     activeReceiveIndex?: unknown
-    debugPrompt?: unknown
   }
 }>(
   '/api/chat/conversations/:id/turns/:turnOrdinal',
@@ -1144,7 +1165,6 @@ app.patch<{
         patch.userText,
         patch.receives,
         patch.activeReceiveIndex,
-        b.debugPrompt,
       )
       if (!ok) {
         return reply.status(404).send({ error: ApiErrorCodes.turn_chunk_not_found })
@@ -1371,7 +1391,6 @@ interface AppendTurnBody {
   receives: { id: string; content: string; reasoning?: string }[]
   activeReceiveIndex: number
   model?: string
-  debugPrompt?: unknown
 }
 
 app.post<{ Params: { id: string }; Body: AppendTurnBody }>(
@@ -1415,7 +1434,6 @@ app.post<{ Params: { id: string }; Body: AppendTurnBody }>(
         userText: b.userText.trim(),
         receives: mapped,
         activeReceiveIndex: b.activeReceiveIndex,
-        debugPrompt: b.debugPrompt,
       })
       if (!ok) {
         return reply.status(404).send({ error: ApiErrorCodes.conversation_no_tail_chunk })
@@ -1506,7 +1524,22 @@ app.post<{ Params: { id: string }; Querystring: { stream?: string } }>(
   },
 )
 
-/** 调试：读取会话目录下 chat-prompt.json（仅最近 N 条 prompt 快照） */
+/** 调试：读取会话目录下 chat-audit.json（含 messages + assembly + calls） */
+app.get<{ Params: { id: string } }>(
+  '/api/chat/conversations/:id/chat-audit',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!isValidConversationId(id)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    const idx = await readConversationIndex(id)
+    if (!idx) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+    const file = await readChatAuditFile(id)
+    return file
+  },
+)
+
+/** @deprecated 使用 chat-audit；仅返回 messages 条目以兼容旧客户端 */
 app.get<{ Params: { id: string } }>(
   '/api/chat/conversations/:id/chat-prompt',
   async (request, reply) => {
@@ -1516,8 +1549,17 @@ app.get<{ Params: { id: string } }>(
     }
     const idx = await readConversationIndex(id)
     if (!idx) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
-    const file = await readChatPromptFile(id)
-    return file
+    const audit = await readChatAuditFile(id)
+    return {
+      schemaVersion: 1 as const,
+      entries: audit.entries.map((e) => ({
+        savedAt: e.savedAt,
+        chunkName: e.chunkName,
+        turnId: e.turnId,
+        turnOrdinal: e.turnOrdinal,
+        messages: e.messages,
+      })),
+    }
   },
 )
 
@@ -3588,6 +3630,10 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   const userText = typeof body.userText === 'string' ? body.userText : ''
   let messages: ChatMessage[]
   let estimatedTokens: number | undefined
+  let assemblyAudit: import('./chat-audit-types.js').AssemblyAudit | undefined
+  let assemblyEmbeddingCalls:
+    | import('./chat-audit-types.js').CallAuditEntry[]
+    | undefined
   if (convId) {
     const promptsDoc = await readPromptsDocument()
     if (!promptsDoc) {
@@ -3608,6 +3654,8 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
     }
     messages = built.messages
     estimatedTokens = built.estimatedTokens
+    assemblyAudit = built.assemblyAudit
+    assemblyEmbeddingCalls = built.assemblyEmbeddingCalls
   } else {
     const v = validateChatMessages(body.messages)
     if (!v.ok) {
@@ -3636,6 +3684,8 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
           regenerateTurnOrdinal,
           estimatedTokens,
           resolvedFeature,
+          assemblyAudit,
+          assemblyEmbeddingCalls,
           turnPluginEntries:
             turnPluginEntries.length > 0 ? turnPluginEntries : undefined,
         }
@@ -3766,6 +3816,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   const content = typeof msg?.content === 'string' ? msg.content : ''
   const reasoning = extractReasoningFromMessage(msg)
   const completionTokens = extractCompletionTokens(data)
+  const promptTokens = extractPromptTokens(data)
 
   let persist: Awaited<ReturnType<typeof persistTurnAfterModelReply>> | undefined
   if (persistParams && content.trim()) {
@@ -3776,6 +3827,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
       durationMs: Math.round(performance.now() - upstreamStartedAt),
       estimatedTokens: persistParams.estimatedTokens,
       completionTokens,
+      promptTokens,
     })
     if (!persist.ok) {
       request.log.warn({ persist }, 'persist after chat failed')

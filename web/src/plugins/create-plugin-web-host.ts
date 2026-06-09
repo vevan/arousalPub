@@ -231,7 +231,14 @@ export function createPluginWebHost(session: ChatSession): {
   const host: PluginWebHost = {
     registerSlotButton(slot, def) {
       const list = slotButtons.get(slot) ?? []
-      list.push(def)
+      const pluginId = def.pluginId ?? ''
+      const pluginSlotIndex = list.filter(
+        (b) => (b.pluginId ?? '') === pluginId,
+      ).length
+      list.push({
+        ...def,
+        order: def.order ?? pluginSlotIndex,
+      })
       slotButtons.set(slot, list)
     },
     registerFormDialog(pluginId, def, dialogId) {
@@ -405,6 +412,9 @@ function compareSlotButtons(
   const oa = pluginOrder.get(a.pluginId ?? '') ?? 999_999
   const ob = pluginOrder.get(b.pluginId ?? '') ?? 999_999
   if (oa !== ob) return oa - ob
+  const sa = a.order ?? 0
+  const sb = b.order ?? 0
+  if (sa !== sb) return sa - sb
   return a.id.localeCompare(b.id)
 }
 

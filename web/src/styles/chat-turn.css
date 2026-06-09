@@ -39,6 +39,15 @@
   user-select  : none;
 }
 
+/* 章回分隔下方 · 每轮插件 slot（如 Historian 区间选择）；常驻占位避免懒加载后滚动回退 */
+.turn-block-head {
+  display        : flex;
+  justify-content: flex-start;
+  align-items    : center;
+  padding        : 0 2rem 0.25rem;
+  min-height     : 1.875rem;
+}
+
 .turn-divider__line {
   flex  : 1;
   height: 0.0625rem;
@@ -63,19 +72,6 @@
   color         : rgba(var(--v-theme-on-surface), 0.55);
   letter-spacing: 0.04em;
   white-space   : nowrap;
-}
-
-/* 章回分隔下方 · 每轮插件 slot（如 Historian 区间选择） */
-.turn-block-head {
-  display        : flex;
-  justify-content: flex-start;
-  align-items    : center;
-  padding        : 0 2rem 0.25rem;
-  min-height     : 0;
-}
-
-.turn-block-head:not(:has(.plugin-slot)) {
-  display: none;
 }
 
 /* ========== Turn · Grid 排版 ========== */
@@ -399,18 +395,34 @@
   opacity: 0.5;
 }
 
-/* turn-block-head：区间选择等，靠左且略大（须包在 .plugin-slots 内） */
+/* turn-block-head：Historian 区间选择；图标自带圆环，按钮不再描边 */
 .turn-block-head__slots {
-  gap: 0.5rem;
+  gap: 0.25rem;
 }
 
 .turn-block-head__slots .plugin-slot {
-  width : 2.25rem;
-  height: 2.25rem;
+  width        : auto;
+  height       : auto;
+  min-width    : 1.375rem;
+  min-height   : 1.375rem;
+  border       : none;
+  background   : transparent;
+  border-radius: 0.25rem;
+  padding      : 0.125rem;
+}
+
+.turn-block-head__slots .plugin-slot:hover {
+  border    : none;
+  background: rgba(var(--v-theme-primary), 0.06);
+}
+
+.turn-block-head__slots .plugin-slot.is-filled {
+  border    : none;
+  background: rgba(var(--v-theme-secondary), 0.08);
 }
 
 .turn-block-head__slots .plugin-slot .v-icon {
-  font-size: 1.25rem !important;
+  font-size: 1.125rem !important;
 }
 
 /* ========== 气泡 + 指向头像的小三角 ========== */
@@ -1123,6 +1135,146 @@
   margin     : 0;
   max-height : min(60vh, 28rem);
   overflow   : auto;
+}
+
+/* ========== Turn audit dialog ========== */
+.audit-dialog {
+  align-self: center;
+}
+
+.audit-card {
+  display       : flex;
+  flex-direction: column;
+  min-height    : min(78vh, 42rem);
+  max-height    : min(92vh, 56rem);
+  overflow      : hidden;
+}
+
+.audit-card__body {
+  display       : flex;
+  flex-direction: column;
+  flex          : 1 1 auto;
+  min-height    : 0;
+  overflow      : hidden;
+}
+
+.audit-card__scroll {
+  flex            : 1 1 auto;
+  min-height      : 0;
+  overflow        : auto;
+  scrollbar-gutter: stable;
+  scrollbar-width : thin;
+}
+
+.audit-card .v-card-actions {
+  flex-shrink: 0;
+}
+
+.audit-card__title {
+  flex-shrink   : 0;
+  padding-inline: 1rem;
+}
+
+.audit-card__meta {
+  display              : flex;
+  flex-wrap            : wrap;
+  gap                  : 0.5rem 1.25rem;
+  font-size            : 0.8125rem;
+  border-bottom        : 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  background           : rgba(var(--v-theme-on-surface), 0.02);
+  flex-shrink          : 0;
+}
+
+.audit-card__meta-item {
+  display    : inline-flex;
+  align-items: baseline;
+  gap        : 0.35rem;
+}
+
+.audit-card__meta-item--mono {
+  font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+  font-size  : 0.75rem;
+}
+
+.audit-card__meta-label {
+  color      : rgba(var(--v-theme-on-surface), 0.55);
+  font-weight: 500;
+}
+
+.audit-card__tabs {
+  flex-shrink   : 0;
+  padding-inline: 0.5rem;
+}
+
+.audit-card__window {
+  overflow: visible;
+}
+
+.audit-card__pane {
+  padding: 1rem;
+}
+
+.audit-card__chips {
+  display    : flex;
+  flex-wrap  : wrap;
+  align-items: center;
+}
+
+.audit-msg {
+  border       : 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 0.5rem;
+  overflow     : hidden;
+}
+
+.audit-msg + .audit-msg {
+  margin-top: 0.75rem;
+}
+
+.audit-msg__head {
+  display         : flex;
+  align-items     : center;
+  gap             : 0.5rem;
+  padding         : 0.4rem 0.75rem;
+  background      : rgba(var(--v-theme-on-surface), 0.04);
+  border-bottom   : 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.audit-msg__index {
+  font-size  : 0.75rem;
+  font-weight: 600;
+  color      : rgba(var(--v-theme-on-surface), 0.45);
+  min-width  : 1.5rem;
+}
+
+.audit-msg__body {
+  margin     : 0;
+  padding    : 0.75rem;
+  white-space: pre-wrap;
+  word-break : break-word;
+  font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+  font-size  : 0.8125rem;
+  line-height: 1.45;
+}
+
+.audit-table {
+  font-size: 0.8125rem;
+}
+
+.audit-table--kv .audit-table__label {
+  width      : 9rem;
+  color      : rgba(var(--v-theme-on-surface), 0.6);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.audit-table__mono {
+  font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+  font-size  : 0.75rem;
+  word-break : break-all;
+}
+
+.audit-table__row--muted {
+  opacity: 0.55;
 }
 
 /* ========== Mobile · 窄屏回合布局 ========== */

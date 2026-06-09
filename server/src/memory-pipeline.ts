@@ -34,8 +34,15 @@ export interface MemoryPipelineInput {
   activeBranchPath?: string | null
 }
 
+export interface MemoryEmbeddingCallAudit {
+  latencyMs: number
+  model?: string
+}
+
 export interface MemoryPipelineResult {
   recentHistoryMessages: { role: 'user' | 'assistant'; content: string }[]
+  /** 近期 history 对应 turnOrdinal（审计用） */
+  recentHistoryTurnOrdinals: number[]
   /** 供 lore 扫描，非注入 XML */
   recentHistoryScanText: string
   /** 向量召回项（裁切前全量；§14.4 统一预算循环在 assemble 侧处理） */
@@ -44,6 +51,7 @@ export interface MemoryPipelineResult {
   memoryText: string
   memoryTurnIds: string[]
   memoryHits: MemorySearchHit[]
+  embeddingCall?: MemoryEmbeddingCallAudit
 }
 
 /** 近期 history XML 窗口轮数 */
@@ -126,9 +134,15 @@ export async function runMemoryPipeline(
     pipelineTurns,
     input.historyBeforeTurnOrdinalExclusive,
   )
+  let embeddingCall: MemoryEmbeddingCallAudit | undefined
   if (input.memorySettings.memoryEnabled && query.length > 0) {
+    const embStarted = performance.now()
     const emb = await createEmbedding(query, input.conversationId)
     if (emb) {
+      embeddingCall = {
+        latencyMs: Math.round(performance.now() - embStarted),
+        model: emb.model,
+      }
       const minRecentOrdinal =
         recentTurns.length > 0
           ? Math.min(...recentTurns.map((t) => t.turnOrdinal))
@@ -154,10 +168,12 @@ export async function runMemoryPipeline(
 
   return {
     recentHistoryMessages,
+    recentHistoryTurnOrdinals: recentTurns.map((t) => t.turnOrdinal),
     recentHistoryScanText,
     memoryItems,
     memoryText,
     memoryTurnIds,
     memoryHits,
+    ...(embeddingCall ? { embeddingCall } : {}),
   }
 }

@@ -44,6 +44,63 @@ export interface ChatPromptSnapshotEntry {
   messages: { role: string; content: string }[]
 }
 
+export interface MemoryAuditHit {
+  turnId: string
+  turnOrdinal: number
+  score: number
+  included: boolean
+}
+
+export interface LoreAuditMatch {
+  lorebookId: string
+  entryId: string
+  title?: string
+  mode: 'keyword' | 'vector' | 'constant'
+  score?: number
+  included: boolean
+}
+
+export interface AssemblyAudit {
+  estimatedTokens: number
+  tokenModel?: string
+  memory: {
+    enabled: boolean
+    hits: MemoryAuditHit[]
+    droppedCount: number
+  }
+  lore: {
+    lorebookIds: string[]
+    matched: LoreAuditMatch[]
+    droppedCount: number
+  }
+  history: {
+    turnOrdinals: number[]
+    droppedCount: number
+  }
+  budgetTrim?: {
+    maxTokens?: number
+  }
+}
+
+export interface CallAuditEntry {
+  kind: 'chat' | 'embedding' | 'plugin.complete'
+  purpose?: string
+  pluginId?: string
+  apiConfigId?: string
+  model?: string
+  latencyMs?: number
+  usage?: {
+    promptTokens?: number
+    completionTokens?: number
+  }
+}
+
+export interface ChatAuditSnapshotEntry extends ChatPromptSnapshotEntry {
+  assembly?: AssemblyAudit
+  calls?: CallAuditEntry[]
+  plugins?: Record<string, unknown>[]
+}
+
 export interface AssembleMessagesResult {
   messages: { role: string; content: string }[]
   estimatedTokens: number

@@ -136,9 +136,10 @@ export function ordinalRangeForTurn(turnOrdinal: number): { start: number; end: 
 
 - `saveFirstTurn` / `saveOpeningTurn`：仍创建 `turn-000000-000099.json`（或 `chunkFileNameForRange(0, 99)`），`ordinalRange: { start: 0, end: 0 }`，`links: { previous: null, next: null }`。
 
-### 5.2 `chat-prompt.json`
+### 5.2 `chat-prompt.json` / `chat-audit.json`
 
-- 条目已含 `chunkName`；滚动 tail 后新轮用**新块文件名**，无需迁移旧条目。
+- 当前实现：**`chat-prompt.json`**，条目含 `chunkName`；滚动 tail 后新轮用**新块文件名**，无需迁移旧条目。
+- 定案（**`DOC/24` §3**）：迁移为 **`chat-audit.json`**（合并 messages + assembly + calls）；`auditDebug.enabled` + `maxStored` 双开关。
 
 ### 5.3 删除整轮（`deleteConversationTurn`）
 

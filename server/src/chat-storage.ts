@@ -12,6 +12,13 @@ import { getChatsRoot } from './config.js'
 import { normalizeBranchPath } from './chunk-path.js'
 import { isValidConversationId } from './conversation-id.js'
 import type { ResolvedFeatureAudit } from './feature-binding-resolve.js'
+import type { ChatAuditSnapshotInput } from './chat-audit-types.js'
+import {
+  appendChatAuditEntry,
+  DEFAULT_AUDIT_DEBUG_MAX,
+  removeChatAuditEntriesByTurnId,
+  trimChatAuditEntries,
+} from './chat-audit-file.js'
 import {
   lorebookSettingsOverrideFromEffective,
   normalizeLorebookSettings,
@@ -137,9 +144,11 @@ export interface ConversationIndex {
   backupSettings?: { everyNRounds: number; maxKeptBackups: number }
   branches?: unknown[]
   /**
-   * 调试：chat-prompt.json 中每会话保留的 prompt 条数上限。
-   * `maxStored === 0` 表示不写入新快照（已有条目仍可保留供查看）。
+   * 调试：chat-audit.json（`auditDebug` 定案；`promptDebug` 为遗留）。
+   * `enabled === false` 或 `maxStored < 1` 时不写入新审计条目。
    */
+  auditDebug?: { enabled: boolean; maxStored: number }
+  /** @deprecated 使用 auditDebug；读盘时仍兼容 */
   promptDebug?: { maxStored: number }
   /**
    * 对话级提示词预设（`data/{user}/prompts/` 内预设 `id`）。
@@ -1195,24 +1204,33 @@ async function removeChatPromptEntriesByTurnId(
   }
 }
 
+/** 遗留：仅 maxStored；enabled 由 maxStored>=1 隐含 */
 export async function updateConversationPromptDebugMax(
   conversationId: string,
   maxStored: number,
 ): Promise<ConversationIndex | null> {
+  const clamped = Math.min(200, Math.max(0, Math.floor(maxStored)))
+  return updateConversationAuditDebug(conversationId, {
+    enabled: clamped >= 1,
+    maxStored: clamped >= 1 ? clamped : DEFAULT_PROMPT_DEBUG_MAX,
+  })
+}
+
+export async function updateConversationAuditDebug(
+  conversationId: string,
+  auditDebug: { enabled: boolean; maxStored: number },
+): Promise<ConversationIndex | null> {
   const idx = await readConversationIndex(conversationId)
   if (!idx) return null
-  const clamped = Math.min(200, Math.max(0, Math.floor(maxStored)))
-  idx.promptDebug = { maxStored: clamped }
+  const enabled = auditDebug.enabled === true
+  const clamped = Math.min(200, Math.max(0, Math.floor(auditDebug.maxStored)))
+  const maxStored = enabled && clamped >= 1 ? clamped : clamped
+  idx.auditDebug = { enabled, maxStored: maxStored >= 1 ? maxStored : DEFAULT_AUDIT_DEBUG_MAX }
+  delete idx.promptDebug
   idx.updatedAt = nowIso()
   await writeConversationIndex(conversationId, idx)
-  const file = await readChatPromptFile(conversationId)
-  if (clamped >= 1 && file.entries.length > clamped) {
-    file.entries = file.entries.slice(-clamped)
-    await writeFile(
-      conversationPromptPath(conversationId),
-      JSON.stringify({ schemaVersion: 1, entries: file.entries }, null, 2),
-      'utf8',
-    )
+  if (enabled && maxStored >= 1) {
+    await trimChatAuditEntries(conversationId, maxStored)
   }
   await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
   return idx
@@ -1445,8 +1463,8 @@ export async function saveFirstTurn(params: {
   estimatedTokens?: number
   completionTokens?: number
   resolvedFeature?: ResolvedFeatureAudit
-  /** 与发往 /api/chat 的 messages 一致，写入 chat-prompt.json（调试用） */
-  debugPrompt?: unknown
+  /** debug 审计快照（服务端组装；见 DOC/24） */
+  auditSnapshot?: ChatAuditSnapshotInput
   turnPluginEntries?: TurnPluginEntry[]
 }): Promise<{ index: ConversationIndex; chunk: ChunkFile } | null> {
   const {
@@ -1459,7 +1477,7 @@ export async function saveFirstTurn(params: {
     estimatedTokens,
     completionTokens,
     resolvedFeature,
-    debugPrompt,
+    auditSnapshot,
     turnPluginEntries,
   } = params
   let idx = await readConversationIndex(conversationId)
@@ -1523,12 +1541,13 @@ export async function saveFirstTurn(params: {
   await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
 
   /** 对话落盘成功后再写快照；无有效 messages 或索引关闭写入时不落盘 */
-  if (debugPrompt !== undefined) {
-    await appendChatPromptDebugEntry(conversationId, {
+  if (auditSnapshot !== undefined) {
+    const idxForAudit = await readConversationIndex(conversationId)
+    await appendChatAuditEntry(conversationId, idxForAudit, {
       chunkName: firstChunkFile,
       turnId,
       turnOrdinal: 0,
-      messages: debugPrompt,
+      snapshot: auditSnapshot,
     })
   }
 
@@ -1593,7 +1612,7 @@ export async function appendConversationTurn(params: {
   userText: string
   receives: TurnReceive[]
   activeReceiveIndex: number
-  debugPrompt?: unknown
+  auditSnapshot?: ChatAuditSnapshotInput
   turnPluginEntries?: TurnPluginEntry[]
 }): Promise<boolean> {
   const {
@@ -1601,7 +1620,7 @@ export async function appendConversationTurn(params: {
     userText,
     receives,
     activeReceiveIndex,
-    debugPrompt,
+    auditSnapshot,
     turnPluginEntries,
   } = params
   if (!receives.length) return false
@@ -1646,12 +1665,13 @@ export async function appendConversationTurn(params: {
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
   await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
-  if (debugPrompt !== undefined) {
-    await appendChatPromptDebugEntry(conversationId, {
+  if (auditSnapshot !== undefined) {
+    const idxForAudit = await readConversationIndex(conversationId)
+    await appendChatAuditEntry(conversationId, idxForAudit, {
       chunkName,
       turnId: turn.turnId,
       turnOrdinal: turn.turnOrdinal,
-      messages: debugPrompt,
+      snapshot: auditSnapshot,
     })
   }
   scheduleMemoryIndexUpsert(conversationId, turn, chunkName)
@@ -1706,8 +1726,7 @@ export async function updateTurnContentInTailChunk(
   userText: string,
   receives: TurnReceive[],
   activeReceiveIndex: number,
-  /** 与当次 /api/chat 的 messages 一致时写入 chat-prompt（如再生） */
-  debugPrompt?: unknown,
+  auditSnapshot?: ChatAuditSnapshotInput,
   turnPluginEntries?: TurnPluginEntry[],
 ): Promise<boolean> {
   if (!receives.length) return false
@@ -1734,12 +1753,13 @@ export async function updateTurnContentInTailChunk(
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
   await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
-  if (debugPrompt !== undefined) {
-    await appendChatPromptDebugEntry(conversationId, {
+  if (auditSnapshot !== undefined) {
+    const idxForAudit = await readConversationIndex(conversationId)
+    await appendChatAuditEntry(conversationId, idxForAudit, {
       chunkName,
       turnId,
       turnOrdinal,
-      messages: debugPrompt,
+      snapshot: auditSnapshot,
     })
   }
   scheduleMemoryIndexUpsert(conversationId, turn, chunkName)
@@ -1803,7 +1823,7 @@ export async function removeTurnAtOrdinalInTailChunk(
     await writeConversationIndex(conversationId, idx)
     await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
     if (victimTurnId) {
-      void removeChatPromptEntriesByTurnId(conversationId, victimTurnId)
+      void removeChatAuditEntriesByTurnId(conversationId, victimTurnId)
       scheduleMemoryIndexDelete(conversationId, victimTurnId)
     }
     return true
@@ -1820,7 +1840,7 @@ export async function removeTurnAtOrdinalInTailChunk(
   await writeConversationIndex(conversationId, idx)
   await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
   if (victimTurnId) {
-    void removeChatPromptEntriesByTurnId(conversationId, victimTurnId)
+    void removeChatAuditEntriesByTurnId(conversationId, victimTurnId)
     scheduleMemoryIndexDelete(conversationId, victimTurnId)
   }
   return true

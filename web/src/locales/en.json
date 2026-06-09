@@ -403,7 +403,11 @@
       "promptRequired": "Cannot be empty",
       "restoreDefault": "Restore default",
       "addItem": "Add",
-      "removeItem": "Remove"
+      "removeItem": "Delete",
+      "removeItemConfirmTitle": "Confirm delete",
+      "removeItemConfirmBody": "Delete “{name}”? This cannot be undone.",
+      "removeItemConfirm": "Delete",
+      "removeItemCancel": "Cancel"
     },
     "writeChatPromptSnapshot": "Save chat prompt snapshots",
     "writeChatPromptHint": "When enabled, sends, new turns, and regenerates write the model messages to chat-prompt.json on the server. When disabled, no new snapshots are written; existing entries stay viewable from each assistant turn.",

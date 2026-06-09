@@ -403,7 +403,11 @@
       "promptRequired": "不能为空",
       "restoreDefault": "恢复默认",
       "addItem": "添加",
-      "removeItem": "移除"
+      "removeItem": "删除",
+      "removeItemConfirmTitle": "确认删除",
+      "removeItemConfirmBody": "确定删除「{name}」？此操作不可撤销。",
+      "removeItemConfirm": "删除",
+      "removeItemCancel": "取消"
     },
     "writeChatPromptSnapshot": "保存对话 Prompt 快照",
     "writeChatPromptHint": "开启后，在发送消息、追加轮次与助手再生时，将当次发往模型的 messages 写入服务端会话目录下的 chat-prompt.json。关闭后不再写入；已保存条目仍可在每条助手消息旁查看。",

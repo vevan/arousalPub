@@ -162,6 +162,11 @@ kbd {
   line-height: 1;
 }
 
+/* 折叠面板：块间主色分隔线 */
+.v-expansion-panel-title {
+  border-top: 0.1rem solid rgb(var(--v-theme-primary));
+}
+
 /* 极细滚动条（chat-body 内部仍有更细的覆盖） */
 * {
   scrollbar-width: thin;

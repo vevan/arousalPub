@@ -281,7 +281,7 @@
 
   "sidecarItemPromptLabel": "提示词",
 
-  "sidecarItemPromptDesc": "发往摘要模型的 system 消息。支持宏：\\{\\{user\\}\\}、\\{\\{char\\}\\}、\\{\\{date\\}\\} 等。",
+  "sidecarItemPromptDesc": "发往摘要模型的 system 消息。支持宏：{{user}}、{{char}}、{{date}} 等。",
 
   "sidecarItemPriorityLabel": "优先级",
 

@@ -327,6 +327,52 @@ function addObjectListLabel(): string {
   if (te(key)) return t(key)
   return te('settings.plugins.addItem') ? t('settings.plugins.addItem') : 'Add'
 }
+
+function removeItemLabel(): string {
+  return te('settings.plugins.removeItem')
+    ? t('settings.plugins.removeItem')
+    : 'Remove'
+}
+
+const objectListRemoveOpen = ref(false)
+const objectListRemovePending = ref<{
+  fieldKey: string
+  index: number
+  title: string
+} | null>(null)
+
+const objectListRemoveTitle = computed(
+  () => objectListRemovePending.value?.title ?? '',
+)
+
+function requestRemoveObjectListItem(
+  field: PluginSettingsFieldSchema,
+  index: number,
+) {
+  const item = objectListItems(field)[index]
+  if (!item) return
+  objectListRemovePending.value = {
+    fieldKey: field.key,
+    index,
+    title: objectListItemTitle(item, index),
+  }
+  objectListRemoveOpen.value = true
+}
+
+function cancelRemoveObjectListItem() {
+  objectListRemoveOpen.value = false
+  objectListRemovePending.value = null
+}
+
+function confirmRemoveObjectListItem() {
+  const pending = objectListRemovePending.value
+  if (!pending) return
+  const field = props.fields.find(
+    (f) => f.key === pending.fieldKey && f.type === 'objectList',
+  )
+  if (field) removeObjectListItem(field, pending.index)
+  cancelRemoveObjectListItem()
+}
 </script>
 
 <template>
@@ -548,19 +594,13 @@ function addObjectListLabel(): string {
             >
               <v-expansion-panel-title class="text-subtitle-2 py-2">
                 <span class="text-truncate">{{ objectListItemTitle(item, index) }}</span>
-                <v-spacer />
-                <v-btn
-                  icon="mdi-delete-outline"
-                  variant="text"
-                  size="small"
-                  :aria-label="$t('settings.plugins.removeItem')"
-                  @click.stop="removeObjectListItem(field, index)"
-                />
               </v-expansion-panel-title>
-              <v-expansion-panel-text class="d-flex flex-column ga-3 pt-1">
-              <template
+              <v-expansion-panel-text class="plugin-object-list__body pt-2">
+              <div class="d-flex flex-column ga-4">
+              <div
                 v-for="sub in field.itemFields ?? []"
                 :key="sub.key"
+                class="plugin-object-list__field"
               >
                 <v-switch
                   v-if="sub.type === 'boolean'"
@@ -668,7 +708,20 @@ function addObjectListLabel(): string {
                     updateObjectListItem(field, index, sub.key, $event)
                   "
                 />
-              </template>
+              </div>
+              <div class="plugin-object-list__remove">
+                <v-btn
+                  variant="outlined"
+                  color="error"
+                  size="small"
+                  prepend-icon="mdi-delete-outline"
+                  class="text-none"
+                  @click="requestRemoveObjectListItem(field, index)"
+                >
+                  {{ removeItemLabel() }}
+                </v-btn>
+              </div>
+              </div>
               </v-expansion-panel-text>
             </v-expansion-panel>
           </v-expansion-panels>
@@ -763,6 +816,41 @@ function addObjectListLabel(): string {
         :src="previewDefaultSound()"
       />
     </div>
+
+    <v-dialog
+      v-model="objectListRemoveOpen"
+      max-width="400"
+      @click:outside="cancelRemoveObjectListItem"
+    >
+      <v-card>
+        <v-card-title class="text-subtitle-1">
+          {{ t('settings.plugins.removeItemConfirmTitle') }}
+        </v-card-title>
+        <v-card-text class="text-body-2">
+          {{
+            t('settings.plugins.removeItemConfirmBody', {
+              name: objectListRemoveTitle,
+            })
+          }}
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn
+            variant="text"
+            @click="cancelRemoveObjectListItem"
+          >
+            {{ t('settings.plugins.removeItemCancel') }}
+          </v-btn>
+          <v-btn
+            color="error"
+            variant="flat"
+            @click="confirmRemoveObjectListItem"
+          >
+            {{ t('settings.plugins.removeItemConfirm') }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -779,11 +867,20 @@ function addObjectListLabel(): string {
 .plugin-object-list__panels {
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 8px;
+  overflow: hidden;
 }
-.plugin-object-list__panels :deep(.v-expansion-panel) {
-  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+.plugin-object-list__body :deep(.v-input) {
+  margin-bottom: 2px;
 }
-.plugin-object-list__panels :deep(.v-expansion-panel:last-child) {
-  border-bottom: none;
+.plugin-object-list__field + .plugin-object-list__field {
+  margin-top: 2px;
+}
+.plugin-prompt-template :deep(.v-btn) {
+  margin-bottom: 4px;
+}
+.plugin-object-list__remove {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
 </style>

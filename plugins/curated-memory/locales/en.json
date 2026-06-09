@@ -275,7 +275,7 @@
 
   "sidecarItemPromptLabel": "Prompt",
 
-  "sidecarItemPromptDesc": "System message for the summary model. Supports \\{\\{user\\}\\}, \\{\\{char\\}\\}, \\{\\{date\\}\\}, etc.",
+  "sidecarItemPromptDesc": "System message for the summary model. Supports {{user}}, {{char}}, {{date}}, etc.",
 
   "sidecarItemPriorityLabel": "Priority",
 

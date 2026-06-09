@@ -23,6 +23,7 @@ import type {
   PluginServerModule,
 } from './types.js'
 import { readPluginManifest } from './manifest.js'
+import { assertValidPluginId } from './plugin-id.js'
 import {
   pluginHasConversationSettingsSchema,
   pluginHasSettingsSchema,
@@ -316,13 +317,25 @@ export async function savePluginRegistry(
   const uid = userId ?? getCurrentUserId()
   const normalized: PluginRegistryDocument = {
     version: 1,
-    plugins: doc.plugins
-      .map((p, i) => ({
-        id: p.id.trim(),
-        enabled: p.enabled !== false,
-        order: Number.isFinite(p.order) ? Math.round(p.order) : (i + 1) * 10,
-      }))
-      .filter((p) => p.id.length > 0),
+    plugins: [],
+  }
+  for (let i = 0; i < doc.plugins.length; i++) {
+    const p = doc.plugins[i]!
+    let id: string
+    try {
+      id = assertValidPluginId(p.id)
+    } catch {
+      throw new Error('invalid_plugin_id')
+    }
+    const manifest = await readPluginManifest(id)
+    if (!manifest || manifest.id !== id) {
+      throw new Error('plugin_registry_manifest_mismatch')
+    }
+    normalized.plugins.push({
+      id,
+      enabled: p.enabled !== false,
+      order: Number.isFinite(p.order) ? Math.round(p.order) : (i + 1) * 10,
+    })
   }
   normalized.plugins.sort(
     (a, b) => a.order - b.order || a.id.localeCompare(b.id),
@@ -341,9 +354,14 @@ export async function readPluginDistFile(
   pluginId: string,
   relPath: string,
 ): Promise<{ body: Buffer; contentType: string } | null> {
-  const id = pluginId.trim()
+  let id: string
+  try {
+    id = assertValidPluginId(pluginId)
+  } catch {
+    return null
+  }
   const clean = relPath.replace(/^\/+/, '').replace(/\.\./g, '')
-  if (!id || !clean.startsWith('dist/')) return null
+  if (!clean.startsWith('dist/')) return null
   const root = getInstalledPluginDir(id)
   const full = path.join(root, clean)
   if (!full.startsWith(root)) return null
@@ -364,9 +382,14 @@ export async function readPluginLocaleFile(
   pluginId: string,
   locale: string,
 ): Promise<{ body: Buffer } | null> {
-  const id = pluginId.trim()
+  let id: string
+  try {
+    id = assertValidPluginId(pluginId)
+  } catch {
+    return null
+  }
   const loc = locale.trim().toLowerCase()
-  if (!id || !PLUGIN_LOCALE_IDS.has(loc)) return null
+  if (!PLUGIN_LOCALE_IDS.has(loc)) return null
   const root = getInstalledPluginDir(id)
   const full = path.join(root, 'locales', `${loc}.json`)
   if (!full.startsWith(root)) return null

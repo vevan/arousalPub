@@ -825,7 +825,7 @@
     "frequencyPenalty": "Frequency penalty",
     "presencePenalty": "Presence penalty",
     "customParams": "Custom parameters (JSON object)",
-    "customParamsHint": "Merged into the request body; can override fields above. Example: ",
+    "customParamsHint": "Merged into the request body for gateway extras only (cannot override messages/model). Example: ",
     "saveButton": "Save settings",
     "lastSaved": "Last saved:",
     "pickModel": "Choose model",

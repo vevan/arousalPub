@@ -825,7 +825,7 @@
     "frequencyPenalty": "频率惩罚",
     "presencePenalty": "存在惩罚",
     "customParams": "自定义参数 (JSON 对象)",
-    "customParamsHint": "合并进请求体，可覆盖上述字段。示例：",
+    "customParamsHint": "合并进请求体，仅补充网关扩展参数（不可改 messages/model 等）。示例：",
     "saveButton": "保存设置",
     "lastSaved": "上次保存：",
     "pickModel": "选择模型",

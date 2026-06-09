@@ -25,8 +25,8 @@ const PURIFY_HTML: Record<string, unknown> = {
     'role',
     'aria-label',
   ],
-  /** 保留 HTML 注释（如 ASST_BLOCK 边界）；内容仍经 DOMPurify 校验 */
-  ADD_TAGS: ['style', '#comment'],
+  /** 保留 HTML 注释（如 ASST_BLOCK 边界）；内容仍经 DOMPurify 校验；禁止 <style> 防整页污染 */
+  ADD_TAGS: ['#comment'],
 }
 
 function sanitizeChatHtml(html: string): string {
@@ -34,7 +34,7 @@ function sanitizeChatHtml(html: string): string {
 }
 
 /**
- * 将完整文档转为可放进气泡的片段：保留 head 内 style + body 内部 HTML。
+ * 将完整文档转为可放进气泡的片段：仅保留 body 内部 HTML（head 内 <style> 已剥离）。
  * 否则 DOMPurify 在默认片段模式下处理 `<html>` 整树时，常会得到几乎空的结果。
  */
 function fullHtmlDocumentToEmbedFragment(raw: string): string {
@@ -43,11 +43,8 @@ function fullHtmlDocumentToEmbedFragment(raw: string): string {
   if (!/^<!DOCTYPE\s|^<html[\s>]/i.test(t)) return t
   try {
     const doc = new DOMParser().parseFromString(t, 'text/html')
-    const headStyles = [...doc.head.querySelectorAll('style')]
-      .map((el) => el.outerHTML)
-      .join('')
     const bodyHtml = doc.body?.innerHTML ?? ''
-    return headStyles + bodyHtml
+    return bodyHtml
   } catch {
     return t
   }

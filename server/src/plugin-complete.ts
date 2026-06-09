@@ -123,7 +123,8 @@ export async function runPluginComplete(
     responseFormat: req.responseFormat,
   })
 
-  const upstream = await fetch(requestUrl, {
+  const { fetchWithTimeout } = await import('./fetch-with-timeout.js')
+  const upstream = await fetchWithTimeout(requestUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

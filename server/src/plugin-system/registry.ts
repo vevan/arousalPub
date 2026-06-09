@@ -7,6 +7,7 @@ import {
   getPluginRegistryPath,
   getLegacyGlobalPluginRegistryPath,
 } from './paths.js'
+import { assertValidPluginId } from './plugin-id.js'
 import type { PluginRegistryDocument, PluginRegistryEntry } from './types.js'
 
 const DEFAULT_REGISTRY: PluginRegistryDocument = {
@@ -22,8 +23,14 @@ const DEFAULT_REGISTRY: PluginRegistryDocument = {
 function normalizeEntry(raw: unknown): PluginRegistryEntry | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
-  const id = typeof o.id === 'string' ? o.id.trim() : ''
-  if (!id) return null
+  const rawId = typeof o.id === 'string' ? o.id.trim() : ''
+  if (!rawId) return null
+  let id: string
+  try {
+    id = assertValidPluginId(rawId)
+  } catch {
+    return null
+  }
   const enabled = o.enabled !== false
   const order =
     typeof o.order === 'number' && Number.isFinite(o.order)

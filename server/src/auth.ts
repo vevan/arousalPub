@@ -35,6 +35,9 @@ import { RESERVED_USER_ID } from './short-id.js'
 import { UserAccountError } from './user-account-error.js'
 import { resolveJwtSecret } from './auth-secret.js'
 import { buildAdminConsoleUrl } from './admin/console-url.js'
+import { tryAcquireAuthRateLimitSlot } from './auth-rate-limit.js'
+import { isLoopbackAddress } from './client-ip.js'
+import { resolveAllowPublicRegister } from './config.js'
 
 export interface JwtPayload {
   sub: string
@@ -192,6 +195,12 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
       rememberDefault?: boolean
     }
   }>('/api/auth/setup', async (request, reply) => {
+    if (!isLoopbackAddress(request.ip)) {
+      return reply.status(403).send({ error: ApiErrorCodes.setup_localhost_only })
+    }
+    if (!tryAcquireAuthRateLimitSlot('setup', request.ip)) {
+      return reply.status(429).send({ error: ApiErrorCodes.auth_rate_limited })
+    }
     const { username, password, displayName, rememberDefault } =
       request.body ?? {}
     if (typeof username !== 'string' || typeof password !== 'string') {
@@ -219,6 +228,14 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
       rememberDefault?: boolean
     }
   }>('/api/auth/register', async (request, reply) => {
+    if (!resolveAllowPublicRegister()) {
+      return reply
+        .status(403)
+        .send({ error: ApiErrorCodes.public_register_disabled })
+    }
+    if (!tryAcquireAuthRateLimitSlot('register', request.ip)) {
+      return reply.status(429).send({ error: ApiErrorCodes.auth_rate_limited })
+    }
     const { username, password, displayName, rememberDefault } =
       request.body ?? {}
     if (typeof username !== 'string' || typeof password !== 'string') {
@@ -237,6 +254,9 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
   app.post<{
     Body: { username?: string; password?: string; rememberDefault?: boolean }
   }>('/api/auth/login', async (request, reply) => {
+    if (!tryAcquireAuthRateLimitSlot('login', request.ip)) {
+      return reply.status(429).send({ error: ApiErrorCodes.auth_rate_limited })
+    }
     const { username, password, rememberDefault } = request.body ?? {}
     if (typeof username !== 'string' || typeof password !== 'string') {
       return reply.status(400).send({ error: ApiErrorCodes.missing_username_or_password })
@@ -251,6 +271,9 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
   app.post<{ Body: { refreshToken?: string } }>(
     '/api/auth/refresh',
     async (request, reply) => {
+      if (!tryAcquireAuthRateLimitSlot('refresh', request.ip)) {
+        return reply.status(429).send({ error: ApiErrorCodes.auth_rate_limited })
+      }
       const refreshToken = request.body?.refreshToken
       if (typeof refreshToken !== 'string' || !refreshToken.trim()) {
         return reply.status(400).send({ error: ApiErrorCodes.missing_refresh_token })

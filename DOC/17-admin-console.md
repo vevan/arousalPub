@@ -54,10 +54,10 @@
 
 ### 2.3 与公开注册
 
-有运维台后建议增加配置（实现时定）：
+已实现（**`DOC/25-security-deployment.md`** §4.2）：
 
-- `allowPublicRegister: false` 时关闭 `POST /api/auth/register`，仅 `POST /api/admin/users` 开户
-- 默认保持现状，由部署者显式关闭
+- `config.json` → `allowPublicRegister: false` 时关闭 `POST /api/auth/register`，仅 `POST /api/admin/users` 开户
+- 默认 `true`，暴露 LAN/公网时建议显式关闭
 
 ---
 

@@ -193,6 +193,7 @@
 
 - [x] **会话级插件 Tab** — **`DOC/21-conversation-plugin-settings.md`**（`conversationSettingsSchema`、对话齿轮 → 插件 Tab、`plot-summary` 摘要资料库仅会话级）
 - [x] **本机运维台（Admin Console）** — **`DOC/17-admin-console.md`**（loopback + `00000000`；用户 CRUD；DEK 轮换 + 推荐密钥）
+- [x] **安全硬化（部署）** — **`DOC/25-security-deployment.md`**：clientWhitelist、setup loopback、allowPublicRegister、认证限流、插件 ID、CORS、customParams 黑名单、upstreamUrlPolicy、上游超时、富文本禁 `<style>`（messages 分页仍 `DOC/15`）
 - [ ] **独立知识库 RAG**（**≠ 现有世界书**）：用户上传/导入 **长文档**（PDF、Markdown、txt 等）→ 自动 **切片** → embedding → 独立 Lance 表（与 turn memory、资料库条目 **分表**）→ 对话时向量 TopK 检索注入；`rag_generate` 能力接线。**未实现**。**文档管线前置**：用户文件库 **`DOC/20`** M1+M4。若设定资料只靠世界书手工条目维护，本项可长期不做。
 - [ ] **消息树 / 分支 UI**：消息树结构（`parentId`）与「从此分支继续」— **实现指南 `DOC/23-conversation-branches.md`**（§6 待办清单；服务端 memory/枚举已就绪）
 - [ ] **会话消息分页与前端懒加载** — **`DOC/15-conversation-messages-lazy-load.md`**（`GET .../messages?tail|before|from/to`、chunk 区间读、默认尾部 80 轮、上滚追加；插件 `readConversationTurnsRange` 改真分页；Phase 2 可选虚拟滚动）

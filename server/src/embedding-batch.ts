@@ -62,7 +62,8 @@ async function createEmbeddingsBatchRequest(
     if (creds.embeddingDimensions != null) {
       body.dimensions = creds.embeddingDimensions
     }
-    res = await fetch(url, {
+    const { fetchWithTimeout } = await import('./fetch-with-timeout.js')
+    res = await fetchWithTimeout(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),

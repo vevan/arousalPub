@@ -1,6 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { stripJsonComments } from './config-jsonc.js'
 import { getCurrentUserId } from './user-context.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -21,11 +22,17 @@ const REPO_ROOT = findRepoRoot()
 const CONFIG_PATH = path.join(REPO_ROOT, 'config.json')
 const CONFIG_EXAMPLE_PATH = path.join(REPO_ROOT, 'config.example.json')
 
+export type UpstreamUrlPolicy = 'open' | 'public-only'
+
 interface RawConfig {
   dataDir?: string
   serverPort?: number | string
   host?: string
   staticDir?: string
+  clientWhitelist?: string[]
+  allowPublicRegister?: boolean
+  corsOrigins?: string[]
+  upstreamUrlPolicy?: string
   backupEnabled?: boolean
   backupIntervalDays?: number | string
   backupMaxKept?: number | string
@@ -79,12 +86,77 @@ function ensureConfigFileFromExample(): void {
   }
 }
 
+function parseStringListFromEnv(name: string): string[] | undefined {
+  const raw = process.env[name]?.trim()
+  if (!raw) return undefined
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+function parseBoolFromEnv(name: string): boolean | undefined {
+  const raw = process.env[name]?.trim().toLowerCase()
+  if (raw === '1' || raw === 'true' || raw === 'yes') return true
+  if (raw === '0' || raw === 'false' || raw === 'no') return false
+  return undefined
+}
+
+/** 客户端 IP 白名单；空数组=不限制（DOC/25 §3） */
+export function resolveClientWhitelist(): string[] {
+  const fromEnv = parseStringListFromEnv('CLIENT_WHITELIST')
+  if (fromEnv) return fromEnv
+  const cfg = readConfigFile()
+  if (Array.isArray(cfg.clientWhitelist)) {
+    return cfg.clientWhitelist
+      .filter((x): x is string => typeof x === 'string')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+  return []
+}
+
+export function resolveAllowPublicRegister(): boolean {
+  const fromEnv = parseBoolFromEnv('ALLOW_PUBLIC_REGISTER')
+  if (fromEnv !== undefined) return fromEnv
+  const cfg = readConfigFile()
+  if (typeof cfg.allowPublicRegister === 'boolean') {
+    return cfg.allowPublicRegister
+  }
+  return true
+}
+
+/** 浏览器 CORS Origin 白名单；空=仅无 Origin 请求（DOC/25 §7） */
+export function resolveCorsOrigins(): string[] {
+  const fromEnv = parseStringListFromEnv('CORS_ORIGINS')
+  if (fromEnv) return fromEnv
+  const cfg = readConfigFile()
+  if (Array.isArray(cfg.corsOrigins)) {
+    return cfg.corsOrigins
+      .filter((x): x is string => typeof x === 'string')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+  return []
+}
+
+export function resolveUpstreamUrlPolicy(): UpstreamUrlPolicy {
+  const fromEnv = process.env.UPSTREAM_URL_POLICY?.trim().toLowerCase()
+  if (fromEnv === 'public-only' || fromEnv === 'open') return fromEnv
+  const cfg = readConfigFile()
+  const p = typeof cfg.upstreamUrlPolicy === 'string'
+    ? cfg.upstreamUrlPolicy.trim().toLowerCase()
+    : ''
+  if (p === 'public-only') return 'public-only'
+  return 'open'
+}
+
 export function readConfigFile(): RawConfig {
   ensureConfigFileFromExample()
   if (!existsSync(CONFIG_PATH)) return {}
   try {
     const raw = readFileSync(CONFIG_PATH, 'utf8')
-    const parsed = JSON.parse(raw) as unknown
+    const parsed = JSON.parse(stripJsonComments(raw)) as unknown
     if (!parsed || typeof parsed !== 'object') return {}
     return parsed as RawConfig
   } catch (e) {

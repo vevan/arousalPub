@@ -13,4 +13,6 @@ services:
       DATA_DIR: /data
     volumes:
       - ./data:/data
+    # 安全：见 DOC/25。暴露 LAN 时建议在 config.json 配置 clientWhitelist、allowPublicRegister:false。
+    # 宿主机访问容器时源 IP 常为 172.x，须写入 whitelist 或使用 network_mode: host。
     restart: unless-stopped

@@ -1,3 +1,4 @@
+import { mergeCustomParamsIntoPayload } from './custom-params-merge.js'
 import { appendDrySamplerToPayload } from './dry-sampler.js'
 import type { ApiPreset } from './api-settings-file.js'
 
@@ -40,7 +41,10 @@ export function buildPluginCompleteUpstreamPayload(opts: {
     try {
       const custom = JSON.parse(preset.customParamsJson) as unknown
       if (custom && typeof custom === 'object' && !Array.isArray(custom)) {
-        Object.assign(payload, custom)
+        mergeCustomParamsIntoPayload(
+          payload,
+          custom as Record<string, unknown>,
+        )
       }
     } catch {
       /* 忽略非法 customParams */

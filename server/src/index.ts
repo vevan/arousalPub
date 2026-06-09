@@ -68,8 +68,22 @@ import {
 } from './turn-patch-body.js'
 import { reindexConversationMemory } from './memory-index.js'
 import { startConversationMemoryReindexSse } from './memory-reindex-sse.js'
-import { ensureDataSkeleton, resolveListenHost, resolveServerPort } from './config.js'
+import {
+  ensureDataSkeleton,
+  resolveClientWhitelist,
+  resolveCorsOrigins,
+  resolveListenHost,
+  resolveServerPort,
+} from './config.js'
+import { isClientIpAllowed } from './client-ip.js'
+import { mergeCustomParamsIntoPayload } from './custom-params-merge.js'
 import { appendDrySamplerToPayload } from './dry-sampler.js'
+import { tryAcquireAuthRateLimitSlot } from './auth-rate-limit.js'
+import {
+  fetchWithTimeout,
+  UPSTREAM_FETCH_TIMEOUT_MS,
+  UPSTREAM_STREAM_FETCH_TIMEOUT_MS,
+} from './fetch-with-timeout.js'
 import { readBuildInfoDocument } from './build-meta.js'
 import { registerStaticWeb } from './static-web.js'
 import {
@@ -170,6 +184,7 @@ import {
   savePluginUserAssetUpload,
 } from './plugin-system/plugin-assets.js'
 import { readPluginManifest } from './plugin-system/manifest.js'
+import { assertValidPluginId } from './plugin-system/plugin-id.js'
 import { scheduleLorebookVectorReindex } from './lorebook-vector-index.js'
 import {
   createLorebookEntriesBatch,
@@ -258,7 +273,7 @@ interface ChatBody {
   contextLength?: number | null
   maxTokens?: number | null
   stream?: boolean
-  /** 为 true 时合并思维链相关参数（可被 customParams 覆盖），具体字段因网关而异 */
+  /** 为 true 时在 customParams 合并后强制写入 thinking（不受 customParams 覆盖） */
   requestReasoning?: boolean
   temperature?: number | null
   topP?: number | null
@@ -333,19 +348,19 @@ function buildUpstreamPayload(body: ChatBody): Record<string, unknown> {
     payload.context_length = contextLength
   }
 
-  if (requestReasoning === true) {
-    Object.assign(payload, { thinking: { type: 'enabled' } })
-  }
-
-  if (
+  mergeCustomParamsIntoPayload(
+    payload,
     customParams &&
-    typeof customParams === 'object' &&
-    !Array.isArray(customParams)
-  ) {
-    Object.assign(payload, customParams)
-  }
+      typeof customParams === 'object' &&
+      !Array.isArray(customParams)
+      ? customParams
+      : undefined,
+  )
 
   if (stream) payload.stream = true
+  if (requestReasoning === true) {
+    payload.thinking = { type: 'enabled' }
+  }
 
   return payload
 }
@@ -374,7 +389,42 @@ const app = Fastify({
   bodyLimit: 20 * 1024 * 1024,
 })
 
-await app.register(cors, { origin: true })
+const corsOrigins = resolveCorsOrigins()
+const clientWhitelist = resolveClientWhitelist()
+if (clientWhitelist.length > 0) {
+  // eslint-disable-next-line no-console
+  console.log(
+    `[config] clientWhitelist active (${clientWhitelist.length} pattern(s))`,
+  )
+}
+await app.register(cors, {
+  origin(origin, cb) {
+    if (!origin) {
+      cb(null, true)
+      return
+    }
+    if (corsOrigins.length === 0) {
+      cb(null, false)
+      return
+    }
+    if (corsOrigins.includes(origin)) {
+      cb(null, true)
+      return
+    }
+    cb(null, false)
+  },
+})
+app.addHook('onRequest', (request, reply, done) => {
+  if (!clientWhitelist.length) {
+    done()
+    return
+  }
+  if (!isClientIpAllowed(request.ip, clientWhitelist)) {
+    void reply.status(403).send({ error: ApiErrorCodes.client_ip_not_allowed })
+    return
+  }
+  done()
+})
 await app.register(multipart, {
   limits: { fileSize: 15 * 1024 * 1024 },
 })
@@ -390,6 +440,17 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 }
 registerMaintenanceGuard(app)
 await registerAuth(app)
+
+app.addHook('preHandler', async (request, reply) => {
+  const pluginId = (request.params as { pluginId?: string }).pluginId
+  if (typeof pluginId !== 'string' || !pluginId.length) return
+  try {
+    assertValidPluginId(pluginId)
+  } catch {
+    return reply.status(400).send({ error: ApiErrorCodes.invalid_plugin_id })
+  }
+})
+
 await registerAdminConsole(app)
 await ensureUsersRegistry()
 resolveDataEncryptionKey()
@@ -2653,6 +2714,9 @@ app.delete<{ Params: { id: string } }>(
 app.post<{ Params: { id: string }; Body: { password?: string } }>(
   '/api/api-keys/:id/reveal',
   async (request, reply) => {
+    if (!tryAcquireAuthRateLimitSlot('api_key_reveal', request.ip)) {
+      return reply.status(429).send({ error: ApiErrorCodes.auth_rate_limited })
+    }
     const keyId = request.params.id?.trim()
     if (!keyId) {
       return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
@@ -2745,18 +2809,26 @@ app.put<{ Body: { plugins?: Array<{ id: string; enabled?: boolean; order?: numbe
     if (!Array.isArray(raw)) {
       return reply.status(400).send({ error: 'invalid_body' })
     }
-    const doc = await savePluginRegistry({
-      version: 1,
-      plugins: raw.map((p, i) => ({
-        id: String(p.id ?? '').trim(),
-        enabled: p.enabled !== false,
-        order:
-          typeof p.order === 'number' && Number.isFinite(p.order)
-            ? Math.round(p.order)
-            : (i + 1) * 10,
-      })),
-    })
-    return { plugins: doc.plugins }
+    try {
+      const doc = await savePluginRegistry({
+        version: 1,
+        plugins: raw.map((p, i) => ({
+          id: String(p.id ?? '').trim(),
+          enabled: p.enabled !== false,
+          order:
+            typeof p.order === 'number' && Number.isFinite(p.order)
+              ? Math.round(p.order)
+              : (i + 1) * 10,
+        })),
+      })
+      return { plugins: doc.plugins }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ''
+      if (msg === 'invalid_plugin_id' || msg === 'plugin_registry_manifest_mismatch') {
+        return reply.status(400).send({ error: ApiErrorCodes.plugin_registry_invalid })
+      }
+      throw e
+    }
   },
 )
 
@@ -3700,14 +3772,20 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   const url = `${baseUrl}/chat/completions`
   const upstreamStartedAt = performance.now()
 
-  const upstream = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
+  const upstream = await fetchWithTimeout(
+    url,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  })
+    wantStream
+      ? UPSTREAM_STREAM_FETCH_TIMEOUT_MS
+      : UPSTREAM_FETCH_TIMEOUT_MS,
+  )
 
   if (!upstream.ok) {
     const text = await upstream.text()

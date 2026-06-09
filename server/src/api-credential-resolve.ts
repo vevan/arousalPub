@@ -6,7 +6,12 @@ import {
   readApiSettingsFromFile,
   type ApiPreset,
 } from './api-settings-file.js'
+import { resolveUpstreamUrlPolicy } from './config.js'
 import { resolveChatApiConfigId } from './feature-binding-resolve.js'
+import {
+  assertUpstreamBaseUrlAllowed,
+  UpstreamUrlBlockedError,
+} from './upstream-url-guard.js'
 
 const DEFAULT_BASE = 'https://api.openai.com/v1'
 
@@ -18,7 +23,16 @@ export class ApiCredentialError extends Error {
 
 export function normalizeChatBaseUrl(raw: string | undefined): string {
   const s = (raw ?? DEFAULT_BASE).trim().replace(/\/+$/, '')
-  return s || DEFAULT_BASE
+  const base = s || DEFAULT_BASE
+  try {
+    assertUpstreamBaseUrlAllowed(base, resolveUpstreamUrlPolicy())
+  } catch (e) {
+    if (e instanceof UpstreamUrlBlockedError) {
+      throw new ApiCredentialError(e.code)
+    }
+    throw e
+  }
+  return base
 }
 
 export async function resolveKeyFromKeychain(keyId: string): Promise<string> {

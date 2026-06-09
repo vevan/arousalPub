@@ -59,7 +59,8 @@ export async function fetchUpstreamModelsList(opts: {
   const base = opts.baseUrl.replace(/\/+$/, '')
   const requestUrl = `${base}/models`
   const started = Date.now()
-  const upstream = await fetch(requestUrl, {
+  const { fetchWithTimeout } = await import('./fetch-with-timeout.js')
+  const upstream = await fetchWithTimeout(requestUrl, {
     method: 'GET',
     headers: { Authorization: `Bearer ${opts.apiKey}` },
   })

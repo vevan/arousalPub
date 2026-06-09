@@ -1,16 +1,25 @@
 {
-  "_comment": "复制为 config.json 后修改。优先级：环境变量 > 本文件 > 默认值。backup*：全量冷备见 DOC/03 §8.8。环境变量仍可覆盖：JWT_SECRET、DATA_DIR、PORT、WEB_PORT、START_COUNTDOWN_SEC、HOST、STATIC_DIR。",
-  "dataDir": "./data",
-  "serverPort": 6633,
-  "webPort": 6699,
-  "startCountdownSeconds": 5,
-  "host": "0.0.0.0",
-  "staticDir": "./web/dist",
-  "authIdleMinutes": 15,
-  "authDefaultRefreshDays": 7,
-  "authAccessMinutes": 30,
-  "backupEnabled": true,
-  "backupIntervalDays": 7,
-  "backupMaxKept": 5,
-  "backupRetryHours": 24
+  // 复制为 config.json 后修改。支持 // 行注释（JSONC）；环境变量可覆盖多数项。详见 DOC/25
+
+  "dataDir": "./data", // 数据根目录（users、chats、plugins 等）
+  "serverPort": 6633, // 后端 API 端口（生产单端口 / start.bat）
+  "webPort": 6699, // 前端 dev 端口（npm run dev 时 Vite）
+  "startCountdownSeconds": 5, // start 脚本倒计时秒数，0=跳过
+
+  "host": "0.0.0.0", // 监听地址（bind），非客户端白名单；仅本机可改为 127.0.0.1
+  "staticDir": "./web/dist", // 生产静态资源目录
+
+  "clientWhitelist": [], // 客户端源 IP 白名单，[] 表示不限制；例：["127.0.0.1","192.168.1.*"]
+  "allowPublicRegister": true, // 是否开放 POST /api/auth/register；暴露部署建议 false
+  "corsOrigins": [], // 允许的浏览器 Origin；[] 表示拒绝跨站（同源/curl 无 Origin 仍可用）
+  "upstreamUrlPolicy": "open", // 出站 API：open=允许本地 Ollama；public-only=禁止私网/loopback
+
+  "authIdleMinutes": 15, // 会话空闲刷新阈值（分钟）
+  "authDefaultRefreshDays": 7, //「记住我」refresh 有效天数
+  "authAccessMinutes": 30, // access token 有效分钟数
+
+  "backupEnabled": true, // 是否启用全量冷备 zip（DOC/03 §8.8）
+  "backupIntervalDays": 7, // 冷备间隔（天）
+  "backupMaxKept": 5, // 保留最近 N 份备份
+  "backupRetryHours": 24 // 失败后重试间隔（小时）
 }

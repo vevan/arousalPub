@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DATA_DIR, getUserDataDir } from '../config.js'
 import { getCurrentUserId } from '../user-context.js'
+import { assertValidPluginId } from './plugin-id.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -37,9 +38,20 @@ export function getPluginRegistryPath(userId?: string): string {
   )
 }
 
+function assertUnderPluginsRoot(root: string, resolved: string): string {
+  const normRoot = path.resolve(root) + path.sep
+  const normResolved = path.resolve(resolved)
+  if (!normResolved.startsWith(normRoot)) {
+    throw new Error('invalid_plugin_path')
+  }
+  return normResolved
+}
+
 /** 已安装插件包 `data/plugins/<pluginId>/`（manifest、dist，全用户共用） */
 export function getInstalledPluginDir(pluginId: string): string {
-  return path.join(getGlobalPluginsDir(), pluginId.trim())
+  const id = assertValidPluginId(pluginId)
+  const root = getGlobalPluginsDir()
+  return assertUnderPluginsRoot(root, path.join(root, id))
 }
 
 export function getInstalledPluginServerEntry(pluginId: string): string {

@@ -1,4 +1,9 @@
+import { resolveUpstreamUrlPolicy } from './config.js'
 import type { ResolvedEmbeddingCredentials } from './embedding-credential-resolve.js'
+import {
+  assertUpstreamBaseUrlAllowed,
+  UpstreamUrlBlockedError,
+} from './upstream-url-guard.js'
 
 export interface EmbeddingResult {
   vector: number[]
@@ -21,6 +26,18 @@ function normalizeBaseUrl(baseUrl: string): string {
 }
 
 export function buildEmbeddingRequestUrl(baseUrl: string): string {
+  const forGuard = baseUrl
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/embeddings$/i, '')
+  try {
+    assertUpstreamBaseUrlAllowed(forGuard, resolveUpstreamUrlPolicy())
+  } catch (e) {
+    if (e instanceof UpstreamUrlBlockedError) {
+      throw e
+    }
+    throw e
+  }
   return `${normalizeBaseUrl(baseUrl)}/embeddings`
 }
 
@@ -51,7 +68,8 @@ export async function createEmbeddingWithCredentials(
     if (creds.embeddingDimensions != null) {
       body.dimensions = creds.embeddingDimensions
     }
-    res = await fetch(url, {
+    const { fetchWithTimeout } = await import('./fetch-with-timeout.js')
+    res = await fetchWithTimeout(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),

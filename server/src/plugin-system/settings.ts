@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { getCurrentUserId } from '../user-context.js'
 import { readPluginManifest } from './manifest.js'
+import { assertValidPluginId } from './plugin-id.js'
 import {
   getPluginUserDataDir,
   getPluginUserSettingsPath,
@@ -18,11 +19,17 @@ export async function readMergedPluginUserSettings(
   pluginId: string,
   userId?: string,
 ): Promise<Record<string, unknown>> {
+  let id: string
+  try {
+    id = assertValidPluginId(pluginId)
+  } catch {
+    return schemaDefaults(null)
+  }
   const uid = userId ?? getCurrentUserId()
-  const manifest = await readPluginManifest(pluginId)
+  const manifest = await readPluginManifest(id)
   const schema = manifest?.settingsSchema ?? null
   const defaults = schemaDefaults(schema)
-  const path = getPluginUserSettingsPath(pluginId, uid)
+  const path = getPluginUserSettingsPath(id, uid)
   if (!existsSync(path)) return defaults
   try {
     const raw = JSON.parse(await readFile(path, 'utf8')) as unknown

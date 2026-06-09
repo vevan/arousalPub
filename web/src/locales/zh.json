@@ -23,6 +23,10 @@
     "pickGroupMoveHint": "将条目移动到所选分组末尾。",
     "groupEntryCount": "{n} 条"
   },
+  "backup": {
+    "inProgress": "正在备份数据，请稍候…",
+    "filesProgress": "已处理 {done} / {total} 个文件"
+  },
   "auth": {
     "setupTitle": "欢迎使用",
     "setupHint": "为种子账号设置用户名与密码，完成后即可开始使用。",
@@ -800,6 +804,7 @@
       "api_keys_write_failed": "写入 API Keys 失败",
       "append_turn_failed": "追加轮次失败",
       "assistant_content_empty_no_persist": "助手正文为空，不落盘",
+      "backup_in_progress": "数据备份进行中，请稍后再试",
       "auth_required": "需要登录",
       "auth_session_expired": "未登录或登录已过期",
       "avatar_must_be_png": "头像须为 PNG",

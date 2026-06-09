@@ -66,3 +66,18 @@ data/
 ## 备份
 
 以整个 `data/` 为单元备份；含 API Key 与密码哈希，须与生产环境同等访问控制。
+
+### 产品内冷备（`data/backups/` · `DOC/03` §8.8）
+
+| 项 | 说明 |
+|----|------|
+| **触发** | 服务启动后：距上次**成功**冷备超过 `config.json` → `backupIntervalDays`（默认 7 天），或从未备份 |
+| **落盘** | `{dataDir}/backups/backup-<时间>.zip` + `backup-manifest.json` |
+| **保留** | `backupMaxKept`（默认 5），超出删最旧 zip |
+| **范围** | 整棵 `data/`（含各 `{userId}/`、`memory/`、`.jwt-secret` 等），**不含** `backups/` 自身 |
+| **Syncthing** | 对共享的 `data` 文件夹设置 **Ignore `backups`**，避免大 zip 多机同步 |
+| **恢复** | 1. 停服务 2. 将当前 `data` 改名为 `data.broken-<时间>` 3. 解压选定 zip 到原 `dataDir` 4. 启动验证（§8.5） |
+
+配置：`backupEnabled`（默认 `true`）、`backupIntervalDays`、`backupMaxKept`、`backupRetryHours`（失败后暂缓重试，默认 24h）。
+
+~~对话轮次增量备份（§8.4）~~：**无限期延后**，不实现；`chats/.../index.json` 内 `backupSettings` 仅为历史占位。

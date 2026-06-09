@@ -47,6 +47,7 @@ export interface JwtPayload {
 
 const AUTH_PUBLIC_PATHS = new Set([
   '/health',
+  '/api/backup/status',
   '/api/auth/status',
   '/api/auth/setup',
   '/api/auth/register',

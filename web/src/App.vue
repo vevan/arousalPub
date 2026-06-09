@@ -20,7 +20,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
-const { locale } = useI18n()
+const { locale, t } = useI18n()
 const localeStore = useLocaleStore()
 const { effective: effectiveLocale } = storeToRefs(localeStore)
 const route = useRoute()
@@ -32,7 +32,39 @@ const userBarAvatarSrc = computed(() =>
 )
 
 const authPhase = ref<'loading' | 'setup' | 'login' | 'app'>('loading')
+const backupBlocking = ref(false)
+const backupFilesDone = ref(0)
+const backupFilesTotal = ref(0)
 const settingsInitialTab = ref<'system' | 'display' | 'account' | 'lorebook' | 'history' | 'budgetTrim' | 'plugins' | 'debug'>('system')
+
+interface BackupStatusResponse {
+  running: boolean
+  filesDone: number
+  filesTotal: number
+  lastSuccessAt: string | null
+  lastError: string | null
+}
+
+async function waitForBackupComplete(): Promise<void> {
+  const poll = async (): Promise<void> => {
+    try {
+      const res = await fetch('/api/backup/status')
+      if (!res.ok) return
+      const data = (await res.json()) as BackupStatusResponse
+      if (data.running) {
+        backupBlocking.value = true
+        backupFilesDone.value = data.filesDone
+        backupFilesTotal.value = data.filesTotal
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        return poll()
+      }
+    } catch {
+      return
+    }
+    backupBlocking.value = false
+  }
+  await poll()
+}
 
 async function enterApp() {
   resetBootstrapAppData()
@@ -256,7 +288,10 @@ function syncAppChromeCssVars() {
 }
 
 onMounted(() => {
-  void initAuth()
+  void (async () => {
+    await waitForBackupComplete()
+    await initAuth()
+  })()
   if (typeof window !== 'undefined') {
     window.addEventListener('languagechange', onBrowserLanguageChange)
   }
@@ -284,7 +319,20 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <v-app v-if="authPhase === 'loading'" class="auth-loading">
+  <v-app v-if="backupBlocking" class="auth-loading">
+    <div class="d-flex flex-column fill-height align-center justify-center ga-4 px-4">
+      <v-progress-circular indeterminate color="primary" />
+      <p class="text-body-1 text-center mb-0">{{ t('backup.inProgress') }}</p>
+      <p
+        v-if="backupFilesTotal > 0"
+        class="text-caption text-medium-emphasis text-center mb-0"
+      >
+        {{ t('backup.filesProgress', { done: backupFilesDone, total: backupFilesTotal }) }}
+      </p>
+    </div>
+  </v-app>
+
+  <v-app v-else-if="authPhase === 'loading'" class="auth-loading">
     <div class="d-flex fill-height align-center justify-center">
       <v-progress-circular indeterminate color="primary" />
     </div>

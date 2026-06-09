@@ -37,7 +37,9 @@
 - [x] **磁盘格式**：`EncryptedSecretV1`（`v/iv/tag/ct`）；`secret-encryption.ts` + 三处 file 读写
 - [x] **迁移**：首次写入后加密；读路径兼容 legacy 明文
 - [x] **DEK 轮换**：运维台 `rotate-data-key` + `suggest-key`（`DOC/17`）
-- [ ] **备份边界**：`data/backups` zip 与 Syncthing 运维说明补充（见 `data/README.md` §密钥）
+- [x] **全量冷备 zip（§8.8）**：`backupIntervalDays` / `backupMaxKept`、启动检查、冻 UI + 503 写锁
+- [ ] **备份边界**：`data/backups` Syncthing ignore 与恢复说明（见 `data/README.md`）
+- [x] ~~对话轮次增量备份（§8.4）~~：**无限期延后**，不实现
 
 
 - [x] 初始化后端 Fastify 项目结构（`server/`）
@@ -193,7 +195,7 @@
 - [ ] **M4 文档 RAG**（可与 P1 独立 RAG 合并）：切片 + 独立 Lance + 对话绑知识库（**不进 charFile**）
 - [ ] **M5 打磨**：删除引用检查、批量导入、视频预览等
 
-- [ ] **全量冷备 zip（`data/backups`）**：启动时若距上次成功备份 > N 天 → 服务端流式打包整棵 `data`（含 `memory/`）→ 冻 UI + 503 写锁；`backupIntervalDays` / `backupMaxKept`；Syncthing **ignore `backups`**；无下载。见 **`DOC/03` §8.8**。
+- [x] ~~**全量冷备 zip**~~：已提升至 P0，见上「API Key 磁盘加密」段后 **§8.8** 项（`DOC/03` §8.8）
 - [ ] **Embedding MRL / 降维**：系统设置已支持 `embeddingDimensions`（留空=不传 OpenAI `dimensions`）；部分本地网关会忽略该参数仍返回满维。备选：换 TEI/vLLM 等支持 MRL 的推理端，或客户端截断前 N 维 + L2 归一化后入库。
 - [ ] **Reranker 精排（P3 · 低优先级）**：cross-encoder 二阶段精排；`api-settings.json` 已预留 `rerank` capability，组装管线未接。**当前 memoryTopK / 资料库 vector TopK 较小，收益有限，不排期**（见 P3）。
 - [ ] **Qwen query instruct**：官方建议 query 侧加任务指令前缀（约 +1～5% 检索），索引与检索均未实现。

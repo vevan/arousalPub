@@ -14,12 +14,14 @@
     "@fastify/multipart": "^10.0.0",
     "@fastify/static": "^8.0.4",
     "@lancedb/lancedb": "^0.30.0",
+    "archiver": "^8.0.0",
     "crc-32": "^1.2.2",
     "fastify": "^5.2.0",
     "js-tiktoken": "^1.0.21",
     "pinyin-pro": "^3.28.1"
   },
   "devDependencies": {
+    "@types/archiver": "^8.0.0",
     "@types/node": "^22.10.0",
     "tsx": "^4.19.2",
     "typescript": "~5.7.2"

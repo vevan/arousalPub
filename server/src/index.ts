@@ -89,6 +89,10 @@ import { registerAdminConsole } from './admin/routes.js'
 import { registerAuth } from './auth.js'
 import { resolveDataEncryptionKey } from './data-encryption-key.js'
 import { registerMaintenanceGuard } from './maintenance-guard.js'
+import {
+  getBackupStatus,
+  scheduleStartupBackupIfNeeded,
+} from './data-backup.js'
 import { ensureUsersRegistry, findUserById, readUsersIndex } from './users-index.js'
 import {
   assertValidPromptPresetBody,
@@ -390,6 +394,8 @@ resolveDataEncryptionKey()
 await bootstrapBundledPluginsAtStartup()
 
 app.get('/health', async () => ({ ok: true as const }))
+
+app.get('/api/backup/status', async () => getBackupStatus())
 
 app.get('/api/chat/index', async (_request, reply) => {
   try {
@@ -3796,6 +3802,7 @@ const host = resolveListenHost()
 try {
   await app.listen({ port, host })
   app.log.info(`listening on http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${port}`)
+  scheduleStartupBackupIfNeeded()
 } catch (err) {
   app.log.error(err)
   process.exit(1)

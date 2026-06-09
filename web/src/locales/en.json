@@ -23,6 +23,10 @@
     "pickGroupMoveHint": "Move this entry to the end of the selected group.",
     "groupEntryCount": "{n} entries"
   },
+  "backup": {
+    "inProgress": "Backing up data, please wait…",
+    "filesProgress": "{done} / {total} files processed"
+  },
   "auth": {
     "setupTitle": "Welcome",
     "setupHint": "Set a username and password for the seed account to get started.",
@@ -800,6 +804,7 @@
       "api_keys_write_failed": "api keys write failed",
       "append_turn_failed": "append turn failed",
       "assistant_content_empty_no_persist": "assistant content empty no persist",
+      "backup_in_progress": "Data backup in progress, try again later",
       "auth_required": "auth required",
       "auth_session_expired": "auth session expired",
       "avatar_must_be_png": "avatar must be png",

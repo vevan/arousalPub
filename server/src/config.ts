@@ -26,6 +26,10 @@ interface RawConfig {
   serverPort?: number | string
   host?: string
   staticDir?: string
+  backupEnabled?: boolean
+  backupIntervalDays?: number | string
+  backupMaxKept?: number | string
+  backupRetryHours?: number | string
 }
 
 /** 避开 Windows 常见保留段 3326–3425（Hyper-V 等） */
@@ -75,7 +79,7 @@ function ensureConfigFileFromExample(): void {
   }
 }
 
-function readConfigFile(): RawConfig {
+export function readConfigFile(): RawConfig {
   ensureConfigFileFromExample()
   if (!existsSync(CONFIG_PATH)) return {}
   try {

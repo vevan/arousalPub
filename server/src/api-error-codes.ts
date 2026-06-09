@@ -25,6 +25,7 @@ export const ApiErrorCodes = {
   assistant_content_empty_no_persist: 'assistant_content_empty_no_persist',
   auth_required: 'auth_required',
   auth_session_expired: 'auth_session_expired',
+  backup_in_progress: 'backup_in_progress',
   avatar_must_be_png: 'avatar_must_be_png',
   avatar_not_found: 'avatar_not_found',
   card_body_invalid: 'card_body_invalid',

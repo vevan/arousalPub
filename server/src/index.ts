@@ -223,6 +223,11 @@ import { readRegexRulesDocument } from './regex-rules-file.js'
 import { extractCompletionTokens, extractPromptTokens } from './chat-usage.js'
 import { readChatAuditFile } from './chat-audit-file.js'
 import {
+  buildPerformanceForPersist,
+  isSseContentDelta,
+} from './chat-audit-performance.js'
+import type { PerformanceAudit } from './chat-audit-types.js'
+import {
   formatArousalPersistSseLine,
   parseSseDataLine,
 } from './sse-assistant.js'
@@ -3724,6 +3729,8 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   let assemblyEmbeddingCalls:
     | import('./chat-audit-types.js').CallAuditEntry[]
     | undefined
+  let performanceAuditBase: PerformanceAudit | undefined
+  let buildFinishedAt = 0
   if (convId) {
     const promptsDoc = await readPromptsDocument()
     if (!promptsDoc) {
@@ -3746,6 +3753,8 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
     estimatedTokens = built.estimatedTokens
     assemblyAudit = built.assemblyAudit
     assemblyEmbeddingCalls = built.assemblyEmbeddingCalls
+    performanceAuditBase = built.performanceAudit
+    buildFinishedAt = performance.now()
   } else {
     const v = validateChatMessages(body.messages)
     if (!v.ok) {
@@ -3778,6 +3787,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
           assemblyEmbeddingCalls,
           turnPluginEntries:
             turnPluginEntries.length > 0 ? turnPluginEntries : undefined,
+          performanceAudit: performanceAuditBase,
         }
       : null
 
@@ -3789,6 +3799,10 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   })
   const url = `${baseUrl}/chat/completions`
   const upstreamStartedAt = performance.now()
+  const preUpstreamMs =
+    performanceAuditBase && buildFinishedAt > 0
+      ? Math.round(upstreamStartedAt - buildFinishedAt)
+      : undefined
 
   const upstream = await fetchWithTimeout(
     url,
@@ -3818,6 +3832,9 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
     })
   }
 
+  const responseHeadersAt = performance.now()
+  const trackStreamPerf = Boolean(performanceAuditBase)
+
   if (wantStream && upstream.body) {
     reply.header('Content-Type', 'text/event-stream; charset=utf-8')
     reply.header('Cache-Control', 'no-cache')
@@ -3831,6 +3848,8 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
     let accContent = ''
     let accReasoning = ''
     let accCompletionTokens: number | undefined
+    let firstTokenAt: number | undefined
+    let lastTokenAt: number | undefined
 
     const tap = new Transform({
       transform(chunk, _enc, cb) {
@@ -3840,6 +3859,11 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
         for (const line of parts) {
           const d = parseSseDataLine(line)
           if (!d) continue
+          if (trackStreamPerf && isSseContentDelta(d)) {
+            const now = performance.now()
+            if (firstTokenAt === undefined) firstTokenAt = now
+            lastTokenAt = now
+          }
           if (d.text) accContent += d.text
           if (d.reasoning) accReasoning += d.reasoning
           if (d.completionTokens) accCompletionTokens = d.completionTokens
@@ -3851,6 +3875,11 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
           for (const line of sseBuffer.split('\n')) {
             const d = parseSseDataLine(line)
             if (!d) continue
+            if (trackStreamPerf && isSseContentDelta(d)) {
+              const now = performance.now()
+              if (firstTokenAt === undefined) firstTokenAt = now
+              lastTokenAt = now
+            }
             if (d.text) accContent += d.text
             if (d.reasoning) accReasoning += d.reasoning
             if (d.completionTokens) accCompletionTokens = d.completionTokens
@@ -3861,13 +3890,30 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
           cb()
           return
         }
+        const streamEndedAt = performance.now()
+        const performanceAudit = buildPerformanceForPersist(
+          persistParams.performanceAudit,
+          {
+            upstreamStartedAt,
+            responseHeadersAt,
+            firstTokenAt,
+            lastTokenAt,
+            streamEndedAt,
+            completionTokensUpstream: accCompletionTokens,
+            assistantContent: accContent,
+            assistantReasoning: accReasoning.trim() || undefined,
+            model,
+            preUpstreamMs,
+          },
+        )
         void persistTurnAfterModelReply({
           ...persistParams,
           assistantContent: accContent,
           assistantReasoning: accReasoning.trim() || undefined,
-          durationMs: Math.round(performance.now() - upstreamStartedAt),
+          durationMs: Math.round(streamEndedAt - upstreamStartedAt),
           estimatedTokens: persistParams.estimatedTokens,
           completionTokens: accCompletionTokens,
+          performanceAudit,
         })
           .then((persist) => {
             if (!persist.ok) {
@@ -3916,14 +3962,29 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
 
   let persist: Awaited<ReturnType<typeof persistTurnAfterModelReply>> | undefined
   if (persistParams && content.trim()) {
+    const streamEndedAt = performance.now()
+    const performanceAudit = buildPerformanceForPersist(
+      persistParams.performanceAudit,
+      {
+        upstreamStartedAt,
+        responseHeadersAt,
+        streamEndedAt,
+        completionTokensUpstream: completionTokens,
+        assistantContent: content,
+        assistantReasoning: reasoning,
+        model,
+        preUpstreamMs,
+      },
+    )
     persist = await persistTurnAfterModelReply({
       ...persistParams,
       assistantContent: content,
       assistantReasoning: reasoning,
-      durationMs: Math.round(performance.now() - upstreamStartedAt),
+      durationMs: Math.round(streamEndedAt - upstreamStartedAt),
       estimatedTokens: persistParams.estimatedTokens,
       completionTokens,
       promptTokens,
+      performanceAudit,
     })
     if (!persist.ok) {
       request.log.warn({ persist }, 'persist after chat failed')

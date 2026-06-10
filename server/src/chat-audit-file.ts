@@ -128,7 +128,11 @@ export async function readChatAuditFile(
     try {
       const raw = await readFile(auditPath, 'utf8')
       const j = JSON.parse(raw) as ChatAuditFile
-      if (j && j.schemaVersion === 2 && Array.isArray(j.entries)) {
+      if (
+        j &&
+        (j.schemaVersion === 2 || j.schemaVersion === 3) &&
+        Array.isArray(j.entries)
+      ) {
         return j
       }
     } catch {
@@ -170,13 +174,14 @@ export async function appendChatAuditEntry(
     ...(params.snapshot.assembly ? { assembly: params.snapshot.assembly } : {}),
     ...(params.snapshot.calls?.length ? { calls: params.snapshot.calls } : {}),
     ...(params.snapshot.plugins?.length ? { plugins: params.snapshot.plugins } : {}),
+    ...(params.snapshot.performance ? { performance: params.snapshot.performance } : {}),
   }
   filtered.push(entry)
   const entries = filtered.slice(-maxStored)
   await mkdir(conversationDir(conversationId), { recursive: true })
   await writeFile(
     conversationAuditPath(conversationId),
-    `${JSON.stringify({ schemaVersion: 2, entries }, null, 2)}\n`,
+    `${JSON.stringify({ schemaVersion: 3, entries }, null, 2)}\n`,
     'utf8',
   )
 }
@@ -193,7 +198,7 @@ export async function removeChatAuditEntriesByTurnId(
       if (entries.length === file.entries.length) return
       await writeFile(
         auditPath,
-        `${JSON.stringify({ schemaVersion: 2, entries }, null, 2)}\n`,
+        `${JSON.stringify({ schemaVersion: 3, entries }, null, 2)}\n`,
         'utf8',
       )
       return

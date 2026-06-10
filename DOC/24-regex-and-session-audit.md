@@ -1,6 +1,6 @@
 # 正则替换（原生）与会话审计（debug）
 
-> **状态**（2026-06-10）：**§3 会话 debug 审计已实现**（2026-06-09 验收）；**§2 正则替换 Phase 0–5 主体已落地**，余 **对话批量 apply UI**、**conversation-export 勾选**（可选）。  
+> **状态**（2026-06-10）：**§3 会话 debug 审计已实现**（含 **schema v3 性能** Tab）；**§2 正则替换 Phase 0–5 主体已落地**（含 **memory 块逐轮 outgoing**），余 **对话批量 apply UI**（可选）。  
 > **关联**：`DOC/03` §6.8、§审计、`DOC/10`、`DOC/18`、`DOC/02` §4 可观测性。
 
 ---
@@ -72,7 +72,15 @@ data/{userId}/regex-rules.json
 assemble → budget trim → regex(outgoing) → plugin afterAssemblePrompts → upstream
 ```
 
-**无 `turnOrdinal` 的 system**（恒定 lore / memory / world 等）：不受 `skipLastNTurns` 限制；规则含 `system` + `outgoing` 即应用。
+**无 `turnOrdinal` 的整段 system**（恒定 lore / world 等单条 system 消息）：不受 `skipLastNTurns` 限制；规则含 `system` + `outgoing` 即作用于整条 `content`。
+
+**`<memory>` 块（向量召回）**（2026-06-10 增补）：
+
+- 注入形态为 **一条** `role: system`，正文为 `<memory>…</memory>`（见 `turn-memory-xml.ts`）。
+- **不得**把整段 memory XML 当作无 ordinal 的 system 处理 `skipLastNTurns`；须在 outgoing 前对块内各 `<turn ordinal="N">` 的 **`<user>` / `<assistant>` 正文**按 `turnOrdinal` 分别应用规则（与 history 中 user/assistant 同语义）。
+- 实现：`regex-outgoing.ts` — `applyOutgoingRegexToMemoryItems` ← `chat-assemble` 传入 budget trim 后的 `memoryItems` → `formatMemoryXml` → 替换 messages 中 `<memory>` system 消息 → 再走整包 `applyRegexRulesToMessages`（history / 尾部 user 等）。
+- 正文写入 XML 前经 `prepareXmlElementText` 转义；outgoing 正则前对 turn 正文做 `normalizeXmlTextBeforeProcessing`（与 `prompt-xml.ts` 一致，最多 3 轮实体还原），避免磁盘误存 `&lt;tag&gt;` 时 pattern 匹配失败。
+- **审计展示**：memory 段内 tracker 等标签在 `messages` 中常以 `&lt;…&gt;` 显示，为 **合法 XML 转义**；skip 窗口外老轮剥除成功后应无 `ex-tracker`（实体或明文均无）。history 近 N 轮 assistant 在 skip 窗口内可仍保留明文 `<ex-tracker>`。
 
 ### 2.3 执行引擎
 
@@ -175,6 +183,7 @@ applyText / applyMessages  // 同语义
 - [x] `server/src/regex-apply.ts` 引擎 + `skipLastNTurns` / `order`（Phase 0 · 2026-06-10）
 - [x] `POST /api/regex/apply-text`（无写盘预览 / `host.regex` 前置）
 - [x] `/api/chat` **outgoing** 挂钩（`chat-assemble.ts` · Phase 1 · 2026-06-10）
+- [x] **memory 块逐轮 outgoing** + XML 实体还原（`regex-outgoing.ts` · 2026-06-10）
 - [x] `/api/chat` **persist** 挂钩 + SSE `final*`（Phase 2 · 2026-06-10）
 - [x] `POST /api/chat/conversations/:id/regex/apply`（dry-run / batchUpdateConversationTurns · Phase 3 · 2026-06-10）
 - [x] Web 设置页（Tab「正则替换」、拖曳 order、单条测试串、管线测试 · Phase 4 · 2026-06-10）
@@ -217,7 +226,7 @@ applyText / applyMessages  // 同语义
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "entries": [
     {
       "turnId": "a1b2c3d4",
@@ -242,14 +251,42 @@ applyText / applyMessages  // 同语义
       "calls": [
         { "kind": "chat", "apiConfigId": "…", "model": "…", "latencyMs": 1200, "usage": {} },
         { "kind": "embedding", "purpose": "memory_recall", "latencyMs": 45 }
-      ]
+      ],
+      "performance": {
+        "assemblyMs": {
+          "total": 120,
+          "memory": 40,
+          "characters": 5,
+          "lore": 30,
+          "assembleAndTrim": 35,
+          "regexOutgoing": 2,
+          "pluginsAfterAssemble": 1
+        },
+        "preUpstreamMs": 3,
+        "upstreamMs": {
+          "toResponseHeaders": 800,
+          "toFirstToken": 850,
+          "firstTokenToLastToken": 12000,
+          "total": 12850,
+          "tps": 42,
+          "tpsTokenSource": "upstream",
+          "tpsTokenCount": 504
+        },
+        "persistMs": { "regex": 1, "diskAndAudit": 8, "total": 12 },
+        "stream": {
+          "contentChars": 1200,
+          "reasoningChars": 0,
+          "completionTokensUpstream": 504
+        }
+      }
     }
   ]
 }
 ```
 
-- **`messages`**：outgoing 最终态（**regex outgoing 之后**、upstream 之前）；**服务端自写**，不再依赖前端 `debugPrompt`。
-- **`assembly` / `calls`**：仅 debug 开启时写入；**不进** chunk `turn.send` / `receive.runtime`（`runtime` 仍保留轻量 model/duration/tokens）。
+- **`messages`**：outgoing 最终态（**regex outgoing 之后**、`afterAssemblePrompts` 之后、upstream 之前）；**服务端自写**，不再依赖前端 `debugPrompt`。
+- **`assembly` / `calls` / `performance`**：仅 **`auditDebug.enabled`** 时计算并写入；**不进** chunk `turn.send` / `receive.runtime`（`runtime` 仍保留轻量 model/duration/tokens）。
+- **`performance`**（schema **v3**）：`assemblyMs` 分段（memory / characters / lore / assembleAndTrim / regexOutgoing / pluginsAfterAssemble）、`preUpstreamMs`、流式 `upstreamMs`（TTFB、首→末 token TPS）、`persistMs`、`stream` 字符/ token 统计；**debug 关闭时零开销**（不跑计时、不落盘该字段）。
 - **`calls[].plugin.complete` / `plugins[]`**：schema **预留**（见 §3.6）；**P0 不写入**。
 
 ### 3.3 写入时机
@@ -277,7 +314,9 @@ auditDebug.enabled && maxStored >= 1 && 落盘成功（/api/chat persist）
 - [x] `buildAssemblyAudit` + `/api/chat` 落盘写入
 - [x] embedding 写入 `calls[]`
 - [x] 全局 + 会话 `auditDebug` 设置 UI；关闭时不写
-- [x] 轮次审计 UI 三 Tab（`ChatTurnPromptDialog`）
+- [x] 轮次审计 UI 四 Tab（提示词 / 组装 / 调用 / **性能** · `ChatTurnPromptDialog`）
+- [x] **`performance` 审计**（schema v3 · `chat-audit-performance.ts` · 2026-06-10）
+- [ ] 客户端「按下发送」计时（`clientTimings`，可选）
 
 ### 3.6 插件与审计范围（2026-06-08 定案）
 

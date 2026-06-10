@@ -24,8 +24,13 @@ import { resolveLorebookSettings } from './lorebook-settings.js'
 import { resolveLorebookInjectionParts } from './lorebook-resolve.js'
 import { readLorebooksByIds } from './lorebook-file.js'
 import { buildAssemblyAudit } from './build-assembly-audit.js'
-import type { AssemblyAudit } from './chat-audit-types.js'
-import type { CallAuditEntry } from './chat-audit-types.js'
+import { isAuditDebugWriteEnabled } from './chat-audit-file.js'
+import type {
+  AssemblyAudit,
+  AssemblyTimingMs,
+  CallAuditEntry,
+  PerformanceAudit,
+} from './chat-audit-types.js'
 import { resolveHistorySettings } from './history-settings.js'
 import { resolveMemorySettings } from './memory-settings.js'
 import { buildScanText } from './lore-scan.js'
@@ -178,6 +183,8 @@ export interface BuildConversationMessagesResult {
   assemblyAudit?: AssemblyAudit
   /** debug 审计：本轮组装阶段的 embedding 调用 */
   assemblyEmbeddingCalls?: CallAuditEntry[]
+  /** debug 审计：组装阶段耗时 */
+  performanceAudit?: PerformanceAudit
 }
 
 export async function buildConversationOutboundMessages(
@@ -235,6 +242,9 @@ export async function buildConversationOutboundMessages(
       ? maxT
       : undefined
 
+  const auditEnabled = isAuditDebugWriteEnabled(idx)
+  const assemblyStartedAt = auditEnabled ? performance.now() : 0
+
   const memoryPipeline = await runMemoryPipeline({
     conversationId,
     userText: userInput,
@@ -244,12 +254,15 @@ export async function buildConversationOutboundMessages(
       params.historyBeforeTurnOrdinalExclusive ?? undefined,
     activeBranchPath: idx.activeBranchPath ?? '',
   })
+  const afterMemoryAt = auditEnabled ? performance.now() : 0
 
   const charIds = resolvedCharacterIds(idx)
   const [userCharacter, characters] = await Promise.all([
     loadUserCharacterSlice(idx),
     loadBoundCharacterSlices(charIds),
   ])
+  const afterCharactersAt = auditEnabled ? performance.now() : 0
+
   const charCtx: {
     userCharacter?: BoundCharacterSlice
     characters?: BoundCharacterSlice[]
@@ -290,6 +303,8 @@ export async function buildConversationOutboundMessages(
           lorebookSettings: effectiveLore,
         })
       : { constantLoreGroups: [], matchedLore: [] }
+  const afterLoreAt = auditEnabled ? performance.now() : 0
+
   const initialMatchedLore = loreParts.matchedLore.slice()
   const initialMemoryItems = memoryPipeline.memoryItems.slice()
 
@@ -353,6 +368,7 @@ export async function buildConversationOutboundMessages(
     messages = assembleFromState(trimState)
     estimatedTokens = countChatMessagesTokens(messages, { model: tokenModel })
   }
+  const afterAssembleAt = auditEnabled ? performance.now() : 0
 
   const tailOrdinal = resolveOutgoingTailOrdinal({
     sourceHistoryTurnOrdinals: memoryPipeline.recentHistoryTurnOrdinals,
@@ -366,8 +382,10 @@ export async function buildConversationOutboundMessages(
     })),
     sourceHistoryTurnOrdinals: memoryPipeline.recentHistoryTurnOrdinals,
     trimmedHistoryMessages: trimState.historyMessages,
+    memoryItems: trimState.memoryItems,
     userInput: userInput,
   })
+  const afterRegexAt = auditEnabled ? performance.now() : 0
 
   estimatedTokens = countChatMessagesTokens(messages, { model: tokenModel })
 
@@ -382,32 +400,51 @@ export async function buildConversationOutboundMessages(
       : countChatMessagesTokens(messagesAfterPlugins, { model: tokenModel })
 
   const finalMemoryText = memoryTextFromTrimState(trimState)
+  const afterPluginsAt = auditEnabled ? performance.now() : 0
 
-  const assemblyAudit = buildAssemblyAudit({
-    estimatedTokens: finalEstimatedTokens,
-    tokenModel,
-    maxTokens,
-    lorebookIds,
-    lorebookNameToId,
-    memoryPipeline,
-    loreParts,
-    initialMatchedLore,
-    initialMemoryItems,
-    trimState,
-    droppedLoreCount,
-    droppedMemoryCount,
-    droppedHistoryCount,
-    memoryEnabled: effectiveMemory.memoryEnabled,
-  })
+  let assemblyAudit: AssemblyAudit | undefined
+  let assemblyEmbeddingCalls: CallAuditEntry[] | undefined
+  let performanceAudit: PerformanceAudit | undefined
 
-  const assemblyEmbeddingCalls: CallAuditEntry[] = []
-  if (memoryPipeline.embeddingCall) {
-    assemblyEmbeddingCalls.push({
-      kind: 'embedding',
-      purpose: 'memory_recall',
-      model: memoryPipeline.embeddingCall.model,
-      latencyMs: memoryPipeline.embeddingCall.latencyMs,
+  if (auditEnabled) {
+    assemblyAudit = buildAssemblyAudit({
+      estimatedTokens: finalEstimatedTokens,
+      tokenModel,
+      maxTokens,
+      lorebookIds,
+      lorebookNameToId,
+      memoryPipeline,
+      loreParts,
+      initialMatchedLore,
+      initialMemoryItems,
+      trimState,
+      droppedLoreCount,
+      droppedMemoryCount,
+      droppedHistoryCount,
+      memoryEnabled: effectiveMemory.memoryEnabled,
     })
+
+    assemblyEmbeddingCalls = []
+    if (memoryPipeline.embeddingCall) {
+      assemblyEmbeddingCalls.push({
+        kind: 'embedding',
+        purpose: 'memory_recall',
+        model: memoryPipeline.embeddingCall.model,
+        latencyMs: memoryPipeline.embeddingCall.latencyMs,
+      })
+    }
+
+    const round = (n: number) => Math.round(n)
+    const assemblyMs: AssemblyTimingMs = {
+      total: round(afterPluginsAt - assemblyStartedAt),
+      memory: round(afterMemoryAt - assemblyStartedAt),
+      characters: round(afterCharactersAt - afterMemoryAt),
+      lore: round(afterLoreAt - afterCharactersAt),
+      assembleAndTrim: round(afterAssembleAt - afterLoreAt),
+      regexOutgoing: round(afterRegexAt - afterAssembleAt),
+      pluginsAfterAssemble: round(afterPluginsAt - afterRegexAt),
+    }
+    performanceAudit = { assemblyMs }
   }
 
   return {
@@ -418,8 +455,9 @@ export async function buildConversationOutboundMessages(
     droppedMemoryCount,
     memoryTurnIds: trimState.memoryItems.map((x) => x.turn.turnId),
     memoryText: finalMemoryText || undefined,
-    assemblyAudit,
-    assemblyEmbeddingCalls,
+    ...(assemblyAudit ? { assemblyAudit } : {}),
+    ...(assemblyEmbeddingCalls ? { assemblyEmbeddingCalls } : {}),
+    ...(performanceAudit ? { performanceAudit } : {}),
     ...(resolvedRagGenerate ? { resolvedRagGenerate } : {}),
   }
 }

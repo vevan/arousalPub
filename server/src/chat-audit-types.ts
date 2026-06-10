@@ -69,6 +69,49 @@ export interface PluginAuditEntry {
   meta?: Record<string, unknown>
 }
 
+export interface AssemblyTimingMs {
+  total: number
+  memory?: number
+  characters?: number
+  lore?: number
+  assembleAndTrim?: number
+  regexOutgoing?: number
+  pluginsAfterAssemble?: number
+}
+
+export interface UpstreamTimingMs {
+  toResponseHeaders?: number
+  toFirstToken?: number
+  firstTokenToLastToken?: number
+  total?: number
+  tps?: number
+  tpsTokenSource?: 'upstream' | 'estimated'
+  tpsTokenCount?: number
+}
+
+export interface PersistTimingMs {
+  regex?: number
+  diskAndAudit?: number
+  retro?: number
+  total?: number
+}
+
+export interface StreamAuditStats {
+  contentChars: number
+  reasoningChars: number
+  contentTokensEst?: number
+  reasoningTokensEst?: number
+  completionTokensUpstream?: number
+}
+
+export interface PerformanceAudit {
+  assemblyMs?: AssemblyTimingMs
+  preUpstreamMs?: number
+  upstreamMs?: UpstreamTimingMs
+  persistMs?: PersistTimingMs
+  stream?: StreamAuditStats
+}
+
 export interface ChatAuditEntry {
   savedAt: string
   chunkName: string
@@ -78,10 +121,11 @@ export interface ChatAuditEntry {
   assembly?: AssemblyAudit
   calls?: CallAuditEntry[]
   plugins?: PluginAuditEntry[]
+  performance?: PerformanceAudit
 }
 
 export interface ChatAuditFile {
-  schemaVersion: 2
+  schemaVersion: 2 | 3
   entries: ChatAuditEntry[]
 }
 
@@ -91,4 +135,5 @@ export interface ChatAuditSnapshotInput {
   assembly?: AssemblyAudit
   calls?: CallAuditEntry[]
   plugins?: PluginAuditEntry[]
+  performance?: PerformanceAudit
 }

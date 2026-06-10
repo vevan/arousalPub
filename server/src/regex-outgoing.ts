@@ -1,11 +1,24 @@
 import type { ChatMessage } from './assemble-prompts.js'
+import type { TurnRecord } from './chat-storage.js'
+import { getTurnUserText } from './chat-storage.js'
 import {
   applyRegexRulesToMessages,
+  applyRegexRulesToText,
   filterRegexRules,
   type ApplyRegexOptions,
 } from './regex-apply.js'
 import { readRegexRulesDocument } from './regex-rules-file.js'
 import type { RegexRule } from './regex-rules-types.js'
+import { normalizeXmlTextBeforeProcessing } from './prompt-xml.js'
+import {
+  assistantTextFromTurn,
+  formatMemoryXml,
+} from './turn-memory-xml.js'
+
+export interface MemoryRegexItem {
+  turn: TurnRecord
+  score?: number
+}
 
 export interface OutgoingRegexContext {
   tailOrdinal: number
@@ -15,8 +28,98 @@ export interface OutgoingRegexContext {
   sourceHistoryTurnOrdinals: number[]
   /** budget trim 后的 history（与组装 messages 中 history 段一致） */
   trimmedHistoryMessages: ChatMessage[]
+  /** budget trim 后的 memory 召回项（与组装 messages 中 memory 块一致） */
+  memoryItems?: MemoryRegexItem[]
   /** 本轮 userInput；用于识别尾部当前 user 消息 */
   userInput?: string
+}
+
+export function isMemoryXmlContent(content: string): boolean {
+  return content.trimStart().startsWith('<memory>')
+}
+
+function patchTurnRecordContent(
+  turn: TurnRecord,
+  userText: string,
+  assistantContent: string,
+): TurnRecord {
+  const userChanged = getTurnUserText(turn) !== userText
+  const assistantChanged = assistantTextFromTurn(turn) !== assistantContent
+  if (!userChanged && !assistantChanged) return turn
+
+  const receives = [...(turn.receives ?? [])]
+  const activeIdx = Math.min(
+    Math.max(0, Math.floor(turn.activeReceiveIndex) || 0),
+    Math.max(0, receives.length - 1),
+  )
+  if (receives[activeIdx]) {
+    receives[activeIdx] = { ...receives[activeIdx], content: assistantContent }
+  }
+  return {
+    ...turn,
+    send: { ...turn.send, userText },
+    receives,
+  }
+}
+
+/** 对 memory 块内各轮 user/assistant 按 turnOrdinal 应用 outgoing（含 skipLastNTurns） */
+export function applyOutgoingRegexToMemoryItems(
+  items: MemoryRegexItem[],
+  rules: RegexRule[],
+  tailOrdinal: number,
+  opts?: ApplyRegexOptions,
+): MemoryRegexItem[] {
+  const outgoingRules = filterRegexRules(rules, { phases: ['outgoing'] })
+  if (!hasEnabledOutgoingRules(outgoingRules) || items.length === 0) {
+    return items
+  }
+
+  const skipTailOrdinal = resolveOutgoingSkipTailOrdinal(tailOrdinal)
+
+  return items.map(({ turn, score }) => {
+    const ord = turn.turnOrdinal
+    const userText = applyRegexRulesToText(
+      normalizeXmlTextBeforeProcessing(getTurnUserText(turn)),
+      outgoingRules,
+      {
+        phase: 'outgoing',
+        field: 'user',
+        turnOrdinal: ord,
+        tailOrdinal: skipTailOrdinal,
+      },
+      opts,
+    )
+    const assistantContent = applyRegexRulesToText(
+      normalizeXmlTextBeforeProcessing(assistantTextFromTurn(turn)),
+      outgoingRules,
+      {
+        phase: 'outgoing',
+        field: 'assistant',
+        turnOrdinal: ord,
+        tailOrdinal: skipTailOrdinal,
+      },
+      opts,
+    )
+    return {
+      turn: patchTurnRecordContent(turn, userText, assistantContent),
+      ...(typeof score === 'number' ? { score } : {}),
+    }
+  })
+}
+
+function patchMemoryMessagesInPlace(
+  messages: ChatMessage[],
+  memoryXml: string,
+): ChatMessage[] {
+  let patched = false
+  const out = messages.map((msg) => {
+    if (msg.role === 'system' && isMemoryXmlContent(msg.content)) {
+      patched = true
+      return { ...msg, content: memoryXml }
+    }
+    return msg
+  })
+  return patched ? out : messages
 }
 
 export function resolveOutgoingTailOrdinal(params: {
@@ -141,6 +244,20 @@ export function applyRegexOutgoingToMessages(
   const outgoingRules = filterRegexRules(rules, { phases: ['outgoing'] })
   if (!hasEnabledOutgoingRules(outgoingRules)) return messages
 
+  let messagesForRules = messages
+  if (ctx.memoryItems && ctx.memoryItems.length > 0) {
+    const processedItems = applyOutgoingRegexToMemoryItems(
+      ctx.memoryItems,
+      outgoingRules,
+      ctx.tailOrdinal,
+      opts,
+    )
+    const memoryXml = formatMemoryXml(processedItems)
+    if (memoryXml) {
+      messagesForRules = patchMemoryMessagesInPlace(messages, memoryXml)
+    }
+  }
+
   const trimmedOrdinals = ordinalsForTrimmedHistory(
     ctx.trimmedHistoryMessages,
     ctx.sourceHistoryMessages,
@@ -150,7 +267,7 @@ export function applyRegexOutgoingToMessages(
   const skipTailOrdinal = resolveOutgoingSkipTailOrdinal(ctx.tailOrdinal)
 
   return applyRegexRulesToMessages(
-    messages,
+    messagesForRules,
     outgoingRules,
     {
       phase: 'outgoing',

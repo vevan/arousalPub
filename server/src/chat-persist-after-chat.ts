@@ -19,6 +19,8 @@ import type {
   AssemblyAudit,
   CallAuditEntry,
   ChatAuditSnapshotInput,
+  PerformanceAudit,
+  PersistTimingMs,
 } from './chat-audit-types.js'
 import { isAuditDebugWriteEnabled } from './chat-audit-file.js'
 import {
@@ -86,6 +88,7 @@ function auditSnapshotFromPersist(
   assemblyAudit?: AssemblyAudit,
   assemblyEmbeddingCalls?: CallAuditEntry[],
   chatCall?: CallAuditEntry,
+  performance?: PerformanceAudit,
 ): ChatAuditSnapshotInput | undefined {
   if (!isAuditDebugWriteEnabled(idx)) return undefined
   const calls: CallAuditEntry[] = [
@@ -96,7 +99,37 @@ function auditSnapshotFromPersist(
     messages,
     ...(assemblyAudit ? { assembly: assemblyAudit } : {}),
     ...(calls.length > 0 ? { calls } : {}),
+    ...(performance ? { performance } : {}),
   }
+}
+
+async function applyPersistRegexFieldsTimed(
+  userText: string,
+  assistantContent: string,
+  assistantReasoning: string | undefined,
+  turnOrdinal: number,
+  conversationId: string,
+  persistMs?: PersistTimingMs,
+): Promise<PersistRegexFields> {
+  const startedAt = persistMs ? performance.now() : 0
+  const fields = await applyPersistRegexFields(
+    userText,
+    assistantContent,
+    assistantReasoning,
+    turnOrdinal,
+    conversationId,
+  )
+  if (persistMs) {
+    persistMs.regex = Math.round(performance.now() - startedAt)
+  }
+  return fields
+}
+
+function performanceWithPersistRegex(
+  base: PerformanceAudit | undefined,
+): PerformanceAudit | undefined {
+  if (!base) return undefined
+  return { ...base, persistMs: {} }
 }
 
 function receiveRuntime(
@@ -214,6 +247,8 @@ export async function persistTurnAfterModelReply(params: {
   /** 再生：向该轮追加 receive，不新开 turn */
   regenerateTurnOrdinal?: number | null
   turnPluginEntries?: TurnPluginEntry[]
+  /** debug 审计：组装/上游性能（persist 阶段会补全 persistMs） */
+  performanceAudit?: PerformanceAudit
 }): Promise<ChatPersistResult> {
   const conversationId = params.conversationId.trim()
   const rawUserText = params.userText.trim()
@@ -242,17 +277,21 @@ export async function persistTurnAfterModelReply(params: {
       : undefined
 
   const regenOrd = params.regenerateTurnOrdinal
+  const perfBase = performanceWithPersistRegex(params.performanceAudit)
+  const persistMs = perfBase?.persistMs
+
   if (
     typeof regenOrd === 'number' &&
     Number.isInteger(regenOrd) &&
     regenOrd >= 0
   ) {
-    const fields = await applyPersistRegexFields(
+    const fields = await applyPersistRegexFieldsTimed(
       rawUserText,
       rawAssistantContent,
       rawReasoning,
       regenOrd,
       conversationId,
+      persistMs,
     )
     const userText = fields.userText
     const assistantContent = fields.assistantContent
@@ -298,6 +337,7 @@ export async function persistTurnAfterModelReply(params: {
       params.assemblyAudit,
       params.assemblyEmbeddingCalls,
       chatCall,
+      perfBase,
     )
     const runtime = receiveRuntime(
       model,
@@ -409,12 +449,13 @@ export async function persistTurnAfterModelReply(params: {
       tailChunk?.turns[tailChunk.turns.length - 1]?.turnOrdinal !== undefined
         ? tailChunk.turns[tailChunk.turns.length - 1]!.turnOrdinal + 1
         : regenOrd
-    const appendFields = await applyPersistRegexFields(
+    const appendFields = await applyPersistRegexFieldsTimed(
       rawUserText,
       rawAssistantContent,
       rawReasoning,
       appendOrdinal,
       conversationId,
+      persistMs,
     )
     const receives: TurnReceive[] = [
       {
@@ -459,12 +500,13 @@ export async function persistTurnAfterModelReply(params: {
     hasHeadChunk: Boolean(idx.headChunkFile),
     regenerateTurnOrdinal: null,
   })
-  const fields = await applyPersistRegexFields(
+  const fields = await applyPersistRegexFieldsTimed(
     rawUserText,
     rawAssistantContent,
     rawReasoning,
     turnOrdinal,
     conversationId,
+    persistMs,
   )
   const userText = fields.userText
   const assistantContent = fields.assistantContent
@@ -510,6 +552,7 @@ export async function persistTurnAfterModelReply(params: {
     params.assemblyAudit,
     params.assemblyEmbeddingCalls,
     chatCall,
+    perfBase,
   )
   const runtime = receiveRuntime(
     model,

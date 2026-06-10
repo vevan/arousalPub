@@ -2,13 +2,32 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { ChatMessage } from './assemble-prompts.js'
 import {
+  applyOutgoingRegexToMemoryItems,
   applyRegexOutgoingToMessages,
   buildPerMessageTurnOrdinals,
   findHistorySpanInMessages,
   resolveOutgoingSkipTailOrdinal,
   resolveOutgoingTailOrdinal,
 } from './regex-outgoing.js'
+import type { TurnRecord } from './chat-storage.js'
+import { assistantTextFromTurn, formatMemoryXml } from './turn-memory-xml.js'
 import type { RegexRule } from './regex-rules-types.js'
+
+function turn(
+  ordinal: number,
+  user: string,
+  assistant: string,
+  id = `${ordinal}`.padStart(8, '0'),
+): TurnRecord {
+  return {
+    turnId: id,
+    turnOrdinal: ordinal,
+    send: { userText: user },
+    receives: [{ id: 'r1', content: assistant }],
+    activeReceiveIndex: 0,
+    plugins: [],
+  }
+}
 
 function rule(partial: Partial<RegexRule> & Pick<RegexRule, 'id'>): RegexRule {
   return {
@@ -184,6 +203,80 @@ describe('applyRegexOutgoingToMessages', () => {
     })
     assert.equal(out[2]?.content, 'a0 ')
     assert.equal(out[4]?.content, 'a1 <<track>>')
+  })
+
+  it('strips tracker inside memory block for turns before skip window', () => {
+    const memoryTurns = [
+      { turn: turn(0, 'u0', 'mem0 <<track>>'), score: 0.9 },
+      { turn: turn(3, 'u3', 'mem3 <<track>>'), score: 0.8 },
+    ]
+    const memoryXml = formatMemoryXml(memoryTurns)
+    const messages: ChatMessage[] = [
+      { role: 'system', content: 'world' },
+      { role: 'system', content: memoryXml },
+      { role: 'user', content: 'u4' },
+    ]
+    const rules = [
+      rule({
+        id: '11111111',
+        fields: ['assistant'],
+        skipLastNTurns: 1,
+        pattern: '<<track>>',
+        replacement: '',
+      }),
+    ]
+    const out = applyRegexOutgoingToMessages(messages, rules, {
+      tailOrdinal: 4,
+      sourceHistoryMessages: [],
+      sourceHistoryTurnOrdinals: [],
+      trimmedHistoryMessages: [],
+      memoryItems: memoryTurns,
+      userInput: 'u4',
+    })
+    const mem = out[1]?.content ?? ''
+    assert.match(mem, /<assistant>mem0 <\/assistant>/)
+    assert.match(mem, /mem3 &lt;&lt;track&gt;&gt;/)
+  })
+
+  it('strips tracker when turn text stores XML entities on disk', () => {
+    const items = [
+      {
+        turn: turn(0, 'u', '&lt;ex-tracker&gt;hello'),
+        score: 1,
+      },
+    ]
+    const rules = [
+      rule({
+        id: '11111111',
+        fields: ['assistant'],
+        pattern: '<ex-tracker>',
+        replacement: '',
+      }),
+    ]
+    const out = applyOutgoingRegexToMemoryItems(items, rules, 5)
+    assert.equal(assistantTextFromTurn(out[0]!.turn), 'hello')
+    const xml = formatMemoryXml(out)
+    assert.match(xml, /<assistant>hello<\/assistant>/)
+    assert.doesNotMatch(xml, /ex-tracker/)
+  })
+
+  it('applyOutgoingRegexToMemoryItems respects skipLastNTurns per ordinal', () => {
+    const items = [
+      { turn: turn(0, 'u', 'a0 <<track>>'), score: 1 },
+      { turn: turn(3, 'u', 'a3 <<track>>'), score: 0.5 },
+    ]
+    const rules = [
+      rule({
+        id: '11111111',
+        fields: ['assistant'],
+        skipLastNTurns: 2,
+        pattern: '<<track>>',
+        replacement: '',
+      }),
+    ]
+    const out = applyOutgoingRegexToMemoryItems(items, rules, 5)
+    assert.equal(assistantTextFromTurn(out[0]!.turn), 'a0 ')
+    assert.equal(assistantTextFromTurn(out[1]!.turn), 'a3 <<track>>')
   })
 
   it('applies system rules without turnOrdinal', () => {

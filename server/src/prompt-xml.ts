@@ -38,17 +38,22 @@ function decodeXmlEntitiesOnce(raw: string): string {
     .replace(/&apos;/g, "'")
 }
 
-/**
- * 元素正文：先还原历史误存的实体（最多 3 轮），再 escape，避免 &quot; → &amp;quot; 叠层。
- */
-export function prepareXmlElementText(raw: string): string {
+/** 元素正文写入 XML 前：还原误存实体（最多 3 轮），供正则等处理与 {@link prepareXmlElementText} 对齐。 */
+export function normalizeXmlTextBeforeProcessing(raw: string): string {
   let s = raw
   for (let i = 0; i < 3; i++) {
     const next = decodeXmlEntitiesOnce(s)
     if (next === s) break
     s = next
   }
-  return escapeXmlElementText(s)
+  return s
+}
+
+/**
+ * 元素正文：先还原历史误存的实体（最多 3 轮），再 escape，避免 &quot; → &amp;quot; 叠层。
+ */
+export function prepareXmlElementText(raw: string): string {
+  return escapeXmlElementText(normalizeXmlTextBeforeProcessing(raw))
 }
 
 /** @deprecated 使用 escapeXmlAttribute / prepareXmlElementText */

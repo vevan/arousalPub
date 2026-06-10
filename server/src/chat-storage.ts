@@ -12,7 +12,10 @@ import { getChatsRoot } from './config.js'
 import { normalizeBranchPath } from './chunk-path.js'
 import { isValidConversationId } from './conversation-id.js'
 import type { ResolvedFeatureAudit } from './feature-binding-resolve.js'
-import type { ChatAuditSnapshotInput } from './chat-audit-types.js'
+import type {
+  ChatAuditSnapshotInput,
+  PersistTimingMs,
+} from './chat-audit-types.js'
 import {
   appendChatAuditEntry,
   DEFAULT_AUDIT_DEBUG_MAX,
@@ -83,6 +86,19 @@ import {
   type TurnContentPatchInput,
 } from './turn-patch-body.js'
 import { readGlobalChunkSettings } from './user-preferences-file.js'
+
+function finalizeAuditPersistDiskMs(
+  snapshot: ChatAuditSnapshotInput | undefined,
+  storageStartedAt: number,
+): void {
+  const persistMs = snapshot?.performance?.persistMs as PersistTimingMs | undefined
+  if (!persistMs || storageStartedAt <= 0) return
+  const diskAndAudit = Math.round(performance.now() - storageStartedAt)
+  persistMs.diskAndAudit = diskAndAudit
+  const regex = persistMs.regex
+  persistMs.total =
+    typeof regex === 'number' ? regex + diskAndAudit : diskAndAudit
+}
 
 /** 与 {@link getChatsRoot} 相同，保留旧名供外部引用 */
 export function chatRoot(): string {
@@ -1493,6 +1509,8 @@ export async function saveFirstTurn(params: {
     auditSnapshot,
     turnPluginEntries,
   } = params
+  const auditStorageStartedAt =
+    auditSnapshot?.performance?.persistMs !== undefined ? performance.now() : 0
   let idx = await readConversationIndex(conversationId)
   if (!idx) return null
   if (idx.headChunkFile) {
@@ -1555,6 +1573,7 @@ export async function saveFirstTurn(params: {
 
   /** 对话落盘成功后再写快照；无有效 messages 或索引关闭写入时不落盘 */
   if (auditSnapshot !== undefined) {
+    finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
     const idxForAudit = await readConversationIndex(conversationId)
     await appendChatAuditEntry(conversationId, idxForAudit, {
       chunkName: firstChunkFile,
@@ -1636,6 +1655,8 @@ export async function appendConversationTurn(params: {
     auditSnapshot,
     turnPluginEntries,
   } = params
+  const auditStorageStartedAt =
+    auditSnapshot?.performance?.persistMs !== undefined ? performance.now() : 0
   if (!receives.length) return false
   const prepared = await prepareTailChunkForAppend(conversationId)
   if (!prepared) return false
@@ -1679,6 +1700,7 @@ export async function appendConversationTurn(params: {
   await writeConversationIndex(conversationId, idx)
   await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
   if (auditSnapshot !== undefined) {
+    finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
     const idxForAudit = await readConversationIndex(conversationId)
     await appendChatAuditEntry(conversationId, idxForAudit, {
       chunkName,
@@ -1743,6 +1765,8 @@ export async function updateTurnContentInTailChunk(
   turnPluginEntries?: TurnPluginEntry[],
 ): Promise<boolean> {
   if (!receives.length) return false
+  const auditStorageStartedAt =
+    auditSnapshot?.performance?.persistMs !== undefined ? performance.now() : 0
   const located = await readChunkContainingOrdinal(conversationId, turnOrdinal)
   if (!located) return false
   const { chunk, fileName: chunkName } = located
@@ -1767,6 +1791,7 @@ export async function updateTurnContentInTailChunk(
   await writeConversationIndex(conversationId, idx)
   await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
   if (auditSnapshot !== undefined) {
+    finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
     const idxForAudit = await readConversationIndex(conversationId)
     await appendChatAuditEntry(conversationId, idxForAudit, {
       chunkName,

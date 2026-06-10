@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import type { useChatSession } from '@/composables/useChatSession'
-import type { AssemblyAudit, CallAuditEntry } from '@/types/chat-turn'
+import type {
+  AssemblyAudit,
+  CallAuditEntry,
+  PerformanceAudit,
+} from '@/types/chat-turn'
 import { computed, ref, toRefs, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
   session: ReturnType<typeof useChatSession>
@@ -18,6 +23,7 @@ const {
 } = toRefs(props.session)
 
 const { copyTurnPromptDisplay, copyTurnPromptRaw } = props.session
+const { t } = useI18n()
 
 const auditTab = ref('messages')
 
@@ -37,6 +43,23 @@ const calls = computed((): CallAuditEntry[] => {
 
 const messages = computed(() => turnAuditEntry.value?.messages ?? [])
 
+const performance = computed((): PerformanceAudit | null => {
+  const p = turnAuditEntry.value?.performance
+  return p && typeof p === 'object' ? p : null
+})
+
+const hasPerformance = computed(() => {
+  const p = performance.value
+  if (!p) return false
+  return Boolean(
+    p.assemblyMs ||
+      p.preUpstreamMs !== undefined ||
+      p.upstreamMs ||
+      p.persistMs ||
+      p.stream,
+  )
+})
+
 function roleChipColor(role: string): string {
   if (role === 'system') return 'primary'
   if (role === 'user') return 'secondary'
@@ -51,6 +74,19 @@ function formatScore(score: number | undefined): string {
 function formatLatency(ms: number | undefined): string {
   if (typeof ms !== 'number' || !Number.isFinite(ms)) return '—'
   return `${Math.round(ms)} ms`
+}
+
+function formatTps(n: number | undefined): string {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return '—'
+  return `${n} tok/s`
+}
+
+function formatTokenSource(
+  source: 'upstream' | 'estimated' | undefined,
+): string {
+  if (source === 'upstream') return t('chat.turnAuditPerfTpsSourceUpstream')
+  if (source === 'estimated') return t('chat.turnAuditPerfTpsSourceEstimated')
+  return '—'
 }
 </script>
 
@@ -119,6 +155,9 @@ function formatLatency(ms: number | undefined): string {
             </v-tab>
             <v-tab value="calls">
               {{ $t('chat.turnAuditTabCalls') }}
+            </v-tab>
+            <v-tab value="performance">
+              {{ $t('chat.turnAuditTabPerformance') }}
             </v-tab>
           </v-tabs>
           <v-divider />
@@ -348,6 +387,156 @@ function formatLatency(ms: number | undefined): string {
                     </tr>
                   </tbody>
                 </v-table>
+              </div>
+            </v-tabs-window-item>
+
+            <v-tabs-window-item value="performance">
+              <div class="audit-card__pane">
+                <p
+                  v-if="!hasPerformance"
+                  class="text-body-2 text-medium-emphasis mb-0"
+                >
+                  {{ $t('chat.turnAuditNoPerformance') }}
+                </p>
+                <template v-else-if="performance">
+                  <h4 class="text-subtitle-2 mb-2">{{ $t('chat.turnAuditSectionAssemblyPerf') }}</h4>
+                  <v-table
+                    v-if="performance.assemblyMs"
+                    density="compact"
+                    class="audit-table audit-table--kv mb-4"
+                  >
+                    <tbody>
+                      <tr>
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfTotal') }}</td>
+                        <td>{{ formatLatency(performance.assemblyMs.total) }}</td>
+                      </tr>
+                      <tr v-if="performance.assemblyMs.memory !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfMemory') }}</td>
+                        <td>{{ formatLatency(performance.assemblyMs.memory) }}</td>
+                      </tr>
+                      <tr v-if="performance.assemblyMs.characters !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfCharacters') }}</td>
+                        <td>{{ formatLatency(performance.assemblyMs.characters) }}</td>
+                      </tr>
+                      <tr v-if="performance.assemblyMs.lore !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfLore') }}</td>
+                        <td>{{ formatLatency(performance.assemblyMs.lore) }}</td>
+                      </tr>
+                      <tr v-if="performance.assemblyMs.assembleAndTrim !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfAssemble') }}</td>
+                        <td>{{ formatLatency(performance.assemblyMs.assembleAndTrim) }}</td>
+                      </tr>
+                      <tr v-if="performance.assemblyMs.regexOutgoing !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfRegexOutgoing') }}</td>
+                        <td>{{ formatLatency(performance.assemblyMs.regexOutgoing) }}</td>
+                      </tr>
+                      <tr v-if="performance.assemblyMs.pluginsAfterAssemble !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfPlugins') }}</td>
+                        <td>{{ formatLatency(performance.assemblyMs.pluginsAfterAssemble) }}</td>
+                      </tr>
+                    </tbody>
+                  </v-table>
+                  <v-table
+                    v-if="performance.preUpstreamMs !== undefined"
+                    density="compact"
+                    class="audit-table audit-table--kv mb-4"
+                  >
+                    <tbody>
+                      <tr>
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfPreUpstream') }}</td>
+                        <td>{{ formatLatency(performance.preUpstreamMs) }}</td>
+                      </tr>
+                    </tbody>
+                  </v-table>
+
+                  <h4 class="text-subtitle-2 mb-2">{{ $t('chat.turnAuditSectionUpstreamPerf') }}</h4>
+                  <v-table
+                    v-if="performance.upstreamMs"
+                    density="compact"
+                    class="audit-table audit-table--kv mb-4"
+                  >
+                    <tbody>
+                      <tr v-if="performance.upstreamMs.toResponseHeaders !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfToHeaders') }}</td>
+                        <td>{{ formatLatency(performance.upstreamMs.toResponseHeaders) }}</td>
+                      </tr>
+                      <tr v-if="performance.upstreamMs.toFirstToken !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfToFirstToken') }}</td>
+                        <td>{{ formatLatency(performance.upstreamMs.toFirstToken) }}</td>
+                      </tr>
+                      <tr v-if="performance.upstreamMs.firstTokenToLastToken !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfGeneration') }}</td>
+                        <td>{{ formatLatency(performance.upstreamMs.firstTokenToLastToken) }}</td>
+                      </tr>
+                      <tr v-if="performance.upstreamMs.total !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfUpstreamTotal') }}</td>
+                        <td>{{ formatLatency(performance.upstreamMs.total) }}</td>
+                      </tr>
+                      <tr v-if="performance.upstreamMs.tps !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfTps') }}</td>
+                        <td>
+                          {{ formatTps(performance.upstreamMs.tps) }}
+                          <span class="text-medium-emphasis text-caption ml-1">
+                            ({{ formatTokenSource(performance.upstreamMs.tpsTokenSource) }}
+                            · {{ performance.upstreamMs.tpsTokenCount ?? '—' }} tok)
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </v-table>
+
+                  <h4 class="text-subtitle-2 mb-2">{{ $t('chat.turnAuditSectionPersistPerf') }}</h4>
+                  <v-table
+                    v-if="performance.persistMs"
+                    density="compact"
+                    class="audit-table audit-table--kv mb-4"
+                  >
+                    <tbody>
+                      <tr v-if="performance.persistMs.regex !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfPersistRegex') }}</td>
+                        <td>{{ formatLatency(performance.persistMs.regex) }}</td>
+                      </tr>
+                      <tr v-if="performance.persistMs.diskAndAudit !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfPersistDisk') }}</td>
+                        <td>{{ formatLatency(performance.persistMs.diskAndAudit) }}</td>
+                      </tr>
+                      <tr v-if="performance.persistMs.total !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfPersistTotal') }}</td>
+                        <td>{{ formatLatency(performance.persistMs.total) }}</td>
+                      </tr>
+                    </tbody>
+                  </v-table>
+
+                  <h4 class="text-subtitle-2 mb-2">{{ $t('chat.turnAuditSectionStream') }}</h4>
+                  <v-table
+                    v-if="performance.stream"
+                    density="compact"
+                    class="audit-table audit-table--kv mb-0"
+                  >
+                    <tbody>
+                      <tr>
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfContentChars') }}</td>
+                        <td>{{ performance.stream.contentChars }}</td>
+                      </tr>
+                      <tr>
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfReasoningChars') }}</td>
+                        <td>{{ performance.stream.reasoningChars }}</td>
+                      </tr>
+                      <tr v-if="performance.stream.contentTokensEst !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfContentTokens') }}</td>
+                        <td>{{ performance.stream.contentTokensEst }}</td>
+                      </tr>
+                      <tr v-if="performance.stream.reasoningTokensEst !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfReasoningTokens') }}</td>
+                        <td>{{ performance.stream.reasoningTokensEst }}</td>
+                      </tr>
+                      <tr v-if="performance.stream.completionTokensUpstream !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfUpstreamTokens') }}</td>
+                        <td>{{ performance.stream.completionTokensUpstream }}</td>
+                      </tr>
+                    </tbody>
+                  </v-table>
+                </template>
               </div>
             </v-tabs-window-item>
             </v-tabs-window>

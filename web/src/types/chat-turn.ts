@@ -142,10 +142,54 @@ export interface CallAuditEntry {
   }
 }
 
+export interface AssemblyTimingMs {
+  total: number
+  memory?: number
+  characters?: number
+  lore?: number
+  assembleAndTrim?: number
+  regexOutgoing?: number
+  pluginsAfterAssemble?: number
+}
+
+export interface UpstreamTimingMs {
+  toResponseHeaders?: number
+  toFirstToken?: number
+  firstTokenToLastToken?: number
+  total?: number
+  tps?: number
+  tpsTokenSource?: 'upstream' | 'estimated'
+  tpsTokenCount?: number
+}
+
+export interface PersistTimingMs {
+  regex?: number
+  diskAndAudit?: number
+  retro?: number
+  total?: number
+}
+
+export interface StreamAuditStats {
+  contentChars: number
+  reasoningChars: number
+  contentTokensEst?: number
+  reasoningTokensEst?: number
+  completionTokensUpstream?: number
+}
+
+export interface PerformanceAudit {
+  assemblyMs?: AssemblyTimingMs
+  preUpstreamMs?: number
+  upstreamMs?: UpstreamTimingMs
+  persistMs?: PersistTimingMs
+  stream?: StreamAuditStats
+}
+
 export interface ChatAuditSnapshotEntry extends ChatPromptSnapshotEntry {
   assembly?: AssemblyAudit
   calls?: CallAuditEntry[]
   plugins?: Record<string, unknown>[]
+  performance?: PerformanceAudit
 }
 
 export interface AssembleMessagesResult {

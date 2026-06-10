@@ -42,6 +42,40 @@ export function isRegexFlagActive(flags: string, flag: RegexFlagKey): boolean {
   return parseRegexFlags(flags).has(flag)
 }
 
+export function toggleRegexPhase(
+  phases: RegexPhase[],
+  phase: RegexPhase,
+): RegexPhase[] {
+  const set = new Set(phases)
+  if (set.has(phase)) set.delete(phase)
+  else set.add(phase)
+  return REGEX_PHASES.filter((p) => set.has(p))
+}
+
+export function isRegexPhaseActive(
+  phases: RegexPhase[],
+  phase: RegexPhase,
+): boolean {
+  return phases.includes(phase)
+}
+
+export function toggleRegexField(
+  fields: RegexField[],
+  field: RegexField,
+): RegexField[] {
+  const set = new Set(fields)
+  if (set.has(field)) set.delete(field)
+  else set.add(field)
+  return REGEX_FIELDS.filter((f) => set.has(f))
+}
+
+export function isRegexFieldActive(
+  fields: RegexField[],
+  field: RegexField,
+): boolean {
+  return fields.includes(field)
+}
+
 /** 只读展示：/gim（无 flag 时为 /） */
 export function formatRegexFlagsLiteral(flags: string): string {
   return `/${flags}`

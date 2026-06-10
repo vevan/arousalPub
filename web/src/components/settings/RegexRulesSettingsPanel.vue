@@ -1,21 +1,29 @@
 <script setup lang="ts">
 import { useRegexRulesStore } from '@/stores/regex-rules'
-import type { RegexField, RegexPhase, RegexRule } from '@/types/regex-rules'
+import {
+  REGEX_FIELDS,
+  REGEX_PHASES,
+  type RegexField,
+  type RegexPhase,
+  type RegexRule,
+} from '@/types/regex-rules'
 import {
   buildDuplicateRegexRuleLabel,
   cloneRegexRule,
   createDefaultRegexRule,
   duplicateRegexRule,
+  isRegexFieldActive,
+  isRegexFlagActive,
+  isRegexPhaseActive,
   MAX_REGEX_LABEL_LENGTH,
   MAX_REGEX_PATTERN_LENGTH,
   MAX_REGEX_REPLACEMENT_LENGTH,
-  REGEX_FIELD_OPTIONS,
   REGEX_FLAG_KEYS,
-  REGEX_PHASE_OPTIONS,
   runRegexPipelinePlainTextTest,
   sortRegexRules,
+  toggleRegexField,
   toggleRegexFlag,
-  isRegexFlagActive,
+  toggleRegexPhase,
   formatRegexFlagsLiteral,
   type RegexFlagKey,
   type RegexPipelineRuleStat,
@@ -167,12 +175,12 @@ async function saveEdit() {
   }
   editError.value = ''
   editSaving.value = true
-  const idx = rulesList.value.findIndex((r) => r.id === draft.id)
-  if (idx < 0) {
-    rulesList.value = [...rulesList.value, cloneRegexRule(draft)]
-  } else {
-    rulesList.value[idx] = cloneRegexRule(draft)
-  }
+  const exists = rulesList.value.some((r) => r.id === draft.id)
+  rulesList.value = exists
+    ? rulesList.value.map((r) =>
+        r.id === draft.id ? cloneRegexRule(draft) : cloneRegexRule(r),
+      )
+    : [...rulesList.value.map((r) => cloneRegexRule(r)), cloneRegexRule(draft)]
   try {
     await persistList()
     closeEdit()
@@ -196,6 +204,24 @@ function patchDraft(patch: Partial<RegexRule>) {
 function toggleDraftFlag(flag: RegexFlagKey) {
   if (!editDraft.value) return
   patchDraft({ flags: toggleRegexFlag(editDraft.value.flags, flag) })
+}
+
+function toggleDraftPhase(phase: RegexPhase) {
+  if (!editDraft.value) return
+  patchDraft({ phases: toggleRegexPhase(editDraft.value.phases, phase) })
+}
+
+function toggleDraftField(field: RegexField) {
+  if (!editDraft.value) return
+  patchDraft({ fields: toggleRegexField(editDraft.value.fields, field) })
+}
+
+function draftPhaseActive(phase: RegexPhase): boolean {
+  return editDraft.value ? isRegexPhaseActive(editDraft.value.phases, phase) : false
+}
+
+function draftFieldActive(field: RegexField): boolean {
+  return editDraft.value ? isRegexFieldActive(editDraft.value.fields, field) : false
 }
 
 function draftFlagActive(flag: RegexFlagKey): boolean {
@@ -561,61 +587,43 @@ onMounted(() => {
             @update:model-value="patchDraft({ replacement: String($event ?? '') })"
           />
 
-          <v-select
-            :model-value="editDraft.phases"
-            :items="REGEX_PHASE_OPTIONS"
-            :label="$t('settings.regexRules.phases')"
-            item-title="value"
-            item-value="value"
-            multiple
-            chips
-            closable-chips
-            density="comfortable"
-            variant="outlined"
-            hide-details="auto"
-            class="mb-3"
-            @update:model-value="patchDraft({ phases: $event as RegexPhase[] })"
-          >
-            <template #chip="{ item }">
-              <v-chip size="small">
-                {{ phaseTitle(item.value as RegexPhase) }}
+          <div class="regex-rules-panel__choice-block mb-3">
+            <div class="text-body-2 mb-2">
+              {{ $t('settings.regexRules.phases') }}
+            </div>
+            <div class="regex-rules-panel__choice-chips">
+              <v-chip
+                v-for="phase in REGEX_PHASES"
+                :key="phase"
+                :color="draftPhaseActive(phase) ? 'primary' : undefined"
+                :variant="draftPhaseActive(phase) ? 'flat' : 'outlined'"
+                size="small"
+                class="regex-rules-panel__choice-chip"
+                @click="toggleDraftPhase(phase)"
+              >
+                {{ phaseTitle(phase) }}
               </v-chip>
-            </template>
-            <template #item="{ props: itemProps, item }">
-              <v-list-item
-                v-bind="itemProps"
-                :title="phaseTitle(item.value as RegexPhase)"
-              />
-            </template>
-          </v-select>
+            </div>
+          </div>
 
-          <v-select
-            :model-value="editDraft.fields"
-            :items="REGEX_FIELD_OPTIONS"
-            :label="$t('settings.regexRules.fields')"
-            item-title="value"
-            item-value="value"
-            multiple
-            chips
-            closable-chips
-            density="comfortable"
-            variant="outlined"
-            hide-details="auto"
-            class="mb-3"
-            @update:model-value="patchDraft({ fields: $event as RegexField[] })"
-          >
-            <template #chip="{ item }">
-              <v-chip size="small">
-                {{ fieldTitle(item.value as RegexField) }}
+          <div class="regex-rules-panel__choice-block mb-3">
+            <div class="text-body-2 mb-2">
+              {{ $t('settings.regexRules.fields') }}
+            </div>
+            <div class="regex-rules-panel__choice-chips">
+              <v-chip
+                v-for="field in REGEX_FIELDS"
+                :key="field"
+                :color="draftFieldActive(field) ? 'primary' : undefined"
+                :variant="draftFieldActive(field) ? 'flat' : 'outlined'"
+                size="small"
+                class="regex-rules-panel__choice-chip"
+                @click="toggleDraftField(field)"
+              >
+                {{ fieldTitle(field) }}
               </v-chip>
-            </template>
-            <template #item="{ props: itemProps, item }">
-              <v-list-item
-                v-bind="itemProps"
-                :title="fieldTitle(item.value as RegexField)"
-              />
-            </template>
-          </v-select>
+            </div>
+          </div>
 
           <v-text-field
             :model-value="editDraft.skipLastNTurns"
@@ -928,6 +936,21 @@ onMounted(() => {
 }
 
 .regex-rules-panel__flag-chip {
+  cursor: pointer;
+  user-select: none;
+}
+
+.regex-rules-panel__choice-block {
+  display: block;
+}
+
+.regex-rules-panel__choice-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.regex-rules-panel__choice-chip {
   cursor: pointer;
   user-select: none;
 }

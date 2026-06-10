@@ -26,6 +26,9 @@ export interface PromptGroup {
   name: string
   kind: GroupKind
   order: number
+  description?: string
+  /** false = 组装时跳过组内无 bindingSlot 的自定义条目 */
+  enabled?: boolean
 }
 
 export interface PromptEntry {
@@ -151,13 +154,21 @@ function stubPresetFromIndex(e: PromptPresetIndexEntry): PromptPreset {
 
 function buildDefaultGroups(): PromptGroup[] {
   return [
-    { id: DEFAULT_GROUP_IDS.pre, name: 'Pre', kind: 'normal', order: 0 },
-    { id: DEFAULT_GROUP_IDS.character, name: 'Character', kind: 'character', order: 1 },
-    { id: DEFAULT_GROUP_IDS.world, name: 'World', kind: 'world', order: 2 },
-    { id: DEFAULT_GROUP_IDS.history, name: 'History', kind: 'history', order: 3 },
-    { id: DEFAULT_GROUP_IDS.userInput, name: 'User input', kind: 'userInput', order: 4 },
-    { id: DEFAULT_GROUP_IDS.post, name: 'Post', kind: 'normal', order: 5 },
+    { id: DEFAULT_GROUP_IDS.pre, name: 'Pre', kind: 'normal', order: 0, enabled: true },
+    { id: DEFAULT_GROUP_IDS.character, name: 'Character', kind: 'character', order: 1, enabled: true },
+    { id: DEFAULT_GROUP_IDS.world, name: 'World', kind: 'world', order: 2, enabled: true },
+    { id: DEFAULT_GROUP_IDS.history, name: 'History', kind: 'history', order: 3, enabled: true },
+    { id: DEFAULT_GROUP_IDS.userInput, name: 'User input', kind: 'userInput', order: 4, enabled: true },
+    { id: DEFAULT_GROUP_IDS.post, name: 'Post', kind: 'normal', order: 5, enabled: true },
   ]
+}
+
+function normalizeGroups(groups: PromptGroup[]): PromptGroup[] {
+  return groups.map((g) => ({
+    ...g,
+    description: g.description ?? '',
+    enabled: g.enabled !== false,
+  }))
 }
 
 function makeBindingSlotEntry(
@@ -271,6 +282,7 @@ export function normalizePreset(p: PromptPreset): PromptPreset {
 
   return {
     ...rest,
+    groups: normalizeGroups(p.groups),
     prompts,
   }
 }
@@ -912,6 +924,8 @@ export const usePromptsStore = defineStore('prompts', () => {
       name: trimmed,
       kind: 'normal',
       order: maxOrder + 1,
+      description: '',
+      enabled: true,
     }
     patchActivePreset((p) => ({ ...p, groups: [...p.groups, g] }))
     return g
@@ -923,6 +937,26 @@ export const usePromptsStore = defineStore('prompts', () => {
       groups: p.groups.map((g) =>
         g.id === groupId ? { ...g, name: name.trim() || g.name } : g,
       ),
+    }))
+  }
+
+  function updateGroup(
+    groupId: string,
+    patch: Partial<Pick<PromptGroup, 'name' | 'description' | 'enabled'>>,
+  ) {
+    patchActivePreset((p) => ({
+      ...p,
+      groups: p.groups.map((g) => {
+        if (g.id !== groupId) return g
+        const next = { ...g, ...patch }
+        if (patch.name !== undefined) {
+          next.name = patch.name.trim() || g.name
+        }
+        if (patch.description !== undefined) {
+          next.description = patch.description
+        }
+        return next
+      }),
     }))
   }
 
@@ -1290,6 +1324,7 @@ export const usePromptsStore = defineStore('prompts', () => {
 
     addGroup,
     renameGroup,
+    updateGroup,
     deleteGroup,
     reorderGroup,
     selectGroup,

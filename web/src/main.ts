@@ -1,4 +1,5 @@
 import '@mdi/font/css/materialdesignicons.css'
+import 'vuetify/styles'
 import '@/style.css'
 import { i18n } from '@/i18n'
 import { router } from '@/router'
@@ -11,8 +12,8 @@ import { createVuetify } from 'vuetify'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 import { VIconBtn } from 'vuetify/labs/VIconBtn'
-import 'vuetify/styles'
 import App from './App.vue'
+import '@/styles/vuetify-overrides.css'
 import { installAuthenticatedFetch } from '@/utils/install-authenticated-fetch'
 
 const vuetify = createVuetify({

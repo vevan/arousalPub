@@ -25,7 +25,7 @@ export function buildDefaultRegexRulesDocument(
         label: '规范省略号',
         order: 10,
         enabled: false,
-        phases: ['outgoing', 'persist', 'display'],
+        phases: ['display'],
         fields: ['user', 'assistant', 'system'],
         skipLastNTurns: 0,
         pattern: DEFAULT_ELLIPSIS_PATTERN,

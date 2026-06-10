@@ -1,4 +1,17 @@
-import type { PromptBindingSlot, PromptEntry, PromptPreset } from './assemble-prompts.js'
+import type {
+  PromptBindingSlot,
+  PromptEntry,
+  PromptGroup,
+  PromptPreset,
+} from './assemble-prompts.js'
+
+function normalizeGroups(groups: PromptGroup[]): PromptGroup[] {
+  return groups.map((g) => ({
+    ...g,
+    description: g.description ?? '',
+    enabled: g.enabled !== false,
+  }))
+}
 
 function bindingSlotIsRequired(slot: PromptBindingSlot | undefined): boolean {
   return slot === 'boundWorld' || slot === 'boundUserInput'
@@ -68,5 +81,5 @@ export function normalizePresetForAssemble(p: PromptPreset): PromptPreset {
     )
   }
 
-  return { ...p, prompts }
+  return { ...p, groups: normalizeGroups(p.groups), prompts }
 }

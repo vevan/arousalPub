@@ -19,12 +19,12 @@ const GROUP = {
 
 function buildDefaultGroups() {
   return [
-    { id: GROUP.pre, name: 'Pre', kind: 'normal', order: 0 },
-    { id: GROUP.character, name: 'Character', kind: 'character', order: 1 },
-    { id: GROUP.world, name: 'World', kind: 'world', order: 2 },
-    { id: GROUP.history, name: 'History', kind: 'history', order: 3 },
-    { id: GROUP.userInput, name: 'User input', kind: 'userInput', order: 4 },
-    { id: GROUP.post, name: 'Post', kind: 'normal', order: 5 },
+    { id: GROUP.pre, name: 'Pre', kind: 'normal', order: 0, enabled: true },
+    { id: GROUP.character, name: 'Character', kind: 'character', order: 1, enabled: true },
+    { id: GROUP.world, name: 'World', kind: 'world', order: 2, enabled: true },
+    { id: GROUP.history, name: 'History', kind: 'history', order: 3, enabled: true },
+    { id: GROUP.userInput, name: 'User input', kind: 'userInput', order: 4, enabled: true },
+    { id: GROUP.post, name: 'Post', kind: 'normal', order: 5, enabled: true },
   ]
 }
 

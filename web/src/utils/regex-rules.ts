@@ -146,7 +146,7 @@ export function createDefaultRegexRule(existing: RegexRule[]): RegexRule {
     label: '',
     order: suggestNextRegexRuleOrder(existing),
     enabled: false,
-    phases: ['display', 'outgoing', 'persist'],
+    phases: ['display'],
     fields: ['user', 'assistant'],
     skipLastNTurns: 0,
     pattern: '',

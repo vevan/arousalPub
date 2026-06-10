@@ -15,7 +15,7 @@ describe('buildDefaultRegexRulesDocument', () => {
     const rule = doc.rules[0]
     assert.equal(rule?.id, DEFAULT_REGEX_SEED_RULE_ID)
     assert.equal(rule?.label, '规范省略号')
-    assert.deepEqual(rule?.phases, ['outgoing', 'persist', 'display'])
+    assert.deepEqual(rule?.phases, ['display'])
     assert.deepEqual(rule?.fields, ['user', 'assistant', 'system'])
     assert.equal(rule?.skipLastNTurns, 0)
     assert.equal(rule?.pattern, DEFAULT_ELLIPSIS_PATTERN)
@@ -28,7 +28,7 @@ describe('buildDefaultRegexRulesDocument', () => {
     const rule = { ...doc.rules[0]!, enabled: true }
     const apply = (text: string) =>
       applyRegexRulesToText(text, [rule], {
-        phase: 'persist',
+        phase: 'display',
         field: 'assistant',
         turnOrdinal: 0,
         tailOrdinal: 0,

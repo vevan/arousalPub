@@ -17,10 +17,14 @@ import { storeToRefs } from 'pinia'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{ embedded?: boolean }>(),
   { embedded: false },
 )
+
+const emit = defineEmits<{
+  close: []
+}>()
 
 const { t } = useI18n()
 const store = useLorebooksStore()
@@ -348,13 +352,16 @@ async function confirmImportLorebook() {
 <template>
   <div
     class="prompts-view flex-grow-1 d-flex flex-column min-height-0"
-    :class="{ 'prompts-view--embedded': embedded }"
+    :class="{ 'prompts-view--embedded': props.embedded }"
   >
     <div
       class="prompts-view__inner"
-      :class="embedded ? 'prompts-view__inner--embedded' : 'app-page-shell'"
+      :class="props.embedded ? 'prompts-view__inner--embedded' : 'app-page-shell'"
     >
-      <header class="library-page-head">
+      <header
+        class="library-page-head"
+        :class="{ 'library-page-head--with-close': props.embedded }"
+      >
         <div class="library-page-head__row">
           <h1 class="library-page-head__title">
             {{ $t('lorebooks.pageTitle') }}
@@ -363,10 +370,16 @@ async function confirmImportLorebook() {
             <p class="library-page-head__lede">
               {{ $t('lorebooks.lede') }}
             </p>
-            <p class="library-page-head__count">
-              {{ $t('lorebooks.count', { n: activeLorebook.entries.length }) }}
-            </p>
           </div>
+          <button
+            v-if="props.embedded"
+            type="button"
+            class="library-page-head__close"
+            :aria-label="$t('settings.closeModal')"
+            @click="emit('close')"
+          >
+            <v-icon size="20">mdi-close</v-icon>
+          </button>
         </div>
       </header>
 
@@ -469,6 +482,9 @@ async function confirmImportLorebook() {
           />
         </div>
         <div class="preset-bar__right">
+          <p class="preset-bar__count">
+            {{ $t('lorebooks.count', { n: activeLorebook.entries.length }) }}
+          </p>
           <span
             v-if="saving"
             class="text-caption text-medium-emphasis"

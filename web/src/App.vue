@@ -695,19 +695,12 @@ onUnmounted(() => {
       @keydown.esc="promptsDialogOpen = false"
     >
       <v-card rounded="lg" class="library-dialog-card">
-        <v-toolbar density="compact" color="transparent" flat class="library-dialog-toolbar">
-          <v-spacer />
-          <v-btn
-            icon="mdi-close"
-            variant="text"
-            density="comfortable"
-            :aria-label="$t('settings.closeModal')"
-            @click="promptsDialogOpen = false"
-          />
-        </v-toolbar>
-        <v-divider />
         <v-card-text class="pa-0 library-dialog-body">
-          <PromptsView v-if="promptsDialogOpen" embedded />
+          <PromptsView
+            v-if="promptsDialogOpen"
+            embedded
+            @close="promptsDialogOpen = false"
+          />
         </v-card-text>
       </v-card>
     </v-dialog>
@@ -719,19 +712,11 @@ onUnmounted(() => {
       @keydown.esc="charactersDialogOpen = false"
     >
       <v-card rounded="lg" class="library-dialog-card">
-        <v-toolbar density="compact" color="transparent" flat class="library-dialog-toolbar">
-          <v-spacer />
-          <v-btn
-            icon="mdi-close"
-            variant="text"
-            density="comfortable"
-            :aria-label="$t('settings.closeModal')"
-            @click="charactersDialogOpen = false"
-          />
-        </v-toolbar>
-        <v-divider />
         <v-card-text class="pa-0 library-dialog-body">
-          <CharactersView embedded />
+          <CharactersView
+            embedded
+            @close="charactersDialogOpen = false"
+          />
         </v-card-text>
       </v-card>
     </v-dialog>
@@ -743,19 +728,11 @@ onUnmounted(() => {
       @keydown.esc="lorebooksDialogOpen = false"
     >
       <v-card rounded="lg" class="library-dialog-card">
-        <v-toolbar density="compact" color="transparent" flat class="library-dialog-toolbar">
-          <v-spacer />
-          <v-btn
-            icon="mdi-close"
-            variant="text"
-            density="comfortable"
-            :aria-label="$t('settings.closeModal')"
-            @click="lorebooksDialogOpen = false"
-          />
-        </v-toolbar>
-        <v-divider />
         <v-card-text class="pa-0 library-dialog-body">
-          <LorebooksView embedded />
+          <LorebooksView
+            embedded
+            @close="lorebooksDialogOpen = false"
+          />
         </v-card-text>
       </v-card>
     </v-dialog>
@@ -786,9 +763,6 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-.library-dialog-toolbar {
-  border-bottom: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.08);
 }
 
 .main-chat {

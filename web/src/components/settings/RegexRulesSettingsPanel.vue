@@ -583,12 +583,14 @@ onMounted(() => {
             </div>
           </div>
 
-          <v-text-field
+          <v-textarea
             :model-value="editDraft.replacement"
             :label="$t('settings.regexRules.replacement')"
             :maxlength="MAX_REGEX_REPLACEMENT_LENGTH"
             :hint="$t('settings.regexRules.replacementEmptyHint')"
             persistent-hint
+            rows="2"
+            auto-grow
             density="comfortable"
             variant="outlined"
             hide-details="auto"

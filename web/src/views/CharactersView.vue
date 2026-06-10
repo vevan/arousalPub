@@ -5,12 +5,16 @@ import { generateShortId } from '@/utils/short-id'
 import { computed, mergeProps, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     embedded?: boolean
   }>(),
   { embedded: false },
 )
+
+const emit = defineEmits<{
+  close: []
+}>()
 
 const { t, locale } = useI18n()
 
@@ -807,13 +811,16 @@ onUnmounted(() => {
 <template>
   <div
     class="charlib flex-grow-1 d-flex flex-column min-height-0"
-    :class="{ 'charlib--embedded': embedded }"
+    :class="{ 'charlib--embedded': props.embedded }"
   >
     <div
       class="charlib__inner"
-      :class="embedded ? 'charlib__inner--embedded' : 'app-page-shell'"
+      :class="props.embedded ? 'charlib__inner--embedded' : 'app-page-shell'"
     >
-      <header class="library-page-head">
+      <header
+        class="library-page-head"
+        :class="{ 'library-page-head--with-close': props.embedded }"
+      >
         <div class="library-page-head__row">
           <h1 class="library-page-head__title">
             {{ $t('characters.pageTitle') }}
@@ -823,6 +830,15 @@ onUnmounted(() => {
               {{ $t('characters.lede') }}
             </p>
           </div>
+          <button
+            v-if="props.embedded"
+            type="button"
+            class="library-page-head__close"
+            :aria-label="$t('settings.closeModal')"
+            @click="emit('close')"
+          >
+            <v-icon size="20">mdi-close</v-icon>
+          </button>
         </div>
       </header>
 

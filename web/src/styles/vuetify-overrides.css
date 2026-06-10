@@ -1,0 +1,11 @@
+/**
+ * 须在 main.ts 末尾导入（晚于 vuetify/components）。
+ * Vite 会把各 VCard 等组件样式排在 entry 的 style.css 之后，
+ * 仅调整 vuetify/styles 与 style.css 的先后顺序无法覆盖 .v-card-title 等规则。
+ */
+
+.preview-card .v-card-title.preview-card__title {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}

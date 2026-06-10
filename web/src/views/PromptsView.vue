@@ -16,13 +16,17 @@ import { useConnectionStore } from '@/stores/connection'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     /** 在 App 模态内展示：放宽宽度并压缩依赖视口高度的区域 */
     embedded?: boolean
   }>(),
   { embedded: false },
 )
+
+const emit = defineEmits<{
+  close: []
+}>()
 
 const store = usePromptsStore()
 onMounted(() => {
@@ -154,9 +158,6 @@ function onGroupDragEnd() {
 /** ============== group CRUD ============== */
 const groupAddOpen = ref(false)
 const groupAddName = ref('')
-const groupRenameOpen = ref(false)
-const groupRenameDraft = ref('')
-const groupRenameTarget = ref<PromptGroup | null>(null)
 const groupDeleteOpen = ref(false)
 const groupDeleteTarget = ref<PromptGroup | null>(null)
 
@@ -171,15 +172,23 @@ function submitAddGroup() {
     groupAddOpen.value = false
   }
 }
-function openRenameGroup(g: PromptGroup) {
-  groupRenameTarget.value = g
-  groupRenameDraft.value = g.name
-  groupRenameOpen.value = true
+function onCurrentGroupNameInput(e: Event) {
+  const g = currentGroup.value
+  if (!g) return
+  store.updateGroup(g.id, {
+    name: (e.target as HTMLInputElement).value,
+  })
 }
-function submitRenameGroup() {
-  if (!groupRenameTarget.value) return
-  store.renameGroup(groupRenameTarget.value.id, groupRenameDraft.value)
-  groupRenameOpen.value = false
+function onCurrentGroupDescriptionInput(e: Event) {
+  const g = currentGroup.value
+  if (!g) return
+  store.updateGroup(g.id, {
+    description: (e.target as HTMLInputElement).value,
+  })
+}
+function isEntryMutedByGroup(p: PromptEntry): boolean {
+  const g = activeGroups.value.find((x) => x.id === p.groupId)
+  return g?.enabled === false && !p.bindingSlot
 }
 function openDeleteGroup(g: PromptGroup) {
   if (!canDeleteGroup(g)) return
@@ -563,6 +572,15 @@ const currentGroup = computed<PromptGroup | null>(() => {
   return activeGroups.value.find((g) => g.id === activeGroupId.value) ?? null
 })
 
+const currentGroupCustomMuted = computed({
+  get: () => currentGroup.value?.enabled === false,
+  set: (muted: boolean) => {
+    const g = currentGroup.value
+    if (!g) return
+    store.updateGroup(g.id, { enabled: !muted })
+  },
+})
+
 /** 当前分组是否可维护条目列表（含角色卡 system、历史后 post_history） */
 const isEntryListGroup = computed(() =>
   currentGroup.value ? groupAllowsPromptEntries(currentGroup.value.kind) : false,
@@ -582,14 +600,17 @@ const canDeleteGroup = (g: PromptGroup) =>
 <template>
   <div
     class="prompts-view flex-grow-1 d-flex flex-column min-height-0"
-    :class="{ 'prompts-view--embedded': embedded }"
+    :class="{ 'prompts-view--embedded': props.embedded }"
   >
     <div
       class="prompts-view__inner"
-      :class="embedded ? 'prompts-view__inner--embedded' : 'app-page-shell'"
+      :class="props.embedded ? 'prompts-view__inner--embedded' : 'app-page-shell'"
     >
       <!-- ============ Head ============ -->
-      <header class="library-page-head">
+      <header
+        class="library-page-head"
+        :class="{ 'library-page-head--with-close': props.embedded }"
+      >
         <div class="library-page-head__row">
           <h1 class="library-page-head__title">
             {{ $t('prompts.pageTitle') }}
@@ -598,10 +619,16 @@ const canDeleteGroup = (g: PromptGroup) =>
             <p class="library-page-head__lede">
               {{ $t('prompts.lede') }}
             </p>
-            <p class="library-page-head__count">
-              {{ $t('prompts.count', { n: activePreset.prompts.length }) }}
-            </p>
           </div>
+          <button
+            v-if="props.embedded"
+            type="button"
+            class="library-page-head__close"
+            :aria-label="$t('settings.closeModal')"
+            @click="emit('close')"
+          >
+            <v-icon size="20">mdi-close</v-icon>
+          </button>
         </div>
       </header>
 
@@ -698,6 +725,9 @@ const canDeleteGroup = (g: PromptGroup) =>
         </div>
 
         <div class="preset-bar__right">
+          <p class="preset-bar__count">
+            {{ $t('prompts.count', { n: activePreset.prompts.length }) }}
+          </p>
           <button
             type="button"
             class="preview-btn"
@@ -728,11 +758,11 @@ const canDeleteGroup = (g: PromptGroup) =>
             :class="{
               'is-active': activeGroupId === g.id,
               'is-placeholder': g.kind !== 'normal',
+              'is-custom-muted': g.enabled === false,
               'is-dragging': groupDragId === g.id,
             }"
             draggable="true"
             @click="selectGroup(g)"
-            @dblclick="openRenameGroup(g)"
             @keydown.enter.prevent="selectGroup(g)"
             @keydown.space.prevent="selectGroup(g)"
             @dragstart="onGroupDragStart(g.id, $event)"
@@ -745,15 +775,6 @@ const canDeleteGroup = (g: PromptGroup) =>
             </v-icon>
             <span class="group-chip__name">{{ g.name }}</span>
             <span class="group-chip__count">{{ groupCounts[g.id] ?? 0 }}</span>
-            <button
-              type="button"
-              class="group-chip__edit"
-              :title="$t('prompts.groupRename')"
-              :aria-label="$t('prompts.groupRename')"
-              @click.stop="openRenameGroup(g)"
-            >
-              <v-icon size="11">mdi-pencil-outline</v-icon>
-            </button>
             <button
               v-if="canDeleteGroup(g)"
               type="button"
@@ -779,6 +800,55 @@ const canDeleteGroup = (g: PromptGroup) =>
           <span>{{ $t('prompts.groupAdd') }}</span>
         </button>
       </div>
+
+      <!-- ============ Group info (current group) ============ -->
+      <section
+        v-if="currentGroup"
+        class="groups-info"
+        :aria-label="$t('prompts.groupInfoLabel')"
+      >
+        <div class="groups-info__row">
+          <v-icon size="16" class="groups-info__icon">
+            {{ groupIcon(currentGroup.kind) }}
+          </v-icon>
+          <input
+            :value="currentGroup.name"
+            type="text"
+            class="groups-info__name"
+            :aria-label="$t('prompts.groupAddName')"
+            @input="onCurrentGroupNameInput"
+          />
+          <input
+            :value="currentGroup.description ?? ''"
+            type="text"
+            class="groups-info__description"
+            :aria-label="$t('prompts.groupDescription')"
+            :placeholder="$t('prompts.groupDescriptionPlaceholder')"
+            @input="onCurrentGroupDescriptionInput"
+          />
+          <v-tooltip
+            location="top"
+            :text="$t('prompts.groupDisableCustomEntriesTooltip')"
+          >
+            <template #activator="{ props: tipProps }">
+              <v-switch
+                v-bind="tipProps"
+                v-model="currentGroupCustomMuted"
+                class="groups-info__switch"
+                color="primary"
+                density="compact"
+                hide-details
+              >
+                <template #label>
+                  <span class="groups-info__switch-label">
+                    {{ $t('prompts.groupDisableCustomEntries') }}
+                  </span>
+                </template>
+              </v-switch>
+            </template>
+          </v-tooltip>
+        </div>
+      </section>
 
       <!-- ============ Layout ============ -->
       <div class="prompts-layout">
@@ -849,7 +919,7 @@ const canDeleteGroup = (g: PromptGroup) =>
                 class="character-system-bundle"
                 :class="{
                   'is-active': selected?.id === p.id,
-                  'is-disabled': !p.enabled,
+                  'is-disabled': !p.enabled || isEntryMutedByGroup(p),
                   'is-dragging': entryDragId === p.id,
                 }"
                 tabindex="0"
@@ -915,7 +985,7 @@ const canDeleteGroup = (g: PromptGroup) =>
                 class="entry-card"
                 :class="{
                   'is-active': selected?.id === p.id,
-                  'is-disabled': !p.enabled,
+                  'is-disabled': !p.enabled || isEntryMutedByGroup(p),
                   'is-dragging': entryDragId === p.id,
                 }"
                 tabindex="0"
@@ -1358,30 +1428,6 @@ const canDeleteGroup = (g: PromptGroup) =>
           <v-spacer />
           <v-btn variant="text" @click="groupAddOpen = false">{{ $t('settings.themeCancel') }}</v-btn>
           <v-btn color="primary" variant="flat" :disabled="!groupAddName.trim()" @click="submitAddGroup">
-            {{ $t('settings.themeConfirm') }}
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <v-dialog v-model="groupRenameOpen">
-      <v-card>
-        <v-card-title class="text-subtitle-1">{{ $t('prompts.groupRenameDialogTitle') }}</v-card-title>
-        <v-card-text>
-          <v-text-field
-            v-model="groupRenameDraft"
-            :label="$t('prompts.groupAddName')"
-            variant="outlined"
-            density="comfortable"
-            hide-details="auto"
-            autofocus
-            @keydown.enter.prevent="submitRenameGroup"
-          />
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="groupRenameOpen = false">{{ $t('settings.themeCancel') }}</v-btn>
-          <v-btn color="primary" variant="flat" :disabled="!groupRenameDraft.trim()" @click="submitRenameGroup">
             {{ $t('settings.themeConfirm') }}
           </v-btn>
         </v-card-actions>

@@ -34,7 +34,7 @@ data/{userId}/regex-rules.json
       "label": "剥 tracker",
       "order": 10,
       "enabled": true,
-      "phases": ["outgoing", "persist", "display"],
+      "phases": ["display"],
       "fields": ["system", "assistant"],
       "skipLastNTurns": 3,
       "pattern": "…",
@@ -52,8 +52,9 @@ data/{userId}/regex-rules.json
 | `phases` | `display` \| `outgoing` \| `persist`，可多选 |
 | `fields` | `system` \| `user` \| `assistant` \| `reasoning` |
 | `skipLastNTurns` | `0` = 凡命中阶段+字段则应用；`N≥1` = **最近 N 轮**（按 `turnOrdinal` 相对 `tailOrdinal`）**不**应用**该条**规则 |
+| `replacement` | 传入 `String.prototype.replace` 第二参数；**真实换行**有效；字面量 `\n` **不**作 C 转义；支持 `$&` / `$1` / `$$` 等 JS 替换语法 |
 
-新建规则：`order = max(existing.order) + 10`。
+新建规则：`order = max(existing.order) + 10`；**默认 `phases: ['display']` only**（Web `createDefaultRegexRule` + 种子「规范省略号」），避免新建即影响 outgoing/persist。
 
 ### 2.2 三阶段管线
 
@@ -164,7 +165,7 @@ applyText / applyMessages  // 同语义
 | **对话页** composer 工具栏 | 历史批量 apply（区间、dry-run、写锁）— **操作**，非规则编辑 | 否（动作入口） |
 | **导出**（`conversation-export`） | 导出对话框勾选**全局**规则子集（display/outgoing 只读链） | 否（一次性导出选项） |
 
-- **系统设置**：新增 Tab「正则替换」— 规则列表 + 编辑器 + 测试串；**`mdi-drag-vertical` 拖曳排序**（对齐 `BudgetTrimSettingsPanel` / `PluginSettingsPanel` 原生 drag）；debounce **1 次** PUT。
+- **系统设置**：新增 Tab「正则替换」— 规则列表 + 编辑器 + 测试串；**`mdi-drag-vertical` 拖曳排序**（对齐 `BudgetTrimSettingsPanel` / `PluginSettingsPanel` 原生 drag）；debounce **1 次** PUT；**replacement** 为多行 **textarea**。
 - **对话页**：不提供规则编辑；仅批量 apply 与写锁提示。
 - **废止**：`regex-transform` 插件、`DOC/09` §8.7 以 regex 为 capabilities 试点。
 

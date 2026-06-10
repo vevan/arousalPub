@@ -1,7 +1,7 @@
 
 .prompts-view {
   position: relative;
-  padding-block: 1.5rem 2rem;
+  padding: 0.5rem;
   overflow-y: auto;
 }
 .prompts-view__inner {
@@ -25,8 +25,13 @@
   padding-inline: 0;
   box-sizing: border-box;
 }
+.prompts-view--embedded .library-page-head {
+  margin-bottom: 0.625rem;
+  padding-top: 0.375rem;
+}
 .prompts-view--embedded .preset-bar,
-.prompts-view--embedded .groups-bar {
+.prompts-view--embedded .groups-bar,
+.prompts-view--embedded .groups-info {
   flex-shrink: 0;
 }
 /* 移动单列：整页在对话框内滚动，列表与编辑器自然堆叠 */
@@ -80,6 +85,21 @@
   align-items: center;
   gap: 0.25rem;
   flex-wrap: wrap;
+}
+.preset-bar__right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+.preset-bar__count {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), 0.45);
+  white-space: nowrap;
 }
 .preset-bar__label {
   font-family: var(--font-mono);
@@ -209,6 +229,14 @@
   background: rgb(var(--v-theme-surface-light));
   font-style: italic;
 }
+.group-chip.is-custom-muted {
+  opacity: 0.72;
+  border-style: dashed;
+}
+.group-chip.is-custom-muted .group-chip__name {
+  text-decoration: line-through;
+  text-decoration-color: rgba(var(--v-theme-on-surface), 0.35);
+}
 .group-chip.is-placeholder .group-chip__icon {
   color: rgba(var(--v-theme-secondary), 0.8);
 }
@@ -227,7 +255,6 @@
   color: rgba(var(--v-theme-on-surface), 0.5);
 }
 .group-chip.is-active .group-chip__count { color: rgba(var(--v-theme-primary), 0.9); }
-.group-chip__edit,
 .group-chip__close {
   width: 1rem;
   height: 1rem;
@@ -245,15 +272,9 @@
   opacity: 0;
   transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
 }
-.group-chip:hover .group-chip__edit,
-.group-chip.is-active .group-chip__edit,
 .group-chip:hover .group-chip__close,
 .group-chip.is-active .group-chip__close {
   opacity: 1;
-}
-.group-chip__edit:hover {
-  background: rgba(var(--v-theme-primary), 0.16);
-  color: rgb(var(--v-theme-primary));
 }
 .group-chip__close:hover {
   background: rgba(var(--v-theme-error, 198 81 78), 0.18);
@@ -275,6 +296,90 @@
   background: rgb(var(--v-theme-primary));
   border-radius: 0.0625rem;
   margin: 0 -0.0625rem;
+}
+
+/* ========== Group info (below bar) ========== */
+.groups-info {
+  padding: 0.5rem 0.375rem 0.625rem;
+  border-bottom: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.06);
+  flex-shrink: 0;
+}
+.groups-info__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.groups-info__icon {
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  flex-shrink: 0;
+}
+.groups-info__name,
+.groups-info__description {
+  box-sizing: border-box;
+  height: 2rem;
+  padding: 0 0.625rem;
+  border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 0.375rem;
+  background: rgba(var(--v-theme-on-surface), 0.03);
+  color: rgb(var(--v-theme-on-surface));
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  transition: border-color 0.15s, background 0.15s;
+}
+.groups-info__name {
+  flex: 0 1 9.5rem;
+  min-width: 5.5rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+.groups-info__description {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.groups-info__name::placeholder,
+.groups-info__description::placeholder {
+  color: rgba(var(--v-theme-on-surface), 0.38);
+  font-weight: 400;
+  font-style: italic;
+}
+.groups-info__name:hover,
+.groups-info__description:hover {
+  border-color: rgba(var(--v-theme-on-surface), 0.2);
+}
+.groups-info__name:focus,
+.groups-info__description:focus {
+  outline: none;
+  border-color: rgba(var(--v-theme-primary), 0.55);
+  background: rgba(var(--v-theme-primary), 0.04);
+}
+.groups-info__switch {
+  flex: 0 0 auto;
+  margin-inline: 0 0.125rem;
+}
+.groups-info__switch-label {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: rgba(var(--v-theme-on-surface), 0.75);
+  white-space: nowrap;
+}
+@media (max-width: 52rem) {
+  .groups-info__row {
+    flex-wrap: wrap;
+  }
+  .groups-info__name {
+    flex: 1 1 8rem;
+  }
+  .groups-info__description {
+    flex: 1 1 100%;
+    order: 3;
+  }
+  .groups-info__switch {
+    margin-left: auto;
+    order: 2;
+  }
 }
 
 /* ========== Layout ========== */
@@ -1091,6 +1196,7 @@
 .preview-card__title {
   display: flex;
   align-items: center;
+  width: 100%;
   padding: 0.75rem 1rem 0.25rem;
   font-family: var(--font-display);
   font-size: 1.125rem;

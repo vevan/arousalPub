@@ -34,6 +34,10 @@ export interface PromptGroup {
   name: string
   kind: GroupKind
   order: number
+  /** 备注，仅编辑页展示 */
+  description?: string
+  /** false = 组装时跳过组内无 bindingSlot 的自定义条目；绑定槽与 kind 内置注入仍保留 */
+  enabled?: boolean
 }
 
 export interface PromptEntry {
@@ -230,17 +234,31 @@ function entryMatchesTrigger(
   return entry.triggers.includes(trigger)
 }
 
+/** 组禁用时仅跳过用户自定义条目（无 bindingSlot）；绑定槽仍参与组装 */
+function entryAllowedWhenGroupMuted(entry: PromptEntry): boolean {
+  return entry.bindingSlot != null
+}
+
+function entryAllowedForGroup(
+  entry: PromptEntry,
+  group: PromptGroup | undefined,
+): boolean {
+  if (!group || group.enabled !== false) return true
+  return entryAllowedWhenGroupMuted(entry)
+}
+
 /** 取分组内可注入 + trigger 匹配 + position='relative' 的条目，按 order 升序 */
 function relativeEntriesForGroup(
   preset: PromptPreset,
-  groupId: string,
+  group: PromptGroup,
   trigger: PromptTrigger | undefined,
 ): PromptEntry[] {
   return preset.prompts
     .filter(
       (e) =>
-        e.groupId === groupId &&
+        e.groupId === group.id &&
         e.injectionPosition === 'relative' &&
+        entryAllowedForGroup(e, group) &&
         entryMatchesTrigger(e, trigger),
     )
     .slice()
@@ -285,18 +303,19 @@ export function assemblePrompts(
 ): AssembleResult {
   const trigger = ctx.trigger
   const groups = preset.groups.slice().sort((a, b) => a.order - b.order)
+  const groupById = new Map(groups.map((g) => [g.id, g]))
   const messages: ChatMessage[] = []
   let historyStart = -1
   let historyEnd = -1
 
   for (const g of groups) {
     if (g.kind === 'normal') {
-      const entries = relativeEntriesForGroup(preset, g.id, trigger)
+      const entries = relativeEntriesForGroup(preset, g, trigger)
       for (const e of entries) {
         messages.push({ role: e.role, content: e.content })
       }
     } else if (g.kind === 'character') {
-      const charExtras = relativeEntriesForGroup(preset, g.id, trigger)
+      const charExtras = relativeEntriesForGroup(preset, g, trigger)
       const sorted = charExtras.slice().sort((a, b) => a.order - b.order)
       const sysIdx = sorted.findIndex(
         (e) => e.bindingSlot === 'boundCharacterSystem',
@@ -334,7 +353,7 @@ export function assemblePrompts(
       const w = ctx.world
       const usePlaceholder =
         w === undefined || w === null || w === PLACEHOLDER.world || !String(w).trim()
-      const entries = relativeEntriesForGroup(preset, g.id, trigger)
+      const entries = relativeEntriesForGroup(preset, g, trigger)
       const hasBinding = entries.some((e) => e.bindingSlot === 'boundWorld')
       if (!hasBinding) {
         messages.push({
@@ -376,7 +395,7 @@ export function assemblePrompts(
       if (!historyInjected) {
         messages.push({ role: 'system', content: PLACEHOLDER.history })
       }
-      const postHistory = relativeEntriesForGroup(preset, g.id, trigger)
+      const postHistory = relativeEntriesForGroup(preset, g, trigger)
       for (const e of postHistory) {
         if (e.bindingSlot === 'boundCharacterPostHistory') {
           const post = mergedBoundPostHistory(ctx)
@@ -399,7 +418,7 @@ export function assemblePrompts(
       }
       historyEnd = messages.length
     } else if (g.kind === 'userInput') {
-      const entries = relativeEntriesForGroup(preset, g.id, trigger)
+      const entries = relativeEntriesForGroup(preset, g, trigger)
       const hasBinding = entries.some((e) => e.bindingSlot === 'boundUserInput')
       if (!hasBinding) {
         messages.push({
@@ -421,10 +440,11 @@ export function assemblePrompts(
   }
 
   const chatEntries = preset.prompts
-    .filter(
-      (e) =>
-        e.injectionPosition === 'chat' && entryMatchesTrigger(e, trigger),
-    )
+    .filter((e) => {
+      if (e.injectionPosition !== 'chat') return false
+      if (!entryMatchesTrigger(e, trigger)) return false
+      return entryAllowedForGroup(e, groupById.get(e.groupId))
+    })
     .slice()
 
   const byDepth = new Map<number, PromptEntry[]>()

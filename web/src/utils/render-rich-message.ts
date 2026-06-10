@@ -3,9 +3,13 @@ import { Marked, marked } from 'marked'
 import { markedSmartypants } from 'marked-smartypants'
 import { wrapCurlyQuotesInHtml } from './wrap-quote-lines.js'
 
+const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml'
+
 /**
  * 与聊天内嵌展示匹配：允许常见排版与内联样式；脚本等仍由 DOMPurify 剔除。
  * 完整 HTML 文档会先被拆成片段再消毒，避免「整页 html」在片段模式下被清空。
+ *
+ * 带连字符的自定义标签在 marked preprocess 中转为 div[data-el]；DOMPurify 钩子作兜底。
  */
 const PURIFY_HTML: Record<string, unknown> = {
   USE_PROFILES: { html: true },
@@ -24,12 +28,65 @@ const PURIFY_HTML: Record<string, unknown> = {
     'scope',
     'role',
     'aria-label',
+    'data-el',
   ],
   /** 保留 HTML 注释（如 ASST_BLOCK 边界）；内容仍经 DOMPurify 校验；禁止 <style> 防整页污染 */
   ADD_TAGS: ['#comment'],
+  CUSTOM_ELEMENT_HANDLING: {
+    tagNameCheck: (tagName: string) => tagName.includes('-'),
+    attributeNameCheck: (attr: string) =>
+      attr === 'class' ||
+      attr === 'id' ||
+      attr === 'style' ||
+      attr.startsWith('data-') ||
+      attr.startsWith('aria-'),
+    allowCustomizedBuiltInElements: false,
+  },
+}
+
+function replaceCustomElementWithDataElDiv(node: Element): void {
+  const originalTagName = node.tagName.toLowerCase()
+  if (!originalTagName.includes('-')) return
+
+  const div = document.createElement('div')
+  div.setAttribute('data-el', originalTagName)
+
+  while (node.attributes.length > 0) {
+    const attr = node.attributes[0]
+    div.setAttribute(attr.name, attr.value)
+    node.removeAttribute(attr.name)
+  }
+
+  while (node.firstChild) {
+    div.appendChild(node.firstChild)
+  }
+
+  node.parentNode?.replaceChild(div, node)
+}
+
+let domPurifyHooksInstalled = false
+
+function installDomPurifyHooks(): void {
+  if (domPurifyHooksInstalled || typeof window === 'undefined') return
+  domPurifyHooksInstalled = true
+
+  DOMPurify.addHook('uponSanitizeElement', (node) => {
+    if (!(node instanceof Element)) return
+    if (node.namespaceURI !== HTML_NAMESPACE) return
+    replaceCustomElementWithDataElDiv(node)
+  })
+
+  DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+    if (node.tagName !== 'A' || !(node instanceof HTMLAnchorElement)) return
+    const href = node.getAttribute('href')
+    if (!href || href.startsWith('#')) return
+    node.setAttribute('target', '_blank')
+    node.setAttribute('rel', 'noopener noreferrer')
+  })
 }
 
 function sanitizeChatHtml(html: string): string {
+  installDomPurifyHooks()
   return String(DOMPurify.sanitize(html, PURIFY_HTML))
 }
 
@@ -81,6 +138,21 @@ function isHtmlFenceLanguage(lang: string | undefined): boolean {
   return l === 'html' || l === 'htm' || l === 'svg' || l === 'xml'
 }
 
+/**
+ * marked 不识别自定义标签，嵌套标准 HTML 时易闭合错位。
+ * 转为 div[data-el] 并包成块级 HTML；块内 Markdown/smartypants 改写可接受，marked 后再 DOMPurify。
+ */
+const CUSTOM_ELEMENT_BLOCK_RE = /<([a-z][\w-]*-[\w-]*)\b([^>]*)>([\s\S]*?)<\/\1>/gi
+
+function preprocessCustomElementTags(markdown: string): string {
+  if (!/<[a-z][\w-]*-[\w-]*\b/i.test(markdown)) return markdown
+  return markdown.replace(
+    CUSTOM_ELEMENT_BLOCK_RE,
+    (_match, tagName: string, attrs: string, content: string) =>
+      `\n\n<div data-el="${tagName.toLowerCase()}"${attrs}>${content}</div>\n\n`,
+  )
+}
+
 /** 将自定义标签转为 html 围栏，走同一套「渲染而非代码块」逻辑 */
 function preprocessCodeSampleTags(source: string): string {
   return source.replace(
@@ -92,6 +164,9 @@ function preprocessCodeSampleTags(source: string): string {
 marked.use({
   gfm: true,
   breaks: true,
+  hooks: {
+    preprocess: preprocessCustomElementTags,
+  },
 })
 /**
  * 旧版 config:2 会把半角 " 全局交替成弯引号，连续多对时第二对常变成 &#8221;…&#8221;，
@@ -130,16 +205,6 @@ marked.use(markedSmartypants({ config: 'De' }))
 /** 思维链专用：仅 GFM Markdown → HTML，不将 ```html / 类 HTML 代码块内嵌为 DOM */
 const reasoningMarked = new Marked()
 reasoningMarked.use({ gfm: true, breaks: true })
-
-if (typeof window !== 'undefined') {
-  DOMPurify.addHook('afterSanitizeAttributes', (node) => {
-    if (node.tagName !== 'A' || !(node instanceof HTMLAnchorElement)) return
-    const href = node.getAttribute('href')
-    if (!href || href.startsWith('#')) return
-    node.setAttribute('target', '_blank')
-    node.setAttribute('rel', 'noopener noreferrer')
-  })
-}
 
 /**
  * Markdown（marked）→ HTML；```html``` 与缩进 HTML 代码块改为内嵌渲染（DOMPurify），

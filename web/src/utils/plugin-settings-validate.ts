@@ -161,7 +161,7 @@ export function newObjectListItem(
   te: (key: string) => boolean,
 ): Record<string, unknown> {
   const item: Record<string, unknown> = {
-    id: `sidecar-${Date.now().toString(36)}`,
+    id: `item-${Date.now().toString(36)}`,
   }
   for (const sub of itemFields) {
     if (sub.type === 'boolean') {

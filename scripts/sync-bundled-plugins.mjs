@@ -12,6 +12,7 @@ const BUNDLED_PLUGIN_IDS = [
   'swipe-cleaner',
   'conversation-export',
   'plot-summary',
+  'custom-styles',
 ]
 
 const CP_OPTS = { recursive: true, force: true }

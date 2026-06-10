@@ -275,9 +275,9 @@
 
   "sidecarsDesc": "每项对应资料库中一条固定状态条目；删除配置不会删除资料库条目。注入方式与优先级在下次摘要时写入。",
 
-  "sidecarAddItem": "添加 Sidecar",
+  "objectListAddItem": "添加 Sidecar",
 
-  "sidecarItemUntitled": "未命名 Sidecar",
+  "objectListItemUntitled": "未命名 Sidecar",
 
   "sidecarItemNameLabel": "名称",
 

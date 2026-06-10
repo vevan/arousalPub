@@ -405,6 +405,8 @@
       "promptRequired": "Cannot be empty",
       "restoreDefault": "Restore default",
       "addItem": "Add",
+      "objectListAddItem": "Add item",
+      "objectListItemUntitled": "List item {index}",
       "removeItem": "Delete",
       "removeItemConfirmTitle": "Confirm delete",
       "removeItemConfirmBody": "Delete “{name}”? This cannot be undone.",

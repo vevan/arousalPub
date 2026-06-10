@@ -1,6 +1,6 @@
 import type { PromptTrigger } from '@/stores/prompts'
 import type { ChatPersistPayload, ChatTurnItem, PersistTurnToServerResult } from '@/types/chat-turn'
-import { resolveFinalUserTextAfterPersist } from '@/utils/persist-display'
+import { resolveFinalUserTextAfterPersist, applyRetroPersistToTurns } from '@/utils/persist-display'
 import { isAbortError } from '@/utils/abort-error'
 import type { ConversationChatRequestPlugins } from '@/utils/chat-api'
 import { allocateShortId } from '@/utils/short-id'
@@ -50,6 +50,13 @@ export function useChatOutbound(opts: {
   emitAssistantReplyComplete: ReplyEventHub['emitAssistantReplyComplete']
   t: ComposerTranslation
 }) {
+  function applyPersistRetroPatches(persist?: ChatPersistPayload) {
+    opts.setPersistWarning(persist)
+    if (persist?.retro?.length) {
+      opts.turns.value = applyRetroPersistToTurns(opts.turns.value, persist)
+    }
+  }
+
   function partialReceiveFromStream(durationMs: number) {
     const content = opts.streamingText.value
     const reasoning = opts.streamingReasoning.value.trim() || undefined
@@ -104,7 +111,7 @@ export function useChatOutbound(opts: {
       const { receive, traceId, persist, shouldReload } = await opts.runSend({
         userText,
       })
-      opts.setPersistWarning(persist)
+      applyPersistRetroPatches(persist)
       opts.finalizePendingTurn(
         ord,
         receive,
@@ -164,7 +171,7 @@ export function useChatOutbound(opts: {
         userText: trimmed,
         plugins,
       })
-      opts.setPersistWarning(persist)
+      applyPersistRetroPatches(persist)
       opts.finalizePendingTurn(
         ord,
         receive,
@@ -218,7 +225,7 @@ export function useChatOutbound(opts: {
         turnOrdinal: turn.turnOrdinal,
         promptTrigger: trigger,
       })
-      opts.setPersistWarning(persist)
+      applyPersistRetroPatches(persist)
 
       const cur = opts.turns.value[listIndex]
       if (!cur) return
@@ -291,7 +298,7 @@ export function useChatOutbound(opts: {
         promptTrigger: 'regenerate',
         plugins,
       })
-      opts.setPersistWarning(persist)
+      applyPersistRetroPatches(persist)
 
       const cur = opts.turns.value[listIndex]
       if (!cur) return

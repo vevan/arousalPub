@@ -269,9 +269,9 @@
 
   "sidecarsDesc": "Each item maps to one fixed lorebook entry. Removing a block does not delete the entry. Trigger mode and priority apply on the next summarize.",
 
-  "sidecarAddItem": "Add Sidecar",
+  "objectListAddItem": "Add Sidecar",
 
-  "sidecarItemUntitled": "Untitled Sidecar",
+  "objectListItemUntitled": "Untitled Sidecar",
 
   "sidecarItemNameLabel": "Name",
 

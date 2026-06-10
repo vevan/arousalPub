@@ -37,6 +37,7 @@ const BUNDLED_PLUGIN_IDS = [
   'swipe-cleaner',
   'conversation-export',
   'plot-summary',
+  'custom-styles',
 ] as const
 
 const BUNDLED_PLUGIN_ORDERS: Record<(typeof BUNDLED_PLUGIN_IDS)[number], number> = {
@@ -45,6 +46,7 @@ const BUNDLED_PLUGIN_ORDERS: Record<(typeof BUNDLED_PLUGIN_IDS)[number], number>
   'swipe-cleaner': 30,
   'conversation-export': 40,
   'plot-summary': 50,
+  'custom-styles': 60,
 }
 
 const moduleCache = new Map<string, LoadedServerPlugin[]>()

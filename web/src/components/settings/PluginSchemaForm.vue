@@ -317,14 +317,22 @@ function objectListItemTitle(
 ): string {
   const name = String(item.name ?? '').trim()
   if (name) return name
-  const addKey = pluginI18nKey(props.pluginId, 'sidecarItemUntitled')
-  const untitled = te(addKey) ? t(addKey) : `Sidecar ${index + 1}`
-  return untitled
+  const pluginKey = pluginI18nKey(props.pluginId, 'objectListItemUntitled')
+  if (te(pluginKey)) {
+    return t(pluginKey, { index: index + 1 })
+  }
+  const globalKey = 'settings.plugins.objectListItemUntitled'
+  if (te(globalKey)) {
+    return t(globalKey, { index: index + 1 })
+  }
+  return `List item ${index + 1}`
 }
 
 function addObjectListLabel(): string {
-  const key = pluginI18nKey(props.pluginId, 'sidecarAddItem')
-  if (te(key)) return t(key)
+  const pluginKey = pluginI18nKey(props.pluginId, 'objectListAddItem')
+  if (te(pluginKey)) return t(pluginKey)
+  const globalKey = 'settings.plugins.objectListAddItem'
+  if (te(globalKey)) return t(globalKey)
   return te('settings.plugins.addItem') ? t('settings.plugins.addItem') : 'Add'
 }
 

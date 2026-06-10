@@ -39,6 +39,28 @@ export interface ChatPersistPayload {
   /** persist 阶段 regex 后落盘的 assistant 正文 */
   finalAssistantContent?: string
   finalAssistantReasoning?: string
+  /** skip 窗口回溯 persist 改动的历史轮 */
+  retro?: RetroPersistTurnPayload[]
+  retroStatus?: RetroPersistStatus
+}
+
+export interface RetroPersistTurnPayload {
+  turnOrdinal: number
+  finalUserText: string
+  finalAssistantContent: string
+  finalAssistantReasoning?: string
+  receives: {
+    id: string
+    content: string
+    reasoning?: string
+  }[]
+  activeReceiveIndex: number
+}
+
+export interface RetroPersistStatus {
+  attempted: number[]
+  changed: number[]
+  failed?: number[]
 }
 
 /** PATCH 编辑落盘：persist regex 后的轮次正文 */

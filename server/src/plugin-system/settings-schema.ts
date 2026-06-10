@@ -339,7 +339,7 @@ function coerceObjectListItem(
   if (typeof raw.id === 'string' && raw.id.trim()) {
     out.id = raw.id.trim()
   } else {
-    out.id = `sidecar-${index}-${Date.now().toString(36)}`
+    out.id = `item-${index}-${Date.now().toString(36)}`
   }
   for (const sub of itemFields) {
     out[sub.key] = coerceItemField(sub, raw[sub.key])

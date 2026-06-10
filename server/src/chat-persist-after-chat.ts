@@ -26,6 +26,16 @@ import {
   resolvePersistTurnOrdinal,
   type PersistRegexFields,
 } from './regex-persist.js'
+import {
+  attachRetroToPersistResult,
+  runRetroPersistAfterTurnPersist,
+  type RetroPersistRunResult,
+  type RetroPersistStatus,
+  type RetroPersistTurnPayload,
+} from './regex-persist-retro.js'
+import { resolveConversationTailOrdinal } from './regex-persist-patch.js'
+
+export type { RetroPersistStatus, RetroPersistTurnPayload } from './regex-persist-retro.js'
 
 export interface ChatPersistResult {
   ok: boolean
@@ -38,6 +48,9 @@ export interface ChatPersistResult {
   /** persist 阶段 regex 后的 assistant 正文（落盘内容） */
   finalAssistantContent?: string
   finalAssistantReasoning?: string
+  /** skip 窗口回溯 persist 改动的历史轮 */
+  retro?: RetroPersistTurnPayload[]
+  retroStatus?: RetroPersistStatus
 }
 
 /** 出站 token：上游 usage.prompt_tokens，缺省用组装估算 */
@@ -157,6 +170,27 @@ async function applyPersistRegexFields(
     turnOrdinal,
     conversationId,
   )
+}
+
+async function finishPersistResult(
+  conversationId: string,
+  base: {
+    turnOrdinal?: number
+    receiveId?: string
+    isFirstTurn?: boolean
+  },
+  fields: PersistRegexFields,
+  retroOpts: { newTailOrdinal: number; includeNewRetro: boolean } | null,
+): Promise<ChatPersistResult> {
+  const result = okPersistResult(base, fields)
+  if (!retroOpts) return result
+  let retroRun: RetroPersistRunResult | null = null
+  try {
+    retroRun = await runRetroPersistAfterTurnPersist(conversationId, retroOpts)
+  } catch (e) {
+    console.warn('[persist] retro persist failed', conversationId, e)
+  }
+  return attachRetroToPersistResult(result, retroRun)
 }
 
 /**
@@ -319,13 +353,18 @@ export async function persistTurnAfterModelReply(params: {
       if (!ok) {
         return { ok: false, error: ApiErrorCodes.turn_update_failed }
       }
-      return okPersistResult(
+      return finishPersistResult(
+        conversationId,
         {
           turnOrdinal: regenOrd,
           receiveId,
           isFirstTurn: false,
         },
         fields,
+        {
+          newTailOrdinal: await resolveConversationTailOrdinal(conversationId),
+          includeNewRetro: false,
+        },
       )
     }
 
@@ -351,13 +390,15 @@ export async function persistTurnAfterModelReply(params: {
         return { ok: false, error: ApiErrorCodes.first_turn_persist_maybe_exists }
       }
       const rec = saved.chunk.turns[0]?.receives[0]
-      return okPersistResult(
+      return finishPersistResult(
+        conversationId,
         {
           turnOrdinal: 0,
           receiveId: typeof rec?.id === 'string' ? rec.id : undefined,
           isFirstTurn: true,
         },
         fields,
+        { newTailOrdinal: 0, includeNewRetro: true },
       )
     }
 
@@ -398,13 +439,18 @@ export async function persistTurnAfterModelReply(params: {
     }
     const chunk = await readTailChunk(conversationId)
     const last = chunk?.turns[chunk.turns.length - 1]
-    return okPersistResult(
+    return finishPersistResult(
+      conversationId,
       {
         turnOrdinal: last?.turnOrdinal ?? appendOrdinal,
         receiveId,
         isFirstTurn: false,
       },
       appendFields,
+      {
+        newTailOrdinal: last?.turnOrdinal ?? appendOrdinal,
+        includeNewRetro: true,
+      },
     )
   }
 
@@ -491,13 +537,15 @@ export async function persistTurnAfterModelReply(params: {
       return { ok: false, error: ApiErrorCodes.first_turn_persist_maybe_exists }
     }
     const rec = saved.chunk.turns[0]?.receives[0]
-    return okPersistResult(
+    return finishPersistResult(
+      conversationId,
       {
         turnOrdinal: 0,
         receiveId: typeof rec?.id === 'string' ? rec.id : undefined,
         isFirstTurn: true,
       },
       fields,
+      { newTailOrdinal: 0, includeNewRetro: true },
     )
   }
 
@@ -525,12 +573,17 @@ export async function persistTurnAfterModelReply(params: {
   }
   const chunk = await readTailChunk(conversationId)
   const last = chunk?.turns[chunk.turns.length - 1]
-  return okPersistResult(
+  return finishPersistResult(
+    conversationId,
     {
       turnOrdinal: last?.turnOrdinal ?? turnOrdinal,
       receiveId,
       isFirstTurn: false,
     },
     fields,
+    {
+      newTailOrdinal: last?.turnOrdinal ?? turnOrdinal,
+      includeNewRetro: true,
+    },
   )
 }

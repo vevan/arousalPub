@@ -98,6 +98,7 @@ applyRules(text | messages, ruleIds?, ctx)  // 过滤 enabled + phase + skipLast
 |------|----------|
 | `outgoing` | 可归属 `turnOrdinal` 的片段：`ordinal ≤ skipTail − N`（`skipTail = tailOrdinal − 1`；尾部待生成轮次的 assistant 不在 prompt 中，不占 skip 窗口） |
 | `persist` | 当前落盘轮：`currentOrdinal ≤ tailOrdinal − N` |
+| `persist`（落盘回溯） | 主落盘成功后，对 `tail − N` 等 retro 轮批量写盘；失败写入 `index.retroPersistPending` 下次重试，**不阻塞**主落盘 |
 | `display` | 渲染轮：`turnOrdinal ≤ tailOrdinal − N` |
 
 典型 **tracker**：`phases: ["outgoing","persist"]`，`skipLastNTurns: 3` — 近 3 轮保留跟踪标记给模型与磁盘，更早轮在 outgoing/persist 剥除。
@@ -107,7 +108,8 @@ applyRules(text | messages, ruleIds?, ctx)  // 过滤 enabled + phase + skipLast
 ```text
 流式中     → UI 显示上游原文
 落盘完成   → 服务端 persist 阶段处理 → 写入 chunk
-persist 事件 → 前端用服务端返回的最终正文更新该轮（立刻，不等全量 reload）
+           → retro：对刚出 skip 窗口的历史轮回溯 persist（batch 写盘）
+persist 事件 → 前端用服务端返回的最终正文更新该轮（含 retro[] 历史轮 patch）
 之后渲染   → 以磁盘为底；再叠 display 阶段（含 skipLastNTurns）
 ```
 

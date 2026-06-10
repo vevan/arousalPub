@@ -405,6 +405,8 @@
       "promptRequired": "不能为空",
       "restoreDefault": "恢复默认",
       "addItem": "添加",
+      "objectListAddItem": "添加条目",
+      "objectListItemUntitled": "列表条目 {index}",
       "removeItem": "删除",
       "removeItemConfirmTitle": "确认删除",
       "removeItemConfirmBody": "确定删除「{name}」？此操作不可撤销。",

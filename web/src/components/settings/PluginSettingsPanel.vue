@@ -22,6 +22,8 @@ function pluginDisplayName(pluginId: string, fallback: string): string {
   return resolvePluginDisplayName(pluginId, fallback)
 }
 
+const CUSTOM_STYLES_PLUGIN_ID = 'custom-styles'
+
 const loading = ref(true)
 const saving = ref(false)
 const errorText = ref('')
@@ -275,6 +277,15 @@ onMounted(() => {
             class="mb-3"
           >
             {{ settingsError }}
+          </v-alert>
+          <v-alert
+            v-if="settingsPlugin.id === CUSTOM_STYLES_PLUGIN_ID"
+            type="info"
+            variant="tonal"
+            density="compact"
+            class="mb-3 text-body-2"
+          >
+            {{ $t('plugins.custom-styles.globalReloadHint') }}
           </v-alert>
           <PluginSchemaForm
             v-model="settingsModel"

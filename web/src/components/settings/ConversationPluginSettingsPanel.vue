@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import PlotSummaryAutoSummarizeBlock from '@/components/settings/PlotSummaryAutoSummarizeBlock.vue'
+import CustomStylesConvSettingsBlock from '@/components/settings/CustomStylesConvSettingsBlock.vue'
 import PluginSchemaForm from '@/components/settings/PluginSchemaForm.vue'
 import type { PluginManageEntry } from '@/plugins/plugin-settings-types'
 import {
@@ -18,6 +19,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const PLOT_SUMMARY_PLUGIN_ID = 'plot-summary'
+const CUSTOM_STYLES_PLUGIN_ID = 'custom-styles'
 
 const props = defineProps<{
   conversationId: string
@@ -280,8 +282,18 @@ defineExpose({ reload: load, backToList })
           {{ selectedPlugin.id }}
         </p>
 
+        <CustomStylesConvSettingsBlock
+          v-if="
+            selectedPlugin.id === CUSTOM_STYLES_PLUGIN_ID &&
+            convModels[CUSTOM_STYLES_PLUGIN_ID]
+          "
+          :conv-model="convModels[CUSTOM_STYLES_PLUGIN_ID]!"
+          :global-model="globalModels[CUSTOM_STYLES_PLUGIN_ID]"
+          @update:model-value="onModelUpdate(selectedPlugin, $event)"
+        />
+
         <PluginSchemaForm
-          v-if="convModels[selectedPlugin.id]"
+          v-else-if="convModels[selectedPlugin.id]"
           :plugin-id="selectedPlugin.id"
           :fields="selectedPlugin.conversationSettingsSchema?.fields ?? []"
           :model-value="convModels[selectedPlugin.id]!"

@@ -1,0 +1,78 @@
+{
+  "id": "custom-styles",
+  "name": "自定义样式",
+  "version": "1.0.0",
+  "permissions": [],
+  "hooks": [],
+  "settingsSchema": {
+    "version": 1,
+    "fields": [
+      {
+        "key": "enabled",
+        "type": "boolean",
+        "labelKey": "enabledLabel",
+        "descriptionKey": "enabledDesc",
+        "default": true
+      },
+      {
+        "key": "sheets",
+        "type": "objectList",
+        "labelKey": "sheetsLabel",
+        "descriptionKey": "sheetsDesc",
+        "default": "[]",
+        "visibleWhen": {
+          "field": "enabled",
+          "equals": true
+        },
+        "itemFields": [
+          {
+            "key": "name",
+            "type": "string",
+            "labelKey": "sheetNameLabel",
+            "required": true,
+            "defaultKey": "sheetNameDefault"
+          },
+          {
+            "key": "enabled",
+            "type": "boolean",
+            "labelKey": "sheetEnabledLabel",
+            "default": true
+          },
+          {
+            "key": "css",
+            "type": "text",
+            "labelKey": "sheetCssLabel",
+            "descriptionKey": "sheetCssDesc",
+            "required": true
+          }
+        ]
+      }
+    ]
+  },
+  "conversationSettingsSchema": {
+    "version": 1,
+    "fields": [
+      {
+        "key": "enabled",
+        "type": "boolean",
+        "labelKey": "convEnabledLabel",
+        "descriptionKey": "convEnabledDesc",
+        "conversationInherit": true,
+        "inheritFromGlobalKey": "enabled"
+      },
+      {
+        "key": "sheetOverrides",
+        "type": "text",
+        "labelKey": "convSheetOverridesLabel",
+        "default": "",
+        "visibleWhen": {
+          "field": "__custom_styles_hidden__",
+          "equals": true
+        }
+      }
+    ]
+  },
+  "ui": {
+    "slots": []
+  }
+}

@@ -26,6 +26,7 @@ const {
   copyTurnText,
   requestDeleteWholeTurnFromUser,
   userSendTokenLabel,
+  displayUserText,
 } = props.session
 
 const { userDisplayName, userAvatarLetter } = toRefs(props.session)
@@ -116,7 +117,7 @@ const { userDisplayName, userAvatarLetter } = toRefs(props.session)
     >
       <div
         class="chat-rich-text"
-        v-html="renderRichMessageToHtml(turn.user)"
+        v-html="renderRichMessageToHtml(displayUserText(turn))"
       />
     </div>
 
@@ -144,7 +145,7 @@ const { userDisplayName, userAvatarLetter } = toRefs(props.session)
           :data-tt="copiedTurnKey === `u-${turn.turnOrdinal}` ? $t('chat.copied') : $t('chat.copy')"
           :class="{ 'is-success': copiedTurnKey === `u-${turn.turnOrdinal}` }"
           :aria-label="$t('chat.copy')"
-          @click="copyTurnText(turn.user, `u-${turn.turnOrdinal}`)"
+          @click="copyTurnText(displayUserText(turn), `u-${turn.turnOrdinal}`)"
         >
           <v-icon size="16">{{ copiedTurnKey === `u-${turn.turnOrdinal}` ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
         </button>

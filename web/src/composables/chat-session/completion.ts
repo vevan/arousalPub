@@ -12,6 +12,10 @@ import type { useConnectionStore } from '@/stores/connection'
 import type { AssistantReplyPersistedEvent } from './types.js'
 import { makeReplyTraceId } from './types.js'
 import { buildReceiveItem, collectUsedReceiveIds } from './turn-helpers.js'
+import {
+  resolveAssistantAfterPersist,
+  shouldReloadMessagesAfterChat,
+} from '@/utils/persist-display'
 
 type ConnectionStore = ReturnType<typeof useConnectionStore>
 
@@ -163,8 +167,13 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
       },
       { mode: 'send' },
     )
-    const receive = makeReceiveFromResult(assistantOut, {
-      reasoning: reasoningOut,
+    const { content, reasoning } = resolveAssistantAfterPersist(
+      assistantOut,
+      reasoningOut,
+      persist,
+    )
+    const receive = makeReceiveFromResult(content, {
+      reasoning,
       persist,
       durationMs,
       estimatedTokens,
@@ -174,7 +183,7 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
       receive,
       traceId,
       persist,
-      shouldReload: !!(assistantOut.trim() && (!persist || persist.ok)),
+      shouldReload: shouldReloadMessagesAfterChat(assistantOut, persist),
     }
   }
 
@@ -209,8 +218,13 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
       },
       { mode: 'regenerate' },
     )
-    const receive = makeReceiveFromResult(assistantOut, {
-      reasoning: reasoningOut,
+    const { content, reasoning } = resolveAssistantAfterPersist(
+      assistantOut,
+      reasoningOut,
+      persist,
+    )
+    const receive = makeReceiveFromResult(content, {
+      reasoning,
       persist,
       durationMs,
       estimatedTokens,
@@ -220,8 +234,8 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
       receive,
       traceId,
       persist,
-      assistantOut,
-      shouldReload: !!(assistantOut.trim() && (!persist || persist.ok)),
+      assistantOut: content,
+      shouldReload: shouldReloadMessagesAfterChat(assistantOut, persist),
     }
   }
 

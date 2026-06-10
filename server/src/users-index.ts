@@ -17,6 +17,7 @@ import {
 import { seedDefaultPromptsForUser } from './prompts-default-seed.js'
 import { seedDefaultApiSettingsForUser } from './api-settings-default-seed.js'
 import { seedDefaultLorebooksForUser } from './lorebooks-default-seed.js'
+import { seedDefaultRegexRulesForUser } from './regex-rules-default-seed.js'
 import {
   allocateUserId,
   isValidShortId,
@@ -55,6 +56,16 @@ function seedDefaultAvatar(userId: string): void {
   } catch {
     /* ignore */
   }
+}
+
+/** 新建用户时一次性写入默认数据文件（禁止在启动补种） */
+async function seedNewUserDefaultFiles(userId: string): Promise<void> {
+  ensureDataSkeletonForUser(userId)
+  seedDefaultAvatar(userId)
+  await seedDefaultPromptsForUser(userId)
+  await seedDefaultApiSettingsForUser(userId)
+  await seedDefaultLorebooksForUser(userId)
+  await seedDefaultRegexRulesForUser(userId)
 }
 
 function emptyIndex(): UsersIndexDocument {
@@ -138,11 +149,7 @@ export async function ensureUsersRegistry(): Promise<UsersIndexDocument> {
   if (!existsSync(indexPath)) {
     doc = emptyIndex()
     await writeUsersIndex(doc)
-    ensureDataSkeletonForUser(RESERVED_USER_ID)
-    seedDefaultAvatar(RESERVED_USER_ID)
-    await seedDefaultPromptsForUser(RESERVED_USER_ID)
-    await seedDefaultApiSettingsForUser(RESERVED_USER_ID)
-    await seedDefaultLorebooksForUser(RESERVED_USER_ID)
+    await seedNewUserDefaultFiles(RESERVED_USER_ID)
     return doc
   }
   doc = await readUsersIndex()
@@ -161,12 +168,6 @@ export async function ensureUsersRegistry(): Promise<UsersIndexDocument> {
     await writeUsersIndex(doc)
   }
   ensureDataSkeletonForUser(RESERVED_USER_ID)
-  if (!existsSync(getUserAvatarPath(RESERVED_USER_ID))) {
-    seedDefaultAvatar(RESERVED_USER_ID)
-  }
-  await seedDefaultPromptsForUser(RESERVED_USER_ID)
-  await seedDefaultApiSettingsForUser(RESERVED_USER_ID)
-  await seedDefaultLorebooksForUser(RESERVED_USER_ID)
   return doc
 }
 
@@ -232,11 +233,7 @@ export async function registerUser(body: {
   }
   doc.users.push(entry)
   await writeUsersIndex(doc)
-  ensureDataSkeletonForUser(id)
-  seedDefaultAvatar(id)
-  await seedDefaultPromptsForUser(id)
-  await seedDefaultApiSettingsForUser(id)
-  await seedDefaultLorebooksForUser(id)
+  await seedNewUserDefaultFiles(id)
   return entry
 }
 

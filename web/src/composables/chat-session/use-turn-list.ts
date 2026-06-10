@@ -1,4 +1,4 @@
-import type { ChatTurnItem, ReceiveItem } from '@/types/chat-turn'
+import type { ChatTurnItem, PersistTurnToServerResult, ReceiveItem } from '@/types/chat-turn'
 import {
   fetchConversationTurns,
   persistTurnToServer as persistTurnToServerApi,
@@ -51,7 +51,11 @@ export function useTurnList(opts: {
     if (restoreUserText) opts.userInput.value = restoreUserText
   }
 
-  function finalizePendingTurn(ord: number, receive: ReceiveItem) {
+  function finalizePendingTurn(
+    ord: number,
+    receive: ReceiveItem,
+    finalUserText?: string,
+  ) {
     const sendEt = opts.pendingSendEstimatedTokens.value
     const recvCt = opts.pendingReceiveCompletionTokens.value
     const merged: ReceiveItem = {
@@ -68,6 +72,7 @@ export function useTurnList(opts: {
       const cur = opts.turns.value[idx]
       replaceTurnAt(idx, {
         ...cur,
+        ...(finalUserText !== undefined ? { user: finalUserText } : {}),
         receives: [merged],
         activeReceiveIndex: 0,
       })
@@ -75,7 +80,7 @@ export function useTurnList(opts: {
     clearPendingSend()
   }
 
-  async function persistTurnToServer(turn: ChatTurnItem): Promise<boolean> {
+  async function persistTurnToServer(turn: ChatTurnItem): Promise<PersistTurnToServerResult> {
     return persistTurnToServerApi(opts.getConversationId(), turn)
   }
 

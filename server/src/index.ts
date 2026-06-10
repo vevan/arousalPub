@@ -213,6 +213,13 @@ import {
   type PromptsAssemblePreviewBody,
 } from './prompts-assemble-preview.js'
 import { persistTurnAfterModelReply } from './chat-persist-after-chat.js'
+import {
+  applyRegexPersistToTurnPatch,
+  loadAndApplyRegexPersistToTurnPatch,
+  resolveConversationTailOrdinal,
+  toTurnPatchPersistPayload,
+} from './regex-persist-patch.js'
+import { readRegexRulesDocument } from './regex-rules-file.js'
 import { extractCompletionTokens, extractPromptTokens } from './chat-usage.js'
 import { readChatAuditFile } from './chat-audit-file.js'
 import {
@@ -1222,17 +1229,18 @@ app.patch<{
     }
     const patch = parsed.patch
     try {
+      const normalized = await loadAndApplyRegexPersistToTurnPatch(id, patch)
       const ok = await updateTurnContentInTailChunk(
         id,
         ord,
-        patch.userText,
-        patch.receives,
-        patch.activeReceiveIndex,
+        normalized.userText,
+        normalized.receives,
+        normalized.activeReceiveIndex,
       )
       if (!ok) {
         return reply.status(404).send({ error: ApiErrorCodes.turn_chunk_not_found })
       }
-      return { ok: true as const }
+      return toTurnPatchPersistPayload(normalized)
     } catch (e) {
       app.log.error(e)
       return reply.status(500).send({ error: ApiErrorCodes.turn_update_failed })
@@ -1273,7 +1281,12 @@ app.patch<{
       patches.push(parsed.patch)
     }
     try {
-      const result = await batchUpdateConversationTurns(id, patches)
+      const tailOrdinal = await resolveConversationTailOrdinal(id)
+      const doc = await readRegexRulesDocument()
+      const normalizedPatches = patches.map((p) =>
+        applyRegexPersistToTurnPatch(doc.rules, p, tailOrdinal),
+      )
+      const result = await batchUpdateConversationTurns(id, normalizedPatches)
       return result
     } catch (e) {
       if (e instanceof Error && e.message === 'turns_batch_too_large') {

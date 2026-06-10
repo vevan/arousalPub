@@ -70,7 +70,7 @@
 - [ ] **三阶段**：`display` / `outgoing`（含 **system**）/ `persist`；outgoing 在 budget trim 之后、`afterAssemblePrompts` 之前 — **outgoing 已落地**（Phase 1 · 2026-06-10）
 - [ ] **近轮保留**：`skipLastNTurns` 为**规则级**选项，与 outgoing/persist/display 配合（tracker 等）
 - [ ] **写盘合并**：多规则内存串联后一次提交；历史批量 `batchUpdateConversationTurns`（**禁止**一条规则写一次盘）
-- [ ] **流式落盘**：persist 完成后 SSE/UI **立刻**展示最终正文（display 或 persist 规则均适用）
+- [x] **流式落盘**：persist 完成后 SSE `final*` 回传；前端用 final 更新 UI、跳过读盘（Phase 2 · 2026-06-10）
 - [ ] **拖曳优先级**：设置页拖曳调整 `order`；debounce **1 次**写规则文件
 - [ ] **`host.regex` / server `api.regex`**：供 `conversation-export`、插件只读/改文
 - [ ] **历史批量**：`POST .../regex/apply`（dry-run、区间、写锁）；导出可选规则

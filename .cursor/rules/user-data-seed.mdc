@@ -1,0 +1,14 @@
+---
+description: 用户数据种子文件仅在新建用户时写入，启动不补种
+globs: server/src/**/*-seed.ts,server/src/users-index.ts
+alwaysApply: true
+---
+
+# 用户数据种子（seed）原则
+
+**除非新建用户，不得 seed 种子文件。**
+
+- 允许：`registerUser`、首次安装创建种子用户（`users.index.json` 尚不存在）时，经 `seedNewUserDefaultFiles` 一次性写入。
+- 禁止：服务每次启动、`ensureUsersRegistry` 已有用户索引时，因缺文件而补写 `prompts/`、`api-settings.json`、`lorebooks/`、`regex-rules.json`、`avatar.png` 等。
+- 启动时仅可 `ensureDataSkeletonForUser`（空目录骨架），不得写入默认内容文件。
+- 新增种子类型时挂到 `seedNewUserDefaultFiles`，不要挂到 `ensureUsersRegistry` 的常规分支。

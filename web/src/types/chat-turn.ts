@@ -34,7 +34,32 @@ export interface ChatPersistPayload {
   turnOrdinal?: number
   receiveId?: string
   isFirstTurn?: boolean
+  /** persist 阶段 regex 后落盘的 user 正文 */
+  finalUserText?: string
+  /** persist 阶段 regex 后落盘的 assistant 正文 */
+  finalAssistantContent?: string
+  finalAssistantReasoning?: string
 }
+
+/** PATCH 编辑落盘：persist regex 后的轮次正文 */
+export interface TurnPatchPersistPayload {
+  ok: true
+  finalUserText: string
+  receives: {
+    id: string
+    content: string
+    reasoning?: string
+    durationMs?: number
+    estimatedTokens?: number
+    completionTokens?: number
+    model?: string
+  }[]
+  activeReceiveIndex: number
+}
+
+export type PersistTurnToServerResult =
+  | { ok: false }
+  | { ok: true; turn: ChatTurnItem }
 
 export interface ChatPromptSnapshotEntry {
   savedAt: string

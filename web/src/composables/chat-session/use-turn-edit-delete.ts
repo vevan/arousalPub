@@ -1,4 +1,4 @@
-import type { ChatTurnItem } from '@/types/chat-turn'
+import type { ChatTurnItem, PersistTurnToServerResult } from '@/types/chat-turn'
 import { assistantText } from '@/utils/chat-turn-display'
 import { deleteTurnOnServer } from '@/utils/chat-messages'
 import { computed, ref, type Ref } from 'vue'
@@ -8,7 +8,7 @@ export function useTurnEditDelete(opts: {
   turns: Ref<ChatTurnItem[]>
   isConversationWritable: () => boolean
   replaceTurnAt: (listIndex: number, next: ChatTurnItem) => void
-  persistTurnToServer: (turn: ChatTurnItem) => Promise<boolean>
+  persistTurnToServer: (turn: ChatTurnItem) => Promise<PersistTurnToServerResult>
   getConversationId: () => string
   loadMessages: () => Promise<void>
   setErrorText: (msg: string) => void
@@ -49,17 +49,19 @@ export function useTurnEditDelete(opts: {
     editDraft.value = ''
   }
 
-  function saveEdit(listIndex: number) {
+  async function saveEdit(listIndex: number) {
     if (!opts.isConversationWritable()) return
     const turn = opts.turns.value[listIndex]
     if (!turn || editingTurnOrdinal.value !== turn.turnOrdinal) return
     const text = editDraft.value
     const side = editingSide.value
     if (side === 'user') {
-      const next: ChatTurnItem = { ...turn, user: text }
-      opts.replaceTurnAt(listIndex, next)
+      const draft: ChatTurnItem = { ...turn, user: text }
       cancelEdit()
-      void opts.persistTurnToServer(next)
+      const result = await opts.persistTurnToServer(draft)
+      if (result.ok) {
+        opts.replaceTurnAt(listIndex, result.turn)
+      }
       return
     }
     if (side === 'assistant') {
@@ -67,10 +69,12 @@ export function useTurnEditDelete(opts: {
       const newReceives = turn.receives.map((r, j) =>
         j === ai ? { ...r, content: text } : r,
       )
-      const next: ChatTurnItem = { ...turn, receives: newReceives }
-      opts.replaceTurnAt(listIndex, next)
+      const draft: ChatTurnItem = { ...turn, receives: newReceives }
       cancelEdit()
-      void opts.persistTurnToServer(next)
+      const result = await opts.persistTurnToServer(draft)
+      if (result.ok) {
+        opts.replaceTurnAt(listIndex, result.turn)
+      }
     }
   }
 
@@ -114,7 +118,10 @@ export function useTurnEditDelete(opts: {
       }
       opts.replaceTurnAt(listIndex, next)
       cancelDelete()
-      void opts.persistTurnToServer(next)
+      const result = await opts.persistTurnToServer(next)
+      if (result.ok) {
+        opts.replaceTurnAt(listIndex, result.turn)
+      }
       return
     }
 

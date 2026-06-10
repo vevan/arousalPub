@@ -1,5 +1,6 @@
 import type { PromptTrigger } from '@/stores/prompts'
-import type { ChatPersistPayload, ChatTurnItem } from '@/types/chat-turn'
+import type { ChatPersistPayload, ChatTurnItem, PersistTurnToServerResult } from '@/types/chat-turn'
+import { resolveFinalUserTextAfterPersist } from '@/utils/persist-display'
 import { isAbortError } from '@/utils/abort-error'
 import type { ConversationChatRequestPlugins } from '@/utils/chat-api'
 import { allocateShortId } from '@/utils/short-id'
@@ -36,9 +37,13 @@ export function useChatOutbound(opts: {
   setPersistWarning: (persist?: ChatPersistPayload) => void
   appendPendingUserTurn: (userText: string, ord: number) => void
   rollbackPendingUserTurn: (ord: number, restoreUserText?: string) => void
-  finalizePendingTurn: (ord: number, receive: ChatTurnItem['receives'][number]) => void
+  finalizePendingTurn: (
+    ord: number,
+    receive: ChatTurnItem['receives'][number],
+    finalUserText?: string,
+  ) => void
   replaceTurnAt: (listIndex: number, next: ChatTurnItem) => void
-  persistTurnToServer: (turn: ChatTurnItem) => Promise<boolean>
+  persistTurnToServer: (turn: ChatTurnItem) => Promise<PersistTurnToServerResult>
   loadMessages: () => Promise<void>
   scrollChatToBottom: () => Promise<void>
   endRegeneratingUi: () => void
@@ -100,7 +105,11 @@ export function useChatOutbound(opts: {
         userText,
       })
       opts.setPersistWarning(persist)
-      opts.finalizePendingTurn(ord, receive)
+      opts.finalizePendingTurn(
+        ord,
+        receive,
+        resolveFinalUserTextAfterPersist(persist),
+      )
       if (shouldReload) await opts.loadMessages()
       opts.emitAssistantReplyComplete({ mode: 'send', traceId })
     } catch (e) {
@@ -156,7 +165,11 @@ export function useChatOutbound(opts: {
         plugins,
       })
       opts.setPersistWarning(persist)
-      opts.finalizePendingTurn(ord, receive)
+      opts.finalizePendingTurn(
+        ord,
+        receive,
+        resolveFinalUserTextAfterPersist(persist),
+      )
       if (shouldReload) await opts.loadMessages()
       opts.emitAssistantReplyComplete({ mode: 'send', traceId })
     } catch (e) {
@@ -209,8 +222,10 @@ export function useChatOutbound(opts: {
 
       const cur = opts.turns.value[listIndex]
       if (!cur) return
+      const finalUser = resolveFinalUserTextAfterPersist(persist)
       const next: ChatTurnItem = {
         ...cur,
+        ...(finalUser !== undefined ? { user: finalUser } : {}),
         receives: [...cur.receives, receive],
         activeReceiveIndex: cur.receives.length,
       }
@@ -280,9 +295,10 @@ export function useChatOutbound(opts: {
 
       const cur = opts.turns.value[listIndex]
       if (!cur) return
+      const finalUser = resolveFinalUserTextAfterPersist(persist) ?? trimmed
       const next: ChatTurnItem = {
         ...cur,
-        user: trimmed,
+        user: finalUser,
         receives: [...cur.receives, receive],
         activeReceiveIndex: cur.receives.length,
       }
@@ -325,9 +341,14 @@ export function useChatOutbound(opts: {
     const a = turn.activeReceiveIndex
 
     const applyVariantSwitch = (next: ChatTurnItem) => {
-      opts.replaceTurnAt(listIndex, next)
-      void opts.persistTurnToServer(next)
-      void nextTick().then(() => opts.scrollChatToBottom())
+      void opts.persistTurnToServer(next).then((result) => {
+        if (result.ok) {
+          opts.replaceTurnAt(listIndex, result.turn)
+        } else {
+          opts.replaceTurnAt(listIndex, next)
+        }
+        void nextTick().then(() => opts.scrollChatToBottom())
+      })
     }
 
     if (direction === 'left') {

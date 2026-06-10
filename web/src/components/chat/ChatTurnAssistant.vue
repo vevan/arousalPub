@@ -35,7 +35,10 @@ const {
   isAssistantBubbleLoading,
   isAssistantStreamingBubble,
   assistantReasoning,
-  assistantText,
+  displayAssistantText,
+  displayAssistantReasoning,
+  displayStreamingAssistantText,
+  displayStreamingReasoningText,
   reasoningCharsCount,
   showAssistantSwipeFooter,
   slideAssistant,
@@ -176,7 +179,7 @@ const displayModelName = computed(() => {
         <span class="reasoning-chain__title">
           {{ $t('chat.reasoningSummary') }}
           <span class="reasoning-chain__meta">
-            {{ $t('chat.reasoningCharsMeta', { n: reasoningCharsCount(streamingReasoning) }) }}
+            {{ $t('chat.reasoningCharsMeta', { n: reasoningCharsCount(displayStreamingReasoningText(streamingReasoning, turn.turnOrdinal)) }) }}
           </span>
         </span>
         <span class="reasoning-chain__hint">
@@ -190,7 +193,7 @@ const displayModelName = computed(() => {
           :data-tt="copiedTurnKey === `r-${turn.turnOrdinal}-live` ? $t('chat.copied') : $t('chat.copy')"
           :class="{ 'is-success': copiedTurnKey === `r-${turn.turnOrdinal}-live` }"
           :aria-label="$t('chat.copy')"
-          @click.stop="copyTurnText(streamingReasoning, `r-${turn.turnOrdinal}-live`)"
+          @click.stop="copyTurnText(displayStreamingReasoningText(streamingReasoning, turn.turnOrdinal), `r-${turn.turnOrdinal}-live`)"
         >
           <v-icon size="14">
             {{ copiedTurnKey === `r-${turn.turnOrdinal}-live` ? 'mdi-check' : 'mdi-content-copy' }}
@@ -199,7 +202,7 @@ const displayModelName = computed(() => {
       </summary>
       <div
         class="reasoning-chain__body chat-rich-text"
-        v-html="renderReasoningMarkdownToHtml(streamingReasoning)"
+        v-html="renderReasoningMarkdownToHtml(displayStreamingReasoningText(streamingReasoning, turn.turnOrdinal))"
       />
     </details>
 
@@ -221,7 +224,7 @@ const displayModelName = computed(() => {
         <span class="reasoning-chain__title">
           {{ $t('chat.reasoningSummary') }}
           <span class="reasoning-chain__meta">
-            {{ $t('chat.reasoningCharsMeta', { n: reasoningCharsCount(assistantReasoning(turn)) }) }}
+            {{ $t('chat.reasoningCharsMeta', { n: reasoningCharsCount(displayAssistantReasoning(turn)) }) }}
           </span>
         </span>
         <span class="reasoning-chain__hint">
@@ -235,7 +238,7 @@ const displayModelName = computed(() => {
           :data-tt="copiedTurnKey === `r-${turn.turnOrdinal}` ? $t('chat.copied') : $t('chat.copy')"
           :class="{ 'is-success': copiedTurnKey === `r-${turn.turnOrdinal}` }"
           :aria-label="$t('chat.copy')"
-          @click.stop="copyTurnText(assistantReasoning(turn), `r-${turn.turnOrdinal}`)"
+          @click.stop="copyTurnText(displayAssistantReasoning(turn), `r-${turn.turnOrdinal}`)"
         >
           <v-icon size="14">
             {{ copiedTurnKey === `r-${turn.turnOrdinal}` ? 'mdi-check' : 'mdi-content-copy' }}
@@ -244,7 +247,7 @@ const displayModelName = computed(() => {
       </summary>
       <div
         class="reasoning-chain__body chat-rich-text"
-        v-html="renderReasoningMarkdownToHtml(assistantReasoning(turn))"
+        v-html="renderReasoningMarkdownToHtml(displayAssistantReasoning(turn))"
       />
     </details>
 
@@ -278,7 +281,7 @@ const displayModelName = computed(() => {
         <div
           v-if="isAssistantStreamingBubble(turn)"
           class="chat-rich-text"
-          v-html="renderRichMessageToHtml(streamingText)"
+          v-html="renderRichMessageToHtml(displayStreamingAssistantText(streamingText, turn.turnOrdinal))"
         />
         <v-skeleton-loader
           v-else
@@ -290,7 +293,7 @@ const displayModelName = computed(() => {
       <template v-else>
         <div
           class="chat-rich-text"
-          v-html="renderRichMessageToHtml(assistantText(turn))"
+          v-html="renderRichMessageToHtml(displayAssistantText(turn))"
         />
       </template>
     </div>
@@ -333,7 +336,7 @@ const displayModelName = computed(() => {
         :data-tt="copiedTurnKey === `a-${turn.turnOrdinal}` ? $t('chat.copied') : $t('chat.copy')"
         :class="{ 'is-success': copiedTurnKey === `a-${turn.turnOrdinal}` }"
         :aria-label="$t('chat.copy')"
-        @click="copyTurnText(assistantText(turn), `a-${turn.turnOrdinal}`)"
+        @click="copyTurnText(displayAssistantText(turn), `a-${turn.turnOrdinal}`)"
       >
         <v-icon size="16">{{ copiedTurnKey === `a-${turn.turnOrdinal}` ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
       </button>

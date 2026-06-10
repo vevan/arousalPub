@@ -1,4 +1,10 @@
-import type { ChatPersistPayload, ChatTurnItem, ReceiveItem } from '@/types/chat-turn'
+import type {
+  ChatPersistPayload,
+  ChatTurnItem,
+  ReceiveItem,
+  TurnPatchPersistPayload,
+  PersistTurnToServerResult,
+} from '@/types/chat-turn'
 import { translateApiError } from '@/utils/api-error-message'
 import { allocateShortId } from '@/utils/short-id'
 
@@ -168,10 +174,41 @@ export async function persistTurnsBatchToServer(
   }
 }
 
+export function mergeTurnFromPatchPersist(
+  turn: ChatTurnItem,
+  payload: TurnPatchPersistPayload,
+): ChatTurnItem {
+  const byId = new Map(payload.receives.map((r) => [r.id, r]))
+  const receives = turn.receives.map((r) => {
+    const fromServer = byId.get(r.id)
+    if (!fromServer) return r
+    const item: ReceiveItem = {
+      ...r,
+      content: fromServer.content,
+    }
+    if (typeof fromServer.reasoning === 'string' && fromServer.reasoning.length > 0) {
+      item.reasoning = fromServer.reasoning
+    } else {
+      delete item.reasoning
+    }
+    return item
+  })
+  let ai = payload.activeReceiveIndex
+  if (receives.length > 0) {
+    ai = Math.min(Math.max(0, ai), receives.length - 1)
+  }
+  return {
+    ...turn,
+    user: payload.finalUserText,
+    receives,
+    activeReceiveIndex: ai,
+  }
+}
+
 export async function persistTurnToServer(
   conversationId: string,
   turn: ChatTurnItem,
-): Promise<boolean> {
+): Promise<PersistTurnToServerResult> {
   try {
     const res = await fetch(
       `/api/chat/conversations/${conversationId}/turns/${turn.turnOrdinal}`,
@@ -193,9 +230,14 @@ export async function persistTurnToServer(
         }),
       },
     )
-    return res.ok
+    if (!res.ok) return { ok: false }
+    const body = (await res.json()) as TurnPatchPersistPayload
+    if (body?.ok !== true || typeof body.finalUserText !== 'string') {
+      return { ok: true, turn }
+    }
+    return { ok: true, turn: mergeTurnFromPatchPersist(turn, body) }
   } catch {
-    return false
+    return { ok: false }
   }
 }
 

@@ -30,6 +30,7 @@ import { useTurnBubbleUi } from './chat-session/use-turn-bubble-ui.js'
 import { useTurnEditDelete } from './chat-session/use-turn-edit-delete.js'
 import { useTurnList } from './chat-session/use-turn-list.js'
 import { useTurnPrompt } from './chat-session/use-turn-prompt.js'
+import { createRegexDisplayText } from './chat-session/use-regex-display-text.js'
 
 export type {
   ChatSessionProps,
@@ -264,6 +265,11 @@ export function useChatSession(props: ChatSessionProps) {
     t,
   })
 
+  const regexDisplay = createRegexDisplayText({
+    turns,
+    getUserId: () => auth.user?.id ?? auth.defaultUserId,
+  })
+
   const { copiedTurnKey, copyTurnText } = useCopyFeedback()
 
   const canSend = computed(
@@ -308,6 +314,14 @@ export function useChatSession(props: ChatSessionProps) {
   })
 
   watch(
+    () => auth.user?.id ?? auth.defaultUserId,
+    (uid) => {
+      if (uid) void regexDisplay.ensureRulesLoaded()
+    },
+    { immediate: true },
+  )
+
+  watch(
     () => props.conversationId,
     (newId, oldId) => {
       composerDraft.switchConversationDraft(oldId, newId ?? '')
@@ -315,6 +329,7 @@ export function useChatSession(props: ChatSessionProps) {
       clearPendingSend()
       errorText.value = ''
       turnEditDelete.resetState()
+      void regexDisplay.ensureRulesLoaded()
       void loadMessages()
     },
     { immediate: true },
@@ -341,6 +356,7 @@ export function useChatSession(props: ChatSessionProps) {
     deleteDialogMessage: turnEditDelete.deleteDialogMessage,
     ...turnPrompt,
     ...display,
+    ...regexDisplay,
     copiedTurnKey,
     ...assemblePreview,
     canSend,

@@ -172,7 +172,7 @@ applyText / applyMessages  // 同语义
 - [x] `server/src/regex-apply.ts` 引擎 + `skipLastNTurns` / `order`（Phase 0 · 2026-06-10）
 - [x] `POST /api/regex/apply-text`（无写盘预览 / `host.regex` 前置）
 - [x] `/api/chat` **outgoing** 挂钩（`chat-assemble.ts` · Phase 1 · 2026-06-10）
-- [ ] `/api/chat` **persist** 挂钩；SSE persist payload 含最终正文
+- [x] `/api/chat` **persist** 挂钩 + SSE `final*`（Phase 2 · 2026-06-10）
 - [ ] `POST .../regex/apply`（dry-run / batchUpdateConversationTurns）
 - [ ] Web 设置页拖曳 + 对话批量 UI；export 联动
 - [ ] `host.regex` + server hook `api.regex`
@@ -377,11 +377,12 @@ UI 渲染:
 - `assemble-messages` 经同一函数受益；无 enabled outgoing 规则时 fast path
 - regex 后重算 `estimatedTokens`；顺序在 `afterAssemblePrompts` 之前
 
-#### Phase 2 · persist + SSE（~1.5–2d）
+#### Phase 2 · persist + SSE（~1.5–2d）【已落地 · 2026-06-10】
 
-- `persistTurnAfterModelReply` 入口 apply persist
-- 扩展 `ChatPersistResult` / `ChatPersistPayload` 的 `final*` 字段
-- 流式与非流式 persist 均回传 final；前端 finalize 优先用 final*
+- `persistTurnAfterModelReply` 写盘前 `loadAndApplyRegexPersistForTurn`
+- `ChatPersistResult` / `ChatPersistPayload` 扩展 `finalUserText` / `finalAssistantContent` / `finalAssistantReasoning`
+- 流式与非流式 `arousal.persist` / JSON `persist` 均回传 final
+- Web：`persist-display.ts`；有 final 时跳过 `loadMessages()`（fallback 仍保留）
 
 #### Phase 3 · 历史批量（~1.5d）
 

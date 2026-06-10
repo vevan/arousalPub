@@ -171,7 +171,8 @@ applyText / applyMessages  // 同语义
 - [x] `regex-rules.json` + `GET/PUT /api/regex-rules`
 - [x] `server/src/regex-apply.ts` 引擎 + `skipLastNTurns` / `order`（Phase 0 · 2026-06-10）
 - [x] `POST /api/regex/apply-text`（无写盘预览 / `host.regex` 前置）
-- [ ] `/api/chat` outgoing + persist 挂钩；SSE persist  payload 含最终正文
+- [x] `/api/chat` **outgoing** 挂钩（`chat-assemble.ts` · Phase 1 · 2026-06-10）
+- [ ] `/api/chat` **persist** 挂钩；SSE persist payload 含最终正文
 - [ ] `POST .../regex/apply`（dry-run / batchUpdateConversationTurns）
 - [ ] Web 设置页拖曳 + 对话批量 UI；export 联动
 - [ ] `host.regex` + server hook `api.regex`

@@ -48,6 +48,10 @@ import { applyPluginsAfterAssemblePrompts } from './plugin-host.js'
 import type { ChatPluginsBody } from './plugin-types.js'
 import { countChatMessagesTokens } from './token-count.js'
 import {
+  loadAndApplyRegexOutgoing,
+  resolveOutgoingTailOrdinal,
+} from './regex-outgoing.js'
+import {
   memoryTextFromTrimState,
   runPromptBudgetTrimLoop,
   type PromptBudgetTrimState,
@@ -349,6 +353,23 @@ export async function buildConversationOutboundMessages(
     messages = assembleFromState(trimState)
     estimatedTokens = countChatMessagesTokens(messages, { model: tokenModel })
   }
+
+  const tailOrdinal = resolveOutgoingTailOrdinal({
+    sourceHistoryTurnOrdinals: memoryPipeline.recentHistoryTurnOrdinals,
+    historyBeforeTurnOrdinalExclusive: params.historyBeforeTurnOrdinalExclusive,
+  })
+  messages = await loadAndApplyRegexOutgoing(messages, {
+    tailOrdinal,
+    sourceHistoryMessages: memoryPipeline.recentHistoryMessages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    })),
+    sourceHistoryTurnOrdinals: memoryPipeline.recentHistoryTurnOrdinals,
+    trimmedHistoryMessages: trimState.historyMessages,
+    userInput: userInput,
+  })
+
+  estimatedTokens = countChatMessagesTokens(messages, { model: tokenModel })
 
   const messagesAfterPlugins = await applyPluginsAfterAssemblePrompts({
     messages,

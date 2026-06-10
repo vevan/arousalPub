@@ -2,13 +2,16 @@ import { useRegexRulesDisplayStore } from '@/stores/regex-rules-display'
 import type { RegexRule } from '@/types/regex-rules'
 import {
   allRegexRulesSaveReady,
+  assignOrdersInListOrder,
+  buildRulesForServerPut,
   cloneRegexRules,
   createDefaultRegexRule,
   documentFromRules,
-  reassignRegexRuleOrders,
+  mergeSavedRulesWithLocalDrafts,
   regexRulesEqual,
   sortRegexRules,
 } from '@/utils/regex-rules'
+import { invalidateRegexHostRulesCache } from '@/plugins/plugin-host-regex'
 import { apiErrorFromResponseBody } from '@/utils/api-error-message'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
@@ -39,21 +42,19 @@ export const useRegexRulesStore = defineStore('regexRules', () => {
     lastSyncedRules = cloneRegexRules(rules.value)
   }
 
-  function scheduleSave(): void {
-    if (!loaded.value) return
-    pendingSave = true
-    if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = setTimeout(() => {
-      saveTimer = null
-      void flushSave()
-    }, SAVE_DEBOUNCE_MS)
+  function applyRules(next: RegexRule[]): void {
+    rules.value = cloneRegexRules(next)
   }
 
-  async function flushSave(): Promise<void> {
-    if (!pendingSave) return
-    pendingSave = false
-    if (!allRegexRulesSaveReady(rules.value)) return
-    const payload = documentFromRules(rules.value)
+  async function putRulesToServer(
+    nextRules: RegexRule[],
+    localOverlay?: RegexRule[],
+  ): Promise<void> {
+    const ordered = assignOrdersInListOrder(nextRules)
+    if (!allRegexRulesSaveReady(ordered)) {
+      throw new Error('regex_rules_validation_failed')
+    }
+    const payload = documentFromRules(ordered)
     if (regexRulesEqual(payload.rules, lastSyncedRules)) return
 
     saving.value = true
@@ -76,22 +77,72 @@ export const useRegexRulesStore = defineStore('regexRules', () => {
       }
       const doc = (await res.json()) as { rules?: RegexRule[]; savedAt?: string }
       if (Array.isArray(doc.rules)) {
-        rules.value = cloneRegexRules(doc.rules)
+        applyRules(
+          localOverlay
+            ? mergeSavedRulesWithLocalDrafts(doc.rules, localOverlay)
+            : doc.rules,
+        )
         if (
           selectedRuleId.value &&
           !rules.value.some((r) => r.id === selectedRuleId.value)
         ) {
           selectedRuleId.value = rules.value[0]?.id ?? null
         }
+      } else {
+        applyRules(localOverlay ?? ordered)
       }
       if (typeof doc.savedAt === 'string') lastSavedAt.value = doc.savedAt
       syncLastSynced()
       useRegexRulesDisplayStore().invalidate()
+      invalidateRegexHostRulesCache()
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e)
-      pendingSave = true
+      throw e
     } finally {
       saving.value = false
+    }
+  }
+
+  /** 立即写盘（拖曳排序 / 开关，对齐插件 registry PUT） */
+  async function persistRulesList(nextRules: RegexRule[]): Promise<void> {
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    pendingSave = false
+    const localOrdered = assignOrdersInListOrder(nextRules)
+    applyRules(localOrdered)
+
+    const serverPayload = buildRulesForServerPut(localOrdered, lastSyncedRules)
+    if (serverPayload.length === 0) {
+      if (localOrdered.length > 0) return
+      await putRulesToServer(serverPayload, localOrdered)
+      return
+    }
+    if (!allRegexRulesSaveReady(serverPayload)) {
+      throw new Error('regex_rules_validation_failed')
+    }
+    await putRulesToServer(serverPayload, localOrdered)
+  }
+
+  function scheduleSave(): void {
+    if (!loaded.value) return
+    pendingSave = true
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => {
+      saveTimer = null
+      void flushSave()
+    }, SAVE_DEBOUNCE_MS)
+  }
+
+  async function flushSave(): Promise<void> {
+    if (!pendingSave) return
+    pendingSave = false
+    if (!allRegexRulesSaveReady(rules.value)) return
+    try {
+      await putRulesToServer(rules.value)
+    } catch {
+      pendingSave = true
     }
   }
 
@@ -107,7 +158,7 @@ export const useRegexRulesStore = defineStore('regexRules', () => {
         )
       }
       const doc = (await res.json()) as { rules?: RegexRule[]; savedAt?: string }
-      rules.value = Array.isArray(doc.rules) ? cloneRegexRules(doc.rules) : []
+      applyRules(Array.isArray(doc.rules) ? doc.rules : [])
       if (typeof doc.savedAt === 'string') lastSavedAt.value = doc.savedAt
       if (
         selectedRuleId.value &&
@@ -119,6 +170,7 @@ export const useRegexRulesStore = defineStore('regexRules', () => {
       loaded.value = true
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e)
+      throw e
     } finally {
       loading.value = false
     }
@@ -128,11 +180,14 @@ export const useRegexRulesStore = defineStore('regexRules', () => {
     selectedRuleId.value = id
   }
 
+  function createRuleDraft(): RegexRule {
+    return createDefaultRegexRule(rules.value)
+  }
+
   function addRule(): void {
     const rule = createDefaultRegexRule(rules.value)
     rules.value = [...rules.value, rule]
     selectedRuleId.value = rule.id
-    scheduleSave()
   }
 
   function deleteRule(id: string): void {
@@ -140,7 +195,6 @@ export const useRegexRulesStore = defineStore('regexRules', () => {
     if (selectedRuleId.value === id) {
       selectedRuleId.value = rules.value[0]?.id ?? null
     }
-    scheduleSave()
   }
 
   function patchRule(id: string, patch: Partial<RegexRule>): void {
@@ -151,22 +205,6 @@ export const useRegexRulesStore = defineStore('regexRules', () => {
     if (patch.phases) next[idx].phases = [...patch.phases]
     if (patch.fields) next[idx].fields = [...patch.fields]
     rules.value = next
-    scheduleSave()
-  }
-
-  function setRuleEnabled(id: string, enabled: boolean): void {
-    patchRule(id, { enabled })
-  }
-
-  function reorderRules(fromIndex: number, toIndex: number): void {
-    if (fromIndex === toIndex) return
-    const ordered = sortRegexRules(rules.value)
-    const list = [...ordered]
-    const [item] = list.splice(fromIndex, 1)
-    if (!item) return
-    list.splice(toIndex, 0, item)
-    rules.value = reassignRegexRuleOrders(list)
-    scheduleSave()
   }
 
   return {
@@ -181,11 +219,12 @@ export const useRegexRulesStore = defineStore('regexRules', () => {
     selectedRule,
     loadFromServer,
     flushSave,
+    persistRulesList,
+    scheduleSave,
     selectRule,
+    createRuleDraft,
     addRule,
     deleteRule,
     patchRule,
-    setRuleEnabled,
-    reorderRules,
   }
 })

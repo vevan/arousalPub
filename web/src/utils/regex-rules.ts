@@ -45,11 +45,16 @@ export function suggestNextRegexRuleOrder(rules: RegexRule[]): number {
   return Math.max(...rules.map((r) => r.order)) + 10
 }
 
-export function reassignRegexRuleOrders(rules: RegexRule[]): RegexRule[] {
-  return sortRegexRules(rules).map((r, i) => ({
-    ...r,
+export function assignOrdersInListOrder(rules: RegexRule[]): RegexRule[] {
+  return rules.map((r, i) => ({
+    ...cloneRegexRule(r),
     order: (i + 1) * 10,
   }))
+}
+
+/** 先按 order 排序，再重赋 order（用于读盘/合并后规范化） */
+export function reassignRegexRuleOrders(rules: RegexRule[]): RegexRule[] {
+  return assignOrdersInListOrder(sortRegexRules(rules))
 }
 
 export function cloneRegexRule(rule: RegexRule): RegexRule {
@@ -107,8 +112,53 @@ export function documentFromRules(rules: RegexRule[]): RegexRulesDocument {
   return {
     schemaVersion: 1,
     savedAt: new Date().toISOString(),
-    rules: cloneRegexRules(reassignRegexRuleOrders(rules)),
+    rules: assignOrdersInListOrder(rules),
   }
+}
+
+/**
+ * 构建 PUT 载荷：保持 UI 列表顺序；未保存就绪的新草稿不入库；
+ * 已有但未编辑完的规则沿用上次同步内容，仅同步 order / enabled / label。
+ */
+export function buildRulesForServerPut(
+  localInOrder: RegexRule[],
+  synced: RegexRule[],
+): RegexRule[] {
+  const syncedById = new Map(synced.map((r) => [r.id, r]))
+  const out: RegexRule[] = []
+  for (const local of localInOrder) {
+    if (isRegexRuleSaveReady(local)) {
+      out.push(cloneRegexRule(local))
+      continue
+    }
+    const prev = syncedById.get(local.id)
+    if (prev) {
+      out.push({
+        ...cloneRegexRule(prev),
+        order: local.order,
+        enabled: local.enabled,
+        label: local.label,
+      })
+    }
+  }
+  return assignOrdersInListOrder(out)
+}
+
+/** PUT 成功后把服务端规则与本地未保存草稿合并，恢复 UI 列表 */
+export function mergeSavedRulesWithLocalDrafts(
+  savedInOrder: RegexRule[],
+  localInOrder: RegexRule[],
+): RegexRule[] {
+  const savedById = new Map(savedInOrder.map((r) => [r.id, r]))
+  const merged: RegexRule[] = []
+  for (const local of localInOrder) {
+    if (!isRegexRuleSaveReady(local)) {
+      merged.push(cloneRegexRule(local))
+      continue
+    }
+    merged.push(savedById.get(local.id) ?? cloneRegexRule(local))
+  }
+  return assignOrdersInListOrder(merged)
 }
 
 export function validateRegexPatternClient(
@@ -146,4 +196,55 @@ export function isRegexRuleSaveReady(rule: RegexRule): boolean {
 
 export function allRegexRulesSaveReady(rules: RegexRule[]): boolean {
   return rules.every(isRegexRuleSaveReady)
+}
+
+export type RegexPipelineRuleOutcome = 'skipped_disabled' | 'no_match' | 'hit'
+
+export interface RegexPipelineRuleStat {
+  ruleId: string
+  outcome: RegexPipelineRuleOutcome
+  hitCount: number
+}
+
+export interface RegexPipelinePlainTextResult {
+  output: string
+  stats: RegexPipelineRuleStat[]
+}
+
+function countRegexMatches(text: string, pattern: string, flags: string): number {
+  if (validateRegexPatternClient(pattern, flags) !== null) return 0
+  const re = new RegExp(pattern, flags)
+  if (!re.global) return re.test(text) ? 1 : 0
+  return [...text.matchAll(re)].length
+}
+
+/**
+ * 单管线纯文本测试：按 order 串联；仅 enabled 规则参与；忽略 phase / field / skipLastNTurns。
+ */
+export function runRegexPipelinePlainTextTest(
+  text: string,
+  rules: RegexRule[],
+): RegexPipelinePlainTextResult {
+  const stats: RegexPipelineRuleStat[] = []
+  let out = text
+  for (const rule of sortRegexRules(rules)) {
+    if (!rule.enabled) {
+      stats.push({ ruleId: rule.id, outcome: 'skipped_disabled', hitCount: 0 })
+      continue
+    }
+    const hitCount = countRegexMatches(out, rule.pattern, rule.flags)
+    if (hitCount === 0) {
+      stats.push({ ruleId: rule.id, outcome: 'no_match', hitCount: 0 })
+      continue
+    }
+    try {
+      const re = new RegExp(rule.pattern, rule.flags)
+      out = out.replace(re, rule.replacement)
+    } catch {
+      stats.push({ ruleId: rule.id, outcome: 'no_match', hitCount: 0 })
+      continue
+    }
+    stats.push({ ruleId: rule.id, outcome: 'hit', hitCount })
+  }
+  return { output: out, stats }
 }

@@ -1,4 +1,9 @@
 import type { ChatMessage } from '../assemble-prompts.js'
+import type {
+  RegexApplyContext,
+  RegexPhase,
+  RegexRuleSummary,
+} from '../regex-rules-types.js'
 import type { PromptMacroContext } from '../prompt-macros/types.js'
 import type { ChatPluginsBody, TurnPluginEntry } from '../plugin-types.js'
 
@@ -131,6 +136,26 @@ export interface PluginServerHostApi {
     conversationId?: string
     apiConfigId?: string
   }) => Promise<string>
+  regex: {
+    listRules: (opts?: { phases?: RegexPhase[] }) => Promise<RegexRuleSummary[]>
+    applyText: (
+      text: string,
+      ruleIds: string[] | 'all',
+      ctx: RegexApplyContext,
+    ) => Promise<string>
+    applyMessages: (
+      messages: ChatMessage[],
+      ruleIds: string[] | 'all',
+      ctx: {
+        phase: RegexPhase
+        tailOrdinal: number
+        turnOrdinalByIndex?: (
+          index: number,
+          msg: ChatMessage,
+        ) => number | undefined
+      },
+    ) => Promise<ChatMessage[]>
+  }
 }
 
 export interface PluginCompleteDraftContext {

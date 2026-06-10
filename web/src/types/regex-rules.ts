@@ -22,3 +22,20 @@ export interface RegexRulesDocument {
   savedAt: string
   rules: RegexRule[]
 }
+
+export interface RegexRuleSummary {
+  id: string
+  label: string
+  order: number
+  enabled: boolean
+  phases: RegexPhase[]
+  fields: RegexField[]
+  skipLastNTurns: number
+}
+
+export interface RegexApplyContext {
+  phase: RegexPhase
+  field: RegexField
+  turnOrdinal?: number
+  tailOrdinal: number
+}

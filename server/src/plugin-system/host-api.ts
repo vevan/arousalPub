@@ -3,9 +3,20 @@ import { resolvePluginCompleteApi } from '../plugin-api-resolve.js'
 import { runPluginComplete } from '../plugin-complete.js'
 import { runPluginCompletePreflight } from '../plugin-complete-preflight.js'
 import { runPluginMacroExpand } from '../plugin-macro-expand.js'
+import {
+  applyRegexRulesToMessages,
+  applyRegexRulesToText,
+  filterRegexRules,
+  toRegexRuleSummary,
+} from '../regex-apply.js'
+import { readRegexRulesDocument } from '../regex-rules-file.js'
+import type {
+  RegexApplyContext,
+} from '../regex-rules-types.js'
 import { getCurrentUserId } from '../user-context.js'
 import { readMergedPluginUserSettings } from './settings.js'
 import type { PluginServerHostApi } from './types.js'
+import type { ChatMessage } from '../assemble-prompts.js'
 
 export function createPluginServerHostApi(
   pluginId?: string,
@@ -95,6 +106,27 @@ export function createPluginServerHostApi(
         apiConfigId: req.apiConfigId,
       })
       return result.ok ? result.text : req.text
+    },
+    regex: {
+      async listRules(opts) {
+        const doc = await readRegexRulesDocument(uid)
+        const rules = filterRegexRules(doc.rules, { phases: opts?.phases })
+        return rules.map(toRegexRuleSummary)
+      },
+      async applyText(text, ruleIds, ctx: RegexApplyContext) {
+        const doc = await readRegexRulesDocument(uid)
+        const rules = filterRegexRules(doc.rules, { ruleIds })
+        return applyRegexRulesToText(text, rules, ctx)
+      },
+      async applyMessages(messages, ruleIds, ctx) {
+        const doc = await readRegexRulesDocument(uid)
+        const rules = filterRegexRules(doc.rules, { ruleIds })
+        return applyRegexRulesToMessages(
+          messages as ChatMessage[],
+          rules,
+          ctx,
+        ) as ChatMessage[]
+      },
     },
   }
 }

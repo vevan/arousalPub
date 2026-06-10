@@ -41,6 +41,11 @@ import {
   runPluginPrepareContext,
 } from '@/plugins/plugin-host-api'
 import {
+  applyRegexMessagesForHost,
+  applyRegexTextForHost,
+  listRegexRulesForHost,
+} from '@/plugins/plugin-host-regex'
+import {
   renderRichMessageToHtml,
   renderReasoningMarkdownToHtml,
 } from '@/utils/render-rich-message'
@@ -139,6 +144,17 @@ export function createScopedPluginHost(
       },
       ensure(req) {
         return ensureLorebook(id, convId(), req?.nameTemplate)
+      },
+    },
+    regex: {
+      listRules(opts) {
+        return listRegexRulesForHost(opts)
+      },
+      applyText(text, ruleIds, ctx) {
+        return applyRegexTextForHost(text, ruleIds, ctx)
+      },
+      applyMessages(messages, ruleIds, ctx) {
+        return applyRegexMessagesForHost(messages, ruleIds, ctx)
       },
     },
     api: {
@@ -331,6 +347,17 @@ export function createPluginWebHost(session: ChatSession): {
         throw new Error('plugin_host_requires_scoped_host')
       },
       ensure() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+    },
+    regex: {
+      listRules() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+      applyText() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+      applyMessages() {
         throw new Error('plugin_host_requires_scoped_host')
       },
     },

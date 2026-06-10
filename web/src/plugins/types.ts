@@ -1,5 +1,10 @@
 import type { ComposerRef, useChatSession } from '@/composables/useChatSession'
 import type { ChatTurnItem } from '@/types/chat-turn'
+import type {
+  RegexApplyContext,
+  RegexPhase,
+  RegexRuleSummary,
+} from '@/types/regex-rules'
 import type { ConversationBatchContext } from '@/plugins/conversation-host'
 import type { ConversationChatRequestPlugins } from '@/utils/chat-api'
 
@@ -417,6 +422,26 @@ export interface PluginWebHost {
       req: LorebookApplyOrderRequest,
     ): Promise<LorebookApplyOrderResult>
     ensure(req?: LorebookEnsureRequest): Promise<LorebookEnsureResult>
+  }
+  regex: {
+    listRules(opts?: { phases?: RegexPhase[] }): Promise<RegexRuleSummary[]>
+    applyText(
+      text: string,
+      ruleIds: string[] | 'all',
+      ctx: RegexApplyContext,
+    ): Promise<string>
+    applyMessages(
+      messages: { role: 'system' | 'user' | 'assistant'; content: string }[],
+      ruleIds: string[] | 'all',
+      ctx: {
+        phase: RegexPhase
+        tailOrdinal: number
+        turnOrdinalByIndex?: (
+          index: number,
+          msg: { role: 'system' | 'user' | 'assistant'; content: string },
+        ) => number | undefined
+      },
+    ): Promise<{ role: 'system' | 'user' | 'assistant'; content: string }[]>
   }
   api: {
     listPresets(): Promise<{ id: string; alias: string }[]>

@@ -176,7 +176,7 @@ applyText / applyMessages  // 同语义
 - [x] `POST /api/chat/conversations/:id/regex/apply`（dry-run / batchUpdateConversationTurns · Phase 3 · 2026-06-10）
 - [x] Web 设置页（Tab「正则替换」、拖曳 order、单条测试串、管线测试 · Phase 4 · 2026-06-10）
 - [ ] 对话页批量 apply UI（`POST .../regex/apply` dry-run / apply）
-- [ ] `conversation-export` 导出勾选全局规则（Phase 5 可选）
+- [x] `conversation-export` 导出勾选全局规则（Phase 5 · 2026-06-10）
 - [x] `host.regex` + server hook `api.regex`（Phase 5 · 2026-06-10）
 - [x] 写盘合并单测（`regex-persist*.test.ts`、`regex-batch-apply.test.ts` 等）
 - [ ] 流式落盘后 UI E2E（可选）
@@ -410,7 +410,7 @@ POST /api/chat/conversations/:id/regex/apply
 
 - display：`use-regex-display-text` + `regex-rules-display` 缓存（Phase 2 起）
 - `host.regex` / `api.regex`（`listRules` / `applyText` / `applyMessages`）
-- [ ] `conversation-export` 导出勾选全局规则（可选 · 未做）
+- [x] `conversation-export` 导出勾选全局规则（2026-06-10）
 
 #### Phase 6 · 文档收尾（~0.5d）✅ 2026-06-10
 

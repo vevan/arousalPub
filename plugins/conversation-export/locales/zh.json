@@ -24,5 +24,7 @@
   "includeAvatarsDesc": "将头像嵌入 HTML（体积会增大）",
   "customCssLabel": "自定义 CSS",
   "customCssDesc": "追加在默认样式之后；清空并保存即恢复默认样式",
-  "embedRemoved": "内嵌框架已在导出中移除（离线 HTML 无法安全加载）"
+  "embedRemoved": "内嵌框架已在导出中移除（离线 HTML 无法安全加载）",
+  "regexRulesLabel": "应用正则规则",
+  "regexRulesHint": "仅 display 阶段、已启用的规则；按列表顺序作用于导出正文，不改磁盘。默认全选，可取消不需要的规则。"
 }

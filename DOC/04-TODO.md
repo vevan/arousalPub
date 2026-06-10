@@ -74,8 +74,8 @@
 - [x] **拖曳优先级**：设置页拖曳调整 `order`；立即 PUT（Phase 4 · 2026-06-10）
 - [x] **`host.regex` / server `api.regex`**：供插件只读/改文（Phase 5 · 2026-06-10）
 - [x] **历史批量 API**：`POST .../regex/apply`（dry-run、区间；维护写锁 · Phase 3 · 2026-06-10）
-- [ ] **对话页批量 apply UI**（调用 Phase 3 API）
-- [ ] **`conversation-export` 导出勾选规则**（可选）
+- [ ] 对话页批量 apply UI（调用 Phase 3 API）
+- [x] **`conversation-export` 导出勾选规则**（display · 2026-06-10）
 
 ### 会话 debug 审计（P0 · **`DOC/24`** §3）
 

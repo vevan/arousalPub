@@ -386,13 +386,58 @@ function buildUserSendMeta(turn, includeMeta) {
   return `<div class="export-turn-meta">tokens: ${tokens}</div>`
 }
 
-function renderTurnHtml(host, turn, ctx) {
+function ruleOptionLabel(rule) {
+  const label = typeof rule.label === 'string' ? rule.label.trim() : ''
+  return label || rule.id
+}
+
+async function loadExportRegexRuleOptions(host) {
+  if (!host.regex?.listRules) return []
+  try {
+    const rules = await host.regex.listRules({ phases: ['display'] })
+    return rules
+      .filter((r) => r.enabled)
+      .map((r) => ({
+        value: r.id,
+        label: ruleOptionLabel(r),
+      }))
+  } catch {
+    return []
+  }
+}
+
+async function applyExportRegexText(
+  host,
+  text,
+  field,
+  turnOrdinal,
+  tailOrdinal,
+  ruleIds,
+) {
+  const s = String(text ?? '')
+  if (!s.trim() || !Array.isArray(ruleIds) || ruleIds.length === 0) return s
+  if (!host.regex?.applyText) return s
+  try {
+    return await host.regex.applyText(s, ruleIds, {
+      phase: 'display',
+      field,
+      turnOrdinal,
+      tailOrdinal,
+    })
+  } catch {
+    return s
+  }
+}
+
+async function renderTurnHtml(host, turn, ctx) {
   const {
     meta,
     settings,
     hasUserPhoto,
     hasAssistantPhoto,
     turnLabel,
+    regexRuleIds,
+    tailOrdinal,
   } = ctx
   const idx = Math.min(
     Math.max(0, Math.floor(turn.activeReceiveIndex) || 0),
@@ -407,25 +452,61 @@ function renderTurnHtml(host, turn, ctx) {
   let html = `<article class="export-turn" data-turn="${turn.turnOrdinal}">`
   html += `<div class="export-turn-label">${escapeHtml(turnLabel(turn.turnOrdinal))}</div>`
 
-  if (turn.user?.trim()) {
+  const turnOrd = turn.turnOrdinal
+  let userText = turn.user
+  if (userText?.trim()) {
+    userText = await applyExportRegexText(
+      host,
+      userText,
+      'user',
+      turnOrd,
+      tailOrdinal,
+      regexRuleIds,
+    )
+  }
+
+  if (userText?.trim()) {
     html += `<div class="export-msg export-msg--user">`
     html += `<div class="${avatarClass('user', showUserPhoto)}">${showUserPhoto ? '' : userLetter}</div>`
     html += `<div class="export-col">`
     html += `<div class="export-role export-role--user">${escapeHtml(meta.userDisplayName)}</div>`
-    html += `<div class="export-body">${renderRichForExport(host, turn.user)}</div>`
+    html += `<div class="export-body">${renderRichForExport(host, userText)}</div>`
     html += buildUserSendMeta(turn, settings.includeMeta)
     html += `</div></div>`
   }
 
-  if (receive?.content?.trim()) {
+  let assistantContent = receive?.content
+  let assistantReasoning = receive?.reasoning
+  if (assistantContent?.trim()) {
+    assistantContent = await applyExportRegexText(
+      host,
+      assistantContent,
+      'assistant',
+      turnOrd,
+      tailOrdinal,
+      regexRuleIds,
+    )
+  }
+  if (settings.includeReasoning && assistantReasoning?.trim()) {
+    assistantReasoning = await applyExportRegexText(
+      host,
+      assistantReasoning,
+      'reasoning',
+      turnOrd,
+      tailOrdinal,
+      regexRuleIds,
+    )
+  }
+
+  if (assistantContent?.trim()) {
     html += `<div class="export-msg export-msg--assistant">`
     html += `<div class="${avatarClass('assistant', showAssistantPhoto)}">${showAssistantPhoto ? '' : assistantLetter}</div>`
     html += `<div class="export-col">`
     html += `<div class="export-role export-role--assistant">${escapeHtml(meta.assistantDisplayName)}</div>`
-    if (settings.includeReasoning && receive.reasoning?.trim()) {
-      html += renderReasoningDetails(host, receive.reasoning)
+    if (settings.includeReasoning && assistantReasoning?.trim()) {
+      html += renderReasoningDetails(host, assistantReasoning)
     }
-    html += `<div class="export-body">${renderRichForExport(host, receive.content)}</div>`
+    html += `<div class="export-body">${renderRichForExport(host, assistantContent)}</div>`
     html += buildReceiveMeta(receive, settings.includeMeta)
     html += `</div></div>`
   }
@@ -510,12 +591,16 @@ function parsePartialRange(model, maxOrd) {
   return { from, to }
 }
 
-async function exportConversation(host, range) {
+async function exportConversation(host, range, regexRuleIds) {
   const k = (key) => host.pluginKey(key)
   const settings = (await fetchSettings()) ?? {}
   const includeReasoning = settings.includeReasoning === true
   const includeMeta = settings.includeMeta !== false
   const includeAvatars = settings.includeAvatars !== false
+  const selectedRuleIds = Array.isArray(regexRuleIds)
+    ? regexRuleIds.filter((id) => typeof id === 'string' && id.trim())
+    : []
+  const tailOrdinal = maxTurnOrdinal(host)
 
   const { from: rangeFrom, to: rangeTo, maxOrd } = range
   if (maxOrd < 0 || rangeFrom > rangeTo) {
@@ -564,12 +649,14 @@ async function exportConversation(host, range) {
           })
           for (const turn of batch) {
             turnParts.push(
-              renderTurnHtml(host, turn, {
+              await renderTurnHtml(host, turn, {
                 meta,
                 settings: { includeReasoning, includeMeta, includeAvatars },
                 hasUserPhoto,
                 hasAssistantPhoto,
                 turnLabel,
+                regexRuleIds: selectedRuleIds,
+                tailOrdinal,
               }),
             )
           }
@@ -614,36 +701,49 @@ async function exportConversation(host, range) {
   }
 }
 
-export function register(host) {
-  const k = (key) => host.pluginKey(key)
+function exportDialogFields(k, ruleOptions) {
+  const fields = [
+    {
+      key: 'rangeMode',
+      labelKey: k('rangeModeLabel'),
+      type: 'radio',
+      options: [
+        { value: 'all', labelKey: k('rangeAll') },
+        { value: 'partial', labelKey: k('rangePartial') },
+      ],
+    },
+    {
+      key: 'fromOrdinal',
+      labelKey: k('fromOrdinalLabel'),
+      type: 'integer',
+      visibleWhen: { field: 'rangeMode', equals: 'partial' },
+    },
+    {
+      key: 'toOrdinal',
+      labelKey: k('toOrdinalLabel'),
+      type: 'integer',
+      hintKey: k('ordinalHint'),
+      visibleWhen: { field: 'rangeMode', equals: 'partial' },
+    },
+  ]
+  if (ruleOptions.length > 0) {
+    fields.push({
+      key: 'regexRuleIds',
+      labelKey: k('regexRulesLabel'),
+      type: 'checkboxGroup',
+      hintKey: k('regexRulesHint'),
+      options: ruleOptions,
+    })
+  }
+  return fields
+}
 
+function registerExportFormDialog(host, ruleOptions) {
+  const k = (key) => host.pluginKey(key)
   host.registerFormDialog(PLUGIN_ID, {
     titleKey: k('dialogTitle'),
     bodyKey: k('dialogBody'),
-    fields: [
-      {
-        key: 'rangeMode',
-        labelKey: k('rangeModeLabel'),
-        type: 'radio',
-        options: [
-          { value: 'all', labelKey: k('rangeAll') },
-          { value: 'partial', labelKey: k('rangePartial') },
-        ],
-      },
-      {
-        key: 'fromOrdinal',
-        labelKey: k('fromOrdinalLabel'),
-        type: 'integer',
-        visibleWhen: { field: 'rangeMode', equals: 'partial' },
-      },
-      {
-        key: 'toOrdinal',
-        labelKey: k('toOrdinalLabel'),
-        type: 'integer',
-        hintKey: k('ordinalHint'),
-        visibleWhen: { field: 'rangeMode', equals: 'partial' },
-      },
-    ],
+    fields: exportDialogFields(k, ruleOptions),
     submitKey: k('confirmOk'),
     cancelKey: k('confirmCancel'),
     canSubmit(model) {
@@ -655,26 +755,38 @@ export function register(host) {
     onSubmit: async (hostApi, model) => {
       const maxOrd = Number(model._maxOrdinal)
       const range = resolveExportRange(model, maxOrd)
-      await exportConversation(hostApi, range)
+      const regexRuleIds = Array.isArray(model.regexRuleIds)
+        ? model.regexRuleIds.filter((id) => typeof id === 'string')
+        : []
+      await exportConversation(hostApi, range, regexRuleIds)
     },
   })
+}
+
+export function register(host) {
+  const k = (key) => host.pluginKey(key)
+
+  registerExportFormDialog(host, [])
 
   host.registerSlotButton('composer-toolbar', {
     id: `${PLUGIN_ID}-export`,
     icon: 'mdi-file-export-outline',
     tooltipKey: k('tooltip'),
     disabled: () => isBusy(host),
-    onClick: () => {
+    onClick: async () => {
       const maxOrd = maxTurnOrdinal(host)
       if (maxOrd < 0) {
         host.ui.toast(host.t(k('toastEmpty')))
         return
       }
+      const ruleOptions = await loadExportRegexRuleOptions(host)
+      registerExportFormDialog(host, ruleOptions)
       host.openFormDialog(PLUGIN_ID, {
         rangeMode: 'all',
         fromOrdinal: '0',
         toOrdinal: String(maxOrd),
         _maxOrdinal: maxOrd,
+        regexRuleIds: ruleOptions.map((o) => o.value),
       })
     },
   })

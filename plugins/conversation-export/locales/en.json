@@ -24,5 +24,7 @@
   "includeAvatarsDesc": "Embed avatars in HTML (larger file size)",
   "customCssLabel": "Custom CSS",
   "customCssDesc": "Appended after default styles; clear and save to restore defaults",
-  "embedRemoved": "Embedded frame removed (unsafe in offline HTML)"
+  "embedRemoved": "Embedded frame removed (unsafe in offline HTML)",
+  "regexRulesLabel": "Apply regex rules",
+  "regexRulesHint": "Enabled rules with the display phase only, in list order on export text; disk is not modified. All selected by default."
 }

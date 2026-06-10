@@ -9,6 +9,8 @@ import { usePreferencesStore } from '@/stores/preferences'
 import { useThemeOklchStore } from '@/stores/theme-oklch'
 import PluginSettingsPanel from '@/components/settings/PluginSettingsPanel.vue'
 import BudgetTrimSettingsPanel from '@/components/settings/BudgetTrimSettingsPanel.vue'
+import RegexRulesSettingsPanel from '@/components/settings/RegexRulesSettingsPanel.vue'
+import { useRegexRulesStore } from '@/stores/regex-rules'
 import {
   componentsToOklchCss,
   oklchToHex,
@@ -56,7 +58,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{ logout: [] }>()
 
-type SettingsTab = 'system' | 'display' | 'account' | 'lorebook' | 'history' | 'budgetTrim' | 'plugins' | 'debug'
+type SettingsTab = 'system' | 'display' | 'account' | 'lorebook' | 'history' | 'budgetTrim' | 'regexRules' | 'plugins' | 'debug'
 
 const { t } = useI18n()
 
@@ -69,6 +71,7 @@ const { preference } = storeToRefs(localeStore)
 const prefStore = usePreferencesStore()
 const { markEmbeddingApiKeyDirty } = prefStore
 const apiKeysStore = useApiKeysStore()
+const regexRulesStore = useRegexRulesStore()
 const EMBED_KEY_DIRECT = '__direct__'
 const {
   writeChatPromptSnapshot,
@@ -294,6 +297,7 @@ const navItems = computed(() => [
   { id: 'lorebook' as const, title: t('settings.navLorebook'), icon: 'mdi-book-open-page-variant-outline' },
   { id: 'history' as const, title: t('settings.navHistory'), icon: 'mdi-history' },
   { id: 'budgetTrim' as const, title: t('settings.navBudgetTrim'), icon: 'mdi-scissors-cutting' },
+  { id: 'regexRules' as const, title: t('settings.navRegexRules'), icon: 'mdi-regex' },
   { id: 'plugins' as const, title: t('settings.navPlugins'), icon: 'mdi-puzzle-outline' },
   { id: 'debug' as const, title: t('settings.navDebug'), icon: 'mdi-bug-outline' },
 ])
@@ -497,6 +501,7 @@ function formatBytes(n: number): string {
 
 watch(activeTab, (tab) => {
   if (tab === 'account') void loadAccountStats()
+  if (tab === 'regexRules') void regexRulesStore.loadFromServer()
   if (tab === 'debug' && !buildInfo.value && !buildInfoLoading.value) {
     void loadBuildInfo()
   }
@@ -1069,6 +1074,8 @@ onMounted(() => {
             </p>
             <BudgetTrimSettingsPanel v-model="budgetTrimSettings" />
           </section>
+
+          <RegexRulesSettingsPanel v-show="activeTab === 'regexRules'" />
 
           <PluginSettingsPanel v-show="activeTab === 'plugins'" />
 

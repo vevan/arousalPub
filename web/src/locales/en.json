@@ -489,6 +489,8 @@
         "d": "Indices: match results include capture start/end offsets."
       },
       "replacement": "Replacement",
+      "replacementEmptyHint": "When empty, matched text is removed entirely.",
+      "copyRule": "Duplicate",
       "phases": "Phases",
       "fields": "Message fields",
       "skipLastNTurns": "Skip last N turns",

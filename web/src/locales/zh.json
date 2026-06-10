@@ -489,6 +489,8 @@
         "d": "Indices：匹配结果附带捕获组的起止下标。"
       },
       "replacement": "Replacement（替换）",
+      "replacementEmptyHint": "留空时将完全删除匹配到的内容。",
+      "copyRule": "复制",
       "phases": "阶段",
       "fields": "消息字段",
       "skipLastNTurns": "跳过最近 N 轮",

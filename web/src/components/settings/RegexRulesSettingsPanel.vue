@@ -2,8 +2,10 @@
 import { useRegexRulesStore } from '@/stores/regex-rules'
 import type { RegexField, RegexPhase, RegexRule } from '@/types/regex-rules'
 import {
+  buildDuplicateRegexRuleLabel,
   cloneRegexRule,
   createDefaultRegexRule,
+  duplicateRegexRule,
   MAX_REGEX_LABEL_LENGTH,
   MAX_REGEX_PATTERN_LENGTH,
   MAX_REGEX_REPLACEMENT_LENGTH,
@@ -250,6 +252,24 @@ function openDelete(id: string) {
   deleteOpen.value = true
 }
 
+async function onCopyRule(rule: RegexRule) {
+  const label = buildDuplicateRegexRuleLabel(
+    rule.label,
+    t('settings.regexRules.untitled'),
+  )
+  const copy = duplicateRegexRule(rule, rulesList.value, label)
+  const idx = rulesList.value.findIndex((r) => r.id === rule.id)
+  const list = [...rulesList.value]
+  list.splice(idx < 0 ? list.length : idx + 1, 0, copy)
+  rulesList.value = list
+  try {
+    await persistList()
+    openEdit(copy)
+  } catch {
+    /* errorText set in persistList */
+  }
+}
+
 async function confirmDelete() {
   if (deleteTargetId.value) {
     if (editDraft.value?.id === deleteTargetId.value) closeEdit()
@@ -400,6 +420,24 @@ onMounted(() => {
             />
             <v-tooltip
               location="top"
+              :text="$t('settings.regexRules.copyRule')"
+            >
+              <template #activator="{ props: tooltipProps }">
+                <v-icon-btn
+                  v-bind="tooltipProps"
+                  icon="mdi-content-duplicate"
+                  variant="text"
+                  color="primary"
+                  size="small"
+                  :icon-size="22"
+                  :aria-label="$t('settings.regexRules.copyRule')"
+                  @click.stop="onCopyRule(rule)"
+                  @dragstart.stop
+                />
+              </template>
+            </v-tooltip>
+            <v-tooltip
+              location="top"
               :text="$t('settings.regexRules.deleteRule')"
             >
               <template #activator="{ props: tooltipProps }">
@@ -514,6 +552,8 @@ onMounted(() => {
             :model-value="editDraft.replacement"
             :label="$t('settings.regexRules.replacement')"
             :maxlength="MAX_REGEX_REPLACEMENT_LENGTH"
+            :hint="$t('settings.regexRules.replacementEmptyHint')"
+            persistent-hint
             density="comfortable"
             variant="outlined"
             hide-details="auto"

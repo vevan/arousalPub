@@ -120,6 +120,33 @@ export function createDefaultRegexRule(existing: RegexRule[]): RegexRule {
   }
 }
 
+export const REGEX_RULE_COPY_SUFFIX = '-COPY'
+
+/** 复制规则名称：AAA-COPY；超长时截断 AAA 部分 */
+export function buildDuplicateRegexRuleLabel(
+  sourceLabel: string,
+  fallbackLabel: string,
+  suffix = REGEX_RULE_COPY_SUFFIX,
+): string {
+  const base = sourceLabel.trim() || fallbackLabel.trim()
+  const maxBaseLen = Math.max(0, MAX_REGEX_LABEL_LENGTH - suffix.length)
+  const trimmedBase = base.length > maxBaseLen ? base.slice(0, maxBaseLen) : base
+  return `${trimmedBase}${suffix}`
+}
+
+export function duplicateRegexRule(
+  source: RegexRule,
+  existing: RegexRule[],
+  label: string,
+): RegexRule {
+  const used = new Set(existing.map((r) => r.id))
+  return {
+    ...cloneRegexRule(source),
+    id: allocateShortId(used),
+    label,
+  }
+}
+
 export function regexRulesEqual(a: RegexRule[], b: RegexRule[]): boolean {
   if (a.length !== b.length) return false
   const sa = sortRegexRules(a)

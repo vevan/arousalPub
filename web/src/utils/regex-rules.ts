@@ -12,6 +12,41 @@ export const MAX_REGEX_REPLACEMENT_LENGTH = 8192
 export const MAX_REGEX_LABEL_LENGTH = 128
 export const REGEX_FLAGS_RE = /^[gimsuyd]*$/
 
+/** 项目支持的 RegExp flags（顺序固定，序列化时按此排列） */
+export const REGEX_FLAG_KEYS = ['g', 'i', 'm', 's', 'u', 'y', 'd'] as const
+export type RegexFlagKey = (typeof REGEX_FLAG_KEYS)[number]
+
+export function parseRegexFlags(flags: string): Set<RegexFlagKey> {
+  const set = new Set<RegexFlagKey>()
+  for (const ch of flags) {
+    if ((REGEX_FLAG_KEYS as readonly string[]).includes(ch)) {
+      set.add(ch as RegexFlagKey)
+    }
+  }
+  return set
+}
+
+export function serializeRegexFlags(active: Iterable<RegexFlagKey>): string {
+  const set = active instanceof Set ? active : new Set(active)
+  return REGEX_FLAG_KEYS.filter((f) => set.has(f)).join('')
+}
+
+export function toggleRegexFlag(flags: string, flag: RegexFlagKey): string {
+  const set = parseRegexFlags(flags)
+  if (set.has(flag)) set.delete(flag)
+  else set.add(flag)
+  return serializeRegexFlags(set)
+}
+
+export function isRegexFlagActive(flags: string, flag: RegexFlagKey): boolean {
+  return parseRegexFlags(flags).has(flag)
+}
+
+/** 只读展示：/gim（无 flag 时为 /） */
+export function formatRegexFlagsLiteral(flags: string): string {
+  return `/${flags}`
+}
+
 const SHORT_ID_RE = /^[0-9a-f]{8}$/i
 
 export function isValidShortId(id: string): boolean {

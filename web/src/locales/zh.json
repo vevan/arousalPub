@@ -469,6 +469,25 @@
       "label": "名称",
       "pattern": "Pattern（正则）",
       "flags": "Flags",
+      "flagsLiteral": "参数",
+      "flagLabel": {
+        "g": "全局",
+        "i": "忽略大小写",
+        "m": "多行",
+        "s": "DotAll",
+        "u": "Unicode",
+        "y": "Sticky",
+        "d": "下标"
+      },
+      "flagDesc": {
+        "g": "全局：查找全部匹配，而非找到第一个就停止。",
+        "i": "忽略大小写。",
+        "m": "多行：行首/行尾锚点作用于每一行。",
+        "s": "DotAll：点号可匹配换行符。",
+        "u": "Unicode：按 Unicode 码点处理字符串与模式。",
+        "y": "Sticky：仅从上次匹配结束位置继续尝试。",
+        "d": "Indices：匹配结果附带捕获组的起止下标。"
+      },
       "replacement": "Replacement（替换）",
       "phases": "阶段",
       "fields": "消息字段",

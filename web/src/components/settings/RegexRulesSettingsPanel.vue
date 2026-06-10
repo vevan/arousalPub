@@ -8,9 +8,14 @@ import {
   MAX_REGEX_PATTERN_LENGTH,
   MAX_REGEX_REPLACEMENT_LENGTH,
   REGEX_FIELD_OPTIONS,
+  REGEX_FLAG_KEYS,
   REGEX_PHASE_OPTIONS,
   runRegexPipelinePlainTextTest,
   sortRegexRules,
+  toggleRegexFlag,
+  isRegexFlagActive,
+  formatRegexFlagsLiteral,
+  type RegexFlagKey,
   type RegexPipelineRuleStat,
   validateRegexPatternClient,
 } from '@/utils/regex-rules'
@@ -184,6 +189,19 @@ function patchDraft(patch: Partial<RegexRule>) {
     phases: patch.phases ? [...patch.phases] : editDraft.value.phases,
     fields: patch.fields ? [...patch.fields] : editDraft.value.fields,
   }
+}
+
+function toggleDraftFlag(flag: RegexFlagKey) {
+  if (!editDraft.value) return
+  patchDraft({ flags: toggleRegexFlag(editDraft.value.flags, flag) })
+}
+
+function draftFlagActive(flag: RegexFlagKey): boolean {
+  return editDraft.value ? isRegexFlagActive(editDraft.value.flags, flag) : false
+}
+
+function draftFlagsLiteral(): string {
+  return formatRegexFlagsLiteral(editDraft.value?.flags ?? '')
 }
 
 function runTest() {
@@ -454,27 +472,54 @@ onMounted(() => {
             @update:model-value="patchDraft({ pattern: String($event ?? '') })"
           />
 
-          <div class="regex-rules-panel__row mb-3">
-            <v-text-field
-              :model-value="editDraft.flags"
-              :label="$t('settings.regexRules.flags')"
-              density="comfortable"
-              variant="outlined"
-              hide-details="auto"
-              class="regex-rules-panel__flags"
-              @update:model-value="patchDraft({ flags: String($event ?? '') })"
-            />
-            <v-text-field
-              :model-value="editDraft.replacement"
-              :label="$t('settings.regexRules.replacement')"
-              :maxlength="MAX_REGEX_REPLACEMENT_LENGTH"
-              density="comfortable"
-              variant="outlined"
-              hide-details="auto"
-              class="regex-rules-panel__replacement"
-              @update:model-value="patchDraft({ replacement: String($event ?? '') })"
-            />
+          <div class="regex-rules-panel__flags-block mb-3">
+            <div class="text-body-2 mb-2">
+              {{ $t('settings.regexRules.flags') }}
+            </div>
+            <div class="regex-rules-panel__flags-row">
+              <div class="regex-rules-panel__flags">
+                <v-tooltip
+                  v-for="flag in REGEX_FLAG_KEYS"
+                  :key="flag"
+                  location="top"
+                  :text="$t(`settings.regexRules.flagDesc.${flag}`)"
+                >
+                  <template #activator="{ props: tooltipProps }">
+                    <v-chip
+                      v-bind="tooltipProps"
+                      :color="draftFlagActive(flag) ? 'primary' : undefined"
+                      :variant="draftFlagActive(flag) ? 'flat' : 'outlined'"
+                      size="small"
+                      class="regex-rules-panel__flag-chip"
+                      @click="toggleDraftFlag(flag)"
+                    >
+                      {{ $t(`settings.regexRules.flagLabel.${flag}`) }}
+                    </v-chip>
+                  </template>
+                </v-tooltip>
+              </div>
+              <v-text-field
+                :model-value="draftFlagsLiteral()"
+                :label="$t('settings.regexRules.flagsLiteral')"
+                density="compact"
+                variant="outlined"
+                readonly
+                hide-details
+                class="regex-rules-panel__flags-literal"
+              />
+            </div>
           </div>
+
+          <v-text-field
+            :model-value="editDraft.replacement"
+            :label="$t('settings.regexRules.replacement')"
+            :maxlength="MAX_REGEX_REPLACEMENT_LENGTH"
+            density="comfortable"
+            variant="outlined"
+            hide-details="auto"
+            class="mb-3"
+            @update:model-value="patchDraft({ replacement: String($event ?? '') })"
+          />
 
           <v-select
             :model-value="editDraft.phases"
@@ -814,6 +859,37 @@ onMounted(() => {
   display: grid;
   grid-template-columns: minmax(5rem, 7rem) 1fr;
   gap: 0.75rem;
+}
+
+.regex-rules-panel__flags-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.regex-rules-panel__flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.regex-rules-panel__flags-literal {
+  flex: 0 0 7.25rem;
+  min-width: 7.25rem;
+  max-width: 10rem;
+}
+
+.regex-rules-panel__flags-literal :deep(.v-field__input) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8125rem;
+}
+
+.regex-rules-panel__flag-chip {
+  cursor: pointer;
+  user-select: none;
 }
 
 .regex-rules-panel__pipeline-list {

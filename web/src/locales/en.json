@@ -469,6 +469,25 @@
       "label": "Label",
       "pattern": "Pattern (RegExp)",
       "flags": "Flags",
+      "flagsLiteral": "Flags",
+      "flagLabel": {
+        "g": "Global",
+        "i": "Ignore case",
+        "m": "Multiline",
+        "s": "DotAll",
+        "u": "Unicode",
+        "y": "Sticky",
+        "d": "Indices"
+      },
+      "flagDesc": {
+        "g": "Global: find all matches, not just the first.",
+        "i": "Ignore case when matching.",
+        "m": "Multiline: line-start and line-end anchors apply to each line.",
+        "s": "DotAll: dot matches newline characters.",
+        "u": "Unicode: treat pattern and string as Unicode code points.",
+        "y": "Sticky: match only from the last match end position.",
+        "d": "Indices: match results include capture start/end offsets."
+      },
       "replacement": "Replacement",
       "phases": "Phases",
       "fields": "Message fields",

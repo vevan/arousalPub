@@ -12,6 +12,7 @@ import {
   validatePluginSettingsModel,
 } from '@/utils/plugin-settings-validate'
 import { resolvePluginDisplayName } from '@/utils/plugin-locale-text'
+import { notifyPluginUserSettingsSaved } from '@/utils/plugin-user-settings-events'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -140,6 +141,7 @@ async function submitSettings() {
   settingsError.value = ''
   try {
     settingsModel.value = await savePluginSettings(plugin.id, settingsModel.value)
+    notifyPluginUserSettingsSaved(plugin.id)
     closeSettings()
   } catch {
     settingsError.value = t('settings.plugins.settingsSaveFailed')
@@ -277,15 +279,6 @@ onMounted(() => {
             class="mb-3"
           >
             {{ settingsError }}
-          </v-alert>
-          <v-alert
-            v-if="settingsPlugin.id === CUSTOM_STYLES_PLUGIN_ID"
-            type="info"
-            variant="tonal"
-            density="compact"
-            class="mb-3 text-body-2"
-          >
-            {{ $t('plugins.custom-styles.globalReloadHint') }}
           </v-alert>
           <PluginSchemaForm
             v-model="settingsModel"

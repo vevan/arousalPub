@@ -128,6 +128,7 @@ export function registerRegexRoutes(app: FastifyInstance): void {
         phases: [parsed.phase],
         ruleIds: parsed.ruleIds ?? 'all',
       })
+      let execTimedOut = false
       const result = applyRegexRulesToText(
         parsed.text,
         rules,
@@ -139,10 +140,22 @@ export function registerRegexRoutes(app: FastifyInstance): void {
         },
         {
           onRuleError: (rule, err) => {
+            if (
+              err instanceof Error &&
+              err.message === 'regex_exec_timeout'
+            ) {
+              execTimedOut = true
+            }
             app.log.warn({ ruleId: rule.id, err }, 'regex apply-text rule skipped')
           },
         },
       )
+      if (execTimedOut) {
+        return reply.status(422).send({
+          error: ApiErrorCodes.regex_exec_timeout,
+          text: parsed.text,
+        })
+      }
       return {
         text: result,
         appliedRuleCount: rules.filter((r) => r.enabled).length,

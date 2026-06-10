@@ -515,11 +515,13 @@
         "assistant": "Assistant",
         "reasoning": "Reasoning"
       },
+      "persistRetroHint": "After editing rules that include the Persist phase, use batch apply on past turns in conversation settings.",
       "validation": {
         "pattern_required": "Pattern is required.",
         "pattern_too_long": "Pattern is too long.",
         "invalid_flags": "Invalid RegExp flags.",
         "invalid_regexp": "Invalid regular expression.",
+        "regex_exec_timeout": "Regex execution timed out; original text kept.",
         "phases_fields_required": "Select at least one phase and one field."
       }
     },
@@ -732,7 +734,7 @@
       "regexApplyRun": "Apply",
       "regexApplyDryRunResult": "Dry run: {total} turns in range, {changed} would change.",
       "regexApplyResult": "Applied: {total} turns in range, {changed} updated.",
-      "regexApplyMemoryHint": "Content changed — consider rebuilding the memory index under Context.",
+      "regexApplyMemoryQueued": "History updated; rebuilding vectors for {count} turn(s).",
       "regexApplyLoadFailed": "Failed to load conversation turns",
       "regexApplyFailed": "Batch apply failed",
       "saveFailed": "Save failed"

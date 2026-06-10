@@ -6,6 +6,7 @@ import {
   shouldApplyRegexRule,
   sortRegexRules,
 } from './regex-apply.js'
+import { replaceRegexWithTimeout } from './regex-exec-timeout.js'
 import type { RegexRule } from './regex-rules-types.js'
 
 function rule(partial: Partial<RegexRule> & Pick<RegexRule, 'id'>): RegexRule {
@@ -155,6 +156,16 @@ describe('applyRegexRulesToText', () => {
       tailOrdinal: 1,
     })
     assert.equal(out, 'hi')
+  })
+})
+
+describe('replaceRegexWithTimeout integration', () => {
+  it('validates pattern once before vm replace', () => {
+    const bad = replaceRegexWithTimeout('[', '', 'ok', '!')
+    assert.equal(bad.ok, false)
+    const good = replaceRegexWithTimeout('ok', 'g', 'ok', 'OK')
+    assert.equal(good.ok, true)
+    if (good.ok) assert.equal(good.text, 'OK')
   })
 })
 

@@ -78,13 +78,7 @@ export function resolveEffectiveStyles(global, conv) {
     const css = typeof sheet.css === 'string' ? sheet.css : ''
     const clean = sanitizeCss(css).trim()
     if (!clean) continue
-    const name =
-      typeof sheet.name === 'string' && sheet.name.trim()
-        ? sheet.name.trim()
-        : typeof sheet.id === 'string'
-          ? sheet.id
-          : 'sheet'
-    parts.push(`/* ${PLUGIN_ID}: ${name} */\n${clean}`)
+    parts.push(clean)
   }
 
   return parts.join('\n\n')
@@ -101,6 +95,9 @@ async function applyStyles(host) {
 export function register(host) {
   void applyStyles(host)
   host.conversation.onPluginSettingsChanged(() => {
+    void applyStyles(host)
+  })
+  host.plugins.onUserSettingsChanged?.(() => {
     void applyStyles(host)
   })
 }

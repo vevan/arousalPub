@@ -6,6 +6,7 @@ import {
   type RegexRule,
   type RegexRulesDocument,
 } from '@/types/regex-rules'
+import { replaceRegexWithTimeoutSync } from '@/utils/regex-exec-timeout'
 
 export const MAX_REGEX_PATTERN_LENGTH = 2048
 export const MAX_REGEX_REPLACEMENT_LENGTH = 8192
@@ -333,13 +334,20 @@ export function runRegexPipelinePlainTextTest(
       stats.push({ ruleId: rule.id, outcome: 'no_match', hitCount: 0 })
       continue
     }
-    try {
-      const re = new RegExp(rule.pattern, rule.flags)
-      out = out.replace(re, rule.replacement)
-    } catch {
+    const replaced = replaceRegexWithTimeoutSync(
+      rule.pattern,
+      rule.flags,
+      out,
+      rule.replacement,
+    )
+    if (!replaced.ok) {
       stats.push({ ruleId: rule.id, outcome: 'no_match', hitCount: 0 })
+      if (replaced.code === 'regex_exec_timeout') {
+        return { output: text, stats }
+      }
       continue
     }
+    out = replaced.text
     stats.push({ ruleId: rule.id, outcome: 'hit', hitCount })
   }
   return { output: out, stats }

@@ -131,10 +131,10 @@ async function persistRetroPendingOrdinals(
   await writeConversationIndex(conversationId, next)
 }
 
-export function attachRetroToPersistResult<T extends Record<string, unknown>>(
+export function attachRetroToPersistResult<T extends { ok: boolean }>(
   result: T,
   retroRun: RetroPersistRunResult | null,
-): T & Partial<RetroPersistRunResult> {
+): T & Partial<Pick<RetroPersistRunResult, 'retro' | 'retroStatus'>> {
   if (!retroRun || retroRun.retro.length === 0) {
     if (
       retroRun?.retroStatus.attempted.length ||

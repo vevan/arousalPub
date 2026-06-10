@@ -24,6 +24,20 @@ function rule(partial: Partial<RegexRule> & Pick<RegexRule, 'id'>): RegexRule {
   }
 }
 
+describe('RegexBatchApplyResult', () => {
+  it('includes memoryEmbedsQueued zero on dry run base shape', () => {
+    const base = {
+      dryRun: true,
+      fromOrdinal: 0,
+      toOrdinal: 1,
+      turnCount: 2,
+      changedTurnCount: 1,
+      memoryEmbedsQueued: 0,
+    }
+    assert.equal(base.memoryEmbedsQueued, 0)
+  })
+})
+
 describe('parseRegexBatchApplyBody', () => {
   it('parses dryRun and range', () => {
     const r = parseRegexBatchApplyBody({

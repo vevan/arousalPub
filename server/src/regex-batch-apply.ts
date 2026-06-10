@@ -33,8 +33,8 @@ export interface RegexBatchApplyResult {
   changedTurnCount: number
   ok?: number
   failed?: { turnOrdinal: number; error: string }[]
-  /** v1：批量 persist 后不自动 re-embed，提示用户手动重建 memory */
-  memoryReindexRecommended: boolean
+  /** 非 dry-run 且写盘成功时，已入队异步 re-embed 的轮次数 */
+  memoryEmbedsQueued: number
 }
 
 
@@ -117,7 +117,7 @@ export async function runConversationRegexBatchApply(
     toOrdinal,
     turnCount: turns.length,
     changedTurnCount,
-    memoryReindexRecommended: changedTurnCount > 0 && !request.dryRun,
+    memoryEmbedsQueued: 0,
   }
 
   if (request.dryRun || patches.length === 0) {
@@ -125,11 +125,13 @@ export async function runConversationRegexBatchApply(
   }
 
   let totalOk = 0
+  let memoryEmbedsQueued = 0
   const allFailed: { turnOrdinal: number; error: string }[] = []
   for (let i = 0; i < patches.length; i += CONVERSATION_BATCH_MAX_TURNS) {
     const slice = patches.slice(i, i + CONVERSATION_BATCH_MAX_TURNS)
     const batch = await batchUpdateConversationTurns(conversationId, slice)
     totalOk += batch.ok
+    memoryEmbedsQueued += batch.memoryEmbedsQueued
     allFailed.push(...batch.failed)
   }
   return {
@@ -138,6 +140,7 @@ export async function runConversationRegexBatchApply(
       ...base,
       ok: totalOk,
       failed: allFailed,
+      memoryEmbedsQueued,
     },
   }
 }

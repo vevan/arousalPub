@@ -5,6 +5,7 @@ import type {
   RegexRule,
   RegexRuleSummary,
 } from '@/types/regex-rules'
+import { replaceRegexWithTimeoutSync } from '@/utils/regex-exec-timeout'
 
 export interface RegexHostMessage {
   role: 'system' | 'user' | 'assistant'
@@ -42,13 +43,16 @@ function shouldApplyRegexRule(
   return true
 }
 
+/** 插件 host 侧展示/探测：失败仅跳过该条规则 */
 function applyRegexRuleToText(rule: RegexRule, text: string): string {
-  try {
-    const re = new RegExp(rule.pattern, rule.flags)
-    return text.replace(re, rule.replacement)
-  } catch {
-    return text
-  }
+  const result = replaceRegexWithTimeoutSync(
+    rule.pattern,
+    rule.flags,
+    text,
+    rule.replacement,
+  )
+  if (!result.ok) return text
+  return result.text
 }
 
 export function filterRegexRulesForHost(

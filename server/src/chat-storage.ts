@@ -65,6 +65,8 @@ import {
   readGlobalMemorySettings,
 } from './user-preferences-file.js'
 import {
+  isConversationMemoryEmbedActive,
+  isTurnEligibleForMemoryEmbed,
   scheduleMemoryIndexDelete,
   scheduleMemoryIndexUpsert,
   sealChunkMemorySegment,
@@ -333,6 +335,8 @@ function applyTurnContentUpdate(
 export interface BatchTurnUpdateResult {
   ok: number
   failed: { turnOrdinal: number; error: string }[]
+  /** memory 开启且 API 可用时，实际入队 re-embed 的轮次数 */
+  memoryEmbedsQueued: number
 }
 
 /**
@@ -343,7 +347,7 @@ export async function batchUpdateConversationTurns(
   conversationId: string,
   patches: TurnContentPatchInput[],
 ): Promise<BatchTurnUpdateResult> {
-  if (!patches.length) return { ok: 0, failed: [] }
+  if (!patches.length) return { ok: 0, failed: [], memoryEmbedsQueued: 0 }
   if (patches.length > CONVERSATION_BATCH_MAX_TURNS) {
     throw new Error('turns_batch_too_large')
   }
@@ -364,6 +368,7 @@ export async function batchUpdateConversationTurns(
         turnOrdinal: p.turnOrdinal,
         error: 'conversation_not_found',
       })),
+      memoryEmbedsQueued: 0,
     }
   }
 
@@ -400,6 +405,7 @@ export async function batchUpdateConversationTurns(
 
   const memoryUpserts: { turn: TurnRecord; chunkName: string }[] = []
   let ok = 0
+  const memoryEmbedActive = await isConversationMemoryEmbedActive(conversationId)
 
   for (const [fileName, items] of byFile) {
     const chunk = chunkMap.get(fileName)
@@ -419,17 +425,22 @@ export async function batchUpdateConversationTurns(
     await writeChunkFile(conversationId, fileName, chunk)
   }
 
+  let memoryEmbedsQueued = 0
   if (ok > 0) {
     const t = nowIso()
     idx.updatedAt = t
     await writeConversationIndex(conversationId, idx)
     await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
-    for (const { turn, chunkName } of memoryUpserts) {
-      scheduleMemoryIndexUpsert(conversationId, turn, chunkName)
+    if (memoryEmbedActive) {
+      for (const { turn, chunkName } of memoryUpserts) {
+        if (!isTurnEligibleForMemoryEmbed(turn)) continue
+        scheduleMemoryIndexUpsert(conversationId, turn, chunkName)
+        memoryEmbedsQueued += 1
+      }
     }
   }
 
-  return { ok, failed }
+  return { ok, failed, memoryEmbedsQueued }
 }
 
 export interface ChatPromptMessage {

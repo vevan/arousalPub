@@ -17,7 +17,7 @@ export interface RegexBatchApplyResult {
   changedTurnCount: number
   ok?: number
   failed?: { turnOrdinal: number; error: string }[]
-  memoryReindexRecommended: boolean
+  memoryEmbedsQueued: number
 }
 
 const props = defineProps<{
@@ -327,10 +327,14 @@ defineExpose({ reload: ensureContextLoaded })
         }}
       </div>
       <div
-        v-if="lastResult.memoryReindexRecommended"
+        v-if="lastResult.memoryEmbedsQueued > 0"
         class="text-caption mt-1"
       >
-        {{ $t('chat.convSettings.regexApplyMemoryHint') }}
+        {{
+          $t('chat.convSettings.regexApplyMemoryQueued', {
+            count: lastResult.memoryEmbedsQueued,
+          })
+        }}
       </div>
     </v-alert>
 

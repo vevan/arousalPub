@@ -2,7 +2,7 @@
   "enabledLabel": "启用样式注入",
   "enabledDesc": "关闭后所有对话均不注入自定义 CSS（除非在对话设置中单独开启）。",
   "sheetsLabel": "样式表",
-  "sheetsDesc": "可添加多条 CSS；按列表顺序拼接注入。保存后已打开的对话需刷新或重新进入才会生效。",
+  "sheetsDesc": "可添加多条 CSS；按列表顺序拼接注入。保存后已打开的对话会自动重新注入（自定义样式风险由用户自行承担）。",
   "sheetNameLabel": "名称",
   "sheetNameDefault": "Custom Style",
   "sheetEnabledLabel": "启用",

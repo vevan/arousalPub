@@ -64,7 +64,25 @@ export interface MemoryReindexProgress {
 
 /** 可生成 embedding 语料的 turn（重建计划 / 执行共用） */
 export function filterEmbeddableTurns(turns: TurnRecord[]): TurnRecord[] {
-  return turns.filter((turn) => turnEmbeddingCorpus(turn).trim().length > 0)
+  return turns.filter(isTurnEligibleForMemoryEmbed)
+}
+
+/** 单轮是否有非空 memory 语料 */
+export function isTurnEligibleForMemoryEmbed(turn: TurnRecord): boolean {
+  return turnEmbeddingCorpus(turn).trim().length > 0
+}
+
+/** 本会话是否应执行 turn 向量 upsert（memory 开启 + Embeddings API 已配置） */
+export async function isConversationMemoryEmbedActive(
+  conversationId: string,
+): Promise<boolean> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return false
+  const global = await readGlobalMemorySettings()
+  const effective = resolveMemorySettings(global, idx?.memorySettings)
+  if (!effective.memoryEnabled) return false
+  const creds = await resolveEmbeddingApiCredentials()
+  return creds != null
 }
 
 function lorebookIdsFromIndex(

@@ -29,6 +29,7 @@ import {
   type RegexPipelineRuleStat,
   validateRegexPatternClient,
 } from '@/utils/regex-rules'
+import { replaceRegexWithTimeoutSync } from '@/utils/regex-exec-timeout'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -242,12 +243,20 @@ function runTest() {
     testError.value = t(`settings.regexRules.validation.${patternErr}`)
     return
   }
-  try {
-    const re = new RegExp(rule.pattern, rule.flags)
-    testOutput.value = testInput.value.replace(re, rule.replacement)
-  } catch {
-    testError.value = t('settings.regexRules.validation.invalid_regexp')
+  const result = replaceRegexWithTimeoutSync(
+    rule.pattern,
+    rule.flags,
+    testInput.value,
+    rule.replacement,
+  )
+  if (!result.ok) {
+    testError.value =
+      result.code === 'regex_exec_timeout'
+        ? t('settings.regexRules.validation.regex_exec_timeout')
+        : t('settings.regexRules.validation.invalid_regexp')
+    return
   }
+  testOutput.value = result.text
 }
 
 function openPipelineTest() {
@@ -693,6 +702,10 @@ onMounted(() => {
             variant="outlined"
             hide-details
           />
+
+          <p class="text-caption text-medium-emphasis mt-4 mb-0">
+            {{ $t('settings.regexRules.persistRetroHint') }}
+          </p>
         </v-card-text>
         <v-divider />
         <v-card-actions class="pa-3">

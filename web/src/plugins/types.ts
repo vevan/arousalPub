@@ -463,6 +463,10 @@ export interface PluginWebHost {
   }
   plugins: {
     getUserSettings(): Promise<Record<string, unknown>>
+    /** 设置 → 插件 保存全局 settings 后回调（仅 scoped host） */
+    onUserSettingsChanged?(
+      handler: (settings: Record<string, unknown>) => void,
+    ): () => void
   }
   macros: {
     /** 按当前会话上下文展开 `{{user}}` `{{char}}` 等与主对话一致的宏 */

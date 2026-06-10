@@ -228,6 +228,7 @@ export const ApiErrorCodes = {
   regex_rules_validation_failed: 'regex_rules_validation_failed',
   regex_rules_write_failed: 'regex_rules_write_failed',
   regex_batch_invalid_range: 'regex_batch_invalid_range',
+  regex_exec_timeout: 'regex_exec_timeout',
   upstream_api_error: 'upstream_api_error',
   upstream_url_invalid: 'upstream_url_invalid',
   upstream_url_private_forbidden: 'upstream_url_private_forbidden',

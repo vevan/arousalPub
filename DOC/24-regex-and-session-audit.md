@@ -399,7 +399,9 @@ POST /api/chat/conversations/:id/regex/apply
 - `readTurnsInOrdinalRange` → persist apply → `batchUpdateConversationTurns`
 - 维护写锁由全局 `maintenance-guard` 覆盖（backup 等 503）
 - 单测：多规则仅产出按轮 patch 列表（写盘次数 ∝ chunk 数，由 `batchUpdateConversationTurns` 保证）
-- Memory：v1 批量后**不**自动 re-embed；响应 `memoryReindexRecommended`
+- Memory：批量写盘成功且会话 memory 开启 + Embeddings 已配置时，对可 embed 轮 `scheduleMemoryIndexUpsert`；响应 `memoryEmbedsQueued`
+- Regex 执行：服务端 VM 250ms，超时/错误**整条链回退原文**（persist/outgoing）；**display** 仅跳过失败规则（不落盘，可部分展示）
+- Regex 编译：`replaceRegexWithTimeout` 主线程编译一次后传入 VM 执行
 
 #### Phase 4 · 系统设置 UI（~2d）✅ 2026-06-10
 

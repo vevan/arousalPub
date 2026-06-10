@@ -515,11 +515,13 @@
         "assistant": "Assistant",
         "reasoning": "Reasoning"
       },
+      "persistRetroHint": "阶段包括写盘的正则修改后，历史轮次需批量手动替换。",
       "validation": {
         "pattern_required": "须填写 pattern。",
         "pattern_too_long": "pattern 过长。",
         "invalid_flags": "RegExp flags 无效。",
         "invalid_regexp": "正则表达式无效。",
+        "regex_exec_timeout": "正则执行超时，已保留原文。",
         "phases_fields_required": "须至少选择一个阶段和一个字段。"
       }
     },
@@ -732,7 +734,7 @@
       "regexApplyRun": "应用",
       "regexApplyDryRunResult": "试运行：范围内 {total} 轮，将有 {changed} 轮被修改。",
       "regexApplyResult": "已应用：范围内 {total} 轮，{changed} 轮已更新。",
-      "regexApplyMemoryHint": "内容已变更，建议在「上下文」中重建远期记忆索引。",
+      "regexApplyMemoryQueued": "已更新历史数据，即将重建向量（{count} 轮）。",
       "regexApplyLoadFailed": "加载对话轮次失败",
       "regexApplyFailed": "批量应用失败",
       "saveFailed": "保存失败"

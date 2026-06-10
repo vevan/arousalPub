@@ -1,4 +1,5 @@
 import type { ChatMessage } from './assemble-prompts.js'
+import { replaceRegexWithTimeout } from './regex-exec-timeout.js'
 import type {
   RegexApplyContext,
   RegexField,
@@ -43,17 +44,21 @@ export function applyRegexRuleToText(
   text: string,
   opts?: ApplyRegexOptions,
 ): string {
-  const re = compileRegexRule(rule)
-  if (!re) {
+  if (!compileRegexRule(rule)) {
     opts?.onRuleError?.(rule, new Error('invalid_regexp'))
     return text
   }
-  try {
-    return text.replace(re, rule.replacement)
-  } catch (e) {
-    opts?.onRuleError?.(rule, e)
+  const result = replaceRegexWithTimeout(
+    rule.pattern,
+    rule.flags,
+    text,
+    rule.replacement,
+  )
+  if (!result.ok) {
+    opts?.onRuleError?.(rule, new Error(result.code))
     return text
   }
+  return result.text
 }
 
 /** enabled 规则按 order 升序串联 apply */
@@ -64,10 +69,21 @@ export function applyRegexRulesToText(
   opts?: ApplyRegexOptions,
 ): string {
   const sorted = sortRegexRules(rules)
+  let aborted = false
+  const wrapped: ApplyRegexOptions = {
+    onRuleError: (rule, error) => {
+      if (error instanceof Error && error.message === 'regex_exec_timeout') {
+        aborted = true
+      }
+      opts?.onRuleError?.(rule, error)
+    },
+  }
   let out = text
   for (const rule of sorted) {
+    if (aborted) break
     if (!shouldApplyRegexRule(rule, ctx)) continue
-    out = applyRegexRuleToText(rule, out, opts)
+    out = applyRegexRuleToText(rule, out, wrapped)
+    if (aborted) return text
   }
   return out
 }

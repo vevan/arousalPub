@@ -50,6 +50,7 @@ import {
   renderReasoningMarkdownToHtml,
 } from '@/utils/render-rich-message'
 import { registerPluginStyles } from '@/plugins/plugin-slot-styles'
+import { subscribePluginUserSettingsSaved } from '@/utils/plugin-user-settings-events'
 import { useConversationPluginSettingsStore } from '@/stores/conversation-plugin-settings'
 import { translatePluginI18nKey } from '@/utils/plugin-locale-text'
 import { useI18n } from 'vue-i18n'
@@ -199,6 +200,14 @@ export function createScopedPluginHost(
     plugins: {
       getUserSettings() {
         return fetchPluginUserSettings(id)
+      },
+      onUserSettingsChanged(handler) {
+        return subscribePluginUserSettingsSaved((pluginId) => {
+          if (pluginId !== id) return
+          void fetchPluginUserSettings(id).then(handler).catch(() => {
+            handler({})
+          })
+        })
       },
     },
     macros: {

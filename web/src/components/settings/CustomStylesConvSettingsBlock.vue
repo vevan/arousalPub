@@ -120,15 +120,6 @@ const triModeItems = (inheritLabel: string) => [
 
 <template>
   <div class="custom-styles-conv-settings d-flex flex-column ga-4">
-    <v-alert
-      type="info"
-      variant="tonal"
-      density="compact"
-      class="text-body-2"
-    >
-      {{ pluginT('convReloadHint') }}
-    </v-alert>
-
     <div>
       <div class="text-body-2 font-weight-medium mb-1">
         {{ pluginT('convEnabledLabel') }}

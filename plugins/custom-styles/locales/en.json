@@ -2,7 +2,7 @@
   "enabledLabel": "Enable style injection",
   "enabledDesc": "When off, no custom CSS is injected in any conversation unless overridden per conversation.",
   "sheetsLabel": "Style sheets",
-  "sheetsDesc": "Add one or more CSS blocks; enabled sheets are concatenated in list order. Open conversations need a refresh or re-enter to pick up changes.",
+  "sheetsDesc": "Add one or more CSS blocks; enabled sheets are concatenated in list order. Open conversations re-apply automatically after save (custom CSS risk is yours).",
   "sheetNameLabel": "Name",
   "sheetNameDefault": "Custom Style",
   "sheetEnabledLabel": "Enabled",

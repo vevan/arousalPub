@@ -31,6 +31,14 @@ export function resolveOutgoingTailOrdinal(params: {
   return Math.max(...params.sourceHistoryTurnOrdinals) + 1
 }
 
+/**
+ * skipLastNTurns 锚点：最后一条会进入 prompt 的 assistant 所在轮次。
+ * 普通发送 tail=max+1（尾部 user 无 assistant）；再生 tail=当前轮（assistant 未发出）→ 均为 tail−1。
+ */
+export function resolveOutgoingSkipTailOrdinal(tailOrdinal: number): number {
+  return Math.max(0, tailOrdinal - 1)
+}
+
 export function hasEnabledOutgoingRules(rules: RegexRule[]): boolean {
   return rules.some((r) => r.enabled && r.phases.includes('outgoing'))
 }
@@ -139,13 +147,14 @@ export function applyRegexOutgoingToMessages(
     ctx.sourceHistoryTurnOrdinals,
   )
   const historySpan = findHistorySpanInMessages(messages, ctx.trimmedHistoryMessages)
+  const skipTailOrdinal = resolveOutgoingSkipTailOrdinal(ctx.tailOrdinal)
 
   return applyRegexRulesToMessages(
     messages,
     outgoingRules,
     {
       phase: 'outgoing',
-      tailOrdinal: ctx.tailOrdinal,
+      tailOrdinal: skipTailOrdinal,
       turnOrdinalByIndex: (index, msg) =>
         turnOrdinalForMessageIndex(
           index,

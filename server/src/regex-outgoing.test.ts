@@ -5,6 +5,7 @@ import {
   applyRegexOutgoingToMessages,
   buildPerMessageTurnOrdinals,
   findHistorySpanInMessages,
+  resolveOutgoingSkipTailOrdinal,
   resolveOutgoingTailOrdinal,
 } from './regex-outgoing.js'
 import type { RegexRule } from './regex-rules-types.js'
@@ -44,6 +45,14 @@ describe('resolveOutgoingTailOrdinal', () => {
   })
 })
 
+describe('resolveOutgoingSkipTailOrdinal', () => {
+  it('uses last assistant ordinal (tail minus in-flight turn)', () => {
+    assert.equal(resolveOutgoingSkipTailOrdinal(4), 3)
+    assert.equal(resolveOutgoingSkipTailOrdinal(2), 1)
+    assert.equal(resolveOutgoingSkipTailOrdinal(0), 0)
+  })
+})
+
 describe('buildPerMessageTurnOrdinals', () => {
   it('maps user and assistant to turn ordinal', () => {
     const history: ChatMessage[] = [
@@ -75,7 +84,7 @@ describe('findHistorySpanInMessages', () => {
 })
 
 describe('applyRegexOutgoingToMessages', () => {
-  it('strips tracker from older assistant via skipLastNTurns', () => {
+  it('strips tracker from older assistant via skipLastNTurns on append send', () => {
     const history: ChatMessage[] = [
       { role: 'user', content: 'u0' },
       { role: 'assistant', content: 'old <<track>>' },
@@ -85,6 +94,7 @@ describe('applyRegexOutgoingToMessages', () => {
     const messages: ChatMessage[] = [
       { role: 'system', content: 'world' },
       ...history,
+      { role: 'user', content: 'u2' },
     ]
     const rules = [
       rule({
@@ -96,13 +106,84 @@ describe('applyRegexOutgoingToMessages', () => {
       }),
     ]
     const out = applyRegexOutgoingToMessages(messages, rules, {
-      tailOrdinal: 1,
+      tailOrdinal: 2,
       sourceHistoryMessages: history,
       sourceHistoryTurnOrdinals: [0, 1],
       trimmedHistoryMessages: history,
+      userInput: 'u2',
     })
     assert.equal(out[2]?.content, 'old ')
     assert.equal(out[4]?.content, 'new <<track>>')
+  })
+
+  it('keeps last N assistant rounds without counting in-flight user on append', () => {
+    const history: ChatMessage[] = [
+      { role: 'user', content: 'u0' },
+      { role: 'assistant', content: 'a0 <<track>>' },
+      { role: 'user', content: 'u1' },
+      { role: 'assistant', content: 'a1 <<track>>' },
+      { role: 'user', content: 'u2' },
+      { role: 'assistant', content: 'a2 <<track>>' },
+      { role: 'user', content: 'u3' },
+      { role: 'assistant', content: 'a3 <<track>>' },
+    ]
+    const messages: ChatMessage[] = [
+      { role: 'system', content: 'sys' },
+      ...history,
+      { role: 'user', content: 'u4' },
+    ]
+    const rules = [
+      rule({
+        id: '11111111',
+        fields: ['assistant'],
+        skipLastNTurns: 3,
+        pattern: '<<track>>',
+        replacement: '',
+      }),
+    ]
+    const out = applyRegexOutgoingToMessages(messages, rules, {
+      tailOrdinal: 4,
+      sourceHistoryMessages: history,
+      sourceHistoryTurnOrdinals: [0, 1, 2, 3],
+      trimmedHistoryMessages: history,
+      userInput: 'u4',
+    })
+    assert.equal(out[2]?.content, 'a0 ')
+    assert.equal(out[4]?.content, 'a1 <<track>>')
+    assert.equal(out[6]?.content, 'a2 <<track>>')
+    assert.equal(out[8]?.content, 'a3 <<track>>')
+  })
+
+  it('keeps last N assistant rounds on regenerate (no in-flight assistant)', () => {
+    const history: ChatMessage[] = [
+      { role: 'user', content: 'u0' },
+      { role: 'assistant', content: 'a0 <<track>>' },
+      { role: 'user', content: 'u1' },
+      { role: 'assistant', content: 'a1 <<track>>' },
+    ]
+    const messages: ChatMessage[] = [
+      { role: 'system', content: 'world' },
+      ...history,
+      { role: 'user', content: 'u2' },
+    ]
+    const rules = [
+      rule({
+        id: '11111111',
+        fields: ['assistant'],
+        skipLastNTurns: 1,
+        pattern: '<<track>>',
+        replacement: '',
+      }),
+    ]
+    const out = applyRegexOutgoingToMessages(messages, rules, {
+      tailOrdinal: 2,
+      sourceHistoryMessages: history,
+      sourceHistoryTurnOrdinals: [0, 1],
+      trimmedHistoryMessages: history,
+      userInput: 'u2',
+    })
+    assert.equal(out[2]?.content, 'a0 ')
+    assert.equal(out[4]?.content, 'a1 <<track>>')
   })
 
   it('applies system rules without turnOrdinal', () => {

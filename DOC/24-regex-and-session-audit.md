@@ -96,7 +96,7 @@ applyRules(text | messages, ruleIds?, ctx)  // 过滤 enabled + phase + skipLast
 
 | 阶段 | 应用条件 |
 |------|----------|
-| `outgoing` | 可归属 `turnOrdinal` 的片段：`ordinal ≤ tailOrdinal − N` |
+| `outgoing` | 可归属 `turnOrdinal` 的片段：`ordinal ≤ skipTail − N`（`skipTail = tailOrdinal − 1`；尾部待生成轮次的 assistant 不在 prompt 中，不占 skip 窗口） |
 | `persist` | 当前落盘轮：`currentOrdinal ≤ tailOrdinal − N` |
 | `display` | 渲染轮：`turnOrdinal ≤ tailOrdinal − N` |
 

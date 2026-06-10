@@ -73,7 +73,7 @@
 - [x] **流式落盘**：persist 完成后 SSE `final*` 回传；前端用 final 更新 UI、跳过读盘（Phase 2 · 2026-06-10）
 - [ ] **拖曳优先级**：设置页拖曳调整 `order`；debounce **1 次**写规则文件
 - [ ] **`host.regex` / server `api.regex`**：供 `conversation-export`、插件只读/改文
-- [ ] **历史批量**：`POST .../regex/apply`（dry-run、区间、写锁）；导出可选规则
+- [x] **历史批量**：`POST .../regex/apply`（dry-run、区间；维护写锁 · Phase 3 · 2026-06-10）
 
 ### 会话 debug 审计（P0 · **`DOC/24`** §3）
 

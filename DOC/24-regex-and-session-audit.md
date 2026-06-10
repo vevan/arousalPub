@@ -173,7 +173,7 @@ applyText / applyMessages  // 同语义
 - [x] `POST /api/regex/apply-text`（无写盘预览 / `host.regex` 前置）
 - [x] `/api/chat` **outgoing** 挂钩（`chat-assemble.ts` · Phase 1 · 2026-06-10）
 - [x] `/api/chat` **persist** 挂钩 + SSE `final*`（Phase 2 · 2026-06-10）
-- [ ] `POST .../regex/apply`（dry-run / batchUpdateConversationTurns）
+- [x] `POST /api/chat/conversations/:id/regex/apply`（dry-run / batchUpdateConversationTurns · Phase 3 · 2026-06-10）
 - [ ] Web 设置页拖曳 + 对话批量 UI；export 联动
 - [ ] `host.regex` + server hook `api.regex`
 - [ ] 写盘合并单测；流式落盘后 UI 单测/E2E
@@ -384,17 +384,17 @@ UI 渲染:
 - 流式与非流式 `arousal.persist` / JSON `persist` 均回传 final
 - Web：`persist-display.ts`；有 final 时跳过 `loadMessages()`（fallback 仍保留）
 
-#### Phase 3 · 历史批量（~1.5d）
+#### Phase 3 · 历史批量（~1.5d）【已落地 · 2026-06-10】
 
 ```text
 POST /api/chat/conversations/:id/regex/apply
   { dryRun, fromOrdinal?, toOrdinal?, ruleIds?: 'all' | string[] }
 ```
 
-- `readTurnsInOrdinalRange` → apply → `batchUpdateConversationTurns`
-- 写锁（与 backup 等维护锁互斥）
-- **单测**：2 chunk × 3 规则 → 写盘次数 = chunk 数
-- Memory：v1 批量后**不**自动 re-embed（Toast 提示可选手动重建）
+- `readTurnsInOrdinalRange` → persist apply → `batchUpdateConversationTurns`
+- 维护写锁由全局 `maintenance-guard` 覆盖（backup 等 503）
+- 单测：多规则仅产出按轮 patch 列表（写盘次数 ∝ chunk 数，由 `batchUpdateConversationTurns` 保证）
+- Memory：v1 批量后**不**自动 re-embed；响应 `memoryReindexRecommended`
 
 #### Phase 4 · 系统设置 UI（~2d）
 

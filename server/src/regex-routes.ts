@@ -1,5 +1,10 @@
 import type { FastifyInstance } from 'fastify'
 import { ApiErrorCodes } from './api-error-codes.js'
+import { isValidConversationId } from './conversation-id.js'
+import {
+  parseRegexBatchApplyBody,
+  runConversationRegexBatchApply,
+} from './regex-batch-apply.js'
 import {
   applyRegexRulesToText,
   filterRegexRules,
@@ -147,4 +152,32 @@ export function registerRegexRoutes(app: FastifyInstance): void {
       return reply.status(500).send({ error: ApiErrorCodes.regex_rules_read_failed })
     }
   })
+
+  app.post<{ Params: { id: string } }>(
+    '/api/chat/conversations/:id/regex/apply',
+    async (request, reply) => {
+      const id = request.params.id
+      if (!isValidConversationId(id)) {
+        return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+      }
+      const parsed = parseRegexBatchApplyBody(request.body)
+      if (!parsed.ok) {
+        const code =
+          parsed.error in ApiErrorCodes
+            ? (parsed.error as (typeof ApiErrorCodes)[keyof typeof ApiErrorCodes])
+            : ApiErrorCodes.validation_failed
+        return reply.status(400).send({ error: code })
+      }
+      try {
+        const outcome = await runConversationRegexBatchApply(id, parsed.request)
+        if (!outcome.ok) {
+          return reply.status(outcome.status).send({ error: outcome.error })
+        }
+        return outcome.result
+      } catch (e) {
+        request.log.error(e)
+        return reply.status(500).send({ error: ApiErrorCodes.regex_rules_read_failed })
+      }
+    },
+  )
 }

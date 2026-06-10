@@ -22,8 +22,12 @@ export function applyRegexPersistToTurnPatch(
   rules: RegexRule[],
   patch: TurnContentPatchInput,
   tailOrdinal: number,
+  ruleIds?: string[] | 'all',
 ): TurnContentPatchInput {
-  const persistRules = filterRegexRules(rules, { phases: ['persist'] })
+  const persistRules = filterRegexRules(rules, {
+    phases: ['persist'],
+    ruleIds: ruleIds ?? 'all',
+  })
   if (!hasEnabledPersistRules(persistRules)) return patch
 
   const turnOrdinal = patch.turnOrdinal

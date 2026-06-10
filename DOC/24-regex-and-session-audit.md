@@ -1,6 +1,6 @@
 # 正则替换（原生）与会话审计（debug）
 
-> **状态**（2026-06-10）：**§3 会话 debug 审计已实现**（2026-06-09 验收）；**§2 正则替换定案、未实现**。列入 **`DOC/04` P0**（当前仅剩 regex）。  
+> **状态**（2026-06-10）：**§3 会话 debug 审计已实现**（2026-06-09 验收）；**§2 正则替换 Phase 0–5 主体已落地**，余 **对话批量 apply UI**、**conversation-export 勾选**（可选）。  
 > **关联**：`DOC/03` §6.8、§审计、`DOC/10`、`DOC/18`、`DOC/02` §4 可观测性。
 
 ---
@@ -12,9 +12,9 @@
 
 ---
 
-## 2. 正则替换（原生）【定案 · 未实现】
+## 2. 正则替换（原生）【定案 · Phase 0–5 已落地 · 2026-06-10】
 
-> 列入 P0；实现清单见 §2.8。当前代码库无 `regex-rules.json` / `/api/regex-rules` 等模块。
+> 列入 P0；实现清单见 §2.8。后端引擎、`GET/PUT /api/regex-rules`、三阶段挂钩、系统设置 UI、`host.regex` 已落地；**未做**：对话页批量 apply UI、`conversation-export` 导出勾选。
 
 ### 2.1 存储
 
@@ -174,9 +174,12 @@ applyText / applyMessages  // 同语义
 - [x] `/api/chat` **outgoing** 挂钩（`chat-assemble.ts` · Phase 1 · 2026-06-10）
 - [x] `/api/chat` **persist** 挂钩 + SSE `final*`（Phase 2 · 2026-06-10）
 - [x] `POST /api/chat/conversations/:id/regex/apply`（dry-run / batchUpdateConversationTurns · Phase 3 · 2026-06-10）
-- [ ] Web 设置页拖曳 + 对话批量 UI；export 联动
-- [ ] `host.regex` + server hook `api.regex`
-- [ ] 写盘合并单测；流式落盘后 UI 单测/E2E
+- [x] Web 设置页（Tab「正则替换」、拖曳 order、单条测试串、管线测试 · Phase 4 · 2026-06-10）
+- [ ] 对话页批量 apply UI（`POST .../regex/apply` dry-run / apply）
+- [ ] `conversation-export` 导出勾选全局规则（Phase 5 可选）
+- [x] `host.regex` + server hook `api.regex`（Phase 5 · 2026-06-10）
+- [x] 写盘合并单测（`regex-persist*.test.ts`、`regex-batch-apply.test.ts` 等）
+- [ ] 流式落盘后 UI E2E（可选）
 
 ---
 
@@ -396,22 +399,22 @@ POST /api/chat/conversations/:id/regex/apply
 - 单测：多规则仅产出按轮 patch 列表（写盘次数 ∝ chunk 数，由 `batchUpdateConversationTurns` 保证）
 - Memory：v1 批量后**不**自动 re-embed；响应 `memoryReindexRecommended`
 
-#### Phase 4 · 系统设置 UI（~2d）
+#### Phase 4 · 系统设置 UI（~2d）✅ 2026-06-10
 
-- `RegexRulesSettingsPanel.vue`（拖曳参考 `BudgetTrimSettingsPanel.vue`）
-- `SettingsView` **新增 Tab「正则替换」**（非对话设置侧栏）
+- `RegexRulesSettingsPanel.vue`（拖曳对齐 `PluginSettingsPanel`；管线纯文本测试）
+- `SettingsView` **新增 Tab「正则替换」**
 - `web/src/stores/regex-rules.ts`；locales
 - **不做**：`ConversationContextSettings` / 会话 `index.json` regex 字段
 
-#### Phase 5 · display + 宿主 API（~1.5–2d）
+#### Phase 5 · display + 宿主 API（~1.5–2d）✅ 主体 2026-06-10
 
-- display：`POST /api/regex/apply-text` 或 composable + 规则缓存
+- display：`use-regex-display-text` + `regex-rules-display` 缓存（Phase 2 起）
 - `host.regex` / `api.regex`（`listRules` / `applyText` / `applyMessages`）
-- `conversation-export` 导出勾选全局规则（可选同期）
+- [ ] `conversation-export` 导出勾选全局规则（可选 · 未做）
 
-#### Phase 6 · 文档收尾（~0.5d）
+#### Phase 6 · 文档收尾（~0.5d）✅ 2026-06-10
 
-- 更新 §2.8 勾选、`DOC/04`、`DOC/03` §16、`data/README.md` 路径
+- 更新 §2.8 勾选、`DOC/04`、`DOC/03` §16、`cursor.md`
 
 ### 6.4 依赖顺序
 

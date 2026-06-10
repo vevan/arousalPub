@@ -16,7 +16,7 @@
 | **全量冷备 + 备份边界** | ✅ | §8.8 产品内 zip；Syncthing ignore + 恢复见 `data/README.md`、`DOC/03` §8.5 |
 | **会话 debug 审计** | ✅ | `chat-audit.json`、三 Tab UI（`DOC/24` §3，2026-06-09 验收） |
 | 前端对话 UI | ✅ | `HomeChat` 已拆子组件 + `useChatSession`（见 §前端工程） |
-| **仍待 P0** | ⏳ | **原生正则替换**（`DOC/24` §2） |
+| **仍待 P0** | ⏳ | **原生正则**：对话批量 apply UI；export 勾选（可选） |
 
 ## P0（当前优先）
 
@@ -66,14 +66,16 @@
 
 > **废止**：`regex-transform` 插件与 `host.capabilities` regex 试点（`DOC/09` §8.7、`DOC/10` 原 §6.3）。
 
-- [ ] **规则存储**：`data/{userId}/regex-rules.json`；`order` / `phases` / `fields` / `skipLastNTurns`；`GET/PUT /api/regex-rules` — **Phase 0 已落地**（2026-06-10）
-- [ ] **三阶段**：`display` / `outgoing`（含 **system**）/ `persist`；outgoing 在 budget trim 之后、`afterAssemblePrompts` 之前 — **outgoing 已落地**（Phase 1 · 2026-06-10）
-- [ ] **近轮保留**：`skipLastNTurns` 为**规则级**选项，与 outgoing/persist/display 配合（tracker 等）
-- [ ] **写盘合并**：多规则内存串联后一次提交；历史批量 `batchUpdateConversationTurns`（**禁止**一条规则写一次盘）
+- [x] **规则存储**：`data/{userId}/regex-rules.json`；`order` / `phases` / `fields` / `skipLastNTurns`；`GET/PUT /api/regex-rules` — Phase 0 · 2026-06-10
+- [x] **三阶段**：`display` / `outgoing`（含 **system**）/ `persist`；outgoing 在 budget trim 之后、`afterAssemblePrompts` 之前 — Phase 1–2 · 2026-06-10
+- [x] **近轮保留**：`skipLastNTurns` 为**规则级**选项，与 outgoing/persist/display 配合（tracker 等）
+- [x] **写盘合并**：多规则内存串联后一次提交；历史批量 `batchUpdateConversationTurns`（Phase 2–3 · 2026-06-10）
 - [x] **流式落盘**：persist 完成后 SSE `final*` 回传；前端用 final 更新 UI、跳过读盘（Phase 2 · 2026-06-10）
-- [ ] **拖曳优先级**：设置页拖曳调整 `order`；debounce **1 次**写规则文件
-- [ ] **`host.regex` / server `api.regex`**：供 `conversation-export`、插件只读/改文
-- [x] **历史批量**：`POST .../regex/apply`（dry-run、区间；维护写锁 · Phase 3 · 2026-06-10）
+- [x] **拖曳优先级**：设置页拖曳调整 `order`；立即 PUT（Phase 4 · 2026-06-10）
+- [x] **`host.regex` / server `api.regex`**：供插件只读/改文（Phase 5 · 2026-06-10）
+- [x] **历史批量 API**：`POST .../regex/apply`（dry-run、区间；维护写锁 · Phase 3 · 2026-06-10）
+- [ ] **对话页批量 apply UI**（调用 Phase 3 API）
+- [ ] **`conversation-export` 导出勾选规则**（可选）
 
 ### 会话 debug 审计（P0 · **`DOC/24`** §3）
 

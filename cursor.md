@@ -25,7 +25,7 @@
 - **会话消息分页与懒加载（P1 规划）**：`DOC/15-conversation-messages-lazy-load.md`
 - **性能审计与 Memory v2 优化（P0–P3 已落地）**：`DOC/22-performance-audit-and-optimization.md`
 - **对话分支（服务端原语已落地 · UI/写入待做）**：`DOC/23-conversation-branches.md`
-- **会话 debug 审计（P0 已实现）+ 正则原生（P0 定案 · 未实现 · 实施计划 §6）**：`DOC/24-regex-and-session-audit.md`
+- **会话 debug 审计（P0 已实现）+ 正则原生（Phase 0–5 主体已落地 · 余批量 UI / export · `DOC/24` §6）**：`DOC/24-regex-and-session-audit.md`
 - **本机运维台（已实现）**：`DOC/17-admin-console.md`（loopback + `00000000`；用户管理 + DEK 轮换）
 - 运行时数据目录说明：`data/README.md`
 - 前端子项目说明：`web/README.md`

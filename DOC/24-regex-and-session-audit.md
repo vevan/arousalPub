@@ -1,7 +1,7 @@
 # 正则替换（原生）与会话审计（debug）
 
-> **状态**：**定案，未实现**（2026-06-08）。列入 **`DOC/04` P0**。  
-> **关联**：`DOC/03` §6.8、`DOC/10`、`DOC/18`、`DOC/02` §4 可观测性。
+> **状态**（2026-06-10）：**§3 会话 debug 审计已实现**（2026-06-09 验收）；**§2 正则替换定案、未实现**。列入 **`DOC/04` P0**（当前仅剩 regex）。  
+> **关联**：`DOC/03` §6.8、§审计、`DOC/10`、`DOC/18`、`DOC/02` §4 可观测性。
 
 ---
 
@@ -12,9 +12,13 @@
 
 ---
 
-## 2. 正则替换（原生）
+## 2. 正则替换（原生）【定案 · 未实现】
+
+> 列入 P0；实现清单见 §2.8。当前代码库无 `regex-rules.json` / `/api/regex-rules` 等模块。
 
 ### 2.1 存储
+
+**作用域**：**用户级** `data/{userId}/regex-rules.json`；**无**会话 `index.json` 字段、**无**对话设置 Tab。enabled 规则对该用户下全部对话生效。
 
 ```
 data/{userId}/regex-rules.json
@@ -43,7 +47,7 @@ data/{userId}/regex-rules.json
 
 | 字段 | 说明 |
 |------|------|
-| `order` | 整数，**越小越先执行**；设置页**拖曳**调整顺序后写回（debounce **1 次**写文件） |
+| `order` | 整数，**越小越先执行**；**系统设置**页**拖曳**调整顺序后写回（debounce **1 次**写文件） |
 | `enabled` | `false` 时跳过执行，**仍占位**排序 |
 | `phases` | `display` \| `outgoing` \| `persist`，可多选 |
 | `fields` | `system` \| `user` \| `assistant` \| `reasoning` |
@@ -150,14 +154,23 @@ applyText / applyMessages  // 同语义
 
 ### 2.7 UI
 
-- **系统设置**：规则列表 + 编辑器 + 测试串；**`mdi-drag-vertical` 拖曳排序**（对齐 `BudgetTrimSettingsPanel` / `PluginSettingsPanel` 原生 drag）。
-- **对话页**：composer 工具栏 — 历史批量 apply（区间、dry-run、写锁）；导出对话框可选规则（display/outgoing 只读链）。
+> **产品定案（2026-06-10）**：正则**仅系统设置**入口管理规则；**无对话级设置**（会话 `index.json` 不存 regex 开关/规则子集；对话齿轮内**无**正则 Tab）。所有 enabled 规则对用户下**全部对话**生效；`skipLastNTurns` 等按轮次语义在引擎内处理，非 per-conversation 配置。
+
+| 位置 | 内容 | 是否「设置」 |
+|------|------|-------------|
+| **系统设置** `/settings` | 规则 CRUD、拖曳 `order`、测试串、enabled 开关 | ✅ **唯一规则管理入口** |
+| **对话页** composer 工具栏 | 历史批量 apply（区间、dry-run、写锁）— **操作**，非规则编辑 | 否（动作入口） |
+| **导出**（`conversation-export`） | 导出对话框勾选**全局**规则子集（display/outgoing 只读链） | 否（一次性导出选项） |
+
+- **系统设置**：新增 Tab「正则替换」— 规则列表 + 编辑器 + 测试串；**`mdi-drag-vertical` 拖曳排序**（对齐 `BudgetTrimSettingsPanel` / `PluginSettingsPanel` 原生 drag）；debounce **1 次** PUT。
+- **对话页**：不提供规则编辑；仅批量 apply 与写锁提示。
 - **废止**：`regex-transform` 插件、`DOC/09` §8.7 以 regex 为 capabilities 试点。
 
 ### 2.8 实现清单
 
-- [ ] `regex-rules.json` + `GET/PUT /api/regex-rules`
-- [ ] `server/src/regex-apply.ts` 引擎 + `skipLastNTurns` / `order`
+- [x] `regex-rules.json` + `GET/PUT /api/regex-rules`
+- [x] `server/src/regex-apply.ts` 引擎 + `skipLastNTurns` / `order`（Phase 0 · 2026-06-10）
+- [x] `POST /api/regex/apply-text`（无写盘预览 / `host.regex` 前置）
 - [ ] `/api/chat` outgoing + persist 挂钩；SSE persist  payload 含最终正文
 - [ ] `POST .../regex/apply`（dry-run / batchUpdateConversationTurns）
 - [ ] Web 设置页拖曳 + 对话批量 UI；export 联动
@@ -166,7 +179,9 @@ applyText / applyMessages  // 同语义
 
 ---
 
-## 3. 会话审计（debug only）
+## 3. 会话审计（debug only）【已实现 · 2026-06-09】
+
+> 实现：`server/src/chat-audit-file.ts`、`build-assembly-audit.ts`、`chat-persist-after-chat.ts`；Web `ChatTurnPromptDialog` 三 Tab。细则与验收见 **`DOC/03`** 审计段落、**`DOC/04`** §会话 debug 审计。
 
 ### 3.1 开关与条数
 
@@ -288,3 +303,145 @@ auditDebug.enabled && maxStored >= 1 && 落盘成功（/api/chat persist）
 | 拖曳 UI | `BudgetTrimSettingsPanel.vue`、`PluginSettingsPanel.vue` |
 | 写锁 | `host.conversation.runBatch`（`DOC/10` §4） |
 | 调试文件 | `appendChatPromptDebugEntry` → 演进为 `appendChatAuditEntry` |
+
+---
+
+## 6. 实施计划（参考 · 2026-06-10）
+
+> **用途**：开发排期与验收对照；状态随实现更新。**UI 定案**：规则管理**仅**系统设置 `/settings`；**无对话级设置**（见 §2.7）。
+
+### 6.1 目标与 P0 验收
+
+| # | 验收项 | 可观测标准 |
+|---|--------|-----------|
+| A | 规则 CRUD + 拖曳 | `data/{userId}/regex-rules.json`；**系统设置** Tab debounce 1 次 PUT |
+| B | outgoing | `assemble → trim → regex → afterAssemblePrompts → upstream` |
+| C | persist | 落盘前改 `userText` / `receives` / `reasoning`；单轮 **1 次写盘** |
+| D | 流式 UI | 流式显示上游原文；`arousal.persist` 含最终正文，前端立刻更新 |
+| E | 历史批量 | `POST .../regex/apply` dry-run / apply；写盘次数 = chunk 数，≠ 规则数 |
+| F | 宿主 API | `host.regex` + server `api.regex` |
+| G | 审计 | `chat-audit.json` 的 `messages` = outgoing 最终态（regex 之后、upstream 之前） |
+
+**不在 P0**：`conversation-export` 导出勾选（可 Phase 5 末班车）；对话级 regex 开关/规则子集（**明确不做**）。
+
+### 6.2 架构与代码挂钩
+
+```text
+单轮 /api/chat:
+  assemble → budget trim → regex(outgoing) → afterAssemblePrompts → upstream SSE
+  → regex(persist) → persistTurnAfterModelReply（1×写盘）→ SSE arousal.persist（含 final*）
+
+UI 渲染:
+  磁盘原文 → regex(display) → renderRichMessage
+
+历史批量:
+  read 区间 → 内存 apply 全规则(persist) → batchUpdateConversationTurns
+```
+
+| 模块 | 文件 | 动作 |
+|------|------|------|
+| outgoing | `server/src/chat-assemble.ts` | trim 后、`applyPluginsAfterAssemblePrompts` **前**插入 regex |
+| persist | `server/src/chat-persist-after-chat.ts` | 写盘前 apply persist 阶段 |
+| SSE | `server/src/sse-assistant.ts`、`ChatPersistResult` | 扩展 `finalUserText` / `finalAssistantContent` / `finalAssistantReasoning` |
+| 前端落盘 | `web/.../completion.ts`、`use-chat-outbound.ts` | persist.ok 时用 final* 更新 turn |
+| display | `ChatTurnAssistant.vue`、`ChatTurnUser.vue` | `renderRichMessage` 前套 display |
+| 批量 | `server/src/chat-storage.ts` | 复用 `batchUpdateConversationTurns` |
+| 规则 UI | `SettingsView` 新 Tab | **唯一**规则管理入口；对话页无 regex 设置 Tab |
+| 审计 | 已有 `assembledMessages` | outgoing 插入 regex 后自动对齐 |
+
+### 6.3 分期（Phase 0–6）
+
+#### Phase 0 · 类型与存储（~1d）【已落地 · 2026-06-10】
+
+**交付**：规则存读 + 引擎单测；尚无聊天挂钩。
+
+**新增**：
+
+- `server/src/regex-rules-types.ts`
+- `server/src/regex-rules-file.ts`
+- `server/src/regex-apply.ts`
+- `server/src/regex-apply.test.ts`
+
+**API**：
+
+- `GET /api/regex-rules`
+- `PUT /api/regex-rules`（整包校验写盘）
+- `POST /api/regex/apply-text`（无写盘；测试串 / display / `host.regex` 预览）
+
+**PUT 校验**：`pattern` 非空；`new RegExp(pattern, flags)`；枚举合法；新建 `id` + `order = max + 10`。
+
+#### Phase 1 · outgoing（~1–1.5d）【已落地 · 2026-06-10】
+
+- `buildConversationOutboundMessages`：trim 后 `loadAndApplyRegexOutgoing`（`regex-outgoing.ts`）
+- `assemble-messages` 经同一函数受益；无 enabled outgoing 规则时 fast path
+- regex 后重算 `estimatedTokens`；顺序在 `afterAssemblePrompts` 之前
+
+#### Phase 2 · persist + SSE（~1.5–2d）
+
+- `persistTurnAfterModelReply` 入口 apply persist
+- 扩展 `ChatPersistResult` / `ChatPersistPayload` 的 `final*` 字段
+- 流式与非流式 persist 均回传 final；前端 finalize 优先用 final*
+
+#### Phase 3 · 历史批量（~1.5d）
+
+```text
+POST /api/chat/conversations/:id/regex/apply
+  { dryRun, fromOrdinal?, toOrdinal?, ruleIds?: 'all' | string[] }
+```
+
+- `readTurnsInOrdinalRange` → apply → `batchUpdateConversationTurns`
+- 写锁（与 backup 等维护锁互斥）
+- **单测**：2 chunk × 3 规则 → 写盘次数 = chunk 数
+- Memory：v1 批量后**不**自动 re-embed（Toast 提示可选手动重建）
+
+#### Phase 4 · 系统设置 UI（~2d）
+
+- `RegexRulesSettingsPanel.vue`（拖曳参考 `BudgetTrimSettingsPanel.vue`）
+- `SettingsView` **新增 Tab「正则替换」**（非对话设置侧栏）
+- `web/src/stores/regex-rules.ts`；locales
+- **不做**：`ConversationContextSettings` / 会话 `index.json` regex 字段
+
+#### Phase 5 · display + 宿主 API（~1.5–2d）
+
+- display：`POST /api/regex/apply-text` 或 composable + 规则缓存
+- `host.regex` / `api.regex`（`listRules` / `applyText` / `applyMessages`）
+- `conversation-export` 导出勾选全局规则（可选同期）
+
+#### Phase 6 · 文档收尾（~0.5d）
+
+- 更新 §2.8 勾选、`DOC/04`、`DOC/03` §16、`data/README.md` 路径
+
+### 6.4 依赖顺序
+
+```text
+Phase 0 → 1 → 2 → 3
+              ↘
+         Phase 4（可与 1–2 并行 UI 壳，联调需 0–2）
+              → 5 → 6
+```
+
+**最小演示 slice**：0 → 1 → 2 → 4（一条 tracker 规则端到端）。
+
+### 6.5 风险与决策
+
+| 项 | 定案 |
+|----|------|
+| 无效正则 | PUT 硬校验；runtime 单条 skip + warn |
+| ReDoS | P0：pattern 长度上限；timeout 可 P1+ |
+| 对话级配置 | **不做**；全局 `regex-rules.json` + enabled 即全对话生效 |
+| 规则管理入口 | **仅**系统设置 Tab；对话页仅批量 **操作** |
+| Memory  stale | 批量 persist 后 v1 手动重建索引 |
+| audit `messages` | = regex + `afterAssemblePrompts` 后、upstream 前（当前 `built.messages` 语义） |
+
+### 6.6 工作量粗估
+
+| Phase | 人天 |
+|-------|------|
+| 0 | 1 |
+| 1 | 1–1.5 |
+| 2 | 1.5–2 |
+| 3 | 1.5 |
+| 4 | 2 |
+| 5 | 1.5–2 |
+| 6 | 0.5 |
+| **合计** | **~9–10.5** |

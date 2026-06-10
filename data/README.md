@@ -7,6 +7,11 @@
 ```
 data/
   users.index.json          # 用户注册表（用户名、密码哈希、显示名等）
+  .jwt-secret               # JWT 签名密钥（可选自动生成）
+  .data-encryption-key      # API Key 磁盘加密主密钥（可选自动生成）
+  backups/                  # 产品内全量冷备 zip（§8.8；Syncthing 勿同步，见 §备份）
+    backup-<时间>.zip
+    backup-manifest.json
   plugins/                  # 全局插件包（安装一次，全用户共用代码）
     <pluginId>/
       manifest.json
@@ -40,6 +45,7 @@ data/
 | `prompts/`、`characters/`、`lorebooks/` | 资料与预设（角色主存 **`characters/{id}.png`**，`id` 为 8 位 hex，见 `DOC/03` §6.7） |
 | `api-settings.json`、`api-keys.json` | API 配置（内联 key 落盘为 **`apiKeyEnc` / `keyEnc`**，见 `DOC/16`） |
 | `user-preferences.json` | 全局偏好（含 embedding **`apiKeyEnc`**） |
+| `regex-rules.json` | 原生正则规则（用户级；**无**会话级副本，见 **`DOC/24`** §2.1、§6） |
 
 ## 密钥文件（`data/` 根目录）
 
@@ -65,19 +71,53 @@ data/
 
 ## 备份
 
-以整个 `data/` 为单元备份；含 API Key 与密码哈希，须与生产环境同等访问控制。
+以整个 `data/` 为单元备份；含 API Key 与密码哈希，须与生产环境同等访问控制。运维细节见 **`DOC/03` §8**。
 
 ### 产品内冷备（`data/backups/` · `DOC/03` §8.8）
 
 | 项 | 说明 |
 |----|------|
 | **触发** | 服务启动后：距上次**成功**冷备超过 `config.json` → `backupIntervalDays`（默认 7 天），或从未备份 |
-| **落盘** | `{dataDir}/backups/backup-<时间>.zip` + `backup-manifest.json` |
+| **落盘** | `{dataDir}/backups/backup-<ISO8601>.zip` + `backup-manifest.json` |
 | **保留** | `backupMaxKept`（默认 5），超出删最旧 zip |
-| **范围** | 整棵 `data/`（含各 `{userId}/`、`memory/`、`.jwt-secret` 等），**不含** `backups/` 自身 |
-| **Syncthing** | 对共享的 `data` 文件夹设置 **Ignore `backups`**，避免大 zip 多机同步 |
-| **恢复** | 1. 停服务 2. 将当前 `data` 改名为 `data.broken-<时间>` 3. 解压选定 zip 到原 `dataDir` 4. 启动验证（§8.5） |
+| **范围** | 整棵 `data/`（含各 `{userId}/`、`memory/` Lance、`.jwt-secret`、`.data-encryption-key` 等），**不含** `backups/` 自身 |
+| **进行中** | 备份期间 Web 全屏进度；变更 `data` 的写 API 返回 **503** `backup_in_progress` |
+| **状态 API** | `GET /api/backup/status`（免 JWT）：`running`、`filesDone`、`filesTotal`、`lastSuccessAt`、`lastError` |
 
-配置：`backupEnabled`（默认 `true`）、`backupIntervalDays`、`backupMaxKept`、`backupRetryHours`（失败后暂缓重试，默认 24h）。
+**`backup-manifest.json`**（示例字段）：
+
+```json
+{
+  "lastSuccessAt": "2026-06-09T02:25:18.000Z",
+  "file": "backup-20260609T022518Z.zip",
+  "bytes": 12345678
+}
+```
+
+配置（`config.json` 或 `config.example.json`）：`backupEnabled`（默认 `true`）、`backupIntervalDays`、`backupMaxKept`、`backupRetryHours`（失败后暂缓重试，默认 24h）。
 
 ~~对话轮次增量备份（§8.4）~~：**无限期延后**，不实现；`chats/.../index.json` 内 `backupSettings` 仅为历史占位。
+
+### Syncthing 与多机边界
+
+| 同步 | 忽略 |
+|------|------|
+| `data/{userId}/` 下 JSON、chunk、Lance 等**生产数据** | **`backups/`** 整个目录（大 zip 不参与 PC ↔ NAS 热同步） |
+
+在 Syncthing 共享文件夹的 **Ignore Patterns**（`.stignore`）中加入：
+
+```
+backups
+```
+
+各实例须使用**相同** `DATA_ENCRYPTION_KEY`（或同步 `.data-encryption-key`），否则无法解密 API Key（见上文 §密钥文件）。
+
+### 恢复流程（`DOC/03` §8.5）
+
+1. **停止**应用（避免半写文件）。
+2. 将当前 `data` **改名为** `data.broken-<时间戳>`（保留现场）。
+3. 从 `backups/` 选定 zip **解压到原 `dataDir`**（覆盖还原整棵 `data/`）。
+4. **启动**并验证登录、对话、API Key reveal、插件。
+5. 使用 Syncthing 时：恢复期间宜**暂停同步**或指定单方权威副本后再同步，避免旧副本覆盖新恢复数据。
+
+手动离线拷贝：可直接复制整棵 `data/`（含密钥文件）；与产品内 zip 冷备互为补充。

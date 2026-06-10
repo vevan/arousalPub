@@ -102,6 +102,7 @@ import {
 } from './conversation-id.js'
 import { registerAdminConsole } from './admin/routes.js'
 import { registerAuth } from './auth.js'
+import { registerRegexRoutes } from './regex-routes.js'
 import { resolveDataEncryptionKey } from './data-encryption-key.js'
 import { registerMaintenanceGuard } from './maintenance-guard.js'
 import {
@@ -440,6 +441,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 }
 registerMaintenanceGuard(app)
 await registerAuth(app)
+registerRegexRoutes(app)
 
 app.addHook('preHandler', async (request, reply) => {
   const pluginId = (request.params as { pluginId?: string }).pluginId

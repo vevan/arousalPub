@@ -244,6 +244,10 @@ export function getPromptsIndexPath(userId?: string): string {
   return path.join(getPromptsDir(userId), 'index.json')
 }
 
+export function getRegexRulesPath(userId?: string): string {
+  return path.join(getUserDataDir(userId ?? getCurrentUserId()), 'regex-rules.json')
+}
+
 export function getLorebooksIndexPath(userId?: string): string {
   return path.join(getLorebooksDir(userId), 'index.json')
 }

@@ -2,7 +2,7 @@
 
 > **项目阶段**：已脱离 MVP（见 `cursor.md`、`DOC/02` §1.1）。下列 P0/P1 为当前排期标签，**不是** MVP 裁剪清单。
 
-### P0 完成度概览（2026-05-26 核对 · JWT/RAG 二次核实）
+### P0 完成度概览（2026-06-10 核对）
 
 | 类别 | 状态 | 说明 |
 |------|------|------|
@@ -13,8 +13,10 @@
 | **向量检索（部分 RAG）** | ✅ | 对话 **memory** Lance TopK；资料库 **vector** 条目 TopK（可选 `vectorEnabled`） |
 | API Key 隔离（不出浏览器） | ✅ | 定案与落地见 `DOC/13` |
 | API Key 磁盘加密 | ✅ | AES-256-GCM 落盘 + 运维台 DEK 轮换（`DOC/16`、`DOC/17`） |
+| **全量冷备 + 备份边界** | ✅ | §8.8 产品内 zip；Syncthing ignore + 恢复见 `data/README.md`、`DOC/03` §8.5 |
+| **会话 debug 审计** | ✅ | `chat-audit.json`、三 Tab UI（`DOC/24` §3，2026-06-09 验收） |
 | 前端对话 UI | ✅ | `HomeChat` 已拆子组件 + `useChatSession`（见 §前端工程） |
-| **仍待 P0** | ⏳ | 原生正则替换、会话 debug 审计（`DOC/24`） |
+| **仍待 P0** | ⏳ | **原生正则替换**（`DOC/24` §2） |
 
 ## P0（当前优先）
 
@@ -38,7 +40,7 @@
 - [x] **迁移**：首次写入后加密；读路径兼容 legacy 明文
 - [x] **DEK 轮换**：运维台 `rotate-data-key` + `suggest-key`（`DOC/17`）
 - [x] **全量冷备 zip（§8.8）**：`backupIntervalDays` / `backupMaxKept`、启动检查、冻 UI + 503 写锁
-- [ ] **备份边界**：`data/backups` Syncthing ignore 与恢复说明（见 `data/README.md`）
+- [x] **备份边界**：`data/backups` Syncthing ignore 与恢复说明（`data/README.md` §备份、`DOC/03` §8.5）
 - [x] ~~对话轮次增量备份（§8.4）~~：**无限期延后**，不实现
 
 
@@ -64,8 +66,8 @@
 
 > **废止**：`regex-transform` 插件与 `host.capabilities` regex 试点（`DOC/09` §8.7、`DOC/10` 原 §6.3）。
 
-- [ ] **规则存储**：`data/{userId}/regex-rules.json`；`order` / `phases` / `fields` / `skipLastNTurns`；`GET/PUT /api/regex-rules`
-- [ ] **三阶段**：`display` / `outgoing`（含 **system**）/ `persist`；outgoing 在 budget trim 之后、`afterAssemblePrompts` 之前
+- [ ] **规则存储**：`data/{userId}/regex-rules.json`；`order` / `phases` / `fields` / `skipLastNTurns`；`GET/PUT /api/regex-rules` — **Phase 0 已落地**（2026-06-10）
+- [ ] **三阶段**：`display` / `outgoing`（含 **system**）/ `persist`；outgoing 在 budget trim 之后、`afterAssemblePrompts` 之前 — **outgoing 已落地**（Phase 1 · 2026-06-10）
 - [ ] **近轮保留**：`skipLastNTurns` 为**规则级**选项，与 outgoing/persist/display 配合（tracker 等）
 - [ ] **写盘合并**：多规则内存串联后一次提交；历史批量 `batchUpdateConversationTurns`（**禁止**一条规则写一次盘）
 - [ ] **流式落盘**：persist 完成后 SSE/UI **立刻**展示最终正文（display 或 persist 规则均适用）
@@ -248,3 +250,5 @@
 - [x] **plot-summary v1.6 更名/UI 收尾** — `autoSummarize*` 字段、本对话设置顶栏、插件 `v-icon-btn`；`DOC/12` §9、`DOC/21` §3（2026-06-08）
 - [x] **plot-summary 端到端验收** — `DOC/04` Historian 段、`DOC/12` §9（2026-06-08）
 - [x] **正则原生 + 会话审计定案** — `DOC/24-regex-and-session-audit.md`（2026-06-08）
+- [x] **会话审计 + 备份边界文档同步** — `DOC/04` 概览、`DOC/24` §3、`data/README.md`、`DOC/03` §8.8（2026-06-10）
+- [x] **正则实施计划归档** — `DOC/24` §6（系统设置唯一入口、无对话级设置）（2026-06-10）

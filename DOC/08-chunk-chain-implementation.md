@@ -138,8 +138,8 @@ export function ordinalRangeForTurn(turnOrdinal: number): { start: number; end: 
 
 ### 5.2 `chat-prompt.json` / `chat-audit.json`
 
-- 当前实现：**`chat-prompt.json`**，条目含 `chunkName`；滚动 tail 后新轮用**新块文件名**，无需迁移旧条目。
-- 定案（**`DOC/24` §3**）：迁移为 **`chat-audit.json`**（合并 messages + assembly + calls）；`auditDebug.enabled` + `maxStored` 双开关。
+- **当前实现（2026-06-09）**：**`chat-audit.json`**（`schemaVersion: 2`），条目含 `messages` + `assembly` + `calls`；`auditDebug.enabled` + `maxStored` 双开关；`/api/chat` 落盘成功后服务端自写。读盘兼容旧 **`chat-prompt.json`**；**不再新写** `chat-prompt`。滚动 tail 后新轮用**新块文件名**，无需迁移旧 audit 条目。
+- 定案与验收：**`DOC/24` §3**、**`DOC/03`** 审计段落。
 
 ### 5.3 删除整轮（`deleteConversationTurn`）
 

@@ -69,7 +69,7 @@
 |---|-----|------|
 | L1 | `GET .../messages` 全量（聊天 UI） | **产品项** `DOC/15` S2–S4；assemble 热路径已用 `readTurnsTail`（P1），与 UI 懒加载无关 |
 | L2 | 删中间轮后 chunk 合并 | `DOC/08` §1.2 未做 |
-| L3 | 调用日志全量审计 | `DOC/04` P0 仍待 |
+| L3 | 调用日志 / debug 审计 | 会话 **debug 审计** ✅（`DOC/24` §3）；全库 `jsonl` 运维台账仍 P1/P2 可选 |
 
 ---
 

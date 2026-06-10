@@ -1,4 +1,5 @@
-import type { TurnReceive } from './chat-storage.js'
+import type { TurnReceive, TurnRecord } from './chat-storage.js'
+import { getTurnUserText } from './chat-storage.js'
 
 export const CONVERSATION_BATCH_MAX_TURNS = 50
 
@@ -88,4 +89,77 @@ export function parseTurnPatchBody(body: unknown): ParseTurnPatchResult {
       activeReceiveIndex: b.activeReceiveIndex,
     },
   }
+}
+
+export function turnRecordToContentPatch(turn: TurnRecord): TurnContentPatchInput {
+  const receives: TurnReceive[] = (turn.receives ?? []).map((r) => {
+    const rec: TurnReceive = {
+      id: r.id,
+      content: typeof r.content === 'string' ? r.content : '',
+    }
+    if (typeof r.reasoning === 'string' && r.reasoning.length > 0) {
+      rec.reasoning = r.reasoning
+    }
+    if (r.runtime && typeof r.runtime === 'object') {
+      rec.runtime = r.runtime
+    }
+    return rec
+  })
+  let active = turn.activeReceiveIndex
+  if (receives.length === 0) {
+    return {
+      turnOrdinal: turn.turnOrdinal,
+      userText: getTurnUserText(turn),
+      receives: [],
+      activeReceiveIndex: 0,
+    }
+  }
+  active = Math.min(Math.max(0, active), receives.length - 1)
+  return {
+    turnOrdinal: turn.turnOrdinal,
+    userText: getTurnUserText(turn),
+    receives,
+    activeReceiveIndex: active,
+  }
+}
+
+/** user + receives 正文是否与 patch 一致（不含 activeReceiveIndex） */
+export function turnContentPatchFieldsEqual(
+  before: TurnContentPatchInput,
+  after: TurnContentPatchInput,
+): boolean {
+  if (before.userText !== after.userText) return false
+  if (before.receives.length !== after.receives.length) return false
+  for (let i = 0; i < before.receives.length; i++) {
+    const a = before.receives[i]
+    const b = after.receives[i]
+    if (!a || !b) return false
+    if (a.id !== b.id || a.content !== b.content) return false
+    if ((a.reasoning ?? '') !== (b.reasoning ?? '')) return false
+  }
+  return true
+}
+
+export function turnContentPatchChanged(
+  before: TurnContentPatchInput,
+  after: TurnContentPatchInput,
+): boolean {
+  return !turnContentPatchFieldsEqual(before, after)
+}
+
+/** swipe 切换展示变体：仅 activeReceiveIndex 变化 */
+export function isActiveReceiveIndexOnlyPatchChange(
+  before: TurnContentPatchInput,
+  after: TurnContentPatchInput,
+): boolean {
+  if (before.activeReceiveIndex === after.activeReceiveIndex) return false
+  return turnContentPatchFieldsEqual(before, after)
+}
+
+/** PATCH 正文与磁盘一致时跳过 persist（含 swipe 与完全重复 PATCH） */
+export function shouldSkipPersistRegexForTurnPatch(
+  stored: TurnContentPatchInput,
+  incoming: TurnContentPatchInput,
+): boolean {
+  return turnContentPatchFieldsEqual(stored, incoming)
 }

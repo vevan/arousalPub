@@ -59,4 +59,30 @@ describe('applyRegexPersistForTurn', () => {
     assert.equal(out.assistantContent, 'reply ')
     assert.equal(out.userText, 'hello')
   })
+
+  it('uses conversation tail for skipLastNTurns on regenerate turn', () => {
+    const rules = [
+      rule({
+        id: '11111111',
+        fields: ['assistant'],
+        skipLastNTurns: 3,
+        pattern: 'x',
+        replacement: '',
+      }),
+    ]
+    const wrongTail = applyRegexPersistForTurn(
+      rules,
+      { userText: 'u', assistantContent: 'xx' },
+      2,
+      2,
+    )
+    const correctTail = applyRegexPersistForTurn(
+      rules,
+      { userText: 'u', assistantContent: 'xx' },
+      2,
+      5,
+    )
+    assert.equal(wrongTail.assistantContent, 'xx')
+    assert.equal(correctTail.assistantContent, '')
+  })
 })

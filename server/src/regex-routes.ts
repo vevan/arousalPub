@@ -176,6 +176,14 @@ export function registerRegexRoutes(app: FastifyInstance): void {
         return outcome.result
       } catch (e) {
         request.log.error(e)
+        if (e instanceof RegexRulesValidationError) {
+          return reply
+            .status(400)
+            .send({ error: ApiErrorCodes.regex_rules_validation_failed })
+        }
+        if (e instanceof Error && e.message === 'turns_batch_too_large') {
+          return reply.status(400).send({ error: ApiErrorCodes.turns_batch_too_large })
+        }
         return reply.status(500).send({ error: ApiErrorCodes.regex_rules_read_failed })
       }
     },

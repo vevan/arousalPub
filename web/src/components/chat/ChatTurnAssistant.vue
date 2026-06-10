@@ -37,8 +37,6 @@ const {
   assistantReasoning,
   displayAssistantText,
   displayAssistantReasoning,
-  displayStreamingAssistantText,
-  displayStreamingReasoningText,
   reasoningCharsCount,
   showAssistantSwipeFooter,
   slideAssistant,
@@ -179,7 +177,7 @@ const displayModelName = computed(() => {
         <span class="reasoning-chain__title">
           {{ $t('chat.reasoningSummary') }}
           <span class="reasoning-chain__meta">
-            {{ $t('chat.reasoningCharsMeta', { n: reasoningCharsCount(displayStreamingReasoningText(streamingReasoning, turn.turnOrdinal)) }) }}
+            {{ $t('chat.reasoningCharsMeta', { n: reasoningCharsCount(streamingReasoning) }) }}
           </span>
         </span>
         <span class="reasoning-chain__hint">
@@ -193,7 +191,7 @@ const displayModelName = computed(() => {
           :data-tt="copiedTurnKey === `r-${turn.turnOrdinal}-live` ? $t('chat.copied') : $t('chat.copy')"
           :class="{ 'is-success': copiedTurnKey === `r-${turn.turnOrdinal}-live` }"
           :aria-label="$t('chat.copy')"
-          @click.stop="copyTurnText(displayStreamingReasoningText(streamingReasoning, turn.turnOrdinal), `r-${turn.turnOrdinal}-live`)"
+          @click.stop="copyTurnText(streamingReasoning, `r-${turn.turnOrdinal}-live`)"
         >
           <v-icon size="14">
             {{ copiedTurnKey === `r-${turn.turnOrdinal}-live` ? 'mdi-check' : 'mdi-content-copy' }}
@@ -202,7 +200,7 @@ const displayModelName = computed(() => {
       </summary>
       <div
         class="reasoning-chain__body chat-rich-text"
-        v-html="renderReasoningMarkdownToHtml(displayStreamingReasoningText(streamingReasoning, turn.turnOrdinal))"
+        v-html="renderReasoningMarkdownToHtml(streamingReasoning)"
       />
     </details>
 
@@ -281,7 +279,7 @@ const displayModelName = computed(() => {
         <div
           v-if="isAssistantStreamingBubble(turn)"
           class="chat-rich-text"
-          v-html="renderRichMessageToHtml(displayStreamingAssistantText(streamingText, turn.turnOrdinal))"
+          v-html="renderRichMessageToHtml(streamingText)"
         />
         <v-skeleton-loader
           v-else

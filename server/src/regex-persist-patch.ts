@@ -1,8 +1,13 @@
 import type { TurnContentPatchInput } from './turn-patch-body.js'
 import {
+  shouldSkipPersistRegexForTurnPatch,
+  turnRecordToContentPatch,
+} from './turn-patch-body.js'
+import {
   applyRegexRulesToText,
   filterRegexRules,
 } from './regex-apply.js'
+import { readChunkContainingOrdinal } from './chunk-chain.js'
 import { readTailChunk } from './chat-storage.js'
 import { readRegexRulesDocument } from './regex-rules-file.js'
 import type { RegexRule } from './regex-rules-types.js'
@@ -68,14 +73,50 @@ export function applyRegexPersistToTurnPatch(
   }
 }
 
+async function readStoredTurnContentPatch(
+  conversationId: string,
+  turnOrdinal: number,
+): Promise<TurnContentPatchInput | null> {
+  const located = await readChunkContainingOrdinal(conversationId, turnOrdinal)
+  if (!located) return null
+  const turn = located.chunk.turns.find((t) => t.turnOrdinal === turnOrdinal)
+  if (!turn) return null
+  return turnRecordToContentPatch(turn)
+}
+
+/** PATCH 写盘前：正文与磁盘一致时跳过 persist 规则 */
+export async function resolveTurnPatchPersistRegex(
+  conversationId: string,
+  patch: TurnContentPatchInput,
+  rules?: RegexRule[],
+  tailOrdinal?: number,
+): Promise<TurnContentPatchInput> {
+  let ruleList = rules
+  if (!ruleList) {
+    const doc = await readRegexRulesDocument()
+    if (!hasEnabledPersistRules(doc.rules)) return patch
+    ruleList = doc.rules
+  } else if (!hasEnabledPersistRules(ruleList)) {
+    return patch
+  }
+
+  const existing = await readStoredTurnContentPatch(conversationId, patch.turnOrdinal)
+  if (existing && shouldSkipPersistRegexForTurnPatch(existing, patch)) {
+    return patch
+  }
+
+  const tail =
+    typeof tailOrdinal === 'number'
+      ? tailOrdinal
+      : await resolveConversationTailOrdinal(conversationId)
+  return applyRegexPersistToTurnPatch(ruleList, patch, tail)
+}
+
 export async function loadAndApplyRegexPersistToTurnPatch(
   conversationId: string,
   patch: TurnContentPatchInput,
 ): Promise<TurnContentPatchInput> {
-  const doc = await readRegexRulesDocument()
-  if (!hasEnabledPersistRules(doc.rules)) return patch
-  const tailOrdinal = await resolveConversationTailOrdinal(conversationId)
-  return applyRegexPersistToTurnPatch(doc.rules, patch, tailOrdinal)
+  return resolveTurnPatchPersistRegex(conversationId, patch)
 }
 
 export interface TurnPatchPersistPayload {

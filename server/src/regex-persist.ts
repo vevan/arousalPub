@@ -1,5 +1,6 @@
 import { readTailChunk } from './chat-storage.js'
 import { applyRegexPersistToTurnFields, filterRegexRules } from './regex-apply.js'
+import { resolveConversationTailOrdinal } from './regex-persist-patch.js'
 import { readRegexRulesDocument } from './regex-rules-file.js'
 import type { RegexRule } from './regex-rules-types.js'
 
@@ -13,7 +14,7 @@ export function hasEnabledPersistRules(rules: RegexRule[]): boolean {
   return rules.some((r) => r.enabled && r.phases.includes('persist'))
 }
 
-/** 落盘轮 ordinal；persist 阶段 turnOrdinal 与 tailOrdinal 同为该值 */
+/** 落盘轮 ordinal（新轮 = 尾轮 + 1；再生 = 指定轮） */
 export async function resolvePersistTurnOrdinal(params: {
   conversationId: string
   hasHeadChunk: boolean
@@ -33,10 +34,12 @@ export async function resolvePersistTurnOrdinal(params: {
   return last.turnOrdinal + 1
 }
 
+/** 落盘轮 ordinal；tailOrdinal 为会话当前尾轮（再生时与 turnOrdinal 不同） */
 export function applyRegexPersistForTurn(
   rules: RegexRule[],
   fields: PersistRegexFields,
   turnOrdinal: number,
+  tailOrdinal?: number,
 ): PersistRegexFields {
   const persistRules = filterRegexRules(rules, { phases: ['persist'] })
   if (!hasEnabledPersistRules(persistRules)) return fields
@@ -45,7 +48,7 @@ export function applyRegexPersistForTurn(
     assistantContent: fields.assistantContent,
     assistantReasoning: fields.assistantReasoning,
     turnOrdinal,
-    tailOrdinal: turnOrdinal,
+    tailOrdinal: tailOrdinal ?? turnOrdinal,
     rules: persistRules,
   })
 }
@@ -53,8 +56,13 @@ export function applyRegexPersistForTurn(
 export async function loadAndApplyRegexPersistForTurn(
   fields: PersistRegexFields,
   turnOrdinal: number,
+  conversationId?: string,
 ): Promise<PersistRegexFields> {
   const doc = await readRegexRulesDocument()
   if (!hasEnabledPersistRules(doc.rules)) return fields
-  return applyRegexPersistForTurn(doc.rules, fields, turnOrdinal)
+  let tailOrdinal = turnOrdinal
+  if (conversationId?.trim()) {
+    tailOrdinal = await resolveConversationTailOrdinal(conversationId.trim())
+  }
+  return applyRegexPersistForTurn(doc.rules, fields, turnOrdinal, tailOrdinal)
 }

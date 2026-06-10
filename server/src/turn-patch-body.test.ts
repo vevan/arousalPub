@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { parseTurnPatchBody } from './turn-patch-body.js'
+import {
+  isActiveReceiveIndexOnlyPatchChange,
+  parseTurnPatchBody,
+  shouldSkipPersistRegexForTurnPatch,
+  turnContentPatchChanged,
+} from './turn-patch-body.js'
 
 describe('parseTurnPatchBody', () => {
   it('parses valid patch', () => {
@@ -35,5 +40,96 @@ describe('parseTurnPatchBody', () => {
       activeReceiveIndex: 0,
     })
     assert.equal(r.ok, false)
+  })
+})
+
+describe('isActiveReceiveIndexOnlyPatchChange', () => {
+  const base = {
+    turnOrdinal: 2,
+    userText: 'u',
+    receives: [
+      { id: 'a', content: 'one' },
+      { id: 'b', content: 'two' },
+    ],
+    activeReceiveIndex: 0,
+  }
+
+  it('detects swipe-only index change', () => {
+    assert.equal(
+      isActiveReceiveIndexOnlyPatchChange(base, {
+        ...base,
+        activeReceiveIndex: 1,
+      }),
+      true,
+    )
+  })
+
+  it('returns false when content changes', () => {
+    assert.equal(
+      isActiveReceiveIndexOnlyPatchChange(base, {
+        ...base,
+        activeReceiveIndex: 1,
+        receives: [
+          { id: 'a', content: 'one' },
+          { id: 'b', content: 'edited' },
+        ],
+      }),
+      false,
+    )
+  })
+
+  it('returns false when index unchanged', () => {
+    assert.equal(
+      isActiveReceiveIndexOnlyPatchChange(base, { ...base }),
+      false,
+    )
+    assert.equal(turnContentPatchChanged(base, { ...base }), false)
+  })
+})
+
+describe('shouldSkipPersistRegexForTurnPatch', () => {
+  const base = {
+    turnOrdinal: 2,
+    userText: 'u',
+    receives: [{ id: 'a', content: 'one' }],
+    activeReceiveIndex: 0,
+  }
+
+  it('skips when body matches disk including index', () => {
+    assert.equal(shouldSkipPersistRegexForTurnPatch(base, { ...base }), true)
+  })
+
+  it('skips when body matches disk but index differs (swipe)', () => {
+    assert.equal(
+      shouldSkipPersistRegexForTurnPatch(
+        { ...base, activeReceiveIndex: 0 },
+        { ...base, activeReceiveIndex: 1, receives: [{ id: 'a', content: 'one' }, { id: 'b', content: 'two' }] },
+      ),
+      false,
+    )
+    const twoReceives = {
+      ...base,
+      receives: [
+        { id: 'a', content: 'one' },
+        { id: 'b', content: 'two' },
+      ],
+    }
+    assert.equal(
+      shouldSkipPersistRegexForTurnPatch(
+        { ...twoReceives, activeReceiveIndex: 0 },
+        { ...twoReceives, activeReceiveIndex: 1 },
+      ),
+      true,
+    )
+  })
+
+  it('does not skip when content differs', () => {
+    assert.equal(
+      shouldSkipPersistRegexForTurnPatch(base, {
+        ...base,
+        userText: 'edited',
+      }),
+      false,
+    )
   })
 })

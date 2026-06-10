@@ -13,6 +13,7 @@ import {
 import BudgetTrimSettingsPanel from '@/components/settings/BudgetTrimSettingsPanel.vue'
 import ConversationApiSettingsPanel from '@/components/settings/ConversationApiSettingsPanel.vue'
 import ConversationPluginSettingsPanel from '@/components/settings/ConversationPluginSettingsPanel.vue'
+import ConversationRegexApplyPanel from '@/components/settings/ConversationRegexApplyPanel.vue'
 import { fetchPluginsManage } from '@/utils/plugin-settings-api'
 import {
   readConversationChatBinding,
@@ -74,6 +75,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'patched', index: Record<string, unknown>): void
   (e: 'memoryRebuilt', embeddingModel: string): void
+  (e: 'regexApplied'): void
 }>()
 
 type SettingsSection =
@@ -83,6 +85,7 @@ type SettingsSection =
   | 'context'
   | 'budgetTrim'
   | 'authorsNote'
+  | 'regexApply'
   | 'plugins'
 
 const { t } = useI18n()
@@ -203,6 +206,9 @@ const savingPluginSettings = ref(false)
 const pluginSettingsPanelRef = ref<InstanceType<
   typeof ConversationPluginSettingsPanel
 > | null>(null)
+const regexApplyPanelRef = ref<InstanceType<
+  typeof ConversationRegexApplyPanel
+> | null>(null)
 const sectionItems = computed(() => {
   const items: Array<{
     id: SettingsSection
@@ -239,6 +245,11 @@ const sectionItems = computed(() => {
       title: t('chat.convSettings.tabAuthorsNote'),
       icon: 'mdi-note-text-outline',
     },
+    {
+      id: 'regexApply',
+      title: t('chat.convSettings.tabRegexApply'),
+      icon: 'mdi-regex',
+    },
   ]
   if (showPluginsTab.value) {
     items.push({
@@ -269,6 +280,10 @@ const activeSectionHeader = computed(() => {
     authorsNote: {
       titleKey: 'tabAuthorsNote',
       hintKey: 'tabAuthorsNoteHint',
+    },
+    regexApply: {
+      titleKey: 'tabRegexApply',
+      hintKey: 'tabRegexApplyHint',
     },
     plugins: { titleKey: 'tabPlugins', hintKey: 'tabPluginsHint' },
   }
@@ -318,6 +333,9 @@ function open(section?: SettingsSection): void {
   if (activeSection.value === 'plugins') {
     void pluginSettingsPanelRef.value?.reload()
   }
+  if (activeSection.value === 'regexApply') {
+    void regexApplyPanelRef.value?.reload()
+  }
 }
 
 function close(): void {
@@ -327,6 +345,9 @@ function close(): void {
 watch(activeSection, (section) => {
   if (section !== 'plugins') {
     pluginSettingsPanelRef.value?.backToList()
+  }
+  if (section === 'regexApply') {
+    void regexApplyPanelRef.value?.reload()
   }
 })
 
@@ -1658,6 +1679,17 @@ async function patchConversation(body: Record<string, unknown>) {
                   :disabled="savingAuthorsNote"
                 />
               </div>
+            </div>
+
+            <div
+              v-show="activeSection === 'regexApply'"
+              class="conv-settings-section"
+            >
+              <ConversationRegexApplyPanel
+                ref="regexApplyPanelRef"
+                :conversation-id="conversationId"
+                @applied="emit('regexApplied')"
+              />
             </div>
 
             <div

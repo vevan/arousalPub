@@ -146,6 +146,7 @@ async function applyPersistRegexFields(
   assistantContent: string,
   assistantReasoning: string | undefined,
   turnOrdinal: number,
+  conversationId: string,
 ): Promise<PersistRegexFields> {
   return loadAndApplyRegexPersistForTurn(
     {
@@ -154,6 +155,7 @@ async function applyPersistRegexFields(
       assistantReasoning,
     },
     turnOrdinal,
+    conversationId,
   )
 }
 
@@ -216,6 +218,7 @@ export async function persistTurnAfterModelReply(params: {
       rawAssistantContent,
       rawReasoning,
       regenOrd,
+      conversationId,
     )
     const userText = fields.userText
     const assistantContent = fields.assistantContent
@@ -370,6 +373,7 @@ export async function persistTurnAfterModelReply(params: {
       rawAssistantContent,
       rawReasoning,
       appendOrdinal,
+      conversationId,
     )
     const receives: TurnReceive[] = [
       {
@@ -414,6 +418,7 @@ export async function persistTurnAfterModelReply(params: {
     rawAssistantContent,
     rawReasoning,
     turnOrdinal,
+    conversationId,
   )
   const userText = fields.userText
   const assistantContent = fields.assistantContent

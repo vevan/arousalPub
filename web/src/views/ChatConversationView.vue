@@ -86,6 +86,7 @@ const lorebookNameById = ref<Record<string, string>>({})
 const convContextSettingsRef = ref<InstanceType<
   typeof ConversationContextSettings
 > | null>(null)
+const homeChatRef = ref<InstanceType<typeof HomeChat> | null>(null)
 const hasConversationTurns = ref(false)
 const conversationMemoryEmbeddingModel = ref<string | null>(null)
 const conversationMemoryEmbeddingDimensions = ref<number | null>(null)
@@ -182,6 +183,10 @@ function onMemoryRebuiltFromSettings(model: string): void {
     embeddingDimensions.value,
     embeddingDimensions.value,
   )
+}
+
+function onRegexAppliedFromSettings(): void {
+  void homeChatRef.value?.reloadTurns()
 }
 
 interface LorebookContextBinding {
@@ -808,6 +813,7 @@ watch(
         </div>
       </header>
       <HomeChat
+        ref="homeChatRef"
         :conversation-id="conversationId"
         :conversation-prompt-preset-id="convBindings.promptPresetId"
         :conversation-character-ids="convBindings.characterIds"
@@ -944,6 +950,7 @@ watch(
         :initial-embedding-api-settings="convBindings.embeddingApi.override"
         @patched="onConvContextPatched"
         @memory-rebuilt="onMemoryRebuiltFromSettings"
+        @regex-applied="onRegexAppliedFromSettings"
       />
     </template>
   </div>

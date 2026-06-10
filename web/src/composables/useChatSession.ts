@@ -362,6 +362,7 @@ export function useChatSession(props: ChatSessionProps) {
     canSend,
     isGenerating,
     abortCurrentReply,
+    loadMessages,
     conversationId: props.conversationId,
     conversationWriteLocked,
     pluginHoldConversation,

@@ -214,8 +214,8 @@ import {
 } from './prompts-assemble-preview.js'
 import { persistTurnAfterModelReply } from './chat-persist-after-chat.js'
 import {
-  applyRegexPersistToTurnPatch,
   loadAndApplyRegexPersistToTurnPatch,
+  resolveTurnPatchPersistRegex,
   resolveConversationTailOrdinal,
   toTurnPatchPersistPayload,
 } from './regex-persist-patch.js'
@@ -1281,11 +1281,14 @@ app.patch<{
       patches.push(parsed.patch)
     }
     try {
-      const tailOrdinal = await resolveConversationTailOrdinal(id)
       const doc = await readRegexRulesDocument()
-      const normalizedPatches = patches.map((p) =>
-        applyRegexPersistToTurnPatch(doc.rules, p, tailOrdinal),
-      )
+      const tailOrdinal = await resolveConversationTailOrdinal(id)
+      const normalizedPatches = []
+      for (const p of patches) {
+        normalizedPatches.push(
+          await resolveTurnPatchPersistRegex(id, p, doc.rules, tailOrdinal),
+        )
+      }
       const result = await batchUpdateConversationTurns(id, normalizedPatches)
       return result
     } catch (e) {

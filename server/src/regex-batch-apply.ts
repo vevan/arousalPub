@@ -1,9 +1,6 @@
 import {
   batchUpdateConversationTurns,
-  getTurnUserText,
   readConversationIndex,
-  type TurnReceive,
-  type TurnRecord,
 } from './chat-storage.js'
 import { readTurnsInOrdinalRange } from './chunk-chain.js'
 import { readRegexRulesDocument } from './regex-rules-file.js'
@@ -14,6 +11,11 @@ import {
   resolveConversationTailOrdinal,
 } from './regex-persist-patch.js'
 import type { TurnContentPatchInput } from './turn-patch-body.js'
+import {
+  CONVERSATION_BATCH_MAX_TURNS,
+  turnContentPatchChanged,
+  turnRecordToContentPatch,
+} from './turn-patch-body.js'
 import { ApiErrorCodes } from './api-error-codes.js'
 
 export interface RegexBatchApplyRequest {
@@ -35,53 +37,8 @@ export interface RegexBatchApplyResult {
   memoryReindexRecommended: boolean
 }
 
-export function turnRecordToContentPatch(turn: TurnRecord): TurnContentPatchInput {
-  const receives: TurnReceive[] = (turn.receives ?? []).map((r) => {
-    const rec: TurnReceive = {
-      id: r.id,
-      content: typeof r.content === 'string' ? r.content : '',
-    }
-    if (typeof r.reasoning === 'string' && r.reasoning.length > 0) {
-      rec.reasoning = r.reasoning
-    }
-    if (r.runtime && typeof r.runtime === 'object') {
-      rec.runtime = r.runtime
-    }
-    return rec
-  })
-  let active = turn.activeReceiveIndex
-  if (receives.length === 0) {
-    return {
-      turnOrdinal: turn.turnOrdinal,
-      userText: getTurnUserText(turn),
-      receives: [],
-      activeReceiveIndex: 0,
-    }
-  }
-  active = Math.min(Math.max(0, active), receives.length - 1)
-  return {
-    turnOrdinal: turn.turnOrdinal,
-    userText: getTurnUserText(turn),
-    receives,
-    activeReceiveIndex: active,
-  }
-}
 
-export function turnContentPatchChanged(
-  before: TurnContentPatchInput,
-  after: TurnContentPatchInput,
-): boolean {
-  if (before.userText !== after.userText) return true
-  if (before.receives.length !== after.receives.length) return true
-  for (let i = 0; i < before.receives.length; i++) {
-    const a = before.receives[i]
-    const b = after.receives[i]
-    if (!a || !b) return true
-    if (a.id !== b.id || a.content !== b.content) return true
-    if ((a.reasoning ?? '') !== (b.reasoning ?? '')) return true
-  }
-  return false
-}
+export { turnContentPatchChanged, turnRecordToContentPatch } from './turn-patch-body.js'
 
 export async function runConversationRegexBatchApply(
   conversationId: string,
@@ -167,13 +124,20 @@ export async function runConversationRegexBatchApply(
     return { ok: true, result: base }
   }
 
-  const batch = await batchUpdateConversationTurns(conversationId, patches)
+  let totalOk = 0
+  const allFailed: { turnOrdinal: number; error: string }[] = []
+  for (let i = 0; i < patches.length; i += CONVERSATION_BATCH_MAX_TURNS) {
+    const slice = patches.slice(i, i + CONVERSATION_BATCH_MAX_TURNS)
+    const batch = await batchUpdateConversationTurns(conversationId, slice)
+    totalOk += batch.ok
+    allFailed.push(...batch.failed)
+  }
   return {
     ok: true,
     result: {
       ...base,
-      ok: batch.ok,
-      failed: batch.failed,
+      ok: totalOk,
+      failed: allFailed,
     },
   }
 }

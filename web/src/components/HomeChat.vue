@@ -30,6 +30,10 @@ const emit = defineEmits<{
 }>()
 
 const session = useChatSession(props)
+
+defineExpose({
+  reloadTurns: () => session.loadMessages(),
+})
 const pluginHost = usePluginHost(session)
 provide(PLUGIN_HOST_KEY, pluginHost)
 

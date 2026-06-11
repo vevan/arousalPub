@@ -35,6 +35,8 @@
 | [`12`](12-plugin-plot-summary.md) | ✅ v1.6+ | Historian / plot-summary |
 | [`14`](14-st-macros-porting.md) | 备忘 | ST 宏扩展可行性 |
 | [`26`](26-st-macros-compatibility.md) | ✅ Phase A | **ST ↔ 本地宏兼容对照表** |
+| [`27`](27-embedded-character-book.md) | 定案 P2 | 角色卡内嵌 `character_book` 组装与 UI |
+| [`28`](28-authors-note-layers.md) | ✅ Phase 1 | 作者注：default seed / 会话 / 角色 AN（Phase 2） |
 | [`15`](15-conversation-messages-lazy-load.md) | 部分 | 消息 UI 懒加载（服务端原语 ✅） |
 | [`17`](17-admin-console.md) | ✅ | 本机运维台、DEK 轮换 |
 | [`18`](18-plugin-host-developer-api.md) | ✅ | 插件 API 表 |

@@ -13,12 +13,17 @@
 - [ ] **独立文档 RAG**（≠ 世界书 vector）— 可选；前置 `DOC/20` M1+M4
 - [ ] RAG 参数面板、会话/角色批量导入导出、备份示例脚本
 
-## P2 / P3
+## P2
 
+- [ ] **作者注分层** `DOC/28` — Phase 2 角色 AN + `{{charAuthorsNote}}`（Phase 1 全局 default ✅）
+- [ ] **角色卡内嵌世界书** `DOC/27` — Phase 1 组装（constant + keyword、`position`、叠加内嵌优先）；Phase 2 角色库查看 / 编辑 UI
 - [ ] 插件实例与 API 绑定、插件审计、fallback 策略（部分 host API 见 `DOC/10`）
 - [ ] **用户文件库** `DOC/20` M1–M5
+
+## P3
+
 - [ ] ST 宏扩展备忘 `DOC/14`；Embedding MRL / Reranker / Qwen instruct（低优先级）
 
 ## 文档
 
-- [ ] 架构/接口变更时同步 `DOC/01`–`03`（本次 2026-06-10 已做索引压缩）
+- [ ] 架构/接口变更时同步 `DOC/01`–`03`（2026-06-10：内嵌世界书 `DOC/27`、作者注分层 `DOC/28`）

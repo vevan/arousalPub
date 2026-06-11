@@ -1,4 +1,4 @@
-import { authorsNoteMacroText } from './authors-note-settings.js'
+import { authorsNoteMacroText, defaultAuthorsNoteMacroText } from './authors-note-settings.js'
 import { readCharacterDocument } from './character-storage.js'
 import { readApiSettingsFromFile } from './api-settings-file.js'
 import {
@@ -53,6 +53,14 @@ export async function runPluginMacroExpand(
   let conversationUserName: string | null | undefined
   let characters: MacroContextCharacterInput[] = []
   let authorsNote: string | undefined
+  let defaultAuthorsNote: string | undefined
+
+  const { readGlobalDefaultAuthorsNote } = await import(
+    './user-preferences-file.js'
+  )
+  defaultAuthorsNote = defaultAuthorsNoteMacroText(
+    await readGlobalDefaultAuthorsNote(),
+  )
 
   const convId =
     typeof req.conversationId === 'string' ? req.conversationId.trim() : ''
@@ -96,6 +104,7 @@ export async function runPluginMacroExpand(
     contextLength,
     maxResponseTokens,
     authorsNote,
+    defaultAuthorsNote,
     locale: req.locale,
   })
 

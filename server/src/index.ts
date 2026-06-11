@@ -16,7 +16,7 @@ import {
   resolveConversationChatCall,
   resolvedParamsToChatBodyFields,
 } from './conversation-api-resolve.js'
-import { parseAuthorsNotePatch } from './authors-note-settings.js'
+import { parseAuthorsNotePatch, parseDefaultAuthorsNotePatch } from './authors-note-settings.js'
 import {
   readAllTurns,
   readTurnsInOrdinalRange,
@@ -94,6 +94,7 @@ import {
   updateGlobalBudgetTrimSettings,
   updateGlobalEmbeddingApiSettings,
   updateGlobalChunkSettings,
+  updateGlobalDefaultAuthorsNote,
 } from './user-preferences-file.js'
 import { parseBudgetTrimSettingsPatch } from './budget-trim-settings.js'
 import { normalizeEmbeddingDimensions, normalizeEmbeddingApiSettings } from './embedding-api-settings.js'
@@ -1713,6 +1714,12 @@ interface PatchUserPreferencesBody {
   chunk?: {
     turnsPerFile?: number
   }
+  defaultAuthorsNote?: {
+    content?: string
+    injectionDepth?: number
+    role?: 'system' | 'user'
+    enabledForNewChats?: boolean
+  } | null
 }
 
 app.patch<{ Body: PatchUserPreferencesBody }>(
@@ -1725,7 +1732,19 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
     const hasBudgetTrim = b.budgetTrim && typeof b.budgetTrim === 'object'
     const hasEmbed = b.embeddingApi && typeof b.embeddingApi === 'object'
     const hasChunk = b.chunk && typeof b.chunk === 'object'
-    if (!hasLore && !hasHist && !hasMem && !hasBudgetTrim && !hasEmbed && !hasChunk) {
+    const hasDefaultAuthorsNote = Object.prototype.hasOwnProperty.call(
+      b,
+      'defaultAuthorsNote',
+    )
+    if (
+      !hasLore &&
+      !hasHist &&
+      !hasMem &&
+      !hasBudgetTrim &&
+      !hasEmbed &&
+      !hasChunk &&
+      !hasDefaultAuthorsNote
+    ) {
       return reply.status(400).send({
         error: ApiErrorCodes.user_preferences_requires_section,
       })
@@ -1737,6 +1756,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
       let budgetTrim
       let embeddingApi
       let chunk
+      let defaultAuthorsNote
       if (hasLore) {
         const patch: {
           recursiveEnabled?: boolean
@@ -1926,6 +1946,16 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         }
         chunk = await updateGlobalChunkSettings({ turnsPerFile: d })
       }
+      if (hasDefaultAuthorsNote) {
+        const parsed = parseDefaultAuthorsNotePatch(b.defaultAuthorsNote)
+        if (!parsed.ok) {
+          const code = parsed.error as keyof typeof ApiErrorCodes
+          return reply
+            .status(400)
+            .send({ error: ApiErrorCodes[code] ?? ApiErrorCodes.default_authors_note_invalid })
+        }
+        defaultAuthorsNote = await updateGlobalDefaultAuthorsNote(parsed.patch)
+      }
       const doc = await readUserPreferencesDocument()
       const embeddingPublic = embeddingApi
         ? await sanitizeEmbeddingApiForGet(embeddingApi)
@@ -1940,6 +1970,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         budgetTrim: budgetTrim ?? doc.budgetTrim,
         embeddingApi: embeddingPublic,
         chunk: chunk ?? doc.chunk,
+        defaultAuthorsNote: defaultAuthorsNote ?? doc.defaultAuthorsNote,
         savedAt: doc.savedAt,
       }
     } catch (e) {

@@ -130,7 +130,8 @@
 | `{{hasExtension::name}}` | ⏳ | |
 | `{{original}}` `{{notChar}}` | ⏳ | 待产品语义 |
 | `{{isMobile}}` | ⏳ | 可选 |
-| `{{charAuthorsNote}}` `{{defaultAuthorsNote}}` | ⏳ | 当前仅会话级 `{{authorsNote}}` |
+| `{{defaultAuthorsNote}}` | ✅ | **`DOC/28`**：全局模板正文；新会话 seed，不 runtime 覆盖 |
+| `{{charAuthorsNote}}` | ⏳ | **`DOC/28` Phase 2**：角色模板 |
 
 ---
 

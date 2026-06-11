@@ -171,6 +171,10 @@ export function resolveAuthorsNote(ctx: PromptMacroContext): string {
   return ctx.authorsNote ?? ''
 }
 
+export function resolveDefaultAuthorsNote(ctx: PromptMacroContext): string {
+  return ctx.defaultAuthorsNote ?? ''
+}
+
 export function rollDiceSpec(spec: string): string {
   const m = spec.trim().match(/^(\d+)d(\d+)(?:([+-])(\d+))?$/i)
   if (!m) return ''
@@ -221,6 +225,7 @@ export const KNOWN_MACRO_HEADS = new Set([
   'random',
   'roll',
   'authorsnote',
+  'defaultauthorsnote',
   'description',
   'personality',
   'scenario',

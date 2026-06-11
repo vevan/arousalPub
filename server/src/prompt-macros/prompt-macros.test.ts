@@ -160,4 +160,13 @@ describe('Phase A macros', () => {
       '示例对话 系统提示',
     )
   })
+
+  it('expands {{defaultAuthorsNote}} separately from {{authorsNote}}', () => {
+    clearMacroTemplateCache()
+    const out = applyPromptMacroPipeline(
+      '{{authorsNote}}|{{defaultAuthorsNote}}',
+      ctx({ defaultAuthorsNote: '全局默认模板' }),
+    )
+    assert.equal(out, '作者注正文|全局默认模板')
+  })
 })

@@ -38,6 +38,11 @@ import {
   normalizeChunkSettings,
   type ChunkSettings,
 } from '@/utils/chunk-settings'
+import {
+  DEFAULT_AUTHORS_NOTE_TEMPLATE,
+  normalizeDefaultAuthorsNoteTemplate,
+  type DefaultAuthorsNoteTemplate,
+} from '@/utils/authors-note-settings'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useApiKeysStore } from '@/stores/apiKeys'
@@ -291,6 +296,9 @@ export const usePreferencesStore = defineStore('preferences', () => {
   const chatFontSizeRem = ref(readStoredChatFontSizeRem())
   const composerEnterMode = ref(readStoredComposerEnterMode())
   const chunkTurnsPerFile = ref(readStoredChunkTurnsPerFile())
+  const defaultAuthorsNote = ref<DefaultAuthorsNoteTemplate>({
+    ...DEFAULT_AUTHORS_NOTE_TEMPLATE,
+  })
   const userPreferencesLoaded = ref(false)
   let lorebookPatchInFlight = false
   let historyPatchInFlight = false
@@ -298,6 +306,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
   let budgetTrimPatchInFlight = false
   let embeddingPatchInFlight = false
   let chunkPatchInFlight = false
+  let defaultAuthorsNotePatchInFlight = false
   let budgetTrimLastSynced = cloneBudgetTrimSettings(
     budgetTrimSettings.value,
   )
@@ -497,6 +506,30 @@ export const usePreferencesStore = defineStore('preferences', () => {
       embeddingPatchInFlight = true
       applyEmbeddingFromServer(j.embeddingApi)
       embeddingPatchInFlight = false
+    }
+  }
+
+  async function patchGlobalDefaultAuthorsNoteToServer(
+    patch: Partial<DefaultAuthorsNoteTemplate>,
+  ): Promise<void> {
+    const res = await fetch('/api/user-preferences', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defaultAuthorsNote: patch }),
+    })
+    if (!res.ok) {
+      const txt = await res.text()
+      throw new Error(txt.slice(0, 200))
+    }
+    const j = (await res.json()) as {
+      defaultAuthorsNote?: Partial<DefaultAuthorsNoteTemplate>
+    }
+    if (j.defaultAuthorsNote) {
+      defaultAuthorsNotePatchInFlight = true
+      defaultAuthorsNote.value = normalizeDefaultAuthorsNoteTemplate(
+        j.defaultAuthorsNote,
+      )
+      defaultAuthorsNotePatchInFlight = false
     }
   }
 
@@ -794,6 +827,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
           budgetTrim?: Partial<BudgetTrimSettings>
           embeddingApi?: Partial<EmbeddingApiSettings>
           chunk?: Partial<ChunkSettings>
+          defaultAuthorsNote?: Partial<DefaultAuthorsNoteTemplate>
         }
         lorebookPatchInFlight = true
         historyPatchInFlight = true
@@ -801,6 +835,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
         embeddingPatchInFlight = true
         chunkPatchInFlight = true
         budgetTrimPatchInFlight = true
+        defaultAuthorsNotePatchInFlight = true
         const lore = normalizeLorebookSettings(doc.lorebook)
         lorebookRecursiveEnabled.value = lore.recursiveEnabled
         lorebookMaxRecursionDepth.value = lore.maxRecursionDepth
@@ -821,6 +856,9 @@ export const usePreferencesStore = defineStore('preferences', () => {
         const chunk = normalizeChunkSettings(doc.chunk)
         chunkTurnsPerFile.value = chunk.turnsPerFile
         persistChunkLocal(chunk.turnsPerFile)
+        defaultAuthorsNote.value = normalizeDefaultAuthorsNoteTemplate(
+          doc.defaultAuthorsNote,
+        )
       } catch {
         /* 使用 localStorage 缓存 */
       } finally {
@@ -830,6 +868,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
         budgetTrimPatchInFlight = false
         embeddingPatchInFlight = false
         chunkPatchInFlight = false
+        defaultAuthorsNotePatchInFlight = false
         userPreferencesLoaded.value = true
         loadPrefsInflight = null
       }
@@ -963,6 +1002,8 @@ export const usePreferencesStore = defineStore('preferences', () => {
     composerEnterMode,
     chunkTurnsPerFile,
     setChunkTurnsPerFile,
+    defaultAuthorsNote,
+    patchGlobalDefaultAuthorsNoteToServer,
     userPreferencesLoaded,
     resetUserPreferencesLoadState,
     loadUserPreferencesFromServer,

@@ -6,6 +6,7 @@ import {
   formatTimeWithUtcOffset,
   pickRandomArg,
   resolveAuthorsNote,
+  resolveDefaultAuthorsNote,
   resolveCharName,
   resolveContextLength,
   resolveInput,
@@ -101,6 +102,7 @@ registerSimple('roll', (_ctx, args) => {
 })
 
 registerSimple('authorsnote', (ctx) => resolveAuthorsNote(ctx))
+registerSimple('defaultauthorsnote', (ctx) => resolveDefaultAuthorsNote(ctx))
 
 registerSimple('description', (ctx) =>
   resolvePrimaryField(ctx, (f) => f.description),

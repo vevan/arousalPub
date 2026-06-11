@@ -13,6 +13,7 @@ import { applyMacrosToMessages } from './prompt-macros/index.js'
 import {
   authorsNoteForInjection,
   authorsNoteMacroText,
+  defaultAuthorsNoteMacroText,
 } from './authors-note-settings.js'
 import { cardRecordToCharXmlBlock, cardRecordToUserXmlBlock } from './prompt-xml.js'
 import {
@@ -40,6 +41,7 @@ import { buildScanText } from './lore-scan.js'
 import { runMemoryPipeline } from './memory-pipeline.js'
 import {
   readGlobalBudgetTrimSettings,
+  readGlobalDefaultAuthorsNote,
   readGlobalHistorySettings,
   readGlobalLorebookSettings,
   readGlobalMemorySettings,
@@ -321,6 +323,8 @@ export async function buildConversationOutboundMessages(
 
   const trigger = normalizeTrigger(params.promptTrigger)
 
+  const globalDefaultAuthorsNote = await readGlobalDefaultAuthorsNote()
+
   const macroContext = buildPromptMacroContext({
     conversationUserName: idx.userName,
     characters,
@@ -333,6 +337,7 @@ export async function buildConversationOutboundMessages(
     userInput,
     promptTrigger: trigger,
     authorsNote: authorsNoteMacroText(idx.authorsNote),
+    defaultAuthorsNote: defaultAuthorsNoteMacroText(globalDefaultAuthorsNote),
   })
 
   const authorsNote = authorsNoteForInjection(idx.authorsNote)

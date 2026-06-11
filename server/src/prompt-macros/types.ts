@@ -23,4 +23,6 @@ export interface PromptMacroContext {
   locale: string
   /** 宏 `{{authorsNote}}`：已启用作者注正文，否则空串 */
   authorsNote?: string
+  /** 宏 `{{defaultAuthorsNote}}`：全局默认模板正文 */
+  defaultAuthorsNote?: string
 }

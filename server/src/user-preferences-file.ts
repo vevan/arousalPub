@@ -35,6 +35,12 @@ import {
   type BudgetTrimSettingsOverride,
 } from './budget-trim-settings.js'
 import {
+  DEFAULT_AUTHORS_NOTE_TEMPLATE,
+  normalizeDefaultAuthorsNoteTemplate,
+  type DefaultAuthorsNotePatch,
+  type DefaultAuthorsNoteTemplate,
+} from './authors-note-settings.js'
+import {
   resolveSecretFromDisk,
   secretToDiskFields,
   type EncryptedSecretV1,
@@ -54,6 +60,7 @@ export interface UserPreferencesDocument {
   budgetTrim?: Partial<BudgetTrimSettings>
   embeddingApi?: Partial<EmbeddingApiSettings>
   chunk?: Partial<ChunkSettings>
+  defaultAuthorsNote?: DefaultAuthorsNoteTemplate
 }
 
 type EmbeddingApiSettingsDisk = Partial<EmbeddingApiSettings> & {
@@ -69,6 +76,7 @@ interface UserPreferencesDocumentDisk {
   budgetTrim?: Partial<BudgetTrimSettings>
   embeddingApi?: EmbeddingApiSettingsDisk
   chunk?: Partial<ChunkSettings>
+  defaultAuthorsNote?: DefaultAuthorsNoteTemplate
 }
 
 function aadForEmbeddingApiKey(userId: string): string {
@@ -117,6 +125,7 @@ function preferencesToDisk(
     budgetTrim: doc.budgetTrim,
     embeddingApi: embeddingApiToDisk(doc.embeddingApi, userId),
     chunk: doc.chunk,
+    defaultAuthorsNote: doc.defaultAuthorsNote,
   }
 }
 
@@ -183,6 +192,12 @@ export async function readGlobalChunkSettings(): Promise<ChunkSettings> {
   return normalizeChunkSettings(doc.chunk)
 }
 
+export async function readGlobalDefaultAuthorsNote(): Promise<DefaultAuthorsNoteTemplate> {
+  const doc = await readPreferencesFileRaw()
+  if (!doc?.defaultAuthorsNote) return { ...DEFAULT_AUTHORS_NOTE_TEMPLATE }
+  return normalizeDefaultAuthorsNoteTemplate(doc.defaultAuthorsNote)
+}
+
 export async function readUserPreferencesDocument(): Promise<UserPreferencesDocument> {
   const doc = await readPreferencesFileRaw()
   const lorebook = normalizeLorebookSettings(doc?.lorebook)
@@ -191,6 +206,9 @@ export async function readUserPreferencesDocument(): Promise<UserPreferencesDocu
   const budgetTrim = normalizeBudgetTrimSettings(doc?.budgetTrim)
   const embeddingApi = await readGlobalEmbeddingApiSettings()
   const chunk = normalizeChunkSettings(doc?.chunk)
+  const defaultAuthorsNote = normalizeDefaultAuthorsNoteTemplate(
+    doc?.defaultAuthorsNote,
+  )
   return {
     version: 1,
     savedAt:
@@ -201,13 +219,20 @@ export async function readUserPreferencesDocument(): Promise<UserPreferencesDocu
     budgetTrim,
     embeddingApi,
     chunk,
+    defaultAuthorsNote,
   }
 }
 
 async function writeUserPreferencesDocument(
   partial: Pick<
     UserPreferencesDocument,
-    'lorebook' | 'history' | 'memory' | 'budgetTrim' | 'embeddingApi' | 'chunk'
+    | 'lorebook'
+    | 'history'
+    | 'memory'
+    | 'budgetTrim'
+    | 'embeddingApi'
+    | 'chunk'
+    | 'defaultAuthorsNote'
   >,
 ): Promise<UserPreferencesDocument> {
   const prev = await readUserPreferencesDocument()
@@ -220,6 +245,7 @@ async function writeUserPreferencesDocument(
     budgetTrim: partial.budgetTrim ?? prev.budgetTrim,
     embeddingApi: partial.embeddingApi ?? prev.embeddingApi,
     chunk: partial.chunk ?? prev.chunk,
+    defaultAuthorsNote: partial.defaultAuthorsNote ?? prev.defaultAuthorsNote,
   }
   await mkdir(getUserDataDir(getCurrentUserId()), { recursive: true })
   const userId = getCurrentUserId()
@@ -244,6 +270,7 @@ export async function updateGlobalLorebookSettings(
     budgetTrim: prev.budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
+    defaultAuthorsNote: prev.defaultAuthorsNote,
   })
   return lorebook
 }
@@ -263,6 +290,7 @@ export async function updateGlobalHistorySettings(
     budgetTrim: prev.budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
+    defaultAuthorsNote: prev.defaultAuthorsNote,
   })
   return history
 }
@@ -282,6 +310,7 @@ export async function updateGlobalMemorySettings(
     budgetTrim: prev.budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
+    defaultAuthorsNote: prev.defaultAuthorsNote,
   })
   return memory
 }
@@ -307,6 +336,7 @@ export async function updateGlobalBudgetTrimSettings(
     budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
+    defaultAuthorsNote: prev.defaultAuthorsNote,
   })
   return budgetTrim
 }
@@ -328,6 +358,7 @@ export async function updateGlobalEmbeddingApiSettings(
     budgetTrim: prev.budgetTrim,
     embeddingApi,
     chunk: prev.chunk,
+    defaultAuthorsNote: prev.defaultAuthorsNote,
   })
   return embeddingApi
 }
@@ -349,4 +380,27 @@ export async function updateGlobalChunkSettings(
     chunk,
   })
   return chunk
+}
+
+export async function updateGlobalDefaultAuthorsNote(
+  patch: DefaultAuthorsNotePatch | null,
+): Promise<DefaultAuthorsNoteTemplate> {
+  const prev = await readUserPreferencesDocument()
+  const defaultAuthorsNote =
+    patch === null
+      ? { ...DEFAULT_AUTHORS_NOTE_TEMPLATE }
+      : normalizeDefaultAuthorsNoteTemplate({
+          ...prev.defaultAuthorsNote,
+          ...patch,
+        })
+  await writeUserPreferencesDocument({
+    lorebook: prev.lorebook,
+    history: prev.history,
+    memory: prev.memory,
+    budgetTrim: prev.budgetTrim,
+    embeddingApi: prev.embeddingApi,
+    chunk: prev.chunk,
+    defaultAuthorsNote,
+  })
+  return defaultAuthorsNote
 }

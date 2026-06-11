@@ -23,6 +23,7 @@ export function buildPromptMacroContext(params: {
   now?: Date
   locale?: string | null
   authorsNote?: string | null
+  defaultAuthorsNote?: string | null
 }): PromptMacroContext {
   const raw = params.conversationUserName
   const userName =
@@ -65,6 +66,11 @@ export function buildPromptMacroContext(params: {
     typeof authorsNoteRaw === 'string' && authorsNoteRaw.trim()
       ? authorsNoteRaw
       : undefined
+  const defaultAuthorsNoteRaw = params.defaultAuthorsNote
+  const defaultAuthorsNote =
+    typeof defaultAuthorsNoteRaw === 'string' && defaultAuthorsNoteRaw.trim()
+      ? defaultAuthorsNoteRaw
+      : undefined
   const primaryCharacter =
     params.primaryCharacter ?? characters[0]?.macroFields ?? undefined
   const userPersona =
@@ -82,5 +88,6 @@ export function buildPromptMacroContext(params: {
     now: params.now ?? new Date(),
     locale,
     authorsNote,
+    defaultAuthorsNote,
   }
 }

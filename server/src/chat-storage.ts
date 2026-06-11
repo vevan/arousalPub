@@ -3,6 +3,7 @@ import { mergeTurnPluginEntry } from './turn-plugin-utils.js'
 import type { TurnPluginEntry } from './plugin-types.js'
 import {
   mergeAuthorsNote,
+  seedAuthorsNoteFromTemplate,
   type AuthorsNotePatch,
   type AuthorsNoteSettings,
 } from './authors-note-settings.js'
@@ -63,9 +64,11 @@ import {
 import { readApiSettingsFromFile } from './api-settings-file.js'
 import {
   readGlobalBudgetTrimSettings,
+  readGlobalDefaultAuthorsNote,
   readGlobalHistorySettings,
   readGlobalLorebookSettings,
   readGlobalMemorySettings,
+  readGlobalChunkSettings,
 } from './user-preferences-file.js'
 import {
   isConversationMemoryEmbedActive,
@@ -85,7 +88,6 @@ import {
   CONVERSATION_BATCH_MAX_TURNS,
   type TurnContentPatchInput,
 } from './turn-patch-body.js'
-import { readGlobalChunkSettings } from './user-preferences-file.js'
 
 function finalizeAuditPersistDiskMs(
   snapshot: ChatAuditSnapshotInput | undefined,
@@ -1461,6 +1463,11 @@ export async function createConversationStub(
     backupSettings: { everyNRounds: 0, maxKeptBackups: 0 },
     branches: [],
     promptDebug: { maxStored: DEFAULT_PROMPT_DEBUG_MAX },
+  }
+  const defaultTemplate = await readGlobalDefaultAuthorsNote()
+  const seededAuthorsNote = seedAuthorsNoteFromTemplate(defaultTemplate)
+  if (seededAuthorsNote) {
+    idx.authorsNote = seededAuthorsNote
   }
   await writeConversationIndex(conversationId, idx)
   await upsertChatListEntry(chatListEntryFromIndex(idx), idx)

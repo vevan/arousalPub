@@ -2,7 +2,7 @@
 
 > **状态**：随 `macro-engine` 分支维护；**Phase A 已实现**（2026-06）。  
 > **目的**：对照 [SillyTavern Macros](https://docs.sillytavern.app/usage/core-concepts/macros/) 列出「已兼容 / 部分兼容 / 未实现 / 不对齐」清单，便于迁移预设、角色卡与世界书。  
-> **实现**：`server/src/prompt-macros/`（Handlebars 引擎）；可行性分级见 **`DOC/14-st-macros-porting.md`**；运行时原则见 **`DOC/03-实现细节.md` §15**。
+> **实现**：`server/src/prompt-macros/`（默认 **legacy** Handlebars 引擎；可选 **CST** 见 **`DOC/29-cst-macros-compatibility.md`**）；可行性分级见 **`DOC/14-st-macros-porting.md`**；运行时原则见 **`DOC/03-实现细节.md` §15**。
 
 ---
 

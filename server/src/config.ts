@@ -24,6 +24,9 @@ const CONFIG_EXAMPLE_PATH = path.join(REPO_ROOT, 'config.example.json')
 
 export type UpstreamUrlPolicy = 'open' | 'public-only'
 
+/** 提示词宏展开引擎：`legacy`=Handlebars 管线；`cst`=Lexer/Parser/Walker（开发中） */
+export type MacroEngineId = 'legacy' | 'cst'
+
 interface RawConfig {
   dataDir?: string
   serverPort?: number | string
@@ -33,6 +36,7 @@ interface RawConfig {
   allowPublicRegister?: boolean
   corsOrigins?: string[]
   upstreamUrlPolicy?: string
+  macroEngine?: string
   backupEnabled?: boolean
   backupIntervalDays?: number | string
   backupMaxKept?: number | string
@@ -149,6 +153,24 @@ export function resolveUpstreamUrlPolicy(): UpstreamUrlPolicy {
     : ''
   if (p === 'public-only') return 'public-only'
   return 'open'
+}
+
+function parseMacroEngineId(raw: string | undefined): MacroEngineId | undefined {
+  const v = raw?.trim().toLowerCase()
+  if (v === 'cst' || v === 'legacy') return v
+  return undefined
+}
+
+/** 宏引擎：环境变量 MACRO_ENGINE > config.json macroEngine > legacy */
+export function resolveMacroEngine(): MacroEngineId {
+  const fromEnv = parseMacroEngineId(process.env.MACRO_ENGINE)
+  if (fromEnv) return fromEnv
+  const cfg = readConfigFile()
+  const fromCfg = parseMacroEngineId(
+    typeof cfg.macroEngine === 'string' ? cfg.macroEngine : undefined,
+  )
+  if (fromCfg) return fromCfg
+  return 'legacy'
 }
 
 export function readConfigFile(): RawConfig {

@@ -236,7 +236,7 @@ handlebars.registerHelper('stIf', function (condition, options) {
   const opts = options as Handlebars.HelperOptions
   const ctx = macroContext(opts)
   const cond = String(condition ?? '')
-  const renderSnippet = (snippet: string) => renderPromptMacros(snippet, ctx)
+  const renderSnippet = (snippet: string) => renderPromptMacrosLegacy(snippet, ctx)
   if (evaluateStCondition(cond, ctx, renderSnippet)) {
     return opts.fn(ctx)
   }
@@ -306,7 +306,7 @@ function renderMacroTagInner(inner: string, ctx: PromptMacroContext): string {
   }
 }
 
-export function renderPromptMacros(
+export function renderPromptMacrosLegacy(
   text: string,
   ctx: PromptMacroContext,
 ): string {

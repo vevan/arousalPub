@@ -1,4 +1,4 @@
-import { renderPromptMacros } from './handlebars-engine.js'
+import { renderPromptMacros } from './engine.js'
 import type { PromptMacroContext } from './types.js'
 
 const MACRO_HINT = /\{\{|<(?:USER|BOT|CHAR)>|\\\{|\\\}/i

@@ -340,4 +340,44 @@ describe('applyPromptMacroPipeline (CST)', () => {
     const c = ctx({ macroLocalVars: { mood: 'happy' } })
     assert.equal(applyPromptMacroPipeline('{{.mood}}', c), 'happy')
   })
+
+  it('expands D2 addvar and comparison if', () => {
+    const c = ctx({ macroLocalVars: { tier: 'a', effort: 'Low' } })
+    applyPromptMacroPipeline('{{addvar::tier::b}}', c)
+    assert.equal(c.macroLocalVars?.tier, 'ab')
+    assert.equal(
+      applyPromptMacroPipeline(
+        '{{#if {{.effort != High}}}}ok{{/if}}',
+        c,
+      ),
+      'ok',
+    )
+  })
+})
+
+describe('Phase D2 macros (legacy)', () => {
+  useLegacyMacroEngine()
+
+  it('supports addvar and comparison if', () => {
+    clearMacroTemplateCache()
+    const c = ctx({ macroLocalVars: { t0: 'Tier:\n' } })
+    applyPromptMacroPipeline('{{addvar::t0::- [ ] X\n}}', c)
+    assert.equal(c.macroLocalVars?.t0, 'Tier:\n- [ ] X\n')
+    const c2 = ctx({ macroLocalVars: { reasoningeffort: 'High' } })
+    assert.equal(
+      applyPromptMacroPipeline(
+        '{{#if {{.reasoningeffort == High}}}}H{{/if}}',
+        c2,
+      ),
+      'H',
+    )
+  })
+
+  it('supports no-arg trim', () => {
+    clearMacroTemplateCache()
+    assert.equal(
+      applyPromptMacroPipeline('{{char}}   {{trim}}', ctx()),
+      '艾拉',
+    )
+  })
 })

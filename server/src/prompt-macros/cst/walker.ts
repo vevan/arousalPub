@@ -2,9 +2,14 @@ import { evaluateStCondition } from '../macro-condition.js'
 import { trimScopedBlockContent } from '../macro-truthy.js'
 import { restoreMacroEscapes } from '../preprocess-escape.js'
 import type { PromptMacroContext } from '../types.js'
+import type { ParsedMacroTag } from '../macro-tag-parse.js'
 import { invokeCstMacro, invokeCstScopedMacro } from './macro-registry.js'
 import type { CstDocument, CstNode } from './nodes.js'
 import { parseMacroDocument } from './parser.js'
+
+function isNoArgTrimTag(tag: ParsedMacroTag): boolean {
+  return tag.name === 'trim' && !tag.raw.includes('::') && !tag.args.trim()
+}
 
 export function walkCstDocument(
   doc: CstDocument,
@@ -19,6 +24,10 @@ function walkCstNodes(nodes: CstNode[], ctx: PromptMacroContext): string {
 
   let out = ''
   for (const node of nodes) {
+    if (node.kind === 'macro' && isNoArgTrimTag(node.tag)) {
+      out = out.trimEnd()
+      continue
+    }
     out += walkCstNode(node, ctx, renderNested)
   }
   return out

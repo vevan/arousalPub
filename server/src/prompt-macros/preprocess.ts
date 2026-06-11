@@ -1,3 +1,4 @@
+import { splitColonMacroBody } from './macro-tag-parse.js'
 import {
   COLON_MACRO_HEADS,
   KNOWN_MACRO_HEADS,
@@ -19,20 +20,25 @@ export function preprocessLegacyAngleTags(text: string): string {
 }
 
 function escapeHbString(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+  return `"${value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t')}"`
 }
 
 /** ST `{{macro::a::b}}` → `{{macro "a" "b"}}` */
 export function preprocessStColonMacros(text: string): string {
   if (!text.includes('::') || !text.includes('{{')) return text
   return text.replace(/\{\{([^}]+)\}\}/g, (match, inner: string) => {
-    const raw = inner.trim()
+    const raw = inner.trimStart()
     if (!raw.includes('::')) return match
-    const parts = raw.split('::').map((s) => s.trim())
-    if (parts.some((p) => p.includes('{{'))) return match
-    const head = normalizeMacroHead(parts[0]!)
+    const colon = splitColonMacroBody(raw)
+    if (colon.args.includes('{{')) return match
+    const head = normalizeMacroHead(colon.name)
     if (!COLON_MACRO_HEADS.has(head)) return match
-    const args = parts.slice(1)
+    const args = colon.args ? colon.args.split('::') : []
     if (args.length === 0) {
       if (head === 'space' || head === 'newline') return `{{${head} 1}}`
       return `{{${head}}}`

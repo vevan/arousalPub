@@ -2,7 +2,8 @@ import { findNextMacroTag, parseMacroTagInner } from '../macro-tag-parse.js'
 import { findBalancedMacroClose } from './lexer.js'
 
 export function extractIfCondition(inner: string): string {
-  const raw = inner.trim()
+  let raw = inner.trim()
+  if (raw.startsWith('#')) raw = raw.slice(1).trim()
   if (raw.includes('::')) {
     const parts = raw.split('::').map((s) => s.trim())
     if (parts[0]!.toLowerCase() === 'if') {

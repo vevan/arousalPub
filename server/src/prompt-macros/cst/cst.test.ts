@@ -110,4 +110,41 @@ describe('CST macro engine', () => {
     )
     assert.equal(out, 'line1\nline2')
   })
+
+  it('supports addvar append (D2)', () => {
+    const c = ctx({ macroLocalVars: { t1: 'head\n' } })
+    renderPromptMacrosCst('{{addvar::t1::- [ ] Item\n}}', c)
+    assert.equal(c.macroLocalVars?.t1, 'head\n- [ ] Item\n')
+  })
+
+  it('supports comparison if (D2)', () => {
+    const c = ctx({ macroLocalVars: { effort: 'Med' } })
+    assert.equal(
+      renderPromptMacrosCst(
+        '{{#if {{.effort == Med}}}}yes{{else}}no{{/if}}',
+        c,
+      ),
+      'yes',
+    )
+    assert.equal(
+      renderPromptMacrosCst(
+        '{{#if {{.effort == High}}}}yes{{else}}no{{/if}}',
+        c,
+      ),
+      'no',
+    )
+  })
+
+  it('supports no-arg trim (D2)', () => {
+    assert.equal(
+      renderPromptMacrosCst('hello   {{trim}}', ctx()),
+      'hello',
+    )
+  })
+
+  it('supports # preserveWhitespace on scoped blocks (D2)', () => {
+    const c = ctx()
+    renderPromptMacrosCst('{{#setvar note}}\nline\n{{/setvar}}', c)
+    assert.equal(c.macroLocalVars?.note, '\nline\n')
+  })
 })

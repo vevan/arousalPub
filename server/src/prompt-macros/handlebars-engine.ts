@@ -3,6 +3,7 @@ import { resolveCharFirstMessage } from './character-fields.js'
 import { evaluateStCondition } from './macro-condition.js'
 import { stablePickFromArgs } from './macro-pick.js'
 import {
+  appendLocalVar,
   getGlobalVar,
   getLocalVar,
   resolveHasGlobalVarMacro,
@@ -216,6 +217,15 @@ registerSimple('setvar', (ctx, args) => {
   if (name) setLocalVar(ctx, name, value)
   return ''
 })
+registerSimple('addvar', (ctx, args) => {
+  const name = args.length > 0 ? String(args[0]) : ''
+  const chunk =
+    args.length > 1
+      ? unescapeHbArg(args.slice(1).map((a) => String(a)).join('::'))
+      : ''
+  if (name) appendLocalVar(ctx, name, chunk)
+  return ''
+})
 registerSimple('hasvar', (ctx, args) =>
   resolveHasVarMacro(ctx, args.length > 0 ? String(args[0]) : ''),
 )
@@ -306,7 +316,11 @@ function renderMacroTagInner(inner: string, ctx: PromptMacroContext): string {
   }
 }
 
-export function renderPromptMacrosLegacy(
+function textHasNoArgTrim(text: string): boolean {
+  return /\{\{\s*trim\s*\}\}/i.test(text) && !/\{\{\s*trim\s*::/i.test(text)
+}
+
+function renderPromptMacrosLegacyOnce(
   text: string,
   ctx: PromptMacroContext,
 ): string {
@@ -326,4 +340,20 @@ export function renderPromptMacrosLegacy(
       replaceRenderFailMacroPlaceholders(normalized),
     )
   }
+}
+
+export function renderPromptMacrosLegacy(
+  text: string,
+  ctx: PromptMacroContext,
+): string {
+  if (!textHasNoArgTrim(text)) {
+    return renderPromptMacrosLegacyOnce(text, ctx)
+  }
+  const parts = text.split(/\{\{\s*trim\s*\}\}/i)
+  let out = ''
+  for (let i = 0; i < parts.length; i++) {
+    out += renderPromptMacrosLegacyOnce(parts[i]!, ctx)
+    if (i < parts.length - 1) out = out.trimEnd()
+  }
+  return out
 }

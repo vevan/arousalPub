@@ -1,20 +1,16 @@
-import { findNextMacroTag, parseMacroTagInner } from './macro-tag-parse.js'
+import { extractIfCondition } from './cst/block-parse.js'
+import {
+  findNextBalancedMacroTag,
+  parseMacroTagInner,
+} from './macro-tag-parse.js'
 
 function escapeHbString(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
-}
-
-function extractIfCondition(inner: string): string {
-  const raw = inner.trim()
-  if (raw.includes('::')) {
-    const parts = raw.split('::').map((s) => s.trim())
-    if (parts[0]!.toLowerCase() === 'if') {
-      return parts.slice(1).join('::').trim()
-    }
-  }
-  const m = raw.match(/^!?if\s+([\s\S]+)$/i)
-  if (m) return m[1]!.trim()
-  return raw.replace(/^!?if\s*/i, '').trim()
+  return `"${value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t')}"`
 }
 
 function findIfBlockClose(
@@ -25,7 +21,7 @@ function findIfBlockClose(
   let cursor = from
   let elseStart: number | undefined
   while (cursor < text.length) {
-    const tag = findNextMacroTag(text, cursor)
+    const tag = findNextBalancedMacroTag(text, cursor)
     if (!tag) return null
     const parsed = parseMacroTagInner(tag.inner)
     if (parsed.isElse && depth === 1 && elseStart === undefined) {
@@ -52,7 +48,7 @@ export function preprocessStIfBlocks(text: string): string {
   let result = ''
   let cursor = 0
   while (cursor < text.length) {
-    const tag = findNextMacroTag(text, cursor)
+    const tag = findNextBalancedMacroTag(text, cursor)
     if (!tag) {
       result += text.slice(cursor)
       break
@@ -66,7 +62,7 @@ export function preprocessStIfBlocks(text: string): string {
         const cond = extractIfCondition(tag.inner)
         result += `{{#stIf ${escapeHbString(cond)}}}${thenBody}`
         if (close.elseStart !== undefined) {
-          const elseTag = findNextMacroTag(text, close.elseStart)
+          const elseTag = findNextBalancedMacroTag(text, close.elseStart)
           if (elseTag) {
             result += `{{else}}${text.slice(elseTag.end, close.closeStart)}`
           }

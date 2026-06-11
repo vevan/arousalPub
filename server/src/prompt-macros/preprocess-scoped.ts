@@ -62,9 +62,10 @@ export function preprocessStScopedBlocks(text: string): string {
     ) {
       const close = findMatchingClose(text, parsed.name, tag.end)
       if (close) {
-        const body = trimScopedBlockContent(
-          text.slice(tag.end, close.closeStart),
-        )
+        const rawBody = text.slice(tag.end, close.closeStart)
+        const body = parsed.preserveWhitespace
+          ? rawBody
+          : trimScopedBlockContent(rawBody)
         const arg = parsed.args.trim()
         const formatted = arg
           ? `${parsed.name} ${escapeHbString(arg)} ${escapeHbString(body)}`

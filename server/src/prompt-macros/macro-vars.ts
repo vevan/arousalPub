@@ -32,6 +32,17 @@ export function setLocalVar(ctx: PromptMacroContext, name: string, value: string
   ctx.macroVarsDirty = true
 }
 
+export function appendLocalVar(
+  ctx: PromptMacroContext,
+  name: string,
+  chunk: string,
+): void {
+  const key = normalizeVarName(name)
+  if (!key) return
+  const prev = getLocalVar(ctx, key)
+  setLocalVar(ctx, key, prev + chunk)
+}
+
 export function hasLocalVar(ctx: PromptMacroContext, name: string): boolean {
   const key = normalizeVarName(name)
   if (!key) return false

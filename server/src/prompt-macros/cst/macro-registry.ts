@@ -1,6 +1,7 @@
 import { resolveCharFirstMessage } from '../character-fields.js'
 import { stablePickFromArgs } from '../macro-pick.js'
 import {
+  appendLocalVar,
   getGlobalVar,
   getLocalVar,
   resolveHasGlobalVarMacro,
@@ -53,9 +54,8 @@ function repeatChar(ch: string, countRaw: string | undefined): string {
 }
 
 export function macroTagArgs(tag: ParsedMacroTag): string[] {
-  const raw = tag.raw.trim()
-  if (raw.includes('::')) {
-    return raw.split('::').map((s) => s.trim()).slice(1)
+  if (tag.args.includes('::')) {
+    return tag.args.split('::')
   }
   if (tag.args.trim()) {
     return tag.args.trim().split(/\s+/)
@@ -182,6 +182,12 @@ export function invokeCstMacro(
     if (varName) setLocalVar(ctx, varName, value)
     return ''
   }
+  if (name === 'addvar') {
+    const varName = args[0] ?? ''
+    const chunk = args.slice(1).join('::')
+    if (varName) appendLocalVar(ctx, varName, chunk)
+    return ''
+  }
   if (name === 'hasvar') {
     return resolveHasVarMacro(ctx, args[0] ?? '')
   }
@@ -212,7 +218,9 @@ export function invokeCstScopedMacro(
   bodyText: string,
   ctx: PromptMacroContext,
 ): string {
-  const trimmed = trimScopedBlockContent(bodyText)
+  const trimmed = tag.preserveWhitespace
+    ? bodyText
+    : trimScopedBlockContent(bodyText)
   const name = tag.name
   const varName = tag.args.trim().split(/\s+/)[0] ?? ''
 

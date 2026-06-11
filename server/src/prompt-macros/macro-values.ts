@@ -1,4 +1,8 @@
 import type { MacroCharacterFields } from './character-fields.js'
+import {
+  humanizeIdleDuration,
+  humanizeTimeDiff,
+} from './duration-humanize.js'
 import type { PromptMacroContext } from './types.js'
 
 const DEFAULT_CHAR_LABEL = '角色'
@@ -22,6 +26,9 @@ export const MACRO_HEAD_ALIASES: Record<string, string> = {
   datetimeformat: 'datetimeformat',
   isodate: 'isodate',
   isotime: 'isotime',
+  idleduration: 'idleduration',
+  idle_duration: 'idleduration',
+  timediff: 'timediff',
 }
 
 export function normalizeMacroHead(raw: string): string {
@@ -94,7 +101,7 @@ export function formatDatetimeParts(ctx: PromptMacroContext): {
   isotime: string
 } {
   const d = ctx.now
-  const locale = ctx.locale || 'zh-CN'
+  const locale = ctx.locale || 'en'
   const date = new Intl.DateTimeFormat(locale, {
     year: 'numeric',
     month: '2-digit',
@@ -126,7 +133,7 @@ function formatIsoTime(d: Date): string {
 
 export function formatDatetimePattern(ctx: PromptMacroContext, pattern: string): string {
   const d = ctx.now
-  const locale = ctx.locale || 'zh-CN'
+  const locale = ctx.locale || 'en'
   const parts = formatDatetimeParts(ctx)
   let out = pattern
   out = out.replace(/YYYY/g, String(d.getFullYear()))
@@ -211,6 +218,18 @@ export function resolveNotChar(ctx: PromptMacroContext): string {
   return ctx.notChar ?? ''
 }
 
+export function resolveIdleDuration(ctx: PromptMacroContext): string {
+  return humanizeIdleDuration(ctx.idleReferenceUserAt, ctx.now, ctx.locale)
+}
+
+export function resolveTimeDiff(
+  ctx: PromptMacroContext,
+  left: string,
+  right: string,
+): string {
+  return humanizeTimeDiff(left, right, ctx.locale)
+}
+
 export function resolveHasExtension(
   ctx: PromptMacroContext,
   name: string,
@@ -259,6 +278,8 @@ export const KNOWN_MACRO_HEADS = new Set([
   'isodate',
   'isotime',
   'datetimeformat',
+  'idleduration',
+  'timediff',
   'model',
   'maxprompt',
   'context',
@@ -312,6 +333,7 @@ export const COLON_MACRO_HEADS = new Set([
   'trim',
   'pick',
   'hasextension',
+  'timediff',
 ])
 
 export function macroTokenHead(inner: string): string {

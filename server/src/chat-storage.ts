@@ -269,6 +269,8 @@ export type TurnSendBlock =
 export interface TurnRecord {
   turnId: string
   turnOrdinal: number
+  /** 用户发消息 / 该轮落盘时刻（ISO8601）；旧 chunk 可无此字段 */
+  createdAt?: string
   send: TurnSendBlock
   receives: TurnReceive[]
   activeReceiveIndex: number
@@ -1129,7 +1131,7 @@ export function getPromptDebugMaxStored(idx: ConversationIndex | null): number {
 
 /** 写盘时去掉历史字段 messages，并规范 plugins */
 function stripTurnForDisk(t: TurnRecord): TurnRecord {
-  return {
+  const out: TurnRecord = {
     turnId: t.turnId,
     turnOrdinal: t.turnOrdinal,
     send: t.send,
@@ -1137,6 +1139,12 @@ function stripTurnForDisk(t: TurnRecord): TurnRecord {
     activeReceiveIndex: t.activeReceiveIndex,
     plugins: Array.isArray(t.plugins) ? t.plugins : [],
   }
+  const createdAt =
+    typeof t.createdAt === 'string' && t.createdAt.trim()
+      ? t.createdAt.trim()
+      : undefined
+  if (createdAt) out.createdAt = createdAt
+  return out
 }
 
 export async function writeChunkFile(
@@ -1526,6 +1534,7 @@ export async function saveFirstTurn(params: {
 
   const used = new Set<string>()
   const turnId = allocateShortId(used)
+  const turnCreatedAt = nowIso()
   const receiveRuntime = buildReceiveRuntime({
     model,
     durationMs,
@@ -1536,6 +1545,7 @@ export async function saveFirstTurn(params: {
   const turn: TurnRecord = {
     turnId,
     turnOrdinal: 0,
+    createdAt: turnCreatedAt,
     send: { userText },
     receives: mapReceivesWithShortIds(
       [
@@ -1610,9 +1620,11 @@ export async function saveOpeningTurn(params: {
   }
 
   const used = new Set<string>()
+  const turnCreatedAt = nowIso()
   const turn: TurnRecord = {
     turnId: allocateShortId(used),
     turnOrdinal: 0,
+    createdAt: turnCreatedAt,
     send: { userText: '' },
     receives: mapReceivesWithShortIds(receives, used),
     activeReceiveIndex: Math.min(
@@ -1679,9 +1691,11 @@ export async function appendConversationTurn(params: {
       ? chunk.meta.ordinalRange.start
       : Math.max(...chunk.turns.map((t) => t.turnOrdinal)) + 1
   const used = collectChunkEntityIds(chunk)
+  const turnCreatedAt = nowIso()
   const turn: TurnRecord = {
     turnId: allocateShortId(used),
     turnOrdinal: nextOrd,
+    createdAt: turnCreatedAt,
     send: { userText },
     receives: mapReceivesWithShortIds(receives, used),
     activeReceiveIndex: Math.min(

@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import type { TurnRecord } from '../chat-storage.js'
 import {
   buildMacroHistoryFields,
+  findIdleReferenceUserAt,
   flattenTurnsToChatMessages,
 } from './history-macros.js'
 import { stablePickFromArgs } from './macro-pick.js'
@@ -13,6 +14,7 @@ function turn(
   assistant: string,
   receives?: { id: string; content: string }[],
   activeReceiveIndex = 0,
+  createdAt?: string,
 ): TurnRecord {
   const rs =
     receives ??
@@ -20,6 +22,7 @@ function turn(
   return {
     turnId: `t-${ordinal}`,
     turnOrdinal: ordinal,
+    ...(createdAt ? { createdAt } : {}),
     send: { userText: user },
     receives: rs,
     activeReceiveIndex,
@@ -85,6 +88,28 @@ describe('buildMacroHistoryFields', () => {
       ],
     })
     assert.equal(fields.firstIncludedMessageId, '2')
+  })
+
+  it('idleReferenceUserAt skips trailing assistant and uses prior user', () => {
+    const turns = [
+      turn(0, 'u1', 'a1', undefined, 0, '2020-01-01T10:00:00.000Z'),
+      turn(1, 'u2', 'a2', undefined, 0, '2020-01-01T11:00:00.000Z'),
+    ]
+    assert.equal(
+      findIdleReferenceUserAt(turns),
+      '2020-01-01T11:00:00.000Z',
+    )
+  })
+
+  it('idleReferenceUserAt picks previous user when chat ends with user', () => {
+    const turns = [
+      turn(0, 'u1', 'a1', undefined, 0, '2020-01-01T10:00:00.000Z'),
+      turn(1, 'u2', '', undefined, 0, '2020-01-01T12:00:00.000Z'),
+    ]
+    assert.equal(
+      findIdleReferenceUserAt(turns),
+      '2020-01-01T10:00:00.000Z',
+    )
   })
 })
 

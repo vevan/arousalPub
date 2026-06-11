@@ -37,7 +37,6 @@ function ctx(
       userInput: '用户输入文本',
       promptTrigger: 'continue',
       now: new Date('2026-06-10T15:04:05Z'),
-      locale: 'zh-CN',
       authorsNote: '作者注正文',
       ...overrides,
     }),
@@ -198,5 +197,22 @@ describe('Phase B macros', () => {
       enabledPluginIds: ['plot-summary'],
     }))
     assert.equal(out, 'true')
+  })
+
+  it('expands idleDuration and timeDiff', () => {
+    clearMacroTemplateCache()
+    const now = new Date('2023-06-01T14:00:00.000Z')
+    const idle = applyPromptMacroPipeline('{{idleDuration}}', ctx({
+      now,
+      locale: 'en',
+      idleReferenceUserAt: '2023-06-01T12:00:00.000Z',
+    }))
+    assert.match(idle, /hour/i)
+
+    const diff = applyPromptMacroPipeline(
+      '{{timeDiff::2023-06-01T15:00:00.000Z::2023-06-01T12:00:00.000Z}}',
+      ctx({ now, locale: 'en' }),
+    )
+    assert.match(diff, /hour/i)
   })
 })

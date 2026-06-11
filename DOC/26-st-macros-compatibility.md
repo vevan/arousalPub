@@ -69,7 +69,7 @@
 
 | ST 宏 | 本地 | 备注 |
 |-------|------|------|
-| `{{date}}` | ✅ | `Intl`，locale 默认 `zh-CN` |
+| `{{date}}` | ✅ | `Intl`，locale 默认 `en`（未传 `locale` 时；与 ST moment 缺省一致） |
 | `{{time}}` | ✅ | |
 | `{{datetime}}` | ✅ | 日期 + 空格 + 时间 |
 | `{{weekday}}` | ✅ | 长星期名 |
@@ -77,6 +77,8 @@
 | `{{isotime}}` | ✅ | `HH:mm:ss` |
 | `{{datetimeformat::…}}` | ✅ | ⚠️ 子集：`YYYY` `YY` `MM` `DD` `HH` `mm` `ss` `dddd` `ddd` |
 | `{{time::UTC±offset}}` | ✅ | ⚠️ 支持 `UTC+8` / `GMT-5` 等；非 IANA 时区名 |
+| `{{idleDuration}}` | ✅ | `Intl` 人类可读时长；参照上一条用户 turn 的 `createdAt`；无时间戳 → `just now`（`locale=zh*` 时为「刚刚」） |
+| `{{timeDiff::left::right}}` | ✅ | `Intl` 人类可读差值（带 ago/in/前/后）；参数为 ISO 或 `Date.parse` 可识别字符串 |
 
 ### 3.4 连接 / 组装上下文
 
@@ -135,7 +137,6 @@
 | ST 宏 / 能力 | 标记 | 说明 |
 |--------------|------|------|
 | `{{lastMessageId}}` 等 ST 全量 chat 索引 | ⚠️ | 与 ST 一致为全对话索引；本项目索引 turn 有 512 cap |
-| `{{idleDuration}}` `{{timeDiff::…}}` | ⏳ | turn 无时间戳字段 |
 | `{{original}}` `{{notChar}}`（群聊语义） | ⏳ / ✅ | `notChar` 已按多卡名实现；`original` 待产品 |
 | `{{isMobile}}` | ⏳ | 可选 |
 
@@ -192,7 +193,7 @@
 
 ---
 
-## 10. 参考
+## 11. 参考
 
 | 资源 | 路径 |
 |------|------|

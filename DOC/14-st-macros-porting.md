@@ -29,7 +29,7 @@
 |-------|--------|------|
 | `{{user}}` | ✅ | `userName` 快照 |
 | `{{char}}` / `{{charN}}` | ✅ | `characterNames[]` 顺序 |
-| `{{date}}` `{{time}}` | ✅ | `Intl`，locale 默认 `zh-CN` |
+| `{{date}}` `{{time}}` | ✅ | `Intl`，locale 默认 `en` |
 | `{{datetime}}` | ✅ | 日期+时间拼接 |
 | `{{model}}` | ✅ | 组装时 `tokenModel` |
 | `{{maxPrompt}}` / `{{maxContextTokens}}` | 近似 | 本项目为 `{{maxprompt}}` `{{context}}`（连接 `contextLength`） |

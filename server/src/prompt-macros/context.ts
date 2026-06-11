@@ -64,7 +64,7 @@ export function buildPromptMacroContext(params: {
   const locale =
     typeof params.locale === 'string' && params.locale.trim()
       ? params.locale.trim()
-      : 'zh-CN'
+      : 'en'
   const authorsNoteRaw = params.authorsNote
   const authorsNote =
     typeof authorsNoteRaw === 'string' && authorsNoteRaw.trim()
@@ -113,6 +113,7 @@ export function buildPromptMacroContext(params: {
     lastSwipeId: hf?.lastSwipeId,
     currentSwipeId: hf?.currentSwipeId,
     notChar: hf?.notChar,
+    idleReferenceUserAt: hf?.idleReferenceUserAt,
   }
 }
 
@@ -131,5 +132,6 @@ export function patchPromptMacroHistoryFields(
     lastSwipeId: fields.lastSwipeId,
     currentSwipeId: fields.currentSwipeId,
     notChar: fields.notChar,
+    idleReferenceUserAt: fields.idleReferenceUserAt,
   }
 }

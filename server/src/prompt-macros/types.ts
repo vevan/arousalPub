@@ -19,7 +19,7 @@ export interface PromptMacroContext {
   userPersona?: MacroCharacterFields
   /** 用于 {{date}} {{time}} {{datetime}} */
   now: Date
-  /** BCP 47，默认 zh-CN */
+  /** BCP 47，默认 en（与 ST moment 缺省一致；未传 locale 时） */
   locale: string
   /** 宏 `{{authorsNote}}`：已启用作者注正文，否则空串 */
   authorsNote?: string
@@ -37,6 +37,8 @@ export interface PromptMacroContext {
   lastSwipeId?: string
   currentSwipeId?: string
   notChar?: string
+  /** ST idleDuration 参照的上一条用户消息 createdAt */
+  idleReferenceUserAt?: string
   /** 已启用插件 id（小写比较 hasExtension） */
   enabledPluginIds?: string[]
 }

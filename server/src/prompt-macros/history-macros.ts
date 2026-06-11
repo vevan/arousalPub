@@ -20,6 +20,8 @@ export interface MacroHistoryFields {
   lastSwipeId: string
   currentSwipeId: string
   notChar: string
+  /** ST idleDuration：参照的上一条用户消息 createdAt（ISO） */
+  idleReferenceUserAt?: string
 }
 
 const EMPTY_HISTORY_FIELDS: MacroHistoryFields = {
@@ -98,6 +100,31 @@ function resolveFirstIncludedMessageId(
   return String(idx >= 0 ? idx : 0)
 }
 
+/**
+ * ST `idleDuration` 参照时刻：自尾部向前，跳过末尾一条非用户消息后取最近一条用户消息的 createdAt。
+ * 与 ST `getTimeSinceLastMessage` 一致（不含本轮尚未落盘的用户 input）。
+ */
+export function findIdleReferenceUserAt(
+  turns: TurnRecord[],
+): string | undefined {
+  const flat = flattenTurnsToChatMessages(turns)
+  if (flat.length === 0) return undefined
+
+  const turnById = new Map(turns.map((t) => [t.turnId, t]))
+  let takeNext = false
+
+  for (let i = flat.length - 1; i >= 0; i--) {
+    const msg = flat[i]!
+    if (msg.role === 'user' && takeNext) {
+      const turn = turnById.get(msg.turnId)
+      const at = turn?.createdAt?.trim()
+      return at || undefined
+    }
+    takeNext = true
+  }
+  return undefined
+}
+
 /** 由 turn 列表构建 Phase B 历史类宏字段 */
 export function buildMacroHistoryFields(params: {
   /** 用于 lastMessageId / allChatRange 的索引 turn 集（尽量覆盖全对话尾部） */
@@ -120,6 +147,7 @@ export function buildMacroHistoryFields(params: {
     )
     const names = params.characterNames ?? []
     base.notChar = names.length > 1 ? names.slice(1).join(', ') : ''
+    base.idleReferenceUserAt = findIdleReferenceUserAt(params.indexingTurns)
     return base
   }
 
@@ -153,6 +181,7 @@ export function buildMacroHistoryFields(params: {
     lastSwipeId: swipe.lastSwipeId,
     currentSwipeId: swipe.currentSwipeId,
     notChar: names.length > 1 ? names.slice(1).join(', ') : '',
+    idleReferenceUserAt: findIdleReferenceUserAt(params.indexingTurns),
   }
 }
 

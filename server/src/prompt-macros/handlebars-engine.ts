@@ -12,6 +12,7 @@ import {
   resolveDefaultAuthorsNote,
   resolveFirstIncludedMessageId,
   resolveHasExtension,
+  resolveIdleDuration,
   resolveLastCharMessage,
   resolveLastMessage,
   resolveLastMessageId,
@@ -26,6 +27,7 @@ import {
   resolveNotChar,
   resolvePersona,
   resolvePrimaryField,
+  resolveTimeDiff,
   resolveUserName,
   rollDiceSpec,
 } from './macro-values.js'
@@ -92,6 +94,14 @@ registerSimple('datetimeformat', (ctx, args) => {
   const pattern = args.length > 0 ? String(args[0]) : 'YYYY-MM-DD HH:mm:ss'
   return formatDatetimePattern(ctx, pattern)
 })
+registerSimple('idleduration', (ctx) => resolveIdleDuration(ctx))
+registerSimple('timediff', (ctx, args) =>
+  resolveTimeDiff(
+    ctx,
+    args.length > 0 ? String(args[0]) : '',
+    args.length > 1 ? String(args[1]) : '',
+  ),
+)
 
 registerSimple('newline', (_ctx, args) => repeatChar('\n', args[0]))
 registerSimple('space', (_ctx, args) => repeatChar(' ', args[0]))

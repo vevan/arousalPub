@@ -13,7 +13,7 @@
 |------|-------------|-------------------|
 | 引擎 | 实验性宏引擎：嵌套、作用域块、稳定求值顺序 | 顺序 **handler + 正则** 单遍替换 |
 | 语法 | `{{if}}` / `{{else}}` / `{{/macro}}`、`::` 多参、变量简写 `.` `$` | 仅 `{{name}}` / `{{name N}}` 形态 |
-| 嵌套 | 内层先展开，如 `{{getvar::{{char}}_mood}}` | **不支持**；残留 → `[UNSET]` |
+| 嵌套 | 内层先展开，如 `{{getvar::{{char}}_mood}}` | **不支持**；未知 → `[name UNSUPPORTED]` |
 | 变量 | local/global + 运算符全家桶 | **无** 变量存储 |
 | 角色字段 | 大量 `{{description}}` 等宏 | 角色字段经 **`prompt-xml`** 注入 `<char>`，与宏并行 |
 | 群聊 | `{{group}}` 等 | 仅 **多卡绑定** `characterIds[]`，无 ST 式群聊发言模型 |
@@ -34,7 +34,7 @@
 | `{{model}}` | ✅ | 组装时 `tokenModel` |
 | `{{maxPrompt}}` / `{{maxContextTokens}}` | 近似 | 本项目为 `{{maxprompt}}` `{{context}}`（连接 `contextLength`） |
 | `{{newline}}` | ✅ | |
-| 未知 `{{…}}` | `[UNSET]` | ST 通常保留或按引擎处理 |
+| 未知 `{{…}}` | `[name UNSUPPORTED]` | ST 通常保留或按引擎处理 |
 
 **调用点**：`assemble-prompts.ts` 在 token 裁切前展宏；`opening` 落盘前展宏；插件 host 暴露 `applyPromptMacroPipeline`。
 
@@ -121,7 +121,7 @@
 1. **Phase A（低）**：角色卡字段宏 + 日期扩展 + `{{maxResponseTokens}}` + 工具宏（`space` / `roll` / `random`）— 仍用 handler 表。  
 2. **Phase B（中）**：历史/ swipe / `{{input}}` / `{{pick}}` — 扩展 `buildPromptMacroContext` 入参，assemble 前读尾 chunk。  
 3. **Phase C（高）**：引入模板引擎（建议评估 **mustache/handlebars 子集** 或自研 tokenizer），实现 `if`、注释、转义；变量持久化单独设计。  
-4. **文档与兼容**：ST 宏名别名表（如 `maxPrompt` → `maxprompt`）；`[UNSET]` vs ST 空串行为要在发行说明写清。
+4. **文档与兼容**：ST 宏名别名表（如 `maxPrompt` → `maxprompt`）；`[name UNSUPPORTED]` vs ST 空串行为要在发行说明写清。
 
 ---
 

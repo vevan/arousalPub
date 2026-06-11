@@ -13,5 +13,3 @@ export interface PromptMacroContext {
   /** 宏 `{{authorsNote}}`：已启用作者注正文，否则空串 */
   authorsNote?: string
 }
-
-export type MacroHandler = (text: string, ctx: PromptMacroContext) => string

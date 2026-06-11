@@ -11,7 +11,7 @@ export const PLUGIN_SUMMARIZE_BATCH_MAX = 50
 export function normalizeRegexRuleIds(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
   return raw
-    .filter((x): x is string => typeof x === 'string' && x.trim())
+    .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
     .map((x) => x.trim())
 }
 
@@ -159,7 +159,7 @@ export function normalizeSummaryPayload(obj: unknown): {
   let keywords: string[] = []
   if (Array.isArray(o.keywords)) {
     keywords = o.keywords
-      .filter((k): k is string => typeof k === 'string' && k.trim())
+      .filter((k): k is string => typeof k === 'string' && k.trim().length > 0)
       .map((k) => k.trim())
   }
   return { title, content, keywords }

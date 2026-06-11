@@ -1,4 +1,4 @@
-import { MACRO_HANDLERS } from './handlers/index.js'
+import { renderPromptMacros } from './handlebars-engine.js'
 import type { PromptMacroContext } from './types.js'
 
 export function applyPromptMacroPipeline(
@@ -6,11 +6,7 @@ export function applyPromptMacroPipeline(
   ctx: PromptMacroContext,
 ): string {
   if (!text || !text.includes('{{')) return text
-  let out = text
-  for (const h of MACRO_HANDLERS) {
-    out = h(out, ctx)
-  }
-  return out
+  return renderPromptMacros(text, ctx)
 }
 
 export function applyMacrosToMessages(

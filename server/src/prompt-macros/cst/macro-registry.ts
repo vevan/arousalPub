@@ -1,9 +1,14 @@
 import { resolveCharFirstMessage } from '../character-fields.js'
 import { stablePickFromArgs } from '../macro-pick.js'
 import {
+  appendGlobalVar,
   appendLocalVar,
+  decrementGlobalVar,
+  decrementLocalVar,
   getGlobalVar,
   getLocalVar,
+  incrementGlobalVar,
+  incrementLocalVar,
   resolveHasGlobalVarMacro,
   resolveHasVarMacro,
   setGlobalVar,
@@ -188,6 +193,12 @@ export function invokeCstMacro(
     if (varName) appendLocalVar(ctx, varName, chunk)
     return ''
   }
+  if (name === 'incvar') {
+    return incrementLocalVar(ctx, args[0] ?? '')
+  }
+  if (name === 'decvar') {
+    return decrementLocalVar(ctx, args[0] ?? '')
+  }
   if (name === 'hasvar') {
     return resolveHasVarMacro(ctx, args[0] ?? '')
   }
@@ -199,6 +210,18 @@ export function invokeCstMacro(
     const value = args.slice(1).join('::')
     if (varName) setGlobalVar(ctx, varName, value)
     return ''
+  }
+  if (name === 'addglobalvar') {
+    const varName = args[0] ?? ''
+    const chunk = args.slice(1).join('::')
+    if (varName) appendGlobalVar(ctx, varName, chunk)
+    return ''
+  }
+  if (name === 'incglobalvar') {
+    return incrementGlobalVar(ctx, args[0] ?? '')
+  }
+  if (name === 'decglobalvar') {
+    return decrementGlobalVar(ctx, args[0] ?? '')
   }
   if (name === 'hasglobalvar') {
     return resolveHasGlobalVarMacro(ctx, args[0] ?? '')

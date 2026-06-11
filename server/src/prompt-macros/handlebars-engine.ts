@@ -2,10 +2,16 @@ import Handlebars from 'handlebars'
 import { resolveCharFirstMessage } from './character-fields.js'
 import { evaluateStCondition } from './macro-condition.js'
 import { stablePickFromArgs } from './macro-pick.js'
+import { expandVariableShorthandTags } from './expand-variable-shorthand.js'
 import {
+  appendGlobalVar,
   appendLocalVar,
+  decrementGlobalVar,
+  decrementLocalVar,
   getGlobalVar,
   getLocalVar,
+  incrementGlobalVar,
+  incrementLocalVar,
   resolveHasGlobalVarMacro,
   resolveHasVarMacro,
   setGlobalVar,
@@ -45,7 +51,6 @@ import {
 } from './macro-values.js'
 import { preprocessMacroComments } from './preprocess-comments.js'
 import { preprocessMacroEscapes, restoreMacroEscapes } from './preprocess-escape.js'
-import { preprocessVariableShorthands } from './preprocess-shorthands.js'
 import { preprocessStScopedBlocks } from './preprocess-scoped.js'
 import { preprocessStIfBlocks } from './preprocess-st-if.js'
 import {
@@ -226,6 +231,12 @@ registerSimple('addvar', (ctx, args) => {
   if (name) appendLocalVar(ctx, name, chunk)
   return ''
 })
+registerSimple('incvar', (ctx, args) =>
+  incrementLocalVar(ctx, args.length > 0 ? String(args[0]) : ''),
+)
+registerSimple('decvar', (ctx, args) =>
+  decrementLocalVar(ctx, args.length > 0 ? String(args[0]) : ''),
+)
 registerSimple('hasvar', (ctx, args) =>
   resolveHasVarMacro(ctx, args.length > 0 ? String(args[0]) : ''),
 )
@@ -238,6 +249,21 @@ registerSimple('setglobalvar', (ctx, args) => {
   if (name) setGlobalVar(ctx, name, value)
   return ''
 })
+registerSimple('addglobalvar', (ctx, args) => {
+  const name = args.length > 0 ? String(args[0]) : ''
+  const chunk =
+    args.length > 1
+      ? unescapeHbArg(args.slice(1).map((a) => String(a)).join('::'))
+      : ''
+  if (name) appendGlobalVar(ctx, name, chunk)
+  return ''
+})
+registerSimple('incglobalvar', (ctx, args) =>
+  incrementGlobalVar(ctx, args.length > 0 ? String(args[0]) : ''),
+)
+registerSimple('decglobalvar', (ctx, args) =>
+  decrementGlobalVar(ctx, args.length > 0 ? String(args[0]) : ''),
+)
 registerSimple('hasglobalvar', (ctx, args) =>
   resolveHasGlobalVarMacro(ctx, args.length > 0 ? String(args[0]) : ''),
 )
@@ -280,15 +306,12 @@ function preprocessBeforeNestedExpand(text: string): string {
 }
 
 function preprocessAfterNestedExpand(text: string): string {
-  let n = preprocessStIfBlocks(text)
-  n = preprocessVariableShorthands(n)
-  return n
+  return preprocessStIfBlocks(text)
 }
 
 function preprocessSingleMacroTag(wrapped: string): string {
   let n = preprocessStColonMacros(wrapped)
   n = preprocessLegacyMacroSyntax(n)
-  n = preprocessVariableShorthands(n)
   return n
 }
 
@@ -330,6 +353,9 @@ function renderPromptMacrosLegacyOnce(
     renderMacroTagInner(inner, ctx),
   )
   normalized = preprocessAfterNestedExpand(normalized)
+  normalized = expandVariableShorthandTags(normalized, ctx, (snippet) =>
+    renderPromptMacrosLegacy(snippet, ctx),
+  )
   normalized = replaceUnsupportedMacroPlaceholders(normalized)
   if (!normalized.includes('{{')) return restoreMacroEscapes(normalized)
   try {

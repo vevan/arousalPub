@@ -1,6 +1,6 @@
 # CST 宏引擎现状 ↔ Legacy 对照
 
-> **状态**：`CST-MACRO` 分支 · **D2 已完成**（2026-06-11）；D3 未开始。  
+> **状态**：`CST-MACRO` 分支 · **D2.5 已完成**（2026-06-11）；D3 未开始。  
 > **目的**：记录 **CST**（Lexer → Parser → Walker）相对 **legacy**（Handlebars + 预处理链）的能力边界，便于你在 `macroEngine: "cst"` 下判断「能不能跑」「差在哪」。  
 > **ST 全量对照**：仍以 **`DOC/26-st-macros-compatibility.md`** 为准（描述 legacy 已实现的 ST 兼容面）；本文只回答 **CST 相对 legacy 差什么**。
 
@@ -50,6 +50,7 @@
 | **D0** | Lexer / Parser / Walker；**平铺宏**；注释、转义、参数内嵌套 | ✅ |
 | **D1** | `{{if}}` / `{{else}}` / scoped 块；`{{.x}}` / `{{$x}}` 简写 | ✅ |
 | **D2** | `addvar`；`==` / `!=` 条件；无参 `{{trim}}`；`#` 保留空白 | ✅ |
+| **D2.5** | [ST Variable Shorthand Operators](https://docs.sillytavern.app/usage/core-concepts/macros/#variable-shorthand-operators)（`{{.x = …}}` `+=` `++` 等） | ✅ |
 | **D3** | 默认切 CST、删除 legacy 预处理链 | ⏳ |
 | **D4** | CST 文档缓存（静态 preset 条目） | ⏳ |
 
@@ -67,6 +68,8 @@ server/src/prompt-macros/
     render.ts
     cst.test.ts
   handlebars-engine.ts      # legacy（renderPromptMacrosLegacy）
+  macro-shorthand-op.ts     # D2.5 简写运算符
+  expand-variable-shorthand.ts
   preprocess*.ts            # 仅 legacy 使用
 ```
 
@@ -88,6 +91,42 @@ server/src/prompt-macros/
 - 比较两侧：`.` / `$` 走变量；带引号字面量去引号；含 `{{` 时递归展开后再比。
 - Legacy `{{#if {{.x == y}}}}` 依赖 `preprocess-st-if` **平衡**匹配嵌套 `}}`（与 CST Lexer 一致）。
 
+### 4.1 Variable Shorthand Operators（ST 运算符表）
+
+ST 在 **`{{.varName operator value}}`** / **`{{$varName …}}`** 上提供一整套运算符（与「仅 Get 的 `{{.name}}`」不同）。  
+参考：[ST 文档 · Variable Shorthand Operators](https://docs.sillytavern.app/usage/core-concepts/macros/#variable-shorthand-operators)。
+
+**与本项目其它能力的关系**
+
+| 写法 | 层次 | 说明 |
+|------|------|------|
+| `{{if {{.x == y}}}}` | **if 条件** | D2：`macro-expr` → `evaluateStCondition` → 布尔分支 |
+| `{{.x == y}}` | **独立标签** | ST 展开为字符串 `"true"` / `"false"`；属 D2.5 简写运算符 |
+| `{{addvar::k::chunk}}` | **长写法宏** | D2；与 `{{.k += chunk}}` 等价（D2.5） |
+
+**D2.5 现状**
+
+| 运算符 | ST 示例 | Legacy | CST | 等价长写法 |
+|--------|---------|--------|-----|------------|
+| Get | `{{.myvar}}` | ✅ | ✅ | `getvar::myvar` |
+| `=` Set | `{{.myvar = value}}` | ✅ | ✅ | `setvar::myvar::value` |
+| `++` / `--` | `{{.counter++}}` | ✅ | ✅ | `incvar` / `decvar` ✅ |
+| `+=` | `{{.score += 10}}` | ✅ | ✅ | `addvar::score::10` |
+| `-=` | `{{.health -= 5}}` | ✅ | ✅ | 数值专用；非数字不变 |
+| `\|\|` / `??` | `{{.name \|\| Guest}}` | ✅ | ✅ | 真值 / 已定义 回退 |
+| `\|\|=` / `??=` | `{{.name ??= Guest}}` | ✅ | ✅ | 条件赋值并返回最终值 |
+| `==` / `!=`（标签） | `{{.status == active}}` | ✅ | ✅ | 展开 `"true"` / `"false"`；if 内亦可用 |
+| `>` `>=` `<` `<=` | `{{.score > 50}}` | ✅ | ✅ | 数值比较；非数字 → `"false"` |
+
+实现：**`macro-shorthand-op.ts`**（解析 + 求值）；CST **`walker.ts`**；legacy **`expand-variable-shorthand.ts`**（平衡 `}}`）。
+
+**已知限制（计划内）**
+
+- 变量名规则与 ST 一致：字母开头，`[\w-]+`，**首尾不能为 `_` `-`**；非法名仍用 `getvar::…` 长写法。
+- 运算符两侧**允许空白**（`{{ .x = y }}`）；无空格的 `{{.name}}` Get 仍走 D1 快路径。
+- 数值比较 `>` 等：操作数按数字解析；非数字按 ST 语义返回 `"false"`。
+- `+=`：双方为数字则相加，否则字符串拼接（与 ST / `addvar` 一致）。
+
 ---
 
 ## 5. 按能力：CST vs Legacy
@@ -99,7 +138,8 @@ server/src/prompt-macros/
 | `{{if}}` / `{{else}}` / `{{/if}}` | ✅ | ✅ | 条件求值复用 `evaluateStCondition` |
 | `{{#if}}`（ST 实验） | ⚠️ 经预处理当 `if` | ✅ | Parser 剥 `#` 后与 `if` 同路径 |
 | scoped `{{setvar}}`…`{{/setvar}}` | ✅ | ✅ | `setvar` / `setglobalvar` / `reverse` / `trim` |
-| `{{.name}}` / `{{$name}}` 简写 | ✅ | ✅ | Parser 改写为 getvar / getglobalvar |
+| `{{.name}}` / `{{$name}}` Get 简写 | ✅ | ✅ | D1；无空格形态 → getvar / getglobalvar |
+| `{{.var op …}}` 简写运算符 | ✅ | ✅ | D2.5；见 §4.1 |
 | `{{//}}` 注释 | ✅ | ✅ | |
 | `\{\{` / `\}\}` 转义 | ✅ | ✅ | |
 | 参数内嵌套 `{{setvar::k::{{char}}}}` | ✅ | ✅ | |
@@ -165,7 +205,8 @@ CST 下 **`{{setvar::k::v}}` / `{{addvar::k::chunk}}` + `{{getvar::k}}`** 可用
 |------|------|------|
 | Legacy 全量 | `server/src/prompt-macros/prompt-macros.test.ts` | 默认 `MACRO_ENGINE` 未设 → legacy |
 | CST | `server/src/prompt-macros/cst/cst.test.ts` | 直接调 `renderPromptMacrosCst`（含 D2） |
-| 表达式 | `server/src/prompt-macros/macro-expr.test.ts` | `==` / `!=` 解析与求值 |
+| 表达式 | `server/src/prompt-macros/macro-expr.test.ts` | if 条件内 `==` / `!=` |
+| 简写运算符 | `server/src/prompt-macros/macro-shorthand-op.test.ts` | `{{.x = …}}` `+=` `++` 等 |
 | 配置解析 | `server/src/config-macro-engine.test.ts` | `resolveMacroEngine()` |
 
 改 CST 后应：**`cst.test.ts` 绿 + legacy 全量仍绿**（dual-run 完整对等待 D3 前逐步补）。
@@ -200,4 +241,4 @@ DOC/29  … 选用 CST 时，在 26 基础上再砍掉/尚未迁移的一层
 
 ---
 
-*文档版本：2026-06-11 · CST D2 · 分支 `CST-MACRO`*
+*文档版本：2026-06-11 · CST D2.5 · 分支 `CST-MACRO`*

@@ -33,7 +33,7 @@ export function parseComparisonExpression(
   return null
 }
 
-function stripQuotes(value: string): string {
+export function stripQuotes(value: string): string {
   const v = value.trim()
   if (v.length >= 2) {
     if (v.startsWith('"') && v.endsWith('"')) return v.slice(1, -1)

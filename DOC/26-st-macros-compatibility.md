@@ -157,8 +157,9 @@
 | `\{\{` / `\}\}` 转义 | ✅ | 渲染后还原字面花括号，不触发宏 |
 | `getvar` / `setvar` / `hasvar` | ✅ | 会话 `index.json` → `macroLocalVars`；组装末持久化 |
 | `getglobalvar` / `setglobalvar` / `hasglobalvar` | ✅ | 用户 `user-preferences.json` → `macroGlobalVars` |
-| `{{.name}}` / `{{$name}}` | ✅ | 简写为 getvar / getglobalvar |
-| 宏标志 `#` `!` `?`（ST 实验引擎） | ⏳ | 未移植 |
+| `{{.name}}` / `{{$name}}` Get | ✅ | 简写为 getvar / getglobalvar |
+| Variable Shorthand **Operators**（`=` `+=` `++` `==` 标签等） | ✅ | D2.5；见 [DOC/29](29-cst-macros-compatibility.md) §4.1 |
+| 宏标志 `#` `!` `?`（ST 实验引擎） | ⏳ | `#` 保留空白已部分实现；`!` `?` 未移植 |
 | 前端宏补全、`/? macros` | ⏳ | 未实现 |
 
 ---

@@ -1,21 +1,13 @@
+import { parseVariableShorthand } from '../macro-shorthand-op.js'
 import { parseMacroTagInner, type ParsedMacroTag } from '../macro-tag-parse.js'
 
-/** `{{.name}}` / `{{$name}}` → getvar / getglobalvar */
+/** Get 简写 → getvar / getglobalvar；含运算符的留给 Walker 求值 */
 export function expandVariableShorthand(tag: ParsedMacroTag): ParsedMacroTag {
   if (tag.isComment || tag.isClose || tag.isElse) return tag
-  const raw = tag.raw.trim()
-  if (!raw || raw.includes(' ') || raw.includes('::')) return tag
-  if (raw.startsWith('.') && raw.length > 1 && !raw.startsWith('..')) {
-    const name = raw.slice(1).trim()
-    if (/^[\w$-]+$/.test(name)) {
-      return parseMacroTagInner(`getvar::${name}`)
-    }
+  const parsed = parseVariableShorthand(tag.raw)
+  if (!parsed || parsed.op !== 'get') return tag
+  if (parsed.scope === 'local') {
+    return parseMacroTagInner(`getvar::${parsed.name}`)
   }
-  if (raw.startsWith('$') && raw.length > 1) {
-    const name = raw.slice(1).trim()
-    if (/^[\w$-]+$/.test(name)) {
-      return parseMacroTagInner(`getglobalvar::${name}`)
-    }
-  }
-  return tag
+  return parseMacroTagInner(`getglobalvar::${parsed.name}`)
 }

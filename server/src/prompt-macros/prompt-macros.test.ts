@@ -381,3 +381,30 @@ describe('Phase D2 macros (legacy)', () => {
     )
   })
 })
+
+describe('Phase D2.5 shorthand operators (legacy)', () => {
+  useLegacyMacroEngine()
+
+  it('supports shorthand set, +=, and == tag', () => {
+    clearMacroTemplateCache()
+    const c = ctx({ macroLocalVars: { tier: 'a' } })
+    applyPromptMacroPipeline('{{.tier = ab}}', c)
+    assert.equal(c.macroLocalVars?.tier, 'ab')
+    applyPromptMacroPipeline('{{.tier += c}}', c)
+    assert.equal(c.macroLocalVars?.tier, 'abc')
+    assert.equal(
+      applyPromptMacroPipeline('{{.tier == abc}}', c),
+      'true',
+    )
+  })
+})
+
+describe('Phase D2.5 shorthand operators (CST)', () => {
+  useCstMacroEngine()
+
+  it('supports spaced shorthand set', () => {
+    const c = ctx()
+    applyPromptMacroPipeline('{{ .note = hello }}', c)
+    assert.equal(c.macroLocalVars?.note, 'hello')
+  })
+})

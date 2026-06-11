@@ -147,4 +147,23 @@ describe('CST macro engine', () => {
     renderPromptMacrosCst('{{#setvar note}}\nline\n{{/setvar}}', c)
     assert.equal(c.macroLocalVars?.note, '\nline\n')
   })
+
+  it('supports variable shorthand operators (D2.5)', () => {
+    const c = ctx({ macroLocalVars: { effort: 'High' } })
+    assert.equal(
+      renderPromptMacrosCst('{{.effort == High}}', c),
+      'true',
+    )
+    assert.equal(
+      renderPromptMacrosCst(
+        '{{#if {{.effort == High}}}}yes{{/if}}',
+        c,
+      ),
+      'yes',
+    )
+    const c2 = ctx({ macroLocalVars: { score: '5' } })
+    renderPromptMacrosCst('{{.score += 10}}', c2)
+    assert.equal(c2.macroLocalVars?.score, '15')
+    assert.equal(renderPromptMacrosCst('{{.counter++}}', c2), '1')
+  })
 })

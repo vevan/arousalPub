@@ -1,4 +1,8 @@
 import { evaluateStCondition } from '../macro-condition.js'
+import {
+  evaluateVariableShorthand,
+  parseVariableShorthand,
+} from '../macro-shorthand-op.js'
 import { trimScopedBlockContent } from '../macro-truthy.js'
 import { restoreMacroEscapes } from '../preprocess-escape.js'
 import type { PromptMacroContext } from '../types.js'
@@ -57,6 +61,12 @@ function walkCstNode(
   if (node.kind === 'scoped') {
     const bodyText = walkCstNodes(node.body, ctx)
     return invokeCstScopedMacro(node.tag, bodyText, ctx)
+  }
+
+  const shorthand = parseVariableShorthand(node.tag.raw)
+  if (shorthand && shorthand.op !== 'get') {
+    const out = evaluateVariableShorthand(node.tag.raw, ctx, renderNested)
+    if (out !== null) return out
   }
 
   return invokeCstMacro(node.tag, ctx, renderNested)

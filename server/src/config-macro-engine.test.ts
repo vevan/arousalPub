@@ -10,16 +10,20 @@ describe('resolveMacroEngine', () => {
     else process.env.MACRO_ENGINE = prev
   })
 
+  it('defaults to cst when unset (D3)', () => {
+    delete process.env.MACRO_ENGINE
+    assert.equal(resolveMacroEngine(), 'cst')
+  })
+
   it('reads MACRO_ENGINE env (overrides config.json)', () => {
     process.env.MACRO_ENGINE = 'cst'
     assert.equal(resolveMacroEngine(), 'cst')
     process.env.MACRO_ENGINE = 'LEGACY'
-    assert.equal(resolveMacroEngine(), 'legacy')
+    assert.equal(resolveMacroEngine(), 'cst')
   })
 
   it('ignores invalid env values', () => {
     process.env.MACRO_ENGINE = 'handlebars'
-    const resolved = resolveMacroEngine()
-    assert.ok(resolved === 'legacy' || resolved === 'cst')
+    assert.equal(resolveMacroEngine(), 'cst')
   })
 })

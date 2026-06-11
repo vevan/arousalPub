@@ -183,7 +183,7 @@ function seedAuthorsNoteFromTemplate(t: DefaultAuthorsNoteTemplate): AuthorsNote
 | `{{defaultAuthorsNote}}` | `user-preferences.defaultAuthorsNote.content` | Phase 1 |
 | `{{charAuthorsNote}}` | 首绑卡 `extensions.authors_note.content` | Phase 2 |
 
-实现：`handlebars-engine.ts` 注册 helper；`buildPromptMacroContext` / `plugin-macro-expand` / `chat-assemble` 传入 default 文本（读 preferences memo）。
+实现：`cst/macro-registry.ts` 派发；`buildPromptMacroContext` / `plugin-macro-expand` / `chat-assemble` 传入 default 文本（读 preferences memo）。
 
 ---
 

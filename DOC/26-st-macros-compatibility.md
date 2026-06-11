@@ -33,7 +33,7 @@
 | 阶段 | 范围 | 状态 |
 |------|------|------|
 | **基线** | `{{user}}` `{{char}}` 日期/连接/换行/`{{authorsNote}}` | ✅ |
-| **引擎迁移** | handler 链 → **Handlebars**（`handlebars-engine.ts`） | ✅ |
+| **引擎** | **CST**（Lexer/Parser/Walker）；D3 移除 Handlebars legacy | ✅ |
 | **Phase A** | 角色卡字段、日期扩展、工具宏、组装上下文、Legacy 角括号 | ✅ |
 | **Phase B** | 历史尾块、swipe 索引、稳定 `pick`、`hasExtension`、`notChar` | ✅ |
 | **Phase C** | `{{if}}`、嵌套、变量持久化、注释/转义 | ✅ |
@@ -152,7 +152,7 @@
 |---------|------|------|
 | `{{if}}` / `{{else}}` / `{{/if}}` | ✅ | 条件支持宏名、`!` 取反、`.local` / `$global`；真值规则：空/`false`/`0`/`off`/`no` 为假 |
 | scoped `{{setvar}}` … `{{/setvar}}` 等 | ✅ | `setvar` / `setglobalvar` / `reverse` / `trim` 块体合并为 helper 参数 |
-| 嵌套宏 | ✅ | 自内向外展开（`nested-expand.ts`）；`::` 参数中含 `{{` 时延后至内层展开后再解析 |
+| 嵌套宏 | ✅ | Lexer 平衡 `}}` + 参数内递归 walk |
 | `{{//}}` 注释 | ✅ | 行内 `{{// …}}` 与块 `{{//}}` … `{{//}}` |
 | `\{\{` / `\}\}` 转义 | ✅ | 渲染后还原字面花括号，不触发宏 |
 | `getvar` / `setvar` / `hasvar` | ✅ | 会话 `index.json` → `macroLocalVars`；组装末持久化 |

@@ -7,6 +7,5 @@ export {
   applyPromptMacroPipeline,
   applyMacrosToMessages,
 } from './pipeline.js'
-export { clearMacroTemplateCache } from './handlebars-engine.js'
 export { renderPromptMacros, resolveMacroEngine } from './engine.js'
 export { renderPromptMacrosCst } from './cst/render.js'

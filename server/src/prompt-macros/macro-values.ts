@@ -330,7 +330,6 @@ export const KNOWN_MACRO_HEADS = new Set([
   'incglobalvar',
   'decglobalvar',
   'hasglobalvar',
-  'stif',
 ])
 
 /** 支持 `{{name::arg}}` ST 语法的宏头 */
@@ -375,9 +374,6 @@ export function isKnownMacroToken(inner: string): boolean {
   if (!raw) return false
   if (raw.toLowerCase() === 'else') return true
   if (raw.startsWith('#') || raw.startsWith('/')) {
-    const body = raw.slice(1).trim()
-    const head = body.split(/\s+/)[0]!.toLowerCase()
-    if (head === 'stif') return true
     return false
   }
   const head = macroTokenHead(raw)

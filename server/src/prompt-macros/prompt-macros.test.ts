@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 import { extractMacroCharacterFields } from './character-fields.js'
 import { buildPromptMacroContext } from './context.js'
-import { clearMacroTemplateCache } from './handlebars-engine.js'
 import { applyPromptMacroPipeline } from './pipeline.js'
 import type { PromptMacroContext } from './types.js'
 
@@ -46,17 +45,6 @@ function ctx(
 
 const savedMacroEngine = process.env.MACRO_ENGINE
 
-function useLegacyMacroEngine(): void {
-  beforeEach(() => {
-    process.env.MACRO_ENGINE = 'legacy'
-    clearMacroTemplateCache()
-  })
-  afterEach(() => {
-    if (savedMacroEngine === undefined) delete process.env.MACRO_ENGINE
-    else process.env.MACRO_ENGINE = savedMacroEngine
-  })
-}
-
 function useCstMacroEngine(): void {
   beforeEach(() => {
     process.env.MACRO_ENGINE = 'cst'
@@ -67,8 +55,8 @@ function useCstMacroEngine(): void {
   })
 }
 
-describe('applyPromptMacroPipeline (Handlebars)', () => {
-  useLegacyMacroEngine()
+describe('applyPromptMacroPipeline (CST)', () => {
+  useCstMacroEngine()
 
   it('expands known macros', () => {
     const out = applyPromptMacroPipeline(
@@ -82,13 +70,11 @@ describe('applyPromptMacroPipeline (Handlebars)', () => {
   })
 
   it('is case-insensitive for known macro names', () => {
-    clearMacroTemplateCache()
     const out = applyPromptMacroPipeline('{{USER}} {{Char1}}', ctx())
     assert.equal(out, '小明 艾拉')
   })
 
   it('supports {{charN}} legacy form', () => {
-    clearMacroTemplateCache()
     assert.equal(
       applyPromptMacroPipeline('{{char2}}', ctx()),
       '鲍勃',
@@ -96,23 +82,17 @@ describe('applyPromptMacroPipeline (Handlebars)', () => {
   })
 
   it('marks unknown macros as [name UNSUPPORTED]', () => {
-    clearMacroTemplateCache()
     assert.equal(
       applyPromptMacroPipeline('{{unknownMacro}}', ctx()),
       '[unknownMacro UNSUPPORTED]',
     )
   })
 
-  it('marks compile/render failures as [name RENDERFAIL]', () => {
-    clearMacroTemplateCache()
-    assert.equal(
-      applyPromptMacroPipeline('{{#stIf}}{{/stIf}}', ctx()),
-      '[#stIf RENDERFAIL][/stIf RENDERFAIL]',
-    )
+  it('marks unclosed macros as [UNSUPPORTED]', () => {
+    assert.equal(applyPromptMacroPipeline('{{user', ctx()), '[UNSUPPORTED]')
   })
 
   it('defaults user/char when missing', () => {
-    clearMacroTemplateCache()
     const empty = ctx({
       conversationUserName: '',
       characters: [],
@@ -121,7 +101,6 @@ describe('applyPromptMacroPipeline (Handlebars)', () => {
   })
 
   it('char index out of range yields empty (except char1 default)', () => {
-    clearMacroTemplateCache()
     assert.equal(applyPromptMacroPipeline('{{char 9}}', ctx()), '')
   })
 
@@ -131,10 +110,9 @@ describe('applyPromptMacroPipeline (Handlebars)', () => {
 })
 
 describe('Phase A macros', () => {
-  useLegacyMacroEngine()
+  useCstMacroEngine()
 
   it('expands character card field macros', () => {
-    clearMacroTemplateCache()
     const out = applyPromptMacroPipeline(
       '{{description}}|{{personality}}|{{scenario}}|{{charPrompt}}|{{charInstruction}}|{{mesExamples}}|{{charCreatorNotes}}|{{charVersion}}',
       ctx(),
@@ -146,7 +124,6 @@ describe('Phase A macros', () => {
   })
 
   it('expands charFirstMessage and alternate greeting index', () => {
-    clearMacroTemplateCache()
     assert.equal(
       applyPromptMacroPipeline('{{charFirstMessage}} / {{charFirstMessage::1}}', ctx()),
       '你好呀 / 备选问候',
@@ -154,7 +131,6 @@ describe('Phase A macros', () => {
   })
 
   it('expands assemble context macros', () => {
-    clearMacroTemplateCache()
     const out = applyPromptMacroPipeline(
       '{{input}}|{{lastGenerationType}}|{{maxResponseTokens}}',
       ctx(),
@@ -163,7 +139,6 @@ describe('Phase A macros', () => {
   })
 
   it('expands date extensions and datetimeformat', () => {
-    clearMacroTemplateCache()
     const out = applyPromptMacroPipeline(
       '{{weekday}}|{{isodate}}|{{isotime}}|{{datetimeformat::YYYY-MM-DD}}',
       ctx(),
@@ -173,7 +148,6 @@ describe('Phase A macros', () => {
   })
 
   it('expands utility macros', () => {
-    clearMacroTemplateCache()
     assert.equal(applyPromptMacroPipeline('{{space::3}}X', ctx()), '   X')
     assert.equal(applyPromptMacroPipeline('{{newline::2}}Y', ctx()), '\n\nY')
     assert.equal(applyPromptMacroPipeline('{{noop}}Z', ctx()), 'Z')
@@ -184,7 +158,6 @@ describe('Phase A macros', () => {
   })
 
   it('preprocesses legacy angle tags', () => {
-    clearMacroTemplateCache()
     assert.equal(
       applyPromptMacroPipeline('<USER> says hi to <CHAR>', ctx()),
       '小明 says hi to 艾拉',
@@ -192,7 +165,6 @@ describe('Phase A macros', () => {
   })
 
   it('supports camelCase ST macro names', () => {
-    clearMacroTemplateCache()
     assert.equal(
       applyPromptMacroPipeline('{{mesExamplesRaw}} {{charPrompt}}', ctx()),
       '示例对话 系统提示',
@@ -200,7 +172,6 @@ describe('Phase A macros', () => {
   })
 
   it('expands {{defaultAuthorsNote}} separately from {{authorsNote}}', () => {
-    clearMacroTemplateCache()
     const out = applyPromptMacroPipeline(
       '{{authorsNote}}|{{defaultAuthorsNote}}',
       ctx({ defaultAuthorsNote: '全局默认模板' }),
@@ -210,10 +181,9 @@ describe('Phase A macros', () => {
 })
 
 describe('Phase B macros', () => {
-  useLegacyMacroEngine()
+  useCstMacroEngine()
 
   it('expands history tail and pick macros', () => {
-    clearMacroTemplateCache()
     const out = applyPromptMacroPipeline(
       '{{lastCharMessage}}|{{lastMessageId}}|{{pick::A::B}}',
       ctx({
@@ -228,7 +198,6 @@ describe('Phase B macros', () => {
   })
 
   it('expands hasExtension from enabledPluginIds', () => {
-    clearMacroTemplateCache()
     const out = applyPromptMacroPipeline('{{hasExtension::plot-summary}}', ctx({
       enabledPluginIds: ['plot-summary'],
     }))
@@ -236,7 +205,6 @@ describe('Phase B macros', () => {
   })
 
   it('expands idleDuration and timeDiff', () => {
-    clearMacroTemplateCache()
     const now = new Date('2023-06-01T14:00:00.000Z')
     const idle = applyPromptMacroPipeline('{{idleDuration}}', ctx({
       now,
@@ -254,10 +222,9 @@ describe('Phase B macros', () => {
 })
 
 describe('Phase C macros', () => {
-  useLegacyMacroEngine()
+  useCstMacroEngine()
 
   it('expands ST {{if}} / {{else}} blocks', () => {
-    clearMacroTemplateCache()
     assert.equal(
       applyPromptMacroPipeline('{{if user}}yes{{/if}}', ctx()),
       'yes',
@@ -273,7 +240,6 @@ describe('Phase C macros', () => {
   })
 
   it('supports getvar/setvar and shorthands', () => {
-    clearMacroTemplateCache()
     const c = ctx()
     assert.equal(
       applyPromptMacroPipeline('{{setvar::k::v}}{{getvar::k}}', c),
@@ -282,13 +248,11 @@ describe('Phase C macros', () => {
     assert.equal(c.macroVarsDirty, true)
     assert.equal(c.macroLocalVars?.k, 'v')
 
-    clearMacroTemplateCache()
     const c2 = ctx({ macroLocalVars: { mood: 'happy' } })
     assert.equal(applyPromptMacroPipeline('{{.mood}}', c2), 'happy')
   })
 
   it('supports global vars and hasvar', () => {
-    clearMacroTemplateCache()
     const c = ctx({ macroGlobalVars: { theme: 'dark' } })
     assert.equal(applyPromptMacroPipeline('{{$theme}}', c), 'dark')
     assert.equal(
@@ -298,7 +262,6 @@ describe('Phase C macros', () => {
   })
 
   it('strips comments and restores escaped braces', () => {
-    clearMacroTemplateCache()
     assert.equal(
       applyPromptMacroPipeline('a{{// note}}b', ctx()),
       'ab',
@@ -310,7 +273,6 @@ describe('Phase C macros', () => {
   })
 
   it('expands nested macros inside arguments', () => {
-    clearMacroTemplateCache()
     const c = ctx()
     assert.equal(
       applyPromptMacroPipeline('{{setvar::tag::{{char}}}}{{getvar::tag}}', c),
@@ -319,7 +281,6 @@ describe('Phase C macros', () => {
   })
 
   it('supports scoped setvar blocks', () => {
-    clearMacroTemplateCache()
     const c = ctx()
     const out = applyPromptMacroPipeline(
       '{{setvar note}}line1\nline2{{/setvar}}{{getvar::note}}',
@@ -327,22 +288,9 @@ describe('Phase C macros', () => {
     )
     assert.equal(out, 'line1\nline2')
   })
-})
 
-describe('applyPromptMacroPipeline (CST)', () => {
-  useCstMacroEngine()
-
-  it('expands Phase C via engine router', () => {
-    assert.equal(
-      applyPromptMacroPipeline('{{if user}}yes{{/if}}', ctx()),
-      'yes',
-    )
-    const c = ctx({ macroLocalVars: { mood: 'happy' } })
-    assert.equal(applyPromptMacroPipeline('{{.mood}}', c), 'happy')
-  })
-
-  it('expands D2 addvar and comparison if', () => {
-    const c = ctx({ macroLocalVars: { tier: 'a', effort: 'Low' } })
+  it('supports D2 addvar, comparison if, and no-arg trim', () => {
+    const c = ctx({ macroLocalVars: { tier: 'a', effort: 'Low', t0: 'Tier:\n' } })
     applyPromptMacroPipeline('{{addvar::tier::b}}', c)
     assert.equal(c.macroLocalVars?.tier, 'ab')
     assert.equal(
@@ -352,15 +300,6 @@ describe('applyPromptMacroPipeline (CST)', () => {
       ),
       'ok',
     )
-  })
-})
-
-describe('Phase D2 macros (legacy)', () => {
-  useLegacyMacroEngine()
-
-  it('supports addvar and comparison if', () => {
-    clearMacroTemplateCache()
-    const c = ctx({ macroLocalVars: { t0: 'Tier:\n' } })
     applyPromptMacroPipeline('{{addvar::t0::- [ ] X\n}}', c)
     assert.equal(c.macroLocalVars?.t0, 'Tier:\n- [ ] X\n')
     const c2 = ctx({ macroLocalVars: { reasoningeffort: 'High' } })
@@ -371,22 +310,13 @@ describe('Phase D2 macros (legacy)', () => {
       ),
       'H',
     )
-  })
-
-  it('supports no-arg trim', () => {
-    clearMacroTemplateCache()
     assert.equal(
       applyPromptMacroPipeline('{{char}}   {{trim}}', ctx()),
       '艾拉',
     )
   })
-})
 
-describe('Phase D2.5 shorthand operators (legacy)', () => {
-  useLegacyMacroEngine()
-
-  it('supports shorthand set, +=, and == tag', () => {
-    clearMacroTemplateCache()
+  it('supports D2.5 shorthand operators', () => {
     const c = ctx({ macroLocalVars: { tier: 'a' } })
     applyPromptMacroPipeline('{{.tier = ab}}', c)
     assert.equal(c.macroLocalVars?.tier, 'ab')
@@ -396,15 +326,8 @@ describe('Phase D2.5 shorthand operators (legacy)', () => {
       applyPromptMacroPipeline('{{.tier == abc}}', c),
       'true',
     )
-  })
-})
-
-describe('Phase D2.5 shorthand operators (CST)', () => {
-  useCstMacroEngine()
-
-  it('supports spaced shorthand set', () => {
-    const c = ctx()
-    applyPromptMacroPipeline('{{ .note = hello }}', c)
-    assert.equal(c.macroLocalVars?.note, 'hello')
+    const c2 = ctx()
+    applyPromptMacroPipeline('{{ .note = hello }}', c2)
+    assert.equal(c2.macroLocalVars?.note, 'hello')
   })
 })

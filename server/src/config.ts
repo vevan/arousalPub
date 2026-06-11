@@ -24,7 +24,7 @@ const CONFIG_EXAMPLE_PATH = path.join(REPO_ROOT, 'config.example.json')
 
 export type UpstreamUrlPolicy = 'open' | 'public-only'
 
-/** 提示词宏展开引擎：`legacy`=Handlebars 管线；`cst`=Lexer/Parser/Walker（开发中） */
+/** 提示词宏展开引擎（D3 起仅 CST；`legacy` 配置/环境变量保留作兼容别名） */
 export type MacroEngineId = 'legacy' | 'cst'
 
 interface RawConfig {
@@ -161,16 +161,16 @@ function parseMacroEngineId(raw: string | undefined): MacroEngineId | undefined 
   return undefined
 }
 
-/** 宏引擎：环境变量 MACRO_ENGINE > config.json macroEngine > legacy */
+/** 宏引擎：环境变量 MACRO_ENGINE > config.json macroEngine > cst（`legacy` 作兼容别名） */
 export function resolveMacroEngine(): MacroEngineId {
   const fromEnv = parseMacroEngineId(process.env.MACRO_ENGINE)
-  if (fromEnv) return fromEnv
+  if (fromEnv) return fromEnv === 'legacy' ? 'cst' : fromEnv
   const cfg = readConfigFile()
   const fromCfg = parseMacroEngineId(
     typeof cfg.macroEngine === 'string' ? cfg.macroEngine : undefined,
   )
-  if (fromCfg) return fromCfg
-  return 'legacy'
+  if (fromCfg) return fromCfg === 'legacy' ? 'cst' : fromCfg
+  return 'cst'
 }
 
 export function readConfigFile(): RawConfig {

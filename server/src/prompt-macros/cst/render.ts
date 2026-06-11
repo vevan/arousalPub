@@ -1,6 +1,6 @@
 import { preprocessLegacyAngleTags } from '../preprocess-angle-tags.js'
 import type { PromptMacroContext } from '../types.js'
-import { parseMacroDocument } from './parser.js'
+import { getCachedMacroDocument } from './document-cache.js'
 import { walkCstDocument } from './walker.js'
 
 function textHasNoArgTrim(text: string): boolean {
@@ -14,7 +14,7 @@ function renderPromptMacrosCstOnce(
   if (!text) return text
   const normalized = preprocessLegacyAngleTags(text)
   if (!normalized.includes('{{') && !normalized.includes('\\')) return normalized
-  return walkCstDocument(parseMacroDocument(normalized), ctx)
+  return walkCstDocument(getCachedMacroDocument(normalized), ctx)
 }
 
 /** CST 宏引擎：Lexer → Parser → Walker */

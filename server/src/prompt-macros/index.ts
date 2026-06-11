@@ -9,3 +9,4 @@ export {
 } from './pipeline.js'
 export { renderPromptMacros, resolveMacroEngine } from './engine.js'
 export { renderPromptMacrosCst } from './cst/render.js'
+export { clearCstDocumentCache } from './cst/document-cache.js'

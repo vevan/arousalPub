@@ -1,6 +1,6 @@
 # CST 宏引擎现状 ↔ Legacy 对照
 
-> **状态**：`CST-MACRO` 分支 · **D3 已完成**（2026-06-11）；D4 未开始。  
+> **状态**：`CST-MACRO` 分支 · **D4 已完成**（2026-06-11）。  
 > **目的**：记录 **CST**（Lexer → Parser → Walker）相对 **legacy**（Handlebars + 预处理链）的能力边界，便于你在 `macroEngine: "cst"` 下判断「能不能跑」「差在哪」。  
 > **ST 全量对照**：仍以 **`DOC/26-st-macros-compatibility.md`** 为准（描述 legacy 已实现的 ST 兼容面）；本文只回答 **CST 相对 legacy 差什么**。
 
@@ -39,6 +39,7 @@
 | 未知 `{{…}}` | `[name UNSUPPORTED]` |
 | 未闭合 `{{` | `[UNSUPPORTED]` |
 | 嵌套 `{{…}}` | Lexer 平衡匹配 `}}` + 参数内递归 `walk` |
+| 文档缓存（D4） | `getCachedMacroDocument` LRU（256 条）；预设条目等同文本只 parse 一次 |
 | 变量持久化 | 组装末 `persistMacroVarMutations`（与引擎无关） |
 | `macroEngine: legacy` | 配置/环境变量兼容别名，仍走 CST |
 
@@ -53,7 +54,7 @@
 | **D2** | `addvar`；`==` / `!=` 条件；无参 `{{trim}}`；`#` 保留空白 | ✅ |
 | **D2.5** | [ST Variable Shorthand Operators](https://docs.sillytavern.app/usage/core-concepts/macros/#variable-shorthand-operators)（`{{.x = …}}` `+=` `++` 等） | ✅ |
 | **D3** | 默认切 CST、删除 legacy Handlebars 预处理链 | ✅ |
-| **D4** | CST 文档缓存（静态 preset 条目） | ⏳ |
+| **D4** | CST 文档缓存（同文本复用解析 AST） | ✅ |
 
 实现目录：
 
@@ -67,6 +68,7 @@ server/src/prompt-macros/
     walker.ts
     macro-registry.ts       # 宏派发（复用 macro-values / macro-vars）
     render.ts
+    document-cache.ts       # D4 解析 AST LRU
     cst.test.ts
   macro-shorthand-op.ts     # D2.5 简写运算符
   preprocess-angle-tags.ts  # <USER> 等角括号
@@ -205,6 +207,7 @@ CST 下 **`{{setvar::k::v}}` / `{{addvar::k::chunk}}` + `{{getvar::k}}`** 可用
 |------|------|------|
 | 宏管线全量 | `server/src/prompt-macros/prompt-macros.test.ts` | D3 起默认 CST |
 | CST | `server/src/prompt-macros/cst/cst.test.ts` | 直接调 `renderPromptMacrosCst`（含 D2） |
+| 文档缓存 | `server/src/prompt-macros/cst/document-cache.test.ts` | LRU 命中与 `clearCstDocumentCache` |
 | 表达式 | `server/src/prompt-macros/macro-expr.test.ts` | if 条件内 `==` / `!=` |
 | 简写运算符 | `server/src/prompt-macros/macro-shorthand-op.test.ts` | `{{.x = …}}` `+=` `++` 等 |
 | 配置解析 | `server/src/config-macro-engine.test.ts` | `resolveMacroEngine()` |
@@ -241,4 +244,4 @@ DOC/29  … 选用 CST 时，在 26 基础上再砍掉/尚未迁移的一层
 
 ---
 
-*文档版本：2026-06-11 · CST D3 · 分支 `CST-MACRO`*
+*文档版本：2026-06-11 · CST D4 · 分支 `CST-MACRO`*

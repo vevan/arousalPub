@@ -1,8 +1,10 @@
 /** 提示词组装唯一实现（Web 通过 API 调用，不保留前端副本） */
 
 import { applyPromptMacroPipeline } from './prompt-macros/index.js'
-import type { PromptMacroContext } from './prompt-macros/index.js'
-
+import type {
+  MacroCharacterFields,
+  PromptMacroContext,
+} from './prompt-macros/index.js'
 export type { PromptMacroContext } from './prompt-macros/index.js'
 import type { AuthorsNoteRole } from './authors-note-settings.js'
 import {
@@ -81,6 +83,8 @@ export interface BoundCharacterSlice {
   cardBody: string
   systemPrompt?: string
   postHistory?: string
+  /** Phase A 宏字段（服务端加载卡时填充） */
+  macroFields?: MacroCharacterFields
 }
 
 export interface AssembleContext {

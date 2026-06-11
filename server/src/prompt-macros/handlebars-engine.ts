@@ -1,13 +1,27 @@
 import Handlebars from 'handlebars'
+import { resolveCharFirstMessage } from './character-fields.js'
 import {
   formatDatetimeParts,
+  formatDatetimePattern,
+  formatTimeWithUtcOffset,
+  pickRandomArg,
   resolveAuthorsNote,
   resolveCharName,
   resolveContextLength,
+  resolveInput,
+  resolveLastGenerationType,
+  resolveMaxResponseTokens,
   resolveModel,
+  resolvePersona,
+  resolvePrimaryField,
   resolveUserName,
+  rollDiceSpec,
 } from './macro-values.js'
-import { preprocessLegacyMacroSyntax } from './preprocess.js'
+import {
+  preprocessLegacyAngleTags,
+  preprocessLegacyMacroSyntax,
+  preprocessStColonMacros,
+} from './preprocess.js'
 import { replaceUnsupportedMacroPlaceholders } from './unsupported.js'
 import type { PromptMacroContext } from './types.js'
 
@@ -20,62 +34,106 @@ function macroContext(options: Handlebars.HelperOptions): PromptMacroContext {
   return options.data.root as PromptMacroContext
 }
 
-handlebars.registerHelper('user', function (...args: unknown[]) {
-  const options = args[args.length - 1] as Handlebars.HelperOptions
-  return resolveUserName(macroContext(options))
-})
+function helperArgs(args: unknown[]): unknown[] {
+  return args.slice(0, -1)
+}
 
-handlebars.registerHelper('char', function (...args: unknown[]) {
-  const options = args[args.length - 1] as Handlebars.HelperOptions
-  const ctx = macroContext(options)
-  if (args.length === 1) {
-    return resolveCharName(ctx, 1)
-  }
+function repeatChar(ch: string, countRaw: unknown): string {
+  const n = Number.parseInt(String(countRaw ?? 1), 10)
+  const count = Number.isFinite(n) && n > 0 ? Math.min(n, 256) : 1
+  return ch.repeat(count)
+}
+
+function registerSimple(
+  name: string,
+  fn: (ctx: PromptMacroContext, args: unknown[]) => string,
+): void {
+  handlebars.registerHelper(name, function (...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions
+    return fn(macroContext(options), helperArgs(args))
+  })
+}
+
+registerSimple('user', (ctx) => resolveUserName(ctx))
+registerSimple('char', (ctx, args) => {
+  if (args.length === 0) return resolveCharName(ctx, 1)
   const n = Number.parseInt(String(args[0]), 10)
   return resolveCharName(ctx, n)
 })
+registerSimple('model', (ctx) => resolveModel(ctx))
+registerSimple('maxprompt', (ctx) => resolveContextLength(ctx))
+registerSimple('context', (ctx) => resolveContextLength(ctx))
+registerSimple('maxresponsetokens', (ctx) => resolveMaxResponseTokens(ctx))
+registerSimple('input', (ctx) => resolveInput(ctx))
+registerSimple('lastgenerationtype', (ctx) => resolveLastGenerationType(ctx))
 
-handlebars.registerHelper('model', function (...args: unknown[]) {
-  const options = args[args.length - 1] as Handlebars.HelperOptions
-  return resolveModel(macroContext(options))
+registerSimple('date', (ctx) => formatDatetimeParts(ctx).date)
+registerSimple('time', (ctx, args) => {
+  if (args.length === 0) return formatDatetimeParts(ctx).time
+  return formatTimeWithUtcOffset(ctx, String(args[0]))
+})
+registerSimple('datetime', (ctx) => formatDatetimeParts(ctx).datetime)
+registerSimple('weekday', (ctx) => formatDatetimeParts(ctx).weekday)
+registerSimple('isodate', (ctx) => formatDatetimeParts(ctx).isodate)
+registerSimple('isotime', (ctx) => formatDatetimeParts(ctx).isotime)
+registerSimple('datetimeformat', (ctx, args) => {
+  const pattern = args.length > 0 ? String(args[0]) : 'YYYY-MM-DD HH:mm:ss'
+  return formatDatetimePattern(ctx, pattern)
 })
 
-handlebars.registerHelper('maxprompt', function (...args: unknown[]) {
-  const options = args[args.length - 1] as Handlebars.HelperOptions
-  return resolveContextLength(macroContext(options))
+registerSimple('newline', (_ctx, args) => repeatChar('\n', args[0]))
+registerSimple('space', (_ctx, args) => repeatChar(' ', args[0]))
+registerSimple('noop', () => '')
+registerSimple('trim', (_ctx, args) => {
+  const s = args.length > 0 ? String(args[0]) : ''
+  return s.trim()
+})
+registerSimple('reverse', (_ctx, args) => {
+  const s = args.length > 0 ? String(args[0]) : ''
+  return [...s].reverse().join('')
+})
+registerSimple('random', (_ctx, args) =>
+  pickRandomArg(args.map((a) => String(a))),
+)
+registerSimple('roll', (_ctx, args) => {
+  const spec = args.length > 0 ? String(args[0]) : '1d6'
+  return rollDiceSpec(spec)
 })
 
-handlebars.registerHelper('context', function (...args: unknown[]) {
-  const options = args[args.length - 1] as Handlebars.HelperOptions
-  return resolveContextLength(macroContext(options))
-})
+registerSimple('authorsnote', (ctx) => resolveAuthorsNote(ctx))
 
-handlebars.registerHelper('date', function (...args: unknown[]) {
-  const options = args[args.length - 1] as Handlebars.HelperOptions
-  return formatDatetimeParts(macroContext(options)).date
-})
-
-handlebars.registerHelper('time', function (...args: unknown[]) {
-  const options = args[args.length - 1] as Handlebars.HelperOptions
-  return formatDatetimeParts(macroContext(options)).time
-})
-
-handlebars.registerHelper('datetime', function (...args: unknown[]) {
-  const options = args[args.length - 1] as Handlebars.HelperOptions
-  return formatDatetimeParts(macroContext(options)).datetime
-})
-
-handlebars.registerHelper('newline', () => '\n')
-
-handlebars.registerHelper('authorsnote', function (...args: unknown[]) {
-  const options = args[args.length - 1] as Handlebars.HelperOptions
-  return resolveAuthorsNote(macroContext(options))
-})
-/** camelCase 别名 */
-handlebars.registerHelper('authorsNote', function (...args: unknown[]) {
-  const options = args[args.length - 1] as Handlebars.HelperOptions
-  return resolveAuthorsNote(macroContext(options))
-})
+registerSimple('description', (ctx) =>
+  resolvePrimaryField(ctx, (f) => f.description),
+)
+registerSimple('personality', (ctx) =>
+  resolvePrimaryField(ctx, (f) => f.personality),
+)
+registerSimple('scenario', (ctx) => resolvePrimaryField(ctx, (f) => f.scenario))
+registerSimple('persona', (ctx) => resolvePersona(ctx))
+registerSimple('mesexamples', (ctx) =>
+  resolvePrimaryField(ctx, (f) => f.mesExample),
+)
+registerSimple('mesexamplesraw', (ctx) =>
+  resolvePrimaryField(ctx, (f) => f.mesExample),
+)
+registerSimple('charprompt', (ctx) =>
+  resolvePrimaryField(ctx, (f) => f.systemPrompt),
+)
+registerSimple('charinstruction', (ctx) =>
+  resolvePrimaryField(ctx, (f) => f.postHistoryInstructions),
+)
+registerSimple('charcreatornotes', (ctx) =>
+  resolvePrimaryField(ctx, (f) => f.creatorNotes),
+)
+registerSimple('charversion', (ctx) =>
+  resolvePrimaryField(ctx, (f) => f.characterVersion),
+)
+registerSimple('chardepthprompt', (ctx) =>
+  resolvePrimaryField(ctx, (f) => f.depthPrompt),
+)
+registerSimple('charfirstmessage', (ctx, args) =>
+  resolveCharFirstMessage(ctx.primaryCharacter, args[0]),
+)
 
 function compileCached(source: string): Handlebars.TemplateDelegate {
   let tpl = compileCache.get(source)
@@ -98,8 +156,10 @@ export function renderPromptMacros(
   text: string,
   ctx: PromptMacroContext,
 ): string {
-  const withoutUnsupported = replaceUnsupportedMacroPlaceholders(text)
-  const normalized = preprocessLegacyMacroSyntax(withoutUnsupported)
+  let normalized = preprocessLegacyAngleTags(text)
+  normalized = preprocessStColonMacros(normalized)
+  normalized = replaceUnsupportedMacroPlaceholders(normalized)
+  normalized = preprocessLegacyMacroSyntax(normalized)
   if (!normalized.includes('{{')) return normalized
   try {
     return compileCached(normalized)(ctx, { data: { root: ctx } })

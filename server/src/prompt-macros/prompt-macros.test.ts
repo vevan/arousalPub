@@ -1,18 +1,39 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import { extractMacroCharacterFields } from './character-fields.js'
 import { buildPromptMacroContext } from './context.js'
 import { clearMacroTemplateCache } from './handlebars-engine.js'
 import { applyPromptMacroPipeline } from './pipeline.js'
+
+const sampleCard = {
+  name: '艾拉',
+  description: '角色描述',
+  personality: '温柔',
+  scenario: '咖啡馆',
+  first_mes: '你好呀',
+  mes_example: '示例对话',
+  creator_notes: '创作者备注',
+  character_version: '3.1',
+  system_prompt: '系统提示',
+  post_history_instructions: '后置指令',
+  alternate_greetings: ['备选问候'],
+}
 
 function ctx(
   overrides: Parameters<typeof buildPromptMacroContext>[0] = {},
 ) {
   return buildPromptMacroContext({
     conversationUserName: '小明',
-    characters: [{ name: '艾拉' }, { name: '鲍勃' }],
+    characters: [
+      { name: '艾拉', macroFields: extractMacroCharacterFields(sampleCard) },
+      { name: '鲍勃' },
+    ],
     model: 'gpt-test',
     contextLength: 8192,
-    now: new Date('2026-06-10T15:04:05'),
+    maxResponseTokens: 512,
+    userInput: '用户输入文本',
+    promptTrigger: 'continue',
+    now: new Date('2026-06-10T15:04:05Z'),
     locale: 'zh-CN',
     authorsNote: '作者注正文',
     ...overrides,
@@ -52,10 +73,6 @@ describe('applyPromptMacroPipeline (Handlebars)', () => {
       applyPromptMacroPipeline('{{getvar::x}}', ctx()),
       '[getvar::x UNSUPPORTED]',
     )
-    assert.equal(
-      applyPromptMacroPipeline('前缀 {{description}} 后缀', ctx()),
-      '前缀 [description UNSUPPORTED] 后缀',
-    )
   })
 
   it('defaults user/char when missing', () => {
@@ -74,5 +91,73 @@ describe('applyPromptMacroPipeline (Handlebars)', () => {
 
   it('skips pipeline when no mustache', () => {
     assert.equal(applyPromptMacroPipeline('plain text', ctx()), 'plain text')
+  })
+})
+
+describe('Phase A macros', () => {
+  it('expands character card field macros', () => {
+    clearMacroTemplateCache()
+    const out = applyPromptMacroPipeline(
+      '{{description}}|{{personality}}|{{scenario}}|{{charPrompt}}|{{charInstruction}}|{{mesExamples}}|{{charCreatorNotes}}|{{charVersion}}',
+      ctx(),
+    )
+    assert.equal(
+      out,
+      '角色描述|温柔|咖啡馆|系统提示|后置指令|示例对话|创作者备注|3.1',
+    )
+  })
+
+  it('expands charFirstMessage and alternate greeting index', () => {
+    clearMacroTemplateCache()
+    assert.equal(
+      applyPromptMacroPipeline('{{charFirstMessage}} / {{charFirstMessage::1}}', ctx()),
+      '你好呀 / 备选问候',
+    )
+  })
+
+  it('expands assemble context macros', () => {
+    clearMacroTemplateCache()
+    const out = applyPromptMacroPipeline(
+      '{{input}}|{{lastGenerationType}}|{{maxResponseTokens}}',
+      ctx(),
+    )
+    assert.equal(out, '用户输入文本|continue|512')
+  })
+
+  it('expands date extensions and datetimeformat', () => {
+    clearMacroTemplateCache()
+    const out = applyPromptMacroPipeline(
+      '{{weekday}}|{{isodate}}|{{isotime}}|{{datetimeformat::YYYY-MM-DD}}',
+      ctx(),
+    )
+    assert.match(out, /\|2026-06-10\|/)
+    assert.match(out, /\|2026-06-10$/)
+  })
+
+  it('expands utility macros', () => {
+    clearMacroTemplateCache()
+    assert.equal(applyPromptMacroPipeline('{{space::3}}X', ctx()), '   X')
+    assert.equal(applyPromptMacroPipeline('{{newline::2}}Y', ctx()), '\n\nY')
+    assert.equal(applyPromptMacroPipeline('{{noop}}Z', ctx()), 'Z')
+    assert.equal(applyPromptMacroPipeline('{{trim::  ab  }}', ctx()), 'ab')
+    assert.equal(applyPromptMacroPipeline('{{reverse::abc}}', ctx()), 'cba')
+    assert.equal(applyPromptMacroPipeline('{{random::a::b::c}}', ctx()).length, 1)
+    assert.match(applyPromptMacroPipeline('{{roll::1d6}}', ctx()), /^[1-6]$/)
+  })
+
+  it('preprocesses legacy angle tags', () => {
+    clearMacroTemplateCache()
+    assert.equal(
+      applyPromptMacroPipeline('<USER> says hi to <CHAR>', ctx()),
+      '小明 says hi to 艾拉',
+    )
+  })
+
+  it('supports camelCase ST macro names', () => {
+    clearMacroTemplateCache()
+    assert.equal(
+      applyPromptMacroPipeline('{{mesExamplesRaw}} {{charPrompt}}', ctx()),
+      '示例对话 系统提示',
+    )
   })
 })

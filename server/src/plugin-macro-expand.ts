@@ -8,6 +8,8 @@ import {
 import {
   applyPromptMacroPipeline,
   buildPromptMacroContext,
+  extractMacroCharacterFields,
+  type MacroContextCharacterInput,
 } from './prompt-macros/index.js'
 
 export interface PluginMacroExpandRequest {
@@ -21,10 +23,10 @@ export type PluginMacroExpandResult =
   | { ok: true; text: string }
   | { ok: false; code: 'text_required' }
 
-async function loadCharacterNames(
+async function loadMacroCharacters(
   charIds: string[],
-): Promise<{ name?: string }[]> {
-  const out: { name?: string }[] = []
+): Promise<MacroContextCharacterInput[]> {
+  const out: MacroContextCharacterInput[] = []
   for (const id of charIds) {
     const doc = await readCharacterDocument(id.trim())
     if (!doc?.card || typeof doc.card !== 'object') continue
@@ -32,7 +34,10 @@ async function loadCharacterNames(
     const nameRaw = card.name
     const name =
       typeof nameRaw === 'string' && nameRaw.trim() ? nameRaw.trim() : undefined
-    out.push({ name })
+    out.push({
+      name,
+      macroFields: extractMacroCharacterFields(card),
+    })
   }
   return out
 }
@@ -46,7 +51,7 @@ export async function runPluginMacroExpand(
   }
 
   let conversationUserName: string | null | undefined
-  let characters: { name?: string }[] = []
+  let characters: MacroContextCharacterInput[] = []
   let authorsNote: string | undefined
 
   const convId =
@@ -56,13 +61,14 @@ export async function runPluginMacroExpand(
     if (idx) {
       conversationUserName = idx.userName
       const charIds = resolvedCharacterIds(idx)
-      characters = await loadCharacterNames(charIds)
+      characters = await loadMacroCharacters(charIds)
       authorsNote = authorsNoteMacroText(idx.authorsNote)
     }
   }
 
   let model: string | undefined
   let contextLength: number | undefined
+  let maxResponseTokens: number | undefined
   const apiConfigId =
     typeof req.apiConfigId === 'string' ? req.apiConfigId.trim() : ''
   if (apiConfigId) {
@@ -77,6 +83,9 @@ export async function runPluginMacroExpand(
       ) {
         contextLength = preset.contextLength
       }
+      if (typeof preset.maxTokens === 'number' && preset.maxTokens > 0) {
+        maxResponseTokens = preset.maxTokens
+      }
     }
   }
 
@@ -85,6 +94,7 @@ export async function runPluginMacroExpand(
     characters,
     model,
     contextLength,
+    maxResponseTokens,
     authorsNote,
     locale: req.locale,
   })

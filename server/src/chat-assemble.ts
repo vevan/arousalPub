@@ -8,6 +8,8 @@ import {
   type PromptTrigger,
 } from './assemble-prompts.js'
 import { buildPromptMacroContext } from './prompt-macros/index.js'
+import { extractMacroCharacterFields } from './prompt-macros/index.js'
+import { applyMacrosToMessages } from './prompt-macros/index.js'
 import {
   authorsNoteForInjection,
   authorsNoteMacroText,
@@ -46,7 +48,12 @@ import { resolveBudgetTrimSettings } from './budget-trim-settings.js'
 import { normalizePresetForAssemble } from './prompt-preset-normalize.js'
 import { readApiSettingsFromFile } from './api-settings-file.js'
 import {
+  mergePresetWithChatBinding,
+  readConversationChatBinding,
+} from './conversation-api-settings.js'
+import {
   resolveFeatureApi,
+  resolveChatApiConfigId,
   toResolvedFeatureAudit,
   type ResolvedFeatureAudit,
 } from './feature-binding-resolve.js'
@@ -106,7 +113,13 @@ function cardRecordToSlice(card: Record<string, unknown>): BoundCharacterSlice {
   const ph = card.post_history_instructions
   const postHistory =
     typeof ph === 'string' && ph.trim() ? ph.trim() : undefined
-  return { name, cardBody, systemPrompt, postHistory }
+  return {
+    name,
+    cardBody,
+    systemPrompt,
+    postHistory,
+    macroFields: extractMacroCharacterFields(card),
+  }
 }
 
 async function loadBoundCharacterSlices(ids: string[]): Promise<BoundCharacterSlice[]> {
@@ -143,7 +156,31 @@ async function loadUserCharacterSlice(
     name,
     cardBody: cardRecordToUserXmlBlock(card),
     systemPrompt,
+    macroFields: extractMacroCharacterFields(card),
   }
+}
+
+function resolveMaxResponseTokensForConversation(
+  idx: ConversationIndex,
+  apiSettings: NonNullable<Awaited<ReturnType<typeof readApiSettingsFromFile>>>,
+): number | undefined {
+  const binding = readConversationChatBinding(idx.apiPreset)
+  const resolved = resolveChatApiConfigId(apiSettings, idx.apiPreset)
+  const presetId = (
+    binding?.apiConfigId?.trim() ||
+    resolved?.apiConfigId ||
+    apiSettings.activePresetId ||
+    ''
+  ).trim()
+  if (!presetId) return undefined
+  const preset = apiSettings.presets.find((p) => p.id === presetId)
+  if (!preset) return undefined
+  const merged = mergePresetWithChatBinding(preset, binding)
+  const n = merged.maxTokens
+  if (typeof n === 'number' && !Number.isNaN(n) && n > 0) {
+    return Math.floor(n)
+  }
+  return undefined
 }
 
 const TRIGGERS: PromptTrigger[] = [
@@ -287,8 +324,14 @@ export async function buildConversationOutboundMessages(
   const macroContext = buildPromptMacroContext({
     conversationUserName: idx.userName,
     characters,
+    userCharacter,
     model: params.tokenModel ?? undefined,
     contextLength: maxTokens,
+    maxResponseTokens: apiSettings
+      ? resolveMaxResponseTokensForConversation(idx, apiSettings)
+      : undefined,
+    userInput,
+    promptTrigger: trigger,
     authorsNote: authorsNoteMacroText(idx.authorsNote),
   })
 
@@ -396,6 +439,7 @@ export async function buildConversationOutboundMessages(
     trimmedHistoryMessages: trimState.historyMessages,
     memoryItems: trimState.memoryItems,
     userInput: userInput,
+    macroContext,
   })
   const afterRegexAt = auditEnabled ? performance.now() : 0
 
@@ -406,6 +450,9 @@ export async function buildConversationOutboundMessages(
     macroContext,
     plugins: params.plugins,
   })
+  if (macroContext) {
+    applyMacrosToMessages(messagesAfterPlugins, macroContext)
+  }
   const finalEstimatedTokens =
     messagesAfterPlugins.length === messages.length
       ? estimatedTokens

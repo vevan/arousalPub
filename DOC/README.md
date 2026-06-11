@@ -34,6 +34,7 @@
 | [`11`](11-plugin-host-completion-and-lorebook.md) | ✅ | complete、lorebook API |
 | [`12`](12-plugin-plot-summary.md) | ✅ v1.6+ | Historian / plot-summary |
 | [`14`](14-st-macros-porting.md) | 备忘 | ST 宏扩展可行性 |
+| [`26`](26-st-macros-compatibility.md) | ✅ Phase A | **ST ↔ 本地宏兼容对照表** |
 | [`15`](15-conversation-messages-lazy-load.md) | 部分 | 消息 UI 懒加载（服务端原语 ✅） |
 | [`17`](17-admin-console.md) | ✅ | 本机运维台、DEK 轮换 |
 | [`18`](18-plugin-host-developer-api.md) | ✅ | 插件 API 表 |

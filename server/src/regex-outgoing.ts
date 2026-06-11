@@ -1,6 +1,8 @@
 import type { ChatMessage } from './assemble-prompts.js'
 import type { TurnRecord } from './chat-storage.js'
 import { getTurnUserText } from './chat-storage.js'
+import { applyPromptMacroPipeline } from './prompt-macros/index.js'
+import type { PromptMacroContext } from './prompt-macros/index.js'
 import {
   applyRegexRulesToMessages,
   applyRegexRulesToText,
@@ -32,6 +34,8 @@ export interface OutgoingRegexContext {
   memoryItems?: MemoryRegexItem[]
   /** 本轮 userInput；用于识别尾部当前 user 消息 */
   userInput?: string
+  /** memory 块重建后重新展开 `{{user}}` / `{{char}}` 等 */
+  macroContext?: PromptMacroContext
 }
 
 export function isMemoryXmlContent(content: string): boolean {
@@ -110,12 +114,17 @@ export function applyOutgoingRegexToMemoryItems(
 function patchMemoryMessagesInPlace(
   messages: ChatMessage[],
   memoryXml: string,
+  macroContext?: PromptMacroContext,
 ): ChatMessage[] {
   let patched = false
+  const content =
+    macroContext && memoryXml.includes('{{')
+      ? applyPromptMacroPipeline(memoryXml, macroContext)
+      : memoryXml
   const out = messages.map((msg) => {
     if (msg.role === 'system' && isMemoryXmlContent(msg.content)) {
       patched = true
-      return { ...msg, content: memoryXml }
+      return { ...msg, content }
     }
     return msg
   })
@@ -254,7 +263,11 @@ export function applyRegexOutgoingToMessages(
     )
     const memoryXml = formatMemoryXml(processedItems)
     if (memoryXml) {
-      messagesForRules = patchMemoryMessagesInPlace(messages, memoryXml)
+      messagesForRules = patchMemoryMessagesInPlace(
+        messages,
+        memoryXml,
+        ctx.macroContext,
+      )
     }
   }
 

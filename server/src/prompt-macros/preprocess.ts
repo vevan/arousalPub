@@ -1,6 +1,49 @@
-import { KNOWN_MACRO_HEADS } from './macro-values.js'
+import {
+  COLON_MACRO_HEADS,
+  KNOWN_MACRO_HEADS,
+  normalizeMacroHead,
+} from './macro-values.js'
 
-/** `{{char1}}` / `{{CHAR 2}}` → `{{char 1}}` / `{{char 2}}` */
+const LEGACY_ANGLE_TAGS: Record<string, string> = {
+  user: '{{user}}',
+  bot: '{{char}}',
+  char: '{{char}}',
+}
+
+/** Legacy `<USER>` / `<BOT>` / `<CHAR>` → Handlebars 宏 */
+export function preprocessLegacyAngleTags(text: string): string {
+  if (!text.includes('<')) return text
+  return text.replace(/<(USER|BOT|CHAR)>/gi, (_, tag: string) => {
+    return LEGACY_ANGLE_TAGS[tag.toLowerCase()] ?? `<${tag}>`
+  })
+}
+
+function escapeHbString(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+}
+
+/** ST `{{macro::a::b}}` → `{{macro "a" "b"}}` */
+export function preprocessStColonMacros(text: string): string {
+  if (!text.includes('::') || !text.includes('{{')) return text
+  return text.replace(/\{\{([^}]+)\}\}/g, (match, inner: string) => {
+    const raw = inner.trim()
+    if (!raw.includes('::')) return match
+    const parts = raw.split('::').map((s) => s.trim())
+    const head = normalizeMacroHead(parts[0]!)
+    if (!COLON_MACRO_HEADS.has(head)) return match
+    const args = parts.slice(1)
+    if (args.length === 0) {
+      if (head === 'space' || head === 'newline') return `{{${head} 1}}`
+      return `{{${head}}}`
+    }
+    const formatted = args
+      .map((a) => (/^\d+$/.test(a) ? a : escapeHbString(a)))
+      .join(' ')
+    return `{{${head} ${formatted}}}`
+  })
+}
+
+/** `{{char1}}` / `{{CHAR 2}}` / camelCase 已知宏 → 规范 Handlebars 形态 */
 export function preprocessLegacyMacroSyntax(text: string): string {
   if (!text.includes('{{')) return text
   return text.replace(/\{\{([^}]+)\}\}/g, (match, inner: string) => {
@@ -11,8 +54,8 @@ export function preprocessLegacyMacroSyntax(text: string): string {
     const parts = raw.split(/\s+/).filter(Boolean)
     if (parts.length === 0) return match
     const headRaw = parts[0]!
-    const headLower = headRaw.toLowerCase()
-    const charDigits = headLower.match(/^char(\d+)$/)
+    const headLower = normalizeMacroHead(headRaw)
+    const charDigits = headRaw.toLowerCase().match(/^char(\d+)$/)
     if (charDigits) {
       return `{{char ${charDigits[1]}}}`
     }
@@ -23,7 +66,9 @@ export function preprocessLegacyMacroSyntax(text: string): string {
       }
     }
     if (KNOWN_MACRO_HEADS.has(headLower)) {
-      return parts.length > 1 ? `{{${headLower} ${parts.slice(1).join(' ')}}}` : `{{${headLower}}}`
+      return parts.length > 1
+        ? `{{${headLower} ${parts.slice(1).join(' ')}}}`
+        : `{{${headLower}}}`
     }
     return match
   })

@@ -1,9 +1,9 @@
 # SillyTavern 宏移植可行性（备忘）
 
-> **状态**：规划备忘，**未排期实现**。  
+> **状态**：规划备忘；**已实现清单**见 **`DOC/26-st-macros-compatibility.md`**（Phase A ✅）。  
 > **目的**：对照 [SillyTavern Macros](https://docs.sillytavern.app/usage/core-concepts/macros/) 评估「把 ST 宏能力迁到本项目」的可行范围与难度，供后续选型。  
 > **非目标**：本文不是「为兼容 ST 而做」的决策记录；ST 宏在预设/角色卡/世界书里确实好用，值得单独评估。  
-> **本项目现状**：运行时宏见 `DOC/03-实现细节.md` §15；实现目录 `server/src/prompt-macros/`。
+> **本项目现状**：运行时宏见 `DOC/03-实现细节.md` §15；实现目录 `server/src/prompt-macros/`（Handlebars）。
 
 ---
 
@@ -11,7 +11,7 @@
 
 | 维度 | SillyTavern | arousalPub（当前） |
 |------|-------------|-------------------|
-| 引擎 | 实验性宏引擎：嵌套、作用域块、稳定求值顺序 | 顺序 **handler + 正则** 单遍替换 |
+| 引擎 | 实验性宏引擎：嵌套、作用域块、稳定求值顺序 | **Handlebars** helper + 预处理（`::` / legacy）；无嵌套/变量 |
 | 语法 | `{{if}}` / `{{else}}` / `{{/macro}}`、`::` 多参、变量简写 `.` `$` | 仅 `{{name}}` / `{{name N}}` 形态 |
 | 嵌套 | 内层先展开，如 `{{getvar::{{char}}_mood}}` | **不支持**；未知 → `[name UNSUPPORTED]` |
 | 变量 | local/global + 运算符全家桶 | **无** 变量存储 |

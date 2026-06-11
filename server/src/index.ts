@@ -207,6 +207,8 @@ import { assertPluginRoutePermission } from './plugin-route-auth.js'
 import {
   applyPromptMacroPipeline,
   buildPromptMacroContext,
+  extractMacroCharacterFields,
+  type MacroContextCharacterInput,
 } from './prompt-macros/index.js'
 import {
   runPromptsAssemblePreview,
@@ -1055,21 +1057,40 @@ app.post<{ Params: { id: string }; Body: OpeningTurnBody }>(
       return reply.status(400).send({ error: ApiErrorCodes.receives_required_nonempty })
     }
     const idxForMacro = await readConversationIndex(id)
-    const macroChars: { name?: string }[] = []
+    const macroChars: MacroContextCharacterInput[] = []
+    let userCharacterForMacro: MacroContextCharacterInput | undefined
     if (idxForMacro) {
       for (const cid of resolvedCharacterIds(idxForMacro)) {
         const doc = await readCharacterDocument(cid)
         if (doc?.card && typeof doc.card === 'object') {
-          const name = (doc.card as Record<string, unknown>).name
+          const card = doc.card as Record<string, unknown>
+          const nameRaw = card.name
           macroChars.push({
-            name: typeof name === 'string' ? name : undefined,
+            name: typeof nameRaw === 'string' ? nameRaw : undefined,
+            macroFields: extractMacroCharacterFields(card),
           })
+        }
+      }
+      const userCharId =
+        typeof idxForMacro.userCharacterId === 'string'
+          ? idxForMacro.userCharacterId.trim()
+          : ''
+      if (userCharId) {
+        const doc = await readCharacterDocument(userCharId)
+        if (doc?.card && typeof doc.card === 'object') {
+          const card = doc.card as Record<string, unknown>
+          const nameRaw = card.name
+          userCharacterForMacro = {
+            name: typeof nameRaw === 'string' ? nameRaw : undefined,
+            macroFields: extractMacroCharacterFields(card),
+          }
         }
       }
     }
     const openingMacroCtx = buildPromptMacroContext({
       conversationUserName: idxForMacro?.userName,
       characters: macroChars,
+      userCharacter: userCharacterForMacro,
     })
 
     const receives: TurnReceive[] = []

@@ -15,6 +15,19 @@ export function assistantTextFromTurn(t: TurnRecord): string {
   return typeof c === 'string' ? c : ''
 }
 
+/** 单条发言 XML（属性宏在组装/complete 阶段展开，与摘要 transcript 一致） */
+export function wrapTurnRoleLine(
+  role: 'user' | 'assistant',
+  text: string,
+): string {
+  const body = (text ?? '').trim()
+  if (!body) return ''
+  const attr =
+    role === 'user' ? 'userName="{{user}}"' : 'charName="{{char}}"'
+  const escaped = prepareXmlElementText(body)
+  return `<${role} ${attr}>${escaped}</${role}>`
+}
+
 function turnToXmlInner(turn: TurnRecord, score?: number): string {
   const user = getTurnUserText(turn)
   const assistant = assistantTextFromTurn(turn)
@@ -26,10 +39,10 @@ function turnToXmlInner(turn: TurnRecord, score?: number): string {
     `  <turn id="${escapeXmlAttribute(turn.turnId)}" ordinal="${turn.turnOrdinal}"${scoreAttr}>`,
   ]
   if (user.trim()) {
-    lines.push(`    <user>${prepareXmlElementText(user)}</user>`)
+    lines.push(`    ${wrapTurnRoleLine('user', user)}`)
   }
   if (assistant.trim()) {
-    lines.push(`    <assistant>${prepareXmlElementText(assistant)}</assistant>`)
+    lines.push(`    ${wrapTurnRoleLine('assistant', assistant)}`)
   }
   lines.push('  </turn>')
   return lines.join('\n')

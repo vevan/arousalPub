@@ -5,7 +5,8 @@ export function applyPromptMacroPipeline(
   text: string,
   ctx: PromptMacroContext,
 ): string {
-  if (!text || !text.includes('{{')) return text
+  if (!text) return text
+  if (!text.includes('{{') && !/<(USER|BOT|CHAR)>/i.test(text)) return text
   return renderPromptMacros(text, ctx)
 }
 

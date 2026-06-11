@@ -182,7 +182,7 @@ function normalizeField(raw: unknown): PluginSettingsFieldSchema | null {
   if (o.collapsible === true) field.collapsible = true
   if (Array.isArray(o.panelFieldKeys)) {
     const keys = o.panelFieldKeys
-      .filter((x): x is string => typeof x === 'string' && x.trim())
+      .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
       .map((x) => x.trim())
     if (keys.length > 0) field.panelFieldKeys = keys
   }
@@ -307,10 +307,10 @@ function parseStringArrayValue(value: unknown, fallback: unknown): string[] {
       }
     }
   } else if (Array.isArray(fallback)) {
-    return fallback.filter((x): x is string => typeof x === 'string' && x.trim()).map((x) => x.trim())
+    return fallback.filter((x): x is string => typeof x === 'string' && x.trim().length > 0).map((x) => x.trim())
   }
   return arr
-    .filter((x): x is string => typeof x === 'string' && x.trim())
+    .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
     .map((x) => x.trim())
 }
 

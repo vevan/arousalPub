@@ -318,6 +318,13 @@ export const KNOWN_MACRO_HEADS = new Set([
   'chardepthprompt',
   'input',
   'lastgenerationtype',
+  'getvar',
+  'setvar',
+  'hasvar',
+  'getglobalvar',
+  'setglobalvar',
+  'hasglobalvar',
+  'stif',
 ])
 
 /** 支持 `{{name::arg}}` ST 语法的宏头 */
@@ -334,6 +341,12 @@ export const COLON_MACRO_HEADS = new Set([
   'pick',
   'hasextension',
   'timediff',
+  'getvar',
+  'setvar',
+  'hasvar',
+  'getglobalvar',
+  'setglobalvar',
+  'hasglobalvar',
 ])
 
 export function macroTokenHead(inner: string): string {
@@ -348,6 +361,13 @@ export function macroTokenHead(inner: string): string {
 export function isKnownMacroToken(inner: string): boolean {
   const raw = inner.trim()
   if (!raw) return false
+  if (raw.toLowerCase() === 'else') return true
+  if (raw.startsWith('#') || raw.startsWith('/')) {
+    const body = raw.slice(1).trim()
+    const head = body.split(/\s+/)[0]!.toLowerCase()
+    if (head === 'stif') return true
+    return false
+  }
   const head = macroTokenHead(raw)
   if (KNOWN_MACRO_HEADS.has(head)) return true
   if (/^char\d+$/i.test(head)) return true

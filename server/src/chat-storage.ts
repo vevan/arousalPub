@@ -215,6 +215,8 @@ export interface ConversationIndex {
   pluginSettings?: Record<string, Record<string, unknown>>
   /** persist retro 待重试的 turnOrdinal（写盘失败时写入） */
   retroPersistPending?: number[]
+  /** ST 式会话局部宏变量（`{{setvar}}` / `{{getvar}}`） */
+  macroLocalVars?: Record<string, string>
 }
 
 export interface TurnReceive {

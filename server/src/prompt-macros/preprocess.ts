@@ -29,6 +29,7 @@ export function preprocessStColonMacros(text: string): string {
     const raw = inner.trim()
     if (!raw.includes('::')) return match
     const parts = raw.split('::').map((s) => s.trim())
+    if (parts.some((p) => p.includes('{{'))) return match
     const head = normalizeMacroHead(parts[0]!)
     if (!COLON_MACRO_HEADS.has(head)) return match
     const args = parts.slice(1)

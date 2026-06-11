@@ -1,4 +1,5 @@
 import type { MacroCharacterFields } from './character-fields.js'
+import type { MacroVarMap } from './macro-vars.js'
 
 /** 宏展开上下文（仅服务端构造） */
 
@@ -41,4 +42,12 @@ export interface PromptMacroContext {
   idleReferenceUserAt?: string
   /** 已启用插件 id（小写比较 hasExtension） */
   enabledPluginIds?: string[]
+  /** Phase C：会话局部变量（`{{getvar}}` / `{{setvar}}`） */
+  macroLocalVars?: MacroVarMap
+  /** Phase C：用户全局变量 */
+  macroGlobalVars?: MacroVarMap
+  /** 本轮渲染写回过会话局部变量 */
+  macroVarsDirty?: boolean
+  /** 本轮渲染写回过全局变量 */
+  macroGlobalVarsDirty?: boolean
 }

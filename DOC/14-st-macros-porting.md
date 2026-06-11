@@ -121,7 +121,7 @@
 
 1. **Phase A（低）**：角色卡字段宏 + 日期扩展 + `{{maxResponseTokens}}` + 工具宏（`space` / `roll` / `random`）— 仍用 handler 表。  
 2. **Phase B（中）**：历史/ swipe / `{{input}}` / `{{pick}}` — 扩展 `buildPromptMacroContext` 入参，assemble 前读尾 chunk。  
-3. **Phase C（高）**：引入模板引擎（建议评估 **mustache/handlebars 子集** 或自研 tokenizer），实现 `if`、注释、转义；变量持久化单独设计。  
+3. **Phase C（高）【已完成 · 2026-06】**：Handlebars + 预处理链（`if`/scoped/嵌套/注释/转义）；变量持久化：`ConversationIndex.macroLocalVars` + `user-preferences.macroGlobalVars`。  
 4. **文档与兼容**：ST 宏名别名表（如 `maxPrompt` → `maxprompt`）；`[name UNSUPPORTED]` vs ST 空串行为要在发行说明写清。
 
 ---

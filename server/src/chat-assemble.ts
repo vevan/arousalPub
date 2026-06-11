@@ -13,6 +13,11 @@ import { buildMacroHistoryFields } from './prompt-macros/history-macros.js'
 import { extractMacroCharacterFields } from './prompt-macros/index.js'
 import { applyMacrosToMessages } from './prompt-macros/index.js'
 import {
+  loadMacroGlobalVarsForContext,
+  loadMacroLocalVarsForConversation,
+  persistMacroVarMutations,
+} from './prompt-macros/macro-vars-persist.js'
+import {
   authorsNoteForInjection,
   authorsNoteMacroText,
   defaultAuthorsNoteMacroText,
@@ -376,6 +381,11 @@ export async function buildConversationOutboundMessages(
     characterNames: charNameList,
   })
 
+  const [macroLocalVars, macroGlobalVars] = await Promise.all([
+    loadMacroLocalVarsForConversation(conversationId),
+    loadMacroGlobalVarsForContext(),
+  ])
+
   let macroContext = buildPromptMacroContext({
     conversationUserName: idx.userName,
     characters,
@@ -392,6 +402,8 @@ export async function buildConversationOutboundMessages(
     conversationId,
     historyFields,
     enabledPluginIds,
+    macroLocalVars,
+    macroGlobalVars,
   })
 
   const authorsNote = authorsNoteForInjection(idx.authorsNote)
@@ -524,6 +536,7 @@ export async function buildConversationOutboundMessages(
     applyMacrosToMessages(messagesAfterPlugins, macroContext, {
       onlyIfNeeded: true,
     })
+    await persistMacroVarMutations(macroContext)
   }
   const finalEstimatedTokens =
     messagesAfterPlugins.length === messages.length

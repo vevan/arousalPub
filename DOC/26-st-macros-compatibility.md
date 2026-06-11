@@ -19,7 +19,7 @@
 
 - 未知 `{{…}}` → **`[name UNSUPPORTED]`**（ST 常保留原文或按引擎处理）；行尾未闭合的 `{{token` 亦标为 **`[UNSUPPORTED]`**。
 - Handlebars **编译/执行失败** 时，剩余完整 `{{…}}` → **`[name RENDERFAIL]`**（与 UNSUPPORTED 区分，便于排查模板语法错误）。
-- 未实现的块语法（`{{#if}}`、`{{/if}}` 等）按 **未知宏** 处理，**不**静默保留原文。
+- ST 块语法 `{{if}}` / `{{else}}` / `{{/if}}` 经预处理为 Handlebars `stIf` helper；原生 `{{#if}}` 仍按未知宏处理。
 - 宏 **仅服务端** 展开；Web 预览/审计展示 API 返回的已展宏结果。
 - 大小写 **不敏感**；camelCase ST 写法（如 `{{mesExamples}}`）经预处理后可用。
 - ST **`::` 多参** 在预处理中转成 Handlebars helper 参数（如 `{{random::a::b}}` → `{{random "a" "b"}}`）。
@@ -36,7 +36,7 @@
 | **引擎迁移** | handler 链 → **Handlebars**（`handlebars-engine.ts`） | ✅ |
 | **Phase A** | 角色卡字段、日期扩展、工具宏、组装上下文、Legacy 角括号 | ✅ |
 | **Phase B** | 历史尾块、swipe 索引、稳定 `pick`、`hasExtension`、`notChar` | ✅ |
-| **Phase C** | `{{if}}`、嵌套、变量持久化、注释/转义 | ⏳ |
+| **Phase C** | `{{if}}`、嵌套、变量持久化、注释/转义 | ✅ |
 
 ---
 
@@ -146,16 +146,20 @@
 
 ---
 
-## 7. 未实现（Phase C — 引擎级）
+## 7. Phase C（引擎级）— 已实现
 
-| ST 能力 | 标记 |
-|---------|------|
-| `{{if}}` / `{{else}}` / scoped `{{/macro}}` | ⏳ |
-| 嵌套宏（如 `{{getvar::{{char}}_x}}`） | ⏳ |
-| `{{//}}` 注释、`\{\{` 转义 | ⏳ |
-| 宏标志 `#` `!` `?` | ⏳ |
-| `getvar` / `setvar` / global 与运算符简写 | ⏳ |
-| 前端宏补全、`/? macros` | ⏳ |
+| ST 能力 | 标记 | 说明 |
+|---------|------|------|
+| `{{if}}` / `{{else}}` / `{{/if}}` | ✅ | 条件支持宏名、`!` 取反、`.local` / `$global`；真值规则：空/`false`/`0`/`off`/`no` 为假 |
+| scoped `{{setvar}}` … `{{/setvar}}` 等 | ✅ | `setvar` / `setglobalvar` / `reverse` / `trim` 块体合并为 helper 参数 |
+| 嵌套宏 | ✅ | 自内向外展开（`nested-expand.ts`）；`::` 参数中含 `{{` 时延后至内层展开后再解析 |
+| `{{//}}` 注释 | ✅ | 行内 `{{// …}}` 与块 `{{//}}` … `{{//}}` |
+| `\{\{` / `\}\}` 转义 | ✅ | 渲染后还原字面花括号，不触发宏 |
+| `getvar` / `setvar` / `hasvar` | ✅ | 会话 `index.json` → `macroLocalVars`；组装末持久化 |
+| `getglobalvar` / `setglobalvar` / `hasglobalvar` | ✅ | 用户 `user-preferences.json` → `macroGlobalVars` |
+| `{{.name}}` / `{{$name}}` | ✅ | 简写为 getvar / getglobalvar |
+| 宏标志 `#` `!` `?`（ST 实验引擎） | ⏳ | 未移植 |
+| 前端宏补全、`/? macros` | ⏳ | 未实现 |
 
 ---
 
@@ -190,7 +194,7 @@
 ## 10. 迁移建议（ST → 本地）
 
 1. **可直接粘贴**：§3 中 ✅ 宏；预设里 `{{maxPrompt}}` 等 camelCase 可保留。  
-2. **需改写**：`{{if}}`、变量、群聊、`instruct*` → 改用预设分组 / XML 注入 / 条件条目。  
+2. **需改写**：群聊、`instruct*` → 改用预设分组 / XML 注入；`{{if}}` / 变量宏已支持（§7）。  
 3. **预期差异**：未知宏显示 `[foo UNSUPPORTED]`，导入后宜全文搜索 `UNSUPPORTED`。  
 4. **角色字段**：优先在预设用宏 **或** XML 注入一种，避免 `{{description}}` 与 `<char>` 重复。  
 5. **测试**：`server/src/prompt-macros/prompt-macros.test.ts`；改 helper 后补用例。
@@ -209,4 +213,4 @@
 
 ---
 
-*文档版本：2026-06-10 · Phase A 完成 · 引擎 Handlebars · 分支 `macro-engine`*
+*文档版本：2026-06-11 · Phase A/B/C 完成 · 引擎 Handlebars · 分支 `macro-engine`*

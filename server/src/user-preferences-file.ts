@@ -61,6 +61,8 @@ export interface UserPreferencesDocument {
   embeddingApi?: Partial<EmbeddingApiSettings>
   chunk?: Partial<ChunkSettings>
   defaultAuthorsNote?: DefaultAuthorsNoteTemplate
+  /** ST 式全局宏变量（`{{setglobalvar}}` / `{{getglobalvar}}`） */
+  macroGlobalVars?: Record<string, string>
 }
 
 type EmbeddingApiSettingsDisk = Partial<EmbeddingApiSettings> & {
@@ -77,6 +79,20 @@ interface UserPreferencesDocumentDisk {
   embeddingApi?: EmbeddingApiSettingsDisk
   chunk?: Partial<ChunkSettings>
   defaultAuthorsNote?: DefaultAuthorsNoteTemplate
+  macroGlobalVars?: Record<string, string>
+}
+
+function normalizeMacroGlobalVars(
+  raw: Record<string, string> | undefined,
+): Record<string, string> {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof k === 'string' && k.trim() && typeof v === 'string') {
+      out[k.trim()] = v
+    }
+  }
+  return out
 }
 
 function aadForEmbeddingApiKey(userId: string): string {
@@ -220,6 +236,7 @@ export async function readUserPreferencesDocument(): Promise<UserPreferencesDocu
     embeddingApi,
     chunk,
     defaultAuthorsNote,
+    macroGlobalVars: normalizeMacroGlobalVars(doc?.macroGlobalVars),
   }
 }
 
@@ -233,6 +250,7 @@ async function writeUserPreferencesDocument(
     | 'embeddingApi'
     | 'chunk'
     | 'defaultAuthorsNote'
+    | 'macroGlobalVars'
   >,
 ): Promise<UserPreferencesDocument> {
   const prev = await readUserPreferencesDocument()
@@ -246,6 +264,7 @@ async function writeUserPreferencesDocument(
     embeddingApi: partial.embeddingApi ?? prev.embeddingApi,
     chunk: partial.chunk ?? prev.chunk,
     defaultAuthorsNote: partial.defaultAuthorsNote ?? prev.defaultAuthorsNote,
+    macroGlobalVars: partial.macroGlobalVars ?? prev.macroGlobalVars,
   }
   await mkdir(getUserDataDir(getCurrentUserId()), { recursive: true })
   const userId = getCurrentUserId()
@@ -403,4 +422,27 @@ export async function updateGlobalDefaultAuthorsNote(
     defaultAuthorsNote,
   })
   return defaultAuthorsNote
+}
+
+export async function readGlobalMacroGlobalVars(): Promise<Record<string, string>> {
+  const doc = await readPreferencesFileRaw()
+  return normalizeMacroGlobalVars(doc?.macroGlobalVars)
+}
+
+export async function updateGlobalMacroGlobalVars(
+  vars: Record<string, string>,
+): Promise<Record<string, string>> {
+  const prev = await readUserPreferencesDocument()
+  const macroGlobalVars = normalizeMacroGlobalVars(vars)
+  await writeUserPreferencesDocument({
+    lorebook: prev.lorebook,
+    history: prev.history,
+    memory: prev.memory,
+    budgetTrim: prev.budgetTrim,
+    embeddingApi: prev.embeddingApi,
+    chunk: prev.chunk,
+    defaultAuthorsNote: prev.defaultAuthorsNote,
+    macroGlobalVars,
+  })
+  return macroGlobalVars
 }

@@ -1,5 +1,6 @@
 import type { MacroCharacterFields } from './character-fields.js'
 import type { MacroHistoryFields } from './history-macros.js'
+import { cloneMacroVarMap } from './macro-vars.js'
 import type { PromptMacroContext } from './types.js'
 
 const DEFAULT_USER_LABEL = '用户'
@@ -28,6 +29,8 @@ export function buildPromptMacroContext(params: {
   conversationId?: string | null
   historyFields?: MacroHistoryFields | null
   enabledPluginIds?: string[] | null
+  macroLocalVars?: Record<string, string> | null
+  macroGlobalVars?: Record<string, string> | null
 }): PromptMacroContext {
   const raw = params.conversationUserName
   const userName =
@@ -114,6 +117,8 @@ export function buildPromptMacroContext(params: {
     currentSwipeId: hf?.currentSwipeId,
     notChar: hf?.notChar,
     idleReferenceUserAt: hf?.idleReferenceUserAt,
+    macroLocalVars: cloneMacroVarMap(params.macroLocalVars),
+    macroGlobalVars: cloneMacroVarMap(params.macroGlobalVars),
   }
 }
 

@@ -1,10 +1,21 @@
 import Handlebars from 'handlebars'
 import { resolveCharFirstMessage } from './character-fields.js'
+import { evaluateStCondition } from './macro-condition.js'
 import { stablePickFromArgs } from './macro-pick.js'
+import {
+  getGlobalVar,
+  getLocalVar,
+  resolveHasGlobalVarMacro,
+  resolveHasVarMacro,
+  setGlobalVar,
+  setLocalVar,
+} from './macro-vars.js'
+import { expandNestedMacros } from './nested-expand.js'
 import {
   formatDatetimeParts,
   formatDatetimePattern,
   formatTimeWithUtcOffset,
+  isKnownMacroToken,
   pickRandomArg,
   resolveAllChatRange,
   resolveAuthorsNote,
@@ -31,6 +42,11 @@ import {
   resolveUserName,
   rollDiceSpec,
 } from './macro-values.js'
+import { preprocessMacroComments } from './preprocess-comments.js'
+import { preprocessMacroEscapes, restoreMacroEscapes } from './preprocess-escape.js'
+import { preprocessVariableShorthands } from './preprocess-shorthands.js'
+import { preprocessStScopedBlocks } from './preprocess-scoped.js'
+import { preprocessStIfBlocks } from './preprocess-st-if.js'
 import {
   preprocessLegacyAngleTags,
   preprocessLegacyMacroSyntax,
@@ -53,6 +69,15 @@ function macroContext(options: Handlebars.HelperOptions): PromptMacroContext {
 
 function helperArgs(args: unknown[]): unknown[] {
   return args.slice(0, -1)
+}
+
+function unescapeHbArg(raw: string): string {
+  return raw
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\')
 }
 
 function repeatChar(ch: string, countRaw: unknown): string {
@@ -182,6 +207,42 @@ registerSimple('charfirstmessage', (ctx, args) =>
   resolveCharFirstMessage(ctx.primaryCharacter, args[0]),
 )
 
+registerSimple('getvar', (ctx, args) =>
+  getLocalVar(ctx, args.length > 0 ? String(args[0]) : ''),
+)
+registerSimple('setvar', (ctx, args) => {
+  const name = args.length > 0 ? String(args[0]) : ''
+  const value = args.length > 1 ? unescapeHbArg(String(args[1])) : ''
+  if (name) setLocalVar(ctx, name, value)
+  return ''
+})
+registerSimple('hasvar', (ctx, args) =>
+  resolveHasVarMacro(ctx, args.length > 0 ? String(args[0]) : ''),
+)
+registerSimple('getglobalvar', (ctx, args) =>
+  getGlobalVar(ctx, args.length > 0 ? String(args[0]) : ''),
+)
+registerSimple('setglobalvar', (ctx, args) => {
+  const name = args.length > 0 ? String(args[0]) : ''
+  const value = args.length > 1 ? unescapeHbArg(String(args[1])) : ''
+  if (name) setGlobalVar(ctx, name, value)
+  return ''
+})
+registerSimple('hasglobalvar', (ctx, args) =>
+  resolveHasGlobalVarMacro(ctx, args.length > 0 ? String(args[0]) : ''),
+)
+
+handlebars.registerHelper('stIf', function (condition, options) {
+  const opts = options as Handlebars.HelperOptions
+  const ctx = macroContext(opts)
+  const cond = String(condition ?? '')
+  const renderSnippet = (snippet: string) => renderPromptMacros(snippet, ctx)
+  if (evaluateStCondition(cond, ctx, renderSnippet)) {
+    return opts.fn(ctx)
+  }
+  return opts.inverse ? opts.inverse(ctx) : ''
+})
+
 function compileCached(source: string): Handlebars.TemplateDelegate {
   let tpl = compileCache.get(source)
   if (tpl) return tpl
@@ -199,18 +260,70 @@ export function clearMacroTemplateCache(): void {
   compileCache.clear()
 }
 
+function preprocessBeforeNestedExpand(text: string): string {
+  let n = preprocessMacroEscapes(text)
+  n = preprocessMacroComments(n)
+  n = preprocessStScopedBlocks(n)
+  n = preprocessStColonMacros(n)
+  n = preprocessLegacyMacroSyntax(n)
+  return n
+}
+
+function preprocessAfterNestedExpand(text: string): string {
+  let n = preprocessStIfBlocks(text)
+  n = preprocessVariableShorthands(n)
+  return n
+}
+
+function preprocessSingleMacroTag(wrapped: string): string {
+  let n = preprocessStColonMacros(wrapped)
+  n = preprocessLegacyMacroSyntax(n)
+  n = preprocessVariableShorthands(n)
+  return n
+}
+
+function shouldExpandNestedToken(inner: string): boolean {
+  const raw = inner.trim()
+  if (!raw) return false
+  if (raw.toLowerCase().startsWith('if ') || raw.toLowerCase() === 'if') return false
+  if (raw.startsWith('/')) return false
+  if (raw.startsWith('//')) return false
+  if (raw.toLowerCase() === 'else') return false
+  return isKnownMacroToken(raw) || raw.includes('::')
+}
+
+function renderMacroTagInner(inner: string, ctx: PromptMacroContext): string {
+  const wrapped = `{{${inner}}}`
+  if (!shouldExpandNestedToken(inner)) return wrapped
+  let n = preprocessSingleMacroTag(wrapped)
+  const tagInner = n.slice(2, -2)
+  if (!isKnownMacroToken(tagInner)) return wrapped
+  n = replaceUnsupportedMacroPlaceholders(n)
+  try {
+    return compileCached(n)(ctx, { data: { root: ctx } })
+  } catch {
+    return wrapped
+  }
+}
+
 export function renderPromptMacros(
   text: string,
   ctx: PromptMacroContext,
 ): string {
   let normalized = preprocessLegacyAngleTags(text)
-  normalized = preprocessStColonMacros(normalized)
+  normalized = preprocessBeforeNestedExpand(normalized)
+  normalized = expandNestedMacros(normalized, (inner) =>
+    renderMacroTagInner(inner, ctx),
+  )
+  normalized = preprocessAfterNestedExpand(normalized)
   normalized = replaceUnsupportedMacroPlaceholders(normalized)
-  normalized = preprocessLegacyMacroSyntax(normalized)
-  if (!normalized.includes('{{')) return normalized
+  if (!normalized.includes('{{')) return restoreMacroEscapes(normalized)
   try {
-    return compileCached(normalized)(ctx, { data: { root: ctx } })
+    const out = compileCached(normalized)(ctx, { data: { root: ctx } })
+    return restoreMacroEscapes(out)
   } catch {
-    return replaceRenderFailMacroPlaceholders(normalized)
+    return restoreMacroEscapes(
+      replaceRenderFailMacroPlaceholders(normalized),
+    )
   }
 }

@@ -74,24 +74,16 @@ describe('applyPromptMacroPipeline (Handlebars)', () => {
   it('marks unknown macros as [name UNSUPPORTED]', () => {
     clearMacroTemplateCache()
     assert.equal(
-      applyPromptMacroPipeline('{{getvar::x}}', ctx()),
-      '[getvar::x UNSUPPORTED]',
-    )
-  })
-
-  it('marks Handlebars block syntax as [name UNSUPPORTED]', () => {
-    clearMacroTemplateCache()
-    assert.equal(
-      applyPromptMacroPipeline('{{#if user}}x{{/if}}', ctx()),
-      '[#if user UNSUPPORTED]x[/if UNSUPPORTED]',
+      applyPromptMacroPipeline('{{unknownMacro}}', ctx()),
+      '[unknownMacro UNSUPPORTED]',
     )
   })
 
   it('marks compile/render failures as [name RENDERFAIL]', () => {
     clearMacroTemplateCache()
     assert.equal(
-      applyPromptMacroPipeline('{{user}} {{char}}}}', ctx()),
-      '[user RENDERFAIL] [char RENDERFAIL]}}',
+      applyPromptMacroPipeline('{{#stIf}}{{/stIf}}', ctx()),
+      '[#stIf RENDERFAIL][/stIf RENDERFAIL]',
     )
   })
 
@@ -230,5 +222,79 @@ describe('Phase B macros', () => {
       ctx({ now, locale: 'en' }),
     )
     assert.match(diff, /hour/i)
+  })
+})
+
+describe('Phase C macros', () => {
+  it('expands ST {{if}} / {{else}} blocks', () => {
+    clearMacroTemplateCache()
+    assert.equal(
+      applyPromptMacroPipeline('{{if user}}yes{{/if}}', ctx()),
+      'yes',
+    )
+    assert.equal(
+      applyPromptMacroPipeline('{{if description}}D{{else}}E{{/if}}', ctx()),
+      'D',
+    )
+    assert.equal(
+      applyPromptMacroPipeline('{{if !description}}X{{/if}}', ctx()),
+      '',
+    )
+  })
+
+  it('supports getvar/setvar and shorthands', () => {
+    clearMacroTemplateCache()
+    const c = ctx()
+    assert.equal(
+      applyPromptMacroPipeline('{{setvar::k::v}}{{getvar::k}}', c),
+      'v',
+    )
+    assert.equal(c.macroVarsDirty, true)
+    assert.equal(c.macroLocalVars?.k, 'v')
+
+    clearMacroTemplateCache()
+    const c2 = ctx({ macroLocalVars: { mood: 'happy' } })
+    assert.equal(applyPromptMacroPipeline('{{.mood}}', c2), 'happy')
+  })
+
+  it('supports global vars and hasvar', () => {
+    clearMacroTemplateCache()
+    const c = ctx({ macroGlobalVars: { theme: 'dark' } })
+    assert.equal(applyPromptMacroPipeline('{{$theme}}', c), 'dark')
+    assert.equal(
+      applyPromptMacroPipeline('{{hasvar::missing}}|{{hasglobalvar::theme}}', c),
+      'false|true',
+    )
+  })
+
+  it('strips comments and restores escaped braces', () => {
+    clearMacroTemplateCache()
+    assert.equal(
+      applyPromptMacroPipeline('a{{// note}}b', ctx()),
+      'ab',
+    )
+    assert.equal(
+      applyPromptMacroPipeline('\\{\\{user\\}\\}', ctx()),
+      '{{user}}',
+    )
+  })
+
+  it('expands nested macros inside arguments', () => {
+    clearMacroTemplateCache()
+    const c = ctx()
+    assert.equal(
+      applyPromptMacroPipeline('{{setvar::tag::{{char}}}}{{getvar::tag}}', c),
+      '艾拉',
+    )
+  })
+
+  it('supports scoped setvar blocks', () => {
+    clearMacroTemplateCache()
+    const c = ctx()
+    const out = applyPromptMacroPipeline(
+      '{{setvar note}}line1\nline2{{/setvar}}{{getvar::note}}',
+      c,
+    )
+    assert.equal(out, 'line1\nline2')
   })
 })

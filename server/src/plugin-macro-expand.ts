@@ -17,6 +17,11 @@ import {
   extractMacroCharacterFields,
   type MacroContextCharacterInput,
 } from './prompt-macros/index.js'
+import {
+  loadMacroGlobalVarsForContext,
+  loadMacroLocalVarsForConversation,
+  persistMacroVarMutations,
+} from './prompt-macros/macro-vars-persist.js'
 
 export interface PluginMacroExpandRequest {
   text: string
@@ -127,6 +132,11 @@ export async function runPluginMacroExpand(
     }
   }
 
+  const [macroLocalVars, macroGlobalVars] = await Promise.all([
+    convId ? loadMacroLocalVarsForConversation(convId) : Promise.resolve({}),
+    loadMacroGlobalVarsForContext(),
+  ])
+
   const macroContext = buildPromptMacroContext({
     conversationUserName,
     characters,
@@ -139,7 +149,11 @@ export async function runPluginMacroExpand(
     historyFields,
     enabledPluginIds,
     locale: req.locale,
+    macroLocalVars,
+    macroGlobalVars,
   })
 
-  return { ok: true, text: applyPromptMacroPipeline(text, macroContext) }
+  const expanded = applyPromptMacroPipeline(text, macroContext)
+  await persistMacroVarMutations(macroContext)
+  return { ok: true, text: expanded }
 }

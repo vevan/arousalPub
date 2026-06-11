@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import ConversationContextSettings from '@/components/ConversationContextSettings.vue'
 import HomeChat from '@/components/HomeChat.vue'
+import {
+  CHAT_CONVERSATION_ACTIONS_KEY,
+} from '@/composables/chat-conversation-actions'
 import { useMemoryRebuild } from '@/composables/useMemoryRebuild'
 import { bootstrapAppData } from '@/bootstrap/app-data'
 import { fetchDefaultLorebookIds, fetchLorebookPickerItems } from '@/utils/default-lorebook'
@@ -48,7 +51,7 @@ import {
   type ResolvedConversationChatDisplay,
 } from '@/utils/conversation-api-settings'
 import { storeToRefs } from 'pinia'
-import { computed, ref, watch } from 'vue'
+import { computed, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -149,6 +152,15 @@ function maybePromptMemoryRebuild(): void {
     memoryRebuildDialogOpen.value = true
   }
 }
+
+function openMemoryRebuildDialog(): void {
+  memoryRebuildError.value = ''
+  memoryRebuildDialogOpen.value = true
+}
+
+provide(CHAT_CONVERSATION_ACTIONS_KEY, {
+  openMemoryRebuild: openMemoryRebuildDialog,
+})
 
 function dismissMemoryRebuild(): void {
   memoryRebuildDismissKey = memoryRebuildDismissToken(

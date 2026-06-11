@@ -116,6 +116,44 @@ export function normalizeManualTaskSelection(
   return parseManualTaskSelectionRaw(selected, sidecars)
 }
 
+export function parseRegexRuleIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((x): x is string => typeof x === 'string' && x.trim())
+    .map((x) => x.trim())
+}
+
+export function readLastSummarizedEnd(
+  conv: Record<string, unknown>,
+): number | undefined {
+  if (typeof conv.lastSummarizedEnd === 'number' && Number.isFinite(conv.lastSummarizedEnd)) {
+    return Math.round(conv.lastSummarizedEnd)
+  }
+  if (
+    typeof conv.lastTriggeredTurnOrdinal === 'number' &&
+    Number.isFinite(conv.lastTriggeredTurnOrdinal)
+  ) {
+    return Math.round(conv.lastTriggeredTurnOrdinal)
+  }
+  return undefined
+}
+
+/** 指针不得落后于已摘要末尾：nextBlockStart ≥ lastSummarizedEnd + 1 */
+export function normalizedNextBlockStart(
+  nextBlockStart: number,
+  lastSummarizedEnd: number | undefined,
+): number {
+  const start = Math.max(0, Math.round(nextBlockStart))
+  if (typeof lastSummarizedEnd === 'number' && lastSummarizedEnd >= 0) {
+    return Math.max(start, lastSummarizedEnd + 1)
+  }
+  return start
+}
+
+export function hasAutoSummarizeHistory(settings: MergedSettings): boolean {
+  return typeof settings.lastSummarizedEnd === 'number' && settings.lastSummarizedEnd >= 0
+}
+
 export async function loadMergedSettings(host: PluginHost): Promise<MergedSettings> {
   const global = await host.plugins.getUserSettings()
   const conv = await host.conversation.getPluginSettings()
@@ -149,6 +187,11 @@ export async function loadMergedSettings(host: PluginHost): Promise<MergedSettin
       ? { ...(conv.sidecarEntryIds as Record<string, string>) }
       : {}
   const sidecars = effectiveSidecars(global, conv)
+  const lastSummarizedEnd = readLastSummarizedEnd(conv)
+  const rawNextBlockStart =
+    typeof conv.nextBlockStart === 'number'
+      ? Math.max(0, Math.round(conv.nextBlockStart))
+      : 0
   return {
     global,
     conv,
@@ -162,16 +205,8 @@ export async function loadMergedSettings(host: PluginHost): Promise<MergedSettin
     systemPromptTemplate:
       asString(global.systemPromptTemplate) || resolveDefaultSystemPrompt(host),
     autoSummarizeEnabled: conv.autoSummarizeEnabled === true,
-    nextBlockStart:
-      typeof conv.nextBlockStart === 'number'
-        ? Math.max(0, Math.round(conv.nextBlockStart))
-        : 0,
-    lastSummarizedEnd:
-      typeof conv.lastSummarizedEnd === 'number'
-        ? conv.lastSummarizedEnd
-        : typeof conv.lastTriggeredTurnOrdinal === 'number'
-          ? conv.lastTriggeredTurnOrdinal
-          : undefined,
+    nextBlockStart: normalizedNextBlockStart(rawNextBlockStart, lastSummarizedEnd),
+    lastSummarizedEnd,
     sidecarEntryIds,
     sidecars,
     autoSidecarIds: parseAutoSidecarIdsRaw(conv.autoSidecarIds, sidecars),
@@ -182,6 +217,8 @@ export async function loadMergedSettings(host: PluginHost): Promise<MergedSettin
     autoSummarizeDefaultEnabled: asBool(global.autoSummarizeDefaultEnabled, false),
     targetLorebookMode,
     autoLorebookNameTemplate,
+    regexRuleIds: parseRegexRuleIds(global.regexRuleIds),
+    regexApplyAllTurns: asBool(global.regexApplyAllTurns, false),
   }
 }
 
@@ -204,6 +241,31 @@ export function shouldAutoTrigger(turnOrdinal: number, settings: MergedSettings)
 export function currentAutoRange(settings: MergedSettings) {
   const start = settings.nextBlockStart ?? 0
   return { fromTurn: start, toTurn: blockEndFromStart(start, settings.blockTurns) }
+}
+
+/** 手动摘要弹窗默认区间：以当前轮 T 为锚，[T-buffer-blockTurns, T-buffer]；range picker preset 优先 */
+export function manualSummarizeDefaultRange(
+  settings: MergedSettings,
+  preset?: { startTurn: number; endTurn: number },
+  currentMaxTurn?: number,
+): { startTurn: number; endTurn: number } {
+  if (preset) {
+    return { startTurn: preset.startTurn, endTurn: preset.endTurn }
+  }
+  if (
+    typeof currentMaxTurn !== 'number' ||
+    !Number.isFinite(currentMaxTurn) ||
+    currentMaxTurn < 0
+  ) {
+    const range = currentAutoRange(settings)
+    return { startTurn: range.fromTurn, endTurn: range.toTurn }
+  }
+  const T = Math.round(currentMaxTurn)
+  const buffer = settings.bufferTurns
+  const blockTurns = settings.blockTurns
+  const endTurn = Math.max(0, T - buffer)
+  const startTurn = Math.max(0, T - buffer - blockTurns)
+  return { startTurn: Math.min(startTurn, endTurn), endTurn }
 }
 
 export function resolveAutoTasks(settings: MergedSettings): SummarizeTask[] {
@@ -238,6 +300,12 @@ export function maxTurnOrdinal(host: PluginHost) {
     }
   }
   return maxOrd
+}
+
+/** 与主对话 outgoing skip 锚点一致：最后 assistant 轮次 + 1 */
+export function outgoingTailOrdinal(host: PluginHost) {
+  const maxOrd = maxTurnOrdinal(host)
+  return maxOrd < 0 ? 0 : maxOrd + 1
 }
 
 export function firstAutoTriggerTurnOrdinal(settings: MergedSettings) {

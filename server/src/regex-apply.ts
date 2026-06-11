@@ -31,10 +31,12 @@ export function shouldApplyRegexRule(
   if (!rule.phases.includes(ctx.phase)) return false
   if (!rule.fields.includes(ctx.field)) return false
 
-  const skip = rule.skipLastNTurns
-  if (skip > 0 && ctx.turnOrdinal !== undefined) {
-    const threshold = ctx.tailOrdinal - skip
-    if (ctx.turnOrdinal > threshold) return false
+  if (!ctx.ignoreSkipLastNTurns) {
+    const skip = rule.skipLastNTurns
+    if (skip > 0 && ctx.turnOrdinal !== undefined) {
+      const threshold = ctx.tailOrdinal - skip
+      if (ctx.turnOrdinal > threshold) return false
+    }
   }
   return true
 }

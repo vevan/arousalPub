@@ -30,7 +30,8 @@ const messagePlaceholder = computed(() =>
     : t('chat.composerPlaceholderCtrlEnterSend'),
 )
 
-const { userInput, errorText, assemblePreviewLoading } = toRefs(props.session)
+const { userInput, errorText, assemblePreviewLoading, writeChatPromptSnapshot } =
+  toRefs(props.session)
 
 const { canSend, canPreviewAssemble, isGenerating } = toRefs(props.session)
 
@@ -131,6 +132,7 @@ function onSendClick() {
               <PluginSlotMount slot-name="composer-toolbar" />
             </div>
             <v-btn
+              v-if="writeChatPromptSnapshot"
               variant="outlined"
               size="small"
               density="comfortable"

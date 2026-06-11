@@ -2,7 +2,7 @@
 
 > **状态（2026-06）**：**服务端 memory / 枚举原语已落地**（P3）；**分支创建、写入、切换 UI、assemble/history 按 active 路径读盘** 仍待产品实现。  
 > **读者**：后续做「从此处分支继续」、消息树、分支切换的 Agent / 开发者。  
-> **关联**：`DOC/03` §6.1–§6.4、§7.2–§7.3；`DOC/08` §1.2；`DOC/22` §5；`DOC/15` §0.7。
+> **关联**：`DOC/03` §6.1–§6.4、§7.2–§7.3、§14.5；`DOC/08` §1.2；`DOC/15` §0。
 
 ---
 
@@ -101,7 +101,7 @@ data/{userId}/chats/{conversationId}/
 
 ## 3. Memory v2 与分支列
 
-Lance 单表 `turn_memory` 行字段（`DOC/22` §4）：
+Lance 单表 `turn_memory` 行字段（`DOC/03` §14.5）：
 
 | 列 | 主路径 | 分支 |
 |----|--------|------|
@@ -256,7 +256,7 @@ enumerateAllChunkChains(conversationId)
 | 项 | 说明 | 参考 |
 |----|------|------|
 | **创建分支 API** | 从 `forkTurnId` 复制/截断子树到 `branchN/`；写父 chunk `meta.links.branches`；写子目录 `index.json` + 首 chunk | `DOC/03` §6.3 |
-| **`writeChunkFile` 分支感知** | 写入 `branchPath/xxx.json` 前 `mkdir(dirname, { recursive: true })` | `DOC/22` §5.5 |
+| **`writeChunkFile` 分支感知** | 写入 `branchPath/xxx.json` 前 `mkdir(dirname, { recursive: true })` | `DOC/03` §6 |
 | **`appendConversationTurn` 分支上下文** | 追加轮写入 **active** 分支 tail，而非始终主路径 | `chunk-chain.prepareTailChunkForAppend` 需接受 `branchPath` |
 | **`scheduleMemoryIndexUpsert`** | 落盘时传入正确 `branchPath`（函数已支持第 4 参数） | `memory-index.ts` |
 | **注册表一致性** | 创建/删除分支时更新各级 `branches[]` | §2.3 |
@@ -339,7 +339,7 @@ flowchart TD
 | 命中批量读 | `server/src/memory-hits.ts`（替代原 `turn-resolve.ts`） |
 | 单测 | `memory-store.test.ts`、`memory-index.test.ts` |
 | Assemble 入口 | `server/src/chat-assemble.ts` |
-| 性能 / schema 背景 | `DOC/22-performance-audit-and-optimization.md` §5 |
+| Memory schema / 单写者 | `DOC/03` §14.5 |
 | 消息懒加载与分支 | `DOC/15-conversation-messages-lazy-load.md` §0.7 |
 | Chunk 主路径（已实现） | `DOC/08-chunk-chain-implementation.md` |
 

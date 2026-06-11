@@ -18,15 +18,24 @@ import { applyPlotSummaryEntrySort } from './shared/entry-sort.js'
 import { asInt, asString } from './shared/utils.js'
 import {
   firstAutoTriggerTurnOrdinal,
+  hasAutoSummarizeHistory,
   k,
   loadMergedSettings,
+  manualSummarizeDefaultRange,
   maxTurnOrdinal,
+  normalizedNextBlockStart,
+  currentAutoRange,
   normalizeManualTaskSelection,
   parseAutoSidecarIdsRaw,
   sidecarIdsFromTaskSelection,
   tasksFromSelection,
 } from './settings.js'
 import type { MergedSettings, PluginHost } from './types.js'
+import {
+  auditDebugEnabled,
+  previewManualSummarizePrompt,
+  summarizeDialogCanPreview,
+} from './prompt-preview.js'
 
 function isAutoSummarizeEnabled(host: PluginHost): boolean {
   return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true
@@ -380,6 +389,17 @@ function registerSummarizeDialog(
       fields,
       submitKey: k(host, isEnable ? 'enableSubmit' : 'manualSubmit'),
       cancelKey: k(host, 'sessionCancel'),
+      ...(!isEnable
+        ? {
+            regenerateKey: k(host, 'manualPreviewPrompt'),
+            regenerateVisible: (h: PluginHost) => auditDebugEnabled(h),
+            regenerateCanSubmit: (m: Record<string, unknown>) =>
+              summarizeDialogCanPreview(m, settings),
+            onRegenerate: async (h: PluginHost, model: Record<string, unknown>) => {
+              await previewManualSummarizePrompt(h, model)
+            },
+          }
+        : {}),
       canSubmit: (m: Record<string, unknown>) => {
         const start = asInt(m.startTurn, -1, 500_000)
         const end = asInt(m.endTurn, -1, 500_000)
@@ -484,12 +504,16 @@ export function openManualSummarize(
 ) {
   loadMergedSettings(host).then((s) => {
     registerSummarizeDialog(host, s, 'manual')
-    const maxOrd = Math.max(0, maxTurnOrdinal(host))
+    const { startTurn, endTurn } = manualSummarizeDefaultRange(
+      s,
+      preset,
+      maxTurnOrdinal(host),
+    )
     host.openFormDialog(
       PLUGIN_ID,
       {
-        startTurn: preset?.startTurn ?? 0,
-        endTurn: preset?.endTurn ?? maxOrd,
+        startTurn,
+        endTurn,
         selectedTasks: [...s.manualSummarizeTasks],
       },
       DIALOG_MANUAL,
@@ -511,6 +535,29 @@ function openEnableLongDialog(host: PluginHost, settings: MergedSettings) {
   host.openFormDialog(PLUGIN_ID, { startTurn, endTurn, selectedTasks }, DIALOG_ENABLE)
 }
 
+/** 已有摘要进度时重新开启：从 lastSummarizedEnd+1 续跑，不弹「按尾部重算区间」 */
+async function resumeAutoSummarizeEnable(host: PluginHost, settings: MergedSettings) {
+  const nextBlockStart = normalizedNextBlockStart(
+    settings.nextBlockStart,
+    settings.lastSummarizedEnd,
+  )
+  const trigger = firstAutoTriggerTurnOrdinal({ ...settings, nextBlockStart })
+  const range = currentAutoRange({ ...settings, nextBlockStart })
+  await host.conversation.patchPluginSettings({
+    autoSummarizeEnabled: true,
+    nextBlockStart,
+  })
+  refreshAutoSummarizeUi(host)
+  host.ui.toast(
+    host.t(k(host, 'toastAutoSummarizeResumed'), {
+      from: range.fromTurn,
+      to: range.toTurn,
+      turn: trigger,
+    }),
+    { color: 'success' },
+  )
+}
+
 export async function applyShortAutoSummarizeEnable(host: PluginHost, settings: MergedSettings) {
   const X = firstAutoTriggerTurnOrdinal({ ...settings, nextBlockStart: 0 })
   const autoSidecarIds = parseAutoSidecarIdsRaw(null, settings.sidecars)
@@ -527,6 +574,10 @@ export async function applyShortAutoSummarizeEnable(host: PluginHost, settings: 
 
 async function tryEnableAutoSummarize(host: PluginHost) {
   const settings = await loadMergedSettings(host)
+  if (hasAutoSummarizeHistory(settings)) {
+    await resumeAutoSummarizeEnable(host, settings)
+    return
+  }
   const T = maxTurnOrdinal(host)
   const N = settings.blockTurns
   const buffer = settings.bufferTurns

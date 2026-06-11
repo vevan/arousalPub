@@ -47,6 +47,8 @@ export interface RegexApplyContext {
   /** 无 turnOrdinal 的 system 不受 skipLastNTurns 限制 */
   turnOrdinal?: number
   tailOrdinal: number
+  /** Historian 摘要：忽略各规则的 skipLastNTurns，对区间内全部轮次应用 */
+  ignoreSkipLastNTurns?: boolean
 }
 
 export interface RegexApplyTextBody {

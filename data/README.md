@@ -43,7 +43,7 @@ data/
 | `avatar.png` | 用户头像 |
 | `chats/` | 对话会话与消息 |
 | `prompts/`、`characters/`、`lorebooks/` | 资料与预设（角色主存 **`characters/{id}.png`**，`id` 为 8 位 hex，见 `DOC/03` §6.7） |
-| `api-settings.json`、`api-keys.json` | API 配置（内联 key 落盘为 **`apiKeyEnc` / `keyEnc`**，见 `DOC/16`） |
+| `api-settings.json`、`api-keys.json` | API 配置（内联 key 落盘为 **`apiKeyEnc` / `keyEnc`**，见 `DOC/25` §15） |
 | `user-preferences.json` | 全局偏好（含 embedding **`apiKeyEnc`**） |
 | `regex-rules.json` | 原生正则规则（用户级；**无**会话级副本，见 **`DOC/24`** §2.1、§6） |
 
@@ -100,14 +100,18 @@ data/
 
 ### Syncthing 与多机边界
 
-| 同步 | 忽略 |
+| 同步 | 忽略 / 注意 |
 |------|------|
-| `data/{userId}/` 下 JSON、chunk、Lance 等**生产数据** | **`backups/`** 整个目录（大 zip 不参与 PC ↔ NAS 热同步） |
+| `chats/`、JSON 配置、chunk 等**权威数据** | **`backups/`** 整个目录 |
+| 可选：各机本地重建 | **`memory/`** Lance 索引（推荐 `.stignore`，见 `DOC/03` §14.5） |
 
-在 Syncthing 共享文件夹的 **Ignore Patterns**（`.stignore`）中加入：
+**单写者**：同一 `dataDir` 上**只运行一个 server**（勿 prod 与 dev 双开）；否则 Lance 易损坏（`memory_vector_index_corrupt` → 设置页重建索引）。
+
+在 Syncthing 共享文件夹的 **Ignore Patterns**（`.stignore`）中建议：
 
 ```
 backups
+memory
 ```
 
 各实例须使用**相同** `DATA_ENCRYPTION_KEY`（或同步 `.data-encryption-key`），否则无法解密 API Key（见上文 §密钥文件）。

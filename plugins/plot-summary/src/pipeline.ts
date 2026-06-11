@@ -9,7 +9,7 @@ import {
 import { applyPlotSummaryEntrySort } from './shared/entry-sort.js'
 import { flushPendingLorebookCreates, type PendingLorebookCreate } from './batch-write.js'
 import { entryKeys, writeSidecarEntry } from './sidecar.js'
-import { k, loadMergedSettings } from './settings.js'
+import { k, loadMergedSettings, outgoingTailOrdinal } from './settings.js'
 import {
   setSummarizeBatchProgress,
   setSummarizeRunning,
@@ -113,6 +113,9 @@ export async function runSummarizeTasks(
       previousSummariesLimit: settings.previousSummariesLimit,
       sidecarEntryIds,
       sidecarIds: sidecarConfigIds,
+      regexRuleIds: settings.regexRuleIds,
+      tailOrdinal: outgoingTailOrdinal(host),
+      regexApplyAllTurns: settings.regexApplyAllTurns,
     })
     if (!prepared.userContent?.trim()) {
       host.ui.toast(host.t(k(host, 'toastNoTurnsInRange')), { color: 'warning' })

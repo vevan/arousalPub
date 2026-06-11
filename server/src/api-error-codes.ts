@@ -120,6 +120,7 @@ export const ApiErrorCodes = {
   lorebooks_write_failed: 'lorebooks_write_failed',
   memory_enabled_boolean: 'memory_enabled_boolean',
   memory_rebuild_failed: 'memory_rebuild_failed',
+  memory_vector_index_corrupt: 'memory_vector_index_corrupt',
   memory_settings_invalid: 'memory_settings_invalid',
   memory_settings_memory_enabled_boolean: 'memory_settings_memory_enabled_boolean',
   memory_settings_memory_top_k_number: 'memory_settings_memory_top_k_number',

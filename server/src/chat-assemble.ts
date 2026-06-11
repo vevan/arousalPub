@@ -1,4 +1,5 @@
 import { ApiErrorCodes } from './api-error-codes.js'
+import { isMemoryVectorIndexCorruptError } from './memory-vector-index-error.js'
 import {
   assemblePrompts,
   type BoundCharacterSlice,
@@ -245,15 +246,26 @@ export async function buildConversationOutboundMessages(
   const auditEnabled = isAuditDebugWriteEnabled(idx)
   const assemblyStartedAt = auditEnabled ? performance.now() : 0
 
-  const memoryPipeline = await runMemoryPipeline({
-    conversationId,
-    userText: userInput,
-    memorySettings: effectiveMemory,
-    historySettings: effectiveHistory,
-    historyBeforeTurnOrdinalExclusive:
-      params.historyBeforeTurnOrdinalExclusive ?? undefined,
-    activeBranchPath: idx.activeBranchPath ?? '',
-  })
+  let memoryPipeline
+  try {
+    memoryPipeline = await runMemoryPipeline({
+      conversationId,
+      userText: userInput,
+      memorySettings: effectiveMemory,
+      historySettings: effectiveHistory,
+      historyBeforeTurnOrdinalExclusive:
+        params.historyBeforeTurnOrdinalExclusive ?? undefined,
+      activeBranchPath: idx.activeBranchPath ?? '',
+    })
+  } catch (e) {
+    if (isMemoryVectorIndexCorruptError(e)) {
+      return {
+        error: ApiErrorCodes.memory_vector_index_corrupt,
+        status: 503,
+      }
+    }
+    throw e
+  }
   const afterMemoryAt = auditEnabled ? performance.now() : 0
 
   const charIds = resolvedCharacterIds(idx)

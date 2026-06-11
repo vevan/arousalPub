@@ -22,7 +22,13 @@ import {
   needsLorebookSelect,
   type PluginSchemaSelectItem,
 } from '@/utils/plugin-schema-selects'
-import { computed, onMounted, ref } from 'vue'
+import {
+  fieldsUsingOptionsSource,
+  loadCheckboxOptionsForField,
+  optionsSourceCacheKey,
+} from '@/utils/plugin-settings-options-source'
+import { parseCheckboxGroupField } from '@/utils/plugin-settings-validate'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
@@ -45,8 +51,10 @@ const uploadError = ref('')
 const apiPresetItems = ref<PluginSchemaSelectItem[]>([])
 const lorebookItems = ref<PluginSchemaSelectItem[]>([])
 const selectsLoading = ref(false)
+const optionsSourceLoading = ref(false)
+const checkboxOptionsByKey = ref<Record<string, PluginSchemaSelectItem[]>>({})
 
-onMounted(async () => {
+async function loadResourceSelects() {
   const needApi = needsApiPresetSelect(props.fields)
   const needLb = needsLorebookSelect(props.fields)
   if (!needApi && !needLb) return
@@ -61,7 +69,42 @@ onMounted(async () => {
   } finally {
     selectsLoading.value = false
   }
+}
+
+async function loadOptionsSources() {
+  const fields = fieldsUsingOptionsSource(props.fields)
+  if (fields.length === 0) return
+  optionsSourceLoading.value = true
+  try {
+    const entries = await Promise.all(
+      fields.map(async (field) => {
+        const items = await loadCheckboxOptionsForField(field)
+        return [optionsSourceCacheKey(field), items] as const
+      }),
+    )
+    const next: Record<string, PluginSchemaSelectItem[]> = {
+      ...checkboxOptionsByKey.value,
+    }
+    for (const [key, items] of entries) {
+      next[key] = items
+    }
+    checkboxOptionsByKey.value = next
+  } finally {
+    optionsSourceLoading.value = false
+  }
+}
+
+onMounted(async () => {
+  await Promise.all([loadResourceSelects(), loadOptionsSources()])
 })
+
+watch(
+  () => props.fields,
+  () => {
+    void loadResourceSelects()
+    void loadOptionsSources()
+  },
+)
 
 function resourceSelectItems(field: PluginSettingsFieldSchema): PluginSchemaSelectItem[] {
   if (field.type === 'apiPreset') return apiPresetItems.value
@@ -202,10 +245,68 @@ function setField(key: string, value: unknown) {
   emit('update:modelValue', { ...props.modelValue, [key]: value })
 }
 
+function checkboxValues(key: string): string[] {
+  return parseCheckboxGroupField(fieldValue(key))
+}
+
+function isCheckboxSelected(key: string, value: string): boolean {
+  return checkboxValues(key).includes(value)
+}
+
+function toggleCheckbox(key: string, value: string, checked: boolean | null) {
+  const cur = checkboxValues(key)
+  const next =
+    checked === true
+      ? [...new Set([...cur, value])]
+      : cur.filter((x) => x !== value)
+  setField(key, next)
+}
+
+function checkboxOptionsFor(field: PluginSettingsFieldSchema): PluginSchemaSelectItem[] {
+  if (field.optionsSource) {
+    return checkboxOptionsByKey.value[optionsSourceCacheKey(field)] ?? []
+  }
+  return (field.options ?? []).map((o) => {
+    let title = o.label?.trim() || ''
+    if (!title && o.labelKey) {
+      const key = pluginI18nKey(props.pluginId, o.labelKey)
+      title = te(key) ? pluginText(key) : o.labelKey
+    }
+    return { value: o.value, title: title || o.value }
+  })
+}
+
+function checkboxGroupSummary(field: PluginSettingsFieldSchema): string {
+  const total = checkboxOptionsFor(field).length
+  if (total === 0) return ''
+  const selected = checkboxValues(field.key).length
+  if (selected > 0) {
+    return t('settings.plugins.checkboxGroupSelectedSummary', { selected, total })
+  }
+  return t('settings.plugins.checkboxGroupNoneSelected', { total })
+}
+
+function panelNestedFieldKeys(fields: PluginSettingsFieldSchema[]): Set<string> {
+  const keys = new Set<string>()
+  for (const f of fields) {
+    if (f.type === 'checkboxGroup' && f.panelFieldKeys?.length) {
+      for (const k of f.panelFieldKeys) keys.add(k)
+    }
+  }
+  return keys
+}
+
+function fieldSchemaByKey(
+  key: string,
+  fields: PluginSettingsFieldSchema[],
+): PluginSettingsFieldSchema | undefined {
+  return fields.find((f) => f.key === key)
+}
+
 function isFieldVisible(field: PluginSettingsFieldSchema): boolean {
   const vw = field.visibleWhen
-  if (!vw) return true
-  return fieldValue(vw.field) === vw.equals
+  if (vw && fieldValue(vw.field) !== vw.equals) return false
+  return !panelNestedFieldKeys(props.fields).has(field.key)
 }
 
 function enumLabel(field: PluginSettingsFieldSchema, value: string): string {
@@ -512,6 +613,116 @@ function confirmRemoveObjectListItem() {
           hide-details="auto"
           @update:model-value="setField(field.key, $event)"
         />
+
+        <div
+          v-else-if="field.type === 'checkboxGroup'"
+          class="plugin-schema-form__checkbox-group"
+        >
+          <template v-if="field.collapsible">
+            <v-expansion-panels
+              variant="accordion"
+              class="plugin-schema-form__checkbox-group-panels"
+            >
+              <v-expansion-panel>
+                <v-expansion-panel-title class="text-body-2 py-2">
+                  <div class="d-flex flex-column align-start min-w-0">
+                    <span class="font-weight-medium">{{ labelFor(field) }}</span>
+                    <span
+                      v-if="checkboxGroupSummary(field)"
+                      class="text-caption text-medium-emphasis text-truncate"
+                    >
+                      {{ checkboxGroupSummary(field) }}
+                    </span>
+                  </div>
+                </v-expansion-panel-title>
+                <v-expansion-panel-text class="pt-1">
+                  <p
+                    v-if="fullHintFor(field)"
+                    class="text-caption text-medium-emphasis mb-2"
+                  >
+                    {{ fullHintFor(field) }}
+                  </p>
+                  <v-progress-linear
+                    v-if="optionsSourceLoading && field.optionsSource"
+                    indeterminate
+                    color="primary"
+                    class="mb-2"
+                  />
+                  <div
+                    v-if="checkboxOptionsFor(field).length > 0"
+                    class="plugin-schema-form__checkbox-group-scroll"
+                  >
+                    <v-checkbox
+                      v-for="opt in checkboxOptionsFor(field)"
+                      :key="opt.value"
+                      :model-value="isCheckboxSelected(field.key, opt.value)"
+                      :label="opt.title"
+                      hide-details
+                      density="compact"
+                      @update:model-value="toggleCheckbox(field.key, opt.value, $event)"
+                    />
+                  </div>
+                  <p
+                    v-else-if="!optionsSourceLoading || !field.optionsSource"
+                    class="text-caption text-medium-emphasis mb-0"
+                  >
+                    {{ t('settings.plugins.checkboxGroupEmpty') }}
+                  </p>
+                  <template
+                    v-for="panelKey in field.panelFieldKeys ?? []"
+                    :key="panelKey"
+                  >
+                    <v-switch
+                      v-if="fieldSchemaByKey(panelKey, fields)?.type === 'boolean'"
+                      :model-value="Boolean(fieldValue(panelKey))"
+                      :label="labelFor(fieldSchemaByKey(panelKey, fields)!)"
+                      :hint="fullHintFor(fieldSchemaByKey(panelKey, fields)!)"
+                      persistent-hint
+                      color="primary"
+                      hide-details="auto"
+                      class="mt-2"
+                      @update:model-value="setField(panelKey, $event)"
+                    />
+                  </template>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
+          </template>
+          <template v-else>
+            <div class="text-body-2 font-weight-medium mb-1">
+              {{ labelFor(field) }}
+            </div>
+            <p
+              v-if="fullHintFor(field)"
+              class="text-caption text-medium-emphasis mb-2"
+            >
+              {{ fullHintFor(field) }}
+            </p>
+            <v-progress-linear
+              v-if="optionsSourceLoading && field.optionsSource"
+              indeterminate
+              color="primary"
+              class="mb-2"
+            />
+            <template v-if="checkboxOptionsFor(field).length > 0">
+              <v-checkbox
+                v-for="opt in checkboxOptionsFor(field)"
+                :key="opt.value"
+                :model-value="isCheckboxSelected(field.key, opt.value)"
+                :label="opt.title"
+                hide-details
+                density="compact"
+                @update:model-value="toggleCheckbox(field.key, opt.value, $event)"
+              />
+            </template>
+            <p
+              v-else-if="!optionsSourceLoading || !field.optionsSource"
+              class="text-caption text-medium-emphasis mb-0"
+            >
+              {{ t('settings.plugins.checkboxGroupEmpty') }}
+            </p>
+          </template>
+        </div>
 
         <v-select
           v-else-if="field.type === 'apiPreset' || field.type === 'lorebook'"
@@ -898,5 +1109,15 @@ function confirmRemoveObjectListItem() {
   margin-top: 4px;
   padding-top: 12px;
   border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.plugin-schema-form__checkbox-group-panels {
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 8px;
+  overflow: hidden;
+}
+.plugin-schema-form__checkbox-group-scroll {
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 </style>

@@ -110,7 +110,7 @@ describe('prepare-context blocks', () => {
   })
 
   it('buildHistoryBlock wraps transcript', () => {
-    const inner = '<user name="{{user}}"><![CDATA[plot]]></user>'
+    const inner = '<user userName="{{user}}">plot</user>'
     assert.equal(buildHistoryBlock(inner), `<history>\n${inner}\n</history>`)
   })
 

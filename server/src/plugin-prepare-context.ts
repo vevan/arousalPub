@@ -19,7 +19,10 @@ import {
   normalizeSidecarEntryIds,
 } from './plugin-sidecar-refs.js'
 import {
+  applyOutgoingRegexToSummaryTurns,
   formatSummarizeTranscript,
+  loadSummarizeOutgoingRegexRules,
+  normalizeRegexRuleIds,
   PLUGIN_SUMMARIZE_BATCH_MAX,
 } from './plugin-summarize-format.js'
 
@@ -36,6 +39,12 @@ export interface PluginPrepareContextRequest {
   previousSummariesLimit?: number
   sidecarEntryIds?: Record<string, string>
   sidecarIds?: string[]
+  /** Historian：勾选的 outgoing 正则规则 id */
+  regexRuleIds?: string[]
+  /** 会话 tail ordinal，供 skipLastNTurns */
+  tailOrdinal?: number
+  /** 为 true 时忽略规则的 skipLastNTurns，对摘要区间内全部轮次应用正则 */
+  regexApplyAllTurns?: boolean
 }
 
 export interface PluginPrepareContextSuccess {
@@ -156,13 +165,44 @@ export async function runPluginPrepareContext(
           .sort((a, b) => a.turnOrdinal - b.turnOrdinal)
       : []
 
+  const ruleIds = normalizeRegexRuleIds(req.regexRuleIds)
+  const regexRules =
+    ruleIds.length > 0 ? await loadSummarizeOutgoingRegexRules(ruleIds) : []
+  const tailOrdinal =
+    typeof req.tailOrdinal === 'number' &&
+    Number.isInteger(req.tailOrdinal) &&
+    req.tailOrdinal >= 0
+      ? req.tailOrdinal
+      : rangeTurns.reduce((max, t) => Math.max(max, t.turnOrdinal), 0)
+
+  const regexApplyAllTurns = req.regexApplyAllTurns === true
+
+  const regexSummaryTurns =
+    regexRules.length > 0
+      ? applyOutgoingRegexToSummaryTurns(
+          summaryTurns,
+          regexRules,
+          tailOrdinal,
+          regexApplyAllTurns,
+        )
+      : summaryTurns
+  const regexContextTurns =
+    regexRules.length > 0
+      ? applyOutgoingRegexToSummaryTurns(
+          contextTurns,
+          regexRules,
+          tailOrdinal,
+          regexApplyAllTurns,
+        )
+      : contextTurns
+
   const contextTranscript = formatSummarizeTranscript(
-    contextTurns,
+    regexContextTurns,
     meta.userDisplayName,
     meta.assistantDisplayName,
   )
   const transcript = formatSummarizeTranscript(
-    summaryTurns,
+    regexSummaryTurns,
     meta.userDisplayName,
     meta.assistantDisplayName,
   )

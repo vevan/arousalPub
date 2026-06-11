@@ -11,6 +11,7 @@ import {
   toggleAutoSummarize,
 } from './dialogs.js'
 import { registerLifecycle } from './lifecycle.js'
+import { registerPromptPreviewDialog } from './prompt-preview.js'
 import { registerRangePicker } from './range-picker.js'
 import { registerReviewDialogs } from './review.js'
 import { k } from './settings.js'
@@ -22,6 +23,7 @@ function isAutoSummarizeEnabled(host: PluginHost): boolean {
 
 export function register(host: PluginHost) {
   registerReviewDialogs(host)
+  registerPromptPreviewDialog(host)
   registerPickLorebookDialog(host)
   registerRecoverLorebookDialog(host)
 

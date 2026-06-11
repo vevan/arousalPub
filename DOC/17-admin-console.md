@@ -3,7 +3,7 @@
 > **状态**：**已实现**（Phase 1 + Phase 2，2026-06）  
 > **优先级**：P1（见 `DOC/04-TODO.md`）  
 > **定案（用户确认）**：**仅本机可访问**；**初始用户 `00000000`（种子账号）即管理员**，不引入 `role` 字段。  
-> **关联**：`server/src/short-id.ts`（`RESERVED_USER_ID`）、`users-index.ts`、`DOC/16` 密钥轮换。
+> **关联**：`server/src/short-id.ts`（`RESERVED_USER_ID`）、`users-index.ts`、`DOC/25` §15.2 密钥轮换。
 
 ---
 
@@ -14,7 +14,7 @@
 | 能力 | 说明 |
 |------|------|
 | 用户管理 | 列表、创建、删除（非自助）、查看各用户磁盘占用 |
-| 密钥轮换 | 手动触发 `DOC/16` DEK 重加密（维护模式 + 进度） |
+| 密钥轮换 | 手动触发 `DOC/25` §15.2 DEK 重加密（维护模式 + 进度） |
 | 扩展位 | 健康检查、插件/registry 只读、审计日志等 |
 
 **非目标**：外网运维、多管理员角色、完整 RBAC、替代 Syncthing 控制台。
@@ -147,7 +147,7 @@ adminConsoleUrl: `http://127.0.0.1:${resolveServerPort()}/admin`
 | S1 | `isLoopbackAddress` + `requireAdminConsole` 中间件 | 局域网 IP 访问 `/api/admin/status` → 403 |
 | S2 | Phase 1 API + 种子用户校验 | `00000000` 本机可列用户；其它用户 403 |
 | S3 | `/admin` 静态页 + 用户 CRUD UI | 本机创建/删除用户、看占用 |
-| S4 | `rotate-data-key` job + 写锁 + UI（`DOC/16`） | 轮换后 chat 仍可用 |
+| S4 | `rotate-data-key` job + 写锁 + UI（`DOC/25` §15.2） | 轮换后 chat 仍可用 |
 | S5 | `DOC/04`、`cursor.md`、`data/README.md` | — |
 
 ---

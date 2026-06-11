@@ -92,6 +92,7 @@ function normalizeField(raw: unknown): PluginSettingsFieldSchema | null {
     'apiPreset',
     'lorebook',
     'objectList',
+    'checkboxGroup',
   ])
   if (!allowed.has(type)) return null
   const field: PluginSettingsFieldSchema = {
@@ -144,6 +145,46 @@ function normalizeField(raw: unknown): PluginSettingsFieldSchema | null {
   if (o.conversationInherit === true) field.conversationInherit = true
   if (typeof o.inheritFromGlobalKey === 'string' && o.inheritFromGlobalKey.trim()) {
     field.inheritFromGlobalKey = o.inheritFromGlobalKey.trim()
+  }
+  if (Array.isArray(o.options)) {
+    const options = o.options
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null
+        const opt = item as Record<string, unknown>
+        const value = typeof opt.value === 'string' ? opt.value.trim() : ''
+        if (!value) return null
+        const out: { value: string; label?: string; labelKey?: string } = { value }
+        if (typeof opt.label === 'string' && opt.label.trim()) {
+          out.label = opt.label.trim()
+        }
+        if (typeof opt.labelKey === 'string' && opt.labelKey.trim()) {
+          out.labelKey = opt.labelKey.trim()
+        }
+        return out
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+    if (options.length > 0) field.options = options
+  }
+  if (o.optionsSource === 'regex-rules') {
+    field.optionsSource = 'regex-rules'
+  }
+  if (o.optionsFilter && typeof o.optionsFilter === 'object') {
+    const of = o.optionsFilter as Record<string, unknown>
+    const filter: { enabled?: boolean; phases?: string[] } = {}
+    if (of.enabled === true) filter.enabled = true
+    if (Array.isArray(of.phases)) {
+      filter.phases = of.phases.filter((x): x is string => typeof x === 'string')
+    }
+    if (filter.enabled || (filter.phases?.length ?? 0) > 0) {
+      field.optionsFilter = filter
+    }
+  }
+  if (o.collapsible === true) field.collapsible = true
+  if (Array.isArray(o.panelFieldKeys)) {
+    const keys = o.panelFieldKeys
+      .filter((x): x is string => typeof x === 'string' && x.trim())
+      .map((x) => x.trim())
+    if (keys.length > 0) field.panelFieldKeys = keys
   }
   return field
 }
@@ -251,6 +292,28 @@ function parseObjectListValue(value: unknown): unknown[] {
   return []
 }
 
+function parseStringArrayValue(value: unknown, fallback: unknown): string[] {
+  let arr: unknown[] = []
+  if (Array.isArray(value)) {
+    arr = value
+  } else if (typeof value === 'string') {
+    const s = value.trim()
+    if (s) {
+      try {
+        const parsed = JSON.parse(s) as unknown
+        if (Array.isArray(parsed)) arr = parsed
+      } catch {
+        arr = []
+      }
+    }
+  } else if (Array.isArray(fallback)) {
+    return fallback.filter((x): x is string => typeof x === 'string' && x.trim()).map((x) => x.trim())
+  }
+  return arr
+    .filter((x): x is string => typeof x === 'string' && x.trim())
+    .map((x) => x.trim())
+}
+
 function coerceField(
   field: PluginSettingsFieldSchema,
   value: unknown,
@@ -325,6 +388,8 @@ function coerceField(
       if (!base || base.includes('..')) return ''
       return base
     }
+    case 'checkboxGroup':
+      return parseStringArrayValue(value, fallback)
     default:
       return fallback
   }

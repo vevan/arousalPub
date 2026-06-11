@@ -79,6 +79,27 @@
         "max": 50
       },
       {
+        "key": "regexRuleIds",
+        "type": "checkboxGroup",
+        "labelKey": "regexRuleIdsLabel",
+        "descriptionKey": "regexRuleIdsDesc",
+        "default": [],
+        "optionsSource": "regex-rules",
+        "optionsFilter": {
+          "enabled": true,
+          "phases": ["outgoing"]
+        },
+        "collapsible": true,
+        "panelFieldKeys": ["regexApplyAllTurns"]
+      },
+      {
+        "key": "regexApplyAllTurns",
+        "type": "boolean",
+        "labelKey": "regexApplyAllTurnsLabel",
+        "descriptionKey": "regexApplyAllTurnsDesc",
+        "default": false
+      },
+      {
         "key": "defaultEntryTriggerMode",
         "type": "enum",
         "labelKey": "defaultEntryTriggerModeLabel",

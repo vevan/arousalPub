@@ -1,4 +1,4 @@
-// plugins/plot-summary/src/constants.ts
+// src/constants.ts
 var PLUGIN_ID = "plot-summary";
 var DIALOG_SESSION = "session";
 var DIALOG_MANUAL = "manual";
@@ -7,8 +7,9 @@ var DIALOG_REVIEW = "review";
 var DIALOG_REVIEW_SIDECAR = "review-sidecar";
 var DIALOG_PICK_LOREBOOK = "pick-lorebook";
 var DIALOG_RECOVER_LOREBOOK = "recover-lorebook";
+var DIALOG_PROMPT_PREVIEW = "prompt-preview";
 
-// plugins/plot-summary/src/shared/utils.ts
+// src/shared/utils.ts
 function asString(v) {
   return typeof v === "string" ? v.trim() : "";
 }
@@ -33,7 +34,7 @@ function entryKeys(keywords) {
   return keywords.filter((x) => typeof x === "string").map((x) => x.trim()).filter(Boolean);
 }
 
-// plugins/plot-summary/src/settings.ts
+// src/settings.ts
 function k(host, key) {
   return host.pluginKey(key);
 }
@@ -116,6 +117,29 @@ function parseManualTaskSelectionRaw(raw, sidecars) {
 function normalizeManualTaskSelection(selected, sidecars) {
   return parseManualTaskSelectionRaw(selected, sidecars);
 }
+function parseRegexRuleIds(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim());
+}
+function readLastSummarizedEnd(conv) {
+  if (typeof conv.lastSummarizedEnd === "number" && Number.isFinite(conv.lastSummarizedEnd)) {
+    return Math.round(conv.lastSummarizedEnd);
+  }
+  if (typeof conv.lastTriggeredTurnOrdinal === "number" && Number.isFinite(conv.lastTriggeredTurnOrdinal)) {
+    return Math.round(conv.lastTriggeredTurnOrdinal);
+  }
+  return void 0;
+}
+function normalizedNextBlockStart(nextBlockStart, lastSummarizedEnd) {
+  const start = Math.max(0, Math.round(nextBlockStart));
+  if (typeof lastSummarizedEnd === "number" && lastSummarizedEnd >= 0) {
+    return Math.max(start, lastSummarizedEnd + 1);
+  }
+  return start;
+}
+function hasAutoSummarizeHistory(settings) {
+  return typeof settings.lastSummarizedEnd === "number" && settings.lastSummarizedEnd >= 0;
+}
 async function loadMergedSettings(host) {
   const global = await host.plugins.getUserSettings();
   const conv = await host.conversation.getPluginSettings();
@@ -137,6 +161,8 @@ async function loadMergedSettings(host) {
   const defaultEntryTriggerMode = asString(global.defaultEntryTriggerMode) || "vector";
   const sidecarEntryIds = conv.sidecarEntryIds && typeof conv.sidecarEntryIds === "object" ? { ...conv.sidecarEntryIds } : {};
   const sidecars = effectiveSidecars(global, conv);
+  const lastSummarizedEnd = readLastSummarizedEnd(conv);
+  const rawNextBlockStart = typeof conv.nextBlockStart === "number" ? Math.max(0, Math.round(conv.nextBlockStart)) : 0;
   return {
     global,
     conv,
@@ -149,8 +175,8 @@ async function loadMergedSettings(host) {
     defaultEntryTriggerMode,
     systemPromptTemplate: asString(global.systemPromptTemplate) || resolveDefaultSystemPrompt(host),
     autoSummarizeEnabled: conv.autoSummarizeEnabled === true,
-    nextBlockStart: typeof conv.nextBlockStart === "number" ? Math.max(0, Math.round(conv.nextBlockStart)) : 0,
-    lastSummarizedEnd: typeof conv.lastSummarizedEnd === "number" ? conv.lastSummarizedEnd : typeof conv.lastTriggeredTurnOrdinal === "number" ? conv.lastTriggeredTurnOrdinal : void 0,
+    nextBlockStart: normalizedNextBlockStart(rawNextBlockStart, lastSummarizedEnd),
+    lastSummarizedEnd,
     sidecarEntryIds,
     sidecars,
     autoSidecarIds: parseAutoSidecarIdsRaw(conv.autoSidecarIds, sidecars),
@@ -160,7 +186,9 @@ async function loadMergedSettings(host) {
     ),
     autoSummarizeDefaultEnabled: asBool(global.autoSummarizeDefaultEnabled, false),
     targetLorebookMode,
-    autoLorebookNameTemplate
+    autoLorebookNameTemplate,
+    regexRuleIds: parseRegexRuleIds(global.regexRuleIds),
+    regexApplyAllTurns: asBool(global.regexApplyAllTurns, false)
   };
 }
 function sidecarPromptTemplate(host, sc) {
@@ -179,6 +207,21 @@ function shouldAutoTrigger(turnOrdinal2, settings) {
 function currentAutoRange(settings) {
   const start = settings.nextBlockStart ?? 0;
   return { fromTurn: start, toTurn: blockEndFromStart(start, settings.blockTurns) };
+}
+function manualSummarizeDefaultRange(settings, preset, currentMaxTurn) {
+  if (preset) {
+    return { startTurn: preset.startTurn, endTurn: preset.endTurn };
+  }
+  if (typeof currentMaxTurn !== "number" || !Number.isFinite(currentMaxTurn) || currentMaxTurn < 0) {
+    const range = currentAutoRange(settings);
+    return { startTurn: range.fromTurn, endTurn: range.toTurn };
+  }
+  const T = Math.round(currentMaxTurn);
+  const buffer = settings.bufferTurns;
+  const blockTurns = settings.blockTurns;
+  const endTurn = Math.max(0, T - buffer);
+  const startTurn = Math.max(0, T - buffer - blockTurns);
+  return { startTurn: Math.min(startTurn, endTurn), endTurn };
 }
 function resolveAutoTasks(settings) {
   const tasks = [{ kind: "memory" }];
@@ -211,12 +254,16 @@ function maxTurnOrdinal(host) {
   }
   return maxOrd;
 }
+function outgoingTailOrdinal(host) {
+  const maxOrd = maxTurnOrdinal(host);
+  return maxOrd < 0 ? 0 : maxOrd + 1;
+}
 function firstAutoTriggerTurnOrdinal(settings) {
   const start = settings.nextBlockStart ?? 0;
   return blockEndFromStart(start, settings.blockTurns) + settings.bufferTurns;
 }
 
-// plugins/plot-summary/src/errors.ts
+// src/errors.ts
 var PIPELINE_FATAL_ERRORS = /* @__PURE__ */ new Set([
   "context_exceeded",
   "context_length_unconfigured"
@@ -275,7 +322,7 @@ function preflightToast(host, e) {
   host.ui.toast(host.t(k(host, "toastSummarizeFailed")), { color: "error" });
 }
 
-// plugins/plot-summary/src/state.ts
+// src/state.ts
 var summarizeRunning = false;
 var _reviewResolver = null;
 var _reviewRegenerate = null;
@@ -327,8 +374,18 @@ function setLorebookPickResolver(v) {
 function clearLorebookPickResolver() {
   _lorebookPickResolver = null;
 }
+var _promptPreviewRestore = null;
+function setPromptPreviewRestore(model) {
+  _promptPreviewRestore = { ...model };
+}
+function getPromptPreviewRestore() {
+  return _promptPreviewRestore;
+}
+function clearPromptPreviewRestore() {
+  _promptPreviewRestore = null;
+}
 
-// plugins/plot-summary/src/review.ts
+// src/review.ts
 function resolveSystemPrompt(host, settings, opts) {
   if (opts.kind === "sidecar" && opts.sc) {
     return sidecarPromptTemplate(host, opts.sc);
@@ -489,7 +546,7 @@ function promptReview(host, draft, dialogId, regenerateFn, lorebookName) {
   });
 }
 
-// plugins/plot-summary/src/shared/lorebook-sort.ts
+// src/shared/lorebook-sort.ts
 var TURN_RANGE_SUFFIX_RE = /-(\d+)-(\d+)$/;
 function parseTurnRangeSuffix(title) {
   const t = (title ?? "").trim();
@@ -557,7 +614,7 @@ function computePlotSummaryApplyOrderLayout(lb, sidecarEntryIds, sidecarConfigId
   return { entriesByGroup };
 }
 
-// plugins/plot-summary/src/shared/entry-sort.ts
+// src/shared/entry-sort.ts
 async function applyPlotSummaryEntrySort(host, lorebookId, sidecarEntryIds, sidecarConfigIds) {
   const id = lorebookId.trim();
   if (!id) return false;
@@ -587,7 +644,7 @@ async function applyPlotSummaryEntrySort(host, lorebookId, sidecarEntryIds, side
   return true;
 }
 
-// plugins/plot-summary/src/batch-write.ts
+// src/batch-write.ts
 async function flushPendingLorebookCreates(host, lorebookId, pending, sidecarEntryIds) {
   if (!pending.length) return;
   if (typeof host.lorebook.createEntriesBatch !== "function") {
@@ -611,7 +668,7 @@ async function flushPendingLorebookCreates(host, lorebookId, pending, sidecarEnt
   pending.length = 0;
 }
 
-// plugins/plot-summary/src/sidecar.ts
+// src/sidecar.ts
 async function writeSidecarEntry(host, settings, sidecarEntryIds, sc, reviewed, sidecarKeys, pendingCreates) {
   const body = {
     title: sc.name,
@@ -640,7 +697,7 @@ async function writeSidecarEntry(host, settings, sidecarEntryIds, sc, reviewed, 
   return created.id;
 }
 
-// plugins/plot-summary/src/pipeline.ts
+// src/pipeline.ts
 function setPluginHold(host, hold) {
   if (typeof host.conversation.setPluginHold === "function") {
     host.conversation.setPluginHold(hold);
@@ -712,7 +769,10 @@ async function runSummarizeTasks(host, opts) {
       targetLorebookId: settings.targetLorebookId,
       previousSummariesLimit: settings.previousSummariesLimit,
       sidecarEntryIds,
-      sidecarIds: sidecarConfigIds
+      sidecarIds: sidecarConfigIds,
+      regexRuleIds: settings.regexRuleIds,
+      tailOrdinal: outgoingTailOrdinal(host),
+      regexApplyAllTurns: settings.regexApplyAllTurns
     });
     if (!prepared.userContent?.trim()) {
       host.ui.toast(host.t(k(host, "toastNoTurnsInRange")), { color: "warning" });
@@ -926,7 +986,229 @@ async function runSummarizeTasks(host, opts) {
   }
 }
 
-// plugins/plot-summary/src/dialogs.ts
+// src/prompt-preview.ts
+function auditDebugEnabled(host) {
+  const raw = host.session.writeChatPromptSnapshot;
+  if (typeof raw === "boolean") return raw;
+  if (raw && typeof raw === "object" && "value" in raw) {
+    return Boolean(raw.value);
+  }
+  return false;
+}
+function joinSystemMessage(reference, instruction) {
+  const ref = reference.trim();
+  const inst = instruction.trim();
+  if (!ref) return inst;
+  if (!inst) return ref;
+  return `${ref}
+
+${inst}`;
+}
+function formatContentValue(value, inner) {
+  if (!value.includes("\n")) {
+    return `${inner}"content": ${JSON.stringify(value)}`;
+  }
+  const bodyIndent = `${inner}  `;
+  const body = value.split("\n").map((line) => bodyIndent + line).join("\n");
+  return `${inner}"content": "
+${body}
+${inner}"`;
+}
+function formatMessage(msg, indent) {
+  const inner = `${indent}  `;
+  const roleLine = `${inner}"role": ${JSON.stringify(msg.role)}`;
+  const contentLine = formatContentValue(msg.content, inner);
+  return `${indent}{
+${roleLine},
+${contentLine}
+${indent}}`;
+}
+function formatMessagesForDisplay(messages) {
+  if (messages.length === 0) return "[]";
+  const items = messages.map((m) => formatMessage(m, "  "));
+  return `[
+${items.join(",\n")}
+]`;
+}
+function taskLabel(host, task) {
+  if (task.kind === "memory") return host.t(k(host, "manualTaskMemory"));
+  return task.sidecar.name;
+}
+function resolveSystemPrompt2(host, settings, task) {
+  if (task.kind === "sidecar") {
+    return sidecarPromptTemplate(host, task.sidecar);
+  }
+  return settings.systemPromptTemplate;
+}
+async function expandText(host, text, apiConfigId) {
+  const raw = asString(text);
+  if (!raw.includes("{{")) return raw;
+  if (!host.macros?.expand) return raw;
+  return host.macros.expand(raw, apiConfigId ? { apiConfigId } : void 0);
+}
+async function buildTaskMessages(host, settings, task, prepared) {
+  const apiConfigId = settings.apiConfigId;
+  const systemTemplate = resolveSystemPrompt2(host, settings, task);
+  const [expandedRef, expandedInstruction, expandedUser] = await Promise.all([
+    prepared.systemReferenceContext.trim() ? expandText(host, prepared.systemReferenceContext, apiConfigId) : Promise.resolve(""),
+    expandText(host, systemTemplate, apiConfigId),
+    expandText(host, prepared.userContent, apiConfigId)
+  ]);
+  const system = joinSystemMessage(expandedRef, expandedInstruction);
+  const messages = [];
+  if (system.trim()) messages.push({ role: "system", content: system });
+  if (expandedUser.trim()) messages.push({ role: "user", content: expandedUser });
+  return messages;
+}
+async function preflightLine(host, settings, messages) {
+  const pf = host.token?.preflightComplete;
+  if (!pf || messages.length === 0) return "";
+  try {
+    const result = await pf({
+      apiConfigId: settings.apiConfigId || void 0,
+      messages
+    });
+    if (result.ok) {
+      return host.t(k(host, "promptPreviewPreflightOk"), {
+        tokens: result.promptTokens,
+        budget: result.budget
+      });
+    }
+    return host.t(k(host, "promptPreviewPreflightFail"), {
+      tokens: result.promptTokens,
+      budget: result.budget,
+      code: result.code ?? ""
+    });
+  } catch {
+    return "";
+  }
+}
+function summarizeDialogCanPreview(model, settings) {
+  const start = asInt(model.startTurn, -1, 5e5);
+  const end = asInt(model.endTurn, -1, 5e5);
+  if (start < 0 || end < start) return false;
+  return tasksFromSelection(settings, model.selectedTasks).length > 0;
+}
+async function resolveTargetLorebookIdForPreview(host, settings) {
+  const id = asString(settings.targetLorebookId);
+  if (!id) {
+    host.ui.toast(host.t(k(host, "toastTargetLorebookMissingWarn")), { color: "warning" });
+    return "";
+  }
+  try {
+    await host.lorebook.get(id);
+    return id;
+  } catch {
+    host.ui.toast(host.t(k(host, "toastTargetLorebookDeleted")), { color: "warning" });
+    return "";
+  }
+}
+function registerPromptPreviewDialog(host) {
+  host.registerFormDialog(
+    PLUGIN_ID,
+    {
+      titleKey: k(host, "promptPreviewTitle"),
+      bodyKey: k(host, "promptPreviewBody"),
+      fields: [
+        {
+          key: "previewText",
+          labelKey: k(host, "promptPreviewTextLabel"),
+          type: "textarea",
+          readOnly: true
+        }
+      ],
+      submitKey: k(host, "promptPreviewClose"),
+      cancelKey: k(host, "sessionCancel"),
+      canSubmit: () => true,
+      onSubmit: async (h) => {
+        const restore = getPromptPreviewRestore();
+        clearPromptPreviewRestore();
+        if (restore) {
+          h.openFormDialog(PLUGIN_ID, restore, DIALOG_MANUAL);
+        }
+      },
+      onCancel: async (h) => {
+        const restore = getPromptPreviewRestore();
+        clearPromptPreviewRestore();
+        if (restore) {
+          h.openFormDialog(PLUGIN_ID, restore, DIALOG_MANUAL);
+        }
+      }
+    },
+    DIALOG_PROMPT_PREVIEW
+  );
+}
+async function previewManualSummarizePrompt(host, model) {
+  if (!auditDebugEnabled(host)) return;
+  const settings = await loadMergedSettings(host);
+  if (!summarizeDialogCanPreview(model, settings)) {
+    host.ui.toast(host.t(k(host, "toastInvalidRange")), { color: "warning" });
+    return;
+  }
+  const fromTurn = asInt(model.startTurn, 0, 5e5);
+  const toTurn = asInt(model.endTurn, fromTurn, 5e5);
+  const tasks = tasksFromSelection(settings, model.selectedTasks);
+  if (tasks.length === 0) {
+    host.ui.toast(host.t(k(host, "toastNoTasksSelected")), { color: "warning" });
+    return;
+  }
+  host.ui.progress({
+    message: host.t(k(host, "promptPreviewLoading")),
+    done: 0,
+    total: 1,
+    indeterminate: true
+  });
+  try {
+    const targetId = await resolveTargetLorebookIdForPreview(host, settings);
+    if (!targetId) return;
+    let sidecarEntryIds;
+    try {
+      sidecarEntryIds = await host.lorebook.normalizeEntryRefs({
+        lorebookId: targetId,
+        entryIds: settings.sidecarEntryIds,
+        validKeys: settings.sidecars.map((s) => s.id)
+      });
+    } catch {
+      sidecarEntryIds = {};
+    }
+    const prepared = await host.plugin.prepareContext({
+      fromTurn,
+      toTurn,
+      targetLorebookId: targetId,
+      previousSummariesLimit: settings.previousSummariesLimit,
+      sidecarEntryIds,
+      sidecarIds: settings.sidecars.map((s) => s.id),
+      regexRuleIds: settings.regexRuleIds,
+      tailOrdinal: outgoingTailOrdinal(host),
+      regexApplyAllTurns: settings.regexApplyAllTurns
+    });
+    const sections = [
+      host.t(k(host, "promptPreviewRange"), { from: fromTurn, to: toTurn }),
+      ""
+    ];
+    for (const task of tasks) {
+      const messages = await buildTaskMessages(host, settings, task, prepared);
+      const pf = await preflightLine(host, settings, messages);
+      sections.push(`=== ${taskLabel(host, task)} ===`);
+      if (pf) sections.push(pf);
+      sections.push(formatMessagesForDisplay(messages));
+      sections.push("");
+    }
+    setPromptPreviewRestore({ ...model });
+    host.openFormDialog(
+      PLUGIN_ID,
+      { previewText: sections.join("\n").trim() },
+      DIALOG_PROMPT_PREVIEW
+    );
+  } catch (e) {
+    console.warn("[plot-summary] prompt preview failed", e);
+    host.ui.toast(host.t(k(host, "promptPreviewFailed")), { color: "error" });
+  } finally {
+    host.ui.clearProgress();
+  }
+}
+
+// src/dialogs.ts
 function isAutoSummarizeEnabled(host) {
   return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true;
 }
@@ -1254,6 +1536,14 @@ function registerSummarizeDialog(host, settings, mode) {
       fields,
       submitKey: k(host, isEnable ? "enableSubmit" : "manualSubmit"),
       cancelKey: k(host, "sessionCancel"),
+      ...!isEnable ? {
+        regenerateKey: k(host, "manualPreviewPrompt"),
+        regenerateVisible: (h) => auditDebugEnabled(h),
+        regenerateCanSubmit: (m) => summarizeDialogCanPreview(m, settings),
+        onRegenerate: async (h, model) => {
+          await previewManualSummarizePrompt(h, model);
+        }
+      } : {},
       canSubmit: (m) => {
         const start = asInt(m.startTurn, -1, 5e5);
         const end = asInt(m.endTurn, -1, 5e5);
@@ -1350,12 +1640,16 @@ function openSessionSettings(host) {
 function openManualSummarize(host, preset) {
   loadMergedSettings(host).then((s) => {
     registerSummarizeDialog(host, s, "manual");
-    const maxOrd = Math.max(0, maxTurnOrdinal(host));
+    const { startTurn, endTurn } = manualSummarizeDefaultRange(
+      s,
+      preset,
+      maxTurnOrdinal(host)
+    );
     host.openFormDialog(
       PLUGIN_ID,
       {
-        startTurn: preset?.startTurn ?? 0,
-        endTurn: preset?.endTurn ?? maxOrd,
+        startTurn,
+        endTurn,
         selectedTasks: [...s.manualSummarizeTasks]
       },
       DIALOG_MANUAL
@@ -1375,6 +1669,27 @@ function openEnableLongDialog(host, settings) {
   registerSummarizeDialog(host, settings, "enable");
   host.openFormDialog(PLUGIN_ID, { startTurn, endTurn, selectedTasks }, DIALOG_ENABLE);
 }
+async function resumeAutoSummarizeEnable(host, settings) {
+  const nextBlockStart = normalizedNextBlockStart(
+    settings.nextBlockStart,
+    settings.lastSummarizedEnd
+  );
+  const trigger = firstAutoTriggerTurnOrdinal({ ...settings, nextBlockStart });
+  const range = currentAutoRange({ ...settings, nextBlockStart });
+  await host.conversation.patchPluginSettings({
+    autoSummarizeEnabled: true,
+    nextBlockStart
+  });
+  refreshAutoSummarizeUi(host);
+  host.ui.toast(
+    host.t(k(host, "toastAutoSummarizeResumed"), {
+      from: range.fromTurn,
+      to: range.toTurn,
+      turn: trigger
+    }),
+    { color: "success" }
+  );
+}
 async function applyShortAutoSummarizeEnable(host, settings) {
   const X = firstAutoTriggerTurnOrdinal({ ...settings, nextBlockStart: 0 });
   const autoSidecarIds = parseAutoSidecarIdsRaw(null, settings.sidecars);
@@ -1390,6 +1705,10 @@ async function applyShortAutoSummarizeEnable(host, settings) {
 }
 async function tryEnableAutoSummarize(host) {
   const settings = await loadMergedSettings(host);
+  if (hasAutoSummarizeHistory(settings)) {
+    await resumeAutoSummarizeEnable(host, settings);
+    return;
+  }
   const T = maxTurnOrdinal(host);
   const N = settings.blockTurns;
   const buffer = settings.bufferTurns;
@@ -1411,7 +1730,7 @@ function isBusy(host) {
   return host.session.conversationWriteLocked || host.session.loading || host.session.regeneratingTurnOrdinal !== null;
 }
 
-// plugins/plot-summary/src/lifecycle.ts
+// src/lifecycle.ts
 function isPersistBusy(host) {
   return host.session.conversationWriteLocked || host.session.loading || host.session.regeneratingTurnOrdinal !== null;
 }
@@ -1463,7 +1782,7 @@ function registerLifecycle(host) {
   });
 }
 
-// plugins/plot-summary/src/range-picker.ts
+// src/range-picker.ts
 var RANGE_STYLES = `
 .plugin-slot.cm-range-start--active {
   color: rgb(var(--v-theme-primary));
@@ -1542,12 +1861,13 @@ function registerRangePicker(host) {
   });
 }
 
-// plugins/plot-summary/src/index.ts
+// src/index.ts
 function isAutoSummarizeEnabled2(host) {
   return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true;
 }
 function register(host) {
   registerReviewDialogs(host);
+  registerPromptPreviewDialog(host);
   registerPickLorebookDialog(host);
   registerRecoverLorebookDialog(host);
   host.conversation.onPluginSettingsChanged(() => {

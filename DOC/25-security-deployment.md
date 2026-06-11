@@ -2,7 +2,7 @@
 
 > **状态（2026-06）**：**已实现**（§2–§10；messages 分页仍待 `DOC/15`）。  
 > **读者**：部署者、后续改 auth / 出站 / 插件的开发者。  
-> **关联**：`DOC/17`（运维台 loopback）、`DOC/13`（API Key 隔离）、`DOC/24`（审计与 `customParams`）、Codex 2026-06 安全审计。
+> **关联**：`DOC/17`（运维台 loopback）、**§15 API Key**、`DOC/24`（审计与 `customParams`）、Codex 2026-06 安全审计。
 
 ---
 
@@ -229,3 +229,30 @@ UI 文案：仅补充网关扩展参数（如 `stop`），不可改 `messages`/`
 |------|------|
 | 2026-06 | 初版：汇总 Codex 审计定案 + ST 式 clientWhitelist + customParams 黑名单 |
 | 2026-06 | 二轮：`public-only` 重定向逐跳校验、十进制 IP 拒绝、插件路由 `invalid_plugin_id`、JSONC 配置注释 |
+| 2026-06-10 | §15：合并原 `DOC/13`/`DOC/16` API Key 定案摘要 |
+
+---
+
+## 15. API Key 隔离与磁盘加密（已实现）
+
+> 原独立文档 `13-api-key-server-side-isolation.md`、`16-api-key-disk-encryption.md` 已归档至此。
+
+### 15.1 服务端隔离
+
+- **GET 脱敏**：`/api/api-keys`、`/api/settings`、`/api/user-preferences` 不返回明文 key（`keyConfigured` / 省略字段）。
+- **PUT merge**：省略 `apiKey`/`key` 保留磁盘原值；显式 `""` 清空。
+- **出站**：`POST /api/chat`、`POST /api/models`、embedding 由 `api-credential-resolve` / `embedding-credential-resolve` 读盘拼 `Authorization`；body **不要求** `apiKey`。
+- **Reveal**：`POST /api/api-keys/:id/reveal` 校验**登录密码**后一次性返回；前端不持久化。
+
+实现：`server/src/api-credential-resolve.ts`、`api-keys-file.ts`、`api-settings-file.ts`；前端 `install-authenticated-fetch`、`ConnectionSettingsCard`。
+
+### 15.2 磁盘加密
+
+- **算法**：AES-256-GCM；字段 `keyEnc` / `apiKeyEnc`（`EncryptedSecretV1`：`v/iv/tag/ct`）。
+- **DEK**：`DATA_ENCRYPTION_KEY` → `config.json` → `data/.data-encryption-key`；AAD 绑定 `userId`。
+- **迁移**：读兼容 legacy 明文；写路径加密。
+- **轮换**：运维台 `DOC/17` → `rotate-data-key`（维护模式 + 进度）。
+
+### 15.3 与备份
+
+全量冷备 zip 含加密 key 文件；恢复后 DEK 须一致。见 `data/README.md`、`DOC/03` §8.8。

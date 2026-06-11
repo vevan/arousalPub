@@ -9,6 +9,20 @@ export type PluginSettingsFieldType =
   | 'apiPreset'
   | 'lorebook'
   | 'objectList'
+  | 'checkboxGroup'
+
+export type PluginSettingsOptionsSource = 'regex-rules'
+
+export interface PluginSettingsOptionsFilter {
+  enabled?: boolean
+  phases?: string[]
+}
+
+export interface PluginSettingsCheckboxOption {
+  value: string
+  label?: string
+  labelKey?: string
+}
 
 export type PluginSettingsItemFieldType =
   | 'boolean'
@@ -53,6 +67,15 @@ export interface PluginSettingsFieldSchema {
   itemFields?: PluginSettingsItemFieldSchema[]
   conversationInherit?: boolean
   inheritFromGlobalKey?: string
+  /** checkboxGroup：静态选项（与 optionsSource 二选一） */
+  options?: PluginSettingsCheckboxOption[]
+  /** checkboxGroup：动态选项源 */
+  optionsSource?: PluginSettingsOptionsSource
+  optionsFilter?: PluginSettingsOptionsFilter
+  /** checkboxGroup：折叠展示选项列表（标题行仍可见，并显示已选数量） */
+  collapsible?: boolean
+  /** checkboxGroup：折叠面板内额外渲染的字段 key（须为同 schema 中的其它字段） */
+  panelFieldKeys?: string[]
 }
 
 export interface PluginSettingsSchema {

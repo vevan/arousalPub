@@ -1,25 +1,27 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { TurnRecord } from './chat-storage.js'
+import { getTurnUserText, type TurnRecord } from './chat-storage.js'
 import {
+  applyOutgoingRegexToSummaryTurn,
   formatSummarizeTranscript,
   wrapSummarizeTurnLine,
 } from './plugin-summarize-format.js'
+import type { RegexRule } from './regex-rules-types.js'
 
 describe('wrapSummarizeTurnLine', () => {
-  it('wraps user line with macro name and CDATA', () => {
+  it('wraps user line with userName macro', () => {
     const line = wrapSummarizeTurnLine('user', 'hello')
     assert.equal(
       line,
-      '<user name="{{user}}"><![CDATA[hello]]></user>',
+      '<user userName="{{user}}">hello</user>',
     )
   })
 
-  it('wraps char line with macro name', () => {
-    const line = wrapSummarizeTurnLine('char', 'reply')
+  it('wraps assistant line with charName macro', () => {
+    const line = wrapSummarizeTurnLine('assistant', 'reply')
     assert.equal(
       line,
-      '<char name="{{char}}"><![CDATA[reply]]></char>',
+      '<assistant charName="{{char}}">reply</assistant>',
     )
   })
 
@@ -29,13 +31,13 @@ describe('wrapSummarizeTurnLine', () => {
 })
 
 describe('formatSummarizeTranscript', () => {
-  it('emits xml user/char per turn separated by newlines', () => {
+  it('emits xml user/assistant per turn separated by newlines', () => {
     const turns: TurnRecord[] = [
       {
         turnId: 't0',
         turnOrdinal: 0,
         send: { userText: 'hi' },
-        receives: [{ content: 'hello back' }],
+        receives: [{ id: 'r0', content: 'hello back' }],
         activeReceiveIndex: 0,
         plugins: [],
       },
@@ -43,7 +45,55 @@ describe('formatSummarizeTranscript', () => {
     const out = formatSummarizeTranscript(turns, 'Alice', 'Bob')
     assert.equal(
       out,
-      '<user name="{{user}}"><![CDATA[hi]]></user>\n<char name="{{char}}"><![CDATA[hello back]]></char>',
+      '<user userName="{{user}}">hi</user>\n<assistant charName="{{char}}">hello back</assistant>',
     )
+  })
+})
+
+describe('applyOutgoingRegexToSummaryTurn', () => {
+  const rule: RegexRule = {
+    id: 'r1',
+    label: 'strip',
+    order: 10,
+    enabled: true,
+    phases: ['outgoing'],
+    fields: ['assistant'],
+    skipLastNTurns: 0,
+    pattern: 'TRACK',
+    flags: 'g',
+    replacement: '',
+  }
+
+  it('applies outgoing rules to assistant only', () => {
+    const turn: TurnRecord = {
+      turnId: 't0',
+      turnOrdinal: 0,
+      send: { userText: 'TRACK hi' },
+      receives: [{ id: 'r0', content: 'TRACK ok' }],
+      activeReceiveIndex: 0,
+      plugins: [],
+    }
+    const out = applyOutgoingRegexToSummaryTurn(turn, [rule], 0)
+    assert.equal(getTurnUserText(out), 'TRACK hi')
+    assert.equal(out.receives[0]?.content, ' ok')
+  })
+
+  it('regexApplyAllTurns ignores skipLastNTurns on recent turns', () => {
+    const skipRule: RegexRule = {
+      ...rule,
+      skipLastNTurns: 3,
+    }
+    const turn: TurnRecord = {
+      turnId: 't9',
+      turnOrdinal: 9,
+      send: { userText: 'u' },
+      receives: [{ id: 'r0', content: 'TRACK ok' }],
+      activeReceiveIndex: 0,
+      plugins: [],
+    }
+    const skipped = applyOutgoingRegexToSummaryTurn(turn, [skipRule], 10, false)
+    assert.equal(skipped.receives[0]?.content, 'TRACK ok')
+    const applied = applyOutgoingRegexToSummaryTurn(turn, [skipRule], 10, true)
+    assert.equal(applied.receives[0]?.content, ' ok')
   })
 })

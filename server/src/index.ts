@@ -3316,6 +3316,9 @@ app.post<{
     previousSummariesLimit?: number
     sidecarEntryIds?: Record<string, string>
     sidecarIds?: string[]
+    regexRuleIds?: string[]
+    tailOrdinal?: number
+    regexApplyAllTurns?: boolean
   }
 }>(
   '/api/plugins/:pluginId/prepare-context',
@@ -3354,6 +3357,12 @@ app.post<{
           ? body.sidecarEntryIds
           : undefined,
       sidecarIds: Array.isArray(body.sidecarIds) ? body.sidecarIds : undefined,
+      regexRuleIds: Array.isArray(body.regexRuleIds)
+        ? body.regexRuleIds
+        : undefined,
+      tailOrdinal:
+        typeof body.tailOrdinal === 'number' ? body.tailOrdinal : undefined,
+      regexApplyAllTurns: body.regexApplyAllTurns === true,
     })
     if (!result.ok) {
       if (result.code === 'conversation_not_found') {

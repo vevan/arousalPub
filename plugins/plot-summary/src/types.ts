@@ -6,6 +6,7 @@ export interface PluginHost {
     loading: boolean
     regeneratingTurnOrdinal: number | null
     turns?: { turnOrdinal?: number }[]
+    writeChatPromptSnapshot?: boolean | { value: boolean }
   }
   conversation: {
     getPluginSettings: () => Promise<Record<string, unknown>>
@@ -58,6 +59,9 @@ export interface PluginHost {
       previousSummariesLimit?: number
       sidecarEntryIds?: Record<string, string>
       sidecarIds?: string[]
+      regexRuleIds?: string[]
+      tailOrdinal?: number
+      regexApplyAllTurns?: boolean
     }) => Promise<{
       systemReferenceContext: string
       userContent: string
@@ -75,6 +79,15 @@ export interface PluginHost {
     }) => Promise<{ draft: { title: string; content: string; keywords: string[] } }>
   }
   plugins: { getUserSettings: () => Promise<Record<string, unknown>> }
+  macros?: {
+    expand: (text: string, opts?: { apiConfigId?: string }) => Promise<string>
+  }
+  token?: {
+    preflightComplete: (req: {
+      apiConfigId?: string
+      messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
+    }) => Promise<{ ok: boolean; promptTokens: number; budget: number; code?: string }>
+  }
   ui: {
     toast: (msg: string, opts?: { color?: string }) => void
     progress: (opts: Record<string, unknown>) => void
@@ -135,6 +148,8 @@ export interface MergedSettings {
   autoSummarizeDefaultEnabled: boolean
   targetLorebookMode: 'manual' | 'auto'
   autoLorebookNameTemplate: string
+  regexRuleIds: string[]
+  regexApplyAllTurns: boolean
 }
 
 export type SummarizeTask =

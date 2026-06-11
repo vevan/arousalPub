@@ -12,6 +12,7 @@ import {
   validatePluginSettingsModel,
 } from '@/utils/plugin-settings-validate'
 import { resolvePluginDisplayName } from '@/utils/plugin-locale-text'
+import { mergePluginLocales } from '@/plugins/merge-plugin-locales'
 import { notifyPluginUserSettingsSaved } from '@/utils/plugin-user-settings-events'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -104,6 +105,7 @@ async function openSettings(plugin: PluginManageEntry) {
   settingsError.value = ''
   settingsOpen.value = true
   try {
+    await mergePluginLocales(plugin.id)
     settingsModel.value = await fetchPluginSettings(plugin.id)
     hydratePluginSettingsDefaults(
       settingsModel.value,

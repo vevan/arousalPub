@@ -86,6 +86,36 @@ describe('shouldApplyRegexRule', () => {
       true,
     )
   })
+
+  it('applies skip when ignoreSkipLastNTurns is false', () => {
+    const ctx = {
+      phase: 'outgoing' as const,
+      field: 'assistant' as const,
+      tailOrdinal: 10,
+      ignoreSkipLastNTurns: false,
+    }
+    assert.equal(
+      shouldApplyRegexRule(tracker, { ...ctx, turnOrdinal: 10 }),
+      false,
+    )
+  })
+
+  it('ignores skipLastNTurns when ignoreSkipLastNTurns is true', () => {
+    const ctx = {
+      phase: 'outgoing' as const,
+      field: 'assistant' as const,
+      tailOrdinal: 10,
+      ignoreSkipLastNTurns: true,
+    }
+    assert.equal(
+      shouldApplyRegexRule(tracker, { ...ctx, turnOrdinal: 10 }),
+      true,
+    )
+    assert.equal(
+      shouldApplyRegexRule(tracker, { ...ctx, turnOrdinal: 8 }),
+      true,
+    )
+  })
 })
 
 describe('applyRegexRulesToText', () => {

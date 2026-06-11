@@ -103,6 +103,18 @@
 
   "manualSubmit": "Run",
 
+  "manualPreviewPrompt": "Preview prompt",
+
+  "promptPreviewTitle": "Summarize prompt preview",
+  "promptPreviewBody": "Assembled for the current range and selected tasks (regex + macros). No model call.",
+  "promptPreviewTextLabel": "Messages",
+  "promptPreviewClose": "Close",
+  "promptPreviewLoading": "Building preview…",
+  "promptPreviewFailed": "Could not build preview",
+  "promptPreviewRange": "Range: turns {from}–{to} (inclusive)",
+  "promptPreviewPreflightOk": "Est. tokens: {tokens} / budget {budget}",
+  "promptPreviewPreflightFail": "Est. tokens: {tokens} / budget {budget} ({code})",
+
   "reviewDialogTitle": "Confirm and save summary: {name}",
 
   "reviewDialogBody": "Edit title, body, and keywords before saving to the lorebook.",
@@ -146,6 +158,8 @@
   "toastAutoSummarizeEnabled": "Auto summarize enabled",
 
   "toastAutoSummarizeScheduled": "Auto summarize will start at turn {turn}",
+
+  "toastAutoSummarizeResumed": "Resumed from last summary; next batch {from}–{to}, trigger around turn {turn}",
 
   "pickLorebookDialogTitle": "Choose target lorebook",
 
@@ -236,6 +250,14 @@
   "previousSummariesLimitLabel": "Recent summaries in context",
 
   "previousSummariesLimitDesc": "Reference context: ① latest N plot summaries whose end turn is before this batch start; ② up to N conversation turns before start (inclusive) in <context-history> (batch range stays in <history>). 0 disables both.",
+
+  "regexRuleIdsLabel": "Apply regex before summarize (outgoing)",
+
+  "regexRuleIdsDesc": "Lists enabled rules that include the outgoing phase only. Applied in list order to dialogue in <context-history> and <history>; disk is not modified. Leave unchecked to skip.",
+
+  "regexApplyAllTurnsLabel": "Ignore skip — apply to all turns",
+
+  "regexApplyAllTurnsDesc": "When enabled, selected outgoing rules ignore each rule's skip-last-N setting; every user/assistant line in the summarize range is processed. When off, skip windows use each rule's setting and the conversation tail.",
 
   "entrySortModeLabel": "Auto-sort entries",
 

@@ -45,6 +45,30 @@ export function firstAutoTriggerTurnOrdinal(
   return blockEndFromStart(nextBlockStart, blockTurns) + bufferTurns
 }
 
+export function readLastSummarizedEnd(conv: Record<string, unknown>): number | null {
+  if (typeof conv.lastSummarizedEnd === 'number' && Number.isFinite(conv.lastSummarizedEnd)) {
+    return Math.round(conv.lastSummarizedEnd)
+  }
+  if (
+    typeof conv.lastTriggeredTurnOrdinal === 'number' &&
+    Number.isFinite(conv.lastTriggeredTurnOrdinal)
+  ) {
+    return Math.round(conv.lastTriggeredTurnOrdinal)
+  }
+  return null
+}
+
+export function normalizedNextBlockStart(
+  nextBlockStart: number,
+  lastSummarizedEnd: number | null | undefined,
+): number {
+  const start = Math.max(0, Math.round(nextBlockStart))
+  if (typeof lastSummarizedEnd === 'number' && lastSummarizedEnd >= 0) {
+    return Math.max(start, lastSummarizedEnd + 1)
+  }
+  return start
+}
+
 export function computeAutoSummarizeProgress(
   conv: Record<string, unknown>,
   global: Record<string, unknown>,
@@ -60,19 +84,12 @@ export function computeAutoSummarizeProgress(
     500,
   )
   const bufferTurns = effectiveInt(conv, global, 'bufferTurns', 'bufferTurns', 5, 0, 500)
-  const nextBlockStart =
+  const lastSummarizedEnd = readLastSummarizedEnd(conv)
+  const rawNextBlockStart =
     typeof conv.nextBlockStart === 'number' && Number.isFinite(conv.nextBlockStart)
       ? Math.max(0, Math.round(conv.nextBlockStart))
       : 0
-  let lastSummarizedEnd: number | null = null
-  if (typeof conv.lastSummarizedEnd === 'number' && Number.isFinite(conv.lastSummarizedEnd)) {
-    lastSummarizedEnd = Math.round(conv.lastSummarizedEnd)
-  } else if (
-    typeof conv.lastTriggeredTurnOrdinal === 'number' &&
-    Number.isFinite(conv.lastTriggeredTurnOrdinal)
-  ) {
-    lastSummarizedEnd = Math.round(conv.lastTriggeredTurnOrdinal)
-  }
+  const nextBlockStart = normalizedNextBlockStart(rawNextBlockStart, lastSummarizedEnd)
   const pendingToTurn = blockEndFromStart(nextBlockStart, blockTurns)
   const nextTriggerTurn = firstAutoTriggerTurnOrdinal(
     nextBlockStart,
@@ -106,17 +123,4 @@ export function buildAutoSummarizePointerResetPatch(
     nextBlockStart: end + 1,
     lastTriggeredTurnOrdinal: null,
   }
-}
-
-export function readLastSummarizedEnd(conv: Record<string, unknown>): number | null {
-  if (typeof conv.lastSummarizedEnd === 'number' && Number.isFinite(conv.lastSummarizedEnd)) {
-    return Math.round(conv.lastSummarizedEnd)
-  }
-  if (
-    typeof conv.lastTriggeredTurnOrdinal === 'number' &&
-    Number.isFinite(conv.lastTriggeredTurnOrdinal)
-  ) {
-    return Math.round(conv.lastTriggeredTurnOrdinal)
-  }
-  return null
 }

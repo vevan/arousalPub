@@ -1,9 +1,9 @@
-// plugins/plot-summary/src/shared/utils.ts
+// src/shared/utils.ts
 function asString(v) {
   return typeof v === "string" ? v.trim() : "";
 }
 
-// plugins/plot-summary/src/shared/summarize.ts
+// src/shared/summarize.ts
 function parseModelJson(text) {
   let raw = (text ?? "").trim();
   const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -37,7 +37,7 @@ function formatEntryTitle(rawTitle, startTurn, endTurn) {
   return `${base}${suffix}`;
 }
 
-// plugins/plot-summary/src/server/complete-draft.ts
+// src/server/complete-draft.ts
 var UPSTREAM_RETRY_MAX = 3;
 var PIPELINE_FATAL = /* @__PURE__ */ new Set(["context_exceeded", "context_length_unconfigured"]);
 var UPSTREAM_RETRY = /* @__PURE__ */ new Set(["plugin_complete_failed", "preflight_failed"]);

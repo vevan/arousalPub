@@ -80,3 +80,17 @@ export function setLorebookPickResolver(v: typeof _lorebookPickResolver) {
 export function clearLorebookPickResolver() {
   _lorebookPickResolver = null
 }
+
+let _promptPreviewRestore: Record<string, unknown> | null = null
+
+export function setPromptPreviewRestore(model: Record<string, unknown>) {
+  _promptPreviewRestore = { ...model }
+}
+
+export function getPromptPreviewRestore() {
+  return _promptPreviewRestore
+}
+
+export function clearPromptPreviewRestore() {
+  _promptPreviewRestore = null
+}

@@ -54,6 +54,28 @@ function itemFieldRequiredEmpty(
   return !isNonEmptyText(value)
 }
 
+export function parseCheckboxGroupField(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .filter((x): x is string => typeof x === 'string' && x.trim())
+      .map((x) => x.trim())
+  }
+  if (typeof value === 'string') {
+    const s = value.trim()
+    if (!s) return []
+    try {
+      const parsed = JSON.parse(s) as unknown
+      if (!Array.isArray(parsed)) return []
+      return parsed
+        .filter((x): x is string => typeof x === 'string' && x.trim())
+        .map((x) => x.trim())
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
 export function validatePluginSettingsModel(
   schema: PluginSettingsSchema | null | undefined,
   model: Record<string, unknown>,
@@ -120,6 +142,17 @@ export function hydratePluginSettingsDefaults(
 ): void {
   if (!schema) return
   for (const field of schema.fields) {
+    if (field.type === 'checkboxGroup' && !Array.isArray(model[field.key])) {
+      if (Array.isArray(field.default)) {
+        model[field.key] = field.default.filter(
+          (x): x is string => typeof x === 'string',
+        )
+      } else if (field.default === '[]' || field.default === undefined) {
+        model[field.key] = []
+      } else {
+        model[field.key] = parseCheckboxGroupField(field.default)
+      }
+    }
     if (
       field.type === 'text' &&
       field.widget === 'promptTemplate' &&

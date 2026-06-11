@@ -131,7 +131,7 @@ persist 事件 → 前端用服务端返回的最终正文更新该轮（含 ret
 | 场景 | 定案 |
 |------|------|
 | 单轮聊天 `persist` | 全部命中规则内存串联后 **`persistTurnAfterModelReply` 写 1 次** |
-| 历史批量 | `read` → `applyRulesToTurns(全部 ruleIds)` → **`batchUpdateConversationTurns` 一次提交**；**每个 chunk 文件至多 1 读 1 写**（`DOC/22`） |
+| 历史批量 | `read` → `applyRulesToTurns(全部 ruleIds)` → **`batchUpdateConversationTurns` 一次提交**；**每个 chunk 文件至多 1 读 1 写** |
 | 跨多 chunk | 写盘次数 ∝ **chunk 数**，**不** ∝ **规则条数** |
 | 规则 CRUD / 拖曳排序 | `regex-rules.json` **1 次写** / debounce 保存 |
 

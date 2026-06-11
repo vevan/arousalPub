@@ -1,17 +1,116 @@
 import { getTurnUserText, type TurnRecord } from './chat-storage.js'
+import { applyRegexRulesToText, filterRegexRules } from './regex-apply.js'
+import { resolveOutgoingSkipTailOrdinal } from './regex-outgoing.js'
+import { readRegexRulesDocument } from './regex-rules-file.js'
+import type { RegexRule } from './regex-rules-types.js'
+import { normalizeXmlTextBeforeProcessing, prepareXmlElementText } from './prompt-xml.js'
+import { assistantTextFromTurn } from './turn-memory-xml.js'
 
 export const PLUGIN_SUMMARIZE_BATCH_MAX = 50
 
-/** 摘要 history / context-history 内单条发言的 XML 包裹（name 由宏展开） */
+export function normalizeRegexRuleIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((x): x is string => typeof x === 'string' && x.trim())
+    .map((x) => x.trim())
+}
+
+export async function loadSummarizeOutgoingRegexRules(
+  ruleIds: string[],
+): Promise<RegexRule[]> {
+  const ids = normalizeRegexRuleIds(ruleIds)
+  if (ids.length === 0) return []
+  const doc = await readRegexRulesDocument()
+  return filterRegexRules(doc.rules, { ruleIds: ids, phases: ['outgoing'] }).filter(
+    (r) => r.enabled,
+  )
+}
+
+export function applyOutgoingRegexToSummaryTurn(
+  turn: TurnRecord,
+  rules: RegexRule[],
+  tailOrdinal: number,
+  regexApplyAllTurns = false,
+): TurnRecord {
+  if (rules.length === 0) return turn
+
+  const ord = turn.turnOrdinal
+  const skipTailOrdinal = resolveOutgoingSkipTailOrdinal(tailOrdinal)
+  const regexCtxBase = {
+    phase: 'outgoing' as const,
+    tailOrdinal: skipTailOrdinal,
+    ...(regexApplyAllTurns ? { ignoreSkipLastNTurns: true as const } : {}),
+  }
+  let userText = normalizeXmlTextBeforeProcessing(getTurnUserText(turn))
+  let userChanged = false
+  if (userText.trim()) {
+    const next = applyRegexRulesToText(userText, rules, {
+      ...regexCtxBase,
+      field: 'user',
+      turnOrdinal: ord,
+    })
+    if (next !== userText) {
+      userText = next
+      userChanged = true
+    }
+  }
+
+  let assistant = normalizeXmlTextBeforeProcessing(assistantTextFromTurn(turn))
+  let assistantChanged = false
+  if (assistant.trim()) {
+    const next = applyRegexRulesToText(assistant, rules, {
+      ...regexCtxBase,
+      field: 'assistant',
+      turnOrdinal: ord,
+    })
+    if (next !== assistant) {
+      assistant = next
+      assistantChanged = true
+    }
+  }
+
+  if (!userChanged && !assistantChanged) return turn
+
+  const receives = [...(turn.receives ?? [])]
+  const activeIdx = Math.min(
+    Math.max(0, Math.floor(turn.activeReceiveIndex) || 0),
+    Math.max(0, receives.length - 1),
+  )
+  if (receives[activeIdx]) {
+    receives[activeIdx] = { ...receives[activeIdx], content: assistant }
+  }
+
+  return {
+    ...turn,
+    send: { ...turn.send, userText },
+    receives,
+  }
+}
+
+export function applyOutgoingRegexToSummaryTurns(
+  turns: TurnRecord[],
+  rules: RegexRule[],
+  tailOrdinal: number,
+  regexApplyAllTurns = false,
+): TurnRecord[] {
+  if (rules.length === 0) return turns
+  return turns.map((t) =>
+    applyOutgoingRegexToSummaryTurn(t, rules, tailOrdinal, regexApplyAllTurns),
+  )
+}
+
+/** 摘要 history / context-history 内单条发言的 XML 包裹（属性宏由 complete 阶段展开） */
 export function wrapSummarizeTurnLine(
-  role: 'user' | 'char',
+  role: 'user' | 'assistant',
   text: string,
 ): string {
   const body = (text ?? '').trim()
   if (!body) return ''
-  const nameMacro = role === 'user' ? '{{user}}' : '{{char}}'
-  const cdata = body.replace(/\]\]>/g, ']]]]><![CDATA[>')
-  return `<${role} name="${nameMacro}"><![CDATA[${cdata}]]></${role}>`
+  const tag = role
+  const attr =
+    role === 'user' ? 'userName="{{user}}"' : 'charName="{{char}}"'
+  const escaped = prepareXmlElementText(body)
+  return `<${tag} ${attr}>${escaped}</${tag}>`
 }
 
 export function formatSummarizeTranscript(
@@ -23,15 +122,7 @@ export function formatSummarizeTranscript(
   for (const t of turns) {
     const userLine = wrapSummarizeTurnLine('user', getTurnUserText(t))
     if (userLine) lines.push(userLine)
-    const idx = Math.min(
-      Math.max(0, t.activeReceiveIndex ?? 0),
-      Math.max(0, (t.receives?.length ?? 1) - 1),
-    )
-    const r = t.receives?.[idx]
-    const charLine = wrapSummarizeTurnLine(
-      'char',
-      typeof r?.content === 'string' ? r.content : '',
-    )
+    const charLine = wrapSummarizeTurnLine('assistant', assistantTextFromTurn(t))
     if (charLine) lines.push(charLine)
   }
   return lines.join('\n')
@@ -59,30 +150,27 @@ export function normalizeSummaryPayload(obj: unknown): {
   content: string
   keywords: string[]
 } {
-  if (!obj || typeof obj !== 'object') throw new Error('parse_failed')
+  if (!obj || typeof obj !== 'object') {
+    return { title: '', content: '', keywords: [] }
+  }
   const o = obj as Record<string, unknown>
   const title = asPluginString(o.title)
-  const content = typeof o.content === 'string' ? o.content : ''
-  if (!title || !content.trim()) throw new Error('parse_failed')
+  const content = asPluginString(o.content ?? o.summary)
   let keywords: string[] = []
   if (Array.isArray(o.keywords)) {
     keywords = o.keywords
-      .filter((x): x is string => typeof x === 'string')
-      .map((x) => x.trim())
-      .filter(Boolean)
+      .filter((k): k is string => typeof k === 'string' && k.trim())
+      .map((k) => k.trim())
   }
-  return { title, content: content.trim(), keywords }
+  return { title, content, keywords }
 }
 
 export function formatEntryTitle(
-  rawTitle: string,
-  startTurn: number,
-  endTurn: number,
+  title: string,
+  fromTurn: number,
+  toTurn: number,
 ): string {
-  const base = rawTitle.trim()
-  const suffix = `-${startTurn}-${endTurn}`
-  if (/-\d+-\d+$/.test(base)) {
-    return base.replace(/-\d+-\d+$/, suffix)
-  }
-  return `${base}${suffix}`
+  const base = title.trim()
+  if (!base) return `${fromTurn}-${toTurn}`
+  return `${base}-${fromTurn}-${toTurn}`
 }

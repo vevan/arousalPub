@@ -29,6 +29,20 @@ export type PluginSettingsFieldType =
   | 'apiPreset'
   | 'lorebook'
   | 'objectList'
+  | 'checkboxGroup'
+
+export type PluginSettingsOptionsSource = 'regex-rules'
+
+export interface PluginSettingsOptionsFilter {
+  enabled?: boolean
+  phases?: string[]
+}
+
+export interface PluginSettingsCheckboxOption {
+  value: string
+  label?: string
+  labelKey?: string
+}
 
 export type PluginSettingsItemFieldType =
   | 'boolean'
@@ -76,6 +90,11 @@ export interface PluginSettingsFieldSchema {
   conversationInherit?: boolean
   /** 与全局 settings 键名对应，用于 inherit hint */
   inheritFromGlobalKey?: string
+  options?: PluginSettingsCheckboxOption[]
+  optionsSource?: PluginSettingsOptionsSource
+  optionsFilter?: PluginSettingsOptionsFilter
+  collapsible?: boolean
+  panelFieldKeys?: string[]
 }
 
 export interface PluginSettingsSchema {

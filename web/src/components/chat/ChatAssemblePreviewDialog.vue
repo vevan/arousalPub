@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import type { useChatSession } from '@/composables/useChatSession'
-import { computed, toRefs } from 'vue'
+import {
+  CHAT_CONVERSATION_ACTIONS_KEY,
+} from '@/composables/chat-conversation-actions'
+import { computed, inject, toRefs } from 'vue'
 
 const props = defineProps<{
   session: ReturnType<typeof useChatSession>
@@ -10,13 +13,20 @@ const {
   assemblePreviewOpen,
   assemblePreviewLoading,
   assemblePreviewError,
+  assemblePreviewMemoryCorrupt,
   assemblePreviewJson,
   assemblePreviewMeta,
   assemblePreviewCopied,
   assemblePreviewRawCopied,
 } = toRefs(props.session)
 
-const { copyAssemblePreviewJson, copyAssemblePreviewRaw } = props.session
+const {
+  copyAssemblePreviewJson,
+  copyAssemblePreviewRaw,
+  closeAssemblePreview,
+} = props.session
+
+const conversationActions = inject(CHAT_CONVERSATION_ACTIONS_KEY, null)
 
 const hasBudgetDrops = computed(() => {
   const m = assemblePreviewMeta.value
@@ -26,13 +36,19 @@ const hasBudgetDrops = computed(() => {
     m.droppedHistoryCount > 0
   )
 })
+
+function onJumpMemoryRebuild() {
+  closeAssemblePreview()
+  conversationActions?.openMemoryRebuild()
+}
 </script>
 
 <template>
-<v-dialog
+  <v-dialog
     v-model="assemblePreviewOpen"
     scrollable
     max-width="52rem"
+    :persistent="assemblePreviewMemoryCorrupt"
   >
     <v-card class="preview-card">
       <v-card-title class="preview-card__title">
@@ -42,7 +58,7 @@ const hasBudgetDrops = computed(() => {
           icon="mdi-close"
           variant="text"
           density="comfortable"
-          @click="assemblePreviewOpen = false"
+          @click="closeAssemblePreview"
         />
       </v-card-title>
       <p class="preview-card__lede text-body-2 text-medium-emphasis px-4 pb-2 mb-0">
@@ -103,10 +119,17 @@ const hasBudgetDrops = computed(() => {
           v-else-if="assemblePreviewError"
           type="error"
           variant="tonal"
-          density="compact"
           class="mb-0"
         >
-          {{ assemblePreviewError }}
+          <p class="mb-0">
+            {{ assemblePreviewError }}
+          </p>
+          <p
+            v-if="assemblePreviewMemoryCorrupt"
+            class="text-body-2 text-medium-emphasis mb-0 mt-2"
+          >
+            {{ $t('chat.previewAssembleMemoryRebuildHint') }}
+          </p>
         </v-alert>
         <pre
           v-else-if="assemblePreviewJson"
@@ -114,39 +137,60 @@ const hasBudgetDrops = computed(() => {
         >{{ assemblePreviewJson }}</pre>
       </v-card-text>
       <v-card-actions class="preview-card__foot">
-        <v-spacer />
-        <template v-if="assemblePreviewJson && !assemblePreviewError">
-          <button
-            type="button"
-            class="editor-card__btn"
-            :class="{ 'is-flash': assemblePreviewCopied }"
-            @click="copyAssemblePreviewJson"
+        <template v-if="assemblePreviewError">
+          <v-btn
+            v-if="assemblePreviewMemoryCorrupt"
+            color="primary"
+            variant="flat"
+            class="text-none"
+            @click="onJumpMemoryRebuild"
           >
-            {{
-              assemblePreviewCopied
-                ? $t('prompts.previewCopied')
-                : $t('prompts.previewCopy')
-            }}
-          </button>
-          <button
-            type="button"
-            class="editor-card__btn"
-            :class="{ 'is-flash': assemblePreviewRawCopied }"
-            @click="copyAssemblePreviewRaw"
+            {{ $t('chat.previewAssembleMemoryRebuildAction') }}
+          </v-btn>
+          <v-spacer />
+          <v-btn
+            variant="text"
+            class="text-none"
+            @click="closeAssemblePreview"
           >
-            {{
-              assemblePreviewRawCopied
-                ? $t('prompts.previewCopied')
-                : $t('prompts.previewCopyRaw')
-            }}
-          </button>
+            {{ $t('chat.previewAssembleErrorClose') }}
+          </v-btn>
         </template>
-        <v-btn
-          variant="text"
-          @click="assemblePreviewOpen = false"
-        >
-          {{ $t('prompts.previewClose') }}
-        </v-btn>
+        <template v-else>
+          <v-spacer />
+          <template v-if="assemblePreviewJson">
+            <button
+              type="button"
+              class="editor-card__btn"
+              :class="{ 'is-flash': assemblePreviewCopied }"
+              @click="copyAssemblePreviewJson"
+            >
+              {{
+                assemblePreviewCopied
+                  ? $t('prompts.previewCopied')
+                  : $t('prompts.previewCopy')
+              }}
+            </button>
+            <button
+              type="button"
+              class="editor-card__btn"
+              :class="{ 'is-flash': assemblePreviewRawCopied }"
+              @click="copyAssemblePreviewRaw"
+            >
+              {{
+                assemblePreviewRawCopied
+                  ? $t('prompts.previewCopied')
+                  : $t('prompts.previewCopyRaw')
+              }}
+            </button>
+          </template>
+          <v-btn
+            variant="text"
+            @click="closeAssemblePreview"
+          >
+            {{ $t('prompts.previewClose') }}
+          </v-btn>
+        </template>
       </v-card-actions>
     </v-card>
   </v-dialog>

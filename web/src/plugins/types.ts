@@ -110,6 +110,10 @@ export interface PluginFormDialogDef {
   ) => void | Promise<void>
   /** 可选第四按钮（如预览「重新生成」） */
   regenerateKey?: string
+  /** 为 false 时不展示 regenerate 按钮（如 debug 门控） */
+  regenerateVisible?: (host: PluginWebHost) => boolean
+  /** 与 canSubmit 类似，控制 regenerate 是否可点 */
+  regenerateCanSubmit?: (model: Record<string, unknown>) => boolean
   onRegenerate?: (
     host: PluginWebHost,
     model: Record<string, unknown>,
@@ -255,6 +259,9 @@ export interface PluginPrepareContextRequest {
   previousSummariesLimit?: number
   sidecarEntryIds?: Record<string, string>
   sidecarIds?: string[]
+  regexRuleIds?: string[]
+  tailOrdinal?: number
+  regexApplyAllTurns?: boolean
 }
 
 export interface PluginPrepareContextResponse {

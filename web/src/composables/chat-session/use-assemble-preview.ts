@@ -1,8 +1,10 @@
-import type { AssembleMessagesResult } from '@/types/chat-turn'
+import { readJsonSseStream } from '@/utils/json-sse'
 import { translateApiError } from '@/utils/api-error-message'
 import { formatChatMessagesForDisplay } from '@/utils/format-prompt-json-display'
 import { computed, ref, type Ref } from 'vue'
 import type { ComposerTranslation } from 'vue-i18n'
+
+export const MEMORY_VECTOR_INDEX_CORRUPT = 'memory_vector_index_corrupt'
 
 export function useAssemblePreview(opts: {
   getConversationId: () => string
@@ -14,6 +16,7 @@ export function useAssemblePreview(opts: {
   const assemblePreviewOpen = ref(false)
   const assemblePreviewLoading = ref(false)
   const assemblePreviewError = ref('')
+  const assemblePreviewErrorCode = ref('')
   const assemblePreviewJson = ref('')
   const assemblePreviewRawJson = ref('')
   const assemblePreviewMeta = ref({
@@ -27,6 +30,10 @@ export function useAssemblePreview(opts: {
   const assemblePreviewCopied = ref(false)
   const assemblePreviewRawCopied = ref(false)
 
+  const assemblePreviewMemoryCorrupt = computed(
+    () => assemblePreviewErrorCode.value === MEMORY_VECTOR_INDEX_CORRUPT,
+  )
+
   const canPreviewAssemble = computed(
     () =>
       !assemblePreviewLoading.value &&
@@ -36,6 +43,7 @@ export function useAssemblePreview(opts: {
   async function fetchAssemblePreview(): Promise<void> {
     assemblePreviewLoading.value = true
     assemblePreviewError.value = ''
+    assemblePreviewErrorCode.value = ''
     assemblePreviewJson.value = ''
     assemblePreviewRawJson.value = ''
     assemblePreviewCopied.value = false
@@ -65,20 +73,32 @@ export function useAssemblePreview(opts: {
       )
       if (!res.ok) {
         let msg = opts.t('chat.previewAssembleLoadFailed')
+        let code = ''
         try {
           const j = (await res.json()) as { error?: string; detail?: string }
-          msg =
-            (typeof j.error === 'string' && j.error.trim()
-              ? translateApiError(j.error.trim())
-              : j.detail) || msg
+          code = typeof j.error === 'string' ? j.error.trim() : ''
+          if (code === MEMORY_VECTOR_INDEX_CORRUPT) {
+            msg = translateApiError(code)
+          } else {
+            msg =
+              (code ? translateApiError(code) : j.detail) || msg
+          }
         } catch {
           const text = await res.text()
           if (text.trim()) msg = text.slice(0, 500)
         }
+        assemblePreviewErrorCode.value = code
         assemblePreviewError.value = msg
         return
       }
-      const data = (await res.json()) as AssembleMessagesResult
+      const data = (await res.json()) as {
+        messages?: unknown[]
+        estimatedTokens?: number
+        droppedLoreCount?: number
+        droppedMemoryCount?: number
+        droppedHistoryCount?: number
+        memoryTurnIds?: unknown[]
+      }
       const messages = Array.isArray(data.messages) ? data.messages : []
       assemblePreviewMeta.value = {
         messages: messages.length,
@@ -99,7 +119,9 @@ export function useAssemblePreview(opts: {
           : [],
       }
       assemblePreviewRawJson.value = JSON.stringify(messages, null, 2)
-      assemblePreviewJson.value = formatChatMessagesForDisplay(messages)
+      assemblePreviewJson.value = formatChatMessagesForDisplay(
+        messages as Parameters<typeof formatChatMessagesForDisplay>[0],
+      )
     } catch {
       assemblePreviewError.value = opts.t('chat.previewAssembleLoadFailed')
     } finally {
@@ -110,6 +132,10 @@ export function useAssemblePreview(opts: {
   async function openAssemblePreview() {
     assemblePreviewOpen.value = true
     await fetchAssemblePreview()
+  }
+
+  function closeAssemblePreview() {
+    assemblePreviewOpen.value = false
   }
 
   async function copyAssemblePreviewText(
@@ -146,12 +172,15 @@ export function useAssemblePreview(opts: {
     assemblePreviewOpen,
     assemblePreviewLoading,
     assemblePreviewError,
+    assemblePreviewErrorCode,
+    assemblePreviewMemoryCorrupt,
     assemblePreviewJson,
     assemblePreviewMeta,
     assemblePreviewCopied,
     assemblePreviewRawCopied,
     canPreviewAssemble,
     openAssemblePreview,
+    closeAssemblePreview,
     copyAssemblePreviewJson,
     copyAssemblePreviewRaw,
   }

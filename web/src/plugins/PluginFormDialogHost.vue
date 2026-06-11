@@ -82,9 +82,21 @@ const regenerateLabel = computed(() => {
   return t(def.regenerateKey)
 })
 
-const hasRegenerate = computed(
-  () => Boolean(activeDef.value?.regenerateKey && activeDef.value?.onRegenerate),
-)
+const hasRegenerate = computed(() => {
+  const def = activeDef.value
+  if (!def?.onRegenerate) return false
+  if (def.regenerateVisible && pluginHost && !def.regenerateVisible(pluginHost.host)) {
+    return false
+  }
+  return true
+})
+
+const canRegenerate = computed(() => {
+  const def = activeDef.value
+  if (!hasRegenerate.value || !def) return false
+  if (def.regenerateCanSubmit && !def.regenerateCanSubmit(model.value)) return false
+  return !submitting.value
+})
 
 const isPersistent = computed(() => activeDef.value?.persistent === true)
 
@@ -348,7 +360,7 @@ function resourceSelectClearable(field: PluginFormFieldDef): boolean {
           v-if="hasRegenerate"
           variant="text"
           :loading="submitting"
-          :disabled="submitting"
+          :disabled="!canRegenerate"
           @click="pluginHost.regenerateOpenForm()"
         >
           {{ regenerateLabel }}

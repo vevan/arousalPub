@@ -107,6 +107,18 @@
 
   "manualSubmit": "开始",
 
+  "manualPreviewPrompt": "预览 Prompt",
+
+  "promptPreviewTitle": "摘要 Prompt 预览",
+  "promptPreviewBody": "按当前区间与勾选项组装（含正则与宏展开），不调用模型。",
+  "promptPreviewTextLabel": "Messages",
+  "promptPreviewClose": "关闭",
+  "promptPreviewLoading": "正在组装预览…",
+  "promptPreviewFailed": "无法生成预览",
+  "promptPreviewRange": "区间：第 {from}–{to} 轮（含）",
+  "promptPreviewPreflightOk": "预估 tokens：{tokens} / 预算 {budget}",
+  "promptPreviewPreflightFail": "预估 tokens：{tokens} / 预算 {budget}（{code}）",
+
   "reviewDialogTitle": "确认并写入摘要：{name}",
 
   "reviewDialogBody": "可编辑标题、正文与关键词，确认后写入资料库。",
@@ -151,6 +163,8 @@
   "toastAutoSummarizeEnabled": "已开启自动摘要",
 
   "toastAutoSummarizeScheduled": "将在第 {turn} 轮开始自动摘要",
+
+  "toastAutoSummarizeResumed": "已从已摘要进度续接，下一批 {from}–{to}，预计第 {turn} 轮触发",
 
   "pickLorebookDialogTitle": "选择目标资料库",
 
@@ -242,6 +256,14 @@
   "previousSummariesLimitLabel": "摘要时附带最近条数",
 
   "previousSummariesLimitDesc": "参考上下文：① 结束轮次早于本次摘要起始轮的最近 N 条剧情纪要；② 从起始轮向前（含起始轮）最多 N 轮对话放入 <context-history>（待摘要区间仍在 <history>）。0 表示均不附带。",
+
+  "regexRuleIdsLabel": "摘要前应用正则（outgoing）",
+
+  "regexRuleIdsDesc": "仅列出已启用且含 outgoing 阶段的规则；按列表顺序作用于 <context-history> 与 <history> 内的对话正文，不改磁盘。未勾选则不应用。",
+
+  "regexApplyAllTurnsLabel": "忽略 skip，全局应用",
+
+  "regexApplyAllTurnsDesc": "勾选后，已选 outgoing 规则不再受「跳过最近 N 轮」限制，摘要区间内每一轮 user/assistant 正文均会应用正则。未勾选则仍按各规则原有 skip 与当前会话 tail 计算。",
 
   "entrySortModeLabel": "条目自动排序",
 

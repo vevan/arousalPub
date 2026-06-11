@@ -1,4 +1,5 @@
 import type { MacroCharacterFields } from './character-fields.js'
+import type { MacroHistoryFields } from './history-macros.js'
 import type { PromptMacroContext } from './types.js'
 
 const DEFAULT_USER_LABEL = '用户'
@@ -24,6 +25,9 @@ export function buildPromptMacroContext(params: {
   locale?: string | null
   authorsNote?: string | null
   defaultAuthorsNote?: string | null
+  conversationId?: string | null
+  historyFields?: MacroHistoryFields | null
+  enabledPluginIds?: string[] | null
 }): PromptMacroContext {
   const raw = params.conversationUserName
   const userName =
@@ -75,6 +79,15 @@ export function buildPromptMacroContext(params: {
     params.primaryCharacter ?? characters[0]?.macroFields ?? undefined
   const userPersona =
     params.userPersona ?? params.userCharacter?.macroFields ?? undefined
+  const conversationId =
+    typeof params.conversationId === 'string' && params.conversationId.trim()
+      ? params.conversationId.trim()
+      : undefined
+  const hf = params.historyFields ?? undefined
+  const enabledPluginIds =
+    Array.isArray(params.enabledPluginIds) && params.enabledPluginIds.length > 0
+      ? params.enabledPluginIds
+      : undefined
   return {
     userName,
     characterNames,
@@ -89,5 +102,34 @@ export function buildPromptMacroContext(params: {
     locale,
     authorsNote,
     defaultAuthorsNote,
+    conversationId,
+    enabledPluginIds,
+    lastMessage: hf?.lastMessage,
+    lastUserMessage: hf?.lastUserMessage,
+    lastCharMessage: hf?.lastCharMessage,
+    lastMessageId: hf?.lastMessageId,
+    firstIncludedMessageId: hf?.firstIncludedMessageId,
+    allChatRange: hf?.allChatRange,
+    lastSwipeId: hf?.lastSwipeId,
+    currentSwipeId: hf?.currentSwipeId,
+    notChar: hf?.notChar,
+  }
+}
+
+export function patchPromptMacroHistoryFields(
+  ctx: PromptMacroContext,
+  fields: MacroHistoryFields,
+): PromptMacroContext {
+  return {
+    ...ctx,
+    lastMessage: fields.lastMessage,
+    lastUserMessage: fields.lastUserMessage,
+    lastCharMessage: fields.lastCharMessage,
+    lastMessageId: fields.lastMessageId,
+    firstIncludedMessageId: fields.firstIncludedMessageId,
+    allChatRange: fields.allChatRange,
+    lastSwipeId: fields.lastSwipeId,
+    currentSwipeId: fields.currentSwipeId,
+    notChar: fields.notChar,
   }
 }

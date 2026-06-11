@@ -5,6 +5,9 @@ import {
   readConversationIndex,
   resolvedCharacterIds,
 } from './chat-storage.js'
+import { readTurnsTail } from './chunk-chain.js'
+import { readPluginRegistry } from './plugin-system/registry.js'
+import { buildMacroHistoryFields } from './prompt-macros/history-macros.js'
 import {
   applyPromptMacroPipeline,
   buildPromptMacroContext,
@@ -55,12 +58,24 @@ export async function runPluginMacroExpand(
   let authorsNote: string | undefined
   let defaultAuthorsNote: string | undefined
 
+  let enabledPluginIds: string[] = []
+  let historyFields = buildMacroHistoryFields({
+    indexingTurns: [],
+    historyTurns: [],
+  })
+
   const { readGlobalDefaultAuthorsNote } = await import(
     './user-preferences-file.js'
   )
   defaultAuthorsNote = defaultAuthorsNoteMacroText(
     await readGlobalDefaultAuthorsNote(),
   )
+
+  enabledPluginIds = (
+    await readPluginRegistry()
+  ).plugins
+    .filter((p) => p.enabled)
+    .map((p) => p.id)
 
   const convId =
     typeof req.conversationId === 'string' ? req.conversationId.trim() : ''
@@ -71,6 +86,15 @@ export async function runPluginMacroExpand(
       const charIds = resolvedCharacterIds(idx)
       characters = await loadMacroCharacters(charIds)
       authorsNote = authorsNoteMacroText(idx.authorsNote)
+      const { turns } = await readTurnsTail(convId, 512)
+      const charNameList = characters
+        .map((c) => c.name?.trim())
+        .filter((n): n is string => Boolean(n))
+      historyFields = buildMacroHistoryFields({
+        indexingTurns: turns,
+        historyTurns: turns,
+        characterNames: charNameList,
+      })
     }
   }
 
@@ -105,6 +129,9 @@ export async function runPluginMacroExpand(
     maxResponseTokens,
     authorsNote,
     defaultAuthorsNote,
+    conversationId: convId || undefined,
+    historyFields,
+    enabledPluginIds,
     locale: req.locale,
   })
 

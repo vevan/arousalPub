@@ -1,18 +1,29 @@
 import Handlebars from 'handlebars'
 import { resolveCharFirstMessage } from './character-fields.js'
+import { stablePickFromArgs } from './macro-pick.js'
 import {
   formatDatetimeParts,
   formatDatetimePattern,
   formatTimeWithUtcOffset,
   pickRandomArg,
+  resolveAllChatRange,
   resolveAuthorsNote,
+  resolveCurrentSwipeId,
   resolveDefaultAuthorsNote,
+  resolveFirstIncludedMessageId,
+  resolveHasExtension,
+  resolveLastCharMessage,
+  resolveLastMessage,
+  resolveLastMessageId,
+  resolveLastSwipeId,
+  resolveLastUserMessage,
   resolveCharName,
   resolveContextLength,
   resolveInput,
   resolveLastGenerationType,
   resolveMaxResponseTokens,
   resolveModel,
+  resolveNotChar,
   resolvePersona,
   resolvePrimaryField,
   resolveUserName,
@@ -103,6 +114,27 @@ registerSimple('roll', (_ctx, args) => {
 
 registerSimple('authorsnote', (ctx) => resolveAuthorsNote(ctx))
 registerSimple('defaultauthorsnote', (ctx) => resolveDefaultAuthorsNote(ctx))
+registerSimple('lastmessage', (ctx) => resolveLastMessage(ctx))
+registerSimple('lastusermessage', (ctx) => resolveLastUserMessage(ctx))
+registerSimple('lastcharmessage', (ctx) => resolveLastCharMessage(ctx))
+registerSimple('lastmessageid', (ctx) => resolveLastMessageId(ctx))
+registerSimple('firstincludedmessageid', (ctx) =>
+  resolveFirstIncludedMessageId(ctx),
+)
+registerSimple('allchatrange', (ctx) => resolveAllChatRange(ctx))
+registerSimple('lastswipeid', (ctx) => resolveLastSwipeId(ctx))
+registerSimple('currentswipeid', (ctx) => resolveCurrentSwipeId(ctx))
+registerSimple('notchar', (ctx) => resolveNotChar(ctx))
+registerSimple('hasextension', (ctx, args) =>
+  resolveHasExtension(ctx, args.length > 0 ? String(args[0]) : ''),
+)
+registerSimple('pick', (ctx, args) => {
+  const conv = ctx.conversationId ?? ''
+  return stablePickFromArgs(
+    conv,
+    args.map((a) => String(a)),
+  )
+})
 
 registerSimple('description', (ctx) =>
   resolvePrimaryField(ctx, (f) => f.description),

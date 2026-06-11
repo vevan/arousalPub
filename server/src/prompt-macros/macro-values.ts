@@ -175,6 +175,52 @@ export function resolveDefaultAuthorsNote(ctx: PromptMacroContext): string {
   return ctx.defaultAuthorsNote ?? ''
 }
 
+export function resolveLastMessage(ctx: PromptMacroContext): string {
+  return ctx.lastMessage ?? ''
+}
+
+export function resolveLastUserMessage(ctx: PromptMacroContext): string {
+  return ctx.lastUserMessage ?? ''
+}
+
+export function resolveLastCharMessage(ctx: PromptMacroContext): string {
+  return ctx.lastCharMessage ?? ''
+}
+
+export function resolveLastMessageId(ctx: PromptMacroContext): string {
+  return ctx.lastMessageId ?? '0'
+}
+
+export function resolveFirstIncludedMessageId(ctx: PromptMacroContext): string {
+  return ctx.firstIncludedMessageId ?? '0'
+}
+
+export function resolveAllChatRange(ctx: PromptMacroContext): string {
+  return ctx.allChatRange ?? '0-0'
+}
+
+export function resolveLastSwipeId(ctx: PromptMacroContext): string {
+  return ctx.lastSwipeId ?? '0'
+}
+
+export function resolveCurrentSwipeId(ctx: PromptMacroContext): string {
+  return ctx.currentSwipeId ?? '0'
+}
+
+export function resolveNotChar(ctx: PromptMacroContext): string {
+  return ctx.notChar ?? ''
+}
+
+export function resolveHasExtension(
+  ctx: PromptMacroContext,
+  name: string,
+): string {
+  const n = name.trim().toLowerCase()
+  if (!n) return 'false'
+  const ids = ctx.enabledPluginIds ?? []
+  return ids.some((id) => id.toLowerCase() === n) ? 'true' : 'false'
+}
+
 export function rollDiceSpec(spec: string): string {
   const m = spec.trim().match(/^(\d+)d(\d+)(?:([+-])(\d+))?$/i)
   if (!m) return ''
@@ -226,6 +272,17 @@ export const KNOWN_MACRO_HEADS = new Set([
   'roll',
   'authorsnote',
   'defaultauthorsnote',
+  'lastmessage',
+  'lastusermessage',
+  'lastcharmessage',
+  'lastmessageid',
+  'firstincludedmessageid',
+  'allchatrange',
+  'lastswipeid',
+  'currentswipeid',
+  'notchar',
+  'hasextension',
+  'pick',
   'description',
   'personality',
   'scenario',
@@ -253,6 +310,8 @@ export const COLON_MACRO_HEADS = new Set([
   'roll',
   'charfirstmessage',
   'trim',
+  'pick',
+  'hasextension',
 ])
 
 export function macroTokenHead(inner: string): string {

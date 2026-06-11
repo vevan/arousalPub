@@ -8,6 +8,8 @@ import {
   type PromptTrigger,
 } from './assemble-prompts.js'
 import { buildPromptMacroContext } from './prompt-macros/index.js'
+import { patchPromptMacroHistoryFields } from './prompt-macros/context.js'
+import { buildMacroHistoryFields } from './prompt-macros/history-macros.js'
 import { extractMacroCharacterFields } from './prompt-macros/index.js'
 import { applyMacrosToMessages } from './prompt-macros/index.js'
 import {
@@ -63,15 +65,58 @@ import { applyPluginsAfterAssemblePrompts } from './plugin-host.js'
 import type { ChatPluginsBody } from './plugin-types.js'
 import { countChatMessagesTokens } from './token-count.js'
 import {
-  loadAndApplyRegexOutgoing,
-  resolveOutgoingTailOrdinal,
-} from './regex-outgoing.js'
+  readTurnsInOrdinalRange,
+  readTurnsTail,
+} from './chunk-chain.js'
+import { readPluginRegistry } from './plugin-system/registry.js'
+import type { TurnRecord } from './chat-storage.js'
 import {
   memoryTextFromTrimState,
   runPromptBudgetTrimLoop,
   type PromptBudgetTrimState,
   worldTextFromTrimState,
 } from './prompt-budget-trim.js'
+import {
+  loadAndApplyRegexOutgoing,
+  resolveOutgoingTailOrdinal,
+} from './regex-outgoing.js'
+
+const MACRO_INDEXING_TURN_CAP = 512
+
+async function loadTurnsForMacroIndexing(
+  conversationId: string,
+  beforeExclusive?: number | null,
+): Promise<TurnRecord[]> {
+  if (
+    typeof beforeExclusive === 'number' &&
+    !Number.isNaN(beforeExclusive)
+  ) {
+    if (beforeExclusive <= 0) return []
+    return readTurnsInOrdinalRange(conversationId, 0, beforeExclusive - 1)
+  }
+  const { turns } = await readTurnsTail(conversationId, MACRO_INDEXING_TURN_CAP)
+  return turns
+}
+
+async function loadActiveTurnForMacro(
+  conversationId: string,
+  beforeExclusive?: number | null,
+  trigger?: PromptTrigger,
+): Promise<TurnRecord | null> {
+  if (trigger !== 'regenerate' && trigger !== 'swipe') return null
+  if (
+    typeof beforeExclusive !== 'number' ||
+    Number.isNaN(beforeExclusive)
+  ) {
+    return null
+  }
+  const turns = await readTurnsInOrdinalRange(
+    conversationId,
+    beforeExclusive,
+    beforeExclusive,
+  )
+  return turns[0] ?? null
+}
 
 function asPromptPreset(raw: unknown): PromptPreset | null {
   if (!raw || typeof raw !== 'object') return null
@@ -286,16 +331,24 @@ export async function buildConversationOutboundMessages(
   const assemblyStartedAt = auditEnabled ? performance.now() : 0
 
   let memoryPipeline
+  let indexingTurns: TurnRecord[] = []
+  let enabledPluginIds: string[] = []
   try {
-    memoryPipeline = await runMemoryPipeline({
-      conversationId,
-      userText: userInput,
-      memorySettings: effectiveMemory,
-      historySettings: effectiveHistory,
-      historyBeforeTurnOrdinalExclusive:
-        params.historyBeforeTurnOrdinalExclusive ?? undefined,
-      activeBranchPath: idx.activeBranchPath ?? '',
-    })
+    const beforeEx = params.historyBeforeTurnOrdinalExclusive ?? undefined
+    ;[memoryPipeline, indexingTurns, enabledPluginIds] = await Promise.all([
+      runMemoryPipeline({
+        conversationId,
+        userText: userInput,
+        memorySettings: effectiveMemory,
+        historySettings: effectiveHistory,
+        historyBeforeTurnOrdinalExclusive: beforeEx,
+        activeBranchPath: idx.activeBranchPath ?? '',
+      }),
+      loadTurnsForMacroIndexing(conversationId, beforeEx),
+      readPluginRegistry().then((reg) =>
+        reg.plugins.filter((p) => p.enabled).map((p) => p.id),
+      ),
+    ])
   } catch (e) {
     if (isMemoryVectorIndexCorruptError(e)) {
       return {
@@ -325,7 +378,24 @@ export async function buildConversationOutboundMessages(
 
   const globalDefaultAuthorsNote = await readGlobalDefaultAuthorsNote()
 
-  const macroContext = buildPromptMacroContext({
+  const activeTurn = await loadActiveTurnForMacro(
+    conversationId,
+    params.historyBeforeTurnOrdinalExclusive,
+    trigger,
+  )
+
+  const charNameList = characters
+    .map((c) => c.name?.trim())
+    .filter((n): n is string => Boolean(n))
+
+  const historyFields = buildMacroHistoryFields({
+    indexingTurns,
+    historyTurns: memoryPipeline.recentTurns,
+    activeTurn,
+    characterNames: charNameList,
+  })
+
+  let macroContext = buildPromptMacroContext({
     conversationUserName: idx.userName,
     characters,
     userCharacter,
@@ -338,6 +408,9 @@ export async function buildConversationOutboundMessages(
     promptTrigger: trigger,
     authorsNote: authorsNoteMacroText(idx.authorsNote),
     defaultAuthorsNote: defaultAuthorsNoteMacroText(globalDefaultAuthorsNote),
+    conversationId,
+    historyFields,
+    enabledPluginIds,
   })
 
   const authorsNote = authorsNoteForInjection(idx.authorsNote)
@@ -428,6 +501,19 @@ export async function buildConversationOutboundMessages(
     messages = assembleFromState(trimState)
     estimatedTokens = countChatMessagesTokens(messages, { model: tokenModel })
   }
+
+  macroContext = patchPromptMacroHistoryFields(
+    macroContext,
+    buildMacroHistoryFields({
+      indexingTurns,
+      historyTurns: memoryPipeline.recentTurns,
+      activeTurn,
+      trimmedHistoryMessages: trimState.historyMessages,
+      characterNames: charNameList,
+    }),
+  )
+  applyMacrosToMessages(messages, macroContext)
+
   const afterAssembleAt = auditEnabled ? performance.now() : 0
 
   const tailOrdinal = resolveOutgoingTailOrdinal({

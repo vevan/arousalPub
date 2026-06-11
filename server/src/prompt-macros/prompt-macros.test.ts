@@ -4,6 +4,7 @@ import { extractMacroCharacterFields } from './character-fields.js'
 import { buildPromptMacroContext } from './context.js'
 import { clearMacroTemplateCache } from './handlebars-engine.js'
 import { applyPromptMacroPipeline } from './pipeline.js'
+import type { PromptMacroContext } from './types.js'
 
 const sampleCard = {
   name: '艾拉',
@@ -20,24 +21,28 @@ const sampleCard = {
 }
 
 function ctx(
-  overrides: Parameters<typeof buildPromptMacroContext>[0] = {},
+  overrides: Parameters<typeof buildPromptMacroContext>[0] &
+    Partial<PromptMacroContext> = {},
 ) {
-  return buildPromptMacroContext({
-    conversationUserName: '小明',
-    characters: [
-      { name: '艾拉', macroFields: extractMacroCharacterFields(sampleCard) },
-      { name: '鲍勃' },
-    ],
-    model: 'gpt-test',
-    contextLength: 8192,
-    maxResponseTokens: 512,
-    userInput: '用户输入文本',
-    promptTrigger: 'continue',
-    now: new Date('2026-06-10T15:04:05Z'),
-    locale: 'zh-CN',
-    authorsNote: '作者注正文',
+  return {
+    ...buildPromptMacroContext({
+      conversationUserName: '小明',
+      characters: [
+        { name: '艾拉', macroFields: extractMacroCharacterFields(sampleCard) },
+        { name: '鲍勃' },
+      ],
+      model: 'gpt-test',
+      contextLength: 8192,
+      maxResponseTokens: 512,
+      userInput: '用户输入文本',
+      promptTrigger: 'continue',
+      now: new Date('2026-06-10T15:04:05Z'),
+      locale: 'zh-CN',
+      authorsNote: '作者注正文',
+      ...overrides,
+    }),
     ...overrides,
-  })
+  }
 }
 
 describe('applyPromptMacroPipeline (Handlebars)', () => {
@@ -168,5 +173,30 @@ describe('Phase A macros', () => {
       ctx({ defaultAuthorsNote: '全局默认模板' }),
     )
     assert.equal(out, '作者注正文|全局默认模板')
+  })
+})
+
+describe('Phase B macros', () => {
+  it('expands history tail and pick macros', () => {
+    clearMacroTemplateCache()
+    const out = applyPromptMacroPipeline(
+      '{{lastCharMessage}}|{{lastMessageId}}|{{pick::A::B}}',
+      ctx({
+        conversationId: 'conv-test',
+        lastCharMessage: '助手尾句',
+        lastMessageId: '5',
+        allChatRange: '0-5',
+      }),
+    )
+    assert.equal(out.startsWith('助手尾句|5|'), true)
+    assert.match(out, /\|A$|\|B$/)
+  })
+
+  it('expands hasExtension from enabledPluginIds', () => {
+    clearMacroTemplateCache()
+    const out = applyPromptMacroPipeline('{{hasExtension::plot-summary}}', ctx({
+      enabledPluginIds: ['plot-summary'],
+    }))
+    assert.equal(out, 'true')
   })
 })

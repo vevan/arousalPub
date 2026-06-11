@@ -40,6 +40,8 @@ export interface MemoryEmbeddingCallAudit {
 }
 
 export interface MemoryPipelineResult {
+  /** 注入 history 的 turn 行（与 recentHistoryMessages 同源） */
+  recentTurns: TurnRecord[]
   recentHistoryMessages: { role: 'user' | 'assistant'; content: string }[]
   /** 近期 history 对应 turnOrdinal（审计用） */
   recentHistoryTurnOrdinals: number[]
@@ -167,6 +169,7 @@ export async function runMemoryPipeline(
   const memoryTurnIds = memoryItems.map((x) => x.turn.turnId)
 
   return {
+    recentTurns,
     recentHistoryMessages,
     recentHistoryTurnOrdinals: recentTurns.map((t) => t.turnOrdinal),
     recentHistoryScanText,

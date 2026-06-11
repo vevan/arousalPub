@@ -25,4 +25,18 @@ export interface PromptMacroContext {
   authorsNote?: string
   /** 宏 `{{defaultAuthorsNote}}`：全局默认模板正文 */
   defaultAuthorsNote?: string
+  /** Phase B：会话 id（稳定 pick） */
+  conversationId?: string
+  /** Phase B：历史 / swipe 宏字段 */
+  lastMessage?: string
+  lastUserMessage?: string
+  lastCharMessage?: string
+  lastMessageId?: string
+  firstIncludedMessageId?: string
+  allChatRange?: string
+  lastSwipeId?: string
+  currentSwipeId?: string
+  notChar?: string
+  /** 已启用插件 id（小写比较 hasExtension） */
+  enabledPluginIds?: string[]
 }

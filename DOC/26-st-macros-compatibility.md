@@ -31,7 +31,7 @@
 | **基线** | `{{user}}` `{{char}}` 日期/连接/换行/`{{authorsNote}}` | ✅ |
 | **引擎迁移** | handler 链 → **Handlebars**（`handlebars-engine.ts`） | ✅ |
 | **Phase A** | 角色卡字段、日期扩展、工具宏、组装上下文、Legacy 角括号 | ✅ |
-| **Phase B** | 历史尾块、swipe 索引、稳定随机 `pick`、时间差等 | ⏳ |
+| **Phase B** | 历史尾块、swipe 索引、稳定 `pick`、`hasExtension`、`notChar` | ✅ |
 | **Phase C** | `{{if}}`、嵌套、变量持久化、注释/转义 | ⏳ |
 
 ---
@@ -116,26 +116,32 @@
 
 ---
 
-## 5. 未实现（Phase B — 规划）
+## 5. Phase B（历史 / swipe / pick）— 已实现
 
 | ST 宏 / 能力 | 标记 | 说明 |
 |--------------|------|------|
-| `{{lastMessage}}` `{{lastUserMessage}}` `{{lastCharMessage}}` | ⏳ | 需组装前注入尾块 |
-| `{{lastMessageId}}` 等索引宏 | ⏳ | 需 ST messageId ↔ turnOrdinal 映射文档 |
-| `{{firstIncludedMessageId}}` | ⏳ | token 裁切后首条 history |
-| `{{allChatRange}}` | ⏳ | |
-| `{{lastSwipeId}}` `{{currentSwipeId}}` | ⏳ | 数据在 `receives` / `activeReceiveIndex` |
-| `{{idleDuration}}` `{{timeDiff::…}}` | ⏳ | 依赖 turn 时间戳 |
-| `{{pick::…}}` | ⏳ | 稳定随机 + 可选 reroll |
-| `{{hasExtension::name}}` | ⏳ | |
-| `{{original}}` `{{notChar}}` | ⏳ | 待产品语义 |
+| `{{lastMessage}}` `{{lastUserMessage}}` `{{lastCharMessage}}` | ✅ | 由 `memoryPipeline.recentTurns` 扁平化；不含本轮 `{{input}}` |
+| `{{lastMessageId}}` | ✅ | 0-based 扁平消息索引（索引 turn 集最多 512 轮 tail） |
+| `{{firstIncludedMessageId}}` | ✅ | token 裁切后首条 history 在索引集中的位置 |
+| `{{allChatRange}}` | ✅ | `0-{{lastMessageId}}` |
+| `{{lastSwipeId}}` `{{currentSwipeId}}` | ✅ | 1-based；再生/swipe 时读 `activeTurn` |
+| `{{pick::…}}` | ✅ | 稳定 pick（`conversationId` + 参数 hash） |
+| `{{hasExtension::name}}` | ✅ | 对照用户 `plugin-registry` enabled 插件 |
+| `{{notChar}}` | ✅ | 除首绑卡外的角色名，逗号分隔 |
+| `{{charAuthorsNote}}` | ⏳ | **`DOC/28` Phase 2** |
+
+## 6. 未实现（Phase B 余项 / Phase C）
+
+| ST 宏 / 能力 | 标记 | 说明 |
+|--------------|------|------|
+| `{{lastMessageId}}` 等 ST 全量 chat 索引 | ⚠️ | 与 ST 一致为全对话索引；本项目索引 turn 有 512 cap |
+| `{{idleDuration}}` `{{timeDiff::…}}` | ⏳ | turn 无时间戳字段 |
+| `{{original}}` `{{notChar}}`（群聊语义） | ⏳ / ✅ | `notChar` 已按多卡名实现；`original` 待产品 |
 | `{{isMobile}}` | ⏳ | 可选 |
-| `{{defaultAuthorsNote}}` | ✅ | **`DOC/28`**：全局模板正文；新会话 seed，不 runtime 覆盖 |
-| `{{charAuthorsNote}}` | ⏳ | **`DOC/28` Phase 2**：角色模板 |
 
 ---
 
-## 6. 未实现（Phase C — 引擎级）
+## 7. 未实现（Phase C — 引擎级）
 
 | ST 能力 | 标记 |
 |---------|------|
@@ -148,7 +154,7 @@
 
 ---
 
-## 7. 不对齐 / 不移植（短期）
+## 8. 不对齐 / 不移植（短期）
 
 | ST 宏 / 能力 | 标记 | 原因 |
 |--------------|------|------|
@@ -163,7 +169,7 @@
 
 ---
 
-## 8. 调用点与展宏时机
+## 9. 调用点与展宏时机
 
 | 场景 | 路径 | Phase A 上下文 |
 |------|------|----------------|
@@ -176,7 +182,7 @@
 
 ---
 
-## 9. 迁移建议（ST → 本地）
+## 10. 迁移建议（ST → 本地）
 
 1. **可直接粘贴**：§3 中 ✅ 宏；预设里 `{{maxPrompt}}` 等 camelCase 可保留。  
 2. **需改写**：`{{if}}`、变量、群聊、`instruct*` → 改用预设分组 / XML 注入 / 条件条目。  

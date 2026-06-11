@@ -1,8 +1,8 @@
 # SillyTavern 宏 ↔ 本地宏兼容对照
 
-> **状态**：随 `macro-engine` 分支维护；**Phase A 已实现**（2026-06）。  
+> **状态**：`CST-MACRO` 分支 · **CST D4 已完成**（2026-06-11）；Phase A–C + D2.5 运算符已落地。  
 > **目的**：对照 [SillyTavern Macros](https://docs.sillytavern.app/usage/core-concepts/macros/) 列出「已兼容 / 部分兼容 / 未实现 / 不对齐」清单，便于迁移预设、角色卡与世界书。  
-> **实现**：`server/src/prompt-macros/`（默认 **legacy** Handlebars 引擎；可选 **CST** 见 **`DOC/29-cst-macros-compatibility.md`**）；可行性分级见 **`DOC/14-st-macros-porting.md`**；运行时原则见 **`DOC/03-实现细节.md` §15**。
+> **实现**：`server/src/prompt-macros/`（**CST** 为唯一运行时引擎；路线图见 **`DOC/29-cst-macros-compatibility.md`**）；可行性分级见 **`DOC/14-st-macros-porting.md`**；运行时原则见 **`DOC/03-实现细节.md` §15**。
 
 ---
 
@@ -17,12 +17,11 @@
 
 **本地独有行为**
 
-- 未知 `{{…}}` → **`[name UNSUPPORTED]`**（ST 常保留原文或按引擎处理）；行尾未闭合的 `{{token` 亦标为 **`[UNSUPPORTED]`**。
-- Handlebars **编译/执行失败** 时，剩余完整 `{{…}}` → **`[name RENDERFAIL]`**（与 UNSUPPORTED 区分，便于排查模板语法错误）。
-- ST 块语法 `{{if}}` / `{{else}}` / `{{/if}}` 经预处理为 Handlebars `stIf` helper；原生 `{{#if}}` 仍按未知宏处理。
+- 未知 `{{…}}` → **`[name UNSUPPORTED]`**（ST 常保留原文或按引擎处理）；未闭合 `{{` → **`[UNSUPPORTED]`**。
 - 宏 **仅服务端** 展开；Web 预览/审计展示 API 返回的已展宏结果。
-- 大小写 **不敏感**；camelCase ST 写法（如 `{{mesExamples}}`）经预处理后可用。
-- ST **`::` 多参** 在预处理中转成 Handlebars helper 参数（如 `{{random::a::b}}` → `{{random "a" "b"}}`）。
+- 大小写 **不敏感**；`{{charN}}`、camelCase ST 写法（如 `{{mesExamples}}`）在 CST 内直接识别。
+- ST **`::` 多参**、块 `{{if}}` / scoped、`{{.var op …}}` 简写运算符均由 **CST** 解析（见 **`DOC/29`**）。
+- 同文本预设条目经 **`getCachedMacroDocument`** 缓存解析 AST（D4）。
 - 日期/时长类宏默认 **`locale: en`**（未从请求传入时）；与 ST 按界面语言不同，属产品默认。
 - 历史索引类宏（`lastMessageId`、`firstIncludedMessageId` 等）在超长对话中仅保证 **尾部 512 轮** 语义（`MACRO_INDEXING_TURN_CAP`）。
 

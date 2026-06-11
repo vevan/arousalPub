@@ -29,7 +29,7 @@
 | ✅ | CST 已与 legacy **同等**（同一套 `macro-values` / `macro-vars` 取值） |
 | ⚠️ | CST 部分支持或语义与 legacy 不同 |
 | ❌ | CST **未实现**（legacy 有）；启用 CST 时行为会坏或降级为 `[UNSUPPORTED]` |
-| ⏳ | 已规划下一版 CST（D1/D2） |
+| ⏳ | 后续规划（路线图外） |
 
 **引擎（D3 后）**
 
@@ -194,7 +194,7 @@ CST 下 **`{{setvar::k::v}}` / `{{addvar::k::chunk}}` + `{{getvar::k}}`** 可用
 | 预设类型 | `macroEngine: "cst"` 现状 | 建议 |
 |----------|---------------------------|------|
 | 角色卡 / 世界书（`user` `char` 字段宏） | ✅ 一般可跑 | 可用 CST 试 |
-| Frankenstein 类（浅宏 + 复杂 prompt 顺序） | ⚠️ 宏多半 OK；prompt 槽位另议 | CST 或 legacy |
+| Frankenstein 类（浅宏 + 复杂 prompt 顺序） | ⚠️ 宏多半 OK；prompt 槽位另议 | 可用 CST 试 |
 | **Stabs / 变量编译预设** | ⚠️ D2 宏层接近；prompt 槽位 / regex 另议 | 可用 CST **试跑** |
 | 含 `{{if}}` / `{{/if}}` 一般预设 | ✅ | CST 可用 |
 | 含 `{{.x}}` / `{{$x}}` | ✅ | CST 可用 |

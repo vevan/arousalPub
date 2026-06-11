@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { afterEach, beforeEach, describe, it } from 'node:test'
+import { describe, it } from 'node:test'
 import { extractMacroCharacterFields } from './character-fields.js'
 import { buildPromptMacroContext } from './context.js'
 import { applyPromptMacroPipeline } from './pipeline.js'
@@ -43,21 +43,7 @@ function ctx(
   }
 }
 
-const savedMacroEngine = process.env.MACRO_ENGINE
-
-function useCstMacroEngine(): void {
-  beforeEach(() => {
-    process.env.MACRO_ENGINE = 'cst'
-  })
-  afterEach(() => {
-    if (savedMacroEngine === undefined) delete process.env.MACRO_ENGINE
-    else process.env.MACRO_ENGINE = savedMacroEngine
-  })
-}
-
 describe('applyPromptMacroPipeline (CST)', () => {
-  useCstMacroEngine()
-
   it('expands known macros', () => {
     const out = applyPromptMacroPipeline(
       '{{user}}|{{char}}|{{char2}}|{{model}}|{{context}}|{{newline}}X|{{authorsNote}}',
@@ -110,8 +96,6 @@ describe('applyPromptMacroPipeline (CST)', () => {
 })
 
 describe('Phase A macros', () => {
-  useCstMacroEngine()
-
   it('expands character card field macros', () => {
     const out = applyPromptMacroPipeline(
       '{{description}}|{{personality}}|{{scenario}}|{{charPrompt}}|{{charInstruction}}|{{mesExamples}}|{{charCreatorNotes}}|{{charVersion}}',
@@ -181,8 +165,6 @@ describe('Phase A macros', () => {
 })
 
 describe('Phase B macros', () => {
-  useCstMacroEngine()
-
   it('expands history tail and pick macros', () => {
     const out = applyPromptMacroPipeline(
       '{{lastCharMessage}}|{{lastMessageId}}|{{pick::A::B}}',
@@ -222,8 +204,6 @@ describe('Phase B macros', () => {
 })
 
 describe('Phase C macros', () => {
-  useCstMacroEngine()
-
   it('expands ST {{if}} / {{else}} blocks', () => {
     assert.equal(
       applyPromptMacroPipeline('{{if user}}yes{{/if}}', ctx()),

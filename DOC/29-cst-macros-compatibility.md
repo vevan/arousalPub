@@ -1,22 +1,14 @@
 # CST 宏引擎现状 ↔ Legacy 对照
 
 > **状态**：`CST-MACRO` 分支 · **D4 已完成**（2026-06-11）。  
-> **目的**：记录 **CST**（Lexer → Parser → Walker）相对 **legacy**（Handlebars + 预处理链）的能力边界，便于你在 `macroEngine: "cst"` 下判断「能不能跑」「差在哪」。  
+> **目的**：记录 **CST**（Lexer → Parser → Walker）相对已移除的 **legacy**（Handlebars + 预处理链）的能力边界与 ST 对齐状态。  
 > **ST 全量对照**：仍以 **`DOC/26-st-macros-compatibility.md`** 为准（描述 legacy 已实现的 ST 兼容面）；本文只回答 **CST 相对 legacy 差什么**。
 
 ---
 
-## 1. 如何确认正在用 CST
+## 1. 运行时
 
-| 方式 | 说明 |
-|------|------|
-| **`config.json`** | `"macroEngine": "cst"`（见 `config.example.json`） |
-| **环境变量** | `MACRO_ENGINE=cst`（**优先于** config.json） |
-| **默认** | 未配置 → **`cst`**（D3）；`legacy` 配置项仍可读，运行时等同 `cst` |
-
-解析：`server/src/config.ts` → `resolveMacroEngine()`；路由：`server/src/prompt-macros/engine.ts` → `renderPromptMacros()`。
-
-**改配置后须重启 server 进程。**
+D3 起 **仅 CST**，无 `macroEngine` / `MACRO_ENGINE` 配置项。入口：`server/src/prompt-macros/engine.ts` → `renderPromptMacros()` → `renderPromptMacrosCst`。
 
 自检：在预设里临时写 `{{noop}}CST_PROBE{{user}}`，若 `noop` 与 `user` 均正常展开且 **无** `[if UNSUPPORTED]` 泄漏，说明宏注册在工作；若出现大量 `[… UNSUPPORTED]`，对照下文 §5。
 
@@ -41,7 +33,6 @@
 | 嵌套 `{{…}}` | Lexer 平衡匹配 `}}` + 参数内递归 `walk` |
 | 文档缓存（D4） | `getCachedMacroDocument` LRU（256 条）；预设条目等同文本只 parse 一次 |
 | 变量持久化 | 组装末 `persistMacroVarMutations`（与引擎无关） |
-| `macroEngine: legacy` | 配置/环境变量兼容别名，仍走 CST |
 
 ---
 
@@ -191,7 +182,7 @@ CST 下 **`{{setvar::k::v}}` / `{{addvar::k::chunk}}` + `{{getvar::k}}`** 可用
 
 ## 6. 预设迁移速查
 
-| 预设类型 | `macroEngine: "cst"` 现状 | 建议 |
+| 预设类型 | CST 现状 | 建议 |
 |----------|---------------------------|------|
 | 角色卡 / 世界书（`user` `char` 字段宏） | ✅ 一般可跑 | 可用 CST 试 |
 | Frankenstein 类（浅宏 + 复杂 prompt 顺序） | ⚠️ 宏多半 OK；prompt 槽位另议 | 可用 CST 试 |
@@ -210,8 +201,6 @@ CST 下 **`{{setvar::k::v}}` / `{{addvar::k::chunk}}` + `{{getvar::k}}`** 可用
 | 文档缓存 | `server/src/prompt-macros/cst/document-cache.test.ts` | LRU 命中与 `clearCstDocumentCache` |
 | 表达式 | `server/src/prompt-macros/macro-expr.test.ts` | if 条件内 `==` / `!=` |
 | 简写运算符 | `server/src/prompt-macros/macro-shorthand-op.test.ts` | `{{.x = …}}` `+=` `++` 等 |
-| 配置解析 | `server/src/config-macro-engine.test.ts` | `resolveMacroEngine()` |
-
 改宏后应：**`cst.test.ts` + `prompt-macros.test.ts` 全绿**。
 
 ---
@@ -236,7 +225,6 @@ DOC/29  … 选用 CST 时，在 26 基础上再砍掉/尚未迁移的一层
 | 资源 | 路径 |
 |------|------|
 | 路由入口 | `server/src/prompt-macros/engine.ts` |
-| 配置 | `server/src/config.ts` → `resolveMacroEngine()`；`config.example.json` → `macroEngine` |
 | CST 宏表（代码） | `server/src/prompt-macros/cst/macro-registry.ts` |
 | Legacy 宏表 | `server/src/prompt-macros/macro-values.ts` → `KNOWN_MACRO_HEADS` |
 | ST 全量对照 | `DOC/26-st-macros-compatibility.md` |

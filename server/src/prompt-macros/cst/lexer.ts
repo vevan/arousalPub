@@ -38,7 +38,7 @@ export function lexMacroText(text: string): LexToken[] {
 }
 
 /** 匹配含嵌套 `{{` 的宏闭合 `}}` */
-function findBalancedMacroClose(text: string, openStart: number): number {
+export function findBalancedMacroClose(text: string, openStart: number): number {
   let i = openStart + 2
   let depth = 1
   while (i < text.length) {

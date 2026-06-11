@@ -43,6 +43,7 @@ import {
   rollDiceSpec,
   unsupportedMacroPlaceholder,
 } from '../macro-values.js'
+import { trimScopedBlockContent } from '../macro-truthy.js'
 import type { PromptMacroContext } from '../types.js'
 
 function repeatChar(ch: string, countRaw: string | undefined): string {
@@ -65,7 +66,6 @@ export function macroTagArgs(tag: ParsedMacroTag): string[] {
 export function isSupportedCstMacroTag(tag: ParsedMacroTag): boolean {
   if (tag.isComment) return true
   if (tag.isClose || tag.isElse) return false
-  if (tag.name === 'if' || tag.name === 'stif') return false
   return isKnownMacroToken(tag.raw)
 }
 
@@ -203,5 +203,32 @@ export function invokeCstMacro(
     return unsupportedMacroPlaceholder(tag.raw)
   }
 
+  return unsupportedMacroPlaceholder(tag.raw)
+}
+
+/** scoped `{{setvar name}}` … `{{/setvar}}` 等块体求值后执行 */
+export function invokeCstScopedMacro(
+  tag: ParsedMacroTag,
+  bodyText: string,
+  ctx: PromptMacroContext,
+): string {
+  const trimmed = trimScopedBlockContent(bodyText)
+  const name = tag.name
+  const varName = tag.args.trim().split(/\s+/)[0] ?? ''
+
+  if (name === 'setvar') {
+    if (varName) setLocalVar(ctx, varName, trimmed)
+    return ''
+  }
+  if (name === 'setglobalvar') {
+    if (varName) setGlobalVar(ctx, varName, trimmed)
+    return ''
+  }
+  if (name === 'reverse') {
+    return [...trimmed].reverse().join('')
+  }
+  if (name === 'trim') {
+    return trimmed.trim()
+  }
   return unsupportedMacroPlaceholder(tag.raw)
 }

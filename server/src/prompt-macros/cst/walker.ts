@@ -1,27 +1,54 @@
+import { evaluateStCondition } from '../macro-condition.js'
+import { trimScopedBlockContent } from '../macro-truthy.js'
 import { restoreMacroEscapes } from '../preprocess-escape.js'
 import type { PromptMacroContext } from '../types.js'
-import { invokeCstMacro } from './macro-registry.js'
-import type { CstDocument } from './nodes.js'
+import { invokeCstMacro, invokeCstScopedMacro } from './macro-registry.js'
+import type { CstDocument, CstNode } from './nodes.js'
 import { parseMacroDocument } from './parser.js'
 
 export function walkCstDocument(
   doc: CstDocument,
   ctx: PromptMacroContext,
 ): string {
+  return restoreMacroEscapes(walkCstNodes(doc.nodes, ctx))
+}
+
+function walkCstNodes(nodes: CstNode[], ctx: PromptMacroContext): string {
   const renderNested = (snippet: string) =>
     walkCstDocument(parseMacroDocument(snippet), ctx)
 
   let out = ''
-  for (const node of doc.nodes) {
-    if (node.kind === 'text') {
-      out += node.value
-      continue
-    }
-    if (node.kind === 'unclosed') {
-      out += '[UNSUPPORTED]'
-      continue
-    }
-    out += invokeCstMacro(node.tag, ctx, renderNested)
+  for (const node of nodes) {
+    out += walkCstNode(node, ctx, renderNested)
   }
-  return restoreMacroEscapes(out)
+  return out
+}
+
+function walkCstNode(
+  node: CstNode,
+  ctx: PromptMacroContext,
+  renderNested: (snippet: string) => string,
+): string {
+  if (node.kind === 'text') return node.value
+  if (node.kind === 'unclosed') return '[UNSUPPORTED]'
+
+  if (node.kind === 'if') {
+    const cond = node.condition
+    if (
+      evaluateStCondition(cond, ctx, (snippet) =>
+        walkCstDocument(parseMacroDocument(snippet), ctx),
+      )
+    ) {
+      return walkCstNodes(node.then, ctx)
+    }
+    if (node.else) return walkCstNodes(node.else, ctx)
+    return ''
+  }
+
+  if (node.kind === 'scoped') {
+    const bodyText = walkCstNodes(node.body, ctx)
+    return invokeCstScopedMacro(node.tag, bodyText, ctx)
+  }
+
+  return invokeCstMacro(node.tag, ctx, renderNested)
 }

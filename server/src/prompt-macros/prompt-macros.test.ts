@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
+import { afterEach, beforeEach, describe, it } from 'node:test'
 import { extractMacroCharacterFields } from './character-fields.js'
 import { buildPromptMacroContext } from './context.js'
 import { clearMacroTemplateCache } from './handlebars-engine.js'
@@ -44,9 +44,33 @@ function ctx(
   }
 }
 
-describe('applyPromptMacroPipeline (Handlebars)', () => {
-  it('expands known macros', () => {
+const savedMacroEngine = process.env.MACRO_ENGINE
+
+function useLegacyMacroEngine(): void {
+  beforeEach(() => {
+    process.env.MACRO_ENGINE = 'legacy'
     clearMacroTemplateCache()
+  })
+  afterEach(() => {
+    if (savedMacroEngine === undefined) delete process.env.MACRO_ENGINE
+    else process.env.MACRO_ENGINE = savedMacroEngine
+  })
+}
+
+function useCstMacroEngine(): void {
+  beforeEach(() => {
+    process.env.MACRO_ENGINE = 'cst'
+  })
+  afterEach(() => {
+    if (savedMacroEngine === undefined) delete process.env.MACRO_ENGINE
+    else process.env.MACRO_ENGINE = savedMacroEngine
+  })
+}
+
+describe('applyPromptMacroPipeline (Handlebars)', () => {
+  useLegacyMacroEngine()
+
+  it('expands known macros', () => {
     const out = applyPromptMacroPipeline(
       '{{user}}|{{char}}|{{char2}}|{{model}}|{{context}}|{{newline}}X|{{authorsNote}}',
       ctx(),
@@ -107,6 +131,8 @@ describe('applyPromptMacroPipeline (Handlebars)', () => {
 })
 
 describe('Phase A macros', () => {
+  useLegacyMacroEngine()
+
   it('expands character card field macros', () => {
     clearMacroTemplateCache()
     const out = applyPromptMacroPipeline(
@@ -184,6 +210,8 @@ describe('Phase A macros', () => {
 })
 
 describe('Phase B macros', () => {
+  useLegacyMacroEngine()
+
   it('expands history tail and pick macros', () => {
     clearMacroTemplateCache()
     const out = applyPromptMacroPipeline(
@@ -226,6 +254,8 @@ describe('Phase B macros', () => {
 })
 
 describe('Phase C macros', () => {
+  useLegacyMacroEngine()
+
   it('expands ST {{if}} / {{else}} blocks', () => {
     clearMacroTemplateCache()
     assert.equal(
@@ -296,5 +326,18 @@ describe('Phase C macros', () => {
       c,
     )
     assert.equal(out, 'line1\nline2')
+  })
+})
+
+describe('applyPromptMacroPipeline (CST)', () => {
+  useCstMacroEngine()
+
+  it('expands Phase C via engine router', () => {
+    assert.equal(
+      applyPromptMacroPipeline('{{if user}}yes{{/if}}', ctx()),
+      'yes',
+    )
+    const c = ctx({ macroLocalVars: { mood: 'happy' } })
+    assert.equal(applyPromptMacroPipeline('{{.mood}}', c), 'happy')
   })
 })

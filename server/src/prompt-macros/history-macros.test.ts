@@ -90,6 +90,46 @@ describe('buildMacroHistoryFields', () => {
     assert.equal(fields.firstIncludedMessageId, '2')
   })
 
+  it('firstIncludedMessageId uses turn metadata when content differs from turns', () => {
+    const history = [turn(0, 'u1', 'a1'), turn(1, 'u2', 'a2')]
+    const all = [...history, turn(2, 'u3', 'a3')]
+    const fields = buildMacroHistoryFields({
+      indexingTurns: all,
+      historyTurns: history,
+      trimmedHistoryMessages: [
+        {
+          role: 'user',
+          content: 'regex-scrubbed-u2',
+          turnId: 't-1',
+          turnOrdinal: 1,
+        },
+        {
+          role: 'assistant',
+          content: 'regex-scrubbed-a2',
+          turnId: 't-1',
+          turnOrdinal: 1,
+          receiveId: 'r-1',
+          receiveIndex: 0,
+        },
+      ],
+    })
+    assert.equal(fields.firstIncludedMessageId, '2')
+  })
+
+  it('firstIncludedMessageId disambiguates duplicate content by turn offset', () => {
+    const history = [turn(0, 'same', 'dup'), turn(1, 'same', 'dup')]
+    const all = [...history, turn(2, 'tail', 'end')]
+    const fields = buildMacroHistoryFields({
+      indexingTurns: all,
+      historyTurns: history,
+      trimmedHistoryMessages: [
+        { role: 'user', content: 'same' },
+        { role: 'assistant', content: 'dup' },
+      ],
+    })
+    assert.equal(fields.firstIncludedMessageId, '2')
+  })
+
   it('idleReferenceUserAt skips trailing assistant and uses prior user', () => {
     const turns = [
       turn(0, 'u1', 'a1', undefined, 0, '2020-01-01T10:00:00.000Z'),

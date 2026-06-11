@@ -95,6 +95,10 @@
 
   "manualEndTurnLabel": "End turn (inclusive)",
 
+  "manualTurnRangeHint": "Keep the range within 512 turns (macro indexing window). Wider ranges cannot be submitted—narrow start/end.",
+
+  "toastTurnRangeTooLong": "Turn range exceeds 512 turns. Narrow the start/end and try again.",
+
   "manualTasksLabel": "Tasks",
 
   "manualTasksHint": "Runs serially: plot first, then selected Sidecars.",

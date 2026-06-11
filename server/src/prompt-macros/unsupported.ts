@@ -1,5 +1,6 @@
 import {
   isKnownMacroToken,
+  renderFailMacroPlaceholder,
   unsupportedMacroPlaceholder,
 } from './macro-values.js'
 
@@ -12,4 +13,12 @@ export function replaceUnsupportedMacroPlaceholders(text: string): string {
   })
   out = out.replace(/\{\{[^}]*$/g, '[UNSUPPORTED]')
   return out
+}
+
+/** Handlebars 编译/执行失败时，将剩余 `{{…}}` 标为 `[name RENDERFAIL]` */
+export function replaceRenderFailMacroPlaceholders(text: string): string {
+  if (!text.includes('{{')) return text
+  return text.replace(/\{\{([^}]+)\}\}/g, (_match, inner: string) =>
+    renderFailMacroPlaceholder(inner),
+  )
 }

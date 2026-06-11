@@ -36,7 +36,10 @@ import {
   preprocessLegacyMacroSyntax,
   preprocessStColonMacros,
 } from './preprocess.js'
-import { replaceUnsupportedMacroPlaceholders } from './unsupported.js'
+import {
+  replaceRenderFailMacroPlaceholders,
+  replaceUnsupportedMacroPlaceholders,
+} from './unsupported.js'
 import type { PromptMacroContext } from './types.js'
 
 const COMPILE_CACHE_MAX = 512
@@ -208,6 +211,6 @@ export function renderPromptMacros(
   try {
     return compileCached(normalized)(ctx, { data: { root: ctx } })
   } catch {
-    return normalized
+    return replaceRenderFailMacroPlaceholders(normalized)
   }
 }

@@ -79,6 +79,22 @@ describe('applyPromptMacroPipeline (Handlebars)', () => {
     )
   })
 
+  it('marks Handlebars block syntax as [name UNSUPPORTED]', () => {
+    clearMacroTemplateCache()
+    assert.equal(
+      applyPromptMacroPipeline('{{#if user}}x{{/if}}', ctx()),
+      '[#if user UNSUPPORTED]x[/if UNSUPPORTED]',
+    )
+  })
+
+  it('marks compile/render failures as [name RENDERFAIL]', () => {
+    clearMacroTemplateCache()
+    assert.equal(
+      applyPromptMacroPipeline('{{user}} {{char}}}}', ctx()),
+      '[user RENDERFAIL] [char RENDERFAIL]}}',
+    )
+  })
+
   it('defaults user/char when missing', () => {
     clearMacroTemplateCache()
     const empty = ctx({

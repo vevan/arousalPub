@@ -17,10 +17,14 @@
 
 **本地独有行为**
 
-- 未知 `{{…}}` → **`[name UNSUPPORTED]`**（ST 常保留原文或按引擎处理）。
+- 未知 `{{…}}` → **`[name UNSUPPORTED]`**（ST 常保留原文或按引擎处理）；行尾未闭合的 `{{token` 亦标为 **`[UNSUPPORTED]`**。
+- Handlebars **编译/执行失败** 时，剩余完整 `{{…}}` → **`[name RENDERFAIL]`**（与 UNSUPPORTED 区分，便于排查模板语法错误）。
+- 未实现的块语法（`{{#if}}`、`{{/if}}` 等）按 **未知宏** 处理，**不**静默保留原文。
 - 宏 **仅服务端** 展开；Web 预览/审计展示 API 返回的已展宏结果。
 - 大小写 **不敏感**；camelCase ST 写法（如 `{{mesExamples}}`）经预处理后可用。
 - ST **`::` 多参** 在预处理中转成 Handlebars helper 参数（如 `{{random::a::b}}` → `{{random "a" "b"}}`）。
+- 日期/时长类宏默认 **`locale: en`**（未从请求传入时）；与 ST 按界面语言不同，属产品默认。
+- 历史索引类宏（`lastMessageId`、`firstIncludedMessageId` 等）在超长对话中仅保证 **尾部 512 轮** 语义（`MACRO_INDEXING_TURN_CAP`）。
 
 ---
 

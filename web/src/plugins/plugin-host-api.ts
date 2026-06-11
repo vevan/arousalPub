@@ -348,9 +348,15 @@ export async function expandPluginMacros(
   pluginId: string,
   conversationId: string,
   text: string,
-  opts?: { apiConfigId?: string },
+  opts?: { apiConfigId?: string; toTurn?: number },
   signal?: AbortSignal,
 ): Promise<string> {
+  const toTurn =
+    typeof opts?.toTurn === 'number' &&
+    Number.isInteger(opts.toTurn) &&
+    opts.toTurn >= 0
+      ? opts.toTurn
+      : undefined
   const res = await apiFetch(
     `/api/plugins/${encodeURIComponent(pluginId)}/macros/expand`,
     {
@@ -360,6 +366,7 @@ export async function expandPluginMacros(
         text,
         conversationId,
         apiConfigId: opts?.apiConfigId?.trim() || undefined,
+        toTurn,
       }),
       signal,
     },

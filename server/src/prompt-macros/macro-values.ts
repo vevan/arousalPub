@@ -347,10 +347,7 @@ export function macroTokenHead(inner: string): string {
 
 export function isKnownMacroToken(inner: string): boolean {
   const raw = inner.trim()
-  if (!raw || raw.startsWith('#') || raw.startsWith('/') || raw.startsWith('!')) {
-    return true
-  }
-  if (raw.startsWith('else')) return true
+  if (!raw) return false
   const head = macroTokenHead(raw)
   if (KNOWN_MACRO_HEADS.has(head)) return true
   if (/^char\d+$/i.test(head)) return true
@@ -360,4 +357,9 @@ export function isKnownMacroToken(inner: string): boolean {
 export function unsupportedMacroPlaceholder(inner: string): string {
   const name = inner.trim()
   return name ? `[${name} UNSUPPORTED]` : '[UNSUPPORTED]'
+}
+
+export function renderFailMacroPlaceholder(inner: string): string {
+  const name = inner.trim()
+  return name ? `[${name} RENDERFAIL]` : '[RENDERFAIL]'
 }

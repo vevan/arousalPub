@@ -64,10 +64,8 @@ import {
 import { applyPluginsAfterAssemblePrompts } from './plugin-host.js'
 import type { ChatPluginsBody } from './plugin-types.js'
 import { countChatMessagesTokens } from './token-count.js'
-import {
-  readTurnsInOrdinalRange,
-  readTurnsTail,
-} from './chunk-chain.js'
+import { readTurnsInOrdinalRange } from './chunk-chain.js'
+import { loadTurnsForMacroIndexing } from './prompt-macros/macro-indexing-turns.js'
 import { readPluginRegistry } from './plugin-system/registry.js'
 import type { TurnRecord } from './chat-storage.js'
 import {
@@ -80,23 +78,6 @@ import {
   loadAndApplyRegexOutgoing,
   resolveOutgoingTailOrdinal,
 } from './regex-outgoing.js'
-
-const MACRO_INDEXING_TURN_CAP = 512
-
-async function loadTurnsForMacroIndexing(
-  conversationId: string,
-  beforeExclusive?: number | null,
-): Promise<TurnRecord[]> {
-  if (
-    typeof beforeExclusive === 'number' &&
-    !Number.isNaN(beforeExclusive)
-  ) {
-    if (beforeExclusive <= 0) return []
-    return readTurnsInOrdinalRange(conversationId, 0, beforeExclusive - 1)
-  }
-  const { turns } = await readTurnsTail(conversationId, MACRO_INDEXING_TURN_CAP)
-  return turns
-}
 
 async function loadActiveTurnForMacro(
   conversationId: string,
@@ -450,10 +431,7 @@ export async function buildConversationOutboundMessages(
     constantLoreGroups: loreParts.constantLoreGroups,
     matchedLore: loreParts.matchedLore.slice(),
     memoryItems: memoryPipeline.memoryItems.slice(),
-    historyMessages: memoryPipeline.recentHistoryMessages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    })),
+    historyMessages: memoryPipeline.recentHistoryMessages.map((m) => ({ ...m })),
   }
 
   const assembleCtxBase = {
@@ -463,6 +441,7 @@ export async function buildConversationOutboundMessages(
     macroContext,
     authorsNote: authorsNote ?? undefined,
     skipInternalBudgetTrim: true as const,
+    deferMacroExpansion: true as const,
     ...charCtx,
   }
 
@@ -542,7 +521,9 @@ export async function buildConversationOutboundMessages(
     plugins: params.plugins,
   })
   if (macroContext) {
-    applyMacrosToMessages(messagesAfterPlugins, macroContext)
+    applyMacrosToMessages(messagesAfterPlugins, macroContext, {
+      onlyIfNeeded: true,
+    })
   }
   const finalEstimatedTokens =
     messagesAfterPlugins.length === messages.length

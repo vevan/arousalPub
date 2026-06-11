@@ -15,6 +15,7 @@ import {
   setSummarizeRunning,
   summarizeRunning,
 } from './state.js'
+import { isSummarizeTurnSpanTooLarge } from './shared/range-limits.js'
 import { asString } from './shared/utils.js'
 import type { PluginHost, SummarizeTask } from './types.js'
 import {
@@ -81,6 +82,10 @@ export async function runSummarizeTasks(
     if (fromTurn > toTurn) {
       host.ui.toast(host.t(k(host, 'toastInvalidRange')), { color: 'warning' })
       return { ok: false, reason: 'invalid_range' }
+    }
+    if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
+      host.ui.toast(host.t(k(host, 'toastTurnRangeTooLong')), { color: 'warning' })
+      return { ok: false, reason: 'turn_range_too_long' }
     }
 
     let sidecarEntryIds: Record<string, string>

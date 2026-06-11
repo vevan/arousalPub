@@ -28,6 +28,7 @@ type DraftApi = {
     text: string
     conversationId?: string
     apiConfigId?: string
+    toTurn?: number
   }) => Promise<string>
 }
 
@@ -36,10 +37,16 @@ async function expandText(
   text: string,
   conversationId: string,
   apiConfigId: string,
+  toTurn?: number,
 ): Promise<string> {
   const raw = asString(text)
   if (!raw.includes('{{')) return raw
-  return api.runPluginMacroExpand({ text: raw, conversationId, apiConfigId })
+  return api.runPluginMacroExpand({
+    text: raw,
+    conversationId,
+    apiConfigId,
+    ...(typeof toTurn === 'number' ? { toTurn } : {}),
+  })
 }
 
 async function assertPreflight(
@@ -88,13 +95,28 @@ async function callCompleteOnce(
   systemReferenceContext: string,
   systemPromptTemplate: string,
   userContent: string,
+  toTurn?: number,
 ) {
+  const anchorToTurn =
+    typeof toTurn === 'number' && Number.isInteger(toTurn) ? toTurn : undefined
   const [expandedRef, expandedInstruction, expandedUser] = await Promise.all([
     systemReferenceContext.trim()
-      ? expandText(api, systemReferenceContext, conversationId, apiConfigId ?? '')
+      ? expandText(
+          api,
+          systemReferenceContext,
+          conversationId,
+          apiConfigId ?? '',
+          anchorToTurn,
+        )
       : Promise.resolve(''),
-    expandText(api, systemPromptTemplate, conversationId, apiConfigId ?? ''),
-    expandText(api, userContent, conversationId, apiConfigId ?? ''),
+    expandText(
+      api,
+      systemPromptTemplate,
+      conversationId,
+      apiConfigId ?? '',
+      anchorToTurn,
+    ),
+    expandText(api, userContent, conversationId, apiConfigId ?? '', anchorToTurn),
   ])
   const expandedSystem = joinSystemMessage(expandedRef, expandedInstruction)
   await assertPreflight(
@@ -126,6 +148,7 @@ async function callCompleteWithRetry(
   systemReferenceContext: string,
   systemPromptTemplate: string,
   userContent: string,
+  toTurn?: number,
 ) {
   let lastErr: unknown = null
   for (let attempt = 1; attempt <= UPSTREAM_RETRY_MAX; attempt++) {
@@ -137,6 +160,7 @@ async function callCompleteWithRetry(
         systemReferenceContext,
         systemPromptTemplate,
         userContent,
+        toTurn,
       )
     } catch (e) {
       const msg = e instanceof Error ? e.message : ''
@@ -173,6 +197,7 @@ export async function completeDraft(
     ctx.systemReferenceContext ?? '',
     ctx.systemPromptTemplate,
     ctx.userContent,
+    ctx.toTurn,
   )
   const raw = parseModelJson(result.content)
 

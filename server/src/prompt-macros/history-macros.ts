@@ -88,12 +88,92 @@ function swipeFieldsForTurn(turn: TurnRecord | null | undefined): {
   }
 }
 
+export interface TrimmedHistoryMessage {
+  role: 'user' | 'assistant'
+  content: string
+  turnId?: string
+  turnOrdinal?: number
+  receiveId?: string
+  receiveIndex?: number
+}
+
+function flatIndexOfHistoryStart(
+  allFlat: FlatHistoryMessage[],
+  historyTurns: TurnRecord[],
+): number {
+  if (historyTurns.length === 0) return 0
+  const firstTurnId = historyTurns[0]!.turnId
+  const idx = allFlat.findIndex((m) => m.turnId === firstTurnId)
+  return idx >= 0 ? idx : 0
+}
+
+function historyMessageMetaMatches(
+  flat: FlatHistoryMessage,
+  msg: TrimmedHistoryMessage,
+): boolean {
+  if (flat.role !== msg.role) return false
+  if (!msg.turnId || flat.turnId !== msg.turnId) return false
+  if (msg.role === 'assistant') {
+    if (msg.receiveId && flat.receiveId && flat.receiveId !== msg.receiveId) {
+      return false
+    }
+    if (
+      typeof msg.receiveIndex === 'number' &&
+      typeof flat.receiveIndex === 'number' &&
+      flat.receiveIndex !== msg.receiveIndex
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+function flatIndexByTurnMetadata(
+  allFlat: FlatHistoryMessage[],
+  msg: TrimmedHistoryMessage,
+): number {
+  if (!msg.turnId) return -1
+  return allFlat.findIndex((m) => historyMessageMetaMatches(m, msg))
+}
+
+/** budget trim 后首条 history 在 indexing 全量 flat 中的下标 */
 function resolveFirstIncludedMessageId(
   allFlat: FlatHistoryMessage[],
-  trimmed?: { role: 'user' | 'assistant'; content: string }[],
+  historyTurns: TurnRecord[],
+  trimmed?: TrimmedHistoryMessage[],
 ): string {
   if (!trimmed?.length) return '0'
   const first = trimmed[0]!
+
+  const metaIdx = flatIndexByTurnMetadata(allFlat, first)
+  if (metaIdx >= 0) return String(metaIdx)
+
+  const historyFlat = flattenTurnsToChatMessages(historyTurns)
+  if (historyFlat.length === 0) return '0'
+
+  const trimmedLen = trimmed.length
+  if (historyFlat.length >= trimmedLen) {
+    const suffix = historyFlat.slice(-trimmedLen)
+    let suffixMatches = true
+    for (let i = 0; i < trimmedLen; i++) {
+      const h = suffix[i]!
+      const t = trimmed[i]!
+      if (h.role !== t.role || h.content !== t.content) {
+        suffixMatches = false
+        break
+      }
+    }
+    if (suffixMatches) {
+      const dropped = historyFlat.length - trimmedLen
+      const idx = flatIndexOfHistoryStart(allFlat, historyTurns) + dropped
+      return String(Math.min(idx, Math.max(0, allFlat.length - 1)))
+    }
+
+    const firstSuffix = suffix[0]!
+    const suffixMetaIdx = flatIndexByTurnMetadata(allFlat, firstSuffix)
+    if (suffixMetaIdx >= 0) return String(suffixMetaIdx)
+  }
+
   const idx = allFlat.findIndex(
     (m) => m.role === first.role && m.content === first.content,
   )
@@ -133,7 +213,7 @@ export function buildMacroHistoryFields(params: {
   historyTurns: TurnRecord[]
   /** 再生 / swipe 时正在操作的 turn */
   activeTurn?: TurnRecord | null
-  trimmedHistoryMessages?: { role: 'user' | 'assistant'; content: string }[]
+  trimmedHistoryMessages?: TrimmedHistoryMessage[]
   characterNames?: string[]
 }): MacroHistoryFields {
   const historyFlat = flattenTurnsToChatMessages(params.historyTurns)
@@ -143,6 +223,7 @@ export function buildMacroHistoryFields(params: {
     const base = { ...EMPTY_HISTORY_FIELDS }
     base.firstIncludedMessageId = resolveFirstIncludedMessageId(
       allFlat,
+      params.historyTurns,
       params.trimmedHistoryMessages,
     )
     const names = params.characterNames ?? []
@@ -175,6 +256,7 @@ export function buildMacroHistoryFields(params: {
     lastMessageId,
     firstIncludedMessageId: resolveFirstIncludedMessageId(
       allFlat,
+      params.historyTurns,
       params.trimmedHistoryMessages,
     ),
     allChatRange: `0-${lastMessageId}`,

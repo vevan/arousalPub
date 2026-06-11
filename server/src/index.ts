@@ -3597,6 +3597,7 @@ app.post<{
     conversationId?: string
     apiConfigId?: string
     locale?: string
+    toTurn?: number
   }
 }>(
   '/api/plugins/:pluginId/macros/expand',
@@ -3607,6 +3608,13 @@ app.post<{
       return reply.status(auth.status).send({ error: ApiErrorCodes[auth.code] })
     }
     const body = request.body ?? {}
+    const toTurnRaw = body.toTurn
+    const toTurn =
+      typeof toTurnRaw === 'number' &&
+      Number.isInteger(toTurnRaw) &&
+      toTurnRaw >= 0
+        ? toTurnRaw
+        : undefined
     const result = await runPluginMacroExpand({
       text: typeof body.text === 'string' ? body.text : '',
       conversationId:
@@ -3614,6 +3622,7 @@ app.post<{
       apiConfigId:
         typeof body.apiConfigId === 'string' ? body.apiConfigId : undefined,
       locale: typeof body.locale === 'string' ? body.locale : undefined,
+      toTurn,
     })
     if (!result.ok) {
       return reply.status(400).send({ error: ApiErrorCodes.messages_required_nonempty })

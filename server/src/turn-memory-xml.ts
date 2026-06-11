@@ -57,13 +57,49 @@ export function formatHistoryXml(turns: TurnRecord[]): string {
 /** 近期 N 轮 → 组装用 user/assistant 消息链（非 XML）。 */
 export function turnsToHistoryMessages(
   turns: TurnRecord[],
-): { role: 'user' | 'assistant'; content: string }[] {
-  const out: { role: 'user' | 'assistant'; content: string }[] = []
+): {
+  role: 'user' | 'assistant'
+  content: string
+  turnId: string
+  turnOrdinal: number
+  receiveId?: string
+  receiveIndex?: number
+}[] {
+  const out: {
+    role: 'user' | 'assistant'
+    content: string
+    turnId: string
+    turnOrdinal: number
+    receiveId?: string
+    receiveIndex?: number
+  }[] = []
   for (const turn of turns) {
     const user = getTurnUserText(turn).trim()
-    if (user) out.push({ role: 'user', content: user })
+    if (user) {
+      out.push({
+        role: 'user',
+        content: user,
+        turnId: turn.turnId,
+        turnOrdinal: turn.turnOrdinal,
+      })
+    }
     const assistant = assistantTextFromTurn(turn).trim()
-    if (assistant) out.push({ role: 'assistant', content: assistant })
+    if (assistant) {
+      const receives = turn.receives ?? []
+      const activeIdx = Math.min(
+        Math.max(0, Math.floor(turn.activeReceiveIndex) || 0),
+        Math.max(0, receives.length - 1),
+      )
+      const rec = receives[activeIdx]
+      out.push({
+        role: 'assistant',
+        content: assistant,
+        turnId: turn.turnId,
+        turnOrdinal: turn.turnOrdinal,
+        ...(rec?.id ? { receiveId: rec.id } : {}),
+        receiveIndex: activeIdx,
+      })
+    }
   }
   return out
 }

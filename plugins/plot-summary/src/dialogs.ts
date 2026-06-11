@@ -15,6 +15,7 @@ import {
   summarizeRunning,
 } from './state.js'
 import { applyPlotSummaryEntrySort } from './shared/entry-sort.js'
+import { isSummarizeTurnSpanTooLarge } from './shared/range-limits.js'
 import { asInt, asString } from './shared/utils.js'
 import {
   firstAutoTriggerTurnOrdinal,
@@ -353,12 +354,14 @@ function registerSummarizeDialog(
       key: 'startTurn',
       labelKey: k(host, 'manualStartTurnLabel'),
       type: 'integer',
+      hintKey: k(host, 'manualTurnRangeHint'),
       ...(isEnable ? { readOnly: true } : {}),
     },
     {
       key: 'endTurn',
       labelKey: k(host, 'manualEndTurnLabel'),
       type: 'integer',
+      hintKey: k(host, 'manualTurnRangeHint'),
       ...(isEnable ? { readOnly: true } : {}),
     },
   ]
@@ -404,12 +407,17 @@ function registerSummarizeDialog(
         const start = asInt(m.startTurn, -1, 500_000)
         const end = asInt(m.endTurn, -1, 500_000)
         if (start < 0 || end < start) return false
+        if (isSummarizeTurnSpanTooLarge(start, end)) return false
         if (isEnable) return true
         return tasksFromSelection(settings, m.selectedTasks).length > 0
       },
       onSubmit: async (h: PluginHost, model: Record<string, unknown>) => {
         const fromTurn = asInt(model.startTurn, 0, 500_000)
         const toTurn = asInt(model.endTurn, fromTurn, 500_000)
+        if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
+          h.ui.toast(h.t(k(h, 'toastTurnRangeTooLong')), { color: 'warning' })
+          return
+        }
         const selectedTasks = isEnable
           ? [
               'memory',

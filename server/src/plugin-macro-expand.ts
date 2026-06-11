@@ -5,9 +5,12 @@ import {
   readConversationIndex,
   resolvedCharacterIds,
 } from './chat-storage.js'
-import { readTurnsTail } from './chunk-chain.js'
 import { readPluginRegistry } from './plugin-system/registry.js'
 import { buildMacroHistoryFields } from './prompt-macros/history-macros.js'
+import {
+  loadTurnsForMacroIndexing,
+  macroBeforeExclusiveFromToTurn,
+} from './prompt-macros/macro-indexing-turns.js'
 import {
   applyPromptMacroPipeline,
   buildPromptMacroContext,
@@ -20,6 +23,8 @@ export interface PluginMacroExpandRequest {
   conversationId?: string
   apiConfigId?: string
   locale?: string
+  /** 摘要/预览锚定：历史类宏参照至该 turn（含） */
+  toTurn?: number
 }
 
 export type PluginMacroExpandResult =
@@ -86,13 +91,14 @@ export async function runPluginMacroExpand(
       const charIds = resolvedCharacterIds(idx)
       characters = await loadMacroCharacters(charIds)
       authorsNote = authorsNoteMacroText(idx.authorsNote)
-      const { turns } = await readTurnsTail(convId, 512)
+      const beforeEx = macroBeforeExclusiveFromToTurn(req.toTurn)
+      const indexingTurns = await loadTurnsForMacroIndexing(convId, beforeEx)
       const charNameList = characters
         .map((c) => c.name?.trim())
         .filter((n): n is string => Boolean(n))
       historyFields = buildMacroHistoryFields({
-        indexingTurns: turns,
-        historyTurns: turns,
+        indexingTurns,
+        historyTurns: indexingTurns,
         characterNames: charNameList,
       })
     }

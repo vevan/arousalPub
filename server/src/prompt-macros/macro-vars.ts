@@ -1,17 +1,18 @@
-import { isStTruthy } from './macro-truthy.js'
+import {
+  clampMacroVarValue,
+  MACRO_VAR_MAX_KEYS,
+  sanitizeMacroVarMap,
+} from './macro-var-limits.js'
+import {
+  markMacroGlobalVarTouched,
+  markMacroLocalVarTouched,
+} from './macro-var-touched.js'
 import type { PromptMacroContext } from './types.js'
 
 export type MacroVarMap = Record<string, string>
 
 export function cloneMacroVarMap(src?: MacroVarMap | null): MacroVarMap {
-  if (!src || typeof src !== 'object') return {}
-  const out: MacroVarMap = {}
-  for (const [k, v] of Object.entries(src)) {
-    if (typeof k === 'string' && k.trim() && typeof v === 'string') {
-      out[k.trim()] = v
-    }
-  }
-  return out
+  return sanitizeMacroVarMap(src)
 }
 
 export function normalizeVarName(raw: string): string {
@@ -28,8 +29,15 @@ export function setLocalVar(ctx: PromptMacroContext, name: string, value: string
   const key = normalizeVarName(name)
   if (!key) return
   if (!ctx.macroLocalVars) ctx.macroLocalVars = {}
-  ctx.macroLocalVars[key] = value
+  if (
+    !Object.prototype.hasOwnProperty.call(ctx.macroLocalVars, key) &&
+    Object.keys(ctx.macroLocalVars).length >= MACRO_VAR_MAX_KEYS
+  ) {
+    return
+  }
+  ctx.macroLocalVars[key] = clampMacroVarValue(value)
   ctx.macroVarsDirty = true
+  markMacroLocalVarTouched(ctx, key)
 }
 
 export function appendLocalVar(
@@ -115,8 +123,15 @@ export function setGlobalVar(ctx: PromptMacroContext, name: string, value: strin
   const key = normalizeVarName(name)
   if (!key) return
   if (!ctx.macroGlobalVars) ctx.macroGlobalVars = {}
-  ctx.macroGlobalVars[key] = value
+  if (
+    !Object.prototype.hasOwnProperty.call(ctx.macroGlobalVars, key) &&
+    Object.keys(ctx.macroGlobalVars).length >= MACRO_VAR_MAX_KEYS
+  ) {
+    return
+  }
+  ctx.macroGlobalVars[key] = clampMacroVarValue(value)
   ctx.macroGlobalVarsDirty = true
+  markMacroGlobalVarTouched(ctx, key)
 }
 
 export function hasGlobalVar(ctx: PromptMacroContext, name: string): boolean {

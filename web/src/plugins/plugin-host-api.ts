@@ -348,7 +348,7 @@ export async function expandPluginMacros(
   pluginId: string,
   conversationId: string,
   text: string,
-  opts?: { apiConfigId?: string; toTurn?: number },
+  opts?: { apiConfigId?: string; toTurn?: number; persistVars?: boolean },
   signal?: AbortSignal,
 ): Promise<string> {
   const toTurn =
@@ -367,6 +367,7 @@ export async function expandPluginMacros(
         conversationId,
         apiConfigId: opts?.apiConfigId?.trim() || undefined,
         toTurn,
+        persistVars: opts?.persistVars,
       }),
       signal,
     },

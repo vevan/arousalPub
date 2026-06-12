@@ -30,6 +30,8 @@ export interface PluginMacroExpandRequest {
   locale?: string
   /** 摘要/预览锚定：历史类宏参照至该 turn（含） */
   toTurn?: number
+  /** 默认 true；预览等只读场景传 false，避免写盘副作用 */
+  persistVars?: boolean
 }
 
 export type PluginMacroExpandResult =
@@ -154,6 +156,8 @@ export async function runPluginMacroExpand(
   })
 
   const expanded = applyPromptMacroPipeline(text, macroContext)
-  await persistMacroVarMutations(macroContext)
+  if (req.persistVars !== false) {
+    await persistMacroVarMutations(macroContext)
+  }
   return { ok: true, text: expanded }
 }

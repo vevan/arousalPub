@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { getUserDataDir } from './config.js'
+import { sanitizeMacroVarMap } from './prompt-macros/macro-var-limits.js'
 import { getCurrentUserId } from './user-context.js'
 import {
   HISTORY_SETTINGS_DEFAULTS,
@@ -85,14 +86,7 @@ interface UserPreferencesDocumentDisk {
 function normalizeMacroGlobalVars(
   raw: Record<string, string> | undefined,
 ): Record<string, string> {
-  if (!raw || typeof raw !== 'object') return {}
-  const out: Record<string, string> = {}
-  for (const [k, v] of Object.entries(raw)) {
-    if (typeof k === 'string' && k.trim() && typeof v === 'string') {
-      out[k.trim()] = v
-    }
-  }
-  return out
+  return sanitizeMacroVarMap(raw)
 }
 
 function aadForEmbeddingApiKey(userId: string): string {

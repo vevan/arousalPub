@@ -1057,10 +1057,12 @@ async function expandText(host, text, apiConfigId, toTurn) {
   const raw = asString(text);
   if (!raw.includes("{{")) return raw;
   if (!host.macros?.expand) return raw;
-  const opts = {};
+  const opts = {
+    persistVars: false
+  };
   if (apiConfigId) opts.apiConfigId = apiConfigId;
   if (typeof toTurn === "number" && Number.isInteger(toTurn)) opts.toTurn = toTurn;
-  return host.macros.expand(raw, Object.keys(opts).length > 0 ? opts : void 0);
+  return host.macros.expand(raw, opts);
 }
 async function buildTaskMessages(host, settings, task, prepared, toTurn) {
   const apiConfigId = settings.apiConfigId;

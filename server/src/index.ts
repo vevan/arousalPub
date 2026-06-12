@@ -212,6 +212,11 @@ import {
   type MacroContextCharacterInput,
 } from './prompt-macros/index.js'
 import {
+  loadMacroGlobalVarsForContext,
+  loadMacroLocalVarsForConversation,
+  persistMacroVarMutations,
+} from './prompt-macros/macro-vars-persist.js'
+import {
   runPromptsAssemblePreview,
   type PromptsAssemblePreviewBody,
 } from './prompts-assemble-preview.js'
@@ -1088,10 +1093,17 @@ app.post<{ Params: { id: string }; Body: OpeningTurnBody }>(
         }
       }
     }
+    const [macroLocalVars, macroGlobalVars] = await Promise.all([
+      loadMacroLocalVarsForConversation(id),
+      loadMacroGlobalVarsForContext(),
+    ])
     const openingMacroCtx = buildPromptMacroContext({
       conversationUserName: idxForMacro?.userName,
       characters: macroChars,
       userCharacter: userCharacterForMacro,
+      conversationId: id,
+      macroLocalVars,
+      macroGlobalVars,
     })
 
     const receives: TurnReceive[] = []
@@ -1112,6 +1124,7 @@ app.post<{ Params: { id: string }; Body: OpeningTurnBody }>(
       }
       receives.push(rec)
     }
+    await persistMacroVarMutations(openingMacroCtx)
     const active =
       typeof b.activeReceiveIndex === 'number' && Number.isInteger(b.activeReceiveIndex)
         ? b.activeReceiveIndex
@@ -3598,6 +3611,7 @@ app.post<{
     apiConfigId?: string
     locale?: string
     toTurn?: number
+    persistVars?: boolean
   }
 }>(
   '/api/plugins/:pluginId/macros/expand',
@@ -3623,6 +3637,7 @@ app.post<{
         typeof body.apiConfigId === 'string' ? body.apiConfigId : undefined,
       locale: typeof body.locale === 'string' ? body.locale : undefined,
       toTurn,
+      persistVars: body.persistVars !== false,
     })
     if (!result.ok) {
       return reply.status(400).send({ error: ApiErrorCodes.messages_required_nonempty })

@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import { extractMacroCharacterFields } from './character-fields.js'
 import { buildPromptMacroContext } from './context.js'
 import { applyPromptMacroPipeline } from './pipeline.js'
+import { MACRO_VAR_MAX_KEYS } from './macro-var-limits.js'
 import type { PromptMacroContext } from './types.js'
 
 const sampleCard = {
@@ -309,5 +310,16 @@ describe('Phase C macros', () => {
     const c2 = ctx()
     applyPromptMacroPipeline('{{ .note = hello }}', c2)
     assert.equal(c2.macroLocalVars?.note, 'hello')
+  })
+
+  it('refuses new local vars beyond key cap', () => {
+    const vars: Record<string, string> = {}
+    for (let i = 0; i < MACRO_VAR_MAX_KEYS; i++) {
+      vars[`k${i}`] = 'v'
+    }
+    const c = ctx({ macroLocalVars: vars })
+    applyPromptMacroPipeline('{{setvar::overflow::x}}', c)
+    assert.equal(c.macroLocalVars?.overflow, undefined)
+    assert.equal(Object.keys(c.macroLocalVars ?? {}).length, MACRO_VAR_MAX_KEYS)
   })
 })

@@ -81,10 +81,12 @@ async function expandText(
   const raw = asString(text)
   if (!raw.includes('{{')) return raw
   if (!host.macros?.expand) return raw
-  const opts: { apiConfigId?: string; toTurn?: number } = {}
+  const opts: { apiConfigId?: string; toTurn?: number; persistVars?: boolean } = {
+    persistVars: false,
+  }
   if (apiConfigId) opts.apiConfigId = apiConfigId
   if (typeof toTurn === 'number' && Number.isInteger(toTurn)) opts.toTurn = toTurn
-  return host.macros.expand(raw, Object.keys(opts).length > 0 ? opts : undefined)
+  return host.macros.expand(raw, opts)
 }
 
 async function buildTaskMessages(

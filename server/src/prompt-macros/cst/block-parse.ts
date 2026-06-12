@@ -1,4 +1,4 @@
-import { findNextMacroTag, parseMacroTagInner } from '../macro-tag-parse.js'
+import { findNextBalancedMacroTag, parseMacroTagInner } from '../macro-tag-parse.js'
 import { findBalancedMacroClose } from './lexer.js'
 
 export function extractIfCondition(inner: string): string {
@@ -23,7 +23,7 @@ export function findIfBlockClose(
   let cursor = from
   let elseStart: number | undefined
   while (cursor < text.length) {
-    const tag = findNextMacroTag(text, cursor)
+    const tag = findNextBalancedMacroTag(text, cursor)
     if (!tag) return null
     const parsed = parseMacroTagInner(tag.inner)
     if (parsed.isElse && depth === 1 && elseStart === undefined) {
@@ -52,7 +52,7 @@ export function findScopedBlockClose(
   let depth = 1
   let cursor = from
   while (cursor < text.length) {
-    const tag = findNextMacroTag(text, cursor)
+    const tag = findNextBalancedMacroTag(text, cursor)
     if (!tag) return null
     const parsed = parseMacroTagInner(tag.inner)
     if (parsed.isClose && parsed.name === macroName) {

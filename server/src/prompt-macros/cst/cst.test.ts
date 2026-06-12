@@ -7,15 +7,6 @@ import { renderPromptMacrosCst } from './render.js'
 const sampleCard = {
   name: '艾拉',
   description: '角色描述',
-  personality: '温柔',
-  scenario: '咖啡馆',
-  first_mes: '你好呀',
-  mes_example: '示例对话',
-  creator_notes: '创作者备注',
-  character_version: '3.1',
-  system_prompt: '系统提示',
-  post_history_instructions: '后置指令',
-  alternate_greetings: ['备选问候'],
 }
 
 function ctx(
@@ -26,144 +17,33 @@ function ctx(
     conversationUserName: '小明',
     characters: [
       { name: '艾拉', macroFields: extractMacroCharacterFields(sampleCard) },
-      { name: '鲍勃' },
     ],
-    model: 'gpt-test',
-    contextLength: 8192,
     now: new Date('2026-06-10T15:04:05Z'),
     ...overrides,
   })
 }
 
-describe('CST macro engine', () => {
-  it('expands simple macros (D0)', () => {
-    const out = renderPromptMacrosCst('{{user}}|{{char}}|{{char2}}', ctx())
-    assert.equal(out, '小明|艾拉|鲍勃')
-  })
-
-  it('marks unknown macros', () => {
-    assert.equal(
-      renderPromptMacrosCst('{{unknownMacro}}', ctx()),
-      '[unknownMacro UNSUPPORTED]',
-    )
-  })
-
-  it('strips comments and restores escaped braces', () => {
-    assert.equal(renderPromptMacrosCst('a{{// note}}b', ctx()), 'ab')
-    assert.equal(renderPromptMacrosCst('\\{\\{user\\}\\}', ctx()), '{{user}}')
-  })
-
-  it('expands nested macro arguments', () => {
+/** CST 模块专属用例；平铺宏 / Phase A–C 见 prompt-macros.test.ts */
+describe('CST parser & blocks', () => {
+  it('closes if blocks when inner tags contain nested {{ }}', () => {
     const c = ctx()
     assert.equal(
-      renderPromptMacrosCst('{{setvar::tag::{{char}}}}{{getvar::tag}}', c),
-      '艾拉',
-    )
-    assert.equal(c.macroLocalVars?.tag, '艾拉')
-  })
-
-  it('marks unclosed tags', () => {
-    assert.equal(renderPromptMacrosCst('x{{user', ctx()), 'x[UNSUPPORTED]')
-  })
-
-  it('expands ST {{if}} / {{else}} blocks (D1)', () => {
-    assert.equal(renderPromptMacrosCst('{{if user}}yes{{/if}}', ctx()), 'yes')
-    assert.equal(
-      renderPromptMacrosCst('{{if description}}D{{else}}E{{/if}}', ctx()),
-      'D',
-    )
-    assert.equal(
-      renderPromptMacrosCst('{{if !description}}X{{/if}}', ctx()),
-      '',
-    )
-  })
-
-  it('supports getvar/setvar and shorthands (D1)', () => {
-    const c = ctx()
-    assert.equal(
-      renderPromptMacrosCst('{{setvar::k::v}}{{getvar::k}}', c),
-      'v',
-    )
-    assert.equal(c.macroVarsDirty, true)
-
-    const c2 = ctx({ macroLocalVars: { mood: 'happy' } })
-    assert.equal(renderPromptMacrosCst('{{.mood}}', c2), 'happy')
-  })
-
-  it('supports global vars and hasvar (D1)', () => {
-    const c = ctx({ macroGlobalVars: { theme: 'dark' } })
-    assert.equal(renderPromptMacrosCst('{{$theme}}', c), 'dark')
-    assert.equal(
       renderPromptMacrosCst(
-        '{{hasvar::missing}}|{{hasglobalvar::theme}}',
+        '{{if user}}A{{setvar::k::{{char}}}}B{{/if}}{{getvar::k}}',
         c,
       ),
-      'false|true',
+      'AB艾拉',
     )
+    assert.equal(c.macroLocalVars?.k, '艾拉')
   })
 
-  it('supports scoped setvar blocks (D1)', () => {
-    const c = ctx()
-    const out = renderPromptMacrosCst(
-      '{{setvar note}}line1\nline2{{/setvar}}{{getvar::note}}',
-      c,
-    )
-    assert.equal(out, 'line1\nline2')
-  })
-
-  it('supports addvar append (D2)', () => {
-    const c = ctx({ macroLocalVars: { t1: 'head\n' } })
-    renderPromptMacrosCst('{{addvar::t1::- [ ] Item\n}}', c)
-    assert.equal(c.macroLocalVars?.t1, 'head\n- [ ] Item\n')
-  })
-
-  it('supports comparison if (D2)', () => {
-    const c = ctx({ macroLocalVars: { effort: 'Med' } })
+  it('handles nested if with balanced block scan', () => {
     assert.equal(
       renderPromptMacrosCst(
-        '{{#if {{.effort == Med}}}}yes{{else}}no{{/if}}',
-        c,
+        '{{if user}}{{if char}}Y{{/if}}Z{{/if}}',
+        ctx(),
       ),
-      'yes',
+      'YZ',
     )
-    assert.equal(
-      renderPromptMacrosCst(
-        '{{#if {{.effort == High}}}}yes{{else}}no{{/if}}',
-        c,
-      ),
-      'no',
-    )
-  })
-
-  it('supports no-arg trim (D2)', () => {
-    assert.equal(
-      renderPromptMacrosCst('hello   {{trim}}', ctx()),
-      'hello',
-    )
-  })
-
-  it('supports # preserveWhitespace on scoped blocks (D2)', () => {
-    const c = ctx()
-    renderPromptMacrosCst('{{#setvar note}}\nline\n{{/setvar}}', c)
-    assert.equal(c.macroLocalVars?.note, '\nline\n')
-  })
-
-  it('supports variable shorthand operators (D2.5)', () => {
-    const c = ctx({ macroLocalVars: { effort: 'High' } })
-    assert.equal(
-      renderPromptMacrosCst('{{.effort == High}}', c),
-      'true',
-    )
-    assert.equal(
-      renderPromptMacrosCst(
-        '{{#if {{.effort == High}}}}yes{{/if}}',
-        c,
-      ),
-      'yes',
-    )
-    const c2 = ctx({ macroLocalVars: { score: '5' } })
-    renderPromptMacrosCst('{{.score += 10}}', c2)
-    assert.equal(c2.macroLocalVars?.score, '15')
-    assert.equal(renderPromptMacrosCst('{{.counter++}}', c2), '1')
   })
 })

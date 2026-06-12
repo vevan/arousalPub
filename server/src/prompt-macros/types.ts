@@ -50,4 +50,8 @@ export interface PromptMacroContext {
   macroVarsDirty?: boolean
   /** 本轮渲染写回过全局变量 */
   macroGlobalVarsDirty?: boolean
+  /** 本轮变更过的会话变量键（并发写盘时 merge） */
+  macroLocalVarTouched?: Set<string>
+  /** 本轮变更过的全局变量键（并发写盘时 merge） */
+  macroGlobalVarTouched?: Set<string>
 }

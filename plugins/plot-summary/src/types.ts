@@ -82,7 +82,7 @@ export interface PluginHost {
   macros?: {
     expand: (
       text: string,
-      opts?: { apiConfigId?: string; toTurn?: number },
+      opts?: { apiConfigId?: string; toTurn?: number; persistVars?: boolean },
     ) => Promise<string>
   }
   token?: {

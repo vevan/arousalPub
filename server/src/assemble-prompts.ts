@@ -234,8 +234,7 @@ function entryMatchesTrigger(
   if (
     entry.bindingSlot === 'boundWorld' ||
     entry.bindingSlot === 'boundUserInput' ||
-    entry.bindingSlot === 'boundMemory' ||
-    entry.bindingSlot === 'boundRecentHistory'
+    entry.bindingSlot === 'boundMemory'
   ) {
     return true
   }
@@ -401,33 +400,52 @@ export function assemblePrompts(
         messages.push({ role: 'system', content: ctx.memoryText.trim() })
       }
     } else if (g.kind === 'history') {
-      historyStart = messages.length
-      let historyInjected = injectRecentHistoryMessages(messages, ctx)
+      const entries = relativeEntriesForGroup(preset, g, trigger)
+      const sorted = entries.slice().sort((a, b) => a.order - b.order)
+      const postIdx = sorted.findIndex(
+        (e) => e.bindingSlot === 'boundCharacterPostHistory',
+      )
+      const postEntry = postIdx >= 0 ? sorted[postIdx] : undefined
+      const isHistoryBindingMarker = (e: PromptEntry) =>
+        e.bindingSlot === 'boundRecentHistory' ||
+        e.bindingSlot === 'boundCharacterPostHistory'
+      const beforeBundle =
+        postIdx < 0
+          ? sorted.filter((e) => !isHistoryBindingMarker(e))
+          : sorted
+              .slice(0, postIdx)
+              .filter((e) => !isHistoryBindingMarker(e))
+      const afterBundle =
+        postIdx < 0
+          ? []
+          : sorted
+              .slice(postIdx + 1)
+              .filter((e) => !isHistoryBindingMarker(e))
+
+      for (const e of beforeBundle) {
+        messages.push({ role: e.role, content: e.content })
+      }
+
+      const histBlockStart = messages.length
+      const historyInjected = injectRecentHistoryMessages(messages, ctx)
       if (!historyInjected) {
         messages.push({ role: 'system', content: PLACEHOLDER.history })
       }
-      const postHistory = relativeEntriesForGroup(preset, g, trigger)
-      for (const e of postHistory) {
-        if (e.bindingSlot === 'boundCharacterPostHistory') {
-          const post = mergedBoundPostHistory(ctx)
-          if (post) {
-            messages.push({ role: 'system', content: post })
-          }
-        } else if (e.bindingSlot === 'boundRecentHistory') {
-          if (!historyInjected) {
-            historyInjected = injectRecentHistoryMessages(messages, ctx)
-          }
-        } else {
-          messages.push({ role: e.role, content: e.content })
+      if (messages.length > histBlockStart) {
+        historyStart = histBlockStart
+        historyEnd = messages.length
+      }
+
+      if (postEntry) {
+        const post = mergedBoundPostHistory(ctx)
+        if (post) {
+          messages.push({ role: 'system', content: post })
         }
       }
-      if (
-        !historyInjected &&
-        !presetHasBinding(preset, 'boundRecentHistory')
-      ) {
-        historyInjected = injectRecentHistoryMessages(messages, ctx, historyStart)
+
+      for (const e of afterBundle) {
+        messages.push({ role: e.role, content: e.content })
       }
-      historyEnd = messages.length
     } else if (g.kind === 'userInput') {
       const entries = relativeEntriesForGroup(preset, g, trigger)
       const hasBinding = entries.some((e) => e.bindingSlot === 'boundUserInput')

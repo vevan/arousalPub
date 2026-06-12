@@ -472,6 +472,75 @@
 
 .editor-card--binding {
   border: 0.0625rem dashed rgba(var(--v-theme-secondary), 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.binding-editor__block,
+.binding-editor__slot {
+  padding: 1.125rem 1.375rem 0;
+}
+.binding-editor__slot {
+  padding-bottom: 0.25rem;
+  border-top: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.08);
+  margin-top: 0.875rem;
+}
+.binding-editor__section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-bottom: 0.625rem;
+}
+.binding-editor__section-head--slot {
+  gap: 0.75rem;
+}
+.binding-editor__block-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.binding-editor__slot-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.binding-editor__section-tag {
+  flex-shrink: 0;
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-secondary), 0.85);
+  padding: 0.125rem 0.4375rem;
+  border: 0.0625rem solid rgba(var(--v-theme-secondary), 0.35);
+  border-radius: 0.25rem;
+}
+.binding-editor__section-body {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: rgba(var(--v-theme-on-surface), 0.72);
+  padding: 0.75rem 1rem 1rem;
+  background: rgba(var(--v-theme-on-surface), 0.04);
+  border-radius: 0.5rem;
+}
+.binding-editor__section-body p {
+  margin: 0 0 0.75em;
+}
+.binding-editor__section-body p:last-child {
+  margin-bottom: 0;
+}
+.binding-editor__section-body p:first-child {
+  color: rgba(var(--v-theme-on-surface), 0.82);
 }
 .editor-card__head-row--binding {
   align-items: center;
@@ -595,6 +664,21 @@
   font-size: 0.7188rem;
   line-height: 1.5;
   color: rgba(var(--v-theme-on-surface), 0.52);
+}
+.group-bound-desc p,
+.group-bound-desc__line {
+  display: block;
+  margin: 0 0 0.5em;
+}
+.group-bound-desc p:last-child,
+.group-bound-desc__line:last-child {
+  margin-bottom: 0;
+}
+.group-bound-desc__drag {
+  color: rgba(var(--v-theme-on-surface), 0.62);
+}
+.binding-editor__section-body.group-bound-desc p:first-child {
+  color: rgba(var(--v-theme-on-surface), 0.82);
 }
 .entry-card--in-character-bundle {
   border: 0;

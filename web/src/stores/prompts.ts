@@ -280,6 +280,16 @@ export function normalizePreset(p: PromptPreset): PromptPreset {
     prompts = migrateCharacterGroupToFlatOrder(prompts, charG.id)
   }
 
+  if (histG) {
+    prompts = prompts.filter(
+      (e) =>
+        !(
+          e.groupId === histG.id &&
+          (e.bindingSlot as string | undefined) === 'boundRecentHistory'
+        ),
+    )
+  }
+
   return {
     ...rest,
     groups: normalizeGroups(p.groups),
@@ -1249,7 +1259,10 @@ export const usePromptsStore = defineStore('prompts', () => {
         if (!q) return true
         if (
           e.bindingSlot === 'boundCharacterSystem' &&
-          (q.includes('system') || q.includes('绑定') || q.includes('角色'))
+          (q.includes('system') ||
+            q.includes('绑定') ||
+            q.includes('角色') ||
+            q.includes('设定'))
         ) {
           return true
         }

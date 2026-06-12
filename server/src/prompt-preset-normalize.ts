@@ -49,12 +49,27 @@ function makeBindingSlotEntry(
  */
 export function normalizePresetForAssemble(p: PromptPreset): PromptPreset {
   const worldG = p.groups.find((g) => g.kind === 'world')
+  const histG = p.groups.find((g) => g.kind === 'history')
   const userInputG = p.groups.find((g) => g.kind === 'userInput')
 
   let prompts = p.prompts.map((e) => ({
     ...e,
     enabled: bindingSlotIsRequired(e.bindingSlot) ? true : e.enabled,
   }))
+
+  if (histG && !prompts.some((e) => e.bindingSlot === 'boundCharacterPostHistory')) {
+    const maxO = prompts
+      .filter((e) => e.groupId === histG.id)
+      .reduce((m, e) => Math.max(m, e.order), -1)
+    prompts.push(
+      makeBindingSlotEntry(
+        histG.id,
+        'boundCharacterPostHistory',
+        maxO + 1,
+        'binding-slot-character-post-history',
+      ),
+    )
+  }
 
   if (worldG && !prompts.some((e) => e.bindingSlot === 'boundWorld')) {
     prompts = prompts.map((e) =>
@@ -78,6 +93,16 @@ export function normalizePresetForAssemble(p: PromptPreset): PromptPreset {
         0,
         'binding-slot-user-input',
       ),
+    )
+  }
+
+  if (histG) {
+    prompts = prompts.filter(
+      (e) =>
+        !(
+          e.groupId === histG.id &&
+          (e.bindingSlot as string | undefined) === 'boundRecentHistory'
+        ),
     )
   }
 

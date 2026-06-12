@@ -130,3 +130,111 @@ describe('assemblePrompts group.enabled', () => {
     assert.equal(preset.prompts[0]?.enabled, true)
   })
 })
+
+describe('assemblePrompts history group order', () => {
+  const history = makeGroup({ id: 'g-history', kind: 'history', order: 0 })
+
+  it('injects custom entries before and after the history bundle by order', () => {
+    const preset = makePreset(
+      [history],
+      [
+        makeEntry({
+          id: 'before',
+          groupId: 'g-history',
+          content: 'hist-before',
+          order: 0,
+        }),
+        makeEntry({
+          id: 'bound-post',
+          groupId: 'g-history',
+          content: '',
+          bindingSlot: 'boundCharacterPostHistory',
+          order: 1,
+        }),
+        makeEntry({
+          id: 'after',
+          groupId: 'g-history',
+          content: 'hist-after',
+          order: 2,
+        }),
+      ],
+    )
+    const { messages } = assemblePrompts(preset, {
+      history: [
+        { role: 'user', content: 'u1' },
+        { role: 'assistant', content: 'a1' },
+      ],
+      characterPostHistory: 'post-block',
+    })
+    const contents = messages.map((m) => m.content)
+    assert.deepEqual(contents, [
+      'hist-before',
+      'u1',
+      'a1',
+      'post-block',
+      'hist-after',
+    ])
+  })
+
+  it('always injects recent history even without a binding slot entry', () => {
+    const preset = makePreset(
+      [history],
+      [
+        makeEntry({
+          id: 'custom',
+          groupId: 'g-history',
+          content: 'only-custom',
+          order: 0,
+        }),
+      ],
+    )
+    const { messages } = assemblePrompts(preset, {
+      history: [{ role: 'user', content: 'hello' }],
+    })
+    assert.deepEqual(messages.map((m) => m.content), ['only-custom', 'hello'])
+  })
+
+  it('injects post history immediately after recent history inside the bundle', () => {
+    const preset = makePreset(
+      [history],
+      [
+        makeEntry({
+          id: 'bound-post',
+          groupId: 'g-history',
+          content: '',
+          bindingSlot: 'boundCharacterPostHistory',
+          order: 0,
+        }),
+      ],
+    )
+    const { messages } = assemblePrompts(preset, {
+      history: [{ role: 'user', content: 'hello' }],
+      characterPostHistory: 'stay-in-character',
+    })
+    assert.deepEqual(
+      messages.map((m) => m.content),
+      ['hello', 'stay-in-character'],
+    )
+  })
+
+  it('skips post history when the binding slot is disabled but still injects chat history', () => {
+    const preset = makePreset(
+      [history],
+      [
+        makeEntry({
+          id: 'bound-post',
+          groupId: 'g-history',
+          content: '',
+          bindingSlot: 'boundCharacterPostHistory',
+          enabled: false,
+          order: 0,
+        }),
+      ],
+    )
+    const { messages } = assemblePrompts(preset, {
+      history: [{ role: 'user', content: 'hello' }],
+      characterPostHistory: 'post-only',
+    })
+    assert.deepEqual(messages.map((m) => m.content), ['hello'])
+  })
+})

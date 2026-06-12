@@ -457,7 +457,7 @@ async function copyPreviewJson() {
 }
 
 /** ============== helpers ============== */
-function placeholderDescKey(kind: GroupKind): string {
+function groupBoundDescKey(kind: GroupKind): string {
   switch (kind) {
     case 'character':
       return 'prompts.groupBoundDescCharacter'
@@ -469,6 +469,36 @@ function placeholderDescKey(kind: GroupKind): string {
       return 'prompts.groupBoundDescUserInput'
     default:
       return ''
+  }
+}
+
+function showHistoryTokenTrim(kind: GroupKind | undefined): boolean {
+  return kind === 'history'
+}
+
+function groupBoundTitleKey(kind: GroupKind | undefined): string {
+  switch (kind) {
+    case 'character':
+      return 'prompts.groupBoundTitleCharacter'
+    case 'world':
+      return 'prompts.groupBoundTitleWorld'
+    case 'history':
+      return 'prompts.groupBoundTitleHistory'
+    case 'userInput':
+      return 'prompts.groupBoundTitleUserInput'
+    default:
+      return 'prompts.groupBoundFromChat'
+  }
+}
+
+function bindingSlotBundlePartsKey(slot: string | undefined): string | null {
+  switch (slot) {
+    case 'boundCharacterSystem':
+      return 'prompts.boundCharacterSystemBundleParts'
+    case 'boundCharacterPostHistory':
+      return 'prompts.boundCharacterPostHistoryBundleParts'
+    default:
+      return null
   }
 }
 
@@ -553,6 +583,10 @@ function previewBody(p: PromptEntry) {
 
 function entryGroupName(p: PromptEntry) {
   return activeGroups.value.find((g) => g.id === p.groupId)?.name ?? '—'
+}
+
+function entryGroupKind(p: PromptEntry): GroupKind | undefined {
+  return activeGroups.value.find((g) => g.id === p.groupId)?.kind
 }
 
 /** 默认选中第一个 normal 分组 */
@@ -943,10 +977,18 @@ const canDeleteGroup = (g: PromptGroup) =>
                     {{ groupIcon(currentGroup.kind) }}
                   </v-icon>
                   <div class="character-system-bundle__title">
-                    {{ $t('prompts.groupBoundFromChat') }}
+                    {{ $t(groupBoundTitleKey(currentGroup?.kind)) }}
                   </div>
-                  <div class="character-system-bundle__desc">
-                    {{ $t(placeholderDescKey(currentGroup.kind)) }}
+                  <div class="character-system-bundle__desc group-bound-desc">
+                    <p v-if="groupBoundDescKey(currentGroup.kind)">
+                      {{ $t(groupBoundDescKey(currentGroup.kind)) }}
+                    </p>
+                    <p v-if="showHistoryTokenTrim(currentGroup.kind)">
+                      {{ $t('prompts.groupBoundHistoryTokenTrim') }}
+                    </p>
+                    <p class="group-bound-desc__drag">
+                      {{ $t('prompts.groupBoundDragHint') }}
+                    </p>
                   </div>
                 </div>
                 <article
@@ -976,6 +1018,12 @@ const canDeleteGroup = (g: PromptGroup) =>
                     <span class="entry-card__binding">{{ $t('prompts.bindingSlotTag') }}</span>
                   </div>
                   <div class="entry-card__meta entry-card__meta--binding">
+                    <span
+                      v-if="bindingSlotBundlePartsKey(p.bindingSlot)"
+                      class="entry-card__bundle-parts"
+                    >
+                      {{ $t(bindingSlotBundlePartsKey(p.bindingSlot)!) }}
+                    </span>
                     <span class="entry-card__pos">{{ $t('prompts.positionRelative') }}</span>
                   </div>
                 </article>
@@ -1073,8 +1121,32 @@ const canDeleteGroup = (g: PromptGroup) =>
         <section class="prompts-editor">
           <template v-if="selected?.bindingSlot">
             <div class="editor-card editor-card--binding">
-              <header class="editor-card__head">
-                <div class="editor-card__head-row editor-card__head-row--binding">
+              <section class="binding-editor__block">
+                <header class="binding-editor__section-head">
+                  <h2 class="binding-editor__block-title">
+                    {{ $t(groupBoundTitleKey(entryGroupKind(selected))) }}
+                  </h2>
+                  <span class="binding-editor__section-tag">
+                    {{ $t('prompts.bindingEditorBlockTag') }}
+                  </span>
+                </header>
+                <div class="binding-editor__section-body group-bound-desc">
+                  <template v-if="entryGroupKind(selected)">
+                    <p>{{ $t(groupBoundDescKey(entryGroupKind(selected)!)) }}</p>
+                    <p v-if="showHistoryTokenTrim(entryGroupKind(selected))">
+                      {{ $t('prompts.groupBoundHistoryTokenTrim') }}
+                    </p>
+                    <p class="group-bound-desc__drag">
+                      {{ $t('prompts.groupBoundDragHint') }}
+                    </p>
+                  </template>
+                </div>
+              </section>
+
+              <section class="binding-editor__slot">
+                <header
+                  class="binding-editor__section-head binding-editor__section-head--slot"
+                >
                   <button
                     v-if="!bindingSlotIsRequired(selected.bindingSlot)"
                     type="button"
@@ -1088,23 +1160,18 @@ const canDeleteGroup = (g: PromptGroup) =>
                     <span class="editor-card__enabled-track" />
                     <span class="editor-card__enabled-thumb" />
                   </button>
-                  <h2 class="editor-card__binding-title">
+                  <h3 class="binding-editor__slot-title">
                     {{ $t(bindingSlotLabelKey(selected.bindingSlot)) }}
-                  </h2>
-                  <span class="editor-card__seed">{{ $t('prompts.bindingSlotTag') }}</span>
-                </div>
-                <div class="editor-card__meta editor-card__meta--binding-head">
-                  <span>
-                    <span class="editor-card__meta-label">{{ $t('prompts.fieldGroup') }}</span>
-                    {{ entryGroupName(selected) }}
+                  </h3>
+                  <span class="binding-editor__section-tag">
+                    {{ $t('prompts.bindingEditorSlotTag') }}
                   </span>
+                </header>
+                <div class="binding-editor__section-body">
+                  <p>{{ $t(bindingSlotListHintKey(selected.bindingSlot)) }}</p>
+                  <p>{{ $t(bindingSlotEditorDescKey(selected.bindingSlot)) }}</p>
                 </div>
-              </header>
-
-              <div class="binding-editor__desc">
-                <p>{{ $t(bindingSlotListHintKey(selected.bindingSlot)) }}</p>
-                <p>{{ $t(bindingSlotEditorDescKey(selected.bindingSlot)) }}</p>
-              </div>
+              </section>
 
               <footer class="editor-card__foot">
                 <span class="editor-card__autosave">{{ $t('prompts.autosaveHint') }}</span>
@@ -1312,13 +1379,26 @@ const canDeleteGroup = (g: PromptGroup) =>
               </v-icon>
               <h2 class="editor-empty__title">
                 {{ currentGroup && !isEntryListGroup
-                  ? $t('prompts.groupBoundFromChat')
+                  ? $t(groupBoundTitleKey(currentGroup.kind))
                   : $t('prompts.editorEmptyTitle') }}
               </h2>
-              <p class="editor-empty__hint">
-                {{ currentGroup && !isEntryListGroup
-                  ? $t(placeholderDescKey(currentGroup.kind))
-                  : $t('prompts.editorEmptyHint') }}
+              <p
+                v-if="currentGroup && !isEntryListGroup"
+                class="editor-empty__hint group-bound-desc"
+              >
+                <span class="group-bound-desc__line">{{
+                  $t(groupBoundDescKey(currentGroup.kind))
+                }}</span>
+                <span
+                  v-if="showHistoryTokenTrim(currentGroup.kind)"
+                  class="group-bound-desc__line"
+                >{{ $t('prompts.groupBoundHistoryTokenTrim') }}</span>
+                <span class="group-bound-desc__line group-bound-desc__drag">{{
+                  $t('prompts.groupBoundDragHint')
+                }}</span>
+              </p>
+              <p v-else class="editor-empty__hint">
+                {{ $t('prompts.editorEmptyHint') }}
               </p>
               <button
                 v-if="isEntryListGroup"

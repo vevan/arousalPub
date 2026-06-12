@@ -1,4 +1,3 @@
-import { readJsonSseStream } from '@/utils/json-sse'
 import { translateApiError } from '@/utils/api-error-message'
 import { formatChatMessagesForDisplay } from '@/utils/format-prompt-json-display'
 import { computed, ref, type Ref } from 'vue'
@@ -17,7 +16,8 @@ export function useAssemblePreview(opts: {
   const assemblePreviewLoading = ref(false)
   const assemblePreviewError = ref('')
   const assemblePreviewErrorCode = ref('')
-  const assemblePreviewJson = ref('')
+  const assemblePreviewMessages = ref<{ role: string; content: string }[]>([])
+  const assemblePreviewFormattedJson = ref('')
   const assemblePreviewRawJson = ref('')
   const assemblePreviewMeta = ref({
     messages: 0,
@@ -44,7 +44,8 @@ export function useAssemblePreview(opts: {
     assemblePreviewLoading.value = true
     assemblePreviewError.value = ''
     assemblePreviewErrorCode.value = ''
-    assemblePreviewJson.value = ''
+    assemblePreviewMessages.value = []
+    assemblePreviewFormattedJson.value = ''
     assemblePreviewRawJson.value = ''
     assemblePreviewCopied.value = false
     assemblePreviewRawCopied.value = false
@@ -119,9 +120,18 @@ export function useAssemblePreview(opts: {
           : [],
       }
       assemblePreviewRawJson.value = JSON.stringify(messages, null, 2)
-      assemblePreviewJson.value = formatChatMessagesForDisplay(
+      assemblePreviewFormattedJson.value = formatChatMessagesForDisplay(
         messages as Parameters<typeof formatChatMessagesForDisplay>[0],
       )
+      assemblePreviewMessages.value = messages
+        .filter(
+          (m): m is { role: string; content: string } =>
+            !!m &&
+            typeof m === 'object' &&
+            typeof (m as { role?: unknown }).role === 'string' &&
+            typeof (m as { content?: unknown }).content === 'string',
+        )
+        .map((m) => ({ role: m.role, content: m.content }))
     } catch {
       assemblePreviewError.value = opts.t('chat.previewAssembleLoadFailed')
     } finally {
@@ -156,7 +166,7 @@ export function useAssemblePreview(opts: {
 
   async function copyAssemblePreviewJson() {
     await copyAssemblePreviewText(
-      assemblePreviewJson.value,
+      assemblePreviewFormattedJson.value,
       assemblePreviewCopied,
     )
   }
@@ -174,7 +184,7 @@ export function useAssemblePreview(opts: {
     assemblePreviewError,
     assemblePreviewErrorCode,
     assemblePreviewMemoryCorrupt,
-    assemblePreviewJson,
+    assemblePreviewMessages,
     assemblePreviewMeta,
     assemblePreviewCopied,
     assemblePreviewRawCopied,

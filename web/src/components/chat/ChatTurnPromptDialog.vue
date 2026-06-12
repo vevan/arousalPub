@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AssembledMessagesPanel from '@/components/prompts/AssembledMessagesPanel.vue'
 import type { useChatSession } from '@/composables/useChatSession'
 import type {
   AssemblyAudit,
@@ -59,12 +60,6 @@ const hasPerformance = computed(() => {
       p.stream,
   )
 })
-
-function roleChipColor(role: string): string {
-  if (role === 'system') return 'primary'
-  if (role === 'user') return 'secondary'
-  return 'success'
-}
 
 function formatScore(score: number | undefined): string {
   if (typeof score !== 'number' || !Number.isFinite(score)) return '—'
@@ -168,24 +163,7 @@ function formatTokenSource(
             >
             <v-tabs-window-item value="messages">
               <div class="audit-card__pane">
-                <div
-                  v-for="(msg, idx) in messages"
-                  :key="idx"
-                  class="audit-msg"
-                >
-                  <div class="audit-msg__head">
-                    <span class="audit-msg__index">#{{ idx + 1 }}</span>
-                    <v-chip
-                      size="x-small"
-                      :color="roleChipColor(msg.role)"
-                      variant="tonal"
-                      label
-                    >
-                      {{ msg.role }}
-                    </v-chip>
-                  </div>
-                  <pre class="audit-msg__body">{{ msg.content }}</pre>
-                </div>
+                <AssembledMessagesPanel :messages="messages" />
               </div>
             </v-tabs-window-item>
 

@@ -1222,8 +1222,21 @@
 
 .audit-msg {
   border       : 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-left  : 3px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 0.5rem;
   overflow     : hidden;
+}
+
+.audit-msg--system {
+  border-left-color: rgb(var(--v-theme-primary));
+}
+
+.audit-msg--user {
+  border-left-color: rgb(var(--v-theme-secondary));
+}
+
+.audit-msg--assistant {
+  border-left-color: rgb(var(--v-theme-success));
 }
 
 .audit-msg + .audit-msg {
@@ -1254,6 +1267,10 @@
   font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
   font-size  : 0.8125rem;
   line-height: 1.45;
+}
+
+.assembled-messages-panel__empty {
+  padding: 0.5rem 0;
 }
 
 .audit-table {

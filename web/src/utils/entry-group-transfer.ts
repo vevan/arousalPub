@@ -11,6 +11,7 @@ export function promptEntryAllowedInGroup(
   const slot = entry.bindingSlot
   if (!slot) return true
   if (slot === 'boundCharacterSystem') return group.kind === 'character'
+  if (slot === 'boundUserPersona') return group.kind === 'character'
   if (slot === 'boundCharacterPostHistory') return group.kind === 'history'
   if (slot === 'boundWorld') return group.kind === 'world'
   if (slot === 'boundUserInput') return group.kind === 'userInput'

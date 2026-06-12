@@ -17,6 +17,7 @@ export type PromptTrigger = 'normal' | 'continue' | 'swipe' | 'regenerate'
 /** 会话绑定角色卡槽位：正文由聊天侧注入，条目仅排序与启用 */
 export type PromptBindingSlot =
   | 'boundCharacterSystem'
+  | 'boundUserPersona'
   | 'boundWorld'
   | 'boundCharacterPostHistory'
   | 'boundUserInput'
@@ -61,7 +62,8 @@ export interface PromptEntry {
 /** 仅用于 normalize：旧版「卡前 / 槽 / 卡后」分区 → 展平为单一 order */
 function characterBundleListPartitionLegacy(e: PromptEntry): number {
   if (e.bindingSlot === 'boundCharacterSystem') return 1
-  if (e.characterBundlePosition === 'after') return 2
+  if (e.bindingSlot === 'boundUserPersona') return 2
+  if (e.characterBundlePosition === 'after') return 3
   return 0
 }
 
@@ -200,7 +202,11 @@ function makeBindingSlotEntry(
 }
 
 function bindingSlotIsRequired(slot: PromptBindingSlot | undefined): boolean {
-  return slot === 'boundWorld' || slot === 'boundUserInput'
+  return (
+    slot === 'boundWorld' ||
+    slot === 'boundUserInput' ||
+    slot === 'boundUserPersona'
+  )
 }
 
 /**
@@ -236,6 +242,27 @@ export function normalizePreset(p: PromptPreset): PromptPreset {
     prompts.push(
       makeBindingSlotEntry(charG.id, 'boundCharacterSystem', maxO + 1, {
         enabled: sysOn,
+      }),
+    )
+  }
+  if (charG && !prompts.some((e) => e.bindingSlot === 'boundUserPersona')) {
+    const charSlot = prompts.find(
+      (e) =>
+        e.groupId === charG.id && e.bindingSlot === 'boundCharacterSystem',
+    )
+    const insertAfter =
+      charSlot?.order ??
+      prompts
+        .filter((e) => e.groupId === charG.id)
+        .reduce((m, e) => Math.max(m, e.order), -1)
+    prompts = prompts.map((e) =>
+      e.groupId === charG.id && e.order > insertAfter
+        ? { ...e, order: e.order + 1 }
+        : e,
+    )
+    prompts.push(
+      makeBindingSlotEntry(charG.id, 'boundUserPersona', insertAfter + 1, {
+        id: 'binding-slot-user-persona',
       }),
     )
   }
@@ -1131,6 +1158,12 @@ export const usePromptsStore = defineStore('prompts', () => {
       return
     }
     if (
+      moved.bindingSlot === 'boundUserPersona' &&
+      targetGroup.kind !== 'character'
+    ) {
+      return
+    }
+    if (
       moved.bindingSlot === 'boundCharacterPostHistory' &&
       targetGroup.kind !== 'history'
     ) {
@@ -1151,7 +1184,28 @@ export const usePromptsStore = defineStore('prompts', () => {
       .slice()
       .sort((a, b) => a.order - b.order)
     const clamped = Math.max(0, Math.min(targetIndex, targetList.length))
-    targetList.splice(clamped, 0, { ...moved, groupId: targetGroupId })
+    let insertAt = clamped
+    if (targetGroup.kind === 'character') {
+      if (moved.bindingSlot === 'boundUserPersona') {
+        const charEntry = targetList.find(
+          (e) => e.bindingSlot === 'boundCharacterSystem',
+        )
+        if (charEntry) {
+          const charPos = targetList.indexOf(charEntry)
+          insertAt = Math.max(insertAt, charPos + 1)
+        }
+      }
+      if (moved.bindingSlot === 'boundCharacterSystem') {
+        const userEntry = targetList.find(
+          (e) => e.bindingSlot === 'boundUserPersona',
+        )
+        if (userEntry) {
+          const userPos = targetList.indexOf(userEntry)
+          insertAt = Math.min(insertAt, userPos)
+        }
+      }
+    }
+    targetList.splice(insertAt, 0, { ...moved, groupId: targetGroupId })
     const reorderedTarget = targetList.map((e, i) => ({ ...e, order: i }))
 
     const fromGroupId = moved.groupId
@@ -1262,6 +1316,15 @@ export const usePromptsStore = defineStore('prompts', () => {
           (q.includes('system') ||
             q.includes('绑定') ||
             q.includes('角色') ||
+            q.includes('设定'))
+        ) {
+          return true
+        }
+        if (
+          e.bindingSlot === 'boundUserPersona' &&
+          (q.includes('persona') ||
+            q.includes('用户') ||
+            q.includes('user') ||
             q.includes('设定'))
         ) {
           return true

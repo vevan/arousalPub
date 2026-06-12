@@ -25,6 +25,7 @@ export type PromptTrigger = 'normal' | 'continue' | 'swipe' | 'regenerate'
 
 export type PromptBindingSlot =
   | 'boundCharacterSystem'
+  | 'boundUserPersona'
   | 'boundWorld'
   | 'boundMemory'
   | 'boundCharacterPostHistory'
@@ -131,10 +132,44 @@ export interface AssembleResult {
 
 const PLACEHOLDER = {
   character: ASSEMBLE_INJECT_PLACEHOLDER.characterCard,
+  userPersona: ASSEMBLE_INJECT_PLACEHOLDER.boundUserPersona,
   world: ASSEMBLE_INJECT_PLACEHOLDER.lorebook,
   history: ASSEMBLE_INJECT_PLACEHOLDER.chatHistory,
   userInput: ASSEMBLE_INJECT_PLACEHOLDER.userInput,
 } as const
+
+/** 宏展开后剔除 content.trim() 为空的 message（保留 side-effect 宏如 setvar 已执行） */
+export function compactEmptyMessages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.filter((m) => m.content.trim().length > 0)
+}
+
+function compactEmptyMessagesAdjustHistory(
+  messages: ChatMessage[],
+  historyStart: number,
+  historyEnd: number,
+): { messages: ChatMessage[]; historyStart: number; historyEnd: number } {
+  if (historyStart < 0) {
+    return {
+      messages: compactEmptyMessages(messages),
+      historyStart: -1,
+      historyEnd: -1,
+    }
+  }
+  const out: ChatMessage[] = []
+  let hs = -1
+  let he = -1
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i]
+    if (!m.content.trim()) continue
+    const newIdx = out.length
+    out.push(m)
+    if (i >= historyStart && i < historyEnd) {
+      if (hs < 0) hs = newIdx
+      he = newIdx + 1
+    }
+  }
+  return { messages: out, historyStart: hs, historyEnd: he }
+}
 
 function injectRecentHistoryMessages(
   messages: ChatMessage[],
@@ -158,19 +193,27 @@ function injectRecentHistoryMessages(
   return true
 }
 
-function mergedBoundSystemPrompt(ctx: AssembleContext): string | undefined {
-  const parts: string[] = []
-  const userSp = ctx.userCharacter?.systemPrompt?.trim()
-  if (userSp) parts.push(userSp)
+function mergedCharSystemPrompt(ctx: AssembleContext): string | undefined {
   if (ctx.characters && ctx.characters.length > 0) {
+    const parts: string[] = []
     for (const c of ctx.characters) {
       const s = c.systemPrompt?.trim()
       if (s) parts.push(s)
     }
+    if (parts.length > 0) return parts.join('\n\n')
   }
-  if (parts.length > 0) return parts.join('\n\n')
   const one = ctx.characterSystemPrompt?.trim()
   return one || undefined
+}
+
+function mergedUserPersonaBody(ctx: AssembleContext): string | undefined {
+  const parts: string[] = []
+  const userSp = ctx.userCharacter?.systemPrompt?.trim()
+  if (userSp) parts.push(userSp)
+  const userBody = ctx.userCharacter?.cardBody?.trim()
+  if (userBody) parts.push(userBody)
+  if (parts.length > 0) return parts.join('\n\n')
+  return undefined
 }
 
 function mergedBoundPostHistory(ctx: AssembleContext): string | undefined {
@@ -180,7 +223,7 @@ function mergedBoundPostHistory(ctx: AssembleContext): string | undefined {
       const s = c.postHistory?.trim()
       if (s) parts.push(s)
     }
-    return parts.length > 0 ? parts.join('\n\n') : undefined
+    if (parts.length > 0) return parts.join('\n\n')
   }
   const one = ctx.characterPostHistory?.trim()
   return one || undefined
@@ -190,11 +233,8 @@ function looksLikePersonaXml(s: string): boolean {
   return /^\s*<(char|user)\b/i.test(s)
 }
 
-function mergedCharacterCardBody(ctx: AssembleContext): string | undefined {
+function mergedCharCardBody(ctx: AssembleContext): string | undefined {
   const blocks: string[] = []
-  const userBody = ctx.userCharacter?.cardBody?.trim()
-  if (userBody) blocks.push(userBody)
-
   if (ctx.characters && ctx.characters.length > 0) {
     const bodies = ctx.characters
       .map((c) => c.cardBody?.trim())
@@ -223,6 +263,50 @@ function mergedCharacterCardBody(ctx: AssembleContext): string | undefined {
 
 export { estimateTokens, countChatMessagesTokens } from './token-count.js'
 
+const ROLE_RANK: Record<PromptRole, number> = {
+  assistant: 0,
+  user: 1,
+  system: 2,
+}
+
+/** DOC §6.6：同位置同深度内 injectionOrder → order → role；depth 方向由锚点区段决定 */
+export function compareInjectionEntries(
+  a: PromptEntry,
+  b: PromptEntry,
+  opts?: { depthDirection?: 'asc' | 'desc' },
+): number {
+  const dir = opts?.depthDirection ?? 'desc'
+  if (dir === 'desc') {
+    const d = b.injectionDepth - a.injectionDepth
+    if (d !== 0) return d
+  } else {
+    const d = a.injectionDepth - b.injectionDepth
+    if (d !== 0) return d
+  }
+  const io = a.injectionOrder - b.injectionOrder
+  if (io !== 0) return io
+  const ord = a.order - b.order
+  if (ord !== 0) return ord
+  return ROLE_RANK[a.role] - ROLE_RANK[b.role]
+}
+
+function sortRelativeSlice(
+  entries: PromptEntry[],
+  afterAnchor: boolean,
+): PromptEntry[] {
+  return entries
+    .slice()
+    .sort((a, b) =>
+      compareInjectionEntries(a, b, {
+        depthDirection: afterAnchor ? 'asc' : 'desc',
+      }),
+    )
+}
+
+function sortByListOrder(entries: PromptEntry[]): PromptEntry[] {
+  return entries.slice().sort((a, b) => a.order - b.order)
+}
+
 function messagesTokens(msgs: ChatMessage[], tokenModel?: string): number {
   return countChatMessagesTokens(msgs, { model: tokenModel })
 }
@@ -234,6 +318,7 @@ function entryMatchesTrigger(
   if (
     entry.bindingSlot === 'boundWorld' ||
     entry.bindingSlot === 'boundUserInput' ||
+    entry.bindingSlot === 'boundUserPersona' ||
     entry.bindingSlot === 'boundMemory'
   ) {
     return true
@@ -257,22 +342,19 @@ function entryAllowedForGroup(
   return entryAllowedWhenGroupMuted(entry)
 }
 
-/** 取分组内可注入 + trigger 匹配 + position='relative' 的条目，按 order 升序 */
+/** 取分组内 relative 条目（未排序；列表 order 仅用于锚点定位） */
 function relativeEntriesForGroup(
   preset: PromptPreset,
   group: PromptGroup,
   trigger: PromptTrigger | undefined,
 ): PromptEntry[] {
-  return preset.prompts
-    .filter(
-      (e) =>
-        e.groupId === group.id &&
-        e.injectionPosition === 'relative' &&
-        entryAllowedForGroup(e, group) &&
-        entryMatchesTrigger(e, trigger),
-    )
-    .slice()
-    .sort((a, b) => a.order - b.order)
+  return preset.prompts.filter(
+    (e) =>
+      e.groupId === group.id &&
+      e.injectionPosition === 'relative' &&
+      entryAllowedForGroup(e, group) &&
+      entryMatchesTrigger(e, trigger),
+  )
 }
 
 function presetHasBinding(
@@ -320,43 +402,76 @@ export function assemblePrompts(
 
   for (const g of groups) {
     if (g.kind === 'normal') {
-      const entries = relativeEntriesForGroup(preset, g, trigger)
+      const entries = sortRelativeSlice(
+        relativeEntriesForGroup(preset, g, trigger),
+        false,
+      )
       for (const e of entries) {
         messages.push({ role: e.role, content: e.content })
       }
     } else if (g.kind === 'character') {
       const charExtras = relativeEntriesForGroup(preset, g, trigger)
-      const sorted = charExtras.slice().sort((a, b) => a.order - b.order)
-      const sysIdx = sorted.findIndex(
+      const sorted = sortByListOrder(charExtras)
+      const charIdx = sorted.findIndex(
         (e) => e.bindingSlot === 'boundCharacterSystem',
       )
-      const sysEntry = sysIdx >= 0 ? sorted[sysIdx] : undefined
-      const beforeBundle =
-        sysIdx < 0
-          ? sorted.filter((e) => e.bindingSlot !== 'boundCharacterSystem')
-          : sorted
-              .slice(0, sysIdx)
-              .filter((e) => e.bindingSlot !== 'boundCharacterSystem')
-      const afterBundle =
-        sysIdx < 0
-          ? []
-          : sorted
-              .slice(sysIdx + 1)
-              .filter((e) => e.bindingSlot !== 'boundCharacterSystem')
-      for (const e of beforeBundle) {
+      const userIdx = sorted.findIndex(
+        (e) => e.bindingSlot === 'boundUserPersona',
+      )
+      const charEntry = charIdx >= 0 ? sorted[charIdx] : undefined
+      const userEntry = userIdx >= 0 ? sorted[userIdx] : undefined
+      const isCharacterBinding = (e: PromptEntry) =>
+        e.bindingSlot === 'boundCharacterSystem' ||
+        e.bindingSlot === 'boundUserPersona'
+      const effectiveCharIdx = charIdx >= 0 ? charIdx : sorted.length
+      const effectiveUserIdx =
+        userIdx >= 0 ? userIdx : sorted.length
+      const beforeChar = sorted
+        .slice(0, effectiveCharIdx)
+        .filter((e) => !isCharacterBinding(e))
+      const between =
+        effectiveUserIdx > effectiveCharIdx
+          ? sorted
+              .slice(effectiveCharIdx + 1, effectiveUserIdx)
+              .filter((e) => !isCharacterBinding(e))
+          : []
+      const afterUser =
+        effectiveUserIdx < sorted.length
+          ? sorted
+              .slice(effectiveUserIdx + 1)
+              .filter((e) => !isCharacterBinding(e))
+          : sorted.filter((e) => !isCharacterBinding(e))
+
+      for (const e of sortRelativeSlice(beforeChar, false)) {
         messages.push({ role: e.role, content: e.content })
       }
-      if (sysEntry) {
-        const sys = mergedBoundSystemPrompt(ctx)
-        if (sys) {
-          messages.push({ role: 'system', content: sys })
+      if (charEntry) {
+        if (charEntry.enabled !== false) {
+          const sys = mergedCharSystemPrompt(ctx)
+          if (sys) {
+            messages.push({ role: 'system', content: sys })
+          }
         }
+        messages.push({
+          role: 'system',
+          content: mergedCharCardBody(ctx) ?? PLACEHOLDER.character,
+        })
+      } else if (!userEntry) {
+        messages.push({
+          role: 'system',
+          content: mergedCharCardBody(ctx) ?? PLACEHOLDER.character,
+        })
       }
-      messages.push({
-        role: 'system',
-        content: mergedCharacterCardBody(ctx) ?? PLACEHOLDER.character,
-      })
-      for (const e of afterBundle) {
+      for (const e of sortRelativeSlice(between, true)) {
+        messages.push({ role: e.role, content: e.content })
+      }
+      if (userEntry) {
+        messages.push({
+          role: 'system',
+          content: mergedUserPersonaBody(ctx) ?? PLACEHOLDER.userPersona,
+        })
+      }
+      for (const e of sortRelativeSlice(afterUser, true)) {
         messages.push({ role: e.role, content: e.content })
       }
     } else if (g.kind === 'world') {
@@ -364,7 +479,21 @@ export function assemblePrompts(
       const usePlaceholder =
         w === undefined || w === null || w === PLACEHOLDER.world || !String(w).trim()
       const entries = relativeEntriesForGroup(preset, g, trigger)
-      const hasBinding = entries.some((e) => e.bindingSlot === 'boundWorld')
+      const sorted = sortByListOrder(entries)
+      const worldIdx = sorted.findIndex((e) => e.bindingSlot === 'boundWorld')
+      const hasBinding = worldIdx >= 0
+      const beforeBundle =
+        worldIdx < 0
+          ? sorted.filter((e) => e.bindingSlot !== 'boundWorld')
+          : sorted
+              .slice(0, worldIdx)
+              .filter((e) => e.bindingSlot !== 'boundWorld')
+      const afterBundle =
+        worldIdx < 0
+          ? []
+          : sorted
+              .slice(worldIdx + 1)
+              .filter((e) => e.bindingSlot !== 'boundWorld')
       if (!hasBinding) {
         messages.push({
           role: 'system',
@@ -373,16 +502,20 @@ export function assemblePrompts(
             : loreTextToXmlBlock(String(w)),
         })
       }
+      for (const e of sortRelativeSlice(beforeBundle, false)) {
+        messages.push({ role: e.role, content: e.content })
+      }
+      if (hasBinding) {
+        messages.push({
+          role: 'system',
+          content: usePlaceholder
+            ? PLACEHOLDER.world
+            : loreTextToXmlBlock(String(w)),
+        })
+      }
       let memoryInjected = false
-      for (const e of entries) {
-        if (e.bindingSlot === 'boundWorld') {
-          messages.push({
-            role: 'system',
-            content: usePlaceholder
-              ? PLACEHOLDER.world
-              : loreTextToXmlBlock(String(w)),
-          })
-        } else if (e.bindingSlot === 'boundMemory') {
+      for (const e of sortRelativeSlice(afterBundle, true)) {
+        if (e.bindingSlot === 'boundMemory') {
           const mem = ctx.memoryText?.trim()
           if (mem) {
             messages.push({ role: 'system', content: mem })
@@ -401,7 +534,7 @@ export function assemblePrompts(
       }
     } else if (g.kind === 'history') {
       const entries = relativeEntriesForGroup(preset, g, trigger)
-      const sorted = entries.slice().sort((a, b) => a.order - b.order)
+      const sorted = sortByListOrder(entries)
       const postIdx = sorted.findIndex(
         (e) => e.bindingSlot === 'boundCharacterPostHistory',
       )
@@ -422,7 +555,7 @@ export function assemblePrompts(
               .slice(postIdx + 1)
               .filter((e) => !isHistoryBindingMarker(e))
 
-      for (const e of beforeBundle) {
+      for (const e of sortRelativeSlice(beforeBundle, false)) {
         messages.push({ role: e.role, content: e.content })
       }
 
@@ -443,27 +576,43 @@ export function assemblePrompts(
         }
       }
 
-      for (const e of afterBundle) {
+      for (const e of sortRelativeSlice(afterBundle, true)) {
         messages.push({ role: e.role, content: e.content })
       }
     } else if (g.kind === 'userInput') {
       const entries = relativeEntriesForGroup(preset, g, trigger)
-      const hasBinding = entries.some((e) => e.bindingSlot === 'boundUserInput')
+      const sorted = sortByListOrder(entries)
+      const inputIdx = sorted.findIndex((e) => e.bindingSlot === 'boundUserInput')
+      const hasBinding = inputIdx >= 0
+      const beforeBundle =
+        inputIdx < 0
+          ? sorted.filter((e) => e.bindingSlot !== 'boundUserInput')
+          : sorted
+              .slice(0, inputIdx)
+              .filter((e) => e.bindingSlot !== 'boundUserInput')
+      const afterBundle =
+        inputIdx < 0
+          ? []
+          : sorted
+              .slice(inputIdx + 1)
+              .filter((e) => e.bindingSlot !== 'boundUserInput')
       if (!hasBinding) {
         messages.push({
           role: 'user',
           content: ctx.userInput ?? PLACEHOLDER.userInput,
         })
       }
-      for (const e of entries) {
-        if (e.bindingSlot === 'boundUserInput') {
-          messages.push({
-            role: 'user',
-            content: ctx.userInput ?? PLACEHOLDER.userInput,
-          })
-        } else {
-          messages.push({ role: e.role, content: e.content })
-        }
+      for (const e of sortRelativeSlice(beforeBundle, false)) {
+        messages.push({ role: e.role, content: e.content })
+      }
+      if (hasBinding) {
+        messages.push({
+          role: 'user',
+          content: ctx.userInput ?? PLACEHOLDER.userInput,
+        })
+      }
+      for (const e of sortRelativeSlice(afterBundle, true)) {
+        messages.push({ role: e.role, content: e.content })
       }
     }
   }
@@ -486,7 +635,7 @@ export function assemblePrompts(
   for (const d of sortedDepths) {
     const items = (byDepth.get(d) ?? [])
       .slice()
-      .sort((a, b) => a.injectionOrder - b.injectionOrder)
+      .sort((a, b) => compareInjectionEntries(a, b))
     const insertAt = Math.max(0, messages.length - d)
     messages.splice(
       insertAt,
@@ -524,6 +673,18 @@ export function assemblePrompts(
     for (const m of messages) {
       m.content = applyPromptMacroPipeline(m.content, macro)
     }
+  }
+
+  if (!ctx.deferMacroExpansion) {
+    const compacted = compactEmptyMessagesAdjustHistory(
+      messages,
+      historyStart,
+      historyEnd,
+    )
+    messages.length = 0
+    messages.push(...compacted.messages)
+    historyStart = compacted.historyStart
+    historyEnd = compacted.historyEnd
   }
 
   let droppedHistoryCount = 0

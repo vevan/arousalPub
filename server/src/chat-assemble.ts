@@ -2,6 +2,7 @@ import { ApiErrorCodes } from './api-error-codes.js'
 import { isMemoryVectorIndexCorruptError } from './memory-vector-index-error.js'
 import {
   assemblePrompts,
+  compactEmptyMessages,
   type BoundCharacterSlice,
   type ChatMessage,
   type PromptPreset,
@@ -538,10 +539,14 @@ export async function buildConversationOutboundMessages(
     })
     await persistMacroVarMutations(macroContext)
   }
+  const finalMessages = compactEmptyMessages(messagesAfterPlugins)
   const finalEstimatedTokens =
-    messagesAfterPlugins.length === messages.length
+    finalMessages.length === messages.length &&
+    finalMessages.every(
+      (m, i) => m.content === messagesAfterPlugins[i]?.content,
+    )
       ? estimatedTokens
-      : countChatMessagesTokens(messagesAfterPlugins, { model: tokenModel })
+      : countChatMessagesTokens(finalMessages, { model: tokenModel })
 
   const finalMemoryText = memoryTextFromTrimState(trimState)
   const afterPluginsAt = auditEnabled ? performance.now() : 0
@@ -592,7 +597,7 @@ export async function buildConversationOutboundMessages(
   }
 
   return {
-    messages: messagesAfterPlugins,
+    messages: finalMessages,
     estimatedTokens: finalEstimatedTokens,
     droppedLoreCount,
     droppedHistoryCount,

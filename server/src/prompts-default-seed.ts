@@ -154,6 +154,12 @@ export function buildDefaultPromptPreset(): Record<string, unknown> {
       0,
       'binding-slot-character-system',
     ),
+    makeBindingSlotEntry(
+      GROUP.character,
+      'boundUserPersona',
+      1,
+      'binding-slot-user-persona',
+    ),
     makeBindingSlotEntry(GROUP.world, 'boundWorld', 0, 'binding-slot-world'),
     makeBindingSlotEntry(
       GROUP.history,

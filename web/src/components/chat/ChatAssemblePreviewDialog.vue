@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AssembledMessagesPanel from '@/components/prompts/AssembledMessagesPanel.vue'
 import type { useChatSession } from '@/composables/useChatSession'
 import {
   CHAT_CONVERSATION_ACTIONS_KEY,
@@ -14,7 +15,7 @@ const {
   assemblePreviewLoading,
   assemblePreviewError,
   assemblePreviewMemoryCorrupt,
-  assemblePreviewJson,
+  assemblePreviewMessages,
   assemblePreviewMeta,
   assemblePreviewCopied,
   assemblePreviewRawCopied,
@@ -131,10 +132,10 @@ function onJumpMemoryRebuild() {
             {{ $t('chat.previewAssembleMemoryRebuildHint') }}
           </p>
         </v-alert>
-        <pre
-          v-else-if="assemblePreviewJson"
-          class="preview-card__json"
-        >{{ assemblePreviewJson }}</pre>
+        <AssembledMessagesPanel
+          v-else-if="assemblePreviewMessages.length > 0"
+          :messages="assemblePreviewMessages"
+        />
       </v-card-text>
       <v-card-actions class="preview-card__foot">
         <template v-if="assemblePreviewError">
@@ -158,7 +159,7 @@ function onJumpMemoryRebuild() {
         </template>
         <template v-else>
           <v-spacer />
-          <template v-if="assemblePreviewJson">
+          <template v-if="assemblePreviewMessages.length > 0">
             <button
               type="button"
               class="editor-card__btn"

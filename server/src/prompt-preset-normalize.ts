@@ -14,7 +14,11 @@ function normalizeGroups(groups: PromptGroup[]): PromptGroup[] {
 }
 
 function bindingSlotIsRequired(slot: PromptBindingSlot | undefined): boolean {
-  return slot === 'boundWorld' || slot === 'boundUserInput'
+  return (
+    slot === 'boundWorld' ||
+    slot === 'boundUserInput' ||
+    slot === 'boundUserPersona'
+  )
 }
 
 function makeBindingSlotEntry(
@@ -48,6 +52,7 @@ function makeBindingSlotEntry(
  * 组装前补全 boundWorld / boundUserInput 等绑定槽（与 Web `normalizePreset` 对齐，避免旧预设缺槽只显示占位符）。
  */
 export function normalizePresetForAssemble(p: PromptPreset): PromptPreset {
+  const charG = p.groups.find((g) => g.kind === 'character')
   const worldG = p.groups.find((g) => g.kind === 'world')
   const histG = p.groups.find((g) => g.kind === 'history')
   const userInputG = p.groups.find((g) => g.kind === 'userInput')
@@ -56,6 +61,31 @@ export function normalizePresetForAssemble(p: PromptPreset): PromptPreset {
     ...e,
     enabled: bindingSlotIsRequired(e.bindingSlot) ? true : e.enabled,
   }))
+
+  if (charG && !prompts.some((e) => e.bindingSlot === 'boundUserPersona')) {
+    const charSlot = prompts.find(
+      (e) =>
+        e.groupId === charG.id && e.bindingSlot === 'boundCharacterSystem',
+    )
+    const insertAfter =
+      charSlot?.order ??
+      prompts
+        .filter((e) => e.groupId === charG.id)
+        .reduce((m, e) => Math.max(m, e.order), -1)
+    prompts = prompts.map((e) =>
+      e.groupId === charG.id && e.order > insertAfter
+        ? { ...e, order: e.order + 1 }
+        : e,
+    )
+    prompts.push(
+      makeBindingSlotEntry(
+        charG.id,
+        'boundUserPersona',
+        insertAfter + 1,
+        'binding-slot-user-persona',
+      ),
+    )
+  }
 
   if (histG && !prompts.some((e) => e.bindingSlot === 'boundCharacterPostHistory')) {
     const maxO = prompts

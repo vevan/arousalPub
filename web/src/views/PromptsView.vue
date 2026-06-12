@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import AssembledMessagesPanel from '@/components/prompts/AssembledMessagesPanel.vue'
 import GroupTargetPickerDialog from '@/components/GroupTargetPickerDialog.vue'
 import {
   groupAllowsPromptEntries,
   usePromptsStore,
 } from '@/stores/prompts'
 import { promptGroupPickerItems } from '@/utils/entry-group-transfer'
+import { formatChatMessagesForDisplay } from '@/utils/format-prompt-json-display'
 import type {
   GroupKind,
   PromptEntry,
@@ -374,6 +376,7 @@ const previewOpen = ref(false)
 const conn = useConnectionStore()
 const previewTrigger = ref<PromptTrigger | 'all'>('all')
 const previewCopiedFlash = ref(false)
+const previewRawCopiedFlash = ref(false)
 const previewLoading = ref(false)
 const previewError = ref('')
 const previewResult = ref<{
@@ -445,12 +448,28 @@ const previewJson = computed(() => {
   return JSON.stringify(previewResult.value.messages, null, 2)
 })
 
+const previewFormattedJson = computed(() => {
+  if (!previewResult.value?.messages.length) return ''
+  return formatChatMessagesForDisplay(previewResult.value.messages)
+})
+
+async function copyPreviewFormatted() {
+  if (!previewFormattedJson.value) return
+  try {
+    await navigator.clipboard.writeText(previewFormattedJson.value)
+    previewCopiedFlash.value = true
+    setTimeout(() => (previewCopiedFlash.value = false), 1200)
+  } catch {
+    /* ignore */
+  }
+}
+
 async function copyPreviewJson() {
   if (!previewJson.value) return
   try {
     await navigator.clipboard.writeText(previewJson.value)
-    previewCopiedFlash.value = true
-    setTimeout(() => (previewCopiedFlash.value = false), 1200)
+    previewRawCopiedFlash.value = true
+    setTimeout(() => (previewRawCopiedFlash.value = false), 1200)
   } catch {
     /* ignore */
   }
@@ -495,6 +514,8 @@ function bindingSlotBundlePartsKey(slot: string | undefined): string | null {
   switch (slot) {
     case 'boundCharacterSystem':
       return 'prompts.boundCharacterSystemBundleParts'
+    case 'boundUserPersona':
+      return 'prompts.boundUserPersonaBundleParts'
     case 'boundCharacterPostHistory':
       return 'prompts.boundCharacterPostHistoryBundleParts'
     default:
@@ -506,6 +527,8 @@ function bindingSlotLabelKey(slot: string | undefined): string {
   switch (slot) {
     case 'boundCharacterSystem':
       return 'prompts.boundCharacterSystemLabel'
+    case 'boundUserPersona':
+      return 'prompts.boundUserPersonaLabel'
     case 'boundWorld':
       return 'prompts.boundWorldLabel'
     case 'boundCharacterPostHistory':
@@ -518,13 +541,19 @@ function bindingSlotLabelKey(slot: string | undefined): string {
 }
 
 function bindingSlotIsRequired(slot: string | undefined): boolean {
-  return slot === 'boundWorld' || slot === 'boundUserInput'
+  return (
+    slot === 'boundWorld' ||
+    slot === 'boundUserInput' ||
+    slot === 'boundUserPersona'
+  )
 }
 
 function bindingSlotListHintKey(slot: string | undefined): string {
   switch (slot) {
     case 'boundCharacterSystem':
       return 'prompts.boundCharacterListHintSystem'
+    case 'boundUserPersona':
+      return 'prompts.boundUserPersonaListHint'
     case 'boundWorld':
       return 'prompts.boundWorldListHint'
     case 'boundCharacterPostHistory':
@@ -540,6 +569,8 @@ function bindingSlotEditorDescKey(slot: string | undefined): string {
   switch (slot) {
     case 'boundCharacterSystem':
       return 'prompts.boundCharacterEditorDescSystem'
+    case 'boundUserPersona':
+      return 'prompts.boundUserPersonaEditorDesc'
     case 'boundWorld':
       return 'prompts.boundWorldEditorDesc'
     case 'boundCharacterPostHistory':
@@ -935,6 +966,10 @@ const canDeleteGroup = (g: PromptGroup) =>
                 v-if="
                   (
                     p.bindingSlot === 'boundCharacterSystem' &&
+                    currentGroup?.kind === 'character'
+                  ) ||
+                  (
+                    p.bindingSlot === 'boundUserPersona' &&
                     currentGroup?.kind === 'character'
                   ) ||
                   (
@@ -1613,10 +1648,10 @@ const canDeleteGroup = (g: PromptGroup) =>
           >
             {{ previewError }}
           </v-alert>
-          <pre
-            v-else
-            class="preview-card__json"
-          >{{ previewJson }}</pre>
+          <AssembledMessagesPanel
+            v-else-if="previewResult?.messages.length"
+            :messages="previewResult.messages"
+          />
         </v-card-text>
         <v-card-actions class="preview-card__foot">
           <v-spacer />
@@ -1624,8 +1659,14 @@ const canDeleteGroup = (g: PromptGroup) =>
             type="button"
             class="editor-card__btn"
             :class="{ 'is-flash': previewCopiedFlash }"
-            @click="copyPreviewJson"
+            @click="copyPreviewFormatted"
           >{{ previewCopiedFlash ? $t('prompts.previewCopied') : $t('prompts.previewCopy') }}</button>
+          <button
+            type="button"
+            class="editor-card__btn"
+            :class="{ 'is-flash': previewRawCopiedFlash }"
+            @click="copyPreviewJson"
+          >{{ previewRawCopiedFlash ? $t('prompts.previewCopied') : $t('prompts.previewCopyRaw') }}</button>
           <v-btn variant="text" @click="previewOpen = false">{{ $t('prompts.previewClose') }}</v-btn>
         </v-card-actions>
       </v-card>

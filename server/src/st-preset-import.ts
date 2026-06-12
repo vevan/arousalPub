@@ -4,10 +4,11 @@
  * 导入策略（长期演进方向）：
  * - 按 ST prompt_order 线性扫描，保留条目顺序与 enabled 开关
  * - 结构组（pre / world / character / history）顺序 = 源 prompt_order 中 marker 首次出现顺序
- * - 相邻结构组之间若有相对注入自定义条目，动态插入 gap container（id 不固定）
+ * - 夹在两个结构组之间的相对注入自定义条目归入前一个结构组末尾
  */
 
 import { allocateShortId } from './short-id.js'
+import { assertStPresetWithinLimits } from './st-preset-limits.js'
 import {
   ST_ANCHOR_BINDING_SLOT,
   ST_ANCHOR_CONTENT_FROM_PROMPT,
@@ -24,6 +25,13 @@ import type {
   PromptRole,
   PromptTrigger,
 } from './assemble-prompts.js'
+
+/** 旧版 ST 导入动态插入的夹缝组 id 前缀（现策略不再产生） */
+export const LEGACY_ST_GAP_GROUP_ID_PREFIX = 'group-st-gap-'
+
+export function isLegacyStGapGroupId(id: string): boolean {
+  return id.startsWith(LEGACY_ST_GAP_GROUP_ID_PREFIX)
+}
 
 const GROUP = {
   pre: 'group-pre',
@@ -118,34 +126,15 @@ function orderItemEnabled(item: StPromptOrderItem): boolean {
   return item.enabled !== false
 }
 
-function anchorIndex(
-  orderList: StPromptOrderItem[],
-  id: string,
-): number {
-  const i = orderList.findIndex((o) => o.identifier === id)
-  return i >= 0 ? i : Number.MAX_SAFE_INTEGER
-}
-
 const ST_CHARACTER_ROOT_ANCHORS = [
   'charDescription',
   'charPersonality',
   'scenario',
   'enhanceDefinitions',
   'dialogueExamples',
-  'nsfw',
 ] as const
 
-const GAP_ID_PREFIX = 'group-st-gap-'
-const GAP_CONTAINER_NAME = 'gap container'
-
 type StructuralBucket = 'pre' | 'world' | 'character' | 'history'
-
-const BUCKET_ANCHOR_IDS: Record<StructuralBucket, readonly string[]> = {
-  pre: ['main'],
-  world: ['worldInfoBefore', 'worldInfoAfter'],
-  character: ['personaDescription', ...ST_CHARACTER_ROOT_ANCHORS],
-  history: ['chatHistory'],
-}
 
 function anchorIdToBucket(id: string): StructuralBucket | null {
   if (id === 'main') return 'pre'
@@ -172,159 +161,6 @@ function computeStructuralGroupSequence(
     }
   }
   return sequence
-}
-
-interface GapPlan {
-  id: string
-  name: string
-  afterGroupId: string
-  fromExclusive: number
-  toExclusive: number
-}
-
-function isPlaceableCustom(id: string, st: StPrompt): boolean {
-  if (ST_ANCHOR_BINDING_SLOT[id]) return false
-  if (SKIP_MARKERS.has(id) || (st.marker && !ST_ANCHOR_BINDING_SLOT[id])) {
-    return false
-  }
-  if (st.injection_position === 1) return false
-  return true
-}
-
-function hasPlaceableCustomBetween(
-  orderList: StPromptOrderItem[],
-  promptsById: Map<string, StPrompt>,
-  fromExclusive: number,
-  toExclusive: number,
-): boolean {
-  for (let i = fromExclusive + 1; i < toExclusive; i++) {
-    const id = orderList[i]!.identifier
-    const st = promptsById.get(id)
-    if (!st) continue
-    if (isPlaceableCustom(id, st)) return true
-  }
-  return false
-}
-
-function bucketForStructuralGroup(g: PromptGroup): StructuralBucket | null {
-  if (g.id === GROUP.pre) return 'pre'
-  if (g.kind === 'world') return 'world'
-  if (g.kind === 'character') return 'character'
-  if (g.kind === 'history') return 'history'
-  return null
-}
-
-function firstBucketAnchorIndex(
-  orderList: StPromptOrderItem[],
-  bucket: StructuralBucket,
-): number {
-  let min = Number.MAX_SAFE_INTEGER
-  for (const id of BUCKET_ANCHOR_IDS[bucket]) {
-    min = Math.min(min, anchorIndex(orderList, id))
-  }
-  return min
-}
-
-function lastBucketAnchorIndexBefore(
-  orderList: StPromptOrderItem[],
-  bucket: StructuralBucket,
-  beforeIdx: number,
-): number {
-  let max = -1
-  for (let i = 0; i < beforeIdx && i < orderList.length; i++) {
-    const id = orderList[i]!.identifier
-    if ((BUCKET_ANCHOR_IDS[bucket] as readonly string[]).includes(id)) {
-      max = i
-    }
-  }
-  return max
-}
-
-function allocateGapGroupId(usedIds: Set<string>): string {
-  return `${GAP_ID_PREFIX}${allocateShortId(usedIds)}`
-}
-
-/** 相邻结构组之间若有相对注入自定义条目，则插入 gap container */
-function computeGapPlans(
-  orderList: StPromptOrderItem[],
-  promptsById: Map<string, StPrompt>,
-  baseGroups: PromptGroup[],
-  usedIds: Set<string>,
-): GapPlan[] {
-  const structural = baseGroups.filter(
-    (g) => bucketForStructuralGroup(g) != null,
-  )
-  const plans: GapPlan[] = []
-  for (let i = 0; i < structural.length - 1; i++) {
-    const left = structural[i]!
-    const right = structural[i + 1]!
-    const leftBucket = bucketForStructuralGroup(left)!
-    const rightBucket = bucketForStructuralGroup(right)!
-    if (leftBucket === rightBucket) continue
-
-    const rightFirst = firstBucketAnchorIndex(orderList, rightBucket)
-    if (rightFirst >= Number.MAX_SAFE_INTEGER) continue
-    const leftLast = lastBucketAnchorIndexBefore(
-      orderList,
-      leftBucket,
-      rightFirst,
-    )
-    if (leftLast < 0) continue
-    if (
-      !hasPlaceableCustomBetween(
-        orderList,
-        promptsById,
-        leftLast,
-        rightFirst,
-      )
-    ) {
-      continue
-    }
-    plans.push({
-      id: allocateGapGroupId(usedIds),
-      name: GAP_CONTAINER_NAME,
-      afterGroupId: left.id,
-      fromExclusive: leftLast,
-      toExclusive: rightFirst,
-    })
-  }
-  return plans
-}
-
-function insertGapGroups(
-  baseGroups: PromptGroup[],
-  plans: GapPlan[],
-): PromptGroup[] {
-  const sequence = baseGroups.slice()
-  const sorted = plans.slice().sort((a, b) => {
-    const ai = sequence.findIndex((g) => g.id === a.afterGroupId)
-    const bi = sequence.findIndex((g) => g.id === b.afterGroupId)
-    return bi - ai
-  })
-  for (const plan of sorted) {
-    const at = sequence.findIndex((g) => g.id === plan.afterGroupId)
-    if (at < 0) continue
-    sequence.splice(at + 1, 0, {
-      id: plan.id,
-      name: plan.name,
-      kind: 'normal',
-      order: 0,
-      enabled: true,
-    })
-  }
-  return sequence.map((g, i) => ({ ...g, order: i }))
-}
-
-function dropEmptyGapGroups(
-  groups: PromptGroup[],
-  prompts: PromptEntry[],
-): PromptGroup[] {
-  const usedGroupIds = new Set(prompts.map((p) => p.groupId))
-  const filtered = groups.filter((g) => {
-    if (!g.id.startsWith(GAP_ID_PREFIX)) return true
-    return usedGroupIds.has(g.id)
-  })
-  return filtered.map((g, i) => ({ ...g, order: i }))
 }
 
 function buildBaseGroups(
@@ -421,6 +257,7 @@ export function convertStPresetToArousalPub(
   raw: StPresetJson,
   opts: ConvertStPresetOptions = {},
 ): PromptPreset {
+  assertStPresetWithinLimits(raw)
   const characterOrderId = opts.characterOrderId ?? 100001
   const presetId = opts.presetId ?? 'preset-st-import'
   const t = new Date().toISOString()
@@ -436,18 +273,13 @@ export function convertStPresetToArousalPub(
   )
   const orderList = orderDoc?.order ?? []
   if (orderList.length === 0) {
-    throw new Error('ST preset missing prompt_order for selected character_id')
+    throw new Error(
+      `ST preset missing prompt_order for character_id ${characterOrderId}`,
+    )
   }
 
   const structuralSequence = computeStructuralGroupSequence(orderList)
-  const baseGroups = buildBaseGroups(structuralSequence)
-  const gapPlans = computeGapPlans(
-    orderList,
-    promptsById,
-    baseGroups,
-    usedIds,
-  )
-  let groups = insertGapGroups(baseGroups, gapPlans)
+  let groups = buildBaseGroups(structuralSequence)
 
   let prompts: PromptEntry[] = []
   const nextOrder = new Map<string, number>()
@@ -502,22 +334,10 @@ export function convertStPresetToArousalPub(
 
   let section: ImportSection = 'pre'
 
-  function gapIdForOrderIndex(orderIdx: number): string | null {
-    for (const plan of gapPlans) {
-      if (orderIdx > plan.fromExclusive && orderIdx < plan.toExclusive) {
-        return plan.id
-      }
-    }
-    return null
-  }
-
   function targetGroupIdForCustom(
     injectionPosition: InjectionPosition,
-    orderIdx: number,
   ): string {
     if (injectionPosition === 'chat') return GROUP.post
-    const gapId = gapIdForOrderIndex(orderIdx)
-    if (gapId) return gapId
     return sectionGroupId(section)
   }
 
@@ -541,8 +361,7 @@ export function convertStPresetToArousalPub(
         id === 'charPersonality' ||
         id === 'scenario' ||
         id === 'enhanceDefinitions' ||
-        id === 'dialogueExamples' ||
-        id === 'nsfw'
+        id === 'dialogueExamples'
       ) {
         section = 'character'
         if (id === 'charDescription') {
@@ -555,10 +374,6 @@ export function convertStPresetToArousalPub(
         }
       } else if (id === 'chatHistory') {
         section = 'history'
-      } else if (id === 'jailbreak') {
-        placeStAnchor(id, st, 'history', enabled)
-        section = 'post'
-        continue
       }
       placeStAnchor(id, st, section, enabled)
       continue
@@ -570,7 +385,7 @@ export function convertStPresetToArousalPub(
 
     const injectionPosition: InjectionPosition =
       st.injection_position === 1 ? 'chat' : 'relative'
-    const groupId = targetGroupIdForCustom(injectionPosition, orderIdx)
+    const groupId = targetGroupIdForCustom(injectionPosition)
 
     prompts.push({
       id: allocateShortId(usedIds),
@@ -671,8 +486,6 @@ export function convertStPresetToArousalPub(
         makeBindingSlotEntry(charGroup.id, slot, order, id, t, enabled),
     )
   }
-
-  groups = dropEmptyGapGroups(groups, prompts)
 
   const presetName =
     opts.presetName?.trim() ||

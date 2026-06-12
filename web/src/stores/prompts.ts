@@ -31,7 +31,6 @@ export type PromptBindingSlot =
   | 'boundScenario'
   | 'boundEnhanceDefinitions'
   | 'boundDialogueExamples'
-  | 'boundNsfw'
   | 'boundChatHistory'
   | 'boundCharacterPostHistory'
   | 'boundUserInput'
@@ -54,7 +53,6 @@ const SYSTEM_BINDING_SLOTS: PromptBindingSlot[] = [
   'boundScenario',
   'boundEnhanceDefinitions',
   'boundDialogueExamples',
-  'boundNsfw',
   'boundChatHistory',
   'boundCharacterPostHistory',
   'boundUserInput',
@@ -85,7 +83,6 @@ const DEPRECATED_ST_SLOT_ALIASES: Record<string, PromptBindingSlot> = {
   boundStScenario: 'boundScenario',
   boundStEnhanceDefinitions: 'boundEnhanceDefinitions',
   boundStDialogueExamples: 'boundDialogueExamples',
-  boundStNsfw: 'boundNsfw',
   boundStChatHistory: 'boundChatHistory',
 }
 
@@ -1508,10 +1505,7 @@ export const usePromptsStore = defineStore('prompts', () => {
         }
         if (
           e.bindingSlot === 'boundCharacterPostHistory' &&
-          (q.includes('post') ||
-            q.includes('历史') ||
-            q.includes('jailbreak') ||
-            q.includes('后置'))
+          (q.includes('post') || q.includes('历史') || q.includes('后置'))
         ) {
           return true
         }

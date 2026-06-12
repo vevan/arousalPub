@@ -219,6 +219,37 @@ describe('assemblePrompts history group order', () => {
     )
   })
 
+  it('injects chat history when boundChatHistory is disabled but post history is enabled', () => {
+    const preset = makePreset(
+      [history],
+      [
+        makeEntry({
+          id: 'bound-hist',
+          groupId: 'g-history',
+          content: '',
+          bindingSlot: 'boundChatHistory',
+          enabled: false,
+          order: 0,
+        }),
+        makeEntry({
+          id: 'bound-post',
+          groupId: 'g-history',
+          content: '',
+          bindingSlot: 'boundCharacterPostHistory',
+          order: 1,
+        }),
+      ],
+    )
+    const { messages } = assemblePrompts(preset, {
+      history: [{ role: 'user', content: 'hello' }],
+      characterPostHistory: 'post-block',
+    })
+    assert.deepEqual(
+      messages.map((m) => m.content),
+      ['hello', 'post-block'],
+    )
+  })
+
   it('skips post history when the binding slot is disabled but still injects chat history', () => {
     const preset = makePreset(
       [history],
@@ -238,6 +269,68 @@ describe('assemblePrompts history group order', () => {
       characterPostHistory: 'post-only',
     })
     assert.deepEqual(messages.map((m) => m.content), ['hello'])
+  })
+})
+
+describe('assemblePrompts audit fixes', () => {
+  it('injects world lore only once when before and after slots are both enabled', () => {
+    const world = makeGroup({ id: 'g-world', kind: 'world', order: 0 })
+    const preset = makePreset(
+      [world],
+      [
+        makeEntry({
+          id: 'wi-before',
+          groupId: 'g-world',
+          content: '',
+          bindingSlot: 'boundWorldBefore',
+          order: 0,
+        }),
+        makeEntry({
+          id: 'wi-after',
+          groupId: 'g-world',
+          content: '',
+          bindingSlot: 'boundWorldAfter',
+          order: 1,
+        }),
+      ],
+    )
+    const { messages } = assemblePrompts(preset, { world: 'LORE-XML' })
+    const loreHits = messages.filter((m) => m.content.includes('LORE-XML'))
+    assert.equal(loreHits.length, 1)
+  })
+
+  it('does not duplicate chat history when post history appears before chat history slot', () => {
+    const history = makeGroup({ id: 'g-history', kind: 'history', order: 0 })
+    const preset = makePreset(
+      [history],
+      [
+        makeEntry({
+          id: 'bound-post',
+          groupId: 'g-history',
+          content: '',
+          bindingSlot: 'boundCharacterPostHistory',
+          order: 0,
+        }),
+        makeEntry({
+          id: 'bound-hist',
+          groupId: 'g-history',
+          content: '',
+          bindingSlot: 'boundChatHistory',
+          order: 1,
+        }),
+      ],
+    )
+    const { messages } = assemblePrompts(preset, {
+      history: [
+        { role: 'user', content: 'u1' },
+        { role: 'assistant', content: 'a1' },
+      ],
+      characterPostHistory: 'post',
+    })
+    assert.deepEqual(
+      messages.map((m) => m.content),
+      ['u1', 'a1', 'post'],
+    )
   })
 })
 

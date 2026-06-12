@@ -223,6 +223,7 @@ import {
 } from './prompts-assemble-preview.js'
 import { isStOpenAiPreset } from './st-preset-detect.js'
 import { convertStPresetToArousalPub } from './st-preset-import.js'
+import { StPresetValidationError } from './st-preset-limits.js'
 import { persistTurnAfterModelReply } from './chat-persist-after-chat.js'
 import {
   loadAndApplyRegexPersistToTurnPatch,
@@ -2402,8 +2403,18 @@ app.post('/api/prompts/convert-st', async (request, reply) => {
       characterOrderId,
       presetName,
     })
+    assertValidPromptPresetBody(preset)
     return { preset }
   } catch (e) {
+    if (
+      e instanceof StPresetValidationError ||
+      (e instanceof Error &&
+        e.message.includes('ST preset missing prompt_order'))
+    ) {
+      return reply.status(400).send({
+        error: ApiErrorCodes.prompts_validation_failed,
+      })
+    }
     app.log.error(e)
     return reply.status(500).send({ error: ApiErrorCodes.prompts_st_convert_failed })
   }

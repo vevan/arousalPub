@@ -12,7 +12,6 @@ export const SYSTEM_BINDING_SLOTS = [
   'boundScenario',
   'boundEnhanceDefinitions',
   'boundDialogueExamples',
-  'boundNsfw',
   'boundChatHistory',
   'boundCharacterPostHistory',
   'boundUserInput',
@@ -39,7 +38,6 @@ export const DEPRECATED_ST_SLOT_ALIASES: Record<string, PromptBindingSlot> = {
   boundStScenario: 'boundScenario',
   boundStEnhanceDefinitions: 'boundEnhanceDefinitions',
   boundStDialogueExamples: 'boundDialogueExamples',
-  boundStNsfw: 'boundNsfw',
   boundStChatHistory: 'boundChatHistory',
 }
 
@@ -79,16 +77,13 @@ export const ST_ANCHOR_BINDING_SLOT: Record<string, PromptBindingSlot> = {
   scenario: 'boundScenario',
   enhanceDefinitions: 'boundEnhanceDefinitions',
   dialogueExamples: 'boundDialogueExamples',
-  nsfw: 'boundNsfw',
   chatHistory: 'boundChatHistory',
-  jailbreak: 'boundCharacterPostHistory',
 }
 
 /** 锚点正文来自 ST prompts[].content（非角色卡字段） */
 export const ST_ANCHOR_CONTENT_FROM_PROMPT = new Set([
   'main',
   'enhanceDefinitions',
-  'nsfw',
 ])
 
 export function isStAnchorIdentifier(id: string): boolean {
@@ -132,7 +127,6 @@ export const GRANULAR_CHARACTER_FIELD_SLOTS: PromptBindingSlot[] = [
   'boundScenario',
   'boundEnhanceDefinitions',
   'boundDialogueExamples',
-  'boundNsfw',
 ]
 
 export function presetHasGranularCharacterFields(
@@ -217,6 +211,60 @@ export function pinCharSystemPromptBeforeDescription(
           'boundCharSystemPrompt',
           D,
           'binding-slot-char-system-prompt',
+          enabled,
+        ),
+  )
+  return next
+}
+
+/** 在 boundChatHistory 之后紧邻插入 postHistory（不重排其它条目） */
+export function pinPostHistoryAfterChatHistory(
+  prompts: PromptEntry[],
+  histGroupId: string,
+  makeEntry: (
+    slot: PromptBindingSlot,
+    order: number,
+    id: string,
+    enabled?: boolean,
+  ) => PromptEntry,
+  opts: { existing?: PromptEntry; enabled?: boolean } = {},
+): PromptEntry[] {
+  const chatHistory = prompts.find(
+    (e) =>
+      e.groupId === histGroupId && e.bindingSlot === 'boundChatHistory',
+  )
+  if (!chatHistory) return prompts
+
+  const existing =
+    opts.existing ??
+    prompts.find(
+      (e) =>
+        e.groupId === histGroupId &&
+        e.bindingSlot === 'boundCharacterPostHistory',
+    )
+  const H = chatHistory.order
+  if (existing && existing.order === H + 1) return prompts
+
+  let next = existing
+    ? prompts.filter((e) => e.id !== existing.id)
+    : prompts.slice()
+  next = next.map((e) => {
+    if (e.groupId !== histGroupId || e.order <= H) return e
+    return { ...e, order: e.order + 1 }
+  })
+  const enabled =
+    opts.enabled !== undefined
+      ? opts.enabled !== false
+      : existing
+        ? existing.enabled !== false
+        : true
+  next.push(
+    existing
+      ? { ...existing, order: H + 1, groupId: histGroupId, enabled }
+      : makeEntry(
+          'boundCharacterPostHistory',
+          H + 1,
+          'binding-slot-character-post-history',
           enabled,
         ),
   )

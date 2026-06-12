@@ -1,4 +1,5 @@
 import type { CstDocument } from './nodes.js'
+import { MAX_MACRO_DOCUMENT_CHARS } from './walker.js'
 import { parseMacroDocument } from './parser.js'
 
 const CST_DOCUMENT_CACHE_MAX = 256
@@ -7,6 +8,9 @@ const documentCache = new Map<string, CstDocument>()
 
 /** 解析并缓存 CST 文档（同文本多次 walk 时复用 AST） */
 export function getCachedMacroDocument(text: string): CstDocument {
+  if (text.length > MAX_MACRO_DOCUMENT_CHARS) {
+    return parseMacroDocument(text)
+  }
   const hit = documentCache.get(text)
   if (hit) {
     documentCache.delete(text)

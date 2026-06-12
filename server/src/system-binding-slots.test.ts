@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { PromptEntry } from './assemble-prompts.js'
-import { finalizeCharacterGroupBindings } from './system-binding-slots.js'
+import {
+  ST_ANCHOR_BINDING_SLOT,
+  SYSTEM_BINDING_SLOTS,
+  finalizeCharacterGroupBindings,
+} from './system-binding-slots.js'
 
 const CHAR_G = 'group-character'
 const T = new Date().toISOString()
@@ -162,5 +166,16 @@ describe('finalizeCharacterGroupBindings', () => {
     )
     const sys = prompts.find((e) => e.bindingSlot === 'boundCharSystemPrompt')
     assert.equal(sys?.enabled, false)
+  })
+})
+
+describe('system binding slot inventory', () => {
+  it('keeps 14 product system slots and 10 ST anchor mappings', () => {
+    assert.equal(SYSTEM_BINDING_SLOTS.length, 14)
+    assert.equal(Object.keys(ST_ANCHOR_BINDING_SLOT).length, 10)
+    assert.ok(
+      SYSTEM_BINDING_SLOTS.includes('boundCharacterPostHistory'),
+      'post-history slot remains for native presets / normalize',
+    )
   })
 })

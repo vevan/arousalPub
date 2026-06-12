@@ -641,8 +641,6 @@ function bindingSlotLabelKey(slot: string | undefined): string {
       return 'prompts.boundEnhanceDefinitionsLabel'
     case 'boundDialogueExamples':
       return 'prompts.boundDialogueExamplesLabel'
-    case 'boundNsfw':
-      return 'prompts.boundNsfwLabel'
     case 'boundChatHistory':
       return 'prompts.boundChatHistoryLabel'
     default:

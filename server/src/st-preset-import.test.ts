@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { MacroCharacterFields } from './prompt-macros/index.js'
 import { assemblePrompts } from './assemble-prompts.js'
-import { convertStPresetToArousalPub } from './st-preset-import.js'
+import {
+  convertStPresetToArousalPub,
+  isLegacyStGapGroupId,
+} from './st-preset-import.js'
 
 const SAMPLE_FIELDS: MacroCharacterFields = {
   description: 'DESC',
@@ -18,17 +21,17 @@ const SAMPLE_FIELDS: MacroCharacterFields = {
   depthPrompt: '',
 }
 
-function gapEntry(
+function assertNoStGapGroups(
   preset: ReturnType<typeof convertStPresetToArousalPub>,
-  title: string,
 ) {
-  const entry = preset.prompts.find((p) => p.title === title)
-  assert.ok(entry)
-  const group = preset.groups.find((g) => g.id === entry.groupId)
-  assert.ok(group)
-  assert.ok(group.id.startsWith('group-st-gap-'))
-  assert.equal(group.name, 'gap container')
-  return { entry, group }
+  assert.ok(
+    !preset.groups.some((g) => isLegacyStGapGroupId(g.id)),
+    'must not create ST gap container groups',
+  )
+  assert.ok(
+    !preset.prompts.some((p) => isLegacyStGapGroupId(p.groupId)),
+    'must not place prompts in ST gap container groups',
+  )
 }
 
 function assertGroupsOrdered(
@@ -117,12 +120,6 @@ const ST_FIXTURE = {
       injection_order: 100,
     },
     {
-      identifier: 'jailbreak',
-      name: 'Jailbreak',
-      marker: true,
-      content: '',
-    },
-    {
       identifier: 'chat-tail',
       name: 'Chat tail',
       role: 'system',
@@ -146,7 +143,6 @@ const ST_FIXTURE = {
         { identifier: 'worldInfoBefore', enabled: true },
         { identifier: 'chatHistory', enabled: true },
         { identifier: 'hist-custom', enabled: true },
-        { identifier: 'jailbreak', enabled: true },
         { identifier: 'chat-tail', enabled: true },
       ],
     },
@@ -159,6 +155,7 @@ describe('convertStPresetToArousalPub', () => {
       presetId: 'preset-mini',
     })
 
+    assertNoStGapGroups(preset)
     assert.ok(
       preset.prompts.some((p) => p.bindingSlot === 'boundMain'),
     )
@@ -185,7 +182,7 @@ describe('convertStPresetToArousalPub', () => {
       preset.prompts.some((p) => p.bindingSlot === 'boundChatHistory'),
     )
     assert.ok(
-      preset.prompts.some(
+      !preset.prompts.some(
         (p) => p.bindingSlot === 'boundCharacterPostHistory',
       ),
     )
@@ -213,22 +210,16 @@ describe('convertStPresetToArousalPub', () => {
       .filter((p) => p.groupId === 'group-history' && p.bindingSlot)
       .sort((a, b) => a.order - b.order)
       .map((p) => p.bindingSlot)
-    assert.deepEqual(histBindings, [
-      'boundChatHistory',
-      'boundCharacterPostHistory',
-    ])
+    assert.deepEqual(histBindings, ['boundChatHistory'])
     const histOrdered = preset.prompts
       .filter((p) => p.groupId === 'group-history')
       .sort((a, b) => a.order - b.order)
       .map((p) => p.bindingSlot ?? p.title)
-    assert.deepEqual(histOrdered, [
-      'boundChatHistory',
-      'Hist before',
-      'boundCharacterPostHistory',
-    ])
+    assert.deepEqual(histOrdered, ['boundChatHistory', 'Hist before'])
 
-    const { group: preGap } = gapEntry(preset, 'Pre block')
-    assertGroupsOrdered(preset, 'group-pre', preGap.id, 'group-character')
+    const preBlock = preset.prompts.find((p) => p.title === 'Pre block')
+    assert.equal(preBlock?.groupId, 'group-pre')
+    assertGroupsOrdered(preset, 'group-pre', 'group-character')
 
     const chatTail = preset.prompts.find((p) => p.title === 'Chat tail')
     assert.equal(chatTail?.groupId, 'group-post')
@@ -257,7 +248,7 @@ describe('convertStPresetToArousalPub', () => {
     assert.ok(contents.some((c) => c.includes('LORE')))
     assert.ok(contents.includes('HIST-BEFORE'))
     assert.ok(contents.includes('u'))
-    assert.ok(contents.includes('POST'))
+    assert.ok(!contents.includes('POST'))
     assert.ok(contents.includes('CHAT-TAIL'))
     assert.ok(contents.includes('now'))
     assert.ok(contents.indexOf('DESC') < contents.indexOf('PERS'))
@@ -290,7 +281,6 @@ describe('convertStPresetToArousalPub', () => {
               { identifier: 'charDescription', enabled: true },
               { identifier: 'worldInfoBefore', enabled: true },
               { identifier: 'chatHistory', enabled: true },
-              { identifier: 'jailbreak', enabled: true },
             ],
           },
         ],
@@ -314,7 +304,7 @@ describe('convertStPresetToArousalPub', () => {
     assert.ok(!contents.includes('OFF'))
   })
 
-  it('keeps history bindings at chatHistory and jailbreak positions in source order', () => {
+  it('keeps relative customs in history group after chatHistory anchor', () => {
     const preset = convertStPresetToArousalPub(
       {
         name: 'ST history order',
@@ -332,12 +322,6 @@ describe('convertStPresetToArousalPub', () => {
             content: 'MID',
           },
           {
-            identifier: 'jailbreak',
-            name: 'Jailbreak',
-            marker: true,
-            content: '',
-          },
-          {
             identifier: 'hist-after',
             name: 'After hist',
             role: 'system',
@@ -350,7 +334,6 @@ describe('convertStPresetToArousalPub', () => {
             order: [
               { identifier: 'chatHistory', enabled: true },
               { identifier: 'hist-mid', enabled: true },
-              { identifier: 'jailbreak', enabled: true },
               { identifier: 'hist-after', enabled: true },
             ],
           },
@@ -366,10 +349,8 @@ describe('convertStPresetToArousalPub', () => {
     assert.deepEqual(histOrdered, [
       'boundChatHistory',
       'Mid hist',
-      'boundCharacterPostHistory',
+      'After hist',
     ])
-    const postCustom = preset.prompts.find((p) => p.title === 'After hist')
-    assert.equal(postCustom?.groupId, 'group-post')
   })
 
   it('places char core bundle at charDescription position in source prompt_order (scenario before desc)', () => {
@@ -388,7 +369,6 @@ describe('convertStPresetToArousalPub', () => {
           { identifier: 'charDescription', name: 'Char desc', marker: true, content: '' },
           { identifier: 'charPersonality', name: 'Char pers', marker: true, content: '' },
           { identifier: 'chatHistory', name: 'Hist', marker: true, content: '' },
-          { identifier: 'jailbreak', name: 'JB', marker: true, content: '' },
         ],
         prompt_order: [
           {
@@ -400,7 +380,6 @@ describe('convertStPresetToArousalPub', () => {
               { identifier: 'charDescription', enabled: true },
               { identifier: 'charPersonality', enabled: true },
               { identifier: 'chatHistory', enabled: true },
-              { identifier: 'jailbreak', enabled: true },
             ],
           },
         ],
@@ -444,7 +423,6 @@ describe('convertStPresetToArousalPub', () => {
           { identifier: 'scenario', name: 'Scenario', marker: true, content: '' },
           { identifier: 'charDescription', name: 'Char', marker: true, content: '' },
           { identifier: 'chatHistory', name: 'Hist', marker: true, content: '' },
-          { identifier: 'jailbreak', name: 'JB', marker: true, content: '' },
         ],
         prompt_order: [
           {
@@ -455,7 +433,6 @@ describe('convertStPresetToArousalPub', () => {
               { identifier: 'scenario', enabled: true },
               { identifier: 'charDescription', enabled: true },
               { identifier: 'chatHistory', enabled: true },
-              { identifier: 'jailbreak', enabled: true },
             ],
           },
         ],
@@ -469,7 +446,7 @@ describe('convertStPresetToArousalPub', () => {
     assert.ok(worldOrder < charOrder)
   })
 
-  it('places world-before-persona customs in gap group and orders world before character', () => {
+  it('places world-before-persona customs in world group and orders world before character', () => {
     const preset = convertStPresetToArousalPub(
       {
         name: 'ST gap',
@@ -479,7 +456,6 @@ describe('convertStPresetToArousalPub', () => {
           { identifier: 'personaDescription', name: 'Persona', marker: true, content: '' },
           { identifier: 'charDescription', name: 'Char', marker: true, content: '' },
           { identifier: 'chatHistory', name: 'Hist', marker: true, content: '' },
-          { identifier: 'jailbreak', name: 'JB', marker: true, content: '' },
         ],
         prompt_order: [
           {
@@ -490,7 +466,6 @@ describe('convertStPresetToArousalPub', () => {
               { identifier: 'personaDescription', enabled: true },
               { identifier: 'charDescription', enabled: true },
               { identifier: 'chatHistory', enabled: true },
-              { identifier: 'jailbreak', enabled: true },
             ],
           },
         ],
@@ -499,16 +474,34 @@ describe('convertStPresetToArousalPub', () => {
     )
 
     assert.equal(preset.name, 'Gap test')
-    const { group: gapGroup } = gapEntry(preset, 'Between')
-    assertGroupsOrdered(
-      preset,
-      'group-world',
-      gapGroup.id,
-      'group-character',
-    )
+    assertNoStGapGroups(preset)
+    const between = preset.prompts.find((p) => p.title === 'Between')
+    assert.equal(between?.groupId, 'group-world')
+    assertGroupsOrdered(preset, 'group-world', 'group-character')
+
+    const { messages } = assemblePrompts(preset, {
+      characters: [
+        { cardBody: 'CARD', macroFields: SAMPLE_FIELDS, postHistory: 'POST' },
+      ],
+      userCharacter: { cardBody: 'USER' },
+      world: 'LORE',
+      history: [{ role: 'user', content: 'u' }],
+    })
+    const contents = messages.map((m) => m.content)
+    assert.ok(contents.some((c) => c.includes('LORE')))
+    assert.ok(contents.includes('GAP'))
+    assert.ok(contents.includes('USER'))
+    assert.ok(contents.includes('u'))
+    const loreIdx = contents.findIndex((c) => c.includes('LORE'))
+    const gapIdx = contents.indexOf('GAP')
+    const userIdx = contents.indexOf('USER')
+    const histIdx = contents.indexOf('u')
+    assert.ok(loreIdx < gapIdx)
+    assert.ok(gapIdx < userIdx)
+    assert.ok(userIdx < histIdx)
   })
 
-  it('does not create gap container when world and persona are adjacent', () => {
+  it('does not create extra groups when world and persona are adjacent', () => {
     const preset = convertStPresetToArousalPub(
       {
         name: 'ST no gap',
@@ -518,7 +511,6 @@ describe('convertStPresetToArousalPub', () => {
           { identifier: 'personaDescription', name: 'Persona', marker: true, content: '' },
           { identifier: 'charDescription', name: 'Char', marker: true, content: '' },
           { identifier: 'chatHistory', name: 'Hist', marker: true, content: '' },
-          { identifier: 'jailbreak', name: 'JB', marker: true, content: '' },
         ],
         prompt_order: [
           {
@@ -529,7 +521,6 @@ describe('convertStPresetToArousalPub', () => {
               { identifier: 'personaDescription', enabled: true },
               { identifier: 'charDescription', enabled: true },
               { identifier: 'chatHistory', enabled: true },
-              { identifier: 'jailbreak', enabled: true },
             ],
           },
         ],
@@ -537,15 +528,10 @@ describe('convertStPresetToArousalPub', () => {
       { presetId: 'preset-no-gap' },
     )
 
-    assert.ok(
-      !preset.groups.some((g) => g.id.startsWith('group-st-gap-')),
-    )
-    assert.ok(
-      !preset.prompts.some((p) => p.groupId.startsWith('group-st-gap-')),
-    )
+    assertNoStGapGroups(preset)
   })
 
-  it('creates gap container between pre and world when customs sit between main and worldInfoBefore', () => {
+  it('places customs between main and worldInfoBefore in pre group', () => {
     const preset = convertStPresetToArousalPub(
       {
         name: 'ST pre-world gap',
@@ -561,7 +547,6 @@ describe('convertStPresetToArousalPub', () => {
           { identifier: 'personaDescription', name: 'Persona', marker: true, content: '' },
           { identifier: 'charDescription', name: 'Char', marker: true, content: '' },
           { identifier: 'chatHistory', name: 'Hist', marker: true, content: '' },
-          { identifier: 'jailbreak', name: 'JB', marker: true, content: '' },
         ],
         prompt_order: [
           {
@@ -573,7 +558,6 @@ describe('convertStPresetToArousalPub', () => {
               { identifier: 'personaDescription', enabled: true },
               { identifier: 'charDescription', enabled: true },
               { identifier: 'chatHistory', enabled: true },
-              { identifier: 'jailbreak', enabled: true },
             ],
           },
         ],
@@ -581,11 +565,12 @@ describe('convertStPresetToArousalPub', () => {
       { presetId: 'preset-pre-world-gap' },
     )
 
-    const { group: gapGroup } = gapEntry(preset, 'Pre world gap')
-    assertGroupsOrdered(preset, 'group-pre', gapGroup.id, 'group-world')
+    const preWorldGap = preset.prompts.find((p) => p.title === 'Pre world gap')
+    assert.equal(preWorldGap?.groupId, 'group-pre')
+    assertGroupsOrdered(preset, 'group-pre', 'group-world')
   })
 
-  it('creates gap container between character and history when customs sit before chatHistory', () => {
+  it('places customs before chatHistory in character group', () => {
     const preset = convertStPresetToArousalPub(
       {
         name: 'ST char-history gap',
@@ -599,7 +584,6 @@ describe('convertStPresetToArousalPub', () => {
             content: 'GAP',
           },
           { identifier: 'chatHistory', name: 'Hist', marker: true, content: '' },
-          { identifier: 'jailbreak', name: 'JB', marker: true, content: '' },
         ],
         prompt_order: [
           {
@@ -609,7 +593,6 @@ describe('convertStPresetToArousalPub', () => {
               { identifier: 'charDescription', enabled: true },
               { identifier: 'char-hist-gap', enabled: true },
               { identifier: 'chatHistory', enabled: true },
-              { identifier: 'jailbreak', enabled: true },
             ],
           },
         ],
@@ -617,13 +600,27 @@ describe('convertStPresetToArousalPub', () => {
       { presetId: 'preset-char-history-gap' },
     )
 
-    const { group: gapGroup } = gapEntry(preset, 'Char hist gap')
-    assertGroupsOrdered(
-      preset,
-      'group-character',
-      gapGroup.id,
-      'group-history',
-    )
+    assertNoStGapGroups(preset)
+    const charHistGap = preset.prompts.find((p) => p.title === 'Char hist gap')
+    assert.equal(charHistGap?.groupId, 'group-character')
+    assertGroupsOrdered(preset, 'group-character', 'group-history')
+
+    const { messages } = assemblePrompts(preset, {
+      characters: [
+        { cardBody: 'CARD', macroFields: SAMPLE_FIELDS, postHistory: 'POST' },
+      ],
+      userCharacter: { cardBody: 'USER' },
+      history: [{ role: 'user', content: 'u' }],
+    })
+    const contents = messages.map((m) => m.content)
+    assert.ok(contents.includes('GAP'))
+    assert.ok(contents.includes('USER'))
+    assert.ok(contents.includes('u'))
+    const gapIdx = contents.indexOf('GAP')
+    const userIdx = contents.indexOf('USER')
+    const histIdx = contents.indexOf('u')
+    assert.ok(userIdx < gapIdx)
+    assert.ok(gapIdx < histIdx)
   })
 
   it('orders structural groups by source marker first appearance', () => {
@@ -635,7 +632,6 @@ describe('convertStPresetToArousalPub', () => {
           { identifier: 'charDescription', name: 'Char', marker: true, content: '' },
           { identifier: 'worldInfoBefore', name: 'WI', marker: true, content: '' },
           { identifier: 'chatHistory', name: 'Hist', marker: true, content: '' },
-          { identifier: 'jailbreak', name: 'JB', marker: true, content: '' },
         ],
         prompt_order: [
           {
@@ -645,7 +641,6 @@ describe('convertStPresetToArousalPub', () => {
               { identifier: 'charDescription', enabled: true },
               { identifier: 'worldInfoBefore', enabled: true },
               { identifier: 'chatHistory', enabled: true },
-              { identifier: 'jailbreak', enabled: true },
             ],
           },
         ],

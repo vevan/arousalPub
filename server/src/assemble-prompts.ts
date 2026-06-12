@@ -38,7 +38,6 @@ export type PromptBindingSlot =
   | 'boundScenario'
   | 'boundEnhanceDefinitions'
   | 'boundDialogueExamples'
-  | 'boundNsfw'
   | 'boundChatHistory'
   | 'boundCharacterPostHistory'
   | 'boundUserInput'
@@ -292,6 +291,15 @@ function mergedMacroFieldFromCharacters(
   return undefined
 }
 
+/** 组装期去重：world before/after/legacy 共用一份 lore，只注入一次 */
+interface AssembleInjectFlags {
+  worldLoreConsumed: boolean
+}
+
+function createAssembleInjectFlags(): AssembleInjectFlags {
+  return { worldLoreConsumed: false }
+}
+
 function worldInjectionText(ctx: AssembleContext): string {
   const w = ctx.world
   const usePlaceholder =
@@ -302,14 +310,32 @@ function worldInjectionText(ctx: AssembleContext): string {
   return usePlaceholder ? PLACEHOLDER.world : loreTextToXmlBlock(String(w))
 }
 
+function tryConsumeWorldLoreSlot(
+  ctx: AssembleContext,
+  flags: AssembleInjectFlags,
+): string | undefined {
+  if (flags.worldLoreConsumed) return undefined
+  flags.worldLoreConsumed = true
+  return worldInjectionText(ctx)
+}
+
+function hasEnabledChatHistoryBinding(entries: PromptEntry[]): boolean {
+  return entries.some(
+    (x) =>
+      (x.bindingSlot === 'boundChatHistory' ||
+        x.bindingSlot === 'boundRecentHistory') &&
+      x.enabled !== false,
+  )
+}
+
 function resolveSystemBindingContent(
   e: PromptEntry,
   ctx: AssembleContext,
+  flags: AssembleInjectFlags,
 ): string | undefined {
   switch (e.bindingSlot) {
     case 'boundMain':
     case 'boundEnhanceDefinitions':
-    case 'boundNsfw':
       return e.content.trim() || undefined
     case 'boundCharSystemPrompt':
       return mergedCharSystemPrompt(ctx)
@@ -324,7 +350,7 @@ function resolveSystemBindingContent(
     case 'boundWorldBefore':
     case 'boundWorldAfter':
     case 'boundWorld':
-      return worldInjectionText(ctx)
+      return tryConsumeWorldLoreSlot(ctx, flags)
     case 'boundUserPersona':
       return mergedUserPersonaBody(ctx) ?? PLACEHOLDER.userPersona
     default:
@@ -353,10 +379,19 @@ function assembleGroupByBindingOrder(
   ctx: AssembleContext,
   messages: ChatMessage[],
   span: { historyStart: number; historyEnd: number },
+  flags: AssembleInjectFlags,
 ): { historyStart: number; historyEnd: number } {
   let { historyStart, historyEnd } = span
   let memoryInjected = false
   let historyInjectedInGroup = false
+  const deferredPostHistory: string[] = []
+
+  const flushDeferredPostHistory = (): void => {
+    for (const post of deferredPostHistory) {
+      messages.push({ role: 'system', content: post })
+    }
+    deferredPostHistory.length = 0
+  }
 
   for (const e of sorted) {
     if (e.bindingSlot) {
@@ -371,6 +406,7 @@ function assembleGroupByBindingOrder(
           break
         case 'boundChatHistory':
         case 'boundRecentHistory': {
+          if (historyInjectedInGroup) break
           const block = injectChatHistoryBlock(messages, ctx, {
             historyStart,
             historyEnd,
@@ -378,17 +414,14 @@ function assembleGroupByBindingOrder(
           historyStart = block.historyStart
           historyEnd = block.historyEnd
           historyInjectedInGroup = block.injected
+          flushDeferredPostHistory()
           break
         }
         case 'boundCharacterPostHistory': {
           if (
             g.kind === 'history' &&
             !historyInjectedInGroup &&
-            !sorted.some(
-              (x) =>
-                x.bindingSlot === 'boundChatHistory' ||
-                x.bindingSlot === 'boundRecentHistory',
-            )
+            !hasEnabledChatHistoryBinding(sorted)
           ) {
             const block = injectChatHistoryBlock(messages, ctx, {
               historyStart,
@@ -397,10 +430,17 @@ function assembleGroupByBindingOrder(
             historyStart = block.historyStart
             historyEnd = block.historyEnd
             historyInjectedInGroup = block.injected
+            flushDeferredPostHistory()
           }
           const post = mergedBoundPostHistory(ctx)
           if (post) {
-            messages.push({ role: 'system', content: post })
+            if (g.kind === 'history' && historyInjectedInGroup) {
+              messages.push({ role: 'system', content: post })
+            } else if (g.kind === 'history') {
+              deferredPostHistory.push(post)
+            } else {
+              messages.push({ role: 'system', content: post })
+            }
           }
           break
         }
@@ -419,7 +459,7 @@ function assembleGroupByBindingOrder(
           break
         }
         default: {
-          const content = resolveSystemBindingContent(e, ctx)
+          const content = resolveSystemBindingContent(e, ctx, flags)
           if (content) {
             messages.push({ role: 'system', content })
           }
@@ -442,11 +482,7 @@ function assembleGroupByBindingOrder(
   if (
     g.kind === 'history' &&
     !historyInjectedInGroup &&
-    !sorted.some(
-      (x) =>
-        x.bindingSlot === 'boundChatHistory' ||
-        x.bindingSlot === 'boundRecentHistory',
-    )
+    !hasEnabledChatHistoryBinding(sorted)
   ) {
     const block = injectChatHistoryBlock(messages, ctx, {
       historyStart,
@@ -454,6 +490,12 @@ function assembleGroupByBindingOrder(
     })
     historyStart = block.historyStart
     historyEnd = block.historyEnd
+    historyInjectedInGroup = true
+    flushDeferredPostHistory()
+  }
+
+  if (g.kind === 'history' && deferredPostHistory.length > 0) {
+    flushDeferredPostHistory()
   }
 
   if (
@@ -554,6 +596,15 @@ function sortByListOrder(entries: PromptEntry[]): PromptEntry[] {
   return entries.slice().sort((a, b) => a.order - b.order)
 }
 
+/** binding 组：列表 order 为主，同 order 再按 injectionDepth 等 tie-break */
+function sortBindingGroupEntries(entries: PromptEntry[]): PromptEntry[] {
+  return entries.slice().sort((a, b) => {
+    const ord = a.order - b.order
+    if (ord !== 0) return ord
+    return compareInjectionEntries(a, b, { depthDirection: 'desc' })
+  })
+}
+
 function messagesTokens(msgs: ChatMessage[], tokenModel?: string): number {
   return countChatMessagesTokens(msgs, { model: tokenModel })
 }
@@ -641,6 +692,7 @@ export function assemblePrompts(
   const groups = preset.groups.slice().sort((a, b) => a.order - b.order)
   const groupById = new Map(groups.map((g) => [g.id, g]))
   const messages: ChatMessage[] = []
+  const injectFlags = createAssembleInjectFlags()
   let historyStart = -1
   let historyEnd = -1
 
@@ -655,7 +707,7 @@ export function assemblePrompts(
       }
     } else if (g.kind === 'character') {
       const entries = relativeEntriesForGroup(preset, g, trigger)
-      const sorted = sortByListOrder(entries)
+      const sorted = sortBindingGroupEntries(entries)
       if (groupUsesBindingOrderAssembly(g, sorted)) {
         const span = assembleGroupByBindingOrder(
           sorted,
@@ -663,10 +715,13 @@ export function assemblePrompts(
           ctx,
           messages,
           { historyStart, historyEnd },
+          injectFlags,
         )
         historyStart = span.historyStart
         historyEnd = span.historyEnd
       } else {
+        const sys = mergedCharSystemPrompt(ctx)
+        if (sys) messages.push({ role: 'system', content: sys })
         messages.push({
           role: 'system',
           content: mergedCharCardBody(ctx) ?? PLACEHOLDER.character,
@@ -674,7 +729,7 @@ export function assemblePrompts(
       }
     } else if (g.kind === 'world') {
       const entries = relativeEntriesForGroup(preset, g, trigger)
-      const sorted = sortByListOrder(entries)
+      const sorted = sortBindingGroupEntries(entries)
       if (groupUsesBindingOrderAssembly(g, sorted)) {
         const span = assembleGroupByBindingOrder(
           sorted,
@@ -682,29 +737,22 @@ export function assemblePrompts(
           ctx,
           messages,
           { historyStart, historyEnd },
+          injectFlags,
         )
         historyStart = span.historyStart
         historyEnd = span.historyEnd
       } else {
-        const w = ctx.world
-        const usePlaceholder =
-          w === undefined ||
-          w === null ||
-          w === PLACEHOLDER.world ||
-          !String(w).trim()
-        messages.push({
-          role: 'system',
-          content: usePlaceholder
-            ? PLACEHOLDER.world
-            : loreTextToXmlBlock(String(w)),
-        })
+        const lore = tryConsumeWorldLoreSlot(ctx, injectFlags)
+        if (lore) {
+          messages.push({ role: 'system', content: lore })
+        }
         if (ctx.memoryText?.trim()) {
           messages.push({ role: 'system', content: ctx.memoryText.trim() })
         }
       }
     } else if (g.kind === 'history') {
       const entries = relativeEntriesForGroup(preset, g, trigger)
-      const sorted = sortByListOrder(entries)
+      const sorted = sortBindingGroupEntries(entries)
       if (groupUsesBindingOrderAssembly(g, sorted)) {
         const span = assembleGroupByBindingOrder(
           sorted,
@@ -712,6 +760,7 @@ export function assemblePrompts(
           ctx,
           messages,
           { historyStart, historyEnd },
+          injectFlags,
         )
         historyStart = span.historyStart
         historyEnd = span.historyEnd
@@ -728,7 +777,7 @@ export function assemblePrompts(
       }
     } else if (g.kind === 'userInput') {
       const entries = relativeEntriesForGroup(preset, g, trigger)
-      const sorted = sortByListOrder(entries)
+      const sorted = sortBindingGroupEntries(entries)
       if (groupUsesBindingOrderAssembly(g, sorted)) {
         const span = assembleGroupByBindingOrder(
           sorted,
@@ -736,6 +785,7 @@ export function assemblePrompts(
           ctx,
           messages,
           { historyStart, historyEnd },
+          injectFlags,
         )
         historyStart = span.historyStart
         historyEnd = span.historyEnd

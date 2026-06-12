@@ -1,6 +1,6 @@
 import {
+  patchConversationMacroLocalVars,
   readConversationIndex,
-  writeConversationIndex,
 } from '../chat-storage.js'
 import { sanitizeMacroVarMap } from './macro-var-limits.js'
 import { cloneMacroVarMap, type MacroVarMap } from './macro-vars.js'
@@ -43,17 +43,17 @@ export async function persistMacroVarMutations(
 ): Promise<void> {
   const convId = ctx.conversationId?.trim()
   if (ctx.macroVarsDirty && convId) {
-    const idx = await readConversationIndex(convId)
-    if (idx) {
-      idx.macroLocalVars = mergeMacroVarMapsForPersist(
-        idx.macroLocalVars ?? {},
+    const ok = await patchConversationMacroLocalVars(convId, (disk) =>
+      mergeMacroVarMapsForPersist(
+        disk,
         ctx.macroLocalVars,
         ctx.macroLocalVarTouched,
-      )
-      await writeConversationIndex(convId, idx)
+      ),
+    )
+    if (ok) {
+      ctx.macroVarsDirty = false
+      ctx.macroLocalVarTouched = undefined
     }
-    ctx.macroVarsDirty = false
-    ctx.macroLocalVarTouched = undefined
   }
   if (ctx.macroGlobalVarsDirty) {
     const disk = await readGlobalMacroGlobalVars()

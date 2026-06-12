@@ -4,7 +4,7 @@
  * 未指定 output 时写入 stdout。
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, resolve, basename } from 'node:path'
+import { basename, dirname, relative, resolve } from 'node:path'
 import { assemblePrompts } from '../src/assemble-prompts.js'
 import { formatFilenameAsPresetName } from '../src/st-preset-detect.js'
 import { convertStPresetToArousalPub } from '../src/st-preset-import.js'
@@ -29,7 +29,17 @@ if (!inputPath) {
   process.exit(1)
 }
 
-const raw = JSON.parse(readFileSync(resolve(inputPath), 'utf8'))
+function resolveUnderCwd(p: string): string {
+  const abs = resolve(p)
+  const rel = relative(process.cwd(), abs)
+  if (rel.startsWith('..') || rel.includes('..\\')) {
+    console.error('Path must stay under current working directory:', p)
+    process.exit(1)
+  }
+  return abs
+}
+
+const raw = JSON.parse(readFileSync(resolveUnderCwd(inputPath), 'utf8'))
 const preset = convertStPresetToArousalPub(raw, {
   presetId: 'preset-stabs-import',
   presetName:
@@ -38,7 +48,7 @@ const preset = convertStPresetToArousalPub(raw, {
 
 const json = JSON.stringify(preset, null, 2)
 if (outputPath) {
-  const out = resolve(outputPath)
+  const out = resolveUnderCwd(outputPath)
   mkdirSync(dirname(out), { recursive: true })
   writeFileSync(out, json, 'utf8')
   console.error(`Wrote ${outputPath}`)

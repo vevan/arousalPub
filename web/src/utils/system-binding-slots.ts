@@ -6,7 +6,6 @@ export const GRANULAR_CHARACTER_FIELD_SLOTS: PromptBindingSlot[] = [
   'boundScenario',
   'boundEnhanceDefinitions',
   'boundDialogueExamples',
-  'boundNsfw',
 ]
 
 /** 列表/拖曳锚点：charDescription（与 ST 源序一致） */

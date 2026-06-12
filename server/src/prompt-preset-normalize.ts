@@ -11,6 +11,7 @@ import {
   finalizeCharacterGroupBindings,
   isSystemBindingSlot,
   migrateBindingSlotAliases,
+  pinPostHistoryAfterChatHistory,
   presetUsesSystemSubBlocks,
 } from './system-binding-slots.js'
 
@@ -151,16 +152,11 @@ export function normalizePresetForAssemble(p: PromptPreset): PromptPreset {
     histG &&
     !prompts.some((e) => e.bindingSlot === 'boundCharacterPostHistory')
   ) {
-    const maxO = prompts
-      .filter((e) => e.groupId === histG.id)
-      .reduce((m, e) => Math.max(m, e.order), -1)
-    prompts.push(
-      makeBindingSlotEntry(
-        histG.id,
-        'boundCharacterPostHistory',
-        maxO + 1,
-        'binding-slot-character-post-history',
-      ),
+    prompts = pinPostHistoryAfterChatHistory(
+      prompts,
+      histG.id,
+      (slot, order, id, enabled = true) =>
+        makeBindingSlotEntry(histG.id, slot, order, id, enabled),
     )
   }
 

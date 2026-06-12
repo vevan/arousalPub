@@ -1455,6 +1455,19 @@ export async function writeConversationIndex(
   )
 }
 
+/** 仅更新 macroLocalVars（读-改-写单字段，降低并发覆盖其它索引字段的风险） */
+export async function patchConversationMacroLocalVars(
+  conversationId: string,
+  merge: (current: Record<string, string>) => Record<string, string>,
+): Promise<boolean> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return false
+  idx.macroLocalVars = merge(idx.macroLocalVars ?? {})
+  idx.updatedAt = nowIso()
+  await writeConversationIndex(conversationId, idx)
+  return true
+}
+
 /** 创建空会话（仅索引，无 chunk），供首页列表展示 */
 export async function createConversationStub(
   conversationId: string,

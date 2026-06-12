@@ -22,8 +22,6 @@ const CHARACTER_SLOTS = new Set([
 
   'boundDialogueExamples',
 
-  'boundNsfw',
-
   'boundCharacterSystem',
 
 ])

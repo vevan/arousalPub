@@ -4,6 +4,8 @@ import {
   assemblePrompts,
   compactEmptyMessages,
   compareInjectionEntries,
+  resolveChatDepthInsertIndex,
+  type ChatMessage,
   type PromptEntry,
   type PromptGroup,
   type PromptPreset,
@@ -464,6 +466,97 @@ describe('assemblePrompts injection tie-break', () => {
     const { messages } = assemblePrompts(preset, { userInput: 'turn' })
     const tail = messages.slice(-3).map((m) => m.content)
     assert.deepEqual(tail, ['turn', 'chat-first', 'chat-second'])
+  })
+
+  it('anchors chat depth to last user message, not the full prompt tail', () => {
+    const pre = makeGroup({ id: 'g-pre', kind: 'normal', order: 0 })
+    const history = makeGroup({ id: 'g-history', kind: 'history', order: 1 })
+    const ui = makeGroup({ id: 'g-ui', kind: 'userInput', order: 2 })
+    const post = makeGroup({ id: 'g-post', kind: 'normal', order: 3 })
+    const preset = makePreset(
+      [pre, history, ui, post],
+      [
+        makeEntry({
+          id: 'system-top',
+          groupId: 'g-pre',
+          content: 'SYSTEM-TOP',
+          order: 0,
+        }),
+        makeEntry({
+          id: 'bound-hist',
+          groupId: 'g-history',
+          content: '',
+          bindingSlot: 'boundChatHistory',
+          order: 0,
+        }),
+        makeEntry({
+          id: 'bound-ui',
+          groupId: 'g-ui',
+          content: '',
+          bindingSlot: 'boundUserInput',
+          order: 0,
+        }),
+        makeEntry({
+          id: 'chat-inject',
+          groupId: 'g-post',
+          content: 'CHAT-INJECT-DEPTH-4',
+          injectionPosition: 'chat',
+          injectionDepth: 4,
+          order: 0,
+        }),
+      ],
+    )
+    const { messages } = assemblePrompts(preset, {
+      history: [
+        { role: 'user', content: 'u-old-1' },
+        { role: 'assistant', content: 'a-old-1' },
+        { role: 'user', content: 'u-old-2' },
+        { role: 'assistant', content: 'a-old-2' },
+      ],
+      userInput: 'u-current',
+    })
+    const contents = messages.map((m) => m.content)
+    assert.ok(contents.includes('SYSTEM-TOP'))
+    assert.ok(contents.includes('CHAT-INJECT-DEPTH-4'))
+    assert.equal(
+      contents.indexOf('CHAT-INJECT-DEPTH-4') < contents.indexOf('SYSTEM-TOP'),
+      false,
+    )
+    assert.ok(
+      contents.indexOf('u-old-1') <
+        contents.indexOf('CHAT-INJECT-DEPTH-4'),
+    )
+    assert.ok(
+      contents.indexOf('CHAT-INJECT-DEPTH-4') <
+        contents.indexOf('a-old-1'),
+    )
+    assert.ok(
+      contents.indexOf('a-old-2') <
+        contents.indexOf('u-current'),
+    )
+    assert.ok(
+      contents.indexOf('CHAT-INJECT-DEPTH-4') <
+        contents.indexOf('u-current'),
+    )
+  })
+})
+
+describe('resolveChatDepthInsertIndex', () => {
+  const stack: ChatMessage[] = [
+    { role: 'system', content: 'top' },
+    { role: 'user', content: 'u1' },
+    { role: 'assistant', content: 'a1' },
+    { role: 'user', content: 'u2' },
+    { role: 'assistant', content: 'a2' },
+    { role: 'user', content: 'u-current' },
+  ]
+
+  it('depth 0 inserts after the last user message', () => {
+    assert.equal(resolveChatDepthInsertIndex(stack, 0), 6)
+  })
+
+  it('depth 4 inserts before the fourth message counting back from last user', () => {
+    assert.equal(resolveChatDepthInsertIndex(stack, 4, 1), 2)
   })
 })
 

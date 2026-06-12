@@ -659,14 +659,45 @@ function relativeEntriesForGroup(
   )
 }
 
+/**
+ * ST 兼容 chat 深度：以最后一条 user 消息为锚。
+ * depth 0 = 紧接该 user 之后；depth n = 自该 user 向上数第 n 条消息之前插入。
+ */
+export function resolveChatDepthInsertIndex(
+  messages: ChatMessage[],
+  depth: number,
+  historyStart = -1,
+): number {
+  const d = Math.max(0, Math.floor(depth))
+  const floor = historyStart >= 0 ? historyStart : 0
+
+  let lastUserIdx = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]!.role === 'user') {
+      lastUserIdx = i
+      break
+    }
+  }
+
+  if (lastUserIdx < 0) {
+    return Math.max(floor, messages.length - d)
+  }
+
+  const insertAt = lastUserIdx - d + 1
+  return Math.max(floor, Math.min(messages.length, insertAt))
+}
+
 function injectAuthorsNoteAtDepth(
   messages: ChatMessage[],
   note: NonNullable<AssembleContext['authorsNote']>,
   historyStart: number,
   historyEnd: number,
 ): { historyStart: number; historyEnd: number } {
-  const depth = Math.max(0, Math.floor(note.injectionDepth))
-  const insertAt = Math.max(0, messages.length - depth)
+  const insertAt = resolveChatDepthInsertIndex(
+    messages,
+    note.injectionDepth,
+    historyStart,
+  )
   messages.splice(insertAt, 0, {
     role: note.role,
     content: note.content,
@@ -817,7 +848,7 @@ export function assemblePrompts(
     const items = (byDepth.get(d) ?? [])
       .slice()
       .sort((a, b) => compareInjectionEntries(a, b))
-    const insertAt = Math.max(0, messages.length - d)
+    const insertAt = resolveChatDepthInsertIndex(messages, d, historyStart)
     messages.splice(
       insertAt,
       0,

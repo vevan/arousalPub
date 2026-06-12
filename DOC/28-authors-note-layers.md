@@ -47,7 +47,7 @@ authorsNote（会话）
   │
   │  assemble 注入 + 宏 {{authorsNote}}
   ▼
-模型上下文（按 injectionDepth / role 插入 message 栈）
+模型上下文（按 injectionDepth / role 插入 message 栈；深度锚点为最后一条 user 消息，见 `DOC/03` §6.6）
 
 charAuthorsNote（后期）
   └─ 新建会话 seed 时优先于 defaultAuthorsNote（见 §4.3）

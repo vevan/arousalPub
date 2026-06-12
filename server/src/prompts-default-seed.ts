@@ -2,6 +2,11 @@ import { existsSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { getPromptsDir, getPromptsIndexPath } from './config.js'
 import {
+  DEFAULT_CHARACTER_SYSTEM_SLOTS,
+  DEFAULT_HISTORY_SYSTEM_SLOTS,
+  DEFAULT_WORLD_SYSTEM_SLOTS,
+} from './system-binding-slots.js'
+import {
   writePromptsDocumentForUser,
   type PromptsDocument,
 } from './prompts-file.js'
@@ -148,24 +153,29 @@ export function buildDefaultPromptPreset(): Record<string, unknown> {
       tags: ['worldbuilding', 'structured'],
       createdAt: '2025-02-09T08:00:00.000Z',
     }),
-    makeBindingSlotEntry(
-      GROUP.character,
-      'boundCharacterSystem',
-      0,
-      'binding-slot-character-system',
+    ...DEFAULT_CHARACTER_SYSTEM_SLOTS.map((slot, i) =>
+      makeBindingSlotEntry(
+        GROUP.character,
+        slot,
+        i,
+        `binding-slot-${slot.replace(/^bound/, '')}`,
+      ),
     ),
-    makeBindingSlotEntry(
-      GROUP.character,
-      'boundUserPersona',
-      1,
-      'binding-slot-user-persona',
+    ...DEFAULT_WORLD_SYSTEM_SLOTS.map((slot, i) =>
+      makeBindingSlotEntry(
+        GROUP.world,
+        slot,
+        i,
+        `binding-slot-${slot.replace(/^bound/, '')}`,
+      ),
     ),
-    makeBindingSlotEntry(GROUP.world, 'boundWorld', 0, 'binding-slot-world'),
-    makeBindingSlotEntry(
-      GROUP.history,
-      'boundCharacterPostHistory',
-      0,
-      'binding-slot-character-post-history',
+    ...DEFAULT_HISTORY_SYSTEM_SLOTS.map((slot, i) =>
+      makeBindingSlotEntry(
+        GROUP.history,
+        slot,
+        i,
+        `binding-slot-${slot.replace(/^bound/, '')}`,
+      ),
     ),
     makeBindingSlotEntry(
       GROUP.userInput,

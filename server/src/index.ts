@@ -124,6 +124,7 @@ import {
   writePromptsDocument,
   type PromptsDocument,
 } from './prompts-file.js'
+import { normalizePresetForAssemble } from './prompt-preset-normalize.js'
 import { isPromptsSeedPut } from './prompts-default-seed.js'
 import {
   assertValidLorebooksPayload,
@@ -220,6 +221,8 @@ import {
   runPromptsAssemblePreview,
   type PromptsAssemblePreviewBody,
 } from './prompts-assemble-preview.js'
+import { isStOpenAiPreset } from './st-preset-detect.js'
+import { convertStPresetToArousalPub } from './st-preset-import.js'
 import { persistTurnAfterModelReply } from './chat-persist-after-chat.js'
 import {
   loadAndApplyRegexPersistToTurnPatch,
@@ -2207,7 +2210,7 @@ app.get<{ Params: { presetId: string } }>(
       if (!preset) {
         return reply.status(404).send({ error: ApiErrorCodes.prompts_preset_not_found })
       }
-      return preset
+      return normalizePresetForAssemble(preset)
     } catch (e) {
       app.log.error(e)
       return reply.status(500).send({ error: ApiErrorCodes.prompts_read_failed })
@@ -2369,6 +2372,42 @@ app.post<{ Body: PromptsAssemblePreviewBody }>(
     }
   },
 )
+
+app.post('/api/prompts/convert-st', async (request, reply) => {
+  const body = request.body
+  if (!body || typeof body !== 'object') {
+    return reply.status(400).send({ error: ApiErrorCodes.prompts_validation_failed })
+  }
+  const raw = body as {
+    source?: unknown
+    presetName?: unknown
+    characterOrderId?: unknown
+    prompts?: unknown
+    prompt_order?: unknown
+  }
+  const stSource =
+    raw.source != null && isStOpenAiPreset(raw.source) ? raw.source : body
+  if (!isStOpenAiPreset(stSource)) {
+    return reply.status(400).send({ error: ApiErrorCodes.prompts_validation_failed })
+  }
+  try {
+    const characterOrderId =
+      typeof raw.characterOrderId === 'number' &&
+      Number.isFinite(raw.characterOrderId)
+        ? raw.characterOrderId
+        : undefined
+    const presetName =
+      typeof raw.presetName === 'string' ? raw.presetName.trim() : undefined
+    const preset = convertStPresetToArousalPub(stSource, {
+      characterOrderId,
+      presetName,
+    })
+    return { preset }
+  } catch (e) {
+    app.log.error(e)
+    return reply.status(500).send({ error: ApiErrorCodes.prompts_st_convert_failed })
+  }
+})
 
 app.get('/api/lorebooks', async (_request, reply) => {
   try {

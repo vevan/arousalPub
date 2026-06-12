@@ -6,7 +6,27 @@ import {
   usePromptsStore,
 } from '@/stores/prompts'
 import { promptGroupPickerItems } from '@/utils/entry-group-transfer'
+import {
+  bindingSlotUsesFlatSubBlockUi,
+  bindingSlotUsesLegacyBundle,
+  charCoreListInnerEntry,
+  findCharCoreBundlePartner,
+  findHistoryBundlePartner,
+  historyListInnerEntry,
+  isCharCoreListAnchor,
+  isCharCoreListBundle,
+  isHistoryListAnchor,
+  isHistoryListBundle,
+  legacyBundleDescKey,
+  legacyBundleTitleKey,
+  shouldHideCharSystemPromptInList,
+  shouldHideHistoryPostHistoryInList,
+} from '@/utils/system-binding-slots'
 import { formatChatMessagesForDisplay } from '@/utils/format-prompt-json-display'
+import {
+  detectPromptImportKind,
+  formatFilenameAsPresetName,
+} from '@/utils/prompt-import'
 import type {
   GroupKind,
   PromptEntry,
@@ -43,6 +63,7 @@ const {
   searchText,
   selected,
   visiblePrompts,
+  activePrompts,
   groupCounts,
 } = storeToRefs(store)
 
@@ -91,6 +112,10 @@ function switchPreset(id: string) {
 const importFileRef = ref<HTMLInputElement | null>(null)
 const importErrorOpen = ref(false)
 const importErrorMsg = ref('')
+const stImportConfirmOpen = ref(false)
+const stImportDoing = ref(false)
+const stImportPendingParsed = ref<unknown>(null)
+const stImportPreviewName = ref('')
 
 function triggerDownload(text: string, filename: string) {
   const blob = new Blob([text], { type: 'application/json' })
@@ -122,10 +147,47 @@ async function onImportFileChange(evt: Event) {
   if (!file) return
   try {
     const text = await file.text()
-    store.importPresetsFromJson(text)
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(text)
+    } catch (e) {
+      throw new Error(
+        `JSON 解析失败：${e instanceof Error ? e.message : String(e)}`,
+      )
+    }
+    const kind = detectPromptImportKind(parsed)
+    if (kind === 'native') {
+      store.importPresetsFromJson(text)
+      return
+    }
+    if (kind === 'st') {
+      stImportPendingParsed.value = parsed
+      stImportPreviewName.value = formatFilenameAsPresetName(file.name)
+      stImportConfirmOpen.value = true
+      return
+    }
+    throw new Error('文件中未找到有效的提示词预设或 SillyTavern 预设')
   } catch (e) {
     importErrorMsg.value = e instanceof Error ? e.message : String(e)
     importErrorOpen.value = true
+  }
+}
+
+async function confirmStImport() {
+  if (stImportPendingParsed.value == null) return
+  stImportDoing.value = true
+  try {
+    await store.importStPresetFromJson(
+      stImportPendingParsed.value,
+      stImportPreviewName.value,
+    )
+    stImportConfirmOpen.value = false
+    stImportPendingParsed.value = null
+  } catch (e) {
+    importErrorMsg.value = e instanceof Error ? e.message : String(e)
+    importErrorOpen.value = true
+  } finally {
+    stImportDoing.value = false
   }
 }
 
@@ -233,6 +295,18 @@ function onEntryDrop(idx: number) {
   entryDragId.value = null
   entryDragOverIdx.value = null
 }
+
+function onEntryDropAtRow(rowIdx: number) {
+  onEntryDrop(rowDropTargetIndex(rowIdx))
+}
+
+function rowDropTargetIndex(rowIdx: number): number {
+  const row = listRenderRows.value[rowIdx]
+  if (!row) return rowIdx
+  const anchorId = row.entry.id
+  const i = visiblePrompts.value.findIndex((p) => p.id === anchorId)
+  return i >= 0 ? i : rowIdx
+}
 function onEntryDragEnd() {
   entryDragId.value = null
   entryDragOverIdx.value = null
@@ -240,6 +314,10 @@ function onEntryDragEnd() {
 
 function selectEntry(id: string) {
   store.selectPrompt(id)
+}
+
+function onInnerSlotEnabledToggle(inner: PromptEntry) {
+  store.updatePrompt(inner.id, { enabled: !inner.enabled })
 }
 
 function createEntry() {
@@ -516,11 +594,21 @@ function bindingSlotBundlePartsKey(slot: string | undefined): string | null {
       return 'prompts.boundCharacterSystemBundleParts'
     case 'boundUserPersona':
       return 'prompts.boundUserPersonaBundleParts'
+    case 'boundCharSystemPrompt':
+      return 'prompts.boundCharSystemPromptBundleParts'
+    case 'boundCharDescription':
+      return 'prompts.boundCharDescriptionBundleParts'
+    case 'boundChatHistory':
+      return 'prompts.boundChatHistoryBundleParts'
     case 'boundCharacterPostHistory':
       return 'prompts.boundCharacterPostHistoryBundleParts'
     default:
       return null
   }
+}
+
+function bindingSlotAllowsToggle(slot: string | undefined): boolean {
+  return !bindingSlotIsRequired(slot)
 }
 
 function bindingSlotLabelKey(slot: string | undefined): string {
@@ -531,10 +619,32 @@ function bindingSlotLabelKey(slot: string | undefined): string {
       return 'prompts.boundUserPersonaLabel'
     case 'boundWorld':
       return 'prompts.boundWorldLabel'
+    case 'boundWorldBefore':
+      return 'prompts.boundWorldBeforeLabel'
+    case 'boundWorldAfter':
+      return 'prompts.boundWorldAfterLabel'
     case 'boundCharacterPostHistory':
       return 'prompts.boundCharacterPostHistoryLabel'
     case 'boundUserInput':
       return 'prompts.boundUserInputLabel'
+    case 'boundMain':
+      return 'prompts.boundMainLabel'
+    case 'boundCharSystemPrompt':
+      return 'prompts.boundCharSystemPromptLabel'
+    case 'boundCharDescription':
+      return 'prompts.boundCharDescriptionLabel'
+    case 'boundCharPersonality':
+      return 'prompts.boundCharPersonalityLabel'
+    case 'boundScenario':
+      return 'prompts.boundScenarioLabel'
+    case 'boundEnhanceDefinitions':
+      return 'prompts.boundEnhanceDefinitionsLabel'
+    case 'boundDialogueExamples':
+      return 'prompts.boundDialogueExamplesLabel'
+    case 'boundNsfw':
+      return 'prompts.boundNsfwLabel'
+    case 'boundChatHistory':
+      return 'prompts.boundChatHistoryLabel'
     default:
       return 'prompts.untitled'
   }
@@ -543,21 +653,81 @@ function bindingSlotLabelKey(slot: string | undefined): string {
 function bindingSlotIsRequired(slot: string | undefined): boolean {
   return (
     slot === 'boundWorld' ||
+    slot === 'boundWorldBefore' ||
     slot === 'boundUserInput' ||
     slot === 'boundUserPersona'
   )
 }
 
+
+type PromptListRow =
+  | {
+      kind: 'legacy-bundle'
+      entry: PromptEntry
+      innerEntry: PromptEntry
+      key: string
+    }
+  | { kind: 'entry'; entry: PromptEntry; key: string }
+
+function promptsInGroup(groupId: string | undefined): PromptEntry[] {
+  if (!groupId) return []
+  return activePrompts.value.filter((e) => e.groupId === groupId)
+}
+
+const listBundleEditor = computed((): {
+  block: PromptEntry
+  slot: PromptEntry
+} | null => {
+  const s = selected.value
+  if (!s?.bindingSlot) return null
+  const inGroup = promptsInGroup(s.groupId)
+  if (
+    isCharCoreListAnchor(s) &&
+    isCharCoreListBundle(s, inGroup)
+  ) {
+    const slot = findCharCoreBundlePartner(s, activePrompts.value)
+    if (slot) return { block: s, slot }
+  }
+  if (s.bindingSlot === 'boundCharSystemPrompt') {
+    const block = findCharCoreBundlePartner(s, activePrompts.value)
+    if (block) return { block, slot: s }
+  }
+  if (
+    isHistoryListAnchor(s) &&
+    isHistoryListBundle(s, inGroup)
+  ) {
+    const slot = findHistoryBundlePartner(s, activePrompts.value)
+    if (slot) return { block: s, slot }
+  }
+  if (s.bindingSlot === 'boundCharacterPostHistory') {
+    const block = findHistoryBundlePartner(s, activePrompts.value)
+    if (block) return { block, slot: s }
+  }
+  return null
+})
+
 function bindingSlotListHintKey(slot: string | undefined): string {
   switch (slot) {
     case 'boundCharacterSystem':
       return 'prompts.boundCharacterListHintSystem'
+    case 'boundCharSystemPrompt':
+      return 'prompts.boundCharSystemPromptListHint'
     case 'boundUserPersona':
       return 'prompts.boundUserPersonaListHint'
+    case 'boundCharDescription':
+      return 'prompts.boundCharDescriptionListHint'
+    case 'boundCharPersonality':
+      return 'prompts.boundCharPersonalityListHint'
+    case 'boundScenario':
+      return 'prompts.boundScenarioListHint'
     case 'boundWorld':
+    case 'boundWorldBefore':
+    case 'boundWorldAfter':
       return 'prompts.boundWorldListHint'
     case 'boundCharacterPostHistory':
       return 'prompts.boundCharacterListHintPost'
+    case 'boundChatHistory':
+      return 'prompts.boundChatHistoryListHint'
     case 'boundUserInput':
       return 'prompts.boundUserInputListHint'
     default:
@@ -569,12 +739,24 @@ function bindingSlotEditorDescKey(slot: string | undefined): string {
   switch (slot) {
     case 'boundCharacterSystem':
       return 'prompts.boundCharacterEditorDescSystem'
+    case 'boundCharSystemPrompt':
+      return 'prompts.boundCharSystemPromptEditorDesc'
     case 'boundUserPersona':
       return 'prompts.boundUserPersonaEditorDesc'
+    case 'boundCharDescription':
+      return 'prompts.boundCharDescriptionEditorDesc'
+    case 'boundCharPersonality':
+      return 'prompts.boundCharPersonalityEditorDesc'
+    case 'boundScenario':
+      return 'prompts.boundScenarioEditorDesc'
     case 'boundWorld':
+    case 'boundWorldBefore':
+    case 'boundWorldAfter':
       return 'prompts.boundWorldEditorDesc'
     case 'boundCharacterPostHistory':
       return 'prompts.boundCharacterEditorDescPost'
+    case 'boundChatHistory':
+      return 'prompts.boundChatHistoryEditorDesc'
     case 'boundUserInput':
       return 'prompts.boundUserInputEditorDesc'
     default:
@@ -635,6 +817,38 @@ watch(
 const currentGroup = computed<PromptGroup | null>(() => {
   if (!activeGroupId.value) return null
   return activeGroups.value.find((g) => g.id === activeGroupId.value) ?? null
+})
+
+const listRenderRows = computed((): PromptListRow[] => {
+  const rows: PromptListRow[] = []
+  const prompts = visiblePrompts.value
+  const groupKind = currentGroup.value?.kind
+  const groupId = currentGroup.value?.id
+  const groupPrompts = groupId
+    ? activePrompts.value.filter((e) => e.groupId === groupId)
+    : []
+  for (let i = 0; i < prompts.length; i++) {
+    const p = prompts[i]
+    if (shouldHideCharSystemPromptInList(p, groupPrompts)) continue
+    if (shouldHideHistoryPostHistoryInList(p, groupPrompts)) continue
+
+    if (bindingSlotUsesLegacyBundle(p.bindingSlot, groupKind, groupPrompts)) {
+      const inner =
+        charCoreListInnerEntry(p, groupPrompts) ??
+        historyListInnerEntry(p, groupPrompts) ??
+        p
+      rows.push({
+        kind: 'legacy-bundle',
+        entry: p,
+        innerEntry: inner,
+        key: p.id,
+      })
+      continue
+    }
+
+    rows.push({ kind: 'entry', entry: p, key: p.id })
+  }
+  return rows
 })
 
 const currentGroupCustomMuted = computed({
@@ -957,47 +1171,30 @@ const canDeleteGroup = (g: PromptGroup) =>
               <span class="entry-card--new__label">{{ $t('prompts.newPrompt') }}</span>
             </button>
 
-            <template v-for="(p, idx) in visiblePrompts" :key="p.id">
+            <template v-for="(row, rowIdx) in listRenderRows" :key="row.key">
               <span
-                v-if="entryDragOverIdx === idx && isEntryListGroup"
+                v-if="entryDragOverIdx === rowIdx && isEntryListGroup"
                 class="entry-drop-indicator"
               />
               <div
-                v-if="
-                  (
-                    p.bindingSlot === 'boundCharacterSystem' &&
-                    currentGroup?.kind === 'character'
-                  ) ||
-                  (
-                    p.bindingSlot === 'boundUserPersona' &&
-                    currentGroup?.kind === 'character'
-                  ) ||
-                  (
-                    p.bindingSlot === 'boundWorld' &&
-                    currentGroup?.kind === 'world'
-                  ) ||
-                  (
-                    p.bindingSlot === 'boundCharacterPostHistory' &&
-                    currentGroup?.kind === 'history'
-                  ) ||
-                  (
-                    p.bindingSlot === 'boundUserInput' &&
-                    currentGroup?.kind === 'userInput'
-                  )
-                "
+                v-if="row.kind === 'legacy-bundle'"
                 class="character-system-bundle"
                 :class="{
-                  'is-active': selected?.id === p.id,
-                  'is-disabled': !p.enabled || isEntryMutedByGroup(p),
-                  'is-dragging': entryDragId === p.id,
+                  'is-active':
+                    selected?.id === row.entry.id ||
+                    selected?.id === row.innerEntry.id,
+                  'is-disabled': isEntryMutedByGroup(row.entry),
+                  'is-dragging':
+                    entryDragId === row.entry.id ||
+                    entryDragId === row.innerEntry.id,
                 }"
                 tabindex="0"
                 draggable="true"
-                @click="selectEntry(p.id)"
-                @keydown.enter="selectEntry(p.id)"
-                @dragstart="onEntryDragStart(p.id, $event)"
-                @dragover="onEntryDragOver(idx, $event)"
-                @drop="onEntryDrop(idx)"
+                @click="selectEntry(row.entry.id)"
+                @keydown.enter="selectEntry(row.entry.id)"
+                @dragstart="onEntryDragStart(row.entry.id, $event)"
+                @dragover="onEntryDragOver(rowIdx, $event)"
+                @drop="onEntryDropAtRow(rowIdx)"
                 @dragend="onEntryDragEnd"
               >
                 <div class="character-system-bundle__chrome">
@@ -1009,16 +1206,21 @@ const canDeleteGroup = (g: PromptGroup) =>
                     mdi-drag-vertical
                   </v-icon>
                   <v-icon size="20" class="character-system-bundle__icon">
-                    {{ groupIcon(currentGroup.kind) }}
+                    {{ groupIcon(currentGroup!.kind) }}
                   </v-icon>
                   <div class="character-system-bundle__title">
-                    {{ $t(groupBoundTitleKey(currentGroup?.kind)) }}
+                    {{ $t(legacyBundleTitleKey(row.entry.bindingSlot, currentGroup?.kind)) }}
                   </div>
                   <div class="character-system-bundle__desc group-bound-desc">
-                    <p v-if="groupBoundDescKey(currentGroup.kind)">
-                      {{ $t(groupBoundDescKey(currentGroup.kind)) }}
+                    <p>
+                      {{ $t(legacyBundleDescKey(row.entry.bindingSlot, currentGroup?.kind)) }}
                     </p>
-                    <p v-if="showHistoryTokenTrim(currentGroup.kind)">
+                    <p
+                      v-if="
+                        row.entry.bindingSlot === 'boundChatHistory' &&
+                        showHistoryTokenTrim(currentGroup?.kind)
+                      "
+                    >
                       {{ $t('prompts.groupBoundHistoryTokenTrim') }}
                     </p>
                     <p class="group-bound-desc__drag">
@@ -1029,35 +1231,37 @@ const canDeleteGroup = (g: PromptGroup) =>
                 <article
                   class="entry-card entry-card--in-character-bundle"
                   :class="{
-                    'is-active': selected?.id === p.id,
-                    'is-disabled': !p.enabled,
+                    'is-active': selected?.id === row.innerEntry.id,
+                    'is-disabled': !row.innerEntry.enabled,
                   }"
                   draggable="false"
-                  @click.stop="selectEntry(p.id)"
+                  @click.stop="selectEntry(row.innerEntry.id)"
                 >
                   <div class="entry-card__row">
                     <button
-                      v-if="!bindingSlotIsRequired(p.bindingSlot)"
+                      v-if="bindingSlotAllowsToggle(row.innerEntry.bindingSlot)"
                       type="button"
                       class="entry-card__enabled"
-                      :class="{ 'is-on': p.enabled }"
-                      :aria-pressed="p.enabled"
+                      :class="{ 'is-on': row.innerEntry.enabled }"
+                      :aria-pressed="row.innerEntry.enabled"
                       :title="$t('prompts.fieldEnabled')"
-                      @click.stop="store.updatePrompt(p.id, { enabled: !p.enabled })"
+                      @click.stop="
+                        onInnerSlotEnabledToggle(row.innerEntry)
+                      "
                     >
                       <span class="entry-card__enabled-dot" />
                     </button>
                     <h2 class="entry-card__title entry-card__title--bundle-inner">
-                      {{ $t(bindingSlotLabelKey(p.bindingSlot)) }}
+                      {{ $t(bindingSlotLabelKey(row.innerEntry.bindingSlot)) }}
                     </h2>
                     <span class="entry-card__binding">{{ $t('prompts.bindingSlotTag') }}</span>
                   </div>
                   <div class="entry-card__meta entry-card__meta--binding">
                     <span
-                      v-if="bindingSlotBundlePartsKey(p.bindingSlot)"
+                      v-if="bindingSlotBundlePartsKey(row.innerEntry.bindingSlot)"
                       class="entry-card__bundle-parts"
                     >
-                      {{ $t(bindingSlotBundlePartsKey(p.bindingSlot)!) }}
+                      {{ $t(bindingSlotBundlePartsKey(row.innerEntry.bindingSlot)!) }}
                     </span>
                     <span class="entry-card__pos">{{ $t('prompts.positionRelative') }}</span>
                   </div>
@@ -1067,17 +1271,17 @@ const canDeleteGroup = (g: PromptGroup) =>
                 v-else
                 class="entry-card"
                 :class="{
-                  'is-active': selected?.id === p.id,
-                  'is-disabled': !p.enabled || isEntryMutedByGroup(p),
-                  'is-dragging': entryDragId === p.id,
+                  'is-active': selected?.id === row.entry.id,
+                  'is-disabled': !row.entry.enabled || isEntryMutedByGroup(row.entry),
+                  'is-dragging': entryDragId === row.entry.id,
                 }"
                 tabindex="0"
                 draggable="true"
-                @click="selectEntry(p.id)"
-                @keydown.enter="selectEntry(p.id)"
-                @dragstart="onEntryDragStart(p.id, $event)"
-                @dragover="onEntryDragOver(idx, $event)"
-                @drop="onEntryDrop(idx)"
+                @click="selectEntry(row.entry.id)"
+                @keydown.enter="selectEntry(row.entry.id)"
+                @dragstart="onEntryDragStart(row.entry.id, $event)"
+                @dragover="onEntryDragOver(rowIdx, $event)"
+                @drop="onEntryDropAtRow(rowIdx)"
                 @dragend="onEntryDragEnd"
               >
                 <div class="entry-card__row">
@@ -1085,51 +1289,52 @@ const canDeleteGroup = (g: PromptGroup) =>
                     mdi-drag-vertical
                   </v-icon>
                   <button
+                    v-if="!row.entry.bindingSlot || bindingSlotAllowsToggle(row.entry.bindingSlot)"
                     type="button"
                     class="entry-card__enabled"
-                    :class="{ 'is-on': p.enabled }"
-                    :aria-pressed="p.enabled"
+                    :class="{ 'is-on': row.entry.enabled }"
+                    :aria-pressed="row.entry.enabled"
                     :title="$t('prompts.fieldEnabled')"
-                    @click.stop="store.updatePrompt(p.id, { enabled: !p.enabled })"
+                    @click.stop="store.updatePrompt(row.entry.id, { enabled: !row.entry.enabled })"
                   >
                     <span class="entry-card__enabled-dot" />
                   </button>
                   <h2 class="entry-card__title">
-                    <template v-if="p.bindingSlot">{{
-                      $t(bindingSlotLabelKey(p.bindingSlot))
+                    <template v-if="row.entry.bindingSlot">{{
+                      $t(bindingSlotLabelKey(row.entry.bindingSlot))
                     }}</template>
-                    <template v-else>{{ p.title || $t('prompts.untitled') }}</template>
+                    <template v-else>{{ row.entry.title || $t('prompts.untitled') }}</template>
                   </h2>
                   <span
-                    v-if="p.bindingSlot"
+                    v-if="row.entry.bindingSlot"
                     class="entry-card__binding"
                   >{{ $t('prompts.bindingSlotTag') }}</span>
                   <span
-                    v-else-if="p.isSeed"
+                    v-else-if="row.entry.isSeed"
                     class="entry-card__seed"
                   >{{ $t('prompts.seedTag') }}</span>
                 </div>
                 <p
-                  v-if="!p.bindingSlot && (p.description || p.content)"
+                  v-if="!row.entry.bindingSlot && (row.entry.description || row.entry.content)"
                   class="entry-card__body"
-                >{{ previewBody(p) }}</p>
-                <div v-if="!p.bindingSlot" class="entry-card__meta">
-                  <span class="entry-card__role-chip" :class="`role-${p.role}`">
-                    {{ $t(`prompts.role${p.role.charAt(0).toUpperCase() + p.role.slice(1)}`) }}
+                >{{ previewBody(row.entry) }}</p>
+                <div v-if="!row.entry.bindingSlot" class="entry-card__meta">
+                  <span class="entry-card__role-chip" :class="`role-${row.entry.role}`">
+                    {{ $t(`prompts.role${row.entry.role.charAt(0).toUpperCase() + row.entry.role.slice(1)}`) }}
                   </span>
                   <span
                     class="entry-card__pos"
-                    :class="{ 'is-chat': p.injectionPosition === 'chat' }"
+                    :class="{ 'is-chat': row.entry.injectionPosition === 'chat' }"
                   >
-                    {{ p.injectionPosition === 'relative'
+                    {{ row.entry.injectionPosition === 'relative'
                       ? $t('prompts.positionRelative')
-                      : `${$t('prompts.positionChat')} · ${$t('prompts.fieldDepth')} ${p.injectionDepth}` }}
+                      : `${$t('prompts.positionChat')} · ${$t('prompts.fieldDepth')} ${row.entry.injectionDepth}` }}
                   </span>
                   <span
-                    v-if="p.triggers.length"
+                    v-if="row.entry.triggers.length"
                     class="entry-card__trigs"
                   >
-                    {{ p.triggers.map((t) => $t(`prompts.trigger${t.charAt(0).toUpperCase() + t.slice(1)}`)).join(' · ') }}
+                    {{ row.entry.triggers.map((t) => $t(`prompts.trigger${t.charAt(0).toUpperCase() + t.slice(1)}`)).join(' · ') }}
                   </span>
                 </div>
                 <div v-else class="entry-card__meta entry-card__meta--binding">
@@ -1138,12 +1343,12 @@ const canDeleteGroup = (g: PromptGroup) =>
               </article>
             </template>
             <span
-              v-if="entryDragOverIdx === visiblePrompts.length && isEntryListGroup"
+              v-if="entryDragOverIdx === listRenderRows.length && isEntryListGroup"
               class="entry-drop-indicator"
             />
 
             <div
-              v-if="isEntryListGroup && visiblePrompts.length === 0"
+              v-if="isEntryListGroup && listRenderRows.length === 0"
               class="prompts-empty"
             >
               <div class="prompts-empty__title">{{ $t('prompts.emptyTitle') }}</div>
@@ -1154,27 +1359,131 @@ const canDeleteGroup = (g: PromptGroup) =>
 
         <!-- ====== Right editor ====== -->
         <section class="prompts-editor">
-          <template v-if="selected?.bindingSlot">
+          <template v-if="listBundleEditor">
             <div class="editor-card editor-card--binding">
               <section class="binding-editor__block">
                 <header class="binding-editor__section-head">
                   <h2 class="binding-editor__block-title">
-                    {{ $t(groupBoundTitleKey(entryGroupKind(selected))) }}
+                    {{ $t(legacyBundleTitleKey(listBundleEditor.block.bindingSlot, entryGroupKind(listBundleEditor.block))) }}
                   </h2>
                   <span class="binding-editor__section-tag">
                     {{ $t('prompts.bindingEditorBlockTag') }}
                   </span>
                 </header>
                 <div class="binding-editor__section-body group-bound-desc">
-                  <template v-if="entryGroupKind(selected)">
-                    <p>{{ $t(groupBoundDescKey(entryGroupKind(selected)!)) }}</p>
-                    <p v-if="showHistoryTokenTrim(entryGroupKind(selected))">
-                      {{ $t('prompts.groupBoundHistoryTokenTrim') }}
-                    </p>
-                    <p class="group-bound-desc__drag">
-                      {{ $t('prompts.groupBoundDragHint') }}
-                    </p>
-                  </template>
+                  <p>
+                    {{ $t(legacyBundleDescKey(listBundleEditor.block.bindingSlot, entryGroupKind(listBundleEditor.block))) }}
+                  </p>
+                  <p
+                    v-if="showHistoryTokenTrim(entryGroupKind(listBundleEditor.block))"
+                  >
+                    {{ $t('prompts.groupBoundHistoryTokenTrim') }}
+                  </p>
+                  <p class="group-bound-desc__drag">
+                    {{ $t('prompts.groupBoundDragHint') }}
+                  </p>
+                </div>
+              </section>
+
+              <section class="binding-editor__slot">
+                <header
+                  class="binding-editor__section-head binding-editor__section-head--slot"
+                >
+                  <button
+                    v-if="bindingSlotAllowsToggle(listBundleEditor.slot.bindingSlot)"
+                    type="button"
+                    class="editor-card__enabled"
+                    :class="{ 'is-on': listBundleEditor.slot.enabled }"
+                    :aria-pressed="listBundleEditor.slot.enabled"
+                    :title="$t('prompts.fieldEnabled')"
+                    :aria-label="$t('prompts.fieldEnabled')"
+                    @click="onInnerSlotEnabledToggle(listBundleEditor.slot)"
+                  >
+                    <span class="editor-card__enabled-track" />
+                    <span class="editor-card__enabled-thumb" />
+                  </button>
+                  <h3 class="binding-editor__slot-title">
+                    {{ $t(bindingSlotLabelKey(listBundleEditor.slot.bindingSlot)) }}
+                  </h3>
+                  <span class="binding-editor__section-tag">
+                    {{ $t('prompts.bindingEditorSlotTag') }}
+                  </span>
+                </header>
+                <div class="binding-editor__section-body">
+                  <p>{{ $t(bindingSlotListHintKey(listBundleEditor.slot.bindingSlot)) }}</p>
+                  <p>{{ $t(bindingSlotEditorDescKey(listBundleEditor.slot.bindingSlot)) }}</p>
+                </div>
+              </section>
+
+              <footer class="editor-card__foot">
+                <span class="editor-card__autosave">{{ $t('prompts.autosaveHint') }}</span>
+              </footer>
+            </div>
+          </template>
+
+          <template v-else-if="selected?.bindingSlot && bindingSlotUsesFlatSubBlockUi(selected.bindingSlot, entryGroupKind(selected), promptsInGroup(selected.groupId))">
+            <div class="editor-card editor-card--binding">
+              <section class="binding-editor__slot binding-editor__slot--standalone">
+                <header
+                  class="binding-editor__section-head binding-editor__section-head--slot"
+                >
+                  <button
+                    v-if="!bindingSlotIsRequired(selected.bindingSlot)"
+                    type="button"
+                    class="editor-card__enabled"
+                    :class="{ 'is-on': selected.enabled }"
+                    :aria-pressed="selected.enabled"
+                    :title="$t('prompts.fieldEnabled')"
+                    :aria-label="$t('prompts.fieldEnabled')"
+                    @click="onEnabledToggle"
+                  >
+                    <span class="editor-card__enabled-track" />
+                    <span class="editor-card__enabled-thumb" />
+                  </button>
+                  <h2 class="binding-editor__slot-title binding-editor__slot-title--standalone">
+                    {{ $t(bindingSlotLabelKey(selected.bindingSlot)) }}
+                  </h2>
+                  <span class="binding-editor__section-tag">
+                    {{ $t('prompts.bindingEditorSlotTag') }}
+                  </span>
+                </header>
+                <div class="binding-editor__section-body">
+                  <p>{{ $t(bindingSlotListHintKey(selected.bindingSlot)) }}</p>
+                  <p>{{ $t(bindingSlotEditorDescKey(selected.bindingSlot)) }}</p>
+                </div>
+              </section>
+              <footer class="editor-card__foot">
+                <span class="editor-card__autosave">{{ $t('prompts.autosaveHint') }}</span>
+              </footer>
+            </div>
+          </template>
+
+          <template v-else-if="selected?.bindingSlot">
+            <div class="editor-card editor-card--binding">
+              <section class="binding-editor__block">
+                <header class="binding-editor__section-head">
+                  <h2 class="binding-editor__block-title">
+                    {{ $t(legacyBundleTitleKey(selected.bindingSlot, entryGroupKind(selected))) }}
+                  </h2>
+                  <span class="binding-editor__section-tag">
+                    {{ $t('prompts.bindingEditorBlockTag') }}
+                  </span>
+                </header>
+                <div class="binding-editor__section-body group-bound-desc">
+                  <p>
+                    {{ $t(legacyBundleDescKey(selected.bindingSlot, entryGroupKind(selected))) }}
+                  </p>
+                  <p
+                    v-if="
+                      selected.bindingSlot === 'boundCharacterPostHistory' &&
+                      showHistoryTokenTrim(entryGroupKind(selected))
+                    "
+                  >
+                    {{ $t('prompts.groupBoundHistoryTokenTrim') }}
+                  </p>
+                  <p class="group-bound-desc__drag">
+                    {{ $t('prompts.groupBoundDragHint') }}
+                  </p>
                 </div>
               </section>
 
@@ -1491,6 +1800,43 @@ const canDeleteGroup = (g: PromptGroup) =>
           <v-btn variant="text" @click="presetRenameOpen = false">{{ $t('settings.themeCancel') }}</v-btn>
           <v-btn color="primary" variant="flat" :disabled="!presetRenameDraft.trim()" @click="submitRenamePreset">
             {{ $t('settings.themeConfirm') }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="stImportConfirmOpen" max-width="32rem">
+      <v-card>
+        <v-card-title class="text-subtitle-1">
+          {{ $t('prompts.stImportConfirmTitle') }}
+        </v-card-title>
+        <v-card-text class="text-body-2">
+          <p class="mb-2">{{ $t('prompts.stImportConfirmLead') }}</p>
+          <ul class="pl-4 mb-3">
+            <li>{{ $t('prompts.stImportConfirmBulletOrder') }}</li>
+            <li>{{ $t('prompts.stImportConfirmBulletEnabled') }}</li>
+            <li>{{ $t('prompts.stImportConfirmBulletEdit') }}</li>
+          </ul>
+          <p class="mb-0">
+            {{ $t('prompts.stImportConfirmName', { name: stImportPreviewName }) }}
+          </p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn
+            variant="text"
+            :disabled="stImportDoing"
+            @click="stImportConfirmOpen = false"
+          >
+            {{ $t('settings.themeCancel') }}
+          </v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            :loading="stImportDoing"
+            @click="confirmStImport"
+          >
+            {{ $t('prompts.stImportConfirmAction') }}
           </v-btn>
         </v-card-actions>
       </v-card>

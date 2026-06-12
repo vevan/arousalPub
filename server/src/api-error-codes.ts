@@ -208,6 +208,7 @@ export const ApiErrorCodes = {
   prompts_write_failed: 'prompts_write_failed',
   prompts_seed_put_rejected: 'prompts_seed_put_rejected',
   prompts_not_initialized: 'prompts_not_initialized',
+  prompts_st_convert_failed: 'prompts_st_convert_failed',
   receives_content_required: 'receives_content_required',
   receives_item_id_content_required: 'receives_item_id_content_required',
   receives_item_invalid: 'receives_item_invalid',

@@ -1,4 +1,9 @@
 import { allocateShortId, generateShortId } from '@/utils/short-id'
+import { promptEntryAllowedInGroup } from '@/utils/entry-group-transfer'
+import {
+  finalizeCharacterGroupBindings,
+  findBundleDragPartner,
+} from '@/utils/system-binding-slots'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
@@ -16,11 +21,90 @@ export type PromptTrigger = 'normal' | 'continue' | 'swipe' | 'regenerate'
 
 /** 会话绑定角色卡槽位：正文由聊天侧注入，条目仅排序与启用 */
 export type PromptBindingSlot =
-  | 'boundCharacterSystem'
+  | 'boundMain'
+  | 'boundWorldBefore'
+  | 'boundWorldAfter'
   | 'boundUserPersona'
-  | 'boundWorld'
+  | 'boundCharSystemPrompt'
+  | 'boundCharDescription'
+  | 'boundCharPersonality'
+  | 'boundScenario'
+  | 'boundEnhanceDefinitions'
+  | 'boundDialogueExamples'
+  | 'boundNsfw'
+  | 'boundChatHistory'
   | 'boundCharacterPostHistory'
   | 'boundUserInput'
+  | 'boundMemory'
+  /** @deprecated 粗粒度 legacy */
+  | 'boundCharacterSystem'
+  /** @deprecated 请用 boundWorldBefore */
+  | 'boundWorld'
+  /** @deprecated 请用 boundChatHistory */
+  | 'boundRecentHistory'
+
+const SYSTEM_BINDING_SLOTS: PromptBindingSlot[] = [
+  'boundMain',
+  'boundWorldBefore',
+  'boundWorldAfter',
+  'boundUserPersona',
+  'boundCharSystemPrompt',
+  'boundCharDescription',
+  'boundCharPersonality',
+  'boundScenario',
+  'boundEnhanceDefinitions',
+  'boundDialogueExamples',
+  'boundNsfw',
+  'boundChatHistory',
+  'boundCharacterPostHistory',
+  'boundUserInput',
+  'boundMemory',
+]
+
+const DEFAULT_CHARACTER_SYSTEM_SLOTS: PromptBindingSlot[] = [
+  'boundUserPersona',
+  'boundCharSystemPrompt',
+  'boundCharDescription',
+  'boundCharPersonality',
+  'boundScenario',
+]
+
+const DEFAULT_WORLD_SYSTEM_SLOTS: PromptBindingSlot[] = ['boundWorldBefore']
+
+const DEFAULT_HISTORY_SYSTEM_SLOTS: PromptBindingSlot[] = [
+  'boundChatHistory',
+  'boundCharacterPostHistory',
+]
+
+const DEPRECATED_ST_SLOT_ALIASES: Record<string, PromptBindingSlot> = {
+  boundStMain: 'boundMain',
+  boundStWorldBefore: 'boundWorldBefore',
+  boundStWorldAfter: 'boundWorldAfter',
+  boundStCharDescription: 'boundCharDescription',
+  boundStCharPersonality: 'boundCharPersonality',
+  boundStScenario: 'boundScenario',
+  boundStEnhanceDefinitions: 'boundEnhanceDefinitions',
+  boundStDialogueExamples: 'boundDialogueExamples',
+  boundStNsfw: 'boundNsfw',
+  boundStChatHistory: 'boundChatHistory',
+}
+
+function isSystemBindingSlot(slot: PromptBindingSlot | undefined): boolean {
+  return slot != null && SYSTEM_BINDING_SLOTS.includes(slot)
+}
+
+function presetUsesSystemSubBlocks(prompts: PromptEntry[]): boolean {
+  return prompts.some((e) => isSystemBindingSlot(e.bindingSlot))
+}
+
+function migrateBindingSlotAliases(prompts: PromptEntry[]): PromptEntry[] {
+  return prompts.map((e) => {
+    if (!e.bindingSlot) return e
+    const alias = DEPRECATED_ST_SLOT_ALIASES[e.bindingSlot]
+    if (alias) return { ...e, bindingSlot: alias }
+    return e
+  })
+}
 
 export interface PromptGroup {
   id: string
@@ -62,8 +146,7 @@ export interface PromptEntry {
 /** 仅用于 normalize：旧版「卡前 / 槽 / 卡后」分区 → 展平为单一 order */
 function characterBundleListPartitionLegacy(e: PromptEntry): number {
   if (e.bindingSlot === 'boundCharacterSystem') return 1
-  if (e.bindingSlot === 'boundUserPersona') return 2
-  if (e.characterBundlePosition === 'after') return 3
+  if (e.characterBundlePosition === 'after') return 2
   return 0
 }
 
@@ -201,9 +284,33 @@ function makeBindingSlotEntry(
   }
 }
 
+function ensureSystemSubBlocks(
+  prompts: PromptEntry[],
+  group: PromptGroup,
+  slots: PromptBindingSlot[],
+): PromptEntry[] {
+  let next = prompts
+  let order =
+    next
+      .filter((e) => e.groupId === group.id)
+      .reduce((m, e) => Math.max(m, e.order), -1) + 1
+  for (const slot of slots) {
+    if (next.some((e) => e.bindingSlot === slot)) continue
+    next = [
+      ...next,
+      makeBindingSlotEntry(group.id, slot, order, {
+        id: `binding-slot-${slot.replace(/^bound/, '')}`,
+      }),
+    ]
+    order += 1
+  }
+  return next
+}
+
 function bindingSlotIsRequired(slot: PromptBindingSlot | undefined): boolean {
   return (
     slot === 'boundWorld' ||
+    slot === 'boundWorldBefore' ||
     slot === 'boundUserInput' ||
     slot === 'boundUserPersona'
   )
@@ -221,8 +328,8 @@ export function normalizePreset(p: PromptPreset): PromptPreset {
     useBoundCharacterSystemPrompt?: boolean
     useBoundCharacterPostHistory?: boolean
   }
-  const sysOn = raw.useBoundCharacterSystemPrompt !== false
   const postOn = raw.useBoundCharacterPostHistory !== false
+  const legacySysOn = raw.useBoundCharacterSystemPrompt !== false
 
   const {
     useBoundCharacterSystemPrompt: _a,
@@ -230,28 +337,37 @@ export function normalizePreset(p: PromptPreset): PromptPreset {
     ...rest
   } = raw
 
-  let prompts = p.prompts.map((e) => ({
+  let prompts = migrateBindingSlotAliases(p.prompts).map((e) => ({
     ...e,
     enabled: bindingSlotIsRequired(e.bindingSlot) ? true : e.enabled,
   }))
 
-  if (charG && !prompts.some((e) => e.bindingSlot === 'boundCharacterSystem')) {
-    const maxO = prompts
-      .filter((e) => e.groupId === charG.id)
-      .reduce((m, e) => Math.max(m, e.order), -1)
-    prompts.push(
-      makeBindingSlotEntry(charG.id, 'boundCharacterSystem', maxO + 1, {
-        enabled: sysOn,
-      }),
+  const hasLegacyChar = prompts.some(
+    (e) => e.bindingSlot === 'boundCharacterSystem',
+  )
+  const hasSystemSub = presetUsesSystemSubBlocks(prompts)
+
+  if (charG && !hasLegacyChar && !hasSystemSub) {
+    prompts = ensureSystemSubBlocks(
+      prompts,
+      charG,
+      DEFAULT_CHARACTER_SYSTEM_SLOTS,
     )
   }
-  if (charG && !prompts.some((e) => e.bindingSlot === 'boundUserPersona')) {
-    const charSlot = prompts.find(
+
+  if (
+    charG &&
+    !prompts.some((e) => e.bindingSlot === 'boundUserPersona') &&
+    (hasLegacyChar || hasSystemSub)
+  ) {
+    const anchor = prompts.find(
       (e) =>
-        e.groupId === charG.id && e.bindingSlot === 'boundCharacterSystem',
+        e.groupId === charG.id &&
+        (e.bindingSlot === 'boundCharacterSystem' ||
+          e.bindingSlot === 'boundCharSystemPrompt'),
     )
     const insertAfter =
-      charSlot?.order ??
+      anchor?.order ??
       prompts
         .filter((e) => e.groupId === charG.id)
         .reduce((m, e) => Math.max(m, e.order), -1)
@@ -266,17 +382,14 @@ export function normalizePreset(p: PromptPreset): PromptPreset {
       }),
     )
   }
-  if (worldG && !prompts.some((e) => e.bindingSlot === 'boundWorld')) {
-    prompts = prompts.map((e) =>
-      e.groupId === worldG.id ? { ...e, order: e.order + 1 } : e,
+
+  if (histG && !hasSystemSub && !hasLegacyChar) {
+    prompts = ensureSystemSubBlocks(
+      prompts,
+      histG,
+      DEFAULT_HISTORY_SYSTEM_SLOTS,
     )
-    prompts.push(
-      makeBindingSlotEntry(worldG.id, 'boundWorld', 0, {
-        id: 'binding-slot-world',
-      }),
-    )
-  }
-  if (
+  } else if (
     histG &&
     !prompts.some((e) => e.bindingSlot === 'boundCharacterPostHistory')
   ) {
@@ -288,6 +401,33 @@ export function normalizePreset(p: PromptPreset): PromptPreset {
         enabled: postOn,
       }),
     )
+  }
+
+  if (
+    worldG &&
+    !prompts.some((e) => e.bindingSlot === 'boundWorld') &&
+    !prompts.some(
+      (e) =>
+        e.bindingSlot === 'boundWorldBefore' ||
+        e.bindingSlot === 'boundWorldAfter',
+    )
+  ) {
+    if (hasSystemSub || !hasLegacyChar) {
+      prompts = ensureSystemSubBlocks(
+        prompts,
+        worldG,
+        DEFAULT_WORLD_SYSTEM_SLOTS,
+      )
+    } else {
+      prompts = prompts.map((e) =>
+        e.groupId === worldG.id ? { ...e, order: e.order + 1 } : e,
+      )
+      prompts.push(
+        makeBindingSlotEntry(worldG.id, 'boundWorld', 0, {
+          id: 'binding-slot-world',
+        }),
+      )
+    }
   }
   if (
     userInputG &&
@@ -305,6 +445,13 @@ export function normalizePreset(p: PromptPreset): PromptPreset {
 
   if (charG) {
     prompts = migrateCharacterGroupToFlatOrder(prompts, charG.id)
+    prompts = finalizeCharacterGroupBindings(
+      prompts,
+      charG.id,
+      (slot, order, id, enabled = true) =>
+        makeBindingSlotEntry(charG.id, slot, order, { id, enabled }),
+      { legacySystemPromptEnabled: legacySysOn },
+    )
   }
 
   if (histG) {
@@ -785,6 +932,64 @@ export const usePromptsStore = defineStore('prompts', () => {
    * - 导入后切到第一个新预设
    * 返回新预设 id 列表；任何错误抛 Error。
    */
+  function finalizeImportedPresets(fresh: PromptPreset[]): string[] {
+    for (const p of fresh) setPresetBody(p)
+    activePresetId.value = fresh[0].id
+    selectedPromptId.value = null
+    activeGroupId.value = null
+    scheduleIndexPatch()
+    pendingSave = true
+    void flushPending()
+    return fresh.map((p) => p.id)
+  }
+
+  function clonePresetForImport(
+    src: PromptPreset,
+    name: string,
+  ): PromptPreset {
+    const t = nowIso()
+    return normalizePreset({
+      id: makeId(presetBodies.value),
+      name: uniquePresetName(name.trim() || 'Imported preset'),
+      groups: src.groups.map((g) => ({ ...g })),
+      prompts: src.prompts.map((p) => ({
+        ...p,
+        tags: Array.isArray(p.tags) ? p.tags.slice() : [],
+        triggers: Array.isArray(p.triggers) ? p.triggers.slice() : [],
+      })),
+      createdAt: t,
+      updatedAt: t,
+    })
+  }
+
+  /** 导入已转换的预设（新 id；presetName 为最终显示名，不加 imported 后缀） */
+  function importConvertedPreset(src: PromptPreset, presetName: string): string {
+    const fresh = clonePresetForImport(src, presetName)
+    finalizeImportedPresets([fresh])
+    return fresh.id
+  }
+
+  /** 调用服务端 ST 转换并导入 */
+  async function importStPresetFromJson(
+    parsed: unknown,
+    presetName: string,
+  ): Promise<string> {
+    const res = await fetch('/api/prompts/convert-st', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: parsed, presetName }),
+    })
+    if (!res.ok) {
+      const txt = await res.text()
+      throw new Error(`ST 转换失败 (${res.status}): ${txt.slice(0, 200)}`)
+    }
+    const j = (await res.json()) as { preset?: PromptPreset }
+    if (!j.preset || !Array.isArray(j.preset.groups)) {
+      throw new Error('ST 转换未返回有效 preset')
+    }
+    return importConvertedPreset(j.preset, presetName)
+  }
+
   function importPresetsFromJson(text: string): string[] {
     let parsed: unknown
     try {
@@ -798,36 +1003,18 @@ export const usePromptsStore = defineStore('prompts', () => {
     if (candidates.length === 0) {
       throw new Error('文件中未找到有效的提示词预设')
     }
-    const t = nowIso()
     const fresh: PromptPreset[] = []
     for (const src of candidates) {
       fresh.push(
-        normalizePreset({
-          id: makeId(presetBodies.value),
-          name: uniquePresetName(
-            (typeof src.name === 'string' && src.name.trim()
-              ? src.name.trim()
-              : 'Imported preset') + ' (imported)',
-          ),
-          groups: src.groups.map((g) => ({ ...g })),
-          prompts: src.prompts.map((p) => ({
-            ...p,
-            tags: Array.isArray(p.tags) ? p.tags.slice() : [],
-            triggers: Array.isArray(p.triggers) ? p.triggers.slice() : [],
-          })),
-          createdAt: t,
-          updatedAt: t,
-        }),
+        clonePresetForImport(
+          src,
+          (typeof src.name === 'string' && src.name.trim()
+            ? src.name.trim()
+            : 'Imported preset') + ' (imported)',
+        ),
       )
     }
-    for (const p of fresh) setPresetBody(p)
-    activePresetId.value = fresh[0].id
-    selectedPromptId.value = null
-    activeGroupId.value = null
-    scheduleIndexPatch()
-    pendingSave = true
-    void flushPending()
-    return fresh.map((p) => p.id)
+    return finalizeImportedPresets(fresh)
   }
 
   /** 追加一条提示词预设的深拷贝（新 id），不改变当前全局激活的提示词预设；供 API 预设导入等使用 */
@@ -1145,85 +1332,69 @@ export const usePromptsStore = defineStore('prompts', () => {
     targetIndex: number,
   ) {
     const list = activePreset.value.prompts
-    const moved = list.find((e) => e.id === id)
+    let moved = list.find((e) => e.id === id)
     if (!moved) return
     const targetGroup = activePreset.value.groups.find(
       (g) => g.id === targetGroupId,
     )
     if (!targetGroup || !groupAllowsPromptEntries(targetGroup.kind)) return
-    if (
-      moved.bindingSlot === 'boundCharacterSystem' &&
-      targetGroup.kind !== 'character'
-    ) {
-      return
+
+    const partner = findBundleDragPartner(moved, list)
+    const idsToMove: string[] = []
+    if (partner) {
+      const [first, second] =
+        moved.order < partner.order ? [moved, partner] : [partner, moved]
+      idsToMove.push(first.id, second.id)
+      moved = first
+    } else {
+      idsToMove.push(id)
     }
+
     if (
-      moved.bindingSlot === 'boundUserPersona' &&
-      targetGroup.kind !== 'character'
-    ) {
-      return
-    }
-    if (
-      moved.bindingSlot === 'boundCharacterPostHistory' &&
-      targetGroup.kind !== 'history'
-    ) {
-      return
-    }
-    if (moved.bindingSlot === 'boundWorld' && targetGroup.kind !== 'world') {
-      return
-    }
-    if (
-      moved.bindingSlot === 'boundUserInput' &&
-      targetGroup.kind !== 'userInput'
+      moved.bindingSlot &&
+      !promptEntryAllowedInGroup(moved, targetGroup)
     ) {
       return
     }
 
-    const targetList = list
-      .filter((e) => e.groupId === targetGroupId && e.id !== id)
+    let targetList = list
+      .filter((e) => e.groupId === targetGroupId && !idsToMove.includes(e.id))
       .slice()
       .sort((a, b) => a.order - b.order)
-    const clamped = Math.max(0, Math.min(targetIndex, targetList.length))
-    let insertAt = clamped
-    if (targetGroup.kind === 'character') {
-      if (moved.bindingSlot === 'boundUserPersona') {
-        const charEntry = targetList.find(
-          (e) => e.bindingSlot === 'boundCharacterSystem',
-        )
-        if (charEntry) {
-          const charPos = targetList.indexOf(charEntry)
-          insertAt = Math.max(insertAt, charPos + 1)
-        }
-      }
-      if (moved.bindingSlot === 'boundCharacterSystem') {
-        const userEntry = targetList.find(
-          (e) => e.bindingSlot === 'boundUserPersona',
-        )
-        if (userEntry) {
-          const userPos = targetList.indexOf(userEntry)
-          insertAt = Math.min(insertAt, userPos)
-        }
-      }
-    }
-    targetList.splice(insertAt, 0, { ...moved, groupId: targetGroupId })
+    const clamped = Math.max(
+      0,
+      Math.min(targetIndex, targetList.length),
+    )
+    const movingEntries = idsToMove
+      .map((mid) => list.find((e) => e.id === mid))
+      .filter((e): e is PromptEntry => e != null)
+      .map((e) => ({ ...e, groupId: targetGroupId }))
+    targetList.splice(clamped, 0, ...movingEntries)
     const reorderedTarget = targetList.map((e, i) => ({ ...e, order: i }))
 
     const fromGroupId = moved.groupId
     let updated = list
     if (fromGroupId !== targetGroupId) {
       const fromList = list
-        .filter((e) => e.groupId === fromGroupId && e.id !== id)
+        .filter(
+          (e) => e.groupId === fromGroupId && !idsToMove.includes(e.id),
+        )
         .slice()
         .sort((a, b) => a.order - b.order)
         .map((e, i) => ({ ...e, order: i }))
       updated = updated
         .filter(
-          (e) => e.groupId !== fromGroupId && e.groupId !== targetGroupId,
+          (e) =>
+            e.groupId !== fromGroupId &&
+            e.groupId !== targetGroupId &&
+            !idsToMove.includes(e.id),
         )
         .concat(fromList, reorderedTarget)
     } else {
       updated = updated
-        .filter((e) => e.groupId !== targetGroupId)
+        .filter(
+          (e) => e.groupId !== targetGroupId && !idsToMove.includes(e.id),
+        )
         .concat(reorderedTarget)
     }
     patchActivePreset((p) => ({ ...p, prompts: updated }))
@@ -1345,6 +1516,14 @@ export const usePromptsStore = defineStore('prompts', () => {
           return true
         }
         if (
+          e.bindingSlot === 'boundChatHistory' &&
+          (q.includes('chat') ||
+            q.includes('历史') ||
+            q.includes('history'))
+        ) {
+          return true
+        }
+        if (
           e.bindingSlot === 'boundUserInput' &&
           (q.includes('user') || q.includes('input') || q.includes('用户'))
         ) {
@@ -1396,6 +1575,8 @@ export const usePromptsStore = defineStore('prompts', () => {
     deletePreset,
     exportActivePreset,
     importPresetsFromJson,
+    importStPresetFromJson,
+    importConvertedPreset,
     appendPromptPresetCopy,
 
     addGroup,

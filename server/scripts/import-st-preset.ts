@@ -1,24 +1,39 @@
 #!/usr/bin/env node
 /**
- * 用法: tsx scripts/import-st-preset.ts <st-preset.json> [output.json]
+ * 用法: tsx scripts/import-st-preset.ts <st-preset.json> [output.json] [--name "Preset name"]
  * 未指定 output 时写入 stdout。
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { dirname, resolve, basename } from 'node:path'
 import { assemblePrompts } from '../src/assemble-prompts.js'
+import { formatFilenameAsPresetName } from '../src/st-preset-detect.js'
 import { convertStPresetToArousalPub } from '../src/st-preset-import.js'
 
-const inputPath = process.argv[2]
-const outputPath = process.argv[3]
+const argv = process.argv.slice(2)
+let inputPath = argv[0]
+let outputPath: string | undefined
+let presetName: string | undefined
+
+for (let i = 1; i < argv.length; i++) {
+  if (argv[i] === '--name' && argv[i + 1]) {
+    presetName = argv[++i]
+  } else if (!outputPath && !argv[i]?.startsWith('--')) {
+    outputPath = argv[i]
+  }
+}
 
 if (!inputPath) {
-  console.error('Usage: tsx scripts/import-st-preset.ts <st-preset.json> [output.json]')
+  console.error(
+    'Usage: tsx scripts/import-st-preset.ts <st-preset.json> [output.json] [--name "Preset name"]',
+  )
   process.exit(1)
 }
 
 const raw = JSON.parse(readFileSync(resolve(inputPath), 'utf8'))
 const preset = convertStPresetToArousalPub(raw, {
   presetId: 'preset-stabs-import',
+  presetName:
+    presetName ?? formatFilenameAsPresetName(basename(inputPath)),
 })
 
 const json = JSON.stringify(preset, null, 2)

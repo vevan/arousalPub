@@ -73,8 +73,8 @@ const displayModelName = computed(() => {
       <span v-else>{{ assistantAvatarLetter }}</span>
     </div>
     <div class="turn-role turn-role--assistant">
-      <span class="turn-role__label">
-        {{ assistantRoleName }}
+      <div class="turn-role__head">
+        <span class="turn-role__label">{{ assistantRoleName }}</span>
         <span
           v-if="
             displayModelName ||
@@ -82,7 +82,7 @@ const displayModelName = computed(() => {
             assistantReceiveTokenLabel(turn) ||
             isAssistantStreamingBubble(turn)
           "
-          class="meta"
+          class="meta turn-role__meta"
         >
           <template v-if="displayModelName">{{ displayModelName }}</template>
           <template v-if="assistantTimerLabel(turn)">
@@ -104,7 +104,7 @@ const displayModelName = computed(() => {
             {{ $t('chat.streamingSuffix') }}
           </template>
         </span>
-      </span>
+      </div>
       <div class="plugin-slots" data-plugin-slot="assistant-turn">
         <button
           type="button"

@@ -39,20 +39,20 @@ const { userDisplayName, userAvatarLetter } = toRefs(props.session)
       <span v-else>{{ userAvatarLetter }}</span>
     </div>
     <div class="turn-role turn-role--user">
-      <span class="turn-role__label">
-        {{ userDisplayName }}
+      <div class="turn-role__head">
+        <span class="turn-role__label">{{ userDisplayName }}</span>
         <span
           v-if="
             userSendTokenLabel(turn) &&
             !(editingTurnOrdinal === turn.turnOrdinal && editingSide === 'user')
           "
-          class="meta"
+          class="meta turn-role__meta"
         >
           <span class="turn-tokens">
             {{ $t('chat.sendTokens', { n: userSendTokenLabel(turn) }) }}
           </span>
         </span>
-      </span>
+      </div>
       <div class="plugin-slots" data-plugin-slot="user-turn">
         <button
           type="button"

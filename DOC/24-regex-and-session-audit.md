@@ -1,6 +1,6 @@
 # 正则替换（原生）与会话审计（debug）
 
-> **状态**（2026-06-10）：**§3 会话 debug 审计已实现**（含 **schema v3 性能** Tab）；**§2 正则替换 Phase 0–5 主体已落地**（含 **memory 块逐轮 outgoing**），余 **对话批量 apply UI**（可选）。  
+> **状态**（2026-06-12）：**§3 会话 debug 审计已实现**（含 **schema v3 性能** Tab）；**§2 正则替换 Phase 0–5 已落地**（含 **memory 块逐轮 outgoing**、**对话页批量 apply UI** · `ConversationRegexApplyPanel`）。  
 > **关联**：`DOC/03` §6.8、§审计、`DOC/10`、`DOC/18`、`DOC/02` §4 可观测性。
 
 ---
@@ -14,7 +14,7 @@
 
 ## 2. 正则替换（原生）【定案 · Phase 0–5 已落地 · 2026-06-10】
 
-> 列入 P0；实现清单见 §2.8。后端引擎、`GET/PUT /api/regex-rules`、三阶段挂钩、系统设置 UI、`host.regex` 已落地；**未做**：对话页批量 apply UI、`conversation-export` 导出勾选。
+> 列入 P0（**批量 apply UI 已于 2026-06-12 验收**）；实现清单见 §2.8。后端引擎、`GET/PUT /api/regex-rules`、三阶段挂钩、系统设置 UI、对话设置「正则批量」、`host.regex` 已落地；**未做**：`conversation-export` 导出勾选。
 
 ### 2.1 存储
 
@@ -165,16 +165,16 @@ applyText / applyMessages  // 同语义
 
 ### 2.7 UI
 
-> **产品定案（2026-06-10）**：正则**仅系统设置**入口管理规则；**无对话级设置**（会话 `index.json` 不存 regex 开关/规则子集；对话齿轮内**无**正则 Tab）。所有 enabled 规则对用户下**全部对话**生效；`skipLastNTurns` 等按轮次语义在引擎内处理，非 per-conversation 配置。
+> **产品定案（2026-06-10，批量 UI 2026-06-12）**：正则**仅系统设置**入口**编辑**规则；会话 `index.json` **不存** regex 开关/规则子集。对话设置内提供 **「正则批量」** Tab（`ConversationRegexApplyPanel`）：只读勾选 Persist 规则、轮次区间、dry-run / apply，**非**规则 CRUD。所有 enabled 规则对用户下**全部对话**生效；`skipLastNTurns` 等按轮次语义在引擎内处理。
 
 | 位置 | 内容 | 是否「设置」 |
 |------|------|-------------|
 | **系统设置** `/settings` | 规则 CRUD、拖曳 `order`、测试串、enabled 开关 | ✅ **唯一规则管理入口** |
-| **对话页** composer 工具栏 | 历史批量 apply（区间、dry-run、写锁）— **操作**，非规则编辑 | 否（动作入口） |
+| **对话设置** →「正则批量」 | 历史批量 apply（区间、规则只读勾选、dry-run / apply） | 否（动作入口） |
 | **导出**（`conversation-export`） | 导出对话框勾选**全局**规则子集（display/outgoing 只读链） | 否（一次性导出选项） |
 
-- **系统设置**：新增 Tab「正则替换」— 规则列表 + 编辑器 + 测试串；**`mdi-drag-vertical` 拖曳排序**（对齐 `BudgetTrimSettingsPanel` / `PluginSettingsPanel` 原生 drag）；debounce **1 次** PUT；**replacement** 为多行 **textarea**。
-- **对话页**：不提供规则编辑；仅批量 apply 与写锁提示。
+- **系统设置**：Tab「正则替换」— 规则列表 + 编辑器 + 测试串；**`mdi-drag-vertical` 拖曳排序**；debounce **1 次** PUT；**replacement** 为多行 **textarea**。
+- **对话设置**：Tab「正则批量」— 不提供规则编辑；仅批量 apply（`POST .../regex/apply`）。
 - **废止**：`regex-transform` 插件、`DOC/09` §8.7 以 regex 为 capabilities 试点。
 
 ### 2.8 实现清单
@@ -187,7 +187,7 @@ applyText / applyMessages  // 同语义
 - [x] `/api/chat` **persist** 挂钩 + SSE `final*`（Phase 2 · 2026-06-10）
 - [x] `POST /api/chat/conversations/:id/regex/apply`（dry-run / batchUpdateConversationTurns · Phase 3 · 2026-06-10）
 - [x] Web 设置页（Tab「正则替换」、拖曳 order、单条测试串、管线测试 · Phase 4 · 2026-06-10）
-- [ ] 对话页批量 apply UI（`POST .../regex/apply` dry-run / apply）
+- [x] 对话页批量 apply UI（`ConversationRegexApplyPanel` · `POST .../regex/apply` dry-run / apply）
 - [x] `conversation-export` 导出勾选全局规则（Phase 5 · 2026-06-10）
 - [x] `host.regex` + server hook `api.regex`（Phase 5 · 2026-06-10）
 - [x] 写盘合并单测（`regex-persist*.test.ts`、`regex-batch-apply.test.ts` 等）

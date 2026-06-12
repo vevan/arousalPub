@@ -20,7 +20,7 @@
 ### 1.2 后续迭代（未做）
 
 - 分支子目录 `branch*/` 与 `meta.links.branches` 的产品 UI与写入路径 — **完整参考见 `DOC/23-conversation-branches.md`**（memory 枚举 / 召回过滤等服务端原语已落地）
-- `GET .../messages` 分页 / 按 chunk 懒加载 — **方案见 `DOC/15-conversation-messages-lazy-load.md`（P1）**
+- `GET .../messages` 分页 / 按 chunk 懒加载 — **方案见 `DOC/15-conversation-messages-lazy-load.md`（P0）**
 - 跨 chunk 的「删中间轮」后自动合并块（删轮仍只动 tail；**删空 tail 链式回退已实现**，见 §5.3）
 
 ---
@@ -217,7 +217,7 @@ async function splitOversizedTailChunkIfNeeded(conversationId: string): Promise<
 
 - **大 JSON 同步**：单块 100 轮仍可能很大；切分后单次同步增量更小。  
 - **半写文件**：写盘继续「整文件 `writeFile`」，避免 Syncthing 读到半截；滚动时先写新块再改旧块 `next`。  
-- **响应体**：`GET messages` 一次拉全链；数百轮分页与 UI 懒加载见 **`DOC/15`**（P1）。  
+- **响应体**：`GET messages` 一次拉全链；数百轮分页与 UI 懒加载见 **`DOC/15`**（P0）。  
 
 ---
 

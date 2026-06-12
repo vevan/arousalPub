@@ -1,4 +1,4 @@
-// src/constants.ts
+// plugins/plot-summary/src/constants.ts
 var PLUGIN_ID = "plot-summary";
 var DIALOG_SESSION = "session";
 var DIALOG_MANUAL = "manual";
@@ -9,7 +9,7 @@ var DIALOG_PICK_LOREBOOK = "pick-lorebook";
 var DIALOG_RECOVER_LOREBOOK = "recover-lorebook";
 var DIALOG_PROMPT_PREVIEW = "prompt-preview";
 
-// src/shared/utils.ts
+// plugins/plot-summary/src/shared/utils.ts
 function asString(v) {
   return typeof v === "string" ? v.trim() : "";
 }
@@ -34,7 +34,7 @@ function entryKeys(keywords) {
   return keywords.filter((x) => typeof x === "string").map((x) => x.trim()).filter(Boolean);
 }
 
-// src/settings.ts
+// plugins/plot-summary/src/settings.ts
 function k(host, key) {
   return host.pluginKey(key);
 }
@@ -263,7 +263,7 @@ function firstAutoTriggerTurnOrdinal(settings) {
   return blockEndFromStart(start, settings.blockTurns) + settings.bufferTurns;
 }
 
-// src/errors.ts
+// plugins/plot-summary/src/errors.ts
 var PIPELINE_FATAL_ERRORS = /* @__PURE__ */ new Set([
   "context_exceeded",
   "context_length_unconfigured"
@@ -322,7 +322,7 @@ function preflightToast(host, e) {
   host.ui.toast(host.t(k(host, "toastSummarizeFailed")), { color: "error" });
 }
 
-// src/state.ts
+// plugins/plot-summary/src/state.ts
 var summarizeRunning = false;
 var _reviewResolver = null;
 var _reviewRegenerate = null;
@@ -385,7 +385,7 @@ function clearPromptPreviewRestore() {
   _promptPreviewRestore = null;
 }
 
-// src/review.ts
+// plugins/plot-summary/src/review.ts
 function resolveSystemPrompt(host, settings, opts) {
   if (opts.kind === "sidecar" && opts.sc) {
     return sidecarPromptTemplate(host, opts.sc);
@@ -546,7 +546,7 @@ function promptReview(host, draft, dialogId, regenerateFn, lorebookName) {
   });
 }
 
-// src/shared/lorebook-sort.ts
+// plugins/plot-summary/src/shared/lorebook-sort.ts
 var TURN_RANGE_SUFFIX_RE = /-(\d+)-(\d+)$/;
 function parseTurnRangeSuffix(title) {
   const t = (title ?? "").trim();
@@ -614,7 +614,7 @@ function computePlotSummaryApplyOrderLayout(lb, sidecarEntryIds, sidecarConfigId
   return { entriesByGroup };
 }
 
-// src/shared/entry-sort.ts
+// plugins/plot-summary/src/shared/entry-sort.ts
 async function applyPlotSummaryEntrySort(host, lorebookId, sidecarEntryIds, sidecarConfigIds) {
   const id = lorebookId.trim();
   if (!id) return false;
@@ -644,7 +644,7 @@ async function applyPlotSummaryEntrySort(host, lorebookId, sidecarEntryIds, side
   return true;
 }
 
-// src/batch-write.ts
+// plugins/plot-summary/src/batch-write.ts
 async function flushPendingLorebookCreates(host, lorebookId, pending, sidecarEntryIds) {
   if (!pending.length) return;
   if (typeof host.lorebook.createEntriesBatch !== "function") {
@@ -668,7 +668,7 @@ async function flushPendingLorebookCreates(host, lorebookId, pending, sidecarEnt
   pending.length = 0;
 }
 
-// src/sidecar.ts
+// plugins/plot-summary/src/sidecar.ts
 async function writeSidecarEntry(host, settings, sidecarEntryIds, sc, reviewed, sidecarKeys, pendingCreates) {
   const body = {
     title: sc.name,
@@ -697,7 +697,16 @@ async function writeSidecarEntry(host, settings, sidecarEntryIds, sc, reviewed, 
   return created.id;
 }
 
-// src/pipeline.ts
+// plugins/plot-summary/src/shared/range-limits.ts
+var SUMMARIZE_TURN_SPAN_HINT_MAX = 512;
+function summarizeTurnSpan(fromTurn, toTurn) {
+  return Math.max(0, toTurn - fromTurn + 1);
+}
+function isSummarizeTurnSpanTooLarge(fromTurn, toTurn) {
+  return summarizeTurnSpan(fromTurn, toTurn) > SUMMARIZE_TURN_SPAN_HINT_MAX;
+}
+
+// plugins/plot-summary/src/pipeline.ts
 function setPluginHold(host, hold) {
   if (typeof host.conversation.setPluginHold === "function") {
     host.conversation.setPluginHold(hold);
@@ -740,6 +749,10 @@ async function runSummarizeTasks(host, opts) {
     if (fromTurn > toTurn) {
       host.ui.toast(host.t(k(host, "toastInvalidRange")), { color: "warning" });
       return { ok: false, reason: "invalid_range" };
+    }
+    if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
+      host.ui.toast(host.t(k(host, "toastTurnRangeTooLong")), { color: "warning" });
+      return { ok: false, reason: "turn_range_too_long" };
     }
     let sidecarEntryIds;
     try {
@@ -986,7 +999,7 @@ async function runSummarizeTasks(host, opts) {
   }
 }
 
-// src/prompt-preview.ts
+// plugins/plot-summary/src/prompt-preview.ts
 function auditDebugEnabled(host) {
   const raw = host.session.writeChatPromptSnapshot;
   if (typeof raw === "boolean") return raw;
@@ -1040,19 +1053,24 @@ function resolveSystemPrompt2(host, settings, task) {
   }
   return settings.systemPromptTemplate;
 }
-async function expandText(host, text, apiConfigId) {
+async function expandText(host, text, apiConfigId, toTurn) {
   const raw = asString(text);
   if (!raw.includes("{{")) return raw;
   if (!host.macros?.expand) return raw;
-  return host.macros.expand(raw, apiConfigId ? { apiConfigId } : void 0);
+  const opts = {
+    persistVars: false
+  };
+  if (apiConfigId) opts.apiConfigId = apiConfigId;
+  if (typeof toTurn === "number" && Number.isInteger(toTurn)) opts.toTurn = toTurn;
+  return host.macros.expand(raw, opts);
 }
-async function buildTaskMessages(host, settings, task, prepared) {
+async function buildTaskMessages(host, settings, task, prepared, toTurn) {
   const apiConfigId = settings.apiConfigId;
   const systemTemplate = resolveSystemPrompt2(host, settings, task);
   const [expandedRef, expandedInstruction, expandedUser] = await Promise.all([
-    prepared.systemReferenceContext.trim() ? expandText(host, prepared.systemReferenceContext, apiConfigId) : Promise.resolve(""),
-    expandText(host, systemTemplate, apiConfigId),
-    expandText(host, prepared.userContent, apiConfigId)
+    prepared.systemReferenceContext.trim() ? expandText(host, prepared.systemReferenceContext, apiConfigId, toTurn) : Promise.resolve(""),
+    expandText(host, systemTemplate, apiConfigId, toTurn),
+    expandText(host, prepared.userContent, apiConfigId, toTurn)
   ]);
   const system = joinSystemMessage(expandedRef, expandedInstruction);
   const messages = [];
@@ -1087,6 +1105,7 @@ function summarizeDialogCanPreview(model, settings) {
   const start = asInt(model.startTurn, -1, 5e5);
   const end = asInt(model.endTurn, -1, 5e5);
   if (start < 0 || end < start) return false;
+  if (isSummarizeTurnSpanTooLarge(start, end)) return false;
   return tasksFromSelection(settings, model.selectedTasks).length > 0;
 }
 async function resolveTargetLorebookIdForPreview(host, settings) {
@@ -1147,6 +1166,10 @@ async function previewManualSummarizePrompt(host, model) {
   }
   const fromTurn = asInt(model.startTurn, 0, 5e5);
   const toTurn = asInt(model.endTurn, fromTurn, 5e5);
+  if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
+    host.ui.toast(host.t(k(host, "toastTurnRangeTooLong")), { color: "warning" });
+    return;
+  }
   const tasks = tasksFromSelection(settings, model.selectedTasks);
   if (tasks.length === 0) {
     host.ui.toast(host.t(k(host, "toastNoTasksSelected")), { color: "warning" });
@@ -1187,7 +1210,7 @@ async function previewManualSummarizePrompt(host, model) {
       ""
     ];
     for (const task of tasks) {
-      const messages = await buildTaskMessages(host, settings, task, prepared);
+      const messages = await buildTaskMessages(host, settings, task, prepared, toTurn);
       const pf = await preflightLine(host, settings, messages);
       sections.push(`=== ${taskLabel(host, task)} ===`);
       if (pf) sections.push(pf);
@@ -1208,7 +1231,7 @@ async function previewManualSummarizePrompt(host, model) {
   }
 }
 
-// src/dialogs.ts
+// plugins/plot-summary/src/dialogs.ts
 function isAutoSummarizeEnabled(host) {
   return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true;
 }
@@ -1500,12 +1523,14 @@ function registerSummarizeDialog(host, settings, mode) {
       key: "startTurn",
       labelKey: k(host, "manualStartTurnLabel"),
       type: "integer",
+      hintKey: k(host, "manualTurnRangeHint"),
       ...isEnable ? { readOnly: true } : {}
     },
     {
       key: "endTurn",
       labelKey: k(host, "manualEndTurnLabel"),
       type: "integer",
+      hintKey: k(host, "manualTurnRangeHint"),
       ...isEnable ? { readOnly: true } : {}
     }
   ];
@@ -1548,12 +1573,17 @@ function registerSummarizeDialog(host, settings, mode) {
         const start = asInt(m.startTurn, -1, 5e5);
         const end = asInt(m.endTurn, -1, 5e5);
         if (start < 0 || end < start) return false;
+        if (isSummarizeTurnSpanTooLarge(start, end)) return false;
         if (isEnable) return true;
         return tasksFromSelection(settings, m.selectedTasks).length > 0;
       },
       onSubmit: async (h, model) => {
         const fromTurn = asInt(model.startTurn, 0, 5e5);
         const toTurn = asInt(model.endTurn, fromTurn, 5e5);
+        if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
+          h.ui.toast(h.t(k(h, "toastTurnRangeTooLong")), { color: "warning" });
+          return;
+        }
         const selectedTasks = isEnable ? [
           "memory",
           ...sidecarIdsFromTaskSelection(model.selectedTasks).map(
@@ -1730,7 +1760,7 @@ function isBusy(host) {
   return host.session.conversationWriteLocked || host.session.loading || host.session.regeneratingTurnOrdinal !== null;
 }
 
-// src/lifecycle.ts
+// plugins/plot-summary/src/lifecycle.ts
 function isPersistBusy(host) {
   return host.session.conversationWriteLocked || host.session.loading || host.session.regeneratingTurnOrdinal !== null;
 }
@@ -1782,7 +1812,7 @@ function registerLifecycle(host) {
   });
 }
 
-// src/range-picker.ts
+// plugins/plot-summary/src/range-picker.ts
 var RANGE_STYLES = `
 .plugin-slot.cm-range-start--active {
   color: rgb(var(--v-theme-primary));
@@ -1861,7 +1891,7 @@ function registerRangePicker(host) {
   });
 }
 
-// src/index.ts
+// plugins/plot-summary/src/index.ts
 function isAutoSummarizeEnabled2(host) {
   return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true;
 }

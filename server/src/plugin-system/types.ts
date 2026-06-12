@@ -154,6 +154,8 @@ export interface PluginServerHostApi {
     text: string
     conversationId?: string
     apiConfigId?: string
+    toTurn?: number
+    persistVars?: boolean
   }) => Promise<string>
   regex: {
     listRules: (opts?: { phases?: RegexPhase[] }) => Promise<RegexRuleSummary[]>

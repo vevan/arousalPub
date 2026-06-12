@@ -8,9 +8,19 @@ import {
   type PromptTrigger,
 } from './assemble-prompts.js'
 import { buildPromptMacroContext } from './prompt-macros/index.js'
+import { patchPromptMacroHistoryFields } from './prompt-macros/context.js'
+import { buildMacroHistoryFields } from './prompt-macros/history-macros.js'
+import { extractMacroCharacterFields } from './prompt-macros/index.js'
+import { applyMacrosToMessages } from './prompt-macros/index.js'
+import {
+  loadMacroGlobalVarsForContext,
+  loadMacroLocalVarsForConversation,
+  persistMacroVarMutations,
+} from './prompt-macros/macro-vars-persist.js'
 import {
   authorsNoteForInjection,
   authorsNoteMacroText,
+  defaultAuthorsNoteMacroText,
 } from './authors-note-settings.js'
 import { cardRecordToCharXmlBlock, cardRecordToUserXmlBlock } from './prompt-xml.js'
 import {
@@ -38,6 +48,7 @@ import { buildScanText } from './lore-scan.js'
 import { runMemoryPipeline } from './memory-pipeline.js'
 import {
   readGlobalBudgetTrimSettings,
+  readGlobalDefaultAuthorsNote,
   readGlobalHistorySettings,
   readGlobalLorebookSettings,
   readGlobalMemorySettings,
@@ -46,23 +57,52 @@ import { resolveBudgetTrimSettings } from './budget-trim-settings.js'
 import { normalizePresetForAssemble } from './prompt-preset-normalize.js'
 import { readApiSettingsFromFile } from './api-settings-file.js'
 import {
+  mergePresetWithChatBinding,
+  readConversationChatBinding,
+} from './conversation-api-settings.js'
+import {
   resolveFeatureApi,
+  resolveChatApiConfigId,
   toResolvedFeatureAudit,
   type ResolvedFeatureAudit,
 } from './feature-binding-resolve.js'
 import { applyPluginsAfterAssemblePrompts } from './plugin-host.js'
 import type { ChatPluginsBody } from './plugin-types.js'
 import { countChatMessagesTokens } from './token-count.js'
-import {
-  loadAndApplyRegexOutgoing,
-  resolveOutgoingTailOrdinal,
-} from './regex-outgoing.js'
+import { readTurnsInOrdinalRange } from './chunk-chain.js'
+import { loadTurnsForMacroIndexing } from './prompt-macros/macro-indexing-turns.js'
+import { readPluginRegistry } from './plugin-system/registry.js'
+import type { TurnRecord } from './chat-storage.js'
 import {
   memoryTextFromTrimState,
   runPromptBudgetTrimLoop,
   type PromptBudgetTrimState,
   worldTextFromTrimState,
 } from './prompt-budget-trim.js'
+import {
+  loadAndApplyRegexOutgoing,
+  resolveOutgoingTailOrdinal,
+} from './regex-outgoing.js'
+
+async function loadActiveTurnForMacro(
+  conversationId: string,
+  beforeExclusive?: number | null,
+  trigger?: PromptTrigger,
+): Promise<TurnRecord | null> {
+  if (trigger !== 'regenerate' && trigger !== 'swipe') return null
+  if (
+    typeof beforeExclusive !== 'number' ||
+    Number.isNaN(beforeExclusive)
+  ) {
+    return null
+  }
+  const turns = await readTurnsInOrdinalRange(
+    conversationId,
+    beforeExclusive,
+    beforeExclusive,
+  )
+  return turns[0] ?? null
+}
 
 function asPromptPreset(raw: unknown): PromptPreset | null {
   if (!raw || typeof raw !== 'object') return null
@@ -106,7 +146,13 @@ function cardRecordToSlice(card: Record<string, unknown>): BoundCharacterSlice {
   const ph = card.post_history_instructions
   const postHistory =
     typeof ph === 'string' && ph.trim() ? ph.trim() : undefined
-  return { name, cardBody, systemPrompt, postHistory }
+  return {
+    name,
+    cardBody,
+    systemPrompt,
+    postHistory,
+    macroFields: extractMacroCharacterFields(card),
+  }
 }
 
 async function loadBoundCharacterSlices(ids: string[]): Promise<BoundCharacterSlice[]> {
@@ -143,7 +189,31 @@ async function loadUserCharacterSlice(
     name,
     cardBody: cardRecordToUserXmlBlock(card),
     systemPrompt,
+    macroFields: extractMacroCharacterFields(card),
   }
+}
+
+function resolveMaxResponseTokensForConversation(
+  idx: ConversationIndex,
+  apiSettings: NonNullable<Awaited<ReturnType<typeof readApiSettingsFromFile>>>,
+): number | undefined {
+  const binding = readConversationChatBinding(idx.apiPreset)
+  const resolved = resolveChatApiConfigId(apiSettings, idx.apiPreset)
+  const presetId = (
+    binding?.apiConfigId?.trim() ||
+    resolved?.apiConfigId ||
+    apiSettings.activePresetId ||
+    ''
+  ).trim()
+  if (!presetId) return undefined
+  const preset = apiSettings.presets.find((p) => p.id === presetId)
+  if (!preset) return undefined
+  const merged = mergePresetWithChatBinding(preset, binding)
+  const n = merged.maxTokens
+  if (typeof n === 'number' && !Number.isNaN(n) && n > 0) {
+    return Math.floor(n)
+  }
+  return undefined
 }
 
 const TRIGGERS: PromptTrigger[] = [
@@ -247,16 +317,24 @@ export async function buildConversationOutboundMessages(
   const assemblyStartedAt = auditEnabled ? performance.now() : 0
 
   let memoryPipeline
+  let indexingTurns: TurnRecord[] = []
+  let enabledPluginIds: string[] = []
   try {
-    memoryPipeline = await runMemoryPipeline({
-      conversationId,
-      userText: userInput,
-      memorySettings: effectiveMemory,
-      historySettings: effectiveHistory,
-      historyBeforeTurnOrdinalExclusive:
-        params.historyBeforeTurnOrdinalExclusive ?? undefined,
-      activeBranchPath: idx.activeBranchPath ?? '',
-    })
+    const beforeEx = params.historyBeforeTurnOrdinalExclusive ?? undefined
+    ;[memoryPipeline, indexingTurns, enabledPluginIds] = await Promise.all([
+      runMemoryPipeline({
+        conversationId,
+        userText: userInput,
+        memorySettings: effectiveMemory,
+        historySettings: effectiveHistory,
+        historyBeforeTurnOrdinalExclusive: beforeEx,
+        activeBranchPath: idx.activeBranchPath ?? '',
+      }),
+      loadTurnsForMacroIndexing(conversationId, beforeEx),
+      readPluginRegistry().then((reg) =>
+        reg.plugins.filter((p) => p.enabled).map((p) => p.id),
+      ),
+    ])
   } catch (e) {
     if (isMemoryVectorIndexCorruptError(e)) {
       return {
@@ -284,12 +362,48 @@ export async function buildConversationOutboundMessages(
 
   const trigger = normalizeTrigger(params.promptTrigger)
 
-  const macroContext = buildPromptMacroContext({
+  const globalDefaultAuthorsNote = await readGlobalDefaultAuthorsNote()
+
+  const activeTurn = await loadActiveTurnForMacro(
+    conversationId,
+    params.historyBeforeTurnOrdinalExclusive,
+    trigger,
+  )
+
+  const charNameList = characters
+    .map((c) => c.name?.trim())
+    .filter((n): n is string => Boolean(n))
+
+  const historyFields = buildMacroHistoryFields({
+    indexingTurns,
+    historyTurns: memoryPipeline.recentTurns,
+    activeTurn,
+    characterNames: charNameList,
+  })
+
+  const [macroLocalVars, macroGlobalVars] = await Promise.all([
+    loadMacroLocalVarsForConversation(conversationId),
+    loadMacroGlobalVarsForContext(),
+  ])
+
+  let macroContext = buildPromptMacroContext({
     conversationUserName: idx.userName,
     characters,
+    userCharacter,
     model: params.tokenModel ?? undefined,
     contextLength: maxTokens,
+    maxResponseTokens: apiSettings
+      ? resolveMaxResponseTokensForConversation(idx, apiSettings)
+      : undefined,
+    userInput,
+    promptTrigger: trigger,
     authorsNote: authorsNoteMacroText(idx.authorsNote),
+    defaultAuthorsNote: defaultAuthorsNoteMacroText(globalDefaultAuthorsNote),
+    conversationId,
+    historyFields,
+    enabledPluginIds,
+    macroLocalVars,
+    macroGlobalVars,
   })
 
   const authorsNote = authorsNoteForInjection(idx.authorsNote)
@@ -329,10 +443,7 @@ export async function buildConversationOutboundMessages(
     constantLoreGroups: loreParts.constantLoreGroups,
     matchedLore: loreParts.matchedLore.slice(),
     memoryItems: memoryPipeline.memoryItems.slice(),
-    historyMessages: memoryPipeline.recentHistoryMessages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    })),
+    historyMessages: memoryPipeline.recentHistoryMessages.map((m) => ({ ...m })),
   }
 
   const assembleCtxBase = {
@@ -342,6 +453,7 @@ export async function buildConversationOutboundMessages(
     macroContext,
     authorsNote: authorsNote ?? undefined,
     skipInternalBudgetTrim: true as const,
+    deferMacroExpansion: true as const,
     ...charCtx,
   }
 
@@ -380,6 +492,19 @@ export async function buildConversationOutboundMessages(
     messages = assembleFromState(trimState)
     estimatedTokens = countChatMessagesTokens(messages, { model: tokenModel })
   }
+
+  macroContext = patchPromptMacroHistoryFields(
+    macroContext,
+    buildMacroHistoryFields({
+      indexingTurns,
+      historyTurns: memoryPipeline.recentTurns,
+      activeTurn,
+      trimmedHistoryMessages: trimState.historyMessages,
+      characterNames: charNameList,
+    }),
+  )
+  applyMacrosToMessages(messages, macroContext)
+
   const afterAssembleAt = auditEnabled ? performance.now() : 0
 
   const tailOrdinal = resolveOutgoingTailOrdinal({
@@ -396,6 +521,7 @@ export async function buildConversationOutboundMessages(
     trimmedHistoryMessages: trimState.historyMessages,
     memoryItems: trimState.memoryItems,
     userInput: userInput,
+    macroContext,
   })
   const afterRegexAt = auditEnabled ? performance.now() : 0
 
@@ -406,6 +532,12 @@ export async function buildConversationOutboundMessages(
     macroContext,
     plugins: params.plugins,
   })
+  if (macroContext) {
+    applyMacrosToMessages(messagesAfterPlugins, macroContext, {
+      onlyIfNeeded: true,
+    })
+    await persistMacroVarMutations(macroContext)
+  }
   const finalEstimatedTokens =
     messagesAfterPlugins.length === messages.length
       ? estimatedTokens

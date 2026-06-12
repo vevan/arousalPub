@@ -16,7 +16,7 @@ import {
   resolveConversationChatCall,
   resolvedParamsToChatBodyFields,
 } from './conversation-api-resolve.js'
-import { parseAuthorsNotePatch } from './authors-note-settings.js'
+import { parseAuthorsNotePatch, parseDefaultAuthorsNotePatch } from './authors-note-settings.js'
 import {
   readAllTurns,
   readTurnsInOrdinalRange,
@@ -94,6 +94,7 @@ import {
   updateGlobalBudgetTrimSettings,
   updateGlobalEmbeddingApiSettings,
   updateGlobalChunkSettings,
+  updateGlobalDefaultAuthorsNote,
 } from './user-preferences-file.js'
 import { parseBudgetTrimSettingsPatch } from './budget-trim-settings.js'
 import { normalizeEmbeddingDimensions, normalizeEmbeddingApiSettings } from './embedding-api-settings.js'
@@ -207,7 +208,14 @@ import { assertPluginRoutePermission } from './plugin-route-auth.js'
 import {
   applyPromptMacroPipeline,
   buildPromptMacroContext,
+  extractMacroCharacterFields,
+  type MacroContextCharacterInput,
 } from './prompt-macros/index.js'
+import {
+  loadMacroGlobalVarsForContext,
+  loadMacroLocalVarsForConversation,
+  persistMacroVarMutations,
+} from './prompt-macros/macro-vars-persist.js'
 import {
   runPromptsAssemblePreview,
   type PromptsAssemblePreviewBody,
@@ -1055,21 +1063,47 @@ app.post<{ Params: { id: string }; Body: OpeningTurnBody }>(
       return reply.status(400).send({ error: ApiErrorCodes.receives_required_nonempty })
     }
     const idxForMacro = await readConversationIndex(id)
-    const macroChars: { name?: string }[] = []
+    const macroChars: MacroContextCharacterInput[] = []
+    let userCharacterForMacro: MacroContextCharacterInput | undefined
     if (idxForMacro) {
       for (const cid of resolvedCharacterIds(idxForMacro)) {
         const doc = await readCharacterDocument(cid)
         if (doc?.card && typeof doc.card === 'object') {
-          const name = (doc.card as Record<string, unknown>).name
+          const card = doc.card as Record<string, unknown>
+          const nameRaw = card.name
           macroChars.push({
-            name: typeof name === 'string' ? name : undefined,
+            name: typeof nameRaw === 'string' ? nameRaw : undefined,
+            macroFields: extractMacroCharacterFields(card),
           })
         }
       }
+      const userCharId =
+        typeof idxForMacro.userCharacterId === 'string'
+          ? idxForMacro.userCharacterId.trim()
+          : ''
+      if (userCharId) {
+        const doc = await readCharacterDocument(userCharId)
+        if (doc?.card && typeof doc.card === 'object') {
+          const card = doc.card as Record<string, unknown>
+          const nameRaw = card.name
+          userCharacterForMacro = {
+            name: typeof nameRaw === 'string' ? nameRaw : undefined,
+            macroFields: extractMacroCharacterFields(card),
+          }
+        }
+      }
     }
+    const [macroLocalVars, macroGlobalVars] = await Promise.all([
+      loadMacroLocalVarsForConversation(id),
+      loadMacroGlobalVarsForContext(),
+    ])
     const openingMacroCtx = buildPromptMacroContext({
       conversationUserName: idxForMacro?.userName,
       characters: macroChars,
+      userCharacter: userCharacterForMacro,
+      conversationId: id,
+      macroLocalVars,
+      macroGlobalVars,
     })
 
     const receives: TurnReceive[] = []
@@ -1090,6 +1124,7 @@ app.post<{ Params: { id: string }; Body: OpeningTurnBody }>(
       }
       receives.push(rec)
     }
+    await persistMacroVarMutations(openingMacroCtx)
     const active =
       typeof b.activeReceiveIndex === 'number' && Number.isInteger(b.activeReceiveIndex)
         ? b.activeReceiveIndex
@@ -1692,6 +1727,12 @@ interface PatchUserPreferencesBody {
   chunk?: {
     turnsPerFile?: number
   }
+  defaultAuthorsNote?: {
+    content?: string
+    injectionDepth?: number
+    role?: 'system' | 'user'
+    enabledForNewChats?: boolean
+  } | null
 }
 
 app.patch<{ Body: PatchUserPreferencesBody }>(
@@ -1704,7 +1745,19 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
     const hasBudgetTrim = b.budgetTrim && typeof b.budgetTrim === 'object'
     const hasEmbed = b.embeddingApi && typeof b.embeddingApi === 'object'
     const hasChunk = b.chunk && typeof b.chunk === 'object'
-    if (!hasLore && !hasHist && !hasMem && !hasBudgetTrim && !hasEmbed && !hasChunk) {
+    const hasDefaultAuthorsNote = Object.prototype.hasOwnProperty.call(
+      b,
+      'defaultAuthorsNote',
+    )
+    if (
+      !hasLore &&
+      !hasHist &&
+      !hasMem &&
+      !hasBudgetTrim &&
+      !hasEmbed &&
+      !hasChunk &&
+      !hasDefaultAuthorsNote
+    ) {
       return reply.status(400).send({
         error: ApiErrorCodes.user_preferences_requires_section,
       })
@@ -1716,6 +1769,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
       let budgetTrim
       let embeddingApi
       let chunk
+      let defaultAuthorsNote
       if (hasLore) {
         const patch: {
           recursiveEnabled?: boolean
@@ -1905,6 +1959,16 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         }
         chunk = await updateGlobalChunkSettings({ turnsPerFile: d })
       }
+      if (hasDefaultAuthorsNote) {
+        const parsed = parseDefaultAuthorsNotePatch(b.defaultAuthorsNote)
+        if (!parsed.ok) {
+          const code = parsed.error as keyof typeof ApiErrorCodes
+          return reply
+            .status(400)
+            .send({ error: ApiErrorCodes[code] ?? ApiErrorCodes.default_authors_note_invalid })
+        }
+        defaultAuthorsNote = await updateGlobalDefaultAuthorsNote(parsed.patch)
+      }
       const doc = await readUserPreferencesDocument()
       const embeddingPublic = embeddingApi
         ? await sanitizeEmbeddingApiForGet(embeddingApi)
@@ -1919,6 +1983,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         budgetTrim: budgetTrim ?? doc.budgetTrim,
         embeddingApi: embeddingPublic,
         chunk: chunk ?? doc.chunk,
+        defaultAuthorsNote: defaultAuthorsNote ?? doc.defaultAuthorsNote,
         savedAt: doc.savedAt,
       }
     } catch (e) {
@@ -3545,6 +3610,8 @@ app.post<{
     conversationId?: string
     apiConfigId?: string
     locale?: string
+    toTurn?: number
+    persistVars?: boolean
   }
 }>(
   '/api/plugins/:pluginId/macros/expand',
@@ -3555,6 +3622,13 @@ app.post<{
       return reply.status(auth.status).send({ error: ApiErrorCodes[auth.code] })
     }
     const body = request.body ?? {}
+    const toTurnRaw = body.toTurn
+    const toTurn =
+      typeof toTurnRaw === 'number' &&
+      Number.isInteger(toTurnRaw) &&
+      toTurnRaw >= 0
+        ? toTurnRaw
+        : undefined
     const result = await runPluginMacroExpand({
       text: typeof body.text === 'string' ? body.text : '',
       conversationId:
@@ -3562,6 +3636,8 @@ app.post<{
       apiConfigId:
         typeof body.apiConfigId === 'string' ? body.apiConfigId : undefined,
       locale: typeof body.locale === 'string' ? body.locale : undefined,
+      toTurn,
+      persistVars: body.persistVars !== false,
     })
     if (!result.ok) {
       return reply.status(400).send({ error: ApiErrorCodes.messages_required_nonempty })

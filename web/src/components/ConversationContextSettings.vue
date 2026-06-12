@@ -7,9 +7,12 @@ import { useI18n } from 'vue-i18n'
 import {
   AUTHORS_NOTE_MAX_DEPTH,
   normalizeAuthorsNote,
+  normalizeDefaultAuthorsNoteTemplate,
   type AuthorsNoteRole,
   type AuthorsNoteSettings,
+  type DefaultAuthorsNoteTemplate,
 } from '@/utils/authors-note-settings'
+import { usePreferencesStore } from '@/stores/preferences'
 import BudgetTrimSettingsPanel from '@/components/settings/BudgetTrimSettingsPanel.vue'
 import ConversationApiSettingsPanel from '@/components/settings/ConversationApiSettingsPanel.vue'
 import ConversationPluginSettingsPanel from '@/components/settings/ConversationPluginSettingsPanel.vue'
@@ -110,6 +113,7 @@ const savingHistorySettings = ref(false)
 const savingMemorySettings = ref(false)
 const savingBudgetTrimSettings = ref(false)
 const savingAuthorsNote = ref(false)
+const savingDefaultAuthorsNote = ref(false)
 const savingApiSettings = ref(false)
 const apiChatDraftActive = ref(false)
 const apiEmbeddingDraftActive = ref(false)
@@ -145,6 +149,12 @@ const authorsNoteEnabled = ref(false)
 const authorsNoteContent = ref('')
 const authorsNoteDepth = ref(4)
 const authorsNoteRole = ref<AuthorsNoteRole>('system')
+
+const preferencesStore = usePreferencesStore()
+const defaultAuthorsNoteContent = ref('')
+const defaultAuthorsNoteDepth = ref(4)
+const defaultAuthorsNoteRole = ref<AuthorsNoteRole>('system')
+const defaultAuthorsNoteEnabledForNewChats = ref(true)
 
 const authorsNoteContentTrimmed = computed(() => authorsNoteContent.value.trim())
 const canToggleAuthorsNoteEnabled = computed(
@@ -317,6 +327,7 @@ const isSaving = computed(
     savingMemorySettings.value ||
     savingBudgetTrimSettings.value ||
     savingAuthorsNote.value ||
+    savingDefaultAuthorsNote.value ||
     savingApiSettings.value ||
     savingPluginSettings.value,
 )
@@ -529,6 +540,11 @@ function syncFromProps() {
   authorsNoteContent.value = an.content
   authorsNoteDepth.value = an.injectionDepth
   authorsNoteRole.value = an.role
+  const dan = normalizeDefaultAuthorsNoteTemplate(preferencesStore.defaultAuthorsNote)
+  defaultAuthorsNoteContent.value = dan.content
+  defaultAuthorsNoteDepth.value = dan.injectionDepth
+  defaultAuthorsNoteRole.value = dan.role
+  defaultAuthorsNoteEnabledForNewChats.value = dan.enabledForNewChats
   if (!apiChatDraftActive.value && !savingApiSettings.value) {
     chatApiUseGlobal.value = props.initialChatApiUseGlobal !== false
   }
@@ -1016,6 +1032,107 @@ watch(authorsNoteRole, async (role) => {
     syncFromProps()
   } finally {
     savingAuthorsNote.value = false
+  }
+})
+
+function defaultAuthorsNotePatchFromForm(): DefaultAuthorsNoteTemplate {
+  return normalizeDefaultAuthorsNoteTemplate({
+    content: defaultAuthorsNoteContent.value,
+    injectionDepth: defaultAuthorsNoteDepth.value,
+    role: defaultAuthorsNoteRole.value,
+    enabledForNewChats: defaultAuthorsNoteEnabledForNewChats.value,
+  })
+}
+
+function defaultAuthorsNoteMatchesStore(): boolean {
+  const cur = defaultAuthorsNotePatchFromForm()
+  const stored = normalizeDefaultAuthorsNoteTemplate(
+    preferencesStore.defaultAuthorsNote,
+  )
+  return (
+    cur.content === stored.content &&
+    cur.injectionDepth === stored.injectionDepth &&
+    cur.role === stored.role &&
+    cur.enabledForNewChats === stored.enabledForNewChats
+  )
+}
+
+async function saveDefaultAuthorsNote(): Promise<void> {
+  const note = defaultAuthorsNotePatchFromForm()
+  await preferencesStore.patchGlobalDefaultAuthorsNoteToServer({
+    content: note.content,
+    injectionDepth: note.injectionDepth,
+    role: note.role,
+    enabledForNewChats: note.enabledForNewChats,
+  })
+}
+
+async function onDefaultAuthorsNoteContentBlur(): Promise<void> {
+  if (defaultAuthorsNoteMatchesStore()) return
+  savingDefaultAuthorsNote.value = true
+  errorText.value = ''
+  try {
+    await saveDefaultAuthorsNote()
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingDefaultAuthorsNote.value = false
+  }
+}
+
+watch(defaultAuthorsNoteEnabledForNewChats, async (enabled) => {
+  const stored = normalizeDefaultAuthorsNoteTemplate(
+    preferencesStore.defaultAuthorsNote,
+  )
+  if (enabled === stored.enabledForNewChats) return
+  savingDefaultAuthorsNote.value = true
+  errorText.value = ''
+  try {
+    await saveDefaultAuthorsNote()
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingDefaultAuthorsNote.value = false
+  }
+})
+
+watch(defaultAuthorsNoteDepth, async (depth) => {
+  const stored = normalizeDefaultAuthorsNoteTemplate(
+    preferencesStore.defaultAuthorsNote,
+  )
+  if (depth === stored.injectionDepth) return
+  savingDefaultAuthorsNote.value = true
+  errorText.value = ''
+  try {
+    await saveDefaultAuthorsNote()
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingDefaultAuthorsNote.value = false
+  }
+})
+
+watch(defaultAuthorsNoteRole, async (role) => {
+  const stored = normalizeDefaultAuthorsNoteTemplate(
+    preferencesStore.defaultAuthorsNote,
+  )
+  if (role === stored.role) return
+  savingDefaultAuthorsNote.value = true
+  errorText.value = ''
+  try {
+    await saveDefaultAuthorsNote()
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingDefaultAuthorsNote.value = false
   }
 })
 
@@ -1611,6 +1728,9 @@ async function patchConversation(body: Record<string, unknown>) {
               v-show="activeSection === 'authorsNote'"
               class="conv-settings-section"
             >
+              <p class="text-subtitle-2 font-weight-medium mb-2">
+                {{ $t('chat.convSettings.authorsNoteSessionHeading') }}
+              </p>
               <div class="conv-settings-field">
                 <v-textarea
                   v-model="authorsNoteContent"
@@ -1677,6 +1797,84 @@ async function patchConversation(body: Record<string, unknown>) {
                   hide-details="auto"
                   :loading="savingAuthorsNote"
                   :disabled="savingAuthorsNote"
+                />
+              </div>
+
+              <v-divider class="my-4" />
+
+              <p class="text-subtitle-2 font-weight-medium mb-1">
+                {{ $t('chat.convSettings.defaultAuthorsNoteHeading') }}
+              </p>
+              <p class="text-caption text-medium-emphasis mb-3">
+                {{ $t('chat.convSettings.defaultAuthorsNoteIntro') }}
+              </p>
+
+              <div class="conv-settings-field">
+                <v-textarea
+                  v-model="defaultAuthorsNoteContent"
+                  :label="$t('chat.convSettings.defaultAuthorsNoteContent')"
+                  rows="5"
+                  auto-grow
+                  variant="outlined"
+                  density="comfortable"
+                  hide-details="auto"
+                  :loading="savingDefaultAuthorsNote"
+                  @blur="onDefaultAuthorsNoteContentBlur"
+                />
+                <p class="conv-settings-field__hint">
+                  {{ $t('chat.convSettings.defaultAuthorsNoteContentHint') }}
+                </p>
+              </div>
+
+              <div class="conv-settings-field">
+                <v-switch
+                  v-model="defaultAuthorsNoteEnabledForNewChats"
+                  :label="$t('chat.convSettings.defaultAuthorsNoteEnabledForNewChats')"
+                  density="comfortable"
+                  hide-details
+                  color="primary"
+                  :loading="savingDefaultAuthorsNote"
+                  :disabled="savingDefaultAuthorsNote"
+                />
+                <p class="conv-settings-field__hint">
+                  {{ $t('chat.convSettings.defaultAuthorsNoteEnabledForNewChatsHint') }}
+                </p>
+              </div>
+
+              <div class="conv-settings-field">
+                <v-text-field
+                  v-model.number="defaultAuthorsNoteDepth"
+                  type="number"
+                  min="0"
+                  :max="AUTHORS_NOTE_MAX_DEPTH"
+                  step="1"
+                  :label="$t('chat.convSettings.authorsNoteDepth')"
+                  density="comfortable"
+                  variant="outlined"
+                  hide-details="auto"
+                  :loading="savingDefaultAuthorsNote"
+                  :disabled="savingDefaultAuthorsNote"
+                />
+                <p class="conv-settings-field__hint">
+                  {{ $t('chat.convSettings.defaultAuthorsNoteDepthHint') }}
+                </p>
+              </div>
+
+              <div class="conv-settings-field">
+                <v-select
+                  v-model="defaultAuthorsNoteRole"
+                  :items="[
+                    { title: $t('chat.convSettings.authorsNoteRoleSystem'), value: 'system' },
+                    { title: $t('chat.convSettings.authorsNoteRoleUser'), value: 'user' },
+                  ]"
+                  item-title="title"
+                  item-value="value"
+                  :label="$t('chat.convSettings.authorsNoteRole')"
+                  density="comfortable"
+                  variant="outlined"
+                  hide-details="auto"
+                  :loading="savingDefaultAuthorsNote"
+                  :disabled="savingDefaultAuthorsNote"
                 />
               </div>
             </div>

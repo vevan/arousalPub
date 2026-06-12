@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { ChatMessage } from './assemble-prompts.js'
+import { buildPromptMacroContext } from './prompt-macros/context.js'
 import {
   applyOutgoingRegexToMemoryItems,
   applyRegexOutgoingToMessages,
@@ -234,8 +235,36 @@ describe('applyRegexOutgoingToMessages', () => {
       userInput: 'u4',
     })
     const mem = out[1]?.content ?? ''
-    assert.match(mem, /<assistant>mem0 <\/assistant>/)
+    assert.match(mem, /<assistant charName="\{\{char\}\}">mem0<\/assistant>/)
     assert.match(mem, /mem3 &lt;&lt;track&gt;&gt;/)
+  })
+
+  it('re-expands memory role macros after rebuild when macroContext given', () => {
+    const memoryTurns = [{ turn: turn(0, 'u0', 'mem0'), score: 0.9 }]
+    const memoryXml = formatMemoryXml(memoryTurns)
+    const messages: ChatMessage[] = [{ role: 'system', content: memoryXml }]
+    const macroContext = buildPromptMacroContext({
+      conversationUserName: '小明',
+      characters: [{ name: '艾拉' }],
+    })
+    const rules = [
+      rule({
+        id: '11111111',
+        fields: ['assistant'],
+        pattern: 'never-match-x',
+        replacement: '',
+      }),
+    ]
+    const out = applyRegexOutgoingToMessages(messages, rules, {
+      tailOrdinal: 1,
+      sourceHistoryMessages: [],
+      sourceHistoryTurnOrdinals: [],
+      trimmedHistoryMessages: [],
+      memoryItems: memoryTurns,
+      macroContext,
+    })
+    assert.match(out[0]!.content, /userName="小明"/)
+    assert.match(out[0]!.content, /charName="艾拉"/)
   })
 
   it('strips tracker when turn text stores XML entities on disk', () => {
@@ -256,7 +285,7 @@ describe('applyRegexOutgoingToMessages', () => {
     const out = applyOutgoingRegexToMemoryItems(items, rules, 5)
     assert.equal(assistantTextFromTurn(out[0]!.turn), 'hello')
     const xml = formatMemoryXml(out)
-    assert.match(xml, /<assistant>hello<\/assistant>/)
+    assert.match(xml, /<assistant charName="\{\{char\}\}">hello<\/assistant>/)
     assert.doesNotMatch(xml, /ex-tracker/)
   })
 

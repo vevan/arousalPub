@@ -11,6 +11,7 @@ import {
   getPromptPreviewRestore,
   setPromptPreviewRestore,
 } from './state.js'
+import { isSummarizeTurnSpanTooLarge } from './shared/range-limits.js'
 import { asInt, asString } from './shared/utils.js'
 import type { MergedSettings, PluginHost, SummarizeTask } from './types.js'
 
@@ -75,11 +76,17 @@ async function expandText(
   host: PluginHost,
   text: string,
   apiConfigId: string,
+  toTurn?: number,
 ): Promise<string> {
   const raw = asString(text)
   if (!raw.includes('{{')) return raw
   if (!host.macros?.expand) return raw
-  return host.macros.expand(raw, apiConfigId ? { apiConfigId } : undefined)
+  const opts: { apiConfigId?: string; toTurn?: number; persistVars?: boolean } = {
+    persistVars: false,
+  }
+  if (apiConfigId) opts.apiConfigId = apiConfigId
+  if (typeof toTurn === 'number' && Number.isInteger(toTurn)) opts.toTurn = toTurn
+  return host.macros.expand(raw, opts)
 }
 
 async function buildTaskMessages(
@@ -87,15 +94,16 @@ async function buildTaskMessages(
   settings: MergedSettings,
   task: SummarizeTask,
   prepared: { systemReferenceContext: string; userContent: string },
+  toTurn: number,
 ): Promise<{ role: 'system' | 'user'; content: string }[]> {
   const apiConfigId = settings.apiConfigId
   const systemTemplate = resolveSystemPrompt(host, settings, task)
   const [expandedRef, expandedInstruction, expandedUser] = await Promise.all([
     prepared.systemReferenceContext.trim()
-      ? expandText(host, prepared.systemReferenceContext, apiConfigId)
+      ? expandText(host, prepared.systemReferenceContext, apiConfigId, toTurn)
       : Promise.resolve(''),
-    expandText(host, systemTemplate, apiConfigId),
-    expandText(host, prepared.userContent, apiConfigId),
+    expandText(host, systemTemplate, apiConfigId, toTurn),
+    expandText(host, prepared.userContent, apiConfigId, toTurn),
   ])
   const system = joinSystemMessage(expandedRef, expandedInstruction)
   const messages: { role: 'system' | 'user'; content: string }[] = []
@@ -136,6 +144,7 @@ function summarizeDialogCanPreview(model: Record<string, unknown>, settings: Mer
   const start = asInt(model.startTurn, -1, 500_000)
   const end = asInt(model.endTurn, -1, 500_000)
   if (start < 0 || end < start) return false
+  if (isSummarizeTurnSpanTooLarge(start, end)) return false
   return tasksFromSelection(settings, model.selectedTasks).length > 0
 }
 
@@ -207,6 +216,10 @@ export async function previewManualSummarizePrompt(
 
   const fromTurn = asInt(model.startTurn, 0, 500_000)
   const toTurn = asInt(model.endTurn, fromTurn, 500_000)
+  if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
+    host.ui.toast(host.t(k(host, 'toastTurnRangeTooLong')), { color: 'warning' })
+    return
+  }
   const tasks = tasksFromSelection(settings, model.selectedTasks)
   if (tasks.length === 0) {
     host.ui.toast(host.t(k(host, 'toastNoTasksSelected')), { color: 'warning' })
@@ -253,7 +266,7 @@ export async function previewManualSummarizePrompt(
     ]
 
     for (const task of tasks) {
-      const messages = await buildTaskMessages(host, settings, task, prepared)
+      const messages = await buildTaskMessages(host, settings, task, prepared, toTurn)
       const pf = await preflightLine(host, settings, messages)
       sections.push(`=== ${taskLabel(host, task)} ===`)
       if (pf) sections.push(pf)

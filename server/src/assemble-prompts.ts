@@ -1,8 +1,10 @@
 /** 提示词组装唯一实现（Web 通过 API 调用，不保留前端副本） */
 
 import { applyPromptMacroPipeline } from './prompt-macros/index.js'
-import type { PromptMacroContext } from './prompt-macros/index.js'
-
+import type {
+  MacroCharacterFields,
+  PromptMacroContext,
+} from './prompt-macros/index.js'
 export type { PromptMacroContext } from './prompt-macros/index.js'
 import type { AuthorsNoteRole } from './authors-note-settings.js'
 import {
@@ -73,6 +75,11 @@ export interface PromptPreset {
 export interface ChatMessage {
   role: PromptRole
   content: string
+  /** 对应 turn（history 条）；outgoing 改写正文后仍可用于宏索引 */
+  turnId?: string
+  turnOrdinal?: number
+  receiveId?: string
+  receiveIndex?: number
 }
 
 /** 会话绑定的一张角色卡切片；多卡时顺序即 {{char}}、{{char2}}… */
@@ -81,6 +88,8 @@ export interface BoundCharacterSlice {
   cardBody: string
   systemPrompt?: string
   postHistory?: string
+  /** Phase A 宏字段（服务端加载卡时填充） */
+  macroFields?: MacroCharacterFields
 }
 
 export interface AssembleContext {
@@ -110,6 +119,8 @@ export interface AssembleContext {
   } | null
   /** §14.4：为 true 时跳过 assemble 内 history 条级裁切（由 `runPromptBudgetTrimLoop` 统一处理） */
   skipInternalBudgetTrim?: boolean
+  /** 为 true 时跳过条级宏展开（由 assemble 调用方在 trim 后统一展宏） */
+  deferMacroExpansion?: boolean
 }
 
 export interface AssembleResult {
@@ -136,7 +147,7 @@ function injectRecentHistoryMessages(
   for (const m of hist) {
     const c = m.content.trim()
     if (!c) continue
-    batch.push({ role: m.role, content: m.content })
+    batch.push({ ...m, role: m.role, content: m.content })
   }
   if (batch.length === 0) return false
   if (typeof insertAt === 'number') {
@@ -491,7 +502,7 @@ export function assemblePrompts(
   }
 
   const macro = ctx.macroContext
-  if (macro) {
+  if (macro && !ctx.deferMacroExpansion) {
     for (const m of messages) {
       m.content = applyPromptMacroPipeline(m.content, macro)
     }

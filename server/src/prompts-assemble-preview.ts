@@ -10,6 +10,7 @@ import {
   ASSEMBLE_INJECT_PLACEHOLDER,
   cardRecordToCharXmlBlock,
 } from './prompt-xml.js'
+import { extractMacroCharacterFields } from './prompt-macros/index.js'
 import type { PromptsDocument } from './prompts-file.js'
 import { normalizePresetForAssemble } from './prompt-preset-normalize.js'
 
@@ -51,24 +52,35 @@ export interface PromptsAssemblePreviewBody {
 
 /** 提示词库预览用示例角色（XML 在服务端生成） */
 export function defaultPreviewSampleCharacters(): BoundCharacterSlice[] {
+  const mokaCard = {
+    name: 'moka',
+    description: 'Sample description',
+    personality: 'Sample personality',
+    scenario: 'Sample scenario',
+    first_mes: 'Hello from moka',
+    mes_example: '<START>\n{{user}}: hi\n{{char}}: hello',
+    system_prompt: 'Sample system_prompt',
+    post_history_instructions: 'Sample post_history',
+    creator_notes: 'Sample creator notes',
+    character_version: '1.0',
+  }
+  const cocoaCard = {
+    name: 'cocoa',
+    description: 'Cocoa description',
+    personality: 'Cocoa personality',
+  }
   return [
     {
       name: 'moka',
-      cardBody: cardRecordToCharXmlBlock({
-        name: 'moka',
-        description: 'Sample description',
-        personality: 'Sample personality',
-      }),
+      cardBody: cardRecordToCharXmlBlock(mokaCard),
       systemPrompt: 'Sample system_prompt',
       postHistory: 'Sample post_history',
+      macroFields: extractMacroCharacterFields(mokaCard),
     },
     {
       name: 'cocoa',
-      cardBody: cardRecordToCharXmlBlock({
-        name: 'cocoa',
-        description: 'Sample description',
-        personality: 'Sample personality',
-      }),
+      cardBody: cardRecordToCharXmlBlock(cocoaCard),
+      macroFields: extractMacroCharacterFields(cocoaCard),
     },
   ]
 }

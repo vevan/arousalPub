@@ -1,23 +1,29 @@
-import { MACRO_HANDLERS } from './handlers/index.js'
+import { renderPromptMacros } from './engine.js'
 import type { PromptMacroContext } from './types.js'
+
+const MACRO_HINT = /\{\{|<(?:USER|BOT|CHAR)>|\\\{|\\\}/i
+
+export function messageNeedsMacroExpansion(text: string): boolean {
+  return Boolean(text && MACRO_HINT.test(text))
+}
 
 export function applyPromptMacroPipeline(
   text: string,
   ctx: PromptMacroContext,
 ): string {
-  if (!text || !text.includes('{{')) return text
-  let out = text
-  for (const h of MACRO_HANDLERS) {
-    out = h(out, ctx)
-  }
-  return out
+  if (!text) return text
+  if (!messageNeedsMacroExpansion(text)) return text
+  return renderPromptMacros(text, ctx)
 }
 
 export function applyMacrosToMessages(
   messages: { role: string; content: string }[],
   ctx: PromptMacroContext,
+  opts?: { onlyIfNeeded?: boolean },
 ): void {
+  const onlyIfNeeded = opts?.onlyIfNeeded === true
   for (const m of messages) {
+    if (onlyIfNeeded && !messageNeedsMacroExpansion(m.content)) continue
     m.content = applyPromptMacroPipeline(m.content, ctx)
   }
 }

@@ -479,7 +479,7 @@ export interface PluginWebHost {
     /** 按当前会话上下文展开 `{{user}}` `{{char}}` 等与主对话一致的宏 */
     expand(
       text: string,
-      opts?: { apiConfigId?: string },
+      opts?: { apiConfigId?: string; toTurn?: number; persistVars?: boolean },
     ): Promise<string>
   }
   render: {

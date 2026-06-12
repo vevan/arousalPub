@@ -1,9 +1,9 @@
-// src/shared/utils.ts
+// plugins/plot-summary/src/shared/utils.ts
 function asString(v) {
   return typeof v === "string" ? v.trim() : "";
 }
 
-// src/shared/summarize.ts
+// plugins/plot-summary/src/shared/summarize.ts
 function parseModelJson(text) {
   let raw = (text ?? "").trim();
   const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -37,14 +37,19 @@ function formatEntryTitle(rawTitle, startTurn, endTurn) {
   return `${base}${suffix}`;
 }
 
-// src/server/complete-draft.ts
+// plugins/plot-summary/src/server/complete-draft.ts
 var UPSTREAM_RETRY_MAX = 3;
 var PIPELINE_FATAL = /* @__PURE__ */ new Set(["context_exceeded", "context_length_unconfigured"]);
 var UPSTREAM_RETRY = /* @__PURE__ */ new Set(["plugin_complete_failed", "preflight_failed"]);
-async function expandText(api, text, conversationId, apiConfigId) {
+async function expandText(api, text, conversationId, apiConfigId, toTurn) {
   const raw = asString(text);
   if (!raw.includes("{{")) return raw;
-  return api.runPluginMacroExpand({ text: raw, conversationId, apiConfigId });
+  return api.runPluginMacroExpand({
+    text: raw,
+    conversationId,
+    apiConfigId,
+    ...typeof toTurn === "number" ? { toTurn } : {}
+  });
 }
 async function assertPreflight(api, conversationId, apiConfigId, system, userContent) {
   const pf = await api.runPluginCompletePreflight({
@@ -76,11 +81,24 @@ function joinSystemMessage(reference, instruction) {
 
 ${inst}`;
 }
-async function callCompleteOnce(api, conversationId, apiConfigId, systemReferenceContext, systemPromptTemplate, userContent) {
+async function callCompleteOnce(api, conversationId, apiConfigId, systemReferenceContext, systemPromptTemplate, userContent, toTurn) {
+  const anchorToTurn = typeof toTurn === "number" && Number.isInteger(toTurn) ? toTurn : void 0;
   const [expandedRef, expandedInstruction, expandedUser] = await Promise.all([
-    systemReferenceContext.trim() ? expandText(api, systemReferenceContext, conversationId, apiConfigId ?? "") : Promise.resolve(""),
-    expandText(api, systemPromptTemplate, conversationId, apiConfigId ?? ""),
-    expandText(api, userContent, conversationId, apiConfigId ?? "")
+    systemReferenceContext.trim() ? expandText(
+      api,
+      systemReferenceContext,
+      conversationId,
+      apiConfigId ?? "",
+      anchorToTurn
+    ) : Promise.resolve(""),
+    expandText(
+      api,
+      systemPromptTemplate,
+      conversationId,
+      apiConfigId ?? "",
+      anchorToTurn
+    ),
+    expandText(api, userContent, conversationId, apiConfigId ?? "", anchorToTurn)
   ]);
   const expandedSystem = joinSystemMessage(expandedRef, expandedInstruction);
   await assertPreflight(
@@ -104,7 +122,7 @@ async function callCompleteOnce(api, conversationId, apiConfigId, systemReferenc
   }
   return result;
 }
-async function callCompleteWithRetry(api, conversationId, apiConfigId, systemReferenceContext, systemPromptTemplate, userContent) {
+async function callCompleteWithRetry(api, conversationId, apiConfigId, systemReferenceContext, systemPromptTemplate, userContent, toTurn) {
   let lastErr = null;
   for (let attempt = 1; attempt <= UPSTREAM_RETRY_MAX; attempt++) {
     try {
@@ -114,7 +132,8 @@ async function callCompleteWithRetry(api, conversationId, apiConfigId, systemRef
         apiConfigId,
         systemReferenceContext,
         systemPromptTemplate,
-        userContent
+        userContent,
+        toTurn
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
@@ -135,7 +154,8 @@ async function completeDraft(ctx, api) {
     ctx.apiConfigId,
     ctx.systemReferenceContext ?? "",
     ctx.systemPromptTemplate,
-    ctx.userContent
+    ctx.userContent,
+    ctx.toTurn
   );
   const raw = parseModelJson(result.content);
   if (ctx.kind === "sidecar") {

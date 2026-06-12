@@ -80,7 +80,10 @@ export interface PluginHost {
   }
   plugins: { getUserSettings: () => Promise<Record<string, unknown>> }
   macros?: {
-    expand: (text: string, opts?: { apiConfigId?: string }) => Promise<string>
+    expand: (
+      text: string,
+      opts?: { apiConfigId?: string; toTurn?: number; persistVars?: boolean },
+    ) => Promise<string>
   }
   token?: {
     preflightComplete: (req: {

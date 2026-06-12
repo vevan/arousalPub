@@ -1,30 +1,47 @@
-import { authorsNoteMacroText } from './authors-note-settings.js'
+import { authorsNoteMacroText, defaultAuthorsNoteMacroText } from './authors-note-settings.js'
 import { readCharacterDocument } from './character-storage.js'
 import { readApiSettingsFromFile } from './api-settings-file.js'
 import {
   readConversationIndex,
   resolvedCharacterIds,
 } from './chat-storage.js'
+import { readPluginRegistry } from './plugin-system/registry.js'
+import { buildMacroHistoryFields } from './prompt-macros/history-macros.js'
+import {
+  loadTurnsForMacroIndexing,
+  macroBeforeExclusiveFromToTurn,
+} from './prompt-macros/macro-indexing-turns.js'
 import {
   applyPromptMacroPipeline,
   buildPromptMacroContext,
+  extractMacroCharacterFields,
+  type MacroContextCharacterInput,
 } from './prompt-macros/index.js'
+import {
+  loadMacroGlobalVarsForContext,
+  loadMacroLocalVarsForConversation,
+  persistMacroVarMutations,
+} from './prompt-macros/macro-vars-persist.js'
 
 export interface PluginMacroExpandRequest {
   text: string
   conversationId?: string
   apiConfigId?: string
   locale?: string
+  /** 摘要/预览锚定：历史类宏参照至该 turn（含） */
+  toTurn?: number
+  /** 默认 true；预览等只读场景传 false，避免写盘副作用 */
+  persistVars?: boolean
 }
 
 export type PluginMacroExpandResult =
   | { ok: true; text: string }
   | { ok: false; code: 'text_required' }
 
-async function loadCharacterNames(
+async function loadMacroCharacters(
   charIds: string[],
-): Promise<{ name?: string }[]> {
-  const out: { name?: string }[] = []
+): Promise<MacroContextCharacterInput[]> {
+  const out: MacroContextCharacterInput[] = []
   for (const id of charIds) {
     const doc = await readCharacterDocument(id.trim())
     if (!doc?.card || typeof doc.card !== 'object') continue
@@ -32,7 +49,10 @@ async function loadCharacterNames(
     const nameRaw = card.name
     const name =
       typeof nameRaw === 'string' && nameRaw.trim() ? nameRaw.trim() : undefined
-    out.push({ name })
+    out.push({
+      name,
+      macroFields: extractMacroCharacterFields(card),
+    })
   }
   return out
 }
@@ -46,8 +66,28 @@ export async function runPluginMacroExpand(
   }
 
   let conversationUserName: string | null | undefined
-  let characters: { name?: string }[] = []
+  let characters: MacroContextCharacterInput[] = []
   let authorsNote: string | undefined
+  let defaultAuthorsNote: string | undefined
+
+  let enabledPluginIds: string[] = []
+  let historyFields = buildMacroHistoryFields({
+    indexingTurns: [],
+    historyTurns: [],
+  })
+
+  const { readGlobalDefaultAuthorsNote } = await import(
+    './user-preferences-file.js'
+  )
+  defaultAuthorsNote = defaultAuthorsNoteMacroText(
+    await readGlobalDefaultAuthorsNote(),
+  )
+
+  enabledPluginIds = (
+    await readPluginRegistry()
+  ).plugins
+    .filter((p) => p.enabled)
+    .map((p) => p.id)
 
   const convId =
     typeof req.conversationId === 'string' ? req.conversationId.trim() : ''
@@ -56,13 +96,24 @@ export async function runPluginMacroExpand(
     if (idx) {
       conversationUserName = idx.userName
       const charIds = resolvedCharacterIds(idx)
-      characters = await loadCharacterNames(charIds)
+      characters = await loadMacroCharacters(charIds)
       authorsNote = authorsNoteMacroText(idx.authorsNote)
+      const beforeEx = macroBeforeExclusiveFromToTurn(req.toTurn)
+      const indexingTurns = await loadTurnsForMacroIndexing(convId, beforeEx)
+      const charNameList = characters
+        .map((c) => c.name?.trim())
+        .filter((n): n is string => Boolean(n))
+      historyFields = buildMacroHistoryFields({
+        indexingTurns,
+        historyTurns: indexingTurns,
+        characterNames: charNameList,
+      })
     }
   }
 
   let model: string | undefined
   let contextLength: number | undefined
+  let maxResponseTokens: number | undefined
   const apiConfigId =
     typeof req.apiConfigId === 'string' ? req.apiConfigId.trim() : ''
   if (apiConfigId) {
@@ -77,17 +128,36 @@ export async function runPluginMacroExpand(
       ) {
         contextLength = preset.contextLength
       }
+      if (typeof preset.maxTokens === 'number' && preset.maxTokens > 0) {
+        maxResponseTokens = preset.maxTokens
+      }
     }
   }
+
+  const [macroLocalVars, macroGlobalVars] = await Promise.all([
+    convId ? loadMacroLocalVarsForConversation(convId) : Promise.resolve({}),
+    loadMacroGlobalVarsForContext(),
+  ])
 
   const macroContext = buildPromptMacroContext({
     conversationUserName,
     characters,
     model,
     contextLength,
+    maxResponseTokens,
     authorsNote,
+    defaultAuthorsNote,
+    conversationId: convId || undefined,
+    historyFields,
+    enabledPluginIds,
     locale: req.locale,
+    macroLocalVars,
+    macroGlobalVars,
   })
 
-  return { ok: true, text: applyPromptMacroPipeline(text, macroContext) }
+  const expanded = applyPromptMacroPipeline(text, macroContext)
+  if (req.persistVars !== false) {
+    await persistMacroVarMutations(macroContext)
+  }
+  return { ok: true, text: expanded }
 }

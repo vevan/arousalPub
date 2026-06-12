@@ -104,6 +104,8 @@ export function createPluginServerHostApi(
         text: req.text,
         conversationId: req.conversationId,
         apiConfigId: req.apiConfigId,
+        toTurn: req.toTurn,
+        persistVars: req.persistVars,
       })
       return result.ok ? result.text : req.text
     },

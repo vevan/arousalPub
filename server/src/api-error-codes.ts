@@ -72,6 +72,10 @@ export const ApiErrorCodes = {
   global_lorebook_requires_field: 'global_lorebook_requires_field',
   global_memory_requires_field: 'global_memory_requires_field',
   global_chunk_requires_field: 'global_chunk_requires_field',
+  global_default_authors_note_requires_field: 'global_default_authors_note_requires_field',
+  default_authors_note_invalid: 'default_authors_note_invalid',
+  default_authors_note_enabled_for_new_chats_boolean:
+    'default_authors_note_enabled_for_new_chats_boolean',
   chunk_turns_per_file_number: 'chunk_turns_per_file_number',
   chunk_chain_broken: 'chunk_chain_broken',
   chunk_index_repair_failed: 'chunk_index_repair_failed',

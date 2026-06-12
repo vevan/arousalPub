@@ -51,3 +51,38 @@ export function authorsNoteFromIndex(
 export function authorsNoteComposerActive(note: AuthorsNoteSettings): boolean {
   return note.enabled && note.content.trim().length > 0
 }
+
+/** 全局默认作者注模板（与 server authors-note-settings 对齐） */
+export interface DefaultAuthorsNoteTemplate {
+  content: string
+  injectionDepth: number
+  role: AuthorsNoteRole
+  enabledForNewChats: boolean
+}
+
+export const DEFAULT_AUTHORS_NOTE_TEMPLATE: DefaultAuthorsNoteTemplate = {
+  content: '',
+  injectionDepth: 4,
+  role: 'system',
+  enabledForNewChats: true,
+}
+
+export function normalizeDefaultAuthorsNoteTemplate(
+  raw?: Partial<DefaultAuthorsNoteTemplate> | null,
+): DefaultAuthorsNoteTemplate {
+  const content = typeof raw?.content === 'string' ? raw.content : ''
+  let injectionDepth =
+    typeof raw?.injectionDepth === 'number' && Number.isFinite(raw.injectionDepth)
+      ? Math.floor(raw.injectionDepth)
+      : DEFAULT_AUTHORS_NOTE_TEMPLATE.injectionDepth
+  injectionDepth = Math.max(0, Math.min(AUTHORS_NOTE_MAX_DEPTH, injectionDepth))
+  const role: AuthorsNoteRole = raw?.role === 'user' ? 'user' : 'system'
+  const enabledForNewChats = raw?.enabledForNewChats !== false
+  const trimmed = content.trim()
+  return {
+    content: trimmed ? content : '',
+    injectionDepth,
+    role,
+    enabledForNewChats,
+  }
+}

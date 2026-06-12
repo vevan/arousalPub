@@ -3,8 +3,8 @@ import { applyRegexRulesToText, filterRegexRules } from './regex-apply.js'
 import { resolveOutgoingSkipTailOrdinal } from './regex-outgoing.js'
 import { readRegexRulesDocument } from './regex-rules-file.js'
 import type { RegexRule } from './regex-rules-types.js'
-import { normalizeXmlTextBeforeProcessing, prepareXmlElementText } from './prompt-xml.js'
-import { assistantTextFromTurn } from './turn-memory-xml.js'
+import { normalizeXmlTextBeforeProcessing } from './prompt-xml.js'
+import { assistantTextFromTurn, wrapTurnRoleLine } from './turn-memory-xml.js'
 
 export const PLUGIN_SUMMARIZE_BATCH_MAX = 50
 
@@ -104,13 +104,7 @@ export function wrapSummarizeTurnLine(
   role: 'user' | 'assistant',
   text: string,
 ): string {
-  const body = (text ?? '').trim()
-  if (!body) return ''
-  const tag = role
-  const attr =
-    role === 'user' ? 'userName="{{user}}"' : 'charName="{{char}}"'
-  const escaped = prepareXmlElementText(body)
-  return `<${tag} ${attr}>${escaped}</${tag}>`
+  return wrapTurnRoleLine(role, text)
 }
 
 export function formatSummarizeTranscript(

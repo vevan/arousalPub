@@ -43,9 +43,11 @@
 
 ## 5. prepare-context（摘要）
 
-- XML：`<user userName="…">` / `<assistant charName="…">`；`<context-history>` / `<history>`。
+- XML：`<user userName="{{user}}">` / `<assistant charName="{{char}}">`；`<context-history>` / `<history>`。
 - 勾选 `regexRuleIds` 时对摘要 outgoing 应用原生正则；`regexApplyAllTurns` 控制 skip。
-- 服务端：`plugin-prepare-context.ts`、`plugin-summarize-format.ts`。
+- **宏引擎**：`complete-draft` / Prompt 预览经 `runPluginMacroExpand` 展开模板与 `userContent`；传 **`toTurn`** 锚定历史类宏至摘要区间尾部（与 `DOC/26` 一致）。
+- **区间建议**：手动/自动摘要 UI 限制 **≤512 轮**（`endTurn - startTurn + 1`），与宏索引窗口对齐；超出时禁用提交并 toast。
+- 服务端：`plugin-prepare-context.ts`、`plugin-summarize-format.ts`、`plugin-macro-expand.ts`。
 
 ## 6. 代码
 

@@ -2,10 +2,14 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   AUTHORS_NOTE_DEFAULTS,
+  DEFAULT_AUTHORS_NOTE_TEMPLATE,
   authorsNoteForInjection,
   authorsNoteMacroText,
+  defaultAuthorsNoteMacroText,
   mergeAuthorsNote,
   normalizeAuthorsNote,
+  normalizeDefaultAuthorsNoteTemplate,
+  seedAuthorsNoteFromTemplate,
 } from './authors-note-settings.js'
 
 describe('normalizeAuthorsNote', () => {
@@ -68,5 +72,46 @@ describe('authorsNoteMacroText', () => {
       'macro body',
     )
     assert.equal(authorsNoteMacroText(AUTHORS_NOTE_DEFAULTS), '')
+  })
+})
+
+describe('defaultAuthorsNote', () => {
+  it('macro returns template content regardless of enabledForNewChats', () => {
+    assert.equal(
+      defaultAuthorsNoteMacroText({
+        content: 'default tpl',
+        enabledForNewChats: false,
+      }),
+      'default tpl',
+    )
+    assert.equal(defaultAuthorsNoteMacroText(DEFAULT_AUTHORS_NOTE_TEMPLATE), '')
+  })
+
+  it('seed copies template into session shape', () => {
+    const seeded = seedAuthorsNoteFromTemplate({
+      content: 'seed me',
+      injectionDepth: 2,
+      role: 'user',
+      enabledForNewChats: true,
+    })
+    assert.ok(seeded)
+    assert.equal(seeded!.content, 'seed me')
+    assert.equal(seeded!.enabled, true)
+    assert.equal(seeded!.injectionDepth, 2)
+    assert.equal(seeded!.role, 'user')
+  })
+
+  it('seed returns null when template empty', () => {
+    assert.equal(seedAuthorsNoteFromTemplate({ content: '  ' }), null)
+  })
+
+  it('seed respects enabledForNewChats false', () => {
+    const seeded = seedAuthorsNoteFromTemplate({
+      content: 'x',
+      enabledForNewChats: false,
+    })
+    assert.ok(seeded)
+    assert.equal(seeded!.enabled, false)
+    assert.equal(authorsNoteForInjection(seeded), null)
   })
 })

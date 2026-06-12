@@ -99,6 +99,10 @@
 
   "manualEndTurnLabel": "结束轮（含）",
 
+  "manualTurnRangeHint": "摘要区间建议不超过 512 轮（与宏索引窗口一致）；超出将无法提交，请缩小起止轮次。",
+
+  "toastTurnRangeTooLong": "摘要区间过长（超过 512 轮），请缩小起止轮次后重试。",
+
   "manualTasksLabel": "摘要项",
 
   "manualTasksHint": "按顺序串行执行：先剧情，再所选 Sidecar。",

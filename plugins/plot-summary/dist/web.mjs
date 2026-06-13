@@ -1864,7 +1864,14 @@ function registerRangePicker(host) {
       const start = getRangeStartTurn();
       return ord !== null && start === ord ? "cm-range-start--active" : "";
     },
-    tooltipKey: k(host, "tooltipRangeStart"),
+    tooltipKey: (ctx) => {
+      const ord = turnOrdinal(ctx);
+      const start = getRangeStartTurn();
+      return k(
+        host,
+        ord !== null && start === ord ? "tooltipRangeStartCancel" : "tooltipRangeStart"
+      );
+    },
     when: (ctx) => turnOrdinal(ctx) !== null,
     disabled: () => controlsDisabled(host),
     onClick: (ctx) => onRangeStartClick(host, ctx)

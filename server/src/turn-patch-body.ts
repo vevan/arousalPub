@@ -1,7 +1,11 @@
 import type { TurnReceive, TurnRecord } from './chat-storage.js'
 import { getTurnUserText } from './chat-storage.js'
 
+/** 单次 messages 区间读 / 批量 PATCH 上限 */
 export const CONVERSATION_BATCH_MAX_TURNS = 50
+
+/** UI 打开对话时默认尾部窗口（须 ≤ CONVERSATION_BATCH_MAX_TURNS） */
+export const CONVERSATION_MESSAGES_DEFAULT_TAIL = 30
 
 export interface TurnContentPatchInput {
   turnOrdinal: number

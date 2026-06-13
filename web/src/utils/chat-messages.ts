@@ -23,6 +23,20 @@ type MessagesApiTurn = {
   activeReceiveIndex?: number
 }
 
+export type MessagesPageInfo = {
+  hasMoreBefore: boolean
+  from: number
+  to: number
+}
+
+type MessagesApiResponse = {
+  turns?: MessagesApiTurn[]
+  page?: MessagesPageInfo
+}
+
+/** 与 server `CONVERSATION_MESSAGES_DEFAULT_TAIL` 一致 */
+export const CONVERSATION_UI_TAIL_LIMIT = 30
+
 export function parseConversationTurnsFromApi(
   raw: MessagesApiTurn[],
 ): ChatTurnItem[] {
@@ -88,8 +102,44 @@ export async function fetchConversationTurns(
 ): Promise<ChatTurnItem[]> {
   const res = await fetch(`/api/chat/conversations/${conversationId}/messages`)
   if (!res.ok) return []
-  const j = (await res.json()) as { turns?: MessagesApiTurn[] }
+  const j = (await res.json()) as MessagesApiResponse
   return parseConversationTurnsFromApi(j.turns ?? [])
+}
+
+export async function fetchConversationTurnsTail(
+  conversationId: string,
+  tail = CONVERSATION_UI_TAIL_LIMIT,
+): Promise<{ turns: ChatTurnItem[]; page: MessagesPageInfo | null }> {
+  const qs = new URLSearchParams({ tail: String(tail) })
+  const res = await fetch(
+    `/api/chat/conversations/${conversationId}/messages?${qs.toString()}`,
+  )
+  if (!res.ok) return { turns: [], page: null }
+  const j = (await res.json()) as MessagesApiResponse
+  return {
+    turns: parseConversationTurnsFromApi(j.turns ?? []),
+    page: j.page ?? null,
+  }
+}
+
+export async function fetchConversationTurnsBefore(
+  conversationId: string,
+  beforeOrdinal: number,
+  limit = CONVERSATION_UI_TAIL_LIMIT,
+): Promise<{ turns: ChatTurnItem[]; page: MessagesPageInfo | null }> {
+  const qs = new URLSearchParams({
+    before: String(beforeOrdinal),
+    limit: String(limit),
+  })
+  const res = await fetch(
+    `/api/chat/conversations/${conversationId}/messages?${qs.toString()}`,
+  )
+  if (!res.ok) return { turns: [], page: null }
+  const j = (await res.json()) as MessagesApiResponse
+  return {
+    turns: parseConversationTurnsFromApi(j.turns ?? []),
+    page: j.page ?? null,
+  }
 }
 
 /** 仅拉取 ordinal 闭区间 [from, to]（最多 50 轮，与插件 runBatch 一致） */
@@ -106,7 +156,7 @@ export async function fetchConversationTurnsRange(
     `/api/chat/conversations/${conversationId}/messages?${qs.toString()}`,
   )
   if (!res.ok) return []
-  const j = (await res.json()) as { turns?: MessagesApiTurn[] }
+  const j = (await res.json()) as MessagesApiResponse
   return parseConversationTurnsFromApi(j.turns ?? [])
 }
 

@@ -1,22 +1,24 @@
 # 会话消息懒加载
 
-> **状态（2026-06-12）**：服务端原语 ✅；**UI 分页与 `tail`/`before` query 待做**（**P0** · `DOC/04`）。  
+> **状态（2026-06-13）**：服务端 `tail` / `before` query ✅；Web 默认尾部窗口 + 上滚追加 ✅。  
 > **前置**：`DOC/08` chunk 链。
 
 ## 已完成
 
 | 能力 | 位置 |
 |------|------|
-| `readTurnsInOrdinalRange` / `readTurnsTail` | `server/src/chunk-chain.ts` |
-| `GET .../messages?from=&to=`（≤50 轮） | `server/src/index.ts` |
-| assemble / memory 热路径用尾部窗口 | `memory-pipeline.ts`（非全链 `readAllTurns`） |
-| 无参 `GET .../messages` 仍全量 | 兼容；lazy load 落地后 Web 改调分页 |
+| `readTurnsInOrdinalRange` / `readTurnsTail` / `readTurnsBefore` | `server/src/chunk-chain.ts` |
+| `GET .../messages?from=&to=`（≤50 轮） | `server/src/conversation-messages-api.ts` |
+| `GET .../messages?tail=N` · 响应 `page.hasMoreBefore` / `page.from` / `page.to` | 同上 |
+| `GET .../messages?before=ordinal&limit=N` | 同上 |
+| Web 打开对话默认 `tail=30` | `web/src/composables/chat-session/use-turn-list.ts` |
+| 上滚距顶 ≤120px 或点击「加载更早的对话」追加 | `ChatMessageList.vue` |
+| assemble / memory 热路径用尾部窗口 | `memory-pipeline.ts` |
+| 无参 `GET .../messages` 仍全量 | 兼容；插件/设置页等仍可用 |
 
-## 待做（S2–S4）
+## 可选（Phase 2）
 
-1. **API**：`?tail=N`、`?before=ordinal&limit=N`；响应 `page.hasMoreBefore`、可选 `range`。
-2. **Web**：打开对话默认尾部 N 轮；上滚追加；`use-turn-list.ts` 改分页加载。
-3. **可选**：虚拟滚动（Phase 2）。
+- 虚拟滚动（长列表 DOM 优化）
 
 ## 约定
 

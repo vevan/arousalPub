@@ -104,6 +104,7 @@ export function useChatSession(props: ChatSessionProps) {
     streamingReasoning,
     clearDraftAfterSend: composerDraft.clearDraftAfterSend,
     scrollChatToBottom,
+    chatScrollEl,
   })
   const {
     replaceTurnAt,
@@ -113,7 +114,11 @@ export function useChatSession(props: ChatSessionProps) {
     finalizePendingTurn,
     persistTurnToServer,
     loadMessages,
+    loadOlderMessages,
     refreshConversation,
+    hasMoreBefore,
+    loadingOlder,
+    messagesLoading,
   } = turnList
 
   const completion = createChatCompletionRunner({
@@ -296,9 +301,13 @@ export function useChatSession(props: ChatSessionProps) {
   })
 
   watch(
-    () => turns.value.length,
-    () => {
-      void scrollChatToBottom()
+    () => turns.value.at(-1)?.turnOrdinal ?? -1,
+    (lastOrd, prevLastOrd) => {
+      if (loadingOlder.value) return
+      if (prevLastOrd < 0) return
+      if (lastOrd > prevLastOrd) {
+        void scrollChatToBottom()
+      }
     },
     { flush: 'post' },
   )
@@ -363,9 +372,13 @@ export function useChatSession(props: ChatSessionProps) {
     isGenerating,
     abortCurrentReply,
     loadMessages,
+    loadOlderMessages,
     conversationId: props.conversationId,
     conversationWriteLocked,
     pluginHoldConversation,
+    hasMoreBefore,
+    loadingOlder,
+    messagesLoading,
     setPluginHold(hold: boolean) {
       pluginHoldConversation.value = hold
     },

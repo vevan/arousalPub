@@ -278,6 +278,54 @@ export function computeTailOrdinalReadRange(
   return { from, to, hasMoreBefore: from > 0 }
 }
 
+/** before 之前（不含 before）最多 limit 轮的 ordinal 闭区间（纯函数，单测用） */
+export function computeBeforeOrdinalReadRange(
+  beforeExclusive: number,
+  limit: number,
+): { from: number; to: number; hasMoreBefore: boolean } {
+  const cap = Math.max(1, Math.floor(limit))
+  const before = Math.max(0, Math.floor(beforeExclusive))
+  if (before <= 0) {
+    return { from: 0, to: -1, hasMoreBefore: false }
+  }
+  const to = before - 1
+  const from = Math.max(0, to - cap + 1)
+  return { from, to, hasMoreBefore: from > 0 }
+}
+
+export interface ReadTurnsBeforeResult {
+  turns: TurnRecord[]
+  hasMoreBefore: boolean
+  minOrdinal: number | null
+  maxOrdinal: number | null
+}
+
+/** 读取 turnOrdinal < beforeExclusive 的最多 limit 轮（紧邻 before 之前） */
+export async function readTurnsBefore(
+  conversationId: string,
+  beforeExclusive: number,
+  limit: number,
+): Promise<ReadTurnsBeforeResult> {
+  const { from, to, hasMoreBefore } = computeBeforeOrdinalReadRange(
+    beforeExclusive,
+    limit,
+  )
+  if (to < from) {
+    return {
+      turns: [],
+      hasMoreBefore: false,
+      minOrdinal: null,
+      maxOrdinal: null,
+    }
+  }
+  const turns = await readTurnsInOrdinalRange(conversationId, from, to)
+  const minOrdinal =
+    turns.length > 0 ? Math.min(...turns.map((t) => t.turnOrdinal)) : null
+  const maxOrdinal =
+    turns.length > 0 ? Math.max(...turns.map((t) => t.turnOrdinal)) : null
+  return { turns, hasMoreBefore, minOrdinal, maxOrdinal }
+}
+
 export interface ReadTurnsTailResult {
   turns: TurnRecord[]
   hasMoreBefore: boolean

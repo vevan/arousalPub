@@ -18,10 +18,9 @@ import {
 } from './conversation-api-resolve.js'
 import { parseAuthorsNotePatch, parseDefaultAuthorsNotePatch } from './authors-note-settings.js'
 import {
-  readAllTurns,
-  readTurnsInOrdinalRange,
   repairConversationChunkIndex,
 } from './chunk-chain.js'
+import { loadConversationMessages } from './conversation-messages-api.js'
 import {
   createConversationStub,
   deleteConversation,
@@ -1229,21 +1228,27 @@ app.post<{ Params: { id: string }; Body: FirstTurnBody }>(
   },
 )
 
-interface MessagesTurnDto {
-  turnOrdinal: number
-  user: string
-  receives: {
-    id: string
-    content: string
-    reasoning?: string
-    durationMs?: number
-    estimatedTokens?: number
-    completionTokens?: number
-    model?: string
-  }[]
-  activeReceiveIndex: number
-}
-
+app.get<{
+  Params: { id: string }
+  Querystring: { from?: string; to?: string; tail?: string; before?: string; limit?: string }
+}>(
+  '/api/chat/conversations/:id/messages',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!isValidConversationId(id)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    const loaded = await loadConversationMessages(id, request.query ?? {})
+    if (!loaded.ok) {
+      const code =
+        loaded.error in ApiErrorCodes
+          ? (loaded.error as (typeof ApiErrorCodes)[keyof typeof ApiErrorCodes])
+          : ApiErrorCodes.validation_failed
+      return reply.status(400).send({ error: code })
+    }
+    return loaded.response
+  },
+)
 app.patch<{
   Params: { id: string; turnOrdinal: string }
   Body: {
@@ -1366,109 +1371,6 @@ app.delete<{ Params: { id: string; turnOrdinal: string } }>(
       app.log.error(e)
       return reply.status(500).send({ error: ApiErrorCodes.turn_delete_failed })
     }
-  },
-)
-
-app.get<{
-  Params: { id: string }
-  Querystring: { from?: string; to?: string }
-}>(
-  '/api/chat/conversations/:id/messages',
-  async (request, reply) => {
-    const id = request.params.id
-    if (!isValidConversationId(id)) {
-      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
-    }
-    const qFrom = request.query.from
-    const qTo = request.query.to
-    const hasFrom = qFrom !== undefined && qFrom !== ''
-    const hasTo = qTo !== undefined && qTo !== ''
-    let allTurnRecords
-    if (hasFrom || hasTo) {
-      if (!hasFrom || !hasTo) {
-        return reply.status(400).send({ error: ApiErrorCodes.messages_range_incomplete })
-      }
-      const from = Number.parseInt(String(qFrom), 10)
-      const to = Number.parseInt(String(qTo), 10)
-      if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < from) {
-        return reply.status(400).send({ error: ApiErrorCodes.messages_range_invalid })
-      }
-      if (to - from + 1 > CONVERSATION_BATCH_MAX_TURNS) {
-        return reply.status(400).send({ error: ApiErrorCodes.range_too_large })
-      }
-      allTurnRecords = await readTurnsInOrdinalRange(id, from, to)
-    } else {
-      allTurnRecords = await readAllTurns(id)
-    }
-    if (!allTurnRecords.length) {
-      return { turns: [] as MessagesTurnDto[] }
-    }
-    const turns: MessagesTurnDto[] = allTurnRecords.map((t, i) => {
-      const activeUserText = getTurnUserText(t)
-      const recs = (t.receives ?? []).map((r) => {
-        const base: {
-          id: string
-          content: string
-          reasoning?: string
-          durationMs?: number
-          estimatedTokens?: number
-          completionTokens?: number
-          model?: string
-        } = {
-          id: typeof r.id === 'string' ? r.id : '',
-          content: typeof r.content === 'string' ? r.content : '',
-        }
-        const rs =
-          typeof r.reasoning === 'string' && r.reasoning.length > 0
-            ? r.reasoning
-            : undefined
-        if (rs !== undefined) base.reasoning = rs
-        const runtime = r.runtime
-        if (runtime && typeof runtime === 'object') {
-          const dm = (runtime as { durationMs?: unknown }).durationMs
-          if (typeof dm === 'number' && Number.isFinite(dm) && dm > 0) {
-            base.durationMs = Math.round(dm)
-          }
-          const et = (runtime as { estimatedTokens?: unknown }).estimatedTokens
-          if (typeof et === 'number' && Number.isFinite(et) && et > 0) {
-            base.estimatedTokens = Math.round(et)
-          }
-          const ct = (runtime as { completionTokens?: unknown }).completionTokens
-          if (typeof ct === 'number' && Number.isFinite(ct) && ct > 0) {
-            base.completionTokens = Math.round(ct)
-          }
-          const m = (runtime as { model?: unknown }).model
-          if (typeof m === 'string' && m.trim()) {
-            base.model = m.trim()
-          }
-        }
-        return base
-      })
-      const ord =
-        typeof t.turnOrdinal === 'number' && !Number.isNaN(t.turnOrdinal)
-          ? t.turnOrdinal
-          : i
-      let ai =
-        typeof t.activeReceiveIndex === 'number' && !Number.isNaN(t.activeReceiveIndex)
-          ? t.activeReceiveIndex
-          : 0
-      if (recs.length === 0) {
-        return {
-          turnOrdinal: ord,
-          user: activeUserText,
-          receives: [],
-          activeReceiveIndex: 0,
-        }
-      }
-      ai = Math.min(Math.max(0, ai), recs.length - 1)
-      return {
-        turnOrdinal: ord,
-        user: activeUserText,
-        receives: recs,
-        activeReceiveIndex: ai,
-      }
-    })
-    return { turns }
   },
 )
 

@@ -641,6 +641,7 @@
     "assistantLoading": "助手正在回复",
     "reasoningSummary": "思维链",
     "emptyHint": "在下方输入消息并发送。",
+    "loadOlderTurns": "加载更早的对话",
     "messageLabel": "消息",
     "composerPlaceholderEnterSend": "输入消息 · Enter 发送，Ctrl+Enter 换行",
     "composerPlaceholderCtrlEnterSend": "输入消息 · Ctrl+Enter 发送，Enter 换行",

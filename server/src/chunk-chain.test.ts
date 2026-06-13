@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   chunkFileNameForRange,
+  computeBeforeOrdinalReadRange,
   computeHeadTailFromLinks,
   computeTailOrdinalReadRange,
   inferTurnsPerFileFromFileName,
@@ -48,6 +49,26 @@ describe('computeTailOrdinalReadRange', () => {
     assert.deepEqual(computeTailOrdinalReadRange(5, 20), {
       from: 0,
       to: 5,
+      hasMoreBefore: false,
+    })
+  })
+})
+
+describe('computeBeforeOrdinalReadRange', () => {
+  it('loads turns immediately before the anchor', () => {
+    assert.deepEqual(computeBeforeOrdinalReadRange(50, 30), {
+      from: 20,
+      to: 49,
+      hasMoreBefore: true,
+    })
+    assert.deepEqual(computeBeforeOrdinalReadRange(5, 30), {
+      from: 0,
+      to: 4,
+      hasMoreBefore: false,
+    })
+    assert.deepEqual(computeBeforeOrdinalReadRange(0, 30), {
+      from: 0,
+      to: -1,
       hasMoreBefore: false,
     })
   })

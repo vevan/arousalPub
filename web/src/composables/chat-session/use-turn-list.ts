@@ -1,9 +1,24 @@
 import type { ChatTurnItem, PersistTurnToServerResult, ReceiveItem } from '@/types/chat-turn'
 import {
-  fetchConversationTurns,
+  CONVERSATION_UI_TAIL_LIMIT,
+  fetchConversationTurnsBefore,
+  fetchConversationTurnsTail,
   persistTurnToServer as persistTurnToServerApi,
 } from '@/utils/chat-messages'
-import { nextTick, type Ref } from 'vue'
+import { nextTick, ref, watch, type Ref } from 'vue'
+
+const SCROLL_LOAD_THRESHOLD_PX = 120
+
+function mergeTurnsPrepend(
+  existing: ChatTurnItem[],
+  older: ChatTurnItem[],
+): ChatTurnItem[] {
+  if (older.length === 0) return existing
+  const seen = new Set(existing.map((t) => t.turnOrdinal))
+  const filtered = older.filter((t) => !seen.has(t.turnOrdinal))
+  if (filtered.length === 0) return existing
+  return [...filtered, ...existing].sort((a, b) => a.turnOrdinal - b.turnOrdinal)
+}
 
 export function useTurnList(opts: {
   getConversationId: () => string
@@ -16,7 +31,12 @@ export function useTurnList(opts: {
   streamingReasoning: Ref<string>
   clearDraftAfterSend: (conversationId: string) => void
   scrollChatToBottom: () => Promise<void>
+  chatScrollEl: Ref<HTMLElement | null>
 }) {
+  const hasMoreBefore = ref(false)
+  const loadingOlder = ref(false)
+  const messagesLoading = ref(false)
+
   function replaceTurnAt(listIndex: number, next: ChatTurnItem) {
     opts.turns.value = opts.turns.value.map((t, i) => (i === listIndex ? next : t))
   }
@@ -85,15 +105,74 @@ export function useTurnList(opts: {
   }
 
   async function loadMessages() {
+    messagesLoading.value = true
+    hasMoreBefore.value = false
     try {
-      opts.turns.value = await fetchConversationTurns(opts.getConversationId())
+      const { turns: loaded, page } = await fetchConversationTurnsTail(
+        opts.getConversationId(),
+        CONVERSATION_UI_TAIL_LIMIT,
+      )
+      opts.turns.value = loaded
+      hasMoreBefore.value = page?.hasMoreBefore ?? false
     } catch {
       /* ignore */
     } finally {
+      messagesLoading.value = false
       await nextTick()
       await opts.scrollChatToBottom()
     }
   }
+
+  async function loadOlderMessages() {
+    if (loadingOlder.value || !hasMoreBefore.value) return
+    const first = opts.turns.value[0]
+    if (!first || first.turnOrdinal <= 0) {
+      hasMoreBefore.value = false
+      return
+    }
+    loadingOlder.value = true
+    const el = opts.chatScrollEl.value
+    const prevScrollHeight = el?.scrollHeight ?? 0
+    try {
+      const { turns: older, page } = await fetchConversationTurnsBefore(
+        opts.getConversationId(),
+        first.turnOrdinal,
+        CONVERSATION_UI_TAIL_LIMIT,
+      )
+      if (older.length === 0) {
+        hasMoreBefore.value = false
+        return
+      }
+      opts.turns.value = mergeTurnsPrepend(opts.turns.value, older)
+      hasMoreBefore.value = page?.hasMoreBefore ?? false
+      await nextTick()
+      if (el) {
+        el.scrollTop += el.scrollHeight - prevScrollHeight
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      loadingOlder.value = false
+    }
+  }
+
+  function maybeLoadOlderOnScroll() {
+    const el = opts.chatScrollEl.value
+    if (!el || loadingOlder.value || !hasMoreBefore.value) return
+    if (el.scrollTop <= SCROLL_LOAD_THRESHOLD_PX) {
+      void loadOlderMessages()
+    }
+  }
+
+  watch(
+    () => opts.chatScrollEl.value,
+    (el, _old, onCleanup) => {
+      if (!el) return
+      const handler = () => maybeLoadOlderOnScroll()
+      el.addEventListener('scroll', handler, { passive: true })
+      onCleanup(() => el.removeEventListener('scroll', handler))
+    },
+  )
 
   async function refreshConversation(): Promise<void> {
     await loadMessages()
@@ -107,6 +186,10 @@ export function useTurnList(opts: {
     finalizePendingTurn,
     persistTurnToServer,
     loadMessages,
+    loadOlderMessages,
     refreshConversation,
+    hasMoreBefore,
+    loadingOlder,
+    messagesLoading,
   }
 }

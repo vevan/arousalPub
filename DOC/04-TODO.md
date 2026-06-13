@@ -4,8 +4,6 @@
 
 ## P0 余项
 
-- [ ] **会话消息 UI 懒加载** — `DOC/15`（`tail`/`before` query + 上滚加载更早轮次；打开对话默认尾部窗口；底层 `readTurnsTail` / `from`–`to` 区间读 ✅）
-
 ## P1
 
 - [ ] **对话页顶栏 UI 优化** — `ChatConversationView` `chat-header`（返回、标题、effective 预设/模型提示等）布局与信息层级打磨；见 `DOC/03` §11.4
@@ -30,4 +28,5 @@
 - [x] 对话页正则批量 apply UI（2026-06-12）：`ConversationRegexApplyPanel` · 对话设置 Tab「正则批量」· `POST .../regex/apply` dry-run / apply
 - [x] Web / Server 提示词预设 normalize 完全对齐（2026-06-13）：共用 `shared/prompt-preset-normalize.ts` + `server/src/prompt-preset-normalize.test.ts` 矩阵单测
 - [x] 组装预览绑定块 inject 占位（2026-06-13）：`bindingPlaceholderMode` · 提示词库 `assemble-preview` 绑定槽一律 `<inject slot="…" />`
+- [x] 会话消息 UI 懒加载（2026-06-13）：`GET .../messages?tail` / `?before&limit` · 默认尾部 30 轮 · 上滚/按钮追加
 - [ ] 架构/接口变更时同步 `DOC/01`–`03`（2026-06-10：内嵌世界书 `DOC/27`、作者注分层 `DOC/28`）

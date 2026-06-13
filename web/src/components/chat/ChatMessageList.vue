@@ -7,7 +7,14 @@ const props = defineProps<{
   session: ReturnType<typeof useChatSession>
 }>()
 
-const { chatScrollEl, turns, errorText } = toRefs(props.session)
+const {
+  chatScrollEl,
+  turns,
+  errorText,
+  hasMoreBefore,
+  loadingOlder,
+  loadOlderMessages,
+} = toRefs(props.session)
 </script>
 
 <template>
@@ -15,6 +22,27 @@ const { chatScrollEl, turns, errorText } = toRefs(props.session)
     ref="chatScrollEl"
     class="chat-body chat-scroll"
   >
+    <div
+      v-if="hasMoreBefore || loadingOlder"
+      class="chat-load-older"
+    >
+      <v-progress-circular
+        v-if="loadingOlder"
+        indeterminate
+        size="20"
+        width="2"
+        color="primary"
+      />
+      <button
+        v-else
+        type="button"
+        class="chat-load-older__btn"
+        @click="loadOlderMessages()"
+      >
+        {{ $t('chat.loadOlderTurns') }}
+      </button>
+    </div>
+
     <ChatTurnBlock
       v-for="(turn, i) in turns"
       :key="`${turn.turnOrdinal}-${i}`"

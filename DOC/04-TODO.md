@@ -4,8 +4,8 @@
 
 ## P0 余项
 
-- [ ] **Web / Server 提示词预设 normalize 完全对齐** — `web/src/stores/prompts.ts` `normalizePreset` 与 `server/src/prompt-preset-normalize.ts` `normalizePresetForAssemble` 须行为一致（已知分叉：`pinPostHistoryAfterChatHistory` vs 组内 `maxO+1` 追加、`presetUsesSystemSubBlocks` 入参、Web 独有 `migrateCharacterGroupToFlatOrder` / 剥离 `useBoundCharacterPostHistory` 等）；目标为共享逻辑或单测矩阵锁死，避免 UI 与组装结果分叉。见 `DOC/03` §15.9。
 - [ ] **会话消息 UI 懒加载** — `DOC/15`（`tail`/`before` query + 上滚加载更早轮次；打开对话默认尾部窗口；底层 `readTurnsTail` / `from`–`to` 区间读 ✅）
+- [ ] **修改组装预览中绑定块的显示** 从some XXX改为\\<slot name\\>
 
 ## P1
 
@@ -27,6 +27,7 @@
 
 ## 文档
 
+- [x] Historian 摘要起始轮 toggle 取消（2026-06-12）：`range-picker` 再次点击同一 `turn-block-head` 起始按钮清除 `rangeStartTurn`
 - [x] 对话页正则批量 apply UI（2026-06-12）：`ConversationRegexApplyPanel` · 对话设置 Tab「正则批量」· `POST .../regex/apply` dry-run / apply
-- [x] chat 深度锚点（§6.6 · 2026-06-12）：最后一条 user 消息，非整栈 `messages.length`
+- [x] Web / Server 提示词预设 normalize 完全对齐（2026-06-13）：共用 `shared/prompt-preset-normalize.ts` + `server/src/prompt-preset-normalize.test.ts` 矩阵单测
 - [ ] 架构/接口变更时同步 `DOC/01`–`03`（2026-06-10：内嵌世界书 `DOC/27`、作者注分层 `DOC/28`）

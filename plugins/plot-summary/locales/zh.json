@@ -11,6 +11,7 @@
   "tooltipSessionSettings": "本会话剧情纪要设置",
 
   "tooltipRangeStart": "选择摘要起始轮",
+  "tooltipRangeStartCancel": "取消摘要起始轮",
 
   "tooltipRangeEnd": "选择摘要结束轮并打开手动摘要",
 

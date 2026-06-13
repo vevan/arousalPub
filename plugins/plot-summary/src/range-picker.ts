@@ -33,7 +33,7 @@ function controlsDisabled(host: PluginHost) {
 function onRangeStartClick(host: PluginHost, ctx: SlotCtx) {
   const ord = turnOrdinal(ctx)
   if (ord === null || controlsDisabled(host)) return
-  setRangeStartTurn(ord)
+  setRangeStartTurn(getRangeStartTurn() === ord ? null : ord)
   host.refreshSlotButtons()
 }
 
@@ -69,7 +69,14 @@ export function registerRangePicker(host: PluginHost) {
       const start = getRangeStartTurn()
       return ord !== null && start === ord ? 'cm-range-start--active' : ''
     },
-    tooltipKey: k(host, 'tooltipRangeStart'),
+    tooltipKey: (ctx: SlotCtx) => {
+      const ord = turnOrdinal(ctx)
+      const start = getRangeStartTurn()
+      return k(
+        host,
+        ord !== null && start === ord ? 'tooltipRangeStartCancel' : 'tooltipRangeStart',
+      )
+    },
     when: (ctx: SlotCtx) => turnOrdinal(ctx) !== null,
     disabled: () => controlsDisabled(host),
     onClick: (ctx: SlotCtx) => onRangeStartClick(host, ctx),

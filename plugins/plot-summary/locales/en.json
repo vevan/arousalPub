@@ -11,6 +11,7 @@
   "tooltipSessionSettings": "Session Historian settings",
 
   "tooltipRangeStart": "Select summary start turn",
+  "tooltipRangeStartCancel": "Clear summary start turn",
 
   "tooltipRangeEnd": "Select end turn and open manual summarize",
 

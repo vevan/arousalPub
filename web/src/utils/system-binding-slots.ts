@@ -128,6 +128,88 @@ export function historyListInnerEntry(
   return findHistoryBundlePartner(listAnchor, prompts)
 }
 
+/** 仅用于 normalize：旧版「卡前 / 槽 / 卡后」分区 → 展平为单一 order */
+function characterBundleListPartitionLegacy(e: PromptEntry): number {
+  if (e.bindingSlot === 'boundCharacterSystem') return 1
+  if (e.characterBundlePosition === 'after') return 2
+  return 0
+}
+
+/** 旧版 characterBundlePosition 分区 → 组内扁平 order */
+export function migrateCharacterGroupToFlatOrder(
+  prompts: PromptEntry[],
+  charGroupId: string,
+): PromptEntry[] {
+  const inGroup = prompts.filter((e) => e.groupId === charGroupId)
+  if (inGroup.length === 0) return prompts
+  const sorted = inGroup.slice().sort((a, b) => {
+    const pa = characterBundleListPartitionLegacy(a)
+    const pb = characterBundleListPartitionLegacy(b)
+    if (pa !== pb) return pa - pb
+    return a.order - b.order
+  })
+  const idOrder = new Map(sorted.map((e, i) => [e.id, i]))
+  return prompts.map((e) => {
+    if (e.groupId !== charGroupId) return e
+    const { characterBundlePosition: _drop, ...rest } = e
+    return { ...rest, order: idOrder.get(e.id)! }
+  })
+}
+
+/** 在 boundChatHistory 之后紧邻插入 postHistory（不重排其它条目） */
+export function pinPostHistoryAfterChatHistory(
+  prompts: PromptEntry[],
+  histGroupId: string,
+  makeEntry: (
+    slot: PromptBindingSlot,
+    order: number,
+    id: string,
+    enabled?: boolean,
+  ) => PromptEntry,
+  opts: { existing?: PromptEntry; enabled?: boolean } = {},
+): PromptEntry[] {
+  const chatHistory = prompts.find(
+    (e) =>
+      e.groupId === histGroupId && e.bindingSlot === HISTORY_BUNDLE_LIST_ANCHOR,
+  )
+  if (!chatHistory) return prompts
+
+  const existing =
+    opts.existing ??
+    prompts.find(
+      (e) =>
+        e.groupId === histGroupId &&
+        e.bindingSlot === HISTORY_BUNDLE_INNER,
+    )
+  const H = chatHistory.order
+  if (existing && existing.order === H + 1) return prompts
+
+  let next = existing
+    ? prompts.filter((e) => e.id !== existing.id)
+    : prompts.slice()
+  next = next.map((e) => {
+    if (e.groupId !== histGroupId || e.order <= H) return e
+    return { ...e, order: e.order + 1 }
+  })
+  const enabled =
+    opts.enabled !== undefined
+      ? opts.enabled !== false
+      : existing
+        ? existing.enabled !== false
+        : true
+  next.push(
+    existing
+      ? { ...existing, order: H + 1, groupId: histGroupId, enabled }
+      : makeEntry(
+          HISTORY_BUNDLE_INNER,
+          H + 1,
+          'binding-slot-character-post-history',
+          enabled,
+        ),
+  )
+  return next
+}
+
 export function findBundleDragPartner(
   entry: PromptEntry,
   prompts: PromptEntry[],

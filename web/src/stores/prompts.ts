@@ -3,7 +3,10 @@ import { promptEntryAllowedInGroup } from '@/utils/entry-group-transfer'
 import {
   finalizeCharacterGroupBindings,
   findBundleDragPartner,
+  migrateCharacterGroupToFlatOrder,
+  pinPostHistoryAfterChatHistory,
 } from '@/utils/system-binding-slots'
+import { normalizePresetCore } from '@/shared/prompt-preset-normalize'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
@@ -90,8 +93,8 @@ function isSystemBindingSlot(slot: PromptBindingSlot | undefined): boolean {
   return slot != null && SYSTEM_BINDING_SLOTS.includes(slot)
 }
 
-function presetUsesSystemSubBlocks(prompts: PromptEntry[]): boolean {
-  return prompts.some((e) => isSystemBindingSlot(e.bindingSlot))
+function presetUsesSystemSubBlocks(preset: PromptPreset): boolean {
+  return preset.prompts.some((e) => isSystemBindingSlot(e.bindingSlot))
 }
 
 function migrateBindingSlotAliases(prompts: PromptEntry[]): PromptEntry[] {
@@ -138,33 +141,6 @@ export interface PromptEntry {
   characterBundlePosition?: 'before' | 'after'
   createdAt: string
   updatedAt: string
-}
-
-/** 仅用于 normalize：旧版「卡前 / 槽 / 卡后」分区 → 展平为单一 order */
-function characterBundleListPartitionLegacy(e: PromptEntry): number {
-  if (e.bindingSlot === 'boundCharacterSystem') return 1
-  if (e.characterBundlePosition === 'after') return 2
-  return 0
-}
-
-function migrateCharacterGroupToFlatOrder(
-  prompts: PromptEntry[],
-  charGroupId: string,
-): PromptEntry[] {
-  const inGroup = prompts.filter((e) => e.groupId === charGroupId)
-  if (inGroup.length === 0) return prompts
-  const sorted = inGroup.slice().sort((a, b) => {
-    const pa = characterBundleListPartitionLegacy(a)
-    const pb = characterBundleListPartitionLegacy(b)
-    if (pa !== pb) return pa - pb
-    return a.order - b.order
-  })
-  const idOrder = new Map(sorted.map((e, i) => [e.id, i]))
-  return prompts.map((e) => {
-    if (e.groupId !== charGroupId) return e
-    const { characterBundlePosition: _drop, ...rest } = e
-    return { ...rest, order: idOrder.get(e.id)! }
-  })
 }
 
 export interface PromptPreset {
@@ -245,14 +221,6 @@ function buildDefaultGroups(): PromptGroup[] {
   ]
 }
 
-function normalizeGroups(groups: PromptGroup[]): PromptGroup[] {
-  return groups.map((g) => ({
-    ...g,
-    description: g.description ?? '',
-    enabled: g.enabled !== false,
-  }))
-}
-
 function makeBindingSlotEntry(
   groupId: string,
   slot: PromptBindingSlot,
@@ -281,28 +249,23 @@ function makeBindingSlotEntry(
   }
 }
 
-function ensureSystemSubBlocks(
-  prompts: PromptEntry[],
-  group: PromptGroup,
-  slots: PromptBindingSlot[],
-): PromptEntry[] {
-  let next = prompts
-  let order =
-    next
-      .filter((e) => e.groupId === group.id)
-      .reduce((m, e) => Math.max(m, e.order), -1) + 1
-  for (const slot of slots) {
-    if (next.some((e) => e.bindingSlot === slot)) continue
-    next = [
-      ...next,
-      makeBindingSlotEntry(group.id, slot, order, {
-        id: `binding-slot-${slot.replace(/^bound/, '')}`,
-      }),
-    ]
-    order += 1
-  }
-  return next
-}
+const NORMALIZE_DEPS = {
+  migrateBindingSlotAliases,
+  presetUsesSystemSubBlocks,
+  pinPostHistoryAfterChatHistory,
+  migrateCharacterGroupToFlatOrder,
+  finalizeCharacterGroupBindings,
+  DEFAULT_CHARACTER_SYSTEM_SLOTS,
+  DEFAULT_HISTORY_SYSTEM_SLOTS,
+  DEFAULT_WORLD_SYSTEM_SLOTS,
+  makeBindingSlotEntry: (
+    groupId: string,
+    slot: PromptBindingSlot,
+    order: number,
+    id: string,
+    enabled = true,
+  ) => makeBindingSlotEntry(groupId, slot, order, { id, enabled }),
+} as import('@/shared/prompt-preset-normalize').NormalizePresetDeps
 
 function bindingSlotIsRequired(slot: PromptBindingSlot | undefined): boolean {
   return (
@@ -314,158 +277,29 @@ function bindingSlotIsRequired(slot: PromptBindingSlot | undefined): boolean {
 }
 
 /**
- * 去掉旧版预设级开关、补全绑定槽位条目（并继承旧开关为条目的 enabled）。
+ * 去掉旧版预设级开关、补全绑定槽位条目（与 Server `normalizePresetForAssemble` 共用核心）。
  */
 export function normalizePreset(p: PromptPreset): PromptPreset {
-  const charG = p.groups.find((g) => g.kind === 'character')
-  const worldG = p.groups.find((g) => g.kind === 'world')
-  const histG = p.groups.find((g) => g.kind === 'history')
-  const userInputG = p.groups.find((g) => g.kind === 'userInput')
   const raw = p as PromptPreset & {
     useBoundCharacterSystemPrompt?: boolean
     useBoundCharacterPostHistory?: boolean
   }
-  const postOn = raw.useBoundCharacterPostHistory !== false
-  const legacySysOn = raw.useBoundCharacterSystemPrompt !== false
-
   const {
     useBoundCharacterSystemPrompt: _a,
     useBoundCharacterPostHistory: _b,
     ...rest
   } = raw
 
-  let prompts = migrateBindingSlotAliases(p.prompts).map((e) => ({
-    ...e,
-    enabled: bindingSlotIsRequired(e.bindingSlot) ? true : e.enabled,
-  }))
-
-  const hasLegacyChar = prompts.some(
-    (e) => e.bindingSlot === 'boundCharacterSystem',
+  const normalized = normalizePresetCore(
+    rest as import('@/shared/prompt-preset-normalize').PromptPreset,
+    NORMALIZE_DEPS,
+    {
+      legacySystemPromptEnabled:
+        raw.useBoundCharacterSystemPrompt !== false,
+    },
   )
-  const hasSystemSub = presetUsesSystemSubBlocks(prompts)
 
-  if (charG && !hasLegacyChar && !hasSystemSub) {
-    prompts = ensureSystemSubBlocks(
-      prompts,
-      charG,
-      DEFAULT_CHARACTER_SYSTEM_SLOTS,
-    )
-  }
-
-  if (
-    charG &&
-    !prompts.some((e) => e.bindingSlot === 'boundUserPersona') &&
-    (hasLegacyChar || hasSystemSub)
-  ) {
-    const anchor = prompts.find(
-      (e) =>
-        e.groupId === charG.id &&
-        (e.bindingSlot === 'boundCharacterSystem' ||
-          e.bindingSlot === 'boundCharSystemPrompt'),
-    )
-    const insertAfter =
-      anchor?.order ??
-      prompts
-        .filter((e) => e.groupId === charG.id)
-        .reduce((m, e) => Math.max(m, e.order), -1)
-    prompts = prompts.map((e) =>
-      e.groupId === charG.id && e.order > insertAfter
-        ? { ...e, order: e.order + 1 }
-        : e,
-    )
-    prompts.push(
-      makeBindingSlotEntry(charG.id, 'boundUserPersona', insertAfter + 1, {
-        id: 'binding-slot-user-persona',
-      }),
-    )
-  }
-
-  if (histG && !hasSystemSub && !hasLegacyChar) {
-    prompts = ensureSystemSubBlocks(
-      prompts,
-      histG,
-      DEFAULT_HISTORY_SYSTEM_SLOTS,
-    )
-  } else if (
-    histG &&
-    !prompts.some((e) => e.bindingSlot === 'boundCharacterPostHistory')
-  ) {
-    const maxO = prompts
-      .filter((e) => e.groupId === histG.id)
-      .reduce((m, e) => Math.max(m, e.order), -1)
-    prompts.push(
-      makeBindingSlotEntry(histG.id, 'boundCharacterPostHistory', maxO + 1, {
-        enabled: postOn,
-      }),
-    )
-  }
-
-  if (
-    worldG &&
-    !prompts.some((e) => e.bindingSlot === 'boundWorld') &&
-    !prompts.some(
-      (e) =>
-        e.bindingSlot === 'boundWorldBefore' ||
-        e.bindingSlot === 'boundWorldAfter',
-    )
-  ) {
-    if (hasSystemSub || !hasLegacyChar) {
-      prompts = ensureSystemSubBlocks(
-        prompts,
-        worldG,
-        DEFAULT_WORLD_SYSTEM_SLOTS,
-      )
-    } else {
-      prompts = prompts.map((e) =>
-        e.groupId === worldG.id ? { ...e, order: e.order + 1 } : e,
-      )
-      prompts.push(
-        makeBindingSlotEntry(worldG.id, 'boundWorld', 0, {
-          id: 'binding-slot-world',
-        }),
-      )
-    }
-  }
-  if (
-    userInputG &&
-    !prompts.some((e) => e.bindingSlot === 'boundUserInput')
-  ) {
-    prompts = prompts.map((e) =>
-      e.groupId === userInputG.id ? { ...e, order: e.order + 1 } : e,
-    )
-    prompts.push(
-      makeBindingSlotEntry(userInputG.id, 'boundUserInput', 0, {
-        id: 'binding-slot-user-input',
-      }),
-    )
-  }
-
-  if (charG) {
-    prompts = migrateCharacterGroupToFlatOrder(prompts, charG.id)
-    prompts = finalizeCharacterGroupBindings(
-      prompts,
-      charG.id,
-      (slot, order, id, enabled = true) =>
-        makeBindingSlotEntry(charG.id, slot, order, { id, enabled }),
-      { legacySystemPromptEnabled: legacySysOn },
-    )
-  }
-
-  if (histG) {
-    prompts = prompts.filter(
-      (e) =>
-        !(
-          e.groupId === histG.id &&
-          (e.bindingSlot as string | undefined) === 'boundRecentHistory'
-        ),
-    )
-  }
-
-  return {
-    ...rest,
-    groups: normalizeGroups(p.groups),
-    prompts,
-  }
+  return normalized as PromptPreset
 }
 
 const EMPTY_PRESET: PromptPreset = {

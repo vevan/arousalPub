@@ -1833,7 +1833,7 @@ function controlsDisabled(host) {
 function onRangeStartClick(host, ctx) {
   const ord = turnOrdinal(ctx);
   if (ord === null || controlsDisabled(host)) return;
-  setRangeStartTurn(ord);
+  setRangeStartTurn(getRangeStartTurn() === ord ? null : ord);
   host.refreshSlotButtons();
 }
 function onRangeEndClick(host, ctx) {

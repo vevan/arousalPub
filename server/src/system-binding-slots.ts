@@ -217,6 +217,34 @@ export function pinCharSystemPromptBeforeDescription(
   return next
 }
 
+/** 仅用于 normalize：旧版「卡前 / 槽 / 卡后」分区 → 展平为单一 order */
+function characterBundleListPartitionLegacy(e: PromptEntry): number {
+  if (e.bindingSlot === 'boundCharacterSystem') return 1
+  if (e.characterBundlePosition === 'after') return 2
+  return 0
+}
+
+/** 旧版 characterBundlePosition 分区 → 组内扁平 order（与 Web 提示词库一致） */
+export function migrateCharacterGroupToFlatOrder(
+  prompts: PromptEntry[],
+  charGroupId: string,
+): PromptEntry[] {
+  const inGroup = prompts.filter((e) => e.groupId === charGroupId)
+  if (inGroup.length === 0) return prompts
+  const sorted = inGroup.slice().sort((a, b) => {
+    const pa = characterBundleListPartitionLegacy(a)
+    const pb = characterBundleListPartitionLegacy(b)
+    if (pa !== pb) return pa - pb
+    return a.order - b.order
+  })
+  const idOrder = new Map(sorted.map((e, i) => [e.id, i]))
+  return prompts.map((e) => {
+    if (e.groupId !== charGroupId) return e
+    const { characterBundlePosition: _drop, ...rest } = e
+    return { ...rest, order: idOrder.get(e.id)! }
+  })
+}
+
 /** 在 boundChatHistory 之后紧邻插入 postHistory（不重排其它条目） */
 export function pinPostHistoryAfterChatHistory(
   prompts: PromptEntry[],

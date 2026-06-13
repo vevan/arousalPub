@@ -5,6 +5,7 @@ import {
   ST_ANCHOR_BINDING_SLOT,
   SYSTEM_BINDING_SLOTS,
   finalizeCharacterGroupBindings,
+  pinPostHistoryAfterChatHistory,
 } from './system-binding-slots.js'
 
 const CHAR_G = 'group-character'
@@ -166,6 +167,33 @@ describe('finalizeCharacterGroupBindings', () => {
     )
     const sys = prompts.find((e) => e.bindingSlot === 'boundCharSystemPrompt')
     assert.equal(sys?.enabled, false)
+  })
+})
+
+describe('pinPostHistoryAfterChatHistory', () => {
+  it('inserts postHistory at chatHistory order + 1', () => {
+    const HIST_G = 'group-history'
+    const prompts = pinPostHistoryAfterChatHistory(
+      [
+        makeEntry({
+          id: 'hist',
+          groupId: HIST_G,
+          bindingSlot: 'boundChatHistory',
+          order: 2,
+        }),
+        makeEntry({
+          id: 'tail',
+          groupId: HIST_G,
+          order: 9,
+        }),
+      ],
+      HIST_G,
+      (slot, order, id, enabled = true) =>
+        makeEntry({ id, groupId: HIST_G, bindingSlot: slot, order, enabled }),
+    )
+    const post = prompts.find((e) => e.bindingSlot === 'boundCharacterPostHistory')
+    assert.equal(post?.order, 3)
+    assert.equal(prompts.find((e) => e.id === 'tail')?.order, 10)
   })
 })
 

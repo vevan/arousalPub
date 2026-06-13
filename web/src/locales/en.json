@@ -642,6 +642,7 @@
     "reasoningSummary": "Reasoning",
     "emptyHint": "Type a message below and send.",
     "loadOlderTurns": "Load earlier turns",
+    "messagesLoading": "Loading conversation…",
     "messageLabel": "Message",
     "composerPlaceholderEnterSend": "Message · Enter to send, Ctrl+Enter for new line",
     "composerPlaceholderCtrlEnterSend": "Message · Ctrl+Enter to send, Enter for new line",
@@ -843,7 +844,9 @@
       "network": "Network error",
       "persistFirstTurnFailed": "Failed to save the first turn on the server",
       "persistAppendTurnFailed": "Failed to append this turn on the server",
-      "deleteTurnFailed": "Could not delete"
+      "deleteTurnFailed": "Could not delete",
+      "loadMessagesFailed": "Could not load conversation messages",
+      "loadOlderFailed": "Could not load earlier turns"
     }
   },
   "conversationList": {

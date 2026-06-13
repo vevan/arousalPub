@@ -14,6 +14,7 @@ import * as directives from 'vuetify/directives'
 import { VIconBtn } from 'vuetify/labs/VIconBtn'
 import App from './App.vue'
 import '@/styles/vuetify-overrides.css'
+import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import { installAuthenticatedFetch } from '@/utils/install-authenticated-fetch'
 
 const vuetify = createVuetify({

@@ -642,6 +642,7 @@
     "reasoningSummary": "思维链",
     "emptyHint": "在下方输入消息并发送。",
     "loadOlderTurns": "加载更早的对话",
+    "messagesLoading": "正在加载对话…",
     "messageLabel": "消息",
     "composerPlaceholderEnterSend": "输入消息 · Enter 发送，Ctrl+Enter 换行",
     "composerPlaceholderCtrlEnterSend": "输入消息 · Ctrl+Enter 发送，Enter 换行",
@@ -843,7 +844,9 @@
       "network": "网络错误",
       "persistFirstTurnFailed": "首条对话保存到服务端失败",
       "persistAppendTurnFailed": "追加对话轮次保存到服务端失败",
-      "deleteTurnFailed": "删除失败"
+      "deleteTurnFailed": "删除失败",
+      "loadMessagesFailed": "加载对话消息失败",
+      "loadOlderFailed": "加载更早的对话失败"
     }
   },
   "conversationList": {

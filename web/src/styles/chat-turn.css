@@ -16,6 +16,39 @@
   padding         : 1rem 0;
 }
 
+.chat-body--virtual {
+  display       : flex;
+  flex-direction: column;
+  overflow      : hidden;
+  padding       : 0;
+}
+
+.chat-scroller {
+  flex      : 1 1 auto;
+  min-height: 0;
+  padding   : 1rem 0;
+}
+
+.chat-load-older--busy {
+  min-height: 2.75rem;
+}
+
+.chat-messages-loading {
+  display        : flex;
+  flex           : 1 1 auto;
+  flex-direction : column;
+  align-items    : center;
+  justify-content: center;
+  gap            : 0.75rem;
+  min-height     : 8rem;
+  padding        : 2rem;
+}
+
+.chat-messages-loading__text {
+  color     : rgba(var(--v-theme-on-surface), 0.6);
+  font-size : 0.875rem;
+}
+
 .chat-load-older {
   display        : flex;
   justify-content: center;

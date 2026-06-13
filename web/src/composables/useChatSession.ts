@@ -73,7 +73,8 @@ export function useChatSession(props: ChatSessionProps) {
     timer
 
   const scroll = useChatScroll()
-  const { chatScrollEl, scrollChatToBottom, onGlobalKeyR } = scroll
+  const { chatScrollEl, chatScroller, registerChatScroller, scrollChatToBottom, onGlobalKeyR } =
+    scroll
 
   const composerDraft = useComposerDraft({
     getConversationId: () => props.conversationId,
@@ -105,6 +106,13 @@ export function useChatSession(props: ChatSessionProps) {
     clearDraftAfterSend: composerDraft.clearDraftAfterSend,
     scrollChatToBottom,
     chatScrollEl,
+    chatScroller,
+    onLoadMessagesFailed: () => {
+      errorText.value = t('chat.errors.loadMessagesFailed')
+    },
+    onLoadOlderFailed: () => {
+      errorText.value = t('chat.errors.loadOlderFailed')
+    },
   })
   const {
     replaceTurnAt,
@@ -289,7 +297,6 @@ export function useChatSession(props: ChatSessionProps) {
   )
 
   onMounted(() => {
-    void scrollChatToBottom()
     window.addEventListener('keydown', onGlobalKeyR)
     window.addEventListener('pagehide', composerDraft.flushComposerDraftOnPageHide)
   })
@@ -313,7 +320,7 @@ export function useChatSession(props: ChatSessionProps) {
   )
 
   watch(streamingText, () => {
-    void scrollChatToBottom()
+    void scrollChatToBottom({ onlyIfNearBottom: true })
   }, { flush: 'post' })
 
   watch(regeneratingTurnOrdinal, (cur, prev) => {
@@ -350,6 +357,7 @@ export function useChatSession(props: ChatSessionProps) {
 
   return reactive({
     chatScrollEl,
+    registerChatScroller,
     turns,
     userInput,
     streamingText,

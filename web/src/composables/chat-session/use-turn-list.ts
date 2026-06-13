@@ -6,8 +6,11 @@ import {
   persistTurnToServer as persistTurnToServerApi,
 } from '@/utils/chat-messages'
 import { nextTick, ref, watch, type Ref } from 'vue'
+import type { ChatScrollerHandle } from './use-chat-scroll.js'
 
 const SCROLL_LOAD_THRESHOLD_PX = 120
+const SCROLL_REARM_PX = 240
+const LOAD_OLDER_COOLDOWN_MS = 500
 
 function mergeTurnsPrepend(
   existing: ChatTurnItem[],
@@ -30,12 +33,20 @@ export function useTurnList(opts: {
   streamingText: Ref<string>
   streamingReasoning: Ref<string>
   clearDraftAfterSend: (conversationId: string) => void
-  scrollChatToBottom: () => Promise<void>
+  scrollChatToBottom: (opts?: { onlyIfNearBottom?: boolean }) => Promise<void>
   chatScrollEl: Ref<HTMLElement | null>
+  chatScroller: Ref<ChatScrollerHandle | null>
+  onLoadMessagesFailed: () => void
+  onLoadOlderFailed: () => void
 }) {
   const hasMoreBefore = ref(false)
   const loadingOlder = ref(false)
   const messagesLoading = ref(false)
+  const initialScrollPending = ref(true)
+
+  let autoLoadArmed = false
+  let loadOlderCooldownUntil = 0
+  let scrollHintRaf = 0
 
   function replaceTurnAt(listIndex: number, next: ChatTurnItem) {
     opts.turns.value = opts.turns.value.map((t, i) => (i === listIndex ? next : t))
@@ -104,73 +115,124 @@ export function useTurnList(opts: {
     return persistTurnToServerApi(opts.getConversationId(), turn)
   }
 
+  async function restoreScrollAfterPrepend(anchorOrdinal: number) {
+    await nextTick()
+    const el = opts.chatScrollEl.value
+    const prevScrollHeight = el?.scrollHeight ?? 0
+    const anchorIndex = opts.turns.value.findIndex((t) => t.turnOrdinal === anchorOrdinal)
+    const scroller = opts.chatScroller.value
+    if (scroller && anchorIndex >= 0 && scroller.scrollToItem(anchorIndex)) {
+      return
+    }
+    if (el) {
+      el.scrollTop += el.scrollHeight - prevScrollHeight
+    }
+  }
+
   async function loadMessages() {
     messagesLoading.value = true
+    initialScrollPending.value = true
+    autoLoadArmed = false
     hasMoreBefore.value = false
     try {
       const { turns: loaded, page } = await fetchConversationTurnsTail(
         opts.getConversationId(),
         CONVERSATION_UI_TAIL_LIMIT,
       )
+      if (page === null) {
+        opts.onLoadMessagesFailed()
+        return
+      }
       opts.turns.value = loaded
-      hasMoreBefore.value = page?.hasMoreBefore ?? false
+      hasMoreBefore.value = page.hasMoreBefore ?? false
     } catch {
-      /* ignore */
+      opts.onLoadMessagesFailed()
     } finally {
       messagesLoading.value = false
-      await nextTick()
       await opts.scrollChatToBottom()
+      initialScrollPending.value = false
     }
   }
 
-  async function loadOlderMessages() {
+  async function loadOlderMessages(manual = false) {
     if (loadingOlder.value || !hasMoreBefore.value) return
+    if (initialScrollPending.value) return
+    if (!manual && Date.now() < loadOlderCooldownUntil) return
+
     const first = opts.turns.value[0]
     if (!first || first.turnOrdinal <= 0) {
       hasMoreBefore.value = false
       return
     }
+
+    const anchorOrdinal = first.turnOrdinal
     loadingOlder.value = true
-    const el = opts.chatScrollEl.value
-    const prevScrollHeight = el?.scrollHeight ?? 0
+    if (!manual) autoLoadArmed = false
     try {
       const { turns: older, page } = await fetchConversationTurnsBefore(
         opts.getConversationId(),
-        first.turnOrdinal,
+        anchorOrdinal,
         CONVERSATION_UI_TAIL_LIMIT,
       )
+      if (page === null) {
+        opts.onLoadOlderFailed()
+        return
+      }
       if (older.length === 0) {
         hasMoreBefore.value = false
         return
       }
       opts.turns.value = mergeTurnsPrepend(opts.turns.value, older)
       hasMoreBefore.value = page?.hasMoreBefore ?? false
-      await nextTick()
-      if (el) {
-        el.scrollTop += el.scrollHeight - prevScrollHeight
-      }
+      await restoreScrollAfterPrepend(anchorOrdinal)
     } catch {
-      /* ignore */
+      opts.onLoadOlderFailed()
     } finally {
       loadingOlder.value = false
+      if (!manual) {
+        loadOlderCooldownUntil = Date.now() + LOAD_OLDER_COOLDOWN_MS
+      }
     }
   }
 
   function maybeLoadOlderOnScroll() {
     const el = opts.chatScrollEl.value
     if (!el || loadingOlder.value || !hasMoreBefore.value) return
-    if (el.scrollTop <= SCROLL_LOAD_THRESHOLD_PX) {
-      void loadOlderMessages()
+    if (initialScrollPending.value || messagesLoading.value) return
+    if (Date.now() < loadOlderCooldownUntil) return
+
+    if (el.scrollTop > SCROLL_REARM_PX) {
+      autoLoadArmed = true
+      return
     }
+    if (!autoLoadArmed) return
+    if (el.scrollTop <= SCROLL_LOAD_THRESHOLD_PX) {
+      autoLoadArmed = false
+      void loadOlderMessages(false)
+    }
+  }
+
+  function scheduleLoadOlderCheck() {
+    if (scrollHintRaf) return
+    scrollHintRaf = requestAnimationFrame(() => {
+      scrollHintRaf = 0
+      maybeLoadOlderOnScroll()
+    })
   }
 
   watch(
     () => opts.chatScrollEl.value,
     (el, _old, onCleanup) => {
       if (!el) return
-      const handler = () => maybeLoadOlderOnScroll()
+      const handler = () => scheduleLoadOlderCheck()
       el.addEventListener('scroll', handler, { passive: true })
-      onCleanup(() => el.removeEventListener('scroll', handler))
+      onCleanup(() => {
+        el.removeEventListener('scroll', handler)
+        if (scrollHintRaf) {
+          cancelAnimationFrame(scrollHintRaf)
+          scrollHintRaf = 0
+        }
+      })
     },
   )
 
@@ -191,5 +253,6 @@ export function useTurnList(opts: {
     hasMoreBefore,
     loadingOlder,
     messagesLoading,
+    initialScrollPending,
   }
 }

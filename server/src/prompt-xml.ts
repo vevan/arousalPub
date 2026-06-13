@@ -6,8 +6,13 @@ export const ASSEMBLE_INJECT_PLACEHOLDER = {
   lorebook: '<inject slot="lorebook" />',
   chatHistory: '<inject slot="chat_history" />',
   userInput: '<inject slot="user_input" />',
+  memory: '<inject slot="memory" />',
   boundCharacterSystem: '<inject slot="bound_character.system_prompt" />',
   boundUserPersona: '<inject slot="user_persona" />',
+  boundCharDescription: '<inject slot="bound_character.description" />',
+  boundCharPersonality: '<inject slot="bound_character.personality" />',
+  boundScenario: '<inject slot="bound_character.scenario" />',
+  boundDialogueExamples: '<inject slot="bound_character.mes_example" />',
   boundCharacterPostHistory:
     '<inject slot="bound_character.post_history_instructions" />',
 } as const

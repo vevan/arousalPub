@@ -5,7 +5,6 @@
 ## P0 余项
 
 - [ ] **会话消息 UI 懒加载** — `DOC/15`（`tail`/`before` query + 上滚加载更早轮次；打开对话默认尾部窗口；底层 `readTurnsTail` / `from`–`to` 区间读 ✅）
-- [ ] **修改组装预览中绑定块的显示** 从some XXX改为\\<slot name\\>
 
 ## P1
 
@@ -30,4 +29,5 @@
 - [x] Historian 摘要起始轮 toggle 取消（2026-06-12）：`range-picker` 再次点击同一 `turn-block-head` 起始按钮清除 `rangeStartTurn`
 - [x] 对话页正则批量 apply UI（2026-06-12）：`ConversationRegexApplyPanel` · 对话设置 Tab「正则批量」· `POST .../regex/apply` dry-run / apply
 - [x] Web / Server 提示词预设 normalize 完全对齐（2026-06-13）：共用 `shared/prompt-preset-normalize.ts` + `server/src/prompt-preset-normalize.test.ts` 矩阵单测
+- [x] 组装预览绑定块 inject 占位（2026-06-13）：`bindingPlaceholderMode` · 提示词库 `assemble-preview` 绑定槽一律 `<inject slot="…" />`
 - [ ] 架构/接口变更时同步 `DOC/01`–`03`（2026-06-10：内嵌世界书 `DOC/27`、作者注分层 `DOC/28`）

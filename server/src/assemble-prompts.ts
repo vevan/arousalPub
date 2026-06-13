@@ -137,6 +137,8 @@ export interface AssembleContext {
   } | null
   /** §14.4：为 true 时跳过 assemble 内 history 条级裁切（由 `runPromptBudgetTrimLoop` 统一处理） */
   skipInternalBudgetTrim?: boolean
+  /** 为 true 时绑定槽一律输出 `<inject slot="…" />`，不注入示例/会话内容（提示词库组装预览） */
+  bindingPlaceholderMode?: boolean
   /** 为 true 时跳过条级宏展开（由 assemble 调用方在 trim 后统一展宏） */
   deferMacroExpansion?: boolean
 }
@@ -301,6 +303,7 @@ function createAssembleInjectFlags(): AssembleInjectFlags {
 }
 
 function worldInjectionText(ctx: AssembleContext): string {
+  if (ctx.bindingPlaceholderMode) return PLACEHOLDER.world
   const w = ctx.world
   const usePlaceholder =
     w === undefined ||
@@ -333,6 +336,31 @@ function resolveSystemBindingContent(
   ctx: AssembleContext,
   flags: AssembleInjectFlags,
 ): string | undefined {
+  if (ctx.bindingPlaceholderMode && e.bindingSlot) {
+    switch (e.bindingSlot) {
+      case 'boundMain':
+      case 'boundEnhanceDefinitions':
+        return e.content.trim() || undefined
+      case 'boundCharSystemPrompt':
+        return ASSEMBLE_INJECT_PLACEHOLDER.boundCharacterSystem
+      case 'boundCharDescription':
+        return ASSEMBLE_INJECT_PLACEHOLDER.boundCharDescription
+      case 'boundCharPersonality':
+        return ASSEMBLE_INJECT_PLACEHOLDER.boundCharPersonality
+      case 'boundScenario':
+        return ASSEMBLE_INJECT_PLACEHOLDER.boundScenario
+      case 'boundDialogueExamples':
+        return ASSEMBLE_INJECT_PLACEHOLDER.boundDialogueExamples
+      case 'boundWorldBefore':
+      case 'boundWorldAfter':
+      case 'boundWorld':
+        return tryConsumeWorldLoreSlot(ctx, flags)
+      case 'boundUserPersona':
+        return PLACEHOLDER.userPersona
+      default:
+        return undefined
+    }
+  }
   switch (e.bindingSlot) {
     case 'boundMain':
     case 'boundEnhanceDefinitions':
@@ -363,6 +391,19 @@ function injectLegacyCharacterSystemBlock(
   ctx: AssembleContext,
   enabled: boolean,
 ): void {
+  if (ctx.bindingPlaceholderMode) {
+    if (enabled) {
+      messages.push({
+        role: 'system',
+        content: ASSEMBLE_INJECT_PLACEHOLDER.boundCharacterSystem,
+      })
+    }
+    messages.push({
+      role: 'system',
+      content: PLACEHOLDER.character,
+    })
+    return
+  }
   if (enabled) {
     const sys = mergedCharSystemPrompt(ctx)
     if (sys) messages.push({ role: 'system', content: sys })
@@ -432,6 +473,13 @@ function assembleGroupByBindingOrder(
             historyInjectedInGroup = block.injected
             flushDeferredPostHistory()
           }
+          if (ctx.bindingPlaceholderMode) {
+            messages.push({
+              role: 'system',
+              content: ASSEMBLE_INJECT_PLACEHOLDER.boundCharacterPostHistory,
+            })
+            break
+          }
           const post = mergedBoundPostHistory(ctx)
           if (post) {
             if (g.kind === 'history' && historyInjectedInGroup) {
@@ -451,6 +499,14 @@ function assembleGroupByBindingOrder(
           })
           break
         case 'boundMemory': {
+          if (ctx.bindingPlaceholderMode) {
+            messages.push({
+              role: 'system',
+              content: ASSEMBLE_INJECT_PLACEHOLDER.memory,
+            })
+            memoryInjected = true
+            break
+          }
           const mem = ctx.memoryText?.trim()
           if (mem) {
             messages.push({ role: 'system', content: mem })
@@ -474,7 +530,8 @@ function assembleGroupByBindingOrder(
     g.kind === 'world' &&
     !memoryInjected &&
     !sorted.some((x) => x.bindingSlot === 'boundMemory') &&
-    ctx.memoryText?.trim()
+    ctx.memoryText?.trim() &&
+    !ctx.bindingPlaceholderMode
   ) {
     messages.push({ role: 'system', content: ctx.memoryText.trim() })
   }
@@ -537,6 +594,10 @@ function injectChatHistoryBlock(
   ctx: AssembleContext,
   span: { historyStart: number; historyEnd: number },
 ): { historyStart: number; historyEnd: number; injected: boolean } {
+  if (ctx.bindingPlaceholderMode) {
+    messages.push({ role: 'system', content: PLACEHOLDER.history })
+    return { historyStart: -1, historyEnd: -1, injected: true }
+  }
   const histBlockStart = messages.length
   const ok = injectRecentHistoryMessages(messages, ctx)
   if (!ok) {
@@ -751,12 +812,23 @@ export function assemblePrompts(
         historyStart = span.historyStart
         historyEnd = span.historyEnd
       } else {
-        const sys = mergedCharSystemPrompt(ctx)
-        if (sys) messages.push({ role: 'system', content: sys })
-        messages.push({
-          role: 'system',
-          content: mergedCharCardBody(ctx) ?? PLACEHOLDER.character,
-        })
+        if (ctx.bindingPlaceholderMode) {
+          messages.push({
+            role: 'system',
+            content: ASSEMBLE_INJECT_PLACEHOLDER.boundCharacterSystem,
+          })
+          messages.push({
+            role: 'system',
+            content: PLACEHOLDER.character,
+          })
+        } else {
+          const sys = mergedCharSystemPrompt(ctx)
+          if (sys) messages.push({ role: 'system', content: sys })
+          messages.push({
+            role: 'system',
+            content: mergedCharCardBody(ctx) ?? PLACEHOLDER.character,
+          })
+        }
       }
     } else if (g.kind === 'world') {
       const entries = relativeEntriesForGroup(preset, g, trigger)
@@ -773,12 +845,23 @@ export function assemblePrompts(
         historyStart = span.historyStart
         historyEnd = span.historyEnd
       } else {
-        const lore = tryConsumeWorldLoreSlot(ctx, injectFlags)
-        if (lore) {
-          messages.push({ role: 'system', content: lore })
-        }
-        if (ctx.memoryText?.trim()) {
-          messages.push({ role: 'system', content: ctx.memoryText.trim() })
+        if (ctx.bindingPlaceholderMode) {
+          const lore = tryConsumeWorldLoreSlot(ctx, injectFlags)
+          if (lore) {
+            messages.push({ role: 'system', content: lore })
+          }
+          messages.push({
+            role: 'system',
+            content: ASSEMBLE_INJECT_PLACEHOLDER.memory,
+          })
+        } else {
+          const lore = tryConsumeWorldLoreSlot(ctx, injectFlags)
+          if (lore) {
+            messages.push({ role: 'system', content: lore })
+          }
+          if (ctx.memoryText?.trim()) {
+            messages.push({ role: 'system', content: ctx.memoryText.trim() })
+          }
         }
       }
     } else if (g.kind === 'history') {
@@ -796,14 +879,18 @@ export function assemblePrompts(
         historyStart = span.historyStart
         historyEnd = span.historyEnd
       } else {
-        const histBlockStart = messages.length
-        const historyInjected = injectRecentHistoryMessages(messages, ctx)
-        if (!historyInjected) {
+        if (ctx.bindingPlaceholderMode) {
           messages.push({ role: 'system', content: PLACEHOLDER.history })
-        }
-        if (messages.length > histBlockStart) {
-          historyStart = histBlockStart
-          historyEnd = messages.length
+        } else {
+          const histBlockStart = messages.length
+          const historyInjected = injectRecentHistoryMessages(messages, ctx)
+          if (!historyInjected) {
+            messages.push({ role: 'system', content: PLACEHOLDER.history })
+          }
+          if (messages.length > histBlockStart) {
+            historyStart = histBlockStart
+            historyEnd = messages.length
+          }
         }
       }
     } else if (g.kind === 'userInput') {

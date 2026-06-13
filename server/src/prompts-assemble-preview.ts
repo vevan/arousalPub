@@ -6,10 +6,7 @@ import {
   type PromptTrigger,
 } from './assemble-prompts.js'
 import { buildPromptMacroContext } from './prompt-macros/index.js'
-import {
-  ASSEMBLE_INJECT_PLACEHOLDER,
-  cardRecordToCharXmlBlock,
-} from './prompt-xml.js'
+import { cardRecordToCharXmlBlock } from './prompt-xml.js'
 import { extractMacroCharacterFields } from './prompt-macros/index.js'
 import type { PromptsDocument } from './prompts-file.js'
 import { normalizePresetForAssemble } from './prompt-preset-normalize.js'
@@ -136,12 +133,7 @@ export function runPromptsAssemblePreview(
 
   return assemblePrompts(normalized, {
     trigger: normalizeTrigger(body.promptTrigger),
-    characterSystemPrompt: body.useBoundCharacterSystem
-      ? ASSEMBLE_INJECT_PLACEHOLDER.boundCharacterSystem
-      : undefined,
-    characterPostHistory: body.useBoundCharacterPostHistory
-      ? ASSEMBLE_INJECT_PLACEHOLDER.boundCharacterPostHistory
-      : undefined,
+    bindingPlaceholderMode: true,
     characters,
     macroContext,
     tokenModel: typeof body.model === 'string' ? body.model : undefined,

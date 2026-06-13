@@ -654,3 +654,107 @@ describe('assemblePrompts character/user split', () => {
     assert.deepEqual(messages.map((m) => m.content), ['visible'])
   })
 })
+
+describe('assemblePrompts bindingPlaceholderMode', () => {
+  it('emits inject tags instead of sample character/world/history content', () => {
+    const char = makeGroup({ id: 'g-char', kind: 'character', order: 1 })
+    const world = makeGroup({ id: 'g-world', kind: 'world', order: 2 })
+    const hist = makeGroup({ id: 'g-hist', kind: 'history', order: 3 })
+    const preset = makePreset(
+      [char, world, hist],
+      [
+        makeEntry({
+          id: 'persona',
+          groupId: 'g-char',
+          content: '',
+          bindingSlot: 'boundUserPersona',
+          order: 0,
+        }),
+        makeEntry({
+          id: 'sys',
+          groupId: 'g-char',
+          content: '',
+          bindingSlot: 'boundCharSystemPrompt',
+          order: 1,
+        }),
+        makeEntry({
+          id: 'desc',
+          groupId: 'g-char',
+          content: '',
+          bindingSlot: 'boundCharDescription',
+          order: 2,
+        }),
+        makeEntry({
+          id: 'world',
+          groupId: 'g-world',
+          content: '',
+          bindingSlot: 'boundWorldBefore',
+          order: 0,
+        }),
+        makeEntry({
+          id: 'mem',
+          groupId: 'g-world',
+          content: '',
+          bindingSlot: 'boundMemory',
+          order: 1,
+        }),
+        makeEntry({
+          id: 'chat',
+          groupId: 'g-hist',
+          content: '',
+          bindingSlot: 'boundChatHistory',
+          order: 0,
+        }),
+        makeEntry({
+          id: 'post',
+          groupId: 'g-hist',
+          content: '',
+          bindingSlot: 'boundCharacterPostHistory',
+          order: 1,
+        }),
+      ],
+    )
+    const sampleCard = '<char name="moka">\n  <description>Sample</description>\n</char>'
+    const { messages } = assemblePrompts(preset, {
+      bindingPlaceholderMode: true,
+      characters: [
+        {
+          name: 'moka',
+          cardBody: sampleCard,
+          systemPrompt: 'Sample system_prompt',
+          postHistory: 'Sample post_history',
+        },
+      ],
+      world: '<lore>castle</lore>',
+      memoryText: '<memory>turn summary</memory>',
+      history: [{ role: 'user', content: 'hello' }],
+    })
+    const contents = messages.map((m) => m.content)
+    assert.equal(
+      contents.includes('<inject slot="user_persona" />'),
+      true,
+    )
+    assert.equal(
+      contents.includes('<inject slot="bound_character.system_prompt" />'),
+      true,
+    )
+    assert.equal(
+      contents.includes('<inject slot="bound_character.description" />'),
+      true,
+    )
+    assert.equal(contents.includes('<inject slot="lorebook" />'), true)
+    assert.equal(contents.includes('<inject slot="memory" />'), true)
+    assert.equal(contents.includes('<inject slot="chat_history" />'), true)
+    assert.equal(
+      contents.includes(
+        '<inject slot="bound_character.post_history_instructions" />',
+      ),
+      true,
+    )
+    assert.equal(contents.some((c) => c.includes('Sample system_prompt')), false)
+    assert.equal(contents.some((c) => c.includes('Sample post_history')), false)
+    assert.equal(contents.some((c) => c.includes('castle')), false)
+    assert.equal(contents.some((c) => c.includes('turn summary')), false)
+    assert.equal(contents.some((c) => c.includes('hello')), false)
+  })
+})

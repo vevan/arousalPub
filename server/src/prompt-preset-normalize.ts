@@ -3,6 +3,10 @@ import type {
   PromptEntry,
   PromptPreset,
 } from './assemble-prompts.js'
+import type {
+  PromptPreset as SharedPromptPreset,
+  NormalizePresetDeps,
+} from './shared/prompt-preset-normalize.js'
 import { normalizePresetCore } from './shared/prompt-preset-normalize.js'
 import {
   DEFAULT_CHARACTER_SYSTEM_SLOTS,
@@ -62,8 +66,12 @@ export function normalizePresetForAssemble(p: PromptPreset): PromptPreset {
   const rawLegacy = p as PromptPreset & {
     useBoundCharacterSystemPrompt?: boolean
   }
-  return normalizePresetCore(p, NORMALIZE_DEPS, {
-    legacySystemPromptEnabled:
-      rawLegacy.useBoundCharacterSystemPrompt !== false,
-  })
+  return normalizePresetCore(
+    p as unknown as SharedPromptPreset,
+    NORMALIZE_DEPS as unknown as NormalizePresetDeps,
+    {
+      legacySystemPromptEnabled:
+        rawLegacy.useBoundCharacterSystemPrompt !== false,
+    },
+  ) as PromptPreset
 }

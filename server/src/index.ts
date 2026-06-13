@@ -124,6 +124,7 @@ import {
   type PromptsDocument,
 } from './prompts-file.js'
 import { normalizePresetForAssemble } from './prompt-preset-normalize.js'
+import type { PromptPreset } from './assemble-prompts.js'
 import { isPromptsSeedPut } from './prompts-default-seed.js'
 import {
   assertValidLorebooksPayload,
@@ -2113,7 +2114,7 @@ app.get<{ Params: { presetId: string } }>(
       if (!preset) {
         return reply.status(404).send({ error: ApiErrorCodes.prompts_preset_not_found })
       }
-      return normalizePresetForAssemble(preset)
+      return normalizePresetForAssemble(preset as PromptPreset)
     } catch (e) {
       app.log.error(e)
       return reply.status(500).send({ error: ApiErrorCodes.prompts_read_failed })

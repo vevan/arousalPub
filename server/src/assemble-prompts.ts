@@ -286,7 +286,8 @@ function mergedMacroFieldFromCharacters(
 ): string | undefined {
   const parts: string[] = []
   for (const c of ctx.characters ?? []) {
-    const v = c.macroFields?.[field]?.trim()
+    const raw = c.macroFields?.[field]
+    const v = typeof raw === 'string' ? raw.trim() : ''
     if (v) parts.push(v)
   }
   if (parts.length > 0) return parts.join('\n\n')
@@ -439,11 +440,7 @@ function assembleGroupByBindingOrder(
       if (e.enabled === false) continue
       switch (e.bindingSlot) {
         case 'boundCharacterSystem':
-          injectLegacyCharacterSystemBlock(
-            messages,
-            ctx,
-            e.enabled !== false,
-          )
+          injectLegacyCharacterSystemBlock(messages, ctx, e.enabled)
           break
         case 'boundChatHistory':
         case 'boundRecentHistory': {

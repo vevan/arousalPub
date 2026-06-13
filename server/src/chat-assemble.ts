@@ -10,7 +10,7 @@ import {
 } from './assemble-prompts.js'
 import { buildPromptMacroContext } from './prompt-macros/index.js'
 import { patchPromptMacroHistoryFields } from './prompt-macros/context.js'
-import { buildMacroHistoryFields } from './prompt-macros/history-macros.js'
+import { buildMacroHistoryFields, type TrimmedHistoryMessage } from './prompt-macros/history-macros.js'
 import { extractMacroCharacterFields } from './prompt-macros/index.js'
 import { applyMacrosToMessages } from './prompt-macros/index.js'
 import {
@@ -134,6 +134,23 @@ function pickPresetForConversation(
     typeof doc.activePresetId === 'string' ? doc.activePresetId.trim() : ''
   if (!activeId) return presets[0] ?? null
   return presets.find((x) => x.id === activeId) ?? presets[0] ?? null
+}
+
+function trimmedHistoryForMacros(messages: ChatMessage[]): TrimmedHistoryMessage[] {
+  return messages.flatMap((m) =>
+    m.role === 'user' || m.role === 'assistant'
+      ? [
+          {
+            role: m.role,
+            content: m.content,
+            turnId: m.turnId,
+            turnOrdinal: m.turnOrdinal,
+            receiveId: m.receiveId,
+            receiveIndex: m.receiveIndex,
+          },
+        ]
+      : [],
+  )
 }
 
 function cardRecordToSlice(card: Record<string, unknown>): BoundCharacterSlice {
@@ -500,7 +517,7 @@ export async function buildConversationOutboundMessages(
       indexingTurns,
       historyTurns: memoryPipeline.recentTurns,
       activeTurn,
-      trimmedHistoryMessages: trimState.historyMessages,
+      trimmedHistoryMessages: trimmedHistoryForMacros(trimState.historyMessages),
       characterNames: charNameList,
     }),
   )
@@ -519,7 +536,7 @@ export async function buildConversationOutboundMessages(
       content: m.content,
     })),
     sourceHistoryTurnOrdinals: memoryPipeline.recentHistoryTurnOrdinals,
-    trimmedHistoryMessages: trimState.historyMessages,
+    trimmedHistoryMessages: trimmedHistoryForMacros(trimState.historyMessages),
     memoryItems: trimState.memoryItems,
     userInput: userInput,
     macroContext,

@@ -48,8 +48,6 @@ const HISTORY_SLOTS = new Set([
 
   'boundCharacterPostHistory',
 
-  'boundRecentHistory',
-
 ])
 
 

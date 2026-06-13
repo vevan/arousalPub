@@ -13,7 +13,6 @@ import {
   DEFAULT_HISTORY_SYSTEM_SLOTS,
   DEFAULT_WORLD_SYSTEM_SLOTS,
   finalizeCharacterGroupBindings,
-  migrateBindingSlotAliases,
   migrateCharacterGroupToFlatOrder,
   pinPostHistoryAfterChatHistory,
   presetUsesSystemSubBlocks,
@@ -48,7 +47,6 @@ function makeBindingSlotEntry(
 }
 
 const NORMALIZE_DEPS = {
-  migrateBindingSlotAliases,
   presetUsesSystemSubBlocks,
   pinPostHistoryAfterChatHistory,
   migrateCharacterGroupToFlatOrder,

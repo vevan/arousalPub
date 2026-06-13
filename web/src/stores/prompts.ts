@@ -42,8 +42,6 @@ export type PromptBindingSlot =
   | 'boundCharacterSystem'
   /** @deprecated 请用 boundWorldBefore */
   | 'boundWorld'
-  /** @deprecated 请用 boundChatHistory */
-  | 'boundRecentHistory'
 
 const SYSTEM_BINDING_SLOTS: PromptBindingSlot[] = [
   'boundMain',
@@ -77,33 +75,12 @@ const DEFAULT_HISTORY_SYSTEM_SLOTS: PromptBindingSlot[] = [
   'boundCharacterPostHistory',
 ]
 
-const DEPRECATED_ST_SLOT_ALIASES: Record<string, PromptBindingSlot> = {
-  boundStMain: 'boundMain',
-  boundStWorldBefore: 'boundWorldBefore',
-  boundStWorldAfter: 'boundWorldAfter',
-  boundStCharDescription: 'boundCharDescription',
-  boundStCharPersonality: 'boundCharPersonality',
-  boundStScenario: 'boundScenario',
-  boundStEnhanceDefinitions: 'boundEnhanceDefinitions',
-  boundStDialogueExamples: 'boundDialogueExamples',
-  boundStChatHistory: 'boundChatHistory',
-}
-
 function isSystemBindingSlot(slot: PromptBindingSlot | undefined): boolean {
   return slot != null && SYSTEM_BINDING_SLOTS.includes(slot)
 }
 
 function presetUsesSystemSubBlocks(preset: PromptPreset): boolean {
   return preset.prompts.some((e) => isSystemBindingSlot(e.bindingSlot))
-}
-
-function migrateBindingSlotAliases(prompts: PromptEntry[]): PromptEntry[] {
-  return prompts.map((e) => {
-    if (!e.bindingSlot) return e
-    const alias = DEPRECATED_ST_SLOT_ALIASES[e.bindingSlot]
-    if (alias) return { ...e, bindingSlot: alias }
-    return e
-  })
 }
 
 export interface PromptGroup {
@@ -250,7 +227,6 @@ function makeBindingSlotEntry(
 }
 
 const NORMALIZE_DEPS = {
-  migrateBindingSlotAliases,
   presetUsesSystemSubBlocks,
   pinPostHistoryAfterChatHistory,
   migrateCharacterGroupToFlatOrder,

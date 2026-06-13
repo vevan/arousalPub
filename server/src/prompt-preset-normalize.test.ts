@@ -236,28 +236,6 @@ describe('normalizePresetForAssemble', () => {
     assert.equal(sys?.enabled, false)
   })
 
-  it('strips boundRecentHistory from history group', () => {
-    const out = normalizePresetForAssemble(
-      makePreset([
-        makeEntry({
-          id: 'recent',
-          groupId: 'group-history',
-          order: 0,
-          bindingSlot: 'boundRecentHistory',
-        }),
-        makeEntry({
-          id: 'hist',
-          groupId: 'group-history',
-          order: 1,
-          bindingSlot: 'boundChatHistory',
-        }),
-      ]),
-    )
-    assert.ok(
-      !out.prompts.some((e) => e.bindingSlot === 'boundRecentHistory'),
-    )
-  })
-
   it('forces required binding slots enabled', () => {
     const out = normalizePresetForAssemble(
       makePreset([

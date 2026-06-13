@@ -57,7 +57,6 @@ export interface NormalizePresetOptions {
 }
 
 export interface NormalizePresetDeps {
-  migrateBindingSlotAliases: (prompts: PromptEntry[]) => PromptEntry[]
   presetUsesSystemSubBlocks: (preset: PromptPreset) => boolean
   pinPostHistoryAfterChatHistory: (
     prompts: PromptEntry[],
@@ -151,7 +150,7 @@ export function normalizePresetCore(
   const histG = p.groups.find((g) => g.kind === 'history')
   const userInputG = p.groups.find((g) => g.kind === 'userInput')
 
-  let prompts = deps.migrateBindingSlotAliases(p.prompts).map((e) => ({
+  let prompts = p.prompts.map((e) => ({
     ...e,
     enabled: bindingSlotIsRequired(e.bindingSlot) ? true : e.enabled,
   }))
@@ -263,16 +262,6 @@ export function normalizePresetCore(
         0,
         'binding-slot-user-input',
       ),
-    )
-  }
-
-  if (histG) {
-    prompts = prompts.filter(
-      (e) =>
-        !(
-          e.groupId === histG.id &&
-          (e.bindingSlot as string | undefined) === 'boundRecentHistory'
-        ),
     )
   }
 

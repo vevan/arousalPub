@@ -18,28 +18,14 @@ export const SYSTEM_BINDING_SLOTS = [
   'boundMemory',
 ] as const satisfies readonly PromptBindingSlot[]
 
-/** 已废弃的粗粒度槽；组装仍兼容，normalize 可迁移 */
+/** 已废弃的粗粒度槽；组装仍兼容 */
 export const LEGACY_BINDING_SLOTS = [
   'boundCharacterSystem',
   'boundWorld',
-  'boundRecentHistory',
 ] as const satisfies readonly PromptBindingSlot[]
 
 const SYSTEM_SET = new Set<string>(SYSTEM_BINDING_SLOTS)
 const LEGACY_SET = new Set<string>(LEGACY_BINDING_SLOTS)
-
-/** 历史 boundSt* 导入名 → 统一系统槽 */
-export const DEPRECATED_ST_SLOT_ALIASES: Record<string, PromptBindingSlot> = {
-  boundStMain: 'boundMain',
-  boundStWorldBefore: 'boundWorldBefore',
-  boundStWorldAfter: 'boundWorldAfter',
-  boundStCharDescription: 'boundCharDescription',
-  boundStCharPersonality: 'boundCharPersonality',
-  boundStScenario: 'boundScenario',
-  boundStEnhanceDefinitions: 'boundEnhanceDefinitions',
-  boundStDialogueExamples: 'boundDialogueExamples',
-  boundStChatHistory: 'boundChatHistory',
-}
 
 export function isSystemBindingSlot(
   slot: PromptBindingSlot | undefined,
@@ -88,18 +74,6 @@ export const ST_ANCHOR_CONTENT_FROM_PROMPT = new Set([
 
 export function isStAnchorIdentifier(id: string): boolean {
   return id in ST_ANCHOR_BINDING_SLOT
-}
-
-/** 将 boundSt* 与旧槽名规范化为统一系统槽（仅改 bindingSlot 字段） */
-export function migrateBindingSlotAliases(
-  prompts: PromptEntry[],
-): PromptEntry[] {
-  return prompts.map((e) => {
-    if (!e.bindingSlot) return e
-    const alias = DEPRECATED_ST_SLOT_ALIASES[e.bindingSlot]
-    if (alias) return { ...e, bindingSlot: alias }
-    return e
-  })
 }
 
 /** Default 种子 / 新预设的 Character 组系统子块（顺序） */

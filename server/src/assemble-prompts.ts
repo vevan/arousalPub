@@ -46,8 +46,6 @@ export type PromptBindingSlot =
   | 'boundCharacterSystem'
   /** @deprecated 请用 boundWorldBefore */
   | 'boundWorld'
-  /** @deprecated 请用 boundChatHistory */
-  | 'boundRecentHistory'
 
 export interface PromptGroup {
   id: string
@@ -326,8 +324,7 @@ function tryConsumeWorldLoreSlot(
 function hasEnabledChatHistoryBinding(entries: PromptEntry[]): boolean {
   return entries.some(
     (x) =>
-      (x.bindingSlot === 'boundChatHistory' ||
-        x.bindingSlot === 'boundRecentHistory') &&
+      x.bindingSlot === 'boundChatHistory' &&
       x.enabled !== false,
   )
 }
@@ -442,8 +439,7 @@ function assembleGroupByBindingOrder(
         case 'boundCharacterSystem':
           injectLegacyCharacterSystemBlock(messages, ctx, e.enabled)
           break
-        case 'boundChatHistory':
-        case 'boundRecentHistory': {
+        case 'boundChatHistory': {
           if (historyInjectedInGroup) break
           const block = injectChatHistoryBlock(messages, ctx, {
             historyStart,

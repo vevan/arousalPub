@@ -14,19 +14,17 @@
 | **局域网**（`0.0.0.0` + 手机/另一台电脑） | 抢装、开放注册、暴力登录、LAN 内未授权访问 |
 | **误暴露公网**（端口转发 / 反代） | 上述 + SSRF、CORS 任意 Origin、插件路径穿越 |
 
-硬化项按**可配置**设计：默认尽量兼容现有单机用法；暴露部署时显式收紧 `config.json`。
+硬化项按**可配置**设计：默认尽量兼容现有单机用法；暴露部署时显式收紧 `config.yaml`。
 
 ---
 
-## 2. `config.json` 字段
+## 2. `config.yaml` 字段
 
-`config.json` / `config.example.json` 支持 **JSONC 行注释**（`// …`），服务端解析前会自动剥离（`server/src/config-jsonc.ts`）。可在行尾写说明，例如：
+`config.yaml` / `config.example.yaml` 使用 **YAML 原生注释**（`# …`），可直接在键上方或行尾写说明。解析见 `server/src/config.ts`（`yaml` 包）。
 
-```jsonc
-"allowPublicRegister": true, // 开放公共注册
+```yaml
+allowPublicRegister: true # 开放公共注册
 ```
-
-仍可用顶层 `"_comment"` 字段写长说明（会读入配置对象，但不影响逻辑）。
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
@@ -132,7 +130,7 @@ UI 文案：仅补充网关扩展参数（如 `stop`），不可改 `messages`/`
 
 - 废除全局 `origin: true`。
 - `corsOrigins: []`：无 `Origin` 头的请求放行；带 `Origin` 且不在列表 → 浏览器 CORS 失败。
-- dev：在 `config.json` 增加 Vite 源，如 `http://localhost:6699`、`http://127.0.0.1:6699`。
+- dev：在 `config.yaml` 增加 Vite 源，如 `http://localhost:6699`、`http://127.0.0.1:6699`。
 
 ---
 
@@ -249,7 +247,7 @@ UI 文案：仅补充网关扩展参数（如 `stop`），不可改 `messages`/`
 ### 15.2 磁盘加密
 
 - **算法**：AES-256-GCM；字段 `keyEnc` / `apiKeyEnc`（`EncryptedSecretV1`：`v/iv/tag/ct`）。
-- **DEK**：`DATA_ENCRYPTION_KEY` → `config.json` → `data/.data-encryption-key`；AAD 绑定 `userId`。
+- **DEK**：`DATA_ENCRYPTION_KEY` → `config.yaml` → `data/.data-encryption-key`；AAD 绑定 `userId`。
 - **迁移**：读兼容 legacy 明文；写路径加密。
 - **轮换**：运维台 `DOC/17` → `rotate-data-key`（维护模式 + 进度）。
 

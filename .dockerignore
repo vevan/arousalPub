@@ -7,7 +7,7 @@ server/dist
 
 # Runtime data & local config (mounted as volume)
 data
-config.json
+config.yaml
 
 # Dev / scratch
 .git

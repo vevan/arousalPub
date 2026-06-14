@@ -331,7 +331,7 @@ function manualKeyStepsForSource(source: DataEncryptionKeySource): string | null
     return '请更新 DATA_ENCRYPTION_KEY 环境变量为相同的新密钥材料，并重启服务。'
   }
   if (source === 'config') {
-    return '请更新 config.json 的 dataEncryptionKey 为相同的新密钥材料，并重启服务。'
+    return '请更新 config.yaml 的 dataEncryptionKey 为相同的新密钥材料，并重启服务。'
   }
   return null
 }

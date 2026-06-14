@@ -49,7 +49,7 @@ try {
   await waitForPort(serverPort)
   console.log('\n[dev] 后端已就绪，启动前端……')
   console.log(
-    `[dev] 端口：后端 ${serverPort}，前端 ${webPort}（可在 config.json 修改 serverPort / webPort）`,
+    `[dev] 端口：后端 ${serverPort}，前端 ${webPort}（可在 config.yaml 修改 serverPort / webPort）`,
   )
   console.log(`[dev] 浏览器打开: http://localhost:${webPort}/\n`)
   webProc = spawn('npm', ['run', 'dev', '-w', 'web'], {

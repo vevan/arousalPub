@@ -5,10 +5,10 @@ if not exist node_modules (
   call npm install
 )
 echo.
-echo Countdown before start: config.json startCountdownSeconds (B=rebuild, Space=skip)
+echo Countdown before start: config.yaml startCountdownSeconds (B=rebuild, Space=skip)
 echo Open in browser after start:
 node scripts/print-prod-url.mjs
-echo (Keep this window running; port in config.json serverPort)
+echo (Keep this window running; port in config.yaml serverPort)
 echo For development use: npm run dev
 echo.
 call npm start

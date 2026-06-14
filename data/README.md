@@ -1,6 +1,6 @@
 # 数据目录
 
-应用运行时数据根目录，默认位于仓库根下的 `data/`（可在 `config.json` 的 `dataDir` 或环境变量中覆盖）。
+应用运行时数据根目录，默认位于仓库根下的 `data/`（可在 `config.yaml` 的 `dataDir` 或环境变量中覆盖）。
 
 ## 多用户布局
 
@@ -53,8 +53,8 @@ data/
 |----------------|------|
 | `.jwt-secret` | JWT 签名密钥（生产可首次自动生成） |
 | `.data-encryption-key` | API Key **磁盘加密**主密钥（AES-256-GCM） |
-| `JWT_SECRET` / `config.json` → `jwtSecret` | 覆盖 JWT 密钥 |
-| `DATA_ENCRYPTION_KEY` / `config.json` → `dataEncryptionKey` | 覆盖磁盘加密密钥 |
+| `JWT_SECRET` / `config.yaml` → `jwtSecret` | 覆盖 JWT 密钥 |
+| `DATA_ENCRYPTION_KEY` / `config.yaml` → `dataEncryptionKey` | 覆盖磁盘加密密钥 |
 
 **Syncthing / 多机**：同步 `data/{userId}/` 下 JSON 密文即可；各实例须使用**相同** `DATA_ENCRYPTION_KEY`（或同步 `.data-encryption-key`），否则无法解密 API Key。
 
@@ -77,7 +77,7 @@ data/
 
 | 项 | 说明 |
 |----|------|
-| **触发** | 服务启动后：距上次**成功**冷备超过 `config.json` → `backupIntervalDays`（默认 7 天），或从未备份 |
+| **触发** | 服务启动后：距上次**成功**冷备超过 `config.yaml` → `backupIntervalDays`（默认 7 天），或从未备份 |
 | **落盘** | `{dataDir}/backups/backup-<ISO8601>.zip` + `backup-manifest.json` |
 | **保留** | `backupMaxKept`（默认 5），超出删最旧 zip |
 | **范围** | 整棵 `data/`（含各 `{userId}/`、`memory/` Lance、`.jwt-secret`、`.data-encryption-key` 等），**不含** `backups/` 自身 |
@@ -94,7 +94,7 @@ data/
 }
 ```
 
-配置（`config.json` 或 `config.example.json`）：`backupEnabled`（默认 `true`）、`backupIntervalDays`、`backupMaxKept`、`backupRetryHours`（失败后暂缓重试，默认 24h）。
+配置（`config.yaml` 或 `config.example.yaml`）：`backupEnabled`（默认 `true`）、`backupIntervalDays`、`backupMaxKept`、`backupRetryHours`（失败后暂缓重试，默认 24h）。
 
 ~~对话轮次增量备份（§8.4）~~：**无限期延后**，不实现；`chats/.../index.json` 内 `backupSettings` 仅为历史占位。
 

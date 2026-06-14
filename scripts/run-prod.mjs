@@ -84,7 +84,7 @@ if (!existsSync(webIndex)) {
 
 const url = `http://localhost:${serverPort}/`
 console.log(
-  '[start] Open in browser (keep this window running; port in config.json serverPort)',
+  '[start] Open in browser (keep this window running; port in config.yaml serverPort)',
 )
 printTerminalLink(url)
 console.log('')

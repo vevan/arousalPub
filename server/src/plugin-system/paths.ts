@@ -10,7 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 function findRepoRoot(): string {
   let cur = __dirname
   for (let i = 0; i < 8; i++) {
-    if (existsSync(path.join(cur, 'config.example.json'))) return cur
+    if (existsSync(path.join(cur, 'config.example.yaml'))) return cur
     const parent = path.dirname(cur)
     if (parent === cur) break
     cur = parent

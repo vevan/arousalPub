@@ -42,7 +42,7 @@
 **FAQ · `localhost` 是否支持？**  
 支持。浏览器访问 `localhost` 时，系统解析为 `127.0.0.1` 或 `::1`，服务端 `request.ip` 落在 loopback 白名单即放行。校验依据是 **socket 源 IP**，不是 `Host` 头（`Host: localhost` 不能单独作为凭据，防伪造）。
 
-可选配置（后续）：`config.json` → `adminAllowLanLoopback: true` **不做**，保持简单。
+可选配置（后续）：`config.yaml` → `adminAllowLanLoopback: true` **不做**，保持简单。
 
 ### 2.2 管理员身份（应用层）
 
@@ -56,7 +56,7 @@
 
 已实现（**`DOC/25-security-deployment.md`** §4.2）：
 
-- `config.json` → `allowPublicRegister: false` 时关闭 `POST /api/auth/register`，仅 `POST /api/admin/users` 开户
+- `config.yaml` → `allowPublicRegister: false` 时关闭 `POST /api/auth/register`，仅 `POST /api/admin/users` 开户
 - 默认 `true`，暴露 LAN/公网时建议显式关闭
 
 ---
@@ -79,7 +79,7 @@ GET  /admin/*            → 静态资源（若拆分 js/css）
 adminConsoleUrl: `http://127.0.0.1:${resolveServerPort()}/admin`
 ```
 
-`resolveServerPort()` 与现网一致：`process.env.PORT` / `SERVER_PORT` → `config.json` `serverPort` → 默认（`server/src/config.ts`）。dev 时 `run-dev.mjs` 注入的 `PORT` 与 Vite 的 `webPort` 分离，链接自动指向**后端端口**；prod 单端口时与主站同源仅路径不同。
+`resolveServerPort()` 与现网一致：`process.env.PORT` / `SERVER_PORT` → `config.yaml` `serverPort` → 默认（`server/src/config.ts`）。dev 时 `run-dev.mjs` 注入的 `PORT` 与 Vite 的 `webPort` 分离，链接自动指向**后端端口**；prod 单端口时与主站同源仅路径不同。
 
 仅当 `sub === 00000000` 时前端展示该链接（字段可始终返回，由 UI 决定是否显示）。
 

@@ -8,6 +8,9 @@
   "engines": {
     "node": ">=22"
   },
+  "dependencies": {
+    "yaml": "^2.8.0"
+  },
   "devDependencies": {
     "esbuild": "^0.25.12"
   },

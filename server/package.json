@@ -18,7 +18,8 @@
     "crc-32": "^1.2.2",
     "fastify": "^5.2.0",
     "js-tiktoken": "^1.0.21",
-    "pinyin-pro": "^3.28.1"
+    "pinyin-pro": "^3.28.1",
+    "yaml": "^2.8.0"
   },
   "devDependencies": {
     "@types/archiver": "^8.0.0",

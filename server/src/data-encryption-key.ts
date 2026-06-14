@@ -1,18 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { DATA_DIR } from './config.js'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+import { DATA_DIR, readConfigFile } from './config.js'
 
 const KEY_FILE = path.join(DATA_DIR, '.data-encryption-key')
 
-interface ConfigSlice {
-  dataEncryptionKey?: string
-}
-
-let cachedConfigSlice: ConfigSlice | null = null
 let runtimeKeyOverride: Buffer | null = null
 
 export type DataEncryptionKeySource =
@@ -21,33 +13,6 @@ export type DataEncryptionKeySource =
   | 'config'
   | 'file'
   | 'generated'
-
-function findRepoRoot(): string {
-  let cur = __dirname
-  for (let i = 0; i < 8; i++) {
-    if (existsSync(path.join(cur, 'config.example.json'))) return cur
-    const parent = path.dirname(cur)
-    if (parent === cur) break
-    cur = parent
-  }
-  return path.resolve(__dirname, '..', '..')
-}
-
-function readConfigSlice(): ConfigSlice {
-  if (cachedConfigSlice) return cachedConfigSlice
-  const p = path.join(findRepoRoot(), 'config.json')
-  if (!existsSync(p)) {
-    cachedConfigSlice = {}
-    return cachedConfigSlice
-  }
-  try {
-    cachedConfigSlice = (JSON.parse(readFileSync(p, 'utf8')) as ConfigSlice) ?? {}
-    return cachedConfigSlice
-  } catch {
-    cachedConfigSlice = {}
-    return cachedConfigSlice
-  }
-}
 
 function readPersistedKey(): string | null {
   if (!existsSync(KEY_FILE)) return null
@@ -66,21 +31,21 @@ export function normalizeEncryptionKeyMaterial(material: string): Buffer {
 
 /**
  * 磁盘 API Key 加密主密钥：
- * DATA_ENCRYPTION_KEY 环境变量 > config.json dataEncryptionKey > data/.data-encryption-key
+ * DATA_ENCRYPTION_KEY 环境变量 > config.yaml dataEncryptionKey > data/.data-encryption-key
  */
 export function setRuntimeDataEncryptionKey(key: Buffer | null): void {
   runtimeKeyOverride = key
 }
 
 export function invalidateDataEncryptionKeyCache(): void {
-  cachedConfigSlice = null
+  // readConfigFile 无进程内缓存；保留 API 供轮换流程调用
 }
 
 /** 当前 DEK 来源（不含 runtime 覆盖时的判定顺序） */
 export function getDataEncryptionKeySource(): DataEncryptionKeySource {
   if (runtimeKeyOverride) return 'runtime'
   if (process.env.DATA_ENCRYPTION_KEY?.trim()) return 'env'
-  const fromCfg = readConfigSlice().dataEncryptionKey
+  const fromCfg = readConfigFile().dataEncryptionKey
   if (typeof fromCfg === 'string' && fromCfg.trim().length >= 16) return 'config'
   if (readPersistedKey()) return 'file'
   return 'generated'
@@ -101,7 +66,7 @@ export function resolveDataEncryptionKey(): Buffer {
   const fromEnv = process.env.DATA_ENCRYPTION_KEY?.trim()
   if (fromEnv) return normalizeEncryptionKeyMaterial(fromEnv)
 
-  const fromCfg = readConfigSlice().dataEncryptionKey
+  const fromCfg = readConfigFile().dataEncryptionKey
   if (typeof fromCfg === 'string' && fromCfg.trim().length >= 16) {
     return normalizeEncryptionKeyMaterial(fromCfg.trim())
   }
@@ -113,7 +78,7 @@ export function resolveDataEncryptionKey(): Buffer {
   persistGeneratedKey(secret)
   // eslint-disable-next-line no-console
   console.log(
-    `[crypto] 已在 ${KEY_FILE} 生成数据加密密钥（dev/prod 共用；可设 DATA_ENCRYPTION_KEY 或 config.json dataEncryptionKey 覆盖）`,
+    `[crypto] 已在 ${KEY_FILE} 生成数据加密密钥（dev/prod 共用；可设 DATA_ENCRYPTION_KEY 或 config.yaml dataEncryptionKey 覆盖）`,
   )
   return normalizeEncryptionKeyMaterial(secret)
 }
@@ -121,7 +86,7 @@ export function resolveDataEncryptionKey(): Buffer {
 /** DEK 是否显式配置（环境变量 / config / 持久化文件） */
 export function isDataEncryptionKeyConfigured(): boolean {
   if (process.env.DATA_ENCRYPTION_KEY?.trim()) return true
-  const fromCfg = readConfigSlice().dataEncryptionKey
+  const fromCfg = readConfigFile().dataEncryptionKey
   if (typeof fromCfg === 'string' && fromCfg.trim().length >= 16) return true
   const persisted = readPersistedKey()
   return persisted != null

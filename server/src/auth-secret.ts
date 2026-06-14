@@ -1,46 +1,10 @@
 import { randomBytes } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { DATA_DIR } from './config.js'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+import { DATA_DIR, readConfigFile } from './config.js'
 
 const DEV_FALLBACK = 'arousal-pub-dev-secret-change-in-production'
 const SECRET_FILE = path.join(DATA_DIR, '.jwt-secret')
-
-interface ConfigSlice {
-  jwtSecret?: string
-}
-
-let cachedConfigSlice: ConfigSlice | null = null
-
-function findRepoRoot(): string {
-  let cur = __dirname
-  for (let i = 0; i < 8; i++) {
-    if (existsSync(path.join(cur, 'config.example.json'))) return cur
-    const parent = path.dirname(cur)
-    if (parent === cur) break
-    cur = parent
-  }
-  return path.resolve(__dirname, '..', '..')
-}
-
-function readConfigSlice(): ConfigSlice {
-  if (cachedConfigSlice) return cachedConfigSlice
-  const p = path.join(findRepoRoot(), 'config.json')
-  if (!existsSync(p)) {
-    cachedConfigSlice = {}
-    return cachedConfigSlice
-  }
-  try {
-    cachedConfigSlice = (JSON.parse(readFileSync(p, 'utf8')) as ConfigSlice) ?? {}
-    return cachedConfigSlice
-  } catch {
-    cachedConfigSlice = {}
-    return cachedConfigSlice
-  }
-}
 
 function readPersistedSecret(): string | null {
   if (!existsSync(SECRET_FILE)) return null
@@ -53,13 +17,13 @@ function persistGeneratedSecret(secret: string): void {
 }
 
 /**
- * JWT 密钥：JWT_SECRET 环境变量 > config.json jwtSecret > data/.jwt-secret（生产可自动生成）
+ * JWT 密钥：JWT_SECRET 环境变量 > config.yaml jwtSecret > data/.jwt-secret（生产可自动生成）
  */
 export function resolveJwtSecret(): string {
   const fromEnv = process.env.JWT_SECRET?.trim()
   if (fromEnv) return fromEnv
 
-  const fromCfg = readConfigSlice().jwtSecret
+  const fromCfg = readConfigFile().jwtSecret
   if (typeof fromCfg === 'string' && fromCfg.trim().length >= 16) {
     return fromCfg.trim()
   }
@@ -72,7 +36,7 @@ export function resolveJwtSecret(): string {
     persistGeneratedSecret(secret)
     // eslint-disable-next-line no-console
     console.log(
-      `[auth] 已在 ${SECRET_FILE} 生成 JWT 密钥（可在 config.json 设置 jwtSecret 覆盖）`,
+      `[auth] 已在 ${SECRET_FILE} 生成 JWT 密钥（可在 config.yaml 设置 jwtSecret 覆盖）`,
     )
     return secret
   }

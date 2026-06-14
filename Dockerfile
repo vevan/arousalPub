@@ -14,7 +14,7 @@ COPY web ./web
 COPY server ./server
 COPY plugins ./plugins
 COPY scripts ./scripts
-COPY config.example.json ./
+COPY config.example.yaml ./
 
 RUN npm run build \
   && npm prune --omit=dev
@@ -33,7 +33,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/server/dist ./server/dist
 COPY --from=build /app/web/dist ./web/dist
 COPY --from=build /app/plugins ./plugins
-COPY config.example.json ./
+COPY config.example.yaml ./
 
 COPY scripts/docker-entrypoint.sh /entrypoint.sh
 RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh

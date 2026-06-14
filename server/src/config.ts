@@ -1,15 +1,18 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { stripJsonComments } from './config-jsonc.js'
+import { parse as parseYaml } from 'yaml'
 import { getCurrentUserId } from './user-context.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-function findRepoRoot(): string {
+const CONFIG_EXAMPLE = 'config.example.yaml'
+const CONFIG_FILE = 'config.yaml'
+
+export function findRepoRoot(): string {
   let cur = __dirname
   for (let i = 0; i < 8; i++) {
-    if (existsSync(path.join(cur, 'config.example.json'))) return cur
+    if (existsSync(path.join(cur, CONFIG_EXAMPLE))) return cur
     const parent = path.dirname(cur)
     if (parent === cur) break
     cur = parent
@@ -19,24 +22,31 @@ function findRepoRoot(): string {
 
 const REPO_ROOT = findRepoRoot()
 
-const CONFIG_PATH = path.join(REPO_ROOT, 'config.json')
-const CONFIG_EXAMPLE_PATH = path.join(REPO_ROOT, 'config.example.json')
+const CONFIG_PATH = path.join(REPO_ROOT, CONFIG_FILE)
+const CONFIG_EXAMPLE_PATH = path.join(REPO_ROOT, CONFIG_EXAMPLE)
 
 export type UpstreamUrlPolicy = 'open' | 'public-only'
 
-interface RawConfig {
+export interface RawConfig {
   dataDir?: string
   serverPort?: number | string
+  webPort?: number | string
+  startCountdownSeconds?: number | string
   host?: string
   staticDir?: string
   clientWhitelist?: string[]
   allowPublicRegister?: boolean
   corsOrigins?: string[]
   upstreamUrlPolicy?: string
+  authIdleMinutes?: number | string
+  authDefaultRefreshDays?: number | string
+  authAccessMinutes?: number | string
   backupEnabled?: boolean
   backupIntervalDays?: number | string
   backupMaxKept?: number | string
   backupRetryHours?: number | string
+  jwtSecret?: string
+  dataEncryptionKey?: string
 }
 
 /** 避开 Windows 常见保留段 3326–3425（Hyper-V 等） */
@@ -50,18 +60,18 @@ function parseServerPort(value: unknown, source: string): number {
   return n
 }
 
-/** 监听端口：环境变量 PORT / SERVER_PORT > config.json serverPort > 默认 */
+/** 监听端口：环境变量 PORT / SERVER_PORT > config.yaml serverPort > 默认 */
 export function resolveServerPort(): number {
   const fromEnv = process.env.PORT?.trim() || process.env.SERVER_PORT?.trim()
   if (fromEnv) return parseServerPort(fromEnv, 'PORT/SERVER_PORT')
   const cfg = readConfigFile()
   if (cfg.serverPort != null) {
-    return parseServerPort(cfg.serverPort, 'config.json serverPort')
+    return parseServerPort(cfg.serverPort, 'config.yaml serverPort')
   }
   return DEFAULT_SERVER_PORT
 }
 
-/** 监听地址：环境变量 HOST > config.json host > 0.0.0.0 */
+/** 监听地址：环境变量 HOST > config.yaml host > 0.0.0.0 */
 export function resolveListenHost(): string {
   const fromEnv = process.env.HOST?.trim()
   if (fromEnv) return fromEnv
@@ -78,7 +88,7 @@ function ensureConfigFileFromExample(): void {
     copyFileSync(CONFIG_EXAMPLE_PATH, CONFIG_PATH)
     // eslint-disable-next-line no-console
     console.log(
-      `[config] created ${CONFIG_PATH} from config.example.json`,
+      `[config] created ${CONFIG_PATH} from ${CONFIG_EXAMPLE}`,
     )
   } catch (e) {
     // eslint-disable-next-line no-console
@@ -155,13 +165,12 @@ export function readConfigFile(): RawConfig {
   ensureConfigFileFromExample()
   if (!existsSync(CONFIG_PATH)) return {}
   try {
-    const raw = readFileSync(CONFIG_PATH, 'utf8')
-    const parsed = JSON.parse(stripJsonComments(raw)) as unknown
-    if (!parsed || typeof parsed !== 'object') return {}
+    const parsed = parseYaml(readFileSync(CONFIG_PATH, 'utf8')) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
     return parsed as RawConfig
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn('[config] failed to parse config.json, using defaults:', e)
+    console.warn('[config] failed to parse config.yaml, using defaults:', e)
     return {}
   }
 }

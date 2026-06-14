@@ -1,0 +1,30 @@
+# 复制为 config.yaml 后修改。环境变量可覆盖多数项。详见 DOC/25
+
+# --- 路径与端口 ---
+dataDir: ./data
+serverPort: 6633
+webPort: 6699
+startCountdownSeconds: 5
+host: 0.0.0.0
+staticDir: ./web/dist
+
+# --- 安全（DOC/25）---
+clientWhitelist: []
+allowPublicRegister: true
+corsOrigins: []
+upstreamUrlPolicy: open # open | public-only
+
+# --- 认证 ---
+authIdleMinutes: 15
+authDefaultRefreshDays: 7
+authAccessMinutes: 30
+
+# --- 冷备 ---
+backupEnabled: true
+backupIntervalDays: 7
+backupMaxKept: 5
+backupRetryHours: 24
+
+# --- 可选密钥（通常留空，走 data/.jwt-secret / data/.data-encryption-key）---
+# jwtSecret: ""
+# dataEncryptionKey: ""

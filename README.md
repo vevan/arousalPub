@@ -17,7 +17,7 @@
 ### 1. 首次运行
 
 1. 解压或克隆本项目到本地目录。
-2. 若尚无 `config.json`，将 **`config.example.json`** 复制为 **`config.json`**（也可在首次启动时由程序自动从示例生成）。
+2. 若尚无 `config.yaml`，将 **`config.example.yaml`** 复制为 **`config.yaml`**（也可在首次启动时由程序自动从示例生成）。
 3. 双击 **`start.bat`**（Windows）或终端执行 **`./start.sh`**。
 
 首次运行会自动安装依赖；若缺少构建产物，会自动编译后再启动。**请保持启动窗口不要关闭**，关闭即停止服务。
@@ -30,7 +30,7 @@
 http://localhost:6633/
 ```
 
-端口由 `config.json` 里的 **`serverPort`** 决定（示例默认为 `6633`）。
+端口由 `config.yaml` 里的 **`serverPort`** 决定（示例默认为 `6633`）。
 
 ### 3. 首次登录
 
@@ -50,7 +50,7 @@ http://localhost:6633/
 
 ### 启动倒计时
 
-`start.bat` 启动前有 **`startCountdownSeconds`** 秒倒计时（默认 5 秒，可在 `config.json` 修改；设为 `0` 则跳过）。
+`start.bat` 启动前有 **`startCountdownSeconds`** 秒倒计时（默认 5 秒，可在 `config.yaml` 修改；设为 `0` 则跳过）。
 
 - **不按键**：倒计时结束后使用已有编译结果快速启动。
 - **按 `B`**：重新编译前端与后端后再启动（改过程序代码后建议按 B）。
@@ -140,7 +140,7 @@ API 密钥保存在本机数据目录，不会写入浏览器公开存储。
 
 ---
 
-## 配置（`config.json`）
+## 配置（`config.yaml`）
 
 常用项：
 
@@ -151,7 +151,7 @@ API 密钥保存在本机数据目录，不会写入浏览器公开存储。
 | `startCountdownSeconds` | 启动前倒计时秒数；`0` = 不等待 |
 | `authIdleMinutes` 等 | 登录会话超时（可选） |
 
-完整说明见 `config.example.json` 中的 `_comment` 字段。
+完整说明见 `config.example.yaml` 中的注释。
 
 ---
 
@@ -172,7 +172,7 @@ API 密钥保存在本机数据目录，不会写入浏览器公开存储。
 **打不开页面**
 
 - 确认启动窗口仍在运行，且端口未被其它程序占用。
-- 检查 `config.json` 的 `serverPort` 与浏览器地址是否一致。
+- 检查 `config.yaml` 的 `serverPort` 与浏览器地址是否一致。
 
 **改代码后界面没变化**
 
@@ -184,7 +184,7 @@ API 密钥保存在本机数据目录，不会写入浏览器公开存储。
 
 **生产环境 JWT**
 
-- 首次 `start.bat` 启动会在 `data/.jwt-secret` 自动生成密钥；也可在 `config.json` 设置 `jwtSecret`（≥16 字符）。
+- 首次 `start.bat` 启动会在 `data/.jwt-secret` 自动生成密钥；也可在 `config.yaml` 设置 `jwtSecret`（≥16 字符）。
 
 ---
 
@@ -199,4 +199,4 @@ npm install
 npm run dev
 ```
 
-浏览器访问 `config.json` 中的 **`webPort`**（默认与 `serverPort` 不同）。
+浏览器访问 `config.yaml` 中的 **`webPort`**（默认与 `serverPort` 不同）。

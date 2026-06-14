@@ -1,9 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { readConfigFile, REPO_ROOT } from './load-config.mjs'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-export const REPO_ROOT = path.resolve(__dirname, '..')
+export { REPO_ROOT }
 
 /** 避开 Windows 常见保留段 3326–3425（Hyper-V 等） */
 export const DEFAULT_SERVER_PORT = 3450
@@ -26,19 +24,8 @@ function parseNonNegativeInt(value, label, fallback) {
   return n
 }
 
-function readConfigFile() {
-  const configPath = path.join(REPO_ROOT, 'config.json')
-  if (!existsSync(configPath)) return {}
-  try {
-    const parsed = JSON.parse(readFileSync(configPath, 'utf8'))
-    return parsed && typeof parsed === 'object' ? parsed : {}
-  } catch {
-    return {}
-  }
-}
-
 /**
- * 应用配置：环境变量 > config.json > 默认值
+ * 应用配置：环境变量 > config.yaml > 默认值
  * - 端口：PORT/SERVER_PORT、WEB_PORT
  * - 启动：startCountdownSeconds（START_COUNTDOWN_SEC 可覆盖）
  */
@@ -52,13 +39,13 @@ export function loadDevConfig() {
   const serverPort = serverFromEnv
     ? parsePort(serverFromEnv, 'PORT/SERVER_PORT')
     : cfg.serverPort != null
-      ? parsePort(cfg.serverPort, 'config.json serverPort')
+      ? parsePort(cfg.serverPort, 'config.yaml serverPort')
       : DEFAULT_SERVER_PORT
 
   const webPort = webFromEnv
     ? parsePort(webFromEnv, 'WEB_PORT')
     : cfg.webPort != null
-      ? parsePort(cfg.webPort, 'config.json webPort')
+      ? parsePort(cfg.webPort, 'config.yaml webPort')
       : DEFAULT_WEB_PORT
 
   const startCountdownSeconds = countdownFromEnv
@@ -70,7 +57,7 @@ export function loadDevConfig() {
     : cfg.startCountdownSeconds != null
       ? parseNonNegativeInt(
           cfg.startCountdownSeconds,
-          'config.json startCountdownSeconds',
+          'config.yaml startCountdownSeconds',
           5,
         )
       : 5
@@ -78,7 +65,7 @@ export function loadDevConfig() {
   return { serverPort, webPort, startCountdownSeconds, repoRoot: REPO_ROOT }
 }
 
-/** 数据目录：环境变量 DATA_DIR > config.json dataDir > 仓库 data/ */
+/** 数据目录：环境变量 DATA_DIR > config.yaml dataDir > 仓库 data/ */
 export function resolveDataDir() {
   const fromEnv = process.env.DATA_DIR?.trim()
   if (fromEnv) {

@@ -29,8 +29,8 @@ web/.vite/
 # 历史遗留路径（若存在则忽略）
 server/data/
 
-# 本地配置（DATA_DIR 等），由 config.example.json 派生
-/config.json
+# 本地配置（DATA_DIR 等），由 config.example.yaml 派生
+/config.yaml
 
 # Logs
 logs/

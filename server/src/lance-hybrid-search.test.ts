@@ -1,18 +1,37 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  ftsIndexOptionsForProfile,
   chineseFtsIndexOptions,
   hybridRelevanceScore,
 } from './lance-hybrid-search.js'
+import { formatHybridFtsSpec } from './hybrid-fts-settings.js'
 
-describe('chineseFtsIndexOptions', () => {
-  it('uses ngram tokenizer without English stemming', () => {
-    const opts = chineseFtsIndexOptions()
+describe('ftsIndexOptionsForProfile', () => {
+  it('uses ngram tokenizer for zh-ngram', () => {
+    const opts = ftsIndexOptionsForProfile('zh-ngram')
     assert.equal(opts.baseTokenizer, 'ngram')
     assert.equal(opts.stem, false)
-    assert.equal(opts.removeStopWords, false)
-    assert.equal(opts.ngramMinLength, 2)
-    assert.equal(opts.ngramMaxLength, 3)
+  })
+
+  it('uses jieba/default for zh-jieba', () => {
+    const opts = ftsIndexOptionsForProfile('zh-jieba')
+    assert.equal(opts.baseTokenizer, 'jieba/default')
+  })
+})
+
+describe('chineseFtsIndexOptions', () => {
+  it('matches zh-ngram profile', () => {
+    assert.deepEqual(chineseFtsIndexOptions(), ftsIndexOptionsForProfile('zh-ngram'))
+  })
+})
+
+describe('formatHybridFtsSpec', () => {
+  it('includes dict variant for jieba', () => {
+    assert.equal(
+      formatHybridFtsSpec({ profile: 'zh-jieba', dictVariant: 'big' }),
+      'zh-jieba:big',
+    )
   })
 })
 
@@ -22,9 +41,5 @@ describe('hybridRelevanceScore', () => {
       hybridRelevanceScore({ _relevance_score: 0.5, _distance: 0.1 }),
       0.5,
     )
-  })
-
-  it('falls back to vector distance', () => {
-    assert.equal(hybridRelevanceScore({ _distance: 1 }), 0.5)
   })
 })

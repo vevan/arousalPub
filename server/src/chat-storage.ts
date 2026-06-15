@@ -198,6 +198,8 @@ export interface ConversationIndex {
   memoryEmbeddingModel?: string | null
   /** 与 memoryEmbeddingModel 一并记录；null 表示索引时未指定 dimensions */
   memoryEmbeddingDimensions?: number | null
+  /** 重建记忆索引时使用的 Hybrid FTS 分词 profile */
+  memoryHybridFtsProfile?: string | null
   /**
    * 对话内用户展示名（宏 `{{user}}`）；缺省由服务端用默认「用户」。
    */
@@ -1065,6 +1067,7 @@ export async function updateConversationMemoryEmbeddingModel(
   conversationId: string,
   embeddingModel: string,
   embeddingDimensions?: number | null,
+  hybridFtsProfile?: string | null,
 ): Promise<ConversationIndex | null> {
   const idx = await readConversationIndex(conversationId)
   if (!idx) return null
@@ -1074,11 +1077,16 @@ export async function updateConversationMemoryEmbeddingModel(
     embeddingDimensions === undefined
       ? idx.memoryEmbeddingDimensions ?? null
       : embeddingDimensions
+  const ftsProfile =
+    hybridFtsProfile === undefined
+      ? idx.memoryHybridFtsProfile ?? null
+      : hybridFtsProfile
   const next: ConversationIndex = {
     ...idx,
     updatedAt: t,
     memoryEmbeddingModel: model || null,
     memoryEmbeddingDimensions: dims,
+    memoryHybridFtsProfile: ftsProfile,
   }
   await writeConversationIndex(conversationId, next)
   await upsertChatListEntry(chatListEntryFromIndex(next), next)

@@ -3,6 +3,7 @@
 export interface LorebookSettings {
   recursiveEnabled: boolean
   maxRecursionDepth: number
+  keywordTopK: number
   vectorEnabled: boolean
   vectorTopK: number
 }
@@ -10,11 +11,14 @@ export interface LorebookSettings {
 export const LOREBOOK_SETTINGS_DEFAULTS: LorebookSettings = {
   recursiveEnabled: false,
   maxRecursionDepth: 2,
+  keywordTopK: 64,
   vectorEnabled: false,
   vectorTopK: 5,
 }
 
 export const LOREBOOK_MAX_RECURSION_DEPTH = 3
+export const LOREBOOK_KEYWORD_TOPK_MIN = 1
+export const LOREBOOK_KEYWORD_TOPK_MAX = 64
 export const LOREBOOK_VECTOR_TOPK_MIN = 1
 export const LOREBOOK_VECTOR_TOPK_MAX = 20
 
@@ -28,6 +32,14 @@ export function normalizeLorebookSettings(
       ? Math.floor(raw.maxRecursionDepth)
       : LOREBOOK_SETTINGS_DEFAULTS.maxRecursionDepth
   depth = Math.max(0, Math.min(LOREBOOK_MAX_RECURSION_DEPTH, depth))
+  let keywordTopK =
+    typeof raw?.keywordTopK === 'number' && Number.isFinite(raw.keywordTopK)
+      ? Math.floor(raw.keywordTopK)
+      : LOREBOOK_SETTINGS_DEFAULTS.keywordTopK
+  keywordTopK = Math.max(
+    LOREBOOK_KEYWORD_TOPK_MIN,
+    Math.min(LOREBOOK_KEYWORD_TOPK_MAX, keywordTopK),
+  )
   const vectorEnabled = raw?.vectorEnabled === true
   let vectorTopK =
     typeof raw?.vectorTopK === 'number' && Number.isFinite(raw.vectorTopK)
@@ -38,9 +50,21 @@ export function normalizeLorebookSettings(
     Math.min(LOREBOOK_VECTOR_TOPK_MAX, vectorTopK),
   )
   if (!recursiveEnabled) {
-    return { recursiveEnabled: false, maxRecursionDepth: depth, vectorEnabled, vectorTopK }
+    return {
+      recursiveEnabled: false,
+      maxRecursionDepth: depth,
+      keywordTopK,
+      vectorEnabled,
+      vectorTopK,
+    }
   }
-  return { recursiveEnabled: true, maxRecursionDepth: depth, vectorEnabled, vectorTopK }
+  return {
+    recursiveEnabled: true,
+    maxRecursionDepth: depth,
+    keywordTopK,
+    vectorEnabled,
+    vectorTopK,
+  }
 }
 
 export function hasLorebookSettingsOverride(
@@ -61,6 +85,9 @@ export function resolveLorebookSettings(
   }
   if (Object.prototype.hasOwnProperty.call(override, 'maxRecursionDepth')) {
     patch.maxRecursionDepth = override.maxRecursionDepth
+  }
+  if (Object.prototype.hasOwnProperty.call(override, 'keywordTopK')) {
+    patch.keywordTopK = override.keywordTopK
   }
   if (Object.prototype.hasOwnProperty.call(override, 'vectorEnabled')) {
     patch.vectorEnabled = override.vectorEnabled === true

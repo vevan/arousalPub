@@ -5,9 +5,16 @@ import { apiFetch } from '@/utils/api-fetch'
 import { translateApiError } from '@/utils/api-error-message'
 import { userAvatarUrl } from '@/utils/authenticated-media-url'
 import { useApiKeysStore } from '@/stores/apiKeys'
+import {
+  HYBRID_FTS_PROFILES,
+  profileRequiresDict,
+  type HybridFtsDictVariant,
+  type HybridFtsProfile,
+} from '@/utils/hybrid-fts-settings'
 import { usePreferencesStore } from '@/stores/preferences'
 import { useThemeOklchStore } from '@/stores/theme-oklch'
 import PluginSettingsPanel from '@/components/settings/PluginSettingsPanel.vue'
+import HybridFtsSwitchDialog from '@/components/settings/HybridFtsSwitchDialog.vue'
 import BudgetTrimSettingsPanel from '@/components/settings/BudgetTrimSettingsPanel.vue'
 import RegexRulesSettingsPanel from '@/components/settings/RegexRulesSettingsPanel.vue'
 import { useRegexRulesStore } from '@/stores/regex-rules'
@@ -80,10 +87,13 @@ const {
   lorebookMaxRecursionDepth,
   lorebookVectorEnabled,
   lorebookVectorTopK,
+  lorebookKeywordTopK,
   historyLimitEnabled,
   historyMaxTurns,
   memoryEnabled,
   memoryTopK,
+  hybridFtsProfile,
+  hybridFtsDictVariant,
   budgetTrimSettings,
   embeddingBaseUrl,
   embeddingApiKey,
@@ -142,6 +152,42 @@ const composerEnterModeItems = computed(() => [
     title: t('settings.composerCtrlEnterSend'),
   },
 ])
+
+const hybridFtsProfileItems = computed(() =>
+  HYBRID_FTS_PROFILES.map((value: HybridFtsProfile) => ({
+    value,
+    title: t(`settings.hybridFtsProfile.${value}`),
+  })),
+)
+
+const hybridFtsSwitchOpen = ref(false)
+const pendingHybridFtsProfile = ref<HybridFtsProfile>(hybridFtsProfile.value)
+
+function onHybridFtsProfilePick(next: HybridFtsProfile): void {
+  if (next === hybridFtsProfile.value) return
+  pendingHybridFtsProfile.value = next
+  hybridFtsSwitchOpen.value = true
+}
+
+function openHybridFtsManageDialog(): void {
+  pendingHybridFtsProfile.value = hybridFtsProfile.value
+  hybridFtsSwitchOpen.value = true
+}
+
+async function onHybridFtsSwitchConfirm(payload: {
+  profile: HybridFtsProfile
+  dictVariant: HybridFtsDictVariant | null
+}): Promise<void> {
+  try {
+    await prefStore.confirmHybridFtsChange(payload)
+  } catch {
+    /* 设置页可重试 */
+  }
+}
+
+function onHybridFtsSwitchCancel(): void {
+  pendingHybridFtsProfile.value = hybridFtsProfile.value
+}
 
 const embeddingApiKeySelectItems = computed(() => [
   { value: EMBED_KEY_DIRECT, title: t('conn.apiKeyDirectOption') },
@@ -851,6 +897,20 @@ onMounted(() => {
             <p class="text-caption text-medium-emphasis mt-2 mb-0">
               {{ $t('settings.loreMaxRecursionDepthHint') }}
             </p>
+            <v-text-field
+              v-model.number="lorebookKeywordTopK"
+              type="number"
+              min="1"
+              max="64"
+              step="1"
+              class="mt-4"
+              density="comfortable"
+              variant="outlined"
+              :label="$t('settings.loreKeywordTopK')"
+              :hint="$t('settings.loreKeywordTopKHint')"
+              persistent-hint
+              hide-details="auto"
+            />
             <v-divider class="my-4" />
             <v-switch
               v-model="lorebookVectorEnabled"
@@ -1032,6 +1092,37 @@ onMounted(() => {
               </div>
               <pre class="embedding-test-vector">{{ embeddingTestVectorPreview }}</pre>
             </v-sheet>
+            <v-select
+              :model-value="hybridFtsProfile"
+              :items="hybridFtsProfileItems"
+              item-title="title"
+              item-value="value"
+              :label="$t('settings.hybridFtsProfileLabel')"
+              :hint="$t('settings.hybridFtsProfileHint')"
+              persistent-hint
+              density="comfortable"
+              variant="outlined"
+              hide-details="auto"
+              class="mt-4 mb-2"
+              @update:model-value="onHybridFtsProfilePick"
+            />
+            <v-btn
+              v-if="profileRequiresDict(hybridFtsProfile)"
+              variant="text"
+              size="small"
+              class="px-0 mb-2"
+              @click="openHybridFtsManageDialog"
+            >
+              {{ $t('settings.hybridFtsManageDict') }}
+            </v-btn>
+            <HybridFtsSwitchDialog
+              v-model="hybridFtsSwitchOpen"
+              :pending-profile="pendingHybridFtsProfile"
+              :current-profile="hybridFtsProfile"
+              :current-dict-variant="hybridFtsDictVariant"
+              @confirm="onHybridFtsSwitchConfirm"
+              @cancel="onHybridFtsSwitchCancel"
+            />
             <h3 class="text-body-1 font-weight-medium mb-2 mt-4">
               {{ $t('settings.memorySection') }}
             </h3>

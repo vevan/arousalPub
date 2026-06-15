@@ -50,6 +50,11 @@ import {
   type ConversationEmbeddingApiSettingsOverride,
   type ResolvedConversationChatDisplay,
 } from '@/utils/conversation-api-settings'
+import {
+  formatHybridFtsSpec,
+  hybridFtsSpecsMatch,
+  normalizeHybridFtsSettings,
+} from '@/utils/hybrid-fts-settings'
 import { storeToRefs } from 'pinia'
 import { computed, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -70,6 +75,7 @@ const { activePresetId: globalPromptPresetId, indexEntries: promptIndexEntries }
 const {
   lorebookRecursiveEnabled,
   lorebookMaxRecursionDepth,
+  lorebookKeywordTopK,
   lorebookVectorEnabled,
   lorebookVectorTopK,
   historyLimitEnabled,
@@ -79,7 +85,17 @@ const {
   budgetTrimSettings,
   embeddingModel,
   embeddingDimensions,
+  hybridFtsProfile,
+  hybridFtsDictVariant,
 } = storeToRefs(prefStore)
+
+const globalHybridFtsSettings = computed(() =>
+  normalizeHybridFtsSettings({
+    profile: hybridFtsProfile.value,
+    dictVariant: hybridFtsDictVariant.value,
+  }),
+)
+const globalHybridFtsSpec = computed(() => formatHybridFtsSpec(globalHybridFtsSettings.value))
 
 const loading = ref(true)
 const errorText = ref('')
@@ -93,6 +109,7 @@ const homeChatRef = ref<InstanceType<typeof HomeChat> | null>(null)
 const hasConversationTurns = ref(false)
 const conversationMemoryEmbeddingModel = ref<string | null>(null)
 const conversationMemoryEmbeddingDimensions = ref<number | null>(null)
+const conversationMemoryHybridFtsSpec = ref<string | null>(null)
 const memoryRebuildDialogOpen = ref(false)
 let memoryRebuildDismissKey = ''
 
@@ -112,8 +129,10 @@ function memoryRebuildDismissToken(
   globalModel: string,
   storedDims: number | null,
   globalDims: number | null,
+  storedFtsSpec: string | null,
+  globalFtsSpec: string,
 ): string {
-  return `${storedModel ?? ''}|${globalModel}|${storedDims ?? ''}|${globalDims ?? ''}`
+  return `${storedModel ?? ''}|${globalModel}|${storedDims ?? ''}|${globalDims ?? ''}|${storedFtsSpec ?? ''}|${globalFtsSpec}`
 }
 
 function embeddingDimsMatch(a: number | null, b: number | null): boolean {
@@ -130,10 +149,14 @@ function shouldOfferMemoryRebuild(): boolean {
   const storedModel = conversationMemoryEmbeddingModel.value
   const storedDims = conversationMemoryEmbeddingDimensions.value
   if (!storedModel) return false
-  if (
+  const embeddingMatches =
     storedModel === effectiveEmbedding.embeddingModel &&
     embeddingDimsMatch(storedDims, effectiveEmbedding.embeddingDimensions)
-  ) {
+  const ftsMatches = hybridFtsSpecsMatch(
+    conversationMemoryHybridFtsSpec.value,
+    globalHybridFtsSettings.value,
+  )
+  if (embeddingMatches && ftsMatches) {
     return false
   }
   const token = memoryRebuildDismissToken(
@@ -141,6 +164,8 @@ function shouldOfferMemoryRebuild(): boolean {
     globalModel,
     storedDims,
     globalDims,
+    conversationMemoryHybridFtsSpec.value,
+    globalHybridFtsSpec.value,
   )
   if (memoryRebuildDismissKey === token) return false
   return true
@@ -168,6 +193,8 @@ function dismissMemoryRebuild(): void {
     embeddingModel.value.trim(),
     conversationMemoryEmbeddingDimensions.value,
     embeddingDimensions.value,
+    conversationMemoryHybridFtsSpec.value,
+    globalHybridFtsSpec.value,
   )
   memoryRebuildDialogOpen.value = false
   memoryRebuildError.value = ''
@@ -177,11 +204,14 @@ async function confirmMemoryRebuild(): Promise<void> {
   const nextModel = await rebuildMemoryIndex()
   if (!nextModel) return
   conversationMemoryEmbeddingModel.value = nextModel
+  conversationMemoryHybridFtsSpec.value = globalHybridFtsSpec.value
   memoryRebuildDismissKey = memoryRebuildDismissToken(
     nextModel,
     embeddingModel.value.trim(),
     embeddingDimensions.value,
     embeddingDimensions.value,
+    globalHybridFtsSpec.value,
+    globalHybridFtsSpec.value,
   )
   memoryRebuildDialogOpen.value = false
 }
@@ -189,11 +219,14 @@ async function confirmMemoryRebuild(): Promise<void> {
 function onMemoryRebuiltFromSettings(model: string): void {
   conversationMemoryEmbeddingModel.value = model
   conversationMemoryEmbeddingDimensions.value = embeddingDimensions.value
+  conversationMemoryHybridFtsSpec.value = globalHybridFtsSpec.value
   memoryRebuildDismissKey = memoryRebuildDismissToken(
     model,
     embeddingModel.value.trim(),
     embeddingDimensions.value,
     embeddingDimensions.value,
+    globalHybridFtsSpec.value,
+    globalHybridFtsSpec.value,
   )
 }
 
@@ -254,6 +287,7 @@ function globalLoreFromStore(): LorebookSettings {
   return normalizeLorebookSettings({
     recursiveEnabled: prefStore.lorebookRecursiveEnabled,
     maxRecursionDepth: prefStore.lorebookMaxRecursionDepth,
+    keywordTopK: prefStore.lorebookKeywordTopK,
     vectorEnabled: prefStore.lorebookVectorEnabled,
     vectorTopK: prefStore.lorebookVectorTopK,
   })
@@ -430,6 +464,7 @@ const convBindings = ref<ConvContextBindings>({
     effective: {
       recursiveEnabled: false,
       maxRecursionDepth: 2,
+      keywordTopK: 64,
       vectorEnabled: false,
       vectorTopK: 5,
     },
@@ -545,6 +580,9 @@ function applyConversationMemoryIndexMeta(index: Record<string, unknown>): void 
     typeof memDims === 'number' && Number.isFinite(memDims) && memDims > 0
       ? Math.floor(memDims)
       : null
+  const memFts = index.memoryHybridFtsProfile
+  conversationMemoryHybridFtsSpec.value =
+    typeof memFts === 'string' && memFts.trim() ? memFts.trim() : null
 }
 
 function onConvContextPatched(index: Record<string, unknown>) {
@@ -567,7 +605,13 @@ async function patchAuditDebugToServer(id: string) {
 }
 
 watch(
-  [lorebookRecursiveEnabled, lorebookMaxRecursionDepth, lorebookVectorEnabled, lorebookVectorTopK],
+  [
+    lorebookRecursiveEnabled,
+    lorebookMaxRecursionDepth,
+    lorebookKeywordTopK,
+    lorebookVectorEnabled,
+    lorebookVectorTopK,
+  ],
   () => {
   if (!convBindings.value.lorebook.useGlobal) return
   const global = globalLoreFromStore()
@@ -703,7 +747,7 @@ watch(
   },
 )
 
-watch([embeddingModel, embeddingDimensions], () => {
+watch([embeddingModel, embeddingDimensions, hybridFtsProfile, hybridFtsDictVariant], () => {
   if (loading.value) return
   maybePromptMemoryRebuild()
 })
@@ -953,6 +997,8 @@ watch(
         :global-embedding-model="embeddingModel"
         :global-embedding-dimensions="embeddingDimensions"
         :conversation-memory-embedding-model="conversationMemoryEmbeddingModel"
+        :conversation-memory-hybrid-fts-spec="conversationMemoryHybridFtsSpec"
+        :global-hybrid-fts-spec="globalHybridFtsSpec"
         :initial-user-name="convBindings.userName"
         :initial-user-character-id="convBindings.userCharacterId"
         :initial-authors-note="convBindings.authorsNote"

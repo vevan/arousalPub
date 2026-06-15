@@ -94,7 +94,10 @@ import {
   updateGlobalEmbeddingApiSettings,
   updateGlobalChunkSettings,
   updateGlobalDefaultAuthorsNote,
+  updateGlobalHybridFtsSettings,
 } from './user-preferences-file.js'
+import { normalizeHybridFtsProfile, normalizeHybridFtsSettings } from './hybrid-fts-settings.js'
+import { registerHybridFtsRoutes } from './hybrid-fts-routes.js'
 import { parseBudgetTrimSettingsPatch } from './budget-trim-settings.js'
 import { normalizeEmbeddingDimensions, normalizeEmbeddingApiSettings } from './embedding-api-settings.js'
 import {
@@ -470,6 +473,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 registerMaintenanceGuard(app)
 await registerAuth(app)
 registerRegexRoutes(app)
+registerHybridFtsRoutes(app)
 
 app.addHook('preHandler', async (request, reply) => {
   const pluginId = (request.params as { pluginId?: string }).pluginId
@@ -733,6 +737,7 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
         const patch: {
           recursiveEnabled?: boolean
           maxRecursionDepth?: number
+          keywordTopK?: number
           vectorEnabled?: boolean
           vectorTopK?: number
         } = {}
@@ -757,6 +762,15 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
               .send({ error: ApiErrorCodes.lorebook_settings_max_recursion_depth_number })
           }
           patch.maxRecursionDepth = d
+        }
+        if (Object.prototype.hasOwnProperty.call(raw, 'keywordTopK')) {
+          const d = (raw as { keywordTopK?: unknown }).keywordTopK
+          if (typeof d !== 'number' || !Number.isFinite(d)) {
+            return reply
+              .status(400)
+              .send({ error: ApiErrorCodes.lorebook_settings_keyword_top_k_number })
+          }
+          patch.keywordTopK = d
         }
         if (Object.prototype.hasOwnProperty.call(raw, 'vectorEnabled')) {
           if (typeof (raw as { vectorEnabled?: unknown }).vectorEnabled !== 'boolean') {
@@ -1610,6 +1624,7 @@ interface PatchUserPreferencesBody {
   lorebook?: {
     recursiveEnabled?: boolean
     maxRecursionDepth?: number
+    keywordTopK?: number
     vectorEnabled?: boolean
     vectorTopK?: number
   }
@@ -1644,6 +1659,10 @@ interface PatchUserPreferencesBody {
     role?: 'system' | 'user'
     enabledForNewChats?: boolean
   } | null
+  hybridFts?: {
+    profile?: string
+    dictVariant?: string | null
+  }
 }
 
 app.patch<{ Body: PatchUserPreferencesBody }>(
@@ -1660,6 +1679,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
       b,
       'defaultAuthorsNote',
     )
+    const hasHybridFts = b.hybridFts && typeof b.hybridFts === 'object'
     if (
       !hasLore &&
       !hasHist &&
@@ -1667,7 +1687,8 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
       !hasBudgetTrim &&
       !hasEmbed &&
       !hasChunk &&
-      !hasDefaultAuthorsNote
+      !hasDefaultAuthorsNote &&
+      !hasHybridFts
     ) {
       return reply.status(400).send({
         error: ApiErrorCodes.user_preferences_requires_section,
@@ -1681,10 +1702,12 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
       let embeddingApi
       let chunk
       let defaultAuthorsNote
+      let hybridFts
       if (hasLore) {
         const patch: {
           recursiveEnabled?: boolean
           maxRecursionDepth?: number
+          keywordTopK?: number
           vectorEnabled?: boolean
           vectorTopK?: number
         } = {}
@@ -1704,6 +1727,13 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
               .send({ error: ApiErrorCodes.lorebook_max_recursion_depth_number })
           }
           patch.maxRecursionDepth = d
+        }
+        if (Object.prototype.hasOwnProperty.call(b.lorebook, 'keywordTopK')) {
+          const d = b.lorebook!.keywordTopK
+          if (typeof d !== 'number' || !Number.isFinite(d)) {
+            return reply.status(400).send({ error: ApiErrorCodes.lorebook_keyword_top_k_number })
+          }
+          patch.keywordTopK = d
         }
         if (Object.prototype.hasOwnProperty.call(b.lorebook, 'vectorEnabled')) {
           if (typeof b.lorebook!.vectorEnabled !== 'boolean') {
@@ -1880,6 +1910,53 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         }
         defaultAuthorsNote = await updateGlobalDefaultAuthorsNote(parsed.patch)
       }
+      if (hasHybridFts) {
+        const patch: {
+          profile?: string
+          dictVariant?: string | null
+        } = {}
+        if (Object.prototype.hasOwnProperty.call(b.hybridFts, 'profile')) {
+          const rawProfile = b.hybridFts!.profile
+          const normalized = normalizeHybridFtsProfile(rawProfile)
+          if (typeof rawProfile !== 'string' || normalized !== rawProfile) {
+            return reply
+              .status(400)
+              .send({ error: ApiErrorCodes.hybrid_fts_profile_invalid })
+          }
+          patch.profile = normalized
+        }
+        if (Object.prototype.hasOwnProperty.call(b.hybridFts, 'dictVariant')) {
+          const rawVariant = b.hybridFts!.dictVariant
+          if (rawVariant !== null && typeof rawVariant !== 'string') {
+            return reply
+              .status(400)
+              .send({ error: ApiErrorCodes.hybrid_fts_dict_variant_invalid })
+          }
+          if (rawVariant !== null) {
+            const normalizedSettings = normalizeHybridFtsSettings({
+              profile: patch.profile ?? (await readUserPreferencesDocument()).hybridFts?.profile,
+              dictVariant: rawVariant,
+            })
+            if (rawVariant !== normalizedSettings.dictVariant) {
+              return reply
+                .status(400)
+                .send({ error: ApiErrorCodes.hybrid_fts_dict_variant_invalid })
+            }
+            patch.dictVariant = normalizedSettings.dictVariant
+          } else {
+            patch.dictVariant = null
+          }
+        }
+        if (
+          !Object.prototype.hasOwnProperty.call(patch, 'profile') &&
+          !Object.prototype.hasOwnProperty.call(patch, 'dictVariant')
+        ) {
+          return reply.status(400).send({
+            error: ApiErrorCodes.user_preferences_requires_section,
+          })
+        }
+        hybridFts = await updateGlobalHybridFtsSettings(patch)
+      }
       const doc = await readUserPreferencesDocument()
       const embeddingPublic = embeddingApi
         ? await sanitizeEmbeddingApiForGet(embeddingApi)
@@ -1895,6 +1972,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         embeddingApi: embeddingPublic,
         chunk: chunk ?? doc.chunk,
         defaultAuthorsNote: defaultAuthorsNote ?? doc.defaultAuthorsNote,
+        hybridFts: hybridFts ?? doc.hybridFts,
         savedAt: doc.savedAt,
       }
     } catch (e) {

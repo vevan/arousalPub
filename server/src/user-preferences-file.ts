@@ -41,6 +41,13 @@ import {
   type DefaultAuthorsNotePatch,
   type DefaultAuthorsNoteTemplate,
 } from './authors-note-settings.js'
+import { prepareHybridFtsSettings } from './hybrid-fts-dict.js'
+import {
+  HYBRID_FTS_SETTINGS_DEFAULTS,
+  normalizeHybridFtsSettings,
+  profileRequiresDict,
+  type HybridFtsSettings,
+} from './hybrid-fts-settings.js'
 import {
   resolveSecretFromDisk,
   secretToDiskFields,
@@ -62,6 +69,7 @@ export interface UserPreferencesDocument {
   embeddingApi?: Partial<EmbeddingApiSettings>
   chunk?: Partial<ChunkSettings>
   defaultAuthorsNote?: DefaultAuthorsNoteTemplate
+  hybridFts?: Partial<HybridFtsSettings>
   /** ST 式全局宏变量（`{{setglobalvar}}` / `{{getglobalvar}}`） */
   macroGlobalVars?: Record<string, string>
 }
@@ -80,6 +88,7 @@ interface UserPreferencesDocumentDisk {
   embeddingApi?: EmbeddingApiSettingsDisk
   chunk?: Partial<ChunkSettings>
   defaultAuthorsNote?: DefaultAuthorsNoteTemplate
+  hybridFts?: Partial<HybridFtsSettings>
   macroGlobalVars?: Record<string, string>
 }
 
@@ -136,6 +145,7 @@ function preferencesToDisk(
     embeddingApi: embeddingApiToDisk(doc.embeddingApi, userId),
     chunk: doc.chunk,
     defaultAuthorsNote: doc.defaultAuthorsNote,
+    hybridFts: doc.hybridFts,
   }
 }
 
@@ -202,6 +212,12 @@ export async function readGlobalChunkSettings(): Promise<ChunkSettings> {
   return normalizeChunkSettings(doc.chunk)
 }
 
+export async function readGlobalHybridFtsSettings(): Promise<HybridFtsSettings> {
+  const doc = await readPreferencesFileRaw()
+  if (!doc) return { ...HYBRID_FTS_SETTINGS_DEFAULTS }
+  return normalizeHybridFtsSettings(doc.hybridFts)
+}
+
 export async function readGlobalDefaultAuthorsNote(): Promise<DefaultAuthorsNoteTemplate> {
   const doc = await readPreferencesFileRaw()
   if (!doc?.defaultAuthorsNote) return { ...DEFAULT_AUTHORS_NOTE_TEMPLATE }
@@ -219,6 +235,7 @@ export async function readUserPreferencesDocument(): Promise<UserPreferencesDocu
   const defaultAuthorsNote = normalizeDefaultAuthorsNoteTemplate(
     doc?.defaultAuthorsNote,
   )
+  const hybridFts = normalizeHybridFtsSettings(doc?.hybridFts)
   return {
     version: 1,
     savedAt:
@@ -230,6 +247,7 @@ export async function readUserPreferencesDocument(): Promise<UserPreferencesDocu
     embeddingApi,
     chunk,
     defaultAuthorsNote,
+    hybridFts,
     macroGlobalVars: normalizeMacroGlobalVars(doc?.macroGlobalVars),
   }
 }
@@ -244,6 +262,7 @@ async function writeUserPreferencesDocument(
     | 'embeddingApi'
     | 'chunk'
     | 'defaultAuthorsNote'
+    | 'hybridFts'
     | 'macroGlobalVars'
   >,
 ): Promise<UserPreferencesDocument> {
@@ -258,6 +277,7 @@ async function writeUserPreferencesDocument(
     embeddingApi: partial.embeddingApi ?? prev.embeddingApi,
     chunk: partial.chunk ?? prev.chunk,
     defaultAuthorsNote: partial.defaultAuthorsNote ?? prev.defaultAuthorsNote,
+    hybridFts: partial.hybridFts ?? prev.hybridFts,
     macroGlobalVars: partial.macroGlobalVars ?? prev.macroGlobalVars,
   }
   await mkdir(getUserDataDir(getCurrentUserId()), { recursive: true })
@@ -284,6 +304,7 @@ export async function updateGlobalLorebookSettings(
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
     defaultAuthorsNote: prev.defaultAuthorsNote,
+    hybridFts: prev.hybridFts,
   })
   return lorebook
 }
@@ -304,6 +325,7 @@ export async function updateGlobalHistorySettings(
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
     defaultAuthorsNote: prev.defaultAuthorsNote,
+    hybridFts: prev.hybridFts,
   })
   return history
 }
@@ -324,6 +346,7 @@ export async function updateGlobalMemorySettings(
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
     defaultAuthorsNote: prev.defaultAuthorsNote,
+    hybridFts: prev.hybridFts,
   })
   return memory
 }
@@ -350,6 +373,7 @@ export async function updateGlobalBudgetTrimSettings(
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
     defaultAuthorsNote: prev.defaultAuthorsNote,
+    hybridFts: prev.hybridFts,
   })
   return budgetTrim
 }
@@ -372,6 +396,7 @@ export async function updateGlobalEmbeddingApiSettings(
     embeddingApi,
     chunk: prev.chunk,
     defaultAuthorsNote: prev.defaultAuthorsNote,
+    hybridFts: prev.hybridFts,
   })
   return embeddingApi
 }
@@ -391,8 +416,33 @@ export async function updateGlobalChunkSettings(
     budgetTrim: prev.budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk,
+    hybridFts: prev.hybridFts,
   })
   return chunk
+}
+
+export async function updateGlobalHybridFtsSettings(
+  patch: Partial<HybridFtsSettings>,
+): Promise<HybridFtsSettings> {
+  const prev = await readUserPreferencesDocument()
+  const hybridFts = normalizeHybridFtsSettings({
+    ...prev.hybridFts,
+    ...patch,
+  })
+  await writeUserPreferencesDocument({
+    lorebook: prev.lorebook,
+    history: prev.history,
+    memory: prev.memory,
+    budgetTrim: prev.budgetTrim,
+    embeddingApi: prev.embeddingApi,
+    chunk: prev.chunk,
+    defaultAuthorsNote: prev.defaultAuthorsNote,
+    hybridFts,
+  })
+  if (profileRequiresDict(hybridFts.profile)) {
+    await prepareHybridFtsSettings(hybridFts)
+  }
+  return hybridFts
 }
 
 export async function updateGlobalDefaultAuthorsNote(
@@ -436,6 +486,7 @@ export async function updateGlobalMacroGlobalVars(
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
     defaultAuthorsNote: prev.defaultAuthorsNote,
+    hybridFts: prev.hybridFts,
     macroGlobalVars,
   })
   return macroGlobalVars

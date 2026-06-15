@@ -25,9 +25,11 @@ import {
 } from './memory-tail-buffer.js'
 import {
   readGlobalEmbeddingApiSettings,
+  readGlobalHybridFtsSettings,
   readGlobalMemorySettings,
 } from './user-preferences-file.js'
 import { resolveMemorySettings } from './memory-settings.js'
+import { formatHybridFtsSpec } from './hybrid-fts-settings.js'
 import { turnEmbeddingCorpus } from './turn-memory-xml.js'
 import {
   enumerateAllChunkChains,
@@ -327,10 +329,12 @@ export async function reindexConversationMemory(
     lorebookEntriesIndexed = loreResult.lorebookEntriesIndexed
   }
 
+  const hybridFtsSpec = formatHybridFtsSpec(await readGlobalHybridFtsSettings())
   await updateConversationMemoryEmbeddingModel(
     conversationId,
     embeddingModel,
     embeddingDimensions,
+    hybridFtsSpec,
   )
   return {
     ok: true,

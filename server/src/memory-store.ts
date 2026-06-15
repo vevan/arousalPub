@@ -6,8 +6,9 @@ import {
   normalizeBranchPath,
 } from './chunk-path.js'
 import { getUserDataDir } from './config.js'
+import { readGlobalHybridFtsSettings } from './user-preferences-file.js'
 import {
-  ensureChineseFtsIndex,
+  ensureHybridFtsIndex,
   hybridRelevanceScore,
   MEMORY_FTS_COLUMN,
   runLanceHybridSearch,
@@ -36,6 +37,19 @@ function memoryDbUri(conversationId: string): string {
     'memory',
     'conversations',
     conversationId,
+  )
+}
+
+async function ensureMemoryHybridFtsIndex(
+  conversationId: string,
+  table: Table,
+): Promise<void> {
+  const settings = await readGlobalHybridFtsSettings()
+  await ensureHybridFtsIndex(
+    table,
+    MEMORY_FTS_COLUMN,
+    settings,
+    memoryDbUri(conversationId),
   )
 }
 
@@ -121,7 +135,7 @@ async function migrateMissingCorpusColumn(
   if (rows.length === 0) return null
   const withCorpus = rows.map((r) => ({ ...r, corpus: r.corpus || '' }))
   const recreated = await createTurnMemoryTable(conversationId, withCorpus)
-  await ensureChineseFtsIndex(recreated, MEMORY_FTS_COLUMN)
+  await ensureMemoryHybridFtsIndex(conversationId, recreated)
   return recreated
 }
 
@@ -193,7 +207,7 @@ export async function upsertTurnMemoryRowsBatch(
   }
   if (!existing) {
     const table = await createTurnMemoryTable(conversationId, valid)
-    await ensureChineseFtsIndex(table, MEMORY_FTS_COLUMN)
+    await ensureMemoryHybridFtsIndex(conversationId, table)
     return
   }
   await existing
@@ -250,7 +264,7 @@ export async function replaceTurnMemoryIndex(
   }
   const table = await openMemoryTable(conversationId)
   if (table) {
-    await ensureChineseFtsIndex(table, MEMORY_FTS_COLUMN)
+    await ensureMemoryHybridFtsIndex(conversationId, table)
   }
 }
 

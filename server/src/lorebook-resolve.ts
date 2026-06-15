@@ -35,8 +35,6 @@ export interface LorebookInjectionParts {
   matchedLore: TrimmableLoreEntry[]
 }
 
-const MAX_MATCHED_ENTRIES = 64
-
 type TaggedLoreEntry = { lorebookId: string; entry: LorebookEntry }
 
 export async function resolveLorebookInjectionText(
@@ -76,6 +74,7 @@ export async function resolveLorebookInjectionParts(
     resolved = resolveLorebookSettings(global, context.lorebookSettingsOverride)
   }
   const settings = lorebookSettingsForResolve(resolved)
+  const keywordTopK = settings.keywordTopK
   const byId = new Map(lorebooks.map((lb) => [lb.id, lb]))
   const scanSeed = (context.scanCorpus ?? context.userText ?? '').trim()
   const seenEntryIds = new Set<string>()
@@ -106,14 +105,14 @@ export async function resolveLorebookInjectionParts(
       if (!lb) continue
       const batch = collectNewKeywordMatchesForRound(lb, scanLower, seenEntryIds)
       for (const e of batch) {
-        if (keywordOrdered.length >= MAX_MATCHED_ENTRIES) break
+        if (keywordOrdered.length >= keywordTopK) break
         seenEntryIds.add(e.id)
         keywordOrdered.push({ lorebookId: lid, entry: e })
         addedThisRound = true
       }
-      if (keywordOrdered.length >= MAX_MATCHED_ENTRIES) break
+      if (keywordOrdered.length >= keywordTopK) break
     }
-    if (keywordOrdered.length >= MAX_MATCHED_ENTRIES) break
+    if (keywordOrdered.length >= keywordTopK) break
     if (!addedThisRound) break
     if (round + 1 >= maxRounds) break
     const appendParts: string[] = []
@@ -138,11 +137,7 @@ export async function resolveLorebookInjectionParts(
     score: t.entry.priority,
   }))
 
-  if (
-    settings.vectorEnabled &&
-    scanSeed.length > 0 &&
-    matchedLore.length < MAX_MATCHED_ENTRIES
-  ) {
+  if (settings.vectorEnabled && scanSeed.length > 0) {
     const vectorHits = await collectVectorMatches(
       lorebookIds,
       byId,
@@ -152,7 +147,6 @@ export async function resolveLorebookInjectionParts(
       context.conversationId,
     )
     for (const hit of vectorHits) {
-      if (matchedLore.length >= MAX_MATCHED_ENTRIES) break
       seenEntryIds.add(hit.entry.id)
       matchedLore.push({
         lorebookId: hit.lorebookId,

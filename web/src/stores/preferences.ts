@@ -39,6 +39,15 @@ import {
   type ChunkSettings,
 } from '@/utils/chunk-settings'
 import {
+  HYBRID_FTS_SETTINGS_DEFAULTS,
+  normalizeHybridFtsProfile,
+  normalizeHybridFtsDictVariant,
+  normalizeHybridFtsSettings,
+  type HybridFtsDictVariant,
+  type HybridFtsProfile,
+  type HybridFtsSettings,
+} from '@/utils/hybrid-fts-settings'
+import {
   DEFAULT_AUTHORS_NOTE_TEMPLATE,
   normalizeDefaultAuthorsNoteTemplate,
   type DefaultAuthorsNoteTemplate,
@@ -53,6 +62,7 @@ export const LOREBOOK_RECURSIVE_STORAGE_KEY = 'arousal-lorebook-recursive-enable
 export const LOREBOOK_DEPTH_STORAGE_KEY = 'arousal-lorebook-max-recursion-depth'
 export const LOREBOOK_VECTOR_ENABLED_STORAGE_KEY = 'arousal-lorebook-vector-enabled'
 export const LOREBOOK_VECTOR_TOPK_STORAGE_KEY = 'arousal-lorebook-vector-topk'
+export const LOREBOOK_KEYWORD_TOPK_STORAGE_KEY = 'arousal-lorebook-keyword-topk'
 export const HISTORY_LIMIT_STORAGE_KEY = 'arousal-history-limit-enabled'
 export const HISTORY_MAX_TURNS_STORAGE_KEY = 'arousal-history-max-turns'
 export const MEMORY_ENABLED_STORAGE_KEY = 'arousal-memory-enabled'
@@ -65,6 +75,8 @@ export const EMBEDDING_DIMENSIONS_STORAGE_KEY = 'arousal-embedding-dimensions'
 export const CHAT_FONT_SIZE_REM_STORAGE_KEY = 'arousal-chat-font-size-rem'
 export const COMPOSER_ENTER_MODE_STORAGE_KEY = 'arousal-composer-enter-mode'
 export const CHUNK_TURNS_PER_FILE_STORAGE_KEY = 'arousal-chunk-turns-per-file'
+export const HYBRID_FTS_PROFILE_STORAGE_KEY = 'arousal-hybrid-fts-profile'
+export const HYBRID_FTS_DICT_VARIANT_STORAGE_KEY = 'arousal-hybrid-fts-dict-variant'
 
 const DEFAULT_PROMPT_MAX_STORED = 10
 
@@ -143,6 +155,18 @@ function readStoredLoreVectorTopK(): number {
   }
 }
 
+function readStoredLoreKeywordTopK(): number {
+  try {
+    const raw = localStorage.getItem(LOREBOOK_KEYWORD_TOPK_STORAGE_KEY)
+    if (raw == null || raw === '') return LOREBOOK_SETTINGS_DEFAULTS.keywordTopK
+    return normalizeLorebookSettings({
+      keywordTopK: Number.parseInt(raw, 10),
+    }).keywordTopK
+  } catch {
+    return LOREBOOK_SETTINGS_DEFAULTS.keywordTopK
+  }
+}
+
 function readStoredHistoryLimitEnabled(): boolean {
   try {
     const raw = localStorage.getItem(HISTORY_LIMIT_STORAGE_KEY)
@@ -189,6 +213,30 @@ function readStoredMemoryTopK(): number {
   } catch {
     return MEMORY_SETTINGS_DEFAULTS.memoryTopK
   }
+}
+
+function readStoredHybridFtsProfile(): HybridFtsProfile {
+  try {
+    const raw = localStorage.getItem(HYBRID_FTS_PROFILE_STORAGE_KEY)
+    if (raw?.trim()) {
+      return normalizeHybridFtsProfile(raw.trim())
+    }
+  } catch {
+    /* ignore */
+  }
+  return HYBRID_FTS_SETTINGS_DEFAULTS.profile
+}
+
+function readStoredHybridFtsDictVariant(): HybridFtsDictVariant | null {
+  try {
+    const raw = localStorage.getItem(HYBRID_FTS_DICT_VARIANT_STORAGE_KEY)
+    if (raw?.trim()) {
+      return normalizeHybridFtsDictVariant(raw.trim())
+    }
+  } catch {
+    /* ignore */
+  }
+  return null
 }
 
 function readStoredEmbeddingBaseUrl(): string {
@@ -279,10 +327,15 @@ export const usePreferencesStore = defineStore('preferences', () => {
   const lorebookMaxRecursionDepth = ref(readStoredLoreDepth())
   const lorebookVectorEnabled = ref(readStoredLoreVectorEnabled())
   const lorebookVectorTopK = ref(readStoredLoreVectorTopK())
+  const lorebookKeywordTopK = ref(readStoredLoreKeywordTopK())
   const historyLimitEnabled = ref(readStoredHistoryLimitEnabled())
   const historyMaxTurns = ref(readStoredHistoryMaxTurns())
   const memoryEnabled = ref(readStoredMemoryEnabled())
   const memoryTopK = ref(readStoredMemoryTopK())
+  const hybridFtsProfile = ref<HybridFtsProfile>(readStoredHybridFtsProfile())
+  const hybridFtsDictVariant = ref<HybridFtsDictVariant | null>(
+    readStoredHybridFtsDictVariant(),
+  )
   const budgetTrimSettings = ref<BudgetTrimSettings>(
     cloneBudgetTrimSettings(BUDGET_TRIM_SETTINGS_DEFAULTS),
   )
@@ -303,6 +356,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
   let lorebookPatchInFlight = false
   let historyPatchInFlight = false
   let memoryPatchInFlight = false
+  let hybridFtsPatchInFlight = false
   let budgetTrimPatchInFlight = false
   let embeddingPatchInFlight = false
   let chunkPatchInFlight = false
@@ -405,6 +459,10 @@ export const usePreferencesStore = defineStore('preferences', () => {
         LOREBOOK_VECTOR_TOPK_STORAGE_KEY,
         String(lorebookVectorTopK.value),
       )
+      localStorage.setItem(
+        LOREBOOK_KEYWORD_TOPK_STORAGE_KEY,
+        String(lorebookKeywordTopK.value),
+      )
     } catch {
       /* ignore */
     }
@@ -441,6 +499,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
       lorebookMaxRecursionDepth.value = n.maxRecursionDepth
       lorebookVectorEnabled.value = n.vectorEnabled
       lorebookVectorTopK.value = n.vectorTopK
+      lorebookKeywordTopK.value = n.keywordTopK
       persistLorebookLocal()
     }
   }
@@ -449,6 +508,22 @@ export const usePreferencesStore = defineStore('preferences', () => {
     try {
       localStorage.setItem(MEMORY_ENABLED_STORAGE_KEY, memoryEnabled.value ? '1' : '0')
       localStorage.setItem(MEMORY_TOPK_STORAGE_KEY, String(memoryTopK.value))
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function persistHybridFtsLocal() {
+    try {
+      localStorage.setItem(HYBRID_FTS_PROFILE_STORAGE_KEY, hybridFtsProfile.value)
+      if (hybridFtsDictVariant.value) {
+        localStorage.setItem(
+          HYBRID_FTS_DICT_VARIANT_STORAGE_KEY,
+          hybridFtsDictVariant.value,
+        )
+      } else {
+        localStorage.removeItem(HYBRID_FTS_DICT_VARIANT_STORAGE_KEY)
+      }
     } catch {
       /* ignore */
     }
@@ -556,6 +631,29 @@ export const usePreferencesStore = defineStore('preferences', () => {
     }
   }
 
+  async function patchGlobalHybridFtsToServer(
+    patch: Partial<HybridFtsSettings>,
+  ): Promise<void> {
+    const res = await fetch('/api/user-preferences', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hybridFts: patch }),
+    })
+    if (!res.ok) {
+      const txt = await res.text()
+      throw new Error(txt.slice(0, 200))
+    }
+    const j = (await res.json()) as { hybridFts?: Partial<HybridFtsSettings> }
+    if (j.hybridFts) {
+      const n = normalizeHybridFtsSettings(j.hybridFts)
+      hybridFtsPatchInFlight = true
+      hybridFtsProfile.value = n.profile
+      hybridFtsDictVariant.value = n.dictVariant ?? null
+      persistHybridFtsLocal()
+      hybridFtsPatchInFlight = false
+    }
+  }
+
   async function patchGlobalBudgetTrimToServer(
     patch: Partial<BudgetTrimSettings>,
   ): Promise<void> {
@@ -649,15 +747,26 @@ export const usePreferencesStore = defineStore('preferences', () => {
   )
 
   watch(
-    [lorebookRecursiveEnabled, lorebookMaxRecursionDepth, lorebookVectorEnabled, lorebookVectorTopK],
+    [
+      lorebookRecursiveEnabled,
+      lorebookMaxRecursionDepth,
+      lorebookKeywordTopK,
+      lorebookVectorEnabled,
+      lorebookVectorTopK,
+    ],
     async () => {
       if (!userPreferencesLoaded.value || lorebookPatchInFlight) return
       const n = normalizeLorebookSettings({
         recursiveEnabled: lorebookRecursiveEnabled.value,
         maxRecursionDepth: lorebookMaxRecursionDepth.value,
+        keywordTopK: lorebookKeywordTopK.value,
         vectorEnabled: lorebookVectorEnabled.value,
         vectorTopK: lorebookVectorTopK.value,
       })
+      if (n.keywordTopK !== lorebookKeywordTopK.value) {
+        lorebookKeywordTopK.value = n.keywordTopK
+        return
+      }
       if (n.vectorTopK !== lorebookVectorTopK.value) {
         lorebookVectorTopK.value = n.vectorTopK
         return
@@ -668,6 +777,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
         await patchGlobalLorebookToServer({
           recursiveEnabled: lorebookRecursiveEnabled.value,
           maxRecursionDepth: lorebookMaxRecursionDepth.value,
+          keywordTopK: lorebookKeywordTopK.value,
           vectorEnabled: lorebookVectorEnabled.value,
           vectorTopK: lorebookVectorTopK.value,
         })
@@ -828,10 +938,12 @@ export const usePreferencesStore = defineStore('preferences', () => {
           embeddingApi?: Partial<EmbeddingApiSettings>
           chunk?: Partial<ChunkSettings>
           defaultAuthorsNote?: Partial<DefaultAuthorsNoteTemplate>
+          hybridFts?: Partial<HybridFtsSettings>
         }
         lorebookPatchInFlight = true
         historyPatchInFlight = true
         memoryPatchInFlight = true
+        hybridFtsPatchInFlight = true
         embeddingPatchInFlight = true
         chunkPatchInFlight = true
         budgetTrimPatchInFlight = true
@@ -841,6 +953,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
         lorebookMaxRecursionDepth.value = lore.maxRecursionDepth
         lorebookVectorEnabled.value = lore.vectorEnabled
         lorebookVectorTopK.value = lore.vectorTopK
+        lorebookKeywordTopK.value = lore.keywordTopK
         persistLorebookLocal()
         const hist = normalizeHistorySettings(doc.history)
         historyLimitEnabled.value = hist.limitEnabled
@@ -850,6 +963,10 @@ export const usePreferencesStore = defineStore('preferences', () => {
         memoryEnabled.value = mem.memoryEnabled
         memoryTopK.value = mem.memoryTopK
         persistMemoryLocal()
+        const hfts = normalizeHybridFtsSettings(doc.hybridFts)
+        hybridFtsProfile.value = hfts.profile
+        hybridFtsDictVariant.value = hfts.dictVariant ?? null
+        persistHybridFtsLocal()
         const bt = normalizeBudgetTrimSettings(doc.budgetTrim)
         applyBudgetTrimLocal(bt, true)
         applyEmbeddingFromServer(doc.embeddingApi)
@@ -865,6 +982,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
         lorebookPatchInFlight = false
         historyPatchInFlight = false
         memoryPatchInFlight = false
+        hybridFtsPatchInFlight = false
         budgetTrimPatchInFlight = false
         embeddingPatchInFlight = false
         chunkPatchInFlight = false
@@ -907,6 +1025,12 @@ export const usePreferencesStore = defineStore('preferences', () => {
     }).vectorTopK
   }
 
+  function setLorebookKeywordTopK(n: number) {
+    lorebookKeywordTopK.value = normalizeLorebookSettings({
+      keywordTopK: n,
+    }).keywordTopK
+  }
+
   function setHistoryLimitEnabled(v: boolean) {
     historyLimitEnabled.value = v
   }
@@ -927,6 +1051,28 @@ export const usePreferencesStore = defineStore('preferences', () => {
       memoryEnabled: true,
       memoryTopK: n,
     }).memoryTopK
+  }
+
+  function setHybridFtsProfile(profile: HybridFtsProfile) {
+    hybridFtsProfile.value = normalizeHybridFtsSettings({ profile }).profile
+  }
+
+  async function confirmHybridFtsChange(
+    payload: { profile: HybridFtsProfile; dictVariant: HybridFtsDictVariant | null },
+  ): Promise<void> {
+    const n = normalizeHybridFtsSettings({
+      profile: payload.profile,
+      dictVariant: payload.dictVariant,
+    })
+    hybridFtsPatchInFlight = true
+    try {
+      await patchGlobalHybridFtsToServer({
+        profile: n.profile,
+        dictVariant: n.dictVariant,
+      })
+    } finally {
+      hybridFtsPatchInFlight = false
+    }
   }
 
   function setEmbeddingApiKeyId(id: string | null) {
@@ -977,6 +1123,8 @@ export const usePreferencesStore = defineStore('preferences', () => {
     lorebookVectorTopK,
     setLorebookVectorEnabled,
     setLorebookVectorTopK,
+    lorebookKeywordTopK,
+    setLorebookKeywordTopK,
     historyLimitEnabled,
     historyMaxTurns,
     setHistoryLimitEnabled,
@@ -985,6 +1133,10 @@ export const usePreferencesStore = defineStore('preferences', () => {
     memoryTopK,
     setMemoryEnabled,
     setMemoryTopK,
+    hybridFtsProfile,
+    hybridFtsDictVariant,
+    setHybridFtsProfile,
+    confirmHybridFtsChange,
     budgetTrimSettings,
     embeddingBaseUrl,
     embeddingApiKey,

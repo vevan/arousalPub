@@ -30,6 +30,10 @@ import {
   normalizeBudgetTrimSettings,
   type BudgetTrimSettings,
 } from '@/utils/budget-trim-settings'
+import {
+  hybridFtsSpecsMatch,
+  parseHybridFtsSpec,
+} from '@/utils/hybrid-fts-settings'
 
 const props = defineProps<{
   conversationId: string
@@ -62,6 +66,10 @@ const props = defineProps<{
   globalEmbeddingModel?: string
   /** 本会话已索引的 Embedding 模型 */
   conversationMemoryEmbeddingModel?: string | null
+  /** 本会话已索引的 Hybrid FTS spec（如 zh-jieba:default） */
+  conversationMemoryHybridFtsSpec?: string | null
+  /** 全局 Hybrid FTS spec */
+  globalHybridFtsSpec?: string
   /** 会话内 `{{user}}` 展示名；空表示用默认「用户」 */
   initialUserName?: string | null
   /** 用户 persona 角色卡 id */
@@ -189,7 +197,10 @@ const memoryRebuildNeedsAttention = computed(() => {
   if (!global) return false
   const stored = props.conversationMemoryEmbeddingModel?.trim() ?? ''
   if (!stored) return false
-  return stored !== global
+  const globalFts = props.globalHybridFtsSpec?.trim() ?? 'zh-ngram'
+  const storedFts = props.conversationMemoryHybridFtsSpec?.trim() ?? null
+  const ftsMismatch = !hybridFtsSpecsMatch(storedFts, parseHybridFtsSpec(globalFts))
+  return stored !== global || ftsMismatch
 })
 
 async function onRebuildMemoryClick() {

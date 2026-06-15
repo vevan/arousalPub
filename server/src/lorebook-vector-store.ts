@@ -2,11 +2,12 @@ import path from 'node:path'
 import type { Table } from '@lancedb/lancedb'
 import { closeLanceDb, openLanceDb } from './lance-connection-pool.js'
 import {
-  ensureChineseFtsIndex,
+  ensureHybridFtsIndex,
   hybridRelevanceScore,
   LORE_FTS_COLUMN,
   runLanceHybridSearch,
 } from './lance-hybrid-search.js'
+import { readGlobalHybridFtsSettings } from './user-preferences-file.js'
 import { getUserDataDir } from './config.js'
 import { getCurrentUserId } from './user-context.js'
 
@@ -83,7 +84,8 @@ export async function replaceLorebookVectorIndex(
   const sample = rows[0]!.vector
   const table = await openOrCreateTable(lorebookId, sample)
   await table.add(rows.map(rowToRecord))
-  await ensureChineseFtsIndex(table, LORE_FTS_COLUMN)
+  const settings = await readGlobalHybridFtsSettings()
+  await ensureHybridFtsIndex(table, LORE_FTS_COLUMN, settings, uri)
 }
 
 export async function deleteLorebookVectorIndex(

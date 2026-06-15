@@ -32,6 +32,8 @@ plugins/{pluginId}/
 | `plot-summary` | Historian：剧情纪要摘要、sidecar、预览确认、`prepareContext` / `completeDraft` |
 | `custom-styles` | 自定义样式注入：全局 CSS 样式表 + 对话级开关覆盖，`registerStyles` |
 
+**规划（未实现）**：**`trace-keeper`（迹录 / Trace Keeper）** — RP 状态追踪、用户可自定义 schema/template/CSS、左栏 HTML 面板；见 **`DOC/30-plugin-trace-keeper.md`**。
+
 **插件作者主文档（宿主 API 单一入口）**：**`DOC/18-plugin-host-developer-api.md`**。
 
 **插件出站 API 解析**（`complete` / `preflight` / `complete-draft`）：`对话 apiPreset.plugins[pluginId]` → `apiPreset.plugin` → **插件设置页 `apiConfigId`**。连接设置无全局 plugin binding。实现：`server/src/plugin-api-resolve.ts`。

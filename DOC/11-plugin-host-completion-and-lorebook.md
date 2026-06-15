@@ -67,7 +67,7 @@ host.conversation.patchPluginSettings(partial): Promise<Record<string, unknown>>
 
 | 项 | 定案 |
 |----|------|
-| 摘要 / Tracker | **插件业务**；宿主**不**提供 `summarize`、不内置摘要 prompt |
+| 摘要 / Tracker | **插件业务**；宿主**不**提供 `summarize`、不内置摘要 prompt；**迹录（Trace Keeper）**定案见 **`DOC/30`** |
 | 出站模型调用 | 宿主提供 **通用「按已登记 API 预设转发 messages」**；插件提交 `apiConfigId` + `messages[]` |
 | 资料库 | 宿主提供 **Lorebook 条目级读写**（insert / patch）与 **通用 `apply-order`**（按插件 layout 写 `order`）；**不**要求插件整本 `PUT /api/lorebooks` |
 | 资料库排序 | **插件**提供 `entriesByGroup` / `groupIds` layout；**宿主**只校验并 1 读 1 写（见 §2.5） |

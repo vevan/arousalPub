@@ -110,7 +110,7 @@ applyRules(text | messages, ruleIds?, ctx)  // 过滤 enabled + phase + skipLast
 | `persist`（落盘回溯） | 主落盘成功后，对 `tail − N` 等 retro 轮批量写盘；失败写入 `index.retroPersistPending` 下次重试，**不阻塞**主落盘 |
 | `display` | 渲染轮：`turnOrdinal ≤ tailOrdinal − N` |
 
-典型 **tracker**：`phases: ["outgoing","persist"]`，`skipLastNTurns: 3` — 近 3 轮保留跟踪标记给模型与磁盘，更早轮在 outgoing/persist 剥除。
+典型 **tracker**（如 **迹录** `<ex-trace-keeper>`，见 **`DOC/30`**）：`phases: ["outgoing","persist"]`，`skipLastNTurns: 3` — 近 3 轮保留跟踪标记给模型与磁盘，更早轮在 outgoing/persist 剥除。
 
 ### 2.4 流式与落盘后 UI
 

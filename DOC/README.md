@@ -11,6 +11,7 @@
 | 部署 / 安全 | [`25-security-deployment.md`](25-security-deployment.md)、[`17-admin-console.md`](17-admin-console.md)、[`data/README.md`](../data/README.md) |
 | 插件开发 | [`09`](09-plugin-system-and-guidance-generate.md) → [`18`](18-plugin-host-developer-api.md) → [`10`](10-plugin-conversation-host.md) |
 | Historian | [`12-plugin-plot-summary.md`](12-plugin-plot-summary.md) |
+| 迹录（Trace Keeper） | [`30-plugin-trace-keeper.md`](30-plugin-trace-keeper.md) |
 | 待办 | [`04-TODO.md`](04-TODO.md) |
 
 ## 核心（01–08）
@@ -46,6 +47,7 @@
 | [`23`](23-conversation-branches.md) | 部分 | 分支磁盘 + memory；UI 待做 |
 | [`24`](24-regex-and-session-audit.md) | 主体 ✅ | 正则三阶段、debug 审计 |
 | [`25`](25-security-deployment.md) | ✅ | 部署硬化、**API Key 隔离与磁盘加密** §15 |
+| [`30`](30-plugin-trace-keeper.md) | 定案 | **迹录** `trace-keeper`：Together、TraceBundle、左栏 HTML 面板 |
 
 ## 已归档（勿再新建同级文档）
 

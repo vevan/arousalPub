@@ -6,6 +6,7 @@
 
 ## P1
 
+- [ ] **迹录插件** `trace-keeper` — 定案见 **`DOC/30`**：宿主 `host.ui.panel`、Together + `<ex-trace-keeper>`、TraceBundle、左 drawer
 - [ ] **对话页顶栏 UI 优化** — `ChatConversationView` `chat-header`（返回、标题、effective 预设/模型提示等）布局与信息层级打磨；见 `DOC/03` §11.4
 - [ ] **消息树 / 分支 UI** — `DOC/23` §6（服务端 memory/枚举已就绪）
 - [ ] **独立文档 RAG**（≠ 世界书 vector）— 可选；前置 `DOC/20` M1+M4

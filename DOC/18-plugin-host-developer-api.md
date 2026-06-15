@@ -518,6 +518,7 @@ class PluginHostApiError {
 
 | 能力 | 说明 |
 |------|------|
+| **`host.ui.panel`** | 左侧（及日后其它 `placement`）HTML 面板：`register` / `setHtml` / `setPinned` / `onPanelEvent`；DOMPurify `pluginPanel` 档；**迹录**见 **`DOC/30`** |
 | 服务端 `onAssistantReplyPersisted` | 自动触发摘要流水线（当前由 Web lifecycle 负责） |
 | 字段级 permissions 与 turn.plugins 写权限细分 | 部分 enforce 仍随路由演进 |
 
@@ -531,6 +532,7 @@ class PluginHostApiError {
 | `DOC/10-plugin-conversation-host.md` | 对话 DTO、runScope 细节、swipe/export |
 | `DOC/11-plugin-host-completion-and-lorebook.md` | 补全与 lorebook 产品设计定案 |
 | `DOC/12-plugin-plot-summary.md` | Historian（剧情纪要）完整业务示例 |
+| `DOC/30-plugin-trace-keeper.md` | **迹录** Trace Keeper（定案 · 未实现） |
 | `plugins/README.md` | 内置插件列表与打包说明 |
 
 ---

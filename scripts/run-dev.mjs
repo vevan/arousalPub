@@ -21,7 +21,7 @@ function waitForPort(port, { host = '127.0.0.1', timeoutMs = 90_000 } = {}) {
         if (Date.now() - start > timeoutMs) {
           reject(
             new Error(
-              `在 ${timeoutMs / 1000}s 内未检测到 ${host}:${port}。请检查是否已有其它程序占用该端口，或后端启动报错。`,
+              `Backend not listening on ${host}:${port} within ${timeoutMs / 1000}s. Check whether the port is in use or the server failed to start.`,
             ),
           )
           return
@@ -50,11 +50,11 @@ let webProc = null
 
 try {
   await waitForPort(serverPort)
-  console.log('\n[dev] 后端已就绪，启动前端……')
+  console.log('\n[dev] Backend ready, starting frontend …')
   console.log(
-    `[dev] 端口：后端 ${serverPort}，前端 ${webPort}（可在 config.yaml 修改 serverPort / webPort）`,
+    `[dev] Ports: backend ${serverPort}, frontend ${webPort} (edit serverPort / webPort in config.yaml)`,
   )
-  console.log(`[dev] 浏览器打开: http://localhost:${webPort}/\n`)
+  console.log(`[dev] Open in browser: http://localhost:${webPort}/\n`)
   webProc = spawn('npm', ['run', 'dev', '-w', 'web'], {
     cwd: root,
     stdio: 'inherit',

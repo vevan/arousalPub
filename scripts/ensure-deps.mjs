@@ -84,5 +84,5 @@ export function ensureDependencies(repoRoot, { label = 'start' } = {}) {
   }
 
   runNpmInstall(repoRoot)
-  writeStamp(repoRoot, fingerprint)
+  writeStamp(repoRoot, computeDepsFingerprint(repoRoot))
 }

@@ -12,7 +12,6 @@ import {
   defaultTextForField,
   newObjectListItem,
   parseObjectListField,
-  serializeObjectListField,
 } from '@/utils/plugin-settings-validate'
 import { translatePluginI18nKey } from '@/utils/plugin-locale-text'
 import {
@@ -28,6 +27,11 @@ import {
   optionsSourceCacheKey,
 } from '@/utils/plugin-settings-options-source'
 import { parseCheckboxGroupField } from '@/utils/plugin-settings-validate'
+import {
+  TRACE_KEEPER_PLUGIN_ID,
+  traceKeeperBundleSelectItems,
+  traceKeeperConvBundleSelectItems,
+} from '@/utils/trace-keeper-settings-ui'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -213,12 +217,10 @@ function itemEnumItems(field: PluginSettingsItemFieldSchema) {
 }
 
 function displayTextValue(
-  field: PluginSettingsFieldSchema | PluginSettingsItemFieldSchema,
+  _field: PluginSettingsFieldSchema | PluginSettingsItemFieldSchema,
   value: unknown,
 ): string {
-  const s = String(value ?? '')
-  if (s.trim()) return s
-  return defaultTextForField(field, props.pluginId, t, te)
+  return String(value ?? '')
 }
 
 function restoreDefaultPrompt(
@@ -385,13 +387,18 @@ function setObjectListItems(
   field: PluginSettingsFieldSchema,
   items: Record<string, unknown>[],
 ) {
-  setField(field.key, serializeObjectListField(items))
+  setField(field.key, items)
 }
 
 function addObjectListItem(field: PluginSettingsFieldSchema) {
   const itemFields = field.itemFields ?? []
   const items = [...objectListItems(field)]
-  items.push(newObjectListItem(itemFields, props.pluginId, t, te))
+  const usedIds = new Set(
+    items
+      .map((item) => String(item.id ?? '').trim())
+      .filter((id) => id.length > 0),
+  )
+  items.push(newObjectListItem(itemFields, props.pluginId, t, te, usedIds))
   setObjectListItems(field, items)
 }
 
@@ -412,11 +419,18 @@ function updateObjectListItem(
   setObjectListItems(field, items)
 }
 
+function objectListPanelKey(
+  field: PluginSettingsFieldSchema,
+  index: number,
+): string {
+  return `${field.key}-row-${index}`
+}
+
 function objectListItemTitle(
   item: Record<string, unknown>,
   index: number,
 ): string {
-  const name = String(item.name ?? item.label ?? item.id ?? '').trim()
+  const name = String(item.label ?? item.name ?? '').trim()
   if (name) return name
   const pluginKey = pluginI18nKey(props.pluginId, 'objectListItemUntitled')
   if (te(pluginKey)) {
@@ -466,6 +480,29 @@ function requestRemoveObjectListItem(
     title: objectListItemTitle(item, index),
   }
   objectListRemoveOpen.value = true
+}
+
+function isTraceKeeperActiveBundleField(field: PluginSettingsFieldSchema): boolean {
+  return (
+    props.pluginId === TRACE_KEEPER_PLUGIN_ID && field.key === 'activeBundleId'
+  )
+}
+
+function isTraceKeeperConvBundleField(field: PluginSettingsFieldSchema): boolean {
+  return props.pluginId === TRACE_KEEPER_PLUGIN_ID && field.key === 'bundleId'
+}
+
+function traceKeeperUserBundleOptions(): { title: string; value: string }[] {
+  return traceKeeperBundleSelectItems(props.modelValue, props.pluginId, t, te)
+}
+
+function traceKeeperConvBundleOptions(): { title: string; value: string }[] {
+  return traceKeeperConvBundleSelectItems(
+    props.globalSettings ?? {},
+    props.pluginId,
+    t,
+    te,
+  )
 }
 
 function cancelRemoveObjectListItem() {
@@ -810,7 +847,7 @@ function confirmRemoveObjectListItem() {
           >
             <v-expansion-panel
               v-for="(item, index) in objectListItems(field)"
-              :key="String(item.id ?? index)"
+              :key="objectListPanelKey(field, index)"
               class="plugin-object-list__item"
             >
               <v-expansion-panel-title class="text-subtitle-2 py-2">
@@ -959,6 +996,29 @@ function confirmRemoveObjectListItem() {
             {{ addObjectListLabel() }}
           </v-btn>
         </div>
+
+        <v-select
+          v-else-if="
+            field.type === 'string' &&
+            (isTraceKeeperActiveBundleField(field) ||
+              isTraceKeeperConvBundleField(field))
+          "
+          :model-value="String(fieldValue(field.key) ?? '')"
+          :items="
+            isTraceKeeperConvBundleField(field)
+              ? traceKeeperConvBundleOptions()
+              : traceKeeperUserBundleOptions()
+          "
+          item-title="title"
+          item-value="value"
+          :label="labelFor(field)"
+          :hint="hintFor(field)"
+          persistent-hint
+          variant="outlined"
+          density="compact"
+          hide-details="auto"
+          @update:model-value="setField(field.key, $event ?? '')"
+        />
 
         <v-text-field
           v-else-if="field.type === 'string'"

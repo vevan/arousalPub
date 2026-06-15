@@ -7,6 +7,7 @@ import {
   hasPluginLocaleMessage,
   readPluginLocaleMessage,
 } from '@/utils/plugin-locale-text'
+import { allocateShortId } from '@/utils/short-id'
 
 export function parseObjectListField(value: unknown): Record<string, unknown>[] {
   if (Array.isArray(value)) {
@@ -77,6 +78,7 @@ export function parseCheckboxGroupField(value: unknown): string[] {
 }
 
 const TRACE_KEEPER_PLUGIN_ID = 'trace-keeper'
+const TRACE_KEEPER_BUILTIN_BUNDLE_ID = 'scene-tracker-default'
 
 function validateTraceKeeperBundleList(
   model: Record<string, unknown>,
@@ -87,6 +89,11 @@ function validateTraceKeeperBundleList(
   if (pluginId !== TRACE_KEEPER_PLUGIN_ID) return null
   const items = parseObjectListField(model.bundleList)
   for (const item of items) {
+    const label = String(item.label ?? '').trim()
+    if (!label) {
+      const key = pluginI18nKey(pluginId, 'bundleNameRequired')
+      return te(key) ? t(key) : 'Bundle name is required'
+    }
     const id = String(item.id ?? '').trim()
     if (!id) {
       const key = pluginI18nKey(pluginId, 'bundleIdRequired')
@@ -213,7 +220,7 @@ export function hydratePluginSettingsDefaults(
         }
       }
       if (changed) {
-        model[field.key] = serializeObjectListField(items)
+        model[field.key] = items
       }
     }
   }
@@ -224,9 +231,14 @@ export function newObjectListItem(
   pluginId: string,
   t: (key: string) => string,
   te: (key: string) => boolean,
+  usedIds?: Set<string>,
 ): Record<string, unknown> {
+  const reserved = new Set(usedIds ?? [])
+  if (pluginId === TRACE_KEEPER_PLUGIN_ID) {
+    reserved.add(TRACE_KEEPER_BUILTIN_BUNDLE_ID)
+  }
   const item: Record<string, unknown> = {
-    id: `item-${Date.now().toString(36)}`,
+    id: allocateShortId(reserved),
   }
   for (const sub of itemFields) {
     if (sub.type === 'boolean') {

@@ -28,17 +28,11 @@
         "default": "[]",
         "itemFields": [
           {
-            "key": "id",
-            "type": "string",
-            "labelKey": "bundleItemIdLabel",
-            "descriptionKey": "bundleItemIdDesc",
-            "required": true
-          },
-          {
             "key": "label",
             "type": "string",
             "labelKey": "bundleItemLabelLabel",
-            "descriptionKey": "bundleItemLabelDesc"
+            "descriptionKey": "bundleItemLabelDesc",
+            "required": true
           },
           {
             "key": "systemPromptTemplate",

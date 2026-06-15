@@ -3,6 +3,7 @@ import type {
   PluginSettingsItemFieldSchema,
   PluginSettingsSchema,
 } from './types.js'
+import { generateShortId } from '../short-id.js'
 
 export class PluginSettingsValidationError extends Error {
   readonly code = 'plugin_settings_invalid' as const
@@ -404,7 +405,7 @@ function coerceObjectListItem(
   if (typeof raw.id === 'string' && raw.id.trim()) {
     out.id = raw.id.trim()
   } else {
-    out.id = `item-${index}-${Date.now().toString(36)}`
+    out.id = generateShortId()
   }
   for (const sub of itemFields) {
     out[sub.key] = coerceItemField(sub, raw[sub.key])

@@ -9,6 +9,7 @@ import {
   readBuildMeta,
 } from './build-meta.mjs'
 import { loadDevConfig } from './dev-config.mjs'
+import { ensureDependencies } from './ensure-deps.mjs'
 import { runBuildCountdownPrompt } from './prompt-build-countdown.mjs'
 import { printTerminalLink } from './terminal-link.mjs'
 
@@ -16,18 +17,6 @@ const { serverPort, repoRoot, startCountdownSeconds } = loadDevConfig()
 
 const webIndex = path.join(repoRoot, 'web', 'dist', 'index.html')
 const serverEntry = path.join(repoRoot, 'server', 'dist', 'index.js')
-
-function ensureDependencies() {
-  const staticPkg = path.join(repoRoot, 'node_modules', '@fastify', 'static')
-  if (existsSync(staticPkg)) return
-  console.log('[start] Dependencies incomplete, running npm install …\n')
-  const r = spawnSync('npm', ['install'], {
-    cwd: repoRoot,
-    stdio: 'inherit',
-    shell: true,
-  })
-  if (r.status !== 0) process.exit(r.status ?? 1)
-}
 
 function runBuild() {
   console.log('[start] Building web + server …\n')
@@ -51,7 +40,7 @@ function logGitStaleReason() {
   )
 }
 
-ensureDependencies()
+ensureDependencies(repoRoot, { label: 'start' })
 
 const missingDist =
   !existsSync(webIndex) || !existsSync(serverEntry)

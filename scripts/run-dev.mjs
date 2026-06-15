@@ -2,8 +2,11 @@ import { spawn } from 'node:child_process'
 import { createConnection } from 'node:net'
 import process from 'node:process'
 import { loadDevConfig } from './dev-config.mjs'
+import { ensureDependencies } from './ensure-deps.mjs'
 
 const { serverPort, webPort, repoRoot: root } = loadDevConfig()
+
+ensureDependencies(root, { label: 'dev' })
 
 function waitForPort(port, { host = '127.0.0.1', timeoutMs = 90_000 } = {}) {
   const start = Date.now()

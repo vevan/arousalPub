@@ -1,9 +1,5 @@
 #!/usr/bin/env sh
 cd "$(dirname "$0")"
-if [ ! -d node_modules ]; then
-  echo "Installing dependencies..."
-  npm install
-fi
 echo ""
 echo "Countdown before start: config.yaml startCountdownSeconds (B=rebuild, Space=skip)"
 echo "Open in browser after start:"

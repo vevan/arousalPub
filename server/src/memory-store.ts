@@ -6,11 +6,18 @@ import {
   normalizeBranchPath,
 } from './chunk-path.js'
 import { getUserDataDir } from './config.js'
+import {
+  ensureChineseFtsIndex,
+  hybridRelevanceScore,
+  MEMORY_FTS_COLUMN,
+  runLanceHybridSearch,
+} from './lance-hybrid-search.js'
 import { getCurrentUserId } from './user-context.js'
 import {
   isTurnIdNullable,
   readTurnMemoryRowsFromTable,
   rowsToTurnMemoryArrowTable,
+  tableHasCorpusColumn,
   type TurnMemoryRow,
 } from './turn-memory-arrow.js'
 
@@ -104,6 +111,20 @@ async function migrateNullableTable(
   return createTurnMemoryTable(conversationId, rows)
 }
 
+async function migrateMissingCorpusColumn(
+  conversationId: string,
+  table: Table,
+): Promise<Table | null> {
+  if (await tableHasCorpusColumn(table)) return table
+  const rows = await readTurnMemoryRowsFromTable(table)
+  await dropTableByName(conversationId, TABLE_NAME)
+  if (rows.length === 0) return null
+  const withCorpus = rows.map((r) => ({ ...r, corpus: r.corpus || '' }))
+  const recreated = await createTurnMemoryTable(conversationId, withCorpus)
+  await ensureChineseFtsIndex(recreated, MEMORY_FTS_COLUMN)
+  return recreated
+}
+
 async function ensureMergeReadyTable(
   conversationId: string,
   table: Table,
@@ -111,8 +132,10 @@ async function ensureMergeReadyTable(
   if (await isTurnIdNullable(table)) {
     return migrateNullableTable(conversationId, table)
   }
-  await ensureTurnIdPrimaryKey(table, conversationId)
-  return table
+  const withCorpus = await migrateMissingCorpusColumn(conversationId, table)
+  if (!withCorpus) return null
+  await ensureTurnIdPrimaryKey(withCorpus, conversationId)
+  return withCorpus
 }
 
 async function createTurnMemoryTable(
@@ -169,7 +192,8 @@ export async function upsertTurnMemoryRowsBatch(
     existing = await ensureMergeReadyTable(conversationId, existing)
   }
   if (!existing) {
-    await createTurnMemoryTable(conversationId, valid)
+    const table = await createTurnMemoryTable(conversationId, valid)
+    await ensureChineseFtsIndex(table, MEMORY_FTS_COLUMN)
     return
   }
   await existing
@@ -223,6 +247,10 @@ export async function replaceTurnMemoryIndex(
       conversationId,
       valid.slice(i, i + batchSize),
     )
+  }
+  const table = await openMemoryTable(conversationId)
+  if (table) {
+    await ensureChineseFtsIndex(table, MEMORY_FTS_COLUMN)
   }
 }
 
@@ -300,17 +328,22 @@ function collectSearchHits(
     }
     const chunkFileName = String(row.chunkFileName ?? '')
     if (!chunkFileName) continue
-    const dist = Number(row._distance ?? 0)
-    const score = 1 / (1 + dist)
-    out.push({ turnId, turnOrdinal, branchPath, chunkFileName, score })
+    out.push({
+      turnId,
+      turnOrdinal,
+      branchPath,
+      chunkFileName,
+      score: hybridRelevanceScore(row),
+    })
     if (out.length >= topK * 8) break
   }
 }
 
-/** 单表向量 TopK（Memory v2） */
+/** 单表 hybrid TopK（Memory v2） */
 export async function searchTurnMemoryVectors(
   conversationId: string,
   queryVector: number[],
+  queryText: string,
   topK: number,
   excludeTurnIds: Set<string> = new Set(),
   maxOrdinalExclusive?: number,
@@ -322,15 +355,18 @@ export async function searchTurnMemoryVectors(
   const table = await openMemoryTable(conversationId)
   if (!table) return []
 
-  let vectorQuery = table.vectorSearch(queryVector)
   const whereClause = buildMemoryVectorSearchWhereClause(
     allowedBranchPaths,
     maxOrdinalExclusive,
   )
-  if (whereClause) {
-    vectorQuery = vectorQuery.where(whereClause)
-  }
-  const raw = await vectorQuery.limit(k).toArray()
+  const raw = await runLanceHybridSearch({
+    table,
+    queryVector,
+    queryText,
+    textColumn: MEMORY_FTS_COLUMN,
+    limit: k,
+    whereClause,
+  })
   const hits: MemorySearchHit[] = []
   collectSearchHits(
     raw as Record<string, unknown>[],

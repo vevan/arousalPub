@@ -152,6 +152,7 @@ export async function runMemoryPipeline(
       memoryHits = await searchTurnMemoryVectors(
         input.conversationId,
         emb.vector,
+        query,
         input.memorySettings.memoryTopK,
         recentTurnIds,
         minRecentOrdinal,

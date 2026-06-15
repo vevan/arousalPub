@@ -213,6 +213,7 @@ async function indexTurnMemory(
       turnOrdinal: turn.turnOrdinal,
       branchPath: resolvedBranch,
       chunkFileName: resolvedChunk,
+      corpus,
       vector: emb.vector,
     },
     isTail,
@@ -246,7 +247,7 @@ export async function reindexConversationMemory(
   type PendingTurn = {
     key: string
     corpus: string
-    row: Omit<TurnMemoryRow, 'vector'>
+    row: Omit<TurnMemoryRow, 'vector' | 'corpus'>
   }
   const pending: PendingTurn[] = []
 
@@ -291,7 +292,7 @@ export async function reindexConversationMemory(
   for (const item of pending) {
     const vector = embedBatch.vectors.get(item.key)
     if (!vector?.length) continue
-    builtRows.push({ ...item.row, vector })
+    builtRows.push({ ...item.row, corpus: item.corpus, vector })
     done += 1
     indexed += 1
     tick()

@@ -1,6 +1,12 @@
 import path from 'node:path'
 import type { Table } from '@lancedb/lancedb'
 import { closeLanceDb, openLanceDb } from './lance-connection-pool.js'
+import {
+  ensureChineseFtsIndex,
+  hybridRelevanceScore,
+  LORE_FTS_COLUMN,
+  runLanceHybridSearch,
+} from './lance-hybrid-search.js'
 import { getUserDataDir } from './config.js'
 import { getCurrentUserId } from './user-context.js'
 
@@ -9,6 +15,7 @@ const TABLE_NAME = 'lore_entries'
 export interface LoreEntryVectorRow {
   entryId: string
   lorebookId: string
+  text: string
   vector: number[]
 }
 
@@ -16,6 +23,7 @@ function rowToRecord(row: LoreEntryVectorRow): Record<string, unknown> {
   return {
     entryId: row.entryId,
     lorebookId: row.lorebookId,
+    text: row.text,
     vector: row.vector,
   }
 }
@@ -50,6 +58,7 @@ async function openOrCreateTable(
   const seed: LoreEntryVectorRow = {
     entryId: '__seed__',
     lorebookId,
+    text: '',
     vector: sampleVector,
   }
   const table = await db.createTable(TABLE_NAME, [rowToRecord(seed)])
@@ -74,6 +83,7 @@ export async function replaceLorebookVectorIndex(
   const sample = rows[0]!.vector
   const table = await openOrCreateTable(lorebookId, sample)
   await table.add(rows.map(rowToRecord))
+  await ensureChineseFtsIndex(table, LORE_FTS_COLUMN)
 }
 
 export async function deleteLorebookVectorIndex(
@@ -95,6 +105,7 @@ export interface LoreEntryVectorHit {
 export async function searchLorebookEntryVectors(
   lorebookId: string,
   queryVector: number[],
+  queryText: string,
   topK: number,
   excludeEntryIds: Set<string> = new Set(),
 ): Promise<LoreEntryVectorHit[]> {
@@ -104,19 +115,20 @@ export async function searchLorebookEntryVectors(
   if (!names.includes(TABLE_NAME)) return []
   const table = await db.openTable(TABLE_NAME)
   const k = Math.min(64, Math.max(topK * 3, topK))
-  const raw = await table
-    .vectorSearch(queryVector)
-    .limit(k)
-    .toArray()
+  const raw = await runLanceHybridSearch({
+    table,
+    queryVector,
+    queryText,
+    textColumn: LORE_FTS_COLUMN,
+    limit: k,
+  })
   const hits: LoreEntryVectorHit[] = []
   for (const row of raw) {
     const entryId = String(row.entryId ?? '')
     if (!entryId || entryId === '__seed__' || excludeEntryIds.has(entryId)) {
       continue
     }
-    const dist = Number(row._distance ?? 0)
-    const score = 1 / (1 + dist)
-    hits.push({ entryId, score })
+    hits.push({ entryId, score: hybridRelevanceScore(row) })
     if (hits.length >= topK) break
   }
   return hits

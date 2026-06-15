@@ -213,6 +213,7 @@ async function collectVectorMatches(
     const hits = await searchLorebookEntryVectors(
       lid,
       emb.vector,
+      queryText,
       topK,
       seenEntryIds,
     )

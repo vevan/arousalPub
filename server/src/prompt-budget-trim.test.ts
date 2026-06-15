@@ -112,7 +112,7 @@ describe('trimOneMatchedLore', () => {
 })
 
 describe('trimOneMemoryItem', () => {
-  it('drops lowest score first', () => {
+  it('drops earliest turnOrdinal first', () => {
     const state = baseState()
     assert.equal(trimOneMemoryItem(state, 1), true)
     assert.equal(state.memoryItems.length, 1)

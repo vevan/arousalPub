@@ -17,6 +17,8 @@ export interface TurnMemoryRow {
   turnOrdinal: number
   branchPath: string
   chunkFileName: string
+  /** 与 turnEmbeddingCorpus 相同，供 Lance BM25 FTS */
+  corpus: string
   vector: number[]
 }
 
@@ -26,6 +28,7 @@ function rowToRecord(row: TurnMemoryRow): Record<string, unknown> {
     turnOrdinal: row.turnOrdinal,
     branchPath: normalizeBranchPath(row.branchPath),
     chunkFileName: normalizeChunkBasename(row.chunkFileName),
+    corpus: row.corpus,
     vector: row.vector,
   }
 }
@@ -37,6 +40,7 @@ export function turnMemorySchema(vectorDimensions: number): Schema {
     new Field('turnOrdinal', new Int32(), false),
     new Field('branchPath', new Utf8(), false),
     new Field('chunkFileName', new Utf8(), false),
+    new Field('corpus', new Utf8(), false),
     new Field(
       'vector',
       new FixedSizeList(
@@ -71,6 +75,11 @@ export async function isTurnIdNullable(table: LanceTable): Promise<boolean> {
   const turnIdField = schema.fields.find((f) => f.name === 'turnId')
   if (!turnIdField) return true
   return turnIdField.nullable !== false
+}
+
+export async function tableHasCorpusColumn(table: LanceTable): Promise<boolean> {
+  const schema = await table.schema()
+  return schema.fields.some((f) => f.name === 'corpus')
 }
 
 function vectorToNumberArray(raw: unknown): number[] | null {
@@ -113,6 +122,7 @@ export async function readTurnMemoryRowsFromTable(
       turnOrdinal: Number(r.turnOrdinal ?? 0),
       branchPath,
       chunkFileName,
+      corpus: String(r.corpus ?? ''),
       vector,
     })
   }

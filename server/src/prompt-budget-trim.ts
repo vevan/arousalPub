@@ -40,7 +40,7 @@ export interface TrimmableLoreEntry {
 
   mode: 'keyword' | 'vector'
 
-  /** vector 为相似度；keyword 为 entry.priority（裁切时优先去掉低值） */
+  /** vector / hybrid 为 RRF 融合分；keyword 为 entry.priority（裁切时优先去掉低值） */
 
   score: number
 
@@ -244,13 +244,15 @@ export function trimOneMemoryItem(
 
   let dropIdx = 0
 
-  let lowest = state.memoryItems[0]!.score
+  let earliest = state.memoryItems[0]!.turn.turnOrdinal
 
   for (let i = 1; i < state.memoryItems.length; i++) {
 
-    if (state.memoryItems[i]!.score < lowest) {
+    const ord = state.memoryItems[i]!.turn.turnOrdinal
 
-      lowest = state.memoryItems[i]!.score
+    if (ord < earliest) {
+
+      earliest = ord
 
       dropIdx = i
 

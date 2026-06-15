@@ -133,6 +133,7 @@ async function reindexOneLorebookVector(
       rows.push({
         entryId: e.id,
         lorebookId: lb.id,
+        text: lorebookEntryEmbeddingCorpus(e),
         vector,
       })
       options?.onEntryDone?.()
@@ -145,6 +146,7 @@ async function reindexOneLorebookVector(
       rows.push({
         entryId: e.id,
         lorebookId: lb.id,
+        text: corpus,
         vector: emb.vector,
       })
       options?.onEntryDone?.()

@@ -440,7 +440,7 @@ export async function updateGlobalHybridFtsSettings(
     hybridFts,
   })
   if (profileRequiresDict(hybridFts.profile)) {
-    await prepareHybridFtsSettings(hybridFts)
+    await prepareHybridFtsSettings(hybridFts, getCurrentUserId())
   }
   return hybridFts
 }

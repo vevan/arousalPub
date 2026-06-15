@@ -13,27 +13,73 @@ import {
 import { getUserDataDir } from './config.js'
 import { getCurrentUserId } from './user-context.js'
 
+const HYBRID_FTS_ROOT = 'hybrid-fts'
+const LEGACY_LANCE_MODEL_ROOT = 'lance-language-models'
+
 const downloadInflight = new Map<string, Promise<void>>()
 
-export function lanceLanguageModelHome(userId?: string): string {
-  return path.join(getUserDataDir(userId ?? getCurrentUserId()), 'lance-language-models')
+function resolveUserId(userId?: string): string {
+  return userId ?? getCurrentUserId()
 }
 
-/** Lance 运行时读取的激活词典路径 */
-export function lanceActiveDictPath(userId?: string): string {
-  return path.join(lanceLanguageModelHome(userId), 'jieba', 'default', 'dict.txt')
+/** 用户 Hybrid FTS 资源根：`data/{userId}/hybrid-fts/` */
+export function hybridFtsRoot(userId: string): string {
+  return path.join(getUserDataDir(userId), HYBRID_FTS_ROOT)
 }
 
-/** 某规格词典的存储路径（多档并存） */
-export function dictVariantStoragePath(
+/**
+ * Lance `LANCE_LANGUAGE_MODEL_HOME`：每个 profile+规格自带完整 model 子树。
+ * 例：`…/hybrid-fts/zh-jieba/big/`
+ */
+export function hybridFtsModelHome(
+  userId: string,
+  profile: HybridFtsProfile,
   variant: HybridFtsDictVariant,
-  userId?: string,
+): string {
+  return path.join(hybridFtsRoot(userId), profile, variant)
+}
+
+/** 某规格词典文件（Lance 约定 `jieba/default/dict.txt` 相对 model home） */
+export function hybridFtsDictPath(
+  userId: string,
+  profile: HybridFtsProfile,
+  variant: HybridFtsDictVariant,
+): string {
+  if (profile === 'zh-jieba') {
+    return path.join(
+      hybridFtsModelHome(userId, profile, variant),
+      'jieba',
+      'default',
+      'dict.txt',
+    )
+  }
+  throw new Error(`unsupported dict profile: ${profile}`)
+}
+
+function legacyLanceModelRoot(userId: string): string {
+  return path.join(getUserDataDir(userId), LEGACY_LANCE_MODEL_ROOT)
+}
+
+/** @deprecated 旧布局；仅迁移用 */
+function legacyDictVariantPath(
+  userId: string,
+  variant: HybridFtsDictVariant,
 ): string {
   return path.join(
-    lanceLanguageModelHome(userId),
+    legacyLanceModelRoot(userId),
     'jieba',
     'variants',
     variant,
+    'dict.txt',
+  )
+}
+
+/** @deprecated 旧布局「激活槽」；仅迁移用 */
+function legacyActiveDictPath(userId: string): string {
+  return path.join(
+    legacyLanceModelRoot(userId),
+    'jieba',
+    'default',
     'dict.txt',
   )
 }
@@ -42,51 +88,81 @@ function dictLooksValid(head: string): boolean {
   return head.length > 0 && !head.includes('<!DOCTYPE') && !head.includes('<html')
 }
 
+async function readDictHead(dictPath: string): Promise<string | null> {
+  try {
+    return (await readFile(dictPath, 'utf8')).slice(0, 80)
+  } catch {
+    return null
+  }
+}
+
+/** 相对 `data/{userId}/` 的路径（API 展示用，统一 `/` 分隔） */
+export function toUserDataRelativePath(userId: string, absolutePath: string): string {
+  const rel = path.relative(getUserDataDir(userId), absolutePath)
+  if (rel.startsWith('..')) {
+    return rel.split(path.sep).join('/')
+  }
+  return rel.split(path.sep).join('/')
+}
+
+function hybridFtsDictPathRelative(
+  userId: string,
+  profile: HybridFtsProfile,
+  variant: HybridFtsDictVariant,
+): string {
+  return toUserDataRelativePath(userId, hybridFtsDictPath(userId, profile, variant))
+}
+
+function hybridFtsModelHomeRelative(
+  userId: string,
+  profile: HybridFtsProfile,
+  variant: HybridFtsDictVariant,
+): string {
+  return toUserDataRelativePath(userId, hybridFtsModelHome(userId, profile, variant))
+}
+
+async function migrateLegacyDictIfNeeded(
+  profile: HybridFtsProfile,
+  variant: HybridFtsDictVariant,
+  userId: string,
+): Promise<boolean> {
+  if (profile !== 'zh-jieba') return false
+  const dest = hybridFtsDictPath(userId, profile, variant)
+  const candidates = [legacyDictVariantPath(userId, variant)]
+  if (variant === 'default') {
+    candidates.push(legacyActiveDictPath(userId))
+  }
+  for (const legacy of candidates) {
+    if (!existsSync(legacy)) continue
+    const head = await readDictHead(legacy)
+    if (!head || !dictLooksValid(head)) continue
+    await mkdir(path.dirname(dest), { recursive: true })
+    await copyFile(legacy, dest)
+    return true
+  }
+  return false
+}
+
 export async function isDictVariantDownloaded(
   profile: HybridFtsProfile,
   variant: HybridFtsDictVariant,
   userId?: string,
 ): Promise<boolean> {
   if (!profileRequiresDict(profile)) return true
-  const dictPath = dictVariantStoragePath(variant, userId)
+  const uid = resolveUserId(userId)
+  const dictPath = hybridFtsDictPath(uid, profile, variant)
   if (!existsSync(dictPath)) {
-    return migrateLegacyActiveDict(profile, variant, userId)
+    return migrateLegacyDictIfNeeded(profile, variant, uid)
   }
-  try {
-    const head = (await readFile(dictPath, 'utf8')).slice(0, 80)
-    return dictLooksValid(head)
-  } catch {
-    return false
-  }
-}
-
-/** 旧版仅 jieba/default/dict.txt 时，视为 default 规格已下载并迁移 */
-async function migrateLegacyActiveDict(
-  profile: HybridFtsProfile,
-  variant: HybridFtsDictVariant,
-  userId?: string,
-): Promise<boolean> {
-  if (profile !== 'zh-jieba' || variant !== 'default') return false
-  const legacy = lanceActiveDictPath(userId)
-  const variantPath = dictVariantStoragePath('default', userId)
-  if (!existsSync(legacy)) return false
-  try {
-    const head = (await readFile(legacy, 'utf8')).slice(0, 80)
-    if (!dictLooksValid(head)) return false
-    if (!existsSync(variantPath)) {
-      await mkdir(path.dirname(variantPath), { recursive: true })
-      await copyFile(legacy, variantPath)
-    }
-    return true
-  } catch {
-    return false
-  }
+  const head = await readDictHead(dictPath)
+  return head != null && dictLooksValid(head)
 }
 
 export interface DictVariantStatus {
   id: HybridFtsDictVariant
   downloaded: boolean
   storagePath: string
+  modelHome: string
   sourcePath: string
   downloadUrl: string
   sizeMbApprox: number
@@ -96,7 +172,6 @@ export interface ProfileDictStatus {
   profile: HybridFtsProfile
   requiresDict: boolean
   repoUrl: string | null
-  activeDictPath: string
   variants: DictVariantStatus[]
 }
 
@@ -104,13 +179,15 @@ export async function getProfileDictStatus(
   profile: HybridFtsProfile,
   userId?: string,
 ): Promise<ProfileDictStatus> {
+  const uid = resolveUserId(userId)
   const catalog = catalogEntryForProfile(profile)
   const variants: DictVariantStatus[] = []
   for (const v of catalog.variants) {
     variants.push({
       id: v.id,
-      downloaded: await isDictVariantDownloaded(profile, v.id, userId),
-      storagePath: dictVariantStoragePath(v.id, userId),
+      downloaded: await isDictVariantDownloaded(profile, v.id, uid),
+      storagePath: hybridFtsDictPathRelative(uid, profile, v.id),
+      modelHome: hybridFtsModelHomeRelative(uid, profile, v.id),
       sourcePath: v.sourcePath,
       downloadUrl: v.downloadUrl,
       sizeMbApprox: v.sizeMbApprox,
@@ -120,7 +197,6 @@ export async function getProfileDictStatus(
     profile,
     requiresDict: catalog.requiresDict,
     repoUrl: catalog.repoUrl,
-    activeDictPath: lanceActiveDictPath(userId),
     variants,
   }
 }
@@ -141,13 +217,14 @@ export async function downloadDictVariant(
   if (!entry) {
     throw new Error(`unsupported dict variant: ${variant}`)
   }
-  if (await isDictVariantDownloaded(profile, variant, userId)) return
+  const uid = resolveUserId(userId)
+  if (await isDictVariantDownloaded(profile, variant, uid)) return
 
-  const key = `${userId ?? getCurrentUserId()}\0${profile}\0${variant}`
+  const key = `${uid}\0${profile}\0${variant}`
   let inflight = downloadInflight.get(key)
   if (!inflight) {
     inflight = (async () => {
-      const dictPath = dictVariantStoragePath(variant, userId)
+      const dictPath = hybridFtsDictPath(uid, profile, variant)
       await mkdir(path.dirname(dictPath), { recursive: true })
       const res = await fetch(entry.downloadUrl)
       if (!res.ok) {
@@ -192,35 +269,37 @@ export async function downloadDictVariant(
   await inflight
 }
 
-export async function activateDictVariant(
+export async function ensureDictVariantReady(
   profile: HybridFtsProfile,
   variant: HybridFtsDictVariant,
-  userId?: string,
+  userId: string,
 ): Promise<void> {
   if (!profileRequiresDict(profile)) return
   const normalized = normalizeHybridFtsDictVariant(variant)
   const ready = await isDictVariantDownloaded(profile, normalized, userId)
   if (!ready) {
     throw new Error(
-      `dict not downloaded: ${profile}:${normalized} (place dict.txt under ${dictVariantStoragePath(normalized, userId)})`,
+      `dict not downloaded: ${profile}:${normalized} (place dict.txt at ${hybridFtsDictPathRelative(userId, profile, normalized)})`,
     )
   }
-  const src = dictVariantStoragePath(normalized, userId)
-  const dest = lanceActiveDictPath(userId)
-  await mkdir(path.dirname(dest), { recursive: true })
-  await copyFile(src, dest)
 }
 
-export function applyLanceLanguageModelHome(userId?: string): void {
-  process.env.LANCE_LANGUAGE_MODEL_HOME = lanceLanguageModelHome(userId)
+/** zh-jieba 等需词典的分词器：返回该规格对应的 Lance model home；否则 null */
+export function languageModelHomeForSettings(
+  userId: string,
+  settings: HybridFtsSettings,
+): string | null {
+  const n = normalizeHybridFtsSettings(settings)
+  if (!profileRequiresDict(n.profile)) return null
+  const variant = normalizeHybridFtsDictVariant(n.dictVariant)
+  return hybridFtsModelHome(userId, n.profile, variant)
 }
 
 export async function prepareHybridFtsSettings(
   settings: HybridFtsSettings,
-  userId?: string,
+  userId: string,
 ): Promise<void> {
   const n = normalizeHybridFtsSettings(settings)
   if (!profileRequiresDict(n.profile)) return
-  await activateDictVariant(n.profile, n.dictVariant ?? 'default', userId)
-  applyLanceLanguageModelHome(userId)
+  await ensureDictVariantReady(n.profile, n.dictVariant ?? 'default', userId)
 }

@@ -44,7 +44,9 @@ data/
 | `chats/` | 对话会话与消息 |
 | `prompts/`、`characters/`、`lorebooks/` | 资料与预设（角色主存 **`characters/{id}.png`**，`id` 为 8 位 hex，见 `DOC/03` §6.7） |
 | `api-settings.json`、`api-keys.json` | API 配置（内联 key 落盘为 **`apiKeyEnc` / `keyEnc`**，见 `DOC/25` §15） |
-| `user-preferences.json` | 全局偏好（含 embedding **`apiKeyEnc`**） |
+| `user-preferences.json` | 全局偏好（含 embedding **`apiKeyEnc`**、**`hybridFts`** 记忆检索分词，见 `DOC/03` §14.4.3） |
+| `memory/` | Lance 远期记忆索引（**派生**，可重建；Syncthing 建议忽略，见 `DOC/03` §14.5） |
+| `hybrid-fts/` | Hybrid BM25 分词资源（如 `zh-jieba/{variant}/jieba/default/dict.txt`，`variant` 为 small / default / big；见 `DOC/03` §14.4.3） |
 | `regex-rules.json` | 原生正则规则（用户级；**无**会话级副本，见 **`DOC/24`** §2.1、§6） |
 
 ## 密钥文件（`data/` 根目录）

@@ -53,6 +53,7 @@ const variantItems = computed(() => {
       id,
       downloaded: row?.downloaded ?? false,
       storagePath: row?.storagePath ?? '',
+      modelHome: row?.modelHome ?? '',
       sourcePath: row?.sourcePath ?? '',
       sizeMbApprox: row?.sizeMbApprox ?? 0,
     }
@@ -64,7 +65,6 @@ const selectedVariantRow = computed(() =>
 )
 
 const repoUrl = computed(() => dictStatus.value?.repoUrl ?? '')
-const activeDictPath = computed(() => dictStatus.value?.activeDictPath ?? '')
 
 async function loadDictStatus(): Promise<void> {
   if (!requiresDict.value) {
@@ -263,15 +263,18 @@ async function onConfirm(): Promise<void> {
               <code>{{ selectedVariantRow.sourcePath }}</code>
             </div>
             <div
+              v-if="selectedVariantRow?.modelHome"
+              class="mb-1 hybrid-fts-path"
+            >
+              {{ $t('settings.hybridFtsSwitch.modelHome') }}:
+              <code>{{ selectedVariantRow.modelHome }}</code>
+            </div>
+            <div
               v-if="selectedVariantRow?.storagePath"
               class="mb-1 hybrid-fts-path"
             >
               {{ $t('settings.hybridFtsSwitch.storagePath') }}:
               <code>{{ selectedVariantRow.storagePath }}</code>
-            </div>
-            <div v-if="activeDictPath" class="mb-1 hybrid-fts-path">
-              {{ $t('settings.hybridFtsSwitch.activePath') }}:
-              <code>{{ activeDictPath }}</code>
             </div>
             <div class="text-medium-emphasis mt-2">
               {{ $t('settings.hybridFtsSwitch.manualHint') }}

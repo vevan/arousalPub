@@ -20,6 +20,7 @@ export interface DictVariantStatus {
   id: HybridFtsDictVariant
   downloaded: boolean
   storagePath: string
+  modelHome: string
   sourcePath: string
   downloadUrl: string
   sizeMbApprox: number
@@ -29,7 +30,6 @@ export interface ProfileDictStatus {
   profile: HybridFtsProfile
   requiresDict: boolean
   repoUrl: string | null
-  activeDictPath: string
   variants: DictVariantStatus[]
 }
 

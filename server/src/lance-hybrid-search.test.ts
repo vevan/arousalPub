@@ -1,11 +1,30 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  ensureHybridFtsIndex,
   ftsIndexOptionsForProfile,
   chineseFtsIndexOptions,
   hybridRelevanceScore,
+  toLanceFtsConfig,
 } from './lance-hybrid-search.js'
 import { formatHybridFtsSpec } from './hybrid-fts-settings.js'
+
+describe('ensureHybridFtsIndex signature', () => {
+  it('requires userId as the fifth argument', () => {
+    assert.equal(ensureHybridFtsIndex.length, 5)
+  })
+})
+
+describe('toLanceFtsConfig', () => {
+  it('includes jieba/default for zh-jieba profile', () => {
+    const cfg = toLanceFtsConfig('zh-jieba')
+    assert.equal(cfg.baseTokenizer, 'jieba/default')
+  })
+
+  it('matches ftsIndexOptionsForProfile for zh-ngram', () => {
+    assert.deepEqual(toLanceFtsConfig('zh-ngram'), ftsIndexOptionsForProfile('zh-ngram'))
+  })
+})
 
 describe('ftsIndexOptionsForProfile', () => {
   it('uses ngram tokenizer for zh-ngram', () => {

@@ -7,6 +7,7 @@ import {
 } from './chunk-path.js'
 import { getUserDataDir } from './config.js'
 import { readGlobalHybridFtsSettings } from './user-preferences-file.js'
+import { languageModelHomeForSettings } from './hybrid-fts-dict.js'
 import {
   ensureHybridFtsIndex,
   hybridRelevanceScore,
@@ -44,12 +45,14 @@ async function ensureMemoryHybridFtsIndex(
   conversationId: string,
   table: Table,
 ): Promise<void> {
+  const userId = getCurrentUserId()
   const settings = await readGlobalHybridFtsSettings()
   await ensureHybridFtsIndex(
     table,
     MEMORY_FTS_COLUMN,
     settings,
     memoryDbUri(conversationId),
+    userId,
   )
 }
 
@@ -373,6 +376,8 @@ export async function searchTurnMemoryVectors(
     allowedBranchPaths,
     maxOrdinalExclusive,
   )
+  const settings = await readGlobalHybridFtsSettings()
+  const userId = getCurrentUserId()
   const raw = await runLanceHybridSearch({
     table,
     queryVector,
@@ -380,6 +385,7 @@ export async function searchTurnMemoryVectors(
     textColumn: MEMORY_FTS_COLUMN,
     limit: k,
     whereClause,
+    languageModelHome: languageModelHomeForSettings(userId, settings),
   })
   const hits: MemorySearchHit[] = []
   collectSearchHits(

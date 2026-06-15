@@ -12,7 +12,7 @@ import { Index, rerankers } from '@lancedb/lancedb'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '../..')
-const modelHome = path.join(repoRoot, '.tmp-lance-language-models')
+const modelHome = path.join(repoRoot, '.tmp-hybrid-fts')
 
 const ROWS = [
   {

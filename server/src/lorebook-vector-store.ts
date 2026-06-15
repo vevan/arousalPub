@@ -8,6 +8,7 @@ import {
   runLanceHybridSearch,
 } from './lance-hybrid-search.js'
 import { readGlobalHybridFtsSettings } from './user-preferences-file.js'
+import { languageModelHomeForSettings } from './hybrid-fts-dict.js'
 import { getUserDataDir } from './config.js'
 import { getCurrentUserId } from './user-context.js'
 
@@ -85,7 +86,13 @@ export async function replaceLorebookVectorIndex(
   const table = await openOrCreateTable(lorebookId, sample)
   await table.add(rows.map(rowToRecord))
   const settings = await readGlobalHybridFtsSettings()
-  await ensureHybridFtsIndex(table, LORE_FTS_COLUMN, settings, uri)
+  await ensureHybridFtsIndex(
+    table,
+    LORE_FTS_COLUMN,
+    settings,
+    uri,
+    getCurrentUserId(),
+  )
 }
 
 export async function deleteLorebookVectorIndex(
@@ -117,12 +124,15 @@ export async function searchLorebookEntryVectors(
   if (!names.includes(TABLE_NAME)) return []
   const table = await db.openTable(TABLE_NAME)
   const k = Math.min(64, Math.max(topK * 3, topK))
+  const settings = await readGlobalHybridFtsSettings()
+  const userId = getCurrentUserId()
   const raw = await runLanceHybridSearch({
     table,
     queryVector,
     queryText,
     textColumn: LORE_FTS_COLUMN,
     limit: k,
+    languageModelHome: languageModelHomeForSettings(userId, settings),
   })
   const hits: LoreEntryVectorHit[] = []
   for (const row of raw) {

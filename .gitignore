@@ -69,4 +69,4 @@ _design/*.jpeg
 
 # Agent / scratch
 .tmp/
-.tmp-lance-language-models/
+.tmp-hybrid-fts/

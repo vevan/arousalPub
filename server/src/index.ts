@@ -96,7 +96,11 @@ import {
   updateGlobalDefaultAuthorsNote,
   updateGlobalHybridFtsSettings,
 } from './user-preferences-file.js'
-import { normalizeHybridFtsProfile, normalizeHybridFtsSettings } from './hybrid-fts-settings.js'
+import {
+  normalizeHybridFtsProfile,
+  normalizeHybridFtsSettings,
+  type HybridFtsSettings,
+} from './hybrid-fts-settings.js'
 import { registerHybridFtsRoutes } from './hybrid-fts-routes.js'
 import { parseBudgetTrimSettingsPatch } from './budget-trim-settings.js'
 import { normalizeEmbeddingDimensions, normalizeEmbeddingApiSettings } from './embedding-api-settings.js'
@@ -1911,10 +1915,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         defaultAuthorsNote = await updateGlobalDefaultAuthorsNote(parsed.patch)
       }
       if (hasHybridFts) {
-        const patch: {
-          profile?: string
-          dictVariant?: string | null
-        } = {}
+        const patch: Partial<HybridFtsSettings> = {}
         if (Object.prototype.hasOwnProperty.call(b.hybridFts, 'profile')) {
           const rawProfile = b.hybridFts!.profile
           const normalized = normalizeHybridFtsProfile(rawProfile)
@@ -1933,8 +1934,9 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
               .send({ error: ApiErrorCodes.hybrid_fts_dict_variant_invalid })
           }
           if (rawVariant !== null) {
+            const docForVariant = await readUserPreferencesDocument()
             const normalizedSettings = normalizeHybridFtsSettings({
-              profile: patch.profile ?? (await readUserPreferencesDocument()).hybridFts?.profile,
+              profile: patch.profile ?? docForVariant.hybridFts?.profile,
               dictVariant: rawVariant,
             })
             if (rawVariant !== normalizedSettings.dictVariant) {

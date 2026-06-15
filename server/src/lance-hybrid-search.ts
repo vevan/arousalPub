@@ -4,12 +4,15 @@ import path from 'node:path'
 import { Index, rerankers, type Table } from '@lancedb/lancedb'
 import {
   formatHybridFtsSpec,
-  HYBRID_FTS_SETTINGS_DEFAULTS,
   normalizeHybridFtsSettings,
   type HybridFtsProfile,
   type HybridFtsSettings,
 } from './hybrid-fts-settings.js'
-import { prepareHybridFtsSettings } from './hybrid-fts-dict.js'
+import {
+  languageModelHomeForSettings,
+  prepareHybridFtsSettings,
+} from './hybrid-fts-dict.js'
+import { withLanceLanguageModelHome } from './lance-language-model-context.js'
 
 /** Memory Lance 表 FTS 列 */
 export const MEMORY_FTS_COLUMN = 'corpus'
@@ -55,6 +58,15 @@ export function ftsIndexOptionsForProfile(profile: HybridFtsProfile) {
         asciiFolding: false,
       }
   }
+}
+
+type LanceFtsConfig = Parameters<typeof Index.fts>[0]
+
+/**
+ * Lance 运行时支持 `jieba/default` 等扩展分词器；`@lancedb/lancedb` 类型未完整收录。
+ */
+export function toLanceFtsConfig(profile: HybridFtsProfile): LanceFtsConfig {
+  return ftsIndexOptionsForProfile(profile) as LanceFtsConfig
 }
 
 let rrfRerankerPromise: Promise<rerankers.RRFReranker> | null = null
@@ -113,8 +125,9 @@ async function writeHybridFtsSpecStamp(
 export async function ensureHybridFtsIndex(
   table: Table,
   column: string,
-  settings: HybridFtsSettings = HYBRID_FTS_SETTINGS_DEFAULTS,
+  settings: HybridFtsSettings,
   stampDir: string,
+  userId: string,
 ): Promise<void> {
   const normalized = normalizeHybridFtsSettings(settings)
   const spec = formatHybridFtsSpec(normalized)
@@ -122,11 +135,14 @@ export async function ensureHybridFtsIndex(
   const hasFts = await tableHasFtsIndex(table, column)
   if (hasFts && stamped === spec) return
 
-  await prepareHybridFtsSettings(normalized)
-  await table.createIndex(column, {
-    config: Index.fts(ftsIndexOptionsForProfile(normalized.profile)),
-    replace: true,
-    waitTimeoutSeconds: 120,
+  await prepareHybridFtsSettings(normalized, userId)
+  const languageModelHome = languageModelHomeForSettings(userId, normalized)
+  await withLanceLanguageModelHome(languageModelHome, async () => {
+    await table.createIndex(column, {
+      config: Index.fts(toLanceFtsConfig(normalized.profile)),
+      replace: true,
+      waitTimeoutSeconds: 120,
+    })
   })
   await writeHybridFtsSpecStamp(stampDir, spec)
 }
@@ -145,6 +161,8 @@ export interface LanceHybridSearchParams {
   textColumn: string
   limit: number
   whereClause?: string
+  /** zh-jieba 查询时传入用户词典根目录；其它分词器传 null */
+  languageModelHome?: string | null
 }
 
 /**
@@ -153,22 +171,31 @@ export interface LanceHybridSearchParams {
 export async function runLanceHybridSearch(
   params: LanceHybridSearchParams,
 ): Promise<Record<string, unknown>[]> {
-  const { table, queryVector, queryText, textColumn, limit, whereClause } =
-    params
+  const {
+    table,
+    queryVector,
+    queryText,
+    textColumn,
+    limit,
+    whereClause,
+    languageModelHome = null,
+  } = params
   if (!queryVector.length || limit < 1) return []
 
   const trimmedQuery = queryText.trim()
   if (trimmedQuery.length > 0 && (await tableHasFtsIndex(table, textColumn))) {
     try {
-      const reranker = await sharedRrfReranker()
-      let query = table
-        .vectorSearch(queryVector)
-        .fullTextSearch(trimmedQuery, { columns: textColumn })
-        .rerank(reranker)
-      if (whereClause) {
-        query = query.where(whereClause)
-      }
-      return (await query.limit(limit).toArray()) as Record<string, unknown>[]
+      return await withLanceLanguageModelHome(languageModelHome, async () => {
+        const reranker = await sharedRrfReranker()
+        let query = table
+          .vectorSearch(queryVector)
+          .fullTextSearch(trimmedQuery, { columns: textColumn })
+          .rerank(reranker)
+        if (whereClause) {
+          query = query.where(whereClause)
+        }
+        return (await query.limit(limit).toArray()) as Record<string, unknown>[]
+      })
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn('[lance-hybrid-search] hybrid failed, falling back to vector:', e)

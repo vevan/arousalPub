@@ -416,7 +416,7 @@ function objectListItemTitle(
   item: Record<string, unknown>,
   index: number,
 ): string {
-  const name = String(item.name ?? '').trim()
+  const name = String(item.name ?? item.label ?? item.id ?? '').trim()
   if (name) return name
   const pluginKey = pluginI18nKey(props.pluginId, 'objectListItemUntitled')
   if (te(pluginKey)) {

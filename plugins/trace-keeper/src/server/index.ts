@@ -3,8 +3,9 @@ import {
   DEFAULT_TRACE_BUNDLE,
   resolveTraceBundle,
   trackerEpochFromSettings,
+  type TraceBundle,
 } from '../bundle-resolve.js'
-import { BLOCK_TAG } from '../constants.js'
+import { DEFAULT_SYSTEM_PROMPT_TEMPLATE } from '../default-prompt.js'
 import {
   extractTraceKeeperState,
   isGuidanceGenerateRound,
@@ -26,18 +27,18 @@ type ServerApi = {
 }
 
 function buildTrackerSystemPrompt(
-  sampleState: Record<string, unknown>,
+  bundle: TraceBundle,
   liveState: Record<string, unknown> | null,
 ): string {
-  const sampleJson = JSON.stringify(sampleState, null, 2)
+  const prefix =
+    bundle.systemPromptTemplate?.trim() || DEFAULT_SYSTEM_PROMPT_TEMPLATE
+  const sampleJson = JSON.stringify(bundle.sampleState, null, 2)
   const liveJson = liveState
     ? JSON.stringify(liveState, null, 2)
-    : JSON.stringify(sampleState, null, 2)
+    : JSON.stringify(bundle.sampleState, null, 2)
   return [
-    'You are maintaining a structured RP scene state for the Trace Keeper plugin.',
-    `After your in-character reply, append a block: <${BLOCK_TAG}>{pure JSON}</${BLOCK_TAG}>.`,
-    'The JSON must match the sample structure below. Update fields to reflect the current scene; do not copy sample placeholder values verbatim.',
-  '--- sample structure (reference only) ---',
+    prefix,
+    '--- sample structure (reference only) ---',
     sampleJson,
     '--- current live state (update from this) ---',
     liveJson,
@@ -63,13 +64,17 @@ export async function afterAssemblePrompts(
     api.getUserPluginSettings(PLUGIN_ID),
     api.getConversationPluginSettings(conversationId, PLUGIN_ID),
   ])
-  const bundle = resolveTraceBundle({ userSettings, convSettings, embeddedBundle: DEFAULT_TRACE_BUNDLE })
+  const bundle = resolveTraceBundle({
+    userSettings,
+    convSettings,
+    embeddedBundle: DEFAULT_TRACE_BUNDLE,
+  })
   const epoch = trackerEpochFromSettings(convSettings)
   const tail = await api.readConversationTurnsTail(conversationId, 120)
   const live = resolveLiveTraceState(tail, epoch)
   const liveState = live?.state ?? null
 
-  const systemText = buildTrackerSystemPrompt(bundle.sampleState, liveState)
+  const systemText = buildTrackerSystemPrompt(bundle, liveState)
   return [
     ...ctx.messages,
     { role: 'system', content: systemText },

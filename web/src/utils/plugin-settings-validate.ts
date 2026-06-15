@@ -76,6 +76,38 @@ export function parseCheckboxGroupField(value: unknown): string[] {
   return []
 }
 
+const TRACE_KEEPER_PLUGIN_ID = 'trace-keeper'
+
+function validateTraceKeeperBundleList(
+  model: Record<string, unknown>,
+  pluginId: string,
+  t: (key: string) => string,
+  te: (key: string) => boolean,
+): string | null {
+  if (pluginId !== TRACE_KEEPER_PLUGIN_ID) return null
+  const items = parseObjectListField(model.bundleList)
+  for (const item of items) {
+    const id = String(item.id ?? '').trim()
+    if (!id) {
+      const key = pluginI18nKey(pluginId, 'bundleIdRequired')
+      return te(key) ? t(key) : 'Bundle ID is required'
+    }
+    const jsonText = String(item.sampleStateJson ?? '').trim()
+    if (!jsonText) continue
+    try {
+      const parsed: unknown = JSON.parse(jsonText)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        const key = pluginI18nKey(pluginId, 'sampleStateInvalidJson')
+        return te(key) ? t(key) : 'Invalid sample state JSON'
+      }
+    } catch {
+      const key = pluginI18nKey(pluginId, 'sampleStateInvalidJson')
+      return te(key) ? t(key) : 'Invalid sample state JSON'
+    }
+  }
+  return null
+}
+
 export function validatePluginSettingsModel(
   schema: PluginSettingsSchema | null | undefined,
   model: Record<string, unknown>,
@@ -116,7 +148,7 @@ export function validatePluginSettingsModel(
       return `${label}: ${req}`
     }
   }
-  return null
+  return validateTraceKeeperBundleList(model, pluginId, t, te)
 }
 
 export function defaultTextForField(

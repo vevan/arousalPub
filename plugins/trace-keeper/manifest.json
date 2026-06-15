@@ -19,6 +19,57 @@
         "labelKey": "activeBundleIdLabel",
         "descriptionKey": "activeBundleIdDesc",
         "default": "scene-tracker-default"
+      },
+      {
+        "key": "bundleList",
+        "type": "objectList",
+        "labelKey": "bundleListLabel",
+        "descriptionKey": "bundleListDesc",
+        "default": "[]",
+        "itemFields": [
+          {
+            "key": "id",
+            "type": "string",
+            "labelKey": "bundleItemIdLabel",
+            "descriptionKey": "bundleItemIdDesc",
+            "required": true
+          },
+          {
+            "key": "label",
+            "type": "string",
+            "labelKey": "bundleItemLabelLabel",
+            "descriptionKey": "bundleItemLabelDesc"
+          },
+          {
+            "key": "systemPromptTemplate",
+            "type": "text",
+            "labelKey": "bundleItemSystemPromptLabel",
+            "descriptionKey": "bundleItemSystemPromptDesc",
+            "widget": "promptTemplate",
+            "defaultKey": "systemPromptTemplateDefault"
+          },
+          {
+            "key": "sampleStateJson",
+            "type": "text",
+            "labelKey": "bundleItemSampleStateLabel",
+            "descriptionKey": "bundleItemSampleStateDesc",
+            "defaultKey": "bundleSampleStateJsonDefault"
+          },
+          {
+            "key": "template",
+            "type": "text",
+            "labelKey": "bundleItemTemplateLabel",
+            "descriptionKey": "bundleItemTemplateDesc",
+            "defaultKey": "bundleTemplateDefault"
+          },
+          {
+            "key": "stylesheet",
+            "type": "text",
+            "labelKey": "bundleItemStylesheetLabel",
+            "descriptionKey": "bundleItemStylesheetDesc",
+            "defaultKey": "bundleStylesheetDefault"
+          }
+        ]
       }
     ]
   },

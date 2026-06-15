@@ -5740,6 +5740,7 @@ var require_handlebars = __commonJS({
 // plugins/trace-keeper/src/constants.ts
 var PLUGIN_ID = "trace-keeper";
 var DEFAULT_BUNDLE_ID = "scene-tracker-default";
+var BLOCK_TAG = "ex-trace-keeper";
 
 // plugins/trace-keeper/bundles/scene-tracker-default/sample-state.json
 var sample_state_default = {
@@ -5753,10 +5754,17 @@ var sample_state_default = {
 };
 
 // plugins/trace-keeper/bundles/scene-tracker-default/template.hbs
-var template_default = '<div class="trace-keeper-panel">\r\n  <h4 class="tk-title">\u573A\u666F\u8FFD\u8E2A</h4>\r\n  <dl class="tk-fields">\r\n    <dt>\u5730\u70B9</dt>\r\n    <dd>{{data.scene.location}}</dd>\r\n    <dt>\u65F6\u95F4</dt>\r\n    <dd>{{data.scene.time}}</dd>\r\n    <dt>\u5929\u6C14</dt>\r\n    <dd>{{data.scene.weather}}</dd>\r\n    <dt>\u6C1B\u56F4</dt>\r\n    <dd>{{data.mood}}</dd>\r\n  </dl>\r\n  {{#if data.notes}}\r\n  <p class="tk-notes">{{data.notes}}</p>\r\n  {{/if}}\r\n  <p class="tk-meta text-caption">epoch {{meta.epoch}}{{#if meta.turnOrdinal}} \xB7 \u7B2C {{meta.turnOrdinal}} \u8F6E{{/if}}</p>\r\n</div>\r\n';
+var template_default = '<div class="trace-keeper-panel">\n  <h4 class="tk-title">\u573A\u666F\u8FFD\u8E2A</h4>\n  <dl class="tk-fields">\n    <dt>\u5730\u70B9</dt>\n    <dd>{{data.scene.location}}</dd>\n    <dt>\u65F6\u95F4</dt>\n    <dd>{{data.scene.time}}</dd>\n    <dt>\u5929\u6C14</dt>\n    <dd>{{data.scene.weather}}</dd>\n    <dt>\u6C1B\u56F4</dt>\n    <dd>{{data.mood}}</dd>\n  </dl>\n  {{#if data.notes}}\n  <p class="tk-notes">{{data.notes}}</p>\n  {{/if}}\n  <p class="tk-meta text-caption">epoch {{meta.epoch}}{{#if meta.turnOrdinal}} \xB7 \u7B2C {{meta.turnOrdinal}} \u8F6E{{/if}}</p>\n</div>\n';
 
 // plugins/trace-keeper/bundles/scene-tracker-default/stylesheet.css
-var stylesheet_default = ".trace-keeper-panel {\r\n  font-size: 0.875rem;\r\n  line-height: 1.45;\r\n}\r\n\r\n.trace-keeper-panel .tk-title {\r\n  margin: 0 0 8px;\r\n  font-weight: 600;\r\n  font-size: 0.95rem;\r\n}\r\n\r\n.trace-keeper-panel .tk-fields {\r\n  margin: 0 0 8px;\r\n  display: grid;\r\n  grid-template-columns: auto 1fr;\r\n  gap: 4px 10px;\r\n}\r\n\r\n.trace-keeper-panel .tk-fields dt {\r\n  margin: 0;\r\n  opacity: 0.72;\r\n}\r\n\r\n.trace-keeper-panel .tk-fields dd {\r\n  margin: 0;\r\n}\r\n\r\n.trace-keeper-panel .tk-notes {\r\n  margin: 8px 0 0;\r\n  padding: 8px;\r\n  border-radius: 6px;\r\n  background: rgba(var(--v-theme-on-surface), 0.04);\r\n}\r\n\r\n.trace-keeper-panel .tk-meta {\r\n  margin: 10px 0 0;\r\n  opacity: 0.55;\r\n}\r\n";
+var stylesheet_default = ".trace-keeper-panel {\n  font-size: 0.875rem;\n  line-height: 1.45;\n}\n\n.trace-keeper-panel .tk-title {\n  margin: 0 0 8px;\n  font-weight: 600;\n  font-size: 0.95rem;\n}\n\n.trace-keeper-panel .tk-fields {\n  margin: 0 0 8px;\n  display: grid;\n  grid-template-columns: auto 1fr;\n  gap: 4px 10px;\n}\n\n.trace-keeper-panel .tk-fields dt {\n  margin: 0;\n  opacity: 0.72;\n}\n\n.trace-keeper-panel .tk-fields dd {\n  margin: 0;\n}\n\n.trace-keeper-panel .tk-notes {\n  margin: 8px 0 0;\n  padding: 8px;\n  border-radius: 6px;\n  background: rgba(var(--v-theme-on-surface), 0.04);\n}\n\n.trace-keeper-panel .tk-meta {\n  margin: 10px 0 0;\n  opacity: 0.55;\n}\n";
+
+// plugins/trace-keeper/src/default-prompt.ts
+var DEFAULT_SYSTEM_PROMPT_TEMPLATE = [
+  "You are maintaining a structured RP scene state for the Trace Keeper plugin.",
+  `After your in-character reply, append a block: <${BLOCK_TAG}>{pure JSON}</${BLOCK_TAG}>.`,
+  "The JSON must match the sample structure below. Update fields to reflect the current scene; do not copy sample placeholder values verbatim."
+].join("\n");
 
 // plugins/trace-keeper/src/bundle-resolve.ts
 var DEFAULT_TRACE_BUNDLE = {
@@ -5764,10 +5772,72 @@ var DEFAULT_TRACE_BUNDLE = {
   label: "Scene Tracker (default)",
   sampleState: sample_state_default,
   template: template_default,
-  stylesheet: stylesheet_default
+  stylesheet: stylesheet_default,
+  systemPromptTemplate: DEFAULT_SYSTEM_PROMPT_TEMPLATE
 };
 function isPlainObject(v) {
   return Boolean(v) && typeof v === "object" && !Array.isArray(v);
+}
+function parseSampleStateJson(raw) {
+  if (typeof raw !== "string" || !raw.trim()) return void 0;
+  try {
+    const parsed = JSON.parse(raw);
+    return isPlainObject(parsed) ? parsed : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function parseUserBundleEntry(raw) {
+  if (!isPlainObject(raw)) return null;
+  const id = typeof raw.id === "string" ? raw.id.trim() : "";
+  if (!id) return null;
+  const out = { id };
+  if (typeof raw.label === "string" && raw.label.trim()) {
+    out.label = raw.label.trim();
+  }
+  if (typeof raw.systemPromptTemplate === "string" && raw.systemPromptTemplate.trim()) {
+    out.systemPromptTemplate = raw.systemPromptTemplate.trim();
+  }
+  const fromJson = parseSampleStateJson(raw.sampleStateJson);
+  if (fromJson) {
+    out.sampleState = fromJson;
+  } else if (isPlainObject(raw.sampleState)) {
+    out.sampleState = raw.sampleState;
+  }
+  if (typeof raw.template === "string" && raw.template.trim()) {
+    out.template = raw.template;
+  }
+  if (typeof raw.stylesheet === "string") {
+    out.stylesheet = raw.stylesheet;
+  }
+  return out;
+}
+function collectUserBundles(user) {
+  const out = {};
+  const listRaw = user.bundleList;
+  const list = Array.isArray(listRaw) ? listRaw : typeof listRaw === "string" ? (() => {
+    try {
+      const parsed = JSON.parse(listRaw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })() : [];
+  for (const item of list) {
+    const entry = parseUserBundleEntry(item);
+    if (!entry) continue;
+    out[entry.id] = { ...out[entry.id], ...entry };
+  }
+  const legacy = user.bundles;
+  if (isPlainObject(legacy)) {
+    for (const [key, val] of Object.entries(legacy)) {
+      if (!isPlainObject(val)) continue;
+      const entry = parseUserBundleEntry({ ...val, id: key });
+      if (!entry) continue;
+      out[entry.id] = { ...out[entry.id], ...entry };
+    }
+  }
+  return out;
 }
 function mergeBundlePartial(base, partial) {
   const next = { ...base };
@@ -5783,20 +5853,33 @@ function mergeBundlePartial(base, partial) {
   if (typeof partial.stylesheet === "string") {
     next.stylesheet = partial.stylesheet;
   }
+  if (typeof partial.systemPromptTemplate === "string" && partial.systemPromptTemplate.trim()) {
+    next.systemPromptTemplate = partial.systemPromptTemplate.trim();
+  }
   return next;
+}
+function shellBundle(id, embedded) {
+  if (id === embedded.id) return { ...embedded, id };
+  return {
+    id,
+    label: id,
+    sampleState: {},
+    template: '<div class="trace-keeper-panel"><pre>{{json data}}</pre></div>',
+    stylesheet: ".trace-keeper-panel { font-size: 0.875rem; }",
+    systemPromptTemplate: embedded.systemPromptTemplate
+  };
 }
 function resolveTraceBundle(opts) {
   const embedded = opts.embeddedBundle ?? DEFAULT_TRACE_BUNDLE;
   const user = opts.userSettings ?? {};
   const conv = opts.convSettings ?? {};
-  const bundlesRaw = user.bundles;
-  const bundles = bundlesRaw && typeof bundlesRaw === "object" && !Array.isArray(bundlesRaw) ? bundlesRaw : {};
+  const userBundles = collectUserBundles(user);
   const convOverride = conv.bundleOverride;
   const convBundle = isPlainObject(conv.bundle) ? conv.bundle : null;
   const bundleId = typeof conv.bundleId === "string" && conv.bundleId.trim() || typeof user.activeBundleId === "string" && user.activeBundleId.trim() || embedded.id;
-  let base = { ...embedded, id: bundleId };
-  const fromUser = bundles[bundleId];
-  if (isPlainObject(fromUser)) {
+  let base = shellBundle(bundleId, embedded);
+  const fromUser = userBundles[bundleId];
+  if (fromUser) {
     base = mergeBundlePartial(base, fromUser);
   }
   if (convBundle) {
@@ -5804,6 +5887,9 @@ function resolveTraceBundle(opts) {
   }
   if (isPlainObject(convOverride)) {
     base = mergeBundlePartial(base, convOverride);
+  }
+  if (!base.systemPromptTemplate?.trim()) {
+    base.systemPromptTemplate = DEFAULT_SYSTEM_PROMPT_TEMPLATE;
   }
   return base;
 }

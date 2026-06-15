@@ -25,6 +25,7 @@ function pluginDisplayName(pluginId: string, fallback: string): string {
 }
 
 const CUSTOM_STYLES_PLUGIN_ID = 'custom-styles'
+const TRACE_KEEPER_PLUGIN_ID = 'trace-keeper'
 
 const loading = ref(true)
 const saving = ref(false)
@@ -156,6 +157,10 @@ const settingsFields = computed(
   () => settingsPlugin.value?.settingsSchema?.fields ?? [],
 )
 
+const settingsDialogMaxWidth = computed(() =>
+  settingsPlugin.value?.id === TRACE_KEEPER_PLUGIN_ID ? 920 : 640,
+)
+
 onMounted(() => {
   void load()
 })
@@ -263,7 +268,7 @@ onMounted(() => {
 
     <v-dialog
       v-model="settingsOpen"
-      max-width="640"
+      :max-width="settingsDialogMaxWidth"
       scrollable
       @click:outside="closeSettings"
     >

@@ -9,6 +9,7 @@ export interface TraceBundle {
   sampleState: Record<string, unknown>
   template: string
   stylesheet: string
+  systemPromptTemplate?: string
 }
 
 export interface TraceKeeperPayload {

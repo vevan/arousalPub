@@ -23,6 +23,7 @@ export interface MessagesTurnDto {
     model?: string
   }[]
   activeReceiveIndex: number
+  plugins?: unknown[]
 }
 
 export interface MessagesPageDto {
@@ -96,6 +97,9 @@ export function mapTurnRecordsToMessagesDto(
       user: activeUserText,
       receives: recs,
       activeReceiveIndex: ai,
+      ...(Array.isArray(t.plugins) && t.plugins.length > 0
+        ? { plugins: t.plugins }
+        : {}),
     }
   })
 }

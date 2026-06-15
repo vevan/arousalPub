@@ -1,5 +1,11 @@
 <script setup lang="ts">
 import ConnectionSettingsCard from '@/components/ConnectionSettingsCard.vue'
+import PluginLeftDrawerHost from '@/components/PluginLeftDrawerHost.vue'
+import {
+  openPluginPanel,
+  pluginPanelOpen,
+  pluginPanelPinned,
+} from '@/plugins/plugin-panel-registry'
 import CharactersView from '@/views/CharactersView.vue'
 import LorebooksView from '@/views/LorebooksView.vue'
 import PromptsView from '@/views/PromptsView.vue'
@@ -112,7 +118,14 @@ function onBrowserLanguageChange() {
   }
 }
 
-const drawerLeft = ref(false)
+const drawerLeft = computed({
+  get: () => pluginPanelOpen.value || pluginPanelPinned.value,
+  set: (v: boolean) => {
+    if (!v && pluginPanelPinned.value) return
+    pluginPanelOpen.value = v
+    if (!v) pluginPanelPinned.value = false
+  },
+})
 const drawerRight = ref(false)
 const settingsDialogOpen = ref(false)
 const settingsDialogOpenCount = ref(0)
@@ -355,17 +368,12 @@ onUnmounted(() => {
       v-model="drawerLeft"
       :width="280"
       temporary
+      :scrim="!pluginPanelPinned"
       location="start"
       border="end"
+      class="plugin-left-drawer-overlay"
     >
-      <v-toolbar density="compact" color="surface-variant" flat>
-        <v-toolbar-title class="text-subtitle-2">
-          {{ $t('app.plugins') }}
-        </v-toolbar-title>
-      </v-toolbar>
-      <div class="pa-4 text-body-2 text-medium-emphasis">
-        {{ $t('app.pluginsHint') }}
-      </div>
+      <PluginLeftDrawerHost />
     </v-navigation-drawer>
 
     <v-navigation-drawer
@@ -643,7 +651,7 @@ onUnmounted(() => {
           density="compact"
           class="app-footer__plugins-btn"
           :aria-label="$t('app.plugins')"
-          @click="drawerLeft = !drawerLeft"
+          @click="openPluginPanel('leftDrawer')"
         />
         <span class="app-footer__meta">
           Arousal <em>Pub</em>

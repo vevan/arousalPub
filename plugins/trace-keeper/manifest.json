@@ -1,0 +1,45 @@
+{
+  "id": "trace-keeper",
+  "name": "Trace Keeper",
+  "version": "0.1.0",
+  "hooks": [
+    "afterAssemblePrompts",
+    "resolveTurnPluginEntriesFromAssistant"
+  ],
+  "permissions": [
+    "conversation.read",
+    "turn.read"
+  ],
+  "settingsSchema": {
+    "version": 1,
+    "fields": [
+      {
+        "key": "activeBundleId",
+        "type": "string",
+        "labelKey": "activeBundleIdLabel",
+        "descriptionKey": "activeBundleIdDesc",
+        "default": "scene-tracker-default"
+      }
+    ]
+  },
+  "conversationSettingsSchema": {
+    "version": 1,
+    "fields": [
+      {
+        "key": "bundleId",
+        "type": "string",
+        "labelKey": "convBundleIdLabel",
+        "descriptionKey": "convBundleIdDesc",
+        "default": ""
+      }
+    ]
+  },
+  "ui": {
+    "slots": [
+      {
+        "name": "turn-block-head",
+        "entry": "./dist/web.mjs"
+      }
+    ]
+  }
+}

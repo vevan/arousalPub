@@ -1,0 +1,17 @@
+<div class="trace-keeper-panel">
+  <h4 class="tk-title">场景追踪</h4>
+  <dl class="tk-fields">
+    <dt>地点</dt>
+    <dd>{{data.scene.location}}</dd>
+    <dt>时间</dt>
+    <dd>{{data.scene.time}}</dd>
+    <dt>天气</dt>
+    <dd>{{data.scene.weather}}</dd>
+    <dt>氛围</dt>
+    <dd>{{data.mood}}</dd>
+  </dl>
+  {{#if data.notes}}
+  <p class="tk-notes">{{data.notes}}</p>
+  {{/if}}
+  <p class="tk-meta text-caption">epoch {{meta.epoch}}{{#if meta.turnOrdinal}} · 第 {{meta.turnOrdinal}} 轮{{/if}}</p>
+</div>

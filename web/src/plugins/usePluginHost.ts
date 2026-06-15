@@ -131,7 +131,11 @@ export function usePluginHost(session: ChatSession) {
   }
 
   onMounted(() => {
-    void ensureEagerWebPlugins()
+    void (async () => {
+      await loadRegistry()
+      await ensureEagerWebPlugins()
+      await ensurePluginById('trace-keeper')
+    })()
   })
 
   watch(

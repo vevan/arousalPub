@@ -38,6 +38,7 @@ const BUNDLED_PLUGIN_IDS = [
   'conversation-export',
   'plot-summary',
   'custom-styles',
+  'trace-keeper',
 ] as const
 
 const BUNDLED_PLUGIN_ORDERS: Record<(typeof BUNDLED_PLUGIN_IDS)[number], number> = {
@@ -47,6 +48,7 @@ const BUNDLED_PLUGIN_ORDERS: Record<(typeof BUNDLED_PLUGIN_IDS)[number], number>
   'conversation-export': 40,
   'plot-summary': 50,
   'custom-styles': 60,
+  'trace-keeper': 70,
 }
 
 const moduleCache = new Map<string, LoadedServerPlugin[]>()
@@ -85,6 +87,10 @@ async function copyPluginPackage(srcDir: string, destDir: string): Promise<void>
   const localesSrc = path.join(srcDir, 'locales')
   if (existsSync(localesSrc)) {
     await cp(localesSrc, path.join(destDir, 'locales'), opts)
+  }
+  const bundlesSrc = path.join(srcDir, 'bundles')
+  if (existsSync(bundlesSrc)) {
+    await cp(bundlesSrc, path.join(destDir, 'bundles'), opts)
   }
   const assetsSrc = path.join(srcDir, 'assets')
   if (existsSync(assetsSrc)) {
@@ -373,6 +379,29 @@ export async function readPluginDistFile(
       ? 'text/javascript; charset=utf-8'
       : 'application/octet-stream'
     return { body, contentType }
+  } catch {
+    return null
+  }
+}
+
+export async function readPluginPackageFile(
+  pluginId: string,
+  relPath: string,
+): Promise<{ body: Buffer } | null> {
+  let id: string
+  try {
+    id = assertValidPluginId(pluginId)
+  } catch {
+    return null
+  }
+  const clean = relPath.replace(/^\/+/, '').replace(/\.\./g, '')
+  if (!clean.startsWith('bundles/')) return null
+  const root = getInstalledPluginDir(id)
+  const full = path.join(root, clean)
+  if (!full.startsWith(root)) return null
+  try {
+    const body = await readFile(full)
+    return { body }
   } catch {
     return null
   }

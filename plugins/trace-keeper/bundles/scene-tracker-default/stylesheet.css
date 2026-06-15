@@ -1,0 +1,38 @@
+.trace-keeper-panel {
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.trace-keeper-panel .tk-title {
+  margin: 0 0 8px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.trace-keeper-panel .tk-fields {
+  margin: 0 0 8px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+}
+
+.trace-keeper-panel .tk-fields dt {
+  margin: 0;
+  opacity: 0.72;
+}
+
+.trace-keeper-panel .tk-fields dd {
+  margin: 0;
+}
+
+.trace-keeper-panel .tk-notes {
+  margin: 8px 0 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(var(--v-theme-on-surface), 0.04);
+}
+
+.trace-keeper-panel .tk-meta {
+  margin: 10px 0 0;
+  opacity: 0.55;
+}

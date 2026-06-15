@@ -44,3 +44,40 @@ export async function resolveTurnPluginEntriesFromBody(
   }
   return out
 }
+
+export async function resolveTurnPluginEntriesFromAssistant(
+  assistantContent: string,
+  opts?: {
+    plugins?: ChatPluginsBody | null
+    conversationId?: string
+  },
+): Promise<TurnPluginEntry[]> {
+  const loaded = await loadEnabledServerPlugins()
+  const api = createPluginServerHostApi()
+  const out: TurnPluginEntry[] = []
+  const ctx = {
+    assistantContent,
+    plugins: opts?.plugins,
+    conversationId: opts?.conversationId,
+  }
+  for (const p of loaded) {
+    if (typeof p.module.resolveTurnPluginEntriesFromAssistant !== 'function') {
+      continue
+    }
+    const entries = await p.module.resolveTurnPluginEntriesFromAssistant(ctx, api)
+    if (Array.isArray(entries)) out.push(...entries)
+  }
+  return out
+}
+
+export function mergeTurnPluginEntries(
+  base: TurnPluginEntry[],
+  extra: TurnPluginEntry[],
+): TurnPluginEntry[] {
+  let merged = [...base]
+  for (const entry of extra) {
+    merged = merged.filter((e) => e.pluginId !== entry.pluginId)
+    merged.push(entry)
+  }
+  return merged
+}

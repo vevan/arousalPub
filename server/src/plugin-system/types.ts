@@ -157,6 +157,24 @@ export interface PluginServerHostApi {
     toTurn?: number
     persistVars?: boolean
   }) => Promise<string>
+  getConversationPluginSettings: (
+    conversationId: string,
+    pluginId: string,
+  ) => Promise<Record<string, unknown>>
+  readConversationTurnsTail: (
+    conversationId: string,
+    limit?: number,
+  ) => Promise<
+    {
+      turnOrdinal: number
+      activeReceiveIndex: number
+      plugins: unknown[]
+    }[]
+  >
+  readPluginPackageText: (
+    pluginId: string,
+    relPath: string,
+  ) => Promise<string | null>
   regex: {
     listRules: (opts?: { phases?: RegexPhase[] }) => Promise<RegexRuleSummary[]>
     applyText: (
@@ -213,6 +231,12 @@ export interface LoadedServerPlugin {
   module: PluginServerModule
 }
 
+export interface ResolveTurnPluginEntriesFromAssistantContext {
+  assistantContent: string
+  plugins?: ChatPluginsBody | null
+  conversationId?: string
+}
+
 export interface PluginServerModule {
   afterAssemblePrompts?: (
     ctx: AfterAssemblePromptsPluginContext,
@@ -220,6 +244,10 @@ export interface PluginServerModule {
   ) => ChatMessage[] | Promise<ChatMessage[]>
   resolveTurnPluginEntries?: (
     plugins: ChatPluginsBody | null | undefined,
+    api: PluginServerHostApi,
+  ) => TurnPluginEntry[] | Promise<TurnPluginEntry[]>
+  resolveTurnPluginEntriesFromAssistant?: (
+    ctx: ResolveTurnPluginEntriesFromAssistantContext,
     api: PluginServerHostApi,
   ) => TurnPluginEntry[] | Promise<TurnPluginEntry[]>
   completeDraft?: (

@@ -13,6 +13,7 @@ const BUNDLED_PLUGIN_IDS = [
   'conversation-export',
   'plot-summary',
   'custom-styles',
+  'trace-keeper',
 ]
 
 const CP_OPTS = { recursive: true, force: true }
@@ -24,7 +25,7 @@ async function copyBundledPluginPackage(srcDir, destDir) {
     path.join(destDir, 'manifest.json'),
     CP_OPTS,
   )
-  for (const sub of ['dist', 'locales', 'assets']) {
+  for (const sub of ['dist', 'locales', 'assets', 'bundles']) {
     const src = path.join(srcDir, sub)
     if (existsSync(src)) {
       await cp(src, path.join(destDir, sub), CP_OPTS)

@@ -21,6 +21,7 @@ type MessagesApiTurn = {
     model?: string
   }[]
   activeReceiveIndex?: number
+  plugins?: unknown[]
 }
 
 export type MessagesPageInfo = {
@@ -85,6 +86,9 @@ export function parseConversationTurnsFromApi(
         receives: [],
         activeReceiveIndex: 0,
         turnOrdinal: ord,
+        ...(Array.isArray(row.plugins) && row.plugins.length > 0
+          ? { plugins: row.plugins }
+          : {}),
       }
     }
     ai = Math.min(Math.max(0, ai), receives.length - 1)
@@ -93,6 +97,9 @@ export function parseConversationTurnsFromApi(
       receives,
       activeReceiveIndex: ai,
       turnOrdinal: ord,
+      ...(Array.isArray(row.plugins) && row.plugins.length > 0
+        ? { plugins: row.plugins }
+        : {}),
     }
   })
 }

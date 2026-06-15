@@ -53,6 +53,7 @@ import {
   clearConversationEmbeddingApiSettings,
   updateConversationEmbeddingApiSettings,
   updateConversationPluginSettings,
+  readConversationPluginSettings,
   parseConversationChatBinding,
   parseConversationEmbeddingApiOverride,
   getTurnUserText,
@@ -704,9 +705,25 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       if (!raw.every((x) => typeof x === 'string')) {
         return reply.status(400).send({ error: ApiErrorCodes.character_ids_must_be_string_array })
       }
+      const prevPrimary =
+        idx.characterIds?.[0] ?? idx.characterId ?? ''
       const next = await updateConversationCharacterBindings(id, raw)
       if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
-      idx = next
+      const nextPrimary =
+        next.characterIds?.[0] ?? next.characterId ?? ''
+      if (prevPrimary !== nextPrimary) {
+        const tk = readConversationPluginSettings(next, 'trace-keeper')
+        const epoch =
+          typeof tk.trackerEpoch === 'number' && Number.isFinite(tk.trackerEpoch)
+            ? Math.round(tk.trackerEpoch)
+            : 0
+        const bumped = await updateConversationPluginSettings(id, {
+          'trace-keeper': { trackerEpoch: epoch + 1 },
+        })
+        idx = bumped ?? next
+      } else {
+        idx = next
+      }
     }
     if (hasPromptPreset) {
       const raw = b.promptPresetId
@@ -3923,6 +3940,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
           assemblyEmbeddingCalls,
           turnPluginEntries:
             turnPluginEntries.length > 0 ? turnPluginEntries : undefined,
+          chatPlugins: body.plugins,
           performanceAudit: performanceAuditBase,
         }
       : null

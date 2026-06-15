@@ -498,6 +498,31 @@ export interface PluginWebHost {
     ): void
     progress(opts: PluginProgressOptions): void
     clearProgress(): void
+    panel: {
+      register(opts: {
+        placement: 'leftDrawer'
+        pluginId: string
+        tabIcon: string
+        tabLabelKey: string
+        interactive?: boolean
+      }): void
+      setHtml(
+        placement: 'leftDrawer',
+        pluginId: string,
+        html: string,
+        opts?: { revision?: number },
+      ): void
+      open(placement: 'leftDrawer', pluginId?: string): void
+      setPinned(placement: 'leftDrawer', pinned: boolean): void
+      onEvent(
+        placement: 'leftDrawer',
+        pluginId: string,
+        handlers: {
+          onInput?: (e: { field: string; value: string; type: string }) => void
+          onAction?: (e: { action: string; target: HTMLElement }) => void
+        },
+      ): void
+    }
   }
   /** 插件切换 slot 按钮外观后调用，触发 UI 刷新 */
   refreshSlotButtons: () => void

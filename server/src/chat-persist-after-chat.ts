@@ -14,7 +14,11 @@ import {
   type TurnReceive,
 } from './chat-storage.js'
 import type { ResolvedFeatureAudit } from './feature-binding-resolve.js'
-import type { TurnPluginEntry } from './plugin-types.js'
+import {
+  mergeTurnPluginEntries,
+  resolveTurnPluginEntriesFromAssistant,
+} from './plugin-host.js'
+import type { ChatPluginsBody, TurnPluginEntry } from './plugin-types.js'
 import type {
   AssemblyAudit,
   CallAuditEntry,
@@ -247,6 +251,7 @@ export async function persistTurnAfterModelReply(params: {
   /** 再生：向该轮追加 receive，不新开 turn */
   regenerateTurnOrdinal?: number | null
   turnPluginEntries?: TurnPluginEntry[]
+  chatPlugins?: ChatPluginsBody | null
   /** debug 审计：组装/上游性能（persist 阶段会补全 persistMs） */
   performanceAudit?: PerformanceAudit
 }): Promise<ChatPersistResult> {
@@ -259,6 +264,18 @@ export async function persistTurnAfterModelReply(params: {
   if (!rawAssistantContent) {
     return { ok: false, error: ApiErrorCodes.assistant_content_empty_no_persist }
   }
+
+  const assistantPluginEntries = await resolveTurnPluginEntriesFromAssistant(
+    rawAssistantContent,
+    {
+      plugins: params.chatPlugins,
+      conversationId,
+    },
+  )
+  const turnPluginEntries = mergeTurnPluginEntries(
+    params.turnPluginEntries ?? [],
+    assistantPluginEntries,
+  )
 
   const idx = await readConversationIndex(conversationId)
   if (!idx) {
@@ -388,7 +405,7 @@ export async function persistTurnAfterModelReply(params: {
         receives,
         activeReceiveIndex,
         auditSnapshot,
-        params.turnPluginEntries,
+        turnPluginEntries,
       )
       if (!ok) {
         return { ok: false, error: ApiErrorCodes.turn_update_failed }
@@ -424,7 +441,7 @@ export async function persistTurnAfterModelReply(params: {
         completionTokens,
         resolvedFeature: params.resolvedFeature,
         auditSnapshot,
-        turnPluginEntries: params.turnPluginEntries,
+        turnPluginEntries: turnPluginEntries.length > 0 ? turnPluginEntries : undefined,
       })
       if (!saved) {
         return { ok: false, error: ApiErrorCodes.first_turn_persist_maybe_exists }
@@ -473,7 +490,7 @@ export async function persistTurnAfterModelReply(params: {
       receives,
       activeReceiveIndex: 0,
       auditSnapshot,
-      turnPluginEntries: params.turnPluginEntries,
+      turnPluginEntries: turnPluginEntries.length > 0 ? turnPluginEntries : undefined,
     })
     if (!ok) {
       return { ok: false, error: ApiErrorCodes.append_turn_failed }
@@ -574,7 +591,7 @@ export async function persistTurnAfterModelReply(params: {
       completionTokens,
       resolvedFeature: params.resolvedFeature,
       auditSnapshot,
-      turnPluginEntries: params.turnPluginEntries,
+      turnPluginEntries: turnPluginEntries.length > 0 ? turnPluginEntries : undefined,
     })
     if (!saved) {
       return { ok: false, error: ApiErrorCodes.first_turn_persist_maybe_exists }
@@ -609,7 +626,7 @@ export async function persistTurnAfterModelReply(params: {
     receives,
     activeReceiveIndex: 0,
     auditSnapshot,
-    turnPluginEntries: params.turnPluginEntries,
+    turnPluginEntries: turnPluginEntries.length > 0 ? turnPluginEntries : undefined,
   })
   if (!ok) {
     return { ok: false, error: ApiErrorCodes.append_turn_failed }

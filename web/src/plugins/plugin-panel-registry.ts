@@ -1,0 +1,211 @@
+import { ref, shallowRef } from 'vue'
+import {
+  ensurePluginPanelSanitizeHooks,
+  sanitizePluginPanelHtml,
+  sanitizePluginPanelHtmlInteractive,
+} from '@/plugins/plugin-panel-sanitize'
+
+export type PluginPanelPlacement = 'leftDrawer'
+
+export interface PluginPanelRegisterOptions {
+  placement: PluginPanelPlacement
+  pluginId: string
+  tabIcon: string
+  tabLabelKey: string
+  interactive?: boolean
+}
+
+export interface PluginPanelInputEvent {
+  field: string
+  value: string
+  type: string
+}
+
+export interface PluginPanelActionEvent {
+  action: string
+  target: HTMLElement
+}
+
+type PanelEventHandlers = {
+  onInput?: (e: PluginPanelInputEvent) => void
+  onAction?: (e: PluginPanelActionEvent) => void
+}
+
+export interface PluginPanelEntry {
+  placement: PluginPanelPlacement
+  pluginId: string
+  tabIcon: string
+  tabLabelKey: string
+  interactive: boolean
+  html: string
+  revision: number
+}
+
+export const pluginPanelOpen = ref(false)
+export const pluginPanelPinned = ref(false)
+export const pluginPanelActiveTab = ref<string | null>(null)
+export const pluginPanelRevision = ref(0)
+
+const panels = new Map<string, PluginPanelEntry>()
+const eventHandlers = new Map<string, PanelEventHandlers>()
+
+function panelKey(placement: PluginPanelPlacement, pluginId: string): string {
+  return `${placement}::${pluginId}`
+}
+
+export function getRegisteredPanels(
+  placement: PluginPanelPlacement,
+): PluginPanelEntry[] {
+  return [...panels.values()].filter((p) => p.placement === placement)
+}
+
+export function registerPluginPanel(opts: PluginPanelRegisterOptions): void {
+  const pluginId = opts.pluginId.trim()
+  if (!pluginId) return
+  const key = panelKey(opts.placement, pluginId)
+  const prev = panels.get(key)
+  panels.set(key, {
+    placement: opts.placement,
+    pluginId,
+    tabIcon: opts.tabIcon,
+    tabLabelKey: opts.tabLabelKey,
+    interactive: opts.interactive === true,
+    html: prev?.html ?? '',
+    revision: prev?.revision ?? 0,
+  })
+  if (!pluginPanelActiveTab.value) {
+    pluginPanelActiveTab.value = pluginId
+  }
+  pluginPanelRevision.value += 1
+}
+
+export function setPluginPanelHtml(
+  placement: PluginPanelPlacement,
+  pluginId: string,
+  html: string,
+  opts?: { revision?: number },
+): void {
+  ensurePluginPanelSanitizeHooks()
+  const key = panelKey(placement, pluginId.trim())
+  const entry = panels.get(key)
+  if (!entry) return
+  const clean = entry.interactive
+    ? sanitizePluginPanelHtmlInteractive(html)
+    : sanitizePluginPanelHtml(html)
+  entry.html = clean
+  if (typeof opts?.revision === 'number') {
+    entry.revision = opts.revision
+  } else {
+    entry.revision += 1
+  }
+  pluginPanelRevision.value += 1
+}
+
+export function onPluginPanelEvent(
+  placement: PluginPanelPlacement,
+  pluginId: string,
+  handlers: PanelEventHandlers,
+): void {
+  eventHandlers.set(panelKey(placement, pluginId.trim()), handlers)
+}
+
+export function focusPluginPanelTab(
+  placement: PluginPanelPlacement,
+  pluginId?: string,
+): void {
+  if (pluginId?.trim()) {
+    pluginPanelActiveTab.value = pluginId.trim()
+  } else if (!pluginPanelActiveTab.value) {
+    const first = getRegisteredPanels(placement)[0]
+    if (first) pluginPanelActiveTab.value = first.pluginId
+  }
+}
+
+export function openPluginPanel(
+  placement: PluginPanelPlacement,
+  pluginId?: string,
+): void {
+  pluginPanelOpen.value = true
+  focusPluginPanelTab(placement, pluginId)
+}
+
+export function setPluginPanelPinned(
+  _placement: PluginPanelPlacement,
+  pinned: boolean,
+): void {
+  pluginPanelPinned.value = pinned
+  if (pinned) pluginPanelOpen.value = true
+}
+
+export function getActivePanelHtml(
+  placement: PluginPanelPlacement,
+): { pluginId: string; html: string; revision: number; interactive: boolean } | null {
+  let id = pluginPanelActiveTab.value
+  if (!id) {
+    const first = getRegisteredPanels(placement)[0]
+    id = first?.pluginId ?? null
+  }
+  if (!id) return null
+  const entry = panels.get(panelKey(placement, id))
+  if (!entry) {
+    const first = getRegisteredPanels(placement)[0]
+    if (!first) return null
+    return {
+      pluginId: first.pluginId,
+      html: first.html,
+      revision: first.revision,
+      interactive: first.interactive,
+    }
+  }
+  return {
+    pluginId: entry.pluginId,
+    html: entry.html,
+    revision: entry.revision,
+    interactive: entry.interactive,
+  }
+}
+
+export function dispatchPluginPanelDomEvent(
+  root: HTMLElement,
+  ev: Event,
+): void {
+  const active = pluginPanelActiveTab.value
+  if (!active) return
+  const entry = panels.get(panelKey('leftDrawer', active))
+  if (!entry) return
+  const handlers = eventHandlers.get(panelKey('leftDrawer', active))
+  if (!handlers) return
+
+  const target = ev.target
+  if (!(target instanceof HTMLElement)) return
+
+  if (ev.type === 'click') {
+    const actionEl = target.closest('[data-tk-action]')
+    if (actionEl instanceof HTMLElement) {
+      const action = actionEl.getAttribute('data-tk-action')?.trim()
+      if (action) {
+        handlers.onAction?.({ action, target: actionEl })
+      }
+    }
+  }
+
+  if (ev.type === 'change' || ev.type === 'input') {
+    const fieldEl = target.closest('[data-tk-field]')
+    if (fieldEl instanceof HTMLInputElement || fieldEl instanceof HTMLTextAreaElement) {
+      const field = fieldEl.getAttribute('data-tk-field')?.trim()
+      if (field) {
+        handlers.onInput?.({
+          field,
+          value: fieldEl.value,
+          type: fieldEl instanceof HTMLInputElement ? fieldEl.type : 'textarea',
+        })
+      }
+    }
+  }
+}
+
+export const pluginPanelMountRevision = shallowRef(0)
+
+export function notifyPluginPanelMounted(): void {
+  pluginPanelMountRevision.value += 1
+}

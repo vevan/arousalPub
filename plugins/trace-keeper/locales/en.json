@@ -1,0 +1,11 @@
+{
+  "pluginDisplayName": "Trace Keeper",
+  "tabLabel": "Trace Keeper",
+  "tooltipTurnView": "View scene state for this turn",
+  "tooltipTurnEmpty": "No tracker for this turn",
+  "tooltipLiveView": "View latest scene state",
+  "activeBundleIdLabel": "Default bundle",
+  "activeBundleIdDesc": "User-level default TraceBundle id",
+  "convBundleIdLabel": "Conversation bundle",
+  "convBundleIdDesc": "Leave empty to inherit user default or built-in sample"
+}

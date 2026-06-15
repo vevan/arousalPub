@@ -13,8 +13,14 @@ import { readRegexRulesDocument } from '../regex-rules-file.js'
 import type {
   RegexApplyContext,
 } from '../regex-rules-types.js'
-import { getCurrentUserId } from '../user-context.js'
+import { readTurnsTail } from '../chunk-chain.js'
+import {
+  readConversationIndex,
+  readConversationPluginSettings,
+} from '../chat-storage.js'
 import { readMergedPluginUserSettings } from './settings.js'
+import { readPluginPackageFile } from './loader.js'
+import { getCurrentUserId } from '../user-context.js'
 import type { PluginServerHostApi } from './types.js'
 import type { ChatMessage } from '../assemble-prompts.js'
 
@@ -108,6 +114,33 @@ export function createPluginServerHostApi(
         persistVars: req.persistVars,
       })
       return result.ok ? result.text : req.text
+    },
+    async getConversationPluginSettings(conversationId, pluginId) {
+      const cid = conversationId.trim()
+      const pid = pluginId.trim()
+      if (!cid || !pid) return {}
+      const idx = await readConversationIndex(cid)
+      if (!idx) return {}
+      return readConversationPluginSettings(idx, pid)
+    },
+    async readConversationTurnsTail(conversationId, limit = 80) {
+      const cid = conversationId.trim()
+      if (!cid) return []
+      const cap =
+        typeof limit === 'number' && Number.isFinite(limit) && limit > 0
+          ? Math.min(Math.round(limit), 500)
+          : 80
+      const { turns } = await readTurnsTail(cid, cap)
+      return turns.map((t) => ({
+        turnOrdinal: t.turnOrdinal,
+        activeReceiveIndex:
+          typeof t.activeReceiveIndex === 'number' ? t.activeReceiveIndex : 0,
+        plugins: Array.isArray(t.plugins) ? t.plugins : [],
+      }))
+    },
+    async readPluginPackageText(pluginId, relPath) {
+      const hit = await readPluginPackageFile(pluginId, relPath)
+      return hit ? hit.body.toString('utf8') : null
     },
     regex: {
       async listRules(opts) {

@@ -1,0 +1,11 @@
+{
+  "pluginDisplayName": "迹录",
+  "tabLabel": "迹录",
+  "tooltipTurnView": "查看本轮场景状态",
+  "tooltipTurnEmpty": "本轮无 tracker",
+  "tooltipLiveView": "查看最新场景状态",
+  "activeBundleIdLabel": "默认套件",
+  "activeBundleIdDesc": "用户级默认 TraceBundle id",
+  "convBundleIdLabel": "本会话套件",
+  "convBundleIdDesc": "留空则继承用户默认或内置样例"
+}

@@ -50,6 +50,13 @@ import {
   renderReasoningMarkdownToHtml,
 } from '@/utils/render-rich-message'
 import { registerPluginStyles } from '@/plugins/plugin-slot-styles'
+import {
+  onPluginPanelEvent,
+  openPluginPanel,
+  registerPluginPanel,
+  setPluginPanelHtml,
+  setPluginPanelPinned,
+} from '@/plugins/plugin-panel-registry'
 import { subscribePluginUserSettingsSaved } from '@/utils/plugin-user-settings-events'
 import { useConversationPluginSettingsStore } from '@/stores/conversation-plugin-settings'
 import { translatePluginI18nKey } from '@/utils/plugin-locale-text'
@@ -227,6 +234,26 @@ export function createScopedPluginHost(
     registerSlotButton(slot, def) {
       base.registerSlotButton(slot, { ...def, pluginId: id })
     },
+    ui: {
+      ...base.ui,
+      panel: {
+        register(opts) {
+          registerPluginPanel({ ...opts, pluginId: id })
+        },
+        setHtml(placement, _pluginId, html, opts) {
+          setPluginPanelHtml(placement, id, html, opts)
+        },
+        open(placement, pluginId) {
+          openPluginPanel(placement, pluginId ?? id)
+        },
+        setPinned(placement, pinned) {
+          setPluginPanelPinned(placement, pinned)
+        },
+        onEvent(placement, _pluginId, handlers) {
+          onPluginPanelEvent(placement, id, handlers)
+        },
+      },
+    },
   }
 }
 
@@ -346,6 +373,9 @@ export function createPluginWebHost(session: ChatSession): {
       createEntry() {
         throw new Error('plugin_host_requires_scoped_host')
       },
+      createEntriesBatch() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
       patchEntry() {
         throw new Error('plugin_host_requires_scoped_host')
       },
@@ -433,6 +463,23 @@ export function createPluginWebHost(session: ChatSession): {
       },
       clearProgress() {
         clearPluginProgress()
+      },
+      panel: {
+        register(opts) {
+          registerPluginPanel(opts)
+        },
+        setHtml(placement, pluginId, html, opts) {
+          setPluginPanelHtml(placement, pluginId, html, opts)
+        },
+        open(placement, pluginId) {
+          openPluginPanel(placement, pluginId)
+        },
+        setPinned(placement, pinned) {
+          setPluginPanelPinned(placement, pinned)
+        },
+        onEvent(placement, pluginId, handlers) {
+          onPluginPanelEvent(placement, pluginId, handlers)
+        },
       },
     },
   }

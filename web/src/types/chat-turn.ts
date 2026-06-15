@@ -26,6 +26,8 @@ export interface ChatTurnItem {
   receives: ReceiveItem[]
   activeReceiveIndex: number
   turnOrdinal: number
+  /** 落盘插件快照（如 trace-keeper） */
+  plugins?: unknown[]
 }
 
 export interface ChatPersistPayload {

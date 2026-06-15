@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { characterImageUrl } from '@/utils/authenticated-media-url'
+import { useAuthStore } from '@/stores/auth'
 import type { HomeCharacterSource } from '@/utils/home-preferences'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -14,6 +15,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const auth = useAuthStore()
 
 type CharacterFilter = 'all' | 'used' | 'unused'
 
@@ -166,7 +168,10 @@ function setupObserver() {
 }
 
 function characterImage(id: string) {
-  return characterImageUrl(id) ?? ''
+  return (
+    characterImageUrl(auth.user?.id ?? auth.defaultUserId, id, { size: 'm' }) ??
+    ''
+  )
 }
 
 function onPick(item: CharacterListItem) {

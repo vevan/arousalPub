@@ -261,6 +261,10 @@ import {
   updateCharacterDocument,
   updateCharacterPortrait,
 } from './character-storage.js'
+import {
+  portraitImageCacheControl,
+  resolvePortraitImageResponse,
+} from './portrait-image.js'
 
 const DEFAULT_BASE = 'https://api.openai.com/v1'
 
@@ -2505,19 +2509,33 @@ app.post('/api/characters', async (request, reply) => {
   }
 })
 
-app.get<{ Params: { id: string } }>(
-  '/api/characters/:id/image',
+app.get<{
+  Params: { token: string }
+  Querystring: { size?: string; v?: string }
+}>(
+  '/api/i/:token',
   async (request, reply) => {
-    const id = request.params.id
-    if (!isValidShortId(id)) {
-      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    const result = await resolvePortraitImageResponse(
+      request.params.token,
+      request.query.size,
+    )
+    if (!result.ok) {
+      if (result.reason === 'invalid_size') {
+        return reply.status(400).send({ error: ApiErrorCodes.invalid_request_body })
+      }
+      return reply.status(404).send({
+        error: ApiErrorCodes.character_not_found_or_no_png,
+      })
     }
-    const buf = await readCharacterPngBuffer(id)
-    if (!buf) return reply.status(404).send({ error: ApiErrorCodes.character_not_found_or_no_png })
+    const ifNoneMatch = request.headers['if-none-match']
+    if (ifNoneMatch === result.etag) {
+      return reply.status(304).send()
+    }
     return reply
       .header('Content-Type', 'image/png')
-      .header('Cache-Control', 'private, max-age=60')
-      .send(buf)
+      .header('Cache-Control', portraitImageCacheControl(request.query.size))
+      .header('ETag', result.etag)
+      .send(result.body)
   },
 )
 

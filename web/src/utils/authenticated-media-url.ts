@@ -1,6 +1,8 @@
 import { useAuthStore } from '@/stores/auth'
-
-const SHORT_ID_RE = /^[0-9a-f]{8}$/i
+import {
+  characterPortraitImageUrl,
+  type PortraitImageSize,
+} from '@/shared/portrait-media-token'
 
 /**
  * 为需登录的 GET 图片 URL 附加 access_token（供 img / 新窗口打开，浏览器不会带 Bearer）。
@@ -22,14 +24,14 @@ function withAccessToken(
 }
 
 export function characterImageUrl(
-  id: string | null | undefined,
-  cacheBust?: number | string,
+  userId: string | null | undefined,
+  characterId: string | null | undefined,
+  options?: {
+    size?: PortraitImageSize | null
+    cacheBust?: number | string | null
+  },
 ): string | null {
-  const clean = typeof id === 'string' ? id.trim() : ''
-  if (!clean || !SHORT_ID_RE.test(clean)) return null
-  const extra: Record<string, string> = {}
-  if (cacheBust != null) extra.v = String(cacheBust)
-  return withAccessToken(`/api/characters/${clean}/image`, extra)
+  return characterPortraitImageUrl(userId, characterId, options)
 }
 
 export function userAvatarUrl(
@@ -37,8 +39,10 @@ export function userAvatarUrl(
   cacheBust?: number | string,
 ): string | null {
   const clean = typeof userId === 'string' ? userId.trim() : ''
-  if (!clean || !SHORT_ID_RE.test(clean)) return null
+  if (!clean || !/^[0-9a-f]{8}$/i.test(clean)) return null
   const extra: Record<string, string> = {}
   if (cacheBust != null) extra.v = String(cacheBust)
   return withAccessToken(`/api/users/${clean}/avatar`, extra)
 }
+
+export type { PortraitImageSize } from '@/shared/portrait-media-token'

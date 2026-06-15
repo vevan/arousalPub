@@ -17,9 +17,11 @@ import {
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
 const router = useRouter()
+const auth = useAuthStore()
 
 const listMode = ref<HomeListMode>('conversations')
 const characterSource = ref(readHomeCharacterSourceDefault())
@@ -326,7 +328,10 @@ function removeCharacterSlot(index: number) {
 }
 
 function characterImage(id: string) {
-  return characterImageUrl(id) ?? ''
+  return (
+    characterImageUrl(auth.user?.id ?? auth.defaultUserId, id, { size: 'm' }) ??
+    ''
+  )
 }
 
 function primaryCharacterId(c: ChatListEntry): string | null {

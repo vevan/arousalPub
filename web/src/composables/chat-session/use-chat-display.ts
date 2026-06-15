@@ -6,7 +6,7 @@ export function useChatDisplay(opts: {
   conversationUserName?: string | null
   getUserCharacterId: () => string | null | undefined
   getCharacterIds: () => string[] | null | undefined
-  getAuthToken: () => string | null | undefined
+  getAuthUserId: () => string | null | undefined
   getConnAlias: () => string
   getConnModel: () => string
   t: ComposerTranslation
@@ -63,15 +63,15 @@ export function useChatDisplay(opts: {
   watch(
     () =>
       [
+        opts.getAuthUserId(),
         opts.getUserCharacterId(),
         opts.getCharacterIds(),
-        opts.getAuthToken(),
       ] as const,
-    ([userId, charIds]) => {
+    ([ownerUserId, userId, charIds]) => {
       const primaryId = Array.isArray(charIds) ? charIds[0] : undefined
       turnAvatarUrls.value = {
-        user: characterImageUrl(userId),
-        assistant: characterImageUrl(primaryId),
+        user: characterImageUrl(ownerUserId, userId, { size: 's' }),
+        assistant: characterImageUrl(ownerUserId, primaryId, { size: 's' }),
       }
       void loadPrimaryAssistantName(primaryId)
     },

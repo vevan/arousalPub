@@ -63,6 +63,7 @@ function isPublicRoute(url: string): boolean {
   const pathOnly = url.split('?')[0] ?? url
   if (AUTH_PUBLIC_PATHS.has(pathOnly)) return true
   if (pathOnly === `/api/users/${RESERVED_USER_ID}/avatar`) return true
+  if (/^\/api\/i\/[A-Za-z0-9_-]+$/i.test(pathOnly)) return true
   return false
 }
 
@@ -74,8 +75,6 @@ function authHeaderToken(request: FastifyRequest): string | undefined {
   return m?.[1]?.trim()
 }
 
-const IMAGE_GET_WITH_QUERY_TOKEN_RE =
-  /^\/api\/characters\/[0-9a-f]{8}\/image$/i
 const USER_AVATAR_GET_RE = /^\/api\/users\/[0-9a-f]{8}\/avatar$/i
 const PLUGIN_ASSET_GET_RE =
   /^\/api\/plugins\/[^/]+\/(assets|user-assets)\/[^/]+$/i
@@ -91,7 +90,6 @@ function accessTokenFromQuery(request: FastifyRequest): string | undefined {
 function allowsQueryAccessToken(pathOnly: string, method: string): boolean {
   if (method !== 'GET') return false
   return (
-    IMAGE_GET_WITH_QUERY_TOKEN_RE.test(pathOnly) ||
     USER_AVATAR_GET_RE.test(pathOnly) ||
     PLUGIN_ASSET_GET_RE.test(pathOnly)
   )

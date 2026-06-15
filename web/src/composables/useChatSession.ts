@@ -272,7 +272,7 @@ export function useChatSession(props: ChatSessionProps) {
     conversationUserName: props.conversationUserName,
     getUserCharacterId: () => props.conversationUserCharacterId,
     getCharacterIds: () => props.conversationCharacterIds,
-    getAuthToken: () => auth.token,
+    getAuthUserId: () => auth.user?.id ?? auth.defaultUserId,
     getConnAlias: () => conn.alias,
     getConnModel: () => conn.model,
     t,

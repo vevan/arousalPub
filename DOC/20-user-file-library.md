@@ -10,7 +10,7 @@
 
 当前仓库具备：
 
-- **角色立绘**：`GET /api/characters/:id/image`，JWT + 可选 `access_token` 查询参数展示；
+- **角色立绘**：`GET /api/i/:token`（公开 token URL；Query `size` 缩放）；用户头像仍 **`GET /api/users/:id/avatar`** + JWT / `access_token`；
 - **世界书**：手工条目 + 可选条目级 vector（`lorebook-vector-store`）；
 - **对话 memory**：turn 级 Lance 向量召回（§14）；
 - **插件 `fileAsset`**：Historian（剧情纪要）等侧车 JSON 内嵌小文件，**非**统一用户媒体库。
@@ -54,7 +54,7 @@ data/{userId}/files/
     content           # 原始字节（或 content.bin；实现时二选一固定）
 ```
 
-- **归属**：仅靠 JWT `sub` ↔ `userId`；**禁止**在 URL 路径中嵌入 `userId`（与 `GET /api/characters/:id/image` 一致）。
+- **归属**：文件库仅靠 JWT `sub` ↔ `userId`；**禁止**在 URL 路径中嵌入 `userId`。角色立绘用 **`/api/i/:token`**（token 内编码 `userId`，公开 GET）。
 - **索引**：`index.json` 损坏时可从 `{fileId}/meta.json` 重建（与 `characters/index.json` 模式对齐）。
 
 ### 3.2 `kind` 与 MIME
@@ -126,7 +126,7 @@ data/{userId}/files/
 ### 4.1 查询 token 白名单
 
 扩展 `server/src/auth.ts` 中 `allowsQueryAccessToken`，将  
-`/api/files/` + `/content` 与现有 `/api/characters/` + `/image` **同规则**（仅 GET、仅 content 子路径）。
+`/api/files/` + `/content` 与 **`GET /api/users/:id/avatar`** **同规则**（仅 GET、需 JWT 或 query `access_token`）。
 
 ### 4.2 服务端辅助
 
@@ -180,7 +180,7 @@ P1「独立知识库 RAG」的**文档管线**依赖本文件库 **M1 + M4**；`
 
 | 现有 | 关系 |
 |------|------|
-| 角色立绘 `/api/characters/:id/image` | 展示鉴权范本；charFile 为**附加**图片槽，不替换立绘 |
+| 角色立绘 `/api/i/:token` | 公开 token URL；charFile 为**附加**图片槽，不替换立绘 |
 | 世界书 vector | 条目级触发；与文档 RAG **并存、分表** |
 | turn memory Lance | 对话摘要向量；与文档 RAG **分表** |
 | 插件 `host.fileAsset` | 小文件侧车；P3 不强制迁移 |

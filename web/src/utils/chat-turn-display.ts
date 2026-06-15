@@ -67,3 +67,4 @@ export function reasoningCharsCount(text: string): number {
 }
 
 export { characterImageUrl } from '@/utils/authenticated-media-url'
+export type { PortraitImageSize } from '@/utils/authenticated-media-url'

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { characterImageUrl } from '@/utils/authenticated-media-url'
+import { useAuthStore } from '@/stores/auth'
 import { apiFetch } from '@/utils/api-fetch'
 import { generateShortId } from '@/utils/short-id'
 import { computed, mergeProps, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -17,6 +18,7 @@ const emit = defineEmits<{
 }>()
 
 const { t, locale } = useI18n()
+const auth = useAuthStore()
 
 interface CharacterListItem {
   id: string
@@ -119,7 +121,12 @@ function bumpPortraitTick() {
 }
 
 function characterImageSrc(id: string) {
-  return characterImageUrl(id, portraitTick.value) ?? ''
+  return (
+    characterImageUrl(auth.user?.id ?? auth.defaultUserId, id, {
+      size: 'l',
+      cacheBust: portraitTick.value,
+    }) ?? ''
+  )
 }
 
 const editPortraitSrc = computed(() => {

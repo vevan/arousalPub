@@ -47,7 +47,7 @@
 
 ### 2.2 Separate（补生成）
 
-解析失败或用户手动刷新：`POST /api/plugins/trace-keeper/regenerate-separate`（`plugin.complete` + `json_object`），结果写入 **`turn.plugins[]`**，**不**修改 assistant 正文。侧栏 live 且最后一轮无 snapshot 时显示按钮。
+解析失败或用户手动刷新：`POST /api/plugins/trace-keeper/regenerate-separate`（`plugin.complete` + `json_object`），结果写入 **`turn.plugins[]`**，并**同步回写当前 active receive 的 assistant 正文**（重写 `<ex-trace-keeper>` 块）。侧栏 live 且最后一轮无 snapshot 时显示按钮。
 
 ---
 
@@ -273,6 +273,14 @@ host.ui.panel.onPanelEvent('leftDrawer', 'trace-keeper', {
 | `POST …/regenerate-separate` | Web 侧栏触发；需 `plugin.complete` + `conversation.read` |
 | `POST …/patch-state` | Web 侧栏 JSON 编辑保存；需 `turn.plugins.write` + `conversation.read` |
 | `permissions` | `conversation.read`、`turn.read`、`turn.plugins.write`、`plugin.complete` |
+
+**两条写回路径均为双写**（`turn.plugins[]` + `receive.content`）：
+
+| 操作 | `turn.plugins[]` | active receive 正文 |
+|------|------------------|---------------------|
+| Together 落盘（`resolveTurnPluginEntriesFromAssistant`） | ✅ 写入 | 模型直接产出，落盘不再改写 |
+| Separate 补生成（`regenerate-separate`） | ✅ 写入 | ✅ 重写 `<ex-trace-keeper>` 块 |
+| 侧栏 JSON 编辑（`patch-state`） | ✅ 写入 | ✅ 重写 `<ex-trace-keeper>` 块 |
 
 **宿主**：`loadEnabledServerPlugins` 在同一次组装内 **只加载一次**（`assembleRuntime` + `additionCache` 共享）。插件注入 token 写入 **`assembly.plugins`**（审计 Tab，见 `DOC/24` §3.2）。
 

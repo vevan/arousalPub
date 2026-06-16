@@ -18,9 +18,11 @@ import { auditDebugEnabled, logSeparateDebugIfPresent } from './audit-debug.js'
 import {
   bumpPanelRevision,
   getPinnedTurnOrdinal,
+  isRegenerating,
   k,
   PLACEMENT,
   setPinnedTurnOrdinal,
+  setRegenerating,
 } from './state.js'
 import type { PluginHost, TurnCtx } from './types.js'
 
@@ -153,8 +155,11 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;')
 }
 
-let regenerating = false
 let lastEditContext: EditContext | null = null
+
+function conversationIdFrom(host: PluginHost): string {
+  return host.conversation.getId?.()?.trim() ?? ''
+}
 
 async function refreshPanel(host: PluginHost): Promise<void> {
   try {
@@ -167,7 +172,9 @@ async function refreshPanel(host: PluginHost): Promise<void> {
 
     const epoch = trackerEpochFromSettings(convSettings)
     const turns = turnsFromHost(host)
-    const pinned = getPinnedTurnOrdinal()
+    const conversationId = conversationIdFrom(host)
+    const pinned = getPinnedTurnOrdinal(conversationId)
+    const regenBusy = isRegenerating(conversationId)
 
     const resolved = resolvePanelView(bundle, turns, epoch, pinned)
 
@@ -192,7 +199,7 @@ async function refreshPanel(host: PluginHost): Promise<void> {
       showActions: turns.length > 0,
       editEnabled: resolved.kind === 'content',
       regenEnabled: isLastTurnView,
-      regenerating,
+      regenerating: regenBusy,
     }
 
     const html =
@@ -257,21 +264,18 @@ async function handlePatchStateSubmit(
 }
 
 async function handleRegenerateSeparate(host: PluginHost): Promise<void> {
-  if (regenerating) return
-  const conversationId = host.conversation.getId?.()
-  if (!conversationId) return
+  const conversationId = conversationIdFrom(host)
+  if (!conversationId || isRegenerating(conversationId)) return
 
   const turns = turnsFromHost(host)
   const lastTurn = turns[turns.length - 1]
   if (!lastTurn) return
 
-  regenerating = true
+  setRegenerating(conversationId, true)
   void refreshPanel(host)
   const wantDebug = auditDebugEnabled(host)
   try {
-    const result = await runSeparateRegenerate(conversationId, lastTurn.turnOrdinal, {
-      requestDebug: wantDebug,
-    })
+    const result = await runSeparateRegenerate(conversationId, lastTurn.turnOrdinal)
     logSeparateDebugIfPresent(result.debug)
     if (wantDebug && !result.debug) {
       console.warn(
@@ -300,7 +304,7 @@ async function handleRegenerateSeparate(host: PluginHost): Promise<void> {
       )
     }
   } finally {
-    regenerating = false
+    setRegenerating(conversationId, false)
     await refreshPanel(host)
     host.refreshSlotButtons()
   }
@@ -359,7 +363,8 @@ export function registerTurnButton(host: PluginHost): void {
     tooltipKey: (ctx: TurnCtx) => {
       const ord = ctx.turn?.turnOrdinal
       if (typeof ord !== 'number') return k(host, 'tooltipTurnEmpty')
-      const pinned = getPinnedTurnOrdinal()
+      const conversationId = conversationIdFrom(host)
+      const pinned = getPinnedTurnOrdinal(conversationId)
       const epoch = trackerEpochFromSettings(
         host.conversation.getPluginSettingsSnapshot(),
       )
@@ -370,7 +375,8 @@ export function registerTurnButton(host: PluginHost): void {
     disabled: (ctx: TurnCtx) => {
       const ord = ctx.turn?.turnOrdinal
       if (typeof ord !== 'number') return true
-      const pinned = getPinnedTurnOrdinal()
+      const conversationId = conversationIdFrom(host)
+      const pinned = getPinnedTurnOrdinal(conversationId)
       if (pinned === ord) return false
       const epoch = trackerEpochFromSettings(
         host.conversation.getPluginSettingsSnapshot(),
@@ -378,7 +384,8 @@ export function registerTurnButton(host: PluginHost): void {
       return !findTracePayloadForTurn(ctx.turn, epoch)
     },
     filled: (ctx: TurnCtx) => {
-      const pinned = getPinnedTurnOrdinal()
+      const conversationId = conversationIdFrom(host)
+      const pinned = getPinnedTurnOrdinal(conversationId)
       const ord = ctx.turn?.turnOrdinal
       return pinned !== null && ord === pinned
     },
@@ -387,8 +394,12 @@ export function registerTurnButton(host: PluginHost): void {
     onClick: (ctx: TurnCtx) => {
       const ord = ctx.turn?.turnOrdinal
       if (typeof ord !== 'number') return
-      const pinned = getPinnedTurnOrdinal()
-      setPinnedTurnOrdinal(pinned === ord ? null : ord)
+      const conversationId = conversationIdFrom(host)
+      const pinned = getPinnedTurnOrdinal(conversationId)
+      setPinnedTurnOrdinal(
+        conversationId,
+        pinned === ord ? null : ord,
+      )
       host.refreshSlotButtons()
       void refreshPanel(host)
       host.ui.panel.open(PLACEMENT, PLUGIN_ID)

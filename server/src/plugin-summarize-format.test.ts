@@ -85,6 +85,7 @@ describe('applyOutgoingRegexToSummaryTurn', () => {
     const skipRule: RegexRule = {
       ...rule,
       skipLastNTurns: 3,
+      skipLastNTurnsOutgoing: 3,
     }
     const turn: TurnRecord = {
       turnId: 't9',

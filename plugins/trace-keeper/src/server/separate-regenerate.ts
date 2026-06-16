@@ -31,6 +31,16 @@ type SeparateApi = {
       receives: { id: string; content: string }[]
     }[]
   >
+  readConversationTurnAtOrdinal: (
+    conversationId: string,
+    turnOrdinal: number,
+  ) => Promise<{
+    turnOrdinal: number
+    activeReceiveIndex: number
+    userText?: string
+    plugins: unknown[]
+    receives: { id: string; content: string }[]
+  } | null>
   runPluginComplete: (req: {
     conversationId?: string
     messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
@@ -115,14 +125,22 @@ export async function regenerateSeparateState(
     api.getConversationPluginSettings(conversationId, PLUGIN_ID),
     api.readConversationTurnsTail(conversationId, 500),
   ])
-  if (!tail.length) return { ok: false, code: 'no_turns' }
 
   const targetOrdinal =
     typeof input.turnOrdinal === 'number' && Number.isFinite(input.turnOrdinal)
       ? Math.round(input.turnOrdinal)
-      : tail[tail.length - 1]!.turnOrdinal
+      : tail.length > 0
+        ? tail[tail.length - 1]!.turnOrdinal
+        : NaN
 
-  const turn = tail.find((t) => t.turnOrdinal === targetOrdinal)
+  if (!Number.isFinite(targetOrdinal)) {
+    return { ok: false, code: 'no_turns' }
+  }
+
+  const turn = await api.readConversationTurnAtOrdinal(
+    conversationId,
+    targetOrdinal,
+  )
   if (!turn) return { ok: false, code: 'turn_not_found' }
 
   const receive = activeReceive(turn)

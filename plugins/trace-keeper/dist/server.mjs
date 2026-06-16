@@ -16,10 +16,10 @@ var sample_state_default = {
 };
 
 // plugins/trace-keeper/bundles/scene-tracker-default/template.hbs
-var template_default = '<div class="trace-keeper-panel">\r\n  <h4 class="tk-title">\u573A\u666F\u8FFD\u8E2A</h4>\r\n  <dl class="tk-fields">\r\n    <dt>\u5730\u70B9</dt>\r\n    <dd>{{data.scene.location}}</dd>\r\n    <dt>\u65F6\u95F4</dt>\r\n    <dd>{{data.scene.time}}</dd>\r\n    <dt>\u5929\u6C14</dt>\r\n    <dd>{{data.scene.weather}}</dd>\r\n    <dt>\u6C1B\u56F4</dt>\r\n    <dd>{{data.mood}}</dd>\r\n  </dl>\r\n  {{#if data.notes}}\r\n  <p class="tk-notes">{{data.notes}}</p>\r\n  {{/if}}\r\n  <p class="tk-meta text-caption">epoch {{meta.epoch}}{{#if meta.turnOrdinal}} \xB7 \u7B2C {{meta.turnOrdinal}} \u8F6E{{/if}}</p>\r\n</div>\r\n';
+var template_default = '<div class="trace-keeper-panel">\n  <h4 class="tk-title">\u573A\u666F\u8FFD\u8E2A</h4>\n  <dl class="tk-fields">\n    <dt>\u5730\u70B9</dt>\n    <dd>{{data.scene.location}}</dd>\n    <dt>\u65F6\u95F4</dt>\n    <dd>{{data.scene.time}}</dd>\n    <dt>\u5929\u6C14</dt>\n    <dd>{{data.scene.weather}}</dd>\n    <dt>\u6C1B\u56F4</dt>\n    <dd>{{data.mood}}</dd>\n  </dl>\n  {{#if data.notes}}\n  <p class="tk-notes">{{data.notes}}</p>\n  {{/if}}\n  <p class="tk-meta text-caption">epoch {{meta.epoch}}{{#if meta.turnOrdinal}} \xB7 \u7B2C {{meta.turnOrdinal}} \u8F6E{{/if}}</p>\n</div>\n';
 
 // plugins/trace-keeper/bundles/scene-tracker-default/stylesheet.css
-var stylesheet_default = ".trace-keeper-panel {\r\n  font-size: 0.875rem;\r\n  line-height: 1.45;\r\n}\r\n\r\n.trace-keeper-panel .tk-title {\r\n  margin: 0 0 8px;\r\n  font-weight: 600;\r\n  font-size: 0.95rem;\r\n}\r\n\r\n.trace-keeper-panel .tk-fields {\r\n  margin: 0 0 8px;\r\n  display: grid;\r\n  grid-template-columns: auto 1fr;\r\n  gap: 4px 10px;\r\n}\r\n\r\n.trace-keeper-panel .tk-fields dt {\r\n  margin: 0;\r\n  opacity: 0.72;\r\n}\r\n\r\n.trace-keeper-panel .tk-fields dd {\r\n  margin: 0;\r\n}\r\n\r\n.trace-keeper-panel .tk-notes {\r\n  margin: 8px 0 0;\r\n  padding: 8px;\r\n  border-radius: 6px;\r\n  background: rgba(var(--v-theme-on-surface), 0.04);\r\n}\r\n\r\n.trace-keeper-panel .tk-meta {\r\n  margin: 10px 0 0;\r\n  opacity: 0.55;\r\n}\r\n";
+var stylesheet_default = ".trace-keeper-panel {\n  font-size: 0.875rem;\n  line-height: 1.45;\n}\n\n.trace-keeper-panel .tk-title {\n  margin: 0 0 8px;\n  font-weight: 600;\n  font-size: 0.95rem;\n}\n\n.trace-keeper-panel .tk-fields {\n  margin: 0 0 8px;\n  display: grid;\n  grid-template-columns: auto 1fr;\n  gap: 4px 10px;\n}\n\n.trace-keeper-panel .tk-fields dt {\n  margin: 0;\n  opacity: 0.72;\n}\n\n.trace-keeper-panel .tk-fields dd {\n  margin: 0;\n}\n\n.trace-keeper-panel .tk-notes {\n  margin: 8px 0 0;\n  padding: 8px;\n  border-radius: 6px;\n  background: rgba(var(--v-theme-on-surface), 0.04);\n}\n\n.trace-keeper-panel .tk-meta {\n  margin: 10px 0 0;\n  opacity: 0.55;\n}\n";
 
 // plugins/trace-keeper/src/default-prompt.ts
 var DEFAULT_SYSTEM_PROMPT_TEMPLATE = [
@@ -358,9 +358,14 @@ async function regenerateSeparateState(input, api) {
     api.getConversationPluginSettings(conversationId, PLUGIN_ID),
     api.readConversationTurnsTail(conversationId, 500)
   ]);
-  if (!tail.length) return { ok: false, code: "no_turns" };
-  const targetOrdinal = typeof input.turnOrdinal === "number" && Number.isFinite(input.turnOrdinal) ? Math.round(input.turnOrdinal) : tail[tail.length - 1].turnOrdinal;
-  const turn = tail.find((t) => t.turnOrdinal === targetOrdinal);
+  const targetOrdinal = typeof input.turnOrdinal === "number" && Number.isFinite(input.turnOrdinal) ? Math.round(input.turnOrdinal) : tail.length > 0 ? tail[tail.length - 1].turnOrdinal : NaN;
+  if (!Number.isFinite(targetOrdinal)) {
+    return { ok: false, code: "no_turns" };
+  }
+  const turn = await api.readConversationTurnAtOrdinal(
+    conversationId,
+    targetOrdinal
+  );
   if (!turn) return { ok: false, code: "turn_not_found" };
   const receive = activeReceive2(turn);
   if (!receive?.id) return { ok: false, code: "receive_not_found" };
@@ -451,12 +456,10 @@ async function patchTraceKeeperState(input, api) {
   const state = normalizePatchState(input.state);
   if (!state) return { ok: false, code: "invalid_state" };
   const turnOrdinal = Math.round(input.turnOrdinal);
-  const [convSettings, tail] = await Promise.all([
+  const [convSettings, turn] = await Promise.all([
     api.getConversationPluginSettings(conversationId, PLUGIN_ID),
-    api.readConversationTurnsTail(conversationId, 500)
+    api.readConversationTurnAtOrdinal(conversationId, turnOrdinal)
   ]);
-  if (!tail.length) return { ok: false, code: "no_turns" };
-  const turn = tail.find((t) => t.turnOrdinal === turnOrdinal);
   if (!turn) return { ok: false, code: "turn_not_found" };
   const epoch = trackerEpochFromSettings(convSettings);
   const receive = activeReceive3(turn);

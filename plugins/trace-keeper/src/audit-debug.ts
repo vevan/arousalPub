@@ -12,8 +12,7 @@ function readStoredAuditDebugPreference(): boolean {
   } catch {
     /* ignore */
   }
-  // 与 preferences.readStoredWriteChatPrompt 默认一致
-  return true
+  return false
 }
 
 /** 设置页「启用会话 debug 审计」；读 session ref，回退 localStorage */

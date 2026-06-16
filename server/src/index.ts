@@ -3687,7 +3687,7 @@ app.post<{
 
 app.post<{
   Params: { pluginId: string }
-  Body: { conversationId?: string; turnOrdinal?: number; debug?: boolean }
+  Body: { conversationId?: string; turnOrdinal?: number }
 }>(
   '/api/plugins/:pluginId/regenerate-separate',
   async (request, reply) => {

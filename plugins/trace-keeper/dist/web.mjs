@@ -5755,10 +5755,10 @@ var sample_state_default = {
 };
 
 // plugins/trace-keeper/bundles/scene-tracker-default/template.hbs
-var template_default = '<div class="trace-keeper-panel">\r\n  <h4 class="tk-title">\u573A\u666F\u8FFD\u8E2A</h4>\r\n  <dl class="tk-fields">\r\n    <dt>\u5730\u70B9</dt>\r\n    <dd>{{data.scene.location}}</dd>\r\n    <dt>\u65F6\u95F4</dt>\r\n    <dd>{{data.scene.time}}</dd>\r\n    <dt>\u5929\u6C14</dt>\r\n    <dd>{{data.scene.weather}}</dd>\r\n    <dt>\u6C1B\u56F4</dt>\r\n    <dd>{{data.mood}}</dd>\r\n  </dl>\r\n  {{#if data.notes}}\r\n  <p class="tk-notes">{{data.notes}}</p>\r\n  {{/if}}\r\n  <p class="tk-meta text-caption">epoch {{meta.epoch}}{{#if meta.turnOrdinal}} \xB7 \u7B2C {{meta.turnOrdinal}} \u8F6E{{/if}}</p>\r\n</div>\r\n';
+var template_default = '<div class="trace-keeper-panel">\n  <h4 class="tk-title">\u573A\u666F\u8FFD\u8E2A</h4>\n  <dl class="tk-fields">\n    <dt>\u5730\u70B9</dt>\n    <dd>{{data.scene.location}}</dd>\n    <dt>\u65F6\u95F4</dt>\n    <dd>{{data.scene.time}}</dd>\n    <dt>\u5929\u6C14</dt>\n    <dd>{{data.scene.weather}}</dd>\n    <dt>\u6C1B\u56F4</dt>\n    <dd>{{data.mood}}</dd>\n  </dl>\n  {{#if data.notes}}\n  <p class="tk-notes">{{data.notes}}</p>\n  {{/if}}\n  <p class="tk-meta text-caption">epoch {{meta.epoch}}{{#if meta.turnOrdinal}} \xB7 \u7B2C {{meta.turnOrdinal}} \u8F6E{{/if}}</p>\n</div>\n';
 
 // plugins/trace-keeper/bundles/scene-tracker-default/stylesheet.css
-var stylesheet_default = ".trace-keeper-panel {\r\n  font-size: 0.875rem;\r\n  line-height: 1.45;\r\n}\r\n\r\n.trace-keeper-panel .tk-title {\r\n  margin: 0 0 8px;\r\n  font-weight: 600;\r\n  font-size: 0.95rem;\r\n}\r\n\r\n.trace-keeper-panel .tk-fields {\r\n  margin: 0 0 8px;\r\n  display: grid;\r\n  grid-template-columns: auto 1fr;\r\n  gap: 4px 10px;\r\n}\r\n\r\n.trace-keeper-panel .tk-fields dt {\r\n  margin: 0;\r\n  opacity: 0.72;\r\n}\r\n\r\n.trace-keeper-panel .tk-fields dd {\r\n  margin: 0;\r\n}\r\n\r\n.trace-keeper-panel .tk-notes {\r\n  margin: 8px 0 0;\r\n  padding: 8px;\r\n  border-radius: 6px;\r\n  background: rgba(var(--v-theme-on-surface), 0.04);\r\n}\r\n\r\n.trace-keeper-panel .tk-meta {\r\n  margin: 10px 0 0;\r\n  opacity: 0.55;\r\n}\r\n";
+var stylesheet_default = ".trace-keeper-panel {\n  font-size: 0.875rem;\n  line-height: 1.45;\n}\n\n.trace-keeper-panel .tk-title {\n  margin: 0 0 8px;\n  font-weight: 600;\n  font-size: 0.95rem;\n}\n\n.trace-keeper-panel .tk-fields {\n  margin: 0 0 8px;\n  display: grid;\n  grid-template-columns: auto 1fr;\n  gap: 4px 10px;\n}\n\n.trace-keeper-panel .tk-fields dt {\n  margin: 0;\n  opacity: 0.72;\n}\n\n.trace-keeper-panel .tk-fields dd {\n  margin: 0;\n}\n\n.trace-keeper-panel .tk-notes {\n  margin: 8px 0 0;\n  padding: 8px;\n  border-radius: 6px;\n  background: rgba(var(--v-theme-on-surface), 0.04);\n}\n\n.trace-keeper-panel .tk-meta {\n  margin: 10px 0 0;\n  opacity: 0.55;\n}\n";
 
 // plugins/trace-keeper/src/default-prompt.ts
 var DEFAULT_SYSTEM_PROMPT_TEMPLATE = [
@@ -6253,7 +6253,7 @@ var SeparateRegenerateError = class extends Error {
     this.debug = opts?.debug;
   }
 };
-async function runSeparateRegenerate(conversationId, turnOrdinal, opts) {
+async function runSeparateRegenerate(conversationId, turnOrdinal) {
   const res = await fetch(
     `/api/plugins/${encodeURIComponent(PLUGIN_ID)}/regenerate-separate`,
     {
@@ -6261,8 +6261,7 @@ async function runSeparateRegenerate(conversationId, turnOrdinal, opts) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         conversationId,
-        ...typeof turnOrdinal === "number" ? { turnOrdinal } : {},
-        ...opts?.requestDebug ? { debug: true } : {}
+        ...typeof turnOrdinal === "number" ? { turnOrdinal } : {}
       })
     }
   );
@@ -6296,7 +6295,7 @@ function readStoredAuditDebugPreference() {
     if (raw === "1" || raw === "true") return true;
   } catch {
   }
-  return true;
+  return false;
 }
 function auditDebugEnabled(host) {
   const raw = host.session.writeChatPromptSnapshot;
@@ -6336,13 +6335,39 @@ function logSeparateDebugIfPresent(debug) {
 }
 
 // plugins/trace-keeper/src/state.ts
+var pinnedConversationId = null;
 var pinnedTurnOrdinal = null;
+var regeneratingConversationId = null;
+var regenerating = false;
 var panelRevision = 0;
-function getPinnedTurnOrdinal() {
+function getPinnedTurnOrdinal(conversationId) {
+  const cid = conversationId.trim();
+  if (!cid || pinnedConversationId !== cid) return null;
   return pinnedTurnOrdinal;
 }
-function setPinnedTurnOrdinal(ord) {
+function setPinnedTurnOrdinal(conversationId, ord) {
+  const cid = conversationId.trim();
+  if (!cid || ord == null) {
+    pinnedConversationId = null;
+    pinnedTurnOrdinal = null;
+    return;
+  }
+  pinnedConversationId = cid;
   pinnedTurnOrdinal = ord;
+}
+function isRegenerating(conversationId) {
+  const cid = conversationId.trim();
+  return regenerating && regeneratingConversationId === cid;
+}
+function setRegenerating(conversationId, value) {
+  const cid = conversationId.trim();
+  if (!value || !cid) {
+    regenerating = false;
+    regeneratingConversationId = null;
+    return;
+  }
+  regenerating = true;
+  regeneratingConversationId = cid;
 }
 function bumpPanelRevision() {
   panelRevision += 1;
@@ -6435,8 +6460,10 @@ function wrapPanelShell(host, innerHtml, opts) {
 function escapeHtml(text) {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
-var regenerating = false;
 var lastEditContext = null;
+function conversationIdFrom(host) {
+  return host.conversation.getId?.()?.trim() ?? "";
+}
 async function refreshPanel(host) {
   try {
     const [userSettings, convSettings] = await Promise.all([
@@ -6448,7 +6475,9 @@ async function refreshPanel(host) {
 ${SHELL_STYLES}`);
     const epoch = trackerEpochFromSettings(convSettings);
     const turns = turnsFromHost(host);
-    const pinned = getPinnedTurnOrdinal();
+    const conversationId = conversationIdFrom(host);
+    const pinned = getPinnedTurnOrdinal(conversationId);
+    const regenBusy = isRegenerating(conversationId);
     const resolved = resolvePanelView(bundle, turns, epoch, pinned);
     lastEditContext = resolved.kind === "content" ? {
       turnOrdinal: resolved.turnOrdinal,
@@ -6461,7 +6490,7 @@ ${SHELL_STYLES}`);
       showActions: turns.length > 0,
       editEnabled: resolved.kind === "content",
       regenEnabled: isLastTurnView,
-      regenerating
+      regenerating: regenBusy
     };
     const html = resolved.kind === "content" ? wrapPanelShell(host, resolved.html, shellActions) : wrapPanelShell(host, "", {
       emptyReason: resolved.reason,
@@ -6513,19 +6542,16 @@ async function handlePatchStateSubmit(host, model) {
   }
 }
 async function handleRegenerateSeparate(host) {
-  if (regenerating) return;
-  const conversationId = host.conversation.getId?.();
-  if (!conversationId) return;
+  const conversationId = conversationIdFrom(host);
+  if (!conversationId || isRegenerating(conversationId)) return;
   const turns = turnsFromHost(host);
   const lastTurn = turns[turns.length - 1];
   if (!lastTurn) return;
-  regenerating = true;
+  setRegenerating(conversationId, true);
   void refreshPanel(host);
   const wantDebug = auditDebugEnabled(host);
   try {
-    const result = await runSeparateRegenerate(conversationId, lastTurn.turnOrdinal, {
-      requestDebug: wantDebug
-    });
+    const result = await runSeparateRegenerate(conversationId, lastTurn.turnOrdinal);
     logSeparateDebugIfPresent(result.debug);
     if (wantDebug && !result.debug) {
       console.warn(
@@ -6554,7 +6580,7 @@ async function handleRegenerateSeparate(host) {
       );
     }
   } finally {
-    regenerating = false;
+    setRegenerating(conversationId, false);
     await refreshPanel(host);
     host.refreshSlotButtons();
   }
@@ -6610,7 +6636,8 @@ function registerTurnButton(host) {
     tooltipKey: (ctx) => {
       const ord = ctx.turn?.turnOrdinal;
       if (typeof ord !== "number") return k(host, "tooltipTurnEmpty");
-      const pinned = getPinnedTurnOrdinal();
+      const conversationId = conversationIdFrom(host);
+      const pinned = getPinnedTurnOrdinal(conversationId);
       const epoch = trackerEpochFromSettings(
         host.conversation.getPluginSettingsSnapshot()
       );
@@ -6621,7 +6648,8 @@ function registerTurnButton(host) {
     disabled: (ctx) => {
       const ord = ctx.turn?.turnOrdinal;
       if (typeof ord !== "number") return true;
-      const pinned = getPinnedTurnOrdinal();
+      const conversationId = conversationIdFrom(host);
+      const pinned = getPinnedTurnOrdinal(conversationId);
       if (pinned === ord) return false;
       const epoch = trackerEpochFromSettings(
         host.conversation.getPluginSettingsSnapshot()
@@ -6629,7 +6657,8 @@ function registerTurnButton(host) {
       return !findTracePayloadForTurn(ctx.turn, epoch);
     },
     filled: (ctx) => {
-      const pinned = getPinnedTurnOrdinal();
+      const conversationId = conversationIdFrom(host);
+      const pinned = getPinnedTurnOrdinal(conversationId);
       const ord = ctx.turn?.turnOrdinal;
       return pinned !== null && ord === pinned;
     },
@@ -6637,8 +6666,12 @@ function registerTurnButton(host) {
     onClick: (ctx) => {
       const ord = ctx.turn?.turnOrdinal;
       if (typeof ord !== "number") return;
-      const pinned = getPinnedTurnOrdinal();
-      setPinnedTurnOrdinal(pinned === ord ? null : ord);
+      const conversationId = conversationIdFrom(host);
+      const pinned = getPinnedTurnOrdinal(conversationId);
+      setPinnedTurnOrdinal(
+        conversationId,
+        pinned === ord ? null : ord
+      );
       host.refreshSlotButtons();
       void refreshPanel(host);
       host.ui.panel.open(PLACEMENT, PLUGIN_ID);

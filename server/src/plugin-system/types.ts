@@ -175,6 +175,16 @@ export interface PluginServerHostApi {
       receives: { id: string; content: string }[]
     }[]
   >
+  readConversationTurnAtOrdinal: (
+    conversationId: string,
+    turnOrdinal: number,
+  ) => Promise<{
+    turnOrdinal: number
+    activeReceiveIndex: number
+    userText: string
+    plugins: unknown[]
+    receives: { id: string; content: string }[]
+  } | null>
   readPluginPackageText: (
     pluginId: string,
     relPath: string,

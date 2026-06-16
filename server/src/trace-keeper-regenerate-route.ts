@@ -10,8 +10,6 @@ const TRACE_KEEPER_ID = 'trace-keeper'
 export interface TraceKeeperRegenerateBody {
   conversationId?: string
   turnOrdinal?: number
-  /** 客户端「会话 debug 审计」开启时传 true，与会话 auditDebug 二选一触发 capture */
-  debug?: boolean
 }
 
 export type TraceKeeperRegenerateRouteResult =
@@ -52,9 +50,7 @@ export async function runTraceKeeperRegenerateRoute(
       : undefined
 
   const idx = await readConversationIndex(conversationId)
-  const clientDebug = body.debug === true
-  const debugCapture =
-    clientDebug || (idx ? isAuditDebugWriteEnabled(idx) : false)
+  const debugCapture = idx ? isAuditDebugWriteEnabled(idx) : false
 
   const result = await plugin.module.regenerateSeparateState(
     { conversationId, turnOrdinal, debugCapture },

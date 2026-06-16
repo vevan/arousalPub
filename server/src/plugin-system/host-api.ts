@@ -13,17 +13,40 @@ import { readRegexRulesDocument } from '../regex-rules-file.js'
 import type {
   RegexApplyContext,
 } from '../regex-rules-types.js'
-import { readTurnsTail } from '../chunk-chain.js'
+import { readChunkContainingOrdinal, readTurnsTail } from '../chunk-chain.js'
 import {
   readConversationIndex,
   readConversationPluginSettings,
   getTurnUserText,
+  type TurnRecord,
 } from '../chat-storage.js'
 import { readMergedPluginUserSettings } from './settings.js'
 import { readPluginPackageFile } from './loader.js'
 import { getCurrentUserId } from '../user-context.js'
 import type { PluginServerHostApi } from './types.js'
 import type { ChatMessage } from '../assemble-prompts.js'
+
+export type PluginHostTurnSnapshot = {
+  turnOrdinal: number
+  activeReceiveIndex: number
+  userText: string
+  plugins: unknown[]
+  receives: { id: string; content: string }[]
+}
+
+function mapTurnToHostSnapshot(t: TurnRecord): PluginHostTurnSnapshot {
+  return {
+    turnOrdinal: t.turnOrdinal,
+    activeReceiveIndex:
+      typeof t.activeReceiveIndex === 'number' ? t.activeReceiveIndex : 0,
+    userText: getTurnUserText(t),
+    plugins: Array.isArray(t.plugins) ? t.plugins : [],
+    receives: (t.receives ?? []).map((r) => ({
+      id: typeof r.id === 'string' ? r.id : '',
+      content: typeof r.content === 'string' ? r.content : '',
+    })),
+  }
+}
 
 export function createPluginServerHostApi(
   pluginId?: string,
@@ -134,17 +157,24 @@ export function createPluginServerHostApi(
           ? Math.min(Math.round(limit), 500)
           : 80
       const { turns } = await readTurnsTail(cid, cap)
-      return turns.map((t) => ({
-        turnOrdinal: t.turnOrdinal,
-        activeReceiveIndex:
-          typeof t.activeReceiveIndex === 'number' ? t.activeReceiveIndex : 0,
-        userText: getTurnUserText(t),
-        plugins: Array.isArray(t.plugins) ? t.plugins : [],
-        receives: (t.receives ?? []).map((r) => ({
-          id: typeof r.id === 'string' ? r.id : '',
-          content: typeof r.content === 'string' ? r.content : '',
-        })),
-      }))
+      return turns.map(mapTurnToHostSnapshot)
+    },
+    async readConversationTurnAtOrdinal(conversationId, turnOrdinal) {
+      const cid = conversationId.trim()
+      if (!cid) return null
+      if (
+        typeof turnOrdinal !== 'number' ||
+        !Number.isFinite(turnOrdinal) ||
+        turnOrdinal < 0
+      ) {
+        return null
+      }
+      const ord = Math.round(turnOrdinal)
+      const located = await readChunkContainingOrdinal(cid, ord)
+      if (!located) return null
+      const turn = located.chunk.turns.find((t) => t.turnOrdinal === ord)
+      if (!turn) return null
+      return mapTurnToHostSnapshot(turn)
     },
     async readPluginPackageText(pluginId, relPath) {
       const hit = await readPluginPackageFile(pluginId, relPath)

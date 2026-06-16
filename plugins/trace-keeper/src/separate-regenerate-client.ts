@@ -35,7 +35,6 @@ export class SeparateRegenerateError extends Error {
 export async function runSeparateRegenerate(
   conversationId: string,
   turnOrdinal?: number,
-  opts?: { requestDebug?: boolean },
 ): Promise<SeparateRegenerateResult> {
   const res = await fetch(
     `/api/plugins/${encodeURIComponent(PLUGIN_ID)}/regenerate-separate`,
@@ -45,7 +44,6 @@ export async function runSeparateRegenerate(
       body: JSON.stringify({
         conversationId,
         ...(typeof turnOrdinal === 'number' ? { turnOrdinal } : {}),
-        ...(opts?.requestDebug ? { debug: true } : {}),
       }),
     },
   )

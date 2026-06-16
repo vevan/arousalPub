@@ -2,21 +2,21 @@ import { PLUGIN_ID } from '../constants.js'
 import { normalizePatchState, upsertTraceKeeperBlockInAssistant } from '../parse-block.js'
 import { trackerEpochFromSettings } from '../bundle-resolve.js'
 
+type HostTurnSnapshot = {
+  turnOrdinal: number
+  activeReceiveIndex: number
+  receives: { id: string; content: string }[]
+}
+
 type PatchApi = {
   getConversationPluginSettings: (
     conversationId: string,
     pluginId: string,
   ) => Promise<Record<string, unknown>>
-  readConversationTurnsTail: (
+  readConversationTurnAtOrdinal: (
     conversationId: string,
-    limit?: number,
-  ) => Promise<
-    {
-      turnOrdinal: number
-      activeReceiveIndex: number
-      receives: { id: string; content: string }[]
-    }[]
-  >
+    turnOrdinal: number,
+  ) => Promise<HostTurnSnapshot | null>
 }
 
 export interface PatchTraceKeeperStateInput {
@@ -40,12 +40,7 @@ export type PatchTraceKeeperStateResult =
     }
   | { ok: false; code: string }
 
-function activeReceive(
-  turn: {
-    activeReceiveIndex: number
-    receives: { id: string; content: string }[]
-  },
-): { id: string } | null {
+function activeReceive(turn: HostTurnSnapshot): { id: string } | null {
   const receives = turn.receives
   if (!receives?.length) return null
   const idx = Math.min(
@@ -76,13 +71,10 @@ export async function patchTraceKeeperState(
   if (!state) return { ok: false, code: 'invalid_state' }
 
   const turnOrdinal = Math.round(input.turnOrdinal)
-  const [convSettings, tail] = await Promise.all([
+  const [convSettings, turn] = await Promise.all([
     api.getConversationPluginSettings(conversationId, PLUGIN_ID),
-    api.readConversationTurnsTail(conversationId, 500),
+    api.readConversationTurnAtOrdinal(conversationId, turnOrdinal),
   ])
-  if (!tail.length) return { ok: false, code: 'no_turns' }
-
-  const turn = tail.find((t) => t.turnOrdinal === turnOrdinal)
   if (!turn) return { ok: false, code: 'turn_not_found' }
 
   const epoch = trackerEpochFromSettings(convSettings)

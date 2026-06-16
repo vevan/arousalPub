@@ -3,6 +3,7 @@ import {
   dispatchPluginPanelDomEvent,
   getActivePanelHtml,
   getRegisteredPanels,
+  isPanelVisibleOnRoute,
   isPluginPanelHidden,
   notifyPluginPanelMounted,
   openPluginPanel,
@@ -12,12 +13,14 @@ import {
 } from '@/plugins/plugin-panel-registry'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 
 const props = defineProps<{
   placement: PluginPanelPlacement
 }>()
 
 const { t, te } = useI18n()
+const route = useRoute()
 
 const panels = computed(() => {
   void pluginPanelRevision.value
@@ -25,13 +28,20 @@ const panels = computed(() => {
 })
 const active = computed(() => {
   void pluginPanelRevision.value
-  return getActivePanelHtml(props.placement)
+  return getActivePanelHtml(props.placement, route.name as string)
 })
 const hostHidden = computed(() => isPluginPanelHidden(props.placement))
+const showPanelContent = computed(() => Boolean(active.value?.html?.trim()))
 const contentRef = ref<HTMLElement | null>(null)
 
 function tabLabel(key: string): string {
   return te(key) ? t(key) : key
+}
+
+function panelRoutable(pluginId: string): boolean {
+  const entry = panels.value.find((p) => p.pluginId === pluginId)
+  if (!entry) return false
+  return isPanelVisibleOnRoute(entry, route.name as string)
 }
 
 function onToggleHidden(): void {
@@ -39,7 +49,8 @@ function onToggleHidden(): void {
 }
 
 function onTabClick(pluginId: string): void {
-  openPluginPanel(props.placement, pluginId)
+  if (!panelRoutable(pluginId)) return
+  openPluginPanel(props.placement, pluginId, route.name as string)
 }
 
 function onPanelEvent(ev: Event): void {
@@ -78,7 +89,12 @@ watch(
           icon
           size="x-small"
           variant="text"
-          :color="active?.pluginId === p.pluginId ? 'primary' : undefined"
+          :disabled="!panelRoutable(p.pluginId)"
+          :color="
+            panelRoutable(p.pluginId) && active?.pluginId === p.pluginId
+              ? 'primary'
+              : undefined
+          "
           :aria-label="tabLabel(p.tabLabelKey)"
           @click="onTabClick(p.pluginId)"
         >
@@ -87,30 +103,22 @@ watch(
       </div>
     </div>
 
-    <template v-if="panels.length > 0">
-      <div
-        v-if="active?.html"
-        ref="contentRef"
-        class="plugin-rail-host__content"
-        data-plugin-panel-host
-        :data-plugin-panel="active.pluginId"
-        v-html="active.html"
-        @click="onPanelEvent"
-        @change="onPanelEvent"
-        @input="onPanelEvent"
-      />
-      <div
-        v-else
-        class="plugin-rail-host__empty text-body-2 text-medium-emphasis pa-4"
-      >
-        {{ $t('app.pluginPanelEmpty') }}
-      </div>
-    </template>
+    <div
+      v-if="showPanelContent"
+      ref="contentRef"
+      class="plugin-rail-host__content"
+      data-plugin-panel-host
+      :data-plugin-panel="active?.pluginId"
+      v-html="active?.html"
+      @click="onPanelEvent"
+      @change="onPanelEvent"
+      @input="onPanelEvent"
+    />
     <div
       v-else
       class="plugin-rail-host__empty text-body-2 text-medium-emphasis pa-4"
     >
-      {{ $t('app.pluginsHint') }}
+      {{ $t('app.pluginRailUnavailable') }}
     </div>
   </div>
 </template>
@@ -129,7 +137,7 @@ watch(
   gap: 8px;
   padding: 6px 8px 6px 12px;
   border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  background: rgb(var(--v-theme-surface-variant));
+  background: rgba(var(--v-theme-primary), 0.1);
   flex-shrink: 0;
 }
 

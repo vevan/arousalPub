@@ -104,7 +104,8 @@
 |------|----------|----------|
 | 无轮次 | 空会话 | ❌ |
 | 查看 **非最后一轮** 且无 snapshot | 统一「该轮暂无数据」 | ❌ |
-| **最后一轮** 无 snapshot | 未返回块 / 空块 / JSON 解析失败 / 未落盘 / 格式无效 | ✅ |
+| **最后一轮** 无 snapshot，且 **主对话正在生成**（`loading` / `regeneratingTurnOrdinal`） | **等待态**（`awaiting_reply`）：沙漏 `mdi-timer-sand` +「正在等待模型返回 tracker…」；**不**显示「未返回块」；**无** Separate | ❌ |
+| **最后一轮** 无 snapshot（生成已结束） | 未返回块 / 空块 / JSON 解析失败 / 未落盘 / 格式无效 | ✅ |
 | 有 snapshot 但 template 渲染失败 | 模板渲染失败（可附 detail） | ✅ |
 
 `sampleState` **不**参与侧栏占位，仅用于 system 注入与设置页。
@@ -188,7 +189,7 @@ interface TraceBundle {
 
 ```text
 ┌─────────────────────────────────────┐
-│ [📌 Pin] [迹录] […预留插件 Tab…]     │  ← 顶栏：Pin + 插件图标切 Tab
+│ [隐藏] [迹录] […预留插件 Tab…]       │  ← 顶栏：隐藏 + 插件图标切 Tab（主色浅底）
 ├─────────────────────────────────────┤
 │  Handlebars 渲染 + 用户 stylesheet   │
 │  （宿主 DOMPurify pluginPanel 档）   │
@@ -201,7 +202,11 @@ interface TraceBundle {
 | **插件 Tab** | `placement: 'leftRail'` 下多插件共用；`activeTab` 切换 |
 | **固定入口** | 顶栏/页脚 **Trace Keeper** 按钮 → 显示 left rail 并聚焦 `trace-keeper` tab |
 
-宿主占位：`App.vue` 左 rail 列（`app.pluginsHint` 预留）。
+宿主占位：`App.vue` 左 rail 列；无可用内容时宿主壳显示 **`app.pluginRailUnavailable`**（见 **`DOC/31`** §4.4）。
+
+**等待回复 UI（2026-06）**：`session.loading` 或 `regeneratingTurnOrdinal` 时，最后一轮无 snapshot 显示 **`.tk-pending`**：上方 **`mdi-timer-sand`**（3rem），`tk-hourglass-flip` 动画（30% 转 180° · 20% 停 · 30% 再转 180° · 20% 停 · `ease-in-out` · 2.4s 循环）；下方小字 `panelEmptyAwaitingReply`。底部 action 栏 Separate **禁用**。依赖宿主 **`host.lifecycle.onGeneratingChanged`**。
+
+面板底部操作图标使用 **MDI class**（`mdi-pencil-outline` / `mdi-refresh`），非内联 SVG。
 
 ### 6.2 每轮按钮
 

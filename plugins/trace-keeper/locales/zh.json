@@ -7,6 +7,7 @@
   "panelNoData": "该轮暂无 tracker 数据。",
   "panelEmptyEmptySession": "当前会话尚无轮次。",
   "panelEmptyNoDataHistory": "该轮暂无 tracker 数据。",
+  "panelEmptyAwaitingReply": "正在等待模型返回 tracker…",
   "panelEmptyNoBlock": "模型未返回 tracker 块（<ex-trace-keeper>）。",
   "panelEmptyEmptyBlock": "tracker 块为空。",
   "panelEmptyJsonParseFailed": "tracker JSON 解析失败。",

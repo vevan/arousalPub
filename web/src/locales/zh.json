@@ -6,6 +6,7 @@
     "pluginsHint": "插件扩展面板",
     "pluginPanelHide": "隐藏插件面板",
     "pluginPanelEmpty": "暂无面板内容",
+    "pluginRailUnavailable": "当前无可用插件",
     "traceKeeper": "迹录",
     "apiConnection": "连接",
     "chat": "对话",

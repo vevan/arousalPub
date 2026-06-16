@@ -49,7 +49,7 @@
 | [`24`](24-regex-and-session-audit.md) | 主体 ✅ | 正则三阶段、debug 审计 |
 | [`25`](25-security-deployment.md) | ✅ | 部署硬化、**API Key 隔离与磁盘加密** §15 |
 | [`30`](30-plugin-trace-keeper.md) | ✅ v1 | **迹录** `trace-keeper`：Together、Separate、TraceBundle、左栏 HTML 面板 |
-| [`31`](31-main-layout-plugin-rails.md) | 待实现 | **主布局三列 Grid**、插件 left/right rail、`hidden` 替代 `pinned`、API drawer 保留 |
+| [`31`](31-main-layout-plugin-rails.md) | ✅ | **主布局三列 Grid**、插件 left/right rail、`routes` 路由门控、`hidden`、统一空态 |
 
 ## 已归档（勿再新建同级文档）
 

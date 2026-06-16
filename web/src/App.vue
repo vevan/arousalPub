@@ -2,6 +2,7 @@
 import ConnectionSettingsCard from '@/components/ConnectionSettingsCard.vue'
 import PluginRailHost from '@/components/PluginRailHost.vue'
 import {
+  clearPanelHtmlForInactiveRoutes,
   isPluginPanelHidden,
   openPluginPanel,
   setPluginPanelHidden,
@@ -121,6 +122,14 @@ function onBrowserLanguageChange() {
 const drawerRight = ref(false)
 const leftHostHidden = computed(() => isPluginPanelHidden('leftRail'))
 const rightHostHidden = computed(() => isPluginPanelHidden('rightRail'))
+
+watch(
+  () => route.name,
+  (name) => {
+    clearPanelHtmlForInactiveRoutes(name as string)
+  },
+  { immediate: true },
+)
 const settingsDialogOpen = ref(false)
 const settingsDialogOpenCount = ref(0)
 
@@ -656,7 +665,7 @@ onUnmounted(() => {
           @click="
             () => {
               setPluginPanelHidden('leftRail', false)
-              openPluginPanel('leftRail')
+              openPluginPanel('leftRail', undefined, route.name as string)
             }
           "
         />

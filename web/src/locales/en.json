@@ -6,6 +6,7 @@
     "pluginsHint": "Plugin extension panel",
     "pluginPanelHide": "Hide plugin panel",
     "pluginPanelEmpty": "No panel content",
+    "pluginRailUnavailable": "No plugins available",
     "traceKeeper": "Trace Keeper",
     "apiConnection": "Connection",
     "chat": "Chat",

@@ -7,6 +7,7 @@
   "panelNoData": "No tracker data for this turn.",
   "panelEmptyEmptySession": "This conversation has no turns yet.",
   "panelEmptyNoDataHistory": "No tracker data for this turn.",
+  "panelEmptyAwaitingReply": "Waiting for the model to return tracker data…",
   "panelEmptyNoBlock": "The model did not return a tracker block (<ex-trace-keeper>).",
   "panelEmptyEmptyBlock": "The tracker block is empty.",
   "panelEmptyJsonParseFailed": "Tracker JSON parse failed.",

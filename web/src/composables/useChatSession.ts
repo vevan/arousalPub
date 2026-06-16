@@ -52,9 +52,11 @@ export function useChatSession(props: ChatSessionProps) {
     onAssistantReplyComplete,
     onAssistantReplyPersisted,
     onTurnDataChanged,
+    onGeneratingChanged,
     emitAssistantReplyComplete,
     emitAssistantReplyPersisted,
     emitTurnDataChanged,
+    emitGeneratingChanged,
   } = replyEvents
 
   const userInput = ref('')
@@ -331,6 +333,10 @@ export function useChatSession(props: ChatSessionProps) {
     }
   })
 
+  watch([loading, regeneratingTurnOrdinal], () => {
+    emitGeneratingChanged()
+  })
+
   watch(
     () => auth.user?.id ?? auth.defaultUserId,
     (uid) => {
@@ -433,5 +439,6 @@ export function useChatSession(props: ChatSessionProps) {
     onAssistantReplyComplete,
     onAssistantReplyPersisted,
     onTurnDataChanged,
+    onGeneratingChanged,
   })
 }

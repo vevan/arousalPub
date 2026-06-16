@@ -7,12 +7,19 @@ import {
 
 export type PluginPanelPlacement = 'leftRail' | 'rightRail'
 
+/** vue-router `route.name` values plugins may target */
+export type PluginPanelRouteName = 'home' | 'chat'
+
+export const DEFAULT_PLUGIN_PANEL_ROUTES: PluginPanelRouteName[] = ['chat']
+
 export interface PluginPanelRegisterOptions {
   placement: PluginPanelPlacement
   pluginId: string
   tabIcon: string
   tabLabelKey: string
   interactive?: boolean
+  /** Omit → `['chat']` only */
+  routes?: PluginPanelRouteName[]
 }
 
 export interface PluginPanelInputEvent {
@@ -37,6 +44,7 @@ export interface PluginPanelEntry {
   tabIcon: string
   tabLabelKey: string
   interactive: boolean
+  routes: PluginPanelRouteName[]
   html: string
   revision: number
 }
@@ -58,10 +66,34 @@ function panelKey(placement: PluginPanelPlacement, pluginId: string): string {
   return `${placement}::${pluginId}`
 }
 
+function normalizePanelRoutes(
+  routes?: PluginPanelRouteName[],
+): PluginPanelRouteName[] {
+  if (!routes?.length) return [...DEFAULT_PLUGIN_PANEL_ROUTES]
+  return routes
+}
+
+export function isPanelVisibleOnRoute(
+  entry: Pick<PluginPanelEntry, 'routes'>,
+  routeName: string | null | undefined,
+): boolean {
+  if (!routeName) return false
+  return entry.routes.includes(routeName as PluginPanelRouteName)
+}
+
 export function getRegisteredPanels(
   placement: PluginPanelPlacement,
 ): PluginPanelEntry[] {
   return [...panels.values()].filter((p) => p.placement === placement)
+}
+
+export function getRoutablePanels(
+  placement: PluginPanelPlacement,
+  routeName: string | null | undefined,
+): PluginPanelEntry[] {
+  return getRegisteredPanels(placement).filter((p) =>
+    isPanelVisibleOnRoute(p, routeName),
+  )
 }
 
 export function registerPluginPanel(opts: PluginPanelRegisterOptions): void {
@@ -69,12 +101,14 @@ export function registerPluginPanel(opts: PluginPanelRegisterOptions): void {
   if (!pluginId) return
   const key = panelKey(opts.placement, pluginId)
   const prev = panels.get(key)
+  const routes = normalizePanelRoutes(opts.routes)
   panels.set(key, {
     placement: opts.placement,
     pluginId,
     tabIcon: opts.tabIcon,
     tabLabelKey: opts.tabLabelKey,
     interactive: opts.interactive === true,
+    routes,
     html: prev?.html ?? '',
     revision: prev?.revision ?? 0,
   })
@@ -109,6 +143,21 @@ export function setPluginPanelHtml(
   pluginPanelRevision.value += 1
 }
 
+/** Clear stored HTML for panels not visible on the active route (e.g. leaving chat). */
+export function clearPanelHtmlForInactiveRoutes(
+  routeName: string | null | undefined,
+): void {
+  let changed = false
+  for (const entry of panels.values()) {
+    if (!isPanelVisibleOnRoute(entry, routeName) && entry.html) {
+      entry.html = ''
+      entry.revision += 1
+      changed = true
+    }
+  }
+  if (changed) pluginPanelRevision.value += 1
+}
+
 export function onPluginPanelEvent(
   placement: PluginPanelPlacement,
   pluginId: string,
@@ -120,6 +169,7 @@ export function onPluginPanelEvent(
 export function focusPluginPanelTab(
   placement: PluginPanelPlacement,
   pluginId?: string,
+  routeName?: string | null,
 ): void {
   if (pluginId?.trim()) {
     pluginPanelActiveTabState.value = {
@@ -127,7 +177,10 @@ export function focusPluginPanelTab(
       [placement]: pluginId.trim(),
     }
   } else if (!pluginPanelActiveTabState.value[placement]) {
-    const first = getRegisteredPanels(placement)[0]
+    const candidates = routeName
+      ? getRoutablePanels(placement, routeName)
+      : getRegisteredPanels(placement)
+    const first = candidates[0]
     if (first) {
       pluginPanelActiveTabState.value = {
         ...pluginPanelActiveTabState.value,
@@ -140,9 +193,10 @@ export function focusPluginPanelTab(
 export function openPluginPanel(
   placement: PluginPanelPlacement,
   pluginId?: string,
+  routeName?: string | null,
 ): void {
   setPluginPanelHidden(placement, false)
-  focusPluginPanelTab(placement, pluginId)
+  focusPluginPanelTab(placement, pluginId, routeName)
 }
 
 export function isPluginPanelHidden(placement: PluginPanelPlacement): boolean {
@@ -161,22 +215,36 @@ export function setPluginPanelHidden(
 
 export function getActivePanelHtml(
   placement: PluginPanelPlacement,
+  routeName?: string | null,
 ): { pluginId: string; html: string; revision: number; interactive: boolean } | null {
   let id = pluginPanelActiveTabState.value[placement]
   if (!id) {
-    const first = getRegisteredPanels(placement)[0]
-    id = first?.pluginId ?? null
+    const candidates = routeName
+      ? getRoutablePanels(placement, routeName)
+      : getRegisteredPanels(placement)
+    id = candidates[0]?.pluginId ?? null
   }
   if (!id) return null
   const entry = panels.get(panelKey(placement, id))
   if (!entry) {
-    const first = getRegisteredPanels(placement)[0]
+    const candidates = routeName
+      ? getRoutablePanels(placement, routeName)
+      : getRegisteredPanels(placement)
+    const first = candidates[0]
     if (!first) return null
     return {
       pluginId: first.pluginId,
       html: first.html,
       revision: first.revision,
       interactive: first.interactive,
+    }
+  }
+  if (routeName && !isPanelVisibleOnRoute(entry, routeName)) {
+    return {
+      pluginId: entry.pluginId,
+      html: '',
+      revision: entry.revision,
+      interactive: entry.interactive,
     }
   }
   return {

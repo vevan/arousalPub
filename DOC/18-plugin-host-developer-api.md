@@ -138,6 +138,8 @@ export function register(host: PluginWebHost) {
 |------|------|
 | `onAssistantReplyPersisted(handler)` | 服务端落盘成功（SSE `arousal.persist` 或等价 JSON）→ **早于** `loadMessages` |
 | `onAssistantReplyComplete(handler)` | 发送/再生流程结束（含 UI 刷新之后） |
+| `onTurnDataChanged(handler)` | swipe / `turn.plugins` 等轮次数据变更 |
+| `onGeneratingChanged(handler)` | `session.loading` 或 `regeneratingTurnOrdinal` 变化（等待回复 UI 等） |
 
 返回 **取消订阅函数**。持久化类逻辑优先用 `onAssistantReplyPersisted`。
 
@@ -337,13 +339,15 @@ interface ConversationBatchContext {
 
 | 方法 | 说明 |
 |------|------|
-| `register(placement, pluginId, opts)` | 注册面板 Tab（如 `leftRail`） |
+| `register(placement, pluginId, opts)` | 注册面板 Tab（如 `leftRail`）；可选 **`routes?: ('home' \| 'chat')[]`**，默认 `['chat']` |
 | `setHtml(placement, pluginId, html, opts?)` | 更新消毒后 HTML；`interactive` 允许表单/按钮 + 事件委托 |
 | `setHidden(placement, hidden)` | 隐藏/显示指定 rail 的宿主内容（列仍占位） |
 | `open(placement, pluginId?)` | 打开（取消 hidden）并可选聚焦 Tab |
 | `onPanelEvent(placement, pluginId, handlers)` | 面板内 `data-*` 交互回调 |
 
-宿主：**`PluginRailHost.vue`**（左/右 rail，共用多插件 Tab）。
+宿主：**`PluginRailHost.vue`**（左/右 rail；顶栏 `rgba(var(--v-theme-primary), 0.1)` 浅底；当前路由不可用的 Tab **disabled**；无可用内容时 **`app.pluginRailUnavailable`**）。
+
+**Lifecycle 补充**：`host.lifecycle.onGeneratingChanged` — `loading` / `regeneratingTurnOrdinal` 变化时回调（迹录等待态刷新侧栏）。
 
 ### 3.14 `host.regex`（规划 · **`DOC/24`** §2）
 

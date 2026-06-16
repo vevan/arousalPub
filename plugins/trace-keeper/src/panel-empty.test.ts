@@ -46,6 +46,27 @@ describe('resolvePanelView', () => {
     }
   })
 
+  it('current turn awaiting_reply while model is generating', () => {
+    const r = resolvePanelView(
+      bundle,
+      [
+        {
+          turnOrdinal: 1,
+          receives: [{ id: 'r1', content: 'plain reply' }],
+          plugins: [],
+        },
+      ],
+      epoch,
+      null,
+      true,
+    )
+    assert.equal(r.kind, 'empty')
+    if (r.kind === 'empty') {
+      assert.equal(r.reason, 'awaiting_reply')
+      assert.equal(r.canRegenerate, false)
+    }
+  })
+
   it('history turn uses no_data_history without parse detail', () => {
     const r = resolvePanelView(
       bundle,

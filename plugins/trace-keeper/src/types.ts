@@ -18,6 +18,8 @@ export interface PluginHost {
       activeReceiveIndex?: number
       receives?: { id?: string; content?: string }[]
     }[]
+    loading?: boolean | { value?: boolean }
+    regeneratingTurnOrdinal?: number | null | { value?: number | null }
     refreshSlotButtons?: () => void
     writeChatPromptSnapshot?: boolean | { value: boolean }
   }
@@ -38,6 +40,7 @@ export interface PluginHost {
       handler: (event: { turnOrdinal?: number }) => void,
     ) => () => void
     onTurnDataChanged?: (handler: () => void) => () => void
+    onGeneratingChanged?: (handler: () => void) => () => void
   }
   registerSlotButton: (slot: string, def: Record<string, unknown>) => void
   registerStyles: (css: string) => void

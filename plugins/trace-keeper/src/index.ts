@@ -52,6 +52,20 @@ function turnsFromHost(host: PluginHost): HostTurn[] {
   return []
 }
 
+function readRefLike<T>(v: T | { value?: T } | undefined): T | undefined {
+  if (v === undefined || v === null) return undefined
+  if (typeof v === 'object' && 'value' in (v as object)) {
+    return (v as { value?: T }).value
+  }
+  return v as T
+}
+
+function isSessionGenerating(host: PluginHost): boolean {
+  const loading = readRefLike(host.session.loading)
+  const regen = readRefLike(host.session.regeneratingTurnOrdinal)
+  return loading === true || typeof regen === 'number'
+}
+
 const SHELL_STYLES = `
 .trace-keeper-shell{display:flex;flex-direction:column;gap:8px;min-height:2.5rem}
 .trace-keeper-shell .tk-empty{margin:0}
@@ -60,16 +74,17 @@ const SHELL_STYLES = `
 .trace-keeper-shell .tk-empty-actions{margin:0}
 .trace-keeper-shell .tk-empty-regen-btn{padding:6px 10px;font-size:.8125rem;border-radius:6px;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));background:rgba(var(--v-theme-primary),.08);cursor:pointer}
 .trace-keeper-shell .tk-empty-regen-btn:disabled{opacity:.55;cursor:wait}
+.trace-keeper-shell .tk-pending{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px 12px;text-align:center;min-height:6rem}
+.trace-keeper-shell .tk-pending-hourglass{display:inline-block;font-size:3rem;line-height:1;color:rgba(var(--v-theme-primary),.85);transform-origin:center center;animation:tk-hourglass-flip 2.4s ease-in-out infinite}
+.trace-keeper-shell .tk-pending-msg{margin:0;font-size:.75rem;line-height:1.4;opacity:.72;max-width:14rem}
+@keyframes tk-hourglass-flip{0%{transform:rotate(0deg)}30%{transform:rotate(180deg)}50%{transform:rotate(180deg)}80%{transform:rotate(360deg)}100%{transform:rotate(360deg)}}
 .trace-keeper-shell .tk-body{flex:1 1 auto;min-height:0}
 .trace-keeper-shell .tk-actions{display:flex;flex-direction:row;align-items:center;gap:2px;flex-shrink:0;padding-top:6px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
 .trace-keeper-shell .tk-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;padding:0;border:none;border-radius:4px;background:transparent;color:rgba(var(--v-theme-on-surface),.55);cursor:pointer}
 .trace-keeper-shell .tk-icon-btn:hover:not(:disabled){color:rgb(var(--v-theme-on-surface));background:rgba(var(--v-theme-on-surface),.06)}
 .trace-keeper-shell .tk-icon-btn:disabled{opacity:.35;cursor:not-allowed}
-.trace-keeper-shell .tk-icon-btn svg{width:16px;height:16px;fill:currentColor;display:block;pointer-events:none}
+.trace-keeper-shell .tk-icon-btn .mdi{font-size:16px;line-height:1;pointer-events:none}
 `
-
-const ICON_EDIT = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.71 7.04c.39-.39.39-1.04 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.84 1.83 3.75 3.75M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z"/></svg>`
-const ICON_REGEN = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08a5.99 5.99 0 0 1-5.65 4c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>`
 
 function renderActionBar(
   host: PluginHost,
@@ -89,8 +104,8 @@ function renderActionBar(
   const regenBusy = opts.regenerating ? ' aria-busy="true"' : ''
   return [
     '<div class="tk-actions">',
-    `<button type="button" class="tk-icon-btn" data-tk-action="edit-state-json" title="${editTitle}" aria-label="${editTitle}"${editDisabled}>${ICON_EDIT}</button>`,
-    `<button type="button" class="tk-icon-btn" data-tk-action="regenerate-separate" title="${regenTitle}" aria-label="${regenTitle}"${regenDisabled}${regenBusy}>${ICON_REGEN}</button>`,
+    `<button type="button" class="tk-icon-btn" data-tk-action="edit-state-json" title="${editTitle}" aria-label="${editTitle}"${editDisabled}><i class="mdi mdi-pencil-outline" aria-hidden="true"></i></button>`,
+    `<button type="button" class="tk-icon-btn" data-tk-action="regenerate-separate" title="${regenTitle}" aria-label="${regenTitle}"${regenDisabled}${regenBusy}><i class="mdi mdi-refresh" aria-hidden="true"></i></button>`,
     '</div>',
   ].join('\n')
 }
@@ -111,25 +126,35 @@ function wrapPanelShell(
 ): string {
   const parts: string[] = ['<div class="trace-keeper-shell">']
   if (opts.emptyReason) {
-    const msgKey = panelEmptyLocaleKey(opts.emptyReason)
-    parts.push('<div class="tk-empty" role="status">')
-    parts.push(
-      `<p class="tk-empty-msg">${escapeHtml(host.t(k(host, msgKey)))}</p>`,
-    )
-    if (opts.emptyDetail?.trim()) {
+    if (opts.emptyReason === 'awaiting_reply') {
+      const msg = escapeHtml(host.t(k(host, 'panelEmptyAwaitingReply')))
+      parts.push('<div class="tk-pending" role="status">')
       parts.push(
-        `<p class="tk-empty-detail">${escapeHtml(opts.emptyDetail.trim())}</p>`,
+        '<i class="mdi mdi-timer-sand tk-pending-hourglass" aria-hidden="true"></i>',
       )
-    }
-    parts.push('</div>')
-    if (opts.showEmptyRegenButton) {
-      parts.push('<div class="tk-empty-actions">')
-      const label = escapeHtml(host.t(k(host, 'panelRegenerateSeparate')))
-      const busy = opts.regenerating ? ' disabled aria-busy="true"' : ''
-      parts.push(
-        `<button type="button" class="tk-empty-regen-btn" data-tk-action="regenerate-separate"${busy}>${label}</button>`,
-      )
+      parts.push(`<p class="tk-pending-msg">${msg}</p>`)
       parts.push('</div>')
+    } else {
+      const msgKey = panelEmptyLocaleKey(opts.emptyReason)
+      parts.push('<div class="tk-empty" role="status">')
+      parts.push(
+        `<p class="tk-empty-msg">${escapeHtml(host.t(k(host, msgKey)))}</p>`,
+      )
+      if (opts.emptyDetail?.trim()) {
+        parts.push(
+          `<p class="tk-empty-detail">${escapeHtml(opts.emptyDetail.trim())}</p>`,
+        )
+      }
+      parts.push('</div>')
+      if (opts.showEmptyRegenButton) {
+        parts.push('<div class="tk-empty-actions">')
+        const label = escapeHtml(host.t(k(host, 'panelRegenerateSeparate')))
+        const busy = opts.regenerating ? ' disabled aria-busy="true"' : ''
+        parts.push(
+          `<button type="button" class="tk-empty-regen-btn" data-tk-action="regenerate-separate"${busy}>${label}</button>`,
+        )
+        parts.push('</div>')
+      }
     }
   }
   if (innerHtml.trim()) {
@@ -176,7 +201,13 @@ async function refreshPanel(host: PluginHost): Promise<void> {
     const pinned = getPinnedTurnOrdinal(conversationId)
     const regenBusy = isRegenerating(conversationId)
 
-    const resolved = resolvePanelView(bundle, turns, epoch, pinned)
+    const resolved = resolvePanelView(
+      bundle,
+      turns,
+      epoch,
+      pinned,
+      isSessionGenerating(host),
+    )
 
     lastEditContext =
       resolved.kind === 'content'
@@ -198,7 +229,10 @@ async function refreshPanel(host: PluginHost): Promise<void> {
     const shellActions = {
       showActions: turns.length > 0,
       editEnabled: resolved.kind === 'content',
-      regenEnabled: isLastTurnView,
+      regenEnabled:
+        isLastTurnView &&
+        (resolved.kind === 'content' ||
+          (resolved.kind === 'empty' && resolved.canRegenerate)),
       regenerating: regenBusy,
     }
 
@@ -424,6 +458,9 @@ export function registerLifecycle(host: PluginHost): void {
   host.lifecycle.onTurnDataChanged?.(() => {
     void refreshPanel(host)
     host.refreshSlotButtons()
+  })
+  host.lifecycle.onGeneratingChanged?.(() => {
+    void refreshPanel(host)
   })
 }
 

@@ -1,6 +1,6 @@
 # 主布局三列 Grid 与插件 Rail — 设计定案
 
-> **状态**：**待实现**（2026-06-16 定案）。本文描述 `v-main` 三列布局、插件常驻侧栏、API 浮层保留，以及 `pinned` → `hidden` 的状态迁移。  
+> **状态**：**已实现**（2026-06-16 定案 · 2026-06 落地）。本文描述 `v-main` 三列布局、插件常驻侧栏、API 浮层保留，以及 `pinned` → `hidden` 的状态迁移。  
 > **关联**：`DOC/03` §11.3、`DOC/18` §3.13.1、`DOC/30` 迹录侧栏。
 
 ---
@@ -90,7 +90,7 @@
 |------|------|
 | `#leftRail` / `#rightRail` | **始终存在**，参与 grid 列宽计算；**不因**「零注册插件」而 `display: none` |
 | `#leftHostPanel` / `#rightHostPanel` | 用户或 API 设 `hidden=true` 时加 `.hidden`，**仅隐藏宿主 UI**（Tab 栏 + HTML 内容） |
-| 零注册插件 | 宿主内部显示空态文案（如 `app.pluginsHint`）；**不**自动把整个 rail 列折叠 |
+| 零注册插件 / 当前路由无可用面板 / 无可展示 HTML | 宿主统一显示 **`app.pluginRailUnavailable`**（「当前无可用插件」）；**不**渲染陈旧 `setHtml` |
 
 这样超宽屏下中间对话区始终居中，左右对称留白由 `1fr` 承担；将来插件挂上后同一列宽内展示面板，无需再改全局列公式。
 
@@ -200,6 +200,18 @@ openPluginPanel('leftRail') // 显示左 rail 宿主并聚焦默认 Tab
 
 单组件服务 `leftRail` / `rightRail`，按 `getRegisteredPanels(placement)` 过滤 Tab 与 HTML。
 
+### 4.4 路由可见性（`routes` · 已实现）
+
+`host.ui.panel.register` 可选 **`routes`**：`('home' | 'chat')[]`，**省略时默认 `['chat']`**。
+
+| 项 | 行为 |
+|----|------|
+| `PluginRailHost` | 顶栏 Tab **始终列出**已注册插件；**当前路由不匹配**的 Tab **`disabled`** |
+| 主体区 | 仅当 active 插件在 `routes` 内且 `html` 非空时 `v-html`；否则 **`app.pluginRailUnavailable`** |
+| 离开对话页 | `App.vue` 监听 `route.name`，对不可见面板 **`clearPanelHtmlForInactiveRoutes`**，避免列表页残留上一场 HTML |
+
+迹录 `trace-keeper` 使用默认 `routes: ['chat']`（注册时可省略）。
+
 ---
 
 ## 5. 与对话页高度的关系
@@ -254,7 +266,8 @@ flex: 1 1 auto; /* 配合父级 flex */
 
 | # | 场景 | 期望 |
 |---|------|------|
-| 1 | 无插件注册 | 左/右 rail 列仍占位；左宿主显示 hint 空态；右宿主默认 hidden |
+| 1 | 无插件注册 | 左/右 rail 列仍占位；宿主显示「当前无可用插件」；右宿主默认 hidden |
+| 1b | 在 `/` 对话列表，迹录已注册 | 迹录 Tab 显示但 **disabled**；主体「当前无可用插件」，无陈旧 tracker HTML |
 | 2 | 迹录注册并 `setHtml` | 左 rail 内显示 Tab + HTML；中间对话区宽度不变公式 |
 | 3 | 点击宿主「隐藏」 | `#leftHostPanel` 加 `.hidden`；**左列 grid 宽度不变** |
 | 4 | 页脚「插件」按钮 | `hidden=false`，聚焦迹录 Tab |
@@ -295,3 +308,4 @@ flex: 1 1 auto; /* 配合父级 flex */
 | 日期 | 说明 |
 |------|------|
 | 2026-06-16 | 初稿：grid 三列、hidden 替代 pinned、无插件仍占位、API 浮层保留 |
+| 2026-06-16 | 落地：`routes` 路由门控、`pluginRailUnavailable` 统一空态、离开 chat 清 HTML |

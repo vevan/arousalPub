@@ -67,12 +67,33 @@ export function createReplyEventHub() {
     }
   }
 
+  const generatingChangedListeners = new Set<() => void>()
+
+  function onGeneratingChanged(listener: () => void): () => void {
+    generatingChangedListeners.add(listener)
+    return () => {
+      generatingChangedListeners.delete(listener)
+    }
+  }
+
+  function emitGeneratingChanged(): void {
+    for (const listener of generatingChangedListeners) {
+      try {
+        listener()
+      } catch {
+        /* ignore plugin listener errors */
+      }
+    }
+  }
+
   return {
     onAssistantReplyComplete,
     onAssistantReplyPersisted,
     onTurnDataChanged,
+    onGeneratingChanged,
     emitAssistantReplyComplete,
     emitAssistantReplyPersisted,
     emitTurnDataChanged,
+    emitGeneratingChanged,
   }
 }

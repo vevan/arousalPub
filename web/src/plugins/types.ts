@@ -383,6 +383,8 @@ export interface PluginWebHost {
     ) => () => void
     /** swipe / 轮次数据变更（宿主 Vue 响应式触发，插件 bundle 勿用自带 watch） */
     onTurnDataChanged: (handler: () => void) => () => void
+    /** `loading` / `regeneratingTurnOrdinal` 变化（发消息、再生开始/结束） */
+    onGeneratingChanged: (handler: () => void) => () => void
   }
   conversation: {
     getId(): string
@@ -507,6 +509,7 @@ export interface PluginWebHost {
         tabIcon: string
         tabLabelKey: string
         interactive?: boolean
+        routes?: ('home' | 'chat')[]
       }): void
       setHtml(
         placement: 'leftRail' | 'rightRail',

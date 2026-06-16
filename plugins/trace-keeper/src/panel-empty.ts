@@ -10,6 +10,7 @@ import {
 export type PanelEmptyReason =
   | 'empty_session'
   | 'no_data_history'
+  | 'awaiting_reply'
   | 'no_block'
   | 'empty_block'
   | 'json_parse_failed'
@@ -125,6 +126,7 @@ export function resolvePanelView(
   turns: TurnViewRef[],
   epoch: number,
   pinned: number | null,
+  isAwaitingReply = false,
 ): PanelViewResolved {
   if (turns.length === 0) {
     return {
@@ -206,6 +208,17 @@ export function resolvePanelView(
     }
   }
 
+  if (isAwaitingReply) {
+    return {
+      kind: 'empty',
+      reason: 'awaiting_reply',
+      canRegenerate: false,
+      mode,
+      turnOrdinal: viewingOrdinal,
+      epoch,
+    }
+  }
+
   const { reason, detail } = resolveCurrentTurnEmptyReason(viewingTurn, epoch)
   return {
     kind: 'empty',
@@ -224,6 +237,8 @@ export function panelEmptyLocaleKey(reason: PanelEmptyReason): string {
       return 'panelEmptyEmptySession'
     case 'no_data_history':
       return 'panelEmptyNoDataHistory'
+    case 'awaiting_reply':
+      return 'panelEmptyAwaitingReply'
     case 'no_block':
       return 'panelEmptyNoBlock'
     case 'empty_block':

@@ -260,6 +260,20 @@ export interface PluginServerModule {
     ctx: PluginCompleteDraftContext,
     api: PluginServerHostApi,
   ) => PluginCompleteDraftResult | Promise<PluginCompleteDraftResult>
+  /** trace-keeper：Separate 重新生成 state 并返回待落盘条目 */
+  regenerateSeparateState?: (
+    input: { conversationId: string; turnOrdinal?: number },
+    api: PluginServerHostApi,
+  ) => Promise<
+    | {
+        ok: true
+        state: Record<string, unknown>
+        turnOrdinal: number
+        receiveId: string
+        entry: TurnPluginEntry
+      }
+    | { ok: false; code: string }
+  >
 }
 
 export interface PluginRegistryPublicEntry {

@@ -5,8 +5,8 @@ import { countChatMessagesTokens } from './token-count.js'
 import { createPluginServerHostApi } from './plugin-system/host-api.js'
 import {
   loadEnabledServerPlugins,
-  type LoadedServerPlugin,
 } from './plugin-system/loader.js'
+import type { LoadedServerPlugin } from './plugin-system/types.js'
 
 export type PluginAssembleAdditionCache = Map<string, ChatMessage[] | null>
 

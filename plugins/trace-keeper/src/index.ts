@@ -9,6 +9,10 @@ import {
   type PanelEmptyReason,
 } from './panel-empty.js'
 import { findTracePayloadForTurn } from './panel-render.js'
+import {
+  parseStateJsonText,
+  runPatchState,
+} from './patch-state-client.js'
 import { runSeparateRegenerate } from './separate-regenerate-client.js'
 import {
   bumpPanelRevision,
@@ -20,11 +24,18 @@ import {
 import type { PluginHost, TurnCtx } from './types.js'
 import { watch } from 'vue'
 
+const EDIT_DIALOG_ID = 'edit-state-json'
+
 type HostTurn = {
   turnOrdinal: number
   activeReceiveIndex?: number
   receives?: { id?: string; content?: string }[]
   plugins?: unknown[]
+}
+
+type EditContext = {
+  turnOrdinal: number
+  state: Record<string, unknown>
 }
 
 function turnsFromHost(host: PluginHost): HostTurn[] {
@@ -36,8 +47,9 @@ const SHELL_STYLES = `
 .trace-keeper-shell .tk-empty{margin:0 0 10px}
 .trace-keeper-shell .tk-empty-msg{margin:0 0 4px;opacity:.85;font-size:.875rem}
 .trace-keeper-shell .tk-empty-detail{margin:0;font-size:.75rem;opacity:.55;word-break:break-word}
-.trace-keeper-shell .tk-regen-btn{display:block;margin:0 0 10px;padding:6px 10px;font-size:.8125rem;border-radius:6px;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));background:rgba(var(--v-theme-primary),.08);cursor:pointer}
-.trace-keeper-shell .tk-regen-btn:disabled{opacity:.55;cursor:wait}
+.trace-keeper-shell .tk-actions{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}
+.trace-keeper-shell .tk-regen-btn,.trace-keeper-shell .tk-edit-btn{padding:6px 10px;font-size:.8125rem;border-radius:6px;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));background:rgba(var(--v-theme-primary),.08);cursor:pointer}
+.trace-keeper-shell .tk-regen-btn:disabled,.trace-keeper-shell .tk-edit-btn:disabled{opacity:.55;cursor:wait}
 `
 
 function wrapPanelShell(
@@ -47,6 +59,7 @@ function wrapPanelShell(
     emptyReason?: PanelEmptyReason
     emptyDetail?: string
     canRegenerate?: boolean
+    canEdit?: boolean
     regenerating?: boolean
   },
 ): string {
@@ -64,12 +77,22 @@ function wrapPanelShell(
     }
     parts.push('</div>')
   }
-  if (opts.canRegenerate) {
-    const label = escapeHtml(host.t(k(host, 'panelRegenerateSeparate')))
-    const busy = opts.regenerating ? ' disabled aria-busy="true"' : ''
-    parts.push(
-      `<button type="button" class="tk-regen-btn" data-tk-action="regenerate-separate"${busy}>${label}</button>`,
-    )
+  if (opts.canRegenerate || opts.canEdit) {
+    parts.push('<div class="tk-actions">')
+    if (opts.canEdit) {
+      const label = escapeHtml(host.t(k(host, 'panelEditStateJson')))
+      parts.push(
+        `<button type="button" class="tk-edit-btn" data-tk-action="edit-state-json">${label}</button>`,
+      )
+    }
+    if (opts.canRegenerate) {
+      const label = escapeHtml(host.t(k(host, 'panelRegenerateSeparate')))
+      const busy = opts.regenerating ? ' disabled aria-busy="true"' : ''
+      parts.push(
+        `<button type="button" class="tk-regen-btn" data-tk-action="regenerate-separate"${busy}>${label}</button>`,
+      )
+    }
+    parts.push('</div>')
   }
   parts.push(innerHtml)
   parts.push('</div>')
@@ -85,6 +108,7 @@ function escapeHtml(text: string): string {
 }
 
 let regenerating = false
+let lastEditContext: EditContext | null = null
 
 async function refreshPanel(host: PluginHost): Promise<void> {
   try {
@@ -101,9 +125,20 @@ async function refreshPanel(host: PluginHost): Promise<void> {
 
     const resolved = resolvePanelView(bundle, turns, epoch, pinned)
 
+    lastEditContext =
+      resolved.kind === 'content'
+        ? {
+            turnOrdinal: resolved.turnOrdinal,
+            state: resolved.editState,
+          }
+        : null
+
     const html =
       resolved.kind === 'content'
-        ? wrapPanelShell(host, resolved.html, { regenerating })
+        ? wrapPanelShell(host, resolved.html, {
+            canEdit: true,
+            regenerating,
+          })
         : wrapPanelShell(host, '', {
             emptyReason: resolved.reason,
             emptyDetail: resolved.detail,
@@ -116,6 +151,49 @@ async function refreshPanel(host: PluginHost): Promise<void> {
     })
   } catch (e) {
     console.warn('[trace-keeper] panel refresh failed', e)
+  }
+}
+
+function openEditStateDialog(host: PluginHost): void {
+  if (!lastEditContext || !host.openFormDialog) return
+  host.openFormDialog(
+    PLUGIN_ID,
+    {
+      turnOrdinal: lastEditContext.turnOrdinal,
+      stateJson: JSON.stringify(lastEditContext.state, null, 2),
+    },
+    EDIT_DIALOG_ID,
+  )
+}
+
+async function handlePatchStateSubmit(
+  host: PluginHost,
+  model: Record<string, unknown>,
+): Promise<void> {
+  const conversationId = host.conversation.getId?.()
+  const turnOrdinal = model.turnOrdinal
+  const stateJson = String(model.stateJson ?? '')
+  if (!conversationId || typeof turnOrdinal !== 'number') return
+
+  const state = parseStateJsonText(stateJson)
+  if (!state) {
+    host.ui.toast?.(host.t(k(host, 'toastPatchInvalidJson')), { color: 'error' })
+    return
+  }
+
+  try {
+    await runPatchState(conversationId, turnOrdinal, state)
+    if (host.conversation.refresh) {
+      await host.conversation.refresh()
+    }
+    host.ui.toast?.(host.t(k(host, 'toastPatchDone')), { color: 'success' })
+    await refreshPanel(host)
+    host.refreshSlotButtons()
+  } catch (e) {
+    const code = e instanceof Error ? e.message : 'patch_failed'
+    host.ui.toast?.(host.t(k(host, 'toastPatchFailed'), { code }), {
+      color: 'error',
+    })
   }
 }
 
@@ -148,7 +226,32 @@ async function handleRegenerateSeparate(host: PluginHost): Promise<void> {
   }
 }
 
+function registerEditStateDialog(host: PluginHost): void {
+  if (!host.registerFormDialog) return
+  host.registerFormDialog(
+    PLUGIN_ID,
+    {
+      titleKey: k(host, 'editStateDialogTitle'),
+      fields: [
+        {
+          key: 'stateJson',
+          labelKey: k(host, 'editStateJsonLabel'),
+          type: 'textarea',
+        },
+      ],
+      submitKey: k(host, 'editStateSave'),
+      cancelKey: k(host, 'editStateCancel'),
+      canSubmit: (model) => parseStateJsonText(String(model.stateJson ?? '')) !== null,
+      onSubmit: async (hostApi, model) => {
+        await handlePatchStateSubmit(hostApi as PluginHost, model)
+      },
+    },
+    EDIT_DIALOG_ID,
+  )
+}
+
 export function registerPanel(host: PluginHost): void {
+  registerEditStateDialog(host)
   host.ui.panel.register({
     placement: PLACEMENT,
     pluginId: PLUGIN_ID,
@@ -160,6 +263,9 @@ export function registerPanel(host: PluginHost): void {
     onAction: (ev) => {
       if (ev.action === 'regenerate-separate') {
         void handleRegenerateSeparate(host)
+      }
+      if (ev.action === 'edit-state-json') {
+        openEditStateDialog(host)
       }
     },
   })

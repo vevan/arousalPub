@@ -207,6 +207,7 @@ import {
 import { resolvePluginCompleteApi } from './plugin-api-resolve.js'
 import { runPluginCompleteDraftRoute } from './plugin-complete-draft-route.js'
 import { runTraceKeeperRegenerateRoute } from './trace-keeper-regenerate-route.js'
+import { runTraceKeeperPatchRoute } from './trace-keeper-patch-route.js'
 import { runPluginComplete } from './plugin-complete.js'
 import { runPluginCompletePreflight } from './plugin-complete-preflight.js'
 import { runNormalizeLorebookEntryRefs } from './plugin-lorebook-entry-refs.js'
@@ -3715,6 +3716,53 @@ app.post<{
       state: result.state,
       turnOrdinal: result.turnOrdinal,
       receiveId: result.receiveId,
+    }
+  },
+)
+
+app.post<{
+  Params: { pluginId: string }
+  Body: { conversationId?: string; turnOrdinal?: number; state?: unknown }
+}>(
+  '/api/plugins/:pluginId/patch-state',
+  async (request, reply) => {
+    const pluginId = request.params.pluginId.trim()
+    const writeAuth = await assertPluginRoutePermission(pluginId, 'turn.plugins.write')
+    if (!writeAuth.ok) {
+      return reply.status(writeAuth.status).send({ error: ApiErrorCodes[writeAuth.code] })
+    }
+    const readAuth = await assertPluginRoutePermission(pluginId, 'conversation.read')
+    if (!readAuth.ok) {
+      return reply.status(readAuth.status).send({ error: ApiErrorCodes[readAuth.code] })
+    }
+    const body = request.body ?? {}
+    const result = await runTraceKeeperPatchRoute(pluginId, body)
+    if (!result.ok) {
+      if (result.code === 'plugin_hook_not_supported') {
+        return reply.status(404).send({ error: ApiErrorCodes.plugin_hook_not_supported })
+      }
+      if (result.code === 'invalid_conversation_id') {
+        return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+      }
+      if (result.code === 'invalid_turn_ordinal') {
+        return reply.status(400).send({ error: ApiErrorCodes.turn_patch_invalid })
+      }
+      if (result.code === 'turn_not_found' || result.code === 'no_turns') {
+        return reply.status(404).send({ error: ApiErrorCodes.turn_chunk_not_found })
+      }
+      if (result.code === 'invalid_state') {
+        return reply.status(422).send({ error: ApiErrorCodes.upstream_non_json })
+      }
+      return reply.status(result.status ?? 502).send({
+        error: ApiErrorCodes.plugin_complete_failed,
+        detail: result.code,
+      })
+    }
+    return {
+      ok: true as const,
+      state: result.state,
+      turnOrdinal: result.turnOrdinal,
+      ...(result.receiveId ? { receiveId: result.receiveId } : {}),
     }
   },
 )

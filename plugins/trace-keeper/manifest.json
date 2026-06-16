@@ -9,6 +9,7 @@
   "permissions": [
     "conversation.read",
     "turn.read",
+    "turn.plugins.write",
     "plugin.complete"
   ],
   "settingsSchema": {

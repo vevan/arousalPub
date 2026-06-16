@@ -180,6 +180,15 @@ function parseTraceKeeperJson(raw) {
     return null;
   }
 }
+function normalizePatchState(raw) {
+  if (typeof raw === "string") {
+    return parseTraceKeeperJson(raw);
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const text = JSON.stringify(raw);
+  if (!text || text.length > MAX_STATE_BYTES) return null;
+  return raw;
+}
 function stripTraceKeeperBlocks(assistantContent) {
   return assistantContent.replace(BLOCK_RE, "").trim();
 }
@@ -399,6 +408,52 @@ async function regenerateSeparateState(input, api) {
   };
 }
 
+// plugins/trace-keeper/src/server/patch-state.ts
+function activeReceive2(turn) {
+  const receives = turn.receives;
+  if (!receives?.length) return null;
+  const idx = Math.min(
+    Math.max(0, Math.floor(turn.activeReceiveIndex)),
+    receives.length - 1
+  );
+  const rec = receives[idx];
+  if (!rec?.id?.trim()) return null;
+  return { id: rec.id.trim() };
+}
+async function patchTraceKeeperState(input, api) {
+  const conversationId = input.conversationId.trim();
+  if (!conversationId) return { ok: false, code: "invalid_conversation_id" };
+  if (typeof input.turnOrdinal !== "number" || !Number.isFinite(input.turnOrdinal) || input.turnOrdinal < 0) {
+    return { ok: false, code: "invalid_turn_ordinal" };
+  }
+  const state = normalizePatchState(input.state);
+  if (!state) return { ok: false, code: "invalid_state" };
+  const turnOrdinal = Math.round(input.turnOrdinal);
+  const [convSettings, tail] = await Promise.all([
+    api.getConversationPluginSettings(conversationId, PLUGIN_ID),
+    api.readConversationTurnsTail(conversationId, 500)
+  ]);
+  if (!tail.length) return { ok: false, code: "no_turns" };
+  const turn = tail.find((t) => t.turnOrdinal === turnOrdinal);
+  if (!turn) return { ok: false, code: "turn_not_found" };
+  const epoch = trackerEpochFromSettings(convSettings);
+  const receive = activeReceive2(turn);
+  const payload = { state, epoch };
+  if (receive?.id) payload.receiveId = receive.id;
+  const entry = {
+    pluginId: PLUGIN_ID,
+    schemaVersion: 1,
+    payload
+  };
+  return {
+    ok: true,
+    state,
+    turnOrdinal,
+    ...receive?.id ? { receiveId: receive.id } : {},
+    entry
+  };
+}
+
 // plugins/trace-keeper/src/server/index.ts
 async function resolveTraceKeeperInjection(ctx, api) {
   if (ctx.pluginId !== PLUGIN_ID) return null;
@@ -457,6 +512,7 @@ async function resolveTurnPluginEntriesFromAssistant(ctx, api) {
 export {
   afterAssemblePrompts,
   buildTrackerSystemPrompt,
+  patchTraceKeeperState,
   regenerateSeparateState,
   resolveAfterAssemblePromptsAddition,
   resolveTraceKeeperInjection,

@@ -21,6 +21,17 @@ export function parseTraceKeeperJson(raw: string): Record<string, unknown> | nul
   }
 }
 
+/** 校验手动 patch / 编辑写回的 state（字符串或对象） */
+export function normalizePatchState(raw: unknown): Record<string, unknown> | null {
+  if (typeof raw === 'string') {
+    return parseTraceKeeperJson(raw)
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const text = JSON.stringify(raw)
+  if (!text || text.length > MAX_STATE_BYTES) return null
+  return raw as Record<string, unknown>
+}
+
 export function stripTraceKeeperBlocks(assistantContent: string): string {
   return assistantContent.replace(BLOCK_RE, '').trim()
 }

@@ -269,8 +269,10 @@ host.ui.panel.onPanelEvent('leftDrawer', 'trace-keeper', {
 | `resolveAfterAssemblePromptsAddition` | 注入 tracker system（sample + live states）；`afterAssemblePrompts` 兼容路径 |
 | `resolveTurnPluginEntriesFromAssistant` | Together：从 assistant 解析 → 落盘条目 |
 | `regenerateSeparateState` | Separate 补生成（由路由 `regenerate-separate` 调用） |
+| `patchTraceKeeperState` | 手动编辑 state（由路由 `patch-state` 调用） |
 | `POST …/regenerate-separate` | Web 侧栏触发；需 `plugin.complete` + `conversation.read` |
-| `permissions` | `conversation.read`、`turn.read`、`plugin.complete` |
+| `POST …/patch-state` | Web 侧栏 JSON 编辑保存；需 `turn.plugins.write` + `conversation.read` |
+| `permissions` | `conversation.read`、`turn.read`、`turn.plugins.write`、`plugin.complete` |
 
 **宿主**：`loadEnabledServerPlugins` 在同一次组装内 **只加载一次**（`assembleRuntime` + `additionCache` 共享）。插件注入 token 写入 **`assembly.plugins`**（审计 Tab，见 `DOC/24` §3.2）。
 
@@ -317,7 +319,7 @@ plugins/trace-keeper/
 - [x] live / pinned；swipe `receiveId` 多 snapshot；无 snapshot 空态 + 原因（§4.4）
 - [x] Separate 补生成（侧栏 + API）
 - [x] 组装审计 `assembly.plugins`（插件注入 token 预留）
-- [ ] 侧栏 JSON 编辑写回（规划 §5.3；v2）
+- [x] 侧栏 JSON 编辑写回（`patch-state` + 编辑按钮）
 - [ ] 顶栏/页脚独立「打开迹录」入口（可选）
 - [ ] JSON Schema / Ajv（后期）
 

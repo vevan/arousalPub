@@ -5919,6 +5919,15 @@ function parseTraceKeeperJson(raw) {
     return null;
   }
 }
+function normalizePatchState(raw) {
+  if (typeof raw === "string") {
+    return parseTraceKeeperJson(raw);
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const text = JSON.stringify(raw);
+  if (!text || text.length > MAX_STATE_BYTES) return null;
+  return raw;
+}
 function lastJsonParseError(raw) {
   const text = raw.trim();
   if (!text) return void 0;
@@ -6133,7 +6142,8 @@ function resolvePanelView(bundle, turns, epoch, pinned) {
         html,
         mode,
         turnOrdinal: viewingOrdinal,
-        epoch
+        epoch,
+        editState: hit.state
       };
     } catch (e) {
       const detail2 = e instanceof Error ? e.message.length > 200 ? `${e.message.slice(0, 200)}\u2026` : e.message : void 0;
@@ -6188,6 +6198,30 @@ function panelEmptyLocaleKey(reason) {
     case "render_failed":
       return "panelEmptyRenderFailed";
   }
+}
+
+// plugins/trace-keeper/src/patch-state-client.ts
+async function runPatchState(conversationId, turnOrdinal, state) {
+  const res = await fetch(
+    `/api/plugins/${encodeURIComponent(PLUGIN_ID)}/patch-state`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId, turnOrdinal, state })
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error ?? `http_${res.status}`);
+  }
+  const data = await res.json();
+  if (!data || typeof data.state !== "object") {
+    throw new Error("patch_state_invalid_response");
+  }
+  return data;
+}
+function parseStateJsonText(text) {
+  return normalizePatchState(text);
 }
 
 // plugins/trace-keeper/src/separate-regenerate-client.ts
@@ -9051,6 +9085,7 @@ if (true) {
 }
 
 // plugins/trace-keeper/src/index.ts
+var EDIT_DIALOG_ID = "edit-state-json";
 function turnsFromHost(host) {
   const raw = host.session.turns;
   return Array.isArray(raw) ? raw : [];
@@ -9059,8 +9094,9 @@ var SHELL_STYLES = `
 .trace-keeper-shell .tk-empty{margin:0 0 10px}
 .trace-keeper-shell .tk-empty-msg{margin:0 0 4px;opacity:.85;font-size:.875rem}
 .trace-keeper-shell .tk-empty-detail{margin:0;font-size:.75rem;opacity:.55;word-break:break-word}
-.trace-keeper-shell .tk-regen-btn{display:block;margin:0 0 10px;padding:6px 10px;font-size:.8125rem;border-radius:6px;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));background:rgba(var(--v-theme-primary),.08);cursor:pointer}
-.trace-keeper-shell .tk-regen-btn:disabled{opacity:.55;cursor:wait}
+.trace-keeper-shell .tk-actions{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}
+.trace-keeper-shell .tk-regen-btn,.trace-keeper-shell .tk-edit-btn{padding:6px 10px;font-size:.8125rem;border-radius:6px;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));background:rgba(var(--v-theme-primary),.08);cursor:pointer}
+.trace-keeper-shell .tk-regen-btn:disabled,.trace-keeper-shell .tk-edit-btn:disabled{opacity:.55;cursor:wait}
 `;
 function wrapPanelShell(host, innerHtml, opts) {
   const parts = ['<div class="trace-keeper-shell">'];
@@ -9077,12 +9113,22 @@ function wrapPanelShell(host, innerHtml, opts) {
     }
     parts.push("</div>");
   }
-  if (opts.canRegenerate) {
-    const label = escapeHtml(host.t(k(host, "panelRegenerateSeparate")));
-    const busy = opts.regenerating ? ' disabled aria-busy="true"' : "";
-    parts.push(
-      `<button type="button" class="tk-regen-btn" data-tk-action="regenerate-separate"${busy}>${label}</button>`
-    );
+  if (opts.canRegenerate || opts.canEdit) {
+    parts.push('<div class="tk-actions">');
+    if (opts.canEdit) {
+      const label = escapeHtml(host.t(k(host, "panelEditStateJson")));
+      parts.push(
+        `<button type="button" class="tk-edit-btn" data-tk-action="edit-state-json">${label}</button>`
+      );
+    }
+    if (opts.canRegenerate) {
+      const label = escapeHtml(host.t(k(host, "panelRegenerateSeparate")));
+      const busy = opts.regenerating ? ' disabled aria-busy="true"' : "";
+      parts.push(
+        `<button type="button" class="tk-regen-btn" data-tk-action="regenerate-separate"${busy}>${label}</button>`
+      );
+    }
+    parts.push("</div>");
   }
   parts.push(innerHtml);
   parts.push("</div>");
@@ -9092,6 +9138,7 @@ function escapeHtml(text) {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 var regenerating = false;
+var lastEditContext = null;
 async function refreshPanel(host) {
   try {
     const [userSettings, convSettings] = await Promise.all([
@@ -9105,7 +9152,14 @@ ${SHELL_STYLES}`);
     const turns = turnsFromHost(host);
     const pinned = getPinnedTurnOrdinal();
     const resolved = resolvePanelView(bundle, turns, epoch, pinned);
-    const html = resolved.kind === "content" ? wrapPanelShell(host, resolved.html, { regenerating }) : wrapPanelShell(host, "", {
+    lastEditContext = resolved.kind === "content" ? {
+      turnOrdinal: resolved.turnOrdinal,
+      state: resolved.editState
+    } : null;
+    const html = resolved.kind === "content" ? wrapPanelShell(host, resolved.html, {
+      canEdit: true,
+      regenerating
+    }) : wrapPanelShell(host, "", {
       emptyReason: resolved.reason,
       emptyDetail: resolved.detail,
       canRegenerate: resolved.canRegenerate,
@@ -9116,6 +9170,42 @@ ${SHELL_STYLES}`);
     });
   } catch (e) {
     console.warn("[trace-keeper] panel refresh failed", e);
+  }
+}
+function openEditStateDialog(host) {
+  if (!lastEditContext || !host.openFormDialog) return;
+  host.openFormDialog(
+    PLUGIN_ID,
+    {
+      turnOrdinal: lastEditContext.turnOrdinal,
+      stateJson: JSON.stringify(lastEditContext.state, null, 2)
+    },
+    EDIT_DIALOG_ID
+  );
+}
+async function handlePatchStateSubmit(host, model) {
+  const conversationId = host.conversation.getId?.();
+  const turnOrdinal = model.turnOrdinal;
+  const stateJson = String(model.stateJson ?? "");
+  if (!conversationId || typeof turnOrdinal !== "number") return;
+  const state = parseStateJsonText(stateJson);
+  if (!state) {
+    host.ui.toast?.(host.t(k(host, "toastPatchInvalidJson")), { color: "error" });
+    return;
+  }
+  try {
+    await runPatchState(conversationId, turnOrdinal, state);
+    if (host.conversation.refresh) {
+      await host.conversation.refresh();
+    }
+    host.ui.toast?.(host.t(k(host, "toastPatchDone")), { color: "success" });
+    await refreshPanel(host);
+    host.refreshSlotButtons();
+  } catch (e) {
+    const code = e instanceof Error ? e.message : "patch_failed";
+    host.ui.toast?.(host.t(k(host, "toastPatchFailed"), { code }), {
+      color: "error"
+    });
   }
 }
 async function handleRegenerateSeparate(host) {
@@ -9144,7 +9234,31 @@ async function handleRegenerateSeparate(host) {
     host.refreshSlotButtons();
   }
 }
+function registerEditStateDialog(host) {
+  if (!host.registerFormDialog) return;
+  host.registerFormDialog(
+    PLUGIN_ID,
+    {
+      titleKey: k(host, "editStateDialogTitle"),
+      fields: [
+        {
+          key: "stateJson",
+          labelKey: k(host, "editStateJsonLabel"),
+          type: "textarea"
+        }
+      ],
+      submitKey: k(host, "editStateSave"),
+      cancelKey: k(host, "editStateCancel"),
+      canSubmit: (model) => parseStateJsonText(String(model.stateJson ?? "")) !== null,
+      onSubmit: async (hostApi, model) => {
+        await handlePatchStateSubmit(hostApi, model);
+      }
+    },
+    EDIT_DIALOG_ID
+  );
+}
 function registerPanel(host) {
+  registerEditStateDialog(host);
   host.ui.panel.register({
     placement: PLACEMENT,
     pluginId: PLUGIN_ID,
@@ -9156,6 +9270,9 @@ function registerPanel(host) {
     onAction: (ev) => {
       if (ev.action === "regenerate-separate") {
         void handleRegenerateSeparate(host);
+      }
+      if (ev.action === "edit-state-json") {
+        openEditStateDialog(host);
       }
     }
   });

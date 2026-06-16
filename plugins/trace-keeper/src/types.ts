@@ -40,6 +40,16 @@ export interface PluginHost {
   registerSlotButton: (slot: string, def: Record<string, unknown>) => void
   registerStyles: (css: string) => void
   refreshSlotButtons: () => void
+  registerFormDialog?: (
+    pluginId: string,
+    def: Record<string, unknown>,
+    dialogId?: string,
+  ) => void
+  openFormDialog?: (
+    pluginId: string,
+    model: Record<string, unknown>,
+    dialogId?: string,
+  ) => void
   ui: {
     toast?: (message: string, opts?: { color?: string }) => void
     panel: {

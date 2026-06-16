@@ -274,6 +274,20 @@ export interface PluginServerModule {
       }
     | { ok: false; code: string }
   >
+  /** trace-keeper：手动 patch state 到 turn.plugins[] */
+  patchTraceKeeperState?: (
+    input: { conversationId: string; turnOrdinal: number; state: unknown },
+    api: PluginServerHostApi,
+  ) => Promise<
+    | {
+        ok: true
+        state: Record<string, unknown>
+        turnOrdinal: number
+        receiveId?: string
+        entry: TurnPluginEntry
+      }
+    | { ok: false; code: string }
+  >
 }
 
 export interface PluginRegistryPublicEntry {

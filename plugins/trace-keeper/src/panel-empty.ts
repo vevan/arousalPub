@@ -29,6 +29,7 @@ export type PanelViewResolved =
       mode: 'live' | 'pinned'
       turnOrdinal: number
       epoch: number
+      editState: Record<string, unknown>
     }
   | {
       kind: 'empty'
@@ -173,6 +174,7 @@ export function resolvePanelView(
         mode,
         turnOrdinal: viewingOrdinal,
         epoch,
+        editState: hit.state,
       }
     } catch (e) {
       const detail =

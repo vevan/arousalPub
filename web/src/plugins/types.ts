@@ -502,22 +502,22 @@ export interface PluginWebHost {
     clearProgress(): void
     panel: {
       register(opts: {
-        placement: 'leftDrawer'
+        placement: 'leftRail' | 'rightRail'
         pluginId: string
         tabIcon: string
         tabLabelKey: string
         interactive?: boolean
       }): void
       setHtml(
-        placement: 'leftDrawer',
+        placement: 'leftRail' | 'rightRail',
         pluginId: string,
         html: string,
         opts?: { revision?: number },
       ): void
-      open(placement: 'leftDrawer', pluginId?: string): void
-      setPinned(placement: 'leftDrawer', pinned: boolean): void
+      open(placement: 'leftRail' | 'rightRail', pluginId?: string): void
+      setHidden(placement: 'leftRail' | 'rightRail', hidden: boolean): void
       onEvent(
-        placement: 'leftDrawer',
+        placement: 'leftRail' | 'rightRail',
         pluginId: string,
         handlers: {
           onInput?: (e: { field: string; value: string; type: string }) => void

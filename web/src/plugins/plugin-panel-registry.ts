@@ -5,7 +5,7 @@ import {
   sanitizePluginPanelHtmlInteractive,
 } from '@/plugins/plugin-panel-sanitize'
 
-export type PluginPanelPlacement = 'leftDrawer'
+export type PluginPanelPlacement = 'leftRail' | 'rightRail'
 
 export interface PluginPanelRegisterOptions {
   placement: PluginPanelPlacement
@@ -41,9 +41,14 @@ export interface PluginPanelEntry {
   revision: number
 }
 
-export const pluginPanelOpen = ref(false)
-export const pluginPanelPinned = ref(false)
-export const pluginPanelActiveTab = ref<string | null>(null)
+export const pluginPanelHiddenState = ref<Record<PluginPanelPlacement, boolean>>({
+  leftRail: false,
+  rightRail: true,
+})
+export const pluginPanelActiveTabState = ref<Record<PluginPanelPlacement, string | null>>({
+  leftRail: null,
+  rightRail: null,
+})
 export const pluginPanelRevision = ref(0)
 
 const panels = new Map<string, PluginPanelEntry>()
@@ -73,8 +78,11 @@ export function registerPluginPanel(opts: PluginPanelRegisterOptions): void {
     html: prev?.html ?? '',
     revision: prev?.revision ?? 0,
   })
-  if (!pluginPanelActiveTab.value) {
-    pluginPanelActiveTab.value = pluginId
+  if (!pluginPanelActiveTabState.value[opts.placement]) {
+    pluginPanelActiveTabState.value = {
+      ...pluginPanelActiveTabState.value,
+      [opts.placement]: pluginId,
+    }
   }
   pluginPanelRevision.value += 1
 }
@@ -114,10 +122,18 @@ export function focusPluginPanelTab(
   pluginId?: string,
 ): void {
   if (pluginId?.trim()) {
-    pluginPanelActiveTab.value = pluginId.trim()
-  } else if (!pluginPanelActiveTab.value) {
+    pluginPanelActiveTabState.value = {
+      ...pluginPanelActiveTabState.value,
+      [placement]: pluginId.trim(),
+    }
+  } else if (!pluginPanelActiveTabState.value[placement]) {
     const first = getRegisteredPanels(placement)[0]
-    if (first) pluginPanelActiveTab.value = first.pluginId
+    if (first) {
+      pluginPanelActiveTabState.value = {
+        ...pluginPanelActiveTabState.value,
+        [placement]: first.pluginId,
+      }
+    }
   }
 }
 
@@ -125,22 +141,28 @@ export function openPluginPanel(
   placement: PluginPanelPlacement,
   pluginId?: string,
 ): void {
-  pluginPanelOpen.value = true
+  setPluginPanelHidden(placement, false)
   focusPluginPanelTab(placement, pluginId)
 }
 
-export function setPluginPanelPinned(
-  _placement: PluginPanelPlacement,
-  pinned: boolean,
+export function isPluginPanelHidden(placement: PluginPanelPlacement): boolean {
+  return pluginPanelHiddenState.value[placement]
+}
+
+export function setPluginPanelHidden(
+  placement: PluginPanelPlacement,
+  hidden: boolean,
 ): void {
-  pluginPanelPinned.value = pinned
-  if (pinned) pluginPanelOpen.value = true
+  pluginPanelHiddenState.value = {
+    ...pluginPanelHiddenState.value,
+    [placement]: hidden,
+  }
 }
 
 export function getActivePanelHtml(
   placement: PluginPanelPlacement,
 ): { pluginId: string; html: string; revision: number; interactive: boolean } | null {
-  let id = pluginPanelActiveTab.value
+  let id = pluginPanelActiveTabState.value[placement]
   if (!id) {
     const first = getRegisteredPanels(placement)[0]
     id = first?.pluginId ?? null
@@ -166,14 +188,15 @@ export function getActivePanelHtml(
 }
 
 export function dispatchPluginPanelDomEvent(
+  placement: PluginPanelPlacement,
   root: HTMLElement,
   ev: Event,
 ): void {
-  const active = pluginPanelActiveTab.value
+  const active = pluginPanelActiveTabState.value[placement]
   if (!active) return
-  const entry = panels.get(panelKey('leftDrawer', active))
+  const entry = panels.get(panelKey(placement, active))
   if (!entry) return
-  const handlers = eventHandlers.get(panelKey('leftDrawer', active))
+  const handlers = eventHandlers.get(panelKey(placement, active))
   if (!handlers) return
 
   const target = ev.target

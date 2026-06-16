@@ -74,19 +74,9 @@ body {
  * 各页面根内层容器添加此类；勿再叠加 w-100（会覆盖 width）。
  */
 .app-page-shell {
-  width: clamp(45rem, 60%, 100rem);
-  margin-inline: auto;
   min-width: 0;
   max-width: 100%;
-  padding-inline: 1rem;
   box-sizing: border-box;
-}
-
-@media (max-width: 45rem) {
-  .app-page-shell {
-    width: 100%;
-    padding-inline: 0.75rem;
-  }
 }
 
 /**

@@ -55,7 +55,7 @@ export function k(host: { pluginKey: (key: string) => string }, key: string): st
   return host.pluginKey(key)
 }
 
-export const PLACEMENT = 'leftDrawer' as const
+export const PLACEMENT = 'leftRail' as const
 
 export function pluginPanelId(): string {
   return PLUGIN_ID

@@ -3,46 +3,49 @@ import {
   dispatchPluginPanelDomEvent,
   getActivePanelHtml,
   getRegisteredPanels,
+  isPluginPanelHidden,
   notifyPluginPanelMounted,
   openPluginPanel,
-  pluginPanelActiveTab,
-  pluginPanelPinned,
   pluginPanelRevision,
-  setPluginPanelPinned,
+  setPluginPanelHidden,
+  type PluginPanelPlacement,
 } from '@/plugins/plugin-panel-registry'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+
+const props = defineProps<{
+  placement: PluginPanelPlacement
+}>()
 
 const { t, te } = useI18n()
 
 const panels = computed(() => {
   void pluginPanelRevision.value
-  return getRegisteredPanels('leftDrawer')
+  return getRegisteredPanels(props.placement)
 })
 const active = computed(() => {
   void pluginPanelRevision.value
-  void pluginPanelActiveTab.value
-  return getActivePanelHtml('leftDrawer')
+  return getActivePanelHtml(props.placement)
 })
+const hostHidden = computed(() => isPluginPanelHidden(props.placement))
 const contentRef = ref<HTMLElement | null>(null)
 
 function tabLabel(key: string): string {
   return te(key) ? t(key) : key
 }
 
-function onPinClick(): void {
-  setPluginPanelPinned('leftDrawer', !pluginPanelPinned.value)
+function onToggleHidden(): void {
+  setPluginPanelHidden(props.placement, !hostHidden.value)
 }
 
 function onTabClick(pluginId: string): void {
-  pluginPanelActiveTab.value = pluginId
-  openPluginPanel('leftDrawer', pluginId)
+  openPluginPanel(props.placement, pluginId)
 }
 
 function onPanelEvent(ev: Event): void {
   const root = contentRef.value
   if (!root) return
-  dispatchPluginPanelDomEvent(root, ev)
+  dispatchPluginPanelDomEvent(props.placement, root, ev)
 }
 
 watch(
@@ -54,23 +57,20 @@ watch(
 </script>
 
 <template>
-  <div class="plugin-left-drawer">
-    <div class="plugin-left-drawer__header">
-      <span class="plugin-left-drawer__title text-subtitle-2">
+  <div class="plugin-rail-host">
+    <div class="plugin-rail-host__header">
+      <span class="plugin-rail-host__title text-subtitle-2">
         {{ $t('app.plugins') }}
       </span>
-      <div class="plugin-left-drawer__actions">
+      <div class="plugin-rail-host__actions">
         <v-btn
           icon
           size="x-small"
           variant="text"
-          :color="pluginPanelPinned ? 'primary' : undefined"
-          :aria-label="$t('app.pluginPanelPin')"
-          @click="onPinClick"
+          :aria-label="$t('app.pluginPanelHide')"
+          @click="onToggleHidden"
         >
-          <v-icon size="18">
-            {{ pluginPanelPinned ? 'mdi-pin' : 'mdi-pin-outline' }}
-          </v-icon>
+          <v-icon size="18">mdi-eye-off-outline</v-icon>
         </v-btn>
         <v-btn
           v-for="p in panels"
@@ -78,7 +78,7 @@ watch(
           icon
           size="x-small"
           variant="text"
-          :color="pluginPanelActiveTab === p.pluginId ? 'primary' : undefined"
+          :color="active?.pluginId === p.pluginId ? 'primary' : undefined"
           :aria-label="tabLabel(p.tabLabelKey)"
           @click="onTabClick(p.pluginId)"
         >
@@ -91,7 +91,7 @@ watch(
       <div
         v-if="active?.html"
         ref="contentRef"
-        class="plugin-left-drawer__content"
+        class="plugin-rail-host__content"
         data-plugin-panel-host
         :data-plugin-panel="active.pluginId"
         v-html="active.html"
@@ -101,14 +101,14 @@ watch(
       />
       <div
         v-else
-        class="plugin-left-drawer__empty text-body-2 text-medium-emphasis pa-4"
+        class="plugin-rail-host__empty text-body-2 text-medium-emphasis pa-4"
       >
         {{ $t('app.pluginPanelEmpty') }}
       </div>
     </template>
     <div
       v-else
-      class="plugin-left-drawer__empty text-body-2 text-medium-emphasis pa-4"
+      class="plugin-rail-host__empty text-body-2 text-medium-emphasis pa-4"
     >
       {{ $t('app.pluginsHint') }}
     </div>
@@ -116,14 +116,14 @@ watch(
 </template>
 
 <style scoped>
-.plugin-left-drawer {
+.plugin-rail-host {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
 }
 
-.plugin-left-drawer__header {
+.plugin-rail-host__header {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -133,27 +133,27 @@ watch(
   flex-shrink: 0;
 }
 
-.plugin-left-drawer__title {
+.plugin-rail-host__title {
   flex: 1;
   min-width: 0;
   font-weight: 500;
 }
 
-.plugin-left-drawer__actions {
+.plugin-rail-host__actions {
   display: flex;
   align-items: center;
   gap: 2px;
   flex-shrink: 0;
 }
 
-.plugin-left-drawer__content {
+.plugin-rail-host__content {
   flex: 1;
   min-height: 0;
   padding: 8px;
   overflow: auto;
 }
 
-.plugin-left-drawer__empty {
+.plugin-rail-host__empty {
   flex: 1;
   min-height: 0;
 }

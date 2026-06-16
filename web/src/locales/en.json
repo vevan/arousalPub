@@ -4,7 +4,7 @@
     "mainNav": "Main navigation",
     "plugins": "Plugins",
     "pluginsHint": "Plugin extension panel",
-    "pluginPanelPin": "Pin sidebar",
+    "pluginPanelHide": "Hide plugin panel",
     "pluginPanelEmpty": "No panel content",
     "traceKeeper": "Trace Keeper",
     "apiConnection": "Connection",

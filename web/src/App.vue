@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import ConnectionSettingsCard from '@/components/ConnectionSettingsCard.vue'
-import PluginLeftDrawerHost from '@/components/PluginLeftDrawerHost.vue'
+import PluginRailHost from '@/components/PluginRailHost.vue'
 import {
+  isPluginPanelHidden,
   openPluginPanel,
-  pluginPanelOpen,
-  pluginPanelPinned,
+  setPluginPanelHidden,
 } from '@/plugins/plugin-panel-registry'
 import CharactersView from '@/views/CharactersView.vue'
 import LorebooksView from '@/views/LorebooksView.vue'
@@ -118,15 +118,9 @@ function onBrowserLanguageChange() {
   }
 }
 
-const drawerLeft = computed({
-  get: () => pluginPanelOpen.value || pluginPanelPinned.value,
-  set: (v: boolean) => {
-    if (!v && pluginPanelPinned.value) return
-    pluginPanelOpen.value = v
-    if (!v) pluginPanelPinned.value = false
-  },
-})
 const drawerRight = ref(false)
+const leftHostHidden = computed(() => isPluginPanelHidden('leftRail'))
+const rightHostHidden = computed(() => isPluginPanelHidden('rightRail'))
 const settingsDialogOpen = ref(false)
 const settingsDialogOpenCount = ref(0)
 
@@ -363,19 +357,6 @@ onUnmounted(() => {
   </v-app>
 
   <v-app v-else>
-    <!-- VNavigationDrawer :width 须为无单位数字（px）；rem/% 等字符串会破坏布局与开关（Vuetify #16705） -->
-    <v-navigation-drawer
-      v-model="drawerLeft"
-      :width="280"
-      temporary
-      :scrim="!pluginPanelPinned"
-      location="start"
-      border="end"
-      class="plugin-left-drawer-overlay"
-    >
-      <PluginLeftDrawerHost />
-    </v-navigation-drawer>
-
     <v-navigation-drawer
       v-model="drawerRight"
       :width="440"
@@ -632,9 +613,30 @@ onUnmounted(() => {
       </div>
     </v-app-bar>
 
-    <v-main class="main-chat d-flex flex-column">
-      <!-- 不在此挂 d-flex：会合并到子路由根节点并覆盖 ChatConversationView 的 display:grid -->
-      <router-view />
+    <v-main id="mainChat" class="main-chat">
+      <aside id="leftRail" class="main-chat__rail main-chat__rail--left">
+        <section
+          id="leftHostPanel"
+          class="plugin-host-panel"
+          :class="{ hidden: leftHostHidden }"
+        >
+          <PluginRailHost placement="leftRail" />
+        </section>
+      </aside>
+
+      <section id="centerRail" class="main-chat__center">
+        <router-view />
+      </section>
+
+      <aside id="rightRail" class="main-chat__rail main-chat__rail--right">
+        <section
+          id="rightHostPanel"
+          class="plugin-host-panel"
+          :class="{ hidden: rightHostHidden }"
+        >
+          <PluginRailHost placement="rightRail" />
+        </section>
+      </aside>
     </v-main>
 
     <v-footer
@@ -651,7 +653,12 @@ onUnmounted(() => {
           density="compact"
           class="app-footer__plugins-btn"
           :aria-label="$t('app.plugins')"
-          @click="openPluginPanel('leftDrawer')"
+          @click="
+            () => {
+              setPluginPanelHidden('leftRail', false)
+              openPluginPanel('leftRail')
+            }
+          "
         />
         <span class="app-footer__meta">
           Arousal <em>Pub</em>
@@ -774,7 +781,31 @@ onUnmounted(() => {
 }
 
 .main-chat {
+  display: grid;
+  grid-template-columns: 1fr clamp(45rem, 60%, 80rem) 1fr;
+  gap: 1rem;
   min-height: 0;
+}
+
+.main-chat__rail,
+.main-chat__center {
+  min-width: 0;
+  min-height: 0;
+}
+
+.main-chat__center {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.plugin-host-panel {
+  height: 100%;
+  min-height: 0;
+}
+
+.plugin-host-panel.hidden {
+  display: none;
 }
 
 .auth-app__main {

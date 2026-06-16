@@ -6376,7 +6376,7 @@ function bumpPanelRevision() {
 function k(host, key) {
   return host.pluginKey(key);
 }
-var PLACEMENT = "leftDrawer";
+var PLACEMENT = "leftRail";
 
 // plugins/trace-keeper/src/index.ts
 var EDIT_DIALOG_ID = "edit-state-json";

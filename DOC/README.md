@@ -12,6 +12,7 @@
 | 插件开发 | [`09`](09-plugin-system-and-guidance-generate.md) → [`18`](18-plugin-host-developer-api.md) → [`10`](10-plugin-conversation-host.md) |
 | Historian | [`12-plugin-plot-summary.md`](12-plugin-plot-summary.md) |
 | 迹录（Trace Keeper） | [`30-plugin-trace-keeper.md`](30-plugin-trace-keeper.md) |
+| 主布局 / 插件 Rail | [`31-main-layout-plugin-rails.md`](31-main-layout-plugin-rails.md) |
 | 待办 | [`04-TODO.md`](04-TODO.md) |
 
 ## 核心（01–08）
@@ -48,6 +49,7 @@
 | [`24`](24-regex-and-session-audit.md) | 主体 ✅ | 正则三阶段、debug 审计 |
 | [`25`](25-security-deployment.md) | ✅ | 部署硬化、**API Key 隔离与磁盘加密** §15 |
 | [`30`](30-plugin-trace-keeper.md) | ✅ v1 | **迹录** `trace-keeper`：Together、Separate、TraceBundle、左栏 HTML 面板 |
+| [`31`](31-main-layout-plugin-rails.md) | 待实现 | **主布局三列 Grid**、插件 left/right rail、`hidden` 替代 `pinned`、API drawer 保留 |
 
 ## 已归档（勿再新建同级文档）
 

@@ -337,13 +337,13 @@ interface ConversationBatchContext {
 
 | 方法 | 说明 |
 |------|------|
-| `register(placement, pluginId, opts)` | 注册面板 Tab（如 `leftDrawer`） |
+| `register(placement, pluginId, opts)` | 注册面板 Tab（如 `leftRail`） |
 | `setHtml(placement, pluginId, html, opts?)` | 更新消毒后 HTML；`interactive` 允许表单/按钮 + 事件委托 |
-| `setPinned(placement, turnOrdinal \| null)` | 固定查看某轮；`null` 为 live |
-| `open(placement, pluginId?)` | 打开 drawer 并可选聚焦 Tab |
+| `setHidden(placement, hidden)` | 隐藏/显示指定 rail 的宿主内容（列仍占位） |
+| `open(placement, pluginId?)` | 打开（取消 hidden）并可选聚焦 Tab |
 | `onPanelEvent(placement, pluginId, handlers)` | 面板内 `data-*` 交互回调 |
 
-宿主：**`PluginLeftDrawerHost.vue`**（左 280px，Pin + 多插件 Tab）。
+宿主：**`PluginRailHost.vue`**（左/右 rail，共用多插件 Tab）。
 
 ### 3.14 `host.regex`（规划 · **`DOC/24`** §2）
 

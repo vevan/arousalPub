@@ -20,7 +20,7 @@
 
 ## 1. 定位
 
-迹录是 **RP 场景状态追踪**插件：用 LLM（默认 **Together** 模式）在助手回复中产出结构化 JSON，解析后按轮落盘，并在 **左侧插件抽屉** 用用户自定义 **Handlebars 模板 + CSS** 渲染面板。
+迹录是 **RP 场景状态追踪**插件：用 LLM（默认 **Together** 模式）在助手回复中产出结构化 JSON，解析后按轮落盘，并在 **左侧插件 rail** 用用户自定义 **Handlebars 模板 + CSS** 渲染面板。
 
 | 项 | 定案 |
 |----|------|
@@ -184,7 +184,7 @@ interface TraceBundle {
 
 ## 6. UI
 
-### 6.1 左侧抽屉（宿主 `host.ui.panel`）
+### 6.1 左侧 rail（宿主 `host.ui.panel`）
 
 ```text
 ┌─────────────────────────────────────┐
@@ -197,11 +197,11 @@ interface TraceBundle {
 
 | 控件 | 行为 |
 |------|------|
-| **Pin** | 钉住侧栏保持打开（与「按轮 pinned 查看」**不同图标/语义**） |
-| **插件 Tab** | `placement: 'leftDrawer'` 下多插件共用；`activeTab` 切换 |
-| **固定入口** | 顶栏/页脚 **Trace Keeper** 按钮 → 打开 drawer 并聚焦 `trace-keeper` tab |
+| **隐藏按钮** | 隐藏当前 rail 宿主内容（列仍占位；与「按轮 pinned 查看」是不同语义） |
+| **插件 Tab** | `placement: 'leftRail'` 下多插件共用；`activeTab` 切换 |
+| **固定入口** | 顶栏/页脚 **Trace Keeper** 按钮 → 显示 left rail 并聚焦 `trace-keeper` tab |
 
-宿主占位：`App.vue` 左 `v-navigation-drawer`（280px，`app.pluginsHint` 预留）。
+宿主占位：`App.vue` 左 rail 列（`app.pluginsHint` 预留）。
 
 ### 6.2 每轮按钮
 
@@ -226,12 +226,12 @@ interface TraceBundle {
 
 ## 7. 宿主 API（已实现）
 
-命名空间 **`host.ui.panel`**。宿主组件 **`PluginLeftDrawerHost`**（`App.vue` 左 drawer 280px）。
+命名空间 **`host.ui.panel`**。宿主组件 **`PluginRailHost`**（`App.vue` 左/右 rail）。
 
 ```ts
 // 注册
 host.ui.panel.register({
-  placement: 'leftDrawer',
+  placement: 'leftRail',
   pluginId: 'trace-keeper',
   tabIcon: 'mdi-…',
   tabLabelKey: host.pluginKey('tabLabel'),
@@ -240,17 +240,17 @@ host.ui.panel.register({
 
 // 内容（插件 Handlebars 后调用）
 host.ui.panel.setHtml(
-  'leftDrawer',
+  'leftRail',
   'trace-keeper',
   html: string,
   opts?: { revision?: number },
 )
 
-host.ui.panel.setPinned('leftDrawer', boolean)
-host.ui.panel.open('leftDrawer', 'trace-keeper'?)
+host.ui.panel.setHidden('leftRail', boolean)
+host.ui.panel.open('leftRail', 'trace-keeper'?)
 
 // 交互（注册一次）
-host.ui.panel.onPanelEvent('leftDrawer', 'trace-keeper', {
+host.ui.panel.onPanelEvent('leftRail', 'trace-keeper', {
   onInput?: (e: { field: string; value: unknown }) => void,
   onAction?: (e: { action: string; … }) => void,
 })
@@ -323,7 +323,7 @@ plugins/trace-keeper/
 - [x] **不**写 lore；仅 system 注入
 - [x] 用户可编辑 **sampleState / template / stylesheet**；默认样例可渲染侧栏
 - [x] `host.ui.panel` 消毒 + `interactive` 委托
-- [x] 左 drawer Pin + Tab
+- [x] 左 rail 隐藏按钮 + Tab
 - [x] live / pinned；swipe `receiveId` 多 snapshot；无 snapshot 空态 + 原因（§4.4）
 - [x] Separate 补生成（侧栏 + API）
 - [x] 组装审计 `assembly.plugins`（插件注入 token 预留）

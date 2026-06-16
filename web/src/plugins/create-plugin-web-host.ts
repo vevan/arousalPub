@@ -55,7 +55,7 @@ import {
   openPluginPanel,
   registerPluginPanel,
   setPluginPanelHtml,
-  setPluginPanelPinned,
+  setPluginPanelHidden,
 } from '@/plugins/plugin-panel-registry'
 import { subscribePluginUserSettingsSaved } from '@/utils/plugin-user-settings-events'
 import { useConversationPluginSettingsStore } from '@/stores/conversation-plugin-settings'
@@ -246,8 +246,8 @@ export function createScopedPluginHost(
         open(placement, pluginId) {
           openPluginPanel(placement, pluginId ?? id)
         },
-        setPinned(placement, pinned) {
-          setPluginPanelPinned(placement, pinned)
+        setHidden(placement, hidden) {
+          setPluginPanelHidden(placement, hidden)
         },
         onEvent(placement, _pluginId, handlers) {
           onPluginPanelEvent(placement, id, handlers)
@@ -475,8 +475,8 @@ export function createPluginWebHost(session: ChatSession): {
         open(placement, pluginId) {
           openPluginPanel(placement, pluginId)
         },
-        setPinned(placement, pinned) {
-          setPluginPanelPinned(placement, pinned)
+        setHidden(placement, hidden) {
+          setPluginPanelHidden(placement, hidden)
         },
         onEvent(placement, pluginId, handlers) {
           onPluginPanelEvent(placement, pluginId, handlers)

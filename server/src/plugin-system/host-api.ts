@@ -136,6 +136,10 @@ export function createPluginServerHostApi(
         activeReceiveIndex:
           typeof t.activeReceiveIndex === 'number' ? t.activeReceiveIndex : 0,
         plugins: Array.isArray(t.plugins) ? t.plugins : [],
+        receives: (t.receives ?? []).map((r) => ({
+          id: typeof r.id === 'string' ? r.id : '',
+          content: typeof r.content === 'string' ? r.content : '',
+        })),
       }))
     },
     async readPluginPackageText(pluginId, relPath) {

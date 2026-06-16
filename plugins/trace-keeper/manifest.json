@@ -8,7 +8,8 @@
   ],
   "permissions": [
     "conversation.read",
-    "turn.read"
+    "turn.read",
+    "plugin.complete"
   ],
   "settingsSchema": {
     "version": 1,
@@ -19,6 +20,13 @@
         "labelKey": "activeBundleIdLabel",
         "descriptionKey": "activeBundleIdDesc",
         "default": "scene-tracker-default"
+      },
+      {
+        "key": "liveStateTurnCount",
+        "type": "number",
+        "labelKey": "liveStateTurnCountLabel",
+        "descriptionKey": "liveStateTurnCountDesc",
+        "default": "1"
       },
       {
         "key": "bundleList",
@@ -75,6 +83,13 @@
         "type": "string",
         "labelKey": "convBundleIdLabel",
         "descriptionKey": "convBundleIdDesc",
+        "default": ""
+      },
+      {
+        "key": "liveStateTurnCount",
+        "type": "number",
+        "labelKey": "convLiveStateTurnCountLabel",
+        "descriptionKey": "convLiveStateTurnCountDesc",
         "default": ""
       }
     ]

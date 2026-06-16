@@ -193,8 +193,36 @@ function formatTokenSource(
                         <td class="audit-table__label">{{ $t('chat.turnAuditBudgetMax') }}</td>
                         <td>{{ assembly.budgetTrim.maxTokens }}</td>
                       </tr>
+                      <tr v-if="assembly.plugins?.tokenReserve">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPluginTokenReserve') }}</td>
+                        <td>{{ assembly.plugins.tokenReserve }}</td>
+                      </tr>
                     </tbody>
                   </v-table>
+
+                  <template v-if="assembly.plugins?.items?.length">
+                    <h4 class="text-subtitle-2 mb-2">{{ $t('chat.turnAuditSectionPlugins') }}</h4>
+                    <v-table
+                      density="compact"
+                      class="audit-table mb-4"
+                    >
+                      <thead>
+                        <tr>
+                          <th>{{ $t('chat.turnAuditColPluginId') }}</th>
+                          <th>{{ $t('chat.turnAuditColTokens') }}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr
+                          v-for="row in assembly.plugins.items"
+                          :key="row.pluginId"
+                        >
+                          <td class="audit-table__mono">{{ row.pluginId }}</td>
+                          <td>{{ row.tokens }}</td>
+                        </tr>
+                      </tbody>
+                    </v-table>
+                  </template>
 
                   <h4 class="text-subtitle-2 mb-2">{{ $t('chat.turnAuditSectionMemory') }}</h4>
                   <v-table

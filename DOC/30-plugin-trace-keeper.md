@@ -14,7 +14,7 @@
 |----|------|
 | 与 Historian | 互补；Historian 写资料库摘要；迹录 **不注入 lore** |
 | 与 memory | 无关；state 不走 Lance hybrid |
-| 与 guidance-generate | 检测到指导生成载荷时 **跳过** tracker 注入（与 RPG Companion 行为对齐） |
+| 与其它插件 | **无强依赖**；不读取、不分支其它 `pluginId`；与其它插件 payload 同经宿主组装 / 落盘管道并列生效 |
 | 引擎 vs 内容 | 插件提供 **引擎**；字段 / UI 由用户 **TraceBundle（套件）** 定义，仓库只附带 **基础样例** |
 
 ---
@@ -241,7 +241,7 @@ host.ui.panel.onPanelEvent('leftDrawer', 'trace-keeper', {
 
 | Hook / 路由 | 用途 |
 |-------------|------|
-| `afterAssemblePrompts` | 注入 tracker 说明 + **sampleState** + live state；跳过 guidance 轮 |
+| `afterAssemblePrompts` | 注入 tracker 说明 + **sampleState** + live state |
 | `resolveTurnPluginEntries` | Together：从 assistant 解析 `<ex-trace-keeper>` → 写 `turn.plugins` |
 | `permissions` | `turn.read`、`turn.plugins.write`、`conversation.plugin_settings.write`、`plugin.complete` 等 |
 | `PATCH` 会话 | 检测 `characterIds[0]` 变化 → `trackerEpoch++`（服务端可靠） |
@@ -294,7 +294,7 @@ plugins/trace-keeper/
 - [ ] 左 drawer Pin + Tab；固定按钮打开迹录
 - [ ] live / pinned；`turn-block-head` 灰显无数据轮
 - [ ] 换 `characterIds[0]` → epoch++、state 重置、bundle 按新卡 resolve
-- [ ] guidance 轮跳过注入
+- [ ] guidance 轮与其它插件 payload 并列时仍正常注入（迹录不感知具体 pluginId）
 - [ ] Separate 降级 / 手动刷新（可选 v1.1）
 
 ---

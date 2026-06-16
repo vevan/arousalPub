@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
+const repoRoot = path.join(here, '../..')
 
 const loaders = {
   '.json': 'json',
@@ -17,6 +18,7 @@ async function build() {
     target: 'es2022',
     logLevel: 'info',
     loader: loaders,
+    absWorkingDir: repoRoot,
   }
 
   await esbuild.build({
@@ -36,6 +38,21 @@ async function build() {
   })
 
   console.log('[trace-keeper] built dist/web.mjs + dist/server.mjs')
+
+  const { spawnSync } = await import('node:child_process')
+  const testFiles = [
+    path.join(here, 'src/live-state-settings.test.ts'),
+    path.join(here, 'src/tracker-prompt.test.ts'),
+    path.join(here, 'src/trace-state-resolve.test.ts'),
+    path.join(here, 'src/server/injection.test.ts'),
+  ]
+  for (const f of testFiles) {
+    const r = spawnSync(process.execPath, ['--import', 'tsx', '--test', f], {
+      cwd: repoRoot,
+      stdio: 'inherit',
+    })
+    if (r.status !== 0) process.exit(r.status ?? 1)
+  }
 }
 
 build().catch((e) => {

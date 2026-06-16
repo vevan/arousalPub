@@ -18,6 +18,7 @@ import {
   mergeTurnPluginEntries,
   resolveTurnPluginEntriesFromAssistant,
 } from './plugin-host.js'
+import { attachReceiveIdToTurnPluginEntries } from './turn-plugin-utils.js'
 import type { ChatPluginsBody, TurnPluginEntry } from './plugin-types.js'
 import type {
   AssemblyAudit,
@@ -405,7 +406,7 @@ export async function persistTurnAfterModelReply(params: {
         receives,
         activeReceiveIndex,
         auditSnapshot,
-        turnPluginEntries,
+        attachReceiveIdToTurnPluginEntries(turnPluginEntries, receiveId),
       )
       if (!ok) {
         return { ok: false, error: ApiErrorCodes.turn_update_failed }

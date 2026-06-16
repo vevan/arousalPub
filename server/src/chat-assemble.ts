@@ -67,7 +67,12 @@ import {
   toResolvedFeatureAudit,
   type ResolvedFeatureAudit,
 } from './feature-binding-resolve.js'
-import { applyPluginsAfterAssemblePrompts } from './plugin-host.js'
+import {
+  applyPluginsAfterAssemblePrompts,
+  estimatePluginsAfterAssembleTokenReserve,
+  type PluginAssembleAdditionCache,
+  type AfterAssemblePromptsContext,
+} from './plugin-host.js'
 import type { ChatPluginsBody } from './plugin-types.js'
 import { countChatMessagesTokens } from './token-count.js'
 import { readTurnsInOrdinalRange } from './chunk-chain.js'
@@ -493,9 +498,25 @@ export async function buildConversationOutboundMessages(
   let droppedMemoryCount = 0
   let droppedHistoryCount = 0
 
-  if (maxTokens) {
+  const pluginCache: PluginAssembleAdditionCache = new Map()
+  const assembleCtx: AfterAssemblePromptsContext = {
+    macroContext,
+    plugins: params.plugins,
+    tokenModel,
+    additionCache: pluginCache,
+  }
+  const pluginTokenReserve =
+    maxTokens != null && maxTokens > 0
+      ? await estimatePluginsAfterAssembleTokenReserve(assembleCtx)
+      : 0
+  const trimMaxTokens =
+    maxTokens != null && maxTokens > 0
+      ? Math.max(1, maxTokens - pluginTokenReserve)
+      : maxTokens
+
+  if (trimMaxTokens) {
     const trimmed = runPromptBudgetTrimLoop({
-      maxTokens,
+      maxTokens: trimMaxTokens,
       tokenModel,
       trimSettings: effectiveBudgetTrim,
       state: trimState,
@@ -549,6 +570,8 @@ export async function buildConversationOutboundMessages(
     messages,
     macroContext,
     plugins: params.plugins,
+    additionCache: pluginCache,
+    assembleRuntime: assembleCtx.assembleRuntime,
   })
   if (macroContext) {
     applyMacrosToMessages(messagesAfterPlugins, macroContext, {
@@ -588,6 +611,7 @@ export async function buildConversationOutboundMessages(
       droppedMemoryCount,
       droppedHistoryCount,
       memoryEnabled: effectiveMemory.memoryEnabled,
+      pluginAdditionCache: pluginCache,
     })
 
     assemblyEmbeddingCalls = []

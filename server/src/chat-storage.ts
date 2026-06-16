@@ -1,5 +1,5 @@
 import { allocateShortId } from './short-id.js'
-import { mergeTurnPluginEntry } from './turn-plugin-utils.js'
+import { mergeTurnPluginEntry, attachReceiveIdToTurnPluginEntries } from './turn-plugin-utils.js'
 import type { TurnPluginEntry } from './plugin-types.js'
 import {
   mergeAuthorsNote,
@@ -1565,12 +1565,7 @@ export async function saveFirstTurn(params: {
     completionTokens,
     resolvedFeature,
   })
-  const turn: TurnRecord = {
-    turnId,
-    turnOrdinal: 0,
-    createdAt: turnCreatedAt,
-    send: { userText },
-    receives: mapReceivesWithShortIds(
+  const receives = mapReceivesWithShortIds(
       [
         {
           id: '',
@@ -1582,12 +1577,19 @@ export async function saveFirstTurn(params: {
         },
       ],
       used,
-    ),
-    activeReceiveIndex: 0,
-    plugins: (turnPluginEntries ?? []).reduce<unknown[]>(
-      (acc, entry) => mergeTurnPluginEntry(acc, entry),
-      [],
-    ),
+    )
+  const activeReceiveIndex = 0
+  const receiveId = receives[activeReceiveIndex]?.id?.trim() ?? ''
+  const turn: TurnRecord = {
+    turnId,
+    turnOrdinal: 0,
+    createdAt: turnCreatedAt,
+    send: { userText },
+    receives,
+    activeReceiveIndex,
+    plugins: (attachReceiveIdToTurnPluginEntries(turnPluginEntries, receiveId) ?? []).reduce<
+      unknown[]
+    >((acc, entry) => mergeTurnPluginEntry(acc, entry), []),
   }
 
   const chunkSettings = await readGlobalChunkSettings()
@@ -1715,20 +1717,22 @@ export async function appendConversationTurn(params: {
       : Math.max(...chunk.turns.map((t) => t.turnOrdinal)) + 1
   const used = collectChunkEntityIds(chunk)
   const turnCreatedAt = nowIso()
+  const mappedReceives = mapReceivesWithShortIds(receives, used)
+  const activeIdx = Math.min(
+    Math.max(0, activeReceiveIndex),
+    mappedReceives.length - 1,
+  )
+  const receiveId = mappedReceives[activeIdx]?.id?.trim() ?? ''
   const turn: TurnRecord = {
     turnId: allocateShortId(used),
     turnOrdinal: nextOrd,
     createdAt: turnCreatedAt,
     send: { userText },
-    receives: mapReceivesWithShortIds(receives, used),
-    activeReceiveIndex: Math.min(
-      Math.max(0, activeReceiveIndex),
-      receives.length - 1,
-    ),
-    plugins: (turnPluginEntries ?? []).reduce<unknown[]>(
-      (acc, entry) => mergeTurnPluginEntry(acc, entry),
-      [],
-    ),
+    receives: mappedReceives,
+    activeReceiveIndex: activeIdx,
+    plugins: (attachReceiveIdToTurnPluginEntries(turnPluginEntries, receiveId) ?? []).reduce<
+      unknown[]
+    >((acc, entry) => mergeTurnPluginEntry(acc, entry), []),
   }
   chunk.turns.push(turn)
   chunk.meta.ordinalRange = {
@@ -1796,6 +1800,35 @@ function tailChunkPath(
 ): string | null {
   if (!idx.tailChunkFile) return null
   return path.join(conversationDir(conversationId), idx.tailChunkFile)
+}
+
+/** 仅合并 turn.plugins 条目（Separate 重新生成等） */
+export async function mergeTurnPluginEntriesAtOrdinal(
+  conversationId: string,
+  turnOrdinal: number,
+  entries: TurnPluginEntry[],
+): Promise<'ok' | 'not_found'> {
+  if (!entries.length) return 'not_found'
+  const located = await readChunkContainingOrdinal(conversationId, turnOrdinal)
+  if (!located) return 'not_found'
+  const { chunk, fileName: chunkName } = located
+  const turn = chunk.turns.find((t) => t.turnOrdinal === turnOrdinal)
+  if (!turn) return 'not_found'
+
+  let plugins = Array.isArray(turn.plugins) ? turn.plugins : []
+  for (const entry of entries) {
+    plugins = mergeTurnPluginEntry(plugins, entry)
+  }
+  turn.plugins = plugins
+
+  await writeChunkFile(conversationId, chunkName, chunk)
+  const idx = await readConversationIndex(conversationId)
+  if (idx) {
+    idx.updatedAt = nowIso()
+    await writeConversationIndex(conversationId, idx)
+    await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
+  }
+  return 'ok'
 }
 
 /** 更新任意 chunk 中某轮：用户正文 + 助手 receives（全量替换） */

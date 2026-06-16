@@ -1,5 +1,10 @@
 export interface TurnCtx {
-  turn?: { turnOrdinal?: number; plugins?: unknown[] }
+  turn?: {
+    turnOrdinal?: number
+    plugins?: unknown[]
+    activeReceiveIndex?: number
+    receives?: { id?: string; content?: string }[]
+  }
   listIndex?: number
 }
 
@@ -7,10 +12,16 @@ export interface PluginHost {
   pluginKey: (key: string) => string
   t: (key: string, params?: Record<string, unknown>) => string
   session: {
-    turns?: { turnOrdinal: number; plugins?: unknown[] }[]
+    turns?: {
+      turnOrdinal: number
+      plugins?: unknown[]
+      activeReceiveIndex?: number
+      receives?: { id?: string; content?: string }[]
+    }[]
     refreshSlotButtons?: () => void
   }
   conversation: {
+    getId?: () => string
     getPluginSettings: () => Promise<Record<string, unknown>>
     getPluginSettingsSnapshot: () => Record<string, unknown>
     onPluginSettingsChanged: (
@@ -30,6 +41,7 @@ export interface PluginHost {
   registerStyles: (css: string) => void
   refreshSlotButtons: () => void
   ui: {
+    toast?: (message: string, opts?: { color?: string }) => void
     panel: {
       register: (opts: Record<string, unknown>) => void
       setHtml: (

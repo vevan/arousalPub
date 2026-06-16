@@ -21,6 +21,10 @@ export function parseTraceKeeperJson(raw: string): Record<string, unknown> | nul
   }
 }
 
+export function stripTraceKeeperBlocks(assistantContent: string): string {
+  return assistantContent.replace(BLOCK_RE, '').trim()
+}
+
 /** 取助手正文中最后一个有效 trace 块 */
 export function extractTraceKeeperState(
   assistantContent: string,
@@ -34,13 +38,4 @@ export function extractTraceKeeperState(
     if (state) last = state
   }
   return last
-}
-
-export function isGuidanceGenerateRound(
-  plugins: Record<string, unknown> | null | undefined,
-): boolean {
-  const raw = plugins?.['guidance-generate']
-  if (!raw || typeof raw !== 'object') return false
-  const guidanceText = (raw as { guidanceText?: unknown }).guidanceText
-  return typeof guidanceText === 'string' && guidanceText.trim().length > 0
 }

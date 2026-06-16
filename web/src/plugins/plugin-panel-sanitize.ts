@@ -35,6 +35,13 @@ const PANEL_BASE: Record<string, unknown> = {
 
 const PANEL_INTERACTIVE: Record<string, unknown> = {
   ...PANEL_BASE,
+  ADD_TAGS: [
+    ...(PANEL_BASE.ADD_TAGS as string[]),
+    'input',
+    'button',
+    'textarea',
+    'label',
+  ],
 }
 
 /** 插件左栏 HTML（只读档：无 input） */

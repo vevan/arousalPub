@@ -14,6 +14,7 @@
 | 插件参数 | **`data/plugins/<pluginId>/{userId}/settings.json`**（schema 在 manifest） |
 | Hook 顺序 | registry 内 **`order` 升序**；同 phase 内小者优先 |
 | 轮次 state | **`turn.plugins[]`**，跟 `turnId`；不污染可见 `userText` |
+| 插件互依赖 | **默认互不依赖**：不得硬编码其它 `pluginId`、不得假定某插件已启用；协作仅经宿主管道（`body.plugins`、hooks 顺序）或 manifest 声明的 **强依赖 / capabilities**（`DOC/09` §8.7，未实现前勿写跨插件分支） |
 | i18n | 插件自带 **`locales/{en,zh}.json`** → 宿主 merge 到 **`plugins.{pluginId}.*`** |
 
 ---

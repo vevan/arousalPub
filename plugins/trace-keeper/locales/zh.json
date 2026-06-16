@@ -3,6 +3,11 @@
   "tabLabel": "迹录",
   "tooltipTurnView": "查看本轮场景状态",
   "tooltipTurnEmpty": "本轮无 tracker",
+  "tooltipTurnPinnedEmpty": "固定查看：本轮无 tracker 数据",
+  "panelNoData": "该轮暂无 tracker 数据。",
+  "panelRegenerateSeparate": "重新生成 tracker（Separate）",
+  "toastRegenerateDone": "Tracker 已重新生成",
+  "toastRegenerateFailed": "重新生成失败：{code}",
   "tooltipLiveView": "查看最新场景状态",
   "activeBundleIdLabel": "默认套件",
   "activeBundleIdDesc": "从下方已保存的套件中选择；内置样例始终可用",
@@ -30,5 +35,9 @@
   "bundleStylesheetDefault": ".trace-keeper-panel {\n  font-size: 0.875rem;\n  line-height: 1.45;\n}\n\n.trace-keeper-panel .tk-title {\n  margin: 0 0 8px;\n  font-weight: 600;\n  font-size: 0.95rem;\n}\n\n.trace-keeper-panel .tk-fields {\n  margin: 0 0 8px;\n  display: grid;\n  grid-template-columns: auto 1fr;\n  gap: 4px 10px;\n}\n\n.trace-keeper-panel .tk-fields dt {\n  margin: 0;\n  opacity: 0.72;\n}\n\n.trace-keeper-panel .tk-fields dd {\n  margin: 0;\n}\n\n.trace-keeper-panel .tk-notes {\n  margin: 8px 0 0;\n  padding: 8px;\n  border-radius: 6px;\n  background: rgba(var(--v-theme-on-surface), 0.04);\n}\n\n.trace-keeper-panel .tk-meta {\n  margin: 10px 0 0;\n  opacity: 0.55;\n}",
   "convBundleIdLabel": "本会话套件",
   "convBundleIdDesc": "留空则继承用户默认或内置样例",
-  "convBundleInheritOption": "继承默认"
+  "convBundleInheritOption": "继承默认",
+  "liveStateTurnCountLabel": "注入 live state 轮数",
+  "liveStateTurnCountDesc": "0～8。注入 system 时附带最近 N 轮 tracker 状态；读盘 tail 上限同此值。计入 token 预算且不可裁切。",
+  "convLiveStateTurnCountLabel": "本会话 live state 轮数",
+  "convLiveStateTurnCountDesc": "留空继承用户默认；0 表示仅样例结构、不读历史 state"
 }

@@ -129,6 +129,10 @@ export interface AssemblyAudit {
   budgetTrim?: {
     maxTokens?: number
   }
+  plugins?: {
+    tokenReserve: number
+    items: { pluginId: string; tokens: number }[]
+  }
 }
 
 export interface CallAuditEntry {

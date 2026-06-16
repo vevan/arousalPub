@@ -206,6 +206,7 @@ import {
 } from './lorebook-entries.js'
 import { resolvePluginCompleteApi } from './plugin-api-resolve.js'
 import { runPluginCompleteDraftRoute } from './plugin-complete-draft-route.js'
+import { runTraceKeeperRegenerateRoute } from './trace-keeper-regenerate-route.js'
 import { runPluginComplete } from './plugin-complete.js'
 import { runPluginCompletePreflight } from './plugin-complete-preflight.js'
 import { runNormalizeLorebookEntryRefs } from './plugin-lorebook-entry-refs.js'
@@ -3668,6 +3669,53 @@ app.post<{
       })
     }
     return { ok: true as const, draft: result.draft, usage: result.usage, latencyMs: result.latencyMs }
+  },
+)
+
+app.post<{
+  Params: { pluginId: string }
+  Body: { conversationId?: string; turnOrdinal?: number }
+}>(
+  '/api/plugins/:pluginId/regenerate-separate',
+  async (request, reply) => {
+    const pluginId = request.params.pluginId.trim()
+    const completeAuth = await assertPluginRoutePermission(pluginId, 'plugin.complete')
+    if (!completeAuth.ok) {
+      return reply.status(completeAuth.status).send({ error: ApiErrorCodes[completeAuth.code] })
+    }
+    const readAuth = await assertPluginRoutePermission(pluginId, 'conversation.read')
+    if (!readAuth.ok) {
+      return reply.status(readAuth.status).send({ error: ApiErrorCodes[readAuth.code] })
+    }
+    const body = request.body ?? {}
+    const result = await runTraceKeeperRegenerateRoute(pluginId, body)
+    if (!result.ok) {
+      if (result.code === 'plugin_hook_not_supported') {
+        return reply.status(404).send({ error: ApiErrorCodes.plugin_hook_not_supported })
+      }
+      if (result.code === 'invalid_conversation_id') {
+        return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+      }
+      if (result.code === 'turn_not_found' || result.code === 'no_turns') {
+        return reply.status(404).send({ error: ApiErrorCodes.turn_chunk_not_found })
+      }
+      if (result.code === 'parse_failed') {
+        return reply.status(502).send({ error: ApiErrorCodes.upstream_non_json })
+      }
+      if (result.code === 'api_config_not_found') {
+        return reply.status(400).send({ error: ApiErrorCodes.api_preset_not_found })
+      }
+      return reply.status(result.status ?? 502).send({
+        error: ApiErrorCodes.plugin_complete_failed,
+        detail: result.code,
+      })
+    }
+    return {
+      ok: true as const,
+      state: result.state,
+      turnOrdinal: result.turnOrdinal,
+      receiveId: result.receiveId,
+    }
   },
 )
 

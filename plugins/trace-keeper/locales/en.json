@@ -3,6 +3,11 @@
   "tabLabel": "Trace Keeper",
   "tooltipTurnView": "View scene state for this turn",
   "tooltipTurnEmpty": "No tracker for this turn",
+  "tooltipTurnPinnedEmpty": "Pinned: no tracker data for this turn",
+  "panelNoData": "No tracker data for this turn.",
+  "panelRegenerateSeparate": "Regenerate tracker (Separate)",
+  "toastRegenerateDone": "Tracker regenerated",
+  "toastRegenerateFailed": "Regenerate failed: {code}",
   "tooltipLiveView": "View latest scene state",
   "activeBundleIdLabel": "Default bundle",
   "activeBundleIdDesc": "Pick from saved bundles below; built-in sample is always available",
@@ -30,5 +35,9 @@
   "bundleStylesheetDefault": ".trace-keeper-panel {\n  font-size: 0.875rem;\n  line-height: 1.45;\n}\n\n.trace-keeper-panel .tk-title {\n  margin: 0 0 8px;\n  font-weight: 600;\n  font-size: 0.95rem;\n}\n\n.trace-keeper-panel .tk-fields {\n  margin: 0 0 8px;\n  display: grid;\n  grid-template-columns: auto 1fr;\n  gap: 4px 10px;\n}\n\n.trace-keeper-panel .tk-fields dt {\n  margin: 0;\n  opacity: 0.72;\n}\n\n.trace-keeper-panel .tk-fields dd {\n  margin: 0;\n}\n\n.trace-keeper-panel .tk-notes {\n  margin: 8px 0 0;\n  padding: 8px;\n  border-radius: 6px;\n  background: rgba(var(--v-theme-on-surface), 0.04);\n}\n\n.trace-keeper-panel .tk-meta {\n  margin: 10px 0 0;\n  opacity: 0.55;\n}",
   "convBundleIdLabel": "Conversation bundle",
   "convBundleIdDesc": "Leave empty to inherit user default or built-in sample",
-  "convBundleInheritOption": "Inherit default"
+  "convBundleInheritOption": "Inherit default",
+  "liveStateTurnCountLabel": "Live state turn count",
+  "liveStateTurnCountDesc": "0–8. Include up to N recent tracker states in the system injection; tail read uses the same limit. Reserved in token budget and never trimmed.",
+  "convLiveStateTurnCountLabel": "Conversation live state turns",
+  "convLiveStateTurnCountDesc": "Leave empty to inherit user default; 0 = sample structure only, no history read"
 }

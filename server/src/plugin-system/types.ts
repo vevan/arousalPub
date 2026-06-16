@@ -169,6 +169,7 @@ export interface PluginServerHostApi {
       turnOrdinal: number
       activeReceiveIndex: number
       plugins: unknown[]
+      receives: { id: string; content: string }[]
     }[]
   >
   readPluginPackageText: (
@@ -242,6 +243,11 @@ export interface PluginServerModule {
     ctx: AfterAssemblePromptsPluginContext,
     api: PluginServerHostApi,
   ) => ChatMessage[] | Promise<ChatMessage[]>
+  /** 预估追加 messages（用于 token 预算预留；不可被 budget trim 裁切） */
+  resolveAfterAssemblePromptsAddition?: (
+    ctx: Omit<AfterAssemblePromptsPluginContext, 'messages'>,
+    api: PluginServerHostApi,
+  ) => ChatMessage[] | null | Promise<ChatMessage[] | null>
   resolveTurnPluginEntries?: (
     plugins: ChatPluginsBody | null | undefined,
     api: PluginServerHostApi,

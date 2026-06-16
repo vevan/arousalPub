@@ -46,6 +46,10 @@ export interface AssemblyAudit {
   budgetTrim?: {
     maxTokens?: number
   }
+  plugins?: {
+    tokenReserve: number
+    items: { pluginId: string; tokens: number }[]
+  }
 }
 
 export type CallAuditKind = 'chat' | 'embedding' | 'plugin.complete'

@@ -47,7 +47,7 @@
 | [`23`](23-conversation-branches.md) | 部分 | 分支磁盘 + memory；UI 待做 |
 | [`24`](24-regex-and-session-audit.md) | 主体 ✅ | 正则三阶段、debug 审计 |
 | [`25`](25-security-deployment.md) | ✅ | 部署硬化、**API Key 隔离与磁盘加密** §15 |
-| [`30`](30-plugin-trace-keeper.md) | 定案 | **迹录** `trace-keeper`：Together、TraceBundle、左栏 HTML 面板 |
+| [`30`](30-plugin-trace-keeper.md) | ✅ v1 | **迹录** `trace-keeper`：Together、Separate、TraceBundle、左栏 HTML 面板 |
 
 ## 已归档（勿再新建同级文档）
 

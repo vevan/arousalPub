@@ -1,8 +1,20 @@
 # 迹录（Trace Keeper）插件 — 设计定案
 
-> **状态**：**定案 · 未实现**（2026-06-14）。  
+> **状态**：**已实现（v1 · 2026-06）**；本文档为定案 + 实现对照。  
 > **插件 id**：`trace-keeper` · **英文名** Trace Keeper · **中文名** 迹录  
 > **关联**：`DOC/09` 插件系统、`DOC/11` 出站补全、`DOC/18` 宿主 API、`DOC/21` 会话插件设置、`DOC/24` 正则剥块、`DOC/12`（分槽：Historian 写 lore，迹录**不写 lore**）。
+
+### 实现摘要（2026-06）
+
+| 能力 | 实现 |
+|------|------|
+| Together 落盘 | `resolveTurnPluginEntriesFromAssistant` 解析 `<ex-trace-keeper>` → `turn.plugins[]` |
+| 组装注入 | `resolveAfterAssemblePromptsAddition`；`liveStateTurnCount`（0–8）；计入 token 预算且不可 trim |
+| Separate 补生成 | `POST /api/plugins/trace-keeper/regenerate-separate`；侧栏按钮；写 `plugins[]` 不改 assistant |
+| 侧栏 | `host.ui.panel` · live/pinned；只读 `plugins[]` 渲染；无 snapshot **空态+原因**（§4.4）；最后一轮可 Separate |
+| Swipe | 按 `receiveId` 多 snapshot（`mergeTurnPluginEntry`） |
+| 套件 | 用户 settings `bundleList` + 内置 `scene-tracker-default`；设置页编辑器 |
+| 插件互依赖 | **无**；不硬编码其它 `pluginId`（见 `DOC/09` §1） |
 
 ---
 
@@ -33,9 +45,9 @@
   → 侧栏：Handlebars(template)({ data: state, meta }) → host.ui.panel.setHtml
 ```
 
-### 2.2 Separate（可选 / 降级）
+### 2.2 Separate（补生成）
 
-解析失败或用户手动刷新时：`host.plugin.complete` + `responseFormat: 'json_object'`，**不**写入 assistant 正文。
+解析失败或用户手动刷新：`POST /api/plugins/trace-keeper/regenerate-separate`（`plugin.complete` + `json_object`），结果写入 **`turn.plugins[]`**，**不**修改 assistant 正文。侧栏 live 且最后一轮无 snapshot 时显示按钮。
 
 ---
 
@@ -79,11 +91,23 @@
 - **历史** `turn.plugins` **保留**；仅 `payload.epoch === trackerEpoch` 参与 live 视图与 Together 注入。
 - **无二次确认**（产品定案：换主卡即重置 state）。
 
-### 4.3 Swipe
+### 4.3 Swipe 与侧栏视图
 
-- 每个 `receive` 解析成功写独立 payload（含 `receiveId` 或 `receiveIndex`）。
-- **live** 视图：最后一轮有效快照 + 该轮 `activeReceiveIndex` 对应条目。
-- **pinned**：用户点某轮 `turn-block-head` 按钮固定查看该轮。
+- 每个 `receive` Together 解析成功写独立 payload（含 **`receiveId`**）。
+- **live**：**仅最后一轮**、该轮 **`activeReceiveIndex`** 对应 snapshot（不向前回溯）；无 snapshot 时 **空态 + 原因文案**（仅最后一轮可读 assistant 诊断）+ Separate 按钮；**不用 sampleState 占位**。
+- **pinned**：固定 `turnOrdinal`；无 snapshot 时 **统一「该轮暂无数据」**（不展示解析细节）；**不**回退 live；head 按钮仍 filled、可点。pinned 在最后一轮且无 snapshot 时与 live 相同诊断 + Separate。
+- 展示 **只读** `turn.plugins[]` 渲染 snapshot；**不**用 assistant 作 state fallback。空态时 **仅最后一轮** 可读 active receive 正文做 **diagnose-only**（与落盘解析同源）。
+
+### 4.4 侧栏空态原因（2026-06）
+
+| 条件 | 文案类型 | Separate |
+|------|----------|----------|
+| 无轮次 | 空会话 | ❌ |
+| 查看 **非最后一轮** 且无 snapshot | 统一「该轮暂无数据」 | ❌ |
+| **最后一轮** 无 snapshot | 未返回块 / 空块 / JSON 解析失败 / 未落盘 / 格式无效 | ✅ |
+| 有 snapshot 但 template 渲染失败 | 模板渲染失败（可附 detail） | ✅ |
+
+`sampleState` **不**参与侧栏占位，仅用于 system 注入与设置页。
 
 ---
 
@@ -181,10 +205,11 @@ interface TraceBundle {
 
 ### 6.2 每轮按钮
 
-- **Slot**：`turn-block-head`（`registerSlotButton`；**仅图标**，不在 slot 内嵌 HTML）。
-- **无数据 / epoch 不匹配**：**灰显** + disabled + tooltip「本轮无 tracker」。
-- **有数据**：点击 → `pinned(turnOrdinal)` + 打开 drawer；当前查看中则 `filled`。
-- **默认 drawer**：**live** — 最后一条有效 state；提供「回到最新」。
+- **Slot**：`turn-block-head`（`registerSlotButton`；仅图标）。
+- **无数据且未 pinned 该轮**：disabled + tooltip「本轮无 tracker」。
+- **pinned 该轮但无 snapshot**：**可点**；tooltip「固定查看：本轮无 tracker 数据」；drawer 显示空态文案。
+- **有 snapshot 或 pinned**：点击 → 切换 pinned + 打开 drawer；pinned 轮 **filled**。
+- **live 默认**：最后一轮 snapshot；无则 **空态**（原因见 §4.4）+ Separate（仅 viewing 为最后一轮）。
 
 ### 6.3 设置页
 
@@ -199,9 +224,9 @@ interface TraceBundle {
 
 ---
 
-## 7. 宿主 API（规划）
+## 7. 宿主 API（已实现）
 
-命名空间 **`host.ui.panel`**（可糖：`register.leftDrawer`）。
+命名空间 **`host.ui.panel`**。宿主组件 **`PluginLeftDrawerHost`**（`App.vue` 左 drawer 280px）。
 
 ```ts
 // 注册
@@ -237,44 +262,41 @@ host.ui.panel.onPanelEvent('leftDrawer', 'trace-keeper', {
 
 ---
 
-## 8. Server 插件（规划）
+## 8. Server 插件（已实现）
 
 | Hook / 路由 | 用途 |
 |-------------|------|
-| `afterAssemblePrompts` | 注入 tracker 说明 + **sampleState** + live state |
-| `resolveTurnPluginEntries` | Together：从 assistant 解析 `<ex-trace-keeper>` → 写 `turn.plugins` |
-| `permissions` | `turn.read`、`turn.plugins.write`、`conversation.plugin_settings.write`、`plugin.complete` 等 |
-| `PATCH` 会话 | 检测 `characterIds[0]` 变化 → `trackerEpoch++`（服务端可靠） |
+| `resolveAfterAssemblePromptsAddition` | 注入 tracker system（sample + live states）；`afterAssemblePrompts` 兼容路径 |
+| `resolveTurnPluginEntriesFromAssistant` | Together：从 assistant 解析 → 落盘条目 |
+| `regenerateSeparateState` | Separate 补生成（由路由 `regenerate-separate` 调用） |
+| `POST …/regenerate-separate` | Web 侧栏触发；需 `plugin.complete` + `conversation.read` |
+| `permissions` | `conversation.read`、`turn.read`、`plugin.complete` |
 
-路径：`/api/plugins/trace-keeper/...`（与 `DOC/18` 一致）。
+**宿主**：`loadEnabledServerPlugins` 在同一次组装内 **只加载一次**（`assembleRuntime` + `additionCache` 共享）。插件注入 token 写入 **`assembly.plugins`**（审计 Tab，见 `DOC/24` §3.2）。
+
+换主角色 **`trackerEpoch++`**：`PATCH` 会话 `characterIds[0]` 变化时服务端写入（`server/src/index.ts`）。
 
 ---
 
-## 9. 插件包结构（规划）
+## 9. 插件包结构（仓库）
 
 ```text
 plugins/trace-keeper/
   manifest.json
   locales/{en,zh}.json
-  settings.json              # 新用户 seed 模板
-  bundles/
-    scene-tracker-default/
-      sample-state.json      # v1 唯一结构样例
-      template.hbs
-      stylesheet.css
+  settings.json
+  bundles/scene-tracker-default/
   src/
-    index.ts                 # register(host)
-    panel.ts                 # Handlebars + setHtml
-    bundle-resolve.ts
-    parse-block.ts
+    index.ts                 # Web：panel、turn 按钮、Separate 客户端
+    trace-state-resolve.ts   # plugins[] 解析；live 仅最后一轮
+    tracker-prompt.ts
     server/
-      index.ts               # hooks
-  build.mjs                  # esbuild → dist/web.mjs + dist/server.mjs
+      index.ts
+      separate-regenerate.ts
+  build.mjs → dist/web.mjs + dist/server.mjs
 ```
 
-构建：Handlebars 打进 `web.mjs` / `server.mjs`（**v1 无 Ajv**）；**不**向宿主提交 `.vue`。
-
-注册：`BUNDLED_PLUGIN_IDS`、`sync-bundled-plugins.mjs`（实现时）。
+已注册 **`BUNDLED_PLUGIN_IDS`** / **`sync-bundled-plugins.mjs`**。测试：`src/**/*.test.ts` + `server/src/plugin-bundled-dist.test.ts`。
 
 ---
 
@@ -285,17 +307,19 @@ plugins/trace-keeper/
 
 ---
 
-## 11. 验收要点（实现后）
+## 11. 验收要点
 
-- [ ] Together 默认；`<ex-trace-keeper>` 解析落 `turn.plugins`
-- [ ] **不**写 lore；仅 system 注入
-- [ ] 用户可编辑 **sampleState / template / stylesheet**；默认样例可渲染侧栏
-- [ ] `host.ui.panel` 消毒 + `interactive` 委托
-- [ ] 左 drawer Pin + Tab；固定按钮打开迹录
-- [ ] live / pinned；`turn-block-head` 灰显无数据轮
-- [ ] 换 `characterIds[0]` → epoch++、state 重置、bundle 按新卡 resolve
-- [ ] guidance 轮与其它插件 payload 并列时仍正常注入（迹录不感知具体 pluginId）
-- [ ] Separate 降级 / 手动刷新（可选 v1.1）
+- [x] Together 默认；`<ex-trace-keeper>` 解析落 `turn.plugins`
+- [x] **不**写 lore；仅 system 注入
+- [x] 用户可编辑 **sampleState / template / stylesheet**；默认样例可渲染侧栏
+- [x] `host.ui.panel` 消毒 + `interactive` 委托
+- [x] 左 drawer Pin + Tab
+- [x] live / pinned；swipe `receiveId` 多 snapshot；无 snapshot 空态 + 原因（§4.4）
+- [x] Separate 补生成（侧栏 + API）
+- [x] 组装审计 `assembly.plugins`（插件注入 token 预留）
+- [ ] 侧栏 JSON 编辑写回（规划 §5.3；v2）
+- [ ] 顶栏/页脚独立「打开迹录」入口（可选）
+- [ ] JSON Schema / Ajv（后期）
 
 ---
 

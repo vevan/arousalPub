@@ -333,6 +333,18 @@ interface ConversationBatchContext {
 | `progress(opts)` | 进度条；`indeterminate`、`abortable` + `abortLabel` |
 | `clearProgress()` | 清除进度（预览弹框前应调用，避免遮罩挡住对话框） |
 
+#### 3.13.1 `host.ui.panel`（✅ · **`DOC/30`** 迹录）
+
+| 方法 | 说明 |
+|------|------|
+| `register(placement, pluginId, opts)` | 注册面板 Tab（如 `leftDrawer`） |
+| `setHtml(placement, pluginId, html, opts?)` | 更新消毒后 HTML；`interactive` 允许表单/按钮 + 事件委托 |
+| `setPinned(placement, turnOrdinal \| null)` | 固定查看某轮；`null` 为 live |
+| `open(placement, pluginId?)` | 打开 drawer 并可选聚焦 Tab |
+| `onPanelEvent(placement, pluginId, handlers)` | 面板内 `data-*` 交互回调 |
+
+宿主：**`PluginLeftDrawerHost.vue`**（左 280px，Pin + 多插件 Tab）。
+
 ### 3.14 `host.regex`（规划 · **`DOC/24`** §2）
 
 > **未实现**。宿主原生正则引擎；**非**插件、**非** `host.capabilities`。
@@ -356,7 +368,10 @@ interface ConversationBatchContext {
 | Hook | 时机 | 典型用途 |
 |------|------|----------|
 | `afterAssemblePrompts(ctx, api)` | `/api/chat` 组装 messages 之后 | 追加 hidden system（guidance-generate） |
-| `resolveTurnPluginEntries(plugins, api)` | 落盘前 | 写入 `turn.plugins[]` 条目 |
+| `resolveAfterAssemblePromptsAddition(ctx, api)` | 同上（推荐） | 返回追加 messages；宿主合并 + token 预算（trace-keeper 等） |
+| `resolveTurnPluginEntries(plugins, api)` | 落盘前 | 写入 `turn.plugins[]` 条目（body 侧） |
+| `resolveTurnPluginEntriesFromAssistant(plugins, assistantText, api)` | 落盘前 | 从 assistant 解析 → 条目（trace-keeper Together） |
+| `regenerateSeparateState(ctx, api)` | `POST …/regenerate-separate` | Separate 补生成（trace-keeper） |
 | `completeDraft(ctx, api)` | `POST …/complete-draft` | 插件侧 LLM 草稿（扩宏、重试、JSON 解析） |
 
 在 manifest 声明 `"hooks": ["afterAssemblePrompts"]` 等，设置页会展示。
@@ -518,7 +533,6 @@ class PluginHostApiError {
 
 | 能力 | 说明 |
 |------|------|
-| **`host.ui.panel`** | 左侧（及日后其它 `placement`）HTML 面板：`register` / `setHtml` / `setPinned` / `onPanelEvent`；DOMPurify `pluginPanel` 档；**迹录**见 **`DOC/30`** |
 | 服务端 `onAssistantReplyPersisted` | 自动触发摘要流水线（当前由 Web lifecycle 负责） |
 | 字段级 permissions 与 turn.plugins 写权限细分 | 部分 enforce 仍随路由演进 |
 
@@ -532,7 +546,7 @@ class PluginHostApiError {
 | `DOC/10-plugin-conversation-host.md` | 对话 DTO、runScope 细节、swipe/export |
 | `DOC/11-plugin-host-completion-and-lorebook.md` | 补全与 lorebook 产品设计定案 |
 | `DOC/12-plugin-plot-summary.md` | Historian（剧情纪要）完整业务示例 |
-| `DOC/30-plugin-trace-keeper.md` | **迹录** Trace Keeper（定案 · 未实现） |
+| `DOC/30-plugin-trace-keeper.md` | **迹录** Trace Keeper（✅ v1） |
 | `plugins/README.md` | 内置插件列表与打包说明 |
 
 ---

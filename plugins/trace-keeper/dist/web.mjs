@@ -5741,6 +5741,7 @@ var require_handlebars = __commonJS({
 var PLUGIN_ID = "trace-keeper";
 var DEFAULT_BUNDLE_ID = "scene-tracker-default";
 var BLOCK_TAG = "ex-trace-keeper";
+var MAX_STATE_BYTES = 65536;
 
 // plugins/trace-keeper/bundles/scene-tracker-default/sample-state.json
 var sample_state_default = {
@@ -5899,6 +5900,58 @@ function trackerEpochFromSettings(convSettings) {
   return 0;
 }
 
+// plugins/trace-keeper/src/parse-block.ts
+var BLOCK_RE = new RegExp(
+  `<${BLOCK_TAG}>\\s*([\\s\\S]*?)\\s*<\\/${BLOCK_TAG}>`,
+  "gi"
+);
+function weakValidateState(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return true;
+}
+function parseTraceKeeperJson(raw) {
+  const text = raw.trim();
+  if (!text || text.length > MAX_STATE_BYTES) return null;
+  try {
+    const parsed = JSON.parse(text);
+    return weakValidateState(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+function lastJsonParseError(raw) {
+  const text = raw.trim();
+  if (!text) return void 0;
+  try {
+    JSON.parse(text);
+    return void 0;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return msg.length > 200 ? `${msg.slice(0, 200)}\u2026` : msg;
+  }
+}
+function diagnoseAssistantTrace(assistantContent) {
+  const content = assistantContent.trim();
+  if (!content) return { kind: "no_block" };
+  BLOCK_RE.lastIndex = 0;
+  const blocks = [];
+  for (const match of content.matchAll(BLOCK_RE)) {
+    blocks.push(typeof match[1] === "string" ? match[1] : "");
+  }
+  if (blocks.length === 0) return { kind: "no_block" };
+  let sawNonEmpty = false;
+  let lastParseDetail;
+  for (const inner of blocks) {
+    if (!inner.trim()) continue;
+    sawNonEmpty = true;
+    const state = parseTraceKeeperJson(inner);
+    if (state) return { kind: "valid_json" };
+    lastParseDetail = lastJsonParseError(inner);
+  }
+  if (!sawNonEmpty) return { kind: "empty_block" };
+  return { kind: "json_parse_failed", detail: lastParseDetail };
+}
+
 // plugins/trace-keeper/src/panel-render.ts
 var import_handlebars = __toESM(require_handlebars());
 
@@ -5960,13 +6013,6 @@ function turnLookup(turn) {
     receives: turn.receives
   };
 }
-function resolveLiveTraceState(turns, epoch) {
-  if (turns.length === 0) return null;
-  const turn = turns[turns.length - 1];
-  const hit = findTracePayloadInTurnPlugins(turn.plugins, epoch, turnLookup(turn));
-  if (!hit) return null;
-  return { state: hit.state, turnOrdinal: turn.turnOrdinal };
-}
 function findTracePayloadForTurn(turn, epoch) {
   if (!turn) return null;
   return findTracePayloadInTurnPlugins(turn.plugins, epoch, turnLookup(turn));
@@ -5984,6 +6030,164 @@ function renderTracePanelHtml(bundle, data, meta) {
   registerHelpers();
   const tpl = import_handlebars.default.compile(bundle.template, { noEscape: false });
   return tpl({ data, meta });
+}
+
+// plugins/trace-keeper/src/panel-empty.ts
+function activeReceiveContent(turn) {
+  const receives = turn.receives;
+  if (!receives?.length) return "";
+  const idx = Math.min(
+    Math.max(0, Math.floor(turn.activeReceiveIndex ?? 0)),
+    receives.length - 1
+  );
+  const content = receives[idx]?.content;
+  return typeof content === "string" ? content : "";
+}
+function activeReceiveId2(turn) {
+  const receives = turn.receives;
+  if (!receives?.length) return void 0;
+  const idx = Math.min(
+    Math.max(0, Math.floor(turn.activeReceiveIndex ?? 0)),
+    receives.length - 1
+  );
+  const id = receives[idx]?.id;
+  return typeof id === "string" && id.trim() ? id.trim() : void 0;
+}
+function detectInvalidPluginState(turn, epoch) {
+  const targetReceiveId = activeReceiveId2(turn);
+  const list = Array.isArray(turn.plugins) ? turn.plugins : [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== "object") continue;
+    if (raw.pluginId !== PLUGIN_ID) continue;
+    const payload = raw.payload;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) continue;
+    const p = payload;
+    const entryEpoch = typeof p.epoch === "number" && Number.isFinite(p.epoch) ? Math.round(p.epoch) : 0;
+    if (entryEpoch !== epoch) continue;
+    const receiveId = typeof p.receiveId === "string" ? p.receiveId.trim() : "";
+    if (targetReceiveId && receiveId !== targetReceiveId) continue;
+    if (!targetReceiveId && receiveId) continue;
+    const state = p.state;
+    if (!state || typeof state !== "object" || Array.isArray(state)) return true;
+  }
+  return false;
+}
+function diagnosisToReason(d) {
+  switch (d.kind) {
+    case "no_block":
+      return "no_block";
+    case "empty_block":
+      return "empty_block";
+    case "json_parse_failed":
+      return "json_parse_failed";
+    case "valid_json":
+      return "snapshot_missing";
+  }
+}
+function resolveCurrentTurnEmptyReason(turn, epoch) {
+  if (detectInvalidPluginState(turn, epoch)) {
+    return { reason: "invalid_state" };
+  }
+  const diagnosis = diagnoseAssistantTrace(activeReceiveContent(turn));
+  const reason = diagnosisToReason(diagnosis);
+  const detail = diagnosis.kind === "json_parse_failed" ? diagnosis.detail : void 0;
+  return { reason, detail };
+}
+function resolvePanelView(bundle, turns, epoch, pinned) {
+  if (turns.length === 0) {
+    return {
+      kind: "empty",
+      reason: "empty_session",
+      canRegenerate: false,
+      mode: "live",
+      epoch
+    };
+  }
+  const lastTurn = turns[turns.length - 1];
+  const lastOrdinal = lastTurn.turnOrdinal;
+  const mode = pinned !== null ? "pinned" : "live";
+  const viewingTurn = pinned !== null ? turns.find((t) => t.turnOrdinal === pinned) : lastTurn;
+  const viewingOrdinal = viewingTurn?.turnOrdinal;
+  const isCurrentTurnView = viewingTurn !== void 0 && viewingOrdinal === lastOrdinal;
+  if (!viewingTurn || viewingOrdinal === void 0) {
+    return {
+      kind: "empty",
+      reason: "no_data_history",
+      canRegenerate: false,
+      mode,
+      turnOrdinal: pinned ?? void 0,
+      epoch
+    };
+  }
+  const hit = findTracePayloadForTurn(viewingTurn, epoch);
+  const meta = {
+    mode,
+    turnOrdinal: viewingOrdinal,
+    epoch
+  };
+  if (hit) {
+    try {
+      const html = renderTracePanelHtml(bundle, hit.state, meta);
+      return {
+        kind: "content",
+        html,
+        mode,
+        turnOrdinal: viewingOrdinal,
+        epoch
+      };
+    } catch (e) {
+      const detail2 = e instanceof Error ? e.message.length > 200 ? `${e.message.slice(0, 200)}\u2026` : e.message : void 0;
+      return {
+        kind: "empty",
+        reason: "render_failed",
+        detail: detail2,
+        canRegenerate: isCurrentTurnView,
+        mode,
+        turnOrdinal: viewingOrdinal,
+        epoch
+      };
+    }
+  }
+  if (!isCurrentTurnView) {
+    return {
+      kind: "empty",
+      reason: "no_data_history",
+      canRegenerate: false,
+      mode,
+      turnOrdinal: viewingOrdinal,
+      epoch
+    };
+  }
+  const { reason, detail } = resolveCurrentTurnEmptyReason(viewingTurn, epoch);
+  return {
+    kind: "empty",
+    reason,
+    detail,
+    canRegenerate: true,
+    mode,
+    turnOrdinal: viewingOrdinal,
+    epoch
+  };
+}
+function panelEmptyLocaleKey(reason) {
+  switch (reason) {
+    case "empty_session":
+      return "panelEmptyEmptySession";
+    case "no_data_history":
+      return "panelEmptyNoDataHistory";
+    case "no_block":
+      return "panelEmptyNoBlock";
+    case "empty_block":
+      return "panelEmptyEmptyBlock";
+    case "json_parse_failed":
+      return "panelEmptyJsonParseFailed";
+    case "snapshot_missing":
+      return "panelEmptySnapshotMissing";
+    case "invalid_state":
+      return "panelEmptyInvalidState";
+    case "render_failed":
+      return "panelEmptyRenderFailed";
+  }
 }
 
 // plugins/trace-keeper/src/separate-regenerate-client.ts
@@ -8851,12 +9055,27 @@ function turnsFromHost(host) {
   const raw = host.session.turns;
   return Array.isArray(raw) ? raw : [];
 }
+var SHELL_STYLES = `
+.trace-keeper-shell .tk-empty{margin:0 0 10px}
+.trace-keeper-shell .tk-empty-msg{margin:0 0 4px;opacity:.85;font-size:.875rem}
+.trace-keeper-shell .tk-empty-detail{margin:0;font-size:.75rem;opacity:.55;word-break:break-word}
+.trace-keeper-shell .tk-regen-btn{display:block;margin:0 0 10px;padding:6px 10px;font-size:.8125rem;border-radius:6px;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));background:rgba(var(--v-theme-primary),.08);cursor:pointer}
+.trace-keeper-shell .tk-regen-btn:disabled{opacity:.55;cursor:wait}
+`;
 function wrapPanelShell(host, innerHtml, opts) {
   const parts = ['<div class="trace-keeper-shell">'];
-  if (opts.noData) {
+  if (opts.emptyReason) {
+    const msgKey = panelEmptyLocaleKey(opts.emptyReason);
+    parts.push('<div class="tk-empty" role="status">');
     parts.push(
-      `<p class="tk-empty-msg">${escapeHtml(host.t(k(host, "panelNoData")))}</p>`
+      `<p class="tk-empty-msg">${escapeHtml(host.t(k(host, msgKey)))}</p>`
     );
+    if (opts.emptyDetail?.trim()) {
+      parts.push(
+        `<p class="tk-empty-detail">${escapeHtml(opts.emptyDetail.trim())}</p>`
+      );
+    }
+    parts.push("</div>");
   }
   if (opts.canRegenerate) {
     const label = escapeHtml(host.t(k(host, "panelRegenerateSeparate")));
@@ -8880,49 +9099,16 @@ async function refreshPanel(host) {
       host.conversation.getPluginSettings()
     ]);
     const bundle = resolveTraceBundle({ userSettings, convSettings });
-    host.registerStyles(
-      `${bundle.stylesheet}
-.trace-keeper-shell .tk-empty-msg{margin:0 0 8px;opacity:.72;font-size:.875rem}.trace-keeper-shell .tk-regen-btn{display:block;margin:0 0 10px;padding:6px 10px;font-size:.8125rem;border-radius:6px;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));background:rgba(var(--v-theme-primary),.08);cursor:pointer}.trace-keeper-shell .tk-regen-btn:disabled{opacity:.55;cursor:wait}`
-    );
+    host.registerStyles(`${bundle.stylesheet}
+${SHELL_STYLES}`);
     const epoch = trackerEpochFromSettings(convSettings);
     const turns = turnsFromHost(host);
     const pinned = getPinnedTurnOrdinal();
-    const lastTurn = turns.length > 0 ? turns[turns.length - 1] : void 0;
-    let mode = "live";
-    let turnOrdinal;
-    let data = bundle.sampleState;
-    let noData = false;
-    let canRegenerate = false;
-    if (pinned !== null) {
-      mode = "pinned";
-      turnOrdinal = pinned;
-      const turn = turns.find((t) => t.turnOrdinal === pinned);
-      const hit = findTracePayloadForTurn(turn, epoch);
-      if (hit) {
-        data = hit.state;
-      } else {
-        noData = true;
-        data = {};
-      }
-    } else {
-      const live = resolveLiveTraceState(turns, epoch);
-      if (live) {
-        data = live.state;
-        turnOrdinal = live.turnOrdinal;
-      } else if (lastTurn) {
-        turnOrdinal = lastTurn.turnOrdinal;
-        data = bundle.sampleState;
-        canRegenerate = !findTracePayloadForTurn(lastTurn, epoch);
-      }
-    }
-    const innerHtml = noData && pinned !== null ? "" : renderTracePanelHtml(bundle, data, {
-      mode,
-      turnOrdinal,
-      epoch
-    });
-    const html = wrapPanelShell(host, innerHtml, {
-      noData: noData && pinned !== null,
-      canRegenerate: mode === "live" && canRegenerate,
+    const resolved = resolvePanelView(bundle, turns, epoch, pinned);
+    const html = resolved.kind === "content" ? wrapPanelShell(host, resolved.html, { regenerating }) : wrapPanelShell(host, "", {
+      emptyReason: resolved.reason,
+      emptyDetail: resolved.detail,
+      canRegenerate: resolved.canRegenerate,
       regenerating
     });
     host.ui.panel.setHtml(PLACEMENT, PLUGIN_ID, html, {
@@ -9033,7 +9219,7 @@ function registerLifecycle(host) {
   });
   watch2(
     () => turnsFromHost(host).map(
-      (t) => `${t.turnOrdinal}:${t.activeReceiveIndex ?? 0}:${t.receives?.length ?? 0}:${JSON.stringify(t.plugins ?? [])}`
+      (t) => `${t.turnOrdinal}:${t.activeReceiveIndex ?? 0}:${t.receives?.map((r) => r.content?.length ?? 0).join(",") ?? ""}:${JSON.stringify(t.plugins ?? [])}`
     ),
     () => {
       void refreshPanel(host);

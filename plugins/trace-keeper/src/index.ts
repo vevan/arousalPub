@@ -4,10 +4,11 @@ import {
   trackerEpochFromSettings,
 } from './bundle-resolve.js'
 import {
-  findTracePayloadForTurn,
-  renderTracePanelHtml,
-  resolveLiveTraceState,
-} from './panel-render.js'
+  panelEmptyLocaleKey,
+  resolvePanelView,
+  type PanelEmptyReason,
+} from './panel-empty.js'
+import { findTracePayloadForTurn } from './panel-render.js'
 import { runSeparateRegenerate } from './separate-regenerate-client.js'
 import {
   bumpPanelRevision,
@@ -31,20 +32,37 @@ function turnsFromHost(host: PluginHost): HostTurn[] {
   return Array.isArray(raw) ? raw : []
 }
 
+const SHELL_STYLES = `
+.trace-keeper-shell .tk-empty{margin:0 0 10px}
+.trace-keeper-shell .tk-empty-msg{margin:0 0 4px;opacity:.85;font-size:.875rem}
+.trace-keeper-shell .tk-empty-detail{margin:0;font-size:.75rem;opacity:.55;word-break:break-word}
+.trace-keeper-shell .tk-regen-btn{display:block;margin:0 0 10px;padding:6px 10px;font-size:.8125rem;border-radius:6px;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));background:rgba(var(--v-theme-primary),.08);cursor:pointer}
+.trace-keeper-shell .tk-regen-btn:disabled{opacity:.55;cursor:wait}
+`
+
 function wrapPanelShell(
   host: PluginHost,
   innerHtml: string,
   opts: {
-    noData?: boolean
+    emptyReason?: PanelEmptyReason
+    emptyDetail?: string
     canRegenerate?: boolean
     regenerating?: boolean
   },
 ): string {
   const parts: string[] = ['<div class="trace-keeper-shell">']
-  if (opts.noData) {
+  if (opts.emptyReason) {
+    const msgKey = panelEmptyLocaleKey(opts.emptyReason)
+    parts.push('<div class="tk-empty" role="status">')
     parts.push(
-      `<p class="tk-empty-msg">${escapeHtml(host.t(k(host, 'panelNoData')))}</p>`,
+      `<p class="tk-empty-msg">${escapeHtml(host.t(k(host, msgKey)))}</p>`,
     )
+    if (opts.emptyDetail?.trim()) {
+      parts.push(
+        `<p class="tk-empty-detail">${escapeHtml(opts.emptyDetail.trim())}</p>`,
+      )
+    }
+    parts.push('</div>')
   }
   if (opts.canRegenerate) {
     const label = escapeHtml(host.t(k(host, 'panelRegenerateSeparate')))
@@ -75,58 +93,23 @@ async function refreshPanel(host: PluginHost): Promise<void> {
       host.conversation.getPluginSettings(),
     ])
     const bundle = resolveTraceBundle({ userSettings, convSettings })
-    host.registerStyles(
-      `${bundle.stylesheet}\n.trace-keeper-shell .tk-empty-msg{margin:0 0 8px;opacity:.72;font-size:.875rem}.trace-keeper-shell .tk-regen-btn{display:block;margin:0 0 10px;padding:6px 10px;font-size:.8125rem;border-radius:6px;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));background:rgba(var(--v-theme-primary),.08);cursor:pointer}.trace-keeper-shell .tk-regen-btn:disabled{opacity:.55;cursor:wait}`,
-    )
+    host.registerStyles(`${bundle.stylesheet}\n${SHELL_STYLES}`)
 
     const epoch = trackerEpochFromSettings(convSettings)
     const turns = turnsFromHost(host)
     const pinned = getPinnedTurnOrdinal()
-    const lastTurn = turns.length > 0 ? turns[turns.length - 1] : undefined
 
-    let mode: 'live' | 'pinned' = 'live'
-    let turnOrdinal: number | undefined
-    let data: Record<string, unknown> = bundle.sampleState
-    let noData = false
-    let canRegenerate = false
+    const resolved = resolvePanelView(bundle, turns, epoch, pinned)
 
-    if (pinned !== null) {
-      mode = 'pinned'
-      turnOrdinal = pinned
-      const turn = turns.find((t) => t.turnOrdinal === pinned)
-      const hit = findTracePayloadForTurn(turn, epoch)
-      if (hit) {
-        data = hit.state
-      } else {
-        noData = true
-        data = {}
-      }
-    } else {
-      const live = resolveLiveTraceState(turns, epoch)
-      if (live) {
-        data = live.state
-        turnOrdinal = live.turnOrdinal
-      } else if (lastTurn) {
-        turnOrdinal = lastTurn.turnOrdinal
-        data = bundle.sampleState
-        canRegenerate = !findTracePayloadForTurn(lastTurn, epoch)
-      }
-    }
-
-    const innerHtml =
-      noData && pinned !== null
-        ? ''
-        : renderTracePanelHtml(bundle, data, {
-            mode,
-            turnOrdinal,
-            epoch,
+    const html =
+      resolved.kind === 'content'
+        ? wrapPanelShell(host, resolved.html, { regenerating })
+        : wrapPanelShell(host, '', {
+            emptyReason: resolved.reason,
+            emptyDetail: resolved.detail,
+            canRegenerate: resolved.canRegenerate,
+            regenerating,
           })
-
-    const html = wrapPanelShell(host, innerHtml, {
-      noData: noData && pinned !== null,
-      canRegenerate: mode === 'live' && canRegenerate,
-      regenerating,
-    })
 
     host.ui.panel.setHtml(PLACEMENT, PLUGIN_ID, html, {
       revision: bumpPanelRevision(),
@@ -245,7 +228,7 @@ export function registerLifecycle(host: PluginHost): void {
     () =>
       turnsFromHost(host).map(
         (t) =>
-          `${t.turnOrdinal}:${t.activeReceiveIndex ?? 0}:${t.receives?.length ?? 0}:${JSON.stringify(t.plugins ?? [])}`,
+          `${t.turnOrdinal}:${t.activeReceiveIndex ?? 0}:${t.receives?.map((r) => r.content?.length ?? 0).join(',') ?? ''}:${JSON.stringify(t.plugins ?? [])}`,
       ),
     () => {
       void refreshPanel(host)

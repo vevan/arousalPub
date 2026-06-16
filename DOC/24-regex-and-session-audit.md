@@ -246,7 +246,11 @@ applyText / applyMessages  // 同语义
           "droppedCount": 1
         },
         "history": { "turnOrdinals": [8, 9, 10, 11], "droppedCount": 0 },
-        "budgetTrim": { "maxTokens": 8192 }
+        "budgetTrim": { "maxTokens": 8192 },
+        "plugins": {
+          "tokenReserve": 512,
+          "items": [{ "pluginId": "trace-keeper", "tokens": 384 }]
+        }
       },
       "calls": [
         { "kind": "chat", "apiConfigId": "…", "model": "…", "latencyMs": 1200, "usage": {} },
@@ -287,7 +291,8 @@ applyText / applyMessages  // 同语义
 - **`messages`**：outgoing 最终态（**regex outgoing 之后**、`afterAssemblePrompts` 之后、upstream 之前）；**服务端自写**，不再依赖前端 `debugPrompt`。
 - **`assembly` / `calls` / `performance`**：仅 **`auditDebug.enabled`** 时计算并写入；**不进** chunk `turn.send` / `receive.runtime`（`runtime` 仍保留轻量 model/duration/tokens）。
 - **`performance`**（schema **v3**）：`assemblyMs` 分段（memory / characters / lore / assembleAndTrim / regexOutgoing / pluginsAfterAssemble）、`preUpstreamMs`、流式 `upstreamMs`（TTFB、首→末 token TPS）、`persistMs`、`stream` 字符/ token 统计；**debug 关闭时零开销**（不跑计时、不落盘该字段）。
-- **`calls[].plugin.complete` / `plugins[]`**：schema **预留**（见 §3.6）；**P0 不写入**。
+- **`assembly.plugins`**（2026-06）：`afterAssemblePrompts` / `resolveAfterAssemblePromptsAddition` 注入的 **不可 trim** token 预留与各插件分项；`ChatTurnPromptDialog` 组装 Tab 展示。与 audit 顶层预留的 `entries[].plugins[]`（出站元数据）**不同**。
+- **`calls[].plugin.complete` / `entries[].plugins[]`**：schema **预留**（见 §3.6）；Separate 等异步 `plugin.complete` **当前不写入** audit。
 
 ### 3.3 写入时机
 
@@ -316,6 +321,7 @@ auditDebug.enabled && maxStored >= 1 && 落盘成功（/api/chat persist）
 - [x] 全局 + 会话 `auditDebug` 设置 UI；关闭时不写
 - [x] 轮次审计 UI 四 Tab（提示词 / 组装 / 调用 / **性能** · `ChatTurnPromptDialog`）
 - [x] **`performance` 审计**（schema v3 · `chat-audit-performance.ts` · 2026-06-10）
+- [x] **`assembly.plugins`** 插件注入 token 审计（`build-assembly-audit.ts` · 2026-06）
 - [ ] 客户端「按下发送」计时（`clientTimings`，可选）
 
 ### 3.6 插件与审计范围（2026-06-08 定案）
@@ -325,6 +331,7 @@ auditDebug.enabled && maxStored >= 1 && 落盘成功（/api/chat persist）
 | 插件 | 与本轮 audit 的关系 |
 |------|---------------------|
 | **guidance-generate** | 组装阶段注入 system；已体现在 **`messages`** + 主 **`chat`** `calls[]` |
+| **trace-keeper** | 组装阶段注入 tracker system；token 计入 **`assembly.plugins`**；Together 落盘在 **`turn.plugins[]`**（非 audit `plugins[]`）；Separate 为独立 API，不进本轮 sync audit |
 | **plot-summary** | 唯一声明 `plugin.complete`；`prepareContext` / `completeDraft` 在 **落盘成功后**由前端 lifecycle 异步调用，**不在** `/api/chat` persist 同步链路 |
 | **reply-complete-sound** / **swipe-cleaner** / **conversation-export** | 无出站 LLM，不参与本轮 audit |
 

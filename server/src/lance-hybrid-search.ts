@@ -91,6 +91,17 @@ export async function tableHasFtsIndex(
   )
 }
 
+/** zh-jieba 等需词典的分词器：在 Lance 操作前注入 LANCE_LANGUAGE_MODEL_HOME */
+export async function withHybridFtsSettingsContext<T>(
+  userId: string,
+  settings: HybridFtsSettings,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const normalized = normalizeHybridFtsSettings(settings)
+  const languageModelHome = languageModelHomeForSettings(userId, normalized)
+  return withLanceLanguageModelHome(languageModelHome, fn)
+}
+
 function hybridFtsProfileStampPath(stampDir: string): string {
   return path.join(stampDir, HYBRID_FTS_PROFILE_STAMP)
 }
@@ -131,20 +142,22 @@ export async function ensureHybridFtsIndex(
 ): Promise<void> {
   const normalized = normalizeHybridFtsSettings(settings)
   const spec = formatHybridFtsSpec(normalized)
-  const stamped = await readHybridFtsSpecStamp(stampDir)
-  const hasFts = await tableHasFtsIndex(table, column)
-  if (hasFts && stamped === spec) return
+  const created = await withHybridFtsSettingsContext(userId, normalized, async () => {
+    const stamped = await readHybridFtsSpecStamp(stampDir)
+    const hasFts = await tableHasFtsIndex(table, column)
+    if (hasFts && stamped === spec) return false
 
-  await prepareHybridFtsSettings(normalized, userId)
-  const languageModelHome = languageModelHomeForSettings(userId, normalized)
-  await withLanceLanguageModelHome(languageModelHome, async () => {
+    await prepareHybridFtsSettings(normalized, userId)
     await table.createIndex(column, {
       config: Index.fts(toLanceFtsConfig(normalized.profile)),
       replace: true,
       waitTimeoutSeconds: 120,
     })
+    return true
   })
-  await writeHybridFtsSpecStamp(stampDir, spec)
+  if (created) {
+    await writeHybridFtsSpecStamp(stampDir, spec)
+  }
 }
 
 export function hybridRelevanceScore(row: Record<string, unknown>): number {
@@ -183,19 +196,26 @@ export async function runLanceHybridSearch(
   if (!queryVector.length || limit < 1) return []
 
   const trimmedQuery = queryText.trim()
-  if (trimmedQuery.length > 0 && (await tableHasFtsIndex(table, textColumn))) {
+  if (trimmedQuery.length > 0) {
     try {
-      return await withLanceLanguageModelHome(languageModelHome, async () => {
-        const reranker = await sharedRrfReranker()
-        let query = table
-          .vectorSearch(queryVector)
-          .fullTextSearch(trimmedQuery, { columns: textColumn })
-          .rerank(reranker)
-        if (whereClause) {
-          query = query.where(whereClause)
-        }
-        return (await query.limit(limit).toArray()) as Record<string, unknown>[]
-      })
+      const hybridHits = await withLanceLanguageModelHome(
+        languageModelHome,
+        async () => {
+          if (!(await tableHasFtsIndex(table, textColumn))) {
+            return null
+          }
+          const reranker = await sharedRrfReranker()
+          let query = table
+            .vectorSearch(queryVector)
+            .fullTextSearch(trimmedQuery, { columns: textColumn })
+            .rerank(reranker)
+          if (whereClause) {
+            query = query.where(whereClause)
+          }
+          return (await query.limit(limit).toArray()) as Record<string, unknown>[]
+        },
+      )
+      if (hybridHits) return hybridHits
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn('[lance-hybrid-search] hybrid failed, falling back to vector:', e)

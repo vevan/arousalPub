@@ -13,6 +13,7 @@ import {
   hybridRelevanceScore,
   MEMORY_FTS_COLUMN,
   runLanceHybridSearch,
+  withHybridFtsSettingsContext,
 } from './lance-hybrid-search.js'
 import { getCurrentUserId } from './user-context.js'
 import {
@@ -54,6 +55,12 @@ async function ensureMemoryHybridFtsIndex(
     memoryDbUri(conversationId),
     userId,
   )
+}
+
+async function withMemoryHybridFtsContext<T>(fn: () => Promise<T>): Promise<T> {
+  const userId = getCurrentUserId()
+  const settings = await readGlobalHybridFtsSettings()
+  return withHybridFtsSettingsContext(userId, settings, fn)
 }
 
 function primaryKeyCacheKey(conversationId: string): string {
@@ -182,23 +189,30 @@ export async function optimizeTurnMemoryTable(
   options?: OptimizeTurnMemoryOptions,
 ): Promise<OptimizeStats | null> {
   const uri = memoryDbUri(conversationId)
-  const table = await openMemoryTable(conversationId)
-  if (!table) return null
-
   const optimizeOptions =
     options?.aggressiveCleanup === true
       ? { cleanupOlderThan: new Date() }
       : undefined
 
-  const stats = await table.optimize(optimizeOptions)
+  const stats = await withMemoryHybridFtsContext(async () => {
+    const table = await openMemoryTable(conversationId)
+    if (!table) return null
+    return table.optimize(optimizeOptions)
+  })
   closeLanceDb(uri)
   return stats
+}
+
+export interface UpsertTurnMemoryRowsBatchOptions {
+  /** 全量重建时延后建 FTS，避免批间 mergeInsert 触碰 jieba 索引 */
+  deferFts?: boolean
 }
 
 /** 批量 mergeInsert 到会话单表 turn_memory */
 export async function upsertTurnMemoryRowsBatch(
   conversationId: string,
   rows: TurnMemoryRow[],
+  options?: UpsertTurnMemoryRowsBatchOptions,
 ): Promise<void> {
   if (!rows.length) return
   const valid = rows.filter((r) => r.vector.length > 0)
@@ -210,14 +224,18 @@ export async function upsertTurnMemoryRowsBatch(
   }
   if (!existing) {
     const table = await createTurnMemoryTable(conversationId, valid)
-    await ensureMemoryHybridFtsIndex(conversationId, table)
+    if (!options?.deferFts) {
+      await ensureMemoryHybridFtsIndex(conversationId, table)
+    }
     return
   }
-  await existing
-    .mergeInsert('turnId')
-    .whenMatchedUpdateAll()
-    .whenNotMatchedInsertAll()
-    .execute(rowsToTurnMemoryArrowTable(valid))
+  await withMemoryHybridFtsContext(async () => {
+    await existing!
+      .mergeInsert('turnId')
+      .whenMatchedUpdateAll()
+      .whenNotMatchedInsertAll()
+      .execute(rowsToTurnMemoryArrowTable(valid))
+  })
 }
 
 /** 弃用分支子树时删除对应 Lance 行（含嵌套 branchPath） */
@@ -263,6 +281,7 @@ export async function replaceTurnMemoryIndex(
     await upsertTurnMemoryRowsBatch(
       conversationId,
       valid.slice(i, i + batchSize),
+      { deferFts: true },
     )
   }
   const table = await openMemoryTable(conversationId)

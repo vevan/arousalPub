@@ -1,5 +1,6 @@
 import { isValidConversationId } from './conversation-id.js'
-import { mergeTurnPluginEntriesAtOrdinal } from './chat-storage.js'
+import { mergeTurnPluginEntriesAtOrdinal, readConversationIndex } from './chat-storage.js'
+import { isAuditDebugWriteEnabled } from './chat-audit-file.js'
 import { createPluginServerHostApi } from './plugin-system/host-api.js'
 import { loadEnabledServerPlugins } from './plugin-system/loader.js'
 import type { TurnPluginEntry } from './plugin-types.js'
@@ -9,6 +10,8 @@ const TRACE_KEEPER_ID = 'trace-keeper'
 export interface TraceKeeperRegenerateBody {
   conversationId?: string
   turnOrdinal?: number
+  /** 客户端「会话 debug 审计」开启时传 true，与会话 auditDebug 二选一触发 capture */
+  debug?: boolean
 }
 
 export type TraceKeeperRegenerateRouteResult =
@@ -17,8 +20,9 @@ export type TraceKeeperRegenerateRouteResult =
       state: Record<string, unknown>
       turnOrdinal: number
       receiveId: string
+      debug?: unknown
     }
-  | { ok: false; code: string; status?: number }
+  | { ok: false; code: string; status?: number; debug?: unknown }
 
 export async function runTraceKeeperRegenerateRoute(
   pluginId: string,
@@ -47,24 +51,43 @@ export async function runTraceKeeperRegenerateRoute(
       ? Math.round(body.turnOrdinal)
       : undefined
 
+  const idx = await readConversationIndex(conversationId)
+  const clientDebug = body.debug === true
+  const debugCapture =
+    clientDebug || (idx ? isAuditDebugWriteEnabled(idx) : false)
+
   const result = await plugin.module.regenerateSeparateState(
-    { conversationId, turnOrdinal },
+    { conversationId, turnOrdinal, debugCapture },
     api,
   )
   if (!result.ok) {
+    if (result.debug) {
+      // eslint-disable-next-line no-console
+      console.warn('[trace-keeper] separate debug', result.debug)
+    }
     const status =
       result.code === 'parse_failed' || result.code === 'assistant_content_empty'
         ? 422
         : result.code === 'turn_not_found' || result.code === 'no_turns'
           ? 404
           : 400
-    return { ok: false, code: result.code, status }
+    return { ok: false, code: result.code, status, debug: result.debug }
+  }
+
+  if (!result.receiveId || typeof result.assistantContent !== 'string') {
+    return { ok: false, code: 'turn_update_failed', status: 500 }
   }
 
   const merged = await mergeTurnPluginEntriesAtOrdinal(
     conversationId,
     result.turnOrdinal,
     [result.entry as TurnPluginEntry],
+    {
+      receiveContent: {
+        receiveId: result.receiveId,
+        content: result.assistantContent,
+      },
+    },
   )
   if (merged !== 'ok') {
     return { ok: false, code: 'turn_update_failed', status: 500 }
@@ -75,5 +98,6 @@ export async function runTraceKeeperRegenerateRoute(
     state: result.state,
     turnOrdinal: result.turnOrdinal,
     receiveId: result.receiveId,
+    ...(result.debug ? { debug: result.debug } : {}),
   }
 }

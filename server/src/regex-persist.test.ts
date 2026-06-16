@@ -7,13 +7,17 @@ import {
 import type { RegexRule } from './regex-rules-types.js'
 
 function rule(partial: Partial<RegexRule> & Pick<RegexRule, 'id'>): RegexRule {
+  const skipLastNTurns = partial.skipLastNTurns ?? 0
   return {
     label: partial.label ?? partial.id,
     order: partial.order ?? 10,
     enabled: partial.enabled ?? true,
     phases: partial.phases ?? ['persist'],
     fields: partial.fields ?? ['assistant'],
-    skipLastNTurns: partial.skipLastNTurns ?? 0,
+    skipLastNTurns,
+    skipLastNTurnsDisplay: partial.skipLastNTurnsDisplay ?? skipLastNTurns,
+    skipLastNTurnsOutgoing: partial.skipLastNTurnsOutgoing ?? skipLastNTurns,
+    skipLastNTurnsPersist: partial.skipLastNTurnsPersist ?? skipLastNTurns,
     pattern: partial.pattern ?? '',
     flags: partial.flags ?? 'g',
     replacement: partial.replacement ?? '',

@@ -79,6 +79,7 @@ export interface TurnPatchPersistPayload {
     model?: string
   }[]
   activeReceiveIndex: number
+  plugins?: unknown[]
 }
 
 export type PersistTurnToServerResult =

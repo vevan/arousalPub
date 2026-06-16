@@ -1,5 +1,5 @@
 import { PLUGIN_ID } from '../constants.js'
-import { normalizePatchState } from '../parse-block.js'
+import { normalizePatchState, upsertTraceKeeperBlockInAssistant } from '../parse-block.js'
 import { trackerEpochFromSettings } from '../bundle-resolve.js'
 
 type PatchApi = {
@@ -31,6 +31,7 @@ export type PatchTraceKeeperStateResult =
       state: Record<string, unknown>
       turnOrdinal: number
       receiveId?: string
+      assistantContent: string
       entry: {
         pluginId: string
         schemaVersion: number
@@ -86,8 +87,13 @@ export async function patchTraceKeeperState(
 
   const epoch = trackerEpochFromSettings(convSettings)
   const receive = activeReceive(turn)
-  const payload: Record<string, unknown> = { state, epoch }
-  if (receive?.id) payload.receiveId = receive.id
+  if (!receive?.id) return { ok: false, code: 'receive_not_found' }
+
+  const active = turn.receives.find((r) => r.id === receive.id)
+  if (!active) return { ok: false, code: 'receive_not_found' }
+
+  const payload: Record<string, unknown> = { state, epoch, receiveId: receive.id }
+  const assistantContent = upsertTraceKeeperBlockInAssistant(active.content, state)
 
   const entry = {
     pluginId: PLUGIN_ID,
@@ -99,7 +105,8 @@ export async function patchTraceKeeperState(
     ok: true,
     state,
     turnOrdinal,
-    ...(receive?.id ? { receiveId: receive.id } : {}),
+    receiveId: receive.id,
+    assistantContent,
     entry,
   }
 }

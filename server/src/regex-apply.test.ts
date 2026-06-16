@@ -10,13 +10,17 @@ import { replaceRegexWithTimeout } from './regex-exec-timeout.js'
 import type { RegexRule } from './regex-rules-types.js'
 
 function rule(partial: Partial<RegexRule> & Pick<RegexRule, 'id'>): RegexRule {
+  const skipLastNTurns = partial.skipLastNTurns ?? 0
   return {
     label: partial.label ?? partial.id,
     order: partial.order ?? 10,
     enabled: partial.enabled ?? true,
     phases: partial.phases ?? ['outgoing', 'persist'],
     fields: partial.fields ?? ['assistant'],
-    skipLastNTurns: partial.skipLastNTurns ?? 0,
+    skipLastNTurns,
+    skipLastNTurnsDisplay: partial.skipLastNTurnsDisplay ?? skipLastNTurns,
+    skipLastNTurnsOutgoing: partial.skipLastNTurnsOutgoing ?? skipLastNTurns,
+    skipLastNTurnsPersist: partial.skipLastNTurnsPersist ?? skipLastNTurns,
     pattern: partial.pattern ?? '',
     flags: partial.flags ?? 'g',
     replacement: partial.replacement ?? '',
@@ -96,6 +100,30 @@ describe('shouldApplyRegexRule', () => {
     }
     assert.equal(
       shouldApplyRegexRule(tracker, { ...ctx, turnOrdinal: 10 }),
+      false,
+    )
+  })
+
+  it('uses phase-specific skipLastNTurns', () => {
+    const split = rule({
+      id: '22222222',
+      phases: ['display', 'outgoing'],
+      skipLastNTurns: 0,
+      skipLastNTurnsDisplay: 0,
+      skipLastNTurnsOutgoing: 3,
+      pattern: 'x',
+    })
+    const ctx = {
+      field: 'assistant' as const,
+      turnOrdinal: 10,
+      tailOrdinal: 10,
+    }
+    assert.equal(
+      shouldApplyRegexRule(split, { ...ctx, phase: 'display' }),
+      true,
+    )
+    assert.equal(
+      shouldApplyRegexRule(split, { ...ctx, phase: 'outgoing' }),
       false,
     )
   })

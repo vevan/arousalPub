@@ -27,6 +27,11 @@ var DEFAULT_SYSTEM_PROMPT_TEMPLATE = [
   `After your in-character reply, append a block: <${BLOCK_TAG}>{pure JSON}</${BLOCK_TAG}>.`,
   "The JSON must match the sample structure below. Update fields to reflect the current scene; do not copy sample placeholder values verbatim."
 ].join("\n");
+var DEFAULT_SEPARATE_SYSTEM_PROMPT_TEMPLATE = [
+  "Based on the conversation history above, infer the current scene state.",
+  "Refer to the JSON template below and reply with a single JSON object only.",
+  "Do not include markdown fences, XML tags, or roleplay prose."
+].join("\n");
 
 // plugins/trace-keeper/src/bundle-resolve.ts
 var DEFAULT_TRACE_BUNDLE = {
@@ -35,7 +40,8 @@ var DEFAULT_TRACE_BUNDLE = {
   sampleState: sample_state_default,
   template: template_default,
   stylesheet: stylesheet_default,
-  systemPromptTemplate: DEFAULT_SYSTEM_PROMPT_TEMPLATE
+  systemPromptTemplate: DEFAULT_SYSTEM_PROMPT_TEMPLATE,
+  separateSystemPromptTemplate: DEFAULT_SEPARATE_SYSTEM_PROMPT_TEMPLATE
 };
 function isPlainObject(v) {
   return Boolean(v) && typeof v === "object" && !Array.isArray(v);
@@ -59,6 +65,9 @@ function parseUserBundleEntry(raw) {
   }
   if (typeof raw.systemPromptTemplate === "string" && raw.systemPromptTemplate.trim()) {
     out.systemPromptTemplate = raw.systemPromptTemplate.trim();
+  }
+  if (typeof raw.separateSystemPromptTemplate === "string" && raw.separateSystemPromptTemplate.trim()) {
+    out.separateSystemPromptTemplate = raw.separateSystemPromptTemplate.trim();
   }
   const fromJson = parseSampleStateJson(raw.sampleStateJson);
   if (fromJson) {
@@ -118,6 +127,9 @@ function mergeBundlePartial(base, partial) {
   if (typeof partial.systemPromptTemplate === "string" && partial.systemPromptTemplate.trim()) {
     next.systemPromptTemplate = partial.systemPromptTemplate.trim();
   }
+  if (typeof partial.separateSystemPromptTemplate === "string" && partial.separateSystemPromptTemplate.trim()) {
+    next.separateSystemPromptTemplate = partial.separateSystemPromptTemplate.trim();
+  }
   return next;
 }
 function shellBundle(id, embedded) {
@@ -128,7 +140,8 @@ function shellBundle(id, embedded) {
     sampleState: {},
     template: '<div class="trace-keeper-panel"><pre>{{json data}}</pre></div>',
     stylesheet: ".trace-keeper-panel { font-size: 0.875rem; }",
-    systemPromptTemplate: embedded.systemPromptTemplate
+    systemPromptTemplate: embedded.systemPromptTemplate,
+    separateSystemPromptTemplate: embedded.separateSystemPromptTemplate
   };
 }
 function resolveTraceBundle(opts) {
@@ -152,6 +165,9 @@ function resolveTraceBundle(opts) {
   }
   if (!base.systemPromptTemplate?.trim()) {
     base.systemPromptTemplate = DEFAULT_SYSTEM_PROMPT_TEMPLATE;
+  }
+  if (!base.separateSystemPromptTemplate?.trim()) {
+    base.separateSystemPromptTemplate = DEFAULT_SEPARATE_SYSTEM_PROMPT_TEMPLATE;
   }
   return base;
 }
@@ -192,6 +208,17 @@ function normalizePatchState(raw) {
 function stripTraceKeeperBlocks(assistantContent) {
   return assistantContent.replace(BLOCK_RE, "").trim();
 }
+function formatTraceKeeperBlock(state) {
+  return `<${BLOCK_TAG}>${JSON.stringify(state)}</${BLOCK_TAG}>`;
+}
+function upsertTraceKeeperBlockInAssistant(assistantContent, state) {
+  const narrative = stripTraceKeeperBlocks(assistantContent).trimEnd();
+  const block = formatTraceKeeperBlock(state);
+  if (!narrative) return block;
+  return `${narrative}
+
+${block}`;
+}
 function extractTraceKeeperState(assistantContent) {
   const content = assistantContent.trim();
   if (!content) return null;
@@ -204,142 +231,117 @@ function extractTraceKeeperState(assistantContent) {
   return last;
 }
 
-// plugins/trace-keeper/src/trace-state-resolve.ts
-function payloadReceiveId(payload) {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";
-  const raw = payload.receiveId;
-  return typeof raw === "string" ? raw.trim() : "";
-}
-function activeReceiveId(ctx) {
-  const receives = ctx?.receives;
-  if (!receives?.length) return void 0;
-  const idx = Math.min(
-    Math.max(0, Math.floor(ctx?.activeReceiveIndex ?? 0)),
-    receives.length - 1
+// plugins/trace-keeper/src/separate-turn-settings.ts
+var SEPARATE_TURN_COUNT_MIN = 1;
+var SEPARATE_TURN_COUNT_MAX = 8;
+var SEPARATE_TURN_COUNT_DEFAULT = 4;
+function normalizeSeparateTurnCount(raw) {
+  if (typeof raw === "string" && raw.trim() === "") {
+    return SEPARATE_TURN_COUNT_DEFAULT;
+  }
+  const n = typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : typeof raw === "string" ? Number.parseInt(raw, 10) : SEPARATE_TURN_COUNT_DEFAULT;
+  if (!Number.isFinite(n)) return SEPARATE_TURN_COUNT_DEFAULT;
+  return Math.max(
+    SEPARATE_TURN_COUNT_MIN,
+    Math.min(SEPARATE_TURN_COUNT_MAX, n)
   );
-  const id = receives[idx]?.id;
-  return typeof id === "string" && id.trim() ? id.trim() : void 0;
 }
-function payloadFromEntry(raw, epoch) {
-  const payload = raw.payload;
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
-  const state = payload.state;
-  const payloadEpoch = payload.epoch;
-  const entryEpoch = typeof payloadEpoch === "number" && Number.isFinite(payloadEpoch) ? Math.round(payloadEpoch) : 0;
-  if (entryEpoch !== epoch) return null;
-  if (!state || typeof state !== "object" || Array.isArray(state)) return null;
-  const receiveId = payloadReceiveId(payload);
-  return {
-    state,
-    epoch: entryEpoch,
-    ...receiveId ? { receiveId } : {}
-  };
+function legacyLiveStateTurnCount(raw) {
+  if (raw === null || raw === void 0 || raw === "") return null;
+  const n = typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.max(
+    SEPARATE_TURN_COUNT_MIN,
+    Math.min(SEPARATE_TURN_COUNT_MAX, n)
+  );
 }
-function findTracePayloadInTurnPlugins(plugins, epoch, ctx) {
-  const targetReceiveId = activeReceiveId(ctx);
-  const list = Array.isArray(plugins) ? plugins : [];
-  if (targetReceiveId) {
-    for (const raw of list) {
-      if (!raw || typeof raw !== "object") continue;
-      if (raw.pluginId !== PLUGIN_ID) continue;
-      const hit = payloadFromEntry(raw, epoch);
-      if (hit?.receiveId === targetReceiveId) return hit;
-    }
-    return null;
-  }
-  for (let i = list.length - 1; i >= 0; i -= 1) {
-    const raw = list[i];
-    if (!raw || typeof raw !== "object") continue;
-    if (raw.pluginId !== PLUGIN_ID) continue;
-    const hit = payloadFromEntry(raw, epoch);
-    if (hit) return hit;
-  }
-  return null;
-}
-function turnLookup(turn) {
-  return {
-    activeReceiveIndex: turn.activeReceiveIndex,
-    receives: turn.receives
-  };
-}
-function resolveLiveTraceStates(turns, epoch, limit) {
-  const cap = Math.max(0, Math.floor(limit));
-  if (cap <= 0 || turns.length === 0) return [];
-  const out = [];
-  for (let i = turns.length - 1; i >= 0 && out.length < cap; i -= 1) {
-    const turn = turns[i];
-    const hit = findTracePayloadInTurnPlugins(turn.plugins, epoch, turnLookup(turn));
-    if (hit) {
-      out.push({ state: hit.state, turnOrdinal: turn.turnOrdinal });
+function resolveSeparateTurnCount(userSettings, convSettings) {
+  const conv = convSettings ?? {};
+  if (Object.prototype.hasOwnProperty.call(conv, "separateTurnCount")) {
+    const raw = conv.separateTurnCount;
+    if (raw !== null && raw !== void 0 && raw !== "") {
+      return normalizeSeparateTurnCount(raw);
     }
   }
-  out.reverse();
-  return out;
+  const user = userSettings ?? {};
+  if (Object.prototype.hasOwnProperty.call(user, "separateTurnCount")) {
+    return normalizeSeparateTurnCount(user.separateTurnCount);
+  }
+  const legacy = legacyLiveStateTurnCount(conv.liveStateTurnCount) ?? legacyLiveStateTurnCount(user.liveStateTurnCount);
+  if (legacy !== null) return legacy;
+  return SEPARATE_TURN_COUNT_DEFAULT;
 }
 
-// plugins/trace-keeper/src/live-state-settings.ts
-var LIVE_STATE_TURN_COUNT_MIN = 0;
-var LIVE_STATE_TURN_COUNT_MAX = 8;
-var LIVE_STATE_TURN_COUNT_DEFAULT = 1;
-function normalizeLiveStateTurnCount(raw) {
-  if (typeof raw === "string" && raw.trim() === "") {
-    return LIVE_STATE_TURN_COUNT_DEFAULT;
-  }
-  const n = typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : typeof raw === "string" ? Number.parseInt(raw, 10) : LIVE_STATE_TURN_COUNT_DEFAULT;
-  if (!Number.isFinite(n)) return LIVE_STATE_TURN_COUNT_DEFAULT;
-  return Math.max(
-    LIVE_STATE_TURN_COUNT_MIN,
-    Math.min(LIVE_STATE_TURN_COUNT_MAX, n)
+// plugins/trace-keeper/src/separate-dialogue.ts
+function activeReceive(turn) {
+  const receives = turn.receives;
+  if (!receives.length) return null;
+  const idx = Math.min(
+    Math.max(0, Math.floor(turn.activeReceiveIndex)),
+    receives.length - 1
   );
+  return receives[idx] ?? null;
 }
-function resolveLiveStateTurnCount(userSettings, convSettings) {
-  const conv = convSettings ?? {};
-  if (Object.prototype.hasOwnProperty.call(conv, "liveStateTurnCount")) {
-    const raw = conv.liveStateTurnCount;
-    if (raw !== null && raw !== void 0 && raw !== "") {
-      return normalizeLiveStateTurnCount(raw);
+function buildSeparateDialogueMessages(tail, targetOrdinal, windowTurnCount) {
+  const cap = Math.max(SEPARATE_TURN_COUNT_MIN, Math.floor(windowTurnCount));
+  const fromOrdinal = targetOrdinal - cap + 1;
+  const windowTurns = tail.filter(
+    (t) => t.turnOrdinal >= fromOrdinal && t.turnOrdinal <= targetOrdinal
+  ).sort((a, b) => a.turnOrdinal - b.turnOrdinal);
+  const messages = [];
+  for (const turn of windowTurns) {
+    const userText = turn.userText?.trim();
+    if (userText) {
+      messages.push({ role: "user", content: userText });
+    }
+    const receive = activeReceive(turn);
+    const rawAssistant = receive?.content?.trim();
+    if (!rawAssistant) continue;
+    const assistantContent = turn.turnOrdinal === targetOrdinal ? stripTraceKeeperBlocks(rawAssistant).trim() : rawAssistant;
+    if (assistantContent) {
+      messages.push({ role: "assistant", content: assistantContent });
     }
   }
-  return normalizeLiveStateTurnCount(userSettings?.liveStateTurnCount);
+  return messages;
 }
 
 // plugins/trace-keeper/src/tracker-prompt.ts
-function formatLiveStateJson(liveStates, sampleState) {
-  if (liveStates.length === 0) {
-    return JSON.stringify(sampleState, null, 2);
-  }
-  if (liveStates.length === 1) {
-    return JSON.stringify(liveStates[0].state, null, 2);
-  }
-  return liveStates.map(
-    (entry) => `/* turn ${entry.turnOrdinal} */
-${JSON.stringify(entry.state, null, 2)}`
-  ).join("\n\n");
-}
-function buildTrackerSystemPrompt(bundle, liveStates) {
+function buildTrackerSystemPrompt(bundle) {
   const prefix = bundle.systemPromptTemplate?.trim() || DEFAULT_SYSTEM_PROMPT_TEMPLATE;
   const sampleJson = JSON.stringify(bundle.sampleState, null, 2);
-  const liveJson = formatLiveStateJson(liveStates, bundle.sampleState);
-  const liveHeader = liveStates.length > 1 ? "--- current live state history (newest last) ---" : "--- current live state (update from this) ---";
   return [
     prefix,
     "--- sample structure (reference only) ---",
-    sampleJson,
-    liveHeader,
-    liveJson
+    sampleJson
   ].join("\n");
+}
+function buildSeparateSystemPrompt(bundle) {
+  const prefix = bundle.separateSystemPromptTemplate?.trim() || DEFAULT_SEPARATE_SYSTEM_PROMPT_TEMPLATE;
+  const sampleJson = JSON.stringify(bundle.sampleState, null, 2);
+  return [
+    prefix,
+    "--- JSON template (reference only) ---",
+    sampleJson
+  ].join("\n");
+}
+function buildSeparateRegenerateMessages(tail, targetOrdinal, windowTurnCount, bundle) {
+  const dialogue = buildSeparateDialogueMessages(
+    tail,
+    targetOrdinal,
+    windowTurnCount
+  );
+  return [...dialogue, { role: "system", content: buildSeparateSystemPrompt(bundle) }];
 }
 
 // plugins/trace-keeper/src/server/separate-regenerate.ts
-var SEPARATE_PREFIX = [
-  "Generate ONLY a single JSON object for the Trace Keeper scene state.",
-  "Do not include markdown fences, XML tags, or roleplay prose.",
-  "Match the sample structure exactly."
-].join("\n");
-function buildSeparateSystemPrompt(bundle, liveStates) {
-  return [SEPARATE_PREFIX, buildTrackerSystemPrompt(bundle, liveStates)].join("\n\n");
+function mergeSeparateDebug(messages, code, extra) {
+  return {
+    messages,
+    code,
+    ...extra
+  };
 }
-function activeReceive(turn) {
+function activeReceive2(turn) {
   const receives = turn.receives;
   if (!receives.length) return null;
   const idx = Math.min(
@@ -360,7 +362,7 @@ async function regenerateSeparateState(input, api) {
   const targetOrdinal = typeof input.turnOrdinal === "number" && Number.isFinite(input.turnOrdinal) ? Math.round(input.turnOrdinal) : tail[tail.length - 1].turnOrdinal;
   const turn = tail.find((t) => t.turnOrdinal === targetOrdinal);
   if (!turn) return { ok: false, code: "turn_not_found" };
-  const receive = activeReceive(turn);
+  const receive = activeReceive2(turn);
   if (!receive?.id) return { ok: false, code: "receive_not_found" };
   const assistantText = stripTraceKeeperBlocks(receive.content);
   if (!assistantText) return { ok: false, code: "assistant_content_empty" };
@@ -370,46 +372,66 @@ async function regenerateSeparateState(input, api) {
     embeddedBundle: DEFAULT_TRACE_BUNDLE
   });
   const epoch = trackerEpochFromSettings(convSettings);
-  const turnCount = resolveLiveStateTurnCount(userSettings, convSettings);
-  const priorTurns = tail.filter((t) => t.turnOrdinal < targetOrdinal);
-  const liveStates = resolveLiveTraceStates(
-    priorTurns,
-    epoch,
-    Math.max(0, turnCount - 1)
+  const windowTurnCount = resolveSeparateTurnCount(userSettings, convSettings);
+  const messages = buildSeparateRegenerateMessages(
+    tail,
+    targetOrdinal,
+    windowTurnCount,
+    bundle
   );
-  const systemText = buildSeparateSystemPrompt(bundle, liveStates);
-  const userContent = [
-    "Based on the assistant reply below, output updated scene state JSON.",
-    "---",
-    assistantText
-  ].join("\n");
+  const debugCapture = input.debugCapture === true;
   const result = await api.runPluginComplete({
     conversationId,
-    messages: [
-      { role: "system", content: systemText },
-      { role: "user", content: userContent }
-    ],
-    responseFormat: "json_object"
+    messages,
+    responseFormat: "json_object",
+    fallbackToChat: true,
+    captureDebug: debugCapture
   });
-  if (!result.ok) return { ok: false, code: result.code };
+  if (!result.ok) {
+    return {
+      ok: false,
+      code: result.code,
+      ...debugCapture ? {
+        debug: mergeSeparateDebug(messages, result.code, result.debug)
+      } : {}
+    };
+  }
   const state = parseTraceKeeperJson(result.content);
-  if (!state) return { ok: false, code: "parse_failed" };
+  if (!state) {
+    return {
+      ok: false,
+      code: "parse_failed",
+      ...debugCapture ? {
+        debug: mergeSeparateDebug(messages, "parse_failed", {
+          assistantContent: result.content
+        })
+      } : {}
+    };
+  }
   const entry = {
     pluginId: PLUGIN_ID,
     schemaVersion: 1,
     payload: { state, epoch, receiveId: receive.id }
   };
+  const assistantContent = upsertTraceKeeperBlockInAssistant(receive.content, state);
   return {
     ok: true,
     state,
     turnOrdinal: targetOrdinal,
     receiveId: receive.id,
-    entry
+    assistantContent,
+    entry,
+    ...debugCapture ? {
+      debug: mergeSeparateDebug(messages, "ok", {
+        ...result.debug,
+        assistantContent: result.content
+      })
+    } : {}
   };
 }
 
 // plugins/trace-keeper/src/server/patch-state.ts
-function activeReceive2(turn) {
+function activeReceive3(turn) {
   const receives = turn.receives;
   if (!receives?.length) return null;
   const idx = Math.min(
@@ -437,9 +459,12 @@ async function patchTraceKeeperState(input, api) {
   const turn = tail.find((t) => t.turnOrdinal === turnOrdinal);
   if (!turn) return { ok: false, code: "turn_not_found" };
   const epoch = trackerEpochFromSettings(convSettings);
-  const receive = activeReceive2(turn);
-  const payload = { state, epoch };
-  if (receive?.id) payload.receiveId = receive.id;
+  const receive = activeReceive3(turn);
+  if (!receive?.id) return { ok: false, code: "receive_not_found" };
+  const active = turn.receives.find((r) => r.id === receive.id);
+  if (!active) return { ok: false, code: "receive_not_found" };
+  const payload = { state, epoch, receiveId: receive.id };
+  const assistantContent = upsertTraceKeeperBlockInAssistant(active.content, state);
   const entry = {
     pluginId: PLUGIN_ID,
     schemaVersion: 1,
@@ -449,7 +474,8 @@ async function patchTraceKeeperState(input, api) {
     ok: true,
     state,
     turnOrdinal,
-    ...receive?.id ? { receiveId: receive.id } : {},
+    receiveId: receive.id,
+    assistantContent,
     entry
   };
 }
@@ -468,15 +494,8 @@ async function resolveTraceKeeperInjection(ctx, api) {
     convSettings,
     embeddedBundle: DEFAULT_TRACE_BUNDLE
   });
-  const epoch = trackerEpochFromSettings(convSettings);
-  const turnCount = resolveLiveStateTurnCount(userSettings, convSettings);
-  let liveStates = [];
-  if (turnCount > 0) {
-    const tail = await api.readConversationTurnsTail(conversationId, turnCount);
-    liveStates = resolveLiveTraceStates(tail, epoch, turnCount);
-  }
   return {
-    systemText: buildTrackerSystemPrompt(bundle, liveStates)
+    systemText: buildTrackerSystemPrompt(bundle)
   };
 }
 async function resolveAfterAssemblePromptsAddition(ctx, api) {

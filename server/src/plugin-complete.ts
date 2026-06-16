@@ -12,12 +12,22 @@ export interface PluginCompleteMessage {
   content: string
 }
 
+export interface PluginCompleteDebugCapture {
+  messages: PluginCompleteMessage[]
+  upstreamPayload?: unknown
+  upstreamStatus?: number
+  upstreamRawBody?: string
+  assistantContent?: string
+}
+
 export interface PluginCompleteRequest {
   apiConfigId: string
   messages: PluginCompleteMessage[]
   modelOverride?: string
   stream?: boolean
   responseFormat?: 'json_object' | 'text'
+  /** 会话 auditDebug 开启时由宿主传入，失败响应附带 debug */
+  captureDebug?: boolean
 }
 
 export interface PluginCompleteSuccess {
@@ -25,6 +35,7 @@ export interface PluginCompleteSuccess {
   content: string
   usage?: { promptTokens?: number; completionTokens?: number }
   latencyMs: number
+  debug?: PluginCompleteDebugCapture
 }
 
 export interface PluginCompleteFailure {
@@ -32,6 +43,28 @@ export interface PluginCompleteFailure {
   code: string
   status?: number
   detail?: string
+  debug?: PluginCompleteDebugCapture
+}
+
+const DEBUG_RAW_BODY_MAX = 8192
+
+function debugCapture(
+  req: PluginCompleteRequest,
+  msgs: PluginCompleteMessage[],
+  partial: Omit<PluginCompleteDebugCapture, 'messages'>,
+): PluginCompleteDebugCapture | undefined {
+  if (!req.captureDebug) return undefined
+  return { messages: msgs, ...partial }
+}
+
+function withDebug(
+  req: PluginCompleteRequest,
+  msgs: PluginCompleteMessage[],
+  failure: Omit<PluginCompleteFailure, 'debug'>,
+  partial: Omit<PluginCompleteDebugCapture, 'messages' | 'code'>,
+): PluginCompleteFailure {
+  const debug = debugCapture(req, msgs, partial)
+  return debug ? { ...failure, debug } : failure
 }
 
 function validateMessages(
@@ -135,26 +168,47 @@ export async function runPluginComplete(
 
   const latencyMs = Date.now() - started
   const text = await upstream.text()
+  const rawSnippet = text.slice(0, DEBUG_RAW_BODY_MAX)
 
   if (!upstream.ok) {
-    return {
+    return withDebug(req, msgCheck.msgs, {
       ok: false,
       code: 'upstream_error',
       status: upstream.status,
       detail: text.slice(0, 2000),
-    }
+    }, {
+      upstreamPayload: payload,
+      upstreamStatus: upstream.status,
+      upstreamRawBody: rawSnippet,
+    })
   }
 
   let json: unknown
   try {
     json = JSON.parse(text) as unknown
   } catch {
-    return { ok: false, code: 'upstream_non_json', detail: text.slice(0, 500) }
+    return withDebug(req, msgCheck.msgs, {
+      ok: false,
+      code: 'upstream_non_json',
+      detail: text.slice(0, 500),
+    }, {
+      upstreamPayload: payload,
+      upstreamStatus: upstream.status,
+      upstreamRawBody: rawSnippet,
+    })
   }
 
   const content = extractAssistantContent(json)
   if (!content) {
-    return { ok: false, code: 'upstream_empty_content', detail: text.slice(0, 500) }
+    return withDebug(req, msgCheck.msgs, {
+      ok: false,
+      code: 'upstream_empty_content',
+      detail: text.slice(0, 500),
+    }, {
+      upstreamPayload: payload,
+      upstreamStatus: upstream.status,
+      upstreamRawBody: rawSnippet,
+    })
   }
 
   return {
@@ -162,5 +216,16 @@ export async function runPluginComplete(
     content,
     usage: extractUsage(json),
     latencyMs,
+    ...(req.captureDebug
+      ? {
+          debug: {
+            messages: msgCheck.msgs,
+            upstreamPayload: payload,
+            upstreamStatus: upstream.status,
+            upstreamRawBody: rawSnippet,
+            assistantContent: content,
+          },
+        }
+      : {}),
   }
 }

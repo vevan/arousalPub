@@ -9,6 +9,7 @@ import { applyRegexPersistToTurnPatch } from './regex-persist-patch.js'
 import { hasEnabledPersistRules } from './regex-persist.js'
 import { readRegexRulesDocument } from './regex-rules-file.js'
 import type { RegexRule } from './regex-rules-types.js'
+import { resolveSkipLastNTurns } from './regex-rules-types.js'
 import type { TurnContentPatchInput } from './turn-patch-body.js'
 import {
   turnContentPatchChanged,
@@ -61,7 +62,7 @@ export function resolveRetroOrdinalsFromRules(
   const set = new Set<number>()
   for (const rule of rules) {
     if (!rule.enabled || !rule.phases.includes('persist')) continue
-    const skip = rule.skipLastNTurns
+    const skip = resolveSkipLastNTurns(rule, 'persist')
     if (skip <= 0) continue
     const retro = tailOrdinal - skip
     if (retro >= 0) set.add(retro)
@@ -83,7 +84,7 @@ export function isRetroOrdinalEligible(
 ): boolean {
   return rules.some((rule) => {
     if (!rule.enabled || !rule.phases.includes('persist')) return false
-    const skip = rule.skipLastNTurns
+    const skip = resolveSkipLastNTurns(rule, 'persist')
     if (skip <= 0) return false
     return ordinal <= tailOrdinal - skip
   })

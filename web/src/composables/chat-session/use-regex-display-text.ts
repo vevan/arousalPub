@@ -7,6 +7,7 @@ import {
   hasDisplayRulesForField,
 } from '@/utils/regex-display-apply'
 import type { Ref } from 'vue'
+import { storeToRefs } from 'pinia'
 
 function computeTailOrdinal(turns: ChatTurnItem[]): number {
   if (turns.length === 0) return 0
@@ -18,6 +19,7 @@ export function createRegexDisplayText(opts: {
   getUserId: () => string | null | undefined
 }) {
   const store = useRegexRulesDisplayStore()
+  const { rules } = storeToRefs(store)
 
   async function ensureRulesLoaded(): Promise<void> {
     const uid = opts.getUserId()?.trim()
@@ -30,8 +32,8 @@ export function createRegexDisplayText(opts: {
     field: RegexField,
     turnOrdinal: number,
   ): string {
-    if (!text || !hasDisplayRulesForField(store.rules, field)) return text
-    return applyDisplayRegexToText(text, store.rules, {
+    if (!text || !hasDisplayRulesForField(rules.value, field)) return text
+    return applyDisplayRegexToText(text, rules.value, {
       field,
       turnOrdinal,
       tailOrdinal: computeTailOrdinal(opts.turns.value),

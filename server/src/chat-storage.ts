@@ -1802,13 +1802,16 @@ function tailChunkPath(
   return path.join(conversationDir(conversationId), idx.tailChunkFile)
 }
 
-/** 仅合并 turn.plugins 条目（Separate 重新生成等） */
+/** 仅合并 turn.plugins 条目（Separate 重新生成等）；可选同步 active receive 正文 */
 export async function mergeTurnPluginEntriesAtOrdinal(
   conversationId: string,
   turnOrdinal: number,
   entries: TurnPluginEntry[],
+  options?: {
+    receiveContent?: { receiveId: string; content: string }
+  },
 ): Promise<'ok' | 'not_found'> {
-  if (!entries.length) return 'not_found'
+  if (!entries.length && !options?.receiveContent) return 'not_found'
   const located = await readChunkContainingOrdinal(conversationId, turnOrdinal)
   if (!located) return 'not_found'
   const { chunk, fileName: chunkName } = located
@@ -1820,6 +1823,14 @@ export async function mergeTurnPluginEntriesAtOrdinal(
     plugins = mergeTurnPluginEntry(plugins, entry)
   }
   turn.plugins = plugins
+
+  const sync = options?.receiveContent
+  if (sync?.receiveId && typeof sync.content === 'string') {
+    const receiveId = sync.receiveId.trim()
+    const rec = turn.receives.find((r) => r.id === receiveId)
+    if (!rec) return 'not_found'
+    rec.content = sync.content
+  }
 
   await writeChunkFile(conversationId, chunkName, chunk)
   const idx = await readConversationIndex(conversationId)
@@ -1840,6 +1851,7 @@ export async function updateTurnContentInTailChunk(
   activeReceiveIndex: number,
   auditSnapshot?: ChatAuditSnapshotInput,
   turnPluginEntries?: TurnPluginEntry[],
+  turnPlugins?: unknown[],
 ): Promise<boolean> {
   if (!receives.length) return false
   const auditStorageStartedAt =
@@ -1855,7 +1867,9 @@ export async function updateTurnContentInTailChunk(
   const turnId = turn.turnId
   const used = collectChunkEntityIds(chunk)
   applyTurnContentUpdate(turn, used, userText, receives, activeReceiveIndex)
-  if (turnPluginEntries?.length) {
+  if (turnPlugins !== undefined) {
+    turn.plugins = turnPlugins
+  } else if (turnPluginEntries?.length) {
     let plugins = Array.isArray(turn.plugins) ? turn.plugins : []
     for (const entry of turnPluginEntries) {
       plugins = mergeTurnPluginEntry(plugins, entry)

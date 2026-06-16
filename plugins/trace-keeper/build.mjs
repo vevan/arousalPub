@@ -39,9 +39,12 @@ async function build() {
 
   console.log('[trace-keeper] built dist/web.mjs + dist/server.mjs')
 
+  if (process.env.PLUGIN_WATCH === '1') return
+
   const { spawnSync } = await import('node:child_process')
   const testFiles = [
-    path.join(here, 'src/live-state-settings.test.ts'),
+    path.join(here, 'src/separate-turn-settings.test.ts'),
+    path.join(here, 'src/separate-dialogue.test.ts'),
     path.join(here, 'src/tracker-prompt.test.ts'),
     path.join(here, 'src/trace-state-resolve.test.ts'),
     path.join(here, 'src/server/injection.test.ts'),

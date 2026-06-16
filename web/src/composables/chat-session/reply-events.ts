@@ -10,6 +10,7 @@ export function createReplyEventHub() {
   const assistantReplyPersistedListeners = new Set<
     (event: AssistantReplyPersistedEvent) => void
   >()
+  const turnDataChangedListeners = new Set<() => void>()
 
   function onAssistantReplyPersisted(
     listener: (event: AssistantReplyPersistedEvent) => void,
@@ -49,10 +50,29 @@ export function createReplyEventHub() {
     }
   }
 
+  function onTurnDataChanged(listener: () => void): () => void {
+    turnDataChangedListeners.add(listener)
+    return () => {
+      turnDataChangedListeners.delete(listener)
+    }
+  }
+
+  function emitTurnDataChanged(): void {
+    for (const listener of turnDataChangedListeners) {
+      try {
+        listener()
+      } catch {
+        /* ignore plugin listener errors */
+      }
+    }
+  }
+
   return {
     onAssistantReplyComplete,
     onAssistantReplyPersisted,
+    onTurnDataChanged,
     emitAssistantReplyComplete,
     emitAssistantReplyPersisted,
+    emitTurnDataChanged,
   }
 }

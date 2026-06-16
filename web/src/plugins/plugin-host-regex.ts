@@ -13,6 +13,7 @@ import {
   type RegexApplyMessagesContext,
   type RegexHostMessage,
 } from '@/utils/regex-host-apply'
+import { normalizeRegexRulesFromServer } from '@/utils/regex-rules'
 
 let cachedRules: RegexRule[] | null = null
 let cacheLoadedAt = 0
@@ -33,7 +34,9 @@ async function fetchRegexRulesCached(): Promise<RegexRule[]> {
     throw new PluginHostApiError('regex_rules_read_failed', res.status)
   }
   const doc = (await res.json()) as { rules?: RegexRule[] }
-  cachedRules = Array.isArray(doc.rules) ? doc.rules : []
+  cachedRules = normalizeRegexRulesFromServer(
+    Array.isArray(doc.rules) ? doc.rules : [],
+  )
   cacheLoadedAt = now
   return cachedRules
 }

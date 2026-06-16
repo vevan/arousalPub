@@ -52,6 +52,22 @@ function uniqueStrings<T extends string>(items: T[]): T[] {
   return [...new Set(items)]
 }
 
+function parseSkipLastNTurnsField(raw: unknown, fieldName: string): number {
+  if (
+    typeof raw !== 'number' ||
+    !Number.isFinite(raw) ||
+    raw < 0
+  ) {
+    throw new RegexRulesValidationError(`${fieldName}_invalid`)
+  }
+  return Math.trunc(raw)
+}
+
+function parseSkipLastNTurnsOptional(raw: unknown, fieldName: string): number | undefined {
+  if (raw === undefined) return undefined
+  return parseSkipLastNTurnsField(raw, fieldName)
+}
+
 function validateRegExpPattern(pattern: string, flags: string): void {
   if (pattern.length > MAX_REGEX_PATTERN_LENGTH) {
     throw new RegexRulesValidationError('pattern_too_long')
@@ -122,15 +138,17 @@ function normalizeRule(raw: unknown, usedIds: Set<string>): RegexRule {
 
   let skipLastNTurns = 0
   if (o.skipLastNTurns !== undefined) {
-    if (
-      typeof o.skipLastNTurns !== 'number' ||
-      !Number.isFinite(o.skipLastNTurns) ||
-      o.skipLastNTurns < 0
-    ) {
-      throw new RegexRulesValidationError('rule_skip_last_n_invalid')
-    }
-    skipLastNTurns = Math.trunc(o.skipLastNTurns)
+    skipLastNTurns = parseSkipLastNTurnsField(o.skipLastNTurns, 'rule_skip_last_n')
   }
+  const skipLastNTurnsDisplay =
+    parseSkipLastNTurnsOptional(o.skipLastNTurnsDisplay, 'rule_skip_last_n_display') ??
+    skipLastNTurns
+  const skipLastNTurnsOutgoing =
+    parseSkipLastNTurnsOptional(o.skipLastNTurnsOutgoing, 'rule_skip_last_n_outgoing') ??
+    skipLastNTurns
+  const skipLastNTurnsPersist =
+    parseSkipLastNTurnsOptional(o.skipLastNTurnsPersist, 'rule_skip_last_n_persist') ??
+    skipLastNTurns
 
   const pattern = typeof o.pattern === 'string' ? o.pattern : ''
   if (!pattern.trim()) {
@@ -153,6 +171,9 @@ function normalizeRule(raw: unknown, usedIds: Set<string>): RegexRule {
     phases,
     fields,
     skipLastNTurns,
+    skipLastNTurnsDisplay,
+    skipLastNTurnsOutgoing,
+    skipLastNTurnsPersist,
     pattern,
     flags,
     replacement,

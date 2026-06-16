@@ -557,7 +557,15 @@
       "phases": "阶段",
       "fields": "消息字段",
       "skipLastNTurns": "跳过最近 N 轮",
-      "skipLastNTurnsHint": "0 = 含最新轮全部应用；N > 0 时跳过最近 N 轮。",
+      "skipLastNTurnsDisplay": "显示：跳过最近 N 轮",
+      "skipLastNTurnsOutgoing": "出站：跳过最近 N 轮",
+      "skipLastNTurnsPersist": "落盘：跳过最近 N 轮",
+      "skipLastNTurnsHint": "0 = 含最新轮全部应用；N > 0 时跳过最近 N 轮（该阶段不处理这些轮次）。",
+      "skipPhaseShort": {
+        "display": "显示",
+        "outgoing": "出站",
+        "persist": "落盘"
+      },
       "testTitle": "测试串",
       "testHint": "在本地用示例文本预览替换效果（规则未启用也可测试）。不模拟阶段、字段或跳过最近 N 轮。",
       "testInput": "输入文本",

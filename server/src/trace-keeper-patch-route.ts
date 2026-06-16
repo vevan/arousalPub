@@ -65,10 +65,20 @@ export async function runTraceKeeperPatchRoute(
     return { ok: false, code: result.code, status }
   }
 
+  if (!result.receiveId || typeof result.assistantContent !== 'string') {
+    return { ok: false, code: 'receive_not_found', status: 500 }
+  }
+
   const merged = await mergeTurnPluginEntriesAtOrdinal(
     conversationId,
     result.turnOrdinal,
     [result.entry as TurnPluginEntry],
+    {
+      receiveContent: {
+        receiveId: result.receiveId,
+        content: result.assistantContent,
+      },
+    },
   )
   if (merged !== 'ok') {
     return { ok: false, code: 'turn_update_failed', status: 500 }

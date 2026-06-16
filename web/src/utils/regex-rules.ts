@@ -135,6 +135,38 @@ export function cloneRegexRule(rule: RegexRule): RegexRule {
   }
 }
 
+export function clampRegexSkipLastNTurns(raw: unknown): number {
+  return Math.max(0, Math.trunc(Number(raw) || 0))
+}
+
+/** 读盘/API：旧版仅 skipLastNTurns 时回填各阶段字段 */
+export function normalizeRegexRuleSkipFields(
+  rule: RegexRule & {
+    skipLastNTurnsDisplay?: number
+    skipLastNTurnsOutgoing?: number
+    skipLastNTurnsPersist?: number
+  },
+): RegexRule {
+  const legacy = clampRegexSkipLastNTurns(rule.skipLastNTurns)
+  return {
+    ...cloneRegexRule(rule as RegexRule),
+    skipLastNTurns: legacy,
+    skipLastNTurnsDisplay: clampRegexSkipLastNTurns(
+      rule.skipLastNTurnsDisplay ?? legacy,
+    ),
+    skipLastNTurnsOutgoing: clampRegexSkipLastNTurns(
+      rule.skipLastNTurnsOutgoing ?? legacy,
+    ),
+    skipLastNTurnsPersist: clampRegexSkipLastNTurns(
+      rule.skipLastNTurnsPersist ?? legacy,
+    ),
+  }
+}
+
+export function normalizeRegexRulesFromServer(rules: RegexRule[]): RegexRule[] {
+  return rules.map((r) => normalizeRegexRuleSkipFields(r))
+}
+
 export function cloneRegexRules(rules: RegexRule[]): RegexRule[] {
   return rules.map(cloneRegexRule)
 }
@@ -149,6 +181,9 @@ export function createDefaultRegexRule(existing: RegexRule[]): RegexRule {
     phases: ['display'],
     fields: ['user', 'assistant'],
     skipLastNTurns: 0,
+    skipLastNTurnsDisplay: 0,
+    skipLastNTurnsOutgoing: 0,
+    skipLastNTurnsPersist: 0,
     pattern: '',
     flags: 'g',
     replacement: '',
@@ -194,6 +229,9 @@ export function regexRulesEqual(a: RegexRule[], b: RegexRule[]): boolean {
       r.order === o.order &&
       r.enabled === o.enabled &&
       r.skipLastNTurns === o.skipLastNTurns &&
+      r.skipLastNTurnsDisplay === o.skipLastNTurnsDisplay &&
+      r.skipLastNTurnsOutgoing === o.skipLastNTurnsOutgoing &&
+      r.skipLastNTurnsPersist === o.skipLastNTurnsPersist &&
       r.pattern === o.pattern &&
       r.flags === o.flags &&
       r.replacement === o.replacement &&

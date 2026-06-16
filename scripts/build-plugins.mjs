@@ -1,43 +1,15 @@
 /**
- * 构建 plugins/{id}/ 下所有带 build.mjs 的插件包（当前含 plot-summary）。
+ * 构建 plugins/{id}/ 下所有带 build.mjs 的插件包。
+ * 默认仅重建 src 新于 dist 的插件；传 --force 重建全部。
  */
-import { existsSync } from 'node:fs'
-import { readdir } from 'node:fs/promises'
-import path from 'node:path'
-import { spawn } from 'node:child_process'
-import { REPO_ROOT } from './dev-config.mjs'
+import { buildPlugins } from './plugin-dist.mjs'
 
-function runNodeScript(scriptPath) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [scriptPath], {
-      cwd: REPO_ROOT,
-      stdio: 'inherit',
-      env: process.env,
-    })
-    child.on('error', reject)
-    child.on('exit', (code) => {
-      if (code === 0) resolve()
-      else reject(new Error(`build failed: ${scriptPath} (exit ${code})`))
-    })
-  })
-}
+const force = process.argv.includes('--force')
 
 async function main() {
-  const pluginsDir = path.join(REPO_ROOT, 'plugins')
-  const ids = await readdir(pluginsDir, { withFileTypes: true })
-  const built = []
-
-  for (const ent of ids) {
-    if (!ent.isDirectory()) continue
-    const buildScript = path.join(pluginsDir, ent.name, 'build.mjs')
-    if (!existsSync(buildScript)) continue
-    console.log(`[build:plugins] ${ent.name}`)
-    await runNodeScript(buildScript)
-    built.push(ent.name)
-  }
-
+  const built = await buildPlugins({ force })
   if (built.length === 0) {
-    console.log('[build:plugins] no plugins with build.mjs')
+    console.log('[build:plugins] dist 已是最新（使用 --force 强制全量重建）')
   } else {
     console.log('[build:plugins] done:', built.join(', '))
   }

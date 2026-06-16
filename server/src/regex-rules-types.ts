@@ -18,10 +18,36 @@ export interface RegexRule {
   enabled: boolean
   phases: RegexPhase[]
   fields: RegexField[]
+  /** 旧版统一 skip；读盘时作各阶段未单独配置时的回退 */
   skipLastNTurns: number
+  skipLastNTurnsDisplay: number
+  skipLastNTurnsOutgoing: number
+  skipLastNTurnsPersist: number
   pattern: string
   flags: string
   replacement: string
+}
+
+export function resolveSkipLastNTurns(
+  rule: Pick<
+    RegexRule,
+    | 'skipLastNTurns'
+    | 'skipLastNTurnsDisplay'
+    | 'skipLastNTurnsOutgoing'
+    | 'skipLastNTurnsPersist'
+  >,
+  phase: RegexPhase,
+): number {
+  switch (phase) {
+    case 'display':
+      return rule.skipLastNTurnsDisplay
+    case 'outgoing':
+      return rule.skipLastNTurnsOutgoing
+    case 'persist':
+      return rule.skipLastNTurnsPersist
+    default:
+      return rule.skipLastNTurns
+  }
 }
 
 export interface RegexRulesDocument {
@@ -39,6 +65,9 @@ export interface RegexRuleSummary {
   phases: RegexPhase[]
   fields: RegexField[]
   skipLastNTurns: number
+  skipLastNTurnsDisplay: number
+  skipLastNTurnsOutgoing: number
+  skipLastNTurnsPersist: number
 }
 
 export interface RegexApplyContext {
@@ -47,7 +76,7 @@ export interface RegexApplyContext {
   /** 无 turnOrdinal 的 system 不受 skipLastNTurns 限制 */
   turnOrdinal?: number
   tailOrdinal: number
-  /** Historian 摘要：忽略各规则的 skipLastNTurns，对区间内全部轮次应用 */
+  /** Historian 摘要：忽略各规则的 skip，对区间内全部轮次应用 */
   ignoreSkipLastNTurns?: boolean
 }
 

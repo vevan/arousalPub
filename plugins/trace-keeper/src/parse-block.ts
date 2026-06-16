@@ -36,6 +36,21 @@ export function stripTraceKeeperBlocks(assistantContent: string): string {
   return assistantContent.replace(BLOCK_RE, '').trim()
 }
 
+export function formatTraceKeeperBlock(state: Record<string, unknown>): string {
+  return `<${BLOCK_TAG}>${JSON.stringify(state)}</${BLOCK_TAG}>`
+}
+
+/** 去掉已有 trace 块后追加新块，供 Separate / 手动编辑写回 assistant 正文 */
+export function upsertTraceKeeperBlockInAssistant(
+  assistantContent: string,
+  state: Record<string, unknown>,
+): string {
+  const narrative = stripTraceKeeperBlocks(assistantContent).trimEnd()
+  const block = formatTraceKeeperBlock(state)
+  if (!narrative) return block
+  return `${narrative}\n\n${block}`
+}
+
 /** 取助手正文中最后一个有效 trace 块 */
 export function extractTraceKeeperState(
   assistantContent: string,

@@ -2,7 +2,7 @@ import sampleState from '../bundles/scene-tracker-default/sample-state.json'
 import template from '../bundles/scene-tracker-default/template.hbs'
 import stylesheet from '../bundles/scene-tracker-default/stylesheet.css'
 import { DEFAULT_BUNDLE_ID, type TraceBundle } from './constants.js'
-import { DEFAULT_SYSTEM_PROMPT_TEMPLATE } from './default-prompt.js'
+import { DEFAULT_SYSTEM_PROMPT_TEMPLATE, DEFAULT_SEPARATE_SYSTEM_PROMPT_TEMPLATE } from './default-prompt.js'
 
 export const DEFAULT_TRACE_BUNDLE: TraceBundle = {
   id: DEFAULT_BUNDLE_ID,
@@ -11,6 +11,7 @@ export const DEFAULT_TRACE_BUNDLE: TraceBundle = {
   template: template as string,
   stylesheet: stylesheet as string,
   systemPromptTemplate: DEFAULT_SYSTEM_PROMPT_TEMPLATE,
+  separateSystemPromptTemplate: DEFAULT_SEPARATE_SYSTEM_PROMPT_TEMPLATE,
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -42,6 +43,12 @@ function parseUserBundleEntry(
     raw.systemPromptTemplate.trim()
   ) {
     out.systemPromptTemplate = raw.systemPromptTemplate.trim()
+  }
+  if (
+    typeof raw.separateSystemPromptTemplate === 'string' &&
+    raw.separateSystemPromptTemplate.trim()
+  ) {
+    out.separateSystemPromptTemplate = raw.separateSystemPromptTemplate.trim()
   }
   const fromJson = parseSampleStateJson(raw.sampleStateJson)
   if (fromJson) {
@@ -115,6 +122,13 @@ function mergeBundlePartial(
   ) {
     next.systemPromptTemplate = partial.systemPromptTemplate.trim()
   }
+  if (
+    typeof partial.separateSystemPromptTemplate === 'string' &&
+    partial.separateSystemPromptTemplate.trim()
+  ) {
+    next.separateSystemPromptTemplate =
+      partial.separateSystemPromptTemplate.trim()
+  }
   return next
 }
 
@@ -128,6 +142,7 @@ function shellBundle(id: string, embedded: TraceBundle): TraceBundle {
       '<div class="trace-keeper-panel"><pre>{{json data}}</pre></div>',
     stylesheet: '.trace-keeper-panel { font-size: 0.875rem; }',
     systemPromptTemplate: embedded.systemPromptTemplate,
+    separateSystemPromptTemplate: embedded.separateSystemPromptTemplate,
   }
 }
 
@@ -163,6 +178,9 @@ export function resolveTraceBundle(opts: {
   }
   if (!base.systemPromptTemplate?.trim()) {
     base.systemPromptTemplate = DEFAULT_SYSTEM_PROMPT_TEMPLATE
+  }
+  if (!base.separateSystemPromptTemplate?.trim()) {
+    base.separateSystemPromptTemplate = DEFAULT_SEPARATE_SYSTEM_PROMPT_TEMPLATE
   }
   return base
 }

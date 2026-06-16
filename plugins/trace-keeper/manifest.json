@@ -23,11 +23,18 @@
         "default": "scene-tracker-default"
       },
       {
-        "key": "liveStateTurnCount",
+        "key": "apiConfigId",
+        "type": "apiPreset",
+        "labelKey": "apiConfigIdLabel",
+        "descriptionKey": "apiConfigIdDesc",
+        "default": ""
+      },
+      {
+        "key": "separateTurnCount",
         "type": "number",
-        "labelKey": "liveStateTurnCountLabel",
-        "descriptionKey": "liveStateTurnCountDesc",
-        "default": "1"
+        "labelKey": "separateTurnCountLabel",
+        "descriptionKey": "separateTurnCountDesc",
+        "default": "4"
       },
       {
         "key": "bundleList",
@@ -50,6 +57,14 @@
             "descriptionKey": "bundleItemSystemPromptDesc",
             "widget": "promptTemplate",
             "defaultKey": "systemPromptTemplateDefault"
+          },
+          {
+            "key": "separateSystemPromptTemplate",
+            "type": "text",
+            "labelKey": "bundleItemSeparateSystemPromptLabel",
+            "descriptionKey": "bundleItemSeparateSystemPromptDesc",
+            "widget": "promptTemplate",
+            "defaultKey": "separateSystemPromptTemplateDefault"
           },
           {
             "key": "sampleStateJson",
@@ -87,10 +102,10 @@
         "default": ""
       },
       {
-        "key": "liveStateTurnCount",
+        "key": "separateTurnCount",
         "type": "number",
-        "labelKey": "convLiveStateTurnCountLabel",
-        "descriptionKey": "convLiveStateTurnCountDesc",
+        "labelKey": "convSeparateTurnCountLabel",
+        "descriptionKey": "convSeparateTurnCountDesc",
         "default": ""
       }
     ]

@@ -9,6 +9,7 @@ import {
 } from '@/types/regex-rules'
 import {
   buildDuplicateRegexRuleLabel,
+  clampRegexSkipLastNTurns,
   cloneRegexRule,
   createDefaultRegexRule,
   duplicateRegexRule,
@@ -636,22 +637,61 @@ onMounted(() => {
             </div>
           </div>
 
-          <v-text-field
-            :model-value="editDraft.skipLastNTurns"
-            type="number"
-            min="0"
-            step="1"
-            :label="$t('settings.regexRules.skipLastNTurns')"
-            :hint="$t('settings.regexRules.skipLastNTurnsHint')"
-            persistent-hint
-            density="comfortable"
-            variant="outlined"
-            hide-details="auto"
-            class="mb-4"
-            @update:model-value="patchDraft({
-              skipLastNTurns: Math.max(0, Math.trunc(Number($event) || 0)),
-            })"
-          />
+          <div
+            v-if="editDraft.phases.some((p) => p === 'display' || p === 'outgoing' || p === 'persist')"
+            class="regex-rules-panel__skip-block mb-4"
+          >
+            <div class="text-body-2 mb-2">
+              {{ $t('settings.regexRules.skipLastNTurns') }}
+            </div>
+            <div class="regex-rules-panel__skip-fields">
+              <v-text-field
+                v-if="editDraft.phases.includes('display')"
+                :model-value="editDraft.skipLastNTurnsDisplay"
+                type="number"
+                min="0"
+                step="1"
+                :label="$t('settings.regexRules.skipPhaseShort.display')"
+                density="compact"
+                variant="outlined"
+                hide-details
+                @update:model-value="patchDraft({
+                  skipLastNTurnsDisplay: clampRegexSkipLastNTurns($event),
+                })"
+              />
+              <v-text-field
+                v-if="editDraft.phases.includes('outgoing')"
+                :model-value="editDraft.skipLastNTurnsOutgoing"
+                type="number"
+                min="0"
+                step="1"
+                :label="$t('settings.regexRules.skipPhaseShort.outgoing')"
+                density="compact"
+                variant="outlined"
+                hide-details
+                @update:model-value="patchDraft({
+                  skipLastNTurnsOutgoing: clampRegexSkipLastNTurns($event),
+                })"
+              />
+              <v-text-field
+                v-if="editDraft.phases.includes('persist')"
+                :model-value="editDraft.skipLastNTurnsPersist"
+                type="number"
+                min="0"
+                step="1"
+                :label="$t('settings.regexRules.skipPhaseShort.persist')"
+                density="compact"
+                variant="outlined"
+                hide-details
+                @update:model-value="patchDraft({
+                  skipLastNTurnsPersist: clampRegexSkipLastNTurns($event),
+                })"
+              />
+            </div>
+            <p class="text-caption text-medium-emphasis mb-0 mt-1">
+              {{ $t('settings.regexRules.skipLastNTurnsHint') }}
+            </p>
+          </div>
 
           <v-divider class="mb-4" />
 
@@ -968,6 +1008,19 @@ onMounted(() => {
 .regex-rules-panel__choice-chip {
   cursor: pointer;
   user-select: none;
+}
+
+.regex-rules-panel__skip-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.regex-rules-panel__skip-fields :deep(.v-input) {
+  flex: 1 1 5.5rem;
+  min-width: 5rem;
+  max-width: 8rem;
 }
 
 .regex-rules-panel__pipeline-list {

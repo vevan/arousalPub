@@ -4,10 +4,14 @@ import {
   resolveTraceBundle,
   trackerEpochFromSettings,
 } from '../bundle-resolve.js'
-import { parseTraceKeeperJson, stripTraceKeeperBlocks } from '../parse-block.js'
-import { resolveLiveTraceStates } from '../trace-state-resolve.js'
-import { resolveLiveStateTurnCount } from '../live-state-settings.js'
-import { buildTrackerSystemPrompt } from '../tracker-prompt.js'
+import {
+  parseTraceKeeperJson,
+  stripTraceKeeperBlocks,
+  upsertTraceKeeperBlockInAssistant,
+} from '../parse-block.js'
+import { resolveSeparateTurnCount } from '../separate-turn-settings.js'
+import { buildSeparateRegenerateMessages } from '../tracker-prompt.js'
+import type { TraceKeeperSeparateDebug } from '../separate-debug.js'
 
 type SeparateApi = {
   getUserPluginSettings: (pluginId: string) => Promise<Record<string, unknown>>
@@ -22,6 +26,7 @@ type SeparateApi = {
     {
       turnOrdinal: number
       activeReceiveIndex: number
+      userText?: string
       plugins: unknown[]
       receives: { id: string; content: string }[]
     }[]
@@ -30,15 +35,29 @@ type SeparateApi = {
     conversationId?: string
     messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
     responseFormat?: 'json_object' | 'text'
+    fallbackToChat?: boolean
+    captureDebug?: boolean
   }) => Promise<
-    | { ok: true; content: string }
-    | { ok: false; code: string }
+    | {
+        ok: true
+        content: string
+        debug?: Omit<TraceKeeperSeparateDebug, 'messages' | 'code'>
+      }
+    | {
+        ok: false
+        code: string
+        status?: number
+        detail?: string
+        debug?: TraceKeeperSeparateDebug
+      }
   >
 }
 
 export interface RegenerateSeparateInput {
   conversationId: string
   turnOrdinal?: number
+  /** 会话 auditDebug.enabled 时由路由传入 */
+  debugCapture?: boolean
 }
 
 export type RegenerateSeparateResult =
@@ -47,25 +66,26 @@ export type RegenerateSeparateResult =
       state: Record<string, unknown>
       turnOrdinal: number
       receiveId: string
+      assistantContent: string
       entry: {
         pluginId: string
         schemaVersion: number
         payload: Record<string, unknown>
       }
+      debug?: TraceKeeperSeparateDebug
     }
-  | { ok: false; code: string }
+  | { ok: false; code: string; debug?: TraceKeeperSeparateDebug }
 
-const SEPARATE_PREFIX = [
-  'Generate ONLY a single JSON object for the Trace Keeper scene state.',
-  'Do not include markdown fences, XML tags, or roleplay prose.',
-  'Match the sample structure exactly.',
-].join('\n')
-
-function buildSeparateSystemPrompt(
-  bundle: ReturnType<typeof resolveTraceBundle>,
-  liveStates: { state: Record<string, unknown>; turnOrdinal: number }[],
-): string {
-  return [SEPARATE_PREFIX, buildTrackerSystemPrompt(bundle, liveStates)].join('\n\n')
+function mergeSeparateDebug(
+  messages: { role: string; content: string }[],
+  code: string,
+  extra?: TraceKeeperSeparateDebug,
+): TraceKeeperSeparateDebug {
+  return {
+    messages,
+    code,
+    ...extra,
+  }
 }
 
 function activeReceive(
@@ -117,33 +137,49 @@ export async function regenerateSeparateState(
     embeddedBundle: DEFAULT_TRACE_BUNDLE,
   })
   const epoch = trackerEpochFromSettings(convSettings)
-  const turnCount = resolveLiveStateTurnCount(userSettings, convSettings)
-  const priorTurns = tail.filter((t) => t.turnOrdinal < targetOrdinal)
-  const liveStates = resolveLiveTraceStates(
-    priorTurns,
-    epoch,
-    Math.max(0, turnCount - 1),
-  )
+  const windowTurnCount = resolveSeparateTurnCount(userSettings, convSettings)
 
-  const systemText = buildSeparateSystemPrompt(bundle, liveStates)
-  const userContent = [
-    'Based on the assistant reply below, output updated scene state JSON.',
-    '---',
-    assistantText,
-  ].join('\n')
+  const messages = buildSeparateRegenerateMessages(
+    tail,
+    targetOrdinal,
+    windowTurnCount,
+    bundle,
+  )
+  const debugCapture = input.debugCapture === true
 
   const result = await api.runPluginComplete({
     conversationId,
-    messages: [
-      { role: 'system', content: systemText },
-      { role: 'user', content: userContent },
-    ],
+    messages,
     responseFormat: 'json_object',
+    fallbackToChat: true,
+    captureDebug: debugCapture,
   })
-  if (!result.ok) return { ok: false, code: result.code }
+  if (!result.ok) {
+    return {
+      ok: false,
+      code: result.code,
+      ...(debugCapture
+        ? {
+            debug: mergeSeparateDebug(messages, result.code, result.debug),
+          }
+        : {}),
+    }
+  }
 
   const state = parseTraceKeeperJson(result.content)
-  if (!state) return { ok: false, code: 'parse_failed' }
+  if (!state) {
+    return {
+      ok: false,
+      code: 'parse_failed',
+      ...(debugCapture
+        ? {
+            debug: mergeSeparateDebug(messages, 'parse_failed', {
+              assistantContent: result.content,
+            }),
+          }
+        : {}),
+    }
+  }
 
   const entry = {
     pluginId: PLUGIN_ID,
@@ -151,11 +187,22 @@ export async function regenerateSeparateState(
     payload: { state, epoch, receiveId: receive.id },
   }
 
+  const assistantContent = upsertTraceKeeperBlockInAssistant(receive.content, state)
+
   return {
     ok: true,
     state,
     turnOrdinal: targetOrdinal,
     receiveId: receive.id,
+    assistantContent,
     entry,
+    ...(debugCapture
+      ? {
+          debug: mergeSeparateDebug(messages, 'ok', {
+            ...result.debug,
+            assistantContent: result.content,
+          }),
+        }
+      : {}),
   }
 }

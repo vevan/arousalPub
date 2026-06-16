@@ -135,9 +135,11 @@ export interface PluginServerHostApi {
     messages: PluginCompleteDraftMessage[]
     modelOverride?: string
     responseFormat?: 'json_object' | 'text'
+    fallbackToChat?: boolean
+    captureDebug?: boolean
   }) => Promise<
-    | { ok: true; content: string; usage?: { promptTokens?: number; completionTokens?: number }; latencyMs: number }
-    | { ok: false; code: string; status?: number; detail?: string }
+    | { ok: true; content: string; usage?: { promptTokens?: number; completionTokens?: number }; latencyMs: number; debug?: import('../plugin-complete.js').PluginCompleteDebugCapture }
+    | { ok: false; code: string; status?: number; detail?: string; debug?: import('../plugin-complete.js').PluginCompleteDebugCapture }
   >
   runPluginCompletePreflight: (req: {
     apiConfigId?: string
@@ -168,6 +170,7 @@ export interface PluginServerHostApi {
     {
       turnOrdinal: number
       activeReceiveIndex: number
+      userText: string
       plugins: unknown[]
       receives: { id: string; content: string }[]
     }[]
@@ -262,7 +265,11 @@ export interface PluginServerModule {
   ) => PluginCompleteDraftResult | Promise<PluginCompleteDraftResult>
   /** trace-keeper：Separate 重新生成 state 并返回待落盘条目 */
   regenerateSeparateState?: (
-    input: { conversationId: string; turnOrdinal?: number },
+    input: {
+      conversationId: string
+      turnOrdinal?: number
+      debugCapture?: boolean
+    },
     api: PluginServerHostApi,
   ) => Promise<
     | {
@@ -270,11 +277,13 @@ export interface PluginServerModule {
         state: Record<string, unknown>
         turnOrdinal: number
         receiveId: string
+        assistantContent: string
         entry: TurnPluginEntry
+        debug?: unknown
       }
-    | { ok: false; code: string }
+    | { ok: false; code: string; debug?: unknown }
   >
-  /** trace-keeper：手动 patch state 到 turn.plugins[] */
+  /** trace-keeper：手动 patch state 到 turn.plugins[] 并写回 assistant 正文 */
   patchTraceKeeperState?: (
     input: { conversationId: string; turnOrdinal: number; state: unknown },
     api: PluginServerHostApi,
@@ -283,7 +292,8 @@ export interface PluginServerModule {
         ok: true
         state: Record<string, unknown>
         turnOrdinal: number
-        receiveId?: string
+        receiveId: string
+        assistantContent: string
         entry: TurnPluginEntry
       }
     | { ok: false; code: string }

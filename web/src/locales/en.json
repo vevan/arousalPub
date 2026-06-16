@@ -557,7 +557,15 @@
       "phases": "Phases",
       "fields": "Message fields",
       "skipLastNTurns": "Skip last N turns",
-      "skipLastNTurnsHint": "0 = apply to all turns including the latest. N > 0 skips the most recent N turns.",
+      "skipLastNTurnsDisplay": "Display: skip last N turns",
+      "skipLastNTurnsOutgoing": "Outgoing: skip last N turns",
+      "skipLastNTurnsPersist": "Persist: skip last N turns",
+      "skipLastNTurnsHint": "0 = apply to all turns including the latest. N > 0 skips the most recent N turns for that phase.",
+      "skipPhaseShort": {
+        "display": "Display",
+        "outgoing": "Outgoing",
+        "persist": "Persist"
+      },
       "testTitle": "Test string",
       "testHint": "Preview this rule on sample text locally (works even when the rule is disabled). Does not simulate phases, fields, or skipLastNTurns.",
       "testInput": "Input text",

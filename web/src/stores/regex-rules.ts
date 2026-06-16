@@ -8,6 +8,7 @@ import {
   createDefaultRegexRule,
   documentFromRules,
   mergeSavedRulesWithLocalDrafts,
+  normalizeRegexRulesFromServer,
   regexRulesEqual,
   sortRegexRules,
 } from '@/utils/regex-rules'
@@ -78,9 +79,11 @@ export const useRegexRulesStore = defineStore('regexRules', () => {
       const doc = (await res.json()) as { rules?: RegexRule[]; savedAt?: string }
       if (Array.isArray(doc.rules)) {
         applyRules(
-          localOverlay
-            ? mergeSavedRulesWithLocalDrafts(doc.rules, localOverlay)
-            : doc.rules,
+          normalizeRegexRulesFromServer(
+            localOverlay
+              ? mergeSavedRulesWithLocalDrafts(doc.rules, localOverlay)
+              : doc.rules,
+          ),
         )
         if (
           selectedRuleId.value &&
@@ -93,7 +96,7 @@ export const useRegexRulesStore = defineStore('regexRules', () => {
       }
       if (typeof doc.savedAt === 'string') lastSavedAt.value = doc.savedAt
       syncLastSynced()
-      useRegexRulesDisplayStore().invalidate()
+      useRegexRulesDisplayStore().syncRules(rules.value)
       invalidateRegexHostRulesCache()
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e)
@@ -158,7 +161,9 @@ export const useRegexRulesStore = defineStore('regexRules', () => {
         )
       }
       const doc = (await res.json()) as { rules?: RegexRule[]; savedAt?: string }
-      applyRules(Array.isArray(doc.rules) ? doc.rules : [])
+      applyRules(
+        normalizeRegexRulesFromServer(Array.isArray(doc.rules) ? doc.rules : []),
+      )
       if (typeof doc.savedAt === 'string') lastSavedAt.value = doc.savedAt
       if (
         selectedRuleId.value &&

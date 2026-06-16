@@ -17,6 +17,7 @@ import { readTurnsTail } from '../chunk-chain.js'
 import {
   readConversationIndex,
   readConversationPluginSettings,
+  getTurnUserText,
 } from '../chat-storage.js'
 import { readMergedPluginUserSettings } from './settings.js'
 import { readPluginPackageFile } from './loader.js'
@@ -47,6 +48,7 @@ export function createPluginServerHostApi(
           pluginId: pid,
           userId: uid,
           conversationId: req.conversationId,
+          fallbackToChat: req.fallbackToChat === true,
         })
         if (!hit.ok) {
           return { ok: false, code: hit.code }
@@ -62,6 +64,7 @@ export function createPluginServerHostApi(
         modelOverride,
         stream: false,
         responseFormat: req.responseFormat,
+        captureDebug: req.captureDebug === true,
       })
     },
     async runPluginCompletePreflight(req) {
@@ -135,6 +138,7 @@ export function createPluginServerHostApi(
         turnOrdinal: t.turnOrdinal,
         activeReceiveIndex:
           typeof t.activeReceiveIndex === 'number' ? t.activeReceiveIndex : 0,
+        userText: getTurnUserText(t),
         plugins: Array.isArray(t.plugins) ? t.plugins : [],
         receives: (t.receives ?? []).map((r) => ({
           id: typeof r.id === 'string' ? r.id : '',

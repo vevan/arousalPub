@@ -37,6 +37,8 @@ const {
   assistantReasoning,
   displayAssistantText,
   displayAssistantReasoning,
+  displayStreamingAssistantText,
+  displayStreamingReasoningText,
   reasoningCharsCount,
   showAssistantSwipeFooter,
   slideAssistant,
@@ -200,7 +202,7 @@ const displayModelName = computed(() => {
       </summary>
       <div
         class="reasoning-chain__body chat-rich-text"
-        v-html="renderReasoningMarkdownToHtml(streamingReasoning)"
+        v-html="renderReasoningMarkdownToHtml(displayStreamingReasoningText(streamingReasoning, turn.turnOrdinal))"
       />
     </details>
 
@@ -279,7 +281,7 @@ const displayModelName = computed(() => {
         <div
           v-if="isAssistantStreamingBubble(turn)"
           class="chat-rich-text"
-          v-html="renderRichMessageToHtml(streamingText)"
+          v-html="renderRichMessageToHtml(displayStreamingAssistantText(streamingText, turn.turnOrdinal))"
         />
         <v-skeleton-loader
           v-else

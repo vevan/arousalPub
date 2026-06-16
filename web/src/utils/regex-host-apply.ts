@@ -5,6 +5,7 @@ import type {
   RegexRule,
   RegexRuleSummary,
 } from '@/types/regex-rules'
+import { resolveSkipLastNTurns } from '@/types/regex-rules'
 import { replaceRegexWithTimeoutSync } from '@/utils/regex-exec-timeout'
 
 export interface RegexHostMessage {
@@ -35,7 +36,7 @@ function shouldApplyRegexRule(
   if (!rule.enabled) return false
   if (!rule.phases.includes(ctx.phase)) return false
   if (!rule.fields.includes(ctx.field)) return false
-  const skip = rule.skipLastNTurns
+  const skip = resolveSkipLastNTurns(rule, ctx.phase)
   if (skip > 0 && ctx.turnOrdinal !== undefined) {
     const threshold = ctx.tailOrdinal - skip
     if (ctx.turnOrdinal > threshold) return false
@@ -122,5 +123,8 @@ export function toRegexRuleSummary(rule: RegexRule): RegexRuleSummary {
     phases: [...rule.phases],
     fields: [...rule.fields],
     skipLastNTurns: rule.skipLastNTurns,
+    skipLastNTurnsDisplay: rule.skipLastNTurnsDisplay,
+    skipLastNTurnsOutgoing: rule.skipLastNTurnsOutgoing,
+    skipLastNTurnsPersist: rule.skipLastNTurnsPersist,
   }
 }

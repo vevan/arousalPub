@@ -321,6 +321,7 @@ export function createPluginWebHost(session: ChatSession): {
         session.onAssistantReplyComplete(handler),
       onAssistantReplyPersisted: (handler) =>
         session.onAssistantReplyPersisted(handler),
+      onTurnDataChanged: (handler) => session.onTurnDataChanged(handler),
     },
     refreshSlotButtons() {
       slotButtonRevision.value += 1

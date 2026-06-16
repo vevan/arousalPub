@@ -69,3 +69,32 @@ export function attachReceiveIdToTurnPluginEntries(
     }
   })
 }
+
+/** 正文无有效 trace 块时，移除该 receive 的 trace-keeper 快照 */
+export function removeTraceKeeperPluginForReceive(
+  existing: unknown[] | undefined,
+  receiveId: string,
+): unknown[] {
+  const rid = receiveId.trim()
+  if (!rid) return Array.isArray(existing) ? [...existing] : []
+  const out: unknown[] = []
+  for (const raw of existing ?? []) {
+    if (!raw || typeof raw !== 'object') {
+      out.push(raw)
+      continue
+    }
+    if ((raw as { pluginId?: unknown }).pluginId !== TRACE_KEEPER_PLUGIN_ID) {
+      out.push(raw)
+      continue
+    }
+    const payload =
+      (raw as { payload?: unknown }).payload &&
+      typeof (raw as { payload?: unknown }).payload === 'object' &&
+      !Array.isArray((raw as { payload?: unknown }).payload)
+        ? (raw as { payload: Record<string, unknown> }).payload
+        : undefined
+    if (payloadReceiveId(payload) === rid) continue
+    out.push(raw)
+  }
+  return out
+}

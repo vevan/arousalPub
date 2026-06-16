@@ -6,6 +6,7 @@ import type {
   RegexPhase,
   RegexRule,
 } from './regex-rules-types.js'
+import { resolveSkipLastNTurns } from './regex-rules-types.js'
 
 export interface ApplyRegexOptions {
   /** runtime 单条规则编译失败时调用；默认静默跳过 */
@@ -32,7 +33,7 @@ export function shouldApplyRegexRule(
   if (!rule.fields.includes(ctx.field)) return false
 
   if (!ctx.ignoreSkipLastNTurns) {
-    const skip = rule.skipLastNTurns
+    const skip = resolveSkipLastNTurns(rule, ctx.phase)
     if (skip > 0 && ctx.turnOrdinal !== undefined) {
       const threshold = ctx.tailOrdinal - skip
       if (ctx.turnOrdinal > threshold) return false
@@ -199,5 +200,8 @@ export function toRegexRuleSummary(rule: RegexRule) {
     phases: [...rule.phases],
     fields: [...rule.fields],
     skipLastNTurns: rule.skipLastNTurns,
+    skipLastNTurnsDisplay: rule.skipLastNTurnsDisplay,
+    skipLastNTurnsOutgoing: rule.skipLastNTurnsOutgoing,
+    skipLastNTurnsPersist: rule.skipLastNTurnsPersist,
   }
 }

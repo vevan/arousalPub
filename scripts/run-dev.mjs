@@ -1,12 +1,18 @@
 import { spawn } from 'node:child_process'
 import { createConnection } from 'node:net'
+import path from 'node:path'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 import { loadDevConfig } from './dev-config.mjs'
 import { ensureDependencies } from './ensure-deps.mjs'
+import { ensurePluginDistForDev } from './plugin-dist.mjs'
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const { serverPort, webPort, repoRoot: root } = loadDevConfig()
 
 ensureDependencies(root, { label: 'dev' })
+
+await ensurePluginDistForDev()
 
 function waitForPort(port, { host = '127.0.0.1', timeoutMs = 90_000 } = {}) {
   const start = Date.now()
@@ -46,6 +52,12 @@ const server = spawn('npm', ['run', 'dev', '-w', 'server'], {
   env: childEnv,
 })
 
+const pluginWatcher = spawn(process.execPath, [path.join(__dirname, 'watch-plugins.mjs')], {
+  cwd: root,
+  stdio: 'inherit',
+  env: { ...childEnv, PLUGIN_WATCH: '1' },
+})
+
 let webProc = null
 
 try {
@@ -69,6 +81,7 @@ try {
 
 function shutdown() {
   webProc?.kill('SIGTERM')
+  pluginWatcher.kill('SIGTERM')
   server.kill('SIGTERM')
   process.exit(0)
 }
@@ -77,11 +90,19 @@ process.on('SIGINT', shutdown)
 process.on('SIGTERM', shutdown)
 
 webProc?.on('exit', (code) => {
+  pluginWatcher.kill('SIGTERM')
   server.kill('SIGTERM')
   process.exit(code ?? 0)
 })
 
 server.on('exit', (code) => {
   webProc?.kill('SIGTERM')
+  pluginWatcher.kill('SIGTERM')
   process.exit(code ?? 0)
+})
+
+pluginWatcher.on('exit', (code) => {
+  if (code != null && code !== 0) {
+    console.warn(`[dev] plugin watcher exited with code ${code}`)
+  }
 })

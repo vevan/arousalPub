@@ -1,6 +1,7 @@
 import { readApiSettingsFromFile } from './api-settings-file.js'
 import { readConversationIndex } from './chat-storage.js'
 import {
+  resolveChatApiConfigId,
   resolvePluginFeatureApi,
   type ResolvedFeatureApi,
 } from './feature-binding-resolve.js'
@@ -13,6 +14,8 @@ export interface ResolvePluginCompleteApiInput {
   /** 请求体显式传入时优先使用，不走解析链 */
   apiConfigId?: string
   userId?: string
+  /** 插件未绑定时回退到会话/全局 chat API（如 trace-keeper Separate） */
+  fallbackToChat?: boolean
 }
 
 export type ResolvePluginCompleteApiResult =
@@ -72,10 +75,35 @@ export function resolvePluginCompleteApiFromSources(
     conversationApiPreset: sources.conversationApiPreset,
     pluginSettingsApiConfigId: pluginSettingsApiConfigId(sources.pluginSettings),
   })
-  if (!resolved) {
-    return { ok: false, code: 'api_config_not_found' }
+  if (resolved) {
+    return { ok: true, resolved }
   }
-  return { ok: true, resolved }
+
+  if (input.fallbackToChat) {
+    const chatMeta = resolveChatApiConfigId(settings, sources.conversationApiPreset)
+    if (chatMeta) {
+      const preset =
+        settings.presets.find((p) => p.id === chatMeta.apiConfigId) ?? null
+      if (preset) {
+        const model = chatMeta.modelOverride?.trim() || preset.model
+        return {
+          ok: true,
+          resolved: {
+            featureType: 'plugin',
+            featureRefId: pluginId,
+            pluginId,
+            apiConfigId: chatMeta.apiConfigId,
+            modelOverride: chatMeta.modelOverride,
+            source: chatMeta.source,
+            preset,
+            model,
+          },
+        }
+      }
+    }
+  }
+
+  return { ok: false, code: 'api_config_not_found' }
 }
 
 export async function resolvePluginCompleteApi(

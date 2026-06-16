@@ -125,4 +125,25 @@ describe('resolvePluginCompleteApiFromSources', () => {
     )
     assert.equal(hit.ok, false)
   })
+
+  it('falls back to chat API when fallbackToChat and no plugin binding', () => {
+    const hit = resolvePluginCompleteApiFromSources(
+      { pluginId: 'trace-keeper', fallbackToChat: true },
+      { settings, pluginSettings: {} },
+    )
+    assert.equal(hit.ok, true)
+    if (hit.ok) {
+      assert.equal(hit.resolved.apiConfigId, 'preset-a')
+      assert.equal(hit.resolved.source, 'global')
+      assert.equal(hit.resolved.pluginId, 'trace-keeper')
+    }
+  })
+
+  it('does not fall back to chat without fallbackToChat flag', () => {
+    const hit = resolvePluginCompleteApiFromSources(
+      { pluginId: 'trace-keeper' },
+      { settings, pluginSettings: {} },
+    )
+    assert.equal(hit.ok, false)
+  })
 })

@@ -19,6 +19,7 @@ export interface PluginHost {
       receives?: { id?: string; content?: string }[]
     }[]
     refreshSlotButtons?: () => void
+    writeChatPromptSnapshot?: boolean | { value: boolean }
   }
   conversation: {
     getId?: () => string
@@ -36,6 +37,7 @@ export interface PluginHost {
     onAssistantReplyPersisted: (
       handler: (event: { turnOrdinal?: number }) => void,
     ) => () => void
+    onTurnDataChanged?: (handler: () => void) => () => void
   }
   registerSlotButton: (slot: string, def: Record<string, unknown>) => void
   registerStyles: (css: string) => void

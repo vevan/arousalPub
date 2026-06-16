@@ -381,6 +381,8 @@ export interface PluginWebHost {
     onAssistantReplyPersisted: (
       handler: (event: AssistantReplyPersistedEvent) => void,
     ) => () => void
+    /** swipe / 轮次数据变更（宿主 Vue 响应式触发，插件 bundle 勿用自带 watch） */
+    onTurnDataChanged: (handler: () => void) => () => void
   }
   conversation: {
     getId(): string

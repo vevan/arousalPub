@@ -1,4 +1,6 @@
 import type { RegexRulesDocument } from '@/types/regex-rules'
+import type { RegexRule } from '@/types/regex-rules'
+import { normalizeRegexRulesFromServer } from '@/utils/regex-rules'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -17,8 +19,15 @@ export const useRegexRulesDisplayStore = defineStore('regexRulesDisplay', () => 
       return
     }
     const doc = (await res.json()) as RegexRulesDocument
-    rules.value = Array.isArray(doc.rules) ? doc.rules : []
+    rules.value = normalizeRegexRulesFromServer(
+      Array.isArray(doc.rules) ? doc.rules : [],
+    )
     loadedForUserId.value = userId
+  }
+
+  /** 设置页保存后立即同步，避免 invalidate 清空导致 display 链短暂/长期失效 */
+  function syncRules(next: RegexRule[]): void {
+    rules.value = normalizeRegexRulesFromServer(next)
   }
 
   /** 同用户只拉一次；切换用户或 invalidate 后重拉 */
@@ -49,6 +58,7 @@ export const useRegexRulesDisplayStore = defineStore('regexRulesDisplay', () => 
     rules,
     loadedForUserId,
     ensureLoaded,
+    syncRules,
     invalidate,
   }
 })

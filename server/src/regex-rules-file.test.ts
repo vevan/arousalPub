@@ -6,6 +6,30 @@ import {
 } from './regex-rules-file.js'
 
 describe('normalizeRegexRulesDocument', () => {
+  it('accepts phase-specific skip fields', () => {
+    const doc = normalizeRegexRulesDocument({
+      rules: [
+        {
+          id: 'a1b2c3d4',
+          label: 'trace',
+          order: 10,
+          enabled: true,
+          phases: ['display', 'outgoing'],
+          fields: ['assistant'],
+          skipLastNTurns: 1,
+          skipLastNTurnsDisplay: 0,
+          skipLastNTurnsOutgoing: 3,
+          pattern: 'track',
+          flags: 'g',
+          replacement: '',
+        },
+      ],
+    })
+    assert.equal(doc.rules[0]?.skipLastNTurnsDisplay, 0)
+    assert.equal(doc.rules[0]?.skipLastNTurnsOutgoing, 3)
+    assert.equal(doc.rules[0]?.skipLastNTurnsPersist, 1)
+  })
+
   it('accepts valid rules document', () => {
     const doc = normalizeRegexRulesDocument({
       rules: [

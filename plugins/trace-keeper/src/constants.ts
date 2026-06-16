@@ -9,7 +9,10 @@ export interface TraceBundle {
   sampleState: Record<string, unknown>
   template: string
   stylesheet: string
+  /** Together 注入 assistant 前 system */
   systemPromptTemplate?: string
+  /** Separate 补生成：对话窗口之后的 system */
+  separateSystemPromptTemplate?: string
 }
 
 export interface TraceKeeperPayload {

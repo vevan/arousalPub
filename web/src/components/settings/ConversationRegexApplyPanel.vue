@@ -288,8 +288,18 @@ defineExpose({ reload: ensureContextLoaded })
                   {{ fieldTitle(f) }}
                 </v-chip>
               </dd>
-              <dt>{{ $t('settings.regexRules.skipLastNTurns') }}</dt>
-              <dd>{{ rule.skipLastNTurns }}</dd>
+              <template v-if="rule.phases.includes('display')">
+                <dt>{{ $t('settings.regexRules.skipLastNTurnsDisplay') }}</dt>
+                <dd>{{ rule.skipLastNTurnsDisplay }}</dd>
+              </template>
+              <template v-if="rule.phases.includes('outgoing')">
+                <dt>{{ $t('settings.regexRules.skipLastNTurnsOutgoing') }}</dt>
+                <dd>{{ rule.skipLastNTurnsOutgoing }}</dd>
+              </template>
+              <template v-if="rule.phases.includes('persist')">
+                <dt>{{ $t('settings.regexRules.skipLastNTurnsPersist') }}</dt>
+                <dd>{{ rule.skipLastNTurnsPersist }}</dd>
+              </template>
             </dl>
           </v-expansion-panel-text>
         </v-expansion-panel>

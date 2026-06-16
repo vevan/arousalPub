@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { diagnoseAssistantTrace, extractTraceKeeperState } from './parse-block.js'
+import { diagnoseAssistantTrace, extractTraceKeeperState, upsertTraceKeeperBlockInAssistant } from './parse-block.js'
 
 describe('diagnoseAssistantTrace', () => {
   it('returns no_block when content empty or no tag', () => {
@@ -49,6 +49,30 @@ describe('extractTraceKeeperState', () => {
     assert.deepEqual(
       extractTraceKeeperState('hello<ex-trace-keeper>{"x":1}</ex-trace-keeper>'),
       { x: 1 },
+    )
+  })
+})
+
+describe('upsertTraceKeeperBlockInAssistant', () => {
+  it('appends block after narrative', () => {
+    const out = upsertTraceKeeperBlockInAssistant('hello world', { x: 1 })
+    assert.equal(out, 'hello world\n\n<ex-trace-keeper>{"x":1}</ex-trace-keeper>')
+  })
+
+  it('replaces existing block', () => {
+    const out = upsertTraceKeeperBlockInAssistant(
+      'story<ex-trace-keeper>{"old":1}</ex-trace-keeper>',
+      { new: 2 },
+    )
+    assert.equal(out, 'story\n\n<ex-trace-keeper>{"new":2}</ex-trace-keeper>')
+  })
+
+  it('writes block only when narrative empty', () => {
+    assert.equal(
+      upsertTraceKeeperBlockInAssistant('<ex-trace-keeper>{"a":1}</ex-trace-keeper>', {
+        b: 2,
+      }),
+      '<ex-trace-keeper>{"b":2}</ex-trace-keeper>',
     )
   })
 })

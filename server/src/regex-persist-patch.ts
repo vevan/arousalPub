@@ -124,15 +124,18 @@ export interface TurnPatchPersistPayload {
   finalUserText: string
   receives: TurnContentPatchInput['receives']
   activeReceiveIndex: number
+  plugins?: unknown[]
 }
 
 export function toTurnPatchPersistPayload(
   patch: TurnContentPatchInput,
+  plugins?: unknown[],
 ): TurnPatchPersistPayload {
   return {
     ok: true,
     finalUserText: patch.userText,
     receives: patch.receives,
     activeReceiveIndex: patch.activeReceiveIndex,
+    ...(plugins !== undefined ? { plugins } : {}),
   }
 }

@@ -62,6 +62,7 @@ import {
   updateTurnContentInTailChunk,
   type TurnReceive,
 } from './chat-storage.js'
+import { readChunkContainingOrdinal } from './chunk-chain.js'
 import {
   CONVERSATION_BATCH_MAX_TURNS,
   parseTurnPatchBody,
@@ -241,6 +242,7 @@ import {
   resolveConversationTailOrdinal,
   toTurnPatchPersistPayload,
 } from './regex-persist-patch.js'
+import { buildSyncedTurnPluginsFromReceives } from './turn-plugin-sync-from-assistant.js'
 import { readRegexRulesDocument } from './regex-rules-file.js'
 import { extractCompletionTokens, extractPromptTokens } from './chat-usage.js'
 import { readChatAuditFile } from './chat-audit-file.js'
@@ -1321,17 +1323,27 @@ app.patch<{
     const patch = parsed.patch
     try {
       const normalized = await loadAndApplyRegexPersistToTurnPatch(id, patch)
+      const located = await readChunkContainingOrdinal(id, ord)
+      const existingTurn = located?.chunk.turns.find((t) => t.turnOrdinal === ord)
+      const syncedPlugins = await buildSyncedTurnPluginsFromReceives(
+        existingTurn?.plugins,
+        normalized.receives,
+        id,
+      )
       const ok = await updateTurnContentInTailChunk(
         id,
         ord,
         normalized.userText,
         normalized.receives,
         normalized.activeReceiveIndex,
+        undefined,
+        undefined,
+        syncedPlugins,
       )
       if (!ok) {
         return reply.status(404).send({ error: ApiErrorCodes.turn_chunk_not_found })
       }
-      return toTurnPatchPersistPayload(normalized)
+      return toTurnPatchPersistPayload(normalized, syncedPlugins)
     } catch (e) {
       app.log.error(e)
       return reply.status(500).send({ error: ApiErrorCodes.turn_update_failed })
@@ -3675,7 +3687,7 @@ app.post<{
 
 app.post<{
   Params: { pluginId: string }
-  Body: { conversationId?: string; turnOrdinal?: number }
+  Body: { conversationId?: string; turnOrdinal?: number; debug?: boolean }
 }>(
   '/api/plugins/:pluginId/regenerate-separate',
   async (request, reply) => {
@@ -3691,6 +3703,7 @@ app.post<{
     const body = request.body ?? {}
     const result = await runTraceKeeperRegenerateRoute(pluginId, body)
     if (!result.ok) {
+      const debugBody = result.debug ? { debug: result.debug } : {}
       if (result.code === 'plugin_hook_not_supported') {
         return reply.status(404).send({ error: ApiErrorCodes.plugin_hook_not_supported })
       }
@@ -3701,7 +3714,11 @@ app.post<{
         return reply.status(404).send({ error: ApiErrorCodes.turn_chunk_not_found })
       }
       if (result.code === 'parse_failed') {
-        return reply.status(502).send({ error: ApiErrorCodes.upstream_non_json })
+        return reply.status(502).send({
+          error: ApiErrorCodes.upstream_non_json,
+          detail: result.code,
+          ...debugBody,
+        })
       }
       if (result.code === 'api_config_not_found') {
         return reply.status(400).send({ error: ApiErrorCodes.api_preset_not_found })
@@ -3709,6 +3726,7 @@ app.post<{
       return reply.status(result.status ?? 502).send({
         error: ApiErrorCodes.plugin_complete_failed,
         detail: result.code,
+        ...debugBody,
       })
     }
     return {
@@ -3716,6 +3734,7 @@ app.post<{
       state: result.state,
       turnOrdinal: result.turnOrdinal,
       receiveId: result.receiveId,
+      ...(result.debug ? { debug: result.debug } : {}),
     }
   },
 )
@@ -3745,7 +3764,7 @@ app.post<{
         return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
       }
       if (result.code === 'invalid_turn_ordinal') {
-        return reply.status(400).send({ error: ApiErrorCodes.turn_patch_invalid })
+        return reply.status(400).send({ error: ApiErrorCodes.invalid_turn_ordinal })
       }
       if (result.code === 'turn_not_found' || result.code === 'no_turns') {
         return reply.status(404).send({ error: ApiErrorCodes.turn_chunk_not_found })

@@ -182,6 +182,12 @@ export function dispatchPluginPanelDomEvent(
   if (ev.type === 'click') {
     const actionEl = target.closest('[data-tk-action]')
     if (actionEl instanceof HTMLElement) {
+      if (
+        actionEl instanceof HTMLButtonElement &&
+        actionEl.disabled
+      ) {
+        return
+      }
       const action = actionEl.getAttribute('data-tk-action')?.trim()
       if (action) {
         handlers.onAction?.({ action, target: actionEl })

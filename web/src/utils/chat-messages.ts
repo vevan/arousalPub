@@ -259,6 +259,7 @@ export function mergeTurnFromPatchPersist(
     user: payload.finalUserText,
     receives,
     activeReceiveIndex: ai,
+    ...(payload.plugins !== undefined ? { plugins: payload.plugins } : {}),
   }
 }
 

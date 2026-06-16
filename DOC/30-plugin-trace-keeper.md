@@ -9,8 +9,8 @@
 | 能力 | 实现 |
 |------|------|
 | Together 落盘 | `resolveTurnPluginEntriesFromAssistant` 解析 `<ex-trace-keeper>` → `turn.plugins[]` |
-| 组装注入 | `resolveAfterAssemblePromptsAddition`；`liveStateTurnCount`（0–8）；计入 token 预算且不可 trim |
-| Separate 补生成 | `POST /api/plugins/trace-keeper/regenerate-separate`；侧栏按钮；写 `plugins[]` 不改 assistant |
+| 组装注入 | `resolveAfterAssemblePromptsAddition`：system 仅 **格式说明 + sample**；历史 state 由正则保留在 assistant 正文；计入 token 预算且不可 trim |
+| Separate 补生成 | `POST …/regenerate-separate`；多轮 user/assistant 窗口（`separateTurnCount`）；system 不含历史 state |
 | 侧栏 | `host.ui.panel` · live/pinned；只读 `plugins[]` 渲染；无 snapshot **空态+原因**（§4.4）；最后一轮可 Separate |
 | Swipe | 按 `receiveId` 多 snapshot（`mergeTurnPluginEntry`） |
 | 套件 | 用户 settings `bundleList` + 内置 `scene-tracker-default`；设置页编辑器 |
@@ -39,7 +39,7 @@
 
 ```text
 用户消息
-  → afterAssemblePrompts：注入格式说明 + 当前 live state（JSON）+ **sampleState 样例**（见 §5；**v1 不用 JSON Schema**）
+  → afterAssemblePrompts：注入格式说明 + **sampleState 样例**（历史 state 由 outgoing 正则保留在 assistant 内，见 §10）
   → 主模型回复（含 <ex-trace-keeper>{…}</ex-trace-keeper>）
   → 落盘：解析 JSON → turn.plugins[trace-keeper]；regex 剥 outgoing/persist/display（§8）
   → 侧栏：Handlebars(template)({ data: state, meta }) → host.ui.panel.setHtml

@@ -12,9 +12,37 @@ export interface RegexRule {
   phases: RegexPhase[]
   fields: RegexField[]
   skipLastNTurns: number
+  skipLastNTurnsDisplay: number
+  skipLastNTurnsOutgoing: number
+  skipLastNTurnsPersist: number
   pattern: string
   flags: string
   replacement: string
+}
+
+export function resolveSkipLastNTurns(
+  rule: Pick<
+    RegexRule,
+    | 'skipLastNTurns'
+    | 'skipLastNTurnsDisplay'
+    | 'skipLastNTurnsOutgoing'
+    | 'skipLastNTurnsPersist'
+  >,
+  phase: RegexPhase,
+): number {
+  const legacy = Math.max(0, Math.trunc(Number(rule.skipLastNTurns) || 0))
+  const pick = (v: number | undefined) =>
+    Math.max(0, Math.trunc(Number(v ?? legacy) || 0))
+  switch (phase) {
+    case 'display':
+      return pick(rule.skipLastNTurnsDisplay)
+    case 'outgoing':
+      return pick(rule.skipLastNTurnsOutgoing)
+    case 'persist':
+      return pick(rule.skipLastNTurnsPersist)
+    default:
+      return legacy
+  }
 }
 
 export interface RegexRulesDocument {
@@ -31,6 +59,9 @@ export interface RegexRuleSummary {
   phases: RegexPhase[]
   fields: RegexField[]
   skipLastNTurns: number
+  skipLastNTurnsDisplay: number
+  skipLastNTurnsOutgoing: number
+  skipLastNTurnsPersist: number
 }
 
 export interface RegexApplyContext {

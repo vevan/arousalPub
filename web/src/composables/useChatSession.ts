@@ -51,8 +51,10 @@ export function useChatSession(props: ChatSessionProps) {
   const {
     onAssistantReplyComplete,
     onAssistantReplyPersisted,
+    onTurnDataChanged,
     emitAssistantReplyComplete,
     emitAssistantReplyPersisted,
+    emitTurnDataChanged,
   } = replyEvents
 
   const userInput = ref('')
@@ -355,6 +357,17 @@ export function useChatSession(props: ChatSessionProps) {
     composerDraft.scheduleComposerDraftSave(props.conversationId, text)
   })
 
+  watch(
+    () =>
+      turns.value.map(
+        (t) =>
+          `${t.turnOrdinal}:${t.activeReceiveIndex}:${t.receives.map((r) => r.id).join(',')}:${JSON.stringify(t.plugins ?? [])}`,
+      ),
+    () => {
+      emitTurnDataChanged()
+    },
+  )
+
   return reactive({
     chatScrollEl,
     registerChatScroller,
@@ -419,5 +432,6 @@ export function useChatSession(props: ChatSessionProps) {
     isLastUserTurn: (turn: ChatTurnItem) => isLastUserTurn(turns.value, turn),
     onAssistantReplyComplete,
     onAssistantReplyPersisted,
+    onTurnDataChanged,
   })
 }

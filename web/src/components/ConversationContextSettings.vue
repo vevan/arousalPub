@@ -1069,6 +1069,7 @@ function defaultAuthorsNoteMatchesStore(): boolean {
 }
 
 async function saveDefaultAuthorsNote(): Promise<void> {
+  if (preferencesStore.isDefaultAuthorsNotePatchInFlight()) return
   const note = defaultAuthorsNotePatchFromForm()
   await preferencesStore.patchGlobalDefaultAuthorsNoteToServer({
     content: note.content,
@@ -1079,6 +1080,7 @@ async function saveDefaultAuthorsNote(): Promise<void> {
 }
 
 async function onDefaultAuthorsNoteContentBlur(): Promise<void> {
+  if (preferencesStore.isDefaultAuthorsNotePatchInFlight()) return
   if (defaultAuthorsNoteMatchesStore()) return
   savingDefaultAuthorsNote.value = true
   errorText.value = ''
@@ -1094,6 +1096,7 @@ async function onDefaultAuthorsNoteContentBlur(): Promise<void> {
 }
 
 watch(defaultAuthorsNoteEnabledForNewChats, async (enabled) => {
+  if (preferencesStore.isDefaultAuthorsNotePatchInFlight()) return
   const stored = normalizeDefaultAuthorsNoteTemplate(
     preferencesStore.defaultAuthorsNote,
   )
@@ -1112,6 +1115,7 @@ watch(defaultAuthorsNoteEnabledForNewChats, async (enabled) => {
 })
 
 watch(defaultAuthorsNoteDepth, async (depth) => {
+  if (preferencesStore.isDefaultAuthorsNotePatchInFlight()) return
   const stored = normalizeDefaultAuthorsNoteTemplate(
     preferencesStore.defaultAuthorsNote,
   )
@@ -1130,6 +1134,7 @@ watch(defaultAuthorsNoteDepth, async (depth) => {
 })
 
 watch(defaultAuthorsNoteRole, async (role) => {
+  if (preferencesStore.isDefaultAuthorsNotePatchInFlight()) return
   const stored = normalizeDefaultAuthorsNoteTemplate(
     preferencesStore.defaultAuthorsNote,
   )

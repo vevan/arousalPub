@@ -58,7 +58,7 @@ function itemFieldRequiredEmpty(
 export function parseCheckboxGroupField(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value
-      .filter((x): x is string => typeof x === 'string' && x.trim())
+      .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
       .map((x) => x.trim())
   }
   if (typeof value === 'string') {
@@ -68,7 +68,7 @@ export function parseCheckboxGroupField(value: unknown): string[] {
       const parsed = JSON.parse(s) as unknown
       if (!Array.isArray(parsed)) return []
       return parsed
-        .filter((x): x is string => typeof x === 'string' && x.trim())
+        .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
         .map((x) => x.trim())
     } catch {
       return []

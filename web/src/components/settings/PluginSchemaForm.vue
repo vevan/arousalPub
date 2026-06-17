@@ -123,11 +123,39 @@ function commitAllTextDrafts() {
   }
 }
 
+function pruneTextDraftsOnModelChange() {
+  if (!props.deferTextCommit) return
+  let changed = false
+  const nextDrafts = { ...textDraftValues.value }
+  for (const [key, draft] of Object.entries(nextDrafts)) {
+    const binding = textDraftBindings.get(key)
+    if (!binding) {
+      delete nextDrafts[key]
+      changed = true
+      continue
+    }
+    const stored = String(binding.getStored() ?? '')
+    if (stored === draft) {
+      delete nextDrafts[key]
+      textDraftBindings.delete(key)
+      changed = true
+    }
+  }
+  if (changed) textDraftValues.value = nextDrafts
+}
+
 watch(
-  () => props.modelValue,
+  () => props.pluginId,
   () => {
     textDraftValues.value = {}
     textDraftBindings.clear()
+  },
+)
+
+watch(
+  () => props.modelValue,
+  () => {
+    pruneTextDraftsOnModelChange()
   },
   { deep: true },
 )

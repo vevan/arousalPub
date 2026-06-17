@@ -257,7 +257,7 @@ export function getActivePanelHtml(
 
 export function dispatchPluginPanelDomEvent(
   placement: PluginPanelPlacement,
-  root: HTMLElement,
+  _root: HTMLElement,
   ev: Event,
 ): void {
   const active = pluginPanelActiveTabState.value[placement]

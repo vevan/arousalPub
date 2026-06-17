@@ -318,7 +318,12 @@ export function useChatSession(props: ChatSessionProps) {
   })
 
   watch(
-    () => turns.value.at(-1)?.turnOrdinal ?? -1,
+    () => {
+      const turnsList = turns.value
+      return turnsList.length > 0
+        ? turnsList[turnsList.length - 1]!.turnOrdinal
+        : -1
+    },
     (lastOrd, prevLastOrd) => {
       if (loadingOlder.value) return
       if (prevLastOrd < 0) return

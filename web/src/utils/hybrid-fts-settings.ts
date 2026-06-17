@@ -70,7 +70,7 @@ export function parseHybridFtsSpec(raw: string | null | undefined): HybridFtsSet
   if (!s) return { ...HYBRID_FTS_SETTINGS_DEFAULTS }
   const colon = s.indexOf(':')
   if (colon < 0) {
-    return normalizeHybridFtsSettings({ profile: s })
+    return normalizeHybridFtsSettings({ profile: normalizeHybridFtsProfile(s) })
   }
   const profile = normalizeHybridFtsProfile(s.slice(0, colon))
   const dictVariant = normalizeHybridFtsDictVariant(s.slice(colon + 1))

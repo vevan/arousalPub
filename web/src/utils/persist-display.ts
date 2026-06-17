@@ -64,7 +64,6 @@ function mapRetroReceives(
       }
     })
   }
-  const active = fallback.receives[item.activeReceiveIndex] ?? fallback.receives[0]
   return fallback.receives.map((r, i) =>
     i === item.activeReceiveIndex
       ? {

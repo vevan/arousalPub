@@ -70,16 +70,15 @@ export async function downloadHybridFtsDict(
     const txt = await res.text()
     throw new Error(txt.slice(0, 300))
   }
-  let failed: HybridFtsDictDownloadSseEvent | null = null
+  let errorMessage: string | null = null
   let done = false
   await readJsonSseStream<HybridFtsDictDownloadSseEvent>(res.body, (ev) => {
     onEvent(ev)
-    if (ev.type === 'error') failed = ev
+    if (ev.type === 'error') {
+      errorMessage = ev.detail ? `${ev.error}: ${ev.detail}` : ev.error
+    }
     if (ev.type === 'done') done = true
   })
-  if (failed) {
-    const detail = failed.type === 'error' && failed.detail ? `: ${failed.detail}` : ''
-    throw new Error(`${failed.type === 'error' ? failed.error : 'download_failed'}${detail}`)
-  }
+  if (errorMessage) throw new Error(errorMessage)
   if (!done) throw new Error('dict_download_incomplete')
 }

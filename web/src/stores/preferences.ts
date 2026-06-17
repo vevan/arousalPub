@@ -668,23 +668,26 @@ export const usePreferencesStore = defineStore('preferences', () => {
   async function patchGlobalDefaultAuthorsNoteToServer(
     patch: Partial<DefaultAuthorsNoteTemplate>,
   ): Promise<void> {
-    const res = await fetch('/api/user-preferences', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ defaultAuthorsNote: patch }),
-    })
-    if (!res.ok) {
-      const txt = await res.text()
-      throw new Error(txt.slice(0, 200))
-    }
-    const j = (await res.json()) as {
-      defaultAuthorsNote?: Partial<DefaultAuthorsNoteTemplate>
-    }
-    if (j.defaultAuthorsNote) {
-      defaultAuthorsNotePatchInFlight = true
-      defaultAuthorsNote.value = normalizeDefaultAuthorsNoteTemplate(
-        j.defaultAuthorsNote,
-      )
+    defaultAuthorsNotePatchInFlight = true
+    try {
+      const res = await fetch('/api/user-preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultAuthorsNote: patch }),
+      })
+      if (!res.ok) {
+        const txt = await res.text()
+        throw new Error(txt.slice(0, 200))
+      }
+      const j = (await res.json()) as {
+        defaultAuthorsNote?: Partial<DefaultAuthorsNoteTemplate>
+      }
+      if (j.defaultAuthorsNote) {
+        defaultAuthorsNote.value = normalizeDefaultAuthorsNoteTemplate(
+          j.defaultAuthorsNote,
+        )
+      }
+    } finally {
       defaultAuthorsNotePatchInFlight = false
     }
   }
@@ -715,22 +718,25 @@ export const usePreferencesStore = defineStore('preferences', () => {
   async function patchGlobalHybridFtsToServer(
     patch: Partial<HybridFtsSettings>,
   ): Promise<void> {
-    const res = await fetch('/api/user-preferences', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hybridFts: patch }),
-    })
-    if (!res.ok) {
-      const txt = await res.text()
-      throw new Error(txt.slice(0, 200))
-    }
-    const j = (await res.json()) as { hybridFts?: Partial<HybridFtsSettings> }
-    if (j.hybridFts) {
-      const n = normalizeHybridFtsSettings(j.hybridFts)
-      hybridFtsPatchInFlight = true
-      hybridFtsProfile.value = n.profile
-      hybridFtsDictVariant.value = n.dictVariant ?? null
-      persistHybridFtsLocal()
+    hybridFtsPatchInFlight = true
+    try {
+      const res = await fetch('/api/user-preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hybridFts: patch }),
+      })
+      if (!res.ok) {
+        const txt = await res.text()
+        throw new Error(txt.slice(0, 200))
+      }
+      const j = (await res.json()) as { hybridFts?: Partial<HybridFtsSettings> }
+      if (j.hybridFts) {
+        const n = normalizeHybridFtsSettings(j.hybridFts)
+        hybridFtsProfile.value = n.profile
+        hybridFtsDictVariant.value = n.dictVariant ?? null
+        persistHybridFtsLocal()
+      }
+    } finally {
       hybridFtsPatchInFlight = false
     }
   }
@@ -1120,15 +1126,18 @@ export const usePreferencesStore = defineStore('preferences', () => {
       profile: payload.profile,
       dictVariant: payload.dictVariant,
     })
-    hybridFtsPatchInFlight = true
-    try {
-      await patchGlobalHybridFtsToServer({
-        profile: n.profile,
-        dictVariant: n.dictVariant,
-      })
-    } finally {
-      hybridFtsPatchInFlight = false
-    }
+    await patchGlobalHybridFtsToServer({
+      profile: n.profile,
+      dictVariant: n.dictVariant,
+    })
+  }
+
+  function isHybridFtsPatchInFlight(): boolean {
+    return hybridFtsPatchInFlight
+  }
+
+  function isDefaultAuthorsNotePatchInFlight(): boolean {
+    return defaultAuthorsNotePatchInFlight
   }
 
   function setEmbeddingApiKeyId(id: string | null) {
@@ -1193,6 +1202,8 @@ export const usePreferencesStore = defineStore('preferences', () => {
     hybridFtsDictVariant,
     setHybridFtsProfile,
     confirmHybridFtsChange,
+    isHybridFtsPatchInFlight,
+    isDefaultAuthorsNotePatchInFlight,
     budgetTrimSettings,
     embeddingBaseUrl,
     embeddingApiKey,

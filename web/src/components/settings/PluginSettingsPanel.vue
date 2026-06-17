@@ -24,7 +24,6 @@ function pluginDisplayName(pluginId: string, fallback: string): string {
   return resolvePluginDisplayName(pluginId, fallback)
 }
 
-const CUSTOM_STYLES_PLUGIN_ID = 'custom-styles'
 const TRACE_KEEPER_PLUGIN_ID = 'trace-keeper'
 
 const loading = ref(true)

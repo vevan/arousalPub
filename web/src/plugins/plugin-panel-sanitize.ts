@@ -67,7 +67,7 @@ export function sanitizePluginPanelHtmlInteractive(html: string): string {
 
 export function installPluginPanelSanitizeHooks(): void {
   if (typeof window === 'undefined') return
-  DOMPurify.addHook('uponSanitizeElement', (node, data) => {
+  DOMPurify.addHook('uponSanitizeElement', (node) => {
     if (!(node instanceof Element)) return
     if (node.namespaceURI !== HTML_NAMESPACE) return
     const tag = node.tagName.toLowerCase()
@@ -81,7 +81,7 @@ export function installPluginPanelSanitizeHooks(): void {
         'radio',
       ])
       if (!allowed.has(type)) {
-        data.keepElement = false
+        node.remove()
       }
     }
     if (tag === 'button') {

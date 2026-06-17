@@ -813,15 +813,6 @@ watch(
           />
         </div>
         <div class="chat-header__meta">
-          <v-btn
-            icon="mdi-cog-outline"
-            variant="text"
-            density="comfortable"
-            size="small"
-            class="chat-header__settings"
-            :aria-label="$t('chat.convSettings.openButton')"
-            @click="convContextSettingsRef?.open()"
-          />
           <span
             v-if="!conn.isApiKeyConfigured"
             class="chat-header__pill chat-header__pill--warning"
@@ -840,32 +831,68 @@ watch(
               v-if="boundPromptLabel"
               type="button"
               class="chat-header__pill chat-header__pill--prompt chat-header__pill--clickable"
-              :title="$t('chatConversation.boundPrompt')"
+              :title="boundPromptLabel"
               @click="openBoundPrompt"
             >
               <v-icon
                 icon="mdi-text-box-outline"
                 size="14"
-                class="mr-1"
+                class="chat-header__pill-icon"
               />
-              {{ boundPromptLabel }}
+              <span class="chat-header__pill-label">{{ boundPromptLabel }}</span>
             </button>
-            <button
-              v-for="lb in boundLorebooks"
-              :key="lb.id"
-              type="button"
-              class="chat-header__pill chat-header__pill--lorebook chat-header__pill--clickable"
-              :title="$t('chatConversation.boundLorebook')"
-              @click="openBoundLorebook(lb.id)"
+            <v-menu
+              v-if="boundLorebooks.length > 0"
+              location="bottom end"
+              :open-on-hover="true"
+              :close-on-content-click="true"
             >
-              <v-icon
-                icon="mdi-book-open-page-variant-outline"
-                size="14"
-                class="mr-1"
-              />
-              {{ lb.label }}
-            </button>
+              <template #activator="{ props: menuProps }">
+                <v-btn
+                  v-bind="menuProps"
+                  icon
+                  variant="text"
+                  density="comfortable"
+                  size="small"
+                  class="chat-header__lorebook-btn"
+                  :aria-label="$t('chatConversation.boundLorebook')"
+                >
+                  <v-badge
+                    class="chat-header__lorebook-badge"
+                    :content="boundLorebooks.length"
+                    color="primary"
+                    floating
+                  >
+                    <v-icon
+                      icon="mdi-book-open-page-variant-outline"
+                      size="20"
+                    />
+                  </v-badge>
+                </v-btn>
+              </template>
+              <v-list
+                density="compact"
+                class="chat-header__lorebook-menu"
+              >
+                <v-list-item
+                  v-for="lb in boundLorebooks"
+                  :key="lb.id"
+                  :title="lb.label"
+                  :aria-label="lb.label"
+                  @click="openBoundLorebook(lb.id)"
+                />
+              </v-list>
+            </v-menu>
           </template>
+          <v-btn
+            icon="mdi-cog-outline"
+            variant="text"
+            density="comfortable"
+            size="small"
+            class="chat-header__settings"
+            :aria-label="$t('chat.convSettings.openButton')"
+            @click="convContextSettingsRef?.open()"
+          />
         </div>
       </header>
       <HomeChat
@@ -1094,6 +1121,52 @@ watch(
   align-items: center;
   gap: 0.375rem;
   flex-shrink: 0;
+  min-width: 0;
+}
+
+.chat-header__settings {
+  flex-shrink: 0;
+  margin-left: 0.125rem;
+}
+
+.chat-header__lorebook-btn {
+  color: rgba(var(--v-theme-on-surface), 0.75) !important;
+}
+
+.chat-header__lorebook-btn :deep(.chat-header__lorebook-badge .v-badge__badge) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2em;
+  height: 2.5em;
+  padding: 1em;
+  line-height: 1;
+  transform: scale(0.3);
+  transform-origin: bottom left;
+  border-radius: 1em;
+}
+
+.chat-header__pill-icon {
+  flex-shrink: 0;
+}
+
+.chat-header__pill-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-header__pill--prompt {
+  max-width: 15em;
+  min-width: 0;
+}
+
+:deep(.chat-header__lorebook-menu .v-list-item-title) {
+  max-width: 15em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-header__pill {

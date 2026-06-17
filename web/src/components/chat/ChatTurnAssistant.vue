@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import ChatReasoningChain from '@/components/chat/ChatReasoningChain.vue'
 import type { useChatSession } from '@/composables/useChatSession'
 import type { ChatTurnItem } from '@/types/chat-turn'
 import {
-  renderReasoningMarkdownToHtml,
   renderRichMessageToHtml,
 } from '@/utils/render-rich-message'
 import PluginSlotMount from '@/plugins/PluginSlotMount.vue'
@@ -39,7 +39,6 @@ const {
   displayAssistantReasoning,
   displayStreamingAssistantText,
   displayStreamingReasoningText,
-  reasoningCharsCount,
   showAssistantSwipeFooter,
   slideAssistant,
   regenerateAssistant,
@@ -69,7 +68,10 @@ const displayModelName = computed(() => {
 </script>
 
 <template>
-  <div class="turn turn--assistant">
+  <div
+    class="turn turn--assistant"
+    :data-turn-ordinal="turn.turnOrdinal"
+  >
     <div class="turn-avatar avatar avatar--assistant" aria-hidden="true">
       <img v-if="turnAvatarUrls.assistant" :src="turnAvatarUrls.assistant" alt="" />
       <span v-else>{{ assistantAvatarLetter }}</span>
@@ -161,95 +163,33 @@ const displayModelName = computed(() => {
       </div>
     </div>
 
-    <details
+    <ChatReasoningChain
       v-if="
         conn.showReasoningChain &&
         isAssistantBubbleLoading(turn) &&
         streamingReasoning &&
         !(editingTurnOrdinal === turn.turnOrdinal && editingSide === 'assistant')
       "
-      class="reasoning-chain"
-    >
-      <summary class="reasoning-chain__summary">
-        <span class="reasoning-chain__caret">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <polyline points="9 6 15 12 9 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </span>
-        <span class="reasoning-chain__title">
-          {{ $t('chat.reasoningSummary') }}
-          <span class="reasoning-chain__meta">
-            {{ $t('chat.reasoningCharsMeta', { n: reasoningCharsCount(streamingReasoning) }) }}
-          </span>
-        </span>
-        <span class="reasoning-chain__hint">
-          <span class="reasoning-chain__hint-expand">{{ $t('chat.expand') }}</span>
-          <span class="reasoning-chain__hint-collapse">{{ $t('chat.collapse') }}</span>
-          <kbd>{{ $t('chat.shortcutKey') }}</kbd>
-        </span>
-        <button
-          type="button"
-          class="turn-toolbar__btn reasoning-chain__copy"
-          :data-tt="copiedTurnKey === `r-${turn.turnOrdinal}-live` ? $t('chat.copied') : $t('chat.copy')"
-          :class="{ 'is-success': copiedTurnKey === `r-${turn.turnOrdinal}-live` }"
-          :aria-label="$t('chat.copy')"
-          @click.stop="copyTurnText(streamingReasoning, `r-${turn.turnOrdinal}-live`)"
-        >
-          <v-icon size="14">
-            {{ copiedTurnKey === `r-${turn.turnOrdinal}-live` ? 'mdi-check' : 'mdi-content-copy' }}
-          </v-icon>
-        </button>
-      </summary>
-      <div
-        class="reasoning-chain__body chat-rich-text"
-        v-html="renderReasoningMarkdownToHtml(displayStreamingReasoningText(streamingReasoning, turn.turnOrdinal))"
-      />
-    </details>
+      :key="`reasoning-live-${turn.turnOrdinal}`"
+      :turn-ordinal="turn.turnOrdinal"
+      :reasoning-text="displayStreamingReasoningText(streamingReasoning, turn.turnOrdinal)"
+      :copy-key="`r-${turn.turnOrdinal}-live`"
+      :session="session"
+    />
 
-    <details
+    <ChatReasoningChain
       v-if="
         conn.showReasoningChain &&
         assistantReasoning(turn).length > 0 &&
         !isAssistantBubbleLoading(turn) &&
         !(editingTurnOrdinal === turn.turnOrdinal && editingSide === 'assistant')
       "
-      class="reasoning-chain"
-    >
-      <summary class="reasoning-chain__summary">
-        <span class="reasoning-chain__caret">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <polyline points="9 6 15 12 9 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </span>
-        <span class="reasoning-chain__title">
-          {{ $t('chat.reasoningSummary') }}
-          <span class="reasoning-chain__meta">
-            {{ $t('chat.reasoningCharsMeta', { n: reasoningCharsCount(displayAssistantReasoning(turn)) }) }}
-          </span>
-        </span>
-        <span class="reasoning-chain__hint">
-          <span class="reasoning-chain__hint-expand">{{ $t('chat.expand') }}</span>
-          <span class="reasoning-chain__hint-collapse">{{ $t('chat.collapse') }}</span>
-          <kbd>{{ $t('chat.shortcutKey') }}</kbd>
-        </span>
-        <button
-          type="button"
-          class="turn-toolbar__btn reasoning-chain__copy"
-          :data-tt="copiedTurnKey === `r-${turn.turnOrdinal}` ? $t('chat.copied') : $t('chat.copy')"
-          :class="{ 'is-success': copiedTurnKey === `r-${turn.turnOrdinal}` }"
-          :aria-label="$t('chat.copy')"
-          @click.stop="copyTurnText(displayAssistantReasoning(turn), `r-${turn.turnOrdinal}`)"
-        >
-          <v-icon size="14">
-            {{ copiedTurnKey === `r-${turn.turnOrdinal}` ? 'mdi-check' : 'mdi-content-copy' }}
-          </v-icon>
-        </button>
-      </summary>
-      <div
-        class="reasoning-chain__body chat-rich-text"
-        v-html="renderReasoningMarkdownToHtml(displayAssistantReasoning(turn))"
-      />
-    </details>
+      :key="`reasoning-${turn.turnOrdinal}`"
+      :turn-ordinal="turn.turnOrdinal"
+      :reasoning-text="displayAssistantReasoning(turn)"
+      :copy-key="`r-${turn.turnOrdinal}`"
+      :session="session"
+    />
 
     <div
       class="turn-bubble turn-bubble--assistant position-relative"

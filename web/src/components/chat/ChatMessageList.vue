@@ -2,18 +2,16 @@
 import ChatTurnBlock from '@/components/chat/ChatTurnBlock.vue'
 import type { useChatSession } from '@/composables/useChatSession'
 import type { ChatScrollerHandle } from '@/composables/chat-session/use-chat-scroll'
-import type { ChatTurnItem } from '@/types/chat-turn'
 import {
-  computed,
   nextTick,
+  onBeforeUnmount,
   ref,
   toRefs,
   watch,
-  type ComponentPublicInstance,
 } from 'vue'
-import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
+import { Virtualizer, type VirtualizerHandle } from 'virtua/vue'
 
-const TURN_MIN_ITEM_SIZE_PX = 480
+const TURN_ITEM_SIZE_HINT_PX = 480
 
 const props = defineProps<{
   session: ReturnType<typeof useChatSession>
@@ -26,39 +24,50 @@ const {
   hasMoreBefore,
   loadingOlder,
   messagesLoading,
-  loadOlderMessages,
-  pendingSendTurnOrdinal,
-  regeneratingTurnOrdinal,
-  editingTurnOrdinal,
-  editingSide,
-  editDraft,
-  streamingText,
-  streamingReasoning,
 } = toRefs(props.session)
 
-const scrollerRef = ref<ComponentPublicInstance | null>(null)
+const scrollContainerRef = ref<HTMLElement | null>(null)
+const loadOlderHeadRef = ref<HTMLElement | null>(null)
+const virtualizerRef = ref<VirtualizerHandle | null>(null)
+const startMargin = ref(0)
 
-function asScrollerHandle(comp: ComponentPublicInstance | null): ChatScrollerHandle | null {
-  if (!comp) return null
-  const exposed = comp as ComponentPublicInstance & {
-    scrollToBottom?: () => void
-    scrollToItem?: (index: number) => void
-  }
-  if (typeof exposed.scrollToBottom !== 'function') return null
+let startMarginObserver: ResizeObserver | null = null
+
+function syncStartMargin() {
+  startMargin.value = loadOlderHeadRef.value?.offsetHeight ?? 0
+}
+
+function buildScrollerHandle(): ChatScrollerHandle | null {
+  const scrollEl = scrollContainerRef.value
+  const virtualizer = virtualizerRef.value
+  if (!scrollEl && !virtualizer) return null
+
   return {
-    scrollToBottom: () => exposed.scrollToBottom!(),
+    scrollToBottom: () => {
+      if (scrollEl) {
+        scrollEl.scrollTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
+        return
+      }
+      if (virtualizer) {
+        virtualizer.scrollTo(Math.max(0, virtualizer.scrollSize - virtualizer.viewportSize))
+      }
+    },
     scrollToItem: (index: number) => {
-      if (typeof exposed.scrollToItem !== 'function') return false
-      exposed.scrollToItem(index)
+      if (!virtualizer) return false
+      virtualizer.scrollToIndex(index)
       return true
     },
   }
 }
 
-const showScroller = computed(() => turns.value.length > 0)
+async function registerScroller() {
+  await nextTick()
+  chatScrollEl.value = scrollContainerRef.value
+  props.session.registerChatScroller(buildScrollerHandle())
+}
 
 watch(
-  showScroller,
+  () => turns.value.length > 0,
   (show) => {
     if (show) return
     chatScrollEl.value = null
@@ -67,35 +76,49 @@ watch(
 )
 
 watch(
-  scrollerRef,
-  async (comp) => {
-    await nextTick()
-    const el = comp?.$el
-    chatScrollEl.value = el instanceof HTMLElement ? el : null
-    props.session.registerChatScroller(asScrollerHandle(comp))
+  [virtualizerRef, scrollContainerRef],
+  () => {
+    void registerScroller()
   },
   { immediate: true },
 )
 
-function turnSizeDeps(turn: ChatTurnItem): unknown[] {
-  const deps: unknown[] = [
-    turn.user,
-    turn.receives.length,
-    turn.activeReceiveIndex,
-    ...turn.receives.map((r) => r.content),
-    ...turn.receives.map((r) => r.reasoning),
-  ]
-  if (pendingSendTurnOrdinal.value === turn.turnOrdinal) {
-    deps.push(streamingText.value, streamingReasoning.value)
-  }
-  if (regeneratingTurnOrdinal.value === turn.turnOrdinal) {
-    deps.push(streamingText.value, streamingReasoning.value)
-  }
-  if (editingTurnOrdinal.value === turn.turnOrdinal) {
-    deps.push(editingSide.value, editDraft.value)
-  }
-  return deps
-}
+watch(
+  loadOlderHeadRef,
+  (el, _prev, onCleanup) => {
+    startMarginObserver?.disconnect()
+    startMarginObserver = null
+    if (!el) {
+      startMargin.value = 0
+      return
+    }
+    syncStartMargin()
+    startMarginObserver = new ResizeObserver(syncStartMargin)
+    startMarginObserver.observe(el)
+    onCleanup(() => startMarginObserver?.disconnect())
+  },
+  { flush: 'post' },
+)
+
+watch([hasMoreBefore, loadingOlder], () => {
+  void nextTick(syncStartMargin)
+})
+
+watch(messagesLoading, async (loading) => {
+  if (loading) return
+  await nextTick()
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  })
+  await registerScroller()
+  void props.session.scrollChatToBottom()
+})
+
+onBeforeUnmount(() => {
+  startMarginObserver?.disconnect()
+  chatScrollEl.value = null
+  props.session.registerChatScroller(null)
+})
 
 function onLoadOlderClick() {
   void props.session.loadOlderMessages(true)
@@ -117,55 +140,54 @@ function onLoadOlderClick() {
       <span class="chat-messages-loading__text">{{ $t('chat.messagesLoading') }}</span>
     </div>
 
-    <DynamicScroller
-      v-else-if="showScroller"
-      ref="scrollerRef"
-      class="chat-scroller"
-      :items="turns"
-      key-field="turnOrdinal"
-      :min-item-size="TURN_MIN_ITEM_SIZE_PX"
-      :shift="true"
-      :buffer="400"
+    <div
+      v-else-if="turns.length > 0"
+      ref="scrollContainerRef"
+      class="chat-scroller chat-scroller--virtua"
     >
-      <template #before>
-        <div
-          v-if="hasMoreBefore || loadingOlder"
-          class="chat-load-older"
-          :class="{ 'chat-load-older--busy': loadingOlder }"
+      <div
+        v-if="hasMoreBefore || loadingOlder"
+        ref="loadOlderHeadRef"
+        class="chat-load-older"
+        :class="{ 'chat-load-older--busy': loadingOlder }"
+      >
+        <v-progress-circular
+          v-if="loadingOlder"
+          indeterminate
+          size="20"
+          width="2"
+          color="primary"
+        />
+        <button
+          v-else
+          type="button"
+          class="chat-load-older__btn"
+          @click="onLoadOlderClick"
         >
-          <v-progress-circular
-            v-if="loadingOlder"
-            indeterminate
-            size="20"
-            width="2"
-            color="primary"
-          />
-          <button
-            v-else
-            type="button"
-            class="chat-load-older__btn"
-            @click="onLoadOlderClick"
-          >
-            {{ $t('chat.loadOlderTurns') }}
-          </button>
-        </div>
-      </template>
+          {{ $t('chat.loadOlderTurns') }}
+        </button>
+      </div>
 
-      <template #default="{ item, index, active }">
-        <DynamicScrollerItem
-          :item="item"
-          :active="active"
-          :index="index"
-          :size-dependencies="turnSizeDeps(item)"
-        >
+      <Virtualizer
+        ref="virtualizerRef"
+        :data="turns"
+        :shift="true"
+        :buffer-size="1500"
+        :item-size="TURN_ITEM_SIZE_HINT_PX"
+        :start-margin="startMargin"
+        :scroll-ref="scrollContainerRef ?? undefined"
+        class="chat-virtua-list"
+      >
+        <template #default="{ item, index }">
           <ChatTurnBlock
+            :key="item.turnOrdinal"
             :turn="item"
             :list-index="index"
             :session="session"
           />
-        </DynamicScrollerItem>
-      </template>
-    </DynamicScroller>
+        </template>
+      </Virtualizer>
+    </div>
 
     <div
       v-else-if="!errorText"

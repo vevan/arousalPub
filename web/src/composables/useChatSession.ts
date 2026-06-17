@@ -21,6 +21,7 @@ import { useAssemblePreview } from './chat-session/use-assemble-preview.js'
 import { useChatDisplay } from './chat-session/use-chat-display.js'
 import { useChatOutbound } from './chat-session/use-chat-outbound.js'
 import { useChatScroll } from './chat-session/use-chat-scroll.js'
+import { useReasoningChainOpen } from './chat-session/use-reasoning-chain-open.js'
 import { useComposerDraft } from './chat-session/use-composer-draft.js'
 import { useComposerKeydown } from './chat-session/use-composer-keydown.js'
 import { useConversationWriteLock } from './chat-session/use-conversation-write-lock.js'
@@ -76,9 +77,22 @@ export function useChatSession(props: ChatSessionProps) {
   const { startGenerationTimer, stopGenerationTimer, generationElapsedMs, dispose: disposeTimer } =
     timer
 
-  const scroll = useChatScroll()
-  const { chatScrollEl, chatScroller, registerChatScroller, scrollChatToBottom, onGlobalKeyR } =
-    scroll
+  const reasoningOpen = useReasoningChainOpen()
+  const { isReasoningChainOpen, clearReasoningChainOpen } = reasoningOpen
+
+  const scroll = useChatScroll({
+    toggleReasoningChain: reasoningOpen.toggleReasoningChain,
+    getTurnIndex: (turnOrdinal) =>
+      turns.value.findIndex((t) => t.turnOrdinal === turnOrdinal),
+  })
+  const {
+    chatScrollEl,
+    chatScroller,
+    registerChatScroller,
+    scrollChatToBottom,
+    onGlobalKeyR,
+    toggleReasoningChain,
+  } = scroll
 
   const composerDraft = useComposerDraft({
     getConversationId: () => props.conversationId,
@@ -351,6 +365,7 @@ export function useChatSession(props: ChatSessionProps) {
       composerDraft.switchConversationDraft(oldId, newId ?? '')
       turns.value = []
       clearPendingSend()
+      clearReasoningChainOpen()
       errorText.value = ''
       turnEditDelete.resetState()
       void regexDisplay.ensureRulesLoaded()
@@ -419,6 +434,8 @@ export function useChatSession(props: ChatSessionProps) {
     assistantText,
     assistantReasoning,
     reasoningCharsCount,
+    isReasoningChainOpen,
+    toggleReasoningChain,
     assistantModelName,
     send,
     onComposerKeydown,

@@ -29,6 +29,16 @@
   padding   : 1rem 0;
 }
 
+.chat-scroller--virtua {
+  overflow-y      : auto;
+  overflow-anchor : none;
+  scrollbar-gutter: stable;
+}
+
+.chat-virtua-list {
+  width: 100%;
+}
+
 .chat-load-older--busy {
   min-height: 2.75rem;
 }
@@ -782,15 +792,25 @@
   line-height: 1;
 }
 
-/* ========== 可折叠思维链 · 对齐 demo-v3（hair + accent-soft 左条 + 极淡赤土底） ========== */
+/* ========== 可折叠思维链 · demo-v3 视觉 ========== */
 .reasoning-chain {
-  /* 原型：0.0625rem hair + 0.125rem 压暗主色实线左边（非半透明 primary） */
   border       : 0.0625rem solid rgba(var(--v-theme-on-surface), 0.06);
   border-left  : 0.125rem solid rgb(var(--v-theme-primary-darken-1));
   border-radius: 0.25rem var(--radius) var(--radius) 0.25rem;
   background   : rgba(var(--v-theme-primary), 0.03);
-  /* overflow  : hidden; */
   margin-bottom: 0.125rem;
+}
+
+.reasoning-chain__head {
+  display       : flex;
+  align-items   : center;
+  gap           : 0.25rem;
+  background    : rgba(var(--v-theme-primary), 0.04);
+  transition    : background 0.12s;
+}
+
+.reasoning-chain__head:hover {
+  background: rgba(var(--v-theme-primary), 0.08);
 }
 
 .reasoning-chain__summary {
@@ -798,28 +818,19 @@
   display       : flex;
   align-items   : center;
   gap           : 0.5rem;
-  padding       : 0.4375rem 0.75rem;
+  flex          : 1;
+  min-width     : 0;
+  padding       : 0.4375rem 0 0.4375rem 0.75rem;
   cursor        : pointer;
   user-select   : none;
   font          : 500 0.6875rem var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color         : rgb(var(--v-theme-primary));
-  /* 原型 summary：rgba(217,96,46,0.04) */
-  background    : rgba(var(--v-theme-primary), 0.04);
-  transition    : background 0.12s;
-  position      : sticky;
-  top           : 0;
-  z-index       : 10;
-}
-
-.reasoning-chain__summary::-webkit-details-marker {
-  display: none;
 }
 
 .reasoning-chain__summary:hover {
-  /* 原型 hover：0.08 */
-  background: rgba(var(--v-theme-primary), 0.08);
+  background: transparent;
 }
 
 .reasoning-chain__caret {
@@ -839,7 +850,7 @@
   display: block;
 }
 
-.reasoning-chain[open] .reasoning-chain__caret {
+.reasoning-chain.is-open .reasoning-chain__caret {
   transform: rotate(90deg);
 }
 
@@ -887,11 +898,11 @@
   line-height  : 1;
 }
 
-.reasoning-chain:not([open]) .reasoning-chain__hint-collapse {
+.reasoning-chain:not(.is-open) .reasoning-chain__hint-collapse {
   display: none;
 }
 
-.reasoning-chain[open] .reasoning-chain__hint-expand {
+.reasoning-chain.is-open .reasoning-chain__hint-expand {
   display: none;
 }
 
@@ -899,6 +910,7 @@
   flex-shrink: 0;
   width      : 1.5rem;
   height     : 1.5rem;
+  margin-right: 0.5rem;
 }
 
 .reasoning-chain__body {

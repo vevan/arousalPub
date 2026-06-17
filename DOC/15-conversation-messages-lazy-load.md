@@ -13,7 +13,7 @@
 | `GET .../messages?before=ordinal&limit=N` | 同上 |
 | Web 打开对话默认 `tail=30` | `web/src/composables/chat-session/use-turn-list.ts` |
 | 上滚距顶 ≤120px 自动追加；手动「加载更早的对话」按钮 | `use-turn-list.ts` · `ChatMessageList.vue` |
-| 虚拟滚动（`vue-virtual-scroller` · `DynamicScroller`） | `ChatMessageList.vue` |
+| 虚拟滚动（`virtua` · `Virtualizer`） | `ChatMessageList.vue` |
 | prepend 锚点：`shift` + `scrollToItem`，失败时 `scrollHeight` 差值回退 | `use-turn-list.ts` |
 | 初次加载 spinner · 失败提示（composer `errorText`） | `ChatMessageList.vue` · i18n |
 | assemble / memory 热路径用尾部窗口 | `memory-pipeline.ts` |
@@ -21,9 +21,9 @@
 
 ## 虚拟滚动要点
 
-- **组件**：`DynamicScroller` + `DynamicScrollerItem`，`key-field="turnOrdinal"`，`min-item-size=480`，`shift=true`。
-- **高度跟踪**：`size-dependencies` 含 turn 内容、pending/regenerate 流式、编辑态 draft。
-- **滚底**：注册 scroller 实例，调用 `scrollToBottom()`；流式仅 `onlyIfNearBottom` 贴底。
+- **组件**：`virtua` `Virtualizer`，`item-size` hint 480，`shift` 仅在可 prepend 时开启，`buffer-size=800`。
+- **高度跟踪**：virtua 内置 `ResizeObserver` 自动量高（流式、编辑、思维链展开无需手工 `size-dependencies`）。
+- **滚底**：注册 scroller 实例 + DOM `scrollHeight` 重试；流式仅 `onlyIfNearBottom` 贴底。
 - **加载更早**：自动加载有 500ms 冷却 + `autoLoadArmed`；**按钮不受冷却**，作为兜底。
 
 ## 约定

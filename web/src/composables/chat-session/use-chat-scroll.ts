@@ -16,8 +16,11 @@ const LAYOUT_STABLE_MAX_MS = 520
 /** 连续多少帧 scrollHeight 不变视为布局稳定 */
 const LAYOUT_STABLE_FRAMES = 3
 
-function assistantTurnEl(turnOrdinal: number): HTMLElement | null {
-  const el = document.querySelector(
+function assistantTurnEl(
+  scrollRoot: HTMLElement | null,
+  turnOrdinal: number,
+): HTMLElement | null {
+  const el = scrollRoot?.querySelector(
     `.turn--assistant[data-turn-ordinal="${turnOrdinal}"]`,
   )
   return el instanceof HTMLElement ? el : null
@@ -83,7 +86,7 @@ export function useChatScroll(reasoning?: ChatScrollReasoningOpts) {
 
   function computeAssistantScrollTop(turnOrdinal: number): number | null {
     const scrollEl = chatScrollEl.value
-    const assistant = assistantTurnEl(turnOrdinal)
+    const assistant = assistantTurnEl(scrollEl, turnOrdinal)
     if (!scrollEl || !assistant) return null
 
     return (
@@ -115,7 +118,7 @@ export function useChatScroll(reasoning?: ChatScrollReasoningOpts) {
       await nextTick()
       await waitFrames(1)
 
-      if (!assistantTurnEl(turnOrdinal)) {
+      if (!assistantTurnEl(scrollEl, turnOrdinal)) {
         if (!scrollToItemUsed && index >= 0 && chatScroller.value?.scrollToItem(index)) {
           scrollToItemUsed = true
           stableFrames = 0
@@ -137,7 +140,7 @@ export function useChatScroll(reasoning?: ChatScrollReasoningOpts) {
       }
     }
 
-    return assistantTurnEl(turnOrdinal) != null
+    return assistantTurnEl(scrollEl, turnOrdinal) != null
   }
 
   async function scrollAssistantTurnToTopAfterLayout(turnOrdinal: number): Promise<void> {
@@ -152,7 +155,8 @@ export function useChatScroll(reasoning?: ChatScrollReasoningOpts) {
   }
 
   function reasoningOrdinalFromHovered(): number | null {
-    const hovered = document.querySelector(
+    const scrollEl = chatScrollEl.value
+    const hovered = scrollEl?.querySelector(
       '.turn--assistant:hover, .turn--assistant.is-hover',
     ) as HTMLElement | null
     const root = hovered?.querySelector(
@@ -164,9 +168,12 @@ export function useChatScroll(reasoning?: ChatScrollReasoningOpts) {
   }
 
   function latestReasoningOrdinalInDom(): number | null {
+    const scrollEl = chatScrollEl.value
+    if (!scrollEl) return null
+
     let best = -1
-    for (const el of document.querySelectorAll(
-      '.chat-body .reasoning-chain[data-turn-ordinal]',
+    for (const el of scrollEl.querySelectorAll(
+      '.reasoning-chain[data-turn-ordinal]',
     )) {
       if (!(el instanceof HTMLElement)) continue
       const ord = Number(el.dataset.turnOrdinal)

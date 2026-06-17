@@ -12,6 +12,7 @@ import {
 import { Virtualizer, type VirtualizerHandle } from 'virtua/vue'
 
 const TURN_ITEM_SIZE_HINT_PX = 480
+const VIRTUA_BUFFER_SIZE_PX = 800
 
 const props = defineProps<{
   session: ReturnType<typeof useChatSession>
@@ -38,21 +39,22 @@ function syncStartMargin() {
 }
 
 function buildScrollerHandle(): ChatScrollerHandle | null {
-  const scrollEl = scrollContainerRef.value
-  const virtualizer = virtualizerRef.value
-  if (!scrollEl && !virtualizer) return null
+  if (!scrollContainerRef.value && !virtualizerRef.value) return null
 
   return {
     scrollToBottom: () => {
+      const scrollEl = scrollContainerRef.value
       if (scrollEl) {
         scrollEl.scrollTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
         return
       }
+      const virtualizer = virtualizerRef.value
       if (virtualizer) {
         virtualizer.scrollTo(Math.max(0, virtualizer.scrollSize - virtualizer.viewportSize))
       }
     },
     scrollToItem: (index: number) => {
+      const virtualizer = virtualizerRef.value
       if (!virtualizer) return false
       virtualizer.scrollToIndex(index)
       return true
@@ -102,16 +104,6 @@ watch(
 
 watch([hasMoreBefore, loadingOlder], () => {
   void nextTick(syncStartMargin)
-})
-
-watch(messagesLoading, async (loading) => {
-  if (loading) return
-  await nextTick()
-  await new Promise<void>((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-  })
-  await registerScroller()
-  void props.session.scrollChatToBottom()
 })
 
 onBeforeUnmount(() => {
@@ -171,8 +163,8 @@ function onLoadOlderClick() {
       <Virtualizer
         ref="virtualizerRef"
         :data="turns"
-        :shift="true"
-        :buffer-size="1500"
+        :shift="hasMoreBefore || loadingOlder"
+        :buffer-size="VIRTUA_BUFFER_SIZE_PX"
         :item-size="TURN_ITEM_SIZE_HINT_PX"
         :start-margin="startMargin"
         :scroll-ref="scrollContainerRef ?? undefined"

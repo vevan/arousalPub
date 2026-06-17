@@ -90,6 +90,7 @@ export function useChatSession(props: ChatSessionProps) {
     chatScroller,
     registerChatScroller,
     scrollChatToBottom,
+    isNearBottom,
     onGlobalKeyR,
     toggleReasoningChain,
   } = scroll
@@ -392,6 +393,8 @@ export function useChatSession(props: ChatSessionProps) {
   return reactive({
     chatScrollEl,
     registerChatScroller,
+    scrollChatToBottom,
+    isNearBottom,
     turns,
     userInput,
     streamingText,

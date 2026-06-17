@@ -801,36 +801,49 @@
   margin-bottom: 0.125rem;
 }
 
-.reasoning-chain__head {
-  display       : flex;
-  align-items   : center;
-  gap           : 0.25rem;
-  background    : rgba(var(--v-theme-primary), 0.04);
-  transition    : background 0.12s;
-}
-
-.reasoning-chain__head:hover {
-  background: rgba(var(--v-theme-primary), 0.08);
-}
-
-.reasoning-chain__summary {
+summary.reasoning-chain__summary {
   list-style    : none;
   display       : flex;
   align-items   : center;
   gap           : 0.5rem;
-  flex          : 1;
-  min-width     : 0;
-  padding       : 0.4375rem 0 0.4375rem 0.75rem;
+  width         : 100%;
+  padding       : 0.4375rem 0.75rem;
   cursor        : pointer;
   user-select   : none;
   font          : 500 0.6875rem var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color         : rgb(var(--v-theme-primary));
+  position      : sticky;
+  top           : -1.5em;
+  container-type: scroll-state;
+  background    : none;
+  overflow      : hidden;
 }
 
-.reasoning-chain__summary:hover {
-  background: transparent;
+summary.reasoning-chain__summary > span {
+  z-index: 10;
+}
+
+summary.reasoning-chain__summary::before {
+  content      : '';
+  position     : absolute;
+  display      : block;
+  inset        : 0;
+  border-radius: 0.5rem;
+  background   : rgba(var(--v-theme-primary), 0.03);
+  transition   : 0.1s all;
+  z-index      : 0;
+}
+
+@container scroll-state(stuck: top) {
+  summary.reasoning-chain__summary::before {
+    background: color-mix(in srgb, rgb(var(--v-theme-primary)) 35%, black);
+  }
+}
+
+summary.reasoning-chain__summary::-webkit-details-marker {
+  display: none;
 }
 
 .reasoning-chain__caret {
@@ -850,7 +863,7 @@
   display: block;
 }
 
-.reasoning-chain.is-open .reasoning-chain__caret {
+.reasoning-chain[open] .reasoning-chain__caret {
   transform: rotate(90deg);
 }
 
@@ -898,11 +911,11 @@
   line-height  : 1;
 }
 
-.reasoning-chain:not(.is-open) .reasoning-chain__hint-collapse {
+.reasoning-chain:not([open]) .reasoning-chain__hint-collapse {
   display: none;
 }
 
-.reasoning-chain.is-open .reasoning-chain__hint-expand {
+.reasoning-chain[open] .reasoning-chain__hint-expand {
   display: none;
 }
 
@@ -910,7 +923,7 @@
   flex-shrink: 0;
   width      : 1.5rem;
   height     : 1.5rem;
-  margin-right: 0.5rem;
+  margin-left: auto;
 }
 
 .reasoning-chain__body {
@@ -1266,6 +1279,10 @@
   scrollbar-width : thin;
 }
 
+.audit-card__scroll .v-window {
+  overflow: visible;
+}
+
 .audit-card .v-card-actions {
   flex-shrink: 0;
 }
@@ -1324,7 +1341,6 @@
   border       : 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-left  : 3px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 0.5rem;
-  overflow     : hidden;
 }
 
 .audit-msg--system {
@@ -1348,8 +1364,53 @@
   align-items     : center;
   gap             : 0.5rem;
   padding         : 0.4rem 0.75rem;
-  background      : rgba(var(--v-theme-on-surface), 0.04);
   border-bottom   : 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  position        : sticky;
+  top             : 0em;
+  container-type  : scroll-state;
+  background      : none;
+  overflow        : hidden;
+}
+
+.audit-msg__head > * {
+  z-index: 10;
+}
+
+.audit-msg__head::before {
+  content      : '';
+  position     : absolute;
+  display      : block;
+  inset        : 0;
+  border-radius: 0.5rem 0.5rem 0 0;
+  background   : rgba(var(--v-theme-on-surface), 0.04);
+  transition   : 0.1s all;
+  z-index      : 0;
+}
+
+.audit-msg--system .audit-msg__head::before {
+  background: rgba(var(--v-theme-primary), 0.03);
+}
+
+.audit-msg--user .audit-msg__head::before {
+  background: rgba(var(--v-theme-secondary), 0.03);
+}
+
+.audit-msg--assistant .audit-msg__head::before {
+  background: rgba(var(--v-theme-success), 0.03);
+}
+
+@container scroll-state(stuck: top) {
+  .audit-msg--system .audit-msg__head::before {
+    background: color-mix(in srgb, rgb(var(--v-theme-primary)) 35%, black);
+  }
+
+  .audit-msg--user .audit-msg__head::before {
+    background: color-mix(in srgb, rgb(var(--v-theme-secondary)) 35%, black);
+  }
+
+  .audit-msg--assistant .audit-msg__head::before {
+    background: color-mix(in srgb, rgb(var(--v-theme-success)) 35%, black);
+  }
 }
 
 .audit-msg__index {

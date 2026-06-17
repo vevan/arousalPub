@@ -1,2 +1,12 @@
 # Shell scripts must use LF for Linux containers (avoid exec … no such file)
 *.sh text eol=lf
+
+# Plugin text sources / bundles: LF so esbuild embed matches Linux CI dist
+*.hbs text eol=lf
+*.css text eol=lf
+plugins/**/*.ts text eol=lf
+plugins/**/*.mjs text eol=lf
+plugins/**/*.json text eol=lf
+plugins/**/bundles/** text eol=lf
+plugins/**/locales/** text eol=lf
+plugins/**/src/** text eol=lf

@@ -1,15 +1,13 @@
 import * as esbuild from 'esbuild'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  normalizeTextEolPlugin,
+  PLUGIN_JSON_LOADER,
+} from '../../scripts/plugin-esbuild-shared.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.join(here, '../..')
-
-const loaders = {
-  '.json': 'json',
-  '.hbs': 'text',
-  '.css': 'text',
-}
 
 async function build() {
   const shared = {
@@ -17,7 +15,8 @@ async function build() {
     format: 'esm',
     target: 'es2022',
     logLevel: 'info',
-    loader: loaders,
+    loader: PLUGIN_JSON_LOADER,
+    plugins: [normalizeTextEolPlugin()],
     absWorkingDir: repoRoot,
   }
 

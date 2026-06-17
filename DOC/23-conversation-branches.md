@@ -283,7 +283,7 @@ enumerateAllChunkChains(conversationId)
 | 项 | 说明 |
 |----|------|
 | `PATCH .../conversations/:id` | 支持 `activeBranchPath` 更新（字段已存在于 `ConversationIndex`） |
-| 消息树 UI | `DOC/04`「消息树 / 分支 UI」 |
+| 消息树 UI | `DOC/04` P0「消息树 / 分支 UI」 |
 | 分支切换 | 切换后重载 messages、memory 召回自动随 `activeBranchPath` 过滤（assemble 已接） |
 | Lazy load | 分支分页读：`DOC/15` §0.7 — 在 `readTurnsTail` 分支化后实施 S2–S4 |
 

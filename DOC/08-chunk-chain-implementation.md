@@ -20,7 +20,7 @@
 ### 1.2 后续迭代（未做）
 
 - 分支子目录 `branch*/` 与 `meta.links.branches` 的产品 UI与写入路径 — **完整参考见 `DOC/23-conversation-branches.md`**（memory 枚举 / 召回过滤等服务端原语已落地）
-- `GET .../messages` 分页 / 按 chunk 懒加载 — **方案见 `DOC/15-conversation-messages-lazy-load.md`（P0）**
+- `GET .../messages` 分页 / 按 chunk 懒加载 — **`DOC/15-conversation-messages-lazy-load.md`（✅）**
 - 跨 chunk 的「删中间轮」后自动合并块（删轮仍只动 tail；**删空 tail 链式回退已实现**，见 §5.3）
 
 ---

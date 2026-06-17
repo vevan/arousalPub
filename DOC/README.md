@@ -40,7 +40,7 @@
 | [`29`](29-cst-macros-compatibility.md) | ✅ D4 | **CST 宏引擎**（路线图 D0–D4 完成） |
 | [`27`](27-embedded-character-book.md) | 定案 P2 | 角色卡内嵌 `character_book` 组装与 UI |
 | [`28`](28-authors-note-layers.md) | ✅ Phase 1 | 作者注：default seed / 会话 / 角色 AN（Phase 2） |
-| [`15`](15-conversation-messages-lazy-load.md) | 部分 | 消息 UI 懒加载（服务端原语 ✅） |
+| [`15`](15-conversation-messages-lazy-load.md) | ✅ | 消息 UI 懒加载 + virtua 虚拟列表 |
 | [`17`](17-admin-console.md) | ✅ | 本机运维台、DEK 轮换 |
 | [`18`](18-plugin-host-developer-api.md) | ✅ | 插件 API 表 |
 | [`20`](20-user-file-library.md) | 定案 | 用户文件库 / charFile（未实现） |

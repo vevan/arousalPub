@@ -1,6 +1,6 @@
 # 安全部署与硬化 — 定案与实现参考
 
-> **状态（2026-06）**：**已实现**（§2–§10；messages 分页仍待 `DOC/15`）。  
+> **状态（2026-06）**：**已实现**（§2–§10；messages 分页 UI 见 `DOC/15` ✅）。  
 > **读者**：部署者、后续改 auth / 出站 / 插件的开发者。  
 > **关联**：`DOC/17`（运维台 loopback）、**§15 API Key**、`DOC/24`（审计与 `customParams`）、Codex 2026-06 安全审计。
 
@@ -144,6 +144,19 @@ UI 文案：仅补充网关扩展参数（如 `stop`），不可改 `messages`/`
 | `public-only` | 拒绝 loopback、RFC1918、链路本地、`169.254.169.254`、**纯数字主机名（十进制 IP）** 等；仅 `http:`/`https:` |
 
 用于：`resolveChatCredentials`、`POST /api/models`、embedding、`plugin-complete` 等一切服务端 `fetch(baseUrl)`。
+
+### 8.1 Docker / VPS 与 Embedding、聊天 API
+
+出站请求由 **Node 服务端**发起（非浏览器直连）。配置里的 `baseUrl` 对服务端进程可见的地址有效：
+
+| 场景 | `127.0.0.1` 是否可用 | 建议 |
+|------|----------------------|------|
+| 本机直接跑 server | ✅ | 连本机 Ollama 等 |
+| Docker 容器内跑 server，推理在**宿主机** | ❌（容器内 127 指向容器自身） | `host.docker.internal`（Linux 需 `extra_hosts: host-gateway`）、docker 网桥网关 IP，或 `network_mode: host` |
+| Docker 在 **VPS**，推理在**你家电脑** | ❌ | Tailscale / 内网穿透等，填 PC 可达地址；勿写 127.0.0.1 |
+| **公网 API**（OpenRouter、NanoGPT 等 HTTPS） | ✅ | 与 Docker 无关；`upstreamUrlPolicy: public-only` 亦适用 |
+
+`upstreamUrlPolicy: open`（默认）允许容器访问宿主机 loopback（经正确主机名）；`public-only` 会拒绝 loopback/私网，适合多用户暴露部署，此时应使用公网 HTTPS 上游。
 
 **重定向**：`public-only` 下 `fetchWithTimeout` 改用手动跟随（最多 5 跳），每一跳目标 URL 均重新校验；私网/非法目标返回 `502`（`upstream_url_*`）。`open` 策略仍使用原生 `fetch` 默认重定向。
 

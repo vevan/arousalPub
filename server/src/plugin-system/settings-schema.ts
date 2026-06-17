@@ -315,6 +315,17 @@ function parseStringArrayValue(value: unknown, fallback: unknown): string[] {
     .map((x) => x.trim())
 }
 
+/** manifest 显式 `maxLength: 0` 表示不按长度截断 */
+function clipPluginTextValue(
+  text: string,
+  field: { type: string; maxLength?: number },
+  defaultMax: number,
+): string {
+  if (field.maxLength === 0) return text
+  const maxLen = field.maxLength ?? defaultMax
+  return text.length > maxLen ? text.slice(0, maxLen) : text
+}
+
 function coerceField(
   field: PluginSettingsFieldSchema,
   value: unknown,
@@ -364,8 +375,11 @@ function coerceField(
     case 'lorebook': {
       const s = typeof value === 'string' ? value : value != null ? String(value) : ''
       const trimmed = field.type === 'text' ? s : s.trim()
-      const maxLen = field.maxLength ?? (field.type === 'text' ? 8000 : 500)
-      const clipped = trimmed.length > maxLen ? trimmed.slice(0, maxLen) : trimmed
+      const clipped = clipPluginTextValue(
+        trimmed,
+        field,
+        field.type === 'text' ? 8000 : 500,
+      )
       if (
         !clipped &&
         !field.required &&
@@ -450,8 +464,11 @@ function coerceItemField(
     case 'text': {
       const s = typeof value === 'string' ? value : value != null ? String(value) : ''
       const trimmed = field.type === 'text' ? s : s.trim()
-      const maxLen = field.maxLength ?? (field.type === 'text' ? 8000 : 200)
-      const clipped = trimmed.length > maxLen ? trimmed.slice(0, maxLen) : trimmed
+      const clipped = clipPluginTextValue(
+        trimmed,
+        field,
+        field.type === 'text' ? 8000 : 200,
+      )
       if (!clipped && typeof fallback === 'string' && fallback.trim()) {
         return fallback
       }

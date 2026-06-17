@@ -56,7 +56,8 @@
             "labelKey": "bundleItemSystemPromptLabel",
             "descriptionKey": "bundleItemSystemPromptDesc",
             "widget": "promptTemplate",
-            "defaultKey": "systemPromptTemplateDefault"
+            "defaultKey": "systemPromptTemplateDefault",
+            "maxLength": 0
           },
           {
             "key": "separateSystemPromptTemplate",
@@ -64,28 +65,32 @@
             "labelKey": "bundleItemSeparateSystemPromptLabel",
             "descriptionKey": "bundleItemSeparateSystemPromptDesc",
             "widget": "promptTemplate",
-            "defaultKey": "separateSystemPromptTemplateDefault"
+            "defaultKey": "separateSystemPromptTemplateDefault",
+            "maxLength": 0
           },
           {
             "key": "sampleStateJson",
             "type": "text",
             "labelKey": "bundleItemSampleStateLabel",
             "descriptionKey": "bundleItemSampleStateDesc",
-            "defaultKey": "bundleSampleStateJsonDefault"
+            "defaultKey": "bundleSampleStateJsonDefault",
+            "maxLength": 0
           },
           {
             "key": "template",
             "type": "text",
             "labelKey": "bundleItemTemplateLabel",
             "descriptionKey": "bundleItemTemplateDesc",
-            "defaultKey": "bundleTemplateDefault"
+            "defaultKey": "bundleTemplateDefault",
+            "maxLength": 0
           },
           {
             "key": "stylesheet",
             "type": "text",
             "labelKey": "bundleItemStylesheetLabel",
             "descriptionKey": "bundleItemStylesheetDesc",
-            "defaultKey": "bundleStylesheetDefault"
+            "defaultKey": "bundleStylesheetDefault",
+            "maxLength": 0
           }
         ]
       }

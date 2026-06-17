@@ -250,7 +250,10 @@ function commitGroupDrafts(groupId?: string): void {
   if (Object.keys(patch).length > 0) store.updateGroup(id, patch)
 }
 function syncGroupDrafts(): void {
-  const g = currentGroup.value
+  const id = activeGroupId.value
+  const g = id
+    ? (activeGroups.value.find((x) => x.id === id) ?? null)
+    : null
   if (!g) {
     groupNameDraft.value = ''
     groupDescDraft.value = ''

@@ -376,10 +376,18 @@ export const usePromptsStore = defineStore('prompts', () => {
     }
   }
 
+  function markPresetBodyPersisted(p: PromptPreset): void {
+    lastPersistedBodies[p.id] = JSON.stringify(p)
+  }
+
   function setPresetBody(p: PromptPreset) {
     syncIndexEntryFromBody(p)
     presetBodies.value = { ...presetBodies.value, [p.id]: p }
-    lastPersistedBodies[p.id] = JSON.stringify(p)
+  }
+
+  function setPresetBodyFromServer(p: PromptPreset) {
+    setPresetBody(p)
+    markPresetBodyPersisted(p)
   }
 
   /** ====== 服务端 IO ====== */
@@ -515,6 +523,9 @@ export const usePromptsStore = defineStore('prompts', () => {
           indexEntries.value = fromServer.presets
           activePresetId.value = fromServer.activePresetId
           presetBodies.value = {}
+          for (const k of Object.keys(lastPersistedBodies)) {
+            delete lastPersistedBodies[k]
+          }
           loaded.value = true
           return
         }
@@ -554,7 +565,7 @@ export const usePromptsStore = defineStore('prompts', () => {
           }
           const raw: unknown = await res.json()
           const p = normalizePresetPayload(raw)
-          if (p) setPresetBody(p)
+          if (p) setPresetBodyFromServer(p)
         } finally {
           presetDetailLoading.value = false
           loadPresetInflight.delete(cacheKey)

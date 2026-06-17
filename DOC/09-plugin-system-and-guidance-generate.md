@@ -192,7 +192,7 @@ data/
 ### 7.1 `guidance-generate`（指导生成）
 
 - **UI**：composer + 最后 user turn 弹框（用户文 + 指导文）。
-- **Prompt**：指导 append 到 **messages 末尾** hidden system；前缀可配置 **`settings.systemPrefix`**（多行 text）。
+- **Prompt**：指导以 hidden system 插在**最后一条 user 消息之后**（非 messages 末尾）；前缀可配置 **`settings.systemPrefix`**（多行 text）。
 - **落盘**：`turn.plugins[].payload.guidanceText`。
 
 ### 7.2 `reply-complete-sound`（完成提示音）

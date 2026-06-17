@@ -76,7 +76,7 @@ const auth = useAuthStore()
 const localeStore = useLocaleStore()
 const { preference } = storeToRefs(localeStore)
 const prefStore = usePreferencesStore()
-const { markEmbeddingApiKeyDirty } = prefStore
+const { markEmbeddingApiKeyDirty, flushEmbeddingToServer } = prefStore
 const apiKeysStore = useApiKeysStore()
 const regexRulesStore = useRegexRulesStore()
 const EMBED_KEY_DIRECT = '__direct__'
@@ -982,6 +982,7 @@ onMounted(() => {
               variant="outlined"
               hide-details="auto"
               class="mb-2"
+              @blur="void flushEmbeddingToServer()"
             />
             <v-select
               v-model="embeddingApiKeySelectValue"
@@ -1007,6 +1008,7 @@ onMounted(() => {
                 ? '••••••'
                 : undefined"
               @update:model-value="markEmbeddingApiKeyDirty()"
+              @blur="void flushEmbeddingToServer()"
             />
             <v-text-field
               v-model="embeddingModel"
@@ -1017,6 +1019,7 @@ onMounted(() => {
               variant="outlined"
               hide-details="auto"
               class="mb-2"
+              @blur="void flushEmbeddingToServer()"
             />
             <v-text-field
               v-model="embeddingDimensionsEditable"

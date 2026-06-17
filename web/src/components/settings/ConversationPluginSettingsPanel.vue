@@ -44,6 +44,8 @@ const plugins = ref<PluginManageEntry[]>([])
 const globalModels = ref<Record<string, Record<string, unknown>>>({})
 const selectedPluginId = ref<string | null>(null)
 const saveTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const lastSyncedModels = new Map<string, string>()
+const SAVE_BATCH_MS = 150
 
 const conversationPlugins = computed(() =>
   plugins.value.filter((p) => p.enabled && p.hasConversationSettings),
@@ -89,6 +91,10 @@ async function load() {
       nextGlobal[p.id] = { ...(globalEntries[i] ?? {}) }
     })
     globalModels.value = nextGlobal
+    for (const p of active) {
+      const model = convModels.value[p.id]
+      if (model) lastSyncedModels.set(p.id, JSON.stringify(model))
+    }
   } catch (e) {
     emit(
       'error',
@@ -135,7 +141,7 @@ function scheduleSave(plugin: PluginManageEntry) {
     setTimeout(() => {
       saveTimers.delete(plugin.id)
       void persistPlugin(plugin)
-    }, 400),
+    }, SAVE_BATCH_MS),
   )
 }
 
@@ -155,6 +161,8 @@ async function persistPlugin(plugin: PluginManageEntry) {
   }
   const patch = buildPatch(plugin, model)
   if (Object.keys(patch).length === 0) return
+  const modelSnapshot = JSON.stringify(model)
+  if (modelSnapshot === lastSyncedModels.get(plugin.id)) return
   emitSaving(true)
   try {
     await patchConversationPluginSettings(
@@ -162,6 +170,7 @@ async function persistPlugin(plugin: PluginManageEntry) {
       plugin.id,
       patch,
     )
+    lastSyncedModels.set(plugin.id, modelSnapshot)
   } catch (e) {
     emit(
       'error',
@@ -294,6 +303,7 @@ defineExpose({ reload: load, backToList })
 
         <PluginSchemaForm
           v-else-if="convModels[selectedPlugin.id]"
+          defer-text-commit
           :plugin-id="selectedPlugin.id"
           :fields="selectedPlugin.conversationSettingsSchema?.fields ?? []"
           :model-value="convModels[selectedPlugin.id]!"

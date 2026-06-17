@@ -19,7 +19,10 @@ import { storeToRefs } from 'pinia'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const SAVE_DEBOUNCE_MS = 400
+const SAVE_DEBOUNCE_MS = 150
+
+let lastChatBindingJson = ''
+let lastEmbeddingPatchJson = ''
 
 const props = defineProps<{
   chatUseGlobal: boolean
@@ -216,6 +219,8 @@ function syncFromProps() {
       props.globalEmbeddingDimensions ??
       ''
   }
+  lastChatBindingJson = ''
+  lastEmbeddingPatchJson = ''
 }
 
 watch(
@@ -265,6 +270,9 @@ function flushChatSave() {
     chatPresetSelect.value === INHERIT,
   )
   if (binding == null) return
+  const snap = JSON.stringify(binding)
+  if (snap === lastChatBindingJson) return
+  lastChatBindingJson = snap
   emit('saveChat', binding)
 }
 
@@ -291,6 +299,9 @@ function flushEmbeddingSave() {
   if (model && model !== gModel) patch.embeddingModel = model
   if (dims !== gDims) patch.embeddingDimensions = dims
   if (Object.keys(patch).length === 0) return
+  const snap = JSON.stringify(patch)
+  if (snap === lastEmbeddingPatchJson) return
+  lastEmbeddingPatchJson = snap
   emit('saveEmbedding', patch)
 }
 
@@ -306,6 +317,8 @@ function scheduleEmbeddingSave() {
 onUnmounted(() => {
   if (chatSaveTimer) clearTimeout(chatSaveTimer)
   if (embeddingSaveTimer) clearTimeout(embeddingSaveTimer)
+  flushChatSave()
+  flushEmbeddingSave()
 })
 </script>
 
@@ -565,7 +578,7 @@ onUnmounted(() => {
                 auto-grow
                 spellcheck="false"
                 :disabled="disabled"
-                @update:model-value="scheduleChatSave"
+                @blur="flushChatSave"
               />
             </div>
           </v-expansion-panel-text>
@@ -613,7 +626,7 @@ onUnmounted(() => {
           auto-grow
           spellcheck="false"
           :disabled="disabled"
-          @update:model-value="scheduleChatSave"
+          @blur="flushChatSave"
         />
       </div>
     </template>
@@ -641,7 +654,7 @@ onUnmounted(() => {
             variant="outlined"
             hide-details="auto"
             :disabled="disabled"
-            @update:model-value="scheduleEmbeddingSave"
+            @blur="flushEmbeddingSave"
           />
         </div>
         <div class="conv-api-settings__field">

@@ -32,7 +32,7 @@ import {
   traceKeeperBundleSelectItems,
   traceKeeperConvBundleSelectItems,
 } from '@/utils/trace-keeper-settings-ui'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
@@ -43,6 +43,8 @@ const props = defineProps<{
   globalSettings?: Record<string, unknown>
   /** 某字段下方的补充说明行（如 plot-summary 自动摘要进度） */
   fieldCompanionLines?: (fieldKey: string) => string[] | undefined
+  /** 文本字段失焦后再提交，避免逐字触发保存 */
+  deferTextCommit?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -57,6 +59,82 @@ const lorebookItems = ref<PluginSchemaSelectItem[]>([])
 const selectsLoading = ref(false)
 const optionsSourceLoading = ref(false)
 const checkboxOptionsByKey = ref<Record<string, PluginSchemaSelectItem[]>>({})
+const textDraftValues = ref<Record<string, string>>({})
+type TextDraftBinding = {
+  getStored: () => unknown
+  commit: (value: string) => void
+}
+const textDraftBindings = new Map<string, TextDraftBinding>()
+
+function textDraftGet(key: string, stored: unknown): string {
+  if (key in textDraftValues.value) return textDraftValues.value[key]!
+  return String(stored ?? '')
+}
+
+function textDraftSet(key: string, value: string) {
+  textDraftValues.value = { ...textDraftValues.value, [key]: value }
+}
+
+function textDraftCommit(
+  key: string,
+  stored: unknown,
+  commit: (value: string) => void,
+) {
+  const draft = textDraftValues.value[key]
+  if (draft === undefined) return
+  const cur = String(stored ?? '')
+  if (draft !== cur) commit(draft)
+  const next = { ...textDraftValues.value }
+  delete next[key]
+  textDraftValues.value = next
+  textDraftBindings.delete(key)
+}
+
+function onTextInput(
+  key: string,
+  value: unknown,
+  getStored: () => unknown,
+  commit: (v: string) => void,
+) {
+  const text = String(value ?? '')
+  if (props.deferTextCommit) {
+    textDraftSet(key, text)
+    textDraftBindings.set(key, { getStored, commit })
+    return
+  }
+  commit(text)
+}
+
+function onTextBlur(
+  key: string,
+  getStored: () => unknown,
+  commit: (v: string) => void,
+) {
+  if (props.deferTextCommit) {
+    textDraftCommit(key, getStored(), commit)
+  }
+}
+
+function commitAllTextDrafts() {
+  if (!props.deferTextCommit) return
+  for (const [key, binding] of [...textDraftBindings.entries()]) {
+    if (!(key in textDraftValues.value)) continue
+    textDraftCommit(key, binding.getStored(), binding.commit)
+  }
+}
+
+watch(
+  () => props.modelValue,
+  () => {
+    textDraftValues.value = {}
+    textDraftBindings.clear()
+  },
+  { deep: true },
+)
+
+onBeforeUnmount(() => {
+  commitAllTextDrafts()
+})
 
 async function loadResourceSelects() {
   const needApi = needsApiPresetSelect(props.fields)
@@ -788,7 +866,14 @@ function confirmRemoveObjectListItem() {
           class="plugin-prompt-template"
         >
           <v-textarea
-            :model-value="displayTextValue(field, fieldValue(field.key))"
+            :model-value="
+              deferTextCommit
+                ? textDraftGet(
+                    field.key,
+                    displayTextValue(field, fieldValue(field.key)),
+                  )
+                : displayTextValue(field, fieldValue(field.key))
+            "
             :label="labelFor(field)"
             :hint="hintFor(field)"
             persistent-hint
@@ -798,7 +883,21 @@ function confirmRemoveObjectListItem() {
             rows="4"
             :max-rows="16"
             hide-details="auto"
-            @update:model-value="setField(field.key, $event)"
+            @update:model-value="
+              onTextInput(
+                field.key,
+                $event,
+                () => displayTextValue(field, fieldValue(field.key)),
+                (v) => setField(field.key, v),
+              )
+            "
+            @blur="
+              onTextBlur(
+                field.key,
+                () => displayTextValue(field, fieldValue(field.key)),
+                (v) => setField(field.key, v),
+              )
+            "
           />
           <v-btn
             v-if="field.defaultKey"
@@ -815,7 +914,11 @@ function confirmRemoveObjectListItem() {
 
         <v-textarea
           v-else-if="field.type === 'text'"
-          :model-value="String(fieldValue(field.key) ?? '')"
+          :model-value="
+            deferTextCommit
+              ? textDraftGet(field.key, fieldValue(field.key))
+              : String(fieldValue(field.key) ?? '')
+          "
           :label="labelFor(field)"
           :hint="hintFor(field)"
           persistent-hint
@@ -825,7 +928,21 @@ function confirmRemoveObjectListItem() {
           rows="4"
           :max-rows="16"
           hide-details="auto"
-          @update:model-value="setField(field.key, $event)"
+          @update:model-value="
+            onTextInput(
+              field.key,
+              $event,
+              () => fieldValue(field.key),
+              (v) => setField(field.key, v),
+            )
+          "
+          @blur="
+            onTextBlur(
+              field.key,
+              () => fieldValue(field.key),
+              (v) => setField(field.key, v),
+            )
+          "
         />
 
         <div
@@ -874,7 +991,14 @@ function confirmRemoveObjectListItem() {
                 />
                 <v-text-field
                   v-else-if="sub.type === 'string'"
-                  :model-value="String(item[sub.key] ?? '')"
+                  :model-value="
+                    deferTextCommit
+                      ? textDraftGet(
+                          `ol:${field.key}:${index}:${sub.key}`,
+                          item[sub.key],
+                        )
+                      : String(item[sub.key] ?? '')
+                  "
                   :label="itemLabelFor(sub)"
                   :hint="itemHintFor(sub)"
                   persistent-hint
@@ -882,7 +1006,19 @@ function confirmRemoveObjectListItem() {
                   density="compact"
                   hide-details="auto"
                   @update:model-value="
-                    updateObjectListItem(field, index, sub.key, $event)
+                    onTextInput(
+                      `ol:${field.key}:${index}:${sub.key}`,
+                      $event,
+                      () => item[sub.key],
+                      (v) => updateObjectListItem(field, index, sub.key, v),
+                    )
+                  "
+                  @blur="
+                    onTextBlur(
+                      `ol:${field.key}:${index}:${sub.key}`,
+                      () => item[sub.key],
+                      (v) => updateObjectListItem(field, index, sub.key, v),
+                    )
                   "
                 />
                 <v-text-field
@@ -922,7 +1058,14 @@ function confirmRemoveObjectListItem() {
                   class="plugin-prompt-template"
                 >
                   <v-textarea
-                    :model-value="displayTextValue(sub, item[sub.key])"
+                    :model-value="
+                      deferTextCommit
+                        ? textDraftGet(
+                            `ol:${field.key}:${index}:${sub.key}`,
+                            displayTextValue(sub, item[sub.key]),
+                          )
+                        : displayTextValue(sub, item[sub.key])
+                    "
                     :label="itemLabelFor(sub)"
                     :hint="itemHintFor(sub)"
                     persistent-hint
@@ -933,7 +1076,19 @@ function confirmRemoveObjectListItem() {
                     :max-rows="12"
                     hide-details="auto"
                     @update:model-value="
-                      updateObjectListItem(field, index, sub.key, $event)
+                      onTextInput(
+                        `ol:${field.key}:${index}:${sub.key}`,
+                        $event,
+                        () => displayTextValue(sub, item[sub.key]),
+                        (v) => updateObjectListItem(field, index, sub.key, v),
+                      )
+                    "
+                    @blur="
+                      onTextBlur(
+                        `ol:${field.key}:${index}:${sub.key}`,
+                        () => displayTextValue(sub, item[sub.key]),
+                        (v) => updateObjectListItem(field, index, sub.key, v),
+                      )
                     "
                   />
                   <v-btn
@@ -954,7 +1109,14 @@ function confirmRemoveObjectListItem() {
                 </div>
                 <v-textarea
                   v-else-if="sub.type === 'text'"
-                  :model-value="String(item[sub.key] ?? '')"
+                  :model-value="
+                    deferTextCommit
+                      ? textDraftGet(
+                          `ol:${field.key}:${index}:${sub.key}`,
+                          item[sub.key],
+                        )
+                      : String(item[sub.key] ?? '')
+                  "
                   :label="itemLabelFor(sub)"
                   :hint="itemHintFor(sub)"
                   persistent-hint
@@ -965,7 +1127,19 @@ function confirmRemoveObjectListItem() {
                   :max-rows="12"
                   hide-details="auto"
                   @update:model-value="
-                    updateObjectListItem(field, index, sub.key, $event)
+                    onTextInput(
+                      `ol:${field.key}:${index}:${sub.key}`,
+                      $event,
+                      () => item[sub.key],
+                      (v) => updateObjectListItem(field, index, sub.key, v),
+                    )
+                  "
+                  @blur="
+                    onTextBlur(
+                      `ol:${field.key}:${index}:${sub.key}`,
+                      () => item[sub.key],
+                      (v) => updateObjectListItem(field, index, sub.key, v),
+                    )
                   "
                 />
               </div>
@@ -1022,14 +1196,32 @@ function confirmRemoveObjectListItem() {
 
         <v-text-field
           v-else-if="field.type === 'string'"
-          :model-value="String(fieldValue(field.key) ?? '')"
+          :model-value="
+            deferTextCommit
+              ? textDraftGet(field.key, fieldValue(field.key))
+              : String(fieldValue(field.key) ?? '')
+          "
           :label="labelFor(field)"
           :hint="hintFor(field)"
           persistent-hint
           variant="outlined"
           density="compact"
           hide-details="auto"
-          @update:model-value="setField(field.key, $event)"
+          @update:model-value="
+            onTextInput(
+              field.key,
+              $event,
+              () => fieldValue(field.key),
+              (v) => setField(field.key, v),
+            )
+          "
+          @blur="
+            onTextBlur(
+              field.key,
+              () => fieldValue(field.key),
+              (v) => setField(field.key, v),
+            )
+          "
         />
 
         <div

@@ -364,6 +364,87 @@ export const usePreferencesStore = defineStore('preferences', () => {
   let budgetTrimLastSynced = cloneBudgetTrimSettings(
     budgetTrimSettings.value,
   )
+  const PREF_PATCH_DEBOUNCE_MS = 400
+  const prefPatchTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  let embeddingLastSyncedPatch = ''
+  let embeddingPatchTimer: ReturnType<typeof setTimeout> | null = null
+
+  function schedulePrefPatch(key: string, fn: () => void | Promise<void>) {
+    const existing = prefPatchTimers.get(key)
+    if (existing) clearTimeout(existing)
+    prefPatchTimers.set(
+      key,
+      setTimeout(() => {
+        prefPatchTimers.delete(key)
+        void fn()
+      }, PREF_PATCH_DEBOUNCE_MS),
+    )
+  }
+
+  function buildEmbeddingServerPatch(): Partial<EmbeddingApiSettings> {
+    const n = normalizeEmbeddingApiSettings({
+      baseUrl: embeddingBaseUrl.value,
+      apiKey: embeddingApiKey.value,
+      apiKeyId: embeddingApiKeyId.value,
+      embeddingModel: embeddingModel.value,
+      embeddingDimensions: embeddingDimensions.value,
+    })
+    const patch: Partial<EmbeddingApiSettings> = {
+      baseUrl: n.baseUrl,
+      apiKeyId: embeddingApiKeyId.value,
+      embeddingModel: n.embeddingModel,
+      embeddingDimensions: n.embeddingDimensions,
+    }
+    if (embeddingApiKeyDirty.value && !embeddingApiKeyId.value) {
+      patch.apiKey = embeddingApiKey.value
+    }
+    return patch
+  }
+
+  async function flushEmbeddingToServer(): Promise<void> {
+    if (!userPreferencesLoaded.value || embeddingPatchInFlight) return
+    const n = normalizeEmbeddingApiSettings({
+      baseUrl: embeddingBaseUrl.value,
+      apiKey: embeddingApiKey.value,
+      apiKeyId: embeddingApiKeyId.value,
+      embeddingModel: embeddingModel.value,
+      embeddingDimensions: embeddingDimensions.value,
+    })
+    if (n.embeddingDimensions !== embeddingDimensions.value) {
+      embeddingDimensions.value = n.embeddingDimensions
+      return
+    }
+    const patch = buildEmbeddingServerPatch()
+    const snap = JSON.stringify(patch)
+    if (snap === embeddingLastSyncedPatch) return
+    persistEmbeddingLocal()
+    embeddingPatchInFlight = true
+    try {
+      await patchGlobalEmbeddingApiToServer(patch)
+      embeddingLastSyncedPatch = snap
+      if (embeddingApiKeyDirty.value) {
+        embeddingKeyConfigured.value = embeddingApiKey.value.trim().length > 0
+        embeddingApiKey.value = ''
+        embeddingApiKeyDirty.value = false
+      }
+    } catch {
+      /* 设置页可重试 */
+    } finally {
+      embeddingPatchInFlight = false
+    }
+  }
+
+  function scheduleEmbeddingPatch() {
+    if (embeddingPatchTimer) clearTimeout(embeddingPatchTimer)
+    embeddingPatchTimer = setTimeout(() => {
+      embeddingPatchTimer = null
+      void flushEmbeddingToServer()
+    }, PREF_PATCH_DEBOUNCE_MS)
+  }
+
+  function syncEmbeddingLastSyncedPatch(): void {
+    embeddingLastSyncedPatch = JSON.stringify(buildEmbeddingServerPatch())
+  }
 
   function applyBudgetTrimLocal(
     next: BudgetTrimSettings,
@@ -724,24 +805,26 @@ export const usePreferencesStore = defineStore('preferences', () => {
 
   watch(
     chunkTurnsPerFile,
-    async () => {
-      if (!userPreferencesLoaded.value || chunkPatchInFlight) return
-      const n = normalizeChunkSettings({
-        turnsPerFile: chunkTurnsPerFile.value,
+    () => {
+      schedulePrefPatch('chunk', async () => {
+        if (!userPreferencesLoaded.value || chunkPatchInFlight) return
+        const n = normalizeChunkSettings({
+          turnsPerFile: chunkTurnsPerFile.value,
+        })
+        if (n.turnsPerFile !== chunkTurnsPerFile.value) {
+          chunkTurnsPerFile.value = n.turnsPerFile
+          return
+        }
+        persistChunkLocal(n.turnsPerFile)
+        chunkPatchInFlight = true
+        try {
+          await patchGlobalChunkToServer({ turnsPerFile: n.turnsPerFile })
+        } catch {
+          /* 设置页可重试 */
+        } finally {
+          chunkPatchInFlight = false
+        }
       })
-      if (n.turnsPerFile !== chunkTurnsPerFile.value) {
-        chunkTurnsPerFile.value = n.turnsPerFile
-        return
-      }
-      persistChunkLocal(n.turnsPerFile)
-      chunkPatchInFlight = true
-      try {
-        await patchGlobalChunkToServer({ turnsPerFile: n.turnsPerFile })
-      } catch {
-        /* 设置页可重试 */
-      } finally {
-        chunkPatchInFlight = false
-      }
     },
     { flush: 'post' },
   )
@@ -754,165 +837,137 @@ export const usePreferencesStore = defineStore('preferences', () => {
       lorebookVectorEnabled,
       lorebookVectorTopK,
     ],
-    async () => {
-      if (!userPreferencesLoaded.value || lorebookPatchInFlight) return
-      const n = normalizeLorebookSettings({
-        recursiveEnabled: lorebookRecursiveEnabled.value,
-        maxRecursionDepth: lorebookMaxRecursionDepth.value,
-        keywordTopK: lorebookKeywordTopK.value,
-        vectorEnabled: lorebookVectorEnabled.value,
-        vectorTopK: lorebookVectorTopK.value,
-      })
-      if (n.keywordTopK !== lorebookKeywordTopK.value) {
-        lorebookKeywordTopK.value = n.keywordTopK
-        return
-      }
-      if (n.vectorTopK !== lorebookVectorTopK.value) {
-        lorebookVectorTopK.value = n.vectorTopK
-        return
-      }
-      persistLorebookLocal()
-      lorebookPatchInFlight = true
-      try {
-        await patchGlobalLorebookToServer({
+    () => {
+      schedulePrefPatch('lorebook', async () => {
+        if (!userPreferencesLoaded.value || lorebookPatchInFlight) return
+        const n = normalizeLorebookSettings({
           recursiveEnabled: lorebookRecursiveEnabled.value,
           maxRecursionDepth: lorebookMaxRecursionDepth.value,
           keywordTopK: lorebookKeywordTopK.value,
           vectorEnabled: lorebookVectorEnabled.value,
           vectorTopK: lorebookVectorTopK.value,
         })
-      } catch {
-        /* 设置页可重试 */
-      } finally {
-        lorebookPatchInFlight = false
-      }
+        if (n.keywordTopK !== lorebookKeywordTopK.value) {
+          lorebookKeywordTopK.value = n.keywordTopK
+          return
+        }
+        if (n.vectorTopK !== lorebookVectorTopK.value) {
+          lorebookVectorTopK.value = n.vectorTopK
+          return
+        }
+        persistLorebookLocal()
+        lorebookPatchInFlight = true
+        try {
+          await patchGlobalLorebookToServer({
+            recursiveEnabled: lorebookRecursiveEnabled.value,
+            maxRecursionDepth: lorebookMaxRecursionDepth.value,
+            keywordTopK: lorebookKeywordTopK.value,
+            vectorEnabled: lorebookVectorEnabled.value,
+            vectorTopK: lorebookVectorTopK.value,
+          })
+        } catch {
+          /* 设置页可重试 */
+        } finally {
+          lorebookPatchInFlight = false
+        }
+      })
     },
     { flush: 'post' },
   )
 
   watch(
     [historyLimitEnabled, historyMaxTurns],
-    async () => {
-      if (!userPreferencesLoaded.value || historyPatchInFlight) return
-      const n = normalizeHistorySettings({
-        limitEnabled: historyLimitEnabled.value,
-        maxTurns: historyMaxTurns.value,
-      })
-      if (n.maxTurns !== historyMaxTurns.value) {
-        historyMaxTurns.value = n.maxTurns
-        return
-      }
-      persistHistoryLocal()
-      historyPatchInFlight = true
-      try {
-        await patchGlobalHistoryToServer({
+    () => {
+      schedulePrefPatch('history', async () => {
+        if (!userPreferencesLoaded.value || historyPatchInFlight) return
+        const n = normalizeHistorySettings({
           limitEnabled: historyLimitEnabled.value,
           maxTurns: historyMaxTurns.value,
         })
-      } catch {
-        /* 设置页可重试 */
-      } finally {
-        historyPatchInFlight = false
-      }
+        if (n.maxTurns !== historyMaxTurns.value) {
+          historyMaxTurns.value = n.maxTurns
+          return
+        }
+        persistHistoryLocal()
+        historyPatchInFlight = true
+        try {
+          await patchGlobalHistoryToServer({
+            limitEnabled: historyLimitEnabled.value,
+            maxTurns: historyMaxTurns.value,
+          })
+        } catch {
+          /* 设置页可重试 */
+        } finally {
+          historyPatchInFlight = false
+        }
+      })
     },
     { flush: 'post' },
   )
 
   watch(
     [memoryEnabled, memoryTopK],
-    async () => {
-      if (!userPreferencesLoaded.value || memoryPatchInFlight) return
-      const n = normalizeMemorySettings({
-        memoryEnabled: memoryEnabled.value,
-        memoryTopK: memoryTopK.value,
-      })
-      if (n.memoryTopK !== memoryTopK.value) {
-        memoryTopK.value = n.memoryTopK
-        return
-      }
-      persistMemoryLocal()
-      memoryPatchInFlight = true
-      try {
-        await patchGlobalMemoryToServer({
+    () => {
+      schedulePrefPatch('memory', async () => {
+        if (!userPreferencesLoaded.value || memoryPatchInFlight) return
+        const n = normalizeMemorySettings({
           memoryEnabled: memoryEnabled.value,
           memoryTopK: memoryTopK.value,
         })
-      } catch {
-        /* 设置页可重试 */
-      } finally {
-        memoryPatchInFlight = false
-      }
+        if (n.memoryTopK !== memoryTopK.value) {
+          memoryTopK.value = n.memoryTopK
+          return
+        }
+        persistMemoryLocal()
+        memoryPatchInFlight = true
+        try {
+          await patchGlobalMemoryToServer({
+            memoryEnabled: memoryEnabled.value,
+            memoryTopK: memoryTopK.value,
+          })
+        } catch {
+          /* 设置页可重试 */
+        } finally {
+          memoryPatchInFlight = false
+        }
+      })
     },
     { flush: 'post' },
   )
 
   watch(
     budgetTrimSettings,
-    async (v) => {
-      if (!userPreferencesLoaded.value || budgetTrimPatchInFlight) return
-      const n = normalizeBudgetTrimSettings(v)
-      if (!budgetTrimSettingsEqual(n, v)) {
-        applyBudgetTrimLocal(n, false)
-        return
-      }
-      if (budgetTrimSettingsEqual(n, budgetTrimLastSynced)) return
-      budgetTrimPatchInFlight = true
-      try {
-        await patchGlobalBudgetTrimToServer({
-          trimOrder: [...n.trimOrder],
-          minRetain: { ...n.minRetain },
-        })
-        budgetTrimLastSynced = cloneBudgetTrimSettings(
-          budgetTrimSettings.value,
-        )
-      } catch {
-        /* 设置页可重试 */
-      } finally {
-        budgetTrimPatchInFlight = false
-      }
+    (v) => {
+      schedulePrefPatch('budgetTrim', async () => {
+        if (!userPreferencesLoaded.value || budgetTrimPatchInFlight) return
+        const n = normalizeBudgetTrimSettings(v)
+        if (!budgetTrimSettingsEqual(n, v)) {
+          applyBudgetTrimLocal(n, false)
+          return
+        }
+        if (budgetTrimSettingsEqual(n, budgetTrimLastSynced)) return
+        budgetTrimPatchInFlight = true
+        try {
+          await patchGlobalBudgetTrimToServer({
+            trimOrder: [...n.trimOrder],
+            minRetain: { ...n.minRetain },
+          })
+          budgetTrimLastSynced = cloneBudgetTrimSettings(
+            budgetTrimSettings.value,
+          )
+        } catch {
+          /* 设置页可重试 */
+        } finally {
+          budgetTrimPatchInFlight = false
+        }
+      })
     },
     { deep: true, flush: 'post' },
   )
 
   watch(
-    [embeddingBaseUrl, embeddingApiKey, embeddingApiKeyId, embeddingModel, embeddingDimensions],
-    async () => {
-      if (!userPreferencesLoaded.value || embeddingPatchInFlight) return
-      const n = normalizeEmbeddingApiSettings({
-        baseUrl: embeddingBaseUrl.value,
-        apiKey: embeddingApiKey.value,
-        apiKeyId: embeddingApiKeyId.value,
-        embeddingModel: embeddingModel.value,
-        embeddingDimensions: embeddingDimensions.value,
-      })
-      if (n.embeddingDimensions !== embeddingDimensions.value) {
-        embeddingDimensions.value = n.embeddingDimensions
-        return
-      }
-      persistEmbeddingLocal()
-      embeddingPatchInFlight = true
-      try {
-        const patch: Partial<EmbeddingApiSettings> = {
-          baseUrl: n.baseUrl,
-          apiKeyId: embeddingApiKeyId.value,
-          embeddingModel: n.embeddingModel,
-          embeddingDimensions: n.embeddingDimensions,
-        }
-        if (embeddingApiKeyDirty.value && !embeddingApiKeyId.value) {
-          patch.apiKey = embeddingApiKey.value
-        }
-        await patchGlobalEmbeddingApiToServer(patch)
-        if (embeddingApiKeyDirty.value) {
-          embeddingKeyConfigured.value = embeddingApiKey.value.trim().length > 0
-          embeddingApiKey.value = ''
-          embeddingApiKeyDirty.value = false
-        }
-      } catch {
-        /* 设置页可重试 */
-      } finally {
-        embeddingPatchInFlight = false
-      }
-    },
+    [embeddingApiKeyId, embeddingDimensions],
+    scheduleEmbeddingPatch,
     { flush: 'post' },
   )
 
@@ -976,6 +1031,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
         defaultAuthorsNote.value = normalizeDefaultAuthorsNoteTemplate(
           doc.defaultAuthorsNote,
         )
+        syncEmbeddingLastSyncedPatch()
       } catch {
         /* 使用 localStorage 缓存 */
       } finally {
@@ -1145,6 +1201,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     embeddingApiKeyDirty,
     isEmbeddingKeyConfigured,
     markEmbeddingApiKeyDirty,
+    flushEmbeddingToServer,
     embeddingModel,
     setEmbeddingApiKeyId,
     embeddingDimensions,

@@ -130,6 +130,51 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   let pendingSave = false
   let loadPromise: Promise<void> | null = null
+  /** 与上次成功 PUT 一致的快照，用于跳过无变更保存 */
+  let lastPersistedSnapshot = ''
+  /** 对齐服务端 LOREBOOKS_BULK_PUT_MIN_INTERVAL_MS（2s） */
+  const SAVE_MIN_INTERVAL_MS = 2100
+  /** 失焦等明确提交：短防抖合并 Tab 连跳多个字段 */
+  const SAVE_BATCH_MS = 150
+  let lastPutCompletedAt = 0
+
+  function lorebooksSnapshot(): string {
+    return JSON.stringify(lorebooks.value)
+  }
+
+  type SaveTiming = 'immediate' | 'debounced'
+
+  function scheduleSave(timing: SaveTiming = 'immediate') {
+    if (!loaded.value || lorebooks.value.length === 0) return
+    if (saveTimer) clearTimeout(saveTimer)
+    pendingSave = true
+
+    let delay =
+      timing === 'debounced' ? SAVE_MIN_INTERVAL_MS : SAVE_BATCH_MS
+    const sinceLastPut = Date.now() - lastPutCompletedAt
+    if (lastPutCompletedAt > 0 && sinceLastPut < SAVE_MIN_INTERVAL_MS) {
+      delay = Math.max(delay, SAVE_MIN_INTERVAL_MS - sinceLastPut)
+    }
+
+    saveTimer = setTimeout(() => {
+      saveTimer = null
+      void flushSave()
+    }, delay)
+  }
+
+  function scheduleSaveRetry(rateLimited = false): void {
+    if (!pendingSave) return
+    if (saveTimer) clearTimeout(saveTimer)
+    let delay = rateLimited ? SAVE_MIN_INTERVAL_MS : SAVE_BATCH_MS
+    const sinceLastPut = Date.now() - lastPutCompletedAt
+    if (lastPutCompletedAt > 0 && sinceLastPut < SAVE_MIN_INTERVAL_MS) {
+      delay = Math.max(delay, SAVE_MIN_INTERVAL_MS - sinceLastPut)
+    }
+    saveTimer = setTimeout(() => {
+      saveTimer = null
+      void flushSave()
+    }, delay)
+  }
 
   const activeLorebook = computed<Lorebook>(() => {
     if (lorebooks.value.length === 0) return EMPTY_LOREBOOK
@@ -186,19 +231,15 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     )
   })
 
-  function scheduleSave() {
-    if (!loaded.value || lorebooks.value.length === 0) return
-    if (saveTimer) clearTimeout(saveTimer)
-    pendingSave = true
-    saveTimer = setTimeout(() => {
-      saveTimer = null
-      void flushSave()
-    }, 600)
-  }
 
   async function flushSave(): Promise<void> {
     if (!pendingSave) return
     if (lorebooks.value.length === 0) {
+      pendingSave = false
+      return
+    }
+    const snapshot = lorebooksSnapshot()
+    if (snapshot === lastPersistedSnapshot) {
       pendingSave = false
       return
     }
@@ -217,9 +258,15 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
       }
       const j = (await res.json()) as { savedAt?: string }
       if (typeof j.savedAt === 'string') lastSavedAt.value = j.savedAt
+      lastPersistedSnapshot = snapshot
+      lastPutCompletedAt = Date.now()
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e)
       pendingSave = true
+      const rateLimited =
+        lastError.value.includes('429') ||
+        lastError.value.includes('lorebooks_bulk_put_rate_limited')
+      scheduleSaveRetry(rateLimited)
     } finally {
       saving.value = false
     }
@@ -250,6 +297,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
         if (fromServer) {
           lorebooks.value = fromServer.lorebooks
           activeLorebookId.value = fromServer.activeLorebookId
+          lastPersistedSnapshot = lorebooksSnapshot()
           const lb = activeLorebook.value
           if (
             activeGroupId.value &&
@@ -282,13 +330,17 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     }
   }
 
-  function patchActiveLorebook(patch: (lb: Lorebook) => Lorebook) {
+  function patchActiveLorebook(
+    patch: (lb: Lorebook) => Lorebook,
+    options?: { save?: SaveTiming | false },
+  ) {
     const id = activeLorebookId.value
     const i = lorebooks.value.findIndex((x) => x.id === id)
     if (i < 0) return
     const next = normalizeLorebook(patch({ ...lorebooks.value[i] }))
     lorebooks.value[i] = { ...next, updatedAt: nowIso() }
-    scheduleSave()
+    const save = options?.save ?? 'immediate'
+    if (save !== false) scheduleSave(save)
   }
 
   /** 插件经 API 写入条目后同步本地缓存（不触发 PUT 回写） */
@@ -591,7 +643,6 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
       entries: [...lb.entries, entry],
     }))
     selectedEntryId.value = entry.id
-    scheduleSave()
     return entry
   }
 
@@ -679,13 +730,20 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     return true
   }
 
-  function updateEntry(entryId: string, patch: Partial<LorebookEntry>) {
-    patchActiveLorebook((lb) => ({
-      ...lb,
-      entries: lb.entries.map((e) =>
-        e.id === entryId ? { ...e, ...patch, updatedAt: nowIso() } : e,
-      ),
-    }))
+  function updateEntry(
+    entryId: string,
+    patch: Partial<LorebookEntry>,
+    options?: { save?: SaveTiming },
+  ) {
+    patchActiveLorebook(
+      (lb) => ({
+        ...lb,
+        entries: lb.entries.map((e) =>
+          e.id === entryId ? { ...e, ...patch, updatedAt: nowIso() } : e,
+        ),
+      }),
+      { save: options?.save ?? 'immediate' },
+    )
   }
 
   function deleteEntry(entryId: string) {

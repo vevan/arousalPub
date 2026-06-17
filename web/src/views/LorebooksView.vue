@@ -14,7 +14,7 @@ import {
 } from '@/utils/lorebook-entry'
 import { parseLorebookImport } from '@/utils/lorebooks-package'
 import { storeToRefs } from 'pinia'
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const props = withDefaults(
@@ -230,6 +230,60 @@ function performDeleteEntry() {
   entryDeleteOpen.value = false
 }
 
+/** 文本字段草稿：失焦或切换条目时再写回 store 并保存 */
+const titleDraft = ref('')
+const commentDraft = ref('')
+const contentDraft = ref('')
+const priorityDraft = ref(0)
+
+function syncEntryEditorDraftsFromEntry(): void {
+  const e = selectedEntry.value
+  if (!e) {
+    titleDraft.value = ''
+    commentDraft.value = ''
+    contentDraft.value = ''
+    priorityDraft.value = 0
+    return
+  }
+  titleDraft.value = e.title
+  commentDraft.value = e.comment ?? ''
+  contentDraft.value = e.content
+  priorityDraft.value = e.priority
+}
+
+function commitEntryEditorDrafts(entryId?: string): void {
+  const id = entryId ?? selectedEntry.value?.id
+  if (!id) return
+  const e = activeLorebook.value.entries.find((x) => x.id === id)
+  if (!e) return
+
+  const patch: {
+    title?: string
+    comment?: string
+    content?: string
+    priority?: number
+  } = {}
+
+  if (titleDraft.value !== e.title) patch.title = titleDraft.value
+  if (commentDraft.value !== (e.comment ?? '')) {
+    patch.comment = commentDraft.value
+  }
+  if (contentDraft.value !== e.content) patch.content = contentDraft.value
+
+  const pri = Number(priorityDraft.value)
+  const normalizedPri = Number.isFinite(pri) ? pri : 0
+  if (normalizedPri !== e.priority) patch.priority = normalizedPri
+
+  if (Object.keys(patch).length > 0) {
+    store.updateEntry(id, patch)
+  }
+}
+
+function commitAllDraftsForEntry(entryId: string): void {
+  commitKeysForEntry(entryId, keysInputDraft.value)
+  commitEntryEditorDrafts(entryId)
+}
+
 /** 关键字输入草稿：失焦/Enter 再解析，避免输入逗号时被立即 split 掉 */
 const keysInputDraft = ref('')
 
@@ -257,10 +311,16 @@ function commitKeysDraft(): void {
 
 watch(selectedEntryId, (id, prevId) => {
   if (prevId != null && prevId !== id) {
-    commitKeysForEntry(prevId, keysInputDraft.value)
+    commitAllDraftsForEntry(prevId)
   }
   syncKeysDraftFromEntry()
+  syncEntryEditorDraftsFromEntry()
 }, { immediate: true })
+
+onBeforeUnmount(() => {
+  const id = selectedEntryId.value
+  if (id) commitAllDraftsForEntry(id)
+})
 
 function onKeysInputKeydown(e: KeyboardEvent): void {
   if (e.key !== 'Enter') return
@@ -676,19 +736,19 @@ async function confirmImportLorebook() {
                   </button>
                   <input
                     ref="titleInputRef"
-                    :value="selectedEntry.title"
+                    v-model="titleDraft"
                     type="text"
                     class="editor-card__title-input"
                     :placeholder="$t('lorebooks.entryTitlePlaceholder')"
-                    @input="store.updateEntry(selectedEntry.id, { title: ($event.target as HTMLInputElement).value })"
+                    @blur="commitEntryEditorDrafts()"
                   />
                 </div>
                 <input
-                  :value="selectedEntry.comment ?? ''"
+                  v-model="commentDraft"
                   type="text"
                   class="editor-card__description-input"
                   :placeholder="$t('lorebooks.entryCommentPlaceholder')"
-                  @input="store.updateEntry(selectedEntry.id, { comment: ($event.target as HTMLInputElement).value })"
+                  @blur="commitEntryEditorDrafts()"
                 />
                 <div class="editor-card__meta">
                   <span>
@@ -736,10 +796,10 @@ async function confirmImportLorebook() {
                   <label class="editor-card__field-label">{{ $t('lorebooks.priority') }}</label>
                   <span class="num-field">
                     <input
-                      :value="selectedEntry.priority"
+                      v-model.number="priorityDraft"
                       type="number"
                       class="num-field__input"
-                      @input="store.updateEntry(selectedEntry.id, { priority: Number(($event.target as HTMLInputElement).value) || 0 })"
+                      @blur="commitEntryEditorDrafts()"
                     />
                   </span>
                 </div>
@@ -777,12 +837,12 @@ async function confirmImportLorebook() {
                   {{ $t('lorebooks.entryContent') }}
                 </label>
                 <textarea
-                  :value="selectedEntry.content"
+                  v-model="contentDraft"
                   class="editor-card__content-input"
                   rows="12"
                   spellcheck="false"
                   :placeholder="$t('lorebooks.entryContentPlaceholder')"
-                  @input="store.updateEntry(selectedEntry.id, { content: ($event.target as HTMLTextAreaElement).value })"
+                  @blur="commitEntryEditorDrafts()"
                 />
               </div>
 

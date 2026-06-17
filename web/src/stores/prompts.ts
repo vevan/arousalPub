@@ -379,12 +379,20 @@ export const usePromptsStore = defineStore('prompts', () => {
   function setPresetBody(p: PromptPreset) {
     syncIndexEntryFromBody(p)
     presetBodies.value = { ...presetBodies.value, [p.id]: p }
+    lastPersistedBodies[p.id] = JSON.stringify(p)
   }
 
   /** ====== 服务端 IO ====== */
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   let pendingSave = false
   let pendingIndexPatch = false
+  const SAVE_BATCH_MS = 150
+  const lastPersistedBodies: Record<string, string> = {}
+
+  function presetBodySnapshot(presetId: string): string {
+    const body = presetBodies.value[presetId]
+    return body ? JSON.stringify(body) : ''
+  }
 
   function scheduleSave() {
     if (!loaded.value || !activePresetReady.value) return
@@ -393,7 +401,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     saveTimer = setTimeout(() => {
       saveTimer = null
       void flushSave()
-    }, 600)
+    }, SAVE_BATCH_MS)
   }
 
   function scheduleIndexPatch() {
@@ -403,7 +411,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     saveTimer = setTimeout(() => {
       saveTimer = null
       void flushPending()
-    }, 600)
+    }, SAVE_BATCH_MS)
   }
 
   async function persistActivePresetId(): Promise<void> {
@@ -438,8 +446,11 @@ export const usePromptsStore = defineStore('prompts', () => {
   }
 
   async function flushSave(): Promise<void> {
-    const body = presetBodies.value[activePresetId.value]
+    const presetId = activePresetId.value
+    const body = presetBodies.value[presetId]
     if (!body) return
+    const snapshot = presetBodySnapshot(presetId)
+    if (snapshot && snapshot === lastPersistedBodies[presetId]) return
     const res = await fetch(
       `/api/prompts/${encodeURIComponent(activePresetId.value)}`,
       {
@@ -456,6 +467,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     }
     const j = (await res.json()) as { savedAt?: string }
     if (typeof j.savedAt === 'string') lastSavedAt.value = j.savedAt
+    lastPersistedBodies[presetId] = snapshot
     syncIndexEntryFromBody(body)
   }
 

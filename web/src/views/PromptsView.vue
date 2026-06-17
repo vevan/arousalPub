@@ -36,7 +36,7 @@ import type {
 } from '@/stores/prompts'
 import { useConnectionStore } from '@/stores/connection'
 import { storeToRefs } from 'pinia'
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = withDefaults(
   defineProps<{
@@ -62,6 +62,7 @@ const {
   activeGroupId,
   searchText,
   selected,
+  selectedPromptId,
   visiblePrompts,
   activePrompts,
   groupCounts,
@@ -236,19 +237,27 @@ function submitAddGroup() {
     groupAddOpen.value = false
   }
 }
-function onCurrentGroupNameInput(e: Event) {
-  const g = currentGroup.value
+function commitGroupDrafts(groupId?: string): void {
+  const id = groupId ?? activeGroupId.value
+  if (!id) return
+  const g = activeGroups.value.find((x) => x.id === id)
   if (!g) return
-  store.updateGroup(g.id, {
-    name: (e.target as HTMLInputElement).value,
-  })
+  const patch: { name?: string; description?: string } = {}
+  if (groupNameDraft.value !== g.name) patch.name = groupNameDraft.value
+  if (groupDescDraft.value !== (g.description ?? '')) {
+    patch.description = groupDescDraft.value
+  }
+  if (Object.keys(patch).length > 0) store.updateGroup(id, patch)
 }
-function onCurrentGroupDescriptionInput(e: Event) {
+function syncGroupDrafts(): void {
   const g = currentGroup.value
-  if (!g) return
-  store.updateGroup(g.id, {
-    description: (e.target as HTMLInputElement).value,
-  })
+  if (!g) {
+    groupNameDraft.value = ''
+    groupDescDraft.value = ''
+    return
+  }
+  groupNameDraft.value = g.name
+  groupDescDraft.value = g.description ?? ''
 }
 function isEntryMutedByGroup(p: PromptEntry): boolean {
   const g = activeGroups.value.find((x) => x.id === p.groupId)
@@ -384,16 +393,113 @@ const TRIGGER_OPTIONS: { id: PromptTrigger; key: string }[] = [
   { id: 'regenerate', key: 'prompts.triggerRegenerate' },
 ]
 
-const tagsInput = computed<string>({
-  get: () => (selected.value ? selected.value.tags.join(', ') : ''),
-  set: (v) => {
-    if (!selected.value) return
-    const tags = v
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-    store.updatePrompt(selected.value.id, { tags })
-  },
+const tagsInputDraft = ref('')
+
+function syncTagsDraftFromEntry(): void {
+  const e = selected.value
+  tagsInputDraft.value = e ? e.tags.join(', ') : ''
+}
+
+function commitTagsDraft(entryId?: string): void {
+  const id = entryId ?? selected.value?.id
+  if (!id) return
+  const e = activePrompts.value.find((x) => x.id === id)
+  if (!e) return
+  const tags = tagsInputDraft.value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const same =
+    tags.length === e.tags.length && tags.every((t, i) => t === e.tags[i])
+  if (!same) store.updatePrompt(id, { tags })
+}
+
+/** 文本字段草稿：失焦或切换条目时再写回 store */
+const titleDraft = ref('')
+const descriptionDraft = ref('')
+const contentDraft = ref('')
+const depthDraft = ref(0)
+const orderDraft = ref(100)
+const groupNameDraft = ref('')
+const groupDescDraft = ref('')
+
+function syncPromptEditorDraftsFromEntry(): void {
+  const e = selected.value
+  if (!e) {
+    titleDraft.value = ''
+    descriptionDraft.value = ''
+    contentDraft.value = ''
+    depthDraft.value = 0
+    orderDraft.value = 100
+    return
+  }
+  titleDraft.value = e.title
+  descriptionDraft.value = e.description
+  contentDraft.value = e.content
+  depthDraft.value = e.injectionDepth
+  orderDraft.value = e.injectionOrder
+}
+
+function commitPromptEditorDrafts(entryId?: string): void {
+  const id = entryId ?? selected.value?.id
+  if (!id) return
+  const e = activePrompts.value.find((x) => x.id === id)
+  if (!e) return
+
+  const patch: {
+    title?: string
+    description?: string
+    content?: string
+    injectionDepth?: number
+    injectionOrder?: number
+  } = {}
+
+  if (titleDraft.value !== e.title) patch.title = titleDraft.value
+  if (descriptionDraft.value !== e.description) {
+    patch.description = descriptionDraft.value
+  }
+  if (contentDraft.value !== e.content) patch.content = contentDraft.value
+
+  const depth = Number(depthDraft.value)
+  const normalizedDepth = Number.isFinite(depth) ? Math.max(0, depth) : 0
+  if (normalizedDepth !== e.injectionDepth) {
+    patch.injectionDepth = normalizedDepth
+  }
+
+  const ord = Number(orderDraft.value)
+  const normalizedOrd = Number.isFinite(ord) ? ord : 100
+  if (normalizedOrd !== e.injectionOrder) {
+    patch.injectionOrder = normalizedOrd
+  }
+
+  if (Object.keys(patch).length > 0) store.updatePrompt(id, patch)
+}
+
+function commitAllDraftsForEntry(entryId: string): void {
+  commitTagsDraft(entryId)
+  commitPromptEditorDrafts(entryId)
+}
+
+watch(selectedPromptId, (id, prevId) => {
+  if (prevId != null && prevId !== id) {
+    commitAllDraftsForEntry(prevId)
+  }
+  syncTagsDraftFromEntry()
+  syncPromptEditorDraftsFromEntry()
+}, { immediate: true })
+
+watch(activeGroupId, (id, prevId) => {
+  if (prevId != null && prevId !== id) {
+    commitGroupDrafts(prevId)
+  }
+  syncGroupDrafts()
+}, { immediate: true })
+
+onBeforeUnmount(() => {
+  const id = selectedPromptId.value
+  if (id) commitAllDraftsForEntry(id)
+  const gid = activeGroupId.value
+  if (gid) commitGroupDrafts(gid)
 })
 
 function onEnabledToggle() {
@@ -402,23 +508,8 @@ function onEnabledToggle() {
   store.updatePrompt(selected.value.id, { enabled: !selected.value.enabled })
 }
 
-function onTitleInput(e: Event) {
-  if (!selected.value) return
-  store.updatePrompt(selected.value.id, {
-    title: (e.target as HTMLInputElement).value,
-  })
-}
-function onDescriptionInput(e: Event) {
-  if (!selected.value) return
-  store.updatePrompt(selected.value.id, {
-    description: (e.target as HTMLInputElement).value,
-  })
-}
-function onContentInput(e: Event) {
-  if (!selected.value) return
-  store.updatePrompt(selected.value.id, {
-    content: (e.target as HTMLTextAreaElement).value,
-  })
+function commitPromptEditorDraftsFromBlur(): void {
+  commitPromptEditorDrafts()
 }
 function setRole(r: PromptRole) {
   if (!selected.value) return
@@ -427,20 +518,6 @@ function setRole(r: PromptRole) {
 function setPosition(p: 'relative' | 'chat') {
   if (!selected.value) return
   store.updatePrompt(selected.value.id, { injectionPosition: p })
-}
-function onDepthInput(e: Event) {
-  if (!selected.value) return
-  const n = Number.parseInt((e.target as HTMLInputElement).value, 10)
-  store.updatePrompt(selected.value.id, {
-    injectionDepth: Number.isFinite(n) ? Math.max(0, n) : 0,
-  })
-}
-function onOrderInput(e: Event) {
-  if (!selected.value) return
-  const n = Number.parseInt((e.target as HTMLInputElement).value, 10)
-  store.updatePrompt(selected.value.id, {
-    injectionOrder: Number.isFinite(n) ? n : 100,
-  })
 }
 function toggleTrigger(tr: PromptTrigger) {
   if (!selected.value) return
@@ -1089,19 +1166,19 @@ const canDeleteGroup = (g: PromptGroup) =>
             {{ groupIcon(currentGroup.kind) }}
           </v-icon>
           <input
-            :value="currentGroup.name"
+            v-model="groupNameDraft"
             type="text"
             class="groups-info__name"
             :aria-label="$t('prompts.groupAddName')"
-            @input="onCurrentGroupNameInput"
+            @blur="commitGroupDrafts()"
           />
           <input
-            :value="currentGroup.description ?? ''"
+            v-model="groupDescDraft"
             type="text"
             class="groups-info__description"
             :aria-label="$t('prompts.groupDescription')"
             :placeholder="$t('prompts.groupDescriptionPlaceholder')"
-            @input="onCurrentGroupDescriptionInput"
+            @blur="commitGroupDrafts()"
           />
           <v-tooltip
             location="top"
@@ -1538,24 +1615,24 @@ const canDeleteGroup = (g: PromptGroup) =>
                   </button>
                   <input
                     ref="titleInputRef"
-                    :value="selected.title"
+                    v-model="titleDraft"
                     type="text"
                     class="editor-card__title-input"
                     :placeholder="$t('prompts.titlePlaceholder')"
                     :aria-label="$t('prompts.fieldTitle')"
-                    @input="onTitleInput"
+                    @blur="commitPromptEditorDraftsFromBlur()"
                   />
                   <span v-if="selected.isSeed" class="editor-card__seed">
                     {{ $t('prompts.seedTag') }}
                   </span>
                 </div>
                 <input
-                  :value="selected.description"
+                  v-model="descriptionDraft"
                   type="text"
                   class="editor-card__description-input"
                   :placeholder="$t('prompts.descriptionPlaceholder')"
                   :aria-label="$t('prompts.fieldDescription')"
-                  @input="onDescriptionInput"
+                  @blur="commitPromptEditorDraftsFromBlur()"
                 />
                 <div class="editor-card__meta">
                   <span>
@@ -1615,22 +1692,22 @@ const canDeleteGroup = (g: PromptGroup) =>
                       <span class="num-field">
                         <span class="num-field__label">{{ $t('prompts.fieldDepth') }}</span>
                         <input
-                          :value="selected.injectionDepth"
+                          v-model.number="depthDraft"
                           type="number"
                           min="0"
                           class="num-field__input"
                           :title="$t('prompts.depthHint')"
-                          @input="onDepthInput"
+                          @blur="commitPromptEditorDraftsFromBlur()"
                         />
                       </span>
                       <span class="num-field">
                         <span class="num-field__label">{{ $t('prompts.fieldOrder') }}</span>
                         <input
-                          :value="selected.injectionOrder"
+                          v-model.number="orderDraft"
                           type="number"
                           class="num-field__input"
                           :title="$t('prompts.orderHint')"
-                          @input="onOrderInput"
+                          @blur="commitPromptEditorDraftsFromBlur()"
                         />
                       </span>
                     </template>
@@ -1664,10 +1741,11 @@ const canDeleteGroup = (g: PromptGroup) =>
                   <span class="editor-card__field-hint">{{ $t('prompts.tagsHint') }}</span>
                 </label>
                 <input
-                  v-model="tagsInput"
+                  v-model="tagsInputDraft"
                   type="text"
                   class="editor-card__tags-input"
                   :placeholder="$t('prompts.tagsPlaceholder')"
+                  @blur="commitTagsDraft()"
                 />
               </div>
 
@@ -1677,12 +1755,12 @@ const canDeleteGroup = (g: PromptGroup) =>
                   <span class="editor-card__field-hint">{{ $t('prompts.contentHint') }}</span>
                 </label>
                 <textarea
-                  :value="selected.content"
+                  v-model="contentDraft"
                   class="editor-card__content-input"
                   rows="12"
                   spellcheck="false"
                   :placeholder="$t('prompts.contentPlaceholder')"
-                  @input="onContentInput"
+                  @blur="commitPromptEditorDraftsFromBlur()"
                 ></textarea>
               </div>
 

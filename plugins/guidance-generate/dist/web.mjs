@@ -112,7 +112,7 @@ export function register(host) {
 
       String(model.guidanceText ?? '').trim().length > 0,
 
-    onSubmit: async (hostApi, model) => {
+    onSubmit: (hostApi, model) => {
 
       const userText = String(model.userText ?? '').trim()
 
@@ -128,7 +128,7 @@ export function register(host) {
 
       if (mode === 'send') {
 
-        await hostApi.chat.sendWithPlugins(userText, plugins)
+        void hostApi.chat.sendWithPlugins(userText, plugins)
 
       } else {
 
@@ -136,7 +136,7 @@ export function register(host) {
 
         if (typeof listIndex !== 'number') return
 
-        await hostApi.chat.regenerateWithPlugins(listIndex, userText, plugins)
+        void hostApi.chat.regenerateWithPlugins(listIndex, userText, plugins)
 
       }
 

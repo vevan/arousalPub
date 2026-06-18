@@ -126,6 +126,8 @@ export const ApiErrorCodes = {
   lorebooks_write_failed: 'lorebooks_write_failed',
   memory_enabled_boolean: 'memory_enabled_boolean',
   memory_rebuild_failed: 'memory_rebuild_failed',
+  context_recall_query_required: 'context_recall_query_required',
+  context_recall_topk_invalid: 'context_recall_topk_invalid',
   memory_vector_index_corrupt: 'memory_vector_index_corrupt',
   memory_settings_invalid: 'memory_settings_invalid',
   memory_settings_memory_enabled_boolean: 'memory_settings_memory_enabled_boolean',

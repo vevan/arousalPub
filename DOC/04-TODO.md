@@ -9,6 +9,7 @@
 
 ## P1
 
+- [ ] **Web 首屏 bundle 体积优化（Vite chunk > 500KB 警告）** — 当前单次 JS ~1.55MB（gzip ~462KB），CSS ~944KB（Vuetify + MDI）；性能/首屏问题，非构建失败。落地顺序：① `rollup-plugin-visualizer`（或 `vite build --analyze`）确认占比；② `web/src/main.ts` 去掉 Vuetify 全量 `import * as components/directives`，仅保留 `vite-plugin-vuetify` `autoImport`（及少量 labs 如 `VIconBtn`）；③ `web/src/router/index.ts`、`App.vue` 中 `SettingsView` / `PromptsView` / `CharactersView` / `LorebooksView` / `AuthView` 等改为 `defineAsyncComponent` 或 `() => import(...)` 懒加载；④ 仍超限则 `build.rollupOptions.output.manualChunks`（或 Rolldown `codeSplitting`）拆 `vue` / `vuetify` / `virtua` vendor；⑤ `@mdi/font` 全量 → `@mdi/js` 按需 SVG（woff2 ~403KB）；⑥ `web/src/i18n/index.ts` 按 locale 动态 `import()` 语言包。仅调高 `chunkSizeWarningLimit` 只消警告、不减体积。插件 web 模块已 `import(url)` 动态加载，无需改。
 - [ ] **独立文档 RAG**（≠ 世界书 vector）— 可选；前置 `DOC/20` M1+M4
 - [ ] RAG 参数面板、会话/角色批量导入导出、备份示例脚本
 
@@ -33,4 +34,5 @@
 - [x] 会话消息 UI 懒加载 + virtua 虚拟列表（2026-06-14～17）：`DOC/15` · `ChatMessageList` · 思维链 `<details>` sticky
 - [x] 库编辑器失焦保存与 PUT/PATCH 去重（2026-06-17）：提示词 / 世界书 / Embedding / 对话 API·插件 schema 文本字段；见 `DOC/03` §15.10、`DOC/25` §8.1
 - [x] 对话页顶栏 UI（2026-06-17）：`chat-header` pill 层级、effective 预设/模型、绑定提示词与世界书菜单、设置入口；见 `DOC/03` §11.2
+- [x] 对话设置上下文 Tab 命中测试（2026-06-18）：`POST .../context/recall-test` · `ConversationRecallTestDialog` · 全库 Memory hybrid + 资料库；不排除近期 N 轮
 - [ ] 架构/接口变更时同步 `DOC/01`–`03`（2026-06-10：内嵌世界书 `DOC/27`、作者注分层 `DOC/28`）

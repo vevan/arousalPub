@@ -116,6 +116,10 @@ import {
 } from './conversation-id.js'
 import { registerAdminConsole } from './admin/routes.js'
 import { registerAuth } from './auth.js'
+import {
+  parseContextRecallTestBody,
+  runContextRecallTest,
+} from './context-recall-test.js'
 import { registerRegexRoutes } from './regex-routes.js'
 import { resolveDataEncryptionKey } from './data-encryption-key.js'
 import { registerMaintenanceGuard } from './maintenance-guard.js'
@@ -1576,6 +1580,34 @@ app.post<{ Params: { id: string } }>(
     } catch (e) {
       request.log.error(e)
       return reply.status(500).send({ error: ApiErrorCodes.chunk_index_repair_failed })
+    }
+  },
+)
+
+app.post<{ Params: { id: string } }>(
+  '/api/chat/conversations/:id/context/recall-test',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!isValidConversationId(id)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    const idx = await readConversationIndex(id)
+    if (!idx) {
+      return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+    }
+    const parsed = parseContextRecallTestBody(request.body)
+    if (!parsed.ok) {
+      const code =
+        parsed.error in ApiErrorCodes
+          ? (parsed.error as (typeof ApiErrorCodes)[keyof typeof ApiErrorCodes])
+          : ApiErrorCodes.validation_failed
+      return reply.status(400).send({ error: code })
+    }
+    try {
+      return await runContextRecallTest(id, parsed.request, idx)
+    } catch (e) {
+      request.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.validation_failed })
     }
   },
 )

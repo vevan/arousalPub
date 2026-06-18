@@ -17,6 +17,7 @@ import BudgetTrimSettingsPanel from '@/components/settings/BudgetTrimSettingsPan
 import ConversationApiSettingsPanel from '@/components/settings/ConversationApiSettingsPanel.vue'
 import ConversationPluginSettingsPanel from '@/components/settings/ConversationPluginSettingsPanel.vue'
 import ConversationRegexApplyPanel from '@/components/settings/ConversationRegexApplyPanel.vue'
+import ConversationRecallTestDialog from '@/components/settings/ConversationRecallTestDialog.vue'
 import { fetchPluginsManage } from '@/utils/plugin-settings-api'
 import {
   readConversationChatBinding,
@@ -104,6 +105,7 @@ const promptsStore = usePromptsStore()
 const { presets, loaded: promptsLoaded } = storeToRefs(promptsStore)
 
 const dialogOpen = ref(false)
+const recallTestDialogOpen = ref(false)
 const activeSection = ref<SettingsSection>('bindings')
 
 const INHERIT_VALUE = ''
@@ -1711,6 +1713,25 @@ async function patchConversation(body: Record<string, unknown>) {
                   </v-alert>
                 </div>
               </div>
+
+              <v-divider class="my-4" />
+
+              <div class="conv-settings-subsection">
+                <h4 class="conv-settings-subsection__title">
+                  {{ $t('chat.convSettings.sectionRecallTest') }}
+                </h4>
+                <p class="conv-settings-field__hint mb-3">
+                  {{ $t('chat.convSettings.recallTestButtonHint') }}
+                </p>
+                <v-btn
+                  variant="outlined"
+                  color="primary"
+                  prepend-icon="mdi-magnify-scan"
+                  @click="recallTestDialogOpen = true"
+                >
+                  {{ $t('chat.convSettings.recallTestButton') }}
+                </v-btn>
+              </div>
             </div>
 
             <div
@@ -1948,6 +1969,11 @@ async function patchConversation(body: Record<string, unknown>) {
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <ConversationRecallTestDialog
+    v-model="recallTestDialogOpen"
+    :conversation-id="conversationId"
+  />
 </template>
 
 <style scoped>

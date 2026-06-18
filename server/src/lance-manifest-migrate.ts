@@ -98,17 +98,7 @@ async function ensureV2ManifestPaths(
   db: Connection,
   tableName: string,
 ): Promise<Table> {
-  const table = await db.openTable(tableName)
-  try {
-    const usesV2 = await table.usesV2ManifestPaths()
-    if (usesV2) return table
-    await table.migrateManifestPathsV2()
-    table.close()
-    return db.openTable(tableName)
-  } catch (e) {
-    table.close()
-    throw e
-  }
+  return db.openTable(tableName)
 }
 
 async function repairMixedManifestsOnDisk(

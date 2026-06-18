@@ -1,5 +1,6 @@
 import type { FastifyBaseLogger, FastifyRequest } from 'fastify'
 import { Readable, type Transform } from 'node:stream'
+import type { ReadableStream as NodeWebReadableStream } from 'node:stream/web'
 
 /** 客户端断开时 abort 上游 fetch，避免空转直到 timeout。 */
 export function bindChatClientAbort(
@@ -41,7 +42,7 @@ export function pipeUpstreamSseBody(
   tap: Transform,
   log: FastifyBaseLogger,
 ): Readable {
-  const source = Readable.fromWeb(body)
+  const source = Readable.fromWeb(body as NodeWebReadableStream<Uint8Array>)
   guardReadableStreamError(source, log, 'chat upstream SSE source')
   guardReadableStreamError(tap, log, 'chat upstream SSE tap')
   const out = source.pipe(tap)

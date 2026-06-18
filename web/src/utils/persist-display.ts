@@ -4,6 +4,51 @@ import type {
   RetroPersistTurnPayload,
 } from '@/types/chat-turn'
 
+const TRACE_KEEPER_BLOCK_RE =
+  /<ex-trace-keeper>\s*([\s\S]*?)\s*<\/ex-trace-keeper>/gi
+
+function parseTraceKeeperStateFromAssistant(
+  content: string,
+): Record<string, unknown> | null {
+  const text = content.trim()
+  if (!text) return null
+  let last: Record<string, unknown> | null = null
+  for (const match of text.matchAll(TRACE_KEEPER_BLOCK_RE)) {
+    const inner = typeof match[1] === 'string' ? match[1].trim() : ''
+    if (!inner) continue
+    try {
+      const parsed: unknown = JSON.parse(inner)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        last = parsed as Record<string, unknown>
+      }
+    } catch {
+      /* ignore invalid blocks */
+    }
+  }
+  return last
+}
+
+function buildTraceKeeperPluginsFromPersist(
+  persist: ChatPersistPayload,
+): unknown[] | undefined {
+  if (Array.isArray(persist.plugins)) return persist.plugins
+  const receiveId = persist.receiveId?.trim()
+  const content = persist.finalAssistantContent
+  if (!receiveId || typeof content !== 'string' || !content.trim()) return undefined
+  const state = parseTraceKeeperStateFromAssistant(content)
+  if (!state) return undefined
+  const epoch =
+    typeof persist.trackerEpoch === 'number' && Number.isFinite(persist.trackerEpoch)
+      ? Math.max(0, Math.round(persist.trackerEpoch))
+      : 0
+  return [
+    {
+      pluginId: 'trace-keeper',
+      schemaVersion: 1,
+      payload: { state, epoch, receiveId },
+    },
+  ]
+}
 /** persist SSE/JSON 带回 final* 时，用落盘正文替代流式 upstream 原文 */
 export function resolveAssistantAfterPersist(
   assistantOut: string,
@@ -74,6 +119,24 @@ function mapRetroReceives(
             : {}),
         }
       : r,
+  )
+}
+
+/** 将 persist.plugins 合并进对应轮次，避免为插件快照全量 reload messages */
+export function applyPersistTurnPlugins(
+  turns: ChatTurnItem[],
+  persist?: ChatPersistPayload,
+): ChatTurnItem[] {
+  if (!persist?.ok || typeof persist.turnOrdinal !== 'number') return turns
+  const plugins = buildTraceKeeperPluginsFromPersist(persist)
+  if (!plugins) return turns
+  const ord = persist.turnOrdinal
+  const idx = turns.findIndex((t) => t.turnOrdinal === ord)
+  if (idx < 0) return turns
+  const cur = turns[idx]!
+  const nextPlugins = [...plugins]
+  return turns.map((t, i) =>
+    i === idx ? { ...cur, plugins: nextPlugins } : t,
   )
 }
 

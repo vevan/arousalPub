@@ -52,25 +52,11 @@ function turnsFromHost(host: PluginHost): HostTurn[] {
   return []
 }
 
-function readRefLike<T>(v: T | { value?: T } | undefined): T | undefined {
-  if (v === undefined || v === null) return undefined
-  if (typeof v === 'object' && 'value' in (v as object)) {
-    return (v as { value?: T }).value
-  }
-  return v as T
-}
-
-function isSessionGenerating(host: PluginHost): boolean {
-  const loading = readRefLike(host.session.loading)
-  const regen = readRefLike(host.session.regeneratingTurnOrdinal)
-  return loading === true || typeof regen === 'number'
-}
-
 const SHELL_STYLES = `
 .trace-keeper-shell{display:flex;flex-direction:column;gap:8px;min-height:2.5rem}
 .trace-keeper-shell .tk-empty{margin:0}
 .trace-keeper-shell .tk-empty-msg{margin:0 0 4px;opacity:.85;font-size:.875rem}
-.trace-keeper-shell .tk-empty-detail{margin:0;font-size:.75rem;opacity:.55;word-break:break-word}
+.trace-keeper-shell .tk-empty-detail{margin:0;font-size:.75rem;opacity:.55;word-break:break-word;overflow-wrap:anywhere}
 .trace-keeper-shell .tk-empty-actions{margin:0}
 .trace-keeper-shell .tk-empty-regen-btn{padding:6px 10px;font-size:.8125rem;border-radius:6px;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));background:rgba(var(--v-theme-primary),.08);cursor:pointer}
 .trace-keeper-shell .tk-empty-regen-btn:disabled{opacity:.55;cursor:wait}
@@ -78,7 +64,9 @@ const SHELL_STYLES = `
 .trace-keeper-shell .tk-pending-hourglass{display:inline-block;font-size:3rem;line-height:1;color:rgba(var(--v-theme-primary),.85);transform-origin:center center;animation:tk-hourglass-flip 2.4s ease-in-out infinite}
 .trace-keeper-shell .tk-pending-msg{margin:0;font-size:.75rem;line-height:1.4;opacity:.72;max-width:14rem}
 @keyframes tk-hourglass-flip{0%{transform:rotate(0deg)}30%{transform:rotate(180deg)}50%{transform:rotate(180deg)}80%{transform:rotate(360deg)}100%{transform:rotate(360deg)}}
-.trace-keeper-shell .tk-body{flex:1 1 auto;min-height:0}
+.trace-keeper-shell .tk-body{min-width:0}
+.trace-keeper-shell .tk-body .trace-keeper-panel,.trace-keeper-shell .tk-body pre{max-width:100%;word-break:break-word;overflow-wrap:anywhere}
+.trace-keeper-shell .tk-body pre{overflow-x:auto;white-space:pre-wrap}
 .trace-keeper-shell .tk-actions{display:flex;flex-direction:row;align-items:center;gap:2px;flex-shrink:0;padding-top:6px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
 .trace-keeper-shell .tk-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;padding:0;border:none;border-radius:4px;background:transparent;color:rgba(var(--v-theme-on-surface),.55);cursor:pointer}
 .trace-keeper-shell .tk-icon-btn:hover:not(:disabled){color:rgb(var(--v-theme-on-surface));background:rgba(var(--v-theme-on-surface),.06)}
@@ -206,7 +194,7 @@ async function refreshPanel(host: PluginHost): Promise<void> {
       turns,
       epoch,
       pinned,
-      isSessionGenerating(host),
+      regenBusy,
     )
 
     lastEditContext =
@@ -445,15 +433,6 @@ export function registerLifecycle(host: PluginHost): void {
   host.conversation.onPluginSettingsChanged(() => {
     void refreshPanel(host)
     host.refreshSlotButtons()
-  })
-  host.lifecycle.onAssistantReplyPersisted(() => {
-    void (async () => {
-      if (host.conversation.refresh) {
-        await host.conversation.refresh()
-      }
-      await refreshPanel(host)
-      host.refreshSlotButtons()
-    })()
   })
   host.lifecycle.onTurnDataChanged?.(() => {
     void refreshPanel(host)

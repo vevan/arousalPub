@@ -19,7 +19,7 @@ var sample_state_default = {
 var template_default = '<div class="trace-keeper-panel">\n  <h4 class="tk-title">\u573A\u666F\u8FFD\u8E2A</h4>\n  <dl class="tk-fields">\n    <dt>\u5730\u70B9</dt>\n    <dd>{{data.scene.location}}</dd>\n    <dt>\u65F6\u95F4</dt>\n    <dd>{{data.scene.time}}</dd>\n    <dt>\u5929\u6C14</dt>\n    <dd>{{data.scene.weather}}</dd>\n    <dt>\u6C1B\u56F4</dt>\n    <dd>{{data.mood}}</dd>\n  </dl>\n  {{#if data.notes}}\n  <p class="tk-notes">{{data.notes}}</p>\n  {{/if}}\n  <p class="tk-meta text-caption">epoch {{meta.epoch}}{{#if meta.turnOrdinal}} \xB7 \u7B2C {{meta.turnOrdinal}} \u8F6E{{/if}}</p>\n</div>\n';
 
 // plugins/trace-keeper/bundles/scene-tracker-default/stylesheet.css
-var stylesheet_default = ".trace-keeper-panel {\n  font-size: 0.875rem;\n  line-height: 1.45;\n}\n\n.trace-keeper-panel .tk-title {\n  margin: 0 0 8px;\n  font-weight: 600;\n  font-size: 0.95rem;\n}\n\n.trace-keeper-panel .tk-fields {\n  margin: 0 0 8px;\n  display: grid;\n  grid-template-columns: auto 1fr;\n  gap: 4px 10px;\n}\n\n.trace-keeper-panel .tk-fields dt {\n  margin: 0;\n  opacity: 0.72;\n}\n\n.trace-keeper-panel .tk-fields dd {\n  margin: 0;\n}\n\n.trace-keeper-panel .tk-notes {\n  margin: 8px 0 0;\n  padding: 8px;\n  border-radius: 6px;\n  background: rgba(var(--v-theme-on-surface), 0.04);\n}\n\n.trace-keeper-panel .tk-meta {\n  margin: 10px 0 0;\n  opacity: 0.55;\n}\n";
+var stylesheet_default = ".trace-keeper-panel {\n  font-size: 0.875rem;\n  line-height: 1.45;\n}\n\n.trace-keeper-panel .tk-title {\n  margin: 0 0 8px;\n  font-weight: 600;\n  font-size: 0.95rem;\n}\n\n.trace-keeper-panel .tk-fields {\n  margin: 0 0 8px;\n  display: grid;\n  grid-template-columns: auto 1fr;\n  gap: 4px 10px;\n}\n\n.trace-keeper-panel .tk-fields dt {\n  margin: 0;\n  opacity: 0.72;\n}\n\n.trace-keeper-panel .tk-fields dd {\n  margin: 0;\n  word-break: break-word;\n  overflow-wrap: anywhere;\n}\n\n.trace-keeper-panel .tk-notes {\n  margin: 8px 0 0;\n  padding: 8px;\n  border-radius: 6px;\n  background: rgba(var(--v-theme-on-surface), 0.04);\n  word-break: break-word;\n  overflow-wrap: anywhere;\n  white-space: pre-wrap;\n}\n\n.trace-keeper-panel .tk-meta {\n  margin: 10px 0 0;\n  opacity: 0.55;\n}\n";
 
 // plugins/trace-keeper/src/default-prompt.ts
 var DEFAULT_SYSTEM_PROMPT_TEMPLATE = [
@@ -55,7 +55,10 @@ function parseSampleStateJson(raw) {
     return void 0;
   }
 }
-function parseUserBundleEntry(raw) {
+function sampleStateJsonValidationEnabled(user) {
+  return user.validateSampleStateJson !== false;
+}
+function parseUserBundleEntry(raw, opts) {
   if (!isPlainObject(raw)) return null;
   const id = typeof raw.id === "string" ? raw.id.trim() : "";
   if (!id) return null;
@@ -69,11 +72,14 @@ function parseUserBundleEntry(raw) {
   if (typeof raw.separateSystemPromptTemplate === "string" && raw.separateSystemPromptTemplate.trim()) {
     out.separateSystemPromptTemplate = raw.separateSystemPromptTemplate.trim();
   }
-  const fromJson = parseSampleStateJson(raw.sampleStateJson);
+  const jsonRaw = typeof raw.sampleStateJson === "string" ? raw.sampleStateJson : "";
+  const fromJson = parseSampleStateJson(jsonRaw);
   if (fromJson) {
     out.sampleState = fromJson;
   } else if (isPlainObject(raw.sampleState)) {
     out.sampleState = raw.sampleState;
+  } else if (jsonRaw.trim() && opts.allowInvalidSampleJson) {
+    out.sampleStatePromptText = jsonRaw;
   }
   if (typeof raw.template === "string" && raw.template.trim()) {
     out.template = raw.template;
@@ -84,6 +90,8 @@ function parseUserBundleEntry(raw) {
   return out;
 }
 function collectUserBundles(user) {
+  const allowInvalidSampleJson = !sampleStateJsonValidationEnabled(user);
+  const parseOpts = { allowInvalidSampleJson };
   const out = {};
   const listRaw = user.bundleList;
   const list = Array.isArray(listRaw) ? listRaw : typeof listRaw === "string" ? (() => {
@@ -95,7 +103,7 @@ function collectUserBundles(user) {
     }
   })() : [];
   for (const item of list) {
-    const entry = parseUserBundleEntry(item);
+    const entry = parseUserBundleEntry(item, parseOpts);
     if (!entry) continue;
     out[entry.id] = { ...out[entry.id], ...entry };
   }
@@ -103,7 +111,7 @@ function collectUserBundles(user) {
   if (isPlainObject(legacy)) {
     for (const [key, val] of Object.entries(legacy)) {
       if (!isPlainObject(val)) continue;
-      const entry = parseUserBundleEntry({ ...val, id: key });
+      const entry = parseUserBundleEntry({ ...val, id: key }, parseOpts);
       if (!entry) continue;
       out[entry.id] = { ...out[entry.id], ...entry };
     }
@@ -117,6 +125,9 @@ function mergeBundlePartial(base, partial) {
   }
   if (isPlainObject(partial.sampleState)) {
     next.sampleState = partial.sampleState;
+  }
+  if (typeof partial.sampleStatePromptText === "string") {
+    next.sampleStatePromptText = partial.sampleStatePromptText;
   }
   if (typeof partial.template === "string" && partial.template.trim()) {
     next.template = partial.template;
@@ -132,12 +143,15 @@ function mergeBundlePartial(base, partial) {
   }
   return next;
 }
+function cloneSampleState(state) {
+  return structuredClone(state);
+}
 function shellBundle(id, embedded) {
   if (id === embedded.id) return { ...embedded, id };
   return {
     id,
     label: id,
-    sampleState: {},
+    sampleState: cloneSampleState(embedded.sampleState),
     template: '<div class="trace-keeper-panel"><pre>{{json data}}</pre></div>',
     stylesheet: ".trace-keeper-panel { font-size: 0.875rem; }",
     systemPromptTemplate: embedded.systemPromptTemplate,
@@ -306,9 +320,14 @@ function buildSeparateDialogueMessages(tail, targetOrdinal, windowTurnCount) {
 }
 
 // plugins/trace-keeper/src/tracker-prompt.ts
+function formatSampleStateForPrompt(bundle) {
+  const raw = bundle.sampleStatePromptText?.trim();
+  if (raw) return raw;
+  return JSON.stringify(bundle.sampleState, null, 2);
+}
 function buildTrackerSystemPrompt(bundle) {
   const prefix = bundle.systemPromptTemplate?.trim() || DEFAULT_SYSTEM_PROMPT_TEMPLATE;
-  const sampleJson = JSON.stringify(bundle.sampleState, null, 2);
+  const sampleJson = formatSampleStateForPrompt(bundle);
   return [
     prefix,
     "--- sample structure (reference only) ---",
@@ -317,7 +336,7 @@ function buildTrackerSystemPrompt(bundle) {
 }
 function buildSeparateSystemPrompt(bundle) {
   const prefix = bundle.separateSystemPromptTemplate?.trim() || DEFAULT_SEPARATE_SYSTEM_PROMPT_TEMPLATE;
-  const sampleJson = JSON.stringify(bundle.sampleState, null, 2);
+  const sampleJson = formatSampleStateForPrompt(bundle);
   return [
     prefix,
     "--- JSON template (reference only) ---",
@@ -532,11 +551,13 @@ async function resolveTurnPluginEntriesFromAssistant(ctx, api) {
   ];
 }
 export {
+  DEFAULT_TRACE_BUNDLE,
   afterAssemblePrompts,
   buildTrackerSystemPrompt,
   patchTraceKeeperState,
   regenerateSeparateState,
   resolveAfterAssemblePromptsAddition,
+  resolveTraceBundle,
   resolveTraceKeeperInjection,
   resolveTurnPluginEntriesFromAssistant
 };

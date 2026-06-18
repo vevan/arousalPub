@@ -7,6 +7,21 @@ import {
   type TraceTurnRef,
 } from './panel-render.js'
 
+function findPriorTraceStateForLive(
+  turns: TurnViewRef[],
+  epoch: number,
+): { state: Record<string, unknown>; turnOrdinal: number } | null {
+  if (turns.length < 2) return null
+  for (let i = turns.length - 2; i >= 0; i -= 1) {
+    const turn = turns[i]!
+    const hit = findTracePayloadForTurn(turn, epoch)
+    if (hit) {
+      return { state: hit.state, turnOrdinal: turn.turnOrdinal }
+    }
+  }
+  return null
+}
+
 export type PanelEmptyReason =
   | 'empty_session'
   | 'no_data_history'
@@ -62,6 +77,11 @@ function activeReceiveId(turn: TurnViewRef): string | undefined {
   )
   const id = receives[idx]?.id
   return typeof id === 'string' && id.trim() ? id.trim() : undefined
+}
+
+/** 用户已发消息、助手尚未落盘任何 receive（普通 chat 流式等待） */
+function isTurnAwaitingAssistantReply(turn: TurnViewRef): boolean {
+  return !turn.receives?.length
 }
 
 /** plugins[] 有条目且 epoch/receive 匹配但 state 非法 */
@@ -126,7 +146,7 @@ export function resolvePanelView(
   turns: TurnViewRef[],
   epoch: number,
   pinned: number | null,
-  isAwaitingReply = false,
+  isSeparateRegenerating = false,
 ): PanelViewResolved {
   if (turns.length === 0) {
     return {
@@ -156,6 +176,17 @@ export function resolvePanelView(
       canRegenerate: false,
       mode,
       turnOrdinal: pinned ?? undefined,
+      epoch,
+    }
+  }
+
+  if (isCurrentTurnView && isSeparateRegenerating) {
+    return {
+      kind: 'empty',
+      reason: 'awaiting_reply',
+      canRegenerate: false,
+      mode,
+      turnOrdinal: viewingOrdinal,
       epoch,
     }
   }
@@ -208,14 +239,41 @@ export function resolvePanelView(
     }
   }
 
-  if (isAwaitingReply) {
-    return {
-      kind: 'empty',
-      reason: 'awaiting_reply',
-      canRegenerate: false,
-      mode,
-      turnOrdinal: viewingOrdinal,
-      epoch,
+  const prior =
+    isTurnAwaitingAssistantReply(viewingTurn)
+      ? findPriorTraceStateForLive(turns, epoch)
+      : null
+  if (prior) {
+    try {
+      const html = renderTracePanelHtml(bundle, prior.state, {
+        mode,
+        turnOrdinal: prior.turnOrdinal,
+        epoch,
+      })
+      return {
+        kind: 'content',
+        html,
+        mode,
+        turnOrdinal: prior.turnOrdinal,
+        epoch,
+        editState: prior.state,
+      }
+    } catch (e) {
+      const detail =
+        e instanceof Error
+          ? e.message.length > 200
+            ? `${e.message.slice(0, 200)}…`
+            : e.message
+          : undefined
+      return {
+        kind: 'empty',
+        reason: 'render_failed',
+        detail,
+        canRegenerate: true,
+        mode,
+        turnOrdinal: viewingOrdinal,
+        epoch,
+      }
     }
   }
 

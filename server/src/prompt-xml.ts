@@ -68,22 +68,28 @@ export function escapeXmlText(raw: string): string {
 }
 
 const CARD_TEXT_FIELDS = [
-  ['name', 'name'],
   ['description', 'description'],
   ['personality', 'personality'],
   ['scenario', 'scenario'],
   ['mes_example', 'mes_example'],
 ] as const
 
-function el(tag: string, text: string): string {
-  return `  <${tag}>${prepareXmlElementText(text)}</${tag}>`
-}
+export type PersonaFieldAttribute =
+  (typeof CARD_TEXT_FIELDS)[number][0]
 
-/**
- * 单张角色卡 → `<char name="...">` 片段（字段级转义后再拼接，不做宏替换）。
- */
-export function cardRecordToCharXmlBlock(card: Record<string, unknown>): string {
-  return cardRecordToPersonaXmlBlock(card, 'char')
+/** 单字段 → `<char|user name="…" attribute="…">` 正文 */
+export function formatPersonaFieldXml(
+  rootTag: 'char' | 'user',
+  displayName: string,
+  attribute: PersonaFieldAttribute | 'system_prompt' | 'post_history_instructions',
+  text: string,
+): string {
+  const nameAttr = escapeXmlAttribute(
+    displayName.trim() || (rootTag === 'user' ? '用户' : '角色'),
+  )
+  const fieldAttr = escapeXmlAttribute(attribute)
+  const body = prepareXmlElementText(text.trim())
+  return `<${rootTag} name="${nameAttr}" attribute="${fieldAttr}">${body}</${rootTag}>`
 }
 
 function cardRecordToPersonaXmlBlock(
@@ -97,20 +103,28 @@ function cardRecordToPersonaXmlBlock(
       : rootTag === 'user'
         ? '用户'
         : '角色'
-  const attr = escapeXmlAttribute(display)
   const lines: string[] = []
-  for (const [tag, ck] of CARD_TEXT_FIELDS) {
+  for (const [attribute, ck] of CARD_TEXT_FIELDS) {
     const v = card[ck]
     if (typeof v !== 'string' || !v.trim()) continue
-    lines.push(el(tag, v.trim()))
+    lines.push(formatPersonaFieldXml(rootTag, display, attribute, v.trim()))
   }
   if (lines.length === 0) {
-    lines.push(el('description', '(No description)'))
+    lines.push(
+      formatPersonaFieldXml(rootTag, display, 'description', '(No description)'),
+    )
   }
-  return `<${rootTag} name="${attr}">\n${lines.join('\n')}\n</${rootTag}>`
+  return lines.join('\n')
 }
 
-/** 用户 persona 卡 → `<user name="…">`（与 AI 角色 `<char>` 区分） */
+/**
+ * 单张角色卡 → 多行 `<char name="…" attribute="…">` 片段（字段级转义后再拼接，不做宏替换）。
+ */
+export function cardRecordToCharXmlBlock(card: Record<string, unknown>): string {
+  return cardRecordToPersonaXmlBlock(card, 'char')
+}
+
+/** 用户 persona 卡 → `<user name="…" attribute="…">`（与 AI 角色 `<char>` 区分） */
 export function cardRecordToUserXmlBlock(card: Record<string, unknown>): string {
   return cardRecordToPersonaXmlBlock(card, 'user')
 }

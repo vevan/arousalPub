@@ -120,6 +120,14 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
     return deps.conn.isApiKeyConfigured && deps.conn.model.trim().length > 0
   }
 
+  function resolveReceiveId(
+    persist: ChatPersistPayload | undefined,
+  ): string {
+    const fromPersist = persist?.receiveId?.trim()
+    if (fromPersist) return fromPersist
+    return allocateShortId(collectUsedReceiveIds(deps.turns.value))
+  }
+
   function makeReceiveFromResult(
     content: string,
     result: Pick<
@@ -130,7 +138,7 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
     const elapsed = result.durationMs ?? deps.resolveDurationMs()
     return buildReceiveItem(
       deps.conn.model,
-      allocateShortId(collectUsedReceiveIds(deps.turns.value)),
+      resolveReceiveId(result.persist),
       content,
       {
         reasoning: result.reasoning,

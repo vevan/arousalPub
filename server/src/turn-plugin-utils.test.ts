@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { mergeTurnPluginEntry, attachReceiveIdToTurnPluginEntries, removeTraceKeeperPluginForReceive } from './turn-plugin-utils.js'
+import { mergeTurnPluginEntry, attachReceiveIdToTurnPluginEntries, removeTraceKeeperPluginForReceive, mergePersistTurnPlugins } from './turn-plugin-utils.js'
 
 describe('mergeTurnPluginEntry trace-keeper receiveId', () => {
   it('keeps distinct receive snapshots', () => {
@@ -59,6 +59,27 @@ describe('attachReceiveIdToTurnPluginEntries', () => {
       'rx1',
     )
     assert.equal(out?.[0]?.payload.receiveId, 'rx1')
+  })
+})
+
+describe('mergePersistTurnPlugins', () => {
+  it('merges new receive snapshot onto existing turn plugins', () => {
+    const out = mergePersistTurnPlugins(
+      [
+        {
+          pluginId: 'trace-keeper',
+          schemaVersion: 1,
+          payload: { state: { n: 1 }, epoch: 0, receiveId: 'r1' },
+        },
+      ],
+      [{ pluginId: 'trace-keeper', schemaVersion: 1, payload: { state: { n: 2 }, epoch: 0 } }],
+      'r2',
+    )
+    assert.equal(out.length, 2)
+    assert.equal(
+      (out[1] as { payload: { receiveId: string } }).payload.receiveId,
+      'r2',
+    )
   })
 })
 

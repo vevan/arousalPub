@@ -1,6 +1,6 @@
 import type { PromptTrigger } from '@/stores/prompts'
 import type { ChatPersistPayload, ChatTurnItem, PersistTurnToServerResult } from '@/types/chat-turn'
-import { resolveFinalUserTextAfterPersist, applyRetroPersistToTurns } from '@/utils/persist-display'
+import { resolveFinalUserTextAfterPersist, applyRetroPersistToTurns, applyPersistTurnPlugins } from '@/utils/persist-display'
 import { isAbortError } from '@/utils/abort-error'
 import type { ConversationChatRequestPlugins } from '@/utils/chat-api'
 import { allocateShortId } from '@/utils/short-id'
@@ -52,9 +52,12 @@ export function useChatOutbound(opts: {
 }) {
   function applyPersistRetroPatches(persist?: ChatPersistPayload) {
     opts.setPersistWarning(persist)
+    let next = opts.turns.value
     if (persist?.retro?.length) {
-      opts.turns.value = applyRetroPersistToTurns(opts.turns.value, persist)
+      next = applyRetroPersistToTurns(next, persist)
     }
+    next = applyPersistTurnPlugins(next, persist)
+    opts.turns.value = next
   }
 
   function partialReceiveFromStream(durationMs: number) {

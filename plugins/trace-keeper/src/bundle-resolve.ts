@@ -28,8 +28,15 @@ function parseSampleStateJson(raw: unknown): Record<string, unknown> | undefined
   }
 }
 
+function sampleStateJsonValidationEnabled(
+  user: Record<string, unknown>,
+): boolean {
+  return user.validateSampleStateJson !== false
+}
+
 function parseUserBundleEntry(
   raw: unknown,
+  opts: { allowInvalidSampleJson: boolean },
 ): (Partial<TraceBundle> & { id: string }) | null {
   if (!isPlainObject(raw)) return null
   const id = typeof raw.id === 'string' ? raw.id.trim() : ''
@@ -50,11 +57,14 @@ function parseUserBundleEntry(
   ) {
     out.separateSystemPromptTemplate = raw.separateSystemPromptTemplate.trim()
   }
-  const fromJson = parseSampleStateJson(raw.sampleStateJson)
+  const jsonRaw = typeof raw.sampleStateJson === 'string' ? raw.sampleStateJson : ''
+  const fromJson = parseSampleStateJson(jsonRaw)
   if (fromJson) {
     out.sampleState = fromJson
   } else if (isPlainObject(raw.sampleState)) {
     out.sampleState = raw.sampleState
+  } else if (jsonRaw.trim() && opts.allowInvalidSampleJson) {
+    out.sampleStatePromptText = jsonRaw
   }
   if (typeof raw.template === 'string' && raw.template.trim()) {
     out.template = raw.template
@@ -68,6 +78,8 @@ function parseUserBundleEntry(
 function collectUserBundles(
   user: Record<string, unknown>,
 ): Record<string, Partial<TraceBundle>> {
+  const allowInvalidSampleJson = !sampleStateJsonValidationEnabled(user)
+  const parseOpts = { allowInvalidSampleJson }
   const out: Record<string, Partial<TraceBundle>> = {}
   const listRaw = user.bundleList
   const list = Array.isArray(listRaw)
@@ -83,7 +95,7 @@ function collectUserBundles(
         })()
       : []
   for (const item of list) {
-    const entry = parseUserBundleEntry(item)
+    const entry = parseUserBundleEntry(item, parseOpts)
     if (!entry) continue
     out[entry.id] = { ...out[entry.id], ...entry }
   }
@@ -91,7 +103,7 @@ function collectUserBundles(
   if (isPlainObject(legacy)) {
     for (const [key, val] of Object.entries(legacy)) {
       if (!isPlainObject(val)) continue
-      const entry = parseUserBundleEntry({ ...val, id: key })
+      const entry = parseUserBundleEntry({ ...val, id: key }, parseOpts)
       if (!entry) continue
       out[entry.id] = { ...out[entry.id], ...entry }
     }
@@ -109,6 +121,9 @@ function mergeBundlePartial(
   }
   if (isPlainObject(partial.sampleState)) {
     next.sampleState = partial.sampleState
+  }
+  if (typeof partial.sampleStatePromptText === 'string') {
+    next.sampleStatePromptText = partial.sampleStatePromptText
   }
   if (typeof partial.template === 'string' && partial.template.trim()) {
     next.template = partial.template
@@ -132,12 +147,16 @@ function mergeBundlePartial(
   return next
 }
 
+function cloneSampleState(state: Record<string, unknown>): Record<string, unknown> {
+  return structuredClone(state)
+}
+
 function shellBundle(id: string, embedded: TraceBundle): TraceBundle {
   if (id === embedded.id) return { ...embedded, id }
   return {
     id,
     label: id,
-    sampleState: {},
+    sampleState: cloneSampleState(embedded.sampleState),
     template:
       '<div class="trace-keeper-panel"><pre>{{json data}}</pre></div>',
     stylesheet: '.trace-keeper-panel { font-size: 0.875rem; }',

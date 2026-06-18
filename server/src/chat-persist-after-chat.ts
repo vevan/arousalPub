@@ -8,6 +8,7 @@ import {
   buildReceiveRuntime,
   collectChunkEntityIds,
   readConversationIndex,
+  readConversationPluginSettings,
   readTailChunk,
   saveFirstTurn,
   updateTurnContentInTailChunk,
@@ -58,6 +59,10 @@ export interface ChatPersistResult {
   /** skip 窗口回溯 persist 改动的历史轮 */
   retro?: RetroPersistTurnPayload[]
   retroStatus?: RetroPersistStatus
+  /** 落盘轮次的 plugins[] 快照，供前端增量 patch、避免全量 reload */
+  plugins?: unknown[]
+  /** 落盘时 trace-keeper trackerEpoch */
+  trackerEpoch?: number
 }
 
 /** 出站 token：上游 usage.prompt_tokens，缺省用组装估算 */
@@ -173,6 +178,25 @@ function resolveCompletionTokens(
   return n > 0 ? n : undefined
 }
 
+function trackerEpochFromConvIndex(
+  idx: Awaited<ReturnType<typeof readConversationIndex>>,
+): number {
+  if (!idx) return 0
+  const tk = readConversationPluginSettings(idx, 'trace-keeper')
+  const n = tk.trackerEpoch
+  return typeof n === 'number' && Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0
+}
+
+function turnPluginsFromChunk(
+  chunk: { turns: { turnOrdinal: number; plugins?: unknown[] }[] } | null | undefined,
+  turnOrdinal: number,
+): unknown[] | undefined {
+  if (!chunk) return undefined
+  const turn = chunk.turns.find((t) => t.turnOrdinal === turnOrdinal)
+  if (!turn || !Array.isArray(turn.plugins)) return undefined
+  return turn.plugins
+}
+
 function okPersistResult(
   base: {
     turnOrdinal?: number
@@ -180,6 +204,8 @@ function okPersistResult(
     isFirstTurn?: boolean
   },
   fields: PersistRegexFields,
+  plugins?: unknown[],
+  trackerEpoch?: number,
 ): ChatPersistResult {
   return {
     ok: true,
@@ -189,6 +215,8 @@ function okPersistResult(
     ...(fields.assistantReasoning !== undefined
       ? { finalAssistantReasoning: fields.assistantReasoning }
       : {}),
+    ...(plugins !== undefined ? { plugins } : {}),
+    ...(typeof trackerEpoch === 'number' ? { trackerEpoch } : {}),
   }
 }
 
@@ -219,8 +247,10 @@ async function finishPersistResult(
   },
   fields: PersistRegexFields,
   retroOpts: { newTailOrdinal: number; includeNewRetro: boolean } | null,
+  plugins?: unknown[],
+  trackerEpoch?: number,
 ): Promise<ChatPersistResult> {
-  const result = okPersistResult(base, fields)
+  const result = okPersistResult(base, fields, plugins, trackerEpoch)
   if (!retroOpts) return result
   let retroRun: RetroPersistRunResult | null = null
   try {
@@ -282,6 +312,7 @@ export async function persistTurnAfterModelReply(params: {
   if (!idx) {
     return { ok: false, error: ApiErrorCodes.conversation_not_found }
   }
+  const trackerEpoch = trackerEpochFromConvIndex(idx)
 
   const model =
     typeof params.model === 'string' && params.model.trim()
@@ -411,6 +442,7 @@ export async function persistTurnAfterModelReply(params: {
       if (!ok) {
         return { ok: false, error: ApiErrorCodes.turn_update_failed }
       }
+      const afterLocated = await readChunkContainingOrdinal(conversationId, regenOrd)
       return finishPersistResult(
         conversationId,
         {
@@ -423,6 +455,8 @@ export async function persistTurnAfterModelReply(params: {
           newTailOrdinal: await resolveConversationTailOrdinal(conversationId),
           includeNewRetro: false,
         },
+        turnPluginsFromChunk(afterLocated?.chunk, regenOrd),
+        trackerEpoch,
       )
     }
 
@@ -457,6 +491,8 @@ export async function persistTurnAfterModelReply(params: {
         },
         fields,
         { newTailOrdinal: 0, includeNewRetro: true },
+        turnPluginsFromChunk(saved.chunk, 0),
+        trackerEpoch,
       )
     }
 
@@ -498,18 +534,21 @@ export async function persistTurnAfterModelReply(params: {
     }
     const chunk = await readTailChunk(conversationId)
     const last = chunk?.turns[chunk.turns.length - 1]
+    const appendTurnOrdinal = last?.turnOrdinal ?? appendOrdinal
     return finishPersistResult(
       conversationId,
       {
-        turnOrdinal: last?.turnOrdinal ?? appendOrdinal,
+        turnOrdinal: appendTurnOrdinal,
         receiveId,
         isFirstTurn: false,
       },
       appendFields,
       {
-        newTailOrdinal: last?.turnOrdinal ?? appendOrdinal,
+        newTailOrdinal: appendTurnOrdinal,
         includeNewRetro: true,
       },
+      turnPluginsFromChunk(chunk, appendTurnOrdinal),
+      trackerEpoch,
     )
   }
 
@@ -607,6 +646,8 @@ export async function persistTurnAfterModelReply(params: {
       },
       fields,
       { newTailOrdinal: 0, includeNewRetro: true },
+      turnPluginsFromChunk(saved.chunk, 0),
+      trackerEpoch,
     )
   }
 
@@ -634,17 +675,20 @@ export async function persistTurnAfterModelReply(params: {
   }
   const chunk = await readTailChunk(conversationId)
   const last = chunk?.turns[chunk.turns.length - 1]
+  const persistedOrdinal = last?.turnOrdinal ?? turnOrdinal
   return finishPersistResult(
     conversationId,
     {
-      turnOrdinal: last?.turnOrdinal ?? turnOrdinal,
+      turnOrdinal: persistedOrdinal,
       receiveId,
       isFirstTurn: false,
     },
     fields,
     {
-      newTailOrdinal: last?.turnOrdinal ?? turnOrdinal,
+      newTailOrdinal: persistedOrdinal,
       includeNewRetro: true,
     },
+    turnPluginsFromChunk(chunk, persistedOrdinal),
+    trackerEpoch,
   )
 }

@@ -1046,7 +1046,7 @@ watch(
   display: grid;
   grid-template-rows: auto 1fr;
   grid-template-columns: minmax(0, 1fr);
-  height: calc(100vh - var(--header-height) - var(--footer-height));
+  height: 100%;
   min-height: 0;
   flex: 1 1 auto;
 }

@@ -44,6 +44,10 @@ export interface ChatPersistPayload {
   /** skip 窗口回溯 persist 改动的历史轮 */
   retro?: RetroPersistTurnPayload[]
   retroStatus?: RetroPersistStatus
+  /** 落盘轮次的 plugins[] 快照（与磁盘一致） */
+  plugins?: unknown[]
+  /** 落盘时 trace-keeper trackerEpoch，供前端本地快照对齐 */
+  trackerEpoch?: number
 }
 
 export interface RetroPersistTurnPayload {

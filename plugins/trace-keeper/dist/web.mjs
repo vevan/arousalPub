@@ -5762,7 +5762,7 @@ var sample_state_default = {
 var template_default = '<div class="trace-keeper-panel">\n  <h4 class="tk-title">\u573A\u666F\u8FFD\u8E2A</h4>\n  <dl class="tk-fields">\n    <dt>\u5730\u70B9</dt>\n    <dd>{{data.scene.location}}</dd>\n    <dt>\u65F6\u95F4</dt>\n    <dd>{{data.scene.time}}</dd>\n    <dt>\u5929\u6C14</dt>\n    <dd>{{data.scene.weather}}</dd>\n    <dt>\u6C1B\u56F4</dt>\n    <dd>{{data.mood}}</dd>\n  </dl>\n  {{#if data.notes}}\n  <p class="tk-notes">{{data.notes}}</p>\n  {{/if}}\n  <p class="tk-meta text-caption">epoch {{meta.epoch}}{{#if meta.turnOrdinal}} \xB7 \u7B2C {{meta.turnOrdinal}} \u8F6E{{/if}}</p>\n</div>\n';
 
 // plugins/trace-keeper/bundles/scene-tracker-default/stylesheet.css
-var stylesheet_default = ".trace-keeper-panel {\n  font-size: 0.875rem;\n  line-height: 1.45;\n}\n\n.trace-keeper-panel .tk-title {\n  margin: 0 0 8px;\n  font-weight: 600;\n  font-size: 0.95rem;\n}\n\n.trace-keeper-panel .tk-fields {\n  margin: 0 0 8px;\n  display: grid;\n  grid-template-columns: auto 1fr;\n  gap: 4px 10px;\n}\n\n.trace-keeper-panel .tk-fields dt {\n  margin: 0;\n  opacity: 0.72;\n}\n\n.trace-keeper-panel .tk-fields dd {\n  margin: 0;\n}\n\n.trace-keeper-panel .tk-notes {\n  margin: 8px 0 0;\n  padding: 8px;\n  border-radius: 6px;\n  background: rgba(var(--v-theme-on-surface), 0.04);\n}\n\n.trace-keeper-panel .tk-meta {\n  margin: 10px 0 0;\n  opacity: 0.55;\n}\n";
+var stylesheet_default = ".trace-keeper-panel {\n  font-size: 0.875rem;\n  line-height: 1.45;\n}\n\n.trace-keeper-panel .tk-title {\n  margin: 0 0 8px;\n  font-weight: 600;\n  font-size: 0.95rem;\n}\n\n.trace-keeper-panel .tk-fields {\n  margin: 0 0 8px;\n  display: grid;\n  grid-template-columns: auto 1fr;\n  gap: 4px 10px;\n}\n\n.trace-keeper-panel .tk-fields dt {\n  margin: 0;\n  opacity: 0.72;\n}\n\n.trace-keeper-panel .tk-fields dd {\n  margin: 0;\n  word-break: break-word;\n  overflow-wrap: anywhere;\n}\n\n.trace-keeper-panel .tk-notes {\n  margin: 8px 0 0;\n  padding: 8px;\n  border-radius: 6px;\n  background: rgba(var(--v-theme-on-surface), 0.04);\n  word-break: break-word;\n  overflow-wrap: anywhere;\n  white-space: pre-wrap;\n}\n\n.trace-keeper-panel .tk-meta {\n  margin: 10px 0 0;\n  opacity: 0.55;\n}\n";
 
 // plugins/trace-keeper/src/default-prompt.ts
 var DEFAULT_SYSTEM_PROMPT_TEMPLATE = [
@@ -5798,7 +5798,10 @@ function parseSampleStateJson(raw) {
     return void 0;
   }
 }
-function parseUserBundleEntry(raw) {
+function sampleStateJsonValidationEnabled(user) {
+  return user.validateSampleStateJson !== false;
+}
+function parseUserBundleEntry(raw, opts) {
   if (!isPlainObject(raw)) return null;
   const id = typeof raw.id === "string" ? raw.id.trim() : "";
   if (!id) return null;
@@ -5812,11 +5815,14 @@ function parseUserBundleEntry(raw) {
   if (typeof raw.separateSystemPromptTemplate === "string" && raw.separateSystemPromptTemplate.trim()) {
     out.separateSystemPromptTemplate = raw.separateSystemPromptTemplate.trim();
   }
-  const fromJson = parseSampleStateJson(raw.sampleStateJson);
+  const jsonRaw = typeof raw.sampleStateJson === "string" ? raw.sampleStateJson : "";
+  const fromJson = parseSampleStateJson(jsonRaw);
   if (fromJson) {
     out.sampleState = fromJson;
   } else if (isPlainObject(raw.sampleState)) {
     out.sampleState = raw.sampleState;
+  } else if (jsonRaw.trim() && opts.allowInvalidSampleJson) {
+    out.sampleStatePromptText = jsonRaw;
   }
   if (typeof raw.template === "string" && raw.template.trim()) {
     out.template = raw.template;
@@ -5827,6 +5833,8 @@ function parseUserBundleEntry(raw) {
   return out;
 }
 function collectUserBundles(user) {
+  const allowInvalidSampleJson = !sampleStateJsonValidationEnabled(user);
+  const parseOpts = { allowInvalidSampleJson };
   const out = {};
   const listRaw = user.bundleList;
   const list = Array.isArray(listRaw) ? listRaw : typeof listRaw === "string" ? (() => {
@@ -5838,7 +5846,7 @@ function collectUserBundles(user) {
     }
   })() : [];
   for (const item of list) {
-    const entry = parseUserBundleEntry(item);
+    const entry = parseUserBundleEntry(item, parseOpts);
     if (!entry) continue;
     out[entry.id] = { ...out[entry.id], ...entry };
   }
@@ -5846,7 +5854,7 @@ function collectUserBundles(user) {
   if (isPlainObject(legacy)) {
     for (const [key, val] of Object.entries(legacy)) {
       if (!isPlainObject(val)) continue;
-      const entry = parseUserBundleEntry({ ...val, id: key });
+      const entry = parseUserBundleEntry({ ...val, id: key }, parseOpts);
       if (!entry) continue;
       out[entry.id] = { ...out[entry.id], ...entry };
     }
@@ -5860,6 +5868,9 @@ function mergeBundlePartial(base, partial) {
   }
   if (isPlainObject(partial.sampleState)) {
     next.sampleState = partial.sampleState;
+  }
+  if (typeof partial.sampleStatePromptText === "string") {
+    next.sampleStatePromptText = partial.sampleStatePromptText;
   }
   if (typeof partial.template === "string" && partial.template.trim()) {
     next.template = partial.template;
@@ -5875,12 +5886,15 @@ function mergeBundlePartial(base, partial) {
   }
   return next;
 }
+function cloneSampleState(state) {
+  return structuredClone(state);
+}
 function shellBundle(id, embedded) {
   if (id === embedded.id) return { ...embedded, id };
   return {
     id,
     label: id,
-    sampleState: {},
+    sampleState: cloneSampleState(embedded.sampleState),
     template: '<div class="trace-keeper-panel"><pre>{{json data}}</pre></div>',
     stylesheet: ".trace-keeper-panel { font-size: 0.875rem; }",
     systemPromptTemplate: embedded.systemPromptTemplate,
@@ -6062,6 +6076,17 @@ function renderTracePanelHtml(bundle, data, meta) {
 }
 
 // plugins/trace-keeper/src/panel-empty.ts
+function findPriorTraceStateForLive(turns, epoch) {
+  if (turns.length < 2) return null;
+  for (let i = turns.length - 2; i >= 0; i -= 1) {
+    const turn = turns[i];
+    const hit = findTracePayloadForTurn(turn, epoch);
+    if (hit) {
+      return { state: hit.state, turnOrdinal: turn.turnOrdinal };
+    }
+  }
+  return null;
+}
 function activeReceiveContent(turn) {
   const receives = turn.receives;
   if (!receives?.length) return "";
@@ -6081,6 +6106,9 @@ function activeReceiveId2(turn) {
   );
   const id = receives[idx]?.id;
   return typeof id === "string" && id.trim() ? id.trim() : void 0;
+}
+function isTurnAwaitingAssistantReply(turn) {
+  return !turn.receives?.length;
 }
 function detectInvalidPluginState(turn, epoch) {
   const targetReceiveId = activeReceiveId2(turn);
@@ -6122,7 +6150,7 @@ function resolveCurrentTurnEmptyReason(turn, epoch) {
   const detail = diagnosis.kind === "json_parse_failed" ? diagnosis.detail : void 0;
   return { reason, detail };
 }
-function resolvePanelView(bundle, turns, epoch, pinned, isAwaitingReply = false) {
+function resolvePanelView(bundle, turns, epoch, pinned, isSeparateRegenerating = false) {
   if (turns.length === 0) {
     return {
       kind: "empty",
@@ -6145,6 +6173,16 @@ function resolvePanelView(bundle, turns, epoch, pinned, isAwaitingReply = false)
       canRegenerate: false,
       mode,
       turnOrdinal: pinned ?? void 0,
+      epoch
+    };
+  }
+  if (isCurrentTurnView && isSeparateRegenerating) {
+    return {
+      kind: "empty",
+      reason: "awaiting_reply",
+      canRegenerate: false,
+      mode,
+      turnOrdinal: viewingOrdinal,
       epoch
     };
   }
@@ -6188,15 +6226,34 @@ function resolvePanelView(bundle, turns, epoch, pinned, isAwaitingReply = false)
       epoch
     };
   }
-  if (isAwaitingReply) {
-    return {
-      kind: "empty",
-      reason: "awaiting_reply",
-      canRegenerate: false,
-      mode,
-      turnOrdinal: viewingOrdinal,
-      epoch
-    };
+  const prior = isTurnAwaitingAssistantReply(viewingTurn) ? findPriorTraceStateForLive(turns, epoch) : null;
+  if (prior) {
+    try {
+      const html = renderTracePanelHtml(bundle, prior.state, {
+        mode,
+        turnOrdinal: prior.turnOrdinal,
+        epoch
+      });
+      return {
+        kind: "content",
+        html,
+        mode,
+        turnOrdinal: prior.turnOrdinal,
+        epoch,
+        editState: prior.state
+      };
+    } catch (e) {
+      const detail2 = e instanceof Error ? e.message.length > 200 ? `${e.message.slice(0, 200)}\u2026` : e.message : void 0;
+      return {
+        kind: "empty",
+        reason: "render_failed",
+        detail: detail2,
+        canRegenerate: true,
+        mode,
+        turnOrdinal: viewingOrdinal,
+        epoch
+      };
+    }
   }
   const { reason, detail } = resolveCurrentTurnEmptyReason(viewingTurn, epoch);
   return {
@@ -6404,23 +6461,11 @@ function turnsFromHost(host) {
   }
   return [];
 }
-function readRefLike(v) {
-  if (v === void 0 || v === null) return void 0;
-  if (typeof v === "object" && "value" in v) {
-    return v.value;
-  }
-  return v;
-}
-function isSessionGenerating(host) {
-  const loading = readRefLike(host.session.loading);
-  const regen = readRefLike(host.session.regeneratingTurnOrdinal);
-  return loading === true || typeof regen === "number";
-}
 var SHELL_STYLES = `
 .trace-keeper-shell{display:flex;flex-direction:column;gap:8px;min-height:2.5rem}
 .trace-keeper-shell .tk-empty{margin:0}
 .trace-keeper-shell .tk-empty-msg{margin:0 0 4px;opacity:.85;font-size:.875rem}
-.trace-keeper-shell .tk-empty-detail{margin:0;font-size:.75rem;opacity:.55;word-break:break-word}
+.trace-keeper-shell .tk-empty-detail{margin:0;font-size:.75rem;opacity:.55;word-break:break-word;overflow-wrap:anywhere}
 .trace-keeper-shell .tk-empty-actions{margin:0}
 .trace-keeper-shell .tk-empty-regen-btn{padding:6px 10px;font-size:.8125rem;border-radius:6px;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));background:rgba(var(--v-theme-primary),.08);cursor:pointer}
 .trace-keeper-shell .tk-empty-regen-btn:disabled{opacity:.55;cursor:wait}
@@ -6428,7 +6473,9 @@ var SHELL_STYLES = `
 .trace-keeper-shell .tk-pending-hourglass{display:inline-block;font-size:3rem;line-height:1;color:rgba(var(--v-theme-primary),.85);transform-origin:center center;animation:tk-hourglass-flip 2.4s ease-in-out infinite}
 .trace-keeper-shell .tk-pending-msg{margin:0;font-size:.75rem;line-height:1.4;opacity:.72;max-width:14rem}
 @keyframes tk-hourglass-flip{0%{transform:rotate(0deg)}30%{transform:rotate(180deg)}50%{transform:rotate(180deg)}80%{transform:rotate(360deg)}100%{transform:rotate(360deg)}}
-.trace-keeper-shell .tk-body{flex:1 1 auto;min-height:0}
+.trace-keeper-shell .tk-body{min-width:0}
+.trace-keeper-shell .tk-body .trace-keeper-panel,.trace-keeper-shell .tk-body pre{max-width:100%;word-break:break-word;overflow-wrap:anywhere}
+.trace-keeper-shell .tk-body pre{overflow-x:auto;white-space:pre-wrap}
 .trace-keeper-shell .tk-actions{display:flex;flex-direction:row;align-items:center;gap:2px;flex-shrink:0;padding-top:6px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
 .trace-keeper-shell .tk-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;padding:0;border:none;border-radius:4px;background:transparent;color:rgba(var(--v-theme-on-surface),.55);cursor:pointer}
 .trace-keeper-shell .tk-icon-btn:hover:not(:disabled){color:rgb(var(--v-theme-on-surface));background:rgba(var(--v-theme-on-surface),.06)}
@@ -6523,7 +6570,7 @@ ${SHELL_STYLES}`);
       turns,
       epoch,
       pinned,
-      isSessionGenerating(host)
+      regenBusy
     );
     lastEditContext = resolved.kind === "content" ? {
       turnOrdinal: resolved.turnOrdinal,
@@ -6728,15 +6775,6 @@ function registerLifecycle(host) {
   host.conversation.onPluginSettingsChanged(() => {
     void refreshPanel(host);
     host.refreshSlotButtons();
-  });
-  host.lifecycle.onAssistantReplyPersisted(() => {
-    void (async () => {
-      if (host.conversation.refresh) {
-        await host.conversation.refresh();
-      }
-      await refreshPanel(host);
-      host.refreshSlotButtons();
-    })();
   });
   host.lifecycle.onTurnDataChanged?.(() => {
     void refreshPanel(host);

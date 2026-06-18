@@ -42,6 +42,7 @@ async function build() {
 
   const { spawnSync } = await import('node:child_process')
   const testFiles = [
+    path.join(here, 'src/panel-empty.test.ts'),
     path.join(here, 'src/separate-turn-settings.test.ts'),
     path.join(here, 'src/separate-dialogue.test.ts'),
     path.join(here, 'src/tracker-prompt.test.ts'),

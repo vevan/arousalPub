@@ -70,6 +70,20 @@ export function attachReceiveIdToTurnPluginEntries(
   })
 }
 
+/** 与落盘 merge 一致：existing + entries（已带 receiveId）合并为 turn.plugins */
+export function mergePersistTurnPlugins(
+  existing: unknown[] | undefined,
+  entries: TurnPluginEntry[] | undefined,
+  receiveId: string,
+): unknown[] {
+  let plugins = Array.isArray(existing) ? [...existing] : []
+  const attached = attachReceiveIdToTurnPluginEntries(entries, receiveId) ?? []
+  for (const entry of attached) {
+    plugins = mergeTurnPluginEntry(plugins, entry)
+  }
+  return plugins
+}
+
 /** 正文无有效 trace 块时，移除该 receive 的 trace-keeper 快照 */
 export function removeTraceKeeperPluginForReceive(
   existing: unknown[] | undefined,

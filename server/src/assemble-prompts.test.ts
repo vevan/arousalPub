@@ -10,6 +10,7 @@ import {
   type PromptGroup,
   type PromptPreset,
 } from './assemble-prompts.js'
+import { extractMacroCharacterFields } from './prompt-macros/index.js'
 
 const T = new Date().toISOString()
 
@@ -175,7 +176,7 @@ describe('assemblePrompts history group order', () => {
       'hist-before',
       'u1',
       'a1',
-      'post-block',
+      '<char name="角色" attribute="post_history_instructions">post-block</char>',
       'hist-after',
     ])
   })
@@ -217,7 +218,10 @@ describe('assemblePrompts history group order', () => {
     })
     assert.deepEqual(
       messages.map((m) => m.content),
-      ['hello', 'stay-in-character'],
+      [
+        'hello',
+        '<char name="角色" attribute="post_history_instructions">stay-in-character</char>',
+      ],
     )
   })
 
@@ -248,7 +252,10 @@ describe('assemblePrompts history group order', () => {
     })
     assert.deepEqual(
       messages.map((m) => m.content),
-      ['hello', 'post-block'],
+      [
+        'hello',
+        '<char name="角色" attribute="post_history_instructions">post-block</char>',
+      ],
     )
   })
 
@@ -331,7 +338,11 @@ describe('assemblePrompts audit fixes', () => {
     })
     assert.deepEqual(
       messages.map((m) => m.content),
-      ['u1', 'a1', 'post'],
+      [
+        'u1',
+        'a1',
+        '<char name="角色" attribute="post_history_instructions">post</char>',
+      ],
     )
   })
 })
@@ -620,7 +631,14 @@ describe('assemblePrompts character/user split', () => {
     })
     assert.deepEqual(
       messages.map((m) => m.content),
-      ['before-char', 'CHAR-SP', 'CHAR', 'between', 'USER-SP\n\nUSER', 'after-user'],
+      [
+        'before-char',
+        '<char name="角色" attribute="system_prompt">CHAR-SP</char>',
+        'CHAR',
+        'between',
+        '<user name="用户" attribute="system_prompt">USER-SP</user>\n\nUSER',
+        'after-user',
+      ],
     )
   })
 
@@ -756,5 +774,45 @@ describe('assemblePrompts bindingPlaceholderMode', () => {
     assert.equal(contents.some((c) => c.includes('castle')), false)
     assert.equal(contents.some((c) => c.includes('turn summary')), false)
     assert.equal(contents.some((c) => c.includes('hello')), false)
+  })
+
+  it('wraps granular character binding slots in char field xml', () => {
+    const character = makeGroup({ id: 'g-char', kind: 'character', order: 0 })
+    const preset = makePreset(
+      [character],
+      [
+        makeEntry({
+          id: 'desc',
+          groupId: 'g-char',
+          content: '',
+          bindingSlot: 'boundCharDescription',
+          order: 0,
+        }),
+        makeEntry({
+          id: 'pers',
+          groupId: 'g-char',
+          content: '',
+          bindingSlot: 'boundCharPersonality',
+          order: 1,
+        }),
+      ],
+    )
+    const card = {
+      name: 'moka',
+      description: 'Brave cat',
+      personality: 'Curious',
+    }
+    const { messages } = assemblePrompts(preset, {
+      characters: [
+        {
+          name: 'moka',
+          macroFields: extractMacroCharacterFields(card),
+        },
+      ],
+    })
+    assert.deepEqual(messages.map((m) => m.content), [
+      '<char name="moka" attribute="description">Brave cat</char>',
+      '<char name="moka" attribute="personality">Curious</char>',
+    ])
   })
 })

@@ -46,14 +46,26 @@ describe('resolvePanelView', () => {
     }
   })
 
-  it('current turn awaiting_reply while model is generating', () => {
+  it('awaiting_reply only during separate regenerate', () => {
     const r = resolvePanelView(
       bundle,
       [
         {
           turnOrdinal: 1,
           receives: [{ id: 'r1', content: 'plain reply' }],
-          plugins: [],
+          plugins: [
+            {
+              pluginId: 'trace-keeper',
+              payload: {
+                state: {
+                  scene: { location: 'A', time: 't', weather: 'w' },
+                  mood: 'm',
+                },
+                epoch: 0,
+                receiveId: 'r1',
+              },
+            },
+          ],
         },
       ],
       epoch,
@@ -64,6 +76,125 @@ describe('resolvePanelView', () => {
     if (r.kind === 'empty') {
       assert.equal(r.reason, 'awaiting_reply')
       assert.equal(r.canRegenerate, false)
+    }
+  })
+
+  it('shows prior turn state while current turn pending (chat wait)', () => {
+    const r = resolvePanelView(
+      bundle,
+      [
+        {
+          turnOrdinal: 0,
+          receives: [{ id: 'r0', content: 'ok' }],
+          plugins: [
+            {
+              pluginId: 'trace-keeper',
+              payload: {
+                state: {
+                  scene: { location: 'Prior', time: 't', weather: 'w' },
+                  mood: 'm',
+                },
+                epoch: 0,
+                receiveId: 'r0',
+              },
+            },
+          ],
+        },
+        {
+          turnOrdinal: 1,
+          receives: [],
+          plugins: [],
+        },
+      ],
+      epoch,
+      null,
+      false,
+    )
+    assert.equal(r.kind, 'content')
+    if (r.kind === 'content') {
+      assert.match(r.html, /Prior/)
+      assert.equal(r.turnOrdinal, 0)
+    }
+  })
+
+  it('shows parse error when current turn has bad json despite prior snapshot', () => {
+    const r = resolvePanelView(
+      bundle,
+      [
+        {
+          turnOrdinal: 0,
+          receives: [{ id: 'r0', content: 'ok' }],
+          plugins: [
+            {
+              pluginId: 'trace-keeper',
+              payload: {
+                state: {
+                  scene: { location: 'Prior', time: 't', weather: 'w' },
+                  mood: 'm',
+                },
+                epoch: 0,
+                receiveId: 'r0',
+              },
+            },
+          ],
+        },
+        {
+          turnOrdinal: 1,
+          receives: [
+            {
+              id: 'r1',
+              content: 'x<ex-trace-keeper>{not json</ex-trace-keeper>',
+            },
+          ],
+          plugins: [],
+        },
+      ],
+      epoch,
+      null,
+      false,
+    )
+    assert.equal(r.kind, 'empty')
+    if (r.kind === 'empty') {
+      assert.equal(r.reason, 'json_parse_failed')
+      assert.equal(r.canRegenerate, true)
+    }
+  })
+
+  it('shows no_block when current turn lacks trace tag despite prior snapshot', () => {
+    const r = resolvePanelView(
+      bundle,
+      [
+        {
+          turnOrdinal: 0,
+          receives: [{ id: 'r0', content: 'ok' }],
+          plugins: [
+            {
+              pluginId: 'trace-keeper',
+              payload: {
+                state: {
+                  scene: { location: 'Prior', time: 't', weather: 'w' },
+                  mood: 'm',
+                },
+                epoch: 0,
+                receiveId: 'r0',
+              },
+            },
+          ],
+        },
+        {
+          turnOrdinal: 1,
+          receives: [{ id: 'r1', content: 'plain reply without tag' }],
+          plugins: [],
+        },
+      ],
+      epoch,
+      null,
+      false,
+    )
+    assert.equal(r.kind, 'empty')
+    if (r.kind === 'empty') {
+      assert.equal(r.reason, 'no_block')
+      assert.equal(r.canRegenerate, true)
     }
   })
 

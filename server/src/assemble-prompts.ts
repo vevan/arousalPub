@@ -9,7 +9,9 @@ export type { PromptMacroContext } from './prompt-macros/index.js'
 import type { AuthorsNoteRole } from './authors-note-settings.js'
 import {
   ASSEMBLE_INJECT_PLACEHOLDER,
+  formatPersonaFieldXml,
   loreTextToXmlBlock,
+  type PersonaFieldAttribute,
 } from './prompt-xml.js'
 import { countChatMessagesTokens } from './token-count.js'
 import {
@@ -215,18 +217,32 @@ function mergedCharSystemPrompt(ctx: AssembleContext): string | undefined {
     const parts: string[] = []
     for (const c of ctx.characters) {
       const s = c.systemPrompt?.trim()
-      if (s) parts.push(s)
+      if (s) {
+        parts.push(
+          formatPersonaFieldXml(
+            'char',
+            c.name ?? '角色',
+            'system_prompt',
+            s,
+          ),
+        )
+      }
     }
     if (parts.length > 0) return parts.join('\n\n')
   }
   const one = ctx.characterSystemPrompt?.trim()
-  return one || undefined
+  if (!one) return undefined
+  const name = ctx.characters?.[0]?.name ?? '角色'
+  return formatPersonaFieldXml('char', name, 'system_prompt', one)
 }
 
 function mergedUserPersonaBody(ctx: AssembleContext): string | undefined {
   const parts: string[] = []
+  const userName = ctx.userCharacter?.name?.trim() || '用户'
   const userSp = ctx.userCharacter?.systemPrompt?.trim()
-  if (userSp) parts.push(userSp)
+  if (userSp) {
+    parts.push(formatPersonaFieldXml('user', userName, 'system_prompt', userSp))
+  }
   const userBody = ctx.userCharacter?.cardBody?.trim()
   if (userBody) parts.push(userBody)
   if (parts.length > 0) return parts.join('\n\n')
@@ -238,12 +254,23 @@ function mergedBoundPostHistory(ctx: AssembleContext): string | undefined {
     const parts: string[] = []
     for (const c of ctx.characters) {
       const s = c.postHistory?.trim()
-      if (s) parts.push(s)
+      if (s) {
+        parts.push(
+          formatPersonaFieldXml(
+            'char',
+            c.name ?? '角色',
+            'post_history_instructions',
+            s,
+          ),
+        )
+      }
     }
     if (parts.length > 0) return parts.join('\n\n')
   }
   const one = ctx.characterPostHistory?.trim()
-  return one || undefined
+  if (!one) return undefined
+  const name = ctx.characters?.[0]?.name ?? '角色'
+  return formatPersonaFieldXml('char', name, 'post_history_instructions', one)
 }
 
 function looksLikePersonaXml(s: string): boolean {
@@ -280,13 +307,25 @@ function mergedCharCardBody(ctx: AssembleContext): string | undefined {
 
 function mergedMacroFieldFromCharacters(
   ctx: AssembleContext,
-  field: keyof MacroCharacterFields,
+  field: keyof Pick<
+    MacroCharacterFields,
+    'description' | 'personality' | 'scenario' | 'mesExample'
+  >,
 ): string | undefined {
+  const attributeByField: Record<typeof field, PersonaFieldAttribute> = {
+    description: 'description',
+    personality: 'personality',
+    scenario: 'scenario',
+    mesExample: 'mes_example',
+  }
+  const attribute = attributeByField[field]
   const parts: string[] = []
   for (const c of ctx.characters ?? []) {
     const raw = c.macroFields?.[field]
     const v = typeof raw === 'string' ? raw.trim() : ''
-    if (v) parts.push(v)
+    if (v) {
+      parts.push(formatPersonaFieldXml('char', c.name ?? '角色', attribute, v))
+    }
   }
   if (parts.length > 0) return parts.join('\n\n')
   return undefined

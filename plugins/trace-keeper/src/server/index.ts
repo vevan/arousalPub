@@ -32,6 +32,7 @@ export type TraceKeeperInjectionContext = {
 }
 
 export { buildTrackerSystemPrompt } from '../tracker-prompt.js'
+export { DEFAULT_TRACE_BUNDLE, resolveTraceBundle } from '../bundle-resolve.js'
 export { regenerateSeparateState } from './separate-regenerate.js'
 export { patchTraceKeeperState } from './patch-state.js'
 

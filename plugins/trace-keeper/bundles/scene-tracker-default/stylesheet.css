@@ -23,6 +23,8 @@
 
 .trace-keeper-panel .tk-fields dd {
   margin: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .trace-keeper-panel .tk-notes {
@@ -30,6 +32,9 @@
   padding: 8px;
   border-radius: 6px;
   background: rgba(var(--v-theme-on-surface), 0.04);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .trace-keeper-panel .tk-meta {

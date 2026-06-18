@@ -157,8 +157,8 @@ watch(
 .plugin-rail-host__content {
   flex: 1;
   min-height: 0;
-  padding: 8px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .plugin-rail-host__empty {

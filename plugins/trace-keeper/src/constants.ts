@@ -7,6 +7,8 @@ export interface TraceBundle {
   id: string
   label: string
   sampleState: Record<string, unknown>
+  /** 关闭 JSON 校验且 sampleStateJson 无法解析时，原样注入提示词 */
+  sampleStatePromptText?: string
   template: string
   stylesheet: string
   /** Together 注入 assistant 前 system */

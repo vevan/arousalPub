@@ -69,6 +69,22 @@ body {
   background: transparent !important;
 }
 
+/* 主应用：v-main 占满 app-bar 与 footer 之间，避免侧栏撑高整页 */
+.v-application__wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+.v-main.main-chat {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /**
  * 路由页主内容区：与对话页同宽（clamp + 居中）。
  * 各页面根内层容器添加此类；勿再叠加 w-100（会覆盖 width）。

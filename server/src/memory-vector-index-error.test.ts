@@ -13,4 +13,10 @@ describe('isMemoryVectorIndexCorruptError', () => {
     assert.equal(isMemoryVectorIndexCorruptError(new Error('conversation_not_found')), false)
     assert.equal(isMemoryVectorIndexCorruptError(new Error('Not found: user.json')), false)
   })
+
+  it('detects mixed lance manifest naming scheme errors', () => {
+    const msg =
+      'lance error: Found multiple manifest naming schemes in the same directory: V2 and V1.'
+    assert.equal(isMemoryVectorIndexCorruptError(new Error(msg)), true)
+  })
 })

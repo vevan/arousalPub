@@ -4,7 +4,7 @@ import multipart from '@fastify/multipart'
 import Fastify from 'fastify'
 import { closeAllLanceConnections } from './lance-connection-pool.js'
 import { generateShortId, isValidShortId } from './short-id.js'
-import { Readable, Transform } from 'node:stream'
+import { Transform } from 'node:stream'
 import {
   readApiSettingsFromFile,
   writeApiSettingsToFile,
@@ -80,6 +80,11 @@ import { isClientIpAllowed } from './client-ip.js'
 import { mergeCustomParamsIntoPayload } from './custom-params-merge.js'
 import { appendDrySamplerToPayload } from './dry-sampler.js'
 import { tryAcquireAuthRateLimitSlot } from './auth-rate-limit.js'
+import {
+  bindChatClientAbort,
+  mergeChatUpstreamAbortSignals,
+  pipeUpstreamSseBody,
+} from './chat-upstream-stream.js'
 import {
   fetchWithTimeout,
   UPSTREAM_FETCH_TIMEOUT_MS,
@@ -4073,20 +4078,39 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
       ? Math.round(upstreamStartedAt - buildFinishedAt)
       : undefined
 
-  const upstream = await fetchWithTimeout(
-    url,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+  const streamTimeoutMs = wantStream
+    ? UPSTREAM_STREAM_FETCH_TIMEOUT_MS
+    : UPSTREAM_FETCH_TIMEOUT_MS
+  const clientAbort = wantStream ? new AbortController() : null
+  const unbindClientAbort = clientAbort
+    ? bindChatClientAbort(request, clientAbort)
+    : () => {}
+
+  let upstream: Response
+  try {
+    upstream = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(payload),
+        ...(clientAbort
+          ? {
+              signal: mergeChatUpstreamAbortSignals(
+                clientAbort,
+                streamTimeoutMs,
+              ),
+            }
+          : {}),
       },
-      body: JSON.stringify(payload),
-    },
-    wantStream
-      ? UPSTREAM_STREAM_FETCH_TIMEOUT_MS
-      : UPSTREAM_FETCH_TIMEOUT_MS,
-  )
+      streamTimeoutMs,
+    )
+  } finally {
+    unbindClientAbort()
+  }
 
   if (!upstream.ok) {
     const text = await upstream.text()
@@ -4204,9 +4228,11 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
       },
     })
 
-    const nodeStream = Readable.fromWeb(
-      upstream.body as import('stream/web').ReadableStream,
-    ).pipe(tap)
+    const nodeStream = pipeUpstreamSseBody(
+      upstream.body as ReadableStream<Uint8Array>,
+      tap,
+      request.log,
+    )
     return reply.send(nodeStream)
   }
 

@@ -2,6 +2,10 @@ import path from 'node:path'
 import type { OptimizeStats, Table } from '@lancedb/lancedb'
 import { closeLanceDb, openLanceDb } from './lance-connection-pool.js'
 import {
+  listLanceTableNames,
+  openLanceTableWithManifestMigration,
+} from './lance-manifest-migrate.js'
+import {
   buildAllowedBranchPathsWhereSql,
   normalizeBranchPath,
 } from './chunk-path.js'
@@ -90,11 +94,12 @@ function warnLegacyMemoryTablesOnce(
 async function openMemoryTable(
   conversationId: string,
 ): Promise<Table | null> {
+  const uri = memoryDbUri(conversationId)
   const db = await connectDb(conversationId)
-  const names = await db.tableNames()
+  const names = await listLanceTableNames(db, uri)
   warnLegacyMemoryTablesOnce(conversationId, names)
   if (!names.includes(TABLE_NAME)) return null
-  return db.openTable(TABLE_NAME)
+  return openLanceTableWithManifestMigration(db, TABLE_NAME, uri)
 }
 
 async function ensureTurnIdPrimaryKey(
@@ -116,8 +121,9 @@ async function dropTableByName(
   conversationId: string,
   tableName: string,
 ): Promise<void> {
+  const uri = memoryDbUri(conversationId)
   const db = await connectDb(conversationId)
-  const names = await db.tableNames()
+  const names = await listLanceTableNames(db, uri)
   if (!names.includes(tableName)) return
   await db.dropTable(tableName)
   if (tableName === TABLE_NAME) {
@@ -295,7 +301,7 @@ export async function deleteConversationMemoryIndex(
 ): Promise<void> {
   const uri = memoryDbUri(conversationId)
   const db = await connectDb(conversationId)
-  const names = await db.tableNames()
+  const names = await listLanceTableNames(db, uri)
   for (const name of names) {
     if (name === TABLE_NAME || name.startsWith(LEGACY_CHUNK_TABLE_PREFIX)) {
       await db.dropTable(name)

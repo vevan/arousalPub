@@ -12,6 +12,9 @@ import {
   defaultTextForField,
   newObjectListItem,
   parseObjectListField,
+  classifySampleStateJsonText,
+  sampleStateInvalidJsonMessage,
+  traceKeeperSampleStateJsonValidationEnabled,
 } from '@/utils/plugin-settings-validate'
 import { translatePluginI18nKey } from '@/utils/plugin-locale-text'
 import {
@@ -49,6 +52,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: Record<string, unknown>]
+  'footer-validation-error': [message: string | null]
 }>()
 
 const { t, te } = useI18n()
@@ -65,6 +69,71 @@ type TextDraftBinding = {
   commit: (value: string) => void
 }
 const textDraftBindings = new Map<string, TextDraftBinding>()
+
+function objectListTextDraftKey(
+  fieldKey: string,
+  index: number,
+  subKey: string,
+): string {
+  return `ol:${fieldKey}:${index}:${subKey}`
+}
+
+function isTraceKeeperSampleStateField(
+  sub: PluginSettingsItemFieldSchema,
+): boolean {
+  return props.pluginId === TRACE_KEEPER_PLUGIN_ID && sub.key === 'sampleStateJson'
+}
+
+function traceKeeperSampleStateValidationEnabled(): boolean {
+  return traceKeeperSampleStateJsonValidationEnabled(props.modelValue)
+}
+
+function peekTraceKeeperSampleStateValidationError(): string | null {
+  if (props.pluginId !== TRACE_KEEPER_PLUGIN_ID) return null
+  if (!traceKeeperSampleStateValidationEnabled()) return null
+  for (const field of props.fields) {
+    if (field.type !== 'objectList') continue
+    const items = parseObjectListField(props.modelValue[field.key])
+    for (let index = 0; index < items.length; index++) {
+      const item = items[index]!
+      const draftKey = objectListTextDraftKey(field.key, index, 'sampleStateJson')
+      const text = textDraftGet(draftKey, item.sampleStateJson)
+      if (classifySampleStateJsonText(text) === 'invalid') {
+        return sampleStateInvalidJsonMessage(props.pluginId, t, te)
+      }
+    }
+  }
+  return null
+}
+
+function emitSampleStateFooterValidationError() {
+  emit('footer-validation-error', peekTraceKeeperSampleStateValidationError())
+}
+
+function onObjectListTextBlur(
+  field: PluginSettingsFieldSchema,
+  index: number,
+  sub: PluginSettingsItemFieldSchema,
+  getStored: () => unknown,
+  commit: (v: string) => void,
+) {
+  const draftKey = objectListTextDraftKey(field.key, index, sub.key)
+  onTextBlur(draftKey, getStored, commit)
+  if (isTraceKeeperSampleStateField(sub)) {
+    emitSampleStateFooterValidationError()
+  }
+}
+
+function validateAllTraceKeeperSampleStateFields(): string | null {
+  const err = peekTraceKeeperSampleStateValidationError()
+  emit('footer-validation-error', err)
+  return err
+}
+
+defineExpose({
+  commitAllTextDrafts,
+  validateAllTraceKeeperSampleStateFields,
+})
 
 function textDraftGet(key: string, stored: unknown): string {
   if (key in textDraftValues.value) return textDraftValues.value[key]!
@@ -145,10 +214,18 @@ function pruneTextDraftsOnModelChange() {
 }
 
 watch(
+  () => props.modelValue.validateSampleStateJson,
+  () => {
+    emitSampleStateFooterValidationError()
+  },
+)
+
+watch(
   () => props.pluginId,
   () => {
     textDraftValues.value = {}
     textDraftBindings.clear()
+    emit('footer-validation-error', null)
   },
 )
 
@@ -1163,8 +1240,10 @@ function confirmRemoveObjectListItem() {
                     )
                   "
                   @blur="
-                    onTextBlur(
-                      `ol:${field.key}:${index}:${sub.key}`,
+                    onObjectListTextBlur(
+                      field,
+                      index,
+                      sub,
                       () => item[sub.key],
                       (v) => updateObjectListItem(field, index, sub.key, v),
                     )

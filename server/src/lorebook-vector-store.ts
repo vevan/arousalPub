@@ -2,6 +2,10 @@ import path from 'node:path'
 import type { Table } from '@lancedb/lancedb'
 import { closeLanceDb, openLanceDb } from './lance-connection-pool.js'
 import {
+  listLanceTableNames,
+  openLanceTableWithManifestMigration,
+} from './lance-manifest-migrate.js'
+import {
   ensureHybridFtsIndex,
   hybridRelevanceScore,
   LORE_FTS_COLUMN,
@@ -52,10 +56,11 @@ async function openOrCreateTable(
   lorebookId: string,
   sampleVector: number[],
 ): Promise<Table> {
+  const uri = lorebookDbUri(lorebookId)
   const db = await connectDb(lorebookId)
-  const names = await db.tableNames()
+  const names = await listLanceTableNames(db, uri)
   if (names.includes(TABLE_NAME)) {
-    return db.openTable(TABLE_NAME)
+    return openLanceTableWithManifestMigration(db, TABLE_NAME, uri)
   }
   const seed: LoreEntryVectorRow = {
     entryId: '__seed__',
@@ -74,7 +79,7 @@ export async function replaceLorebookVectorIndex(
 ): Promise<void> {
   const uri = lorebookDbUri(lorebookId)
   const db = await connectDb(lorebookId)
-  const names = await db.tableNames()
+  const names = await listLanceTableNames(db, uri)
   if (names.includes(TABLE_NAME)) {
     await db.dropTable(TABLE_NAME)
   }
@@ -100,7 +105,7 @@ export async function deleteLorebookVectorIndex(
 ): Promise<void> {
   const uri = lorebookDbUri(lorebookId)
   const db = await connectDb(lorebookId)
-  const names = await db.tableNames()
+  const names = await listLanceTableNames(db, uri)
   if (!names.includes(TABLE_NAME)) return
   await db.dropTable(TABLE_NAME)
   closeLanceDb(uri)
@@ -119,10 +124,11 @@ export async function searchLorebookEntryVectors(
   excludeEntryIds: Set<string> = new Set(),
 ): Promise<LoreEntryVectorHit[]> {
   if (!queryVector.length || topK < 1) return []
+  const uri = lorebookDbUri(lorebookId)
   const db = await connectDb(lorebookId)
-  const names = await db.tableNames()
+  const names = await listLanceTableNames(db, uri)
   if (!names.includes(TABLE_NAME)) return []
-  const table = await db.openTable(TABLE_NAME)
+  const table = await openLanceTableWithManifestMigration(db, TABLE_NAME, uri)
   const k = Math.min(64, Math.max(topK * 3, topK))
   const settings = await readGlobalHybridFtsSettings()
   const userId = getCurrentUserId()

@@ -6,6 +6,7 @@ import { pluginI18nKey } from '@/utils/plugin-settings-api'
 import {
   hasPluginLocaleMessage,
   readPluginLocaleMessage,
+  translatePluginI18nKey,
 } from '@/utils/plugin-locale-text'
 import { allocateShortId } from '@/utils/short-id'
 
@@ -80,6 +81,39 @@ export function parseCheckboxGroupField(value: unknown): string[] {
 const TRACE_KEEPER_PLUGIN_ID = 'trace-keeper'
 const TRACE_KEEPER_BUILTIN_BUNDLE_ID = 'scene-tracker-default'
 
+export type SampleStateJsonValidation = 'empty' | 'valid' | 'invalid'
+
+export function traceKeeperSampleStateJsonValidationEnabled(
+  model: Record<string, unknown>,
+): boolean {
+  return model.validateSampleStateJson !== false
+}
+
+export function classifySampleStateJsonText(
+  jsonText: string,
+): SampleStateJsonValidation {
+  const trimmed = jsonText.trim()
+  if (!trimmed) return 'empty'
+  try {
+    const parsed: unknown = JSON.parse(trimmed)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return 'invalid'
+    }
+    return 'valid'
+  } catch {
+    return 'invalid'
+  }
+}
+
+export function sampleStateInvalidJsonMessage(
+  pluginId: string,
+  t: (key: string) => string,
+  te: (key: string) => boolean,
+): string {
+  const key = pluginI18nKey(pluginId, 'sampleStateInvalidJson')
+  return translatePluginI18nKey(key, t, te)
+}
+
 function validateTraceKeeperBundleList(
   model: Record<string, unknown>,
   pluginId: string,
@@ -87,29 +121,22 @@ function validateTraceKeeperBundleList(
   te: (key: string) => boolean,
 ): string | null {
   if (pluginId !== TRACE_KEEPER_PLUGIN_ID) return null
+  if (!traceKeeperSampleStateJsonValidationEnabled(model)) return null
   const items = parseObjectListField(model.bundleList)
   for (const item of items) {
     const label = String(item.label ?? '').trim()
     if (!label) {
       const key = pluginI18nKey(pluginId, 'bundleNameRequired')
-      return te(key) ? t(key) : 'Bundle name is required'
+      return translatePluginI18nKey(key, t, te)
     }
     const id = String(item.id ?? '').trim()
     if (!id) {
       const key = pluginI18nKey(pluginId, 'bundleIdRequired')
-      return te(key) ? t(key) : 'Bundle ID is required'
+      return translatePluginI18nKey(key, t, te)
     }
-    const jsonText = String(item.sampleStateJson ?? '').trim()
-    if (!jsonText) continue
-    try {
-      const parsed: unknown = JSON.parse(jsonText)
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        const key = pluginI18nKey(pluginId, 'sampleStateInvalidJson')
-        return te(key) ? t(key) : 'Invalid sample state JSON'
-      }
-    } catch {
-      const key = pluginI18nKey(pluginId, 'sampleStateInvalidJson')
-      return te(key) ? t(key) : 'Invalid sample state JSON'
+    const jsonText = String(item.sampleStateJson ?? '')
+    if (classifySampleStateJsonText(jsonText) === 'invalid') {
+      return sampleStateInvalidJsonMessage(pluginId, t, te)
     }
   }
   return null
@@ -181,6 +208,9 @@ export function hydratePluginSettingsDefaults(
 ): void {
   if (!schema) return
   for (const field of schema.fields) {
+    if (field.type === 'boolean' && model[field.key] === undefined) {
+      model[field.key] = field.default === true
+    }
     if (field.type === 'checkboxGroup' && !Array.isArray(model[field.key])) {
       if (Array.isArray(field.default)) {
         model[field.key] = field.default.filter(

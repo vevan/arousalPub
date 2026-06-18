@@ -37,6 +37,12 @@ const settingsPlugin = ref<PluginManageEntry | null>(null)
 const settingsModel = ref<Record<string, unknown>>({})
 const settingsSaving = ref(false)
 const settingsError = ref('')
+const footerValidationError = ref('')
+const settingsFormRef = ref<InstanceType<typeof PluginSchemaForm> | null>(null)
+
+function onFooterValidationError(message: string | null) {
+  footerValidationError.value = message ?? ''
+}
 
 async function load() {
   loading.value = true
@@ -103,6 +109,7 @@ function onDrop(index: number) {
 async function openSettings(plugin: PluginManageEntry) {
   settingsPlugin.value = plugin
   settingsError.value = ''
+  footerValidationError.value = ''
   settingsOpen.value = true
   try {
     await mergePluginLocales(plugin.id)
@@ -123,11 +130,19 @@ async function openSettings(plugin: PluginManageEntry) {
 function closeSettings() {
   settingsOpen.value = false
   settingsPlugin.value = null
+  footerValidationError.value = ''
 }
 
 async function submitSettings() {
   const plugin = settingsPlugin.value
   if (!plugin) return
+  settingsFormRef.value?.commitAllTextDrafts()
+  const sampleError =
+    settingsFormRef.value?.validateAllTraceKeeperSampleStateFields() ?? null
+  if (sampleError) {
+    footerValidationError.value = sampleError
+    return
+  }
   const validationError = validatePluginSettingsModel(
     plugin.settingsSchema,
     settingsModel.value,
@@ -136,11 +151,12 @@ async function submitSettings() {
     plugin.id,
   )
   if (validationError) {
-    settingsError.value = validationError
+    footerValidationError.value = validationError
     return
   }
   settingsSaving.value = true
   settingsError.value = ''
+  footerValidationError.value = ''
   try {
     settingsModel.value = await savePluginSettings(plugin.id, settingsModel.value)
     notifyPluginUserSettingsSaved(plugin.id)
@@ -287,13 +303,21 @@ onMounted(() => {
             {{ settingsError }}
           </v-alert>
           <PluginSchemaForm
+            ref="settingsFormRef"
             v-model="settingsModel"
             :plugin-id="settingsPlugin.id"
             :fields="settingsFields"
+            @footer-validation-error="onFooterValidationError"
           />
         </v-card-text>
         <v-divider />
-        <v-card-actions class="pa-3">
+        <v-card-actions class="plugin-settings-dialog__actions pa-3">
+          <span
+            v-if="footerValidationError"
+            class="plugin-settings-dialog__validation-error text-error text-body-2"
+          >
+            {{ footerValidationError }}
+          </span>
           <v-spacer />
           <v-btn
             variant="tonal"
@@ -343,5 +367,18 @@ onMounted(() => {
 
 .plugin-settings-list__actions :deep(.v-switch) {
   flex-shrink: 0;
+}
+
+.plugin-settings-dialog__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
+.plugin-settings-dialog__validation-error {
+  flex: 1 1 12rem;
+  min-width: 0;
+  line-height: 1.4;
 }
 </style>

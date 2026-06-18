@@ -37,6 +37,13 @@
         "default": "4"
       },
       {
+        "key": "validateSampleStateJson",
+        "type": "boolean",
+        "labelKey": "validateSampleStateJsonLabel",
+        "descriptionKey": "validateSampleStateJsonDesc",
+        "default": true
+      },
+      {
         "key": "bundleList",
         "type": "objectList",
         "labelKey": "bundleListLabel",

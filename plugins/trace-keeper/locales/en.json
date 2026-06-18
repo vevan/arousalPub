@@ -47,6 +47,8 @@
   "separateSystemPromptTemplateDefault": "Based on the conversation history above, infer the current scene state.\nRefer to the JSON template below and reply with a single JSON object only.\nDo not include markdown fences, XML tags, or roleplay prose.",
   "bundleItemSampleStateLabel": "Sample state JSON",
   "bundleItemSampleStateDesc": "JSON shape the model should follow; leave empty to keep built-in or merged value",
+  "validateSampleStateJsonLabel": "Validate sample state JSON",
+  "validateSampleStateJsonDesc": "When enabled, invalid sample JSON is highlighted under the field and blocks save",
   "bundleItemTemplateLabel": "Panel template (Handlebars)",
   "bundleItemTemplateDesc": "Left drawer template with data and meta in context",
   "bundleItemStylesheetLabel": "Stylesheet",

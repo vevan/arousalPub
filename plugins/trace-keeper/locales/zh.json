@@ -47,6 +47,8 @@
   "separateSystemPromptTemplateDefault": "根据以上对话历史内容，推断当前场景状态。\n参考如下 JSON 模板，仅返回单个 JSON 对象。\n不要包含 markdown 代码块、XML 标签或角色扮演正文。",
   "bundleItemSampleStateLabel": "样本状态 JSON",
   "bundleItemSampleStateDesc": "模型应遵循的 JSON 结构示例；留空则使用内置或已合并字段",
+  "validateSampleStateJsonLabel": "验证样本状态 JSON",
+  "validateSampleStateJsonDesc": "开启后，样本 JSON 格式错误会在输入框下方提示，并阻止保存",
   "bundleItemTemplateLabel": "面板模板 (Handlebars)",
   "bundleItemTemplateDesc": "左侧抽屉渲染模板，上下文为 data 与 meta",
   "bundleItemStylesheetLabel": "样式表",

@@ -312,6 +312,41 @@ describe('applyRegexOutgoingToMessages', () => {
     assert.equal(assistantTextFromTurn(out[1]!.turn), 'a3 <<track>>')
   })
 
+  it('respects skipLastNTurns when history user text was macro-expanded', () => {
+    const history: ChatMessage[] = [
+      { role: 'user', content: 'u0', turnOrdinal: 0 },
+      { role: 'assistant', content: 'a0 <<track>>', turnOrdinal: 0 },
+      { role: 'user', content: 'hello {{char}}', turnOrdinal: 1 },
+      { role: 'assistant', content: 'a1 <<track>>', turnOrdinal: 1 },
+    ]
+    const messages: ChatMessage[] = [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'u0', turnOrdinal: 0 },
+      { role: 'assistant', content: 'a0 ', turnOrdinal: 0 },
+      { role: 'user', content: 'hello 艾拉', turnOrdinal: 1 },
+      { role: 'assistant', content: 'a1 <<track>>', turnOrdinal: 1 },
+      { role: 'user', content: 'u2' },
+    ]
+    const rules = [
+      rule({
+        id: '11111111',
+        fields: ['assistant'],
+        skipLastNTurns: 1,
+        pattern: '<<track>>',
+        replacement: '',
+      }),
+    ]
+    const out = applyRegexOutgoingToMessages(messages, rules, {
+      tailOrdinal: 2,
+      sourceHistoryMessages: history,
+      sourceHistoryTurnOrdinals: [0, 1],
+      trimmedHistoryMessages: history,
+      userInput: 'u2',
+    })
+    assert.equal(out[2]?.content, 'a0 ')
+    assert.equal(out[4]?.content, 'a1 <<track>>')
+  })
+
   it('applies system rules without turnOrdinal', () => {
     const messages: ChatMessage[] = [{ role: 'system', content: '<<x>>' }]
     const rules = [

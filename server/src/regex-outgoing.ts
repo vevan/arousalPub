@@ -231,6 +231,13 @@ function turnOrdinalForMessageIndex(
   historySpan: { start: number; length: number } | null,
   trimmedOrdinals: number[],
 ): number | undefined {
+  if (
+    (msg.role === 'user' || msg.role === 'assistant') &&
+    typeof msg.turnOrdinal === 'number' &&
+    Number.isFinite(msg.turnOrdinal)
+  ) {
+    return msg.turnOrdinal
+  }
   if (historySpan && index >= historySpan.start) {
     const rel = index - historySpan.start
     if (rel < historySpan.length) {

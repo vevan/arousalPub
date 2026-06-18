@@ -307,7 +307,9 @@ interface ConversationBatchContext {
 
 | 方法 | 说明 |
 |------|------|
-| `getUserSettings()` | 读合并后的全局插件 settings（schema 默认值 + 用户文件） |
+| `getUserSettings()` | 读合并后的全局插件 settings（schema 默认值 + 用户文件）。**当前**：每次 HTTP GET。**计划（P0 · `DOC/32`）**：已加载则返回 snapshot，与会话 `getPluginSettings` 一致 |
+| `getUserSettingsSnapshot()` | **计划（P0 · `DOC/32`）**：同步读 global settings；未加载返回 `{}` |
+| `onUserSettingsChanged(handler)` | 设置 → 插件页保存 global settings 后回调。**计划（P0 · `DOC/32`）**：notify 携带已保存 payload，不再二次 GET |
 
 ### 3.11 `host.macros`
 

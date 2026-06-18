@@ -5,6 +5,7 @@
 ## P0 余项
 
 - [ ] **消息树 / 分支 UI** — `DOC/23` §6（服务端 memory/枚举已就绪；创建分支 API、active 路径写入与前端消息树为当前主线）
+- [ ] **全局插件 settings 缓存与订阅** — `DOC/32`：`getUserSettings` 对齐会话 settings store（snapshot + 写时 notify）；消除 chat 侧栏 refresh 重复 GET；trace-keeper / custom-styles 验收
 
 ## P1
 

@@ -13,6 +13,7 @@
 | Historian | [`12-plugin-plot-summary.md`](12-plugin-plot-summary.md) |
 | 迹录（Trace Keeper） | [`30-plugin-trace-keeper.md`](30-plugin-trace-keeper.md) |
 | 主布局 / 插件 Rail | [`31-main-layout-plugin-rails.md`](31-main-layout-plugin-rails.md) |
+| 全局插件 settings 缓存 | [`32-plugin-user-settings-cache.md`](32-plugin-user-settings-cache.md)（**P0 待做**） |
 | 待办 | [`04-TODO.md`](04-TODO.md) |
 
 ## 核心（01–08）
@@ -50,6 +51,7 @@
 | [`25`](25-security-deployment.md) | ✅ | 部署硬化、**API Key 隔离与磁盘加密** §15 |
 | [`30`](30-plugin-trace-keeper.md) | ✅ v1 | **迹录** `trace-keeper`：Together、Separate、TraceBundle、左栏 HTML 面板 |
 | [`31`](31-main-layout-plugin-rails.md) | ✅ | **主布局三列 Grid**、插件 left/right rail、`routes` 路由门控、`hidden`、统一空态 |
+| [`32`](32-plugin-user-settings-cache.md) | **P0 待做** | 全局 `getUserSettings` 缓存 + 订阅（对齐 `DOC/21` 会话 store） |
 
 ## 已归档（勿再新建同级文档）
 

@@ -354,8 +354,8 @@ PATCH /api/chat/conversations/:id
 - [ ] `host.lorebook.*` 四个方法
 - [ ] `host.api.listPresets`
 - [ ] `host.plugin.complete`（`scopedPluginId` 来自 `createScopedPluginHost`）
-- [ ] `host.conversation.getPluginSettings` / `patchPluginSettings`
-- [ ] `host.plugins.getUserSettings`（可选，替代插件直 fetch settings）
+- [x] `host.conversation.getPluginSettings` / `patchPluginSettings`（含 Pinia snapshot · `DOC/21`）
+- [ ] `host.plugins.getUserSettings` 缓存 + snapshot + 订阅（**P0 · `DOC/32`**；当前每次 GET；`onUserSettingsChanged` 已存在但未接 store）
 - [ ] `PluginWebHost` 类型与 `createPluginWebHost` 接线
 
 ---

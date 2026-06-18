@@ -355,7 +355,7 @@ PATCH /api/chat/conversations/:id
 - [ ] `host.api.listPresets`
 - [ ] `host.plugin.complete`（`scopedPluginId` 来自 `createScopedPluginHost`）
 - [x] `host.conversation.getPluginSettings` / `patchPluginSettings`（含 Pinia snapshot · `DOC/21`）
-- [ ] `host.plugins.getUserSettings` 缓存 + snapshot + 订阅（**P0 · `DOC/32`**；当前每次 GET；`onUserSettingsChanged` 已存在但未接 store）
+- [x] `host.plugins.getUserSettings` 缓存 + snapshot + 订阅（`DOC/32` · `a7ca4ea`）
 - [ ] `PluginWebHost` 类型与 `createPluginWebHost` 接线
 
 ---

@@ -5,7 +5,6 @@
 ## P0 余项
 
 - [ ] **消息树 / 分支 UI** — `DOC/23` §6（服务端 memory/枚举已就绪；创建分支 API、active 路径写入与前端消息树为当前主线）
-- [ ] **全局插件 settings 缓存与订阅** — `DOC/32`：`getUserSettings` 对齐会话 settings store（snapshot + 写时 notify）；消除 chat 侧栏 refresh 重复 GET；trace-keeper / custom-styles 验收
 
 ## P1
 
@@ -35,4 +34,5 @@
 - [x] 库编辑器失焦保存与 PUT/PATCH 去重（2026-06-17）：提示词 / 世界书 / Embedding / 对话 API·插件 schema 文本字段；见 `DOC/03` §15.10、`DOC/25` §8.1
 - [x] 对话页顶栏 UI（2026-06-17）：`chat-header` pill 层级、effective 预设/模型、绑定提示词与世界书菜单、设置入口；见 `DOC/03` §11.2
 - [x] 对话设置上下文 Tab 命中测试（2026-06-18）：`POST .../context/recall-test` · `ConversationRecallTestDialog` · 全库 Memory hybrid + 资料库；不排除近期 N 轮
+- [x] 全局插件 settings 缓存与订阅（2026-06-18 · `a7ca4ea`）：`plugin-user-settings` Pinia store · `getUserSettingsSnapshot` / `onUserSettingsChanged` · trace-keeper 验收；见 `DOC/32`
 - [ ] 架构/接口变更时同步 `DOC/01`–`03`（2026-06-10：内嵌世界书 `DOC/27`、作者注分层 `DOC/28`）

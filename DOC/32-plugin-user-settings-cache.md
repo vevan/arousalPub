@@ -1,6 +1,6 @@
 # 全局插件 settings 缓存与订阅（`getUserSettings`）
 
-> **状态**：**P0 待实现**（定案 2026-06-18）  
+> **状态**：**已实现**（2026-06-18 · commit `a7ca4ea`）  
 > **关联**：`DOC/04` P0、`DOC/18` §3.10、`DOC/21`（会话 settings 已落地模式）、`DOC/30` trace-keeper 侧栏 refresh、`DOC/11` §6 Web 宿主清单  
 > **非目标**：服务端 chat 组装路径的 `readMergedPluginUserSettings` 磁盘读优化（另线，见 §7）
 
@@ -141,7 +141,7 @@ notifyPluginUserSettingsSaved(plugin.id, settingsModel.value)
 | 高频 refresh（turn / generating） | global 未变时优先 `getUserSettingsSnapshot()`；conv 继续用现有 snapshot |
 | 首次 / 不确定是否加载 | `await getUserSettings()` |
 
-**trace-keeper（P0 验收之一）**：补 `host.plugins.onUserSettingsChanged?.(() => refreshPanel)`；当前仅有 `onPluginSettingsChanged`。
+**trace-keeper（P0 验收之一）**：已补 `host.plugins.onUserSettingsChanged?.(() => refreshPanel)`；`getUserSettings` 命中 Pinia 缓存。
 
 **custom-styles**：保留双订阅；host 缓存后 `applyStyles` 内 GET 次数应降为 0（已加载时）。
 
@@ -149,14 +149,14 @@ notifyPluginUserSettingsSaved(plugin.id, settingsModel.value)
 
 ## 6. 实现清单
 
-- [ ] `web/src/stores/plugin-user-settings.ts`
-- [ ] `createScopedPluginHost`：`getUserSettings` / `getUserSettingsSnapshot` / 改 `onUserSettingsChanged`
-- [ ] `plugin-user-settings-events.ts`：notify 携带 optional settings → store
-- [ ] `PluginSettingsPanel.vue`：保存后传入 settings
-- [ ] `web/src/plugins/types.ts` + `DOC/18` §3.10：文档化 snapshot API
-- [ ] auth 登出：`clearAll()`（与会话 plugin settings 清理一并评估）
-- [ ] `trace-keeper`：补 `onUserSettingsChanged` 订阅
-- [ ] 单测：store + host 命中 cache / notify / in-flight 去重
+- [x] `web/src/stores/plugin-user-settings.ts`
+- [x] `createScopedPluginHost`：`getUserSettings` / `getUserSettingsSnapshot` / 改 `onUserSettingsChanged`
+- [x] `plugin-user-settings-events.ts`：notify 携带 optional settings → store
+- [x] `PluginSettingsPanel.vue`：保存后传入 settings
+- [x] `web/src/plugins/types.ts` + `DOC/18` §3.10：文档化 snapshot API
+- [x] auth 登出：`clearAll()`（与会话 plugin settings 清理一并评估）
+- [x] `trace-keeper`：补 `onUserSettingsChanged` 订阅
+- [x] 单测：store + host 命中 cache / notify / in-flight 去重
 
 **验收**：
 

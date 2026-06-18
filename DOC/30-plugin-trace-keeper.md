@@ -333,7 +333,7 @@ plugins/trace-keeper/
 - [x] Separate 补生成（侧栏 + API）
 - [x] 组装审计 `assembly.plugins`（插件注入 token 预留）
 - [x] 侧栏 JSON 编辑写回（`patch-state` + 编辑按钮）
-- [ ] **全局 settings 缓存**（P0 · `DOC/32`）：`refreshPanel` 高频读 `getUserSettings` 导致重复 GET；实现 store 后补 `onUserSettingsChanged`
+- [x] **全局 settings 缓存**（`DOC/32` · `a7ca4ea`）：Pinia store + `onUserSettingsChanged`；`refreshPanel` 不再重复 GET
 - [ ] 顶栏/页脚独立「打开迹录」入口（可选）
 - [ ] JSON Schema / Ajv（后期）
 

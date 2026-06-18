@@ -28,16 +28,24 @@ export function wrapTurnRoleLine(
   return `<${role} ${attr}>${escaped}</${role}>`
 }
 
-function turnToXmlInner(turn: TurnRecord, score?: number): string {
+function turnToXmlInner(
+  turn: TurnRecord,
+  opts?: { correlation?: number; omitTurnId?: boolean },
+): string {
   const user = getTurnUserText(turn)
   const assistant = assistantTextFromTurn(turn)
-  const scoreAttr =
-    typeof score === 'number' && Number.isFinite(score)
-      ? ` score="${score.toFixed(4)}"`
-      : ''
-  const lines: string[] = [
-    `  <turn id="${escapeXmlAttribute(turn.turnId)}" ordinal="${turn.turnOrdinal}"${scoreAttr}>`,
-  ]
+  const attrs: string[] = []
+  if (!opts?.omitTurnId) {
+    attrs.push(`id="${escapeXmlAttribute(turn.turnId)}"`)
+  }
+  attrs.push(`ordinal="${turn.turnOrdinal}"`)
+  if (
+    typeof opts?.correlation === 'number' &&
+    Number.isFinite(opts.correlation)
+  ) {
+    attrs.push(`correlation="${opts.correlation.toFixed(4)}"`)
+  }
+  const lines: string[] = [`  <turn ${attrs.join(' ')}>`]
   if (user.trim()) {
     lines.push(`    ${wrapTurnRoleLine('user', user)}`)
   }
@@ -120,7 +128,9 @@ export function formatMemoryXml(
     .slice()
     .sort((a, b) => a.turn.turnOrdinal - b.turn.turnOrdinal)
   const inner = sorted
-    .map(({ turn, score }) => turnToXmlInner(turn, score))
+    .map(({ turn, score }) =>
+      turnToXmlInner(turn, { correlation: score, omitTurnId: true }),
+    )
     .join('\n')
   return `<memory>\n${inner}\n</memory>`
 }

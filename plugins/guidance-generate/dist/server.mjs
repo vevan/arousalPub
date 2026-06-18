@@ -1,4 +1,4 @@
-// src/server/index.ts
+// plugins/guidance-generate/src/server/index.ts
 var PLUGIN_ID = "guidance-generate";
 var DEFAULT_SYSTEM_PREFIX = "Please generate a reply according to this guidance together with the user's message: ";
 function parsePayload(raw) {

@@ -6778,6 +6778,10 @@ function registerLifecycle(host) {
     void refreshPanel(host);
     host.refreshSlotButtons();
   });
+  host.plugins.onUserSettingsChanged?.(() => {
+    void refreshPanel(host);
+    host.refreshSlotButtons();
+  });
   host.lifecycle.onTurnDataChanged?.(() => {
     void refreshPanel(host);
     host.refreshSlotButtons();

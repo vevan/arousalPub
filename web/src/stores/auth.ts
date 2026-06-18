@@ -1,4 +1,7 @@
 import { translateApiError } from '@/utils/api-error-message'
+import { getActivePinia } from 'pinia'
+import { usePluginUserSettingsStore } from '@/stores/plugin-user-settings'
+import { clearPluginUserSettingsInflight } from '@/utils/plugin-user-settings-loader'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
@@ -106,6 +109,10 @@ export const useAuthStore = defineStore('auth', () => {
     persistToken(null)
     persistRefresh(null)
     user.value = null
+    if (getActivePinia()) {
+      usePluginUserSettingsStore().clearAll()
+      clearPluginUserSettingsInflight()
+    }
   }
 
   function setDefaultUserId(id: string | null) {

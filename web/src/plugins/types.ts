@@ -477,6 +477,8 @@ export interface PluginWebHost {
   }
   plugins: {
     getUserSettings(): Promise<Record<string, unknown>>
+    /** 已加载则同步读；未加载返回 `{}`（scoped host） */
+    getUserSettingsSnapshot(): Record<string, unknown>
     /** 设置 → 插件 保存全局 settings 后回调（仅 scoped host） */
     onUserSettingsChanged?(
       handler: (settings: Record<string, unknown>) => void,

@@ -159,7 +159,7 @@ async function submitSettings() {
   footerValidationError.value = ''
   try {
     settingsModel.value = await savePluginSettings(plugin.id, settingsModel.value)
-    notifyPluginUserSettingsSaved(plugin.id)
+    notifyPluginUserSettingsSaved(plugin.id, settingsModel.value)
     closeSettings()
   } catch {
     settingsError.value = t('settings.plugins.settingsSaveFailed')

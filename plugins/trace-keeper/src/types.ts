@@ -34,6 +34,9 @@ export interface PluginHost {
   }
   plugins: {
     getUserSettings: () => Promise<Record<string, unknown>>
+    onUserSettingsChanged?: (
+      handler: (settings: Record<string, unknown>) => void,
+    ) => () => void
   }
   lifecycle: {
     onAssistantReplyPersisted: (

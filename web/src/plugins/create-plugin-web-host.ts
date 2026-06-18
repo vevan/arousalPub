@@ -29,7 +29,6 @@ import {
   fetchConversationPluginSettings,
   fetchLorebookById,
   fetchLorebookList,
-  fetchPluginUserSettings,
   normalizeLorebookEntryRefs,
   applyLorebookOrder,
   patchConversationPluginSettings,
@@ -57,8 +56,9 @@ import {
   setPluginPanelHtml,
   setPluginPanelHidden,
 } from '@/plugins/plugin-panel-registry'
-import { subscribePluginUserSettingsSaved } from '@/utils/plugin-user-settings-events'
 import { useConversationPluginSettingsStore } from '@/stores/conversation-plugin-settings'
+import { usePluginUserSettingsStore } from '@/stores/plugin-user-settings'
+import { loadPluginUserSettings } from '@/utils/plugin-user-settings-loader'
 import { translatePluginI18nKey } from '@/utils/plugin-locale-text'
 import { useI18n } from 'vue-i18n'
 import { ref, type Ref } from 'vue'
@@ -206,15 +206,13 @@ export function createScopedPluginHost(
     },
     plugins: {
       getUserSettings() {
-        return fetchPluginUserSettings(id)
+        return loadPluginUserSettings(id)
+      },
+      getUserSettingsSnapshot() {
+        return usePluginUserSettingsStore().getSnapshot(id)
       },
       onUserSettingsChanged(handler) {
-        return subscribePluginUserSettingsSaved((pluginId) => {
-          if (pluginId !== id) return
-          void fetchPluginUserSettings(id).then(handler).catch(() => {
-            handler({})
-          })
-        })
+        return usePluginUserSettingsStore().subscribe(id, handler)
       },
     },
     macros: {
@@ -425,6 +423,9 @@ export function createPluginWebHost(session: ChatSession): {
     },
     plugins: {
       getUserSettings() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+      getUserSettingsSnapshot() {
         throw new Error('plugin_host_requires_scoped_host')
       },
     },

@@ -198,7 +198,7 @@ async function refreshPanel(host: PluginHost): Promise<void> {
     )
 
     lastEditContext =
-      resolved.kind === 'content'
+      resolved.kind === 'content' && !resolved.actionsDisabled
         ? {
             turnOrdinal: resolved.turnOrdinal,
             state: resolved.editState,
@@ -214,10 +214,13 @@ async function refreshPanel(host: PluginHost): Promise<void> {
       lastTurn !== null &&
       typeof viewingOrdinal === 'number' &&
       viewingOrdinal === lastTurn.turnOrdinal
+    const actionsDisabled =
+      resolved.kind === 'content' && resolved.actionsDisabled === true
     const shellActions = {
       showActions: turns.length > 0,
-      editEnabled: resolved.kind === 'content',
+      editEnabled: resolved.kind === 'content' && !actionsDisabled,
       regenEnabled:
+        !actionsDisabled &&
         isLastTurnView &&
         (resolved.kind === 'content' ||
           (resolved.kind === 'empty' && resolved.canRegenerate)),

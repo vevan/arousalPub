@@ -5,6 +5,7 @@
   "guidanceLabel": "指导输入（隐藏，追加到 prompt 末尾）",
   "send": "指导发送",
   "regenerate": "指导再生",
+  "toastFailed": "指导生成失败",
   "systemPrefixLabel": "系统前缀（加在指导文本前）",
   "systemPrefixDesc": "注入给模型的隐藏 system 消息前缀，位于指导正文之前。"
 }

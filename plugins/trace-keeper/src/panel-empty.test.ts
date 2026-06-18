@@ -114,6 +114,7 @@ describe('resolvePanelView', () => {
     if (r.kind === 'content') {
       assert.match(r.html, /Prior/)
       assert.equal(r.turnOrdinal, 0)
+      assert.equal(r.actionsDisabled, true)
     }
   })
 

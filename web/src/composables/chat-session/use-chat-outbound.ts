@@ -147,22 +147,22 @@ export function useChatOutbound(opts: {
   async function sendWithPlugins(
     userText: string,
     plugins: ConversationChatRequestPlugins,
-  ) {
-    if (!opts.isConversationWritable()) return
+  ): Promise<string | undefined> {
+    if (!opts.isConversationWritable()) return opts.t('chat.errors.network')
     opts.errorText.value = ''
     const trimmed = userText.trim()
-    if (!trimmed) return
+    if (!trimmed) return opts.t('chat.errors.network')
     try {
       opts.parseCustomParamsOrThrow()
     } catch (e) {
       opts.errorText.value = opts.customParamsErrorMessage(e)
-      return
+      return opts.errorText.value
     }
     if (!opts.assertApiReady()) {
       opts.errorText.value = opts.t('chat.errors.requestFailedStatus', {
         status: 400,
       })
-      return
+      return opts.errorText.value
     }
 
     const ord = nextTurnOrdinal0(opts.turns.value)
@@ -182,6 +182,7 @@ export function useChatOutbound(opts: {
       )
       if (shouldReload) await opts.loadMessages()
       opts.emitAssistantReplyComplete({ mode: 'send', traceId })
+      return undefined
     } catch (e) {
       if (isAbortError(e)) {
         const durationMs = opts.stopGenerationTimer()
@@ -191,11 +192,13 @@ export function useChatOutbound(opts: {
         } else {
           opts.rollbackPendingUserTurn(ord, trimmed)
         }
-      } else {
-        opts.rollbackPendingUserTurn(ord, trimmed)
-        opts.errorText.value =
-          e instanceof Error ? e.message : opts.t('chat.errors.network')
+        return undefined
       }
+      opts.rollbackPendingUserTurn(ord, trimmed)
+      const msg =
+        e instanceof Error ? e.message : opts.t('chat.errors.network')
+      opts.errorText.value = msg
+      return msg
     } finally {
       if (opts.loading.value) {
         opts.stopGenerationTimer()
@@ -270,26 +273,28 @@ export function useChatOutbound(opts: {
     listIndex: number,
     userText: string,
     plugins: ConversationChatRequestPlugins,
-  ) {
-    if (!opts.isConversationWritable()) return
+  ): Promise<string | undefined> {
+    if (!opts.isConversationWritable()) return opts.t('chat.errors.network')
     const turn = opts.turns.value[listIndex]
-    if (!turn) return
+    if (!turn) return opts.t('chat.errors.network')
     const trimmed = userText.trim()
-    if (!trimmed) return
-    if (opts.regeneratingTurnOrdinal.value !== null || opts.loading.value) return
+    if (!trimmed) return opts.t('chat.errors.network')
+    if (opts.regeneratingTurnOrdinal.value !== null || opts.loading.value) {
+      return opts.t('chat.errors.network')
+    }
 
     opts.errorText.value = ''
     try {
       opts.parseCustomParamsOrThrow()
     } catch (e) {
       opts.errorText.value = opts.customParamsErrorMessage(e)
-      return
+      return opts.errorText.value
     }
     if (!opts.assertApiReady()) {
       opts.errorText.value = opts.t('chat.errors.requestFailedStatus', {
         status: 400,
       })
-      return
+      return opts.errorText.value
     }
 
     beginRegeneratingUi(turn.turnOrdinal)
@@ -304,7 +309,7 @@ export function useChatOutbound(opts: {
       applyPersistRetroPatches(persist)
 
       const cur = opts.turns.value[listIndex]
-      if (!cur) return
+      if (!cur) return opts.t('chat.errors.network')
       const finalUser = resolveFinalUserTextAfterPersist(persist) ?? trimmed
       const next: ChatTurnItem = {
         ...cur,
@@ -321,16 +326,19 @@ export function useChatOutbound(opts: {
         await opts.scrollChatToBottom()
       }
       opts.emitAssistantReplyComplete({ mode: 'regenerate', traceId })
+      return undefined
     } catch (e) {
       if (isAbortError(e)) {
         const durationMs = opts.stopGenerationTimer()
         finalizeAbortedRegenerate(listIndex, durationMs)
         await nextTick()
         await opts.scrollChatToBottom()
-      } else {
-        opts.errorText.value =
-          e instanceof Error ? e.message : opts.t('chat.errors.network')
+        return undefined
       }
+      const msg =
+        e instanceof Error ? e.message : opts.t('chat.errors.network')
+      opts.errorText.value = msg
+      return msg
     } finally {
       if (opts.regeneratingTurnOrdinal.value !== null) {
         opts.stopGenerationTimer()

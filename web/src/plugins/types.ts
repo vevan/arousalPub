@@ -341,6 +341,9 @@ export interface PluginCompletePreflightResult {
 export type { PluginHostApiError } from '@/plugins/plugin-host-api-error'
 export { isPluginHostApiError } from '@/plugins/plugin-host-api-error'
 
+/** `sendWithPlugins` / `regenerateWithPlugins`：成功为 undefined，失败为可展示文案（用户中止不返回） */
+export type PluginChatSendError = string | undefined
+
 export interface PluginWebHost {
   registerSlotButton(slot: string, def: PluginSlotButtonDef): void
   registerFormDialog(
@@ -367,12 +370,12 @@ export interface PluginWebHost {
     sendWithPlugins: (
       userText: string,
       plugins: ConversationChatRequestPlugins,
-    ) => Promise<void>
+    ) => Promise<PluginChatSendError>
     regenerateWithPlugins: (
       listIndex: number,
       userText: string,
       plugins: ConversationChatRequestPlugins,
-    ) => Promise<void>
+    ) => Promise<PluginChatSendError>
   }
   lifecycle: {
     onAssistantReplyComplete: (

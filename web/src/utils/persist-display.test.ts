@@ -58,6 +58,35 @@ describe('applyPersistTurnPlugins', () => {
     assert.equal(entry?.payload.receiveId, 'rx')
   })
 
+  it('merges trace-keeper from assistant without wiping other plugins', () => {
+    const guidance = {
+      pluginId: 'guidance-generate',
+      schemaVersion: 1,
+      payload: { hint: 'stay in character' },
+    }
+    const turns: ChatTurnItem[] = [
+      {
+        turnOrdinal: 1,
+        user: 'hi',
+        receives: [{ id: 'rx', content: '' }],
+        activeReceiveIndex: 0,
+        plugins: [guidance],
+      },
+    ]
+    const next = applyPersistTurnPlugins(turns, {
+      ok: true,
+      turnOrdinal: 1,
+      receiveId: 'rx',
+      trackerEpoch: 2,
+      finalAssistantContent:
+        'reply<ex-trace-keeper>{"mood":"calm"}</ex-trace-keeper>',
+    })
+    assert.equal(next[0]?.plugins?.length, 2)
+    assert.deepEqual(next[0]?.plugins?.[0], guidance)
+    const trace = next[0]?.plugins?.[1] as { pluginId: string }
+    assert.equal(trace.pluginId, 'trace-keeper')
+  })
+
   it('no-op when plugins missing', () => {
     const turns: ChatTurnItem[] = [
       {

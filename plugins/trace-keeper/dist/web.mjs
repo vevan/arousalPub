@@ -6240,7 +6240,8 @@ function resolvePanelView(bundle, turns, epoch, pinned, isSeparateRegenerating =
         mode,
         turnOrdinal: prior.turnOrdinal,
         epoch,
-        editState: prior.state
+        editState: prior.state,
+        actionsDisabled: true
       };
     } catch (e) {
       const detail2 = e instanceof Error ? e.message.length > 200 ? `${e.message.slice(0, 200)}\u2026` : e.message : void 0;
@@ -6572,17 +6573,18 @@ ${SHELL_STYLES}`);
       pinned,
       regenBusy
     );
-    lastEditContext = resolved.kind === "content" ? {
+    lastEditContext = resolved.kind === "content" && !resolved.actionsDisabled ? {
       turnOrdinal: resolved.turnOrdinal,
       state: resolved.editState
     } : null;
     const lastTurn = turns.length > 0 ? turns[turns.length - 1] : null;
     const viewingOrdinal = resolved.kind === "content" ? resolved.turnOrdinal : resolved.turnOrdinal;
     const isLastTurnView = lastTurn !== null && typeof viewingOrdinal === "number" && viewingOrdinal === lastTurn.turnOrdinal;
+    const actionsDisabled = resolved.kind === "content" && resolved.actionsDisabled === true;
     const shellActions = {
       showActions: turns.length > 0,
-      editEnabled: resolved.kind === "content",
-      regenEnabled: isLastTurnView && (resolved.kind === "content" || resolved.kind === "empty" && resolved.canRegenerate),
+      editEnabled: resolved.kind === "content" && !actionsDisabled,
+      regenEnabled: !actionsDisabled && isLastTurnView && (resolved.kind === "content" || resolved.kind === "empty" && resolved.canRegenerate),
       regenerating: regenBusy
     };
     const html = resolved.kind === "content" ? wrapPanelShell(host, resolved.html, shellActions) : wrapPanelShell(host, "", {

@@ -46,6 +46,8 @@ export type PanelViewResolved =
       turnOrdinal: number
       epoch: number
       editState: Record<string, unknown>
+      /** 等待当前轮回复时展示上一轮占位快照：禁用底部操作 */
+      actionsDisabled?: boolean
     }
   | {
       kind: 'empty'
@@ -257,6 +259,7 @@ export function resolvePanelView(
         turnOrdinal: prior.turnOrdinal,
         epoch,
         editState: prior.state,
+        actionsDisabled: true,
       }
     } catch (e) {
       const detail =

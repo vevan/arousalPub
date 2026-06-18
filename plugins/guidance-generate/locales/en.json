@@ -5,6 +5,7 @@
   "guidanceLabel": "Guidance (hidden, appended at end of prompt)",
   "send": "Send with guidance",
   "regenerate": "Regenerate with guidance",
+  "toastFailed": "Guided generation failed",
   "systemPrefixLabel": "System prefix (prepended to guidance)",
   "systemPrefixDesc": "Hidden system message prefix injected before the guidance text when sending to the model."
 }

@@ -4108,11 +4108,13 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
       },
       streamTimeoutMs,
     )
-  } finally {
+  } catch (err) {
     unbindClientAbort()
+    throw err
   }
 
   if (!upstream.ok) {
+    unbindClientAbort()
     const text = await upstream.text()
     request.log.warn(
       { status: upstream.status, body: text.slice(0, 500) },
@@ -4233,9 +4235,11 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
       tap,
       request.log,
     )
+    nodeStream.once('close', unbindClientAbort)
     return reply.send(nodeStream)
   }
 
+  unbindClientAbort()
   const text = await upstream.text()
   let data: unknown
   try {

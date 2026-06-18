@@ -28,10 +28,63 @@ function parseTraceKeeperStateFromAssistant(
   return last
 }
 
-function buildTraceKeeperPluginsFromPersist(
+const TRACE_KEEPER_PLUGIN_ID = 'trace-keeper'
+
+function payloadReceiveId(payload: Record<string, unknown> | undefined): string {
+  const raw = payload?.receiveId
+  return typeof raw === 'string' ? raw.trim() : ''
+}
+
+/** 与 server turn-plugin-utils.mergeTurnPluginEntry 一致 */
+function mergeTurnPluginEntry(
+  existing: unknown[] | undefined,
+  entry: { pluginId: string; schemaVersion?: number; payload: Record<string, unknown> },
+): unknown[] {
+  const entryReceiveId = payloadReceiveId(entry.payload)
+  const out: unknown[] = []
+  for (const raw of existing ?? []) {
+    if (!raw || typeof raw !== 'object') {
+      out.push(raw)
+      continue
+    }
+    const pluginId = (raw as { pluginId?: unknown }).pluginId
+    if (typeof pluginId !== 'string' || pluginId !== entry.pluginId) {
+      out.push(raw)
+      continue
+    }
+
+    if (entry.pluginId !== TRACE_KEEPER_PLUGIN_ID) {
+      continue
+    }
+
+    const prevPayload =
+      (raw as { payload?: unknown }).payload &&
+      typeof (raw as { payload?: unknown }).payload === 'object' &&
+      !Array.isArray((raw as { payload?: unknown }).payload)
+        ? (raw as { payload: Record<string, unknown> }).payload
+        : undefined
+    const prevReceiveId = payloadReceiveId(prevPayload)
+
+    if (entryReceiveId) {
+      if (prevReceiveId === entryReceiveId) continue
+      out.push(raw)
+      continue
+    }
+
+    if (prevReceiveId) {
+      out.push(raw)
+      continue
+    }
+
+    continue
+  }
+  out.push(entry)
+  return out
+}
+
+function buildTraceKeeperEntryFromPersist(
   persist: ChatPersistPayload,
-): unknown[] | undefined {
-  if (Array.isArray(persist.plugins)) return persist.plugins
+): { pluginId: string; schemaVersion: number; payload: Record<string, unknown> } | undefined {
   const receiveId = persist.receiveId?.trim()
   const content = persist.finalAssistantContent
   if (!receiveId || typeof content !== 'string' || !content.trim()) return undefined
@@ -41,13 +94,21 @@ function buildTraceKeeperPluginsFromPersist(
     typeof persist.trackerEpoch === 'number' && Number.isFinite(persist.trackerEpoch)
       ? Math.max(0, Math.round(persist.trackerEpoch))
       : 0
-  return [
-    {
-      pluginId: 'trace-keeper',
-      schemaVersion: 1,
-      payload: { state, epoch, receiveId },
-    },
-  ]
+  return {
+    pluginId: TRACE_KEEPER_PLUGIN_ID,
+    schemaVersion: 1,
+    payload: { state, epoch, receiveId },
+  }
+}
+
+function resolvePersistPluginsForTurn(
+  persist: ChatPersistPayload,
+  existing: unknown[] | undefined,
+): unknown[] | undefined {
+  if (Array.isArray(persist.plugins)) return persist.plugins
+  const entry = buildTraceKeeperEntryFromPersist(persist)
+  if (!entry) return undefined
+  return mergeTurnPluginEntry(existing, entry)
 }
 /** persist SSE/JSON 带回 final* 时，用落盘正文替代流式 upstream 原文 */
 export function resolveAssistantAfterPersist(
@@ -128,15 +189,14 @@ export function applyPersistTurnPlugins(
   persist?: ChatPersistPayload,
 ): ChatTurnItem[] {
   if (!persist?.ok || typeof persist.turnOrdinal !== 'number') return turns
-  const plugins = buildTraceKeeperPluginsFromPersist(persist)
-  if (!plugins) return turns
   const ord = persist.turnOrdinal
   const idx = turns.findIndex((t) => t.turnOrdinal === ord)
   if (idx < 0) return turns
   const cur = turns[idx]!
-  const nextPlugins = [...plugins]
+  const plugins = resolvePersistPluginsForTurn(persist, cur.plugins)
+  if (!plugins) return turns
   return turns.map((t, i) =>
-    i === idx ? { ...cur, plugins: nextPlugins } : t,
+    i === idx ? { ...cur, plugins } : t,
   )
 }
 

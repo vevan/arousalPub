@@ -6,17 +6,13 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, it } from 'node:test'
 
-const REPO_ROOT = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '..',
-  '..',
-)
+const SERVER_SRC = path.dirname(fileURLToPath(import.meta.url))
+const REPO_ROOT = path.resolve(SERVER_SRC, '..', '..')
 const INTEGRATION_SCRIPT = path.join(
-  REPO_ROOT,
-  '.tmp',
+  SERVER_SRC,
+  'integration',
   'conversation-branches-delete-memory-integration.ts',
 )
-
 describe('conversation branch delete + memory lance integration', () => {
   it('DELETE branch clears disk/registry; Lance rows match plan', async (t) => {
     const dataDir = await mkdtemp(path.join(os.tmpdir(), 'branch-del-'))

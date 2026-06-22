@@ -16,6 +16,7 @@ import {
 import {
   collectRegisteredBranchPaths,
   findBranchRegistryEntry,
+  isBranchRegistryBrokenError,
   parseBranchRegistryForkTurnId,
   parseBranchRegistryPath,
   readAllTurnsAtBranchPath,
@@ -347,7 +348,15 @@ export async function createEmptyConversationBranch(params: {
   }
 
   const parentBranchPath = await readConversationActiveBranchPath(conversationId)
-  const onActive = await resolveActivePathTurns(conversationId, parentBranchPath)
+  let onActive: Awaited<ReturnType<typeof resolveActivePathTurns>>
+  try {
+    onActive = await resolveActivePathTurns(conversationId, parentBranchPath)
+  } catch (e) {
+    if (isBranchRegistryBrokenError(e)) {
+      return { error: ApiErrorCodes.branch_registry_broken, status: 409 }
+    }
+    throw e
+  }
   const forkTurn = onActive.find((t) => t.turnId === forkTurnId)
   if (!forkTurn) {
     return { error: ApiErrorCodes.fork_turn_not_on_active_path, status: 400 }
@@ -393,6 +402,7 @@ export async function createEmptyConversationBranch(params: {
     entry,
   )
   if (!parentUpdated) {
+    await rm(branchDir, { recursive: true, force: true }).catch(() => {})
     return { error: ApiErrorCodes.branch_create_failed, status: 500 }
   }
 
@@ -403,11 +413,33 @@ export async function createEmptyConversationBranch(params: {
     entry,
   )
   if (!chunkUpdated) {
+    await removeBranchRegistryFromParentIndex(
+      conversationId,
+      parentBranchPath,
+      segment,
+    ).catch(() => {})
+    await rm(branchDir, { recursive: true, force: true }).catch(() => {})
     return { error: ApiErrorCodes.branch_create_failed, status: 500 }
   }
 
-  const branchIdx = branchIndexStubFromRoot(rootIdx)
-  await writeBranchConversationIndex(conversationId, fullPath, branchIdx)
+  try {
+    const branchIdx = branchIndexStubFromRoot(rootIdx)
+    await writeBranchConversationIndex(conversationId, fullPath, branchIdx)
+  } catch {
+    await removeBranchRegistryFromForkChunk(
+      conversationId,
+      located.branchPath,
+      segment,
+      forkTurnId,
+    ).catch(() => {})
+    await removeBranchRegistryFromParentIndex(
+      conversationId,
+      parentBranchPath,
+      segment,
+    ).catch(() => {})
+    await rm(branchDir, { recursive: true, force: true }).catch(() => {})
+    return { error: ApiErrorCodes.branch_create_failed, status: 500 }
+  }
 
   const setActive = params.setActive !== false
   let activeBranchPath = parentBranchPath
@@ -474,19 +506,26 @@ export async function getConversationBranchTree(
     return { error: ApiErrorCodes.conversation_not_found, status: 404 }
   }
   const activeBranchPath = await readConversationActiveBranchPath(id)
-  const children = await buildBranchTreeNodes(id, '')
-  return {
-    activeBranchPath,
-    nodes: [
-      {
-        path: '',
-        label: '主对话',
-        forkTurnId: null,
-        forkOrdinal: null,
-        turnCount: (await readAllTurnsAtBranchPath(id, '')).length,
-        children,
-      },
-    ],
+  try {
+    const children = await buildBranchTreeNodes(id, '')
+    return {
+      activeBranchPath,
+      nodes: [
+        {
+          path: '',
+          label: '主对话',
+          forkTurnId: null,
+          forkOrdinal: null,
+          turnCount: (await readAllTurnsAtBranchPath(id, '')).length,
+          children,
+        },
+      ],
+    }
+  } catch (e) {
+    if (isBranchRegistryBrokenError(e)) {
+      return { error: ApiErrorCodes.branch_registry_broken, status: 409 }
+    }
+    throw e
   }
 }
 

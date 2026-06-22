@@ -115,6 +115,7 @@ const {
   activeBranchPath,
   branchPanelOpen,
   branchBusy,
+  branchTreeLoading,
   branchTreeNodes,
   branchLoadError,
   forkTurnIdsWithSiblings,
@@ -141,6 +142,16 @@ provide(CONVERSATION_BRANCH_KEY, {
   openBranchPanel,
   createBranchFromTurn,
   isForkTurn,
+})
+
+const branchSnackOpen = ref(false)
+const branchSnackText = ref('')
+
+watch(branchLoadError, (msg) => {
+  const text = msg.trim()
+  if (!text) return
+  branchSnackText.value = text
+  branchSnackOpen.value = true
 })
 
 const conversationMemoryEmbeddingModel = ref<string | null>(null)
@@ -970,10 +981,19 @@ watch(
         :nodes="branchTreeNodes"
         :active-branch-path="activeBranchPath"
         :busy="branchBusy"
+        :tree-loading="branchTreeLoading"
         :error-text="branchLoadError"
         @select="switchActiveBranch"
         @delete="deleteBranch"
       />
+      <v-snackbar
+        v-model="branchSnackOpen"
+        :timeout="4000"
+        location="bottom"
+        color="error"
+      >
+        {{ branchSnackText }}
+      </v-snackbar>
       <v-dialog
         v-model="memoryRebuildDialogOpen"
         max-width="32rem"

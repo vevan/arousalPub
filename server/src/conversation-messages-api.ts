@@ -4,6 +4,7 @@ import {
   readTurnsInOrdinalRange,
   readTurnsTail,
   resolveActivePathTurns,
+  isBranchRegistryBrokenError,
 } from './chunk-chain.js'
 import { normalizeBranchPath } from './chunk-path.js'
 import { getTurnUserText, type TurnReceive, type TurnRecord } from './chat-storage.js'
@@ -145,6 +146,10 @@ export function resolveMessagesQueryMode(query: {
   return 'all'
 }
 
+function branchRegistryError(): { ok: false; error: string } {
+  return { ok: false, error: 'branch_registry_broken' }
+}
+
 export async function loadConversationMessages(
   conversationId: string,
   query: {
@@ -182,7 +187,8 @@ export async function loadConversationMessages(
     return { ok: false, error: 'messages_range_invalid' }
   }
 
-  if (mode === 'tail') {
+  try {
+    if (mode === 'tail') {
     const tail = clampPageLimit(
       query.tail,
       CONVERSATION_MESSAGES_DEFAULT_TAIL,
@@ -281,5 +287,9 @@ export async function loadConversationMessages(
   return {
     ok: true,
     response: { turns: mapTurnRecordsToMessagesDto(records) },
+  }
+  } catch (e) {
+    if (isBranchRegistryBrokenError(e)) return branchRegistryError()
+    throw e
   }
 }

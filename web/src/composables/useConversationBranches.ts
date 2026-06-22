@@ -21,6 +21,7 @@ export function useConversationBranches(params: {
   const activeBranchPath = ref('')
   const branchPanelOpen = ref(false)
   const branchBusy = ref(false)
+  const branchTreeLoading = ref(false)
   const branchTreeNodes = shallowRef<BranchTreeNodeDto[]>([])
   const branchLoadError = ref('')
 
@@ -46,12 +47,15 @@ export function useConversationBranches(params: {
     const id = params.getConversationId()
     if (!id) return
     branchLoadError.value = ''
+    branchTreeLoading.value = true
     try {
       const tree = await fetchConversationBranchTree(id)
       activeBranchPath.value = tree.activeBranchPath ?? ''
       branchTreeNodes.value = tree.nodes
     } catch (e) {
       branchLoadError.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      branchTreeLoading.value = false
     }
   }
 
@@ -132,6 +136,7 @@ export function useConversationBranches(params: {
     activeBranchPath,
     branchPanelOpen,
     branchBusy,
+    branchTreeLoading,
     branchTreeNodes,
     branchLoadError,
     forkTurnIdsWithSiblings,

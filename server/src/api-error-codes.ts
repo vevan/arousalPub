@@ -93,6 +93,7 @@ export const ApiErrorCodes = {
   budget_trim_trim_order_invalid: 'budget_trim_trim_order_invalid',
   branch_create_failed: 'branch_create_failed',
   branch_delete_failed: 'branch_delete_failed',
+  branch_registry_broken: 'branch_registry_broken',
   branch_path_conflict: 'branch_path_conflict',
   branch_path_not_found: 'branch_path_not_found',
   global_budget_trim_requires_field: 'global_budget_trim_requires_field',

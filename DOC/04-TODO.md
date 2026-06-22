@@ -29,7 +29,7 @@
   - [x] `PATCH /api/chat/conversations/:id` — body 支持 `activeBranchPath`；sync 根 `index.json` + `chat.index.json`
   - [x] `api-error-codes.ts` + i18n：`fork_turn_not_found`、`fork_turn_not_on_active_path`、`branch_path_conflict` 等
   - **审计 backlog**（详见 `DOC/23` §9.1）：无事务回滚、ALS+动态 import 等；严重项 `setActive` 覆盖 `branches[]` 已修复
-  - [x] 集成：创建分支 → append → messages / assemble / memory 召回（`.tmp/conversation-branches-integration.ts` · 2026-06-18）
+  - [x] 集成：创建分支 → append → messages / assemble / memory 召回（`server/src/integration/conversation-branches-integration.ts` · 2026-06-18）
 
   **S4 · 前端**
   - [x] 会话 meta 加载 / 持久化 `activeBranchPath`（`ChatConversationView` + `useConversationBranches`）
@@ -44,7 +44,7 @@
   - [x] `rebuildHeadTailFromLinks` 按 `branchPath` 作用域扫描（主路径仅根目录 `turn-*.json`）
   - [x] `syncChunkIndexIfDrifted` / tail 缓冲：分支 tail 变更后 `invalidateChunkIndexSyncCache`
   - [x] 弃用分支（可 v1.1）：`DELETE .../branches?path=` → 删子树 + `deleteTurnMemoryByBranchSubtree` + 重置 `activeBranchPath`
-  - [x] 集成：memory Lance 全链路（`.tmp/conversation-branches-delete-memory-integration.ts`；真实 embed 需 `AROUSAL_EMBEDDING_E2E=1` + API env）
+  - [x] 集成：memory Lance 全链路（`server/src/integration/conversation-branches-delete-memory-integration.ts`；真实 embed 需 `AROUSAL_EMBEDDING_E2E=1` + API env）
 
   **验收**
   - [x] 主路径 `activeBranchPath=""` 回归与改前一致（`.tmp/conversation-branches-integration.ts` · `branch-accept-main-path`）

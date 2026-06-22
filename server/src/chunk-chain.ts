@@ -230,6 +230,26 @@ export function mergeActivePathPrefixSegment(params: {
   }
 }
 
+/** 分支注册表与 active 路径不一致（禁止静默返回空历史） */
+export class BranchRegistryBrokenError extends Error {
+  readonly code = 'branch_registry_broken'
+
+  constructor(
+    readonly conversationId: string,
+    readonly activeBranchPath: string,
+    readonly segment?: string,
+  ) {
+    super('branch_registry_broken')
+    this.name = 'BranchRegistryBrokenError'
+  }
+}
+
+export function isBranchRegistryBrokenError(
+  e: unknown,
+): e is BranchRegistryBrokenError {
+  return e instanceof BranchRegistryBrokenError
+}
+
 /**
  * active 路径线性 turn：祖先前缀（至各 forkTurnId 含 fork 轮）+ active 子树 suffix。
  * 主路径 activeBranchPath="" 时等价 readAllTurnsAtBranchPath("").
@@ -259,9 +279,7 @@ export async function resolveActivePathTurns(
       )
       const forkTurnId = entry ? parseBranchRegistryForkTurnId(entry) : null
       if (!forkTurnId) {
-        merged = []
-        lastForkOrdinal = -1
-        break
+        throw new BranchRegistryBrokenError(conversationId, active, segment)
       }
 
       const parentTurns =
@@ -275,26 +293,26 @@ export async function resolveActivePathTurns(
         forkTurnId,
       })
       if (!step) {
-        merged = []
-        lastForkOrdinal = -1
-        break
+        throw new BranchRegistryBrokenError(conversationId, active, segment)
       }
       merged = step.merged
       lastForkOrdinal = step.forkOrdinal
       parentPath = segments.slice(0, i + 1).join('/')
     }
 
-    if (lastForkOrdinal >= 0) {
-      const suffix = await readAllTurnsAtBranchPath(conversationId, active)
-      const seen = new Set(merged.map((t) => t.turnId))
-      for (const t of suffix) {
-        if (t.turnOrdinal > lastForkOrdinal && !seen.has(t.turnId)) {
-          merged.push(t)
-          seen.add(t.turnId)
-        }
-      }
-      merged = sortTurnsUnique(merged)
+    if (lastForkOrdinal < 0) {
+      throw new BranchRegistryBrokenError(conversationId, active)
     }
+
+    const suffix = await readAllTurnsAtBranchPath(conversationId, active)
+    const seen = new Set(merged.map((t) => t.turnId))
+    for (const t of suffix) {
+      if (t.turnOrdinal > lastForkOrdinal && !seen.has(t.turnId)) {
+        merged.push(t)
+        seen.add(t.turnId)
+      }
+    }
+    merged = sortTurnsUnique(merged)
   }
 
   if (range) {
@@ -420,7 +438,7 @@ export interface ChunkChainLocation {
   chunkFileName: string
 }
 
-function normalizeTailChunkBasename(
+export function normalizeTailChunkBasename(
   tailChunkFile: string,
   branchPath: string,
 ): string {
@@ -800,12 +818,16 @@ async function rotateTailChunk(
  */
 export async function splitOversizedTailChunkIfNeeded(
   conversationId: string,
+  branchPath = '',
 ): Promise<string[]> {
+  const bp = normalizeBranchPath(branchPath)
   const sealed: string[] = []
-  const idx = await readConversationIndex(conversationId)
+  const idx = bp
+    ? await readBranchConversationIndex(conversationId, bp)
+    : await readConversationIndex(conversationId)
   if (!idx?.tailChunkFile) return sealed
-  const tailName = idx.tailChunkFile
-  const tail = await readChunkFile(conversationId, tailName)
+  const tailName = normalizeTailChunkBasename(idx.tailChunkFile, bp)
+  const tail = await readChunkFileAt(conversationId, bp, tailName)
   if (!tail?.turns.length) return sealed
   if (tail.meta.links.next) return sealed
 
@@ -849,7 +871,11 @@ export async function splitOversizedTailChunkIfNeeded(
     }
 
     prevChunk.meta.links.next = newFileName
-    await writeChunkFile(conversationId, prevFile, prevChunk)
+    await writeChunkFile(
+      conversationId,
+      chunkStorageRelativePath(bp, prevFile),
+      prevChunk,
+    )
     sealed.push(prevFile)
 
     const newChunk: ChunkFile = {
@@ -857,7 +883,11 @@ export async function splitOversizedTailChunkIfNeeded(
       meta,
       turns: group,
     }
-    await writeChunkFile(conversationId, newFileName, newChunk)
+    await writeChunkFile(
+      conversationId,
+      chunkStorageRelativePath(bp, newFileName),
+      newChunk,
+    )
 
     prevFile = newFileName
     prevChunk = newChunk
@@ -866,7 +896,11 @@ export async function splitOversizedTailChunkIfNeeded(
   idx.tailChunkFile = prevFile
   if (!idx.headChunkFile) idx.headChunkFile = tailName
   invalidateChunkIndexSyncCache(conversationId)
-  await writeConversationIndex(conversationId, idx)
+  if (bp) {
+    await writeBranchConversationIndex(conversationId, bp, idx)
+  } else {
+    await writeConversationIndex(conversationId, idx)
+  }
   return sealed
 }
 
@@ -887,11 +921,9 @@ export async function prepareTailChunkForAppend(
 } | null> {
   const bp = normalizeBranchPath(branchPath)
   const sealedChunkFiles: string[] = []
-  if (!bp) {
-    sealedChunkFiles.push(
-      ...(await splitOversizedTailChunkIfNeeded(conversationId)),
-    )
-  }
+  sealedChunkFiles.push(
+    ...(await splitOversizedTailChunkIfNeeded(conversationId, bp)),
+  )
 
   let idx = bp
     ? await readBranchConversationIndex(conversationId, bp)
@@ -1217,10 +1249,10 @@ export async function syncChunkIndexIfDrifted(
   }
 
   let repaired = await syncChunkIndexScopeIfDrifted(conversationId, '')
-  const active = await readConversationActiveBranchPath(conversationId)
-  if (active) {
+  const branchPaths = await collectRegisteredBranchPaths(conversationId)
+  for (const bp of branchPaths) {
     repaired =
-      (await syncChunkIndexScopeIfDrifted(conversationId, active)) || repaired
+      (await syncChunkIndexScopeIfDrifted(conversationId, bp)) || repaired
   }
 
   chunkIndexSyncAt.set(conversationId, Date.now())

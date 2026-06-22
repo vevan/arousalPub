@@ -36,7 +36,11 @@ function onOpenBranches() {
       type="button"
       class="turn-toolbar__btn"
       :disabled="disabled || branchCtx.branchBusy.value || !turn.turnId"
-      :data-tt="$t('chat.branches.branchFromHere')"
+      :data-tt="
+        !turn.turnId
+          ? $t('chat.branches.branchFromHereNoTurnId')
+          : $t('chat.branches.branchFromHere')
+      "
       :aria-label="$t('chat.branches.branchFromHere')"
       @click="onBranchFromHere"
     >

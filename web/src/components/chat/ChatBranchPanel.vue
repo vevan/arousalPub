@@ -9,6 +9,7 @@ const props = defineProps<{
   nodes: BranchTreeNodeDto[]
   activeBranchPath: string
   busy: boolean
+  treeLoading?: boolean
   errorText?: string
 }>()
 
@@ -105,7 +106,10 @@ function confirmDelete() {
         >
           {{ errorText }}
         </v-alert>
-        <v-list density="compact" class="chat-branch-panel__list">
+        <div v-if="treeLoading" class="d-flex justify-center py-6">
+          <v-progress-circular indeterminate size="28" width="2" />
+        </div>
+        <v-list v-else density="compact" class="chat-branch-panel__list">
           <v-list-item
             v-for="{ node, depth } in flatNodes"
             :key="node.path || '__main__'"
@@ -137,7 +141,7 @@ function confirmDelete() {
             </template>
           </v-list-item>
         </v-list>
-        <p v-if="flatNodes.length === 0 && !busy" class="text-body-2 text-medium-emphasis pa-4">
+        <p v-if="!treeLoading && flatNodes.length === 0 && !busy" class="text-body-2 text-medium-emphasis pa-4">
           {{ $t('chat.branches.empty') }}
         </p>
       </v-card-text>

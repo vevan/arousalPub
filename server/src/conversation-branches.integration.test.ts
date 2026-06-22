@@ -6,14 +6,11 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, it } from 'node:test'
 
-const REPO_ROOT = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '..',
-  '..',
-)
+const SERVER_SRC = path.dirname(fileURLToPath(import.meta.url))
+const REPO_ROOT = path.resolve(SERVER_SRC, '..', '..')
 const INTEGRATION_SCRIPT = path.join(
-  REPO_ROOT,
-  '.tmp',
+  SERVER_SRC,
+  'integration',
   'conversation-branches-integration.ts',
 )
 

@@ -1394,7 +1394,9 @@ app.get<{
         loaded.error in ApiErrorCodes
           ? (loaded.error as (typeof ApiErrorCodes)[keyof typeof ApiErrorCodes])
           : ApiErrorCodes.validation_failed
-      return reply.status(400).send({ error: code })
+      const status =
+        loaded.error === ApiErrorCodes.branch_registry_broken ? 409 : 400
+      return reply.status(status).send({ error: code })
     }
     return loaded.response
   },

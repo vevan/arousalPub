@@ -1,6 +1,6 @@
 # 对话分支 — 设计与实现参考
 
-> **状态（2026-06）**：**服务端 memory / 枚举原语已落地**（P3）；**分支创建、写入、切换 UI、assemble/history 按 active 路径读盘** 仍待产品实现。  
+> **状态（2026-06-18）**：**S1–S5 + 前端分支 UI + DELETE 已落地**；读/写/append/memory/index repair 按 `activeBranchPath`；集成脚本在 `server/src/integration/`。  
 > **读者**：后续做「从此处分支继续」、消息树、分支切换的 Agent / 开发者。  
 > **关联**：`DOC/03` §6.1–§6.4、§7.2–§7.3、§14.5；`DOC/08` §1.2；`DOC/15` §0。
 
@@ -468,6 +468,22 @@ flowchart TD
 | 低 | API 硬编码 `主对话` | 与 §6.5 草案一致；前端 S4 可本地化 | 待 S4 |
 | 信息 | `upsertChatListEntry` 动态 import | 独立脚本中 ALS 在 `await import()` 后丢失；集成测试用 `AROUSAL_TEST_USER_ID` | 已文档化 |
 | 信息 | 同 fork 点多分支 | 允许；符合「任意 turn 可分叉」定案 | 设计如此 |
+
+### 9.2 全量审计 backlog（2026-06-18）
+
+| 级别 | 问题 | 状态 |
+|------|------|------|
+| **P0** | `batchUpdateConversationTurns` 仅主路径 | **已修复**（`readChunkContainingOrdinal` + `branchPath` memory） |
+| **P0** | `removeTurnAtOrdinalInTailChunk` 仅主路径 | **已修复**（active 分支 tail 感知） |
+| **P0** | `resolveActivePathTurns` 注册表断裂静默 `[]` | **已修复**（`BranchRegistryBrokenError` + API 409） |
+| **P0** | 集成脚本在 `.tmp/` 不入库 | **已修复**（`server/src/integration/`） |
+| **P1** | 创建分支无回滚 | **已缓解**（失败时去注册 + `rm` 目录） |
+| **P1** | `syncChunkIndexIfDrifted` 仅 active 兄弟分支 | **已修复**（扫全部 `collectRegisteredBranchPaths`） |
+| **P1** | 分支 tail 超大块不拆分 | **已修复**（`splitOversizedTailChunkIfNeeded(conv, branchPath)`） |
+| **P1** | 前端 fork 失败无全局提示 | **已修复**（snackbar + 面板 loading） |
+| 低 | DELETE 无事务 / 删父分支静默级联 | 文档化；v1.1 可选二次确认 turn 数 |
+| 低 | API 硬编码「主对话」 | 前端 `mainPath` i18n 覆盖展示 |
+| 信息 | `GET messages?branchPath=` 调试预览 | **已实现**（服务端） |
 
 ---
 

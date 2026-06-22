@@ -81,9 +81,10 @@ import {
 import {
   buildFirstChunkDescriptor,
   invalidateChunkIndexSyncCache,
-  loadConversationChunksForOrdinalRange,
+  normalizeTailChunkBasename,
   prepareTailChunkForAppend,
   readChunkContainingOrdinal,
+  readChunkFile,
   readConversationActiveBranchPath,
 } from './chunk-chain.js'
 import {
@@ -379,13 +380,6 @@ export async function batchUpdateConversationTurns(
   }
 
   const ordinals = patches.map((p) => p.turnOrdinal)
-  const minOrd = Math.min(...ordinals)
-  const maxOrd = Math.max(...ordinals)
-  const chunkMap = await loadConversationChunksForOrdinalRange(
-    conversationId,
-    minOrd,
-    maxOrd,
-  )
   const idx = await readConversationIndex(conversationId)
   if (!idx) {
     return {
@@ -401,43 +395,52 @@ export async function batchUpdateConversationTurns(
   type Located = {
     patch: TurnContentPatchInput
     fileName: string
+    branchPath: string
+    storagePath: string
     turn: TurnRecord
   }
   const located: Located[] = []
   const failed: { turnOrdinal: number; error: string }[] = []
 
   for (const patch of patches) {
-    let hit: Located | null = null
-    for (const [fileName, chunk] of chunkMap) {
-      const turn = chunk.turns.find((t) => t.turnOrdinal === patch.turnOrdinal)
-      if (turn) {
-        hit = { patch, fileName, turn }
-        break
-      }
-    }
-    if (!hit) {
+    const loc = await readChunkContainingOrdinal(conversationId, patch.turnOrdinal)
+    if (!loc) {
       failed.push({ turnOrdinal: patch.turnOrdinal, error: 'turn_chunk_not_found' })
       continue
     }
-    located.push(hit)
+    const turn = loc.chunk.turns.find((t) => t.turnOrdinal === patch.turnOrdinal)
+    if (!turn) {
+      failed.push({ turnOrdinal: patch.turnOrdinal, error: 'turn_chunk_not_found' })
+      continue
+    }
+    located.push({
+      patch,
+      fileName: loc.fileName,
+      branchPath: loc.branchPath,
+      storagePath: chunkStorageRelativePath(loc.branchPath, loc.fileName),
+      turn,
+    })
   }
 
-  const byFile = new Map<string, Located[]>()
+  const byStorage = new Map<string, Located[]>()
   for (const item of located) {
-    const list = byFile.get(item.fileName) ?? []
+    const list = byStorage.get(item.storagePath) ?? []
     list.push(item)
-    byFile.set(item.fileName, list)
+    byStorage.set(item.storagePath, list)
   }
 
-  const memoryUpserts: { turn: TurnRecord; chunkName: string }[] = []
+  const memoryUpserts: { turn: TurnRecord; chunkName: string; branchPath: string }[] = []
   let ok = 0
   const memoryEmbedActive = await isConversationMemoryEmbedActive(conversationId)
 
-  for (const [fileName, items] of byFile) {
-    const chunk = chunkMap.get(fileName)
+  for (const [storagePath, items] of byStorage) {
+    const chunk = await readChunkFile(conversationId, storagePath)
     if (!chunk) continue
     const used = collectChunkEntityIds(chunk)
-    for (const { patch, turn } of items) {
+    const first = items[0]!
+    for (const { patch } of items) {
+      const turn = chunk.turns.find((t) => t.turnOrdinal === patch.turnOrdinal)
+      if (!turn) continue
       applyTurnContentUpdate(
         turn,
         used,
@@ -445,10 +448,14 @@ export async function batchUpdateConversationTurns(
         patch.receives,
         patch.activeReceiveIndex,
       )
-      memoryUpserts.push({ turn, chunkName: fileName })
+      memoryUpserts.push({
+        turn,
+        chunkName: first.fileName,
+        branchPath: first.branchPath,
+      })
       ok += 1
     }
-    await writeChunkFile(conversationId, fileName, chunk)
+    await writeChunkFile(conversationId, storagePath, chunk)
   }
 
   let memoryEmbedsQueued = 0
@@ -458,9 +465,9 @@ export async function batchUpdateConversationTurns(
     await writeConversationIndex(conversationId, idx)
     await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
     if (memoryEmbedActive) {
-      for (const { turn, chunkName } of memoryUpserts) {
+      for (const { turn, chunkName, branchPath } of memoryUpserts) {
         if (!isTurnEligibleForMemoryEmbed(turn)) continue
-        scheduleMemoryIndexUpsert(conversationId, turn, chunkName)
+        scheduleMemoryIndexUpsert(conversationId, turn, chunkName, branchPath)
         memoryEmbedsQueued += 1
       }
     }
@@ -1938,23 +1945,36 @@ export async function updateTurnContentInTailChunk(
   return true
 }
 
-/** 删除尾块中的整轮；若删空 tail 且存在 previous 则链式回退 tail 指针 */
+/** 删除尾块中的整轮；若删空 tail 且存在 previous 则链式回退 tail 指针（active 分支感知） */
 export async function removeTurnAtOrdinalInTailChunk(
   conversationId: string,
   turnOrdinal: number,
 ): Promise<boolean> {
-  const idx = await readConversationIndex(conversationId)
+  const located = await readChunkContainingOrdinal(conversationId, turnOrdinal)
+  if (!located) return false
+
+  const { fileName: tailFileName, branchPath } = located
+  const bp = normalizeBranchPath(branchPath)
+  const idx = bp
+    ? await readBranchConversationIndex(conversationId, bp)
+    : await readConversationIndex(conversationId)
   if (!idx?.tailChunkFile) return false
-  const tailFileName = idx.tailChunkFile
-  const chunkPath = tailChunkPath(conversationId, idx)
-  if (!chunkPath) return false
+
+  const scopeTailBasename = normalizeTailChunkBasename(idx.tailChunkFile, bp)
+  if (tailFileName !== scopeTailBasename) return false
+
+  const storagePath = chunkStorageRelativePath(bp, tailFileName)
   let chunk: ChunkFile
   try {
-    const raw = await readFile(chunkPath, 'utf8')
+    const raw = await readFile(
+      path.join(conversationDir(conversationId), storagePath),
+      'utf8',
+    )
     chunk = JSON.parse(raw) as ChunkFile
   } catch {
     return false
   }
+
   const victim = chunk.turns.find((x) => x.turnOrdinal === turnOrdinal)
   const victimTurnId = victim?.turnId
 
@@ -1965,16 +1985,18 @@ export async function removeTurnAtOrdinalInTailChunk(
 
   if (filtered.length === 0) {
     const previousFile = chunk.meta.links.previous
+    const chunkAbsPath = path.join(conversationDir(conversationId), storagePath)
     try {
-      await rm(chunkPath, { force: true })
+      await rm(chunkAbsPath, { force: true })
     } catch {
       return false
     }
     if (previousFile) {
+      const prevStorage = chunkStorageRelativePath(bp, previousFile)
       let prevChunk: ChunkFile
       try {
         const raw = await readFile(
-          path.join(conversationDir(conversationId), previousFile),
+          path.join(conversationDir(conversationId), prevStorage),
           'utf8',
         )
         prevChunk = JSON.parse(raw) as ChunkFile
@@ -1982,7 +2004,7 @@ export async function removeTurnAtOrdinalInTailChunk(
         return false
       }
       prevChunk.meta.links.next = null
-      await writeChunkFile(conversationId, previousFile, prevChunk)
+      await writeChunkFile(conversationId, prevStorage, prevChunk)
       idx.tailChunkFile = previousFile
       if (idx.headChunkFile === tailFileName) {
         idx.headChunkFile = previousFile
@@ -1992,9 +2014,18 @@ export async function removeTurnAtOrdinalInTailChunk(
       idx.tailChunkFile = null
     }
     idx.updatedAt = t
-    await writeConversationIndex(conversationId, idx)
+    if (bp) {
+      await writeBranchConversationIndex(conversationId, bp, idx)
+    } else {
+      await writeConversationIndex(conversationId, idx)
+    }
     invalidateChunkIndexSyncCache(conversationId)
-    await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
+    const rootIdx = await readConversationIndex(conversationId)
+    if (rootIdx) {
+      rootIdx.updatedAt = t
+      await writeConversationIndex(conversationId, rootIdx)
+      await upsertChatListEntry(chatListEntryFromIndex(rootIdx), rootIdx)
+    }
     if (victimTurnId) {
       void removeChatAuditEntriesByTurnId(conversationId, victimTurnId)
       scheduleMemoryIndexDelete(conversationId, victimTurnId)
@@ -2008,10 +2039,19 @@ export async function removeTurnAtOrdinalInTailChunk(
     end: filtered[filtered.length - 1]!.turnOrdinal,
   }
 
-  await writeChunkFile(conversationId, tailFileName, chunk)
+  await writeChunkFile(conversationId, storagePath, chunk)
   idx.updatedAt = t
-  await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
+  if (bp) {
+    await writeBranchConversationIndex(conversationId, bp, idx)
+  } else {
+    await writeConversationIndex(conversationId, idx)
+  }
+  const rootIdx = await readConversationIndex(conversationId)
+  if (rootIdx) {
+    rootIdx.updatedAt = t
+    await writeConversationIndex(conversationId, rootIdx)
+    await upsertChatListEntry(chatListEntryFromIndex(rootIdx), rootIdx)
+  }
   if (victimTurnId) {
     void removeChatAuditEntriesByTurnId(conversationId, victimTurnId)
     scheduleMemoryIndexDelete(conversationId, victimTurnId)

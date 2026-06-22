@@ -15,6 +15,7 @@ import {
   type PromptBudgetTrimState,
 } from './prompt-budget-trim.js'
 import type { ChatMessage } from './assemble-prompts.js'
+import { countChatMessagesTokens } from './token-count.js'
 
 function loreEntry(id: string, priority: number, content: string): LorebookEntry {
   return {
@@ -219,5 +220,61 @@ describe('runPromptBudgetTrimLoop', () => {
     assert.equal(result.drops.droppedLoreCount, 0)
     assert.ok(result.drops.droppedMemoryCount >= 1)
     assert.equal(state.memoryItems.length, 1)
+  })
+
+  it('stops after minimal trims when full recount shows under budget', () => {
+    const state = baseState()
+    const anchor = 'anchor '.repeat(2000)
+    state.matchedLore = [
+      {
+        lorebookId: 'lb1',
+        lorebookName: 'World',
+        entry: loreEntry('l-big', 1, 'lore-chunk '.repeat(200)),
+        mode: 'keyword',
+        score: 1,
+      },
+      {
+        lorebookId: 'lb1',
+        lorebookName: 'World',
+        entry: loreEntry('l-small', 9, 'tiny'),
+        mode: 'keyword',
+        score: 9,
+      },
+    ]
+    state.memoryItems = []
+    state.historyMessages = []
+
+    const assemble = (s: PromptBudgetTrimState): ChatMessage[] => [
+      {
+        role: 'system',
+        content:
+          anchor + s.matchedLore.map((m) => m.entry.content).join('\n'),
+      },
+    ]
+
+    const count = (s: PromptBudgetTrimState) =>
+      countChatMessagesTokens(assemble(s))
+
+    const fullTokens = count(state)
+    const oneLess = structuredClone(state)
+    trimOneMatchedLore(oneLess, 0)
+    const afterOneDrop = count(oneLess)
+    assert.ok(fullTokens > afterOneDrop)
+    const budget = afterOneDrop + Math.max(1, fullTokens - afterOneDrop - 1)
+
+    const result = runPromptBudgetTrimLoop({
+      maxTokens: budget,
+      trimSettings: {
+        ...DEFAULT_TRIM,
+        minRetain: { lore: 0, memory: 0, history: 0 },
+      },
+      state,
+      assembleMessages: assemble,
+    })
+
+    assert.equal(result.drops.droppedLoreCount, 1)
+    assert.ok(result.estimatedTokens <= budget)
+    assert.equal(state.matchedLore.length, 1)
+    assert.equal(state.matchedLore[0]!.entry.id, 'l-small')
   })
 })

@@ -45,6 +45,10 @@ export interface AssemblyAudit {
   }
   budgetTrim?: {
     maxTokens?: number
+    /** 插件预留后的实际裁切预算 */
+    trimMaxTokens?: number
+    /** 裁切前全量组装 token */
+    tokensBeforeTrim?: number
   }
   plugins?: {
     tokenReserve: number

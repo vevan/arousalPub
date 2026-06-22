@@ -193,6 +193,14 @@ function formatTokenSource(
                         <td class="audit-table__label">{{ $t('chat.turnAuditBudgetMax') }}</td>
                         <td>{{ assembly.budgetTrim.maxTokens }}</td>
                       </tr>
+                      <tr v-if="assembly.budgetTrim?.trimMaxTokens">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditTrimBudget') }}</td>
+                        <td>{{ assembly.budgetTrim.trimMaxTokens }}</td>
+                      </tr>
+                      <tr v-if="assembly.budgetTrim?.tokensBeforeTrim">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditTokensBeforeTrim') }}</td>
+                        <td>{{ assembly.budgetTrim.tokensBeforeTrim }}</td>
+                      </tr>
                       <tr v-if="assembly.plugins?.tokenReserve">
                         <td class="audit-table__label">{{ $t('chat.turnAuditPluginTokenReserve') }}</td>
                         <td>{{ assembly.plugins.tokenReserve }}</td>

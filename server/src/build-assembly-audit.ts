@@ -10,6 +10,8 @@ export interface BuildAssemblyAuditParams {
   estimatedTokens: number
   tokenModel?: string
   maxTokens?: number
+  trimMaxTokens?: number
+  tokensBeforeTrim?: number
   lorebookIds: string[]
   lorebookNameToId: Map<string, string>
   memoryPipeline: MemoryPipelineResult
@@ -134,8 +136,18 @@ export function buildAssemblyAudit(
       turnOrdinals: params.memoryPipeline.recentHistoryTurnOrdinals,
       droppedCount: params.droppedHistoryCount,
     },
-    ...(params.maxTokens
-      ? { budgetTrim: { maxTokens: params.maxTokens } }
+    ...(params.maxTokens || params.trimMaxTokens || params.tokensBeforeTrim
+      ? {
+          budgetTrim: {
+            ...(params.maxTokens ? { maxTokens: params.maxTokens } : {}),
+            ...(params.trimMaxTokens
+              ? { trimMaxTokens: params.trimMaxTokens }
+              : {}),
+            ...(params.tokensBeforeTrim != null
+              ? { tokensBeforeTrim: params.tokensBeforeTrim }
+              : {}),
+          },
+        }
       : {}),
     ...(pluginAudit ? { plugins: pluginAudit } : {}),
   }

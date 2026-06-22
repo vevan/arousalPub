@@ -86,9 +86,13 @@ import {
   worldTextFromTrimState,
 } from './prompt-budget-trim.js'
 import {
+  applyRegexOutgoingToMessages,
+  hasEnabledOutgoingRules,
   loadAndApplyRegexOutgoing,
   resolveOutgoingTailOrdinal,
+  type OutgoingRegexContext,
 } from './regex-outgoing.js'
+import { readRegexRulesDocument } from './regex-rules-file.js'
 
 async function loadActiveTurnForMacro(
   conversationId: string,
@@ -497,6 +501,7 @@ export async function buildConversationOutboundMessages(
   let droppedLoreCount = 0
   let droppedMemoryCount = 0
   let droppedHistoryCount = 0
+  let tokensBeforeTrim: number | undefined
 
   const pluginCache: PluginAssembleAdditionCache = new Map()
   const assembleCtx: AfterAssemblePromptsContext = {
@@ -513,6 +518,44 @@ export async function buildConversationOutboundMessages(
     maxTokens != null && maxTokens > 0
       ? Math.max(1, maxTokens - pluginTokenReserve)
       : maxTokens
+  const trimMaxTokensForAudit =
+    typeof trimMaxTokens === 'number' && trimMaxTokens > 0
+      ? trimMaxTokens
+      : undefined
+
+  const tailOrdinal = resolveOutgoingTailOrdinal({
+    sourceHistoryTurnOrdinals: memoryPipeline.recentHistoryTurnOrdinals,
+    historyBeforeTurnOrdinalExclusive: params.historyBeforeTurnOrdinalExclusive,
+  })
+  const regexDoc = await readRegexRulesDocument()
+  const outgoingRegexRules =
+    regexDoc && hasEnabledOutgoingRules(regexDoc.rules) ? regexDoc.rules : null
+
+  const buildOutgoingRegexCtx = (
+    state: PromptBudgetTrimState,
+  ): OutgoingRegexContext => ({
+    tailOrdinal,
+    sourceHistoryMessages: memoryPipeline.recentHistoryMessages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    })),
+    sourceHistoryTurnOrdinals: memoryPipeline.recentHistoryTurnOrdinals,
+    trimmedHistoryMessages: state.historyMessages.map((m) => ({ ...m })),
+    memoryItems: state.memoryItems,
+    userInput,
+  })
+
+  const assembleForTrimBudget = (state: PromptBudgetTrimState): ChatMessage[] => {
+    let msgs = assembleFromState(state)
+    if (outgoingRegexRules) {
+      msgs = applyRegexOutgoingToMessages(
+        msgs,
+        outgoingRegexRules,
+        buildOutgoingRegexCtx(state),
+      )
+    }
+    return msgs
+  }
 
   if (trimMaxTokens) {
     const trimmed = runPromptBudgetTrimLoop({
@@ -520,16 +563,18 @@ export async function buildConversationOutboundMessages(
       tokenModel,
       trimSettings: effectiveBudgetTrim,
       state: trimState,
-      assembleMessages: assembleFromState,
+      assembleMessages: assembleForTrimBudget,
     })
     messages = trimmed.messages
     estimatedTokens = trimmed.estimatedTokens
+    tokensBeforeTrim = trimmed.tokensBeforeTrim
     droppedLoreCount = trimmed.drops.droppedLoreCount
     droppedMemoryCount = trimmed.drops.droppedMemoryCount
     droppedHistoryCount = trimmed.drops.droppedHistoryCount
   } else {
     messages = assembleFromState(trimState)
     estimatedTokens = countChatMessagesTokens(messages, { model: tokenModel })
+    tokensBeforeTrim = estimatedTokens
   }
 
   macroContext = patchPromptMacroHistoryFields(
@@ -546,10 +591,6 @@ export async function buildConversationOutboundMessages(
 
   const afterAssembleAt = auditEnabled ? performance.now() : 0
 
-  const tailOrdinal = resolveOutgoingTailOrdinal({
-    sourceHistoryTurnOrdinals: memoryPipeline.recentHistoryTurnOrdinals,
-    historyBeforeTurnOrdinalExclusive: params.historyBeforeTurnOrdinalExclusive,
-  })
   messages = await loadAndApplyRegexOutgoing(messages, {
     tailOrdinal,
     sourceHistoryMessages: memoryPipeline.recentHistoryMessages.map((m) => ({
@@ -600,6 +641,8 @@ export async function buildConversationOutboundMessages(
       estimatedTokens: finalEstimatedTokens,
       tokenModel,
       maxTokens,
+      trimMaxTokens: trimMaxTokensForAudit,
+      tokensBeforeTrim,
       lorebookIds,
       lorebookNameToId,
       memoryPipeline,

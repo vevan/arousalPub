@@ -66,11 +66,19 @@ data/{userId}/regex-rules.json
 
 \* `outgoing` 不直接改 UI；落盘后 UI 以 §2.4 为准。
 
-**`outgoing` 管道顺序**（定案）：
+**`outgoing` 管道顺序**（定案 · 2026-06-17 修订）：
 
 ```text
-assemble → budget trim → regex(outgoing) → plugin afterAssemblePrompts → upstream
+assemble（deferMacroExpansion）
+  → outgoing regex（裁切计数口径）
+  → budget trim（每删一条：assemble + outgoing regex + tiktoken 全量重算）
+  → 宏展开
+  → outgoing regex（终态）
+  → plugin afterAssemblePrompts
+  → upstream
 ```
+
+裁切上限 `trimMaxTokens` = `contextLength` − 插件 token 预留（见 `DOC/03` §14.4.1）。**outgoing regex 在裁切前须执行一次**，使 token 计数与最终出站一致（例如 history assistant 内 `<ex-trace-keeper>` 在 skip 窗口外会被剥除，不得按未剥除体积裁切）。
 
 **无 `turnOrdinal` 的整段 system**（恒定 lore / world 等单条 system 消息）：不受 `skipLastNTurns` 限制；规则含 `system` + `outgoing` 即作用于整条 `content`。
 
@@ -78,7 +86,7 @@ assemble → budget trim → regex(outgoing) → plugin afterAssemblePrompts →
 
 - 注入形态为 **一条** `role: system`，正文为 `<memory>…</memory>`（见 `turn-memory-xml.ts`）。
 - **不得**把整段 memory XML 当作无 ordinal 的 system 处理 `skipLastNTurns`；须在 outgoing 前对块内各 `<turn ordinal="N">` 的 **`<user>` / `<assistant>` 正文**按 `turnOrdinal` 分别应用规则（与 history 中 user/assistant 同语义）。
-- 实现：`regex-outgoing.ts` — `applyOutgoingRegexToMemoryItems` ← `chat-assemble` 传入 budget trim 后的 `memoryItems` → `formatMemoryXml` → 替换 messages 中 `<memory>` system 消息 → 再走整包 `applyRegexRulesToMessages`（history / 尾部 user 等）。
+- 实现：`regex-outgoing.ts` — `applyOutgoingRegexToMemoryItems` ← `chat-assemble` 在 **裁切循环**与**终态**两次传入当前 `memoryItems`（trim state）→ `formatMemoryXml` → 替换 messages 中 `<memory>` system 消息 → 再走整包 `applyRegexRulesToMessages`（history / 尾部 user 等）。
 - 正文写入 XML 前经 `prepareXmlElementText` 转义；outgoing 正则前对 turn 正文做 `normalizeXmlTextBeforeProcessing`（与 `prompt-xml.ts` 一致，最多 3 轮实体还原），避免磁盘误存 `&lt;tag&gt;` 时 pattern 匹配失败。
 - **审计展示**：memory 段内 tracker 等标签在 `messages` 中常以 `&lt;…&gt;` 显示，为 **合法 XML 转义**；skip 窗口外老轮剥除成功后应无 `ex-tracker`（实体或明文均无）。history 近 N 轮 assistant 在 skip 窗口内可仍保留明文 `<ex-tracker>`。
 
@@ -246,7 +254,11 @@ applyText / applyMessages  // 同语义
           "droppedCount": 1
         },
         "history": { "turnOrdinals": [8, 9, 10, 11], "droppedCount": 0 },
-        "budgetTrim": { "maxTokens": 8192 },
+        "budgetTrim": {
+          "maxTokens": 65000,
+          "trimMaxTokens": 61355,
+          "tokensBeforeTrim": 28763
+        },
         "plugins": {
           "tokenReserve": 512,
           "items": [{ "pluginId": "trace-keeper", "tokens": 384 }]
@@ -292,6 +304,7 @@ applyText / applyMessages  // 同语义
 - **`assembly` / `calls` / `performance`**：仅 **`auditDebug.enabled`** 时计算并写入；**不进** chunk `turn.send` / `receive.runtime`（`runtime` 仍保留轻量 model/duration/tokens）。
 - **`performance`**（schema **v3**）：`assemblyMs` 分段（memory / characters / lore / assembleAndTrim / regexOutgoing / pluginsAfterAssemble）、`preUpstreamMs`、流式 `upstreamMs`（TTFB、首→末 token TPS）、`persistMs`、`stream` 字符/ token 统计；**debug 关闭时零开销**（不跑计时、不落盘该字段）。
 - **`assembly.plugins`**（2026-06）：`afterAssemblePrompts` / `resolveAfterAssemblePromptsAddition` 注入的 **不可 trim** token 预留与各插件分项；`ChatTurnPromptDialog` 组装 Tab 展示。与 audit 顶层预留的 `entries[].plugins[]`（出站元数据）**不同**。
+- **`assembly.budgetTrim`**（2026-06-17）：`maxTokens`（API `contextLength`）、`trimMaxTokens`（`maxTokens` − 插件预留）、`tokensBeforeTrim`（裁切前 outgoing regex 后全量 token，与裁切决策同口径）。
 - **`calls[].plugin.complete` / `entries[].plugins[]`**：schema **预留**（见 §3.6）；Separate 等异步 `plugin.complete` **当前不写入** audit。
 
 ### 3.3 写入时机
@@ -381,7 +394,13 @@ auditDebug.enabled && maxStored >= 1 && 落盘成功（/api/chat persist）
 
 ```text
 单轮 /api/chat:
-  assemble → budget trim → regex(outgoing) → afterAssemblePrompts → upstream SSE
+  assemble（deferMacroExpansion）
+    → regex(outgoing)（裁切计数）
+    → budget trim
+    → 宏展开
+    → regex(outgoing)（终态）
+    → afterAssemblePrompts
+    → upstream SSE
   → regex(persist) → persistTurnAfterModelReply（1×写盘）→ SSE arousal.persist（含 final*）
 
 UI 渲染:
@@ -393,7 +412,7 @@ UI 渲染:
 
 | 模块 | 文件 | 动作 |
 |------|------|------|
-| outgoing | `server/src/chat-assemble.ts` | trim 后、`applyPluginsAfterAssemblePrompts` **前**插入 regex |
+| outgoing | `server/src/chat-assemble.ts` | **裁切前**与**宏展开后**各一次 outgoing regex；trim 循环内 `assembleForTrimBudget` 与终态 `loadAndApplyRegexOutgoing` |
 | persist | `server/src/chat-persist-after-chat.ts` | 写盘前 apply persist 阶段 |
 | SSE | `server/src/sse-assistant.ts`、`ChatPersistResult` | 扩展 `finalUserText` / `finalAssistantContent` / `finalAssistantReasoning` |
 | 前端落盘 | `web/.../completion.ts`、`use-chat-outbound.ts` | persist.ok 时用 final* 更新 turn |
@@ -423,11 +442,11 @@ UI 渲染:
 
 **PUT 校验**：`pattern` 非空；`new RegExp(pattern, flags)`；枚举合法；新建 `id` + `order = max + 10`。
 
-#### Phase 1 · outgoing（~1–1.5d）【已落地 · 2026-06-10】
+#### Phase 1 · outgoing（~1–1.5d）【已落地 · 2026-06-10；裁切口径修订 2026-06-17】
 
-- `buildConversationOutboundMessages`：trim 后 `loadAndApplyRegexOutgoing`（`regex-outgoing.ts`）
+- `buildConversationOutboundMessages`：**裁切前**与**宏展开后**各一次 `loadAndApplyRegexOutgoing` / `applyRegexOutgoingToMessages`（`regex-outgoing.ts`）；裁切循环内 `assembleForTrimBudget` 亦含 outgoing regex
 - `assemble-messages` 经同一函数受益；无 enabled outgoing 规则时 fast path
-- regex 后重算 `estimatedTokens`；顺序在 `afterAssemblePrompts` 之前
+- 终态 regex 后重算 `estimatedTokens`；顺序在 `afterAssemblePrompts` 之前；裁切决策用 `tokensBeforeTrim`（regex 后、裁切前）
 
 #### Phase 2 · persist + SSE（~1.5–2d）【已落地 · 2026-06-10】
 

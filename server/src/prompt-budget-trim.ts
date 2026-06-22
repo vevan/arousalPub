@@ -398,11 +398,9 @@ export function estimateTrimTokenDelta(
 }
 
 /**
-
- * §14.4 统一预算裁切：增量估算 token，周期性全量校准；结束时一次 assemble。
-
+ * §14.4 统一预算裁切：每删一条全量 assemble + tiktoken 校准；结束时一次 assemble。
  * 顺序与下限由 `BudgetTrimSettings` 决定。
-
+ * 入口 `buildConversationOutboundMessages` 在裁切前对组装结果施加 outgoing regex（与最终出站一致）。
  */
 
 export function runPromptBudgetTrimLoop(opts: {
@@ -424,6 +422,10 @@ export function runPromptBudgetTrimLoop(opts: {
   estimatedTokens: number
 
   drops: PromptBudgetTrimResult
+
+  /** 裁切前全量组装 token（未裁切时与 estimatedTokens 相同） */
+
+  tokensBeforeTrim: number
 
 } {
 
@@ -447,11 +449,13 @@ export function runPromptBudgetTrimLoop(opts: {
 
   let tokens = count(messages)
 
+  const tokensBeforeTrim = tokens
+
   const budget = Math.floor(opts.maxTokens)
 
   if (!Number.isFinite(budget) || budget <= 0) {
 
-    return { messages, estimatedTokens: tokens, drops }
+    return { messages, estimatedTokens: tokens, drops, tokensBeforeTrim }
 
   }
 
@@ -461,79 +465,33 @@ export function runPromptBudgetTrimLoop(opts: {
 
   const MAX_ROUNDS = 512
 
-  for (let round = 0; round < MAX_ROUNDS && tokens > budget; round++) {
+  // §14.4.1：每删一条即全量 assemble + tiktoken 重算，避免增量 XML 差分漂移导致过度裁切
+
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+
+    messages = opts.assembleMessages(opts.state)
+
+    tokens = count(messages)
+
+    if (tokens <= budget) break
+
+
 
     let trimmed = false
 
-    let trimmedSlot: BudgetTrimSlot | null = null
-
     for (const slot of order) {
-
-      const snapshot: TrimTokenSnapshot = {
-
-        worldText: worldTextFromTrimState(opts.state),
-
-        memoryText: memoryTextFromTrimState(opts.state),
-
-        removedHistory:
-
-          slot === 'history' ? opts.state.historyMessages[0] : undefined,
-
-      }
 
       if (!trimOneForSlot(opts.state, slot, opts.trimSettings)) continue
 
       recordDrop(drops, slot)
 
-      tokens = Math.max(
-
-        0,
-
-        tokens -
-
-          estimateTrimTokenDelta(
-
-            opts.state,
-
-            slot,
-
-            snapshot,
-
-            opts.tokenModel,
-
-          ),
-
-      )
-
       trimmed = true
-
-      trimmedSlot = slot
 
       break
 
     }
 
     if (!trimmed) break
-
-    const needsVerify =
-
-      tokens <= budget ||
-
-      (round + 1) % TRIM_TOKEN_REVERIFY_EVERY === 0
-
-    if (needsVerify) {
-
-      messages = opts.assembleMessages(opts.state)
-
-      tokens = count(messages)
-
-    } else if (trimmedSlot === 'history') {
-
-      // history 裁切影响 messages 链结构，下一轮前需刷新 messages 引用
-
-      messages = opts.assembleMessages(opts.state)
-
-    }
 
   }
 
@@ -543,7 +501,7 @@ export function runPromptBudgetTrimLoop(opts: {
 
   tokens = count(messages)
 
-  return { messages, estimatedTokens: tokens, drops }
+  return { messages, estimatedTokens: tokens, drops, tokensBeforeTrim }
 
 }
 

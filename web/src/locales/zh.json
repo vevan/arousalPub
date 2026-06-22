@@ -755,6 +755,8 @@
     "turnAuditEstimatedTokens": "估算 tokens",
     "turnAuditTokenModel": "计数模型",
     "turnAuditBudgetMax": "预算上限",
+    "turnAuditTrimBudget": "裁切预算（扣插件预留）",
+    "turnAuditTokensBeforeTrim": "裁切前 tokens",
     "turnAuditPluginTokenReserve": "插件注入预留",
     "turnAuditSectionPlugins": "插件注入",
     "turnAuditColPluginId": "插件",

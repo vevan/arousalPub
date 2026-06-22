@@ -755,6 +755,8 @@
     "turnAuditEstimatedTokens": "Estimated tokens",
     "turnAuditTokenModel": "Token model",
     "turnAuditBudgetMax": "Budget cap",
+    "turnAuditTrimBudget": "Trim budget (excl. plugin reserve)",
+    "turnAuditTokensBeforeTrim": "Tokens before trim",
     "turnAuditPluginTokenReserve": "Plugin injection reserve",
     "turnAuditSectionPlugins": "Plugin injection",
     "turnAuditColPluginId": "Plugin",

@@ -29,7 +29,7 @@
 ## 约定
 
 - UI 已加载轮次与 assemble 读盘**独立**；发消息不依赖 UI 是否加载全历史。
-- 分支 lazy load 依赖 `DOC/23` 分支化读链；当前区间读仅主路径。
+- 分支 lazy load 依赖 `DOC/23` **`resolveActivePathTurns` 合并读**（前缀 + 分支 suffix）；当前区间读仅主路径。
 
 ## 内存与数据窗口
 

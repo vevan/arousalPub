@@ -19,7 +19,7 @@
 
 ### 1.2 后续迭代（未做）
 
-- 分支子目录 `branch*/` 与 `meta.links.branches` 的产品 UI与写入路径 — **完整参考见 `DOC/23-conversation-branches.md`**（memory 枚举 / 召回过滤等服务端原语已落地）
+- 分支子目录 `branch*/` 与 `meta.links.branches` 的产品 UI 与写入路径 — **完整参考见 `DOC/23-conversation-branches.md`**（memory 枚举 / 召回过滤等服务端原语已落地；**创建定案**：空分支 + 从下一轮继续 · `DOC/23` §1.4）
 - `GET .../messages` 分页 / 按 chunk 懒加载 — **`DOC/15-conversation-messages-lazy-load.md`（✅）**
 - 跨 chunk 的「删中间轮」后自动合并块（删轮仍只动 tail；**删空 tail 链式回退已实现**，见 §5.3）
 
@@ -47,6 +47,8 @@ export function ordinalRangeForTurn(turnOrdinal: number): { start: number; end: 
 - 块 0：`turn-000000-000099.json`，`turnOrdinal` 0–99  
 - 块 1：`turn-000100-000199.json`，`turnOrdinal` 100–199  
 - `meta.chunkId` 与文件名去 `.json` 一致；`meta.ordinalRange` 写**实际** min/max `turnOrdinal`（末块可能未满 100 轮）。
+
+**分支子目录**：与主路径**同一公式**；可与父目录 basename 相同但路径不同（`branch1/turn-000100-000199.json` ≠ 根目录同名文件）。fork 在 160 且分支首条 turn 为 161 时，分支首块为 `turn-000100-000199.json`，**不是**因「新建分支」而默认 `turn-000000-000099.json`。见 **`DOC/23` §1.4–§1.5**。
 
 ---
 

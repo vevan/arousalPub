@@ -4,7 +4,50 @@
 
 ## P0 余项
 
-- [ ] **消息树 / 分支 UI** — `DOC/23` §6（服务端 memory/枚举已就绪；创建分支 API、active 路径写入与前端消息树为当前主线）
+- [ ] **对话分支（消息树）** — 定案：`DOC/23` §1.4 **空分支 + 从下一轮继续**；memory/枚举原语已就绪（P3 ✅）
+
+  **S1 · 读路径（阻塞 messages / assemble）**
+  - [ ] `chunk-chain.ts`：实现 `resolveActivePathTurns(convId, activeBranchPath, range?)`（前缀至 `forkTurnId` + 分支 suffix 合并 · §5.3）
+  - [ ] `readTurnsTail` / `readTurnsBefore` / `readTurnsInOrdinalRange` 改为基于 `activeBranchPath`（主路径 `""` 行为不变）
+  - [ ] `conversation-messages-api.ts`：`GET .../messages` 返回合并后线性列表；`tail` / `before` 分页在 active 路径上计算 `hasMoreBefore`
+  - [ ] `memory-pipeline.ts`：`loadTurnsForMemoryPipeline` 读 active 路径 tail/区间（assemble history 窗口）
+  - [ ] `plugin-prepare-context`（若有独立读链）：摘要 / 区间读限定 active 路径
+  - [ ] 单测：`resolveActivePathTurns` fixture（主路径 fork @160 + 空分支 + 分支 append 161+）
+
+  **S2 · 写路径**
+  - [ ] `writeChunkFileAt` / append 前 `mkdir(branchPath, { recursive: true })`
+  - [ ] `appendConversationTurn` / `prepareTailChunkForAppend` / `saveFirstTurn`（分支首块）接受 `branchPath`；`nextOrdinal = forkOrdinal + 1` 在 active 路径上计算
+  - [ ] `chat-persist-after-chat.ts` / `POST .../chat`：落盘读 `idx.activeBranchPath`，追加写入对应分支 tail
+  - [ ] `scheduleMemoryIndexUpsert` 落盘传正确 `branchPath`（第 4 参数）
+  - [ ] `PATCH .../turns/:ordinal` / 按 turnId 定位：active 路径上解析 chunk（`readChunkFileAt`）
+  - [ ] 单测：空分支创建后首次 append → `branchN/turn-*` 首块、`turnOrdinal === forkOrdinal + 1`、Lance 行 `branchPath`
+
+  **S3 · 分支 API**
+  - [ ] `POST /api/chat/conversations/:id/branches` — 空分支（§5.3）：注册表 + `branchN/index.json`（无 chunk）+ 可选切 `activeBranchPath`
+  - [ ] `GET /api/chat/conversations/:id/branches` — 递归树（`path` / `forkTurnId` / `forkOrdinal` / `turnCount` · §6.5）
+  - [ ] `PATCH /api/chat/conversations/:id` — body 支持 `activeBranchPath`；sync 根 `index.json` + `chat.index.json`
+  - [ ] `api-error-codes.ts` + i18n：`fork_turn_not_found`、`fork_turn_not_on_active_path`、`branch_path_conflict` 等
+  - [ ] 集成：手工 fixture 或 e2e — 创建分支 → 发 1 轮 → messages / assemble / memory 召回仅祖先路径
+
+  **S4 · 前端**
+  - [ ] 会话 meta 加载 / 持久化 `activeBranchPath`（`useChatSession` 或 conversation store）
+  - [ ] `ChatConversationView` 顶栏：分支树图标 + drawer/overlay 总览（`GET .../branches`）；active 高亮；点击切换 → PATCH + 清空 `turns` + 重载 tail
+  - [ ] 消息气泡菜单：「从此处分支」（任意 turn）→ `POST .../branches`；可选 `forkMessageId`
+  - [ ] Fork 点标记：有 sibling 分支的 turn 显示指示；点击打开总览并定位
+  - [ ] `use-turn-list.ts` / `ChatMessageList`：切换分支后 prepend 懒加载仍可用（`DOC/15`）
+  - [ ] i18n：`zh.json` / `en.json`（分支、创建、切换、空分支提示等）
+
+  **S5 · 索引与清理（可紧随 S2）**
+  - [ ] `rebuildHeadTailFromLinks` 按 `branchPath` 作用域扫描（主路径仅根目录 `turn-*.json`）
+  - [ ] `syncChunkIndexIfDrifted` / tail 缓冲：分支 tail 变更后 `invalidateChunkIndexSyncCache`
+  - [ ] 弃用分支（可 v1.1）：`DELETE .../branches/:path` 或设置页入口 → 删子树 + `deleteTurnMemoryByBranchSubtree` + 重置 `activeBranchPath`
+
+  **验收**
+  - [ ] 主路径 `activeBranchPath=""` 回归与改前一致
+  - [ ] fork @160：分支目录创建时无 chunk；首条消息写入 `branch1/turn-000100-000199.json`（ordinal 161）
+  - [ ] 切换分支后 UI 仅显示 active 路径；memory 召回不含兄弟 `branchPath`
+  - [ ] 375px 顶栏分支树可用（`DOC/33` 浮层模式可复用）
+
 - [ ] **移动端兼容性修复** — `DOC/33`：~~窄屏 grid/rail overlay~~（已落地）；余 composer / iOS `100dvh`/安全区/软键盘验收
 
 ## P1
@@ -36,4 +79,5 @@
 - [x] 对话页顶栏 UI（2026-06-17）：`chat-header` pill 层级、effective 预设/模型、绑定提示词与世界书菜单、设置入口；见 `DOC/03` §11.2
 - [x] 对话设置上下文 Tab 命中测试（2026-06-18）：`POST .../context/recall-test` · `ConversationRecallTestDialog` · 全库 Memory hybrid + 资料库；不排除近期 N 轮
 - [x] 全局插件 settings 缓存与订阅（2026-06-18 · `a7ca4ea`）：`plugin-user-settings` Pinia store · `getUserSettingsSnapshot` / `onUserSettingsChanged` · trace-keeper 验收；见 `DOC/32`
+- [x] 对话分支创建定案（2026-06-18）：**空分支 + 从下一轮继续** · chunk 命名 · 顶栏分支树 UI · API 草案 — 见 `DOC/23` §1.4–§1.5、§5.3、§6.4–§6.5
 - [ ] 架构/接口变更时同步 `DOC/01`–`03`（2026-06-10：内嵌世界书 `DOC/27`、作者注分层 `DOC/28`）

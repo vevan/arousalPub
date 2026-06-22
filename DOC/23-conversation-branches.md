@@ -39,6 +39,49 @@
 
 **Memory 召回（已实现）**：仅 `activeBranchPath` **及其祖先**（含主路径 `""`）上的 Lance 行参与 TopK。见 §5.2。
 
+### 1.4 创建分支定案（2026-06 · 产品锁定）
+
+**策略：空分支 + 从下一轮继续**（v1 默认且唯一；不做「复制后缀」「从 fork 轮重写同一 `turnOrdinal`」）。
+
+| 项 | 定案 |
+|----|------|
+| **创建时磁盘** | 仅新建 `branchN/` 目录、`branchN/index.json`（`headChunkFile` / `tailChunkFile` 为空或省略）、父 chunk / 各级 `branches[]` 注册项；**不写任何 `turn-*.json`** |
+| **共享前缀** | fork 点及之前 turn **只存于父路径**（主路径或父分支）；读 active 路径时由服务端 **前缀合并**（§5.4），不在分支目录复制 0…N 轮 |
+| **分叉引用** | `forkTurnId` = 共享前缀最后一轮的 `turnId`；UI 展示「第 N 轮」时 N = 该 turn 在 active 路径上的 `turnOrdinal` |
+| **分支首条新 turn** | 用户在分支上首次发消息后落盘；**`turnOrdinal = forkTurnOrdinal + 1`**（路径内连续编号，**不从 0 重置**） |
+| **主路径** | 创建分支**不修改**主路径已有 turn；主路径可在 fork 之后继续追加，与分支并行 |
+| **`forkMessageId`** | 可选；记录创建分支时 fork 轮上的 `receive.id`（或 UI 锚点），供消息树 / 总览展示；**不**触发在 fork 轮重写 `receives[]`（那是 swipe 语义） |
+| **创建后 active** | 建议 API 创建成功后将会话 **`activeBranchPath` 切到新分支**，并 sync `chat.index.json` |
+
+**不支持（v1 明确不做）**：
+
+- 创建时把 fork 点之后的主路径 turn **拷贝**进分支目录；
+- 在分支上 **复用 fork 轮的 `turnOrdinal`** 并替换 user/assistant 内容（「编辑此条并分支」）；
+- 分支子目录从 `turn-000000-000099.json` **重新开始编号**。
+
+### 1.5 Chunk 文件名：按 `turnOrdinal` 区间，非「继承父目录文件列表」
+
+分支与主路径共用 **`DOC/08` §2** 同一命名公式（`ordinalRangeForTurn` / `chunkFileNameForRange`）：
+
+```text
+start = floor(turnOrdinal / 100) * 100
+文件名 = turn-{start 六位}-{start+99 六位}.json
+```
+
+- **不是**「分支第一个 chunk 一定是 `000-099`」；由**该分支上第一条独有 turn 的 `turnOrdinal`** 决定。
+- 分支子目录可与父目录 **basename 相同**（如均有 `turn-000100-000199.json`），但是**不同文件**；读盘必须带 `branchPath`（§9 陷阱 1）。
+
+**示例**：主路径已有 `turn-000100-000199.json`，当前在 **第 160 轮**（`turnOrdinal === 160`）创建分支：
+
+| 位置 | 内容 |
+|------|------|
+| 主路径 `turn-000100-000199.json` | turn 100–160（及主路径继续的 161+） |
+| `branch1/` 创建瞬间 | 仅 `index.json`，**无 chunk 文件** |
+| 用户在分支上发第一条消息 | 写入 **`branch1/turn-000100-000199.json`**，`turnOrdinal === 161` |
+| **不会**出现 | `branch1/turn-000000-000099.json`（除非 fork 点 &lt; 100 且分支首条 turn 落在 0–99 区间） |
+
+若 fork 点在 **第 50 轮**，分支首条 turn 为 51 → 分支首块为 **`branch1/turn-000000-000099.json`**（与主路径同名 basename，不同目录）。
+
 ---
 
 ## 2. 磁盘布局
@@ -49,10 +92,10 @@
 data/{userId}/chats/{conversationId}/
   index.json                    # 主路径 head/tail、branches[]、activeBranchPath
   turn-000000-000099.json       # 主路径 chunk（branchPath=""）
-  turn-000100-000199.json
+  turn-000100-000199.json       # 例：含 turnOrdinal 100–160（fork 点）及主路径 161+
   branch1/
-    index.json                  # 该分支子树的 head/tail、嵌套 branches[]
-    turn-000100-000199.json     # 可与主路径同名；内容属 branch1
+    index.json                  # 创建后 head/tail 为空；首条分支消息后才有 tail
+    turn-000100-000199.json     # 例：fork 在 160 → 首条分支 turn 161 落此文件（可与主路径同名）
     branch1/                    # 嵌套分支
       index.json
       turn-000200-000299.json
@@ -238,7 +281,37 @@ enumerateAllChunkChains(conversationId)
 
 若产品需要「全库召回」，须显式开关并传 `allowedBranchPaths: undefined`（不传则不对 `branchPath` 预过滤）。
 
-### 5.3 弃用分支
+### 5.3 创建分支（空分支 + 下一轮）
+
+```text
+POST .../conversations/:id/branches
+  Body: { forkTurnId, forkMessageId?, label? }
+    → 定位 fork turn（含 branchPath 与 chunk）
+    → 分配 branchN 目录名（同级不冲突）
+    → 写父 chunk meta.links.branches[] + 父/根 index.json branches[]
+    → mkdir branchN/ + 写 branchN/index.json（无 chunk）
+    → activeBranchPath := branchN（建议）
+    → 返回 { path, forkTurnId, forkOrdinal, activeBranchPath }
+
+用户在分支上首次 send / append
+    → nextOrdinal = forkOrdinal + 1（在 active 路径上计算）
+    → appendConversationTurn(..., branchPath=activeBranchPath)
+    → 首块文件名 = chunkFileNameForRange(ordinalRangeForTurn(nextOrdinal))
+    → 更新 branchN/index.json head/tail
+```
+
+**读 active 路径（messages / assemble）**：
+
+```text
+resolveActivePathTurns(conversationId, activeBranchPath, range?)
+  prefix = 沿祖先链读到 forkTurnId（含 fork 轮）为止
+  suffix = active 分支子树 turn（branchPath 对应目录）
+  return merge(prefix, suffix)   // 按 turnOrdinal 排序；同路径内唯一
+```
+
+实现时 **`readTurnsTail` / `GET .../messages` 应调用上述合并**，禁止只读分支子目录或只读主路径 tail。
+
+### 5.4 弃用分支
 
 1. 删除子树 JSON 与目录（产品流程）。
 2. 从父级 `branches[]` 移除注册项。
@@ -255,7 +328,7 @@ enumerateAllChunkChains(conversationId)
 
 | 项 | 说明 | 参考 |
 |----|------|------|
-| **创建分支 API** | 从 `forkTurnId` 复制/截断子树到 `branchN/`；写父 chunk `meta.links.branches`；写子目录 `index.json` + 首 chunk | `DOC/03` §6.3 |
+| **创建分支 API** | **空分支**（§1.4）：`POST .../branches` 仅写注册表 + 空 `branchN/index.json`；**首 chunk 在用户首次 append 时创建** | §5.3、`DOC/03` §6.3 |
 | **`writeChunkFile` 分支感知** | 写入 `branchPath/xxx.json` 前 `mkdir(dirname, { recursive: true })` | `DOC/03` §6 |
 | **`appendConversationTurn` 分支上下文** | 追加轮写入 **active** 分支 tail，而非始终主路径 | `chunk-chain.prepareTailChunkForAppend` 需接受 `branchPath` |
 | **`scheduleMemoryIndexUpsert`** | 落盘时传入正确 `branchPath`（函数已支持第 4 参数） | `memory-index.ts` |
@@ -265,9 +338,10 @@ enumerateAllChunkChains(conversationId)
 
 | 项 | 当前状态 | 目标 |
 |----|----------|------|
-| `readTurnsTail` / `readTurnsInOrdinalRange` | 仅主路径 `index.tailChunkFile` | 接受 `branchPath`，读 `readBranchConversationIndex` |
+| **`resolveActivePathTurns`** | 未实现 | §5.3：前缀（至 `forkTurnId`）+ 分支 suffix 合并 |
+| `readTurnsTail` / `readTurnsInOrdinalRange` | 仅主路径 | 内部调用 `resolveActivePathTurns` 或接受 `activeBranchPath` |
 | `loadTurnsForMemoryPipeline` | 主路径 tail/区间 | active 路径上的 tail + ordinal 窗口 |
-| `GET .../messages` | 全链或区间（主路径） | 支持 `?branchPath=` 或隐含 active；分页见 `DOC/15` |
+| `GET .../messages` | 全链或区间（主路径） | 返回合并后线性列表；隐含 `activeBranchPath`；分页见 `DOC/15` |
 | `plugin-prepare-context` | 主路径区间读 | 摘要范围限定在 active 路径 |
 | PATCH turns / 按 turnId 定位 | 主路径 `readAllTurns` 或链扫 | 已知 `branchPath` 时 `readChunkFileAt` 缩小范围（`turn-resolve.ts` 已移除） |
 
@@ -282,10 +356,75 @@ enumerateAllChunkChains(conversationId)
 
 | 项 | 说明 |
 |----|------|
+| `POST .../conversations/:id/branches` | 创建空分支（§5.3）；Body：`forkTurnId`、可选 `forkMessageId` / `label` |
+| `GET .../conversations/:id/branches` | 分支树总览（递归 `branches[]` + fork 元数据 + 各 path 的 turn 计数）；供顶栏树 UI |
 | `PATCH .../conversations/:id` | 支持 `activeBranchPath` 更新（字段已存在于 `ConversationIndex`） |
-| 消息树 UI | `DOC/04` P0「消息树 / 分支 UI」 |
-| 分支切换 | 切换后重载 messages、memory 召回自动随 `activeBranchPath` 过滤（assemble 已接） |
-| Lazy load | 分支分页读：`DOC/15` §0.7 — 在 `readTurnsTail` 分支化后实施 S2–S4 |
+| **对话顶栏分支树** | `ChatConversationView` `.chat-header__meta` 增加分支图标（如 `mdi-source-branch`）；点击打开 drawer / overlay 展示 §6.5 树；当前 active 高亮 |
+| **任意 turn 分叉** | 消息气泡菜单「从此处分支」→ `POST .../branches`；fork 点可为任意历史 turn（不仅最后一轮） |
+| **Fork 点标记** | 列表内在有 sibling 分支的 turn 上显示指示；点击跳转分支总览并定位节点 |
+| 分支切换 | 切换后清空 UI `turns`、重载 messages；memory 召回随 `activeBranchPath`（assemble 已接） |
+| Lazy load | 分支分页读：`DOC/15` — 在 `resolveActivePathTurns` / `readTurnsTail` 分支化后，prepend 逻辑可复用 |
+
+### 6.5 API 契约（草案）
+
+**`POST /api/chat/conversations/:id/branches`**
+
+Request:
+
+```json
+{
+  "forkTurnId": "a1b2c3d4",
+  "forkMessageId": "e5f6a7b8",
+  "label": "可选展示名"
+}
+```
+
+Response（201）:
+
+```json
+{
+  "path": "branch1",
+  "forkTurnId": "a1b2c3d4",
+  "forkOrdinal": 160,
+  "activeBranchPath": "branch1"
+}
+```
+
+错误：`fork_turn_not_found`、`fork_turn_not_on_active_path`、`branch_path_conflict` 等（实现时写入 `api-error-codes.ts`）。
+
+**`GET /api/chat/conversations/:id/branches`**
+
+Response：
+
+```json
+{
+  "activeBranchPath": "branch1",
+  "nodes": [
+    {
+      "path": "",
+      "label": "主对话",
+      "forkTurnId": null,
+      "forkOrdinal": null,
+      "children": [
+        {
+          "path": "branch1",
+          "label": "分支 1",
+          "forkTurnId": "a1b2c3d4",
+          "forkOrdinal": 160,
+          "forkMessageId": "e5f6a7b8",
+          "turnCount": 3,
+          "children": []
+        }
+      ]
+    }
+  ]
+}
+```
+
+- `turnCount`：该分支子树内 turn 数（不含共享前缀）；空分支为 `0`。
+- 嵌套：`path` 为会话根相对全路径（如 `branch1/nested`）。
+
+**`GET .../messages`**：默认按会话 `index.json` 的 `activeBranchPath` 返回 **§5.3 合并后** 的线性 turn 列表；可选 `?branchPath=` 覆盖（调试）。
 
 ---
 
@@ -324,6 +463,8 @@ flowchart TD
 3. **跨分支比 ordinal**：再生 / history 窗口 / `minRecentOrdinal` 必须基于 active 路径上的 turn 集合。
 4. **tail 缓冲作用域**：`queueTurnMemoryUpsert` 的 `isTail` 须用**该 branchPath 对应**的 index.tailChunkFile 判断。
 5. **列表与根 index 漂移**：更新 `activeBranchPath` 时同时写会话根 `index.json` 与 `chat.index.json`（经 `upsertChatListEntry`）。
+6. **误以为分支首块必是 `000-099`**：文件名由 **分支首条独有 turn 的 `turnOrdinal`** 决定（§1.5）；fork 在 160 时首块为 `100-199`，且创建瞬间分支目录**可以没有任何 chunk**。
+7. **创建时复制后缀**：v1 定案为**空分支**（§1.4）；fork 点之后的主路径 turn **不**拷贝进 `branchN/`。
 
 ---
 
@@ -351,3 +492,4 @@ flowchart TD
 |------|------|
 | 2026-06 | 初版：汇总 P3 已实现原语 + 产品语义 + 待办清单，供分支功能开发对照 |
 | 2026-06 | §4.5 Lance 预过滤实现参考；§5.1 embed 成功后 `replaceTurnMemoryIndex`；移除 `turn-resolve.ts` |
+| 2026-06-18 | §1.4–§1.5 锁定「空分支 + 从下一轮继续」与 chunk 命名；§5.3 创建/读合并流程；§6.4–§6.5 API 与顶栏分支树 UI |

@@ -1529,7 +1529,7 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-@media (max-width: 48rem) {
+@media (max-width: 40rem) {
   .charlib-edit-card {
     border-radius: 0 !important;
   }
@@ -1583,7 +1583,7 @@ onUnmounted(() => {
   width: 100%;
 }
 
-@media (max-width: 45rem) {
+@media (max-width: 40rem) {
   .charlib-edit-grid {
     grid-template-columns: 1fr;
   }
@@ -1757,7 +1757,7 @@ onUnmounted(() => {
   min-height: 4.5rem;
 }
 
-@media (max-width: 45rem) {
+@media (max-width: 40rem) {
   .charlib-preview {
     grid-template-columns: 3.25rem 1fr;
     gap: 0.5rem 0.625rem;
@@ -1906,7 +1906,7 @@ onUnmounted(() => {
   box-shadow: inset 0 0 0 0.0625rem rgba(var(--v-theme-secondary), 0.35);
 }
 
-@media (max-width: 50rem) {
+@media (max-width: 40rem) {
   .charlib--embedded {
     padding-block: 0.5rem 0.625rem;
   }

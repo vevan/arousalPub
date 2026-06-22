@@ -1074,7 +1074,7 @@ onMounted(() => {
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
 
-@media (max-width: 600px) {
+@media (max-width: 40rem) {
   .regex-rules-panel__row {
     grid-template-columns: 1fr;
   }

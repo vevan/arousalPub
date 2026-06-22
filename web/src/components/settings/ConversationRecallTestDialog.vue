@@ -376,7 +376,7 @@ watch(
   white-space: pre-wrap;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 40rem) {
   .recall-test-columns {
     flex-direction: column;
   }

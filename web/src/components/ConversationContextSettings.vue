@@ -2127,7 +2127,7 @@ async function patchConversation(body: Record<string, unknown>) {
   padding: 0 0.15em;
 }
 
-@media (max-width: 36rem) {
+@media (max-width: 40rem) {
   .conv-settings-layout {
     flex-direction: column;
     min-height: 0;

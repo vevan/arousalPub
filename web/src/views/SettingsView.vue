@@ -1536,7 +1536,7 @@ onMounted(() => {
   line-height: 1.45;
 }
 
-@media (max-width: 36rem) {
+@media (max-width: 40rem) {
   .settings-layout {
     flex-direction: column;
   }

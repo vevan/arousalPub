@@ -254,11 +254,12 @@ flex: 1 1 auto; /* 配合父级 flex */
 | `DOC/18` §3.13.1 | panel API 表更新 |
 | `DOC/30` | 侧栏占位从 drawer 改为 leftRail |
 
-### 6.3 可选（后续）
+### 6.3 窄屏（**`DOC/33`** · Phase 1 已落地）
 
-- 窄屏断点：隐藏 rail 列或改为 overlay（本定案**不**包含移动端专项，实现时可另开 §）
-- `rightRail` 首个消费者插件
-- 用户偏好持久化 `panelHidden`（localStorage）；**首版可不落盘**，仅内存状态
+- **断点 `40rem`**：`grid-template-columns: 0 minmax(0, 1fr) 0`；rail `absolute` + `::after` 遮罩；`.plugin-host-panel` **`max-width: 25rem`**（非中间列）
+- 打开/关闭：`openPluginPanel` / pin 与桌面共用 registry；**`hidden` 持久化** `arousal-plugin-panel-hidden`（无记录时默认关）
+- 仍待做：composer 键盘、`safe-area`（见 `DOC/33`）
+- `rightRail` 首个消费者插件（未变）
 
 ---
 

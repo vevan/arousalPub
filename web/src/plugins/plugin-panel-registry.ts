@@ -49,10 +49,50 @@ export interface PluginPanelEntry {
   revision: number
 }
 
-export const pluginPanelHiddenState = ref<Record<PluginPanelPlacement, boolean>>({
-  leftRail: false,
+export const PLUGIN_PANEL_HIDDEN_STORAGE_KEY = 'arousal-plugin-panel-hidden'
+
+const DEFAULT_PLUGIN_PANEL_HIDDEN: Record<PluginPanelPlacement, boolean> = {
+  leftRail: true,
   rightRail: true,
-})
+}
+
+function readPersistedPluginPanelHidden(): Record<PluginPanelPlacement, boolean> {
+  try {
+    const raw = localStorage.getItem(PLUGIN_PANEL_HIDDEN_STORAGE_KEY)
+    if (!raw) return { ...DEFAULT_PLUGIN_PANEL_HIDDEN }
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') {
+      return { ...DEFAULT_PLUGIN_PANEL_HIDDEN }
+    }
+    const o = parsed as Record<string, unknown>
+    return {
+      leftRail:
+        typeof o.leftRail === 'boolean'
+          ? o.leftRail
+          : DEFAULT_PLUGIN_PANEL_HIDDEN.leftRail,
+      rightRail:
+        typeof o.rightRail === 'boolean'
+          ? o.rightRail
+          : DEFAULT_PLUGIN_PANEL_HIDDEN.rightRail,
+    }
+  } catch {
+    return { ...DEFAULT_PLUGIN_PANEL_HIDDEN }
+  }
+}
+
+function persistPluginPanelHidden(
+  state: Record<PluginPanelPlacement, boolean>,
+): void {
+  try {
+    localStorage.setItem(PLUGIN_PANEL_HIDDEN_STORAGE_KEY, JSON.stringify(state))
+  } catch {
+    /* private mode / disabled storage */
+  }
+}
+
+export const pluginPanelHiddenState = ref<Record<PluginPanelPlacement, boolean>>(
+  readPersistedPluginPanelHidden(),
+)
 export const pluginPanelActiveTabState = ref<Record<PluginPanelPlacement, string | null>>({
   leftRail: null,
   rightRail: null,
@@ -207,10 +247,12 @@ export function setPluginPanelHidden(
   placement: PluginPanelPlacement,
   hidden: boolean,
 ): void {
-  pluginPanelHiddenState.value = {
+  const next = {
     ...pluginPanelHiddenState.value,
     [placement]: hidden,
   }
+  pluginPanelHiddenState.value = next
+  persistPluginPanelHidden(next)
 }
 
 export function getActivePanelHtml(

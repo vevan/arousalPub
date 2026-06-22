@@ -14,6 +14,7 @@
 | 迹录（Trace Keeper） | [`30-plugin-trace-keeper.md`](30-plugin-trace-keeper.md) |
 | 主布局 / 插件 Rail | [`31-main-layout-plugin-rails.md`](31-main-layout-plugin-rails.md) |
 | 全局插件 settings 缓存 | [`32-plugin-user-settings-cache.md`](32-plugin-user-settings-cache.md)（**✅ 已实现** · `a7ca4ea`） |
+| 移动端兼容性 | [`33-mobile-compatibility.md`](33-mobile-compatibility.md)（**Phase 1 布局已落地**） |
 | 待办 | [`04-TODO.md`](04-TODO.md) |
 
 ## 核心（01–08）
@@ -52,6 +53,7 @@
 | [`30`](30-plugin-trace-keeper.md) | ✅ v1 | **迹录** `trace-keeper`：Together、Separate、TraceBundle、左栏 HTML 面板 |
 | [`31`](31-main-layout-plugin-rails.md) | ✅ | **主布局三列 Grid**、插件 left/right rail、`routes` 路由门控、`hidden`、统一空态 |
 | [`32`](32-plugin-user-settings-cache.md) | ✅ | 全局 `getUserSettings` 缓存 + 订阅（对齐 `DOC/21` 会话 store · `a7ca4ea`） |
+| [`33`](33-mobile-compatibility.md) | **Phase 1** | 40rem rail overlay + hidden 持久化；余 composer/安全区验收 |
 
 ## 已归档（勿再新建同级文档）
 

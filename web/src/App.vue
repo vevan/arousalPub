@@ -390,7 +390,7 @@ onUnmounted(() => {
       app
     >
       <div class="app-bar__brand-nav d-flex align-center flex-nowrap min-w-0">
-        <div class="app-bar__mobile-nav-wrap d-flex d-sm-none flex-shrink-0">
+        <div class="app-bar__mobile-nav-wrap d-flex flex-shrink-0">
           <v-menu
             v-model="mobileNavOpen"
             location="bottom start"
@@ -832,6 +832,54 @@ onUnmounted(() => {
   display: none;
 }
 
+@media (max-width: 40rem) {
+  .main-chat {
+    grid-template-columns: 0 minmax(0, 1fr) 0;
+    gap: 0;
+    position: relative;
+  }
+
+  .main-chat__rail {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    pointer-events: none;
+  }
+
+  .main-chat__rail--left:has(.plugin-host-panel:not(.hidden)),
+  .main-chat__rail--right:has(.plugin-host-panel:not(.hidden)) {
+    pointer-events: auto;
+  }
+
+  .main-chat__rail--left:has(.plugin-host-panel:not(.hidden))::after,
+  .main-chat__rail--right:has(.plugin-host-panel:not(.hidden))::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: rgba(0, 0, 0, 0.45);
+  }
+
+  .main-chat__rail .plugin-host-panel:not(.hidden) {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 1;
+    width: 100%;
+    max-width: 25rem;
+    background: rgb(var(--v-theme-surface));
+    box-shadow: 0 0 1rem rgba(0, 0, 0, 0.18);
+  }
+
+  .main-chat__rail--left .plugin-host-panel:not(.hidden) {
+    left: 0;
+  }
+
+  .main-chat__rail--right .plugin-host-panel:not(.hidden) {
+    right: 0;
+  }
+}
+
 .auth-app__main {
   min-height: 100dvh;
 }
@@ -858,7 +906,15 @@ onUnmounted(() => {
 .app-bar__brand-nav {
   column-gap: 0.75rem;
 }
-@media (min-width: 600px) {
+.app-bar__mobile-nav-wrap {
+  display: none;
+}
+@media (max-width: 40rem) {
+  .app-bar__mobile-nav-wrap {
+    display: flex !important;
+  }
+}
+@media (min-width: 40.0625rem) {
   .app-bar__mobile-nav-wrap {
     display: none !important;
   }

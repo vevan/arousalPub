@@ -1456,7 +1456,7 @@ summary.reasoning-chain__summary::-webkit-details-marker {
 }
 
 /* ========== Mobile · 窄屏回合布局 ========== */
-@media (max-width: 36rem) {
+@media (max-width: 40rem) {
   .chat-body {
     scrollbar-gutter: auto;
     overflow-y      : overlay;

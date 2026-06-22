@@ -789,6 +789,7 @@
       "mainPath": "主线",
       "unnamed": "分支 {path}",
       "turnCount": "{n} 轮",
+      "mergedTurnCount": "合并 {n} 轮",
       "empty": "暂无分支。可在消息上使用「从此处分支」创建。",
       "branchFromHere": "从此处分支",
       "branchFromHereNoTurnId": "无法分支：该消息尚无 turnId",
@@ -796,6 +797,7 @@
       "deleteBranch": "删除分支",
       "deleteBranchConfirm": "确定删除分支「{name}」？将移除该分支及其子分支的全部消息与记忆索引，且不可撤销。",
       "deleteBranchNestedHint": "该分支下还有嵌套子分支，将一并删除。",
+      "deleteBranchTurnCountHint": "将删除该子树内共 {n} 轮分支独有对话（不含共享前缀）。",
       "labelField": "分支名称",
       "createBranchTitle": "创建分支",
       "createBranchHint": "可选。留空则显示为「分支 branchN」。",
@@ -814,8 +816,10 @@
       "deleteBranchActiveHint": "这是当前所在分支，删除后将回到父路径。",
       "repairRegistry": "修复分支索引",
       "registryRepaired": "分支索引已修复",
+      "labelRepairPartialFailed": "部分分支 label 未能同步到 fork chunk，可稍后重试修复。",
       "memoryCleanupFailed": "分支已删除，但 memory 索引清理可能不完整，建议重建 memory。",
-      "activeResetFailed": "分支已删除，但未能自动回到父路径，请手动切换分支。"
+      "activeResetFailed": "分支已删除，但未能自动回到父路径，请手动切换分支。",
+      "dirCleanupFailed": "分支注册表已清理，但目录删除未完成，可重试删除。"
     },
     "convSettings": {
       "title": "本对话设置",

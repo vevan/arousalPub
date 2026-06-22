@@ -1300,7 +1300,13 @@ export async function syncChunkIndexIfDrifted(
 export async function repairConversationChunkIndex(
   conversationId: string,
 ): Promise<
-  ChunkIndexRepairResult & { ok: boolean; branchScopesRepaired?: number }
+  ChunkIndexRepairResult & {
+    ok: boolean
+    branchScopesRepaired?: number
+    branchLabelsRepaired?: number
+    branchLabelRepairFailed?: number
+    branchLabelRepairFailedPaths?: string[]
+  }
 > {
   invalidateChunkIndexSyncCache(conversationId)
   const rootIdx = await readConversationIndex(conversationId)
@@ -1350,15 +1356,20 @@ export async function repairConversationChunkIndex(
   }
 
   let branchLabelsRepaired = 0
+  let branchLabelRepairFailed = 0
+  let branchLabelRepairFailedPaths: string[] = []
   try {
-    const { repairBranchRegistryLabelDrift } = await import(
-      './conversation-branches.js'
-    )
-    branchLabelsRepaired = (
-      await repairBranchRegistryLabelDrift(conversationId)
-    ).repaired
+    const {
+      repairBranchRegistryLabelDrift,
+      rebuildBranchForkTurnIdIndex,
+    } = await import('./conversation-branches.js')
+    const labelResult = await repairBranchRegistryLabelDrift(conversationId)
+    branchLabelsRepaired = labelResult.repaired
+    branchLabelRepairFailed = labelResult.failed
+    branchLabelRepairFailedPaths = labelResult.failedPaths
+    await rebuildBranchForkTurnIdIndex(conversationId)
   } catch {
-    // ignore
+    branchLabelRepairFailed = 1
   }
 
   return {
@@ -1367,6 +1378,13 @@ export async function repairConversationChunkIndex(
     repaired:
       main.repaired || branchScopesRepaired > 0 || branchLabelsRepaired > 0,
     branchScopesRepaired,
+    branchLabelsRepaired,
+    ...(branchLabelRepairFailed > 0
+      ? {
+          branchLabelRepairFailed,
+          branchLabelRepairFailedPaths,
+        }
+      : {}),
   }
 }
 

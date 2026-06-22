@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import ChatBranchLabelDialog from '@/components/chat/ChatBranchLabelDialog.vue'
-import { branchPathLabel } from '@/utils/conversation-branches-api'
+import { branchPathLabel, collectSubtreeSuffixTurnCount } from '@/utils/conversation-branches-api'
 import type { BranchTreeNodeDto } from '@/utils/conversation-branches-api'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -139,6 +139,12 @@ const pendingDeleteIsActive = computed(() => {
   return !!node?.path && node.path === props.activeBranchPath
 })
 
+const pendingDeleteSubtreeTurnCount = computed(() => {
+  const node = pendingDeleteNode.value
+  if (!node?.path) return 0
+  return collectSubtreeSuffixTurnCount(node)
+})
+
 const highlightTargetPath = computed(() => {
   const id = props.highlightForkTurnId?.trim()
   if (!id) return null
@@ -238,6 +244,9 @@ watch(
             <v-list-item-title>{{ nodeLabel(node) }}</v-list-item-title>
             <v-list-item-subtitle v-if="node.path && node.turnCount > 0">
               {{ $t('chat.branches.turnCount', { n: node.turnCount }) }}
+              <template v-if="node.mergedTurnCount != null && node.mergedTurnCount !== node.turnCount">
+                · {{ $t('chat.branches.mergedTurnCount', { n: node.mergedTurnCount }) }}
+              </template>
             </v-list-item-subtitle>
             <template v-if="node.path" #append>
               <v-btn
@@ -289,6 +298,12 @@ watch(
           class="text-medium-emphasis mt-2 mb-0"
         >
           {{ $t('chat.branches.deleteBranchNestedHint') }}
+        </p>
+        <p
+          v-if="pendingDeleteSubtreeTurnCount > 0"
+          class="text-medium-emphasis mt-2 mb-0"
+        >
+          {{ $t('chat.branches.deleteBranchTurnCountHint', { n: pendingDeleteSubtreeTurnCount }) }}
         </p>
       </v-card-text>
       <v-card-actions>

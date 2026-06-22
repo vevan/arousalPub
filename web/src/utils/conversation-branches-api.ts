@@ -5,6 +5,7 @@ import { branchPathLabel } from './branch-path-label.js'
 import type { BranchTreeNodeDto, BranchTreeResponse } from './conversation-branches-types.js'
 
 export { branchPathLabel }
+export { collectSubtreeSuffixTurnCount } from './branch-tree-utils.js'
 export type { BranchTreeNodeDto, BranchTreeResponse } from './conversation-branches-types.js'
 
 /** 与 server `BRANCH_LABEL_MAX_LENGTH` 一致 */
@@ -69,14 +70,24 @@ export async function patchConversationActiveBranchPath(
 
 export async function repairConversationChunkIndex(
   conversationId: string,
-): Promise<{ ok: true; repaired: number }> {
+): Promise<{
+  ok: true
+  repaired: number
+  branchLabelsRepaired?: number
+  branchLabelRepairFailed?: number
+}> {
   const res = await fetch(
     `/api/chat/conversations/${encodeURIComponent(conversationId)}/repair-chunk-index`,
     { method: 'POST' },
   )
   const data = await res.json().catch(() => null)
   assertOkResponse(res, data)
-  return data as { ok: true; repaired: number }
+  return data as {
+    ok: true
+    repaired: number
+    branchLabelsRepaired?: number
+    branchLabelRepairFailed?: number
+  }
 }
 
 export async function patchConversationBranchLabel(
@@ -101,7 +112,13 @@ export async function patchConversationBranchLabel(
 export async function deleteConversationBranch(
   conversationId: string,
   branchPath: string,
-): Promise<{ path: string; activeBranchPath: string; memoryCleanupFailed?: boolean; activeResetFailed?: boolean }> {
+): Promise<{
+  path: string
+  activeBranchPath: string
+  memoryCleanupFailed?: boolean
+  activeResetFailed?: boolean
+  dirCleanupFailed?: boolean
+}> {
   const qs = new URLSearchParams({ path: branchPath.trim() })
   const res = await fetch(
     `/api/chat/conversations/${encodeURIComponent(conversationId)}/branches?${qs}`,
@@ -109,7 +126,13 @@ export async function deleteConversationBranch(
   )
   const data = await res.json().catch(() => null)
   assertOkResponse(res, data)
-  return data as { path: string; activeBranchPath: string; memoryCleanupFailed?: boolean; activeResetFailed?: boolean }
+  return data as {
+    path: string
+    activeBranchPath: string
+    memoryCleanupFailed?: boolean
+    activeResetFailed?: boolean
+    dirCleanupFailed?: boolean
+  }
 }
 
 /** 有 sibling 分支的 fork turnId（用于气泡标记） */

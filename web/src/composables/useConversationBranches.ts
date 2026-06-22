@@ -98,11 +98,18 @@ export function useConversationBranches(params: {
     branchBusy.value = true
     branchLoadError.value = ''
     try {
-      await repairConversationChunkIndex(id)
+      const result = await repairConversationChunkIndex(id)
       branchRegistryBroken.value = false
       await refreshBranchTree()
       await params.onActivePathChanged()
-      branchSuccessMessage.value = t('chat.branches.registryRepaired')
+      const warnings: string[] = []
+      if ((result.branchLabelRepairFailed ?? 0) > 0) {
+        warnings.push(t('chat.branches.labelRepairPartialFailed'))
+      }
+      branchSuccessMessage.value =
+        warnings.length > 0
+          ? `${t('chat.branches.registryRepaired')} — ${warnings.join(' ')}`
+          : t('chat.branches.registryRepaired')
       return true
     } catch (e) {
       noteBranchError(e)
@@ -226,6 +233,9 @@ export function useConversationBranches(params: {
       }
       if (result.activeResetFailed) {
         warnings.push(t('chat.branches.activeResetFailed'))
+      }
+      if (result.dirCleanupFailed) {
+        warnings.push(t('chat.branches.dirCleanupFailed'))
       }
       branchSuccessMessage.value =
         warnings.length > 0

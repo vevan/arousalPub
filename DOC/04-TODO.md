@@ -28,7 +28,7 @@
   - [x] `GET /api/chat/conversations/:id/branches` — 递归树（`path` / `forkTurnId` / `forkOrdinal` / `turnCount` · §6.5）
   - [x] `PATCH /api/chat/conversations/:id` — body 支持 `activeBranchPath`；sync 根 `index.json` + `chat.index.json`
   - [x] `api-error-codes.ts` + i18n：`fork_turn_not_found`、`fork_turn_not_on_active_path`、`branch_path_conflict` 等
-  - **审计 backlog**（详见 `DOC/23` §9.1–§9.3）：严重项已修复；遗留见 `DOC/04` P0 分支「审计遗留」
+  - **审计 backlog**（详见 `DOC/23` §9.1–§9.3）：**已全部修复**（2026-06-18 第三轮关闭）
   - [x] 集成：创建分支 → append → messages / assemble / memory 召回（`server/src/integration/conversation-branches-integration.ts` · 2026-06-18）
 
   **S4 · 前端**
@@ -57,40 +57,34 @@
   已修复（本轮）：
   - [x] **P0** `resolveActivePathTurns` 嵌套父路径递归（空父分支 + 嵌套 fork）
   - [x] **P1** create `setActive` 失败 `rollbackCreatedConversationBranch`
-  - [x] **P1** DELETE 先 `rm` 再改注册表；fork chunk 失败不再 restore 空壳分支
+  - [x] **P1** DELETE 注册表先于 `rm`；fork chunk 失败回滚父 index；`dirCleanupFailed` 可重试删目录
   - [x] **P1** DELETE `activeResetFailed` / `memoryCleanupFailed` 响应标志
   - [x] **P2** `isTurnIdReferencedByBranchRegistry` + DELETE turn 409 `fork_turn_has_branches`
-  - [x] **P2** `batchUpdateConversationTurns` 两阶段 read→write
+  - [x] **P2** `batchUpdateConversationTurns` 两阶段 read→write；跨 chunk 写失败回滚（`rolledBack`）
   - [x] **P2** turn PATCH/DELETE/batch 映射 `branch_registry_broken`（409）
   - [x] **P2** `upsertBranchRegistryInForkChunk` 幂等 restore
   - [x] **P3** 单轮 PATCH/DELETE `turn_not_on_active_path`
   - [x] **P3** 前端 repair 按钮 + `ApiRequestError`；rename Promise 关对话框；切换无乐观更新
   - [x] **P3** `collectRegisteredBranchPaths` 保持创建顺序（去 `.sort()`）
   - [x] 集成：`runEmptyParentNestedForkIntegration`；label PATCH；嵌套 delete 保留父分支
+  - [x] **P2** label repair 暴露 `branchLabelsRepaired` / `branchLabelRepairFailed`
+  - [x] **P3** 删分支 turn 数确认、`mergedTurnCount`、create 锁、`branchForkTurnIds` 索引
+  - [x] 第三轮审计（2026-06-17）：`branchForkTurnIds` 同 fork/嵌套删父修正；`orphanDirCleanup`；audit 集成扩测
+  - [x] 深树 `GET /branches` 性能：注册表单遍 + chunk 链计数 + 父路径 merged 缓存
+  - [x] DELETE fork chunk 失败：`rollbackDeleteBranchRegistry` 双写回滚 + 集成测
 
-  仍待办：
-  - [ ] **P1** DELETE 非原子失败路径：`rm` 成功 + 父 index 更新失败 → 注册表仍在、目录已删（需 repair / 重试 delete 或 tombstone）
-  - [ ] **P2** `batchUpdate` 跨 chunk 部分 write 成功无补偿（已文档化两阶段语义，无全事务）
-  - [ ] **P2** label 双写进程崩溃中间态（依赖 `repairBranchRegistryLabelDrift`）
-  - [ ] **P3** 删父分支静默级联子树（UI 有 nested hint，无 turn 数二次确认）
-  - [ ] **P3** 分支树 `turnCount` 仅为 suffix 轮数，非 active 合并总轮数
-  - [ ] **P3** `repairBranchRegistryLabelDrift` 失败在 repair API 中静默（主 repair 仍 `ok: true`）
-  - [ ] **P3** 并发 create 分支无锁（低概率 segment 冲突）
-  - [ ] **P3** DELETE turn 全量扫描 `isTurnIdReferencedByBranchRegistry`（深树延迟）
-  - [ ] 测试缺口：DELETE 失败路径注入；DELETE turn 409；off-active PATCH/DELETE HTTP；create setActive 回滚注入；前端 composable 单测
+  ~~仍待办（2026-06-17 已全部修复，见 `DOC/23` §9.3）~~
 
 - [ ] **移动端兼容性修复** — `DOC/33`：~~窄屏 grid/rail overlay~~（已落地）；余 composer / iOS `100dvh`/安全区/软键盘验收
 
 ## P1
 
-- [ ] **对话分支 DELETE 非原子失败路径** — `rm` 先于注册表；若目录已删而父 index 更新失败，注册表仍指向已删子树（repair / 重试 delete）；见 `DOC/23` §9.3
 - [ ] **Web 首屏 bundle 体积优化（Vite chunk > 500KB 警告）** — 当前单次 JS ~1.55MB（gzip ~462KB），CSS ~944KB（Vuetify + MDI）；性能/首屏问题，非构建失败。落地顺序：① `rollup-plugin-visualizer`（或 `vite build --analyze`）确认占比；② `web/src/main.ts` 去掉 Vuetify 全量 `import * as components/directives`，仅保留 `vite-plugin-vuetify` `autoImport`（及少量 labs 如 `VIconBtn`）；③ `web/src/router/index.ts`、`App.vue` 中 `SettingsView` / `PromptsView` / `CharactersView` / `LorebooksView` / `AuthView` 等改为 `defineAsyncComponent` 或 `() => import(...)` 懒加载；④ 仍超限则 `build.rollupOptions.output.manualChunks`（或 Rolldown `codeSplitting`）拆 `vue` / `vuetify` / `virtua` vendor；⑤ `@mdi/font` 全量 → `@mdi/js` 按需 SVG（woff2 ~403KB）；⑥ `web/src/i18n/index.ts` 按 locale 动态 `import()` 语言包。仅调高 `chunkSizeWarningLimit` 只消警告、不减体积。插件 web 模块已 `import(url)` 动态加载，无需改。
 - [ ] **独立文档 RAG**（≠ 世界书 vector）— 可选；前置 `DOC/20` M1+M4
 - [ ] RAG 参数面板、会话/角色批量导入导出、备份示例脚本
 
 ## P2
 
-- [ ] **对话分支 batch 跨 chunk 部分成功** — `batchUpdateConversationTurns` 两阶段 read→write 无全事务；见 `DOC/23` §9.3
 - [ ] **群聊** — ST 式多角色发言轮次与 `{{group}}` / `{{groupNotMuted}}` / `{{charIfNotGroup}}` 等宏语义；当前仅 `characterIds[]` 多卡绑定与注入，见 `DOC/14` §1、`DOC/26`
 - [ ] **作者注分层** `DOC/28` — Phase 2 角色 AN + `{{charAuthorsNote}}`（Phase 1 全局 default ✅）
 - [ ] **角色卡内嵌世界书** `DOC/27` — Phase 1 组装（constant + keyword、`position`、叠加内嵌优先）；Phase 2 角色库查看 / 编辑 UI
@@ -99,7 +93,6 @@
 
 ## P3
 
-- [ ] **对话分支 UX / 运维遗留** — 删父分支级联确认、树 `turnCount` 语义、label repair 失败可见性、并发 create 锁、fork 扫描优化；见 `DOC/23` §9.3
 - [ ] ST 宏扩展备忘 `DOC/14`；Embedding MRL / Reranker / Qwen instruct（低优先级）
 
 ## 文档
@@ -114,5 +107,5 @@
 - [x] 对话设置上下文 Tab 命中测试（2026-06-18）：`POST .../context/recall-test` · `ConversationRecallTestDialog` · 全库 Memory hybrid + 资料库；不排除近期 N 轮
 - [x] 全局插件 settings 缓存与订阅（2026-06-18 · `a7ca4ea`）：`plugin-user-settings` Pinia store · `getUserSettingsSnapshot` / `onUserSettingsChanged` · trace-keeper 验收；见 `DOC/32`
 - [x] 对话分支创建定案（2026-06-18）：**空分支 + 从下一轮继续** · chunk 命名 · 顶栏分支树 UI · API 草案 — 见 `DOC/23` §1.4–§1.5、§5.3、§6.4–§6.5
-- [x] 对话分支第二轮审计 backlog（2026-06-18）：`DOC/23` §9.2–§9.3 · `DOC/04` P0 分支「审计遗留」
+- [x] 对话分支第三轮审计关闭（2026-06-18）：`branchForkTurnIds`、深树 `GET /branches` 批量构建、`rollbackDeleteBranchRegistry` — 见 `DOC/23` §9.3
 - [ ] 架构/接口变更时同步 `DOC/01`–`03`（2026-06-10：内嵌世界书 `DOC/27`、作者注分层 `DOC/28`）

@@ -1,6 +1,6 @@
 # 对话分支 — 设计与实现参考
 
-> **状态（2026-06-18）**：**S1–S5 + 前端分支 UI + DELETE 已落地**；读/写/append/memory/index repair 按 `activeBranchPath`；集成脚本在 `server/src/integration/`。  
+> **状态（2026-06-18）**：**S1–S5 + 前端分支 UI + DELETE 已落地**；§9.3 审计遗留（含第三轮深树性能、`rollbackDeleteBranchRegistry`）已关闭；集成脚本在 `server/src/integration/`。  
 > **读者**：后续做「从此处分支继续」、消息树、分支切换的 Agent / 开发者。  
 > **关联**：`DOC/03` §6.1–§6.4、§7.2–§7.3、§14.5；`DOC/08` §1.2；`DOC/15` §0。
 
@@ -413,6 +413,7 @@ Response：
           "forkOrdinal": 160,
           "forkMessageId": "e5f6a7b8",
           "turnCount": 3,
+          "mergedTurnCount": 163,
           "children": []
         }
       ]
@@ -422,7 +423,14 @@ Response：
 ```
 
 - `turnCount`：该分支子树内 turn 数（不含共享前缀）；空分支为 `0`。
+- `mergedTurnCount`：沿 active 路径合并后的总轮数（含 fork 点前缀）；主路径节点与 `turnCount` 相同。
 - 嵌套：`path` 为会话根相对全路径（如 `branch1/nested`）。
+
+**`DELETE /api/chat/conversations/:id/branches?path=`**（200）：`path`、`activeBranchPath`；可选警告标志 `memoryCleanupFailed`、`activeResetFailed`、`dirCleanupFailed`、`orphanDirCleanup`（注册表已清、仅清遗留目录）。
+
+**`POST .../repair-chunk-index`**：除 chunk 链修复外，响应可含 `branchLabelsRepaired`、`branchLabelRepairFailed`（及 `branchLabelRepairFailedPaths`）。
+
+会话根 `index.json` 可选 **`branchForkTurnIds`**：fork turnId 索引（加速 `DELETE turn` guard；repair 时 `rebuildBranchForkTurnIdIndex` 重建；校验以注册表扫描为准）。
 
 **`GET .../messages`**：默认按会话 `index.json` 的 `activeBranchPath` 返回 **§5.3 合并后** 的线性 turn 列表；可选 `?branchPath=` 覆盖（调试）。
 
@@ -450,9 +458,8 @@ flowchart TD
 | 类型 | 内容 |
 |------|------|
 | 单测（已有） | `chunk-path.test.ts`（含 `buildAllowedBranchPathsWhereSql`）、`chunk-chain-branches.test.ts`、`chunk-chain.test.ts`、`memory-store.test.ts`（`buildMemoryVectorSearchWhereClause`）、`memory-index.test.ts`（`filterEmbeddableTurns`） |
-| 单测（待加） | `listChunkFileNamesAt` 用临时目录 fixture；`replaceTurnMemoryIndex` / Lance 集成（可选）；**分支审计 §9.3 所列 HTTP/失败注入** |
-| 集成 | 手工分支目录 + `reindexConversationMemory` 行数 = 各路径可 embed turn 之和；embed 失败后会话仍有旧索引 |
-| 集成（已实现） | `server/src/integration/conversation-branches-integration.ts`：一层兄弟 + 二层嵌套 + **三层交叉** + **空父嵌套 fork** + label PATCH；`conversation-branches-delete-memory-integration.ts`：delete + 嵌套 delete + 保留父分支 + memory |
+| 单测（待加） | `listChunkFileNamesAt` 用临时目录 fixture；`replaceTurnMemoryIndex` / Lance 集成（可选） |
+| 集成（已实现） | `conversation-branches-integration.ts`：一层/二层/三层嵌套、recall、cross、fork@160、label PATCH；`conversation-branches-delete-memory-integration.ts`：delete + memory；`conversation-branches-audit-integration.ts`：注册表优先 DELETE、fork 索引、label repair、`rollbackDeleteBranchRegistry` |
 | 回归 | 主路径会话 `activeBranchPath=""` 行为与改前一致；向量召回不含兄弟 `branchPath` |
 
 ---
@@ -497,7 +504,7 @@ flowchart TD
 |------|------|------|
 | **P0** | `resolveActivePathTurns` 嵌套空父分支 | 非空 `parentPath` 递归 `resolveActivePathTurns`；集成 `runEmptyParentNestedForkIntegration` |
 | **P1** | create `setActive` 无回滚 | `rollbackCreatedConversationBranch` |
-| **P1** | DELETE restore 导致空壳分支 | 先 `rm` 再改注册表；fork chunk 失败**不再** restore 注册表 |
+| **P1** | DELETE restore 导致空壳分支 | 注册表先于 `rm`；fork chunk 失败回滚父 index（2026-06-17 第三轮） |
 | **P1** | DELETE active 重置失败整体 error | `activeResetFailed` 标志，删除仍成功 |
 | **P2** | 删 fork 轮未校验分支 | `isTurnIdReferencedByBranchRegistry` → DELETE turn 409 `fork_turn_has_branches` |
 | **P2** | batch 读一半即写 | 两阶段：全量 read + 内存变更 → 再 write |
@@ -512,27 +519,40 @@ flowchart TD
 
 #### 仍待办
 
-| 级别 | ID | 问题 | 建议 |
+| 级别 | ID | 问题 | 状态 |
 |------|-----|------|------|
-| **P1** | F-P1-1 | DELETE 非原子：`rm` 成功 + 父 index 更新失败 | 注册表仍在、目录已删；repair 或重试 delete；可选 tombstone / 两阶段标记 |
-| **P2** | F-P2-1 | `batchUpdate` 跨 chunk 部分 write 成功 | 已文档化「尽力批处理」；v1.1 可选预检 + 单 chunk 限制 |
-| **P2** | F-P2-2 | label 双写进程崩溃中间态 | 依赖 `repairBranchRegistryLabelDrift`；可选 repair 计数暴露 |
-| **P3** | F-P3-1 | 删父分支静默级联子树 | UI 已有 `deleteBranchNestedHint`；可选 turn 数二次确认 |
-| **P3** | F-P3-2 | 树 `turnCount` 为 suffix 非 merged 总数 | 文档 §6.5 已说明；可选 UI 补充「含前缀」提示 |
-| **P3** | F-P3-3 | `repairBranchRegistryLabelDrift` 失败静默 | repair API 主结果仍 `ok: true`；可选 `labelRepaired` / 警告字段 |
-| **P3** | F-P3-4 | 并发 create 无锁 | 低概率；v1.1 可选 segment 分配锁 |
-| **P3** | F-P3-5 | DELETE turn 全量扫描 fork 引用 | 深树延迟；可缓存 forkTurnId 索引 |
+| ~~**P1**~~ | ~~F-P1-1~~ | DELETE 非原子：`rm` 成功 + 父 index 更新失败 | **已修复**：注册表先于 `rm`；fork chunk 失败回滚父 index |
+| ~~**P2**~~ | ~~F-P2-1~~ | `batchUpdate` 跨 chunk 部分 write 成功 | **已修复**：写失败时回滚已写 chunk（`rolledBack`） |
+| ~~**P2**~~ | ~~F-P2-2~~ | label 双写进程崩溃中间态 | **已修复**：repair 暴露 `branchLabelsRepaired` / `branchLabelRepairFailed` |
+| ~~**P3**~~ | ~~F-P3-1~~ | 删父分支静默级联子树 | **已修复**：删除确认展示子树独有 turn 数 |
+| ~~**P3**~~ | ~~F-P3-2~~ | 树 `turnCount` 为 suffix 非 merged 总数 | **已修复**：API/UI `mergedTurnCount` |
+| ~~**P3**~~ | ~~F-P3-3~~ | `repairBranchRegistryLabelDrift` 失败静默 | **已修复**：repair API 返回失败计数 |
+| ~~**P3**~~ | ~~F-P3-4~~ | 并发 create 无锁 | **已修复**：`withBranchCreateLock` per parent |
+| ~~**P3**~~ | ~~F-P3-5~~ | DELETE turn 全量扫描 fork 引用 | **已修复**：`branchForkTurnIds` 索引 + repair 重建；**第三轮**：校验改注册表扫描 + 漂移自愈 |
 
-#### 测试覆盖缺口（优先补测）
+#### 第三轮审计（2026-06-17）
+
+| 级别 | ID | 问题 | 状态 |
+|------|-----|------|------|
+| **P1** | F-P3-5r | `branchForkTurnIds` 增量维护错误：同 fork 多分支删一失 guard；删父分支残留子 fork id | **已修复**：`isTurnIdReferenced` 以注册表扫描为准 + 漂移时 `rebuild`；delete/create 后 `rebuildBranchForkTurnIdIndex` |
+| **P2** | F-P1-1b | `dirCleanupFailed` 后重试 DELETE 404（注册表已清） | **已修复**：未注册但目录存在 → `orphanDirCleanup` 幂等清目录 |
+| **P2** | — | `withBranchCreateLock` 仅进程内 | **已知限制**（单写者部署可接受；多进程/Syncthing 并发 create 仍可能 segment 冲突） |
+| **P3** | — | `useConversationBranches` 无 composable 单测 | 待补（UI 逻辑较轻，API 层有集成测） |
+| **P3** | — | `GET /branches` 深树 N+1 读盘 | **已修复**：`loadBranchRegistryChildrenByParent` + `countTurnsByBranchPath` + `buildForkOrdinalByPath` 父路径 merged 缓存 |
+| **P3** | — | DELETE fork chunk 失败回滚不完整 | **已修复**：`rollbackDeleteBranchRegistry` 双写恢复（fork 失败则撤销父 index）；audit 集成测 |
+| **信息** | — | `batchUpdate` `rolledBack` 已返回 HTTP body | 已具备；regex 批处理可据此提示用户 |
+
+**第三轮结论**：主路径与 §9.3 遗留项**无 P0/P1 开放**；深树树构建与 DELETE 回滚已于后续迭代补齐。
 
 | 优先级 | 场景 |
 |--------|------|
-| 1 | DELETE 失败路径：`rm` 后父 index 失败 |
-| 2 | DELETE turn → `fork_turn_has_branches`（409） |
-| 3 | PATCH/DELETE turn off-active → `turn_not_on_active_path`（400） |
-| 4 | CREATE `setActive` 写 index 失败 → 无残留注册表/目录 |
-| 5 | `repairBranchRegistryLabelDrift` 漂移检测与 `repaired` 计数 |
-| 6 | 前端 `ApiRequestError` + repair UI；`useConversationBranches` composable |
+| 1 | DELETE 失败路径：注册表先于 `rm`、fork chunk 失败回滚 | **已覆盖** `conversation-branches-audit-integration.ts` |
+| 2 | DELETE turn → `fork_turn_has_branches`（409） | 既有集成测 |
+| 3 | PATCH/DELETE turn off-active → `turn_not_on_active_path`（400） | 既有集成测 |
+| 4 | CREATE `setActive` 写 index 失败 → 无残留注册表/目录 | 既有 rollback 逻辑 |
+| 5 | `repairBranchRegistryLabelDrift` 漂移检测与 `repaired` 计数 | **已覆盖** audit 集成测 |
+| 6 | 前端 `ApiRequestError` + repair UI；`useConversationBranches` composable | UI 已有；`collectSubtreeSuffixTurnCount` 单测 |
+| 7 | DELETE fork chunk 失败 → `rollbackDeleteBranchRegistry` 双写恢复 | **已覆盖** audit 集成测 |
 
 **已实现集成**（`server/src/integration/`）：一层/二层/三层嵌套、label PATCH、嵌套 delete、**空父嵌套 fork**、delete+memory Lance。
 
@@ -559,6 +579,7 @@ flowchart TD
 | 分支 index | `server/src/chat-storage.ts` |
 | 分支 CRUD / repair | `server/src/conversation-branches.ts` |
 | 分支 API 集成 | `server/src/integration/conversation-branches-integration.ts` |
+| 分支审计集成 | `server/src/integration/conversation-branches-audit-integration.ts` |
 | 分支 delete + memory 集成 | `server/src/integration/conversation-branches-delete-memory-integration.ts` |
 | 前端分支 composable | `web/src/composables/useConversationBranches.ts` |
 | Memory 重建 | `server/src/memory-index.ts`（`replaceTurnMemoryIndex`） |
@@ -581,3 +602,5 @@ flowchart TD
 | 2026-06-18 | §1.4–§1.5 锁定「空分支 + 从下一轮继续」与 chunk 命名；§5.3 创建/读合并流程；§6.4–§6.5 API 与顶栏分支树 UI |
 | 2026-06-18 | §9.1 S3 API 审计 backlog；集成脚本覆盖 messages / assemble history / Lance 兄弟分支召回 |
 | 2026-06-18 | §9.2–§9.3 全量 + 第二轮审计 backlog；`DOC/04` 同步遗留 P1–P3；空父嵌套 fork 集成测 |
+| 2026-06-17 | §9.3 审计遗留全部修复：DELETE 注册表优先、`batchUpdate` 回滚、`branchForkTurnIds`、`mergedTurnCount`、create 锁、repair label 计数 |
+| 2026-06-17 | 深树 `GET /branches` 批量构建；`rollbackDeleteBranchRegistry` DELETE 双写回滚 |

@@ -223,6 +223,8 @@ export interface ConversationIndex {
   retroPersistPending?: number[]
   /** ST 式会话局部宏变量（`{{setvar}}` / `{{getvar}}`） */
   macroLocalVars?: Record<string, string>
+  /** 已注册分支的 fork turnId 索引（加速 DELETE turn 校验；repair 可重建） */
+  branchForkTurnIds?: string[]
 }
 
 export interface TurnReceive {
@@ -365,11 +367,17 @@ export interface BatchTurnUpdateResult {
   failed: { turnOrdinal: number; error: string }[]
   /** memory 开启且 API 可用时，实际入队 re-embed 的轮次数 */
   memoryEmbedsQueued: number
+  /** 跨 chunk 写盘时若中途失败并已回滚已写 chunk */
+  rolledBack?: boolean
+}
+
+function cloneChunkFile(chunk: ChunkFile): ChunkFile {
+  return structuredClone(chunk)
 }
 
 /**
  * 批量更新多轮：每个 chunk 至多 read+write 一次，index 至多写一次。
- * 先完成全部 chunk 读取与内存变更，再统一写入；单 chunk 写失败时该 chunk 内轮次标记 failed（无跨 chunk 事务）。
+ * 先完成全部 chunk 读取与内存变更，再统一写入；跨 chunk 写失败时回滚已成功写入的 chunk。
  */
 export async function batchUpdateConversationTurns(
   conversationId: string,
@@ -485,15 +493,42 @@ export async function batchUpdateConversationTurns(
   const memoryUpserts: { turn: TurnRecord; chunkName: string; branchPath: string }[] = []
   const touchedBranchPaths = new Set<string>()
   let ok = 0
+  let rolledBack = false
   const memoryEmbedActive = await isConversationMemoryEmbedActive(conversationId)
 
+  const snapshots = new Map<string, ChunkFile>()
   for (const pending of pendingWrites) {
+    snapshots.set(pending.storagePath, cloneChunkFile(pending.chunk))
+  }
+
+  const writtenPaths: string[] = []
+  let writeAborted = false
+
+  for (const pending of pendingWrites) {
+    if (writeAborted) {
+      for (const { patch } of pending.items) {
+        failed.push({ turnOrdinal: patch.turnOrdinal, error: 'chunk_write_failed' })
+      }
+      continue
+    }
     try {
       await writeChunkFile(conversationId, pending.storagePath, pending.chunk)
+      writtenPaths.push(pending.storagePath)
       touchedBranchPaths.add(normalizeBranchPath(pending.pendingUpserts[0]!.branchPath))
       memoryUpserts.push(...pending.pendingUpserts)
       ok += pending.pendingUpserts.length
     } catch {
+      writeAborted = true
+      rolledBack = writtenPaths.length > 0
+      for (const writtenPath of writtenPaths) {
+        const snap = snapshots.get(writtenPath)
+        if (snap) {
+          await writeChunkFile(conversationId, writtenPath, snap).catch(() => {})
+        }
+      }
+      ok = 0
+      memoryUpserts.length = 0
+      touchedBranchPaths.clear()
       for (const { patch } of pending.items) {
         failed.push({ turnOrdinal: patch.turnOrdinal, error: 'chunk_write_failed' })
       }
@@ -522,7 +557,12 @@ export async function batchUpdateConversationTurns(
     }
   }
 
-  return { ok, failed, memoryEmbedsQueued }
+  return {
+    ok,
+    failed,
+    memoryEmbedsQueued,
+    ...(rolledBack ? { rolledBack: true } : {}),
+  }
 }
 
 export interface ChatPromptMessage {

@@ -1748,6 +1748,12 @@ app.post<{ Params: { id: string } }>(
         headChunkFile: result.headChunkFile,
         tailChunkFile: result.tailChunkFile,
         chunkFileCount: result.chunkFileCount,
+        branchScopesRepaired: result.branchScopesRepaired ?? 0,
+        branchLabelsRepaired: result.branchLabelsRepaired ?? 0,
+        branchLabelRepairFailed: result.branchLabelRepairFailed ?? 0,
+        ...(result.branchLabelRepairFailedPaths?.length
+          ? { branchLabelRepairFailedPaths: result.branchLabelRepairFailedPaths }
+          : {}),
       }
     } catch (e) {
       request.log.error(e)

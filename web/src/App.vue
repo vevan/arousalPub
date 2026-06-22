@@ -119,6 +119,15 @@ function onBrowserLanguageChange() {
   }
 }
 
+function onFooterPluginsToggle(): void {
+  if (isPluginPanelHidden('leftRail')) {
+    setPluginPanelHidden('leftRail', false)
+    openPluginPanel('leftRail', undefined, route.name as string)
+  } else {
+    setPluginPanelHidden('leftRail', true)
+  }
+}
+
 const drawerRight = ref(false)
 const leftHostHidden = computed(() => isPluginPanelHidden('leftRail'))
 const rightHostHidden = computed(() => isPluginPanelHidden('rightRail'))
@@ -377,6 +386,14 @@ onUnmounted(() => {
         <v-toolbar-title class="text-subtitle-2">
           {{ $t('app.apiConnection') }}
         </v-toolbar-title>
+        <v-spacer />
+        <v-btn
+          icon="mdi-close"
+          variant="text"
+          density="comfortable"
+          :aria-label="$t('app.closeModal')"
+          @click="drawerRight = false"
+        />
       </v-toolbar>
       <ConnectionSettingsCard />
     </v-navigation-drawer>
@@ -662,12 +679,7 @@ onUnmounted(() => {
           density="compact"
           class="app-footer__plugins-btn"
           :aria-label="$t('app.plugins')"
-          @click="
-            () => {
-              setPluginPanelHidden('leftRail', false)
-              openPluginPanel('leftRail', undefined, route.name as string)
-            }
-          "
+          @click="onFooterPluginsToggle"
         />
         <span class="app-footer__meta">
           Arousal <em>Pub</em>
@@ -834,11 +846,14 @@ onUnmounted(() => {
 
 @media (max-width: 40rem) {
   .main-chat {
-    grid-template-columns: 0 minmax(0, 1fr) 0;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
     gap: 0;
+    padding-inline: 0.5rem;
     position: relative;
   }
 
+  /* rail 已 absolute 脱流，由 center 独占 1fr 格；勿再 absolute center */
   .main-chat__rail {
     position: absolute;
     inset: 0;
@@ -848,6 +863,12 @@ onUnmounted(() => {
 
   .main-chat__rail--left:has(.plugin-host-panel:not(.hidden)),
   .main-chat__rail--right:has(.plugin-host-panel:not(.hidden)) {
+    position: fixed;
+    top: var(--header-height, 3.5rem);
+    bottom: var(--footer-height, 2rem);
+    left: 0;
+    right: 0;
+    z-index: 1005;
     pointer-events: auto;
   }
 

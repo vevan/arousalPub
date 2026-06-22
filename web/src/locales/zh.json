@@ -217,6 +217,7 @@
     "deleteDialogBody": "确定删除「{title}」吗？删除后无法恢复。",
     "editorEmptyTitle": "选一条提示词开始编辑",
     "editorEmptyHint": "或者新建一条。修改会自动保存到当前用户的服务端目录（data/{userId}/prompts/）。",
+    "backToList": "返回列表",
     "dragHandle": "拖曳排序"
   },
   "lorebooks": {
@@ -248,6 +249,7 @@
     "emptyHint": "点击上方「新建条目」添加第一条。",
     "editorEmptyTitle": "选一条目开始编辑",
     "editorEmptyHint": "或新建一条。修改会自动保存到当前用户的服务端目录（data/{userId}/lorebooks/）。",
+    "backToList": "返回列表",
     "autosaveHint": "失焦后自动保存",
     "fieldGroup": "分组",
     "fieldUpdatedAt": "更新于",

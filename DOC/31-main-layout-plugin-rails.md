@@ -256,8 +256,8 @@ flex: 1 1 auto; /* 配合父级 flex */
 
 ### 6.3 窄屏（**`DOC/33`** · Phase 1 已落地）
 
-- **断点 `40rem`**：`grid-template-columns: 0 minmax(0, 1fr) 0`；rail `absolute` + `::after` 遮罩；`.plugin-host-panel` **`max-width: 25rem`**（非中间列）
-- 打开/关闭：`openPluginPanel` / pin 与桌面共用 registry；**`hidden` 持久化** `arousal-plugin-panel-hidden`（无记录时默认关）
+- **断点 `40rem`**：`grid-template-columns: 1fr`（侧栏 `absolute` 脱流）；`#centerRail` **文档流**；侧栏打开时 `fixed` + `::after` 遮罩；panel **`max-width: 25rem`**
+- 页脚「插件」：**toggle** `leftRail` hidden；pin 同 registry
 - 仍待做：composer 键盘、`safe-area`（见 `DOC/33`）
 - `rightRail` 首个消费者插件（未变）
 

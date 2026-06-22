@@ -217,6 +217,7 @@
     "deleteDialogBody": "Delete “{title}”? This cannot be undone.",
     "editorEmptyTitle": "Pick a prompt to edit",
     "editorEmptyHint": "Or create a new one. Changes auto-save under your user folder (data/{userId}/prompts/).",
+    "backToList": "Back to list",
     "dragHandle": "Drag to reorder"
   },
   "lorebooks": {
@@ -248,6 +249,7 @@
     "emptyHint": "Click “New entry” above to add the first one.",
     "editorEmptyTitle": "Pick an entry to edit",
     "editorEmptyHint": "Or create a new one. Changes auto-save under your user folder (data/{userId}/lorebooks/).",
+    "backToList": "Back to list",
     "autosaveHint": "Saves when a field loses focus",
     "fieldGroup": "Group",
     "fieldUpdatedAt": "Updated",

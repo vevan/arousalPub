@@ -13,6 +13,7 @@ import {
   type LorebookTriggerMode,
 } from '@/utils/lorebook-entry'
 import { parseLorebookImport } from '@/utils/lorebooks-package'
+import { useNarrowLayout } from '@/composables/use-narrow-layout'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -47,6 +48,16 @@ const {
   saving,
   lastError,
 } = storeToRefs(store)
+
+const { isNarrow } = useNarrowLayout()
+const mobileMasterDetail = computed(() => props.embedded && isNarrow.value)
+const showEditorPane = computed(
+  () => !mobileMasterDetail.value || Boolean(selectedEntryId.value),
+)
+
+function backToEntryList() {
+  selectedEntryId.value = null
+}
 
 const currentGroup = computed(() =>
   activeGroups.value.find((g) => g.id === activeGroupId.value) ?? null,
@@ -412,7 +423,10 @@ async function confirmImportLorebook() {
 <template>
   <div
     class="prompts-view flex-grow-1 d-flex flex-column min-height-0"
-    :class="{ 'prompts-view--embedded': props.embedded }"
+    :class="{
+      'prompts-view--embedded': props.embedded,
+      'prompts-view--master-detail': mobileMasterDetail,
+    }"
   >
     <div
       class="prompts-view__inner"
@@ -720,7 +734,18 @@ async function confirmImportLorebook() {
           </div>
         </aside>
 
-        <section class="prompts-editor">
+        <section v-if="showEditorPane" class="prompts-editor">
+          <div class="prompts-editor__panel">
+          <button
+            v-if="mobileMasterDetail"
+            type="button"
+            class="prompts-editor__back"
+            @click="backToEntryList"
+          >
+            <v-icon size="18">mdi-chevron-left</v-icon>
+            {{ $t('lorebooks.backToList') }}
+          </button>
+          <div class="prompts-editor__scroll">
           <template v-if="selectedEntry">
             <div class="editor-card">
               <header class="editor-card__head">
@@ -886,6 +911,8 @@ async function confirmImportLorebook() {
               >+ {{ $t('lorebooks.entryNew') }}</button>
             </div>
           </template>
+          </div>
+          </div>
         </section>
       </div>
     </div>

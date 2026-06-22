@@ -23,8 +23,8 @@ grid-template-columns: 1fr clamp(45rem, 60%, 80rem) 1fr
 | 项 | 定案 |
 |----|------|
 | **断点** | 全站统一 **`40rem`（640px）** — `@media (max-width: 40rem)`；顶栏移动菜单同断点（不再用 Vuetify `sm` / `600px`） |
-| **Grid** | `0 minmax(0, 1fr) 0` — 中间全宽，左右列宽 0 |
-| **Rail 容器** | `#leftRail` / `#rightRail`：`position: absolute; inset: 0` |
+| **Grid** | **`1fr` 单列**（rail `absolute` 脱流后不占列）；`#centerRail` **留在文档流**，由 `v-main` 自然落在 app-bar 下方 |
+| **Rail 容器** | 关闭：`absolute; inset:0`（相对 `.main-chat`）；打开：`fixed` + `--header-height` / `--footer-height`，`z-index: 1005` |
 | **遮罩** | rail **`:has(.plugin-host-panel:not(.hidden))::after`** 全屏半透明 |
 | **插件面板** | `.plugin-host-panel`：**`max-width: 25rem`**，左 rail 贴左、右 rail 贴右；非中间列宽度 |
 | **JS 改动** | **仅** `plugin-panel-registry.ts`：侧栏 `hidden` **localStorage 持久化**；布局纯 CSS |

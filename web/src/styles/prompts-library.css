@@ -34,12 +34,25 @@
 .prompts-view--embedded .groups-info {
   flex-shrink: 0;
 }
-/* 移动单列：整页在对话框内滚动，列表与编辑器自然堆叠 */
+/* 移动单列：对话框内编辑器浮层 */
 @media (max-width: 40rem) {
   .prompts-view--embedded {
+    position: relative;
+    overflow: hidden;
+    height: 100%;
+    max-height: 100%;
+  }
+  .prompts-view--embedded .prompts-view__inner--embedded {
+    flex: 1 1 0%;
+    min-height: 0;
+    height: 100%;
+    max-height: 100%;
     overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
   }
 }
 /* 桌面双栏：锁定高度，仅左侧列表区滚动，避免分组栏出现纵滚 */
@@ -67,6 +80,13 @@
     min-height: 0;
     overflow: hidden;
   }
+  .prompts-view--embedded .prompts-list__scroll,
+  .prompts-view--embedded .prompts-editor__scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
   .prompts-view--embedded .prompts-list__scroll {
     flex: 1 1 auto;
     min-height: 0;
@@ -78,6 +98,7 @@
 /* ========== Preset bar ========== */
 .preset-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
@@ -91,6 +112,8 @@
   align-items: center;
   gap: 0.25rem;
   flex-wrap: wrap;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 .preset-bar__right {
   display: flex;
@@ -120,6 +143,8 @@
   align-items: center;
   gap: 0.25rem;
   height: 1.75rem;
+  min-width: 0;
+  max-width: 100%;
   padding: 0 0.625rem;
   background: rgb(var(--v-theme-surface));
   border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.10);
@@ -130,12 +155,28 @@
   letter-spacing: 0.01em;
   cursor: pointer;
   transition: border-color 0.15s;
+  overflow: hidden;
+}
+.preset-bar__current-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.preset-bar__caret {
+  flex-shrink: 0;
+  color: rgba(var(--v-theme-on-surface), 0.5);
 }
 .preset-bar__current:hover {
   border-color: rgba(var(--v-theme-primary), 0.5);
 }
-.preset-bar__caret {
-  color: rgba(var(--v-theme-on-surface), 0.5);
+@media (max-width: 40rem) {
+  .preset-bar {
+    align-items: flex-start;
+  }
+  .preset-bar__current {
+    flex: 1 1 6rem;
+  }
 }
 .preset-bar__icon-btn {
   display: inline-flex;
@@ -399,6 +440,82 @@
 }
 @media (max-width: 40rem) {
   .prompts-layout { grid-template-columns: 1fr; }
+
+  /* 对话框内窄屏：整页滚动（预设/分组/列表）；editor 相对 .prompts-view--embedded 浮层 */
+  .prompts-view--embedded .prompts-layout {
+    display: block;
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+    gap: 0;
+  }
+  .prompts-view--embedded .prompts-list {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+  }
+  .prompts-view--embedded .prompts-list__scroll {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+  }
+  .prompts-view--embedded .prompts-editor {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    pointer-events: auto;
+    display: block;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .prompts-view--embedded .prompts-editor::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: rgba(0, 0, 0, 0.45);
+  }
+  .prompts-view--embedded .prompts-editor__panel {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    min-height: 0;
+    background: rgb(var(--v-theme-surface));
+    box-shadow: 0 0 1rem rgba(0, 0, 0, 0.18);
+    overflow: hidden;
+  }
+  .prompts-view--embedded .prompts-editor__scroll {
+    flex: 1 1 0%;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    display: block;
+    padding: 0 0.5rem;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
+  }
+  .prompts-view--embedded .prompts-editor__scroll .editor-card,
+  .prompts-view--embedded .prompts-editor__scroll .editor-card--binding {
+    overflow: visible;
+  }
+  .prompts-view--embedded .editor-card__foot {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    box-shadow: 0 -0.375rem 0.75rem rgba(0, 0, 0, 0.12);
+  }
+  .prompts-view--embedded .prompts-editor__back {
+    flex-shrink: 0;
+    margin: 0.375rem 0.5rem 0;
+  }
 }
 @media (min-width: 40.0625rem) {
   .prompts-layout {
@@ -946,6 +1063,31 @@
   flex-direction: column;
   gap: 0.75rem;
   min-width: 0;
+}
+.prompts-editor__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  align-self: flex-start;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0.375rem 0.5rem 0.375rem 0.25rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: rgba(var(--v-theme-on-surface), 0.78);
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.prompts-editor__back:hover {
+  background: rgba(var(--v-theme-on-surface), 0.06);
+  color: rgb(var(--v-theme-on-surface));
+}
+.prompts-editor__panel {
+  display: contents;
 }
 .editor-card {
   display: flex;

@@ -35,6 +35,7 @@ import type {
   PromptTrigger,
 } from '@/stores/prompts'
 import { useConnectionStore } from '@/stores/connection'
+import { useNarrowLayout } from '@/composables/use-narrow-layout'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
@@ -67,6 +68,16 @@ const {
   activePrompts,
   groupCounts,
 } = storeToRefs(store)
+
+const { isNarrow } = useNarrowLayout()
+const mobileMasterDetail = computed(() => props.embedded && isNarrow.value)
+const showEditorPane = computed(
+  () => !mobileMasterDetail.value || Boolean(selectedPromptId.value),
+)
+
+function backToPromptList() {
+  store.selectPrompt(null)
+}
 
 /** ============== preset bar ============== */
 const presetSwitchOpen = ref(false)
@@ -957,7 +968,10 @@ const canDeleteGroup = (g: PromptGroup) =>
 <template>
   <div
     class="prompts-view flex-grow-1 d-flex flex-column min-height-0"
-    :class="{ 'prompts-view--embedded': props.embedded }"
+    :class="{
+      'prompts-view--embedded': props.embedded,
+      'prompts-view--master-detail': mobileMasterDetail,
+    }"
   >
     <div
       class="prompts-view__inner"
@@ -1436,7 +1450,18 @@ const canDeleteGroup = (g: PromptGroup) =>
         </aside>
 
         <!-- ====== Right editor ====== -->
-        <section class="prompts-editor">
+        <section v-if="showEditorPane" class="prompts-editor">
+          <div class="prompts-editor__panel">
+          <button
+            v-if="mobileMasterDetail"
+            type="button"
+            class="prompts-editor__back"
+            @click="backToPromptList"
+          >
+            <v-icon size="18">mdi-chevron-left</v-icon>
+            {{ $t('prompts.backToList') }}
+          </button>
+          <div class="prompts-editor__scroll">
           <template v-if="listBundleEditor">
             <div class="editor-card editor-card--binding">
               <section class="binding-editor__block">
@@ -1831,6 +1856,8 @@ const canDeleteGroup = (g: PromptGroup) =>
               >+ {{ $t('prompts.newPrompt') }}</button>
             </div>
           </template>
+          </div>
+          </div>
         </section>
       </div>
     </div>

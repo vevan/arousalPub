@@ -1,4 +1,6 @@
-import { apiErrorFromResponseBody } from '@/utils/api-error-message'
+import {
+  throwApiErrorFromResponseBody,
+} from '@/utils/api-error-message'
 import { branchPathLabel } from './branch-path-label.js'
 import type { BranchTreeNodeDto, BranchTreeResponse } from './conversation-branches-types.js'
 
@@ -15,19 +17,19 @@ export interface CreateBranchResult {
   activeBranchPath: string
 }
 
-async function errorFromResponse(res: Response): Promise<string> {
-  const data = await res.json().catch(() => null)
-  return apiErrorFromResponseBody(data, `http_${res.status}`)
+function assertOkResponse(res: Response, data: unknown): void {
+  if (!res.ok) {
+    throwApiErrorFromResponseBody(data, `http_${res.status}`)
+  }
 }
 
 export async function fetchConversationBranchTree(
   conversationId: string,
 ): Promise<BranchTreeResponse> {
   const res = await fetch(`/api/chat/conversations/${encodeURIComponent(conversationId)}/branches`)
-  if (!res.ok) {
-    throw new Error(await errorFromResponse(res))
-  }
-  return (await res.json()) as BranchTreeResponse
+  const data = await res.json().catch(() => null)
+  assertOkResponse(res, data)
+  return data as BranchTreeResponse
 }
 
 export async function createConversationBranch(
@@ -47,10 +49,9 @@ export async function createConversationBranch(
       body: JSON.stringify(body),
     },
   )
-  if (!res.ok) {
-    throw new Error(await errorFromResponse(res))
-  }
-  return (await res.json()) as CreateBranchResult
+  const data = await res.json().catch(() => null)
+  assertOkResponse(res, data)
+  return data as CreateBranchResult
 }
 
 export async function patchConversationActiveBranchPath(
@@ -62,9 +63,20 @@ export async function patchConversationActiveBranchPath(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ activeBranchPath: activeBranchPath ?? '' }),
   })
-  if (!res.ok) {
-    throw new Error(await errorFromResponse(res))
-  }
+  const data = await res.json().catch(() => null)
+  assertOkResponse(res, data)
+}
+
+export async function repairConversationChunkIndex(
+  conversationId: string,
+): Promise<{ ok: true; repaired: number }> {
+  const res = await fetch(
+    `/api/chat/conversations/${encodeURIComponent(conversationId)}/repair-chunk-index`,
+    { method: 'POST' },
+  )
+  const data = await res.json().catch(() => null)
+  assertOkResponse(res, data)
+  return data as { ok: true; repaired: number }
 }
 
 export async function patchConversationBranchLabel(
@@ -81,25 +93,23 @@ export async function patchConversationBranchLabel(
       body: JSON.stringify({ label }),
     },
   )
-  if (!res.ok) {
-    throw new Error(await errorFromResponse(res))
-  }
-  return (await res.json()) as { path: string; label?: string }
+  const data = await res.json().catch(() => null)
+  assertOkResponse(res, data)
+  return data as { path: string; label?: string }
 }
 
 export async function deleteConversationBranch(
   conversationId: string,
   branchPath: string,
-): Promise<{ path: string; activeBranchPath: string }> {
+): Promise<{ path: string; activeBranchPath: string; memoryCleanupFailed?: boolean; activeResetFailed?: boolean }> {
   const qs = new URLSearchParams({ path: branchPath.trim() })
   const res = await fetch(
     `/api/chat/conversations/${encodeURIComponent(conversationId)}/branches?${qs}`,
     { method: 'DELETE' },
   )
-  if (!res.ok) {
-    throw new Error(await errorFromResponse(res))
-  }
-  return (await res.json()) as { path: string; activeBranchPath: string }
+  const data = await res.json().catch(() => null)
+  assertOkResponse(res, data)
+  return data as { path: string; activeBranchPath: string; memoryCleanupFailed?: boolean; activeResetFailed?: boolean }
 }
 
 /** 有 sibling 分支的 fork turnId（用于气泡标记） */

@@ -811,7 +811,11 @@
       "branchSwitched": "已切换分支",
       "branchRenamed": "分支已重命名",
       "branchDeleted": "分支已删除",
-      "deleteBranchActiveHint": "这是当前所在分支，删除后将回到父路径。"
+      "deleteBranchActiveHint": "这是当前所在分支，删除后将回到父路径。",
+      "repairRegistry": "修复分支索引",
+      "registryRepaired": "分支索引已修复",
+      "memoryCleanupFailed": "分支已删除，但 memory 索引清理可能不完整，建议重建 memory。",
+      "activeResetFailed": "分支已删除，但未能自动回到父路径，请手动切换分支。"
     },
     "convSettings": {
       "title": "本对话设置",
@@ -1192,6 +1196,7 @@
       "first_turn_persist_maybe_exists": "首条落盘失败（可能已存在）",
       "first_turn_write_failed": "写入对话失败",
       "fork_turn_not_found": "分叉轮次不存在",
+      "fork_turn_has_branches": "无法删除已有对话分支的分叉轮次",
       "fork_turn_not_on_active_path": "分叉轮次不在当前 active 路径上",
       "turn_not_on_active_path": "该轮次不在当前 active 分支路径上",
       "chunk_read_failed": "读取对话 chunk 失败",

@@ -285,7 +285,7 @@ export async function resolveActivePathTurns(
       const parentTurns =
         parentPath === ''
           ? await readAllTurnsAtBranchPath(conversationId, '')
-          : await readAllTurnsAtBranchPath(conversationId, parentPath)
+          : await resolveActivePathTurns(conversationId, parentPath)
 
       const step = mergeActivePathPrefixSegment({
         accumulated: merged,
@@ -430,7 +430,7 @@ export async function collectRegisteredBranchPaths(
 
   const root = await readConversationIndex(conversationId)
   await walk('', root?.branches)
-  return [...out].sort()
+  return [...out]
 }
 
 export interface ChunkChainLocation {

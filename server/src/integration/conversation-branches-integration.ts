@@ -25,6 +25,7 @@ import {
 import {
   createEmptyConversationBranch,
   getConversationBranchTree,
+  isTurnIdReferencedByBranchRegistry,
   updateConversationActiveBranchPath,
   updateConversationBranchLabel,
 } from '../conversation-branches.js'
@@ -310,6 +311,62 @@ async function runForkAt160Acceptance(): Promise<void> {
 
   // eslint-disable-next-line no-console
   console.log('[branch-accept-fork-160] ok')
+}
+
+/** 父分支尚无独有 turn 时创建嵌套分支，并切换 active 加载消息。 */
+async function runEmptyParentNestedForkIntegration(): Promise<void> {
+  const conversationId = generateShortId()
+  await createConversationStub(conversationId, 'empty parent nested fork')
+
+  const first = await saveFirstTurn({
+    conversationId,
+    userText: 'u0',
+    assistantText: 'a0',
+  })
+  assert.ok(first)
+
+  await appendConversationTurn({
+    conversationId,
+    userText: 'u1',
+    receives: [{ id: '', content: 'a1' }],
+    activeReceiveIndex: 0,
+  })
+
+  const mainFork = (await resolveActivePathTurns(conversationId, ''))[1]!
+  const onBranch1 = await createEmptyConversationBranch({
+    conversationId,
+    forkTurnId: mainFork.turnId,
+    label: 'empty parent',
+  })
+  assert.ok(!('error' in onBranch1))
+  assert.equal(onBranch1.path, 'branch1')
+
+  const nested = await createEmptyConversationBranch({
+    conversationId,
+    forkTurnId: mainFork.turnId,
+    label: 'nested on empty parent',
+  })
+  assert.ok(!('error' in nested))
+  assert.equal(nested.path, 'branch1/branch1')
+
+  assert.equal(await isTurnIdReferencedByBranchRegistry(conversationId, mainFork.turnId), true)
+
+  const switched = await updateConversationActiveBranchPath(conversationId, 'branch1/branch1')
+  assert.ok(!('error' in switched))
+
+  const turns = await resolveActivePathTurns(conversationId, 'branch1/branch1')
+  assert.ok(turns.length >= 2)
+  assert.equal(turns[1]!.turnId, mainFork.turnId)
+
+  const msgs = await loadConversationMessages(conversationId, {
+    branchPath: 'branch1/branch1',
+    tail: '50',
+  })
+  assert.ok(msgs.ok)
+  assert.ok(msgs.response.turns.length >= 2)
+
+  // eslint-disable-next-line no-console
+  console.log('[branch-empty-parent-nested-fork-integration] ok')
 }
 
 /**
@@ -899,6 +956,8 @@ async function runIntegration(): Promise<void> {
     await runRecallIntegration(conversationId, forkTurn, afterAppend[2]!)
 
     await runForkAt160Acceptance()
+
+    await runEmptyParentNestedForkIntegration()
 
     await runNestedBranchIntegration()
 

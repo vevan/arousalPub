@@ -47,6 +47,8 @@ export interface CreateBranchResult {
 export interface DeleteBranchResult {
   path: string
   activeBranchPath: string
+  memoryCleanupFailed?: boolean
+  activeResetFailed?: boolean
 }
 
 export interface UpdateBranchLabelResult {
@@ -209,6 +211,22 @@ async function appendBranchRegistryToForkChunk(
   chunkFileName: string,
   entry: BranchRegistryEntry,
 ): Promise<boolean> {
+  return upsertBranchRegistryInForkChunk(
+    conversationId,
+    chunkBranchPath,
+    chunkFileName,
+    entry,
+    { replaceOnly: false },
+  )
+}
+
+async function upsertBranchRegistryInForkChunk(
+  conversationId: string,
+  chunkBranchPath: string,
+  chunkFileName: string,
+  entry: BranchRegistryEntry,
+  opts?: { replaceOnly?: boolean },
+): Promise<boolean> {
   const bp = normalizeBranchPath(chunkBranchPath)
   const chunk = await readChunkFileAt(conversationId, bp, chunkFileName)
   if (!chunk) return false
@@ -218,7 +236,16 @@ async function appendBranchRegistryToForkChunk(
     branches: [],
   }
   const branches = Array.isArray(links.branches) ? links.branches.slice() : []
-  branches.push(entry)
+  const existingIdx = branches.findIndex((e) =>
+    registryEntryMatchesSegment(e, entry.path),
+  )
+  if (existingIdx >= 0) {
+    branches[existingIdx] = entry
+  } else if (opts?.replaceOnly) {
+    return false
+  } else {
+    branches.push(entry)
+  }
   const nextChunk: ChunkFile = {
     ...chunk,
     meta: {
@@ -444,20 +471,6 @@ async function updateBranchRegistryInForkChunk(
   return true
 }
 
-async function restoreParentConversationIndex(
-  conversationId: string,
-  parentBranchPath: string,
-  idx: ConversationIndex | null,
-): Promise<void> {
-  if (!idx) return
-  const parent = normalizeBranchPath(parentBranchPath)
-  if (parent) {
-    await writeBranchConversationIndex(conversationId, parent, idx)
-  } else {
-    await writeConversationIndex(conversationId, idx)
-  }
-}
-
 async function resolveForkChunkLocationForRegistry(
   conversationId: string,
   parentBranchPath: string,
@@ -479,22 +492,56 @@ async function resolveForkChunkLocationForRegistry(
   return { branchPath: located.branchPath, fileName: located.fileName }
 }
 
-async function restoreBranchRegistryAfterDeleteFailure(
+async function rollbackCreatedConversationBranch(
   conversationId: string,
-  parentBranchPath: string,
-  parentIdxBefore: ConversationIndex | null,
-  forkLocated: { branchPath: string; fileName: string } | null,
-  entry: BranchRegistryEntry,
+  params: {
+    parentBranchPath: string
+    segment: string
+    fullPath: string
+    chunkBranchPath: string
+    chunkFileName: string
+    forkTurnId: string
+  },
 ): Promise<void> {
-  await restoreParentConversationIndex(conversationId, parentBranchPath, parentIdxBefore)
-  if (forkLocated) {
-    await appendBranchRegistryToForkChunk(
-      conversationId,
-      forkLocated.branchPath,
-      forkLocated.fileName,
-      entry,
-    )
+  await removeBranchRegistryFromForkChunk(
+    conversationId,
+    params.parentBranchPath,
+    params.segment,
+    params.forkTurnId,
+  ).catch(() => {})
+  await removeBranchRegistryFromParentIndex(
+    conversationId,
+    params.parentBranchPath,
+    params.segment,
+  ).catch(() => {})
+  const branchDir = path.join(
+    conversationDir(conversationId),
+    ...params.fullPath.split('/'),
+  )
+  await rm(branchDir, { recursive: true, force: true }).catch(() => {})
+}
+
+/** turnId 是否为某已注册分支的 fork 点 */
+export async function isTurnIdReferencedByBranchRegistry(
+  conversationId: string,
+  turnId: string,
+): Promise<boolean> {
+  const tid = turnId.trim()
+  if (!tid) return false
+  const paths = await collectRegisteredBranchPaths(conversationId)
+  for (const fullPath of paths) {
+    let parent: string
+    let segment: string
+    try {
+      ;({ parent, segment } = parentPathAndSegment(fullPath))
+    } catch {
+      continue
+    }
+    const entry = await findBranchRegistryEntry(conversationId, parent, segment)
+    const forkTurnId = entry ? parseBranchRegistryForkTurnId(entry) : null
+    if (forkTurnId === tid) return true
   }
+  return false
 }
 
 function activePathWithinDeletedSubtree(
@@ -636,19 +683,33 @@ export async function createEmptyConversationBranch(params: {
 
   const setActive = params.setActive !== false
   let activeBranchPath = parentBranchPath
+  const rollbackCtx = {
+    parentBranchPath,
+    segment,
+    fullPath,
+    chunkBranchPath: located.branchPath,
+    chunkFileName: located.fileName,
+    forkTurnId,
+  }
   if (setActive) {
     const currentRoot = await readConversationIndex(conversationId)
     if (!currentRoot) {
+      await rollbackCreatedConversationBranch(conversationId, rollbackCtx)
       return { error: ApiErrorCodes.branch_create_failed, status: 500 }
     }
-    const nextRoot: ConversationIndex = {
-      ...currentRoot,
-      activeBranchPath: fullPath,
-      updatedAt: nowIso(),
+    try {
+      const nextRoot: ConversationIndex = {
+        ...currentRoot,
+        activeBranchPath: fullPath,
+        updatedAt: nowIso(),
+      }
+      await writeConversationIndex(conversationId, nextRoot)
+      await upsertChatListEntry(chatListEntryFromIndex(nextRoot), nextRoot)
+      activeBranchPath = fullPath
+    } catch {
+      await rollbackCreatedConversationBranch(conversationId, rollbackCtx)
+      return { error: ApiErrorCodes.branch_create_failed, status: 500 }
     }
-    await writeConversationIndex(conversationId, nextRoot)
-    await upsertChatListEntry(chatListEntryFromIndex(nextRoot), nextRoot)
-    activeBranchPath = fullPath
   }
 
   return {
@@ -885,17 +946,16 @@ export async function deleteConversationBranch(
   if (!forkTurnId) {
     return { error: ApiErrorCodes.branch_path_not_found, status: 404 }
   }
-
-  const parentIdxBefore = await readParentConversationIndex(id, parent)
-  const deletedEntry = branchRegistryEntryFromRaw(registryEntry)
-  if (!deletedEntry) {
+  if (!branchRegistryEntryFromRaw(registryEntry)) {
     return { error: ApiErrorCodes.branch_path_not_found, status: 404 }
   }
-  const forkLocated = await resolveForkChunkLocationForRegistry(
-    id,
-    parent,
-    forkTurnId,
-  )
+
+  const branchDir = path.join(conversationDir(id), ...target.split('/'))
+  try {
+    await rm(branchDir, { recursive: true, force: true })
+  } catch {
+    return { error: ApiErrorCodes.branch_delete_failed, status: 500 }
+  }
 
   const parentUpdated = await removeBranchRegistryFromParentIndex(id, parent, segment)
   if (!parentUpdated) {
@@ -910,57 +970,35 @@ export async function deleteConversationBranch(
       forkTurnId,
     )
     if (!chunkUpdated) {
-      await restoreBranchRegistryAfterDeleteFailure(
-        id,
-        parent,
-        parentIdxBefore,
-        forkLocated,
-        deletedEntry,
-      )
       return { error: ApiErrorCodes.branch_delete_failed, status: 500 }
     }
   } catch {
-    await restoreBranchRegistryAfterDeleteFailure(
-      id,
-      parent,
-      parentIdxBefore,
-      forkLocated,
-      deletedEntry,
-    )
     return { error: ApiErrorCodes.branch_delete_failed, status: 500 }
   }
 
-  const branchDir = path.join(conversationDir(id), ...target.split('/'))
-  try {
-    await rm(branchDir, { recursive: true, force: true })
-  } catch {
-    await restoreBranchRegistryAfterDeleteFailure(
-      id,
-      parent,
-      parentIdxBefore,
-      forkLocated,
-      deletedEntry,
-    )
-    return { error: ApiErrorCodes.branch_delete_failed, status: 500 }
-  }
-
+  let memoryCleanupFailed = false
   try {
     await deleteTurnMemoryByBranchSubtree(id, target)
   } catch {
-    // 磁盘已删；memory 残留可后续 reindex
+    memoryCleanupFailed = true
   }
   invalidateChunkIndexSyncCache(id)
 
   let activeBranchPath = await readConversationActiveBranchPath(id)
+  let activeResetFailed = false
   if (activePathWithinDeletedSubtree(activeBranchPath, target)) {
     const reset = await updateConversationActiveBranchPath(id, parent || null)
     if ('error' in reset) {
-      return reset
+      activeResetFailed = true
+    } else {
+      activeBranchPath = await readConversationActiveBranchPath(id)
     }
-    activeBranchPath = await readConversationActiveBranchPath(id)
   }
 
-  return { path: target, activeBranchPath }
+  const result: DeleteBranchResult = { path: target, activeBranchPath }
+  if (memoryCleanupFailed) result.memoryCleanupFailed = true
+  if (activeResetFailed) result.activeResetFailed = true
+  return result
 }
 
 /**

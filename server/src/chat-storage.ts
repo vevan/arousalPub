@@ -369,7 +369,7 @@ export interface BatchTurnUpdateResult {
 
 /**
  * 批量更新多轮：每个 chunk 至多 read+write 一次，index 至多写一次。
- * 用于插件 patchTurns（如 swipe-cleaner），避免逐轮 PATCH 重复读写同一 chunk。
+ * 先完成全部 chunk 读取与内存变更，再统一写入；单 chunk 写失败时该 chunk 内轮次标记 failed（无跨 chunk 事务）。
  */
 export async function batchUpdateConversationTurns(
   conversationId: string,
@@ -437,10 +437,13 @@ export async function batchUpdateConversationTurns(
     byStorage.set(item.storagePath, list)
   }
 
-  const memoryUpserts: { turn: TurnRecord; chunkName: string; branchPath: string }[] = []
-  const touchedBranchPaths = new Set<string>()
-  let ok = 0
-  const memoryEmbedActive = await isConversationMemoryEmbedActive(conversationId)
+  type PendingWrite = {
+    storagePath: string
+    chunk: ChunkFile
+    items: Located[]
+    pendingUpserts: { turn: TurnRecord; chunkName: string; branchPath: string }[]
+  }
+  const pendingWrites: PendingWrite[] = []
 
   for (const [storagePath, items] of byStorage) {
     const chunk = await readChunkFile(conversationId, storagePath)
@@ -475,15 +478,24 @@ export async function batchUpdateConversationTurns(
       chunkChanged = true
     }
     if (chunkChanged) {
-      try {
-        await writeChunkFile(conversationId, storagePath, chunk)
-        touchedBranchPaths.add(normalizeBranchPath(first.branchPath))
-        memoryUpserts.push(...pendingUpserts)
-        ok += pendingUpserts.length
-      } catch {
-        for (const { patch } of items) {
-          failed.push({ turnOrdinal: patch.turnOrdinal, error: 'chunk_write_failed' })
-        }
+      pendingWrites.push({ storagePath, chunk, items, pendingUpserts })
+    }
+  }
+
+  const memoryUpserts: { turn: TurnRecord; chunkName: string; branchPath: string }[] = []
+  const touchedBranchPaths = new Set<string>()
+  let ok = 0
+  const memoryEmbedActive = await isConversationMemoryEmbedActive(conversationId)
+
+  for (const pending of pendingWrites) {
+    try {
+      await writeChunkFile(conversationId, pending.storagePath, pending.chunk)
+      touchedBranchPaths.add(normalizeBranchPath(pending.pendingUpserts[0]!.branchPath))
+      memoryUpserts.push(...pending.pendingUpserts)
+      ok += pending.pendingUpserts.length
+    } catch {
+      for (const { patch } of pending.items) {
+        failed.push({ turnOrdinal: patch.turnOrdinal, error: 'chunk_write_failed' })
       }
     }
   }

@@ -13,6 +13,8 @@ const props = defineProps<{
   treeLoading?: boolean
   errorText?: string
   highlightForkTurnId?: string | null
+  registryBroken?: boolean
+  renameHandler?: (path: string, label: string) => Promise<boolean>
 }>()
 
 const emit = defineEmits<{
@@ -20,6 +22,7 @@ const emit = defineEmits<{
   select: [path: string]
   delete: [path: string]
   rename: [path: string, label: string]
+  repair: []
 }>()
 
 const { t } = useI18n()
@@ -122,6 +125,12 @@ function confirmRename(label: string) {
     cancelRenameDialog()
     return
   }
+  if (props.renameHandler) {
+    void props.renameHandler(path, label).then((ok) => {
+      if (ok) cancelRenameDialog()
+    })
+    return
+  }
   emit('rename', path, label)
 }
 
@@ -146,16 +155,6 @@ function isHighlighted(node: BranchTreeNodeDto): boolean {
   const target = highlightTargetPath.value
   return !!target && node.path === target
 }
-
-watch(
-  () => [props.busy, props.errorText] as const,
-  ([busy, err], prev) => {
-    const wasBusy = prev?.[0]
-    if (wasBusy && !busy && renameDialogOpen.value && !err?.trim()) {
-      cancelRenameDialog()
-    }
-  },
-)
 
 const listRef = ref<HTMLElement | null>(null)
 
@@ -205,6 +204,17 @@ watch(
           class="ma-3 mb-0"
         >
           {{ errorText }}
+          <div v-if="registryBroken" class="mt-2">
+            <v-btn
+              size="small"
+              variant="flat"
+              color="error"
+              :disabled="busy"
+              @click="emit('repair')"
+            >
+              {{ $t('chat.branches.repairRegistry') }}
+            </v-btn>
+          </div>
         </v-alert>
         <div v-if="treeLoading" class="d-flex justify-center py-6">
           <v-progress-circular indeterminate size="28" width="2" />

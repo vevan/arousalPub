@@ -101,6 +101,7 @@ export const ApiErrorCodes = {
   global_budget_trim_requires_field: 'global_budget_trim_requires_field',
   fork_turn_not_found: 'fork_turn_not_found',
   fork_turn_not_on_active_path: 'fork_turn_not_on_active_path',
+  fork_turn_has_branches: 'fork_turn_has_branches',
   turn_not_on_active_path: 'turn_not_on_active_path',
   chunk_read_failed: 'chunk_read_failed',
   chunk_write_failed: 'chunk_write_failed',

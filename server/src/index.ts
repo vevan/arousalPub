@@ -19,6 +19,9 @@ import {
 import { parseAuthorsNotePatch, parseDefaultAuthorsNotePatch } from './authors-note-settings.js'
 import {
   repairConversationChunkIndex,
+  readChunkContainingOrdinal,
+  isTurnOrdinalOffActivePath,
+  isBranchRegistryBrokenError,
 } from './chunk-chain.js'
 import { loadConversationMessages } from './conversation-messages-api.js'
 import {
@@ -62,11 +65,11 @@ import {
   updateTurnContentInTailChunk,
   type TurnReceive,
 } from './chat-storage.js'
-import { readChunkContainingOrdinal } from './chunk-chain.js'
 import {
   createEmptyConversationBranch,
   deleteConversationBranch,
   getConversationBranchTree,
+  isTurnIdReferencedByBranchRegistry,
   updateConversationActiveBranchPath,
   updateConversationBranchLabel,
 } from './conversation-branches.js'
@@ -1470,7 +1473,14 @@ app.patch<{
     try {
       const normalized = await loadAndApplyRegexPersistToTurnPatch(id, patch)
       const located = await readChunkContainingOrdinal(id, ord)
-      const existingTurn = located?.chunk.turns.find((t) => t.turnOrdinal === ord)
+      if (!located) {
+        const offActive = await isTurnOrdinalOffActivePath(id, ord)
+        if (offActive) {
+          return reply.status(400).send({ error: ApiErrorCodes.turn_not_on_active_path })
+        }
+        return reply.status(404).send({ error: ApiErrorCodes.turn_chunk_not_found })
+      }
+      const existingTurn = located.chunk.turns.find((t) => t.turnOrdinal === ord)
       const syncedPlugins = await buildSyncedTurnPluginsFromReceives(
         existingTurn?.plugins,
         normalized.receives,
@@ -1487,10 +1497,17 @@ app.patch<{
         syncedPlugins,
       )
       if (!ok) {
+        const offActive = await isTurnOrdinalOffActivePath(id, ord)
+        if (offActive) {
+          return reply.status(400).send({ error: ApiErrorCodes.turn_not_on_active_path })
+        }
         return reply.status(404).send({ error: ApiErrorCodes.turn_chunk_not_found })
       }
       return toTurnPatchPersistPayload(normalized, syncedPlugins)
     } catch (e) {
+      if (isBranchRegistryBrokenError(e)) {
+        return reply.status(409).send({ error: ApiErrorCodes.branch_registry_broken })
+      }
       app.log.error(e)
       return reply.status(500).send({ error: ApiErrorCodes.turn_update_failed })
     }
@@ -1541,6 +1558,9 @@ app.patch<{
       const result = await batchUpdateConversationTurns(id, normalizedPatches)
       return result
     } catch (e) {
+      if (isBranchRegistryBrokenError(e)) {
+        return reply.status(409).send({ error: ApiErrorCodes.branch_registry_broken })
+      }
       if (e instanceof Error && e.message === 'turns_batch_too_large') {
         return reply.status(400).send({ error: ApiErrorCodes.turns_batch_too_large })
       }
@@ -1562,12 +1582,27 @@ app.delete<{ Params: { id: string; turnOrdinal: string } }>(
       return reply.status(400).send({ error: ApiErrorCodes.invalid_turn_ordinal })
     }
     try {
+      const located = await readChunkContainingOrdinal(id, ord)
+      if (!located) {
+        const offActive = await isTurnOrdinalOffActivePath(id, ord)
+        if (offActive) {
+          return reply.status(400).send({ error: ApiErrorCodes.turn_not_on_active_path })
+        }
+        return reply.status(404).send({ error: ApiErrorCodes.turn_delete_not_found })
+      }
+      const victim = located.chunk.turns.find((t) => t.turnOrdinal === ord)
+      if (victim?.turnId && (await isTurnIdReferencedByBranchRegistry(id, victim.turnId))) {
+        return reply.status(409).send({ error: ApiErrorCodes.fork_turn_has_branches })
+      }
       const ok = await removeTurnAtOrdinalInTailChunk(id, ord)
       if (!ok) {
         return reply.status(404).send({ error: ApiErrorCodes.turn_delete_not_found })
       }
       return { ok: true as const }
     } catch (e) {
+      if (isBranchRegistryBrokenError(e)) {
+        return reply.status(409).send({ error: ApiErrorCodes.branch_registry_broken })
+      }
       app.log.error(e)
       return reply.status(500).send({ error: ApiErrorCodes.turn_delete_failed })
     }

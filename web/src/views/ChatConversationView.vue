@@ -122,10 +122,12 @@ const {
   branchSuccessMessage,
   branchActionError,
   branchHighlightForkTurnId,
+  branchRegistryBroken,
   forkTurnIdsWithSiblings,
   activeBranchDisplayLabel,
   syncActiveFromIndex,
   refreshBranchTree,
+  repairBranchRegistry,
   switchActiveBranch,
   createBranchDialogOpen,
   pendingCreateTurn,
@@ -1017,9 +1019,11 @@ watch(
         :tree-loading="branchTreeLoading"
         :error-text="branchLoadError"
         :highlight-fork-turn-id="branchHighlightForkTurnId"
+        :registry-broken="branchRegistryBroken"
+        :rename-handler="renameBranch"
         @select="switchActiveBranch"
         @delete="deleteBranch"
-        @rename="renameBranch"
+        @repair="repairBranchRegistry"
       />
       <ChatBranchLabelDialog
         v-model="createBranchDialogOpen"

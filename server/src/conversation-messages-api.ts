@@ -1,9 +1,11 @@
 import {
-  readAllTurns,
+  readConversationActiveBranchPath,
   readTurnsBefore,
   readTurnsInOrdinalRange,
   readTurnsTail,
+  resolveActivePathTurns,
 } from './chunk-chain.js'
+import { normalizeBranchPath } from './chunk-path.js'
 import { getTurnUserText, type TurnReceive, type TurnRecord } from './chat-storage.js'
 import {
   CONVERSATION_BATCH_MAX_TURNS,
@@ -148,11 +150,24 @@ export async function loadConversationMessages(
     tail?: string
     before?: string
     limit?: string
+    /** 调试：覆盖 index.activeBranchPath */
+    branchPath?: string
   },
 ): Promise<
   | { ok: true; response: MessagesListResponse }
   | { ok: false; error: string }
 > {
+  let activeBranchPath: string
+  if (query.branchPath !== undefined && query.branchPath !== '') {
+    try {
+      activeBranchPath = normalizeBranchPath(query.branchPath)
+    } catch {
+      return { ok: false, error: 'messages_range_invalid' }
+    }
+  } else {
+    activeBranchPath = await readConversationActiveBranchPath(conversationId)
+  }
+
   const mode = resolveMessagesQueryMode(query)
   const hasFrom = query.from !== undefined && query.from !== ''
   const hasTo = query.to !== undefined && query.to !== ''
@@ -169,7 +184,7 @@ export async function loadConversationMessages(
       query.tail,
       CONVERSATION_MESSAGES_DEFAULT_TAIL,
     )
-    const result = await readTurnsTail(conversationId, tail)
+    const result = await readTurnsTail(conversationId, tail, activeBranchPath)
     const turns = mapTurnRecordsToMessagesDto(result.turns)
     if (turns.length === 0) {
       return { ok: true, response: { turns } }
@@ -198,7 +213,12 @@ export async function loadConversationMessages(
       query.limit,
       CONVERSATION_MESSAGES_DEFAULT_TAIL,
     )
-    const result = await readTurnsBefore(conversationId, before, limit)
+    const result = await readTurnsBefore(
+      conversationId,
+      before,
+      limit,
+      activeBranchPath,
+    )
     const turns = mapTurnRecordsToMessagesDto(result.turns)
     if (turns.length === 0) {
       return {
@@ -236,7 +256,12 @@ export async function loadConversationMessages(
     if (to - from + 1 > CONVERSATION_BATCH_MAX_TURNS) {
       return { ok: false, error: 'range_too_large' }
     }
-    const records = await readTurnsInOrdinalRange(conversationId, from, to)
+    const records = await readTurnsInOrdinalRange(
+      conversationId,
+      from,
+      to,
+      activeBranchPath,
+    )
     return {
       ok: true,
       response: {
@@ -246,7 +271,10 @@ export async function loadConversationMessages(
     }
   }
 
-  const records = await readAllTurns(conversationId)
+  const records = await resolveActivePathTurns(
+    conversationId,
+    activeBranchPath,
+  )
   return {
     ok: true,
     response: { turns: mapTurnRecordsToMessagesDto(records) },

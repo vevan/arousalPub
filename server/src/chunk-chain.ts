@@ -132,6 +132,178 @@ export function parseBranchRegistryPath(entry: unknown): string | null {
   }
 }
 
+/** 从 branches[] 单条解析 forkTurnId */
+export function parseBranchRegistryForkTurnId(entry: unknown): string | null {
+  if (!entry || typeof entry !== 'object') return null
+  const raw = (entry as { forkTurnId?: unknown }).forkTurnId
+  if (typeof raw !== 'string' || !raw.trim()) return null
+  return raw.trim()
+}
+
+/** 在 parent 分支 index.branches[] 中查找相对 segment 的注册项 */
+export async function findBranchRegistryEntry(
+  conversationId: string,
+  parentBranchPath: string,
+  relativeSegment: string,
+): Promise<unknown | null> {
+  const parent = normalizeBranchPath(parentBranchPath)
+  const seg = relativeSegment.trim()
+  if (!seg) return null
+  const idx = parent
+    ? await readBranchConversationIndex(conversationId, parent)
+    : await readConversationIndex(conversationId)
+  if (!Array.isArray(idx?.branches)) return null
+  for (const entry of idx.branches) {
+    const p = parseBranchRegistryPath(entry)
+    if (!p) continue
+    if (p === seg || p.split('/').pop() === seg) return entry
+  }
+  return null
+}
+
+/** 读取会话 activeBranchPath（非法值视为 ""） */
+export async function readConversationActiveBranchPath(
+  conversationId: string,
+): Promise<string> {
+  const idx = await readConversationIndex(conversationId)
+  if (idx?.activeBranchPath === null || idx?.activeBranchPath === undefined) {
+    return ''
+  }
+  if (typeof idx.activeBranchPath !== 'string' || !idx.activeBranchPath.trim()) {
+    return ''
+  }
+  try {
+    return normalizeBranchPath(idx.activeBranchPath)
+  } catch {
+    return ''
+  }
+}
+
+/** 仅读指定 branchPath 子目录 chunk 链上的 turn（不含共享前缀） */
+export async function readAllTurnsAtBranchPath(
+  conversationId: string,
+  branchPath: string,
+): Promise<TurnRecord[]> {
+  const bp = normalizeBranchPath(branchPath)
+  const files = await listChunkFileNamesAt(conversationId, bp)
+  const collected: TurnRecord[] = []
+  for (const fileName of files) {
+    const chunk = await readChunkFileAt(conversationId, bp, fileName)
+    if (chunk?.turns?.length) collected.push(...chunk.turns)
+  }
+  return sortTurnsUnique(collected)
+}
+
+/** 合并 active 路径的一段前缀（parent 上 fork 及之前） */
+export function mergeActivePathPrefixSegment(params: {
+  accumulated: TurnRecord[]
+  parentBranchTurns: TurnRecord[]
+  forkTurnId: string
+}): { merged: TurnRecord[]; forkOrdinal: number } | null {
+  const forkTurn = params.parentBranchTurns.find(
+    (t) => t.turnId === params.forkTurnId,
+  )
+  if (!forkTurn) return null
+  const seen = new Set(params.accumulated.map((t) => t.turnId))
+  const merged = params.accumulated.slice()
+  for (const t of params.parentBranchTurns) {
+    if (t.turnOrdinal <= forkTurn.turnOrdinal && !seen.has(t.turnId)) {
+      merged.push(t)
+      seen.add(t.turnId)
+    }
+  }
+  return {
+    merged: sortTurnsUnique(merged),
+    forkOrdinal: forkTurn.turnOrdinal,
+  }
+}
+
+/**
+ * active 路径线性 turn：祖先前缀（至各 forkTurnId 含 fork 轮）+ active 子树 suffix。
+ * 主路径 activeBranchPath="" 时等价 readAllTurnsAtBranchPath("").
+ */
+export async function resolveActivePathTurns(
+  conversationId: string,
+  activeBranchPath: string | null | undefined,
+  range?: { from: number; to: number },
+): Promise<TurnRecord[]> {
+  const active = normalizeBranchPath(activeBranchPath ?? '')
+
+  let merged: TurnRecord[]
+  if (!active) {
+    merged = await readAllTurnsAtBranchPath(conversationId, '')
+  } else {
+    const segments = active.split('/')
+    merged = []
+    let parentPath = ''
+    let lastForkOrdinal = -1
+
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i]!
+      const entry = await findBranchRegistryEntry(
+        conversationId,
+        parentPath,
+        segment,
+      )
+      const forkTurnId = entry ? parseBranchRegistryForkTurnId(entry) : null
+      if (!forkTurnId) {
+        merged = []
+        lastForkOrdinal = -1
+        break
+      }
+
+      const parentTurns =
+        parentPath === ''
+          ? await readAllTurnsAtBranchPath(conversationId, '')
+          : await readAllTurnsAtBranchPath(conversationId, parentPath)
+
+      const step = mergeActivePathPrefixSegment({
+        accumulated: merged,
+        parentBranchTurns: parentTurns,
+        forkTurnId,
+      })
+      if (!step) {
+        merged = []
+        lastForkOrdinal = -1
+        break
+      }
+      merged = step.merged
+      lastForkOrdinal = step.forkOrdinal
+      parentPath = segments.slice(0, i + 1).join('/')
+    }
+
+    if (lastForkOrdinal >= 0) {
+      const suffix = await readAllTurnsAtBranchPath(conversationId, active)
+      const seen = new Set(merged.map((t) => t.turnId))
+      for (const t of suffix) {
+        if (t.turnOrdinal > lastForkOrdinal && !seen.has(t.turnId)) {
+          merged.push(t)
+          seen.add(t.turnId)
+        }
+      }
+      merged = sortTurnsUnique(merged)
+    }
+  }
+
+  if (range) {
+    const { from, to } = range
+    merged = merged.filter(
+      (t) => t.turnOrdinal >= from && t.turnOrdinal <= to,
+    )
+  }
+  return merged
+}
+
+async function effectiveActiveBranchPath(
+  conversationId: string,
+  override?: string | null,
+): Promise<string> {
+  if (override !== undefined) {
+    return normalizeBranchPath(override ?? '')
+  }
+  return readConversationActiveBranchPath(conversationId)
+}
+
 /** 从 index branches[] 递归收集已注册分支（会话根相对路径） */
 export async function collectRegisteredBranchPaths(
   conversationId: string,
@@ -305,6 +477,7 @@ export async function readTurnsBefore(
   conversationId: string,
   beforeExclusive: number,
   limit: number,
+  activeBranchPath?: string | null,
 ): Promise<ReadTurnsBeforeResult> {
   const { from, to, hasMoreBefore } = computeBeforeOrdinalReadRange(
     beforeExclusive,
@@ -318,12 +491,25 @@ export async function readTurnsBefore(
       maxOrdinal: null,
     }
   }
-  const turns = await readTurnsInOrdinalRange(conversationId, from, to)
+  const active = await effectiveActiveBranchPath(conversationId, activeBranchPath)
+  const turns = await resolveActivePathTurns(conversationId, active, {
+    from,
+    to,
+  })
+  const pathHasMoreBefore =
+    turns.length > 0
+      ? Math.min(...turns.map((t) => t.turnOrdinal)) > 0
+      : beforeExclusive > 0
   const minOrdinal =
     turns.length > 0 ? Math.min(...turns.map((t) => t.turnOrdinal)) : null
   const maxOrdinal =
     turns.length > 0 ? Math.max(...turns.map((t) => t.turnOrdinal)) : null
-  return { turns, hasMoreBefore, minOrdinal, maxOrdinal }
+  return {
+    turns,
+    hasMoreBefore: hasMoreBefore && pathHasMoreBefore,
+    minOrdinal,
+    maxOrdinal,
+  }
 }
 
 export interface ReadTurnsTailResult {
@@ -333,13 +519,15 @@ export interface ReadTurnsTailResult {
   maxOrdinal: number | null
 }
 
-/** 读取对话尾部最多 limit 轮（沿 tail → previous，仅加载相交 chunk） */
+/** 读取对话尾部最多 limit 轮（active 路径合并读） */
 export async function readTurnsTail(
   conversationId: string,
   limit: number,
+  activeBranchPath?: string | null,
 ): Promise<ReadTurnsTailResult> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx?.tailChunkFile) {
+  const active = await effectiveActiveBranchPath(conversationId, activeBranchPath)
+  const onPath = await resolveActivePathTurns(conversationId, active)
+  if (onPath.length === 0) {
     return {
       turns: [],
       hasMoreBefore: false,
@@ -347,28 +535,21 @@ export async function readTurnsTail(
       maxOrdinal: null,
     }
   }
-  const tailChunk = await readChunkFile(conversationId, idx.tailChunkFile)
-  if (!tailChunk?.turns?.length) {
-    return {
-      turns: [],
-      hasMoreBefore: !!tailChunk?.meta.links.previous,
-      minOrdinal: null,
-      maxOrdinal: null,
-    }
-  }
-  const maxOrdinal = Math.max(...tailChunk.turns.map((t) => t.turnOrdinal))
+  const maxOrdinal = Math.max(...onPath.map((t) => t.turnOrdinal))
   const { from, to, hasMoreBefore } = computeTailOrdinalReadRange(
     maxOrdinal,
     limit,
   )
-  const turns = await readTurnsInOrdinalRange(conversationId, from, to)
+  const turns = onPath.filter(
+    (t) => t.turnOrdinal >= from && t.turnOrdinal <= to,
+  )
   const minOrdinal =
     turns.length > 0 ? Math.min(...turns.map((t) => t.turnOrdinal)) : null
   return {
     turns,
     hasMoreBefore,
     minOrdinal,
-    maxOrdinal,
+    maxOrdinal: turns.length > 0 ? maxOrdinal : null,
   }
 }
 
@@ -396,23 +577,16 @@ export async function loadConversationChunksForOrdinalRange(
   return map
 }
 
-/** 仅读取 ordinal 闭区间 [from, to] 内的 turn（不加载全对话） */
+/** 仅读取 ordinal 闭区间 [from, to] 内的 turn（active 路径合并读） */
 export async function readTurnsInOrdinalRange(
   conversationId: string,
   from: number,
   to: number,
+  activeBranchPath?: string | null,
 ): Promise<TurnRecord[]> {
   if (from > to || from < 0) return []
-  const chunks = await loadConversationChunksForOrdinalRange(conversationId, from, to)
-  const collected: TurnRecord[] = []
-  for (const chunk of chunks.values()) {
-    for (const t of chunk.turns) {
-      if (t.turnOrdinal >= from && t.turnOrdinal <= to) {
-        collected.push(t)
-      }
-    }
-  }
-  return sortTurnsUnique(collected)
+  const active = await effectiveActiveBranchPath(conversationId, activeBranchPath)
+  return resolveActivePathTurns(conversationId, active, { from, to })
 }
 
 /** 从 tail 沿 previous 读取全链 turn（运维/兼容；热路径请用 readTurnsTail / readTurnsInOrdinalRange） */

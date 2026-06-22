@@ -91,6 +91,7 @@ export async function loadTurnsForMemoryPipeline(
   conversationId: string,
   historyCount: number,
   beforeExclusive?: number | null,
+  activeBranchPath?: string | null,
 ): Promise<TurnRecord[]> {
   const slack = 2
   if (
@@ -100,10 +101,19 @@ export async function loadTurnsForMemoryPipeline(
     const end = beforeExclusive - 1
     if (end < 0) return []
     const from = Math.max(0, end - historyCount - slack)
-    return readTurnsInOrdinalRange(conversationId, from, end)
+    return readTurnsInOrdinalRange(
+      conversationId,
+      from,
+      end,
+      activeBranchPath,
+    )
   }
   const window = Math.max(historyCount, slack) + 1
-  const { turns } = await readTurnsTail(conversationId, window)
+  const { turns } = await readTurnsTail(
+    conversationId,
+    window,
+    activeBranchPath,
+  )
   return turns
 }
 
@@ -118,6 +128,7 @@ export async function runMemoryPipeline(
     input.conversationId,
     historyCount,
     input.historyBeforeTurnOrdinalExclusive,
+    input.activeBranchPath,
   )
   const recentTurns = selectRecentTurns(
     pipelineTurns,

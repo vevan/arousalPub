@@ -7,12 +7,12 @@
 - [ ] **对话分支（消息树）** — 定案：`DOC/23` §1.4 **空分支 + 从下一轮继续**；memory/枚举原语已就绪（P3 ✅）
 
   **S1 · 读路径（阻塞 messages / assemble）**
-  - [ ] `chunk-chain.ts`：实现 `resolveActivePathTurns(convId, activeBranchPath, range?)`（前缀至 `forkTurnId` + 分支 suffix 合并 · §5.3）
-  - [ ] `readTurnsTail` / `readTurnsBefore` / `readTurnsInOrdinalRange` 改为基于 `activeBranchPath`（主路径 `""` 行为不变）
-  - [ ] `conversation-messages-api.ts`：`GET .../messages` 返回合并后线性列表；`tail` / `before` 分页在 active 路径上计算 `hasMoreBefore`
-  - [ ] `memory-pipeline.ts`：`loadTurnsForMemoryPipeline` 读 active 路径 tail/区间（assemble history 窗口）
-  - [ ] `plugin-prepare-context`（若有独立读链）：摘要 / 区间读限定 active 路径
-  - [ ] 单测：`resolveActivePathTurns` fixture（主路径 fork @160 + 空分支 + 分支 append 161+）
+  - [x] `chunk-chain.ts`：实现 `resolveActivePathTurns(convId, activeBranchPath, range?)`（前缀至 `forkTurnId` + 分支 suffix 合并 · §5.3）
+  - [x] `readTurnsTail` / `readTurnsBefore` / `readTurnsInOrdinalRange` 改为基于 `activeBranchPath`（主路径 `""` 行为不变）
+  - [x] `conversation-messages-api.ts`：`GET .../messages` 返回合并后线性列表；`tail` / `before` 分页在 active 路径上计算 `hasMoreBefore`
+  - [x] `memory-pipeline.ts`：`loadTurnsForMemoryPipeline` 读 active 路径 tail/区间（assemble history 窗口）
+  - [x] `plugin-prepare-context`（若有独立读链）：摘要 / 区间读限定 active 路径 — 经 `readTurnsInOrdinalRange` 默认读 index.activeBranchPath
+  - [x] 单测：`mergeActivePathPrefixSegment` / `parseBranchRegistryForkTurnId`（`chunk-chain-active-path.test.ts`）；集成 fixture 待 S3
 
   **S2 · 写路径**
   - [ ] `writeChunkFileAt` / append 前 `mkdir(branchPath, { recursive: true })`

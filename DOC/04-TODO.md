@@ -4,6 +4,8 @@
 
 ## P0 余项
 
+- [ ] **新落盘助手回复下分支图标禁用** — 本轮助手消息落盘成功后，该轮气泡菜单/分支入口（「从此处分支」或 fork 指示）呈禁用态，**刷新页面后恢复**；疑为落盘 SSE / `persist` 后本地 turn 状态未同步（`turnId` / `turnOrdinal` / `activeBranchPath` / 分支注册表缓存）。排查：`ChatMessageList` 气泡菜单 `disabled` 条件、`use-turn-list` 落盘后 merge、`useConversationBranches` 是否在 append 后刷新；对照 `DOC/23` S4。
+
 - [x] **对话分支（消息树）** — 定案：`DOC/23` §1.4 **空分支 + 从下一轮继续**；S1–S5 + 验收已完成（2026-06-18）
 
   **S1 · 读路径（阻塞 messages / assemble）**

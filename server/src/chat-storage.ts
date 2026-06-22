@@ -80,6 +80,7 @@ import {
 } from './memory-index.js'
 import {
   buildFirstChunkDescriptor,
+  invalidateChunkIndexSyncCache,
   loadConversationChunksForOrdinalRange,
   prepareTailChunkForAppend,
   readChunkContainingOrdinal,
@@ -1777,6 +1778,7 @@ export async function appendConversationTurn(params: {
   } else {
     await writeConversationIndex(conversationId, idx)
   }
+  invalidateChunkIndexSyncCache(conversationId)
   const rootIdx = await readConversationIndex(conversationId)
   if (rootIdx) {
     rootIdx.updatedAt = t
@@ -1991,6 +1993,7 @@ export async function removeTurnAtOrdinalInTailChunk(
     }
     idx.updatedAt = t
     await writeConversationIndex(conversationId, idx)
+    invalidateChunkIndexSyncCache(conversationId)
     await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
     if (victimTurnId) {
       void removeChatAuditEntriesByTurnId(conversationId, victimTurnId)

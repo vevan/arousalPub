@@ -41,8 +41,8 @@
   - [x] i18n：`zh.json` / `en.json`（分支、创建、切换、空分支提示等）
 
   **S5 · 索引与清理（可紧随 S2）**
-  - [ ] `rebuildHeadTailFromLinks` 按 `branchPath` 作用域扫描（主路径仅根目录 `turn-*.json`）
-  - [ ] `syncChunkIndexIfDrifted` / tail 缓冲：分支 tail 变更后 `invalidateChunkIndexSyncCache`
+  - [x] `rebuildHeadTailFromLinks` 按 `branchPath` 作用域扫描（主路径仅根目录 `turn-*.json`）
+  - [x] `syncChunkIndexIfDrifted` / tail 缓冲：分支 tail 变更后 `invalidateChunkIndexSyncCache`
   - [ ] 弃用分支（可 v1.1）：`DELETE .../branches/:path` 或设置页入口 → 删子树 + `deleteTurnMemoryByBranchSubtree` + 重置 `activeBranchPath`
 
   **验收**

@@ -7,8 +7,7 @@ import {
   applyRegexRulesToText,
   filterRegexRules,
 } from './regex-apply.js'
-import { readChunkContainingOrdinal } from './chunk-chain.js'
-import { readTailChunk } from './chat-storage.js'
+import { readChunkContainingOrdinal, resolveActivePathTurns, readConversationActiveBranchPath } from './chunk-chain.js'
 import { readRegexRulesDocument } from './regex-rules-file.js'
 import type { RegexRule } from './regex-rules-types.js'
 import { hasEnabledPersistRules } from './regex-persist.js'
@@ -16,10 +15,10 @@ import { hasEnabledPersistRules } from './regex-persist.js'
 export async function resolveConversationTailOrdinal(
   conversationId: string,
 ): Promise<number> {
-  const tailChunk = await readTailChunk(conversationId)
-  if (!tailChunk?.turns.length) return 0
-  const last = tailChunk.turns[tailChunk.turns.length - 1]
-  return typeof last?.turnOrdinal === 'number' ? last.turnOrdinal : 0
+  const active = await readConversationActiveBranchPath(conversationId)
+  const turns = await resolveActivePathTurns(conversationId, active)
+  if (turns.length === 0) return 0
+  return Math.max(...turns.map((t) => t.turnOrdinal))
 }
 
 /** 编辑 / 批量 PATCH 写盘前：对整轮 user + 全部 receives 应用 persist 规则 */

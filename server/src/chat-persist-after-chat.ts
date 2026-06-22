@@ -1,6 +1,6 @@
 import { ApiErrorCodes } from './api-error-codes.js'
 import type { ChatMessage } from './assemble-prompts.js'
-import { readChunkContainingOrdinal } from './chunk-chain.js'
+import { readChunkContainingOrdinal, readConversationActiveBranchPath, readTailChunkAt } from './chunk-chain.js'
 import { estimateTokens } from './token-count.js'
 import { allocateShortId } from './short-id.js'
 import {
@@ -9,7 +9,6 @@ import {
   collectChunkEntityIds,
   readConversationIndex,
   readConversationPluginSettings,
-  readTailChunk,
   saveFirstTurn,
   updateTurnContentInTailChunk,
   type TurnReceive,
@@ -312,6 +311,7 @@ export async function persistTurnAfterModelReply(params: {
   if (!idx) {
     return { ok: false, error: ApiErrorCodes.conversation_not_found }
   }
+  const activeBranchPath = await readConversationActiveBranchPath(conversationId)
   const trackerEpoch = trackerEpochFromConvIndex(idx)
 
   const model =
@@ -461,7 +461,7 @@ export async function persistTurnAfterModelReply(params: {
     }
 
     /** 首轮空回复未落盘时，再生按首次/追加写入，避免「未找到再生轮次」 */
-    if (!idx.headChunkFile) {
+    if (!idx.headChunkFile && !activeBranchPath) {
       if (regenOrd !== 0) {
         return { ok: false, error: ApiErrorCodes.regenerate_turn_not_found }
       }
@@ -496,7 +496,7 @@ export async function persistTurnAfterModelReply(params: {
       )
     }
 
-    const tailChunk = await readTailChunk(conversationId)
+    const tailChunk = await readTailChunkAt(conversationId, activeBranchPath)
     const used = tailChunk ? collectChunkEntityIds(tailChunk) : new Set<string>()
     const receiveId = allocateShortId(used)
     const appendOrdinal =
@@ -532,7 +532,7 @@ export async function persistTurnAfterModelReply(params: {
     if (!ok) {
       return { ok: false, error: ApiErrorCodes.append_turn_failed }
     }
-    const chunk = await readTailChunk(conversationId)
+    const chunk = await readTailChunkAt(conversationId, activeBranchPath)
     const last = chunk?.turns[chunk.turns.length - 1]
     const appendTurnOrdinal = last?.turnOrdinal ?? appendOrdinal
     return finishPersistResult(
@@ -619,7 +619,7 @@ export async function persistTurnAfterModelReply(params: {
     params.resolvedFeature,
   )
 
-  if (!idx.headChunkFile) {
+  if (!idx.headChunkFile && !activeBranchPath) {
     const saved = await saveFirstTurn({
       conversationId,
       userText,
@@ -651,7 +651,7 @@ export async function persistTurnAfterModelReply(params: {
     )
   }
 
-  const tailChunk = await readTailChunk(conversationId)
+  const tailChunk = await readTailChunkAt(conversationId, activeBranchPath)
   const used = tailChunk ? collectChunkEntityIds(tailChunk) : new Set<string>()
   const receiveId = allocateShortId(used)
   const receives: TurnReceive[] = [
@@ -673,7 +673,7 @@ export async function persistTurnAfterModelReply(params: {
   if (!ok) {
     return { ok: false, error: ApiErrorCodes.append_turn_failed }
   }
-  const chunk = await readTailChunk(conversationId)
+  const chunk = await readTailChunkAt(conversationId, activeBranchPath)
   const last = chunk?.turns[chunk.turns.length - 1]
   const persistedOrdinal = last?.turnOrdinal ?? turnOrdinal
   return finishPersistResult(

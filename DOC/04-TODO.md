@@ -15,12 +15,13 @@
   - [x] 单测：`mergeActivePathPrefixSegment` / `parseBranchRegistryForkTurnId`（`chunk-chain-active-path.test.ts`）；集成 fixture 待 S3
 
   **S2 · 写路径**
-  - [ ] `writeChunkFileAt` / append 前 `mkdir(branchPath, { recursive: true })`
-  - [ ] `appendConversationTurn` / `prepareTailChunkForAppend` / `saveFirstTurn`（分支首块）接受 `branchPath`；`nextOrdinal = forkOrdinal + 1` 在 active 路径上计算
-  - [ ] `chat-persist-after-chat.ts` / `POST .../chat`：落盘读 `idx.activeBranchPath`，追加写入对应分支 tail
-  - [ ] `scheduleMemoryIndexUpsert` 落盘传正确 `branchPath`（第 4 参数）
-  - [ ] `PATCH .../turns/:ordinal` / 按 turnId 定位：active 路径上解析 chunk（`readChunkFileAt`）
-  - [ ] 单测：空分支创建后首次 append → `branchN/turn-*` 首块、`turnOrdinal === forkOrdinal + 1`、Lance 行 `branchPath`
+  - [x] `writeChunkFile` append 前 `mkdir` 递归（含 `branchN/` 相对路径）
+  - [x] `writeBranchConversationIndex`；`prepareTailChunkForAppend` / `rotateTailChunk` 分支感知
+  - [x] `appendConversationTurn` 读 `activeBranchPath`；空分支首 append 创建首 chunk（`forkOrdinal + 1`）
+  - [x] `chat-persist-after-chat.ts`：落盘读 `activeBranchPath` + `readTailChunkAt`
+  - [x] `scheduleMemoryIndexUpsert` 落盘传 `branchPath`；`readChunkContainingOrdinal` active 路径定位
+  - [x] `updateTurnContentInTailChunk` / PATCH 写盘带 `branchPath`
+  - [ ] 单测：空分支 fixture 首次 append 磁盘断言（待 S3 创建 API 联调）
 
   **S3 · 分支 API**
   - [ ] `POST /api/chat/conversations/:id/branches` — 空分支（§5.3）：注册表 + `branchN/index.json`（无 chunk）+ 可选切 `activeBranchPath`

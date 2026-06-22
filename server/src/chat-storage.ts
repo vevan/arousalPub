@@ -10,7 +10,7 @@ import {
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { getChatsRoot } from './config.js'
-import { normalizeBranchPath } from './chunk-path.js'
+import { normalizeBranchPath, chunkStorageRelativePath } from './chunk-path.js'
 import { isValidConversationId } from './conversation-id.js'
 import type { ResolvedFeatureAudit } from './feature-binding-resolve.js'
 import type {
@@ -83,6 +83,7 @@ import {
   loadConversationChunksForOrdinalRange,
   prepareTailChunkForAppend,
   readChunkContainingOrdinal,
+  readConversationActiveBranchPath,
 } from './chunk-chain.js'
 import {
   CONVERSATION_BATCH_MAX_TURNS,
@@ -1166,11 +1167,26 @@ export async function writeChunkFile(
     ...chunk,
     turns: chunk.turns.map(stripTurnForDisk),
   }
-  await writeFile(
-    path.join(conversationDir(conversationId), chunkFileName),
-    JSON.stringify(clean, null, 2),
-    'utf8',
-  )
+  const rel = chunkFileName.replace(/\\/g, '/')
+  const filePath = path.join(conversationDir(conversationId), rel)
+  await mkdir(path.dirname(filePath), { recursive: true })
+  await writeFile(filePath, JSON.stringify(clean, null, 2), 'utf8')
+}
+
+export async function writeBranchConversationIndex(
+  id: string,
+  branchPath: string,
+  data: ConversationIndex,
+): Promise<void> {
+  const bp = normalizeBranchPath(branchPath)
+  if (!bp) {
+    await writeConversationIndex(id, data)
+    return
+  }
+  const filePath = branchConversationIndexPath(id, bp)
+  await mkdir(path.dirname(filePath), { recursive: true })
+  const normalized = syncConversationCharacterFields(data)
+  await writeFile(filePath, JSON.stringify(normalized, null, 2), 'utf8')
 }
 
 export async function readChatPromptFile(
@@ -1682,7 +1698,7 @@ export async function saveOpeningTurn(params: {
   return { index: idx, chunk }
 }
 
-/** 在已有尾块末尾追加一轮对话 */
+/** 在已有尾块末尾追加一轮对话（默认写入 index.activeBranchPath） */
 export async function appendConversationTurn(params: {
   conversationId: string
   userText: string
@@ -1690,6 +1706,8 @@ export async function appendConversationTurn(params: {
   activeReceiveIndex: number
   auditSnapshot?: ChatAuditSnapshotInput
   turnPluginEntries?: TurnPluginEntry[]
+  /** 省略则读会话根 index.activeBranchPath；"" 为主路径 */
+  branchPath?: string | null
 }): Promise<boolean> {
   const {
     conversationId,
@@ -1702,11 +1720,15 @@ export async function appendConversationTurn(params: {
   const auditStorageStartedAt =
     auditSnapshot?.performance?.persistMs !== undefined ? performance.now() : 0
   if (!receives.length) return false
-  const prepared = await prepareTailChunkForAppend(conversationId)
+  const branchPath =
+    params.branchPath !== undefined
+      ? normalizeBranchPath(params.branchPath ?? '')
+      : await readConversationActiveBranchPath(conversationId)
+  const prepared = await prepareTailChunkForAppend(conversationId, branchPath)
   if (!prepared) return false
   const { idx, tailFile: chunkName, tail: chunk, sealedChunkFiles } = prepared
   for (const sealed of sealedChunkFiles) {
-    void sealChunkMemorySegment(conversationId, sealed).catch((e) => {
+    void sealChunkMemorySegment(conversationId, sealed, branchPath).catch((e) => {
       // eslint-disable-next-line no-console
       console.warn('[chat-storage] seal chunk memory failed:', e)
     })
@@ -1742,22 +1764,36 @@ export async function appendConversationTurn(params: {
         : Math.min(chunk.meta.ordinalRange.start, turn.turnOrdinal),
     end: turn.turnOrdinal,
   }
-  await writeChunkFile(conversationId, chunkName, chunk)
+  const storagePath = chunkStorageRelativePath(branchPath, chunkName)
+  await writeChunkFile(conversationId, storagePath, chunk)
   const t = nowIso()
+  if (prepared.isNewBranchChunk || !idx.headChunkFile) {
+    idx.headChunkFile = chunkName
+  }
+  idx.tailChunkFile = chunkName
   idx.updatedAt = t
-  await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
+  if (branchPath) {
+    await writeBranchConversationIndex(conversationId, branchPath, idx)
+  } else {
+    await writeConversationIndex(conversationId, idx)
+  }
+  const rootIdx = await readConversationIndex(conversationId)
+  if (rootIdx) {
+    rootIdx.updatedAt = t
+    await writeConversationIndex(conversationId, rootIdx)
+    await upsertChatListEntry(chatListEntryFromIndex(rootIdx), rootIdx)
+  }
   if (auditSnapshot !== undefined) {
     finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
     const idxForAudit = await readConversationIndex(conversationId)
     await appendChatAuditEntry(conversationId, idxForAudit, {
-      chunkName,
+      chunkName: storagePath,
       turnId: turn.turnId,
       turnOrdinal: turn.turnOrdinal,
       snapshot: auditSnapshot,
     })
   }
-  scheduleMemoryIndexUpsert(conversationId, turn, chunkName)
+  scheduleMemoryIndexUpsert(conversationId, turn, chunkName, branchPath)
   return true
 }
 
@@ -1814,7 +1850,7 @@ export async function mergeTurnPluginEntriesAtOrdinal(
   if (!entries.length && !options?.receiveContent) return 'not_found'
   const located = await readChunkContainingOrdinal(conversationId, turnOrdinal)
   if (!located) return 'not_found'
-  const { chunk, fileName: chunkName } = located
+  const { chunk, fileName: chunkName, branchPath } = located
   const turn = chunk.turns.find((t) => t.turnOrdinal === turnOrdinal)
   if (!turn) return 'not_found'
 
@@ -1832,7 +1868,11 @@ export async function mergeTurnPluginEntriesAtOrdinal(
     rec.content = sync.content
   }
 
-  await writeChunkFile(conversationId, chunkName, chunk)
+  await writeChunkFile(
+    conversationId,
+    chunkStorageRelativePath(branchPath, chunkName),
+    chunk,
+  )
   const idx = await readConversationIndex(conversationId)
   if (idx) {
     idx.updatedAt = nowIso()
@@ -1858,7 +1898,7 @@ export async function updateTurnContentInTailChunk(
     auditSnapshot?.performance?.persistMs !== undefined ? performance.now() : 0
   const located = await readChunkContainingOrdinal(conversationId, turnOrdinal)
   if (!located) return false
-  const { chunk, fileName: chunkName } = located
+  const { chunk, fileName: chunkName, branchPath } = located
   const idx = await readConversationIndex(conversationId)
   if (!idx) return false
   const ti = chunk.turns.findIndex((t) => t.turnOrdinal === turnOrdinal)
@@ -1876,7 +1916,8 @@ export async function updateTurnContentInTailChunk(
     }
     turn.plugins = plugins
   }
-  await writeChunkFile(conversationId, chunkName, chunk)
+  const storagePath = chunkStorageRelativePath(branchPath, chunkName)
+  await writeChunkFile(conversationId, storagePath, chunk)
   const t = nowIso()
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
@@ -1885,13 +1926,13 @@ export async function updateTurnContentInTailChunk(
     finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
     const idxForAudit = await readConversationIndex(conversationId)
     await appendChatAuditEntry(conversationId, idxForAudit, {
-      chunkName,
+      chunkName: storagePath,
       turnId,
       turnOrdinal,
       snapshot: auditSnapshot,
     })
   }
-  scheduleMemoryIndexUpsert(conversationId, turn, chunkName)
+  scheduleMemoryIndexUpsert(conversationId, turn, chunkName, branchPath)
   return true
 }
 

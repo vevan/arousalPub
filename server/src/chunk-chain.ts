@@ -4,6 +4,7 @@ import {
   conversationDir,
   readBranchConversationIndex,
   readConversationIndex,
+  writeBranchConversationIndex,
   writeChunkFile,
   writeConversationIndex,
   type ChunkFile,
@@ -20,6 +21,7 @@ import {
   chunkStorageRelativePath,
   normalizeBranchPath,
   normalizeChunkBasename,
+  branchAncestorPaths,
   resolveNestedBranchPath,
   splitChunkStoragePath,
 } from './chunk-path.js'
@@ -292,6 +294,78 @@ export async function resolveActivePathTurns(
     )
   }
   return merged
+}
+
+/** fork 轮在父路径上的 turnOrdinal（空分支首条 turn = 返回值 + 1） */
+export async function resolveBranchForkOrdinal(
+  conversationId: string,
+  fullBranchPath: string,
+): Promise<number | null> {
+  const target = normalizeBranchPath(fullBranchPath)
+  if (!target) return null
+  const segments = target.split('/').filter(Boolean)
+  let parentPath = ''
+  for (const segment of segments) {
+    const fullSoFar = parentPath ? `${parentPath}/${segment}` : segment
+    const entry = await findBranchRegistryEntry(
+      conversationId,
+      parentPath,
+      segment,
+    )
+    if (fullSoFar === target) {
+      const forkTurnId = entry ? parseBranchRegistryForkTurnId(entry) : null
+      if (!forkTurnId) return null
+      const parentVisible =
+        parentPath === ''
+          ? await readAllTurnsAtBranchPath(conversationId, '')
+          : await resolveActivePathTurns(conversationId, parentPath)
+      const fork = parentVisible.find((t) => t.turnId === forkTurnId)
+      return fork?.turnOrdinal ?? null
+    }
+    parentPath = fullSoFar
+  }
+  return null
+}
+
+/** 下一 append 的 turnOrdinal（空分支 = forkOrdinal + 1） */
+export async function resolveNextTurnOrdinalForBranchAppend(
+  conversationId: string,
+  branchPath: string,
+): Promise<number | null> {
+  const bp = normalizeBranchPath(branchPath)
+  if (!bp) {
+    const onMain = await readAllTurnsAtBranchPath(conversationId, '')
+    if (onMain.length === 0) return 0
+    return Math.max(...onMain.map((t) => t.turnOrdinal)) + 1
+  }
+  const branchIdx = await readBranchConversationIndex(conversationId, bp)
+  if (branchIdx?.tailChunkFile) {
+    const tailFile = normalizeTailChunkBasename(branchIdx.tailChunkFile, bp)
+    const tail = await readChunkFileAt(conversationId, bp, tailFile)
+    if (tail?.turns.length) {
+      return Math.max(...tail.turns.map((t) => t.turnOrdinal)) + 1
+    }
+  }
+  const forkOrdinal = await resolveBranchForkOrdinal(conversationId, bp)
+  if (forkOrdinal === null) return null
+  return forkOrdinal + 1
+}
+
+/** 读指定 branchPath 的 tail chunk（basename 存于对应 index） */
+export async function readTailChunkAt(
+  conversationId: string,
+  branchPath?: string | null,
+): Promise<ChunkFile | null> {
+  const bp =
+    branchPath !== undefined
+      ? normalizeBranchPath(branchPath ?? '')
+      : await readConversationActiveBranchPath(conversationId)
+  const idx = bp
+    ? await readBranchConversationIndex(conversationId, bp)
+    : await readConversationIndex(conversationId)
+  if (!idx?.tailChunkFile) return null
+  const tailFile = normalizeTailChunkBasename(idx.tailChunkFile, bp)
+  return readChunkFileAt(conversationId, bp, tailFile)
 }
 
 async function effectiveActiveBranchPath(
@@ -654,6 +728,7 @@ function emptyChunkMeta(params: {
 async function rotateTailChunk(
   conversationId: string,
   idx: ConversationIndex,
+  branchPath: string,
   oldTail: ChunkFile,
   oldFileName: string,
   newTurnsPerFile: number,
@@ -663,6 +738,7 @@ async function rotateTailChunk(
   tail: ChunkFile
   sealedChunkFile: string
 }> {
+  const bp = normalizeBranchPath(branchPath)
   const nextOrd = nextTurnOrdinal(oldTail)
   const cap = normalizeChunkSettings({ turnsPerFile: newTurnsPerFile }).turnsPerFile
   const meta = emptyChunkMeta({
@@ -677,17 +753,29 @@ async function rotateTailChunk(
   meta.chunkId = chunkIdFromFileName(newFileName)
 
   oldTail.meta.links.next = newFileName
-  await writeChunkFile(conversationId, oldFileName, oldTail)
+  await writeChunkFile(
+    conversationId,
+    chunkStorageRelativePath(bp, oldFileName),
+    oldTail,
+  )
 
   const newTail: ChunkFile = {
     schemaVersion: 1,
     meta,
     turns: [],
   }
-  await writeChunkFile(conversationId, newFileName, newTail)
+  await writeChunkFile(
+    conversationId,
+    chunkStorageRelativePath(bp, newFileName),
+    newTail,
+  )
 
   idx.tailChunkFile = newFileName
-  await writeConversationIndex(conversationId, idx)
+  if (bp) {
+    await writeBranchConversationIndex(conversationId, bp, idx)
+  } else {
+    await writeConversationIndex(conversationId, idx)
+  }
   return {
     idx,
     tailFile: newFileName,
@@ -772,40 +860,96 @@ export async function splitOversizedTailChunkIfNeeded(
 
 /**
  * append 前：迁移超大尾块、必要时滚动 tail。
- * 返回当前可写入的 tail 块与文件名。
+ * 返回当前可写入的 tail 块与文件名（basename；写入时用 chunkStorageRelativePath）。
  */
 export async function prepareTailChunkForAppend(
   conversationId: string,
+  branchPath = '',
 ): Promise<{
   idx: ConversationIndex
+  branchPath: string
   tailFile: string
   tail: ChunkFile
-  /** 本次 prepare 中已封存、应对应 Lance optimize 的 chunk 文件 */
+  isNewBranchChunk: boolean
   sealedChunkFiles: string[]
 } | null> {
-  const sealedChunkFiles = await splitOversizedTailChunkIfNeeded(conversationId)
-  let idx = await readConversationIndex(conversationId)
-  if (!idx?.tailChunkFile) return null
-  let tailFile = idx.tailChunkFile
-  let tail = await readChunkFile(conversationId, tailFile)
+  const bp = normalizeBranchPath(branchPath)
+  const sealedChunkFiles: string[] = []
+  if (!bp) {
+    sealedChunkFiles.push(
+      ...(await splitOversizedTailChunkIfNeeded(conversationId)),
+    )
+  }
+
+  let idx = bp
+    ? await readBranchConversationIndex(conversationId, bp)
+    : await readConversationIndex(conversationId)
+  if (!idx) return null
+
+  if (!idx.tailChunkFile) {
+    if (!bp) return null
+    const nextStart = await resolveNextTurnOrdinalForBranchAppend(
+      conversationId,
+      bp,
+    )
+    if (nextStart === null) return null
+    const global = await readGlobalChunkSettings()
+    const cap = global.turnsPerFile
+    const meta = emptyChunkMeta({
+      rangeStart: nextStart,
+      turnsPerFile: cap,
+      previous: null,
+    })
+    const tailFile = chunkFileNameForRange(
+      meta.ordinalRange.start,
+      meta.ordinalRange.start + cap - 1,
+    )
+    meta.chunkId = chunkIdFromFileName(tailFile)
+    const tail: ChunkFile = {
+      schemaVersion: 1,
+      meta,
+      turns: [],
+    }
+    return {
+      idx,
+      branchPath: bp,
+      tailFile,
+      tail,
+      isNewBranchChunk: true,
+      sealedChunkFiles,
+    }
+  }
+
+  const tailFile = normalizeTailChunkBasename(idx.tailChunkFile, bp)
+  const tail = await readChunkFileAt(conversationId, bp, tailFile)
   if (!tail) return null
 
   if (!isChunkFull(tail, tailFile)) {
-    return { idx, tailFile, tail, sealedChunkFiles }
+    return {
+      idx,
+      branchPath: bp,
+      tailFile,
+      tail,
+      isNewBranchChunk: false,
+      sealedChunkFiles,
+    }
   }
 
   const global = await readGlobalChunkSettings()
   const rotated = await rotateTailChunk(
     conversationId,
     idx,
+    bp,
     tail,
     tailFile,
     global.turnsPerFile,
   )
   return {
     idx: rotated.idx,
+    branchPath: bp,
     tailFile: rotated.tailFile,
     tail: rotated.tail,
+    isNewBranchChunk: false,
     sealedChunkFiles: [...sealedChunkFiles, rotated.sealedChunkFile],
   }
 }
@@ -813,20 +957,31 @@ export async function prepareTailChunkForAppend(
 export async function readChunkContainingOrdinal(
   conversationId: string,
   turnOrdinal: number,
-): Promise<{ chunk: ChunkFile; fileName: string } | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx?.tailChunkFile) return null
-  let fileName: string | null = idx.tailChunkFile
-  const guard = new Set<string>()
-  while (fileName) {
-    if (guard.has(fileName)) break
-    guard.add(fileName)
-    const chunk = await readChunkFile(conversationId, fileName)
-    if (!chunk) return null
-    if (chunk.turns.some((t) => t.turnOrdinal === turnOrdinal)) {
-      return { chunk, fileName }
+  activeBranchPath?: string | null,
+): Promise<{ chunk: ChunkFile; fileName: string; branchPath: string } | null> {
+  const active = await effectiveActiveBranchPath(
+    conversationId,
+    activeBranchPath,
+  )
+  const hits = await resolveActivePathTurns(conversationId, active, {
+    from: turnOrdinal,
+    to: turnOrdinal,
+  })
+  const turn = hits[0]
+  if (!turn) return null
+
+  const searchPaths = active
+    ? [...branchAncestorPaths(active)]
+    : ['']
+
+  for (const bp of searchPaths) {
+    const files = await listChunkFileNamesAt(conversationId, bp)
+    for (const fileName of files) {
+      const chunk = await readChunkFileAt(conversationId, bp, fileName)
+      if (chunk?.turns.some((t) => t.turnId === turn.turnId)) {
+        return { chunk, fileName, branchPath: bp }
+      }
     }
-    fileName = chunk.meta.links.previous
   }
   return null
 }

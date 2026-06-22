@@ -8,7 +8,7 @@
 
 - **Node.js 22 或更高**（[nodejs.org](https://nodejs.org/) 安装 LTS 即可；与 `vue-i18n` 等依赖要求一致）
 - 现代浏览器（Chrome、Edge、Firefox 等）
-- Windows 可直接双击 `start.bat`；macOS / Linux 使用 `start.sh`
+- Windows 可直接双击 `!_start.bat`；macOS / Linux 使用 `!_start.sh`
 
 ---
 
@@ -18,7 +18,7 @@
 
 1. 解压或克隆本项目到本地目录。
 2. 若尚无 `config.yaml`，将 **`config.example.yaml`** 复制为 **`config.yaml`**（也可在首次启动时由程序自动从示例生成）。
-3. 双击 **`start.bat`**（Windows）或终端执行 **`./start.sh`**。
+3. 双击 **`!_start.bat`**（Windows）或终端执行 **`./!_start.sh`**。
 
 首次运行会自动安装依赖；**`git pull` 等更新后若 `package-lock.json` 或 workspace 的 `package.json` 有变，启动时也会自动 `npm install`**。若缺少构建产物，会自动编译后再启动。**请保持启动窗口不要关闭**，关闭即停止服务。
 
@@ -44,13 +44,13 @@ http://localhost:6633/
 
 | 方式 | 适用 |
 |------|------|
-| **`start.bat` / `start.sh`** | 日常使用（推荐） |
+| **`!_start.bat` / `!_start.sh`** | 日常使用（推荐） |
 | **Docker** | NAS / Linux 服务器等容器环境 |
 | **`npm run dev`** | 开发者改代码时使用（双端口 + 热更新） |
 
 ### 启动倒计时
 
-`start.bat` 启动前有 **`startCountdownSeconds`** 秒倒计时（默认 5 秒，可在 `config.yaml` 修改；设为 `0` 则跳过）。
+`!_start.bat` 启动前有 **`startCountdownSeconds`** 秒倒计时（默认 5 秒，可在 `config.yaml` 修改；设为 `0` 则跳过）。
 
 - **不按键**：倒计时结束后使用已有编译结果快速启动。
 - **按 `B`**：重新编译前端与后端后再启动（改过程序代码后建议按 B）。
@@ -78,13 +78,13 @@ docker compose up -d --build
 
 1. 确认地址为 **`http://127.0.0.1:6633/`**（带 `http://`，勿用 https；勿用 6699）。
 2. 运行 **`docker compose ps`**，应看到 `0.0.0.0:6633->6633/tcp` 且状态为 **Up**（healthy）。
-3. 若本机 **`start.bat` 已在跑**，可能占用 6633：先关掉 bat 窗口，再 `docker compose up -d`。
+3. 若本机 **`!_start.bat` 已在跑**，可能占用 6633：先关掉 bat 窗口，再 `docker compose up -d`。
 4. 查看日志：**`docker compose logs -f`**，应有 `static web:` 与 `listening on`。
 5. 快速自检：**`curl http://127.0.0.1:6633/health`** 应返回 `{"ok":true}`。
 
 ### 数据持久化
 
-默认将项目内的 **`./data`** 挂载到容器内 `/data`（对话、角色、API 密钥等），与 `start.bat` 使用本地 `data/` 时路径一致，便于直接备份或 Syncthing 同步。
+默认将项目内的 **`./data`** 挂载到容器内 `/data`（对话、角色、API 密钥等），与 `!_start.bat` 使用本地 `data/` 时路径一致，便于直接备份或 Syncthing 同步。
 
 **请勿**让多个容器实例同时读写同一数据目录。
 
@@ -148,7 +148,7 @@ API 密钥保存在本机数据目录，不会写入浏览器公开存储。
 | 配置项 | 说明 |
 |--------|------|
 | `dataDir` | 数据目录，默认 `./data` |
-| `serverPort` | 启动后浏览器访问端口（`start.bat` 使用） |
+| `serverPort` | 启动后浏览器访问端口（`!_start.bat` 使用） |
 | `startCountdownSeconds` | 启动前倒计时秒数；`0` = 不等待 |
 | `authIdleMinutes` 等 | 登录会话超时（可选） |
 
@@ -177,7 +177,7 @@ API 密钥保存在本机数据目录，不会写入浏览器公开存储。
 
 **改代码后界面没变化**
 
-- 重新 `start.bat`，倒计时期间按 **`B`** 强制重新编译。
+- 重新 `!_start.bat`，倒计时期间按 **`B`** 强制重新编译。
 
 **忘记密码**
 
@@ -185,7 +185,7 @@ API 密钥保存在本机数据目录，不会写入浏览器公开存储。
 
 **生产环境 JWT**
 
-- 首次 `start.bat` 启动会在 `data/.jwt-secret` 自动生成密钥；也可在 `config.yaml` 设置 `jwtSecret`（≥16 字符）。
+- 首次 `!_start.bat` 启动会在 `data/.jwt-secret` 自动生成密钥；也可在 `config.yaml` 设置 `jwtSecret`（≥16 字符）。
 
 ---
 

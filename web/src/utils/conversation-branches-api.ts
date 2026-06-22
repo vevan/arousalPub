@@ -1,22 +1,12 @@
 import { apiErrorFromResponseBody } from '@/utils/api-error-message'
+import { branchPathLabel } from './branch-path-label.js'
+import type { BranchTreeNodeDto, BranchTreeResponse } from './conversation-branches-types.js'
+
+export { branchPathLabel }
+export type { BranchTreeNodeDto, BranchTreeResponse } from './conversation-branches-types.js'
 
 /** 与 server `BRANCH_LABEL_MAX_LENGTH` 一致 */
 export const BRANCH_LABEL_MAX_LENGTH = 64
-
-export interface BranchTreeNodeDto {
-  path: string
-  label?: string
-  forkTurnId: string | null
-  forkOrdinal: number | null
-  forkMessageId?: string
-  turnCount: number
-  children: BranchTreeNodeDto[]
-}
-
-export interface BranchTreeResponse {
-  activeBranchPath: string
-  nodes: BranchTreeNodeDto[]
-}
 
 export interface CreateBranchResult {
   path: string
@@ -129,17 +119,6 @@ export function collectForkTurnIdsWithSiblings(nodes: BranchTreeNodeDto[]): Set<
     walk(root.children)
   }
   return out
-}
-
-export function branchPathLabel(
-  path: string,
-  node: BranchTreeNodeDto | undefined,
-  t: (key: string, params?: Record<string, unknown>) => string,
-): string {
-  if (!path) return t('chat.branches.mainPath')
-  if (node?.label?.trim()) return node.label.trim()
-  const seg = path.split('/').pop() ?? path
-  return t('chat.branches.unnamed', { path: seg })
 }
 
 export function findBranchTreeNode(

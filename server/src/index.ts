@@ -1126,7 +1126,7 @@ app.post<{ Params: { id: string }; Body: CreateBranchBody }>(
     if (b.forkMessageId !== undefined && typeof b.forkMessageId !== 'string') {
       return reply.status(400).send({ error: ApiErrorCodes.validation_failed })
     }
-    if (b.label !== undefined && typeof b.label !== 'string') {
+    if (b.label !== undefined && b.label !== null && typeof b.label !== 'string') {
       return reply.status(400).send({ error: ApiErrorCodes.validation_failed })
     }
     if (b.setActive !== undefined && typeof b.setActive !== 'boolean') {
@@ -1411,7 +1411,14 @@ app.post<{ Params: { id: string }; Body: FirstTurnBody }>(
 
 app.get<{
   Params: { id: string }
-  Querystring: { from?: string; to?: string; tail?: string; before?: string; limit?: string }
+  Querystring: {
+    from?: string
+    to?: string
+    tail?: string
+    before?: string
+    limit?: string
+    branchPath?: string
+  }
 }>(
   '/api/chat/conversations/:id/messages',
   async (request, reply) => {

@@ -41,6 +41,7 @@ describe('conversation branch delete + memory lance integration', () => {
       )
     }
     assert.match(result.stdout, /\[branch-delete-integration\] ok/)
+    assert.match(result.stdout, /\[branch-nested-delete-integration\] ok/)
     assert.match(result.stdout, /\[branch-memory-lance-integration\] ok/)
   })
 })

@@ -26,6 +26,7 @@ import {
   createEmptyConversationBranch,
   getConversationBranchTree,
   updateConversationActiveBranchPath,
+  updateConversationBranchLabel,
 } from '../conversation-branches.js'
 import { loadConversationMessages } from '../conversation-messages-api.js'
 import {
@@ -845,6 +846,24 @@ async function runIntegration(): Promise<void> {
     assert.equal(tree.nodes[0]!.children[0]!.path, 'branch1')
     assert.equal(tree.nodes[0]!.children[0]!.turnCount, 1)
     assert.equal(tree.nodes[0]!.children[0]!.forkOrdinal, 1)
+
+    const renamed = await updateConversationBranchLabel(
+      conversationId,
+      'branch1',
+      'Renamed Branch',
+    )
+    assert.ok(!('error' in renamed))
+    assert.equal(renamed.label, 'Renamed Branch')
+    const treeRenamed = await getConversationBranchTree(conversationId)
+    assert.equal(treeRenamed.nodes[0]!.children[0]!.label, 'Renamed Branch')
+
+    const cleared = await updateConversationBranchLabel(conversationId, 'branch1', null)
+    assert.ok(!('error' in cleared))
+    assert.equal(cleared.label, undefined)
+    const treeCleared = await getConversationBranchTree(conversationId)
+    assert.equal(treeCleared.nodes[0]!.children[0]!.label, undefined)
+
+    console.log('[branch-label-patch-integration] ok')
 
     const notOnActive = await createEmptyConversationBranch({
       conversationId,

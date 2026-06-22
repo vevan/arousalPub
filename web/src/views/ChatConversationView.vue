@@ -119,18 +119,23 @@ const {
   branchTreeLoading,
   branchTreeNodes,
   branchLoadError,
+  branchSuccessMessage,
+  branchActionError,
+  branchHighlightForkTurnId,
   forkTurnIdsWithSiblings,
   activeBranchDisplayLabel,
   syncActiveFromIndex,
   refreshBranchTree,
   switchActiveBranch,
   createBranchDialogOpen,
+  pendingCreateTurn,
   requestCreateBranchFromTurn,
   confirmCreateBranch,
   cancelCreateBranch,
   renameBranch,
   deleteBranch,
   openBranchPanel,
+  clearBranchHighlight,
   isForkTurn,
 } = useConversationBranches({
   getConversationId: () => props.conversationId,
@@ -149,14 +154,39 @@ provide(CONVERSATION_BRANCH_KEY, {
   isForkTurn,
 })
 
+const createBranchSubtitle = computed(() => {
+  const n = pendingCreateTurn.value?.turnOrdinal
+  if (n == null || n < 1) return undefined
+  return t('chat.branches.createBranchForkFrom', { n })
+})
+
 const branchSnackOpen = ref(false)
 const branchSnackText = ref('')
+const branchSnackColor = ref<'success' | 'error'>('error')
+const branchSnackTimeout = ref(4000)
 
-watch(branchLoadError, (msg) => {
+watch(branchSuccessMessage, (msg) => {
   const text = msg.trim()
   if (!text) return
   branchSnackText.value = text
+  branchSnackColor.value = 'success'
+  branchSnackTimeout.value = 3000
   branchSnackOpen.value = true
+  branchSuccessMessage.value = ''
+})
+
+watch(branchActionError, (msg) => {
+  const text = msg.trim()
+  if (!text) return
+  branchSnackText.value = text
+  branchSnackColor.value = 'error'
+  branchSnackTimeout.value = 4000
+  branchSnackOpen.value = true
+  branchActionError.value = ''
+})
+
+watch(branchPanelOpen, (open) => {
+  if (!open) clearBranchHighlight()
 })
 
 const conversationMemoryEmbeddingModel = ref<string | null>(null)
@@ -868,11 +898,11 @@ watch(
             class="chat-header__saving"
           />
           <button
-            v-if="conn.isApiKeyConfigured"
             type="button"
             class="chat-header__pill chat-header__pill--clickable chat-header__pill--branch"
             :title="$t('chat.branches.openPanel')"
             :aria-label="$t('chat.branches.openPanel')"
+            :disabled="branchBusy"
             @click="openBranchPanel()"
           >
             <v-icon
@@ -880,10 +910,7 @@ watch(
               size="14"
               class="chat-header__pill-icon"
             />
-            <span
-              v-if="activeBranchPath"
-              class="chat-header__pill-label"
-            >
+            <span class="chat-header__pill-label">
               {{ activeBranchDisplayLabel }}
             </span>
           </button>
@@ -989,6 +1016,7 @@ watch(
         :busy="branchBusy"
         :tree-loading="branchTreeLoading"
         :error-text="branchLoadError"
+        :highlight-fork-turn-id="branchHighlightForkTurnId"
         @select="switchActiveBranch"
         @delete="deleteBranch"
         @rename="renameBranch"
@@ -996,17 +1024,20 @@ watch(
       <ChatBranchLabelDialog
         v-model="createBranchDialogOpen"
         :title="$t('chat.branches.createBranchTitle')"
+        :subtitle="createBranchSubtitle"
         :hint="$t('chat.branches.createBranchHint')"
         :confirm-text="$t('chat.branches.createBranchConfirm')"
         :busy="branchBusy"
+        :error-text="branchLoadError"
+        show-stay-checkbox
         @update:model-value="(open) => { if (!open) cancelCreateBranch() }"
         @confirm="confirmCreateBranch"
       />
       <v-snackbar
         v-model="branchSnackOpen"
-        :timeout="4000"
+        :timeout="branchSnackTimeout"
         location="bottom"
-        color="error"
+        :color="branchSnackColor"
       >
         {{ branchSnackText }}
       </v-snackbar>

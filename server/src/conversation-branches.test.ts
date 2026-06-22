@@ -32,6 +32,20 @@ describe('normalizeBranchLabelInput', () => {
     if ('error' in r) return
     assert.equal(r.label, null)
   })
+
+  it('optional null clears label', () => {
+    const r = normalizeBranchLabelInput(null, { optional: true })
+    assert.ok(!('error' in r))
+    if ('error' in r) return
+    assert.equal(r.label, null)
+  })
+
+  it('optional empty string clears label', () => {
+    const r = normalizeBranchLabelInput('', { optional: true })
+    assert.ok(!('error' in r))
+    if ('error' in r) return
+    assert.equal(r.label, null)
+  })
 })
 
 describe('allocateBranchSegmentName', () => {

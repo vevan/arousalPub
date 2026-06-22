@@ -7,21 +7,28 @@ const props = defineProps<{
   title: string
   initialLabel?: string
   hint?: string
+  subtitle?: string
   confirmText: string
   busy?: boolean
+  errorText?: string
+  showStayCheckbox?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [open: boolean]
-  confirm: [label: string]
+  confirm: [label: string, setActive?: boolean]
 }>()
 
 const draft = ref('')
+const stayOnCurrentBranch = ref(false)
 
 watch(
   () => props.modelValue,
   (open) => {
-    if (open) draft.value = props.initialLabel ?? ''
+    if (open) {
+      draft.value = props.initialLabel ?? ''
+      stayOnCurrentBranch.value = false
+    }
   },
 )
 
@@ -30,7 +37,8 @@ function close() {
 }
 
 function submit() {
-  emit('confirm', draft.value)
+  const setActive = props.showStayCheckbox ? !stayOnCurrentBranch.value : undefined
+  emit('confirm', draft.value, setActive)
 }
 </script>
 
@@ -45,6 +53,21 @@ function submit() {
         {{ title }}
       </v-card-title>
       <v-card-text>
+        <v-alert
+          v-if="errorText"
+          type="error"
+          variant="tonal"
+          density="compact"
+          class="mb-3"
+        >
+          {{ errorText }}
+        </v-alert>
+        <p
+          v-if="subtitle"
+          class="text-body-2 text-medium-emphasis mb-3"
+        >
+          {{ subtitle }}
+        </p>
         <v-text-field
           v-model="draft"
           :label="$t('chat.branches.labelField')"
@@ -55,6 +78,14 @@ function submit() {
           autofocus
           :disabled="busy"
           @keyup.enter="submit"
+        />
+        <v-checkbox
+          v-if="showStayCheckbox"
+          v-model="stayOnCurrentBranch"
+          :label="$t('chat.branches.createBranchStayOnCurrent')"
+          hide-details
+          density="compact"
+          :disabled="busy"
         />
       </v-card-text>
       <v-card-actions>

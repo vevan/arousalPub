@@ -6,7 +6,7 @@ export interface ConversationBranchContext {
   forkTurnIdsWithSiblings: Ref<Set<string>>
   branchPanelOpen: Ref<boolean>
   branchBusy: Ref<boolean>
-  openBranchPanel: () => void
+  openBranchPanel: (forkTurnId?: string) => void
   requestCreateBranchFromTurn: (turn: ChatTurnItem) => void
   isForkTurn: (turn: ChatTurnItem) => boolean
 }

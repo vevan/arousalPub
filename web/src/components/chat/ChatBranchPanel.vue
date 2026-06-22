@@ -2,7 +2,7 @@
 import ChatBranchLabelDialog from '@/components/chat/ChatBranchLabelDialog.vue'
 import { branchPathLabel } from '@/utils/conversation-branches-api'
 import type { BranchTreeNodeDto } from '@/utils/conversation-branches-api'
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
@@ -12,6 +12,7 @@ const props = defineProps<{
   busy: boolean
   treeLoading?: boolean
   errorText?: string
+  highlightForkTurnId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -30,6 +31,10 @@ const pendingDeleteNode = ref<BranchTreeNodeDto | null>(null)
 const renameDialogOpen = ref(false)
 const pendingRenameNode = ref<BranchTreeNodeDto | null>(null)
 
+watch(renameDialogOpen, (open) => {
+  if (!open) pendingRenameNode.value = null
+})
+
 function flatten(nodes: BranchTreeNodeDto[], depth = 0): FlatNode[] {
   const out: FlatNode[] = []
   for (const node of nodes) {
@@ -42,6 +47,16 @@ function flatten(nodes: BranchTreeNodeDto[], depth = 0): FlatNode[] {
 }
 
 const flatNodes = computed(() => flatten(props.nodes))
+
+const hasBranches = computed(() => (props.nodes[0]?.children?.length ?? 0) > 0)
+
+const showEmptyHint = computed(
+  () =>
+    !props.treeLoading &&
+    !props.errorText?.trim() &&
+    !hasBranches.value &&
+    !props.busy,
+)
 
 const pendingDeleteLabel = computed(() => {
   const node = pendingDeleteNode.value
@@ -108,8 +123,56 @@ function confirmRename(label: string) {
     return
   }
   emit('rename', path, label)
-  cancelRenameDialog()
 }
+
+const pendingDeleteIsActive = computed(() => {
+  const node = pendingDeleteNode.value
+  return !!node?.path && node.path === props.activeBranchPath
+})
+
+const highlightTargetPath = computed(() => {
+  const id = props.highlightForkTurnId?.trim()
+  if (!id) return null
+  const matches = flatNodes.value
+    .map((x) => x.node)
+    .filter((n) => n.path && n.forkTurnId === id)
+  if (matches.some((n) => n.path === props.activeBranchPath)) {
+    return props.activeBranchPath
+  }
+  return matches[0]?.path ?? null
+})
+
+function isHighlighted(node: BranchTreeNodeDto): boolean {
+  const target = highlightTargetPath.value
+  return !!target && node.path === target
+}
+
+watch(
+  () => [props.busy, props.errorText] as const,
+  ([busy, err], prev) => {
+    const wasBusy = prev?.[0]
+    if (wasBusy && !busy && renameDialogOpen.value && !err?.trim()) {
+      cancelRenameDialog()
+    }
+  },
+)
+
+const listRef = ref<HTMLElement | null>(null)
+
+async function scrollToHighlight() {
+  const id = props.highlightForkTurnId?.trim()
+  if (!id || props.treeLoading) return
+  await nextTick()
+  const el = listRef.value?.querySelector('.chat-branch-panel__item--highlight')
+  el?.scrollIntoView({ block: 'nearest' })
+}
+
+watch(
+  () => [props.treeLoading, props.highlightForkTurnId, props.nodes] as const,
+  () => {
+    void scrollToHighlight()
+  },
+)
 </script>
 
 <template>
@@ -129,7 +192,7 @@ function confirmRename(label: string) {
           variant="text"
           density="comfortable"
           size="small"
-          :aria-label="$t('settings.themeCancel')"
+          :aria-label="$t('chat.branches.closePanel')"
           @click="close"
         />
       </v-card-title>
@@ -146,11 +209,12 @@ function confirmRename(label: string) {
         <div v-if="treeLoading" class="d-flex justify-center py-6">
           <v-progress-circular indeterminate size="28" width="2" />
         </div>
-        <v-list v-else density="compact" class="chat-branch-panel__list">
+        <v-list v-else ref="listRef" density="compact" class="chat-branch-panel__list">
           <v-list-item
             v-for="{ node, depth } in flatNodes"
             :key="node.path || '__main__'"
             :active="node.path === activeBranchPath"
+            :class="{ 'chat-branch-panel__item--highlight': isHighlighted(node) }"
             :disabled="busy"
             :style="{ paddingInlineStart: `${12 + depth * 16}px` }"
             @click="emit('select', node.path)"
@@ -187,7 +251,7 @@ function confirmRename(label: string) {
             </template>
           </v-list-item>
         </v-list>
-        <p v-if="!treeLoading && flatNodes.length === 0 && !busy" class="text-body-2 text-medium-emphasis pa-4">
+        <p v-if="showEmptyHint" class="text-body-2 text-medium-emphasis pa-4">
           {{ $t('chat.branches.empty') }}
         </p>
       </v-card-text>
@@ -204,6 +268,12 @@ function confirmRename(label: string) {
       </v-card-title>
       <v-card-text class="text-body-2">
         {{ $t('chat.branches.deleteBranchConfirm', { name: pendingDeleteLabel }) }}
+        <p
+          v-if="pendingDeleteIsActive"
+          class="text-medium-emphasis mt-2 mb-0"
+        >
+          {{ $t('chat.branches.deleteBranchActiveHint') }}
+        </p>
         <p
           v-if="pendingDeleteNode && pendingDeleteNode.children.length > 0"
           class="text-medium-emphasis mt-2 mb-0"
@@ -230,11 +300,17 @@ function confirmRename(label: string) {
     :hint="$t('chat.branches.renameBranchHint', { name: pendingRenameDisplay })"
     :confirm-text="$t('chat.branches.renameBranchSave')"
     :busy="busy"
+    :error-text="errorText"
     @confirm="confirmRename"
   />
 </template>
 
 <style scoped>
+.chat-branch-panel__item--highlight {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: -2px;
+}
+
 @media (max-width: 40rem) {
   :deep(.chat-branch-panel .v-overlay__content) {
     max-width: 100% !important;

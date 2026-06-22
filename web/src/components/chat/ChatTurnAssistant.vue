@@ -35,6 +35,7 @@ const {
 const {
   isAssistantBubbleLoading,
   isAssistantStreamingBubble,
+  isTurnAwaitingAssistant,
   assistantReasoning,
   displayAssistantText,
   displayAssistantReasoning,
@@ -253,7 +254,7 @@ const displayModelName = computed(() => {
       <div class="turn-toolbar turn-toolbar--assistant">
       <ChatTurnBranchActions
         :turn="turn"
-        :disabled="regeneratingTurnOrdinal !== null"
+        :disabled="regeneratingTurnOrdinal !== null || isTurnAwaitingAssistant(turn)"
       />
       <button
         type="button"

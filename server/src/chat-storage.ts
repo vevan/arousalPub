@@ -81,6 +81,7 @@ import {
 import {
   buildFirstChunkDescriptor,
   invalidateChunkIndexSyncCache,
+  isTurnOrdinalOffActivePath,
   normalizeTailChunkBasename,
   prepareTailChunkForAppend,
   readChunkContainingOrdinal,
@@ -405,7 +406,14 @@ export async function batchUpdateConversationTurns(
   for (const patch of patches) {
     const loc = await readChunkContainingOrdinal(conversationId, patch.turnOrdinal)
     if (!loc) {
-      failed.push({ turnOrdinal: patch.turnOrdinal, error: 'turn_chunk_not_found' })
+      const offActive = await isTurnOrdinalOffActivePath(
+        conversationId,
+        patch.turnOrdinal,
+      )
+      failed.push({
+        turnOrdinal: patch.turnOrdinal,
+        error: offActive ? 'turn_not_on_active_path' : 'turn_chunk_not_found',
+      })
       continue
     }
     const turn = loc.chunk.turns.find((t) => t.turnOrdinal === patch.turnOrdinal)
@@ -430,17 +438,28 @@ export async function batchUpdateConversationTurns(
   }
 
   const memoryUpserts: { turn: TurnRecord; chunkName: string; branchPath: string }[] = []
+  const touchedBranchPaths = new Set<string>()
   let ok = 0
   const memoryEmbedActive = await isConversationMemoryEmbedActive(conversationId)
 
   for (const [storagePath, items] of byStorage) {
     const chunk = await readChunkFile(conversationId, storagePath)
-    if (!chunk) continue
+    if (!chunk) {
+      for (const { patch } of items) {
+        failed.push({ turnOrdinal: patch.turnOrdinal, error: 'chunk_read_failed' })
+      }
+      continue
+    }
     const used = collectChunkEntityIds(chunk)
     const first = items[0]!
+    const pendingUpserts: { turn: TurnRecord; chunkName: string; branchPath: string }[] = []
+    let chunkChanged = false
     for (const { patch } of items) {
       const turn = chunk.turns.find((t) => t.turnOrdinal === patch.turnOrdinal)
-      if (!turn) continue
+      if (!turn) {
+        failed.push({ turnOrdinal: patch.turnOrdinal, error: 'turn_chunk_not_found' })
+        continue
+      }
       applyTurnContentUpdate(
         turn,
         used,
@@ -448,14 +467,25 @@ export async function batchUpdateConversationTurns(
         patch.receives,
         patch.activeReceiveIndex,
       )
-      memoryUpserts.push({
+      pendingUpserts.push({
         turn,
         chunkName: first.fileName,
         branchPath: first.branchPath,
       })
-      ok += 1
+      chunkChanged = true
     }
-    await writeChunkFile(conversationId, storagePath, chunk)
+    if (chunkChanged) {
+      try {
+        await writeChunkFile(conversationId, storagePath, chunk)
+        touchedBranchPaths.add(normalizeBranchPath(first.branchPath))
+        memoryUpserts.push(...pendingUpserts)
+        ok += pendingUpserts.length
+      } catch {
+        for (const { patch } of items) {
+          failed.push({ turnOrdinal: patch.turnOrdinal, error: 'chunk_write_failed' })
+        }
+      }
+    }
   }
 
   let memoryEmbedsQueued = 0
@@ -464,6 +494,13 @@ export async function batchUpdateConversationTurns(
     idx.updatedAt = t
     await writeConversationIndex(conversationId, idx)
     await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
+    for (const branchPath of touchedBranchPaths) {
+      if (!branchPath) continue
+      const branchIdx = await readBranchConversationIndex(conversationId, branchPath)
+      if (!branchIdx) continue
+      branchIdx.updatedAt = t
+      await writeBranchConversationIndex(conversationId, branchPath, branchIdx)
+    }
     if (memoryEmbedActive) {
       for (const { turn, chunkName, branchPath } of memoryUpserts) {
         if (!isTurnEligibleForMemoryEmbed(turn)) continue
@@ -1961,7 +1998,7 @@ export async function removeTurnAtOrdinalInTailChunk(
   if (!idx?.tailChunkFile) return false
 
   const scopeTailBasename = normalizeTailChunkBasename(idx.tailChunkFile, bp)
-  if (tailFileName !== scopeTailBasename) return false
+  const isTailChunk = tailFileName === scopeTailBasename
 
   const storagePath = chunkStorageRelativePath(bp, tailFileName)
   let chunk: ChunkFile
@@ -1984,6 +2021,7 @@ export async function removeTurnAtOrdinalInTailChunk(
   const t = nowIso()
 
   if (filtered.length === 0) {
+    if (!isTailChunk) return false
     const previousFile = chunk.meta.links.previous
     const chunkAbsPath = path.join(conversationDir(conversationId), storagePath)
     try {

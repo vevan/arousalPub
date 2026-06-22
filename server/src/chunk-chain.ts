@@ -501,7 +501,10 @@ export async function enumerateAllChunkChains(
   return out
 }
 
-/** 沿 chunk 链按 turnId 定位块文件 */
+/**
+ * 沿 chunk 链按 turnId 定位块文件（仅主路径 chunk 链）。
+ * @deprecated 分支场景请使用分支路径下的 chunk 读取；保留供遗留调用。
+ */
 export async function readChunkContainingTurnId(
   conversationId: string,
   turnId: string,
@@ -655,7 +658,10 @@ export async function readTurnsTail(
   }
 }
 
-/** 加载与 [from,to] 可能相交的 chunk（每文件至多读一次） */
+/**
+ * 加载与 [from,to] 可能相交的 chunk（每文件至多读一次；仅主路径）。
+ * @deprecated 分支场景请使用 `resolveActivePathTurns`；保留供遗留调用。
+ */
 export async function loadConversationChunksForOrdinalRange(
   conversationId: string,
   from: number,
@@ -1029,6 +1035,37 @@ export async function readChunkContainingOrdinal(
   return null
 }
 
+/** turn 是否存在于非 active 路径（用于 batch PATCH 明确错误） */
+export async function isTurnOrdinalOffActivePath(
+  conversationId: string,
+  turnOrdinal: number,
+  activeBranchPath?: string | null,
+): Promise<boolean> {
+  const active = await effectiveActiveBranchPath(
+    conversationId,
+    activeBranchPath,
+  )
+  const onActive = await readChunkContainingOrdinal(
+    conversationId,
+    turnOrdinal,
+    active,
+  )
+  if (onActive) return false
+
+  const paths = ['', ...(await collectRegisteredBranchPaths(conversationId))]
+  for (const bp of paths) {
+    if (bp === active) continue
+    const files = await listChunkFileNamesAt(conversationId, bp)
+    for (const fileName of files) {
+      const chunk = await readChunkFileAt(conversationId, bp, fileName)
+      if (chunk?.turns.some((t) => t.turnOrdinal === turnOrdinal)) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
 export type ChunkIndexRepairResult = {
   headChunkFile: string | null
   tailChunkFile: string | null
@@ -1311,10 +1348,24 @@ export async function repairConversationChunkIndex(
     brokenChain: false,
     chunkFileCount: 0,
   }
+
+  let branchLabelsRepaired = 0
+  try {
+    const { repairBranchRegistryLabelDrift } = await import(
+      './conversation-branches.js'
+    )
+    branchLabelsRepaired = (
+      await repairBranchRegistryLabelDrift(conversationId)
+    ).repaired
+  } catch {
+    // ignore
+  }
+
   return {
     ...main,
     ok: true,
-    repaired: main.repaired || branchScopesRepaired > 0,
+    repaired:
+      main.repaired || branchScopesRepaired > 0 || branchLabelsRepaired > 0,
     branchScopesRepaired,
   }
 }

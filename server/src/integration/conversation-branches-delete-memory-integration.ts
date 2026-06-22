@@ -271,10 +271,139 @@ async function maybeRunEmbeddingReindexE2e(): Promise<void> {
   console.log('[branch-memory-lance-e2e] ok')
 }
 
+async function runNestedDeleteIntegration(): Promise<void> {
+  const conversationId = generateShortId()
+  await createConversationStub(conversationId, 'nested delete test')
+
+  const first = await saveFirstTurn({
+    conversationId,
+    userText: 'u0',
+    assistantText: 'a0',
+  })
+  assert.ok(first)
+
+  await appendConversationTurn({
+    conversationId,
+    userText: 'u1',
+    receives: [{ id: '', content: 'a1' }],
+    activeReceiveIndex: 0,
+  })
+  await appendConversationTurn({
+    conversationId,
+    userText: 'u2',
+    receives: [{ id: '', content: 'a2' }],
+    activeReceiveIndex: 0,
+  })
+
+  const mainFork = (await resolveActivePathTurns(conversationId, ''))[1]!
+  const onBranch1 = await createEmptyConversationBranch({
+    conversationId,
+    forkTurnId: mainFork.turnId,
+    label: 'B1',
+  })
+  assert.ok(!('error' in onBranch1))
+
+  await appendConversationTurn({
+    conversationId,
+    userText: 'u-b1',
+    receives: [{ id: '', content: 'a-b1' }],
+    activeReceiveIndex: 0,
+  })
+
+  const branch1Merged = await resolveActivePathTurns(conversationId, 'branch1')
+  const nestedFork = branch1Merged[branch1Merged.length - 1]!
+  const nested = await createEmptyConversationBranch({
+    conversationId,
+    forkTurnId: nestedFork.turnId,
+    label: 'B1 nested',
+  })
+  assert.ok(!('error' in nested))
+  assert.equal(nested.path, 'branch1/branch1')
+
+  assert.deepEqual(await collectRegisteredBranchPaths(conversationId), [
+    'branch1',
+    'branch1/branch1',
+  ])
+
+  const deleted = await deleteConversationBranch(conversationId, 'branch1')
+  assert.ok(!('error' in deleted))
+  assert.deepEqual(await collectRegisteredBranchPaths(conversationId), [])
+  assert.equal(
+    await pathExists(path.join(conversationDir(conversationId), 'branch1')),
+    false,
+  )
+  assert.equal(
+    await pathExists(path.join(conversationDir(conversationId), 'branch1', 'branch1')),
+    false,
+  )
+
+  console.log('[branch-nested-delete-integration] ok')
+}
+
+async function runNestedDeleteKeepParentIntegration(): Promise<void> {
+  const conversationId = generateShortId()
+  await createConversationStub(conversationId, 'nested delete keep parent')
+
+  const first = await saveFirstTurn({
+    conversationId,
+    userText: 'u0',
+    assistantText: 'a0',
+  })
+  assert.ok(first)
+
+  await appendConversationTurn({
+    conversationId,
+    userText: 'u1',
+    receives: [{ id: '', content: 'a1' }],
+    activeReceiveIndex: 0,
+  })
+
+  const mainFork = (await resolveActivePathTurns(conversationId, ''))[1]!
+  const onBranch1 = await createEmptyConversationBranch({
+    conversationId,
+    forkTurnId: mainFork.turnId,
+    label: 'B1',
+  })
+  assert.ok(!('error' in onBranch1))
+
+  await appendConversationTurn({
+    conversationId,
+    userText: 'u-b1',
+    receives: [{ id: '', content: 'a-b1' }],
+    activeReceiveIndex: 0,
+  })
+
+  const branch1Merged = await resolveActivePathTurns(conversationId, 'branch1')
+  const nestedFork = branch1Merged[branch1Merged.length - 1]!
+  const nested = await createEmptyConversationBranch({
+    conversationId,
+    forkTurnId: nestedFork.turnId,
+    label: 'B1 nested',
+  })
+  assert.ok(!('error' in nested))
+  assert.equal(nested.path, 'branch1/branch1')
+
+  const deletedNested = await deleteConversationBranch(conversationId, 'branch1/branch1')
+  assert.ok(!('error' in deletedNested))
+  assert.deepEqual(await collectRegisteredBranchPaths(conversationId), ['branch1'])
+  assert.equal(
+    await pathExists(path.join(conversationDir(conversationId), 'branch1')),
+    true,
+  )
+  assert.equal(
+    await pathExists(path.join(conversationDir(conversationId), 'branch1', 'branch1')),
+    false,
+  )
+
+  console.log('[branch-nested-delete-keep-parent-integration] ok')
+}
+
 async function main() {
   await runRequestUserAsync(TEST_USER, async () => {
     ensureDataSkeletonForUser(TEST_USER)
     await runDeleteBranchIntegration()
+    await runNestedDeleteIntegration()
+    await runNestedDeleteKeepParentIntegration()
     await runMemoryLanceIntegration()
     await maybeRunEmbeddingReindexE2e()
   })

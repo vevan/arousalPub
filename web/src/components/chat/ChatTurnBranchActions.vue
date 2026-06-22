@@ -16,7 +16,9 @@ function onBranchFromHere() {
 }
 
 function onOpenBranches() {
-  branchCtx?.openBranchPanel()
+  if (!branchCtx) return
+  const forkTurnId = props.turn.turnId?.trim()
+  branchCtx.openBranchPanel(forkTurnId || undefined)
 }
 </script>
 
@@ -26,6 +28,7 @@ function onOpenBranches() {
       v-if="branchCtx.isForkTurn(turn)"
       type="button"
       class="turn-toolbar__btn turn-toolbar__btn--fork"
+      :disabled="disabled || branchCtx.branchBusy.value"
       :data-tt="$t('chat.branches.forkPoint')"
       :aria-label="$t('chat.branches.forkPoint')"
       @click="onOpenBranches"
@@ -41,7 +44,11 @@ function onOpenBranches() {
           ? $t('chat.branches.branchFromHereNoTurnId')
           : $t('chat.branches.branchFromHere')
       "
-      :aria-label="$t('chat.branches.branchFromHere')"
+      :aria-label="
+        !turn.turnId
+          ? $t('chat.branches.branchFromHereNoTurnId')
+          : $t('chat.branches.branchFromHere')
+      "
       @click="onBranchFromHere"
     >
       <v-icon size="16">mdi-source-fork</v-icon>

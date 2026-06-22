@@ -13,6 +13,12 @@ export function runWithRequestPreferencesMemo<T>(fn: () => T): T {
   return memoStorage.run({}, fn)
 }
 
+export async function runWithRequestPreferencesMemoAsync(
+  fn: () => Promise<void>,
+): Promise<void> {
+  await memoStorage.run({}, fn)
+}
+
 export function tryGetRequestPreferencesMemo():
   | RequestPreferencesMemo
   | undefined {

@@ -381,6 +381,28 @@ function collectSearchHits(
   }
 }
 
+/** 单测 / 集成辅助：内存侧 branchPath 兜底过滤（与 Lance `.where` 语义一致） */
+export function filterMemorySearchRawRows(
+  raw: Record<string, unknown>[],
+  params: {
+    excludeTurnIds?: Set<string>
+    maxOrdinalExclusive?: number
+    allowedBranchPaths?: Set<string>
+    topK?: number
+  } = {},
+): MemorySearchHit[] {
+  const out: MemorySearchHit[] = []
+  collectSearchHits(
+    raw,
+    params.excludeTurnIds ?? new Set(),
+    params.maxOrdinalExclusive,
+    params.allowedBranchPaths,
+    out,
+    params.topK ?? 20,
+  )
+  return out
+}
+
 /** 单表 hybrid TopK（Memory v2） */
 export async function searchTurnMemoryVectors(
   conversationId: string,

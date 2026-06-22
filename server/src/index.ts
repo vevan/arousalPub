@@ -64,6 +64,11 @@ import {
 } from './chat-storage.js'
 import { readChunkContainingOrdinal } from './chunk-chain.js'
 import {
+  createEmptyConversationBranch,
+  getConversationBranchTree,
+  updateConversationActiveBranchPath,
+} from './conversation-branches.js'
+import {
   CONVERSATION_BATCH_MAX_TURNS,
   parseTurnPatchBody,
 } from './turn-patch-body.js'
@@ -612,6 +617,8 @@ interface PatchConvBody {
   } | null
   /** 会话级插件配置；每个 pluginId 一层浅合并 */
   pluginSettings?: Record<string, Record<string, unknown>>
+  /** 当前 active 分支路径；`""` / `null` 切回主路径 */
+  activeBranchPath?: string | null
 }
 
 app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
@@ -662,6 +669,7 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       'embeddingApiSettings',
     )
     const hasPluginSettings = Object.prototype.hasOwnProperty.call(b, 'pluginSettings')
+    const hasActiveBranchPath = Object.prototype.hasOwnProperty.call(b, 'activeBranchPath')
     if (
       !hasTitle &&
       !hasAuditDebug &&
@@ -678,7 +686,8 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       !hasAuthorsNote &&
       !hasApiPreset &&
       !hasEmbeddingApiSettings &&
-      !hasPluginSettings
+      !hasPluginSettings &&
+      !hasActiveBranchPath
     ) {
       return reply
         .status(400)
@@ -1078,7 +1087,75 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       idx = next
     }
+    if (hasActiveBranchPath) {
+      const raw = b.activeBranchPath
+      if (raw !== null && raw !== '' && typeof raw !== 'string') {
+        return reply.status(400).send({ error: ApiErrorCodes.validation_failed })
+      }
+      const next = await updateConversationActiveBranchPath(id, raw ?? null)
+      if ('error' in next) {
+        return reply.status(next.status).send({ error: next.error })
+      }
+      idx = next
+    }
     return { ok: true as const, index: idx }
+  },
+)
+
+interface CreateBranchBody {
+  forkTurnId?: string
+  forkMessageId?: string
+  label?: string
+  /** 默认 true：创建后切到新分支 */
+  setActive?: boolean
+}
+
+app.post<{ Params: { id: string }; Body: CreateBranchBody }>(
+  '/api/chat/conversations/:id/branches',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!isValidConversationId(id)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    const b = request.body ?? {}
+    if (typeof b.forkTurnId !== 'string' || !b.forkTurnId.trim()) {
+      return reply.status(400).send({ error: ApiErrorCodes.validation_failed })
+    }
+    if (b.forkMessageId !== undefined && typeof b.forkMessageId !== 'string') {
+      return reply.status(400).send({ error: ApiErrorCodes.validation_failed })
+    }
+    if (b.label !== undefined && typeof b.label !== 'string') {
+      return reply.status(400).send({ error: ApiErrorCodes.validation_failed })
+    }
+    if (b.setActive !== undefined && typeof b.setActive !== 'boolean') {
+      return reply.status(400).send({ error: ApiErrorCodes.validation_failed })
+    }
+    const result = await createEmptyConversationBranch({
+      conversationId: id,
+      forkTurnId: b.forkTurnId.trim(),
+      forkMessageId: b.forkMessageId,
+      label: b.label,
+      setActive: b.setActive,
+    })
+    if ('error' in result) {
+      return reply.status(result.status).send({ error: result.error })
+    }
+    return reply.status(201).send(result)
+  },
+)
+
+app.get<{ Params: { id: string } }>(
+  '/api/chat/conversations/:id/branches',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!isValidConversationId(id)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    const result = await getConversationBranchTree(id)
+    if ('error' in result) {
+      return reply.status(result.status).send({ error: result.error })
+    }
+    return result
   },
 )
 

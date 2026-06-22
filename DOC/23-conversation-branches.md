@@ -452,7 +452,22 @@ flowchart TD
 | 单测（已有） | `chunk-path.test.ts`（含 `buildAllowedBranchPathsWhereSql`）、`chunk-chain-branches.test.ts`、`chunk-chain.test.ts`、`memory-store.test.ts`（`buildMemoryVectorSearchWhereClause`）、`memory-index.test.ts`（`filterEmbeddableTurns`） |
 | 单测（待加） | `listChunkFileNamesAt` 用临时目录 fixture；`replaceTurnMemoryIndex` / Lance 集成（可选） |
 | 集成 | 手工分支目录 + `reindexConversationMemory` 行数 = 各路径可 embed turn 之和；embed 失败后会话仍有旧索引 |
+| 集成（已实现） | `.tmp/conversation-branches-integration.ts`：一层兄弟 + 二层嵌套 + **三层交叉**（L3 + 根 branch2 并存）→ 切换 active / messages / Lance |
 | 回归 | 主路径会话 `activeBranchPath=""` 行为与改前一致；向量召回不含兄弟 `branchPath` |
+
+---
+
+### 9.1 S3 分支 API 审计 backlog（2026-06-18）
+
+| 级别 | 问题 | 说明 | 状态 |
+|------|------|------|------|
+| **严重** | `setActive` 覆盖 `branches[]` | 创建分支写注册表后，用陈旧 `rootIdx` 写 `activeBranchPath` 会抹掉刚追加的 `branches[]` | **已修复**（写前 `readConversationIndex`） |
+| 中 | 创建无事务 / 无回滚 | 父 index 成功、fork chunk 失败时磁盘可能不一致 | 待办 v1.1 |
+| 低 | 目录已存在未注册 | `mkdir` 成功但注册表未登记时可能复用脏目录 | 依赖 `allocateBranchSegmentName` 避名 |
+| 低 | 非法 path 错误码 | 规范化失败走 `branch_path_not_found` 而非 `validation_failed` | 可接受 |
+| 低 | API 硬编码 `主对话` | 与 §6.5 草案一致；前端 S4 可本地化 | 待 S4 |
+| 信息 | `upsertChatListEntry` 动态 import | 独立脚本中 ALS 在 `await import()` 后丢失；集成测试用 `AROUSAL_TEST_USER_ID` | 已文档化 |
+| 信息 | 同 fork 点多分支 | 允许；符合「任意 turn 可分叉」定案 | 设计如此 |
 
 ---
 
@@ -493,3 +508,4 @@ flowchart TD
 | 2026-06 | 初版：汇总 P3 已实现原语 + 产品语义 + 待办清单，供分支功能开发对照 |
 | 2026-06 | §4.5 Lance 预过滤实现参考；§5.1 embed 成功后 `replaceTurnMemoryIndex`；移除 `turn-resolve.ts` |
 | 2026-06-18 | §1.4–§1.5 锁定「空分支 + 从下一轮继续」与 chunk 命名；§5.3 创建/读合并流程；§6.4–§6.5 API 与顶栏分支树 UI |
+| 2026-06-18 | §9.1 S3 API 审计 backlog；集成脚本覆盖 messages / assemble history / Lance 兄弟分支召回 |

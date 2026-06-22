@@ -21,14 +21,16 @@
   - [x] `chat-persist-after-chat.ts`：落盘读 `activeBranchPath` + `readTailChunkAt`
   - [x] `scheduleMemoryIndexUpsert` 落盘传 `branchPath`；`readChunkContainingOrdinal` active 路径定位
   - [x] `updateTurnContentInTailChunk` / PATCH 写盘带 `branchPath`
-  - [ ] 单测：空分支 fixture 首次 append 磁盘断言（待 S3 创建 API 联调）
+  - [ ] 单测：空分支 fixture 首次 append 磁盘断言（已由集成脚本覆盖）
 
   **S3 · 分支 API**
-  - [ ] `POST /api/chat/conversations/:id/branches` — 空分支（§5.3）：注册表 + `branchN/index.json`（无 chunk）+ 可选切 `activeBranchPath`
-  - [ ] `GET /api/chat/conversations/:id/branches` — 递归树（`path` / `forkTurnId` / `forkOrdinal` / `turnCount` · §6.5）
-  - [ ] `PATCH /api/chat/conversations/:id` — body 支持 `activeBranchPath`；sync 根 `index.json` + `chat.index.json`
-  - [ ] `api-error-codes.ts` + i18n：`fork_turn_not_found`、`fork_turn_not_on_active_path`、`branch_path_conflict` 等
-  - [ ] 集成：手工 fixture 或 e2e — 创建分支 → 发 1 轮 → messages / assemble / memory 召回仅祖先路径
+  - [x] `POST /api/chat/conversations/:id/branches` — 空分支（§5.3）：注册表 + `branchN/index.json`（无 chunk）+ 可选切 `activeBranchPath`
+  - [x] `GET /api/chat/conversations/:id/branches` — 递归树（`path` / `forkTurnId` / `forkOrdinal` / `turnCount` · §6.5）
+  - [x] `PATCH /api/chat/conversations/:id` — body 支持 `activeBranchPath`；sync 根 `index.json` + `chat.index.json`
+  - [x] `api-error-codes.ts` + i18n：`fork_turn_not_found`、`fork_turn_not_on_active_path`、`branch_path_conflict` 等
+  - **审计 backlog**（详见 `DOC/23` §9.1）：无事务回滚、ALS+动态 import 等；严重项 `setActive` 覆盖 `branches[]` 已修复
+  - [x] 集成：创建分支 → append → messages / assemble / memory 召回（`.tmp/conversation-branches-integration.ts` · 2026-06-18）
+  - [ ] 集成：memory Lance 全链路需 embedding API 时另行 e2e
 
   **S4 · 前端**
   - [ ] 会话 meta 加载 / 持久化 `activeBranchPath`（`useChatSession` 或 conversation store）

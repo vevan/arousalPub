@@ -49,6 +49,11 @@ export interface DeleteBranchResult {
   activeBranchPath: string
 }
 
+export interface UpdateBranchLabelResult {
+  path: string
+  label?: string
+}
+
 export interface BranchTreeNodeDto {
   path: string
   label?: string
@@ -67,6 +72,28 @@ export interface BranchTreeResponse {
 type BranchOpError = {
   error: (typeof ApiErrorCodes)[keyof typeof ApiErrorCodes]
   status: number
+}
+
+export const BRANCH_LABEL_MAX_LENGTH = 64
+
+/** 规范化分支展示名；空串/null 表示清除 label */
+export function normalizeBranchLabelInput(
+  raw: unknown,
+  options?: { optional?: boolean },
+): { label: string | null } | BranchOpError {
+  if (raw === undefined || raw === null) {
+    if (options?.optional) return { label: null }
+    return { error: ApiErrorCodes.validation_failed, status: 400 }
+  }
+  if (typeof raw !== 'string') {
+    return { error: ApiErrorCodes.branch_label_invalid, status: 400 }
+  }
+  const trimmed = raw.trim()
+  if (!trimmed) return { label: null }
+  if (trimmed.length > BRANCH_LABEL_MAX_LENGTH) {
+    return { error: ApiErrorCodes.branch_label_invalid, status: 400 }
+  }
+  return { label: trimmed }
 }
 
 function nowIso(): string {
@@ -306,6 +333,117 @@ async function removeBranchRegistryFromForkChunk(
   return true
 }
 
+function branchRegistryEntryWithLabel(
+  entry: unknown,
+  label: string | null,
+): BranchRegistryEntry | null {
+  const parsed = branchRegistryEntryFromRaw(entry)
+  if (!parsed) return null
+  const next: BranchRegistryEntry = {
+    forkTurnId: parsed.forkTurnId,
+    path: parsed.path,
+  }
+  if (parsed.forkMessageId) next.forkMessageId = parsed.forkMessageId
+  if (label) next.label = label
+  return next
+}
+
+async function updateBranchRegistryInParentIndex(
+  conversationId: string,
+  parentBranchPath: string,
+  segment: string,
+  label: string | null,
+): Promise<ConversationIndex | null> {
+  const parent = normalizeBranchPath(parentBranchPath)
+  const idx = await readParentConversationIndex(conversationId, parent)
+  if (!idx) return null
+  const branches = Array.isArray(idx.branches) ? idx.branches : []
+  let changed = false
+  const nextBranches = branches.map((e) => {
+    if (!registryEntryMatchesSegment(e, segment)) return e
+    const next = branchRegistryEntryWithLabel(e, label)
+    if (!next) return e
+    changed = true
+    return next
+  })
+  if (!changed) return null
+  const next: ConversationIndex = {
+    ...idx,
+    branches: nextBranches,
+    updatedAt: nowIso(),
+  }
+  if (parent) {
+    await writeBranchConversationIndex(conversationId, parent, next)
+  } else {
+    await writeConversationIndex(conversationId, next)
+  }
+  return next
+}
+
+async function updateBranchRegistryInForkChunk(
+  conversationId: string,
+  parentBranchPath: string,
+  segment: string,
+  forkTurnId: string,
+  label: string | null,
+): Promise<boolean> {
+  const parent = normalizeBranchPath(parentBranchPath)
+  const parentTurns =
+    parent === ''
+      ? await readAllTurnsAtBranchPath(conversationId, '')
+      : await resolveActivePathTurns(conversationId, parent)
+  const forkTurn = parentTurns.find((t) => t.turnId === forkTurnId)
+  if (!forkTurn) return false
+
+  const located = await readChunkContainingOrdinal(
+    conversationId,
+    forkTurn.turnOrdinal,
+    parent,
+  )
+  if (!located) return false
+
+  const chunk = await readChunkFileAt(
+    conversationId,
+    located.branchPath,
+    located.fileName,
+  )
+  if (!chunk) return false
+
+  const links = chunk.meta.links ?? {
+    previous: null,
+    next: null,
+    branches: [],
+  }
+  const branches = Array.isArray(links.branches) ? links.branches : []
+  let changed = false
+  const nextBranches = branches.map((e) => {
+    if (!registryEntryMatchesSegment(e, segment)) return e
+    const next = branchRegistryEntryWithLabel(e, label)
+    if (!next) return e
+    changed = true
+    return next
+  })
+  if (!changed) return false
+
+  const nextChunk: ChunkFile = {
+    ...chunk,
+    meta: {
+      ...chunk.meta,
+      links: {
+        previous: links.previous ?? null,
+        next: links.next ?? null,
+        branches: nextBranches,
+      },
+    },
+  }
+  await writeChunkFile(
+    conversationId,
+    chunkStorageRelativePath(located.branchPath, located.fileName),
+    nextChunk,
+  )
+  return true
+}
+
 function activePathWithinDeletedSubtree(
   active: string,
   deletedPath: string,
@@ -392,8 +530,10 @@ export async function createEmptyConversationBranch(params: {
   if (typeof params.forkMessageId === 'string' && params.forkMessageId.trim()) {
     entry.forkMessageId = params.forkMessageId.trim()
   }
-  if (typeof params.label === 'string' && params.label.trim()) {
-    entry.label = params.label.trim()
+  const labelNorm = normalizeBranchLabelInput(params.label, { optional: true })
+  if ('error' in labelNorm) return labelNorm
+  if (labelNorm.label) {
+    entry.label = labelNorm.label
   }
 
   const parentUpdated = await appendBranchRegistryToParentIndex(
@@ -561,6 +701,77 @@ export async function updateConversationActiveBranchPath(
   await writeConversationIndex(id, next)
   await upsertChatListEntry(chatListEntryFromIndex(next), next)
   return next
+}
+
+/** 更新分支展示名（父 index + fork chunk 注册表双写） */
+export async function updateConversationBranchLabel(
+  conversationId: string,
+  branchPath: string,
+  labelInput: unknown,
+): Promise<UpdateBranchLabelResult | BranchOpError> {
+  const id = conversationId.trim()
+  let target: string
+  try {
+    target = normalizeBranchPath(branchPath)
+  } catch {
+    return { error: ApiErrorCodes.branch_path_not_found, status: 400 }
+  }
+  if (!target) {
+    return { error: ApiErrorCodes.branch_path_not_found, status: 400 }
+  }
+
+  const labelNorm = normalizeBranchLabelInput(labelInput)
+  if ('error' in labelNorm) return labelNorm
+
+  const rootIdx = await readConversationIndex(id)
+  if (!rootIdx) {
+    return { error: ApiErrorCodes.conversation_not_found, status: 404 }
+  }
+  if (!(await branchPathIsRegistered(id, target))) {
+    return { error: ApiErrorCodes.branch_path_not_found, status: 404 }
+  }
+
+  let parent: string
+  let segment: string
+  try {
+    ;({ parent, segment } = parentPathAndSegment(target))
+  } catch {
+    return { error: ApiErrorCodes.branch_path_not_found, status: 400 }
+  }
+
+  const registryEntry = await findBranchRegistryEntry(id, parent, segment)
+  const forkTurnId = registryEntry
+    ? parseBranchRegistryForkTurnId(registryEntry)
+    : null
+  if (!forkTurnId) {
+    return { error: ApiErrorCodes.branch_path_not_found, status: 404 }
+  }
+
+  const chunkUpdated = await updateBranchRegistryInForkChunk(
+    id,
+    parent,
+    segment,
+    forkTurnId,
+    labelNorm.label,
+  )
+  if (!chunkUpdated) {
+    return { error: ApiErrorCodes.branch_update_failed, status: 500 }
+  }
+
+  const parentUpdated = await updateBranchRegistryInParentIndex(
+    id,
+    parent,
+    segment,
+    labelNorm.label,
+  )
+  if (!parentUpdated) {
+    return { error: ApiErrorCodes.branch_update_failed, status: 500 }
+  }
+
+  invalidateChunkIndexSyncCache(id)
+  const result: UpdateBranchLabelResult = { path: target }
+  if (labelNorm.label) result.label = labelNorm.label
+  return result
 }
 
 /**

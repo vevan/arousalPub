@@ -1,5 +1,8 @@
 import { apiErrorFromResponseBody } from '@/utils/api-error-message'
 
+/** 与 server `BRANCH_LABEL_MAX_LENGTH` 一致 */
+export const BRANCH_LABEL_MAX_LENGTH = 64
+
 export interface BranchTreeNodeDto {
   path: string
   label?: string
@@ -72,6 +75,26 @@ export async function patchConversationActiveBranchPath(
   if (!res.ok) {
     throw new Error(await errorFromResponse(res))
   }
+}
+
+export async function patchConversationBranchLabel(
+  conversationId: string,
+  branchPath: string,
+  label: string | null,
+): Promise<{ path: string; label?: string }> {
+  const qs = new URLSearchParams({ path: branchPath.trim() })
+  const res = await fetch(
+    `/api/chat/conversations/${encodeURIComponent(conversationId)}/branches?${qs}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label }),
+    },
+  )
+  if (!res.ok) {
+    throw new Error(await errorFromResponse(res))
+  }
+  return (await res.json()) as { path: string; label?: string }
 }
 
 export async function deleteConversationBranch(

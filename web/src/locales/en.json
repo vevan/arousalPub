@@ -795,7 +795,14 @@
       "forkPoint": "Branch point (open branch tree)",
       "deleteBranch": "Delete branch",
       "deleteBranchConfirm": "Delete “{name}”? All messages and memory index rows on this branch (and nested branches) will be removed. This cannot be undone.",
-      "deleteBranchNestedHint": "Nested sub-branches under this path will also be deleted."
+      "deleteBranchNestedHint": "Nested sub-branches under this path will also be deleted.",
+      "labelField": "Branch name",
+      "createBranchTitle": "Create branch",
+      "createBranchHint": "Optional. Leave empty to use the default “branch N” label.",
+      "createBranchConfirm": "Create",
+      "renameBranch": "Rename branch",
+      "renameBranchHint": "Current: {name}. Clear to use the default label.",
+      "renameBranchSave": "Save"
     },
     "convSettings": {
       "title": "This conversation",
@@ -1240,7 +1247,9 @@
       "budget_trim_min_retain_requires_field": "minRetain requires at least one of lore, memory, history",
       "branch_create_failed": "Failed to create branch",
       "branch_delete_failed": "Failed to delete branch",
+      "branch_label_invalid": "Invalid branch name (max 64 characters)",
       "branch_registry_broken": "Branch registry is inconsistent; try repairing chunk index",
+      "branch_update_failed": "Failed to update branch",
       "branch_path_conflict": "Branch path conflict",
       "branch_path_not_found": "Branch path not found",
       "global_budget_trim_requires_field": "budgetTrim requires trimOrder and/or minRetain",

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ConversationContextSettings from '@/components/ConversationContextSettings.vue'
 import ChatBranchPanel from '@/components/chat/ChatBranchPanel.vue'
+import ChatBranchLabelDialog from '@/components/chat/ChatBranchLabelDialog.vue'
 import HomeChat from '@/components/HomeChat.vue'
 import {
   CHAT_CONVERSATION_ACTIONS_KEY,
@@ -123,7 +124,11 @@ const {
   syncActiveFromIndex,
   refreshBranchTree,
   switchActiveBranch,
-  createBranchFromTurn,
+  createBranchDialogOpen,
+  requestCreateBranchFromTurn,
+  confirmCreateBranch,
+  cancelCreateBranch,
+  renameBranch,
   deleteBranch,
   openBranchPanel,
   isForkTurn,
@@ -140,7 +145,7 @@ provide(CONVERSATION_BRANCH_KEY, {
   branchPanelOpen,
   branchBusy,
   openBranchPanel,
-  createBranchFromTurn,
+  requestCreateBranchFromTurn,
   isForkTurn,
 })
 
@@ -862,6 +867,26 @@ watch(
             width="2"
             class="chat-header__saving"
           />
+          <button
+            v-if="conn.isApiKeyConfigured"
+            type="button"
+            class="chat-header__pill chat-header__pill--clickable chat-header__pill--branch"
+            :title="$t('chat.branches.openPanel')"
+            :aria-label="$t('chat.branches.openPanel')"
+            @click="openBranchPanel()"
+          >
+            <v-icon
+              icon="mdi-source-branch"
+              size="14"
+              class="chat-header__pill-icon"
+            />
+            <span
+              v-if="activeBranchPath"
+              class="chat-header__pill-label"
+            >
+              {{ activeBranchDisplayLabel }}
+            </span>
+          </button>
         </div>
         <div class="chat-header__meta">
           <span
@@ -934,25 +959,6 @@ watch(
                 />
               </v-list>
             </v-menu>
-            <button
-              type="button"
-              class="chat-header__pill chat-header__pill--clickable chat-header__pill--branch"
-              :title="$t('chat.branches.openPanel')"
-              :aria-label="$t('chat.branches.openPanel')"
-              @click="openBranchPanel()"
-            >
-              <v-icon
-                icon="mdi-source-branch"
-                size="14"
-                class="chat-header__pill-icon"
-              />
-              <span
-                v-if="activeBranchPath"
-                class="chat-header__pill-label"
-              >
-                {{ activeBranchDisplayLabel }}
-              </span>
-            </button>
           </template>
           <v-btn
             icon="mdi-cog-outline"
@@ -985,6 +991,16 @@ watch(
         :error-text="branchLoadError"
         @select="switchActiveBranch"
         @delete="deleteBranch"
+        @rename="renameBranch"
+      />
+      <ChatBranchLabelDialog
+        v-model="createBranchDialogOpen"
+        :title="$t('chat.branches.createBranchTitle')"
+        :hint="$t('chat.branches.createBranchHint')"
+        :confirm-text="$t('chat.branches.createBranchConfirm')"
+        :busy="branchBusy"
+        @update:model-value="(open) => { if (!open) cancelCreateBranch() }"
+        @confirm="confirmCreateBranch"
       />
       <v-snackbar
         v-model="branchSnackOpen"
@@ -1164,15 +1180,20 @@ watch(
 }
 
 .chat-header__title-wrap {
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
   align-items: center;
+  justify-content: start;
   gap: 0.5rem;
   min-width: 0;
 }
 
 .chat-header__title-input {
-  flex: 1;
+  width: 8em;
+  max-width: 8em;
   min-width: 0;
+  box-sizing: border-box;
   background: transparent;
   border: none;
   font-family: var(--font-display);
@@ -1183,12 +1204,22 @@ watch(
   padding: 0.25rem 0.375rem;
   border-radius: 0.25rem;
   outline: none;
-  transition: background 0.15s;
+  transition:
+    background 0.15s,
+    max-width 0.2s ease;
+}
+@supports (field-sizing: content) {
+  .chat-header__title-input {
+    field-sizing: content;
+    width: auto;
+    min-width: 2.5em;
+  }
 }
 .chat-header__title-input:hover {
   background: rgba(var(--v-theme-on-surface), 0.03);
 }
 .chat-header__title-input:focus {
+  max-width: 18em;
   background: rgba(var(--v-theme-on-surface), 0.04);
   box-shadow: inset 0 -0.0625rem 0 rgba(var(--v-theme-primary), 0.6);
 }
@@ -1251,7 +1282,8 @@ watch(
 }
 
 .chat-header__pill--branch {
-  max-width: min(10rem, 36vw);
+  width: max-content;
+  max-width: 8em;
   min-width: 0;
 }
 

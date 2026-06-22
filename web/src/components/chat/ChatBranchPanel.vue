@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ChatBranchLabelDialog from '@/components/chat/ChatBranchLabelDialog.vue'
 import { branchPathLabel } from '@/utils/conversation-branches-api'
 import type { BranchTreeNodeDto } from '@/utils/conversation-branches-api'
 import { computed, ref } from 'vue'
@@ -17,6 +18,7 @@ const emit = defineEmits<{
   'update:modelValue': [open: boolean]
   select: [path: string]
   delete: [path: string]
+  rename: [path: string, label: string]
 }>()
 
 const { t } = useI18n()
@@ -25,6 +27,8 @@ type FlatNode = { node: BranchTreeNodeDto; depth: number }
 
 const deleteConfirmOpen = ref(false)
 const pendingDeleteNode = ref<BranchTreeNodeDto | null>(null)
+const renameDialogOpen = ref(false)
+const pendingRenameNode = ref<BranchTreeNodeDto | null>(null)
 
 function flatten(nodes: BranchTreeNodeDto[], depth = 0): FlatNode[] {
   const out: FlatNode[] = []
@@ -41,6 +45,18 @@ const flatNodes = computed(() => flatten(props.nodes))
 
 const pendingDeleteLabel = computed(() => {
   const node = pendingDeleteNode.value
+  if (!node) return ''
+  return branchPathLabel(node.path, node, t)
+})
+
+const pendingRenameLabel = computed(() => {
+  const node = pendingRenameNode.value
+  if (!node) return ''
+  return node.label?.trim() ?? ''
+})
+
+const pendingRenameDisplay = computed(() => {
+  const node = pendingRenameNode.value
   if (!node) return ''
   return branchPathLabel(node.path, node, t)
 })
@@ -72,6 +88,27 @@ function confirmDelete() {
   }
   emit('delete', path)
   cancelDeleteConfirm()
+}
+
+function openRenameDialog(node: BranchTreeNodeDto) {
+  if (!node.path || props.busy) return
+  pendingRenameNode.value = node
+  renameDialogOpen.value = true
+}
+
+function cancelRenameDialog() {
+  renameDialogOpen.value = false
+  pendingRenameNode.value = null
+}
+
+function confirmRename(label: string) {
+  const path = pendingRenameNode.value?.path?.trim()
+  if (!path) {
+    cancelRenameDialog()
+    return
+  }
+  emit('rename', path, label)
+  cancelRenameDialog()
 }
 </script>
 
@@ -130,6 +167,15 @@ function confirmDelete() {
             </v-list-item-subtitle>
             <template v-if="node.path" #append>
               <v-btn
+                icon="mdi-pencil-outline"
+                variant="text"
+                density="comfortable"
+                size="x-small"
+                :disabled="busy"
+                :aria-label="$t('chat.branches.renameBranch')"
+                @click.stop="openRenameDialog(node)"
+              />
+              <v-btn
                 icon="mdi-delete-outline"
                 variant="text"
                 density="comfortable"
@@ -176,6 +222,16 @@ function confirmDelete() {
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <ChatBranchLabelDialog
+    v-model="renameDialogOpen"
+    :title="$t('chat.branches.renameBranch')"
+    :initial-label="pendingRenameLabel"
+    :hint="$t('chat.branches.renameBranchHint', { name: pendingRenameDisplay })"
+    :confirm-text="$t('chat.branches.renameBranchSave')"
+    :busy="busy"
+    @confirm="confirmRename"
+  />
 </template>
 
 <style scoped>

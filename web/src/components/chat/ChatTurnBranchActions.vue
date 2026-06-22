@@ -12,7 +12,7 @@ const branchCtx = inject(CONVERSATION_BRANCH_KEY, null)
 
 function onBranchFromHere() {
   if (!branchCtx || props.disabled) return
-  void branchCtx.createBranchFromTurn(props.turn)
+  branchCtx.requestCreateBranchFromTurn(props.turn)
 }
 
 function onOpenBranches() {

@@ -6,6 +6,7 @@ import {
   fetchConversationBranchTree,
   findBranchTreeNode,
   patchConversationActiveBranchPath,
+  patchConversationBranchLabel,
   type BranchTreeNodeDto,
 } from '@/utils/conversation-branches-api'
 import type { ChatTurnItem } from '@/types/chat-turn'
@@ -24,6 +25,9 @@ export function useConversationBranches(params: {
   const branchTreeLoading = ref(false)
   const branchTreeNodes = shallowRef<BranchTreeNodeDto[]>([])
   const branchLoadError = ref('')
+
+  const createBranchDialogOpen = ref(false)
+  const pendingCreateTurn = ref<ChatTurnItem | null>(null)
 
   const forkTurnIdsWithSiblings = computed(
     () => collectForkTurnIdsWithSiblings(branchTreeNodes.value),
@@ -82,21 +86,57 @@ export function useConversationBranches(params: {
     }
   }
 
-  async function createBranchFromTurn(turn: ChatTurnItem) {
-    const id = params.getConversationId()
-    if (!id || branchBusy.value) return
+  function requestCreateBranchFromTurn(turn: ChatTurnItem) {
+    if (branchBusy.value) return
     const forkTurnId = turn.turnId?.trim()
     if (!forkTurnId) return
+    pendingCreateTurn.value = turn
+    createBranchDialogOpen.value = true
+  }
+
+  async function confirmCreateBranch(label: string) {
+    const id = params.getConversationId()
+    const turn = pendingCreateTurn.value
+    if (!id || !turn || branchBusy.value) return
+    const forkTurnId = turn.turnId?.trim()
+    if (!forkTurnId) return
+
     branchBusy.value = true
     branchLoadError.value = ''
     try {
       const receive = turn.receives[turn.activeReceiveIndex]
+      const trimmed = label.trim()
       await createConversationBranch(id, {
         forkTurnId,
         ...(receive?.id ? { forkMessageId: receive.id } : {}),
+        ...(trimmed ? { label: trimmed } : {}),
       })
+      createBranchDialogOpen.value = false
+      pendingCreateTurn.value = null
       await refreshBranchTree()
       await params.onActivePathChanged()
+    } catch (e) {
+      branchLoadError.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      branchBusy.value = false
+    }
+  }
+
+  function cancelCreateBranch() {
+    createBranchDialogOpen.value = false
+    pendingCreateTurn.value = null
+  }
+
+  async function renameBranch(path: string, label: string) {
+    const id = params.getConversationId()
+    const target = path.trim()
+    if (!id || !target || branchBusy.value) return
+    branchBusy.value = true
+    branchLoadError.value = ''
+    try {
+      const trimmed = label.trim()
+      await patchConversationBranchLabel(id, target, trimmed || null)
+      await refreshBranchTree()
     } catch (e) {
       branchLoadError.value = e instanceof Error ? e.message : String(e)
     } finally {
@@ -139,12 +179,16 @@ export function useConversationBranches(params: {
     branchTreeLoading,
     branchTreeNodes,
     branchLoadError,
+    createBranchDialogOpen,
     forkTurnIdsWithSiblings,
     activeBranchDisplayLabel,
     syncActiveFromIndex,
     refreshBranchTree,
     switchActiveBranch,
-    createBranchFromTurn,
+    requestCreateBranchFromTurn,
+    confirmCreateBranch,
+    cancelCreateBranch,
+    renameBranch,
     deleteBranch,
     openBranchPanel,
     isForkTurn,

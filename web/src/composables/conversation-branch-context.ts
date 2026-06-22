@@ -7,7 +7,7 @@ export interface ConversationBranchContext {
   branchPanelOpen: Ref<boolean>
   branchBusy: Ref<boolean>
   openBranchPanel: () => void
-  createBranchFromTurn: (turn: ChatTurnItem) => Promise<void>
+  requestCreateBranchFromTurn: (turn: ChatTurnItem) => void
   isForkTurn: (turn: ChatTurnItem) => boolean
 }
 

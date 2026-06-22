@@ -68,6 +68,7 @@ import {
   deleteConversationBranch,
   getConversationBranchTree,
   updateConversationActiveBranchPath,
+  updateConversationBranchLabel,
 } from './conversation-branches.js'
 import {
   CONVERSATION_BATCH_MAX_TURNS,
@@ -1153,6 +1154,36 @@ app.get<{ Params: { id: string } }>(
       return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     const result = await getConversationBranchTree(id)
+    if ('error' in result) {
+      return reply.status(result.status).send({ error: result.error })
+    }
+    return result
+  },
+)
+
+interface PatchBranchBody {
+  label?: string | null
+}
+
+app.patch<{ Params: { id: string }; Querystring: { path?: string }; Body: PatchBranchBody }>(
+  '/api/chat/conversations/:id/branches',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!isValidConversationId(id)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    const rawPath = request.query.path?.trim()
+    if (!rawPath) {
+      return reply.status(400).send({ error: ApiErrorCodes.validation_failed })
+    }
+    const b = request.body ?? {}
+    if (!Object.prototype.hasOwnProperty.call(b, 'label')) {
+      return reply.status(400).send({ error: ApiErrorCodes.validation_failed })
+    }
+    if (b.label !== null && b.label !== undefined && typeof b.label !== 'string') {
+      return reply.status(400).send({ error: ApiErrorCodes.validation_failed })
+    }
+    const result = await updateConversationBranchLabel(id, rawPath, b.label)
     if ('error' in result) {
       return reply.status(result.status).send({ error: result.error })
     }

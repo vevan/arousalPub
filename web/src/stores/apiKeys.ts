@@ -280,6 +280,21 @@ export const useApiKeysStore = defineStore('apiKeys', () => {
     await loadFromServer()
   }
 
+  function clearSessionData(): void {
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    pending = false
+    keys.value = []
+    loaded.value = false
+    loading.value = false
+    saving.value = false
+    keysDirty.value = false
+    lastSavedAt.value = null
+    lastError.value = null
+  }
+
   return {
     keys,
     loaded,
@@ -290,6 +305,7 @@ export const useApiKeysStore = defineStore('apiKeys', () => {
     selectItems,
     loadFromServer,
     reloadFromServer,
+    clearSessionData,
     flushSave,
     findById,
     createKey,

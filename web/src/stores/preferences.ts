@@ -984,6 +984,50 @@ export const usePreferencesStore = defineStore('preferences', () => {
     loadPrefsInflight = null
   }
 
+  function clearSessionData(): void {
+    for (const t of prefPatchTimers.values()) clearTimeout(t)
+    prefPatchTimers.clear()
+    if (embeddingPatchTimer) {
+      clearTimeout(embeddingPatchTimer)
+      embeddingPatchTimer = null
+    }
+    lorebookPatchInFlight = false
+    historyPatchInFlight = false
+    memoryPatchInFlight = false
+    hybridFtsPatchInFlight = false
+    budgetTrimPatchInFlight = false
+    embeddingPatchInFlight = false
+    chunkPatchInFlight = false
+    defaultAuthorsNotePatchInFlight = false
+
+    writeChatPromptSnapshot.value = readStoredWriteChatPrompt()
+    promptDebugMaxStored.value = readStoredPromptMaxStored()
+    const lore = normalizeLorebookSettings(undefined)
+    lorebookRecursiveEnabled.value = lore.recursiveEnabled
+    lorebookMaxRecursionDepth.value = lore.maxRecursionDepth
+    lorebookVectorEnabled.value = lore.vectorEnabled
+    lorebookVectorTopK.value = lore.vectorTopK
+    lorebookKeywordTopK.value = lore.keywordTopK
+    const hist = normalizeHistorySettings(undefined)
+    historyLimitEnabled.value = hist.limitEnabled
+    historyMaxTurns.value = hist.maxTurns
+    const mem = normalizeMemorySettings(undefined)
+    memoryEnabled.value = mem.memoryEnabled
+    memoryTopK.value = mem.memoryTopK
+    const hfts = normalizeHybridFtsSettings(undefined)
+    hybridFtsProfile.value = hfts.profile
+    hybridFtsDictVariant.value = hfts.dictVariant ?? null
+    applyBudgetTrimLocal(cloneBudgetTrimSettings(BUDGET_TRIM_SETTINGS_DEFAULTS), true)
+    applyEmbeddingFromServer(undefined)
+    chunkTurnsPerFile.value = normalizeChunkSettings(undefined).turnsPerFile
+    defaultAuthorsNote.value = normalizeDefaultAuthorsNoteTemplate(undefined)
+    chatFontSizeRem.value = readStoredChatFontSizeRem()
+    composerEnterMode.value = readStoredComposerEnterMode()
+    embeddingLastSyncedPatch = ''
+    budgetTrimLastSynced = cloneBudgetTrimSettings(budgetTrimSettings.value)
+    resetUserPreferencesLoadState()
+  }
+
   async function loadUserPreferencesFromServer(): Promise<void> {
     if (userPreferencesLoaded.value) return
     if (!loadPrefsInflight) {
@@ -1226,6 +1270,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     patchGlobalDefaultAuthorsNoteToServer,
     userPreferencesLoaded,
     resetUserPreferencesLoadState,
+    clearSessionData,
     loadUserPreferencesFromServer,
   }
 })

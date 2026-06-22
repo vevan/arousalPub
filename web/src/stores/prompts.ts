@@ -1381,6 +1381,24 @@ export const usePromptsStore = defineStore('prompts', () => {
     return m
   })
 
+  function clearSessionData(): void {
+    indexEntries.value = []
+    presetBodies.value = {}
+    activePresetId.value = ''
+    selectedPromptId.value = null
+    activeGroupId.value = null
+    searchText.value = ''
+    loaded.value = false
+    loading.value = false
+    presetDetailLoading.value = false
+    saving.value = false
+    lastSavedAt.value = null
+    lastError.value = null
+    for (const k of Object.keys(lastPersistedBodies)) {
+      delete lastPersistedBodies[k]
+    }
+  }
+
   return {
     presets,
     activePresetId,
@@ -1396,6 +1414,7 @@ export const usePromptsStore = defineStore('prompts', () => {
 
     setActivePresetId,
     selectPreset,
+    clearSessionData,
     createPreset,
     duplicatePreset,
     renamePreset,

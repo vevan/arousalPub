@@ -54,6 +54,15 @@ export const useUiContextStore = defineStore('uiContext', () => {
     return id
   }
 
+  function clearSessionData(): void {
+    conversationLorebookIds.value = []
+    conversationPromptPresetId.value = null
+    pendingLorebookFocusId.value = null
+    pendingPromptFocusPresetId.value = null
+    openLorebooksSignal.value = 0
+    openPromptsSignal.value = 0
+  }
+
   return {
     conversationLorebookIds,
     conversationPromptPresetId,
@@ -65,5 +74,6 @@ export const useUiContextStore = defineStore('uiContext', () => {
     requestOpenPromptsDialog,
     consumePendingLorebookFocusId,
     consumePendingPromptFocusPresetId,
+    clearSessionData,
   }
 })

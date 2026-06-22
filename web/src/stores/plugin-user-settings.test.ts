@@ -49,4 +49,15 @@ describe('usePluginUserSettingsStore', () => {
     assert.equal(store.isLoaded('b'), false)
     assert.deepEqual(store.getSnapshot('a'), {})
   })
+
+  it('clearAll clears subscribers so stale handlers are not kept', () => {
+    const store = usePluginUserSettingsStore()
+    let calls = 0
+    store.subscribe('p', () => {
+      calls += 1
+    })
+    store.clearAll()
+    store.setBag('p', { fresh: true })
+    assert.equal(calls, 0)
+  })
 })

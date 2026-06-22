@@ -212,6 +212,16 @@ export const useRegexRulesStore = defineStore('regexRules', () => {
     rules.value = next
   }
 
+  function clearSessionData(): void {
+    rules.value = []
+    loaded.value = false
+    loading.value = false
+    saving.value = false
+    lastError.value = null
+    lastSavedAt.value = null
+    selectedRuleId.value = null
+  }
+
   return {
     rules,
     sortedRules,
@@ -223,6 +233,7 @@ export const useRegexRulesStore = defineStore('regexRules', () => {
     selectedRuleId,
     selectedRule,
     loadFromServer,
+    clearSessionData,
     flushSave,
     persistRulesList,
     scheduleSave,

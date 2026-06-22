@@ -832,6 +832,37 @@ export const useConnectionStore = defineStore('connection', () => {
     }
   }
 
+  function clearSessionData(): void {
+    loadSettingsInflight = null
+    presets.value = []
+    activePresetId.value = null
+    lastSavedAt.value = null
+    apiKeyDraftDirty.value = false
+    linkedPromptPresetId.value = null
+    apiKeyId.value = null
+    const d = defaultPresetFields()
+    alias.value = d.alias
+    baseUrl.value = d.baseUrl
+    apiKey.value = d.apiKey
+    model.value = d.model
+    contextLength.value = d.contextLength
+    maxTokens.value = d.maxTokens
+    stream.value = d.stream
+    temperature.value = d.temperature
+    topP.value = d.topP
+    topK.value = d.topK
+    dryMultiplier.value = d.dryMultiplier
+    dryBase.value = d.dryBase
+    dryAllowedLength.value = d.dryAllowedLength
+    dryPenaltyLastN.value = d.dryPenaltyLastN
+    drySequenceBreakers.value = [...d.drySequenceBreakers]
+    frequencyPenalty.value = d.frequencyPenalty
+    presencePenalty.value = d.presencePenalty
+    customParamsJson.value = d.customParamsJson
+    showReasoningChain.value = d.showReasoningChain
+    requestReasoningChain.value = d.requestReasoningChain
+  }
+
   return {
     presets,
     activePresetId,
@@ -870,6 +901,7 @@ export const useConnectionStore = defineStore('connection', () => {
     removePresetById,
     testActivePresetConnection,
     loadFromServer,
+    clearSessionData,
     saveToServer,
     parseCustomParams,
     exportActiveApiPresetDocument,

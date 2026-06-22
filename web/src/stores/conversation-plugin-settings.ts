@@ -89,6 +89,14 @@ export const useConversationPluginSettingsStore = defineStore(
       }
     }
 
+    function clearAll(): void {
+      for (const key of Object.keys(bags)) {
+        delete bags[key]
+      }
+      loadedKeys.clear()
+      listeners.clear()
+    }
+
     return {
       bags,
       isLoaded,
@@ -97,6 +105,7 @@ export const useConversationPluginSettingsStore = defineStore(
       setBag,
       subscribe,
       clearConversation,
+      clearAll,
     }
   },
 )

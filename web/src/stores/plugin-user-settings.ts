@@ -67,6 +67,7 @@ export const usePluginUserSettingsStore = defineStore('pluginUserSettings', () =
       delete bags[key]
     }
     loadedKeys.clear()
+    listeners.clear()
   }
 
   return {

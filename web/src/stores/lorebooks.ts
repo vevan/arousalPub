@@ -818,6 +818,27 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     return lb
   }
 
+  function clearSessionData(): void {
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    pendingSave = false
+    loadPromise = null
+    lorebooks.value = []
+    activeLorebookId.value = ''
+    activeGroupId.value = null
+    selectedEntryId.value = null
+    searchText.value = ''
+    loaded.value = false
+    loading.value = false
+    saving.value = false
+    lastSavedAt.value = null
+    lastError.value = null
+    lastPersistedSnapshot = ''
+    lastPutCompletedAt = 0
+  }
+
   return {
     lorebooks,
     activeLorebookId,
@@ -836,6 +857,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     lastSavedAt,
     lastError,
     loadFromServer,
+    clearSessionData,
     upsertEntryFromPlugin,
     upsertLorebookFromPlugin,
     ensureLoaded,

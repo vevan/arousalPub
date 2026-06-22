@@ -218,7 +218,7 @@ async function runMainPathRegressionAcceptance(conversationId: string): Promise<
   const merged = await resolveActivePathTurns(conversationId, '')
   assert.equal(merged.length, 3)
   assert.deepEqual(
-    merged.map((t) => t.send.userText),
+    merged.map((t) => getTurnUserText(t)),
     ['u0', 'u1', 'u2'],
   )
 
@@ -303,7 +303,7 @@ async function runForkAt160Acceptance(): Promise<void> {
   assert.ok(branchChunk)
   assert.equal(branchChunk.turns.length, 1)
   assert.equal(branchChunk.turns[0]!.turnOrdinal, 161)
-  assert.equal(branchChunk.turns[0]!.send.userText, 'u-branch-first')
+  assert.equal(getTurnUserText(branchChunk.turns[0]!), 'u-branch-first')
 
   const activeMerged = await resolveActivePathTurns(conversationId, 'branch1')
   assert.equal(activeMerged.length, 162)
@@ -889,7 +889,7 @@ async function runIntegration(): Promise<void> {
       afterAppend.map((t) => t.turnOrdinal),
       [0, 1, 2],
     )
-    assert.equal(afterAppend[2]!.send.userText, 'u-branch')
+    assert.equal(getTurnUserText(afterAppend[2]!), 'u-branch')
 
     const branchFilesAfter = await readdir(path.join(conversationDir(conversationId), 'branch1'))
     assert.ok(branchFilesAfter.some((f) => f.startsWith('turn-') && f.endsWith('.json')))
@@ -912,12 +912,14 @@ async function runIntegration(): Promise<void> {
     assert.ok(!('error' in renamed))
     assert.equal(renamed.label, 'Renamed Branch')
     const treeRenamed = await getConversationBranchTree(conversationId)
+    assert.ok(!('error' in treeRenamed))
     assert.equal(treeRenamed.nodes[0]!.children[0]!.label, 'Renamed Branch')
 
     const cleared = await updateConversationBranchLabel(conversationId, 'branch1', null)
     assert.ok(!('error' in cleared))
     assert.equal(cleared.label, undefined)
     const treeCleared = await getConversationBranchTree(conversationId)
+    assert.ok(!('error' in treeCleared))
     assert.equal(treeCleared.nodes[0]!.children[0]!.label, undefined)
 
     console.log('[branch-label-patch-integration] ok')

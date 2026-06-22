@@ -11,6 +11,7 @@ import {
   appendConversationTurn,
   conversationDir,
   createConversationStub,
+  getTurnUserText,
   readConversationIndex,
   saveFirstTurn,
 } from '../chat-storage.js'
@@ -189,7 +190,7 @@ async function runDeleteBranchIntegration(): Promise<void> {
 
   const onMain = await resolveActivePathTurns(conversationId, '')
   assert.deepEqual(
-    onMain.map((t) => t.send.userText),
+    onMain.map((t) => getTurnUserText(t)),
     ['u0', 'u1'],
   )
 

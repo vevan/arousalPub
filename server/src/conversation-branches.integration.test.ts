@@ -35,7 +35,7 @@ describe('conversation-branches integration (isolated DATA_DIR)', () => {
           AROUSAL_TEST_USER_ID: 'b0000001',
         },
         encoding: 'utf8',
-        timeout: 60_000,
+        timeout: 120_000,
       },
     )
 
@@ -48,5 +48,7 @@ describe('conversation-branches integration (isolated DATA_DIR)', () => {
     assert.match(result.stdout, /\[branch-recall-integration\] ok/)
     assert.match(result.stdout, /\[branch-nested-integration\] ok/)
     assert.match(result.stdout, /\[branch-cross-integration\] ok/)
+    assert.match(result.stdout, /\[branch-accept-main-path\] ok/)
+    assert.match(result.stdout, /\[branch-accept-fork-160\] ok/)
   })
 })

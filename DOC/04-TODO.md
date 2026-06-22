@@ -46,10 +46,10 @@
   - [ ] 弃用分支（可 v1.1）：`DELETE .../branches/:path` 或设置页入口 → 删子树 + `deleteTurnMemoryByBranchSubtree` + 重置 `activeBranchPath`
 
   **验收**
-  - [ ] 主路径 `activeBranchPath=""` 回归与改前一致
-  - [ ] fork @160：分支目录创建时无 chunk；首条消息写入 `branch1/turn-000100-000199.json`（ordinal 161）
-  - [ ] 切换分支后 UI 仅显示 active 路径；memory 召回不含兄弟 `branchPath`
-  - [ ] 375px 顶栏分支树可用（`DOC/33` 浮层模式可复用）
+  - [x] 主路径 `activeBranchPath=""` 回归与改前一致（`.tmp/conversation-branches-integration.ts` · `branch-accept-main-path`）
+  - [x] fork @160：分支目录创建时无 chunk；首条消息写入 `branch1/turn-000100-000199.json`（ordinal 161）
+  - [x] 切换分支后 UI 仅显示 active 路径；memory 召回不含兄弟 `branchPath`（集成 recall / cross）
+  - [x] 375px 顶栏分支树可用（`ChatBranchPanel` · `@media (max-width: 40rem)` 全宽浮层 · S4）
 
 - [ ] **移动端兼容性修复** — `DOC/33`：~~窄屏 grid/rail overlay~~（已落地）；余 composer / iOS `100dvh`/安全区/软键盘验收
 

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  chunkAlignedRangeStart,
   chunkFileNameForRange,
   computeBeforeOrdinalReadRange,
   computeHeadTailFromLinks,
@@ -26,6 +27,15 @@ describe('ordinalRangeForNewChunk', () => {
   it('uses turnsPerFile cap', () => {
     assert.deepEqual(ordinalRangeForNewChunk(0, 100), { start: 0, end: 99 })
     assert.deepEqual(ordinalRangeForNewChunk(100, 50), { start: 100, end: 149 })
+  })
+})
+
+describe('chunkAlignedRangeStart', () => {
+  it('aligns ordinal to chunk window', () => {
+    assert.equal(chunkAlignedRangeStart(161, 100), 100)
+    assert.equal(chunkAlignedRangeStart(160, 100), 100)
+    assert.equal(chunkAlignedRangeStart(99, 100), 0)
+    assert.equal(chunkAlignedRangeStart(100, 100), 100)
   })
 })
 

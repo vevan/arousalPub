@@ -47,6 +47,16 @@ export function ordinalRangeForNewChunk(
   return { start, end: start + cap - 1 }
 }
 
+/** 含 turnOrdinal 的标准 chunk 窗口起始（与文件名 turn-000100-000199 对齐） */
+export function chunkAlignedRangeStart(
+  ordinal: number,
+  turnsPerFile: number,
+): number {
+  const ord = Math.max(0, Math.floor(ordinal))
+  const cap = normalizeChunkSettings({ turnsPerFile }).turnsPerFile
+  return Math.floor(ord / cap) * cap
+}
+
 export function inferTurnsPerFileFromFileName(fileName: string): number | null {
   const base = path.basename(fileName)
   const m = TURN_CHUNK_FILE_RE.exec(base)
@@ -897,16 +907,15 @@ export async function prepareTailChunkForAppend(
     if (nextStart === null) return null
     const global = await readGlobalChunkSettings()
     const cap = global.turnsPerFile
-    const meta = emptyChunkMeta({
-      rangeStart: nextStart,
+    const alignedStart = chunkAlignedRangeStart(nextStart, cap)
+    const window = ordinalRangeForNewChunk(alignedStart, cap)
+    const tailFile = chunkFileNameForRange(window.start, window.end)
+    const meta: ChunkFile['meta'] = {
+      chunkId: chunkIdFromFileName(tailFile),
+      ordinalRange: { start: nextStart, end: nextStart },
       turnsPerFile: cap,
-      previous: null,
-    })
-    const tailFile = chunkFileNameForRange(
-      meta.ordinalRange.start,
-      meta.ordinalRange.start + cap - 1,
-    )
-    meta.chunkId = chunkIdFromFileName(tailFile)
+      links: { previous: null, next: null, branches: [] },
+    }
     const tail: ChunkFile = {
       schemaVersion: 1,
       meta,

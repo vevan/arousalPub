@@ -4,7 +4,7 @@
 
 ## P0 余项
 
-- [ ] **对话分支（消息树）** — 定案：`DOC/23` §1.4 **空分支 + 从下一轮继续**；memory/枚举原语已就绪（P3 ✅）
+- [x] **对话分支（消息树）** — 定案：`DOC/23` §1.4 **空分支 + 从下一轮继续**；S1–S5 + 验收已完成（2026-06-18）
 
   **S1 · 读路径（阻塞 messages / assemble）**
   - [x] `chunk-chain.ts`：实现 `resolveActivePathTurns(convId, activeBranchPath, range?)`（前缀至 `forkTurnId` + 分支 suffix 合并 · §5.3）
@@ -30,7 +30,6 @@
   - [x] `api-error-codes.ts` + i18n：`fork_turn_not_found`、`fork_turn_not_on_active_path`、`branch_path_conflict` 等
   - **审计 backlog**（详见 `DOC/23` §9.1）：无事务回滚、ALS+动态 import 等；严重项 `setActive` 覆盖 `branches[]` 已修复
   - [x] 集成：创建分支 → append → messages / assemble / memory 召回（`.tmp/conversation-branches-integration.ts` · 2026-06-18）
-  - [ ] 集成：memory Lance 全链路需 embedding API 时另行 e2e
 
   **S4 · 前端**
   - [x] 会话 meta 加载 / 持久化 `activeBranchPath`（`ChatConversationView` + `useConversationBranches`）
@@ -39,11 +38,13 @@
   - [x] Fork 点标记：有 sibling 分支的 turn 显示指示；点击打开总览并定位
   - [x] `use-turn-list.ts` / `ChatMessageList`：切换分支后 `reloadTurns` 重置 tail + prepend 懒加载仍可用（`DOC/15`）
   - [x] i18n：`zh.json` / `en.json`（分支、创建、切换、空分支提示等）
+  - [x] `ChatBranchPanel` 删除分支（确认对话框 → `DELETE .../branches?path=`）
 
   **S5 · 索引与清理（可紧随 S2）**
   - [x] `rebuildHeadTailFromLinks` 按 `branchPath` 作用域扫描（主路径仅根目录 `turn-*.json`）
   - [x] `syncChunkIndexIfDrifted` / tail 缓冲：分支 tail 变更后 `invalidateChunkIndexSyncCache`
-  - [ ] 弃用分支（可 v1.1）：`DELETE .../branches/:path` 或设置页入口 → 删子树 + `deleteTurnMemoryByBranchSubtree` + 重置 `activeBranchPath`
+  - [x] 弃用分支（可 v1.1）：`DELETE .../branches?path=` → 删子树 + `deleteTurnMemoryByBranchSubtree` + 重置 `activeBranchPath`
+  - [x] 集成：memory Lance 全链路（`.tmp/conversation-branches-delete-memory-integration.ts`；真实 embed 需 `AROUSAL_EMBEDDING_E2E=1` + API env）
 
   **验收**
   - [x] 主路径 `activeBranchPath=""` 回归与改前一致（`.tmp/conversation-branches-integration.ts` · `branch-accept-main-path`）

@@ -791,7 +791,10 @@
       "turnCount": "{n} turns",
       "empty": "No branches yet. Use “Branch from here” on a message to create one.",
       "branchFromHere": "Branch from here",
-      "forkPoint": "Branch point (open branch tree)"
+      "forkPoint": "Branch point (open branch tree)",
+      "deleteBranch": "Delete branch",
+      "deleteBranchConfirm": "Delete “{name}”? All messages and memory index rows on this branch (and nested branches) will be removed. This cannot be undone.",
+      "deleteBranchNestedHint": "Nested sub-branches under this path will also be deleted."
     },
     "convSettings": {
       "title": "This conversation",
@@ -1235,6 +1238,7 @@
       "budget_trim_min_retain_number": "minRetain fields must be numbers",
       "budget_trim_min_retain_requires_field": "minRetain requires at least one of lore, memory, history",
       "branch_create_failed": "Failed to create branch",
+      "branch_delete_failed": "Failed to delete branch",
       "branch_path_conflict": "Branch path conflict",
       "branch_path_not_found": "Branch path not found",
       "global_budget_trim_requires_field": "budgetTrim requires trimOrder and/or minRetain",

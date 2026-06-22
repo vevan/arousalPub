@@ -2,6 +2,7 @@ import {
   branchPathLabel,
   collectForkTurnIdsWithSiblings,
   createConversationBranch,
+  deleteConversationBranch,
   fetchConversationBranchTree,
   findBranchTreeNode,
   patchConversationActiveBranchPath,
@@ -99,6 +100,24 @@ export function useConversationBranches(params: {
     }
   }
 
+  async function deleteBranch(path: string) {
+    const id = params.getConversationId()
+    const target = path.trim()
+    if (!id || !target || branchBusy.value) return
+    branchBusy.value = true
+    branchLoadError.value = ''
+    try {
+      const result = await deleteConversationBranch(id, target)
+      activeBranchPath.value = result.activeBranchPath ?? ''
+      await refreshBranchTree()
+      await params.onActivePathChanged()
+    } catch (e) {
+      branchLoadError.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      branchBusy.value = false
+    }
+  }
+
   function openBranchPanel() {
     branchPanelOpen.value = true
     void refreshBranchTree()
@@ -121,6 +140,7 @@ export function useConversationBranches(params: {
     refreshBranchTree,
     switchActiveBranch,
     createBranchFromTurn,
+    deleteBranch,
     openBranchPanel,
     isForkTurn,
   }

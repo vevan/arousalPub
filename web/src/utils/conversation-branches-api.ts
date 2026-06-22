@@ -74,6 +74,21 @@ export async function patchConversationActiveBranchPath(
   }
 }
 
+export async function deleteConversationBranch(
+  conversationId: string,
+  branchPath: string,
+): Promise<{ path: string; activeBranchPath: string }> {
+  const qs = new URLSearchParams({ path: branchPath.trim() })
+  const res = await fetch(
+    `/api/chat/conversations/${encodeURIComponent(conversationId)}/branches?${qs}`,
+    { method: 'DELETE' },
+  )
+  if (!res.ok) {
+    throw new Error(await errorFromResponse(res))
+  }
+  return (await res.json()) as { path: string; activeBranchPath: string }
+}
+
 /** 有 sibling 分支的 fork turnId（用于气泡标记） */
 export function collectForkTurnIdsWithSiblings(nodes: BranchTreeNodeDto[]): Set<string> {
   const out = new Set<string>()

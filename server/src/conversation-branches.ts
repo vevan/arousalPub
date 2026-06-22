@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises'
+import { mkdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { ApiErrorCodes } from './api-error-codes.js'
 import {
@@ -15,6 +15,7 @@ import {
 } from './chat-storage.js'
 import {
   collectRegisteredBranchPaths,
+  findBranchRegistryEntry,
   parseBranchRegistryForkTurnId,
   parseBranchRegistryPath,
   readAllTurnsAtBranchPath,
@@ -23,8 +24,10 @@ import {
   readConversationActiveBranchPath,
   resolveActivePathTurns,
   resolveBranchForkOrdinal,
+  invalidateChunkIndexSyncCache,
 } from './chunk-chain.js'
 import { chunkStorageRelativePath, normalizeBranchPath, resolveNestedBranchPath } from './chunk-path.js'
+import { deleteTurnMemoryByBranchSubtree } from './memory-store.js'
 
 export interface BranchRegistryEntry {
   forkTurnId: string
@@ -37,6 +40,11 @@ export interface CreateBranchResult {
   path: string
   forkTurnId: string
   forkOrdinal: number
+  activeBranchPath: string
+}
+
+export interface DeleteBranchResult {
+  path: string
   activeBranchPath: string
 }
 
@@ -196,6 +204,115 @@ async function appendBranchRegistryToForkChunk(
   }
   await writeChunkFile(conversationId, chunkStorageRelativePath(bp, chunkFileName), nextChunk)
   return true
+}
+
+function parentPathAndSegment(fullPath: string): {
+  parent: string
+  segment: string
+} {
+  const bp = normalizeBranchPath(fullPath)
+  const parts = bp.split('/').filter(Boolean)
+  const segment = parts.pop()
+  if (!segment) {
+    throw new Error('invalid branch path segment')
+  }
+  return { parent: parts.join('/'), segment }
+}
+
+function registryEntryMatchesSegment(entry: unknown, segment: string): boolean {
+  const rel = parseBranchRegistryPath(entry)
+  if (!rel) return false
+  return rel === segment || rel.split('/').pop() === segment
+}
+
+async function removeBranchRegistryFromParentIndex(
+  conversationId: string,
+  parentBranchPath: string,
+  segment: string,
+): Promise<ConversationIndex | null> {
+  const parent = normalizeBranchPath(parentBranchPath)
+  const idx = await readParentConversationIndex(conversationId, parent)
+  if (!idx) return null
+  const branches = Array.isArray(idx.branches) ? idx.branches : []
+  const nextBranches = branches.filter((e) => !registryEntryMatchesSegment(e, segment))
+  if (nextBranches.length === branches.length) return null
+  const next: ConversationIndex = {
+    ...idx,
+    branches: nextBranches,
+    updatedAt: nowIso(),
+  }
+  if (parent) {
+    await writeBranchConversationIndex(conversationId, parent, next)
+  } else {
+    await writeConversationIndex(conversationId, next)
+  }
+  return next
+}
+
+async function removeBranchRegistryFromForkChunk(
+  conversationId: string,
+  parentBranchPath: string,
+  segment: string,
+  forkTurnId: string,
+): Promise<boolean> {
+  const parent = normalizeBranchPath(parentBranchPath)
+  const parentTurns =
+    parent === ''
+      ? await readAllTurnsAtBranchPath(conversationId, '')
+      : await resolveActivePathTurns(conversationId, parent)
+  const forkTurn = parentTurns.find((t) => t.turnId === forkTurnId)
+  if (!forkTurn) return false
+
+  const located = await readChunkContainingOrdinal(
+    conversationId,
+    forkTurn.turnOrdinal,
+    parent,
+  )
+  if (!located) return false
+
+  const chunk = await readChunkFileAt(
+    conversationId,
+    located.branchPath,
+    located.fileName,
+  )
+  if (!chunk) return false
+
+  const links = chunk.meta.links ?? {
+    previous: null,
+    next: null,
+    branches: [],
+  }
+  const branches = Array.isArray(links.branches) ? links.branches : []
+  const nextBranches = branches.filter((e) => !registryEntryMatchesSegment(e, segment))
+  if (nextBranches.length === branches.length) return false
+
+  const nextChunk: ChunkFile = {
+    ...chunk,
+    meta: {
+      ...chunk.meta,
+      links: {
+        previous: links.previous ?? null,
+        next: links.next ?? null,
+        branches: nextBranches,
+      },
+    },
+  }
+  await writeChunkFile(
+    conversationId,
+    chunkStorageRelativePath(located.branchPath, located.fileName),
+    nextChunk,
+  )
+  return true
+}
+
+function activePathWithinDeletedSubtree(
+  active: string,
+  deletedPath: string,
+): boolean {
+  const a = normalizeBranchPath(active)
+  const d = normalizeBranchPath(deletedPath)
+  if (!a || !d) return false
+  return a === d || a.startsWith(`${d}/`)
 }
 
 async function branchPathIsRegistered(
@@ -405,4 +522,83 @@ export async function updateConversationActiveBranchPath(
   await writeConversationIndex(id, next)
   await upsertChatListEntry(chatListEntryFromIndex(next), next)
   return next
+}
+
+/**
+ * 弃用分支：删子树目录、父级注册表、fork chunk 链接、Lance 行；必要时重置 activeBranchPath。
+ */
+export async function deleteConversationBranch(
+  conversationId: string,
+  branchPath: string,
+): Promise<DeleteBranchResult | BranchOpError> {
+  const id = conversationId.trim()
+  let target: string
+  try {
+    target = normalizeBranchPath(branchPath)
+  } catch {
+    return { error: ApiErrorCodes.branch_path_not_found, status: 400 }
+  }
+  if (!target) {
+    return { error: ApiErrorCodes.branch_path_not_found, status: 400 }
+  }
+
+  const rootIdx = await readConversationIndex(id)
+  if (!rootIdx) {
+    return { error: ApiErrorCodes.conversation_not_found, status: 404 }
+  }
+  if (!(await branchPathIsRegistered(id, target))) {
+    return { error: ApiErrorCodes.branch_path_not_found, status: 404 }
+  }
+
+  let parent: string
+  let segment: string
+  try {
+    ;({ parent, segment } = parentPathAndSegment(target))
+  } catch {
+    return { error: ApiErrorCodes.branch_path_not_found, status: 400 }
+  }
+
+  const registryEntry = await findBranchRegistryEntry(id, parent, segment)
+  const forkTurnId = registryEntry
+    ? parseBranchRegistryForkTurnId(registryEntry)
+    : null
+  if (!forkTurnId) {
+    return { error: ApiErrorCodes.branch_path_not_found, status: 404 }
+  }
+
+  const chunkUpdated = await removeBranchRegistryFromForkChunk(
+    id,
+    parent,
+    segment,
+    forkTurnId,
+  )
+  if (!chunkUpdated) {
+    return { error: ApiErrorCodes.branch_delete_failed, status: 500 }
+  }
+
+  const parentUpdated = await removeBranchRegistryFromParentIndex(id, parent, segment)
+  if (!parentUpdated) {
+    return { error: ApiErrorCodes.branch_delete_failed, status: 500 }
+  }
+
+  const branchDir = path.join(conversationDir(id), ...target.split('/'))
+  try {
+    await rm(branchDir, { recursive: true, force: true })
+  } catch {
+    return { error: ApiErrorCodes.branch_delete_failed, status: 500 }
+  }
+
+  await deleteTurnMemoryByBranchSubtree(id, target)
+  invalidateChunkIndexSyncCache(id)
+
+  let activeBranchPath = await readConversationActiveBranchPath(id)
+  if (activePathWithinDeletedSubtree(activeBranchPath, target)) {
+    const reset = await updateConversationActiveBranchPath(id, parent || null)
+    if ('error' in reset) {
+      return reset
+    }
+    activeBranchPath = await readConversationActiveBranchPath(id)
+  }
+
+  return { path: target, activeBranchPath }
 }

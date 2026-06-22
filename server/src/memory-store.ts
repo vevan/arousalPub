@@ -258,6 +258,15 @@ export async function deleteTurnMemoryByBranchSubtree(
   await table.delete(`branchPath = '${esc}' OR branchPath LIKE '${esc}/%'`)
 }
 
+/** 读取 Lance turn_memory 全表行（测试 / 诊断） */
+export async function readAllTurnMemoryRows(
+  conversationId: string,
+): Promise<TurnMemoryRow[]> {
+  const table = await openMemoryTable(conversationId)
+  if (!table) return []
+  return readTurnMemoryRowsFromTable(table)
+}
+
 export async function deleteTurnMemoryVector(
   conversationId: string,
   turnId: string,

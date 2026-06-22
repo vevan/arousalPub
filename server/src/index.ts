@@ -65,6 +65,7 @@ import {
 import { readChunkContainingOrdinal } from './chunk-chain.js'
 import {
   createEmptyConversationBranch,
+  deleteConversationBranch,
   getConversationBranchTree,
   updateConversationActiveBranchPath,
 } from './conversation-branches.js'
@@ -1152,6 +1153,25 @@ app.get<{ Params: { id: string } }>(
       return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
     const result = await getConversationBranchTree(id)
+    if ('error' in result) {
+      return reply.status(result.status).send({ error: result.error })
+    }
+    return result
+  },
+)
+
+app.delete<{ Params: { id: string }; Querystring: { path?: string } }>(
+  '/api/chat/conversations/:id/branches',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!isValidConversationId(id)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    const rawPath = request.query.path?.trim()
+    if (!rawPath) {
+      return reply.status(400).send({ error: ApiErrorCodes.validation_failed })
+    }
+    const result = await deleteConversationBranch(id, rawPath)
     if ('error' in result) {
       return reply.status(result.status).send({ error: result.error })
     }

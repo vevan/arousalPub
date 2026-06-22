@@ -123,6 +123,7 @@ const {
   refreshBranchTree,
   switchActiveBranch,
   createBranchFromTurn,
+  deleteBranch,
   openBranchPanel,
   isForkTurn,
 } = useConversationBranches({
@@ -971,6 +972,7 @@ watch(
         :busy="branchBusy"
         :error-text="branchLoadError"
         @select="switchActiveBranch"
+        @delete="deleteBranch"
       />
       <v-dialog
         v-model="memoryRebuildDialogOpen"

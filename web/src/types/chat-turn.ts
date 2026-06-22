@@ -22,6 +22,7 @@ export interface ReceiveItem {
 }
 
 export interface ChatTurnItem {
+  turnId?: string
   user: string
   receives: ReceiveItem[]
   activeReceiveIndex: number

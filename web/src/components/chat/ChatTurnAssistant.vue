@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ChatReasoningChain from '@/components/chat/ChatReasoningChain.vue'
+import ChatTurnBranchActions from '@/components/chat/ChatTurnBranchActions.vue'
 import type { useChatSession } from '@/composables/useChatSession'
 import type { ChatTurnItem } from '@/types/chat-turn'
 import {
@@ -250,6 +251,10 @@ const displayModelName = computed(() => {
         />
       </div>
       <div class="turn-toolbar turn-toolbar--assistant">
+      <ChatTurnBranchActions
+        :turn="turn"
+        :disabled="regeneratingTurnOrdinal !== null"
+      />
       <button
         type="button"
         class="turn-toolbar__btn"

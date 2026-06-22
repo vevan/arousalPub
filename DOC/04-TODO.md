@@ -33,12 +33,12 @@
   - [ ] 集成：memory Lance 全链路需 embedding API 时另行 e2e
 
   **S4 · 前端**
-  - [ ] 会话 meta 加载 / 持久化 `activeBranchPath`（`useChatSession` 或 conversation store）
-  - [ ] `ChatConversationView` 顶栏：分支树图标 + drawer/overlay 总览（`GET .../branches`）；active 高亮；点击切换 → PATCH + 清空 `turns` + 重载 tail
-  - [ ] 消息气泡菜单：「从此处分支」（任意 turn）→ `POST .../branches`；可选 `forkMessageId`
-  - [ ] Fork 点标记：有 sibling 分支的 turn 显示指示；点击打开总览并定位
-  - [ ] `use-turn-list.ts` / `ChatMessageList`：切换分支后 prepend 懒加载仍可用（`DOC/15`）
-  - [ ] i18n：`zh.json` / `en.json`（分支、创建、切换、空分支提示等）
+  - [x] 会话 meta 加载 / 持久化 `activeBranchPath`（`ChatConversationView` + `useConversationBranches`）
+  - [x] `ChatConversationView` 顶栏：分支树图标 + drawer/overlay 总览（`GET .../branches`）；active 高亮；点击切换 → PATCH + 清空 `turns` + 重载 tail
+  - [x] 消息气泡菜单：「从此处分支」（任意 turn）→ `POST .../branches`；可选 `forkMessageId`
+  - [x] Fork 点标记：有 sibling 分支的 turn 显示指示；点击打开总览并定位
+  - [x] `use-turn-list.ts` / `ChatMessageList`：切换分支后 `reloadTurns` 重置 tail + prepend 懒加载仍可用（`DOC/15`）
+  - [x] i18n：`zh.json` / `en.json`（分支、创建、切换、空分支提示等）
 
   **S5 · 索引与清理（可紧随 S2）**
   - [ ] `rebuildHeadTailFromLinks` 按 `branchPath` 作用域扫描（主路径仅根目录 `turn-*.json`）

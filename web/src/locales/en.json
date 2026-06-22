@@ -783,6 +783,16 @@
     "turnAuditColCompletionTokens": "Received tokens",
     "turnAuditYes": "Yes",
     "turnAuditNo": "No",
+    "branches": {
+      "panelTitle": "Conversation branches",
+      "openPanel": "Branch tree",
+      "mainPath": "Main path",
+      "unnamed": "Branch {path}",
+      "turnCount": "{n} turns",
+      "empty": "No branches yet. Use “Branch from here” on a message to create one.",
+      "branchFromHere": "Branch from here",
+      "forkPoint": "Branch point (open branch tree)"
+    },
     "convSettings": {
       "title": "This conversation",
       "openButton": "Conversation settings",

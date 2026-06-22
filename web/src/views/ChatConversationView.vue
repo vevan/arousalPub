@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import ConversationContextSettings from '@/components/ConversationContextSettings.vue'
+import ChatBranchPanel from '@/components/chat/ChatBranchPanel.vue'
 import HomeChat from '@/components/HomeChat.vue'
 import {
   CHAT_CONVERSATION_ACTIONS_KEY,
 } from '@/composables/chat-conversation-actions'
+import { CONVERSATION_BRANCH_KEY } from '@/composables/conversation-branch-context'
+import { useConversationBranches } from '@/composables/useConversationBranches'
 import { useMemoryRebuild } from '@/composables/useMemoryRebuild'
 import { bootstrapAppData } from '@/bootstrap/app-data'
 import { fetchDefaultLorebookIds, fetchLorebookPickerItems } from '@/utils/default-lorebook'
@@ -107,6 +110,38 @@ const convContextSettingsRef = ref<InstanceType<
 > | null>(null)
 const homeChatRef = ref<InstanceType<typeof HomeChat> | null>(null)
 const hasConversationTurns = ref(false)
+
+const {
+  activeBranchPath,
+  branchPanelOpen,
+  branchBusy,
+  branchTreeNodes,
+  branchLoadError,
+  forkTurnIdsWithSiblings,
+  activeBranchDisplayLabel,
+  syncActiveFromIndex,
+  refreshBranchTree,
+  switchActiveBranch,
+  createBranchFromTurn,
+  openBranchPanel,
+  isForkTurn,
+} = useConversationBranches({
+  getConversationId: () => props.conversationId,
+  onActivePathChanged: async () => {
+    await homeChatRef.value?.reloadTurns()
+  },
+})
+
+provide(CONVERSATION_BRANCH_KEY, {
+  activeBranchPath,
+  forkTurnIdsWithSiblings,
+  branchPanelOpen,
+  branchBusy,
+  openBranchPanel,
+  createBranchFromTurn,
+  isForkTurn,
+})
+
 const conversationMemoryEmbeddingModel = ref<string | null>(null)
 const conversationMemoryEmbeddingDimensions = ref<number | null>(null)
 const conversationMemoryHybridFtsSpec = ref<string | null>(null)
@@ -691,6 +726,8 @@ async function ensureConversation(id: string) {
       typeof idx.headChunkFile === 'string' && idx.headChunkFile.length > 0
     applyConversationMemoryIndexMeta(idx)
     convBindings.value = bindingsFromIndex(idx)
+    syncActiveFromIndex(idx)
+    void refreshBranchTree()
     void patchAuditDebugToServer(id)
     maybePromptMemoryRebuild()
   } catch {
@@ -728,6 +765,8 @@ watch(
   (id) => {
     memoryRebuildDismissKey = ''
     memoryRebuildDialogOpen.value = false
+    branchPanelOpen.value = false
+    branchLoadError.value = ''
     void ensureConversation(id)
   },
   { immediate: true },
@@ -883,6 +922,25 @@ watch(
                 />
               </v-list>
             </v-menu>
+            <button
+              type="button"
+              class="chat-header__pill chat-header__pill--clickable chat-header__pill--branch"
+              :title="$t('chat.branches.openPanel')"
+              :aria-label="$t('chat.branches.openPanel')"
+              @click="openBranchPanel()"
+            >
+              <v-icon
+                icon="mdi-source-branch"
+                size="14"
+                class="chat-header__pill-icon"
+              />
+              <span
+                v-if="activeBranchPath"
+                class="chat-header__pill-label"
+              >
+                {{ activeBranchDisplayLabel }}
+              </span>
+            </button>
           </template>
           <v-btn
             icon="mdi-cog-outline"
@@ -905,6 +963,14 @@ watch(
         :conversation-user-character-id="convBindings.userCharacterId"
         :authors-note-active="authorsNoteActive"
         @open-authors-note="openAuthorsNoteSettings"
+      />
+      <ChatBranchPanel
+        v-model="branchPanelOpen"
+        :nodes="branchTreeNodes"
+        :active-branch-path="activeBranchPath"
+        :busy="branchBusy"
+        :error-text="branchLoadError"
+        @select="switchActiveBranch"
       />
       <v-dialog
         v-model="memoryRebuildDialogOpen"
@@ -1159,6 +1225,11 @@ watch(
 
 .chat-header__pill--prompt {
   max-width: 15em;
+  min-width: 0;
+}
+
+.chat-header__pill--branch {
+  max-width: min(10rem, 36vw);
   min-width: 0;
 }
 

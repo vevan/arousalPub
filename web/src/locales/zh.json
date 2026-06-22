@@ -783,6 +783,16 @@
     "turnAuditColCompletionTokens": "接收 tokens",
     "turnAuditYes": "是",
     "turnAuditNo": "否",
+    "branches": {
+      "panelTitle": "对话分支",
+      "openPanel": "分支树",
+      "mainPath": "主线",
+      "unnamed": "分支 {path}",
+      "turnCount": "{n} 轮",
+      "empty": "暂无分支，可在消息菜单中「从此处分支」创建。",
+      "branchFromHere": "从此处分支",
+      "forkPoint": "分支点（点击查看分支树）"
+    },
     "convSettings": {
       "title": "本对话设置",
       "openButton": "对话设置",

@@ -13,6 +13,7 @@ import {
 } from './turn-patch-body.js'
 
 export interface MessagesTurnDto {
+  turnId: string
   turnOrdinal: number
   user: string
   receives: {
@@ -83,6 +84,7 @@ export function mapTurnRecordsToMessagesDto(
         : i
     if (recs.length === 0) {
       return {
+        turnId: t.turnId,
         turnOrdinal: ord,
         user: activeUserText,
         receives: [],
@@ -95,6 +97,7 @@ export function mapTurnRecordsToMessagesDto(
         : 0
     ai = Math.min(Math.max(0, ai), recs.length - 1)
     return {
+      turnId: t.turnId,
       turnOrdinal: ord,
       user: activeUserText,
       receives: recs,

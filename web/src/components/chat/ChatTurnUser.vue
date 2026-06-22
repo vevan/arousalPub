@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { useChatSession } from '@/composables/useChatSession'
 import type { ChatTurnItem } from '@/types/chat-turn'
+import ChatTurnBranchActions from '@/components/chat/ChatTurnBranchActions.vue'
 import PluginSlotMount from '@/plugins/PluginSlotMount.vue'
 import { renderRichMessageToHtml } from '@/utils/render-rich-message'
 import { toRefs } from 'vue'
@@ -129,6 +130,10 @@ const { userDisplayName, userAvatarLetter } = toRefs(props.session)
           :list-index="listIndex"
         />
       </div>      <div class="turn-toolbar turn-toolbar--user">
+        <ChatTurnBranchActions
+          :turn="turn"
+          :disabled="regeneratingTurnOrdinal !== null || isTurnAwaitingAssistant(turn)"
+        />
         <button
           type="button"
           class="turn-toolbar__btn"

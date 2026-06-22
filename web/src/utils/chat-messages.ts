@@ -9,6 +9,7 @@ import { translateApiError } from '@/utils/api-error-message'
 import { allocateShortId } from '@/utils/short-id'
 
 type MessagesApiTurn = {
+  turnId?: string
   user?: string
   turnOrdinal?: number
   receives?: {
@@ -82,6 +83,9 @@ export function parseConversationTurnsFromApi(
         : 0
     if (receives.length === 0) {
       return {
+        ...(typeof row.turnId === 'string' && row.turnId.trim()
+          ? { turnId: row.turnId.trim() }
+          : {}),
         user,
         receives: [],
         activeReceiveIndex: 0,
@@ -93,6 +97,9 @@ export function parseConversationTurnsFromApi(
     }
     ai = Math.min(Math.max(0, ai), receives.length - 1)
     return {
+      ...(typeof row.turnId === 'string' && row.turnId.trim()
+        ? { turnId: row.turnId.trim() }
+        : {}),
       user,
       receives,
       activeReceiveIndex: ai,

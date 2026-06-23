@@ -351,17 +351,21 @@ interface ConversationBatchContext {
 
 **Lifecycle 补充**：`host.lifecycle.onGeneratingChanged` — `loading` / `regeneratingTurnOrdinal` 变化时回调（迹录等待态刷新侧栏）。
 
-### 3.14 `host.regex`（规划 · **`DOC/24`** §2）
+### 3.14 `host.regex`（✅ · **`DOC/24`** §2 · 2026-06-10）
 
-> **未实现**。宿主原生正则引擎；**非**插件、**非** `host.capabilities`。
+> **已实现**。宿主原生正则引擎；**非**插件、**非** `host.capabilities`。规则为用户级 `data/{userId}/regex-rules.json`；Web 侧 `GET /api/regex-rules` 带 **30s 内存缓存**（`plugin-host-regex.ts` · `invalidateRegexHostRulesCache` 在规则 PUT 后失效）。
 
 | 方法 | 说明 |
 |------|------|
-| `listRules(opts?)` | 读 `regex-rules.json`；可按 `phases` 过滤 |
-| `applyText(text, ruleIds, ctx)` | 内存替换；`ctx` 含 `phase`、`field`、`tailOrdinal`、`turnOrdinal?` |
-| `applyMessages(messages, ruleIds, ctx)` | 对 `messages[]` 按 `role` 映射 `field` 后 `applyText` |
+| `listRules(opts?)` | 读已启用规则摘要；`opts.phases` 过滤 `display` / `outgoing` / `persist` |
+| `applyText(text, ruleIds, ctx)` | 内存替换；`ctx` 含 `phase`、`field`、`tailOrdinal`、可选 `turnOrdinal` |
+| `applyMessages(messages, ruleIds, ctx)` | 对 `messages[]` 按 `role` 映射 `field` 后 `applyText`；`ctx` 可传 `turnOrdinalByIndex` |
 
-服务端 hook 内对称 API：`api.regex.applyText` / `applyMessages`（`PluginServerHostApi` 扩展）。
+实现：`web/src/plugins/plugin-host-regex.ts` · `web/src/utils/regex-host-apply.ts` · 注入于 `create-plugin-web-host.ts`。
+
+**消费示例**：`conversation-export` 导出前 `applyText`（`display`）；`plot-summary` 清理 sidecar 等（见 **`DOC/24`** §2.6）。
+
+服务端 hook 内对称 API：**`api.regex`**（`listRules` / `applyText` / `applyMessages` · `server/src/plugin-system/host-api.ts`）。
 
 ---
 
@@ -391,6 +395,7 @@ interface ConversationBatchContext {
 | `runPluginComplete(req)` | 同 Web `complete` |
 | `runPluginCompletePreflight(req)` | 同 Web preflight |
 | `runPluginMacroExpand(req)` | 同 Web `macros.expand` |
+| **`regex.listRules` / `applyText` / `applyMessages`** | 同 Web `host.regex`（读盘 `regex-rules.json` · `server/src/regex-apply.ts`） |
 
 **`completeDraft` 实现约定**：抛出 `context_exceeded`、`context_length_unconfigured`、`parse_failed` 等 message，宿主路由会映射为对应 HTTP 错误码。
 
@@ -552,6 +557,7 @@ class PluginHostApiError {
 | `DOC/10-plugin-conversation-host.md` | 对话 DTO、runScope 细节、swipe/export |
 | `DOC/11-plugin-host-completion-and-lorebook.md` | 补全与 lorebook 产品设计定案 |
 | `DOC/12-plugin-plot-summary.md` | Historian（剧情纪要）完整业务示例 |
+| `DOC/24-regex-and-session-audit.md` | 宿主原生正则三阶段、`host.regex` / `api.regex` |
 | `DOC/30-plugin-trace-keeper.md` | **迹录** Trace Keeper（✅ v1） |
 | `plugins/README.md` | 内置插件列表与打包说明 |
 
@@ -564,3 +570,4 @@ class PluginHostApiError {
 | 2026-06-02 | 首版：合并 DOC/10–11 已实现 API；新增 `prepareContext`、`normalizeEntryRefs`、`completeDraft` |
 | 2026-06-02 | 核对 `lorebook.ensure` / `applyOrder` 已实现；补 REST 与 `lorebook.write` 权限说明 |
 | 2026-06-08 | `plot-summary` 更名；`reorder-curated` 移除，改为通用 `apply-order`；Historian 排序算法在 `plugins/plot-summary/src/shared/` |
+| 2026-06-23 | §3.14 `host.regex` 标为已实现（2026-06-10）；§4.2 补 `api.regex` |

@@ -337,7 +337,7 @@ Regex **outgoing** 走宿主原生管道；**批量清理已存对话**走 `rege
 - [x] 常量 `CONVERSATION_BATCH_MAX_TURNS = 50`；`range_too_large` / `conversation_busy` / `conversation_locked`
 - [ ] `manifest.permissions` 校验（read/patch 字段级）
 - [x] 内置插件 `swipe-cleaner`、`conversation-export`
-- [ ] 宿主原生 **正则**（`DOC/24` §2）；**`host.regex`**
+- [x] 宿主原生 **正则**（`DOC/24` §2）；**`host.regex`**（2026-06-10）
 - [ ] Web **`host.capabilities`** 能力注册表（`DOC/09` §8.7；**不含** regex 试点）
 
 ---

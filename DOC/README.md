@@ -47,7 +47,7 @@
 | [`18`](18-plugin-host-developer-api.md) | ✅ | 插件 API 表 |
 | [`20`](20-user-file-library.md) | 定案 | 用户文件库 / charFile（未实现） |
 | [`21`](21-conversation-plugin-settings.md) | ✅ | 会话插件 Tab schema |
-| [`23`](23-conversation-branches.md) | ✅ | S1–S5 + 顶栏分支树 UI；§9.3 审计已关闭（深树性能、DELETE 回滚、`branchForkTurnIds`） |
+| [`23`](23-conversation-branches.md) | ✅ | S1–S5 + 顶栏分支树；persist `turnId` patch；from/to/total 副标题；§9.3 审计已关闭 |
 | [`24`](24-regex-and-session-audit.md) | 主体 ✅ | 正则三阶段、debug 审计 |
 | [`25`](25-security-deployment.md) | ✅ | 部署硬化、**API Key 隔离与磁盘加密** §15 |
 | [`30`](30-plugin-trace-keeper.md) | ✅ v1 | **迹录** `trace-keeper`：Together、Separate、TraceBundle、左栏 HTML 面板 |
@@ -63,6 +63,8 @@
 | `13-api-key-server-side-isolation.md` | → `25` §15.1 |
 | `16-api-key-disk-encryption.md` | → `25` §15.2 |
 | `22-performance-audit-and-optimization.md` | P0–P3 已落地 → `03` §14.5–14.7、`06` 摘要 |
+| `DOC/04` 对话分支 S1–S5 实现清单 | 2026-06-18 完成 → [`23`](23-conversation-branches.md) |
+| `DOC/04` P0 落盘 persist 缺 turnId | 2026-06-23 · `15c7900` → [`23`](23-conversation-branches.md) §6.4、[`03`](03-实现细节.md) §6.8 |
 
 ## 运维备忘
 

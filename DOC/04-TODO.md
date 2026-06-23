@@ -1,81 +1,8 @@
 # TODO（未完成项）
 
-> **阶段**：已脱离 MVP（2026-05+）。下列为**仍待做**；已实现能力见 `DOC/03` §14.7、各专题文档、`DOC/README` 归档表。
+> **阶段**：已脱离 MVP（2026-05+）。下列为**仍待做**；已实现能力见 `DOC/03` §14.7、各专题文档、`DOC/README` 归档表、本文 **§已归档**。
 
 ## P0 余项
-
-- [ ] **新落盘助手回复下分支图标禁用** — 本轮助手消息落盘成功后，该轮气泡菜单/分支入口（「从此处分支」或 fork 指示）呈禁用态，**刷新页面后恢复**；疑为落盘 SSE / `persist` 后本地 turn 状态未同步（`turnId` / `turnOrdinal` / `activeBranchPath` / 分支注册表缓存）。排查：`ChatMessageList` 气泡菜单 `disabled` 条件、`use-turn-list` 落盘后 merge、`useConversationBranches` 是否在 append 后刷新；对照 `DOC/23` S4。
-
-- [x] **对话分支（消息树）** — 定案：`DOC/23` §1.4 **空分支 + 从下一轮继续**；S1–S5 + 验收已完成（2026-06-18）
-
-  **S1 · 读路径（阻塞 messages / assemble）**
-  - [x] `chunk-chain.ts`：实现 `resolveActivePathTurns(convId, activeBranchPath, range?)`（前缀至 `forkTurnId` + 分支 suffix 合并 · §5.3）
-  - [x] `readTurnsTail` / `readTurnsBefore` / `readTurnsInOrdinalRange` 改为基于 `activeBranchPath`（主路径 `""` 行为不变）
-  - [x] `conversation-messages-api.ts`：`GET .../messages` 返回合并后线性列表；`tail` / `before` 分页在 active 路径上计算 `hasMoreBefore`
-  - [x] `memory-pipeline.ts`：`loadTurnsForMemoryPipeline` 读 active 路径 tail/区间（assemble history 窗口）
-  - [x] `plugin-prepare-context`（若有独立读链）：摘要 / 区间读限定 active 路径 — 经 `readTurnsInOrdinalRange` 默认读 index.activeBranchPath
-  - [x] 单测：`mergeActivePathPrefixSegment` / `parseBranchRegistryForkTurnId`（`chunk-chain-active-path.test.ts`）；集成 fixture 待 S3
-
-  **S2 · 写路径**
-  - [x] `writeChunkFile` append 前 `mkdir` 递归（含 `branchN/` 相对路径）
-  - [x] `writeBranchConversationIndex`；`prepareTailChunkForAppend` / `rotateTailChunk` 分支感知
-  - [x] `appendConversationTurn` 读 `activeBranchPath`；空分支首 append 创建首 chunk（`forkOrdinal + 1`）
-  - [x] `chat-persist-after-chat.ts`：落盘读 `activeBranchPath` + `readTailChunkAt`
-  - [x] `scheduleMemoryIndexUpsert` 落盘传 `branchPath`；`readChunkContainingOrdinal` active 路径定位
-  - [x] `updateTurnContentInTailChunk` / PATCH 写盘带 `branchPath`
-  - [ ] 单测：空分支 fixture 首次 append 磁盘断言（已由集成脚本覆盖）
-
-  **S3 · 分支 API**
-  - [x] `POST /api/chat/conversations/:id/branches` — 空分支（§5.3）：注册表 + `branchN/index.json`（无 chunk）+ 可选切 `activeBranchPath`
-  - [x] `GET /api/chat/conversations/:id/branches` — 递归树（`path` / `forkTurnId` / `forkOrdinal` / `turnCount` · §6.5）
-  - [x] `PATCH /api/chat/conversations/:id` — body 支持 `activeBranchPath`；sync 根 `index.json` + `chat.index.json`
-  - [x] `api-error-codes.ts` + i18n：`fork_turn_not_found`、`fork_turn_not_on_active_path`、`branch_path_conflict` 等
-  - **审计 backlog**（详见 `DOC/23` §9.1–§9.3）：**已全部修复**（2026-06-18 第三轮关闭）
-  - [x] 集成：创建分支 → append → messages / assemble / memory 召回（`server/src/integration/conversation-branches-integration.ts` · 2026-06-18）
-
-  **S4 · 前端**
-  - [x] 会话 meta 加载 / 持久化 `activeBranchPath`（`ChatConversationView` + `useConversationBranches`）
-  - [x] `ChatConversationView` 顶栏：分支树图标 + drawer/overlay 总览（`GET .../branches`）；active 高亮；点击切换 → PATCH + 清空 `turns` + 重载 tail
-  - [x] 消息气泡菜单：「从此处分支」（任意 turn）→ `POST .../branches`；可选 `forkMessageId`
-  - [x] Fork 点标记：有 sibling 分支的 turn 显示指示；点击打开总览并定位
-  - [x] `use-turn-list.ts` / `ChatMessageList`：切换分支后 `reloadTurns` 重置 tail + prepend 懒加载仍可用（`DOC/15`）
-  - [x] i18n：`zh.json` / `en.json`（分支、创建、切换、空分支提示等）
-  - [x] `ChatBranchPanel` 删除分支（确认对话框 → `DELETE .../branches?path=`）
-
-  **S5 · 索引与清理（可紧随 S2）**
-  - [x] `rebuildHeadTailFromLinks` 按 `branchPath` 作用域扫描（主路径仅根目录 `turn-*.json`）
-  - [x] `syncChunkIndexIfDrifted` / tail 缓冲：分支 tail 变更后 `invalidateChunkIndexSyncCache`
-  - [x] 弃用分支（可 v1.1）：`DELETE .../branches?path=` → 删子树 + `deleteTurnMemoryByBranchSubtree` + 重置 `activeBranchPath`
-  - [x] 集成：memory Lance 全链路（`server/src/integration/conversation-branches-delete-memory-integration.ts`；真实 embed 需 `AROUSAL_EMBEDDING_E2E=1` + API env）
-
-  **验收**
-  - [x] 主路径 `activeBranchPath=""` 回归与改前一致（`.tmp/conversation-branches-integration.ts` · `branch-accept-main-path`）
-  - [x] fork @160：分支目录创建时无 chunk；首条消息写入 `branch1/turn-000100-000199.json`（ordinal 161）
-  - [x] 切换分支后 UI 仅显示 active 路径；memory 召回不含兄弟 `branchPath`（集成 recall / cross）
-  - [x] 375px 顶栏分支树可用（`ChatBranchPanel` · `@media (max-width: 40rem)` 全宽浮层 · S4）
-
-  **审计遗留（第二轮 · 2026-06-18，详见 `DOC/23` §9.3）**
-
-  已修复（本轮）：
-  - [x] **P0** `resolveActivePathTurns` 嵌套父路径递归（空父分支 + 嵌套 fork）
-  - [x] **P1** create `setActive` 失败 `rollbackCreatedConversationBranch`
-  - [x] **P1** DELETE 注册表先于 `rm`；fork chunk 失败回滚父 index；`dirCleanupFailed` 可重试删目录
-  - [x] **P1** DELETE `activeResetFailed` / `memoryCleanupFailed` 响应标志
-  - [x] **P2** `isTurnIdReferencedByBranchRegistry` + DELETE turn 409 `fork_turn_has_branches`
-  - [x] **P2** `batchUpdateConversationTurns` 两阶段 read→write；跨 chunk 写失败回滚（`rolledBack`）
-  - [x] **P2** turn PATCH/DELETE/batch 映射 `branch_registry_broken`（409）
-  - [x] **P2** `upsertBranchRegistryInForkChunk` 幂等 restore
-  - [x] **P3** 单轮 PATCH/DELETE `turn_not_on_active_path`
-  - [x] **P3** 前端 repair 按钮 + `ApiRequestError`；rename Promise 关对话框；切换无乐观更新
-  - [x] **P3** `collectRegisteredBranchPaths` 保持创建顺序（去 `.sort()`）
-  - [x] 集成：`runEmptyParentNestedForkIntegration`；label PATCH；嵌套 delete 保留父分支
-  - [x] **P2** label repair 暴露 `branchLabelsRepaired` / `branchLabelRepairFailed`
-  - [x] **P3** 删分支 turn 数确认、`mergedTurnCount`、create 锁、`branchForkTurnIds` 索引
-  - [x] 第三轮审计（2026-06-17）：`branchForkTurnIds` 同 fork/嵌套删父修正；`orphanDirCleanup`；audit 集成扩测
-  - [x] 深树 `GET /branches` 性能：注册表单遍 + chunk 链计数 + 父路径 merged 缓存
-  - [x] DELETE fork chunk 失败：`rollbackDeleteBranchRegistry` 双写回滚 + 集成测
-
-  ~~仍待办（2026-06-17 已全部修复，见 `DOC/23` §9.3）~~
 
 - [ ] **移动端兼容性修复** — `DOC/33`：~~窄屏 grid/rail overlay~~（已落地）；余 composer / iOS `100dvh`/安全区/软键盘验收
 
@@ -110,4 +37,14 @@
 - [x] 全局插件 settings 缓存与订阅（2026-06-18 · `a7ca4ea`）：`plugin-user-settings` Pinia store · `getUserSettingsSnapshot` / `onUserSettingsChanged` · trace-keeper 验收；见 `DOC/32`
 - [x] 对话分支创建定案（2026-06-18）：**空分支 + 从下一轮继续** · chunk 命名 · 顶栏分支树 UI · API 草案 — 见 `DOC/23` §1.4–§1.5、§5.3、§6.4–§6.5
 - [x] 对话分支第三轮审计关闭（2026-06-18）：`branchForkTurnIds`、深树 `GET /branches` 批量构建、`rollbackDeleteBranchRegistry` — 见 `DOC/23` §9.3
+- [x] 落盘 persist 同步 `turnId`（2026-06-23 · `15c7900`）：修复新助手落盘后「从此处分支」禁用直至刷新 — `ChatPersistResult.turnId` · `applyPersistTurnPlugins` · 见 `DOC/23` §6.4、`DOC/03` §6.8
+- [x] 分支树轮次副标题 from/to/total（2026-06-23 · `15c7900`）：`ChatBranchPanel` · `branchTurnRangeParts` · i18n `turnRange` / `turnRangeMain` · 见 `DOC/23` §6.4
 - [ ] 架构/接口变更时同步 `DOC/01`–`03`（2026-06-10：内嵌世界书 `DOC/27`、作者注分层 `DOC/28`）
+
+## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
+
+| 项 | 完成 | 归档去向 |
+|----|------|----------|
+| **对话分支（消息树）** S1–S5 + 验收 + 三轮审计 | 2026-06-18 | [`DOC/23`](23-conversation-branches.md) 全文 · §9 审计 |
+| **新落盘助手回复下分支图标禁用** | 2026-06-23 · `15c7900` | [`DOC/23`](23-conversation-branches.md) §6.4 persist `turnId` |
+| **分支树轮次副标题**（fork / 末轮 / 独有轮数） | 2026-06-23 · `15c7900` | [`DOC/23`](23-conversation-branches.md) §6.4 · `branch-tree-utils.ts` |

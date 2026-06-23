@@ -1,6 +1,6 @@
 # 对话分支 — 设计与实现参考
 
-> **状态（2026-06-18）**：**S1–S5 + 前端分支 UI + DELETE 已落地**；§9.3 审计遗留（含第三轮深树性能、`rollbackDeleteBranchRegistry`）已关闭；集成脚本在 `server/src/integration/`。  
+> **状态（2026-06-23）**：**S1–S5 + 前端分支 UI + DELETE 已落地**；§9.3 审计遗留（含第三轮深树性能、`rollbackDeleteBranchRegistry`）已关闭；**persist SSE 增量 patch `turnId`**、**分支树 from/to/total 副标题**（2026-06-23）。集成脚本在 `server/src/integration/`。  
 > **读者**：后续做「从此处分支继续」、消息树、分支切换的 Agent / 开发者。  
 > **关联**：`DOC/03` §6.1–§6.4、§7.2–§7.3、§14.5；`DOC/08` §1.2；`DOC/15` §0。
 
@@ -362,6 +362,8 @@ resolveActivePathTurns(conversationId, activeBranchPath, range?)
 | **对话顶栏分支树** | `ChatConversationView` `.chat-header__meta` 增加分支图标（如 `mdi-source-branch`）；点击打开 drawer / overlay 展示 §6.5 树；当前 active 高亮 |
 | **任意 turn 分叉** | 消息气泡菜单「从此处分支」→ `POST .../branches`；fork 点可为任意历史 turn（不仅最后一轮） |
 | **Fork 点标记** | 列表内在有 sibling 分支的 turn 上显示指示；点击跳转分支总览并定位节点 |
+| **分支树轮次副标题** | `ChatBranchPanel`：分支节点 `turnRange`（`from {forkOrdinal}, to {mergedTurnCount}, total {turnCount}`）；主线 `turnRangeMain`；计算见 `branchTurnRangeParts` |
+| **落盘 SSE `turnId`** | `ChatPersistResult` / SSE `arousal.persist` 带回 `turnId`；前端 `applyPersistTurnPlugins` 写入本地 turn，避免有 `finalAssistantContent` 时 skip reload 导致 `ChatTurnBranchActions` 因缺 `turnId` 禁用 |
 | 分支切换 | 切换后清空 UI `turns`、重载 messages；memory 召回随 `activeBranchPath`（assemble 已接） |
 | Lazy load | 分支分页读：`DOC/15` — 在 `resolveActivePathTurns` / `readTurnsTail` 分支化后，prepend 逻辑可复用 |
 
@@ -424,6 +426,7 @@ Response：
 
 - `turnCount`：该分支子树内 turn 数（不含共享前缀）；空分支为 `0`。
 - `mergedTurnCount`：沿 active 路径合并后的总轮数（含 fork 点前缀）；主路径节点与 `turnCount` 相同。
+- UI 副标题：`from` = `forkOrdinal`，`to` = `mergedTurnCount`，`total` = `turnCount`（例：从第 36 轮分叉 · 目前第 60 轮 · 共 24 轮）。
 - 嵌套：`path` 为会话根相对全路径（如 `branch1/nested`）。
 
 **`DELETE /api/chat/conversations/:id/branches?path=`**（200）：`path`、`activeBranchPath`；可选警告标志 `memoryCleanupFailed`、`activeResetFailed`、`dirCleanupFailed`、`orphanDirCleanup`（注册表已清、仅清遗留目录）。
@@ -582,6 +585,8 @@ flowchart TD
 | 分支审计集成 | `server/src/integration/conversation-branches-audit-integration.ts` |
 | 分支 delete + memory 集成 | `server/src/integration/conversation-branches-delete-memory-integration.ts` |
 | 前端分支 composable | `web/src/composables/useConversationBranches.ts` |
+| 分支树轮次副标题 | `web/src/utils/branch-tree-utils.ts`（`branchTurnRangeParts`）· `ChatBranchPanel.vue` |
+| persist turnId patch | `server/src/chat-persist-after-chat.ts` · `web/src/utils/persist-display.ts` |
 | Memory 重建 | `server/src/memory-index.ts`（`replaceTurnMemoryIndex`） |
 | Memory 召回 / Lance where | `server/src/memory-pipeline.ts`、`server/src/memory-store.ts` |
 | 命中批量读 | `server/src/memory-hits.ts`（替代原 `turn-resolve.ts`） |
@@ -604,3 +609,4 @@ flowchart TD
 | 2026-06-18 | §9.2–§9.3 全量 + 第二轮审计 backlog；`DOC/04` 同步遗留 P1–P3；空父嵌套 fork 集成测 |
 | 2026-06-17 | §9.3 审计遗留全部修复：DELETE 注册表优先、`batchUpdate` 回滚、`branchForkTurnIds`、`mergedTurnCount`、create 锁、repair label 计数 |
 | 2026-06-17 | 深树 `GET /branches` 批量构建；`rollbackDeleteBranchRegistry` DELETE 双写回滚 |
+| 2026-06-23 | §6.4 persist SSE 带回 `turnId`（修复落盘后分支 fork 禁用）；分支树 from/to/total 副标题 |

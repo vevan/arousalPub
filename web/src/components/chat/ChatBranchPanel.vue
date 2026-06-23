@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import ChatBranchLabelDialog from '@/components/chat/ChatBranchLabelDialog.vue'
-import { branchPathLabel, collectSubtreeSuffixTurnCount } from '@/utils/conversation-branches-api'
+import {
+  branchPathLabel,
+  branchTurnRangeParts,
+  collectSubtreeSuffixTurnCount,
+} from '@/utils/conversation-branches-api'
 import type { BranchTreeNodeDto } from '@/utils/conversation-branches-api'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -81,6 +85,15 @@ const pendingRenameDisplay = computed(() => {
 
 function nodeLabel(node: BranchTreeNodeDto): string {
   return branchPathLabel(node.path, node, t)
+}
+
+function nodeTurnRangeSubtitle(node: BranchTreeNodeDto): string | null {
+  const parts = branchTurnRangeParts(node)
+  if (!parts) return null
+  if (parts.from != null) {
+    return t('chat.branches.turnRange', parts)
+  }
+  return t('chat.branches.turnRangeMain', parts)
 }
 
 function close() {
@@ -242,11 +255,8 @@ watch(
               />
             </template>
             <v-list-item-title>{{ nodeLabel(node) }}</v-list-item-title>
-            <v-list-item-subtitle v-if="node.path && node.turnCount > 0">
-              {{ $t('chat.branches.turnCount', { n: node.turnCount }) }}
-              <template v-if="node.mergedTurnCount != null && node.mergedTurnCount !== node.turnCount">
-                · {{ $t('chat.branches.mergedTurnCount', { n: node.mergedTurnCount }) }}
-              </template>
+            <v-list-item-subtitle v-if="nodeTurnRangeSubtitle(node)">
+              {{ nodeTurnRangeSubtitle(node) }}
             </v-list-item-subtitle>
             <template v-if="node.path" #append>
               <v-btn

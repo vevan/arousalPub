@@ -87,6 +87,24 @@ describe('applyPersistTurnPlugins', () => {
     assert.equal(trace.pluginId, 'trace-keeper')
   })
 
+  it('patches turnId on matching turnOrdinal', () => {
+    const turns: ChatTurnItem[] = [
+      {
+        turnOrdinal: 2,
+        user: 'hi',
+        receives: [{ id: 'r1', content: 'ok' }],
+        activeReceiveIndex: 0,
+      },
+    ]
+    const next = applyPersistTurnPlugins(turns, {
+      ok: true,
+      turnOrdinal: 2,
+      turnId: 't9',
+    })
+    assert.notEqual(next, turns)
+    assert.equal(next[0]?.turnId, 't9')
+  })
+
   it('no-op when plugins missing', () => {
     const turns: ChatTurnItem[] = [
       {

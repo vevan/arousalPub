@@ -183,7 +183,7 @@ function mapRetroReceives(
   )
 }
 
-/** 将 persist.plugins 合并进对应轮次，避免为插件快照全量 reload messages */
+/** 将 persist 落盘字段（plugins / turnId）合并进对应轮次，避免为插件快照全量 reload messages */
 export function applyPersistTurnPlugins(
   turns: ChatTurnItem[],
   persist?: ChatPersistPayload,
@@ -194,9 +194,16 @@ export function applyPersistTurnPlugins(
   if (idx < 0) return turns
   const cur = turns[idx]!
   const plugins = resolvePersistPluginsForTurn(persist, cur.plugins)
-  if (!plugins) return turns
+  const turnId = persist.turnId?.trim()
+  if (!plugins && !turnId) return turns
   return turns.map((t, i) =>
-    i === idx ? { ...cur, plugins } : t,
+    i === idx
+      ? {
+          ...cur,
+          ...(plugins ? { plugins } : {}),
+          ...(turnId ? { turnId } : {}),
+        }
+      : t,
   )
 }
 

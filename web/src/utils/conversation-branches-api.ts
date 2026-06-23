@@ -5,7 +5,11 @@ import { branchPathLabel } from './branch-path-label.js'
 import type { BranchTreeNodeDto, BranchTreeResponse } from './conversation-branches-types.js'
 
 export { branchPathLabel }
-export { collectSubtreeSuffixTurnCount } from './branch-tree-utils.js'
+export {
+  branchTurnRangeParts,
+  collectSubtreeSuffixTurnCount,
+} from './branch-tree-utils.js'
+export type { BranchTurnRangeParts } from './branch-tree-utils.js'
 export type { BranchTreeNodeDto, BranchTreeResponse } from './conversation-branches-types.js'
 
 /** 与 server `BRANCH_LABEL_MAX_LENGTH` 一致 */

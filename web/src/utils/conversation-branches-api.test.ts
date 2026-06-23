@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { collectSubtreeSuffixTurnCount } from './branch-tree-utils.js'
+import { branchTurnRangeParts, collectSubtreeSuffixTurnCount } from './branch-tree-utils.js'
 import { branchPathLabel } from './branch-path-label.js'
 import type { BranchTreeNodeDto } from './conversation-branches-types.js'
 
@@ -32,6 +32,46 @@ describe('branchPathLabel', () => {
 
   it('falls back to unnamed segment label', () => {
     assert.equal(branchPathLabel('branch1/branch2', node('branch1/branch2'), t), 'Branch branch2')
+  })
+})
+
+describe('branchTurnRangeParts', () => {
+  it('returns from / to / total for branch nodes', () => {
+    const branch = node('branch1', undefined, 24)
+    branch.forkOrdinal = 36
+    branch.mergedTurnCount = 60
+    assert.deepEqual(branchTurnRangeParts(branch), {
+      from: 36,
+      to: 60,
+      total: 24,
+    })
+  })
+
+  it('derives to from forkOrdinal + turnCount when mergedTurnCount missing', () => {
+    const branch = node('branch1', undefined, 3)
+    branch.forkOrdinal = 10
+    assert.deepEqual(branchTurnRangeParts(branch), {
+      from: 10,
+      to: 13,
+      total: 3,
+    })
+  })
+
+  it('returns main path to and total without from', () => {
+    const main = node('', undefined, 60)
+    main.mergedTurnCount = 60
+    assert.deepEqual(branchTurnRangeParts(main), { to: 60, total: 60 })
+  })
+
+  it('shows fork point when branch has no suffix turns yet', () => {
+    const branch = node('branch1', undefined, 0)
+    branch.forkOrdinal = 36
+    branch.mergedTurnCount = 36
+    assert.deepEqual(branchTurnRangeParts(branch), {
+      from: 36,
+      to: 36,
+      total: 0,
+    })
   })
 })
 

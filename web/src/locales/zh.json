@@ -792,6 +792,8 @@
       "unnamed": "分支 {path}",
       "turnCount": "{n} 轮",
       "mergedTurnCount": "合并 {n} 轮",
+      "turnRange": "从第 {from} 轮分叉 · 目前第 {to} 轮 · 共 {total} 轮",
+      "turnRangeMain": "目前第 {to} 轮 · 共 {total} 轮",
       "empty": "暂无分支。可在消息上使用「从此处分支」创建。",
       "branchFromHere": "从此处分支",
       "branchFromHereNoTurnId": "无法分支：该消息尚无 turnId",

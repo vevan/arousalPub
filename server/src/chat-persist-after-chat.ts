@@ -48,6 +48,7 @@ export interface ChatPersistResult {
   ok: boolean
   error?: string
   turnOrdinal?: number
+  turnId?: string
   receiveId?: string
   isFirstTurn?: boolean
   /** persist 阶段 regex 后的 user 正文（落盘内容） */
@@ -199,6 +200,7 @@ function turnPluginsFromChunk(
 function okPersistResult(
   base: {
     turnOrdinal?: number
+    turnId?: string
     receiveId?: string
     isFirstTurn?: boolean
   },
@@ -241,6 +243,7 @@ async function finishPersistResult(
   conversationId: string,
   base: {
     turnOrdinal?: number
+    turnId?: string
     receiveId?: string
     isFirstTurn?: boolean
   },
@@ -447,6 +450,7 @@ export async function persistTurnAfterModelReply(params: {
         conversationId,
         {
           turnOrdinal: regenOrd,
+          turnId: turn.turnId,
           receiveId,
           isFirstTurn: false,
         },
@@ -481,11 +485,13 @@ export async function persistTurnAfterModelReply(params: {
       if (!saved) {
         return { ok: false, error: ApiErrorCodes.first_turn_persist_maybe_exists }
       }
-      const rec = saved.chunk.turns[0]?.receives[0]
+      const firstTurn = saved.chunk.turns[0]
+      const rec = firstTurn?.receives[0]
       return finishPersistResult(
         conversationId,
         {
           turnOrdinal: 0,
+          turnId: firstTurn?.turnId,
           receiveId: typeof rec?.id === 'string' ? rec.id : undefined,
           isFirstTurn: true,
         },
@@ -539,6 +545,7 @@ export async function persistTurnAfterModelReply(params: {
       conversationId,
       {
         turnOrdinal: appendTurnOrdinal,
+        turnId: last?.turnId,
         receiveId,
         isFirstTurn: false,
       },
@@ -636,11 +643,13 @@ export async function persistTurnAfterModelReply(params: {
     if (!saved) {
       return { ok: false, error: ApiErrorCodes.first_turn_persist_maybe_exists }
     }
-    const rec = saved.chunk.turns[0]?.receives[0]
+    const firstTurn = saved.chunk.turns[0]
+    const rec = firstTurn?.receives[0]
     return finishPersistResult(
       conversationId,
       {
         turnOrdinal: 0,
+        turnId: firstTurn?.turnId,
         receiveId: typeof rec?.id === 'string' ? rec.id : undefined,
         isFirstTurn: true,
       },
@@ -680,6 +689,7 @@ export async function persistTurnAfterModelReply(params: {
     conversationId,
     {
       turnOrdinal: persistedOrdinal,
+      turnId: last?.turnId,
       receiveId,
       isFirstTurn: false,
     },

@@ -35,6 +35,8 @@ export interface ChatPersistPayload {
   ok: boolean
   error?: string
   turnOrdinal?: number
+  /** 落盘分配的 turnId，供前端增量 patch、避免全量 reload 后分支 fork */
+  turnId?: string
   receiveId?: string
   isFirstTurn?: boolean
   /** persist 阶段 regex 后落盘的 user 正文 */

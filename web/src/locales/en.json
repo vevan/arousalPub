@@ -792,6 +792,8 @@
       "unnamed": "Branch {path}",
       "turnCount": "{n} turns",
       "mergedTurnCount": "{n} merged",
+      "turnRange": "from {from}, to {to}, total {total}",
+      "turnRangeMain": "to {to}, total {total}",
       "empty": "No branches yet. Use “Branch from here” on a message to create one.",
       "branchFromHere": "Branch from here",
       "branchFromHereNoTurnId": "Cannot branch: message has no turn id yet",

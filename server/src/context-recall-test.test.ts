@@ -33,4 +33,19 @@ describe('parseContextRecallTestBody', () => {
       error: 'context_recall_topk_invalid',
     })
   })
+
+  it('accepts optional simulateTurnOrdinal', () => {
+    assert.deepEqual(
+      parseContextRecallTestBody({ query: 'x', simulateTurnOrdinal: 12 }),
+      { ok: true, request: { query: 'x', topK: 10, simulateTurnOrdinal: 12 } },
+    )
+    assert.deepEqual(
+      parseContextRecallTestBody({ query: 'x', alignTurnOrdinal: 12 }),
+      { ok: true, request: { query: 'x', topK: 10, simulateTurnOrdinal: 12 } },
+    )
+    assert.deepEqual(
+      parseContextRecallTestBody({ query: 'x', simulateTurnOrdinal: -1 }),
+      { ok: false, error: 'context_recall_simulate_turn_invalid' },
+    )
+  })
 })

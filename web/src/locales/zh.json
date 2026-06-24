@@ -896,8 +896,10 @@
       "recallTestButton": "命中测试",
       "recallTestButtonHint": "用自定义语句测试本对话向量库与资料库召回，不影响实际发送。",
       "recallTestTitle": "命中测试",
-      "recallTestHint": "检索本对话 Lance 向量库中的全部已索引轮次（不排除近期 history），并按绑定资料库匹配；仅用于调试。",
+      "recallTestHint": "远期记忆：未填模拟轮次时检索全部已索引轮次；填写后排除该轮及之后（与组装一致，并排除近期 history）。资料库使用「测试语句 + 召回 memory + 近期 history」作扫描语料。向量分数为 RRF（约 0.01～0.03）。",
       "recallTestQuery": "测试语句",
+      "recallTestSimulateTurn": "模拟轮次",
+      "recallTestScanCorpusChars": "资料库扫描语料 {n} 字",
       "recallTestTopK": "展示条数 (Top-K)",
       "recallTestSubmit": "测试",
       "recallTestFailed": "命中测试失败",
@@ -910,7 +912,9 @@
       "recallTestMode": {
         "keyword": "关键字",
         "vector": "向量",
-        "constant": "恒定"
+        "constant": "恒定",
+        "rrf": "RRF",
+        "vectorFallback": "向量回退"
       },
       "tabAuthorsNote": "作者注",
       "tabAuthorsNoteHint": "会话级提示词，按深度注入到即将发送的消息栈中；正文可写 \\{\\{user\\}\\} 等宏。",
@@ -1267,6 +1271,7 @@
       "memory_rebuild_failed": "重建远期记忆索引失败",
       "context_recall_query_required": "请输入测试语句",
       "context_recall_topk_invalid": "Top-K 须在 1～64 之间",
+      "context_recall_simulate_turn_invalid": "模拟轮次须为非负整数",
       "memory_vector_index_corrupt": "远期记忆向量索引损坏或不完整，请重建索引",
       "memory_settings_invalid": "memorySettings 须为对象或 null",
       "memory_settings_memory_enabled_boolean": "memorySettings.memoryEnabled 须为布尔",

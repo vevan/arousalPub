@@ -141,6 +141,7 @@ export const ApiErrorCodes = {
   memory_rebuild_failed: 'memory_rebuild_failed',
   context_recall_query_required: 'context_recall_query_required',
   context_recall_topk_invalid: 'context_recall_topk_invalid',
+  context_recall_simulate_turn_invalid: 'context_recall_simulate_turn_invalid',
   memory_vector_index_corrupt: 'memory_vector_index_corrupt',
   memory_settings_invalid: 'memory_settings_invalid',
   memory_settings_memory_enabled_boolean: 'memory_settings_memory_enabled_boolean',

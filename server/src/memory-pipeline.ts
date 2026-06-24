@@ -89,7 +89,7 @@ function selectRecentTurns(
   return limited
 }
 
-function lastAssistantBeforeExclusive(
+export function lastAssistantBeforeExclusive(
   turns: TurnRecord[],
   beforeExclusive?: number | null,
 ): string {

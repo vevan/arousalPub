@@ -4,6 +4,7 @@
 
 ## P0 余项
 
+- [ ] **向量召回选项独立 Tab** — 将远期记忆 hybrid、资料库 vector/keyword、Hybrid FTS 分词、命中测试等**向量召回相关**设置从「上下文」等大杂烩 Tab 拆出为独立 Tab（全局 `SettingsView` + 对话 `ConversationContextSettings` 对齐）；降低认知负担，与命中测试/组装审计同一信息架构
 - [ ] **移动端兼容性修复** — `DOC/33`：~~窄屏 grid/rail overlay~~（已落地）；余 composer / iOS `100dvh`/安全区/软键盘验收
 
 ## P1

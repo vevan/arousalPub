@@ -8,6 +8,7 @@ import {
 import {
   ensureHybridFtsIndex,
   hybridRelevanceScore,
+  hybridScoreKind,
   LORE_FTS_COLUMN,
   runLanceHybridSearch,
 } from './lance-hybrid-search.js'
@@ -114,6 +115,7 @@ export async function deleteLorebookVectorIndex(
 export interface LoreEntryVectorHit {
   entryId: string
   score: number
+  scoreKind: 'rrf' | 'vector_fallback'
 }
 
 export async function searchLorebookEntryVectors(
@@ -146,7 +148,11 @@ export async function searchLorebookEntryVectors(
     if (!entryId || entryId === '__seed__' || excludeEntryIds.has(entryId)) {
       continue
     }
-    hits.push({ entryId, score: hybridRelevanceScore(row) })
+    hits.push({
+      entryId,
+      score: hybridRelevanceScore(row),
+      scoreKind: hybridScoreKind(row),
+    })
     if (hits.length >= topK) break
   }
   return hits

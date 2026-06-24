@@ -896,8 +896,10 @@
       "recallTestButton": "Hit test",
       "recallTestButtonHint": "Try recall against this chat's vector index and lorebooks without sending a message.",
       "recallTestTitle": "Hit test",
-      "recallTestHint": "Search all indexed turns in this chat's Lance table (no recent-history exclusion) and match bound lorebooks; debug only.",
+      "recallTestHint": "Memory: without simulate turn, searches all indexed turns; with it, excludes that turn and later (matches assemble, plus recent-history exclusion). Lorebooks use test phrase + recalled memory + recent history. Vector scores are RRF (~0.01–0.03).",
       "recallTestQuery": "Test phrase",
+      "recallTestSimulateTurn": "Simulate turn",
+      "recallTestScanCorpusChars": "Lore scan corpus {n} chars",
       "recallTestTopK": "Show top K",
       "recallTestSubmit": "Run test",
       "recallTestFailed": "Hit test failed",
@@ -910,7 +912,9 @@
       "recallTestMode": {
         "keyword": "Keyword",
         "vector": "Vector",
-        "constant": "Constant"
+        "constant": "Constant",
+        "rrf": "RRF",
+        "vectorFallback": "Vector fallback"
       },
       "tabAuthorsNote": "Author's note",
       "tabAuthorsNoteHint": "Session-level prompt injected at a depth before send; supports \\{\\{user\\}\\} and other macros.",
@@ -1267,6 +1271,7 @@
       "memory_rebuild_failed": "memory rebuild failed",
       "context_recall_query_required": "Enter a test phrase",
       "context_recall_topk_invalid": "Top-K must be between 1 and 64",
+      "context_recall_simulate_turn_invalid": "Simulate turn ordinal must be a non-negative integer",
       "memory_vector_index_corrupt": "Long-term memory vector index is corrupt or incomplete; rebuild the index",
       "memory_settings_invalid": "memory settings invalid",
       "memory_settings_memory_enabled_boolean": "memory settings memory enabled boolean",

@@ -110,6 +110,7 @@ export function buildAssemblyAudit(
       title: m.entry.title?.trim() || undefined,
       mode: m.mode,
       score: m.score,
+      ...(m.scoreKind ? { scoreKind: m.scoreKind } : {}),
       included: includedLoreIds.has(m.entry.id),
     })
   }

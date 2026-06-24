@@ -167,6 +167,14 @@ export function hybridRelevanceScore(row: Record<string, unknown>): number {
   return 1 / (1 + dist)
 }
 
+/** 审计展示：RRF 融合分 vs 纯向量回退分（刻度不可直接比较） */
+export function hybridScoreKind(
+  row: Record<string, unknown>,
+): 'rrf' | 'vector_fallback' {
+  const rrf = Number(row._relevance_score)
+  return Number.isFinite(rrf) ? 'rrf' : 'vector_fallback'
+}
+
 export interface LanceHybridSearchParams {
   table: Table
   queryVector: number[]

@@ -44,6 +44,10 @@ export interface TrimmableLoreEntry {
 
   score: number
 
+  /** vector 命中时：RRF 融合 vs 纯向量回退（刻度不可比） */
+
+  scoreKind?: 'rrf' | 'vector_fallback'
+
 }
 
 

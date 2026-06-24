@@ -154,6 +154,7 @@ export async function resolveLorebookInjectionParts(
         entry: hit.entry,
         mode: 'vector',
         score: hit.score,
+        scoreKind: hit.scoreKind,
       })
     }
   }
@@ -194,11 +195,16 @@ async function collectVectorMatches(
   topK: number,
   seenEntryIds: Set<string>,
   conversationId?: string,
-): Promise<Array<TaggedLoreEntry & { score: number }>> {
+): Promise<Array<TaggedLoreEntry & { score: number; scoreKind: 'rrf' | 'vector_fallback' }>> {
   const emb = await createEmbedding(queryText, conversationId)
   if (!emb) return []
 
-  type Ranked = { lorebookId: string; entry: LorebookEntry; score: number }
+  type Ranked = {
+    lorebookId: string
+    entry: LorebookEntry
+    score: number
+    scoreKind: 'rrf' | 'vector_fallback'
+  }
   const ranked: Ranked[] = []
 
   for (const lid of lorebookIds) {
@@ -217,7 +223,12 @@ async function collectVectorMatches(
       if (!e || !e.enabled || seenEntryIds.has(e.id)) continue
       if (resolveEntryTriggerMode(e) !== 'vector') continue
       if (!e.content.trim()) continue
-      ranked.push({ lorebookId: lid, entry: e, score: hit.score })
+      ranked.push({
+        lorebookId: lid,
+        entry: e,
+        score: hit.score,
+        scoreKind: hit.scoreKind,
+      })
     }
   }
 
@@ -226,7 +237,9 @@ async function collectVectorMatches(
     return b.entry.priority - a.entry.priority
   })
 
-  const out: Array<TaggedLoreEntry & { score: number }> = []
+  const out: Array<
+    TaggedLoreEntry & { score: number; scoreKind: 'rrf' | 'vector_fallback' }
+  > = []
   const taken = new Set<string>()
   for (const r of ranked) {
     if (out.length >= topK) break

@@ -62,3 +62,11 @@ describe('hybridRelevanceScore', () => {
     )
   })
 })
+
+describe('hybridScoreKind', () => {
+  it('detects RRF vs vector fallback', async () => {
+    const { hybridScoreKind } = await import('./lance-hybrid-search.js')
+    assert.equal(hybridScoreKind({ _relevance_score: 0.03 }), 'rrf')
+    assert.equal(hybridScoreKind({ _distance: 1.1 }), 'vector_fallback')
+  })
+})

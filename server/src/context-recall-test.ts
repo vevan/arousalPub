@@ -4,16 +4,31 @@ import {
   resolvedLorebookIds,
   type ConversationIndex,
 } from './chat-storage.js'
-import { createEmbedding } from './embedding-client.js'
+import { resolveHistorySettings } from './history-settings.js'
 import { loadTurnsForMemoryHits } from './memory-hits.js'
+import {
+  lastAssistantBeforeExclusive,
+  loadTurnsForMemoryPipeline,
+  resolveHistoryXmlTurnCount,
+  runMemoryPipeline,
+} from './memory-pipeline.js'
 import { searchTurnMemoryVectors } from './memory-store.js'
 import { readLorebooksByIds } from './lorebook-file.js'
 import { resolveLorebookInjectionParts } from './lorebook-resolve.js'
 import type { Lorebook } from './lorebook-types.js'
+import { buildScanText } from './lore-scan.js'
 import { resolveLorebookSettings } from './lorebook-settings.js'
-import { buildMemoryEmbeddingCorpus, resolveMemoryCorpusOptions } from './memory-corpus.js'
+import {
+  buildMemoryEmbeddingCorpus,
+  buildMemoryRecallVectors,
+  resolveMemoryCorpusOptions,
+} from './memory-corpus.js'
 import { resolveMemorySettings } from './memory-settings.js'
-import { readGlobalLorebookSettings, readGlobalMemorySettings } from './user-preferences-file.js'
+import {
+  readGlobalHistorySettings,
+  readGlobalLorebookSettings,
+  readGlobalMemorySettings,
+} from './user-preferences-file.js'
 
 const PREVIEW_MAX_LEN = 240
 const TOP_K_MIN = 1
@@ -22,6 +37,8 @@ const TOP_K_MAX = 64
 export interface ContextRecallTestRequest {
   query: string
   topK: number
+  /** 模拟该轮发送前语料：等同组装的 historyBeforeTurnOrdinalExclusive */
+  simulateTurnOrdinal?: number
 }
 
 export interface ContextRecallMemoryHit {
@@ -39,6 +56,7 @@ export interface ContextRecallLoreHit {
   title: string
   mode: 'keyword' | 'vector' | 'constant'
   score?: number
+  scoreKind?: 'rrf' | 'vector_fallback'
   preview: string
   content: string
 }
@@ -46,6 +64,8 @@ export interface ContextRecallLoreHit {
 export interface ContextRecallTestResult {
   query: string
   topK: number
+  simulateTurnOrdinal?: number
+  loreScanCorpusChars: number
   memory: {
     hits: ContextRecallMemoryHit[]
     embeddingError?: string
@@ -60,7 +80,13 @@ export function parseContextRecallTestBody(
   raw: unknown,
 ):
   | { ok: true; request: ContextRecallTestRequest }
-  | { ok: false; error: 'context_recall_query_required' | 'context_recall_topk_invalid' } {
+  | {
+      ok: false
+      error:
+        | 'context_recall_query_required'
+        | 'context_recall_topk_invalid'
+        | 'context_recall_simulate_turn_invalid'
+    } {
   if (!raw || typeof raw !== 'object') {
     return { ok: false, error: 'context_recall_query_required' }
   }
@@ -74,7 +100,24 @@ export function parseContextRecallTestBody(
   if (topK < TOP_K_MIN || topK > TOP_K_MAX) {
     return { ok: false, error: 'context_recall_topk_invalid' }
   }
-  return { ok: true, request: { query, topK } }
+  let simulateTurnOrdinal: number | undefined
+  const simRaw =
+    b.simulateTurnOrdinal ?? b.alignTurnOrdinal
+  if (Object.prototype.hasOwnProperty.call(b, 'simulateTurnOrdinal') ||
+    Object.prototype.hasOwnProperty.call(b, 'alignTurnOrdinal')) {
+    if (typeof simRaw !== 'number' || !Number.isInteger(simRaw) || simRaw < 0) {
+      return { ok: false, error: 'context_recall_simulate_turn_invalid' }
+    }
+    simulateTurnOrdinal = simRaw
+  }
+  return {
+    ok: true,
+    request: {
+      query,
+      topK,
+      ...(simulateTurnOrdinal != null ? { simulateTurnOrdinal } : {}),
+    },
+  }
 }
 
 function previewText(text: string): string {
@@ -102,32 +145,78 @@ export async function runContextRecallTest(
   request: ContextRecallTestRequest,
   idx: ConversationIndex,
 ): Promise<ContextRecallTestResult> {
-  const { query, topK } = request
+  const { query, topK, simulateTurnOrdinal } = request
   const lorebookIds = resolvedLorebookIds(idx)
   const activeBranchPath = idx.activeBranchPath ?? ''
-
-  const memoryHits: ContextRecallMemoryHit[] = []
-  let embeddingError: string | undefined
 
   const globalMemory = await readGlobalMemorySettings()
   const effectiveMemory = resolveMemorySettings(globalMemory, idx.memorySettings)
   const corpusOptions = await resolveMemoryCorpusOptions(effectiveMemory)
 
-  const emb = await createEmbedding(query, conversationId)
-  if (!emb) {
+  const globalHist = await readGlobalHistorySettings()
+  const effectiveHist = resolveHistorySettings(globalHist, idx.historySettings)
+  const historyCount = resolveHistoryXmlTurnCount(effectiveHist)
+
+  const memoryPipeline = await runMemoryPipeline({
+    conversationId,
+    userText: query,
+    memorySettings: effectiveMemory,
+    historySettings: effectiveHist,
+    historyBeforeTurnOrdinalExclusive: simulateTurnOrdinal,
+    activeBranchPath,
+  })
+
+  const memoryHits: ContextRecallMemoryHit[] = []
+  let embeddingError: string | undefined
+
+  const pipelineTurns = await loadTurnsForMemoryPipeline(
+    conversationId,
+    historyCount,
+    simulateTurnOrdinal,
+    activeBranchPath,
+  )
+  const lastAssistant = lastAssistantBeforeExclusive(
+    pipelineTurns,
+    simulateTurnOrdinal,
+  )
+
+  const recall = await buildMemoryRecallVectors(conversationId, {
+    userText: query,
+    lastAssistantRaw: lastAssistant,
+    memorySettings: effectiveMemory,
+    corpusOptions,
+  })
+
+  if (!recall) {
     embeddingError = 'embedding_unavailable'
   } else {
+    const recentTurnIds = new Set(
+      simulateTurnOrdinal != null
+        ? memoryPipeline.recentTurns.map((t) => t.turnId)
+        : [],
+    )
+    const minRecentOrdinal =
+      simulateTurnOrdinal != null && memoryPipeline.recentTurns.length > 0
+        ? Math.min(...memoryPipeline.recentTurns.map((t) => t.turnOrdinal))
+        : simulateTurnOrdinal
+
     const rawHits = await searchTurnMemoryVectors(
       conversationId,
-      emb.vector,
-      query,
+      recall.vector,
+      recall.ftsQueryText,
       topK,
-      new Set(),
-      undefined,
+      recentTurnIds,
+      minRecentOrdinal,
       buildAllowedBranchPathsForActive(activeBranchPath),
     )
-    const items = await loadTurnsForMemoryHits(conversationId, rawHits)
+    const items = await loadTurnsForMemoryHits(conversationId, rawHits, recentTurnIds)
     for (const { turn, score } of items) {
+      if (
+        simulateTurnOrdinal != null &&
+        turn.turnOrdinal >= simulateTurnOrdinal
+      ) {
+        continue
+      }
       const content = buildMemoryEmbeddingCorpus(turn, corpusOptions)
       memoryHits.push({
         turnId: turn.turnId,
@@ -136,33 +225,24 @@ export async function runContextRecallTest(
         preview: previewText(content),
         content,
       })
+      if (memoryHits.length >= topK) break
     }
   }
 
   const globalLore = await readGlobalLorebookSettings()
   const effectiveLore = resolveLorebookSettings(globalLore, idx.lorebookSettings)
+  const scanCorpus = buildScanText(
+    query,
+    memoryPipeline.memoryText,
+    memoryPipeline.recentHistoryScanText,
+  )
   const parts = await resolveLorebookInjectionParts(lorebookIds, {
-    userText: query,
-    scanCorpus: query,
+    scanCorpus,
     conversationId,
     lorebookSettings: effectiveLore,
   })
 
   const loreHits: ContextRecallLoreHit[] = []
-  for (const m of parts.matchedLore) {
-    const content = m.entry.content.trim()
-    loreHits.push({
-      lorebookId: m.lorebookId,
-      lorebookName: m.lorebookName,
-      entryId: m.entry.id,
-      title: m.entry.title.trim() || m.entry.id,
-      mode: m.mode,
-      score: m.score,
-      preview: previewText(content),
-      content,
-    })
-  }
-
   const lorebooks = await readLorebooksByIds(lorebookIds)
   const byId = new Map(lorebooks.map((lb) => [lb.id, lb]))
   const nameToId = lorebookNameMap(lorebookIds, byId)
@@ -185,9 +265,26 @@ export async function runContextRecallTest(
     }
   }
 
+  for (const m of parts.matchedLore) {
+    const content = m.entry.content.trim()
+    loreHits.push({
+      lorebookId: m.lorebookId,
+      lorebookName: m.lorebookName,
+      entryId: m.entry.id,
+      title: m.entry.title.trim() || m.entry.id,
+      mode: m.mode,
+      score: m.score,
+      ...(m.scoreKind ? { scoreKind: m.scoreKind } : {}),
+      preview: previewText(content),
+      content,
+    })
+  }
+
   return {
     query,
     topK,
+    ...(simulateTurnOrdinal != null ? { simulateTurnOrdinal } : {}),
+    loreScanCorpusChars: scanCorpus.length,
     memory: {
       hits: memoryHits,
       ...(embeddingError ? { embeddingError } : {}),

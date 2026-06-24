@@ -17,6 +17,7 @@ const { t } = useI18n()
 
 const queryText = ref('')
 const topK = ref(10)
+const simulateTurnOrdinal = ref<number | null>(null)
 const submitting = ref(false)
 const errorText = ref('')
 const result = ref<ContextRecallTestResult | null>(null)
@@ -31,7 +32,13 @@ function formatScore(score: number | undefined): string {
   return score.toFixed(4)
 }
 
-function modeLabel(mode: string): string {
+function modeLabel(mode: string, scoreKind?: string): string {
+  if (mode === 'vector' && scoreKind === 'vector_fallback') {
+    return t('chat.convSettings.recallTestMode.vectorFallback')
+  }
+  if (mode === 'vector' && scoreKind === 'rrf') {
+    return `${t('chat.convSettings.recallTestMode.vector')} · ${t('chat.convSettings.recallTestMode.rrf')}`
+  }
   const key = `chat.convSettings.recallTestMode.${mode}`
   return t(key)
 }
@@ -65,10 +72,18 @@ async function onSubmit(): Promise<void> {
   result.value = null
   expandedKey.value = null
   try {
+    const simRaw = simulateTurnOrdinal.value
+    const simulate =
+      typeof simRaw === 'number' &&
+      Number.isInteger(simRaw) &&
+      simRaw >= 0
+        ? simRaw
+        : undefined
     result.value = await fetchContextRecallTest(
       props.conversationId,
       queryText.value.trim(),
       topK.value,
+      simulate,
     )
   } catch (e) {
     const code = e instanceof Error ? e.message : ''
@@ -83,6 +98,7 @@ watch(open, (isOpen) => {
     resetForm()
     queryText.value = ''
     topK.value = 10
+    simulateTurnOrdinal.value = null
   }
 })
 
@@ -109,40 +125,57 @@ watch(
           {{ $t('chat.convSettings.recallTestHint') }}
         </p>
 
-        <div class="recall-test-toolbar">
-          <v-text-field
+        <div class="recall-test-form">
+          <v-textarea
             v-model="queryText"
             :label="$t('chat.convSettings.recallTestQuery')"
             variant="outlined"
             density="comfortable"
             hide-details
-            class="recall-test-toolbar__query"
+            rows="2"
+            auto-grow
+            class="recall-test-form__query"
             :disabled="submitting"
-            @keydown.enter.prevent="onSubmit"
+            @keydown.ctrl.enter.prevent="onSubmit"
           />
-          <v-text-field
-            v-model.number="topK"
-            type="number"
-            min="1"
-            max="64"
-            step="1"
-            :label="$t('chat.convSettings.recallTestTopK')"
-            variant="outlined"
-            density="comfortable"
-            hide-details
-            class="recall-test-toolbar__topk"
-            :disabled="submitting"
-          />
-          <v-btn
-            color="primary"
-            variant="flat"
-            class="recall-test-toolbar__submit"
-            :loading="submitting"
-            :disabled="!canSubmit"
-            @click="onSubmit"
-          >
-            {{ $t('chat.convSettings.recallTestSubmit') }}
-          </v-btn>
+          <div class="recall-test-form__actions">
+            <v-text-field
+              v-model.number="topK"
+              type="number"
+              min="1"
+              max="64"
+              step="1"
+              :label="$t('chat.convSettings.recallTestTopK')"
+              variant="outlined"
+              density="compact"
+              hide-details
+              class="recall-test-form__topk"
+              :disabled="submitting"
+            />
+            <v-text-field
+              v-model.number="simulateTurnOrdinal"
+              type="number"
+              min="0"
+              step="1"
+              :label="$t('chat.convSettings.recallTestSimulateTurn')"
+              variant="outlined"
+              density="compact"
+              hide-details
+              clearable
+              class="recall-test-form__simulate"
+              :disabled="submitting"
+            />
+            <v-btn
+              color="primary"
+              variant="flat"
+              class="recall-test-form__submit"
+              :loading="submitting"
+              :disabled="!canSubmit"
+              @click="onSubmit"
+            >
+              {{ $t('chat.convSettings.recallTestSubmit') }}
+            </v-btn>
+          </div>
         </div>
 
         <v-alert
@@ -156,6 +189,12 @@ watch(
         </v-alert>
 
         <template v-if="result">
+          <p
+            v-if="result.loreScanCorpusChars > 0"
+            class="text-caption text-medium-emphasis mt-3 mb-0"
+          >
+            {{ $t('chat.convSettings.recallTestScanCorpusChars', { n: result.loreScanCorpusChars }) }}
+          </p>
           <v-alert
             v-if="result.memory.embeddingError"
             type="warning"
@@ -254,7 +293,7 @@ watch(
                     <span>
                       {{ hit.lorebookName }} · {{ hit.title }}
                       <span class="text-caption text-medium-emphasis">
-                        ({{ modeLabel(hit.mode) }}{{ hit.score != null ? ` · ${formatScore(hit.score)}` : '' }})
+                        ({{ modeLabel(hit.mode, hit.scoreKind) }}{{ hit.score != null ? ` · ${formatScore(hit.score)}` : '' }})
                       </span>
                     </span>
                   </div>
@@ -284,25 +323,36 @@ watch(
 </template>
 
 <style scoped>
-.recall-test-toolbar {
+.recall-test-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.recall-test-form__query {
+  width: 100%;
+}
+
+.recall-test-form__actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
 }
 
-.recall-test-toolbar__query {
-  flex: 1 1 12rem;
-  min-width: 0;
+.recall-test-form__topk {
+  flex: 0 0 6.5rem;
+  width: 6.5rem;
 }
 
-.recall-test-toolbar__topk {
-  flex: 0 0 5.5rem;
-  width: 5.5rem;
+.recall-test-form__simulate {
+  flex: 0 0 7.5rem;
+  width: 7.5rem;
 }
 
-.recall-test-toolbar__submit {
+.recall-test-form__submit {
   flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .recall-test-columns {

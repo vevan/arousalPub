@@ -23,6 +23,7 @@ export interface LoreAuditMatch {
   title?: string
   mode: 'keyword' | 'vector' | 'constant'
   score?: number
+  scoreKind?: 'rrf' | 'vector_fallback'
   included: boolean
 }
 

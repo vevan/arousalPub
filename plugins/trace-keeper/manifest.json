@@ -6,6 +6,9 @@
     "afterAssemblePrompts",
     "resolveTurnPluginEntriesFromAssistant"
   ],
+  "memory": {
+    "stripBlockTags": ["ex-trace-keeper"]
+  },
   "permissions": [
     "conversation.read",
     "turn.read",

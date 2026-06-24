@@ -135,7 +135,7 @@ export function formatMemoryXml(
   return `<memory>\n${inner}\n</memory>`
 }
 
-/** 索引用：用户 + 助手正文拼接 */
+/** 索引用：用户 + 助手正文拼接（资料库扫描等；memory 向量请用 buildMemoryEmbeddingCorpus） */
 export function turnEmbeddingCorpus(turn: TurnRecord): string {
   const u = getTurnUserText(turn).trim()
   const a = assistantTextFromTurn(turn).trim()

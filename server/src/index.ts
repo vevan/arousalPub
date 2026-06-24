@@ -120,6 +120,7 @@ import {
 } from './hybrid-fts-settings.js'
 import { registerHybridFtsRoutes } from './hybrid-fts-routes.js'
 import { parseBudgetTrimSettingsPatch } from './budget-trim-settings.js'
+import { parseMemorySettingsPatch } from './memory-settings.js'
 import { normalizeEmbeddingDimensions, normalizeEmbeddingApiSettings } from './embedding-api-settings.js'
 import {
   isValidConversationId,
@@ -899,36 +900,14 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       } else if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
         return reply.status(400).send({ error: ApiErrorCodes.memory_settings_invalid })
       } else {
-        const patch: {
-          memoryEnabled?: boolean
-          memoryTopK?: number
-        } = {}
-        if (Object.prototype.hasOwnProperty.call(raw, 'memoryEnabled')) {
-          if (typeof (raw as { memoryEnabled?: unknown }).memoryEnabled !== 'boolean') {
-            return reply
-              .status(400)
-              .send({ error: ApiErrorCodes.memory_settings_memory_enabled_boolean })
-          }
-          patch.memoryEnabled = (raw as { memoryEnabled: boolean }).memoryEnabled
+        const parsed = parseMemorySettingsPatch(raw, 'conversation')
+        if (!parsed.ok) {
+          const code = parsed.error as keyof typeof ApiErrorCodes
+          return reply
+            .status(400)
+            .send({ error: ApiErrorCodes[code] ?? ApiErrorCodes.memory_settings_invalid })
         }
-        if (Object.prototype.hasOwnProperty.call(raw, 'memoryTopK')) {
-          const d = (raw as { memoryTopK?: unknown }).memoryTopK
-          if (typeof d !== 'number' || !Number.isFinite(d)) {
-            return reply
-              .status(400)
-              .send({ error: ApiErrorCodes.memory_settings_memory_top_k_number })
-          }
-          patch.memoryTopK = d
-        }
-        if (
-          !Object.prototype.hasOwnProperty.call(patch, 'memoryEnabled') &&
-          !Object.prototype.hasOwnProperty.call(patch, 'memoryTopK')
-        ) {
-          return reply.status(400).send({
-            error: ApiErrorCodes.memory_settings_requires_field,
-          })
-        }
-        const next = await updateConversationMemorySettings(id, patch)
+        const next = await updateConversationMemorySettings(id, parsed.patch)
         if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
         idx = next
       }
@@ -1885,6 +1864,11 @@ interface PatchUserPreferencesBody {
   memory?: {
     memoryEnabled?: boolean
     memoryTopK?: number
+    stripPluginBlocks?: boolean
+    stripBlockTags?: string[]
+    stripExPrefixElements?: boolean
+    recallFuseLastAssistant?: boolean
+    recallUserWeight?: number
   }
   budgetTrim?: {
     trimOrder?: ('lore' | 'memory' | 'history')[]
@@ -2038,34 +2022,14 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         history = await updateGlobalHistorySettings(patch)
       }
       if (hasMem) {
-        const patch: {
-          memoryEnabled?: boolean
-          memoryTopK?: number
-        } = {}
-        if (Object.prototype.hasOwnProperty.call(b.memory, 'memoryEnabled')) {
-          if (typeof b.memory!.memoryEnabled !== 'boolean') {
-            return reply
-              .status(400)
-              .send({ error: ApiErrorCodes.memory_enabled_boolean })
-          }
-          patch.memoryEnabled = b.memory!.memoryEnabled
+        const parsed = parseMemorySettingsPatch(b.memory, 'global')
+        if (!parsed.ok) {
+          const code = parsed.error as keyof typeof ApiErrorCodes
+          return reply
+            .status(400)
+            .send({ error: ApiErrorCodes[code] ?? ApiErrorCodes.memory_settings_invalid })
         }
-        if (Object.prototype.hasOwnProperty.call(b.memory, 'memoryTopK')) {
-          const d = b.memory!.memoryTopK
-          if (typeof d !== 'number' || !Number.isFinite(d)) {
-            return reply.status(400).send({ error: ApiErrorCodes.memory_top_k_number })
-          }
-          patch.memoryTopK = d
-        }
-        if (
-          !Object.prototype.hasOwnProperty.call(patch, 'memoryEnabled') &&
-          !Object.prototype.hasOwnProperty.call(patch, 'memoryTopK')
-        ) {
-          return reply.status(400).send({
-            error: ApiErrorCodes.global_memory_requires_field,
-          })
-        }
-        memory = await updateGlobalMemorySettings(patch)
+        memory = await updateGlobalMemorySettings(parsed.patch)
       }
       if (hasBudgetTrim) {
         const parsed = parseBudgetTrimSettingsPatch(b.budgetTrim)

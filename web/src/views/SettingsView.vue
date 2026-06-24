@@ -12,6 +12,10 @@ import {
   type HybridFtsProfile,
 } from '@/utils/hybrid-fts-settings'
 import { usePreferencesStore } from '@/stores/preferences'
+import {
+  stripBlockTagsFromText,
+  stripBlockTagsToText,
+} from '@/utils/memory-settings'
 import { useThemeOklchStore } from '@/stores/theme-oklch'
 import PluginSettingsPanel from '@/components/settings/PluginSettingsPanel.vue'
 import HybridFtsSwitchDialog from '@/components/settings/HybridFtsSwitchDialog.vue'
@@ -92,6 +96,10 @@ const {
   historyMaxTurns,
   memoryEnabled,
   memoryTopK,
+  memoryStripPluginBlocks,
+  memoryStripBlockTags,
+  memoryRecallFuseLastAssistant,
+  memoryRecallUserWeight,
   hybridFtsProfile,
   hybridFtsDictVariant,
   budgetTrimSettings,
@@ -106,6 +114,10 @@ const {
   composerEnterMode,
   chunkTurnsPerFile,
 } = storeToRefs(prefStore)
+
+function onMemoryStripBlockTagsInput(v: string | null) {
+  memoryStripBlockTags.value = stripBlockTagsFromText(String(v ?? ''))
+}
 
 const homeListModeDefault = ref<HomeListMode>(readHomeListModeDefault())
 const homeCharacterSourceDefault = ref<HomeCharacterSource>(
@@ -1154,6 +1166,58 @@ onMounted(() => {
               hide-details="auto"
               :disabled="!memoryEnabled"
             />
+            <div
+              class="memory-strip-group"
+              :class="{ 'memory-strip-group--off': !memoryEnabled || !memoryStripPluginBlocks }"
+            >
+              <v-switch
+                v-model="memoryStripPluginBlocks"
+                class="mt-4"
+                :label="$t('settings.memoryStripCustomElements')"
+                :hint="$t('settings.memoryStripCustomElementsHint')"
+                persistent-hint
+                color="primary"
+                hide-details="auto"
+                density="comfortable"
+                :disabled="!memoryEnabled"
+              />
+              <v-text-field
+                :model-value="stripBlockTagsToText(memoryStripBlockTags)"
+                class="memory-strip-group__tags"
+                density="comfortable"
+                variant="outlined"
+                :label="$t('settings.memoryStripBlockTags')"
+                :hint="$t('settings.memoryStripBlockTagsHint')"
+                persistent-hint
+                hide-details="auto"
+                :disabled="!memoryEnabled || !memoryStripPluginBlocks"
+                @update:model-value="onMemoryStripBlockTagsInput"
+              />
+            </div>
+            <v-switch
+              v-model="memoryRecallFuseLastAssistant"
+              class="mt-4"
+              :label="$t('settings.memoryRecallFuseAssistant')"
+              :hint="$t('settings.memoryRecallFuseAssistantHint')"
+              persistent-hint
+              color="primary"
+              hide-details="auto"
+              density="comfortable"
+              :disabled="!memoryEnabled"
+            />
+            <v-slider
+              v-model="memoryRecallUserWeight"
+              class="mt-2"
+              :min="0"
+              :max="1"
+              :step="0.05"
+              thumb-label
+              :label="$t('settings.memoryRecallUserWeight')"
+              :hint="$t('settings.memoryRecallUserWeightHint')"
+              persistent-hint
+              hide-details="auto"
+              :disabled="!memoryEnabled || !memoryRecallFuseLastAssistant"
+            />
           </section>
 
           <section
@@ -1391,6 +1455,28 @@ onMounted(() => {
   padding-block: 1.5rem;
   padding-inline: 0;
   width: 100%;
+}
+
+.memory-strip-group {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem 1rem;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 8px;
+  background: rgba(var(--v-theme-on-surface), 0.03);
+}
+
+.memory-strip-group--off {
+  opacity: 0.72;
+}
+
+.memory-strip-group__tags {
+  margin-top: 0.25rem;
+  margin-inline-start: 2.75rem;
+  max-width: 36rem;
+}
+
+.memory-strip-group :deep(.v-switch) {
+  margin-inline-start: -0.5rem;
 }
 
 .settings-page-inner {

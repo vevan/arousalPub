@@ -9,6 +9,7 @@
 | 能力 | 实现 |
 |------|------|
 | Together 落盘 | `resolveTurnPluginEntriesFromAssistant` 解析 `<ex-trace-keeper>` → `turn.plugins[]` |
+| 记忆语料剥离 | manifest `memory.stripBlockTags: ["ex-trace-keeper"]`（用户开启剥离时自动并入；见 `DOC/03` §14.4.4） |
 | 组装注入 | `resolveAfterAssemblePromptsAddition`：system 仅 **格式说明 + sample**；历史 state 由正则保留在 assistant 正文；计入 token 预算且不可 trim |
 | Separate 补生成 | `POST …/regenerate-separate`；多轮 user/assistant 窗口（`separateTurnCount`）；system 不含历史 state |
 | 侧栏 | `host.ui.panel` · live/pinned；只读 `plugins[]` 渲染；无 snapshot **空态+原因**（§4.4）；最后一轮可 Separate |

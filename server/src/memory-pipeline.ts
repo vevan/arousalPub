@@ -4,15 +4,18 @@ import {
   HISTORY_XML_DEFAULT_TURNS,
   type MemorySettings,
 } from './memory-settings.js'
-import { createEmbedding } from './embedding-client.js'
+import {
+  buildMemoryRecallVectors,
+  resolveMemoryCorpusOptions,
+} from './memory-corpus.js'
 import { loadTurnsForMemoryHits } from './memory-hits.js'
 import {
   searchTurnMemoryVectors,
   type MemorySearchHit,
 } from './memory-store.js'
 import {
+  assistantTextFromTurn,
   formatMemoryXml,
-  buildMemoryRecallQuery,
   turnsToHistoryMessages,
   turnsToHistoryScanPlainText,
 } from './turn-memory-xml.js'
@@ -86,6 +89,21 @@ function selectRecentTurns(
   return limited
 }
 
+function lastAssistantBeforeExclusive(
+  turns: TurnRecord[],
+  beforeExclusive?: number | null,
+): string {
+  let pool = turns.slice().sort((a, b) => a.turnOrdinal - b.turnOrdinal)
+  if (
+    typeof beforeExclusive === 'number' &&
+    !Number.isNaN(beforeExclusive)
+  ) {
+    pool = pool.filter((t) => t.turnOrdinal < beforeExclusive)
+  }
+  const last = pool.length > 0 ? pool[pool.length - 1] : null
+  return last ? assistantTextFromTurn(last) : ''
+}
+
 /** 组装 / memory 热路径：尾部或再生前窗口，避免 readAllTurns */
 export async function loadTurnsForMemoryPipeline(
   conversationId: string,
@@ -142,19 +160,26 @@ export async function runMemoryPipeline(
   let memoryItems: { turn: TurnRecord; score: number }[] = []
   let memoryHits: MemorySearchHit[] = []
 
-  const query = buildMemoryRecallQuery(
-    input.userText,
-    pipelineTurns,
-    input.historyBeforeTurnOrdinalExclusive,
-  )
+  const userText = input.userText.trim()
   let embeddingCall: MemoryEmbeddingCallAudit | undefined
-  if (input.memorySettings.memoryEnabled && query.length > 0) {
+  if (input.memorySettings.memoryEnabled && userText.length > 0) {
+    const corpusOptions = await resolveMemoryCorpusOptions(
+      input.memorySettings,
+    )
+    const lastAssistant = lastAssistantBeforeExclusive(
+      pipelineTurns,
+      input.historyBeforeTurnOrdinalExclusive,
+    )
     const embStarted = performance.now()
-    const emb = await createEmbedding(query, input.conversationId)
-    if (emb) {
+    const recall = await buildMemoryRecallVectors(input.conversationId, {
+      userText,
+      lastAssistantRaw: lastAssistant,
+      memorySettings: input.memorySettings,
+      corpusOptions,
+    })
+    if (recall) {
       embeddingCall = {
         latencyMs: Math.round(performance.now() - embStarted),
-        model: emb.model,
       }
       const minRecentOrdinal =
         recentTurns.length > 0
@@ -162,8 +187,8 @@ export async function runMemoryPipeline(
           : undefined
       memoryHits = await searchTurnMemoryVectors(
         input.conversationId,
-        emb.vector,
-        query,
+        recall.vector,
+        recall.ftsQueryText,
         input.memorySettings.memoryTopK,
         recentTurnIds,
         minRecentOrdinal,

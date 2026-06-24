@@ -11,8 +11,9 @@ import { readLorebooksByIds } from './lorebook-file.js'
 import { resolveLorebookInjectionParts } from './lorebook-resolve.js'
 import type { Lorebook } from './lorebook-types.js'
 import { resolveLorebookSettings } from './lorebook-settings.js'
-import { readGlobalLorebookSettings } from './user-preferences-file.js'
-import { turnEmbeddingCorpus } from './turn-memory-xml.js'
+import { buildMemoryEmbeddingCorpus, resolveMemoryCorpusOptions } from './memory-corpus.js'
+import { resolveMemorySettings } from './memory-settings.js'
+import { readGlobalLorebookSettings, readGlobalMemorySettings } from './user-preferences-file.js'
 
 const PREVIEW_MAX_LEN = 240
 const TOP_K_MIN = 1
@@ -108,6 +109,10 @@ export async function runContextRecallTest(
   const memoryHits: ContextRecallMemoryHit[] = []
   let embeddingError: string | undefined
 
+  const globalMemory = await readGlobalMemorySettings()
+  const effectiveMemory = resolveMemorySettings(globalMemory, idx.memorySettings)
+  const corpusOptions = await resolveMemoryCorpusOptions(effectiveMemory)
+
   const emb = await createEmbedding(query, conversationId)
   if (!emb) {
     embeddingError = 'embedding_unavailable'
@@ -123,7 +128,7 @@ export async function runContextRecallTest(
     )
     const items = await loadTurnsForMemoryHits(conversationId, rawHits)
     for (const { turn, score } of items) {
-      const content = turnEmbeddingCorpus(turn)
+      const content = buildMemoryEmbeddingCorpus(turn, corpusOptions)
       memoryHits.push({
         turnId: turn.turnId,
         turnOrdinal: turn.turnOrdinal,

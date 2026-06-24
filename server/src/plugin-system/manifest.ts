@@ -30,6 +30,20 @@ export async function readPluginManifest(
       hooks: Array.isArray(m.hooks)
         ? m.hooks.filter((x): x is string => typeof x === 'string')
         : undefined,
+      memory:
+        m.memory && typeof m.memory === 'object'
+          ? {
+              stripBlockTags: Array.isArray(
+                (m.memory as { stripBlockTags?: unknown }).stripBlockTags,
+              )
+                ? (
+                    m.memory as { stripBlockTags: unknown[] }
+                  ).stripBlockTags.filter(
+                    (x): x is string => typeof x === 'string' && x.trim().length > 0,
+                  )
+                : undefined,
+            }
+          : undefined,
       ui: m.ui,
       connection: m.connection,
       settingsSchema: settingsSchema ?? undefined,

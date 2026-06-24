@@ -388,6 +388,11 @@ function globalMemoryFromStore(): MemorySettings {
   return normalizeMemorySettings({
     memoryEnabled: prefStore.memoryEnabled,
     memoryTopK: prefStore.memoryTopK,
+    stripPluginBlocks: prefStore.memoryStripPluginBlocks,
+    stripBlockTags: prefStore.memoryStripBlockTags,
+    stripExPrefixElements: false,
+    recallFuseLastAssistant: prefStore.memoryRecallFuseLastAssistant,
+    recallUserWeight: prefStore.memoryRecallUserWeight,
   })
 }
 
@@ -720,17 +725,27 @@ watch([historyLimitEnabled, historyMaxTurns], () => {
   }
 })
 
-watch([memoryEnabled, memoryTopK], () => {
-  if (!convBindings.value.memory.useGlobal) return
-  const global = globalMemoryFromStore()
-  convBindings.value = {
-    ...convBindings.value,
-    memory: {
-      useGlobal: true,
-      effective: global,
-    },
-  }
-})
+watch(
+  [
+    memoryEnabled,
+    memoryTopK,
+    () => prefStore.memoryStripPluginBlocks,
+    () => prefStore.memoryStripBlockTags,
+    () => prefStore.memoryRecallFuseLastAssistant,
+    () => prefStore.memoryRecallUserWeight,
+  ],
+  () => {
+    if (!convBindings.value.memory.useGlobal) return
+    const global = globalMemoryFromStore()
+    convBindings.value = {
+      ...convBindings.value,
+      memory: {
+        useGlobal: true,
+        effective: global,
+      },
+    }
+  },
+)
 
 async function ensureConversation(id: string) {
   loading.value = true

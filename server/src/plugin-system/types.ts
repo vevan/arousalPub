@@ -108,6 +108,9 @@ export interface PluginManifest {
   version: string
   permissions?: string[]
   hooks?: string[]
+  memory?: {
+    stripBlockTags?: string[]
+  }
   ui?: {
     slots?: Array<{ name: string; entry?: string }>
   }

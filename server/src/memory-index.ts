@@ -28,9 +28,14 @@ import {
   readGlobalHybridFtsSettings,
   readGlobalMemorySettings,
 } from './user-preferences-file.js'
+import {
+  buildMemoryEmbeddingCorpus,
+  type MemoryCorpusOptions,
+  RAW_MEMORY_CORPUS_OPTIONS,
+  resolveMemoryCorpusOptions,
+} from './memory-corpus.js'
 import { resolveMemorySettings } from './memory-settings.js'
 import { formatHybridFtsSpec } from './hybrid-fts-settings.js'
-import { turnEmbeddingCorpus } from './turn-memory-xml.js'
 import {
   enumerateAllChunkChains,
   isTailChunkFile,
@@ -65,13 +70,19 @@ export interface MemoryReindexProgress {
 }
 
 /** 可生成 embedding 语料的 turn（重建计划 / 执行共用） */
-export function filterEmbeddableTurns(turns: TurnRecord[]): TurnRecord[] {
-  return turns.filter(isTurnEligibleForMemoryEmbed)
+export function filterEmbeddableTurns(
+  turns: TurnRecord[],
+  corpusOptions: MemoryCorpusOptions = RAW_MEMORY_CORPUS_OPTIONS,
+): TurnRecord[] {
+  return turns.filter((t) => isTurnEligibleForMemoryEmbed(t, corpusOptions))
 }
 
 /** 单轮是否有非空 memory 语料 */
-export function isTurnEligibleForMemoryEmbed(turn: TurnRecord): boolean {
-  return turnEmbeddingCorpus(turn).trim().length > 0
+export function isTurnEligibleForMemoryEmbed(
+  turn: TurnRecord,
+  corpusOptions: MemoryCorpusOptions = RAW_MEMORY_CORPUS_OPTIONS,
+): boolean {
+  return buildMemoryEmbeddingCorpus(turn, corpusOptions).trim().length > 0
 }
 
 /** 本会话是否应执行 turn 向量 upsert（memory 开启 + Embeddings API 已配置） */
@@ -191,7 +202,8 @@ async function indexTurnMemory(
   const global = await readGlobalMemorySettings()
   const effective = resolveMemorySettings(global, idx?.memorySettings)
   if (!effective.memoryEnabled) return
-  const corpus = turnEmbeddingCorpus(turn)
+  const corpusOptions = await resolveMemoryCorpusOptions(effective)
+  const corpus = buildMemoryEmbeddingCorpus(turn, corpusOptions)
   if (!corpus.trim()) return
   const emb = await createEmbedding(corpus)
   if (!emb) return
@@ -243,6 +255,9 @@ export async function reindexConversationMemory(
     await readGlobalEmbeddingApiSettings()
   const idx = await readConversationIndex(conversationId)
   const lorebookIds = lorebookIdsFromIndex(idx)
+  const globalMemory = await readGlobalMemorySettings()
+  const effectiveMemory = resolveMemorySettings(globalMemory, idx?.memorySettings)
+  const corpusOptions = await resolveMemoryCorpusOptions(effectiveMemory)
 
   clearConversationMemoryBuffers(conversationId)
 
@@ -260,9 +275,9 @@ export async function reindexConversationMemory(
       loc.branchPath,
       loc.chunkFileName,
     )
-    const turns = filterEmbeddableTurns(chunk?.turns ?? [])
+    const turns = filterEmbeddableTurns(chunk?.turns ?? [], corpusOptions)
     for (const turn of turns) {
-      const corpus = turnEmbeddingCorpus(turn)
+      const corpus = buildMemoryEmbeddingCorpus(turn, corpusOptions)
       pending.push({
         key: turn.turnId,
         corpus,

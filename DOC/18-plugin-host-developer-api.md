@@ -456,6 +456,14 @@ interface ConversationBatchContext {
 - 可选在 `locales/{locale}.json` 提供 **`pluginDisplayName`**；宿主在加载 `fetchPluginsManage` 时 `mergePluginLocales`，设置页与对话插件 Tab 用 `resolvePluginDisplayName(id, manifest.name)` 显示。
 - 无 `pluginDisplayName` 时继续显示 manifest `name`。
 
+### 6.0.1 远期记忆剥离标签（可选）
+
+manifest 可选声明 **`memory.stripBlockTags`**：`string[]`，标签名与助手正文中的 XML 块名**完全一致**（如 `ex-trace-keeper` → `<ex-trace-keeper>…</ex-trace-keeper>`）。
+
+- 用户全局 **`memory.stripPluginBlocks=true`** 时，宿主合并所有**已启用**插件的声明与用户「剥离标签」列表（`collectPluginMemoryStripTags`）。
+- 用于入库与召回前从 turn 语料中移除插件块，避免向量被大块 JSON 淹没；详见 **`DOC/03` §14.4.4**。
+- 提示词里自定义的标签（未必带 `ex-` 前缀）可由用户在设置页手填，或由插件在此声明。
+
 ### 6.1 `settingsSchema` 字段类型
 
 | type | 设置页控件 |

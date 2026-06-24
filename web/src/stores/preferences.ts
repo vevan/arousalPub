@@ -15,7 +15,9 @@ import {
   type EmbeddingApiSettings,
 } from '@/utils/embedding-api-settings'
 import {
+  cloneMemorySettings,
   MEMORY_SETTINGS_DEFAULTS,
+  memorySettingsEqual,
   normalizeMemorySettings,
   type MemorySettings,
 } from '@/utils/memory-settings'
@@ -332,6 +334,12 @@ export const usePreferencesStore = defineStore('preferences', () => {
   const historyMaxTurns = ref(readStoredHistoryMaxTurns())
   const memoryEnabled = ref(readStoredMemoryEnabled())
   const memoryTopK = ref(readStoredMemoryTopK())
+  const memoryStripPluginBlocks = ref(MEMORY_SETTINGS_DEFAULTS.stripPluginBlocks)
+  const memoryStripBlockTags = ref<string[]>([...MEMORY_SETTINGS_DEFAULTS.stripBlockTags])
+  const memoryRecallFuseLastAssistant = ref(
+    MEMORY_SETTINGS_DEFAULTS.recallFuseLastAssistant,
+  )
+  const memoryRecallUserWeight = ref(MEMORY_SETTINGS_DEFAULTS.recallUserWeight)
   const hybridFtsProfile = ref<HybridFtsProfile>(readStoredHybridFtsProfile())
   const hybridFtsDictVariant = ref<HybridFtsDictVariant | null>(
     readStoredHybridFtsDictVariant(),
@@ -363,6 +371,17 @@ export const usePreferencesStore = defineStore('preferences', () => {
   let defaultAuthorsNotePatchInFlight = false
   let budgetTrimLastSynced = cloneBudgetTrimSettings(
     budgetTrimSettings.value,
+  )
+  let memoryLastSynced = cloneMemorySettings(
+    normalizeMemorySettings({
+      memoryEnabled: memoryEnabled.value,
+      memoryTopK: memoryTopK.value,
+      stripPluginBlocks: memoryStripPluginBlocks.value,
+      stripBlockTags: memoryStripBlockTags.value,
+      stripExPrefixElements: false,
+      recallFuseLastAssistant: memoryRecallFuseLastAssistant.value,
+      recallUserWeight: memoryRecallUserWeight.value,
+    }),
   )
   const PREF_PATCH_DEBOUNCE_MS = 400
   const prefPatchTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -585,6 +604,33 @@ export const usePreferencesStore = defineStore('preferences', () => {
     }
   }
 
+  function applyMemorySettingsFromNormalized(mem: MemorySettings) {
+    memoryEnabled.value = mem.memoryEnabled
+    memoryTopK.value = mem.memoryTopK
+    memoryStripPluginBlocks.value = mem.stripPluginBlocks
+    const tags = mem.stripBlockTags
+    if (
+      memoryStripBlockTags.value.length !== tags.length ||
+      memoryStripBlockTags.value.some((t, i) => t !== tags[i])
+    ) {
+      memoryStripBlockTags.value = [...tags]
+    }
+    memoryRecallFuseLastAssistant.value = mem.recallFuseLastAssistant
+    memoryRecallUserWeight.value = mem.recallUserWeight
+  }
+
+  function buildMemoryPatchPayload(): MemorySettings {
+    return normalizeMemorySettings({
+      memoryEnabled: memoryEnabled.value,
+      memoryTopK: memoryTopK.value,
+      stripPluginBlocks: memoryStripPluginBlocks.value,
+      stripBlockTags: memoryStripBlockTags.value,
+      stripExPrefixElements: false,
+      recallFuseLastAssistant: memoryRecallFuseLastAssistant.value,
+      recallUserWeight: memoryRecallUserWeight.value,
+    })
+  }
+
   function persistMemoryLocal() {
     try {
       localStorage.setItem(MEMORY_ENABLED_STORAGE_KEY, memoryEnabled.value ? '1' : '0')
@@ -707,11 +753,17 @@ export const usePreferencesStore = defineStore('preferences', () => {
     const j = (await res.json()) as { memory?: Partial<MemorySettings> }
     if (j.memory) {
       const n = normalizeMemorySettings(j.memory)
-      memoryPatchInFlight = true
-      memoryEnabled.value = n.memoryEnabled
-      memoryTopK.value = n.memoryTopK
+      memoryLastSynced = cloneMemorySettings(n)
+      const local = buildMemoryPatchPayload()
+      if (!memorySettingsEqual(n, local)) {
+        memoryPatchInFlight = true
+        try {
+          applyMemorySettingsFromNormalized(n)
+        } finally {
+          memoryPatchInFlight = false
+        }
+      }
       persistMemoryLocal()
-      memoryPatchInFlight = false
     }
   }
 
@@ -912,25 +964,27 @@ export const usePreferencesStore = defineStore('preferences', () => {
   )
 
   watch(
-    [memoryEnabled, memoryTopK],
+    [
+      memoryEnabled,
+      memoryTopK,
+      memoryStripPluginBlocks,
+      memoryStripBlockTags,
+      memoryRecallFuseLastAssistant,
+      memoryRecallUserWeight,
+    ],
     () => {
       schedulePrefPatch('memory', async () => {
         if (!userPreferencesLoaded.value || memoryPatchInFlight) return
-        const n = normalizeMemorySettings({
-          memoryEnabled: memoryEnabled.value,
-          memoryTopK: memoryTopK.value,
-        })
+        const n = buildMemoryPatchPayload()
         if (n.memoryTopK !== memoryTopK.value) {
           memoryTopK.value = n.memoryTopK
           return
         }
+        if (memorySettingsEqual(n, memoryLastSynced)) return
         persistMemoryLocal()
         memoryPatchInFlight = true
         try {
-          await patchGlobalMemoryToServer({
-            memoryEnabled: memoryEnabled.value,
-            memoryTopK: memoryTopK.value,
-          })
+          await patchGlobalMemoryToServer(n)
         } catch {
           /* 设置页可重试 */
         } finally {
@@ -1012,8 +1066,8 @@ export const usePreferencesStore = defineStore('preferences', () => {
     historyLimitEnabled.value = hist.limitEnabled
     historyMaxTurns.value = hist.maxTurns
     const mem = normalizeMemorySettings(undefined)
-    memoryEnabled.value = mem.memoryEnabled
-    memoryTopK.value = mem.memoryTopK
+    applyMemorySettingsFromNormalized(mem)
+    memoryLastSynced = cloneMemorySettings(mem)
     const hfts = normalizeHybridFtsSettings(undefined)
     hybridFtsProfile.value = hfts.profile
     hybridFtsDictVariant.value = hfts.dictVariant ?? null
@@ -1065,8 +1119,8 @@ export const usePreferencesStore = defineStore('preferences', () => {
         historyMaxTurns.value = hist.maxTurns
         persistHistoryLocal()
         const mem = normalizeMemorySettings(doc.memory)
-        memoryEnabled.value = mem.memoryEnabled
-        memoryTopK.value = mem.memoryTopK
+        applyMemorySettingsFromNormalized(mem)
+        memoryLastSynced = cloneMemorySettings(mem)
         persistMemoryLocal()
         const hfts = normalizeHybridFtsSettings(doc.hybridFts)
         hybridFtsProfile.value = hfts.profile
@@ -1240,6 +1294,10 @@ export const usePreferencesStore = defineStore('preferences', () => {
     setHistoryMaxTurns,
     memoryEnabled,
     memoryTopK,
+    memoryStripPluginBlocks,
+    memoryStripBlockTags,
+    memoryRecallFuseLastAssistant,
+    memoryRecallUserWeight,
     setMemoryEnabled,
     setMemoryTopK,
     hybridFtsProfile,

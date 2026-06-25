@@ -76,8 +76,8 @@ flowchart TB
 
 ### Phase 1（仍待做）
 
-- [ ] `ChatConversationView`：composer + iOS 软键盘 / `100dvh` 验收
-- [ ] `safe-area-inset`：顶栏 / 页脚 / composer
+- [ ] **iOS 软键盘 / 底部空白**（2026-06-25 友测 · 详见 **§6**）
+- [ ] `safe-area-inset`：顶栏 / 页脚 / composer 统一
 - [ ] 库页移动布局专项（Phase 2 可拆）
 
 ### Phase 2（可选）
@@ -96,10 +96,60 @@ flowchart TB
 | 3 | pin 关闭后再刷新 | 仍关闭（localStorage） |
 | 4 | pin 关闭后再点插件 | 再次打开并持久化 |
 | 5 | iOS Safari / Android | composer 可读写（待专项验收） |
+| 6 | iOS Safari 对话页 · 键盘 | composer 贴键盘上沿，无大块空白；`app-footer` 与 Safari 底栏不叠黑区（§6） |
 
 ---
 
-## 6. 参考
+## 6. iOS 软键盘 / 底部空白（2026-06-25 · 友测 · 待修）
+
+### 6.1 现象
+
+| 状态 | 表现 |
+|------|------|
+| 键盘未弹出 | `v-footer.app-footer`（Arousal Pub）下方至 Safari 浏览器底栏之间有大块空白（同主题黑底） |
+| 键盘弹出 | `.chat-footer`（输入框 + 工具栏）与软键盘之间仍有空白；中间可见 Safari 密码/自动填充 accessory、蓝色键盘切换按钮 |
+
+### 6.2 当前布局（相关文件）
+
+```text
+.v-application__wrap     height: 100dvh; overflow: hidden   ← style.css
+├── v-app-bar (app)
+├── v-main.main-chat
+│   └── .chat-session
+│       ├── ChatMessageList
+│       └── .chat-footer / ChatComposer
+└── v-footer.app-footer (app)   ← 与 composer 双层底栏
+```
+
+- `web/index.html`：`viewport` 仅 `width=device-width, initial-scale=1.0`，无 `interactive-widget`
+- `syncAppChromeCssVars`（`App.vue`）：`ResizeObserver` 量顶/底栏 DOM 高，**不**监听 `visualViewport`
+- `.chat-footer` 有 `env(safe-area-inset-bottom)`；`.app-footer` **无**
+
+### 6.3 根因判断
+
+1. **主因**：整页高度锚定 **layout viewport**（`100dvh`），iOS 键盘弹出时 **visual viewport** 缩短，但 `v-main` 仍按全屏 − 顶栏 − 底栏计算；composer 在 `v-main` 文档流底部，无法贴键盘上沿。
+2. **次因**：`v-footer.app` 固定在 layout 底部，与 `.chat-footer` 叠占垂直空间。
+3. **次因**：`100dvh` 在 iOS Safari 可能大于当前可见区（动态地址栏/底栏），键盘未弹出时页脚下方亦可能出现「多出来的」黑区。
+4. **缺失**：无 `visualViewport` 适配；viewport meta 未声明键盘 resize 行为。
+
+### 6.4 建议修复顺序（未开工）
+
+| 步 | 动作 |
+|----|------|
+| 1 | `index.html` 试 `interactive-widget=resizes-content`（iOS 16+） |
+| 2 | `visualViewport` 写 `--app-height` / `offsetTop`，替换或辅助 `100dvh` |
+| 3 | 移动端 `/chat/:id` 隐藏或折叠 `app-footer`，仅保留 composer |
+| 4 | 顶栏 / `app-footer` / `.chat-footer` 统一 `safe-area-inset-*` |
+| 5 | 验收：iOS Safari × 键盘开/关 × 地址栏显/隐 × 竖屏 |
+
+### 6.5 非目标（本轮）
+
+- Composer `position: fixed` 贴 visual 底（与 virtua 滚动联动复杂，作备选）
+- 原生 App / PWA
+
+---
+
+## 7. 参考
 
 | 路径 | 说明 |
 |------|------|
@@ -110,9 +160,10 @@ flowchart TB
 
 ---
 
-## 7. 变更记录
+## 8. 变更记录
 
 | 日期 | 说明 |
 |------|------|
 | 2026-06-19 | 立项 P0 |
 | 2026-06-19 | 定案：40rem、零列 grid、rail abs、`::after`、panel 25rem、hidden 持久化；Phase 1 布局落地 |
+| 2026-06-25 | iOS 友测：软键盘 / 底部空白；分析记入 §6、`DOC/04` P0 |

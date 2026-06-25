@@ -4,7 +4,10 @@
 
 ## P0 余项
 
-- [ ] **移动端兼容性修复** — `DOC/33`：~~窄屏 grid/rail overlay~~（已落地）；余 composer / iOS `100dvh`/安全区/软键盘验收
+- [ ] **移动端兼容性修复** — `DOC/33` §6（iOS 软键盘空白 · 2026-06-25 友测）：~~窄屏 grid/rail overlay~~（已落地）。**待做**：
+  - **现象**：iOS Safari 对话页 — ① 键盘未弹出时 `app-footer`（Arousal Pub）下方仍有大块黑区（至浏览器底栏）；② 键盘弹出后 composer 与键盘之间空白，常夹 Safari 自动填充条
+  - **根因（分析）**：`.v-application__wrap` 死锁 `100dvh` + Vuetify `app` 顶/底栏相对 **layout viewport**，未跟踪 **visual viewport**；对话页双层底栏（`.chat-footer` + `v-footer.app-footer`）；`index.html` viewport 无 `interactive-widget`；无 `visualViewport` JS；`safe-area` 仅 composer 有、`app-footer` 无
+  - **修复顺序（明日）**：① viewport `interactive-widget=resizes-content` 试验；② `visualViewport` → CSS 变量替换死 `100dvh`；③ 移动端 `/chat` 隐藏或收起 `app-footer`；④ 顶栏/页脚/composer 统一 `safe-area-inset`；⑤ 验收矩阵：iOS Safari × 键盘开/关 × 地址栏显/隐
 
 ## P1
 

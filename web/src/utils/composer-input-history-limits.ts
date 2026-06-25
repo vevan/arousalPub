@@ -53,14 +53,20 @@ export function normalizeComposerInputHistoryLimits(
 
 export function readComposerInputHistoryLimits(): ComposerInputHistoryLimits {
   try {
-    return normalizeComposerInputHistoryLimits({
-      pinnedMax: localStorage.getItem(
-        COMPOSER_INPUT_HISTORY_PINNED_MAX_STORAGE_KEY,
+    return {
+      pinnedMax: clampInt(
+        localStorage.getItem(COMPOSER_INPUT_HISTORY_PINNED_MAX_STORAGE_KEY),
+        COMPOSER_INPUT_HISTORY_PINNED_MAX_DEFAULT,
+        COMPOSER_INPUT_HISTORY_PINNED_MAX_MIN,
+        COMPOSER_INPUT_HISTORY_PINNED_MAX_CAP,
       ),
-      recentMax: localStorage.getItem(
-        COMPOSER_INPUT_HISTORY_RECENT_MAX_STORAGE_KEY,
+      recentMax: clampInt(
+        localStorage.getItem(COMPOSER_INPUT_HISTORY_RECENT_MAX_STORAGE_KEY),
+        COMPOSER_INPUT_HISTORY_RECENT_MAX_DEFAULT,
+        COMPOSER_INPUT_HISTORY_RECENT_MAX_MIN,
+        COMPOSER_INPUT_HISTORY_RECENT_MAX_CAP,
       ),
-    })
+    }
   } catch {
     return normalizeComposerInputHistoryLimits()
   }

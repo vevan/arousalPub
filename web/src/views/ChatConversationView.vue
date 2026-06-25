@@ -564,7 +564,7 @@ const convBindings = ref<ConvContextBindings>({
   },
   memory: {
     useGlobal: true,
-    effective: { memoryEnabled: false, memoryTopK: 4 },
+    effective: normalizeMemorySettings(),
   },
   budgetTrim: {
     useGlobal: true,
@@ -1161,8 +1161,14 @@ watch(
         :initial-lorebook-settings-use-global="convBindings.lorebook.useGlobal"
         :global-lore-recursive-enabled="lorebookRecursiveEnabled"
         :global-lore-max-recursion-depth="lorebookMaxRecursionDepth"
+        :global-lore-keyword-top-k="lorebookKeywordTopK"
+        :global-lore-vector-enabled="lorebookVectorEnabled"
+        :global-lore-vector-top-k="lorebookVectorTopK"
         :initial-lorebook-recursive-enabled="convBindings.lorebook.effective.recursiveEnabled"
         :initial-lorebook-max-recursion-depth="convBindings.lorebook.effective.maxRecursionDepth"
+        :initial-lorebook-keyword-top-k="convBindings.lorebook.effective.keywordTopK"
+        :initial-lorebook-vector-enabled="convBindings.lorebook.effective.vectorEnabled"
+        :initial-lorebook-vector-top-k="convBindings.lorebook.effective.vectorTopK"
         :initial-history-settings-use-global="convBindings.history.useGlobal"
         :global-history-limit-enabled="historyLimitEnabled"
         :global-history-max-turns="historyMaxTurns"

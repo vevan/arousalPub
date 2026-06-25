@@ -4,7 +4,6 @@
 
 ## P0 余项
 
-- [ ] **向量召回选项独立 Tab** — 将远期记忆 hybrid、资料库 vector/keyword、Hybrid FTS 分词、命中测试等**向量召回相关**设置从「上下文」等大杂烩 Tab 拆出为独立 Tab（全局 `SettingsView` + 对话 `ConversationContextSettings` 对齐）；降低认知负担，与命中测试/组装审计同一信息架构
 - [ ] **移动端兼容性修复** — `DOC/33`：~~窄屏 grid/rail overlay~~（已落地）；余 composer / iOS `100dvh`/安全区/软键盘验收
 
 ## P1
@@ -15,6 +14,7 @@
 
 ## P2
 
+- [ ] **Composer Slash 命令** — 输入框 `/` 命令层（与聊天 turns、输入历史分离）：宿主 `submitComposer` 统一入口 + 命令解析/路由；内置通用命令如 `/goto N` 跳转轮次；业务命令由插件注册（如 `plot-summary` 的 `/summary 36-55`）；输入历史已存 raw 提交，P2 落地时复用。见对话中架构讨论
 - [ ] **群聊** — ST 式多角色发言轮次与 `{{group}}` / `{{groupNotMuted}}` / `{{charIfNotGroup}}` 等宏语义；当前仅 `characterIds[]` 多卡绑定与注入，见 `DOC/14` §1、`DOC/26`
 - [ ] **作者注分层** `DOC/28` — Phase 2 角色 AN + `{{charAuthorsNote}}`（Phase 1 全局 default ✅）
 - [ ] **角色卡内嵌世界书** `DOC/27` — Phase 1 组装（constant + keyword、`position`、叠加内嵌优先）；Phase 2 角色库查看 / 编辑 UI
@@ -40,6 +40,8 @@
 - [x] 对话分支第三轮审计关闭（2026-06-18）：`branchForkTurnIds`、深树 `GET /branches` 批量构建、`rollbackDeleteBranchRegistry` — 见 `DOC/23` §9.3
 - [x] 落盘 persist 同步 `turnId`（2026-06-23 · `15c7900`）：修复新助手落盘后「从此处分支」禁用直至刷新 — `ChatPersistResult.turnId` · `applyPersistTurnPlugins` · 见 `DOC/23` §6.4、`DOC/03` §6.8
 - [x] 分支树轮次副标题 from/to/total（2026-06-23 · `15c7900`）：`ChatBranchPanel` · `branchTurnRangeParts` · i18n `turnRange` / `turnRangeMain` · 见 `DOC/23` §6.4
+- [x] 会话级 Composer 输入历史（置顶/最近 · 可配置上限）（2026-06-25 · `ccff961`）：`composer-input-history-storage` · `ChatComposerInputHistoryMenu` · 点发送写入 · 与 turns 分离
+- [x] 向量召回设置独立 Tab 与信息架构对齐（2026-06-25 · `dbbfd95`）：全局/对话 `vectorRecall` Tab · Tab 顺序「对话历史 → 资料库 → 向量召回」· 向量召回内分块（远期记忆 / 资料库 / API）· 对话「对话历史」Tab 与全局对齐 · `vuetify-overrides` 统一 switch 标签样式 — 见 `DOC/03` §9.6
 - [ ] 架构/接口变更时同步 `DOC/01`–`03`（2026-06-10：内嵌世界书 `DOC/27`、作者注分层 `DOC/28`）
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
@@ -49,3 +51,4 @@
 | **对话分支（消息树）** S1–S5 + 验收 + 三轮审计 | 2026-06-18 | [`DOC/23`](23-conversation-branches.md) 全文 · §9 审计 |
 | **新落盘助手回复下分支图标禁用** | 2026-06-23 · `15c7900` | [`DOC/23`](23-conversation-branches.md) §6.4 persist `turnId` |
 | **分支树轮次副标题**（fork / 末轮 / 独有轮数） | 2026-06-23 · `15c7900` | [`DOC/23`](23-conversation-branches.md) §6.4 · `branch-tree-utils.ts` |
+| **向量召回设置独立 Tab** | 2026-06-25 · `dbbfd95` | [`DOC/03`](03-实现细节.md) §9.6 · `SettingsView` / `ConversationContextSettings` |

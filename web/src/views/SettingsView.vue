@@ -69,7 +69,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{ logout: [] }>()
 
-type SettingsTab = 'system' | 'display' | 'account' | 'lorebook' | 'history' | 'budgetTrim' | 'regexRules' | 'plugins' | 'debug'
+type SettingsTab = 'system' | 'display' | 'account' | 'lorebook' | 'vectorRecall' | 'history' | 'budgetTrim' | 'regexRules' | 'plugins' | 'debug'
 
 const { t } = useI18n()
 
@@ -352,8 +352,9 @@ const navItems = computed(() => [
   { id: 'system' as const, title: t('settings.navSystem'), icon: 'mdi-cog-outline' },
   { id: 'account' as const, title: t('settings.navAccount'), icon: 'mdi-account-outline' },
   { id: 'display' as const, title: t('settings.navDisplay'), icon: 'mdi-palette-outline' },
-  { id: 'lorebook' as const, title: t('settings.navLorebook'), icon: 'mdi-book-open-page-variant-outline' },
   { id: 'history' as const, title: t('settings.navHistory'), icon: 'mdi-history' },
+  { id: 'lorebook' as const, title: t('settings.navLorebook'), icon: 'mdi-book-open-page-variant-outline' },
+  { id: 'vectorRecall' as const, title: t('settings.navVectorRecall'), icon: 'mdi-database-search-outline' },
   { id: 'budgetTrim' as const, title: t('settings.navBudgetTrim'), icon: 'mdi-scissors-cutting' },
   { id: 'regexRules' as const, title: t('settings.navRegexRules'), icon: 'mdi-regex' },
   { id: 'plugins' as const, title: t('settings.navPlugins'), icon: 'mdi-puzzle-outline' },
@@ -909,42 +910,333 @@ onMounted(() => {
             <p class="text-caption text-medium-emphasis mt-2 mb-0">
               {{ $t('settings.loreMaxRecursionDepthHint') }}
             </p>
-            <v-text-field
-              v-model.number="lorebookKeywordTopK"
-              type="number"
-              min="1"
-              max="64"
-              step="1"
-              class="mt-4"
-              density="comfortable"
-              variant="outlined"
-              :label="$t('settings.loreKeywordTopK')"
-              :hint="$t('settings.loreKeywordTopKHint')"
-              persistent-hint
-              hide-details="auto"
-            />
-            <v-divider class="my-4" />
-            <v-switch
-              v-model="lorebookVectorEnabled"
-              :label="$t('settings.loreVectorEnabled')"
-              color="primary"
-              hide-details
-              density="comfortable"
-            />
-            <v-text-field
-              v-model.number="lorebookVectorTopK"
-              type="number"
-              min="1"
-              max="20"
-              step="1"
-              class="mt-2"
-              density="comfortable"
-              variant="outlined"
-              :label="$t('settings.loreVectorTopK')"
-              :hint="$t('settings.loreVectorTopKHint')"
-              persistent-hint
-              hide-details="auto"
-              :disabled="!lorebookVectorEnabled"
+          </section>
+
+          <section
+            v-show="activeTab === 'vectorRecall'"
+            class="settings-section"
+          >
+            <h2 class="text-subtitle-1 font-weight-medium mb-2">
+              {{ $t('settings.vectorRecallSection') }}
+            </h2>
+            <p class="text-body-2 text-medium-emphasis mb-2">
+              {{ $t('settings.vectorRecallSectionHint') }}
+            </p>
+
+            <v-sheet
+              class="settings-vector-recall-block"
+              rounded="lg"
+              border
+            >
+              <header class="settings-vector-recall-block__header">
+                <h3 class="settings-vector-recall-block__title">
+                  {{ $t('settings.memorySection') }}
+                </h3>
+                <p class="settings-vector-recall-block__hint text-body-2 text-medium-emphasis">
+                  {{ $t('settings.memorySectionHint') }}
+                </p>
+              </header>
+              <v-switch
+                v-model="memoryEnabled"
+                :label="$t('settings.memoryEnabled')"
+                color="primary"
+                hide-details
+                density="compact"
+              />
+              <v-text-field
+                v-model.number="memoryTopK"
+                type="number"
+                min="1"
+                max="20"
+                step="1"
+                class="mt-3"
+                density="comfortable"
+                variant="outlined"
+                :label="$t('settings.memoryTopK')"
+                :hint="$t('settings.memoryTopKHint')"
+                persistent-hint
+                hide-details="auto"
+                :disabled="!memoryEnabled"
+              />
+              <div
+                class="settings-vr-field"
+                :class="{ 'settings-vr-field--muted': !memoryEnabled || !memoryStripPluginBlocks }"
+              >
+                <v-switch
+                  v-model="memoryStripPluginBlocks"
+                  :label="$t('settings.memoryStripCustomElements')"
+                  color="primary"
+                  hide-details
+                  density="compact"
+                  :disabled="!memoryEnabled"
+                />
+                <p class="settings-vr-field__hint text-caption text-medium-emphasis">
+                  {{ $t('settings.memoryStripCustomElementsHint') }}
+                </p>
+                <v-text-field
+                  v-show="memoryStripPluginBlocks"
+                  :model-value="stripBlockTagsToText(memoryStripBlockTags)"
+                  class="settings-vr-field__control"
+                  density="comfortable"
+                  variant="outlined"
+                  :label="$t('settings.memoryStripBlockTags')"
+                  :hint="$t('settings.memoryStripBlockTagsHint')"
+                  persistent-hint
+                  hide-details="auto"
+                  :disabled="!memoryEnabled || !memoryStripPluginBlocks"
+                  @update:model-value="onMemoryStripBlockTagsInput"
+                />
+              </div>
+              <div
+                class="settings-vr-field"
+                :class="{ 'settings-vr-field--muted': !memoryEnabled }"
+              >
+                <v-switch
+                  v-model="memoryRecallFuseLastAssistant"
+                  :label="$t('settings.memoryRecallFuseAssistant')"
+                  color="primary"
+                  hide-details
+                  density="compact"
+                  :disabled="!memoryEnabled"
+                />
+                <p class="settings-vr-field__hint text-caption text-medium-emphasis">
+                  {{ $t('settings.memoryRecallFuseAssistantHint') }}
+                </p>
+                <v-slider
+                  v-model="memoryRecallUserWeight"
+                  class="settings-vr-field__control"
+                  :min="0"
+                  :max="1"
+                  :step="0.05"
+                  thumb-label
+                  :label="$t('settings.memoryRecallUserWeight')"
+                  :hint="$t('settings.memoryRecallUserWeightHint')"
+                  persistent-hint
+                  hide-details="auto"
+                  density="compact"
+                  :disabled="!memoryEnabled || !memoryRecallFuseLastAssistant"
+                />
+              </div>
+              <v-select
+                :model-value="hybridFtsProfile"
+                :items="hybridFtsProfileItems"
+                item-title="title"
+                item-value="value"
+                :label="$t('settings.hybridFtsProfileLabel')"
+                :hint="$t('settings.hybridFtsProfileHint')"
+                persistent-hint
+                density="comfortable"
+                variant="outlined"
+                hide-details="auto"
+                class="mt-4 mb-2"
+                @update:model-value="onHybridFtsProfilePick"
+              />
+              <v-btn
+                v-if="profileRequiresDict(hybridFtsProfile)"
+                variant="outlined"
+                color="primary"
+                size="small"
+                class="settings-vr-dict-btn mt-2"
+                prepend-icon="mdi-book-open-variant-outline"
+                @click="openHybridFtsManageDialog"
+              >
+                {{ $t('settings.hybridFtsManageDict') }}
+              </v-btn>
+            </v-sheet>
+
+            <v-sheet
+              class="settings-vector-recall-block"
+              rounded="lg"
+              border
+            >
+              <header class="settings-vector-recall-block__header">
+                <h3 class="settings-vector-recall-block__title">
+                  {{ $t('settings.loreVectorRecallSection') }}
+                </h3>
+                <p class="settings-vector-recall-block__hint text-body-2 text-medium-emphasis">
+                  {{ $t('settings.loreVectorRecallSectionHint') }}
+                </p>
+              </header>
+              <v-text-field
+                v-model.number="lorebookKeywordTopK"
+                type="number"
+                min="1"
+                max="64"
+                step="1"
+                density="comfortable"
+                variant="outlined"
+                :label="$t('settings.loreKeywordTopK')"
+                :hint="$t('settings.loreKeywordTopKHint')"
+                persistent-hint
+                hide-details="auto"
+              />
+              <v-switch
+                v-model="lorebookVectorEnabled"
+                class="mt-4"
+                :label="$t('settings.loreVectorEnabled')"
+                color="primary"
+                hide-details
+                density="compact"
+              />
+              <v-text-field
+                v-model.number="lorebookVectorTopK"
+                type="number"
+                min="1"
+                max="20"
+                step="1"
+                class="mt-2"
+                density="comfortable"
+                variant="outlined"
+                :label="$t('settings.loreVectorTopK')"
+                :hint="$t('settings.loreVectorTopKHint')"
+                persistent-hint
+                hide-details="auto"
+                :disabled="!lorebookVectorEnabled"
+              />
+            </v-sheet>
+
+            <v-sheet
+              class="settings-vector-recall-block"
+              rounded="lg"
+              border
+            >
+              <header class="settings-vector-recall-block__header">
+                <h3 class="settings-vector-recall-block__title">
+                  {{ $t('settings.embeddingApiSection') }}
+                </h3>
+                <p class="settings-vector-recall-block__hint text-body-2 text-medium-emphasis">
+                  {{ $t('settings.embeddingApiSectionHint') }}
+                </p>
+              </header>
+              <v-text-field
+                v-model="embeddingBaseUrl"
+                :label="$t('settings.embeddingBaseUrl')"
+                density="comfortable"
+                variant="outlined"
+                hide-details="auto"
+                class="mb-2"
+                @blur="void flushEmbeddingToServer()"
+              />
+              <v-select
+                v-model="embeddingApiKeySelectValue"
+                :items="embeddingApiKeySelectItems"
+                item-title="title"
+                item-value="value"
+                :label="$t('conn.apiKeyAlias')"
+                density="comfortable"
+                variant="outlined"
+                hide-details="auto"
+                class="mb-2"
+              />
+              <v-text-field
+                v-model="embeddingApiKey"
+                :label="$t('conn.apiKey')"
+                type="password"
+                density="comfortable"
+                variant="outlined"
+                hide-details="auto"
+                class="mb-2"
+                :disabled="!embeddingApiKeyEditable"
+                :placeholder="isEmbeddingKeyConfigured && !embeddingApiKeyDirty && !embeddingApiKey.trim()
+                  ? '••••••'
+                  : undefined"
+                @update:model-value="markEmbeddingApiKeyDirty()"
+                @blur="void flushEmbeddingToServer()"
+              />
+              <v-text-field
+                v-model="embeddingModel"
+                :label="$t('settings.embeddingModel')"
+                :hint="$t('settings.embeddingModelHint')"
+                persistent-hint
+                density="comfortable"
+                variant="outlined"
+                hide-details="auto"
+                class="mb-2"
+                @blur="void flushEmbeddingToServer()"
+              />
+              <v-text-field
+                v-model="embeddingDimensionsEditable"
+                type="number"
+                min="1"
+                max="4096"
+                step="1"
+                clearable
+                :label="$t('settings.embeddingDimensions')"
+                :hint="$t('settings.embeddingDimensionsHint')"
+                persistent-hint
+                density="comfortable"
+                variant="outlined"
+                hide-details="auto"
+                class="mb-2"
+              />
+              <v-text-field
+                v-model="embeddingTestText"
+                :label="$t('settings.embeddingTestText')"
+                :hint="$t('settings.embeddingTestTextHint')"
+                persistent-hint
+                density="comfortable"
+                variant="outlined"
+                hide-details="auto"
+                class="mb-2"
+              />
+              <v-btn
+                color="primary"
+                variant="tonal"
+                :loading="embeddingTestLoading"
+                :disabled="embeddingTestLoading"
+                @click="runEmbeddingTest"
+              >
+                {{ $t('settings.embeddingTestButton') }}
+              </v-btn>
+              <v-alert
+                v-if="embeddingTestError"
+                type="error"
+                variant="tonal"
+                density="compact"
+                class="mt-3"
+              >
+                <div>{{ embeddingTestError }}</div>
+                <pre
+                  v-if="embeddingTestDetail"
+                  class="text-caption mt-2 mb-0 embedding-test-detail"
+                >{{ embeddingTestDetail }}</pre>
+              </v-alert>
+              <v-sheet
+                v-if="embeddingTestResult"
+                color="surface-variant"
+                rounded="lg"
+                class="pa-3 mt-3"
+              >
+                <div class="text-body-2 text-medium-emphasis mb-1">
+                  {{ $t('settings.embeddingTestModel') }}: {{ embeddingTestResult.model }}
+                </div>
+                <div
+                  v-if="embeddingTestResult.requestedDimensions != null"
+                  class="text-body-2 text-medium-emphasis mb-1"
+                >
+                  {{ $t('settings.embeddingTestRequestedDimensions') }}:
+                  {{ embeddingTestResult.requestedDimensions }}
+                </div>
+                <div class="text-body-2 text-medium-emphasis mb-1">
+                  {{ $t('settings.embeddingTestDimensions') }}: {{ embeddingTestResult.dimensions }}
+                </div>
+                <div class="text-body-2 text-medium-emphasis mb-2 text-truncate">
+                  {{ $t('settings.embeddingTestRequestUrl') }}: {{ embeddingTestResult.requestUrl }}
+                </div>
+                <div class="text-caption text-medium-emphasis mb-1">
+                  {{ $t('settings.embeddingTestVector') }}
+                </div>
+                <pre class="embedding-test-vector">{{ embeddingTestVectorPreview }}</pre>
+              </v-sheet>
+            </v-sheet>
+
+            <HybridFtsSwitchDialog
+              v-model="hybridFtsSwitchOpen"
+              :pending-profile="pendingHybridFtsProfile"
+              :current-profile="hybridFtsProfile"
+              :current-dict-variant="hybridFtsDictVariant"
+              @confirm="onHybridFtsSwitchConfirm"
+              @cancel="onHybridFtsSwitchCancel"
             />
           </section>
 
@@ -979,244 +1271,6 @@ onMounted(() => {
               persistent-hint
               hide-details="auto"
               :disabled="!historyLimitEnabled"
-            />
-            <v-divider class="my-4" />
-            <h3 class="text-body-1 font-weight-medium mb-2">
-              {{ $t('settings.embeddingApiSection') }}
-            </h3>
-            <p class="text-body-2 text-medium-emphasis mb-4">
-              {{ $t('settings.embeddingApiSectionHint') }}
-            </p>
-            <v-text-field
-              v-model="embeddingBaseUrl"
-              :label="$t('settings.embeddingBaseUrl')"
-              density="comfortable"
-              variant="outlined"
-              hide-details="auto"
-              class="mb-2"
-              @blur="void flushEmbeddingToServer()"
-            />
-            <v-select
-              v-model="embeddingApiKeySelectValue"
-              :items="embeddingApiKeySelectItems"
-              item-title="title"
-              item-value="value"
-              :label="$t('conn.apiKeyAlias')"
-              density="comfortable"
-              variant="outlined"
-              hide-details="auto"
-              class="mb-2"
-            />
-            <v-text-field
-              v-model="embeddingApiKey"
-              :label="$t('conn.apiKey')"
-              type="password"
-              density="comfortable"
-              variant="outlined"
-              hide-details="auto"
-              class="mb-2"
-              :disabled="!embeddingApiKeyEditable"
-              :placeholder="isEmbeddingKeyConfigured && !embeddingApiKeyDirty && !embeddingApiKey.trim()
-                ? '••••••'
-                : undefined"
-              @update:model-value="markEmbeddingApiKeyDirty()"
-              @blur="void flushEmbeddingToServer()"
-            />
-            <v-text-field
-              v-model="embeddingModel"
-              :label="$t('settings.embeddingModel')"
-              :hint="$t('settings.embeddingModelHint')"
-              persistent-hint
-              density="comfortable"
-              variant="outlined"
-              hide-details="auto"
-              class="mb-2"
-              @blur="void flushEmbeddingToServer()"
-            />
-            <v-text-field
-              v-model="embeddingDimensionsEditable"
-              type="number"
-              min="1"
-              max="4096"
-              step="1"
-              clearable
-              :label="$t('settings.embeddingDimensions')"
-              :hint="$t('settings.embeddingDimensionsHint')"
-              persistent-hint
-              density="comfortable"
-              variant="outlined"
-              hide-details="auto"
-              class="mb-2"
-            />
-            <v-text-field
-              v-model="embeddingTestText"
-              :label="$t('settings.embeddingTestText')"
-              :hint="$t('settings.embeddingTestTextHint')"
-              persistent-hint
-              density="comfortable"
-              variant="outlined"
-              hide-details="auto"
-              class="mb-2"
-            />
-            <v-btn
-              color="primary"
-              variant="tonal"
-              :loading="embeddingTestLoading"
-              :disabled="embeddingTestLoading"
-              @click="runEmbeddingTest"
-            >
-              {{ $t('settings.embeddingTestButton') }}
-            </v-btn>
-            <v-alert
-              v-if="embeddingTestError"
-              type="error"
-              variant="tonal"
-              density="compact"
-              class="mt-3"
-            >
-              <div>{{ embeddingTestError }}</div>
-              <pre
-                v-if="embeddingTestDetail"
-                class="text-caption mt-2 mb-0 embedding-test-detail"
-              >{{ embeddingTestDetail }}</pre>
-            </v-alert>
-            <v-sheet
-              v-if="embeddingTestResult"
-              color="surface-variant"
-              rounded="lg"
-              class="pa-3 mt-3"
-            >
-              <div class="text-body-2 text-medium-emphasis mb-1">
-                {{ $t('settings.embeddingTestModel') }}: {{ embeddingTestResult.model }}
-              </div>
-              <div
-                v-if="embeddingTestResult.requestedDimensions != null"
-                class="text-body-2 text-medium-emphasis mb-1"
-              >
-                {{ $t('settings.embeddingTestRequestedDimensions') }}:
-                {{ embeddingTestResult.requestedDimensions }}
-              </div>
-              <div class="text-body-2 text-medium-emphasis mb-1">
-                {{ $t('settings.embeddingTestDimensions') }}: {{ embeddingTestResult.dimensions }}
-              </div>
-              <div class="text-body-2 text-medium-emphasis mb-2 text-truncate">
-                {{ $t('settings.embeddingTestRequestUrl') }}: {{ embeddingTestResult.requestUrl }}
-              </div>
-              <div class="text-caption text-medium-emphasis mb-1">
-                {{ $t('settings.embeddingTestVector') }}
-              </div>
-              <pre class="embedding-test-vector">{{ embeddingTestVectorPreview }}</pre>
-            </v-sheet>
-            <v-select
-              :model-value="hybridFtsProfile"
-              :items="hybridFtsProfileItems"
-              item-title="title"
-              item-value="value"
-              :label="$t('settings.hybridFtsProfileLabel')"
-              :hint="$t('settings.hybridFtsProfileHint')"
-              persistent-hint
-              density="comfortable"
-              variant="outlined"
-              hide-details="auto"
-              class="mt-4 mb-2"
-              @update:model-value="onHybridFtsProfilePick"
-            />
-            <v-btn
-              v-if="profileRequiresDict(hybridFtsProfile)"
-              variant="text"
-              size="small"
-              class="px-0 mb-2"
-              @click="openHybridFtsManageDialog"
-            >
-              {{ $t('settings.hybridFtsManageDict') }}
-            </v-btn>
-            <HybridFtsSwitchDialog
-              v-model="hybridFtsSwitchOpen"
-              :pending-profile="pendingHybridFtsProfile"
-              :current-profile="hybridFtsProfile"
-              :current-dict-variant="hybridFtsDictVariant"
-              @confirm="onHybridFtsSwitchConfirm"
-              @cancel="onHybridFtsSwitchCancel"
-            />
-            <h3 class="text-body-1 font-weight-medium mb-2 mt-4">
-              {{ $t('settings.memorySection') }}
-            </h3>
-            <p class="text-body-2 text-medium-emphasis mb-4">
-              {{ $t('settings.memorySectionHint') }}
-            </p>
-            <v-switch
-              v-model="memoryEnabled"
-              :label="$t('settings.memoryEnabled')"
-              color="primary"
-              hide-details
-              density="comfortable"
-            />
-            <v-text-field
-              v-model.number="memoryTopK"
-              type="number"
-              min="1"
-              max="20"
-              step="1"
-              class="mt-2"
-              density="comfortable"
-              variant="outlined"
-              :label="$t('settings.memoryTopK')"
-              :hint="$t('settings.memoryTopKHint')"
-              persistent-hint
-              hide-details="auto"
-              :disabled="!memoryEnabled"
-            />
-            <div
-              class="memory-strip-group"
-              :class="{ 'memory-strip-group--off': !memoryEnabled || !memoryStripPluginBlocks }"
-            >
-              <v-switch
-                v-model="memoryStripPluginBlocks"
-                class="mt-4"
-                :label="$t('settings.memoryStripCustomElements')"
-                :hint="$t('settings.memoryStripCustomElementsHint')"
-                persistent-hint
-                color="primary"
-                hide-details="auto"
-                density="comfortable"
-                :disabled="!memoryEnabled"
-              />
-              <v-text-field
-                :model-value="stripBlockTagsToText(memoryStripBlockTags)"
-                class="memory-strip-group__tags"
-                density="comfortable"
-                variant="outlined"
-                :label="$t('settings.memoryStripBlockTags')"
-                :hint="$t('settings.memoryStripBlockTagsHint')"
-                persistent-hint
-                hide-details="auto"
-                :disabled="!memoryEnabled || !memoryStripPluginBlocks"
-                @update:model-value="onMemoryStripBlockTagsInput"
-              />
-            </div>
-            <v-switch
-              v-model="memoryRecallFuseLastAssistant"
-              class="mt-4"
-              :label="$t('settings.memoryRecallFuseAssistant')"
-              :hint="$t('settings.memoryRecallFuseAssistantHint')"
-              persistent-hint
-              color="primary"
-              hide-details="auto"
-              density="comfortable"
-              :disabled="!memoryEnabled"
-            />
-            <v-slider
-              v-model="memoryRecallUserWeight"
-              class="mt-2"
-              :min="0"
-              :max="1"
-              :step="0.05"
-              thumb-label
-              :label="$t('settings.memoryRecallUserWeight')"
-              :hint="$t('settings.memoryRecallUserWeightHint')"
-              persistent-hint
-              hide-details="auto"
-              :disabled="!memoryEnabled || !memoryRecallFuseLastAssistant"
             />
           </section>
 
@@ -1457,26 +1511,53 @@ onMounted(() => {
   width: 100%;
 }
 
-.memory-strip-group {
+.settings-vector-recall-block {
+  padding: 1rem 1.125rem 1.125rem;
   margin-top: 1rem;
-  padding: 0.75rem 1rem 1rem;
-  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  border-radius: 8px;
   background: rgba(var(--v-theme-on-surface), 0.03);
 }
 
-.memory-strip-group--off {
+.settings-vector-recall-block__header {
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.settings-vector-recall-block__title {
+  margin: 0;
+  padding-left: 0.625rem;
+  border-left: 0.1875rem solid rgb(var(--v-theme-primary));
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  color: rgba(var(--v-theme-on-surface), 0.95);
+}
+
+.settings-vector-recall-block__hint {
+  margin: 0.5rem 0 0;
+  padding-left: 0.8125rem;
+}
+
+.settings-vr-field {
+  margin-top: 1rem;
+}
+
+.settings-vr-field--muted {
   opacity: 0.72;
 }
 
-.memory-strip-group__tags {
-  margin-top: 0.25rem;
-  margin-inline-start: 2.75rem;
-  max-width: 36rem;
+.settings-vr-field__hint {
+  margin: 0.25rem 0 0 2.75rem;
 }
 
-.memory-strip-group :deep(.v-switch) {
-  margin-inline-start: -0.5rem;
+.settings-vr-field__control {
+  margin-top: 0.625rem;
+}
+
+.settings-vr-dict-btn {
+  text-transform: none;
+  letter-spacing: 0.01em;
 }
 
 .settings-page-inner {

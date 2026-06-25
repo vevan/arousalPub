@@ -42,7 +42,7 @@ const authPhase = ref<'loading' | 'setup' | 'login' | 'app'>('loading')
 const backupBlocking = ref(false)
 const backupFilesDone = ref(0)
 const backupFilesTotal = ref(0)
-const settingsInitialTab = ref<'system' | 'display' | 'account' | 'lorebook' | 'history' | 'budgetTrim' | 'regexRules' | 'plugins' | 'debug'>('system')
+const settingsInitialTab = ref<'system' | 'display' | 'account' | 'lorebook' | 'vectorRecall' | 'history' | 'budgetTrim' | 'regexRules' | 'plugins' | 'debug'>('system')
 
 interface BackupStatusResponse {
   running: boolean

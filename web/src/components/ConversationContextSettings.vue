@@ -32,6 +32,10 @@ import {
   type BudgetTrimSettings,
 } from '@/utils/budget-trim-settings'
 import {
+  normalizeLorebookSettings,
+  type LorebookSettings,
+} from '@/utils/lorebook-settings'
+import {
   hybridFtsSpecsMatch,
   parseHybridFtsSpec,
 } from '@/utils/hybrid-fts-settings'
@@ -48,8 +52,14 @@ const props = defineProps<{
   initialLorebookSettingsUseGlobal?: boolean
   globalLoreRecursiveEnabled?: boolean
   globalLoreMaxRecursionDepth?: number
+  globalLoreKeywordTopK?: number
+  globalLoreVectorEnabled?: boolean
+  globalLoreVectorTopK?: number
   initialLorebookRecursiveEnabled?: boolean
   initialLorebookMaxRecursionDepth?: number
+  initialLorebookKeywordTopK?: number
+  initialLorebookVectorEnabled?: boolean
+  initialLorebookVectorTopK?: number
   initialHistorySettingsUseGlobal?: boolean
   globalHistoryLimitEnabled?: boolean
   globalHistoryMaxTurns?: number
@@ -95,6 +105,7 @@ type SettingsSection =
   | 'api'
   | 'lore'
   | 'context'
+  | 'vectorRecall'
   | 'budgetTrim'
   | 'authorsNote'
   | 'regexApply'
@@ -136,6 +147,9 @@ const loreUseGlobal = ref(true)
 const loreRecursiveEnabled = ref(false)
 type LoreRecursionDepth = 0 | 1 | 2 | 3
 const loreMaxRecursionDepth = ref<LoreRecursionDepth>(2)
+const loreKeywordTopK = ref(64)
+const loreVectorEnabled = ref(false)
+const loreVectorTopK = ref(5)
 
 const loreDepthItems: LoreRecursionDepth[] = [0, 1, 2, 3]
 
@@ -249,14 +263,19 @@ const sectionItems = computed(() => {
       icon: 'mdi-api',
     },
     {
+      id: 'context',
+      title: t('settings.navHistory'),
+      icon: 'mdi-history',
+    },
+    {
       id: 'lore',
-      title: t('chat.convSettings.tabLore'),
+      title: t('settings.navLorebook'),
       icon: 'mdi-book-open-page-variant-outline',
     },
     {
-      id: 'context',
-      title: t('chat.convSettings.tabContext'),
-      icon: 'mdi-tune-variant',
+      id: 'vectorRecall',
+      title: t('settings.navVectorRecall'),
+      icon: 'mdi-database-search-outline',
     },
     {
       id: 'budgetTrim',
@@ -287,7 +306,7 @@ const sectionItems = computed(() => {
 const activeSectionHeader = computed(() => {
   const keyBySection: Record<
     SettingsSection,
-    { titleKey: string; hintKey: string }
+    { titleKey: string; hintKey: string; ns?: 'chat.convSettings' | 'settings' }
   > = {
     bindings: {
       titleKey: 'tabBindings',
@@ -295,7 +314,15 @@ const activeSectionHeader = computed(() => {
     },
     api: { titleKey: 'tabApi', hintKey: 'tabApiHint' },
     lore: { titleKey: 'tabLore', hintKey: 'tabLoreHint' },
-    context: { titleKey: 'tabContext', hintKey: 'tabContextHint' },
+    context: {
+      titleKey: 'navHistory',
+      hintKey: 'historySectionHint',
+      ns: 'settings',
+    },
+    vectorRecall: {
+      titleKey: 'tabVectorRecall',
+      hintKey: 'tabVectorRecallHint',
+    },
     budgetTrim: {
       titleKey: 'tabBudgetTrim',
       hintKey: 'tabBudgetTrimHint',
@@ -311,9 +338,10 @@ const activeSectionHeader = computed(() => {
     plugins: { titleKey: 'tabPlugins', hintKey: 'tabPluginsHint' },
   }
   const keys = keyBySection[activeSection.value]
+  const ns = keys.ns ?? 'chat.convSettings'
   return {
-    title: t(`chat.convSettings.${keys.titleKey}`),
-    hint: t(`chat.convSettings.${keys.hintKey}`),
+    title: t(`${ns}.${keys.titleKey}`),
+    hint: t(`${ns}.${keys.hintKey}`),
   }
 })
 
@@ -433,6 +461,68 @@ function propsLoreMaxRecursionDepth(): LoreRecursionDepth {
   return clampLoreDepth(props.initialLorebookMaxRecursionDepth)
 }
 
+function propsGlobalLoreKeywordTopK(): number {
+  return normalizeLorebookSettings({
+    keywordTopK: props.globalLoreKeywordTopK,
+  }).keywordTopK
+}
+
+function propsGlobalLoreVectorEnabled(): boolean {
+  return normalizeLorebookSettings({
+    vectorEnabled: props.globalLoreVectorEnabled,
+  }).vectorEnabled
+}
+
+function propsGlobalLoreVectorTopK(): number {
+  return normalizeLorebookSettings({
+    vectorTopK: props.globalLoreVectorTopK,
+  }).vectorTopK
+}
+
+function propsLoreKeywordTopK(): number {
+  return normalizeLorebookSettings({
+    keywordTopK: props.initialLorebookKeywordTopK,
+  }).keywordTopK
+}
+
+function propsLoreVectorEnabled(): boolean {
+  return normalizeLorebookSettings({
+    vectorEnabled: props.initialLorebookVectorEnabled,
+  }).vectorEnabled
+}
+
+function propsLoreVectorTopK(): number {
+  return normalizeLorebookSettings({
+    vectorTopK: props.initialLorebookVectorTopK,
+  }).vectorTopK
+}
+
+function syncLoreFieldsFromProps(): void {
+  if (loreUseGlobal.value) {
+    loreRecursiveEnabled.value = propsGlobalLoreRecursiveEnabled()
+    loreMaxRecursionDepth.value = propsGlobalLoreMaxRecursionDepth()
+    loreKeywordTopK.value = propsGlobalLoreKeywordTopK()
+    loreVectorEnabled.value = propsGlobalLoreVectorEnabled()
+    loreVectorTopK.value = propsGlobalLoreVectorTopK()
+  } else {
+    loreRecursiveEnabled.value = propsLoreRecursiveEnabled()
+    loreMaxRecursionDepth.value = propsLoreMaxRecursionDepth()
+    loreKeywordTopK.value = propsLoreKeywordTopK()
+    loreVectorEnabled.value = propsLoreVectorEnabled()
+    loreVectorTopK.value = propsLoreVectorTopK()
+  }
+}
+
+function buildLorebookSettingsOverride(): LorebookSettings {
+  return normalizeLorebookSettings({
+    recursiveEnabled: loreRecursiveEnabled.value,
+    maxRecursionDepth: loreMaxRecursionDepth.value,
+    keywordTopK: loreKeywordTopK.value,
+    vectorEnabled: loreVectorEnabled.value,
+    vectorTopK: loreVectorTopK.value,
+  })
+}
+
 function propsHistoryUseGlobal(): boolean {
   return props.initialHistorySettingsUseGlobal !== false
 }
@@ -517,13 +607,7 @@ function syncFromProps() {
   userCharacterModel.value = propsUserCharacterId()
   lorebookModel.value = [...props.initialLorebookIds]
   loreUseGlobal.value = propsLoreUseGlobal()
-  if (loreUseGlobal.value) {
-    loreRecursiveEnabled.value = propsGlobalLoreRecursiveEnabled()
-    loreMaxRecursionDepth.value = propsGlobalLoreMaxRecursionDepth()
-  } else {
-    loreRecursiveEnabled.value = propsLoreRecursiveEnabled()
-    loreMaxRecursionDepth.value = propsLoreMaxRecursionDepth()
-  }
+  syncLoreFieldsFromProps()
   historyUseGlobal.value = propsHistoryUseGlobal()
   if (historyUseGlobal.value) {
     historyLimitEnabled.value = propsGlobalHistoryLimitEnabled()
@@ -575,8 +659,14 @@ watch(
     props.initialLorebookSettingsUseGlobal,
     props.globalLoreRecursiveEnabled,
     props.globalLoreMaxRecursionDepth,
+    props.globalLoreKeywordTopK,
+    props.globalLoreVectorEnabled,
+    props.globalLoreVectorTopK,
     props.initialLorebookRecursiveEnabled,
     props.initialLorebookMaxRecursionDepth,
+    props.initialLorebookKeywordTopK,
+    props.initialLorebookVectorEnabled,
+    props.initialLorebookVectorTopK,
     props.initialHistorySettingsUseGlobal,
     props.globalHistoryLimitEnabled,
     props.globalHistoryMaxTurns,
@@ -697,10 +787,7 @@ watch(loreUseGlobal, async (useGlobal) => {
       await patchConversation({ lorebookSettings: null })
     } else {
       await patchConversation({
-        lorebookSettings: {
-          recursiveEnabled: loreRecursiveEnabled.value,
-          maxRecursionDepth: loreMaxRecursionDepth.value,
-        },
+        lorebookSettings: buildLorebookSettingsOverride(),
       })
     }
   } catch (e) {
@@ -714,10 +801,7 @@ watch(loreUseGlobal, async (useGlobal) => {
 
 async function saveLoreOverride() {
   await patchConversation({
-    lorebookSettings: {
-      recursiveEnabled: loreRecursiveEnabled.value,
-      maxRecursionDepth: loreMaxRecursionDepth.value,
-    },
+    lorebookSettings: buildLorebookSettingsOverride(),
   })
 }
 
@@ -744,6 +828,60 @@ watch(loreMaxRecursionDepth, async (depth) => {
     ? propsGlobalLoreMaxRecursionDepth()
     : propsLoreMaxRecursionDepth()
   if (depth === target) return
+  savingLoreSettings.value = true
+  errorText.value = ''
+  try {
+    await saveLoreOverride()
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingLoreSettings.value = false
+  }
+})
+
+watch(loreKeywordTopK, async (topK) => {
+  const target = loreUseGlobal.value
+    ? propsGlobalLoreKeywordTopK()
+    : propsLoreKeywordTopK()
+  if (topK === target) return
+  savingLoreSettings.value = true
+  errorText.value = ''
+  try {
+    await saveLoreOverride()
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingLoreSettings.value = false
+  }
+})
+
+watch(loreVectorEnabled, async (enabled) => {
+  const target = loreUseGlobal.value
+    ? propsGlobalLoreVectorEnabled()
+    : propsLoreVectorEnabled()
+  if (enabled === target) return
+  savingLoreSettings.value = true
+  errorText.value = ''
+  try {
+    await saveLoreOverride()
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingLoreSettings.value = false
+  }
+})
+
+watch(loreVectorTopK, async (topK) => {
+  const target = loreUseGlobal.value
+    ? propsGlobalLoreVectorTopK()
+    : propsLoreVectorTopK()
+  if (topK === target) return
   savingLoreSettings.value = true
   errorText.value = ''
   try {
@@ -1585,6 +1723,73 @@ async function patchConversation(body: Record<string, unknown>) {
                     class="conv-settings-field__hint"
                   >
                     {{ $t('chat.convSettings.historyMaxTurnsHint') }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div
+              v-show="activeSection === 'vectorRecall'"
+              class="conv-settings-section"
+            >
+              <div class="conv-settings-subsection">
+                <h4 class="conv-settings-subsection__title">
+                  {{ $t('chat.convSettings.sectionLoreVector') }}
+                </h4>
+                <p
+                  v-if="loreUseGlobal"
+                  class="conv-settings-field__hint mb-3"
+                >
+                  {{ $t('chat.convSettings.loreVectorInheritGlobalHint') }}
+                </p>
+                <div class="conv-settings-field">
+                  <v-text-field
+                    v-model.number="loreKeywordTopK"
+                    type="number"
+                    min="1"
+                    max="64"
+                    step="1"
+                    :label="$t('chat.convSettings.loreKeywordTopK')"
+                    density="comfortable"
+                    variant="outlined"
+                    hide-details="auto"
+                    :disabled="loreUseGlobal || savingLoreSettings"
+                    :loading="savingLoreSettings"
+                  />
+                  <p class="conv-settings-field__hint">
+                    {{ $t('chat.convSettings.loreKeywordTopKHint') }}
+                  </p>
+                </div>
+                <div class="conv-settings-field">
+                  <v-switch
+                    v-model="loreVectorEnabled"
+                    :label="$t('chat.convSettings.loreVectorEnabled')"
+                    density="comfortable"
+                    hide-details
+                    color="primary"
+                    :loading="savingLoreSettings"
+                    :disabled="loreUseGlobal || savingLoreSettings"
+                  />
+                </div>
+                <div class="conv-settings-field">
+                  <v-text-field
+                    v-model.number="loreVectorTopK"
+                    type="number"
+                    min="1"
+                    max="20"
+                    step="1"
+                    :label="$t('chat.convSettings.loreVectorTopK')"
+                    density="comfortable"
+                    variant="outlined"
+                    hide-details="auto"
+                    :disabled="loreUseGlobal || !loreVectorEnabled || savingLoreSettings"
+                    :loading="savingLoreSettings"
+                  />
+                  <p
+                    v-if="loreVectorEnabled"
+                    class="conv-settings-field__hint"
+                  >
+                    {{ $t('chat.convSettings.loreVectorTopKHint') }}
                   </p>
                 </div>
               </div>

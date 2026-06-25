@@ -4,6 +4,19 @@
  * 仅调整 vuetify/styles 与 style.css 的先后顺序无法覆盖 .v-card-title 等规则。
  */
 
+/* 表单开关：标签与正文对齐，避免压过区块标题或显成主色大字 */
+.v-switch .v-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: rgba(var(--v-theme-on-surface), 0.87);
+  opacity: 1;
+}
+
+.v-switch .v-selection-control {
+  min-height: 2rem;
+}
+
 .preview-card .v-card-title.preview-card__title {
   display: flex;
   align-items: center;

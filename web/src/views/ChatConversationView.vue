@@ -952,6 +952,7 @@ watch(
               type="button"
               class="chat-header__pill chat-header__pill--prompt chat-header__pill--clickable"
               :title="boundPromptLabel"
+              :aria-label="boundPromptLabel"
               @click="openBoundPrompt"
             >
               <v-icon
@@ -1384,5 +1385,30 @@ watch(
 .chat-header__dot--warning {
   background: rgb(var(--v-theme-warning));
   box-shadow: 0 0 0 0.1875rem rgba(var(--v-theme-warning), 0.18);
+}
+
+@media (max-width: 40rem) {
+  .chat-header {
+    gap: 0.5rem;
+    padding-inline: 0;
+  }
+
+  .chat-header__pill--branch .chat-header__pill-label,
+  .chat-header__pill--prompt .chat-header__pill-label {
+    display: none;
+  }
+
+  .chat-header__pill--branch,
+  .chat-header__pill--prompt {
+    width: auto;
+    max-width: none;
+    padding: 0.3125rem;
+    justify-content: center;
+  }
+
+  .chat-header__pill--branch :deep(.v-icon),
+  .chat-header__pill--prompt :deep(.v-icon) {
+    font-size: 1.125rem;
+  }
 }
 </style>

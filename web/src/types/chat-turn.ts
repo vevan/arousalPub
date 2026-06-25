@@ -51,6 +51,11 @@ export interface ChatPersistPayload {
   plugins?: unknown[]
   /** 落盘时 trace-keeper trackerEpoch，供前端本地快照对齐 */
   trackerEpoch?: number
+  /** 落盘 receive.runtime（供前端增量 patch token，避免 reload） */
+  estimatedTokens?: number
+  completionTokens?: number
+  durationMs?: number
+  model?: string
 }
 
 export interface RetroPersistTurnPayload {

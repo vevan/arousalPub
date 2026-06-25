@@ -14,6 +14,7 @@ import { makeReplyTraceId } from './types.js'
 import { buildReceiveItem, collectUsedReceiveIds } from './turn-helpers.js'
 import {
   resolveAssistantAfterPersist,
+  mergeReceiveRuntimeFromPersist,
   shouldReloadMessagesAfterChat,
 } from '@/utils/persist-display'
 
@@ -136,16 +137,19 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
     >,
   ): ReceiveItem {
     const elapsed = result.durationMs ?? deps.resolveDurationMs()
-    return buildReceiveItem(
-      deps.conn.model,
-      resolveReceiveId(result.persist),
-      content,
-      {
-        reasoning: result.reasoning,
-        durationMs: elapsed,
-        estimatedTokens: result.estimatedTokens,
-        completionTokens: result.completionTokens,
-      },
+    return mergeReceiveRuntimeFromPersist(
+      buildReceiveItem(
+        deps.conn.model,
+        resolveReceiveId(result.persist),
+        content,
+        {
+          reasoning: result.reasoning,
+          durationMs: elapsed,
+          estimatedTokens: result.estimatedTokens,
+          completionTokens: result.completionTokens,
+        },
+      ),
+      result.persist,
     )
   }
 

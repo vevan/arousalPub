@@ -63,6 +63,11 @@ export interface ChatPersistResult {
   plugins?: unknown[]
   /** 落盘时 trace-keeper trackerEpoch */
   trackerEpoch?: number
+  /** 落盘 receive.runtime 中的 token/耗时（供前端增量 patch，避免 reload） */
+  estimatedTokens?: number
+  completionTokens?: number
+  durationMs?: number
+  model?: string
 }
 
 /** 出站 token：上游 usage.prompt_tokens，缺省用组装估算 */
@@ -197,6 +202,42 @@ function turnPluginsFromChunk(
   return turn.plugins
 }
 
+function receiveMetaForPersist(opts: {
+  model?: string
+  durationMs?: number
+  estimatedTokens?: number
+  completionTokens?: number
+}): Pick<
+  ChatPersistResult,
+  'estimatedTokens' | 'completionTokens' | 'durationMs' | 'model'
+> {
+  const out: Pick<
+    ChatPersistResult,
+    'estimatedTokens' | 'completionTokens' | 'durationMs' | 'model'
+  > = {}
+  if (typeof opts.model === 'string' && opts.model.trim()) {
+    out.model = opts.model.trim()
+  }
+  if (typeof opts.durationMs === 'number' && opts.durationMs > 0) {
+    out.durationMs = Math.round(opts.durationMs)
+  }
+  if (
+    typeof opts.estimatedTokens === 'number' &&
+    Number.isFinite(opts.estimatedTokens) &&
+    opts.estimatedTokens > 0
+  ) {
+    out.estimatedTokens = Math.round(opts.estimatedTokens)
+  }
+  if (
+    typeof opts.completionTokens === 'number' &&
+    Number.isFinite(opts.completionTokens) &&
+    opts.completionTokens > 0
+  ) {
+    out.completionTokens = Math.round(opts.completionTokens)
+  }
+  return out
+}
+
 function okPersistResult(
   base: {
     turnOrdinal?: number
@@ -207,6 +248,10 @@ function okPersistResult(
   fields: PersistRegexFields,
   plugins?: unknown[],
   trackerEpoch?: number,
+  receiveMeta?: Pick<
+    ChatPersistResult,
+    'estimatedTokens' | 'completionTokens' | 'durationMs' | 'model'
+  >,
 ): ChatPersistResult {
   return {
     ok: true,
@@ -218,6 +263,7 @@ function okPersistResult(
       : {}),
     ...(plugins !== undefined ? { plugins } : {}),
     ...(typeof trackerEpoch === 'number' ? { trackerEpoch } : {}),
+    ...receiveMeta,
   }
 }
 
@@ -251,8 +297,18 @@ async function finishPersistResult(
   retroOpts: { newTailOrdinal: number; includeNewRetro: boolean } | null,
   plugins?: unknown[],
   trackerEpoch?: number,
+  receiveMeta?: Pick<
+    ChatPersistResult,
+    'estimatedTokens' | 'completionTokens' | 'durationMs' | 'model'
+  >,
 ): Promise<ChatPersistResult> {
-  const result = okPersistResult(base, fields, plugins, trackerEpoch)
+  const result = okPersistResult(
+    base,
+    fields,
+    plugins,
+    trackerEpoch,
+    receiveMeta,
+  )
   if (!retroOpts) return result
   let retroRun: RetroPersistRunResult | null = null
   try {
@@ -354,6 +410,12 @@ export async function persistTurnAfterModelReply(params: {
       reasoning,
       model,
     )
+    const persistReceiveMeta = receiveMetaForPersist({
+      model,
+      durationMs: params.durationMs,
+      estimatedTokens: params.estimatedTokens,
+      completionTokens,
+    })
 
     const promptTokensForAudit = resolveAuditPromptTokens(params)
     const chatUsage =
@@ -461,6 +523,7 @@ export async function persistTurnAfterModelReply(params: {
         },
         turnPluginsFromChunk(afterLocated?.chunk, regenOrd),
         trackerEpoch,
+        persistReceiveMeta,
       )
     }
 
@@ -499,6 +562,7 @@ export async function persistTurnAfterModelReply(params: {
         { newTailOrdinal: 0, includeNewRetro: true },
         turnPluginsFromChunk(saved.chunk, 0),
         trackerEpoch,
+        persistReceiveMeta,
       )
     }
 
@@ -556,6 +620,7 @@ export async function persistTurnAfterModelReply(params: {
       },
       turnPluginsFromChunk(chunk, appendTurnOrdinal),
       trackerEpoch,
+      persistReceiveMeta,
     )
   }
 
@@ -581,6 +646,12 @@ export async function persistTurnAfterModelReply(params: {
     reasoning,
     model,
   )
+  const persistReceiveMeta = receiveMetaForPersist({
+    model,
+    durationMs: params.durationMs,
+    estimatedTokens: params.estimatedTokens,
+    completionTokens,
+  })
 
   const promptTokensForAudit = resolveAuditPromptTokens(params)
   const chatUsage =
@@ -657,6 +728,7 @@ export async function persistTurnAfterModelReply(params: {
       { newTailOrdinal: 0, includeNewRetro: true },
       turnPluginsFromChunk(saved.chunk, 0),
       trackerEpoch,
+      persistReceiveMeta,
     )
   }
 
@@ -700,5 +772,6 @@ export async function persistTurnAfterModelReply(params: {
     },
     turnPluginsFromChunk(chunk, persistedOrdinal),
     trackerEpoch,
+    persistReceiveMeta,
   )
 }

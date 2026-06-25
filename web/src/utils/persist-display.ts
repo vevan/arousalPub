@@ -1,6 +1,7 @@
 import type {
   ChatPersistPayload,
   ChatTurnItem,
+  ReceiveItem,
   RetroPersistTurnPayload,
 } from '@/types/chat-turn'
 
@@ -110,6 +111,40 @@ function resolvePersistPluginsForTurn(
   if (!entry) return undefined
   return mergeTurnPluginEntry(existing, entry)
 }
+/** persist SSE/JSON 带回的 receive.runtime，合并进待发 receive */
+export function mergeReceiveRuntimeFromPersist(
+  receive: ReceiveItem,
+  persist?: ChatPersistPayload,
+): ReceiveItem {
+  if (!persist?.ok) return receive
+  const out = { ...receive }
+  if (
+    (out.estimatedTokens == null || out.estimatedTokens <= 0) &&
+    typeof persist.estimatedTokens === 'number' &&
+    persist.estimatedTokens > 0
+  ) {
+    out.estimatedTokens = persist.estimatedTokens
+  }
+  if (
+    (out.completionTokens == null || out.completionTokens <= 0) &&
+    typeof persist.completionTokens === 'number' &&
+    persist.completionTokens > 0
+  ) {
+    out.completionTokens = persist.completionTokens
+  }
+  if (
+    (out.durationMs == null || out.durationMs <= 0) &&
+    typeof persist.durationMs === 'number' &&
+    persist.durationMs > 0
+  ) {
+    out.durationMs = persist.durationMs
+  }
+  if (!out.model?.trim() && typeof persist.model === 'string' && persist.model.trim()) {
+    out.model = persist.model.trim()
+  }
+  return out
+}
+
 /** persist SSE/JSON 带回 final* 时，用落盘正文替代流式 upstream 原文 */
 export function resolveAssistantAfterPersist(
   assistantOut: string,

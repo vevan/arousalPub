@@ -1,7 +1,39 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { ChatTurnItem } from '@/types/chat-turn'
-import { applyPersistTurnPlugins } from './persist-display.js'
+import { applyPersistTurnPlugins, mergeReceiveRuntimeFromPersist } from './persist-display.js'
+
+describe('mergeReceiveRuntimeFromPersist', () => {
+  it('fills missing token fields from persist', () => {
+    const merged = mergeReceiveRuntimeFromPersist(
+      { id: 'r1', content: 'hi', durationMs: 100 },
+      {
+        ok: true,
+        estimatedTokens: 1200,
+        completionTokens: 88,
+        model: 'gpt-test',
+      },
+    )
+    assert.equal(merged.estimatedTokens, 1200)
+    assert.equal(merged.completionTokens, 88)
+    assert.equal(merged.model, 'gpt-test')
+    assert.equal(merged.durationMs, 100)
+  })
+
+  it('does not overwrite existing receive metrics', () => {
+    const merged = mergeReceiveRuntimeFromPersist(
+      {
+        id: 'r1',
+        content: 'hi',
+        estimatedTokens: 500,
+        completionTokens: 40,
+      },
+      { ok: true, estimatedTokens: 1200, completionTokens: 88 },
+    )
+    assert.equal(merged.estimatedTokens, 500)
+    assert.equal(merged.completionTokens, 40)
+  })
+})
 
 describe('applyPersistTurnPlugins', () => {
   it('patches plugins on matching turnOrdinal', () => {

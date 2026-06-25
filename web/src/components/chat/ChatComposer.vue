@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { useChatSession } from '@/composables/useChatSession'
+import ChatComposerInputHistoryMenu from '@/components/chat/ChatComposerInputHistoryMenu.vue'
 import PluginSlotMount from '@/plugins/PluginSlotMount.vue'
 import { usePreferencesStore } from '@/stores/preferences'
 import { storeToRefs } from 'pinia'
@@ -128,6 +129,7 @@ function onSendClick() {
                 </v-btn>
               </template>
             </v-tooltip>
+            <ChatComposerInputHistoryMenu :session="props.session" />
             <div class="plugin-slots composer__plugin-slots">
               <PluginSlotMount slot-name="composer-toolbar" />
             </div>

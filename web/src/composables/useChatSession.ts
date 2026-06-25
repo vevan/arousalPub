@@ -22,6 +22,7 @@ import { useChatDisplay } from './chat-session/use-chat-display.js'
 import { useChatOutbound } from './chat-session/use-chat-outbound.js'
 import { useChatScroll } from './chat-session/use-chat-scroll.js'
 import { useComposerDraft } from './chat-session/use-composer-draft.js'
+import { useComposerInputHistory } from './chat-session/use-composer-input-history.js'
 import { useComposerKeydown } from './chat-session/use-composer-keydown.js'
 import { useConversationWriteLock } from './chat-session/use-conversation-write-lock.js'
 import { useCopyFeedback } from './chat-session/use-copy-feedback.js'
@@ -91,6 +92,22 @@ export function useChatSession(props: ChatSessionProps) {
     userInput,
     getUserId: () => auth.user?.id ?? auth.defaultUserId ?? 'anonymous',
   })
+
+  const composerInputHistory = useComposerInputHistory({
+    getConversationId: () => props.conversationId,
+    getUserId: () => auth.user?.id ?? auth.defaultUserId ?? 'anonymous',
+    userInput,
+  })
+  const {
+    inputHistory,
+    inputHistoryLimits,
+    recordOnSend: recordInputHistoryOnSend,
+    pinItem: pinInputHistoryItem,
+    unpinItem: unpinInputHistoryItem,
+    fillFromHistory: fillComposerFromInputHistory,
+    applyInputHistoryLimits,
+    switchConversationInputHistory,
+  } = composerInputHistory
 
   const writeLock = useConversationWriteLock({
     getConversationId: () => props.conversationId,
@@ -234,6 +251,7 @@ export function useChatSession(props: ChatSessionProps) {
     scrollChatToBottom,
     endRegeneratingUi,
     emitAssistantReplyComplete,
+    recordInputHistoryOnSend,
     t,
   })
   const {
@@ -360,6 +378,7 @@ export function useChatSession(props: ChatSessionProps) {
     () => props.conversationId,
     (newId, oldId) => {
       composerDraft.switchConversationDraft(oldId, newId ?? '')
+      switchConversationInputHistory(oldId, newId ?? '')
       turns.value = []
       clearPendingSend()
       errorText.value = ''
@@ -411,6 +430,12 @@ export function useChatSession(props: ChatSessionProps) {
     canSend,
     isGenerating,
     abortCurrentReply,
+    inputHistory,
+    inputHistoryLimits,
+    pinInputHistoryItem,
+    unpinInputHistoryItem,
+    fillComposerFromInputHistory,
+    applyInputHistoryLimits,
     loadMessages,
     loadOlderMessages,
     conversationId: props.conversationId,

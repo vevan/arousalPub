@@ -48,6 +48,7 @@ export function useChatOutbound(opts: {
   scrollChatToBottom: () => Promise<void>
   endRegeneratingUi: () => void
   emitAssistantReplyComplete: ReplyEventHub['emitAssistantReplyComplete']
+  recordInputHistoryOnSend?: (text: string) => void
   t: ComposerTranslation
 }) {
   function applyPersistRetroPatches(persist?: ChatPersistPayload) {
@@ -105,6 +106,9 @@ export function useChatOutbound(opts: {
       opts.errorText.value = opts.customParamsErrorMessage(e)
       return
     }
+    if (!userText) return
+
+    opts.recordInputHistoryOnSend?.(userText)
 
     const ord = nextTurnOrdinal0(opts.turns.value)
     opts.appendPendingUserTurn(userText, ord)
@@ -164,6 +168,8 @@ export function useChatOutbound(opts: {
       })
       return opts.errorText.value
     }
+
+    opts.recordInputHistoryOnSend?.(trimmed)
 
     const ord = nextTurnOrdinal0(opts.turns.value)
     opts.appendPendingUserTurn(trimmed, ord)

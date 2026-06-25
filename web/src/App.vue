@@ -7,12 +7,8 @@ import {
   openPluginPanel,
   setPluginPanelHidden,
 } from '@/plugins/plugin-panel-registry'
-import CharactersView from '@/views/CharactersView.vue'
-import LorebooksView from '@/views/LorebooksView.vue'
-import PromptsView from '@/views/PromptsView.vue'
-import SettingsView from '@/views/SettingsView.vue'
-import AuthView from '@/views/AuthView.vue'
 import { htmlLangTag } from '@/i18n/locale'
+import { ensureLocaleMessages } from '@/i18n'
 import { bootstrapAppData, resetBootstrapAppData } from '@/bootstrap/app-data'
 import { useAuthStore } from '@/stores/auth'
 import { userAvatarUrl } from '@/utils/authenticated-media-url'
@@ -23,7 +19,7 @@ import { usePromptsStore } from '@/stores/prompts'
 import { useUiContextStore } from '@/stores/ui-context'
 import { storeToRefs } from 'pinia'
 import type { ComponentPublicInstance } from 'vue'
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -33,6 +29,18 @@ const { effective: effectiveLocale } = storeToRefs(localeStore)
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+
+const AuthView = defineAsyncComponent(() => import('@/views/AuthView.vue'))
+const SettingsView = defineAsyncComponent(
+  () => import('@/views/SettingsView.vue'),
+)
+const PromptsView = defineAsyncComponent(() => import('@/views/PromptsView.vue'))
+const CharactersView = defineAsyncComponent(
+  () => import('@/views/CharactersView.vue'),
+)
+const LorebooksView = defineAsyncComponent(
+  () => import('@/views/LorebooksView.vue'),
+)
 
 const userBarAvatarSrc = computed(() =>
   auth.user ? userAvatarUrl(auth.user.id) : null,
@@ -102,7 +110,8 @@ function openAccountSettings() {
 
 watch(
   effectiveLocale,
-  (l) => {
+  async (l) => {
+    await ensureLocaleMessages(l)
     locale.value = l
     if (typeof document !== 'undefined') {
       document.documentElement.lang = htmlLangTag(l)
@@ -113,10 +122,13 @@ watch(
 
 function onBrowserLanguageChange() {
   if (localeStore.preference !== 'auto') return
-  locale.value = localeStore.effective
-  if (typeof document !== 'undefined') {
-    document.documentElement.lang = htmlLangTag(localeStore.effective)
-  }
+  const next = localeStore.effective
+  void ensureLocaleMessages(next).then(() => {
+    locale.value = next
+    if (typeof document !== 'undefined') {
+      document.documentElement.lang = htmlLangTag(next)
+    }
+  })
 }
 
 function onFooterPluginsToggle(): void {
@@ -708,6 +720,7 @@ onUnmounted(() => {
         <v-divider />
         <v-card-text class="pa-3 pa-sm-4 settings-dialog-body">
           <SettingsView
+            v-if="settingsDialogOpen"
             embedded
             :initial-tab="settingsInitialTab"
             :open-count="settingsDialogOpenCount"
@@ -750,6 +763,7 @@ onUnmounted(() => {
       <v-card rounded="lg" class="library-dialog-card">
         <v-card-text class="pa-0 library-dialog-body">
           <CharactersView
+            v-if="charactersDialogOpen"
             embedded
             @close="charactersDialogOpen = false"
           />
@@ -766,6 +780,7 @@ onUnmounted(() => {
       <v-card rounded="lg" class="library-dialog-card">
         <v-card-text class="pa-0 library-dialog-body">
           <LorebooksView
+            v-if="lorebooksDialogOpen"
             embedded
             @close="lorebooksDialogOpen = false"
           />

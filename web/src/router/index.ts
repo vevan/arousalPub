@@ -1,6 +1,4 @@
 import BlankRoute from '@/views/BlankRoute.vue'
-import ChatConversationView from '@/views/ChatConversationView.vue'
-import ConversationListView from '@/views/ConversationListView.vue'
 import type {
   NavigationGuardNext,
   RouteLocationNormalized,
@@ -34,11 +32,11 @@ function libraryBeforeEnter(panel: 'prompts' | 'characters' | 'lorebooks') {
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', name: 'home', component: ConversationListView },
+    { path: '/', name: 'home', component: () => import('@/views/ConversationListView.vue') },
     {
       path: '/chat/:conversationId',
       name: 'chat',
-      component: ChatConversationView,
+      component: () => import('@/views/ChatConversationView.vue'),
       props: true,
     },
     {

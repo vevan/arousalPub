@@ -8,7 +8,7 @@
 
 ## P1
 
-- [ ] **Web 首屏 bundle 体积优化（Vite chunk > 500KB 警告）** — 当前单次 JS ~1.55MB（gzip ~462KB），CSS ~944KB（Vuetify + MDI）；性能/首屏问题，非构建失败。落地顺序：① `rollup-plugin-visualizer`（或 `vite build --analyze`）确认占比；② `web/src/main.ts` 去掉 Vuetify 全量 `import * as components/directives`，仅保留 `vite-plugin-vuetify` `autoImport`（及少量 labs 如 `VIconBtn`）；③ `web/src/router/index.ts`、`App.vue` 中 `SettingsView` / `PromptsView` / `CharactersView` / `LorebooksView` / `AuthView` 等改为 `defineAsyncComponent` 或 `() => import(...)` 懒加载；④ 仍超限则 `build.rollupOptions.output.manualChunks`（或 Rolldown `codeSplitting`）拆 `vue` / `vuetify` / `virtua` vendor；⑤ `@mdi/font` 全量 → `@mdi/js` 按需 SVG（woff2 ~403KB）；⑥ `web/src/i18n/index.ts` 按 locale 动态 `import()` 语言包。仅调高 `chunkSizeWarningLimit` 只消警告、不减体积。插件 web 模块已 `import(url)` 动态加载，无需改。
+- [ ] **Web 首屏 bundle 体积优化（Vite chunk > 500KB 警告）** — ~~单次 JS ~1.55MB（gzip ~462KB）~~ → 已拆块：入口 `index` ~190KB（gzip ~59KB）、`vuetify` ~286KB、`ChatConversationView` 路由懒加载 ~243KB；CSS 拆为 `index` ~371KB + `vuetify` ~403KB。余项：**⑤** `@mdi/font` → `@mdi/js` 按需 SVG（woff2 ~403KB）。已完成：① `npm run build:analyze`（`rollup-plugin-visualizer` → `.tmp/vite-bundle-stats.html`）；② `main.ts` 去掉 Vuetify 全量 import；③ 路由 + `App.vue` 懒加载；④ `manualChunks`；⑥ i18n 按 locale 动态 `import()`。
 - [ ] **独立文档 RAG**（≠ 世界书 vector）— 可选；前置 `DOC/20` M1+M4
 - [ ] RAG 参数面板、会话/角色批量导入导出、备份示例脚本
 

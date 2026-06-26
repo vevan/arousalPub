@@ -42,12 +42,12 @@ async function build() {
 
   const { spawnSync } = await import('node:child_process')
   const testFiles = [
-    path.join(here, 'src/panel-empty.test.ts'),
-    path.join(here, 'src/separate-turn-settings.test.ts'),
-    path.join(here, 'src/separate-dialogue.test.ts'),
-    path.join(here, 'src/tracker-prompt.test.ts'),
-    path.join(here, 'src/trace-state-resolve.test.ts'),
-    path.join(here, 'src/server/injection.test.ts'),
+    path.join(here, 'test/panel-empty.test.ts'),
+    path.join(here, 'test/separate-turn-settings.test.ts'),
+    path.join(here, 'test/separate-dialogue.test.ts'),
+    path.join(here, 'test/tracker-prompt.test.ts'),
+    path.join(here, 'test/trace-state-resolve.test.ts'),
+    path.join(here, 'test/server/injection.test.ts'),
   ]
   for (const f of testFiles) {
     const r = spawnSync(process.execPath, ['--import', 'tsx', '--test', f], {

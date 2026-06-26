@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { Index, rerankers, type Table } from '@lancedb/lancedb'
+import { Index, MatchQuery, rerankers, type Table } from '@lancedb/lancedb'
 import {
   formatHybridFtsSpec,
   normalizeHybridFtsSettings,
@@ -22,15 +22,24 @@ export const LORE_FTS_COLUMN = 'text'
 
 export const HYBRID_FTS_PROFILE_STAMP = '.hybrid-fts-profile.json'
 
+/** Lance FTS 戳记版本；变更索引选项（如 withPosition）时递增以触发重建 */
+const HYBRID_FTS_INDEX_STAMP_REVISION = 'pos1'
+
+function formatHybridFtsIndexStamp(settings: HybridFtsSettings): string {
+  return `${formatHybridFtsSpec(settings)}@${HYBRID_FTS_INDEX_STAMP_REVISION}`
+}
+
 /** 中文（及中英混排）BM25：字符 n-gram，不用 English stemming */
 export function chineseFtsIndexOptions() {
   return ftsIndexOptionsForProfile('zh-ngram')
 }
 
 export function ftsIndexOptionsForProfile(profile: HybridFtsProfile) {
+  const withPosition = true
   switch (profile) {
     case 'en':
       return {
+        withPosition,
         baseTokenizer: 'simple' as const,
         language: 'English' as const,
         lowercase: true,
@@ -40,6 +49,7 @@ export function ftsIndexOptionsForProfile(profile: HybridFtsProfile) {
       }
     case 'zh-jieba':
       return {
+        withPosition,
         baseTokenizer: 'jieba/default' as const,
         stem: false,
         removeStopWords: false,
@@ -49,6 +59,7 @@ export function ftsIndexOptionsForProfile(profile: HybridFtsProfile) {
     case 'zh-ngram':
     default:
       return {
+        withPosition,
         baseTokenizer: 'ngram' as const,
         ngramMinLength: 2,
         ngramMaxLength: 3,
@@ -141,7 +152,7 @@ export async function ensureHybridFtsIndex(
   userId: string,
 ): Promise<void> {
   const normalized = normalizeHybridFtsSettings(settings)
-  const spec = formatHybridFtsSpec(normalized)
+  const spec = formatHybridFtsIndexStamp(normalized)
   const created = await withHybridFtsSettingsContext(userId, normalized, async () => {
     const stamped = await readHybridFtsSpecStamp(stampDir)
     const hasFts = await tableHasFtsIndex(table, column)
@@ -215,7 +226,7 @@ export async function runLanceHybridSearch(
           const reranker = await sharedRrfReranker()
           let query = table
             .vectorSearch(queryVector)
-            .fullTextSearch(trimmedQuery, { columns: textColumn })
+            .fullTextSearch(new MatchQuery(trimmedQuery, textColumn))
             .rerank(reranker)
           if (whereClause) {
             query = query.where(whereClause)

@@ -30,6 +30,7 @@ describe('ftsIndexOptionsForProfile', () => {
   it('uses ngram tokenizer for zh-ngram', () => {
     const opts = ftsIndexOptionsForProfile('zh-ngram')
     assert.equal(opts.baseTokenizer, 'ngram')
+    assert.equal(opts.withPosition, true)
     assert.equal(opts.stem, false)
   })
 

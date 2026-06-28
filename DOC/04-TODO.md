@@ -11,6 +11,11 @@
 
 ## P1
 
+- [ ] **指导生成插件 · 指导修改** — `guidance-generate` 新增「指导修改」模式（与现有 send/regenerate 并列）：
+  - **输入**：用户填写指导文；目标为**当前轮助手回复**（含 swipe 当前选中项 `activeReceiveIndex` 正文）
+  - **组装**：将本次回复作为上下文中的 **assistant 消息**注入（非从零生成）；再附指导 system，要求 LLM **在保留大意前提下按指导修正细节**（措辞、情节、语气等）
+  - **触发**：composer / 助手 turn footer 入口（与现有指导弹框对齐）；可走 `regenerateWithPlugins` 或专用 `mode: 'revise'` + 宿主 API（若需不增 swipe 而覆盖当前 receive，需与产品定案）
+  - **落盘**：`turn.plugins[].payload` 扩展 `mode` / `guidanceText`；审计与 `DOC/09` §7.1、`DOC/18` 同步
 - [ ] **Web 首屏 bundle 体积优化（Vite chunk > 500KB 警告）** — ~~单次 JS ~1.55MB（gzip ~462KB）~~ → 已拆块：入口 `index` ~190KB（gzip ~59KB）、`vuetify` ~286KB、`ChatConversationView` 路由懒加载 ~243KB；CSS 拆为 `index` ~371KB + `vuetify` ~403KB。余项：**⑤** `@mdi/font` → `@mdi/js` 按需 SVG（woff2 ~403KB）。已完成：① `npm run build:analyze`（`rollup-plugin-visualizer` → `.tmp/vite-bundle-stats.html`）；② `main.ts` 去掉 Vuetify 全量 import；③ 路由 + `App.vue` 懒加载；④ `manualChunks`；⑥ i18n 按 locale 动态 `import()`。
 - [ ] **独立文档 RAG**（≠ 世界书 vector）— 可选；前置 `DOC/20` M1+M4
 - [ ] RAG 参数面板、会话/角色批量导入导出、备份示例脚本

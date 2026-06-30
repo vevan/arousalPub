@@ -3,6 +3,7 @@ import {
   normalizeSummaryPayload,
   parseModelJson,
 } from '../shared/summarize.js'
+import { buildSummaryCompleteMessages } from '../shared/build-summary-messages.js'
 import { asString } from '../shared/utils.js'
 
 const UPSTREAM_RETRY_MAX = 3
@@ -53,16 +54,15 @@ async function assertPreflight(
   api: DraftApi,
   conversationId: string,
   apiConfigId: string | undefined,
-  system: string,
-  userContent: string,
+  messages: { role: 'system' | 'user' | 'assistant'; content: string }[],
 ): Promise<void> {
+  if (messages.length === 0) {
+    throw new Error('preflight_failed')
+  }
   const pf = await api.runPluginCompletePreflight({
     apiConfigId,
     conversationId,
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: userContent },
-    ],
+    messages,
   })
   if (pf.ok) return
   if (pf.code === 'context_exceeded') {
@@ -78,14 +78,6 @@ async function assertPreflight(
     throw new Error('context_length_unconfigured')
   }
   throw new Error('preflight_failed')
-}
-
-function joinSystemMessage(reference: string, instruction: string): string {
-  const ref = reference.trim()
-  const inst = instruction.trim()
-  if (!ref) return inst
-  if (!inst) return ref
-  return `${ref}\n\n${inst}`
 }
 
 async function callCompleteOnce(
@@ -118,21 +110,16 @@ async function callCompleteOnce(
     ),
     expandText(api, userContent, conversationId, apiConfigId ?? '', anchorToTurn),
   ])
-  const expandedSystem = joinSystemMessage(expandedRef, expandedInstruction)
-  await assertPreflight(
-    api,
-    conversationId,
-    apiConfigId,
-    expandedSystem,
+  const messages = buildSummaryCompleteMessages(
+    expandedRef,
     expandedUser,
+    expandedInstruction,
   )
+  await assertPreflight(api, conversationId, apiConfigId, messages)
   const result = await api.runPluginComplete({
     apiConfigId,
     conversationId,
-    messages: [
-      { role: 'system', content: expandedSystem },
-      { role: 'user', content: expandedUser },
-    ],
+    messages,
     responseFormat: 'json_object',
   })
   if (!result.ok) {

@@ -999,6 +999,18 @@ async function runSummarizeTasks(host, opts) {
   }
 }
 
+// plugins/plot-summary/src/shared/build-summary-messages.ts
+function buildSummaryCompleteMessages(systemReferenceContext, userContent, systemPromptTemplate) {
+  const reference = systemReferenceContext.trim();
+  const history = userContent.trim();
+  const instruction = systemPromptTemplate.trim();
+  const messages = [];
+  if (reference) messages.push({ role: "system", content: reference });
+  if (history) messages.push({ role: "user", content: history });
+  if (instruction) messages.push({ role: "system", content: instruction });
+  return messages;
+}
+
 // plugins/plot-summary/src/prompt-preview.ts
 function auditDebugEnabled(host) {
   const raw = host.session.writeChatPromptSnapshot;
@@ -1007,15 +1019,6 @@ function auditDebugEnabled(host) {
     return Boolean(raw.value);
   }
   return false;
-}
-function joinSystemMessage(reference, instruction) {
-  const ref = reference.trim();
-  const inst = instruction.trim();
-  if (!ref) return inst;
-  if (!inst) return ref;
-  return `${ref}
-
-${inst}`;
 }
 function formatContentValue(value, inner) {
   if (!value.includes("\n")) {
@@ -1072,11 +1075,7 @@ async function buildTaskMessages(host, settings, task, prepared, toTurn) {
     expandText(host, systemTemplate, apiConfigId, toTurn),
     expandText(host, prepared.userContent, apiConfigId, toTurn)
   ]);
-  const system = joinSystemMessage(expandedRef, expandedInstruction);
-  const messages = [];
-  if (system.trim()) messages.push({ role: "system", content: system });
-  if (expandedUser.trim()) messages.push({ role: "user", content: expandedUser });
-  return messages;
+  return buildSummaryCompleteMessages(expandedRef, expandedUser, expandedInstruction);
 }
 async function preflightLine(host, settings, messages) {
   const pf = host.token?.preflightComplete;

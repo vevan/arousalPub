@@ -37,6 +37,18 @@ function formatEntryTitle(rawTitle, startTurn, endTurn) {
   return `${base}${suffix}`;
 }
 
+// plugins/plot-summary/src/shared/build-summary-messages.ts
+function buildSummaryCompleteMessages(systemReferenceContext, userContent, systemPromptTemplate) {
+  const reference = systemReferenceContext.trim();
+  const history = userContent.trim();
+  const instruction = systemPromptTemplate.trim();
+  const messages = [];
+  if (reference) messages.push({ role: "system", content: reference });
+  if (history) messages.push({ role: "user", content: history });
+  if (instruction) messages.push({ role: "system", content: instruction });
+  return messages;
+}
+
 // plugins/plot-summary/src/server/complete-draft.ts
 var UPSTREAM_RETRY_MAX = 3;
 var PIPELINE_FATAL = /* @__PURE__ */ new Set(["context_exceeded", "context_length_unconfigured"]);
@@ -51,14 +63,14 @@ async function expandText(api, text, conversationId, apiConfigId, toTurn) {
     ...typeof toTurn === "number" ? { toTurn } : {}
   });
 }
-async function assertPreflight(api, conversationId, apiConfigId, system, userContent) {
+async function assertPreflight(api, conversationId, apiConfigId, messages) {
+  if (messages.length === 0) {
+    throw new Error("preflight_failed");
+  }
   const pf = await api.runPluginCompletePreflight({
     apiConfigId,
     conversationId,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: userContent }
-    ]
+    messages
   });
   if (pf.ok) return;
   if (pf.code === "context_exceeded") {
@@ -71,15 +83,6 @@ async function assertPreflight(api, conversationId, apiConfigId, system, userCon
     throw new Error("context_length_unconfigured");
   }
   throw new Error("preflight_failed");
-}
-function joinSystemMessage(reference, instruction) {
-  const ref = reference.trim();
-  const inst = instruction.trim();
-  if (!ref) return inst;
-  if (!inst) return ref;
-  return `${ref}
-
-${inst}`;
 }
 async function callCompleteOnce(api, conversationId, apiConfigId, systemReferenceContext, systemPromptTemplate, userContent, toTurn) {
   const anchorToTurn = typeof toTurn === "number" && Number.isInteger(toTurn) ? toTurn : void 0;
@@ -100,21 +103,16 @@ async function callCompleteOnce(api, conversationId, apiConfigId, systemReferenc
     ),
     expandText(api, userContent, conversationId, apiConfigId ?? "", anchorToTurn)
   ]);
-  const expandedSystem = joinSystemMessage(expandedRef, expandedInstruction);
-  await assertPreflight(
-    api,
-    conversationId,
-    apiConfigId,
-    expandedSystem,
-    expandedUser
+  const messages = buildSummaryCompleteMessages(
+    expandedRef,
+    expandedUser,
+    expandedInstruction
   );
+  await assertPreflight(api, conversationId, apiConfigId, messages);
   const result = await api.runPluginComplete({
     apiConfigId,
     conversationId,
-    messages: [
-      { role: "system", content: expandedSystem },
-      { role: "user", content: expandedUser }
-    ],
+    messages,
     responseFormat: "json_object"
   });
   if (!result.ok) {

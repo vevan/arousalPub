@@ -12,6 +12,7 @@ import {
   setPromptPreviewRestore,
 } from './state.js'
 import { isSummarizeTurnSpanTooLarge } from './shared/range-limits.js'
+import { buildSummaryCompleteMessages } from './shared/build-summary-messages.js'
 import { asInt, asString } from './shared/utils.js'
 import type { MergedSettings, PluginHost, SummarizeTask } from './types.js'
 
@@ -24,14 +25,6 @@ function auditDebugEnabled(host: PluginHost): boolean {
     return Boolean(raw.value)
   }
   return false
-}
-
-function joinSystemMessage(reference: string, instruction: string): string {
-  const ref = reference.trim()
-  const inst = instruction.trim()
-  if (!ref) return inst
-  if (!inst) return ref
-  return `${ref}\n\n${inst}`
 }
 
 function formatContentValue(value: string, inner: string): string {
@@ -105,11 +98,7 @@ async function buildTaskMessages(
     expandText(host, systemTemplate, apiConfigId, toTurn),
     expandText(host, prepared.userContent, apiConfigId, toTurn),
   ])
-  const system = joinSystemMessage(expandedRef, expandedInstruction)
-  const messages: { role: 'system' | 'user'; content: string }[] = []
-  if (system.trim()) messages.push({ role: 'system', content: system })
-  if (expandedUser.trim()) messages.push({ role: 'user', content: expandedUser })
-  return messages
+  return buildSummaryCompleteMessages(expandedRef, expandedUser, expandedInstruction)
 }
 
 async function preflightLine(

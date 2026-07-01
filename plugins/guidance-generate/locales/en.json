@@ -5,7 +5,12 @@
   "guidanceLabel": "Guidance (hidden, appended at end of prompt)",
   "send": "Send with guidance",
   "regenerate": "Regenerate with guidance",
+  "revise": "Revise with guidance",
+  "reviseTooltip": "Guided revision",
+  "assistantLabel": "Current assistant reply (revision base)",
   "toastFailed": "Guided generation failed",
   "systemPrefixLabel": "System prefix (prepended to guidance)",
-  "systemPrefixDesc": "Hidden system message prefix injected before the guidance text when sending to the model."
+  "systemPrefixDesc": "Hidden system message prefix injected before the guidance text for guided send / regenerate.",
+  "reviseSystemPrefixLabel": "Guided revision system prefix",
+  "reviseSystemPrefixDesc": "Hidden system prefix for revise mode, placed after the current assistant reply and before the guidance text."
 }

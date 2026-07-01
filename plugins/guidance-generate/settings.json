@@ -1,4 +1,5 @@
 {
   "schemaVersion": 1,
-  "systemPrefix": "Please generate a reply according to this guidance together with the user's message: "
+  "systemPrefix": "Please generate a reply according to this guidance together with the user's message: ",
+  "reviseSystemPrefix": "Please revise the assistant reply above according to this guidance while preserving the main meaning: "
 }

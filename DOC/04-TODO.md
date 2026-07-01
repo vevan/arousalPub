@@ -4,11 +4,7 @@
 
 ## P0 余项
 
-- [ ] **指导生成插件 · 指导修改** — `guidance-generate` 新增「指导修改」模式（与现有 send/regenerate 并列）：
-  - **输入**：用户填写指导文；目标为**当前轮助手回复**（含 swipe 当前选中项 `activeReceiveIndex` 正文）
-  - **组装**：将本次回复作为上下文中的 **assistant 消息**注入（非从零生成）；再附指导 system，要求 LLM **在保留大意前提下按指导修正细节**（措辞、情节、语气等）
-  - **触发**：composer / 助手 turn footer 入口（与现有指导弹框对齐）；可走 `regenerateWithPlugins` 或专用 `mode: 'revise'` + 宿主 API（若需不增 swipe 而覆盖当前 receive，需与产品定案）
-  - **落盘**：`turn.plugins[].payload` 扩展 `mode` / `guidanceText`；审计与 `DOC/09` §7.1、`DOC/18` 同步
+（无开放项 · 2026-07-01）
 
 ## P1
 
@@ -51,6 +47,7 @@
 - [x] 分支树轮次副标题 from/to/total（2026-06-23 · `15c7900`）：`ChatBranchPanel` · `branchTurnRangeParts` · i18n `turnRange` / `turnRangeMain` · 见 `DOC/23` §6.4
 - [x] 会话级 Composer 输入历史（置顶/最近 · 可配置上限）（2026-06-25 · `ccff961`）：`composer-input-history-storage` · `ChatComposerInputHistoryMenu` · 点发送写入 · 与 turns 分离
 - [x] 向量召回设置独立 Tab 与信息架构对齐（2026-06-25 · `d276720`）：全局/对话 `vectorRecall` Tab · Tab 顺序「对话历史 → 资料库 → 向量召回」· 向量召回内分块（远期记忆 / 资料库 / API）· 对话「对话历史」Tab 与全局对齐 · `vuetify-overrides` 统一 switch 标签样式 — 见 `DOC/03` §9.6
+- [x] 指导生成 · 指导修改（2026-07-01）：`guidance-generate` `mode: 'revise'` · `assistant-turn-footer` · `reviseSystemPrefix` 设置项 · `DOC/09` §7.1、`DOC/18` §3.3
 - [ ] 架构/接口变更时同步 `DOC/01`–`03`（2026-06-10：内嵌世界书 `DOC/27`、作者注分层 `DOC/28`）
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）

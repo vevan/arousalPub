@@ -42,6 +42,12 @@ type GuidanceHost = {
   ) => void
 }
 
+type GuidanceTurn = {
+  user: string
+  receives?: Array<{ content?: string }>
+  activeReceiveIndex?: number
+}
+
 const k = (host: GuidanceHost, key: string) => host.pluginKey(key)
 
 function notifyGuidanceFailed(host: GuidanceHost, detail?: string): void {
@@ -54,18 +60,42 @@ function notifyGuidanceFailed(host: GuidanceHost, detail?: string): void {
   }
 }
 
+function resolveMode(raw: unknown): 'send' | 'regenerate' | 'revise' {
+  if (raw === 'regenerate') return 'regenerate'
+  if (raw === 'revise') return 'revise'
+  return 'send'
+}
+
+function activeAssistantText(turn: GuidanceTurn): string {
+  const receives = turn.receives ?? []
+  const idx =
+    typeof turn.activeReceiveIndex === 'number' &&
+    !Number.isNaN(turn.activeReceiveIndex)
+      ? turn.activeReceiveIndex
+      : 0
+  const content = receives[idx]?.content
+  return typeof content === 'string' ? content.trim() : ''
+}
+
 async function runGuidanceSubmit(
   hostApi: GuidanceHost,
   model: Record<string, unknown>,
 ): Promise<void> {
-  const userText = String(model.userText ?? '').trim()
   const guidanceText = String(model.guidanceText ?? '').trim()
-  const mode = model.mode === 'regenerate' ? 'regenerate' : 'send'
+  const mode = resolveMode(model.mode)
   const plugins = {
-    [PLUGIN_ID]: { mode, guidanceText },
+    [PLUGIN_ID]:
+      mode === 'revise'
+        ? {
+            mode,
+            guidanceText,
+            assistantText: String(model.assistantText ?? '').trim(),
+          }
+        : { mode, guidanceText },
   }
 
   if (mode === 'send') {
+    const userText = String(model.userText ?? '').trim()
     const err = await hostApi.chat.sendWithPlugins(userText, plugins)
     if (err) notifyGuidanceFailed(hostApi, err)
     return
@@ -73,6 +103,7 @@ async function runGuidanceSubmit(
 
   const listIndex = model.listIndex
   if (typeof listIndex !== 'number') return
+  const userText = String(model.userText ?? '').trim()
   const err = await hostApi.chat.regenerateWithPlugins(
     listIndex,
     userText,
@@ -92,6 +123,7 @@ export function register(host: GuidanceHost): void {
         mode: 'send',
         userText: host.composer.userInput,
         guidanceText: '',
+        assistantText: '',
         listIndex: null,
       })
     },
@@ -116,6 +148,31 @@ export function register(host: GuidanceHost): void {
         mode: 'regenerate',
         userText: ctx.turn.user,
         guidanceText: '',
+        assistantText: '',
+        listIndex: ctx.listIndex,
+      })
+    },
+  })
+
+  host.registerSlotButton('assistant-turn-footer', {
+    id: `${PLUGIN_ID}-revise`,
+    icon: 'mdi-lightbulb-on-outline',
+    tooltipKey: k(host, 'reviseTooltip'),
+    filled: true,
+    when: (ctx) => !!ctx.turn && activeAssistantText(ctx.turn).length > 0,
+    disabled: (ctx) =>
+      host.session.loading ||
+      host.session.regeneratingTurnOrdinal !== null ||
+      (ctx.turn ? host.turn.isTurnAwaitingAssistant(ctx.turn) : false),
+    onClick: (ctx) => {
+      if (!ctx.turn || ctx.listIndex == null) return
+      const assistantText = activeAssistantText(ctx.turn)
+      if (!assistantText) return
+      host.openFormDialog(PLUGIN_ID, {
+        mode: 'revise',
+        userText: ctx.turn.user,
+        assistantText,
+        guidanceText: '',
         listIndex: ctx.listIndex,
       })
     },
@@ -124,16 +181,38 @@ export function register(host: GuidanceHost): void {
   host.registerFormDialog(PLUGIN_ID, {
     titleKey: k(host, 'dialogTitle'),
     fields: [
-      { key: 'userText', labelKey: k(host, 'userLabel') },
+      {
+        key: 'userText',
+        labelKey: k(host, 'userLabel'),
+        visibleWhen: { field: 'mode', equals: 'send' },
+      },
+      {
+        key: 'userText',
+        labelKey: k(host, 'userLabel'),
+        visibleWhen: { field: 'mode', equals: 'regenerate' },
+      },
+      {
+        key: 'assistantText',
+        labelKey: k(host, 'assistantLabel'),
+        readOnly: true,
+        visibleWhen: { field: 'mode', equals: 'revise' },
+      },
       { key: 'guidanceText', labelKey: k(host, 'guidanceLabel') },
     ],
     submitKeys: {
       send: k(host, 'send'),
       regenerate: k(host, 'regenerate'),
+      revise: k(host, 'revise'),
     },
-    canSubmit: (model) =>
-      String(model.userText ?? '').trim().length > 0 &&
-      String(model.guidanceText ?? '').trim().length > 0,
+    canSubmit: (model) => {
+      const guidanceText = String(model.guidanceText ?? '').trim()
+      if (!guidanceText) return false
+      const mode = resolveMode(model.mode)
+      if (mode === 'revise') {
+        return String(model.assistantText ?? '').trim().length > 0
+      }
+      return String(model.userText ?? '').trim().length > 0
+    },
     onSubmit: (hostApi, model) => {
       void runGuidanceSubmit(hostApi, model)
     },

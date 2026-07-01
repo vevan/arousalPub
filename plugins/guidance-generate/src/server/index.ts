@@ -3,9 +3,15 @@ const PLUGIN_ID = 'guidance-generate'
 const DEFAULT_SYSTEM_PREFIX =
   "Please generate a reply according to this guidance together with the user's message: "
 
+const DEFAULT_REVISE_SYSTEM_PREFIX =
+  'Please revise the assistant reply above according to this guidance while preserving the main meaning: '
+
+export type GuidanceMode = 'send' | 'regenerate' | 'revise'
+
 export type GuidancePayload = {
-  mode: 'send' | 'regenerate'
+  mode: GuidanceMode
   guidanceText: string
+  assistantText?: string
 }
 
 export type ChatMessage = {
@@ -16,11 +22,24 @@ export type ChatMessage = {
 export function parsePayload(raw: unknown): GuidancePayload | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
-  const mode = o.mode === 'regenerate' ? 'regenerate' : 'send'
+  const modeRaw = o.mode
+  const mode: GuidanceMode =
+    modeRaw === 'regenerate'
+      ? 'regenerate'
+      : modeRaw === 'revise'
+        ? 'revise'
+        : 'send'
   const guidanceText =
     typeof o.guidanceText === 'string' ? o.guidanceText.trim() : ''
   if (!guidanceText) return null
-  return { mode, guidanceText }
+  const assistantText =
+    typeof o.assistantText === 'string' ? o.assistantText.trim() : ''
+  if (mode === 'revise' && !assistantText) return null
+  return {
+    mode,
+    guidanceText,
+    ...(mode === 'revise' ? { assistantText } : {}),
+  }
 }
 
 /** 将指导 system 插在最后一条 user 之后（无 user 时仍 append 到末尾） */
@@ -38,6 +57,19 @@ export function insertSystemAfterLastUser(
     ...messages.slice(0, lastUserIdx + 1),
     systemMsg,
     ...messages.slice(lastUserIdx + 1),
+  ]
+}
+
+/** revise：在末尾追加 assistant 草稿，再在其后插入指导 system */
+export function appendAssistantThenGuidanceSystem(
+  messages: ChatMessage[],
+  assistantContent: string,
+  systemContent: string,
+): ChatMessage[] {
+  return [
+    ...messages,
+    { role: 'assistant', content: assistantContent },
+    { role: 'system', content: systemContent },
   ]
 }
 
@@ -65,6 +97,20 @@ export async function afterAssemblePrompts(
   )
   if (!guidance) return ctx.messages
   const settings = await api.getUserPluginSettings(PLUGIN_ID)
+  if (parsed.mode === 'revise') {
+    const assistantText = parsed.assistantText?.trim()
+    if (!assistantText) return ctx.messages
+    const rawPrefix =
+      typeof settings?.reviseSystemPrefix === 'string'
+        ? settings.reviseSystemPrefix
+        : ''
+    const prefix = rawPrefix.trim() || DEFAULT_REVISE_SYSTEM_PREFIX
+    return appendAssistantThenGuidanceSystem(
+      ctx.messages,
+      assistantText,
+      `${prefix}${guidance}`,
+    )
+  }
   const rawPrefix =
     typeof settings?.systemPrefix === 'string' ? settings.systemPrefix : ''
   const prefix = rawPrefix.trim() || DEFAULT_SYSTEM_PREFIX
@@ -73,14 +119,18 @@ export async function afterAssemblePrompts(
 
 export function resolveTurnPluginEntries(
   plugins?: Record<string, unknown> | null,
-): { pluginId: string; schemaVersion: number; payload: { guidanceText: string } }[] {
+): {
+  pluginId: string
+  schemaVersion: number
+  payload: { mode: GuidanceMode; guidanceText: string }
+}[] {
   const parsed = parsePayload(plugins?.[PLUGIN_ID])
   if (!parsed) return []
   return [
     {
       pluginId: PLUGIN_ID,
       schemaVersion: 1,
-      payload: { guidanceText: parsed.guidanceText },
+      payload: { mode: parsed.mode, guidanceText: parsed.guidanceText },
     },
   ]
 }

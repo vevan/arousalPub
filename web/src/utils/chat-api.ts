@@ -7,8 +7,9 @@ import { hasAnyDrySamplerField } from '@/utils/dry-sampler'
 type ConnectionStore = ReturnType<typeof useConnectionStore>
 
 export interface GuidanceGeneratePluginPayload {
-  mode: 'send' | 'regenerate'
+  mode: 'send' | 'regenerate' | 'revise'
   guidanceText: string
+  assistantText?: string
 }
 
 export interface ConversationChatRequestPlugins {

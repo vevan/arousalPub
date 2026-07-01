@@ -58,8 +58,10 @@ const submitLabel = computed(() => {
   const def = activeDef.value
   if (!def) return ''
   if (def.submitKey) return t(def.submitKey)
-  const mode = model.value.mode === 'regenerate' ? 'regenerate' : 'send'
-  return t(def.submitKeys?.[mode] ?? '')
+  const mode = model.value.mode
+  if (mode === 'regenerate') return t(def.submitKeys?.regenerate ?? '')
+  if (mode === 'revise') return t(def.submitKeys?.revise ?? def.submitKeys?.regenerate ?? '')
+  return t(def.submitKeys?.send ?? '')
 })
 
 const cancelLabel = computed(() => {

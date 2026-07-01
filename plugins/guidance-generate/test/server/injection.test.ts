@@ -2,8 +2,32 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   afterAssemblePrompts,
+  appendAssistantThenGuidanceSystem,
   insertSystemAfterLastUser,
+  parsePayload,
 } from '../../src/server/index.js'
+
+describe('guidance-generate parsePayload', () => {
+  it('accepts revise mode with assistantText', () => {
+    const parsed = parsePayload({
+      mode: 'revise',
+      guidanceText: ' soften tone ',
+      assistantText: ' hello ',
+    })
+    assert.deepEqual(parsed, {
+      mode: 'revise',
+      guidanceText: 'soften tone',
+      assistantText: 'hello',
+    })
+  })
+
+  it('rejects revise without assistantText', () => {
+    assert.equal(
+      parsePayload({ mode: 'revise', guidanceText: 'x' }),
+      null,
+    )
+  })
+})
 
 describe('guidance-generate insertSystemAfterLastUser', () => {
   it('inserts system immediately after the last user message', () => {
@@ -33,6 +57,24 @@ describe('guidance-generate insertSystemAfterLastUser', () => {
   })
 })
 
+describe('guidance-generate appendAssistantThenGuidanceSystem', () => {
+  it('appends assistant draft then guidance system at tail', () => {
+    const messages = [
+      { role: 'user', content: 'u1' },
+    ]
+    const out = appendAssistantThenGuidanceSystem(
+      messages,
+      'draft reply',
+      'revise: be kind',
+    )
+    assert.deepEqual(out, [
+      { role: 'user', content: 'u1' },
+      { role: 'assistant', content: 'draft reply' },
+      { role: 'system', content: 'revise: be kind' },
+    ])
+  })
+})
+
 describe('guidance-generate afterAssemblePrompts', () => {
   it('injects guidance system after last user, not at tail', async () => {
     const messages = [
@@ -57,6 +99,37 @@ describe('guidance-generate afterAssemblePrompts', () => {
       { role: 'system', content: 'preset' },
       { role: 'user', content: 'hello' },
       { role: 'system', content: 'G:be kind' },
+    ])
+  })
+
+  it('revise appends assistant reply then guidance system', async () => {
+    const messages = [
+      { role: 'system', content: 'preset' },
+      { role: 'user', content: 'hello' },
+    ]
+    const api = {
+      applyPromptMacroPipeline: (text: string) => text,
+      getUserPluginSettings: async () => ({ reviseSystemPrefix: 'R: ' }),
+    }
+    const out = await afterAssemblePrompts(
+      {
+        messages,
+        macroContext: {},
+        plugins: {
+          'guidance-generate': {
+            mode: 'revise',
+            guidanceText: 'soften',
+            assistantText: 'Rough reply',
+          },
+        },
+      },
+      api,
+    )
+    assert.deepEqual(out, [
+      { role: 'system', content: 'preset' },
+      { role: 'user', content: 'hello' },
+      { role: 'assistant', content: 'Rough reply' },
+      { role: 'system', content: 'R:soften' },
     ])
   })
 })

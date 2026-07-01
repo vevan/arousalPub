@@ -59,12 +59,22 @@ data/
         "descriptionKey": "systemPrefixDesc",
         "default": "Please generate a reply according to this guidance together with the user's message: ",
         "maxLength": 4000
+      },
+      {
+        "key": "reviseSystemPrefix",
+        "type": "text",
+        "labelKey": "reviseSystemPrefixLabel",
+        "descriptionKey": "reviseSystemPrefixDesc",
+        "default": "Please revise the assistant reply above according to this guidance while preserving the main meaning: ",
+        "maxLength": 4000
       }
     ]
   },
   "ui": {
     "slots": [
-      { "name": "composer-toolbar", "entry": "./dist/web.mjs" }
+      { "name": "composer-toolbar", "entry": "./dist/web.mjs" },
+      { "name": "user-turn-footer", "entry": "./dist/web.mjs" },
+      { "name": "assistant-turn-footer", "entry": "./dist/web.mjs" }
     ]
   }
 }
@@ -118,6 +128,16 @@ data/
 }
 ```
 
+`mode` 取值：
+
+| mode | 触发 | `body` 额外字段 | 组装 |
+|------|------|-----------------|------|
+| `send` | composer 指导发送 | — | 指导 system 插在**最后一条 user 之后** |
+| `regenerate` | 最后 user turn 指导再生 | `regenerateTurnOrdinal` | 同上 |
+| `revise` | 助手 turn 指导修改 | `regenerateTurnOrdinal`、`assistantText`（当前 `activeReceiveIndex` 正文） | 末尾 append `assistant` + 指导 system |
+
+`revise` 走再生落盘（**新增 swipe**），不覆盖当前 receive。
+
 ---
 
 ## 5. Web 宿主
@@ -126,7 +146,7 @@ data/
 
 - `usePluginHost`：**进聊天页只拉 registry**；`web.mjs` 按 **manifest 声明的 slot 懒加载**（见 §5.4）。
 - **Slot**：`PluginSlotMount` 在 `onMounted` 时对该 slot 调用 `ensureSlotPlugins(slotName)`，再渲染已注册按钮。
-- **动作弹框**：`PluginFormDialogHost`（指导生成 send/regenerate、对话导出等；与 settings 表单分离）。
+- **动作弹框**：`PluginFormDialogHost`（指导生成 send/regenerate/revise、对话导出等；与 settings 表单分离）。`submitKeys` 支持 `send` / `regenerate` / **`revise`**（见 `PluginFormDialogDef`）。
 - **生命周期**：
   - `host.lifecycle.onAssistantReplyPersisted` — 流式结束后服务端落盘成功（SSE `arousal.persist` 或非流式 JSON 的 `persist.ok`）时触发；**早于** `loadMessages` 与 UI 全量刷新。
   - `host.lifecycle.onAssistantReplyComplete` — `send` / `regenerate` 流程结束（含 `loadMessages` 之后）；适合不依赖落盘时刻的收尾逻辑。
@@ -191,9 +211,24 @@ data/
 
 ### 7.1 `guidance-generate`（指导生成）
 
-- **UI**：composer + 最后 user turn 弹框（用户文 + 指导文）。
-- **Prompt**：指导以 hidden system 插在**最后一条 user 消息之后**（非 messages 末尾）；前缀可配置 **`settings.systemPrefix`**（多行 text）。
-- **落盘**：`turn.plugins[].payload.guidanceText`。
+| 模式 | Slot | 弹框字段 | 宿主 API |
+|------|------|----------|----------|
+| 指导发送 | `composer-toolbar` | 用户文 + 指导文 | `host.chat.sendWithPlugins` |
+| 指导再生 | `user-turn-footer`（最后 user turn） | 用户文 + 指导文 | `host.chat.regenerateWithPlugins` |
+| **指导修改** | `assistant-turn-footer` | 当前助手回复（只读）+ 指导文 | `host.chat.regenerateWithPlugins`（`mode: 'revise'`） |
+
+**设置页**（`settingsSchema`）：
+
+| 键 | 用途 |
+|----|------|
+| `systemPrefix` | send / regenerate：指导 system 前缀 |
+| `reviseSystemPrefix` | revise：加在当前助手回复与指导正文之间的 system 前缀 |
+
+**Prompt · send/regenerate**：指导以 hidden system 插在**最后一条 user 消息之后**（非 messages 末尾）；前缀 **`settings.systemPrefix`**。
+
+**Prompt · revise**：在组装结果末尾 append **当前助手回复**（`assistant`）+ 指导 system；前缀 **`settings.reviseSystemPrefix`**。
+
+**落盘**：`turn.plugins[].payload` 含 `mode`（`send` | `regenerate` | `revise`）与 `guidanceText`。
 
 ### 7.2 `reply-complete-sound`（完成提示音）
 

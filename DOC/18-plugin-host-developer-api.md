@@ -114,7 +114,7 @@ export function register(host: PluginWebHost) {
 }
 ```
 
-**表单字段 `type`**：`text`、`textarea`、`integer`、`radio`、`apiPreset`、`lorebook`、`checkboxGroup`；支持 `visibleWhen`、`readOnly`、`persistent`、`skipKey` / `regenerateKey` 等（见 `PluginFormDialogDef`）。
+**表单字段 `type`**：`text`、`textarea`、`integer`、`radio`、`apiPreset`、`lorebook`、`checkboxGroup`；支持 `visibleWhen`、`readOnly`、`persistent`、`skipKey` / `regenerateKey` 等（见 `PluginFormDialogDef`）。`submitKeys` 可为 `{ send, regenerate, revise? }`（`PluginFormDialogHost` 按 `model.mode` 选按钮文案）。
 
 ### 3.2 `host.turn`
 
@@ -128,7 +128,7 @@ export function register(host: PluginWebHost) {
 | 方法 | 说明 |
 |------|------|
 | `sendWithPlugins(userText, plugins)` | 带 `body.plugins` 发消息（走 `/api/chat` 组装） |
-| `regenerateWithPlugins(listIndex, userText, plugins)` | 再生 |
+| `regenerateWithPlugins(listIndex, userText, plugins)` | 再生；**指导修改**亦走此 API（`plugins['guidance-generate'].mode: 'revise'` + `assistantText`） |
 
 用于 **guidance-generate** 等需要在正常聊天管线注入的插件；**不是**独立 LLM 任务入口。
 

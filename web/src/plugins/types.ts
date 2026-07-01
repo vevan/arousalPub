@@ -86,8 +86,8 @@ export interface PluginFormDialogDef {
   titleKey: string
   bodyKey?: string
   fields: PluginFormFieldDef[]
-  /** 双模式（send / regenerate），与 submitKey 二选一 */
-  submitKeys?: { send: string; regenerate: string }
+  /** 双模式（send / regenerate / revise），与 submitKey 二选一 */
+  submitKeys?: { send: string; regenerate: string; revise?: string }
   /** 单按钮对话框（如导出） */
   submitKey?: string
   cancelKey?: string

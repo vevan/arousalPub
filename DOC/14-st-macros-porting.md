@@ -16,7 +16,7 @@
 | 嵌套 | 内层先展开，如 `{{getvar::{{char}}_mood}}` | **不支持**；未知 → `[name UNSUPPORTED]` |
 | 变量 | local/global + 运算符全家桶 | **无** 变量存储 |
 | 角色字段 | 大量 `{{description}}` 等宏 | 角色字段经 **`prompt-xml`** 注入 `<char>`，与宏并行 |
-| 群聊 | `{{group}}` 等 | 仅 **多卡绑定** `characterIds[]`，无 ST 式群聊发言模型 |
+| 群聊 | `{{group}}` 等 | 定案 [`DOC/35`](35-group-chat.md)；当前仅 **多卡绑定** `characterIds[]`，未实现发言模型 |
 | Instruct | 整套 `{{instruct*}}` | **无** instruct 模板层（XML slot + 预设条目） |
 
 **结论**：要接近 ST「好用」的 **条件分支 + 变量 + 嵌套**，不能只加 handler，需要 **第二套模板引擎**（或引入现成 parser）；在现有管线上「堆正则」会在 `{{if}}` / 变量处很快撞墙。

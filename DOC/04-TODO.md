@@ -4,18 +4,26 @@
 
 ## P0 余项
 
-（无开放项 · 2026-07-01）
+- [ ] **Composer Slash 命令** — 定案见 [`DOC/35`](35-group-chat.md) §2.3（群聊 `/@`）；输入框 `/` 命令层（与聊天 turns、输入历史分离）
+  - [ ] **S0** 宿主 `submitComposer` 统一入口 + 命令解析/路由（raw → 命令 + 剩余正文）
+  - [ ] **S1** 内置 `/goto N` 跳转轮次
+  - [ ] **S2** 内置 `/@ Name [Name…]` — 提取 `speakerQueue`、strip 后进 LLM；**正文裸 `@` 不参与选人**（`DOC/35` §2.3）
+  - [ ] **S3** 插件注册命令（如 `plot-summary` `/summary 36-55`）；输入历史存 raw 提交
+  - [ ] **S4** Composer `/` 补全菜单（可选）
+- [ ] **群聊** — 定案 [`DOC/35`](35-group-chat.md)；当前仅 `characterIds[]` 多卡绑定；ST 宏见 `DOC/14` / `DOC/26`
+  - [ ] **G0 轮次模型** — `AssistantSegment` + `speakerCharacterId`；chunk/turn 迁移；UI 多气泡；regenerate/swipe 仅当前 segment
+  - [ ] **G1 `/@` + Continue** — 依赖 Slash S0/S2；未开群聊默认 char1、`/@` 强制 1 段；`groupContinue` API 草案
+  - [ ] **G2 随机 + 衰减** — `groupChat` settings、权重/mute、顶栏 bot 列表；`autoContinue`；`{{group}}` / `{{groupNotMuted}}`
+  - [ ] **G3 LLM 接续** — `[NEXT@Name]` 提取（宏/插件前）；`confirmContinue` + 改选下一位
+  - [ ] **G4 打磨** — sequential 兜底、audit、`{{char}}` = 当前 speaker、`{{notChar}}` 群聊语义
 
 ## P1
 
-- [ ] **Web 首屏 bundle 体积优化（Vite chunk > 500KB 警告）** — ~~单次 JS ~1.55MB（gzip ~462KB）~~ → 已拆块：入口 `index` ~190KB（gzip ~59KB）、`vuetify` ~286KB、`ChatConversationView` 路由懒加载 ~243KB；CSS 拆为 `index` ~371KB + `vuetify` ~403KB。余项：**⑤** `@mdi/font` → `@mdi/js` 按需 SVG（woff2 ~403KB）。已完成：① `npm run build:analyze`（`rollup-plugin-visualizer` → `.tmp/vite-bundle-stats.html`）；② `main.ts` 去掉 Vuetify 全量 import；③ 路由 + `App.vue` 懒加载；④ `manualChunks`；⑥ i18n 按 locale 动态 `import()`。
 - [ ] **独立文档 RAG**（≠ 世界书 vector）— 可选；前置 `DOC/20` M1+M4
 - [ ] RAG 参数面板、会话/角色批量导入导出、备份示例脚本
 
 ## P2
 
-- [ ] **Composer Slash 命令** — 输入框 `/` 命令层（与聊天 turns、输入历史分离）：宿主 `submitComposer` 统一入口 + 命令解析/路由；内置通用命令如 `/goto N` 跳转轮次；业务命令由插件注册（如 `plot-summary` 的 `/summary 36-55`）；输入历史已存 raw 提交，P2 落地时复用。见对话中架构讨论
-- [ ] **群聊** — ST 式多角色发言轮次与 `{{group}}` / `{{groupNotMuted}}` / `{{charIfNotGroup}}` 等宏语义；当前仅 `characterIds[]` 多卡绑定与注入，见 `DOC/14` §1、`DOC/26`
 - [ ] **作者注分层** `DOC/28` — Phase 2 角色 AN + `{{charAuthorsNote}}`（Phase 1 全局 default ✅）
 - [ ] **角色卡内嵌世界书** `DOC/27` — Phase 1 组装（constant + keyword、`position`、叠加内嵌优先）；Phase 2 角色库查看 / 编辑 UI
 - [ ] 插件实例与 API 绑定、插件审计、fallback 策略（部分 host API 见 `DOC/10`）
@@ -48,7 +56,9 @@
 - [x] 会话级 Composer 输入历史（置顶/最近 · 可配置上限）（2026-06-25 · `ccff961`）：`composer-input-history-storage` · `ChatComposerInputHistoryMenu` · 点发送写入 · 与 turns 分离
 - [x] 向量召回设置独立 Tab 与信息架构对齐（2026-06-25 · `d276720`）：全局/对话 `vectorRecall` Tab · Tab 顺序「对话历史 → 资料库 → 向量召回」· 向量召回内分块（远期记忆 / 资料库 / API）· 对话「对话历史」Tab 与全局对齐 · `vuetify-overrides` 统一 switch 标签样式 — 见 `DOC/03` §9.6
 - [x] 指导生成 · 指导修改（2026-07-01）：`guidance-generate` `mode: 'revise'` · `assistant-turn-footer` · `reviseSystemPrefix` 设置项 · `DOC/09` §7.1、`DOC/18` §3.3
-- [ ] 架构/接口变更时同步 `DOC/01`–`03`（2026-06-10：内嵌世界书 `DOC/27`、作者注分层 `DOC/28`）
+- [x] Web 首屏 bundle 体积优化（2026-07-01 · **已验收关闭**）：入口 JS ~1.55 MB → `index` ~190 KB（gzip ~59 KB）；`manualChunks`（vuetify / virtua / vue-i18n / vue-vendor / marked）· 路由与模态懒加载 · i18n 分 locale · `npm run build:analyze`。**不追** `@mdi/font` → `@mdi/js`（woff2 ~403 KB 保留）
+- [x] 群聊设计定案（2026-07-01）：`DOC/35-group-chat.md` — segment 模型、`/@`、裸 `@` 关闭、`[NEXT@Name]`、G0–G4 里程碑
+- [ ] 架构/接口变更时同步 `DOC/01`–`03`（2026-06-10：内嵌世界书 `DOC/27`、作者注分层 `DOC/28`、群聊 `DOC/35`）
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
 

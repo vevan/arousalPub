@@ -140,7 +140,7 @@
 | ST 宏 / 能力 | 标记 | 说明 |
 |--------------|------|------|
 | `{{lastMessageId}}` 等 ST 全量 chat 索引 | ⚠️ | 与 ST 一致为全对话索引；本项目索引 turn 有 512 cap |
-| `{{original}}` `{{notChar}}`（群聊语义） | ⏳ / ✅ | `notChar` 已按多卡名实现；`original` 待产品 |
+| `{{original}}` `{{notChar}}`（群聊语义） | ⏳ / ✅ | `notChar` 已按多卡名实现；群聊下指「除当前 speaker」见 `DOC/35` |
 | `{{isMobile}}` | ⏳ | 可选 |
 
 ---
@@ -167,7 +167,7 @@
 
 | ST 宏 / 能力 | 标记 | 原因 |
 |--------------|------|------|
-| `{{group}}` `{{groupNotMuted}}` `{{charIfNotGroup}}` | ❌ | 无 ST 式群聊，仅多卡绑定 |
+| `{{group}}` `{{groupNotMuted}}` `{{charIfNotGroup}}` | ❌ | 无 ST 式群聊；定案见 [`DOC/35`](35-group-chat.md) |
 | 全套 `{{instruct*}}` `{{chatSeparator}}` 等 | ❌ | 无 instruct 字符串层 |
 | `{{systemPrompt}}` `{{defaultSystemPrompt}}` | ❌ | 预设条目 + 绑定槽 |
 | `{{outlet::key}}` | ❌ | 无 outlet |

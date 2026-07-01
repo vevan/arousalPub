@@ -55,6 +55,7 @@
 | [`32`](32-plugin-user-settings-cache.md) | ✅ | 全局 `getUserSettings` 缓存 + 订阅（对齐 `DOC/21` 会话 store · `a7ca4ea`） |
 | [`33`](33-mobile-compatibility.md) | **Phase 1** | 40rem rail overlay + hidden 持久化；余 composer/安全区验收 |
 | [`35`](35-group-chat.md) | 定案 **P0** | **群聊**：segment 模型、`/@`、`[NEXT@Name]`、衰减与 confirm |
+| [`36`](36-composer-slash.md) | ✅ S0–S2/S4 | **Composer Slash**：submitComposer、`/goto`、`/@` 补全浮层 |
 
 ## 已归档（勿再新建同级文档）
 

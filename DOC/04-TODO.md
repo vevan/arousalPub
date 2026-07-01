@@ -9,7 +9,7 @@
   - [x] **S1** 内置 `/goto N` 跳转轮次
   - [x] **S2** 内置 `/@ Name [Name…]` — 解析 + strip（`speakerQueue` 待群聊 G1 接入）；**正文裸 `@` 不参与选人**
   - [ ] **S3** 插件注册命令（如 `plot-summary` `/summary 36-55`）；输入历史存 raw 提交
-  - [ ] **S4** Composer `/` 补全菜单（可选）
+  - [x] **S4** Composer `/` 补全菜单（`#composer-slash-layer` + CSS anchor、`60dvh`、两行列表）
 - [ ] **群聊** — 定案 [`DOC/35`](35-group-chat.md)；当前仅 `characterIds[]` 多卡绑定；ST 宏见 `DOC/14` / `DOC/26`
   - [ ] **G0 轮次模型** — `AssistantSegment` + `speakerCharacterId`；chunk/turn 迁移；UI 多气泡；regenerate/swipe 仅当前 segment
   - [ ] **G1 `/@` + Continue** — 依赖 Slash S0/S2；未开群聊默认 char1、`/@` 强制 1 段；`groupContinue` API 草案
@@ -58,7 +58,8 @@
 - [x] 指导生成 · 指导修改（2026-07-01）：`guidance-generate` `mode: 'revise'` · `assistant-turn-footer` · `reviseSystemPrefix` 设置项 · `DOC/09` §7.1、`DOC/18` §3.3
 - [x] Web 首屏 bundle 体积优化（2026-07-01 · **已验收关闭**）：入口 JS ~1.55 MB → `index` ~190 KB（gzip ~59 KB）；`manualChunks`（vuetify / virtua / vue-i18n / vue-vendor / marked）· 路由与模态懒加载 · i18n 分 locale · `npm run build:analyze`。**不追** `@mdi/font` → `@mdi/js`（woff2 ~403 KB 保留）
 - [x] 群聊设计定案（2026-07-01）：`DOC/35-group-chat.md` — segment 模型、`/@`、裸 `@` 关闭、`[NEXT@Name]`、G0–G4 里程碑
-- [ ] 架构/接口变更时同步 `DOC/01`–`03`（2026-06-10：内嵌世界书 `DOC/27`、作者注分层 `DOC/28`、群聊 `DOC/35`）
+- [x] Composer Slash S0–S2/S4（2026-07-01）：`submitComposer`、`/goto`、`/@`、补全浮层 — 见 [`DOC/36`](36-composer-slash.md)；**S3 插件执行**仍开放
+- [ ] 架构/接口变更时同步 `DOC/01`–`03`（2026-06-10：内嵌世界书 `DOC/27`、作者注分层 `DOC/28`、群聊 `DOC/35`、Slash `DOC/36`）
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
 

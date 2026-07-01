@@ -997,7 +997,19 @@
     },
     "slash": {
       "gotoNotFound": "未找到第 {n} 回",
-      "gotoFuture": "第 {n} 回尚未产生"
+      "gotoFuture": "第 {n} 回尚未产生",
+      "menuAria": "Slash 命令",
+      "commands": {
+        "goto": {
+          "description": "跳转到指定章回（turnOrdinal）"
+        },
+        "at": {
+          "description": "指定本回合发言角色顺序（群聊）"
+        },
+        "plugin": {
+          "description": "插件命令"
+        }
+      }
     }
   },
   "conversationList": {

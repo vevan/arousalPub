@@ -997,7 +997,19 @@
     },
     "slash": {
       "gotoNotFound": "Turn {n} not found",
-      "gotoFuture": "Turn {n} does not exist yet"
+      "gotoFuture": "Turn {n} does not exist yet",
+      "menuAria": "Slash commands",
+      "commands": {
+        "goto": {
+          "description": "Jump to a turn by turnOrdinal"
+        },
+        "at": {
+          "description": "Set speaker order for this user turn (group chat)"
+        },
+        "plugin": {
+          "description": "Plugin command"
+        }
+      }
     }
   },
   "conversationList": {

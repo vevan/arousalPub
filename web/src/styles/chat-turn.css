@@ -1017,6 +1017,14 @@ summary.reasoning-chain__summary::-webkit-details-marker {
   display       : flex;
   flex-direction: column;
   gap           : 0.5rem;
+  position      : relative;
+}
+
+.composer-slash-layer {
+  position        : fixed;
+  inset           : 0;
+  pointer-events  : none;
+  z-index         : 2400;
 }
 
 .composer__field {

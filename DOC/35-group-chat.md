@@ -15,7 +15,7 @@
 | 宏 `{{char}}` / `{{charN}}` / `{{notChar}}`（多卡名列表） | ✅ 部分 |
 | 一轮 user 对应多个 **不同 speaker** 的 assistant | ❌ |
 | ST 群聊宏 `{{group}}` 等 | ❌ |
-| Composer Slash / `/@` | ❌（**P0**） |
+| Composer Slash / `/@` | ✅ 部分（S0–S2、S4；**S3 插件执行**待做）见 [`DOC/36`](36-composer-slash.md) |
 
 当前为**多卡绑定**，非 ST 式群聊：assistant 无 `speakerCharacterId`，`{{char}}` 固定为 `characterIds[0]`。
 
@@ -123,7 +123,7 @@ submitComposer(raw)
   → 输入历史可存 raw（已有 composer-input-history）
 ```
 
-**Slash 未实现前（群聊 G1 过渡期）**：可在 `send()` 做最小 `/@` 解析；**仍不**解析正文裸 `@`。
+**Slash 未实现前（群聊 G1 过渡期）**：~~可在 `send()` 做最小 `/@` 解析~~ **已在 S2 落地**；`speakerQueue` 接 API 待 G1。
 
 ### 2.4 助手接续：`[NEXT@DisplayName]`
 
@@ -290,4 +290,4 @@ charN        → 可选；characterIds[N-1]（Phase 2+）
 - 存储 / API：`DOC/03` §6（实现时 bump turn schema）
 - 待办里程碑：`DOC/04` **P0**
 - 宏对照：`DOC/26`
-- Slash 宿主：`DOC/04` Composer Slash 条目
+- Slash 宿主：[`DOC/36`](36-composer-slash.md) · 待办 [`DOC/04`](04-TODO.md) P0

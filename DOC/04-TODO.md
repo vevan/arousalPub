@@ -5,9 +5,9 @@
 ## P0 余项
 
 - [ ] **Composer Slash 命令** — 定案见 [`DOC/35`](35-group-chat.md) §2.3（群聊 `/@`）；输入框 `/` 命令层（与聊天 turns、输入历史分离）
-  - [ ] **S0** 宿主 `submitComposer` 统一入口 + 命令解析/路由（raw → 命令 + 剩余正文）
-  - [ ] **S1** 内置 `/goto N` 跳转轮次
-  - [ ] **S2** 内置 `/@ Name [Name…]` — 提取 `speakerQueue`、strip 后进 LLM；**正文裸 `@` 不参与选人**（`DOC/35` §2.3）
+  - [x] **S0** 宿主 `submitComposer` 统一入口 + 命令解析/路由（raw → 命令 + 剩余正文）
+  - [x] **S1** 内置 `/goto N` 跳转轮次
+  - [x] **S2** 内置 `/@ Name [Name…]` — 解析 + strip（`speakerQueue` 待群聊 G1 接入）；**正文裸 `@` 不参与选人**
   - [ ] **S3** 插件注册命令（如 `plot-summary` `/summary 36-55`）；输入历史存 raw 提交
   - [ ] **S4** Composer `/` 补全菜单（可选）
 - [ ] **群聊** — 定案 [`DOC/35`](35-group-chat.md)；当前仅 `characterIds[]` 多卡绑定；ST 宏见 `DOC/14` / `DOC/26`

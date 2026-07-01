@@ -240,6 +240,47 @@ export function useTurnList(opts: {
     await loadMessages()
   }
 
+  async function scrollToTurnOrdinal(
+    turnOrdinal: number,
+  ): Promise<'ok' | 'not_found' | 'future'> {
+    if (!Number.isFinite(turnOrdinal) || turnOrdinal < 0) return 'not_found'
+
+    const scrollToIndex = async (index: number): Promise<boolean> => {
+      await nextTick()
+      return opts.chatScroller.value?.scrollToItem(index) ?? false
+    }
+
+    let idx = opts.turns.value.findIndex((t) => t.turnOrdinal === turnOrdinal)
+    if (idx >= 0) {
+      await scrollToIndex(idx)
+      return 'ok'
+    }
+
+    const list = opts.turns.value
+    if (list.length === 0) return 'not_found'
+
+    const last = list[list.length - 1]!.turnOrdinal
+    if (turnOrdinal > last) return 'future'
+
+    while (hasMoreBefore.value) {
+      const first = opts.turns.value[0]
+      if (!first || first.turnOrdinal <= turnOrdinal) break
+      await loadOlderMessages(true)
+      idx = opts.turns.value.findIndex((t) => t.turnOrdinal === turnOrdinal)
+      if (idx >= 0) {
+        await scrollToIndex(idx)
+        return 'ok'
+      }
+    }
+
+    idx = opts.turns.value.findIndex((t) => t.turnOrdinal === turnOrdinal)
+    if (idx >= 0) {
+      await scrollToIndex(idx)
+      return 'ok'
+    }
+    return 'not_found'
+  }
+
   return {
     replaceTurnAt,
     clearPendingSend,
@@ -250,6 +291,7 @@ export function useTurnList(opts: {
     loadMessages,
     loadOlderMessages,
     refreshConversation,
+    scrollToTurnOrdinal,
     hasMoreBefore,
     loadingOlder,
     messagesLoading,

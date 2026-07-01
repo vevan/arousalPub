@@ -32,6 +32,7 @@ import { useTurnEditDelete } from './chat-session/use-turn-edit-delete.js'
 import { useTurnList } from './chat-session/use-turn-list.js'
 import { useTurnPrompt } from './chat-session/use-turn-prompt.js'
 import { createRegexDisplayText } from './chat-session/use-regex-display-text.js'
+import { canSubmitComposerInput, parseComposerSubmit } from '@/utils/composer-slash'
 
 export type {
   ChatSessionProps,
@@ -151,6 +152,7 @@ export function useChatSession(props: ChatSessionProps) {
     loadMessages,
     loadOlderMessages,
     refreshConversation,
+    scrollToTurnOrdinal,
     hasMoreBefore,
     loadingOlder,
     messagesLoading,
@@ -252,6 +254,11 @@ export function useChatSession(props: ChatSessionProps) {
     endRegeneratingUi,
     emitAssistantReplyComplete,
     recordInputHistoryOnSend,
+    getBoundDisplayNames: () => props.conversationCharacterDisplayNames ?? [],
+    clearComposerAfterSlash: () => {
+      composerDraft.clearDraftAfterSend(props.conversationId)
+    },
+    scrollToTurnOrdinal,
     t,
   })
   const {
@@ -267,18 +274,27 @@ export function useChatSession(props: ChatSessionProps) {
     () => loading.value || regeneratingTurnOrdinal.value !== null,
   )
 
+  const canSend = computed(() => {
+    if (
+      conversationWriteLocked.value ||
+      pluginHoldConversation.value ||
+      loading.value ||
+      regeneratingTurnOrdinal.value !== null
+    ) {
+      return false
+    }
+    const raw = userInput.value.trim()
+    if (!canSubmitComposerInput(raw)) return false
+    const { body } = parseComposerSubmit(raw, {
+      boundDisplayNames: props.conversationCharacterDisplayNames ?? [],
+    })
+    if (!body.trim()) return true
+    return conn.isApiKeyConfigured && conn.model.trim().length > 0
+  })
+
   const { onComposerKeydown } = useComposerKeydown({
     userInput,
-    canSend: computed(
-      () =>
-        !conversationWriteLocked.value &&
-        !pluginHoldConversation.value &&
-        !loading.value &&
-        regeneratingTurnOrdinal.value === null &&
-        conn.isApiKeyConfigured &&
-        conn.model.trim().length > 0 &&
-        userInput.value.trim().length > 0,
-    ),
+    canSend,
     composerEnterMode: () => prefs.composerEnterMode,
     send,
   })
@@ -312,17 +328,6 @@ export function useChatSession(props: ChatSessionProps) {
   })
 
   const { copiedTurnKey, copyTurnText } = useCopyFeedback()
-
-  const canSend = computed(
-    () =>
-      !conversationWriteLocked.value &&
-      !pluginHoldConversation.value &&
-      !loading.value &&
-      regeneratingTurnOrdinal.value === null &&
-      conn.isApiKeyConfigured &&
-      conn.model.trim().length > 0 &&
-      userInput.value.trim().length > 0,
-  )
 
   onMounted(() => {
     window.addEventListener('keydown', onGlobalKeyR)

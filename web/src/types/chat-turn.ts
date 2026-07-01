@@ -2,6 +2,8 @@ export interface ChatSessionProps {
   conversationId: string
   conversationPromptPresetId?: string | null
   conversationCharacterIds?: string[]
+  /** 绑定角色 displayName，供 `/@` 解析（与 characterIds 同序） */
+  conversationCharacterDisplayNames?: string[]
   conversationLorebookIds?: string[]
   conversationUserName?: string | null
   conversationUserCharacterId?: string | null

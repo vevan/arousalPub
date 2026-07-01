@@ -353,6 +353,7 @@ interface EmbeddingApiContextBinding {
 interface ConvContextBindings {
   promptPresetId: string | null
   characterIds: string[]
+  characterNames: string[]
   lorebookIds: string[]
   lorebook: LorebookContextBinding
   history: HistoryContextBinding
@@ -528,9 +529,14 @@ function bindingsFromIndex(idx: Record<string, unknown>): ConvContextBindings {
   const uci = idx.userCharacterId
   const userCharacterId =
     typeof uci === 'string' && uci.trim() ? uci.trim() : null
+  const cn = idx.characterNames
+  const characterNames = Array.isArray(cn)
+    ? cn.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+    : []
   return {
     promptPresetId,
     characterIds: clientResolvedCharacterIds(idx),
+    characterNames,
     lorebookIds,
     lorebook: lorebookContextFromIndex(idx),
     history: historyContextFromIndex(idx),
@@ -547,6 +553,7 @@ function bindingsFromIndex(idx: Record<string, unknown>): ConvContextBindings {
 const convBindings = ref<ConvContextBindings>({
   promptPresetId: null,
   characterIds: [],
+  characterNames: [],
   lorebookIds: [],
   lorebook: {
     useGlobal: true,
@@ -1021,6 +1028,7 @@ watch(
         :conversation-id="conversationId"
         :conversation-prompt-preset-id="convBindings.promptPresetId"
         :conversation-character-ids="convBindings.characterIds"
+        :conversation-character-display-names="convBindings.characterNames"
         :conversation-lorebook-ids="convBindings.lorebookIds"
         :conversation-user-name="convBindings.userName"
         :conversation-user-character-id="convBindings.userCharacterId"

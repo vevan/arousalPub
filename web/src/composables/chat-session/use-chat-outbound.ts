@@ -5,6 +5,7 @@ import { isAbortError } from '@/utils/abort-error'
 import type { ConversationChatRequestPlugins } from '@/utils/chat-api'
 import { allocateShortId } from '@/utils/short-id'
 import { isOpeningTurn } from '@/utils/chat-turn-display'
+import { submitComposerParse } from '@/utils/composer-slash'
 import { buildReceiveItem, collectUsedReceiveIds, nextTurnOrdinal0 } from './turn-helpers.js'
 import type { createChatCompletionRunner } from './completion.js'
 import type { createReplyEventHub } from './reply-events.js'
@@ -49,6 +50,11 @@ export function useChatOutbound(opts: {
   endRegeneratingUi: () => void
   emitAssistantReplyComplete: ReplyEventHub['emitAssistantReplyComplete']
   recordInputHistoryOnSend?: (text: string) => void
+  getBoundDisplayNames?: () => readonly string[]
+  clearComposerAfterSlash?: () => void
+  scrollToTurnOrdinal: (
+    turnOrdinal: number,
+  ) => Promise<'ok' | 'not_found' | 'future'>
   t: ComposerTranslation
 }) {
   function applyPersistRetroPatches(persist?: ChatPersistPayload) {
@@ -96,20 +102,26 @@ export function useChatOutbound(opts: {
     opts.streamingReasoning.value = ''
   }
 
-  async function send() {
-    if (!opts.isConversationWritable()) return
-    opts.errorText.value = ''
-    const userText = opts.userInput.value.trim()
-    try {
-      opts.parseCustomParamsOrThrow()
-    } catch (e) {
-      opts.errorText.value = opts.customParamsErrorMessage(e)
-      return
+  async function runSlashCommands(
+    commands: ReturnType<typeof submitComposerParse>['commands'],
+  ): Promise<void> {
+    for (const cmd of commands) {
+      if (cmd.kind !== 'goto') continue
+      const result = await opts.scrollToTurnOrdinal(cmd.turnOrdinal)
+      if (result === 'ok') continue
+      if (result === 'future') {
+        opts.errorText.value = opts.t('chat.slash.gotoFuture', {
+          n: cmd.turnOrdinal,
+        })
+      } else {
+        opts.errorText.value = opts.t('chat.slash.gotoNotFound', {
+          n: cmd.turnOrdinal,
+        })
+      }
     }
-    if (!userText) return
+  }
 
-    opts.recordInputHistoryOnSend?.(userText)
-
+  async function sendMessageBody(userText: string) {
     const ord = nextTurnOrdinal0(opts.turns.value)
     opts.appendPendingUserTurn(userText, ord)
     opts.loading.value = true
@@ -146,6 +158,49 @@ export function useChatOutbound(opts: {
         opts.loading.value = false
       }
     }
+  }
+
+  async function send() {
+    if (!opts.isConversationWritable()) return
+    opts.errorText.value = ''
+    const raw = opts.userInput.value
+    const trimmed = raw.trim()
+    if (!trimmed) return
+
+    const parsed = submitComposerParse(raw, {
+      boundDisplayNames: opts.getBoundDisplayNames?.() ?? [],
+    })
+
+    opts.recordInputHistoryOnSend?.(raw)
+
+    if (parsed.commands.length > 0) {
+      await runSlashCommands(parsed.commands)
+    }
+
+    const messageBody = parsed.body.trim()
+    if (!messageBody) {
+      opts.userInput.value = ''
+      opts.clearComposerAfterSlash?.()
+      return
+    }
+
+    try {
+      opts.parseCustomParamsOrThrow()
+    } catch (e) {
+      opts.errorText.value = opts.customParamsErrorMessage(e)
+      return
+    }
+    if (!opts.assertApiReady()) {
+      opts.errorText.value = opts.t('chat.errors.requestFailedStatus', {
+        status: 400,
+      })
+      return
+    }
+
+    // speakerQueue（parsed.speakerQueue）待群聊 G1 接入 API / turn meta
+    void parsed.speakerQueue
+
+    await sendMessageBody(messageBody)
   }
 
   async function sendWithPlugins(

@@ -994,6 +994,10 @@
       "deleteTurnFailed": "Could not delete",
       "loadMessagesFailed": "Could not load conversation messages",
       "loadOlderFailed": "Could not load earlier turns"
+    },
+    "slash": {
+      "gotoNotFound": "Turn {n} not found",
+      "gotoFuture": "Turn {n} does not exist yet"
     }
   },
   "conversationList": {

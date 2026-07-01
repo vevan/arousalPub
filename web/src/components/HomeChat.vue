@@ -19,6 +19,7 @@ const props = withDefaults(defineProps<ChatSessionProps & {
 }>(), {
   conversationPromptPresetId: null,
   conversationCharacterIds: () => [],
+  conversationCharacterDisplayNames: () => [],
   conversationLorebookIds: () => [],
   conversationUserName: null,
   conversationUserCharacterId: null,

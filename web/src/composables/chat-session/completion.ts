@@ -155,6 +155,8 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
 
   async function runSend(params: {
     userText: string
+    speakerQueue?: string[]
+    speakerQueueDisplayNames?: string[]
     plugins?: ConversationChatRequestPlugins
   }): Promise<{
     receive: ReceiveItem
@@ -175,6 +177,12 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
       {
         userText: params.userText,
         promptTrigger: 'normal',
+        ...(params.speakerQueue?.length
+          ? { speakerQueue: params.speakerQueue }
+          : {}),
+        ...(params.speakerQueueDisplayNames?.length
+          ? { speakerQueueDisplayNames: params.speakerQueueDisplayNames }
+          : {}),
         ...(params.plugins ? { plugins: params.plugins } : {}),
       },
       { mode: 'send' },
@@ -202,6 +210,7 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
   async function runRegenerate(params: {
     userText: string
     turnOrdinal: number
+    segmentIndex?: number
     promptTrigger: PromptTrigger
     plugins?: ConversationChatRequestPlugins
   }): Promise<{
@@ -226,6 +235,9 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
         promptTrigger: params.promptTrigger,
         historyBeforeTurnOrdinalExclusive: params.turnOrdinal,
         regenerateTurnOrdinal: params.turnOrdinal,
+        ...(params.segmentIndex !== undefined
+          ? { regenerateSegmentIndex: params.segmentIndex }
+          : {}),
         ...(params.plugins ? { plugins: params.plugins } : {}),
       },
       { mode: 'regenerate' },
@@ -251,6 +263,57 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
     }
   }
 
+  async function runGroupContinue(params: {
+    turnOrdinal: number
+    afterSegmentIndex: number
+    speakerCharacterId: string
+  }): Promise<{
+    receive: ReceiveItem
+    traceId: string
+    persist?: ChatPersistPayload
+    shouldReload: boolean
+  }> {
+    const {
+      content: assistantOut,
+      reasoning: reasoningOut,
+      persist,
+      durationMs,
+      estimatedTokens,
+      completionTokens,
+      traceId,
+    } = await requestChatCompletion(
+      {
+        userText: '',
+        promptTrigger: 'groupContinue',
+        groupContinue: {
+          turnOrdinal: params.turnOrdinal,
+          speakerCharacterId: params.speakerCharacterId,
+          afterSegmentIndex: params.afterSegmentIndex,
+        },
+        speakerCharacterId: params.speakerCharacterId,
+      },
+      { mode: 'send' },
+    )
+    const { content, reasoning } = resolveAssistantAfterPersist(
+      assistantOut,
+      reasoningOut,
+      persist,
+    )
+    const receive = makeReceiveFromResult(content, {
+      reasoning,
+      persist,
+      durationMs,
+      estimatedTokens,
+      completionTokens,
+    })
+    return {
+      receive,
+      traceId,
+      persist,
+      shouldReload: shouldReloadMessagesAfterChat(assistantOut, persist),
+    }
+  }
+
   return {
     requestChatCompletion,
     parseCustomParamsOrThrow,
@@ -258,6 +321,7 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
     assertApiReady,
     runSend,
     runRegenerate,
+    runGroupContinue,
     abortChatGeneration,
   }
 }

@@ -33,6 +33,10 @@ export interface MemoryPipelineInput {
   historySettings: HistorySettings
   /** 再生等：不含 turnOrdinal >= 该值的轮次 */
   historyBeforeTurnOrdinalExclusive?: number | null
+  /** 同 turn 内 history 仅含 segmentIndex < exclusive 的 segment */
+  historyPartialTurn?: { turnOrdinal: number; segmentIndexExclusive: number }
+  /** 旧 turn 迁移缺省 speaker */
+  defaultSpeakerCharacterId?: string
   /** 当前 active 分支；默认主路径 ""，召回含祖先路径 */
   activeBranchPath?: string | null
 }
@@ -153,7 +157,10 @@ export async function runMemoryPipeline(
     historyCount,
     input.historyBeforeTurnOrdinalExclusive,
   )
-  const recentHistoryMessages = turnsToHistoryMessages(recentTurns)
+  const recentHistoryMessages = turnsToHistoryMessages(recentTurns, {
+    defaultSpeakerCharacterId: input.defaultSpeakerCharacterId,
+    partialTurn: input.historyPartialTurn,
+  })
   const recentHistoryScanText = turnsToHistoryScanPlainText(recentTurns)
   const recentTurnIds = new Set(recentTurns.map((t) => t.turnId))
 

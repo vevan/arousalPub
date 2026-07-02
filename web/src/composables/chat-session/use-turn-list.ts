@@ -1,4 +1,5 @@
 import type { ChatTurnItem, PersistTurnToServerResult, ReceiveItem } from '@/types/chat-turn'
+import { allocateShortId } from '@/utils/short-id'
 import {
   CONVERSATION_UI_TAIL_LIMIT,
   fetchConversationTurnsBefore,
@@ -60,7 +61,11 @@ export function useTurnList(opts: {
     opts.streamingReasoning.value = ''
   }
 
-  function appendPendingUserTurn(userText: string, ord: number) {
+  function appendPendingUserTurn(
+    userText: string,
+    ord: number,
+    meta?: { speakerCharacterId?: string; speakerQueue?: string[] },
+  ) {
     opts.turns.value = [
       ...opts.turns.value,
       {
@@ -68,6 +73,10 @@ export function useTurnList(opts: {
         receives: [],
         activeReceiveIndex: 0,
         turnOrdinal: ord,
+        ...(meta?.speakerCharacterId?.trim()
+          ? { speakerCharacterId: meta.speakerCharacterId.trim() }
+          : {}),
+        ...(meta?.speakerQueue?.length ? { speakerQueue: meta.speakerQueue } : {}),
       },
     ]
     opts.userInput.value = ''
@@ -86,6 +95,12 @@ export function useTurnList(opts: {
     ord: number,
     receive: ReceiveItem,
     finalUserText?: string,
+    meta?: {
+      speakerCharacterId?: string
+      speakerQueue?: string[]
+      segmentIndex?: number
+      activeSegmentIndex?: number
+    },
   ) {
     const sendEt = opts.pendingSendEstimatedTokens.value
     const recvCt = opts.pendingReceiveCompletionTokens.value
@@ -101,18 +116,88 @@ export function useTurnList(opts: {
     const idx = opts.turns.value.findIndex((t) => t.turnOrdinal === ord)
     if (idx >= 0) {
       const cur = opts.turns.value[idx]
+      const speakerId = meta?.speakerCharacterId?.trim() ?? cur.speakerCharacterId ?? ''
+      const segment = {
+        id: allocateShortId(new Set(cur.receives.map((r) => r.id))),
+        speakerCharacterId: speakerId,
+        receives: [merged],
+        activeReceiveIndex: 0,
+      }
       replaceTurnAt(idx, {
         ...cur,
         ...(finalUserText !== undefined ? { user: finalUserText } : {}),
         receives: [merged],
         activeReceiveIndex: 0,
+        segments: [segment],
+        activeSegmentIndex: meta?.activeSegmentIndex ?? 0,
+        ...(meta?.speakerQueue?.length ? { speakerQueue: meta.speakerQueue } : {}),
+        ...(speakerId ? { speakerCharacterId: speakerId } : {}),
       })
     }
     clearPendingSend()
   }
 
-  async function persistTurnToServer(turn: ChatTurnItem): Promise<PersistTurnToServerResult> {
-    return persistTurnToServerApi(opts.getConversationId(), turn)
+  function finalizePendingSegment(
+    ord: number,
+    receive: ReceiveItem,
+    meta: {
+      segmentIndex: number
+      speakerCharacterId: string
+      activeSegmentIndex: number
+    },
+  ) {
+    const sendEt = opts.pendingSendEstimatedTokens.value
+    const recvCt = opts.pendingReceiveCompletionTokens.value
+    const merged: ReceiveItem = {
+      ...receive,
+      ...(sendEt != null && sendEt > 0 && !receive.estimatedTokens
+        ? { estimatedTokens: sendEt }
+        : {}),
+      ...(recvCt != null && recvCt > 0 && !receive.completionTokens
+        ? { completionTokens: recvCt }
+        : {}),
+    }
+    const idx = opts.turns.value.findIndex((t) => t.turnOrdinal === ord)
+    if (idx < 0) {
+      clearPendingSend()
+      return
+    }
+    const cur = opts.turns.value[idx]!
+    const segments = [...(cur.segments ?? [])]
+    const segIdx = meta.segmentIndex
+    if (segments[segIdx]) {
+      const seg = segments[segIdx]!
+      segments[segIdx] = {
+        ...seg,
+        speakerCharacterId: meta.speakerCharacterId,
+        receives: [merged],
+        activeReceiveIndex: 0,
+      }
+    } else {
+      segments.push({
+        id: allocateShortId(new Set(cur.receives.map((r) => r.id))),
+        speakerCharacterId: meta.speakerCharacterId,
+        receives: [merged],
+        activeReceiveIndex: 0,
+      })
+    }
+    const activeSeg = segments[meta.activeSegmentIndex] ?? segments[segments.length - 1]!
+    replaceTurnAt(idx, {
+      ...cur,
+      segments,
+      activeSegmentIndex: meta.activeSegmentIndex,
+      receives: activeSeg.receives,
+      activeReceiveIndex: activeSeg.activeReceiveIndex,
+      speakerCharacterId: meta.speakerCharacterId,
+    })
+    clearPendingSend()
+  }
+
+  async function persistTurnToServer(
+    turn: ChatTurnItem,
+    patchOpts?: { segmentIndex?: number },
+  ): Promise<PersistTurnToServerResult> {
+    return persistTurnToServerApi(opts.getConversationId(), turn, patchOpts)
   }
 
   async function restoreScrollAfterPrepend(anchorOrdinal: number) {
@@ -287,6 +372,7 @@ export function useTurnList(opts: {
     appendPendingUserTurn,
     rollbackPendingUserTurn,
     finalizePendingTurn,
+    finalizePendingSegment,
     persistTurnToServer,
     loadMessages,
     loadOlderMessages,

@@ -27,7 +27,7 @@ export type GroupKind =
   | 'userInput'
 export type PromptRole = 'system' | 'user' | 'assistant'
 export type InjectionPosition = 'relative' | 'chat'
-export type PromptTrigger = 'normal' | 'continue' | 'swipe' | 'regenerate'
+export type PromptTrigger = 'normal' | 'continue' | 'swipe' | 'regenerate' | 'groupContinue'
 
 export type PromptBindingSlot =
   | 'boundMain'

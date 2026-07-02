@@ -40,14 +40,26 @@ export function filterComposerSlashCommands(
 
 export function mergeComposerSlashCatalog(
   pluginSpecs: ComposerSlashCommandSpec[],
+  boundDisplayNames: readonly string[] = [],
 ): ComposerSlashCommandSpec[] {
   const seen = new Set<string>()
   const out: ComposerSlashCommandSpec[] = []
+  const names = boundDisplayNames.map((n) => n.trim()).filter(Boolean)
+  const atExample =
+    names.length >= 2
+      ? `/@ ${names[0]} ${names[1]}`
+      : names.length === 1
+        ? `/@ ${names[0]}`
+        : '/@ Alice Betty'
   for (const c of [...BUILTIN_COMPOSER_SLASH_COMMANDS, ...pluginSpecs]) {
     const key = c.id.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
-    out.push(c)
+    if (c.id === '@') {
+      out.push({ ...c, example: atExample })
+    } else {
+      out.push(c)
+    }
   }
   return out
 }

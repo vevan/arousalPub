@@ -63,8 +63,10 @@ import {
   resolvedCharacterIds,
   batchUpdateConversationTurns,
   updateTurnContentInTailChunk,
+  updateTurnSegmentInTailChunk,
   type TurnReceive,
 } from './chat-storage.js'
+import { parseGroupContinueBody } from './group-chat-turn.js'
 import {
   createEmptyConversationBranch,
   deleteConversationBranch,
@@ -281,6 +283,7 @@ import {
   cardFromNewCharacterForm,
   contentDispositionAttachment,
   deleteCharacterFile,
+  enrichConversationIndexForClient,
   importCharacterCard,
   importCharacterCardPng,
   importCharacterCardWithPortrait,
@@ -329,6 +332,20 @@ interface ChatBody {
   historyBeforeTurnOrdinalExclusive?: number | null
   /** 再生落盘：向该 turnOrdinal 追加 receive（须与 historyBeforeTurnOrdinalExclusive 一致） */
   regenerateTurnOrdinal?: number | null
+  /** 再生/swipe 目标 segment 索引（缺省 activeSegmentIndex） */
+  regenerateSegmentIndex?: number
+  /** 群聊：当前生成 segment 的 speaker characterId */
+  speakerCharacterId?: string
+  /** 群聊：/@ 解析后的 characterId 队列 */
+  speakerQueue?: string[]
+  /** 群聊：/@ displayName 队列（服务端解析为 characterId） */
+  speakerQueueDisplayNames?: string[]
+  /** 群聊接续：同 turn 追加 segment */
+  groupContinue?: {
+    turnOrdinal: number
+    speakerCharacterId: string
+    afterSegmentIndex: number
+  }
   /** 插件请求体（如 guidance-generate） */
   plugins?: Record<string, unknown>
   contextLength?: number | null
@@ -1465,16 +1482,33 @@ app.patch<{
         normalized.receives,
         id,
       )
-      const ok = await updateTurnContentInTailChunk(
-        id,
-        ord,
-        normalized.userText,
-        normalized.receives,
-        normalized.activeReceiveIndex,
-        undefined,
-        undefined,
-        syncedPlugins,
-      )
+      const convIdx = await readConversationIndex(id)
+      const defaultSpeaker = convIdx ? resolvedCharacterIds(convIdx)[0]?.trim() ?? '' : ''
+      let ok: boolean
+      if (typeof normalized.segmentIndex === 'number') {
+        ok = await updateTurnSegmentInTailChunk(
+          id,
+          ord,
+          normalized.segmentIndex,
+          normalized.userText,
+          normalized.receives,
+          normalized.activeReceiveIndex,
+          defaultSpeaker,
+          undefined,
+          syncedPlugins.length > 0 ? syncedPlugins : undefined,
+        )
+      } else {
+        ok = await updateTurnContentInTailChunk(
+          id,
+          ord,
+          normalized.userText,
+          normalized.receives,
+          normalized.activeReceiveIndex,
+          undefined,
+          undefined,
+          syncedPlugins,
+        )
+      }
       if (!ok) {
         const offActive = await isTurnOrdinalOffActivePath(id, ord)
         if (offActive) {
@@ -1694,7 +1728,7 @@ app.get<{ Params: { id: string } }>(
     }
     const idx = await readConversationIndex(id)
     if (!idx) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
-    return idx
+    return enrichConversationIndexForClient(idx)
   },
 )
 
@@ -4183,11 +4217,36 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
     if (!promptsDoc) {
       return reply.status(500).send({ error: ApiErrorCodes.prompts_unavailable })
     }
+    const regenSegRaw = body.regenerateSegmentIndex
+    const regenerateSegmentIndex =
+      typeof regenSegRaw === 'number' &&
+      Number.isInteger(regenSegRaw) &&
+      regenSegRaw >= 0
+        ? regenSegRaw
+        : undefined
+    const groupContinue = parseGroupContinueBody(body.groupContinue)
     const built = await buildConversationOutboundMessages({
       conversationId: convId,
       userText,
       promptTrigger: body.promptTrigger,
       historyBeforeTurnOrdinalExclusive: body.historyBeforeTurnOrdinalExclusive,
+      regenerateTurnOrdinal: body.regenerateTurnOrdinal,
+      regenerateSegmentIndex,
+      speakerCharacterId:
+        typeof body.speakerCharacterId === 'string'
+          ? body.speakerCharacterId.trim()
+          : groupContinue?.speakerCharacterId,
+      speakerQueue: Array.isArray(body.speakerQueue)
+        ? body.speakerQueue.filter(
+            (id): id is string => typeof id === 'string' && id.trim().length > 0,
+          )
+        : undefined,
+      speakerQueueDisplayNames: Array.isArray(body.speakerQueueDisplayNames)
+        ? body.speakerQueueDisplayNames.filter(
+            (n): n is string => typeof n === 'string' && n.trim().length > 0,
+          )
+        : undefined,
+      groupContinue,
       contextLength: mergedBody.contextLength,
       tokenModel: model,
       promptsDoc,
@@ -4220,14 +4279,38 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
 
   const turnPluginEntries = await resolveTurnPluginEntriesFromBody(body.plugins)
 
+  const groupContinueForPersist = parseGroupContinueBody(body.groupContinue)
+  const hasGroupContinue = groupContinueForPersist !== null
+
   const persistParams =
-    convId && userText.trim()
+    convId && (userText.trim() || hasGroupContinue)
       ? {
           conversationId: convId,
           userText: userText.trim(),
           model: model.trim() || undefined,
           assembledMessages: messages,
           regenerateTurnOrdinal,
+          regenerateSegmentIndex:
+            typeof body.regenerateSegmentIndex === 'number' &&
+            Number.isInteger(body.regenerateSegmentIndex) &&
+            body.regenerateSegmentIndex >= 0
+              ? body.regenerateSegmentIndex
+              : undefined,
+          speakerCharacterId:
+            typeof body.speakerCharacterId === 'string'
+              ? body.speakerCharacterId.trim()
+              : undefined,
+          speakerQueue: Array.isArray(body.speakerQueue)
+            ? body.speakerQueue.filter(
+                (id): id is string => typeof id === 'string' && id.trim().length > 0,
+              )
+            : undefined,
+          speakerQueueDisplayNames: Array.isArray(body.speakerQueueDisplayNames)
+            ? body.speakerQueueDisplayNames.filter(
+                (n): n is string => typeof n === 'string' && n.trim().length > 0,
+              )
+            : undefined,
+          groupContinue: hasGroupContinue ? groupContinueForPersist! : undefined,
           estimatedTokens,
           resolvedFeature,
           assemblyAudit,

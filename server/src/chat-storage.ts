@@ -92,6 +92,17 @@ import {
   CONVERSATION_BATCH_MAX_TURNS,
   type TurnContentPatchInput,
 } from './turn-patch-body.js'
+import {
+  getActiveSegment,
+  getActiveSegmentIndex,
+  getTurnSegments,
+  materializeTurnSegments,
+  syncLegacyFieldsFromSegments,
+  type AssistantSegmentRecord,
+  type GroupChatSettings,
+} from './group-chat-turn.js'
+
+export type { AssistantSegmentRecord, GroupChatSettings } from './group-chat-turn.js'
 
 function finalizeAuditPersistDiskMs(
   snapshot: ChatAuditSnapshotInput | undefined,
@@ -225,6 +236,8 @@ export interface ConversationIndex {
   macroLocalVars?: Record<string, string>
   /** 已注册分支的 fork turnId 索引（加速 DELETE turn 校验；repair 可重建） */
   branchForkTurnIds?: string[]
+  /** 群聊开关与接续策略（§35） */
+  groupChat?: GroupChatSettings
 }
 
 export interface TurnReceive {
@@ -285,6 +298,13 @@ export interface TurnRecord {
   receives: TurnReceive[]
   activeReceiveIndex: number
   plugins: unknown[]
+  /** 群聊：同 turn 多 assistant segment（§35）；缺省时由 receives 迁移 */
+  segments?: AssistantSegmentRecord[]
+  activeSegmentIndex?: number
+  /** 来自 /@ 的待发言 characterId 队列 */
+  speakerQueue?: string[]
+  /** legacy 同步字段：当前 active segment 的 speaker */
+  speakerCharacterId?: string
 }
 
 /** 收集 chunk 内已有 turnId / receive.id，供短 id 分配去重 */
@@ -297,6 +317,14 @@ export function collectChunkEntityIds(chunk: ChunkFile | null): Set<string> {
     for (const r of t.receives ?? []) {
       const rid = typeof r.id === 'string' ? r.id.trim() : ''
       if (rid) used.add(rid)
+    }
+    for (const s of t.segments ?? []) {
+      const sid = typeof s.id === 'string' ? s.id.trim() : ''
+      if (sid) used.add(sid)
+      for (const r of s.receives ?? []) {
+        const rid = typeof r.id === 'string' ? r.id.trim() : ''
+        if (rid) used.add(rid)
+      }
     }
   }
   return used
@@ -326,8 +354,49 @@ function releaseTurnEntityIds(turn: TurnRecord, used: Set<string>): void {
     const rid = typeof r.id === 'string' ? r.id.trim() : ''
     if (rid) used.delete(rid)
   }
+  for (const s of turn.segments ?? []) {
+    const sid = typeof s.id === 'string' ? s.id.trim() : ''
+    if (sid) used.delete(sid)
+    for (const r of s.receives ?? []) {
+      const rid = typeof r.id === 'string' ? r.id.trim() : ''
+      if (rid) used.delete(rid)
+    }
+  }
   const tid = typeof turn.turnId === 'string' ? turn.turnId.trim() : ''
   if (tid) used.delete(tid)
+}
+
+function buildFirstSegmentOnTurn(
+  turn: TurnRecord,
+  used: Set<string>,
+  params: {
+    speakerCharacterId: string
+    receives: TurnReceive[]
+    activeReceiveIndex: number
+    nextSpeakerHint?: string
+  },
+): void {
+  const mappedReceives = mapReceivesWithShortIds(params.receives, used)
+  const activeIdx = Math.min(
+    Math.max(0, params.activeReceiveIndex),
+    Math.max(0, mappedReceives.length - 1),
+  )
+  const segmentId = allocateShortId(used)
+  const speaker = params.speakerCharacterId.trim()
+  turn.segments = [
+    {
+      id: segmentId,
+      speakerCharacterId: speaker,
+      receives: mappedReceives,
+      activeReceiveIndex: activeIdx,
+      ...(params.nextSpeakerHint
+        ? { meta: { nextSpeakerHint: params.nextSpeakerHint } }
+        : {}),
+    },
+  ]
+  turn.activeSegmentIndex = 0
+  turn.speakerCharacterId = speaker
+  syncLegacyFieldsFromSegments(turn)
 }
 
 /** 在内存中更新单轮正文与 receives（调用方维护 chunk 级 used 集合） */
@@ -360,6 +429,52 @@ function applyTurnContentUpdate(
     Math.max(0, activeReceiveIndex),
     turn.receives.length - 1,
   )
+}
+
+/** 更新指定 segment 的 receives（regenerate/swipe 仅当前 segment） */
+function applyTurnSegmentContentUpdate(
+  turn: TurnRecord,
+  used: Set<string>,
+  segmentIndex: number,
+  userText: string,
+  receives: TurnReceive[],
+  activeReceiveIndex: number,
+  defaultSpeakerCharacterId: string,
+  nextSpeakerHint?: string,
+): void {
+  if (!receives.length) return
+  materializeTurnSegments(turn, defaultSpeakerCharacterId)
+  const seg = turn.segments?.[segmentIndex]
+  if (!seg) return
+  for (const r of seg.receives ?? []) {
+    const rid = typeof r.id === 'string' ? r.id.trim() : ''
+    if (rid) used.delete(rid)
+  }
+  const prevReceives = seg.receives ?? []
+  seg.receives = mapReceivesWithShortIds(receives, used).map((rec) => {
+    const rid = typeof rec.id === 'string' ? rec.id.trim() : ''
+    const prev = prevReceives.find(
+      (p) => typeof p.id === 'string' && p.id.trim() === rid,
+    )
+    if (!prev?.runtime || typeof prev.runtime !== 'object') return rec
+    return {
+      ...rec,
+      runtime: {
+        ...(prev.runtime as Record<string, unknown>),
+        ...(rec.runtime ?? {}),
+      },
+    }
+  })
+  seg.activeReceiveIndex = Math.min(
+    Math.max(0, activeReceiveIndex),
+    seg.receives.length - 1,
+  )
+  if (nextSpeakerHint) {
+    seg.meta = { ...(seg.meta ?? {}), nextSpeakerHint }
+  }
+  turn.activeSegmentIndex = segmentIndex
+  turn.send = { userText }
+  syncLegacyFieldsFromSegments(turn)
 }
 
 export interface BatchTurnUpdateResult {
@@ -1247,6 +1362,17 @@ function stripTurnForDisk(t: TurnRecord): TurnRecord {
     activeReceiveIndex: t.activeReceiveIndex,
     plugins: Array.isArray(t.plugins) ? t.plugins : [],
   }
+  if (Array.isArray(t.segments) && t.segments.length > 0) {
+    out.segments = t.segments
+    if (typeof t.activeSegmentIndex === 'number') {
+      out.activeSegmentIndex = t.activeSegmentIndex
+    }
+  }
+  if (Array.isArray(t.speakerQueue) && t.speakerQueue.length > 0) {
+    out.speakerQueue = t.speakerQueue
+  }
+  const speaker = typeof t.speakerCharacterId === 'string' ? t.speakerCharacterId.trim() : ''
+  if (speaker) out.speakerCharacterId = speaker
   const createdAt =
     typeof t.createdAt === 'string' && t.createdAt.trim()
       ? t.createdAt.trim()
@@ -1646,6 +1772,9 @@ export async function saveFirstTurn(params: {
   /** debug 审计快照（服务端组装；见 DOC/24） */
   auditSnapshot?: ChatAuditSnapshotInput
   turnPluginEntries?: TurnPluginEntry[]
+  speakerCharacterId?: string
+  speakerQueue?: string[]
+  nextSpeakerHint?: string
 }): Promise<{ index: ConversationIndex; chunk: ChunkFile } | null> {
   const {
     conversationId,
@@ -1659,6 +1788,9 @@ export async function saveFirstTurn(params: {
     resolvedFeature,
     auditSnapshot,
     turnPluginEntries,
+    speakerCharacterId,
+    speakerQueue,
+    nextSpeakerHint,
   } = params
   const auditStorageStartedAt =
     auditSnapshot?.performance?.persistMs !== undefined ? performance.now() : 0
@@ -1693,6 +1825,10 @@ export async function saveFirstTurn(params: {
     )
   const activeReceiveIndex = 0
   const receiveId = receives[activeReceiveIndex]?.id?.trim() ?? ''
+  const defaultSpeaker =
+    speakerCharacterId?.trim() ||
+    idx?.characterIds?.[0]?.trim() ||
+    ''
   const turn: TurnRecord = {
     turnId,
     turnOrdinal: 0,
@@ -1703,7 +1839,16 @@ export async function saveFirstTurn(params: {
     plugins: (attachReceiveIdToTurnPluginEntries(turnPluginEntries, receiveId) ?? []).reduce<
       unknown[]
     >((acc, entry) => mergeTurnPluginEntry(acc, entry), []),
+    ...(Array.isArray(speakerQueue) && speakerQueue.length > 0
+      ? { speakerQueue }
+      : {}),
   }
+  buildFirstSegmentOnTurn(turn, used, {
+    speakerCharacterId: defaultSpeaker,
+    receives,
+    activeReceiveIndex,
+    nextSpeakerHint,
+  })
 
   const chunkSettings = await readGlobalChunkSettings()
   const { fileName: firstChunkFile, meta: firstMeta } = buildFirstChunkDescriptor(
@@ -1805,6 +1950,9 @@ export async function appendConversationTurn(params: {
   turnPluginEntries?: TurnPluginEntry[]
   /** 省略则读会话根 index.activeBranchPath；"" 为主路径 */
   branchPath?: string | null
+  speakerCharacterId?: string
+  speakerQueue?: string[]
+  nextSpeakerHint?: string
 }): Promise<boolean> {
   const {
     conversationId,
@@ -1813,6 +1961,9 @@ export async function appendConversationTurn(params: {
     activeReceiveIndex,
     auditSnapshot,
     turnPluginEntries,
+    speakerCharacterId,
+    speakerQueue,
+    nextSpeakerHint,
   } = params
   const auditStorageStartedAt =
     auditSnapshot?.performance?.persistMs !== undefined ? performance.now() : 0
@@ -1842,6 +1993,11 @@ export async function appendConversationTurn(params: {
     mappedReceives.length - 1,
   )
   const receiveId = mappedReceives[activeIdx]?.id?.trim() ?? ''
+  const rootIdxForSpeaker = await readConversationIndex(conversationId)
+  const defaultSpeaker =
+    speakerCharacterId?.trim() ||
+    rootIdxForSpeaker?.characterIds?.[0]?.trim() ||
+    ''
   const turn: TurnRecord = {
     turnId: allocateShortId(used),
     turnOrdinal: nextOrd,
@@ -1852,7 +2008,16 @@ export async function appendConversationTurn(params: {
     plugins: (attachReceiveIdToTurnPluginEntries(turnPluginEntries, receiveId) ?? []).reduce<
       unknown[]
     >((acc, entry) => mergeTurnPluginEntry(acc, entry), []),
+    ...(Array.isArray(speakerQueue) && speakerQueue.length > 0
+      ? { speakerQueue }
+      : {}),
   }
+  buildFirstSegmentOnTurn(turn, used, {
+    speakerCharacterId: defaultSpeaker,
+    receives: mappedReceives,
+    activeReceiveIndex: activeIdx,
+    nextSpeakerHint,
+  })
   chunk.turns.push(turn)
   chunk.meta.ordinalRange = {
     start:
@@ -1888,6 +2053,100 @@ export async function appendConversationTurn(params: {
       chunkName: storagePath,
       turnId: turn.turnId,
       turnOrdinal: turn.turnOrdinal,
+      snapshot: auditSnapshot,
+    })
+  }
+  scheduleMemoryIndexUpsert(conversationId, turn, chunkName, branchPath)
+  return true
+}
+
+/** 向已有 turn 追加新 segment（groupContinue） */
+export async function appendSegmentToTurn(params: {
+  conversationId: string
+  turnOrdinal: number
+  speakerCharacterId: string
+  receives: TurnReceive[]
+  activeReceiveIndex: number
+  nextSpeakerHint?: string
+  auditSnapshot?: ChatAuditSnapshotInput
+  turnPluginEntries?: TurnPluginEntry[]
+  defaultSpeakerCharacterId?: string
+}): Promise<boolean> {
+  const {
+    conversationId,
+    turnOrdinal,
+    speakerCharacterId,
+    receives,
+    activeReceiveIndex,
+    nextSpeakerHint,
+    auditSnapshot,
+    turnPluginEntries,
+    defaultSpeakerCharacterId,
+  } = params
+  const auditStorageStartedAt =
+    auditSnapshot?.performance?.persistMs !== undefined ? performance.now() : 0
+  if (!receives.length) return false
+  const located = await readChunkContainingOrdinal(conversationId, turnOrdinal)
+  if (!located) return false
+  const { chunk, fileName: chunkName, branchPath } = located
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return false
+  const ti = chunk.turns.findIndex((t) => t.turnOrdinal === turnOrdinal)
+  if (ti < 0) return false
+  const turn = chunk.turns[ti]
+  const defaultSpeaker =
+    defaultSpeakerCharacterId?.trim() ||
+    idx.characterIds?.[0]?.trim() ||
+    ''
+  materializeTurnSegments(turn, defaultSpeaker)
+  const spoken = new Set(
+    (turn.segments ?? [])
+      .filter((s) => (s.receives?.length ?? 0) > 0)
+      .map((s) => s.speakerCharacterId),
+  )
+  const speaker = speakerCharacterId.trim()
+  if (spoken.has(speaker)) return false
+  const used = collectChunkEntityIds(chunk)
+  const mappedReceives = mapReceivesWithShortIds(receives, used)
+  const activeIdx = Math.min(
+    Math.max(0, activeReceiveIndex),
+    mappedReceives.length - 1,
+  )
+  const segmentId = allocateShortId(used)
+  const newSegment: AssistantSegmentRecord = {
+    id: segmentId,
+    speakerCharacterId: speaker,
+    receives: mappedReceives,
+    activeReceiveIndex: activeIdx,
+    ...(nextSpeakerHint ? { meta: { nextSpeakerHint } } : {}),
+  }
+  turn.segments = [...(turn.segments ?? []), newSegment]
+  turn.activeSegmentIndex = turn.segments.length - 1
+  syncLegacyFieldsFromSegments(turn)
+  const receiveId = mappedReceives[activeIdx]?.id?.trim() ?? ''
+  if (turnPluginEntries?.length) {
+    let plugins = Array.isArray(turn.plugins) ? turn.plugins : []
+    for (const entry of attachReceiveIdToTurnPluginEntries(
+      turnPluginEntries,
+      receiveId,
+    ) ?? []) {
+      plugins = mergeTurnPluginEntry(plugins, entry)
+    }
+    turn.plugins = plugins
+  }
+  const storagePath = chunkStorageRelativePath(branchPath, chunkName)
+  await writeChunkFile(conversationId, storagePath, chunk)
+  const t = nowIso()
+  idx.updatedAt = t
+  await writeConversationIndex(conversationId, idx)
+  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
+  if (auditSnapshot !== undefined) {
+    finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
+    const idxForAudit = await readConversationIndex(conversationId)
+    await appendChatAuditEntry(conversationId, idxForAudit, {
+      chunkName: storagePath,
+      turnId: turn.turnId,
+      turnOrdinal,
       snapshot: auditSnapshot,
     })
   }
@@ -2005,6 +2264,72 @@ export async function updateTurnContentInTailChunk(
   const turnId = turn.turnId
   const used = collectChunkEntityIds(chunk)
   applyTurnContentUpdate(turn, used, userText, receives, activeReceiveIndex)
+  if (turnPlugins !== undefined) {
+    turn.plugins = turnPlugins
+  } else if (turnPluginEntries?.length) {
+    let plugins = Array.isArray(turn.plugins) ? turn.plugins : []
+    for (const entry of turnPluginEntries) {
+      plugins = mergeTurnPluginEntry(plugins, entry)
+    }
+    turn.plugins = plugins
+  }
+  const storagePath = chunkStorageRelativePath(branchPath, chunkName)
+  await writeChunkFile(conversationId, storagePath, chunk)
+  const t = nowIso()
+  idx.updatedAt = t
+  await writeConversationIndex(conversationId, idx)
+  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
+  if (auditSnapshot !== undefined) {
+    finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
+    const idxForAudit = await readConversationIndex(conversationId)
+    await appendChatAuditEntry(conversationId, idxForAudit, {
+      chunkName: storagePath,
+      turnId,
+      turnOrdinal,
+      snapshot: auditSnapshot,
+    })
+  }
+  scheduleMemoryIndexUpsert(conversationId, turn, chunkName, branchPath)
+  return true
+}
+
+/** 更新某 turn 指定 segment 的 receives（regenerate/swipe 仅当前 segment） */
+export async function updateTurnSegmentInTailChunk(
+  conversationId: string,
+  turnOrdinal: number,
+  segmentIndex: number,
+  userText: string,
+  receives: TurnReceive[],
+  activeReceiveIndex: number,
+  defaultSpeakerCharacterId: string,
+  auditSnapshot?: ChatAuditSnapshotInput,
+  turnPluginEntries?: TurnPluginEntry[],
+  turnPlugins?: unknown[],
+  nextSpeakerHint?: string,
+): Promise<boolean> {
+  if (!receives.length) return false
+  const auditStorageStartedAt =
+    auditSnapshot?.performance?.persistMs !== undefined ? performance.now() : 0
+  const located = await readChunkContainingOrdinal(conversationId, turnOrdinal)
+  if (!located) return false
+  const { chunk, fileName: chunkName, branchPath } = located
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return false
+  const ti = chunk.turns.findIndex((t) => t.turnOrdinal === turnOrdinal)
+  if (ti < 0) return false
+  const turn = chunk.turns[ti]
+  const turnId = turn.turnId
+  const used = collectChunkEntityIds(chunk)
+  applyTurnSegmentContentUpdate(
+    turn,
+    used,
+    segmentIndex,
+    userText,
+    receives,
+    activeReceiveIndex,
+    defaultSpeakerCharacterId,
+    nextSpeakerHint,
+  )
   if (turnPlugins !== undefined) {
     turn.plugins = turnPlugins
   } else if (turnPluginEntries?.length) {

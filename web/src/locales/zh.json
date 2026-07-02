@@ -1010,6 +1010,13 @@
           "description": "插件命令"
         }
       }
+    },
+    "groupChat": {
+      "queueNeedsEnabled": "未开启群聊时仅首位绑定角色会发言；多人接龙请在对话设置中开启群聊。",
+      "atNameUnmatched": "未匹配到绑定角色名，请检查 /@ 后的名字是否与对话绑定一致。",
+      "continuePrompt": "下一位：{name}",
+      "continue": "继续",
+      "dismiss": "结束本轮"
     }
   },
   "conversationList": {

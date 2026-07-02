@@ -2,10 +2,12 @@ import type {
   ChatPersistPayload,
   ChatTurnItem,
   ReceiveItem,
+  AssistantSegmentItem,
   TurnPatchPersistPayload,
   PersistTurnToServerResult,
 } from '@/types/chat-turn'
 import { translateApiError } from '@/utils/api-error-message'
+import { buildTurnPatchRequestBody } from '@/utils/group-chat-turn'
 import { allocateShortId } from '@/utils/short-id'
 
 type MessagesApiTurn = {
@@ -22,6 +24,16 @@ type MessagesApiTurn = {
     model?: string
   }[]
   activeReceiveIndex?: number
+  segments?: {
+    id: string
+    speakerCharacterId: string
+    receives?: MessagesApiTurn['receives']
+    activeReceiveIndex?: number
+    meta?: { nextSpeakerHint?: string }
+  }[]
+  activeSegmentIndex?: number
+  speakerQueue?: string[]
+  speakerCharacterId?: string
   plugins?: unknown[]
 }
 
@@ -39,6 +51,35 @@ type MessagesApiResponse = {
 /** 与 server `CONVERSATION_MESSAGES_DEFAULT_TAIL` 一致 */
 export const CONVERSATION_UI_TAIL_LIMIT = 30
 
+function mapReceiveRow(
+  r: NonNullable<MessagesApiTurn['receives']>[number],
+  used: Set<string>,
+): ReceiveItem {
+  const item: ReceiveItem = {
+    id:
+      typeof r.id === 'string' && r.id.trim()
+        ? r.id.trim()
+        : allocateShortId(used),
+    content: typeof r.content === 'string' ? r.content : '',
+  }
+  if (typeof r.reasoning === 'string' && r.reasoning.length > 0) {
+    item.reasoning = r.reasoning
+  }
+  if (typeof r.durationMs === 'number' && r.durationMs > 0) {
+    item.durationMs = r.durationMs
+  }
+  if (typeof r.estimatedTokens === 'number' && r.estimatedTokens > 0) {
+    item.estimatedTokens = r.estimatedTokens
+  }
+  if (typeof r.completionTokens === 'number' && r.completionTokens > 0) {
+    item.completionTokens = r.completionTokens
+  }
+  if (typeof r.model === 'string' && r.model.trim()) {
+    item.model = r.model.trim()
+  }
+  return item
+}
+
 export function parseConversationTurnsFromApi(
   raw: MessagesApiTurn[],
 ): ChatTurnItem[] {
@@ -50,32 +91,36 @@ export function parseConversationTurnsFromApi(
     const user = typeof row.user === 'string' ? row.user : ''
     const used = new Set<string>()
     const receives = Array.isArray(row.receives)
-      ? row.receives.map((r) => {
-          const item: ReceiveItem = {
-            id:
-              typeof r.id === 'string' && r.id.trim()
-                ? r.id.trim()
-                : allocateShortId(used),
-            content: typeof r.content === 'string' ? r.content : '',
-          }
-          if (typeof r.reasoning === 'string' && r.reasoning.length > 0) {
-            item.reasoning = r.reasoning
-          }
-          if (typeof r.durationMs === 'number' && r.durationMs > 0) {
-            item.durationMs = r.durationMs
-          }
-          if (typeof r.estimatedTokens === 'number' && r.estimatedTokens > 0) {
-            item.estimatedTokens = r.estimatedTokens
-          }
-          if (typeof r.completionTokens === 'number' && r.completionTokens > 0) {
-            item.completionTokens = r.completionTokens
-          }
-          if (typeof r.model === 'string' && r.model.trim()) {
-            item.model = r.model.trim()
-          }
-          return item
-        })
+      ? row.receives.map((r) => mapReceiveRow(r, used))
       : []
+    const segments: AssistantSegmentItem[] | undefined = Array.isArray(row.segments)
+      ? row.segments.map((seg) => {
+          const segUsed = new Set<string>()
+          const segReceives = Array.isArray(seg.receives)
+            ? seg.receives.map((r) => mapReceiveRow(r, segUsed))
+            : []
+          let segAi =
+            typeof seg.activeReceiveIndex === 'number' &&
+            !Number.isNaN(seg.activeReceiveIndex)
+              ? seg.activeReceiveIndex
+              : 0
+          if (segReceives.length > 0) {
+            segAi = Math.min(Math.max(0, segAi), segReceives.length - 1)
+          }
+          return {
+            id: typeof seg.id === 'string' ? seg.id : '',
+            speakerCharacterId:
+              typeof seg.speakerCharacterId === 'string'
+                ? seg.speakerCharacterId
+                : '',
+            receives: segReceives,
+            activeReceiveIndex: segAi,
+            ...(seg.meta?.nextSpeakerHint
+              ? { meta: { nextSpeakerHint: seg.meta.nextSpeakerHint } }
+              : {}),
+          }
+        })
+      : undefined
     let ai =
       typeof row.activeReceiveIndex === 'number' &&
       !Number.isNaN(row.activeReceiveIndex)
@@ -90,6 +135,13 @@ export function parseConversationTurnsFromApi(
         receives: [],
         activeReceiveIndex: 0,
         turnOrdinal: ord,
+        ...(segments?.length ? { segments, activeSegmentIndex: row.activeSegmentIndex ?? 0 } : {}),
+        ...(Array.isArray(row.speakerQueue) && row.speakerQueue.length > 0
+          ? { speakerQueue: row.speakerQueue }
+          : {}),
+        ...(typeof row.speakerCharacterId === 'string' && row.speakerCharacterId.trim()
+          ? { speakerCharacterId: row.speakerCharacterId.trim() }
+          : {}),
         ...(Array.isArray(row.plugins) && row.plugins.length > 0
           ? { plugins: row.plugins }
           : {}),
@@ -104,6 +156,21 @@ export function parseConversationTurnsFromApi(
       receives,
       activeReceiveIndex: ai,
       turnOrdinal: ord,
+      ...(segments?.length
+        ? {
+            segments,
+            activeSegmentIndex:
+              typeof row.activeSegmentIndex === 'number'
+                ? row.activeSegmentIndex
+                : 0,
+          }
+        : {}),
+      ...(Array.isArray(row.speakerQueue) && row.speakerQueue.length > 0
+        ? { speakerQueue: row.speakerQueue }
+        : {}),
+      ...(typeof row.speakerCharacterId === 'string' && row.speakerCharacterId.trim()
+        ? { speakerCharacterId: row.speakerCharacterId.trim() }
+        : {}),
       ...(Array.isArray(row.plugins) && row.plugins.length > 0
         ? { plugins: row.plugins }
         : {}),
@@ -273,6 +340,7 @@ export function mergeTurnFromPatchPersist(
 export async function persistTurnToServer(
   conversationId: string,
   turn: ChatTurnItem,
+  opts?: { segmentIndex?: number },
 ): Promise<PersistTurnToServerResult> {
   try {
     const res = await fetch(
@@ -280,19 +348,7 @@ export async function persistTurnToServer(
       {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userText: turn.user,
-          receives: turn.receives.map((r) => ({
-            id: r.id,
-            content: r.content,
-            ...(r.reasoning ? { reasoning: r.reasoning } : {}),
-            ...(r.durationMs ? { durationMs: r.durationMs } : {}),
-            ...(r.estimatedTokens ? { estimatedTokens: r.estimatedTokens } : {}),
-            ...(r.completionTokens ? { completionTokens: r.completionTokens } : {}),
-            ...(r.model ? { model: r.model } : {}),
-          })),
-          activeReceiveIndex: turn.activeReceiveIndex,
-        }),
+        body: JSON.stringify(buildTurnPatchRequestBody(turn, opts?.segmentIndex)),
       },
     )
     if (!res.ok) return { ok: false }

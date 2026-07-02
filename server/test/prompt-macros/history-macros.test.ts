@@ -40,6 +40,37 @@ describe('flattenTurnsToChatMessages', () => {
     assert.equal(flat[0]!.role, 'user')
     assert.equal(flat[1]!.content, 'hello')
   })
+
+  it('expands all assistant segments in one turn', () => {
+    const multi: TurnRecord = {
+      turnId: 't-0',
+      turnOrdinal: 0,
+      send: { userText: 'hi both' },
+      receives: [{ id: 'r1', content: 'legacy' }],
+      activeReceiveIndex: 0,
+      segments: [
+        {
+          id: 's1',
+          speakerCharacterId: 'alice',
+          receives: [{ id: 'r1', content: 'from alice' }],
+          activeReceiveIndex: 0,
+        },
+        {
+          id: 's2',
+          speakerCharacterId: 'betty',
+          receives: [{ id: 'r2', content: 'from betty' }],
+          activeReceiveIndex: 0,
+        },
+      ],
+      activeSegmentIndex: 1,
+      plugins: [],
+    }
+    const flat = flattenTurnsToChatMessages([multi])
+    assert.equal(flat.length, 3)
+    assert.equal(flat[0]!.role, 'user')
+    assert.equal(flat[1]!.content, 'from alice')
+    assert.equal(flat[2]!.content, 'from betty')
+  })
 })
 
 describe('buildMacroHistoryFields', () => {

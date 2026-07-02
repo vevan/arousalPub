@@ -70,6 +70,26 @@ export function parseAtSlashDisplayNames(
   return { names, remainder }
 }
 
+/** 是否存在 `/@` 行但未匹配到任何绑定名 */
+export function hasUnmatchedAtSlashNames(
+  raw: string,
+  boundDisplayNames: readonly string[],
+): boolean {
+  const parsed = parseComposerSubmit(raw, { boundDisplayNames })
+  for (const cmd of parsed.commands) {
+    if (cmd.kind === 'at' && cmd.names.length === 0) {
+      const lines = raw.split('\n')
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!SLASH_LINE_RE.test(trimmed)) continue
+        const inner = trimmed.replace(/^\s*\//, '').trim()
+        if (inner.toLowerCase().startsWith('@')) return true
+      }
+    }
+  }
+  return false
+}
+
 export function parseComposerSubmit(
   raw: string,
   opts: { boundDisplayNames?: readonly string[] } = {},
@@ -78,7 +98,7 @@ export function parseComposerSubmit(
   const commands: ParsedSlashCommand[] = []
   const lines = raw.split('\n')
   let lineIndex = 0
-  let atArgsPending = ''
+  const bodyPrefixParts: string[] = []
 
   for (; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex]!
@@ -95,8 +115,10 @@ export function parseComposerSubmit(
     if (parsed.kind === 'at') {
       const inner = line.trim().replace(/^\s*\//, '').trim()
       const space = inner.indexOf(' ')
-      atArgsPending = space < 0 ? '' : inner.slice(space + 1)
-      commands.push({ kind: 'at', names: [] })
+      const args = space < 0 ? '' : inner.slice(space + 1)
+      const { names, remainder } = parseAtSlashDisplayNames(args, boundDisplayNames)
+      commands.push({ kind: 'at', names })
+      if (remainder) bodyPrefixParts.push(remainder)
       continue
     }
 
@@ -104,18 +126,7 @@ export function parseComposerSubmit(
   }
 
   const bodyLines = lines.slice(lineIndex)
-  let body = bodyLines.join('\n').trim()
-
-  const atIndex = commands.findIndex((c) => c.kind === 'at')
-  if (atIndex >= 0) {
-    const { names, remainder } = parseAtSlashDisplayNames(atArgsPending, boundDisplayNames)
-    commands[atIndex] = { kind: 'at', names }
-    if (remainder && !body) {
-      body = remainder
-    } else if (remainder && body) {
-      body = `${remainder}\n${body}`.trim()
-    }
-  }
+  const body = [...bodyPrefixParts, ...bodyLines].join('\n').trim()
 
   return { raw, body, commands }
 }

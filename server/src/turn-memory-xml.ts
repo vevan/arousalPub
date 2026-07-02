@@ -1,14 +1,35 @@
 import { getTurnUserText, type TurnRecord } from './chat-storage.js'
 import {
+  getActiveSegment,
+  getTurnSegments,
+  type AssistantSegmentRecord,
+} from './group-chat-turn.js'
+import {
   escapeXmlAttribute,
   prepareXmlElementText,
 } from './prompt-xml.js'
+import { flattenTurnsToChatMessages } from './prompt-macros/history-macros.js'
 
-export function assistantTextFromTurn(t: TurnRecord): string {
-  const rs = t.receives
+export function assistantTextFromTurn(
+  t: TurnRecord,
+  defaultSpeakerCharacterId = '',
+): string {
+  const seg = getActiveSegment(t, defaultSpeakerCharacterId)
+  const rs = seg.receives
   if (!Array.isArray(rs) || rs.length === 0) return ''
   const ai = Math.min(
-    Math.max(0, Math.floor(t.activeReceiveIndex) || 0),
+    Math.max(0, Math.floor(seg.activeReceiveIndex) || 0),
+    rs.length - 1,
+  )
+  const c = rs[ai]?.content
+  return typeof c === 'string' ? c : ''
+}
+
+function segmentAssistantText(seg: AssistantSegmentRecord): string {
+  const rs = seg.receives ?? []
+  if (rs.length === 0) return ''
+  const ai = Math.min(
+    Math.max(0, Math.floor(seg.activeReceiveIndex) || 0),
     rs.length - 1,
   )
   const c = rs[ai]?.content
@@ -30,10 +51,15 @@ export function wrapTurnRoleLine(
 
 function turnToXmlInner(
   turn: TurnRecord,
-  opts?: { correlation?: number; omitTurnId?: boolean },
+  opts?: {
+    correlation?: number
+    omitTurnId?: boolean
+    defaultSpeakerCharacterId?: string
+  },
 ): string {
   const user = getTurnUserText(turn)
-  const assistant = assistantTextFromTurn(turn)
+  const defaultSpeaker = opts?.defaultSpeakerCharacterId?.trim() ?? ''
+  const segments = getTurnSegments(turn, defaultSpeaker)
   const attrs: string[] = []
   if (!opts?.omitTurnId) {
     attrs.push(`id="${escapeXmlAttribute(turn.turnId)}"`)
@@ -49,8 +75,11 @@ function turnToXmlInner(
   if (user.trim()) {
     lines.push(`    ${wrapTurnRoleLine('user', user)}`)
   }
-  if (assistant.trim()) {
-    lines.push(`    ${wrapTurnRoleLine('assistant', assistant)}`)
+  for (const seg of segments) {
+    const assistant = segmentAssistantText(seg).trim()
+    if (assistant) {
+      lines.push(`    ${wrapTurnRoleLine('assistant', assistant)}`)
+    }
   }
   lines.push('  </turn>')
   return lines.join('\n')
@@ -65,6 +94,11 @@ export function formatHistoryXml(turns: TurnRecord[]): string {
 /** 近期 N 轮 → 组装用 user/assistant 消息链（非 XML）。 */
 export function turnsToHistoryMessages(
   turns: TurnRecord[],
+  opts?: {
+    defaultSpeakerCharacterId?: string
+    /** 指定 turn 内仅输出 segmentIndex < exclusive 的 segment */
+    partialTurn?: { turnOrdinal: number; segmentIndexExclusive: number }
+  },
 ): {
   role: 'user' | 'assistant'
   content: string
@@ -72,7 +106,10 @@ export function turnsToHistoryMessages(
   turnOrdinal: number
   receiveId?: string
   receiveIndex?: number
+  segmentIndex?: number
+  speakerCharacterId?: string
 }[] {
+  const defaultSpeaker = opts?.defaultSpeakerCharacterId?.trim() ?? ''
   const out: {
     role: 'user' | 'assistant'
     content: string
@@ -80,6 +117,8 @@ export function turnsToHistoryMessages(
     turnOrdinal: number
     receiveId?: string
     receiveIndex?: number
+    segmentIndex?: number
+    speakerCharacterId?: string
   }[] = []
   for (const turn of turns) {
     const user = getTurnUserText(turn).trim()
@@ -91,11 +130,19 @@ export function turnsToHistoryMessages(
         turnOrdinal: turn.turnOrdinal,
       })
     }
-    const assistant = assistantTextFromTurn(turn).trim()
-    if (assistant) {
-      const receives = turn.receives ?? []
+    const segments = getTurnSegments(turn, defaultSpeaker)
+    const partial =
+      opts?.partialTurn?.turnOrdinal === turn.turnOrdinal
+        ? opts.partialTurn.segmentIndexExclusive
+        : segments.length
+    const segLimit = Math.min(Math.max(0, partial), segments.length)
+    for (let si = 0; si < segLimit; si++) {
+      const seg = segments[si]!
+      const assistant = segmentAssistantText(seg).trim()
+      if (!assistant) continue
+      const receives = seg.receives ?? []
       const activeIdx = Math.min(
-        Math.max(0, Math.floor(turn.activeReceiveIndex) || 0),
+        Math.max(0, Math.floor(seg.activeReceiveIndex) || 0),
         Math.max(0, receives.length - 1),
       )
       const rec = receives[activeIdx]
@@ -104,6 +151,8 @@ export function turnsToHistoryMessages(
         content: assistant,
         turnId: turn.turnId,
         turnOrdinal: turn.turnOrdinal,
+        segmentIndex: si,
+        speakerCharacterId: seg.speakerCharacterId,
         ...(rec?.id ? { receiveId: rec.id } : {}),
         receiveIndex: activeIdx,
       })
@@ -136,9 +185,16 @@ export function formatMemoryXml(
 }
 
 /** 索引用：用户 + 助手正文拼接（资料库扫描等；memory 向量请用 buildMemoryEmbeddingCorpus） */
-export function turnEmbeddingCorpus(turn: TurnRecord): string {
+export function turnEmbeddingCorpus(
+  turn: TurnRecord,
+  defaultSpeakerCharacterId = '',
+): string {
   const u = getTurnUserText(turn).trim()
-  const a = assistantTextFromTurn(turn).trim()
+  const segments = getTurnSegments(turn, defaultSpeakerCharacterId.trim())
+  const assistantParts = segments
+    .map((seg) => segmentAssistantText(seg).trim())
+    .filter((x) => x.length > 0)
+  const a = assistantParts.join('\n\n')
   return [u, a].filter((x) => x.length > 0).join('\n\n')
 }
 
@@ -158,8 +214,9 @@ export function buildMemoryRecallQuery(
   ) {
     pool = pool.filter((t) => t.turnOrdinal < beforeExclusive)
   }
-  const last = pool.length > 0 ? pool[pool.length - 1] : null
-  const assistant = last ? assistantTextFromTurn(last).trim() : ''
+  const flat = flattenTurnsToChatMessages(pool)
+  const lastAssistant = [...flat].reverse().find((m) => m.role === 'assistant')
+  const assistant = lastAssistant?.content.trim() ?? ''
   const parts: string[] = []
   if (assistant) parts.push(assistant)
   if (user) parts.push(user)

@@ -1,6 +1,6 @@
 # 群聊（多角色发言轮次）— 设计定案
 
-> **状态**：定案 · **未实现**（2026-07-01）  
+> **状态**：定案 · **G0/G1 已落地**（2026-07-01）；G2–G4 待做  
 > **关联**：`DOC/03` §6（turn/chunk）、`DOC/04` **P0**、`DOC/14` / `DOC/26`（ST 群聊宏）、Composer Slash（`submitComposer`）
 
 ---
@@ -13,9 +13,11 @@
 |------|------|
 | 会话 `characterIds[]` 多卡绑定与 XML 注入 | ✅ |
 | 宏 `{{char}}` / `{{charN}}` / `{{notChar}}`（多卡名列表） | ✅ 部分 |
-| 一轮 user 对应多个 **不同 speaker** 的 assistant | ❌ |
+| 一轮 user 对应多个 **不同 speaker** 的 assistant | ✅ G0 |
 | ST 群聊宏 `{{group}}` 等 | ❌ |
-| Composer Slash / `/@` | ✅ 部分（S0–S2、S4；**S3 插件执行**待做）见 [`DOC/36`](36-composer-slash.md) |
+| Composer Slash / `/@` | ✅ S0–S2、S4；**S3 插件执行**待做）见 [`DOC/36`](36-composer-slash.md) |
+| `speakerQueue` → turn / chat API | ✅ G1 |
+| 手动 Continue（`groupContinue`） | ✅ G1 |
 
 当前为**多卡绑定**，非 ST 式群聊：assistant 无 `speakerCharacterId`，`{{char}}` 固定为 `characterIds[0]`。
 

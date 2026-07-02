@@ -40,12 +40,43 @@ describe('parseComposerSubmit', () => {
     assert.equal(r.body, '你们俩说说')
   })
 
-  it('does not parse bare @ in body', () => {
-    const r = parseComposerSubmit('@Alice hello', {
+  it('merges multiple /@ lines into speaker queue', () => {
+    const r = parseComposerSubmit('/@ Alice\n/@ Betty\nhello', {
+      boundDisplayNames: ['Alice', 'Betty'],
+    })
+    assert.deepEqual(r.commands, [
+      { kind: 'at', names: ['Alice'] },
+      { kind: 'at', names: ['Betty'] },
+    ])
+    assert.equal(r.body, 'hello')
+    assert.deepEqual(
+      submitComposerParse('/@ Alice\n/@ Betty\nhello', {
+        boundDisplayNames: ['Alice', 'Betty'],
+      }).speakerQueue,
+      ['Alice', 'Betty'],
+    )
+  })
+
+  it('/@ with case-insensitive bound name and inline remainder', () => {
+    const r = parseComposerSubmit('/@ betty 你怎么看', {
+      boundDisplayNames: ['Alice', 'Betty'],
+    })
+    assert.deepEqual(r.commands, [{ kind: 'at', names: ['Betty'] }])
+    assert.equal(r.body, '你怎么看')
+    assert.deepEqual(
+      submitComposerParse('/@ betty 你怎么看', {
+        boundDisplayNames: ['Alice', 'Betty'],
+      }).speakerQueue,
+      ['Betty'],
+    )
+  })
+
+  it('unmatched /@ name stays in body remainder', () => {
+    const r = parseComposerSubmit('/@ betty 你怎么看', {
       boundDisplayNames: ['Alice'],
     })
-    assert.deepEqual(r.commands, [])
-    assert.equal(r.body, '@Alice hello')
+    assert.deepEqual(r.commands, [{ kind: 'at', names: [] }])
+    assert.equal(r.body, 'betty 你怎么看')
   })
 })
 

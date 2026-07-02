@@ -4,6 +4,7 @@ import ChatComposerInputHistoryMenu from '@/components/chat/ChatComposerInputHis
 import ChatComposerSlashMenu from '@/components/chat/ChatComposerSlashMenu.vue'
 import PluginSlotMount from '@/plugins/PluginSlotMount.vue'
 import { useComposerSlashMenu } from '@/composables/chat-session/use-composer-slash-menu'
+import { characterNameById } from '@/utils/group-chat-turn'
 import { usePreferencesStore } from '@/stores/preferences'
 import { storeToRefs } from 'pinia'
 import { computed, ref, toRefs, watch } from 'vue'
@@ -38,13 +39,26 @@ const { userInput, errorText, assemblePreviewLoading, writeChatPromptSnapshot } 
 
 const { canSend, canPreviewAssemble, isGenerating } = toRefs(props.session)
 
-const { send, abortCurrentReply, openAssemblePreview } = props.session
+const { send, abortCurrentReply, openAssemblePreview, continueGroupChat, dismissGroupContinue } =
+  props.session
+
+const pendingGroupContinue = computed(() => props.session.pendingGroupContinue)
+
+const continueSpeakerLabel = computed(() => {
+  const pending = pendingGroupContinue.value
+  if (!pending) return ''
+  const ids = props.session.conversationCharacterIds ?? []
+  const names = props.session.conversationCharacterDisplayNames ?? []
+  return characterNameById(pending.nextSpeakerCharacterId, ids, names)
+})
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
 const slashMenu = useComposerSlashMenu({
   userInput,
   textareaRef,
+  boundDisplayNames: () =>
+    props.session.conversationCharacterDisplayNames ?? [],
 })
 
 const { isOpen, filtered, activeIndex } = slashMenu
@@ -114,6 +128,30 @@ function onSlashHover(index: number) {
       >
         {{ errorText }}
       </v-alert>
+      <div
+        v-if="pendingGroupContinue"
+        class="group-continue-bar mb-3 d-flex align-center ga-2 flex-wrap"
+      >
+        <span class="text-body-2">
+          {{ $t('chat.groupChat.continuePrompt', { name: continueSpeakerLabel }) }}
+        </span>
+        <v-btn
+          size="small"
+          color="primary"
+          variant="flat"
+          :disabled="isGenerating"
+          @click="continueGroupChat()"
+        >
+          {{ $t('chat.groupChat.continue') }}
+        </v-btn>
+        <v-btn
+          size="small"
+          variant="text"
+          @click="dismissGroupContinue()"
+        >
+          {{ $t('chat.groupChat.dismiss') }}
+        </v-btn>
+      </div>
       <div
         class="composer"
         :class="composerAnchorClass"

@@ -1,5 +1,5 @@
 import { getTurnUserText, type TurnRecord } from '../chat-storage.js'
-import { assistantTextFromTurn } from '../turn-memory-xml.js'
+import { getTurnSegments } from '../group-chat-turn.js'
 
 export interface FlatHistoryMessage {
   role: 'user' | 'assistant'
@@ -38,7 +38,9 @@ const EMPTY_HISTORY_FIELDS: MacroHistoryFields = {
 
 export function flattenTurnsToChatMessages(
   turns: TurnRecord[],
+  defaultSpeakerCharacterId = '',
 ): FlatHistoryMessage[] {
+  const defaultSpeaker = defaultSpeakerCharacterId.trim()
   const out: FlatHistoryMessage[] = []
   for (const turn of turns) {
     const user = getTurnUserText(turn).trim()
@@ -50,17 +52,20 @@ export function flattenTurnsToChatMessages(
         turnOrdinal: turn.turnOrdinal,
       })
     }
-    const assistant = assistantTextFromTurn(turn).trim()
-    if (assistant) {
-      const receives = turn.receives ?? []
+    const segments = getTurnSegments(turn, defaultSpeaker)
+    for (const seg of segments) {
+      const receives = seg.receives ?? []
+      if (receives.length === 0) continue
       const activeIdx = Math.min(
-        Math.max(0, Math.floor(turn.activeReceiveIndex) || 0),
-        Math.max(0, receives.length - 1),
+        Math.max(0, Math.floor(seg.activeReceiveIndex) || 0),
+        receives.length - 1,
       )
       const rec = receives[activeIdx]
+      const content = typeof rec?.content === 'string' ? rec.content.trim() : ''
+      if (!content) continue
       out.push({
         role: 'assistant',
-        content: assistant,
+        content,
         turnId: turn.turnId,
         turnOrdinal: turn.turnOrdinal,
         receiveId: rec?.id,

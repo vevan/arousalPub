@@ -28,9 +28,21 @@ import {
   readConversationIndex,
   resolvedCharacterIds,
   resolvedLorebookIds,
+  getTurnUserText,
   type ConversationIndex,
+  type TurnRecord,
 } from './chat-storage.js'
-import { readCharacterDocument } from './character-storage.js'
+import { readChunkContainingOrdinal } from './chunk-chain.js'
+import {
+  normalizeGroupChatSettings,
+  parseGroupContinueBody,
+  resolveOutboundSpeakerCharacterId,
+  type GroupContinueBody,
+} from './group-chat-turn.js'
+import {
+  loadCharacterDisplayNamesForIds,
+  readCharacterDocument,
+} from './character-storage.js'
 import type { PromptsDocument } from './prompts-file.js'
 import { resolveLorebookSettings } from './lorebook-settings.js'
 import { resolveLorebookInjectionParts } from './lorebook-resolve.js'
@@ -78,7 +90,6 @@ import { countChatMessagesTokens } from './token-count.js'
 import { readTurnsInOrdinalRange } from './chunk-chain.js'
 import { loadTurnsForMacroIndexing } from './prompt-macros/macro-indexing-turns.js'
 import { readPluginRegistry } from './plugin-system/registry.js'
-import type { TurnRecord } from './chat-storage.js'
 import {
   memoryTextFromTrimState,
   runPromptBudgetTrimLoop,
@@ -248,6 +259,7 @@ const TRIGGERS: PromptTrigger[] = [
   'continue',
   'swipe',
   'regenerate',
+  'groupContinue',
 ]
 
 function normalizeTrigger(raw: unknown): PromptTrigger {
@@ -262,6 +274,16 @@ export interface BuildConversationMessagesParams {
   userText: string
   promptTrigger?: unknown
   historyBeforeTurnOrdinalExclusive?: number | null
+  historyPartialTurn?: { turnOrdinal: number; segmentIndexExclusive: number }
+  /** 当前生成 segment 的 speaker（{{char}}） */
+  speakerCharacterId?: string
+  /** 群聊：/@ 解析后的 characterId 队列 */
+  speakerQueue?: string[]
+  /** 群聊：/@ displayName 队列（服务端解析为 characterId） */
+  speakerQueueDisplayNames?: string[]
+  groupContinue?: GroupContinueBody
+  regenerateSegmentIndex?: number
+  regenerateTurnOrdinal?: number | null
   contextLength?: number | null
   tokenModel?: string | null
   plugins?: ChatPluginsBody | null
@@ -333,7 +355,60 @@ export async function buildConversationOutboundMessages(
     idx.budgetTrimSettings,
   )
 
-  const userInput = typeof params.userText === 'string' ? params.userText : ''
+  const charIds = resolvedCharacterIds(idx)
+  const defaultSpeakerId = charIds[0]?.trim() ?? ''
+  const groupChat = normalizeGroupChatSettings(idx.groupChat)
+  const groupContinue = params.groupContinue
+  let userInput = typeof params.userText === 'string' ? params.userText : ''
+  let historyBeforeEx = params.historyBeforeTurnOrdinalExclusive ?? undefined
+  let historyPartialTurn = params.historyPartialTurn
+  let speakerCharacterId = params.speakerCharacterId?.trim() ?? ''
+
+  if (
+    !speakerCharacterId &&
+    !groupContinue &&
+    (params.speakerQueue?.length || params.speakerQueueDisplayNames?.length)
+  ) {
+    const charNames = await loadCharacterDisplayNamesForIds(charIds)
+    speakerCharacterId = resolveOutboundSpeakerCharacterId({
+      groupChatEnabled: Boolean(groupChat.enabled),
+      characterIds: charIds,
+      characterNames: charNames,
+      defaultCharacterId: defaultSpeakerId,
+      speakerQueueIds: params.speakerQueue,
+      speakerQueueDisplayNames: params.speakerQueueDisplayNames,
+    })
+  }
+  if (!speakerCharacterId) speakerCharacterId = defaultSpeakerId
+
+  if (groupContinue) {
+    const turnOrd = groupContinue.turnOrdinal
+    const located = await readChunkContainingOrdinal(conversationId, turnOrd)
+    const turn = located?.chunk.turns.find((t) => t.turnOrdinal === turnOrd)
+    if (!turn) {
+      return { error: ApiErrorCodes.regenerate_turn_not_found, status: 404 }
+    }
+    if (!userInput.trim()) {
+      userInput = getTurnUserText(turn)
+    }
+    speakerCharacterId = groupContinue.speakerCharacterId.trim()
+    historyBeforeEx = turnOrd + 1
+    historyPartialTurn = {
+      turnOrdinal: turnOrd,
+      segmentIndexExclusive: groupContinue.afterSegmentIndex + 1,
+    }
+  } else if (
+    typeof params.regenerateTurnOrdinal === 'number' &&
+    typeof params.regenerateSegmentIndex === 'number' &&
+    params.regenerateSegmentIndex > 0
+  ) {
+    historyBeforeEx = params.regenerateTurnOrdinal + 1
+    historyPartialTurn = {
+      turnOrdinal: params.regenerateTurnOrdinal,
+      segmentIndexExclusive: params.regenerateSegmentIndex,
+    }
+  }
+
   const maxT = params.contextLength
   const maxTokens =
     typeof maxT === 'number' && !Number.isNaN(maxT) && maxT > 0
@@ -347,7 +422,7 @@ export async function buildConversationOutboundMessages(
   let indexingTurns: TurnRecord[] = []
   let enabledPluginIds: string[] = []
   try {
-    const beforeEx = params.historyBeforeTurnOrdinalExclusive ?? undefined
+    const beforeEx = historyBeforeEx
     ;[memoryPipeline, indexingTurns, enabledPluginIds] = await Promise.all([
       runMemoryPipeline({
         conversationId,
@@ -355,6 +430,8 @@ export async function buildConversationOutboundMessages(
         memorySettings: effectiveMemory,
         historySettings: effectiveHistory,
         historyBeforeTurnOrdinalExclusive: beforeEx,
+        historyPartialTurn,
+        defaultSpeakerCharacterId: defaultSpeakerId,
         activeBranchPath: idx.activeBranchPath ?? '',
       }),
       loadTurnsForMacroIndexing(conversationId, beforeEx),
@@ -373,19 +450,36 @@ export async function buildConversationOutboundMessages(
   }
   const afterMemoryAt = auditEnabled ? performance.now() : 0
 
-  const charIds = resolvedCharacterIds(idx)
   const [userCharacter, characters] = await Promise.all([
     loadUserCharacterSlice(idx),
     loadBoundCharacterSlices(charIds),
   ])
   const afterCharactersAt = auditEnabled ? performance.now() : 0
 
+  let macroCharacters = characters
+  let macroCharNameList = characters
+    .map((c) => c.name?.trim())
+    .filter((n): n is string => Boolean(n))
+  let primaryMacroFields = characters[0]?.macroFields
+  const speakerIdx = charIds.indexOf(speakerCharacterId)
+  if (speakerIdx > 0 && characters[speakerIdx]) {
+    macroCharacters = [
+      characters[speakerIdx]!,
+      ...characters.slice(0, speakerIdx),
+      ...characters.slice(speakerIdx + 1),
+    ]
+    macroCharNameList = macroCharacters
+      .map((c) => c.name?.trim())
+      .filter((n): n is string => Boolean(n))
+    primaryMacroFields = characters[speakerIdx]?.macroFields
+  }
+
   const charCtx: {
     userCharacter?: BoundCharacterSlice
     characters?: BoundCharacterSlice[]
   } = {}
   if (userCharacter) charCtx.userCharacter = userCharacter
-  if (characters.length > 0) charCtx.characters = characters
+  if (macroCharacters.length > 0) charCtx.characters = macroCharacters
 
   const trigger = normalizeTrigger(params.promptTrigger)
 
@@ -397,9 +491,7 @@ export async function buildConversationOutboundMessages(
     trigger,
   )
 
-  const charNameList = characters
-    .map((c) => c.name?.trim())
-    .filter((n): n is string => Boolean(n))
+  const charNameList = macroCharNameList
 
   const historyFields = buildMacroHistoryFields({
     indexingTurns,
@@ -415,7 +507,8 @@ export async function buildConversationOutboundMessages(
 
   let macroContext = buildPromptMacroContext({
     conversationUserName: idx.userName,
-    characters,
+    characters: macroCharacters,
+    primaryCharacter: primaryMacroFields ?? undefined,
     userCharacter,
     model: params.tokenModel ?? undefined,
     contextLength: maxTokens,

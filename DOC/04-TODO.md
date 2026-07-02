@@ -7,12 +7,12 @@
 - [ ] **Composer Slash 命令** — 定案见 [`DOC/35`](35-group-chat.md) §2.3（群聊 `/@`）；输入框 `/` 命令层（与聊天 turns、输入历史分离）
   - [x] **S0** 宿主 `submitComposer` 统一入口 + 命令解析/路由（raw → 命令 + 剩余正文）
   - [x] **S1** 内置 `/goto N` 跳转轮次
-  - [x] **S2** 内置 `/@ Name [Name…]` — 解析 + strip（`speakerQueue` 待群聊 G1 接入）；**正文裸 `@` 不参与选人**
+  - [x] **S2** 内置 `/@ Name [Name…]` — 解析 + strip；`speakerQueue` 已接入 G1 persist/API；**正文裸 `@` 不参与选人**
   - [ ] **S3** 插件注册命令（如 `plot-summary` `/summary 36-55`）；输入历史存 raw 提交
   - [x] **S4** Composer `/` 补全菜单（`#composer-slash-layer` + CSS anchor、`60dvh`、两行列表）
 - [ ] **群聊** — 定案 [`DOC/35`](35-group-chat.md)；当前仅 `characterIds[]` 多卡绑定；ST 宏见 `DOC/14` / `DOC/26`
-  - [ ] **G0 轮次模型** — `AssistantSegment` + `speakerCharacterId`；chunk/turn 迁移；UI 多气泡；regenerate/swipe 仅当前 segment
-  - [ ] **G1 `/@` + Continue** — 依赖 Slash S0/S2；未开群聊默认 char1、`/@` 强制 1 段；`groupContinue` API 草案
+  - [x] **G0 轮次模型** — `AssistantSegment` + `speakerCharacterId`；chunk/turn 迁移；UI 多气泡；regenerate/swipe 仅当前 segment
+  - [x] **G1 `/@` + Continue** — Slash S0/S2；未开群聊默认 char1、`/@` 强制 1 段 + toast；`groupContinue` API + 手动 Continue 条
   - [ ] **G2 随机 + 衰减** — `groupChat` settings、权重/mute、顶栏 bot 列表；`autoContinue`；`{{group}}` / `{{groupNotMuted}}`
   - [ ] **G3 LLM 接续** — `[NEXT@Name]` 提取（宏/插件前）；`confirmContinue` + 改选下一位
   - [ ] **G4 打磨** — sequential 兜底、audit、`{{char}}` = 当前 speaker、`{{notChar}}` 群聊语义

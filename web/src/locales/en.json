@@ -1010,6 +1010,13 @@
           "description": "Plugin command"
         }
       }
+    },
+    "groupChat": {
+      "queueNeedsEnabled": "Group chat is off: only the first named speaker replies. Enable group chat in conversation settings for multi-speaker turns.",
+      "atNameUnmatched": "No bound character matched your /@ names. Check spelling against characters linked to this conversation.",
+      "continuePrompt": "Next speaker: {name}",
+      "continue": "Continue",
+      "dismiss": "End turn"
     }
   },
   "conversationList": {

@@ -21,6 +21,15 @@ export interface ConversationChatRequestParams {
   promptTrigger: PromptTrigger
   historyBeforeTurnOrdinalExclusive?: number
   regenerateTurnOrdinal?: number
+  regenerateSegmentIndex?: number
+  speakerCharacterId?: string
+  speakerQueue?: string[]
+  speakerQueueDisplayNames?: string[]
+  groupContinue?: {
+    turnOrdinal: number
+    speakerCharacterId: string
+    afterSegmentIndex: number
+  }
   plugins?: ConversationChatRequestPlugins
 }
 
@@ -59,6 +68,17 @@ export function buildConversationChatRequestBody(
     ...(params.regenerateTurnOrdinal !== undefined
       ? { regenerateTurnOrdinal: params.regenerateTurnOrdinal }
       : {}),
+    ...(params.regenerateSegmentIndex !== undefined
+      ? { regenerateSegmentIndex: params.regenerateSegmentIndex }
+      : {}),
+    ...(params.speakerCharacterId
+      ? { speakerCharacterId: params.speakerCharacterId }
+      : {}),
+    ...(params.speakerQueue?.length ? { speakerQueue: params.speakerQueue } : {}),
+    ...(params.speakerQueueDisplayNames?.length
+      ? { speakerQueueDisplayNames: params.speakerQueueDisplayNames }
+      : {}),
+    ...(params.groupContinue ? { groupContinue: params.groupContinue } : {}),
     ...(params.plugins ? { plugins: params.plugins } : {}),
     stream: conn.stream,
     contextLength: conn.contextLength ?? undefined,

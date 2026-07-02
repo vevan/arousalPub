@@ -1,4 +1,5 @@
 import { characterImageUrl } from '@/utils/chat-turn-display'
+import { characterNameById } from '@/utils/group-chat-turn'
 import { computed, ref, watch } from 'vue'
 import type { ComposerTranslation } from 'vue-i18n'
 
@@ -6,6 +7,7 @@ export function useChatDisplay(opts: {
   conversationUserName?: string | null
   getUserCharacterId: () => string | null | undefined
   getCharacterIds: () => string[] | null | undefined
+  getBoundDisplayNames?: () => readonly string[] | null | undefined
   getAuthUserId: () => string | null | undefined
   getConnAlias: () => string
   getConnModel: () => string
@@ -38,6 +40,39 @@ export function useChatDisplay(opts: {
     const ch = m.replace(/[^a-zA-Z\u4e00-\u9fa5]/g, '').charAt(0)
     return ch ? ch.toUpperCase() : 'N'
   })
+
+  function avatarLetterFromName(name: string): string {
+    const ch = name.replace(/[^a-zA-Z\u4e00-\u9fa5]/g, '').charAt(0)
+    return ch ? ch.toUpperCase() : 'N'
+  }
+
+  function resolveSpeakerCharacterId(speakerCharacterId?: string): string {
+    const id = speakerCharacterId?.trim()
+    if (id) return id
+    const charIds = opts.getCharacterIds() ?? []
+    return charIds[0]?.trim() ?? ''
+  }
+
+  function assistantRoleNameForSpeaker(speakerCharacterId?: string): string {
+    const id = resolveSpeakerCharacterId(speakerCharacterId)
+    const charIds = opts.getCharacterIds() ?? []
+    const names = opts.getBoundDisplayNames?.() ?? []
+    if (id && charIds.length > 0) {
+      const bound = characterNameById(id, [...charIds], [...names])
+      if (bound.trim()) return bound.trim()
+    }
+    return assistantRoleName.value
+  }
+
+  function assistantAvatarUrlForSpeaker(speakerCharacterId?: string): string | null {
+    const id = resolveSpeakerCharacterId(speakerCharacterId)
+    if (!id) return turnAvatarUrls.value.assistant
+    return characterImageUrl(opts.getAuthUserId(), id, { size: 's' })
+  }
+
+  function assistantAvatarLetterForSpeaker(speakerCharacterId?: string): string {
+    return avatarLetterFromName(assistantRoleNameForSpeaker(speakerCharacterId))
+  }
 
   const turnAvatarUrls = ref<Record<'user' | 'assistant', string | null>>({
     user: null,
@@ -84,5 +119,8 @@ export function useChatDisplay(opts: {
     assistantRoleName,
     userAvatarLetter,
     assistantAvatarLetter,
+    assistantRoleNameForSpeaker,
+    assistantAvatarUrlForSpeaker,
+    assistantAvatarLetterForSpeaker,
   }
 }

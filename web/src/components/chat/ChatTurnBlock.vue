@@ -3,7 +3,9 @@ import ChatTurnAssistant from '@/components/chat/ChatTurnAssistant.vue'
 import ChatTurnUser from '@/components/chat/ChatTurnUser.vue'
 import PluginSlotMount from '@/plugins/PluginSlotMount.vue'
 import type { useChatSession } from '@/composables/useChatSession'
-import type { ChatTurnItem } from '@/types/chat-turn'
+import type { AssistantSegmentItem, ChatTurnItem } from '@/types/chat-turn'
+import { getTurnSegmentsForUi } from '@/utils/group-chat-turn'
+import { computed } from 'vue'
 
 const props = defineProps<{
   turn: ChatTurnItem
@@ -12,6 +14,19 @@ const props = defineProps<{
 }>()
 
 const { turnLabelN, isOpeningTurn } = props.session
+
+const segments = computed(() =>
+  getTurnSegmentsForUi(props.turn),
+)
+
+function segmentTurnView(segment: AssistantSegmentItem): ChatTurnItem {
+  return {
+    ...props.turn,
+    receives: segment.receives,
+    activeReceiveIndex: segment.activeReceiveIndex,
+    speakerCharacterId: segment.speakerCharacterId,
+  }
+}
 </script>
 
 <template>
@@ -43,8 +58,11 @@ const { turnLabelN, isOpeningTurn } = props.session
       :session="session"
     />
     <ChatTurnAssistant
-      :turn="turn"
+      v-for="(segment, segmentIndex) in segments"
+      :key="segment.id || segmentIndex"
+      :turn="segmentTurnView(segment)"
       :list-index="listIndex"
+      :segment-index="segmentIndex"
       :session="session"
     />
   </div>

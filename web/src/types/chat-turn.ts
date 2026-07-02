@@ -7,6 +7,8 @@ export interface ChatSessionProps {
   conversationLorebookIds?: string[]
   conversationUserName?: string | null
   conversationUserCharacterId?: string | null
+  /** 会话 groupChat.enabled；缺省 false */
+  groupChatEnabled?: boolean
 }
 
 export interface ReceiveItem {
@@ -23,12 +25,24 @@ export interface ReceiveItem {
   model?: string
 }
 
+export interface AssistantSegmentItem {
+  id: string
+  speakerCharacterId: string
+  receives: ReceiveItem[]
+  activeReceiveIndex: number
+  meta?: { nextSpeakerHint?: string }
+}
+
 export interface ChatTurnItem {
   turnId?: string
   user: string
   receives: ReceiveItem[]
   activeReceiveIndex: number
   turnOrdinal: number
+  segments?: AssistantSegmentItem[]
+  activeSegmentIndex?: number
+  speakerQueue?: string[]
+  speakerCharacterId?: string
   /** 落盘插件快照（如 trace-keeper） */
   plugins?: unknown[]
 }
@@ -58,6 +72,10 @@ export interface ChatPersistPayload {
   completionTokens?: number
   durationMs?: number
   model?: string
+  segmentIndex?: number
+  activeSegmentIndex?: number
+  speakerCharacterId?: string
+  nextSpeakerCharacterId?: string | null
 }
 
 export interface RetroPersistTurnPayload {

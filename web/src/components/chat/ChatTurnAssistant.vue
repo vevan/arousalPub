@@ -14,6 +14,7 @@ import { computed, toRefs } from 'vue'
 const props = defineProps<{
   turn: ChatTurnItem
   listIndex: number
+  segmentIndex?: number
   session: ReturnType<typeof useChatSession>
 }>()
 
@@ -23,11 +24,8 @@ const { model: connModel } = storeToRefs(conn)
 const {
   streamingText,
   streamingReasoning,
-  editingTurnOrdinal,
-  editingSide,
   editDraft,
   regeneratingTurnOrdinal,
-  turnAvatarUrls,
   copiedTurnKey,
   writeChatPromptSnapshot,
 } = toRefs(props.session)
@@ -52,13 +50,25 @@ const {
   openTurnPromptSnapshot,
   assistantTimerLabel,
   assistantReceiveTokenLabel,
+  isEditingAssistantSegment,
 } = props.session
 
-const { assistantRoleName, assistantAvatarLetter } = toRefs(props.session)
+const segIdx = computed(() => props.segmentIndex ?? 0)
+const copyKey = computed(() => `a-${props.turn.turnOrdinal}-${segIdx.value}`)
+
+function bubbleLoading() {
+  return isAssistantBubbleLoading(props.turn, segIdx.value)
+}
+function bubbleStreaming() {
+  return isAssistantStreamingBubble(props.turn, segIdx.value)
+}
+function bubbleEditing() {
+  return isEditingAssistantSegment(props.turn.turnOrdinal, segIdx.value)
+}
 
 const displayModelName = computed(() => {
   const t = props.turn
-  if (isAssistantBubbleLoading(t)) {
+  if (bubbleLoading()) {
     return connModel.value.trim()
   }
   const idx = t.activeReceiveIndex
@@ -67,6 +77,16 @@ const displayModelName = computed(() => {
     typeof r?.model === 'string' && r.model.trim() ? r.model.trim() : ''
   return stored || connModel.value.trim()
 })
+
+const speakerRoleName = computed(() =>
+  props.session.assistantRoleNameForSpeaker(props.turn.speakerCharacterId),
+)
+const speakerAvatarUrl = computed(() =>
+  props.session.assistantAvatarUrlForSpeaker(props.turn.speakerCharacterId),
+)
+const speakerAvatarLetter = computed(() =>
+  props.session.assistantAvatarLetterForSpeaker(props.turn.speakerCharacterId),
+)
 </script>
 
 <template>
@@ -75,18 +95,18 @@ const displayModelName = computed(() => {
     :data-turn-ordinal="turn.turnOrdinal"
   >
     <div class="turn-avatar avatar avatar--assistant" aria-hidden="true">
-      <img v-if="turnAvatarUrls.assistant" :src="turnAvatarUrls.assistant" alt="" />
-      <span v-else>{{ assistantAvatarLetter }}</span>
+      <img v-if="speakerAvatarUrl" :src="speakerAvatarUrl" alt="" />
+      <span v-else>{{ speakerAvatarLetter }}</span>
     </div>
     <div class="turn-role turn-role--assistant">
       <div class="turn-role__head">
-        <span class="turn-role__label">{{ assistantRoleName }}</span>
+        <span class="turn-role__label">{{ speakerRoleName }}</span>
         <span
           v-if="
             displayModelName ||
-            assistantTimerLabel(turn) ||
-            assistantReceiveTokenLabel(turn) ||
-            isAssistantStreamingBubble(turn)
+            assistantTimerLabel(turn, segIdx) ||
+            assistantReceiveTokenLabel(turn, segIdx) ||
+            bubbleStreaming()
           "
           class="meta turn-role__meta"
         >
@@ -95,7 +115,7 @@ const displayModelName = computed(() => {
             <template v-if="displayModelName"> · </template>
             <span
               class="turn-timer"
-              :class="{ 'turn-timer--live': isAssistantBubbleLoading(turn) }"
+              :class="{ 'turn-timer--live': bubbleLoading() }"
             >
               {{ assistantTimerLabel(turn) }}
             </span>
@@ -118,7 +138,7 @@ const displayModelName = computed(() => {
           :class="{
             'is-filled':
               (conn.showReasoningChain && assistantReasoning(turn).length > 0) ||
-              (isAssistantBubbleLoading(turn) && !!streamingReasoning),
+              (bubbleLoading() && !!streamingReasoning),
           }"
           :data-tt="$t('chat.pluginIndicatorReasoning')"
           :aria-label="$t('chat.pluginIndicatorReasoning')"
@@ -131,7 +151,7 @@ const displayModelName = computed(() => {
         <button
           type="button"
           class="plugin-slot"
-          :class="{ 'is-filled': isAssistantStreamingBubble(turn) }"
+          :class="{ 'is-filled': bubbleStreaming() }"
           :data-tt="$t('chat.pluginIndicatorStream')"
           :aria-label="$t('chat.pluginIndicatorStream')"
         >
@@ -168,9 +188,9 @@ const displayModelName = computed(() => {
     <ChatReasoningChain
       v-if="
         conn.showReasoningChain &&
-        isAssistantBubbleLoading(turn) &&
+        bubbleLoading() &&
         streamingReasoning &&
-        !(editingTurnOrdinal === turn.turnOrdinal && editingSide === 'assistant')
+        !bubbleEditing()
       "
       :key="`reasoning-live-${turn.turnOrdinal}`"
       :turn-ordinal="turn.turnOrdinal"
@@ -183,8 +203,8 @@ const displayModelName = computed(() => {
       v-if="
         conn.showReasoningChain &&
         assistantReasoning(turn).length > 0 &&
-        !isAssistantBubbleLoading(turn) &&
-        !(editingTurnOrdinal === turn.turnOrdinal && editingSide === 'assistant')
+        !bubbleLoading() &&
+        !bubbleEditing()
       "
       :key="`reasoning-${turn.turnOrdinal}`"
       :turn-ordinal="turn.turnOrdinal"
@@ -196,10 +216,10 @@ const displayModelName = computed(() => {
     <div
       class="turn-bubble turn-bubble--assistant position-relative"
       :class="{
-        'turn-bubble--streaming': isAssistantStreamingBubble(turn),
+        'turn-bubble--streaming': bubbleStreaming(),
       }"
     >
-      <template v-if="editingTurnOrdinal === turn.turnOrdinal && editingSide === 'assistant'">
+      <template v-if="bubbleEditing()">
         <v-textarea
           v-model="editDraft"
           rows="3"
@@ -219,9 +239,9 @@ const displayModelName = computed(() => {
           </v-btn>
         </div>
       </template>
-      <template v-else-if="isAssistantBubbleLoading(turn)">
+      <template v-else-if="bubbleLoading()">
         <div
-          v-if="isAssistantStreamingBubble(turn)"
+          v-if="bubbleStreaming()"
           class="chat-rich-text"
           v-html="renderRichMessageToHtml(displayStreamingAssistantText(streamingText, turn.turnOrdinal))"
         />
@@ -241,7 +261,7 @@ const displayModelName = computed(() => {
     </div>
 
     <div
-      v-if="!isAssistantBubbleLoading(turn)"
+      v-if="!bubbleLoading()"
       class="turn-actions turn-actions--assistant"
     >
       <div class="plugin-slots" data-plugin-slot="assistant-turn-footer">
@@ -262,7 +282,7 @@ const displayModelName = computed(() => {
         :disabled="regeneratingTurnOrdinal !== null"
         :data-tt="$t('chat.edit')"
         :aria-label="$t('chat.edit')"
-        @click="openEditAssistant(turn)"
+        @click="openEditAssistant(turn, segIdx)"
       >
         <v-icon size="16">mdi-pencil-outline</v-icon>
       </button>
@@ -272,19 +292,19 @@ const displayModelName = computed(() => {
         :disabled="regeneratingTurnOrdinal !== null || !turn.user.trim()"
         :data-tt="$t('chat.regenerate')"
         :aria-label="$t('chat.regenerate')"
-        @click="regenerateAssistant(listIndex)"
+        @click="regenerateAssistant(listIndex, 'regenerate', segIdx)"
       >
         <v-icon size="16">mdi-refresh</v-icon>
       </button>
       <button
         type="button"
         class="turn-toolbar__btn"
-        :data-tt="copiedTurnKey === `a-${turn.turnOrdinal}` ? $t('chat.copied') : $t('chat.copy')"
-        :class="{ 'is-success': copiedTurnKey === `a-${turn.turnOrdinal}` }"
+        :data-tt="copiedTurnKey === copyKey ? $t('chat.copied') : $t('chat.copy')"
+        :class="{ 'is-success': copiedTurnKey === copyKey }"
         :aria-label="$t('chat.copy')"
-        @click="copyTurnText(displayAssistantText(turn), `a-${turn.turnOrdinal}`)"
+        @click="copyTurnText(displayAssistantText(turn), copyKey)"
       >
-        <v-icon size="16">{{ copiedTurnKey === `a-${turn.turnOrdinal}` ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
+        <v-icon size="16">{{ copiedTurnKey === copyKey ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
       </button>
       <button
         v-if="writeChatPromptSnapshot"
@@ -303,12 +323,12 @@ const displayModelName = computed(() => {
         :disabled="regeneratingTurnOrdinal !== null"
         :data-tt="$t('chat.delete')"
         :aria-label="$t('chat.delete')"
-        @click="requestDelete(listIndex)"
+        @click="requestDelete(listIndex, segIdx)"
       >
         <v-icon size="16">mdi-delete-outline</v-icon>
       </button>
       <div
-        v-if="showAssistantSwipeFooter(turn, listIndex)"
+        v-if="showAssistantSwipeFooter(turn, listIndex, segIdx)"
         class="swipe"
         :aria-label="
           $t('chat.swipePosition', {
@@ -322,7 +342,7 @@ const displayModelName = computed(() => {
           class="swipe__btn"
           :disabled="regeneratingTurnOrdinal !== null"
           :aria-label="$t('chat.prevAssistant')"
-          @click="slideAssistant(listIndex, 'left')"
+          @click="slideAssistant(listIndex, 'left', segIdx)"
         >
           <v-icon size="16">mdi-chevron-left</v-icon>
         </button>
@@ -334,7 +354,7 @@ const displayModelName = computed(() => {
           class="swipe__btn"
           :disabled="regeneratingTurnOrdinal !== null"
           :aria-label="$t('chat.nextAssistant')"
-          @click="slideAssistant(listIndex, 'right')"
+          @click="slideAssistant(listIndex, 'right', segIdx)"
         >
           <v-icon size="16">mdi-chevron-right</v-icon>
         </button>

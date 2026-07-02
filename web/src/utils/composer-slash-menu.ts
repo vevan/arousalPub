@@ -3,12 +3,30 @@
 export interface ComposerSlashMenuContext {
   /** 命令名筛选（`/` 后至首个空格） */
   commandQuery: string
-  /** 替换整行首 slash 行：起止下标 */
+  /** 首行起止下标 */
   lineStart: number
   lineEnd: number
+  /** `/` 字符下标 */
+  slashStart: number
+  /** 补全时替换区间 `[slashStart, insertEnd)`，保留其后正文 */
+  insertEnd: number
 }
 
 const SLASH_LINE_RE = /^\s*\//
+
+export function slashCommandToken(commandId: string): string {
+  const id = commandId.trim()
+  return id === '@' ? '/@' : `/${id}`
+}
+
+export function isComposerSlashCommandFullyMatched(
+  commandQuery: string,
+  commandIds: readonly string[],
+): boolean {
+  const q = commandQuery.trim().toLowerCase()
+  if (!q) return false
+  return commandIds.some((id) => id.trim().toLowerCase() === q)
+}
 
 export function getComposerSlashMenuContext(
   text: string,
@@ -25,22 +43,35 @@ export function getComposerSlashMenuContext(
 
   if (!SLASH_LINE_RE.test(line)) return null
 
+  const slashRel = line.search(/\//)
+  if (slashRel < 0) return null
+  const slashStart = lineStart + slashRel
+
   const inner = line.trim().replace(/^\s*\//, '').trim()
   const space = inner.search(/\s/)
   const commandQuery = space < 0 ? inner : inner.slice(0, space)
 
-  return { commandQuery, lineStart, lineEnd }
+  const insertEnd = Math.max(slashStart + 1, cursor)
+
+  return { commandQuery, lineStart, lineEnd, slashStart, insertEnd }
 }
 
-export function applyComposerSlashExample(
+/** 在光标处插入命令 token（仅命令名，不含示例参数）；保留 insertEnd 之后同 line 正文 */
+export function applyComposerSlashCommand(
   text: string,
   ctx: ComposerSlashMenuContext,
-  example: string,
+  commandId: string,
+  cursor = ctx.insertEnd,
 ): { next: string; cursor: number } {
-  const before = text.slice(0, ctx.lineStart)
-  const after = text.slice(ctx.lineEnd)
-  const insert = example.endsWith(' ') ? example : `${example} `
-  const next = `${before}${insert}${after}`
-  const cursor = before.length + insert.length
-  return { next, cursor }
+  const token = slashCommandToken(commandId)
+  const tokenWithSpace = token.endsWith(' ') ? token : `${token} `
+  const insertEnd = Math.max(ctx.slashStart, Math.min(cursor, ctx.lineEnd))
+  const before = text.slice(0, ctx.slashStart)
+  let after = text.slice(insertEnd)
+  if (tokenWithSpace.endsWith(' ') && after.startsWith(' ')) {
+    after = after.slice(1)
+  }
+  const next = `${before}${tokenWithSpace}${after}`
+  const newCursor = before.length + tokenWithSpace.length
+  return { next, cursor: newCursor }
 }

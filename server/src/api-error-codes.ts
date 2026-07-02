@@ -117,6 +117,8 @@ export const ApiErrorCodes = {
   invalid_plugin_id: 'invalid_plugin_id',
   invalid_request_body: 'invalid_request_body',
   invalid_turn_ordinal: 'invalid_turn_ordinal',
+  group_continue_invalid: 'group_continue_invalid',
+  group_continue_speaker_duplicate: 'group_continue_speaker_duplicate',
   invalid_user: 'invalid_user',
   lorebook_ids_must_be_string_array: 'lorebook_ids_must_be_string_array',
   lorebook_max_recursion_depth_number: 'lorebook_max_recursion_depth_number',

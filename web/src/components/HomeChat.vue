@@ -23,6 +23,7 @@ const props = withDefaults(defineProps<ChatSessionProps & {
   conversationLorebookIds: () => [],
   conversationUserName: null,
   conversationUserCharacterId: null,
+  groupChatEnabled: false,
   authorsNoteActive: false,
 })
 
@@ -61,5 +62,22 @@ const chatSessionStyle = computed(() => ({
     <ChatTurnPromptDialog :session="session" />
     <PluginFormDialogHost />
     <PluginUiHost />
+    <v-snackbar
+      v-model="session.groupChatNoticeOpen"
+      :timeout="6000"
+      location="bottom"
+      color="warning"
+      multi-line
+    >
+      {{ session.groupChatNoticeMessage }}
+      <template #actions>
+        <v-btn
+          variant="text"
+          @click="session.groupChatNoticeOpen = false"
+        >
+          {{ $t('chat.groupChat.dismiss') }}
+        </v-btn>
+      </template>
+    </v-snackbar>
   </div>
 </template>

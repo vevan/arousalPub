@@ -548,6 +548,25 @@ export async function getCharacterIndexMetaMap(): Promise<
   return m
 }
 
+/** GET 会话详情：按 characterIds 填充 characterNames（不落盘 index.json） */
+export async function enrichConversationIndexForClient(
+  idx: ConversationIndex,
+): Promise<ConversationIndex & { characterNames?: string[] }> {
+  const ids = resolvedCharacterIds(idx)
+  if (ids.length === 0) return idx
+  const characterNames = await loadCharacterDisplayNamesForIds(ids)
+  return { ...idx, characterNames }
+}
+
+/** 与 characterIds 同序的 displayName（卡已删时为「已删除」） */
+export async function loadCharacterDisplayNamesForIds(
+  ids: string[],
+): Promise<string[]> {
+  if (ids.length === 0) return []
+  const map = await getCharacterIndexMetaMap()
+  return ids.map((id) => map.get(id.trim())?.name ?? DELETED_CHARACTER_LABEL)
+}
+
 function bindingIdsForEnrich(
   entry: ChatListEntry,
   source?: Pick<

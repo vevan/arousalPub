@@ -7,11 +7,24 @@ import {
   isBranchRegistryBrokenError,
 } from './chunk-chain.js'
 import { normalizeBranchPath } from './chunk-path.js'
-import { getTurnUserText, type TurnReceive, type TurnRecord } from './chat-storage.js'
+import { getTurnUserText, readConversationIndex, resolvedCharacterIds, type TurnReceive, type TurnRecord } from './chat-storage.js'
+import {
+  getActiveSegmentIndex,
+  getTurnSegments,
+  type AssistantSegmentRecord,
+} from './group-chat-turn.js'
 import {
   CONVERSATION_BATCH_MAX_TURNS,
   CONVERSATION_MESSAGES_DEFAULT_TAIL,
 } from './turn-patch-body.js'
+
+export interface MessagesSegmentDto {
+  id: string
+  speakerCharacterId: string
+  receives: MessagesTurnDto['receives']
+  activeReceiveIndex: number
+  meta?: { nextSpeakerHint?: string }
+}
 
 export interface MessagesTurnDto {
   turnId: string
@@ -27,6 +40,10 @@ export interface MessagesTurnDto {
     model?: string
   }[]
   activeReceiveIndex: number
+  segments?: MessagesSegmentDto[]
+  activeSegmentIndex?: number
+  speakerQueue?: string[]
+  speakerCharacterId?: string
   plugins?: unknown[]
 }
 
@@ -75,14 +92,41 @@ function mapReceive(r: TurnReceive) {
 
 export function mapTurnRecordsToMessagesDto(
   allTurnRecords: TurnRecord[],
+  defaultSpeakerCharacterId = '',
 ): MessagesTurnDto[] {
   return allTurnRecords.map((t, i) => {
     const activeUserText = getTurnUserText(t)
+    const defaultSpeaker =
+      defaultSpeakerCharacterId.trim() ||
+      t.speakerCharacterId?.trim() ||
+      t.segments?.[0]?.speakerCharacterId?.trim() ||
+      ''
+    const segments = getTurnSegments(t, defaultSpeaker)
     const recs = (t.receives ?? []).map(mapReceive)
     const ord =
       typeof t.turnOrdinal === 'number' && !Number.isNaN(t.turnOrdinal)
         ? t.turnOrdinal
         : i
+    const segmentDtos: MessagesSegmentDto[] = segments.map((seg) => {
+      const segRecs = (seg.receives ?? []).map(mapReceive)
+      let ai =
+        typeof seg.activeReceiveIndex === 'number' &&
+        !Number.isNaN(seg.activeReceiveIndex)
+          ? seg.activeReceiveIndex
+          : 0
+      if (segRecs.length > 0) {
+        ai = Math.min(Math.max(0, ai), segRecs.length - 1)
+      }
+      return {
+        id: seg.id,
+        speakerCharacterId: seg.speakerCharacterId,
+        receives: segRecs,
+        activeReceiveIndex: ai,
+        ...(seg.meta?.nextSpeakerHint
+          ? { meta: { nextSpeakerHint: seg.meta.nextSpeakerHint } }
+          : {}),
+      }
+    })
     if (recs.length === 0) {
       return {
         turnId: t.turnId,
@@ -90,6 +134,21 @@ export function mapTurnRecordsToMessagesDto(
         user: activeUserText,
         receives: [],
         activeReceiveIndex: 0,
+        ...(segmentDtos.length > 0
+          ? {
+              segments: segmentDtos,
+              activeSegmentIndex: getActiveSegmentIndex(t),
+            }
+          : {}),
+        ...(Array.isArray(t.speakerQueue) && t.speakerQueue.length > 0
+          ? { speakerQueue: t.speakerQueue }
+          : {}),
+        ...(typeof t.speakerCharacterId === 'string' && t.speakerCharacterId.trim()
+          ? { speakerCharacterId: t.speakerCharacterId.trim() }
+          : {}),
+        ...(Array.isArray(t.plugins) && t.plugins.length > 0
+          ? { plugins: t.plugins }
+          : {}),
       }
     }
     let ai =
@@ -103,6 +162,18 @@ export function mapTurnRecordsToMessagesDto(
       user: activeUserText,
       receives: recs,
       activeReceiveIndex: ai,
+      ...(segmentDtos.length > 0
+        ? {
+            segments: segmentDtos,
+            activeSegmentIndex: getActiveSegmentIndex(t),
+          }
+        : {}),
+      ...(Array.isArray(t.speakerQueue) && t.speakerQueue.length > 0
+        ? { speakerQueue: t.speakerQueue }
+        : {}),
+      ...(typeof t.speakerCharacterId === 'string' && t.speakerCharacterId.trim()
+        ? { speakerCharacterId: t.speakerCharacterId.trim() }
+        : {}),
       ...(Array.isArray(t.plugins) && t.plugins.length > 0
         ? { plugins: t.plugins }
         : {}),
@@ -176,6 +247,9 @@ export async function loadConversationMessages(
     activeBranchPath = await readConversationActiveBranchPath(conversationId)
   }
 
+  const convIdx = await readConversationIndex(conversationId)
+  const defaultSpeaker = convIdx ? resolvedCharacterIds(convIdx)[0]?.trim() ?? '' : ''
+
   const mode = resolveMessagesQueryMode(query)
   const hasFrom = query.from !== undefined && query.from !== ''
   const hasTo = query.to !== undefined && query.to !== ''
@@ -194,7 +268,7 @@ export async function loadConversationMessages(
       CONVERSATION_MESSAGES_DEFAULT_TAIL,
     )
     const result = await readTurnsTail(conversationId, tail, activeBranchPath)
-    const turns = mapTurnRecordsToMessagesDto(result.turns)
+    const turns = mapTurnRecordsToMessagesDto(result.turns, defaultSpeaker)
     if (turns.length === 0) {
       return { ok: true, response: { turns } }
     }
@@ -228,7 +302,7 @@ export async function loadConversationMessages(
       limit,
       activeBranchPath,
     )
-    const turns = mapTurnRecordsToMessagesDto(result.turns)
+    const turns = mapTurnRecordsToMessagesDto(result.turns, defaultSpeaker)
     if (turns.length === 0) {
       return {
         ok: true,
@@ -274,7 +348,7 @@ export async function loadConversationMessages(
     return {
       ok: true,
       response: {
-        turns: mapTurnRecordsToMessagesDto(records),
+        turns: mapTurnRecordsToMessagesDto(records, defaultSpeaker),
         page: { hasMoreBefore: from > 0, from, to },
       },
     }
@@ -286,7 +360,7 @@ export async function loadConversationMessages(
   )
   return {
     ok: true,
-    response: { turns: mapTurnRecordsToMessagesDto(records) },
+    response: { turns: mapTurnRecordsToMessagesDto(records, defaultSpeaker) },
   }
   } catch (e) {
     if (isBranchRegistryBrokenError(e)) return branchRegistryError()

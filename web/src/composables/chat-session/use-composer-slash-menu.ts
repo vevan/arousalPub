@@ -4,8 +4,9 @@ import {
   type ComposerSlashCommandSpec,
 } from '@/utils/composer-slash-catalog'
 import {
-  applyComposerSlashExample,
+  applyComposerSlashCommand,
   getComposerSlashMenuContext,
+  isComposerSlashCommandFullyMatched,
 } from '@/utils/composer-slash-menu'
 import { listComposerSlashPluginSpecs } from '@/utils/composer-slash-registry'
 import { computed, ref, type Ref } from 'vue'
@@ -13,13 +14,20 @@ import { computed, ref, type Ref } from 'vue'
 export function useComposerSlashMenu(opts: {
   userInput: Ref<string>
   textareaRef: Ref<HTMLTextAreaElement | null>
+  boundDisplayNames?: Ref<readonly string[]> | (() => readonly string[])
 }) {
   const activeIndex = ref(0)
   const menuCtx = ref<ReturnType<typeof getComposerSlashMenuContext>>(null)
 
-  const catalog = computed(() =>
-    mergeComposerSlashCatalog(listComposerSlashPluginSpecs()),
-  )
+  const catalog = computed(() => {
+    const names =
+      typeof opts.boundDisplayNames === 'function'
+        ? opts.boundDisplayNames()
+        : (opts.boundDisplayNames?.value ?? [])
+    return mergeComposerSlashCatalog(listComposerSlashPluginSpecs(), names)
+  })
+
+  const commandIds = computed(() => catalog.value.map((c) => c.id))
 
   const filtered = computed(() => {
     if (!menuCtx.value) return []
@@ -29,8 +37,19 @@ export function useComposerSlashMenu(opts: {
     )
   })
 
+  const isFullyMatched = computed(() => {
+    if (!menuCtx.value) return false
+    return isComposerSlashCommandFullyMatched(
+      menuCtx.value.commandQuery,
+      commandIds.value,
+    )
+  })
+
   const isOpen = computed(
-    () => menuCtx.value !== null && filtered.value.length > 0,
+    () =>
+      menuCtx.value !== null &&
+      !isFullyMatched.value &&
+      filtered.value.length > 0,
   )
 
   function syncMenuFromInput() {
@@ -93,10 +112,11 @@ export function useComposerSlashMenu(opts: {
     const el = opts.textareaRef.value
     if (!ctx || !el) return
 
-    const { next, cursor } = applyComposerSlashExample(
+    const { next, cursor } = applyComposerSlashCommand(
       opts.userInput.value,
       ctx,
-      spec.example,
+      spec.id,
+      el.selectionStart ?? ctx.insertEnd,
     )
     opts.userInput.value = next
     closeMenu()

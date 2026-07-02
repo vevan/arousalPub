@@ -5,11 +5,17 @@ import { isAbortError } from '@/utils/abort-error'
 import type { ConversationChatRequestPlugins } from '@/utils/chat-api'
 import { allocateShortId } from '@/utils/short-id'
 import { isOpeningTurn } from '@/utils/chat-turn-display'
-import { submitComposerParse } from '@/utils/composer-slash'
+import { submitComposerParse, hasUnmatchedAtSlashNames } from '@/utils/composer-slash'
+import {
+  resolveSpeakerQueueIds,
+  type PendingGroupContinue,
+  getActiveSegmentIndex,
+  getTurnSegmentsForUi,
+} from '@/utils/group-chat-turn'
 import { buildReceiveItem, collectUsedReceiveIds, nextTurnOrdinal0 } from './turn-helpers.js'
 import type { createChatCompletionRunner } from './completion.js'
 import type { createReplyEventHub } from './reply-events.js'
-import { nextTick, type Ref } from 'vue'
+import { nextTick, ref, type Ref } from 'vue'
 import type { ComposerTranslation } from 'vue-i18n'
 
 type CompletionRunner = ReturnType<typeof createChatCompletionRunner>
@@ -21,6 +27,8 @@ export function useChatOutbound(opts: {
   loading: Ref<boolean>
   errorText: Ref<string>
   regeneratingTurnOrdinal: Ref<number | null>
+  pendingSendTurnOrdinal: Ref<number | null>
+  pendingSendSegmentIndex: Ref<number | null>
   pendingSendEstimatedTokens: Ref<number | null>
   pendingReceiveCompletionTokens: Ref<number | null>
   streamingText: Ref<string>
@@ -31,32 +39,113 @@ export function useChatOutbound(opts: {
   assertApiReady: CompletionRunner['assertApiReady']
   runSend: CompletionRunner['runSend']
   runRegenerate: CompletionRunner['runRegenerate']
+  runGroupContinue: CompletionRunner['runGroupContinue']
   abortChatGeneration: CompletionRunner['abortChatGeneration']
   getModel: () => string
   startGenerationTimer: () => void
   stopGenerationTimer: () => number
   setPersistWarning: (persist?: ChatPersistPayload) => void
-  appendPendingUserTurn: (userText: string, ord: number) => void
+  appendPendingUserTurn: (
+    userText: string,
+    ord: number,
+    meta?: { speakerCharacterId?: string; speakerQueue?: string[] },
+  ) => void
   rollbackPendingUserTurn: (ord: number, restoreUserText?: string) => void
   finalizePendingTurn: (
     ord: number,
     receive: ChatTurnItem['receives'][number],
     finalUserText?: string,
+    meta?: {
+      speakerCharacterId?: string
+      speakerQueue?: string[]
+      segmentIndex?: number
+      activeSegmentIndex?: number
+    },
+  ) => void
+  finalizePendingSegment: (
+    ord: number,
+    receive: ChatTurnItem['receives'][number],
+    meta: {
+      segmentIndex: number
+      speakerCharacterId: string
+      activeSegmentIndex: number
+    },
   ) => void
   replaceTurnAt: (listIndex: number, next: ChatTurnItem) => void
-  persistTurnToServer: (turn: ChatTurnItem) => Promise<PersistTurnToServerResult>
+  persistTurnToServer: (
+    turn: ChatTurnItem,
+    patchOpts?: { segmentIndex?: number },
+  ) => Promise<PersistTurnToServerResult>
   loadMessages: () => Promise<void>
   scrollChatToBottom: () => Promise<void>
   endRegeneratingUi: () => void
   emitAssistantReplyComplete: ReplyEventHub['emitAssistantReplyComplete']
   recordInputHistoryOnSend?: (text: string) => void
   getBoundDisplayNames?: () => readonly string[]
+  getCharacterIds?: () => readonly string[]
+  isGroupChatEnabled?: () => boolean
   clearComposerAfterSlash?: () => void
   scrollToTurnOrdinal: (
     turnOrdinal: number,
   ) => Promise<'ok' | 'not_found' | 'future'>
   t: ComposerTranslation
 }) {
+  const pendingGroupContinue = ref<PendingGroupContinue | null>(null)
+  const regeneratingSegmentIndex = ref<number | null>(null)
+  const groupChatNoticeOpen = ref(false)
+  const groupChatNoticeMessage = ref('')
+
+  function updatePendingContinueFromPersist(
+    persist: ChatPersistPayload | undefined,
+    listIndex: number,
+  ) {
+    const nextId = persist?.nextSpeakerCharacterId?.trim()
+    const turnOrd = persist?.turnOrdinal
+    if (!nextId || typeof turnOrd !== 'number') {
+      pendingGroupContinue.value = null
+      return
+    }
+    const turn = opts.turns.value[listIndex]
+    if (!turn || turn.turnOrdinal !== turnOrd) {
+      pendingGroupContinue.value = null
+      return
+    }
+    const segments = getTurnSegmentsForUi(turn)
+    const afterSegmentIndex =
+      typeof persist?.activeSegmentIndex === 'number'
+        ? persist.activeSegmentIndex
+        : Math.max(0, segments.length - 1)
+    pendingGroupContinue.value = {
+      turnOrdinal: turnOrd,
+      listIndex,
+      afterSegmentIndex,
+      nextSpeakerCharacterId: nextId,
+    }
+  }
+
+  function dismissGroupContinue() {
+    pendingGroupContinue.value = null
+  }
+
+  function reconcilePendingGroupContinueListIndex() {
+    const pending = pendingGroupContinue.value
+    if (!pending) return
+    const listIndex = opts.turns.value.findIndex(
+      (t) => t.turnOrdinal === pending.turnOrdinal,
+    )
+    if (listIndex < 0) {
+      pendingGroupContinue.value = null
+      return
+    }
+    if (listIndex !== pending.listIndex) {
+      pendingGroupContinue.value = { ...pending, listIndex }
+    }
+  }
+
+  async function reloadMessagesAndReconcileContinue() {
+    await opts.loadMessages()
+    reconcilePendingGroupContinueListIndex()
+  }
   function applyPersistRetroPatches(persist?: ChatPersistPayload) {
     opts.setPersistWarning(persist)
     let next = opts.turns.value
@@ -87,6 +176,27 @@ export function useChatOutbound(opts: {
     if (!receive) return
     const cur = opts.turns.value[listIndex]
     if (!cur) return
+    const segIdx =
+      regeneratingSegmentIndex.value ?? getActiveSegmentIndex(cur)
+    const segments = getTurnSegmentsForUi(cur)
+    const targetSeg = segments[segIdx]
+    if (targetSeg && cur.segments?.length) {
+      const nextSegments = [...cur.segments]
+      nextSegments[segIdx] = {
+        ...targetSeg,
+        receives: [...targetSeg.receives, receive],
+        activeReceiveIndex: targetSeg.receives.length,
+      }
+      const activeSeg = nextSegments[segIdx]!
+      opts.replaceTurnAt(listIndex, {
+        ...cur,
+        segments: nextSegments,
+        activeSegmentIndex: segIdx,
+        receives: activeSeg.receives,
+        activeReceiveIndex: activeSeg.activeReceiveIndex,
+      })
+      return
+    }
     opts.replaceTurnAt(listIndex, {
       ...cur,
       receives: [...cur.receives, receive],
@@ -121,23 +231,106 @@ export function useChatOutbound(opts: {
     }
   }
 
-  async function sendMessageBody(userText: string) {
+  function maybeWarnUnmatchedAtSlash(
+    raw: string,
+    warnOpts?: { onlyWhenSpeakerQueue?: boolean; speakerQueueLength?: number },
+  ) {
+    if (
+      warnOpts?.onlyWhenSpeakerQueue &&
+      (warnOpts.speakerQueueLength ?? 0) === 0
+    ) {
+      return
+    }
+    if (!hasUnmatchedAtSlashNames(raw, opts.getBoundDisplayNames?.() ?? [])) return
+    groupChatNoticeMessage.value = opts.t('chat.groupChat.atNameUnmatched')
+    groupChatNoticeOpen.value = true
+  }
+
+  function maybeWarnQueueNeedsEnabled(queueLength: number) {
+    if (queueLength <= 1 || (opts.isGroupChatEnabled?.() ?? false)) return
+    groupChatNoticeMessage.value = opts.t('chat.groupChat.queueNeedsEnabled')
+    groupChatNoticeOpen.value = true
+  }
+
+  function resolveSpeakerQueueFromParsed(
+    parsed: ReturnType<typeof submitComposerParse>,
+  ): { speakerQueueIds: string[]; speakerQueueDisplayNames?: string[] } {
+    const characterIds = opts.getCharacterIds?.() ?? []
+    const displayNames = opts.getBoundDisplayNames?.() ?? []
+    const speakerQueueIds = resolveSpeakerQueueIds(
+      parsed.speakerQueue,
+      [...characterIds],
+      [...displayNames],
+    )
+    return {
+      speakerQueueIds,
+      speakerQueueDisplayNames:
+        parsed.speakerQueue.length > 0 ? parsed.speakerQueue : undefined,
+    }
+  }
+
+  function prepareOutboundRequest(): string | undefined {
+    try {
+      opts.parseCustomParamsOrThrow()
+    } catch (e) {
+      opts.errorText.value = opts.customParamsErrorMessage(e)
+      return opts.errorText.value
+    }
+    if (!opts.assertApiReady()) {
+      opts.errorText.value = opts.t('chat.errors.requestFailedStatus', {
+        status: 400,
+      })
+      return opts.errorText.value
+    }
+    return undefined
+  }
+
+  async function sendMessageBody(
+    userText: string,
+    sendOpts?: {
+      speakerQueue?: string[]
+      speakerQueueDisplayNames?: string[]
+      plugins?: ConversationChatRequestPlugins
+    },
+  ): Promise<string | undefined> {
     const ord = nextTurnOrdinal0(opts.turns.value)
-    opts.appendPendingUserTurn(userText, ord)
+    const pendingSpeakerId = sendOpts?.speakerQueue?.[0]?.trim()
+    opts.appendPendingUserTurn(userText, ord, {
+      ...(pendingSpeakerId ? { speakerCharacterId: pendingSpeakerId } : {}),
+      ...(sendOpts?.speakerQueue?.length
+        ? { speakerQueue: sendOpts.speakerQueue }
+        : {}),
+    })
     opts.loading.value = true
     opts.startGenerationTimer()
+    opts.pendingSendSegmentIndex.value = 0
+    dismissGroupContinue()
     try {
       const { receive, traceId, persist, shouldReload } = await opts.runSend({
         userText,
+        speakerQueue: sendOpts?.speakerQueue,
+        speakerQueueDisplayNames: sendOpts?.speakerQueueDisplayNames,
+        ...(sendOpts?.plugins ? { plugins: sendOpts.plugins } : {}),
       })
       applyPersistRetroPatches(persist)
+      const listIndex = opts.turns.value.findIndex((t) => t.turnOrdinal === ord)
       opts.finalizePendingTurn(
         ord,
         receive,
         resolveFinalUserTextAfterPersist(persist),
+        {
+          speakerCharacterId: persist?.speakerCharacterId,
+          speakerQueue: sendOpts?.speakerQueue,
+          segmentIndex: persist?.segmentIndex,
+          activeSegmentIndex: persist?.activeSegmentIndex,
+        },
       )
-      if (shouldReload) await opts.loadMessages()
+      if (listIndex >= 0) {
+        updatePendingContinueFromPersist(persist, listIndex)
+      }
+      if (shouldReload) await reloadMessagesAndReconcileContinue()
       opts.emitAssistantReplyComplete({ mode: 'send', traceId })
+      return undefined
     } catch (e) {
       if (isAbortError(e)) {
         const durationMs = opts.stopGenerationTimer()
@@ -147,16 +340,19 @@ export function useChatOutbound(opts: {
         } else {
           opts.rollbackPendingUserTurn(ord, userText)
         }
-      } else {
-        opts.rollbackPendingUserTurn(ord, userText)
-        opts.errorText.value =
-          e instanceof Error ? e.message : opts.t('chat.errors.network')
+        return undefined
       }
+      opts.rollbackPendingUserTurn(ord, userText)
+      const msg =
+        e instanceof Error ? e.message : opts.t('chat.errors.network')
+      opts.errorText.value = msg
+      return msg
     } finally {
       if (opts.loading.value) {
         opts.stopGenerationTimer()
         opts.loading.value = false
       }
+      opts.pendingSendSegmentIndex.value = null
     }
   }
 
@@ -171,6 +367,8 @@ export function useChatOutbound(opts: {
       boundDisplayNames: opts.getBoundDisplayNames?.() ?? [],
     })
 
+    maybeWarnUnmatchedAtSlash(raw)
+
     opts.recordInputHistoryOnSend?.(raw)
 
     if (parsed.commands.length > 0) {
@@ -184,23 +382,18 @@ export function useChatOutbound(opts: {
       return
     }
 
-    try {
-      opts.parseCustomParamsOrThrow()
-    } catch (e) {
-      opts.errorText.value = opts.customParamsErrorMessage(e)
-      return
-    }
-    if (!opts.assertApiReady()) {
-      opts.errorText.value = opts.t('chat.errors.requestFailedStatus', {
-        status: 400,
-      })
-      return
-    }
+    const prepErr = prepareOutboundRequest()
+    if (prepErr) return
 
-    // speakerQueue（parsed.speakerQueue）待群聊 G1 接入 API / turn meta
-    void parsed.speakerQueue
+    const { speakerQueueIds, speakerQueueDisplayNames } =
+      resolveSpeakerQueueFromParsed(parsed)
 
-    await sendMessageBody(messageBody)
+    await sendMessageBody(messageBody, {
+      speakerQueue: speakerQueueIds.length > 0 ? speakerQueueIds : undefined,
+      speakerQueueDisplayNames,
+    })
+
+    maybeWarnQueueNeedsEnabled(parsed.speakerQueue.length)
   }
 
   async function sendWithPlugins(
@@ -209,94 +402,67 @@ export function useChatOutbound(opts: {
   ): Promise<string | undefined> {
     if (!opts.isConversationWritable()) return opts.t('chat.errors.network')
     opts.errorText.value = ''
-    const trimmed = userText.trim()
-    if (!trimmed) return opts.t('chat.errors.network')
-    try {
-      opts.parseCustomParamsOrThrow()
-    } catch (e) {
-      opts.errorText.value = opts.customParamsErrorMessage(e)
-      return opts.errorText.value
-    }
-    if (!opts.assertApiReady()) {
-      opts.errorText.value = opts.t('chat.errors.requestFailedStatus', {
-        status: 400,
-      })
-      return opts.errorText.value
-    }
+    const raw = userText.trim()
+    if (!raw) return opts.t('chat.errors.network')
 
-    opts.recordInputHistoryOnSend?.(trimmed)
+    const parsed = submitComposerParse(raw)
+    const messageBody = parsed.body.trim()
+    if (!messageBody) return opts.t('chat.errors.network')
 
-    const ord = nextTurnOrdinal0(opts.turns.value)
-    opts.appendPendingUserTurn(trimmed, ord)
-    opts.loading.value = true
-    opts.startGenerationTimer()
-    try {
-      const { receive, traceId, persist, shouldReload } = await opts.runSend({
-        userText: trimmed,
-        plugins,
-      })
-      applyPersistRetroPatches(persist)
-      opts.finalizePendingTurn(
-        ord,
-        receive,
-        resolveFinalUserTextAfterPersist(persist),
-      )
-      if (shouldReload) await opts.loadMessages()
-      opts.emitAssistantReplyComplete({ mode: 'send', traceId })
-      return undefined
-    } catch (e) {
-      if (isAbortError(e)) {
-        const durationMs = opts.stopGenerationTimer()
-        const receive = partialReceiveFromStream(durationMs)
-        if (receive) {
-          opts.finalizePendingTurn(ord, receive)
-        } else {
-          opts.rollbackPendingUserTurn(ord, trimmed)
-        }
-        return undefined
-      }
-      opts.rollbackPendingUserTurn(ord, trimmed)
-      const msg =
-        e instanceof Error ? e.message : opts.t('chat.errors.network')
-      opts.errorText.value = msg
-      return msg
-    } finally {
-      if (opts.loading.value) {
-        opts.stopGenerationTimer()
-        opts.loading.value = false
-      }
-    }
+    maybeWarnUnmatchedAtSlash(raw, {
+      onlyWhenSpeakerQueue: true,
+      speakerQueueLength: parsed.speakerQueue.length,
+    })
+
+    const prepErr = prepareOutboundRequest()
+    if (prepErr) return prepErr
+
+    const { speakerQueueIds, speakerQueueDisplayNames } =
+      resolveSpeakerQueueFromParsed(parsed)
+    opts.recordInputHistoryOnSend?.(messageBody)
+
+    const err = await sendMessageBody(messageBody, {
+      speakerQueue: speakerQueueIds.length > 0 ? speakerQueueIds : undefined,
+      speakerQueueDisplayNames,
+      plugins,
+    })
+    maybeWarnQueueNeedsEnabled(parsed.speakerQueue.length)
+    return err
   }
 
-  async function regenerateAssistant(
+  function applyRegenerateReceive(
     listIndex: number,
-    trigger: PromptTrigger = 'regenerate',
-  ) {
-    if (!opts.isConversationWritable()) return
-    const turn = opts.turns.value[listIndex]
-    if (!turn || !turn.user.trim()) return
-    if (opts.regeneratingTurnOrdinal.value !== null) return
-    beginRegeneratingUi(turn.turnOrdinal)
-    opts.errorText.value = ''
-    opts.startGenerationTimer()
-    try {
-      try {
-        opts.parseCustomParamsOrThrow()
-      } catch (e) {
-        opts.errorText.value = opts.customParamsErrorMessage(e)
-        return
+    segIdx: number,
+    receive: ChatTurnItem['receives'][number],
+    persist: ChatPersistPayload | undefined,
+    userTextFallback?: string,
+  ): boolean {
+    const cur = opts.turns.value[listIndex]
+    if (!cur) return false
+    const finalUser =
+      resolveFinalUserTextAfterPersist(persist) ?? userTextFallback
+    const segments = getTurnSegmentsForUi(cur)
+    const targetSeg = segments[segIdx]
+    if (targetSeg) {
+      const nextSegments = [...(cur.segments ?? segments)]
+      nextSegments[segIdx] = {
+        ...targetSeg,
+        receives: [...targetSeg.receives, receive],
+        activeReceiveIndex: targetSeg.receives.length,
       }
-
-      const { receive, traceId, persist, shouldReload } = await opts.runRegenerate({
-        userText: turn.user,
-        turnOrdinal: turn.turnOrdinal,
-        promptTrigger: trigger,
-      })
-      applyPersistRetroPatches(persist)
-
-      const cur = opts.turns.value[listIndex]
-      if (!cur) return
-      const finalUser = resolveFinalUserTextAfterPersist(persist)
+      const activeSeg =
+        nextSegments[persist?.activeSegmentIndex ?? segIdx] ??
+        nextSegments[segIdx]!
+      const next: ChatTurnItem = {
+        ...cur,
+        ...(finalUser !== undefined ? { user: finalUser } : {}),
+        segments: nextSegments,
+        activeSegmentIndex: persist?.activeSegmentIndex ?? segIdx,
+        receives: activeSeg.receives,
+        activeReceiveIndex: activeSeg.activeReceiveIndex,
+      }
+      opts.replaceTurnAt(listIndex, next)
+    } else {
       const next: ChatTurnItem = {
         ...cur,
         ...(finalUser !== undefined ? { user: finalUser } : {}),
@@ -304,30 +470,108 @@ export function useChatOutbound(opts: {
         activeReceiveIndex: cur.receives.length,
       }
       opts.replaceTurnAt(listIndex, next)
-      opts.endRegeneratingUi()
-      await nextTick()
-      if (shouldReload) {
-        await opts.loadMessages()
-      } else {
-        await opts.scrollChatToBottom()
+    }
+    updatePendingContinueFromPersist(persist, listIndex)
+    return true
+  }
+
+  async function finishRegenerateUi(shouldReload: boolean, traceId: string) {
+    opts.endRegeneratingUi()
+    await nextTick()
+    if (shouldReload) {
+      await reloadMessagesAndReconcileContinue()
+    } else {
+      await opts.scrollChatToBottom()
+    }
+    opts.emitAssistantReplyComplete({ mode: 'regenerate', traceId })
+  }
+
+  async function regenerateAssistantCore(
+    listIndex: number,
+    params: {
+      userText: string
+      promptTrigger?: PromptTrigger
+      segmentIndex?: number
+      plugins?: ConversationChatRequestPlugins
+      userTextFallback?: string
+    },
+  ): Promise<string | undefined> {
+    const turn = opts.turns.value[listIndex]
+    if (!turn) return opts.t('chat.errors.network')
+
+    const segIdx = params.segmentIndex ?? getActiveSegmentIndex(turn)
+    beginRegeneratingUi(turn.turnOrdinal)
+    regeneratingSegmentIndex.value = segIdx
+    opts.errorText.value = ''
+    opts.startGenerationTimer()
+    dismissGroupContinue()
+
+    try {
+      try {
+        opts.parseCustomParamsOrThrow()
+      } catch (e) {
+        opts.errorText.value = opts.customParamsErrorMessage(e)
+        return opts.errorText.value
       }
-      opts.emitAssistantReplyComplete({ mode: 'regenerate', traceId })
+
+      const { receive, traceId, persist, shouldReload } = await opts.runRegenerate({
+        userText: params.userText,
+        turnOrdinal: turn.turnOrdinal,
+        segmentIndex: segIdx,
+        promptTrigger: params.promptTrigger ?? 'regenerate',
+        ...(params.plugins ? { plugins: params.plugins } : {}),
+      })
+      applyPersistRetroPatches(persist)
+
+      if (
+        !applyRegenerateReceive(
+          listIndex,
+          segIdx,
+          receive,
+          persist,
+          params.userTextFallback,
+        )
+      ) {
+        return opts.t('chat.errors.network')
+      }
+
+      await finishRegenerateUi(shouldReload, traceId)
+      return undefined
     } catch (e) {
       if (isAbortError(e)) {
         const durationMs = opts.stopGenerationTimer()
         finalizeAbortedRegenerate(listIndex, durationMs)
         await nextTick()
         await opts.scrollChatToBottom()
-      } else {
-        opts.errorText.value =
-          e instanceof Error ? e.message : opts.t('chat.errors.network')
+        return undefined
       }
+      const msg =
+        e instanceof Error ? e.message : opts.t('chat.errors.network')
+      opts.errorText.value = msg
+      return msg
     } finally {
       if (opts.regeneratingTurnOrdinal.value !== null) {
         opts.stopGenerationTimer()
         opts.endRegeneratingUi()
+        regeneratingSegmentIndex.value = null
       }
     }
+  }
+
+  async function regenerateAssistant(
+    listIndex: number,
+    trigger: PromptTrigger = 'regenerate',
+    segmentIndex?: number,
+  ) {
+    if (!opts.isConversationWritable()) return
+    const turn = opts.turns.value[listIndex]
+    if (!turn || !turn.user.trim()) return
+    if (opts.regeneratingTurnOrdinal.value !== null) return
+    await regenerateAssistantCore(listIndex, {
+      userText: turn.user,
+      promptTrigger: trigger,
+      segmentIndex,
+    })
   }
 
   async function regenerateWithPlugins(
@@ -345,65 +589,69 @@ export function useChatOutbound(opts: {
     }
 
     opts.errorText.value = ''
+    const prepErr = prepareOutboundRequest()
+    if (prepErr) return prepErr
+
+    return regenerateAssistantCore(listIndex, {
+      userText: trimmed,
+      plugins,
+      userTextFallback: trimmed,
+    })
+  }
+
+  async function continueGroupChat() {
+    const pending = pendingGroupContinue.value
+    if (!pending || !opts.isConversationWritable()) return
+    if (opts.loading.value || opts.regeneratingTurnOrdinal.value !== null) return
+    opts.errorText.value = ''
     try {
       opts.parseCustomParamsOrThrow()
     } catch (e) {
       opts.errorText.value = opts.customParamsErrorMessage(e)
-      return opts.errorText.value
+      return
     }
     if (!opts.assertApiReady()) {
       opts.errorText.value = opts.t('chat.errors.requestFailedStatus', {
         status: 400,
       })
-      return opts.errorText.value
+      return
     }
 
-    beginRegeneratingUi(turn.turnOrdinal)
+    const { turnOrdinal, listIndex, afterSegmentIndex, nextSpeakerCharacterId } =
+      pending
+    dismissGroupContinue()
+    opts.pendingSendTurnOrdinal.value = turnOrdinal
+    opts.pendingSendSegmentIndex.value = afterSegmentIndex + 1
+    opts.loading.value = true
     opts.startGenerationTimer()
     try {
-      const { receive, traceId, persist, shouldReload } = await opts.runRegenerate({
-        userText: trimmed,
-        turnOrdinal: turn.turnOrdinal,
-        promptTrigger: 'regenerate',
-        plugins,
-      })
+      const { receive, traceId, persist, shouldReload } =
+        await opts.runGroupContinue({
+          turnOrdinal,
+          afterSegmentIndex,
+          speakerCharacterId: nextSpeakerCharacterId,
+        })
       applyPersistRetroPatches(persist)
-
-      const cur = opts.turns.value[listIndex]
-      if (!cur) return opts.t('chat.errors.network')
-      const finalUser = resolveFinalUserTextAfterPersist(persist) ?? trimmed
-      const next: ChatTurnItem = {
-        ...cur,
-        user: finalUser,
-        receives: [...cur.receives, receive],
-        activeReceiveIndex: cur.receives.length,
-      }
-      opts.replaceTurnAt(listIndex, next)
-      opts.endRegeneratingUi()
-      await nextTick()
-      if (shouldReload) {
-        await opts.loadMessages()
-      } else {
-        await opts.scrollChatToBottom()
-      }
-      opts.emitAssistantReplyComplete({ mode: 'regenerate', traceId })
-      return undefined
+      const segmentIndex = afterSegmentIndex + 1
+      opts.finalizePendingSegment(turnOrdinal, receive, {
+        segmentIndex,
+        speakerCharacterId: nextSpeakerCharacterId,
+        activeSegmentIndex: segmentIndex,
+      })
+      updatePendingContinueFromPersist(persist, listIndex)
+      if (shouldReload) await reloadMessagesAndReconcileContinue()
+      opts.emitAssistantReplyComplete({ mode: 'send', traceId })
     } catch (e) {
-      if (isAbortError(e)) {
-        const durationMs = opts.stopGenerationTimer()
-        finalizeAbortedRegenerate(listIndex, durationMs)
-        await nextTick()
-        await opts.scrollChatToBottom()
-        return undefined
+      if (!isAbortError(e)) {
+        opts.errorText.value =
+          e instanceof Error ? e.message : opts.t('chat.errors.network')
       }
-      const msg =
-        e instanceof Error ? e.message : opts.t('chat.errors.network')
-      opts.errorText.value = msg
-      return msg
     } finally {
-      if (opts.regeneratingTurnOrdinal.value !== null) {
+      if (opts.loading.value) {
         opts.stopGenerationTimer()
-        opts.endRegeneratingUi()
+        opts.loading.value = false
+        opts.pendingSendTurnOrdinal.value = null
+        opts.pendingSendSegmentIndex.value = null
       }
     }
   }
@@ -412,15 +660,36 @@ export function useChatOutbound(opts: {
     opts.abortChatGeneration()
   }
 
-  function slideAssistant(listIndex: number, direction: 'left' | 'right') {
+  function slideAssistant(
+    listIndex: number,
+    direction: 'left' | 'right',
+    segmentIndex?: number,
+  ) {
     if (!opts.isConversationWritable()) return
     const turn = opts.turns.value[listIndex]
-    if (!turn || turn.receives.length === 0) return
-    const len = turn.receives.length
-    const a = turn.activeReceiveIndex
+    if (!turn) return
+    const segIdx = segmentIndex ?? getActiveSegmentIndex(turn)
+    const segments = getTurnSegmentsForUi(turn)
+    const seg = segments[segIdx]
+    if (!seg || seg.receives.length === 0) return
+    const len = seg.receives.length
+    const a = seg.activeReceiveIndex
 
-    const applyVariantSwitch = (next: ChatTurnItem) => {
-      void opts.persistTurnToServer(next).then((result) => {
+    const applyVariantSwitch = (nextSegActive: number) => {
+      const nextSegments = [...(turn.segments ?? segments)]
+      nextSegments[segIdx] = {
+        ...seg,
+        activeReceiveIndex: nextSegActive,
+      }
+      const activeSeg = nextSegments[segIdx]!
+      const next: ChatTurnItem = {
+        ...turn,
+        segments: nextSegments,
+        activeSegmentIndex: segIdx,
+        receives: activeSeg.receives,
+        activeReceiveIndex: activeSeg.activeReceiveIndex,
+      }
+      void opts.persistTurnToServer(next, { segmentIndex: segIdx }).then((result) => {
         if (result.ok) {
           opts.replaceTurnAt(listIndex, result.turn)
         } else {
@@ -432,19 +701,19 @@ export function useChatOutbound(opts: {
 
     if (direction === 'left') {
       const nextIdx = a === 0 ? len - 1 : a - 1
-      applyVariantSwitch({ ...turn, activeReceiveIndex: nextIdx })
+      applyVariantSwitch(nextIdx)
       return
     }
 
     if (a === len - 1) {
       if (isOpeningTurn(turn)) {
-        applyVariantSwitch({ ...turn, activeReceiveIndex: 0 })
+        applyVariantSwitch(0)
         return
       }
-      void regenerateAssistant(listIndex, 'swipe')
+      void regenerateAssistant(listIndex, 'swipe', segIdx)
       return
     }
-    applyVariantSwitch({ ...turn, activeReceiveIndex: a + 1 })
+    applyVariantSwitch(a + 1)
   }
 
   return {
@@ -454,5 +723,11 @@ export function useChatOutbound(opts: {
     regenerateWithPlugins,
     slideAssistant,
     abortCurrentReply,
+    continueGroupChat,
+    dismissGroupContinue,
+    pendingGroupContinue,
+    regeneratingSegmentIndex,
+    groupChatNoticeOpen,
+    groupChatNoticeMessage,
   }
 }

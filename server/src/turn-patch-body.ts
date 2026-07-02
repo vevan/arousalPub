@@ -12,6 +12,9 @@ export interface TurnContentPatchInput {
   userText: string
   receives: TurnReceive[]
   activeReceiveIndex: number
+  /** 多 segment turn：更新指定 segment（regenerate/swipe/编辑） */
+  segmentIndex?: number
+  activeSegmentIndex?: number
 }
 
 export type ParseTurnPatchResult =
@@ -84,6 +87,28 @@ export function parseTurnPatchBody(body: unknown): ParseTurnPatchResult {
   if (typeof b.activeReceiveIndex !== 'number' || !Number.isInteger(b.activeReceiveIndex)) {
     return { ok: false, error: 'active_receive_index_must_be_integer' }
   }
+  let segmentIndex: number | undefined
+  if (b.segmentIndex !== undefined) {
+    if (
+      typeof b.segmentIndex !== 'number' ||
+      !Number.isInteger(b.segmentIndex) ||
+      b.segmentIndex < 0
+    ) {
+      return { ok: false, error: 'invalid_segment_index' }
+    }
+    segmentIndex = b.segmentIndex
+  }
+  let activeSegmentIndex: number | undefined
+  if (b.activeSegmentIndex !== undefined) {
+    if (
+      typeof b.activeSegmentIndex !== 'number' ||
+      !Number.isInteger(b.activeSegmentIndex) ||
+      b.activeSegmentIndex < 0
+    ) {
+      return { ok: false, error: 'invalid_active_segment_index' }
+    }
+    activeSegmentIndex = b.activeSegmentIndex
+  }
   return {
     ok: true,
     patch: {
@@ -91,6 +116,8 @@ export function parseTurnPatchBody(body: unknown): ParseTurnPatchResult {
       userText: b.userText,
       receives: mapped,
       activeReceiveIndex: b.activeReceiveIndex,
+      ...(segmentIndex !== undefined ? { segmentIndex } : {}),
+      ...(activeSegmentIndex !== undefined ? { activeSegmentIndex } : {}),
     },
   }
 }

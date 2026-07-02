@@ -354,6 +354,7 @@ interface ConvContextBindings {
   promptPresetId: string | null
   characterIds: string[]
   characterNames: string[]
+  groupChatEnabled: boolean
   lorebookIds: string[]
   lorebook: LorebookContextBinding
   history: HistoryContextBinding
@@ -533,10 +534,18 @@ function bindingsFromIndex(idx: Record<string, unknown>): ConvContextBindings {
   const characterNames = Array.isArray(cn)
     ? cn.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
     : []
+  const gc = idx.groupChat
+  const groupChatEnabled = Boolean(
+    gc &&
+      typeof gc === 'object' &&
+      !Array.isArray(gc) &&
+      (gc as { enabled?: unknown }).enabled === true,
+  )
   return {
     promptPresetId,
     characterIds: clientResolvedCharacterIds(idx),
     characterNames,
+    groupChatEnabled,
     lorebookIds,
     lorebook: lorebookContextFromIndex(idx),
     history: historyContextFromIndex(idx),
@@ -554,6 +563,7 @@ const convBindings = ref<ConvContextBindings>({
   promptPresetId: null,
   characterIds: [],
   characterNames: [],
+  groupChatEnabled: false,
   lorebookIds: [],
   lorebook: {
     useGlobal: true,
@@ -1029,6 +1039,7 @@ watch(
         :conversation-prompt-preset-id="convBindings.promptPresetId"
         :conversation-character-ids="convBindings.characterIds"
         :conversation-character-display-names="convBindings.characterNames"
+        :group-chat-enabled="convBindings.groupChatEnabled"
         :conversation-lorebook-ids="convBindings.lorebookIds"
         :conversation-user-name="convBindings.userName"
         :conversation-user-character-id="convBindings.userCharacterId"

@@ -32,6 +32,7 @@ import { useTurnEditDelete } from './chat-session/use-turn-edit-delete.js'
 import { useTurnList } from './chat-session/use-turn-list.js'
 import { useTurnPrompt } from './chat-session/use-turn-prompt.js'
 import { createRegexDisplayText } from './chat-session/use-regex-display-text.js'
+import { useBoundCharacterDisplayNames } from './chat-session/use-bound-character-display-names.js'
 import { canSubmitComposerInput, parseComposerSubmit } from '@/utils/composer-slash'
 
 export type {
@@ -48,6 +49,14 @@ export function useChatSession(props: ChatSessionProps) {
   const conn = useConnectionStore()
   const prefs = usePreferencesStore()
   const { writeChatPromptSnapshot } = storeToRefs(prefs)
+
+  const boundCharacterNames = useBoundCharacterDisplayNames({
+    getCharacterIds: () => props.conversationCharacterIds,
+    getPropDisplayNames: () => props.conversationCharacterDisplayNames,
+  })
+  const effectiveCharacterDisplayNames = computed(() =>
+    boundCharacterNames.getBoundDisplayNames(),
+  )
 
   const replyEvents = createReplyEventHub()
   const {
@@ -66,6 +75,7 @@ export function useChatSession(props: ChatSessionProps) {
   const streamingText = ref('')
   const streamingReasoning = ref('')
   const pendingSendTurnOrdinal = ref<number | null>(null)
+  const pendingSendSegmentIndex = ref<number | null>(null)
   const pendingSendEstimatedTokens = ref<number | null>(null)
   const pendingReceiveCompletionTokens = ref<number | null>(null)
   const loading = ref(false)
@@ -148,6 +158,7 @@ export function useChatSession(props: ChatSessionProps) {
     appendPendingUserTurn,
     rollbackPendingUserTurn,
     finalizePendingTurn,
+    finalizePendingSegment,
     persistTurnToServer,
     loadMessages,
     loadOlderMessages,
@@ -176,6 +187,7 @@ export function useChatSession(props: ChatSessionProps) {
     assertApiReady,
     runSend,
     runRegenerate,
+    runGroupContinue,
     abortChatGeneration,
   } = completion
 
@@ -210,25 +222,14 @@ export function useChatSession(props: ChatSessionProps) {
     t,
   })
 
-  const bubbleUi = useTurnBubbleUi({
-    turns,
-    pendingSendTurnOrdinal,
-    pendingSendEstimatedTokens,
-    pendingReceiveCompletionTokens,
-    regeneratingTurnOrdinal,
-    streamingText,
-    streamEnabled: () => conn.stream,
-    generationElapsedMs,
-    editingTurnOrdinal: turnEditDelete.editingTurnOrdinal,
-    editingSide: turnEditDelete.editingSide,
-  })
-
   const outbound = useChatOutbound({
     turns,
     userInput,
     loading,
     errorText,
     regeneratingTurnOrdinal,
+    pendingSendTurnOrdinal,
+    pendingSendSegmentIndex,
     pendingSendEstimatedTokens,
     pendingReceiveCompletionTokens,
     streamingText,
@@ -239,6 +240,7 @@ export function useChatSession(props: ChatSessionProps) {
     assertApiReady,
     runSend,
     runRegenerate,
+    runGroupContinue,
     abortChatGeneration,
     getModel: () => conn.model,
     startGenerationTimer,
@@ -247,6 +249,7 @@ export function useChatSession(props: ChatSessionProps) {
     appendPendingUserTurn,
     rollbackPendingUserTurn,
     finalizePendingTurn,
+    finalizePendingSegment,
     replaceTurnAt,
     persistTurnToServer,
     loadMessages,
@@ -254,7 +257,9 @@ export function useChatSession(props: ChatSessionProps) {
     endRegeneratingUi,
     emitAssistantReplyComplete,
     recordInputHistoryOnSend,
-    getBoundDisplayNames: () => props.conversationCharacterDisplayNames ?? [],
+    getBoundDisplayNames: () => boundCharacterNames.getBoundDisplayNames(),
+    getCharacterIds: () => props.conversationCharacterIds ?? [],
+    isGroupChatEnabled: () => props.groupChatEnabled ?? false,
     clearComposerAfterSlash: () => {
       composerDraft.clearDraftAfterSend(props.conversationId)
     },
@@ -268,7 +273,29 @@ export function useChatSession(props: ChatSessionProps) {
     regenerateWithPlugins,
     slideAssistant,
     abortCurrentReply,
+    continueGroupChat,
+    dismissGroupContinue,
+    pendingGroupContinue,
+    groupChatNoticeOpen,
+    groupChatNoticeMessage,
+    regeneratingSegmentIndex,
   } = outbound
+
+  const bubbleUi = useTurnBubbleUi({
+    turns,
+    pendingSendTurnOrdinal,
+    pendingSendSegmentIndex,
+    pendingSendEstimatedTokens,
+    pendingReceiveCompletionTokens,
+    regeneratingTurnOrdinal,
+    regeneratingSegmentIndex,
+    streamingText,
+    streamEnabled: () => conn.stream,
+    generationElapsedMs,
+    editingTurnOrdinal: turnEditDelete.editingTurnOrdinal,
+    editingSegmentIndex: turnEditDelete.editingSegmentIndex,
+    editingSide: turnEditDelete.editingSide,
+  })
 
   const isGenerating = computed(
     () => loading.value || regeneratingTurnOrdinal.value !== null,
@@ -286,7 +313,7 @@ export function useChatSession(props: ChatSessionProps) {
     const raw = userInput.value.trim()
     if (!canSubmitComposerInput(raw)) return false
     const { body } = parseComposerSubmit(raw, {
-      boundDisplayNames: props.conversationCharacterDisplayNames ?? [],
+      boundDisplayNames: boundCharacterNames.getBoundDisplayNames(),
     })
     if (!body.trim()) return true
     return conn.isApiKeyConfigured && conn.model.trim().length > 0
@@ -316,6 +343,7 @@ export function useChatSession(props: ChatSessionProps) {
     conversationUserName: props.conversationUserName,
     getUserCharacterId: () => props.conversationUserCharacterId,
     getCharacterIds: () => props.conversationCharacterIds,
+    getBoundDisplayNames: () => boundCharacterNames.getBoundDisplayNames(),
     getAuthUserId: () => auth.user?.id ?? auth.defaultUserId,
     getConnAlias: () => conn.alias,
     getConnModel: () => conn.model,
@@ -386,8 +414,12 @@ export function useChatSession(props: ChatSessionProps) {
       switchConversationInputHistory(oldId, newId ?? '')
       turns.value = []
       clearPendingSend()
+      pendingSendSegmentIndex.value = null
       errorText.value = ''
       turnEditDelete.resetState()
+      dismissGroupContinue()
+      groupChatNoticeOpen.value = false
+      groupChatNoticeMessage.value = ''
       void regexDisplay.ensureRulesLoaded()
       void loadMessages()
     },
@@ -444,6 +476,8 @@ export function useChatSession(props: ChatSessionProps) {
     loadMessages,
     loadOlderMessages,
     conversationId: props.conversationId,
+    conversationCharacterIds: props.conversationCharacterIds,
+    conversationCharacterDisplayNames: effectiveCharacterDisplayNames,
     conversationWriteLocked,
     pluginHoldConversation,
     hasMoreBefore,
@@ -467,6 +501,12 @@ export function useChatSession(props: ChatSessionProps) {
     onComposerKeydown,
     slideAssistant,
     regenerateAssistant,
+    continueGroupChat,
+    dismissGroupContinue,
+    pendingGroupContinue,
+    groupChatNoticeOpen,
+    groupChatNoticeMessage,
+    isEditingAssistantSegment: turnEditDelete.isEditingAssistantSegment,
     openEditAssistant: turnEditDelete.openEditAssistant,
     openEditUser: turnEditDelete.openEditUser,
     cancelEdit: turnEditDelete.cancelEdit,

@@ -20,7 +20,7 @@ export type GroupKind =
   | 'userInput'
 export type PromptRole = 'system' | 'user' | 'assistant'
 export type InjectionPosition = 'relative' | 'chat'
-export type PromptTrigger = 'normal' | 'continue' | 'swipe' | 'regenerate'
+export type PromptTrigger = 'normal' | 'continue' | 'swipe' | 'regenerate' | 'groupContinue'
 
 /** 会话绑定角色卡槽位：正文由聊天侧注入，条目仅排序与启用 */
 export type PromptBindingSlot =

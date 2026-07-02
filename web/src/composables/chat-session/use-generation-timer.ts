@@ -42,6 +42,7 @@ export function useGenerationTimer() {
   }
 
   return {
+    generationTimerTick,
     startGenerationTimer,
     stopGenerationTimer,
     generationElapsedMs,

@@ -89,8 +89,13 @@ export function useChatSession(props: ChatSessionProps) {
   const pluginHoldConversation = ref(false)
 
   const timer = useGenerationTimer()
-  const { startGenerationTimer, stopGenerationTimer, generationElapsedMs, dispose: disposeTimer } =
-    timer
+  const {
+    generationTimerTick,
+    startGenerationTimer,
+    stopGenerationTimer,
+    generationElapsedMs,
+    dispose: disposeTimer,
+  } = timer
 
   const scroll = useChatScroll()
   const {
@@ -463,6 +468,7 @@ export function useChatSession(props: ChatSessionProps) {
     userInput,
     streamingText,
     streamingReasoning,
+    generationTimerTick,
     pendingSendTurnOrdinal,
     loading,
     errorText,

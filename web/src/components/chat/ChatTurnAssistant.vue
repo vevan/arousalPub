@@ -28,6 +28,7 @@ const {
   regeneratingTurnOrdinal,
   copiedTurnKey,
   writeChatPromptSnapshot,
+  generationTimerTick,
 } = toRefs(props.session)
 
 const {
@@ -65,6 +66,11 @@ function bubbleStreaming() {
 function bubbleEditing() {
   return isEditingAssistantSegment(props.turn.turnOrdinal, segIdx.value)
 }
+
+const liveAssistantTimerLabel = computed(() => {
+  void generationTimerTick.value
+  return assistantTimerLabel(props.turn, segIdx.value)
+})
 
 const displayModelName = computed(() => {
   const t = props.turn
@@ -104,29 +110,29 @@ const speakerAvatarLetter = computed(() =>
         <span
           v-if="
             displayModelName ||
-            assistantTimerLabel(turn, segIdx) ||
+            liveAssistantTimerLabel ||
             assistantReceiveTokenLabel(turn, segIdx) ||
             bubbleStreaming()
           "
           class="meta turn-role__meta"
         >
           <template v-if="displayModelName">{{ displayModelName }}</template>
-          <template v-if="assistantTimerLabel(turn)">
+          <template v-if="liveAssistantTimerLabel">
             <template v-if="displayModelName"> · </template>
             <span
               class="turn-timer"
               :class="{ 'turn-timer--live': bubbleLoading() }"
             >
-              {{ assistantTimerLabel(turn) }}
+              {{ liveAssistantTimerLabel }}
             </span>
           </template>
-          <template v-if="assistantReceiveTokenLabel(turn)">
-            <template v-if="displayModelName || assistantTimerLabel(turn)"> · </template>
+          <template v-if="assistantReceiveTokenLabel(turn, segIdx)">
+            <template v-if="displayModelName || liveAssistantTimerLabel"> · </template>
             <span class="turn-tokens">
-              {{ $t('chat.receiveTokens', { n: assistantReceiveTokenLabel(turn) }) }}
+              {{ $t('chat.receiveTokens', { n: assistantReceiveTokenLabel(turn, segIdx) }) }}
             </span>
           </template>
-          <template v-if="isAssistantStreamingBubble(turn)">
+          <template v-if="bubbleStreaming()">
             {{ $t('chat.streamingSuffix') }}
           </template>
         </span>
@@ -274,7 +280,7 @@ const speakerAvatarLetter = computed(() =>
       <div class="turn-toolbar turn-toolbar--assistant">
       <ChatTurnBranchActions
         :turn="turn"
-        :disabled="regeneratingTurnOrdinal !== null || isTurnAwaitingAssistant(turn)"
+        :disabled="regeneratingTurnOrdinal !== null || isTurnAwaitingAssistant(turn, segIdx)"
       />
       <button
         type="button"

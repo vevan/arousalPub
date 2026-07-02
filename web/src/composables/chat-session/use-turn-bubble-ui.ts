@@ -6,6 +6,11 @@ import {
 } from '@/utils/chat-turn-display'
 import { formatDurationMs } from '@/utils/format-duration'
 import type { Ref } from 'vue'
+import {
+  isAssistantSegmentLoading,
+  isAssistantSwipeFooterVisible,
+  isTurnAwaitingAssistantSegment,
+} from './turn-segment-match.js'
 
 export function useTurnBubbleUi(opts: {
   turns: Ref<ChatTurnItem[]>
@@ -23,20 +28,23 @@ export function useTurnBubbleUi(opts: {
   editingSide: Ref<'user' | 'assistant' | null>
 }) {
   function isTurnAwaitingAssistant(turn: ChatTurnItem, segmentIndex?: number): boolean {
-    if (opts.pendingSendTurnOrdinal.value !== turn.turnOrdinal) return false
-    const pendingSeg = opts.pendingSendSegmentIndex.value
-    if (pendingSeg === null) return segmentIndex === undefined || segmentIndex === 0
-    return pendingSeg === segmentIndex
+    return isTurnAwaitingAssistantSegment(
+      turn.turnOrdinal,
+      opts.pendingSendTurnOrdinal.value,
+      opts.pendingSendSegmentIndex.value,
+      segmentIndex,
+    )
   }
 
   function isAssistantBubbleLoading(turn: ChatTurnItem, segmentIndex?: number): boolean {
-    if (isTurnAwaitingAssistant(turn, segmentIndex)) return true
-    if (opts.regeneratingTurnOrdinal.value === turn.turnOrdinal) {
-      const regSeg = opts.regeneratingSegmentIndex.value
-      if (regSeg === null) return segmentIndex === undefined || segmentIndex === 0
-      return regSeg === segmentIndex
-    }
-    return false
+    return isAssistantSegmentLoading(
+      turn,
+      opts.pendingSendTurnOrdinal.value,
+      opts.pendingSendSegmentIndex.value,
+      opts.regeneratingTurnOrdinal.value,
+      opts.regeneratingSegmentIndex.value,
+      segmentIndex,
+    )
   }
 
   function showAssistantSkeleton(turn: ChatTurnItem, segmentIndex?: number): boolean {
@@ -55,8 +63,7 @@ export function useTurnBubbleUi(opts: {
 
   function assistantTimerLabel(turn: ChatTurnItem, segmentIndex?: number): string | null {
     if (isAssistantBubbleLoading(turn, segmentIndex)) {
-      const ms = opts.generationElapsedMs()
-      return ms > 0 ? formatDurationMs(ms) : null
+      return formatDurationMs(opts.generationElapsedMs())
     }
     const d = assistantDurationMs(turn)
     return d != null ? formatDurationMs(d) : null
@@ -92,20 +99,17 @@ export function useTurnBubbleUi(opts: {
     listIndex: number,
     segmentIndex?: number,
   ): boolean {
-    if (isAssistantBubbleLoading(turn, segmentIndex)) return false
-    if (opts.pendingSendTurnOrdinal.value !== null) return false
-    if (opts.regeneratingTurnOrdinal.value !== null) return false
-    if (listIndex !== opts.turns.value.length - 1) return false
-    if (turn.receives.length === 0) return false
     const segIdx = segmentIndex ?? 0
-    if (
-      opts.editingTurnOrdinal.value === turn.turnOrdinal &&
-      opts.editingSide.value === 'assistant' &&
-      (opts.editingSegmentIndex.value ?? 0) === segIdx
-    ) {
-      return false
-    }
-    return true
+    return isAssistantSwipeFooterVisible({
+      segmentLoading: isAssistantBubbleLoading(turn, segmentIndex),
+      listIndex,
+      lastListIndex: opts.turns.value.length - 1,
+      receivesLength: turn.receives.length,
+      isEditingThisSegment:
+        opts.editingTurnOrdinal.value === turn.turnOrdinal &&
+        opts.editingSide.value === 'assistant' &&
+        (opts.editingSegmentIndex.value ?? 0) === segIdx,
+    })
   }
 
   return {

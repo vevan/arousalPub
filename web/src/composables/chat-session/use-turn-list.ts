@@ -8,6 +8,12 @@ import {
 } from '@/utils/chat-messages'
 import { nextTick, ref, watch, type Ref } from 'vue'
 import type { ChatScrollerHandle } from './use-chat-scroll.js'
+import {
+  buildPendingUserTurnItem,
+  collectUsedIdsFromTurn,
+  collectUsedIdsFromTurns,
+  mergeFinalizedPendingTurn,
+} from './turn-pending-record.js'
 
 const SCROLL_LOAD_THRESHOLD_PX = 120
 const SCROLL_REARM_PX = 240
@@ -22,15 +28,6 @@ function mergeTurnsPrepend(
   const filtered = older.filter((t) => !seen.has(t.turnOrdinal))
   if (filtered.length === 0) return existing
   return [...filtered, ...existing].sort((a, b) => a.turnOrdinal - b.turnOrdinal)
-}
-
-function collectUsedReceiveIdsFromTurn(turn: ChatTurnItem): Set<string> {
-  const used = new Set<string>()
-  for (const r of turn.receives) used.add(r.id)
-  for (const seg of turn.segments ?? []) {
-    for (const r of seg.receives) used.add(r.id)
-  }
-  return used
 }
 
 export function useTurnList(opts: {
@@ -79,16 +76,7 @@ export function useTurnList(opts: {
   ) {
     opts.turns.value = [
       ...opts.turns.value,
-      {
-        user: userText,
-        receives: [],
-        activeReceiveIndex: 0,
-        turnOrdinal: ord,
-        ...(meta?.speakerCharacterId?.trim()
-          ? { speakerCharacterId: meta.speakerCharacterId.trim() }
-          : {}),
-        ...(meta?.speakerQueue?.length ? { speakerQueue: meta.speakerQueue } : {}),
-      },
+      buildPendingUserTurnItem(userText, ord, collectUsedIdsFromTurns(opts.turns.value), meta),
     ]
     opts.userInput.value = ''
     opts.clearDraftAfterSend(opts.getConversationId())
@@ -126,24 +114,10 @@ export function useTurnList(opts: {
     }
     const idx = opts.turns.value.findIndex((t) => t.turnOrdinal === ord)
     if (idx >= 0) {
-      const cur = opts.turns.value[idx]
-      const speakerId = meta?.speakerCharacterId?.trim() ?? cur.speakerCharacterId ?? ''
-      const segment = {
-        id: allocateShortId(new Set(cur.receives.map((r) => r.id))),
-        speakerCharacterId: speakerId,
-        receives: [merged],
-        activeReceiveIndex: 0,
-      }
-      replaceTurnAt(idx, {
-        ...cur,
-        ...(finalUserText !== undefined ? { user: finalUserText } : {}),
-        receives: [merged],
-        activeReceiveIndex: 0,
-        segments: [segment],
-        activeSegmentIndex: meta?.activeSegmentIndex ?? 0,
-        ...(meta?.speakerQueue?.length ? { speakerQueue: meta.speakerQueue } : {}),
-        ...(speakerId ? { speakerCharacterId: speakerId } : {}),
-      })
+      replaceTurnAt(
+        idx,
+        mergeFinalizedPendingTurn(opts.turns.value[idx]!, merged, meta, finalUserText),
+      )
     }
     clearPendingSend()
   }
@@ -164,7 +138,7 @@ export function useTurnList(opts: {
     if (existing?.receives.length) return
 
     const pendingSeg = {
-      id: existing?.id ?? allocateShortId(collectUsedReceiveIdsFromTurn(cur)),
+      id: existing?.id ?? allocateShortId(collectUsedIdsFromTurn(cur)),
       speakerCharacterId: speakerId,
       receives: [] as ReceiveItem[],
       activeReceiveIndex: 0,
@@ -257,7 +231,7 @@ export function useTurnList(opts: {
       }
     } else {
       segments.push({
-        id: allocateShortId(collectUsedReceiveIdsFromTurn(cur)),
+        id: allocateShortId(collectUsedIdsFromTurn(cur)),
         speakerCharacterId: meta.speakerCharacterId,
         receives: [merged],
         activeReceiveIndex: 0,

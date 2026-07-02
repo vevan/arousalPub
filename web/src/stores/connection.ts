@@ -119,7 +119,16 @@ function normalizePreset(p: ApiPreset): ApiPreset {
 
 export const useConnectionStore = defineStore('connection', () => {
   const presets = ref<ApiPreset[]>([])
+  /** 全局默认 API 预设（写入 api-settings.json 的 activePresetId） */
   const activePresetId = ref<string | null>(null)
+  /** 连接设置页当前编辑的预设（不必等于全局默认） */
+  const editingPresetId = ref<string | null>(null)
+
+  const isEditingPresetGlobal = computed(
+    () =>
+      Boolean(editingPresetId.value) &&
+      editingPresetId.value === activePresetId.value,
+  )
 
   const alias = ref('')
   const baseUrl = ref('https://api.openai.com/v1')
@@ -157,7 +166,7 @@ export const useConnectionStore = defineStore('connection', () => {
 
   const isApiKeyConfigured = computed(() => {
     if (apiKeyDraftDirty.value && apiKey.value.trim()) return true
-    const id = activePresetId.value
+    const id = editingPresetId.value
     const p = id ? presets.value.find((x) => x.id === id) : null
     if (p?.keyConfigured) return true
     if (apiKeyId.value) {
@@ -172,6 +181,7 @@ export const useConnectionStore = defineStore('connection', () => {
     presets.value.map((p) => ({
       title: presetTitle(p),
       value: p.id,
+      isGlobal: p.id === activePresetId.value,
     })),
   )
 
@@ -269,9 +279,9 @@ export const useConnectionStore = defineStore('connection', () => {
     apiKeyId.value = p.apiKeyId ?? null
   }
 
-  /** 将当前表单写回当前激活的预设条目 */
+  /** 将当前表单写回编辑中的预设条目 */
   function syncFormToActivePreset() {
-    const id = activePresetId.value
+    const id = editingPresetId.value
     if (!id) return
     const i = presets.value.findIndex((p) => p.id === id)
     if (i < 0) return
@@ -299,13 +309,13 @@ export const useConnectionStore = defineStore('connection', () => {
   }
 
   function applyActivePresetToForm() {
-    const id = activePresetId.value
+    const id = editingPresetId.value
     if (!id) return
     const p = presets.value.find((x) => x.id === id)
     if (p) applyPresetToForm(p)
   }
 
-  /** 若该 API 预设配置了关联提示词预设，则切换全局激活的提示词预设 */
+  /** 若该 API 预设配置了关联提示词预设，则同步全局默认（失败时抛错） */
   async function applyLinkedPromptPresetForApiPreset(apiPresetId: string) {
     const prompts = usePromptsStore()
     const apiP = presets.value.find((x) => x.id === apiPresetId)
@@ -316,16 +326,24 @@ export const useConnectionStore = defineStore('connection', () => {
       await prompts.loadIndexFromServer()
     }
     if (prompts.indexEntries.some((p) => p.id === link)) {
-      await prompts.setActivePresetId(link, { persist: true })
+      await prompts.persistGlobalDefaultFromLink(link)
     }
   }
 
   function switchPreset(newId: string) {
-    if (newId === activePresetId.value) return
+    if (newId === editingPresetId.value) return
     syncFormToActivePreset()
-    activePresetId.value = newId
+    editingPresetId.value = newId
     applyActivePresetToForm()
-    void applyLinkedPromptPresetForApiPreset(newId)
+  }
+
+  async function setGlobalActivePreset(): Promise<void> {
+    const id = editingPresetId.value?.trim()
+    if (!id || id === activePresetId.value) return
+    syncFormToActivePreset()
+    await saveToServer({ globalPresetId: id })
+    activePresetId.value = id
+    await applyLinkedPromptPresetForApiPreset(id)
   }
 
   /** 切换当前预设引用的 API Key 别名 id；null 代表使用预设内联 apiKey */
@@ -351,7 +369,10 @@ export const useConnectionStore = defineStore('connection', () => {
       apiKeyId: null,
     }
     presets.value.push(p)
-    activePresetId.value = id
+    editingPresetId.value = id
+    if (!activePresetId.value) {
+      activePresetId.value = id
+    }
     applyPresetToForm(p)
   }
 
@@ -362,7 +383,7 @@ export const useConnectionStore = defineStore('connection', () => {
     error: string
     references?: ApiConfigReference[]
   }> {
-    return removePresetById(activePresetId.value)
+    return removePresetById(editingPresetId.value)
   }
 
   async function removePresetById(
@@ -441,7 +462,7 @@ export const useConnectionStore = defineStore('connection', () => {
       }
   > {
     syncFormToActivePreset()
-    const presetId = activePresetId.value
+    const presetId = editingPresetId.value
     if (!presetId) {
       return { ok: false, error: translateApiError('invalid_id'), phase: 'models' }
     }
@@ -619,7 +640,7 @@ export const useConnectionStore = defineStore('connection', () => {
     includeLinkedPromptPreset: boolean
   }): Promise<{ json: string; filename: string }> {
     syncFormToActivePreset()
-    const aid = activePresetId.value
+    const aid = editingPresetId.value
     if (!aid) throw new Error('未选择 API 预设')
     const cur = presets.value.find((p) => p.id === aid)
     if (!cur) throw new Error('当前 API 预设不存在')
@@ -721,27 +742,32 @@ export const useConnectionStore = defineStore('connection', () => {
       apiKeyId: importKeyId,
     }
     presets.value.push(next)
-    activePresetId.value = id
+    editingPresetId.value = id
+    if (!activePresetId.value) {
+      activePresetId.value = id
+    }
     applyPresetToForm(next)
     if (!importKeyId && merged.apiKey.trim()) {
       apiKey.value = merged.apiKey
       apiKeyDraftDirty.value = true
     }
-    void applyLinkedPromptPresetForApiPreset(id)
   }
 
-  function documentPayload(): Pick<
-    ApiSettingsDocument,
-    'activePresetId' | 'presets'
-  > {
+  function documentPayload(opts?: {
+    globalPresetId?: string
+  }): Pick<ApiSettingsDocument, 'activePresetId' | 'presets'> {
     syncFormToActivePreset()
-    const id = activePresetId.value
-    if (!id) throw new Error('未选择预设')
+    const globalId =
+      opts?.globalPresetId?.trim() ||
+      activePresetId.value ||
+      editingPresetId.value
+    if (!globalId) throw new Error('未选择全局预设')
+    const editingId = editingPresetId.value
     return {
-      activePresetId: id,
+      activePresetId: globalId,
       presets: presets.value.map((p) => {
         const row: Record<string, unknown> = { ...p }
-        if (p.id === id && apiKeyDraftDirty.value) {
+        if (p.id === editingId && apiKeyDraftDirty.value) {
           row.apiKey = apiKey.value
         } else {
           delete row.apiKey
@@ -764,6 +790,7 @@ export const useConnectionStore = defineStore('connection', () => {
       if (raw === null) {
         presets.value = []
         activePresetId.value = null
+        editingPresetId.value = null
         return true
       }
       if (typeof raw !== 'object' || raw === null) return false
@@ -776,9 +803,11 @@ export const useConnectionStore = defineStore('connection', () => {
       if (doc.presets.length === 0) {
         presets.value = []
         activePresetId.value = null
+        editingPresetId.value = null
         return true
       }
 
+      const prevEditing = editingPresetId.value
       presets.value = (doc.presets as ApiPreset[]).map(normalizePreset)
       activePresetId.value =
         typeof doc.activePresetId === 'string' ? doc.activePresetId : null
@@ -788,10 +817,12 @@ export const useConnectionStore = defineStore('connection', () => {
       ) {
         activePresetId.value = presets.value[0]?.id ?? null
       }
+      editingPresetId.value =
+        prevEditing && presets.value.some((p) => p.id === prevEditing)
+          ? prevEditing
+          : activePresetId.value
       applyActivePresetToForm()
       if (typeof doc.savedAt === 'string') lastSavedAt.value = doc.savedAt
-      const aid = activePresetId.value
-      if (aid) await applyLinkedPromptPresetForApiPreset(aid)
       return true
     })().finally(() => {
       loadSettingsInflight = null
@@ -799,8 +830,10 @@ export const useConnectionStore = defineStore('connection', () => {
     return loadSettingsInflight
   }
 
-  async function saveToServer(): Promise<void> {
-    const body = documentPayload()
+  async function saveToServer(opts?: {
+    globalPresetId?: string
+  }): Promise<void> {
+    const body = documentPayload(opts)
     const res = await fetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -818,9 +851,12 @@ export const useConnectionStore = defineStore('connection', () => {
     }
     const j = (await res.json()) as { savedAt?: string }
     if (typeof j.savedAt === 'string') lastSavedAt.value = j.savedAt
+    if (!activePresetId.value && body.activePresetId) {
+      activePresetId.value = body.activePresetId
+    }
     if (apiKeyDraftDirty.value) {
-      const aid = activePresetId.value
-      const idx = presets.value.findIndex((p) => p.id === aid)
+      const eid = editingPresetId.value
+      const idx = presets.value.findIndex((p) => p.id === eid)
       if (idx >= 0) {
         presets.value[idx] = {
           ...presets.value[idx],
@@ -836,6 +872,7 @@ export const useConnectionStore = defineStore('connection', () => {
     loadSettingsInflight = null
     presets.value = []
     activePresetId.value = null
+    editingPresetId.value = null
     lastSavedAt.value = null
     apiKeyDraftDirty.value = false
     linkedPromptPresetId.value = null
@@ -866,6 +903,8 @@ export const useConnectionStore = defineStore('connection', () => {
   return {
     presets,
     activePresetId,
+    editingPresetId,
+    isEditingPresetGlobal,
     alias,
     baseUrl,
     apiKey,
@@ -896,6 +935,7 @@ export const useConnectionStore = defineStore('connection', () => {
     presetSelectItems,
     snapshot,
     switchPreset,
+    setGlobalActivePreset,
     addPreset,
     removeActivePreset,
     removePresetById,

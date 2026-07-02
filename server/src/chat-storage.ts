@@ -1565,6 +1565,18 @@ async function ensureChatRoot(): Promise<void> {
   await mkdir(getChatsRoot(), { recursive: true })
 }
 
+/** 串行化 chat.index.json 读-改-写，避免并发 enrich / upsert 互相覆盖 */
+let chatListFileLock: Promise<void> = Promise.resolve()
+
+function withChatListFileLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = chatListFileLock.then(fn)
+  chatListFileLock = run.then(
+    () => undefined,
+    () => undefined,
+  )
+  return run
+}
+
 async function readChatListRaw(): Promise<ChatListFile> {
   try {
     const raw = await readFile(chatListFile(), 'utf8')
@@ -1578,10 +1590,16 @@ async function readChatListRaw(): Promise<ChatListFile> {
   }
 }
 
+async function writeChatListUnsafe(data: ChatListFile): Promise<void> {
+  await ensureChatRoot()
+  await writeFile(chatListFile(), JSON.stringify(data, null, 2), 'utf8')
+}
+
 /**
  * `chats/{id}/index.json` 存在但 `chat.index.json` 缺条目时补写（Syncthing 冲突、历史 bug 等）。
+ * 须在 {@link withChatListFileLock} 内调用，或使用导出的包装函数。
  */
-export async function reconcileChatListWithDisk(): Promise<boolean> {
+async function reconcileChatListWithDiskUnsafe(): Promise<boolean> {
   const list = await readChatListRaw()
   const known = new Set(
     list.conversations.map((c) => c.conversationId).filter(Boolean),
@@ -1611,26 +1629,38 @@ export async function reconcileChatListWithDisk(): Promise<boolean> {
   list.conversations.sort((a, b) =>
     b.updatedAt.localeCompare(a.updatedAt, 'en'),
   )
-  await writeChatList(list)
+  await writeChatListUnsafe(list)
   return true
 }
 
+export async function reconcileChatListWithDisk(): Promise<boolean> {
+  return withChatListFileLock(() => reconcileChatListWithDiskUnsafe())
+}
+
 export async function readChatList(): Promise<ChatListFile> {
-  await reconcileChatListWithDisk()
-  const list = await readChatListRaw()
-  const {
-    chatListEntryNeedsEnrich,
-    enrichChatListEntry,
-  } = await import('./character-storage.js')
-  let dirty = false
-  for (let i = 0; i < list.conversations.length; i++) {
-    const c = list.conversations[i]
-    if (!chatListEntryNeedsEnrich(c)) continue
-    list.conversations[i] = await enrichChatListEntry(c)
-    dirty = true
-  }
-  if (dirty) await writeChatList(list)
-  return list
+  return withChatListFileLock(async () => {
+    await reconcileChatListWithDiskUnsafe()
+    const list = await readChatListRaw()
+    const {
+      chatListEntryNeedsEnrich,
+      enrichChatListEntry,
+    } = await import('./character-storage.js')
+    const pending: { index: number; entry: ChatListEntry }[] = []
+    for (let i = 0; i < list.conversations.length; i++) {
+      const c = list.conversations[i]!
+      if (chatListEntryNeedsEnrich(c)) pending.push({ index: i, entry: c })
+    }
+    if (pending.length > 0) {
+      const enriched = await Promise.all(
+        pending.map(({ entry }) => enrichChatListEntry(entry)),
+      )
+      for (let j = 0; j < pending.length; j++) {
+        list.conversations[pending[j]!.index] = enriched[j]!
+      }
+      await writeChatListUnsafe(list)
+    }
+    return list
+  })
 }
 
 /** 角色卡元数据变更后，刷新引用该 id 的列表项快查字段 */
@@ -1639,61 +1669,67 @@ export async function refreshChatListEntriesForCharacter(
 ): Promise<void> {
   const cid = characterId.trim()
   if (!cid) return
-  const { enrichChatListEntry } = await import('./character-storage.js')
-  const list = await readChatListRaw()
-  let dirty = false
-  for (let i = 0; i < list.conversations.length; i++) {
-    const c = list.conversations[i]
-    const ids = resolvedCharacterIds(c)
-    const userCid =
-      typeof c.userCharacterId === 'string' && c.userCharacterId.trim()
-        ? c.userCharacterId.trim()
-        : ''
-    if (!ids.includes(cid) && userCid !== cid) continue
-    const idx = await readConversationIndex(c.conversationId)
-    const enriched = await enrichChatListEntry(c, idx ?? undefined)
-    list.conversations[i] = enriched
-    dirty = true
-  }
-  if (dirty) await writeChatList(list)
-}
-
-async function writeChatList(data: ChatListFile): Promise<void> {
-  await ensureChatRoot()
-  await writeFile(chatListFile(), JSON.stringify(data, null, 2), 'utf8')
+  await withChatListFileLock(async () => {
+    const { enrichChatListEntry } = await import('./character-storage.js')
+    const list = await readChatListRaw()
+    const pending: { index: number; entry: ChatListEntry }[] = []
+    for (let i = 0; i < list.conversations.length; i++) {
+      const c = list.conversations[i]!
+      const ids = resolvedCharacterIds(c)
+      const userCid =
+        typeof c.userCharacterId === 'string' && c.userCharacterId.trim()
+          ? c.userCharacterId.trim()
+          : ''
+      if (!ids.includes(cid) && userCid !== cid) continue
+      pending.push({ index: i, entry: c })
+    }
+    if (pending.length === 0) return
+    const enriched = await Promise.all(
+      pending.map(async ({ entry }) => {
+        const idx = await readConversationIndex(entry.conversationId)
+        return enrichChatListEntry(entry, idx ?? undefined)
+      }),
+    )
+    for (let j = 0; j < pending.length; j++) {
+      list.conversations[pending[j]!.index] = enriched[j]!
+    }
+    await writeChatListUnsafe(list)
+  })
 }
 
 /** 刷新列表项中的 active 分支轮数与最近对话时刻 */
 export async function syncChatListConversationStats(
   conversationId: string,
 ): Promise<void> {
-  const list = await readChatListRaw()
-  const i = list.conversations.findIndex(
-    (c) => c.conversationId === conversationId,
-  )
-  if (i < 0) return
-  const prev = list.conversations[i]!
-  let count = typeof prev.activeTurnCount === 'number' ? prev.activeTurnCount : 0
-  let lastChatAt: string | null = prev.lastChatAt?.trim() || null
-  try {
-    const { listLastChatAtFromStats } = await import('./character-storage.js')
-    const stats = await resolveActivePathConversationStats(conversationId)
-    count = stats.turnCount
-    lastChatAt = listLastChatAtFromStats(stats, prev.updatedAt) ?? null
-  } catch {
-    // 保留 prev 统计，避免 transient 错误覆盖有效值
-  }
-  const nextLast = lastChatAt?.trim() || null
-  if (prev.activeTurnCount === count && (prev.lastChatAt ?? null) === nextLast) {
-    return
-  }
-  const { lastChatAt: _prevLast, ...base } = prev
-  list.conversations[i] = {
-    ...base,
-    activeTurnCount: count,
-    ...(nextLast ? { lastChatAt: nextLast } : {}),
-  }
-  await writeChatList(list)
+  await withChatListFileLock(async () => {
+    const list = await readChatListRaw()
+    const i = list.conversations.findIndex(
+      (c) => c.conversationId === conversationId,
+    )
+    if (i < 0) return
+    const prev = list.conversations[i]!
+    let count = typeof prev.activeTurnCount === 'number' ? prev.activeTurnCount : 0
+    let lastChatAt: string | null = prev.lastChatAt?.trim() || null
+    try {
+      const { listLastChatAtFromStats } = await import('./character-storage.js')
+      const stats = await resolveActivePathConversationStats(conversationId)
+      count = stats.turnCount
+      lastChatAt = listLastChatAtFromStats(stats, prev.updatedAt) ?? null
+    } catch {
+      // 保留 prev 统计，避免 transient 错误覆盖有效值
+    }
+    const nextLast = lastChatAt?.trim() || null
+    if (prev.activeTurnCount === count && (prev.lastChatAt ?? null) === nextLast) {
+      return
+    }
+    const { lastChatAt: _prevLast, ...base } = prev
+    list.conversations[i] = {
+      ...base,
+      activeTurnCount: count,
+      ...(nextLast ? { lastChatAt: nextLast } : {}),
+    }
+    await writeChatListUnsafe(list)
+  })
 }
 
 /** @deprecated 使用 syncChatListConversationStats */
@@ -1707,42 +1743,44 @@ export async function upsertChatListEntry(
   const { enrichChatListEntry, listLastChatAtFromStats } = await import(
     './character-storage.js'
   )
-  await reconcileChatListWithDisk()
-  const list = await readChatListRaw()
-  const existing = list.conversations.find(
-    (c) => c.conversationId === entry.conversationId,
-  )
-  let merged: ChatListEntry = {
-    ...entry,
-    activeTurnCount: entry.activeTurnCount ?? existing?.activeTurnCount,
-    lastChatAt: entry.lastChatAt ?? existing?.lastChatAt,
-  }
-  if (options?.refreshConversationStats) {
-    try {
-      const stats = await resolveActivePathConversationStats(
-        merged.conversationId,
-      )
-      const { lastChatAt: _drop, ...withoutLast } = merged
-      const resolvedLast = listLastChatAtFromStats(stats, merged.updatedAt)
-      merged = {
-        ...withoutLast,
-        activeTurnCount: stats.turnCount,
-        ...(resolvedLast ? { lastChatAt: resolvedLast } : {}),
-      }
-    } catch {
-      // 保留 merged 已有统计
+  await withChatListFileLock(async () => {
+    await reconcileChatListWithDiskUnsafe()
+    const list = await readChatListRaw()
+    const existing = list.conversations.find(
+      (c) => c.conversationId === entry.conversationId,
+    )
+    let merged: ChatListEntry = {
+      ...entry,
+      activeTurnCount: entry.activeTurnCount ?? existing?.activeTurnCount,
+      lastChatAt: entry.lastChatAt ?? existing?.lastChatAt,
     }
-  }
-  const enriched = await enrichChatListEntry(merged, source)
-  const i = list.conversations.findIndex(
-    (c) => c.conversationId === enriched.conversationId,
-  )
-  if (i >= 0) list.conversations[i] = enriched
-  else list.conversations.unshift(enriched)
-  list.conversations.sort((a, b) =>
-    b.updatedAt.localeCompare(a.updatedAt, 'en'),
-  )
-  await writeChatList(list)
+    if (options?.refreshConversationStats) {
+      try {
+        const stats = await resolveActivePathConversationStats(
+          merged.conversationId,
+        )
+        const { lastChatAt: _drop, ...withoutLast } = merged
+        const resolvedLast = listLastChatAtFromStats(stats, merged.updatedAt)
+        merged = {
+          ...withoutLast,
+          activeTurnCount: stats.turnCount,
+          ...(resolvedLast ? { lastChatAt: resolvedLast } : {}),
+        }
+      } catch {
+        // 保留 merged 已有统计
+      }
+    }
+    const enriched = await enrichChatListEntry(merged, source)
+    const i = list.conversations.findIndex(
+      (c) => c.conversationId === enriched.conversationId,
+    )
+    if (i >= 0) list.conversations[i] = enriched
+    else list.conversations.unshift(enriched)
+    list.conversations.sort((a, b) =>
+      b.updatedAt.localeCompare(a.updatedAt, 'en'),
+    )
+    await writeChatListUnsafe(list)
+  })
 }
 
 export function conversationDir(id: string): string {
@@ -2283,11 +2321,14 @@ export async function deleteConversation(
     return false
   }
   void wipeConversationMemoryIndex(conversationId).catch(() => {})
-  const list = await readChatList()
-  list.conversations = list.conversations.filter(
-    (c) => c.conversationId !== conversationId,
-  )
-  await writeChatList(list)
+  await withChatListFileLock(async () => {
+    await reconcileChatListWithDiskUnsafe()
+    const list = await readChatListRaw()
+    list.conversations = list.conversations.filter(
+      (c) => c.conversationId !== conversationId,
+    )
+    await writeChatListUnsafe(list)
+  })
   return true
 }
 

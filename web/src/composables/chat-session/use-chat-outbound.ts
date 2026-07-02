@@ -14,7 +14,7 @@ import {
   resolveSpeakerQueueIds,
   type PendingGroupContinue,
   getActiveSegmentIndex,
-  getTurnSegmentsForUi,
+  getTurnSegments,
 } from '@/utils/group-chat-turn'
 import { buildReceiveItem, collectUsedReceiveIds, nextTurnOrdinal0 } from './turn-helpers.js'
 import type { createChatCompletionRunner } from './completion.js'
@@ -131,7 +131,7 @@ export function useChatOutbound(opts: {
     if (listIndex < 0) return null
     const turn = opts.turns.value[listIndex]
     if (!turn || turn.turnOrdinal !== turnOrd) return null
-    const segments = getTurnSegmentsForUi(turn)
+    const segments = getTurnSegments(turn)
     const afterSegmentIndex =
       typeof persist?.activeSegmentIndex === 'number'
         ? persist.activeSegmentIndex
@@ -237,29 +237,21 @@ export function useChatOutbound(opts: {
     if (!cur) return
     const segIdx =
       regeneratingSegmentIndex.value ?? getActiveSegmentIndex(cur)
-    const segments = getTurnSegmentsForUi(cur)
+    const segments = [...getTurnSegments(cur)]
     const targetSeg = segments[segIdx]
-    if (targetSeg && cur.segments?.length) {
-      const nextSegments = [...cur.segments]
-      nextSegments[segIdx] = {
-        ...targetSeg,
-        receives: [...targetSeg.receives, receive],
-        activeReceiveIndex: targetSeg.receives.length,
-      }
-      const activeSeg = nextSegments[segIdx]!
-      opts.replaceTurnAt(listIndex, {
-        ...cur,
-        segments: nextSegments,
-        activeSegmentIndex: segIdx,
-        receives: activeSeg.receives,
-        activeReceiveIndex: activeSeg.activeReceiveIndex,
-      })
-      return
+    if (!targetSeg) return
+    segments[segIdx] = {
+      ...targetSeg,
+      receives: [...targetSeg.receives, receive],
+      activeReceiveIndex: targetSeg.receives.length,
     }
+    const activeSeg = segments[segIdx]!
     opts.replaceTurnAt(listIndex, {
       ...cur,
-      receives: [...cur.receives, receive],
-      activeReceiveIndex: cur.receives.length,
+      segments,
+      activeSegmentIndex: segIdx,
+      receives: activeSeg.receives,
+      activeReceiveIndex: activeSeg.activeReceiveIndex,
     })
   }
 
@@ -505,36 +497,25 @@ export function useChatOutbound(opts: {
     if (!cur) return false
     const finalUser =
       resolveFinalUserTextAfterPersist(persist) ?? userTextFallback
-    const segments = getTurnSegmentsForUi(cur)
+    const segments = [...getTurnSegments(cur)]
     const targetSeg = segments[segIdx]
-    if (targetSeg) {
-      const nextSegments = [...(cur.segments ?? segments)]
-      nextSegments[segIdx] = {
-        ...targetSeg,
-        receives: [...targetSeg.receives, receive],
-        activeReceiveIndex: targetSeg.receives.length,
-      }
-      const activeSeg =
-        nextSegments[persist?.activeSegmentIndex ?? segIdx] ??
-        nextSegments[segIdx]!
-      const next: ChatTurnItem = {
-        ...cur,
-        ...(finalUser !== undefined ? { user: finalUser } : {}),
-        segments: nextSegments,
-        activeSegmentIndex: persist?.activeSegmentIndex ?? segIdx,
-        receives: activeSeg.receives,
-        activeReceiveIndex: activeSeg.activeReceiveIndex,
-      }
-      opts.replaceTurnAt(listIndex, next)
-    } else {
-      const next: ChatTurnItem = {
-        ...cur,
-        ...(finalUser !== undefined ? { user: finalUser } : {}),
-        receives: [...cur.receives, receive],
-        activeReceiveIndex: cur.receives.length,
-      }
-      opts.replaceTurnAt(listIndex, next)
+    if (!targetSeg) return false
+    segments[segIdx] = {
+      ...targetSeg,
+      receives: [...targetSeg.receives, receive],
+      activeReceiveIndex: targetSeg.receives.length,
     }
+    const activeSeg =
+      segments[persist?.activeSegmentIndex ?? segIdx] ?? segments[segIdx]!
+    const next: ChatTurnItem = {
+      ...cur,
+      ...(finalUser !== undefined ? { user: finalUser } : {}),
+      segments,
+      activeSegmentIndex: persist?.activeSegmentIndex ?? segIdx,
+      receives: activeSeg.receives,
+      activeReceiveIndex: activeSeg.activeReceiveIndex,
+    }
+    opts.replaceTurnAt(listIndex, next)
     return true
   }
 
@@ -762,16 +743,18 @@ export function useChatOutbound(opts: {
     const turn = opts.turns.value[listIndex]
     if (!turn) return
     const segIdx = segmentIndex ?? getActiveSegmentIndex(turn)
-    const segments = getTurnSegmentsForUi(turn)
+    const segments = getTurnSegments(turn)
     const seg = segments[segIdx]
     if (!seg || seg.receives.length === 0) return
     const len = seg.receives.length
     const a = seg.activeReceiveIndex
 
     const applyVariantSwitch = (nextSegActive: number) => {
-      const nextSegments = [...(turn.segments ?? segments)]
+      const nextSegments = [...getTurnSegments(turn)]
+      const baseSeg = nextSegments[segIdx]
+      if (!baseSeg) return
       nextSegments[segIdx] = {
-        ...seg,
+        ...baseSeg,
         activeReceiveIndex: nextSegActive,
       }
       const activeSeg = nextSegments[segIdx]!

@@ -12,51 +12,53 @@ function mapReceiveForPatch(r: ReceiveItem): Record<string, unknown> {
   }
 }
 
-/** PATCH /turns/:ord — 多 segment 时带 segmentIndex */
+export function getTurnSegments(turn: ChatTurnItem): AssistantSegmentItem[] {
+  return turn.segments ?? []
+}
+
+export function getActiveSegmentIndex(turn: ChatTurnItem): number {
+  const segments = getTurnSegments(turn)
+  if (segments.length === 0) return 0
+  if (typeof turn.activeSegmentIndex !== 'number') return 0
+  return Math.min(
+    Math.max(0, turn.activeSegmentIndex),
+    segments.length - 1,
+  )
+}
+
+export function getActiveSegment(
+  turn: ChatTurnItem,
+): AssistantSegmentItem | null {
+  const segments = getTurnSegments(turn)
+  if (segments.length === 0) return null
+  return segments[getActiveSegmentIndex(turn)] ?? segments[0]!
+}
+
+/** PATCH /turns/:ord — 有 segment 时按 segment 提交；无 segment 时仅 user 正文（待发轮次） */
 export function buildTurnPatchRequestBody(
   turn: ChatTurnItem,
   segmentIndex?: number,
 ): Record<string, unknown> {
-  const segIdx = segmentIndex ?? getActiveSegmentIndex(turn)
-  const segments = getTurnSegmentsForUi(turn)
-  const seg = segments[segIdx] ?? segments[0]
-  if (!seg) {
+  const segments = getTurnSegments(turn)
+  if (segments.length === 0) {
     return {
       userText: turn.user,
       receives: turn.receives.map(mapReceiveForPatch),
       activeReceiveIndex: turn.activeReceiveIndex,
     }
   }
-  const body: Record<string, unknown> = {
+  const segIdx = segmentIndex ?? getActiveSegmentIndex(turn)
+  const seg = segments[segIdx]
+  if (!seg) {
+    throw new Error(`turn ${turn.turnOrdinal} segment ${segIdx} missing`)
+  }
+  return {
     userText: turn.user,
     receives: seg.receives.map(mapReceiveForPatch),
     activeReceiveIndex: seg.activeReceiveIndex,
+    segmentIndex: segIdx,
+    activeSegmentIndex: segIdx,
   }
-  if (turn.segments?.length) {
-    body.segmentIndex = segIdx
-    body.activeSegmentIndex = segIdx
-  }
-  return body
-}
-
-export function getTurnSegmentsForUi(turn: ChatTurnItem): AssistantSegmentItem[] {
-  return Array.isArray(turn.segments) && turn.segments.length > 0
-    ? turn.segments
-    : []
-}
-
-export function getActiveSegmentIndex(turn: ChatTurnItem): number {
-  if (
-    Array.isArray(turn.segments) &&
-    turn.segments.length > 0 &&
-    typeof turn.activeSegmentIndex === 'number'
-  ) {
-    return Math.min(
-      Math.max(0, turn.activeSegmentIndex),
-      turn.segments.length - 1,
-    )
-  }
-  return 0
 }
 
 export function resolveDisplayNameToCharacterId(

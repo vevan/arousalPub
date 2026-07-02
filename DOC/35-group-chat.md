@@ -92,7 +92,7 @@ AssistantSegment {
 | `false` | char1 | 通常 1；`/@` 可指定他人 |
 | `true` | 见 §4 | 多 segment + 衰减 / confirm |
 
-**UI**：对话顶栏 `chat-header` 群聊图标 → 开关、`autoContinue` / `confirmContinue`、衰减参数、bot 列表（权重、静音、拖拽排序改 `characterIds`）。
+**UI**：对话顶栏 `chat-header` 群聊图标 → 开关、`autoContinue` / `confirmContinue`、衰减参数、**成员列表**（角色立绘头像、`characterImageUrl` size `s`、displayName、权重、静音、上下排序改 `characterIds`）。
 
 ### 2.3 用户指定发言者：`/@`（Slash 内置）
 

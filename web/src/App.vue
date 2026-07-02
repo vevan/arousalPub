@@ -244,8 +244,15 @@ async function focusLorebooksForOpen(): Promise<void> {
 
 async function focusPromptsForOpen(): Promise<void> {
   const preferred = uiContext.consumePendingPromptFocusPresetId()
+  const onConversationRoute =
+    route.name === 'chat' &&
+    (() => {
+      const raw = route.params.conversationId
+      const id = Array.isArray(raw) ? raw[0] : raw
+      return typeof id === 'string' && id.trim() !== ''
+    })()
   await promptsStore.applyOpenFocus(
-    uiContext.conversationPromptPresetId,
+    onConversationRoute ? uiContext.conversationPromptPresetId : null,
     preferred,
   )
 }
@@ -257,6 +264,15 @@ watch(lorebooksDialogOpen, (open) => {
 watch(promptsDialogOpen, (open) => {
   if (open) void focusPromptsForOpen()
 })
+
+watch(
+  () => route.name,
+  (name) => {
+    if (name !== 'chat') {
+      uiContext.setConversationPromptPresetId(null)
+    }
+  },
+)
 
 watch(
   () => uiContext.openLorebooksSignal,

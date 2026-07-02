@@ -80,6 +80,33 @@ function mapReceiveRow(
   return item
 }
 
+function mapSegmentRow(
+  seg: NonNullable<MessagesApiTurn['segments']>[number],
+): AssistantSegmentItem {
+  const segUsed = new Set<string>()
+  const segReceives = Array.isArray(seg.receives)
+    ? seg.receives.map((r) => mapReceiveRow(r, segUsed))
+    : []
+  let segAi =
+    typeof seg.activeReceiveIndex === 'number' &&
+    !Number.isNaN(seg.activeReceiveIndex)
+      ? seg.activeReceiveIndex
+      : 0
+  if (segReceives.length > 0) {
+    segAi = Math.min(Math.max(0, segAi), segReceives.length - 1)
+  }
+  return {
+    id: typeof seg.id === 'string' ? seg.id : '',
+    speakerCharacterId:
+      typeof seg.speakerCharacterId === 'string' ? seg.speakerCharacterId : '',
+    receives: segReceives,
+    activeReceiveIndex: segAi,
+    ...(seg.meta?.nextSpeakerHint
+      ? { meta: { nextSpeakerHint: seg.meta.nextSpeakerHint } }
+      : {}),
+  }
+}
+
 export function parseConversationTurnsFromApi(
   raw: MessagesApiTurn[],
 ): ChatTurnItem[] {
@@ -89,86 +116,35 @@ export function parseConversationTurnsFromApi(
         ? row.turnOrdinal
         : i
     const user = typeof row.user === 'string' ? row.user : ''
-    const used = new Set<string>()
-    const receives = Array.isArray(row.receives)
-      ? row.receives.map((r) => mapReceiveRow(r, used))
+    const segments = Array.isArray(row.segments)
+      ? row.segments.map((seg) => mapSegmentRow(seg))
       : []
-    const segments: AssistantSegmentItem[] | undefined = Array.isArray(row.segments)
-      ? row.segments.map((seg) => {
-          const segUsed = new Set<string>()
-          const segReceives = Array.isArray(seg.receives)
-            ? seg.receives.map((r) => mapReceiveRow(r, segUsed))
-            : []
-          let segAi =
-            typeof seg.activeReceiveIndex === 'number' &&
-            !Number.isNaN(seg.activeReceiveIndex)
-              ? seg.activeReceiveIndex
-              : 0
-          if (segReceives.length > 0) {
-            segAi = Math.min(Math.max(0, segAi), segReceives.length - 1)
-          }
-          return {
-            id: typeof seg.id === 'string' ? seg.id : '',
-            speakerCharacterId:
-              typeof seg.speakerCharacterId === 'string'
-                ? seg.speakerCharacterId
-                : '',
-            receives: segReceives,
-            activeReceiveIndex: segAi,
-            ...(seg.meta?.nextSpeakerHint
-              ? { meta: { nextSpeakerHint: seg.meta.nextSpeakerHint } }
-              : {}),
-          }
-        })
-      : undefined
-    let ai =
-      typeof row.activeReceiveIndex === 'number' &&
-      !Number.isNaN(row.activeReceiveIndex)
-        ? row.activeReceiveIndex
+    const activeSegmentIndex =
+      typeof row.activeSegmentIndex === 'number' &&
+      !Number.isNaN(row.activeSegmentIndex)
+        ? Math.min(
+            Math.max(0, row.activeSegmentIndex),
+            Math.max(0, segments.length - 1),
+          )
         : 0
-    if (receives.length === 0) {
-      return {
-        ...(typeof row.turnId === 'string' && row.turnId.trim()
-          ? { turnId: row.turnId.trim() }
-          : {}),
-        user,
-        receives: [],
-        activeReceiveIndex: 0,
-        turnOrdinal: ord,
-        ...(segments?.length ? { segments, activeSegmentIndex: row.activeSegmentIndex ?? 0 } : {}),
-        ...(Array.isArray(row.speakerQueue) && row.speakerQueue.length > 0
-          ? { speakerQueue: row.speakerQueue }
-          : {}),
-        ...(typeof row.speakerCharacterId === 'string' && row.speakerCharacterId.trim()
-          ? { speakerCharacterId: row.speakerCharacterId.trim() }
-          : {}),
-        ...(Array.isArray(row.plugins) && row.plugins.length > 0
-          ? { plugins: row.plugins }
-          : {}),
-      }
-    }
-    ai = Math.min(Math.max(0, ai), receives.length - 1)
+    const activeSeg = segments[activeSegmentIndex]
+    const receives = activeSeg?.receives ?? []
+    const activeReceiveIndex = activeSeg?.activeReceiveIndex ?? 0
     return {
       ...(typeof row.turnId === 'string' && row.turnId.trim()
         ? { turnId: row.turnId.trim() }
         : {}),
       user,
       receives,
-      activeReceiveIndex: ai,
+      activeReceiveIndex,
       turnOrdinal: ord,
-      ...(segments?.length
-        ? {
-            segments,
-            activeSegmentIndex:
-              typeof row.activeSegmentIndex === 'number'
-                ? row.activeSegmentIndex
-                : 0,
-          }
-        : {}),
+      segments,
+      activeSegmentIndex,
       ...(Array.isArray(row.speakerQueue) && row.speakerQueue.length > 0
         ? { speakerQueue: row.speakerQueue }
         : {}),
-      ...(typeof row.speakerCharacterId === 'string' && row.speakerCharacterId.trim()
+      ...(typeof row.speakerCharacterId === 'string' &&
+      row.speakerCharacterId.trim()
         ? { speakerCharacterId: row.speakerCharacterId.trim() }
         : {}),
       ...(Array.isArray(row.plugins) && row.plugins.length > 0

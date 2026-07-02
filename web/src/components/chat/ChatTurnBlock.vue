@@ -4,7 +4,7 @@ import ChatTurnUser from '@/components/chat/ChatTurnUser.vue'
 import PluginSlotMount from '@/plugins/PluginSlotMount.vue'
 import type { useChatSession } from '@/composables/useChatSession'
 import type { AssistantSegmentItem, ChatTurnItem } from '@/types/chat-turn'
-import { getTurnSegmentsForUi } from '@/utils/group-chat-turn'
+import { getTurnSegments } from '@/utils/group-chat-turn'
 import { computed } from 'vue'
 
 const props = defineProps<{
@@ -15,9 +15,7 @@ const props = defineProps<{
 
 const { turnLabelN, isOpeningTurn } = props.session
 
-const segments = computed(() =>
-  getTurnSegmentsForUi(props.turn),
-)
+const segments = computed(() => getTurnSegments(props.turn))
 
 function segmentTurnView(segment: AssistantSegmentItem): ChatTurnItem {
   return {

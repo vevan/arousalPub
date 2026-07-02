@@ -5,6 +5,8 @@ import {
   type GroupChatSettings,
 } from '@/utils/group-chat-settings'
 import { characterNameById } from '@/utils/group-chat-turn'
+import { useAuthStore } from '@/stores/auth'
+import { characterImageUrl } from '@/utils/authenticated-media-url'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -22,6 +24,9 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const auth = useAuthStore()
+
+const ownerUserId = computed(() => auth.user?.id ?? auth.defaultUserId)
 
 const open = computed({
   get: () => props.modelValue,
@@ -47,6 +52,10 @@ const canSave = computed(() => draftCharacterIds.value.length >= 2)
 
 function displayName(id: string): string {
   return characterNameById(id, props.characterIds, props.characterNames)
+}
+
+function memberAvatarSrc(id: string): string | null {
+  return characterImageUrl(ownerUserId.value, id, { size: 's' })
 }
 
 function memberWeight(id: string): number {
@@ -247,7 +256,22 @@ async function save() {
           :key="id"
           class="group-chat-member-row"
         >
-          <div class="group-chat-member-row__name">{{ displayName(id) }}</div>
+          <div class="group-chat-member-row__identity">
+            <v-avatar
+              size="36"
+              rounded="sm"
+              class="group-chat-member-row__avatar"
+              :aria-label="displayName(id)"
+            >
+              <v-img
+                v-if="memberAvatarSrc(id)"
+                :src="memberAvatarSrc(id) ?? undefined"
+                cover
+              />
+              <v-icon v-else size="20" aria-hidden="true">mdi-account</v-icon>
+            </v-avatar>
+            <span class="group-chat-member-row__name">{{ displayName(id) }}</span>
+          </div>
           <v-text-field
             :model-value="memberWeight(id)"
             :disabled="!draftSettings.enabled"
@@ -315,10 +339,23 @@ async function save() {
   padding: 0.5rem 0;
   border-bottom: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.08);
 }
+.group-chat-member-row__identity {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+.group-chat-member-row__avatar {
+  flex: 0 0 auto;
+}
 .group-chat-member-row__name {
-  flex: 1 1 6rem;
-  min-width: 5rem;
+  flex: 1 1 auto;
+  min-width: 0;
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .group-chat-member-row__order {
   display: flex;

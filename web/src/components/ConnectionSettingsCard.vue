@@ -261,10 +261,12 @@ const linkedPromptSelectItems = computed(() =>
 
 const canExportLinkedPrompt = computed(() =>
   Boolean(
-    conn.presets.find((p) => p.id === conn.activePresetId)
+    conn.presets.find((p) => p.id === conn.editingPresetId)
       ?.linkedPromptPresetId,
   ),
 )
+
+const setGlobalPresetLoading = ref(false)
 
 function formatSavedAt(iso: string) {
   return new Date(iso).toLocaleString(intlLocaleTag(appLocale.value))
@@ -459,8 +461,29 @@ async function save() {
 }
 
 function onPresetSelect(v: string | null) {
-  if (v && v !== conn.activePresetId) {
+  if (v && v !== conn.editingPresetId) {
     conn.switchPreset(v)
+  }
+}
+
+async function onSetGlobalPreset() {
+  if (conn.isEditingPresetGlobal) return
+  setGlobalPresetLoading.value = true
+  try {
+    if (conn.customParamsJson.trim()) {
+      conn.parseCustomParams()
+    }
+    await conn.setGlobalActivePreset()
+    snackbarColor.value = 'success'
+    snackbarText.value = t('conn.setGlobalPresetOk')
+    snackbar.value = true
+  } catch (e) {
+    snackbarColor.value = 'error'
+    snackbarText.value =
+      e instanceof Error ? e.message : t('conn.saveFailedJson')
+    snackbar.value = true
+  } finally {
+    setGlobalPresetLoading.value = false
   }
 }
 
@@ -480,7 +503,7 @@ const importApplyLinked = ref(true)
 function openExportDialog() {
   exportIncludeApiKey.value = false
   exportIncludeBaseUrl.value = true
-  const cur = conn.presets.find((p) => p.id === conn.activePresetId)
+  const cur = conn.presets.find((p) => p.id === conn.editingPresetId)
   exportIncludeLinked.value = Boolean(cur?.linkedPromptPresetId)
   exportDialogOpen.value = true
 }
@@ -579,7 +602,7 @@ function closeImportDialog() {
     </p>
 
     <v-select
-      :model-value="conn.activePresetId ?? undefined"
+      :model-value="conn.editingPresetId ?? undefined"
       :items="conn.presetSelectItems"
       item-title="title"
       item-value="value"
@@ -591,8 +614,57 @@ function closeImportDialog() {
       variant="outlined"
       class="mb-2"
       @update:model-value="onPresetSelect"
-    />
+    >
+      <template #item="{ item, props: itemProps }">
+        <v-list-item v-bind="itemProps" :title="undefined">
+          <v-list-item-title class="preset-dropdown-title">
+            <span class="preset-dropdown-mark" aria-hidden="true">
+              <v-icon
+                v-if="item.raw.isGlobal"
+                size="16"
+                color="primary"
+                :title="$t('conn.globalPresetMark')"
+                :aria-label="$t('conn.globalPresetMark')"
+              >
+                mdi-heart
+              </v-icon>
+            </span>
+            <span>{{ item.raw.title }}</span>
+          </v-list-item-title>
+        </v-list-item>
+      </template>
+      <template #selection="{ item }">
+        <span class="d-inline-flex align-center ga-1">
+          <v-icon
+            v-if="item.raw.isGlobal"
+            size="16"
+            color="primary"
+            :title="$t('conn.globalPresetMark')"
+            :aria-label="$t('conn.globalPresetMark')"
+          >
+            mdi-heart
+          </v-icon>
+          <span>{{ item.raw.title }}</span>
+        </span>
+      </template>
+    </v-select>
     <div class="d-flex flex-wrap ga-2 mb-4">
+      <v-btn
+        size="small"
+        variant="tonal"
+        color="primary"
+        prepend-icon="mdi-check-circle-outline"
+        :loading="setGlobalPresetLoading"
+        :disabled="conn.isEditingPresetGlobal"
+        :title="
+          conn.isEditingPresetGlobal
+            ? $t('conn.setGlobalPresetAlready')
+            : undefined
+        "
+        @click="onSetGlobalPreset"
+      >
+        {{ $t('conn.setGlobalPreset') }}
+      </v-btn>
       <v-btn
         size="small"
         variant="tonal"
@@ -1212,7 +1284,7 @@ function closeImportDialog() {
   <ApiModelPickerDialog
     v-model="modelDialog"
     :model-id="conn.model"
-    :api-preset-id="conn.activePresetId"
+    :api-preset-id="conn.editingPresetId"
     @update:model-id="(v) => { conn.model = v }"
   />
 

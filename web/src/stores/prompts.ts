@@ -336,7 +336,16 @@ export const usePromptsStore = defineStore('prompts', () => {
   const indexEntries = ref<PromptPresetIndexEntry[]>([])
   /** 仅缓存已从服务端拉取的正文；不用本地种子占位，避免与磁盘不一致 */
   const presetBodies = ref<Record<string, PromptPreset>>({})
+  /** 全局默认提示词预设（写入 prompts/index 的 activePresetId） */
   const activePresetId = ref<string>('')
+  /** 提示词编辑页当前编辑的预设（不必等于全局默认） */
+  const editingPresetId = ref<string>('')
+
+  const isEditingPresetDefault = computed(
+    () =>
+      Boolean(editingPresetId.value) &&
+      editingPresetId.value === activePresetId.value,
+  )
 
   const presets = computed(() =>
     indexEntries.value.map(
@@ -357,7 +366,7 @@ export const usePromptsStore = defineStore('prompts', () => {
   const lastError = ref<string | null>(null)
 
   const activePresetReady = computed(
-    () => Boolean(presetBodies.value[activePresetId.value]),
+    () => Boolean(presetBodies.value[editingPresetId.value]),
   )
 
   function syncIndexEntryFromBody(p: PromptPreset) {
@@ -422,11 +431,13 @@ export const usePromptsStore = defineStore('prompts', () => {
     }, SAVE_BATCH_MS)
   }
 
-  async function persistActivePresetId(): Promise<void> {
+  async function persistActivePresetIdFor(presetId: string): Promise<void> {
+    const id = presetId.trim()
+    if (!id) throw new Error('prompt preset id required')
     const res = await fetch('/api/prompts', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ activePresetId: activePresetId.value }),
+      body: JSON.stringify({ activePresetId: id }),
     })
     if (!res.ok) {
       const txt = await res.text()
@@ -454,13 +465,13 @@ export const usePromptsStore = defineStore('prompts', () => {
   }
 
   async function flushSave(): Promise<void> {
-    const presetId = activePresetId.value
+    const presetId = editingPresetId.value
     const body = presetBodies.value[presetId]
     if (!body) return
     const snapshot = presetBodySnapshot(presetId)
     if (snapshot && snapshot === lastPersistedBodies[presetId]) return
     const res = await fetch(
-      `/api/prompts/${encodeURIComponent(activePresetId.value)}`,
+      `/api/prompts/${encodeURIComponent(presetId)}`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -470,7 +481,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     if (!res.ok) {
       const txt = await res.text()
       throw new Error(
-        `PUT /api/prompts/${activePresetId.value} ${res.status}: ${txt.slice(0, 200)}`,
+        `PUT /api/prompts/${presetId} ${res.status}: ${txt.slice(0, 200)}`,
       )
     }
     const j = (await res.json()) as { savedAt?: string }
@@ -479,8 +490,8 @@ export const usePromptsStore = defineStore('prompts', () => {
     syncIndexEntryFromBody(body)
   }
 
-  async function flushPending(): Promise<void> {
-    if (!pendingSave && !pendingIndexPatch) return
+  async function flushPending(): Promise<boolean> {
+    if (!pendingSave && !pendingIndexPatch) return true
     const doBody = pendingSave
     const doIndex = pendingIndexPatch
     pendingSave = false
@@ -490,12 +501,47 @@ export const usePromptsStore = defineStore('prompts', () => {
     try {
       if (doBody) await flushSave()
       if (doIndex) await persistIndex()
+      return true
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e)
       if (doBody) pendingSave = true
       if (doIndex) pendingIndexPatch = true
+      return false
     } finally {
       saving.value = false
+    }
+  }
+
+  async function fetchPromptsIndexFromServer(): Promise<{
+    activePresetId: string
+    presets: PromptPresetIndexEntry[]
+  } | null> {
+    const res = await fetch('/api/prompts')
+    if (!res.ok) {
+      throw new Error(`GET /api/prompts ${res.status}`)
+    }
+    const raw: unknown = await res.json()
+    if (raw === null) return null
+    return normalizeIndexResponse(raw as PromptsIndexResponse)
+  }
+
+  /** 从服务端刷新 index（保留仍存在的 editingPresetId） */
+  async function syncIndexFromServer(): Promise<void> {
+    const fromServer = await fetchPromptsIndexFromServer()
+    if (!fromServer) return
+    const prevEditing = editingPresetId.value
+    indexEntries.value = fromServer.presets
+    activePresetId.value = fromServer.activePresetId
+    if (
+      prevEditing &&
+      fromServer.presets.some((p) => p.id === prevEditing)
+    ) {
+      editingPresetId.value = prevEditing
+    } else {
+      editingPresetId.value =
+        fromServer.presets.some((p) => p.id === fromServer.activePresetId)
+          ? fromServer.activePresetId
+          : (fromServer.presets[0]?.id ?? '')
     }
   }
 
@@ -510,18 +556,11 @@ export const usePromptsStore = defineStore('prompts', () => {
       loading.value = true
       lastError.value = null
       try {
-        const res = await fetch('/api/prompts')
-        if (!res.ok) {
-          throw new Error(`GET /api/prompts ${res.status}`)
-        }
-        const raw: unknown = await res.json()
-        const fromServer =
-          raw === null
-            ? null
-            : normalizeIndexResponse(raw as PromptsIndexResponse)
+        const fromServer = await fetchPromptsIndexFromServer()
         if (fromServer) {
           indexEntries.value = fromServer.presets
           activePresetId.value = fromServer.activePresetId
+          editingPresetId.value = fromServer.activePresetId
           presetBodies.value = {}
           for (const k of Object.keys(lastPersistedBodies)) {
             delete lastPersistedBodies[k]
@@ -531,6 +570,7 @@ export const usePromptsStore = defineStore('prompts', () => {
         }
         indexEntries.value = []
         activePresetId.value = ''
+        editingPresetId.value = ''
         presetBodies.value = {}
         loaded.value = true
         lastError.value = 'prompts_not_initialized'
@@ -585,8 +625,8 @@ export const usePromptsStore = defineStore('prompts', () => {
 
   async function loadFromServer(opts?: { forceActive?: boolean }): Promise<void> {
     await loadIndexFromServer()
-    if (!loaded.value || !activePresetId.value) return
-    await loadPresetFromServer(activePresetId.value, {
+    if (!loaded.value || !editingPresetId.value) return
+    await loadPresetFromServer(editingPresetId.value, {
       force: opts?.forceActive,
     })
   }
@@ -602,16 +642,17 @@ export const usePromptsStore = defineStore('prompts', () => {
   }
 
   watch(
-    () => presetBodies.value[activePresetId.value],
+    () => presetBodies.value[editingPresetId.value],
     () => scheduleSave(),
     { deep: true, flush: 'post' },
   )
 
   /** ====== preset ====== */
   const activePreset = computed<PromptPreset>(() => {
-    const p = presetBodies.value[activePresetId.value]
+    const id = editingPresetId.value
+    const p = presetBodies.value[id]
     if (p) return p
-    const e = indexEntries.value.find((x) => x.id === activePresetId.value)
+    const e = indexEntries.value.find((x) => x.id === id)
     if (e) return stubPresetFromIndex(e)
     const first = indexEntries.value[0]
     if (first) return stubPresetFromIndex(first)
@@ -627,7 +668,7 @@ export const usePromptsStore = defineStore('prompts', () => {
   )
 
   function patchActivePreset(patch: (p: PromptPreset) => PromptPreset) {
-    const cur = presetBodies.value[activePresetId.value]
+    const cur = presetBodies.value[editingPresetId.value]
     if (!cur) return
     setPresetBody({ ...patch(cur), updatedAt: nowIso() })
   }
@@ -643,7 +684,7 @@ export const usePromptsStore = defineStore('prompts', () => {
       updatedAt: t,
     })
     setPresetBody(preset)
-    activePresetId.value = preset.id
+    editingPresetId.value = preset.id
     selectedPromptId.value = null
     activeGroupId.value = null
     scheduleIndexPatch()
@@ -671,7 +712,7 @@ export const usePromptsStore = defineStore('prompts', () => {
       updatedAt: t,
     })
     setPresetBody(copy)
-    activePresetId.value = copy.id
+    editingPresetId.value = copy.id
     scheduleIndexPatch()
     pendingSave = true
     void flushPending()
@@ -764,7 +805,7 @@ export const usePromptsStore = defineStore('prompts', () => {
    */
   function finalizeImportedPresets(fresh: PromptPreset[]): string[] {
     for (const p of fresh) setPresetBody(p)
-    activePresetId.value = fresh[0].id
+    editingPresetId.value = fresh[0]!.id
     selectedPromptId.value = null
     activeGroupId.value = null
     scheduleIndexPatch()
@@ -896,8 +937,8 @@ export const usePromptsStore = defineStore('prompts', () => {
     scheduleIndexPatch()
   }
 
-  async function deletePreset(presetId: string): Promise<void> {
-    if (indexEntries.value.length <= 1) return
+  async function deletePreset(presetId: string): Promise<boolean> {
+    if (indexEntries.value.length <= 1) return false
     try {
       const res = await fetch(
         `/api/prompts/${encodeURIComponent(presetId)}`,
@@ -909,62 +950,81 @@ export const usePromptsStore = defineStore('prompts', () => {
       }
     } catch (e) {
       lastError.value = e instanceof Error ? e.message : String(e)
-      return
+      return false
     }
-    indexEntries.value = indexEntries.value.filter((p) => p.id !== presetId)
-    const { [presetId]: _drop, ...rest } = presetBodies.value
-    presetBodies.value = rest
-    if (activePresetId.value === presetId) {
-      activePresetId.value = indexEntries.value[0]?.id ?? ''
-      selectedPromptId.value = null
-      activeGroupId.value = null
-      if (activePresetId.value) {
-        void loadPresetFromServer(activePresetId.value)
+    try {
+      await syncIndexFromServer()
+    } catch (e) {
+      lastError.value = e instanceof Error ? e.message : String(e)
+      indexEntries.value = indexEntries.value.filter((p) => p.id !== presetId)
+      if (editingPresetId.value === presetId) {
+        editingPresetId.value =
+          indexEntries.value.some((p) => p.id === activePresetId.value)
+            ? activePresetId.value
+            : (indexEntries.value[0]?.id ?? '')
       }
     }
+    delete lastPersistedBodies[presetId]
+    const { [presetId]: _drop, ...rest } = presetBodies.value
+    presetBodies.value = rest
+    selectedPromptId.value = null
+    activeGroupId.value = null
+    if (editingPresetId.value) {
+      void loadPresetFromServer(editingPresetId.value)
+    }
+    return true
   }
 
   /**
-   * 仅切换全局激活 id（供 API 预设关联等）；不拉取预设正文。
-   * persist 为 true 时写入服务端 index（组装管线读盘用）。
+   * 仅切换全局默认 id（内存）；不拉取预设正文，不改变编辑选中。
    */
-  async function setActivePresetId(
-    presetId: string,
-    opts?: { persist?: boolean },
-  ): Promise<void> {
+  function setActivePresetId(presetId: string): void {
     if (!indexEntries.value.some((p) => p.id === presetId)) return
-    if (activePresetId.value === presetId) {
-      if (opts?.persist && loaded.value) await persistActivePresetId()
-      return
-    }
     activePresetId.value = presetId
-    selectedPromptId.value = null
-    activeGroupId.value = null
-    if (opts?.persist && loaded.value) {
-      try {
-        await persistActivePresetId()
-      } catch (e) {
-        lastError.value = e instanceof Error ? e.message : String(e)
-      }
-    }
   }
 
-  /** 提示词编辑页：切换预设并强制从服务端加载正文 */
-  async function selectPreset(presetId: string): Promise<void> {
-    if (!indexEntries.value.some((p) => p.id === presetId)) return
-    if (presetId !== activePresetId.value) {
+  /**
+   * 外部（如 API 关联）持久化全局默认；成功后才更新 activePresetId。
+   */
+  async function persistGlobalDefaultFromLink(presetId: string): Promise<void> {
+    const id = presetId.trim()
+    if (!id || !indexEntries.value.some((p) => p.id === id)) return
+    if (!loaded.value) await loadIndexFromServer()
+    await persistActivePresetIdFor(id)
+    activePresetId.value = id
+  }
+
+  /** 将当前编辑中的预设设为全局默认 */
+  async function setGlobalDefaultPreset(): Promise<void> {
+    const id = editingPresetId.value.trim()
+    if (!id || !indexEntries.value.some((p) => p.id === id)) return
+    if (id === activePresetId.value) return
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    if (!(await flushPending())) {
+      throw new Error(lastError.value || 'prompt preset save failed')
+    }
+    await persistActivePresetIdFor(id)
+    activePresetId.value = id
+  }
+
+  /** 提示词编辑页：切换编辑预设并强制从服务端加载正文 */
+  async function selectPreset(presetId: string): Promise<boolean> {
+    if (!indexEntries.value.some((p) => p.id === presetId)) return false
+    if (presetId !== editingPresetId.value) {
       if (saveTimer) {
         clearTimeout(saveTimer)
         saveTimer = null
       }
-      await flushPending()
+      if (!(await flushPending())) return false
     }
-    activePresetId.value = presetId
+    editingPresetId.value = presetId
     selectedPromptId.value = null
     activeGroupId.value = null
     await loadPresetFromServer(presetId, { force: true })
-    scheduleIndexPatch()
-    void flushPending()
+    return true
   }
 
   /** ====== group ====== */
@@ -1257,7 +1317,7 @@ export const usePromptsStore = defineStore('prompts', () => {
 
   async function focusPresetById(presetId: string): Promise<boolean> {
     if (!indexEntries.value.some((p) => p.id === presetId)) return false
-    await selectPreset(presetId)
+    if (!(await selectPreset(presetId))) return false
     const gid = firstNormalGroupId(activePreset.value.groups)
     selectGroup(gid)
     selectedPromptId.value = null
@@ -1266,22 +1326,34 @@ export const usePromptsStore = defineStore('prompts', () => {
   }
 
   /**
-   * 打开提示词库时：选中对话关联预设（或优先 id），并定位到第一个 normal 分组。
+   * 打开提示词库时聚焦预设：优先 preferred，其次对话绑定（仅对话页传入时），否则全局默认。
    */
   async function applyOpenFocus(
     conversationPresetId: string | null,
     preferredPresetId?: string | null,
   ): Promise<void> {
-    await loadEditorFromServer()
-    const candidates: string[] = []
-    const add = (raw: string | null | undefined) => {
-      const id = typeof raw === 'string' ? raw.trim() : ''
-      if (id && !candidates.includes(id)) candidates.push(id)
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
     }
-    add(preferredPresetId)
-    add(conversationPresetId)
-    add(activePresetId.value)
-    for (const e of indexEntries.value) add(e.id)
+    if (!(await flushPending())) return
+    await loadIndexFromServer()
+    if (!loaded.value) return
+    const candidates: string[] = []
+    const push = (raw: string | null | undefined) => {
+      const id = typeof raw === 'string' ? raw.trim() : ''
+      if (
+        id &&
+        indexEntries.value.some((p) => p.id === id) &&
+        !candidates.includes(id)
+      ) {
+        candidates.push(id)
+      }
+    }
+    push(preferredPresetId)
+    push(conversationPresetId)
+    push(activePresetId.value)
+    for (const e of indexEntries.value) push(e.id)
     for (const id of candidates) {
       if (await focusPresetById(id)) return
     }
@@ -1385,6 +1457,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     indexEntries.value = []
     presetBodies.value = {}
     activePresetId.value = ''
+    editingPresetId.value = ''
     selectedPromptId.value = null
     activeGroupId.value = null
     searchText.value = ''
@@ -1402,6 +1475,8 @@ export const usePromptsStore = defineStore('prompts', () => {
   return {
     presets,
     activePresetId,
+    editingPresetId,
+    isEditingPresetDefault,
     activePreset,
     activeGroups,
     activePrompts,
@@ -1413,6 +1488,8 @@ export const usePromptsStore = defineStore('prompts', () => {
     groupCounts,
 
     setActivePresetId,
+    persistGlobalDefaultFromLink,
+    setGlobalDefaultPreset,
     selectPreset,
     clearSessionData,
     createPreset,

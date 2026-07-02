@@ -1,5 +1,4 @@
 import type { ChatTurnItem, PersistTurnToServerResult, ReceiveItem } from '@/types/chat-turn'
-import { getTurnSegmentsForUi } from '@/utils/group-chat-turn'
 import { allocateShortId } from '@/utils/short-id'
 import {
   CONVERSATION_UI_TAIL_LIMIT,
@@ -157,7 +156,7 @@ export function useTurnList(opts: {
     const idx = opts.turns.value.findIndex((t) => t.turnOrdinal === ord)
     if (idx < 0) return
     const cur = opts.turns.value[idx]!
-    let segments = [...(cur.segments ?? getTurnSegmentsForUi(cur))]
+    let segments = [...(cur.segments ?? [])]
     const speakerId = speakerCharacterId.trim()
     if (!speakerId) return
 
@@ -198,30 +197,23 @@ export function useTurnList(opts: {
       return
     }
     const cur = opts.turns.value[idx]!
-    const segments = [...(cur.segments ?? getTurnSegmentsForUi(cur))]
+    const segments = [...(cur.segments ?? [])]
     const seg = segments[segmentIndex]
     if (seg && seg.receives.length === 0) {
       segments.splice(segmentIndex, 1)
       const prevIdx = Math.max(0, segmentIndex - 1)
       const activeSeg = segments[prevIdx]
+      if (!activeSeg) {
+        clearPendingSend()
+        return
+      }
       replaceTurnAt(idx, {
         ...cur,
-        ...(segments.length > 0
-          ? {
-              segments,
-              activeSegmentIndex: prevIdx,
-              receives: activeSeg?.receives ?? cur.receives,
-              activeReceiveIndex:
-                activeSeg?.activeReceiveIndex ?? cur.activeReceiveIndex,
-              speakerCharacterId:
-                activeSeg?.speakerCharacterId ?? cur.speakerCharacterId,
-            }
-          : {
-              segments: undefined,
-              activeSegmentIndex: 0,
-              receives: cur.receives,
-              activeReceiveIndex: cur.activeReceiveIndex,
-            }),
+        segments,
+        activeSegmentIndex: prevIdx,
+        receives: activeSeg.receives,
+        activeReceiveIndex: activeSeg.activeReceiveIndex,
+        speakerCharacterId: activeSeg.speakerCharacterId,
       })
     }
     clearPendingSend()

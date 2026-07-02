@@ -724,7 +724,7 @@ export async function persistTurnAfterModelReply(params: {
       if (!activeSeg) {
         return { ok: false, error: ApiErrorCodes.regenerate_turn_not_found }
       }
-      const segReceives = activeSeg.receives ?? turn.receives ?? []
+      const segReceives = activeSeg.receives
       const receives: TurnReceive[] = [
         ...segReceives.map((r) => {
           const rec: TurnReceive = {

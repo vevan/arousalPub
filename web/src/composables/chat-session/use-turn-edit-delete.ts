@@ -1,7 +1,7 @@
 import type { ChatTurnItem, PersistTurnToServerResult } from '@/types/chat-turn'
 import { assistantText } from '@/utils/chat-turn-display'
 import { deleteTurnOnServer } from '@/utils/chat-messages'
-import { getActiveSegmentIndex, getTurnSegmentsForUi } from '@/utils/group-chat-turn'
+import { getActiveSegmentIndex, getTurnSegments } from '@/utils/group-chat-turn'
 import { computed, ref, type Ref } from 'vue'
 import type { ComposerTranslation } from 'vue-i18n'
 
@@ -85,14 +85,14 @@ export function useTurnEditDelete(opts: {
     }
     if (side === 'assistant') {
       const segIdx = editingSegmentIndex.value ?? getActiveSegmentIndex(turn)
-      const segments = getTurnSegmentsForUi(turn)
+      const segments = getTurnSegments(turn)
       const seg = segments[segIdx]
       if (!seg) return
       const ai = seg.activeReceiveIndex
       const newReceives = seg.receives.map((r, j) =>
         j === ai ? { ...r, content: text } : r,
       )
-      const nextSegments = [...(turn.segments ?? segments)]
+      const nextSegments = [...segments]
       nextSegments[segIdx] = { ...seg, receives: newReceives }
       const activeSeg = nextSegments[segIdx]!
       const draft: ChatTurnItem = {
@@ -144,13 +144,13 @@ export function useTurnEditDelete(opts: {
 
     if (target === 'assistant') {
       const segIdx = deleteSegmentIndex.value ?? getActiveSegmentIndex(turn)
-      const segments = getTurnSegmentsForUi(turn)
+      const segments = getTurnSegments(turn)
       const seg = segments[segIdx]
       if (seg && seg.receives.length > 1) {
         const active = seg.activeReceiveIndex
         const newReceives = seg.receives.filter((_, j) => j !== active)
         const newActive = Math.min(active, newReceives.length - 1)
-        const nextSegments = [...(turn.segments ?? segments)]
+        const nextSegments = [...segments]
         nextSegments[segIdx] = {
           ...seg,
           receives: newReceives,
@@ -206,7 +206,7 @@ export function useTurnEditDelete(opts: {
     if (!turn) return ''
     if (tgt === 'assistant') {
       const segIdx = deleteSegmentIndex.value ?? getActiveSegmentIndex(turn)
-      const seg = getTurnSegmentsForUi(turn)[segIdx]
+      const seg = getTurnSegments(turn)[segIdx]
       if (seg && seg.receives.length > 1) {
         return opts.t('chat.deleteVariantConfirm')
       }

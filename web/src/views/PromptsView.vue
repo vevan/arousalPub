@@ -38,6 +38,9 @@ import { useConnectionStore } from '@/stores/connection'
 import { useNarrowLayout } from '@/composables/use-narrow-layout'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = withDefaults(
   defineProps<{
@@ -53,11 +56,15 @@ const emit = defineEmits<{
 
 const store = usePromptsStore()
 onMounted(() => {
-  void store.loadEditorFromServer()
+  if (!props.embedded) {
+    void store.applyOpenFocus(null, null)
+  }
 })
 const {
   presets,
   activePresetId,
+  editingPresetId,
+  isEditingPresetDefault,
   activePreset,
   activeGroups,
   activeGroupId,
@@ -101,23 +108,62 @@ function openRenamePreset() {
   presetRenameOpen.value = true
 }
 function submitRenamePreset() {
-  store.renamePreset(activePresetId.value, presetRenameDraft.value)
+  store.renamePreset(editingPresetId.value, presetRenameDraft.value)
   presetRenameOpen.value = false
 }
 function performDuplicatePreset() {
-  void store.duplicatePreset(activePresetId.value)
+  void store.duplicatePreset(editingPresetId.value)
 }
 function openDeletePreset() {
   if (presets.value.length <= 1) return
   presetDeleteOpen.value = true
 }
 function performDeletePreset() {
-  void store.deletePreset(activePresetId.value)
-  presetDeleteOpen.value = false
+  void (async () => {
+    const ok = await store.deletePreset(editingPresetId.value)
+    presetDeleteOpen.value = false
+    if (!ok) {
+      snackbarColor.value = 'error'
+      snackbarText.value =
+        store.lastError?.trim() || t('prompts.presetDeleteFailed')
+      snackbar.value = true
+    }
+  })()
 }
 function switchPreset(id: string) {
-  void store.selectPreset(id)
-  presetSwitchOpen.value = false
+  void (async () => {
+    const ok = await store.selectPreset(id)
+    if (!ok) {
+      snackbarColor.value = 'error'
+      snackbarText.value =
+        store.lastError?.trim() || t('prompts.presetSwitchFailed')
+      snackbar.value = true
+      return
+    }
+    presetSwitchOpen.value = false
+  })()
+}
+
+const setDefaultPresetLoading = ref(false)
+const snackbar = ref(false)
+const snackbarText = ref('')
+const snackbarColor = ref<'success' | 'error'>('success')
+
+async function onSetDefaultPreset() {
+  if (isEditingPresetDefault.value) return
+  setDefaultPresetLoading.value = true
+  try {
+    await store.setGlobalDefaultPreset()
+    snackbarColor.value = 'success'
+    snackbarText.value = t('prompts.setDefaultPresetOk')
+    snackbar.value = true
+  } catch (e) {
+    snackbarColor.value = 'error'
+    snackbarText.value = e instanceof Error ? e.message : String(e)
+    snackbar.value = true
+  } finally {
+    setDefaultPresetLoading.value = false
+  }
 }
 
 /** ============== preset import / export ============== */
@@ -893,7 +939,7 @@ function entryGroupKind(p: PromptEntry): GroupKind | undefined {
 
 /** 默认选中第一个 normal 分组 */
 watch(
-  activePresetId,
+  editingPresetId,
   () => {
     if (!activeGroupId.value) {
       const firstNormal = activeGroups.value.find((g) => g.kind === 'normal')
@@ -1015,7 +1061,18 @@ const canDeleteGroup = (g: PromptGroup) =>
                 v-bind="act"
                 :aria-label="$t('prompts.presetSwitch')"
               >
-                <span class="preset-bar__current-name">{{ activePreset.name }}</span>
+                <span class="preset-bar__current-name d-inline-flex align-center ga-1">
+                  <v-icon
+                    v-if="isEditingPresetDefault"
+                    size="14"
+                    color="primary"
+                    :title="$t('prompts.defaultPresetMark')"
+                    :aria-label="$t('prompts.defaultPresetMark')"
+                  >
+                    mdi-heart
+                  </v-icon>
+                  <span>{{ activePreset.name }}</span>
+                </span>
                 <v-icon size="14" class="preset-bar__caret">mdi-chevron-down</v-icon>
               </button>
             </template>
@@ -1023,12 +1080,39 @@ const canDeleteGroup = (g: PromptGroup) =>
               <v-list-item
                 v-for="p in presets"
                 :key="p.id"
-                :title="p.name"
-                :active="p.id === activePresetId"
+                :active="p.id === editingPresetId"
                 @click="switchPreset(p.id)"
-              />
+              >
+                <v-list-item-title class="preset-dropdown-title">
+                  <span class="preset-dropdown-mark" aria-hidden="true">
+                    <v-icon
+                      v-if="p.id === activePresetId"
+                      size="16"
+                      color="primary"
+                      :title="$t('prompts.defaultPresetMark')"
+                      :aria-label="$t('prompts.defaultPresetMark')"
+                    >
+                      mdi-heart
+                    </v-icon>
+                  </span>
+                  <span>{{ p.name }}</span>
+                </v-list-item-title>
+              </v-list-item>
             </v-list>
           </v-menu>
+          <button
+            type="button"
+            class="preset-bar__default-btn"
+            :disabled="isEditingPresetDefault || setDefaultPresetLoading"
+            :title="
+              isEditingPresetDefault
+                ? $t('prompts.setDefaultPresetAlready')
+                : undefined
+            "
+            @click="onSetDefaultPreset"
+          >
+            {{ $t('prompts.setDefaultPreset') }}
+          </button>
           <button
             type="button"
             class="preset-bar__icon-btn"
@@ -2123,6 +2207,10 @@ const canDeleteGroup = (g: PromptGroup) =>
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
+      {{ snackbarText }}
+    </v-snackbar>
   </div>
 </template>
 

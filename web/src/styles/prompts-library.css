@@ -138,6 +138,7 @@
   color: rgba(var(--v-theme-on-surface), 0.4);
   margin-right: 0.25rem;
 }
+
 .preset-bar__current {
   display: inline-flex;
   align-items: center;
@@ -178,6 +179,56 @@
     flex: 1 1 6rem;
   }
 }
+.preset-bar__default-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 1.75rem;
+  padding: 0 0.625rem;
+  background: rgba(var(--v-theme-primary), 0.1);
+  border: 0.0625rem solid rgba(var(--v-theme-primary), 0.35);
+  border-radius: 0.25rem;
+  color: rgb(var(--v-theme-on-surface));
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.preset-bar__default-btn:hover:not(:disabled) {
+  background: rgba(var(--v-theme-primary), 0.18);
+  border-color: rgba(var(--v-theme-primary), 0.55);
+}
+.preset-bar__default-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/** 预设下拉：对勾与名称同一行，避免 v-list-item prepend 默认 32px spacer */
+.preset-dropdown-title {
+  display: flex;
+  align-items: center;
+  column-gap: 0.375rem;
+  min-width: 0;
+}
+
+.preset-dropdown-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  flex: 0 0 1rem;
+}
+
+.v-list-item:has(.preset-dropdown-title) > .v-list-item__prepend,
+.v-list-item:has(.preset-dropdown-title) > .v-list-item__spacer {
+  display: none;
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+}
+
 .preset-bar__icon-btn {
   display: inline-flex;
   align-items: center;

@@ -56,6 +56,7 @@
 | [`33`](33-mobile-compatibility.md) | **Phase 1** | 40rem rail overlay + hidden 持久化；余 composer/安全区验收 |
 | [`35`](35-group-chat.md) | 定案 **P0** | **群聊**：segment 模型、`/@`、`[NEXT@Name]`、衰减与 confirm |
 | [`36`](36-composer-slash.md) | ✅ S0–S2/S4 | **Composer Slash**：submitComposer、`/goto`、`/@` 补全浮层 |
+| [`37`](37-st-import-settings-tab.md) | 定案 **P2** | **设置「导入」Tab**：ST 聊天记录 / 世界书 / 提示词预设（预设委托 `PromptsView` 原流程） |
 
 ## 已归档（勿再新建同级文档）
 

@@ -25,6 +25,10 @@
 
 ## P2
 
+- [ ] **迁移** — 定案 [`DOC/37`](37-st-import-settings-tab.md)：设置页 **「导入」Tab**（仅 ST 聊天记录 / ST 世界书 / ST 提示词预设）
+  - [ ] **Tab 壳 + ST 预设跳转** — `SettingsTab: 'import'` · `ImportSettingsPanel` · `uiContext.requestOpenPromptsImport` → 关设置 · 开提示词库 · `performImportPickFile()`
+  - [ ] **ST 世界书** — `st-lorebook-import.ts` · `POST /api/lorebooks/import-st`（preview + import）；`comment→title`、`disable→enabled`、无 key + `vectorized` → `triggerMode: 'vector'`；导入后 reindex
+  - [ ] **ST 聊天记录** — SillyTavern JSONL → chunk / `TurnRecord`（开场 + 正文；可选 `reasoning`、`durationMs`）；导入前绑定 `userCharacterId` / `characterIds`；不含 model、swipe、插件 `extra`；流式读 JSONL + 批量写 chunk
 - [ ] **作者注分层** `DOC/28` — Phase 2 角色 AN + `{{charAuthorsNote}}`（Phase 1 全局 default ✅）
 - [ ] **角色卡内嵌世界书** `DOC/27` — Phase 1 组装（constant + keyword、`position`、叠加内嵌优先）；Phase 2 角色库查看 / 编辑 UI
 - [ ] 插件实例与 API 绑定、插件审计、fallback 策略（部分 host API 见 `DOC/10`）

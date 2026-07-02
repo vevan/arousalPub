@@ -193,7 +193,7 @@ LLM 原始 assistant 文本
 
 | 概念 | 含义 | 额度 |
 |------|------|------|
-| **掷骰失败** | 该 bot **个人衰减骰**未通过（`random() >= P_k`） | **扣 1**（未发言） |
+| **掷骰失败** | 该 bot **个人衰减骰**未通过（`random() >= P_k`） | **扣 1**（未发言）；首段全员失败兜底时 **全员**按此扣，speaker **不另扣**发言（§2.6） |
 | **抢麦失败** | 掷骰通过但 **得分非最高** | **不扣** |
 | **发言** | 成为本段 speaker 并生成 segment | **扣 1**；该 bot `k += 1`（下次 `P_k` 更低） |
 
@@ -217,19 +217,46 @@ decay.enabled=false → P_k = 1
 
 ```text
 对每个 eligible bot:
-  若 random() >= P_k → 掷骰失败：speakQuota -= 1，不参与抢麦
-  否则 → 掷骰通过：score = weight × random()（并列用 characterIds 顺序或 seed 打破）
+  roll = random()
+  若 roll >= P_k → 掷骰失败（记录 failed）
+  否则 → 掷骰通过（记录 passed）
+  score = weight × random()（并列用 characterIds 顺序或 seed 打破）
 
-若无人掷骰通过 → 结束本 user turn
-否则 → score 最高者为本段 speaker；抢麦失败者额度不变
+若存在掷骰通过者:
+  score 最高者为本段 speaker
+  掷骰失败者 speakQuota -= 1；抢麦失败者额度不变；speaker 另扣发言额度 speakQuota -= 1
+若无人掷骰通过:
+  → 进入「全员掷骰失败 → 结束本 user turn」流程
+  若 segmentCount == 0（首段）:
+    → 终止上述结束流程，改走「首段全员失败兜底」（§2.6）
+  否则:
+    → 确认结束本 user turn
 ```
+
+#### 首段全员失败兜底（罕见）
+
+**触发**：经上表进入「全员失败 → 结束 turn」流程，且 **`segmentCount === 0`** 时 **中止结束**，改作本兜底（非与结束流程并列的另一分支）。
+
+**条件**：本轮 eligible **全部**掷骰失败（**掷骰失败**，非抢麦失败）。
+
+**行为**：仍按上表已算出的 `score` **取最高者**作为本段 speaker。
+
+**额度（本兜底专用）**：
+
+| 角色 | 额度 |
+|------|------|
+| **全部 eligible** | 各 **扣 1**（按 **掷骰失败** 计） |
+| **胜出 speaker** | **不再另扣**发言额度（每人本轮合计 **只扣 1**） |
+| **其余 eligible** | 已在上行随掷骰失败扣过，**不重复扣** |
+
+> **第 2 段起**：全员掷骰失败 → 结束流程 **不中止**，直接结束本 user turn；各 bot 按常规定价（掷骰失败扣 1，抢麦失败不扣）。
 
 #### 终止（dice 模式与共用）
 
 - `segmentCount >= maxSegmentsPerTurn`  
 - 所有 bot `speakQuota == 0`  
 - eligible 为空  
-- 全员掷骰失败（上一段竞标无人通过）
+- **全员掷骰失败** → 进入结束本 user turn 流程；**仅当 `segmentCount > 0` 时生效**（首段时中止结束，走 §2.6 兜底）
 
 权重来自 `members[].weight`（默认 1）。
 
@@ -397,6 +424,7 @@ charN        → 可选；characterIds[N-1]（Phase 2+）
 10. **`next@` 首段无 `/@`** → 掷骰选第一位（非 fallback）。
 11. **confirmContinue** 可改选下一位；hint 失败时必须 pending。
 12. **`maxSegmentsPerTurn`** 达上限强制结束本 user turn。
+13. **首段全员掷骰失败**：先进入「结束 turn」流程；**首段中止结束** → 取得分最高者发言；**全部 eligible 各扣 1**（掷骰失败）；speaker **不另扣**发言额度（§2.6 兜底）。
 
 ---
 

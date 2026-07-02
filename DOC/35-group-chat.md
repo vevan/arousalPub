@@ -1,6 +1,6 @@
 # 群聊（多角色发言轮次）— 设计定案
 
-> **状态**：定案 · **G0/G1 已落地**（2026-07-01）；G2–G4 待做  
+> **状态**：定案 · **G0/G1/G2（过渡实现）已落地**（2026-07-01）；**G3 选人模型修订**定案（2026-07-02，§2.7–§3，**待实现**）  
 > **关联**：`DOC/03` §6（turn/chunk）、`DOC/04` **P0**、`DOC/14` / `DOC/26`（ST 群聊宏）、Composer Slash（`submitComposer`）
 
 ---
@@ -56,9 +56,13 @@ AssistantSegment {
 
 | 规则 | 说明 |
 |------|------|
-| **每 bot 每轮最多 1 segment** | 同一 user turn 内禁止同一 bot 连续说两次 |
+| **同一 bot 不得连说** | 仅 **上一 segment 的 speaker** 不参与下一段选人（冷却 1 段）；额度允许则同 bot 可在中间有人插话后再说 |
+| **每 bot 发言额度** | `members[].speakQuota`（默认见 §2.7）；**实际发言**与 **掷骰失败**均消耗额度（见 §2.7）；**抢麦失败不扣额度** |
+| **turn 段数上限** | `maxSegmentsPerTurn`（可选）；达上限结束本 user turn |
 | **regenerate / swipe** | 仅作用于 **当前 segment** 的 receive |
 | **迁移** | 旧 turn 无 speaker → 包装为单 segment，`speakerCharacterId = characterIds[0]` |
+
+> **过渡实现（G2，待 G3 替换）**：代码仍按「每 bot 每 turn 最多 1 segment + 全局衰减一次失败整轮结束」运行；与 §2.7–§3 目标行为不一致处以实现为准，以本文为准绳迭代。
 
 组装 history：按 segment 顺序展开多条 assistant（带 speaker 标记）；生成时 `{{char}}` = **当前 segment 的 speaker**（非固定 char1）。
 
@@ -71,9 +75,10 @@ AssistantSegment {
   "characterIds": ["alice-id", "betty-id"],
   "groupChat": {
     "enabled": false,
-    "mode": "weighted",
+    "speakerMode": "dice",
     "autoContinue": false,
     "confirmContinue": true,
+    "maxSegmentsPerTurn": 8,
     "decay": {
       "enabled": true,
       "initialRate": 1.0,
@@ -81,18 +86,30 @@ AssistantSegment {
       "floor": 0
     },
     "members": {
-      "<characterId>": { "weight": 1.0, "muted": false }
+      "<characterId>": {
+        "weight": 1.0,
+        "muted": false,
+        "speakQuota": 2
+      }
     }
   }
 }
 ```
 
-| `enabled` | 默认 speaker | segment 数 |
-|-----------|--------------|------------|
-| `false` | char1 | 通常 1；`/@` 可指定他人 |
-| `true` | 见 §4 | 多 segment + 衰减 / confirm |
+| 字段 | 说明 |
+|------|------|
+| `speakerMode` | **`sequential` \| `dice` \| `next@`**，三选一（§3）；**无段间 fallback** |
+| `maxSegmentsPerTurn` | 本 user turn 内 assistant segment 硬上限（可选） |
+| `members[].speakQuota` | 该 bot 在本 user turn 内的发言预算（§2.7） |
+| `decay` | **per-bot** 个人衰减曲线默认模板（§2.7）；G2 过渡代码仍用全局段序号衰减 |
+| `mode: weighted` | **已废弃**（G2 过渡字段）；G3 起由 `speakerMode: dice` 替代 |
 
-**UI**：对话顶栏 `chat-header` 群聊图标 → 开关、`autoContinue` / `confirmContinue`、衰减参数、**成员列表**（角色立绘头像、`characterImageUrl` size `s`、displayName、权重、静音、上下排序改 `characterIds`）。
+| `enabled` | 首段 speaker（queue 空） | segment 数 |
+|-----------|--------------------------|------------|
+| `false` | char1 或 `/@` | 通常 1；`/@` 可指定他人 |
+| `true` | 见 §3（**不再默认 char1**） | 多 segment + 额度 / confirm |
+
+**UI**：对话顶栏 `chat-header` 群聊图标 → 开关、`speakerMode`、`autoContinue` / `confirmContinue`、`maxSegmentsPerTurn`、衰减与额度、**成员列表**（角色立绘头像、`characterImageUrl` size `s`、displayName、权重、静音、上下排序改 `characterIds`）。
 
 ### 2.3 用户指定发言者：`/@`（Slash 内置）
 
@@ -146,44 +163,141 @@ LLM 原始 assistant 文本
 | 规则 | 说明 |
 |------|------|
 | 多个 `[NEXT@…]` | 取 **最后一个** |
-| 无效名 / mute / 本轮已发言 | 忽略，fallback §4 |
-| 无标记 | 不走 LLM 接续，走随机+衰减或顺序 |
+| **仅 `speakerMode=next@` 时** | hint 参与下一段选人（§3） |
+| **`speakerMode` 为 sequential / dice** | hint **仅 strip 存 meta**，**不参与** SpeakerResolver |
+| hint 合法 | 目标已绑定、未 mute、额度 > 0；**可 override「不连说」**（模型显式指定连说） |
+| hint 无效 / 缺失（`next@` 模式、第 2 段起） | **用户手动指定**；**不得** fallback 至 sequential 或 dice |
+| 无标记（`next@` 模式、第 2 段起） | 同「hint 无效」 |
 
-群聊 assemble 可注入简短说明（仅 `enabled` 或需 LLM 接续时）：
+群聊 assemble 注入 `[NEXT@]` 说明：**仅 `speakerMode=next@` 且 `enabled`** 时注入：
 
 ```text
 若需其他角色接下一句，使用 [NEXT@角色名]，例如 [NEXT@Betty]。
-助手消息中的裸 @ 不会生效。
+每个角色每轮发言次数有限；助手消息中的裸 @ 不会生效。
 ```
 
 ### 2.5 控制开关
 
 | 开关 | 行为 |
 |------|------|
-| `autoContinue` | 一段完成后自动 resolve 下一位并继续生成 |
-| `confirmContinue` | 每段后暂停；UI 显示建议下一位，可 **改选** bot 后再继续 |
+| `autoContinue` | 下一位 **已确定**（queue / 模式 resolver / 合法 hint）时自动 `groupContinue` |
+| `confirmContinue` | 暂停；UI 显示建议下一位，可 **改选** bot。**`next@` 模式 hint 失败时必须 pending 手动**，不得 auto |
 
-组合：`confirmContinue=true` 时以确认 UI 为准；确认后可再链式 auto。
+组合：`confirmContinue=true` 时每段可确认；确认后可再链式 auto（下一位仍须已 resolve）。
 
-### 2.6 衰减与权重
+### 2.6 掷骰竞标（`speakerMode=dice`；`next@` 首段无 `/@` 时共用）
 
-- **第一段**（user 发话后首个 bot）：**不掷**衰减。
-- **之后每一段**（含 `/@` 队列下一位、`[NEXT@]`、随机选中）：生成前先掷 **continueProbability**（如 100% → 80% → 60%…），失败则 **结束本轮**（队列剩余 `@` 作废，可 toast）。
-- 候选 bot：`characterIds` 减去已发言、mute；权重来自 `members[].weight` 或卡扩展字段；加权随机。
+**目标**：避免「每人必说一句」的机械接龙；用 **per-bot 掷骰失败耗额度** 自然收束段数。
+
+#### 概念区分（硬规则）
+
+| 概念 | 含义 | 额度 |
+|------|------|------|
+| **掷骰失败** | 该 bot **个人衰减骰**未通过（`random() >= P_k`） | **扣 1**（未发言） |
+| **抢麦失败** | 掷骰通过但 **得分非最高** | **不扣** |
+| **发言** | 成为本段 speaker 并生成 segment | **扣 1**；该 bot `k += 1`（下次 `P_k` 更低） |
+
+**抢麦失败 ≠ 掷骰失败。**
+
+#### eligible（参与本轮掷骰 / 抢麦）
+
+- 在 `characterIds` 内、未 mute  
+- `speakQuota > 0`  
+- **不是上一 segment 的 speaker**（不连说；hint override 见 §2.4）
+
+#### 个人衰减概率
+
+```text
+P_k = max(floor, initialRate - step × k)
+k = 该 bot 在本 user turn 内已成功发言次数（默认 0 起）
+decay.enabled=false → P_k = 1
+```
+
+#### 单轮竞标（每一段选 speaker 前，queue 空且模式为 dice 或 next@ 首段）
+
+```text
+对每个 eligible bot:
+  若 random() >= P_k → 掷骰失败：speakQuota -= 1，不参与抢麦
+  否则 → 掷骰通过：score = weight × random()（并列用 characterIds 顺序或 seed 打破）
+
+若无人掷骰通过 → 结束本 user turn
+否则 → score 最高者为本段 speaker；抢麦失败者额度不变
+```
+
+#### 终止（dice 模式与共用）
+
+- `segmentCount >= maxSegmentsPerTurn`  
+- 所有 bot `speakQuota == 0`  
+- eligible 为空  
+- 全员掷骰失败（上一段竞标无人通过）
+
+权重来自 `members[].weight`（默认 1）。
+
+### 2.7 顺序模式（`speakerMode=sequential`）
+
+- queue 空时：在 **eligible**（§2.6）内按 **`characterIds` 顺序**取第一个。  
+- **不掷骰**、**不读 hint** 选人。  
+- 首段同样走顺序（**不用 char1 硬编码**；eligible 第一个即列表序第一个未 mute、有额度的 bot）。
 
 ---
 
-## 3. SpeakerResolver 优先级
+## 3. SpeakerResolver（2026-07-02 定案）
 
-实现顺序 **3 → 2 → 4**，sequential 作最终兜底：
+### 3.1 两层结构（非 fallback 链）
 
 ```text
-resolveNextSpeaker(ctx):
-  1. 若 speakerQueue 非空 → shift()（/@ 强制顺序）
-  2. else 若上段 meta.nextSpeakerHint 合法 → 用之（[NEXT@]）
-  3. else 若 groupChat.enabled && mode=weighted → 衰减通过 + 加权随机
-  4. else sequential（下一未发言 bot）
-  5. 校验：已绑定、未 mute、不在 spokenInTurn
+┌─────────────────────────────────────────┐
+│  L0 覆盖：`speakerQueue`（用户 `/@`）      │
+│  非空 → shift 下一位，忽略 speakerMode     │
+└─────────────────────────────────────────┘
+                    ↓ queue 空
+┌─────────────────────────────────────────┐
+│  L1 配置：`speakerMode` 三选一             │
+│  sequential | dice | next@               │
+│  段间不得互相降级（见 §3.3「不 fallback」）  │
+└─────────────────────────────────────────┘
+```
+
+**「不 fallback」** 指：`next@` 模式下 **第 2 段起** hint 缺失/无效时 **仅用户手动**，不得改用 sequential 或 dice。  
+**例外（非 fallback）**：`next@` 模式 **首段** 且用户未 `/@` → **掷骰**选第一位（模式内开场规则，见 §3.2）。
+
+### 3.2 各模式选人（queue 空）
+
+| `speakerMode` | 首段 | 第 2 段起 |
+|---------------|------|-----------|
+| `sequential` | eligible 中 **characterIds 第一个** | 同上（每段 re-pick） |
+| `dice` | **掷骰竞标**（§2.6） | **掷骰竞标** |
+| `next@` | **掷骰竞标**（无 `/@` 时） | 上段 `[NEXT@]` hint 合法 → 用之；否则 **手动** |
+
+| 模式 | 是否使用 `[NEXT@]` 选人 | 是否掷骰选人 |
+|------|-------------------------|--------------|
+| `sequential` | ❌（仅 strip） | ❌ |
+| `dice` | ❌（仅 strip） | ✅ 每段 |
+| `next@` | ✅ 第 2 段起 | ✅ 仅首段（无 `/@`） |
+
+### 3.3 群聊主循环
+
+```text
+turnState = { perBot: { speakQuota, speakCount } }  // 本 user turn 内
+
+loop:
+  if !enabled && segmentCount >= 1: break
+  if segmentCount >= maxSegmentsPerTurn: break
+
+  pick speaker:
+    if speakerQueue 非空 → shift（L0）
+    else if speakerMode == sequential → sequentialPick(eligible)
+    else if speakerMode == dice → diceBiddingPick(eligible)
+    else if speakerMode == next@:
+      if segmentCount == 0 → diceBiddingPick(eligible)   // 首段无 /@
+      else if hint 合法 → hint
+      else → pending 手动; break
+
+  generate → persist → extract [NEXT@]（存 meta；仅 next@ 模式用于下段）
+
+  if confirmContinue && 需确认: break
+  if !autoContinue: break
+  if 终止条件（§2.6）: break
 ```
 
 **未开群聊：**
@@ -194,22 +308,7 @@ speaker = speakerQueue[0] ?? characterIds[0]
 （speakerQueue 长度 > 1 → toast：需开启群聊才能接龙）
 ```
 
-**群聊主循环：**
-
-```text
-spokenInTurn = Set<characterId>
-loop:
-  if !enabled && segmentCount >= 1: break
-  if segmentCount > 0 && decay fail: break
-  pick speaker（上表）
-  generate → extract [NEXT@] → meta
-  spokenInTurn.add(speaker)
-  if confirmContinue: UI pending; break
-  if !autoContinue: break
-  if no candidates: break
-```
-
-**continue API（草案）：**
+**continue API：**
 
 ```json
 {
@@ -222,6 +321,16 @@ loop:
   }
 }
 ```
+
+### 3.4 过渡实现（G2）与目标差异
+
+| 项目 | G2 已落地（代码） | G3 目标（本文） |
+|------|-------------------|-----------------|
+| 模式 | `mode: weighted \| sequential` 混合 fallback | `speakerMode` 三选一 |
+| 首段 | `characterIds[0]` 或 queue | dice/sequential/next@ 按 §3.2 |
+| 衰减 | 全局段序号，一次失败整轮结束 | per-bot 掷骰 + 抢麦 |
+| 每 bot 次数 | 每 turn 最多 1 segment | `speakQuota` + 不连说 |
+| hint 无效 | fallback weighted/sequential | **仅手动**（`next@`） |
 
 ---
 
@@ -265,9 +374,10 @@ charN        → 可选；characterIds[N-1]（Phase 2+）
 |------|------|
 | **G0** | segment + `speakerCharacterId` + 迁移；UI 多气泡；单 bot 行为兼容 |
 | **G1** | `submitComposer` + 内置 `/@`；strip meta；未开群聊 `@` 强制 1 段；手动 Continue |
-| **G2** | 权重、mute、衰减、`autoContinue`；`{{groupNotMuted}}` |
-| **G3** | `[NEXT@Name]` 解析；`confirmContinue` + 改选 |
-| **G4** | sequential 兜底、audit、预设模板 |
+| **G2** | 权重、mute、**过渡**全局衰减 + `mode: weighted`；`autoContinue`；`{{groupNotMuted}}`；顶栏 bot 列表 |
+| **G3** | **`speakerMode` 三选一**（§3）；per-bot 额度 + 掷骰竞标（§2.6）；`maxSegmentsPerTurn`；废弃混合 fallback |
+| **G4** | **`speakerMode=next@` 全量**：hint 失败手动、首段掷骰；`confirmContinue` 改选；audit 掷骰表 |
+| **G5** | 预设模板、群聊说明注入按模式分支、`{{notChar}}` 群聊语义完善 |
 
 **依赖：** G1 的 `/@` 与 **Composer Slash（P0）** 同批或略早（最小 `submitComposer` 路由即可）。
 
@@ -276,14 +386,17 @@ charN        → 可选；characterIds[N-1]（Phase 2+）
 ## 8. 硬规则清单
 
 1. 群聊须 **`groupChat.enabled` 手动开启**；多卡绑定不自动接龙。
-2. 一轮 user 内 **每 bot 最多 1 segment**。
-3. **User 选人：仅 `/@`**；正文裸 `@` **关闭**。
-4. **Assistant 选人：仅 `[NEXT@Name]`**；裸 `@` **无效**。
-5. **不注入** `char1=Alice` 编号表；MVP 用 **displayName**。
-6. **`[NEXT@]` 在宏 / 插件前提取**；hint 存 meta。
-7. **regenerate / swipe** 仅当前 segment。
-8. user 多 `/@` → **有序队列** + **第二段起同步衰减**。
-9. **confirmContinue** 可改选下一位 bot。
+2. **同一 bot 不得连说**；**额度**控制每 bot 每 user turn 最多发言次数（§2.6–§2.7）。
+3. **`speakerMode` 三选一**；段间 **无模式 fallback**（`next@` hint 失败 → **仅手动**，§3.1）。
+4. **`/@`（L0）** 优先于一切 `speakerMode`。
+5. **User 选人：仅 `/@`**；正文裸 `@` **关闭**。
+6. **Assistant `[NEXT@]`** 仅 **`speakerMode=next@`** 时参与 resolver；其它模式仅 strip。
+7. **不注入** `char1=Alice` 编号表；MVP 用 **displayName**。
+8. **`[NEXT@]` 在宏 / 插件前提取**；hint 存 meta。
+9. **regenerate / swipe** 仅当前 segment。
+10. **`next@` 首段无 `/@`** → 掷骰选第一位（非 fallback）。
+11. **confirmContinue** 可改选下一位；hint 失败时必须 pending。
+12. **`maxSegmentsPerTurn`** 达上限强制结束本 user turn。
 
 ---
 

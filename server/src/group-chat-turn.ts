@@ -364,67 +364,51 @@ export function resolveNextSpeakerWithDecay(params: {
   return { speakerCharacterId: speaker }
 }
 
-/** 旧 turn → segments；缺省 speaker 为 characterIds[0] */
+/** 读取 turn.segments（已物化落盘；缺省 speaker 为 characterIds[0]） */
 export function getTurnSegments(
   turn: TurnRecord,
   defaultSpeakerCharacterId: string,
 ): AssistantSegmentRecord[] {
-  if (Array.isArray(turn.segments) && turn.segments.length > 0) {
-    return turn.segments.map((s) => ({
-      id: s.id?.trim() || '',
-      speakerCharacterId:
-        s.speakerCharacterId?.trim() || defaultSpeakerCharacterId,
-      receives: Array.isArray(s.receives) ? s.receives : [],
-      activeReceiveIndex:
-        typeof s.activeReceiveIndex === 'number' ? s.activeReceiveIndex : 0,
-      ...(s.meta ? { meta: s.meta } : {}),
-    }))
+  if (!Array.isArray(turn.segments) || turn.segments.length === 0) {
+    return []
   }
-  const speaker =
-    defaultSpeakerCharacterId.trim() ||
-    (typeof turn.speakerCharacterId === 'string'
-      ? turn.speakerCharacterId.trim()
-      : '')
-  return [
-    {
-      id: `${turn.turnId}-seg0`,
-      speakerCharacterId: speaker,
-      receives: turn.receives ?? [],
-      activeReceiveIndex: turn.activeReceiveIndex ?? 0,
-    },
-  ]
+  return turn.segments.map((s) => ({
+    id: s.id?.trim() || '',
+    speakerCharacterId:
+      s.speakerCharacterId?.trim() || defaultSpeakerCharacterId,
+    receives: Array.isArray(s.receives) ? s.receives : [],
+    activeReceiveIndex:
+      typeof s.activeReceiveIndex === 'number' ? s.activeReceiveIndex : 0,
+    ...(s.meta ? { meta: s.meta } : {}),
+  }))
 }
 
 export function getActiveSegmentIndex(turn: TurnRecord): number {
-  if (
-    Array.isArray(turn.segments) &&
-    turn.segments.length > 0 &&
-    typeof turn.activeSegmentIndex === 'number'
-  ) {
-    return Math.min(
-      Math.max(0, turn.activeSegmentIndex),
-      turn.segments.length - 1,
-    )
-  }
-  return 0
+  if (turn.segments.length === 0) return 0
+  return Math.min(
+    Math.max(0, turn.activeSegmentIndex),
+    turn.segments.length - 1,
+  )
 }
 
 export function getActiveSegment(
   turn: TurnRecord,
   defaultSpeakerCharacterId: string,
-): AssistantSegmentRecord {
+): AssistantSegmentRecord | null {
   const segments = getTurnSegments(turn, defaultSpeakerCharacterId)
+  if (segments.length === 0) return null
   const idx = getActiveSegmentIndex(turn)
   return segments[idx] ?? segments[0]!
 }
 
-/** 将 active segment 同步到 legacy receives / activeReceiveIndex */
-export function syncLegacyFieldsFromSegments(turn: TurnRecord): void {
+/** 将 active segment 同步到 turn.receives / activeReceiveIndex（API 与 swipe 宏） */
+export function syncTurnReceivesFromActiveSegment(turn: TurnRecord): void {
   const defaultSpeaker =
-    turn.segments?.[0]?.speakerCharacterId?.trim() ??
+    turn.segments[0]?.speakerCharacterId?.trim() ??
     turn.speakerCharacterId?.trim() ??
     ''
   const seg = getActiveSegment(turn, defaultSpeaker)
+  if (!seg) return
   turn.receives = seg.receives
   turn.activeReceiveIndex = Math.min(
     Math.max(0, seg.activeReceiveIndex),
@@ -583,22 +567,6 @@ export function spokenCharacterIdsFromTurn(
     .filter((s) => (s.receives?.length ?? 0) > 0)
     .map((s) => s.speakerCharacterId)
     .filter(Boolean)
-}
-
-/** 写盘前将 legacy receives 物化为 segments[] */
-export function materializeTurnSegments(
-  turn: TurnRecord,
-  defaultSpeakerCharacterId: string,
-): AssistantSegmentRecord[] {
-  if (Array.isArray(turn.segments) && turn.segments.length > 0) {
-    return turn.segments
-  }
-  turn.segments = getTurnSegments(turn, defaultSpeakerCharacterId)
-  if (typeof turn.activeSegmentIndex !== 'number') {
-    turn.activeSegmentIndex = 0
-  }
-  syncLegacyFieldsFromSegments(turn)
-  return turn.segments
 }
 
 const NEXT_AT_MARKER = /\[NEXT@([^\]]+)\]/g

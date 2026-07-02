@@ -1128,6 +1128,8 @@ export async function updateConversationActiveBranchPath(
 
   await writeConversationIndex(id, next)
   await upsertChatListEntry(chatListEntryFromIndex(next), next)
+  const { syncChatListConversationStats } = await import('./chat-storage.js')
+  await syncChatListConversationStats(id)
   return next
 }
 

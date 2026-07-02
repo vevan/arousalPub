@@ -87,6 +87,7 @@ import {
   readChunkContainingOrdinal,
   readChunkFile,
   readConversationActiveBranchPath,
+  resolveActivePathConversationStats,
 } from './chunk-chain.js'
 import {
   CONVERSATION_BATCH_MAX_TURNS,
@@ -95,9 +96,7 @@ import {
 import {
   getActiveSegment,
   getActiveSegmentIndex,
-  getTurnSegments,
-  materializeTurnSegments,
-  syncLegacyFieldsFromSegments,
+  syncTurnReceivesFromActiveSegment,
   type AssistantSegmentRecord,
   type GroupChatSettings,
   mergeGroupChatSettings,
@@ -156,6 +155,10 @@ export interface ChatListEntry {
   characterNames?: string[]
   /** 绑定卡 + user persona 的 tags 去重合并，供列表快查 */
   searchTags?: string[]
+  /** 当前 active 分支路径上的总轮数（含 fork 前缀） */
+  activeTurnCount?: number
+  /** active 路径末轮 createdAt（最近发消息时刻）；无轮次则无此字段 */
+  lastChatAt?: string
 }
 
 export interface ChatListFile {
@@ -285,26 +288,21 @@ export function buildReceiveRuntime(opts: {
   return Object.keys(runtime).length > 0 ? runtime : undefined
 }
 
-/** 存盘仅 { userText }；读盘兼容历史 sends[] */
-export type TurnSendBlock =
-  | { userText: string }
-  | { sends: { id: string; userText: string }[]; activeSendIndex: number }
-
 export interface TurnRecord {
   turnId: string
   turnOrdinal: number
   /** 用户发消息 / 该轮落盘时刻（ISO8601）；旧 chunk 可无此字段 */
   createdAt?: string
-  send: TurnSendBlock
+  send: { userText: string }
   receives: TurnReceive[]
   activeReceiveIndex: number
   plugins: unknown[]
-  /** 群聊：同 turn 多 assistant segment（§35）；缺省时由 receives 迁移 */
-  segments?: AssistantSegmentRecord[]
-  activeSegmentIndex?: number
+  /** 群聊：同 turn 多 assistant segment（§35） */
+  segments: AssistantSegmentRecord[]
+  activeSegmentIndex: number
   /** 来自 /@ 的待发言 characterId 队列 */
   speakerQueue?: string[]
-  /** legacy 同步字段：当前 active segment 的 speaker */
+  /** 当前 active segment 的 speaker */
   speakerCharacterId?: string
 }
 
@@ -397,7 +395,7 @@ function buildFirstSegmentOnTurn(
   ]
   turn.activeSegmentIndex = 0
   turn.speakerCharacterId = speaker
-  syncLegacyFieldsFromSegments(turn)
+  syncTurnReceivesFromActiveSegment(turn)
 }
 
 /** 在内存中更新单轮正文与 receives（调用方维护 chunk 级 used 集合） */
@@ -410,9 +408,11 @@ function applyTurnContentUpdate(
 ): void {
   if (!receives.length) return
   releaseTurnEntityIds(turn, used)
-  const prevReceives = turn.receives ?? []
-  turn.send = { userText }
-  turn.receives = mapReceivesWithShortIds(receives, used).map((rec) => {
+  const segIdx = getActiveSegmentIndex(turn)
+  const activeSeg = turn.segments[segIdx]
+  if (!activeSeg) return
+  const prevReceives = activeSeg.receives ?? []
+  const mappedReceives = mapReceivesWithShortIds(receives, used).map((rec) => {
     const rid = typeof rec.id === 'string' ? rec.id.trim() : ''
     const prev = prevReceives.find(
       (p) => typeof p.id === 'string' && p.id.trim() === rid,
@@ -426,10 +426,14 @@ function applyTurnContentUpdate(
       },
     }
   })
-  turn.activeReceiveIndex = Math.min(
+  const activeIdx = Math.min(
     Math.max(0, activeReceiveIndex),
-    turn.receives.length - 1,
+    mappedReceives.length - 1,
   )
+  turn.send = { userText }
+  activeSeg.receives = mappedReceives
+  activeSeg.activeReceiveIndex = activeIdx
+  syncTurnReceivesFromActiveSegment(turn)
 }
 
 /** 更新指定 segment 的 receives（regenerate/swipe 仅当前 segment） */
@@ -444,8 +448,7 @@ function applyTurnSegmentContentUpdate(
   nextSpeakerHint?: string,
 ): void {
   if (!receives.length) return
-  materializeTurnSegments(turn, defaultSpeakerCharacterId)
-  const seg = turn.segments?.[segmentIndex]
+  const seg = turn.segments[segmentIndex]
   if (!seg) return
   for (const r of seg.receives ?? []) {
     const rid = typeof r.id === 'string' ? r.id.trim() : ''
@@ -475,7 +478,7 @@ function applyTurnSegmentContentUpdate(
   }
   turn.activeSegmentIndex = segmentIndex
   turn.send = { userText }
-  syncLegacyFieldsFromSegments(turn)
+  syncTurnReceivesFromActiveSegment(turn)
 }
 
 export interface BatchTurnUpdateResult {
@@ -1326,17 +1329,36 @@ export async function updateConversationMemoryEmbeddingModel(
 }
 
 /** 从 send 块读取当前用户正文 */
-export function getTurnUserText(turn: Pick<TurnRecord, 'send' | 'turnId'>): string {
-  const raw = turn.send
-  if (
-    raw &&
-    typeof raw === 'object' &&
-    'userText' in raw &&
-    typeof (raw as { userText: unknown }).userText === 'string'
-  ) {
-    return (raw as { userText: string }).userText
+export function getTurnUserText(turn: Pick<TurnRecord, 'send'>): string {
+  return typeof turn.send?.userText === 'string' ? turn.send.userText : ''
+}
+
+/** 更新 turn 展示用 user/assistant 正文（同步 active segment） */
+export function patchTurnDisplayContent(
+  turn: TurnRecord,
+  userText: string,
+  assistantContent: string,
+): TurnRecord {
+  const next: TurnRecord = { ...turn, send: { userText } }
+  const segIdx = getActiveSegmentIndex(next)
+  const seg = next.segments[segIdx]
+  if (!seg) return next
+  const segReceives = [...seg.receives]
+  const activeIdx = Math.min(
+    Math.max(0, Math.floor(seg.activeReceiveIndex) || 0),
+    Math.max(0, segReceives.length - 1),
+  )
+  if (segReceives[activeIdx]) {
+    segReceives[activeIdx] = {
+      ...segReceives[activeIdx],
+      content: assistantContent,
+    }
   }
-  return ''
+  next.segments = next.segments.map((s, i) =>
+    i === segIdx ? { ...s, receives: segReceives } : s,
+  )
+  syncTurnReceivesFromActiveSegment(next)
+  return next
 }
 
 export interface ChunkFile {
@@ -1371,7 +1393,7 @@ export function getPromptDebugMaxStored(idx: ConversationIndex | null): number {
   return DEFAULT_PROMPT_DEBUG_MAX
 }
 
-/** 写盘时去掉历史字段 messages，并规范 plugins */
+/** 写盘时规范 plugins 与群聊字段 */
 function stripTurnForDisk(t: TurnRecord): TurnRecord {
   const out: TurnRecord = {
     turnId: t.turnId,
@@ -1380,12 +1402,8 @@ function stripTurnForDisk(t: TurnRecord): TurnRecord {
     receives: t.receives,
     activeReceiveIndex: t.activeReceiveIndex,
     plugins: Array.isArray(t.plugins) ? t.plugins : [],
-  }
-  if (Array.isArray(t.segments) && t.segments.length > 0) {
-    out.segments = t.segments
-    if (typeof t.activeSegmentIndex === 'number') {
-      out.activeSegmentIndex = t.activeSegmentIndex
-    }
+    segments: t.segments,
+    activeSegmentIndex: t.activeSegmentIndex,
   }
   if (Array.isArray(t.speakerQueue) && t.speakerQueue.length > 0) {
     out.speakerQueue = t.speakerQueue
@@ -1645,14 +1663,77 @@ async function writeChatList(data: ChatListFile): Promise<void> {
   await writeFile(chatListFile(), JSON.stringify(data, null, 2), 'utf8')
 }
 
+/** 刷新列表项中的 active 分支轮数与最近对话时刻 */
+export async function syncChatListConversationStats(
+  conversationId: string,
+): Promise<void> {
+  const list = await readChatListRaw()
+  const i = list.conversations.findIndex(
+    (c) => c.conversationId === conversationId,
+  )
+  if (i < 0) return
+  const prev = list.conversations[i]!
+  let count = typeof prev.activeTurnCount === 'number' ? prev.activeTurnCount : 0
+  let lastChatAt: string | null = prev.lastChatAt?.trim() || null
+  try {
+    const { listLastChatAtFromStats } = await import('./character-storage.js')
+    const stats = await resolveActivePathConversationStats(conversationId)
+    count = stats.turnCount
+    lastChatAt = listLastChatAtFromStats(stats, prev.updatedAt) ?? null
+  } catch {
+    // 保留 prev 统计，避免 transient 错误覆盖有效值
+  }
+  const nextLast = lastChatAt?.trim() || null
+  if (prev.activeTurnCount === count && (prev.lastChatAt ?? null) === nextLast) {
+    return
+  }
+  const { lastChatAt: _prevLast, ...base } = prev
+  list.conversations[i] = {
+    ...base,
+    activeTurnCount: count,
+    ...(nextLast ? { lastChatAt: nextLast } : {}),
+  }
+  await writeChatList(list)
+}
+
+/** @deprecated 使用 syncChatListConversationStats */
+export const syncChatListActiveTurnCount = syncChatListConversationStats
+
 export async function upsertChatListEntry(
   entry: ChatListEntry,
   source?: ConversationIndex,
+  options?: { refreshConversationStats?: boolean },
 ): Promise<void> {
-  const { enrichChatListEntry } = await import('./character-storage.js')
-  const enriched = await enrichChatListEntry(entry, source)
+  const { enrichChatListEntry, listLastChatAtFromStats } = await import(
+    './character-storage.js'
+  )
   await reconcileChatListWithDisk()
   const list = await readChatListRaw()
+  const existing = list.conversations.find(
+    (c) => c.conversationId === entry.conversationId,
+  )
+  let merged: ChatListEntry = {
+    ...entry,
+    activeTurnCount: entry.activeTurnCount ?? existing?.activeTurnCount,
+    lastChatAt: entry.lastChatAt ?? existing?.lastChatAt,
+  }
+  if (options?.refreshConversationStats) {
+    try {
+      const stats = await resolveActivePathConversationStats(
+        merged.conversationId,
+      )
+      const { lastChatAt: _drop, ...withoutLast } = merged
+      const resolvedLast = listLastChatAtFromStats(stats, merged.updatedAt)
+      merged = {
+        ...withoutLast,
+        activeTurnCount: stats.turnCount,
+        ...(resolvedLast ? { lastChatAt: resolvedLast } : {}),
+      }
+    } catch {
+      // 保留 merged 已有统计
+    }
+  }
+  const enriched = await enrichChatListEntry(merged, source)
   const i = list.conversations.findIndex(
     (c) => c.conversationId === enriched.conversationId,
   )
@@ -1848,7 +1929,7 @@ export async function saveFirstTurn(params: {
     speakerCharacterId?.trim() ||
     idx?.characterIds?.[0]?.trim() ||
     ''
-  const turn: TurnRecord = {
+  const turn = {
     turnId,
     turnOrdinal: 0,
     createdAt: turnCreatedAt,
@@ -1862,7 +1943,7 @@ export async function saveFirstTurn(params: {
       ? { speakerQueue }
       : {}),
   }
-  buildFirstSegmentOnTurn(turn, used, {
+  buildFirstSegmentOnTurn(turn as TurnRecord, used, {
     speakerCharacterId: defaultSpeaker,
     receives,
     activeReceiveIndex,
@@ -1877,7 +1958,7 @@ export async function saveFirstTurn(params: {
   const chunk: ChunkFile = {
     schemaVersion: 1,
     meta: firstMeta,
-    turns: [turn],
+    turns: [turn as TurnRecord],
   }
 
   await mkdir(conversationDir(conversationId), { recursive: true })
@@ -1888,7 +1969,9 @@ export async function saveFirstTurn(params: {
   idx.tailChunkFile = firstChunkFile
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
+  await upsertChatListEntry(chatListEntryFromIndex(idx), idx, {
+    refreshConversationStats: true,
+  })
 
   /** 对话落盘成功后再写快照；无有效 messages 或索引关闭写入时不落盘 */
   if (auditSnapshot !== undefined) {
@@ -1902,7 +1985,7 @@ export async function saveFirstTurn(params: {
     })
   }
 
-  scheduleMemoryIndexUpsert(conversationId, turn, firstChunkFile)
+  scheduleMemoryIndexUpsert(conversationId, turn as TurnRecord, firstChunkFile)
 
   return { index: idx, chunk }
 }
@@ -1923,18 +2006,26 @@ export async function saveOpeningTurn(params: {
 
   const used = new Set<string>()
   const turnCreatedAt = nowIso()
-  const turn: TurnRecord = {
+  const mappedReceives = mapReceivesWithShortIds(receives, used)
+  const activeIdx = Math.min(
+    Math.max(0, activeReceiveIndex),
+    Math.max(0, mappedReceives.length - 1),
+  )
+  const defaultSpeaker = idx.characterIds?.[0]?.trim() ?? ''
+  const turn = {
     turnId: allocateShortId(used),
     turnOrdinal: 0,
     createdAt: turnCreatedAt,
     send: { userText: '' },
-    receives: mapReceivesWithShortIds(receives, used),
-    activeReceiveIndex: Math.min(
-      Math.max(0, activeReceiveIndex),
-      receives.length - 1,
-    ),
-    plugins: [],
+    receives: mappedReceives,
+    activeReceiveIndex: activeIdx,
+    plugins: [] as unknown[],
   }
+  buildFirstSegmentOnTurn(turn as TurnRecord, used, {
+    speakerCharacterId: defaultSpeaker,
+    receives: mappedReceives,
+    activeReceiveIndex: activeIdx,
+  })
 
   const chunkSettings = await readGlobalChunkSettings()
   const { fileName: firstChunkFile, meta: firstMeta } = buildFirstChunkDescriptor(
@@ -1944,7 +2035,7 @@ export async function saveOpeningTurn(params: {
   const chunk: ChunkFile = {
     schemaVersion: 1,
     meta: firstMeta,
-    turns: [turn],
+    turns: [turn as TurnRecord],
   }
 
   await mkdir(conversationDir(conversationId), { recursive: true })
@@ -1955,7 +2046,9 @@ export async function saveOpeningTurn(params: {
   idx.tailChunkFile = firstChunkFile
   idx.updatedAt = t
   await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
+  await upsertChatListEntry(chatListEntryFromIndex(idx), idx, {
+    refreshConversationStats: true,
+  })
   return { index: idx, chunk }
 }
 
@@ -2017,7 +2110,7 @@ export async function appendConversationTurn(params: {
     speakerCharacterId?.trim() ||
     rootIdxForSpeaker?.characterIds?.[0]?.trim() ||
     ''
-  const turn: TurnRecord = {
+  const turn = {
     turnId: allocateShortId(used),
     turnOrdinal: nextOrd,
     createdAt: turnCreatedAt,
@@ -2031,13 +2124,13 @@ export async function appendConversationTurn(params: {
       ? { speakerQueue }
       : {}),
   }
-  buildFirstSegmentOnTurn(turn, used, {
+  buildFirstSegmentOnTurn(turn as TurnRecord, used, {
     speakerCharacterId: defaultSpeaker,
     receives: mappedReceives,
     activeReceiveIndex: activeIdx,
     nextSpeakerHint,
   })
-  chunk.turns.push(turn)
+  chunk.turns.push(turn as TurnRecord)
   chunk.meta.ordinalRange = {
     start:
       chunk.turns.length === 1
@@ -2063,7 +2156,9 @@ export async function appendConversationTurn(params: {
   if (rootIdx) {
     rootIdx.updatedAt = t
     await writeConversationIndex(conversationId, rootIdx)
-    await upsertChatListEntry(chatListEntryFromIndex(rootIdx), rootIdx)
+    await upsertChatListEntry(chatListEntryFromIndex(rootIdx), rootIdx, {
+      refreshConversationStats: true,
+    })
   }
   if (auditSnapshot !== undefined) {
     finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
@@ -2075,7 +2170,12 @@ export async function appendConversationTurn(params: {
       snapshot: auditSnapshot,
     })
   }
-  scheduleMemoryIndexUpsert(conversationId, turn, chunkName, branchPath)
+  scheduleMemoryIndexUpsert(
+    conversationId,
+    turn as TurnRecord,
+    chunkName,
+    branchPath,
+  )
   return true
 }
 
@@ -2117,9 +2217,8 @@ export async function appendSegmentToTurn(params: {
     defaultSpeakerCharacterId?.trim() ||
     idx.characterIds?.[0]?.trim() ||
     ''
-  materializeTurnSegments(turn, defaultSpeaker)
   const spoken = new Set(
-    (turn.segments ?? [])
+    turn.segments
       .filter((s) => (s.receives?.length ?? 0) > 0)
       .map((s) => s.speakerCharacterId),
   )
@@ -2139,9 +2238,9 @@ export async function appendSegmentToTurn(params: {
     activeReceiveIndex: activeIdx,
     ...(nextSpeakerHint ? { meta: { nextSpeakerHint } } : {}),
   }
-  turn.segments = [...(turn.segments ?? []), newSegment]
+  turn.segments = [...turn.segments, newSegment]
   turn.activeSegmentIndex = turn.segments.length - 1
-  syncLegacyFieldsFromSegments(turn)
+  syncTurnReceivesFromActiveSegment(turn)
   const receiveId = mappedReceives[activeIdx]?.id?.trim() ?? ''
   if (turnPluginEntries?.length) {
     let plugins = Array.isArray(turn.plugins) ? turn.plugins : []
@@ -2458,7 +2557,9 @@ export async function removeTurnAtOrdinalInTailChunk(
     if (rootIdx) {
       rootIdx.updatedAt = t
       await writeConversationIndex(conversationId, rootIdx)
-      await upsertChatListEntry(chatListEntryFromIndex(rootIdx), rootIdx)
+      await upsertChatListEntry(chatListEntryFromIndex(rootIdx), rootIdx, {
+        refreshConversationStats: true,
+      })
     }
     if (victimTurnId) {
       void removeChatAuditEntriesByTurnId(conversationId, victimTurnId)
@@ -2484,7 +2585,9 @@ export async function removeTurnAtOrdinalInTailChunk(
   if (rootIdx) {
     rootIdx.updatedAt = t
     await writeConversationIndex(conversationId, rootIdx)
-    await upsertChatListEntry(chatListEntryFromIndex(rootIdx), rootIdx)
+    await upsertChatListEntry(chatListEntryFromIndex(rootIdx), rootIdx, {
+      refreshConversationStats: true,
+    })
   }
   if (victimTurnId) {
     void removeChatAuditEntriesByTurnId(conversationId, victimTurnId)

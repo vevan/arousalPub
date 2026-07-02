@@ -1,6 +1,6 @@
 import type { ChatMessage } from './assemble-prompts.js'
 import type { TurnRecord } from './chat-storage.js'
-import { getTurnUserText } from './chat-storage.js'
+import { getTurnUserText, patchTurnDisplayContent } from './chat-storage.js'
 import { applyPromptMacroPipeline } from './prompt-macros/index.js'
 import type { PromptMacroContext } from './prompt-macros/index.js'
 import {
@@ -50,20 +50,7 @@ function patchTurnRecordContent(
   const userChanged = getTurnUserText(turn) !== userText
   const assistantChanged = assistantTextFromTurn(turn) !== assistantContent
   if (!userChanged && !assistantChanged) return turn
-
-  const receives = [...(turn.receives ?? [])]
-  const activeIdx = Math.min(
-    Math.max(0, Math.floor(turn.activeReceiveIndex) || 0),
-    Math.max(0, receives.length - 1),
-  )
-  if (receives[activeIdx]) {
-    receives[activeIdx] = { ...receives[activeIdx], content: assistantContent }
-  }
-  return {
-    ...turn,
-    send: { ...turn.send, userText },
-    receives,
-  }
+  return patchTurnDisplayContent(turn, userText, assistantContent)
 }
 
 /** 对 memory 块内各轮 user/assistant 按 turnOrdinal 应用 outgoing（含 skipLastNTurns） */

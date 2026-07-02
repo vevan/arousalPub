@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { characterImageUrl } from '@/utils/authenticated-media-url'
 import { useAuthStore } from '@/stores/auth'
-import type { HomeCharacterSource } from '@/utils/home-preferences'
+import {
+  type HomeCharacterSort,
+  type HomeCharacterSource,
+  type HomeSortOrder,
+} from '@/utils/home-preferences'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
   characterSource: HomeCharacterSource
   searchQuery: string
+  sort: HomeCharacterSort
+  sortOrder: HomeSortOrder
 }>()
 
 const emit = defineEmits<{
@@ -79,7 +85,7 @@ watch(
   { immediate: true },
 )
 
-watch([filter, searchDebounced], () => {
+watch([filter, searchDebounced, () => props.sort, () => props.sortOrder], () => {
   void reloadFromStart()
 }, { immediate: true })
 
@@ -89,8 +95,8 @@ function buildQuery(offset: number) {
   u.searchParams.set('limit', String(PAGE))
   if (searchDebounced.value) u.searchParams.set('search', searchDebounced.value)
   if (filter.value !== 'all') u.searchParams.set('filter', filter.value)
-  u.searchParams.set('sort', 'name')
-  u.searchParams.set('order', 'asc')
+  u.searchParams.set('sort', props.sort)
+  u.searchParams.set('order', props.sortOrder)
   return u.pathname + u.search
 }
 

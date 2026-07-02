@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { getCharactersDir } from './config.js'
 import type { ChatListEntry, ConversationIndex } from './chat-storage.js'
 import { readChatList, resolvedCharacterIds } from './chat-storage.js'
+import { resolveActivePathConversationStats } from './chunk-chain.js'
 import {
   embedCharaInPng,
   extractCardFromPng,
@@ -87,21 +88,22 @@ async function refStats(): Promise<
     const ids = resolvedCharacterIds(
       entry as { characterIds?: string[]; characterId?: string | null },
     )
-    const convUpdated =
-      typeof entry.updatedAt === 'string' ? entry.updatedAt : null
+    const convRecent =
+      (typeof entry.lastChatAt === 'string' && entry.lastChatAt.trim()) ||
+      (typeof entry.updatedAt === 'string' ? entry.updatedAt : null)
     for (const cid of ids) {
       const prev = stats.get(cid)
       if (!prev) {
-        stats.set(cid, { count: 1, lastConversationAt: convUpdated })
+        stats.set(cid, { count: 1, lastConversationAt: convRecent })
         continue
       }
       prev.count++
       if (
-        convUpdated &&
+        convRecent &&
         (!prev.lastConversationAt ||
-          convUpdated.localeCompare(prev.lastConversationAt, 'en') > 0)
+          convRecent.localeCompare(prev.lastConversationAt, 'en') > 0)
       ) {
-        prev.lastConversationAt = convUpdated
+        prev.lastConversationAt = convRecent
       }
     }
   }
@@ -581,6 +583,19 @@ function bindingIdsForEnrich(
   })
 }
 
+export function listLastChatAtFromStats(
+  stats: { turnCount: number; lastChatAt: string | null },
+  updatedAt: string | undefined,
+): string | undefined {
+  const fromTurn = stats.lastChatAt?.trim()
+  if (fromTurn) return fromTurn
+  if (stats.turnCount > 0) {
+    const fallback = typeof updatedAt === 'string' ? updatedAt.trim() : ''
+    if (fallback) return fallback
+  }
+  return undefined
+}
+
 /** 列表项是否缺少快查冗余（用于 readChatList 迁移） */
 export function chatListEntryNeedsEnrich(entry: ChatListEntry): boolean {
   const ids = bindingIdsForEnrich(entry)
@@ -595,6 +610,11 @@ export function chatListEntryNeedsEnrich(entry: ChatListEntry): boolean {
   }
   const hasTagSources = ids.length > 0 || !!userCid
   if (hasTagSources && !Array.isArray(entry.searchTags)) return true
+  if (typeof entry.activeTurnCount !== 'number') return true
+  if (entry.activeTurnCount > 0) {
+    const last = entry.lastChatAt
+    if (typeof last !== 'string' || !last.trim()) return true
+  }
   return false
 }
 
@@ -645,12 +665,38 @@ export async function enrichChatListEntry(
     }
   }
   const searchTags = tagSet.size > 0 ? [...tagSet] : undefined
-  return {
+  let activeTurnCount = entry.activeTurnCount
+  let lastChatAt =
+    typeof entry.lastChatAt === 'string' && entry.lastChatAt.trim()
+      ? entry.lastChatAt.trim()
+      : undefined
+  const needsCount = typeof activeTurnCount !== 'number'
+  const needsLast =
+    (needsCount ? true : (activeTurnCount ?? 0) > 0) &&
+    !(typeof lastChatAt === 'string' && lastChatAt.trim())
+  if (needsCount || needsLast) {
+    try {
+      const stats = await resolveActivePathConversationStats(
+        entry.conversationId,
+      )
+      if (needsCount) activeTurnCount = stats.turnCount
+      if (needsLast) {
+        lastChatAt = listLastChatAtFromStats(stats, entry.updatedAt)
+      }
+    } catch {
+      if (needsCount) activeTurnCount = 0
+    }
+  }
+  const enriched: ChatListEntry = {
     ...entry,
     ...(userNameRaw ? { userName: userNameRaw } : {}),
     ...(characterNames?.length ? { characterNames } : {}),
     ...(searchTags ? { searchTags } : {}),
+    activeTurnCount: activeTurnCount ?? 0,
   }
+  if (lastChatAt) enriched.lastChatAt = lastChatAt
+  else delete enriched.lastChatAt
+  return enriched
 }
 
 /**

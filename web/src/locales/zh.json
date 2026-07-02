@@ -1050,6 +1050,7 @@
     "loading": "加载中…",
     "newChat": "新建对话",
     "cardMenu": "更多操作",
+    "turnCount": "{n} 轮",
     "rename": "改名",
     "delete": "删除",
     "renameDialogTitle": "修改对话名称",
@@ -1088,7 +1089,13 @@
     "charactersEmpty": "没有匹配的角色",
     "charactersLoaded": "已加载 {n} / {total}",
     "characterSourceUsedHint": "仅对话中已使用",
-    "characterSourceAllHint": "全部角色库"
+    "characterSourceAllHint": "全部角色库",
+    "sortButton": "排序",
+    "sortRecentChat": "最近对话",
+    "sortTitle": "名称",
+    "sortTurnCount": "轮数",
+    "sortCharacterName": "角色名称",
+    "sortUsageCount": "使用次数"
   },
   "characterConversations": {
     "dialogTitle": "「{name}」的对话",

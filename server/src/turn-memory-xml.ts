@@ -15,6 +15,7 @@ export function assistantTextFromTurn(
   defaultSpeakerCharacterId = '',
 ): string {
   const seg = getActiveSegment(t, defaultSpeakerCharacterId)
+  if (!seg) return ''
   const rs = seg.receives
   if (!Array.isArray(rs) || rs.length === 0) return ''
   const ai = Math.min(

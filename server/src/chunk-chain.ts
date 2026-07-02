@@ -324,6 +324,35 @@ export async function resolveActivePathTurns(
   return merged
 }
 
+/** active 路径轮数与末轮 createdAt（单次路径解析） */
+export async function resolveActivePathConversationStats(
+  conversationId: string,
+): Promise<{ turnCount: number; lastChatAt: string | null }> {
+  const active = await readConversationActiveBranchPath(conversationId)
+  const turns = await resolveActivePathTurns(conversationId, active)
+  if (turns.length === 0) return { turnCount: 0, lastChatAt: null }
+  const last = turns[turns.length - 1]!
+  const createdAt =
+    typeof last.createdAt === 'string' ? last.createdAt.trim() : ''
+  return { turnCount: turns.length, lastChatAt: createdAt || null }
+}
+
+/** 当前 active 分支路径上的总轮数（含 fork 前缀，不含其它分支） */
+export async function resolveActivePathMergedTurnCount(
+  conversationId: string,
+): Promise<number> {
+  const { turnCount } = await resolveActivePathConversationStats(conversationId)
+  return turnCount
+}
+
+/** active 路径末轮 createdAt（最近对话时刻） */
+export async function resolveActivePathLastChatAt(
+  conversationId: string,
+): Promise<string | null> {
+  const { lastChatAt } = await resolveActivePathConversationStats(conversationId)
+  return lastChatAt
+}
+
 /** fork 轮在父路径上的 turnOrdinal（空分支首条 turn = 返回值 + 1） */
 export async function resolveBranchForkOrdinal(
   conversationId: string,

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { getTurnUserText, type TurnRecord } from '../src/chat-storage.js'
+import { testTurn } from './fixtures/turn-record.js'
 import {
   applyOutgoingRegexToSummaryTurn,
   formatSummarizeTranscript,
@@ -33,14 +34,12 @@ describe('wrapSummarizeTurnLine', () => {
 describe('formatSummarizeTranscript', () => {
   it('emits xml user/assistant per turn separated by newlines', () => {
     const turns: TurnRecord[] = [
-      {
+      testTurn({
         turnId: 't0',
         turnOrdinal: 0,
-        send: { userText: 'hi' },
+        userText: 'hi',
         receives: [{ id: 'r0', content: 'hello back' }],
-        activeReceiveIndex: 0,
-        plugins: [],
-      },
+      }),
     ]
     const out = formatSummarizeTranscript(turns, 'Alice', 'Bob')
     assert.equal(
@@ -68,14 +67,12 @@ describe('applyOutgoingRegexToSummaryTurn', () => {
   }
 
   it('applies outgoing rules to assistant only', () => {
-    const turn: TurnRecord = {
+    const turn = testTurn({
       turnId: 't0',
       turnOrdinal: 0,
-      send: { userText: 'TRACK hi' },
+      userText: 'TRACK hi',
       receives: [{ id: 'r0', content: 'TRACK ok' }],
-      activeReceiveIndex: 0,
-      plugins: [],
-    }
+    })
     const out = applyOutgoingRegexToSummaryTurn(turn, [rule], 0)
     assert.equal(getTurnUserText(out), 'TRACK hi')
     assert.equal(out.receives[0]?.content, ' ok')
@@ -87,14 +84,12 @@ describe('applyOutgoingRegexToSummaryTurn', () => {
       skipLastNTurns: 3,
       skipLastNTurnsOutgoing: 3,
     }
-    const turn: TurnRecord = {
+    const turn = testTurn({
       turnId: 't9',
       turnOrdinal: 9,
-      send: { userText: 'u' },
+      userText: 'u',
       receives: [{ id: 'r0', content: 'TRACK ok' }],
-      activeReceiveIndex: 0,
-      plugins: [],
-    }
+    })
     const skipped = applyOutgoingRegexToSummaryTurn(turn, [skipRule], 10, false)
     assert.equal(skipped.receives[0]?.content, 'TRACK ok')
     const applied = applyOutgoingRegexToSummaryTurn(turn, [skipRule], 10, true)

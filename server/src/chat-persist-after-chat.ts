@@ -721,6 +721,9 @@ export async function persistTurnAfterModelReply(params: {
           ? params.regenerateSegmentIndex
           : getActiveSegmentIndex(turn)
       const activeSeg = getActiveSegment(turn, defaultSpeaker)
+      if (!activeSeg) {
+        return { ok: false, error: ApiErrorCodes.regenerate_turn_not_found }
+      }
       const segReceives = activeSeg.receives ?? turn.receives ?? []
       const receives: TurnReceive[] = [
         ...segReceives.map((r) => {

@@ -39,25 +39,10 @@ export function buildTurnPatchRequestBody(
   return body
 }
 
-export function getTurnSegmentsForUi(
-  turn: ChatTurnItem,
-  defaultSpeakerCharacterId = '',
-): AssistantSegmentItem[] {
-  if (Array.isArray(turn.segments) && turn.segments.length > 0) {
-    return turn.segments
-  }
-  const speaker =
-    turn.speakerCharacterId?.trim() ||
-    defaultSpeakerCharacterId.trim() ||
-    ''
-  return [
-    {
-      id: `${turn.turnId ?? 'turn'}-seg0`,
-      speakerCharacterId: speaker,
-      receives: turn.receives,
-      activeReceiveIndex: turn.activeReceiveIndex,
-    },
-  ]
+export function getTurnSegmentsForUi(turn: ChatTurnItem): AssistantSegmentItem[] {
+  return Array.isArray(turn.segments) && turn.segments.length > 0
+    ? turn.segments
+    : []
 }
 
 export function getActiveSegmentIndex(turn: ChatTurnItem): number {

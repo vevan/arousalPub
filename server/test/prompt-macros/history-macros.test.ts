@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { TurnRecord } from '../../src/chat-storage.js'
+import { testTurn } from '../fixtures/turn-record.js'
 import {
   buildMacroHistoryFields,
   findIdleReferenceUserAt,
@@ -19,15 +20,14 @@ function turn(
   const rs =
     receives ??
     (assistant ? [{ id: `r-${ordinal}`, content: assistant }] : [])
-  return {
+  return testTurn({
     turnId: `t-${ordinal}`,
     turnOrdinal: ordinal,
-    ...(createdAt ? { createdAt } : {}),
-    send: { userText: user },
+    userText: user,
     receives: rs,
     activeReceiveIndex,
-    plugins: [],
-  }
+    ...(createdAt ? { createdAt } : {}),
+  })
 }
 
 describe('flattenTurnsToChatMessages', () => {

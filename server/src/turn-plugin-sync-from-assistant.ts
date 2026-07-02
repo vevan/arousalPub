@@ -1,5 +1,6 @@
 import { resolveTurnPluginEntriesFromAssistant } from './plugin-host.js'
 import type { TurnReceive } from './chat-storage.js'
+import type { TurnPluginEntry } from './plugin-types.js'
 import {
   attachReceiveIdToTurnPluginEntries,
   mergeTurnPluginEntry,
@@ -11,8 +12,10 @@ export async function buildSyncedTurnPluginsFromReceives(
   existingPlugins: unknown[] | undefined,
   receives: Pick<TurnReceive, 'id' | 'content'>[],
   conversationId: string,
-): Promise<unknown[]> {
-  let plugins = Array.isArray(existingPlugins) ? [...existingPlugins] : []
+): Promise<TurnPluginEntry[]> {
+  let plugins: TurnPluginEntry[] = Array.isArray(existingPlugins)
+    ? (existingPlugins as TurnPluginEntry[])
+    : []
 
   for (const rec of receives) {
     const receiveId = typeof rec.id === 'string' ? rec.id.trim() : ''
@@ -27,10 +30,13 @@ export async function buildSyncedTurnPluginsFromReceives(
 
     if (attached.length > 0) {
       for (const entry of attached) {
-        plugins = mergeTurnPluginEntry(plugins, entry)
+        plugins = mergeTurnPluginEntry(plugins, entry) as TurnPluginEntry[]
       }
     } else {
-      plugins = removeTraceKeeperPluginForReceive(plugins, receiveId)
+      plugins = removeTraceKeeperPluginForReceive(
+        plugins,
+        receiveId,
+      ) as TurnPluginEntry[]
     }
   }
 

@@ -1050,6 +1050,7 @@
     "loading": "Loading…",
     "newChat": "New chat",
     "cardMenu": "More actions",
+    "turnCount": "{n} turns",
     "rename": "Rename",
     "delete": "Delete",
     "renameDialogTitle": "Rename conversation",
@@ -1088,7 +1089,13 @@
     "charactersEmpty": "No matching characters",
     "charactersLoaded": "Loaded {n} / {total}",
     "characterSourceUsedHint": "Used in chats only",
-    "characterSourceAllHint": "Full library"
+    "characterSourceAllHint": "Full library",
+    "sortButton": "Sort",
+    "sortRecentChat": "Recent chat",
+    "sortTitle": "Title",
+    "sortTurnCount": "Turns",
+    "sortCharacterName": "Character name",
+    "sortUsageCount": "Usage count"
   },
   "characterConversations": {
     "dialogTitle": "Chats with “{name}”",

@@ -11,6 +11,7 @@ import {
   resolveOutgoingTailOrdinal,
 } from '../src/regex-outgoing.js'
 import type { TurnRecord } from '../src/chat-storage.js'
+import { testTurn } from './fixtures/turn-record.js'
 import { assistantTextFromTurn, formatMemoryXml } from '../src/turn-memory-xml.js'
 import type { RegexRule } from '../src/regex-rules-types.js'
 
@@ -20,14 +21,12 @@ function turn(
   assistant: string,
   id = `${ordinal}`.padStart(8, '0'),
 ): TurnRecord {
-  return {
+  return testTurn({
     turnId: id,
     turnOrdinal: ordinal,
-    send: { userText: user },
+    userText: user,
     receives: [{ id: 'r1', content: assistant }],
-    activeReceiveIndex: 0,
-    plugins: [],
-  }
+  })
 }
 
 function rule(partial: Partial<RegexRule> & Pick<RegexRule, 'id'>): RegexRule {

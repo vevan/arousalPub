@@ -1,4 +1,4 @@
-import { getTurnUserText, type TurnRecord } from './chat-storage.js'
+import { getTurnUserText, patchTurnDisplayContent, type TurnRecord } from './chat-storage.js'
 import { applyRegexRulesToText, filterRegexRules } from './regex-apply.js'
 import { resolveOutgoingSkipTailOrdinal } from './regex-outgoing.js'
 import { readRegexRulesDocument } from './regex-rules-file.js'
@@ -71,20 +71,7 @@ export function applyOutgoingRegexToSummaryTurn(
 
   if (!userChanged && !assistantChanged) return turn
 
-  const receives = [...(turn.receives ?? [])]
-  const activeIdx = Math.min(
-    Math.max(0, Math.floor(turn.activeReceiveIndex) || 0),
-    Math.max(0, receives.length - 1),
-  )
-  if (receives[activeIdx]) {
-    receives[activeIdx] = { ...receives[activeIdx], content: assistant }
-  }
-
-  return {
-    ...turn,
-    send: { ...turn.send, userText },
-    receives,
-  }
+  return patchTurnDisplayContent(turn, userText, assistant)
 }
 
 export function applyOutgoingRegexToSummaryTurns(

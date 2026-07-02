@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { boundCharacterIds } from '@/utils/chat-list-character-ids'
 import { characterImageUrl } from '@/utils/authenticated-media-url'
 import { generateConversationId } from '@/utils/conversation-id'
 import { allocateShortId } from '@/utils/short-id'
@@ -7,8 +8,19 @@ import CharacterConversationsDialog from '@/components/home/CharacterConversatio
 import HomeCharacterGrid from '@/components/home/HomeCharacterGrid.vue'
 import {
   readHomeCharacterSourceDefault,
+  readHomeCharacterSort,
+  readHomeCharacterSortOrder,
+  readHomeConversationSort,
+  readHomeConversationSortOrder,
   readHomeListModeDefault,
+  writeHomeCharacterSort,
+  writeHomeCharacterSortOrder,
+  writeHomeConversationSort,
+  writeHomeConversationSortOrder,
+  type HomeCharacterSort,
+  type HomeConversationSort,
   type HomeListMode,
+  type HomeSortOrder,
 } from '@/utils/home-preferences'
 import {
   consumeHomeReturnFromChat,
@@ -41,6 +53,9 @@ interface ChatListEntry {
   characterIds?: string[]
   characterNames?: string[]
   searchTags?: string[]
+  activeTurnCount?: number
+  /** active 路径末轮 createdAt */
+  lastChatAt?: string
 }
 
 const createTitleDraft = ref('')
@@ -50,6 +65,109 @@ const creating = ref(false)
 const errorText = ref('')
 const conversations = ref<ChatListEntry[]>([])
 const searchQuery = ref('')
+const conversationSort = ref<HomeConversationSort>(readHomeConversationSort())
+const conversationSortOrder = ref<HomeSortOrder>(readHomeConversationSortOrder())
+const characterSort = ref<HomeCharacterSort>(readHomeCharacterSort())
+const characterSortOrder = ref<HomeSortOrder>(readHomeCharacterSortOrder())
+
+const SORT_ORDER_OPTIONS: HomeSortOrder[] = ['asc', 'desc']
+
+const CONVERSATION_SORT_OPTIONS: HomeConversationSort[] = [
+  'recentChat',
+  'title',
+  'turnCount',
+]
+const CHARACTER_SORT_OPTIONS: HomeCharacterSort[] = [
+  'recentChat',
+  'name',
+  'usageCount',
+]
+
+function conversationRecentChatAt(c: ChatListEntry): string {
+  return c.lastChatAt?.trim() || c.updatedAt
+}
+
+function conversationSortLabel(sort: HomeConversationSort): string {
+  const keys: Record<HomeConversationSort, string> = {
+    recentChat: 'home.sortRecentChat',
+    title: 'home.sortTitle',
+    turnCount: 'home.sortTurnCount',
+  }
+  return t(keys[sort])
+}
+
+function characterSortLabel(sort: HomeCharacterSort): string {
+  const keys: Record<HomeCharacterSort, string> = {
+    recentChat: 'home.sortRecentChat',
+    name: 'home.sortCharacterName',
+    usageCount: 'home.sortUsageCount',
+  }
+  return t(keys[sort])
+}
+
+function sortOrderLabel(order: HomeSortOrder): string {
+  return order === 'asc' ? t('characters.sortAsc') : t('characters.sortDesc')
+}
+
+function sortOrderIcon(order: HomeSortOrder): string {
+  return order === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'
+}
+
+function setConversationSort(next: HomeConversationSort) {
+  conversationSort.value = next
+  writeHomeConversationSort(next)
+}
+
+function setCharacterSort(next: HomeCharacterSort) {
+  characterSort.value = next
+  writeHomeCharacterSort(next)
+}
+
+function setConversationSortOrder(next: HomeSortOrder) {
+  conversationSortOrder.value = next
+  writeHomeConversationSortOrder(next)
+}
+
+function setCharacterSortOrder(next: HomeSortOrder) {
+  characterSortOrder.value = next
+  writeHomeCharacterSortOrder(next)
+}
+
+function sortConversations(list: ChatListEntry[]): ChatListEntry[] {
+  const out = [...list]
+  const collator = new Intl.Collator(undefined, { sensitivity: 'base' })
+  const desc = conversationSortOrder.value === 'desc'
+  out.sort((a, b) => {
+    switch (conversationSort.value) {
+      case 'title': {
+        const ta = (a.title || '').trim()
+        const tb = (b.title || '').trim()
+        const cmp = collator.compare(ta, tb)
+        if (cmp !== 0) return desc ? -cmp : cmp
+        return conversationRecentChatAt(b).localeCompare(
+          conversationRecentChatAt(a),
+          'en',
+        )
+      }
+      case 'turnCount': {
+        const ca = a.activeTurnCount ?? 0
+        const cb = b.activeTurnCount ?? 0
+        if (ca !== cb) return desc ? cb - ca : ca - cb
+        return conversationRecentChatAt(b).localeCompare(
+          conversationRecentChatAt(a),
+          'en',
+        )
+      }
+      case 'recentChat':
+      default: {
+        const ta = conversationRecentChatAt(a)
+        const tb = conversationRecentChatAt(b)
+        return desc ? tb.localeCompare(ta, 'en') : ta.localeCompare(tb, 'en')
+      }
+    }
+  })
+  return out
+}
 
 function matchesConversationSearch(c: ChatListEntry, q: string): boolean {
   if (!q) return true
@@ -63,8 +181,10 @@ function matchesConversationSearch(c: ChatListEntry, q: string): boolean {
 
 const filteredConversations = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
-  if (!q) return conversations.value
-  return conversations.value.filter((c) => matchesConversationSearch(c, q))
+  const base = !q
+    ? conversations.value
+    : conversations.value.filter((c) => matchesConversationSearch(c, q))
+  return sortConversations(base)
 })
 
 const displayedCount = computed(() => filteredConversations.value.length)
@@ -334,13 +454,25 @@ function characterImage(id: string) {
   )
 }
 
-function primaryCharacterId(c: ChatListEntry): string | null {
-  const fromList = c.characterIds?.find((id) => typeof id === 'string' && id.trim())
-  if (fromList) return fromList.trim()
-  if (typeof c.characterId === 'string' && c.characterId.trim()) {
-    return c.characterId.trim()
-  }
-  return null
+const MAX_CARD_CHAR_AVATARS = 4
+
+function cardCharacterIds(c: ChatListEntry): string[] {
+  return boundCharacterIds(c)
+}
+
+function visibleCharacterIds(c: ChatListEntry): string[] {
+  return cardCharacterIds(c).slice(0, MAX_CARD_CHAR_AVATARS)
+}
+
+function hiddenCharacterCount(c: ChatListEntry): number {
+  return Math.max(0, cardCharacterIds(c).length - MAX_CARD_CHAR_AVATARS)
+}
+
+function characterAvatarTitle(c: ChatListEntry, charId: string): string {
+  const ids = cardCharacterIds(c)
+  const idx = ids.indexOf(charId)
+  const name = idx >= 0 ? c.characterNames?.[idx]?.trim() : ''
+  return name || charId
 }
 
 function userCharacterId(c: ChatListEntry): string | null {
@@ -538,51 +670,131 @@ onUnmounted(() => {
         </v-btn-toggle>
       </header>
 
-      <label
+      <div
         v-if="listMode === 'conversations' && !loading && conversations.length > 0"
-        class="list-search"
+        class="list-toolbar"
       >
-        <v-icon size="16" class="list-search__icon">mdi-magnify</v-icon>
-        <input
-          v-model="searchQuery"
-          type="search"
-          class="list-search__input"
-          :placeholder="$t('conversationList.searchPlaceholder')"
-          :aria-label="$t('conversationList.searchPlaceholder')"
-        />
-        <button
-          v-if="searchQuery.trim()"
-          type="button"
-          class="list-search__clear"
-          :aria-label="$t('conversationList.searchClear')"
-          @click="searchQuery = ''"
-        >
-          <v-icon size="16">mdi-close</v-icon>
-        </button>
-      </label>
+        <label class="list-search">
+          <v-icon size="16" class="list-search__icon">mdi-magnify</v-icon>
+          <input
+            v-model="searchQuery"
+            type="search"
+            class="list-search__input"
+            :placeholder="$t('conversationList.searchPlaceholder')"
+            :aria-label="$t('conversationList.searchPlaceholder')"
+          />
+          <button
+            v-if="searchQuery.trim()"
+            type="button"
+            class="list-search__clear"
+            :aria-label="$t('conversationList.searchClear')"
+            @click="searchQuery = ''"
+          >
+            <v-icon size="16">mdi-close</v-icon>
+          </button>
+        </label>
+        <v-menu location="bottom end">
+          <template #activator="{ props: menuProps }">
+            <button
+              type="button"
+              class="list-sort-btn"
+              v-bind="menuProps"
+              :aria-label="$t('home.sortButton')"
+            >
+              <v-icon size="16">{{ sortOrderIcon(conversationSortOrder) }}</v-icon>
+              <span class="list-sort-btn__label">{{
+                conversationSortLabel(conversationSort)
+              }}</span>
+              <v-icon size="14" class="list-sort-btn__caret">mdi-chevron-down</v-icon>
+            </button>
+          </template>
+          <v-list density="compact" min-width="10rem">
+            <v-list-item
+              v-for="opt in CONVERSATION_SORT_OPTIONS"
+              :key="opt"
+              :active="conversationSort === opt"
+              @click="setConversationSort(opt)"
+            >
+              <v-list-item-title>{{ conversationSortLabel(opt) }}</v-list-item-title>
+            </v-list-item>
+            <v-divider class="my-1" />
+            <v-list-item
+              v-for="ord in SORT_ORDER_OPTIONS"
+              :key="`conv-${ord}`"
+              :active="conversationSortOrder === ord"
+              @click="setConversationSortOrder(ord)"
+            >
+              <template #prepend>
+                <v-icon size="18">{{ sortOrderIcon(ord) }}</v-icon>
+              </template>
+              <v-list-item-title>{{ sortOrderLabel(ord) }}</v-list-item-title>
+            </v-list-item>
+          </v-list>
+        </v-menu>
+      </div>
 
-      <label
+      <div
         v-if="listMode === 'characters'"
-        class="list-search"
+        class="list-toolbar"
       >
-        <v-icon size="16" class="list-search__icon">mdi-magnify</v-icon>
-        <input
-          v-model="characterSearchQuery"
-          type="search"
-          class="list-search__input"
-          :placeholder="$t('home.characterSearchPlaceholder')"
-          :aria-label="$t('home.characterSearchPlaceholder')"
-        />
-        <button
-          v-if="characterSearchQuery.trim()"
-          type="button"
-          class="list-search__clear"
-          :aria-label="$t('conversationList.searchClear')"
-          @click="characterSearchQuery = ''"
-        >
-          <v-icon size="16">mdi-close</v-icon>
-        </button>
-      </label>
+        <label class="list-search">
+          <v-icon size="16" class="list-search__icon">mdi-magnify</v-icon>
+          <input
+            v-model="characterSearchQuery"
+            type="search"
+            class="list-search__input"
+            :placeholder="$t('home.characterSearchPlaceholder')"
+            :aria-label="$t('home.characterSearchPlaceholder')"
+          />
+          <button
+            v-if="characterSearchQuery.trim()"
+            type="button"
+            class="list-search__clear"
+            :aria-label="$t('conversationList.searchClear')"
+            @click="characterSearchQuery = ''"
+          >
+            <v-icon size="16">mdi-close</v-icon>
+          </button>
+        </label>
+        <v-menu location="bottom end">
+          <template #activator="{ props: menuProps }">
+            <button
+              type="button"
+              class="list-sort-btn"
+              v-bind="menuProps"
+              :aria-label="$t('home.sortButton')"
+            >
+              <v-icon size="16">{{ sortOrderIcon(characterSortOrder) }}</v-icon>
+              <span class="list-sort-btn__label">{{
+                characterSortLabel(characterSort)
+              }}</span>
+              <v-icon size="14" class="list-sort-btn__caret">mdi-chevron-down</v-icon>
+            </button>
+          </template>
+          <v-list density="compact" min-width="10rem">
+            <v-list-item
+              v-for="opt in CHARACTER_SORT_OPTIONS"
+              :key="opt"
+              :active="characterSort === opt"
+              @click="setCharacterSort(opt)"
+            >
+              <v-list-item-title>{{ characterSortLabel(opt) }}</v-list-item-title>
+            </v-list-item>
+            <v-divider class="my-1" />
+            <v-list-item
+              v-for="ord in SORT_ORDER_OPTIONS"
+              :key="`char-${ord}`"
+              :active="characterSortOrder === ord"
+              @click="setCharacterSortOrder(ord)"
+            >
+              <template #prepend>
+                <v-icon size="18">{{ sortOrderIcon(ord) }}</v-icon>
+              </template>
+              <v-list-item-title>{{ sortOrderLabel(ord) }}</v-list-item-title>
+            </v-list-item>
+          </v-list>
+        </v-menu>
+      </div>
 
       <v-alert
         v-if="errorText"
@@ -598,6 +810,8 @@ onUnmounted(() => {
         v-if="listMode === 'characters'"
         :character-source="characterSource"
         :search-query="characterSearchQuery"
+        :sort="characterSort"
+        :sort-order="characterSortOrder"
         @pick="onCharacterPick"
       />
 
@@ -671,7 +885,7 @@ onUnmounted(() => {
           </v-menu>
 
           <div
-            v-if="userCharacterId(c) || primaryCharacterId(c)"
+            v-if="userCharacterId(c) || cardCharacterIds(c).length"
             class="conv-card__avatars"
             aria-hidden="true"
           >
@@ -682,18 +896,38 @@ onUnmounted(() => {
               alt=""
             />
             <img
-              v-if="primaryCharacterId(c)"
+              v-for="(charId, i) in visibleCharacterIds(c)"
+              :key="charId"
               class="conv-card__avatar conv-card__avatar--char"
-              :src="characterImage(primaryCharacterId(c)!)"
+              :style="{ zIndex: i + 2 }"
+              :src="characterImage(charId)"
+              :title="characterAvatarTitle(c, charId)"
               alt=""
             />
+            <span
+              v-if="hiddenCharacterCount(c) > 0"
+              class="conv-card__avatar-more"
+              :style="{ zIndex: visibleCharacterIds(c).length + 2 }"
+            >
+              +{{ hiddenCharacterCount(c) }}
+            </span>
           </div>
 
           <h2 class="conv-card__title">
             {{ c.title || $t('chat.newConversation') }}
           </h2>
           <div class="conv-card__meta">
-            <span>{{ formatTime(c.updatedAt) }}</span>
+            <span v-if="typeof c.activeTurnCount === 'number'">
+              {{ $t('conversationList.turnCount', { n: c.activeTurnCount }) }}
+            </span>
+            <span
+              v-if="typeof c.activeTurnCount === 'number'"
+              class="conv-card__meta-sep"
+              aria-hidden="true"
+            >
+              ·
+            </span>
+            <span>{{ formatTime(conversationRecentChatAt(c)) }}</span>
           </div>
         </article>
       </div>
@@ -1002,6 +1236,57 @@ onUnmounted(() => {
   min-height: 0;
 }
 
+.list-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0.25rem 0.75rem;
+}
+
+.list-toolbar .list-search {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.list-sort-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 2.25rem;
+  max-width: 9.5rem;
+  padding: 0 0.625rem;
+  border-radius: 0.5rem;
+  border: 0.0625rem solid rgba(var(--v-theme-primary), 0.45);
+  background: rgba(var(--v-theme-on-surface), 0.04);
+  color: rgb(var(--v-theme-on-surface));
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.list-sort-btn:hover,
+.list-sort-btn[aria-expanded='true'] {
+  border-color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.06);
+}
+
+.list-sort-btn__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-sort-btn__caret {
+  flex-shrink: 0;
+  opacity: 0.65;
+}
+
 .list-search {
   flex: 0 0 auto;
   display: flex;
@@ -1170,13 +1455,17 @@ onUnmounted(() => {
 .conv-card__meta {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.375rem;
   margin-top: auto;
   font-family: var(--font-mono);
   font-size: 0.6563rem;
   letter-spacing: 0.04em;
   color: rgba(var(--v-theme-on-surface), 0.45);
   text-transform: uppercase;
+}
+
+.conv-card__meta-sep {
+  opacity: 0.55;
 }
 
 .conv-card__menu {
@@ -1188,14 +1477,16 @@ onUnmounted(() => {
 }
 
 .conv-card__avatars {
+  --conv-card-avatar-size: 3rem;
+  --conv-card-avatar-overlap: 0.625rem;
   display: flex;
   align-items: center;
-  margin-bottom: 0.625rem;
+  margin-bottom: 0.75rem;
 }
 
 .conv-card__avatar {
-  width: 2rem;
-  height: 2rem;
+  width: var(--conv-card-avatar-size);
+  height: var(--conv-card-avatar-size);
   border-radius: 50%;
   object-fit: cover;
   border: 0.125rem solid rgb(var(--v-theme-surface-light));
@@ -1203,7 +1494,24 @@ onUnmounted(() => {
 }
 
 .conv-card__avatar--char {
-  margin-left: -0.5rem;
+  margin-left: calc(-1 * var(--conv-card-avatar-overlap));
+}
+
+.conv-card__avatar-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--conv-card-avatar-size);
+  height: var(--conv-card-avatar-size);
+  margin-left: calc(-1 * var(--conv-card-avatar-overlap));
+  border-radius: 50%;
+  border: 0.125rem solid rgb(var(--v-theme-surface-light));
+  background: rgba(var(--v-theme-on-surface), 0.12);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: rgba(var(--v-theme-on-surface), 0.72);
+  flex-shrink: 0;
 }
 
 .conv-card__avatar--user {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { TurnRecord } from '../src/chat-storage.js'
+import { testTurn } from './fixtures/turn-record.js'
 import {
   formatHistoryXml,
   formatMemoryXml,
@@ -13,14 +14,12 @@ function turn(
   assistant: string,
   id = `${ordinal}`.padStart(8, '0'),
 ): TurnRecord {
-  return {
+  return testTurn({
     turnId: id,
     turnOrdinal: ordinal,
-    send: { userText: user },
+    userText: user,
     receives: [{ id: 'r1', content: assistant }],
-    activeReceiveIndex: 0,
-    plugins: [],
-  }
+  })
 }
 
 describe('formatMemoryXml', () => {

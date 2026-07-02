@@ -4260,7 +4260,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
             (n): n is string => typeof n === 'string' && n.trim().length > 0,
           )
         : undefined,
-      groupContinue,
+      groupContinue: groupContinue ?? undefined,
       contextLength: mergedBody.contextLength,
       tokenModel: model,
       promptsDoc,

@@ -37,13 +37,22 @@ describe('group-chat-turn', () => {
     assert.equal(hintCharacterId, 'betty-id')
   })
 
-  it('migrates legacy turn to single segment', () => {
+  it('reads segments from turn', () => {
     const turn: TurnRecord = {
       turnId: 't1',
       turnOrdinal: 0,
       send: { userText: 'hi' },
       receives: [{ id: 'r1', content: 'yo' }],
       activeReceiveIndex: 0,
+      segments: [
+        {
+          id: 's1',
+          speakerCharacterId: 'alice-id',
+          receives: [{ id: 'r1', content: 'yo' }],
+          activeReceiveIndex: 0,
+        },
+      ],
+      activeSegmentIndex: 0,
       plugins: [],
     }
     const segments = getTurnSegments(turn, 'alice-id')

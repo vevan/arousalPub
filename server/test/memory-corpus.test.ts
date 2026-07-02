@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { TurnRecord } from '../src/chat-storage.js'
+import { testTurn } from './fixtures/turn-record.js'
 import {
   buildMemoryEmbeddingCorpus,
   fuseEmbeddingVectors,
@@ -9,14 +10,19 @@ import {
 import { normalizeMemorySettings } from '../src/memory-settings.js'
 
 function turn(partial: Partial<TurnRecord> & Pick<TurnRecord, 'turnId'>): TurnRecord {
-  return {
-    turnOrdinal: 0,
-    send: { userText: '' },
-    receives: [],
-    activeReceiveIndex: 0,
-    plugins: [],
-    ...partial,
-  }
+  const receives = partial.receives ?? []
+  return testTurn({
+    turnId: partial.turnId,
+    turnOrdinal: partial.turnOrdinal ?? 0,
+    userText: partial.send?.userText ?? '',
+    receives,
+    activeReceiveIndex: partial.activeReceiveIndex ?? 0,
+    segments: partial.segments,
+    activeSegmentIndex: partial.activeSegmentIndex,
+    plugins: partial.plugins,
+    speakerCharacterId: partial.speakerCharacterId,
+    createdAt: partial.createdAt,
+  })
 }
 
 describe('stripMemoryCorpusText', () => {

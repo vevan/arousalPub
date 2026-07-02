@@ -2,6 +2,7 @@
 import ConversationContextSettings from '@/components/ConversationContextSettings.vue'
 import ChatBranchPanel from '@/components/chat/ChatBranchPanel.vue'
 import ChatBranchLabelDialog from '@/components/chat/ChatBranchLabelDialog.vue'
+import ChatGroupChatDialog from '@/components/chat/ChatGroupChatDialog.vue'
 import HomeChat from '@/components/HomeChat.vue'
 import {
   CHAT_CONVERSATION_ACTIONS_KEY,
@@ -59,6 +60,10 @@ import {
   hybridFtsSpecsMatch,
   normalizeHybridFtsSettings,
 } from '@/utils/hybrid-fts-settings'
+import {
+  normalizeGroupChatSettings,
+  type GroupChatSettings,
+} from '@/utils/group-chat-settings'
 import { storeToRefs } from 'pinia'
 import { computed, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -355,6 +360,7 @@ interface ConvContextBindings {
   characterIds: string[]
   characterNames: string[]
   groupChatEnabled: boolean
+  groupChat: GroupChatSettings
   lorebookIds: string[]
   lorebook: LorebookContextBinding
   history: HistoryContextBinding
@@ -534,18 +540,14 @@ function bindingsFromIndex(idx: Record<string, unknown>): ConvContextBindings {
   const characterNames = Array.isArray(cn)
     ? cn.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
     : []
-  const gc = idx.groupChat
-  const groupChatEnabled = Boolean(
-    gc &&
-      typeof gc === 'object' &&
-      !Array.isArray(gc) &&
-      (gc as { enabled?: unknown }).enabled === true,
-  )
+  const groupChat = normalizeGroupChatSettings(idx.groupChat)
+  const groupChatEnabled = groupChat.enabled === true
   return {
     promptPresetId,
     characterIds: clientResolvedCharacterIds(idx),
     characterNames,
     groupChatEnabled,
+    groupChat,
     lorebookIds,
     lorebook: lorebookContextFromIndex(idx),
     history: historyContextFromIndex(idx),
@@ -564,6 +566,7 @@ const convBindings = ref<ConvContextBindings>({
   characterIds: [],
   characterNames: [],
   groupChatEnabled: false,
+  groupChat: normalizeGroupChatSettings(undefined),
   lorebookIds: [],
   lorebook: {
     useGlobal: true,
@@ -642,6 +645,31 @@ function openBoundPrompt(): void {
   const id = effectivePromptPresetId.value
   if (!id) return
   uiContext.requestOpenPromptsDialog(id)
+}
+
+const groupChatDialogOpen = ref(false)
+
+const canOpenGroupChatSettings = computed(
+  () => convBindings.value.characterIds.length >= 2,
+)
+
+function onGroupChatSettingsSaved(payload: {
+  groupChat: GroupChatSettings
+  characterIds: string[]
+}): void {
+  const nameById = new Map(
+    convBindings.value.characterIds.map((id, i) => [
+      id,
+      convBindings.value.characterNames[i]?.trim() || id,
+    ]),
+  )
+  convBindings.value = {
+    ...convBindings.value,
+    groupChat: payload.groupChat,
+    groupChatEnabled: payload.groupChat.enabled === true,
+    characterIds: payload.characterIds,
+    characterNames: payload.characterIds.map((id) => nameById.get(id) ?? id),
+  }
 }
 
 watch(
@@ -1023,6 +1051,19 @@ watch(
             </v-menu>
           </template>
           <v-btn
+            v-if="canOpenGroupChatSettings"
+            icon
+            variant="text"
+            density="comfortable"
+            size="small"
+            class="chat-header__group-chat"
+            :color="convBindings.groupChatEnabled ? 'primary' : undefined"
+            :aria-label="$t('chat.groupChat.settings.openButton')"
+            @click="groupChatDialogOpen = true"
+          >
+            <v-icon icon="mdi-account-group-outline" size="20" />
+          </v-btn>
+          <v-btn
             icon="mdi-cog-outline"
             variant="text"
             density="comfortable"
@@ -1040,6 +1081,7 @@ watch(
         :conversation-character-ids="convBindings.characterIds"
         :conversation-character-display-names="convBindings.characterNames"
         :group-chat-enabled="convBindings.groupChatEnabled"
+        :group-chat-settings="convBindings.groupChat"
         :conversation-lorebook-ids="convBindings.lorebookIds"
         :conversation-user-name="convBindings.userName"
         :conversation-user-character-id="convBindings.userCharacterId"
@@ -1170,6 +1212,14 @@ watch(
           </v-card-actions>
         </v-card>
       </v-dialog>
+      <ChatGroupChatDialog
+        v-model="groupChatDialogOpen"
+        :conversation-id="conversationId"
+        :character-ids="convBindings.characterIds"
+        :character-names="convBindings.characterNames"
+        :group-chat="convBindings.groupChat"
+        @saved="onGroupChatSettingsSaved"
+      />
       <ConversationContextSettings
         ref="convContextSettingsRef"
         :conversation-id="conversationId"

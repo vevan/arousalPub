@@ -1,3 +1,5 @@
+import type { GroupChatSettings } from '@/utils/group-chat-settings'
+
 export interface ChatSessionProps {
   conversationId: string
   conversationPromptPresetId?: string | null
@@ -9,6 +11,8 @@ export interface ChatSessionProps {
   conversationUserCharacterId?: string | null
   /** 会话 groupChat.enabled；缺省 false */
   groupChatEnabled?: boolean
+  /** 完整群聊设置（权重、衰减、autoContinue 等） */
+  groupChatSettings?: GroupChatSettings
 }
 
 export interface ReceiveItem {
@@ -76,6 +80,8 @@ export interface ChatPersistPayload {
   activeSegmentIndex?: number
   speakerCharacterId?: string
   nextSpeakerCharacterId?: string | null
+  /** 衰减掷骰失败，本轮群聊接续结束 */
+  groupChatDecayStopped?: boolean
 }
 
 export interface RetroPersistTurnPayload {

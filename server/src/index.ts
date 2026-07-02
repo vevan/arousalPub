@@ -51,6 +51,7 @@ import {
   updateConversationUserCharacterId,
   updateConversationUserName,
   updateConversationAuthorsNote,
+  updateConversationGroupChat,
   clearConversationChatApiSettings,
   updateConversationChatApiSettings,
   clearConversationEmbeddingApiSettings,
@@ -642,6 +643,8 @@ interface PatchConvBody {
   pluginSettings?: Record<string, Record<string, unknown>>
   /** 当前 active 分支路径；`""` / `null` 切回主路径 */
   activeBranchPath?: string | null
+  /** 群聊设置；`null` 重置为默认 */
+  groupChat?: Record<string, unknown> | null
 }
 
 app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
@@ -693,6 +696,7 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
     )
     const hasPluginSettings = Object.prototype.hasOwnProperty.call(b, 'pluginSettings')
     const hasActiveBranchPath = Object.prototype.hasOwnProperty.call(b, 'activeBranchPath')
+    const hasGroupChat = Object.prototype.hasOwnProperty.call(b, 'groupChat')
     if (
       !hasTitle &&
       !hasAuditDebug &&
@@ -710,7 +714,8 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       !hasApiPreset &&
       !hasEmbeddingApiSettings &&
       !hasPluginSettings &&
-      !hasActiveBranchPath
+      !hasActiveBranchPath &&
+      !hasGroupChat
     ) {
       return reply
         .status(400)
@@ -1097,6 +1102,15 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       if ('error' in next) {
         return reply.status(next.status).send({ error: next.error })
       }
+      idx = next
+    }
+    if (hasGroupChat) {
+      const raw = b.groupChat
+      if (raw !== null && (!raw || typeof raw !== 'object' || Array.isArray(raw))) {
+        return reply.status(400).send({ error: ApiErrorCodes.validation_failed })
+      }
+      const next = await updateConversationGroupChat(id, raw)
+      if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       idx = next
     }
     return { ok: true as const, index: idx }

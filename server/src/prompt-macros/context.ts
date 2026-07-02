@@ -31,6 +31,8 @@ export function buildPromptMacroContext(params: {
   enabledPluginIds?: string[] | null
   macroLocalVars?: Record<string, string> | null
   macroGlobalVars?: Record<string, string> | null
+  group?: string | null
+  groupNotMuted?: string | null
 }): PromptMacroContext {
   const raw = params.conversationUserName
   const userName =
@@ -119,6 +121,10 @@ export function buildPromptMacroContext(params: {
     idleReferenceUserAt: hf?.idleReferenceUserAt,
     macroLocalVars: cloneMacroVarMap(params.macroLocalVars),
     macroGlobalVars: cloneMacroVarMap(params.macroGlobalVars),
+    ...(typeof params.group === 'string' ? { group: params.group } : {}),
+    ...(typeof params.groupNotMuted === 'string'
+      ? { groupNotMuted: params.groupNotMuted }
+      : {}),
   }
 }
 

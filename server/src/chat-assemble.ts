@@ -34,6 +34,7 @@ import {
 } from './chat-storage.js'
 import { readChunkContainingOrdinal } from './chunk-chain.js'
 import {
+  buildGroupMacroStrings,
   normalizeGroupChatSettings,
   parseGroupContinueBody,
   resolveOutboundSpeakerCharacterId,
@@ -360,6 +361,8 @@ export async function buildConversationOutboundMessages(
   const groupChat = normalizeGroupChatSettings(idx.groupChat)
   const groupContinue = params.groupContinue
   let userInput = typeof params.userText === 'string' ? params.userText : ''
+  /** 记忆召回 query；与组装 userInput 槽分离，避免 partial history 重复 user */
+  let memoryQueryText = userInput
   let historyBeforeEx = params.historyBeforeTurnOrdinalExclusive ?? undefined
   let historyPartialTurn = params.historyPartialTurn
   let speakerCharacterId = params.speakerCharacterId?.trim() ?? ''
@@ -388,9 +391,7 @@ export async function buildConversationOutboundMessages(
     if (!turn) {
       return { error: ApiErrorCodes.regenerate_turn_not_found, status: 404 }
     }
-    if (!userInput.trim()) {
-      userInput = getTurnUserText(turn)
-    }
+    memoryQueryText = userInput.trim() || getTurnUserText(turn)
     speakerCharacterId = groupContinue.speakerCharacterId.trim()
     historyBeforeEx = turnOrd + 1
     historyPartialTurn = {
@@ -407,6 +408,11 @@ export async function buildConversationOutboundMessages(
       turnOrdinal: params.regenerateTurnOrdinal,
       segmentIndexExclusive: params.regenerateSegmentIndex,
     }
+  }
+
+  if (historyPartialTurn) {
+    // partial history 已含该轮 user；userInput 槽留空，避免 user/assistant/user 重复
+    userInput = ''
   }
 
   const maxT = params.contextLength
@@ -426,7 +432,7 @@ export async function buildConversationOutboundMessages(
     ;[memoryPipeline, indexingTurns, enabledPluginIds] = await Promise.all([
       runMemoryPipeline({
         conversationId,
-        userText: userInput,
+        userText: memoryQueryText,
         memorySettings: effectiveMemory,
         historySettings: effectiveHistory,
         historyBeforeTurnOrdinalExclusive: beforeEx,
@@ -493,6 +499,12 @@ export async function buildConversationOutboundMessages(
 
   const charNameList = macroCharNameList
 
+  const groupMacroStrings = buildGroupMacroStrings(
+    charIds,
+    charNameList,
+    groupChat,
+  )
+
   const historyFields = buildMacroHistoryFields({
     indexingTurns,
     historyTurns: memoryPipeline.recentTurns,
@@ -524,6 +536,8 @@ export async function buildConversationOutboundMessages(
     enabledPluginIds,
     macroLocalVars,
     macroGlobalVars,
+    group: groupMacroStrings.group,
+    groupNotMuted: groupMacroStrings.groupNotMuted,
   })
 
   const authorsNote = authorsNoteForInjection(idx.authorsNote)

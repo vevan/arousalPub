@@ -7,6 +7,10 @@ import { allocateShortId } from '@/utils/short-id'
 import { isOpeningTurn } from '@/utils/chat-turn-display'
 import { submitComposerParse, hasUnmatchedAtSlashNames } from '@/utils/composer-slash'
 import {
+  defaultGroupChatSettings,
+  type GroupChatSettings,
+} from '@/utils/group-chat-settings'
+import {
   resolveSpeakerQueueIds,
   type PendingGroupContinue,
   getActiveSegmentIndex,
@@ -51,6 +55,12 @@ export function useChatOutbound(opts: {
     meta?: { speakerCharacterId?: string; speakerQueue?: string[] },
   ) => void
   rollbackPendingUserTurn: (ord: number, restoreUserText?: string) => void
+  appendPendingSegment: (
+    ord: number,
+    segmentIndex: number,
+    speakerCharacterId: string,
+  ) => void
+  rollbackPendingSegment: (ord: number, segmentIndex: number) => void
   finalizePendingTurn: (
     ord: number,
     receive: ChatTurnItem['receives'][number],
@@ -84,6 +94,7 @@ export function useChatOutbound(opts: {
   getBoundDisplayNames?: () => readonly string[]
   getCharacterIds?: () => readonly string[]
   isGroupChatEnabled?: () => boolean
+  getGroupChatSettings?: () => GroupChatSettings
   clearComposerAfterSlash?: () => void
   scrollToTurnOrdinal: (
     turnOrdinal: number,
@@ -95,32 +106,80 @@ export function useChatOutbound(opts: {
   const groupChatNoticeOpen = ref(false)
   const groupChatNoticeMessage = ref('')
 
-  function updatePendingContinueFromPersist(
+  function resolveTurnListIndex(
+    turnOrd: number,
+    listIndexHint?: number,
+  ): number {
+    if (
+      typeof listIndexHint === 'number' &&
+      listIndexHint >= 0 &&
+      opts.turns.value[listIndexHint]?.turnOrdinal === turnOrd
+    ) {
+      return listIndexHint
+    }
+    return opts.turns.value.findIndex((t) => t.turnOrdinal === turnOrd)
+  }
+
+  function buildPendingContinueFromPersist(
     persist: ChatPersistPayload | undefined,
-    listIndex: number,
-  ) {
+    listIndexHint?: number,
+  ): PendingGroupContinue | null {
     const nextId = persist?.nextSpeakerCharacterId?.trim()
     const turnOrd = persist?.turnOrdinal
-    if (!nextId || typeof turnOrd !== 'number') {
-      pendingGroupContinue.value = null
-      return
-    }
+    if (!nextId || typeof turnOrd !== 'number') return null
+    const listIndex = resolveTurnListIndex(turnOrd, listIndexHint)
+    if (listIndex < 0) return null
     const turn = opts.turns.value[listIndex]
-    if (!turn || turn.turnOrdinal !== turnOrd) {
-      pendingGroupContinue.value = null
-      return
-    }
+    if (!turn || turn.turnOrdinal !== turnOrd) return null
     const segments = getTurnSegmentsForUi(turn)
     const afterSegmentIndex =
       typeof persist?.activeSegmentIndex === 'number'
         ? persist.activeSegmentIndex
         : Math.max(0, segments.length - 1)
-    pendingGroupContinue.value = {
+    return {
       turnOrdinal: turnOrd,
       listIndex,
       afterSegmentIndex,
       nextSpeakerCharacterId: nextId,
     }
+  }
+
+  /** 更新 pending UI；若应 autoContinue 则返回待链式 continue 的 payload */
+  function updatePendingContinueFromPersist(
+    persist: ChatPersistPayload | undefined,
+    listIndexHint?: number,
+  ): PendingGroupContinue | null {
+    if (persist?.groupChatDecayStopped) {
+      groupChatNoticeMessage.value = opts.t('chat.groupChat.decayStopped')
+      groupChatNoticeOpen.value = true
+    }
+
+    const settings =
+      opts.getGroupChatSettings?.() ?? defaultGroupChatSettings()
+    const pending = buildPendingContinueFromPersist(persist, listIndexHint)
+    if (!pending || !settings.enabled) {
+      pendingGroupContinue.value = null
+      return null
+    }
+
+    if (settings.confirmContinue) {
+      pendingGroupContinue.value = pending
+      return null
+    }
+
+    pendingGroupContinue.value = null
+    if (settings.autoContinue) return pending
+    return null
+  }
+
+  function refreshPendingContinueListIndex(
+    pending: PendingGroupContinue,
+  ): PendingGroupContinue | null {
+    const listIndex = resolveTurnListIndex(pending.turnOrdinal, pending.listIndex)
+    if (listIndex < 0) return null
+    return listIndex === pending.listIndex
+      ? pending
+      : { ...pending, listIndex }
   }
 
   function dismissGroupContinue() {
@@ -305,6 +364,7 @@ export function useChatOutbound(opts: {
     opts.startGenerationTimer()
     opts.pendingSendSegmentIndex.value = 0
     dismissGroupContinue()
+    let deferredAutoContinue: PendingGroupContinue | null = null
     try {
       const { receive, traceId, persist, shouldReload } = await opts.runSend({
         userText,
@@ -313,7 +373,6 @@ export function useChatOutbound(opts: {
         ...(sendOpts?.plugins ? { plugins: sendOpts.plugins } : {}),
       })
       applyPersistRetroPatches(persist)
-      const listIndex = opts.turns.value.findIndex((t) => t.turnOrdinal === ord)
       opts.finalizePendingTurn(
         ord,
         receive,
@@ -325,10 +384,11 @@ export function useChatOutbound(opts: {
           activeSegmentIndex: persist?.activeSegmentIndex,
         },
       )
-      if (listIndex >= 0) {
-        updatePendingContinueFromPersist(persist, listIndex)
-      }
       if (shouldReload) await reloadMessagesAndReconcileContinue()
+      deferredAutoContinue = updatePendingContinueFromPersist(
+        persist,
+        opts.turns.value.findIndex((t) => t.turnOrdinal === ord),
+      )
       opts.emitAssistantReplyComplete({ mode: 'send', traceId })
       return undefined
     } catch (e) {
@@ -353,6 +413,10 @@ export function useChatOutbound(opts: {
         opts.loading.value = false
       }
       opts.pendingSendSegmentIndex.value = null
+      if (deferredAutoContinue) {
+        const next = refreshPendingContinueListIndex(deferredAutoContinue)
+        if (next) void continueGroupChat(next)
+      }
     }
   }
 
@@ -471,7 +535,6 @@ export function useChatOutbound(opts: {
       }
       opts.replaceTurnAt(listIndex, next)
     }
-    updatePendingContinueFromPersist(persist, listIndex)
     return true
   }
 
@@ -505,6 +568,7 @@ export function useChatOutbound(opts: {
     opts.errorText.value = ''
     opts.startGenerationTimer()
     dismissGroupContinue()
+    let deferredAutoContinue: PendingGroupContinue | null = null
 
     try {
       try {
@@ -536,6 +600,10 @@ export function useChatOutbound(opts: {
       }
 
       await finishRegenerateUi(shouldReload, traceId)
+      deferredAutoContinue = updatePendingContinueFromPersist(
+        persist,
+        opts.turns.value.findIndex((t) => t.turnOrdinal === turn.turnOrdinal),
+      )
       return undefined
     } catch (e) {
       if (isAbortError(e)) {
@@ -554,6 +622,10 @@ export function useChatOutbound(opts: {
         opts.stopGenerationTimer()
         opts.endRegeneratingUi()
         regeneratingSegmentIndex.value = null
+      }
+      if (deferredAutoContinue) {
+        const next = refreshPendingContinueListIndex(deferredAutoContinue)
+        if (next) void continueGroupChat(next)
       }
     }
   }
@@ -599,9 +671,11 @@ export function useChatOutbound(opts: {
     })
   }
 
-  async function continueGroupChat() {
-    const pending = pendingGroupContinue.value
-    if (!pending || !opts.isConversationWritable()) return
+  async function continueGroupChat(explicit?: PendingGroupContinue) {
+    const rawPending = explicit ?? pendingGroupContinue.value
+    if (!rawPending || !opts.isConversationWritable()) return
+    const pending = refreshPendingContinueListIndex(rawPending)
+    if (!pending) return
     if (opts.loading.value || opts.regeneratingTurnOrdinal.value !== null) return
     opts.errorText.value = ''
     try {
@@ -617,13 +691,13 @@ export function useChatOutbound(opts: {
       return
     }
 
-    const { turnOrdinal, listIndex, afterSegmentIndex, nextSpeakerCharacterId } =
-      pending
+    const { turnOrdinal, afterSegmentIndex, nextSpeakerCharacterId } = pending
+    const segmentIndex = afterSegmentIndex + 1
     dismissGroupContinue()
-    opts.pendingSendTurnOrdinal.value = turnOrdinal
-    opts.pendingSendSegmentIndex.value = afterSegmentIndex + 1
+    opts.appendPendingSegment(turnOrdinal, segmentIndex, nextSpeakerCharacterId)
     opts.loading.value = true
     opts.startGenerationTimer()
+    let deferredAutoContinue: PendingGroupContinue | null = null
     try {
       const { receive, traceId, persist, shouldReload } =
         await opts.runGroupContinue({
@@ -632,17 +706,32 @@ export function useChatOutbound(opts: {
           speakerCharacterId: nextSpeakerCharacterId,
         })
       applyPersistRetroPatches(persist)
-      const segmentIndex = afterSegmentIndex + 1
       opts.finalizePendingSegment(turnOrdinal, receive, {
         segmentIndex,
         speakerCharacterId: nextSpeakerCharacterId,
         activeSegmentIndex: segmentIndex,
       })
-      updatePendingContinueFromPersist(persist, listIndex)
+      deferredAutoContinue = updatePendingContinueFromPersist(
+        persist,
+        opts.turns.value.findIndex((t) => t.turnOrdinal === turnOrdinal),
+      )
       if (shouldReload) await reloadMessagesAndReconcileContinue()
       opts.emitAssistantReplyComplete({ mode: 'send', traceId })
     } catch (e) {
-      if (!isAbortError(e)) {
+      if (isAbortError(e)) {
+        const durationMs = opts.stopGenerationTimer()
+        const receive = partialReceiveFromStream(durationMs)
+        if (receive) {
+          opts.finalizePendingSegment(turnOrdinal, receive, {
+            segmentIndex,
+            speakerCharacterId: nextSpeakerCharacterId,
+            activeSegmentIndex: segmentIndex,
+          })
+        } else {
+          opts.rollbackPendingSegment(turnOrdinal, segmentIndex)
+        }
+      } else {
+        opts.rollbackPendingSegment(turnOrdinal, segmentIndex)
         opts.errorText.value =
           e instanceof Error ? e.message : opts.t('chat.errors.network')
       }
@@ -652,6 +741,10 @@ export function useChatOutbound(opts: {
         opts.loading.value = false
         opts.pendingSendTurnOrdinal.value = null
         opts.pendingSendSegmentIndex.value = null
+      }
+      if (deferredAutoContinue) {
+        const next = refreshPendingContinueListIndex(deferredAutoContinue)
+        if (next) void continueGroupChat(next)
       }
     }
   }

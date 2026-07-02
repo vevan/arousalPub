@@ -1,4 +1,5 @@
 import type { ChatTurnItem, PersistTurnToServerResult, ReceiveItem } from '@/types/chat-turn'
+import { getTurnSegmentsForUi } from '@/utils/group-chat-turn'
 import { allocateShortId } from '@/utils/short-id'
 import {
   CONVERSATION_UI_TAIL_LIMIT,
@@ -24,11 +25,21 @@ function mergeTurnsPrepend(
   return [...filtered, ...existing].sort((a, b) => a.turnOrdinal - b.turnOrdinal)
 }
 
+function collectUsedReceiveIdsFromTurn(turn: ChatTurnItem): Set<string> {
+  const used = new Set<string>()
+  for (const r of turn.receives) used.add(r.id)
+  for (const seg of turn.segments ?? []) {
+    for (const r of seg.receives) used.add(r.id)
+  }
+  return used
+}
+
 export function useTurnList(opts: {
   getConversationId: () => string
   turns: Ref<ChatTurnItem[]>
   userInput: Ref<string>
   pendingSendTurnOrdinal: Ref<number | null>
+  pendingSendSegmentIndex: Ref<number | null>
   pendingSendEstimatedTokens: Ref<number | null>
   pendingReceiveCompletionTokens: Ref<number | null>
   streamingText: Ref<string>
@@ -55,6 +66,7 @@ export function useTurnList(opts: {
 
   function clearPendingSend() {
     opts.pendingSendTurnOrdinal.value = null
+    opts.pendingSendSegmentIndex.value = null
     opts.pendingSendEstimatedTokens.value = null
     opts.pendingReceiveCompletionTokens.value = null
     opts.streamingText.value = ''
@@ -137,6 +149,84 @@ export function useTurnList(opts: {
     clearPendingSend()
   }
 
+  function appendPendingSegment(
+    ord: number,
+    segmentIndex: number,
+    speakerCharacterId: string,
+  ) {
+    const idx = opts.turns.value.findIndex((t) => t.turnOrdinal === ord)
+    if (idx < 0) return
+    const cur = opts.turns.value[idx]!
+    let segments = [...(cur.segments ?? getTurnSegmentsForUi(cur))]
+    const speakerId = speakerCharacterId.trim()
+    if (!speakerId) return
+
+    const existing = segments[segmentIndex]
+    if (existing?.receives.length) return
+
+    const pendingSeg = {
+      id: existing?.id ?? allocateShortId(collectUsedReceiveIdsFromTurn(cur)),
+      speakerCharacterId: speakerId,
+      receives: [] as ReceiveItem[],
+      activeReceiveIndex: 0,
+    }
+    if (segmentIndex < segments.length) {
+      segments[segmentIndex] = pendingSeg
+    } else if (segmentIndex === segments.length) {
+      segments.push(pendingSeg)
+    } else {
+      return
+    }
+
+    replaceTurnAt(idx, {
+      ...cur,
+      segments,
+      activeSegmentIndex: segmentIndex,
+      receives: [],
+      activeReceiveIndex: 0,
+      speakerCharacterId: speakerId,
+    })
+    opts.pendingSendTurnOrdinal.value = ord
+    opts.pendingSendSegmentIndex.value = segmentIndex
+    void opts.scrollChatToBottom()
+  }
+
+  function rollbackPendingSegment(ord: number, segmentIndex: number) {
+    const idx = opts.turns.value.findIndex((t) => t.turnOrdinal === ord)
+    if (idx < 0) {
+      clearPendingSend()
+      return
+    }
+    const cur = opts.turns.value[idx]!
+    const segments = [...(cur.segments ?? getTurnSegmentsForUi(cur))]
+    const seg = segments[segmentIndex]
+    if (seg && seg.receives.length === 0) {
+      segments.splice(segmentIndex, 1)
+      const prevIdx = Math.max(0, segmentIndex - 1)
+      const activeSeg = segments[prevIdx]
+      replaceTurnAt(idx, {
+        ...cur,
+        ...(segments.length > 0
+          ? {
+              segments,
+              activeSegmentIndex: prevIdx,
+              receives: activeSeg?.receives ?? cur.receives,
+              activeReceiveIndex:
+                activeSeg?.activeReceiveIndex ?? cur.activeReceiveIndex,
+              speakerCharacterId:
+                activeSeg?.speakerCharacterId ?? cur.speakerCharacterId,
+            }
+          : {
+              segments: undefined,
+              activeSegmentIndex: 0,
+              receives: cur.receives,
+              activeReceiveIndex: cur.activeReceiveIndex,
+            }),
+      })
+    }
+    clearPendingSend()
+  }
+
   function finalizePendingSegment(
     ord: number,
     receive: ReceiveItem,
@@ -175,7 +265,7 @@ export function useTurnList(opts: {
       }
     } else {
       segments.push({
-        id: allocateShortId(new Set(cur.receives.map((r) => r.id))),
+        id: allocateShortId(collectUsedReceiveIdsFromTurn(cur)),
         speakerCharacterId: meta.speakerCharacterId,
         receives: [merged],
         activeReceiveIndex: 0,
@@ -371,6 +461,8 @@ export function useTurnList(opts: {
     clearPendingSend,
     appendPendingUserTurn,
     rollbackPendingUserTurn,
+    appendPendingSegment,
+    rollbackPendingSegment,
     finalizePendingTurn,
     finalizePendingSegment,
     persistTurnToServer,

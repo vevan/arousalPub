@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { TurnReceive, TurnRecord } from './chat-storage.js'
 
 export interface AssistantSegmentRecord {
@@ -10,18 +11,85 @@ export interface AssistantSegmentRecord {
   }
 }
 
+export interface GroupChatDecaySettings {
+  enabled?: boolean
+  initialRate?: number
+  step?: number
+  floor?: number
+}
+
+export interface GroupChatMemberSettings {
+  weight?: number
+  muted?: boolean
+}
+
+export type GroupChatMode = 'weighted' | 'sequential'
+
 export interface GroupChatSettings {
   enabled?: boolean
+  mode?: GroupChatMode
   autoContinue?: boolean
   confirmContinue?: boolean
+  decay?: GroupChatDecaySettings
+  members?: Record<string, GroupChatMemberSettings>
+}
+
+export function defaultGroupChatDecaySettings(): GroupChatDecaySettings {
+  return {
+    enabled: true,
+    initialRate: 1,
+    step: 0.2,
+    floor: 0,
+  }
 }
 
 export function defaultGroupChatSettings(): GroupChatSettings {
   return {
     enabled: false,
+    mode: 'weighted',
     autoContinue: false,
     confirmContinue: true,
+    decay: defaultGroupChatDecaySettings(),
+    members: {},
   }
+}
+
+function clampUnitRate(n: unknown, fallback: number): number {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return fallback
+  return Math.min(1, Math.max(0, n))
+}
+
+export function normalizeGroupChatDecaySettings(
+  raw: unknown,
+): GroupChatDecaySettings {
+  const base = defaultGroupChatDecaySettings()
+  if (!raw || typeof raw !== 'object') return base
+  const o = raw as Record<string, unknown>
+  return {
+    enabled: typeof o.enabled === 'boolean' ? o.enabled : base.enabled,
+    initialRate: clampUnitRate(o.initialRate, base.initialRate!),
+    step: clampUnitRate(o.step, base.step!),
+    floor: clampUnitRate(o.floor, base.floor!),
+  }
+}
+
+export function normalizeGroupChatMembers(
+  raw: unknown,
+): Record<string, GroupChatMemberSettings> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const out: Record<string, GroupChatMemberSettings> = {}
+  for (const [key, val] of Object.entries(raw as Record<string, unknown>)) {
+    const id = key.trim()
+    if (!id || !val || typeof val !== 'object' || Array.isArray(val)) continue
+    const m = val as Record<string, unknown>
+    const entry: GroupChatMemberSettings = {}
+    if (typeof m.muted === 'boolean') entry.muted = m.muted
+    if (typeof m.weight === 'number' && Number.isFinite(m.weight) && m.weight >= 0) {
+      entry.weight = m.weight
+    }
+    out[id] = entry
+  }
+  return out
 }
 
 export function normalizeGroupChatSettings(
@@ -30,15 +98,270 @@ export function normalizeGroupChatSettings(
   const base = defaultGroupChatSettings()
   if (!raw || typeof raw !== 'object') return base
   const o = raw as Record<string, unknown>
+  const modeRaw = typeof o.mode === 'string' ? o.mode.trim().toLowerCase() : ''
+  const mode: GroupChatMode =
+    modeRaw === 'sequential' ? 'sequential' : 'weighted'
   return {
     enabled: typeof o.enabled === 'boolean' ? o.enabled : base.enabled,
+    mode,
     autoContinue:
       typeof o.autoContinue === 'boolean' ? o.autoContinue : base.autoContinue,
     confirmContinue:
       typeof o.confirmContinue === 'boolean'
         ? o.confirmContinue
         : base.confirmContinue,
+    decay: normalizeGroupChatDecaySettings(o.decay ?? base.decay),
+    members: normalizeGroupChatMembers(o.members),
   }
+}
+
+export function mergeGroupChatSettings(
+  prev: GroupChatSettings | undefined,
+  patch: unknown,
+): GroupChatSettings {
+  const base = normalizeGroupChatSettings(prev)
+  if (patch === null) return defaultGroupChatSettings()
+  if (!patch || typeof patch !== 'object') return base
+  const o = patch as Record<string, unknown>
+  const next: GroupChatSettings = { ...base }
+  if (typeof o.enabled === 'boolean') next.enabled = o.enabled
+  if (typeof o.mode === 'string') {
+    const m = o.mode.trim().toLowerCase()
+    if (m === 'weighted' || m === 'sequential') next.mode = m
+  }
+  if (typeof o.autoContinue === 'boolean') next.autoContinue = o.autoContinue
+  if (typeof o.confirmContinue === 'boolean') {
+    next.confirmContinue = o.confirmContinue
+  }
+  if (Object.prototype.hasOwnProperty.call(o, 'decay')) {
+    next.decay = normalizeGroupChatDecaySettings({
+      ...base.decay,
+      ...(o.decay && typeof o.decay === 'object' && !Array.isArray(o.decay)
+        ? o.decay
+        : {}),
+    })
+  }
+  if (Object.prototype.hasOwnProperty.call(o, 'members')) {
+    const patchMembers = normalizeGroupChatMembers(o.members)
+    const mergedMembers: Record<string, GroupChatMemberSettings> = {
+      ...(base.members ?? {}),
+    }
+    for (const [id, patchMember] of Object.entries(patchMembers)) {
+      mergedMembers[id] = { ...mergedMembers[id], ...patchMember }
+    }
+    next.members = mergedMembers
+  }
+  return normalizeGroupChatSettings(next)
+}
+
+export function isGroupChatMemberMuted(
+  characterId: string,
+  settings: GroupChatSettings,
+): boolean {
+  return settings.members?.[characterId.trim()]?.muted === true
+}
+
+export function groupChatMemberWeight(
+  characterId: string,
+  settings: GroupChatSettings,
+): number {
+  const w = settings.members?.[characterId.trim()]?.weight
+  if (typeof w === 'number' && Number.isFinite(w) && w >= 0) return w
+  return 1
+}
+
+/** 下一段 segment 索引（0-based） */
+export function nextSegmentIndexForTurn(
+  turn: TurnRecord,
+  defaultSpeakerCharacterId: string,
+): number {
+  return getTurnSegments(turn, defaultSpeakerCharacterId).filter(
+    (s) => (s.receives?.length ?? 0) > 0,
+  ).length
+}
+
+/** 第二段起衰减概率；首段返回 null（不掷） */
+export function computeGroupChatContinueProbability(
+  nextSegmentIndex: number,
+  decay: GroupChatDecaySettings,
+): number | null {
+  if (nextSegmentIndex < 1) return null
+  const d = normalizeGroupChatDecaySettings(decay)
+  if (!d.enabled) return 1
+  const initial = d.initialRate ?? 1
+  const step = d.step ?? 0.2
+  const floor = d.floor ?? 0
+  return Math.max(floor, initial - step * (nextSegmentIndex - 1))
+}
+
+export function rollGroupChatDecay(
+  nextSegmentIndex: number,
+  decay: GroupChatDecaySettings,
+  random: () => number = Math.random,
+): boolean {
+  const prob = computeGroupChatContinueProbability(nextSegmentIndex, decay)
+  if (prob === null) return true
+  return random() < prob
+}
+
+export function buildGroupMacroStrings(
+  characterIds: string[],
+  characterNames: string[],
+  settings: GroupChatSettings,
+): { group: string; groupNotMuted: string } {
+  const groupNames: string[] = []
+  const notMutedNames: string[] = []
+  for (let i = 0; i < characterIds.length; i++) {
+    const id = characterIds[i]?.trim()
+    if (!id) continue
+    const name = characterNames[i]?.trim() || id
+    groupNames.push(name)
+    if (!isGroupChatMemberMuted(id, settings)) notMutedNames.push(name)
+  }
+  return {
+    group: groupNames.join(', '),
+    groupNotMuted: notMutedNames.join(', '),
+  }
+}
+
+export function listGroupChatCandidateIds(
+  characterIds: string[],
+  spokenCharacterIds: string[],
+  settings: GroupChatSettings,
+): string[] {
+  const spoken = new Set(spokenCharacterIds)
+  return characterIds.filter(
+    (id) => id.trim() && !spoken.has(id) && !isGroupChatMemberMuted(id, settings),
+  )
+}
+
+/** 是否还有下一位可接续（掷衰减前检查，避免无候选人时误报 decayStopped） */
+export function hasGroupChatContinuationCandidate(params: {
+  groupChat: GroupChatSettings
+  speakerQueue?: string[]
+  lastHintCharacterId?: string
+  spokenCharacterIds: string[]
+  characterIds: string[]
+}): boolean {
+  const settings = normalizeGroupChatSettings(params.groupChat)
+  const spoken = new Set(params.spokenCharacterIds)
+
+  if (Array.isArray(params.speakerQueue)) {
+    for (const rawId of params.speakerQueue) {
+      const id = rawId.trim()
+      if (!id || spoken.has(id) || !params.characterIds.includes(id)) continue
+      if (isGroupChatMemberMuted(id, settings)) continue
+      return true
+    }
+  }
+  if (
+    params.lastHintCharacterId &&
+    params.characterIds.includes(params.lastHintCharacterId) &&
+    !spoken.has(params.lastHintCharacterId) &&
+    !isGroupChatMemberMuted(params.lastHintCharacterId, settings)
+  ) {
+    return true
+  }
+  return (
+    listGroupChatCandidateIds(
+      params.characterIds,
+      params.spokenCharacterIds,
+      settings,
+    ).length > 0
+  )
+}
+
+export function pickWeightedGroupChatSpeaker(params: {
+  conversationId: string
+  turnOrdinal: number
+  nextSegmentIndex: number
+  candidateIds: string[]
+  settings: GroupChatSettings
+}): string | null {
+  const candidates = params.candidateIds.filter(Boolean)
+  if (candidates.length === 0) return null
+  if (candidates.length === 1) return candidates[0]!
+  const weighted: { id: string; weight: number }[] = []
+  let total = 0
+  for (const id of candidates) {
+    const weight = groupChatMemberWeight(id, params.settings)
+    if (weight <= 0) continue
+    weighted.push({ id, weight })
+    total += weight
+  }
+  if (weighted.length === 0) return null
+  if (weighted.length === 1) return weighted[0]!.id
+  const seed = `${params.conversationId}\0${params.turnOrdinal}\0${params.nextSegmentIndex}`
+  const hash = createHash('sha256').update(seed).digest()
+  const r = (hash.readUInt32BE(0) / 0xffffffff) * total
+  let acc = 0
+  for (const item of weighted) {
+    acc += item.weight
+    if (r <= acc) return item.id
+  }
+  return weighted[weighted.length - 1]!.id
+}
+
+export interface ResolveNextSpeakerResult {
+  speakerCharacterId: string | null
+  decayStopped?: boolean
+}
+
+export function resolveNextSpeakerWithDecay(params: {
+  turn: TurnRecord
+  characterIds: string[]
+  characterNames: string[]
+  defaultSpeakerCharacterId: string
+  groupChat: GroupChatSettings
+  conversationId: string
+  random?: () => number
+}): ResolveNextSpeakerResult {
+  const groupChat = normalizeGroupChatSettings(params.groupChat)
+  if (!groupChat.enabled) {
+    return { speakerCharacterId: null }
+  }
+  const nextSegmentIndex = nextSegmentIndexForTurn(
+    params.turn,
+    params.defaultSpeakerCharacterId,
+  )
+  const segments = getTurnSegments(params.turn, params.defaultSpeakerCharacterId)
+  const lastSeg = segments[segments.length - 1]
+  const spoken = spokenCharacterIdsFromTurn(
+    params.turn,
+    params.defaultSpeakerCharacterId,
+  )
+  if (
+    !hasGroupChatContinuationCandidate({
+      groupChat,
+      speakerQueue: params.turn.speakerQueue,
+      lastHintCharacterId: lastSeg?.meta?.nextSpeakerHint,
+      spokenCharacterIds: spoken,
+      characterIds: params.characterIds,
+    })
+  ) {
+    return { speakerCharacterId: null }
+  }
+  if (
+    !rollGroupChatDecay(
+      nextSegmentIndex,
+      groupChat.decay ?? defaultGroupChatDecaySettings(),
+      params.random,
+    )
+  ) {
+    return { speakerCharacterId: null, decayStopped: true }
+  }
+  const speaker = resolveNextSpeaker({
+    groupChatEnabled: true,
+    groupChatSettings: groupChat,
+    speakerQueue: params.turn.speakerQueue,
+    lastHintCharacterId: lastSeg?.meta?.nextSpeakerHint,
+    spokenCharacterIds: spoken,
+    characterIds: params.characterIds,
+    conversationId: params.conversationId,
+    turnOrdinal: params.turn.turnOrdinal,
+    nextSegmentIndex,
+  })
+  return { speakerCharacterId: speaker }
 }
 
 /** 旧 turn → segments；缺省 speaker 为 characterIds[0] */
@@ -307,34 +630,65 @@ export function extractNextSpeakerHint(
 
 export function resolveNextSpeaker(params: {
   groupChatEnabled: boolean
+  groupChatSettings?: GroupChatSettings
   speakerQueue?: string[]
   lastHintCharacterId?: string
   spokenCharacterIds: string[]
   characterIds: string[]
+  conversationId?: string
+  turnOrdinal?: number
+  nextSegmentIndex?: number
 }): string | null {
   const {
     groupChatEnabled,
+    groupChatSettings,
     speakerQueue,
     lastHintCharacterId,
     spokenCharacterIds,
     characterIds,
   } = params
+  const settings = normalizeGroupChatSettings(groupChatSettings)
+  const spoken = new Set(spokenCharacterIds)
+
   if (Array.isArray(speakerQueue)) {
-    const remaining = speakerQueue.filter(
-      (id) => !spokenCharacterIds.includes(id),
-    )
-    if (remaining.length > 0) return remaining[0]!
+    for (const rawId of speakerQueue) {
+      const id = rawId.trim()
+      if (!id || spoken.has(id) || !characterIds.includes(id)) continue
+      if (isGroupChatMemberMuted(id, settings)) continue
+      return id
+    }
   }
   if (
     lastHintCharacterId &&
     characterIds.includes(lastHintCharacterId) &&
-    !spokenCharacterIds.includes(lastHintCharacterId)
+    !spoken.has(lastHintCharacterId) &&
+    !isGroupChatMemberMuted(lastHintCharacterId, settings)
   ) {
     return lastHintCharacterId
   }
   if (!groupChatEnabled) return null
-  for (const id of characterIds) {
-    if (!spokenCharacterIds.includes(id)) return id
+
+  const candidates = listGroupChatCandidateIds(
+    characterIds,
+    spokenCharacterIds,
+    settings,
+  )
+  if (candidates.length === 0) return null
+
+  const mode = settings.mode ?? 'weighted'
+  if (
+    mode === 'weighted' &&
+    params.conversationId &&
+    typeof params.turnOrdinal === 'number' &&
+    typeof params.nextSegmentIndex === 'number'
+  ) {
+    return pickWeightedGroupChatSpeaker({
+      conversationId: params.conversationId,
+      turnOrdinal: params.turnOrdinal,
+      nextSegmentIndex: params.nextSegmentIndex,
+      candidateIds: candidates,
+      settings,
+    })
   }
-  return null
+  return candidates[0] ?? null
 }

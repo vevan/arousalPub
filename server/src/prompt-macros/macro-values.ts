@@ -218,6 +218,14 @@ export function resolveNotChar(ctx: PromptMacroContext): string {
   return ctx.notChar ?? ''
 }
 
+export function resolveGroup(ctx: PromptMacroContext): string {
+  return ctx.group ?? ''
+}
+
+export function resolveGroupNotMuted(ctx: PromptMacroContext): string {
+  return ctx.groupNotMuted ?? ''
+}
+
 export function resolveIdleDuration(ctx: PromptMacroContext): string {
   return humanizeIdleDuration(ctx.idleReferenceUserAt, ctx.now, ctx.locale)
 }
@@ -302,6 +310,8 @@ export const KNOWN_MACRO_HEADS = new Set([
   'lastswipeid',
   'currentswipeid',
   'notchar',
+  'group',
+  'groupnotmuted',
   'hasextension',
   'pick',
   'description',

@@ -100,6 +100,7 @@ import {
   syncLegacyFieldsFromSegments,
   type AssistantSegmentRecord,
   type GroupChatSettings,
+  mergeGroupChatSettings,
 } from './group-chat-turn.js'
 
 export type { AssistantSegmentRecord, GroupChatSettings } from './group-chat-turn.js'
@@ -1221,6 +1222,24 @@ export async function updateConversationAuthorsNote(
     delete next.authorsNote
   } else {
     next.authorsNote = mergeAuthorsNote(idx.authorsNote, patch)
+  }
+  await writeConversationIndex(conversationId, next)
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
+  return next
+}
+
+/** 更新会话群聊设置；`patch === null` 重置为默认 */
+export async function updateConversationGroupChat(
+  conversationId: string,
+  patch: unknown,
+): Promise<ConversationIndex | null> {
+  const idx = await readConversationIndex(conversationId)
+  if (!idx) return null
+  const t = nowIso()
+  const next: ConversationIndex = {
+    ...idx,
+    updatedAt: t,
+    groupChat: mergeGroupChatSettings(idx.groupChat, patch),
   }
   await writeConversationIndex(conversationId, next)
   await upsertChatListEntry(chatListEntryFromIndex(next), next)

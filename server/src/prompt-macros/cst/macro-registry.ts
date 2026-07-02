@@ -42,6 +42,8 @@ import {
   resolveMaxResponseTokens,
   resolveModel,
   resolveNotChar,
+  resolveGroup,
+  resolveGroupNotMuted,
   resolvePersona,
   resolvePrimaryField,
   resolveTimeDiff,
@@ -142,6 +144,8 @@ export function invokeCstMacro(
   if (name === 'lastswipeid') return resolveLastSwipeId(ctx)
   if (name === 'currentswipeid') return resolveCurrentSwipeId(ctx)
   if (name === 'notchar') return resolveNotChar(ctx)
+  if (name === 'group') return resolveGroup(ctx)
+  if (name === 'groupnotmuted') return resolveGroupNotMuted(ctx)
   if (name === 'hasextension') return resolveHasExtension(ctx, args[0] ?? '')
 
   if (name === 'pick') {

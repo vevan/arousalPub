@@ -38,6 +38,10 @@ export interface PromptMacroContext {
   lastSwipeId?: string
   currentSwipeId?: string
   notChar?: string
+  /** ST 群聊：绑定角色名列表 */
+  group?: string
+  /** ST 群聊：未 mute 的角色名列表 */
+  groupNotMuted?: string
   /** ST idleDuration 参照的上一条用户消息 createdAt */
   idleReferenceUserAt?: string
   /** 已启用插件 id（小写比较 hasExtension） */

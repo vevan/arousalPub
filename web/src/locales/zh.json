@@ -1014,9 +1014,31 @@
     "groupChat": {
       "queueNeedsEnabled": "未开启群聊时仅首位绑定角色会发言；多人接龙请在对话设置中开启群聊。",
       "atNameUnmatched": "未匹配到绑定角色名，请检查 /@ 后的名字是否与对话绑定一致。",
+      "decayStopped": "群聊衰减未通过，本轮接龙已结束。",
       "continuePrompt": "下一位：{name}",
       "continue": "继续",
-      "dismiss": "结束本轮"
+      "dismiss": "结束本轮",
+      "settings": {
+        "openButton": "群聊设置",
+        "title": "群聊",
+        "subtitle": "多角色同轮发言：权重、静音、衰减与自动接续。",
+        "needMultiChar": "绑定至少 2 个角色后可配置群聊。",
+        "enabled": "开启群聊",
+        "autoContinue": "自动接续下一位",
+        "confirmContinue": "每段后确认下一位",
+        "mode": "选人模式",
+        "modeWeighted": "加权随机",
+        "modeSequential": "顺序",
+        "decay": "接续衰减",
+        "decayEnabled": "启用衰减",
+        "decayInitial": "初始概率",
+        "decayStep": "每段递减",
+        "decayFloor": "下限",
+        "members": "成员",
+        "weight": "权重",
+        "muted": "静音",
+        "saveFailed": "保存群聊设置失败"
+      }
     }
   },
   "conversationList": {

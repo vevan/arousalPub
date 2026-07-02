@@ -2,6 +2,10 @@ import { useAuthStore } from '@/stores/auth'
 import { useConnectionStore } from '@/stores/connection'
 import { usePreferencesStore } from '@/stores/preferences'
 import type { ChatPersistPayload, ChatSessionProps, ChatTurnItem } from '@/types/chat-turn'
+import {
+  defaultGroupChatSettings,
+  normalizeGroupChatSettings,
+} from '@/utils/group-chat-settings'
 import { applyPersistWarning } from '@/utils/chat-messages'
 import {
   assistantReasoning,
@@ -137,6 +141,7 @@ export function useChatSession(props: ChatSessionProps) {
     turns,
     userInput,
     pendingSendTurnOrdinal,
+    pendingSendSegmentIndex,
     pendingSendEstimatedTokens,
     pendingReceiveCompletionTokens,
     streamingText,
@@ -157,6 +162,8 @@ export function useChatSession(props: ChatSessionProps) {
     clearPendingSend,
     appendPendingUserTurn,
     rollbackPendingUserTurn,
+    appendPendingSegment,
+    rollbackPendingSegment,
     finalizePendingTurn,
     finalizePendingSegment,
     persistTurnToServer,
@@ -250,6 +257,8 @@ export function useChatSession(props: ChatSessionProps) {
     rollbackPendingUserTurn,
     finalizePendingTurn,
     finalizePendingSegment,
+    appendPendingSegment,
+    rollbackPendingSegment,
     replaceTurnAt,
     persistTurnToServer,
     loadMessages,
@@ -260,6 +269,10 @@ export function useChatSession(props: ChatSessionProps) {
     getBoundDisplayNames: () => boundCharacterNames.getBoundDisplayNames(),
     getCharacterIds: () => props.conversationCharacterIds ?? [],
     isGroupChatEnabled: () => props.groupChatEnabled ?? false,
+    getGroupChatSettings: () =>
+      normalizeGroupChatSettings(
+        props.groupChatSettings ?? defaultGroupChatSettings(),
+      ),
     clearComposerAfterSlash: () => {
       composerDraft.clearDraftAfterSend(props.conversationId)
     },

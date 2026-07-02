@@ -1014,9 +1014,31 @@
     "groupChat": {
       "queueNeedsEnabled": "Group chat is off: only the first named speaker replies. Enable group chat in conversation settings for multi-speaker turns.",
       "atNameUnmatched": "No bound character matched your /@ names. Check spelling against characters linked to this conversation.",
+      "decayStopped": "Group chat decay roll failed; this turn’s chain has ended.",
       "continuePrompt": "Next speaker: {name}",
       "continue": "Continue",
-      "dismiss": "End turn"
+      "dismiss": "End turn",
+      "settings": {
+        "openButton": "Group chat settings",
+        "title": "Group chat",
+        "subtitle": "Multiple characters in one turn: weights, mute, decay, and auto-continue.",
+        "needMultiChar": "Bind at least 2 characters to configure group chat.",
+        "enabled": "Enable group chat",
+        "autoContinue": "Auto-continue next speaker",
+        "confirmContinue": "Confirm next speaker after each segment",
+        "mode": "Speaker selection",
+        "modeWeighted": "Weighted random",
+        "modeSequential": "Sequential",
+        "decay": "Continue decay",
+        "decayEnabled": "Enable decay",
+        "decayInitial": "Initial rate",
+        "decayStep": "Step per segment",
+        "decayFloor": "Floor",
+        "members": "Members",
+        "weight": "Weight",
+        "muted": "Muted",
+        "saveFailed": "Could not save group chat settings"
+      }
     }
   },
   "conversationList": {

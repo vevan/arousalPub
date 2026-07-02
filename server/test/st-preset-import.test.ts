@@ -48,6 +48,15 @@ function assertGroupsOrdered(
   }
 }
 
+/** messages.content 列表：按子串匹配（角色字段现为 persona XML） */
+function contentIncludes(contents: string[], needle: string): boolean {
+  return contents.some((c) => c.includes(needle))
+}
+
+function contentIndexOf(contents: string[], needle: string): number {
+  return contents.findIndex((c) => c.includes(needle))
+}
+
 const ST_FIXTURE = {
   name: 'Mini ST',
   prompts: [
@@ -241,20 +250,20 @@ describe('convertStPresetToArousalPub', () => {
     assert.ok(contents.includes('MAIN-TEXT'))
     assert.ok(contents.includes('PRE'))
     assert.ok(contents.includes('USER'))
-    assert.ok(contents.includes('DESC'))
-    assert.ok(contents.includes('PERS'))
-    assert.ok(contents.includes('SCEN'))
+    assert.ok(contentIncludes(contents, 'DESC'))
+    assert.ok(contentIncludes(contents, 'PERS'))
+    assert.ok(contentIncludes(contents, 'SCEN'))
     assert.ok(contents.includes('CHAR-REL'))
     assert.ok(contents.some((c) => c.includes('LORE')))
     assert.ok(contents.includes('HIST-BEFORE'))
     assert.ok(contents.includes('u'))
-    assert.ok(!contents.includes('POST'))
+    assert.ok(!contentIncludes(contents, 'POST'))
     assert.ok(contents.includes('CHAT-TAIL'))
     assert.ok(contents.includes('now'))
-    assert.ok(contents.indexOf('DESC') < contents.indexOf('PERS'))
-    assert.ok(contents.indexOf('PERS') < contents.indexOf('SCEN'))
-    assert.ok(contents.indexOf('SCEN') < contents.indexOf('CHAR-REL'))
-    assert.ok(contents.indexOf('USER') < contents.indexOf('DESC'))
+    assert.ok(contentIndexOf(contents, 'DESC') < contentIndexOf(contents, 'PERS'))
+    assert.ok(contentIndexOf(contents, 'PERS') < contentIndexOf(contents, 'SCEN'))
+    assert.ok(contentIndexOf(contents, 'SCEN') < contentIndexOf(contents, 'CHAR-REL'))
+    assert.ok(contentIndexOf(contents, 'USER') < contentIndexOf(contents, 'DESC'))
   })
 
   it('imports disabled order items with enabled: false', () => {

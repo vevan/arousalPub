@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { TurnRecord } from '../src/chat-storage.js'
-import { formatHistoryXml, formatMemoryXml } from '../src/turn-memory-xml.js'
+import {
+  formatHistoryXml,
+  formatMemoryXml,
+  turnsToHistoryMessages,
+} from '../src/turn-memory-xml.js'
 
 function turn(
   ordinal: number,
@@ -34,5 +38,44 @@ describe('formatHistoryXml', () => {
     const xml = formatHistoryXml([turn(1, 'u', 'a', 'abcd1234')])
     assert.match(xml, /<turn id="abcd1234" ordinal="1">/)
     assert.doesNotMatch(xml, /correlation=/)
+  })
+})
+
+describe('turnsToHistoryMessages partial turn', () => {
+  it('includes user once with partial assistant segments only', () => {
+    const t: TurnRecord = {
+      turnId: 't1',
+      turnOrdinal: 5,
+      send: { userText: 'hello' },
+      receives: [{ id: 'r1', content: 'a1' }],
+      activeReceiveIndex: 0,
+      segments: [
+        {
+          id: 's1',
+          speakerCharacterId: 'alice',
+          receives: [{ id: 'r1', content: 'a1' }],
+          activeReceiveIndex: 0,
+        },
+        {
+          id: 's2',
+          speakerCharacterId: 'betty',
+          receives: [{ id: 'r2', content: 'a2' }],
+          activeReceiveIndex: 0,
+        },
+      ],
+      activeSegmentIndex: 1,
+      plugins: [],
+    }
+    const msgs = turnsToHistoryMessages([t], {
+      defaultSpeakerCharacterId: 'alice',
+      partialTurn: { turnOrdinal: 5, segmentIndexExclusive: 1 },
+    })
+    assert.deepEqual(
+      msgs.map((m) => ({ role: m.role, content: m.content })),
+      [
+        { role: 'user', content: 'hello' },
+        { role: 'assistant', content: 'a1' },
+      ],
+    )
   })
 })

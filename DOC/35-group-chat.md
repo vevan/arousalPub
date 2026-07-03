@@ -1,7 +1,7 @@
 # 群聊（多角色发言轮次）— 设计定案
 
-> **状态**：定案 · **G0/G1/G2（过渡实现）已落地**（2026-07-01）；**G3 选人模型修订**定案（2026-07-02，§2.7–§3，**待实现**）  
-> **关联**：`DOC/03` §6（turn/chunk）、`DOC/04` **P0**、`DOC/14` / `DOC/26`（ST 群聊宏）、Composer Slash（`submitComposer`）
+> **状态**：定案 · **G0–G4 已落地**（2026-07-03）；**G5** 待做（§7）  
+> **关联**：`DOC/03` §6.8（turn/chunk · 群聊落盘）、`DOC/04` **P0**、`DOC/14` / `DOC/26`（ST 群聊宏）、Composer Slash（`submitComposer`）
 
 ---
 
@@ -14,12 +14,14 @@
 | 会话 `characterIds[]` 多卡绑定与 XML 注入 | ✅ |
 | 宏 `{{char}}` / `{{charN}}` / `{{notChar}}`（多卡名列表） | ✅ 部分 |
 | 一轮 user 对应多个 **不同 speaker** 的 assistant | ✅ G0 |
-| ST 群聊宏 `{{group}}` 等 | ❌ |
+| `speakerMode` 三选一 + 掷骰竞标 + `groupChatTurnState` | ✅ G3 |
+| Continue 改选 / `[NEXT@]` / 群聊 audit Tab | ✅ G4 |
+| ST 群聊宏 `{{group}}` 等 | ✅ G2（`{{group}}` / `{{groupNotMuted}}`） |
 | Composer Slash / `/@` | ✅ S0–S2、S4；**S3 插件执行**待做）见 [`DOC/36`](36-composer-slash.md) |
 | `speakerQueue` → turn / chat API | ✅ G1 |
 | 手动 Continue（`groupContinue`） | ✅ G1 |
 
-当前为**多卡绑定**，非 ST 式群聊：assistant 无 `speakerCharacterId`，`{{char}}` 固定为 `characterIds[0]`。
+群聊开启时 assistant 按 **segment** 携带 `speakerCharacterId`；未开群聊时默认 **char1**（`characterIds[0]`）单段，见 §1.2。
 
 ### 1.2 与多卡绑定的关系
 
@@ -61,8 +63,6 @@ AssistantSegment {
 | **turn 段数上限** | `maxSegmentsPerTurn`（可选）；达上限结束本 user turn |
 | **regenerate / swipe** | 仅作用于 **当前 segment** 的 receive |
 | **迁移** | 旧 turn 无 speaker → 包装为单 segment，`speakerCharacterId = characterIds[0]` |
-
-> **过渡实现（G2，待 G3 替换）**：代码仍按「每 bot 每 turn 最多 1 segment + 全局衰减一次失败整轮结束」运行；与 §2.7–§3 目标行为不一致处以实现为准，以本文为准绳迭代。
 
 组装 history：按 segment 顺序展开多条 assistant（带 speaker 标记）；生成时 `{{char}}` = **当前 segment 的 speaker**（非固定 char1）。
 
@@ -407,6 +407,18 @@ charN        → 可选；characterIds[N-1]（Phase 2+）
 | **G5** | 预设模板、群聊说明注入按模式分支、`{{notChar}}` 群聊语义完善 |
 
 **依赖：** G1 的 `/@` 与 **Composer Slash（P0）** 同批或略早（最小 `submitComposer` 路由即可）。
+
+### 7.1 代码布局（2026-07-03）
+
+| 层级 | 路径 | 说明 |
+|------|------|------|
+| **共享** | `shared/group-chat-settings.ts` | `normalizeGroupChatSettings`、`mergeGroupChatSettings`、`listEligibleCharacterIds`、`segmentSkipQuotaDeduction` 等；经 `scripts/sync-group-chat-settings-shared.mjs` 同步至 `server/src/shared/`、`web/src/shared/` |
+| **构建** | `scripts/sync-all-shared.mjs` | dev / build / test / typecheck 前统一同步 plot-summary、prompt-preset、portrait-media、group-chat-settings |
+| **服务端** | `server/src/group-chat/` | 选人/掷骰/落盘逻辑模块化：`types` · `segments` · `pick` · `audit` · `resolve` · `continue` · `outbound`；`server/src/group-chat-turn.ts` 为 barrel re-export |
+| **前端** | `web/src/utils/group-chat-turn.ts` | Continue 改选 fallback、`mergeTurnGroupChatStateFromPersist` |
+| | `web/src/utils/regen-turn-segments.ts` | `patchRegenSegments`（非末段 regen 截断后续 segment，与服务端 `updateTurnSegmentInTailChunk` 对齐） |
+
+**落盘要点**：`turn.groupChatTurnState`（`quotaRemaining` / `speakCount`）随 segment 写入；regen **非末段**截断后续 segment 后 **重算** state；persist 下发 `eligibleSpeakerCharacterIds` + `groupChatTurnState` 供 Continue UI 对齐。掷骰竞标失败扣额度**可无对应 segment**，persist 须优先 `resolved.turnState`（勿仅用磁盘快照）。详见 `DOC/03` §6.8、`DOC/24` §3。
 
 ---
 

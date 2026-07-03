@@ -4,6 +4,7 @@ import {
   type GroupChatSettings,
 } from '../shared/group-chat-settings.js'
 import { resolveFirstSegmentSpeaker } from './resolve.js'
+import { pickFirstSpeakerForSend } from './pick.js'
 import { getTurnSegments } from './segments.js'
 
 export function resolveDisplayNameToCharacterId(
@@ -32,16 +33,6 @@ export function resolveSpeakerQueueIds(
     if (id && !out.includes(id)) out.push(id)
   }
   return out
-}
-
-export function pickFirstSpeakerForSend(params: {
-  groupChatEnabled: boolean
-  speakerQueueIds: string[]
-  defaultCharacterId: string
-}): string {
-  const { speakerQueueIds, defaultCharacterId } = params
-  if (speakerQueueIds.length > 0) return speakerQueueIds[0]!
-  return defaultCharacterId
 }
 
 /** 组装/落盘：从 `/@` 队列解析本轮 outbound speaker（{{char}}） */

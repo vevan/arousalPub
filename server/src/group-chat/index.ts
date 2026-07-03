@@ -49,6 +49,7 @@ export type { DiceBiddingResult } from './pick.js'
 export {
   computeBotContinueProbability,
   diceBiddingPick,
+  pickFirstSpeakerForSend,
   pickFromSpeakerQueue,
   pickSequentialSpeaker,
   validateNextAtHint,
@@ -90,7 +91,6 @@ export {
 export {
   buildGroupMacroStrings,
   extractNextSpeakerHint,
-  pickFirstSpeakerForSend,
   resolveDisplayNameToCharacterId,
   resolveOutboundSpeakerCharacterId,
   resolveSpeakerQueueIds,

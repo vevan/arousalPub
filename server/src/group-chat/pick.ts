@@ -104,6 +104,17 @@ export function pickSequentialSpeaker(params: {
   return eligible[0] ?? null
 }
 
+export function pickFirstSpeakerForSend(params: {
+  groupChatEnabled: boolean
+  speakerQueueIds: string[]
+  defaultCharacterId: string
+}): string {
+  void params.groupChatEnabled
+  const { speakerQueueIds, defaultCharacterId } = params
+  if (speakerQueueIds.length > 0) return speakerQueueIds[0]!
+  return defaultCharacterId
+}
+
 export function validateNextAtHint(params: {
   hintCharacterId?: string
   characterIds: string[]

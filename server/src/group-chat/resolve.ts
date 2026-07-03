@@ -10,11 +10,11 @@ import {
 import { buildGroupChatSpeakerAudit } from './audit.js'
 import {
   diceBiddingPick,
+  pickFirstSpeakerForSend,
   pickFromSpeakerQueue,
   pickSequentialSpeaker,
   validateNextAtHint,
 } from './pick.js'
-import { pickFirstSpeakerForSend } from './outbound.js'
 import {
   getTurnGroupChatState,
   getTurnSegments,

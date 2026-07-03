@@ -99,7 +99,14 @@ function makeBindingSlotEntry(
   }
 }
 
-function buildBindingSlotPrompts(groupIds: typeof GROUP) {
+type PresetBindingGroupIds = {
+  character: string
+  world: string
+  history: string
+  userInput: string
+}
+
+function buildBindingSlotPrompts(groupIds: PresetBindingGroupIds) {
   return [
     ...DEFAULT_CHARACTER_SYSTEM_SLOTS.map((slot, i) =>
       makeBindingSlotEntry(

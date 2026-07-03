@@ -48,7 +48,7 @@ function tryDownloadJiebaModel() {
     }
   }
   console.log(`\n[jieba] model home: ${modelHome}`)
-  const py = spawnSync('python', ['-m', 'lance.download', 'jieba'], {
+  const py = spawnSync('python -m lance.download jieba', {
     encoding: 'utf8',
     shell: true,
     env: { ...process.env, LANCE_LANGUAGE_MODEL_HOME: modelHome },

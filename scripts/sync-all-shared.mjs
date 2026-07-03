@@ -7,6 +7,11 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 
+function skipSharedSync() {
+  const v = process.env.SKIP_SHARED_SYNC?.trim().toLowerCase()
+  return v === '1' || v === 'true' || v === 'yes'
+}
+
 const SCRIPTS = [
   'sync-plot-summary-shared.mjs',
   'sync-prompt-preset-shared.mjs',
@@ -31,6 +36,7 @@ function runScript(name) {
 }
 
 async function main() {
+  if (skipSharedSync()) return
   for (const script of SCRIPTS) {
     await runScript(script)
   }

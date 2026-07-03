@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
@@ -11,6 +11,7 @@ import {
 import { loadDevConfig } from './dev-config.mjs'
 import { ensureDependencies } from './ensure-deps.mjs'
 import { runBuildCountdownPrompt } from './prompt-build-countdown.mjs'
+import { spawnSyncNpm } from './spawn-npm.mjs'
 import { printTerminalLink } from './terminal-link.mjs'
 
 const { serverPort, repoRoot, startCountdownSeconds } = loadDevConfig()
@@ -20,10 +21,9 @@ const serverEntry = path.join(repoRoot, 'server', 'dist', 'index.js')
 
 function runBuild() {
   console.log('[start] Building web + server …\n')
-  const r = spawnSync('npm', ['run', 'build'], {
+  const r = spawnSyncNpm(['run', 'build'], {
     cwd: repoRoot,
     stdio: 'inherit',
-    shell: true,
   })
   if (r.status !== 0) {
     process.exit(r.status ?? 1)

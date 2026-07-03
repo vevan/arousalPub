@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 process.env.ANALYZE = '1'
 
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
-const result = spawnSync('vite', ['build'], {
+const result = spawnSync('vite build', {
   cwd: webRoot,
   stdio: 'inherit',
   shell: true,

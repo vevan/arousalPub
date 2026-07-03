@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
-import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
+import { spawnSyncNpm } from './spawn-npm.mjs'
 
 const STAMP_REL = path.join('node_modules', '.deps-stamp.json')
 
@@ -51,10 +51,9 @@ function writeStamp(repoRoot, hash) {
 }
 
 function runNpmInstall(repoRoot) {
-  const r = spawnSync('npm', ['install'], {
+  const r = spawnSyncNpm(['install'], {
     cwd: repoRoot,
     stdio: 'inherit',
-    shell: true,
   })
   if (r.status !== 0) process.exit(r.status ?? 1)
 }

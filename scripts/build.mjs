@@ -5,16 +5,16 @@ import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { REPO_ROOT } from './dev-config.mjs'
+import { spawnNpm } from './spawn-npm.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 
-function runNpm(args, { label }) {
+function runNpm(args, { label, env = process.env }) {
   return new Promise((resolve, reject) => {
-    const child = spawn('npm', args, {
+    const child = spawnNpm(args, {
       cwd: REPO_ROOT,
       stdio: 'inherit',
-      shell: true,
-      env: process.env,
+      env,
     })
     child.on('error', reject)
     child.on('exit', (code) => {
@@ -48,9 +48,16 @@ async function main() {
   await runNodeScript('build-plugins.mjs', { label: 'build:plugins' })
 
   console.log('[build] web + server')
+  const childBuildEnv = { ...process.env, SKIP_SHARED_SYNC: '1' }
   await Promise.all([
-    runNpm(['run', 'build', '-w', 'web'], { label: 'web build' }),
-    runNpm(['run', 'build', '-w', 'server'], { label: 'server build' }),
+    runNpm(['run', 'build', '-w', 'web'], {
+      label: 'web build',
+      env: childBuildEnv,
+    }),
+    runNpm(['run', 'build', '-w', 'server'], {
+      label: 'server build',
+      env: childBuildEnv,
+    }),
   ])
 
   console.log('[build] sync bundled plugins')

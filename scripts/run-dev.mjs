@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { loadDevConfig } from './dev-config.mjs'
 import { ensureDependencies } from './ensure-deps.mjs'
 import { ensurePluginDistForDev } from './plugin-dist.mjs'
+import { spawnNpm } from './spawn-npm.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const { serverPort, webPort, repoRoot: root } = loadDevConfig()
@@ -45,10 +46,9 @@ const childEnv = {
   WEB_PORT: String(webPort),
 }
 
-const server = spawn('npm', ['run', 'dev', '-w', 'server'], {
+const server = spawnNpm(['run', 'dev', '-w', 'server'], {
   cwd: root,
   stdio: 'inherit',
-  shell: true,
   env: childEnv,
 })
 
@@ -67,10 +67,9 @@ try {
     `[dev] Ports: backend ${serverPort}, frontend ${webPort} (edit serverPort / webPort in config.yaml)`,
   )
   console.log(`[dev] Open in browser: http://localhost:${webPort}/\n`)
-  webProc = spawn('npm', ['run', 'dev', '-w', 'web'], {
+  webProc = spawnNpm(['run', 'dev', '-w', 'web'], {
     cwd: root,
     stdio: 'inherit',
-    shell: true,
     env: childEnv,
   })
 } catch (e) {

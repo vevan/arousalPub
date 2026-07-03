@@ -5,7 +5,8 @@
 ## P0 余项
 
 - [ ] **远期记忆批量索引进度条** — 重建索引时 `embedTextsInBatches` 需按 embedding 批次/阶段上报进度（collecting / embedding / writing / lorebooks），避免大对话导入后进度条长时间 0% 再瞬间完成
-- [ ] **远期记忆 Lance 分片写入** — 废弃自动 `optimize` 作为碎片治理主路径；全量重建按聊天 chunk（约 100 轮）分组写入 Lance，避免大量几十 KB 小 fragment 或单个过大 fragment；一般对话在新建 chunk / seal 前一 chunk 时整理该 chunk 的 memory rows（优先复用已生成向量，必要时再重嵌）
+- [ ] **远期记忆 Lance 分片写入** — 当前保留重建后 / seal chunk 时的 best-effort `optimize`；待官方 TS 版本暴露 `targetRowsPerFragment` / `maxRowsPerGroup` 后接入可控 compaction，避免大量几十 KB 小 fragment 或单个过大 fragment
+- [ ] **远期记忆尾段 buffer 遗留清理** — 尾段 memory buffer 已废弃：每条 memory row 直接进入 Lance 会话级写入队列，seal chunk 只触发 best-effort optimize。后续清理旧文档中“尾块缓冲/flush 减碎片”的表述与相关死代码引用
 - [ ] **Composer Slash 命令** — 定案见 [`DOC/35`](35-group-chat.md) §2.3（群聊 `/@`）；输入框 `/` 命令层（与聊天 turns、输入历史分离）
   - [x] **S0** 宿主 `submitComposer` 统一入口 + 命令解析/路由（raw → 命令 + 剩余正文）
   - [x] **S1** 内置 `/goto N` 跳转轮次

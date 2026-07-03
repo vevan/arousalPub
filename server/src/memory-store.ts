@@ -37,6 +37,7 @@ const LEGACY_CHUNK_TABLE_PREFIX = 'mem_'
 
 const primaryKeyReady = new Set<string>()
 const legacyMemoryWarned = new Set<string>()
+const conversationMemoryChains = new Map<string, Promise<unknown>>()
 
 function memoryDbUri(conversationId: string): string {
   return path.join(
@@ -187,11 +188,37 @@ function toSqlString(s: string): string {
   return s.replace(/'/g, "''")
 }
 
+export function runConversationMemoryTask<T>(
+  conversationId: string,
+  task: () => Promise<T>,
+): Promise<T> {
+  const prev = conversationMemoryChains.get(conversationId) ?? Promise.resolve()
+  const run = prev.catch(() => undefined).then(task)
+  const tracked = run
+    .catch(() => undefined)
+    .finally(() => {
+      if (conversationMemoryChains.get(conversationId) === tracked) {
+        conversationMemoryChains.delete(conversationId)
+      }
+    })
+  conversationMemoryChains.set(conversationId, tracked)
+  return run
+}
+
 export interface OptimizeTurnMemoryOptions {
   aggressiveCleanup?: boolean
 }
 
 export async function optimizeTurnMemoryTable(
+  conversationId: string,
+  options?: OptimizeTurnMemoryOptions,
+): Promise<OptimizeStats | null> {
+  return runConversationMemoryTask(conversationId, () =>
+    optimizeTurnMemoryTableUnsafe(conversationId, options),
+  )
+}
+
+async function optimizeTurnMemoryTableUnsafe(
   conversationId: string,
   options?: OptimizeTurnMemoryOptions,
 ): Promise<OptimizeStats | null> {
@@ -201,13 +228,15 @@ export async function optimizeTurnMemoryTable(
       ? { cleanupOlderThan: new Date() }
       : undefined
 
-  const stats = await withMemoryHybridFtsContext(async () => {
-    const table = await openMemoryTable(conversationId)
-    if (!table) return null
-    return table.optimize(optimizeOptions)
-  })
-  closeLanceDb(uri)
-  return stats
+  try {
+    return await withMemoryHybridFtsContext(async () => {
+      const table = await openMemoryTable(conversationId)
+      if (!table) return null
+      return table.optimize(optimizeOptions)
+    })
+  } finally {
+    closeLanceDb(uri)
+  }
 }
 
 export interface UpsertTurnMemoryRowsBatchOptions {
@@ -217,6 +246,16 @@ export interface UpsertTurnMemoryRowsBatchOptions {
 
 /** 批量 mergeInsert 到会话单表 turn_memory */
 export async function upsertTurnMemoryRowsBatch(
+  conversationId: string,
+  rows: TurnMemoryRow[],
+  options?: UpsertTurnMemoryRowsBatchOptions,
+): Promise<void> {
+  await runConversationMemoryTask(conversationId, () =>
+    upsertTurnMemoryRowsBatchUnsafe(conversationId, rows, options),
+  )
+}
+
+async function upsertTurnMemoryRowsBatchUnsafe(
   conversationId: string,
   rows: TurnMemoryRow[],
   options?: UpsertTurnMemoryRowsBatchOptions,
@@ -250,6 +289,15 @@ export async function deleteTurnMemoryByBranchSubtree(
   conversationId: string,
   branchPath: string,
 ): Promise<void> {
+  await runConversationMemoryTask(conversationId, () =>
+    deleteTurnMemoryByBranchSubtreeUnsafe(conversationId, branchPath),
+  )
+}
+
+async function deleteTurnMemoryByBranchSubtreeUnsafe(
+  conversationId: string,
+  branchPath: string,
+): Promise<void> {
   const bp = normalizeBranchPath(branchPath)
   if (!bp) return
 
@@ -272,6 +320,15 @@ export async function deleteTurnMemoryVector(
   conversationId: string,
   turnId: string,
 ): Promise<void> {
+  await runConversationMemoryTask(conversationId, () =>
+    deleteTurnMemoryVectorUnsafe(conversationId, turnId),
+  )
+}
+
+async function deleteTurnMemoryVectorUnsafe(
+  conversationId: string,
+  turnId: string,
+): Promise<void> {
   const id = turnId.trim()
   if (!id) return
 
@@ -288,7 +345,16 @@ export async function replaceTurnMemoryIndex(
   conversationId: string,
   rows: TurnMemoryRow[],
 ): Promise<void> {
-  await deleteConversationMemoryIndex(conversationId)
+  await runConversationMemoryTask(conversationId, () =>
+    replaceTurnMemoryIndexUnsafe(conversationId, rows),
+  )
+}
+
+async function replaceTurnMemoryIndexUnsafe(
+  conversationId: string,
+  rows: TurnMemoryRow[],
+): Promise<void> {
+  await deleteConversationMemoryIndexUnsafe(conversationId)
   const valid = rows.filter((r) => r.vector.length > 0)
   if (!valid.length) return
   const table = await createTurnMemoryTable(conversationId, valid)
@@ -296,6 +362,14 @@ export async function replaceTurnMemoryIndex(
 }
 
 export async function deleteConversationMemoryIndex(
+  conversationId: string,
+): Promise<void> {
+  await runConversationMemoryTask(conversationId, () =>
+    deleteConversationMemoryIndexUnsafe(conversationId),
+  )
+}
+
+async function deleteConversationMemoryIndexUnsafe(
   conversationId: string,
 ): Promise<void> {
   const uri = memoryDbUri(conversationId)

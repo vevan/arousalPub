@@ -20,7 +20,7 @@
     "dev:server": "npm run dev -w server",
     "dev:web": "npm run dev -w web",
     "build:plugins": "node scripts/build-plugins.mjs",
-    "typecheck": "vue-tsc -p web/tsconfig.app.json --noEmit",
+    "typecheck": "npm run typecheck -w web",
     "build": "node scripts/build.mjs",
     "start": "node scripts/run-prod.mjs"
   }

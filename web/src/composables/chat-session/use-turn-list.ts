@@ -99,6 +99,7 @@ export function useTurnList(opts: {
       speakerQueue?: string[]
       segmentIndex?: number
       activeSegmentIndex?: number
+      groupChatTurnState?: import('@/utils/group-chat-settings').GroupChatTurnState
     },
   ) {
     const sendEt = opts.pendingSendEstimatedTokens.value

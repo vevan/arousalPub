@@ -11,6 +11,7 @@ import { getTurnUserText, readConversationIndex, resolvedCharacterIds, type Turn
 import {
   getActiveSegmentIndex,
   getTurnSegments,
+  segmentSkipQuotaDeductionOnRecord,
   type AssistantSegmentRecord,
 } from './group-chat-turn.js'
 import {
@@ -23,7 +24,7 @@ export interface MessagesSegmentDto {
   speakerCharacterId: string
   receives: MessagesTurnDto['receives']
   activeReceiveIndex: number
-  meta?: { nextSpeakerHint?: string }
+  meta?: { nextSpeakerHint?: string; skipSpeakQuotaDeduction?: boolean }
 }
 
 export interface MessagesTurnDto {
@@ -44,6 +45,10 @@ export interface MessagesTurnDto {
   activeSegmentIndex?: number
   speakerQueue?: string[]
   speakerCharacterId?: string
+  groupChatTurnState?: {
+    quotaRemaining: Record<string, number>
+    speakCount: Record<string, number>
+  }
   plugins?: unknown[]
 }
 
@@ -90,6 +95,16 @@ function mapReceive(r: TurnReceive) {
   return base
 }
 
+function segmentMetaForDto(seg: AssistantSegmentRecord): MessagesSegmentDto['meta'] | undefined {
+  const hint = seg.meta?.nextSpeakerHint?.trim()
+  const skipSpeakQuotaDeduction = segmentSkipQuotaDeductionOnRecord(seg)
+  if (!hint && !skipSpeakQuotaDeduction) return undefined
+  return {
+    ...(hint ? { nextSpeakerHint: hint } : {}),
+    ...(skipSpeakQuotaDeduction ? { skipSpeakQuotaDeduction: true } : {}),
+  }
+}
+
 export function mapTurnRecordsToMessagesDto(
   allTurnRecords: TurnRecord[],
   defaultSpeakerCharacterId = '',
@@ -117,14 +132,13 @@ export function mapTurnRecordsToMessagesDto(
       if (segRecs.length > 0) {
         ai = Math.min(Math.max(0, ai), segRecs.length - 1)
       }
+      const segMeta = segmentMetaForDto(seg)
       return {
         id: seg.id,
         speakerCharacterId: seg.speakerCharacterId,
         receives: segRecs,
         activeReceiveIndex: ai,
-        ...(seg.meta?.nextSpeakerHint
-          ? { meta: { nextSpeakerHint: seg.meta.nextSpeakerHint } }
-          : {}),
+        ...(segMeta ? { meta: segMeta } : {}),
       }
     })
     if (recs.length === 0) {
@@ -145,6 +159,14 @@ export function mapTurnRecordsToMessagesDto(
           : {}),
         ...(typeof t.speakerCharacterId === 'string' && t.speakerCharacterId.trim()
           ? { speakerCharacterId: t.speakerCharacterId.trim() }
+          : {}),
+        ...(t.groupChatTurnState
+          ? {
+              groupChatTurnState: {
+                quotaRemaining: { ...t.groupChatTurnState.quotaRemaining },
+                speakCount: { ...t.groupChatTurnState.speakCount },
+              },
+            }
           : {}),
         ...(Array.isArray(t.plugins) && t.plugins.length > 0
           ? { plugins: t.plugins }
@@ -173,6 +195,14 @@ export function mapTurnRecordsToMessagesDto(
         : {}),
       ...(typeof t.speakerCharacterId === 'string' && t.speakerCharacterId.trim()
         ? { speakerCharacterId: t.speakerCharacterId.trim() }
+        : {}),
+      ...(t.groupChatTurnState
+        ? {
+            groupChatTurnState: {
+              quotaRemaining: { ...t.groupChatTurnState.quotaRemaining },
+              speakCount: { ...t.groupChatTurnState.speakCount },
+            },
+          }
         : {}),
       ...(Array.isArray(t.plugins) && t.plugins.length > 0
         ? { plugins: t.plugins }

@@ -29,11 +29,15 @@ type MessagesApiTurn = {
     speakerCharacterId: string
     receives?: MessagesApiTurn['receives']
     activeReceiveIndex?: number
-    meta?: { nextSpeakerHint?: string }
+    meta?: { nextSpeakerHint?: string; skipSpeakQuotaDeduction?: boolean }
   }[]
   activeSegmentIndex?: number
   speakerQueue?: string[]
   speakerCharacterId?: string
+  groupChatTurnState?: {
+    quotaRemaining: Record<string, number>
+    speakCount: Record<string, number>
+  }
   plugins?: unknown[]
 }
 
@@ -95,15 +99,22 @@ function mapSegmentRow(
   if (segReceives.length > 0) {
     segAi = Math.min(Math.max(0, segAi), segReceives.length - 1)
   }
+  const hint = seg.meta?.nextSpeakerHint
+  const skipSpeakQuotaDeduction = seg.meta?.skipSpeakQuotaDeduction === true
+  const segMeta =
+    hint || skipSpeakQuotaDeduction
+      ? {
+          ...(hint ? { nextSpeakerHint: hint } : {}),
+          ...(skipSpeakQuotaDeduction ? { skipSpeakQuotaDeduction: true as const } : {}),
+        }
+      : undefined
   return {
     id: typeof seg.id === 'string' ? seg.id : '',
     speakerCharacterId:
       typeof seg.speakerCharacterId === 'string' ? seg.speakerCharacterId : '',
     receives: segReceives,
     activeReceiveIndex: segAi,
-    ...(seg.meta?.nextSpeakerHint
-      ? { meta: { nextSpeakerHint: seg.meta.nextSpeakerHint } }
-      : {}),
+    ...(segMeta ? { meta: segMeta } : {}),
   }
 }
 
@@ -146,6 +157,14 @@ export function parseConversationTurnsFromApi(
       ...(typeof row.speakerCharacterId === 'string' &&
       row.speakerCharacterId.trim()
         ? { speakerCharacterId: row.speakerCharacterId.trim() }
+        : {}),
+      ...(row.groupChatTurnState
+        ? {
+            groupChatTurnState: {
+              quotaRemaining: { ...row.groupChatTurnState.quotaRemaining },
+              speakCount: { ...row.groupChatTurnState.speakCount },
+            },
+          }
         : {}),
       ...(Array.isArray(row.plugins) && row.plugins.length > 0
         ? { plugins: row.plugins }

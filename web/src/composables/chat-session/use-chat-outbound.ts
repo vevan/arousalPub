@@ -9,10 +9,12 @@ import { submitComposerParse, hasUnmatchedAtSlashNames } from '@/utils/composer-
 import {
   defaultGroupChatSettings,
   type GroupChatSettings,
+  type GroupChatTurnState,
 } from '@/utils/group-chat-settings'
 import {
   resolveSpeakerQueueIds,
   listEligibleSpeakersForContinue,
+  mergeTurnGroupChatStateFromPersist,
   type PendingGroupContinue,
   getActiveSegmentIndex,
   getTurnSegments,
@@ -71,6 +73,7 @@ export function useChatOutbound(opts: {
       speakerQueue?: string[]
       segmentIndex?: number
       activeSegmentIndex?: number
+      groupChatTurnState?: GroupChatTurnState
     },
   ) => void
   finalizePendingSegment: (
@@ -131,7 +134,10 @@ export function useChatOutbound(opts: {
     if (!nextId && !persist?.groupChatNeedsManualContinue) return null
     const listIndex = resolveTurnListIndex(turnOrd, listIndexHint)
     if (listIndex < 0) return null
-    const turn = opts.turns.value[listIndex]
+    const turn = mergeTurnGroupChatStateFromPersist(
+      opts.turns.value[listIndex]!,
+      persist,
+    )
     if (!turn || turn.turnOrdinal !== turnOrd) return null
     const segments = getTurnSegments(turn)
     const afterSegmentIndex =
@@ -144,7 +150,13 @@ export function useChatOutbound(opts: {
       lastSeg[lastSeg.length - 1]?.speakerCharacterId ?? null
     const settings =
       opts.getGroupChatSettings?.() ?? defaultGroupChatSettings()
-    const eligible = listEligibleSpeakersForContinue(turn, [...charIds], settings)
+    const eligibleFromServer = persist?.eligibleSpeakerCharacterIds?.filter(
+      (id) => typeof id === 'string' && id.trim(),
+    )
+    const eligible =
+      eligibleFromServer && eligibleFromServer.length > 0
+        ? eligibleFromServer
+        : listEligibleSpeakersForContinue(turn, [...charIds], settings)
     const manualPick = Boolean(persist?.groupChatNeedsManualContinue && !nextId)
     const allowSpeakerChange = Boolean(
       manualPick || (settings.confirmContinue && eligible.length > 0),
@@ -208,6 +220,19 @@ export function useChatOutbound(opts: {
 
   function dismissGroupContinue() {
     pendingGroupContinue.value = null
+  }
+
+  function patchTurnGroupChatStateFromPersist(
+    turnOrd: number,
+    persist?: ChatPersistPayload,
+  ) {
+    if (!persist?.groupChatTurnState) return
+    const idx = opts.turns.value.findIndex((t) => t.turnOrdinal === turnOrd)
+    if (idx < 0) return
+    opts.replaceTurnAt(
+      idx,
+      mergeTurnGroupChatStateFromPersist(opts.turns.value[idx]!, persist),
+    )
   }
 
   function setPendingGroupContinueSpeaker(characterId: string) {
@@ -406,6 +431,7 @@ export function useChatOutbound(opts: {
           speakerQueue: sendOpts?.speakerQueue,
           segmentIndex: persist?.segmentIndex,
           activeSegmentIndex: persist?.activeSegmentIndex,
+          groupChatTurnState: persist?.groupChatTurnState,
         },
       )
       if (shouldReload) await reloadMessagesAndReconcileContinue()
@@ -529,24 +555,32 @@ export function useChatOutbound(opts: {
     if (!cur) return false
     const finalUser =
       resolveFinalUserTextAfterPersist(persist) ?? userTextFallback
-    const segments = [...getTurnSegments(cur)]
-    const targetSeg = segments[segIdx]
+    const segmentsRaw = [...getTurnSegments(cur)]
+    const targetSeg = segmentsRaw[segIdx]
     if (!targetSeg) return false
-    segments[segIdx] = {
+    segmentsRaw[segIdx] = {
       ...targetSeg,
       receives: [...targetSeg.receives, receive],
       activeReceiveIndex: targetSeg.receives.length,
     }
+    // 与服务端 updateTurnSegmentInTailChunk 一致：非末段 regen 截断后续 segment
+    const segments =
+      segmentsRaw.length > segIdx + 1
+        ? segmentsRaw.slice(0, segIdx + 1)
+        : segmentsRaw
     const activeSeg =
       segments[persist?.activeSegmentIndex ?? segIdx] ?? segments[segIdx]!
-    const next: ChatTurnItem = {
-      ...cur,
-      ...(finalUser !== undefined ? { user: finalUser } : {}),
-      segments,
-      activeSegmentIndex: persist?.activeSegmentIndex ?? segIdx,
-      receives: activeSeg.receives,
-      activeReceiveIndex: activeSeg.activeReceiveIndex,
-    }
+    const next: ChatTurnItem = mergeTurnGroupChatStateFromPersist(
+      {
+        ...cur,
+        ...(finalUser !== undefined ? { user: finalUser } : {}),
+        segments,
+        activeSegmentIndex: persist?.activeSegmentIndex ?? segIdx,
+        receives: activeSeg.receives,
+        activeReceiveIndex: activeSeg.activeReceiveIndex,
+      },
+      persist,
+    )
     opts.replaceTurnAt(listIndex, next)
     return true
   }
@@ -724,6 +758,7 @@ export function useChatOutbound(opts: {
         speakerCharacterId: nextSpeakerCharacterId,
         activeSegmentIndex: segmentIndex,
       })
+      patchTurnGroupChatStateFromPersist(turnOrdinal, persist)
       deferredAutoContinue = updatePendingContinueFromPersist(
         persist,
         opts.turns.value.findIndex((t) => t.turnOrdinal === turnOrdinal),

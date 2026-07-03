@@ -1,4 +1,4 @@
-import type { GroupChatSettings } from '@/utils/group-chat-settings'
+import type { GroupChatSettings, GroupChatTurnState } from '@/utils/group-chat-settings'
 
 export interface ChatSessionProps {
   conversationId: string
@@ -34,7 +34,7 @@ export interface AssistantSegmentItem {
   speakerCharacterId: string
   receives: ReceiveItem[]
   activeReceiveIndex: number
-  meta?: { nextSpeakerHint?: string }
+  meta?: { nextSpeakerHint?: string; skipSpeakQuotaDeduction?: boolean }
 }
 
 export interface ChatTurnItem {
@@ -47,6 +47,8 @@ export interface ChatTurnItem {
   activeSegmentIndex?: number
   speakerQueue?: string[]
   speakerCharacterId?: string
+  /** 群聊：本 user turn 发言额度（与磁盘 groupChatTurnState 对齐） */
+  groupChatTurnState?: GroupChatTurnState
   /** 落盘插件快照（如 trace-keeper） */
   plugins?: unknown[]
 }
@@ -84,6 +86,10 @@ export interface ChatPersistPayload {
   groupChatDecayStopped?: boolean
   /** next@ 模式 hint 无效，需手动选下一位 */
   groupChatNeedsManualContinue?: boolean
+  /** 群聊 Continue 改选合法 speaker（服务端 quotaRemaining 计算） */
+  eligibleSpeakerCharacterIds?: string[]
+  /** 本 user turn 发言额度快照 */
+  groupChatTurnState?: GroupChatTurnState
 }
 
 export interface RetroPersistTurnPayload {

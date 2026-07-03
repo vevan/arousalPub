@@ -1,4 +1,5 @@
 import type { ChatTurnItem, ReceiveItem } from '../../types/chat-turn.js'
+import type { GroupChatTurnState } from '../../utils/group-chat-settings.js'
 import { allocateShortId } from '../../utils/short-id.js'
 
 export function collectUsedIdsFromTurn(turn: ChatTurnItem): Set<string> {
@@ -52,6 +53,7 @@ export function mergeFinalizedPendingTurn(
     speakerQueue?: string[]
     segmentIndex?: number
     activeSegmentIndex?: number
+    groupChatTurnState?: GroupChatTurnState
   },
   finalUserText?: string,
 ): ChatTurnItem {
@@ -83,5 +85,8 @@ export function mergeFinalizedPendingTurn(
     activeSegmentIndex: activeSegIdx,
     ...(meta?.speakerQueue?.length ? { speakerQueue: meta.speakerQueue } : {}),
     ...(speakerId ? { speakerCharacterId: speakerId } : {}),
+    ...(meta?.groupChatTurnState
+      ? { groupChatTurnState: meta.groupChatTurnState }
+      : {}),
   }
 }

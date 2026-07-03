@@ -45,6 +45,9 @@ async function main() {
   await runNodeScript('sync-plot-summary-shared.mjs', { label: 'sync-plot-summary' })
   await runNodeScript('sync-prompt-preset-shared.mjs', { label: 'sync-prompt-preset' })
   await runNodeScript('sync-portrait-media-shared.mjs', { label: 'sync-portrait' })
+  await runNodeScript('sync-group-chat-settings-shared.mjs', {
+    label: 'sync-group-chat-settings',
+  })
 
   console.log('[build] plugins')
   await runNodeScript('build-plugins.mjs', { label: 'build:plugins' })

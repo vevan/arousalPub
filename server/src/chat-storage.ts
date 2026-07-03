@@ -105,6 +105,7 @@ import {
   attachResolvedNextSpeakerAuditToActiveSegment,
   attachSegmentPickAuditToSegment,
   buildGroupChatAuditSnapshot,
+  rebuildGroupChatTurnStateFromTurn,
   type AssistantSegmentRecord,
   type GroupChatSpeakerAudit,
   type GroupChatResolveParams,
@@ -2736,6 +2737,22 @@ export async function updateTurnSegmentInTailChunk(
     turn.activeSegmentIndex = segmentIndex
     syncTurnReceivesFromActiveSegment(turn)
     await removeChatAuditEntriesAfterSegment(conversationId, turnId, segmentIndex)
+    const resolveParams = groupChatOpts?.groupChatResolveAfterSegment
+    const groupChatSettings = normalizeGroupChatSettings(
+      resolveParams?.groupChat ?? idx.groupChat,
+    )
+    if (groupChatSettings.enabled) {
+      const charIds =
+        resolveParams?.characterIds?.length
+          ? resolveParams.characterIds
+          : resolvedCharacterIds(idx)
+      turn.groupChatTurnState = rebuildGroupChatTurnStateFromTurn(
+        turn,
+        groupChatSettings,
+        charIds,
+        defaultSpeakerCharacterId,
+      )
+    }
   }
   if (turnPlugins !== undefined) {
     turn.plugins = turnPlugins

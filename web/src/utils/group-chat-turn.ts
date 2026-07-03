@@ -1,9 +1,12 @@
 import type { AssistantSegmentItem, ChatTurnItem, ReceiveItem } from '@/types/chat-turn'
 import {
-  groupChatMemberSpeakQuota,
-  isGroupChatMemberMuted,
+  cloneGroupChatTurnState,
+  initGroupChatTurnState,
+  listEligibleCharacterIds,
   normalizeGroupChatSettings,
+  recordSegmentSpeaker,
   type GroupChatSettings,
+  type GroupChatTurnState,
 } from './group-chat-settings'
 
 function mapReceiveForPatch(r: ReceiveItem): Record<string, unknown> {
@@ -132,6 +135,27 @@ export interface PendingGroupContinue {
   eligibleSpeakerCharacterIds?: string[]
 }
 
+function getTurnGroupChatStateFromItem(
+  turn: ChatTurnItem,
+  settings: GroupChatSettings,
+  characterIds: string[],
+): GroupChatTurnState {
+  if (turn.groupChatTurnState) {
+    return cloneGroupChatTurnState(turn.groupChatTurnState)
+  }
+  let state = initGroupChatTurnState(settings, characterIds)
+  const segments = getTurnSegments(turn).filter((s) => (s.receives?.length ?? 0) > 0)
+  for (const seg of segments) {
+    const id = seg.speakerCharacterId.trim()
+    if (id) {
+      state = recordSegmentSpeaker(state, id, {
+        skipQuotaDeduction: seg.meta?.skipSpeakQuotaDeduction === true,
+      })
+    }
+  }
+  return state
+}
+
 export function listEligibleSpeakersForContinue(
   turn: ChatTurnItem,
   characterIds: string[],
@@ -140,19 +164,20 @@ export function listEligibleSpeakersForContinue(
   const normalized = normalizeGroupChatSettings(settings)
   const segments = getTurnSegments(turn).filter((s) => (s.receives?.length ?? 0) > 0)
   const lastSpeaker = segments[segments.length - 1]?.speakerCharacterId?.trim() ?? null
-  const speakCount: Record<string, number> = {}
-  for (const seg of segments) {
-    const id = seg.speakerCharacterId.trim()
-    if (id) speakCount[id] = (speakCount[id] ?? 0) + 1
-  }
-  return characterIds.filter((rawId) => {
-    const id = rawId.trim()
-    if (!id) return false
-    if (isGroupChatMemberMuted(id, normalized)) return false
-    const quota = groupChatMemberSpeakQuota(id, normalized)
-    const used = speakCount[id] ?? 0
-    if (used >= quota) return false
-    if (lastSpeaker && id === lastSpeaker) return false
-    return true
+  const turnState = getTurnGroupChatStateFromItem(turn, normalized, characterIds)
+  return listEligibleCharacterIds({
+    characterIds,
+    settings: normalized,
+    turnState,
+    lastSpeakerCharacterId: lastSpeaker,
   })
+}
+
+/** persist / 本地 turn 合并群聊额度快照 */
+export function mergeTurnGroupChatStateFromPersist(
+  turn: ChatTurnItem,
+  persist?: { groupChatTurnState?: GroupChatTurnState },
+): ChatTurnItem {
+  if (!persist?.groupChatTurnState) return turn
+  return { ...turn, groupChatTurnState: persist.groupChatTurnState }
 }

@@ -1,5 +1,57 @@
 import { createHash } from 'node:crypto'
 import type { TurnReceive, TurnRecord } from './chat-storage.js'
+import {
+  cloneGroupChatTurnState,
+  DEFAULT_MAX_SEGMENTS_PER_TURN,
+  DEFAULT_SPEAK_QUOTA,
+  defaultGroupChatDecaySettings,
+  defaultGroupChatSettings,
+  groupChatMemberSpeakQuota,
+  groupChatMemberWeight,
+  initGroupChatTurnState,
+  isGroupChatMemberMuted,
+  listEligibleCharacterIds,
+  normalizeGroupChatDecaySettings,
+  normalizeGroupChatMembers,
+  normalizeGroupChatSettings,
+  recordSegmentSpeaker,
+  resolveDiceSkipReason,
+  type GroupChatDecaySettings,
+  type GroupChatDiceSkipReason,
+  type GroupChatMemberSettings,
+  type GroupChatMode,
+  type GroupChatSettings,
+  type GroupChatTurnState,
+  type SpeakerMode,
+} from './shared/group-chat-settings.js'
+
+export type {
+  GroupChatDecaySettings,
+  GroupChatDiceSkipReason,
+  GroupChatMemberSettings,
+  GroupChatMode,
+  GroupChatSettings,
+  GroupChatTurnState,
+  SpeakerMode,
+} from './shared/group-chat-settings.js'
+
+export {
+  cloneGroupChatTurnState,
+  DEFAULT_MAX_SEGMENTS_PER_TURN,
+  DEFAULT_SPEAK_QUOTA,
+  defaultGroupChatDecaySettings,
+  defaultGroupChatSettings,
+  groupChatMemberSpeakQuota,
+  groupChatMemberWeight,
+  initGroupChatTurnState,
+  isGroupChatMemberMuted,
+  listEligibleCharacterIds,
+  normalizeGroupChatDecaySettings,
+  normalizeGroupChatMembers,
+  normalizeGroupChatSettings,
+  recordSegmentSpeaker,
+  resolveDiceSkipReason,
+} from './shared/group-chat-settings.js'
 
 export interface AssistantSegmentRecord {
   id: string
@@ -15,160 +67,9 @@ export interface AssistantSegmentRecord {
   }
 }
 
-export interface GroupChatDecaySettings {
-  enabled?: boolean
-  initialRate?: number
-  step?: number
-  floor?: number
-}
-
-export interface GroupChatMemberSettings {
-  weight?: number
-  muted?: boolean
-  /** 本 user turn 内最多发言次数（G3） */
-  speakQuota?: number
-}
-
-/** @deprecated G2 过渡字段；normalize 时 `weighted` → `speakerMode: dice` */
-export type GroupChatMode = 'weighted' | 'sequential'
-
-export type SpeakerMode = 'sequential' | 'dice' | 'next@'
-
-export interface GroupChatTurnState {
-  quotaRemaining: Record<string, number>
-  speakCount: Record<string, number>
-}
-
-export interface GroupChatSettings {
-  enabled?: boolean
-  speakerMode?: SpeakerMode
-  /** @deprecated 使用 speakerMode */
-  mode?: GroupChatMode
-  autoContinue?: boolean
-  confirmContinue?: boolean
-  maxSegmentsPerTurn?: number
-  /** members 未设 speakQuota 时的默认额度 */
-  defaultSpeakQuota?: number
-  decay?: GroupChatDecaySettings
-  members?: Record<string, GroupChatMemberSettings>
-}
-
-export const DEFAULT_SPEAK_QUOTA = 2
-export const DEFAULT_MAX_SEGMENTS_PER_TURN = 8
-
-export function defaultGroupChatDecaySettings(): GroupChatDecaySettings {
-  return {
-    enabled: true,
-    initialRate: 1,
-    step: 0.2,
-    floor: 0,
-  }
-}
-
-export function defaultGroupChatSettings(): GroupChatSettings {
-  return {
-    enabled: false,
-    speakerMode: 'dice',
-    mode: 'weighted',
-    autoContinue: false,
-    confirmContinue: true,
-    maxSegmentsPerTurn: DEFAULT_MAX_SEGMENTS_PER_TURN,
-    defaultSpeakQuota: DEFAULT_SPEAK_QUOTA,
-    decay: defaultGroupChatDecaySettings(),
-    members: {},
-  }
-}
-
-function resolveSpeakerModeFromRaw(
-  o: Record<string, unknown>,
-  base: GroupChatSettings,
-): SpeakerMode {
-  if (typeof o.speakerMode === 'string') {
-    const m = o.speakerMode.trim().toLowerCase()
-    if (m === 'sequential' || m === 'dice' || m === 'next@') return m
-  }
-  const legacy = typeof o.mode === 'string' ? o.mode.trim().toLowerCase() : ''
-  if (legacy === 'sequential') return 'sequential'
-  return base.speakerMode ?? 'dice'
-}
-
 function normalizePositiveInt(n: unknown, fallback: number): number {
   if (typeof n !== 'number' || !Number.isFinite(n)) return fallback
   return Math.max(1, Math.round(n))
-}
-
-function clampUnitRate(n: unknown, fallback: number): number {
-  if (typeof n !== 'number' || !Number.isFinite(n)) return fallback
-  return Math.min(1, Math.max(0, n))
-}
-
-export function normalizeGroupChatDecaySettings(
-  raw: unknown,
-): GroupChatDecaySettings {
-  const base = defaultGroupChatDecaySettings()
-  if (!raw || typeof raw !== 'object') return base
-  const o = raw as Record<string, unknown>
-  return {
-    enabled: typeof o.enabled === 'boolean' ? o.enabled : base.enabled,
-    initialRate: clampUnitRate(o.initialRate, base.initialRate!),
-    step: clampUnitRate(o.step, base.step!),
-    floor: clampUnitRate(o.floor, base.floor!),
-  }
-}
-
-export function normalizeGroupChatMembers(
-  raw: unknown,
-): Record<string, GroupChatMemberSettings> {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
-  const out: Record<string, GroupChatMemberSettings> = {}
-  for (const [key, val] of Object.entries(raw as Record<string, unknown>)) {
-    const id = key.trim()
-    if (!id || !val || typeof val !== 'object' || Array.isArray(val)) continue
-    const m = val as Record<string, unknown>
-    const entry: GroupChatMemberSettings = {}
-    if (typeof m.muted === 'boolean') entry.muted = m.muted
-    if (typeof m.weight === 'number' && Number.isFinite(m.weight) && m.weight >= 0) {
-      entry.weight = m.weight
-    }
-    if (typeof m.speakQuota === 'number' && Number.isFinite(m.speakQuota) && m.speakQuota >= 0) {
-      entry.speakQuota = Math.round(m.speakQuota)
-    }
-    out[id] = entry
-  }
-  return out
-}
-
-export function normalizeGroupChatSettings(
-  raw: unknown,
-): GroupChatSettings {
-  const base = defaultGroupChatSettings()
-  if (!raw || typeof raw !== 'object') return base
-  const o = raw as Record<string, unknown>
-  const speakerMode = resolveSpeakerModeFromRaw(o, base)
-  const modeRaw = typeof o.mode === 'string' ? o.mode.trim().toLowerCase() : ''
-  const mode: GroupChatMode =
-    modeRaw === 'sequential' ? 'sequential' : 'weighted'
-  return {
-    enabled: typeof o.enabled === 'boolean' ? o.enabled : base.enabled,
-    speakerMode,
-    mode,
-    autoContinue:
-      typeof o.autoContinue === 'boolean' ? o.autoContinue : base.autoContinue,
-    confirmContinue:
-      typeof o.confirmContinue === 'boolean'
-        ? o.confirmContinue
-        : base.confirmContinue,
-    maxSegmentsPerTurn: normalizePositiveInt(
-      o.maxSegmentsPerTurn,
-      base.maxSegmentsPerTurn ?? DEFAULT_MAX_SEGMENTS_PER_TURN,
-    ),
-    defaultSpeakQuota: normalizePositiveInt(
-      o.defaultSpeakQuota,
-      base.defaultSpeakQuota ?? DEFAULT_SPEAK_QUOTA,
-    ),
-    decay: normalizeGroupChatDecaySettings(o.decay ?? base.decay),
-    members: normalizeGroupChatMembers(o.members),
-  }
 }
 
 export function mergeGroupChatSettings(
@@ -226,80 +127,36 @@ export function mergeGroupChatSettings(
   return normalizeGroupChatSettings(next)
 }
 
-export function isGroupChatMemberMuted(
-  characterId: string,
-  settings: GroupChatSettings,
-): boolean {
-  return settings.members?.[characterId.trim()]?.muted === true
-}
-
-export function groupChatMemberWeight(
-  characterId: string,
-  settings: GroupChatSettings,
-): number {
-  const w = settings.members?.[characterId.trim()]?.weight
-  if (typeof w === 'number' && Number.isFinite(w) && w >= 0) return w
-  return 1
-}
-
-export function groupChatMemberSpeakQuota(
-  characterId: string,
-  settings: GroupChatSettings,
-): number {
-  const q = settings.members?.[characterId.trim()]?.speakQuota
-  if (typeof q === 'number' && Number.isFinite(q) && q >= 0) return Math.round(q)
-  return settings.defaultSpeakQuota ?? DEFAULT_SPEAK_QUOTA
-}
-
-export function initGroupChatTurnState(
-  settings: GroupChatSettings,
-  characterIds: string[],
-): GroupChatTurnState {
-  const groupChat = normalizeGroupChatSettings(settings)
-  const quotaRemaining: Record<string, number> = {}
-  const speakCount: Record<string, number> = {}
-  for (const rawId of characterIds) {
-    const id = rawId.trim()
-    if (!id) continue
-    quotaRemaining[id] = groupChatMemberSpeakQuota(id, groupChat)
-    speakCount[id] = 0
-  }
-  return { quotaRemaining, speakCount }
-}
-
-export function cloneGroupChatTurnState(
-  state: GroupChatTurnState,
-): GroupChatTurnState {
-  return {
-    quotaRemaining: { ...state.quotaRemaining },
-    speakCount: { ...state.speakCount },
-  }
+export function segmentSkipQuotaDeductionOnRecord(seg: AssistantSegmentRecord): boolean {
+  const audit = seg.meta?.segmentPickAudit
+  if (!audit) return false
+  if (audit.firstSegmentAllFailFallback === true) return true
+  return audit.dice?.outcome === 'allFailedFirstSegmentFallback'
 }
 
 export function getTurnGroupChatState(
   turn: TurnRecord,
   settings: GroupChatSettings,
   characterIds: string[],
+  defaultSpeakerCharacterId?: string,
 ): GroupChatTurnState {
   if (turn.groupChatTurnState) {
     return cloneGroupChatTurnState(turn.groupChatTurnState)
   }
-  return initGroupChatTurnState(settings, characterIds)
-}
-
-export function recordSegmentSpeaker(
-  state: GroupChatTurnState,
-  speakerId: string,
-  opts?: { skipQuotaDeduction?: boolean },
-): GroupChatTurnState {
-  const id = speakerId.trim()
-  const next = cloneGroupChatTurnState(state)
-  next.speakCount[id] = (next.speakCount[id] ?? 0) + 1
-  if (!opts?.skipQuotaDeduction) {
-    const q = next.quotaRemaining[id] ?? 0
-    next.quotaRemaining[id] = Math.max(0, q - 1)
+  const defaultSpeaker =
+    defaultSpeakerCharacterId?.trim() || characterIds[0]?.trim() || ''
+  const segments = getTurnSegments(turn, defaultSpeaker).filter(
+    (s) => (s.receives?.length ?? 0) > 0,
+  )
+  if (segments.length > 0 && defaultSpeaker) {
+    return rebuildGroupChatTurnStateFromTurn(
+      turn,
+      settings,
+      characterIds,
+      defaultSpeaker,
+    )
   }
-  return next
+  return initGroupChatTurnState(settings, characterIds)
 }
 
 function deductSpeakQuota(
@@ -311,6 +168,29 @@ function deductSpeakQuota(
   const q = next.quotaRemaining[id] ?? 0
   next.quotaRemaining[id] = Math.max(0, q - 1)
   return next
+}
+
+/** regen 截断后续 segment 后，按剩余已落盘 segment 重算额度（与可见气泡一致） */
+export function rebuildGroupChatTurnStateFromTurn(
+  turn: TurnRecord,
+  settings: GroupChatSettings,
+  characterIds: string[],
+  defaultSpeakerCharacterId: string,
+): GroupChatTurnState {
+  let state = initGroupChatTurnState(settings, characterIds)
+  const segments = getTurnSegments(turn, defaultSpeakerCharacterId).filter(
+    (s) => (s.receives?.length ?? 0) > 0,
+  )
+  for (const seg of segments) {
+    const speakerId =
+      seg.speakerCharacterId?.trim() || defaultSpeakerCharacterId.trim()
+    if (speakerId) {
+      state = recordSegmentSpeaker(state, speakerId, {
+        skipQuotaDeduction: segmentSkipQuotaDeductionOnRecord(seg),
+      })
+    }
+  }
+  return state
 }
 
 /** 已有内容的 segment 数 */
@@ -372,52 +252,6 @@ function pickHighestScoreBid(
     }
   }
   return best?.id ?? null
-}
-
-export function listEligibleCharacterIds(params: {
-  characterIds: string[]
-  settings: GroupChatSettings
-  turnState: GroupChatTurnState
-  lastSpeakerCharacterId?: string | null
-  /** hint 可 override 不连说 */
-  allowConsecutive?: boolean
-}): string[] {
-  const settings = normalizeGroupChatSettings(params.settings)
-  const last = params.lastSpeakerCharacterId?.trim() || null
-  return params.characterIds.filter((rawId) => {
-    const id = rawId.trim()
-    if (!id) return false
-    return (
-      resolveDiceSkipReason(id, {
-        settings,
-        turnState: params.turnState,
-        lastSpeakerCharacterId: last,
-        allowConsecutive: params.allowConsecutive,
-      }) === null
-    )
-  })
-}
-
-export type GroupChatDiceSkipReason = 'consecutive' | 'quota' | 'muted'
-
-export function resolveDiceSkipReason(
-  characterId: string,
-  params: {
-    settings: GroupChatSettings
-    turnState: GroupChatTurnState
-    lastSpeakerCharacterId?: string | null
-    allowConsecutive?: boolean
-  },
-): GroupChatDiceSkipReason | null {
-  const id = characterId.trim()
-  if (!id) return 'quota'
-  const settings = normalizeGroupChatSettings(params.settings)
-  if (isGroupChatMemberMuted(id, settings)) return 'muted'
-  const quota = params.turnState.quotaRemaining[id]
-  if (quota === undefined || quota <= 0) return 'quota'
-  const last = params.lastSpeakerCharacterId?.trim() || null
-  if (!params.allowConsecutive && last && id === last) return 'consecutive'
-  return null
 }
 
 export function pickFromSpeakerQueue(params: {
@@ -971,6 +805,7 @@ export function resolveNextSpeakerForTurn(params: {
     params.turn,
     groupChat,
     params.characterIds,
+    params.defaultSpeakerCharacterId,
   )
   const lastSpeaker = lastSegmentSpeakerId(
     params.turn,
@@ -1425,7 +1260,12 @@ export function validateGroupContinueRequest(
   }
   if (groupChat?.enabled) {
     const settings = normalizeGroupChatSettings(groupChat)
-    const state = getTurnGroupChatState(turn, settings, characterIds)
+    const state = getTurnGroupChatState(
+      turn,
+      settings,
+      characterIds,
+      defaultSpeakerCharacterId,
+    )
     const quota = state.quotaRemaining[speaker]
     if (quota === undefined || quota <= 0) return 'no_quota'
     if (isGroupChatMemberMuted(speaker, settings)) return 'speaker_not_bound'

@@ -226,7 +226,7 @@ applyText / applyMessages  // 同语义
 |---------|-----------|------|
 | `false` | 任意 | **不写**、轮次「查看审计」隐藏或提示未开启 |
 | `true` | `0` | 不写（UI 校验建议 `maxStored ≥ 1` 才允许启用写入） |
-| `true` | `1～200` | 写入 `chat-audit.json`，同 `(turnId, segmentIndex)` 覆盖，保留最近 N 条 |
+| `true` | `1～200` | 写入 `chat-audit.json`，同 `(turnId, segmentIndex)` 覆盖，保留最近 N **条**（群聊多 segment 同一轮各占一条，易更快挤掉旧 turn 审计） |
 
 ### 3.2 文件：`chat-audit.json`
 

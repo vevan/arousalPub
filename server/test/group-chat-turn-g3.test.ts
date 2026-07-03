@@ -14,6 +14,8 @@ import {
   pickSequentialSpeaker,
   resolveFirstSegmentSpeaker,
   resolveNextSpeakerForTurn,
+  rebuildGroupChatTurnStateFromTurn,
+  getTurnGroupChatState,
   validateExplicitFirstSegmentSpeaker,
   validateGroupContinueRequest,
 } from '../src/group-chat-turn.js'
@@ -200,6 +202,113 @@ describe('group-chat-turn G3', () => {
     const stripped = stripTurnForDisk(turn)
     assert.deepEqual(stripped.groupChatTurnState, state)
     assert.notEqual(stripped.groupChatTurnState, turn.groupChatTurnState)
+  })
+
+  it('rebuildGroupChatTurnStateFromTurn resets quota from remaining segments', () => {
+    const turn: TurnRecord = {
+      turnId: 't1',
+      turnOrdinal: 0,
+      send: { userText: 'hi' },
+      receives: [{ id: 'r1', content: 'a' }],
+      activeReceiveIndex: 0,
+      segments: [
+        {
+          id: 's1',
+          speakerCharacterId: 'alice-id',
+          receives: [{ id: 'r1', content: 'a' }],
+          activeReceiveIndex: 0,
+        },
+        {
+          id: 's2',
+          speakerCharacterId: 'betty-id',
+          receives: [{ id: 'r2', content: 'b' }],
+          activeReceiveIndex: 0,
+        },
+      ],
+      activeSegmentIndex: 1,
+      plugins: [],
+      groupChatTurnState: {
+        quotaRemaining: { 'alice-id': 0, 'betty-id': 0, 'charlie-id': 2 },
+        speakCount: { 'alice-id': 2, 'betty-id': 2, 'charlie-id': 0 },
+      },
+    }
+    turn.segments = turn.segments.slice(0, 1)
+    const rebuilt = rebuildGroupChatTurnStateFromTurn(
+      turn,
+      groupChat,
+      charIds,
+      'alice-id',
+    )
+    assert.equal(rebuilt.quotaRemaining['alice-id'], 1)
+    assert.equal(rebuilt.speakCount['alice-id'], 1)
+    assert.equal(rebuilt.quotaRemaining['betty-id'], 2)
+    assert.equal(rebuilt.speakCount['betty-id'], 0)
+  })
+
+  it('getTurnGroupChatState rebuilds from segments when groupChatTurnState missing', () => {
+    const turn: TurnRecord = {
+      turnId: 't1',
+      turnOrdinal: 0,
+      send: { userText: 'hi' },
+      receives: [{ id: 'r1', content: 'a' }],
+      activeReceiveIndex: 0,
+      segments: [
+        {
+          id: 's1',
+          speakerCharacterId: 'alice-id',
+          receives: [{ id: 'r1', content: 'a' }],
+          activeReceiveIndex: 0,
+        },
+      ],
+      activeSegmentIndex: 0,
+      plugins: [],
+    }
+    const state = getTurnGroupChatState(turn, groupChat, charIds, 'alice-id')
+    assert.equal(state.quotaRemaining['alice-id'], 1)
+    assert.equal(state.speakCount['alice-id'], 1)
+  })
+
+  it('rebuildGroupChatTurnStateFromTurn preserves skipQuota on firstSegmentAllFailFallback', () => {
+    const turn: TurnRecord = {
+      turnId: 't1',
+      turnOrdinal: 0,
+      send: { userText: '' },
+      receives: [{ id: 'r1', content: 'opening' }],
+      activeReceiveIndex: 0,
+      segments: [
+        {
+          id: 's1',
+          speakerCharacterId: 'alice-id',
+          receives: [{ id: 'r1', content: 'opening' }],
+          activeReceiveIndex: 0,
+          meta: {
+            segmentPickAudit: {
+              speakerMode: 'dice',
+              phase: 'firstSegment',
+              method: 'dice',
+              segmentIndex: 0,
+              firstSegmentAllFailFallback: true,
+              dice: {
+                segmentCount: 0,
+                bids: [],
+                winnerCharacterId: 'alice-id',
+                outcome: 'allFailedFirstSegmentFallback',
+              },
+            },
+          },
+        },
+      ],
+      activeSegmentIndex: 0,
+      plugins: [],
+    }
+    const rebuilt = rebuildGroupChatTurnStateFromTurn(
+      turn,
+      groupChat,
+      charIds,
+      'alice-id',
+    )
+    assert.equal(rebuilt.quotaRemaining['alice-id'], 2)
+    assert.equal(rebuilt.speakCount['alice-id'], 1)
   })
 
   it('validateExplicitFirstSegmentSpeaker rejects ineligible speaker', () => {

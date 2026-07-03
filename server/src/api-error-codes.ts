@@ -274,6 +274,12 @@ export const ApiErrorCodes = {
   hybrid_fts_profile_invalid: 'hybrid_fts_profile_invalid',
   hybrid_fts_dict_variant_invalid: 'hybrid_fts_dict_variant_invalid',
   user_text_must_be_string: 'user_text_must_be_string',
+  st_import_invalid_format: 'st_import_invalid_format',
+  st_lorebook_import_failed: 'st_lorebook_import_failed',
+  st_lorebook_too_many_entries: 'st_lorebook_too_many_entries',
+  st_chat_import_failed: 'st_chat_import_failed',
+  st_chat_conversation_not_empty: 'st_chat_conversation_not_empty',
+  st_chat_bindings_required: 'st_chat_bindings_required',
   validation_failed: 'validation_failed',
 } as const
 

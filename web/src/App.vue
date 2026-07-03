@@ -50,7 +50,7 @@ const authPhase = ref<'loading' | 'setup' | 'login' | 'app'>('loading')
 const backupBlocking = ref(false)
 const backupFilesDone = ref(0)
 const backupFilesTotal = ref(0)
-const settingsInitialTab = ref<'system' | 'display' | 'account' | 'lorebook' | 'vectorRecall' | 'history' | 'budgetTrim' | 'regexRules' | 'plugins' | 'debug'>('system')
+const settingsInitialTab = ref<'system' | 'display' | 'account' | 'lorebook' | 'vectorRecall' | 'history' | 'budgetTrim' | 'regexRules' | 'plugins' | 'import' | 'debug'>('system')
 
 interface BackupStatusResponse {
   running: boolean
@@ -286,6 +286,16 @@ watch(
 watch(
   () => uiContext.openPromptsSignal,
   () => {
+    const wasOpen = promptsDialogOpen.value
+    openPromptsDialog()
+    if (wasOpen) void focusPromptsForOpen()
+  },
+)
+
+watch(
+  () => uiContext.openPromptsImportSignal,
+  () => {
+    settingsDialogOpen.value = false
     const wasOpen = promptsDialogOpen.value
     openPromptsDialog()
     if (wasOpen) void focusPromptsForOpen()

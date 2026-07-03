@@ -4,6 +4,8 @@
 
 ## P0 余项
 
+- [ ] **远期记忆批量索引进度条** — 重建索引时 `embedTextsInBatches` 需按 embedding 批次/阶段上报进度（collecting / embedding / writing / lorebooks），避免大对话导入后进度条长时间 0% 再瞬间完成
+- [ ] **远期记忆 Lance 分片写入** — 废弃自动 `optimize` 作为碎片治理主路径；全量重建按聊天 chunk（约 100 轮）分组写入 Lance，避免大量几十 KB 小 fragment 或单个过大 fragment；一般对话在新建 chunk / seal 前一 chunk 时整理该 chunk 的 memory rows（优先复用已生成向量，必要时再重嵌）
 - [ ] **Composer Slash 命令** — 定案见 [`DOC/35`](35-group-chat.md) §2.3（群聊 `/@`）；输入框 `/` 命令层（与聊天 turns、输入历史分离）
   - [x] **S0** 宿主 `submitComposer` 统一入口 + 命令解析/路由（raw → 命令 + 剩余正文）
   - [x] **S1** 内置 `/goto N` 跳转轮次
@@ -25,10 +27,11 @@
 
 ## P2
 
-- [ ] **迁移** — 定案 [`DOC/37`](37-st-import-settings-tab.md)：设置页 **「导入」Tab**（仅 ST 聊天记录 / ST 世界书 / ST 提示词预设）
-  - [ ] **Tab 壳 + ST 预设跳转** — `SettingsTab: 'import'` · `ImportSettingsPanel` · `uiContext.requestOpenPromptsImport` → 关设置 · 开提示词库 · `performImportPickFile()`
-  - [ ] **ST 世界书** — `st-lorebook-import.ts` · `POST /api/lorebooks/import-st`（preview + import）；`comment→title`、`disable→enabled`、无 key + `vectorized` → `triggerMode: 'vector'`；导入后 reindex
-  - [ ] **ST 聊天记录** — SillyTavern JSONL → chunk / `TurnRecord`（开场 + 正文；可选 `reasoning`、`durationMs`）；导入前绑定 `userCharacterId` / `characterIds`；不含 model、swipe、插件 `extra`；流式读 JSONL + 批量写 chunk
+  - [x] **迁移** — 定案 [`DOC/37`](37-st-import-settings-tab.md)：设置页 **「导入」Tab**（仅 ST 聊天记录 / ST 世界书 / ST 提示词预设）
+  - [x] **Tab 壳 + ST 预设跳转** — `SettingsTab: 'import'` · `ImportSettingsPanel` · `uiContext.requestOpenPromptsImport` → 关设置 · 开提示词库 · `performImportPickFile()`
+  - [x] **ST 世界书** — `st-lorebook-import.ts` · `POST /api/lorebooks/import-st`（preview + import）；`comment→title`、`disable→enabled`、无 key + `vectorized` → `triggerMode: 'vector'`；导入后 reindex
+  - [x] **ST 聊天记录** — SillyTavern JSONL → chunk / `TurnRecord`（开场 + 正文；可选 `reasoning`、`durationMs`）；导入前绑定 `userCharacterId` / `characterIds`；不含 model、swipe、插件 `extra`；流式读 JSONL + 批量写 chunk
+  - [x] **M3 回归与打磨** — multipart 50MB、聊天 preview 真流式统计、解析只保留导入字段、失败清理空会话、warnings/错误码 UI、世界书 3000 条上限
 - [ ] **作者注分层** `DOC/28` — Phase 2 角色 AN + `{{charAuthorsNote}}`（Phase 1 全局 default ✅）
 - [ ] **角色卡内嵌世界书** `DOC/27` — Phase 1 组装（constant + keyword、`position`、叠加内嵌优先）；Phase 2 角色库查看 / 编辑 UI
 - [ ] 插件实例与 API 绑定、插件审计、fallback 策略（部分 host API 见 `DOC/10`）

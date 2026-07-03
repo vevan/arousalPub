@@ -1,6 +1,6 @@
 # 设置页「导入」Tab — SillyTavern 迁移入口（设计定案）
 
-> **状态**：设计定案，**未实现**（**P2**，见 `DOC/04-TODO.md` §迁移）。  
+> **状态**：**M0–M3 已落地**（2026-07-03）；大文件导入、错误提示与回归测试已补齐。  
 > **定案日期**：2026-07-02  
 > **关联**：`DOC/04` §迁移、`DOC/26`（ST 宏）、`DOC/27`（角色卡内嵌世界书）、`DOC/03` §6（chunk / turn）、§13（资料库）、§15（提示词预设）；样本 `.tmp/安娜 - 日记.jsonl`、`.tmp/希斯.json`（仅分析用，不入库）。
 
@@ -242,10 +242,10 @@ Tab UI：选 JSON → preview 对话框 → 确认 → 调用 API → Snackbar +
 
 | 阶段 | 内容 | 依赖 |
 |------|------|------|
-| **M0** | `SettingsTab` + `ImportSettingsPanel` 三卡片壳；i18n；预设卡片 `requestOpenPromptsImport` + `ui-context` + `App` / `PromptsView` watch | 无 |
-| **M1** | `st-lorebook-import.ts` + preview/import API + Tab 世界书卡片 | M0 |
-| **M2** | ST JSONL 转换 + preview/import API + Tab 聊天卡片（绑定表单） | M0 |
-| **M3** | 大文件进度、错误报告、单测与 `.tmp` 样本回归 | M1–M2 |
+| **M0** | `SettingsTab` + `ImportSettingsPanel` 三卡片壳；i18n；预设卡片 `requestOpenPromptsImport` + `ui-context` + `App` / `PromptsView` watch | ✅ 2026-07-03 |
+| **M1** | `st-lorebook-import.ts` + preview/import API + Tab 世界书卡片 | M0 | ✅ 2026-07-03 |
+| **M2** | ST JSONL 转换 + preview/import API + Tab 聊天卡片（绑定表单） | M0 | ✅ 2026-07-03 |
+| **M3** | 大文件预览/导入内存优化、错误报告、单测与 `.tmp` 样本回归 | ✅ 2026-07-03 |
 
 ---
 
@@ -266,8 +266,10 @@ Tab UI：选 JSON → preview 对话框 → 确认 → 调用 API → Snackbar +
 
 ## 9. 验收清单（实现后）
 
-- [ ] 设置 → 导入 Tab 可见，仅三张 ST 卡片
-- [ ] 点击「ST 提示词预设」：设置关闭、提示词库打开、系统文件选择框弹出；选 ST JSON 后出现既有 ST 确认对话框并成功导入
-- [ ] ST 世界书：`.tmp/希斯.json` 导入后 8 条、disable/vector 映射正确；vector 条目可 reindex
-- [ ] ST 聊天：绑定 user/char 后导入 JSONL；开场 + 交替轮次正确；reasoning/durationMs 可选字段正确
-- [ ] 未实现 API 前，聊天/世界书卡片可 disabled + hint，或隐藏主按钮并显示「即将推出」
+- [x] 设置 → 导入 Tab 可见，仅三张 ST 卡片
+- [x] 点击「ST 提示词预设」：设置关闭、提示词库打开、系统文件选择框弹出；选 ST JSON 后出现既有 ST 确认对话框并成功导入
+- [x] ST 世界书：`.tmp/希斯.json` 导入后 8 条、disable/vector 映射正确；vector 条目可 reindex
+- [x] ST 聊天：绑定 user/char 后导入 JSONL；开场 + 交替轮次正确；reasoning/durationMs 可选字段正确
+- [x] 聊天/世界书卡片已启用（非「即将推出」）
+- [x] ST 聊天 preview 使用流式读行统计，避免整文件进内存；multipart 上限可覆盖 `.tmp/安娜 - 日记.jsonl`
+- [x] ST 导入错误码可在设置页显示细化提示；导入失败时清理临时空会话

@@ -209,6 +209,7 @@ const {
   total: memoryRebuildTotal,
   turns: memoryRebuildTurns,
   loreEntries: memoryRebuildLoreEntries,
+  stageLabel: memoryRebuildStageLabel,
   percent: memoryRebuildPercent,
   rebuild: rebuildMemoryIndex,
 } = useMemoryRebuild(() => props.conversationId)
@@ -1165,6 +1166,7 @@ watch(
               class="mt-3"
             >
               <div class="text-body-2 text-medium-emphasis mb-1">
+                {{ memoryRebuildStageLabel }} ·
                 {{
                   $t('chatConversation.memoryRebuildProgress', {
                     done: memoryRebuildDone,

@@ -20,6 +20,7 @@ import { useThemeOklchStore } from '@/stores/theme-oklch'
 import PluginSettingsPanel from '@/components/settings/PluginSettingsPanel.vue'
 import HybridFtsSwitchDialog from '@/components/settings/HybridFtsSwitchDialog.vue'
 import BudgetTrimSettingsPanel from '@/components/settings/BudgetTrimSettingsPanel.vue'
+import ImportSettingsPanel from '@/components/settings/ImportSettingsPanel.vue'
 import RegexRulesSettingsPanel from '@/components/settings/RegexRulesSettingsPanel.vue'
 import { useRegexRulesStore } from '@/stores/regex-rules'
 import {
@@ -69,7 +70,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{ logout: [] }>()
 
-type SettingsTab = 'system' | 'display' | 'account' | 'lorebook' | 'vectorRecall' | 'history' | 'budgetTrim' | 'regexRules' | 'plugins' | 'debug'
+type SettingsTab = 'system' | 'display' | 'account' | 'lorebook' | 'vectorRecall' | 'history' | 'budgetTrim' | 'regexRules' | 'plugins' | 'import' | 'debug'
 
 const { t } = useI18n()
 
@@ -358,6 +359,7 @@ const navItems = computed(() => [
   { id: 'budgetTrim' as const, title: t('settings.navBudgetTrim'), icon: 'mdi-scissors-cutting' },
   { id: 'regexRules' as const, title: t('settings.navRegexRules'), icon: 'mdi-regex' },
   { id: 'plugins' as const, title: t('settings.navPlugins'), icon: 'mdi-puzzle-outline' },
+  { id: 'import' as const, title: t('settings.navImport'), icon: 'mdi-import' },
   { id: 'debug' as const, title: t('settings.navDebug'), icon: 'mdi-bug-outline' },
 ])
 
@@ -1290,6 +1292,8 @@ onMounted(() => {
           <RegexRulesSettingsPanel v-show="activeTab === 'regexRules'" />
 
           <PluginSettingsPanel v-show="activeTab === 'plugins'" />
+
+          <ImportSettingsPanel v-show="activeTab === 'import'" />
 
           <section
             v-show="activeTab === 'debug'"

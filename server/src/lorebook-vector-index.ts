@@ -119,7 +119,14 @@ async function reindexOneLorebookVector(
       key: e.id,
       text: lorebookEntryEmbeddingCorpus(e),
     }))
-    const batch = await embedTextsInBatches(creds, items)
+    let reportedEntries = 0
+    const batch = await embedTextsInBatches(creds, items, {
+      onProgress: (progress) => {
+        const delta = progress.completedItems - reportedEntries
+        reportedEntries = progress.completedItems
+        for (let i = 0; i < delta; i += 1) options?.onEntryDone?.()
+      },
+    })
     if (!isEmbeddingBatchOk(batch)) {
       return {
         error: batch.error,
@@ -136,7 +143,6 @@ async function reindexOneLorebookVector(
         text: lorebookEntryEmbeddingCorpus(e),
         vector,
       })
-      options?.onEntryDone?.()
     }
   } else {
     for (const e of vectorEntries) {

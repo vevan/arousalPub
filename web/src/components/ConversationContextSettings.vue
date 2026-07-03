@@ -197,6 +197,7 @@ const {
   total: memoryRebuildTotal,
   turns: memoryRebuildTurns,
   loreEntries: memoryRebuildLoreEntries,
+  stageLabel: memoryRebuildStageLabel,
   percent: memoryRebuildPercent,
   rebuild: rebuildMemoryIndex,
 } = useMemoryRebuild(() => props.conversationId)
@@ -1881,6 +1882,7 @@ async function patchConversation(body: Record<string, unknown>) {
                     class="mt-2"
                   >
                     <p class="text-caption text-medium-emphasis mb-1">
+                      {{ memoryRebuildStageLabel }} ·
                       {{
                         $t('chatConversation.memoryRebuildProgress', {
                           done: memoryRebuildDone,

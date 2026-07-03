@@ -1,4 +1,14 @@
 import path from 'node:path'
+import { rm } from 'node:fs/promises'
+import {
+  Field,
+  FixedSizeList,
+  Float32,
+  Schema,
+  Utf8,
+  type Table as ArrowTable,
+} from 'apache-arrow'
+import { makeArrowTable } from '@lancedb/lancedb'
 import type { Table } from '@lancedb/lancedb'
 import { closeLanceDb, openLanceDb } from './lance-connection-pool.js'
 import {
@@ -35,6 +45,45 @@ function rowToRecord(row: LoreEntryVectorRow): Record<string, unknown> {
   }
 }
 
+function loreEntryVectorSchema(vectorDimensions: number): Schema {
+  return new Schema([
+    new Field('entryId', new Utf8(), false),
+    new Field('lorebookId', new Utf8(), false),
+    new Field('text', new Utf8(), false),
+    new Field(
+      'vector',
+      new FixedSizeList(
+        vectorDimensions,
+        new Field('item', new Float32(), false),
+      ),
+      false,
+    ),
+  ])
+}
+
+function rowsToLoreEntryVectorArrowTable(
+  rows: LoreEntryVectorRow[],
+): ArrowTable {
+  if (rows.length === 0) {
+    throw new Error('rowsToLoreEntryVectorArrowTable requires at least one row')
+  }
+  const dim = rows[0]!.vector.length
+  if (dim <= 0) {
+    throw new Error('lorebook vector dimension must be positive')
+  }
+  for (const r of rows) {
+    if (r.vector.length !== dim) {
+      throw new Error('lorebook vector dimension mismatch within batch')
+    }
+    if (r.vector.some((x) => !Number.isFinite(x))) {
+      throw new Error('lorebook vector contains non-finite number')
+    }
+  }
+  return makeArrowTable(rows.map(rowToRecord), {
+    schema: loreEntryVectorSchema(dim),
+  })
+}
+
 function lorebookDbUri(lorebookId: string): string {
   return path.join(
     getUserDataDir(getCurrentUserId()),
@@ -53,44 +102,21 @@ function toSqlString(s: string): string {
   return s.replace(/'/g, "''")
 }
 
-async function openOrCreateTable(
-  lorebookId: string,
-  sampleVector: number[],
-): Promise<Table> {
-  const uri = lorebookDbUri(lorebookId)
-  const db = await connectDb(lorebookId)
-  const names = await listLanceTableNames(db, uri)
-  if (names.includes(TABLE_NAME)) {
-    return openLanceTableWithManifestMigration(db, TABLE_NAME, uri)
-  }
-  const seed: LoreEntryVectorRow = {
-    entryId: '__seed__',
-    lorebookId,
-    text: '',
-    vector: sampleVector,
-  }
-  const table = await db.createTable(TABLE_NAME, [rowToRecord(seed)])
-  await table.delete(`entryId = '__seed__'`)
-  return table
-}
-
 export async function replaceLorebookVectorIndex(
   lorebookId: string,
   rows: LoreEntryVectorRow[],
 ): Promise<void> {
   const uri = lorebookDbUri(lorebookId)
-  const db = await connectDb(lorebookId)
-  const names = await listLanceTableNames(db, uri)
-  if (names.includes(TABLE_NAME)) {
-    await db.dropTable(TABLE_NAME)
-  }
+  closeLanceDb(uri)
+  await rm(uri, { recursive: true, force: true })
   if (!rows.length) {
-    closeLanceDb(uri)
     return
   }
-  const sample = rows[0]!.vector
-  const table = await openOrCreateTable(lorebookId, sample)
-  await table.add(rows.map(rowToRecord))
+  const db = await connectDb(lorebookId)
+  const table = await db.createTable(
+    TABLE_NAME,
+    rowsToLoreEntryVectorArrowTable(rows),
+  )
   const settings = await readGlobalHybridFtsSettings()
   await ensureHybridFtsIndex(
     table,
@@ -105,11 +131,8 @@ export async function deleteLorebookVectorIndex(
   lorebookId: string,
 ): Promise<void> {
   const uri = lorebookDbUri(lorebookId)
-  const db = await connectDb(lorebookId)
-  const names = await listLanceTableNames(db, uri)
-  if (!names.includes(TABLE_NAME)) return
-  await db.dropTable(TABLE_NAME)
   closeLanceDb(uri)
+  await rm(uri, { recursive: true, force: true })
 }
 
 export interface LoreEntryVectorHit {

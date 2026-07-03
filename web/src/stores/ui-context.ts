@@ -10,10 +10,14 @@ export const useUiContextStore = defineStore('uiContext', () => {
   const pendingLorebookFocusId = ref<string | null>(null)
   /** 打开提示词面板时优先聚焦的预设 id（单次消费） */
   const pendingPromptFocusPresetId = ref<string | null>(null)
+  /** 打开提示词库后自动弹出导入文件选择（单次消费） */
+  const pendingPromptsAutoImport = ref(false)
   /** 递增以触发 App 打开资料库对话框 */
   const openLorebooksSignal = ref(0)
   /** 递增以触发 App 打开提示词对话框 */
   const openPromptsSignal = ref(0)
+  /** 递增以触发 App 关闭设置并打开提示词导入 */
+  const openPromptsImportSignal = ref(0)
 
   function setConversationLorebookIds(ids: string[]) {
     conversationLorebookIds.value = ids.filter(
@@ -54,6 +58,17 @@ export const useUiContextStore = defineStore('uiContext', () => {
     return id
   }
 
+  function requestOpenPromptsImport() {
+    pendingPromptsAutoImport.value = true
+    openPromptsImportSignal.value += 1
+  }
+
+  function consumePendingPromptsAutoImport(): boolean {
+    const v = pendingPromptsAutoImport.value
+    pendingPromptsAutoImport.value = false
+    return v
+  }
+
   function clearSessionData(): void {
     conversationLorebookIds.value = []
     conversationPromptPresetId.value = null
@@ -61,6 +76,8 @@ export const useUiContextStore = defineStore('uiContext', () => {
     pendingPromptFocusPresetId.value = null
     openLorebooksSignal.value = 0
     openPromptsSignal.value = 0
+    openPromptsImportSignal.value = 0
+    pendingPromptsAutoImport.value = false
   }
 
   return {
@@ -68,12 +85,15 @@ export const useUiContextStore = defineStore('uiContext', () => {
     conversationPromptPresetId,
     openLorebooksSignal,
     openPromptsSignal,
+    openPromptsImportSignal,
     setConversationLorebookIds,
     setConversationPromptPresetId,
     requestOpenLorebooksDialog,
     requestOpenPromptsDialog,
+    requestOpenPromptsImport,
     consumePendingLorebookFocusId,
     consumePendingPromptFocusPresetId,
+    consumePendingPromptsAutoImport,
     clearSessionData,
   }
 })

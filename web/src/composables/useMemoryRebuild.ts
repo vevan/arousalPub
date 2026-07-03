@@ -2,9 +2,24 @@ import { readJsonSseStream } from '@/utils/json-sse'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+export type MemoryRebuildStage =
+  | 'planning'
+  | 'collecting_turns'
+  | 'embedding_turns'
+  | 'writing_turns'
+  | 'embedding_lorebooks'
+  | 'finalizing'
+
 export type MemoryRebuildSseEvent =
   | { type: 'start'; turns: number; loreEntries: number; total: number }
-  | { type: 'progress'; done: number; total: number }
+  | {
+      type: 'progress'
+      done: number
+      total: number
+      stage?: MemoryRebuildStage
+      stageDone?: number
+      stageTotal?: number
+    }
   | {
       type: 'done'
       ok: true
@@ -24,11 +39,18 @@ export function useMemoryRebuild(getConversationId: () => string) {
   const total = ref(0)
   const turns = ref(0)
   const loreEntries = ref(0)
+  const stage = ref<MemoryRebuildStage>('planning')
+  const stageDone = ref(0)
+  const stageTotal = ref(0)
 
   const percent = computed(() => {
     if (total.value < 1) return loading.value ? 0 : 100
     return Math.min(100, Math.round((done.value / total.value) * 100))
   })
+
+  const stageLabel = computed(() =>
+    t(`chatConversation.memoryRebuildStage.${stage.value}`),
+  )
 
   async function rebuild(): Promise<string | null> {
     const id = getConversationId().trim()
@@ -40,6 +62,9 @@ export function useMemoryRebuild(getConversationId: () => string) {
     total.value = 0
     turns.value = 0
     loreEntries.value = 0
+    stage.value = 'planning'
+    stageDone.value = 0
+    stageTotal.value = 0
     let finished = false
     let nextModel: string | null = null
 
@@ -64,11 +89,15 @@ export function useMemoryRebuild(getConversationId: () => string) {
           turns.value = ev.turns
           loreEntries.value = ev.loreEntries
           done.value = 0
+          stage.value = 'planning'
           return
         }
         if (ev.type === 'progress') {
           done.value = ev.done
           total.value = ev.total
+          if (ev.stage) stage.value = ev.stage
+          stageDone.value = ev.stageDone ?? 0
+          stageTotal.value = ev.stageTotal ?? 0
           return
         }
         if (ev.type === 'error') {
@@ -79,6 +108,9 @@ export function useMemoryRebuild(getConversationId: () => string) {
         if (ev.type === 'done') {
           finished = true
           done.value = total.value
+          stage.value = 'finalizing'
+          stageDone.value = total.value
+          stageTotal.value = total.value
           nextModel =
             typeof ev.embeddingModel === 'string' && ev.embeddingModel.trim()
               ? ev.embeddingModel.trim()
@@ -106,6 +138,10 @@ export function useMemoryRebuild(getConversationId: () => string) {
     total,
     turns,
     loreEntries,
+    stage,
+    stageDone,
+    stageTotal,
+    stageLabel,
     percent,
     rebuild,
   }

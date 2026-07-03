@@ -67,6 +67,15 @@ export interface MemoryReindexError {
 export interface MemoryReindexProgress {
   done: number
   total: number
+  stage:
+    | 'planning'
+    | 'collecting_turns'
+    | 'embedding_turns'
+    | 'writing_turns'
+    | 'embedding_lorebooks'
+    | 'finalizing'
+  stageDone?: number
+  stageTotal?: number
 }
 
 /** 可生成 embedding 语料的 turn（重建计划 / 执行共用） */
@@ -247,9 +256,14 @@ export async function reindexConversationMemory(
   const plan = await planConversationMemoryReindex(conversationId)
   const total = plan.total
   let done = 0
-  const tick = () => {
-    options?.onProgress?.({ done, total })
+  const tick = (
+    stage: MemoryReindexProgress['stage'],
+    stageDone?: number,
+    stageTotal?: number,
+  ) => {
+    options?.onProgress?.({ done, total, stage, stageDone, stageTotal })
   }
+  tick('planning', 0, total)
 
   const { embeddingModel, embeddingDimensions } =
     await readGlobalEmbeddingApiSettings()
@@ -269,6 +283,7 @@ export async function reindexConversationMemory(
   const pending: PendingTurn[] = []
 
   const locations = await enumerateAllChunkChains(conversationId)
+  let scannedLocations = 0
   for (const loc of locations) {
     const chunk = await readChunkFileAt(
       conversationId,
@@ -289,13 +304,28 @@ export async function reindexConversationMemory(
         },
       })
     }
+    scannedLocations += 1
+    tick('collecting_turns', scannedLocations, locations.length)
   }
 
   let indexed = 0
 
+  let reportedTurnEmbeddings = 0
   const embedBatch = await embedTextsInBatches(
     creds,
     pending.map((p) => ({ key: p.key, text: p.corpus })),
+    {
+      onProgress: (progress) => {
+        const delta = progress.completedItems - reportedTurnEmbeddings
+        reportedTurnEmbeddings = progress.completedItems
+        done += delta
+        tick(
+          'embedding_turns',
+          progress.completedItems,
+          progress.totalItems,
+        )
+      },
+    },
   )
   if (!isEmbeddingBatchOk(embedBatch)) {
     return {
@@ -310,21 +340,28 @@ export async function reindexConversationMemory(
     const vector = embedBatch.vectors.get(item.key)
     if (!vector?.length) continue
     builtRows.push({ ...item.row, corpus: item.corpus, vector })
-    done += 1
     indexed += 1
-    tick()
   }
 
+  tick('writing_turns', 0, builtRows.length)
   await replaceTurnMemoryIndex(conversationId, builtRows)
-  await optimizeConversationMemoryTable(conversationId)
+  tick('writing_turns', builtRows.length, builtRows.length)
+  await optimizeConversationMemoryTable(conversationId).catch((e) => {
+    // Optimize is a compaction hint after full replacement; do not fail rebuild
+    // if Lance cannot optimize a specific table on this platform/data shape.
+    // eslint-disable-next-line no-console
+    console.warn('[memory-index] optimize after rebuild failed:', e)
+  })
 
   let lorebooksReindexed = 0
   let lorebookEntriesIndexed = 0
   if (lorebookIds.length > 0) {
+    let reportedLoreEntries = 0
     const loreResult = await reindexLorebooksByIds(lorebookIds, creds, {
       onEntryDone: () => {
         done += 1
-        tick()
+        reportedLoreEntries += 1
+        tick('embedding_lorebooks', reportedLoreEntries, plan.loreEntries)
       },
     })
     if ('error' in loreResult) {
@@ -344,6 +381,7 @@ export async function reindexConversationMemory(
     lorebookEntriesIndexed = loreResult.lorebookEntriesIndexed
   }
 
+  tick('finalizing', total, total)
   const hybridFtsSpec = formatHybridFtsSpec(await readGlobalHybridFtsSettings())
   await updateConversationMemoryEmbeddingModel(
     conversationId,

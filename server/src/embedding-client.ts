@@ -96,8 +96,12 @@ export async function createEmbeddingWithCredentials(
   if (!Array.isArray(vec) || vec.length === 0) {
     return { error: 'Embeddings API 响应缺少 embedding 向量' }
   }
+  const vector = vec.map((x) => Number(x))
+  if (vector.some((x) => !Number.isFinite(x))) {
+    return { error: 'Embeddings API 响应包含非法 embedding 向量' }
+  }
   return {
-    vector: vec.map((x) => Number(x)),
+    vector,
     model: typeof j.model === 'string' ? j.model : creds.embeddingModel,
   }
 }

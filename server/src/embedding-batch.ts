@@ -18,6 +18,13 @@ export interface EmbeddingBatchItem {
   text: string
 }
 
+export interface EmbeddingBatchProgress {
+  completedItems: number
+  totalItems: number
+  completedBatches: number
+  totalBatches: number
+}
+
 export type EmbeddingBatchVectorsResult =
   | { ok: true; vectors: Map<string, number[]>; model: string }
   | EmbeddingRequestError
@@ -26,6 +33,14 @@ export function isEmbeddingBatchOk(
   result: EmbeddingBatchVectorsResult,
 ): result is { ok: true; vectors: Map<string, number[]>; model: string } {
   return 'ok' in result && result.ok
+}
+
+function normalizeEmbeddingVector(raw: unknown[]): number[] | null {
+  const vector = raw.map((x) => Number(x))
+  if (vector.length === 0 || vector.some((x) => !Number.isFinite(x))) {
+    return null
+  }
+  return vector
 }
 
 function chunkArray<T>(items: T[], size: number): T[][] {
@@ -107,7 +122,11 @@ async function createEmbeddingsBatchRequest(
     if (!Array.isArray(raw) || raw.length === 0) {
       return { error: 'Embeddings API 响应缺少 embedding 向量' }
     }
-    vectors.set(items[idx]!.key, raw.map((x) => Number(x)))
+    const vector = normalizeEmbeddingVector(raw)
+    if (!vector) {
+      return { error: 'Embeddings API 响应包含非法 embedding 向量' }
+    }
+    vectors.set(items[idx]!.key, vector)
   }
 
   return {
@@ -145,6 +164,7 @@ export async function embedTextsInBatches(
   options?: {
     batchSize?: number
     concurrency?: number
+    onProgress?: (progress: EmbeddingBatchProgress) => void
   },
 ): Promise<EmbeddingBatchVectorsResult> {
   const valid = items.filter((it) => it.text.trim().length > 0)
@@ -170,19 +190,57 @@ export async function embedTextsInBatches(
   const chunks = chunkArray(valid, batchSize)
   const merged = new Map<string, number[]>()
   let model = creds.embeddingModel
+  let expectedDimensions: number | null = null
+  let completedItems = 0
+  let completedBatches = 0
+  let nextChunkIndex = 0
+  let firstError: EmbeddingRequestError | null = null
 
-  for (let i = 0; i < chunks.length; i += concurrency) {
-    const wave = chunks.slice(i, i + concurrency)
-    const results = await Promise.all(
-      wave.map((chunk) => embedBatchWithFallback(creds, chunk)),
-    )
-    for (const r of results) {
-      if (!('ok' in r) || !r.ok) return r
-      model = r.model
-      for (const [k, v] of r.vectors) merged.set(k, v)
+  async function worker(): Promise<void> {
+    while (!firstError) {
+      const chunkIndex = nextChunkIndex
+      nextChunkIndex += 1
+      const chunk = chunks[chunkIndex]
+      if (!chunk) return
+
+      const result = await embedBatchWithFallback(creds, chunk)
+      if (!isEmbeddingBatchOk(result)) {
+        firstError = result
+        return
+      }
+
+      model = result.model
+      for (const [k, v] of result.vectors) {
+        if (expectedDimensions == null) {
+          expectedDimensions = v.length
+        } else if (v.length !== expectedDimensions) {
+          firstError = {
+            error: 'Embeddings API 返回向量维度不一致',
+            detail: `expected ${expectedDimensions}, got ${v.length}`,
+          }
+          return
+        }
+        merged.set(k, v)
+      }
+
+      completedItems += chunk.length
+      completedBatches += 1
+      options?.onProgress?.({
+        completedItems,
+        totalItems: valid.length,
+        completedBatches,
+        totalBatches: chunks.length,
+      })
     }
   }
 
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, chunks.length) }, () =>
+      worker(),
+    ),
+  )
+
+  if (firstError) return firstError
   return { ok: true, vectors: merged, model }
 }
 

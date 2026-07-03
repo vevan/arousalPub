@@ -81,9 +81,12 @@ import {
 } from './memory-index.js'
 import {
   buildFirstChunkDescriptor,
+  chunkFileNameForRange,
+  chunkIdFromFileName,
   invalidateChunkIndexSyncCache,
   isTurnOrdinalOffActivePath,
   normalizeTailChunkBasename,
+  ordinalRangeForNewChunk,
   prepareTailChunkForAppend,
   readChunkContainingOrdinal,
   readChunkFile,
@@ -2215,6 +2218,132 @@ export async function saveOpeningTurn(params: {
     refreshConversationStats: true,
   })
   return { index: idx, chunk }
+}
+
+export interface ImportedTurnBatchItem {
+  turnOrdinal: number
+  userText: string
+  receives: TurnReceive[]
+  activeReceiveIndex: number
+  createdAt?: string
+}
+
+/** ST 等批量导入：空会话一次性写入多轮（按全局 turnsPerFile 分块） */
+export async function importTurnsToEmptyConversation(params: {
+  conversationId: string
+  speakerCharacterId: string
+  turns: ImportedTurnBatchItem[]
+  usedEntityIds?: Set<string>
+}): Promise<{ index: ConversationIndex; turnCount: number } | null> {
+  const { conversationId, speakerCharacterId, turns } = params
+  if (!turns.length) return null
+  const speaker = speakerCharacterId.trim()
+  if (!speaker) return null
+
+  let idx = await readConversationIndex(conversationId)
+  if (!idx || idx.headChunkFile) return null
+
+  const used = params.usedEntityIds ?? new Set<string>()
+  const built: TurnRecord[] = []
+  for (const item of turns) {
+    const mappedReceives = mapReceivesWithShortIds(item.receives, used)
+    const activeIdx = Math.min(
+      Math.max(0, item.activeReceiveIndex),
+      Math.max(0, mappedReceives.length - 1),
+    )
+    const turn: TurnRecord = {
+      turnId: allocateShortId(used),
+      turnOrdinal: item.turnOrdinal,
+      ...(item.createdAt ? { createdAt: item.createdAt } : {}),
+      send: { userText: item.userText },
+      receives: mappedReceives,
+      activeReceiveIndex: activeIdx,
+      plugins: [],
+      segments: [],
+      activeSegmentIndex: 0,
+    }
+    buildFirstSegmentOnTurn(turn, used, {
+      speakerCharacterId: speaker,
+      receives: mappedReceives,
+      activeReceiveIndex: activeIdx,
+    })
+    built.push(turn)
+  }
+
+  const chunkSettings = await readGlobalChunkSettings()
+  const cap = chunkSettings.turnsPerFile
+  const chunkFiles: { fileName: string; chunk: ChunkFile }[] = []
+
+  for (let offset = 0; offset < built.length; offset += cap) {
+    const slice = built.slice(offset, offset + cap)
+    const startOrd = slice[0]!.turnOrdinal
+    const window = ordinalRangeForNewChunk(startOrd, cap)
+    const fileName = chunkFileNameForRange(window.start, window.end)
+    const prev = offset > 0 ? chunkFiles[chunkFiles.length - 1]!.fileName : null
+    const nextEnd = offset + cap < built.length
+    const nextFile = nextEnd
+      ? chunkFileNameForRange(
+          ordinalRangeForNewChunk(slice[slice.length - 1]!.turnOrdinal + 1, cap).start,
+          ordinalRangeForNewChunk(slice[slice.length - 1]!.turnOrdinal + 1, cap).end,
+        )
+      : null
+
+    const chunk: ChunkFile = {
+      schemaVersion: 1,
+      meta: {
+        chunkId: chunkIdFromFileName(fileName),
+        ordinalRange: {
+          start: slice[0]!.turnOrdinal,
+          end: slice[slice.length - 1]!.turnOrdinal,
+        },
+        turnsPerFile: cap,
+        links: {
+          previous: prev,
+          next: nextFile,
+          branches: [],
+        },
+      },
+      turns: slice,
+    }
+    chunkFiles.push({ fileName, chunk })
+  }
+
+  await mkdir(conversationDir(conversationId), { recursive: true })
+  const writtenChunkFiles: string[] = []
+  try {
+    for (const { fileName, chunk } of chunkFiles) {
+      await writeChunkFile(conversationId, fileName, chunk)
+      writtenChunkFiles.push(fileName)
+    }
+  } catch (e) {
+    await Promise.allSettled(
+      writtenChunkFiles.map((fileName) =>
+        rm(path.join(conversationDir(conversationId), fileName), {
+          force: true,
+        }),
+      ),
+    )
+    throw e
+  }
+
+  for (const { fileName, chunk } of chunkFiles) {
+    for (const turn of chunk.turns) {
+      scheduleMemoryIndexUpsert(conversationId, turn, fileName)
+    }
+  }
+
+  const headChunkFile = chunkFiles[0]!.fileName
+  const tailChunkFile = chunkFiles[chunkFiles.length - 1]!.fileName
+  const t = nowIso()
+  idx.headChunkFile = headChunkFile
+  idx.tailChunkFile = tailChunkFile
+  idx.updatedAt = t
+  await writeConversationIndex(conversationId, idx)
+  invalidateChunkIndexSyncCache(conversationId)
+  await upsertChatListEntry(chatListEntryFromIndex(idx), idx, {
+    refreshConversationStats: true,
+  })
+  return { index: idx, turnCount: built.length }
 }
 
 /** 在已有尾块末尾追加一轮对话（默认写入 index.activeBranchPath） */

@@ -34,6 +34,8 @@ interface CharacterIndexEntry {
   updatedAt: string
   name: string
   summary: string
+  descriptionPreview?: string
+  personalityPreview?: string
   systemPromptPreview: string
   tags: string[]
 }
@@ -48,6 +50,8 @@ export interface CharacterListItem {
   id: string
   name: string
   summary: string
+  descriptionPreview: string
+  personalityPreview: string
   systemPromptPreview: string
   tags: string[]
   updatedAt: string
@@ -182,6 +186,17 @@ function pickSummary(card: Record<string, unknown>, max = 180): string {
   return ''
 }
 
+function pickCardTextPreview(
+  card: Record<string, unknown>,
+  field: 'description' | 'personality',
+  max = 140,
+): string {
+  const v = card[field]
+  if (typeof v !== 'string' || !v.trim()) return ''
+  const t = v.trim().replace(/\s+/g, ' ')
+  return t.length > max ? `${t.slice(0, max)}…` : t
+}
+
 function pickSystemPreview(card: Record<string, unknown>, max = 240): string {
   const v = card.system_prompt
   if (typeof v === 'string' && v.trim()) {
@@ -217,6 +232,8 @@ function entryFromDoc(doc: CharacterStoredDocument): CharacterIndexEntry {
     updatedAt: doc.updatedAt,
     name: pickName(doc.card),
     summary: pickSummary(doc.card),
+    descriptionPreview: pickCardTextPreview(doc.card, 'description'),
+    personalityPreview: pickCardTextPreview(doc.card, 'personality'),
     systemPromptPreview: pickSystemPreview(doc.card),
     tags: pickTags(doc.card),
   }
@@ -315,6 +332,15 @@ async function loadOrRebuildIndex(): Promise<CharacterIndexFile> {
   }
   const diskCount = await countCharacterDataIds()
   if (fromDisk.entries.length !== diskCount) {
+    return rebuildCharacterIndexFromDisk()
+  }
+  if (
+    fromDisk.entries.some(
+      (e) =>
+        typeof e.descriptionPreview !== 'string' ||
+        typeof e.personalityPreview !== 'string',
+    )
+  ) {
     return rebuildCharacterIndexFromDisk()
   }
   for (const e of fromDisk.entries) {
@@ -786,6 +812,8 @@ export async function listCharacterSummaries(params: {
       id,
       name: e.name,
       summary: e.summary,
+      descriptionPreview: e.descriptionPreview ?? e.summary,
+      personalityPreview: e.personalityPreview ?? '',
       systemPromptPreview: e.systemPromptPreview,
       tags: e.tags,
       updatedAt,
@@ -802,6 +830,8 @@ export async function listCharacterSummaries(params: {
       (r) =>
         r.name.toLowerCase().includes(q) ||
         r.summary.toLowerCase().includes(q) ||
+        r.descriptionPreview.toLowerCase().includes(q) ||
+        r.personalityPreview.toLowerCase().includes(q) ||
         r.systemPromptPreview.toLowerCase().includes(q) ||
         r.tags.some((t) => t.toLowerCase().includes(q)),
     )

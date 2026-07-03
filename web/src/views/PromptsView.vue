@@ -36,6 +36,7 @@ import type {
 } from '@/stores/prompts'
 import { useConnectionStore } from '@/stores/connection'
 import { useNarrowLayout } from '@/composables/use-narrow-layout'
+import { useUiContextStore } from '@/stores/ui-context'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -55,11 +56,27 @@ const emit = defineEmits<{
 }>()
 
 const store = usePromptsStore()
+const uiContext = useUiContextStore()
+
+async function runPendingImportPick() {
+  if (!uiContext.consumePendingPromptsAutoImport()) return
+  await nextTick()
+  performImportPickFile()
+}
+
 onMounted(() => {
   if (!props.embedded) {
     void store.applyOpenFocus(null, null)
   }
+  void runPendingImportPick()
 })
+
+watch(
+  () => uiContext.openPromptsImportSignal,
+  () => {
+    void runPendingImportPick()
+  },
+)
 const {
   presets,
   activePresetId,

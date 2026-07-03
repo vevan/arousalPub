@@ -29,6 +29,7 @@ import {
   deleteConversation,
   readChatList,
   readConversationIndex,
+  resolvedCharacterIds,
   removeTurnAtOrdinalInTailChunk,
   appendConversationTurn,
   readChatPromptFile,
@@ -61,7 +62,6 @@ import {
   parseConversationChatBinding,
   parseConversationEmbeddingApiOverride,
   getTurnUserText,
-  resolvedCharacterIds,
   batchUpdateConversationTurns,
   updateTurnContentInTailChunk,
   updateTurnSegmentInTailChunk,
@@ -164,6 +164,7 @@ import {
   readLorebookById,
   readLorebooksDocument,
   readLorebooksIndexSummary,
+  writeLorebook,
   writeLorebooksDocument,
   LOREBOOK_ID_RE,
   type LorebooksDocument,
@@ -257,6 +258,17 @@ import {
 } from './prompts-assemble-preview.js'
 import { isStOpenAiPreset } from './st-preset-detect.js'
 import { convertStPresetToArousalPub } from './st-preset-import.js'
+import {
+  convertStLorebookToLorebook,
+  isStLorebookJson,
+  previewStLorebookImport,
+  ST_LOREBOOK_IMPORT_MAX_ENTRIES,
+} from './st-lorebook-import.js'
+import {
+  importStChatFromStream,
+  previewStChatImport,
+  streamPreviewStChat,
+} from './st-chat-import.js'
 import { StPresetValidationError } from './st-preset-limits.js'
 import { persistTurnAfterModelReply } from './chat-persist-after-chat.js'
 import {
@@ -463,9 +475,10 @@ function validateChatMessages(
 }
 
 /** 角色卡 PNG 等 multipart 可能超过默认 1MB，需与 @fastify/multipart 的 fileSize 上限一致 */
+const ST_IMPORT_FILE_SIZE_LIMIT = 50 * 1024 * 1024
 const app = Fastify({
   logger: true,
-  bodyLimit: 20 * 1024 * 1024,
+  bodyLimit: ST_IMPORT_FILE_SIZE_LIMIT,
 })
 
 const corsOrigins = resolveCorsOrigins()
@@ -505,7 +518,7 @@ app.addHook('onRequest', (request, reply, done) => {
   done()
 })
 await app.register(multipart, {
-  limits: { fileSize: 15 * 1024 * 1024 },
+  limits: { fileSize: ST_IMPORT_FILE_SIZE_LIMIT },
 })
 
 app.addHook('onClose', async () => {
@@ -2728,6 +2741,192 @@ app.put('/api/lorebooks', async (request, reply) => {
     return reply.status(500).send({ error: ApiErrorCodes.lorebooks_write_failed })
   }
   return { ok: true as const, savedAt }
+})
+
+async function drainReadableStream(
+  stream: NodeJS.ReadableStream,
+): Promise<void> {
+  for await (const chunk of stream) {
+    void chunk
+  }
+}
+
+app.post('/api/lorebooks/import-st/preview', async (request, reply) => {
+  const ct = request.headers['content-type'] ?? ''
+  let source: unknown
+  if (ct.includes('multipart/form-data')) {
+    const file = await request.file()
+    if (!file) {
+      return reply.status(400).send({ error: ApiErrorCodes.missing_file_field })
+    }
+    const buf = await file.toBuffer()
+    if (!buf.length) {
+      return reply.status(400).send({ error: ApiErrorCodes.missing_file_field })
+    }
+    try {
+      source = JSON.parse(buf.toString('utf8')) as unknown
+    } catch {
+      return reply.status(400).send({ error: ApiErrorCodes.st_import_invalid_format })
+    }
+  } else {
+    const body = request.body
+    if (!body || typeof body !== 'object') {
+      return reply.status(400).send({ error: ApiErrorCodes.st_import_invalid_format })
+    }
+    const raw = body as { source?: unknown }
+    source = raw.source != null ? raw.source : body
+  }
+  if (!isStLorebookJson(source)) {
+    return reply.status(400).send({ error: ApiErrorCodes.st_import_invalid_format })
+  }
+  try {
+    const preview = previewStLorebookImport(source)
+    if (preview.entryCount > ST_LOREBOOK_IMPORT_MAX_ENTRIES) {
+      return reply.status(400).send({
+        error: ApiErrorCodes.st_lorebook_too_many_entries,
+      })
+    }
+    return preview
+  } catch (e) {
+    app.log.error(e)
+    return reply.status(500).send({ error: ApiErrorCodes.st_lorebook_import_failed })
+  }
+})
+
+app.post('/api/lorebooks/import-st', async (request, reply) => {
+  const body = request.body
+  if (!body || typeof body !== 'object') {
+    return reply.status(400).send({ error: ApiErrorCodes.st_import_invalid_format })
+  }
+  const raw = body as { source?: unknown; name?: unknown }
+  const source = raw.source != null ? raw.source : body
+  if (!isStLorebookJson(source)) {
+    return reply.status(400).send({ error: ApiErrorCodes.st_import_invalid_format })
+  }
+  const name = typeof raw.name === 'string' ? raw.name.trim() : undefined
+  try {
+    const lorebook = await convertStLorebookToLorebook(source, { name })
+    await writeLorebook(lorebook)
+    scheduleLorebookVectorReindex([lorebook])
+    return { ok: true as const, id: lorebook.id, name: lorebook.name }
+  } catch (e) {
+    app.log.error(e)
+    return reply.status(500).send({ error: ApiErrorCodes.st_lorebook_import_failed })
+  }
+})
+
+app.post('/api/chat/import-st/preview', async (request, reply) => {
+  const ct = request.headers['content-type'] ?? ''
+  if (ct.includes('multipart/form-data')) {
+    const file = await request.file()
+    if (!file) {
+      return reply.status(400).send({ error: ApiErrorCodes.missing_file_field })
+    }
+    try {
+      return await streamPreviewStChat(file.file)
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.st_chat_import_failed })
+    }
+  }
+  const body = request.body
+  if (!body || typeof body !== 'object') {
+    return reply.status(400).send({ error: ApiErrorCodes.st_import_invalid_format })
+  }
+  const raw = body as { source?: unknown; text?: unknown }
+  const text =
+    typeof raw.text === 'string'
+      ? raw.text
+      : typeof raw.source === 'string'
+        ? raw.source
+        : ''
+  if (!text.trim()) {
+    return reply.status(400).send({ error: ApiErrorCodes.st_import_invalid_format })
+  }
+  try {
+    return previewStChatImport(text)
+  } catch (e) {
+    app.log.error(e)
+    return reply.status(500).send({ error: ApiErrorCodes.st_chat_import_failed })
+  }
+})
+
+app.post('/api/chat/import-st', async (request, reply) => {
+  const ct = request.headers['content-type'] ?? ''
+  if (!ct.includes('multipart/form-data')) {
+    return reply.status(400).send({ error: ApiErrorCodes.multipart_payload_required })
+  }
+  let conversationId = ''
+  const parts = request.parts()
+  for await (const part of parts) {
+    if (
+      part &&
+      typeof part === 'object' &&
+      (part as { type?: string }).type === 'field' &&
+      (part as { fieldname?: string }).fieldname === 'conversationId'
+    ) {
+      const v = (part as { value?: unknown }).value
+      conversationId = typeof v === 'string' ? v.trim() : ''
+    } else if (
+      part &&
+      typeof part === 'object' &&
+      (part as { type?: string }).type === 'file' &&
+      'file' in part
+    ) {
+      const fileStream = (part as { file: NodeJS.ReadableStream }).file
+      if (!conversationId || !isValidConversationId(conversationId)) {
+        await drainReadableStream(fileStream)
+        return reply
+          .status(400)
+          .send({ error: ApiErrorCodes.invalid_conversation_id })
+      }
+      const idx = await readConversationIndex(conversationId)
+      if (!idx) {
+        await drainReadableStream(fileStream)
+        return reply
+          .status(404)
+          .send({ error: ApiErrorCodes.conversation_not_found })
+      }
+      if (idx.headChunkFile) {
+        await drainReadableStream(fileStream)
+        return reply
+          .status(409)
+          .send({ error: ApiErrorCodes.st_chat_conversation_not_empty })
+      }
+      const charIds = resolvedCharacterIds(idx)
+      const speakerCharacterId = charIds[0]?.trim() ?? ''
+      if (!speakerCharacterId || !idx.userCharacterId?.trim()) {
+        await drainReadableStream(fileStream)
+        return reply
+          .status(400)
+          .send({ error: ApiErrorCodes.st_chat_bindings_required })
+      }
+      try {
+        const result = await importStChatFromStream({
+          conversationId,
+          speakerCharacterId,
+          stream: fileStream,
+        })
+        if (!result) {
+          return reply
+            .status(400)
+            .send({ error: ApiErrorCodes.st_import_invalid_format })
+        }
+        return {
+          ok: true as const,
+          conversationId,
+          turnCount: result.turnCount,
+          warnings: result.warnings,
+        }
+      } catch (e) {
+        app.log.error(e)
+        return reply
+          .status(500)
+          .send({ error: ApiErrorCodes.st_chat_import_failed })
+      }
+    }
+  }
+  return reply.status(400).send({ error: ApiErrorCodes.missing_file_field })
 })
 
 app.get<{ Params: { id: string } }>(

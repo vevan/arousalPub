@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { rm } from 'node:fs/promises'
 import type { OptimizeStats, Table } from '@lancedb/lancedb'
 import { closeLanceDb, openLanceDb } from './lance-connection-pool.js'
 import {
@@ -279,8 +280,6 @@ export async function deleteTurnMemoryVector(
   await table.delete(`turnId = '${toSqlString(id)}'`)
 }
 
-const REPLACE_TURN_MEMORY_BATCH = 50
-
 /**
  * 全量替换 turn_memory（重建成功路径；调用方须已完成 embed）。
  * embed / API 失败时不应调用，以免清空旧索引。
@@ -288,38 +287,22 @@ const REPLACE_TURN_MEMORY_BATCH = 50
 export async function replaceTurnMemoryIndex(
   conversationId: string,
   rows: TurnMemoryRow[],
-  batchSize = REPLACE_TURN_MEMORY_BATCH,
 ): Promise<void> {
   await deleteConversationMemoryIndex(conversationId)
   const valid = rows.filter((r) => r.vector.length > 0)
-  for (let i = 0; i < valid.length; i += batchSize) {
-    await upsertTurnMemoryRowsBatch(
-      conversationId,
-      valid.slice(i, i + batchSize),
-      { deferFts: true },
-    )
-  }
-  const table = await openMemoryTable(conversationId)
-  if (table) {
-    await ensureMemoryHybridFtsIndex(conversationId, table)
-  }
+  if (!valid.length) return
+  const table = await createTurnMemoryTable(conversationId, valid)
+  await ensureMemoryHybridFtsIndex(conversationId, table)
 }
 
 export async function deleteConversationMemoryIndex(
   conversationId: string,
 ): Promise<void> {
   const uri = memoryDbUri(conversationId)
-  const db = await connectDb(conversationId)
-  const names = await listLanceTableNames(db, uri)
-  for (const name of names) {
-    if (name === TABLE_NAME || name.startsWith(LEGACY_CHUNK_TABLE_PREFIX)) {
-      await db.dropTable(name)
-      if (name === TABLE_NAME) {
-        primaryKeyReady.delete(primaryKeyCacheKey(conversationId))
-      }
-    }
-  }
+  primaryKeyReady.delete(primaryKeyCacheKey(conversationId))
+  legacyMemoryWarned.delete(conversationId)
   closeLanceDb(uri)
+  await rm(uri, { recursive: true, force: true })
 }
 
 export interface MemorySearchHit {

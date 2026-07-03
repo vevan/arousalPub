@@ -4,12 +4,13 @@ import {
   planConversationMemoryReindex,
   reindexConversationMemory,
   type MemoryReindexError,
+  type MemoryReindexProgress,
   type MemoryReindexResult,
 } from './memory-index.js'
 
 export type MemoryReindexSseEvent =
   | ({ type: 'start' } & Awaited<ReturnType<typeof planConversationMemoryReindex>>)
-  | { type: 'progress'; done: number; total: number }
+  | ({ type: 'progress' } & MemoryReindexProgress)
   | ({ type: 'done' } & MemoryReindexResult)
   | ({ type: 'error' } & MemoryReindexError)
 
@@ -33,8 +34,8 @@ export function startConversationMemoryReindexSse(
       const plan = await planConversationMemoryReindex(conversationId)
       writeSseLine(stream, { type: 'start', ...plan })
       const result = await reindexConversationMemory(conversationId, {
-        onProgress: ({ done, total }) => {
-          writeSseLine(stream, { type: 'progress', done, total })
+        onProgress: (progress) => {
+          writeSseLine(stream, { type: 'progress', ...progress })
         },
       })
       if (!result.ok) {

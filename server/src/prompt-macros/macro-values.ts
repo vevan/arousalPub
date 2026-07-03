@@ -226,6 +226,12 @@ export function resolveGroupNotMuted(ctx: PromptMacroContext): string {
   return ctx.groupNotMuted ?? ''
 }
 
+/** 非群聊 = {{char}}；群聊 enabled 时为空（G5） */
+export function resolveCharIfNotGroup(ctx: PromptMacroContext): string {
+  if (ctx.groupChatEnabled) return ''
+  return resolveCharName(ctx, 1)
+}
+
 export function resolveIdleDuration(ctx: PromptMacroContext): string {
   return humanizeIdleDuration(ctx.idleReferenceUserAt, ctx.now, ctx.locale)
 }
@@ -312,6 +318,7 @@ export const KNOWN_MACRO_HEADS = new Set([
   'notchar',
   'group',
   'groupnotmuted',
+  'charifnotgroup',
   'hasextension',
   'pick',
   'description',

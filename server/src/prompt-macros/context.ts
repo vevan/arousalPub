@@ -33,6 +33,7 @@ export function buildPromptMacroContext(params: {
   macroGlobalVars?: Record<string, string> | null
   group?: string | null
   groupNotMuted?: string | null
+  groupChatEnabled?: boolean | null
 }): PromptMacroContext {
   const raw = params.conversationUserName
   const userName =
@@ -125,6 +126,7 @@ export function buildPromptMacroContext(params: {
     ...(typeof params.groupNotMuted === 'string'
       ? { groupNotMuted: params.groupNotMuted }
       : {}),
+    ...(params.groupChatEnabled === true ? { groupChatEnabled: true } : {}),
   }
 }
 

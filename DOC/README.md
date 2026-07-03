@@ -54,7 +54,7 @@
 | [`31`](31-main-layout-plugin-rails.md) | ✅ | **主布局三列 Grid**、插件 left/right rail、`routes` 路由门控、`hidden`、统一空态 |
 | [`32`](32-plugin-user-settings-cache.md) | ✅ | 全局 `getUserSettings` 缓存 + 订阅（对齐 `DOC/21` 会话 store · `a7ca4ea`） |
 | [`33`](33-mobile-compatibility.md) | **Phase 1** | 40rem rail overlay + hidden 持久化；余 composer/安全区验收 |
-| [`35`](35-group-chat.md) | 定案 **P0** | **群聊**：segment 模型、`/@`、`[NEXT@Name]`、衰减与 confirm |
+| [`35`](35-group-chat.md) | ✅ **G0–G5** | **群聊**：segment、`speakerMode`、宏、`preset-group-chat` 种子 |
 | [`36`](36-composer-slash.md) | ✅ S0–S2/S4 | **Composer Slash**：submitComposer、`/goto`、`/@` 补全浮层 |
 | [`37`](37-st-import-settings-tab.md) | 定案 **P2** | **设置「导入」Tab**：ST 聊天记录 / 世界书 / 提示词预设（预设委托 `PromptsView` 原流程） |
 

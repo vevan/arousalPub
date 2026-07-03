@@ -12,6 +12,12 @@ import {
 } from './prompts-file.js'
 
 export const DEFAULT_PROMPT_PRESET_ID = 'preset-default'
+export const GROUP_CHAT_PRESET_ID = 'preset-group-chat'
+
+export const SEED_PRESET_IDS = [
+  DEFAULT_PROMPT_PRESET_ID,
+  GROUP_CHAT_PRESET_ID,
+] as const
 
 const GROUP = {
   pre: 'group-pre',
@@ -44,6 +50,7 @@ function makeSeedEntry(
     tags: string[]
     createdAt: string
   },
+  opts?: { enabled?: boolean },
 ) {
   return {
     id: data.id,
@@ -52,7 +59,7 @@ function makeSeedEntry(
     description: data.description,
     content: data.content,
     tags: data.tags,
-    enabled: true,
+    enabled: opts?.enabled !== false,
     role: 'system',
     injectionPosition: 'relative',
     injectionDepth: 0,
@@ -87,6 +94,136 @@ function makeBindingSlotEntry(
     triggers: [],
     order,
     bindingSlot: slot,
+    createdAt: t,
+    updatedAt: t,
+  }
+}
+
+function buildBindingSlotPrompts(groupIds: typeof GROUP) {
+  return [
+    ...DEFAULT_CHARACTER_SYSTEM_SLOTS.map((slot, i) =>
+      makeBindingSlotEntry(
+        groupIds.character,
+        slot,
+        i,
+        `binding-slot-${slot.replace(/^bound/, '')}`,
+      ),
+    ),
+    ...DEFAULT_WORLD_SYSTEM_SLOTS.map((slot, i) =>
+      makeBindingSlotEntry(
+        groupIds.world,
+        slot,
+        i,
+        `binding-slot-${slot.replace(/^bound/, '')}`,
+      ),
+    ),
+    ...DEFAULT_HISTORY_SYSTEM_SLOTS.map((slot, i) =>
+      makeBindingSlotEntry(
+        groupIds.history,
+        slot,
+        i,
+        `binding-slot-${slot.replace(/^bound/, '')}`,
+      ),
+    ),
+    makeBindingSlotEntry(
+      groupIds.userInput,
+      'boundUserInput',
+      0,
+      'binding-slot-user-input',
+    ),
+  ]
+}
+
+/** 群聊专用预设：默认未激活；条目默认 disabled，开启群聊后切换并启用（G5） */
+export function buildGroupChatPromptPreset(): Record<string, unknown> {
+  const groupIds = {
+    pre: 'group-chat-pre',
+    character: 'group-chat-character',
+    world: 'group-chat-world',
+    history: 'group-chat-history',
+    userInput: 'group-chat-user-input',
+    post: 'group-chat-post',
+  } as const
+  const groups = [
+    { id: groupIds.pre, name: 'Pre', kind: 'normal', order: 0, enabled: true },
+    {
+      id: groupIds.character,
+      name: 'Character',
+      kind: 'character',
+      order: 1,
+      enabled: true,
+    },
+    { id: groupIds.world, name: 'World', kind: 'world', order: 2, enabled: true },
+    {
+      id: groupIds.history,
+      name: 'History',
+      kind: 'history',
+      order: 3,
+      enabled: true,
+    },
+    {
+      id: groupIds.userInput,
+      name: 'User input',
+      kind: 'userInput',
+      order: 4,
+      enabled: true,
+    },
+    { id: groupIds.post, name: 'Post', kind: 'normal', order: 5, enabled: true },
+  ]
+  const t = new Date().toISOString()
+  const prompts = [
+    makeSeedEntry(
+      groupIds.pre,
+      0,
+      {
+        id: 'seed-group-roster',
+        title: 'Group roster',
+        description:
+          '群聊名册 · 列出在场角色；mute 成员见 {{groupNotMuted}}。',
+        content:
+          'This conversation is a group scene. Participants (binding order): {{group}}.\nActive speakers (not muted): {{groupNotMuted}}.\nOnly write dialogue and actions for the character you are currently playing.',
+        tags: ['group-chat', 'roster'],
+        createdAt: '2026-07-03T08:00:00.000Z',
+      },
+      { enabled: false },
+    ),
+    makeSeedEntry(
+      groupIds.pre,
+      1,
+      {
+        id: 'seed-group-speaker',
+        title: 'Current speaker focus',
+        description:
+          '当前发言者 · {{char}} 为本段视角；{{notChar}} 为其余绑定角色。',
+        content:
+          'You are {{char}} for this reply. The other bound characters in this scene are: {{notChar}}.\nStay in {{char}}\'s voice. Do not speak lines or internal monologue for {{notChar}} unless the user explicitly asks you to.',
+        tags: ['group-chat', 'speaker'],
+        createdAt: '2026-07-03T08:00:00.000Z',
+      },
+      { enabled: false },
+    ),
+    makeSeedEntry(
+      groupIds.post,
+      0,
+      {
+        id: 'seed-group-single-fallback',
+        title: 'Single-character fallback line',
+        description:
+          '非群聊时保留 {{charIfNotGroup}} 一行；群聊 enabled 时该宏为空。',
+        content:
+          'Primary character label (empty in group mode): {{charIfNotGroup}}',
+        tags: ['group-chat', 'macro'],
+        createdAt: '2026-07-03T08:00:00.000Z',
+      },
+      { enabled: false },
+    ),
+    ...buildBindingSlotPrompts(groupIds),
+  ]
+  return {
+    id: GROUP_CHAT_PRESET_ID,
+    name: 'Group chat',
+    groups,
+    prompts,
     createdAt: t,
     updatedAt: t,
   }
@@ -153,36 +290,7 @@ export function buildDefaultPromptPreset(): Record<string, unknown> {
       tags: ['worldbuilding', 'structured'],
       createdAt: '2025-02-09T08:00:00.000Z',
     }),
-    ...DEFAULT_CHARACTER_SYSTEM_SLOTS.map((slot, i) =>
-      makeBindingSlotEntry(
-        GROUP.character,
-        slot,
-        i,
-        `binding-slot-${slot.replace(/^bound/, '')}`,
-      ),
-    ),
-    ...DEFAULT_WORLD_SYSTEM_SLOTS.map((slot, i) =>
-      makeBindingSlotEntry(
-        GROUP.world,
-        slot,
-        i,
-        `binding-slot-${slot.replace(/^bound/, '')}`,
-      ),
-    ),
-    ...DEFAULT_HISTORY_SYSTEM_SLOTS.map((slot, i) =>
-      makeBindingSlotEntry(
-        GROUP.history,
-        slot,
-        i,
-        `binding-slot-${slot.replace(/^bound/, '')}`,
-      ),
-    ),
-    makeBindingSlotEntry(
-      GROUP.userInput,
-      'boundUserInput',
-      0,
-      'binding-slot-user-input',
-    ),
+    ...buildBindingSlotPrompts(GROUP),
   ]
   return {
     id: DEFAULT_PROMPT_PRESET_ID,
@@ -199,10 +307,15 @@ export function isPromptsSeedPut(body: {
   presets: unknown[]
 }): boolean {
   if (body.activePresetId !== DEFAULT_PROMPT_PRESET_ID) return false
-  if (body.presets.length !== 1) return false
-  const p = body.presets[0]
-  if (!p || typeof p !== 'object' || Array.isArray(p)) return false
-  return (p as { id?: string }).id === DEFAULT_PROMPT_PRESET_ID
+  if (body.presets.length !== SEED_PRESET_IDS.length) return false
+  const ids = body.presets.map((p) => {
+    if (!p || typeof p !== 'object' || Array.isArray(p)) return null
+    return (p as { id?: string }).id ?? null
+  })
+  if (ids.some((id) => !id)) return false
+  const sorted = [...ids].sort()
+  const expected = [...SEED_PRESET_IDS].sort()
+  return sorted.every((id, i) => id === expected[i])
 }
 
 /**
@@ -220,12 +333,13 @@ export async function seedDefaultPromptsForUser(userId: string): Promise<boolean
   if (existsSync(getPromptsIndexPath(userId))) return false
   if (await hasAnyPromptPresetFiles(userId)) return false
   const preset = buildDefaultPromptPreset()
+  const groupPreset = buildGroupChatPromptPreset()
   const savedAt = new Date().toISOString()
   const doc: PromptsDocument = {
     version: 3,
     savedAt,
     activePresetId: DEFAULT_PROMPT_PRESET_ID,
-    presets: [preset],
+    presets: [preset, groupPreset],
   }
   await writePromptsDocumentForUser(userId, doc)
   return true

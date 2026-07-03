@@ -36,7 +36,8 @@ import { readChunkContainingOrdinal } from './chunk-chain.js'
 import { resolveConversationTailOrdinal } from './regex-persist-patch.js'
 import {
   buildGroupMacroStrings,
-  groupChatNextAtInstruction,
+  buildGroupChatNotChar,
+  groupChatAssembleInstruction,
   normalizeGroupChatSettings,
   parseGroupContinueBody,
   resolveOutboundSpeakerCharacterId,
@@ -270,6 +271,34 @@ function normalizeTrigger(raw: unknown): PromptTrigger {
     return raw as PromptTrigger
   }
   return 'normal'
+}
+
+function macroHistoryFieldsWithGroupNotChar(params: {
+  indexingTurns: TurnRecord[]
+  historyTurns: TurnRecord[]
+  activeTurn?: TurnRecord | null
+  trimmedHistoryMessages?: TrimmedHistoryMessage[]
+  characterNames: string[]
+  groupChatEnabled: boolean
+  characterIds: string[]
+  boundCharacterNames: string[]
+  speakerCharacterId: string
+}) {
+  const {
+    groupChatEnabled,
+    characterIds,
+    boundCharacterNames,
+    speakerCharacterId,
+    ...historyParams
+  } = params
+  const fields = buildMacroHistoryFields(historyParams)
+  fields.notChar = buildGroupChatNotChar({
+    groupChatEnabled,
+    characterIds,
+    characterNames: boundCharacterNames,
+    speakerCharacterId,
+  })
+  return fields
 }
 
 export interface BuildConversationMessagesParams {
@@ -507,18 +536,26 @@ export async function buildConversationOutboundMessages(
   )
 
   const charNameList = macroCharNameList
+  const boundCharacterNames = charIds.map((id, i) => {
+    const n = characters[i]?.name?.trim()
+    return n || id
+  })
 
   const groupMacroStrings = buildGroupMacroStrings(
     charIds,
-    charNameList,
+    boundCharacterNames,
     groupChat,
   )
 
-  const historyFields = buildMacroHistoryFields({
+  const historyFields = macroHistoryFieldsWithGroupNotChar({
     indexingTurns,
     historyTurns: memoryPipeline.recentTurns,
     activeTurn,
     characterNames: charNameList,
+    groupChatEnabled: Boolean(groupChat.enabled),
+    characterIds: charIds,
+    boundCharacterNames,
+    speakerCharacterId,
   })
 
   const [macroLocalVars, macroGlobalVars] = await Promise.all([
@@ -547,19 +584,20 @@ export async function buildConversationOutboundMessages(
     macroGlobalVars,
     group: groupMacroStrings.group,
     groupNotMuted: groupMacroStrings.groupNotMuted,
+    groupChatEnabled: Boolean(groupChat.enabled),
   })
 
   const authorsNote = authorsNoteForInjection(idx.authorsNote)
-  const nextAtInstruction = groupChatNextAtInstruction(groupChat)
+  const groupChatInstruction = groupChatAssembleInstruction(groupChat)
   const effectiveAuthorsNote =
-    nextAtInstruction && authorsNote
+    groupChatInstruction && authorsNote
       ? {
           ...authorsNote,
-          content: `${authorsNote.content}\n\n${nextAtInstruction}`,
+          content: `${authorsNote.content}\n\n${groupChatInstruction}`,
         }
-      : nextAtInstruction
+      : groupChatInstruction
         ? {
-            content: nextAtInstruction,
+            content: groupChatInstruction,
             injectionDepth: 4,
             role: 'system' as const,
           }
@@ -709,12 +747,16 @@ export async function buildConversationOutboundMessages(
 
   macroContext = patchPromptMacroHistoryFields(
     macroContext,
-    buildMacroHistoryFields({
+    macroHistoryFieldsWithGroupNotChar({
       indexingTurns,
       historyTurns: memoryPipeline.recentTurns,
       activeTurn,
       trimmedHistoryMessages: trimmedHistoryForMacros(trimState.historyMessages),
       characterNames: charNameList,
+      groupChatEnabled: Boolean(groupChat.enabled),
+      characterIds: charIds,
+      boundCharacterNames,
+      speakerCharacterId,
     }),
   )
   applyMacrosToMessages(messages, macroContext)

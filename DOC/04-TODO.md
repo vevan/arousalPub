@@ -16,7 +16,7 @@
   - [x] **G2 随机 + 衰减** — `groupChat` settings、权重/mute、顶栏 bot 列表；`autoContinue`；`{{group}}` / `{{groupNotMuted}}`（**过渡**：`mode: weighted` + 全局衰减 + 每 bot 1 segment，见 `DOC/35` §3.4）
   - [x] **G3 选人模型** — `speakerMode: sequential \| dice \| next@` 三选一；`/@` L0 覆盖；per-bot `speakQuota` + 掷骰竞标（§2.6）；`maxSegmentsPerTurn`；`groupChatTurnState` 落盘（2026-07-03）
   - [x] **G4 LLM 接续** — `speakerMode=next@` 全量：Continue 改选 UI、audit 掷骰表；hint 失败手动；assemble `[NEXT@]` 说明注入（2026-07-03）
-  - [ ] **G5 打磨** — 群聊 assemble 按模式注入说明、预设模板、`{{notChar}}` 群聊语义
+  - [x] **G5 打磨** — 群聊 assemble 按模式注入说明、`{{notChar}}` 群聊语义、`{{charIfNotGroup}}`、Group chat 预设种子
 
 ## P1
 

@@ -24,17 +24,7 @@ import {
 import {
   type GroupChatResolveParams,
   type ResolveNextSpeakerResult,
-  GROUP_CHAT_NEXT_AT_INSTRUCTION,
 } from './types.js'
-
-/** 仅 speakerMode=next@ 且 enabled 时注入 assemble */
-export function groupChatNextAtInstruction(
-  settings: GroupChatSettings,
-): string | null {
-  const groupChat = normalizeGroupChatSettings(settings)
-  if (!groupChat.enabled || groupChat.speakerMode !== 'next@') return null
-  return GROUP_CHAT_NEXT_AT_INSTRUCTION
-}
 
 export function resolveNextSpeakerForTurn(params: {
   turn: TurnRecord

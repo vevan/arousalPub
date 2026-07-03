@@ -42,6 +42,8 @@ export interface PromptMacroContext {
   group?: string
   /** ST 群聊：未 mute 的角色名列表 */
   groupNotMuted?: string
+  /** 群聊 enabled：影响 {{charIfNotGroup}} 等宏 */
+  groupChatEnabled?: boolean
   /** ST idleDuration 参照的上一条用户消息 createdAt */
   idleReferenceUserAt?: string
   /** 已启用插件 id（小写比较 hasExtension） */

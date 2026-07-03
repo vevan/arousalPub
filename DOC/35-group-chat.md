@@ -1,6 +1,6 @@
 # 群聊（多角色发言轮次）— 设计定案
 
-> **状态**：定案 · **G0–G4 已落地**（2026-07-03）；**G5** 待做（§7）  
+> **状态**：定案 · **G0–G5 已落地**（2026-07-03）  
 > **关联**：`DOC/03` §6.8（turn/chunk · 群聊落盘）、`DOC/04` **P0**、`DOC/14` / `DOC/26`（ST 群聊宏）、Composer Slash（`submitComposer`）
 
 ---
@@ -12,7 +12,7 @@
 | 能力 | 状态 |
 |------|------|
 | 会话 `characterIds[]` 多卡绑定与 XML 注入 | ✅ |
-| 宏 `{{char}}` / `{{charN}}` / `{{notChar}}`（多卡名列表） | ✅ 部分 |
+| 宏 `{{char}}` / `{{charN}}` / `{{notChar}}`（群聊除当前 speaker） | ✅ |
 | 一轮 user 对应多个 **不同 speaker** 的 assistant | ✅ G0 |
 | `speakerMode` 三选一 + 掷骰竞标 + `groupChatTurnState` | ✅ G3 |
 | Continue 改选 / `[NEXT@]` / 群聊 audit Tab | ✅ G4 |
@@ -169,7 +169,15 @@ LLM 原始 assistant 文本
 | hint 无效 / 缺失（`next@` 模式、第 2 段起） | **用户手动指定**；**不得** fallback 至 sequential 或 dice |
 | 无标记（`next@` 模式、第 2 段起） | 同「hint 无效」 |
 
-群聊 assemble 注入 `[NEXT@]` 说明：**仅 `speakerMode=next@` 且 `enabled`** 时注入：
+群聊 assemble 按 `speakerMode` 注入说明（**`enabled` 时**；见 `groupChatAssembleInstruction`）：
+
+| `speakerMode` | 注入要点 |
+|---------------|----------|
+| `sequential` | 按绑定顺序接龙、不连说、额度限制 |
+| `dice` | 掷骰选人、非每人每轮必发言 |
+| `next@` | `[NEXT@角色名]` 接续语法（示例） |
+
+`next@` 示例正文：
 
 ```text
 若需其他角色接下一句，使用 [NEXT@角色名]，例如 [NEXT@Betty]。
@@ -379,9 +387,9 @@ charN        → 可选；characterIds[N-1]（Phase 2+）
 |----|----------|
 | `{{group}}` | 绑定卡名列表（`characterIds` 顺序） |
 | `{{groupNotMuted}}` | 减去 `muted` |
-| `{{charIfNotGroup}}` | 非群聊 = `{{char}}`；群聊 ST 对齐规则待定 |
+| `{{charIfNotGroup}}` | 非群聊 = `{{char}}`；群聊 enabled 时为空 |
 | `{{char}}` / `{{charN}}` | 生成时 **当前 speaker** / 绑定序 |
-| `{{notChar}}` | 除 **当前 speaker** 外（优于现「除第一张卡」） |
+| `{{notChar}}` | 群聊：除 **当前 speaker** 外；非群聊：除首绑卡外 |
 
 详见 `DOC/26`；实现排在 **G0 模型 + G1 `/@`** 之后。
 
@@ -404,7 +412,7 @@ charN        → 可选；characterIds[N-1]（Phase 2+）
 | **G2** | 权重、mute、**过渡**全局衰减 + `mode: weighted`；`autoContinue`；`{{groupNotMuted}}`；顶栏 bot 列表 |
 | **G3** | **`speakerMode` 三选一**（§3）；per-bot 额度 + 掷骰竞标（§2.6）；`maxSegmentsPerTurn`；废弃混合 fallback |
 | **G4** | **`speakerMode=next@` 全量**：hint 失败手动、首段掷骰；`confirmContinue` 改选；audit 掷骰表 + 群聊审计 Tab（本段/下段选人 · 2026-07-03） |
-| **G5** | 预设模板、群聊说明注入按模式分支、`{{notChar}}` 群聊语义完善 |
+| **G5** | 群聊说明注入按模式分支、`{{notChar}}` 群聊语义、`{{charIfNotGroup}}`、**Group chat** 预设种子（新用户） |
 
 **依赖：** G1 的 `/@` 与 **Composer Slash（P0）** 同批或略早（最小 `submitComposer` 路由即可）。
 
@@ -414,7 +422,8 @@ charN        → 可选；characterIds[N-1]（Phase 2+）
 |------|------|------|
 | **共享** | `shared/group-chat-settings.ts` | `normalizeGroupChatSettings`、`mergeGroupChatSettings`、`listEligibleCharacterIds`、`segmentSkipQuotaDeduction` 等；经 `scripts/sync-group-chat-settings-shared.mjs` 同步至 `server/src/shared/`、`web/src/shared/` |
 | **构建** | `scripts/sync-all-shared.mjs` | dev / build / test / typecheck 前统一同步 plot-summary、prompt-preset、portrait-media、group-chat-settings |
-| **服务端** | `server/src/group-chat/` | 选人/掷骰/落盘逻辑模块化：`types` · `segments` · `pick` · `audit` · `resolve` · `continue` · `outbound`；`server/src/group-chat-turn.ts` 为 barrel re-export |
+| **服务端** | `server/src/group-chat/` | 选人/掷骰/落盘逻辑模块化：`types` · `segments` · `pick` · `audit` · `resolve` · `continue` · `outbound` · `instructions`；`server/src/group-chat-turn.ts` 为 barrel re-export |
+| | `server/src/prompts-default-seed.ts` | 新用户种子：`preset-default` + **`preset-group-chat`**（条目默认 disabled，非 active） |
 | **前端** | `web/src/utils/group-chat-turn.ts` | Continue 改选 fallback、`mergeTurnGroupChatStateFromPersist` |
 | | `web/src/utils/regen-turn-segments.ts` | `patchRegenSegments`（非末段 regen 截断后续 segment，与服务端 `updateTurnSegmentInTailChunk` 对齐） |
 

@@ -109,6 +109,3 @@ export type GroupContinueValidation =
   | 'consecutive_speaker'
   | 'no_quota'
   | 'duplicate_speaker'
-
-export const GROUP_CHAT_NEXT_AT_INSTRUCTION =
-  '若需其他角色接下一句，使用 [NEXT@角色名]，例如 [NEXT@Betty]。\n每个角色每轮发言次数有限；助手消息中的裸 @ 不会生效。'

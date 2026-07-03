@@ -42,7 +42,13 @@ export type {
   ResolveNextSpeakerResult,
 } from './types.js'
 
-export { GROUP_CHAT_NEXT_AT_INSTRUCTION } from './types.js'
+export { GROUP_CHAT_NEXT_AT_INSTRUCTION } from './instructions.js'
+export {
+  GROUP_CHAT_DICE_INSTRUCTION,
+  GROUP_CHAT_SEQUENTIAL_INSTRUCTION,
+  groupChatAssembleInstruction,
+  groupChatNextAtInstruction,
+} from './instructions.js'
 
 export type { DiceBiddingResult } from './pick.js'
 
@@ -77,7 +83,6 @@ export {
 
 export {
   applyNextSpeakerStateToTurn,
-  groupChatNextAtInstruction,
   resolveFirstSegmentSpeaker,
   resolveNextSpeakerForTurn,
   validateExplicitFirstSegmentSpeaker,
@@ -89,6 +94,7 @@ export {
 } from './continue.js'
 
 export {
+  buildGroupChatNotChar,
   buildGroupMacroStrings,
   extractNextSpeakerHint,
   resolveDisplayNameToCharacterId,

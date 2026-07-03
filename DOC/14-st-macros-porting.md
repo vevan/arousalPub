@@ -102,7 +102,7 @@
 
 | ST 宏 / 能力 | 结论 | 原因 |
 |--------------|------|------|
-| `{{group}}` `{{groupNotMuted}}` `{{charIfNotGroup}}` | ❌ | 无 ST 群聊；仅有 `characterIds[]` 多卡注入 |
+| `{{group}}` `{{groupNotMuted}}` `{{charIfNotGroup}}` | ✅ | 群聊 enabled 时生效；见 [`DOC/35`](35-group-chat.md) §5 |
 | 全套 `{{instruct*}}` `{{chatSeparator}}` `{{chatStart}}` 等 | ❌ | 无 instruct 模式字符串层 |
 | `{{authorsNote}}` | ✅ | 会话 `index.json` `authorsNote`（已启用时正文） |
 | `{{defaultAuthorsNote}}` | ✅ | **`DOC/28`**：`user-preferences.defaultAuthorsNote`；新会话 seed |

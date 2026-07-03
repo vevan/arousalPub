@@ -44,6 +44,7 @@ import {
   resolveNotChar,
   resolveGroup,
   resolveGroupNotMuted,
+  resolveCharIfNotGroup,
   resolvePersona,
   resolvePrimaryField,
   resolveTimeDiff,
@@ -146,6 +147,7 @@ export function invokeCstMacro(
   if (name === 'notchar') return resolveNotChar(ctx)
   if (name === 'group') return resolveGroup(ctx)
   if (name === 'groupnotmuted') return resolveGroupNotMuted(ctx)
+  if (name === 'charifnotgroup') return resolveCharIfNotGroup(ctx)
   if (name === 'hasextension') return resolveHasExtension(ctx, args[0] ?? '')
 
   if (name === 'pick') {

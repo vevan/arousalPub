@@ -127,6 +127,33 @@ export function extractNextSpeakerHint(
   return { content, hintCharacterId }
 }
 
+/** G5：群聊时除当前 speaker 外；非群聊保持「除首绑卡」 */
+export function buildGroupChatNotChar(params: {
+  groupChatEnabled: boolean
+  characterIds: string[]
+  characterNames: string[]
+  speakerCharacterId: string
+}): string {
+  const pairs = params.characterIds
+    .map((id, i) => ({
+      id: id.trim(),
+      name: params.characterNames[i]?.trim() ?? '',
+    }))
+    .filter((p) => p.id && p.name)
+  if (pairs.length <= 1) return ''
+  if (!params.groupChatEnabled) {
+    return pairs
+      .slice(1)
+      .map((p) => p.name)
+      .join(', ')
+  }
+  const speakerId = params.speakerCharacterId.trim()
+  return pairs
+    .filter((p) => p.id !== speakerId)
+    .map((p) => p.name)
+    .join(', ')
+}
+
 export function buildGroupMacroStrings(
   characterIds: string[],
   characterNames: string[],

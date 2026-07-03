@@ -367,8 +367,8 @@ function groupChatContinuePersistExtras(params: {
   const base = nextSpeakerPersistExtras(params.resolved)
   if (!params.groupChat.enabled) return base
 
+  // resolved.turnState 含掷骰竞标等对 quota 的扣减（未必有 segment 记录）；勿优先 turn.groupChatTurnState
   const turnState =
-    params.turn.groupChatTurnState ??
     params.resolved.turnState ??
     getTurnGroupChatState(
       params.turn,

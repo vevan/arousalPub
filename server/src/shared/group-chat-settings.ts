@@ -264,3 +264,78 @@ export function listEligibleCharacterIds(params: {
     )
   })
 }
+
+export interface GroupChatSegmentSkipQuotaSource {
+  skipSpeakQuotaDeduction?: boolean
+  segmentPickAudit?: {
+    firstSegmentAllFailFallback?: boolean
+    dice?: { outcome?: string }
+  }
+}
+
+/** 前后端统一：本 segment 是否跳过 speakQuota 扣减 */
+export function segmentSkipQuotaDeduction(
+  meta?: GroupChatSegmentSkipQuotaSource | null,
+): boolean {
+  if (!meta) return false
+  if (meta.skipSpeakQuotaDeduction === true) return true
+  const audit = meta.segmentPickAudit
+  if (!audit) return false
+  if (audit.firstSegmentAllFailFallback === true) return true
+  return audit.dice?.outcome === 'allFailedFirstSegmentFallback'
+}
+
+export function mergeGroupChatSettings(
+  prev: GroupChatSettings | undefined,
+  patch: unknown,
+): GroupChatSettings {
+  const base = normalizeGroupChatSettings(prev)
+  if (patch === null) return defaultGroupChatSettings()
+  if (!patch || typeof patch !== 'object') return base
+  const o = patch as Record<string, unknown>
+  const next: GroupChatSettings = { ...base }
+  if (typeof o.enabled === 'boolean') next.enabled = o.enabled
+  if (typeof o.speakerMode === 'string') {
+    const m = o.speakerMode.trim().toLowerCase()
+    if (m === 'sequential' || m === 'dice' || m === 'next@') next.speakerMode = m
+  }
+  if (typeof o.mode === 'string') {
+    const m = o.mode.trim().toLowerCase()
+    if (m === 'weighted' || m === 'sequential') next.mode = m
+  }
+  if (Object.prototype.hasOwnProperty.call(o, 'maxSegmentsPerTurn')) {
+    next.maxSegmentsPerTurn = normalizePositiveInt(
+      o.maxSegmentsPerTurn,
+      base.maxSegmentsPerTurn ?? DEFAULT_MAX_SEGMENTS_PER_TURN,
+    )
+  }
+  if (Object.prototype.hasOwnProperty.call(o, 'defaultSpeakQuota')) {
+    next.defaultSpeakQuota = normalizePositiveInt(
+      o.defaultSpeakQuota,
+      base.defaultSpeakQuota ?? DEFAULT_SPEAK_QUOTA,
+    )
+  }
+  if (typeof o.autoContinue === 'boolean') next.autoContinue = o.autoContinue
+  if (typeof o.confirmContinue === 'boolean') {
+    next.confirmContinue = o.confirmContinue
+  }
+  if (Object.prototype.hasOwnProperty.call(o, 'decay')) {
+    next.decay = normalizeGroupChatDecaySettings({
+      ...base.decay,
+      ...(o.decay && typeof o.decay === 'object' && !Array.isArray(o.decay)
+        ? o.decay
+        : {}),
+    })
+  }
+  if (Object.prototype.hasOwnProperty.call(o, 'members')) {
+    const patchMembers = normalizeGroupChatMembers(o.members)
+    const mergedMembers: Record<string, GroupChatMemberSettings> = {
+      ...(base.members ?? {}),
+    }
+    for (const [id, patchMember] of Object.entries(patchMembers)) {
+      mergedMembers[id] = { ...mergedMembers[id], ...patchMember }
+    }
+    next.members = mergedMembers
+  }
+  return normalizeGroupChatSettings(next)
+}

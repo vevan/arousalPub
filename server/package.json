@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node ../scripts/sync-plot-summary-shared.mjs && node ../scripts/sync-prompt-preset-shared.mjs && node ../scripts/sync-portrait-media-shared.mjs && node ../scripts/sync-group-chat-settings-shared.mjs && tsx watch src/index.ts",
-    "build": "node ../scripts/sync-plot-summary-shared.mjs && node ../scripts/sync-prompt-preset-shared.mjs && node ../scripts/sync-portrait-media-shared.mjs && node ../scripts/sync-group-chat-settings-shared.mjs && tsc && node --input-type=module -e \"import {mkdirSync,copyFileSync} from 'node:fs'; mkdirSync('dist/admin',{recursive:true}); copyFileSync('src/admin/index.html','dist/admin/index.html')\"",
+    "dev": "node ../scripts/sync-all-shared.mjs && tsx watch src/index.ts",
+    "build": "node ../scripts/sync-all-shared.mjs && tsc && node --input-type=module -e \"import {mkdirSync,copyFileSync} from 'node:fs'; mkdirSync('dist/admin',{recursive:true}); copyFileSync('src/admin/index.html','dist/admin/index.html')\"",
     "start": "node dist/index.js",
-    "test": "node ../scripts/sync-plot-summary-shared.mjs && node ../scripts/sync-prompt-preset-shared.mjs && node ../scripts/sync-portrait-media-shared.mjs && node ../scripts/sync-group-chat-settings-shared.mjs && node --import tsx --test test/**/*.test.ts ../web/test/**/*.test.ts ../plugins/trace-keeper/test/**/*.test.ts ../plugins/guidance-generate/test/**/*.test.ts ../plugins/plot-summary/test/**/*.test.ts"
+    "test": "node ../scripts/sync-all-shared.mjs && node --import tsx --test test/**/*.test.ts ../web/test/**/*.test.ts ../plugins/trace-keeper/test/**/*.test.ts ../plugins/guidance-generate/test/**/*.test.ts ../plugins/plot-summary/test/**/*.test.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

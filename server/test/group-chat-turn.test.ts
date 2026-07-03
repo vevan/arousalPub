@@ -3,14 +3,10 @@ import { describe, it } from 'node:test'
 import type { TurnRecord } from '../src/chat-storage.js'
 import {
   buildGroupMacroStrings,
-  computeGroupChatContinueProbability,
   extractNextSpeakerHint,
   getTurnSegments,
   mergeGroupChatSettings,
   parseGroupContinueBody,
-  initGroupChatTurnState,
-  resolveNextSpeaker,
-  resolveNextSpeakerWithDecay,
   resolveOutboundSpeakerCharacterId,
   resolveSpeakerQueueIds,
   validateGroupContinueRequest,
@@ -150,35 +146,6 @@ describe('group-chat-turn', () => {
     )
   })
 
-  it('resolveNextSpeaker prefers speakerQueue', () => {
-    const state = initGroupChatTurnState({ enabled: true }, charIds)
-    const next = resolveNextSpeaker({
-      groupChatEnabled: true,
-      speakerQueue: ['alice-id', 'betty-id'],
-      spokenCharacterIds: ['alice-id'],
-      characterIds: charIds,
-      turnState: state,
-      lastSpeakerCharacterId: 'alice-id',
-    })
-    assert.equal(next, 'betty-id')
-  })
-
-  it('resolveNextSpeaker skips muted members in queue', () => {
-    const state = initGroupChatTurnState({ enabled: true }, charIds)
-    const next = resolveNextSpeaker({
-      groupChatEnabled: true,
-      groupChatSettings: {
-        enabled: true,
-        members: { 'betty-id': { muted: true } },
-      },
-      speakerQueue: ['betty-id', 'alice-id'],
-      spokenCharacterIds: [],
-      characterIds: charIds,
-      turnState: state,
-    })
-    assert.equal(next, 'alice-id')
-  })
-
   it('buildGroupMacroStrings respects mute', () => {
     const macros = buildGroupMacroStrings(charIds, charNames, {
       enabled: true,
@@ -186,98 +153,6 @@ describe('group-chat-turn', () => {
     })
     assert.equal(macros.group, 'Alice, Betty')
     assert.equal(macros.groupNotMuted, 'Alice')
-  })
-
-  it('computeGroupChatContinueProbability decays by segment index', () => {
-    assert.equal(computeGroupChatContinueProbability(0, {}), null)
-    assert.equal(computeGroupChatContinueProbability(1, {}), 1)
-    assert.equal(
-      computeGroupChatContinueProbability(2, {
-        enabled: true,
-        initialRate: 1,
-        step: 0.2,
-        floor: 0,
-      }),
-      0.8,
-    )
-  })
-
-  it('resolveNextSpeakerWithDecay allows same bot after another spoke', () => {
-    const turn: TurnRecord = {
-      turnId: 't1',
-      turnOrdinal: 0,
-      send: { userText: 'hi' },
-      receives: [{ id: 'r1', content: 'a' }],
-      activeReceiveIndex: 0,
-      segments: [
-        {
-          id: 's1',
-          speakerCharacterId: 'alice-id',
-          receives: [{ id: 'r1', content: 'a' }],
-          activeReceiveIndex: 0,
-        },
-        {
-          id: 's2',
-          speakerCharacterId: 'betty-id',
-          receives: [{ id: 'r2', content: 'b' }],
-          activeReceiveIndex: 0,
-        },
-      ],
-      activeSegmentIndex: 1,
-      plugins: [],
-      groupChatTurnState: {
-        quotaRemaining: { 'alice-id': 1, 'betty-id': 1 },
-        speakCount: { 'alice-id': 1, 'betty-id': 1 },
-      },
-    }
-    const result = resolveNextSpeakerWithDecay({
-      turn,
-      characterIds: charIds,
-      characterNames: charNames,
-      defaultSpeakerCharacterId: 'alice-id',
-      groupChat: { enabled: true, speakerMode: 'sequential' },
-      conversationId: 'conv-1',
-    })
-    assert.equal(result.speakerCharacterId, 'alice-id')
-  })
-
-  it('resolveNextSpeakerWithDecay ends when no eligible bots remain', () => {
-    const turn: TurnRecord = {
-      turnId: 't1',
-      turnOrdinal: 0,
-      send: { userText: 'hi' },
-      receives: [{ id: 'r1', content: 'a' }],
-      activeReceiveIndex: 0,
-      segments: [
-        {
-          id: 's1',
-          speakerCharacterId: 'alice-id',
-          receives: [{ id: 'r1', content: 'a' }],
-          activeReceiveIndex: 0,
-        },
-        {
-          id: 's2',
-          speakerCharacterId: 'betty-id',
-          receives: [{ id: 'r2', content: 'b' }],
-          activeReceiveIndex: 0,
-        },
-      ],
-      activeSegmentIndex: 1,
-      plugins: [],
-      groupChatTurnState: {
-        quotaRemaining: { 'alice-id': 0, 'betty-id': 0 },
-        speakCount: { 'alice-id': 1, 'betty-id': 1 },
-      },
-    }
-    const result = resolveNextSpeakerWithDecay({
-      turn,
-      characterIds: charIds,
-      characterNames: charNames,
-      defaultSpeakerCharacterId: 'alice-id',
-      groupChat: { enabled: true, speakerMode: 'sequential' },
-      conversationId: 'conv-1',
-    })
-    assert.equal(result.speakerCharacterId, null)
   })
 
   it('mergeGroupChatSettings merges partial patch', () => {

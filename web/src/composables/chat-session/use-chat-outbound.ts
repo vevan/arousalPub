@@ -19,6 +19,7 @@ import {
   getActiveSegmentIndex,
   getTurnSegments,
 } from '@/utils/group-chat-turn'
+import { patchRegenSegments } from '@/utils/regen-turn-segments'
 import { buildReceiveItem, collectUsedReceiveIds, nextTurnOrdinal0 } from './turn-helpers.js'
 import type { createChatCompletionRunner } from './completion.js'
 import type { createReplyEventHub } from './reply-events.js'
@@ -555,19 +556,9 @@ export function useChatOutbound(opts: {
     if (!cur) return false
     const finalUser =
       resolveFinalUserTextAfterPersist(persist) ?? userTextFallback
-    const segmentsRaw = [...getTurnSegments(cur)]
-    const targetSeg = segmentsRaw[segIdx]
-    if (!targetSeg) return false
-    segmentsRaw[segIdx] = {
-      ...targetSeg,
-      receives: [...targetSeg.receives, receive],
-      activeReceiveIndex: targetSeg.receives.length,
-    }
-    // 与服务端 updateTurnSegmentInTailChunk 一致：非末段 regen 截断后续 segment
-    const segments =
-      segmentsRaw.length > segIdx + 1
-        ? segmentsRaw.slice(0, segIdx + 1)
-        : segmentsRaw
+    const source = [...getTurnSegments(cur)]
+    if (!source[segIdx]) return false
+    const segments = patchRegenSegments(source, segIdx, receive)
     const activeSeg =
       segments[persist?.activeSegmentIndex ?? segIdx] ?? segments[segIdx]!
     const next: ChatTurnItem = mergeTurnGroupChatStateFromPersist(

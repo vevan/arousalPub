@@ -311,6 +311,48 @@ describe('group-chat-turn G3', () => {
     assert.equal(rebuilt.speakCount['alice-id'], 1)
   })
 
+  it('regen truncate simulates updateTurnSegmentInTailChunk slice + rebuild', () => {
+    const turn: TurnRecord = {
+      turnId: 't1',
+      turnOrdinal: 0,
+      send: { userText: 'hi' },
+      receives: [{ id: 'r1', content: 'a' }],
+      activeReceiveIndex: 0,
+      segments: [
+        {
+          id: 's1',
+          speakerCharacterId: 'alice-id',
+          receives: [{ id: 'r1', content: 'a' }],
+          activeReceiveIndex: 0,
+        },
+        {
+          id: 's2',
+          speakerCharacterId: 'betty-id',
+          receives: [{ id: 'r2', content: 'b' }],
+          activeReceiveIndex: 0,
+        },
+      ],
+      activeSegmentIndex: 1,
+      plugins: [],
+      groupChatTurnState: {
+        quotaRemaining: { 'alice-id': 0, 'betty-id': 0, 'charlie-id': 2 },
+        speakCount: { 'alice-id': 2, 'betty-id': 2, 'charlie-id': 0 },
+      },
+    }
+    turn.segments = turn.segments.slice(0, 1)
+    turn.activeSegmentIndex = 0
+    turn.groupChatTurnState = rebuildGroupChatTurnStateFromTurn(
+      turn,
+      groupChat,
+      charIds,
+      'alice-id',
+    )
+    assert.equal(turn.segments.length, 1)
+    assert.equal(turn.groupChatTurnState.quotaRemaining['alice-id'], 1)
+    assert.equal(turn.groupChatTurnState.quotaRemaining['betty-id'], 2)
+    assert.equal(turn.groupChatTurnState.speakCount['betty-id'], 0)
+  })
+
   it('validateExplicitFirstSegmentSpeaker rejects ineligible speaker', () => {
     const mutedChat = {
       ...groupChat,

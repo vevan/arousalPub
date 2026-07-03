@@ -42,12 +42,7 @@ function runNodeScript(relPath, { label }) {
 
 async function main() {
   console.log('[build] sync shared sources')
-  await runNodeScript('sync-plot-summary-shared.mjs', { label: 'sync-plot-summary' })
-  await runNodeScript('sync-prompt-preset-shared.mjs', { label: 'sync-prompt-preset' })
-  await runNodeScript('sync-portrait-media-shared.mjs', { label: 'sync-portrait' })
-  await runNodeScript('sync-group-chat-settings-shared.mjs', {
-    label: 'sync-group-chat-settings',
-  })
+  await runNodeScript('sync-all-shared.mjs', { label: 'sync-all-shared' })
 
   console.log('[build] plugins')
   await runNodeScript('build-plugins.mjs', { label: 'build:plugins' })

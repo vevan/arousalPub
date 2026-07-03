@@ -20,9 +20,11 @@ export {
   isGroupChatMemberMuted,
   listEligibleCharacterIds,
   memberSettingsFor,
+  mergeGroupChatSettings,
   normalizeGroupChatDecaySettings,
   normalizeGroupChatMembers,
   normalizeGroupChatSettings,
   recordSegmentSpeaker,
   resolveDiceSkipReason,
+  segmentSkipQuotaDeduction,
 } from '../shared/group-chat-settings'

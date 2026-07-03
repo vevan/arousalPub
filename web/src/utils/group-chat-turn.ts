@@ -5,6 +5,7 @@ import {
   listEligibleCharacterIds,
   normalizeGroupChatSettings,
   recordSegmentSpeaker,
+  segmentSkipQuotaDeduction,
   type GroupChatSettings,
   type GroupChatTurnState,
 } from './group-chat-settings'
@@ -149,7 +150,7 @@ function getTurnGroupChatStateFromItem(
     const id = seg.speakerCharacterId.trim()
     if (id) {
       state = recordSegmentSpeaker(state, id, {
-        skipQuotaDeduction: seg.meta?.skipSpeakQuotaDeduction === true,
+        skipQuotaDeduction: segmentSkipQuotaDeduction(seg.meta),
       })
     }
   }

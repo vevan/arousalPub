@@ -45,7 +45,7 @@ export function useTurnPrompt(opts: {
     await copyTurnPromptText(turnPromptRawJson.value, turnPromptRawCopied)
   }
 
-  async function openTurnPromptSnapshot(turn: ChatTurnItem) {
+  async function openTurnPromptSnapshot(turn: ChatTurnItem, segmentIndex?: number) {
     turnPromptDialogOpen.value = true
     turnPromptLoading.value = true
     turnPromptError.value = ''
@@ -55,6 +55,14 @@ export function useTurnPrompt(opts: {
     turnPromptCopied.value = false
     turnPromptRawCopied.value = false
     const id = opts.getConversationId()
+    const segIdx =
+      typeof segmentIndex === 'number' &&
+      Number.isInteger(segmentIndex) &&
+      segmentIndex >= 0
+        ? segmentIndex
+        : typeof turn.activeSegmentIndex === 'number'
+          ? turn.activeSegmentIndex
+          : 0
     try {
       const res = await fetch(`/api/chat/conversations/${id}/chat-audit`)
       if (!res.ok) {
@@ -63,8 +71,15 @@ export function useTurnPrompt(opts: {
       }
       const data = (await res.json()) as { entries?: ChatAuditSnapshotEntry[] }
       const entries = Array.isArray(data.entries) ? data.entries : []
-      const match = entries.filter((e) => e.turnOrdinal === turn.turnOrdinal)
-      const entry = match.length ? match[match.length - 1] : null
+      const entriesForTurn = entries.filter((e) => e.turnOrdinal === turn.turnOrdinal)
+      const exact = entriesForTurn.filter(
+        (e) => (typeof e.segmentIndex === 'number' ? e.segmentIndex : 0) === segIdx,
+      )
+      let entry = exact.length ? exact[exact.length - 1] : null
+      if (!entry && segIdx === 0) {
+        const legacy = entriesForTurn.filter((e) => e.segmentIndex === undefined)
+        if (legacy.length) entry = legacy[legacy.length - 1]
+      }
       if (!entry) {
         turnPromptIsEmpty.value = true
         return

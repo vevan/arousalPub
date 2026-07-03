@@ -39,10 +39,36 @@ const { userInput, errorText, assemblePreviewLoading, writeChatPromptSnapshot } 
 
 const { canSend, canPreviewAssemble, isGenerating } = toRefs(props.session)
 
-const { send, abortCurrentReply, openAssemblePreview, continueGroupChat, dismissGroupContinue } =
+const { send, abortCurrentReply, openAssemblePreview, continueGroupChat, dismissGroupContinue, setPendingGroupContinueSpeaker } =
   props.session
 
 const pendingGroupContinue = computed(() => props.session.pendingGroupContinue)
+
+const speakerPickerOptions = computed(() => {
+  const pending = pendingGroupContinue.value
+  if (!pending?.allowSpeakerChange) return []
+  const ids = pending.eligibleSpeakerCharacterIds ?? []
+  const charIds = props.session.conversationCharacterIds ?? []
+  const names = props.session.conversationCharacterDisplayNames ?? []
+  return ids.map((id) => ({
+    value: id,
+    title: characterNameById(id, charIds, names),
+  }))
+})
+
+const pickedSpeakerId = computed({
+  get: () => pendingGroupContinue.value?.nextSpeakerCharacterId ?? '',
+  set: (value: string) => setPendingGroupContinueSpeaker(value),
+})
+
+const canContinueGroupChat = computed(() => {
+  const pending = pendingGroupContinue.value
+  if (!pending) return false
+  if (pending.manualPick || pending.allowSpeakerChange) {
+    return Boolean(pending.nextSpeakerCharacterId.trim())
+  }
+  return true
+})
 
 const continueSpeakerLabel = computed(() => {
   const pending = pendingGroupContinue.value
@@ -132,14 +158,32 @@ function onSlashHover(index: number) {
         v-if="pendingGroupContinue"
         class="group-continue-bar mb-3 d-flex align-center ga-2 flex-wrap"
       >
-        <span class="text-body-2">
+        <span v-if="pendingGroupContinue.manualPick" class="text-body-2">
+          {{ $t('chat.groupChat.manualPickPrompt') }}
+        </span>
+        <span v-else-if="pendingGroupContinue.allowSpeakerChange" class="text-body-2">
+          {{ $t('chat.groupChat.confirmContinuePrompt', { name: continueSpeakerLabel }) }}
+        </span>
+        <span v-else class="text-body-2">
           {{ $t('chat.groupChat.continuePrompt', { name: continueSpeakerLabel }) }}
         </span>
+        <v-select
+          v-if="pendingGroupContinue.allowSpeakerChange && speakerPickerOptions.length > 0"
+          v-model="pickedSpeakerId"
+          :items="speakerPickerOptions"
+          item-title="title"
+          item-value="value"
+          density="compact"
+          hide-details
+          :disabled="isGenerating"
+          class="group-continue-bar__speaker-select"
+          :label="$t('chat.groupChat.manualPickSelect')"
+        />
         <v-btn
           size="small"
           color="primary"
           variant="flat"
-          :disabled="isGenerating"
+          :disabled="isGenerating || !canContinueGroupChat"
           @click="continueGroupChat()"
         >
           {{ $t('chat.groupChat.continue') }}
@@ -247,6 +291,11 @@ function onSlashHover(index: number) {
 </template>
 
 <style scoped>
+.group-continue-bar__speaker-select {
+  min-width: 10rem;
+  max-width: 16rem;
+}
+
 .composer--slash-anchor {
   anchor-name: --composer-slash-anchor;
 }

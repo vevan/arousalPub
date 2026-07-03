@@ -293,6 +293,7 @@ export function useChatSession(props: ChatSessionProps) {
     abortCurrentReply,
     continueGroupChat,
     dismissGroupContinue,
+    setPendingGroupContinueSpeaker,
     pendingGroupContinue,
     groupChatNoticeOpen,
     groupChatNoticeMessage,
@@ -459,6 +460,11 @@ export function useChatSession(props: ChatSessionProps) {
     },
   )
 
+  const groupChatEnabled = computed(() => props.groupChatEnabled === true)
+  const groupChatSettings = computed(() =>
+    normalizeGroupChatSettings(props.groupChatSettings),
+  )
+
   return reactive({
     chatScrollEl,
     registerChatScroller,
@@ -522,9 +528,12 @@ export function useChatSession(props: ChatSessionProps) {
     regenerateAssistant,
     continueGroupChat,
     dismissGroupContinue,
+    setPendingGroupContinueSpeaker,
     pendingGroupContinue,
     groupChatNoticeOpen,
     groupChatNoticeMessage,
+    groupChatEnabled,
+    groupChatSettings,
     isEditingAssistantSegment: turnEditDelete.isEditingAssistantSegment,
     openEditAssistant: turnEditDelete.openEditAssistant,
     openEditUser: turnEditDelete.openEditUser,

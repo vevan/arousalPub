@@ -66,6 +66,23 @@ function memberMuted(id: string): boolean {
   return draftSettings.value.members?.[id]?.muted === true
 }
 
+function memberSpeakQuota(id: string): number {
+  return (
+    draftSettings.value.members?.[id]?.speakQuota ??
+    draftSettings.value.defaultSpeakQuota ??
+    2
+  )
+}
+
+function setMemberSpeakQuota(id: string, speakQuota: number) {
+  const members = { ...(draftSettings.value.members ?? {}) }
+  members[id] = {
+    ...members[id],
+    speakQuota: Math.max(0, Math.round(speakQuota)),
+  }
+  draftSettings.value = { ...draftSettings.value, members }
+}
+
 function setMemberWeight(id: string, weight: number) {
   const members = { ...(draftSettings.value.members ?? {}) }
   members[id] = { ...members[id], weight: Math.max(0, weight) }
@@ -184,19 +201,47 @@ async function save() {
           {{ $t('chat.groupChat.settings.mode') }}
         </div>
         <v-btn-toggle
-          v-model="draftSettings.mode"
+          v-model="draftSettings.speakerMode"
           :disabled="!draftSettings.enabled"
           mandatory
           density="compact"
           class="mb-4"
         >
-          <v-btn value="weighted" size="small">
-            {{ $t('chat.groupChat.settings.modeWeighted') }}
-          </v-btn>
           <v-btn value="sequential" size="small">
             {{ $t('chat.groupChat.settings.modeSequential') }}
           </v-btn>
+          <v-btn value="dice" size="small">
+            {{ $t('chat.groupChat.settings.modeDice') }}
+          </v-btn>
+          <v-btn value="next@" size="small">
+            {{ $t('chat.groupChat.settings.modeNextAt') }}
+          </v-btn>
         </v-btn-toggle>
+
+        <div class="d-flex flex-wrap gap-3 mb-4">
+          <v-text-field
+            v-model.number="draftSettings.maxSegmentsPerTurn"
+            :disabled="!draftSettings.enabled"
+            type="number"
+            min="1"
+            step="1"
+            density="compact"
+            hide-details="auto"
+            :label="$t('chat.groupChat.settings.maxSegmentsPerTurn')"
+            style="max-width: 8rem"
+          />
+          <v-text-field
+            v-model.number="draftSettings.defaultSpeakQuota"
+            :disabled="!draftSettings.enabled"
+            type="number"
+            min="1"
+            step="1"
+            density="compact"
+            hide-details="auto"
+            :label="$t('chat.groupChat.settings.defaultSpeakQuota')"
+            style="max-width: 8rem"
+          />
+        </div>
 
         <div class="text-subtitle-2 mb-2">
           {{ $t('chat.groupChat.settings.decay') }}
@@ -283,6 +328,18 @@ async function save() {
             :label="$t('chat.groupChat.settings.weight')"
             style="max-width: 5.5rem"
             @update:model-value="(v) => setMemberWeight(id, Number(v))"
+          />
+          <v-text-field
+            :model-value="memberSpeakQuota(id)"
+            :disabled="!draftSettings.enabled"
+            type="number"
+            min="0"
+            step="1"
+            density="compact"
+            hide-details="auto"
+            :label="$t('chat.groupChat.settings.speakQuota')"
+            style="max-width: 5.5rem"
+            @update:model-value="(v) => setMemberSpeakQuota(id, Number(v))"
           />
           <v-switch
             :model-value="memberMuted(id)"

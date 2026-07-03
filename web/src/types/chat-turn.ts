@@ -82,6 +82,8 @@ export interface ChatPersistPayload {
   nextSpeakerCharacterId?: string | null
   /** 衰减掷骰失败，本轮群聊接续结束 */
   groupChatDecayStopped?: boolean
+  /** next@ 模式 hint 无效，需手动选下一位 */
+  groupChatNeedsManualContinue?: boolean
 }
 
 export interface RetroPersistTurnPayload {
@@ -129,6 +131,9 @@ export interface ChatPromptSnapshotEntry {
   chunkName: string
   turnId: string
   turnOrdinal: number
+  /** 群聊同 turn 多 segment 时区分；缺省 0（兼容旧条目） */
+  segmentIndex?: number
+  receiveId?: string
   messages: { role: string; content: string }[]
 }
 
@@ -234,9 +239,50 @@ export interface PerformanceAudit {
 
 export interface ChatAuditSnapshotEntry extends ChatPromptSnapshotEntry {
   assembly?: AssemblyAudit
+  groupChat?: GroupChatAuditSnapshot
   calls?: CallAuditEntry[]
   plugins?: Record<string, unknown>[]
   performance?: PerformanceAudit
+}
+
+export interface GroupChatDiceBidAuditRow {
+  characterId: string
+  eligible?: boolean
+  skipReason?: 'consecutive' | 'quota' | 'muted'
+  quotaRemaining?: number
+  speakCount: number
+  probability: number
+  weight: number
+  roll?: number
+  passed?: boolean
+  score?: number
+}
+
+export interface GroupChatDiceAudit {
+  segmentCount: number
+  bids: GroupChatDiceBidAuditRow[]
+  winnerCharacterId: string | null
+  outcome: 'winner' | 'allFailedStop' | 'allFailedFirstSegmentFallback' | 'noEligible'
+}
+
+export interface GroupChatSpeakerAudit {
+  speakerMode?: 'sequential' | 'dice' | 'next@'
+  phase: 'firstSegment' | 'nextAfterSegment'
+  method: string
+  segmentIndex: number
+  maxSegmentsPerTurn?: number
+  speakerCharacterId?: string | null
+  nextSpeakerHint?: string
+  decayStopped?: boolean
+  needsManualContinue?: boolean
+  firstSegmentAllFailFallback?: boolean
+  dice?: GroupChatDiceAudit
+}
+
+export interface GroupChatAuditSnapshot {
+  segmentSpeakerCharacterId?: string
+  segmentPick?: GroupChatSpeakerAudit
+  nextSpeaker?: GroupChatSpeakerAudit
 }
 
 export interface AssembleMessagesResult {

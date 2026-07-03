@@ -8,6 +8,7 @@ import {
   getTurnSegments,
   mergeGroupChatSettings,
   parseGroupContinueBody,
+  initGroupChatTurnState,
   resolveNextSpeaker,
   resolveNextSpeakerWithDecay,
   resolveOutboundSpeakerCharacterId,
@@ -150,16 +151,20 @@ describe('group-chat-turn', () => {
   })
 
   it('resolveNextSpeaker prefers speakerQueue', () => {
+    const state = initGroupChatTurnState({ enabled: true }, charIds)
     const next = resolveNextSpeaker({
       groupChatEnabled: true,
       speakerQueue: ['alice-id', 'betty-id'],
       spokenCharacterIds: ['alice-id'],
       characterIds: charIds,
+      turnState: state,
+      lastSpeakerCharacterId: 'alice-id',
     })
     assert.equal(next, 'betty-id')
   })
 
   it('resolveNextSpeaker skips muted members in queue', () => {
+    const state = initGroupChatTurnState({ enabled: true }, charIds)
     const next = resolveNextSpeaker({
       groupChatEnabled: true,
       groupChatSettings: {
@@ -169,6 +174,7 @@ describe('group-chat-turn', () => {
       speakerQueue: ['betty-id', 'alice-id'],
       spokenCharacterIds: [],
       characterIds: charIds,
+      turnState: state,
     })
     assert.equal(next, 'alice-id')
   })
@@ -196,7 +202,7 @@ describe('group-chat-turn', () => {
     )
   })
 
-  it('resolveNextSpeakerWithDecay stops when roll fails', () => {
+  it('resolveNextSpeakerWithDecay allows same bot after another spoke', () => {
     const turn: TurnRecord = {
       turnId: 't1',
       turnOrdinal: 0,
@@ -219,56 +225,59 @@ describe('group-chat-turn', () => {
       ],
       activeSegmentIndex: 1,
       plugins: [],
-    }
-    const threeIds = ['alice-id', 'betty-id', 'charlie-id']
-    const result = resolveNextSpeakerWithDecay({
-      turn,
-      characterIds: threeIds,
-      characterNames: ['Alice', 'Betty', 'Charlie'],
-      defaultSpeakerCharacterId: 'alice-id',
-      groupChat: { enabled: true },
-      conversationId: 'conv-1',
-      random: () => 0.99,
-    })
-    assert.equal(result.speakerCharacterId, null)
-    assert.equal(result.decayStopped, true)
-  })
-
-  it('resolveNextSpeakerWithDecay ends quietly when no candidates', () => {
-    const turn: TurnRecord = {
-      turnId: 't1',
-      turnOrdinal: 0,
-      send: { userText: 'hi' },
-      receives: [{ id: 'r1', content: 'a' }],
-      activeReceiveIndex: 0,
-      segments: [
-        {
-          id: 's1',
-          speakerCharacterId: 'alice-id',
-          receives: [{ id: 'r1', content: 'a' }],
-          activeReceiveIndex: 0,
-        },
-        {
-          id: 's2',
-          speakerCharacterId: 'betty-id',
-          receives: [{ id: 'r2', content: 'b' }],
-          activeReceiveIndex: 0,
-        },
-      ],
-      activeSegmentIndex: 1,
-      plugins: [],
+      groupChatTurnState: {
+        quotaRemaining: { 'alice-id': 1, 'betty-id': 1 },
+        speakCount: { 'alice-id': 1, 'betty-id': 1 },
+      },
     }
     const result = resolveNextSpeakerWithDecay({
       turn,
       characterIds: charIds,
       characterNames: charNames,
       defaultSpeakerCharacterId: 'alice-id',
-      groupChat: { enabled: true },
+      groupChat: { enabled: true, speakerMode: 'sequential' },
       conversationId: 'conv-1',
-      random: () => 0.99,
+    })
+    assert.equal(result.speakerCharacterId, 'alice-id')
+  })
+
+  it('resolveNextSpeakerWithDecay ends when no eligible bots remain', () => {
+    const turn: TurnRecord = {
+      turnId: 't1',
+      turnOrdinal: 0,
+      send: { userText: 'hi' },
+      receives: [{ id: 'r1', content: 'a' }],
+      activeReceiveIndex: 0,
+      segments: [
+        {
+          id: 's1',
+          speakerCharacterId: 'alice-id',
+          receives: [{ id: 'r1', content: 'a' }],
+          activeReceiveIndex: 0,
+        },
+        {
+          id: 's2',
+          speakerCharacterId: 'betty-id',
+          receives: [{ id: 'r2', content: 'b' }],
+          activeReceiveIndex: 0,
+        },
+      ],
+      activeSegmentIndex: 1,
+      plugins: [],
+      groupChatTurnState: {
+        quotaRemaining: { 'alice-id': 0, 'betty-id': 0 },
+        speakCount: { 'alice-id': 1, 'betty-id': 1 },
+      },
+    }
+    const result = resolveNextSpeakerWithDecay({
+      turn,
+      characterIds: charIds,
+      characterNames: charNames,
+      defaultSpeakerCharacterId: 'alice-id',
+      groupChat: { enabled: true, speakerMode: 'sequential' },
+      conversationId: 'conv-1',
     })
     assert.equal(result.speakerCharacterId, null)
-    assert.equal(result.decayStopped, undefined)
   })
 
   it('mergeGroupChatSettings merges partial patch', () => {

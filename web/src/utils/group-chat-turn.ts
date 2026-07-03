@@ -1,4 +1,10 @@
 import type { AssistantSegmentItem, ChatTurnItem, ReceiveItem } from '@/types/chat-turn'
+import {
+  groupChatMemberSpeakQuota,
+  isGroupChatMemberMuted,
+  normalizeGroupChatSettings,
+  type GroupChatSettings,
+} from './group-chat-settings'
 
 function mapReceiveForPatch(r: ReceiveItem): Record<string, unknown> {
   return {
@@ -99,9 +105,54 @@ export function characterNameById(
   return characterId
 }
 
+/** 审计展示：COCO #358A7F69；无卡名时仅 #ID */
+export function formatCharacterAuditLabel(
+  characterId: string,
+  characterIds: string[],
+  characterNames: string[],
+): string {
+  const id = characterId.trim()
+  if (!id) return '—'
+  const idTag = `#${id.toUpperCase()}`
+  const name = characterNameById(id, characterIds, characterNames)
+  if (!name || name === id) return idTag
+  return `${name} ${idTag}`
+}
+
 export interface PendingGroupContinue {
   turnOrdinal: number
   listIndex: number
   afterSegmentIndex: number
   nextSpeakerCharacterId: string
+  /** next@ hint 失败，需用户确认/改选 */
+  manualPick?: boolean
+  /** confirmContinue 或 manualPick 时可改选 */
+  allowSpeakerChange?: boolean
+  /** 可改选时的绑定角色 id */
+  eligibleSpeakerCharacterIds?: string[]
+}
+
+export function listEligibleSpeakersForContinue(
+  turn: ChatTurnItem,
+  characterIds: string[],
+  settings: GroupChatSettings,
+): string[] {
+  const normalized = normalizeGroupChatSettings(settings)
+  const segments = getTurnSegments(turn).filter((s) => (s.receives?.length ?? 0) > 0)
+  const lastSpeaker = segments[segments.length - 1]?.speakerCharacterId?.trim() ?? null
+  const speakCount: Record<string, number> = {}
+  for (const seg of segments) {
+    const id = seg.speakerCharacterId.trim()
+    if (id) speakCount[id] = (speakCount[id] ?? 0) + 1
+  }
+  return characterIds.filter((rawId) => {
+    const id = rawId.trim()
+    if (!id) return false
+    if (isGroupChatMemberMuted(id, normalized)) return false
+    const quota = groupChatMemberSpeakQuota(id, normalized)
+    const used = speakCount[id] ?? 0
+    if (used >= quota) return false
+    if (lastSpeaker && id === lastSpeaker) return false
+    return true
+  })
 }

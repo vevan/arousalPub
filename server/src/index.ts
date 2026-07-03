@@ -1845,7 +1845,7 @@ app.post<{ Params: { id: string }; Querystring: { stream?: string } }>(
   },
 )
 
-/** 调试：读取会话目录下 chat-audit.json（含 messages + assembly + calls） */
+/** 调试：读取会话目录下 chat-audit.json（含 messages + assembly + groupChat + calls） */
 app.get<{ Params: { id: string } }>(
   '/api/chat/conversations/:id/chat-audit',
   async (request, reply) => {

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import AssembledMessagesPanel from '@/components/prompts/AssembledMessagesPanel.vue'
+import GroupChatAuditPickBlock from '@/components/chat/GroupChatAuditPickBlock.vue'
 import type { useChatSession } from '@/composables/useChatSession'
 import type {
   AssemblyAudit,
   CallAuditEntry,
+  GroupChatAuditSnapshot,
   PerformanceAudit,
 } from '@/types/chat-turn'
 import { computed, ref, toRefs, watch } from 'vue'
@@ -28,13 +30,34 @@ const { t } = useI18n()
 
 const auditTab = ref('messages')
 
+const showGroupChatAuditTab = computed(() => props.session.groupChatEnabled === true)
+
+const auditCharacterIds = computed(() => props.session.conversationCharacterIds ?? [])
+const auditCharacterNames = computed(
+  () => props.session.conversationCharacterDisplayNames ?? [],
+)
+const auditMaxSegmentsFallback = computed(
+  () => props.session.groupChatSettings?.maxSegmentsPerTurn ?? null,
+)
+
 watch(turnPromptDialogOpen, (open) => {
   if (open) auditTab.value = 'messages'
+})
+
+watch(showGroupChatAuditTab, (show) => {
+  if (!show && auditTab.value === 'groupChat') {
+    auditTab.value = 'messages'
+  }
 })
 
 const assembly = computed((): AssemblyAudit | null => {
   const a = turnAuditEntry.value?.assembly
   return a && typeof a === 'object' ? a : null
+})
+
+const groupChatAudit = computed((): GroupChatAuditSnapshot | null => {
+  const g = turnAuditEntry.value?.groupChat
+  return g && typeof g === 'object' ? g : null
 })
 
 const calls = computed((): CallAuditEntry[] => {
@@ -148,6 +171,12 @@ function formatTokenSource(
             <v-tab value="assembly">
               {{ $t('chat.turnAuditTabAssembly') }}
             </v-tab>
+            <v-tab
+              v-if="showGroupChatAuditTab"
+              value="groupChat"
+            >
+              {{ $t('chat.turnAuditTabGroupChat') }}
+            </v-tab>
             <v-tab value="calls">
               {{ $t('chat.turnAuditTabCalls') }}
             </v-tab>
@@ -175,7 +204,7 @@ function formatTokenSource(
                 >
                   {{ $t('chat.turnAuditNoAssembly') }}
                 </p>
-                <template v-else>
+                <template v-if="assembly">
                   <v-table
                     density="compact"
                     class="audit-table audit-table--kv mb-4"
@@ -358,6 +387,36 @@ function formatTokenSource(
                       {{ ord }}
                     </v-chip>
                   </div>
+                </template>
+              </div>
+            </v-tabs-window-item>
+
+            <v-tabs-window-item
+              v-if="showGroupChatAuditTab"
+              value="groupChat"
+            >
+              <div class="audit-card__pane">
+                <p
+                  v-if="!groupChatAudit"
+                  class="text-body-2 text-medium-emphasis mb-0"
+                >
+                  {{ $t('chat.turnAuditNoGroupChat') }}
+                </p>
+                <template v-else>
+                  <GroupChatAuditPickBlock
+                    :title="$t('chat.turnAuditGroupChatBlockSegmentPick')"
+                    :audit="groupChatAudit.segmentPick"
+                    :character-ids="auditCharacterIds"
+                    :character-names="auditCharacterNames"
+                    :fallback-max-segments="auditMaxSegmentsFallback"
+                  />
+                  <GroupChatAuditPickBlock
+                    :title="$t('chat.turnAuditGroupChatBlockNextPick')"
+                    :audit="groupChatAudit.nextSpeaker"
+                    :character-ids="auditCharacterIds"
+                    :character-names="auditCharacterNames"
+                    :fallback-max-segments="auditMaxSegmentsFallback"
+                  />
                 </template>
               </div>
             </v-tabs-window-item>

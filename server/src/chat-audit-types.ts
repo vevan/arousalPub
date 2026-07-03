@@ -126,8 +126,13 @@ export interface ChatAuditEntry {
   chunkName: string
   turnId: string
   turnOrdinal: number
+  /** 群聊同 turn 多 segment 时区分审计条目；缺省 0（兼容旧条目） */
+  segmentIndex?: number
+  /** 本段 active receive，便于精确匹配 */
+  receiveId?: string
   messages: ChatAuditMessage[]
   assembly?: AssemblyAudit
+  groupChat?: import('./group-chat-turn.js').GroupChatAuditSnapshot
   calls?: CallAuditEntry[]
   plugins?: PluginAuditEntry[]
   performance?: PerformanceAudit
@@ -145,4 +150,5 @@ export interface ChatAuditSnapshotInput {
   calls?: CallAuditEntry[]
   plugins?: PluginAuditEntry[]
   performance?: PerformanceAudit
+  groupChat?: import('./group-chat-turn.js').GroupChatAuditSnapshot
 }

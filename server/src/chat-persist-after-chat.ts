@@ -16,20 +16,30 @@ import {
   updateTurnContentInTailChunk,
   updateTurnSegmentInTailChunk,
   type TurnReceive,
+  type TurnRecord,
 } from './chat-storage.js'
 import { loadCharacterDisplayNamesForIds } from './character-storage.js'
 import {
   extractNextSpeakerHint,
   getActiveSegment,
   getActiveSegmentIndex,
+  getTurnGroupChatState,
   getTurnSegments,
   normalizeGroupChatSettings,
   pickFirstSpeakerForSend,
-  resolveNextSpeakerWithDecay,
+  resolveFirstSegmentSpeaker,
+  resolveNextSpeakerForTurn,
   resolveSpeakerQueueIds,
-  spokenCharacterIdsFromTurn,
+  validateExplicitFirstSegmentSpeaker,
   validateGroupContinueRequest,
+  validateNextAtHint,
+  buildGroupChatSpeakerAudit,
+  segmentPickAuditFromCarriedNextSpeaker,
+  type GroupChatResolveParams,
+  type GroupChatSpeakerAudit,
+  type GroupChatTurnState,
   type GroupContinueBody,
+  type ResolveNextSpeakerResult,
 } from './group-chat-turn.js'
 import type { ResolvedFeatureAudit } from './feature-binding-resolve.js'
 import {
@@ -94,6 +104,8 @@ export interface ChatPersistResult {
   nextSpeakerCharacterId?: string | null
   /** 群聊衰减掷骰失败，本轮结束 */
   groupChatDecayStopped?: boolean
+  /** next@ 模式 hint 无效，需用户手动选下一位 */
+  groupChatNeedsManualContinue?: boolean
 }
 
 /** 出站 token：上游 usage.prompt_tokens，缺省用组装估算 */
@@ -142,6 +154,82 @@ function auditSnapshotFromPersist(
     ...(calls.length > 0 ? { calls } : {}),
     ...(performance ? { performance } : {}),
   }
+}
+
+function segmentPickAuditForContinue(
+  groupChat: ReturnType<typeof normalizeGroupChatSettings>,
+  turn: import('./chat-storage.js').TurnRecord,
+  speakerCharacterId: string,
+  characterIds: string[],
+  defaultSpeaker: string,
+  segmentIndex: number,
+): GroupChatSpeakerAudit | undefined {
+  if (!groupChat.enabled) return undefined
+  const carried = segmentPickAuditFromCarriedNextSpeaker({
+    groupChat,
+    turn,
+    defaultSpeakerCharacterId: defaultSpeaker,
+    speakerCharacterId,
+    segmentIndex,
+  })
+  if (carried) return carried
+  const segments = getTurnSegments(turn, defaultSpeaker).filter(
+    (s) => (s.receives?.length ?? 0) > 0,
+  )
+  const lastSeg = segments[segments.length - 1]
+  const hintId = lastSeg?.meta?.nextSpeakerHint?.trim()
+  const turnState = getTurnGroupChatState(turn, groupChat, characterIds)
+  const lastSpeaker =
+    segments.length > 1
+      ? segments[segments.length - 2]?.speakerCharacterId?.trim() ?? null
+      : null
+  let method: import('./group-chat-turn.js').GroupChatSpeakerPickMethod = 'explicit'
+  if (groupChat.speakerMode === 'next@') {
+    const hintSpeaker = hintId
+      ? validateNextAtHint({
+          hintCharacterId: hintId,
+          characterIds,
+          settings: groupChat,
+          turnState,
+          lastSpeakerCharacterId: lastSpeaker,
+        })
+      : null
+    method =
+      hintSpeaker === speakerCharacterId.trim()
+        ? 'nextAtHint'
+        : 'manual'
+  }
+  return buildGroupChatSpeakerAudit(groupChat, 'nextAfterSegment', method, segmentIndex, {
+    speakerCharacterId: speakerCharacterId.trim(),
+    ...(hintId ? { nextSpeakerHint: hintId } : {}),
+  })
+}
+
+function resolveSegmentPickAuditForRegen(
+  groupChat: ReturnType<typeof normalizeGroupChatSettings>,
+  turn: TurnRecord,
+  segmentIndex: number,
+  defaultSpeaker: string,
+  speakerCharacterId: string,
+): GroupChatSpeakerAudit | undefined {
+  if (!groupChat.enabled) return undefined
+  const stored = turn.segments[segmentIndex]?.meta?.segmentPickAudit
+  if (stored) return stored
+  const carried = segmentPickAuditFromCarriedNextSpeaker({
+    groupChat,
+    turn,
+    defaultSpeakerCharacterId: defaultSpeaker,
+    speakerCharacterId: speakerCharacterId.trim(),
+    segmentIndex,
+  })
+  if (carried) return carried
+  return buildGroupChatSpeakerAudit(
+    groupChat,
+    segmentIndex === 0 ? 'firstSegment' : 'nextAfterSegment',
+    'explicit',
+    segmentIndex,
+    { speakerCharacterId: speakerCharacterId.trim() },
+  )
 }
 
 async function applyPersistRegexFieldsTimed(
@@ -218,22 +306,36 @@ function trackerEpochFromConvIndex(
   return typeof n === 'number' && Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0
 }
 
-function computeNextSpeakerForTurn(
-  turn: import('./chat-storage.js').TurnRecord,
+function groupChatResolveAfterSegment(
+  groupChat: ReturnType<typeof normalizeGroupChatSettings>,
   charIds: string[],
   charNames: string[],
   defaultSpeaker: string,
-  groupChat: ReturnType<typeof normalizeGroupChatSettings>,
   conversationId: string,
-) {
-  return resolveNextSpeakerWithDecay({
-    turn,
+): GroupChatResolveParams | undefined {
+  if (!groupChat.enabled) return undefined
+  return {
+    groupChat,
     characterIds: charIds,
     characterNames: charNames,
     defaultSpeakerCharacterId: defaultSpeaker,
-    groupChat,
     conversationId,
-  })
+  }
+}
+
+function nextSpeakerPersistExtras(
+  resolved: ReturnType<typeof resolveNextSpeakerForTurn>,
+): Pick<
+  ChatPersistResult,
+  'nextSpeakerCharacterId' | 'groupChatDecayStopped' | 'groupChatNeedsManualContinue'
+> {
+  return {
+    nextSpeakerCharacterId: resolved.speakerCharacterId,
+    ...(resolved.decayStopped ? { groupChatDecayStopped: true } : {}),
+    ...(resolved.needsManualContinue
+      ? { groupChatNeedsManualContinue: true }
+      : {}),
+  }
 }
 
 function turnPluginsFromChunk(
@@ -293,6 +395,7 @@ function okPersistResult(
     speakerCharacterId?: string
     nextSpeakerCharacterId?: string | null
     groupChatDecayStopped?: boolean
+    groupChatNeedsManualContinue?: boolean
   },
   fields: PersistRegexFields,
   plugins?: unknown[],
@@ -346,6 +449,7 @@ async function finishPersistResult(
     speakerCharacterId?: string
     nextSpeakerCharacterId?: string | null
     groupChatDecayStopped?: boolean
+    groupChatNeedsManualContinue?: boolean
   },
   fields: PersistRegexFields,
   retroOpts: { newTailOrdinal: number; includeNewRetro: boolean } | null,
@@ -442,14 +546,65 @@ export async function persistTurnAfterModelReply(params: {
   const assistantBodyForPersist = extracted.content || rawAssistantContent
   const nextSpeakerHint = extracted.hintCharacterId
 
-  const speakerCharacterId =
+  let firstSegmentTurnState: GroupChatTurnState | undefined
+  let firstSegmentAllFailFallback = false
+  let segmentPickAudit: GroupChatSpeakerAudit | undefined
+
+  let speakerCharacterId =
     params.speakerCharacterId?.trim() ||
     groupContinue?.speakerCharacterId?.trim() ||
-    pickFirstSpeakerForSend({
-      groupChatEnabled: Boolean(groupChat.enabled),
-      speakerQueueIds: speakerQueueIds ?? [],
-      defaultCharacterId: defaultSpeaker,
+    ''
+
+  const explicitNewTurnSpeaker =
+    speakerCharacterId && !groupContinue && groupChat.enabled
+      ? speakerCharacterId
+      : null
+
+  if (explicitNewTurnSpeaker) {
+    const validated = validateExplicitFirstSegmentSpeaker({
+      explicitSpeakerId: explicitNewTurnSpeaker,
+      groupChat,
+      characterIds: charIds,
     })
+    if (!validated.ok) {
+      return { ok: false, error: ApiErrorCodes.group_continue_invalid }
+    }
+    firstSegmentTurnState = validated.turnState
+    segmentPickAudit = buildGroupChatSpeakerAudit(
+      groupChat,
+      'firstSegment',
+      'explicit',
+      0,
+      { speakerCharacterId: explicitNewTurnSpeaker },
+    )
+  } else if (!speakerCharacterId) {
+    if (groupChat.enabled) {
+      const tailOrd = await resolveConversationTailOrdinal(conversationId)
+      const newTurnOrdinal = tailOrd < 0 ? 0 : tailOrd + 1
+      const resolved = resolveFirstSegmentSpeaker({
+        groupChat,
+        characterIds: charIds,
+        characterNames: charNames,
+        conversationId,
+        turnOrdinal: newTurnOrdinal,
+        speakerQueueIds: speakerQueueIds ?? [],
+        defaultCharacterId: defaultSpeaker,
+      })
+      speakerCharacterId = resolved.speakerCharacterId ?? ''
+      if (!speakerCharacterId) {
+        return { ok: false, error: ApiErrorCodes.group_continue_invalid }
+      }
+      firstSegmentTurnState = resolved.turnState
+      firstSegmentAllFailFallback = resolved.firstSegmentAllFailFallback === true
+      segmentPickAudit = resolved.groupChatAudit
+    } else {
+      speakerCharacterId = pickFirstSpeakerForSend({
+        groupChatEnabled: false,
+        speakerQueueIds: speakerQueueIds ?? [],
+        defaultCharacterId: defaultSpeaker,
+      })
+    }
+  }
 
   const assistantPluginEntries = await resolveTurnPluginEntriesFromAssistant(
     assistantBodyForPersist,
@@ -494,6 +649,7 @@ export async function persistTurnAfterModelReply(params: {
       speakerCharacterId,
       charIds,
       defaultSpeaker,
+      groupChat,
     )
     if (continueCheck === 'invalid_after_segment') {
       return { ok: false, error: ApiErrorCodes.group_continue_invalid }
@@ -501,9 +657,23 @@ export async function persistTurnAfterModelReply(params: {
     if (continueCheck === 'speaker_not_bound') {
       return { ok: false, error: ApiErrorCodes.group_continue_invalid }
     }
-    if (continueCheck === 'duplicate_speaker') {
+    if (
+      continueCheck === 'duplicate_speaker' ||
+      continueCheck === 'consecutive_speaker'
+    ) {
       return { ok: false, error: ApiErrorCodes.group_continue_speaker_duplicate }
     }
+    if (continueCheck === 'no_quota') {
+      return { ok: false, error: ApiErrorCodes.group_continue_invalid }
+    }
+    segmentPickAudit = segmentPickAuditForContinue(
+      groupChat,
+      turn,
+      speakerCharacterId,
+      charIds,
+      defaultSpeaker,
+      groupContinue.afterSegmentIndex + 1,
+    )
     const userTextForRegex = rawUserText || getTurnUserText(turn)
     const fields = await applyPersistRegexFieldsTimed(
       userTextForRegex,
@@ -579,6 +749,7 @@ export async function persistTurnAfterModelReply(params: {
       },
     ]
     const segmentIndex = groupContinue.afterSegmentIndex + 1
+    const groupChatResolveOut: { nextResolved?: ResolveNextSpeakerResult } = {}
     const ok = await appendSegmentToTurn({
       conversationId,
       turnOrdinal: turnOrd,
@@ -592,22 +763,21 @@ export async function persistTurnAfterModelReply(params: {
         receiveId,
       ),
       defaultSpeakerCharacterId: defaultSpeaker,
+      groupChatResolveAfterSegment: groupChatResolveAfterSegment(
+        groupChat,
+        charIds,
+        charNames,
+        defaultSpeaker,
+        conversationId,
+      ),
+      groupChatResolveOut,
+      segmentPickAudit,
     })
     if (!ok) {
       return { ok: false, error: ApiErrorCodes.turn_update_failed }
     }
+    const nextResolved = groupChatResolveOut.nextResolved ?? { speakerCharacterId: null }
     const afterLocated = await readChunkContainingOrdinal(conversationId, turnOrd)
-    const afterTurn = afterLocated?.chunk.turns.find((t) => t.turnOrdinal === turnOrd)
-    const nextResolved = afterTurn
-      ? computeNextSpeakerForTurn(
-          afterTurn,
-          charIds,
-          charNames,
-          defaultSpeaker,
-          groupChat,
-          conversationId,
-        )
-      : { speakerCharacterId: null }
     return finishPersistResult(
       conversationId,
       {
@@ -618,10 +788,7 @@ export async function persistTurnAfterModelReply(params: {
         segmentIndex,
         activeSegmentIndex: segmentIndex,
         speakerCharacterId,
-        nextSpeakerCharacterId: nextResolved.speakerCharacterId,
-        ...(nextResolved.decayStopped
-          ? { groupChatDecayStopped: true }
-          : {}),
+        ...nextSpeakerPersistExtras(nextResolved),
       },
       fields,
       {
@@ -750,6 +917,16 @@ export async function persistTurnAfterModelReply(params: {
         },
       ]
       const activeReceiveIndex = receives.length - 1
+      const groupChatResolveOut: { nextResolved?: ResolveNextSpeakerResult } = {}
+      const regenSpeaker =
+        activeSeg.speakerCharacterId?.trim() || defaultSpeaker
+      const segmentPickAudit = resolveSegmentPickAuditForRegen(
+        groupChat,
+        turn,
+        segmentIndex,
+        defaultSpeaker,
+        regenSpeaker,
+      )
       const ok = await updateTurnSegmentInTailChunk(
         conversationId,
         regenOrd,
@@ -762,22 +939,23 @@ export async function persistTurnAfterModelReply(params: {
         attachReceiveIdToTurnPluginEntries(turnPluginEntries, receiveId),
         undefined,
         nextSpeakerHint,
+        {
+          groupChatResolveAfterSegment: groupChatResolveAfterSegment(
+            groupChat,
+            charIds,
+            charNames,
+            defaultSpeaker,
+            conversationId,
+          ),
+          groupChatResolveOut,
+          segmentPickAudit,
+        },
       )
       if (!ok) {
         return { ok: false, error: ApiErrorCodes.turn_update_failed }
       }
+      const nextResolved = groupChatResolveOut.nextResolved ?? { speakerCharacterId: null }
       const afterLocated = await readChunkContainingOrdinal(conversationId, regenOrd)
-      const afterTurn = afterLocated?.chunk.turns.find((t) => t.turnOrdinal === regenOrd)
-      const nextResolved = afterTurn
-        ? computeNextSpeakerForTurn(
-            afterTurn,
-            charIds,
-            charNames,
-            defaultSpeaker,
-            groupChat,
-            conversationId,
-          )
-        : { speakerCharacterId: null }
       return finishPersistResult(
         conversationId,
         {
@@ -788,10 +966,7 @@ export async function persistTurnAfterModelReply(params: {
           segmentIndex,
           activeSegmentIndex: segmentIndex,
           speakerCharacterId: activeSeg.speakerCharacterId,
-          nextSpeakerCharacterId: nextResolved.speakerCharacterId,
-          ...(nextResolved.decayStopped
-            ? { groupChatDecayStopped: true }
-            : {}),
+          ...nextSpeakerPersistExtras(nextResolved),
         },
         fields,
         {
@@ -990,22 +1165,23 @@ export async function persistTurnAfterModelReply(params: {
       speakerCharacterId,
       speakerQueue: speakerQueueIds,
       nextSpeakerHint,
+      groupChatTurnState: firstSegmentTurnState,
+      skipSpeakQuotaDeduction: firstSegmentAllFailFallback,
+      groupChatResolveAfterSegment: groupChatResolveAfterSegment(
+        groupChat,
+        charIds,
+        charNames,
+        defaultSpeaker,
+        conversationId,
+      ),
+      segmentPickAudit,
     })
     if (!saved) {
       return { ok: false, error: ApiErrorCodes.first_turn_persist_maybe_exists }
     }
     const firstTurn = saved.chunk.turns[0]
     const rec = firstTurn?.receives[0]
-    const nextResolved = firstTurn
-      ? computeNextSpeakerForTurn(
-          firstTurn,
-          charIds,
-          charNames,
-          defaultSpeaker,
-          groupChat,
-          conversationId,
-        )
-      : { speakerCharacterId: null }
+    const nextResolved = saved.nextResolved ?? { speakerCharacterId: null }
     return finishPersistResult(
       conversationId,
       {
@@ -1016,8 +1192,7 @@ export async function persistTurnAfterModelReply(params: {
         segmentIndex: 0,
         activeSegmentIndex: 0,
         speakerCharacterId,
-        nextSpeakerCharacterId: nextResolved.speakerCharacterId,
-        ...(nextResolved.decayStopped ? { groupChatDecayStopped: true } : {}),
+        ...nextSpeakerPersistExtras(nextResolved),
       },
       fields,
       { newTailOrdinal: 0, includeNewRetro: true },
@@ -1038,6 +1213,7 @@ export async function persistTurnAfterModelReply(params: {
       ...(runtime ? { runtime } : {}),
     },
   ]
+  const groupChatResolveOut: { nextResolved?: ResolveNextSpeakerResult } = {}
   const ok = await appendConversationTurn({
     conversationId,
     userText,
@@ -1048,6 +1224,17 @@ export async function persistTurnAfterModelReply(params: {
     speakerCharacterId,
     speakerQueue: speakerQueueIds,
     nextSpeakerHint,
+    groupChatTurnState: firstSegmentTurnState,
+    skipSpeakQuotaDeduction: firstSegmentAllFailFallback,
+    groupChatResolveAfterSegment: groupChatResolveAfterSegment(
+      groupChat,
+      charIds,
+      charNames,
+      defaultSpeaker,
+      conversationId,
+    ),
+    groupChatResolveOut,
+    segmentPickAudit,
   })
   if (!ok) {
     return { ok: false, error: ApiErrorCodes.append_turn_failed }
@@ -1055,16 +1242,7 @@ export async function persistTurnAfterModelReply(params: {
   const chunk = await readTailChunkAt(conversationId, activeBranchPath)
   const last = chunk?.turns[chunk.turns.length - 1]
   const persistedOrdinal = last?.turnOrdinal ?? turnOrdinal
-  const nextResolved = last
-    ? computeNextSpeakerForTurn(
-        last,
-        charIds,
-        charNames,
-        defaultSpeaker,
-        groupChat,
-        conversationId,
-      )
-    : { speakerCharacterId: null }
+  const nextResolved = groupChatResolveOut.nextResolved ?? { speakerCharacterId: null }
   return finishPersistResult(
     conversationId,
     {
@@ -1075,8 +1253,7 @@ export async function persistTurnAfterModelReply(params: {
       segmentIndex: 0,
       activeSegmentIndex: 0,
       speakerCharacterId,
-      nextSpeakerCharacterId: nextResolved.speakerCharacterId,
-      ...(nextResolved.decayStopped ? { groupChatDecayStopped: true } : {}),
+      ...nextSpeakerPersistExtras(nextResolved),
     },
     fields,
     {

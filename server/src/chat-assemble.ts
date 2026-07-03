@@ -33,8 +33,10 @@ import {
   type TurnRecord,
 } from './chat-storage.js'
 import { readChunkContainingOrdinal } from './chunk-chain.js'
+import { resolveConversationTailOrdinal } from './regex-persist-patch.js'
 import {
   buildGroupMacroStrings,
+  groupChatNextAtInstruction,
   normalizeGroupChatSettings,
   parseGroupContinueBody,
   resolveOutboundSpeakerCharacterId,
@@ -367,20 +369,27 @@ export async function buildConversationOutboundMessages(
   let historyPartialTurn = params.historyPartialTurn
   let speakerCharacterId = params.speakerCharacterId?.trim() ?? ''
 
-  if (
-    !speakerCharacterId &&
-    !groupContinue &&
-    (params.speakerQueue?.length || params.speakerQueueDisplayNames?.length)
-  ) {
+  if (!speakerCharacterId && !groupContinue) {
     const charNames = await loadCharacterDisplayNamesForIds(charIds)
-    speakerCharacterId = resolveOutboundSpeakerCharacterId({
-      groupChatEnabled: Boolean(groupChat.enabled),
-      characterIds: charIds,
-      characterNames: charNames,
-      defaultCharacterId: defaultSpeakerId,
-      speakerQueueIds: params.speakerQueue,
-      speakerQueueDisplayNames: params.speakerQueueDisplayNames,
-    })
+    const tailOrd = await resolveConversationTailOrdinal(conversationId)
+    const newTurnOrdinal = tailOrd < 0 ? 0 : tailOrd + 1
+    if (
+      groupChat.enabled ||
+      params.speakerQueue?.length ||
+      params.speakerQueueDisplayNames?.length
+    ) {
+      speakerCharacterId = resolveOutboundSpeakerCharacterId({
+        groupChatEnabled: Boolean(groupChat.enabled),
+        groupChat,
+        characterIds: charIds,
+        characterNames: charNames,
+        defaultCharacterId: defaultSpeakerId,
+        conversationId,
+        turnOrdinal: newTurnOrdinal,
+        speakerQueueIds: params.speakerQueue,
+        speakerQueueDisplayNames: params.speakerQueueDisplayNames,
+      })
+    }
   }
   if (!speakerCharacterId) speakerCharacterId = defaultSpeakerId
 
@@ -541,6 +550,20 @@ export async function buildConversationOutboundMessages(
   })
 
   const authorsNote = authorsNoteForInjection(idx.authorsNote)
+  const nextAtInstruction = groupChatNextAtInstruction(groupChat)
+  const effectiveAuthorsNote =
+    nextAtInstruction && authorsNote
+      ? {
+          ...authorsNote,
+          content: `${authorsNote.content}\n\n${nextAtInstruction}`,
+        }
+      : nextAtInstruction
+        ? {
+            content: nextAtInstruction,
+            injectionDepth: 4,
+            role: 'system' as const,
+          }
+        : authorsNote
 
   const lorebookIds = resolvedLorebookIds(idx)
   const globalLore = await readGlobalLorebookSettings()
@@ -585,7 +608,7 @@ export async function buildConversationOutboundMessages(
     userInput,
     tokenModel,
     macroContext,
-    authorsNote: authorsNote ?? undefined,
+    authorsNote: effectiveAuthorsNote ?? undefined,
     skipInternalBudgetTrim: true as const,
     deferMacroExpansion: true as const,
     ...charCtx,

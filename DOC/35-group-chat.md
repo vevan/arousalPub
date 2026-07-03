@@ -403,7 +403,7 @@ charN        → 可选；characterIds[N-1]（Phase 2+）
 | **G1** | `submitComposer` + 内置 `/@`；strip meta；未开群聊 `@` 强制 1 段；手动 Continue |
 | **G2** | 权重、mute、**过渡**全局衰减 + `mode: weighted`；`autoContinue`；`{{groupNotMuted}}`；顶栏 bot 列表 |
 | **G3** | **`speakerMode` 三选一**（§3）；per-bot 额度 + 掷骰竞标（§2.6）；`maxSegmentsPerTurn`；废弃混合 fallback |
-| **G4** | **`speakerMode=next@` 全量**：hint 失败手动、首段掷骰；`confirmContinue` 改选；audit 掷骰表 |
+| **G4** | **`speakerMode=next@` 全量**：hint 失败手动、首段掷骰；`confirmContinue` 改选；audit 掷骰表 + 群聊审计 Tab（本段/下段选人 · 2026-07-03） |
 | **G5** | 预设模板、群聊说明注入按模式分支、`{{notChar}}` 群聊语义完善 |
 
 **依赖：** G1 的 `/@` 与 **Composer Slash（P0）** 同批或略早（最小 `submitComposer` 路由即可）。

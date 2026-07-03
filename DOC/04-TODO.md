@@ -14,8 +14,8 @@
   - [x] **G0 轮次模型** — `AssistantSegment` + `speakerCharacterId`；chunk/turn 迁移；UI 多气泡；regenerate/swipe 仅当前 segment
   - [x] **G1 `/@` + Continue** — Slash S0/S2；未开群聊默认 char1、`/@` 强制 1 段 + toast；`groupContinue` API + 手动 Continue 条
   - [x] **G2 随机 + 衰减** — `groupChat` settings、权重/mute、顶栏 bot 列表；`autoContinue`；`{{group}}` / `{{groupNotMuted}}`（**过渡**：`mode: weighted` + 全局衰减 + 每 bot 1 segment，见 `DOC/35` §3.4）
-  - [ ] **G3 选人模型** — `speakerMode: sequential \| dice \| next@` 三选一；`/@` L0 覆盖；per-bot `speakQuota` + 掷骰竞标（§2.6）；`maxSegmentsPerTurn`；废弃混合 fallback
-  - [ ] **G4 LLM 接续** — `speakerMode=next@`：首段无 `/@` 掷骰；第 2 段起 `[NEXT@]`；hint 失败 **仅手动**；`confirmContinue` + 改选；audit 掷骰表
+  - [x] **G3 选人模型** — `speakerMode: sequential \| dice \| next@` 三选一；`/@` L0 覆盖；per-bot `speakQuota` + 掷骰竞标（§2.6）；`maxSegmentsPerTurn`；`groupChatTurnState` 落盘（2026-07-03）
+  - [x] **G4 LLM 接续** — `speakerMode=next@` 全量：Continue 改选 UI、audit 掷骰表；hint 失败手动；assemble `[NEXT@]` 说明注入（2026-07-03）
   - [ ] **G5 打磨** — 群聊 assemble 按模式注入说明、预设模板、`{{notChar}}` 群聊语义
 
 ## P1
@@ -66,6 +66,7 @@
 - [x] Composer Slash S0–S2/S4（2026-07-01）：`submitComposer`、`/goto`、`/@`、补全浮层 — 见 [`DOC/36`](36-composer-slash.md)；**S3 插件执行**仍开放
 - [x] 架构/接口变更时同步 `DOC/01`–`03`（2026-07-02）：预设编辑/全局分离、`chat.index` 写锁与列表统计、群聊成员头像 — 见 `DOC/03` §1.2、§7.1、§15.10 · `DOC/35` §2.2
 - [x] 群聊选人模型修订定案（2026-07-02）：`speakerMode` 三选一、掷骰竞标、额度与不连说、`next@` hint 失败仅手动 — 见 `DOC/35` §2.6–§3、§8
+- [x] 群聊 G3/G4 实现 + audit 按 segment 落盘（2026-07-03）：`groupChatTurnState` · 掷骰 roster · `ChatTurnPromptDialog` 群聊 Tab · `(turnId, segmentIndex)` 去重 — 见 `DOC/24` §3.2–§3.4、`DOC/35` §7
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
 

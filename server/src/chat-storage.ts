@@ -20,6 +20,7 @@ import type {
 import {
   appendChatAuditEntry,
   DEFAULT_AUDIT_DEBUG_MAX,
+  removeChatAuditEntriesAfterSegment,
   removeChatAuditEntriesByTurnId,
   trimChatAuditEntries,
 } from './chat-audit-file.js'
@@ -97,12 +98,27 @@ import {
   getActiveSegment,
   getActiveSegmentIndex,
   syncTurnReceivesFromActiveSegment,
+  recordSegmentSpeaker,
+  initGroupChatTurnState,
+  normalizeGroupChatSettings,
+  applyNextSpeakerStateToTurn,
+  attachResolvedNextSpeakerAuditToActiveSegment,
+  attachSegmentPickAuditToSegment,
+  buildGroupChatAuditSnapshot,
   type AssistantSegmentRecord,
+  type GroupChatSpeakerAudit,
+  type GroupChatResolveParams,
   type GroupChatSettings,
+  type GroupChatTurnState,
+  type ResolveNextSpeakerResult,
   mergeGroupChatSettings,
 } from './group-chat-turn.js'
 
-export type { AssistantSegmentRecord, GroupChatSettings } from './group-chat-turn.js'
+export type {
+  AssistantSegmentRecord,
+  GroupChatSettings,
+  GroupChatTurnState,
+} from './group-chat-turn.js'
 
 function finalizeAuditPersistDiskMs(
   snapshot: ChatAuditSnapshotInput | undefined,
@@ -302,6 +318,8 @@ export interface TurnRecord {
   activeSegmentIndex: number
   /** 来自 /@ 的待发言 characterId 队列 */
   speakerQueue?: string[]
+  /** 群聊 G ID 内 per-bot 额度与发言计数（G3） */
+  groupChatTurnState?: GroupChatTurnState
   /** 当前 active segment 的 speaker */
   speakerCharacterId?: string
 }
@@ -1393,8 +1411,60 @@ export function getPromptDebugMaxStored(idx: ConversationIndex | null): number {
   return DEFAULT_PROMPT_DEBUG_MAX
 }
 
+function withGroupChatAuditSnapshot(
+  snapshot: ChatAuditSnapshotInput | undefined,
+  segmentSpeakerCharacterId: string,
+  segmentPick?: GroupChatSpeakerAudit,
+  nextResolved?: ResolveNextSpeakerResult,
+): ChatAuditSnapshotInput | undefined {
+  if (!snapshot) return undefined
+  if (!segmentPick && !nextResolved?.groupChatAudit) return snapshot
+  return {
+    ...snapshot,
+    groupChat: buildGroupChatAuditSnapshot({
+      segmentSpeakerCharacterId,
+      segmentPick,
+      nextSpeaker: nextResolved?.groupChatAudit,
+    }),
+  }
+}
+
+function auditReceiveIdForSegment(
+  turn: TurnRecord,
+  segmentIndex: number,
+): string | undefined {
+  const seg = turn.segments[segmentIndex]
+  if (!seg?.receives?.length) return undefined
+  const idx = Math.min(
+    Math.max(0, seg.activeReceiveIndex ?? 0),
+    seg.receives.length - 1,
+  )
+  const id = seg.receives[idx]?.id?.trim()
+  return id || undefined
+}
+
+function stripSegmentsMetaForDisk(
+  segments: AssistantSegmentRecord[],
+): AssistantSegmentRecord[] {
+  let lastContentIdx = -1
+  for (let i = segments.length - 1; i >= 0; i--) {
+    if ((segments[i]?.receives?.length ?? 0) > 0) {
+      lastContentIdx = i
+      break
+    }
+  }
+  if (lastContentIdx < 0) return segments
+  const carryKeepIdx = lastContentIdx > 0 ? lastContentIdx - 1 : lastContentIdx
+  return segments.map((s, i) => {
+    if (!s.meta?.resolvedNextSpeakerAudit || i === carryKeepIdx) return s
+    const { resolvedNextSpeakerAudit: _drop, ...restMeta } = s.meta
+    const meta = Object.keys(restMeta).length > 0 ? restMeta : undefined
+    return meta ? { ...s, meta } : { ...s, meta: undefined }
+  })
+}
+
 /** 写盘时规范 plugins 与群聊字段 */
-function stripTurnForDisk(t: TurnRecord): TurnRecord {
+export function stripTurnForDisk(t: TurnRecord): TurnRecord {
   const out: TurnRecord = {
     turnId: t.turnId,
     turnOrdinal: t.turnOrdinal,
@@ -1402,7 +1472,7 @@ function stripTurnForDisk(t: TurnRecord): TurnRecord {
     receives: t.receives,
     activeReceiveIndex: t.activeReceiveIndex,
     plugins: Array.isArray(t.plugins) ? t.plugins : [],
-    segments: t.segments,
+    segments: stripSegmentsMetaForDisk(t.segments),
     activeSegmentIndex: t.activeSegmentIndex,
   }
   if (Array.isArray(t.speakerQueue) && t.speakerQueue.length > 0) {
@@ -1410,6 +1480,12 @@ function stripTurnForDisk(t: TurnRecord): TurnRecord {
   }
   const speaker = typeof t.speakerCharacterId === 'string' ? t.speakerCharacterId.trim() : ''
   if (speaker) out.speakerCharacterId = speaker
+  if (t.groupChatTurnState) {
+    out.groupChatTurnState = {
+      quotaRemaining: { ...t.groupChatTurnState.quotaRemaining },
+      speakCount: { ...t.groupChatTurnState.speakCount },
+    }
+  }
   const createdAt =
     typeof t.createdAt === 'string' && t.createdAt.trim()
       ? t.createdAt.trim()
@@ -1913,7 +1989,16 @@ export async function saveFirstTurn(params: {
   speakerCharacterId?: string
   speakerQueue?: string[]
   nextSpeakerHint?: string
-}): Promise<{ index: ConversationIndex; chunk: ChunkFile } | null> {
+  groupChatTurnState?: GroupChatTurnState
+  skipSpeakQuotaDeduction?: boolean
+  groupChatResolveAfterSegment?: GroupChatResolveParams
+  groupChatResolveOut?: { nextResolved?: ResolveNextSpeakerResult }
+  segmentPickAudit?: GroupChatSpeakerAudit
+}): Promise<{
+  index: ConversationIndex
+  chunk: ChunkFile
+  nextResolved?: ResolveNextSpeakerResult
+} | null> {
   const {
     conversationId,
     userText,
@@ -1929,6 +2014,10 @@ export async function saveFirstTurn(params: {
     speakerCharacterId,
     speakerQueue,
     nextSpeakerHint,
+    groupChatTurnState,
+    skipSpeakQuotaDeduction,
+    groupChatResolveAfterSegment,
+    segmentPickAudit,
   } = params
   const auditStorageStartedAt =
     auditSnapshot?.performance?.persistMs !== undefined ? performance.now() : 0
@@ -1987,6 +2076,35 @@ export async function saveFirstTurn(params: {
     activeReceiveIndex,
     nextSpeakerHint,
   })
+  if (groupChatTurnState) {
+    ;(turn as TurnRecord).groupChatTurnState = groupChatTurnState
+    if (!skipSpeakQuotaDeduction) {
+      ;(turn as TurnRecord).groupChatTurnState = recordSegmentSpeaker(
+        groupChatTurnState,
+        defaultSpeaker,
+      )
+    } else {
+      ;(turn as TurnRecord).groupChatTurnState = recordSegmentSpeaker(
+        groupChatTurnState,
+        defaultSpeaker,
+        { skipQuotaDeduction: true },
+      )
+    }
+  }
+
+  let nextResolved: ResolveNextSpeakerResult | undefined
+  if (groupChatResolveAfterSegment) {
+    nextResolved = applyNextSpeakerStateToTurn(
+      turn as TurnRecord,
+      groupChatResolveAfterSegment,
+    )
+    attachResolvedNextSpeakerAuditToActiveSegment(
+      turn as TurnRecord,
+      defaultSpeaker,
+      nextResolved.groupChatAudit,
+    )
+  }
+  attachSegmentPickAuditToSegment(turn as TurnRecord, 0, segmentPickAudit)
 
   const chunkSettings = await readGlobalChunkSettings()
   const { fileName: firstChunkFile, meta: firstMeta } = buildFirstChunkDescriptor(
@@ -2015,17 +2133,25 @@ export async function saveFirstTurn(params: {
   if (auditSnapshot !== undefined) {
     finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
     const idxForAudit = await readConversationIndex(conversationId)
+    const snapshot = withGroupChatAuditSnapshot(
+      auditSnapshot,
+      defaultSpeaker,
+      segmentPickAudit,
+      nextResolved,
+    )
     await appendChatAuditEntry(conversationId, idxForAudit, {
       chunkName: firstChunkFile,
       turnId,
       turnOrdinal: 0,
-      snapshot: auditSnapshot,
+      segmentIndex: 0,
+      receiveId,
+      snapshot: snapshot ?? auditSnapshot,
     })
   }
 
   scheduleMemoryIndexUpsert(conversationId, turn as TurnRecord, firstChunkFile)
 
-  return { index: idx, chunk }
+  return { index: idx, chunk, nextResolved }
 }
 
 /** 角色卡开场白：仅助手 receives，无用户正文；用于新建对话的 first_mes / alternate_greetings。 */
@@ -2103,6 +2229,11 @@ export async function appendConversationTurn(params: {
   speakerCharacterId?: string
   speakerQueue?: string[]
   nextSpeakerHint?: string
+  groupChatTurnState?: GroupChatTurnState
+  skipSpeakQuotaDeduction?: boolean
+  groupChatResolveAfterSegment?: GroupChatResolveParams
+  groupChatResolveOut?: { nextResolved?: ResolveNextSpeakerResult }
+  segmentPickAudit?: GroupChatSpeakerAudit
 }): Promise<boolean> {
   const {
     conversationId,
@@ -2114,6 +2245,11 @@ export async function appendConversationTurn(params: {
     speakerCharacterId,
     speakerQueue,
     nextSpeakerHint,
+    groupChatTurnState,
+    skipSpeakQuotaDeduction,
+    groupChatResolveAfterSegment,
+    groupChatResolveOut,
+    segmentPickAudit,
   } = params
   const auditStorageStartedAt =
     auditSnapshot?.performance?.persistMs !== undefined ? performance.now() : 0
@@ -2168,6 +2304,29 @@ export async function appendConversationTurn(params: {
     activeReceiveIndex: activeIdx,
     nextSpeakerHint,
   })
+  if (groupChatTurnState) {
+    ;(turn as TurnRecord).groupChatTurnState = recordSegmentSpeaker(
+      groupChatTurnState,
+      defaultSpeaker,
+      skipSpeakQuotaDeduction ? { skipQuotaDeduction: true } : undefined,
+    )
+  }
+  let nextResolved: ResolveNextSpeakerResult | undefined
+  if (groupChatResolveAfterSegment) {
+    nextResolved = applyNextSpeakerStateToTurn(
+      turn as TurnRecord,
+      groupChatResolveAfterSegment,
+    )
+    if (groupChatResolveOut) {
+      groupChatResolveOut.nextResolved = nextResolved
+    }
+    attachResolvedNextSpeakerAuditToActiveSegment(
+      turn as TurnRecord,
+      defaultSpeaker,
+      nextResolved.groupChatAudit,
+    )
+  }
+  attachSegmentPickAuditToSegment(turn as TurnRecord, 0, segmentPickAudit)
   chunk.turns.push(turn as TurnRecord)
   chunk.meta.ordinalRange = {
     start:
@@ -2201,11 +2360,19 @@ export async function appendConversationTurn(params: {
   if (auditSnapshot !== undefined) {
     finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
     const idxForAudit = await readConversationIndex(conversationId)
+    const snapshot = withGroupChatAuditSnapshot(
+      auditSnapshot,
+      defaultSpeaker,
+      segmentPickAudit,
+      groupChatResolveOut?.nextResolved,
+    )
     await appendChatAuditEntry(conversationId, idxForAudit, {
       chunkName: storagePath,
       turnId: turn.turnId,
       turnOrdinal: turn.turnOrdinal,
-      snapshot: auditSnapshot,
+      segmentIndex: 0,
+      receiveId,
+      snapshot: snapshot ?? auditSnapshot,
     })
   }
   scheduleMemoryIndexUpsert(
@@ -2228,6 +2395,10 @@ export async function appendSegmentToTurn(params: {
   auditSnapshot?: ChatAuditSnapshotInput
   turnPluginEntries?: TurnPluginEntry[]
   defaultSpeakerCharacterId?: string
+  skipSpeakQuotaDeduction?: boolean
+  groupChatResolveAfterSegment?: GroupChatResolveParams
+  groupChatResolveOut?: { nextResolved?: ResolveNextSpeakerResult }
+  segmentPickAudit?: GroupChatSpeakerAudit
 }): Promise<boolean> {
   const {
     conversationId,
@@ -2239,6 +2410,10 @@ export async function appendSegmentToTurn(params: {
     auditSnapshot,
     turnPluginEntries,
     defaultSpeakerCharacterId,
+    skipSpeakQuotaDeduction,
+    groupChatResolveAfterSegment,
+    groupChatResolveOut,
+    segmentPickAudit,
   } = params
   const auditStorageStartedAt =
     auditSnapshot?.performance?.persistMs !== undefined ? performance.now() : 0
@@ -2255,13 +2430,16 @@ export async function appendSegmentToTurn(params: {
     defaultSpeakerCharacterId?.trim() ||
     idx.characterIds?.[0]?.trim() ||
     ''
-  const spoken = new Set(
-    turn.segments
-      .filter((s) => (s.receives?.length ?? 0) > 0)
-      .map((s) => s.speakerCharacterId),
+  const segmentsWithContent = turn.segments.filter(
+    (s) => (s.receives?.length ?? 0) > 0,
   )
+  const lastSpeaker =
+    segmentsWithContent[segmentsWithContent.length - 1]?.speakerCharacterId?.trim() ||
+    null
   const speaker = speakerCharacterId.trim()
-  if (spoken.has(speaker)) return false
+  const hintOverride =
+    nextSpeakerHint?.trim() === speaker
+  if (lastSpeaker && lastSpeaker === speaker && !hintOverride) return false
   const used = collectChunkEntityIds(chunk)
   const mappedReceives = mapReceivesWithShortIds(receives, used)
   const activeIdx = Math.min(
@@ -2279,6 +2457,42 @@ export async function appendSegmentToTurn(params: {
   turn.segments = [...turn.segments, newSegment]
   turn.activeSegmentIndex = turn.segments.length - 1
   syncTurnReceivesFromActiveSegment(turn)
+  const groupChatSettings = idx.groupChat?.enabled
+    ? normalizeGroupChatSettings(idx.groupChat)
+    : null
+  const characterIds = idx.characterIds ?? []
+  if (groupChatSettings?.enabled && characterIds.length > 0) {
+    if (!turn.groupChatTurnState) {
+      turn.groupChatTurnState = initGroupChatTurnState(groupChatSettings, characterIds)
+    }
+    turn.groupChatTurnState = recordSegmentSpeaker(
+      turn.groupChatTurnState,
+      speaker,
+      skipSpeakQuotaDeduction ? { skipQuotaDeduction: true } : undefined,
+    )
+  } else if (turn.groupChatTurnState) {
+    turn.groupChatTurnState = recordSegmentSpeaker(
+      turn.groupChatTurnState,
+      speaker,
+      skipSpeakQuotaDeduction ? { skipQuotaDeduction: true } : undefined,
+    )
+  }
+  if (groupChatResolveAfterSegment) {
+    const nextResolved = applyNextSpeakerStateToTurn(
+      turn,
+      groupChatResolveAfterSegment,
+    )
+    if (groupChatResolveOut) {
+      groupChatResolveOut.nextResolved = nextResolved
+    }
+    attachResolvedNextSpeakerAuditToActiveSegment(
+      turn,
+      defaultSpeaker,
+      nextResolved.groupChatAudit,
+    )
+  }
+  const segmentIndex = turn.activeSegmentIndex
+  attachSegmentPickAuditToSegment(turn, segmentIndex, segmentPickAudit)
   const receiveId = mappedReceives[activeIdx]?.id?.trim() ?? ''
   if (turnPluginEntries?.length) {
     let plugins = Array.isArray(turn.plugins) ? turn.plugins : []
@@ -2299,11 +2513,19 @@ export async function appendSegmentToTurn(params: {
   if (auditSnapshot !== undefined) {
     finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
     const idxForAudit = await readConversationIndex(conversationId)
+    const snapshot = withGroupChatAuditSnapshot(
+      auditSnapshot,
+      speaker,
+      segmentPickAudit,
+      groupChatResolveOut?.nextResolved,
+    )
     await appendChatAuditEntry(conversationId, idxForAudit, {
       chunkName: storagePath,
       turnId: turn.turnId,
       turnOrdinal,
-      snapshot: auditSnapshot,
+      segmentIndex,
+      receiveId,
+      snapshot: snapshot ?? auditSnapshot,
     })
   }
   scheduleMemoryIndexUpsert(conversationId, turn, chunkName, branchPath)
@@ -2432,6 +2654,12 @@ export async function updateTurnContentInTailChunk(
     }
     turn.plugins = plugins
   }
+  const defaultSpeaker = idx.characterIds?.[0]?.trim() ?? ''
+  const segmentIndex = getActiveSegmentIndex(turn)
+  const segmentSpeaker =
+    getActiveSegment(turn, defaultSpeaker)?.speakerCharacterId?.trim() || defaultSpeaker
+  const segmentPick = turn.segments[segmentIndex]?.meta?.segmentPickAudit
+  const receiveId = auditReceiveIdForSegment(turn, segmentIndex)
   const storagePath = chunkStorageRelativePath(branchPath, chunkName)
   await writeChunkFile(conversationId, storagePath, chunk)
   const t = nowIso()
@@ -2441,11 +2669,19 @@ export async function updateTurnContentInTailChunk(
   if (auditSnapshot !== undefined) {
     finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
     const idxForAudit = await readConversationIndex(conversationId)
+    const snapshot = withGroupChatAuditSnapshot(
+      auditSnapshot,
+      segmentSpeaker,
+      segmentPick,
+      undefined,
+    )
     await appendChatAuditEntry(conversationId, idxForAudit, {
       chunkName: storagePath,
       turnId,
       turnOrdinal,
-      snapshot: auditSnapshot,
+      segmentIndex,
+      receiveId,
+      snapshot: snapshot ?? auditSnapshot,
     })
   }
   scheduleMemoryIndexUpsert(conversationId, turn, chunkName, branchPath)
@@ -2465,6 +2701,11 @@ export async function updateTurnSegmentInTailChunk(
   turnPluginEntries?: TurnPluginEntry[],
   turnPlugins?: unknown[],
   nextSpeakerHint?: string,
+  groupChatOpts?: {
+    groupChatResolveAfterSegment?: GroupChatResolveParams
+    groupChatResolveOut?: { nextResolved?: ResolveNextSpeakerResult }
+    segmentPickAudit?: GroupChatSpeakerAudit
+  },
 ): Promise<boolean> {
   if (!receives.length) return false
   const auditStorageStartedAt =
@@ -2479,6 +2720,7 @@ export async function updateTurnSegmentInTailChunk(
   const turn = chunk.turns[ti]
   const turnId = turn.turnId
   const used = collectChunkEntityIds(chunk)
+  const hadLaterSegments = turn.segments.length > segmentIndex + 1
   applyTurnSegmentContentUpdate(
     turn,
     used,
@@ -2489,6 +2731,12 @@ export async function updateTurnSegmentInTailChunk(
     defaultSpeakerCharacterId,
     nextSpeakerHint,
   )
+  if (hadLaterSegments) {
+    turn.segments = turn.segments.slice(0, segmentIndex + 1)
+    turn.activeSegmentIndex = segmentIndex
+    syncTurnReceivesFromActiveSegment(turn)
+    await removeChatAuditEntriesAfterSegment(conversationId, turnId, segmentIndex)
+  }
   if (turnPlugins !== undefined) {
     turn.plugins = turnPlugins
   } else if (turnPluginEntries?.length) {
@@ -2498,6 +2746,25 @@ export async function updateTurnSegmentInTailChunk(
     }
     turn.plugins = plugins
   }
+  const segmentSpeaker =
+    getActiveSegment(turn, defaultSpeakerCharacterId)?.speakerCharacterId?.trim() ||
+    defaultSpeakerCharacterId.trim()
+  if (groupChatOpts?.groupChatResolveAfterSegment) {
+    const nextResolved = applyNextSpeakerStateToTurn(
+      turn,
+      groupChatOpts.groupChatResolveAfterSegment,
+    )
+    if (groupChatOpts.groupChatResolveOut) {
+      groupChatOpts.groupChatResolveOut.nextResolved = nextResolved
+    }
+    attachResolvedNextSpeakerAuditToActiveSegment(
+      turn,
+      defaultSpeakerCharacterId,
+      nextResolved.groupChatAudit,
+    )
+  }
+  attachSegmentPickAuditToSegment(turn, segmentIndex, groupChatOpts?.segmentPickAudit)
+  const receiveId = auditReceiveIdForSegment(turn, segmentIndex)
   const storagePath = chunkStorageRelativePath(branchPath, chunkName)
   await writeChunkFile(conversationId, storagePath, chunk)
   const t = nowIso()
@@ -2507,11 +2774,19 @@ export async function updateTurnSegmentInTailChunk(
   if (auditSnapshot !== undefined) {
     finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
     const idxForAudit = await readConversationIndex(conversationId)
+    const snapshot = withGroupChatAuditSnapshot(
+      auditSnapshot,
+      segmentSpeaker,
+      groupChatOpts?.segmentPickAudit,
+      groupChatOpts?.groupChatResolveOut?.nextResolved,
+    )
     await appendChatAuditEntry(conversationId, idxForAudit, {
       chunkName: storagePath,
       turnId,
       turnOrdinal,
-      snapshot: auditSnapshot,
+      segmentIndex,
+      receiveId,
+      snapshot: snapshot ?? auditSnapshot,
     })
   }
   scheduleMemoryIndexUpsert(conversationId, turn, chunkName, branchPath)

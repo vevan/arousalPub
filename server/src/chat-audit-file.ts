@@ -11,6 +11,12 @@ import type {
   ChatAuditMessage,
   ChatAuditSnapshotInput,
 } from './chat-audit-types.js'
+import {
+  auditEntryIdentityKey,
+  auditEntryIsAfterSegment,
+  auditEntryMatchesIdentity,
+  normalizeAuditSegmentIndex,
+} from './chat-audit-identity.js'
 
 export const CHAT_AUDIT_FILE = 'chat-audit.json'
 export const CHAT_PROMPT_LEGACY_FILE = 'chat-prompt.json'
@@ -148,6 +154,35 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
+export function buildChatAuditEntry(
+  meta: {
+    savedAt: string
+    chunkName: string
+    turnId: string
+    turnOrdinal: number
+    segmentIndex?: number
+    receiveId?: string
+  },
+  messages: ChatAuditMessage[],
+  snapshot: ChatAuditSnapshotInput,
+): ChatAuditEntry {
+  const segmentIndex = normalizeAuditSegmentIndex(meta.segmentIndex)
+  return {
+    savedAt: meta.savedAt,
+    chunkName: meta.chunkName,
+    turnId: meta.turnId,
+    turnOrdinal: meta.turnOrdinal,
+    segmentIndex,
+    ...(meta.receiveId?.trim() ? { receiveId: meta.receiveId.trim() } : {}),
+    messages,
+    ...(snapshot.assembly ? { assembly: snapshot.assembly } : {}),
+    ...(snapshot.groupChat ? { groupChat: snapshot.groupChat } : {}),
+    ...(snapshot.calls?.length ? { calls: snapshot.calls } : {}),
+    ...(snapshot.plugins?.length ? { plugins: snapshot.plugins } : {}),
+    ...(snapshot.performance ? { performance: snapshot.performance } : {}),
+  }
+}
+
 export async function appendChatAuditEntry(
   conversationId: string,
   idx: AuditIndexLike,
@@ -155,6 +190,8 @@ export async function appendChatAuditEntry(
     chunkName: string
     turnId: string
     turnOrdinal: number
+    segmentIndex?: number
+    receiveId?: string
     snapshot: ChatAuditSnapshotInput
   },
 ): Promise<void> {
@@ -163,19 +200,24 @@ export async function appendChatAuditEntry(
   const msgs = validateAuditMessages(params.snapshot.messages)
   if (!msgs) return
 
+  const segmentIndex = normalizeAuditSegmentIndex(params.segmentIndex)
   const file = await readChatAuditFile(conversationId)
-  const filtered = file.entries.filter((e) => e.turnId !== params.turnId)
-  const entry: ChatAuditEntry = {
-    savedAt: nowIso(),
-    chunkName: params.chunkName,
-    turnId: params.turnId,
-    turnOrdinal: params.turnOrdinal,
-    messages: msgs,
-    ...(params.snapshot.assembly ? { assembly: params.snapshot.assembly } : {}),
-    ...(params.snapshot.calls?.length ? { calls: params.snapshot.calls } : {}),
-    ...(params.snapshot.plugins?.length ? { plugins: params.snapshot.plugins } : {}),
-    ...(params.snapshot.performance ? { performance: params.snapshot.performance } : {}),
-  }
+  const replaceKey = auditEntryIdentityKey({ turnId: params.turnId, segmentIndex })
+  const filtered = file.entries.filter(
+    (e) => auditEntryIdentityKey(e) !== replaceKey,
+  )
+  const entry = buildChatAuditEntry(
+    {
+      savedAt: nowIso(),
+      chunkName: params.chunkName,
+      turnId: params.turnId,
+      turnOrdinal: params.turnOrdinal,
+      segmentIndex,
+      receiveId: params.receiveId,
+    },
+    msgs,
+    params.snapshot,
+  )
   filtered.push(entry)
   const entries = filtered.slice(-maxStored)
   await mkdir(conversationDir(conversationId), { recursive: true })
@@ -184,6 +226,30 @@ export async function appendChatAuditEntry(
     `${JSON.stringify({ schemaVersion: 3, entries }, null, 2)}\n`,
     'utf8',
   )
+}
+
+/** regen 截断后续 segment 时移除对应审计条目 */
+export async function removeChatAuditEntriesAfterSegment(
+  conversationId: string,
+  turnId: string,
+  afterSegmentIndex: number,
+): Promise<void> {
+  const auditPath = conversationAuditPath(conversationId)
+  if (!existsSync(auditPath)) return
+  try {
+    const file = await readChatAuditFile(conversationId)
+    const entries = file.entries.filter(
+      (e) => !auditEntryIsAfterSegment(e, { turnId, segmentIndex: afterSegmentIndex }),
+    )
+    if (entries.length === file.entries.length) return
+    await writeFile(
+      auditPath,
+      `${JSON.stringify({ schemaVersion: 3, entries }, null, 2)}\n`,
+      'utf8',
+    )
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function removeChatAuditEntriesByTurnId(

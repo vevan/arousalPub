@@ -226,7 +226,7 @@ applyText / applyMessages  // 同语义
 |---------|-----------|------|
 | `false` | 任意 | **不写**、轮次「查看审计」隐藏或提示未开启 |
 | `true` | `0` | 不写（UI 校验建议 `maxStored ≥ 1` 才允许启用写入） |
-| `true` | `1～200` | 写入 `chat-audit.json`，按 `turnId` 覆盖，保留最近 N 条 |
+| `true` | `1～200` | 写入 `chat-audit.json`，同 `(turnId, segmentIndex)` 覆盖，保留最近 N 条 |
 
 ### 3.2 文件：`chat-audit.json`
 
@@ -239,6 +239,8 @@ applyText / applyMessages  // 同语义
     {
       "turnId": "a1b2c3d4",
       "turnOrdinal": 12,
+      "segmentIndex": 0,
+      "receiveId": "r3f8a2b1",
       "savedAt": "…",
       "chunkName": "turn-….json",
       "messages": [{ "role": "system", "content": "…" }],
@@ -294,12 +296,30 @@ applyText / applyMessages  // 同语义
           "reasoningChars": 0,
           "completionTokensUpstream": 504
         }
+      },
+      "groupChat": {
+        "segmentSpeakerCharacterId": "char1",
+        "segmentPick": {
+          "phase": "firstSegment",
+          "method": "dice",
+          "segmentIndex": 0,
+          "speakerCharacterId": "char1",
+          "dice": { "bids": [], "winnerCharacterId": "char1", "outcome": "winner" }
+        },
+        "nextSpeaker": {
+          "phase": "nextAfterSegment",
+          "method": "dice",
+          "segmentIndex": 1,
+          "speakerCharacterId": "char2"
+        }
       }
     }
   ]
 }
 ```
 
+- **`segmentIndex` / `receiveId`**（2026-07-03）：群聊同一 `turnId` 内多 segment 时，每条 audit 按 **segment 区分**；缺省 `segmentIndex` 视为 `0`（兼容旧条目）。`receiveId` 为本段 active receive，便于精确对照 swipe/regen。
+- **`groupChat`**（2026-07-03 · 群聊 G3/G4）：`segmentPick`（本段选人 audit，含掷骰 roster）、`nextSpeaker`（本段结束后下一段选人）；Web 群聊会话在审计弹窗增加独立 Tab，两区块展示「本段选人 / 下段选人」。chunk segment `meta.segmentPickAudit` / `resolvedNextSpeakerAudit` 供 regen 与 continue carry；写盘时 strip 冗余 `resolvedNextSpeakerAudit`（仅保留 carry 所需段）。regen 非末段时截断后续 segments 并清理对应 audit 条目。
 - **`messages`**：outgoing 最终态（**regex outgoing 之后**、`afterAssemblePrompts` 之后、upstream 之前）；**服务端自写**，不再依赖前端 `debugPrompt`。
 - **`assembly` / `calls` / `performance`**：仅 **`auditDebug.enabled`** 时计算并写入；**不进** chunk `turn.send` / `receive.runtime`（`runtime` 仍保留轻量 model/duration/tokens）。
 - **`performance`**（schema **v3**）：`assemblyMs` 分段（memory / characters / lore / assembleAndTrim / regexOutgoing / pluginsAfterAssemble）、`preUpstreamMs`、流式 `upstreamMs`（TTFB、首→末 token TPS）、`persistMs`、`stream` 字符/ token 统计；**debug 关闭时零开销**（不跑计时、不落盘该字段）。
@@ -313,7 +333,8 @@ applyText / applyMessages  // 同语义
 auditDebug.enabled && maxStored >= 1 && 落盘成功（/api/chat persist）
   → buildConversationOutboundMessages 得 assembly
   → 聚合本轮同步出站：chat + embedding（memory 召回）
-  → appendChatAuditEntry（按 turnId 覆盖，slice -maxStored）
+  → appendChatAuditEntry（按 turnId + segmentIndex 覆盖，slice -maxStored）
+  → regen 非末 segment：截断 turn.segments 后续段 + removeChatAuditEntriesAfterSegment
 ```
 
 **不含**：落盘后异步触发的插件 LLM（如 `plot-summary` 自动摘要）；若需观测见 §3.6。
@@ -324,7 +345,8 @@ auditDebug.enabled && maxStored >= 1 && 落盘成功（/api/chat persist）
 |----|-----|
 | `GET .../chat-prompt` | `GET .../chat-audit`（可保留旧路由只读别名一期） |
 | `promptDebug.maxStored` | `auditDebug.enabled` + `auditDebug.maxStored` |
-| `ChatTurnPromptDialog` | 审计 Tab：提示词 / 组装命中 / 出站调用（已实现） |
+| `ChatTurnPromptDialog` | 审计 Tab：提示词 / 组装命中 / 出站调用 / 性能；**群聊**会话另增「群聊选人」Tab（`GroupChatAuditPickBlock`） |
+| 轮次「查看审计」 | 按当前 **segmentIndex** 加载对应条目（`use-turn-prompt`）；旧 audit 无 `segmentIndex` 时 segment 0 fallback |
 
 ### 3.5 实现清单
 
@@ -335,6 +357,7 @@ auditDebug.enabled && maxStored >= 1 && 落盘成功（/api/chat persist）
 - [x] 轮次审计 UI 四 Tab（提示词 / 组装 / 调用 / **性能** · `ChatTurnPromptDialog`）
 - [x] **`performance` 审计**（schema v3 · `chat-audit-performance.ts` · 2026-06-10）
 - [x] **`assembly.plugins`** 插件注入 token 审计（`build-assembly-audit.ts` · 2026-06）
+- [x] **群聊 audit 按 segment 落盘**（2026-07-03 · `chat-audit-identity.ts` · `segmentIndex`/`receiveId` · `groupChat` snapshot · regen carry）
 - [ ] 客户端「按下发送」计时（`clientTimings`，可选）
 
 ### 3.6 插件与审计范围（2026-06-08 定案）

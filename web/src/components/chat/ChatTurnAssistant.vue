@@ -319,7 +319,7 @@ const speakerAvatarLetter = computed(() =>
         :disabled="regeneratingTurnOrdinal !== null"
         :data-tt="$t('chat.viewTurnPrompt')"
         :aria-label="$t('chat.viewTurnPrompt')"
-        @click="openTurnPromptSnapshot(turn)"
+        @click="openTurnPromptSnapshot(turn, segIdx)"
       >
         <v-icon size="16">mdi-text-box-search-outline</v-icon>
       </button>

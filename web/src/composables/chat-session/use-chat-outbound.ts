@@ -12,6 +12,7 @@ import {
 } from '@/utils/group-chat-settings'
 import {
   resolveSpeakerQueueIds,
+  listEligibleSpeakersForContinue,
   type PendingGroupContinue,
   getActiveSegmentIndex,
   getTurnSegments,
@@ -126,7 +127,8 @@ export function useChatOutbound(opts: {
   ): PendingGroupContinue | null {
     const nextId = persist?.nextSpeakerCharacterId?.trim()
     const turnOrd = persist?.turnOrdinal
-    if (!nextId || typeof turnOrd !== 'number') return null
+    if (typeof turnOrd !== 'number') return null
+    if (!nextId && !persist?.groupChatNeedsManualContinue) return null
     const listIndex = resolveTurnListIndex(turnOrd, listIndexHint)
     if (listIndex < 0) return null
     const turn = opts.turns.value[listIndex]
@@ -136,11 +138,29 @@ export function useChatOutbound(opts: {
       typeof persist?.activeSegmentIndex === 'number'
         ? persist.activeSegmentIndex
         : Math.max(0, segments.length - 1)
+    const charIds = opts.getCharacterIds?.() ?? []
+    const lastSeg = segments.filter((s) => (s.receives?.length ?? 0) > 0)
+    const lastSpeaker =
+      lastSeg[lastSeg.length - 1]?.speakerCharacterId ?? null
+    const settings =
+      opts.getGroupChatSettings?.() ?? defaultGroupChatSettings()
+    const eligible = listEligibleSpeakersForContinue(turn, [...charIds], settings)
+    const manualPick = Boolean(persist?.groupChatNeedsManualContinue && !nextId)
+    const allowSpeakerChange = Boolean(
+      manualPick || (settings.confirmContinue && eligible.length > 0),
+    )
+    const fallbackNext =
+      eligible[0]?.trim() ??
+      charIds.find((id) => id.trim() && id !== lastSpeaker)?.trim() ??
+      ''
     return {
       turnOrdinal: turnOrd,
       listIndex,
       afterSegmentIndex,
-      nextSpeakerCharacterId: nextId,
+      nextSpeakerCharacterId: nextId ?? fallbackNext,
+      manualPick,
+      allowSpeakerChange,
+      ...(allowSpeakerChange ? { eligibleSpeakerCharacterIds: eligible } : {}),
     }
   }
 
@@ -153,6 +173,10 @@ export function useChatOutbound(opts: {
       groupChatNoticeMessage.value = opts.t('chat.groupChat.decayStopped')
       groupChatNoticeOpen.value = true
     }
+    if (persist?.groupChatNeedsManualContinue) {
+      groupChatNoticeMessage.value = opts.t('chat.groupChat.needsManualContinue')
+      groupChatNoticeOpen.value = true
+    }
 
     const settings =
       opts.getGroupChatSettings?.() ?? defaultGroupChatSettings()
@@ -162,7 +186,7 @@ export function useChatOutbound(opts: {
       return null
     }
 
-    if (settings.confirmContinue) {
+    if (settings.confirmContinue || persist?.groupChatNeedsManualContinue) {
       pendingGroupContinue.value = pending
       return null
     }
@@ -184,6 +208,14 @@ export function useChatOutbound(opts: {
 
   function dismissGroupContinue() {
     pendingGroupContinue.value = null
+  }
+
+  function setPendingGroupContinueSpeaker(characterId: string) {
+    const pending = pendingGroupContinue.value
+    if (!pending) return
+    const id = characterId.trim()
+    if (!id) return
+    pendingGroupContinue.value = { ...pending, nextSpeakerCharacterId: id }
   }
 
   function reconcilePendingGroupContinueListIndex() {
@@ -801,6 +833,7 @@ export function useChatOutbound(opts: {
     abortCurrentReply,
     continueGroupChat,
     dismissGroupContinue,
+    setPendingGroupContinueSpeaker,
     pendingGroupContinue,
     regeneratingSegmentIndex,
     groupChatNoticeOpen,

@@ -1,6 +1,5 @@
 import { createEmbedding } from './embedding-client.js'
 import {
-  readBranchConversationIndex,
   readConversationIndex,
   resolvedLorebookIds,
   updateConversationMemoryEmbeddingModel,
@@ -14,15 +13,11 @@ import {
 import {
   deleteConversationMemoryIndex,
   deleteTurnMemoryVector,
+  optimizeTurnMemoryTable,
   replaceTurnMemoryIndex,
+  upsertTurnMemoryRowsBatch,
   type TurnMemoryRow,
 } from './memory-store.js'
-import {
-  clearConversationMemoryBuffers,
-  optimizeConversationMemoryTable,
-  queueTurnMemoryUpsert,
-  removeBufferedTurnMemory,
-} from './memory-tail-buffer.js'
 import {
   readGlobalEmbeddingApiSettings,
   readGlobalHybridFtsSettings,
@@ -38,7 +33,6 @@ import { resolveMemorySettings } from './memory-settings.js'
 import { formatHybridFtsSpec } from './hybrid-fts-settings.js'
 import {
   enumerateAllChunkChains,
-  isTailChunkFile,
   readChunkFileAt,
 } from './chunk-chain.js'
 import { mainPathChunkLocation } from './chunk-path.js'
@@ -145,13 +139,30 @@ export async function planConversationMemoryReindex(
   }
 }
 
-export { sealChunkMemorySegment } from './memory-tail-buffer.js'
+async function optimizeConversationMemoryTable(
+  conversationId: string,
+): Promise<void> {
+  await optimizeTurnMemoryTable(conversationId, {
+    aggressiveCleanup: true,
+  }).then(() => undefined)
+}
 
-/** 清除缓冲 + Lance 表（删会话等；全量重建改用 embed 成功后的 replaceTurnMemoryIndex） */
+/** chunk 封存（滚动/拆分）：best-effort 合并 Lance 碎片 */
+export async function sealChunkMemorySegment(
+  conversationId: string,
+  _chunkFileName: string,
+  _branchPath = '',
+): Promise<void> {
+  await optimizeConversationMemoryTable(conversationId).catch((e) => {
+    // eslint-disable-next-line no-console
+    console.warn('[memory-index] seal optimize failed:', e)
+  })
+}
+
+/** 清除 Lance 表（删会话等；全量重建改用 embed 成功后的 replaceTurnMemoryIndex） */
 export async function wipeConversationMemoryIndex(
   conversationId: string,
 ): Promise<void> {
-  clearConversationMemoryBuffers(conversationId)
   await deleteConversationMemoryIndex(conversationId)
 }
 
@@ -174,7 +185,6 @@ export function scheduleMemoryIndexDelete(
   conversationId: string,
   turnId: string,
 ): void {
-  removeBufferedTurnMemory(conversationId, turnId)
   void deleteTurnMemoryVector(conversationId, turnId).catch((e) => {
     // eslint-disable-next-line no-console
     console.warn('[memory-index] delete failed:', e)
@@ -220,17 +230,8 @@ async function indexTurnMemory(
   const loc = mainPathChunkLocation(chunkFileName)
   const resolvedBranch = branchPath || loc.branchPath
   const resolvedChunk = loc.chunkFileName
-  const branchIdx =
-    resolvedBranch === ''
-      ? idx
-      : await readBranchConversationIndex(conversationId, resolvedBranch)
-  const isTail =
-    branchIdx != null && isTailChunkFile(branchIdx, resolvedChunk)
 
-  await queueTurnMemoryUpsert(
-    conversationId,
-    resolvedBranch,
-    resolvedChunk,
+  await upsertTurnMemoryRowsBatch(conversationId, [
     {
       turnId: turn.turnId,
       turnOrdinal: turn.turnOrdinal,
@@ -239,8 +240,7 @@ async function indexTurnMemory(
       corpus,
       vector: emb.vector,
     },
-    isTail,
-  )
+  ])
   await markConversationMemoryEmbeddingModelIfChanged(conversationId)
 }
 
@@ -272,8 +272,6 @@ export async function reindexConversationMemory(
   const globalMemory = await readGlobalMemorySettings()
   const effectiveMemory = resolveMemorySettings(globalMemory, idx?.memorySettings)
   const corpusOptions = await resolveMemoryCorpusOptions(effectiveMemory)
-
-  clearConversationMemoryBuffers(conversationId)
 
   type PendingTurn = {
     key: string

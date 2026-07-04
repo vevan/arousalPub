@@ -5,7 +5,6 @@
 ## P0 余项
 
 - [ ] **远期记忆 Lance 分片写入** — 当前保留重建后 / seal chunk 时的 best-effort `optimize`；待官方 TS 版本暴露 `targetRowsPerFragment` / `maxRowsPerGroup` 后接入可控 compaction，避免大量几十 KB 小 fragment 或单个过大 fragment
-- [ ] **远期记忆尾段 buffer 遗留清理（死代码）** — 运行时尾段 buffer 已移除（`c3a3c4f` · row 直写 Lance 队列；文档已同步，见 **§已归档**）。**待做**：`memory-tail-buffer.ts` 中 `@deprecated` 空壳（`flushTurnMemoryBuffer` / `removeBufferedTurnMemory` / `clearConversationMemoryBuffers`）与 `memory-index.ts` 内 no-op 调用 — 内联/删文件名或重命名模块；`queueTurnMemoryUpsert` / `sealChunkMemorySegment` 迁入 `memory-index` / `memory-store`；扫 `DOC/23` 等是否仍有「尾块缓冲 / flush 减碎片」历史表述
 - [ ] **Composer Slash 命令** — 定案见 [`DOC/35`](35-group-chat.md) §2.3（群聊 `/@`）；输入框 `/` 命令层（与聊天 turns、输入历史分离）
   - [x] **S0** 宿主 `submitComposer` 统一入口 + 命令解析/路由（raw → 命令 + 剩余正文）
   - [x] **S1** 内置 `/goto N` 跳转轮次
@@ -68,6 +67,7 @@
 - [x] **远期记忆批量索引进度条**（2026-07-04 · `8fffdd0`）：`reindexConversationMemory` 分阶段 `onProgress`（planning / collecting_turns / embedding_turns / writing_turns / embedding_lorebooks / finalizing）· `embedTextsInBatches` 批次回调 · SSE `memory/rebuild?stream=1` · `useMemoryRebuild` + 对话页/设置页进度条与 stage 文案
 - [x] **远期记忆尾段 buffer 文档同步**（2026-07-04）：`DOC/23` §4.4 / §5.1 · `DOC/03` §14.5.1 / §14.7；运行时 buffer 已于 `c3a3c4f` 移除
 - [x] **角色库 userCardList 全链路**（2026-07-04）：Index/API · 角色库 UI · 新建会话 picker 默认 · 单测 — 见 `DOC/03` §12.2–§12.5
+- [x] **远期记忆尾段 buffer 死代码清理**（2026-07-04）：删除 `memory-tail-buffer.ts` · `sealChunkMemorySegment` / 增量 upsert 迁入 `memory-index.ts` — 见 `DOC/23` §4.4 · §5.1
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
 
@@ -80,4 +80,4 @@
 | **分支树轮次副标题**（fork / 末轮 / 独有轮数） | 2026-06-23 · `15c7900` | [`DOC/23`](23-conversation-branches.md) §6.4 · `branch-tree-utils.ts` |
 | **向量召回设置独立 Tab** | 2026-06-25 · `d276720` | [`DOC/03`](03-实现细节.md) §9.6 · `SettingsView` / `ConversationContextSettings` |
 | **远期记忆重建 SSE 进度条** | 2026-07-04 · `8fffdd0` | [`DOC/03`](03-实现细节.md) §14.5.1 · `memory-reindex-sse.ts` · `useMemoryRebuild.ts` |
-| **远期记忆尾段 buffer 移除 + 文档** | 2026-07-04 · `c3a3c4f` | [`DOC/23`](23-conversation-branches.md) §4.4 · §5.1 · `memory-tail-buffer.ts`（**死代码清理**仍见 P0） |
+| **远期记忆尾段 buffer 移除 + 死代码清理** | 2026-07-04 · `c3a3c4f` + 删 `memory-tail-buffer.ts` | [`DOC/23`](23-conversation-branches.md) §4.4 · §5.1 · `memory-index.ts` |

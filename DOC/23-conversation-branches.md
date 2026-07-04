@@ -208,12 +208,11 @@ Lance 单表 `turn_memory` 行字段（`DOC/03` §14.5）：
 
 | 模块 | 行为 |
 |------|------|
-| `memory-index.ts` | `plan` / `reindex` 用 `enumerateAllChunkChains`；单轮 upsert 支持 `branchPath`；增量 row 经 `queueTurnMemoryUpsert` 直写 Lance |
+| `memory-index.ts` | `plan` / `reindex` 用 `enumerateAllChunkChains`；单轮 upsert 支持 `branchPath`；增量 row 经 `upsertTurnMemoryRowsBatch` 直写 Lance；`sealChunkMemorySegment` best-effort optimize |
 | `memory-pipeline.ts` | `searchTurnMemoryVectors` 传入 `buildAllowedBranchPathsForActive(activeBranchPath)` |
 | `chat-assemble.ts` | `runMemoryPipeline({ activeBranchPath: idx.activeBranchPath ?? '' })` |
 | `memory-hits.ts` | 命中后按 `branchPath`+`chunkFileName` 批量 `readChunkFileAt` |
-| `memory-tail-buffer.ts` | **兼容模块名**（2026-07-04 · `c3a3c4f`）：无状态尾段 buffer 已移除；导出 `queueTurnMemoryUpsert`、`sealChunkMemorySegment`（best-effort optimize）、`optimizeConversationMemoryTable` |
-| `memory-store.ts` | `searchTurnMemoryVectors` + `buildMemoryVectorSearchWhereClause`；`replaceTurnMemoryIndex`；`deleteTurnMemoryByBranchSubtree` |
+| `memory-store.ts` | `searchTurnMemoryVectors` + `buildMemoryVectorSearchWhereClause`；`replaceTurnMemoryIndex`；`deleteTurnMemoryByBranchSubtree`；`upsertTurnMemoryRowsBatch` |
 
 单测：`server/src/memory-store.test.ts`、`server/src/memory-index.test.ts`。
 
@@ -254,7 +253,6 @@ branchPath IN ('', 'branch1', 'branch1/nested') AND turnOrdinal < 42
 ### 5.1 全量 memory 重建
 
 ```text
-clearConversationMemoryBuffers(conversationId)     // no-op（历史 API；尾段 buffer 已移除，c3a3c4f）
 enumerateAllChunkChains(conversationId)
   → 对每个 { branchPath, chunkFileName }
       readChunkFileAt → filterEmbeddableTurns
@@ -566,10 +564,9 @@ flowchart TD
 1. **混读同名 chunk 文件**：必须用 `readChunkFileAt(convId, branchPath, basename)`，禁止仅用 basename 调 `readChunkFile`。
 2. **忘记写 `branches[]`**：`enumerateAllChunkChains` 不会发现未注册目录。
 3. **跨分支比 ordinal**：再生 / history 窗口 / `minRecentOrdinal` 必须基于 active 路径上的 turn 集合。
-4. **tail 缓冲作用域**：`queueTurnMemoryUpsert` 的 `isTail` 须用**该 branchPath 对应**的 index.tailChunkFile 判断。
-5. **列表与根 index 漂移**：更新 `activeBranchPath` 时同时写会话根 `index.json` 与 `chat.index.json`（经 `upsertChatListEntry`）。
-6. **误以为分支首块必是 `000-099`**：文件名由 **分支首条独有 turn 的 `turnOrdinal`** 决定（§1.5）；fork 在 160 时首块为 `100-199`，且创建瞬间分支目录**可以没有任何 chunk**。
-7. **创建时复制后缀**：v1 定案为**空分支**（§1.4）；fork 点之后的主路径 turn **不**拷贝进 `branchN/`。
+4. **列表与根 index 漂移**：更新 `activeBranchPath` 时同时写会话根 `index.json` 与 `chat.index.json`（经 `upsertChatListEntry`）。
+5. **误以为分支首块必是 `000-099`**：文件名由 **分支首条独有 turn 的 `turnOrdinal`** 决定（§1.5）；fork 在 160 时首块为 `100-199`，且创建瞬间分支目录**可以没有任何 chunk**。
+6. **创建时复制后缀**：v1 定案为**空分支**（§1.4）；fork 点之后的主路径 turn **不**拷贝进 `branchN/`。
 
 ---
 

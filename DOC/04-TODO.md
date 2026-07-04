@@ -10,6 +10,14 @@
   - [x] **S2** 内置 `/@ Name [Name…]` — 解析 + strip；`speakerQueue` 已接入 G1 persist/API；**正文裸 `@` 不参与选人**
   - [ ] **S3** 插件注册命令（如 `plot-summary` `/summary 36-55`）；输入历史存 raw 提交
   - [x] **S4** Composer `/` 补全菜单（`#composer-slash-layer` + CSS anchor、`60dvh`、两行列表）
+- [ ] **迹录（trace-keeper）助手消息级状态** — 群聊同 turn 多 segment 时，侧栏 live / pinned 与历史注入仍按 **turn + activeReceive** 解析，只能看到**最后发言 bot** 的 tracker；需改为 **segment / receive 级**（与 swipe 变体同一套 `receiveId` 键，但 UI 与 resolve 未走 `segments[]`）。定案见 [`DOC/30`](30-plugin-trace-keeper.md) §4 · [`DOC/35`](35-group-chat.md) §2.1、§6 · `plugins/trace-keeper/`
+  - **现状**：落盘已有 `turn.plugins[]` + `payload.receiveId`（`mergeTurnPluginEntry`）；群聊 `appendSegmentToTurn` 每段独立 receive；**缺口**在插件 resolve / 侧栏仍读 `turn.receives` + `activeReceiveIndex`，未按 `activeSegmentIndex` 遍历 `turn.segments[]`
+  - [ ] **TK0 审计** — 群聊 3 segment 同 turn 落盘后 chunk 内 `turn.plugins` 是否保留 3 条 trace；列缺口清单（panel / separate / patch / sync-from-assistant）
+  - [ ] **TK1 Resolve 锚点** — `trace-state-resolve.ts` · `panel-empty.ts`：新增 `resolveTraceForSegment(turn, segmentIndex, epoch)`（经 segment 的 `receives[activeReceiveIndex].id` 查 plugins）；live 群聊跟随 `activeSegmentIndex`，单段 turn 行为不变
+  - [ ] **TK2 侧栏 UX** — pinned 支持 `(turnOrdinal, segmentIndex)` 或 segment 内 prev/next；Handlebars `meta` 增 `speakerCharacterId` / `segmentIndex` / `receiveId`；空态 / Separate 指向当前 segment 非整轮
+  - [ ] **TK3 API 与写回** — `regenerate-separate` · `patch-state` · `turn-plugin-sync-from-assistant` 接受 `segmentIndex` 或 `receiveId`；写回仅改对应 segment 的 assistant 块；确认 Continue / regen 不覆盖其它 segment 的 plugins 条目
+  - [ ] **TK4 组装注入（按需）** — 若产品要求下一段 bot 看见各 segment tracker：`resolveLiveTraceStates` 按 segment 展开（非每 turn 一条）；与 outgoing 正则保留 `<ex-trace-keeper>` 策略对齐
+  - [ ] **TK5 验收** — 群聊同 turn 多 bot 各段 state 可切换查看 + Separate；单 bot / swipe 无回归；补 `plugins/trace-keeper/test/` 与 persist 集成用例
 
 ## P1
 

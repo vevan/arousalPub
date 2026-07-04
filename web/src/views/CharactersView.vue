@@ -1058,12 +1058,6 @@ onUnmounted(() => {
           >
             {{ $t('characters.filterUnused') }} · {{ filterCounts.unused }}
           </button>
-          <button type="button" class="charlib-filter" disabled>
-            {{ $t('characters.filterTagFantasy') }}
-          </button>
-          <button type="button" class="charlib-filter" disabled>
-            {{ $t('characters.filterTagAdult') }}
-          </button>
         </aside>
 
         <div

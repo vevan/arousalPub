@@ -334,8 +334,6 @@
     "filterAll": "全部",
     "filterUsed": "已使用",
     "filterUnused": "未使用",
-    "filterTagFantasy": "奇幻（预留）",
-    "filterTagAdult": "成人（预留）",
     "listTitle": "角色列表",
     "listHint": "点击条目查看详情；在对话侧栏将卡绑定到会话。",
     "listLoaded": "已加载 {n} / {total}",

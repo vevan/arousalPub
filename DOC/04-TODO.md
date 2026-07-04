@@ -4,9 +4,12 @@
 
 ## P0 余项
 
-- [ ] **远期记忆批量索引进度条** — 重建索引时 `embedTextsInBatches` 需按 embedding 批次/阶段上报进度（collecting / embedding / writing / lorebooks），避免大对话导入后进度条长时间 0% 再瞬间完成
+- [ ] **角色库用户卡标记（`userCardList`）** — 定案 [`DOC/03`](03-实现细节.md) §12.2；索引顶层 `userCardList: string[]`（**不写入 PNG**）；标记用于筛选与选卡 UX，**不限制** `userCharacterId` / `characterIds` 绑定
+  - [ ] **Index + API** — `characters/index.json` 读写 / merge / prune（删除、重建）；`GET /api/characters?kind=all|user|notUser` + `filterCounts.kindNotUser|kindUser|kindAll`；`items[].isUser`；`GET/PATCH /api/characters/:id` 顶层 `isUser`（PATCH 与 `card` 分离）；`POST` 可选 `isUser`
+  - [ ] **角色库 UI** — 侧栏 **用户标记**筛选（顺序：**非用户 → 用户 → 全部**，默认全部）；与已使用/未使用正交；编辑表单「标记为用户卡」开关；~~移除奇幻/成人预留标签~~ ✅
+  - [ ] **新建会话 user picker** — `ConversationListView`：已标记卡 **默认置顶**；开关「仅显示已标记用户卡」（**默认关**，关时仍可选全库）
+  - [ ] **单测** — `listCharacterSummaries` kind 筛选、`userCardList` 删除/rebuild prune、`PATCH { isUser }` 不写 PNG
 - [ ] **远期记忆 Lance 分片写入** — 当前保留重建后 / seal chunk 时的 best-effort `optimize`；待官方 TS 版本暴露 `targetRowsPerFragment` / `maxRowsPerGroup` 后接入可控 compaction，避免大量几十 KB 小 fragment 或单个过大 fragment
-- [ ] **远期记忆尾段 buffer 遗留清理** — 尾段 memory buffer 已废弃：每条 memory row 直接进入 Lance 会话级写入队列，seal chunk 只触发 best-effort optimize。后续清理旧文档中“尾块缓冲/flush 减碎片”的表述与相关死代码引用
 - [ ] **Composer Slash 命令** — 定案见 [`DOC/35`](35-group-chat.md) §2.3（群聊 `/@`）；输入框 `/` 命令层（与聊天 turns、输入历史分离）
   - [x] **S0** 宿主 `submitComposer` 统一入口 + 命令解析/路由（raw → 命令 + 剩余正文）
   - [x] **S1** 内置 `/goto N` 跳转轮次
@@ -73,6 +76,8 @@
 - [x] 群聊 G3/G4 实现 + audit 按 segment 落盘（2026-07-03）：`groupChatTurnState` · 掷骰 roster · `ChatTurnPromptDialog` 群聊 Tab · `(turnId, segmentIndex)` 去重 — 见 `DOC/24` §3.2–§3.4、`DOC/35` §7
 - [x] 群聊 G3/G4 审计修复（2026-07-03）：regen 截断重建 `groupChatTurnState` · Continue 额度前后端对齐 · shared `group-chat-settings` — commit `2189d2a`
 - [x] 群聊代码模块化 + `sync-all-shared`（2026-07-03）：`server/src/group-chat/*` · G2 死代码清理 · `patchRegenSegments` — commit `97937ed` · 见 `DOC/35` §7.1
+- [x] **远期记忆批量索引进度条**（2026-07-04 · `8fffdd0`）：`reindexConversationMemory` 分阶段 `onProgress`（planning / collecting_turns / embedding_turns / writing_turns / embedding_lorebooks / finalizing）· `embedTextsInBatches` 批次回调 · SSE `memory/rebuild?stream=1` · `useMemoryRebuild` + 对话页/设置页进度条与 stage 文案
+- [x] **远期记忆尾段 buffer 文档同步**（2026-07-04）：`DOC/23` §4.4 / §5.1 · `DOC/03` §14.5.1 / §14.7；运行时 buffer 已于 `c3a3c4f` 移除
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
 
@@ -82,3 +87,5 @@
 | **新落盘助手回复下分支图标禁用** | 2026-06-23 · `15c7900` | [`DOC/23`](23-conversation-branches.md) §6.4 persist `turnId` |
 | **分支树轮次副标题**（fork / 末轮 / 独有轮数） | 2026-06-23 · `15c7900` | [`DOC/23`](23-conversation-branches.md) §6.4 · `branch-tree-utils.ts` |
 | **向量召回设置独立 Tab** | 2026-06-25 · `d276720` | [`DOC/03`](03-实现细节.md) §9.6 · `SettingsView` / `ConversationContextSettings` |
+| **远期记忆重建 SSE 进度条** | 2026-07-04 · `8fffdd0` | [`DOC/03`](03-实现细节.md) §14.5.1 · `memory-reindex-sse.ts` · `useMemoryRebuild.ts` |
+| **远期记忆尾段 buffer 移除 + 文档** | 2026-07-04 · `c3a3c4f` | [`DOC/23`](23-conversation-branches.md) §4.4 · §5.1 · `memory-tail-buffer.ts` |

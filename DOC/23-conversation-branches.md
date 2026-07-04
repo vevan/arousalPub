@@ -208,11 +208,11 @@ Lance 单表 `turn_memory` 行字段（`DOC/03` §14.5）：
 
 | 模块 | 行为 |
 |------|------|
-| `memory-index.ts` | `plan` / `reindex` 用 `enumerateAllChunkChains`；单轮 upsert 支持 `branchPath`；tail 缓冲按分支 index 判断 |
+| `memory-index.ts` | `plan` / `reindex` 用 `enumerateAllChunkChains`；单轮 upsert 支持 `branchPath`；增量 row 经 `queueTurnMemoryUpsert` 直写 Lance |
 | `memory-pipeline.ts` | `searchTurnMemoryVectors` 传入 `buildAllowedBranchPathsForActive(activeBranchPath)` |
 | `chat-assemble.ts` | `runMemoryPipeline({ activeBranchPath: idx.activeBranchPath ?? '' })` |
 | `memory-hits.ts` | 命中后按 `branchPath`+`chunkFileName` 批量 `readChunkFileAt` |
-| `memory-tail-buffer.ts` | 缓冲键含 `branchPath` |
+| `memory-tail-buffer.ts` | **兼容模块名**（2026-07-04 · `c3a3c4f`）：无状态尾段 buffer 已移除；导出 `queueTurnMemoryUpsert`、`sealChunkMemorySegment`（best-effort optimize）、`optimizeConversationMemoryTable` |
 | `memory-store.ts` | `searchTurnMemoryVectors` + `buildMemoryVectorSearchWhereClause`；`replaceTurnMemoryIndex`；`deleteTurnMemoryByBranchSubtree` |
 
 单测：`server/src/memory-store.test.ts`、`server/src/memory-index.test.ts`。
@@ -254,14 +254,14 @@ branchPath IN ('', 'branch1', 'branch1/nested') AND turnOrdinal < 42
 ### 5.1 全量 memory 重建
 
 ```text
-clearConversationMemoryBuffers(conversationId)     // 仅清尾块缓冲，不删 Lance 表
+clearConversationMemoryBuffers(conversationId)     // no-op（历史 API；尾段 buffer 已移除，c3a3c4f）
 enumerateAllChunkChains(conversationId)
   → 对每个 { branchPath, chunkFileName }
       readChunkFileAt → filterEmbeddableTurns
-  → embedTextsInBatches（全部语料）
+  → embedTextsInBatches（全部语料；onProgress → SSE 分阶段进度，见 DOC/03 §14.5.1）
   → 若 embed 失败：返回错误，**旧 turn_memory 表保留**
   → 若 embed 成功：replaceTurnMemoryIndex（delete + 批量 create/mergeInsert）
-  → optimizeTurnMemoryTable
+  → optimizeConversationMemoryTable（best-effort；失败不阻断重建）
   → reindexLorebooksByIds（绑定资料库）
 ```
 

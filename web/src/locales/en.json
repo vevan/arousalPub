@@ -334,8 +334,6 @@
     "filterAll": "All",
     "filterUsed": "Used",
     "filterUnused": "Unused",
-    "filterTagFantasy": "Fantasy (reserved)",
-    "filterTagAdult": "Adult (reserved)",
     "listTitle": "Characters",
     "listHint": "Select an entry for details; bind cards to a chat from the chat sidebar.",
     "listLoaded": "Loaded {n} / {total}",

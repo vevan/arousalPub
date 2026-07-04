@@ -1,7 +1,7 @@
 # 群聊（多角色发言轮次）— 设计定案
 
 > **状态**：定案 · **G0–G5 已落地**（2026-07-03）  
-> **关联**：`DOC/03` §6.8（turn/chunk · 群聊落盘）、`DOC/04` **P0**、`DOC/14` / `DOC/26`（ST 群聊宏）、Composer Slash（`submitComposer`）
+> **关联**：`DOC/03` §6.8（turn/chunk · 群聊落盘）、`DOC/04` **已归档**（G0–G5）、`DOC/14` / `DOC/26`（ST 群聊宏）、Composer Slash（`submitComposer` · **S3 仍开放**）
 
 ---
 
@@ -449,7 +449,7 @@ charN        → 可选；characterIds[N-1]（Phase 2+）
 
 ## 9. 交叉引用
 
-- 存储 / API：`DOC/03` §6（实现时 bump turn schema）
-- 待办里程碑：`DOC/04` **P0**
+- 存储 / API：`DOC/03` §6.8
+- 里程碑归档：`DOC/04` **§已归档**（群聊 G0–G5）；**仍开放**：Composer Slash **S3**（插件命令）
 - 宏对照：`DOC/26`
-- Slash 宿主：[`DOC/36`](36-composer-slash.md) · 待办 [`DOC/04`](04-TODO.md) P0
+- Slash 宿主：[`DOC/36`](36-composer-slash.md)

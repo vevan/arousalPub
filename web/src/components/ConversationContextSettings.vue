@@ -1343,7 +1343,7 @@ async function loadLorebooks() {
 async function loadCharacters() {
   charItemsLoading.value = true
   try {
-    const res = await fetch('/api/characters?limit=100&offset=0')
+    const res = await fetch('/api/characters?limit=100&offset=0&kind=all')
     if (!res.ok) return
     const j = (await res.json()) as {
       items?: { id?: string; name?: string }[]

@@ -44,6 +44,19 @@ interface CharacterIndexFile {
   schemaVersion: 1
   generatedAt: string
   entries: CharacterIndexEntry[]
+  /** 本库中标记为用户身份卡的角色 id（不写入 PNG） */
+  userCardList?: string[]
+}
+
+export type CharacterListKind = 'all' | 'user' | 'notUser'
+
+export interface CharacterListFilterCounts {
+  all: number
+  used: number
+  unused: number
+  kindAll: number
+  kindUser: number
+  kindNotUser: number
 }
 
 export interface CharacterListItem {
@@ -58,6 +71,7 @@ export interface CharacterListItem {
   usedInConversationCount: number
   /** 绑定该卡的会话中，最近一次 `updatedAt`（无绑定则为 null） */
   lastConversationAt: string | null
+  isUser: boolean
 }
 
 export type CharacterListSort =
@@ -74,6 +88,50 @@ export interface CharacterStoredDocument {
   importedAt: string
   updatedAt: string
   card: Record<string, unknown>
+}
+
+export interface CharacterDocumentForApi extends CharacterStoredDocument {
+  isUser: boolean
+}
+
+function normalizeUserCardList(
+  raw: unknown,
+  validIds?: ReadonlySet<string>,
+): string[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const item of raw) {
+    if (typeof item !== 'string') continue
+    const id = item.trim()
+    if (!isValidShortId(id) || seen.has(id)) continue
+    if (validIds && !validIds.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  out.sort((a, b) => a.localeCompare(b, 'en'))
+  return out
+}
+
+function finalizeIndexFile(data: CharacterIndexFile): CharacterIndexFile {
+  const validIds = new Set(data.entries.map((e) => e.id))
+  data.userCardList = normalizeUserCardList(data.userCardList, validIds)
+  return data
+}
+
+function userCardSetFromIndex(idx: CharacterIndexFile): Set<string> {
+  return new Set(normalizeUserCardList(idx.userCardList))
+}
+
+export function parseCharacterListKind(raw: unknown): CharacterListKind {
+  if (raw === 'all' || raw === 'user' || raw === 'notUser') return raw
+  return 'notUser'
+}
+
+export function parseIsUserFromBody(body: unknown): boolean | undefined {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined
+  const v = (body as Record<string, unknown>).isUser
+  return typeof v === 'boolean' ? v : undefined
 }
 
 function nowIso(): string {
@@ -266,13 +324,14 @@ async function readIndexFile(): Promise<CharacterIndexFile | null> {
     ) {
       return null
     }
-    return raw as CharacterIndexFile
+    return finalizeIndexFile(raw as CharacterIndexFile)
   } catch {
     return null
   }
 }
 
 async function writeIndexFile(data: CharacterIndexFile): Promise<void> {
+  finalizeIndexFile(data)
   data.generatedAt = nowIso()
   await writeFile(
     characterIndexFile(),
@@ -308,6 +367,7 @@ async function readDocFromDiskForRebuild(
 
 export async function rebuildCharacterIndexFromDisk(): Promise<CharacterIndexFile> {
   await mkdir(getCharactersDir(), { recursive: true })
+  const old = await readIndexFile()
   const ids = await listCharacterIdsOnDisk()
   const entries: CharacterIndexEntry[] = []
   for (const id of ids) {
@@ -316,10 +376,12 @@ export async function rebuildCharacterIndexFromDisk(): Promise<CharacterIndexFil
     entries.push(entryFromDoc(doc))
   }
   entries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt, 'en'))
+  const validIds = new Set(entries.map((e) => e.id))
   const file: CharacterIndexFile = {
     schemaVersion: 1,
     generatedAt: nowIso(),
     entries,
+    userCardList: normalizeUserCardList(old?.userCardList, validIds),
   }
   await writeIndexFile(file)
   return file
@@ -368,7 +430,55 @@ async function removeIndexEntry(id: string): Promise<void> {
   const idx = await readIndexFile()
   if (!idx) return
   idx.entries = idx.entries.filter((e) => e.id !== id)
+  if (idx.userCardList?.length) {
+    idx.userCardList = idx.userCardList.filter((x) => x !== id)
+  }
   await writeIndexFile(idx)
+}
+
+export async function updateCharacterUserMark(
+  id: string,
+  isUser: boolean,
+): Promise<boolean> {
+  if (!isValidShortId(id)) return false
+  const idx = await loadOrRebuildIndex()
+  if (!idx.entries.some((e) => e.id === id)) return false
+  const set = userCardSetFromIndex(idx)
+  if (isUser) set.add(id)
+  else set.delete(id)
+  idx.userCardList = [...set].sort((a, b) => a.localeCompare(b, 'en'))
+  await writeIndexFile(idx)
+  return true
+}
+
+export async function readCharacterDocumentForApi(
+  id: string,
+): Promise<CharacterDocumentForApi | null> {
+  const doc = await readCharacterDocument(id)
+  if (!doc) return null
+  const idx = await loadOrRebuildIndex()
+  const isUser = userCardSetFromIndex(idx).has(id)
+  return { ...doc, isUser }
+}
+
+export async function patchCharacterDocument(
+  id: string,
+  patch: { card?: Record<string, unknown>; isUser?: boolean },
+): Promise<CharacterDocumentForApi | null> {
+  if (!isValidShortId(id)) return null
+  if (!patch.card && typeof patch.isUser !== 'boolean') return null
+  if (patch.card) {
+    const doc = await updateCharacterDocument(id, patch.card)
+    if (!doc) return null
+  } else {
+    const doc = await readCharacterDocument(id)
+    if (!doc) return null
+  }
+  if (typeof patch.isUser === 'boolean') {
+    const ok = await updateCharacterUserMark(id, patch.isUser)
+    if (!ok) return null
+  }
+  return readCharacterDocumentForApi(id)
 }
 
 export function normalizeImportCard(body: unknown): Record<string, unknown> {
@@ -487,6 +597,7 @@ async function readOneFile(id: string): Promise<CharacterStoredDocument | null> 
 export async function importCharacterCardWithPortrait(
   card: Record<string, unknown>,
   portraitPng?: Buffer | null,
+  options?: { isUser?: boolean },
 ): Promise<CharacterStoredDocument> {
   await mkdir(getCharactersDir(), { recursive: true })
   let base: Buffer
@@ -508,6 +619,9 @@ export async function importCharacterCardWithPortrait(
   }
   await writeFile(path.join(getCharactersDir(), `${id}.png`), pngOut)
   await upsertIndexEntry(doc)
+  if (options?.isUser) {
+    await updateCharacterUserMark(id, true)
+  }
   return doc
 }
 
@@ -784,16 +898,18 @@ export async function listCharacterSummaries(params: {
   limit: number
   search?: string
   filter?: 'all' | 'used' | 'unused'
+  kind?: CharacterListKind
   sort?: CharacterListSort
   order?: CharacterListSortOrder
 }): Promise<{
   items: CharacterListItem[]
   total: number
-  filterCounts: { all: number; used: number; unused: number }
+  filterCounts: CharacterListFilterCounts
 }> {
   await mkdir(getCharactersDir(), { recursive: true })
   const stats = await refStats()
   const idx = await loadOrRebuildIndex()
+  const userSet = userCardSetFromIndex(idx)
   const rows: CharacterListItem[] = []
 
   for (const e of idx.entries) {
@@ -819,11 +935,13 @@ export async function listCharacterSummaries(params: {
       updatedAt,
       usedInConversationCount: usedN,
       lastConversationAt: ref?.lastConversationAt ?? null,
+      isUser: userSet.has(id),
     })
   }
 
   const q = (params.search ?? '').trim().toLowerCase()
   const filter = params.filter ?? 'all'
+  const kind = params.kind ?? 'notUser'
   let searchFiltered = rows
   if (q) {
     searchFiltered = searchFiltered.filter(
@@ -837,13 +955,24 @@ export async function listCharacterSummaries(params: {
     )
   }
 
-  const filterCounts = {
+  const filterCounts: CharacterListFilterCounts = {
     all: searchFiltered.length,
     used: searchFiltered.filter((r) => r.usedInConversationCount > 0).length,
-    unused: searchFiltered.filter((r) => r.usedInConversationCount === 0).length,
+    unused: searchFiltered.filter((r) => r.usedInConversationCount === 0)
+      .length,
+    kindAll: searchFiltered.length,
+    kindUser: searchFiltered.filter((r) => r.isUser).length,
+    kindNotUser: searchFiltered.filter((r) => !r.isUser).length,
   }
 
-  let filtered = searchFiltered
+  let kindFiltered = searchFiltered
+  if (kind === 'user') {
+    kindFiltered = kindFiltered.filter((r) => r.isUser)
+  } else if (kind === 'notUser') {
+    kindFiltered = kindFiltered.filter((r) => !r.isUser)
+  }
+
+  let filtered = kindFiltered
   if (filter === 'used') {
     filtered = filtered.filter((r) => r.usedInConversationCount > 0)
   } else if (filter === 'unused') {

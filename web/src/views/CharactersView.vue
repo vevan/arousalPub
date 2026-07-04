@@ -28,6 +28,7 @@ interface CharacterListItem {
   tags: string[]
   updatedAt: string
   usedInConversationCount: number
+  isUser: boolean
 }
 
 interface CharacterDoc {
@@ -36,12 +37,20 @@ interface CharacterDoc {
   importedAt: string
   updatedAt: string
   card: Record<string, unknown>
+  isUser?: boolean
 }
 
 interface ListResponse {
   items: CharacterListItem[]
   total: number
-  filterCounts: { all: number; used: number; unused: number }
+  filterCounts: {
+    all: number
+    used: number
+    unused: number
+    kindAll: number
+    kindUser: number
+    kindNotUser: number
+  }
   offset: number
   limit: number
   hasMore: boolean
@@ -51,11 +60,19 @@ const PAGE = 24
 
 const items = ref<CharacterListItem[]>([])
 const total = ref(0)
-const filterCounts = ref({ all: 0, used: 0, unused: 0 })
+const filterCounts = ref({
+  all: 0,
+  used: 0,
+  unused: 0,
+  kindAll: 0,
+  kindUser: 0,
+  kindNotUser: 0,
+})
 const hasMore = ref(true)
 const loading = ref(false)
 const loadingMore = ref(false)
 const errorText = ref('')
+const kind = ref<'all' | 'user' | 'notUser'>('notUser')
 const filter = ref<'all' | 'used' | 'unused'>('all')
 const sort = ref<
   'recentChat' | 'recentUpdate' | 'name' | 'usageCount'
@@ -100,6 +117,7 @@ const charFormTags = ref('')
 const charFormSystem = ref('')
 const charFormPost = ref('')
 const charFormNameError = ref('')
+const previewUserMarkSaving = ref(false)
 const charFormDialogError = ref('')
 const snackOpen = ref(false)
 const snackMessage = ref('')
@@ -213,7 +231,7 @@ watch(locale, () => {
   void nextTick(updateSortLabelTruncated)
 })
 
-watch([filter, searchDebounced, sort, sortOrder], () => {
+watch([kind, filter, searchDebounced, sort, sortOrder], () => {
   void reloadFromStart()
 })
 
@@ -238,6 +256,7 @@ function buildQuery(offset: number) {
   u.searchParams.set('offset', String(offset))
   u.searchParams.set('limit', String(PAGE))
   if (searchDebounced.value) u.searchParams.set('search', searchDebounced.value)
+  if (kind.value !== 'all') u.searchParams.set('kind', kind.value)
   if (filter.value !== 'all') u.searchParams.set('filter', filter.value)
   u.searchParams.set('sort', sort.value)
   u.searchParams.set('order', sortOrder.value)
@@ -286,7 +305,14 @@ async function fetchSlice(offset: number, append: boolean) {
 async function reloadFromStart() {
   items.value = []
   total.value = 0
-  filterCounts.value = { all: 0, used: 0, unused: 0 }
+  filterCounts.value = {
+    all: 0,
+    used: 0,
+    unused: 0,
+    kindAll: 0,
+    kindUser: 0,
+    kindNotUser: 0,
+  }
   hasMore.value = true
   selectedId.value = null
   detail.value = null
@@ -347,6 +373,10 @@ function setupObserver() {
 
 function selectCard(id: string) {
   selectedId.value = id
+}
+
+function setKind(k: 'all' | 'user' | 'notUser') {
+  kind.value = k
 }
 
 function setFilter(f: 'all' | 'used' | 'unused') {
@@ -517,6 +547,59 @@ function cardPayloadFromForm(): Record<string, unknown> {
     tags: charFormTags.value,
     creator: charFormCreator.value,
     alternate_greetings: alternateGreetingsPayload(),
+  }
+}
+
+async function savePreviewUserMark(value: boolean | null) {
+  if (value === null) return
+  const id = selectedId.value
+  if (!id || !detail.value) return
+  const wasUser = detail.value.isUser === true
+  if (wasUser === value) return
+  previewUserMarkSaving.value = true
+  try {
+    const res = await fetch(`/api/characters/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isUser: value }),
+    })
+    if (!res.ok) {
+      snackMessage.value = t('characters.userMarkFailed')
+      snackOpen.value = true
+      return
+    }
+    const doc = (await res.json()) as CharacterDoc
+    detail.value = doc
+    const marked = doc.isUser === true
+    const row = items.value.find((x) => x.id === id)
+    if (row) row.isUser = marked
+    if (wasUser !== marked) {
+      if (marked) {
+        filterCounts.value.kindUser++
+        filterCounts.value.kindNotUser = Math.max(
+          0,
+          filterCounts.value.kindNotUser - 1,
+        )
+      } else {
+        filterCounts.value.kindUser = Math.max(0, filterCounts.value.kindUser - 1)
+        filterCounts.value.kindNotUser++
+      }
+    }
+    const hiddenByKind =
+      (kind.value === 'user' && !marked) ||
+      (kind.value === 'notUser' && marked)
+    if (hiddenByKind) {
+      items.value = items.value.filter((x) => x.id !== id)
+      total.value = Math.max(0, total.value - 1)
+      if (selectedId.value === id) {
+        selectedId.value = items.value[0]?.id ?? null
+      }
+    }
+  } catch {
+    snackMessage.value = t('characters.userMarkFailed')
+    snackOpen.value = true
+  } finally {
+    previewUserMarkSaving.value = false
   }
 }
 
@@ -974,9 +1057,27 @@ onUnmounted(() => {
         <div class="charlib-preview__main">
           <template v-if="selected">
             <div class="charlib-preview__head">
-              <h2 class="charlib-preview__name">
-                {{ selected.name }}
-              </h2>
+              <div class="charlib-preview__title-row">
+                <h2 class="charlib-preview__name">
+                  {{ selected.name }}
+                </h2>
+                <v-tooltip location="bottom" :text="$t('characters.fieldIsUserHint')">
+                  <template #activator="{ props: tipProps }">
+                    <v-switch
+                      v-bind="tipProps"
+                      :model-value="detail?.isUser === true"
+                      :label="$t('characters.fieldIsUser')"
+                      :disabled="!detail || previewUserMarkSaving"
+                      :loading="previewUserMarkSaving"
+                      density="compact"
+                      hide-details
+                      color="primary"
+                      class="charlib-preview__user-mark"
+                      @update:model-value="savePreviewUserMark"
+                    />
+                  </template>
+                </v-tooltip>
+              </div>
               <div class="charlib-preview__actions">
                 <v-btn variant="outlined" size="small" :disabled="!detail" @click="openCharForm('edit')">
                   {{ $t('characters.edit') }}
@@ -1032,7 +1133,34 @@ onUnmounted(() => {
       <div class="charlib-zone">
         <aside class="charlib-rail" :aria-label="$t('characters.filterTitle')">
           <h2 class="charlib-rail__title">
-            {{ $t('characters.filterTitle') }}
+            {{ $t('characters.filterKindTitle') }}
+          </h2>
+          <button
+            type="button"
+            class="charlib-filter"
+            :class="{ 'is-on': kind === 'notUser' }"
+            @click="setKind('notUser')"
+          >
+            {{ $t('characters.filterCharacter') }} · {{ filterCounts.kindNotUser }}
+          </button>
+          <button
+            type="button"
+            class="charlib-filter"
+            :class="{ 'is-on': kind === 'user' }"
+            @click="setKind('user')"
+          >
+            {{ $t('characters.filterUser') }} · {{ filterCounts.kindUser }}
+          </button>
+          <button
+            type="button"
+            class="charlib-filter"
+            :class="{ 'is-on': kind === 'all' }"
+            @click="setKind('all')"
+          >
+            {{ $t('characters.filterKindAll') }} · {{ filterCounts.kindAll }}
+          </button>
+          <h2 class="charlib-rail__title charlib-rail__title--sub">
+            {{ $t('characters.filterUsageTitle') }}
           </h2>
           <button
             type="button"
@@ -1113,6 +1241,12 @@ onUnmounted(() => {
                 <div class="charlib-card__ph">
                   {{ $t('characters.portraitShort') }}
                 </div>
+                <span
+                  v-if="p.isUser"
+                  class="charlib-card__badge charlib-card__badge--user"
+                >
+                  {{ $t('characters.badgeUser') }}
+                </span>
                 <span
                   class="charlib-card__badge"
                   :class="{ 'is-muted': p.usedInConversationCount === 0 }"
@@ -1420,20 +1554,24 @@ onUnmounted(() => {
 }
 
 .charlib {
-  padding-block: 1rem 1.25rem;
+  position: relative;
+  padding: 0.5rem;
+  overflow-y: auto;
   min-height: 0;
 }
 
 .charlib__inner {
   display: flex;
   flex-direction: column;
+  gap: 0.875rem;
+  flex: 1 1 auto;
   min-height: 0;
-  flex: 1;
 }
 
 .charlib--embedded {
   flex: 1 1 auto;
   min-height: 0;
+  max-height: 100%;
   overflow: hidden;
 }
 .charlib__inner--embedded {
@@ -1791,6 +1929,24 @@ onUnmounted(() => {
   margin-bottom: 0.25rem;
 }
 
+.charlib-preview__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem 1rem;
+  flex-wrap: wrap;
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.charlib-preview__user-mark {
+  flex: 0 0 auto;
+}
+
+.charlib-preview__user-mark :deep(.v-label) {
+  font-size: 0.8125rem;
+  opacity: 0.85;
+}
+
 .charlib-preview__name {
   margin: 0;
   font-family: 'Newsreader', Georgia, serif;
@@ -1874,6 +2030,10 @@ onUnmounted(() => {
   color: rgba(var(--v-theme-on-surface), 0.5);
 }
 
+.charlib-rail__title--sub {
+  margin-top: 0.875rem;
+}
+
 .charlib-filter {
   display: block;
   width: 100%;
@@ -1901,10 +2061,6 @@ onUnmounted(() => {
 }
 
 @media (max-width: 40rem) {
-  .charlib--embedded {
-    padding-block: 0.5rem 0.625rem;
-  }
-
   .charlib--embedded .library-page-head {
     margin-bottom: 0.5rem;
     padding: 0 0.625rem 0.5rem;
@@ -2200,6 +2356,12 @@ onUnmounted(() => {
 .charlib-card__badge.is-muted {
   background: rgba(255, 255, 255, 0.12);
   color: rgba(255, 255, 255, 0.55);
+}
+
+.charlib-card__badge--user {
+  left: 0.375rem;
+  right: auto;
+  background: rgba(72, 128, 168, 0.92);
 }
 
 .charlib-card__body {

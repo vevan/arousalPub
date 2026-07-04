@@ -223,6 +223,7 @@ interface CharacterPickerItem {
   id: string
   name: string
   summary: string
+  isUser?: boolean
 }
 
 interface CharacterStoredDocument {
@@ -238,6 +239,28 @@ const selectedUserCard = ref<CharacterPickerItem | null>(null)
 const selectedCharacterCards = ref<(CharacterPickerItem | null)[]>([null])
 const pickerOpen = ref(false)
 const pickerTarget = ref<{ kind: 'user' } | { kind: 'character'; index: number } | null>(null)
+const userPickerOnlyMarked = ref(false)
+const characterPickerExcludeUser = ref(false)
+
+const displayedCharItems = computed(() => {
+  const target = pickerTarget.value
+  if (!target) return charItems.value
+  if (target.kind === 'user') {
+    if (userPickerOnlyMarked.value) {
+      return charItems.value.filter((x) => x.isUser)
+    }
+    return [...charItems.value].sort((a, b) => {
+      const au = a.isUser ? 0 : 1
+      const bu = b.isUser ? 0 : 1
+      if (au !== bu) return au - bu
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    })
+  }
+  if (characterPickerExcludeUser.value) {
+    return charItems.value.filter((x) => !x.isUser)
+  }
+  return charItems.value
+})
 
 interface LorebookPickerItem {
   id: string
@@ -385,16 +408,24 @@ function closeCreateDialog() {
   createOpen.value = false
   pickerOpen.value = false
   pickerTarget.value = null
+  userPickerOnlyMarked.value = false
+  characterPickerExcludeUser.value = false
+  charItems.value = []
 }
 
 async function loadCharacterItems() {
-  if (charItemsLoading.value || charItems.value.length > 0) return
+  if (charItemsLoading.value) return
   charItemsLoading.value = true
   try {
-    const res = await fetch('/api/characters?limit=200&offset=0')
+    const res = await fetch('/api/characters?limit=200&offset=0&kind=all')
     if (!res.ok) return
     const j = (await res.json()) as {
-      items?: { id?: string; name?: string; summary?: string }[]
+      items?: {
+        id?: string
+        name?: string
+        summary?: string
+        isUser?: boolean
+      }[]
     }
     charItems.value = (j.items ?? [])
       .filter((x) => typeof x.id === 'string' && x.id.trim())
@@ -402,6 +433,7 @@ async function loadCharacterItems() {
         id: x.id as string,
         name: typeof x.name === 'string' && x.name.trim() ? x.name.trim() : (x.id as string),
         summary: typeof x.summary === 'string' ? x.summary : '',
+        isUser: x.isUser === true,
       }))
   } finally {
     charItemsLoading.value = false
@@ -410,12 +442,14 @@ async function loadCharacterItems() {
 
 function openUserPicker() {
   pickerTarget.value = { kind: 'user' }
+  userPickerOnlyMarked.value = true
   pickerOpen.value = true
   void loadCharacterItems()
 }
 
 function openCharacterPicker(index: number) {
   pickerTarget.value = { kind: 'character', index }
+  characterPickerExcludeUser.value = true
   pickerOpen.value = true
   void loadCharacterItems()
 }
@@ -1109,11 +1143,39 @@ onUnmounted(() => {
           {{ $t('conversationList.pickCharacterDialogTitle') }}
         </v-card-title>
         <v-card-text>
+          <v-switch
+            v-if="pickerTarget?.kind === 'user'"
+            v-model="userPickerOnlyMarked"
+            :label="$t('conversationList.userPickerOnlyMarked')"
+            :hint="$t('conversationList.userPickerOnlyMarkedHint')"
+            persistent-hint
+            density="compact"
+            hide-details="auto"
+            color="primary"
+            class="mb-3"
+          />
+          <v-switch
+            v-if="pickerTarget?.kind === 'character'"
+            v-model="characterPickerExcludeUser"
+            :label="$t('conversationList.characterPickerExcludeUser')"
+            :hint="$t('conversationList.characterPickerExcludeUserHint')"
+            persistent-hint
+            density="compact"
+            hide-details="auto"
+            color="primary"
+            class="mb-3"
+          />
           <div
             v-if="charItemsLoading"
             class="text-body-2 text-medium-emphasis pa-3"
           >
             {{ $t('conversationList.loadingCharacters') }}
+          </div>
+          <div
+            v-else-if="displayedCharItems.length === 0"
+            class="text-body-2 text-medium-emphasis pa-3"
+          >
+            {{ $t('conversationList.pickerEmpty') }}
           </div>
           <v-list
             v-else
@@ -1121,7 +1183,7 @@ onUnmounted(() => {
             density="comfortable"
           >
             <v-list-item
-              v-for="item in charItems"
+              v-for="item in displayedCharItems"
               :key="item.id"
               :title="item.name"
               :subtitle="item.summary"

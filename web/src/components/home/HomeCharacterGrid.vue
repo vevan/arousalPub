@@ -94,6 +94,7 @@ function buildQuery(offset: number) {
   u.searchParams.set('offset', String(offset))
   u.searchParams.set('limit', String(PAGE))
   if (searchDebounced.value) u.searchParams.set('search', searchDebounced.value)
+  u.searchParams.set('kind', 'all')
   if (filter.value !== 'all') u.searchParams.set('filter', filter.value)
   u.searchParams.set('sort', props.sort)
   u.searchParams.set('order', props.sortOrder)

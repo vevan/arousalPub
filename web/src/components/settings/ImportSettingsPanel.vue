@@ -113,7 +113,7 @@ async function loadCharacters() {
     let offset = 0
     const limit = 100
     for (;;) {
-      const res = await fetch(`/api/characters?limit=${limit}&offset=${offset}`)
+      const res = await fetch(`/api/characters?limit=${limit}&offset=${offset}&kind=all`)
       if (!res.ok) return
       const j = (await res.json()) as {
         items?: typeof all

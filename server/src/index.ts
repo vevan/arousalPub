@@ -302,11 +302,14 @@ import {
   importCharacterCardWithPortrait,
   listCharacterSummaries,
   normalizeImportCard,
+  parseCharacterListKind,
   parseCharacterListSort,
   parseCharacterListSortOrder,
+  parseIsUserFromBody,
+  patchCharacterDocument,
   readCharacterDocument,
+  readCharacterDocumentForApi,
   readCharacterPngBuffer,
-  updateCharacterDocument,
   updateCharacterPortrait,
 } from './character-storage.js'
 import {
@@ -2957,12 +2960,14 @@ app.get('/api/characters', async (request, reply) => {
     rawF === 'used' || rawF === 'unused' ? rawF : ('all' as const)
   const sort = parseCharacterListSort(q.sort)
   const order = parseCharacterListSortOrder(q.order)
+  const kind = parseCharacterListKind(q.kind)
   try {
     const { items, total, filterCounts } = await listCharacterSummaries({
       offset,
       limit,
       search,
       filter,
+      kind,
       sort,
       order,
     })
@@ -3027,7 +3032,10 @@ app.post('/api/characters', async (request, reply) => {
         return reply.status(400).send({ error: ApiErrorCodes.payload_invalid_json })
       }
       const card = cardFromNewCharacterForm(body)
-      const doc = await importCharacterCardWithPortrait(card, portraitBuf)
+      const isUser = parseIsUserFromBody(body)
+      const doc = await importCharacterCardWithPortrait(card, portraitBuf, {
+        isUser: isUser === true,
+      })
       return { ok: true as const, id: doc.id }
     } catch (e) {
       return reply.status(400).send({
@@ -3037,7 +3045,10 @@ app.post('/api/characters', async (request, reply) => {
   }
   try {
     const card = cardFromNewCharacterForm(request.body)
-    const doc = await importCharacterCard(card)
+    const isUser = parseIsUserFromBody(request.body)
+    const doc = await importCharacterCardWithPortrait(card, null, {
+      isUser: isUser === true,
+    })
     return { ok: true as const, id: doc.id }
   } catch (e) {
     return reply.status(400).send({
@@ -3139,7 +3150,9 @@ app.post<{ Params: { id: string } }>(
       if (!isPngBuffer(buf)) {
         return reply.status(400).send({ error: ApiErrorCodes.png_image_required })
       }
-      const doc = await updateCharacterPortrait(id, buf)
+      const updated = await updateCharacterPortrait(id, buf)
+      if (!updated) return reply.status(404).send({ error: ApiErrorCodes.character_not_found })
+      const doc = await readCharacterDocumentForApi(id)
       if (!doc) return reply.status(404).send({ error: ApiErrorCodes.character_not_found })
       return doc
     } catch (e) {
@@ -3151,30 +3164,37 @@ app.post<{ Params: { id: string } }>(
   },
 )
 
-app.patch<{ Params: { id: string }; Body: { card?: unknown } }>(
+app.patch<{ Params: { id: string }; Body: { card?: unknown; isUser?: unknown } }>(
   '/api/characters/:id',
   async (request, reply) => {
     const id = request.params.id
     if (!isValidShortId(id)) {
       return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
-    const body = request.body as { card?: unknown }
-    if (
-      !body ||
-      typeof body !== 'object' ||
-      !body.card ||
-      typeof body.card !== 'object' ||
-      Array.isArray(body.card)
-    ) {
+    const body = request.body as { card?: unknown; isUser?: unknown }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return reply
+        .status(400)
+        .send({ error: ApiErrorCodes.card_body_invalid })
+    }
+    const hasCard =
+      body.card &&
+      typeof body.card === 'object' &&
+      !Array.isArray(body.card)
+    const isUser =
+      typeof body.isUser === 'boolean' ? body.isUser : undefined
+    if (!hasCard && typeof isUser !== 'boolean') {
       return reply
         .status(400)
         .send({ error: ApiErrorCodes.card_body_invalid })
     }
     try {
-      const doc = await updateCharacterDocument(
-        id,
-        body.card as Record<string, unknown>,
-      )
+      const doc = await patchCharacterDocument(id, {
+        ...(hasCard
+          ? { card: body.card as Record<string, unknown> }
+          : {}),
+        ...(typeof isUser === 'boolean' ? { isUser } : {}),
+      })
       if (!doc) return reply.status(404).send({ error: ApiErrorCodes.character_not_found })
       return doc
     } catch (e) {
@@ -3191,7 +3211,7 @@ app.get<{ Params: { id: string } }>(
     if (!isValidShortId(id)) {
       return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
     }
-    const doc = await readCharacterDocument(id)
+    const doc = await readCharacterDocumentForApi(id)
     if (!doc) return reply.status(404).send({ error: ApiErrorCodes.character_not_found })
     return doc
   },

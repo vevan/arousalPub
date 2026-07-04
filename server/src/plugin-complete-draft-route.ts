@@ -18,6 +18,7 @@ export interface PluginCompleteDraftRequestBody {
   systemPromptTemplate?: string
   fromTurn?: number
   toTurn?: number
+  blockTurns?: number
   sidecarName?: string
 }
 
@@ -73,6 +74,9 @@ function parseDraftContext(
   }
   if (typeof body.toTurn === 'number' && Number.isInteger(body.toTurn)) {
     ctx.toTurn = body.toTurn
+  }
+  if (typeof body.blockTurns === 'number' && Number.isInteger(body.blockTurns)) {
+    ctx.blockTurns = body.blockTurns
   }
   if (kind === 'sidecar') {
     const sidecarName =

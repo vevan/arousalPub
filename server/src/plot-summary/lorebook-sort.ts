@@ -1,6 +1,8 @@
 /** Historian 资料库条目分类与组内排序（plot-summary 插件算法） */
 
-export const TURN_RANGE_SUFFIX_RE = /-(\d+)-(\d+)$/
+export const PLOT_SUMMARY_TURN_RANGE_SUFFIX_RE = /\[(\d+)-(\d+)\]$/
+export const LEGACY_TURN_RANGE_SUFFIX_RE = /-(\d+)-(\d+)$/
+export const PLOT_SUMMARY_MEMO_PREFIX_RE = /^\[MEMO-(\d+)\]-/
 
 export type PlotSummaryEntryKind = 'other' | 'sidecar' | 'summary'
 
@@ -20,12 +22,22 @@ export function parseTurnRangeSuffix(
   title: string,
 ): { start: number; end: number } | null {
   const t = (title ?? '').trim()
-  const m = t.match(TURN_RANGE_SUFFIX_RE)
+  for (const re of [PLOT_SUMMARY_TURN_RANGE_SUFFIX_RE, LEGACY_TURN_RANGE_SUFFIX_RE]) {
+    const m = t.match(re)
+    if (!m) continue
+    const start = Number(m[1])
+    const end = Number(m[2])
+    if (!Number.isFinite(start) || !Number.isFinite(end)) continue
+    return { start, end }
+  }
+  return null
+}
+
+export function parseMemoIndex(title: string): number | null {
+  const m = (title ?? '').trim().match(PLOT_SUMMARY_MEMO_PREFIX_RE)
   if (!m) return null
-  const start = Number(m[1])
-  const end = Number(m[2])
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return null
-  return { start, end }
+  const n = Number(m[1])
+  return Number.isFinite(n) ? n : null
 }
 
 export function classifyPlotSummaryEntry(
@@ -88,6 +100,9 @@ export function sortPlotSummaryEntriesInGroup<T extends PlotSummaryLoreEntry>(
     if (!rb) return -1
     if (ra.start !== rb.start) return ra.start - rb.start
     if (ra.end !== rb.end) return ra.end - rb.end
+    const ma = parseMemoIndex(a.title)
+    const mb = parseMemoIndex(b.title)
+    if (ma !== null && mb !== null && ma !== mb) return ma - mb
     return a.id.localeCompare(b.id)
   })
 }

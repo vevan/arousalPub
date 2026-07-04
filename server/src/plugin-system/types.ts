@@ -226,6 +226,7 @@ export interface PluginCompleteDraftContext {
   systemPromptTemplate: string
   fromTurn?: number
   toTurn?: number
+  blockTurns?: number
   sidecarName?: string
 }
 

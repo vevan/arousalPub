@@ -4,6 +4,7 @@ function asString(v) {
 }
 
 // src/shared/summarize.ts
+var PLOT_SUMMARY_ENTRY_TITLE_RE = /^\[MEMO-(\d+)\]-(.+)-\[(\d+)-(\d+)\]$/;
 function parseModelJson(text) {
   let raw = (text ?? "").trim();
   const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -28,13 +29,38 @@ function normalizeSummaryPayload(obj) {
   }
   return { title, content: content.trim(), keywords };
 }
-function formatEntryTitle(rawTitle, startTurn, endTurn) {
-  const base = rawTitle.trim();
-  const suffix = `-${startTurn}-${endTurn}`;
-  if (/-\d+-\d+$/.test(base)) {
-    return base.replace(/-\d+-\d+$/, suffix);
+function parsePlotSummaryEntryTitle(title) {
+  const m = (title ?? "").trim().match(PLOT_SUMMARY_ENTRY_TITLE_RE);
+  if (!m) return null;
+  const memoIndex = Number(m[1]);
+  const start = Number(m[3]);
+  const end = Number(m[4]);
+  if (!Number.isFinite(memoIndex) || !Number.isFinite(start) || !Number.isFinite(end)) {
+    return null;
   }
-  return `${base}${suffix}`;
+  return { memoIndex, coreTitle: m[2].trim(), start, end };
+}
+function extractSummaryCoreTitle(rawTitle) {
+  const t = rawTitle.trim();
+  const parsed = parsePlotSummaryEntryTitle(t);
+  if (parsed?.coreTitle) return parsed.coreTitle;
+  const legacy = t.match(/-(\d+)-(\d+)$/);
+  if (legacy && legacy.index !== void 0) {
+    const core = t.slice(0, legacy.index).trim();
+    if (core) return core;
+  }
+  return t || "\u6458\u8981";
+}
+function resolveMemoIndex(rawTitle, fromTurn, blockTurns) {
+  const parsed = parsePlotSummaryEntryTitle(rawTitle.trim());
+  if (parsed) return parsed.memoIndex;
+  const bt = Math.max(1, Math.round(blockTurns));
+  return Math.floor(Math.max(0, fromTurn) / bt) + 1;
+}
+function formatEntryTitle(rawTitle, startTurn, endTurn, blockTurns = 15) {
+  const title = extractSummaryCoreTitle(rawTitle);
+  const memoIndex = resolveMemoIndex(rawTitle, startTurn, blockTurns);
+  return `[MEMO-${memoIndex}]-${title}-[${startTurn}-${endTurn}]`;
 }
 
 // src/shared/build-summary-messages.ts
@@ -176,7 +202,8 @@ async function completeDraft(ctx, api) {
   const summary = normalizeSummaryPayload(raw);
   const fromTurn = typeof ctx.fromTurn === "number" ? ctx.fromTurn : 0;
   const toTurn = typeof ctx.toTurn === "number" ? ctx.toTurn : fromTurn;
-  const entryTitle = formatEntryTitle(summary.title, fromTurn, toTurn);
+  const blockTurns = typeof ctx.blockTurns === "number" && Number.isFinite(ctx.blockTurns) ? Math.max(1, Math.round(ctx.blockTurns)) : 15;
+  const entryTitle = formatEntryTitle(summary.title, fromTurn, toTurn, blockTurns);
   return {
     draft: {
       title: entryTitle,

@@ -75,6 +75,7 @@ export interface PluginHost {
       systemPromptTemplate: string
       fromTurn?: number
       toTurn?: number
+      blockTurns?: number
       sidecarName?: string
     }) => Promise<{ draft: { title: string; content: string; keywords: string[] } }>
   }

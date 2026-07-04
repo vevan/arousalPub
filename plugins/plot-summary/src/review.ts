@@ -118,6 +118,7 @@ export async function generateReviewDraft(
       systemPromptTemplate: resolveSystemPrompt(host, settings, opts),
       fromTurn: opts.fromTurn,
       toTurn: opts.toTurn,
+      blockTurns: settings.blockTurns,
       sidecarName: opts.sc?.name,
     }
     const { draft } = await host.plugin.completeDraft(req)

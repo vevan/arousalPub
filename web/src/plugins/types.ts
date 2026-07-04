@@ -317,6 +317,7 @@ export interface PluginCompleteDraftRequest {
   systemPromptTemplate: string
   fromTurn?: number
   toTurn?: number
+  blockTurns?: number
   sidecarName?: string
 }
 

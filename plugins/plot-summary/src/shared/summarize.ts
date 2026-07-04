@@ -1,5 +1,8 @@
 import { asString } from './utils.js'
 
+export const PLOT_SUMMARY_ENTRY_TITLE_RE =
+  /^\[MEMO-(\d+)\]-(.+)-\[(\d+)-(\d+)\]$/
+
 export function parseModelJson(text: string): unknown {
   let raw = (text ?? '').trim()
   const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)
@@ -33,15 +36,54 @@ export function normalizeSummaryPayload(obj: unknown): {
   return { title, content: content.trim(), keywords }
 }
 
+export function parsePlotSummaryEntryTitle(title: string): {
+  memoIndex: number
+  coreTitle: string
+  start: number
+  end: number
+} | null {
+  const m = (title ?? '').trim().match(PLOT_SUMMARY_ENTRY_TITLE_RE)
+  if (!m) return null
+  const memoIndex = Number(m[1])
+  const start = Number(m[3])
+  const end = Number(m[4])
+  if (!Number.isFinite(memoIndex) || !Number.isFinite(start) || !Number.isFinite(end)) {
+    return null
+  }
+  return { memoIndex, coreTitle: m[2].trim(), start, end }
+}
+
+export function extractSummaryCoreTitle(rawTitle: string): string {
+  const t = rawTitle.trim()
+  const parsed = parsePlotSummaryEntryTitle(t)
+  if (parsed?.coreTitle) return parsed.coreTitle
+  const legacy = t.match(/-(\d+)-(\d+)$/)
+  if (legacy && legacy.index !== undefined) {
+    const core = t.slice(0, legacy.index).trim()
+    if (core) return core
+  }
+  return t || '摘要'
+}
+
+export function resolveMemoIndex(
+  rawTitle: string,
+  fromTurn: number,
+  blockTurns: number,
+): number {
+  const parsed = parsePlotSummaryEntryTitle(rawTitle.trim())
+  if (parsed) return parsed.memoIndex
+  const bt = Math.max(1, Math.round(blockTurns))
+  return Math.floor(Math.max(0, fromTurn) / bt) + 1
+}
+
+/** 剧情纪要 lore 条目标题：[MEMO-n]-TITLE-[from-to] */
 export function formatEntryTitle(
   rawTitle: string,
   startTurn: number,
   endTurn: number,
+  blockTurns = 15,
 ): string {
-  const base = rawTitle.trim()
-  const suffix = `-${startTurn}-${endTurn}`
-  if (/-\d+-\d+$/.test(base)) {
-    return base.replace(/-\d+-\d+$/, suffix)
-  }
-  return `${base}${suffix}`
+  const title = extractSummaryCoreTitle(rawTitle)
+  const memoIndex = resolveMemoIndex(rawTitle, startTurn, blockTurns)
+  return `[MEMO-${memoIndex}]-${title}-[${startTurn}-${endTurn}]`
 }

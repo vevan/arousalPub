@@ -10,18 +10,32 @@ import {
 import {
   classifyPlotSummaryEntry,
   computePlotSummaryApplyOrderLayout,
+  parseMemoIndex,
   parseTurnRangeSuffix,
   pickRecentSummaryEntriesBeforeTurn,
   sortPlotSummaryEntriesInGroup,
 } from '../../src/plot-summary/lorebook-sort.js'
 
 describe('parseTurnRangeSuffix', () => {
-  it('parses trailing from-to suffix', () => {
+  it('parses bracket turn range suffix', () => {
+    assert.deepEqual(parseTurnRangeSuffix('[MEMO-1]-冒险-[0-15]'), {
+      start: 0,
+      end: 15,
+    })
+  })
+
+  it('parses legacy trailing from-to suffix', () => {
     assert.deepEqual(parseTurnRangeSuffix('冒险摘要-1-50'), { start: 1, end: 50 })
   })
 
   it('returns null when suffix missing', () => {
     assert.equal(parseTurnRangeSuffix('plain title'), null)
+  })
+})
+
+describe('parseMemoIndex', () => {
+  it('reads memo prefix index', () => {
+    assert.equal(parseMemoIndex('[MEMO-2]-TITLE-[0-15]'), 2)
   })
 })
 
@@ -35,7 +49,14 @@ describe('classifyPlotSummaryEntry', () => {
     )
   })
 
-  it('classifies summary by turn suffix', () => {
+  it('classifies summary by bracket turn suffix', () => {
+    assert.equal(
+      classifyPlotSummaryEntry({ id: 'm1', title: '[MEMO-1]-摘要-[10-20]' }, sidecarSet),
+      'summary',
+    )
+  })
+
+  it('classifies legacy summary by turn suffix', () => {
     assert.equal(
       classifyPlotSummaryEntry({ id: 'm1', title: '摘要-10-20' }, sidecarSet),
       'summary',
@@ -53,7 +74,7 @@ describe('sortPlotSummaryEntriesInGroup', () => {
         {
           id: 'sum2',
           groupId: 'g1',
-          title: 'B-20-30',
+          title: '[MEMO-2]-B-[20-30]',
           createdAt: '2026-01-03T00:00:00.000Z',
         },
         {
@@ -67,7 +88,7 @@ describe('sortPlotSummaryEntriesInGroup', () => {
         {
           id: 'sum1',
           groupId: 'g1',
-          title: 'A-1-10',
+          title: '[MEMO-1]-A-[1-10]',
           createdAt: '2026-01-04T00:00:00.000Z',
         },
       ],
@@ -90,7 +111,7 @@ describe('computePlotSummaryApplyOrderLayout', () => {
           { id: 'g2', order: 1 },
         ],
         entries: [
-          { id: 'a', groupId: 'g1', title: 'x-1-2' },
+          { id: 'a', groupId: 'g1', title: '[MEMO-1]-x-[1-2]' },
           { id: 'b', groupId: 'g2', title: '设定' },
         ],
       },
@@ -125,10 +146,10 @@ describe('pickRecentSummaryEntriesBeforeTurn', () => {
     const sidecarSet = new Set(Object.values(sidecarEntryIds))
     const picked = pickRecentSummaryEntriesBeforeTurn(
       [
-        { id: 's1', groupId: 'g1', title: 'A-1-5' },
-        { id: 's2', groupId: 'g1', title: 'B-6-10' },
-        { id: 's3', groupId: 'g1', title: 'C-11-15' },
-        { id: 's4', groupId: 'g1', title: 'D-50-70' },
+        { id: 's1', groupId: 'g1', title: '[MEMO-1]-A-[1-5]' },
+        { id: 's2', groupId: 'g1', title: '[MEMO-2]-B-[6-10]' },
+        { id: 's3', groupId: 'g1', title: '[MEMO-3]-C-[11-15]' },
+        { id: 's4', groupId: 'g1', title: '[MEMO-4]-D-[50-70]' },
         { id: 'sc', groupId: 'g1', title: 'side' },
       ],
       16,

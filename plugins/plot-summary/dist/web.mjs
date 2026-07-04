@@ -461,6 +461,7 @@ async function generateReviewDraft(host, settings, opts) {
       systemPromptTemplate: resolveSystemPrompt(host, settings, opts),
       fromTurn: opts.fromTurn,
       toTurn: opts.toTurn,
+      blockTurns: settings.blockTurns,
       sidecarName: opts.sc?.name
     };
     const { draft } = await host.plugin.completeDraft(req);
@@ -550,15 +551,26 @@ function promptReview(host, draft, dialogId, regenerateFn, lorebookName) {
 }
 
 // src/shared/lorebook-sort.ts
-var TURN_RANGE_SUFFIX_RE = /-(\d+)-(\d+)$/;
+var PLOT_SUMMARY_TURN_RANGE_SUFFIX_RE = /\[(\d+)-(\d+)\]$/;
+var LEGACY_TURN_RANGE_SUFFIX_RE = /-(\d+)-(\d+)$/;
+var PLOT_SUMMARY_MEMO_PREFIX_RE = /^\[MEMO-(\d+)\]-/;
 function parseTurnRangeSuffix(title) {
   const t = (title ?? "").trim();
-  const m = t.match(TURN_RANGE_SUFFIX_RE);
+  for (const re of [PLOT_SUMMARY_TURN_RANGE_SUFFIX_RE, LEGACY_TURN_RANGE_SUFFIX_RE]) {
+    const m = t.match(re);
+    if (!m) continue;
+    const start = Number(m[1]);
+    const end = Number(m[2]);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+    return { start, end };
+  }
+  return null;
+}
+function parseMemoIndex(title) {
+  const m = (title ?? "").trim().match(PLOT_SUMMARY_MEMO_PREFIX_RE);
   if (!m) return null;
-  const start = Number(m[1]);
-  const end = Number(m[2]);
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
-  return { start, end };
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
 }
 function classifyPlotSummaryEntry(entry, sidecarEntryIdSet) {
   if (sidecarEntryIdSet.has(entry.id)) return "sidecar";
@@ -600,6 +612,9 @@ function sortPlotSummaryEntriesInGroup(entries, sidecarEntryIds, sidecarConfigId
     if (!rb) return -1;
     if (ra.start !== rb.start) return ra.start - rb.start;
     if (ra.end !== rb.end) return ra.end - rb.end;
+    const ma = parseMemoIndex(a.title);
+    const mb = parseMemoIndex(b.title);
+    if (ma !== null && mb !== null && ma !== mb) return ma - mb;
     return a.id.localeCompare(b.id);
   });
 }

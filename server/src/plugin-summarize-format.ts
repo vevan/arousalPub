@@ -150,8 +150,25 @@ export function formatEntryTitle(
   title: string,
   fromTurn: number,
   toTurn: number,
+  blockTurns = 15,
 ): string {
   const base = title.trim()
-  if (!base) return `${fromTurn}-${toTurn}`
-  return `${base}-${fromTurn}-${toTurn}`
+  const core = (() => {
+    const parsed = base.match(/^\[MEMO-(\d+)\]-(.+)-\[(\d+)-(\d+)\]$/)
+    if (parsed) return parsed[2].trim()
+    const legacy = base.match(/-(\d+)-(\d+)$/)
+    if (legacy && legacy.index !== undefined) {
+      const stripped = base.slice(0, legacy.index).trim()
+      if (stripped) return stripped
+    }
+    return base
+  })()
+  const memoIndex = (() => {
+    const parsed = base.match(/^\[MEMO-(\d+)\]-/)
+    if (parsed) return Number(parsed[1])
+    const bt = Math.max(1, Math.round(blockTurns))
+    return Math.floor(Math.max(0, fromTurn) / bt) + 1
+  })()
+  const label = core || `${fromTurn}-${toTurn}`
+  return `[MEMO-${memoIndex}]-${label}-[${fromTurn}-${toTurn}]`
 }

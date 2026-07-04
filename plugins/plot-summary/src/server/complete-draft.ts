@@ -173,6 +173,7 @@ export async function completeDraft(
     systemPromptTemplate: string
     fromTurn?: number
     toTurn?: number
+    blockTurns?: number
     sidecarName?: string
   },
   api: DraftApi,
@@ -209,7 +210,11 @@ export async function completeDraft(
   const summary = normalizeSummaryPayload(raw)
   const fromTurn = typeof ctx.fromTurn === 'number' ? ctx.fromTurn : 0
   const toTurn = typeof ctx.toTurn === 'number' ? ctx.toTurn : fromTurn
-  const entryTitle = formatEntryTitle(summary.title, fromTurn, toTurn)
+  const blockTurns =
+    typeof ctx.blockTurns === 'number' && Number.isFinite(ctx.blockTurns)
+      ? Math.max(1, Math.round(ctx.blockTurns))
+      : 15
+  const entryTitle = formatEntryTitle(summary.title, fromTurn, toTurn, blockTurns)
   return {
     draft: {
       title: entryTitle,

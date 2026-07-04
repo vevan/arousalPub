@@ -24,6 +24,7 @@ import {
   loadMergedSettings,
   manualSummarizeDefaultRange,
   maxTurnOrdinal,
+  tailAnchoredBlockRange,
   normalizedNextBlockStart,
   currentAutoRange,
   normalizeManualTaskSelection,
@@ -530,11 +531,7 @@ export function openManualSummarize(
 }
 
 function openEnableLongDialog(host: PluginHost, settings: MergedSettings) {
-  const T = maxTurnOrdinal(host)
-  const N = settings.blockTurns
-  const buffer = settings.bufferTurns
-  const endTurn = T - buffer
-  const startTurn = Math.max(0, endTurn - (N - 1))
+  const { startTurn, endTurn } = tailAnchoredBlockRange(maxTurnOrdinal(host), settings)
   const selectedTasks = [
     'memory',
     ...settings.sidecars.map((sc) => `sidecar:${sc.id}`),

@@ -243,7 +243,20 @@ export function currentAutoRange(settings: MergedSettings) {
   return { fromTurn: start, toTurn: blockEndFromStart(start, settings.blockTurns) }
 }
 
-/** 手动摘要弹窗默认区间：以当前轮 T 为锚，[T-buffer-blockTurns, T-buffer]；range picker preset 优先 */
+/** 以当前最大轮 T 为锚、缓冲前一整块（与自动块 blockTurns 等长）：[end-(blockTurns-1), end]，end = T - buffer */
+export function tailAnchoredBlockRange(
+  currentMaxTurn: number,
+  settings: Pick<MergedSettings, 'bufferTurns' | 'blockTurns'>,
+): { startTurn: number; endTurn: number } {
+  const T = Math.round(currentMaxTurn)
+  const buffer = settings.bufferTurns
+  const blockTurns = settings.blockTurns
+  const endTurn = Math.max(0, T - buffer)
+  const startTurn = Math.max(0, endTurn - (blockTurns - 1))
+  return { startTurn, endTurn }
+}
+
+/** 手动摘要弹窗默认区间；range picker preset 优先 */
 export function manualSummarizeDefaultRange(
   settings: MergedSettings,
   preset?: { startTurn: number; endTurn: number },
@@ -260,12 +273,7 @@ export function manualSummarizeDefaultRange(
     const range = currentAutoRange(settings)
     return { startTurn: range.fromTurn, endTurn: range.toTurn }
   }
-  const T = Math.round(currentMaxTurn)
-  const buffer = settings.bufferTurns
-  const blockTurns = settings.blockTurns
-  const endTurn = Math.max(0, T - buffer)
-  const startTurn = Math.max(0, T - buffer - blockTurns)
-  return { startTurn: Math.min(startTurn, endTurn), endTurn }
+  return tailAnchoredBlockRange(currentMaxTurn, settings)
 }
 
 export function resolveAutoTasks(settings: MergedSettings): SummarizeTask[] {

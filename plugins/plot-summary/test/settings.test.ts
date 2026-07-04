@@ -23,9 +23,9 @@ describe('manualSummarizeDefaultRange', () => {
     )
   })
 
-  it('anchors from current turn minus buffer and block size', () => {
+  it('anchors one blockTurns-wide range ending at T minus buffer', () => {
     assert.deepEqual(manualSummarizeDefaultRange(baseSettings(), undefined, 95), {
-      startTurn: 75,
+      startTurn: 76,
       endTurn: 90,
     })
   })
@@ -33,7 +33,7 @@ describe('manualSummarizeDefaultRange', () => {
   it('ignores nextBlockStart for default prefill', () => {
     assert.deepEqual(
       manualSummarizeDefaultRange(baseSettings({ nextBlockStart: 91 }), undefined, 95),
-      { startTurn: 75, endTurn: 90 },
+      { startTurn: 76, endTurn: 90 },
     )
   })
 

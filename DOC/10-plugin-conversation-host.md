@@ -316,7 +316,7 @@ Regex **outgoing** 走宿主原生管道；**批量清理已存对话**走 `rege
 
 |  topic | 说明 |
 |--------|------|
-| Memory 向量 | 索引粒度为 **`turnId` 一条**（`turnEmbeddingCorpus` = 用户 + **当前 active** 助手正文），**非** per-receive。清理 swipe **不删 turn**，故无「孤儿 receive 向量」。PATCH 落盘后 `scheduleMemoryIndexUpsert` 会按新 corpus 重嵌；若保留内容与索引一致则等价 no-op。**Lance compaction**（`optimizeChunkMemoryTable` / `sealChunkMemorySegment`）是合并碎片文件，`aggressiveCleanup` 清旧 **fragment**，**不**按 turn 语义删行；**删 turn** 时才有 `scheduleMemoryIndexDelete`。Regex 批量改正文后若未触发 upsert 才可能 stale；v1 不自动全量 re-embed，设置页可手动重建索引 |
+| Memory 向量 | 索引粒度为 **`turnId` 一条**（`turnEmbeddingCorpus` = 用户 + **当前 active** 助手正文），**非** per-receive。清理 swipe **不删 turn**，故无「孤儿 receive 向量」。PATCH 落盘后 `scheduleMemoryIndexUpsert` 会按新 corpus 重嵌；若保留内容与索引一致则等价 no-op。**Lance compaction**（`optimizeTurnMemoryTable` / `sealChunkMemorySegment`）是合并碎片文件，`aggressiveCleanup` 清旧 **fragment**，**不**按 turn 语义删行；**删 turn** 时才有 `scheduleMemoryIndexDelete`。Regex 批量改正文后若未触发 upsert 才可能 stale；v1 不自动全量 re-embed，设置页可手动重建索引 |
 | 对话备份 compaction | §8 增量备份**排除**可重建缓存（含 Lance）；淘汰最旧 K 份备份**不**单独清理向量表 |
 | Syncthing | 锁仅防应用内竞态；外部手改 chunk 仍可能冲突 |
 | 单轮多 swipe | 50 轮上限按 **turn 数**；单轮多条长 receive 仍可能 payload 大，属预期 |

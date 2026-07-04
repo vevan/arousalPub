@@ -584,7 +584,7 @@ flowchart TD
 | 前端分支 composable | `web/src/composables/useConversationBranches.ts` |
 | 分支树轮次副标题 | `web/src/utils/branch-tree-utils.ts`（`branchTurnRangeParts`）· `ChatBranchPanel.vue` |
 | persist turnId patch | `server/src/chat-persist-after-chat.ts` · `web/src/utils/persist-display.ts` |
-| Memory 重建 | `server/src/memory-index.ts`（`replaceTurnMemoryIndex`） |
+| Memory 重建 | `server/src/memory-index.ts`（`reindexConversationMemory` · `sealChunkMemorySegment` · `upsertTurnMemoryRowsBatch` 经 `memory-store`） |
 | Memory 召回 / Lance where | `server/src/memory-pipeline.ts`、`server/src/memory-store.ts` |
 | 命中批量读 | `server/src/memory-hits.ts`（替代原 `turn-resolve.ts`） |
 | 单测 | `memory-store.test.ts`、`memory-index.test.ts` |
@@ -607,3 +607,4 @@ flowchart TD
 | 2026-06-17 | §9.3 审计遗留全部修复：DELETE 注册表优先、`batchUpdate` 回滚、`branchForkTurnIds`、`mergedTurnCount`、create 锁、repair label 计数 |
 | 2026-06-17 | 深树 `GET /branches` 批量构建；`rollbackDeleteBranchRegistry` DELETE 双写回滚 |
 | 2026-06-23 | §6.4 persist SSE 带回 `turnId`（修复落盘后分支 fork 禁用）；分支树 from/to/total 副标题 |
+| 2026-07-04 | §4.4 / §5.1：尾段 memory buffer 移除（`c3a3c4f`）；`40407e6` 删除 `memory-tail-buffer.ts`，增量 upsert / seal optimize  consolidated 至 `memory-index.ts` |

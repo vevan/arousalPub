@@ -35,7 +35,7 @@ import {
   enumerateAllChunkChains,
   readChunkFileAt,
 } from './chunk-chain.js'
-import { mainPathChunkLocation } from './chunk-path.js'
+import { mainPathChunkLocation, normalizeBranchPath } from './chunk-path.js'
 import { embedTextsInBatches, isEmbeddingBatchOk } from './embedding-batch.js'
 
 export interface MemoryReindexPlan {
@@ -228,7 +228,9 @@ async function indexTurnMemory(
   if (!emb) return
 
   const loc = mainPathChunkLocation(chunkFileName)
-  const resolvedBranch = branchPath || loc.branchPath
+  const resolvedBranch = branchPath.trim()
+    ? normalizeBranchPath(branchPath)
+    : loc.branchPath
   const resolvedChunk = loc.chunkFileName
 
   await upsertTurnMemoryRowsBatch(conversationId, [

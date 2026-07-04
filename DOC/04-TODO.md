@@ -36,6 +36,7 @@
   - **约束**：**不可隐藏 `app-footer`**（插件入口依赖页脚）；方案须在保留双层底栏前提下适配
   - **候选方向**：① viewport `interactive-widget=resizes-content` 试验；② `visualViewport` → CSS 变量替换死 `100dvh`；③ 顶栏/页脚/composer 统一 `safe-area-inset`；④ 验收矩阵：iOS Safari × 键盘开/关 × 地址栏显/隐
 - [ ] **远期记忆 Lance 分片写入** — 当前保留重建后 / `sealChunkMemorySegment` 时的 best-effort `optimize`；待官方 TS 版本暴露 `targetRowsPerFragment` / `maxRowsPerGroup` 后接入可控 compaction，避免大量几十 KB 小 fragment 或单个过大 fragment（见 `DOC/03` §14.5）
+- [ ] **【待讨论】插件后台任务与对话并发** — 例：Historian（`plot-summary`）自动摘要在落盘 idle 后启动，但 **`pluginHold` 会挡住 composer 发新消息**；插件在浏览器内跑、无服务端 job 队列；同会话 chunk **无** per-conversation 读写锁（`prepare-context` 读 turn vs `/api/chat` 落盘）。待议：是否允许摘要与聊天并行、是否弱化/取消 hold、是否引入服务端任务队列或 `runScope({ writeLock: false })` + 会话级锁；见 `DOC/09` §5.1 · `DOC/10` · `plugins/plot-summary/src/lifecycle.ts`
 - [ ] ST 宏扩展备忘 `DOC/14`；Embedding MRL / Reranker / Qwen instruct（低优先级）
 
 ## 文档

@@ -165,6 +165,19 @@ describe('group-chat-turn', () => {
     assert.equal(merged.confirmContinue, true)
   })
 
+  it('mergeGroupChatSettings merges split assemble prompts', () => {
+    const merged = mergeGroupChatSettings(
+      {
+        enabled: true,
+        groupAssembleInstruction: 'old-g',
+        continueAssembleInstruction: 'old-c',
+      },
+      { groupAssembleInstruction: 'new-g', continueAssembleInstruction: 'new-c' },
+    )
+    assert.equal(merged.groupAssembleInstruction, 'new-g')
+    assert.equal(merged.continueAssembleInstruction, 'new-c')
+  })
+
   it('mergeGroupChatSettings merges members shallowly', () => {
     const merged = mergeGroupChatSettings(
       {

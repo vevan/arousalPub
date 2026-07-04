@@ -18,6 +18,14 @@ export type GroupChatMode = 'weighted' | 'sequential'
 
 export type SpeakerMode = 'sequential' | 'dice' | 'next@'
 
+/** 群聊角色扮演说明（注入 user 消息后；可在会话群聊设置中覆盖） */
+export const DEFAULT_GROUP_CHAT_ASSEMBLE_INSTRUCTION =
+  'This is a group-chat role-playing game. You are currently playing the role of {{char}}. Please respond strictly according to {{char}}\'s persona and solely as {{char}}; do not step out of character or respond as any other character.'
+
+/** [NEXT@] 接续说明（仅 next@ 模式与群聊说明拼接注入） */
+export const DEFAULT_GROUP_CONTINUE_ASSEMBLE_INSTRUCTION =
+  'After completing your response, determine the next character to speak based on the flow of the conversation and indicate this at the end of your message using the format [NEXT@CharacterName] (e.g., [NEXT@Betty]); {{user}} must be excluded from this selection.'
+
 export interface GroupChatTurnState {
   quotaRemaining: Record<string, number>
   speakCount: Record<string, number>
@@ -34,6 +42,10 @@ export interface GroupChatSettings {
   defaultSpeakQuota?: number
   decay?: GroupChatDecaySettings
   members?: Record<string, GroupChatMemberSettings>
+  /** 群聊角色说明；空串时用 DEFAULT_GROUP_CHAT_ASSEMBLE_INSTRUCTION */
+  groupAssembleInstruction?: string
+  /** [NEXT@] 接续说明；空串时用 DEFAULT_GROUP_CONTINUE_ASSEMBLE_INSTRUCTION */
+  continueAssembleInstruction?: string
 }
 
 export const DEFAULT_SPEAK_QUOTA = 2
@@ -79,6 +91,8 @@ export function defaultGroupChatSettings(): GroupChatSettings {
     defaultSpeakQuota: DEFAULT_SPEAK_QUOTA,
     decay: defaultGroupChatDecaySettings(),
     members: {},
+    groupAssembleInstruction: DEFAULT_GROUP_CHAT_ASSEMBLE_INSTRUCTION,
+    continueAssembleInstruction: DEFAULT_GROUP_CONTINUE_ASSEMBLE_INSTRUCTION,
   }
 }
 
@@ -146,6 +160,14 @@ export function normalizeGroupChatSettings(raw: unknown): GroupChatSettings {
     ),
     decay: normalizeGroupChatDecaySettings(o.decay ?? base.decay),
     members: normalizeGroupChatMembers(o.members),
+    groupAssembleInstruction:
+      typeof o.groupAssembleInstruction === 'string'
+        ? o.groupAssembleInstruction
+        : base.groupAssembleInstruction,
+    continueAssembleInstruction:
+      typeof o.continueAssembleInstruction === 'string'
+        ? o.continueAssembleInstruction
+        : base.continueAssembleInstruction,
   }
 }
 
@@ -336,6 +358,12 @@ export function mergeGroupChatSettings(
       mergedMembers[id] = { ...mergedMembers[id], ...patchMember }
     }
     next.members = mergedMembers
+  }
+  if (typeof o.groupAssembleInstruction === 'string') {
+    next.groupAssembleInstruction = o.groupAssembleInstruction
+  }
+  if (typeof o.continueAssembleInstruction === 'string') {
+    next.continueAssembleInstruction = o.continueAssembleInstruction
   }
   return normalizeGroupChatSettings(next)
 }

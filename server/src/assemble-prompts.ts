@@ -135,6 +135,11 @@ export interface AssembleContext {
     injectionDepth: number
     role: AuthorsNoteRole
   } | null
+  /** 紧接最后一条 user 消息之后注入（depth 0）；用于群聊模式说明等固定位置条目 */
+  afterUserInput?: {
+    content: string
+    role?: PromptRole
+  } | null
   /** §14.4：为 true 时跳过 assemble 内 history 条级裁切（由 `runPromptBudgetTrimLoop` 统一处理） */
   skipInternalBudgetTrim?: boolean
   /** 为 true 时绑定槽一律输出 `<inject slot="…" />`，不注入示例/会话内容（提示词库组装预览） */
@@ -780,20 +785,20 @@ export function resolveChatDepthInsertIndex(
   return Math.max(floor, Math.min(messages.length, insertAt))
 }
 
-function injectAuthorsNoteAtDepth(
+function injectChatDepthMessage(
   messages: ChatMessage[],
-  note: NonNullable<AssembleContext['authorsNote']>,
+  params: { content: string; role: PromptRole; depth: number },
   historyStart: number,
   historyEnd: number,
 ): { historyStart: number; historyEnd: number } {
   const insertAt = resolveChatDepthInsertIndex(
     messages,
-    note.injectionDepth,
+    params.depth,
     historyStart,
   )
   messages.splice(insertAt, 0, {
-    role: note.role,
-    content: note.content,
+    role: params.role,
+    content: params.content,
   })
   let hs = historyStart
   let he = historyEnd
@@ -806,6 +811,42 @@ function injectAuthorsNoteAtDepth(
     }
   }
   return { historyStart: hs, historyEnd: he }
+}
+
+function injectAuthorsNoteAtDepth(
+  messages: ChatMessage[],
+  note: NonNullable<AssembleContext['authorsNote']>,
+  historyStart: number,
+  historyEnd: number,
+): { historyStart: number; historyEnd: number } {
+  return injectChatDepthMessage(
+    messages,
+    {
+      content: note.content,
+      role: note.role,
+      depth: note.injectionDepth,
+    },
+    historyStart,
+    historyEnd,
+  )
+}
+
+function injectAfterUserInputMessage(
+  messages: ChatMessage[],
+  block: NonNullable<AssembleContext['afterUserInput']>,
+  historyStart: number,
+  historyEnd: number,
+): { historyStart: number; historyEnd: number } {
+  return injectChatDepthMessage(
+    messages,
+    {
+      content: block.content,
+      role: block.role ?? 'system',
+      depth: 0,
+    },
+    historyStart,
+    historyEnd,
+  )
 }
 
 export function assemblePrompts(
@@ -981,6 +1022,21 @@ export function assemblePrompts(
         historyEnd += items.length
       }
     }
+  }
+
+  const afterUi = ctx.afterUserInput
+  if (afterUi?.content?.trim()) {
+    const shifted = injectAfterUserInputMessage(
+      messages,
+      {
+        content: afterUi.content.trim(),
+        role: afterUi.role,
+      },
+      historyStart,
+      historyEnd,
+    )
+    historyStart = shifted.historyStart
+    historyEnd = shifted.historyEnd
   }
 
   const an = ctx.authorsNote

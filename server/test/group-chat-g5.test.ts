@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  GROUP_CHAT_DICE_INSTRUCTION,
-  GROUP_CHAT_NEXT_AT_INSTRUCTION,
-  GROUP_CHAT_SEQUENTIAL_INSTRUCTION,
+  DEFAULT_GROUP_CHAT_ASSEMBLE_INSTRUCTION,
+  DEFAULT_GROUP_CONTINUE_ASSEMBLE_INSTRUCTION,
+} from '../src/shared/group-chat-settings.js'
+import {
   buildGroupChatNotChar,
   groupChatAssembleInstruction,
   groupChatNextAtInstruction,
@@ -20,28 +21,19 @@ describe('group-chat G5', () => {
     defaultSpeakQuota: 2,
     maxSegmentsPerTurn: 8,
     members: {},
+    groupAssembleInstruction: '',
+    continueAssembleInstruction: '',
   }
-
-  it('groupChatAssembleInstruction branches by speakerMode', () => {
-    assert.equal(
-      groupChatAssembleInstruction({ ...groupChat, speakerMode: 'sequential' }),
-      GROUP_CHAT_SEQUENTIAL_INSTRUCTION,
-    )
-    assert.equal(
-      groupChatAssembleInstruction({ ...groupChat, speakerMode: 'dice' }),
-      GROUP_CHAT_DICE_INSTRUCTION,
-    )
-    assert.equal(
-      groupChatAssembleInstruction({ ...groupChat, speakerMode: 'next@' }),
-      GROUP_CHAT_NEXT_AT_INSTRUCTION,
-    )
-    assert.equal(groupChatAssembleInstruction({ ...groupChat, enabled: false }), null)
-  })
 
   it('groupChatNextAtInstruction only for next@ mode', () => {
     assert.equal(
-      groupChatNextAtInstruction({ ...groupChat, speakerMode: 'next@', enabled: true }),
-      GROUP_CHAT_NEXT_AT_INSTRUCTION,
+      groupChatNextAtInstruction({
+        ...groupChat,
+        speakerMode: 'next@',
+        groupAssembleInstruction: 'G',
+        continueAssembleInstruction: 'C',
+      }),
+      'G\nC',
     )
     assert.equal(groupChatNextAtInstruction({ ...groupChat, speakerMode: 'dice' }), null)
     assert.equal(groupChatNextAtInstruction({ ...groupChat, enabled: false }), null)
@@ -93,5 +85,18 @@ describe('group-chat G5', () => {
       groupChatEnabled: false,
     })
     assert.equal(renderPromptMacrosCst('{{charIfNotGroup}}', soloCtx), 'Alice')
+  })
+
+  it('default constants match expected split', () => {
+    assert.match(DEFAULT_GROUP_CHAT_ASSEMBLE_INSTRUCTION, /\{\{char\}\}/)
+    assert.doesNotMatch(DEFAULT_GROUP_CHAT_ASSEMBLE_INSTRUCTION, /\[NEXT@/)
+    assert.match(DEFAULT_GROUP_CONTINUE_ASSEMBLE_INSTRUCTION, /\[NEXT@CharacterName\]/)
+    assert.equal(
+      groupChatAssembleInstruction({
+        ...groupChat,
+        speakerMode: 'next@',
+      }),
+      `${DEFAULT_GROUP_CHAT_ASSEMBLE_INSTRUCTION}\n${DEFAULT_GROUP_CONTINUE_ASSEMBLE_INSTRUCTION}`,
+    )
   })
 })

@@ -91,7 +91,9 @@ AssistantSegment {
         "muted": false,
         "speakQuota": 2
       }
-    }
+    },
+    "groupAssembleInstruction": "…群聊角色说明（{{char}}）…",
+    "continueAssembleInstruction": "…[NEXT@] 接续说明…"
   }
 }
 ```
@@ -102,6 +104,8 @@ AssistantSegment {
 | `maxSegmentsPerTurn` | 本 user turn 内 assistant segment 硬上限（可选） |
 | `members[].speakQuota` | 该 bot 在本 user turn 内的发言预算（§2.7） |
 | `decay` | **per-bot** 个人衰减曲线默认模板（§2.7）；G2 过渡代码仍用全局段序号衰减 |
+| `groupAssembleInstruction` | 群聊角色说明；注入于 **user 消息之后**（`afterUserInput`）；空串用英文默认 |
+| `continueAssembleInstruction` | `[NEXT@]` 接续说明；**仅 `speakerMode=next@`** 时与群聊说明 **拼接为一条 system** |
 | `mode: weighted` | **已废弃**（G2 过渡字段）；G3 起由 `speakerMode: dice` 替代 |
 
 | `enabled` | 首段 speaker（queue 空） | segment 数 |
@@ -109,7 +113,7 @@ AssistantSegment {
 | `false` | char1 或 `/@` | 通常 1；`/@` 可指定他人 |
 | `true` | 见 §3（**不再默认 char1**） | 多 segment + 额度 / confirm |
 
-**UI**：对话顶栏 `chat-header` 群聊图标 → 开关、`speakerMode`、`autoContinue` / `confirmContinue`、`maxSegmentsPerTurn`、衰减与额度、**成员列表**（角色立绘头像、`characterImageUrl` size `s`、displayName、权重、静音、上下排序改 `characterIds`）。
+**UI**：对话顶栏 `chat-header` 群聊图标 → 开关、`speakerMode`、`autoContinue` / `confirmContinue`、`maxSegmentsPerTurn`、**群聊提示词**（全模式）、**接续提示词**（仅 `next@`）、衰减与额度、**成员列表**（角色立绘头像、`characterImageUrl` size `s`、displayName、权重〔`dice`/`next@`〕、静音、上下排序〔`sequential`〕改 `characterIds`）。
 
 ### 2.3 用户指定发言者：`/@`（Slash 内置）
 
@@ -169,20 +173,14 @@ LLM 原始 assistant 文本
 | hint 无效 / 缺失（`next@` 模式、第 2 段起） | **用户手动指定**；**不得** fallback 至 sequential 或 dice |
 | 无标记（`next@` 模式、第 2 段起） | 同「hint 无效」 |
 
-群聊 assemble 按 `speakerMode` 注入说明（**`enabled` 时**；见 `groupChatAssembleInstruction`）：
+群聊 assemble 注入（**`enabled` 时**；见 `groupChatAssembleInstruction` → `assemble-prompts` **`afterUserInput`**，depth 0 = 紧接最后一条 user 消息之后，**非**作者注）：
 
-| `speakerMode` | 注入要点 |
+| `speakerMode` | 注入内容 |
 |---------------|----------|
-| `sequential` | 按绑定顺序接龙、不连说、额度限制 |
-| `dice` | 掷骰选人、非每人每轮必发言 |
-| `next@` | `[NEXT@角色名]` 接续语法（示例） |
+| `sequential` / `dice` | 仅 `groupAssembleInstruction`（默认英文角色说明） |
+| `next@` | `groupAssembleInstruction` + `\n` + `continueAssembleInstruction` **拼接为一条 system** |
 
-`next@` 示例正文：
-
-```text
-若需其他角色接下一句，使用 [NEXT@角色名]，例如 [NEXT@Betty]。
-每个角色每轮发言次数有限；助手消息中的裸 @ 不会生效。
-```
+默认正文见 `shared/group-chat-settings.ts`：`DEFAULT_GROUP_CHAT_ASSEMBLE_INSTRUCTION`、`DEFAULT_GROUP_CONTINUE_ASSEMBLE_INSTRUCTION`。会话内可覆盖；宏 `{{char}}` / `{{user}}` 等在 assemble 后展宏。
 
 ### 2.5 控制开关
 

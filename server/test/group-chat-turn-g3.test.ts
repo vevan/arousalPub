@@ -3,8 +3,11 @@ import { describe, it } from 'node:test'
 import type { TurnRecord } from '../src/chat-storage.js'
 import { stripTurnForDisk } from '../src/chat-storage.js'
 import {
+  DEFAULT_GROUP_CHAT_ASSEMBLE_INSTRUCTION,
+  DEFAULT_GROUP_CONTINUE_ASSEMBLE_INSTRUCTION,
+} from '../src/shared/group-chat-settings.js'
+import {
   groupChatNextAtInstruction,
-  GROUP_CHAT_NEXT_AT_INSTRUCTION,
   buildGroupChatSpeakerAudit,
   segmentPickAuditFromCarriedNextSpeaker,
   diceBiddingPick,
@@ -387,8 +390,14 @@ describe('group-chat-turn G3', () => {
 
   it('groupChatNextAtInstruction only for next@ mode', () => {
     assert.equal(
-      groupChatNextAtInstruction({ ...groupChat, speakerMode: 'next@', enabled: true }),
-      GROUP_CHAT_NEXT_AT_INSTRUCTION,
+      groupChatNextAtInstruction({
+        ...groupChat,
+        speakerMode: 'next@',
+        enabled: true,
+        groupAssembleInstruction: '',
+        continueAssembleInstruction: '',
+      }),
+      `${DEFAULT_GROUP_CHAT_ASSEMBLE_INSTRUCTION}\n${DEFAULT_GROUP_CONTINUE_ASSEMBLE_INSTRUCTION}`,
     )
     assert.equal(groupChatNextAtInstruction({ ...groupChat, speakerMode: 'dice' }), null)
     assert.equal(groupChatNextAtInstruction({ ...groupChat, enabled: false }), null)

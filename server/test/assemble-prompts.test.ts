@@ -552,6 +552,70 @@ describe('assemblePrompts injection tie-break', () => {
   })
 })
 
+describe('assemblePrompts afterUserInput', () => {
+  it('injects immediately after last user message, before depth-0 chat entries', () => {
+    const ui = makeGroup({ id: 'g-ui', kind: 'userInput', order: 0 })
+    const post = makeGroup({ id: 'g-post', kind: 'normal', order: 1 })
+    const preset = makePreset(
+      [ui, post],
+      [
+        makeEntry({
+          id: 'bound-ui',
+          groupId: 'g-ui',
+          content: '',
+          bindingSlot: 'boundUserInput',
+          order: 0,
+        }),
+        makeEntry({
+          id: 'chat-depth-0',
+          groupId: 'g-post',
+          content: 'CHAT-DEPTH-0',
+          injectionPosition: 'chat',
+          injectionDepth: 0,
+          order: 0,
+        }),
+      ],
+    )
+    const { messages } = assemblePrompts(preset, {
+      userInput: 'turn',
+      afterUserInput: { content: 'GROUP-CHAT-RULE', role: 'system' },
+    })
+    const tail = messages.slice(-3).map((m) => m.content)
+    assert.deepEqual(tail, ['turn', 'GROUP-CHAT-RULE', 'CHAT-DEPTH-0'])
+  })
+
+  it('does not merge into authorsNote depth', () => {
+    const ui = makeGroup({ id: 'g-ui', kind: 'userInput', order: 0 })
+    const preset = makePreset(
+      [ui],
+      [
+        makeEntry({
+          id: 'bound-ui',
+          groupId: 'g-ui',
+          content: '',
+          bindingSlot: 'boundUserInput',
+          order: 0,
+        }),
+      ],
+    )
+    const { messages } = assemblePrompts(preset, {
+      userInput: 'turn',
+      afterUserInput: { content: 'GROUP-CHAT-RULE', role: 'system' },
+      authorsNote: {
+        content: 'AUTHORS-NOTE',
+        injectionDepth: 4,
+        role: 'system',
+      },
+    })
+    const groupIdx = messages.findIndex((m) => m.content === 'GROUP-CHAT-RULE')
+    const noteIdx = messages.findIndex((m) => m.content === 'AUTHORS-NOTE')
+    const userIdx = messages.findIndex((m) => m.content === 'turn')
+    assert.ok(groupIdx > userIdx)
+    assert.ok(noteIdx < userIdx)
+    assert.notEqual(groupIdx, noteIdx)
+  })
+})
+
 describe('resolveChatDepthInsertIndex', () => {
   const stack: ChatMessage[] = [
     { role: 'system', content: 'top' },

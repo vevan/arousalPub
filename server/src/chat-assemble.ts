@@ -589,19 +589,6 @@ export async function buildConversationOutboundMessages(
 
   const authorsNote = authorsNoteForInjection(idx.authorsNote)
   const groupChatInstruction = groupChatAssembleInstruction(groupChat)
-  const effectiveAuthorsNote =
-    groupChatInstruction && authorsNote
-      ? {
-          ...authorsNote,
-          content: `${authorsNote.content}\n\n${groupChatInstruction}`,
-        }
-      : groupChatInstruction
-        ? {
-            content: groupChatInstruction,
-            injectionDepth: 4,
-            role: 'system' as const,
-          }
-        : authorsNote
 
   const lorebookIds = resolvedLorebookIds(idx)
   const globalLore = await readGlobalLorebookSettings()
@@ -646,7 +633,10 @@ export async function buildConversationOutboundMessages(
     userInput,
     tokenModel,
     macroContext,
-    authorsNote: effectiveAuthorsNote ?? undefined,
+    authorsNote: authorsNote ?? undefined,
+    afterUserInput: groupChatInstruction
+      ? { content: groupChatInstruction, role: 'system' as const }
+      : undefined,
     skipInternalBudgetTrim: true as const,
     deferMacroExpansion: true as const,
     ...charCtx,

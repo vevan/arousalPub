@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import {
   defaultGroupChatSettings,
+  DEFAULT_GROUP_CHAT_ASSEMBLE_INSTRUCTION,
+  DEFAULT_GROUP_CONTINUE_ASSEMBLE_INSTRUCTION,
   normalizeGroupChatSettings,
   type GroupChatSettings,
+  type SpeakerMode,
 } from '@/utils/group-chat-settings'
 import { characterNameById } from '@/utils/group-chat-turn'
 import { useAuthStore } from '@/stores/auth'
@@ -49,6 +52,28 @@ watch(
 )
 
 const canSave = computed(() => draftCharacterIds.value.length >= 2)
+
+const speakerMode = computed(
+  (): SpeakerMode => draftSettings.value.speakerMode ?? 'dice',
+)
+const groupChatUiEnabled = computed(() => draftSettings.value.enabled === true)
+const showGroupAssembleInstruction = computed(() => groupChatUiEnabled.value)
+const showContinueAssembleInstruction = computed(
+  () => groupChatUiEnabled.value && speakerMode.value === 'next@',
+)
+const showDecaySettings = computed(
+  () =>
+    groupChatUiEnabled.value &&
+    (speakerMode.value === 'dice' || speakerMode.value === 'next@'),
+)
+const showMemberWeight = computed(
+  () =>
+    groupChatUiEnabled.value &&
+    (speakerMode.value === 'dice' || speakerMode.value === 'next@'),
+)
+const showMemberOrder = computed(
+  () => groupChatUiEnabled.value && speakerMode.value === 'sequential',
+)
 
 function displayName(id: string): string {
   return characterNameById(id, props.characterIds, props.characterNames)
@@ -105,6 +130,20 @@ function moveMember(index: number, delta: number) {
   draftCharacterIds.value = next
 }
 
+function resetGroupAssembleInstruction() {
+  draftSettings.value = {
+    ...draftSettings.value,
+    groupAssembleInstruction: DEFAULT_GROUP_CHAT_ASSEMBLE_INSTRUCTION,
+  }
+}
+
+function resetContinueAssembleInstruction() {
+  draftSettings.value = {
+    ...draftSettings.value,
+    continueAssembleInstruction: DEFAULT_GROUP_CONTINUE_ASSEMBLE_INSTRUCTION,
+  }
+}
+
 async function save() {
   if (!canSave.value) return
   saving.value = true
@@ -145,7 +184,7 @@ async function save() {
 <template>
   <v-dialog
     v-model="open"
-    max-width="32rem"
+    max-width="36rem"
     scrollable
   >
     <v-card>
@@ -218,80 +257,149 @@ async function save() {
           </v-btn>
         </v-btn-toggle>
 
-        <div class="d-flex flex-wrap gap-3 mb-4">
-          <v-text-field
-            v-model.number="draftSettings.maxSegmentsPerTurn"
+        <template v-if="showGroupAssembleInstruction">
+          <div class="text-subtitle-2 mb-2">
+            {{ $t('chat.groupChat.settings.groupAssembleInstruction') }}
+          </div>
+          <v-textarea
+            v-model="draftSettings.groupAssembleInstruction"
             :disabled="!draftSettings.enabled"
-            type="number"
-            min="1"
-            step="1"
+            :label="$t('chat.groupChat.settings.groupAssembleInstruction')"
+            :hint="$t('chat.groupChat.settings.groupAssembleInstructionHint')"
+            persistent-hint
+            auto-grow
+            rows="3"
             density="compact"
-            hide-details="auto"
-            :label="$t('chat.groupChat.settings.maxSegmentsPerTurn')"
-            style="max-width: 8rem"
+            class="mb-2"
           />
-          <v-text-field
-            v-model.number="draftSettings.defaultSpeakQuota"
+          <v-btn
+            variant="text"
+            size="small"
             :disabled="!draftSettings.enabled"
-            type="number"
-            min="1"
-            step="1"
+            class="mb-4 px-0"
+            @click="resetGroupAssembleInstruction()"
+          >
+            {{ $t('chat.groupChat.settings.groupAssembleInstructionReset') }}
+          </v-btn>
+        </template>
+
+        <template v-if="showContinueAssembleInstruction">
+          <div class="text-subtitle-2 mb-2">
+            {{ $t('chat.groupChat.settings.continueAssembleInstruction') }}
+          </div>
+          <v-textarea
+            v-model="draftSettings.continueAssembleInstruction"
+            :disabled="!draftSettings.enabled"
+            :label="$t('chat.groupChat.settings.continueAssembleInstruction')"
+            :hint="$t('chat.groupChat.settings.continueAssembleInstructionHint')"
+            persistent-hint
+            auto-grow
+            rows="3"
             density="compact"
-            hide-details="auto"
-            :label="$t('chat.groupChat.settings.defaultSpeakQuota')"
-            style="max-width: 8rem"
+            class="mb-2"
           />
+          <v-btn
+            variant="text"
+            size="small"
+            :disabled="!draftSettings.enabled"
+            class="mb-4 px-0"
+            @click="resetContinueAssembleInstruction()"
+          >
+            {{ $t('chat.groupChat.settings.continueAssembleInstructionReset') }}
+          </v-btn>
+        </template>
+
+        <div class="group-chat-num-grid group-chat-num-grid--2 mb-4">
+          <div class="group-chat-num-item">
+            <div class="text-caption text-medium-emphasis mb-1">
+              {{ $t('chat.groupChat.settings.maxSegmentsPerTurn') }}
+            </div>
+            <v-text-field
+              v-model.number="draftSettings.maxSegmentsPerTurn"
+              :disabled="!draftSettings.enabled"
+              type="number"
+              min="1"
+              step="1"
+              density="compact"
+              hide-details="auto"
+            />
+          </div>
+          <div class="group-chat-num-item">
+            <div class="text-caption text-medium-emphasis mb-1">
+              {{ $t('chat.groupChat.settings.defaultSpeakQuota') }}
+            </div>
+            <v-text-field
+              v-model.number="draftSettings.defaultSpeakQuota"
+              :disabled="!draftSettings.enabled"
+              type="number"
+              min="1"
+              step="1"
+              density="compact"
+              hide-details="auto"
+            />
+          </div>
         </div>
 
-        <div class="text-subtitle-2 mb-2">
-          {{ $t('chat.groupChat.settings.decay') }}
-        </div>
-        <v-switch
-          v-model="draftSettings.decay!.enabled"
-          :disabled="!draftSettings.enabled"
-          :label="$t('chat.groupChat.settings.decayEnabled')"
-          color="primary"
-          hide-details="auto"
-          class="mb-2"
-        />
-        <div class="d-flex flex-wrap gap-3 mb-4">
-          <v-text-field
-            v-model.number="draftSettings.decay!.initialRate"
+        <template v-if="showDecaySettings">
+          <div class="text-subtitle-2 mb-2">
+            {{ $t('chat.groupChat.settings.decay') }}
+          </div>
+          <v-switch
+            v-model="draftSettings.decay!.enabled"
             :disabled="!draftSettings.enabled"
-            type="number"
-            min="0"
-            max="1"
-            step="0.05"
-            density="compact"
+            :label="$t('chat.groupChat.settings.decayEnabled')"
+            color="primary"
             hide-details="auto"
-            :label="$t('chat.groupChat.settings.decayInitial')"
-            style="max-width: 7rem"
+            class="mb-2"
           />
-          <v-text-field
-            v-model.number="draftSettings.decay!.step"
-            :disabled="!draftSettings.enabled"
-            type="number"
-            min="0"
-            max="1"
-            step="0.05"
-            density="compact"
-            hide-details="auto"
-            :label="$t('chat.groupChat.settings.decayStep')"
-            style="max-width: 7rem"
-          />
-          <v-text-field
-            v-model.number="draftSettings.decay!.floor"
-            :disabled="!draftSettings.enabled"
-            type="number"
-            min="0"
-            max="1"
-            step="0.05"
-            density="compact"
-            hide-details="auto"
-            :label="$t('chat.groupChat.settings.decayFloor')"
-            style="max-width: 7rem"
-          />
-        </div>
+          <div class="group-chat-num-grid group-chat-num-grid--3 mb-4">
+            <div class="group-chat-num-item">
+              <div class="text-caption text-medium-emphasis mb-1">
+                {{ $t('chat.groupChat.settings.decayInitial') }}
+              </div>
+              <v-text-field
+                v-model.number="draftSettings.decay!.initialRate"
+                :disabled="!draftSettings.enabled"
+                type="number"
+                min="0"
+                max="1"
+                step="0.05"
+                density="compact"
+                hide-details="auto"
+              />
+            </div>
+            <div class="group-chat-num-item">
+              <div class="text-caption text-medium-emphasis mb-1">
+                {{ $t('chat.groupChat.settings.decayStep') }}
+              </div>
+              <v-text-field
+                v-model.number="draftSettings.decay!.step"
+                :disabled="!draftSettings.enabled"
+                type="number"
+                min="0"
+                max="1"
+                step="0.05"
+                density="compact"
+                hide-details="auto"
+              />
+            </div>
+            <div class="group-chat-num-item">
+              <div class="text-caption text-medium-emphasis mb-1">
+                {{ $t('chat.groupChat.settings.decayFloor') }}
+              </div>
+              <v-text-field
+                v-model.number="draftSettings.decay!.floor"
+                :disabled="!draftSettings.enabled"
+                type="number"
+                min="0"
+                max="1"
+                step="0.05"
+                density="compact"
+                hide-details="auto"
+              />
+            </div>
+          </div>
+        </template>
 
         <div class="text-subtitle-2 mb-2">
           {{ $t('chat.groupChat.settings.members') }}
@@ -317,30 +425,36 @@ async function save() {
             </v-avatar>
             <span class="group-chat-member-row__name">{{ displayName(id) }}</span>
           </div>
-          <v-text-field
-            :model-value="memberWeight(id)"
-            :disabled="!draftSettings.enabled"
-            type="number"
-            min="0"
-            step="0.1"
-            density="compact"
-            hide-details="auto"
-            :label="$t('chat.groupChat.settings.weight')"
-            style="max-width: 5.5rem"
-            @update:model-value="(v) => setMemberWeight(id, Number(v))"
-          />
-          <v-text-field
-            :model-value="memberSpeakQuota(id)"
-            :disabled="!draftSettings.enabled"
-            type="number"
-            min="0"
-            step="1"
-            density="compact"
-            hide-details="auto"
-            :label="$t('chat.groupChat.settings.speakQuota')"
-            style="max-width: 5.5rem"
-            @update:model-value="(v) => setMemberSpeakQuota(id, Number(v))"
-          />
+          <div v-if="showMemberWeight" class="group-chat-num-item group-chat-num-item--member">
+            <div class="text-caption text-medium-emphasis mb-1">
+              {{ $t('chat.groupChat.settings.weight') }}
+            </div>
+            <v-text-field
+              :model-value="memberWeight(id)"
+              :disabled="!draftSettings.enabled"
+              type="number"
+              min="0"
+              step="0.1"
+              density="compact"
+              hide-details="auto"
+              @update:model-value="(v) => setMemberWeight(id, Number(v))"
+            />
+          </div>
+          <div class="group-chat-num-item group-chat-num-item--member">
+            <div class="text-caption text-medium-emphasis mb-1">
+              {{ $t('chat.groupChat.settings.speakQuota') }}
+            </div>
+            <v-text-field
+              :model-value="memberSpeakQuota(id)"
+              :disabled="!draftSettings.enabled"
+              type="number"
+              min="0"
+              step="1"
+              density="compact"
+              hide-details="auto"
+              @update:model-value="(v) => setMemberSpeakQuota(id, Number(v))"
+            />
+          </div>
           <v-switch
             :model-value="memberMuted(id)"
             :disabled="!draftSettings.enabled"
@@ -350,19 +464,19 @@ async function save() {
             hide-details="auto"
             @update:model-value="(v) => setMemberMuted(id, Boolean(v))"
           />
-          <div class="group-chat-member-row__order">
+          <div v-if="showMemberOrder" class="group-chat-member-row__order">
             <v-btn
               icon="mdi-chevron-up"
               size="x-small"
               variant="text"
-              :disabled="index === 0"
+              :disabled="!draftSettings.enabled || index === 0"
               @click="moveMember(index, -1)"
             />
             <v-btn
               icon="mdi-chevron-down"
               size="x-small"
               variant="text"
-              :disabled="index === draftCharacterIds.length - 1"
+              :disabled="!draftSettings.enabled || index === draftCharacterIds.length - 1"
               @click="moveMember(index, 1)"
             />
           </div>
@@ -417,5 +531,25 @@ async function save() {
 .group-chat-member-row__order {
   display: flex;
   gap: 0.125rem;
+}
+.group-chat-num-grid {
+  display: grid;
+  gap: 0.75rem 1rem;
+}
+.group-chat-num-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.group-chat-num-grid--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.group-chat-num-item--member {
+  flex: 0 1 5.5rem;
+  min-width: 4.5rem;
+}
+@media (max-width: 30rem) {
+  .group-chat-num-grid--2,
+  .group-chat-num-grid--3 {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

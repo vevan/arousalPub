@@ -1,4 +1,5 @@
 {
+  "pluginDisplayName": "Conversation export",
   "tooltip": "Export conversation as HTML",
   "dialogTitle": "Export conversation",
   "dialogBody": "Do not send messages or edit while exporting. Turn numbers match chat labels \"Ch. {n}\" (0-based, inclusive range).",

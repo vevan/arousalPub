@@ -1,4 +1,5 @@
 {
+  "pluginDisplayName": "自定义样式",
   "enabledLabel": "启用样式注入",
   "enabledDesc": "关闭后所有对话均不注入自定义 CSS（除非在对话设置中单独开启）。",
   "sheetsLabel": "样式表",

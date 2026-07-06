@@ -1,4 +1,5 @@
 {
+  "pluginDisplayName": "Guided generation",
   "tooltip": "Guided send",
   "dialogTitle": "Guided generation",
   "userLabel": "User input (visible)",

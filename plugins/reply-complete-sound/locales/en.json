@@ -1,4 +1,5 @@
 {
+  "pluginDisplayName": "Reply complete sound",
   "previewSound": "Preview sound",
   "soundSourceLabel": "Sound source",
   "soundSourceDesc": "Use the bundled default clip or your uploaded file.",

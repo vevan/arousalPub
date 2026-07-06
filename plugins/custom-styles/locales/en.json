@@ -1,4 +1,5 @@
 {
+  "pluginDisplayName": "Custom styles",
   "enabledLabel": "Enable style injection",
   "enabledDesc": "When off, no custom CSS is injected in any conversation unless overridden per conversation.",
   "sheetsLabel": "Style sheets",

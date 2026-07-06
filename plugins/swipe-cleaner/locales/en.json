@@ -1,4 +1,5 @@
 {
+  "pluginDisplayName": "Swipe cleaner",
   "tooltip": "Clean inactive swipes in this turn",
   "tooltipAll": "Clean inactive swipes in this chat",
   "confirmTurnTitle": "Clean swipes in this turn",

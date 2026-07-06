@@ -1,4 +1,5 @@
 {
+  "pluginDisplayName": "对话导出",
   "tooltip": "导出对话为 HTML",
   "dialogTitle": "导出对话",
   "dialogBody": "导出期间请勿发送消息或编辑对话。回合编号与聊天界面「第 n 回」一致（从 0 起算，含起止回合）。",

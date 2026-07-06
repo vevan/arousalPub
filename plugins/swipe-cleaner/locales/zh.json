@@ -1,4 +1,5 @@
 {
+  "pluginDisplayName": "滑动清理",
   "tooltip": "清理本回合其它滑动",
   "tooltipAll": "清理本聊天全部滑动",
   "confirmTurnTitle": "清理本回合滑动",

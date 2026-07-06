@@ -21,6 +21,7 @@
 
 ## P1
 
+- [ ] **ST 聊天记录群聊多 bot 导入** — 当前 ST JSONL 导入全部 segment 绑定 `characterIds[0]`；需按 ST `name` 与会话 `characterIds`/`displayNames` 映射各 bot 为 speaker（单 bot 行为不变）。见 [`DOC/37`](37-st-import-settings-tab.md)
 - [ ] **独立文档 RAG**（≠ 世界书 vector）— 可选；前置 `DOC/20` M1+M4
 - [ ] RAG 参数面板、会话/角色批量导入导出、备份示例脚本
 
@@ -30,7 +31,7 @@
   - [x] **Tab 壳 + ST 预设跳转** — `SettingsTab: 'import'` · `ImportSettingsPanel` · `uiContext.requestOpenPromptsImport` → 关设置 · 开提示词库 · `performImportPickFile()`
   - [x] **ST 世界书** — `st-lorebook-import.ts` · `POST /api/lorebooks/import-st`（preview + import）；`comment→title`、`disable→enabled`、无 key + `vectorized` → `triggerMode: 'vector'`；导入后 reindex
   - [x] **ST 聊天记录** — SillyTavern JSONL → chunk / `TurnRecord`（开场 + 正文；可选 `reasoning`、`durationMs`）；导入前绑定 `userCharacterId` / `characterIds`；不含 model、swipe、插件 `extra`；流式读 JSONL + 批量写 chunk
-  - [x] **M3 回归与打磨** — multipart 50MB、聊天 preview 真流式统计、解析只保留导入字段、失败清理空会话、warnings/错误码 UI、世界书 3000 条上限
+  - [x] **M3 回归与打磨** — multipart 50MB、聊天 preview/import 共用逐行状态机 + import 按 chunk 流式落盘（无 turn 上限）、解析只保留导入字段、失败清理空会话与 index 回滚、warnings/错误码 UI、世界书 3000 条上限
 - [ ] **作者注分层** `DOC/28` — Phase 2 角色 AN + `{{charAuthorsNote}}`（Phase 1 全局 default ✅）
 - [ ] **角色卡内嵌世界书** `DOC/27` — Phase 1 组装（constant + keyword、`position`、叠加内嵌优先）；Phase 2 角色库查看 / 编辑 UI
 - [ ] 插件实例与 API 绑定、插件审计、fallback 策略（部分 host API 见 `DOC/10`）

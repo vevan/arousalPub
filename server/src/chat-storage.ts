@@ -2228,66 +2228,120 @@ export interface ImportedTurnBatchItem {
   createdAt?: string
 }
 
-/** ST 等批量导入：空会话一次性写入多轮（按全局 turnsPerFile 分块） */
-export async function importTurnsToEmptyConversation(params: {
+function buildTurnRecordFromImportedItem(
+  item: ImportedTurnBatchItem,
+  speaker: string,
+  used: Set<string>,
+): TurnRecord {
+  const mappedReceives = mapReceivesWithShortIds(item.receives, used)
+  const activeIdx = Math.min(
+    Math.max(0, item.activeReceiveIndex),
+    Math.max(0, mappedReceives.length - 1),
+  )
+  const turn: TurnRecord = {
+    turnId: allocateShortId(used),
+    turnOrdinal: item.turnOrdinal,
+    ...(item.createdAt ? { createdAt: item.createdAt } : {}),
+    send: { userText: item.userText },
+    receives: mappedReceives,
+    activeReceiveIndex: activeIdx,
+    plugins: [],
+    segments: [],
+    activeSegmentIndex: 0,
+  }
+  buildFirstSegmentOnTurn(turn, used, {
+    speakerCharacterId: speaker,
+    receives: mappedReceives,
+    activeReceiveIndex: activeIdx,
+  })
+  return turn
+}
+
+async function patchImportChunkNextLink(
+  conversationId: string,
+  prevFileName: string,
+  nextFileName: string,
+): Promise<void> {
+  const prevChunk = await readChunkFile(conversationId, prevFileName)
+  if (!prevChunk) {
+    throw new Error(
+      `import patch next link: previous chunk missing (${prevFileName})`,
+    )
+  }
+  prevChunk.meta.links.next = nextFileName
+  await writeChunkFile(conversationId, prevFileName, prevChunk)
+}
+
+/** 同会话导入互斥（流式 import 持锁至 finalize/rollback） */
+const conversationImportActive = new Set<string>()
+
+function acquireConversationImportLock(conversationId: string): boolean {
+  if (conversationImportActive.has(conversationId)) return false
+  conversationImportActive.add(conversationId)
+  return true
+}
+
+function releaseConversationImportLock(conversationId: string): void {
+  conversationImportActive.delete(conversationId)
+}
+
+async function scheduleMemoryForImportChunks(
+  conversationId: string,
+  chunkFileNames: string[],
+): Promise<void> {
+  for (const fileName of chunkFileNames) {
+    const chunk = await readChunkFile(conversationId, fileName)
+    if (!chunk) continue
+    for (const turn of chunk.turns) {
+      scheduleMemoryIndexUpsert(conversationId, turn, fileName)
+    }
+  }
+}
+
+export interface ConversationImportSession {
+  readonly conversationId: string
+  readonly turnCount: number
+  appendTurn(item: ImportedTurnBatchItem): Promise<void>
+  finalize(): Promise<{ index: ConversationIndex; turnCount: number }>
+  rollback(): Promise<void>
+}
+
+/** 空会话流式/批量导入 session：峰值内存 ≈ 单 chunk 轮数（buffer + 当前 flush slice） */
+export async function openConversationImportSession(params: {
   conversationId: string
   speakerCharacterId: string
-  turns: ImportedTurnBatchItem[]
   usedEntityIds?: Set<string>
-}): Promise<{ index: ConversationIndex; turnCount: number } | null> {
-  const { conversationId, speakerCharacterId, turns } = params
-  if (!turns.length) return null
+}): Promise<ConversationImportSession | null> {
+  const { conversationId, speakerCharacterId } = params
   const speaker = speakerCharacterId.trim()
   if (!speaker) return null
 
-  let idx = await readConversationIndex(conversationId)
-  if (!idx || idx.headChunkFile) return null
+  if (!acquireConversationImportLock(conversationId)) return null
 
-  const used = params.usedEntityIds ?? new Set<string>()
-  const built: TurnRecord[] = []
-  for (const item of turns) {
-    const mappedReceives = mapReceivesWithShortIds(item.receives, used)
-    const activeIdx = Math.min(
-      Math.max(0, item.activeReceiveIndex),
-      Math.max(0, mappedReceives.length - 1),
-    )
-    const turn: TurnRecord = {
-      turnId: allocateShortId(used),
-      turnOrdinal: item.turnOrdinal,
-      ...(item.createdAt ? { createdAt: item.createdAt } : {}),
-      send: { userText: item.userText },
-      receives: mappedReceives,
-      activeReceiveIndex: activeIdx,
-      plugins: [],
-      segments: [],
-      activeSegmentIndex: 0,
-    }
-    buildFirstSegmentOnTurn(turn, used, {
-      speakerCharacterId: speaker,
-      receives: mappedReceives,
-      activeReceiveIndex: activeIdx,
-    })
-    built.push(turn)
+  const idx = await readConversationIndex(conversationId)
+  if (!idx || idx.headChunkFile) {
+    releaseConversationImportLock(conversationId)
+    return null
   }
 
+  const used = params.usedEntityIds ?? new Set<string>()
   const chunkSettings = await readGlobalChunkSettings()
   const cap = chunkSettings.turnsPerFile
-  const chunkFiles: { fileName: string; chunk: ChunkFile }[] = []
 
-  for (let offset = 0; offset < built.length; offset += cap) {
-    const slice = built.slice(offset, offset + cap)
+  let turnCount = 0
+  let buffer: TurnRecord[] = []
+  const writtenChunkFiles: string[] = []
+  let headChunkFile: string | null = null
+  let tailChunkFile: string | null = null
+
+  async function flushBuffer(): Promise<void> {
+    if (buffer.length === 0) return
+    const slice = buffer
+    buffer = []
     const startOrd = slice[0]!.turnOrdinal
     const window = ordinalRangeForNewChunk(startOrd, cap)
     const fileName = chunkFileNameForRange(window.start, window.end)
-    const prev = offset > 0 ? chunkFiles[chunkFiles.length - 1]!.fileName : null
-    const nextEnd = offset + cap < built.length
-    const nextFile = nextEnd
-      ? chunkFileNameForRange(
-          ordinalRangeForNewChunk(slice[slice.length - 1]!.turnOrdinal + 1, cap).start,
-          ordinalRangeForNewChunk(slice[slice.length - 1]!.turnOrdinal + 1, cap).end,
-        )
-      : null
-
+    const prev = tailChunkFile
     const chunk: ChunkFile = {
       schemaVersion: 1,
       meta: {
@@ -2299,23 +2353,23 @@ export async function importTurnsToEmptyConversation(params: {
         turnsPerFile: cap,
         links: {
           previous: prev,
-          next: nextFile,
+          next: null,
           branches: [],
         },
       },
       turns: slice,
     }
-    chunkFiles.push({ fileName, chunk })
+    await mkdir(conversationDir(conversationId), { recursive: true })
+    await writeChunkFile(conversationId, fileName, chunk)
+    writtenChunkFiles.push(fileName)
+    if (prev) {
+      await patchImportChunkNextLink(conversationId, prev, fileName)
+    }
+    if (!headChunkFile) headChunkFile = fileName
+    tailChunkFile = fileName
   }
 
-  await mkdir(conversationDir(conversationId), { recursive: true })
-  const writtenChunkFiles: string[] = []
-  try {
-    for (const { fileName, chunk } of chunkFiles) {
-      await writeChunkFile(conversationId, fileName, chunk)
-      writtenChunkFiles.push(fileName)
-    }
-  } catch (e) {
+  async function rollbackWritten(): Promise<void> {
     await Promise.allSettled(
       writtenChunkFiles.map((fileName) =>
         rm(path.join(conversationDir(conversationId), fileName), {
@@ -2323,27 +2377,113 @@ export async function importTurnsToEmptyConversation(params: {
         }),
       ),
     )
+    writtenChunkFiles.length = 0
+    buffer = []
+    headChunkFile = null
+    tailChunkFile = null
+    turnCount = 0
+  }
+
+  async function restoreEmptyConversationIndex(
+    savedHead: string | null,
+    savedTail: string | null,
+    savedUpdatedAt: string,
+  ): Promise<void> {
+    const cur = await readConversationIndex(conversationId)
+    if (!cur) return
+    cur.headChunkFile = savedHead
+    cur.tailChunkFile = savedTail
+    cur.updatedAt = savedUpdatedAt
+    await writeConversationIndex(conversationId, cur)
+    invalidateChunkIndexSyncCache(conversationId)
+  }
+
+  return {
+    conversationId,
+    get turnCount() {
+      return turnCount
+    },
+    async appendTurn(item: ImportedTurnBatchItem): Promise<void> {
+      buffer.push(buildTurnRecordFromImportedItem(item, speaker, used))
+      turnCount++
+      if (buffer.length >= cap) {
+        await flushBuffer()
+      }
+    },
+    async finalize(): Promise<{ index: ConversationIndex; turnCount: number }> {
+      try {
+        if (turnCount === 0) {
+          throw new Error('import session has no turns')
+        }
+        await flushBuffer()
+        if (!headChunkFile || !tailChunkFile) {
+          throw new Error('import session produced no chunks')
+        }
+        const freshIdx = await readConversationIndex(conversationId)
+        if (!freshIdx || freshIdx.headChunkFile) {
+          await rollbackWritten()
+          throw new Error('conversation no longer empty')
+        }
+        const savedHead = freshIdx.headChunkFile
+        const savedTail = freshIdx.tailChunkFile
+        const savedUpdatedAt = freshIdx.updatedAt
+        const chunkFilesSnapshot = [...writtenChunkFiles]
+        const t = nowIso()
+        freshIdx.headChunkFile = headChunkFile
+        freshIdx.tailChunkFile = tailChunkFile
+        freshIdx.updatedAt = t
+        try {
+          await writeConversationIndex(conversationId, freshIdx)
+          invalidateChunkIndexSyncCache(conversationId)
+        } catch (e) {
+          await rollbackWritten()
+          throw e
+        }
+        try {
+          await upsertChatListEntry(chatListEntryFromIndex(freshIdx), freshIdx, {
+            refreshConversationStats: true,
+          })
+        } catch (e) {
+          await restoreEmptyConversationIndex(savedHead, savedTail, savedUpdatedAt)
+          await rollbackWritten()
+          throw e
+        }
+        await scheduleMemoryForImportChunks(conversationId, chunkFilesSnapshot)
+        return { index: freshIdx, turnCount }
+      } finally {
+        releaseConversationImportLock(conversationId)
+      }
+    },
+    async rollback(): Promise<void> {
+      try {
+        await rollbackWritten()
+      } finally {
+        releaseConversationImportLock(conversationId)
+      }
+    },
+  }
+}
+
+/** ST 等批量导入：空会话写入多轮（按 turnsPerFile 分块；内部走 import session） */
+export async function importTurnsToEmptyConversation(params: {
+  conversationId: string
+  speakerCharacterId: string
+  turns: ImportedTurnBatchItem[]
+  usedEntityIds?: Set<string>
+}): Promise<{ index: ConversationIndex; turnCount: number } | null> {
+  const { turns } = params
+  if (!turns.length) return null
+  const session = await openConversationImportSession(params)
+  if (!session) return null
+  try {
+    for (const item of turns) {
+      await session.appendTurn(item)
+    }
+    return await session.finalize()
+  } catch (e) {
+    await session.rollback()
     throw e
   }
-
-  for (const { fileName, chunk } of chunkFiles) {
-    for (const turn of chunk.turns) {
-      scheduleMemoryIndexUpsert(conversationId, turn, fileName)
-    }
-  }
-
-  const headChunkFile = chunkFiles[0]!.fileName
-  const tailChunkFile = chunkFiles[chunkFiles.length - 1]!.fileName
-  const t = nowIso()
-  idx.headChunkFile = headChunkFile
-  idx.tailChunkFile = tailChunkFile
-  idx.updatedAt = t
-  await writeConversationIndex(conversationId, idx)
-  invalidateChunkIndexSyncCache(conversationId)
-  await upsertChatListEntry(chatListEntryFromIndex(idx), idx, {
-    refreshConversationStats: true,
-  })
-  return { index: idx, turnCount: built.length }
 }
 
 /** 在已有尾块末尾追加一轮对话（默认写入 index.activeBranchPath） */

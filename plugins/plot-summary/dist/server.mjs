@@ -1,9 +1,9 @@
-// src/shared/utils.ts
+// plugins/plot-summary/src/shared/utils.ts
 function asString(v) {
   return typeof v === "string" ? v.trim() : "";
 }
 
-// src/shared/summarize.ts
+// plugins/plot-summary/src/shared/summarize.ts
 var PLOT_SUMMARY_ENTRY_TITLE_RE = /^\[MEMO-(\d+)\]-(.+)-\[(\d+)-(\d+)\]$/;
 function parseModelJson(text) {
   let raw = (text ?? "").trim();
@@ -63,7 +63,7 @@ function formatEntryTitle(rawTitle, startTurn, endTurn, blockTurns = 15) {
   return `[MEMO-${memoIndex}]-${title}-[${startTurn}-${endTurn}]`;
 }
 
-// src/shared/build-summary-messages.ts
+// plugins/plot-summary/src/shared/build-summary-messages.ts
 function buildSummaryCompleteMessages(systemReferenceContext, userContent, systemPromptTemplate) {
   const reference = systemReferenceContext.trim();
   const history = userContent.trim();
@@ -75,7 +75,7 @@ function buildSummaryCompleteMessages(systemReferenceContext, userContent, syste
   return messages;
 }
 
-// src/server/complete-draft.ts
+// plugins/plot-summary/src/server/complete-draft.ts
 var UPSTREAM_RETRY_MAX = 3;
 var PIPELINE_FATAL = /* @__PURE__ */ new Set(["context_exceeded", "context_length_unconfigured"]);
 var UPSTREAM_RETRY = /* @__PURE__ */ new Set(["plugin_complete_failed", "preflight_failed"]);

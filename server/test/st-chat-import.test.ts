@@ -49,6 +49,12 @@ describe('st-chat-import', () => {
     assert.equal(preview.suggestedTitle, '与 Anna 的对话')
   })
 
+  it('stream preview warns on empty input', async () => {
+    const preview = await streamPreviewStChat(Readable.from(['']))
+    assert.equal(preview.turnCount, 0)
+    assert.ok(preview.warnings.some((w) => w.includes('未找到可导入的消息')))
+  })
+
   it('stream parse matches text parse for import fields', async () => {
     const textParsed = parseStChatJsonl(SAMPLE_JSONL)
     const streamParsed = await streamParseStChat(Readable.from([SAMPLE_JSONL]))
@@ -135,6 +141,29 @@ describe('st-chat-import', () => {
       assert.equal(tail.turns.length, 3)
       assert.equal(tail.turns[0]!.send.userText, '')
       assert.equal(tail.turns[1]!.receives[0]?.reasoning, 'think')
+    })
+
+    it('importStChatFromStream writes via streaming session', async () => {
+      const {
+        createConversationStub,
+        readConversationIndex,
+        readTailChunk,
+      } = await import('../src/chat-storage.js')
+      const { importStChatFromStream } = await import('../src/st-chat-import.js')
+
+      const convId = 'b2c3d4e5'
+      await createConversationStub(convId, 'ST stream import')
+      const result = await importStChatFromStream({
+        conversationId: convId,
+        speakerCharacterId: 'char0001',
+        stream: Readable.from([SAMPLE_JSONL]),
+      })
+      assert.ok(result)
+      assert.equal(result!.turnCount, 3)
+      const after = await readConversationIndex(convId)
+      assert.ok(after?.headChunkFile)
+      const tail = await readTailChunk(convId)
+      assert.equal(tail?.turns.length, 3)
     })
   })
 })

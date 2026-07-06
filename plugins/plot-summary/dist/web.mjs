@@ -1,4 +1,4 @@
-// src/constants.ts
+// plugins/plot-summary/src/constants.ts
 var PLUGIN_ID = "plot-summary";
 var DIALOG_SESSION = "session";
 var DIALOG_MANUAL = "manual";
@@ -9,7 +9,7 @@ var DIALOG_PICK_LOREBOOK = "pick-lorebook";
 var DIALOG_RECOVER_LOREBOOK = "recover-lorebook";
 var DIALOG_PROMPT_PREVIEW = "prompt-preview";
 
-// src/shared/utils.ts
+// plugins/plot-summary/src/shared/utils.ts
 function asString(v) {
   return typeof v === "string" ? v.trim() : "";
 }
@@ -34,7 +34,7 @@ function entryKeys(keywords) {
   return keywords.filter((x) => typeof x === "string").map((x) => x.trim()).filter(Boolean);
 }
 
-// src/settings.ts
+// plugins/plot-summary/src/settings.ts
 function k(host, key) {
   return host.pluginKey(key);
 }
@@ -266,7 +266,7 @@ function firstAutoTriggerTurnOrdinal(settings) {
   return blockEndFromStart(start, settings.blockTurns) + settings.bufferTurns;
 }
 
-// src/errors.ts
+// plugins/plot-summary/src/errors.ts
 var PIPELINE_FATAL_ERRORS = /* @__PURE__ */ new Set([
   "context_exceeded",
   "context_length_unconfigured"
@@ -325,7 +325,7 @@ function preflightToast(host, e) {
   host.ui.toast(host.t(k(host, "toastSummarizeFailed")), { color: "error" });
 }
 
-// src/state.ts
+// plugins/plot-summary/src/state.ts
 var summarizeRunning = false;
 var _reviewResolver = null;
 var _reviewRegenerate = null;
@@ -388,7 +388,7 @@ function clearPromptPreviewRestore() {
   _promptPreviewRestore = null;
 }
 
-// src/review.ts
+// plugins/plot-summary/src/review.ts
 function resolveSystemPrompt(host, settings, opts) {
   if (opts.kind === "sidecar" && opts.sc) {
     return sidecarPromptTemplate(host, opts.sc);
@@ -550,7 +550,7 @@ function promptReview(host, draft, dialogId, regenerateFn, lorebookName) {
   });
 }
 
-// src/shared/lorebook-sort.ts
+// plugins/plot-summary/src/shared/lorebook-sort.ts
 var PLOT_SUMMARY_TURN_RANGE_SUFFIX_RE = /\[(\d+)-(\d+)\]$/;
 var LEGACY_TURN_RANGE_SUFFIX_RE = /-(\d+)-(\d+)$/;
 var PLOT_SUMMARY_MEMO_PREFIX_RE = /^\[MEMO-(\d+)\]-/;
@@ -632,7 +632,7 @@ function computePlotSummaryApplyOrderLayout(lb, sidecarEntryIds, sidecarConfigId
   return { entriesByGroup };
 }
 
-// src/shared/entry-sort.ts
+// plugins/plot-summary/src/shared/entry-sort.ts
 async function applyPlotSummaryEntrySort(host, lorebookId, sidecarEntryIds, sidecarConfigIds) {
   const id = lorebookId.trim();
   if (!id) return false;
@@ -662,7 +662,7 @@ async function applyPlotSummaryEntrySort(host, lorebookId, sidecarEntryIds, side
   return true;
 }
 
-// src/batch-write.ts
+// plugins/plot-summary/src/batch-write.ts
 async function flushPendingLorebookCreates(host, lorebookId, pending, sidecarEntryIds) {
   if (!pending.length) return;
   if (typeof host.lorebook.createEntriesBatch !== "function") {
@@ -686,7 +686,7 @@ async function flushPendingLorebookCreates(host, lorebookId, pending, sidecarEnt
   pending.length = 0;
 }
 
-// src/sidecar.ts
+// plugins/plot-summary/src/sidecar.ts
 async function writeSidecarEntry(host, settings, sidecarEntryIds, sc, reviewed, sidecarKeys, pendingCreates) {
   const body = {
     title: sc.name,
@@ -715,7 +715,7 @@ async function writeSidecarEntry(host, settings, sidecarEntryIds, sc, reviewed, 
   return created.id;
 }
 
-// src/shared/range-limits.ts
+// plugins/plot-summary/src/shared/range-limits.ts
 var SUMMARIZE_TURN_SPAN_HINT_MAX = 512;
 function summarizeTurnSpan(fromTurn, toTurn) {
   return Math.max(0, toTurn - fromTurn + 1);
@@ -724,7 +724,7 @@ function isSummarizeTurnSpanTooLarge(fromTurn, toTurn) {
   return summarizeTurnSpan(fromTurn, toTurn) > SUMMARIZE_TURN_SPAN_HINT_MAX;
 }
 
-// src/pipeline.ts
+// plugins/plot-summary/src/pipeline.ts
 function setPluginHold(host, hold) {
   if (typeof host.conversation.setPluginHold === "function") {
     host.conversation.setPluginHold(hold);
@@ -1017,7 +1017,7 @@ async function runSummarizeTasks(host, opts) {
   }
 }
 
-// src/shared/build-summary-messages.ts
+// plugins/plot-summary/src/shared/build-summary-messages.ts
 function buildSummaryCompleteMessages(systemReferenceContext, userContent, systemPromptTemplate) {
   const reference = systemReferenceContext.trim();
   const history = userContent.trim();
@@ -1029,7 +1029,7 @@ function buildSummaryCompleteMessages(systemReferenceContext, userContent, syste
   return messages;
 }
 
-// src/prompt-preview.ts
+// plugins/plot-summary/src/prompt-preview.ts
 function auditDebugEnabled(host) {
   const raw = host.session.writeChatPromptSnapshot;
   if (typeof raw === "boolean") return raw;
@@ -1248,7 +1248,7 @@ async function previewManualSummarizePrompt(host, model) {
   }
 }
 
-// src/dialogs.ts
+// plugins/plot-summary/src/dialogs.ts
 function isAutoSummarizeEnabled(host) {
   return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true;
 }
@@ -1773,7 +1773,7 @@ function isBusy(host) {
   return host.session.conversationWriteLocked || host.session.loading || host.session.regeneratingTurnOrdinal !== null;
 }
 
-// src/lifecycle.ts
+// plugins/plot-summary/src/lifecycle.ts
 function isPersistBusy(host) {
   return host.session.conversationWriteLocked || host.session.loading || host.session.regeneratingTurnOrdinal !== null;
 }
@@ -1825,7 +1825,7 @@ function registerLifecycle(host) {
   });
 }
 
-// src/range-picker.ts
+// plugins/plot-summary/src/range-picker.ts
 var RANGE_STYLES = `
 .plugin-slot.cm-range-start--active {
   color: rgb(var(--v-theme-primary));
@@ -1911,7 +1911,7 @@ function registerRangePicker(host) {
   });
 }
 
-// src/index.ts
+// plugins/plot-summary/src/index.ts
 function isAutoSummarizeEnabled2(host) {
   return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true;
 }

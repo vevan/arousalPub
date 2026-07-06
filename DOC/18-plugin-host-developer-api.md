@@ -240,8 +240,8 @@ interface ConversationBatchContext {
 | 方法 | 说明 |
 |------|------|
 | `complete(req)` | 通用出站补全：`messages[]`；`apiConfigId` 可省略，由宿主解析 |
-| `prepareContext(req)` | 服务端读 turn + 返回 `systemReferenceContext`（参考块）与 `userContent`（仅 `<history>`） |
-| `completeDraft(req)` | 调用插件 `server.mjs` 的 `completeDraft` hook（扩宏 → preflight → complete → 解析） |
+| `prepareContext(req)` | 服务端读 turn + 返回 `systemReferenceContext`（参考块）与 `userContent`（仅 `<history>`）；**规划泛化**见 **`DOC/39`** |
+| `completeDraft(req)` | 调用插件 `server.mjs` 的 `completeDraft` hook（扩宏 → preflight → complete → 解析）；**规划**拼 prompt 下沉宿主 |
 
 **`complete` 请求**：
 
@@ -377,8 +377,8 @@ interface ConversationBatchContext {
 
 | Hook | 时机 | 典型用途 |
 |------|------|----------|
-| `afterAssemblePrompts(ctx, api)` | `/api/chat` 组装 messages 之后 | 追加 hidden system（guidance-generate） |
-| `resolveAfterAssemblePromptsAddition(ctx, api)` | 同上（推荐） | 返回追加 messages；宿主合并 + token 预算（trace-keeper 等） |
+| `resolveAfterAssemblePromptsAddition(ctx, api)` | `/api/chat` 组装 messages 之后（推荐） | 返回注入描述符（规划：`chat` depth + order）；宿主 post-user 区归并 + token 预算。定案见 **`DOC/38`** §3 |
+| `afterAssemblePrompts(ctx, api)` | 同上 | 整表替换（guidance-generate）；**规划**迁描述符后降为 escape hatch |
 | `resolveTurnPluginEntries(plugins, api)` | 落盘前 | 写入 `turn.plugins[]` 条目（body 侧） |
 | `resolveTurnPluginEntriesFromAssistant(plugins, assistantText, api)` | 落盘前 | 从 assistant 解析 → 条目（trace-keeper Together） |
 | `regenerateSeparateState(ctx, api)` | `POST …/regenerate-separate` | Separate 补生成（trace-keeper） |
@@ -533,9 +533,9 @@ class PluginHostApiError {
 ### 8.3 聊天管线注入
 
 1. Web：收集用户输入 → `sendWithPlugins(..., { 'my-plugin': payload })`
-2. Server：`afterAssemblePrompts` 读 `ctx.plugins` 改 `messages`
+2. Server：`resolveAfterAssemblePromptsAddition`（规划：注入描述符 + 宿主 splice）或 `afterAssemblePrompts`（escape hatch）读 `ctx.plugins` 改 `messages`
 
-参考：`guidance-generate`。
+参考：`guidance-generate` · `trace-keeper` · **`DOC/38`** §3。
 
 ---
 
@@ -552,6 +552,10 @@ class PluginHostApiError {
 
 | 能力 | 说明 |
 |------|------|
+| **组装注入描述符 + post-user 归并** | Phase A · **`DOC/38`** §3 · guidance / trace-keeper order 定案 |
+| **服务端插件 Worker 沙箱** | Phase B · Host API 代理 · **`DOC/38`** §2、§4 |
+| **`runPluginComplete` apiConfigId 白名单** | Phase C · **`DOC/38`** §5 |
+| **插件上下文块 + Prompt 组装** | **`DOC/39`** · `resolveContextBlocks` · `assemblePluginPrompt` · `completeWithContext` |
 | 服务端 `onAssistantReplyPersisted` | 自动触发摘要流水线（当前由 Web lifecycle 负责） |
 | 字段级 permissions 与 turn.plugins 写权限细分 | 部分 enforce 仍随路由演进 |
 
@@ -567,6 +571,8 @@ class PluginHostApiError {
 | `DOC/12-plugin-plot-summary.md` | Historian（剧情纪要）完整业务示例 |
 | `DOC/24-regex-and-session-audit.md` | 宿主原生正则三阶段、`host.regex` / `api.regex` |
 | `DOC/30-plugin-trace-keeper.md` | **迹录** Trace Keeper（✅ v1） |
+| `DOC/38-plugin-sandbox-and-host-evolution.md` | 插件沙箱、注入描述符、complete 白名单（**规划**） |
+| `DOC/39-plugin-context-and-prompt-assembly.md` | 二次 LLM 上下文块 + prompt 组装（**规划**） |
 | `plugins/README.md` | 内置插件列表与打包说明 |
 
 ---

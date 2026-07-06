@@ -67,6 +67,8 @@
 
 ## 5. prepare-context（摘要）
 
+> **演进**：宿主侧 Historian 专用 prepare 将泛化为通用 **上下文块 + prompt 组装**（**`DOC/39`**）；`prepareContext` / `completeDraft` 对外行为迁移期保持不变。
+
 - XML：`<user userName="{{user}}">` / `<assistant charName="{{char}}">`；`<context-history>` / `<history>`。
 - 勾选 `regexRuleIds` 时对摘要 outgoing 应用原生正则；`regexApplyAllTurns` 控制 skip。
 - **宏引擎**：`complete-draft` / Prompt 预览经 `runPluginMacroExpand` 展开模板与 `userContent`；传 **`toTurn`** 锚定历史类宏至摘要区间尾部（与 `DOC/26` 一致）；memory 类 draft 另传 **`blockTurns`** 供条目标题 `[MEMO-n]` 计算。

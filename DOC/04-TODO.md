@@ -34,6 +34,10 @@
   - [x] **M3 回归与打磨** — multipart 50MB、聊天 preview/import 共用逐行状态机 + import 按 chunk 流式落盘（无 turn 上限）、解析只保留导入字段、失败清理空会话与 index 回滚、warnings/错误码 UI、世界书 3000 条上限
 - [ ] **作者注分层** `DOC/28` — Phase 2 角色 AN + `{{charAuthorsNote}}`（Phase 1 全局 default ✅）
 - [ ] **角色卡内嵌世界书** `DOC/27` — Phase 1 组装（constant + keyword、`position`、叠加内嵌优先）；Phase 2 角色库查看 / 编辑 UI
+- [ ] **插件组装注入对齐 §6.6 chat depth**（**Phase A** · 详 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §3）— `resolveAfterAssemblePromptsAddition` 返回注入描述符；宿主 post-user 区归并；裁切前 token 预留不变。定案：`guidance-generate` depth **0** order **1**；`trace-keeper` depth **0** order **999**；revise assistant **998** + system **999**
+- [ ] **服务端插件沙箱**（**Phase B** · [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §2、§4）— Worker + Host API 代理；同进程 `import(server.mjs)` 仅保留 bundled 或过渡期 fallback
+- [ ] **插件 complete API 白名单**（**Phase C** · [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §5）— `runPluginComplete` 校验 `apiConfigId` 是否授权给该 `pluginId`；与沙箱可并行
+- [ ] **插件上下文块 + Prompt 组装**（[`DOC/39`](39-plugin-context-and-prompt-assembly.md)）— 泛化 `prepareContext` → `resolveContextBlocks`；宿主 `assemblePluginPrompt` / `completeWithContext`；Historian 先行，trace-keeper Separate 可选；细节见 DOC/39 §5 待讨论
 - [ ] 插件实例与 API 绑定、插件审计、fallback 策略（部分 host API 见 `DOC/10`）
 - [ ] **用户文件库** `DOC/20` M1–M5
 

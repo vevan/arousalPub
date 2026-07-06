@@ -9,8 +9,8 @@
 |------|------|
 | 新 Agent / 接手 | [`06-工作交接.md`](06-工作交接.md) → [`03-实现细节.md`](03-实现细节.md) |
 | 部署 / 安全 | [`25-security-deployment.md`](25-security-deployment.md)、[`17-admin-console.md`](17-admin-console.md)、[`data/README.md`](../data/README.md) |
-| 插件开发 | [`09`](09-plugin-system-and-guidance-generate.md) → [`18`](18-plugin-host-developer-api.md) → [`10`](10-plugin-conversation-host.md) |
-| Historian | [`12-plugin-plot-summary.md`](12-plugin-plot-summary.md) |
+| 插件开发 | [`09`](09-plugin-system-and-guidance-generate.md) → [`18`](18-plugin-host-developer-api.md) → [`38`](38-plugin-sandbox-and-host-evolution.md) · [`39`](39-plugin-context-and-prompt-assembly.md)（规划）→ [`10`](10-plugin-conversation-host.md) |
+| Historian | [`12-plugin-plot-summary.md`](12-plugin-plot-summary.md) · 二次 LLM 演进 [`39`](39-plugin-context-and-prompt-assembly.md) |
 | 迹录（Trace Keeper） | [`30-plugin-trace-keeper.md`](30-plugin-trace-keeper.md) |
 | 主布局 / 插件 Rail | [`31-main-layout-plugin-rails.md`](31-main-layout-plugin-rails.md) |
 | 全局插件 settings 缓存 | [`32-plugin-user-settings-cache.md`](32-plugin-user-settings-cache.md)（**✅ 已实现** · `a7ca4ea`） |
@@ -45,6 +45,8 @@
 | [`15`](15-conversation-messages-lazy-load.md) | ✅ | 消息 UI 懒加载 + virtua 虚拟列表 |
 | [`17`](17-admin-console.md) | ✅ | 本机运维台、DEK 轮换 |
 | [`18`](18-plugin-host-developer-api.md) | ✅ | 插件 API 表 |
+| [`38`](38-plugin-sandbox-and-host-evolution.md) | 规划 | 插件沙箱、注入描述符、complete 白名单 |
+| [`39`](39-plugin-context-and-prompt-assembly.md) | 规划 | 二次 LLM 上下文块、prompt 组装、Historian 泛化 |
 | [`20`](20-user-file-library.md) | 定案 | 用户文件库 / charFile（未实现） |
 | [`21`](21-conversation-plugin-settings.md) | ✅ | 会话插件 Tab schema |
 | [`23`](23-conversation-branches.md) | ✅ | S1–S5 + 顶栏分支树；persist `turnId` patch；from/to/total 副标题；§9.3 审计已关闭 |

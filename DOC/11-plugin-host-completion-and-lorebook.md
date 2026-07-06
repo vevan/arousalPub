@@ -34,8 +34,9 @@
 | | `ensure(req?)` | ✅ | `POST …/lorebooks/ensure`，自动建 summary 书，见 `DOC/12` §2.3 |
 | **`host.api`** | `listPresets()` | ✅ | `GET /api/settings` |
 | **`host.plugin`** | `complete(req)` | ✅ | `POST …/complete` |
-| | `prepareContext(req)` | ✅ | `POST …/prepare-context`（读 turn + 拼 `<history>` / `<previous-summaries>` 等；块规则见 `DOC/12` §4.3） |
+| | `prepareContext(req)` | ✅ | `POST …/prepare-context`（Historian 专用；**规划泛化** **`DOC/39`**） |
 | | `completeDraft(req)` | ✅ | `POST …/complete-draft`（插件 `server.mjs` 的 `completeDraft` hook） |
+| | `resolveContextBlocks` / `completeWithContext` | 规划 | **`DOC/39`** · 声明式取块 + 宿主拼 messages |
 | **`host.conversation`** | `getPluginSettings()` / `patchPluginSettings()` | ✅ | `GET/PATCH …/conversations/:id` |
 | **`host.plugins`** | `getUserSettings()` | ✅ | `GET /api/plugins/:pluginId/settings` |
 

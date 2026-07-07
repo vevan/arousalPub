@@ -36,7 +36,7 @@ const session = useChatSession(props)
 defineExpose({
   reloadTurns: () => session.loadMessages(),
 })
-const pluginHost = usePluginHost(session)
+const pluginHost = usePluginHost(session, { routeKeys: ['chat'] })
 provide(PLUGIN_HOST_KEY, pluginHost)
 
 const { chatFontSizeRem } = storeToRefs(usePreferencesStore())

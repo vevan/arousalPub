@@ -35,11 +35,14 @@ async function throwIfNotOk(res: Response, fallbackCode: string): Promise<void> 
   try {
     const data = (await res.json()) as {
       error?: string
+      code?: string
       detail?: string
       promptTokens?: number
       budget?: number
     }
-    if (typeof data.error === 'string' && data.error.trim()) {
+    if (typeof data.code === 'string' && data.code.trim()) {
+      code = data.code.trim()
+    } else if (typeof data.error === 'string' && data.error.trim()) {
       code = data.error.trim()
     }
     if (typeof data.detail === 'string' && data.detail.trim()) {
@@ -262,9 +265,14 @@ export async function runPluginPrepareContextBlocks(
     },
   )
   await throwIfNotOk(res, 'plugin_prepare_context_failed')
-  const data = (await res.json()) as PluginPrepareContextBlocksResponse
-  if (!data.ok) {
-    throw new PluginHostApiError('plugin_prepare_context_failed', res.status)
+  const data = (await res.json()) as
+    | PluginPrepareContextBlocksResponse
+    | { ok: false; code?: string }
+  if ('ok' in data && data.ok === false) {
+    throw new PluginHostApiError(
+      typeof data.code === 'string' && data.code.trim() ? data.code.trim() : 'plugin_prepare_context_failed',
+      res.status,
+    )
   }
   return data
 }
@@ -492,4 +500,52 @@ export async function patchConversationPluginSettings(
     bag && typeof bag === 'object' && !Array.isArray(bag) ? { ...bag } : {}
   useConversationPluginSettingsStore().setBag(conversationId, pluginId, saved)
   return saved
+}
+
+/** manifest `serverActions` · POST /api/plugins/:id/actions/:action */
+export async function runPluginAction(
+  pluginId: string,
+  action: string,
+  body: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<Record<string, unknown>> {
+  const res = await apiFetch(
+    `/api/plugins/${encodeURIComponent(pluginId)}/actions/${encodeURIComponent(action)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal,
+    },
+  )
+  if (!res.ok) {
+    let code = 'plugin_action_failed'
+    let detail: string | undefined
+    let debug: unknown
+    try {
+      const data = (await res.json()) as {
+        error?: string
+        code?: string
+        detail?: string
+        debug?: unknown
+      }
+      if (typeof data.code === 'string' && data.code.trim()) {
+        code = data.code.trim()
+      } else if (typeof data.error === 'string' && data.error.trim()) {
+        code = data.error.trim()
+      }
+      if (typeof data.detail === 'string' && data.detail.trim()) {
+        detail = data.detail.trim()
+      }
+      if ('debug' in data) debug = data.debug
+    } catch {
+      code = `http_${res.status}`
+    }
+    throw new PluginHostApiError(code, res.status, detail, { debug })
+  }
+  const data = (await res.json()) as Record<string, unknown>
+  if (!data || typeof data !== 'object') {
+    throw new PluginHostApiError('plugin_action_invalid_response', res.status)
+  }
+  return data
 }

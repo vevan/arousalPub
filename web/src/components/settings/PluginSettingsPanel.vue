@@ -24,7 +24,9 @@ function pluginDisplayName(pluginId: string, fallback: string): string {
   return resolvePluginDisplayName(pluginId, fallback)
 }
 
-const TRACE_KEEPER_PLUGIN_ID = 'trace-keeper'
+const settingsDialogMaxWidth = computed(
+  () => settingsPlugin.value?.settingsSchema?.dialogMaxWidth ?? 640,
+)
 
 const loading = ref(true)
 const saving = ref(false)
@@ -138,7 +140,7 @@ async function submitSettings() {
   if (!plugin) return
   settingsFormRef.value?.commitAllTextDrafts()
   const sampleError =
-    settingsFormRef.value?.validateAllTraceKeeperSampleStateFields() ?? null
+    settingsFormRef.value?.validateAllJsonSampleStateFields() ?? null
   if (sampleError) {
     footerValidationError.value = sampleError
     return
@@ -170,10 +172,6 @@ async function submitSettings() {
 
 const settingsFields = computed(
   () => settingsPlugin.value?.settingsSchema?.fields ?? [],
-)
-
-const settingsDialogMaxWidth = computed(() =>
-  settingsPlugin.value?.id === TRACE_KEEPER_PLUGIN_ID ? 920 : 640,
 )
 
 onMounted(() => {

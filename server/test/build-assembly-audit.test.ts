@@ -78,7 +78,7 @@ describe('buildAssemblyAudit', () => {
   it('includes plugin token reserve from additionCache', () => {
     const cache: PluginAssembleAdditionCache = new Map([
       [
-        'guidance-generate',
+        'fixture-plugin-a',
         {
           kind: 'injections',
           injections: [
@@ -123,7 +123,7 @@ describe('buildAssemblyAudit', () => {
 
     assert.ok(audit.plugins)
     assert.equal(audit.plugins!.items.length, 1)
-    assert.equal(audit.plugins!.items[0]!.pluginId, 'guidance-generate')
+    assert.equal(audit.plugins!.items[0]!.pluginId, 'fixture-plugin-a')
     assert.ok(audit.plugins!.tokenReserve > 0)
   })
 })

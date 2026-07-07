@@ -4,10 +4,11 @@ import type { TurnPluginEntry } from './plugin-types.js'
 import {
   attachReceiveIdToTurnPluginEntries,
   mergeTurnPluginEntry,
-  removeTraceKeeperPluginForReceive,
+  removeTurnPluginEntriesForReceive,
 } from './turn-plugin-utils.js'
+import { getReceiveScopedAssistantResolvePluginIds } from './plugin-system/turn-plugin-policies.js'
 
-/** PATCH / 编辑后：按各 receive 正文重解析 trace-keeper 并同步 turn.plugins[] */
+/** PATCH / 编辑后：按各 receive 正文重解析插件 turn 快照并同步 turn.plugins[] */
 export async function buildSyncedTurnPluginsFromReceives(
   existingPlugins: unknown[] | undefined,
   receives: Pick<TurnReceive, 'id' | 'content'>[],
@@ -33,10 +34,13 @@ export async function buildSyncedTurnPluginsFromReceives(
         plugins = mergeTurnPluginEntry(plugins, entry) as TurnPluginEntry[]
       }
     } else {
-      plugins = removeTraceKeeperPluginForReceive(
-        plugins,
-        receiveId,
-      ) as TurnPluginEntry[]
+      for (const pluginId of getReceiveScopedAssistantResolvePluginIds()) {
+        plugins = removeTurnPluginEntriesForReceive(
+          plugins,
+          receiveId,
+          pluginId,
+        ) as TurnPluginEntry[]
+      }
     }
   }
 

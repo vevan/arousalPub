@@ -67,7 +67,7 @@ describe('resolvePluginCompleteApiFromSources', () => {
 
   it('uses explicit apiConfigId when preset exists', () => {
     const hit = resolvePluginCompleteApiFromSources(
-      { pluginId: 'plot-summary', apiConfigId: 'preset-b' },
+      { pluginId: 'fixture-plugin-a', apiConfigId: 'preset-b' },
       { settings, pluginSettings: { apiConfigId: 'preset-a' } },
     )
     assert.equal(hit.ok, true)
@@ -79,7 +79,7 @@ describe('resolvePluginCompleteApiFromSources', () => {
 
   it('rejects explicit apiConfigId when preset missing', () => {
     const hit = resolvePluginCompleteApiFromSources(
-      { pluginId: 'plot-summary', apiConfigId: 'missing' },
+      { pluginId: 'fixture-plugin-a', apiConfigId: 'missing' },
       { settings, pluginSettings: {} },
     )
     assert.equal(hit.ok, false)
@@ -87,11 +87,11 @@ describe('resolvePluginCompleteApiFromSources', () => {
 
   it('prefers conversation plugin binding over plugin settings', () => {
     const hit = resolvePluginCompleteApiFromSources(
-      { pluginId: 'plot-summary', conversationId: 'abc12345' },
+      { pluginId: 'fixture-plugin-a', conversationId: 'abc12345' },
       {
         settings,
         conversationApiPreset: {
-          plugins: { 'plot-summary': { apiConfigId: 'preset-b' } },
+          plugins: { 'fixture-plugin-a': { apiConfigId: 'preset-b' } },
         },
         pluginSettings: { apiConfigId: 'preset-a' },
       },
@@ -105,7 +105,7 @@ describe('resolvePluginCompleteApiFromSources', () => {
 
   it('falls back to plugin settings apiConfigId', () => {
     const hit = resolvePluginCompleteApiFromSources(
-      { pluginId: 'plot-summary' },
+      { pluginId: 'fixture-plugin-a' },
       {
         settings,
         pluginSettings: { apiConfigId: 'preset-a' },
@@ -120,7 +120,7 @@ describe('resolvePluginCompleteApiFromSources', () => {
 
   it('returns not found when settings missing and no explicit id', () => {
     const hit = resolvePluginCompleteApiFromSources(
-      { pluginId: 'plot-summary' },
+      { pluginId: 'fixture-plugin-a' },
       { settings: null, pluginSettings: { apiConfigId: 'preset-a' } },
     )
     assert.equal(hit.ok, false)
@@ -128,20 +128,20 @@ describe('resolvePluginCompleteApiFromSources', () => {
 
   it('falls back to chat API when fallbackToChat and no plugin binding', () => {
     const hit = resolvePluginCompleteApiFromSources(
-      { pluginId: 'trace-keeper', fallbackToChat: true },
+      { pluginId: 'fixture-plugin-b', fallbackToChat: true },
       { settings, pluginSettings: {} },
     )
     assert.equal(hit.ok, true)
     if (hit.ok) {
       assert.equal(hit.resolved.apiConfigId, 'preset-a')
       assert.equal(hit.resolved.source, 'global')
-      assert.equal(hit.resolved.pluginId, 'trace-keeper')
+      assert.equal(hit.resolved.pluginId, 'fixture-plugin-b')
     }
   })
 
   it('does not fall back to chat without fallbackToChat flag', () => {
     const hit = resolvePluginCompleteApiFromSources(
-      { pluginId: 'trace-keeper' },
+      { pluginId: 'fixture-plugin-b' },
       { settings, pluginSettings: {} },
     )
     assert.equal(hit.ok, false)

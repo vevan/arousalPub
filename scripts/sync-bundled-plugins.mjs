@@ -1,22 +1,26 @@
 /**
  * Build 时把仓库 plugins/{id}/ 全量覆盖到 data/plugins/{id}/（保留各用户 settings 子目录）。
+ * bundled 列表来自 plugins/bundled-registry.json。
  */
 import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { cp, mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import { REPO_ROOT, resolveDataDir } from './dev-config.mjs'
 
-const BUNDLED_PLUGIN_IDS = [
-  'guidance-generate',
-  'reply-complete-sound',
-  'swipe-cleaner',
-  'conversation-export',
-  'plot-summary',
-  'custom-styles',
-  'trace-keeper',
-]
+const REGISTRY_PATH = path.join(REPO_ROOT, 'plugins', 'bundled-registry.json')
 
 const CP_OPTS = { recursive: true, force: true }
+
+async function readBundledIds() {
+  const raw = await readFile(REGISTRY_PATH, 'utf8')
+  const doc = JSON.parse(raw)
+  if (!doc?.plugins?.length) throw new Error('empty bundled-registry.json')
+  return doc.plugins.map((p) => ({
+    id: String(p.id),
+    path: typeof p.path === 'string' && p.path.trim() ? p.path.trim() : String(p.id),
+  }))
+}
 
 async function copyBundledPluginPackage(srcDir, destDir) {
   await mkdir(destDir, { recursive: true })
@@ -38,8 +42,10 @@ async function main() {
   const pluginsDir = path.join(dataDir, 'plugins')
   await mkdir(pluginsDir, { recursive: true })
 
-  for (const pluginId of BUNDLED_PLUGIN_IDS) {
-    const src = path.join(REPO_ROOT, 'plugins', pluginId)
+  const bundled = await readBundledIds()
+
+  for (const { id: pluginId, path: relPath } of bundled) {
+    const src = path.join(REPO_ROOT, 'plugins', relPath)
     if (!existsSync(path.join(src, 'manifest.json'))) {
       console.warn('[sync-plugins] bundled source missing:', pluginId, src)
       continue

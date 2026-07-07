@@ -5,7 +5,7 @@ import { runAssemblePluginPrompt } from '../src/plugin-assemble-prompt.js'
 const TEST_USER = 'b0000001'
 let prevTestUser: string | undefined
 
-const HISTORIAN_LAYOUT = {
+const FIXTURE_LAYOUT = {
   messages: [
     { role: 'system' as const, content: '{{blocks.reference}}' },
     { role: 'user' as const, content: '{{blocks.history}}' },
@@ -28,7 +28,7 @@ describe('runAssemblePluginPrompt', () => {
     const result = await runAssemblePluginPrompt({
       conversationId: 'abcd1234',
       anchorToTurn: 0,
-      layout: HISTORIAN_LAYOUT,
+      layout: FIXTURE_LAYOUT,
       blocks: {
         reference: '',
         history: '<history>\nhello\n</history>',
@@ -49,7 +49,7 @@ describe('runAssemblePluginPrompt', () => {
     const result = await runAssemblePluginPrompt({
       conversationId: 'abcd1234',
       anchorToTurn: NaN,
-      layout: HISTORIAN_LAYOUT,
+      layout: FIXTURE_LAYOUT,
       blocks: { reference: '', history: 'x' },
     })
     assert.equal(result.ok, false)

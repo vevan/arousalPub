@@ -1,6 +1,7 @@
 import type { ChatMessage } from './assemble-prompts.js'
 import type { PromptMacroContext } from './prompt-macros/types.js'
 import type { ChatPluginsBody, TurnPluginEntry } from './plugin-types.js'
+import { mergeTurnPluginEntry } from './turn-plugin-utils.js'
 import { countChatMessagesTokens } from './token-count.js'
 import { createPluginServerHostApi } from './plugin-system/host-api.js'
 import {
@@ -21,7 +22,7 @@ export { mergePluginPromptInjectionsIntoMessages } from './plugin-prompt-injecti
 export type { PluginPromptInjectionSpan } from './plugin-prompt-injection-merge.js'
 export { resolvePluginInjectionSpan } from './plugin-prompt-injection-merge.js'
 
-/** legacy `ChatMessage[]` addition 在迁描述符前映射为 depth 0 · injectionOrder 500（与 trace-keeper 同档） */
+/** legacy `ChatMessage[]` addition 在迁描述符前映射为 depth 0 · injectionOrder 500（legacy 默认档） */
 const LEGACY_CHAT_INJECTION_ORDER = 500
 
 export type PluginAssembleAdditionResolved =
@@ -282,8 +283,7 @@ export function mergeTurnPluginEntries(
 ): TurnPluginEntry[] {
   let merged = [...base]
   for (const entry of extra) {
-    merged = merged.filter((e) => e.pluginId !== entry.pluginId)
-    merged.push(entry)
+    merged = mergeTurnPluginEntry(merged, entry) as TurnPluginEntry[]
   }
   return merged
 }

@@ -578,15 +578,94 @@ async function resolveTurnPluginEntriesFromAssistant(ctx, api) {
     }
   ];
 }
+async function resolveConversationPersistExtras(ctx, api) {
+  const conversationId = ctx.conversationIndex.id?.trim();
+  if (!conversationId) return {};
+  const convSettings = await api.getConversationPluginSettings(
+    conversationId,
+    PLUGIN_ID
+  );
+  return { trackerEpoch: trackerEpochFromSettings(convSettings) };
+}
+async function onCharacterPrimaryChanged(ctx, api) {
+  const convSettings = await api.getConversationPluginSettings(
+    ctx.conversationId,
+    PLUGIN_ID
+  );
+  const epoch = trackerEpochFromSettings(convSettings);
+  return { pluginSettings: { trackerEpoch: epoch + 1 } };
+}
+async function runPluginAction(action, body, api) {
+  const conversationId = typeof body.conversationId === "string" ? body.conversationId.trim() : "";
+  if (!conversationId) {
+    return { ok: false, code: "invalid_conversation_id" };
+  }
+  if (action === "regenerate-separate") {
+    const turnOrdinal = typeof body.turnOrdinal === "number" && Number.isFinite(body.turnOrdinal) ? Math.round(body.turnOrdinal) : void 0;
+    const debugCapture = body.debugCapture === true;
+    const result = await regenerateSeparateState(
+      { conversationId, turnOrdinal, debugCapture },
+      api
+    );
+    if (!result.ok) {
+      const status = result.code === "parse_failed" || result.code === "assistant_content_empty" ? 422 : result.code === "turn_not_found" || result.code === "no_turns" ? 404 : 400;
+      return { ok: false, code: result.code, status, debug: result.debug };
+    }
+    if (!result.receiveId || typeof result.assistantContent !== "string") {
+      return { ok: false, code: "turn_update_failed", status: 500 };
+    }
+    return {
+      ok: true,
+      state: result.state,
+      turnOrdinal: result.turnOrdinal,
+      receiveId: result.receiveId,
+      ...result.debug ? { debug: result.debug } : {},
+      turnMerge: {
+        turnOrdinal: result.turnOrdinal,
+        receiveId: result.receiveId,
+        assistantContent: result.assistantContent,
+        entry: result.entry
+      }
+    };
+  }
+  if (action === "patch-state") {
+    const turnOrdinal = typeof body.turnOrdinal === "number" && Number.isFinite(body.turnOrdinal) ? Math.round(body.turnOrdinal) : NaN;
+    const result = await patchTraceKeeperState(
+      { conversationId, turnOrdinal, state: body.state },
+      api
+    );
+    if (!result.ok) {
+      const status = result.code === "invalid_state" ? 422 : result.code === "turn_not_found" || result.code === "no_turns" ? 404 : result.code === "invalid_conversation_id" || result.code === "invalid_turn_ordinal" ? 400 : 400;
+      return { ok: false, code: result.code, status };
+    }
+    if (!result.receiveId || typeof result.assistantContent !== "string") {
+      return { ok: false, code: "receive_not_found", status: 500 };
+    }
+    return {
+      ok: true,
+      state: result.state,
+      turnOrdinal: result.turnOrdinal,
+      receiveId: result.receiveId,
+      turnMerge: {
+        turnOrdinal: result.turnOrdinal,
+        receiveId: result.receiveId,
+        assistantContent: result.assistantContent,
+        entry: result.entry
+      }
+    };
+  }
+  return { ok: false, code: "unknown_action", status: 404 };
+}
 export {
   DEFAULT_TRACE_BUNDLE,
   TRACE_KEEPER_SEPARATE_LAYOUT,
   buildTrackerSystemPrompt,
   formatPluginContextBlocks,
-  patchTraceKeeperState,
-  regenerateSeparateState,
+  onCharacterPrimaryChanged,
   resolveAfterAssemblePromptsAddition,
+  resolveConversationPersistExtras,
   resolveTraceBundle,
   resolveTraceKeeperInjection,
-  resolveTurnPluginEntriesFromAssistant
+  resolveTurnPluginEntriesFromAssistant,
+  runPluginAction
 };

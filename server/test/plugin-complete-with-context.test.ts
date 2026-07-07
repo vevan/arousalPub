@@ -25,7 +25,7 @@ describe('resolveApiConfigIdForCompleteWithContext', () => {
         conversationId: 'abcd1234',
         apiConfigId: 'preset-a',
       },
-      'plot-summary',
+      'fixture-plugin-a',
     )
     assert.equal(hit.ok, true)
     if (hit.ok) {
@@ -81,5 +81,63 @@ describe('parseCompleteWithContextBody', () => {
     assert.ok(body)
     assert.equal(body?.fallbackToChat, true)
     assert.equal(body?.captureDebug, true)
+  })
+
+  it('parses preparedContext and allows empty blocks', () => {
+    const body = parseCompleteWithContextBody({
+      conversationId: 'abcd1234',
+      anchorToTurn: 2,
+      blocks: [],
+      preparedContext: {
+        blocks: { history: 'hello' },
+        entriesByBlock: {},
+        meta: {
+          userDisplayName: 'U',
+          assistantDisplayName: 'A',
+          turnCount: 2,
+        },
+      },
+      layout: { messages: [{ role: 'user', content: '{{blocks.history}}' }] },
+    })
+    assert.ok(body)
+    assert.equal(body?.blocks.length, 0)
+    assert.equal(body?.preparedContext?.blocks.history, 'hello')
+  })
+
+  it('rejects empty draft.kind', () => {
+    const body = parseCompleteWithContextBody({
+      conversationId: 'abcd1234',
+      anchorToTurn: 2,
+      blocks: [
+        {
+          source: 'conversation.transcript',
+          blockId: 'history',
+          fromTurn: 0,
+          toTurn: 1,
+        },
+      ],
+      layout: { messages: [{ role: 'user', content: 'x' }] },
+      draft: { kind: '' },
+    })
+    assert.equal(body, null)
+  })
+
+  it('accepts opaque draft.kind string', () => {
+    const body = parseCompleteWithContextBody({
+      conversationId: 'abcd1234',
+      anchorToTurn: 2,
+      blocks: [
+        {
+          source: 'conversation.transcript',
+          blockId: 'history',
+          fromTurn: 0,
+          toTurn: 1,
+        },
+      ],
+      layout: { messages: [{ role: 'user', content: 'x' }] },
+      draft: { kind: 'custom-task' },
+    })
+    assert.ok(body)
+    assert.equal(body?.draft?.kind, 'custom-task')
   })
 })

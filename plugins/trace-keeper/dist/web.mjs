@@ -6291,20 +6291,12 @@ function panelEmptyLocaleKey(reason) {
 }
 
 // plugins/trace-keeper/src/patch-state-client.ts
-async function runPatchState(conversationId, turnOrdinal, state) {
-  const res = await fetch(
-    `/api/plugins/${encodeURIComponent(PLUGIN_ID)}/patch-state`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationId, turnOrdinal, state })
-    }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error ?? `http_${res.status}`);
-  }
-  const data = await res.json();
+async function runPatchState(host, conversationId, turnOrdinal, state) {
+  const data = await host.plugin.runAction("patch-state", {
+    conversationId,
+    turnOrdinal,
+    state
+  });
   if (!data || typeof data.state !== "object") {
     throw new Error("patch_state_invalid_response");
   }
@@ -6327,36 +6319,44 @@ var SeparateRegenerateError = class extends Error {
     this.debug = opts?.debug;
   }
 };
-async function runSeparateRegenerate(conversationId, turnOrdinal) {
-  const res = await fetch(
-    `/api/plugins/${encodeURIComponent(PLUGIN_ID)}/regenerate-separate`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        conversationId,
-        ...typeof turnOrdinal === "number" ? { turnOrdinal } : {}
-      })
+function actionErrorCode(e) {
+  if (e && typeof e === "object") {
+    const o = e;
+    if (typeof o.detail === "string" && o.detail.trim()) return o.detail.trim();
+    if (typeof o.code === "string" && o.code.trim()) return o.code.trim();
+    if (typeof o.message === "string" && o.message.trim()) return o.message.trim();
+  }
+  return "regenerate_separate_failed";
+}
+function actionErrorDebug(e) {
+  if (e && typeof e === "object" && "debug" in e) {
+    const debug = e.debug;
+    return debug && typeof debug === "object" ? debug : void 0;
+  }
+  return void 0;
+}
+async function runSeparateRegenerate(host, conversationId, turnOrdinal) {
+  try {
+    const data = await host.plugin.runAction("regenerate-separate", {
+      conversationId,
+      ...typeof turnOrdinal === "number" ? { turnOrdinal } : {}
+    });
+    if (!data || typeof data.state !== "object") {
+      throw new Error("regenerate_separate_invalid_response");
     }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new SeparateRegenerateError(err.error ?? `http_${res.status}`, {
-      detail: err.detail,
-      debug: err.debug
+    return {
+      state: data.state,
+      turnOrdinal: data.turnOrdinal,
+      receiveId: String(data.receiveId ?? ""),
+      ok: true,
+      ...data.debug ? { debug: data.debug } : {}
+    };
+  } catch (e) {
+    throw new SeparateRegenerateError(actionErrorCode(e), {
+      detail: e && typeof e === "object" && "detail" in e ? String(e.detail ?? "") : void 0,
+      debug: actionErrorDebug(e)
     });
   }
-  const data = await res.json();
-  if (!data || typeof data.state !== "object") {
-    throw new Error("regenerate_separate_invalid_response");
-  }
-  return {
-    state: data.state,
-    turnOrdinal: data.turnOrdinal,
-    receiveId: data.receiveId,
-    ok: true,
-    ...data.debug ? { debug: data.debug } : {}
-  };
 }
 
 // plugins/trace-keeper/src/audit-debug.ts
@@ -6625,7 +6625,7 @@ async function handlePatchStateSubmit(host, model) {
     return;
   }
   try {
-    await runPatchState(conversationId, turnOrdinal, state);
+    await runPatchState(host, conversationId, turnOrdinal, state);
     if (host.conversation.refresh) {
       await host.conversation.refresh();
     }
@@ -6646,7 +6646,7 @@ async function handleRegenerateSeparate(host) {
   void refreshPanel(host);
   const wantDebug = auditDebugEnabled(host);
   try {
-    const result = await runSeparateRegenerate(conversationId, lastTurn.turnOrdinal);
+    const result = await runSeparateRegenerate(host, conversationId, lastTurn.turnOrdinal);
     logSeparateDebugIfPresent(result.debug);
     if (wantDebug && !result.debug) {
       console.warn(

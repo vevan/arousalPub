@@ -58,7 +58,6 @@ import {
   clearConversationEmbeddingApiSettings,
   updateConversationEmbeddingApiSettings,
   updateConversationPluginSettings,
-  readConversationPluginSettings,
   parseConversationChatBinding,
   parseConversationEmbeddingApiOverride,
   getTurnUserText,
@@ -230,8 +229,12 @@ import {
   type LorebookEntryCreateBody,
 } from './lorebook-entries.js'
 import { resolvePluginCompleteApi } from './plugin-api-resolve.js'
-import { runTraceKeeperRegenerateRoute } from './trace-keeper-regenerate-route.js'
-import { runTraceKeeperPatchRoute } from './trace-keeper-patch-route.js'
+import {
+  listPluginActionPermissions,
+  mapPluginActionErrorStatus,
+  runPluginActionRoute,
+} from './plugin-action-route.js'
+import { dispatchConversationLifecycle } from './plugin-lifecycle.js'
 import { runPluginComplete } from './plugin-complete.js'
 import { runPluginCompletePreflight } from './plugin-complete-preflight.js'
 import { runNormalizeLorebookEntryRefs } from './plugin-lorebook-entry-refs.js'
@@ -239,6 +242,7 @@ import { runApplyLorebookOrder } from './plugin-lorebook-apply-order.js'
 import { ensurePluginLorebook } from './plugin-lorebook-ensure.js'
 import { runPluginMacroExpand } from './plugin-macro-expand.js'
 import {
+  contextBlockSpecsNeedLorebookRead,
   parseContextBlockSpecs,
   runPluginContextBlocksResolve,
 } from './plugin-context-blocks-resolve.js'
@@ -372,7 +376,7 @@ interface ChatBody {
     speakerCharacterId: string
     afterSegmentIndex: number
   }
-  /** 插件请求体（如 guidance-generate） */
+  /** 聊天请求体中的 per-plugin 载荷（键为 pluginId） */
   plugins?: Record<string, unknown>
   contextLength?: number | null
   maxTokens?: number | null
@@ -788,15 +792,16 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       const nextPrimary =
         next.characterIds?.[0] ?? next.characterId ?? ''
       if (prevPrimary !== nextPrimary) {
-        const tk = readConversationPluginSettings(next, 'trace-keeper')
-        const epoch =
-          typeof tk.trackerEpoch === 'number' && Number.isFinite(tk.trackerEpoch)
-            ? Math.round(tk.trackerEpoch)
-            : 0
-        const bumped = await updateConversationPluginSettings(id, {
-          'trace-keeper': { trackerEpoch: epoch + 1 },
-        })
-        idx = bumped ?? next
+        const patches = await dispatchConversationLifecycle(
+          'onCharacterPrimaryChanged',
+          { conversationId: id, conversationIndex: next },
+        )
+        if (Object.keys(patches).length > 0) {
+          const bumped = await updateConversationPluginSettings(id, patches)
+          idx = bumped ?? next
+        } else {
+          idx = next
+        }
       } else {
         idx = next
       }
@@ -3921,15 +3926,16 @@ app.post<{
     if (!readAuth.ok) {
       return reply.status(readAuth.status).send({ error: ApiErrorCodes[readAuth.code] })
     }
-    const loreAuth = await assertPluginRoutePermission(pluginId, 'lorebook.read')
-    if (!loreAuth.ok) {
-      return reply.status(loreAuth.status).send({ error: ApiErrorCodes[loreAuth.code] })
-    }
     const body = request.body ?? {}
-
     const blockSpecs = parseContextBlockSpecs(body.blocks)
     if (blockSpecs.length === 0) {
       return reply.status(400).send({ error: ApiErrorCodes.plugin_prepare_context_failed })
+    }
+    if (contextBlockSpecsNeedLorebookRead(blockSpecs)) {
+      const loreAuth = await assertPluginRoutePermission(pluginId, 'lorebook.read')
+      if (!loreAuth.ok) {
+        return reply.status(loreAuth.status).send({ error: ApiErrorCodes[loreAuth.code] })
+      }
     }
 
     const conversationId =
@@ -3942,9 +3948,6 @@ app.post<{
       if (blockResult.code === 'conversation_not_found') {
         return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       }
-      if (blockResult.code === 'lorebook_not_found') {
-        return reply.status(404).send({ error: ApiErrorCodes.lorebook_not_found })
-      }
       if (
         blockResult.code === 'invalid_conversation_id' ||
         blockResult.code === 'invalid_turn_range' ||
@@ -3954,6 +3957,9 @@ app.post<{
         blockResult.code === 'lorebook_id_required'
       ) {
         return reply.status(400).send({ error: ApiErrorCodes.plugin_prepare_context_failed })
+      }
+      if (blockResult.code === 'turn_range_too_large') {
+        return reply.status(400).send({ error: ApiErrorCodes.turn_range_too_large })
       }
       if (blockResult.code === 'no_turns_in_range') {
         return reply.status(400).send({ error: ApiErrorCodes.no_turns_in_range })
@@ -4007,10 +4013,6 @@ app.post<{
     if (!readAuth.ok) {
       return reply.status(readAuth.status).send({ error: ApiErrorCodes[readAuth.code] })
     }
-    const loreAuth = await assertPluginRoutePermission(pluginId, 'lorebook.read')
-    if (!loreAuth.ok) {
-      return reply.status(loreAuth.status).send({ error: ApiErrorCodes[loreAuth.code] })
-    }
     const completeAuth = await assertPluginRoutePermission(pluginId, 'plugin.complete')
     if (!completeAuth.ok) {
       return reply.status(completeAuth.status).send({ error: ApiErrorCodes[completeAuth.code] })
@@ -4018,6 +4020,14 @@ app.post<{
     const parsed = parseCompleteWithContextBody(request.body ?? {})
     if (!parsed) {
       return reply.status(400).send({ error: ApiErrorCodes.plugin_complete_with_context_failed })
+    }
+    const needsLore =
+      !parsed.preparedContext && contextBlockSpecsNeedLorebookRead(parsed.blocks)
+    if (needsLore) {
+      const loreAuth = await assertPluginRoutePermission(pluginId, 'lorebook.read')
+      if (!loreAuth.ok) {
+        return reply.status(loreAuth.status).send({ error: ApiErrorCodes[loreAuth.code] })
+      }
     }
     const result = await runCompleteWithContext(pluginId, parsed, getCurrentUserId())
     if (!result.ok) {
@@ -4032,9 +4042,13 @@ app.post<{
             ? 'plugin_complete_context_exceeded'
             : code === 'context_length_unconfigured'
               ? 'plugin_complete_context_length_unconfigured'
-              : code in ApiErrorCodes
-                ? code
-                : 'plugin_complete_with_context_failed'
+              : code === 'turn_range_too_large'
+                ? 'turn_range_too_large'
+                : code === 'draft_kind_invalid'
+                  ? 'plugin_complete_with_context_failed'
+                  : code in ApiErrorCodes
+                    ? code
+                    : 'plugin_complete_with_context_failed'
       return reply.status(400).send({
         error: ApiErrorCodes[errorKey as keyof typeof ApiErrorCodes],
         code,
@@ -4139,25 +4153,34 @@ app.post<{
 )
 
 app.post<{
-  Params: { pluginId: string }
-  Body: { conversationId?: string; turnOrdinal?: number }
+  Params: { pluginId: string; action: string }
+  Body: Record<string, unknown>
 }>(
-  '/api/plugins/:pluginId/regenerate-separate',
+  '/api/plugins/:pluginId/actions/:action',
   async (request, reply) => {
     const pluginId = request.params.pluginId.trim()
-    const completeAuth = await assertPluginRoutePermission(pluginId, 'plugin.complete')
-    if (!completeAuth.ok) {
-      return reply.status(completeAuth.status).send({ error: ApiErrorCodes[completeAuth.code] })
+    const action = request.params.action.trim()
+    const permissions = await listPluginActionPermissions(pluginId, action)
+    if (!permissions?.length) {
+      return reply.status(404).send({ error: ApiErrorCodes.plugin_hook_not_supported })
     }
-    const readAuth = await assertPluginRoutePermission(pluginId, 'conversation.read')
-    if (!readAuth.ok) {
-      return reply.status(readAuth.status).send({ error: ApiErrorCodes[readAuth.code] })
+    for (const perm of permissions) {
+      const auth = await assertPluginRoutePermission(pluginId, perm)
+      if (!auth.ok) {
+        return reply.status(auth.status).send({ error: ApiErrorCodes[auth.code] })
+      }
     }
-    const body = request.body ?? {}
-    const result = await runTraceKeeperRegenerateRoute(pluginId, body)
+    const body =
+      request.body && typeof request.body === 'object' && !Array.isArray(request.body)
+        ? (request.body as Record<string, unknown>)
+        : {}
+    const result = await runPluginActionRoute(pluginId, action, body)
     if (!result.ok) {
       const debugBody = result.debug ? { debug: result.debug } : {}
-      if (result.code === 'plugin_hook_not_supported') {
+      if (
+        result.code === 'plugin_action_not_supported' ||
+        result.code === 'unknown_action'
+      ) {
         return reply.status(404).send({ error: ApiErrorCodes.plugin_hook_not_supported })
       }
       if (result.code === 'invalid_conversation_id') {
@@ -4167,7 +4190,7 @@ app.post<{
         return reply.status(404).send({ error: ApiErrorCodes.turn_chunk_not_found })
       }
       if (result.code === 'parse_failed') {
-        return reply.status(502).send({
+        return reply.status(mapPluginActionErrorStatus(result.code, result.status)).send({
           error: ApiErrorCodes.upstream_non_json,
           detail: result.code,
           ...debugBody,
@@ -4176,66 +4199,16 @@ app.post<{
       if (result.code === 'api_config_not_found') {
         return reply.status(400).send({ error: ApiErrorCodes.api_preset_not_found })
       }
-      return reply.status(result.status ?? 502).send({
+      if (result.code === 'invalid_state') {
+        return reply.status(422).send({ error: ApiErrorCodes.upstream_non_json })
+      }
+      return reply.status(mapPluginActionErrorStatus(result.code, result.status)).send({
         error: ApiErrorCodes.plugin_complete_failed,
         detail: result.code,
         ...debugBody,
       })
     }
-    return {
-      ok: true as const,
-      state: result.state,
-      turnOrdinal: result.turnOrdinal,
-      receiveId: result.receiveId,
-      ...(result.debug ? { debug: result.debug } : {}),
-    }
-  },
-)
-
-app.post<{
-  Params: { pluginId: string }
-  Body: { conversationId?: string; turnOrdinal?: number; state?: unknown }
-}>(
-  '/api/plugins/:pluginId/patch-state',
-  async (request, reply) => {
-    const pluginId = request.params.pluginId.trim()
-    const writeAuth = await assertPluginRoutePermission(pluginId, 'turn.plugins.write')
-    if (!writeAuth.ok) {
-      return reply.status(writeAuth.status).send({ error: ApiErrorCodes[writeAuth.code] })
-    }
-    const readAuth = await assertPluginRoutePermission(pluginId, 'conversation.read')
-    if (!readAuth.ok) {
-      return reply.status(readAuth.status).send({ error: ApiErrorCodes[readAuth.code] })
-    }
-    const body = request.body ?? {}
-    const result = await runTraceKeeperPatchRoute(pluginId, body)
-    if (!result.ok) {
-      if (result.code === 'plugin_hook_not_supported') {
-        return reply.status(404).send({ error: ApiErrorCodes.plugin_hook_not_supported })
-      }
-      if (result.code === 'invalid_conversation_id') {
-        return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
-      }
-      if (result.code === 'invalid_turn_ordinal') {
-        return reply.status(400).send({ error: ApiErrorCodes.invalid_turn_ordinal })
-      }
-      if (result.code === 'turn_not_found' || result.code === 'no_turns') {
-        return reply.status(404).send({ error: ApiErrorCodes.turn_chunk_not_found })
-      }
-      if (result.code === 'invalid_state') {
-        return reply.status(422).send({ error: ApiErrorCodes.upstream_non_json })
-      }
-      return reply.status(result.status ?? 502).send({
-        error: ApiErrorCodes.plugin_complete_failed,
-        detail: result.code,
-      })
-    }
-    return {
-      ok: true as const,
-      state: result.state,
-      turnOrdinal: result.turnOrdinal,
-      ...(result.receiveId ? { receiveId: result.receiveId } : {}),
-    }
+    return result
   },
 )
 

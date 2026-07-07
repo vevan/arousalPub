@@ -28,13 +28,13 @@ function turn(partial: Partial<TurnRecord> & Pick<TurnRecord, 'turnId'>): TurnRe
 describe('stripMemoryCorpusText', () => {
   const opts = {
     stripPluginBlocks: true,
-    stripBlockTags: ['ex-trace-keeper', 'route-selector'],
+    stripBlockTags: ['ex-fixture-block', 'route-selector'],
     stripExPrefixElements: false,
   }
 
   it('strips declared tags by exact name', () => {
     const raw =
-      'hello<ex-trace-keeper>{"x":1}</ex-trace-keeper> world'
+      'hello<ex-fixture-block>{"x":1}</ex-fixture-block> world'
     assert.equal(stripMemoryCorpusText(raw, opts), 'hello world')
   })
 
@@ -53,7 +53,7 @@ describe('buildMemoryEmbeddingCorpus', () => {
   it('strips assistant plugin blocks in memory corpus', () => {
     const opts = {
       stripPluginBlocks: true,
-      stripBlockTags: ['ex-trace-keeper'],
+      stripBlockTags: ['ex-fixture-block'],
       stripExPrefixElements: false,
     }
     const corpus = buildMemoryEmbeddingCorpus(
@@ -64,7 +64,7 @@ describe('buildMemoryEmbeddingCorpus', () => {
           {
             id: 'r1',
             content:
-              '叙事正文<ex-trace-keeper>{"big":"json"}</ex-trace-keeper>',
+              '叙事正文<ex-fixture-block>{"big":"json"}</ex-fixture-block>',
           },
         ],
       }),
@@ -72,7 +72,7 @@ describe('buildMemoryEmbeddingCorpus', () => {
     )
     assert.match(corpus, /牛奶/)
     assert.match(corpus, /叙事正文/)
-    assert.doesNotMatch(corpus, /ex-trace-keeper/)
+    assert.doesNotMatch(corpus, /ex-fixture-block/)
     assert.doesNotMatch(corpus, /"big"/)
   })
 })

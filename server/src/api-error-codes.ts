@@ -219,6 +219,7 @@ export const ApiErrorCodes = {
   system_prompt_required: 'system_prompt_required',
   invalid_turn_range: 'invalid_turn_range',
   no_turns_in_range: 'no_turns_in_range',
+  turn_range_too_large: 'turn_range_too_large',
   target_lorebook_required: 'target_lorebook_required',
   lorebook_id_required: 'lorebook_id_required',
   plugin_settings_invalid: 'plugin_settings_invalid',

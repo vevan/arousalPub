@@ -1,6 +1,6 @@
 import { PLUGIN_ID, DIALOG_REVIEW, DIALOG_REVIEW_SIDECAR } from './constants.js'
 import { isAbortError } from './errors.js'
-import type { ContextBlockSpec } from '../../../shared/plugin-context-blocks.js'
+import type { ContextBlockSpec, PreparedPluginContextBlocks } from '../../../shared/plugin-context-blocks.js'
 import { PLOT_SUMMARY_COMPLETE_LAYOUT } from './shared/summary-prompt-layout.js'
 import {
   clearReviewSession,
@@ -103,7 +103,8 @@ export async function generateReviewDraft(
   settings: MergedSettings,
   opts: {
     kind: 'memory' | 'sidecar'
-    contextBlocks: ContextBlockSpec[]
+    contextBlocks?: ContextBlockSpec[]
+    preparedContext: PreparedPluginContextBlocks
     fromTurn?: number
     toTurn?: number
     sc?: SidecarConfig
@@ -126,9 +127,15 @@ export async function generateReviewDraft(
     }
     const result = await host.plugin.completeWithContext({
       ...(settings.apiConfigId ? { apiConfigId: settings.apiConfigId } : {}),
-      blocks: opts.contextBlocks,
+      blocks: opts.contextBlocks ?? [],
+      preparedContext: opts.preparedContext,
       layout: PLOT_SUMMARY_COMPLETE_LAYOUT,
-      pluginSettings: { systemPromptTemplate },
+      pluginSettings: {
+        systemPromptTemplate,
+        ...(opts.kind === 'sidecar' && opts.sc?.name
+          ? { sidecarName: opts.sc.name }
+          : {}),
+      },
       anchorToTurn,
       responseFormat: 'json_object',
       draft: {
@@ -136,7 +143,6 @@ export async function generateReviewDraft(
         fromTurn: opts.fromTurn,
         toTurn: opts.toTurn,
         blockTurns: settings.blockTurns,
-        sidecarName: opts.sc?.name,
       },
     })
     if (!result.draft) {

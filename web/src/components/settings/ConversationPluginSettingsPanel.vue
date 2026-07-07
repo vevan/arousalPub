@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import PlotSummaryAutoSummarizeBlock from '@/components/settings/PlotSummaryAutoSummarizeBlock.vue'
-import CustomStylesConvSettingsBlock from '@/components/settings/CustomStylesConvSettingsBlock.vue'
+import PluginAutoSummarizeProgressPanel from '@/components/settings/PluginAutoSummarizeProgressPanel.vue'
 import PluginSchemaForm from '@/components/settings/PluginSchemaForm.vue'
 import type { PluginManageEntry } from '@/plugins/plugin-settings-types'
 import {
@@ -17,9 +16,6 @@ import { resolvePluginDisplayName } from '@/utils/plugin-locale-text'
 import { validatePluginSettingsModel } from '@/utils/plugin-settings-validate'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-
-const PLOT_SUMMARY_PLUGIN_ID = 'plot-summary'
-const CUSTOM_STYLES_PLUGIN_ID = 'custom-styles'
 
 const props = defineProps<{
   conversationId: string
@@ -291,18 +287,8 @@ defineExpose({ reload: load, backToList })
           {{ selectedPlugin.id }}
         </p>
 
-        <CustomStylesConvSettingsBlock
-          v-if="
-            selectedPlugin.id === CUSTOM_STYLES_PLUGIN_ID &&
-            convModels[CUSTOM_STYLES_PLUGIN_ID]
-          "
-          :conv-model="convModels[CUSTOM_STYLES_PLUGIN_ID]!"
-          :global-model="globalModels[CUSTOM_STYLES_PLUGIN_ID]"
-          @update:model-value="onModelUpdate(selectedPlugin, $event)"
-        />
-
         <PluginSchemaForm
-          v-else-if="convModels[selectedPlugin.id]"
+          v-if="convModels[selectedPlugin.id]"
           defer-text-commit
           :plugin-id="selectedPlugin.id"
           :fields="selectedPlugin.conversationSettingsSchema?.fields ?? []"
@@ -310,15 +296,13 @@ defineExpose({ reload: load, backToList })
           :global-settings="globalModels[selectedPlugin.id]"
           @update:model-value="onModelUpdate(selectedPlugin, $event)"
         >
-          <template #field-companion-panel="{ fieldKey }">
-            <PlotSummaryAutoSummarizeBlock
-              v-if="
-                selectedPlugin.id === PLOT_SUMMARY_PLUGIN_ID &&
-                fieldKey === 'autoSummarizeEnabled'
-              "
+          <template #field-companion-panel="{ companionPanel }">
+            <PluginAutoSummarizeProgressPanel
+              v-if="companionPanel === 'auto-summarize-progress'"
+              :plugin-id="selectedPlugin.id"
               :conversation-id="conversationId"
-              :conv-model="convModels[PLOT_SUMMARY_PLUGIN_ID]"
-              :global-model="globalModels[PLOT_SUMMARY_PLUGIN_ID]"
+              :conv-model="convModels[selectedPlugin.id]"
+              :global-model="globalModels[selectedPlugin.id]"
               @error="onPointerResetError"
             />
           </template>

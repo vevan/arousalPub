@@ -20,7 +20,24 @@ import { onMounted, ref, watch } from 'vue'
 
 type ChatSession = ReturnType<typeof useChatSession>
 
-export function usePluginHost(session: ChatSession) {
+export type PluginHostRouteContext = {
+  /** 当前页路由键，如 `chat`（对应 manifest.ui.eagerOnRoutes） */
+  routeKeys?: string[]
+}
+
+function matchesEagerRoute(
+  entry: PluginRegistryPublicEntry,
+  routeKeys: Set<string>,
+): boolean {
+  const routes = entry.eagerOnRoutes ?? []
+  if (!routes.length) return false
+  return routes.some((r) => r === '*' || routeKeys.has(r))
+}
+
+export function usePluginHost(
+  session: ChatSession,
+  routeContext: PluginHostRouteContext = {},
+) {
   const { host, slotButtons, formDialogs, openForm, formSubmitting, slotButtonRevision } =
     createPluginWebHost(session)
   const registry = ref<PluginRegistryPublicEntry[]>([])
@@ -95,6 +112,16 @@ export function usePluginHost(session: ChatSession) {
     await Promise.all(eager.map((e) => ensurePluginLoaded(e)))
   }
 
+  async function ensureEagerOnRoutes(routeKeys: string[]): Promise<void> {
+    await loadRegistry()
+    const keys = new Set(routeKeys.map((k) => k.trim()).filter(Boolean))
+    if (!keys.size) return
+    const entries = registry.value.filter(
+      (e) => e.webEntry && matchesEagerRoute(e, keys),
+    )
+    await Promise.all(entries.map((e) => ensurePluginLoaded(e)))
+  }
+
   async function ensureSlotPlugins(slotName: string): Promise<void> {
     const slot = slotName.trim()
     if (!slot) return
@@ -134,7 +161,8 @@ export function usePluginHost(session: ChatSession) {
     void (async () => {
       await loadRegistry()
       await ensureEagerWebPlugins()
-      await ensurePluginById('trace-keeper')
+      const keys = routeContext.routeKeys ?? []
+      if (keys.length) await ensureEagerOnRoutes(keys)
     })()
   })
 
@@ -162,6 +190,7 @@ export function usePluginHost(session: ChatSession) {
     /** @deprecated 使用 registryLoaded；保留兼容 */
     loaded: registryLoaded,
     ensureSlotPlugins,
+    ensureEagerOnRoutes,
     ensurePluginById,
     openForm,
     formSubmitting,
@@ -196,4 +225,3 @@ export function usePluginHost(session: ChatSession) {
       }),
   }
 }
-

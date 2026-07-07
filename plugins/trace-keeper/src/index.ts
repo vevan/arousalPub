@@ -276,7 +276,7 @@ async function handlePatchStateSubmit(
   }
 
   try {
-    await runPatchState(conversationId, turnOrdinal, state)
+    await runPatchState(host, conversationId, turnOrdinal, state)
     if (host.conversation.refresh) {
       await host.conversation.refresh()
     }
@@ -300,7 +300,7 @@ async function handleRegenerateSeparate(host: PluginHost): Promise<void> {
   void refreshPanel(host)
   const wantDebug = auditDebugEnabled(host)
   try {
-    const result = await runSeparateRegenerate(conversationId, lastTurn.turnOrdinal)
+    const result = await runSeparateRegenerate(host, conversationId, lastTurn.turnOrdinal)
     logSeparateDebugIfPresent(result.debug)
     if (wantDebug && !result.debug) {
       console.warn(

@@ -142,9 +142,11 @@ host.plugin.completeWithContext({
   anchorToTurn,
   responseFormat?: 'json_object' | 'text',
   dryRun?: boolean,
-  draft?: { kind, fromTurn?, toTurn?, blockTurns?, sidecarName? },
+  draft?: { kind, fromTurn?, toTurn?, blockTurns? },
 })
 ```
+
+- **`pluginSettings`**：assemble / complete 共用；`parseCompleteDraftContent` hook 收到同一份（如 plot-summary sidecar 标题放 `pluginSettings.sidecarName`）。
 
 - 宿主顺序：**resolve API** → `formatPluginContextBlocks` hook → assemble（含 preflight）→ complete → `parseCompleteDraftContent` hook（若传 `draft`）。
 - **无 preset**（D5）。

@@ -14,9 +14,21 @@ import {
   parseObjectListField,
   classifySampleStateJsonText,
   sampleStateInvalidJsonMessage,
-  traceKeeperSampleStateJsonValidationEnabled,
+  sampleStateJsonValidationEnabled,
 } from '@/utils/plugin-settings-validate'
 import { translatePluginI18nKey } from '@/utils/plugin-locale-text'
+import { pluginSettingsBundleSelectItems } from '@/utils/plugin-settings-bundle-select'
+import {
+  applyInheritTriModeBoolean,
+  applyInheritTriModeSheet,
+  globalBooleanOn,
+  globalSheetEnabledLabel,
+  globalSheetsFromSettings,
+  inheritTriModeForBoolean,
+  inheritTriModeForSheet,
+  sheetTitle,
+  type InheritTriMode,
+} from '@/utils/plugin-inherit-tri-mode'
 import {
   loadApiPresetSelectItems,
   loadLorebookSelectItems,
@@ -30,11 +42,6 @@ import {
   optionsSourceCacheKey,
 } from '@/utils/plugin-settings-options-source'
 import { parseCheckboxGroupField } from '@/utils/plugin-settings-validate'
-import {
-  TRACE_KEEPER_PLUGIN_ID,
-  traceKeeperBundleSelectItems,
-  traceKeeperConvBundleSelectItems,
-} from '@/utils/trace-keeper-settings-ui'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -44,7 +51,7 @@ const props = defineProps<{
   modelValue: Record<string, unknown>
   /** 会话 schema：展示 inheritFromGlobalKey 对应的全局值 */
   globalSettings?: Record<string, unknown>
-  /** 某字段下方的补充说明行（如 plot-summary 自动摘要进度） */
+  /** 某字段下方的补充说明行 */
   fieldCompanionLines?: (fieldKey: string) => string[] | undefined
   /** 文本字段失焦后再提交，避免逐字触发保存 */
   deferTextCommit?: boolean
@@ -78,26 +85,35 @@ function objectListTextDraftKey(
   return `ol:${fieldKey}:${index}:${subKey}`
 }
 
-function isTraceKeeperSampleStateField(
-  sub: PluginSettingsItemFieldSchema,
+function isJsonSampleStateField(sub: PluginSettingsItemFieldSchema): boolean {
+  return sub.widget === 'jsonSampleState'
+}
+
+function jsonSampleStateValidationEnabledForField(
+  field: PluginSettingsFieldSchema,
 ): boolean {
-  return props.pluginId === TRACE_KEEPER_PLUGIN_ID && sub.key === 'sampleStateJson'
+  const sub = (field.itemFields ?? []).find(isJsonSampleStateField)
+  if (!sub) return false
+  const whenKey = field.validateSampleStateWhen ?? 'validateSampleStateJson'
+  return sampleStateJsonValidationEnabled(props.modelValue, whenKey)
 }
 
-function traceKeeperSampleStateValidationEnabled(): boolean {
-  return traceKeeperSampleStateJsonValidationEnabled(props.modelValue)
+function jsonSampleStateSubKey(field: PluginSettingsFieldSchema): string | null {
+  const sub = (field.itemFields ?? []).find(isJsonSampleStateField)
+  return sub?.key ?? null
 }
 
-function peekTraceKeeperSampleStateValidationError(): string | null {
-  if (props.pluginId !== TRACE_KEEPER_PLUGIN_ID) return null
-  if (!traceKeeperSampleStateValidationEnabled()) return null
+function peekJsonSampleStateValidationError(): string | null {
   for (const field of props.fields) {
     if (field.type !== 'objectList') continue
+    if (!jsonSampleStateValidationEnabledForField(field)) continue
+    const subKey = jsonSampleStateSubKey(field)
+    if (!subKey) continue
     const items = parseObjectListField(props.modelValue[field.key])
     for (let index = 0; index < items.length; index++) {
       const item = items[index]!
-      const draftKey = objectListTextDraftKey(field.key, index, 'sampleStateJson')
-      const text = textDraftGet(draftKey, item.sampleStateJson)
+      const draftKey = objectListTextDraftKey(field.key, index, subKey)
+      const text = textDraftGet(draftKey, item[subKey])
       if (classifySampleStateJsonText(text) === 'invalid') {
         return sampleStateInvalidJsonMessage(props.pluginId, t, te)
       }
@@ -106,8 +122,8 @@ function peekTraceKeeperSampleStateValidationError(): string | null {
   return null
 }
 
-function emitSampleStateFooterValidationError() {
-  emit('footer-validation-error', peekTraceKeeperSampleStateValidationError())
+function emitJsonSampleStateFooterValidationError() {
+  emit('footer-validation-error', peekJsonSampleStateValidationError())
 }
 
 function onObjectListTextBlur(
@@ -119,20 +135,20 @@ function onObjectListTextBlur(
 ) {
   const draftKey = objectListTextDraftKey(field.key, index, sub.key)
   onTextBlur(draftKey, getStored, commit)
-  if (isTraceKeeperSampleStateField(sub)) {
-    emitSampleStateFooterValidationError()
+  if (isJsonSampleStateField(sub)) {
+    emitJsonSampleStateFooterValidationError()
   }
 }
 
-function validateAllTraceKeeperSampleStateFields(): string | null {
-  const err = peekTraceKeeperSampleStateValidationError()
+function validateAllJsonSampleStateFields(): string | null {
+  const err = peekJsonSampleStateValidationError()
   emit('footer-validation-error', err)
   return err
 }
 
 defineExpose({
   commitAllTextDrafts,
-  validateAllTraceKeeperSampleStateFields,
+  validateAllJsonSampleStateFields,
 })
 
 function textDraftGet(key: string, stored: unknown): string {
@@ -214,9 +230,12 @@ function pruneTextDraftsOnModelChange() {
 }
 
 watch(
-  () => props.modelValue.validateSampleStateJson,
+  () =>
+    props.fields
+      .filter((f) => f.type === 'objectList' && jsonSampleStateSubKey(f))
+      .map((f) => props.modelValue[f.validateSampleStateWhen ?? 'validateSampleStateJson']),
   () => {
-    emitSampleStateFooterValidationError()
+    emitJsonSampleStateFooterValidationError()
   },
 )
 
@@ -581,7 +600,16 @@ function addObjectListItem(field: PluginSettingsFieldSchema) {
       .map((item) => String(item.id ?? '').trim())
       .filter((id) => id.length > 0),
   )
-  items.push(newObjectListItem(itemFields, props.pluginId, t, te, usedIds))
+  items.push(
+    newObjectListItem(
+      itemFields,
+      props.pluginId,
+      t,
+      te,
+      usedIds,
+      field.reservedObjectListIds,
+    ),
+  )
   setObjectListItems(field, items)
 }
 
@@ -665,24 +693,25 @@ function requestRemoveObjectListItem(
   objectListRemoveOpen.value = true
 }
 
-function isTraceKeeperActiveBundleField(field: PluginSettingsFieldSchema): boolean {
+function isBundleSelectField(field: PluginSettingsFieldSchema): boolean {
   return (
-    props.pluginId === TRACE_KEEPER_PLUGIN_ID && field.key === 'activeBundleId'
+    field.type === 'string' &&
+    field.widget === 'bundleSelect' &&
+    Boolean(field.bundleSelect?.listFieldKey)
   )
 }
 
-function isTraceKeeperConvBundleField(field: PluginSettingsFieldSchema): boolean {
-  return props.pluginId === TRACE_KEEPER_PLUGIN_ID && field.key === 'bundleId'
-}
-
-function traceKeeperUserBundleOptions(): { title: string; value: string }[] {
-  return traceKeeperBundleSelectItems(props.modelValue, props.pluginId, t, te)
-}
-
-function traceKeeperConvBundleOptions(): { title: string; value: string }[] {
-  return traceKeeperConvBundleSelectItems(
-    props.globalSettings ?? {},
+function bundleSelectOptions(
+  field: PluginSettingsFieldSchema,
+): { title: string; value: string }[] {
+  const config = field.bundleSelect!
+  const listModel = config.inheritOption
+    ? (props.globalSettings ?? {})
+    : props.modelValue
+  return pluginSettingsBundleSelectItems(
+    listModel,
     props.pluginId,
+    config,
     t,
     te,
   )
@@ -702,6 +731,60 @@ function confirmRemoveObjectListItem() {
   if (field) removeObjectListItem(field, pending.index)
   cancelRemoveObjectListItem()
 }
+
+function inheritTriModeItems(inheritLabel: string): {
+  title: string
+  value: InheritTriMode
+}[] {
+  return [
+    { title: inheritLabel, value: 'inherit' },
+    { title: t('settings.plugins.inheritTriModeOn'), value: 'on' },
+    { title: t('settings.plugins.inheritTriModeOff'), value: 'off' },
+  ]
+}
+
+function inheritTriModeGlobalLabel(field: PluginSettingsFieldSchema): string {
+  const globalKey = field.inheritFromGlobalKey ?? field.key
+  const on = globalBooleanOn(props.globalSettings, globalKey)
+  return on
+    ? t('settings.plugins.inheritTriModeGlobalOn')
+    : t('settings.plugins.inheritTriModeGlobalOff')
+}
+
+function setInheritTriModeBoolean(
+  field: PluginSettingsFieldSchema,
+  mode: InheritTriMode,
+) {
+  emit('update:modelValue', applyInheritTriModeBoolean(props.modelValue, field.key, mode))
+}
+
+function inheritTriModeSheetItems(
+  sheet: Record<string, unknown>,
+): { title: string; value: InheritTriMode }[] {
+  const onLabel = t('settings.plugins.inheritTriModeGlobalOn')
+  const offLabel = t('settings.plugins.inheritTriModeGlobalOff')
+  const globalLabel = globalSheetEnabledLabel(sheet, onLabel, offLabel)
+  return inheritTriModeItems(
+    t('settings.plugins.inheritTriModeInherit', { value: globalLabel }),
+  )
+}
+
+function setInheritTriModeSheet(
+  _field: PluginSettingsFieldSchema,
+  sheetId: string,
+  mode: InheritTriMode,
+) {
+  emit(
+    'update:modelValue',
+    applyInheritTriModeSheet(props.modelValue, sheetId, mode),
+  )
+}
+
+function inheritTriModeSheetRows(field: PluginSettingsFieldSchema) {
+  const config = field.inheritTriModeSheetList
+  if (!config) return []
+  return globalSheetsFromSettings(props.globalSettings, config.globalListFieldKey)
+}
 </script>
 
 <template>
@@ -711,7 +794,45 @@ function confirmRemoveObjectListItem() {
       :key="field.key"
     >
       <template v-if="isFieldVisible(field)">
-        <div v-if="field.type === 'boolean'">
+        <div
+          v-if="field.type === 'boolean' && field.widget === 'inheritTriMode'"
+        >
+          <div class="text-body-2 font-weight-medium mb-1">
+            {{ labelFor(field) }}
+          </div>
+          <p
+            v-if="hintFor(field)"
+            class="text-caption text-medium-emphasis mb-2"
+          >
+            {{ hintFor(field) }}
+          </p>
+          <v-btn-toggle
+            :model-value="inheritTriModeForBoolean(modelValue, field.key)"
+            mandatory
+            divided
+            density="compact"
+            color="primary"
+            variant="outlined"
+            class="plugin-inherit-tri-mode__toggle"
+            @update:model-value="setInheritTriModeBoolean(field, $event as InheritTriMode)"
+          >
+            <v-btn
+              v-for="item in inheritTriModeItems(
+                t('settings.plugins.inheritTriModeInherit', {
+                  value: inheritTriModeGlobalLabel(field),
+                }),
+              )"
+              :key="item.value"
+              :value="item.value"
+              size="small"
+              class="text-none"
+            >
+              {{ item.title }}
+            </v-btn>
+          </v-btn-toggle>
+        </div>
+
+        <div v-else-if="field.type === 'boolean'">
           <v-switch
             :model-value="Boolean(fieldValue(field.key))"
             :label="labelFor(field)"
@@ -722,9 +843,10 @@ function confirmRemoveObjectListItem() {
             @update:model-value="setField(field.key, $event)"
           />
           <slot
-            v-if="$slots['field-companion-panel']"
+            v-if="field.companionPanel && $slots['field-companion-panel']"
             name="field-companion-panel"
             :field-key="field.key"
+            :companion-panel="field.companionPanel"
           />
           <template v-else>
             <div
@@ -965,6 +1087,71 @@ function confirmRemoveObjectListItem() {
           "
           @update:model-value="setField(field.key, $event ?? '')"
         />
+
+        <div
+          v-else-if="
+            field.type === 'text' &&
+            field.widget === 'inheritTriModeSheetList' &&
+            field.inheritTriModeSheetList
+          "
+          class="plugin-inherit-tri-mode-sheet-list d-flex flex-column ga-4"
+        >
+          <div>
+            <div class="text-body-2 font-weight-medium mb-1">
+              {{ labelFor(field) }}
+            </div>
+            <p
+              v-if="
+                field.inheritTriModeSheetList.emptyLabelKey &&
+                inheritTriModeSheetRows(field).length === 0
+              "
+              class="text-caption text-medium-emphasis mb-0"
+            >
+              {{
+                translatePluginI18nKey(
+                  pluginI18nKey(
+                    pluginId,
+                    field.inheritTriModeSheetList.emptyLabelKey,
+                  ),
+                  t,
+                  te,
+                )
+              }}
+            </p>
+          </div>
+          <div
+            v-for="(sheet, index) in inheritTriModeSheetRows(field)"
+            :key="String(sheet.id ?? index)"
+            class="plugin-inherit-tri-mode-sheet-list__sheet rounded-lg border pa-3"
+          >
+            <div class="text-body-2 font-weight-medium mb-2">
+              {{ sheetTitle(sheet, index) }}
+            </div>
+            <v-btn-toggle
+              v-if="typeof sheet.id === 'string' && sheet.id.trim()"
+              :model-value="inheritTriModeForSheet(modelValue, String(sheet.id))"
+              mandatory
+              divided
+              density="compact"
+              color="primary"
+              variant="outlined"
+              class="plugin-inherit-tri-mode__toggle"
+              @update:model-value="
+                setInheritTriModeSheet(field, String(sheet.id), $event as InheritTriMode)
+              "
+            >
+              <v-btn
+                v-for="item in inheritTriModeSheetItems(sheet)"
+                :key="item.value"
+                :value="item.value"
+                size="small"
+                class="text-none"
+              >
+                {{ item.title }}
+              </v-btn>
+            </v-btn-toggle>
+          </div>
+        </div>
 
         <div
           v-else-if="field.type === 'text' && field.widget === 'promptTemplate'"
@@ -1279,17 +1466,9 @@ function confirmRemoveObjectListItem() {
         </div>
 
         <v-select
-          v-else-if="
-            field.type === 'string' &&
-            (isTraceKeeperActiveBundleField(field) ||
-              isTraceKeeperConvBundleField(field))
-          "
+          v-else-if="field.type === 'string' && isBundleSelectField(field)"
           :model-value="String(fieldValue(field.key) ?? '')"
-          :items="
-            isTraceKeeperConvBundleField(field)
-              ? traceKeeperConvBundleOptions()
-              : traceKeeperUserBundleOptions()
-          "
+          :items="bundleSelectOptions(field)"
           item-title="title"
           item-value="value"
           :label="labelFor(field)"
@@ -1478,5 +1657,12 @@ function confirmRemoveObjectListItem() {
   max-height: 280px;
   overflow-y: auto;
   padding-right: 4px;
+}
+.plugin-inherit-tri-mode-sheet-list__sheet {
+  border-color: rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.plugin-inherit-tri-mode__toggle {
+  flex-wrap: wrap;
+  height: auto !important;
 }
 </style>

@@ -214,7 +214,8 @@ export async function previewManualSummarizePrompt(
       const systemPromptTemplate = resolveSystemPrompt(host, settings, task)
       const result = await host.plugin.completeWithContext({
         ...(settings.apiConfigId ? { apiConfigId: settings.apiConfigId } : {}),
-        blocks: prepared.contextBlocks,
+        blocks: [],
+        preparedContext: prepared.preparedContext,
         layout: PLOT_SUMMARY_COMPLETE_LAYOUT,
         pluginSettings: { systemPromptTemplate },
         anchorToTurn: toTurn,

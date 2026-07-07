@@ -1,0 +1,39 @@
+---
+description: 插件宿主只提供 generic 能力，禁止任何插件 id 特化
+globs: server/src/**/*.ts,web/src/plugins/**/*,web/src/utils/persist-display.ts,web/src/utils/chat-api.ts,web/src/types/chat-turn.ts,shared/**/*.ts
+alwaysApply: true
+---
+
+# 插件宿主通用性（强制）
+
+完整定案见 **`DOC/41-plugin-host-generic-principles.md`**。
+
+## 一条原则
+
+宿主只提供 **generic** 能力；**不得**针对任何一个插件（含 bundled）特化。
+
+## 禁止（宿主源码零例外）
+
+- 任何 **bundled 插件 id 字面量**：`trace-keeper`、`plot-summary`、`guidance-generate`、`curated-memory` 等
+- **`if (pluginId === '…')` / `switch (pluginId)`** 针对已知插件
+- **产品语义** 函数/类型/文件名：`TraceKeeper*`、`PlotSummary*`、`Historian*`、`patchTraceKeeper*`、`*-trace-keeper-*`
+- **宿主内嵌** 某插件业务逻辑或该插件专用 TS 类型
+- **`loader.ts` 硬编码** 内置插件 id 数组
+- **宿主单测** 使用真实 bundled id（只用 `fixture-plugin-*`）
+- **宿主注释** 绑定真实 bundled id
+
+## 允许
+
+- `pluginId: string` 作路由参数、循环变量、JSON 键（**无语义分支**）
+- 行为由 **manifest 字段 + 通用 hook / `runPluginAction` / lifecycle** 驱动
+- id 仅出现在：`plugins/*/manifest.json`、构建生成的 `plugins/bundled-registry.json`、用户 data
+
+## 扩展插件行为时
+
+1. 先加 manifest 声明或通用 hook 名，**不要**在宿主加 if/switch。
+2. 块标签剥离等格式处理：读 manifest 聚合的 `memory.stripBlockTags`，不写死标签名。
+3. PR 自检：CI grep（见 DOC/41 §8）与「三问」（DOC/41 §7）。
+
+## 与 DOC/18
+
+DOC/18 示例可用 bundled 插件**说明**；**宿主实现**不得引用其 id。

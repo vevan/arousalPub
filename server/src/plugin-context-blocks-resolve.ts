@@ -119,7 +119,7 @@ async function resolveLorebookEntriesBlock(
 
   const lb = await readLorebookById(lorebookId)
   if (!lb) {
-    // 与旧 Historian prepare-context 一致：lore 读盘失败时降级为空 reference，不阻断 transcript
+    // lore 读盘失败时降级为空 reference，不阻断 transcript
     return { ok: true, slices: [], text: '' }
   }
 
@@ -363,6 +363,11 @@ export function parseContextBlockSpecs(raw: unknown): ContextBlockSpec[] {
   return out
 }
 
+/** 仅当 blocks 含 lore 读盘时才需 manifest `lorebook.read` */
+export function contextBlockSpecsNeedLorebookRead(blocks: ContextBlockSpec[]): boolean {
+  return blocks.some((spec) => spec.source === 'lorebook.entries')
+}
+
 export async function runPluginContextBlocksResolve(
   req: PluginContextBlocksRequest,
 ): Promise<PluginContextBlocksResult> {
@@ -399,7 +404,10 @@ export async function runPluginContextBlocksResolve(
       const resolved = await resolveTranscriptBlock(conversationId, spec, meta)
       if (!resolved.ok) return resolved
       blockTexts[spec.blockId] = resolved.text
-      turnCount = resolved.turnCount
+      turnCount =
+        turnCount === undefined
+          ? resolved.turnCount
+          : Math.max(turnCount, resolved.turnCount)
       continue
     }
 
@@ -407,7 +415,10 @@ export async function runPluginContextBlocksResolve(
       const resolved = await resolveTranscriptTailBlock(conversationId, spec, meta)
       if (!resolved.ok) return resolved
       blockTexts[spec.blockId] = resolved.text
-      turnCount = resolved.turnCount
+      turnCount =
+        turnCount === undefined
+          ? resolved.turnCount
+          : Math.max(turnCount, resolved.turnCount)
       continue
     }
 

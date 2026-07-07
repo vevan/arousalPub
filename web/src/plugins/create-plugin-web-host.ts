@@ -39,6 +39,7 @@ import {
   runPluginPrepareContextBlocks,
   runAssemblePluginPrompt,
   runCompleteWithContext,
+  runPluginAction,
 } from '@/plugins/plugin-host-api'
 import {
   applyRegexMessagesForHost,
@@ -199,6 +200,14 @@ export function createScopedPluginHost(
           id,
           convId(),
           req,
+          getPluginProgressAbortSignal(),
+        )
+      },
+      runAction(action, body) {
+        return runPluginAction(
+          id,
+          action,
+          body,
           getPluginProgressAbortSignal(),
         )
       },
@@ -425,6 +434,9 @@ export function createPluginWebHost(session: ChatSession): {
         throw new Error('plugin_host_requires_scoped_host')
       },
       completeWithContext() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+      runAction() {
         throw new Error('plugin_host_requires_scoped_host')
       },
     },

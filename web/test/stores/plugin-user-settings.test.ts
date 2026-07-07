@@ -10,21 +10,21 @@ describe('usePluginUserSettingsStore', () => {
 
   it('setBag marks loaded and getSnapshot shallow-copies', () => {
     const store = usePluginUserSettingsStore()
-    store.setBag('trace-keeper', { foo: 1 }, { notify: false })
-    assert.equal(store.isLoaded('trace-keeper'), true)
-    const snap = store.getSnapshot('trace-keeper')
+    store.setBag('fixture-plugin-a', { foo: 1 }, { notify: false })
+    assert.equal(store.isLoaded('fixture-plugin-a'), true)
+    const snap = store.getSnapshot('fixture-plugin-a')
     assert.deepEqual(snap, { foo: 1 })
     snap.foo = 2
-    assert.deepEqual(store.getSnapshot('trace-keeper'), { foo: 1 })
+    assert.deepEqual(store.getSnapshot('fixture-plugin-a'), { foo: 1 })
   })
 
   it('subscribe receives settings on setBag notify', () => {
     const store = usePluginUserSettingsStore()
     let seen: Record<string, unknown> | null = null
-    store.subscribe('plot-summary', (settings) => {
+    store.subscribe('fixture-plugin-b', (settings) => {
       seen = settings
     })
-    store.setBag('plot-summary', { enabled: true })
+    store.setBag('fixture-plugin-b', { enabled: true })
     assert.deepEqual(seen, { enabled: true })
   })
 

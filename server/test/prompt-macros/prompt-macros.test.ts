@@ -181,8 +181,8 @@ describe('Phase B macros', () => {
   })
 
   it('expands hasExtension from enabledPluginIds', () => {
-    const out = applyPromptMacroPipeline('{{hasExtension::plot-summary}}', ctx({
-      enabledPluginIds: ['plot-summary'],
+    const out = applyPromptMacroPipeline('{{hasExtension::fixture-plugin-a}}', ctx({
+      enabledPluginIds: ['fixture-plugin-a'],
     }))
     assert.equal(out, 'true')
   })

@@ -4,7 +4,10 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { getCurrentUserId } from '../user-context.js'
 import {
-  getBundledPluginSourceDir,
+  getBundledPluginSourceDirForEntry,
+  readBundledPluginCatalog,
+} from './bundled-registry.js'
+import {
   getGlobalPluginsDir,
   getInstalledPluginDir,
   getInstalledPluginServerEntry,
@@ -13,7 +16,7 @@ import {
   getPluginUserDataDir,
   getPluginUserSettingsPath,
 } from './paths.js'
-import { migrateCuratedMemoryToPlotSummary } from './migrate-plot-summary.js'
+import { refreshTurnPluginPolicies } from './turn-plugin-policies.js'
 import { readPluginRegistry, writePluginRegistry } from './registry.js'
 import type {
   LoadedServerPlugin,
@@ -30,26 +33,6 @@ import {
   readMergedPluginUserSettings,
   writePluginUserSettings,
 } from './settings.js'
-
-const BUNDLED_PLUGIN_IDS = [
-  'guidance-generate',
-  'reply-complete-sound',
-  'swipe-cleaner',
-  'conversation-export',
-  'plot-summary',
-  'custom-styles',
-  'trace-keeper',
-] as const
-
-const BUNDLED_PLUGIN_ORDERS: Record<(typeof BUNDLED_PLUGIN_IDS)[number], number> = {
-  'guidance-generate': 10,
-  'reply-complete-sound': 20,
-  'swipe-cleaner': 30,
-  'conversation-export': 40,
-  'plot-summary': 50,
-  'custom-styles': 60,
-  'trace-keeper': 70,
-}
 
 const moduleCache = new Map<string, LoadedServerPlugin[]>()
 
@@ -108,21 +91,23 @@ export async function seedBundledPlugins(): Promise<void> {
 
   bundledSeedInFlight = (async () => {
     await mkdir(getGlobalPluginsDir(), { recursive: true })
+    const catalog = await readBundledPluginCatalog()
 
-    for (const pluginId of BUNDLED_PLUGIN_IDS) {
-      const src = getBundledPluginSourceDir(pluginId)
+    for (const entry of catalog.plugins) {
+      const src = getBundledPluginSourceDirForEntry(entry)
       if (!existsSync(path.join(src, 'manifest.json'))) {
         // eslint-disable-next-line no-console
-        console.warn('[plugin-loader] bundled source missing:', pluginId, src)
+        console.warn('[plugin-loader] bundled source missing:', entry.id, src)
         continue
       }
       try {
-        await copyPluginPackage(src, getInstalledPluginDir(pluginId))
+        await copyPluginPackage(src, getInstalledPluginDir(entry.id))
       } catch (e) {
         // eslint-disable-next-line no-console
-        console.warn('[plugin-loader] bundled sync failed:', pluginId, e)
+        console.warn('[plugin-loader] bundled sync failed:', entry.id, e)
       }
     }
+    await refreshTurnPluginPolicies()
     bundledPluginsSeeded = true
   })()
 
@@ -140,14 +125,15 @@ export function invalidateBundledPluginSeedCache(): void {
 }
 
 async function ensureBundledRegistryEntries(userId: string): Promise<void> {
+  const catalog = await readBundledPluginCatalog()
   const doc = await readPluginRegistry(userId)
   let changed = false
-  for (const pluginId of BUNDLED_PLUGIN_IDS) {
-    if (doc.plugins.some((p) => p.id === pluginId)) continue
+  for (const entry of catalog.plugins) {
+    if (doc.plugins.some((p) => p.id === entry.id)) continue
     doc.plugins.push({
-      id: pluginId,
+      id: entry.id,
       enabled: true,
-      order: BUNDLED_PLUGIN_ORDERS[pluginId],
+      order: entry.order,
     })
     changed = true
   }
@@ -157,7 +143,9 @@ async function ensureBundledRegistryEntries(userId: string): Promise<void> {
 }
 
 async function ensureBundledPluginUserSettings(userId: string): Promise<void> {
-  for (const pluginId of BUNDLED_PLUGIN_IDS) {
+  const catalog = await readBundledPluginCatalog()
+  for (const entry of catalog.plugins) {
+    const pluginId = entry.id
     const settingsPath = getPluginUserSettingsPath(pluginId, userId)
     if (existsSync(settingsPath)) continue
 
@@ -178,7 +166,10 @@ async function ensureBundledPluginUserSettings(userId: string): Promise<void> {
       continue
     }
 
-    const template = path.join(getBundledPluginSourceDir(pluginId), 'settings.json')
+    const template = path.join(
+      getBundledPluginSourceDirForEntry(entry),
+      'settings.json',
+    )
     try {
       if (existsSync(template)) {
         await cp(template, settingsPath)
@@ -203,7 +194,6 @@ export async function bootstrapBundledPluginsAtStartup(): Promise<void> {
     if (uid) userIds.add(uid)
   }
   for (const uid of userIds) {
-    await migrateCuratedMemoryToPlotSummary(uid)
     await ensureBundledRegistryEntries(uid)
     await ensureBundledPluginUserSettings(uid)
   }
@@ -212,7 +202,6 @@ export async function bootstrapBundledPluginsAtStartup(): Promise<void> {
 /** 确保当前用户在每个插件目录下有独立 settings（及 secrets 迁移） */
 export async function ensurePluginUserData(userId: string): Promise<void> {
   await seedBundledPlugins()
-  await migrateCuratedMemoryToPlotSummary(userId)
   await ensureBundledRegistryEntries(userId)
   await ensureBundledPluginUserSettings(userId)
 }
@@ -268,6 +257,9 @@ export async function listPublicPluginRegistry(
         ?.map((s) => (typeof s.name === 'string' ? s.name.trim() : ''))
         .filter((s) => s.length > 0) ?? []
     const webPath = `/api/plugins/${encodeURIComponent(entry.id)}/dist/web.mjs`
+    const eagerOnRoutes = manifest.ui?.eagerOnRoutes?.length
+      ? [...manifest.ui.eagerOnRoutes]
+      : undefined
     out.push({
       id: manifest.id,
       name: manifest.name,
@@ -279,6 +271,7 @@ export async function listPublicPluginRegistry(
       )
         ? webPath
         : null,
+      ...(eagerOnRoutes ? { eagerOnRoutes } : {}),
     })
   }
   return out

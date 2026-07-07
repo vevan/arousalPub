@@ -76,7 +76,7 @@ export interface RegexApplyContext {
   /** 无 turnOrdinal 的 system 不受 skipLastNTurns 限制 */
   turnOrdinal?: number
   tailOrdinal: number
-  /** Historian 摘要：忽略各规则的 skip，对区间内全部轮次应用 */
+  /** 插件摘要：忽略各规则的 skip，对区间内全部轮次应用 */
   ignoreSkipLastNTurns?: boolean
 }
 

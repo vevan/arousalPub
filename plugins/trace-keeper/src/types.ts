@@ -58,6 +58,12 @@ export interface PluginHost {
     model: Record<string, unknown>,
     dialogId?: string,
   ) => void
+  plugin: {
+    runAction(
+      action: string,
+      body: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>
+  }
   ui: {
     toast?: (message: string, opts?: { color?: string }) => void
     panel: {

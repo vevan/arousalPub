@@ -46,6 +46,8 @@ function mockSettings(
   }
 }
 
+const FIXTURE_PLUGIN = 'fixture-plugin-a'
+
 describe('feature-binding-resolve', () => {
   it('resolves chat from activePresetId when no conversation override', () => {
     const hit = resolveChatApiConfigId(mockSettings())
@@ -62,16 +64,16 @@ describe('feature-binding-resolve', () => {
   })
 
   it('does not resolve plugin from activePresetId', () => {
-    const hit = resolvePluginFeatureBindingMeta(mockSettings(), 'plot-summary')
+    const hit = resolvePluginFeatureBindingMeta(mockSettings(), FIXTURE_PLUGIN)
     assert.equal(hit, null)
   })
 
   it('conversation plugin binding wins', () => {
     const hit = resolvePluginFeatureBindingMeta(
       mockSettings(),
-      'plot-summary',
+      FIXTURE_PLUGIN,
       {
-        plugins: { 'plot-summary': { apiConfigId: 'global-id' } },
+        plugins: { [FIXTURE_PLUGIN]: { apiConfigId: 'global-id' } },
       },
     )
     assert.equal(hit?.apiConfigId, 'global-id')
@@ -81,7 +83,7 @@ describe('feature-binding-resolve', () => {
   it('falls back to plugin settings apiConfigId', () => {
     const hit = resolvePluginFeatureBindingMeta(
       mockSettings(),
-      'plot-summary',
+      FIXTURE_PLUGIN,
       undefined,
       'legacy-id',
     )

@@ -170,13 +170,18 @@ function formatPlotSummaryLayoutBlocks(resolved) {
 function formatPluginContextBlocks(resolved, _ctx) {
   return formatPlotSummaryLayoutBlocks(resolved);
 }
+function sidecarNameFromSettings(settings) {
+  const raw = settings?.sidecarName;
+  return typeof raw === "string" ? raw.trim() : "";
+}
 function parseCompleteDraftContent(ctx, content, _api) {
   const raw = parseModelJson(content);
   if (ctx.kind === "sidecar") {
-    const sidecar = normalizeSidecarPayload(ctx.sidecarName ?? "", raw);
+    const sidecarName = sidecarNameFromSettings(ctx.pluginSettings);
+    const sidecar = normalizeSidecarPayload(sidecarName, raw);
     return {
       draft: {
-        title: ctx.sidecarName?.trim() || sidecar.title,
+        title: sidecarName || sidecar.title,
         content: sidecar.content,
         keywords: sidecar.keywords
       }

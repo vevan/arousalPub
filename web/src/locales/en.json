@@ -523,7 +523,12 @@
       "removeItemCancel": "Cancel",
       "checkboxGroupEmpty": "No options available.",
       "checkboxGroupSelectedSummary": "{selected} of {total} selected",
-      "checkboxGroupNoneSelected": "None selected · {total} total"
+      "checkboxGroupNoneSelected": "None selected · {total} total",
+      "inheritTriModeOn": "On",
+      "inheritTriModeOff": "Off",
+      "inheritTriModeInherit": "Inherit ({value})",
+      "inheritTriModeGlobalOn": "global on",
+      "inheritTriModeGlobalOff": "global off"
     },
     "writeChatPromptSnapshot": "Enable session debug audit",
     "writeChatPromptHint": "When enabled, the server writes chat-audit.json after send/regenerate (messages, assembly hits, outbound calls). When disabled, nothing new is written; existing entries remain viewable on assistant turns.",
@@ -703,7 +708,7 @@
     "memoryStripCustomElements": "Strip custom elements",
     "memoryStripCustomElementsHint": "Remove <tag>…</tag> blocks before indexing and recall. Enter tag names below; tags declared in enabled plugin manifests are merged automatically.",
     "memoryStripBlockTags": "Strip tags",
-    "memoryStripBlockTagsHint": "Comma-separated; must match tags in text exactly. e.g. route-selector, ex-trace-keeper",
+    "memoryStripBlockTagsHint": "Comma-separated; must match tags in text exactly. e.g. route-selector, my-plugin-block",
     "memoryRecallFuseAssistant": "Fuse last assistant in recall",
     "memoryRecallFuseAssistantHint": "Blend last assistant into the recall vector; lexical search still uses user input only.",
     "memoryRecallUserWeight": "User message weight",

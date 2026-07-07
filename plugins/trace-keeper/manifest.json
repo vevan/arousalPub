@@ -7,6 +7,23 @@
     "resolveTurnPluginEntriesFromAssistant",
     "formatPluginContextBlocks"
   ],
+  "turnPlugins": {
+    "mergeMode": "receive-scoped",
+    "receiveIdKey": "receiveId"
+  },
+  "serverActions": [
+    {
+      "name": "regenerate-separate",
+      "permissions": ["plugin.complete", "conversation.read"]
+    },
+    {
+      "name": "patch-state",
+      "permissions": ["turn.plugins.write", "conversation.read"]
+    }
+  ],
+  "lifecycle": {
+    "onCharacterPrimaryChanged": true
+  },
   "memory": {
     "stripBlockTags": ["ex-trace-keeper"]
   },
@@ -18,13 +35,20 @@
   ],
   "settingsSchema": {
     "version": 1,
+    "dialogMaxWidth": 920,
     "fields": [
       {
         "key": "activeBundleId",
         "type": "string",
         "labelKey": "activeBundleIdLabel",
         "descriptionKey": "activeBundleIdDesc",
-        "default": "scene-tracker-default"
+        "default": "scene-tracker-default",
+        "widget": "bundleSelect",
+        "bundleSelect": {
+          "listFieldKey": "bundleList",
+          "builtinValue": "scene-tracker-default",
+          "builtinLabelKey": "bundleBuiltinOption"
+        }
       },
       {
         "key": "apiConfigId",
@@ -53,6 +77,9 @@
         "labelKey": "bundleListLabel",
         "descriptionKey": "bundleListDesc",
         "default": "[]",
+        "objectListValidation": "bundleList",
+        "validateSampleStateWhen": "validateSampleStateJson",
+        "reservedObjectListIds": ["scene-tracker-default"],
         "itemFields": [
           {
             "key": "label",
@@ -85,6 +112,7 @@
             "labelKey": "bundleItemSampleStateLabel",
             "descriptionKey": "bundleItemSampleStateDesc",
             "defaultKey": "bundleSampleStateJsonDefault",
+            "widget": "jsonSampleState",
             "maxLength": 0
           },
           {
@@ -115,7 +143,13 @@
         "type": "string",
         "labelKey": "convBundleIdLabel",
         "descriptionKey": "convBundleIdDesc",
-        "default": ""
+        "default": "",
+        "widget": "bundleSelect",
+        "bundleSelect": {
+          "listFieldKey": "bundleList",
+          "inheritOption": true,
+          "inheritLabelKey": "convBundleInheritOption"
+        }
       },
       {
         "key": "separateTurnCount",
@@ -127,6 +161,7 @@
     ]
   },
   "ui": {
+    "eagerOnRoutes": ["chat"],
     "slots": [
       {
         "name": "turn-block-head",

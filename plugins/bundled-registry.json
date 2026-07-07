@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "plugins": [
+    { "id": "guidance-generate", "order": 10, "path": "guidance-generate" },
+    { "id": "reply-complete-sound", "order": 20, "path": "reply-complete-sound" },
+    { "id": "swipe-cleaner", "order": 30, "path": "swipe-cleaner" },
+    { "id": "conversation-export", "order": 40, "path": "conversation-export" },
+    { "id": "plot-summary", "order": 50, "path": "plot-summary" },
+    { "id": "custom-styles", "order": 60, "path": "custom-styles" },
+    { "id": "trace-keeper", "order": 70, "path": "trace-keeper" }
+  ]
+}

@@ -58,16 +58,19 @@
         "labelKey": "convEnabledLabel",
         "descriptionKey": "convEnabledDesc",
         "conversationInherit": true,
-        "inheritFromGlobalKey": "enabled"
+        "inheritFromGlobalKey": "enabled",
+        "widget": "inheritTriMode"
       },
       {
         "key": "sheetOverrides",
         "type": "text",
-        "labelKey": "convSheetOverridesLabel",
+        "labelKey": "convSheetsSection",
         "default": "",
-        "visibleWhen": {
-          "field": "__custom_styles_hidden__",
-          "equals": true
+        "widget": "inheritTriModeSheetList",
+        "inheritTriModeSheetList": {
+          "globalListFieldKey": "sheets",
+          "globalEnabledFieldKey": "enabled",
+          "emptyLabelKey": "convSheetsEmpty"
         }
       }
     ]

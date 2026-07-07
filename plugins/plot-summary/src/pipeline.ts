@@ -124,7 +124,7 @@ export async function runSummarizeTasks(
       host.ui.toast(host.t(k(host, 'toastNoTurnsInRange')), { color: 'warning' })
       return { ok: false, reason: 'no_turns' }
     }
-    const contextBlocks = prepared.contextBlocks
+    const preparedContext = prepared.preparedContext
 
     const patch: Record<string, unknown> = {}
     let done = 0
@@ -153,7 +153,7 @@ export async function runSummarizeTasks(
         if (task.kind === 'memory') {
           const memoryDraft = await generateReviewDraft(host, settings, {
             kind: 'memory',
-            contextBlocks,
+            preparedContext,
             fromTurn,
             toTurn,
           })
@@ -164,7 +164,7 @@ export async function runSummarizeTasks(
             (h) =>
               generateReviewDraft(h, settings, {
                 kind: 'memory',
-                contextBlocks,
+                preparedContext,
                 fromTurn,
                 toTurn,
               }),
@@ -186,7 +186,7 @@ export async function runSummarizeTasks(
           const sc = task.sidecar
           const sidecarDraft = await generateReviewDraft(host, settings, {
             kind: 'sidecar',
-            contextBlocks,
+            preparedContext,
             fromTurn,
             toTurn,
             sc,
@@ -198,7 +198,7 @@ export async function runSummarizeTasks(
             (h) =>
               generateReviewDraft(h, settings, {
                 kind: 'sidecar',
-                contextBlocks,
+                preparedContext,
                 fromTurn,
                 toTurn,
                 sc,

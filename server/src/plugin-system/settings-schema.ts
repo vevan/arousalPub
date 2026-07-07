@@ -29,7 +29,60 @@ export function normalizeSettingsSchema(
       if (f) fields.push(f)
     }
   }
-  return { version: Math.round(doc.version), fields }
+  const schema: PluginSettingsSchema = {
+    version: Math.round(doc.version),
+    fields,
+  }
+  if (typeof doc.dialogMaxWidth === 'number' && Number.isFinite(doc.dialogMaxWidth)) {
+    schema.dialogMaxWidth = Math.round(doc.dialogMaxWidth)
+  }
+  return schema
+}
+
+function normalizeBundleSelect(
+  raw: unknown,
+): PluginSettingsFieldSchema['bundleSelect'] | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const o = raw as Record<string, unknown>
+  const listFieldKey =
+    typeof o.listFieldKey === 'string' ? o.listFieldKey.trim() : ''
+  if (!listFieldKey) return undefined
+  const out: NonNullable<PluginSettingsFieldSchema['bundleSelect']> = {
+    listFieldKey,
+  }
+  if (typeof o.builtinValue === 'string' && o.builtinValue.trim()) {
+    out.builtinValue = o.builtinValue.trim()
+  }
+  if (typeof o.builtinLabelKey === 'string' && o.builtinLabelKey.trim()) {
+    out.builtinLabelKey = o.builtinLabelKey.trim()
+  }
+  if (o.inheritOption === true) out.inheritOption = true
+  if (typeof o.inheritLabelKey === 'string' && o.inheritLabelKey.trim()) {
+    out.inheritLabelKey = o.inheritLabelKey.trim()
+  }
+  return out
+}
+
+function normalizeInheritTriModeSheetList(
+  raw: unknown,
+): PluginSettingsFieldSchema['inheritTriModeSheetList'] | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const o = raw as Record<string, unknown>
+  const globalListFieldKey =
+    typeof o.globalListFieldKey === 'string' ? o.globalListFieldKey.trim() : ''
+  const labelKey = typeof o.labelKey === 'string' ? o.labelKey.trim() : ''
+  if (!globalListFieldKey) return undefined
+  const out: NonNullable<PluginSettingsFieldSchema['inheritTriModeSheetList']> = {
+    globalListFieldKey,
+    labelKey: labelKey || 'convSheetsSection',
+  }
+  if (typeof o.globalEnabledFieldKey === 'string' && o.globalEnabledFieldKey.trim()) {
+    out.globalEnabledFieldKey = o.globalEnabledFieldKey.trim()
+  }
+  if (typeof o.emptyLabelKey === 'string' && o.emptyLabelKey.trim()) {
+    out.emptyLabelKey = o.emptyLabelKey.trim()
+  }
+  return out
 }
 
 function normalizeItemField(
@@ -72,6 +125,7 @@ function normalizeItemField(
     field.defaultKey = o.defaultKey.trim()
   }
   if (o.widget === 'promptTemplate') field.widget = 'promptTemplate'
+  if (o.widget === 'jsonSampleState') field.widget = 'jsonSampleState'
   return field
 }
 
@@ -128,6 +182,37 @@ function normalizeField(raw: unknown): PluginSettingsFieldSchema | null {
   }
   if (o.widget === 'slider') field.widget = 'slider'
   if (o.widget === 'promptTemplate') field.widget = 'promptTemplate'
+  if (o.widget === 'bundleSelect') field.widget = 'bundleSelect'
+  if (o.widget === 'inheritTriMode') field.widget = 'inheritTriMode'
+  if (o.widget === 'inheritTriModeSheetList') {
+    field.widget = 'inheritTriModeSheetList'
+  }
+  const bundleSelect = normalizeBundleSelect(o.bundleSelect)
+  if (bundleSelect) field.bundleSelect = bundleSelect
+  const inheritTriModeSheetList = normalizeInheritTriModeSheetList(
+    o.inheritTriModeSheetList,
+  )
+  if (inheritTriModeSheetList) {
+    field.inheritTriModeSheetList = inheritTriModeSheetList
+  }
+  if (o.objectListValidation === 'bundleList') {
+    field.objectListValidation = 'bundleList'
+  }
+  if (
+    typeof o.validateSampleStateWhen === 'string' &&
+    o.validateSampleStateWhen.trim()
+  ) {
+    field.validateSampleStateWhen = o.validateSampleStateWhen.trim()
+  }
+  if (Array.isArray(o.reservedObjectListIds)) {
+    const ids = o.reservedObjectListIds
+      .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+      .map((x) => x.trim())
+    if (ids.length > 0) field.reservedObjectListIds = ids
+  }
+  if (typeof o.companionPanel === 'string' && o.companionPanel.trim()) {
+    field.companionPanel = o.companionPanel.trim()
+  }
   if (typeof o.step === 'number' && Number.isFinite(o.step) && o.step > 0) {
     field.step = o.step
   }

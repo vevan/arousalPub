@@ -497,17 +497,20 @@ async function generateReviewDraft(host, settings, opts) {
     }
     const result = await host.plugin.completeWithContext({
       ...settings.apiConfigId ? { apiConfigId: settings.apiConfigId } : {},
-      blocks: opts.contextBlocks,
+      blocks: opts.contextBlocks ?? [],
+      preparedContext: opts.preparedContext,
       layout: PLOT_SUMMARY_COMPLETE_LAYOUT,
-      pluginSettings: { systemPromptTemplate },
+      pluginSettings: {
+        systemPromptTemplate,
+        ...opts.kind === "sidecar" && opts.sc?.name ? { sidecarName: opts.sc.name } : {}
+      },
       anchorToTurn,
       responseFormat: "json_object",
       draft: {
         kind: opts.kind,
         fromTurn: opts.fromTurn,
         toTurn: opts.toTurn,
-        blockTurns: settings.blockTurns,
-        sidecarName: opts.sc?.name
+        blockTurns: settings.blockTurns
       }
     });
     if (!result.draft) {
@@ -942,6 +945,11 @@ async function preparePlotSummarySummarizeContext(host, settings, fromTurn, toTu
     systemReferenceContext,
     userContent,
     contextBlocks: specs,
+    preparedContext: {
+      blocks: resolved.blocks,
+      entriesByBlock: resolved.entriesByBlock ?? {},
+      meta: resolved.meta
+    },
     meta: resolved.meta
   };
 }
@@ -1028,7 +1036,7 @@ async function runSummarizeTasks(host, opts) {
       host.ui.toast(host.t(k(host, "toastNoTurnsInRange")), { color: "warning" });
       return { ok: false, reason: "no_turns" };
     }
-    const contextBlocks = prepared.contextBlocks;
+    const preparedContext = prepared.preparedContext;
     const patch = {};
     let done = 0;
     let ranMemory = false;
@@ -1053,7 +1061,7 @@ async function runSummarizeTasks(host, opts) {
         if (task.kind === "memory") {
           const memoryDraft = await generateReviewDraft(host, settings, {
             kind: "memory",
-            contextBlocks,
+            preparedContext,
             fromTurn,
             toTurn
           });
@@ -1063,7 +1071,7 @@ async function runSummarizeTasks(host, opts) {
             DIALOG_REVIEW,
             (h) => generateReviewDraft(h, settings, {
               kind: "memory",
-              contextBlocks,
+              preparedContext,
               fromTurn,
               toTurn
             }),
@@ -1085,7 +1093,7 @@ async function runSummarizeTasks(host, opts) {
           const sc = task.sidecar;
           const sidecarDraft = await generateReviewDraft(host, settings, {
             kind: "sidecar",
-            contextBlocks,
+            preparedContext,
             fromTurn,
             toTurn,
             sc
@@ -1096,7 +1104,7 @@ async function runSummarizeTasks(host, opts) {
             DIALOG_REVIEW_SIDECAR,
             (h) => generateReviewDraft(h, settings, {
               kind: "sidecar",
-              contextBlocks,
+              preparedContext,
               fromTurn,
               toTurn,
               sc
@@ -1407,7 +1415,8 @@ async function previewManualSummarizePrompt(host, model) {
       const systemPromptTemplate = resolveSystemPrompt2(host, settings, task);
       const result = await host.plugin.completeWithContext({
         ...settings.apiConfigId ? { apiConfigId: settings.apiConfigId } : {},
-        blocks: prepared.contextBlocks,
+        blocks: [],
+        preparedContext: prepared.preparedContext,
         layout: PLOT_SUMMARY_COMPLETE_LAYOUT,
         pluginSettings: { systemPromptTemplate },
         anchorToTurn: toTurn,

@@ -4,7 +4,7 @@ import {
   buildHistoryBlock,
   buildPreviousSummariesBlock,
   buildSidecarsBlock,
-} from '../../../plugins/plot-summary/src/shared/prepare-context-blocks.js'
+} from '../src/shared/prepare-context-blocks.js'
 import {
   classifyPlotSummaryEntry,
   computePlotSummaryApplyOrderLayout,
@@ -12,7 +12,7 @@ import {
   parseTurnRangeSuffix,
   pickRecentSummaryEntriesBeforeTurn,
   sortPlotSummaryEntriesInGroup,
-} from '../../../plugins/plot-summary/src/shared/lorebook-sort.js'
+} from '../src/shared/lorebook-sort.js'
 
 describe('parseTurnRangeSuffix', () => {
   it('parses bracket turn range suffix', () => {

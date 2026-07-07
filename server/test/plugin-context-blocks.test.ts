@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { fillPromptLayoutPlaceholders } from '../src/plugin-assemble-prompt.js'
-import { parseContextBlockSpecs } from '../src/plugin-context-blocks-resolve.js'
+import { parseContextBlockSpecs, contextBlockSpecsNeedLorebookRead } from '../src/plugin-context-blocks-resolve.js'
 import { stripBlockTagsFromAssistant } from '../src/plugin-summarize-format.js'
 
 describe('stripBlockTagsFromAssistant', () => {
   it('strips plugin block tags from assistant text', () => {
     const text =
-      'narrative<ex-trace-keeper>{"a":1}</ex-trace-keeper> tail'
-    const out = stripBlockTagsFromAssistant(text, ['ex-trace-keeper'])
+      'narrative<ex-fixture-block>{"a":1}</ex-fixture-block> tail'
+    const out = stripBlockTagsFromAssistant(text, ['ex-fixture-block'])
     assert.equal(out, 'narrative tail')
   })
 })
@@ -35,7 +35,7 @@ describe('parseContextBlockSpecs', () => {
         fromTurn: 0,
         toTurn: 5,
         regexRuleIds: ['r1'],
-        stripBlockTagsOnToTurn: ['ex-trace-keeper'],
+        stripBlockTagsOnToTurn: ['ex-fixture-block'],
       },
     ])
     assert.deepEqual(specs[0], {
@@ -46,7 +46,7 @@ describe('parseContextBlockSpecs', () => {
       regexRuleIds: ['r1'],
       regexApplyAllTurns: false,
       tailOrdinal: undefined,
-      stripBlockTagsOnToTurn: ['ex-trace-keeper'],
+      stripBlockTagsOnToTurn: ['ex-fixture-block'],
     })
   })
 })
@@ -82,5 +82,31 @@ describe('fillPromptLayoutPlaceholders', () => {
     )
     assert.equal(out[0]?.content, '')
     assert.equal(out[1]?.content, 'HIST')
+  })
+})
+
+describe('contextBlockSpecsNeedLorebookRead', () => {
+  it('returns false for transcript-only specs', () => {
+    const specs = parseContextBlockSpecs([
+      {
+        source: 'conversation.transcript',
+        blockId: 'history',
+        fromTurn: 0,
+        toTurn: 1,
+      },
+    ])
+    assert.equal(contextBlockSpecsNeedLorebookRead(specs), false)
+  })
+
+  it('returns true when lorebook.entries present', () => {
+    const specs = parseContextBlockSpecs([
+      {
+        source: 'lorebook.entries',
+        blockId: 'sidecars',
+        lorebookId: 'lb-1',
+        entryIds: [],
+      },
+    ])
+    assert.equal(contextBlockSpecsNeedLorebookRead(specs), true)
   })
 })

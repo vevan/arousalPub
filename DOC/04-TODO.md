@@ -50,6 +50,50 @@
 
 ---
 
+## 宿主去特化（`DOC/41` · **P0 · 强制**）
+
+> **定案**：[`DOC/41`](41-plugin-host-generic-principles.md) · **审计/checklist**：[`DOC/42`](42-host-generic-audit-checklist.md) · Cursor `.cursor/rules/plugin-host-generic.mdc`  
+> **原则**：宿主只提供 generic 能力；**禁止** bundled 插件 id 字面量、按 id 分支、产品语义命名/路由/类型。  
+> **现状（2026-07-07）**：**Phase 0–3 已完成**；§8.2 审计项 **已全部修复**；可选 CI 接入门禁（DOC/42 §6.0.2）。  
+> **门禁**：`npm run check:host-no-plugin-ids`
+
+### Phase 0 — 门禁与注释（P0）
+
+- [x] **0.1 CI grep** — `scripts/check-host-no-plugin-ids.mjs` + `npm run check:host-no-plugin-ids`
+- [x] **0.2 注释 sweep** — S-F7-* / W-F7-*（2026-07-07）
+- [x] **0.3 legacy 删除** — `server/src/plot-summary/`、`plugin-prepare-context.ts`
+
+### Phase 1 — Server
+
+- [x] **serverActions** — `POST /api/plugins/:pluginId/actions/:action` + manifest `serverActions`
+- [x] **turnPlugins merge** — `shared/turn-plugin-merge.ts` + manifest `turnPlugins`
+- [x] **删 trace 专用路由** — `plugin-action-route.ts` 替代
+- [x] **lifecycle** — `onCharacterPrimaryChanged` 分发
+- [x] **persist extras** — `resolveConversationPersistExtras` hook
+- [x] **bundled-registry** — loader/registry 读 `plugins/bundled-registry.json`
+- [x] **migrate-plot-summary** — `scripts/migrate-curated-memory-to-plot-summary.ts` + `npm run migrate:curated-memory`
+
+### Phase 2 — Web 宿主
+
+- [x] **eagerOnRoutes** — registry 暴露 + `usePluginHost({ routeKeys: ['chat'] })`
+- [x] **chat plugins 载荷** — `Record<string, unknown>`
+- [x] **persist-display** — 仅 `persist.plugins` 透传
+- [x] **设置壳** — schema widget（`bundleSelect` / `companionPanel` 等 · DOC/42 §2 W-X）
+
+### Phase 3 — 类型与单测
+
+- [x] **draft.kind** — shared 改为 opaque `string`
+- [x] **单测 fixture** — 宿主测试 `fixture-plugin-*`
+- [x] **Web actions** — `host.plugin.runAction`（trace-keeper 已迁）
+
+### DoD
+
+- [x] DOC/41 §8 CI grep 零命中
+- [x] DOC/41 §7 三问 — DOC/42 §8.2 已修复
+- [ ] GitHub Actions 接入门禁（可选；本地 **`npm run check:ci`**）
+
+---
+
 ## P0 余项
 - [ ] **Composer Slash 命令** — 定案见 [`DOC/35`](35-group-chat.md) §2.3（群聊 `/@`）；输入框 `/` 命令层（与聊天 turns、输入历史分离）
   - [x] **S0** 宿主 `submitComposer` 统一入口 + 命令解析/路由（raw → 命令 + 剩余正文）

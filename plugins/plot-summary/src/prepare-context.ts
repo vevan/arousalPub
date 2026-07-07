@@ -1,4 +1,4 @@
-import type { ContextBlockSpec } from '../../../shared/plugin-context-blocks.js'
+import type { ContextBlockSpec, LorebookEntrySlice, PluginContextBlocksSuccess } from '../../../shared/plugin-context-blocks.js'
 import {
   applyPlotSummaryLoreEntryIds,
   buildPlotSummaryContextBlockSpecs,
@@ -12,6 +12,11 @@ export type PlotSummaryPreparedContext = {
   systemReferenceContext: string
   userContent: string
   contextBlocks: ContextBlockSpec[]
+  preparedContext: {
+    blocks: Record<string, string>
+    entriesByBlock: Record<string, LorebookEntrySlice[]>
+    meta: PluginContextBlocksSuccess['meta']
+  }
   meta: { userDisplayName: string; assistantDisplayName: string }
 }
 
@@ -54,6 +59,11 @@ export async function preparePlotSummarySummarizeContext(
     systemReferenceContext,
     userContent,
     contextBlocks: specs,
+    preparedContext: {
+      blocks: resolved.blocks,
+      entriesByBlock: resolved.entriesByBlock ?? {},
+      meta: resolved.meta,
+    },
     meta: resolved.meta,
   }
 }

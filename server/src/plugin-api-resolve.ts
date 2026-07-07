@@ -14,7 +14,7 @@ export interface ResolvePluginCompleteApiInput {
   /** 请求体显式传入时优先使用，不走解析链 */
   apiConfigId?: string
   userId?: string
-  /** 插件未绑定时回退到会话/全局 chat API（如 trace-keeper Separate） */
+  /** 插件未绑定时回退到会话/全局 chat API（`fallbackToChat`） */
   fallbackToChat?: boolean
 }
 

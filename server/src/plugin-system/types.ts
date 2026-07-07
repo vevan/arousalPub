@@ -64,7 +64,22 @@ export interface PluginSettingsItemFieldSchema {
   enum?: string[]
   required?: boolean
   defaultKey?: string
-  widget?: 'promptTemplate'
+  widget?: 'promptTemplate' | 'jsonSampleState'
+}
+
+export interface PluginSettingsInheritTriModeSheetListConfig {
+  globalListFieldKey: string
+  globalEnabledFieldKey?: string
+  labelKey: string
+  emptyLabelKey?: string
+}
+
+export interface PluginSettingsBundleSelectConfig {
+  listFieldKey: string
+  builtinValue?: string
+  builtinLabelKey?: string
+  inheritOption?: boolean
+  inheritLabelKey?: string
 }
 
 export interface PluginSettingsFieldSchema {
@@ -81,7 +96,7 @@ export interface PluginSettingsFieldSchema {
   purpose?: string
   visibleWhen?: { field: string; equals: unknown }
   /** 表单控件：`slider` 用于 number/integer；`promptTemplate` 用于带恢复默认的 text */
-  widget?: 'slider' | 'promptTemplate'
+  widget?: 'slider' | 'promptTemplate' | 'bundleSelect' | 'inheritTriMode' | 'inheritTriModeSheetList'
   step?: number
   required?: boolean
   defaultKey?: string
@@ -90,6 +105,12 @@ export interface PluginSettingsFieldSchema {
   conversationInherit?: boolean
   /** 与全局 settings 键名对应，用于 inherit hint */
   inheritFromGlobalKey?: string
+  bundleSelect?: PluginSettingsBundleSelectConfig
+  inheritTriModeSheetList?: PluginSettingsInheritTriModeSheetListConfig
+  objectListValidation?: 'bundleList'
+  validateSampleStateWhen?: string
+  reservedObjectListIds?: string[]
+  companionPanel?: string
   options?: PluginSettingsCheckboxOption[]
   optionsSource?: PluginSettingsOptionsSource
   optionsFilter?: PluginSettingsOptionsFilter
@@ -100,6 +121,7 @@ export interface PluginSettingsFieldSchema {
 export interface PluginSettingsSchema {
   version: number
   fields: PluginSettingsFieldSchema[]
+  dialogMaxWidth?: number
 }
 
 export interface PluginManifest {
@@ -113,10 +135,21 @@ export interface PluginManifest {
   }
   ui?: {
     slots?: Array<{ name: string; entry?: string }>
+    /** 路由键（如 `chat`）；宿主在匹配页 eager 加载 web.mjs */
+    eagerOnRoutes?: string[]
   }
   connection?: { policy?: string }
   settingsSchema?: PluginSettingsSchema
   conversationSettingsSchema?: PluginSettingsSchema
+  turnPlugins?: {
+    mergeMode?: 'replace-by-plugin-id' | 'receive-scoped'
+    receiveIdKey?: string
+  }
+  serverActions?: Array<{
+    name: string
+    permissions: string[]
+  }>
+  lifecycle?: Partial<Record<'onCharacterPrimaryChanged', boolean>>
 }
 
 export interface PluginCompleteDraftMessage {
@@ -218,12 +251,12 @@ export interface PluginServerHostApi {
   }
 }
 
-export interface PluginCompleteDraftContext {
+export interface PluginParseCompleteDraftContext {
   pluginId: string
   conversationId: string
   /** 解析后填入；插件 hook 内 complete/preflight 可省略 apiConfigId */
   apiConfigId?: string
-  kind: 'memory' | 'sidecar'
+  kind: string
   /** 解析 completeWithContext 出站 JSON 为 draft */
   systemReferenceContext?: string
   userContent?: string
@@ -231,10 +264,11 @@ export interface PluginCompleteDraftContext {
   fromTurn?: number
   toTurn?: number
   blockTurns?: number
-  sidecarName?: string
+  /** complete 请求 pluginSettings 原样透传；语义由插件解释 */
+  pluginSettings?: Record<string, unknown>
 }
 
-export interface PluginCompleteDraftResult {
+export interface PluginParseCompleteDraftResult {
   draft: { title: string; content: string; keywords: string[] }
   usage?: { promptTokens?: number; completionTokens?: number }
   latencyMs?: number
@@ -258,6 +292,20 @@ export interface ResolveTurnPluginEntriesFromAssistantContext {
   plugins?: ChatPluginsBody | null
   conversationId?: string
 }
+
+export interface PluginServerActionTurnMerge {
+  turnOrdinal: number
+  receiveId: string
+  assistantContent: string
+  entry: TurnPluginEntry
+}
+
+export type PluginServerActionResult =
+  | ({
+      ok: true
+      turnMerge?: PluginServerActionTurnMerge
+    } & Record<string, unknown>)
+  | { ok: false; code: string; status?: number; debug?: unknown }
 
 export interface PluginServerModule {
   afterAssemblePrompts?: (
@@ -285,52 +333,35 @@ export interface PluginServerModule {
     ctx: ResolveTurnPluginEntriesFromAssistantContext,
     api: PluginServerHostApi,
   ) => TurnPluginEntry[] | Promise<TurnPluginEntry[]>
-  /** DOC/39 · completeWithContext 步骤 1 后格式化 blocks（如 Historian XML） */
+  /** DOC/39 · completeWithContext 步骤 1 后格式化 blocks（插件 hook） */
   formatPluginContextBlocks?: (
     resolved: import('../shared/plugin-context-blocks.js').PluginContextBlocksSuccess,
     ctx: { anchorToTurn: number },
   ) => Record<string, string> | Promise<Record<string, string>>
   /** DOC/39 · completeWithContext 出站后解析 draft */
   parseCompleteDraftContent?: (
-    ctx: PluginCompleteDraftContext,
+    ctx: PluginParseCompleteDraftContext,
     content: string,
     api: PluginServerHostApi,
-  ) => PluginCompleteDraftResult | Promise<PluginCompleteDraftResult>
-  /** trace-keeper：Separate 重新生成 state 并返回待落盘条目 */
-  regenerateSeparateState?: (
-    input: {
+  ) => PluginParseCompleteDraftResult | Promise<PluginParseCompleteDraftResult>
+  /** manifest.serverActions 声明的自定义动作 */
+  runPluginAction?: (
+    action: string,
+    body: Record<string, unknown>,
+    api: PluginServerHostApi,
+  ) => Promise<PluginServerActionResult>
+  /** 落盘响应附加字段（键由插件自定，宿主 opaque 合并） */
+  resolveConversationPersistExtras?: (
+    ctx: { conversationIndex: import('../chat-storage.js').ConversationIndex },
+    api: PluginServerHostApi,
+  ) => Promise<Record<string, unknown> | void>
+  onCharacterPrimaryChanged?: (
+    ctx: {
       conversationId: string
-      turnOrdinal?: number
-      debugCapture?: boolean
+      conversationIndex: import('../chat-storage.js').ConversationIndex
     },
     api: PluginServerHostApi,
-  ) => Promise<
-    | {
-        ok: true
-        state: Record<string, unknown>
-        turnOrdinal: number
-        receiveId: string
-        assistantContent: string
-        entry: TurnPluginEntry
-        debug?: unknown
-      }
-    | { ok: false; code: string; debug?: unknown }
-  >
-  /** trace-keeper：手动 patch state 到 turn.plugins[] 并写回 assistant 正文 */
-  patchTraceKeeperState?: (
-    input: { conversationId: string; turnOrdinal: number; state: unknown },
-    api: PluginServerHostApi,
-  ) => Promise<
-    | {
-        ok: true
-        state: Record<string, unknown>
-        turnOrdinal: number
-        receiveId: string
-        assistantContent: string
-        entry: TurnPluginEntry
-      }
-    | { ok: false; code: string }
-  >
+  ) => Promise<{ pluginSettings?: Record<string, unknown> } | void>
 }
 
 export interface PluginRegistryPublicEntry {
@@ -340,6 +371,7 @@ export interface PluginRegistryPublicEntry {
   order: number
   slots: string[]
   webEntry: string | null
+  eagerOnRoutes?: string[]
 }
 
 export interface PluginManageEntry {

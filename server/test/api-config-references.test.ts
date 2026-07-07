@@ -24,7 +24,7 @@ describe('collectApiConfigIdsFromApiPreset', () => {
       chat: { apiConfigId: 'p-chat' },
       rerank: { apiConfigId: 'p-rerank', modelOverride: 'm' },
       plugins: {
-        'guidance-generate': { apiConfigId: 'p-plugin' },
+        'fixture-plugin-a': { apiConfigId: 'p-plugin' },
       },
       plugin: { apiConfigId: 'p-default' },
     })
@@ -33,7 +33,7 @@ describe('collectApiConfigIdsFromApiPreset', () => {
       [
         { path: 'chat', apiConfigId: 'p-chat' },
         { path: 'plugin', apiConfigId: 'p-default' },
-        { path: 'plugins.guidance-generate', apiConfigId: 'p-plugin' },
+        { path: 'plugins.fixture-plugin-a', apiConfigId: 'p-plugin' },
         { path: 'rerank', apiConfigId: 'p-rerank' },
       ],
     )

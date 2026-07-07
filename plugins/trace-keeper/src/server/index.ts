@@ -1,3 +1,5 @@
+import type { PluginPromptInjection } from '../../../shared/plugin-prompt-injection.js'
+export type { PluginPromptInjection }
 import { PLUGIN_ID } from '../constants.js'
 import {
   DEFAULT_TRACE_BUNDLE,
@@ -7,20 +9,11 @@ import {
 import { extractTraceKeeperState } from '../parse-block.js'
 import { buildTrackerSystemPrompt } from '../tracker-prompt.js'
 import { regenerateSeparateState } from './separate-regenerate.js'
+import { patchTraceKeeperState } from './patch-state.js'
 
 /** DOC/38 §3.2 · post-user 区最末（暂硬编码 · 见 DOC/04 可配置化 TODO） */
 const TRACE_KEEPER_CHAT_DEPTH = 0
 const TRACE_KEEPER_INJECTION_ORDER = 500
-
-export type PluginPromptInjection = {
-  role: 'system'
-  content: string
-  position: {
-    kind: 'chat'
-    depth: number
-    order: number
-  }
-}
 
 type ServerApi = {
   getUserPluginSettings: (pluginId: string) => Promise<Record<string, unknown>>
@@ -47,8 +40,6 @@ export type TraceKeeperInjectionContext = {
 
 export { buildTrackerSystemPrompt } from '../tracker-prompt.js'
 export { DEFAULT_TRACE_BUNDLE, resolveTraceBundle } from '../bundle-resolve.js'
-export { regenerateSeparateState } from './separate-regenerate.js'
-export { patchTraceKeeperState } from './patch-state.js'
 export {
   formatPluginContextBlocks,
   TRACE_KEEPER_SEPARATE_LAYOUT,
@@ -124,4 +115,120 @@ export async function resolveTurnPluginEntriesFromAssistant(
       payload: { state, epoch },
     },
   ]
+}
+
+export async function resolveConversationPersistExtras(
+  ctx: {
+    conversationIndex: { id?: string; pluginSettings?: Record<string, unknown> }
+  },
+  api: ServerApi,
+) {
+  const conversationId = ctx.conversationIndex.id?.trim()
+  if (!conversationId) return {}
+  const convSettings = await api.getConversationPluginSettings(
+    conversationId,
+    PLUGIN_ID,
+  )
+  return { trackerEpoch: trackerEpochFromSettings(convSettings) }
+}
+
+export async function onCharacterPrimaryChanged(
+  ctx: { conversationId: string },
+  api: ServerApi,
+) {
+  const convSettings = await api.getConversationPluginSettings(
+    ctx.conversationId,
+    PLUGIN_ID,
+  )
+  const epoch = trackerEpochFromSettings(convSettings)
+  return { pluginSettings: { trackerEpoch: epoch + 1 } }
+}
+
+export async function runPluginAction(
+  action: string,
+  body: Record<string, unknown>,
+  api: ServerApi,
+) {
+  const conversationId =
+    typeof body.conversationId === 'string' ? body.conversationId.trim() : ''
+  if (!conversationId) {
+    return { ok: false as const, code: 'invalid_conversation_id' }
+  }
+
+  if (action === 'regenerate-separate') {
+    const turnOrdinal =
+      typeof body.turnOrdinal === 'number' && Number.isFinite(body.turnOrdinal)
+        ? Math.round(body.turnOrdinal)
+        : undefined
+    const debugCapture = body.debugCapture === true
+    const result = await regenerateSeparateState(
+      { conversationId, turnOrdinal, debugCapture },
+      api as Parameters<typeof regenerateSeparateState>[1],
+    )
+    if (!result.ok) {
+      const status =
+        result.code === 'parse_failed' || result.code === 'assistant_content_empty'
+          ? 422
+          : result.code === 'turn_not_found' || result.code === 'no_turns'
+            ? 404
+            : 400
+      return { ok: false as const, code: result.code, status, debug: result.debug }
+    }
+    if (!result.receiveId || typeof result.assistantContent !== 'string') {
+      return { ok: false as const, code: 'turn_update_failed', status: 500 }
+    }
+    return {
+      ok: true as const,
+      state: result.state,
+      turnOrdinal: result.turnOrdinal,
+      receiveId: result.receiveId,
+      ...(result.debug ? { debug: result.debug } : {}),
+      turnMerge: {
+        turnOrdinal: result.turnOrdinal,
+        receiveId: result.receiveId,
+        assistantContent: result.assistantContent,
+        entry: result.entry,
+      },
+    }
+  }
+
+  if (action === 'patch-state') {
+    const turnOrdinal =
+      typeof body.turnOrdinal === 'number' && Number.isFinite(body.turnOrdinal)
+        ? Math.round(body.turnOrdinal)
+        : NaN
+    const result = await patchTraceKeeperState(
+      { conversationId, turnOrdinal, state: body.state },
+      api as Parameters<typeof patchTraceKeeperState>[1],
+    )
+    if (!result.ok) {
+      const status =
+        result.code === 'invalid_state'
+          ? 422
+          : result.code === 'turn_not_found' || result.code === 'no_turns'
+            ? 404
+            : result.code === 'invalid_conversation_id' ||
+                result.code === 'invalid_turn_ordinal'
+              ? 400
+              : 400
+      return { ok: false as const, code: result.code, status }
+    }
+    if (!result.receiveId || typeof result.assistantContent !== 'string') {
+      return { ok: false as const, code: 'receive_not_found', status: 500 }
+    }
+    return {
+      ok: true as const,
+      state: result.state,
+      turnOrdinal: result.turnOrdinal,
+      receiveId: result.receiveId,
+      turnMerge: {
+        turnOrdinal: result.turnOrdinal,
+        receiveId: result.receiveId,
+        assistantContent: result.assistantContent,
+        entry: result.entry,
+      },
+    }
+  }
+
+  return { ok: false as const, code: 'unknown_action', status: 404 }
 }

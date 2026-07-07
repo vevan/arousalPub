@@ -6,15 +6,8 @@ import { hasAnyDrySamplerField } from '@/utils/dry-sampler'
 
 type ConnectionStore = ReturnType<typeof useConnectionStore>
 
-export interface GuidanceGeneratePluginPayload {
-  mode: 'send' | 'regenerate' | 'revise'
-  guidanceText: string
-  assistantText?: string
-}
-
-export interface ConversationChatRequestPlugins {
-  'guidance-generate'?: GuidanceGeneratePluginPayload
-}
+/** per-plugin 聊天请求载荷；键为 pluginId，值由插件定义 */
+export type ConversationChatRequestPlugins = Record<string, unknown>
 
 export interface ConversationChatRequestParams {
   userText: string

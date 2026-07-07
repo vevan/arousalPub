@@ -21,7 +21,7 @@ export interface ApiConfigReference {
   presetAlias?: string
   conversationId?: string
   conversationTitle?: string
-  /** 对话 apiPreset 内路径，如 chat / plugins.guidance-generate */
+  /** 对话 apiPreset 内路径，如 chat / plugins.{pluginId} */
   path?: string
 }
 

@@ -1,19 +1,41 @@
 import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
-import { mergeTurnPluginEntry, attachReceiveIdToTurnPluginEntries, removeTraceKeeperPluginForReceive, mergePersistTurnPlugins } from '../src/turn-plugin-utils.js'
+import { afterEach, beforeEach, describe, it } from 'node:test'
+import {
+  __resetTurnPluginPoliciesForTest,
+  __setTurnPluginPolicyForTest,
+} from '../src/plugin-system/turn-plugin-policies.js'
+import {
+  mergeTurnPluginEntry,
+  attachReceiveIdToTurnPluginEntries,
+  removeTurnPluginEntriesForReceive,
+  mergePersistTurnPlugins,
+} from '../src/turn-plugin-utils.js'
 
-describe('mergeTurnPluginEntry trace-keeper receiveId', () => {
+const FIXTURE_PLUGIN = 'fixture-plugin-rcv'
+
+beforeEach(() => {
+  __setTurnPluginPolicyForTest(FIXTURE_PLUGIN, {
+    mode: 'receive-scoped',
+    receiveIdKey: 'receiveId',
+  })
+})
+
+afterEach(() => {
+  __resetTurnPluginPoliciesForTest()
+})
+
+describe('mergeTurnPluginEntry receive-scoped', () => {
   it('keeps distinct receive snapshots', () => {
     const merged = mergeTurnPluginEntry(
       [
         {
-          pluginId: 'trace-keeper',
+          pluginId: FIXTURE_PLUGIN,
           schemaVersion: 1,
           payload: { state: { n: 1 }, epoch: 0, receiveId: 'r1' },
         },
       ],
       {
-        pluginId: 'trace-keeper',
+        pluginId: FIXTURE_PLUGIN,
         schemaVersion: 1,
         payload: { state: { n: 2 }, epoch: 0, receiveId: 'r2' },
       },
@@ -25,13 +47,13 @@ describe('mergeTurnPluginEntry trace-keeper receiveId', () => {
     const merged = mergeTurnPluginEntry(
       [
         {
-          pluginId: 'trace-keeper',
+          pluginId: FIXTURE_PLUGIN,
           schemaVersion: 1,
           payload: { state: { n: 1 }, epoch: 0, receiveId: 'r1' },
         },
       ],
       {
-        pluginId: 'trace-keeper',
+        pluginId: FIXTURE_PLUGIN,
         schemaVersion: 1,
         payload: { state: { n: 9 }, epoch: 0, receiveId: 'r1' },
       },
@@ -43,19 +65,19 @@ describe('mergeTurnPluginEntry trace-keeper receiveId', () => {
     )
   })
 
-  it('still replaces non trace-keeper by pluginId', () => {
+  it('still replaces default-policy plugin by pluginId', () => {
     const merged = mergeTurnPluginEntry(
-      [{ pluginId: 'other', schemaVersion: 1, payload: { a: 1 } }],
-      { pluginId: 'other', schemaVersion: 1, payload: { a: 2 } },
+      [{ pluginId: 'fixture-plugin-other', schemaVersion: 1, payload: { a: 1 } }],
+      { pluginId: 'fixture-plugin-other', schemaVersion: 1, payload: { a: 2 } },
     )
     assert.equal(merged.length, 1)
   })
 })
 
 describe('attachReceiveIdToTurnPluginEntries', () => {
-  it('adds receiveId to trace-keeper payload', () => {
+  it('adds receiveId to receive-scoped payload', () => {
     const out = attachReceiveIdToTurnPluginEntries(
-      [{ pluginId: 'trace-keeper', schemaVersion: 1, payload: { state: {}, epoch: 0 } }],
+      [{ pluginId: FIXTURE_PLUGIN, schemaVersion: 1, payload: { state: {}, epoch: 0 } }],
       'rx1',
     )
     assert.equal(out?.[0]?.payload.receiveId, 'rx1')
@@ -67,12 +89,12 @@ describe('mergePersistTurnPlugins', () => {
     const out = mergePersistTurnPlugins(
       [
         {
-          pluginId: 'trace-keeper',
+          pluginId: FIXTURE_PLUGIN,
           schemaVersion: 1,
           payload: { state: { n: 1 }, epoch: 0, receiveId: 'r1' },
         },
       ],
-      [{ pluginId: 'trace-keeper', schemaVersion: 1, payload: { state: { n: 2 }, epoch: 0 } }],
+      [{ pluginId: FIXTURE_PLUGIN, schemaVersion: 1, payload: { state: { n: 2 }, epoch: 0 } }],
       'r2',
     )
     assert.equal(out.length, 2)
@@ -83,22 +105,23 @@ describe('mergePersistTurnPlugins', () => {
   })
 })
 
-describe('removeTraceKeeperPluginForReceive', () => {
+describe('removeTurnPluginEntriesForReceive', () => {
   it('removes snapshot for matching receiveId only', () => {
-    const out = removeTraceKeeperPluginForReceive(
+    const out = removeTurnPluginEntriesForReceive(
       [
         {
-          pluginId: 'trace-keeper',
+          pluginId: FIXTURE_PLUGIN,
           schemaVersion: 1,
           payload: { state: { n: 1 }, epoch: 0, receiveId: 'r1' },
         },
         {
-          pluginId: 'trace-keeper',
+          pluginId: FIXTURE_PLUGIN,
           schemaVersion: 1,
           payload: { state: { n: 2 }, epoch: 0, receiveId: 'r2' },
         },
       ],
       'r1',
+      FIXTURE_PLUGIN,
     )
     assert.equal(out.length, 1)
     assert.equal(

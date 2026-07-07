@@ -8,6 +8,7 @@ import type {
   CompleteWithContextDraftParse,
   CompleteWithContextRequest,
   CompleteWithContextResult,
+  LorebookEntrySlice,
   PluginContextBlocksSuccess,
 } from './shared/plugin-context-blocks.js'
 
@@ -76,6 +77,7 @@ async function parseDraftViaHook(
   apiConfigId: string | undefined,
   draft: CompleteWithContextDraftParse,
   content: string,
+  pluginSettings: Record<string, unknown> | undefined,
   userId?: string,
 ): Promise<
   | { ok: true; draft: { title: string; content: string; keywords: string[] } }
@@ -100,7 +102,7 @@ async function parseDraftViaHook(
         fromTurn: draft.fromTurn,
         toTurn: draft.toTurn,
         blockTurns: draft.blockTurns,
-        sidecarName: draft.sidecarName,
+        pluginSettings,
       },
       content,
       api,
@@ -162,11 +164,19 @@ async function completeOnce(
 ): Promise<CompleteWithContextResult> {
   const conversationId = req.conversationId.trim()
   const blocks = Array.isArray(req.blocks) ? req.blocks : []
-  if (blocks.length === 0) {
+  const prepared = req.preparedContext
+  if (!prepared && blocks.length === 0) {
     return { ok: false, code: 'blocks_required' }
   }
 
-  const step1 = await runPluginContextBlocksResolve({ conversationId, blocks })
+  const step1 = prepared
+    ? {
+        ok: true as const,
+        blocks: prepared.blocks,
+        entriesByBlock: prepared.entriesByBlock ?? {},
+        meta: prepared.meta,
+      }
+    : await runPluginContextBlocksResolve({ conversationId, blocks })
   if (!step1.ok) {
     return step1
   }
@@ -249,6 +259,7 @@ async function completeOnce(
       apiConfigId,
       req.draft,
       complete.content,
+      req.pluginSettings,
       userId,
     )
     if (!parsed.ok) {
@@ -299,20 +310,60 @@ export function parseCompleteWithContextBody(
   }
   const layout = parsePromptLayout(o.layout)
   if (!layout) return null
+
+  let preparedContext: CompleteWithContextRequest['preparedContext']
+  if (
+    o.preparedContext &&
+    typeof o.preparedContext === 'object' &&
+    !Array.isArray(o.preparedContext)
+  ) {
+    const pc = o.preparedContext as Record<string, unknown>
+    const metaRaw = pc.meta
+    if (
+      pc.blocks &&
+      typeof pc.blocks === 'object' &&
+      !Array.isArray(pc.blocks) &&
+      metaRaw &&
+      typeof metaRaw === 'object' &&
+      !Array.isArray(metaRaw)
+    ) {
+      const meta = metaRaw as Record<string, unknown>
+      const userDisplayName =
+        typeof meta.userDisplayName === 'string' ? meta.userDisplayName : ''
+      const assistantDisplayName =
+        typeof meta.assistantDisplayName === 'string' ? meta.assistantDisplayName : ''
+      if (userDisplayName && assistantDisplayName) {
+        preparedContext = {
+          blocks: pc.blocks as Record<string, string>,
+          entriesByBlock:
+            pc.entriesByBlock &&
+            typeof pc.entriesByBlock === 'object' &&
+            !Array.isArray(pc.entriesByBlock)
+              ? (pc.entriesByBlock as Record<string, LorebookEntrySlice[]>)
+              : {},
+          meta: {
+            userDisplayName,
+            assistantDisplayName,
+            ...(typeof meta.turnCount === 'number' ? { turnCount: meta.turnCount } : {}),
+          },
+        }
+      }
+    }
+  }
+
   const blocks = parseContextBlockSpecs(o.blocks)
-  if (blocks.length === 0) return null
+  if (!preparedContext && blocks.length === 0) return null
 
   let draft: CompleteWithContextDraftParse | undefined
-  if (o.draft && typeof o.draft === 'object' && !Array.isArray(o.draft)) {
+  if (o.draft !== undefined && o.draft !== null) {
+    if (typeof o.draft !== 'object' || Array.isArray(o.draft)) return null
     const d = o.draft as Record<string, unknown>
-    const kind = d.kind === 'sidecar' ? 'sidecar' : d.kind === 'memory' ? 'memory' : null
-    if (kind) {
-      draft = { kind }
-      if (typeof d.fromTurn === 'number') draft.fromTurn = d.fromTurn
-      if (typeof d.toTurn === 'number') draft.toTurn = d.toTurn
-      if (typeof d.blockTurns === 'number') draft.blockTurns = d.blockTurns
-      if (typeof d.sidecarName === 'string') draft.sidecarName = d.sidecarName.trim()
-    }
+    const kind = typeof d.kind === 'string' ? d.kind.trim() : ''
+    if (!kind) return null
+    draft = { kind }
+    if (typeof d.fromTurn === 'number') draft.fromTurn = d.fromTurn
+    if (typeof d.toTurn === 'number') draft.toTurn = d.toTurn
+    if (typeof d.blockTurns === 'number') draft.blockTurns = d.blockTurns
   }
 
   return {
@@ -328,6 +379,7 @@ export function parseCompleteWithContextBody(
     responseFormat:
       o.responseFormat === 'text' ? 'text' : o.responseFormat === 'json_object' ? 'json_object' : undefined,
     dryRun: o.dryRun === true,
+    preparedContext,
     draft,
     captureDebug: o.captureDebug === true,
     fallbackToChat: o.fallbackToChat === true,

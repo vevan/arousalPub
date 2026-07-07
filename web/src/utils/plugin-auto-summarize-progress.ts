@@ -1,4 +1,4 @@
-/** 与 plot-summary 插件 settings.ts 中自动块逻辑对齐（纯函数，供对话设置 UI） */
+/** 自动摘要进度计算（与插件 settings 中块逻辑对齐，供对话设置 companion UI） */
 
 function asInt(
   value: unknown,

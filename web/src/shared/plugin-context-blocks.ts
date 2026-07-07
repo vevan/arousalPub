@@ -67,6 +67,13 @@ export type PluginContextBlocksSuccess = {
   }
 }
 
+/** 步骤 1 已 resolve 的结果；传入 `completeWithContext` 可跳过重复读盘 */
+export type PreparedPluginContextBlocks = {
+  blocks: Record<string, string>
+  entriesByBlock: Record<string, LorebookEntrySlice[]>
+  meta: PluginContextBlocksSuccess['meta']
+}
+
 export type PluginContextBlocksResult =
   | PluginContextBlocksSuccess
   | { ok: false; code: string }
@@ -108,15 +115,16 @@ export type AssemblePluginPromptResult =
   | { ok: false; code: string; promptTokens?: number; budget?: number }
 
 export type CompleteWithContextDraftParse = {
-  kind: 'memory' | 'sidecar'
+  /** 插件定义的 draft 类型；宿主不解释语义 */
+  kind: string
   fromTurn?: number
   toTurn?: number
   blockTurns?: number
-  sidecarName?: string
 }
 
 export type CompleteWithContextRequest = {
   conversationId: string
+  /** 与 `preparedContext` 二选一；有 `preparedContext` 时可省略（避免重复 resolve） */
   blocks: ContextBlockSpec[]
   layout: PromptLayout
   pluginSettings?: Record<string, unknown>
@@ -124,11 +132,13 @@ export type CompleteWithContextRequest = {
   apiConfigId?: string
   responseFormat?: 'json_object' | 'text'
   dryRun?: boolean
+  /** 步骤 1 已 resolve 的 blocks；传入后跳过 `runPluginContextBlocksResolve` */
+  preparedContext?: PreparedPluginContextBlocks
   /** 出站成功后由插件 hook 解析为 draft */
   draft?: CompleteWithContextDraftParse
   /** 会话 auditDebug 时由路由/插件传入 */
   captureDebug?: boolean
-  /** 插件未绑定时回退会话/全局 chat API（如 trace-keeper Separate） */
+  /** 插件未绑定时回退会话/全局 chat API（`fallbackToChat`） */
   fallbackToChat?: boolean
 }
 

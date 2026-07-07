@@ -1,4 +1,5 @@
 import type {
+  PluginSettingsFieldSchema,
   PluginSettingsItemFieldSchema,
   PluginSettingsSchema,
 } from '@/plugins/plugin-settings-types'
@@ -78,15 +79,13 @@ export function parseCheckboxGroupField(value: unknown): string[] {
   return []
 }
 
-const TRACE_KEEPER_PLUGIN_ID = 'trace-keeper'
-const TRACE_KEEPER_BUILTIN_BUNDLE_ID = 'scene-tracker-default'
-
 export type SampleStateJsonValidation = 'empty' | 'valid' | 'invalid'
 
-export function traceKeeperSampleStateJsonValidationEnabled(
+export function sampleStateJsonValidationEnabled(
   model: Record<string, unknown>,
+  whenFieldKey: string,
 ): boolean {
-  return model.validateSampleStateJson !== false
+  return model[whenFieldKey] !== false
 }
 
 export function classifySampleStateJsonText(
@@ -114,15 +113,25 @@ export function sampleStateInvalidJsonMessage(
   return translatePluginI18nKey(key, t, te)
 }
 
-function validateTraceKeeperBundleList(
+function jsonSampleStateSubKey(field: PluginSettingsFieldSchema): string | null {
+  for (const sub of field.itemFields ?? []) {
+    if (sub.widget === 'jsonSampleState') return sub.key
+  }
+  return null
+}
+
+function validateBundleListField(
+  field: PluginSettingsFieldSchema,
   model: Record<string, unknown>,
   pluginId: string,
   t: (key: string) => string,
   te: (key: string) => boolean,
 ): string | null {
-  if (pluginId !== TRACE_KEEPER_PLUGIN_ID) return null
-  if (!traceKeeperSampleStateJsonValidationEnabled(model)) return null
-  const items = parseObjectListField(model.bundleList)
+  const whenKey = field.validateSampleStateWhen ?? 'validateSampleStateJson'
+  const jsonSubKey = jsonSampleStateSubKey(field)
+  const validateJson =
+    jsonSubKey != null && sampleStateJsonValidationEnabled(model, whenKey)
+  const items = parseObjectListField(model[field.key])
   for (const item of items) {
     const label = String(item.label ?? '').trim()
     if (!label) {
@@ -134,9 +143,11 @@ function validateTraceKeeperBundleList(
       const key = pluginI18nKey(pluginId, 'bundleIdRequired')
       return translatePluginI18nKey(key, t, te)
     }
-    const jsonText = String(item.sampleStateJson ?? '')
-    if (classifySampleStateJsonText(jsonText) === 'invalid') {
-      return sampleStateInvalidJsonMessage(pluginId, t, te)
+    if (validateJson && jsonSubKey) {
+      const jsonText = String(item[jsonSubKey] ?? '')
+      if (classifySampleStateJsonText(jsonText) === 'invalid') {
+        return sampleStateInvalidJsonMessage(pluginId, t, te)
+      }
     }
   }
   return null
@@ -169,6 +180,10 @@ export function validatePluginSettingsModel(
           }
         }
       }
+      if (field.objectListValidation === 'bundleList') {
+        const bundleErr = validateBundleListField(field, model, pluginId, t, te)
+        if (bundleErr) return bundleErr
+      }
       continue
     }
     if (field.required && !isNonEmptyText(model[field.key])) {
@@ -182,7 +197,7 @@ export function validatePluginSettingsModel(
       return `${label}: ${req}`
     }
   }
-  return validateTraceKeeperBundleList(model, pluginId, t, te)
+  return null
 }
 
 export function defaultTextForField(
@@ -262,10 +277,11 @@ export function newObjectListItem(
   t: (key: string) => string,
   te: (key: string) => boolean,
   usedIds?: Set<string>,
+  reservedObjectListIds?: string[],
 ): Record<string, unknown> {
   const reserved = new Set(usedIds ?? [])
-  if (pluginId === TRACE_KEEPER_PLUGIN_ID) {
-    reserved.add(TRACE_KEEPER_BUILTIN_BUNDLE_ID)
+  for (const id of reservedObjectListIds ?? []) {
+    reserved.add(id)
   }
   const item: Record<string, unknown> = {
     id: allocateShortId(reserved),

@@ -12,12 +12,7 @@ import type { PluginRegistryDocument, PluginRegistryEntry } from './types.js'
 
 const DEFAULT_REGISTRY: PluginRegistryDocument = {
   version: 1,
-  plugins: [
-    { id: 'guidance-generate', enabled: true, order: 10 },
-    { id: 'reply-complete-sound', enabled: true, order: 20 },
-    { id: 'swipe-cleaner', enabled: true, order: 30 },
-    { id: 'conversation-export', enabled: true, order: 40 },
-  ],
+  plugins: [],
 }
 
 function normalizeEntry(raw: unknown): PluginRegistryEntry | null {

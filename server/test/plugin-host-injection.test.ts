@@ -41,7 +41,7 @@ describe('applyPluginsAfterAssemblePrompts', () => {
     const runtime = {
       plugins: [
         {
-          id: 'trace-keeper',
+          id: 'fixture-plugin-high',
           order: 10,
           module: {
             resolveAfterAssemblePromptsAddition: async () => [
@@ -108,7 +108,7 @@ describe('applyPluginsAfterAssemblePrompts', () => {
     )
   })
 
-  it('merges guidance order 1 before trace-keeper order 999 across plugins', async () => {
+  it('merges low injectionOrder before high injectionOrder across plugins', async () => {
     const base = [
       { role: 'system' as const, content: 'main' },
       { role: 'user' as const, content: 'hello' },
@@ -116,7 +116,7 @@ describe('applyPluginsAfterAssemblePrompts', () => {
     const runtime = {
       plugins: [
         {
-          id: 'guidance-generate',
+          id: 'fixture-plugin-low',
           order: 10,
           module: {
             resolveAfterAssemblePromptsAddition: async () => [
@@ -129,7 +129,7 @@ describe('applyPluginsAfterAssemblePrompts', () => {
           },
         },
         {
-          id: 'trace-keeper',
+          id: 'fixture-plugin-high',
           order: 70,
           module: {
             resolveAfterAssemblePromptsAddition: async () => [
@@ -157,7 +157,7 @@ describe('applyPluginsAfterAssemblePrompts', () => {
     )
   })
 
-  it('interleaves afterUserInput between guidance and trace-keeper', async () => {
+  it('interleaves afterUserInput between low- and high-order plugins', async () => {
     const base = [
       { role: 'system' as const, content: 'main' },
       { role: 'user' as const, content: 'hello' },
@@ -166,7 +166,7 @@ describe('applyPluginsAfterAssemblePrompts', () => {
     const runtime = {
       plugins: [
         {
-          id: 'guidance-generate',
+          id: 'fixture-plugin-low',
           order: 10,
           module: {
             resolveAfterAssemblePromptsAddition: async () => [
@@ -179,7 +179,7 @@ describe('applyPluginsAfterAssemblePrompts', () => {
           },
         },
         {
-          id: 'trace-keeper',
+          id: 'fixture-plugin-high',
           order: 70,
           module: {
             resolveAfterAssemblePromptsAddition: async () => [
@@ -208,7 +208,7 @@ describe('applyPluginsAfterAssemblePrompts', () => {
     )
   })
 
-  it('interleaves macro-expanded afterUserInput between guidance and trace-keeper', async () => {
+  it('interleaves macro-expanded afterUserInput between low- and high-order plugins', async () => {
     const base = [
       { role: 'system' as const, content: 'main' },
       { role: 'user' as const, content: 'hello' },
@@ -217,7 +217,7 @@ describe('applyPluginsAfterAssemblePrompts', () => {
     const runtime = {
       plugins: [
         {
-          id: 'guidance-generate',
+          id: 'fixture-plugin-low',
           order: 10,
           module: {
             resolveAfterAssemblePromptsAddition: async () => [
@@ -230,7 +230,7 @@ describe('applyPluginsAfterAssemblePrompts', () => {
           },
         },
         {
-          id: 'trace-keeper',
+          id: 'fixture-plugin-high',
           order: 70,
           module: {
             resolveAfterAssemblePromptsAddition: async () => [
@@ -270,7 +270,7 @@ describe('applyPluginsAfterAssemblePrompts', () => {
     const runtime = {
       plugins: [
         {
-          id: 'guidance-generate',
+          id: 'fixture-plugin-low',
           order: 10,
           module: {
             resolveAfterAssemblePromptsAddition: async () => [

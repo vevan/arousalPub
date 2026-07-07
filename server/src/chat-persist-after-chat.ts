@@ -10,7 +10,6 @@ import {
   collectChunkEntityIds,
   getTurnUserText,
   readConversationIndex,
-  readConversationPluginSettings,
   resolvedCharacterIds,
   saveFirstTurn,
   updateTurnContentInTailChunk,
@@ -49,6 +48,7 @@ import {
   mergeTurnPluginEntries,
   resolveTurnPluginEntriesFromAssistant,
 } from './plugin-host.js'
+import { resolvePluginPersistExtras } from './plugin-lifecycle.js'
 import { attachReceiveIdToTurnPluginEntries } from './turn-plugin-utils.js'
 import type { ChatPluginsBody, TurnPluginEntry } from './plugin-types.js'
 import type {
@@ -92,7 +92,7 @@ export interface ChatPersistResult {
   retroStatus?: RetroPersistStatus
   /** 落盘轮次的 plugins[] 快照，供前端增量 patch、避免全量 reload */
   plugins?: unknown[]
-  /** 落盘时 trace-keeper trackerEpoch */
+  /** 落盘时插件附加字段（如 trackerEpoch，由插件 persist hook 提供） */
   trackerEpoch?: number
   /** 落盘 receive.runtime 中的 token/耗时（供前端增量 patch，避免 reload） */
   estimatedTokens?: number
@@ -309,15 +309,6 @@ function resolveCompletionTokens(
   return n > 0 ? n : undefined
 }
 
-function trackerEpochFromConvIndex(
-  idx: Awaited<ReturnType<typeof readConversationIndex>>,
-): number {
-  if (!idx) return 0
-  const tk = readConversationPluginSettings(idx, 'trace-keeper')
-  const n = tk.trackerEpoch
-  return typeof n === 'number' && Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0
-}
-
 function groupChatResolveAfterSegment(
   groupChat: ReturnType<typeof normalizeGroupChatSettings>,
   charIds: string[],
@@ -468,7 +459,7 @@ function okPersistResult(
   },
   fields: PersistRegexFields,
   plugins?: unknown[],
-  trackerEpoch?: number,
+  persistExtras?: Record<string, unknown>,
   receiveMeta?: Pick<
     ChatPersistResult,
     'estimatedTokens' | 'completionTokens' | 'durationMs' | 'model'
@@ -483,7 +474,7 @@ function okPersistResult(
       ? { finalAssistantReasoning: fields.assistantReasoning }
       : {}),
     ...(plugins !== undefined ? { plugins } : {}),
-    ...(typeof trackerEpoch === 'number' ? { trackerEpoch } : {}),
+    ...(persistExtras ?? {}),
     ...receiveMeta,
   }
 }
@@ -523,7 +514,7 @@ async function finishPersistResult(
   fields: PersistRegexFields,
   retroOpts: { newTailOrdinal: number; includeNewRetro: boolean } | null,
   plugins?: unknown[],
-  trackerEpoch?: number,
+  persistExtras?: Record<string, unknown>,
   receiveMeta?: Pick<
     ChatPersistResult,
     'estimatedTokens' | 'completionTokens' | 'durationMs' | 'model'
@@ -533,7 +524,7 @@ async function finishPersistResult(
     base,
     fields,
     plugins,
-    trackerEpoch,
+    persistExtras,
     receiveMeta,
   )
   if (!retroOpts) return result
@@ -688,7 +679,7 @@ export async function persistTurnAfterModelReply(params: {
   )
 
   const activeBranchPath = await readConversationActiveBranchPath(conversationId)
-  const trackerEpoch = trackerEpochFromConvIndex(idx)
+  const persistExtras = await resolvePluginPersistExtras(idx)
 
   const model =
     typeof params.model === 'string' && params.model.trim()
@@ -873,7 +864,7 @@ export async function persistTurnAfterModelReply(params: {
         includeNewRetro: false,
       },
       turnPluginsFromChunk(afterLocated?.chunk, turnOrd),
-      trackerEpoch,
+      persistExtras,
       persistReceiveMeta,
     )
   }
@@ -1059,7 +1050,7 @@ export async function persistTurnAfterModelReply(params: {
           includeNewRetro: false,
         },
         turnPluginsFromChunk(afterLocated?.chunk, regenOrd),
-        trackerEpoch,
+        persistExtras,
         persistReceiveMeta,
       )
     }
@@ -1098,7 +1089,7 @@ export async function persistTurnAfterModelReply(params: {
         fields,
         { newTailOrdinal: 0, includeNewRetro: true },
         turnPluginsFromChunk(saved.chunk, 0),
-        trackerEpoch,
+        persistExtras,
         persistReceiveMeta,
       )
     }
@@ -1156,7 +1147,7 @@ export async function persistTurnAfterModelReply(params: {
         includeNewRetro: true,
       },
       turnPluginsFromChunk(chunk, appendTurnOrdinal),
-      trackerEpoch,
+      persistExtras,
       persistReceiveMeta,
     )
   }
@@ -1290,7 +1281,7 @@ export async function persistTurnAfterModelReply(params: {
       fields,
       { newTailOrdinal: 0, includeNewRetro: true },
       turnPluginsFromChunk(saved.chunk, 0),
-      trackerEpoch,
+      persistExtras,
       persistReceiveMeta,
     )
   }
@@ -1362,7 +1353,7 @@ export async function persistTurnAfterModelReply(params: {
       includeNewRetro: true,
     },
     turnPluginsFromChunk(chunk, persistedOrdinal),
-    trackerEpoch,
+    persistExtras,
     persistReceiveMeta,
   )
 }

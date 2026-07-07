@@ -49,7 +49,7 @@ export interface ChatTurnItem {
   speakerCharacterId?: string
   /** 群聊：本 user turn 发言额度（与磁盘 groupChatTurnState 对齐） */
   groupChatTurnState?: GroupChatTurnState
-  /** 落盘插件快照（如 trace-keeper） */
+  /** 落盘插件快照（turn.plugins[] 条目） */
   plugins?: unknown[]
 }
 
@@ -71,8 +71,6 @@ export interface ChatPersistPayload {
   retroStatus?: RetroPersistStatus
   /** 落盘轮次的 plugins[] 快照（与磁盘一致） */
   plugins?: unknown[]
-  /** 落盘时 trace-keeper trackerEpoch，供前端本地快照对齐 */
-  trackerEpoch?: number
   /** 落盘 receive.runtime（供前端增量 patch token，避免 reload） */
   estimatedTokens?: number
   completionTokens?: number

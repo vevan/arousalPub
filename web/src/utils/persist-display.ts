@@ -5,112 +5,13 @@ import type {
   RetroPersistTurnPayload,
 } from '@/types/chat-turn'
 
-const TRACE_KEEPER_BLOCK_RE =
-  /<ex-trace-keeper>\s*([\s\S]*?)\s*<\/ex-trace-keeper>/gi
-
-function parseTraceKeeperStateFromAssistant(
-  content: string,
-): Record<string, unknown> | null {
-  const text = content.trim()
-  if (!text) return null
-  let last: Record<string, unknown> | null = null
-  for (const match of text.matchAll(TRACE_KEEPER_BLOCK_RE)) {
-    const inner = typeof match[1] === 'string' ? match[1].trim() : ''
-    if (!inner) continue
-    try {
-      const parsed: unknown = JSON.parse(inner)
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        last = parsed as Record<string, unknown>
-      }
-    } catch {
-      /* ignore invalid blocks */
-    }
-  }
-  return last
-}
-
-const TRACE_KEEPER_PLUGIN_ID = 'trace-keeper'
-
-function payloadReceiveId(payload: Record<string, unknown> | undefined): string {
-  const raw = payload?.receiveId
-  return typeof raw === 'string' ? raw.trim() : ''
-}
-
-/** 与 server turn-plugin-utils.mergeTurnPluginEntry 一致 */
-function mergeTurnPluginEntry(
-  existing: unknown[] | undefined,
-  entry: { pluginId: string; schemaVersion?: number; payload: Record<string, unknown> },
-): unknown[] {
-  const entryReceiveId = payloadReceiveId(entry.payload)
-  const out: unknown[] = []
-  for (const raw of existing ?? []) {
-    if (!raw || typeof raw !== 'object') {
-      out.push(raw)
-      continue
-    }
-    const pluginId = (raw as { pluginId?: unknown }).pluginId
-    if (typeof pluginId !== 'string' || pluginId !== entry.pluginId) {
-      out.push(raw)
-      continue
-    }
-
-    if (entry.pluginId !== TRACE_KEEPER_PLUGIN_ID) {
-      continue
-    }
-
-    const prevPayload =
-      (raw as { payload?: unknown }).payload &&
-      typeof (raw as { payload?: unknown }).payload === 'object' &&
-      !Array.isArray((raw as { payload?: unknown }).payload)
-        ? (raw as { payload: Record<string, unknown> }).payload
-        : undefined
-    const prevReceiveId = payloadReceiveId(prevPayload)
-
-    if (entryReceiveId) {
-      if (prevReceiveId === entryReceiveId) continue
-      out.push(raw)
-      continue
-    }
-
-    if (prevReceiveId) {
-      out.push(raw)
-      continue
-    }
-
-    continue
-  }
-  out.push(entry)
-  return out
-}
-
-function buildTraceKeeperEntryFromPersist(
-  persist: ChatPersistPayload,
-): { pluginId: string; schemaVersion: number; payload: Record<string, unknown> } | undefined {
-  const receiveId = persist.receiveId?.trim()
-  const content = persist.finalAssistantContent
-  if (!receiveId || typeof content !== 'string' || !content.trim()) return undefined
-  const state = parseTraceKeeperStateFromAssistant(content)
-  if (!state) return undefined
-  const epoch =
-    typeof persist.trackerEpoch === 'number' && Number.isFinite(persist.trackerEpoch)
-      ? Math.max(0, Math.round(persist.trackerEpoch))
-      : 0
-  return {
-    pluginId: TRACE_KEEPER_PLUGIN_ID,
-    schemaVersion: 1,
-    payload: { state, epoch, receiveId },
-  }
-}
-
 function resolvePersistPluginsForTurn(
   persist: ChatPersistPayload,
-  existing: unknown[] | undefined,
 ): unknown[] | undefined {
   if (Array.isArray(persist.plugins)) return persist.plugins
-  const entry = buildTraceKeeperEntryFromPersist(persist)
-  if (!entry) return undefined
-  return mergeTurnPluginEntry(existing, entry)
+  return undefined
 }
+
 /** persist SSE/JSON 带回的 receive.runtime，合并进待发 receive */
 export function mergeReceiveRuntimeFromPersist(
   receive: ReceiveItem,
@@ -228,7 +129,7 @@ export function applyPersistTurnPlugins(
   const idx = turns.findIndex((t) => t.turnOrdinal === ord)
   if (idx < 0) return turns
   const cur = turns[idx]!
-  const plugins = resolvePersistPluginsForTurn(persist, cur.plugins)
+  const plugins = resolvePersistPluginsForTurn(persist)
   const turnId = persist.turnId?.trim()
   if (!plugins && !turnId) return turns
   return turns.map((t, i) =>

@@ -8,8 +8,11 @@
 
 ## 1. 核心原则
 
+> **宿主实现强制约束**：[`DOC/41-plugin-host-generic-principles.md`](41-plugin-host-generic-principles.md) · `.cursor/rules/plugin-host-generic.mdc` — 宿主源码**不得**出现 bundled 插件 id 或按 id 特化；**本文档**面向插件作者，下文 bundled 插件名仅作**说明性示例**。
+
 | 项 | 定案 |
 |----|------|
+| **宿主通用性** | 宿主只提供 generic 能力；插件差异由 manifest + hook/action 表达 — 详见 **DOC/41** |
 | **数据与密钥** | 插件在浏览器**不**持 API Key；出站模型调用、读盘均由服务端完成 |
 | **访问路径** | 聊天页插件**只**通过 `register(host)` 注入的 **`host.*`** 访问能力；**禁止**在 `web.mjs` 里直 `fetch('/api/lorebooks')`、`fetch('/api/settings')` 等本体 REST |
 | **业务边界** | 宿主提供 **原语**（read/patch、转发 messages、lore 条目 CRUD）；摘要 prompt、解析、触发策略等 **插件自建** |
@@ -243,6 +246,7 @@ interface ConversationBatchContext {
 | `prepareContextBlocks(req)` | **步骤 1** 取块：`ContextBlockSpec[]` → blocks / entriesByBlock；**`DOC/39` §3.1** |
 | `assemblePluginPrompt(req)` | **步骤 2** blocks + layout → `messages[]`；须 `anchorToTurn`；**`DOC/39` §3.2** |
 | `completeWithContext(req)` | **主入口**：resolve API → 步骤 1+2 → complete；可选 `draft` 解析；**`DOC/39` §3.3** |
+| **`runAction(action, body)`** | manifest **`serverActions`** 声明的自定义服务端动作 → `POST …/actions/:action`（**勿**在插件内直拼 URL） |
 
 **`complete` 请求**：
 
@@ -299,8 +303,9 @@ interface ConversationBatchContext {
   responseFormat?: 'json_object' | 'text'
   dryRun?: boolean
   captureDebug?: boolean
-  fallbackToChat?: boolean   // 如 trace-keeper Separate：未绑 apiConfigId 时回退 chat API
-  draft?: { kind: 'memory' | 'sidecar'; fromTurn?; toTurn?; blockTurns?; sidecarName? }
+  fallbackToChat?: boolean   // 未绑 apiConfigId 时回退 chat API（插件 manifest 场景自行声明）
+  draft?: { kind: string; fromTurn?; toTurn?; blockTurns? }
+  // kind：插件 opaque 字符串；lore/sidecar 等私有字段放 pluginSettings，由 parseCompleteDraftContent 解释
 }
 // → { ok: true, content?, messages[], draft?, preflight?, usage?, latencyMs?, debug? }
 // 失败：code 如 context_exceeded、parse_failed、turn_range_too_large；超限时含 promptTokens / budget
@@ -308,7 +313,28 @@ interface ConversationBatchContext {
 
 **权限**：`plugin.complete`（complete / preflight / `assemblePluginPrompt` / `completeWithContext`）；`prepareContextBlocks` 需 `conversation.read`，**仅当 blocks 含 `lorebook.entries` 时**另需 `lorebook.read`。
 
-**可中断**：`host.ui.progress({ abortable: true })` 时，`complete` / `prepareContextBlocks` / `assemblePluginPrompt` / `completeWithContext` 等会携带 `AbortSignal`。
+**可中断**：`host.ui.progress({ abortable: true })` 时，`complete` / `prepareContextBlocks` / `assemblePluginPrompt` / `completeWithContext` / **`runAction`** 等会携带 `AbortSignal`。
+
+**`runAction` 示例**（manifest 须声明 `serverActions`）：
+
+```ts
+// manifest.json
+{
+  "serverActions": [
+    { "name": "my-action", "permissions": ["conversation.read", "turn.plugins.write"] }
+  ]
+}
+
+// dist/web.mjs — register(host) 内
+const data = await host.plugin.runAction('my-action', {
+  conversationId: host.conversation.getId?.(),
+  foo: 'bar',
+})
+// 成功：data 为服务端 JSON（含 ok: true 及插件自定义字段）
+// 失败：PluginHostApiError（code / status / detail / 可选 debug）
+```
+
+服务端实现：导出 **`runPluginAction(action, body, api)`**，返回 `{ ok: true, … }` 或 `{ ok: false, code, … }`；可选 **`turnMerge`** 由宿主写盘（见 §4.3）。
 
 ### 3.9 `host.token`
 
@@ -393,9 +419,9 @@ interface ConversationBatchContext {
 | `resolveAfterAssemblePromptsAddition(ctx, api)` | `/api/chat` 组装 messages 之后（推荐） | 返回注入描述符（规划：`chat` depth + order）；宿主 post-user 区归并 + token 预算。定案见 **`DOC/38`** §3 |
 | `afterAssemblePrompts(ctx, api)` | 同上 | 整表替换（guidance-generate）；**规划**迁描述符后降为 escape hatch |
 | `resolveTurnPluginEntries(plugins, api)` | 落盘前 | 写入 `turn.plugins[]` 条目（body 侧） |
-| `resolveTurnPluginEntriesFromAssistant(plugins, assistantText, api)` | 落盘前 | 从 assistant 解析 → 条目（trace-keeper Together） |
-| `regenerateSeparateState(ctx, api)` | `POST …/regenerate-separate` | Separate 补生成（trace-keeper） |
-| `formatPluginContextBlocks(resolved, ctx)` | completeWithContext 步骤 1 后 | 插件 format blocks（Historian XML / trace-keeper `<dialogue>`）；`ctx.anchorToTurn` |
+| `resolveTurnPluginEntriesFromAssistant(plugins, assistantText, api)` | 落盘前 | 从 assistant 解析 → 条目 |
+| **`runPluginAction(action, body, api)`** | `POST …/actions/:action` | manifest `serverActions` 自定义动作（替代 per-plugin 路由） |
+| `formatPluginContextBlocks(resolved, ctx)` | completeWithContext 步骤 1 后 | 插件 format blocks；`ctx.anchorToTurn` |
 | `parseCompleteDraftContent(ctx, content, api)` | completeWithContext 出站后 | JSON → draft normalize |
 
 在 manifest 声明 `"hooks": ["afterAssemblePrompts"]` 等，设置页会展示。
@@ -409,10 +435,19 @@ interface ConversationBatchContext {
 | `runPluginComplete(req)` | 同 Web `complete` |
 | `runPluginCompletePreflight(req)` | 同 Web preflight |
 | `runPluginMacroExpand(req)` | 同 Web `macros.expand` |
-| **`completeWithContext(req)`** | 同 Web；Server 插件 Separate 等直接调用 |
+| **`completeWithContext(req)`** | 同 Web；Server 插件长流程直接调用 |
+| **`runPluginAction(action, body, api)`** | 同 Web `runAction` |
 | **`regex.listRules` / `applyText` / `applyMessages`** | 同 Web `host.regex`（读盘 `regex-rules.json` · `server/src/regex-apply.ts`） |
 
-**`parseCompleteDraftContent` 约定**：抛出 `parse_failed` 时宿主映射为 `plugin_complete_draft_failed`。
+### 4.3 `runPluginAction` 与 `turnMerge`
+
+- manifest **`serverActions`**：`{ "name": "kebab-case", "permissions": ["…"] }`（name 匹配 `^[a-z0-9][a-z0-9-]{0,63}$`）。
+- 插件 **`runPluginAction(action, body, api)`** 返回：
+  - 成功：`{ ok: true, …自定义字段 }`；可选 **`turnMerge`**：`{ turnOrdinal, receiveId, assistantContent, entry }` 由宿主合并写盘。
+  - 失败：`{ ok: false, code, status?, debug? }`。
+- Web 侧统一 **`host.plugin.runAction(action, body)`**；**禁止**在 `web.mjs` 内 `fetch('/api/plugins/…/actions/…')`。
+
+**`parseCompleteDraftContent` 约定**：抛出 `parse_failed` 时宿主映射为 `plugin_complete_draft_failed`。`ctx.pluginSettings` 为 complete 请求的 `pluginSettings` 副本；sidecar / lore 私有字段由插件自行约定（宿主不声明 `sidecarName` 等键）。
 
 ---
 
@@ -442,6 +477,7 @@ interface ConversationBatchContext {
 | POST | `/api/plugins/:id/prepare-context` | `conversation.read` + `lorebook.read`（body 须含 `blocks[]`） |
 | POST | `/api/plugins/:id/assemble-plugin-prompt` | `conversation.read` |
 | POST | `/api/plugins/:id/complete-with-context` | `plugin.complete` + `conversation.read` + `lorebook.read` |
+| POST | `/api/plugins/:id/actions/:action` | manifest **`serverActions[].permissions`**（逐项 enforce） |
 | POST | `/api/plugins/:id/macros/expand` | `conversation.read` |
 
 **会话 pluginSettings**：经 `host.conversation.get/patchPluginSettings` → `GET/PATCH /api/chat/conversations/:id`（非 `/api/plugins` 前缀，但仍由宿主封装）。
@@ -490,14 +526,26 @@ manifest 可选声明 **`memory.stripBlockTags`**：`string[]`，标签名与助
 | `lorebook` | 资料库下拉 |
 | `objectList` | 结构化列表（`itemFields` 定义子字段） |
 
-**widget**：`slider`（number）、`promptTemplate`（带恢复默认的 text，配合 `defaultKey` / `required`）。
+**widget**：`slider`（number）、`promptTemplate`（带恢复默认的 text）、**`bundleSelect`**、**`inheritTriMode`**（会话三态 inherit/on/off）、**`inheritTriModeSheetList`**（按全局 objectList 逐条三态覆盖）、objectList 子字段 **`jsonSampleState`**。
+
+**扩展字段**（宿主表单识别）：
+
+| 字段 | 用途 |
+|------|------|
+| `bundleSelect.listFieldKey` | 关联 objectList 字段 |
+| `bundleSelect.builtinValue` / `inheritOption` | 内置项 / 会话「继承全局」 |
+| `objectListValidation: 'bundleList'` | bundle 列表 label/id/JSON 校验 |
+| `validateSampleStateWhen` | 控制 JSON 校验开关字段 key |
+| `companionPanel` | 对话设置 boolean 下方 companion 面板 id（宿主 slot 解析） |
+| `inheritTriModeSheetList.globalListFieldKey` | 全局 objectList 字段（如样式 sheets） |
+| `dialogMaxWidth` | 全局设置对话框宽度（schema 根） |
 
 会话级覆盖：在插件逻辑里 `host.conversation.patchPluginSettings({ ... })`，字段由插件自定（如 `targetLorebookId`、`lastSummarizedEnd`）。
 
 ### 6.1.1 `conversationSettingsSchema`（对话齿轮 → 插件 Tab）
 
 - manifest 可选 **`conversationSettingsSchema`**（字段类型与 §6.1 相同）；完整定案见 **`DOC/21`**。
-- 对话 **`ConversationContextSettings`** 仅渲染 **enabled** 且含该 schema 的插件；**不得**在其它宿主 Tab 硬编码 `pluginId` 字段。
+- 对话 **`ConversationContextSettings`** 仅渲染 **enabled** 且含该 schema 的插件；**不得**在宿主按 bundled **`pluginId`** 分支（`companionPanel` + slot 替代 plot 类特化块）。
 - 可选字段属性：**`conversationInherit`**、**`inheritFromGlobalKey`**（清空 → PATCH `null` 删键，继承全局 `settings.json`）。
 
 ### 6.2 打包与部署
@@ -604,4 +652,5 @@ class PluginHostApiError {
 | 2026-06-23 | §3.14 `host.regex` 标为已实现（2026-06-10）；§4.2 补 `api.regex` |
 | 2026-07-07 | **DOC/39 落地**：`prepareContextBlocks` / `assemblePluginPrompt` / `completeWithContext`；移除 legacy prepareContext / complete-draft |
 | 2026-07-07 | **Phase 3**：trace-keeper Separate 迁 `completeWithContext`；契约补 `stripBlockTagsOnToTurn` / `fallbackToChat` / `captureDebug` |
+| 2026-07-07 | **宿主去特化**：`host.plugin.runAction` + manifest `serverActions`；`draft.kind` 改为 opaque `string`；settings schema widget 文档 |
 | 2026-07-07 | §10 通知中心改为 **localStorage**（`DOC/40`）；权限：`lorebook.read` 仅 lore 块时要求 |

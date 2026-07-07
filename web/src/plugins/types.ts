@@ -441,6 +441,11 @@ export interface PluginWebHost {
     completeWithContext(
       req: Omit<CompleteWithContextRequest, 'conversationId'>,
     ): Promise<CompleteWithContextSuccess>
+    /** manifest `serverActions` 声明的自定义服务端动作 */
+    runAction(
+      action: string,
+      body: Record<string, unknown>,
+    ): Promise<Record<string, unknown>>
   }
   token: {
     preflightComplete(req: {
@@ -527,6 +532,8 @@ export interface PluginRegistryPublicEntry {
   order: number
   slots: string[]
   webEntry: string | null
+  /** manifest.ui.eagerOnRoutes；匹配时进页即加载 web.mjs */
+  eagerOnRoutes?: string[]
 }
 
 export interface PluginFormDialogOpenOpts {

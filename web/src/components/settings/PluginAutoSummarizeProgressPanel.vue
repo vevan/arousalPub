@@ -4,15 +4,15 @@ import {
   buildAutoSummarizePointerResetPatch,
   computeAutoSummarizeProgress,
   readLastSummarizedEnd,
-} from '@/utils/plot-summary-auto-summarize-status'
+} from '@/utils/plugin-auto-summarize-progress'
 import { fetchConversationTurns } from '@/utils/chat-messages'
+import { pluginI18nKey } from '@/utils/plugin-settings-api'
 import { translatePluginI18nKey } from '@/utils/plugin-locale-text'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const PLUGIN_ID = 'plot-summary'
-
 const props = defineProps<{
+  pluginId: string
   conversationId: string
   convModel?: Record<string, unknown>
   globalModel?: Record<string, unknown>
@@ -32,13 +32,8 @@ const endTurnInput = ref('')
 const neverMode = ref(false)
 
 function pluginT(key: string, params?: Record<string, unknown>): string {
-  const fullKey = `plugins.${PLUGIN_ID}.${key}`
-  const text = translatePluginI18nKey(fullKey, t, te, params)
-  if (!text.startsWith('plugins.')) return text
-  if (key === 'convAutoSummarizeProgressTitle') {
-    return t('chat.convSettings.plotSummaryProgressTitle')
-  }
-  return text
+  const fullKey = pluginI18nKey(props.pluginId, key)
+  return translatePluginI18nKey(fullKey, t, te, params)
 }
 
 const progressTitle = computed(() => pluginT('convAutoSummarizeProgressTitle'))
@@ -151,7 +146,7 @@ async function submit() {
   )
   saving.value = true
   try {
-    await patchConversationPluginSettings(props.conversationId, PLUGIN_ID, patch)
+    await patchConversationPluginSettings(props.conversationId, props.pluginId, patch)
     dialogOpen.value = false
   } catch (e) {
     emit('error', e instanceof Error ? e.message : t('chat.convSettings.saveFailed'))

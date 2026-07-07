@@ -25,7 +25,14 @@ type DraftParseContext = {
   fromTurn?: number
   toTurn?: number
   blockTurns?: number
-  sidecarName?: string
+  pluginSettings?: Record<string, unknown>
+}
+
+function sidecarNameFromSettings(
+  settings?: Record<string, unknown>,
+): string {
+  const raw = settings?.sidecarName
+  return typeof raw === 'string' ? raw.trim() : ''
 }
 
 export function parseCompleteDraftContent(
@@ -36,10 +43,11 @@ export function parseCompleteDraftContent(
   const raw = parseModelJson(content)
 
   if (ctx.kind === 'sidecar') {
-    const sidecar = normalizeSidecarPayload(ctx.sidecarName ?? '', raw)
+    const sidecarName = sidecarNameFromSettings(ctx.pluginSettings)
+    const sidecar = normalizeSidecarPayload(sidecarName, raw)
     return {
       draft: {
-        title: ctx.sidecarName?.trim() || sidecar.title,
+        title: sidecarName || sidecar.title,
         content: sidecar.content,
         keywords: sidecar.keywords,
       },

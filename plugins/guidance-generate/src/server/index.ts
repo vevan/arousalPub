@@ -1,3 +1,6 @@
+export type { PluginPromptInjection } from '../../../shared/plugin-prompt-injection.js'
+import type { PluginPromptInjection } from '../../../shared/plugin-prompt-injection.js'
+
 const PLUGIN_ID = 'guidance-generate'
 
 const DEFAULT_SYSTEM_PREFIX =
@@ -23,16 +26,6 @@ export type GuidancePayload = {
 export type ChatMessage = {
   role: string
   content: string
-}
-
-export type PluginPromptInjection = {
-  role: 'system' | 'user' | 'assistant'
-  content: string
-  position: {
-    kind: 'chat'
-    depth: number
-    injectionOrder?: number
-  }
 }
 
 export function parsePayload(raw: unknown): GuidancePayload | null {

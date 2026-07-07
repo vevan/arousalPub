@@ -25,7 +25,7 @@ plugins/{pluginId}/
 
 | id | 说明 |
 |----|------|
-| `guidance-generate` | 指导生成：send/regenerate/revise 三模式 + `afterAssemblePrompts` 注入 hidden system；设置页 `systemPrefix` / `reviseSystemPrefix` |
+| `guidance-generate` | 指导生成：send/regenerate/revise 三模式 + `resolveAfterAssemblePromptsAddition` 注入描述符；设置页 `systemPrefix` / `reviseSystemPrefix` |
 | `reply-complete-sound` | 完成提示音：LLM 回复结束后播放音频（默认 `assets/default.mp3`） |
 | `swipe-cleaner` | 滑动清理：删除未选中的 swipe 候选（轮次级 / 整聊） |
 | `conversation-export` | 对话导出 HTML（分批 read、`runScope`、导出对话框） |

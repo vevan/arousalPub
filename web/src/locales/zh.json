@@ -523,7 +523,12 @@
       "removeItemCancel": "取消",
       "checkboxGroupEmpty": "暂无可选项。",
       "checkboxGroupSelectedSummary": "已选 {selected} / {total} 项",
-      "checkboxGroupNoneSelected": "未选择 · 共 {total} 项"
+      "checkboxGroupNoneSelected": "未选择 · 共 {total} 项",
+      "inheritTriModeOn": "开启",
+      "inheritTriModeOff": "关闭",
+      "inheritTriModeInherit": "继承（{value}）",
+      "inheritTriModeGlobalOn": "全局开启",
+      "inheritTriModeGlobalOff": "全局关闭"
     },
     "writeChatPromptSnapshot": "启用会话 debug 审计",
     "writeChatPromptHint": "开启后，发送/再生落盘成功时由服务端写入 chat-audit.json（messages、组装命中、出站调用）。关闭后不写入；已保存条目仍可在助手消息旁查看。",
@@ -703,7 +708,7 @@
     "memoryStripCustomElements": "剥离自定义元素",
     "memoryStripCustomElementsHint": "入库与召回前移除 <标签>…</标签> 块。下方可填标签名；已启用插件在 manifest 中声明的标签会自动合并。",
     "memoryStripBlockTags": "剥离标签",
-    "memoryStripBlockTagsHint": "逗号分隔，标签名须与正文完全一致。例：route-selector、ex-trace-keeper",
+    "memoryStripBlockTagsHint": "逗号分隔，标签名须与正文完全一致。例：route-selector、my-plugin-block",
     "memoryRecallFuseAssistant": "召回融合上一轮助手",
     "memoryRecallFuseAssistantHint": "向量检索时融合上一轮助手语义；词法检索仍仅用本轮用户输入。",
     "memoryRecallUserWeight": "用户消息权重",

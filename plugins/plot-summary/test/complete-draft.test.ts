@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { parseCompleteDraftContent } from '../../../plugins/plot-summary/dist/server.mjs'
+import { parseCompleteDraftContent } from '../dist/server.mjs'
 
 describe('parseCompleteDraftContent sidecar', () => {
   const base = {
     pluginId: 'plot-summary',
     conversationId: 'abcd1234',
     kind: 'sidecar' as const,
-    sidecarName: '关系',
+    pluginSettings: { sidecarName: '关系' },
   }
 
   it('accepts content-only json with fixed sidecar title', () => {
@@ -22,7 +22,10 @@ describe('parseCompleteDraftContent sidecar', () => {
 
   it('coerces object content to JSON text', () => {
     const { draft } = parseCompleteDraftContent(
-      { ...base, sidecarName: '状态' },
+      {
+        ...base,
+        pluginSettings: { sidecarName: '状态' },
+      },
       '{"content":{"mood":"tense","location":"tavern"}}',
       null,
     )

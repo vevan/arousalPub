@@ -213,7 +213,8 @@
         "type": "boolean",
         "labelKey": "convAutoSummarizeEnabledLabel",
         "descriptionKey": "convAutoSummarizeEnabledDesc",
-        "default": false
+        "default": false,
+        "companionPanel": "auto-summarize-progress"
       },
       {
         "key": "blockTurns",

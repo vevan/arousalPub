@@ -5,12 +5,13 @@ export class PluginHostApiError extends Error {
   readonly detail?: string
   readonly promptTokens?: number
   readonly budget?: number
+  readonly debug?: unknown
 
   constructor(
     code: string,
     status: number,
     detail?: string,
-    opts?: { promptTokens?: number; budget?: number },
+    opts?: { promptTokens?: number; budget?: number; debug?: unknown },
   ) {
     super(code)
     this.name = 'PluginHostApiError'
@@ -19,6 +20,7 @@ export class PluginHostApiError extends Error {
     this.detail = detail
     this.promptTokens = opts?.promptTokens
     this.budget = opts?.budget
+    this.debug = opts?.debug
   }
 }
 

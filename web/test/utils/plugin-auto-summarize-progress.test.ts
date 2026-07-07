@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 import {
   computeAutoSummarizeProgress,
   normalizedNextBlockStart,
-} from '../../src/utils/plot-summary-auto-summarize-status.js'
+} from '../../src/utils/plugin-auto-summarize-progress.js'
 
 describe('normalizedNextBlockStart', () => {
   it('keeps start when no prior summary', () => {

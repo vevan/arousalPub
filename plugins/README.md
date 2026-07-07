@@ -4,7 +4,7 @@
 
 **Build 同步**：`npm run build` 末尾会执行 `scripts/sync-bundled-plugins.mjs`，从仓库 `plugins/{id}/` **全量覆盖** `{dataDir}/plugins/{id}/` 的 manifest、dist、locales、assets（**不**覆盖各用户的 `settings.json`）。服务启动时也会再同步一次，避免漏跑 build。
 
-**plot-summary 共享模块**：`plugins/plot-summary/src/shared/` 为 Historian 排序与 prepare-context 块之**源码**；`scripts/sync-plot-summary-shared.mjs` 在 server `dev`/`build`/`test` 前同步到 `server/src/plot-summary/`（供 `plugin-prepare-context` 引用）。
+**plot-summary 共享模块**：`plugins/plot-summary/src/shared/` 为 Historian 排序、prepare-context 块与 layout 之**源码**（不再同步至 `server/src/plot-summary/`）。
 
 ## 目录结构（单插件）
 
@@ -29,13 +29,13 @@ plugins/{pluginId}/
 | `reply-complete-sound` | 完成提示音：LLM 回复结束后播放音频（默认 `assets/default.mp3`） |
 | `swipe-cleaner` | 滑动清理：删除未选中的 swipe 候选（轮次级 / 整聊） |
 | `conversation-export` | 对话导出 HTML（分批 read、`runScope`、导出对话框） |
-| `plot-summary` | Historian：剧情纪要摘要、sidecar、预览确认、`prepareContext` / `completeDraft` |
+| `plot-summary` | Historian：剧情纪要摘要、sidecar、预览确认、`prepareContextBlocks` / `completeWithContext` |
 | `custom-styles` | 自定义样式注入：全局 CSS 样式表 + 对话级开关覆盖，`registerStyles` |
 | `trace-keeper` | **迹录**：RP 场景状态追踪、Together + Separate、左栏 HTML 面板；见 **`DOC/30-plugin-trace-keeper.md`** |
 
 **插件作者主文档（宿主 API 单一入口）**：**`DOC/18-plugin-host-developer-api.md`**。
 
-**插件出站 API 解析**（`complete` / `preflight` / `complete-draft`）：`对话 apiPreset.plugins[pluginId]` → `apiPreset.plugin` → **插件设置页 `apiConfigId`**。连接设置无全局 plugin binding。实现：`server/src/plugin-api-resolve.ts`。
+**插件出站 API 解析**（`complete` / `preflight` / `complete-with-context`）：`对话 apiPreset.plugins[pluginId]` → `apiPreset.plugin` → **插件设置页 `apiConfigId`**。连接设置无全局 plugin binding。实现：`server/src/plugin-api-resolve.ts`。
 
 **插件系统**（manifest、懒加载、设置页）：**`DOC/09-plugin-system-and-guidance-generate.md`**。
 

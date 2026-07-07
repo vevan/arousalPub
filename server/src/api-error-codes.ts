@@ -202,6 +202,8 @@ export const ApiErrorCodes = {
   plugin_complete_draft_failed: 'plugin_complete_draft_failed',
   plugin_hook_not_supported: 'plugin_hook_not_supported',
   plugin_prepare_context_failed: 'plugin_prepare_context_failed',
+  plugin_assemble_prompt_failed: 'plugin_assemble_prompt_failed',
+  plugin_complete_with_context_failed: 'plugin_complete_with_context_failed',
   draft_kind_invalid: 'draft_kind_invalid',
   feature_binding_api_config_invalid: 'feature_binding_api_config_invalid',
   feature_binding_duplicate: 'feature_binding_duplicate',

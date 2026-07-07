@@ -52,32 +52,21 @@ export interface PluginHost {
     ensure: (req?: { nameTemplate?: string }) => Promise<{ id: string; name: string; created: boolean }>
   }
   plugin: {
-    prepareContext: (req: {
-      fromTurn: number
-      toTurn: number
-      targetLorebookId: string
-      previousSummariesLimit?: number
-      sidecarEntryIds?: Record<string, string>
-      sidecarIds?: string[]
-      regexRuleIds?: string[]
-      tailOrdinal?: number
-      regexApplyAllTurns?: boolean
-    }) => Promise<{
-      systemReferenceContext: string
-      userContent: string
-      meta: { userDisplayName: string; assistantDisplayName: string }
-    }>
-    completeDraft: (req: {
-      apiConfigId?: string
-      kind: 'memory' | 'sidecar'
-      systemReferenceContext?: string
-      userContent: string
-      systemPromptTemplate: string
-      fromTurn?: number
-      toTurn?: number
-      blockTurns?: number
-      sidecarName?: string
-    }) => Promise<{ draft: { title: string; content: string; keywords: string[] } }>
+    prepareContextBlocks: (req: {
+      blocks: import('../../../shared/plugin-context-blocks.js').ContextBlockSpec[]
+    }) => Promise<import('../../../shared/plugin-context-blocks.js').PluginContextBlocksSuccess>
+    assemblePluginPrompt: (
+      req: Omit<
+        import('../../../shared/plugin-context-blocks.js').AssemblePluginPromptRequest,
+        'conversationId'
+      >,
+    ) => Promise<import('../../../shared/plugin-context-blocks.js').AssemblePluginPromptSuccess>
+    completeWithContext: (
+      req: Omit<
+        import('../../../shared/plugin-context-blocks.js').CompleteWithContextRequest,
+        'conversationId'
+      >,
+    ) => Promise<import('../../../shared/plugin-context-blocks.js').CompleteWithContextSuccess>
   }
   plugins: { getUserSettings: () => Promise<Record<string, unknown>> }
   macros?: {

@@ -2,7 +2,6 @@ import { PLUGIN_ID, DIALOG_MANUAL, DIALOG_PROMPT_PREVIEW } from './constants.js'
 import {
   k,
   loadMergedSettings,
-  outgoingTailOrdinal,
   sidecarPromptTemplate,
   tasksFromSelection,
 } from './settings.js'
@@ -12,7 +11,8 @@ import {
   setPromptPreviewRestore,
 } from './state.js'
 import { isSummarizeTurnSpanTooLarge } from './shared/range-limits.js'
-import { buildSummaryCompleteMessages } from './shared/build-summary-messages.js'
+import { PLOT_SUMMARY_COMPLETE_LAYOUT } from './shared/summary-prompt-layout.js'
+import { preparePlotSummarySummarizeContext } from './prepare-context.js'
 import { asInt, asString } from './shared/utils.js'
 import type { MergedSettings, PluginHost, SummarizeTask } from './types.js'
 
@@ -65,68 +65,22 @@ function resolveSystemPrompt(
   return settings.systemPromptTemplate
 }
 
-async function expandText(
+function preflightLineFromDryRun(
   host: PluginHost,
-  text: string,
-  apiConfigId: string,
-  toTurn?: number,
-): Promise<string> {
-  const raw = asString(text)
-  if (!raw.includes('{{')) return raw
-  if (!host.macros?.expand) return raw
-  const opts: { apiConfigId?: string; toTurn?: number; persistVars?: boolean } = {
-    persistVars: false,
-  }
-  if (apiConfigId) opts.apiConfigId = apiConfigId
-  if (typeof toTurn === 'number' && Number.isInteger(toTurn)) opts.toTurn = toTurn
-  return host.macros.expand(raw, opts)
-}
-
-async function buildTaskMessages(
-  host: PluginHost,
-  settings: MergedSettings,
-  task: SummarizeTask,
-  prepared: { systemReferenceContext: string; userContent: string },
-  toTurn: number,
-): Promise<{ role: 'system' | 'user'; content: string }[]> {
-  const apiConfigId = settings.apiConfigId
-  const systemTemplate = resolveSystemPrompt(host, settings, task)
-  const [expandedRef, expandedInstruction, expandedUser] = await Promise.all([
-    prepared.systemReferenceContext.trim()
-      ? expandText(host, prepared.systemReferenceContext, apiConfigId, toTurn)
-      : Promise.resolve(''),
-    expandText(host, systemTemplate, apiConfigId, toTurn),
-    expandText(host, prepared.userContent, apiConfigId, toTurn),
-  ])
-  return buildSummaryCompleteMessages(expandedRef, expandedUser, expandedInstruction)
-}
-
-async function preflightLine(
-  host: PluginHost,
-  settings: MergedSettings,
-  messages: { role: 'system' | 'user'; content: string }[],
-): Promise<string> {
-  const pf = host.token?.preflightComplete
-  if (!pf || messages.length === 0) return ''
-  try {
-    const result = await pf({
-      apiConfigId: settings.apiConfigId || undefined,
-      messages,
+  preflight: { ok: boolean; promptTokens: number; budget: number; code?: string } | undefined,
+): string {
+  if (!preflight) return ''
+  if (preflight.ok) {
+    return host.t(k(host, 'promptPreviewPreflightOk'), {
+      tokens: preflight.promptTokens,
+      budget: preflight.budget,
     })
-    if (result.ok) {
-      return host.t(k(host, 'promptPreviewPreflightOk'), {
-        tokens: result.promptTokens,
-        budget: result.budget,
-      })
-    }
-    return host.t(k(host, 'promptPreviewPreflightFail'), {
-      tokens: result.promptTokens,
-      budget: result.budget,
-      code: result.code ?? '',
-    })
-  } catch {
-    return ''
   }
+  return host.t(k(host, 'promptPreviewPreflightFail'), {
+    tokens: preflight.promptTokens,
+    budget: preflight.budget,
+    code: preflight.code ?? '',
+  })
 }
 
 function summarizeDialogCanPreview(model: Record<string, unknown>, settings: MergedSettings): boolean {
@@ -237,17 +191,19 @@ export async function previewManualSummarizePrompt(
       sidecarEntryIds = {}
     }
 
-    const prepared = await host.plugin.prepareContext({
+    settings.targetLorebookId = targetId
+    settings.sidecarEntryIds = sidecarEntryIds
+
+    const prepared = await preparePlotSummarySummarizeContext(
+      host,
+      settings,
       fromTurn,
       toTurn,
-      targetLorebookId: targetId,
-      previousSummariesLimit: settings.previousSummariesLimit,
-      sidecarEntryIds,
-      sidecarIds: settings.sidecars.map((s) => s.id),
-      regexRuleIds: settings.regexRuleIds,
-      tailOrdinal: outgoingTailOrdinal(host),
-      regexApplyAllTurns: settings.regexApplyAllTurns,
-    })
+    )
+    if (!prepared.userContent?.trim()) {
+      host.ui.toast(host.t(k(host, 'toastNoTurnsInRange')), { color: 'warning' })
+      return
+    }
 
     const sections: string[] = [
       host.t(k(host, 'promptPreviewRange'), { from: fromTurn, to: toTurn }),
@@ -255,11 +211,19 @@ export async function previewManualSummarizePrompt(
     ]
 
     for (const task of tasks) {
-      const messages = await buildTaskMessages(host, settings, task, prepared, toTurn)
-      const pf = await preflightLine(host, settings, messages)
+      const systemPromptTemplate = resolveSystemPrompt(host, settings, task)
+      const result = await host.plugin.completeWithContext({
+        ...(settings.apiConfigId ? { apiConfigId: settings.apiConfigId } : {}),
+        blocks: prepared.contextBlocks,
+        layout: PLOT_SUMMARY_COMPLETE_LAYOUT,
+        pluginSettings: { systemPromptTemplate },
+        anchorToTurn: toTurn,
+        dryRun: true,
+      })
+      const pfLine = preflightLineFromDryRun(host, result.preflight)
       sections.push(`=== ${taskLabel(host, task)} ===`)
-      if (pf) sections.push(pf)
-      sections.push(formatMessagesForDisplay(messages))
+      if (pfLine) sections.push(pfLine)
+      sections.push(formatMessagesForDisplay(result.messages))
       sections.push('')
     }
 

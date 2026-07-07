@@ -19,6 +19,13 @@ const SYNCED_FILES = [
       path.join(REPO_ROOT, 'web', 'src', 'shared', 'group-chat-settings.ts'),
     ],
   },
+  {
+    src: path.join(REPO_ROOT, 'shared', 'plugin-context-blocks.ts'),
+    dests: [
+      path.join(REPO_ROOT, 'server', 'src', 'shared', 'plugin-context-blocks.ts'),
+      path.join(REPO_ROOT, 'web', 'src', 'shared', 'plugin-context-blocks.ts'),
+    ],
+  },
 ]
 
 async function fileSha256(filePath) {

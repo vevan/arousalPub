@@ -13,31 +13,48 @@ import type {
   LorebookApplyOrderRequest,
   LorebookApplyOrderResult,
   LorebookSummaryDto,
-  PluginCompleteDraftRequest,
-  PluginCompleteDraftResponse,
   PluginCompleteRequest,
   PluginCompleteResponse,
   PluginCompletePreflightResult,
-  PluginPrepareContextRequest,
-  PluginPrepareContextResponse,
+  PluginPrepareContextBlocksRequest,
+  PluginPrepareContextBlocksResponse,
+  AssemblePluginPromptRequest,
+  AssemblePluginPromptSuccess,
 } from '@/plugins/types'
+import type {
+  CompleteWithContextRequest,
+  CompleteWithContextSuccess,
+} from '@/shared/plugin-context-blocks'
 
 async function throwIfNotOk(res: Response, fallbackCode: string): Promise<void> {
   if (res.ok) return
   let code = fallbackCode
   let detail: string | undefined
+  let promptTokens: number | undefined
+  let budget: number | undefined
   try {
-    const data = (await res.json()) as { error?: string; detail?: string }
+    const data = (await res.json()) as {
+      error?: string
+      detail?: string
+      promptTokens?: number
+      budget?: number
+    }
     if (typeof data.error === 'string' && data.error.trim()) {
       code = data.error.trim()
     }
     if (typeof data.detail === 'string' && data.detail.trim()) {
       detail = data.detail.trim()
     }
+    if (typeof data.promptTokens === 'number') {
+      promptTokens = data.promptTokens
+    }
+    if (typeof data.budget === 'number') {
+      budget = data.budget
+    }
   } catch {
     code = `http_${res.status}`
   }
-  throw new PluginHostApiError(code, res.status, detail)
+  throw new PluginHostApiError(code, res.status, detail, { promptTokens, budget })
 }
 
 function mapLorebookSummaries(data: { lorebooks?: unknown[] }): LorebookSummaryDto[] {
@@ -229,14 +246,37 @@ export async function fetchApiPresets(): Promise<{ id: string; alias: string }[]
     .filter((x): x is { id: string; alias: string } => x !== null)
 }
 
-export async function runPluginPrepareContext(
+export async function runPluginPrepareContextBlocks(
   pluginId: string,
   conversationId: string,
-  req: PluginPrepareContextRequest,
+  req: PluginPrepareContextBlocksRequest,
   signal?: AbortSignal,
-): Promise<PluginPrepareContextResponse> {
+): Promise<PluginPrepareContextBlocksResponse> {
   const res = await apiFetch(
     `/api/plugins/${encodeURIComponent(pluginId)}/prepare-context`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId, blocks: req.blocks }),
+      signal,
+    },
+  )
+  await throwIfNotOk(res, 'plugin_prepare_context_failed')
+  const data = (await res.json()) as PluginPrepareContextBlocksResponse
+  if (!data.ok) {
+    throw new PluginHostApiError('plugin_prepare_context_failed', res.status)
+  }
+  return data
+}
+
+export async function runAssemblePluginPrompt(
+  pluginId: string,
+  conversationId: string,
+  req: Omit<AssemblePluginPromptRequest, 'conversationId'>,
+  signal?: AbortSignal,
+): Promise<AssemblePluginPromptSuccess> {
+  const res = await apiFetch(
+    `/api/plugins/${encodeURIComponent(pluginId)}/assemble-plugin-prompt`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -244,10 +284,33 @@ export async function runPluginPrepareContext(
       signal,
     },
   )
-  await throwIfNotOk(res, 'plugin_prepare_context_failed')
-  const data = (await res.json()) as PluginPrepareContextResponse
-  if (!data.ok || typeof data.userContent !== 'string') {
-    throw new PluginHostApiError('plugin_prepare_context_failed', res.status)
+  await throwIfNotOk(res, 'plugin_assemble_prompt_failed')
+  const data = (await res.json()) as AssemblePluginPromptSuccess
+  if (!data.ok || !Array.isArray(data.messages)) {
+    throw new PluginHostApiError('plugin_assemble_prompt_failed', res.status)
+  }
+  return data
+}
+
+export async function runCompleteWithContext(
+  pluginId: string,
+  conversationId: string,
+  req: Omit<CompleteWithContextRequest, 'conversationId'>,
+  signal?: AbortSignal,
+): Promise<CompleteWithContextSuccess> {
+  const res = await apiFetch(
+    `/api/plugins/${encodeURIComponent(pluginId)}/complete-with-context`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId, ...req }),
+      signal,
+    },
+  )
+  await throwIfNotOk(res, 'plugin_complete_with_context_failed')
+  const data = (await res.json()) as CompleteWithContextSuccess
+  if (!data.ok) {
+    throw new PluginHostApiError('plugin_complete_with_context_failed', res.status)
   }
   return data
 }
@@ -295,29 +358,6 @@ export async function applyLorebookOrder(
     throw new PluginHostApiError('lorebook_entry_patch_failed', res.status)
   }
   syncLorebookToStore(data.lorebook)
-  return data
-}
-
-export async function runPluginCompleteDraft(
-  pluginId: string,
-  conversationId: string,
-  req: PluginCompleteDraftRequest,
-  signal?: AbortSignal,
-): Promise<PluginCompleteDraftResponse> {
-  const res = await apiFetch(
-    `/api/plugins/${encodeURIComponent(pluginId)}/complete-draft`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conversationId, ...req }),
-      signal,
-    },
-  )
-  await throwIfNotOk(res, 'plugin_complete_draft_failed')
-  const data = (await res.json()) as PluginCompleteDraftResponse
-  if (!data.ok || !data.draft || typeof data.draft.content !== 'string') {
-    throw new PluginHostApiError('plugin_complete_draft_failed', res.status)
-  }
   return data
 }
 

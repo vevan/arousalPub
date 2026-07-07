@@ -11,9 +11,58 @@ export function parseModelJson(text: string): unknown {
     return JSON.parse(raw)
   } catch {
     const m = raw.match(/\{[\s\S]*\}/)
-    if (m) return JSON.parse(m[0])
+    if (m) {
+      try {
+        return JSON.parse(m[0])
+      } catch {
+        throw new Error('parse_failed')
+      }
+    }
     throw new Error('parse_failed')
   }
+}
+
+function coerceDraftText(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (value != null && typeof value === 'object') {
+    try {
+      return JSON.stringify(value, null, 2)
+    } catch {
+      return ''
+    }
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+  return ''
+}
+
+/** Sidecar 出站 JSON：title 固定为 sidecar 名，content 可来自对象字段 */
+export function normalizeSidecarPayload(
+  sidecarName: string,
+  obj: unknown,
+): {
+  title: string
+  content: string
+  keywords: string[]
+} {
+  if (!obj || typeof obj !== 'object') throw new Error('parse_failed')
+  const o = obj as Record<string, unknown>
+  const title = sidecarName.trim() || asString(o.title)
+  let content =
+    coerceDraftText(o.content) ||
+    coerceDraftText(o.state) ||
+    coerceDraftText(o.summary) ||
+    asString(o.title)
+  if (!title || !content) throw new Error('parse_failed')
+  let keywords: string[] = []
+  if (Array.isArray(o.keywords)) {
+    keywords = o.keywords
+      .filter((x): x is string => typeof x === 'string')
+      .map((x) => x.trim())
+      .filter(Boolean)
+  }
+  return { title, content, keywords }
 }
 
 export function normalizeSummaryPayload(obj: unknown): {

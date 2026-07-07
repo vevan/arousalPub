@@ -340,7 +340,7 @@ resolveActivePathTurns(conversationId, activeBranchPath, range?)
 | `readTurnsTail` / `readTurnsInOrdinalRange` | 仅主路径 | 内部调用 `resolveActivePathTurns` 或接受 `activeBranchPath` |
 | `loadTurnsForMemoryPipeline` | 主路径 tail/区间 | active 路径上的 tail + ordinal 窗口 |
 | `GET .../messages` | 全链或区间（主路径） | 返回合并后线性列表；隐含 `activeBranchPath`；分页见 `DOC/15` |
-| `plugin-prepare-context` | 主路径区间读 | 摘要范围限定在 active 路径 |
+| `plugin-context-blocks-resolve` | 主路径区间读 | 摘要范围限定在 active 路径 |
 | PATCH turns / 按 turnId 定位 | 主路径 `readAllTurns` 或链扫 | 已知 `branchPath` 时 `readChunkFileAt` 缩小范围（`turn-resolve.ts` 已移除） |
 
 ### 6.3 索引修复
@@ -444,7 +444,7 @@ flowchart TD
   A[创建分支 API + 注册表] --> B[append/PATCH 写入 active branchPath]
   B --> C[readTurnsTail / messages GET 按 active 读]
   C --> D[前端 activeBranchPath + 消息树]
-  D --> E[plugin-prepare / 摘要范围]
+  D --> E[plugin-context-blocks / 摘要范围]
   E --> F[rebuildHeadTail 分支作用域]
 ```
 

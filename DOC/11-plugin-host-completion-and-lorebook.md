@@ -34,10 +34,9 @@
 | | `ensure(req?)` | ✅ | `POST …/lorebooks/ensure`，自动建 summary 书，见 `DOC/12` §2.3 |
 | **`host.api`** | `listPresets()` | ✅ | `GET /api/settings` |
 | **`host.plugin`** | `complete(req)` | ✅ | `POST …/complete` |
-| | `prepareContext(req)` | ✅ → 扩展 | `POST …/prepare-context`（步骤 1 取块；Historian 旧请求兼容 · **`DOC/39`**） |
-| | `assemblePluginPrompt(req)` | 规划 | `POST …/assemble-plugin-prompt`（步骤 2 拼 layout · **`DOC/39`**） |
-| | `completeDraft(req)` | ✅ | `POST …/complete-draft`（迁移后瘦化 · **`DOC/39`**） |
-| | `completeWithContext(req)` | 规划 | **`DOC/39`** · 沙箱单入口；内部两步 + complete |
+| | `prepareContextBlocks(req)` | ✅ | `POST …/prepare-context`（`blocks[]` · **`DOC/39`**） |
+| | `assemblePluginPrompt(req)` | ✅ | `POST …/assemble-plugin-prompt`（**`DOC/39`**） |
+| | `completeWithContext(req)` | ✅ | `POST …/complete-with-context`（**`DOC/39`** · 主入口） |
 | **`host.conversation`** | `getPluginSettings()` / `patchPluginSettings()` | ✅ | `GET/PATCH …/conversations/:id` |
 | **`host.plugins`** | `getUserSettings()` | ✅ | `GET /api/plugins/:pluginId/settings` |
 

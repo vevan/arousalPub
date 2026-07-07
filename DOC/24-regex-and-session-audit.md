@@ -368,7 +368,7 @@ auditDebug.enabled && maxStored >= 1 && 落盘成功（/api/chat persist）
 |------|---------------------|
 | **guidance-generate** | 组装阶段注入 system；已体现在 **`messages`** + 主 **`chat`** `calls[]` |
 | **trace-keeper** | 组装阶段注入 tracker system；token 计入 **`assembly.plugins`**；Together 落盘在 **`turn.plugins[]`**（非 audit `plugins[]`）；Separate 为独立 API，不进本轮 sync audit |
-| **plot-summary** | 唯一声明 `plugin.complete`；`prepareContext` / `completeDraft` 在 **落盘成功后**由前端 lifecycle 异步调用，**不在** `/api/chat` persist 同步链路 |
+| **plot-summary** | 唯一声明 `plugin.complete`；`completeWithContext` 在 **落盘成功后**由前端 lifecycle 异步调用，**不在** `/api/chat` persist 同步链路 |
 | **reply-complete-sound** / **swipe-cleaner** / **conversation-export** | 无出站 LLM，不参与本轮 audit |
 
 **预留字段**：`calls[].kind: "plugin.complete"`、`plugins[]` 保留于 schema，供未来「插件出站与 chat 同请求」或「落盘后补写 audit」扩展；**未排期**，不挡 P0 验收。

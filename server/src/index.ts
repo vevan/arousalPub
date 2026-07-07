@@ -230,7 +230,6 @@ import {
   type LorebookEntryCreateBody,
 } from './lorebook-entries.js'
 import { resolvePluginCompleteApi } from './plugin-api-resolve.js'
-import { runPluginCompleteDraftRoute } from './plugin-complete-draft-route.js'
 import { runTraceKeeperRegenerateRoute } from './trace-keeper-regenerate-route.js'
 import { runTraceKeeperPatchRoute } from './trace-keeper-patch-route.js'
 import { runPluginComplete } from './plugin-complete.js'
@@ -239,7 +238,18 @@ import { runNormalizeLorebookEntryRefs } from './plugin-lorebook-entry-refs.js'
 import { runApplyLorebookOrder } from './plugin-lorebook-apply-order.js'
 import { ensurePluginLorebook } from './plugin-lorebook-ensure.js'
 import { runPluginMacroExpand } from './plugin-macro-expand.js'
-import { runPluginPrepareContext } from './plugin-prepare-context.js'
+import {
+  parseContextBlockSpecs,
+  runPluginContextBlocksResolve,
+} from './plugin-context-blocks-resolve.js'
+import {
+  parseAssemblePluginPromptBody,
+  runAssemblePluginPrompt,
+} from './plugin-assemble-prompt.js'
+import {
+  parseCompleteWithContextBody,
+  runCompleteWithContext,
+} from './plugin-complete-with-context.js'
 import { assertPluginRoutePermission } from './plugin-route-auth.js'
 import {
   applyPromptMacroPipeline,
@@ -3901,17 +3911,7 @@ app.post<{
   Params: { pluginId: string }
   Body: {
     conversationId?: string
-    fromTurn?: number
-    toTurn?: number
-    targetLorebookId?: string
-    includePreviousMemories?: boolean
-    previousMemoriesLimit?: number
-    previousSummariesLimit?: number
-    sidecarEntryIds?: Record<string, string>
-    sidecarIds?: string[]
-    regexRuleIds?: string[]
-    tailOrdinal?: number
-    regexApplyAllTurns?: boolean
+    blocks?: unknown[]
   }
 }>(
   '/api/plugins/:pluginId/prepare-context',
@@ -3926,54 +3926,124 @@ app.post<{
       return reply.status(loreAuth.status).send({ error: ApiErrorCodes[loreAuth.code] })
     }
     const body = request.body ?? {}
-    const result = await runPluginPrepareContext({
-      conversationId:
-        typeof body.conversationId === 'string' ? body.conversationId : '',
-      fromTurn: typeof body.fromTurn === 'number' ? body.fromTurn : NaN,
-      toTurn: typeof body.toTurn === 'number' ? body.toTurn : NaN,
-      targetLorebookId:
-        typeof body.targetLorebookId === 'string' ? body.targetLorebookId : '',
-      includePreviousMemories:
-        typeof body.includePreviousMemories === 'boolean'
-          ? body.includePreviousMemories
-          : undefined,
-      previousMemoriesLimit:
-        typeof body.previousMemoriesLimit === 'number'
-          ? body.previousMemoriesLimit
-          : undefined,
-      previousSummariesLimit:
-        typeof body.previousSummariesLimit === 'number'
-          ? body.previousSummariesLimit
-          : undefined,
-      sidecarEntryIds:
-        body.sidecarEntryIds && typeof body.sidecarEntryIds === 'object'
-          ? body.sidecarEntryIds
-          : undefined,
-      sidecarIds: Array.isArray(body.sidecarIds) ? body.sidecarIds : undefined,
-      regexRuleIds: Array.isArray(body.regexRuleIds)
-        ? body.regexRuleIds
-        : undefined,
-      tailOrdinal:
-        typeof body.tailOrdinal === 'number' ? body.tailOrdinal : undefined,
-      regexApplyAllTurns: body.regexApplyAllTurns === true,
+
+    const blockSpecs = parseContextBlockSpecs(body.blocks)
+    if (blockSpecs.length === 0) {
+      return reply.status(400).send({ error: ApiErrorCodes.plugin_prepare_context_failed })
+    }
+
+    const conversationId =
+      typeof body.conversationId === 'string' ? body.conversationId : ''
+    const blockResult = await runPluginContextBlocksResolve({
+      conversationId,
+      blocks: blockSpecs,
     })
+    if (!blockResult.ok) {
+      if (blockResult.code === 'conversation_not_found') {
+        return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+      }
+      if (blockResult.code === 'lorebook_not_found') {
+        return reply.status(404).send({ error: ApiErrorCodes.lorebook_not_found })
+      }
+      if (
+        blockResult.code === 'invalid_conversation_id' ||
+        blockResult.code === 'invalid_turn_range' ||
+        blockResult.code === 'invalid_tail_count' ||
+        blockResult.code === 'invalid_block_id' ||
+        blockResult.code === 'blocks_required' ||
+        blockResult.code === 'lorebook_id_required'
+      ) {
+        return reply.status(400).send({ error: ApiErrorCodes.plugin_prepare_context_failed })
+      }
+      if (blockResult.code === 'no_turns_in_range') {
+        return reply.status(400).send({ error: ApiErrorCodes.no_turns_in_range })
+      }
+      return reply.status(400).send({ error: ApiErrorCodes.plugin_prepare_context_failed })
+    }
+    return blockResult
+  },
+)
+
+app.post<{
+  Params: { pluginId: string }
+  Body: Record<string, unknown>
+}>(
+  '/api/plugins/:pluginId/assemble-plugin-prompt',
+  async (request, reply) => {
+    const pluginId = request.params.pluginId.trim()
+    const readAuth = await assertPluginRoutePermission(pluginId, 'conversation.read')
+    if (!readAuth.ok) {
+      return reply.status(readAuth.status).send({ error: ApiErrorCodes[readAuth.code] })
+    }
+    const parsed = parseAssemblePluginPromptBody(request.body ?? {})
+    if (!parsed) {
+      return reply.status(400).send({ error: ApiErrorCodes.plugin_assemble_prompt_failed })
+    }
+    const result = await runAssemblePluginPrompt(parsed)
+    if (!result.ok) {
+      if (result.code === 'context_exceeded') {
+        return reply.status(400).send({
+          error: ApiErrorCodes.plugin_complete_context_exceeded,
+          ...(typeof result.promptTokens === 'number'
+            ? { promptTokens: result.promptTokens }
+            : {}),
+          ...(typeof result.budget === 'number' ? { budget: result.budget } : {}),
+        })
+      }
+      return reply.status(400).send({ error: ApiErrorCodes.plugin_assemble_prompt_failed })
+    }
+    return result
+  },
+)
+
+app.post<{
+  Params: { pluginId: string }
+  Body: Record<string, unknown>
+}>(
+  '/api/plugins/:pluginId/complete-with-context',
+  async (request, reply) => {
+    const pluginId = request.params.pluginId.trim()
+    const readAuth = await assertPluginRoutePermission(pluginId, 'conversation.read')
+    if (!readAuth.ok) {
+      return reply.status(readAuth.status).send({ error: ApiErrorCodes[readAuth.code] })
+    }
+    const loreAuth = await assertPluginRoutePermission(pluginId, 'lorebook.read')
+    if (!loreAuth.ok) {
+      return reply.status(loreAuth.status).send({ error: ApiErrorCodes[loreAuth.code] })
+    }
+    const completeAuth = await assertPluginRoutePermission(pluginId, 'plugin.complete')
+    if (!completeAuth.ok) {
+      return reply.status(completeAuth.status).send({ error: ApiErrorCodes[completeAuth.code] })
+    }
+    const parsed = parseCompleteWithContextBody(request.body ?? {})
+    if (!parsed) {
+      return reply.status(400).send({ error: ApiErrorCodes.plugin_complete_with_context_failed })
+    }
+    const result = await runCompleteWithContext(pluginId, parsed, getCurrentUserId())
     if (!result.ok) {
       if (result.code === 'conversation_not_found') {
         return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       }
-      if (result.code === 'invalid_conversation_id') {
-        return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
-      }
-      if (result.code === 'invalid_turn_range') {
-        return reply.status(400).send({ error: ApiErrorCodes.invalid_turn_range })
-      }
-      if (result.code === 'target_lorebook_required') {
-        return reply.status(400).send({ error: ApiErrorCodes.target_lorebook_required })
-      }
-      if (result.code === 'no_turns_in_range') {
-        return reply.status(400).send({ error: ApiErrorCodes.no_turns_in_range })
-      }
-      return reply.status(400).send({ error: ApiErrorCodes.plugin_prepare_context_failed })
+      const code = result.code
+      const errorKey =
+        code === 'parse_failed' || code === 'plugin_complete_draft_failed'
+          ? 'plugin_complete_draft_failed'
+          : code === 'context_exceeded'
+            ? 'plugin_complete_context_exceeded'
+            : code === 'context_length_unconfigured'
+              ? 'plugin_complete_context_length_unconfigured'
+              : code in ApiErrorCodes
+                ? code
+                : 'plugin_complete_with_context_failed'
+      return reply.status(400).send({
+        error: ApiErrorCodes[errorKey as keyof typeof ApiErrorCodes],
+        code,
+        ...(result.detail ? { detail: result.detail } : {}),
+        ...(typeof result.promptTokens === 'number'
+          ? { promptTokens: result.promptTokens }
+          : {}),
+        ...(typeof result.budget === 'number' ? { budget: result.budget } : {}),
+      })
     }
     return result
   },
@@ -4065,69 +4135,6 @@ app.post<{
       changed: result.changed,
       savedAt: result.savedAt,
     }
-  },
-)
-
-app.post<{
-  Params: { pluginId: string }
-  Body: {
-    conversationId?: string
-    apiConfigId?: string
-    kind?: string
-    userContent?: string
-    systemPromptTemplate?: string
-    fromTurn?: number
-    toTurn?: number
-    sidecarName?: string
-  }
-}>(
-  '/api/plugins/:pluginId/complete-draft',
-  async (request, reply) => {
-    const pluginId = request.params.pluginId.trim()
-    const auth = await assertPluginRoutePermission(pluginId, 'plugin.complete')
-    if (!auth.ok) {
-      return reply.status(auth.status).send({ error: ApiErrorCodes[auth.code] })
-    }
-    const body = request.body ?? {}
-    const result = await runPluginCompleteDraftRoute(pluginId, body)
-    if (!result.ok) {
-      if (result.code === 'plugin_hook_not_supported') {
-        return reply.status(404).send({ error: ApiErrorCodes.plugin_hook_not_supported })
-      }
-      if (result.code === 'invalid_conversation_id') {
-        return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
-      }
-      if (result.code === 'api_config_not_found') {
-        return reply.status(400).send({ error: ApiErrorCodes.api_preset_not_found })
-      }
-      if (result.code === 'draft_kind_invalid') {
-        return reply.status(400).send({ error: ApiErrorCodes.draft_kind_invalid })
-      }
-      if (result.code === 'user_content_required') {
-        return reply.status(400).send({ error: ApiErrorCodes.user_content_required })
-      }
-      if (result.code === 'system_prompt_required') {
-        return reply.status(400).send({ error: ApiErrorCodes.system_prompt_required })
-      }
-      if (result.code === 'context_exceeded') {
-        return reply.status(400).send({
-          error: ApiErrorCodes.plugin_complete_context_exceeded,
-        })
-      }
-      if (result.code === 'context_length_unconfigured') {
-        return reply.status(400).send({
-          error: ApiErrorCodes.plugin_complete_context_length_unconfigured,
-        })
-      }
-      if (result.code === 'parse_failed') {
-        return reply.status(502).send({ error: ApiErrorCodes.upstream_non_json })
-      }
-      return reply.status(502).send({
-        error: ApiErrorCodes.plugin_complete_draft_failed,
-        detail: result.detail,
-      })
-    }
-    return { ok: true as const, draft: result.draft, usage: result.usage, latencyMs: result.latencyMs }
   },
 )
 

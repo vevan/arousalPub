@@ -134,7 +134,7 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 |------|-----------|---------------------|
 | trace-keeper 类 hook（settings → 一条 system） | ~0 ms 级 | +1～10 ms |
 | guidance 类（若仍整包 messages） | 内存 slice | +5～50 ms（与 messages 体积线性） |
-| `completeDraft` / Separate | 主要等 LLM | 可忽略 |
+| `completeWithContext` / Separate | 主要等 LLM | 可忽略 |
 
 **结论**：先做 **§3 注入描述符改造**，再上 Worker 沙箱；否则沙箱化会放大 guidance 路径开销。
 

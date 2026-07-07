@@ -1,5 +1,7 @@
 import { PLUGIN_ID, DIALOG_REVIEW, DIALOG_REVIEW_SIDECAR } from './constants.js'
 import { isAbortError } from './errors.js'
+import type { ContextBlockSpec } from '../../../shared/plugin-context-blocks.js'
+import { PLOT_SUMMARY_COMPLETE_LAYOUT } from './shared/summary-prompt-layout.js'
 import {
   clearReviewSession,
   getReviewRegenerate,
@@ -101,8 +103,7 @@ export async function generateReviewDraft(
   settings: MergedSettings,
   opts: {
     kind: 'memory' | 'sidecar'
-    systemReferenceContext?: string
-    userContent: string
+    contextBlocks: ContextBlockSpec[]
     fromTurn?: number
     toTurn?: number
     sc?: SidecarConfig
@@ -110,19 +111,38 @@ export async function generateReviewDraft(
 ) {
   showCurrentBatchTaskProgress(host)
   try {
-    const req = {
-      ...(settings.apiConfigId ? { apiConfigId: settings.apiConfigId } : {}),
-      kind: opts.kind,
-      systemReferenceContext: opts.systemReferenceContext ?? '',
-      userContent: opts.userContent,
-      systemPromptTemplate: resolveSystemPrompt(host, settings, opts),
-      fromTurn: opts.fromTurn,
-      toTurn: opts.toTurn,
-      blockTurns: settings.blockTurns,
-      sidecarName: opts.sc?.name,
+    const anchorToTurn =
+      typeof opts.toTurn === 'number' && Number.isInteger(opts.toTurn)
+        ? opts.toTurn
+        : undefined
+    if (anchorToTurn === undefined) {
+      throw new Error('anchor_to_turn_required')
     }
-    const { draft } = await host.plugin.completeDraft(req)
-    return draft
+    const systemPromptTemplate = resolveSystemPrompt(host, settings, opts)
+    if (!systemPromptTemplate.trim()) {
+      throw new Error(
+        opts.kind === 'sidecar' ? 'sidecar_prompt_required' : 'system_prompt_required',
+      )
+    }
+    const result = await host.plugin.completeWithContext({
+      ...(settings.apiConfigId ? { apiConfigId: settings.apiConfigId } : {}),
+      blocks: opts.contextBlocks,
+      layout: PLOT_SUMMARY_COMPLETE_LAYOUT,
+      pluginSettings: { systemPromptTemplate },
+      anchorToTurn,
+      responseFormat: 'json_object',
+      draft: {
+        kind: opts.kind,
+        fromTurn: opts.fromTurn,
+        toTurn: opts.toTurn,
+        blockTurns: settings.blockTurns,
+        sidecarName: opts.sc?.name,
+      },
+    })
+    if (!result.draft) {
+      throw new Error('plugin_complete_draft_failed')
+    }
+    return result.draft
   } finally {
     host.ui.clearProgress()
   }

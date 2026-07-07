@@ -220,10 +220,10 @@ export interface PluginCompleteDraftContext {
   /** 解析后填入；插件 hook 内 complete/preflight 可省略 apiConfigId */
   apiConfigId?: string
   kind: 'memory' | 'sidecar'
-  /** 参考上下文，与 systemPromptTemplate 拼成 system 消息 */
-  systemReferenceContext: string
-  userContent: string
-  systemPromptTemplate: string
+  /** 解析 completeWithContext 出站 JSON 为 draft */
+  systemReferenceContext?: string
+  userContent?: string
+  systemPromptTemplate?: string
   fromTurn?: number
   toTurn?: number
   blockTurns?: number
@@ -273,8 +273,14 @@ export interface PluginServerModule {
     ctx: ResolveTurnPluginEntriesFromAssistantContext,
     api: PluginServerHostApi,
   ) => TurnPluginEntry[] | Promise<TurnPluginEntry[]>
-  completeDraft?: (
+  /** DOC/39 · completeWithContext 步骤 1 后格式化 blocks（如 Historian XML） */
+  formatPluginContextBlocks?: (
+    resolved: import('../shared/plugin-context-blocks.js').PluginContextBlocksSuccess,
+  ) => Record<string, string> | Promise<Record<string, string>>
+  /** DOC/39 · completeWithContext 出站后解析 draft */
+  parseCompleteDraftContent?: (
     ctx: PluginCompleteDraftContext,
+    content: string,
     api: PluginServerHostApi,
   ) => PluginCompleteDraftResult | Promise<PluginCompleteDraftResult>
   /** trace-keeper：Separate 重新生成 state 并返回待落盘条目 */

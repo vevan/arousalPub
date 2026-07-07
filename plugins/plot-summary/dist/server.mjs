@@ -13,9 +13,41 @@ function parseModelJson(text) {
     return JSON.parse(raw);
   } catch {
     const m = raw.match(/\{[\s\S]*\}/);
-    if (m) return JSON.parse(m[0]);
+    if (m) {
+      try {
+        return JSON.parse(m[0]);
+      } catch {
+        throw new Error("parse_failed");
+      }
+    }
     throw new Error("parse_failed");
   }
+}
+function coerceDraftText(value) {
+  if (typeof value === "string") return value.trim();
+  if (value != null && typeof value === "object") {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return "";
+    }
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return "";
+}
+function normalizeSidecarPayload(sidecarName, obj) {
+  if (!obj || typeof obj !== "object") throw new Error("parse_failed");
+  const o = obj;
+  const title = sidecarName.trim() || asString(o.title);
+  let content = coerceDraftText(o.content) || coerceDraftText(o.state) || coerceDraftText(o.summary) || asString(o.title);
+  if (!title || !content) throw new Error("parse_failed");
+  let keywords = [];
+  if (Array.isArray(o.keywords)) {
+    keywords = o.keywords.filter((x) => typeof x === "string").map((x) => x.trim()).filter(Boolean);
+  }
+  return { title, content, keywords };
 }
 function normalizeSummaryPayload(obj) {
   if (!obj || typeof obj !== "object") throw new Error("parse_failed");
@@ -63,140 +95,91 @@ function formatEntryTitle(rawTitle, startTurn, endTurn, blockTurns = 15) {
   return `[MEMO-${memoIndex}]-${title}-[${startTurn}-${endTurn}]`;
 }
 
-// plugins/plot-summary/src/shared/build-summary-messages.ts
-function buildSummaryCompleteMessages(systemReferenceContext, userContent, systemPromptTemplate) {
-  const reference = systemReferenceContext.trim();
-  const history = userContent.trim();
-  const instruction = systemPromptTemplate.trim();
-  const messages = [];
-  if (reference) messages.push({ role: "system", content: reference });
-  if (history) messages.push({ role: "user", content: history });
-  if (instruction) messages.push({ role: "system", content: instruction });
-  return messages;
+// plugins/plot-summary/src/shared/summary-prompt-layout.ts
+var PLOT_SUMMARY_COMPLETE_LAYOUT = {
+  messages: [
+    { role: "system", content: "{{blocks.reference}}" },
+    { role: "user", content: "{{blocks.history}}" },
+    { role: "system", content: "{{plugin.systemPromptTemplate}}" }
+  ]
+};
+
+// plugins/plot-summary/src/shared/prepare-context-blocks.ts
+function buildPreviousSummariesBlock(entries) {
+  if (entries.length === 0) return "";
+  const body = entries.map((e) => {
+    const title = e.title.trim();
+    const content = (e.content ?? "").trim();
+    return `## ${title}
+${content}`;
+  }).join("\n\n");
+  return `<previous-summaries readonly>
+${body}
+</previous-summaries>
+
+`;
+}
+function buildSidecarsBlock(entries) {
+  if (entries.length === 0) return "";
+  const body = entries.map((e) => {
+    const title = e.title.trim();
+    const content = (e.content ?? "").trim();
+    return `## ${title}
+${content}`;
+  }).join("\n\n");
+  return `<sidecars readonly>
+${body}
+</sidecars>
+
+`;
+}
+function buildHistoryBlock(transcript) {
+  const body = (transcript ?? "").trim();
+  if (!body) return "";
+  return `<history>
+${body}
+</history>`;
 }
 
-// plugins/plot-summary/src/server/complete-draft.ts
-var UPSTREAM_RETRY_MAX = 3;
-var PIPELINE_FATAL = /* @__PURE__ */ new Set(["context_exceeded", "context_length_unconfigured"]);
-var UPSTREAM_RETRY = /* @__PURE__ */ new Set(["plugin_complete_failed", "preflight_failed"]);
-async function expandText(api, text, conversationId, apiConfigId, toTurn) {
-  const raw = asString(text);
-  if (!raw.includes("{{")) return raw;
-  return api.runPluginMacroExpand({
-    text: raw,
-    conversationId,
-    apiConfigId,
-    ...typeof toTurn === "number" ? { toTurn } : {}
-  });
+// plugins/plot-summary/src/shared/plot-summary-context-blocks.ts
+var PS_BLOCK_PREV = "prevSummaries";
+var PS_BLOCK_SIDECARS = "sidecars";
+var PS_BLOCK_HISTORY_RAW = "historyRaw";
+function slicesToTitleContent(entries) {
+  return entries.map((e) => ({
+    title: e.title,
+    content: e.content
+  }));
 }
-async function assertPreflight(api, conversationId, apiConfigId, messages) {
-  if (messages.length === 0) {
-    throw new Error("preflight_failed");
-  }
-  const pf = await api.runPluginCompletePreflight({
-    apiConfigId,
-    conversationId,
-    messages
-  });
-  if (pf.ok) return;
-  if (pf.code === "context_exceeded") {
-    const err = new Error("context_exceeded");
-    err.promptTokens = pf.promptTokens;
-    err.budget = pf.budget;
-    throw err;
-  }
-  if (pf.code === "context_length_unconfigured") {
-    throw new Error("context_length_unconfigured");
-  }
-  throw new Error("preflight_failed");
+function formatPlotSummaryLayoutBlocks(resolved) {
+  const prev = resolved.entriesByBlock[PS_BLOCK_PREV] ?? [];
+  const sidecars = resolved.entriesByBlock[PS_BLOCK_SIDECARS] ?? [];
+  const historyRaw = resolved.blocks[PS_BLOCK_HISTORY_RAW] ?? "";
+  const prevBlock = buildPreviousSummariesBlock(slicesToTitleContent(prev));
+  const sidecarBlock = buildSidecarsBlock(slicesToTitleContent(sidecars));
+  const historyBlock = buildHistoryBlock(historyRaw);
+  const reference = `${prevBlock}${sidecarBlock}`.trim();
+  const history = historyBlock.trim();
+  return {
+    reference,
+    history
+  };
 }
-async function callCompleteOnce(api, conversationId, apiConfigId, systemReferenceContext, systemPromptTemplate, userContent, toTurn) {
-  const anchorToTurn = typeof toTurn === "number" && Number.isInteger(toTurn) ? toTurn : void 0;
-  const [expandedRef, expandedInstruction, expandedUser] = await Promise.all([
-    systemReferenceContext.trim() ? expandText(
-      api,
-      systemReferenceContext,
-      conversationId,
-      apiConfigId ?? "",
-      anchorToTurn
-    ) : Promise.resolve(""),
-    expandText(
-      api,
-      systemPromptTemplate,
-      conversationId,
-      apiConfigId ?? "",
-      anchorToTurn
-    ),
-    expandText(api, userContent, conversationId, apiConfigId ?? "", anchorToTurn)
-  ]);
-  const messages = buildSummaryCompleteMessages(
-    expandedRef,
-    expandedUser,
-    expandedInstruction
-  );
-  await assertPreflight(api, conversationId, apiConfigId, messages);
-  const result = await api.runPluginComplete({
-    apiConfigId,
-    conversationId,
-    messages,
-    responseFormat: "json_object"
-  });
-  if (!result.ok) {
-    throw new Error(result.code || "plugin_complete_failed");
-  }
-  return result;
+
+// plugins/plot-summary/src/server/complete-context-hooks.ts
+function formatPluginContextBlocks(resolved) {
+  return formatPlotSummaryLayoutBlocks(resolved);
 }
-async function callCompleteWithRetry(api, conversationId, apiConfigId, systemReferenceContext, systemPromptTemplate, userContent, toTurn) {
-  let lastErr = null;
-  for (let attempt = 1; attempt <= UPSTREAM_RETRY_MAX; attempt++) {
-    try {
-      return await callCompleteOnce(
-        api,
-        conversationId,
-        apiConfigId,
-        systemReferenceContext,
-        systemPromptTemplate,
-        userContent,
-        toTurn
-      );
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "";
-      if (PIPELINE_FATAL.has(msg)) throw e;
-      if (UPSTREAM_RETRY.has(msg) && attempt < UPSTREAM_RETRY_MAX) {
-        lastErr = e;
-        continue;
-      }
-      throw e;
-    }
-  }
-  throw lastErr ?? new Error("plugin_complete_failed");
-}
-async function completeDraft(ctx, api) {
-  const result = await callCompleteWithRetry(
-    api,
-    ctx.conversationId,
-    ctx.apiConfigId,
-    ctx.systemReferenceContext ?? "",
-    ctx.systemPromptTemplate,
-    ctx.userContent,
-    ctx.toTurn
-  );
-  const raw = parseModelJson(result.content);
+function parseCompleteDraftContent(ctx, content, _api) {
+  const raw = parseModelJson(content);
   if (ctx.kind === "sidecar") {
-    const parsed = raw;
-    const sidecar = normalizeSummaryPayload({
-      title: ctx.sidecarName || asString(parsed.title),
-      content: parsed.content ?? parsed.title,
-      keywords: parsed.keywords
-    });
+    const sidecar = normalizeSidecarPayload(ctx.sidecarName ?? "", raw);
     return {
       draft: {
-        title: ctx.sidecarName || sidecar.title,
+        title: ctx.sidecarName?.trim() || sidecar.title,
         content: sidecar.content,
         keywords: sidecar.keywords
-      },
-      usage: result.usage,
-      latencyMs: result.latencyMs
+      }
     };
   }
   const summary = normalizeSummaryPayload(raw);
@@ -209,11 +192,11 @@ async function completeDraft(ctx, api) {
       title: entryTitle,
       content: summary.content,
       keywords: summary.keywords
-    },
-    usage: result.usage,
-    latencyMs: result.latencyMs
+    }
   };
 }
 export {
-  completeDraft
+  PLOT_SUMMARY_COMPLETE_LAYOUT,
+  formatPluginContextBlocks,
+  parseCompleteDraftContent
 };

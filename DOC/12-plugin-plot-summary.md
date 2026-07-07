@@ -39,7 +39,7 @@
 - 菜单「手动摘要」；区间 picker 两键选 start/end 优先。
 - **默认预填**（无 picker）：`end = T - bufferTurns`，`start = max(0, end - (blockTurns - 1))`（T = 当前最大 turnOrdinal；与自动块等长）。
 - 写盘：开关与指针分次 patch；摘要成功后再更新 `lastSummarizedEnd` / `nextBlockStart`。
-- **Prompt 预览**：debug 审计开启时对话框第四按钮（`prepare-context` 干跑）。
+- **Prompt 预览**：debug 审计开启时对话框第四按钮（`completeWithContext` · `dryRun: true`）。
 
 ### 4.2 条目标题与排序
 
@@ -55,7 +55,7 @@
 |----|------|
 | `TITLE` | 模型 JSON `title`（重摘要时会剥掉旧格式后缀） |
 | `[from-to]` | 摘要区间起止轮（0 起、含 end） |
-| `MEMO-n` | 标题已是新格式则**保留**原 `n`；否则 `n = floor(fromTurn / blockTurns) + 1`（`completeDraft` 请求带 `blockTurns`，默认 15） |
+| `MEMO-n` | 标题已是新格式则**保留**原 `n`；否则 `n = floor(fromTurn / blockTurns) + 1`（`completeWithContext` 的 `draft.blockTurns`，默认 15） |
 
 **自动排序**（`entrySortMode: auto-turn-suffix`，批次结束后 `applyPlotSummaryEntrySort`）：
 
@@ -63,26 +63,28 @@
 2. summary：按轮次后缀 **`[from-to]`** 升序（`start`，再 `end`）；同区间再比 **MEMO-n**
 3. **兼容**：仍识别旧版 `TITLE-from-to` 后缀（无 `[MEMO-]` 前缀）
 
-实现：`plugins/plot-summary/src/shared/lorebook-sort.ts`（经 `scripts/sync-plot-summary-shared.mjs` 同步至 `server/src/plot-summary/`，供 prepare-context 选 `<previous-summaries>`）。
+实现：`plugins/plot-summary/src/shared/lorebook-sort.ts`（插件侧选 `<previous-summaries>` 条）。
 
-## 5. prepare-context（摘要）
+## 5. 二次 LLM 上下文（摘要）
 
-> **演进**：宿主侧 Historian 专用 prepare 将泛化为通用 **上下文块 + prompt 组装**（**`DOC/39`**）；`prepareContext` / `completeDraft` 对外行为迁移期保持不变。
+> **已定案**：通用 **上下文块 + prompt 组装**（**`DOC/39`**）；Historian 经 `prepareContextBlocks` → `completeWithContext`。
 
-- XML：`<user userName="{{user}}">` / `<assistant charName="{{char}}">`；`<context-history>` / `<history>`。
-- 勾选 `regexRuleIds` 时对摘要 outgoing 应用原生正则；`regexApplyAllTurns` 控制 skip。
-- **宏引擎**：`complete-draft` / Prompt 预览经 `runPluginMacroExpand` 展开模板与 `userContent`；传 **`toTurn`** 锚定历史类宏至摘要区间尾部（与 `DOC/26` 一致）；memory 类 draft 另传 **`blockTurns`** 供条目标题 `[MEMO-n]` 计算。
-- **区间建议**：手动/自动摘要 UI 限制 **≤512 轮**（`endTurn - startTurn + 1`），与宏索引窗口对齐；超出时禁用提交并 toast。
-- 服务端：`plugin-prepare-context.ts`、`plugin-summarize-format.ts`、`plugin-macro-expand.ts`。
+- XML：`<previous-summaries>` / `<sidecars>`（system reference）；待摘要 `<history>`（user）。
+- 勾选 `regexRuleIds` 时对 `conversation.transcript` 块应用 outgoing 正则；`regexApplyAllTurns` 控制 skip。
+- **宏引擎**：assemble / complete 经 `runPluginMacroExpand`；须传 **`anchorToTurn`**（Historian 用 `toTurn`）。
+- **区间建议**：手动/自动摘要 UI 限制 **≤512 轮**；超出禁用提交并 toast。
+- 服务端：`plugin-context-blocks-resolve.ts`、`plugin-assemble-prompt.ts`、`plugin-complete-with-context.ts`、`plugin-summarize-format.ts`、`plugin-macro-expand.ts`。
+- 插件：`prepare-context.ts`、`plot-summary-context-blocks.ts`、`summary-prompt-layout.ts`、`server/complete-context-hooks.ts`。
 
 ## 6. 代码
 
 | 区域 | 路径 |
 |------|------|
-| 插件 | `plugins/plot-summary/src/`（`pipeline.ts`、`dialogs.ts`、`settings.ts`） |
-| 服务端 prepare | `server/src/plugin-prepare-context.ts` |
-| 自动摘要 UI 状态 | `web/src/utils/plot-summary-auto-summarize-status.ts` |
-| 条目排序 / 标题解析 | `server/src/plot-summary/`（`lorebook-sort.ts`）；写入标题见插件 `shared/summarize.ts` |
+| 插件 Web | `plugins/plot-summary/src/`（`pipeline.ts`、`review.ts`、`prepare-context.ts`、`prompt-preview.ts`） |
+| 插件 Server hooks | `plugins/plot-summary/src/server/complete-context-hooks.ts` |
+| 宿主管线 | `server/src/plugin-context-blocks-resolve.ts`、`plugin-assemble-prompt.ts`、`plugin-complete-with-context.ts` |
+| 自动摘要 UI | `web/src/utils/plot-summary-auto-summarize-status.ts`、`PlotSummaryAutoSummarizeBlock.vue` |
+| 条目排序 / 标题 | `plugins/plot-summary/src/shared/lorebook-sort.ts`、`shared/summarize.ts` |
 
 ## 7. 验收要点
 

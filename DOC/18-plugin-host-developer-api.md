@@ -240,10 +240,9 @@ interface ConversationBatchContext {
 | 方法 | 说明 |
 |------|------|
 | `complete(req)` | 通用出站补全：`messages[]`；`apiConfigId` 可省略，由宿主解析 |
-| `prepareContext(req)` | **步骤 1** 取块（扩展 `ContextBlockSpec[]`；Historian 旧请求兼容）；**`DOC/39` §3.1** |
-| `assemblePluginPrompt(req)` | **步骤 2** blocks + layout → `messages[]`；强制与步骤 1 分 RPC；**`DOC/39` §3.2** |
-| `completeWithContext(req)` | 沙箱主入口：内部两步 + complete；无 preset；**`DOC/39` §3.3** |
-| `completeDraft(req)` | 迁移后瘦化（解析 JSON + normalize）；**`DOC/39`** |
+| `prepareContextBlocks(req)` | **步骤 1** 取块：`ContextBlockSpec[]` → blocks / entriesByBlock；**`DOC/39` §3.1** |
+| `assemblePluginPrompt(req)` | **步骤 2** blocks + layout → `messages[]`；须 `anchorToTurn`；**`DOC/39` §3.2** |
+| `completeWithContext(req)` | **主入口**：resolve API → 步骤 1+2 → complete；可选 `draft` 解析；**`DOC/39` §3.3** |
 
 **`complete` 请求**：
 
@@ -260,44 +259,49 @@ interface ConversationBatchContext {
 
 宿主 HTTP 路由另接受 `conversationId`（Web 侧由 `convId()` 自动注入）；服务端实现见 `plugin-api-resolve.ts`。
 
-**`prepareContext` 请求**（`conversationId` 由宿主注入）：
+**`prepareContextBlocks` 请求**（`conversationId` 由宿主注入）：
 
 ```ts
 {
-  fromTurn: number
-  toTurn: number
-  targetLorebookId: string
-  includePreviousMemories?: boolean  // 默认 true
-  previousMemoriesLimit?: number     // 兼容旧名；默认 8
-  previousSummariesLimit?: number    // 同 previousMemoriesLimit
-  sidecarEntryIds?: Record<string, string>
-  sidecarIds?: string[]              // Sidecar 配置 id 顺序
+  blocks: ContextBlockSpec[]   // 见 shared/plugin-context-blocks.ts · DOC/39
 }
-// systemReferenceContext：`<previous-summaries>` → `<sidecars>` → `<context-history>`?（见 DOC/12 §3.3）
-// userContent：仅 `<history>`
-// → { ok: true, systemReferenceContext, userContent, transcript, turnCount, meta: { userDisplayName, assistantDisplayName } }
+// → { ok: true, blocks, entriesByBlock, meta }
 ```
 
-**`completeDraft` 请求**：
+**`assemblePluginPrompt` 请求**：
 
 ```ts
 {
-  apiConfigId?: string      // 省略时同上；complete-draft 路由会先解析再调 hook
-  kind: 'memory' | 'sidecar'
-  systemReferenceContext?: string  // 参考块，与 systemPromptTemplate 拼成 system
-  userContent: string              // 仅 <history>
-  systemPromptTemplate: string
-  fromTurn?: number
-  toTurn?: number
-  sidecarName?: string
+  blocks: Record<string, string>
+  layout: PromptLayout
+  pluginSettings?: Record<string, unknown>
+  anchorToTurn: number
+  apiConfigId?: string
+  dryRun?: boolean
 }
-// memory 写入标题恒为「模型 title + -fromTurn-toTurn」
-// → { ok: true, draft: { title, content, keywords[] }, usage?, latencyMs? }
+// → { ok: true, messages[], preflight? }
 ```
 
-**权限**：`plugin.complete`（complete / preflight / completeDraft）；`prepareContext` 另需 `conversation.read` + `lorebook.read`。
+**`completeWithContext` 请求**：
 
-**可中断**：`host.ui.progress({ abortable: true })` 时，`complete` / `prepareContext` / `completeDraft` 等会携带 `AbortSignal`。
+```ts
+{
+  apiConfigId?: string
+  blocks: ContextBlockSpec[]
+  layout: PromptLayout
+  pluginSettings?: Record<string, unknown>
+  anchorToTurn: number
+  responseFormat?: 'json_object' | 'text'
+  dryRun?: boolean
+  draft?: { kind: 'memory' | 'sidecar'; fromTurn?; toTurn?; blockTurns?; sidecarName? }
+}
+// → { ok: true, content?, messages[], draft?, preflight?, usage?, latencyMs? }
+// 失败：code 如 context_exceeded、parse_failed；context 超限时含 promptTokens / budget
+```
+
+**权限**：`plugin.complete`（complete / preflight / completeWithContext）；`prepareContextBlocks` 另需 `conversation.read` + `lorebook.read`。
+
+**可中断**：`host.ui.progress({ abortable: true })` 时，`complete` / `prepareContextBlocks` / `assemblePluginPrompt` / `completeWithContext` 等会携带 `AbortSignal`。
 
 ### 3.9 `host.token`
 
@@ -384,7 +388,8 @@ interface ConversationBatchContext {
 | `resolveTurnPluginEntries(plugins, api)` | 落盘前 | 写入 `turn.plugins[]` 条目（body 侧） |
 | `resolveTurnPluginEntriesFromAssistant(plugins, assistantText, api)` | 落盘前 | 从 assistant 解析 → 条目（trace-keeper Together） |
 | `regenerateSeparateState(ctx, api)` | `POST …/regenerate-separate` | Separate 补生成（trace-keeper） |
-| `completeDraft(ctx, api)` | `POST …/complete-draft` | 插件侧 LLM 草稿（扩宏、重试、JSON 解析） |
+| `formatPluginContextBlocks(resolved)` | completeWithContext 步骤 1 后 | 插件 format blocks（Historian XML） |
+| `parseCompleteDraftContent(ctx, content, api)` | completeWithContext 出站后 | JSON → draft normalize |
 
 在 manifest 声明 `"hooks": ["afterAssemblePrompts"]` 等，设置页会展示。
 
@@ -399,7 +404,7 @@ interface ConversationBatchContext {
 | `runPluginMacroExpand(req)` | 同 Web `macros.expand` |
 | **`regex.listRules` / `applyText` / `applyMessages`** | 同 Web `host.regex`（读盘 `regex-rules.json` · `server/src/regex-apply.ts`） |
 
-**`completeDraft` 实现约定**：抛出 `context_exceeded`、`context_length_unconfigured`、`parse_failed` 等 message，宿主路由会映射为对应 HTTP 错误码。
+**`parseCompleteDraftContent` 约定**：抛出 `parse_failed` 时宿主映射为 `plugin_complete_draft_failed`。
 
 ---
 
@@ -426,8 +431,9 @@ interface ConversationBatchContext {
 | POST | `/api/plugins/:id/lorebooks/:lorebookId/apply-order` | `lorebook.entry.write` |
 | POST | `/api/plugins/:id/complete` | `plugin.complete` |
 | POST | `/api/plugins/:id/complete/preflight` | `plugin.complete` |
-| POST | `/api/plugins/:id/prepare-context` | `conversation.read` + `lorebook.read` |
-| POST | `/api/plugins/:id/complete-draft` | `plugin.complete` + 插件实现 `completeDraft` hook |
+| POST | `/api/plugins/:id/prepare-context` | `conversation.read` + `lorebook.read`（body 须含 `blocks[]`） |
+| POST | `/api/plugins/:id/assemble-plugin-prompt` | `conversation.read` |
+| POST | `/api/plugins/:id/complete-with-context` | `plugin.complete` + `conversation.read` + `lorebook.read` |
 | POST | `/api/plugins/:id/macros/expand` | `conversation.read` |
 
 **会话 pluginSettings**：经 `host.conversation.get/patchPluginSettings` → `GET/PATCH /api/chat/conversations/:id`（非 `/api/plugins` 前缀，但仍由宿主封装）。
@@ -436,7 +442,7 @@ interface ConversationBatchContext {
 
 | permission | 含义 |
 |------------|------|
-| `conversation.read` | 读对话 turn / 宏展开 / prepareContext |
+| `conversation.read` | 读对话 turn / 宏展开 / prepareContextBlocks |
 | `turn.read` | 读 turn 元数据（服务端 hook 用） |
 | `turn.receive.prune` | 裁剪 receives（swipe-cleaner patch） |
 | `turn.plugins.write` | 写 `turn.plugins[]` |
@@ -508,7 +514,7 @@ class PluginHostApiError {
 }
 ```
 
-**常见 code**：`plugin_not_found`、`plugin_disabled`、`plugin_permission_denied`、`plugin_complete_failed`、`plugin_complete_context_exceeded`、`lorebook_not_found`、`conversation_not_found`、`plugin_hook_not_supported`（未实现 `completeDraft` 时）等。
+**常见 code**：`plugin_not_found`、`plugin_disabled`、`plugin_permission_denied`、`plugin_complete_failed`、`plugin_complete_context_exceeded`、`plugin_complete_context_length_unconfigured`、`lorebook_not_found`、`conversation_not_found`、`plugin_complete_draft_failed`、`parse_failed` 等。
 
 `host.conversation.runScope` 可能抛 **`ConversationHostError`**：`conversation_locked`、`conversation_busy`、`range_too_large`。
 
@@ -519,7 +525,7 @@ class PluginHostApiError {
 ### 8.1 长流程 + 预览确认
 
 1. `setPluginHold(true)` + `ui.progress({ abortable: true })`
-2. `prepareContext` → `completeDraft` → `registerFormDialog` 预览
+2. `prepareContextBlocks` → `completeWithContext` → `registerFormDialog` 预览
 3. 用户确认后 `createEntry` / `patchEntry`，`patchPluginSettings` 更新指针
 4. `finally`：`clearProgress()`、`setPluginHold(false)`
 
@@ -575,7 +581,7 @@ class PluginHostApiError {
 | `DOC/24-regex-and-session-audit.md` | 宿主原生正则三阶段、`host.regex` / `api.regex` |
 | `DOC/30-plugin-trace-keeper.md` | **迹录** Trace Keeper（✅ v1） |
 | `DOC/38-plugin-sandbox-and-host-evolution.md` | 插件沙箱、注入描述符、complete 白名单（**规划**） |
-| `DOC/39-plugin-context-and-prompt-assembly.md` | 二次 LLM 上下文块 + prompt 组装（**规划**） |
+| `DOC/39-plugin-context-and-prompt-assembly.md` | 二次 LLM 上下文块 + prompt 组装（**Phase 1–2 已落地**） |
 | `plugins/README.md` | 内置插件列表与打包说明 |
 
 ---
@@ -588,3 +594,4 @@ class PluginHostApiError {
 | 2026-06-02 | 核对 `lorebook.ensure` / `applyOrder` 已实现；补 REST 与 `lorebook.write` 权限说明 |
 | 2026-06-08 | `plot-summary` 更名；`reorder-curated` 移除，改为通用 `apply-order`；Historian 排序算法在 `plugins/plot-summary/src/shared/` |
 | 2026-06-23 | §3.14 `host.regex` 标为已实现（2026-06-10）；§4.2 补 `api.regex` |
+| 2026-07-07 | **DOC/39 落地**：`prepareContextBlocks` / `assemblePluginPrompt` / `completeWithContext`；移除 `prepareContext`（旧字段）与 `complete-draft` |

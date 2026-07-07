@@ -35,9 +35,10 @@ import {
   patchLorebookEntry,
   expandPluginMacros,
   runPluginComplete,
-  runPluginCompleteDraft,
   runPluginCompletePreflight,
-  runPluginPrepareContext,
+  runPluginPrepareContextBlocks,
+  runAssemblePluginPrompt,
+  runCompleteWithContext,
 } from '@/plugins/plugin-host-api'
 import {
   applyRegexMessagesForHost,
@@ -177,16 +178,24 @@ export function createScopedPluginHost(
           getPluginProgressAbortSignal(),
         )
       },
-      prepareContext(req) {
-        return runPluginPrepareContext(
+      prepareContextBlocks(req) {
+        return runPluginPrepareContextBlocks(
           id,
           convId(),
           req,
           getPluginProgressAbortSignal(),
         )
       },
-      completeDraft(req) {
-        return runPluginCompleteDraft(
+      assemblePluginPrompt(req) {
+        return runAssemblePluginPrompt(
+          id,
+          convId(),
+          req,
+          getPluginProgressAbortSignal(),
+        )
+      },
+      completeWithContext(req) {
+        return runCompleteWithContext(
           id,
           convId(),
           req,
@@ -409,10 +418,13 @@ export function createPluginWebHost(session: ChatSession): {
       complete() {
         throw new Error('plugin_host_requires_scoped_host')
       },
-      prepareContext() {
+      prepareContextBlocks() {
         throw new Error('plugin_host_requires_scoped_host')
       },
-      completeDraft() {
+      assemblePluginPrompt() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+      completeWithContext() {
         throw new Error('plugin_host_requires_scoped_host')
       },
     },

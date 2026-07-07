@@ -1,12 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  buildContextHistoryBlock,
   buildHistoryBlock,
   buildPreviousSummariesBlock,
   buildSidecarsBlock,
-  resolveContextHistoryStart,
-} from '../../src/plot-summary/prepare-context-blocks.js'
+} from '../../../plugins/plot-summary/src/shared/prepare-context-blocks.js'
 import {
   classifyPlotSummaryEntry,
   computePlotSummaryApplyOrderLayout,
@@ -14,7 +12,7 @@ import {
   parseTurnRangeSuffix,
   pickRecentSummaryEntriesBeforeTurn,
   sortPlotSummaryEntriesInGroup,
-} from '../../src/plot-summary/lorebook-sort.js'
+} from '../../../plugins/plot-summary/src/shared/lorebook-sort.js'
 
 describe('parseTurnRangeSuffix', () => {
   it('parses bracket turn range suffix', () => {
@@ -133,10 +131,6 @@ describe('prepare-context blocks', () => {
   it('buildHistoryBlock wraps transcript', () => {
     const inner = '<user userName="{{user}}">plot</user>'
     assert.equal(buildHistoryBlock(inner), `<history>\n${inner}\n</history>`)
-  })
-
-  it('resolveContextHistoryStart extends backward', () => {
-    assert.equal(resolveContextHistoryStart(50, 5), 46)
   })
 })
 

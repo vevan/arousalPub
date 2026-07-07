@@ -86,7 +86,7 @@ export function applyOutgoingRegexToSummaryTurns(
   )
 }
 
-/** 摘要 history / context-history 内单条发言的 XML 包裹（属性宏由 complete 阶段展开） */
+/** 摘要 <history> 内单条发言的 XML 包裹（属性宏由 complete 阶段展开） */
 export function wrapSummarizeTurnLine(
   role: 'user' | 'assistant',
   text: string,

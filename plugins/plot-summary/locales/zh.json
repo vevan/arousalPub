@@ -260,11 +260,11 @@
 
   "previousSummariesLimitLabel": "摘要时附带最近条数",
 
-  "previousSummariesLimitDesc": "参考上下文：① 结束轮次早于本次摘要起始轮的最近 N 条剧情纪要；② 从起始轮向前（含起始轮）最多 N 轮对话放入 <context-history>（待摘要区间仍在 <history>）。0 表示均不附带。",
+  "previousSummariesLimitDesc": "摘要时向模型附带结束轮次早于本次起始轮的最近 N 条剧情纪要正文；0 表示不附带。",
 
   "regexRuleIdsLabel": "摘要前应用正则（outgoing）",
 
-  "regexRuleIdsDesc": "仅列出已启用且含 outgoing 阶段的规则；按列表顺序作用于 <context-history> 与 <history> 内的对话正文，不改磁盘。未勾选则不应用。",
+  "regexRuleIdsDesc": "仅列出已启用且含 outgoing 阶段的规则；按列表顺序作用于 <history> 内的对话正文，不改磁盘。未勾选则不应用。",
 
   "regexApplyAllTurnsLabel": "忽略 skip，全局应用",
 
@@ -330,9 +330,9 @@
 
   "systemPromptTemplateLabel": "剧情纪要 System 模板",
 
-  "systemPromptTemplateDesc": "摘要指令模板，作为最后一条 system 消息发送。前序 system 为只读参考块（previous-summaries / sidecars / context-history）；user 消息仅为待摘要的 <history>。支持宏：{{user}}、{{char}}、{{date}}、{{authorsNote}} 等。",
+  "systemPromptTemplateDesc": "摘要指令模板，作为最后一条 system 消息发送。前序 system 为只读参考块（previous-summaries / sidecars）；user 消息仅为待摘要的 <history>。支持宏：{{user}}、{{char}}、{{date}}、{{authorsNote}} 等。",
 
-  "systemPromptTemplateDefault": "你是一位才华横溢的摘要家, 擅长全面捕捉故事场景与剧情时间线。前序 system 消息可能包含只读参考块: <previous-summaries>、<sidecars>、<context-history>; 用户消息仅为待摘要正文 <history>。**仅**根据 <history> 内的角色扮演对话撰写摘要; 参考块仅供理解背景, 勿将其内容逐字写入摘要正文。\n\n你必须仅以这种确切的格式返回有效的 JSON:\n{\n  \"title\": \"简短的场景标题(1-3 个词)\",\n  \"content\": \"详细的、按时间顺序的叙事散文摘要……\",\n  \"keywords\": [\"关键词1\", \"关键词2\"]\n}\n\n对于 content 字段:\n- **剧情时间节点为必填信息**: 若对话中出现年月日、时辰、季节、相对时间(如「三天后」「翌晨」)或场景切换提示, 须在摘要**开头**明确写出, 并与 <previous-summaries> 中的时间线衔接, 避免矛盾。\n- 随后按时间顺序准确捕捉本段场景, 不遗漏重要情节; 排除对摘要无用的 [OOC] 对话或元互动。\n- 本摘要将进入资料库并参与向量检索, 须包含: 重要情节与事件、关键互动与角色发展、值得记住的细节与代表性台词、对 {{user}} 与 {{char}} 后续互动有影响的结果与伏笔。\n- 全面、易懂, 勿大段照抄原文。\n\n对于 keywords 字段: 提供 15-30 个具体、可检索的关键词(地点、物件、专有名词、独特行动、剧情时间节点词等)。避免空泛主题词(如「悲伤」「爱」); 避免单独使用角色姓名(可用地名、事件名、物品名)。\n\n对于 title 字段: 简短场景名即可; 系统会在写入资料库时自动追加轮次后缀, 勿在 title 中自行添加数字区间。\n\n仅返回 JSON, 不要返回其他任何文字。",
+  "systemPromptTemplateDefault": "你是一位才华横溢的摘要家, 擅长全面捕捉故事场景与剧情时间线。前序 system 消息可能包含只读参考块: <previous-summaries>、<sidecars>; 用户消息仅为待摘要正文 <history>。**仅**根据 <history> 内的角色扮演对话撰写摘要; 参考块仅供理解背景, 勿将其内容逐字写入摘要正文。\n\n你必须仅以这种确切的格式返回有效的 JSON:\n{\n  \"title\": \"简短的场景标题(1-3 个词)\",\n  \"content\": \"详细的、按时间顺序的叙事散文摘要……\",\n  \"keywords\": [\"关键词1\", \"关键词2\"]\n}\n\n对于 content 字段:\n- **剧情时间节点为必填信息**: 若对话中出现年月日、时辰、季节、相对时间(如「三天后」「翌晨」)或场景切换提示, 须在摘要**开头**明确写出, 并与 <previous-summaries> 中的时间线衔接, 避免矛盾。\n- 随后按时间顺序准确捕捉本段场景, 不遗漏重要情节; 排除对摘要无用的 [OOC] 对话或元互动。\n- 本摘要将进入资料库并参与向量检索, 须包含: 重要情节与事件、关键互动与角色发展、值得记住的细节与代表性台词、对 {{user}} 与 {{char}} 后续互动有影响的结果与伏笔。\n- 全面、易懂, 勿大段照抄原文。\n\n对于 keywords 字段: 提供 15-30 个具体、可检索的关键词(地点、物件、专有名词、独特行动、剧情时间节点词等)。避免空泛主题词(如「悲伤」「爱」); 避免单独使用角色姓名(可用地名、事件名、物品名)。\n\n对于 title 字段: 简短场景名即可; 系统会在写入资料库时自动追加轮次后缀, 勿在 title 中自行添加数字区间。\n\n仅返回 JSON, 不要返回其他任何文字。",
 
   "sidecarSystemPromptTemplateDefault": "你是一个对话状态追踪器。前序 system 含只读参考块; 用户消息仅为 <history>。根据 <history> 更新当前场景下人物关系、目标与关键状态, 可参考 system 中的 sidecar 旧状态。\n\n返回 JSON 对象, 仅含键 title、content、keywords(字符串数组, 请填写便于检索的关键词).",
 

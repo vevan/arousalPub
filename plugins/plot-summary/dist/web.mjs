@@ -267,22 +267,27 @@ function firstAutoTriggerTurnOrdinal(settings) {
 }
 
 // plugins/plot-summary/src/errors.ts
-var PIPELINE_FATAL_ERRORS = /* @__PURE__ */ new Set([
+var PIPELINE_FATAL_CODES = /* @__PURE__ */ new Set([
   "context_exceeded",
-  "context_length_unconfigured"
+  "plugin_complete_context_exceeded",
+  "context_length_unconfigured",
+  "plugin_complete_context_length_unconfigured"
 ]);
-function isPipelineFatalError(e) {
-  return e instanceof Error && PIPELINE_FATAL_ERRORS.has(e.message);
-}
-function isAbortError(e) {
-  return typeof DOMException !== "undefined" && e instanceof DOMException && e.name === "AbortError" || e instanceof Error && e.name === "AbortError";
-}
-function lorebookErrorCode(e) {
+function pipelineErrorCode(e) {
   if (!e || typeof e !== "object") return "";
   const o = e;
   if (typeof o.code === "string" && o.code) return o.code;
   if (e instanceof Error && e.message) return e.message;
   return "";
+}
+function isPipelineFatalError(e) {
+  return PIPELINE_FATAL_CODES.has(pipelineErrorCode(e));
+}
+function isAbortError(e) {
+  return typeof DOMException !== "undefined" && e instanceof DOMException && e.name === "AbortError" || e instanceof Error && e.name === "AbortError";
+}
+function lorebookErrorCode(e) {
+  return pipelineErrorCode(e);
 }
 function isLorebookNotFoundError(e) {
   return lorebookErrorCode(e) === "lorebook_not_found";
@@ -294,19 +299,28 @@ function isLorebookEntryMissingError(e) {
   const status = typeof o.status === "number" ? o.status : 0;
   return code === "lorebook_entry_not_found" || code === "lorebook_entry_patch_failed" && status === 404;
 }
+function contextExceededToastParams(e) {
+  if (!e || typeof e !== "object") return {};
+  const o = e;
+  return {
+    used: typeof o.promptTokens === "number" ? o.promptTokens : void 0,
+    budget: typeof o.budget === "number" ? o.budget : void 0
+  };
+}
 function preflightToast(host, e) {
-  if (e instanceof Error && e.message === "context_exceeded") {
-    const err = e;
+  const code = pipelineErrorCode(e);
+  if (code === "context_exceeded" || code === "plugin_complete_context_exceeded") {
+    const { used, budget } = contextExceededToastParams(e);
     host.ui.toast(
       host.t(k(host, "toastContextExceeded"), {
-        used: err.promptTokens,
-        budget: err.budget
+        used: used ?? "?",
+        budget: budget ?? "?"
       }),
       { color: "warning" }
     );
     return;
   }
-  if (e instanceof Error && e.message === "context_length_unconfigured") {
+  if (code === "context_length_unconfigured" || code === "plugin_complete_context_length_unconfigured") {
     host.ui.toast(host.t(k(host, "toastContextLengthMissing")), { color: "warning" });
     return;
   }
@@ -318,12 +332,30 @@ function preflightToast(host, e) {
     host.ui.toast(host.t(k(host, "toastSidecarEntryMissing")), { color: "warning" });
     return;
   }
-  if (e instanceof Error && e.message === "parse_failed") {
+  if (code === "parse_failed") {
     host.ui.toast(host.t(k(host, "toastParseFailed")), { color: "error" });
+    return;
+  }
+  const apiCode = lorebookErrorCode(e);
+  if (apiCode === "plugin_complete_draft_failed" || apiCode === "parse_failed") {
+    host.ui.toast(host.t(k(host, "toastParseFailed")), { color: "error" });
+    return;
+  }
+  if (apiCode === "sidecar_prompt_required") {
+    host.ui.toast(host.t(k(host, "toastSummarizeFailed")), { color: "error" });
     return;
   }
   host.ui.toast(host.t(k(host, "toastSummarizeFailed")), { color: "error" });
 }
+
+// plugins/plot-summary/src/shared/summary-prompt-layout.ts
+var PLOT_SUMMARY_COMPLETE_LAYOUT = {
+  messages: [
+    { role: "system", content: "{{blocks.reference}}" },
+    { role: "user", content: "{{blocks.history}}" },
+    { role: "system", content: "{{plugin.systemPromptTemplate}}" }
+  ]
+};
 
 // plugins/plot-summary/src/state.ts
 var summarizeRunning = false;
@@ -453,19 +485,35 @@ async function runReviewRegenerate(host, dialogId) {
 async function generateReviewDraft(host, settings, opts) {
   showCurrentBatchTaskProgress(host);
   try {
-    const req = {
+    const anchorToTurn = typeof opts.toTurn === "number" && Number.isInteger(opts.toTurn) ? opts.toTurn : void 0;
+    if (anchorToTurn === void 0) {
+      throw new Error("anchor_to_turn_required");
+    }
+    const systemPromptTemplate = resolveSystemPrompt(host, settings, opts);
+    if (!systemPromptTemplate.trim()) {
+      throw new Error(
+        opts.kind === "sidecar" ? "sidecar_prompt_required" : "system_prompt_required"
+      );
+    }
+    const result = await host.plugin.completeWithContext({
       ...settings.apiConfigId ? { apiConfigId: settings.apiConfigId } : {},
-      kind: opts.kind,
-      systemReferenceContext: opts.systemReferenceContext ?? "",
-      userContent: opts.userContent,
-      systemPromptTemplate: resolveSystemPrompt(host, settings, opts),
-      fromTurn: opts.fromTurn,
-      toTurn: opts.toTurn,
-      blockTurns: settings.blockTurns,
-      sidecarName: opts.sc?.name
-    };
-    const { draft } = await host.plugin.completeDraft(req);
-    return draft;
+      blocks: opts.contextBlocks,
+      layout: PLOT_SUMMARY_COMPLETE_LAYOUT,
+      pluginSettings: { systemPromptTemplate },
+      anchorToTurn,
+      responseFormat: "json_object",
+      draft: {
+        kind: opts.kind,
+        fromTurn: opts.fromTurn,
+        toTurn: opts.toTurn,
+        blockTurns: settings.blockTurns,
+        sidecarName: opts.sc?.name
+      }
+    });
+    if (!result.draft) {
+      throw new Error("plugin_complete_draft_failed");
+    }
+    return result.draft;
   } finally {
     host.ui.clearProgress();
   }
@@ -631,6 +679,21 @@ function computePlotSummaryApplyOrderLayout(lb, sidecarEntryIds, sidecarConfigId
   }
   return { entriesByGroup };
 }
+function pickRecentSummaryEntriesBeforeTurn(entries, beforeTurn, sidecarEntryIdSet, limit, sidecarEntryIds, sidecarConfigIds) {
+  const summaries = entries.filter((e) => {
+    if (classifyPlotSummaryEntry(e, sidecarEntryIdSet) !== "summary") return false;
+    const range = parseTurnRangeSuffix(e.title);
+    if (!range) return false;
+    return range.end < beforeTurn;
+  });
+  const sorted = sortPlotSummaryEntriesInGroup(
+    summaries,
+    sidecarEntryIds,
+    sidecarConfigIds
+  );
+  if (limit <= 0) return [];
+  return sorted.slice(-limit);
+}
 
 // plugins/plot-summary/src/shared/entry-sort.ts
 async function applyPlotSummaryEntrySort(host, lorebookId, sidecarEntryIds, sidecarConfigIds) {
@@ -724,6 +787,165 @@ function isSummarizeTurnSpanTooLarge(fromTurn, toTurn) {
   return summarizeTurnSpan(fromTurn, toTurn) > SUMMARIZE_TURN_SPAN_HINT_MAX;
 }
 
+// plugins/plot-summary/src/shared/prepare-context-blocks.ts
+function buildPreviousSummariesBlock(entries) {
+  if (entries.length === 0) return "";
+  const body = entries.map((e) => {
+    const title = e.title.trim();
+    const content = (e.content ?? "").trim();
+    return `## ${title}
+${content}`;
+  }).join("\n\n");
+  return `<previous-summaries readonly>
+${body}
+</previous-summaries>
+
+`;
+}
+function buildSidecarsBlock(entries) {
+  if (entries.length === 0) return "";
+  const body = entries.map((e) => {
+    const title = e.title.trim();
+    const content = (e.content ?? "").trim();
+    return `## ${title}
+${content}`;
+  }).join("\n\n");
+  return `<sidecars readonly>
+${body}
+</sidecars>
+
+`;
+}
+function buildHistoryBlock(transcript) {
+  const body = (transcript ?? "").trim();
+  if (!body) return "";
+  return `<history>
+${body}
+</history>`;
+}
+
+// plugins/plot-summary/src/shared/plot-summary-context-blocks.ts
+var PS_BLOCK_PREV = "prevSummaries";
+var PS_BLOCK_SIDECARS = "sidecars";
+var PS_BLOCK_HISTORY_RAW = "historyRaw";
+function buildPlotSummaryContextBlockSpecs(input) {
+  const { fromTurn, toTurn } = input;
+  const blocks = [
+    {
+      source: "conversation.transcript",
+      blockId: PS_BLOCK_HISTORY_RAW,
+      fromTurn,
+      toTurn,
+      regexRuleIds: input.regexRuleIds,
+      regexApplyAllTurns: input.regexApplyAllTurns,
+      tailOrdinal: input.tailOrdinal
+    }
+  ];
+  if (input.includePreviousMemories !== false) {
+    blocks.push({
+      source: "lorebook.entries",
+      blockId: PS_BLOCK_PREV,
+      lorebookId: input.targetLorebookId,
+      entryIds: []
+    });
+    blocks.push({
+      source: "lorebook.entries",
+      blockId: PS_BLOCK_SIDECARS,
+      lorebookId: input.targetLorebookId,
+      entryIds: []
+    });
+  }
+  return blocks;
+}
+function applyPlotSummaryLoreEntryIds(specs, loreEntries, input) {
+  const sidecarSet = new Set(Object.values(input.sidecarEntryIds));
+  const limit = Math.max(0, Math.min(50, Math.round(input.previousSummariesLimit)));
+  const prevIds = input.includePreviousMemories === false ? [] : pickRecentSummaryEntriesBeforeTurn(
+    loreEntries,
+    input.fromTurn,
+    sidecarSet,
+    limit,
+    input.sidecarEntryIds,
+    input.sidecarConfigIds
+  ).map((e) => e.id);
+  const sidecarIds = sortPlotSummaryEntriesInGroup(
+    loreEntries.filter((e) => sidecarSet.has(e.id)),
+    input.sidecarEntryIds,
+    input.sidecarConfigIds
+  ).map((e) => e.id);
+  return specs.map((spec) => {
+    if (spec.source !== "lorebook.entries") return spec;
+    if (spec.blockId === PS_BLOCK_PREV) {
+      return { ...spec, entryIds: prevIds };
+    }
+    if (spec.blockId === PS_BLOCK_SIDECARS) {
+      return { ...spec, entryIds: sidecarIds };
+    }
+    return spec;
+  });
+}
+function slicesToTitleContent(entries) {
+  return entries.map((e) => ({
+    title: e.title,
+    content: e.content
+  }));
+}
+function formatPlotSummaryLayoutBlocks(resolved) {
+  const prev = resolved.entriesByBlock[PS_BLOCK_PREV] ?? [];
+  const sidecars = resolved.entriesByBlock[PS_BLOCK_SIDECARS] ?? [];
+  const historyRaw = resolved.blocks[PS_BLOCK_HISTORY_RAW] ?? "";
+  const prevBlock = buildPreviousSummariesBlock(slicesToTitleContent(prev));
+  const sidecarBlock = buildSidecarsBlock(slicesToTitleContent(sidecars));
+  const historyBlock = buildHistoryBlock(historyRaw);
+  const reference = `${prevBlock}${sidecarBlock}`.trim();
+  const history = historyBlock.trim();
+  return {
+    reference,
+    history
+  };
+}
+function plotSummaryReferenceAndHistory(resolved) {
+  const layoutBlocks = formatPlotSummaryLayoutBlocks(resolved);
+  return {
+    systemReferenceContext: layoutBlocks.reference ?? "",
+    userContent: layoutBlocks.history ?? ""
+  };
+}
+
+// plugins/plot-summary/src/prepare-context.ts
+async function preparePlotSummarySummarizeContext(host, settings, fromTurn, toTurn) {
+  const sidecarEntryIds = settings.sidecarEntryIds;
+  const sidecarConfigIds = settings.sidecars.map((s) => s.id);
+  const input = {
+    fromTurn,
+    toTurn,
+    targetLorebookId: settings.targetLorebookId,
+    previousSummariesLimit: settings.previousSummariesLimit,
+    sidecarEntryIds,
+    sidecarConfigIds,
+    regexRuleIds: settings.regexRuleIds,
+    regexApplyAllTurns: settings.regexApplyAllTurns,
+    tailOrdinal: outgoingTailOrdinal(host)
+  };
+  let specs = buildPlotSummaryContextBlockSpecs(input);
+  const lb = await host.lorebook.get(settings.targetLorebookId);
+  const entries = (lb.entries ?? []).map((e) => ({
+    id: e.id,
+    groupId: typeof e.groupId === "string" ? e.groupId : "",
+    title: typeof e.title === "string" ? e.title : "",
+    createdAt: typeof e.createdAt === "string" ? e.createdAt : void 0
+  }));
+  specs = applyPlotSummaryLoreEntryIds(specs, entries, input);
+  const resolved = await host.plugin.prepareContextBlocks({ blocks: specs });
+  const { systemReferenceContext, userContent } = plotSummaryReferenceAndHistory(resolved);
+  return {
+    systemReferenceContext,
+    userContent,
+    contextBlocks: specs,
+    meta: resolved.meta
+  };
+}
+
 // plugins/plot-summary/src/pipeline.ts
 function setPluginHold(host, hold) {
   if (typeof host.conversation.setPluginHold === "function") {
@@ -772,6 +994,8 @@ async function runSummarizeTasks(host, opts) {
       host.ui.toast(host.t(k(host, "toastTurnRangeTooLong")), { color: "warning" });
       return { ok: false, reason: "turn_range_too_long" };
     }
+    const sidecarConfigIds = settings.sidecars.map((s) => s.id);
+    const persistedSidecarEntryIds = settings.sidecarEntryIds;
     let sidecarEntryIds;
     try {
       sidecarEntryIds = await host.lorebook.normalizeEntryRefs({
@@ -793,24 +1017,18 @@ async function runSummarizeTasks(host, opts) {
         validKeys: settings.sidecars.map((s) => s.id)
       });
     }
-    const sidecarConfigIds = settings.sidecars.map((s) => s.id);
-    const prepared = await host.plugin.prepareContext({
+    settings.sidecarEntryIds = sidecarEntryIds;
+    const prepared = await preparePlotSummarySummarizeContext(
+      host,
+      settings,
       fromTurn,
-      toTurn,
-      targetLorebookId: settings.targetLorebookId,
-      previousSummariesLimit: settings.previousSummariesLimit,
-      sidecarEntryIds,
-      sidecarIds: sidecarConfigIds,
-      regexRuleIds: settings.regexRuleIds,
-      tailOrdinal: outgoingTailOrdinal(host),
-      regexApplyAllTurns: settings.regexApplyAllTurns
-    });
+      toTurn
+    );
     if (!prepared.userContent?.trim()) {
       host.ui.toast(host.t(k(host, "toastNoTurnsInRange")), { color: "warning" });
       return { ok: false, reason: "no_turns" };
     }
-    const systemReferenceContext = prepared.systemReferenceContext ?? "";
-    const userContent = prepared.userContent;
+    const contextBlocks = prepared.contextBlocks;
     const patch = {};
     let done = 0;
     let ranMemory = false;
@@ -835,8 +1053,7 @@ async function runSummarizeTasks(host, opts) {
         if (task.kind === "memory") {
           const memoryDraft = await generateReviewDraft(host, settings, {
             kind: "memory",
-            systemReferenceContext,
-            userContent,
+            contextBlocks,
             fromTurn,
             toTurn
           });
@@ -846,8 +1063,7 @@ async function runSummarizeTasks(host, opts) {
             DIALOG_REVIEW,
             (h) => generateReviewDraft(h, settings, {
               kind: "memory",
-              systemReferenceContext,
-              userContent,
+              contextBlocks,
               fromTurn,
               toTurn
             }),
@@ -869,8 +1085,9 @@ async function runSummarizeTasks(host, opts) {
           const sc = task.sidecar;
           const sidecarDraft = await generateReviewDraft(host, settings, {
             kind: "sidecar",
-            systemReferenceContext,
-            userContent,
+            contextBlocks,
+            fromTurn,
+            toTurn,
             sc
           });
           const reviewed = await promptReview(
@@ -879,8 +1096,9 @@ async function runSummarizeTasks(host, opts) {
             DIALOG_REVIEW_SIDECAR,
             (h) => generateReviewDraft(h, settings, {
               kind: "sidecar",
-              systemReferenceContext,
-              userContent,
+              contextBlocks,
+              fromTurn,
+              toTurn,
               sc
             }),
             lorebookName
@@ -974,7 +1192,7 @@ async function runSummarizeTasks(host, opts) {
       patch.lastSummarizedEnd = last;
       patch.nextBlockStart = Math.max(settings.nextBlockStart ?? 0, last + 1);
     }
-    if (JSON.stringify(sidecarEntryIds) !== JSON.stringify(settings.sidecarEntryIds)) {
+    if (JSON.stringify(sidecarEntryIds) !== JSON.stringify(persistedSidecarEntryIds)) {
       patch.sidecarEntryIds = Object.keys(sidecarEntryIds).length > 0 ? sidecarEntryIds : null;
     }
     if (Object.keys(patch).length > 0) {
@@ -1015,18 +1233,6 @@ async function runSummarizeTasks(host, opts) {
     setPluginHold(host, false);
     host.ui.clearProgress();
   }
-}
-
-// plugins/plot-summary/src/shared/build-summary-messages.ts
-function buildSummaryCompleteMessages(systemReferenceContext, userContent, systemPromptTemplate) {
-  const reference = systemReferenceContext.trim();
-  const history = userContent.trim();
-  const instruction = systemPromptTemplate.trim();
-  const messages = [];
-  if (reference) messages.push({ role: "system", content: reference });
-  if (history) messages.push({ role: "user", content: history });
-  if (instruction) messages.push({ role: "system", content: instruction });
-  return messages;
 }
 
 // plugins/plot-summary/src/prompt-preview.ts
@@ -1074,49 +1280,19 @@ function resolveSystemPrompt2(host, settings, task) {
   }
   return settings.systemPromptTemplate;
 }
-async function expandText(host, text, apiConfigId, toTurn) {
-  const raw = asString(text);
-  if (!raw.includes("{{")) return raw;
-  if (!host.macros?.expand) return raw;
-  const opts = {
-    persistVars: false
-  };
-  if (apiConfigId) opts.apiConfigId = apiConfigId;
-  if (typeof toTurn === "number" && Number.isInteger(toTurn)) opts.toTurn = toTurn;
-  return host.macros.expand(raw, opts);
-}
-async function buildTaskMessages(host, settings, task, prepared, toTurn) {
-  const apiConfigId = settings.apiConfigId;
-  const systemTemplate = resolveSystemPrompt2(host, settings, task);
-  const [expandedRef, expandedInstruction, expandedUser] = await Promise.all([
-    prepared.systemReferenceContext.trim() ? expandText(host, prepared.systemReferenceContext, apiConfigId, toTurn) : Promise.resolve(""),
-    expandText(host, systemTemplate, apiConfigId, toTurn),
-    expandText(host, prepared.userContent, apiConfigId, toTurn)
-  ]);
-  return buildSummaryCompleteMessages(expandedRef, expandedUser, expandedInstruction);
-}
-async function preflightLine(host, settings, messages) {
-  const pf = host.token?.preflightComplete;
-  if (!pf || messages.length === 0) return "";
-  try {
-    const result = await pf({
-      apiConfigId: settings.apiConfigId || void 0,
-      messages
+function preflightLineFromDryRun(host, preflight) {
+  if (!preflight) return "";
+  if (preflight.ok) {
+    return host.t(k(host, "promptPreviewPreflightOk"), {
+      tokens: preflight.promptTokens,
+      budget: preflight.budget
     });
-    if (result.ok) {
-      return host.t(k(host, "promptPreviewPreflightOk"), {
-        tokens: result.promptTokens,
-        budget: result.budget
-      });
-    }
-    return host.t(k(host, "promptPreviewPreflightFail"), {
-      tokens: result.promptTokens,
-      budget: result.budget,
-      code: result.code ?? ""
-    });
-  } catch {
-    return "";
   }
+  return host.t(k(host, "promptPreviewPreflightFail"), {
+    tokens: preflight.promptTokens,
+    budget: preflight.budget,
+    code: preflight.code ?? ""
+  });
 }
 function summarizeDialogCanPreview(model, settings) {
   const start = asInt(model.startTurn, -1, 5e5);
@@ -1211,27 +1387,36 @@ async function previewManualSummarizePrompt(host, model) {
     } catch {
       sidecarEntryIds = {};
     }
-    const prepared = await host.plugin.prepareContext({
+    settings.targetLorebookId = targetId;
+    settings.sidecarEntryIds = sidecarEntryIds;
+    const prepared = await preparePlotSummarySummarizeContext(
+      host,
+      settings,
       fromTurn,
-      toTurn,
-      targetLorebookId: targetId,
-      previousSummariesLimit: settings.previousSummariesLimit,
-      sidecarEntryIds,
-      sidecarIds: settings.sidecars.map((s) => s.id),
-      regexRuleIds: settings.regexRuleIds,
-      tailOrdinal: outgoingTailOrdinal(host),
-      regexApplyAllTurns: settings.regexApplyAllTurns
-    });
+      toTurn
+    );
+    if (!prepared.userContent?.trim()) {
+      host.ui.toast(host.t(k(host, "toastNoTurnsInRange")), { color: "warning" });
+      return;
+    }
     const sections = [
       host.t(k(host, "promptPreviewRange"), { from: fromTurn, to: toTurn }),
       ""
     ];
     for (const task of tasks) {
-      const messages = await buildTaskMessages(host, settings, task, prepared, toTurn);
-      const pf = await preflightLine(host, settings, messages);
+      const systemPromptTemplate = resolveSystemPrompt2(host, settings, task);
+      const result = await host.plugin.completeWithContext({
+        ...settings.apiConfigId ? { apiConfigId: settings.apiConfigId } : {},
+        blocks: prepared.contextBlocks,
+        layout: PLOT_SUMMARY_COMPLETE_LAYOUT,
+        pluginSettings: { systemPromptTemplate },
+        anchorToTurn: toTurn,
+        dryRun: true
+      });
+      const pfLine = preflightLineFromDryRun(host, result.preflight);
       sections.push(`=== ${taskLabel(host, task)} ===`);
-      if (pf) sections.push(pf);
-      sections.push(formatMessagesForDisplay(messages));
+      if (pfLine) sections.push(pfLine);
+      sections.push(formatMessagesForDisplay(result.messages));
       sections.push("");
     }
     setPromptPreviewRestore({ ...model });

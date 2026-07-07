@@ -9,7 +9,7 @@ import {
 import { applyPlotSummaryEntrySort } from './shared/entry-sort.js'
 import { flushPendingLorebookCreates, type PendingLorebookCreate } from './batch-write.js'
 import { entryKeys, writeSidecarEntry } from './sidecar.js'
-import { k, loadMergedSettings, outgoingTailOrdinal } from './settings.js'
+import { k, loadMergedSettings } from './settings.js'
 import {
   setSummarizeBatchProgress,
   setSummarizeRunning,
@@ -24,6 +24,7 @@ import {
   refreshAutoSummarizeUi,
 } from './dialogs.js'
 import { isLorebookNotFoundError } from './errors.js'
+import { preparePlotSummarySummarizeContext } from './prepare-context.js'
 
 function setPluginHold(host: PluginHost, hold: boolean) {
   if (typeof host.conversation.setPluginHold === 'function') {
@@ -88,6 +89,8 @@ export async function runSummarizeTasks(
       return { ok: false, reason: 'turn_range_too_long' }
     }
 
+    const sidecarConfigIds = settings.sidecars.map((s) => s.id)
+    const persistedSidecarEntryIds = settings.sidecarEntryIds
     let sidecarEntryIds: Record<string, string>
     try {
       sidecarEntryIds = await host.lorebook.normalizeEntryRefs({
@@ -109,25 +112,19 @@ export async function runSummarizeTasks(
         validKeys: settings.sidecars.map((s) => s.id),
       })
     }
+    settings.sidecarEntryIds = sidecarEntryIds
 
-    const sidecarConfigIds = settings.sidecars.map((s) => s.id)
-    const prepared = await host.plugin.prepareContext({
+    const prepared = await preparePlotSummarySummarizeContext(
+      host,
+      settings,
       fromTurn,
       toTurn,
-      targetLorebookId: settings.targetLorebookId,
-      previousSummariesLimit: settings.previousSummariesLimit,
-      sidecarEntryIds,
-      sidecarIds: sidecarConfigIds,
-      regexRuleIds: settings.regexRuleIds,
-      tailOrdinal: outgoingTailOrdinal(host),
-      regexApplyAllTurns: settings.regexApplyAllTurns,
-    })
+    )
     if (!prepared.userContent?.trim()) {
       host.ui.toast(host.t(k(host, 'toastNoTurnsInRange')), { color: 'warning' })
       return { ok: false, reason: 'no_turns' }
     }
-    const systemReferenceContext = prepared.systemReferenceContext ?? ''
-    const userContent = prepared.userContent
+    const contextBlocks = prepared.contextBlocks
 
     const patch: Record<string, unknown> = {}
     let done = 0
@@ -156,8 +153,7 @@ export async function runSummarizeTasks(
         if (task.kind === 'memory') {
           const memoryDraft = await generateReviewDraft(host, settings, {
             kind: 'memory',
-            systemReferenceContext,
-            userContent,
+            contextBlocks,
             fromTurn,
             toTurn,
           })
@@ -168,8 +164,7 @@ export async function runSummarizeTasks(
             (h) =>
               generateReviewDraft(h, settings, {
                 kind: 'memory',
-                systemReferenceContext,
-                userContent,
+                contextBlocks,
                 fromTurn,
                 toTurn,
               }),
@@ -191,8 +186,9 @@ export async function runSummarizeTasks(
           const sc = task.sidecar
           const sidecarDraft = await generateReviewDraft(host, settings, {
             kind: 'sidecar',
-            systemReferenceContext,
-            userContent,
+            contextBlocks,
+            fromTurn,
+            toTurn,
             sc,
           })
           const reviewed = await promptReview(
@@ -202,8 +198,9 @@ export async function runSummarizeTasks(
             (h) =>
               generateReviewDraft(h, settings, {
                 kind: 'sidecar',
-                systemReferenceContext,
-                userContent,
+                contextBlocks,
+                fromTurn,
+                toTurn,
                 sc,
               }),
             lorebookName,
@@ -305,7 +302,7 @@ export async function runSummarizeTasks(
       patch.nextBlockStart = Math.max(settings.nextBlockStart ?? 0, last + 1)
     }
 
-    if (JSON.stringify(sidecarEntryIds) !== JSON.stringify(settings.sidecarEntryIds)) {
+    if (JSON.stringify(sidecarEntryIds) !== JSON.stringify(persistedSidecarEntryIds)) {
       patch.sidecarEntryIds =
         Object.keys(sidecarEntryIds).length > 0 ? sidecarEntryIds : null
     }

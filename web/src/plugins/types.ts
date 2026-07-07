@@ -7,6 +7,14 @@ import type {
 } from '@/types/regex-rules'
 import type { ConversationBatchContext } from '@/plugins/conversation-host'
 import type { ConversationChatRequestPlugins } from '@/utils/chat-api'
+import type {
+  AssemblePluginPromptRequest,
+  AssemblePluginPromptSuccess,
+  CompleteWithContextRequest,
+  CompleteWithContextSuccess,
+  ContextBlockSpec,
+  PluginContextBlocksSuccess,
+} from '@/shared/plugin-context-blocks'
 
 export type ChatSession = ReturnType<typeof useChatSession>
 
@@ -250,33 +258,14 @@ export interface PluginCompleteResponse {
   latencyMs?: number
 }
 
-export interface PluginPrepareContextRequest {
-  fromTurn: number
-  toTurn: number
-  targetLorebookId: string
-  includePreviousMemories?: boolean
-  previousMemoriesLimit?: number
-  previousSummariesLimit?: number
-  sidecarEntryIds?: Record<string, string>
-  sidecarIds?: string[]
-  regexRuleIds?: string[]
-  tailOrdinal?: number
-  regexApplyAllTurns?: boolean
+/** DOC/39 · prepareContextBlocks（步骤 1 取块） */
+export interface PluginPrepareContextBlocksRequest {
+  blocks: ContextBlockSpec[]
 }
 
-export interface PluginPrepareContextResponse {
-  ok: true
-  /** 参考上下文（previous-summaries / sidecars / context-history），拼入 system */
-  systemReferenceContext: string
-  /** 待摘要 `<history>`，作为 user 消息 */
-  userContent: string
-  transcript: string
-  turnCount: number
-  meta: {
-    userDisplayName: string
-    assistantDisplayName: string
-  }
-}
+export type PluginPrepareContextBlocksResponse = PluginContextBlocksSuccess
+
+export type { AssemblePluginPromptRequest, AssemblePluginPromptSuccess }
 
 export interface LorebookNormalizeEntryRefsRequest {
   lorebookId: string
@@ -305,27 +294,6 @@ export interface LorebookEnsureResult {
   id: string
   name: string
   created: boolean
-}
-
-export interface PluginCompleteDraftRequest {
-  /** 省略时由宿主解析（对话覆盖 → 插件设置） */
-  apiConfigId?: string
-  kind: 'memory' | 'sidecar'
-  /** 参考上下文，与 systemPromptTemplate 拼成 system 消息 */
-  systemReferenceContext?: string
-  userContent: string
-  systemPromptTemplate: string
-  fromTurn?: number
-  toTurn?: number
-  blockTurns?: number
-  sidecarName?: string
-}
-
-export interface PluginCompleteDraftResponse {
-  ok: true
-  draft: { title: string; content: string; keywords: string[] }
-  usage?: { promptTokens?: number; completionTokens?: number }
-  latencyMs?: number
 }
 
 export interface PluginCompletePreflightResult {
@@ -463,12 +431,16 @@ export interface PluginWebHost {
   }
   plugin: {
     complete(req: PluginCompleteRequest): Promise<PluginCompleteResponse>
-    prepareContext(
-      req: PluginPrepareContextRequest,
-    ): Promise<PluginPrepareContextResponse>
-    completeDraft(
-      req: PluginCompleteDraftRequest,
-    ): Promise<PluginCompleteDraftResponse>
+    /** DOC/39 · 步骤 1 声明式取块 */
+    prepareContextBlocks(
+      req: PluginPrepareContextBlocksRequest,
+    ): Promise<PluginPrepareContextBlocksResponse>
+    assemblePluginPrompt(
+      req: Omit<AssemblePluginPromptRequest, 'conversationId'>,
+    ): Promise<AssemblePluginPromptSuccess>
+    completeWithContext(
+      req: Omit<CompleteWithContextRequest, 'conversationId'>,
+    ): Promise<CompleteWithContextSuccess>
   }
   token: {
     preflightComplete(req: {

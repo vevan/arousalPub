@@ -13,10 +13,10 @@ function skipSharedSync() {
 }
 
 const SCRIPTS = [
-  'sync-plot-summary-shared.mjs',
   'sync-prompt-preset-shared.mjs',
   'sync-portrait-media-shared.mjs',
   'sync-group-chat-settings-shared.mjs',
+  'sync-plugin-context-blocks-shared.mjs',
 ]
 
 function runScript(name) {

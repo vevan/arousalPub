@@ -139,7 +139,7 @@ function openDialog() {
   void loadMaxTurn()
 }
 
-function applyNever() {
+function applyNeverMode() {
   neverMode.value = true
   endTurnInput.value = ''
 }
@@ -215,9 +215,11 @@ async function submit() {
           <v-text-field
             v-model="endTurnInput"
             type="number"
+            variant="outlined"
+            density="comfortable"
             class="auto-summarize-reset-dialog__field"
             :label="pluginT('convAutoSummarizeResetEndLabel')"
-            :disabled="neverMode || saving"
+            :disabled="saving"
             :hint="
               maxTurnOrdinal !== null
                 ? pluginT('convAutoSummarizeResetMaxHint', { max: maxTurnOrdinal })
@@ -240,12 +242,12 @@ async function submit() {
           <v-btn
             variant="outlined"
             size="small"
-            color="primary"
+            :color="neverMode ? 'primary' : undefined"
             prepend-icon="mdi-backspace-outline"
             class="auto-summarize-reset-dialog__never-btn text-none"
             block
             :disabled="saving"
-            @click="applyNever"
+            @click="applyNeverMode"
           >
             {{ pluginT('convAutoSummarizeResetNever') }}
           </v-btn>

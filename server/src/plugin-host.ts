@@ -1,3 +1,5 @@
+export { mergePluginPromptInjectionsIntoMessages } from './plugin-prompt-injection-merge.js'
+export type { PluginPromptInjectionSpan } from './plugin-prompt-injection-merge.js'
 import type { ChatMessage } from './assemble-prompts.js'
 import type { PromptMacroContext } from './prompt-macros/types.js'
 import type { ChatPluginsBody, TurnPluginEntry } from './plugin-types.js'

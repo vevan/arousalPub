@@ -17,6 +17,7 @@ const SCRIPTS = [
   'sync-portrait-media-shared.mjs',
   'sync-group-chat-settings-shared.mjs',
   'sync-plugin-context-blocks-shared.mjs',
+  'sync-plugin-prompt-injection-shared.mjs',
 ]
 
 function runScript(name) {

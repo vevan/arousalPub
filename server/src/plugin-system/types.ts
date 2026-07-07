@@ -268,7 +268,15 @@ export interface PluginServerModule {
   resolveAfterAssemblePromptsAddition?: (
     ctx: Omit<AfterAssemblePromptsPluginContext, 'messages'>,
     api: PluginServerHostApi,
-  ) => ChatMessage[] | null | Promise<ChatMessage[] | null>
+  ) =>
+    | ChatMessage[]
+    | import('../shared/plugin-prompt-injection.js').PluginPromptInjection[]
+    | null
+    | Promise<
+        | ChatMessage[]
+        | import('../shared/plugin-prompt-injection.js').PluginPromptInjection[]
+        | null
+      >
   resolveTurnPluginEntries?: (
     plugins: ChatPluginsBody | null | undefined,
     api: PluginServerHostApi,

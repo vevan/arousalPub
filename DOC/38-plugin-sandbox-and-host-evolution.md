@@ -158,7 +158,7 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 
 ### Phase A — 注入描述符（P2 · 优先）
 
-- [ ] `PluginPromptInjection` 类型 · `plugin-host.ts` 归并器（复用 `resolveChatDepthInsertIndex` / `compareInjectionEntries`）
+- [x] `PluginPromptInjection` 类型 · `plugin-prompt-injection-merge.ts` 归并器（复用 `resolveChatDepthInsertIndex` / `compareInjectionEntries`）
 - [ ] `chat-assemble` 向 apply 传入 post-user / `historySpan` 元数据
 - [ ] 迁移 `guidance-generate` → 描述符；移除整表 `afterAssemblePrompts` 主路径
 - [ ] 迁移 `trace-keeper` → depth 0 order 999（替代 append）
@@ -198,6 +198,8 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 | 路径 | 说明 |
 |------|------|
 | `server/src/plugin-system/loader.ts` | 同进程 `import(server.mjs)` |
+| `shared/plugin-prompt-injection.ts` | 注入描述符契约（同步 server/web） |
+| `server/src/plugin-prompt-injection-merge.ts` | post-user 区归并 splice |
 | `server/src/plugin-host.ts` | `resolvePluginAddition` · `applyPluginsAfterAssemblePrompts` |
 | `server/src/plugin-system/host-api.ts` | `PluginServerHostApi` |
 | `server/src/plugin-complete.ts` | complete 密钥解析 |
@@ -214,3 +216,4 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 |------|------|
 | 2026-07-07 | 首版：沙箱目标态、注入描述符定案、order 定案、性能粗估、分期清单 |
 | 2026-07-07 | §8：链至 `DOC/39`；标注 DOC/39 前置已落地 |
+| 2026-07-07 | **Phase A0**：`PluginPromptInjection` 契约 + `mergePluginPromptInjectionsIntoMessages` |

@@ -26,6 +26,13 @@ const SYNCED_FILES = [
       path.join(REPO_ROOT, 'web', 'src', 'shared', 'plugin-context-blocks.ts'),
     ],
   },
+  {
+    src: path.join(REPO_ROOT, 'shared', 'plugin-prompt-injection.ts'),
+    dests: [
+      path.join(REPO_ROOT, 'server', 'src', 'shared', 'plugin-prompt-injection.ts'),
+      path.join(REPO_ROOT, 'web', 'src', 'shared', 'plugin-prompt-injection.ts'),
+    ],
+  },
 ]
 
 async function fileSha256(filePath) {

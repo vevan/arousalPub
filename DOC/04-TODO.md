@@ -15,7 +15,7 @@
 
 宿主 `resolveAfterAssemblePromptsAddition` 返回 **`PluginPromptInjection[]`**（`chat` depth + order），post-user 区归并 splice；裁切前 token 预留逻辑不变。详 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §3。
 
-- [ ] **A0 契约** — `PluginPromptInjection` 类型；`plugin-host.ts` 归并器（复用 `resolveChatDepthInsertIndex` / `compareInjectionEntries`）
+- [x] **A0 契约** — `PluginPromptInjection` 类型；`plugin-prompt-injection-merge.ts` 归并器（复用 `resolveChatDepthInsertIndex` / `compareInjectionEntries`）
 - [ ] **A1 宿主元数据** — `chat-assemble` 向 apply 传入 post-user 区 / `historySpan`（depth 0 一期）
 - [ ] **A2 guidance-generate** — 迁描述符：depth **0** order **1**；revise 路径 assistant **998** + system **999**；移除整表 `afterAssemblePrompts` 主路径
 - [ ] **A3 trace-keeper Together** — depth **0** order **999**（替代当前宿主 `append`）

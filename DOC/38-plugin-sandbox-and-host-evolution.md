@@ -1,6 +1,6 @@
 # 插件沙箱化与宿主能力演进 — 设计定案（规划）
 
-> **状态**：**规划 · 未实现**（2026-07）。  
+> **状态**：**Phase A 已落地**（2026-07-07）；**Phase B Worker 沙箱未开始**。  
 > **关联**：`DOC/03` §1.3 插件 API 隔离 · `DOC/04` P2 · `DOC/09` · `DOC/18` §4.1 · `DOC/25` §15 · `server/src/plugin-system/loader.ts` · `server/src/plugin-host.ts`
 
 ---
@@ -9,12 +9,13 @@
 
 当前服务端插件通过 `loadEnabledServerPlugins` → `import(pathToFileURL(server.mjs))` 与宿主**同进程**加载（`server/src/plugin-system/loader.ts`）。官方 bundled 插件仅经 `PluginServerHostApi` 访问数据；**自选第三方 `dist/server.mjs` 无沙箱**，理论上可读 `data/{userId}/api-settings.json` 等用户目录。
 
-与此同时，组装注入 hook 存在两种形态：
+与此同时，组装注入 hook 已统一为描述符形态（Phase A 落地）：
 
-| 形态 | 代表 | 问题 |
+| 形态 | 代表 | 状态 |
 |------|------|------|
-| `resolveAfterAssemblePromptsAddition` | trace-keeper | 仅返回追加片段；宿主 `append` 到末尾，**未**对齐 §6.6 chat depth / order |
-| `afterAssemblePrompts` | guidance-generate | 整包 `messages[]` 进出 + 插件内 `slice` 拷贝，**业务上只需**找最后 user 插 system |
+| `resolveAfterAssemblePromptsAddition` | guidance-generate · trace-keeper | ✅ 返回 `PluginPromptInjection[]`；宿主 post-user 区归并 |
+| `afterAssemblePrompts` | — | escape hatch；有描述符时不再走主路径 |
+| legacy `ChatMessage[]` addition | 未迁插件 | 暂映射 depth 0 · `injectionOrder` **500** |
 
 若未来引入 Worker 沙箱，整包 messages 的 IPC 序列化将成为热路径主要开销；注入协议应先改为「描述符 + 宿主 splice」。
 
@@ -58,7 +59,7 @@
 
 ## 3. 组装注入：对齐 §6.6 chat depth
 
-### 3.1 定案 API（规划）
+### 3.1 定案 API（已落地）
 
 插件 export `resolveAfterAssemblePromptsAddition`（或更名 `resolvePromptInjections`）返回 **注入描述符**，而非完整 `messages[]`：
 
@@ -115,6 +116,8 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 1. 锚定 `lastUserIdx`；可选传入 `historySpan`（`historyStart`/`historyEnd`）供 depth > 0 使用（一期仅 depth 0）。
 2. 为 assemble 阶段注入赋予**隐式 `injectionOrder`**（`afterUserInput` → **20**；无元数据的 preset tail → **100**）。
 3. 将插件描述符与 tail 一并 hoist，在 post-user 区按 `compareInjectionEntries`（**`injectionOrder` → role**）归并。
+
+**`afterUserInput` 识别（regex 之后）**：群聊说明在 assemble 阶段注入，宏展与 outgoing regex 可能改写正文；depth 0 作者注在物理序上亦可能位于群聊之前。宿主在 **regex 之后**调用 `resolveAssembledBlockContentAfterRegex`（synthetic 探测）解析 post-regex 正文，再经 `buildPluginAfterUserInputHintFromMessages` 精确匹配 tail；无法命中时不赋予 order **20**，避免误标 preset / authorsNote。
 
 **一期不实现** preset 级 `relative` 锚点；ST 扩展类插件场景以 **chat depth 0** 为主。
 
@@ -202,12 +205,12 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 |------|------|
 | `server/src/plugin-system/loader.ts` | 同进程 `import(server.mjs)` |
 | `shared/plugin-prompt-injection.ts` | 注入描述符契约（同步 server/web） |
-| `server/src/plugin-prompt-injection-merge.ts` | post-user 区归并 splice |
+| `server/src/plugin-prompt-injection-merge.ts` | post-user 区归并 · `buildPluginAfterUserInputHintFromMessages` |
 | `server/src/plugin-host.ts` | `resolvePluginAddition` · `applyPluginsAfterAssemblePrompts` |
 | `server/src/plugin-system/host-api.ts` | `PluginServerHostApi` |
 | `server/src/plugin-complete.ts` | complete 密钥解析 |
 | `server/src/assemble-prompts.ts` | `resolveChatDepthInsertIndex` · `compareInjectionEntries` |
-| `server/src/chat-assemble.ts` | 两阶段插件 token 预留与 apply |
+| `server/src/chat-assemble.ts` | 两阶段 token 预留 · regex 后 `resolveAssembledBlockContentAfterRegex` · apply |
 | `plugins/guidance-generate/src/server/index.ts` | `resolveAfterAssemblePromptsAddition` · `injectionOrder` 10 / revise 11+12 |
 | `plugins/trace-keeper/src/server/index.ts` | `resolveAfterAssemblePromptsAddition` · `injectionOrder` 500 |
 
@@ -224,3 +227,4 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 | 2026-07-07 | **Phase A2–A3**：`guidance-generate` / `trace-keeper` 迁显式 `PluginPromptInjection` |
 | 2026-07-07 | **Phase A4**：单测 + `afterUserInput` 与插件注入同空间归并 |
 | 2026-07-07 | 契约：`position.injectionOrder`（≡ ST）；默认 **100**；官方档 **10 / 20 / 500**（revise **11+12**） |
+| 2026-07-07 | **Phase A 收尾**：regex 后 afterUserInput 精确解析；修复 authorsNote / preset 误标；文档状态更新为 Phase A 已落地 |

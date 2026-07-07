@@ -2,7 +2,7 @@
 
 > **阶段**：已脱离 MVP（2026-05+）。下列为**仍待做**；已实现能力见 `DOC/03` §14.7、各专题文档、`DOC/README` 归档表、本文 **§已归档**。
 
-## Sandbox（`DOC/38` · **Phase A 进行中**）
+## Sandbox（`DOC/38` · **Phase A 已完成**）
 
 > **说明**：远程分支 `sandbox` 用于近期插件/DOC 落地提交；**本节**指 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) 的**插件沙箱化 + 组装注入描述符**工程。**Phase A 已落地**；下一步 **Phase B**。  
 > **顺序定案**：前置 DOC/39 → **Phase A 注入** → **Phase B Worker 沙箱**；Phase C 可与 B 并行。
@@ -19,7 +19,8 @@
 - [x] **A1 宿主元数据** — `chat-assemble` 向 apply 传入 `trimmedHistoryMessages` / `historySpan`；`applyPluginsAfterAssemblePrompts` 走归并器（legacy `ChatMessage[]` 暂映射 `injectionOrder` 500）
 - [x] **A2 guidance-generate** — 迁描述符：depth **0** `injectionOrder` **10**；revise assistant **11** + system **12**；移除整表 `afterAssemblePrompts` 主路径
 - [x] **A3 trace-keeper Together** — depth **0** `injectionOrder` **500**（显式描述符，替代 legacy append）
-- [x] **A4 单测** — 多插件 order 共存、群聊 `afterUserInput`、revise 双条、`additionCache` / token 预留
+- [x] **A4 单测** — 多插件 `injectionOrder` 共存、群聊 `afterUserInput`、revise 双条、`additionCache` / token 预留
+- [x] **A4+ afterUserInput 审计** — regex 后 synthetic 解析群聊 / depth 0 作者注正文；hoist 精确匹配，避免误标 preset / authorsNote
 
 **`injectionOrder` 默认值（暂硬编码 · 小=近 user · 大=近栈底）**：省略 **100** · guidance **10** · revise **11 / 12** · 群聊 afterUserInput **20** · trace-keeper **500** · preset tail（无元数据）**100**。
 

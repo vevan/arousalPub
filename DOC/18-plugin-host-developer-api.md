@@ -333,7 +333,7 @@ interface ConversationBatchContext {
 | 方法 | 说明 |
 |------|------|
 | `toast(message, opts?)` | 短提示 |
-| `notify(title, body?, opts?)` | 通知（当前实现为 toast 合并） |
+| `notify(title, body?, opts?)` | 持久通知（**规划** [`DOC/40`](40-notification-center.md)；当前等同 toast） |
 | `confirm(opts)` | 确认框 → `Promise<boolean>` |
 | `openFormDialog(...)` | 同顶层 `openFormDialog` |
 | `progress(opts)` | 进度条；`indeterminate`、`abortable` + `abortLabel` |
@@ -558,6 +558,7 @@ class PluginHostApiError {
 | **服务端插件 Worker 沙箱** | Phase B · Host API 代理 · **`DOC/38`** §2、§4 |
 | **`runPluginComplete` apiConfigId 白名单** | Phase C · **`DOC/38`** §5 |
 | **插件上下文块 + Prompt 组装** | **`DOC/39`** · 扩展 `prepareContext` · `assemblePluginPrompt` · `completeWithContext` |
+| **通知中心** | **`DOC/40`** · 统一存储/已读/列表 · `host.ui.notify` 迁入 |
 | 服务端 `onAssistantReplyPersisted` | 自动触发摘要流水线（当前由 Web lifecycle 负责） |
 | 字段级 permissions 与 turn.plugins 写权限细分 | 部分 enforce 仍随路由演进 |
 

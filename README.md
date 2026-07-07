@@ -200,4 +200,6 @@ npm install
 npm run dev
 ```
 
+`npm run dev` 会并行启动 **`scripts/watch-plugins.mjs`**：监听仓库 `plugins/*/src` 等，仅在源码新于 `dist` 时重建（避免 Windows 监听误报）。调试：`PLUGIN_WATCH_DEBUG=1`。
+
 浏览器访问 `config.yaml` 中的 **`webPort`**（默认与 `serverPort` 不同）。

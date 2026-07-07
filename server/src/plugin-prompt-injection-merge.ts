@@ -5,11 +5,30 @@ import {
   type PromptEntry,
   type PromptRole,
 } from './assemble-prompts.js'
+import { findHistorySpanInMessages } from './regex-outgoing.js'
 import type { PluginPromptInjection } from './shared/plugin-prompt-injection.js'
 
 export type PluginPromptInjectionSpan = {
   historyStart: number
   historyEnd: number
+}
+
+/** 从 regex 后 messages 与 trim 后 history 段定位 historySpan（供插件注入 depth 锚点）。 */
+export function resolvePluginInjectionSpan(
+  messages: ChatMessage[],
+  trimmedHistoryMessages: ChatMessage[],
+): PluginPromptInjectionSpan {
+  if (trimmedHistoryMessages.length === 0) {
+    return { historyStart: -1, historyEnd: -1 }
+  }
+  const hit = findHistorySpanInMessages(messages, trimmedHistoryMessages)
+  if (!hit) {
+    return { historyStart: -1, historyEnd: -1 }
+  }
+  return {
+    historyStart: hit.start,
+    historyEnd: hit.start + hit.length,
+  }
 }
 
 function shiftHistorySpanAfterInsert(

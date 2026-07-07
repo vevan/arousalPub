@@ -1,9 +1,9 @@
-// src/shared/utils.ts
+// plugins/plot-summary/src/shared/utils.ts
 function asString(v) {
   return typeof v === "string" ? v.trim() : "";
 }
 
-// src/shared/summarize.ts
+// plugins/plot-summary/src/shared/summarize.ts
 var PLOT_SUMMARY_ENTRY_TITLE_RE = /^\[MEMO-(\d+)\]-(.+)-\[(\d+)-(\d+)\]$/;
 function parseModelJson(text) {
   let raw = (text ?? "").trim();
@@ -95,7 +95,7 @@ function formatEntryTitle(rawTitle, startTurn, endTurn, blockTurns = 15) {
   return `[MEMO-${memoIndex}]-${title}-[${startTurn}-${endTurn}]`;
 }
 
-// src/shared/summary-prompt-layout.ts
+// plugins/plot-summary/src/shared/summary-prompt-layout.ts
 var PLOT_SUMMARY_COMPLETE_LAYOUT = {
   messages: [
     { role: "system", content: "{{blocks.reference}}" },
@@ -104,7 +104,7 @@ var PLOT_SUMMARY_COMPLETE_LAYOUT = {
   ]
 };
 
-// src/shared/prepare-context-blocks.ts
+// plugins/plot-summary/src/shared/prepare-context-blocks.ts
 function buildPreviousSummariesBlock(entries) {
   if (entries.length === 0) return "";
   const body = entries.map((e) => {
@@ -141,7 +141,7 @@ ${body}
 </history>`;
 }
 
-// src/shared/plot-summary-context-blocks.ts
+// plugins/plot-summary/src/shared/plot-summary-context-blocks.ts
 var PS_BLOCK_PREV = "prevSummaries";
 var PS_BLOCK_SIDECARS = "sidecars";
 var PS_BLOCK_HISTORY_RAW = "historyRaw";
@@ -166,7 +166,7 @@ function formatPlotSummaryLayoutBlocks(resolved) {
   };
 }
 
-// src/server/complete-context-hooks.ts
+// plugins/plot-summary/src/server/complete-context-hooks.ts
 function formatPluginContextBlocks(resolved, _ctx) {
   return formatPlotSummaryLayoutBlocks(resolved);
 }

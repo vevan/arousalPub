@@ -1,5 +1,3 @@
-export { mergePluginPromptInjectionsIntoMessages } from './plugin-prompt-injection-merge.js'
-export type { PluginPromptInjectionSpan } from './plugin-prompt-injection-merge.js'
 import type { ChatMessage } from './assemble-prompts.js'
 import type { PromptMacroContext } from './prompt-macros/types.js'
 import type { ChatPluginsBody, TurnPluginEntry } from './plugin-types.js'
@@ -9,8 +7,31 @@ import {
   loadEnabledServerPlugins,
 } from './plugin-system/loader.js'
 import type { LoadedServerPlugin } from './plugin-system/types.js'
+import {
+  mergePluginPromptInjectionsIntoMessages,
+  resolvePluginInjectionSpan,
+  type PluginPromptInjectionSpan,
+} from './plugin-prompt-injection-merge.js'
+import {
+  parsePluginPromptInjections,
+  type PluginPromptInjection,
+} from './shared/plugin-prompt-injection.js'
 
-export type PluginAssembleAdditionCache = Map<string, ChatMessage[] | null>
+export { mergePluginPromptInjectionsIntoMessages } from './plugin-prompt-injection-merge.js'
+export type { PluginPromptInjectionSpan } from './plugin-prompt-injection-merge.js'
+export { resolvePluginInjectionSpan } from './plugin-prompt-injection-merge.js'
+
+/** legacy `ChatMessage[]` addition 在迁描述符前映射为 depth 0 · order 999 */
+const LEGACY_CHAT_INJECTION_ORDER = 999
+
+export type PluginAssembleAdditionResolved =
+  | { kind: 'injections'; injections: PluginPromptInjection[] }
+  | { kind: 'legacy'; messages: ChatMessage[] }
+
+export type PluginAssembleAdditionCache = Map<
+  string,
+  PluginAssembleAdditionResolved | null
+>
 
 export interface PluginAssembleRuntime {
   plugins: LoadedServerPlugin[]
@@ -24,6 +45,78 @@ export interface AfterAssemblePromptsContext {
   tokenModel?: string
   additionCache?: PluginAssembleAdditionCache
   assembleRuntime?: PluginAssembleRuntime
+  /** regex 后 messages 内 history 段（优先使用；否则由 trimmedHistoryMessages 推算） */
+  injectionSpan?: PluginPromptInjectionSpan
+  /** budget trim 后 history messages，与 regex 后 messages 对齐 */
+  trimmedHistoryMessages?: ChatMessage[]
+}
+
+function normalizeHookAddition(raw: unknown): PluginAssembleAdditionResolved | null {
+  const injections = parsePluginPromptInjections(raw)
+  if (injections) {
+    return { kind: 'injections', injections }
+  }
+  if (!Array.isArray(raw) || raw.length === 0) return null
+  const messages: ChatMessage[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') return null
+    const role = (item as ChatMessage).role
+    const content = (item as ChatMessage).content
+    if (role !== 'system' && role !== 'user' && role !== 'assistant') {
+      return null
+    }
+    if (typeof content !== 'string' || !content.trim()) continue
+    messages.push({ role, content })
+  }
+  if (messages.length === 0) return null
+  return { kind: 'legacy', messages }
+}
+
+function legacyMessagesToInjections(
+  messages: ChatMessage[],
+  pluginOrder: number,
+): PluginPromptInjection[] {
+  return messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+    position: {
+      kind: 'chat' as const,
+      depth: 0,
+      order: LEGACY_CHAT_INJECTION_ORDER,
+      injectionOrder: pluginOrder,
+    },
+  }))
+}
+
+export function additionToInjections(
+  resolved: PluginAssembleAdditionResolved,
+  pluginOrder: number,
+): PluginPromptInjection[] {
+  if (resolved.kind === 'injections') return resolved.injections
+  return legacyMessagesToInjections(resolved.messages, pluginOrder)
+}
+
+export function countPluginAssembleAdditionTokens(
+  resolved: PluginAssembleAdditionResolved,
+  tokenModel?: string,
+): number {
+  const messages =
+    resolved.kind === 'legacy'
+      ? resolved.messages
+      : resolved.injections.map((i) => ({
+          role: i.role,
+          content: i.content,
+        }))
+  return countChatMessagesTokens(messages, { model: tokenModel })
+}
+
+function resolveInjectionSpanForApply(
+  ctx: AfterAssemblePromptsContext,
+): PluginPromptInjectionSpan {
+  if (ctx.injectionSpan) return ctx.injectionSpan
+  const messages = ctx.messages ?? []
+  const history = ctx.trimmedHistoryMessages ?? []
+  return resolvePluginInjectionSpan(messages, history)
 }
 
 async function ensureAssembleRuntime(
@@ -39,20 +132,11 @@ async function ensureAssembleRuntime(
 
 async function resolvePluginAddition(
   pluginId: string,
-  module: {
-    resolveAfterAssemblePromptsAddition?: (
-      ctx: {
-        pluginId: string
-        macroContext: PromptMacroContext
-        plugins?: ChatPluginsBody | null
-      },
-      api: ReturnType<typeof createPluginServerHostApi>,
-    ) => ChatMessage[] | null | Promise<ChatMessage[] | null>
-  },
+  module: LoadedServerPlugin['module'],
   ctx: AfterAssemblePromptsContext,
   api: ReturnType<typeof createPluginServerHostApi>,
   cache?: PluginAssembleAdditionCache,
-): Promise<ChatMessage[] | null> {
+): Promise<PluginAssembleAdditionResolved | null> {
   if (cache?.has(pluginId)) {
     return cache.get(pluginId) ?? null
   }
@@ -68,7 +152,7 @@ async function resolvePluginAddition(
     },
     api,
   )
-  const normalized = Array.isArray(addition) && addition.length > 0 ? addition : null
+  const normalized = normalizeHookAddition(addition)
   cache?.set(pluginId, normalized)
   return normalized
 }
@@ -77,15 +161,15 @@ async function resolvePluginAddition(
 export async function estimatePluginsAfterAssembleTokenReserve(
   ctx: AfterAssemblePromptsContext,
 ): Promise<number> {
-  const cache = ctx.additionCache ?? new Map<string, ChatMessage[] | null>()
+  const cache = ctx.additionCache ?? new Map<string, PluginAssembleAdditionResolved | null>()
   if (!ctx.additionCache) ctx.additionCache = cache
 
   const { plugins, api } = await ensureAssembleRuntime(ctx)
   let total = 0
   for (const p of plugins) {
     const addition = await resolvePluginAddition(p.id, p.module, ctx, api, cache)
-    if (addition?.length) {
-      total += countChatMessagesTokens(addition, { model: ctx.tokenModel })
+    if (addition) {
+      total += countPluginAssembleAdditionTokens(addition, ctx.tokenModel)
     }
   }
   return total
@@ -94,16 +178,24 @@ export async function estimatePluginsAfterAssembleTokenReserve(
 export async function applyPluginsAfterAssemblePrompts(
   ctx: AfterAssemblePromptsContext,
 ): Promise<ChatMessage[]> {
-  const cache = ctx.additionCache ?? new Map<string, ChatMessage[] | null>()
+  const cache = ctx.additionCache ?? new Map<string, PluginAssembleAdditionResolved | null>()
   if (!ctx.additionCache) ctx.additionCache = cache
 
   const { plugins, api } = await ensureAssembleRuntime(ctx)
   let messages = ctx.messages ?? []
+  let span = resolveInjectionSpanForApply(ctx)
 
   for (const p of plugins) {
     const addition = await resolvePluginAddition(p.id, p.module, ctx, api, cache)
-    if (addition?.length) {
-      messages = [...messages, ...addition]
+    if (addition) {
+      const injections = additionToInjections(addition, p.order)
+      const merged = mergePluginPromptInjectionsIntoMessages(
+        messages,
+        injections,
+        span,
+      )
+      messages = merged.messages
+      span = merged.span
       continue
     }
     if (typeof p.module.afterAssemblePrompts !== 'function') continue

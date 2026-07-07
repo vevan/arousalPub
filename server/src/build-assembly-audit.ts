@@ -4,7 +4,10 @@ import type { AssemblyAudit } from './chat-audit-types.js'
 import type { PromptBudgetTrimState } from './prompt-budget-trim.js'
 import type { LorebookXmlGroup } from './prompt-xml.js'
 import type { ChatMessage } from './assemble-prompts.js'
-import { countChatMessagesTokens } from './token-count.js'
+import {
+  countPluginAssembleAdditionTokens,
+  type PluginAssembleAdditionCache,
+} from './plugin-host.js'
 
 export interface BuildAssemblyAuditParams {
   estimatedTokens: number
@@ -23,7 +26,7 @@ export interface BuildAssemblyAuditParams {
   droppedMemoryCount: number
   droppedHistoryCount: number
   memoryEnabled: boolean
-  pluginAdditionCache?: Map<string, ChatMessage[] | null>
+  pluginAdditionCache?: PluginAssembleAdditionCache
 }
 
 function constantLoreMatches(
@@ -50,15 +53,15 @@ function constantLoreMatches(
 }
 
 function buildPluginAssemblyAudit(
-  cache: Map<string, ChatMessage[] | null> | undefined,
+  cache: PluginAssembleAdditionCache | undefined,
   tokenModel?: string,
 ): AssemblyAudit['plugins'] | undefined {
   if (!cache?.size) return undefined
   const items: { pluginId: string; tokens: number }[] = []
   let tokenReserve = 0
   for (const [pluginId, addition] of cache) {
-    if (!addition?.length) continue
-    const tokens = countChatMessagesTokens(addition, { model: tokenModel })
+    if (!addition) continue
+    const tokens = countPluginAssembleAdditionTokens(addition, tokenModel)
     items.push({ pluginId, tokens })
     tokenReserve += tokens
   }

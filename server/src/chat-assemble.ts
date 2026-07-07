@@ -769,12 +769,19 @@ export async function buildConversationOutboundMessages(
 
   estimatedTokens = countChatMessagesTokens(messages, { model: tokenModel })
 
+  const trimmedHistoryForPlugins = trimState.historyMessages.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }))
+
   const messagesAfterPlugins = await applyPluginsAfterAssemblePrompts({
     messages,
     macroContext,
     plugins: params.plugins,
+    tokenModel,
     additionCache: pluginCache,
     assembleRuntime: assembleCtx.assembleRuntime,
+    trimmedHistoryMessages: trimmedHistoryForPlugins,
   })
   if (macroContext) {
     applyMacrosToMessages(messagesAfterPlugins, macroContext, {

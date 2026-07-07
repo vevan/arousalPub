@@ -26,7 +26,7 @@
 
 ## P1
 
-- [ ] **通知中心**（[`DOC/40`](40-notification-center.md)）— 统一通知发送与管理：用户级存储、已读/未读、删除；顶栏列表 UI；`host.ui.notify` 迁入（现等同 toast）
+- [ ] **通知中心**（[`DOC/40`](40-notification-center.md)）— 统一通知发送与管理：**localStorage**（`arousal-notifications-{userId}`）、已读/未读、删除；顶栏列表 UI；`host.ui.notify` 迁入（现等同 toast）
 - [ ] **ST 聊天记录群聊多 bot 导入** — 当前 ST JSONL 导入全部 segment 绑定 `characterIds[0]`；需按 ST `name` 与会话 `characterIds`/`displayNames` 映射各 bot 为 speaker（单 bot 行为不变）。见 [`DOC/37`](37-st-import-settings-tab.md)
 - [ ] **独立文档 RAG**（≠ 世界书 vector）— 可选；前置 `DOC/20` M1+M4
 - [ ] RAG 参数面板、会话/角色批量导入导出、备份示例脚本

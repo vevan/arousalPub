@@ -48,7 +48,7 @@
 | [`18`](18-plugin-host-developer-api.md) | ✅ | 插件 API 表 |
 | [`38`](38-plugin-sandbox-and-host-evolution.md) | 规划 | 插件沙箱、注入描述符、complete 白名单 |
 | [`39`](39-plugin-context-and-prompt-assembly.md) | 规划 | 二次 LLM 上下文块、prompt 组装（§5 定案） |
-| [`40`](40-notification-center.md) | 规划 P1 | **通知中心**：统一发送、存储、已读/未读、删除、列表 UI |
+| [`40`](40-notification-center.md) | 规划 P1 | **通知中心**：统一发送、**localStorage**、已读/未读、删除、列表 UI |
 | [`20`](20-user-file-library.md) | 定案 | 用户文件库 / charFile（未实现） |
 | [`21`](21-conversation-plugin-settings.md) | ✅ | 会话插件 Tab schema |
 | [`23`](23-conversation-branches.md) | ✅ | S1–S5 + 顶栏分支树；persist `turnId` patch；from/to/total 副标题；§9.3 审计已关闭 |

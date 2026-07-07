@@ -67,11 +67,11 @@
 
 ## 5. prepare-context（摘要）
 
-> **演进**：宿主侧 Historian 专用 prepare 将泛化为通用 **上下文块 + prompt 组装**（**`DOC/39`**）；`prepareContext` / `completeDraft` 对外行为迁移期保持不变。
+> **演进**：宿主侧 Historian 专用 prepare 将泛化为通用 **上下文块 + prompt 组装**；**定案见 [`DOC/39`](39-plugin-context-and-prompt-assembly.md) §5（D1–D9）**。`prepareContext` / `completeDraft` 对外行为 **迁移期保持不变**。
 
 - XML：`<user userName="{{user}}">` / `<assistant charName="{{char}}">`；`<context-history>` / `<history>`。
 - 勾选 `regexRuleIds` 时对摘要 outgoing 应用原生正则；`regexApplyAllTurns` 控制 skip。
-- **宏引擎**：`complete-draft` / Prompt 预览经 `runPluginMacroExpand` 展开模板与 `userContent`；传 **`toTurn`** 锚定历史类宏至摘要区间尾部（与 `DOC/26` 一致）；memory 类 draft 另传 **`blockTurns`** 供条目标题 `[MEMO-n]` 计算。
+- **宏引擎**：`complete-draft` / Prompt 预览经 `runPluginMacroExpand` 展开模板与 `userContent`；传 **`toTurn`** 锚定历史类宏至摘要区间尾部（与 `DOC/26` 一致；**迁移后**步骤 2 的 **`anchorToTurn`** 显式传同值 · **`DOC/39` D3**）；memory 类 draft 另传 **`blockTurns`** 供条目标题 `[MEMO-n]` 计算。
 - **区间建议**：手动/自动摘要 UI 限制 **≤512 轮**（`endTurn - startTurn + 1`），与宏索引窗口对齐；超出时禁用提交并 toast。
 - 服务端：`plugin-prepare-context.ts`、`plugin-summarize-format.ts`、`plugin-macro-expand.ts`。
 

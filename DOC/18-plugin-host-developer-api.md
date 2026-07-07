@@ -262,6 +262,22 @@ interface ConversationBatchContext {
 
 **`prepareContext` 请求**（`conversationId` 由宿主注入）：
 
+**扩展形态（步骤 1 · 定案 · [`DOC/39`](39-plugin-context-and-prompt-assembly.md) §3.1）**：
+
+```ts
+{
+  blocks: ContextBlockSpec[]   // 如 conversation.transcript · lorebook.entries · transcript.tail
+}
+// → {
+//   ok: true,
+//   blocks: Record<string, string>,
+//   entriesByBlock?: Record<string, { id; title; content }[]>,
+//   meta: { turnCount?, userDisplayName?, assistantDisplayName? }
+// }
+```
+
+**Historian 旧形态（迁移期仍接受 · 宿主内部转 spec 或兼容层）**：
+
 ```ts
 {
   fromTurn: number
@@ -278,7 +294,33 @@ interface ConversationBatchContext {
 // → { ok: true, systemReferenceContext, userContent, transcript, turnCount, meta: { userDisplayName, assistantDisplayName } }
 ```
 
-**`completeDraft` 请求**：
+**`assemblePluginPrompt` 请求**（步骤 2 · 强制独立 RPC · **`DOC/39` §3.2**）：
+
+```ts
+{
+  blocks: Record<string, string>       // 步骤 1 产出（含插件 format 后的 lore 块）
+  layout: PromptLayout                 // shared 常量或请求体覆盖
+  pluginSettings?: Record<string, unknown>
+  anchorToTurn?: number                // 显式；宿主无默认（Historian 现传 toTurn → 迁移为同值）
+}
+// → { ok: true, messages: { role; content }[] }
+```
+
+**`completeWithContext` 请求**（沙箱主入口 · **`DOC/39` §3.3**）：
+
+```ts
+{
+  apiConfigId?,
+  blocks: ContextBlockSpec[],
+  layout: PromptLayout,
+  pluginSettings?,
+  anchorToTurn?,
+  responseFormat?: 'json_object' | 'text',
+}
+// → 宿主内：prepareContext → assemblePluginPrompt → complete
+```
+
+**`completeDraft` 请求**（迁移后瘦化 · 见 **`DOC/39`**）：
 
 ```ts
 {
@@ -295,9 +337,9 @@ interface ConversationBatchContext {
 // → { ok: true, draft: { title, content, keywords[] }, usage?, latencyMs? }
 ```
 
-**权限**：`plugin.complete`（complete / preflight / completeDraft）；`prepareContext` 另需 `conversation.read` + `lorebook.read`。
+**权限**：`plugin.complete`（complete / preflight / completeDraft / `assemblePluginPrompt` / `completeWithContext`）；`prepareContext` 另需 `conversation.read` + `lorebook.read`。
 
-**可中断**：`host.ui.progress({ abortable: true })` 时，`complete` / `prepareContext` / `completeDraft` 等会携带 `AbortSignal`。
+**可中断**：`host.ui.progress({ abortable: true })` 时，`complete` / `prepareContext` / `assemblePluginPrompt` / `completeWithContext` / `completeDraft` 等会携带 `AbortSignal`。
 
 ### 3.9 `host.token`
 
@@ -558,7 +600,7 @@ class PluginHostApiError {
 | **服务端插件 Worker 沙箱** | Phase B · Host API 代理 · **`DOC/38`** §2、§4 |
 | **`runPluginComplete` apiConfigId 白名单** | Phase C · **`DOC/38`** §5 |
 | **插件上下文块 + Prompt 组装** | **`DOC/39`** · 扩展 `prepareContext` · `assemblePluginPrompt` · `completeWithContext` |
-| **通知中心** | **`DOC/40`** · 统一存储/已读/列表 · `host.ui.notify` 迁入 |
+| **通知中心** | **`DOC/40`** · **localStorage** 存储/已读/列表 · `host.ui.notify` 迁入 |
 | 服务端 `onAssistantReplyPersisted` | 自动触发摘要流水线（当前由 Web lifecycle 负责） |
 | 字段级 permissions 与 turn.plugins 写权限细分 | 部分 enforce 仍随路由演进 |
 
@@ -588,3 +630,5 @@ class PluginHostApiError {
 | 2026-06-02 | 核对 `lorebook.ensure` / `applyOrder` 已实现；补 REST 与 `lorebook.write` 权限说明 |
 | 2026-06-08 | `plot-summary` 更名；`reorder-curated` 移除，改为通用 `apply-order`；Historian 排序算法在 `plugins/plot-summary/src/shared/` |
 | 2026-06-23 | §3.14 `host.regex` 标为已实现（2026-06-10）；§4.2 补 `api.regex` |
+| 2026-07-07 | §3.8 补 `prepareContext` 扩展形态 + `assemblePluginPrompt` / `completeWithContext` 请求示例；Historian 旧请求标迁移期 |
+| 2026-07-07 | §10 通知中心改为 **localStorage**（`DOC/40`） |

@@ -223,20 +223,20 @@ Historian 旧 `prepareContext` 请求/响应 **迁移期兼容**；新实现走 
 
 ## 6. 实现分期（规划）
 
-### Phase 1 — 抽块（P2）
+### Phase 1 — 抽块（P0 · 与 [`DOC/04`](04-TODO.md) 对齐）
 
 - [ ] 定义 `ContextBlockSpec` 与 catalog 枚举
 - [ ] 扩展 `prepareContext` 路由 + 宿主实现（transcript + `lorebook.entries` + 统一 regex）
 - [ ] 选条逻辑留在 plot-summary shared；从 `plugin-prepare-context.ts` 移出 Historian 专用 lore 逻辑
 - [ ] Historian 旧 `prepareContext` 行为不变（内部转 spec 或兼容层）
 
-### Phase 2 — 拼 prompt（P2）
+### Phase 2 — 拼 prompt（P0）
 
 - [ ] `assemblePluginPrompt` 路由 + 宿主 pipeline（macro · preflight · fail on exceed）
 - [ ] `completeWithContext` 串联两步 + complete
 - [ ] Historian `completeDraft` 迁 shared layout + 两步 / 或 `completeWithContext`；删 duplicate 拼 message
 
-### Phase 3 — 其它消费者（P2/P3）
+### Phase 3 — 其它消费者（P1/P2）
 
 - [ ] trace-keeper Separate 迁 `transcript.tail` + shared layout
 - [ ] dry run 预览 API 与 Historian Prompt 预览对齐（不进 audit）
@@ -267,3 +267,4 @@ Historian 旧 `prepareContext` 请求/响应 **迁移期兼容**；新实现走 
 | 2026-07-07 | lore catalog 改为通用 `lorebook.entries`；选条归插件 |
 | 2026-07-07 | `lorebook.entries` 含 `title` + `content` |
 | 2026-07-07 | **D1–D9 定案闭合**：两步 API、无 preset、无 trim、无 audit、沙箱 completeWithContext |
+| 2026-07-07 | §6 分期优先级与 **`DOC/04` P0** 对齐（Phase 1–2 → P0） |

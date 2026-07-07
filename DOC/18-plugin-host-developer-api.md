@@ -617,8 +617,7 @@ class PluginHostApiError {
 | 能力 | 说明 |
 |------|------|
 | **组装注入描述符 + post-user 归并** | Phase A · **`DOC/38`** §3 · guidance / trace-keeper order 定案 |
-| **服务端插件 Worker 沙箱** | Phase B · Host API 代理 · **`DOC/38`** §2、§4 |
-| **`runPluginComplete` apiConfigId 白名单** | Phase C · **`DOC/38`** §5 |
+| **服务端插件 Worker 沙箱** | Phase B · Host API 代理 · **`DOC/38`** §2、§4 · `PLUGIN_SERVER_SANDBOX` |
 | **插件上下文块 + Prompt 组装** | **`DOC/39`** · 扩展 `prepareContext` · `assemblePluginPrompt` · `completeWithContext` |
 | **通知中心** | **`DOC/40`** · **localStorage** 存储/已读/列表 · `host.ui.notify` 迁入 |
 | 服务端 `onAssistantReplyPersisted` | 自动触发摘要流水线（当前由 Web lifecycle 负责） |
@@ -636,7 +635,7 @@ class PluginHostApiError {
 | `DOC/12-plugin-plot-summary.md` | Historian（剧情纪要）完整业务示例 |
 | `DOC/24-regex-and-session-audit.md` | 宿主原生正则三阶段、`host.regex` / `api.regex` |
 | `DOC/30-plugin-trace-keeper.md` | **迹录** Trace Keeper（✅ v1） |
-| `DOC/38-plugin-sandbox-and-host-evolution.md` | 插件沙箱、注入描述符、complete 白名单（**规划**） |
+| `DOC/38-plugin-sandbox-and-host-evolution.md` | 插件沙箱、注入描述符、API 绑定（宿主选择器） |
 | `DOC/39-plugin-context-and-prompt-assembly.md` | 二次 LLM 上下文块 + prompt 组装（**Phase 1–2 已落地**） |
 | `plugins/README.md` | 内置插件列表与打包说明 |
 

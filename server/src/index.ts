@@ -235,6 +235,7 @@ import {
   runPluginActionRoute,
 } from './plugin-action-route.js'
 import { dispatchConversationLifecycle } from './plugin-lifecycle.js'
+import { shutdownAllPluginWorkers } from './plugin-system/plugin-worker-client.js'
 import { runPluginComplete } from './plugin-complete.js'
 import { runPluginCompletePreflight } from './plugin-complete-preflight.js'
 import { runNormalizeLorebookEntryRefs } from './plugin-lorebook-entry-refs.js'
@@ -540,11 +541,13 @@ await app.register(multipart, {
 
 app.addHook('onClose', async () => {
   closeAllLanceConnections()
+  await shutdownAllPluginWorkers()
 })
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {
     closeAllLanceConnections()
+    void shutdownAllPluginWorkers()
   })
 }
 registerMaintenanceGuard(app)

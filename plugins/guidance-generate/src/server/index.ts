@@ -92,7 +92,7 @@ export async function resolveAfterAssemblePromptsAddition(
     applyPromptMacroPipeline: (
       text: string,
       macroContext: unknown,
-    ) => string
+    ) => string | Promise<string>
     getUserPluginSettings: (
       pluginId: string,
     ) => Promise<Record<string, unknown> | null>
@@ -100,7 +100,7 @@ export async function resolveAfterAssemblePromptsAddition(
 ): Promise<PluginPromptInjection[] | null> {
   const parsed = parsePayload(ctx.plugins?.[PLUGIN_ID])
   if (!parsed) return null
-  const guidance = api.applyPromptMacroPipeline(
+  const guidance = await api.applyPromptMacroPipeline(
     parsed.guidanceText,
     ctx.macroContext,
   )

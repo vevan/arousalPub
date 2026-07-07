@@ -33,6 +33,8 @@ import {
   readMergedPluginUserSettings,
   writePluginUserSettings,
 } from './settings.js'
+import { isPluginServerSandboxEnabled, isPluginServerSandboxStrict } from './plugin-worker-protocol.js'
+import { createSandboxPluginModule } from './plugin-sandbox-module.js'
 
 const moduleCache = new Map<string, LoadedServerPlugin[]>()
 
@@ -53,6 +55,29 @@ async function importServerModule(
     console.warn('[plugin-loader] failed to import', entryPath, e)
     return null
   }
+}
+
+async function loadPluginServerModule(
+  pluginId: string,
+  entryPath: string,
+): Promise<PluginServerModule | null> {
+  if (!existsSync(entryPath)) return null
+  if (isPluginServerSandboxEnabled()) {
+    try {
+      return await createSandboxPluginModule(pluginId, entryPath)
+    } catch (e) {
+      if (isPluginServerSandboxStrict()) {
+        throw e
+      }
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[plugin-loader] sandbox load failed, fallback to in-process:',
+        pluginId,
+        e,
+      )
+    }
+  }
+  return importServerModule(entryPath)
 }
 
 async function copyPluginPackage(srcDir: string, destDir: string): Promise<void> {
@@ -226,7 +251,7 @@ export async function loadEnabledServerPlugins(
   for (const entry of registry.plugins) {
     if (!entry.enabled) continue
     const entryPath = getInstalledPluginServerEntry(entry.id)
-    const mod = await importServerModule(entryPath)
+    const mod = await loadPluginServerModule(entry.id, entryPath)
     if (!mod) continue
     loaded.push({ id: entry.id, order: entry.order, module: mod })
   }

@@ -44,7 +44,7 @@ function appendAssistantThenGuidanceSystem(messages, assistantContent, systemCon
 async function resolveAfterAssemblePromptsAddition(ctx, api) {
   const parsed = parsePayload(ctx.plugins?.[PLUGIN_ID]);
   if (!parsed) return null;
-  const guidance = api.applyPromptMacroPipeline(
+  const guidance = await api.applyPromptMacroPipeline(
     parsed.guidanceText,
     ctx.macroContext
   );

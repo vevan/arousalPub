@@ -1,6 +1,6 @@
 # 插件沙箱化与宿主能力演进 — 设计定案（规划）
 
-> **状态**：**Phase A 已落地**（2026-07-07）；**Phase B Worker 沙箱未开始**。  
+> **状态**：**Phase A + B 已落地**（2026-07-07）；Worker 默认关闭，见 `PLUGIN_SERVER_SANDBOX` · B3+ `npm run test:sandbox -w server`。  
 > **关联**：`DOC/03` §1.3 插件 API 隔离 · `DOC/04` P2 · `DOC/09` · `DOC/18` §4.1 · `DOC/25` §15 · `server/src/plugin-system/loader.ts` · `server/src/plugin-host.ts`
 
 ---
@@ -36,24 +36,28 @@
 
 | 项 | 风险 |
 |----|------|
-| 服务端 `server.mjs` 同进程 `import` | 恶意插件可读盘、访问宿主内存、调用未暴露 API |
-| 插件自选 `apiConfigId` | 若未校验 preset 是否允许该 `pluginId` 使用，可能滥用用户其它功能的 API 条目 |
+| 服务端 `server.mjs` 同进程 `import`（`PLUGIN_SERVER_SANDBOX` 未开时） | 恶意插件可读盘；**设 `PLUGIN_SERVER_SANDBOX=1` 走子进程沙箱** |
+| 子进程非 MicroVM | `process` 等仍存在于子进程内，但**无法读宿主 DATA_DIR**（Permission + Host API only） |
 | `afterAssemblePrompts` 整表替换 | 无安全额外风险，但沙箱 IPC 成本高 |
 
 ### 2.3 目标态（定案方向）
 
 ```text
-┌──────────────────┐     IPC（结构化载荷）     ┌─────────────────────┐
-│ Plugin Worker    │ ◄──────────────────────► │ Host（Node 主进程）  │
-│ dist/server.mjs  │   Host API 代理 only      │ plugin-host.ts      │
-└──────────────────┘                           │ 读盘 / complete /   │
-                                               │ splice messages     │
-                                               └─────────────────────┘
+┌──────────────────────┐     IPC（process.send）      ┌─────────────────────┐
+│ Plugin 子进程         │ ◄──────────────────────────► │ Host（Node 主进程）  │
+│ fork(bootstrap.mjs)   │   Host API 代理 only          │ plugin-host.ts      │
+│ → dist/server.mjs     │                               │ 读盘 / complete /   │
+└──────────────────────┘                               │ splice messages     │
+        ↑ Node --permission                             └─────────────────────┘
+        （只读插件包 + bootstrap 目录）
 ```
 
-- Worker 内**无** `fs`、**无** raw `fetch` 出站；仅调用宿主代理方法。
-- 密钥、路径解析、白名单校验均在宿主完成。
-- **与自选 `apiConfigId` 不冲突**：插件 settings 仍可存 preset id；宿主在 `runPluginComplete` 前校验「该 preset 是否授权给此 pluginId」。
+- **`child_process.fork`** 独立 OS 进程；**`--permission`** 进程级禁 fs 写 / child_process / worker / addons
+- **`--allow-fs-read`** 仅插件安装目录 + bootstrap 目录；用户 `data/` **不可见**
+- import hook + 禁 `fetch` 为纵深防御；出站仅 Host API 代理
+- invoke **串行队列**；`userId` 随 IPC 传递（并发多用户不串线）
+- fork **不继承**宿主完整 `process.env`（仅 PATH/TMP 等 OS 必需项 + 入口路径）；`onClose` / SIGINT 回收子进程
+- 密钥、路径解析均在宿主完成；插件 API 绑定见 §5（宿主选择器 + 用户授权 id）
 
 ---
 
@@ -146,17 +150,18 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 
 ---
 
-## 5. `apiConfigId` 与白名单（规划）
+## 5. 插件 API 绑定（定案 · 宿主选择器）
 
-插件 settings 中 `apiPreset` / `apiConfigId` 字段（如 trace-keeper `apiConfigId`）与沙箱**可并存**：
+**不做** manifest `allowedApiPresets` 白名单；由宿主 UI 授权、插件只见 id：
 
 | 步骤 | 宿主职责 |
 |------|----------|
-| 读 settings | Worker 经代理 `getUserPluginSettings` |
-| complete 前 | 校验 `apiConfigId` 是否在 manifest 允许范围（如 `permissions` 含 `plugin.complete` + 可选 `allowedApiConfigIds` / 用户显式绑定） |
+| 设置页 | `settingsSchema` 字段 `type: "apiPreset"` → 宿主 `PluginSchemaForm` 渲染下拉（`loadApiPresetSelectItems`） |
+| 持久化 | 用户选择写入插件 `settings.json` 的 `apiConfigId`（或对话 `apiPreset.plugins[pluginId]`）；**仅存 id** |
+| 运行时 | 插件经 Host API `complete` / `getUserPluginSettings` 使用已绑定 id；**不**暴露 `api_configs` 列表与其它 preset |
 | 出站 | 宿主解析密钥；插件永远不见明文 |
 
-缺省：**禁止**插件 arbitrary 使用任意用户 `api_config` 条目。
+解析链：`对话 apiPreset.plugins[pluginId]` → `apiPreset.plugin` → 插件 settings `apiConfigId`（`plugin-api-resolve.ts`）。
 
 ---
 
@@ -172,16 +177,12 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 
 ### Phase B — 服务端沙箱（P2）
 
-- [ ] Worker 加载 `server.mjs`；Host API 代理（settings、complete、regex、macro）
-- [ ] 禁止 Worker 内直接 `import('fs')` 等（或不用 Node 全能力 Worker）
-- [ ] 第三方插件安装路径与 bundled 同一套代理
-- [ ] 回归：官方 bundled 插件全量测试
+- [x] **子进程** `fork(bootstrap)` 加载 `server.mjs`；结构化 IPC（`plugin-worker-protocol.ts`）
+- [x] **Node `--permission`** — 只读插件包 + bootstrap；禁 fs 写 / child_process / worker / addons（`plugin-worker-permissions.ts`）
+- [x] Host API 代理；import hook + 禁 raw `fetch` 纵深防御
+- [x] B3+ 全量回归 · B4 userId IPC / 串行 / 超时 / STRICT
 
-### Phase C — API 绑定加固（P2 · 可与 B 并行）
-
-- [ ] `runPluginComplete` preset 白名单校验
-- [ ] manifest 扩展 `allowedApiPresets` 或等价 policy（`DOC/03` §1.3 policy 字段）
-- [ ] 设置页：插件 API 下拉仅展示允许条目
+**启用**：`PLUGIN_SERVER_SANDBOX=1`（默认 off）。**严格模式**：`PLUGIN_SERVER_SANDBOX_STRICT=1`。**调试关闭 Permission**：`PLUGIN_SERVER_SANDBOX_NO_PERMISSION=1`。
 
 ### 非目标（v1 沙箱）
 
@@ -203,7 +204,14 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 
 | 路径 | 说明 |
 |------|------|
-| `server/src/plugin-system/loader.ts` | 同进程 `import(server.mjs)` |
+| `server/src/plugin-system/loader.ts` | `loadPluginServerModule`：sandbox 启用 → Worker，否则同进程 `import` |
+| `server/src/plugin-system/plugin-worker-protocol.ts` | IPC 类型 · `PLUGIN_SERVER_SANDBOX` 开关 |
+| `server/src/plugin-system/plugin-worker-bootstrap.mjs` | Worker 入口，加载 `dist/server.mjs` |
+| `server/src/plugin-system/plugin-worker-client.ts` | Host 侧 fork 客户端 · Host API 分发 |
+| `server/src/plugin-system/plugin-worker-permissions.ts` | 子进程 `--permission` / `--allow-fs-read` 参数 |
+| `server/src/plugin-system/plugin-worker-env.ts` | 子进程最小 env（不继承宿主密钥） |
+| `server/src/plugin-system/plugin-worker-import-hook.mjs` | Worker import hook（禁 fs / 原生 HTTP 等） |
+| `server/src/plugin-system/plugin-sandbox-module.ts` | 按导出 hooks 包装为 `PluginServerModule` |
 | `shared/plugin-prompt-injection.ts` | 注入描述符契约（同步 server/web） |
 | `server/src/plugin-prompt-injection-merge.ts` | post-user 区归并 · `buildPluginAfterUserInputHintFromMessages` |
 | `server/src/plugin-host.ts` | `resolvePluginAddition` · `applyPluginsAfterAssemblePrompts` |
@@ -227,4 +235,5 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 | 2026-07-07 | **Phase A2–A3**：`guidance-generate` / `trace-keeper` 迁显式 `PluginPromptInjection` |
 | 2026-07-07 | **Phase A4**：单测 + `afterUserInput` 与插件注入同空间归并 |
 | 2026-07-07 | 契约：`position.injectionOrder`（≡ ST）；默认 **100**；官方档 **10 / 20 / 500**（revise **11+12**） |
-| 2026-07-07 | **Phase A 收尾**：regex 后 afterUserInput 精确解析；修复 authorsNote / preset 误标；文档状态更新为 Phase A 已落地 |
+| 2026-07-07 | **Phase B**：Worker 沙箱 + Host API 代理 + loader fallback；`PLUGIN_SERVER_SANDBOX` 默认 off |
+| 2026-07-07 | **Phase C**：`worker_threads` → `child_process.fork` + Node `--permission` |

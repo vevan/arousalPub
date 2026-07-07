@@ -4,9 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "node ../scripts/sync-all-shared.mjs && tsx watch src/index.ts",
-    "build": "node ../scripts/sync-all-shared.mjs && tsc && node --input-type=module -e \"import {mkdirSync,copyFileSync} from 'node:fs'; mkdirSync('dist/admin',{recursive:true}); copyFileSync('src/admin/index.html','dist/admin/index.html')\"",
+    "build": "node ../scripts/sync-all-shared.mjs && tsc && node --input-type=module -e \"import {mkdirSync,copyFileSync} from 'node:fs'; import path from 'node:path'; const ps='dist/plugin-system'; mkdirSync('dist/admin',{recursive:true}); copyFileSync('src/admin/index.html','dist/admin/index.html'); mkdirSync(ps,{recursive:true}); for (const f of ['plugin-worker-bootstrap.mjs','plugin-worker-hooks.mjs','plugin-worker-import-hook.mjs']) copyFileSync(path.join('src/plugin-system',f), path.join(ps,f));\"",
     "start": "node dist/index.js",
-    "test": "node ../scripts/sync-all-shared.mjs && node --import tsx --test test/**/*.test.ts ../web/test/**/*.test.ts ../plugins/trace-keeper/test/**/*.test.ts ../plugins/guidance-generate/test/**/*.test.ts ../plugins/plot-summary/test/**/*.test.ts"
+    "test": "node ../scripts/sync-all-shared.mjs && node --import tsx --test test/**/*.test.ts ../web/test/**/*.test.ts ../plugins/trace-keeper/test/**/*.test.ts ../plugins/guidance-generate/test/**/*.test.ts ../plugins/plot-summary/test/**/*.test.ts",
+    "test:sandbox": "node ../scripts/run-server-test-sandbox.mjs"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

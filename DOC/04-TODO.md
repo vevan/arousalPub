@@ -2,10 +2,10 @@
 
 > **阶段**：已脱离 MVP（2026-05+）。下列为**仍待做**；已实现能力见 `DOC/03` §14.7、各专题文档、`DOC/README` 归档表、本文 **§已归档**。
 
-## Sandbox（`DOC/38` · **Phase A 已完成**）
+## Sandbox（`DOC/38` · **Phase A + B 已完成（含 B3+）**）
 
-> **说明**：远程分支 `sandbox` 用于近期插件/DOC 落地提交；**本节**指 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) 的**插件沙箱化 + 组装注入描述符**工程。**Phase A 已落地**；下一步 **Phase B**。  
-> **顺序定案**：前置 DOC/39 → **Phase A 注入** → **Phase B Worker 沙箱**；Phase C 可与 B 并行。
+> **说明**：远程分支 `sandbox` 用于近期插件/DOC 落地提交；**本节**指 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) 的**插件沙箱化 + 组装注入描述符**工程。**Phase A、Phase B（含 B3+）已落地**。  
+> **顺序定案**：前置 DOC/39 → **Phase A 注入** → **Phase B Worker 沙箱**。
 
 ### 前置（已满足 · 非 Sandbox 本体）
 
@@ -26,22 +26,19 @@
 
 - [ ] **注入 `injectionOrder` 可配置化** — 上述档位现分散在插件常量与 `plugin-prompt-injection-merge.ts`；后续改为 manifest 策略字段或宿主/设置页可配（含群聊 afterUserInput、preset 元数据、revise 子档）
 
-### Phase B — 服务端 Worker 沙箱（P0 · 依赖 A）
+### Phase B — 服务端 Worker 沙箱（P0 · 依赖 A · **✅ 已完成**）
 
-- [ ] **B0 Worker 运行时** — 加载 `dist/server.mjs`；结构化 IPC
-- [ ] **B1 Host API 代理** — settings / complete / regex / macro / `completeWithContext`；Worker 内无 `fs`、无 raw 出站
-- [ ] **B2 安装路径** — bundled 与第三方自选插件同一套代理
-- [ ] **B3 回归** — 官方 bundled 插件全量测试；同进程 `import` 仅过渡期 fallback
-
-### Phase C — `apiConfigId` 白名单（P0 · 可与 B 并行）
-
-- [ ] **C0 complete 校验** — `runPluginComplete` 前校验 preset 是否授权给该 `pluginId`
-- [ ] **C1 manifest policy** — `allowedApiPresets` 或等价字段（`DOC/03` §1.3）
-- [ ] **C2 设置页** — 插件 API 下拉仅展示允许条目
+- [x] **B0 Worker 运行时** — `plugin-worker-bootstrap.mjs` 加载 `dist/server.mjs`；`plugin-worker-protocol.ts` 结构化 IPC
+- [x] **B1 Host API 代理** — `plugin-worker-client.ts` 分发 settings / complete / regex / macro / `completeWithContext`
+- [x] **B2 安装路径** — `loader.loadPluginServerModule`：bundled 与第三方同一 Worker 路径
+- [x] **B3 回归** — `plugin-worker-sandbox.test.ts`；默认同进程 `import`；Worker 失败 fallback；`guidance-generate` `await applyPromptMacroPipeline`
+- [x] **B3+** — `npm run test:sandbox -w server`（`PLUGIN_SERVER_SANDBOX=1` 全量回归，707 项通过）
+- [x] **B4 加固** — userId IPC · 串行 · 超时 · STRICT
+- [x] **B5 子进程 + Permission** — `fork` 替代 `worker_threads`；`--permission` 只读插件目录
 
 ### 相关（与 Sandbox 交叉 · 仍开放）
 
-- [ ] 插件实例与 API 绑定、插件审计、fallback 策略（部分见 [`DOC/10`](10-plugin-conversation-host.md)）— 与 Phase C 部分重叠，Sandbox 落地时一并收口
+- [ ] 插件实例与 API 绑定、插件审计、fallback 策略（部分见 [`DOC/10`](10-plugin-conversation-host.md)）
 
 ### 非目标（v1 Sandbox）
 

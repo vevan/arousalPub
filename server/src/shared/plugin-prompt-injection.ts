@@ -1,11 +1,13 @@
-/** DOC/38 · 插件组装注入描述符（chat depth + order） */
+/** DOC/38 · 插件组装注入描述符（chat depth + injectionOrder） */
 
 export type PluginPromptInjectionRole = 'system' | 'user' | 'assistant'
+
+/** 与 ST `injection_order` / preset `injectionOrder` 一致；省略时默认 100 */
+export const CHAT_INJECTION_ORDER_DEFAULT = 100
 
 export type PluginPromptInjectionPosition = {
   kind: 'chat'
   depth: number
-  order?: number
   injectionOrder?: number
 }
 
@@ -15,8 +17,19 @@ export type PluginPromptInjection = {
   position: PluginPromptInjectionPosition
 }
 
+export function resolvePluginInjectionOrder(
+  position: PluginPromptInjectionPosition,
+): number {
+  return position.injectionOrder ?? CHAT_INJECTION_ORDER_DEFAULT
+}
+
 function isRole(raw: unknown): raw is PluginPromptInjectionRole {
   return raw === 'system' || raw === 'user' || raw === 'assistant'
+}
+
+function parseInjectionOrder(raw: unknown): number | undefined {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return undefined
+  return Math.floor(raw)
 }
 
 function parsePosition(raw: unknown): PluginPromptInjectionPosition | null {
@@ -28,18 +41,12 @@ function parsePosition(raw: unknown): PluginPromptInjectionPosition | null {
       ? Math.max(0, Math.floor(o.depth))
       : NaN
   if (!Number.isFinite(depth)) return null
-  const order =
-    typeof o.order === 'number' && Number.isFinite(o.order)
-      ? Math.floor(o.order)
-      : undefined
   const injectionOrder =
-    typeof o.injectionOrder === 'number' && Number.isFinite(o.injectionOrder)
-      ? Math.floor(o.injectionOrder)
-      : undefined
+    parseInjectionOrder(o.injectionOrder) ??
+    parseInjectionOrder(o.order)
   return {
     kind: 'chat',
     depth,
-    ...(order !== undefined ? { order } : {}),
     ...(injectionOrder !== undefined ? { injectionOrder } : {}),
   }
 }
@@ -59,10 +66,13 @@ export function parsePluginPromptInjections(raw: unknown): PluginPromptInjection
   const out: PluginPromptInjection[] = []
   for (const item of raw) {
     if (!isPluginPromptInjection(item)) return null
+    const o = item as Record<string, unknown>
+    const position = parsePosition(o.position)
+    if (!position) return null
     out.push({
-      role: item.role,
-      content: item.content.trim(),
-      position: item.position,
+      role: o.role as PluginPromptInjectionRole,
+      content: (o.content as string).trim(),
+      position,
     })
   }
   return out.length > 0 ? out : null

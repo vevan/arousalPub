@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { buildAssemblyAudit } from '../src/build-assembly-audit.js'
+import type { PluginAssembleAdditionCache } from '../src/plugin-host.js'
 import type { MemoryPipelineResult } from '../src/memory-pipeline.js'
 
 describe('buildAssemblyAudit', () => {
@@ -72,5 +73,57 @@ describe('buildAssemblyAudit', () => {
     assert.equal(audit.lore.matched[0]?.included, false)
     assert.equal(audit.memory.droppedCount, 1)
     assert.equal(audit.lore.droppedCount, 1)
+  })
+
+  it('includes plugin token reserve from additionCache', () => {
+    const cache: PluginAssembleAdditionCache = new Map([
+      [
+        'guidance-generate',
+        {
+          kind: 'injections',
+          injections: [
+            {
+              role: 'system',
+              content: 'guide text',
+              position: { kind: 'chat', depth: 0, injectionOrder: 10 },
+            },
+          ],
+        },
+      ],
+    ])
+
+    const audit = buildAssemblyAudit({
+      estimatedTokens: 10,
+      lorebookIds: [],
+      lorebookNameToId: new Map(),
+      memoryPipeline: {
+        recentHistoryMessages: [],
+        recentHistoryTurnOrdinals: [],
+        recentHistoryScanText: '',
+        memoryItems: [],
+        memoryText: '',
+        memoryTurnIds: [],
+        memoryHits: [],
+      },
+      loreParts: { constantLoreGroups: [], matchedLore: [] },
+      initialMatchedLore: [],
+      initialMemoryItems: [],
+      trimState: {
+        constantLoreGroups: [],
+        matchedLore: [],
+        memoryItems: [],
+        historyMessages: [],
+      },
+      droppedLoreCount: 0,
+      droppedMemoryCount: 0,
+      droppedHistoryCount: 0,
+      memoryEnabled: false,
+      pluginAdditionCache: cache,
+    })
+
+    assert.ok(audit.plugins)
+    assert.equal(audit.plugins!.items.length, 1)
+    assert.equal(audit.plugins!.items[0]!.pluginId, 'guidance-generate')
+    assert.ok(audit.plugins!.tokenReserve > 0)
   })
 })

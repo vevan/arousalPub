@@ -4,24 +4,26 @@
 
 ## Sandbox（`DOC/38` · **Phase A 进行中**）
 
-> **说明**：远程分支 `sandbox` 用于近期插件/DOC 落地提交；**本节**指 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) 的**插件沙箱化 + 组装注入描述符**工程。**A0–A1 已落地**；下一步 **A2**。  
+> **说明**：远程分支 `sandbox` 用于近期插件/DOC 落地提交；**本节**指 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) 的**插件沙箱化 + 组装注入描述符**工程。**Phase A 已落地**；下一步 **Phase B**。  
 > **顺序定案**：前置 DOC/39 → **Phase A 注入** → **Phase B Worker 沙箱**；Phase C 可与 B 并行。
 
 ### 前置（已满足 · 非 Sandbox 本体）
 
 - [x] **DOC/39** 二次 LLM 上下文 + Prompt 组装 — `prepareContextBlocks` / `assemblePluginPrompt` / `completeWithContext`；Historian + trace-keeper Separate 已迁；见 [`DOC/39`](39-plugin-context-and-prompt-assembly.md) §6
 
-### Phase A — 注入描述符 + §6.6 chat depth（**A2 下一步 · P0**）
+### Phase A — 注入描述符 + §6.6 chat depth（**✅ 已完成**）
 
-宿主 `resolveAfterAssemblePromptsAddition` 返回 **`PluginPromptInjection[]`**（`chat` depth + order），post-user 区归并 splice；裁切前 token 预留逻辑不变。详 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §3。
+宿主 `resolveAfterAssemblePromptsAddition` 返回 **`PluginPromptInjection[]`**（`chat` depth + `injectionOrder`），post-user 区归并 splice；裁切前 token 预留逻辑不变。详 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §3。
 
 - [x] **A0 契约** — `PluginPromptInjection` 类型；`plugin-prompt-injection-merge.ts` 归并器（复用 `resolveChatDepthInsertIndex` / `compareInjectionEntries`）
-- [x] **A1 宿主元数据** — `chat-assemble` 向 apply 传入 `trimmedHistoryMessages` / `historySpan`；`applyPluginsAfterAssemblePrompts` 走归并器（legacy `ChatMessage[]` 暂映射 order 999）
-- [ ] **A2 guidance-generate** — 迁描述符：depth **0** order **1**；revise 路径 assistant **998** + system **999**；移除整表 `afterAssemblePrompts` 主路径
-- [ ] **A3 trace-keeper Together** — depth **0** order **999**（替代当前宿主 `append`）
-- [ ] **A4 单测** — 多插件 order 共存、群聊 `afterUserInput`、revise 双条、`additionCache` / token 预留
+- [x] **A1 宿主元数据** — `chat-assemble` 向 apply 传入 `trimmedHistoryMessages` / `historySpan`；`applyPluginsAfterAssemblePrompts` 走归并器（legacy `ChatMessage[]` 暂映射 `injectionOrder` 500）
+- [x] **A2 guidance-generate** — 迁描述符：depth **0** `injectionOrder` **10**；revise assistant **11** + system **12**；移除整表 `afterAssemblePrompts` 主路径
+- [x] **A3 trace-keeper Together** — depth **0** `injectionOrder` **500**（显式描述符，替代 legacy append）
+- [x] **A4 单测** — 多插件 order 共存、群聊 `afterUserInput`、revise 双条、`additionCache` / token 预留
 
-**order 定案**（与 ST §6.6 一致 · 小=近 user · 大=近栈底）：guidance **1** · trace-keeper **999** · revise system **999** / assistant **998**。
+**`injectionOrder` 默认值（暂硬编码 · 小=近 user · 大=近栈底）**：省略 **100** · guidance **10** · revise **11 / 12** · 群聊 afterUserInput **20** · trace-keeper **500** · preset tail（无元数据）**100**。
+
+- [ ] **注入 `injectionOrder` 可配置化** — 上述档位现分散在插件常量与 `plugin-prompt-injection-merge.ts`；后续改为 manifest 策略字段或宿主/设置页可配（含群聊 afterUserInput、preset 元数据、revise 子档）
 
 ### Phase B — 服务端 Worker 沙箱（P0 · 依赖 A）
 

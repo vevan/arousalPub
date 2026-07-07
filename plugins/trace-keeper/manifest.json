@@ -3,7 +3,7 @@
   "name": "Trace Keeper",
   "version": "0.1.0",
   "hooks": [
-    "afterAssemblePrompts",
+    "resolveAfterAssemblePromptsAddition",
     "resolveTurnPluginEntriesFromAssistant",
     "formatPluginContextBlocks"
   ],

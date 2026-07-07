@@ -21,8 +21,8 @@ export { mergePluginPromptInjectionsIntoMessages } from './plugin-prompt-injecti
 export type { PluginPromptInjectionSpan } from './plugin-prompt-injection-merge.js'
 export { resolvePluginInjectionSpan } from './plugin-prompt-injection-merge.js'
 
-/** legacy `ChatMessage[]` addition 在迁描述符前映射为 depth 0 · order 999 */
-const LEGACY_CHAT_INJECTION_ORDER = 999
+/** legacy `ChatMessage[]` addition 在迁描述符前映射为 depth 0 · injectionOrder 500（与 trace-keeper 同档） */
+const LEGACY_CHAT_INJECTION_ORDER = 500
 
 export type PluginAssembleAdditionResolved =
   | { kind: 'injections'; injections: PluginPromptInjection[] }
@@ -49,6 +49,13 @@ export interface AfterAssemblePromptsContext {
   injectionSpan?: PluginPromptInjectionSpan
   /** budget trim 后 history messages，与 regex 后 messages 对齐 */
   trimmedHistoryMessages?: ChatMessage[]
+  /** 群聊 assemble 已插入的 afterUserInput（与插件注入同一 injectionOrder 空间） */
+  afterUserInput?: {
+    content: string
+    role?: 'system' | 'user' | 'assistant'
+    implicitInjectionOrder?: number
+    excludeContents?: string[]
+  }
 }
 
 function normalizeHookAddition(raw: unknown): PluginAssembleAdditionResolved | null {
@@ -74,7 +81,6 @@ function normalizeHookAddition(raw: unknown): PluginAssembleAdditionResolved | n
 
 function legacyMessagesToInjections(
   messages: ChatMessage[],
-  pluginOrder: number,
 ): PluginPromptInjection[] {
   return messages.map((m) => ({
     role: m.role,
@@ -82,18 +88,17 @@ function legacyMessagesToInjections(
     position: {
       kind: 'chat' as const,
       depth: 0,
-      order: LEGACY_CHAT_INJECTION_ORDER,
-      injectionOrder: pluginOrder,
+      injectionOrder: LEGACY_CHAT_INJECTION_ORDER,
     },
   }))
 }
 
 export function additionToInjections(
   resolved: PluginAssembleAdditionResolved,
-  pluginOrder: number,
 ): PluginPromptInjection[] {
-  if (resolved.kind === 'injections') return resolved.injections
-  return legacyMessagesToInjections(resolved.messages, pluginOrder)
+  return resolved.kind === 'injections'
+    ? resolved.injections
+    : legacyMessagesToInjections(resolved.messages)
 }
 
 export function countPluginAssembleAdditionTokens(
@@ -182,24 +187,43 @@ export async function applyPluginsAfterAssemblePrompts(
   if (!ctx.additionCache) ctx.additionCache = cache
 
   const { plugins, api } = await ensureAssembleRuntime(ctx)
-  let messages = ctx.messages ?? []
-  let span = resolveInjectionSpanForApply(ctx)
+  const span = resolveInjectionSpanForApply(ctx)
+  const collected: PluginPromptInjection[] = []
+  const escapeHatchPlugins: LoadedServerPlugin[] = []
 
   for (const p of plugins) {
     const addition = await resolvePluginAddition(p.id, p.module, ctx, api, cache)
     if (addition) {
-      const injections = additionToInjections(addition, p.order)
-      const merged = mergePluginPromptInjectionsIntoMessages(
-        messages,
-        injections,
-        span,
-      )
-      messages = merged.messages
-      span = merged.span
+      collected.push(...additionToInjections(addition))
       continue
     }
-    if (typeof p.module.afterAssemblePrompts !== 'function') continue
-    const next = await p.module.afterAssemblePrompts(
+    if (typeof p.module.afterAssemblePrompts === 'function') {
+      escapeHatchPlugins.push(p)
+    }
+  }
+
+  let messages = ctx.messages ?? []
+  if (collected.length > 0) {
+    const merged = mergePluginPromptInjectionsIntoMessages(
+      messages,
+      collected,
+      span,
+      ctx.afterUserInput?.content?.trim()
+        ? {
+            afterUserInput: {
+              content: ctx.afterUserInput.content,
+              role: ctx.afterUserInput.role,
+              implicitInjectionOrder: ctx.afterUserInput.implicitInjectionOrder,
+              excludeContents: ctx.afterUserInput.excludeContents,
+            },
+          }
+        : undefined,
+    )
+    messages = merged.messages
+  }
+
+  for (const p of escapeHatchPlugins) {
+    const next = await p.module.afterAssemblePrompts!(
       {
         pluginId: p.id,
         messages,

@@ -3,7 +3,7 @@
   "name": "指导生成",
   "version": "1.0.0",
   "permissions": ["turn.read", "turn.plugins.write", "prompt.inject"],
-  "hooks": ["afterAssemblePrompts"],
+  "hooks": ["resolveAfterAssemblePromptsAddition"],
   "settingsSchema": {
     "version": 1,
     "fields": [

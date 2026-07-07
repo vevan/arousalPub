@@ -524,6 +524,8 @@ function formatPluginContextBlocks(resolved, _ctx) {
 }
 
 // plugins/trace-keeper/src/server/index.ts
+var TRACE_KEEPER_CHAT_DEPTH = 0;
+var TRACE_KEEPER_INJECTION_ORDER = 500;
 async function resolveTraceKeeperInjection(ctx, api) {
   if (ctx.pluginId !== PLUGIN_ID) return null;
   const conversationId = ctx.macroContext.conversationId?.trim();
@@ -544,12 +546,17 @@ async function resolveTraceKeeperInjection(ctx, api) {
 async function resolveAfterAssemblePromptsAddition(ctx, api) {
   const injection = await resolveTraceKeeperInjection(ctx, api);
   if (!injection) return null;
-  return [{ role: "system", content: injection.systemText }];
-}
-async function afterAssemblePrompts(ctx, api) {
-  const addition = await resolveAfterAssemblePromptsAddition(ctx, api);
-  if (!addition) return ctx.messages;
-  return [...ctx.messages, ...addition];
+  return [
+    {
+      role: "system",
+      content: injection.systemText,
+      position: {
+        kind: "chat",
+        depth: TRACE_KEEPER_CHAT_DEPTH,
+        injectionOrder: TRACE_KEEPER_INJECTION_ORDER
+      }
+    }
+  ];
 }
 async function resolveTurnPluginEntriesFromAssistant(ctx, api) {
   const state = extractTraceKeeperState(ctx.assistantContent);
@@ -574,7 +581,6 @@ async function resolveTurnPluginEntriesFromAssistant(ctx, api) {
 export {
   DEFAULT_TRACE_BUNDLE,
   TRACE_KEEPER_SEPARATE_LAYOUT,
-  afterAssemblePrompts,
   buildTrackerSystemPrompt,
   formatPluginContextBlocks,
   patchTraceKeeperState,

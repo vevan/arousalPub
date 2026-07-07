@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  afterAssemblePrompts,
   appendAssistantThenGuidanceSystem,
   insertSystemAfterLastUser,
   parsePayload,
+  resolveAfterAssemblePromptsAddition,
 } from '../../src/server/index.js'
+import { mergePluginPromptInjectionsIntoMessages } from '../../../../server/src/plugin-prompt-injection-merge.js'
 
 describe('guidance-generate parsePayload', () => {
   it('accepts revise mode with assistantText', () => {
@@ -75,19 +76,19 @@ describe('guidance-generate appendAssistantThenGuidanceSystem', () => {
   })
 })
 
-describe('guidance-generate afterAssemblePrompts', () => {
-  it('injects guidance system after last user, not at tail', async () => {
-    const messages = [
-      { role: 'system', content: 'preset' },
-      { role: 'user', content: 'hello' },
-    ]
-    const api = {
-      applyPromptMacroPipeline: (text: string) => text,
-      getUserPluginSettings: async () => ({ systemPrefix: 'G: ' }),
-    }
-    const out = await afterAssemblePrompts(
+describe('guidance-generate resolveAfterAssemblePromptsAddition', () => {
+  const api = {
+    applyPromptMacroPipeline: (text: string) => text,
+    getUserPluginSettings: async (pluginId: string) =>
+      pluginId === 'guidance-generate'
+        ? { systemPrefix: 'G: ', reviseSystemPrefix: 'R: ' }
+        : null,
+  }
+
+  it('returns depth 0 injectionOrder 10 system for send mode', async () => {
+    const injections = await resolveAfterAssemblePromptsAddition(
       {
-        messages,
+        pluginId: 'guidance-generate',
         macroContext: {},
         plugins: {
           'guidance-generate': { mode: 'send', guidanceText: 'be kind' },
@@ -95,25 +96,48 @@ describe('guidance-generate afterAssemblePrompts', () => {
       },
       api,
     )
-    assert.deepEqual(out, [
-      { role: 'system', content: 'preset' },
-      { role: 'user', content: 'hello' },
-      { role: 'system', content: 'G:be kind' },
+    assert.deepEqual(injections, [
+      {
+        role: 'system',
+        content: 'G:be kind',
+        position: {
+          kind: 'chat',
+          depth: 0,
+          injectionOrder: 10,
+        },
+      },
     ])
   })
 
-  it('revise appends assistant reply then guidance system', async () => {
-    const messages = [
-      { role: 'system', content: 'preset' },
-      { role: 'user', content: 'hello' },
+  it('send mode merges after last user via host order semantics', async () => {
+    const base = [
+      { role: 'system' as const, content: 'preset' },
+      { role: 'user' as const, content: 'hello' },
     ]
-    const api = {
-      applyPromptMacroPipeline: (text: string) => text,
-      getUserPluginSettings: async () => ({ reviseSystemPrefix: 'R: ' }),
-    }
-    const out = await afterAssemblePrompts(
+    const injections = await resolveAfterAssemblePromptsAddition(
       {
-        messages,
+        pluginId: 'guidance-generate',
+        macroContext: {},
+        plugins: {
+          'guidance-generate': { mode: 'send', guidanceText: 'be kind' },
+        },
+      },
+      api,
+    )
+    const { messages } = mergePluginPromptInjectionsIntoMessages(
+      base,
+      injections!,
+    )
+    assert.deepEqual(
+      messages.map((m) => m.content),
+      ['preset', 'hello', 'G:be kind'],
+    )
+  })
+
+  it('revise returns assistant 11 + system 12 descriptors', async () => {
+    const injections = await resolveAfterAssemblePromptsAddition(
+      {
+        pluginId: 'guidance-generate',
         macroContext: {},
         plugins: {
           'guidance-generate': {
@@ -125,11 +149,54 @@ describe('guidance-generate afterAssemblePrompts', () => {
       },
       api,
     )
-    assert.deepEqual(out, [
-      { role: 'system', content: 'preset' },
-      { role: 'user', content: 'hello' },
-      { role: 'assistant', content: 'Rough reply' },
-      { role: 'system', content: 'R:soften' },
+    assert.deepEqual(injections, [
+      {
+        role: 'assistant',
+        content: 'Rough reply',
+        position: {
+          kind: 'chat',
+          depth: 0,
+          injectionOrder: 11,
+        },
+      },
+      {
+        role: 'system',
+        content: 'R:soften',
+        position: {
+          kind: 'chat',
+          depth: 0,
+          injectionOrder: 12,
+        },
+      },
     ])
+  })
+
+  it('revise merges assistant draft then guidance system after last user', async () => {
+    const base = [
+      { role: 'system' as const, content: 'preset' },
+      { role: 'user' as const, content: 'hello' },
+    ]
+    const injections = await resolveAfterAssemblePromptsAddition(
+      {
+        pluginId: 'guidance-generate',
+        macroContext: {},
+        plugins: {
+          'guidance-generate': {
+            mode: 'revise',
+            guidanceText: 'soften',
+            assistantText: 'Rough reply',
+          },
+        },
+      },
+      api,
+    )
+    const { messages } = mergePluginPromptInjectionsIntoMessages(
+      base,
+      injections!,
+    )
+    assert.deepEqual(
+      messages.map((m) => m.content),
+      ['preset', 'hello', 'Rough reply', 'R:soften'],
+    )
   })
 })

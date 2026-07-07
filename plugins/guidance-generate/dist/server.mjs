@@ -2,6 +2,10 @@
 var PLUGIN_ID = "guidance-generate";
 var DEFAULT_SYSTEM_PREFIX = "Please generate a reply according to this guidance together with the user's message: ";
 var DEFAULT_REVISE_SYSTEM_PREFIX = "Please revise the assistant reply above according to this guidance while preserving the main meaning: ";
+var CHAT_DEPTH = 0;
+var SEND_GUIDANCE_INJECTION_ORDER = 10;
+var REVISE_ASSISTANT_INJECTION_ORDER = 11;
+var REVISE_SYSTEM_INJECTION_ORDER = 12;
 function parsePayload(raw) {
   if (!raw || typeof raw !== "object") return null;
   const o = raw;
@@ -37,29 +41,54 @@ function appendAssistantThenGuidanceSystem(messages, assistantContent, systemCon
     { role: "system", content: systemContent }
   ];
 }
-async function afterAssemblePrompts(ctx, api) {
+async function resolveAfterAssemblePromptsAddition(ctx, api) {
   const parsed = parsePayload(ctx.plugins?.[PLUGIN_ID]);
-  if (!parsed) return ctx.messages;
+  if (!parsed) return null;
   const guidance = api.applyPromptMacroPipeline(
     parsed.guidanceText,
     ctx.macroContext
   );
-  if (!guidance) return ctx.messages;
+  if (!guidance) return null;
   const settings = await api.getUserPluginSettings(PLUGIN_ID);
   if (parsed.mode === "revise") {
     const assistantText = parsed.assistantText?.trim();
-    if (!assistantText) return ctx.messages;
+    if (!assistantText) return null;
     const rawPrefix2 = typeof settings?.reviseSystemPrefix === "string" ? settings.reviseSystemPrefix : "";
     const prefix2 = rawPrefix2.trim() || DEFAULT_REVISE_SYSTEM_PREFIX;
-    return appendAssistantThenGuidanceSystem(
-      ctx.messages,
-      assistantText,
-      `${prefix2}${guidance}`
-    );
+    return [
+      {
+        role: "assistant",
+        content: assistantText,
+        position: {
+          kind: "chat",
+          depth: CHAT_DEPTH,
+          injectionOrder: REVISE_ASSISTANT_INJECTION_ORDER
+        }
+      },
+      {
+        role: "system",
+        content: `${prefix2}${guidance}`,
+        position: {
+          kind: "chat",
+          depth: CHAT_DEPTH,
+          injectionOrder: REVISE_SYSTEM_INJECTION_ORDER
+        }
+      }
+    ];
   }
   const rawPrefix = typeof settings?.systemPrefix === "string" ? settings.systemPrefix : "";
   const prefix = rawPrefix.trim() || DEFAULT_SYSTEM_PREFIX;
-  return insertSystemAfterLastUser(ctx.messages, `${prefix}${guidance}`);
+  return [
+    {
+      role: "system",
+      content: `${prefix}${guidance}`,
+      position: {
+        kind: "chat",
+        depth: CHAT_DEPTH,
+        injectionOrder: SEND_GUIDANCE_INJECTION_ORDER
+      }
+    }
+  ];
 }
 function resolveTurnPluginEntries(plugins) {
   const parsed = parsePayload(plugins?.[PLUGIN_ID]);
@@ -73,9 +102,9 @@ function resolveTurnPluginEntries(plugins) {
   ];
 }
 export {
-  afterAssemblePrompts,
   appendAssistantThenGuidanceSystem,
   insertSystemAfterLastUser,
   parsePayload,
+  resolveAfterAssemblePromptsAddition,
   resolveTurnPluginEntries
 };

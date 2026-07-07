@@ -6,6 +6,12 @@ const DEFAULT_SYSTEM_PREFIX =
 const DEFAULT_REVISE_SYSTEM_PREFIX =
   'Please revise the assistant reply above according to this guidance while preserving the main meaning: '
 
+/** DOC/38 §3.2 · chat depth 0 post-user injectionOrder（暂硬编码 · 见 DOC/04 可配置化 TODO） */
+const CHAT_DEPTH = 0
+const SEND_GUIDANCE_INJECTION_ORDER = 10
+const REVISE_ASSISTANT_INJECTION_ORDER = 11
+const REVISE_SYSTEM_INJECTION_ORDER = 12
+
 export type GuidanceMode = 'send' | 'regenerate' | 'revise'
 
 export type GuidancePayload = {
@@ -17,6 +23,16 @@ export type GuidancePayload = {
 export type ChatMessage = {
   role: string
   content: string
+}
+
+export type PluginPromptInjection = {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+  position: {
+    kind: 'chat'
+    depth: number
+    injectionOrder?: number
+  }
 }
 
 export function parsePayload(raw: unknown): GuidancePayload | null {
@@ -73,9 +89,9 @@ export function appendAssistantThenGuidanceSystem(
   ]
 }
 
-export async function afterAssemblePrompts(
+export async function resolveAfterAssemblePromptsAddition(
   ctx: {
-    messages: ChatMessage[]
+    pluginId: string
     macroContext: unknown
     plugins?: Record<string, unknown> | null
   },
@@ -88,33 +104,58 @@ export async function afterAssemblePrompts(
       pluginId: string,
     ) => Promise<Record<string, unknown> | null>
   },
-): Promise<ChatMessage[]> {
+): Promise<PluginPromptInjection[] | null> {
   const parsed = parsePayload(ctx.plugins?.[PLUGIN_ID])
-  if (!parsed) return ctx.messages
+  if (!parsed) return null
   const guidance = api.applyPromptMacroPipeline(
     parsed.guidanceText,
     ctx.macroContext,
   )
-  if (!guidance) return ctx.messages
+  if (!guidance) return null
   const settings = await api.getUserPluginSettings(PLUGIN_ID)
   if (parsed.mode === 'revise') {
     const assistantText = parsed.assistantText?.trim()
-    if (!assistantText) return ctx.messages
+    if (!assistantText) return null
     const rawPrefix =
       typeof settings?.reviseSystemPrefix === 'string'
         ? settings.reviseSystemPrefix
         : ''
     const prefix = rawPrefix.trim() || DEFAULT_REVISE_SYSTEM_PREFIX
-    return appendAssistantThenGuidanceSystem(
-      ctx.messages,
-      assistantText,
-      `${prefix}${guidance}`,
-    )
+    return [
+      {
+        role: 'assistant',
+        content: assistantText,
+        position: {
+          kind: 'chat',
+          depth: CHAT_DEPTH,
+          injectionOrder: REVISE_ASSISTANT_INJECTION_ORDER,
+        },
+      },
+      {
+        role: 'system',
+        content: `${prefix}${guidance}`,
+        position: {
+          kind: 'chat',
+          depth: CHAT_DEPTH,
+          injectionOrder: REVISE_SYSTEM_INJECTION_ORDER,
+        },
+      },
+    ]
   }
   const rawPrefix =
     typeof settings?.systemPrefix === 'string' ? settings.systemPrefix : ''
   const prefix = rawPrefix.trim() || DEFAULT_SYSTEM_PREFIX
-  return insertSystemAfterLastUser(ctx.messages, `${prefix}${guidance}`)
+  return [
+    {
+      role: 'system',
+      content: `${prefix}${guidance}`,
+      position: {
+        kind: 'chat',
+        depth: CHAT_DEPTH,
+        injectionOrder: SEND_GUIDANCE_INJECTION_ORDER,
+      },
+    },
+  ]
 }
 
 export function resolveTurnPluginEntries(

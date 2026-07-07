@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   applyPluginsAfterAssemblePrompts,
+  countPluginAssembleAdditionTokens,
+  estimatePluginsAfterAssembleTokenReserve,
   type PluginAssembleAdditionCache,
 } from '../src/plugin-host.js'
 import { resolvePluginInjectionSpan } from '../src/plugin-prompt-injection-merge.js'
@@ -80,12 +82,12 @@ describe('applyPluginsAfterAssemblePrompts', () => {
               {
                 role: 'system' as const,
                 content: 'guide',
-                position: { kind: 'chat' as const, depth: 0, order: 1 },
+                position: { kind: 'chat' as const, depth: 0, injectionOrder: 10 },
               },
               {
                 role: 'system' as const,
                 content: 'tracker',
-                position: { kind: 'chat' as const, depth: 0, order: 999 },
+                position: { kind: 'chat' as const, depth: 0, injectionOrder: 500 },
               },
             ],
           },
@@ -104,5 +106,263 @@ describe('applyPluginsAfterAssemblePrompts', () => {
       out.map((m) => m.content),
       ['main', 'hello', 'guide', 'tracker'],
     )
+  })
+
+  it('merges guidance order 1 before trace-keeper order 999 across plugins', async () => {
+    const base = [
+      { role: 'system' as const, content: 'main' },
+      { role: 'user' as const, content: 'hello' },
+    ]
+    const runtime = {
+      plugins: [
+        {
+          id: 'guidance-generate',
+          order: 10,
+          module: {
+            resolveAfterAssemblePromptsAddition: async () => [
+              {
+                role: 'system' as const,
+                content: 'guide',
+                position: { kind: 'chat' as const, depth: 0, injectionOrder: 10 },
+              },
+            ],
+          },
+        },
+        {
+          id: 'trace-keeper',
+          order: 70,
+          module: {
+            resolveAfterAssemblePromptsAddition: async () => [
+              {
+                role: 'system' as const,
+                content: 'tracker',
+                position: { kind: 'chat' as const, depth: 0, injectionOrder: 500 },
+              },
+            ],
+          },
+        },
+      ] as LoadedServerPlugin[],
+      api: {} as PluginServerHostApi,
+    }
+
+    const out = await applyPluginsAfterAssemblePrompts({
+      messages: base,
+      macroContext: {},
+      assembleRuntime: runtime,
+    })
+
+    assert.deepEqual(
+      out.map((m) => m.content),
+      ['main', 'hello', 'guide', 'tracker'],
+    )
+  })
+
+  it('interleaves afterUserInput between guidance and trace-keeper', async () => {
+    const base = [
+      { role: 'system' as const, content: 'main' },
+      { role: 'user' as const, content: 'hello' },
+      { role: 'system' as const, content: 'GROUP-CHAT-RULE' },
+    ]
+    const runtime = {
+      plugins: [
+        {
+          id: 'guidance-generate',
+          order: 10,
+          module: {
+            resolveAfterAssemblePromptsAddition: async () => [
+              {
+                role: 'system' as const,
+                content: 'guide',
+                position: { kind: 'chat' as const, depth: 0, injectionOrder: 10 },
+              },
+            ],
+          },
+        },
+        {
+          id: 'trace-keeper',
+          order: 70,
+          module: {
+            resolveAfterAssemblePromptsAddition: async () => [
+              {
+                role: 'system' as const,
+                content: 'tracker',
+                position: { kind: 'chat' as const, depth: 0, injectionOrder: 500 },
+              },
+            ],
+          },
+        },
+      ] as LoadedServerPlugin[],
+      api: {} as PluginServerHostApi,
+    }
+
+    const out = await applyPluginsAfterAssemblePrompts({
+      messages: base,
+      macroContext: {},
+      assembleRuntime: runtime,
+      afterUserInput: { content: 'GROUP-CHAT-RULE', role: 'system' },
+    })
+
+    assert.deepEqual(
+      out.map((m) => m.content),
+      ['main', 'hello', 'guide', 'GROUP-CHAT-RULE', 'tracker'],
+    )
+  })
+
+  it('interleaves macro-expanded afterUserInput between guidance and trace-keeper', async () => {
+    const base = [
+      { role: 'system' as const, content: 'main' },
+      { role: 'user' as const, content: 'hello' },
+      { role: 'system' as const, content: 'EXPANDED-GROUP-RULE' },
+    ]
+    const runtime = {
+      plugins: [
+        {
+          id: 'guidance-generate',
+          order: 10,
+          module: {
+            resolveAfterAssemblePromptsAddition: async () => [
+              {
+                role: 'system' as const,
+                content: 'guide',
+                position: { kind: 'chat' as const, depth: 0, injectionOrder: 10 },
+              },
+            ],
+          },
+        },
+        {
+          id: 'trace-keeper',
+          order: 70,
+          module: {
+            resolveAfterAssemblePromptsAddition: async () => [
+              {
+                role: 'system' as const,
+                content: 'tracker',
+                position: { kind: 'chat' as const, depth: 0, injectionOrder: 500 },
+              },
+            ],
+          },
+        },
+      ] as LoadedServerPlugin[],
+      api: {} as PluginServerHostApi,
+    }
+
+    const out = await applyPluginsAfterAssemblePrompts({
+      messages: base,
+      macroContext: {},
+      assembleRuntime: runtime,
+      afterUserInput: {
+        content: 'EXPANDED-GROUP-RULE',
+        role: 'system',
+      },
+    })
+
+    assert.deepEqual(
+      out.map((m) => m.content),
+      ['main', 'hello', 'guide', 'EXPANDED-GROUP-RULE', 'tracker'],
+    )
+  })
+
+  it('merges revise assistant 11 and system 12 after last user', async () => {
+    const base = [
+      { role: 'system' as const, content: 'main' },
+      { role: 'user' as const, content: 'hello' },
+    ]
+    const runtime = {
+      plugins: [
+        {
+          id: 'guidance-generate',
+          order: 10,
+          module: {
+            resolveAfterAssemblePromptsAddition: async () => [
+              {
+                role: 'assistant' as const,
+                content: 'draft',
+                position: { kind: 'chat' as const, depth: 0, injectionOrder: 11 },
+              },
+              {
+                role: 'system' as const,
+                content: 'revise guide',
+                position: { kind: 'chat' as const, depth: 0, injectionOrder: 12 },
+              },
+            ],
+          },
+        },
+      ] as LoadedServerPlugin[],
+      api: {} as PluginServerHostApi,
+    }
+
+    const out = await applyPluginsAfterAssemblePrompts({
+      messages: base,
+      macroContext: {},
+      assembleRuntime: runtime,
+    })
+
+    assert.deepEqual(
+      out.map((m) => `${m.role}:${m.content}`),
+      ['system:main', 'user:hello', 'assistant:draft', 'system:revise guide'],
+    )
+  })
+})
+
+describe('plugin assemble additionCache and token reserve', () => {
+  it('reuses additionCache between estimate and apply', async () => {
+    let hookCalls = 0
+    const cache: PluginAssembleAdditionCache = new Map()
+    const runtime = {
+      plugins: [
+        {
+          id: 'demo',
+          order: 1,
+          module: {
+            resolveAfterAssemblePromptsAddition: async () => {
+              hookCalls += 1
+              return [
+                {
+                  role: 'system' as const,
+                  content: 'guide',
+                  position: { kind: 'chat' as const, depth: 0, injectionOrder: 10 },
+                },
+              ]
+            },
+          },
+        },
+      ] as LoadedServerPlugin[],
+      api: {} as PluginServerHostApi,
+    }
+
+    const ctx = {
+      messages: [{ role: 'user' as const, content: 'hi' }],
+      macroContext: {},
+      additionCache: cache,
+      assembleRuntime: runtime,
+    }
+
+    await estimatePluginsAfterAssembleTokenReserve(ctx)
+    assert.equal(hookCalls, 1)
+    assert.equal(cache.size, 1)
+
+    await applyPluginsAfterAssemblePrompts(ctx)
+    assert.equal(hookCalls, 1)
+  })
+
+  it('counts descriptor and legacy additions for token reserve', () => {
+    const descriptorTokens = countPluginAssembleAdditionTokens(
+      {
+        kind: 'injections',
+        injections: [
+          {
+            role: 'system',
+            content: 'abc',
+            position: { kind: 'chat', depth: 0, order: 1 },
+          },
+        ],
+      },
+    )
+    const legacyTokens = countPluginAssembleAdditionTokens({
+      kind: 'legacy',
+      messages: [{ role: 'system', content: 'abc' }],
+    })
+    assert.equal(descriptorTokens, legacyTokens)
+    assert.ok(descriptorTokens > 0)
   })
 })

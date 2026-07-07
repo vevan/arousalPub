@@ -69,7 +69,7 @@ type PluginPromptInjection = {
   position: {
     kind: 'chat'
     depth: number
-    order?: number
+    /** 同 ST `injection_order` / preset `injectionOrder`；省略时默认 **100** */
     injectionOrder?: number
   }
 }
@@ -81,17 +81,20 @@ resolveAfterAssemblePromptsAddition(
 ): PluginPromptInjection[] | null
 ```
 
-**order 与 ST 一致**（`DOC/03` §6.6）：**数值小 = 更靠近 user（post-user 区顶部）；数值大 = 更靠近栈底（生成前尾部）**。
+**`position.injectionOrder` 与 ST 一致**（`DOC/03` §6.6 · preset `injectionOrder`）：**数值小 = 更靠近 user（post-user 区顶部）；数值大 = 更靠近栈底（生成前尾部）**。省略时默认 **100**（与 ST 导入 / 提示词 UI 一致）。**勿**与 preset 列表字段 `PromptEntry.order`（组内顺序）混淆；**勿**与插件 registry `order`（hook 调用顺序）混淆。
 
-### 3.2 官方插件 order 定案
+### 3.2 官方插件 injectionOrder 定案（暂硬编码）
 
-| 插件 | position | 说明 |
-|------|----------|------|
-| `guidance-generate` | `chat` · depth **0** · order **1** | 指导紧贴 user（「与用户消息一起按此指导回复」） |
-| `guidance-generate` revise | assistant **998** + system **999** | 草稿在指导前；指导仍最靠生成前 |
-| `trace-keeper` | `chat` · depth **0** · order **999** | 格式说明 + sample 放在 post-user 区最末 |
+| 来源 | `injectionOrder` | 说明 |
+|------|------------------|------|
+| `guidance-generate` send/regenerate | **10** | 指导紧贴 user |
+| `guidance-generate` revise | assistant **11** + system **12** | 草稿在指导 system 前 |
+| 群聊 `afterUserInput` | **20** | 宿主 `AFTER_USER_INPUT_IMPLICIT_INJECTION_ORDER` |
+| preset chat depth 0（无元数据时） | **100** | 与 ST 默认 `injection_order` 一致 |
+| （省略字段时） | **100** | 插件描述符默认档 |
+| `trace-keeper` | **500** | post-user 区最末 |
 
-与**当前实现方向**一致：guidance 的 `insertSystemAfterLastUser` ≈ order 1；trace-keeper 的宿主 `append` ≈ order 999。
+出站顺序示例（同 depth 0）：**guide(10) → groupChat(20) → preset(100) → tracker(500)**。
 
 ### 3.3 宿主两阶段（保持）
 
@@ -104,14 +107,14 @@ resolveAfterAssemblePromptsAddition(
 
 regex 之后、`messages` 中最后一条 user 之后可能已有：
 
-- preset **`chat` depth 0** 条目（自带 `order`）
+- preset **`chat` depth 0** 条目（自带 `injectionOrder`，常见 **100**）
 - **`afterUserInput`**（群聊说明，assemble 专用 pass）
 
 插件注入**晚于**上述步骤。宿主须：
 
 1. 锚定 `lastUserIdx`；可选传入 `historySpan`（`historyStart`/`historyEnd`）供 depth > 0 使用（一期仅 depth 0）。
-2. 为 assemble 阶段注入赋予**隐式 order**（待实现时写死），例如：`afterUserInput` → **50**；preset chat-depth-0 → 条目自身 `order`。
-3. 将插件描述符插入同一排序空间，按 `injectionOrder → order → role` 归并。
+2. 为 assemble 阶段注入赋予**隐式 `injectionOrder`**（`afterUserInput` → **20**；无元数据的 preset tail → **100**）。
+3. 将插件描述符与 tail 一并 hoist，在 post-user 区按 `compareInjectionEntries`（**`injectionOrder` → role**）归并。
 
 **一期不实现** preset 级 `relative` 锚点；ST 扩展类插件场景以 **chat depth 0** 为主。
 
@@ -122,7 +125,7 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 | 插件是否读 messages 正文 | 否 | 是（整表） |
 | 裁切前 token 预留 | ✅ | 仅 addition 路径 |
 | 沙箱 IPC 载荷 | `{ role, content, position }[]` 小 | 整包 messages 大 |
-| guidance 所需 | ✅ depth 0 + order | 过重 |
+| guidance 所需 | ✅ depth 0 + `injectionOrder` | 过重 |
 
 ---
 
@@ -160,9 +163,9 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 
 - [x] `PluginPromptInjection` 类型 · `plugin-prompt-injection-merge.ts` 归并器（复用 `resolveChatDepthInsertIndex` / `compareInjectionEntries`）
 - [x] `chat-assemble` 向 apply 传入 post-user / `historySpan` 元数据；`applyPluginsAfterAssemblePrompts` 归并 `PluginPromptInjection`
-- [ ] 迁移 `guidance-generate` → 描述符；移除整表 `afterAssemblePrompts` 主路径
-- [ ] 迁移 `trace-keeper` → depth 0 order 999（替代 append）
-- [ ] 单测：多插件 order、群聊 `afterUserInput` 共存、revise 双条、token 预留 cache
+- [x] 迁移 `guidance-generate` → 描述符；移除整表 `afterAssemblePrompts` 主路径
+- [x] 迁移 `trace-keeper` → depth 0 `injectionOrder` **500**（显式描述符）
+- [x] 单测：多插件 `injectionOrder`、群聊 `afterUserInput` 共存、revise 双条、token 预留 cache
 
 ### Phase B — 服务端沙箱（P2）
 
@@ -205,8 +208,8 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 | `server/src/plugin-complete.ts` | complete 密钥解析 |
 | `server/src/assemble-prompts.ts` | `resolveChatDepthInsertIndex` · `compareInjectionEntries` |
 | `server/src/chat-assemble.ts` | 两阶段插件 token 预留与 apply |
-| `plugins/guidance-generate/src/server/index.ts` | `afterAssemblePrompts` · `insertSystemAfterLastUser` |
-| `plugins/trace-keeper/src/server/index.ts` | `resolveAfterAssemblePromptsAddition` |
+| `plugins/guidance-generate/src/server/index.ts` | `resolveAfterAssemblePromptsAddition` · `injectionOrder` 10 / revise 11+12 |
+| `plugins/trace-keeper/src/server/index.ts` | `resolveAfterAssemblePromptsAddition` · `injectionOrder` 500 |
 
 ---
 
@@ -218,3 +221,6 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 | 2026-07-07 | §8：链至 `DOC/39`；标注 DOC/39 前置已落地 |
 | 2026-07-07 | **Phase A0**：`PluginPromptInjection` 契约 + `mergePluginPromptInjectionsIntoMessages` |
 | 2026-07-07 | **Phase A1**：`chat-assemble` 传 historySpan；apply 路径归并 legacy / 描述符 |
+| 2026-07-07 | **Phase A2–A3**：`guidance-generate` / `trace-keeper` 迁显式 `PluginPromptInjection` |
+| 2026-07-07 | **Phase A4**：单测 + `afterUserInput` 与插件注入同空间归并 |
+| 2026-07-07 | 契约：`position.injectionOrder`（≡ ST）；默认 **100**；官方档 **10 / 20 / 500**（revise **11+12**） |

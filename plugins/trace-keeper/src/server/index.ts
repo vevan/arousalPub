@@ -8,6 +8,20 @@ import { extractTraceKeeperState } from '../parse-block.js'
 import { buildTrackerSystemPrompt } from '../tracker-prompt.js'
 import { regenerateSeparateState } from './separate-regenerate.js'
 
+/** DOC/38 §3.2 · post-user 区最末（暂硬编码 · 见 DOC/04 可配置化 TODO） */
+const TRACE_KEEPER_CHAT_DEPTH = 0
+const TRACE_KEEPER_INJECTION_ORDER = 500
+
+export type PluginPromptInjection = {
+  role: 'system'
+  content: string
+  position: {
+    kind: 'chat'
+    depth: number
+    order: number
+  }
+}
+
 type ServerApi = {
   getUserPluginSettings: (pluginId: string) => Promise<Record<string, unknown>>
   getConversationPluginSettings: (
@@ -67,21 +81,20 @@ export async function resolveTraceKeeperInjection(
 export async function resolveAfterAssemblePromptsAddition(
   ctx: TraceKeeperInjectionContext,
   api: ServerApi,
-): Promise<{ role: 'system'; content: string }[] | null> {
+): Promise<PluginPromptInjection[] | null> {
   const injection = await resolveTraceKeeperInjection(ctx, api)
   if (!injection) return null
-  return [{ role: 'system', content: injection.systemText }]
-}
-
-export async function afterAssemblePrompts(
-  ctx: TraceKeeperInjectionContext & {
-    messages: { role: string; content: string }[]
-  },
-  api: ServerApi,
-) {
-  const addition = await resolveAfterAssemblePromptsAddition(ctx, api)
-  if (!addition) return ctx.messages
-  return [...ctx.messages, ...addition]
+  return [
+    {
+      role: 'system',
+      content: injection.systemText,
+      position: {
+        kind: 'chat',
+        depth: TRACE_KEEPER_CHAT_DEPTH,
+        injectionOrder: TRACE_KEEPER_INJECTION_ORDER,
+      },
+    },
+  ]
 }
 
 export async function resolveTurnPluginEntriesFromAssistant(

@@ -101,6 +101,9 @@ describe('trace-keeper injection vs body.plugins', () => {
       api,
     )
     assert.ok(addition?.length === 1)
+    assert.equal(addition![0]!.position.kind, 'chat')
+    assert.equal(addition![0]!.position.depth, 0)
+    assert.equal(addition![0]!.position.injectionOrder, 500)
     assert.match(addition![0]!.content, /ex-trace-keeper/i)
   })
 })

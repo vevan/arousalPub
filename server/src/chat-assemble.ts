@@ -12,7 +12,8 @@ import { buildPromptMacroContext } from './prompt-macros/index.js'
 import { patchPromptMacroHistoryFields } from './prompt-macros/context.js'
 import { buildMacroHistoryFields, type TrimmedHistoryMessage } from './prompt-macros/history-macros.js'
 import { extractMacroCharacterFields } from './prompt-macros/index.js'
-import { applyMacrosToMessages } from './prompt-macros/index.js'
+import { applyMacrosToMessages, applyPromptMacroPipeline } from './prompt-macros/index.js'
+import type { PromptMacroContext } from './prompt-macros/types.js'
 import {
   loadMacroGlobalVarsForContext,
   loadMacroLocalVarsForConversation,
@@ -89,6 +90,7 @@ import {
   type PluginAssembleAdditionCache,
   type AfterAssemblePromptsContext,
 } from './plugin-host.js'
+import { buildPluginAfterUserInputHintFromMessages } from './plugin-prompt-injection-merge.js'
 import type { ChatPluginsBody } from './plugin-types.js'
 import { countChatMessagesTokens } from './token-count.js'
 import { readTurnsInOrdinalRange } from './chunk-chain.js'
@@ -108,6 +110,41 @@ import {
   type OutgoingRegexContext,
 } from './regex-outgoing.js'
 import { readRegexRulesDocument } from './regex-rules-file.js'
+
+function findLastUserMessageIndex(messages: ChatMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]!.role === 'user') return i
+  }
+  return -1
+}
+
+/** 在 post-regex messages 中定位 assemble 注入块正文（宏展 + outgoing 合成探测） */
+async function resolveAssembledBlockContentAfterRegex(
+  messages: ChatMessage[],
+  block: { content: string; role: 'system' | 'user' },
+  macroContext: PromptMacroContext,
+  regexCtx: OutgoingRegexContext,
+): Promise<string | undefined> {
+  const expanded = applyPromptMacroPipeline(block.content, macroContext).trim()
+  if (!expanded) return undefined
+
+  const lastUserIdx = findLastUserMessageIndex(messages)
+  if (lastUserIdx < 0) return undefined
+  const tail = messages.slice(lastUserIdx + 1)
+
+  const synthetic = [
+    ...messages.slice(0, lastUserIdx + 1),
+    { role: block.role, content: expanded },
+  ]
+  const afterRegex = await loadAndApplyRegexOutgoing(synthetic, regexCtx)
+  const transformed = afterRegex[lastUserIdx + 1]?.content.trim()
+  if (!transformed) return undefined
+
+  const inTail = tail.find(
+    (m) => m.role === block.role && m.content.trim() === transformed,
+  )
+  return inTail?.content.trim()
+}
 
 async function loadActiveTurnForMacro(
   conversationId: string,
@@ -753,7 +790,7 @@ export async function buildConversationOutboundMessages(
 
   const afterAssembleAt = auditEnabled ? performance.now() : 0
 
-  messages = await loadAndApplyRegexOutgoing(messages, {
+  const outgoingRegexCtx: OutgoingRegexContext = {
     tailOrdinal,
     sourceHistoryMessages: memoryPipeline.recentHistoryMessages.map((m) => ({
       role: m.role,
@@ -762,10 +799,38 @@ export async function buildConversationOutboundMessages(
     sourceHistoryTurnOrdinals: memoryPipeline.recentHistoryTurnOrdinals,
     trimmedHistoryMessages: trimmedHistoryForMacros(trimState.historyMessages),
     memoryItems: trimState.memoryItems,
-    userInput: userInput,
+    userInput,
     macroContext,
-  })
+  }
+
+  messages = await loadAndApplyRegexOutgoing(messages, outgoingRegexCtx)
   const afterRegexAt = auditEnabled ? performance.now() : 0
+
+  let authorsNoteExcludeContent: string | undefined
+  let groupChatContentAfterRegex: string | undefined
+  if (groupChatInstruction) {
+    groupChatContentAfterRegex = await resolveAssembledBlockContentAfterRegex(
+      messages,
+      { content: groupChatInstruction, role: 'system' },
+      macroContext,
+      outgoingRegexCtx,
+    )
+  }
+  if (authorsNote?.injectionDepth === 0) {
+    authorsNoteExcludeContent = await resolveAssembledBlockContentAfterRegex(
+      messages,
+      { content: authorsNote.content, role: authorsNote.role },
+      macroContext,
+      outgoingRegexCtx,
+    )
+  }
+
+  const pluginAfterUserInputForApply = groupChatContentAfterRegex
+    ? buildPluginAfterUserInputHintFromMessages(messages, {
+        authorsNoteExcludeContent,
+        groupChatContent: groupChatContentAfterRegex,
+      })
+    : undefined
 
   estimatedTokens = countChatMessagesTokens(messages, { model: tokenModel })
 
@@ -782,6 +847,7 @@ export async function buildConversationOutboundMessages(
     additionCache: pluginCache,
     assembleRuntime: assembleCtx.assembleRuntime,
     trimmedHistoryMessages: trimmedHistoryForPlugins,
+    afterUserInput: pluginAfterUserInputForApply,
   })
   if (macroContext) {
     applyMacrosToMessages(messagesAfterPlugins, macroContext, {

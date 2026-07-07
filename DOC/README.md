@@ -9,7 +9,7 @@
 |------|------|
 | 新 Agent / 接手 | [`06-工作交接.md`](06-工作交接.md) → [`03-实现细节.md`](03-实现细节.md) |
 | 部署 / 安全 | [`25-security-deployment.md`](25-security-deployment.md)、[`17-admin-console.md`](17-admin-console.md)、[`data/README.md`](../data/README.md) |
-| 插件开发 | [`09`](09-plugin-system-and-guidance-generate.md) → [`18`](18-plugin-host-developer-api.md) → [`38`](38-plugin-sandbox-and-host-evolution.md) · [`39`](39-plugin-context-and-prompt-assembly.md)（规划）→ [`10`](10-plugin-conversation-host.md) |
+| 插件开发 | [`09`](09-plugin-system-and-guidance-generate.md) → [`18`](18-plugin-host-developer-api.md) → [`39`](39-plugin-context-and-prompt-assembly.md)（✅）→ [`38`](38-plugin-sandbox-and-host-evolution.md)（规划 · TODO 见 [`04`](04-TODO.md) §Sandbox）→ [`10`](10-plugin-conversation-host.md) |
 | Historian | [`12-plugin-plot-summary.md`](12-plugin-plot-summary.md) · 二次 LLM 演进 [`39`](39-plugin-context-and-prompt-assembly.md) |
 | 迹录（Trace Keeper） | [`30-plugin-trace-keeper.md`](30-plugin-trace-keeper.md) |
 | 主布局 / 插件 Rail | [`31-main-layout-plugin-rails.md`](31-main-layout-plugin-rails.md) |
@@ -47,7 +47,7 @@
 | [`17`](17-admin-console.md) | ✅ | 本机运维台、DEK 轮换 |
 | [`18`](18-plugin-host-developer-api.md) | ✅ | 插件 API 表 |
 | [`38`](38-plugin-sandbox-and-host-evolution.md) | 规划 | 插件沙箱、注入描述符、complete 白名单 |
-| [`39`](39-plugin-context-and-prompt-assembly.md) | 规划 | 二次 LLM 上下文块、prompt 组装（§5 定案） |
+| [`39`](39-plugin-context-and-prompt-assembly.md) | ✅ 已落地 | 二次 LLM 上下文块、`completeWithContext`（Historian + trace-keeper Separate） |
 | [`40`](40-notification-center.md) | 规划 P1 | **通知中心**：统一发送、存储、已读/未读、删除、列表 UI |
 | [`20`](20-user-file-library.md) | 定案 | 用户文件库 / charFile（未实现） |
 | [`21`](21-conversation-plugin-settings.md) | ✅ | 会话插件 Tab schema |

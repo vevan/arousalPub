@@ -2,13 +2,52 @@
 
 > **阶段**：已脱离 MVP（2026-05+）。下列为**仍待做**；已实现能力见 `DOC/03` §14.7、各专题文档、`DOC/README` 归档表、本文 **§已归档**。
 
-## P0 余项
+## Sandbox（`DOC/38` · **未开始**）
 
-- [ ] **插件组装注入对齐 §6.6 chat depth**（**Phase A** · 详 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §3）— `resolveAfterAssemblePromptsAddition` 返回注入描述符；宿主 post-user 区归并；裁切前 token 预留不变。定案：`guidance-generate` depth **0** order **1**；`trace-keeper` depth **0** order **999**；revise assistant **998** + system **999**
-- [ ] **服务端插件沙箱**（**Phase B** · [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §2、§4）— Worker + Host API 代理；同进程 `import(server.mjs)` 仅保留 bundled 或过渡期 fallback
-- [ ] **插件 complete API 白名单**（**Phase C** · [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §5）— `runPluginComplete` 校验 `apiConfigId` 是否授权给该 `pluginId`；与沙箱可并行
-- [x] **插件上下文块 + Prompt 组装**（[`DOC/39`](39-plugin-context-and-prompt-assembly.md)）— Phase 1–3 已落地：Historian + trace-keeper Separate 经 `completeWithContext`；见 DOC/39 §6
-- [ ] 插件实例与 API 绑定、插件审计、fallback 策略（部分 host API 见 `DOC/10`）
+> **说明**：远程分支 `sandbox` 用于近期插件/DOC 落地提交；**本节**指 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) 的**插件沙箱化 + 组装注入描述符**工程，**尚未开工**。  
+> **顺序定案**：前置 DOC/39 → **Phase A 注入** → **Phase B Worker 沙箱**；Phase C 可与 B 并行。
+
+### 前置（已满足 · 非 Sandbox 本体）
+
+- [x] **DOC/39** 二次 LLM 上下文 + Prompt 组装 — `prepareContextBlocks` / `assemblePluginPrompt` / `completeWithContext`；Historian + trace-keeper Separate 已迁；见 [`DOC/39`](39-plugin-context-and-prompt-assembly.md) §6
+
+### Phase A — 注入描述符 + §6.6 chat depth（**下一步 · P0**）
+
+宿主 `resolveAfterAssemblePromptsAddition` 返回 **`PluginPromptInjection[]`**（`chat` depth + order），post-user 区归并 splice；裁切前 token 预留逻辑不变。详 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §3。
+
+- [ ] **A0 契约** — `PluginPromptInjection` 类型；`plugin-host.ts` 归并器（复用 `resolveChatDepthInsertIndex` / `compareInjectionEntries`）
+- [ ] **A1 宿主元数据** — `chat-assemble` 向 apply 传入 post-user 区 / `historySpan`（depth 0 一期）
+- [ ] **A2 guidance-generate** — 迁描述符：depth **0** order **1**；revise 路径 assistant **998** + system **999**；移除整表 `afterAssemblePrompts` 主路径
+- [ ] **A3 trace-keeper Together** — depth **0** order **999**（替代当前宿主 `append`）
+- [ ] **A4 单测** — 多插件 order 共存、群聊 `afterUserInput`、revise 双条、`additionCache` / token 预留
+
+**order 定案**（与 ST §6.6 一致 · 小=近 user · 大=近栈底）：guidance **1** · trace-keeper **999** · revise system **999** / assistant **998**。
+
+### Phase B — 服务端 Worker 沙箱（P0 · 依赖 A）
+
+- [ ] **B0 Worker 运行时** — 加载 `dist/server.mjs`；结构化 IPC
+- [ ] **B1 Host API 代理** — settings / complete / regex / macro / `completeWithContext`；Worker 内无 `fs`、无 raw 出站
+- [ ] **B2 安装路径** — bundled 与第三方自选插件同一套代理
+- [ ] **B3 回归** — 官方 bundled 插件全量测试；同进程 `import` 仅过渡期 fallback
+
+### Phase C — `apiConfigId` 白名单（P0 · 可与 B 并行）
+
+- [ ] **C0 complete 校验** — `runPluginComplete` 前校验 preset 是否授权给该 `pluginId`
+- [ ] **C1 manifest policy** — `allowedApiPresets` 或等价字段（`DOC/03` §1.3）
+- [ ] **C2 设置页** — 插件 API 下拉仅展示允许条目
+
+### 相关（与 Sandbox 交叉 · 仍开放）
+
+- [ ] 插件实例与 API 绑定、插件审计、fallback 策略（部分见 [`DOC/10`](10-plugin-conversation-host.md)）— 与 Phase C 部分重叠，Sandbox 落地时一并收口
+
+### 非目标（v1 Sandbox）
+
+- 浏览器 `web.mjs` Worker 沙箱（CSP + 宿主 API 已约束；另议题）
+- 插件 capabilities 跨插件 RPC（[`DOC/09`](09-plugin-system-and-guidance-generate.md) §8.7）
+
+---
+
+## P0 余项
 - [ ] **Composer Slash 命令** — 定案见 [`DOC/35`](35-group-chat.md) §2.3（群聊 `/@`）；输入框 `/` 命令层（与聊天 turns、输入历史分离）
   - [x] **S0** 宿主 `submitComposer` 统一入口 + 命令解析/路由（raw → 命令 + 剩余正文）
   - [x] **S1** 内置 `/goto N` 跳转轮次
@@ -95,4 +134,4 @@
 | **分支树轮次副标题**（fork / 末轮 / 独有轮数） | 2026-06-23 · `15c7900` | [`DOC/23`](23-conversation-branches.md) §6.4 · `branch-tree-utils.ts` |
 | **向量召回设置独立 Tab** | 2026-06-25 · `d276720` | [`DOC/03`](03-实现细节.md) §9.6 · `SettingsView` / `ConversationContextSettings` |
 | **远期记忆重建 SSE 进度条** | 2026-07-04 · `8fffdd0` | [`DOC/03`](03-实现细节.md) §14.5.1 · `memory-reindex-sse.ts` · `useMemoryRebuild.ts` |
-| **远期记忆尾段 buffer 移除 + 死代码清理** | 2026-07-04 · `c3a3c4f` · `40407e6` | [`DOC/23`](23-conversation-branches.md) §4.4 · §5.1 · `memory-index.ts` |
+| **DOC/39 二次 LLM 上下文 + 拼 prompt**（Historian + trace-keeper Separate · `completeWithContext`） | 2026-07-07 | [`DOC/39`](39-plugin-context-and-prompt-assembly.md) §6 · `sandbox` 分支 commit `de8e1f7` / `3847d0f` |

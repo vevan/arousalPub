@@ -184,11 +184,12 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 
 ---
 
-## 8. 插件二次 LLM 上下文与拼 prompt（规划）
+## 8. 插件二次 LLM 上下文与拼 prompt
 
-> **详案**：[`DOC/39-plugin-context-and-prompt-assembly.md`](39-plugin-context-and-prompt-assembly.md)
+> **详案**：[`DOC/39-plugin-context-and-prompt-assembly.md`](39-plugin-context-and-prompt-assembly.md)  
+> **状态**：**Phase 1–3 已落地**（2026-07）；Sandbox Phase A 的前置依赖已满足。
 
-沙箱化前建议先落地 **扩展 prepareContext + assemblePluginPrompt**（强制两步），避免 Worker IPC 传递整段自拼 messages。与 §3 chat 注入**不同管线**。
+与 §3 chat 注入**不同管线**；Worker 沙箱化前应避免 IPC 传递整段自拼 messages（已由 DOC/39 解决）。
 
 ---
 
@@ -212,4 +213,4 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 | 日期 | 说明 |
 |------|------|
 | 2026-07-07 | 首版：沙箱目标态、注入描述符定案、order 定案、性能粗估、分期清单 |
-| 2026-07-07 | §8：链至 `DOC/39` 二次 LLM 上下文与拼 prompt |
+| 2026-07-07 | §8：链至 `DOC/39`；标注 DOC/39 前置已落地 |

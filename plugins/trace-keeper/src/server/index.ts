@@ -35,6 +35,10 @@ export { buildTrackerSystemPrompt } from '../tracker-prompt.js'
 export { DEFAULT_TRACE_BUNDLE, resolveTraceBundle } from '../bundle-resolve.js'
 export { regenerateSeparateState } from './separate-regenerate.js'
 export { patchTraceKeeperState } from './patch-state.js'
+export {
+  formatPluginContextBlocks,
+  TRACE_KEEPER_SEPARATE_LAYOUT,
+} from './complete-context-hooks.js'
 
 export async function resolveTraceKeeperInjection(
   ctx: TraceKeeperInjectionContext,

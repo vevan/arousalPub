@@ -9,9 +9,12 @@ import {
   stripTraceKeeperBlocks,
   upsertTraceKeeperBlockInAssistant,
 } from '../parse-block.js'
+import { prepareTraceKeeperSeparateContextBlocks } from '../prepare-context.js'
 import { resolveSeparateTurnCount } from '../separate-turn-settings.js'
-import { buildSeparateRegenerateMessages } from '../tracker-prompt.js'
+import { TRACE_KEEPER_SEPARATE_LAYOUT } from '../shared/separate-prompt-layout.js'
+import { buildSeparateSystemPrompt } from '../tracker-prompt.js'
 import type { TraceKeeperSeparateDebug } from '../separate-debug.js'
+import type { CompleteWithContextRequest } from '../../../shared/plugin-context-blocks.js'
 
 type SeparateApi = {
   getUserPluginSettings: (pluginId: string) => Promise<Record<string, unknown>>
@@ -41,23 +44,22 @@ type SeparateApi = {
     plugins: unknown[]
     receives: { id: string; content: string }[]
   } | null>
-  runPluginComplete: (req: {
-    conversationId?: string
-    messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
-    responseFormat?: 'json_object' | 'text'
-    fallbackToChat?: boolean
-    captureDebug?: boolean
-  }) => Promise<
+  completeWithContext: (
+    req: CompleteWithContextRequest,
+  ) => Promise<
     | {
         ok: true
-        content: string
+        content?: string
+        messages: { role: string; content: string }[]
         debug?: Omit<TraceKeeperSeparateDebug, 'messages' | 'code'>
       }
     | {
         ok: false
         code: string
-        status?: number
         detail?: string
+        promptTokens?: number
+        budget?: number
+        messages?: { role: string; content: string }[]
         debug?: TraceKeeperSeparateDebug
       }
   >
@@ -156,22 +158,30 @@ export async function regenerateSeparateState(
   })
   const epoch = trackerEpochFromSettings(convSettings)
   const windowTurnCount = resolveSeparateTurnCount(userSettings, convSettings)
-
-  const messages = buildSeparateRegenerateMessages(
-    tail,
-    targetOrdinal,
-    windowTurnCount,
-    bundle,
-  )
   const debugCapture = input.debugCapture === true
 
-  const result = await api.runPluginComplete({
-    conversationId,
-    messages,
-    responseFormat: 'json_object',
-    fallbackToChat: true,
-    captureDebug: debugCapture,
+  const blocks = prepareTraceKeeperSeparateContextBlocks({
+    targetOrdinal,
+    windowTurnCount,
   })
+
+  const result = await api.completeWithContext({
+    conversationId,
+    blocks,
+    layout: TRACE_KEEPER_SEPARATE_LAYOUT,
+    pluginSettings: {
+      separateSystemPrompt: buildSeparateSystemPrompt(bundle),
+    },
+    anchorToTurn: targetOrdinal,
+    responseFormat: 'json_object',
+    captureDebug: debugCapture,
+    fallbackToChat: true,
+  })
+
+  const messages = result.ok
+    ? result.messages
+    : (result.messages ?? result.debug?.messages ?? [])
+
   if (!result.ok) {
     return {
       ok: false,
@@ -184,7 +194,18 @@ export async function regenerateSeparateState(
     }
   }
 
-  const state = parseTraceKeeperJson(result.content)
+  const content = result.content?.trim() ?? ''
+  if (!content) {
+    return {
+      ok: false,
+      code: 'parse_failed',
+      ...(debugCapture
+        ? { debug: mergeSeparateDebug(messages, 'parse_failed') }
+        : {}),
+    }
+  }
+
+  const state = parseTraceKeeperJson(content)
   if (!state) {
     return {
       ok: false,
@@ -192,7 +213,7 @@ export async function regenerateSeparateState(
       ...(debugCapture
         ? {
             debug: mergeSeparateDebug(messages, 'parse_failed', {
-              assistantContent: result.content,
+              assistantContent: content,
             }),
           }
         : {}),
@@ -218,7 +239,7 @@ export async function regenerateSeparateState(
       ? {
           debug: mergeSeparateDebug(messages, 'ok', {
             ...result.debug,
-            assistantContent: result.content,
+            assistantContent: content,
           }),
         }
       : {}),

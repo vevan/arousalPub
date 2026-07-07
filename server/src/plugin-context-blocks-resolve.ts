@@ -1,5 +1,11 @@
 import { readCharacterDocument } from './character-storage.js'
-import { readConversationIndex, resolvedCharacterIds, type TurnRecord } from './chat-storage.js'
+import {
+  getTurnUserText,
+  patchTurnDisplayContent,
+  readConversationIndex,
+  resolvedCharacterIds,
+  type TurnRecord,
+} from './chat-storage.js'
 import { readTurnsInOrdinalRange, readTurnsTail } from './chunk-chain.js'
 import { isValidConversationId } from './conversation-id.js'
 import { readLorebookById } from './lorebook-file.js'
@@ -15,7 +21,9 @@ import {
   loadSummarizeOutgoingRegexRules,
   normalizeRegexRuleIds,
   PLUGIN_SUMMARIZE_BATCH_MAX,
+  stripBlockTagsFromAssistant,
 } from './plugin-summarize-format.js'
+import { assistantTextFromTurn } from './turn-memory-xml.js'
 
 const DEFAULT_USER = 'User'
 const DEFAULT_ASSISTANT = 'Assistant'
@@ -52,6 +60,14 @@ async function resolveDisplayNames(conversationId: string): Promise<{
 
 function normalizeBlockId(raw: unknown): string {
   return typeof raw === 'string' ? raw.trim() : ''
+}
+
+function normalizeStripBlockTags(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((x): x is string => typeof x === 'string')
+    .map((x) => x.trim())
+    .filter(Boolean)
 }
 
 function normalizeEntryIds(raw: unknown): string[] {
@@ -194,6 +210,18 @@ async function resolveTranscriptBlock(
     return { ok: false, code: 'no_turns_in_range' }
   }
 
+  const stripTags = normalizeStripBlockTags(spec.stripBlockTagsOnToTurn)
+  const processedTurns =
+    stripTags.length > 0
+      ? turns.map((t) => {
+          if (t.turnOrdinal !== toTurn) return t
+          const assistant = assistantTextFromTurn(t)
+          const stripped = stripBlockTagsFromAssistant(assistant, stripTags)
+          if (stripped === assistant) return t
+          return patchTurnDisplayContent(t, getTurnUserText(t), stripped)
+        })
+      : turns
+
   const tailOrdinal =
     typeof spec.tailOrdinal === 'number' &&
     Number.isInteger(spec.tailOrdinal) &&
@@ -202,7 +230,7 @@ async function resolveTranscriptBlock(
       : turns.reduce((max, t) => Math.max(max, t.turnOrdinal), 0)
 
   const regexTurns = await applyRegexToTurns(
-    turns,
+    processedTurns,
     spec.regexRuleIds,
     spec.regexApplyAllTurns,
     tailOrdinal,
@@ -241,6 +269,19 @@ async function resolveTranscriptTailBlock(
     return { ok: false, code: 'no_turns_in_range' }
   }
 
+  const stripTags = normalizeStripBlockTags(spec.stripBlockTagsOnToTurn)
+  const lastOrdinal = turns.reduce((max, t) => Math.max(max, t.turnOrdinal), 0)
+  const processedTurns =
+    stripTags.length > 0
+      ? turns.map((t) => {
+          if (t.turnOrdinal !== lastOrdinal) return t
+          const assistant = assistantTextFromTurn(t)
+          const stripped = stripBlockTagsFromAssistant(assistant, stripTags)
+          if (stripped === assistant) return t
+          return patchTurnDisplayContent(t, getTurnUserText(t), stripped)
+        })
+      : turns
+
   const tailOrdinal =
     typeof spec.tailOrdinal === 'number' &&
     Number.isInteger(spec.tailOrdinal) &&
@@ -249,7 +290,7 @@ async function resolveTranscriptTailBlock(
       : turns.reduce((max, t) => Math.max(max, t.turnOrdinal), 0)
 
   const regexTurns = await applyRegexToTurns(
-    turns,
+    processedTurns,
     spec.regexRuleIds,
     spec.regexApplyAllTurns,
     tailOrdinal,
@@ -283,6 +324,7 @@ function parseContextBlockSpec(raw: unknown): ContextBlockSpec | null {
   }
 
   if (source === 'conversation.transcript') {
+    const stripBlockTagsOnToTurn = normalizeStripBlockTags(o.stripBlockTagsOnToTurn)
     return {
       source: 'conversation.transcript',
       blockId,
@@ -291,10 +333,12 @@ function parseContextBlockSpec(raw: unknown): ContextBlockSpec | null {
       regexRuleIds: Array.isArray(o.regexRuleIds) ? o.regexRuleIds : undefined,
       regexApplyAllTurns: o.regexApplyAllTurns === true,
       tailOrdinal: typeof o.tailOrdinal === 'number' ? o.tailOrdinal : undefined,
+      ...(stripBlockTagsOnToTurn.length > 0 ? { stripBlockTagsOnToTurn } : {}),
     }
   }
 
   if (source === 'conversation.transcript.tail') {
+    const stripBlockTagsOnToTurn = normalizeStripBlockTags(o.stripBlockTagsOnToTurn)
     return {
       source: 'conversation.transcript.tail',
       blockId,
@@ -302,6 +346,7 @@ function parseContextBlockSpec(raw: unknown): ContextBlockSpec | null {
       regexRuleIds: Array.isArray(o.regexRuleIds) ? o.regexRuleIds : undefined,
       regexApplyAllTurns: o.regexApplyAllTurns === true,
       tailOrdinal: typeof o.tailOrdinal === 'number' ? o.tailOrdinal : undefined,
+      ...(stripBlockTagsOnToTurn.length > 0 ? { stripBlockTagsOnToTurn } : {}),
     }
   }
 

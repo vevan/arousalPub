@@ -31,6 +31,8 @@ export type ConversationTranscriptBlockSpec = {
   regexRuleIds?: string[]
   regexApplyAllTurns?: boolean
   tailOrdinal?: number
+  /** 仅对 toTurn 的 assistant 正文剥除指定块标签（Separate 补生成等） */
+  stripBlockTagsOnToTurn?: string[]
 }
 
 export type ConversationTranscriptTailBlockSpec = {
@@ -40,6 +42,8 @@ export type ConversationTranscriptTailBlockSpec = {
   regexRuleIds?: string[]
   regexApplyAllTurns?: boolean
   tailOrdinal?: number
+  /** 仅对 tail 末轮的 assistant 正文剥除指定块标签 */
+  stripBlockTagsOnToTurn?: string[]
 }
 
 export type ContextBlockSpec =
@@ -122,6 +126,18 @@ export type CompleteWithContextRequest = {
   dryRun?: boolean
   /** 出站成功后由插件 hook 解析为 draft */
   draft?: CompleteWithContextDraftParse
+  /** 会话 auditDebug 时由路由/插件传入 */
+  captureDebug?: boolean
+  /** 插件未绑定时回退会话/全局 chat API（如 trace-keeper Separate） */
+  fallbackToChat?: boolean
+}
+
+export type CompleteWithContextDebugCapture = {
+  messages: PromptLayoutMessage[]
+  upstreamPayload?: unknown
+  upstreamStatus?: number
+  upstreamRawBody?: string
+  assistantContent?: string
 }
 
 export type CompleteWithContextSuccess = {
@@ -132,8 +148,17 @@ export type CompleteWithContextSuccess = {
   messages: PromptLayoutMessage[]
   draft?: { title: string; content: string; keywords: string[] }
   preflight?: AssemblePluginPromptSuccess['preflight']
+  debug?: CompleteWithContextDebugCapture
 }
 
 export type CompleteWithContextResult =
   | CompleteWithContextSuccess
-  | { ok: false; code: string; detail?: string; promptTokens?: number; budget?: number }
+  | {
+      ok: false
+      code: string
+      detail?: string
+      promptTokens?: number
+      budget?: number
+      messages?: PromptLayoutMessage[]
+      debug?: CompleteWithContextDebugCapture
+    }

@@ -286,39 +286,6 @@ function resolveSeparateTurnCount(userSettings, convSettings) {
   return SEPARATE_TURN_COUNT_DEFAULT;
 }
 
-// plugins/trace-keeper/src/separate-dialogue.ts
-function activeReceive(turn) {
-  const receives = turn.receives;
-  if (!receives.length) return null;
-  const idx = Math.min(
-    Math.max(0, Math.floor(turn.activeReceiveIndex)),
-    receives.length - 1
-  );
-  return receives[idx] ?? null;
-}
-function buildSeparateDialogueMessages(tail, targetOrdinal, windowTurnCount) {
-  const cap = Math.max(SEPARATE_TURN_COUNT_MIN, Math.floor(windowTurnCount));
-  const fromOrdinal = targetOrdinal - cap + 1;
-  const windowTurns = tail.filter(
-    (t) => t.turnOrdinal >= fromOrdinal && t.turnOrdinal <= targetOrdinal
-  ).sort((a, b) => a.turnOrdinal - b.turnOrdinal);
-  const messages = [];
-  for (const turn of windowTurns) {
-    const userText = turn.userText?.trim();
-    if (userText) {
-      messages.push({ role: "user", content: userText });
-    }
-    const receive = activeReceive(turn);
-    const rawAssistant = receive?.content?.trim();
-    if (!rawAssistant) continue;
-    const assistantContent = turn.turnOrdinal === targetOrdinal ? stripTraceKeeperBlocks(rawAssistant).trim() : rawAssistant;
-    if (assistantContent) {
-      messages.push({ role: "assistant", content: assistantContent });
-    }
-  }
-  return messages;
-}
-
 // plugins/trace-keeper/src/tracker-prompt.ts
 function formatSampleStateForPrompt(bundle) {
   const raw = bundle.sampleStatePromptText?.trim();
@@ -343,14 +310,51 @@ function buildSeparateSystemPrompt(bundle) {
     sampleJson
   ].join("\n");
 }
-function buildSeparateRegenerateMessages(tail, targetOrdinal, windowTurnCount, bundle) {
-  const dialogue = buildSeparateDialogueMessages(
-    tail,
-    targetOrdinal,
-    windowTurnCount
+
+// plugins/trace-keeper/src/shared/trace-keeper-context-blocks.ts
+var TK_BLOCK_DIALOGUE_RAW = "dialogueRaw";
+function buildTraceKeeperSeparateBlockSpecs(input) {
+  const cap = Math.max(
+    SEPARATE_TURN_COUNT_MIN,
+    Math.floor(input.windowTurnCount)
   );
-  return [...dialogue, { role: "system", content: buildSeparateSystemPrompt(bundle) }];
+  const fromTurn = Math.max(0, input.targetOrdinal - cap + 1);
+  return [
+    {
+      source: "conversation.transcript",
+      blockId: TK_BLOCK_DIALOGUE_RAW,
+      fromTurn,
+      toTurn: input.targetOrdinal,
+      tailOrdinal: input.targetOrdinal,
+      stripBlockTagsOnToTurn: [BLOCK_TAG]
+    }
+  ];
 }
+function buildDialogueBlock(transcript) {
+  const body = (transcript ?? "").trim();
+  if (!body) return "";
+  return `<dialogue>
+${body}
+</dialogue>`;
+}
+function formatTraceKeeperLayoutBlocks(resolved) {
+  const raw = resolved.blocks[TK_BLOCK_DIALOGUE_RAW] ?? "";
+  const dialogue = buildDialogueBlock(raw);
+  return dialogue ? { dialogue } : {};
+}
+
+// plugins/trace-keeper/src/prepare-context.ts
+function prepareTraceKeeperSeparateContextBlocks(input) {
+  return buildTraceKeeperSeparateBlockSpecs(input);
+}
+
+// plugins/trace-keeper/src/shared/separate-prompt-layout.ts
+var TRACE_KEEPER_SEPARATE_LAYOUT = {
+  messages: [
+    { role: "user", content: "{{blocks.dialogue}}" },
+    { role: "system", content: "{{plugin.separateSystemPrompt}}" }
+  ]
+};
 
 // plugins/trace-keeper/src/server/separate-regenerate.ts
 function mergeSeparateDebug(messages, code, extra) {
@@ -360,7 +364,7 @@ function mergeSeparateDebug(messages, code, extra) {
     ...extra
   };
 }
-function activeReceive2(turn) {
+function activeReceive(turn) {
   const receives = turn.receives;
   if (!receives.length) return null;
   const idx = Math.min(
@@ -386,7 +390,7 @@ async function regenerateSeparateState(input, api) {
     targetOrdinal
   );
   if (!turn) return { ok: false, code: "turn_not_found" };
-  const receive = activeReceive2(turn);
+  const receive = activeReceive(turn);
   if (!receive?.id) return { ok: false, code: "receive_not_found" };
   const assistantText = stripTraceKeeperBlocks(receive.content);
   if (!assistantText) return { ok: false, code: "assistant_content_empty" };
@@ -397,20 +401,24 @@ async function regenerateSeparateState(input, api) {
   });
   const epoch = trackerEpochFromSettings(convSettings);
   const windowTurnCount = resolveSeparateTurnCount(userSettings, convSettings);
-  const messages = buildSeparateRegenerateMessages(
-    tail,
-    targetOrdinal,
-    windowTurnCount,
-    bundle
-  );
   const debugCapture = input.debugCapture === true;
-  const result = await api.runPluginComplete({
-    conversationId,
-    messages,
-    responseFormat: "json_object",
-    fallbackToChat: true,
-    captureDebug: debugCapture
+  const blocks = prepareTraceKeeperSeparateContextBlocks({
+    targetOrdinal,
+    windowTurnCount
   });
+  const result = await api.completeWithContext({
+    conversationId,
+    blocks,
+    layout: TRACE_KEEPER_SEPARATE_LAYOUT,
+    pluginSettings: {
+      separateSystemPrompt: buildSeparateSystemPrompt(bundle)
+    },
+    anchorToTurn: targetOrdinal,
+    responseFormat: "json_object",
+    captureDebug: debugCapture,
+    fallbackToChat: true
+  });
+  const messages = result.ok ? result.messages : result.messages ?? result.debug?.messages ?? [];
   if (!result.ok) {
     return {
       ok: false,
@@ -420,14 +428,22 @@ async function regenerateSeparateState(input, api) {
       } : {}
     };
   }
-  const state = parseTraceKeeperJson(result.content);
+  const content = result.content?.trim() ?? "";
+  if (!content) {
+    return {
+      ok: false,
+      code: "parse_failed",
+      ...debugCapture ? { debug: mergeSeparateDebug(messages, "parse_failed") } : {}
+    };
+  }
+  const state = parseTraceKeeperJson(content);
   if (!state) {
     return {
       ok: false,
       code: "parse_failed",
       ...debugCapture ? {
         debug: mergeSeparateDebug(messages, "parse_failed", {
-          assistantContent: result.content
+          assistantContent: content
         })
       } : {}
     };
@@ -448,14 +464,14 @@ async function regenerateSeparateState(input, api) {
     ...debugCapture ? {
       debug: mergeSeparateDebug(messages, "ok", {
         ...result.debug,
-        assistantContent: result.content
+        assistantContent: content
       })
     } : {}
   };
 }
 
 // plugins/trace-keeper/src/server/patch-state.ts
-function activeReceive3(turn) {
+function activeReceive2(turn) {
   const receives = turn.receives;
   if (!receives?.length) return null;
   const idx = Math.min(
@@ -481,7 +497,7 @@ async function patchTraceKeeperState(input, api) {
   ]);
   if (!turn) return { ok: false, code: "turn_not_found" };
   const epoch = trackerEpochFromSettings(convSettings);
-  const receive = activeReceive3(turn);
+  const receive = activeReceive2(turn);
   if (!receive?.id) return { ok: false, code: "receive_not_found" };
   const active = turn.receives.find((r) => r.id === receive.id);
   if (!active) return { ok: false, code: "receive_not_found" };
@@ -500,6 +516,11 @@ async function patchTraceKeeperState(input, api) {
     assistantContent,
     entry
   };
+}
+
+// plugins/trace-keeper/src/server/complete-context-hooks.ts
+function formatPluginContextBlocks(resolved, _ctx) {
+  return formatTraceKeeperLayoutBlocks(resolved);
 }
 
 // plugins/trace-keeper/src/server/index.ts
@@ -552,8 +573,10 @@ async function resolveTurnPluginEntriesFromAssistant(ctx, api) {
 }
 export {
   DEFAULT_TRACE_BUNDLE,
+  TRACE_KEEPER_SEPARATE_LAYOUT,
   afterAssemblePrompts,
   buildTrackerSystemPrompt,
+  formatPluginContextBlocks,
   patchTraceKeeperState,
   regenerateSeparateState,
   resolveAfterAssemblePromptsAddition,

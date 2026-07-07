@@ -293,10 +293,12 @@ interface ConversationBatchContext {
   anchorToTurn: number
   responseFormat?: 'json_object' | 'text'
   dryRun?: boolean
+  captureDebug?: boolean
+  fallbackToChat?: boolean   // 如 trace-keeper Separate：未绑 apiConfigId 时回退 chat API
   draft?: { kind: 'memory' | 'sidecar'; fromTurn?; toTurn?; blockTurns?; sidecarName? }
 }
-// → { ok: true, content?, messages[], draft?, preflight?, usage?, latencyMs? }
-// 失败：code 如 context_exceeded、parse_failed；context 超限时含 promptTokens / budget
+// → { ok: true, content?, messages[], draft?, preflight?, usage?, latencyMs?, debug? }
+// 失败：code 如 context_exceeded、parse_failed；context 超限时含 promptTokens / budget；captureDebug 时含 messages / debug
 ```
 
 **权限**：`plugin.complete`（complete / preflight / completeWithContext）；`prepareContextBlocks` 另需 `conversation.read` + `lorebook.read`。
@@ -388,7 +390,7 @@ interface ConversationBatchContext {
 | `resolveTurnPluginEntries(plugins, api)` | 落盘前 | 写入 `turn.plugins[]` 条目（body 侧） |
 | `resolveTurnPluginEntriesFromAssistant(plugins, assistantText, api)` | 落盘前 | 从 assistant 解析 → 条目（trace-keeper Together） |
 | `regenerateSeparateState(ctx, api)` | `POST …/regenerate-separate` | Separate 补生成（trace-keeper） |
-| `formatPluginContextBlocks(resolved)` | completeWithContext 步骤 1 后 | 插件 format blocks（Historian XML） |
+| `formatPluginContextBlocks(resolved, ctx)` | completeWithContext 步骤 1 后 | 插件 format blocks（Historian XML / trace-keeper `<dialogue>`）；`ctx.anchorToTurn` |
 | `parseCompleteDraftContent(ctx, content, api)` | completeWithContext 出站后 | JSON → draft normalize |
 
 在 manifest 声明 `"hooks": ["afterAssemblePrompts"]` 等，设置页会展示。
@@ -402,6 +404,7 @@ interface ConversationBatchContext {
 | `runPluginComplete(req)` | 同 Web `complete` |
 | `runPluginCompletePreflight(req)` | 同 Web preflight |
 | `runPluginMacroExpand(req)` | 同 Web `macros.expand` |
+| **`completeWithContext(req)`** | 同 Web；Server 插件 Separate 等直接调用 |
 | **`regex.listRules` / `applyText` / `applyMessages`** | 同 Web `host.regex`（读盘 `regex-rules.json` · `server/src/regex-apply.ts`） |
 
 **`parseCompleteDraftContent` 约定**：抛出 `parse_failed` 时宿主映射为 `plugin_complete_draft_failed`。
@@ -595,3 +598,4 @@ class PluginHostApiError {
 | 2026-06-08 | `plot-summary` 更名；`reorder-curated` 移除，改为通用 `apply-order`；Historian 排序算法在 `plugins/plot-summary/src/shared/` |
 | 2026-06-23 | §3.14 `host.regex` 标为已实现（2026-06-10）；§4.2 补 `api.regex` |
 | 2026-07-07 | **DOC/39 落地**：`prepareContextBlocks` / `assemblePluginPrompt` / `completeWithContext`；移除 `prepareContext`（旧字段）与 `complete-draft` |
+| 2026-07-07 | **Phase 3**：trace-keeper Separate 迁 `completeWithContext`；契约补 `stripBlockTagsOnToTurn` / `fallbackToChat` / `captureDebug` |

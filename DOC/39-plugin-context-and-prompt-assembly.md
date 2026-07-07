@@ -1,6 +1,6 @@
 # 插件二次 LLM：上下文块与 Prompt 组装 — 设计定案
 
-> **状态**：**Phase 1–2 已落地**（2026-07）；Historian 已迁单一路径；Phase 3（trace-keeper）待做。  
+> **状态**：**Phase 1–3 已落地**（2026-07）；Historian 与 trace-keeper Separate 已迁单一路径。  
 > **关联**：`DOC/11` 出站补全 · `DOC/12` Historian · `DOC/18` §3.8 · `DOC/38`（沙箱 / chat 注入为**另一条管线**）
 
 ---
@@ -25,7 +25,7 @@
 
 **已移除 legacy**：Historian 专用 `plugin-prepare-context.ts`、`POST …/complete-draft`、`host.plugin.prepareContext`（旧字段）、`host.plugin.completeDraft`、`completeDraft` server hook、`buildSummaryCompleteMessages`。
 
-其它插件（如 trace-keeper Separate）仍自读 tail + 自拼 messages，**Phase 3** 迁 shared layout。
+trace-keeper Separate 已迁 **`completeWithContext`**（`TRACE_KEEPER_SEPARATE_LAYOUT` + `stripBlockTagsOnToTurn`）；Together 仍走 `afterAssemblePrompts`（`DOC/38` chat 注入管线）。
 
 ### 1.2 目标（仍有效）
 
@@ -98,6 +98,8 @@
 
 **宏锚点（D3）**：`assemblePluginPrompt` / `completeWithContext` 须显式 **`anchorToTurn`**；宿主不设默认。
 
+**transcript 可选字段**：`stripBlockTagsOnToTurn?: string[]` — 仅对 `toTurn`（或 tail 末轮）的 assistant 剥块标签；trace-keeper Separate 用于 target 轮剥 `<ex-trace-keeper>`，窗口内历史轮保留 state。
+
 Historian 块组合（插件侧 `buildPlotSummaryContextBlockSpecs`）：
 
 - `prevSummaries` / `sidecars` ← 插件选 id → `lorebook.entries`
@@ -155,7 +157,7 @@ host.plugin.completeWithContext({
 | 插件 | 步骤 1 | 步骤 2 | 出站 |
 |------|--------|--------|------|
 | **plot-summary** | ✅ 插件选条 + `prepareContextBlocks` | ✅ `PLOT_SUMMARY_COMPLETE_LAYOUT` | ✅ `completeWithContext` |
-| **trace-keeper** Separate | 规划：`transcript.tail` | 规划：shared layout | 仍 `regenerateSeparateState` |
+| **trace-keeper** Separate | ✅ `conversation.transcript` + `stripBlockTagsOnToTurn` | ✅ `TRACE_KEEPER_SEPARATE_LAYOUT` | ✅ `completeWithContext`（经 `regenerateSeparateState`） |
 
 ---
 
@@ -194,7 +196,7 @@ host.plugin.completeWithContext({
 
 ### Phase 3 — 其它消费者
 
-- [ ] trace-keeper Separate 迁 `transcript.tail` + shared layout
+- [x] trace-keeper Separate 迁 `conversation.transcript` + shared layout（`TRACE_KEEPER_SEPARATE_LAYOUT` + `completeWithContext`）
 
 ---
 
@@ -211,7 +213,10 @@ host.plugin.completeWithContext({
 | `plugins/plot-summary/src/shared/plot-summary-context-blocks.ts` | 选条 + XML format |
 | `plugins/plot-summary/src/shared/summary-prompt-layout.ts` | `PLOT_SUMMARY_COMPLETE_LAYOUT` |
 | `plugins/plot-summary/src/server/complete-context-hooks.ts` | format / parse hooks |
-| `plugins/trace-keeper/src/server/separate-regenerate.ts` | 仍自拼 messages（Phase 3） |
+| `plugins/trace-keeper/src/shared/trace-keeper-context-blocks.ts` | Separate 块 spec + `<dialogue>` format |
+| `plugins/trace-keeper/src/shared/separate-prompt-layout.ts` | `TRACE_KEEPER_SEPARATE_LAYOUT` |
+| `plugins/trace-keeper/src/server/complete-context-hooks.ts` | format hook |
+| `plugins/trace-keeper/src/server/separate-regenerate.ts` | Separate → `completeWithContext` |
 | `DOC/12` §5 | Historian 摘要上下文行为 |
 | `DOC/18` §3.8 | Web 宿主 API |
 
@@ -224,3 +229,4 @@ host.plugin.completeWithContext({
 | 2026-07-07 | 首版：问题、两层模型、Historian/trace 映射、D1–D9、分期 |
 | 2026-07-07 | lore catalog、`entriesByBlock`、两步 API、completeWithContext 定案 |
 | 2026-07-07 | **Phase 1–2 落地**；Historian 迁单路径；移除 legacy prepareContext/completeDraft；更新代码索引 |
+| 2026-07-07 | **Phase 3 落地**：trace-keeper Separate；`stripBlockTagsOnToTurn`；`fallbackToChat` / `captureDebug` 审计修复 |

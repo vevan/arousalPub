@@ -12,6 +12,7 @@ export { PLOT_SUMMARY_COMPLETE_LAYOUT }
 
 export function formatPluginContextBlocks(
   resolved: PluginContextBlocksSuccess,
+  _ctx?: { anchorToTurn: number },
 ): Record<string, string> {
   return formatPlotSummaryLayoutBlocks(resolved)
 }

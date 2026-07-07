@@ -113,6 +113,28 @@ export function asPluginString(v: unknown): string {
   return typeof v === 'string' ? v.trim() : ''
 }
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** 从 assistant 正文剥除指定插件块标签（保留标签外叙事） */
+export function stripBlockTagsFromAssistant(
+  text: string,
+  tags: string[],
+): string {
+  let out = text ?? ''
+  for (const tag of tags) {
+    const name = typeof tag === 'string' ? tag.trim() : ''
+    if (!name) continue
+    const re = new RegExp(
+      `<${escapeRegExp(name)}>\\s*([\\s\\S]*?)\\s*<\\/${escapeRegExp(name)}>`,
+      'gi',
+    )
+    out = out.replace(re, '')
+  }
+  return out.trim()
+}
+
 export function parseModelJson(text: string): unknown {
   let raw = (text ?? '').trim()
   const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)

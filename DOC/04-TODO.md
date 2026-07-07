@@ -7,7 +7,7 @@
 - [ ] **插件组装注入对齐 §6.6 chat depth**（**Phase A** · 详 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §3）— `resolveAfterAssemblePromptsAddition` 返回注入描述符；宿主 post-user 区归并；裁切前 token 预留不变。定案：`guidance-generate` depth **0** order **1**；`trace-keeper` depth **0** order **999**；revise assistant **998** + system **999**
 - [ ] **服务端插件沙箱**（**Phase B** · [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §2、§4）— Worker + Host API 代理；同进程 `import(server.mjs)` 仅保留 bundled 或过渡期 fallback
 - [ ] **插件 complete API 白名单**（**Phase C** · [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §5）— `runPluginComplete` 校验 `apiConfigId` 是否授权给该 `pluginId`；与沙箱可并行
-- [ ] **插件上下文块 + Prompt 组装**（[`DOC/39`](39-plugin-context-and-prompt-assembly.md)）— 扩展 `prepareContext` + `assemblePluginPrompt`（强制两步）+ `completeWithContext`；Historian 先行；定案见 DOC/39 §5
+- [x] **插件上下文块 + Prompt 组装**（[`DOC/39`](39-plugin-context-and-prompt-assembly.md)）— Phase 1–3 已落地：Historian + trace-keeper Separate 经 `completeWithContext`；见 DOC/39 §6
 - [ ] 插件实例与 API 绑定、插件审计、fallback 策略（部分 host API 见 `DOC/10`）
 - [ ] **Composer Slash 命令** — 定案见 [`DOC/35`](35-group-chat.md) §2.3（群聊 `/@`）；输入框 `/` 命令层（与聊天 turns、输入历史分离）
   - [x] **S0** 宿主 `submitComposer` 统一入口 + 命令解析/路由（raw → 命令 + 剩余正文）

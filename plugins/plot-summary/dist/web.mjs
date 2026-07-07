@@ -1,4 +1,4 @@
-// plugins/plot-summary/src/constants.ts
+// src/constants.ts
 var PLUGIN_ID = "plot-summary";
 var DIALOG_SESSION = "session";
 var DIALOG_MANUAL = "manual";
@@ -9,7 +9,7 @@ var DIALOG_PICK_LOREBOOK = "pick-lorebook";
 var DIALOG_RECOVER_LOREBOOK = "recover-lorebook";
 var DIALOG_PROMPT_PREVIEW = "prompt-preview";
 
-// plugins/plot-summary/src/shared/utils.ts
+// src/shared/utils.ts
 function asString(v) {
   return typeof v === "string" ? v.trim() : "";
 }
@@ -34,7 +34,7 @@ function entryKeys(keywords) {
   return keywords.filter((x) => typeof x === "string").map((x) => x.trim()).filter(Boolean);
 }
 
-// plugins/plot-summary/src/settings.ts
+// src/settings.ts
 function k(host, key) {
   return host.pluginKey(key);
 }
@@ -266,7 +266,7 @@ function firstAutoTriggerTurnOrdinal(settings) {
   return blockEndFromStart(start, settings.blockTurns) + settings.bufferTurns;
 }
 
-// plugins/plot-summary/src/errors.ts
+// src/errors.ts
 var PIPELINE_FATAL_CODES = /* @__PURE__ */ new Set([
   "context_exceeded",
   "plugin_complete_context_exceeded",
@@ -348,7 +348,7 @@ function preflightToast(host, e) {
   host.ui.toast(host.t(k(host, "toastSummarizeFailed")), { color: "error" });
 }
 
-// plugins/plot-summary/src/shared/summary-prompt-layout.ts
+// src/shared/summary-prompt-layout.ts
 var PLOT_SUMMARY_COMPLETE_LAYOUT = {
   messages: [
     { role: "system", content: "{{blocks.reference}}" },
@@ -357,7 +357,7 @@ var PLOT_SUMMARY_COMPLETE_LAYOUT = {
   ]
 };
 
-// plugins/plot-summary/src/state.ts
+// src/state.ts
 var summarizeRunning = false;
 var _reviewResolver = null;
 var _reviewRegenerate = null;
@@ -420,7 +420,7 @@ function clearPromptPreviewRestore() {
   _promptPreviewRestore = null;
 }
 
-// plugins/plot-summary/src/review.ts
+// src/review.ts
 function resolveSystemPrompt(host, settings, opts) {
   if (opts.kind === "sidecar" && opts.sc) {
     return sidecarPromptTemplate(host, opts.sc);
@@ -598,7 +598,7 @@ function promptReview(host, draft, dialogId, regenerateFn, lorebookName) {
   });
 }
 
-// plugins/plot-summary/src/shared/lorebook-sort.ts
+// src/shared/lorebook-sort.ts
 var PLOT_SUMMARY_TURN_RANGE_SUFFIX_RE = /\[(\d+)-(\d+)\]$/;
 var LEGACY_TURN_RANGE_SUFFIX_RE = /-(\d+)-(\d+)$/;
 var PLOT_SUMMARY_MEMO_PREFIX_RE = /^\[MEMO-(\d+)\]-/;
@@ -695,7 +695,7 @@ function pickRecentSummaryEntriesBeforeTurn(entries, beforeTurn, sidecarEntryIdS
   return sorted.slice(-limit);
 }
 
-// plugins/plot-summary/src/shared/entry-sort.ts
+// src/shared/entry-sort.ts
 async function applyPlotSummaryEntrySort(host, lorebookId, sidecarEntryIds, sidecarConfigIds) {
   const id = lorebookId.trim();
   if (!id) return false;
@@ -725,7 +725,7 @@ async function applyPlotSummaryEntrySort(host, lorebookId, sidecarEntryIds, side
   return true;
 }
 
-// plugins/plot-summary/src/batch-write.ts
+// src/batch-write.ts
 async function flushPendingLorebookCreates(host, lorebookId, pending, sidecarEntryIds) {
   if (!pending.length) return;
   if (typeof host.lorebook.createEntriesBatch !== "function") {
@@ -749,7 +749,7 @@ async function flushPendingLorebookCreates(host, lorebookId, pending, sidecarEnt
   pending.length = 0;
 }
 
-// plugins/plot-summary/src/sidecar.ts
+// src/sidecar.ts
 async function writeSidecarEntry(host, settings, sidecarEntryIds, sc, reviewed, sidecarKeys, pendingCreates) {
   const body = {
     title: sc.name,
@@ -778,7 +778,7 @@ async function writeSidecarEntry(host, settings, sidecarEntryIds, sc, reviewed, 
   return created.id;
 }
 
-// plugins/plot-summary/src/shared/range-limits.ts
+// src/shared/range-limits.ts
 var SUMMARIZE_TURN_SPAN_HINT_MAX = 512;
 function summarizeTurnSpan(fromTurn, toTurn) {
   return Math.max(0, toTurn - fromTurn + 1);
@@ -787,7 +787,7 @@ function isSummarizeTurnSpanTooLarge(fromTurn, toTurn) {
   return summarizeTurnSpan(fromTurn, toTurn) > SUMMARIZE_TURN_SPAN_HINT_MAX;
 }
 
-// plugins/plot-summary/src/shared/prepare-context-blocks.ts
+// src/shared/prepare-context-blocks.ts
 function buildPreviousSummariesBlock(entries) {
   if (entries.length === 0) return "";
   const body = entries.map((e) => {
@@ -824,7 +824,7 @@ ${body}
 </history>`;
 }
 
-// plugins/plot-summary/src/shared/plot-summary-context-blocks.ts
+// src/shared/plot-summary-context-blocks.ts
 var PS_BLOCK_PREV = "prevSummaries";
 var PS_BLOCK_SIDECARS = "sidecars";
 var PS_BLOCK_HISTORY_RAW = "historyRaw";
@@ -912,7 +912,7 @@ function plotSummaryReferenceAndHistory(resolved) {
   };
 }
 
-// plugins/plot-summary/src/prepare-context.ts
+// src/prepare-context.ts
 async function preparePlotSummarySummarizeContext(host, settings, fromTurn, toTurn) {
   const sidecarEntryIds = settings.sidecarEntryIds;
   const sidecarConfigIds = settings.sidecars.map((s) => s.id);
@@ -946,7 +946,7 @@ async function preparePlotSummarySummarizeContext(host, settings, fromTurn, toTu
   };
 }
 
-// plugins/plot-summary/src/pipeline.ts
+// src/pipeline.ts
 function setPluginHold(host, hold) {
   if (typeof host.conversation.setPluginHold === "function") {
     host.conversation.setPluginHold(hold);
@@ -1235,7 +1235,7 @@ async function runSummarizeTasks(host, opts) {
   }
 }
 
-// plugins/plot-summary/src/prompt-preview.ts
+// src/prompt-preview.ts
 function auditDebugEnabled(host) {
   const raw = host.session.writeChatPromptSnapshot;
   if (typeof raw === "boolean") return raw;
@@ -1433,7 +1433,7 @@ async function previewManualSummarizePrompt(host, model) {
   }
 }
 
-// plugins/plot-summary/src/dialogs.ts
+// src/dialogs.ts
 function isAutoSummarizeEnabled(host) {
   return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true;
 }
@@ -1958,7 +1958,7 @@ function isBusy(host) {
   return host.session.conversationWriteLocked || host.session.loading || host.session.regeneratingTurnOrdinal !== null;
 }
 
-// plugins/plot-summary/src/lifecycle.ts
+// src/lifecycle.ts
 function isPersistBusy(host) {
   return host.session.conversationWriteLocked || host.session.loading || host.session.regeneratingTurnOrdinal !== null;
 }
@@ -2010,7 +2010,7 @@ function registerLifecycle(host) {
   });
 }
 
-// plugins/plot-summary/src/range-picker.ts
+// src/range-picker.ts
 var RANGE_STYLES = `
 .plugin-slot.cm-range-start--active {
   color: rgb(var(--v-theme-primary));
@@ -2096,7 +2096,7 @@ function registerRangePicker(host) {
   });
 }
 
-// plugins/plot-summary/src/index.ts
+// src/index.ts
 function isAutoSummarizeEnabled2(host) {
   return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true;
 }

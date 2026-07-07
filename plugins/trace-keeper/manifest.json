@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "hooks": [
     "afterAssemblePrompts",
-    "resolveTurnPluginEntriesFromAssistant"
+    "resolveTurnPluginEntriesFromAssistant",
+    "formatPluginContextBlocks"
   ],
   "memory": {
     "stripBlockTags": ["ex-trace-keeper"]

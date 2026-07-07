@@ -2,6 +2,16 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { fillPromptLayoutPlaceholders } from '../src/plugin-assemble-prompt.js'
 import { parseContextBlockSpecs } from '../src/plugin-context-blocks-resolve.js'
+import { stripBlockTagsFromAssistant } from '../src/plugin-summarize-format.js'
+
+describe('stripBlockTagsFromAssistant', () => {
+  it('strips plugin block tags from assistant text', () => {
+    const text =
+      'narrative<ex-trace-keeper>{"a":1}</ex-trace-keeper> tail'
+    const out = stripBlockTagsFromAssistant(text, ['ex-trace-keeper'])
+    assert.equal(out, 'narrative tail')
+  })
+})
 
 describe('parseContextBlockSpecs', () => {
   it('parses lorebook.entries block', () => {
@@ -25,6 +35,7 @@ describe('parseContextBlockSpecs', () => {
         fromTurn: 0,
         toTurn: 5,
         regexRuleIds: ['r1'],
+        stripBlockTagsOnToTurn: ['ex-trace-keeper'],
       },
     ])
     assert.deepEqual(specs[0], {
@@ -35,6 +46,7 @@ describe('parseContextBlockSpecs', () => {
       regexRuleIds: ['r1'],
       regexApplyAllTurns: false,
       tailOrdinal: undefined,
+      stripBlockTagsOnToTurn: ['ex-trace-keeper'],
     })
   })
 })

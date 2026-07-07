@@ -41,12 +41,13 @@ async function build() {
   if (process.env.PLUGIN_WATCH === '1') return
 
   const { spawnSync } = await import('node:child_process')
-  const testFiles = [
+  const   testFiles = [
     path.join(here, 'test/panel-empty.test.ts'),
     path.join(here, 'test/separate-turn-settings.test.ts'),
     path.join(here, 'test/separate-dialogue.test.ts'),
     path.join(here, 'test/tracker-prompt.test.ts'),
     path.join(here, 'test/trace-state-resolve.test.ts'),
+    path.join(here, 'test/trace-keeper-context-blocks.test.ts'),
     path.join(here, 'test/server/injection.test.ts'),
   ]
   for (const f of testFiles) {

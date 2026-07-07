@@ -31,7 +31,7 @@ plugins/{pluginId}/
 | `conversation-export` | 对话导出 HTML（分批 read、`runScope`、导出对话框） |
 | `plot-summary` | Historian：剧情纪要摘要、sidecar、预览确认、`prepareContextBlocks` / `completeWithContext` |
 | `custom-styles` | 自定义样式注入：全局 CSS 样式表 + 对话级开关覆盖，`registerStyles` |
-| `trace-keeper` | **迹录**：RP 场景状态追踪、Together + Separate、左栏 HTML 面板；见 **`DOC/30-plugin-trace-keeper.md`** |
+| `trace-keeper` | **迹录**：RP 场景状态追踪、Together + Separate（`completeWithContext`）、左栏 HTML 面板；见 **`DOC/30`** |
 
 **插件作者主文档（宿主 API 单一入口）**：**`DOC/18-plugin-host-developer-api.md`**。
 

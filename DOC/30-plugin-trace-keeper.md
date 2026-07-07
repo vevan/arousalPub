@@ -11,7 +11,7 @@
 | Together 落盘 | `resolveTurnPluginEntriesFromAssistant` 解析 `<ex-trace-keeper>` → `turn.plugins[]` |
 | 记忆语料剥离 | manifest `memory.stripBlockTags: ["ex-trace-keeper"]`（用户开启剥离时自动并入；见 `DOC/03` §14.4.4） |
 | 组装注入 | `resolveAfterAssemblePromptsAddition`：system 仅 **格式说明 + sample**；历史 state 由正则保留在 assistant 正文；计入 token 预算且不可 trim |
-| Separate 补生成 | `POST …/regenerate-separate`；多轮 user/assistant 窗口（`separateTurnCount`）；system 不含历史 state |
+| Separate 补生成 | `POST …/regenerate-separate` → **`completeWithContext`**（`DOC/39`）；`conversation.transcript` 窗口 + `stripBlockTagsOnToTurn`；`TRACE_KEEPER_SEPARATE_LAYOUT`；`fallbackToChat: true` |
 | 侧栏 | `host.ui.panel` · live/pinned；只读 `plugins[]` 渲染；无 snapshot **空态+原因**（§4.4）；最后一轮可 Separate |
 | Swipe | 按 `receiveId` 多 snapshot（`mergeTurnPluginEntry`） |
 | 套件 | 用户 settings `bundleList` + 内置 `scene-tracker-default`；设置页编辑器 |
@@ -48,7 +48,19 @@
 
 ### 2.2 Separate（补生成）
 
-解析失败或用户手动刷新：`POST /api/plugins/trace-keeper/regenerate-separate`（`plugin.complete` + `json_object`），结果写入 **`turn.plugins[]`**，并**同步回写当前 active receive 的 assistant 正文**（重写 `<ex-trace-keeper>` 块）。侧栏 live 且最后一轮无 snapshot 时显示按钮。
+解析失败或用户手动刷新：`POST /api/plugins/trace-keeper/regenerate-separate`。Server 侧 `regenerateSeparateState` 经宿主 **`completeWithContext`**（**`DOC/39`**）：
+
+```text
+prepareTraceKeeperSeparateContextBlocks
+  → conversation.transcript（fromTurn…toTurn = separateTurnCount 窗口）
+  → stripBlockTagsOnToTurn: ['ex-trace-keeper']（仅 target 轮 assistant）
+  → formatPluginContextBlocks → <dialogue> 块
+  → TRACE_KEEPER_SEPARATE_LAYOUT（user: dialogue + system: separateSystemPrompt + sample）
+  → plugin.complete（json_object；未绑 apiConfigId 时 fallbackToChat）
+  → parseTraceKeeperJson → 双写 turn.plugins[] + assistant 正文
+```
+
+侧栏 live 且最后一轮无 snapshot 时显示按钮。
 
 ---
 
@@ -180,7 +192,7 @@ interface TraceBundle {
 
 **不**向主对话注入 JSON Schema 全文。用户改字段时同步改 **sampleState + template** 即可；**template 只影响侧栏展示**。
 
-**Separate** 补枪：同样在 `complete` 的 messages 里附 **sampleState** few-shot；可用 `responseFormat: 'json_object'`，**不**绑 schema。
+**Separate** 补枪：经 **`completeWithContext`** 拼 prompt（见 §2.2）；`responseFormat: 'json_object'`，**不**绑 schema。
 
 ---
 
@@ -272,9 +284,10 @@ host.ui.panel.onPanelEvent('leftRail', 'trace-keeper', {
 
 | Hook / 路由 | 用途 |
 |-------------|------|
-| `resolveAfterAssemblePromptsAddition` | 注入 tracker system（sample + live states）；`afterAssemblePrompts` 兼容路径 |
+| `resolveAfterAssemblePromptsAddition` | Together：注入 tracker system（格式说明 + sample） |
 | `resolveTurnPluginEntriesFromAssistant` | Together：从 assistant 解析 → 落盘条目 |
-| `regenerateSeparateState` | Separate 补生成（由路由 `regenerate-separate` 调用） |
+| `formatPluginContextBlocks(resolved, ctx)` | Separate：`completeWithContext` 步骤 1 后 → `<dialogue>` 块 |
+| `regenerateSeparateState` | Separate 补生成（路由 `regenerate-separate` → `completeWithContext`） |
 | `patchTraceKeeperState` | 手动编辑 state（由路由 `patch-state` 调用） |
 | `POST …/regenerate-separate` | Web 侧栏触发；需 `plugin.complete` + `conversation.read` |
 | `POST …/patch-state` | Web 侧栏 JSON 编辑保存；需 `turn.plugins.write` + `conversation.read` |
@@ -304,10 +317,15 @@ plugins/trace-keeper/
   bundles/scene-tracker-default/
   src/
     index.ts                 # Web：panel、turn 按钮、Separate 客户端
+    prepare-context.ts       # Separate 块 spec 编排
     trace-state-resolve.ts   # plugins[] 解析；live 仅最后一轮
     tracker-prompt.ts
+    shared/
+      trace-keeper-context-blocks.ts
+      separate-prompt-layout.ts   # TRACE_KEEPER_SEPARATE_LAYOUT
     server/
       index.ts
+      complete-context-hooks.ts
       separate-regenerate.ts
   build.mjs → dist/web.mjs + dist/server.mjs
 ```

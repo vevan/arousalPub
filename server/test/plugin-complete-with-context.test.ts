@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import { after, before, describe, it } from 'node:test'
-import { resolveApiConfigIdForCompleteWithContext } from '../src/plugin-complete-with-context.js'
+import {
+  parseCompleteWithContextBody,
+  resolveApiConfigIdForCompleteWithContext,
+} from '../src/plugin-complete-with-context.js'
 
 const TEST_USER = 'b0000001'
 let prevTestUser: string | undefined
@@ -24,7 +27,10 @@ describe('resolveApiConfigIdForCompleteWithContext', () => {
       },
       'plot-summary',
     )
-    assert.deepEqual(hit, { ok: true, apiConfigId: 'preset-a' })
+    assert.equal(hit.ok, true)
+    if (hit.ok) {
+      assert.equal(hit.apiConfigId, 'preset-a')
+    }
   })
 
   it('dryRun allows missing apiConfigId when plugin binding unavailable', async () => {
@@ -52,5 +58,28 @@ describe('resolveApiConfigIdForCompleteWithContext', () => {
     if (!hit.ok) {
       assert.equal(hit.code, 'api_config_not_found')
     }
+  })
+})
+
+describe('parseCompleteWithContextBody', () => {
+  it('parses fallbackToChat and captureDebug flags', () => {
+    const body = parseCompleteWithContextBody({
+      conversationId: 'abcd1234',
+      anchorToTurn: 2,
+      blocks: [
+        {
+          source: 'conversation.transcript',
+          blockId: 'dialogueRaw',
+          fromTurn: 1,
+          toTurn: 2,
+        },
+      ],
+      layout: { messages: [{ role: 'user', content: '{{blocks.dialogue}}' }] },
+      fallbackToChat: true,
+      captureDebug: true,
+    })
+    assert.ok(body)
+    assert.equal(body?.fallbackToChat, true)
+    assert.equal(body?.captureDebug, true)
   })
 })

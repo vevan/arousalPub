@@ -28,6 +28,7 @@ const UPSTREAM_RETRY = new Set(['plugin_complete_failed', 'preflight_failed'])
 
 export type FormatPluginContextBlocksHook = (
   resolved: PluginContextBlocksSuccess,
+  ctx: { anchorToTurn: number },
 ) => Record<string, string> | Promise<Record<string, string>>
 
 function defaultLayoutBlocks(
@@ -53,6 +54,7 @@ function defaultLayoutBlocks(
 async function resolveLayoutBlocks(
   pluginId: string,
   resolved: PluginContextBlocksSuccess,
+  anchorToTurn: number,
   userId?: string,
 ): Promise<Record<string, string>> {
   if (pluginId.trim()) {
@@ -62,7 +64,7 @@ async function resolveLayoutBlocks(
       | FormatPluginContextBlocksHook
       | undefined
     if (typeof hook === 'function') {
-      return hook(resolved)
+      return hook(resolved, { anchorToTurn })
     }
   }
   return defaultLayoutBlocks(resolved)
@@ -115,23 +117,28 @@ async function parseDraftViaHook(
 }
 
 export type ResolveApiConfigIdForCompleteResult =
-  | { ok: true; apiConfigId?: string }
+  | { ok: true; apiConfigId?: string; modelOverride?: string }
   | { ok: false; code: string }
 
 /** 解析出站 API；非 dryRun 时必须成功。供 completeOnce 与单测使用。 */
 export async function resolveApiConfigIdForCompleteWithContext(
-  req: Pick<CompleteWithContextRequest, 'conversationId' | 'apiConfigId' | 'dryRun'>,
+  req: Pick<
+    CompleteWithContextRequest,
+    'conversationId' | 'apiConfigId' | 'dryRun' | 'fallbackToChat'
+  >,
   pluginId: string,
   userId?: string,
 ): Promise<ResolveApiConfigIdForCompleteResult> {
   const conversationId = req.conversationId.trim()
   let apiConfigId =
     typeof req.apiConfigId === 'string' ? req.apiConfigId.trim() : ''
+  let modelOverride: string | undefined
   if (!apiConfigId && pluginId.trim()) {
     const hit = await resolvePluginCompleteApi({
       pluginId: pluginId.trim(),
       conversationId,
       userId,
+      fallbackToChat: req.fallbackToChat === true,
     })
     if (!hit.ok) {
       if (req.dryRun === true) {
@@ -140,11 +147,12 @@ export async function resolveApiConfigIdForCompleteWithContext(
       return { ok: false, code: hit.code }
     }
     apiConfigId = hit.resolved.apiConfigId
+    modelOverride = hit.resolved.modelOverride?.trim() || undefined
   }
   if (req.dryRun !== true && !apiConfigId) {
     return { ok: false, code: 'api_config_not_found' }
   }
-  return { ok: true, apiConfigId: apiConfigId || undefined }
+  return { ok: true, apiConfigId: apiConfigId || undefined, modelOverride }
 }
 
 async function completeOnce(
@@ -163,7 +171,12 @@ async function completeOnce(
     return step1
   }
 
-  const layoutBlocks = await resolveLayoutBlocks(pluginId, step1, userId)
+  const layoutBlocks = await resolveLayoutBlocks(
+    pluginId,
+    step1,
+    req.anchorToTurn,
+    userId,
+  )
 
   const apiHit = await resolveApiConfigIdForCompleteWithContext(req, pluginId, userId)
   if (!apiHit.ok) {
@@ -199,10 +212,24 @@ async function completeOnce(
   const complete = await runPluginComplete({
     apiConfigId,
     messages: assembled.messages,
+    modelOverride: apiHit.modelOverride,
     responseFormat: req.responseFormat ?? 'json_object',
+    captureDebug: req.captureDebug === true,
   })
   if (!complete.ok) {
-    return { ok: false, code: complete.code ?? 'plugin_complete_failed' }
+    const debug =
+      req.captureDebug === true
+        ? {
+            messages: assembled.messages,
+            ...(complete.debug ?? {}),
+          }
+        : complete.debug
+    return {
+      ok: false,
+      code: complete.code ?? 'plugin_complete_failed',
+      ...(req.captureDebug === true ? { messages: assembled.messages } : {}),
+      ...(debug ? { debug } : {}),
+    }
   }
 
   const result: CompleteWithContextResult = {
@@ -212,6 +239,7 @@ async function completeOnce(
     latencyMs: complete.latencyMs,
     messages: assembled.messages,
     preflight: assembled.preflight,
+    ...(complete.debug ? { debug: complete.debug } : {}),
   }
 
   if (req.draft && pluginId.trim()) {
@@ -301,5 +329,7 @@ export function parseCompleteWithContextBody(
       o.responseFormat === 'text' ? 'text' : o.responseFormat === 'json_object' ? 'json_object' : undefined,
     dryRun: o.dryRun === true,
     draft,
+    captureDebug: o.captureDebug === true,
+    fallbackToChat: o.fallbackToChat === true,
   }
 }

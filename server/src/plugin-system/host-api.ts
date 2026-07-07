@@ -1,6 +1,7 @@
 import { applyPromptMacroPipeline } from '../prompt-macros/index.js'
 import { resolvePluginCompleteApi } from '../plugin-api-resolve.js'
 import { runPluginComplete } from '../plugin-complete.js'
+import { runCompleteWithContext } from '../plugin-complete-with-context.js'
 import { runPluginCompletePreflight } from '../plugin-complete-preflight.js'
 import { runPluginMacroExpand } from '../plugin-macro-expand.js'
 import {
@@ -179,6 +180,12 @@ export function createPluginServerHostApi(
     async readPluginPackageText(pluginId, relPath) {
       const hit = await readPluginPackageFile(pluginId, relPath)
       return hit ? hit.body.toString('utf8') : null
+    },
+    async completeWithContext(req) {
+      if (!pid) {
+        return { ok: false, code: 'plugin_id_required' }
+      }
+      return runCompleteWithContext(pid, req, uid)
     },
     regex: {
       async listRules(opts) {

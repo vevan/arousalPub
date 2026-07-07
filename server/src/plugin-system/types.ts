@@ -192,6 +192,10 @@ export interface PluginServerHostApi {
     pluginId: string,
     relPath: string,
   ) => Promise<string | null>
+  /** DOC/39 · 插件二次 LLM 一键管线（Server 侧） */
+  completeWithContext: (
+    req: import('../shared/plugin-context-blocks.js').CompleteWithContextRequest,
+  ) => Promise<import('../shared/plugin-context-blocks.js').CompleteWithContextResult>
   regex: {
     listRules: (opts?: { phases?: RegexPhase[] }) => Promise<RegexRuleSummary[]>
     applyText: (
@@ -276,6 +280,7 @@ export interface PluginServerModule {
   /** DOC/39 · completeWithContext 步骤 1 后格式化 blocks（如 Historian XML） */
   formatPluginContextBlocks?: (
     resolved: import('../shared/plugin-context-blocks.js').PluginContextBlocksSuccess,
+    ctx: { anchorToTurn: number },
   ) => Record<string, string> | Promise<Record<string, string>>
   /** DOC/39 · completeWithContext 出站后解析 draft */
   parseCompleteDraftContent?: (

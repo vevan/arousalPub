@@ -188,7 +188,7 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 
 > **详案**：[`DOC/39-plugin-context-and-prompt-assembly.md`](39-plugin-context-and-prompt-assembly.md)
 
-沙箱化前建议先落地 **resolveContextBlocks + assemblePluginPrompt**，避免 Worker IPC 传递整段自拼 messages。与 §3 chat 注入**不同管线**。
+沙箱化前建议先落地 **扩展 prepareContext + assemblePluginPrompt**（强制两步），避免 Worker IPC 传递整段自拼 messages。与 §3 chat 注入**不同管线**。
 
 ---
 

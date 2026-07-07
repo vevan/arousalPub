@@ -46,7 +46,7 @@
 | [`17`](17-admin-console.md) | ✅ | 本机运维台、DEK 轮换 |
 | [`18`](18-plugin-host-developer-api.md) | ✅ | 插件 API 表 |
 | [`38`](38-plugin-sandbox-and-host-evolution.md) | 规划 | 插件沙箱、注入描述符、complete 白名单 |
-| [`39`](39-plugin-context-and-prompt-assembly.md) | 规划 | 二次 LLM 上下文块、prompt 组装、Historian 泛化 |
+| [`39`](39-plugin-context-and-prompt-assembly.md) | 规划 | 二次 LLM 上下文块、prompt 组装（§5 定案） |
 | [`20`](20-user-file-library.md) | 定案 | 用户文件库 / charFile（未实现） |
 | [`21`](21-conversation-plugin-settings.md) | ✅ | 会话插件 Tab schema |
 | [`23`](23-conversation-branches.md) | ✅ | S1–S5 + 顶栏分支树；persist `turnId` patch；from/to/total 副标题；§9.3 审计已关闭 |

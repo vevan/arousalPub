@@ -240,8 +240,10 @@ interface ConversationBatchContext {
 | 方法 | 说明 |
 |------|------|
 | `complete(req)` | 通用出站补全：`messages[]`；`apiConfigId` 可省略，由宿主解析 |
-| `prepareContext(req)` | 服务端读 turn + 返回 `systemReferenceContext`（参考块）与 `userContent`（仅 `<history>`）；**规划泛化**见 **`DOC/39`** |
-| `completeDraft(req)` | 调用插件 `server.mjs` 的 `completeDraft` hook（扩宏 → preflight → complete → 解析）；**规划**拼 prompt 下沉宿主 |
+| `prepareContext(req)` | **步骤 1** 取块（扩展 `ContextBlockSpec[]`；Historian 旧请求兼容）；**`DOC/39` §3.1** |
+| `assemblePluginPrompt(req)` | **步骤 2** blocks + layout → `messages[]`；强制与步骤 1 分 RPC；**`DOC/39` §3.2** |
+| `completeWithContext(req)` | 沙箱主入口：内部两步 + complete；无 preset；**`DOC/39` §3.3** |
+| `completeDraft(req)` | 迁移后瘦化（解析 JSON + normalize）；**`DOC/39`** |
 
 **`complete` 请求**：
 
@@ -555,7 +557,7 @@ class PluginHostApiError {
 | **组装注入描述符 + post-user 归并** | Phase A · **`DOC/38`** §3 · guidance / trace-keeper order 定案 |
 | **服务端插件 Worker 沙箱** | Phase B · Host API 代理 · **`DOC/38`** §2、§4 |
 | **`runPluginComplete` apiConfigId 白名单** | Phase C · **`DOC/38`** §5 |
-| **插件上下文块 + Prompt 组装** | **`DOC/39`** · `resolveContextBlocks` · `assemblePluginPrompt` · `completeWithContext` |
+| **插件上下文块 + Prompt 组装** | **`DOC/39`** · 扩展 `prepareContext` · `assemblePluginPrompt` · `completeWithContext` |
 | 服务端 `onAssistantReplyPersisted` | 自动触发摘要流水线（当前由 Web lifecycle 负责） |
 | 字段级 permissions 与 turn.plugins 写权限细分 | 部分 enforce 仍随路由演进 |
 

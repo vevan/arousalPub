@@ -67,12 +67,12 @@
 
 ## 5. 二次 LLM 上下文（摘要）
 
-> **已定案**：通用 **上下文块 + prompt 组装**（**`DOC/39`**）；Historian 经 `prepareContextBlocks` → `completeWithContext`。
+> **已定案 · 已落地**：通用 **上下文块 + prompt 组装**（**[`DOC/39`](39-plugin-context-and-prompt-assembly.md) §5**）；Historian 经 `prepareContextBlocks` → `completeWithContext`；宏锚点 **`anchorToTurn`** 显式传入（Historian 用 `toTurn` 同值 · **D3**）。
 
 - XML：`<previous-summaries>` / `<sidecars>`（system reference）；待摘要 `<history>`（user）。
 - 勾选 `regexRuleIds` 时对 `conversation.transcript` 块应用 outgoing 正则；`regexApplyAllTurns` 控制 skip。
-- **宏引擎**：assemble / complete 经 `runPluginMacroExpand`；须传 **`anchorToTurn`**（Historian 用 `toTurn`）。
-- **区间建议**：手动/自动摘要 UI 限制 **≤512 轮**；超出禁用提交并 toast。
+- **宏引擎**：assemble / complete 经 `runPluginMacroExpand`；须传 **`anchorToTurn`**（Historian 用 `toTurn`）；memory 类 draft 另传 **`blockTurns`** 供条目标题 `[MEMO-n]` 计算。
+- **区间建议**：手动/自动摘要 UI 限制 **≤512 轮**（`endTurn - startTurn + 1`）；超出禁用提交并 toast。
 - 服务端：`plugin-context-blocks-resolve.ts`、`plugin-assemble-prompt.ts`、`plugin-complete-with-context.ts`、`plugin-summarize-format.ts`、`plugin-macro-expand.ts`。
 - 插件：`prepare-context.ts`、`plot-summary-context-blocks.ts`、`summary-prompt-layout.ts`、`server/complete-context-hooks.ts`。
 

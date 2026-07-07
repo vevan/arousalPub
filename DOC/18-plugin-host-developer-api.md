@@ -259,30 +259,35 @@ interface ConversationBatchContext {
 
 宿主 HTTP 路由另接受 `conversationId`（Web 侧由 `convId()` 自动注入）；服务端实现见 `plugin-api-resolve.ts`。
 
-**`prepareContextBlocks` 请求**（`conversationId` 由宿主注入）：
+**`prepareContextBlocks` 请求**（`conversationId` 由宿主注入 · 步骤 1 · **`DOC/39` §3.1**）：
 
 ```ts
 {
-  blocks: ContextBlockSpec[]   // 见 shared/plugin-context-blocks.ts · DOC/39
+  blocks: ContextBlockSpec[]   // 如 conversation.transcript · lorebook.entries · transcript.tail
 }
-// → { ok: true, blocks, entriesByBlock, meta }
+// → {
+//   ok: true,
+//   blocks: Record<string, string>,
+//   entriesByBlock?: Record<string, { id; title; content }[]>,
+//   meta: { turnCount?, userDisplayName?, assistantDisplayName? }
+// }
 ```
 
-**`assemblePluginPrompt` 请求**：
+**`assemblePluginPrompt` 请求**（步骤 2 · 强制独立 RPC · **`DOC/39` §3.2**）：
 
 ```ts
 {
-  blocks: Record<string, string>
-  layout: PromptLayout
+  blocks: Record<string, string>       // 步骤 1 产出（含插件 format 后的 lore 块）
+  layout: PromptLayout                 // shared 常量或请求体覆盖
   pluginSettings?: Record<string, unknown>
-  anchorToTurn: number
+  anchorToTurn: number                 // 显式；宿主无默认（Historian 传 toTurn 同值）
   apiConfigId?: string
   dryRun?: boolean
 }
-// → { ok: true, messages[], preflight? }
+// → { ok: true, messages: { role; content }[], preflight? }
 ```
 
-**`completeWithContext` 请求**：
+**`completeWithContext` 请求**（主入口 · **`DOC/39` §3.3**）：
 
 ```ts
 {
@@ -298,10 +303,10 @@ interface ConversationBatchContext {
   draft?: { kind: 'memory' | 'sidecar'; fromTurn?; toTurn?; blockTurns?; sidecarName? }
 }
 // → { ok: true, content?, messages[], draft?, preflight?, usage?, latencyMs?, debug? }
-// 失败：code 如 context_exceeded、parse_failed；context 超限时含 promptTokens / budget；captureDebug 时含 messages / debug
+// 失败：code 如 context_exceeded、parse_failed、turn_range_too_large；超限时含 promptTokens / budget
 ```
 
-**权限**：`plugin.complete`（complete / preflight / completeWithContext）；`prepareContextBlocks` 另需 `conversation.read` + `lorebook.read`。
+**权限**：`plugin.complete`（complete / preflight / `assemblePluginPrompt` / `completeWithContext`）；`prepareContextBlocks` 需 `conversation.read`，**仅当 blocks 含 `lorebook.entries` 时**另需 `lorebook.read`。
 
 **可中断**：`host.ui.progress({ abortable: true })` 时，`complete` / `prepareContextBlocks` / `assemblePluginPrompt` / `completeWithContext` 等会携带 `AbortSignal`。
 
@@ -567,7 +572,7 @@ class PluginHostApiError {
 | **服务端插件 Worker 沙箱** | Phase B · Host API 代理 · **`DOC/38`** §2、§4 |
 | **`runPluginComplete` apiConfigId 白名单** | Phase C · **`DOC/38`** §5 |
 | **插件上下文块 + Prompt 组装** | **`DOC/39`** · 扩展 `prepareContext` · `assemblePluginPrompt` · `completeWithContext` |
-| **通知中心** | **`DOC/40`** · 统一存储/已读/列表 · `host.ui.notify` 迁入 |
+| **通知中心** | **`DOC/40`** · **localStorage** 存储/已读/列表 · `host.ui.notify` 迁入 |
 | 服务端 `onAssistantReplyPersisted` | 自动触发摘要流水线（当前由 Web lifecycle 负责） |
 | 字段级 permissions 与 turn.plugins 写权限细分 | 部分 enforce 仍随路由演进 |
 
@@ -597,5 +602,6 @@ class PluginHostApiError {
 | 2026-06-02 | 核对 `lorebook.ensure` / `applyOrder` 已实现；补 REST 与 `lorebook.write` 权限说明 |
 | 2026-06-08 | `plot-summary` 更名；`reorder-curated` 移除，改为通用 `apply-order`；Historian 排序算法在 `plugins/plot-summary/src/shared/` |
 | 2026-06-23 | §3.14 `host.regex` 标为已实现（2026-06-10）；§4.2 补 `api.regex` |
-| 2026-07-07 | **DOC/39 落地**：`prepareContextBlocks` / `assemblePluginPrompt` / `completeWithContext`；移除 `prepareContext`（旧字段）与 `complete-draft` |
+| 2026-07-07 | **DOC/39 落地**：`prepareContextBlocks` / `assemblePluginPrompt` / `completeWithContext`；移除 legacy prepareContext / complete-draft |
 | 2026-07-07 | **Phase 3**：trace-keeper Separate 迁 `completeWithContext`；契约补 `stripBlockTagsOnToTurn` / `fallbackToChat` / `captureDebug` |
+| 2026-07-07 | §10 通知中心改为 **localStorage**（`DOC/40`）；权限：`lorebook.read` 仅 lore 块时要求 |

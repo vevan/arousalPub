@@ -179,14 +179,14 @@ host.plugin.completeWithContext({
 
 ## 6. 实现分期
 
-### Phase 1 — 抽块 ✅
+### Phase 1 — 抽块 ✅（P0 · 与 [`DOC/04`](04-TODO.md) 对齐）
 
 - [x] `shared/plugin-context-blocks.ts` 契约
 - [x] `plugin-context-blocks-resolve.ts` + `POST …/prepare-context`（仅 `blocks[]`）
 - [x] Historian：`prepare-context.ts` + `plot-summary-context-blocks.ts`
 - [x] 移除 Historian 专用 `plugin-prepare-context.ts` 与旧 prepare 请求体
 
-### Phase 2 — 拼 prompt + 出站 ✅
+### Phase 2 — 拼 prompt + 出站 ✅（P0）
 
 - [x] `plugin-assemble-prompt.ts` + `POST …/assemble-plugin-prompt`
 - [x] `plugin-complete-with-context.ts` + `POST …/complete-with-context`
@@ -194,7 +194,7 @@ host.plugin.completeWithContext({
 - [x] Server hooks：`formatPluginContextBlocks` / `parseCompleteDraftContent`（`complete-context-hooks.ts`）
 - [x] 移除 `complete-draft` 路由与 `completeDraft` hook
 
-### Phase 3 — 其它消费者
+### Phase 3 — 其它消费者 ✅（P1/P2）
 
 - [x] trace-keeper Separate 迁 `conversation.transcript` + shared layout（`TRACE_KEEPER_SEPARATE_LAYOUT` + `completeWithContext`）
 
@@ -230,3 +230,4 @@ host.plugin.completeWithContext({
 | 2026-07-07 | lore catalog、`entriesByBlock`、两步 API、completeWithContext 定案 |
 | 2026-07-07 | **Phase 1–2 落地**；Historian 迁单路径；移除 legacy prepareContext/completeDraft；更新代码索引 |
 | 2026-07-07 | **Phase 3 落地**：trace-keeper Separate；`stripBlockTagsOnToTurn`；`fallbackToChat` / `captureDebug` 审计修复 |
+| 2026-07-07 | §6 分期优先级与 **`DOC/04` P0** 对齐；合并 main 通知中心 localStorage 文档 |

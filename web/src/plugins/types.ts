@@ -21,7 +21,7 @@ export type ChatSession = ReturnType<typeof useChatSession>
 export interface PluginSlotContext {
   turn?: ChatTurnItem
   listIndex?: number
-  /** 群聊 assistant segment 索引（assistant-turn-footer 等） */
+  /** 群聊 assistant segment 索引（assistant-turn / assistant-turn-footer 等） */
   segmentIndex?: number
 }
 

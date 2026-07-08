@@ -439,6 +439,7 @@ export function useChatSession(props: ChatSessionProps) {
       dismissGroupContinue()
       groupChatNoticeOpen.value = false
       groupChatNoticeMessage.value = ''
+      emitTurnDataChanged()
       void regexDisplay.ensureRulesLoaded()
       void loadMessages()
     },

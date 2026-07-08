@@ -23,6 +23,7 @@ import {
   PLACEMENT,
   setPinnedView,
   setRegenerating,
+  syncActiveConversation,
   type PinnedTraceView,
 } from './state.js'
 import { resolveViewSegmentIndex, type TurnViewRef } from './turn-view-segment.js'
@@ -217,6 +218,7 @@ async function refreshPanel(host: PluginHost): Promise<void> {
     const epoch = trackerEpochFromSettings(convSettings)
     const turns = turnsFromHost(host)
     const conversationId = conversationIdFrom(host)
+    const conversationSwitched = syncActiveConversation(conversationId)
     const pinned = getPinnedView(conversationId)
     const regenBusy = isRegenerating(conversationId)
 
@@ -297,6 +299,9 @@ async function refreshPanel(host: PluginHost): Promise<void> {
     host.ui.panel.setHtml(PLACEMENT, PLUGIN_ID, html, {
       revision: bumpPanelRevision(),
     })
+    if (conversationSwitched) {
+      host.refreshSlotButtons()
+    }
   } catch (e) {
     console.warn('[trace-keeper] panel refresh failed', e)
   }
@@ -487,8 +492,9 @@ function pinnedMatches(ctx: TurnCtx, pinned: PinnedTraceView | null): boolean {
 }
 
 export function registerTurnButton(host: PluginHost): void {
-  host.registerSlotButton('assistant-turn-footer', {
+  host.registerSlotButton('assistant-turn', {
     id: `${PLUGIN_ID}-view`,
+    order: -100,
     icon: 'mdi-map-marker-radius-outline',
     tooltipKey: (ctx: TurnCtx) => {
       const ord = ctx.turn?.turnOrdinal

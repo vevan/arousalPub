@@ -6514,9 +6514,24 @@ function logSeparateDebugIfPresent(debug) {
 // plugins/trace-keeper/src/state.ts
 var pinnedConversationId = null;
 var pinnedView = null;
+var activeConversationId = null;
 var regeneratingConversationId = null;
 var regenerating = false;
 var panelRevision = 0;
+function clearPinnedView() {
+  pinnedConversationId = null;
+  pinnedView = null;
+}
+function syncActiveConversation(conversationId) {
+  const cid = conversationId.trim();
+  if (!cid) return false;
+  if (activeConversationId === cid) return false;
+  activeConversationId = cid;
+  clearPinnedView();
+  regenerating = false;
+  regeneratingConversationId = null;
+  return true;
+}
 function getPinnedView(conversationId) {
   const cid = conversationId.trim();
   if (!cid || pinnedConversationId !== cid) return null;
@@ -6525,8 +6540,7 @@ function getPinnedView(conversationId) {
 function setPinnedView(conversationId, view) {
   const cid = conversationId.trim();
   if (!cid || view == null) {
-    pinnedConversationId = null;
-    pinnedView = null;
+    clearPinnedView();
     return;
   }
   pinnedConversationId = cid;
@@ -6695,6 +6709,7 @@ ${SHELL_STYLES}`);
     const epoch = trackerEpochFromSettings(convSettings);
     const turns = turnsFromHost(host);
     const conversationId = conversationIdFrom(host);
+    const conversationSwitched = syncActiveConversation(conversationId);
     const pinned = getPinnedView(conversationId);
     const regenBusy = isRegenerating(conversationId);
     const resolved = resolvePanelView(
@@ -6737,6 +6752,9 @@ ${SHELL_STYLES}`);
     host.ui.panel.setHtml(PLACEMENT, PLUGIN_ID, html, {
       revision: bumpPanelRevision()
     });
+    if (conversationSwitched) {
+      host.refreshSlotButtons();
+    }
   } catch (e) {
     console.warn("[trace-keeper] panel refresh failed", e);
   }
@@ -6904,8 +6922,9 @@ function pinnedMatches(ctx, pinned) {
   return segmentIndexFromCtx(ctx) === pinned.segmentIndex;
 }
 function registerTurnButton(host) {
-  host.registerSlotButton("assistant-turn-footer", {
+  host.registerSlotButton("assistant-turn", {
     id: `${PLUGIN_ID}-view`,
+    order: -100,
     icon: "mdi-map-marker-radius-outline",
     tooltipKey: (ctx) => {
       const ord = ctx.turn?.turnOrdinal;

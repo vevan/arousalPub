@@ -308,8 +308,68 @@
   flex-direction: row-reverse;
 }
 
-.turn-role--assistant .turn-role__head {
-  flex-direction: row;
+.turn-role--assistant {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.turn-role--assistant .turn-role__label {
+  flex-shrink: 0;
+}
+
+.turn-role--assistant .turn-role__trail {
+  display        : flex;
+  align-items    : center;
+  gap            : 1em;
+  margin-left    : auto;
+  min-width      : 0;
+  flex           : 1 1 auto;
+  justify-content: flex-end;
+}
+
+.turn-role--assistant .turn-role__meta {
+  flex         : 0 1 auto;
+  min-width    : 0;
+  max-width    : 100%;
+  overflow     : hidden;
+  text-overflow: ellipsis;
+  white-space  : nowrap;
+  text-align   : right;
+}
+
+.turn-role__indicators {
+  display        : flex;
+  align-items    : center;
+  gap            : 0.1875rem;
+  flex-shrink    : 0;
+  margin-left    : 0;
+}
+
+.turn-role__indicator {
+  display         : inline-flex;
+  align-items     : center;
+  justify-content : center;
+  width           : 1.375rem;
+  height          : 1.375rem;
+  border          : 1px dashed rgba(var(--v-border-color), calc(var(--v-border-opacity) * 0.85));
+  border-radius   : 50%;
+  background      : transparent;
+  color           : rgba(var(--v-theme-on-surface), 0.38);
+  flex-shrink     : 0;
+  line-height     : 0;
+  user-select     : none;
+}
+
+.turn-role__indicator svg {
+  width  : 0.6875rem;
+  height : 0.6875rem;
+}
+
+.turn-role__indicator.is-filled {
+  border-style: solid;
+  border-color: rgba(var(--v-theme-primary), 0.45);
+  color       : rgba(var(--v-theme-primary), 0.88);
+  background  : rgba(var(--v-theme-primary), 0.08);
 }
 
 .turn-role .plugin-slots {
@@ -350,13 +410,6 @@
   letter-spacing: 0.01em;
   text-transform: none;
   min-width     : 0;
-}
-
-.turn-role--assistant .turn-role__meta {
-  flex      : 1 1 auto;
-  overflow  : hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .turn-role--user .turn-role__meta {
@@ -1591,6 +1644,10 @@ summary.reasoning-chain__summary::-webkit-details-marker {
     max-width: 100%;
   }
 
+  .turn-role--assistant {
+    flex-wrap: wrap;
+  }
+
   .turn-role__head {
     flex-wrap: wrap;
     max-width: 100%;
@@ -1609,6 +1666,12 @@ summary.reasoning-chain__summary::-webkit-details-marker {
   .turn-role__meta {
     white-space  : normal;
     overflow-wrap: anywhere;
+  }
+
+  .turn-role--assistant .turn-role__trail {
+    width        : 100%;
+    margin-left  : 0;
+    justify-content: flex-end;
   }
 
   .turn-role--assistant .turn-role__meta {

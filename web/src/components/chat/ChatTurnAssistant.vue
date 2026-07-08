@@ -105,8 +105,16 @@ const speakerAvatarLetter = computed(() =>
       <span v-else>{{ speakerAvatarLetter }}</span>
     </div>
     <div class="turn-role turn-role--assistant">
-      <div class="turn-role__head">
-        <span class="turn-role__label">{{ speakerRoleName }}</span>
+      <span class="turn-role__label">{{ speakerRoleName }}</span>
+      <div class="plugin-slots" data-plugin-slot="assistant-turn">
+        <PluginSlotMount
+          slot-name="assistant-turn"
+          :turn="turn"
+          :list-index="listIndex"
+          :segment-index="segmentIndex"
+        />
+      </div>
+      <div class="turn-role__trail">
         <span
           v-if="
             displayModelName ||
@@ -136,58 +144,37 @@ const speakerAvatarLetter = computed(() =>
             {{ $t('chat.streamingSuffix') }}
           </template>
         </span>
-      </div>
-      <div class="plugin-slots" data-plugin-slot="assistant-turn">
-        <button
-          type="button"
-          class="plugin-slot"
-          :class="{
-            'is-filled':
-              (conn.showReasoningChain && assistantReasoning(turn).length > 0) ||
-              (bubbleLoading() && !!streamingReasoning),
-          }"
-          :data-tt="$t('chat.pluginIndicatorReasoning')"
-          :aria-label="$t('chat.pluginIndicatorReasoning')"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M9 11a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
-            <path d="M17.657 16.657L13.414 20.9a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          class="plugin-slot"
-          :class="{ 'is-filled': bubbleStreaming() }"
-          :data-tt="$t('chat.pluginIndicatorStream')"
-          :aria-label="$t('chat.pluginIndicatorStream')"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          class="plugin-slot"
-          :data-tt="$t('chat.pluginPlaceholderTts')"
-          :aria-label="$t('chat.pluginPlaceholderTts')"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          class="plugin-slot"
-          :data-tt="$t('chat.pluginPlaceholderMore')"
-          :aria-label="$t('chat.pluginPlaceholderMore')"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </button>
+        <div class="turn-role__indicators" aria-label="Turn status">
+          <span
+            v-if="conn.showReasoningChain"
+            class="turn-role__indicator"
+            :class="{
+              'is-filled':
+                assistantReasoning(turn).length > 0 ||
+                (bubbleLoading() && !!streamingReasoning),
+            }"
+            role="img"
+            :data-tt="$t('chat.pluginIndicatorReasoning')"
+            :aria-label="$t('chat.pluginIndicatorReasoning')"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 11a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+              <path d="M17.657 16.657L13.414 20.9a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z" />
+            </svg>
+          </span>
+          <span
+            class="turn-role__indicator"
+            :class="{ 'is-filled': conn.stream }"
+            role="img"
+            :data-tt="$t('chat.pluginIndicatorStream')"
+            :aria-label="$t('chat.pluginIndicatorStream')"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+            </svg>
+          </span>
+        </div>
       </div>
     </div>
 

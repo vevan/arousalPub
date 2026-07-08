@@ -7,9 +7,27 @@ export type PinnedTraceView = {
 
 let pinnedConversationId: string | null = null
 let pinnedView: PinnedTraceView | null = null
+let activeConversationId: string | null = null
 let regeneratingConversationId: string | null = null
 let regenerating = false
 let panelRevision = 0
+
+export function clearPinnedView(): void {
+  pinnedConversationId = null
+  pinnedView = null
+}
+
+/** 切换会话时清除 pinned / regen 标记；返回 true 表示会话 id 已变更 */
+export function syncActiveConversation(conversationId: string): boolean {
+  const cid = conversationId.trim()
+  if (!cid) return false
+  if (activeConversationId === cid) return false
+  activeConversationId = cid
+  clearPinnedView()
+  regenerating = false
+  regeneratingConversationId = null
+  return true
+}
 
 export function getPinnedView(conversationId: string): PinnedTraceView | null {
   const cid = conversationId.trim()
@@ -28,8 +46,7 @@ export function setPinnedView(
 ): void {
   const cid = conversationId.trim()
   if (!cid || view == null) {
-    pinnedConversationId = null
-    pinnedView = null
+    clearPinnedView()
     return
   }
   pinnedConversationId = cid

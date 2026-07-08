@@ -4,19 +4,53 @@ import { diagnoseAssistantTrace } from './parse-block.js'
 import {
   findTracePayloadForTurn,
   renderTracePanelHtml,
-  type TraceTurnRef,
 } from './panel-render.js'
+import { tracePanelMetaForSegment } from './trace-state-resolve.js'
+import type { PinnedTraceView } from './state.js'
+import {
+  activeReceiveFromView,
+  resolveViewSegmentIndex,
+  turnHasAssistantReceives,
+  type TurnViewRef,
+} from './turn-view-segment.js'
 
 function findPriorTraceStateForLive(
   turns: TurnViewRef[],
   epoch: number,
-): { state: Record<string, unknown>; turnOrdinal: number } | null {
-  if (turns.length < 2) return null
+  currentTurn: TurnViewRef,
+  currentSegmentIndex: number,
+): { state: Record<string, unknown>; turnOrdinal: number; segmentIndex: number } | null {
+  for (let si = currentSegmentIndex - 1; si >= 0; si -= 1) {
+    const hit = findTracePayloadForTurn(currentTurn, epoch, si)
+    if (hit) {
+      return {
+        state: hit.state,
+        turnOrdinal: currentTurn.turnOrdinal,
+        segmentIndex: si,
+      }
+    }
+  }
+
   for (let i = turns.length - 2; i >= 0; i -= 1) {
     const turn = turns[i]!
-    const hit = findTracePayloadForTurn(turn, epoch)
+    const segCount = turn.segments?.length ?? 0
+    if (segCount > 0) {
+      for (let si = segCount - 1; si >= 0; si -= 1) {
+        const hit = findTracePayloadForTurn(turn, epoch, si)
+        if (hit) {
+          return {
+            state: hit.state,
+            turnOrdinal: turn.turnOrdinal,
+            segmentIndex: si,
+          }
+        }
+      }
+      continue
+    }
+    const segIdx = resolveViewSegmentIndex(turn)
+    const hit = findTracePayloadForTurn(turn, epoch, segIdx)
     if (hit) {
-      return { state: hit.state, turnOrdinal: turn.turnOrdinal }
+      return { state: hit.state, turnOrdinal: turn.turnOrdinal, segmentIndex: segIdx }
     }
   }
   return null
@@ -33,10 +67,7 @@ export type PanelEmptyReason =
   | 'invalid_state'
   | 'render_failed'
 
-export type TurnViewRef = TraceTurnRef & {
-  turnOrdinal: number
-  receives?: { id?: string; content?: string }[]
-}
+export type { TurnViewRef } from './turn-view-segment.js'
 
 export type PanelViewResolved =
   | {
@@ -44,6 +75,7 @@ export type PanelViewResolved =
       html: string
       mode: 'live' | 'pinned'
       turnOrdinal: number
+      segmentIndex: number
       epoch: number
       editState: Record<string, unknown>
       /** 等待当前轮回复时展示上一轮占位快照：禁用底部操作 */
@@ -56,42 +88,32 @@ export type PanelViewResolved =
       canRegenerate: boolean
       mode: 'live' | 'pinned'
       turnOrdinal?: number
+      segmentIndex?: number
       epoch: number
     }
 
-function activeReceiveContent(turn: TurnViewRef): string {
-  const receives = turn.receives
-  if (!receives?.length) return ''
-  const idx = Math.min(
-    Math.max(0, Math.floor(turn.activeReceiveIndex ?? 0)),
-    receives.length - 1,
-  )
-  const content = receives[idx]?.content
-  return typeof content === 'string' ? content : ''
+function activeReceiveContent(turn: TurnViewRef, segmentIndex: number): string {
+  const rec = activeReceiveFromView(turn, segmentIndex)
+  return typeof rec?.content === 'string' ? rec.content : ''
 }
 
-function activeReceiveId(turn: TurnViewRef): string | undefined {
-  const receives = turn.receives
-  if (!receives?.length) return undefined
-  const idx = Math.min(
-    Math.max(0, Math.floor(turn.activeReceiveIndex ?? 0)),
-    receives.length - 1,
-  )
-  const id = receives[idx]?.id
+function activeReceiveId(turn: TurnViewRef, segmentIndex: number): string | undefined {
+  const id = activeReceiveFromView(turn, segmentIndex)?.id
   return typeof id === 'string' && id.trim() ? id.trim() : undefined
 }
 
 /** 用户已发消息、助手尚未落盘任何 receive（普通 chat 流式等待） */
-function isTurnAwaitingAssistantReply(turn: TurnViewRef): boolean {
-  return !turn.receives?.length
+function isTurnAwaitingAssistantReply(turn: TurnViewRef, segmentIndex: number): boolean {
+  return !activeReceiveFromView(turn, segmentIndex)
 }
 
 /** plugins[] 有条目且 epoch/receive 匹配但 state 非法 */
 function detectInvalidPluginState(
   turn: TurnViewRef,
   epoch: number,
+  segmentIndex: number,
 ): boolean {
-  const targetReceiveId = activeReceiveId(turn)
+  const targetReceiveId = activeReceiveId(turn, segmentIndex)
   const list = Array.isArray(turn.plugins) ? turn.plugins : []
   for (const raw of list) {
     if (!raw || typeof raw !== 'object') continue
@@ -132,22 +154,27 @@ function diagnosisToReason(
 function resolveCurrentTurnEmptyReason(
   turn: TurnViewRef,
   epoch: number,
+  segmentIndex: number,
 ): { reason: PanelEmptyReason; detail?: string } {
-  if (detectInvalidPluginState(turn, epoch)) {
+  if (detectInvalidPluginState(turn, epoch, segmentIndex)) {
     return { reason: 'invalid_state' }
   }
-  const diagnosis = diagnoseAssistantTrace(activeReceiveContent(turn))
+  const diagnosis = diagnoseAssistantTrace(activeReceiveContent(turn, segmentIndex))
   const reason = diagnosisToReason(diagnosis)
   const detail =
     diagnosis.kind === 'json_parse_failed' ? diagnosis.detail : undefined
   return { reason, detail }
 }
 
+function liveSegmentIndex(lastTurn: TurnViewRef): number {
+  return resolveViewSegmentIndex(lastTurn)
+}
+
 export function resolvePanelView(
   bundle: TraceBundle,
   turns: TurnViewRef[],
   epoch: number,
-  pinned: number | null,
+  pinned: PinnedTraceView | null,
   isSeparateRegenerating = false,
 ): PanelViewResolved {
   if (turns.length === 0) {
@@ -165,9 +192,15 @@ export function resolvePanelView(
   const mode: 'live' | 'pinned' = pinned !== null ? 'pinned' : 'live'
   const viewingTurn =
     pinned !== null
-      ? turns.find((t) => t.turnOrdinal === pinned)
+      ? turns.find((t) => t.turnOrdinal === pinned.turnOrdinal)
       : lastTurn
   const viewingOrdinal = viewingTurn?.turnOrdinal
+  const viewingSegmentIndex =
+    pinned !== null
+      ? pinned.segmentIndex
+      : viewingTurn
+        ? liveSegmentIndex(viewingTurn)
+        : 0
   const isCurrentTurnView =
     viewingTurn !== undefined && viewingOrdinal === lastOrdinal
 
@@ -177,7 +210,8 @@ export function resolvePanelView(
       reason: 'no_data_history',
       canRegenerate: false,
       mode,
-      turnOrdinal: pinned ?? undefined,
+      turnOrdinal: pinned?.turnOrdinal,
+      segmentIndex: pinned?.segmentIndex,
       epoch,
     }
   }
@@ -189,15 +223,17 @@ export function resolvePanelView(
       canRegenerate: false,
       mode,
       turnOrdinal: viewingOrdinal,
+      segmentIndex: viewingSegmentIndex,
       epoch,
     }
   }
 
-  const hit = findTracePayloadForTurn(viewingTurn, epoch)
+  const hit = findTracePayloadForTurn(viewingTurn, epoch, viewingSegmentIndex)
   const meta: TracePanelMeta = {
     mode,
     turnOrdinal: viewingOrdinal,
     epoch,
+    ...tracePanelMetaForSegment(viewingTurn, viewingSegmentIndex),
   }
 
   if (hit) {
@@ -208,6 +244,7 @@ export function resolvePanelView(
         html,
         mode,
         turnOrdinal: viewingOrdinal,
+        segmentIndex: viewingSegmentIndex,
         epoch,
         editState: hit.state,
       }
@@ -225,6 +262,7 @@ export function resolvePanelView(
         canRegenerate: isCurrentTurnView,
         mode,
         turnOrdinal: viewingOrdinal,
+        segmentIndex: viewingSegmentIndex,
         epoch,
       }
     }
@@ -237,26 +275,36 @@ export function resolvePanelView(
       canRegenerate: false,
       mode,
       turnOrdinal: viewingOrdinal,
+      segmentIndex: viewingSegmentIndex,
       epoch,
     }
   }
 
   const prior =
-    isTurnAwaitingAssistantReply(viewingTurn)
-      ? findPriorTraceStateForLive(turns, epoch)
+    isTurnAwaitingAssistantReply(viewingTurn, viewingSegmentIndex)
+      ? findPriorTraceStateForLive(
+          turns,
+          epoch,
+          viewingTurn,
+          viewingSegmentIndex,
+        )
       : null
   if (prior) {
+    const priorTurn =
+      turns.find((t) => t.turnOrdinal === prior.turnOrdinal) ?? viewingTurn
     try {
       const html = renderTracePanelHtml(bundle, prior.state, {
         mode,
         turnOrdinal: prior.turnOrdinal,
         epoch,
+        ...tracePanelMetaForSegment(priorTurn, prior.segmentIndex),
       })
       return {
         kind: 'content',
         html,
         mode,
         turnOrdinal: prior.turnOrdinal,
+        segmentIndex: prior.segmentIndex,
         epoch,
         editState: prior.state,
         actionsDisabled: true,
@@ -275,19 +323,25 @@ export function resolvePanelView(
         canRegenerate: true,
         mode,
         turnOrdinal: viewingOrdinal,
+        segmentIndex: viewingSegmentIndex,
         epoch,
       }
     }
   }
 
-  const { reason, detail } = resolveCurrentTurnEmptyReason(viewingTurn, epoch)
+  const { reason, detail } = resolveCurrentTurnEmptyReason(
+    viewingTurn,
+    epoch,
+    viewingSegmentIndex,
+  )
   return {
     kind: 'empty',
     reason,
     detail,
-    canRegenerate: true,
+    canRegenerate: turnHasAssistantReceives(viewingTurn),
     mode,
     turnOrdinal: viewingOrdinal,
+    segmentIndex: viewingSegmentIndex,
     epoch,
   }
 }

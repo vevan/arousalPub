@@ -3,20 +3,68 @@
 > **阶段**：已脱离 MVP（2026-05+）。下列为**仍待做**；已实现能力见 `DOC/03` §14.7、各专题文档、`DOC/README` 归档表、本文 **§已归档**。
 
 ## P0 余项
+
+> **编排原则**（2026-07-08）：先 **宿主 generic 契约**（[`DOC/41`](41-plugin-host-generic-principles.md) · [`DOC/42`](42-host-generic-audit-checklist.md)），再 **插件包**；与 **沙箱**（[`DOC/38`](38-plugin-sandbox-and-host-evolution.md) · 默认关）无架构冲突——`runPluginAction` / Host API 代理面相同。
+
+### Composer Slash
+
 - [ ] **Composer Slash 命令** — 定案见 [`DOC/35`](35-group-chat.md) §2.3（群聊 `/@`）；输入框 `/` 命令层（与聊天 turns、输入历史分离）
   - [x] **S0** 宿主 `submitComposer` 统一入口 + 命令解析/路由（raw → 命令 + 剩余正文）
   - [x] **S1** 内置 `/goto N` 跳转轮次
   - [x] **S2** 内置 `/@ Name [Name…]` — 解析 + strip；`speakerQueue` 已接入 G1 persist/API；**正文裸 `@` 不参与选人**
   - [ ] **S3** 插件注册命令（如 `plot-summary` `/summary 36-55`）；输入历史存 raw 提交
   - [x] **S4** Composer `/` 补全菜单（`#composer-slash-layer` + CSS anchor、`60dvh`、两行列表）
-- [ ] **迹录（trace-keeper）助手消息级状态** — 群聊同 turn 多 segment 时，侧栏 live / pinned 与历史注入仍按 **turn + activeReceive** 解析，只能看到**最后发言 bot** 的 tracker；需改为 **segment / receive 级**（与 swipe 变体同一套 `receiveId` 键，但 UI 与 resolve 未走 `segments[]`）。定案见 [`DOC/30`](30-plugin-trace-keeper.md) §4 · [`DOC/35`](35-group-chat.md) §2.1、§6 · `plugins/trace-keeper/`
-  - **现状**：落盘已有 `turn.plugins[]` + `payload.receiveId`（`mergeTurnPluginEntry`）；群聊 `appendSegmentToTurn` 每段独立 receive；**缺口**在插件 resolve / 侧栏仍读 `turn.receives` + `activeReceiveIndex`，未按 `activeSegmentIndex` 遍历 `turn.segments[]`
-  - [ ] **TK0 审计** — 群聊 3 segment 同 turn 落盘后 chunk 内 `turn.plugins` 是否保留 3 条 trace；列缺口清单（panel / separate / patch / sync-from-assistant）
-  - [ ] **TK1 Resolve 锚点** — `trace-state-resolve.ts` · `panel-empty.ts`：新增 `resolveTraceForSegment(turn, segmentIndex, epoch)`（经 segment 的 `receives[activeReceiveIndex].id` 查 plugins）；live 群聊跟随 `activeSegmentIndex`，单段 turn 行为不变
-  - [ ] **TK2 侧栏 UX** — pinned 支持 `(turnOrdinal, segmentIndex)` 或 segment 内 prev/next；Handlebars `meta` 增 `speakerCharacterId` / `segmentIndex` / `receiveId`；空态 / Separate 指向当前 segment 非整轮
-  - [ ] **TK3 API 与写回** — `regenerate-separate` · `patch-state` · `turn-plugin-sync-from-assistant` 接受 `segmentIndex` 或 `receiveId`；写回仅改对应 segment 的 assistant 块；确认 Continue / regen 不覆盖其它 segment 的 plugins 条目
-  - [ ] **TK4 组装注入（按需）** — 若产品要求下一段 bot 看见各 segment tracker：`resolveLiveTraceStates` 按 segment 展开（非每 turn 一条）；与 outgoing 正则保留 `<ex-trace-keeper>` 策略对齐
-  - [ ] **TK5 验收** — 群聊同 turn 多 bot 各段 state 可切换查看 + Separate；单 bot / swipe 无回归；补 `plugins/trace-keeper/test/` 与 persist 集成用例
+
+### 迹录 segment 级状态（trace-keeper）
+
+群聊同 turn 多 segment 时，侧栏与 server action 已支持 **segment / receive 级** pinned 与写回（TK-P）；**TK-O1** 组装 / Separate transcript 逐 segment 展开 tracker 块。**迹录 segment 级** 主线已闭环（TK-D / TK-H / TK-P / TK-O / TK-V）。
+
+| 层 | 已具备 | 缺口 |
+|----|--------|------|
+| **落盘** | `appendSegmentToTurn` 每段独立 `receiveId` → `turn.plugins[]`（receive-scoped merge）；**TK0 已规范化** | — |
+| **磁盘模型** | **TK-D** 定案 + 一次性 strip 镜像（[`DOC/44`](44-turn-segment-only-storage.md) · TK-D2 ✅） | — |
+| **对话 API** | `GET …/messages` 仅 `segments[]` + `activeSegmentIndex`（无顶层 `receives`） | — |
+| **宿主 Host API** | `readConversationTurnAtOrdinal` 快照含 `segments[]` · `mergeTurnPluginEntriesAtOrdinal` 按 `receiveId` 写 segment | — |
+| **插件包** | TK-P1–P3 + TK-O1 + TK-V 自动化验收 | — |
+
+**推荐顺序**：TK0 审计 → **TK-D** 去镜像 → **TK-H** 宿主 → **TK-P** 插件包 → TK-O（按需）→ TK-V 验收。
+
+#### TK0 · 审计（先行）
+
+- [x] **TK0**（2026-07-08）— 全库 1496 turn / 11 多 segment：**落盘格式已正确**（`receiveId` ↔ segment receive 一一对应）；**无** chunk schema 变更。缺口在 Host API / 插件 resolve（见上表）。规范化迁移动作：补 1 条缺 `receiveId`、 prune 103 条 swipe 孤儿 snapshot、去重 1 条；迁移后 323 条 trace 条目全部满足不变量。审计全文：`.tmp/tk0-audit-report.md`（一次性脚本已执行并删除）。
+
+**定案不变量**（`turn.plugins[]` + `turnPlugins.receive-scoped`，**不**新增 `segmentIndex` 字段）：
+
+1. 每条 trace 必有 `payload.receiveId` ∈ `segments[*].receives[*].id`
+2. 每 `receiveId` 至多一条 trace 条目
+3. assistant 正文与 swipe **仅**存于 `segments[i].receives[]`（**无** turn 级镜像，见 [`DOC/44`](44-turn-segment-only-storage.md)）
+
+#### TK-D · 去 turn.receives 镜像（[`DOC/44`](44-turn-segment-only-storage.md) · 阻塞干净 Host/插件契约）
+
+- [x] **TK-D1 定案 + 代码** — `TurnRecord` 删 `receives` / `activeReceiveIndex`；删 `syncTurnReceivesFromActiveSegment`；API / Host 快照仅 `segments[]`
+- [x] **TK-D2 数据** — 一次性 strip：22 chunk / 1496 turn，1490 条删镜像键（2026-07-08）
+
+#### TK-H · 宿主 generic（[`DOC/41`](41-plugin-host-generic-principles.md) §4 · 阻塞 TK-P3）
+
+- [x] **TK-H1 快照** — `PluginHostTurnSnapshot` 含 `segments` / `activeSegmentIndex`；`readConversationTurnAtOrdinal` · `readConversationTurnsTail` 透传
+- [x] **TK-H2 写回** — `mergeTurnPluginEntriesAtOrdinal` 按 `receiveId` 定位 segment；`plugin-action-route` `turnMerge` 透传；单测 `server/test/merge-turn-plugin-entries.test.ts`；`DOC/18` §4.2–§4.3 同步
+
+#### TK-P · 插件包（`plugins/trace-keeper/`）
+
+- [x] **TK-P1 resolve** — `resolveTraceForSegment` · `turn-view-segment.ts` · `panel-empty` / `trace-state-resolve` 按 segment 解析
+- [x] **TK-P2 侧栏 UX** — pinned `(turnOrdinal, segmentIndex)` · `assistant-turn-footer` 按钮 · segment prev/next · Handlebars `meta` 增 `speakerCharacterId` / `segmentIndex` / `receiveId`
+- [x] **TK-P3 actions** — `patch-state` / `regenerate-separate` body 接受 `segmentIndex` \| `receiveId`；写回经 TK-H `turnMerge`
+
+#### TK-O / TK-V · 按需与验收
+
+- [x] **TK-O1 组装注入** — `resolveLiveTraceStates` 同 turn 多 segment 展开；`formatSummarizeTranscript` 逐 segment 输出；Separate transcript `stripBlockTagsOnToTurnSegmentIndex` + `buildSeparateDialogueMessages` 目标 segment 剥块；与 outgoing 正则 skip 窗口策略一致（[`DOC/30`](30-plugin-trace-keeper.md) §10）
+- [x] **TK-V 验收** — 自动化单测 + `npm run check:ci`；sandbox smoke 见 `npm run test:sandbox -w server`
+
+#### TK-F · 后续（非阻塞 · 择机）
+
+- [x] **TK-F1 主对话 outgoing × 群聊 assemble 集成测试** — `turnsToHistoryMessages` 多 segment + `skipLastNTurns`：断言 assemble 后近轮保留 `<ex-trace-keeper>`、远轮剥除；`buildPerMessageTurnOrdinals` 读 `message.turnOrdinal`（2026-07-08 · `group-chat-outgoing-assemble.test.ts`）
+- [x] **TK-F2 memory 块 outgoing 多 segment** — `applyOutgoingRegexToTurnRecord` 全 segment；`applyOutgoingRegexToMemoryItems` 复用（2026-07-08 · `regex-outgoing.test.ts`）
+- [x] **TK-F3 侧栏浏览器 E2E** — 群聊多 bot：pinned / segment prev-next / patch / Separate 流程单测（2026-07-08 · `sidebar-segment-e2e.test.ts`；无 Playwright 基础设施，以单元级 E2E 替代）
 
 ## P1
 
@@ -27,14 +75,11 @@
 
 ## P2
 
-  - [x] **迁移** — 定案 [`DOC/37`](37-st-import-settings-tab.md)：设置页 **「导入」Tab**（仅 ST 聊天记录 / ST 世界书 / ST 提示词预设）
-  - [x] **Tab 壳 + ST 预设跳转** — `SettingsTab: 'import'` · `ImportSettingsPanel` · `uiContext.requestOpenPromptsImport` → 关设置 · 开提示词库 · `performImportPickFile()`
-  - [x] **ST 世界书** — `st-lorebook-import.ts` · `POST /api/lorebooks/import-st`（preview + import）；`comment→title`、`disable→enabled`、无 key + `vectorized` → `triggerMode: 'vector'`；导入后 reindex
-  - [x] **ST 聊天记录** — SillyTavern JSONL → chunk / `TurnRecord`（开场 + 正文；可选 `reasoning`、`durationMs`）；导入前绑定 `userCharacterId` / `characterIds`；不含 model、swipe、插件 `extra`；流式读 JSONL + 批量写 chunk
-  - [x] **M3 回归与打磨** — multipart 50MB、聊天 preview/import 共用逐行状态机 + import 按 chunk 流式落盘（无 turn 上限）、解析只保留导入字段、失败清理空会话与 index 回滚、warnings/错误码 UI、世界书 3000 条上限
-- [ ] **作者注分层** `DOC/28` — Phase 2 角色 AN + `{{charAuthorsNote}}`（Phase 1 全局 default ✅）
-- [ ] **角色卡内嵌世界书** `DOC/27` — Phase 1 组装（constant + keyword、`position`、叠加内嵌优先）；Phase 2 角色库查看 / 编辑 UI
-- [ ] **用户文件库** `DOC/20` M1–M5
+- [ ] **作者注分层** [`DOC/28`](28-authors-note-layers.md) — Phase 2 角色 AN + `{{charAuthorsNote}}`（Phase 1 全局 default ✅）
+- [ ] **角色卡内嵌世界书** [`DOC/27`](27-embedded-character-book.md) — Phase 1 组装（constant + keyword、`position`、叠加内嵌优先）；Phase 2 角色库查看 / 编辑 UI
+- [ ] **用户文件库** [`DOC/20`](20-user-file-library.md) M1–M5
+
+> ST 导入 Tab / 世界书 / 聊天记录 / M3 回归已关闭，见下方 **§文档**（2026-06～07 · [`DOC/37`](37-st-import-settings-tab.md)）。
 
 ## P3
 
@@ -45,7 +90,9 @@
   - **候选方向**：① viewport `interactive-widget=resizes-content` 试验；② `visualViewport` → CSS 变量替换死 `100dvh`；③ 顶栏/页脚/composer 统一 `safe-area-inset`；④ 验收矩阵：iOS Safari × 键盘开/关 × 地址栏显/隐
 - [ ] **远期记忆 Lance 分片写入** — 当前保留重建后 / `sealChunkMemorySegment` 时的 best-effort `optimize`；待官方 TS 版本暴露 `targetRowsPerFragment` / `maxRowsPerGroup` 后接入可控 compaction，避免大量几十 KB 小 fragment 或单个过大 fragment（见 `DOC/03` §14.5）
 - [ ] **【待讨论】插件后台任务与对话并发** — 例：Historian（`plot-summary`）自动摘要在落盘 idle 后启动，但 **`pluginHold` 会挡住 composer 发新消息**；插件在浏览器内跑、无服务端 job 队列；同会话 chunk **无** per-conversation 读写锁（`prepare-context` 读 turn vs `/api/chat` 落盘）。待议：是否允许摘要与聊天并行、是否弱化/取消 hold、是否引入服务端任务队列或 `runScope({ writeLock: false })` + 会话级锁；见 `DOC/09` §5.1 · `DOC/10` · `plugins/plot-summary/src/lifecycle.ts`
-- [ ] ST 宏扩展备忘 `DOC/14`；Embedding MRL / Reranker / Qwen instruct（低优先级）
+- [ ] ST 宏扩展备忘 [`DOC/14`](14-st-macros-porting.md)；Embedding MRL / Reranker / Qwen instruct（低优先级）
+- [ ] **沙箱 Phase C（可选）** — 包内自维护 API（[`DOC/38`](38-plugin-sandbox-and-host-evolution.md) A3 · 已归档延后项）
+- [ ] **CI 宿主门禁（可选）** — GitHub Actions 接 `check:host-no-plugin-ids` · `verify-host-build-without-bundled`（[`DOC/42`](42-host-generic-audit-checklist.md)）
 
 ## 文档
 
@@ -78,6 +125,8 @@
 - [x] **角色库 userCardList 全链路**（2026-07-04）：Index/API · 角色库 UI · 新建会话 picker 默认 · 单测 — 见 `DOC/03` §12.2–§12.5
 - [x] **远期记忆尾段 buffer 死代码清理**（2026-07-04 · `40407e6`）：删除 `memory-tail-buffer.ts` · `sealChunkMemorySegment` / 增量 upsert 迁入 `memory-index.ts` — 见 `DOC/23` §4.4 · §5.1
 - [x] **Sandbox + 宿主去特化归档**（2026-07-08）：[`DOC/04`](04-TODO.md) §已归档 · [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) · [`DOC/42`](42-host-generic-audit-checklist.md) · [`DOC/43`](43-plugin-api-binding-audit-checklist.md)
+- [x] **ST 导入 Tab 全链路**（2026-06～07）：设置页「导入」· ST 世界书 / 聊天记录 / 预设跳转 · M3 回归 — 见 [`DOC/37`](37-st-import-settings-tab.md)
+- [x] **迹录 segment 级 TK-O1 + 主线闭环**（2026-07-08）：多 segment transcript / resolveLiveTraceStates / Separate 目标 segment 剥块 — 见 [`DOC/30`](30-plugin-trace-keeper.md) §10 · [`DOC/35`](35-group-chat.md) §6 · [`DOC/44`](44-turn-segment-only-storage.md)
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
 

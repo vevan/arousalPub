@@ -74,13 +74,16 @@ export {
 export {
   getActiveSegment,
   getActiveSegmentIndex,
+  findReceiveInTurn,
+  getSegmentAtIndex,
   getTurnGroupChatState,
   getTurnSegments,
   lastSegmentSpeakerId,
   rebuildGroupChatTurnStateFromTurn,
   segmentCountForTurn,
   segmentSkipQuotaDeductionOnRecord,
-  syncTurnReceivesFromActiveSegment,
+  syncTurnSpeakerFromActiveSegment,
+  turnHasAssistantContent,
 } from './segments.js'
 
 export {

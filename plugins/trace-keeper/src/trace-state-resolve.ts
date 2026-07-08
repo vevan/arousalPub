@@ -1,4 +1,9 @@
 import { PLUGIN_ID, type TraceKeeperPayload } from './constants.js'
+import {
+  activeReceiveFromView,
+  type TurnViewRef,
+  viewSegmentAt,
+} from './turn-view-segment.js'
 
 export type TurnTraceLookup = {
   activeReceiveIndex?: number
@@ -50,6 +55,9 @@ export function findTracePayloadInTurnPlugins(
   epoch: number,
   ctx?: TurnTraceLookup,
 ): TraceKeeperPayload | null {
+  if (Array.isArray(ctx?.receives) && ctx.receives.length === 0) {
+    return null
+  }
   const targetReceiveId = activeReceiveId(ctx)
   const list = Array.isArray(plugins) ? plugins : []
 
@@ -74,48 +82,77 @@ export function findTracePayloadInTurnPlugins(
   return null
 }
 
-export type TraceTurnRef = {
-  turnOrdinal: number
-  plugins?: unknown[]
-  activeReceiveIndex?: number
-  receives?: { id?: string; content?: string }[]
-}
+export type TraceTurnRef = TurnViewRef
 
-function turnLookup(turn: TraceTurnRef): TurnTraceLookup {
+function turnLookup(turn: TraceTurnRef, segmentIndex?: number): TurnTraceLookup {
+  const seg = viewSegmentAt(turn, segmentIndex)
+  if (!seg) return {}
   return {
-    activeReceiveIndex: turn.activeReceiveIndex,
-    receives: turn.receives,
+    activeReceiveIndex: seg.activeReceiveIndex,
+    receives: seg.receives,
   }
 }
 
-/** 从 tail 中按时间顺序取最多 limit 条 epoch 匹配、各轮 active receive 的 state */
+/** 指定 segment（或 active / flat receives）的 trace 快照 */
+export function resolveTraceForSegment(
+  turn: TraceTurnRef | undefined,
+  epoch: number,
+  segmentIndex?: number,
+): TraceKeeperPayload | null {
+  if (!turn) return null
+  return findTracePayloadInTurnPlugins(
+    turn.plugins,
+    epoch,
+    turnLookup(turn, segmentIndex),
+  )
+}
+
+function traceSegmentCount(turn: TraceTurnRef): number {
+  const segs = turn.segments ?? []
+  if (segs.length > 0) return segs.length
+  if ((turn.receives?.length ?? 0) > 0) return 1
+  return 0
+}
+
+/** 从 tail 中按时间顺序取最多 limit 条 epoch 匹配 trace（同 turn 多 segment 逐段展开） */
 export function resolveLiveTraceStates(
   turns: TraceTurnRef[],
   epoch: number,
   limit: number,
-): { state: Record<string, unknown>; turnOrdinal: number }[] {
+): { state: Record<string, unknown>; turnOrdinal: number; segmentIndex: number }[] {
   const cap = Math.max(0, Math.floor(limit))
   if (cap <= 0 || turns.length === 0) return []
-  const out: { state: Record<string, unknown>; turnOrdinal: number }[] = []
+  const out: {
+    state: Record<string, unknown>
+    turnOrdinal: number
+    segmentIndex: number
+  }[] = []
   for (let i = turns.length - 1; i >= 0 && out.length < cap; i -= 1) {
     const turn = turns[i]!
-    const hit = findTracePayloadInTurnPlugins(turn.plugins, epoch, turnLookup(turn))
-    if (hit) {
-      out.push({ state: hit.state, turnOrdinal: turn.turnOrdinal })
+    const segCount = traceSegmentCount(turn)
+    for (let si = segCount - 1; si >= 0 && out.length < cap; si -= 1) {
+      const hit = resolveTraceForSegment(turn, epoch, si)
+      if (hit) {
+        out.push({
+          state: hit.state,
+          turnOrdinal: turn.turnOrdinal,
+          segmentIndex: si,
+        })
+      }
     }
   }
   out.reverse()
   return out
 }
 
-/** live 视图：仅最后一轮 active receive 的 plugins 快照 */
+/** live 视图：最后一轮 active segment 的 plugins 快照 */
 export function resolveLiveTraceState(
   turns: TraceTurnRef[],
   epoch: number,
 ): { state: Record<string, unknown>; turnOrdinal: number } | null {
   if (turns.length === 0) return null
   const turn = turns[turns.length - 1]!
-  const hit = findTracePayloadInTurnPlugins(turn.plugins, epoch, turnLookup(turn))
+  const hit = resolveTraceForSegment(turn, epoch)
   if (!hit) return null
   return { state: hit.state, turnOrdinal: turn.turnOrdinal }
 }
@@ -123,8 +160,27 @@ export function resolveLiveTraceState(
 export function findTracePayloadForTurn(
   turn: TraceTurnRef | undefined,
   epoch: number,
+  segmentIndex?: number,
 ): TraceKeeperPayload | null {
-  if (!turn) return null
-  return findTracePayloadInTurnPlugins(turn.plugins, epoch, turnLookup(turn))
+  return resolveTraceForSegment(turn, epoch, segmentIndex)
 }
-
+
+export function tracePanelMetaForSegment(
+  turn: TraceTurnRef,
+  segmentIndex: number,
+): {
+  segmentIndex: number
+  receiveId?: string
+  speakerCharacterId?: string
+} {
+  const rec = activeReceiveFromView(turn, segmentIndex)
+  const speaker =
+    viewSegmentAt(turn, segmentIndex)?.speakerCharacterId?.trim() ||
+    turn.speakerCharacterId?.trim() ||
+    undefined
+  return {
+    segmentIndex,
+    ...(rec?.id?.trim() ? { receiveId: rec.id.trim() } : {}),
+    ...(speaker ? { speakerCharacterId: speaker } : {}),
+  }
+}

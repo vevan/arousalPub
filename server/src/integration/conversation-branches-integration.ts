@@ -827,7 +827,7 @@ async function runIntegration(): Promise<void> {
       conversationId,
       forkTurnId: forkTurn.turnId,
       label: '分支 1',
-      forkMessageId: forkTurn.receives[0]?.id,
+      forkMessageId: forkTurn.segments[0]?.receives[0]?.id,
     })
     assert.ok(!('error' in created))
     assert.equal(created.path, 'branch1')

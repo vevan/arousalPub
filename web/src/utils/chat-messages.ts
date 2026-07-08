@@ -7,7 +7,7 @@ import type {
   PersistTurnToServerResult,
 } from '@/types/chat-turn'
 import { translateApiError } from '@/utils/api-error-message'
-import { buildTurnPatchRequestBody } from '@/utils/group-chat-turn'
+import { buildTurnPatchRequestBody, getActiveSegmentIndex, getTurnSegments } from '@/utils/group-chat-turn'
 import { allocateShortId } from '@/utils/short-id'
 
 type MessagesApiTurn = {
@@ -303,8 +303,45 @@ export async function persistTurnsBatchToServer(
 export function mergeTurnFromPatchPersist(
   turn: ChatTurnItem,
   payload: TurnPatchPersistPayload,
+  segmentIndex?: number,
 ): ChatTurnItem {
   const byId = new Map(payload.receives.map((r) => [r.id, r]))
+  const segIdx = segmentIndex ?? getActiveSegmentIndex(turn)
+  const segments = getTurnSegments(turn)
+  if (segments.length > 0) {
+    const seg = segments[segIdx]
+    if (!seg) return turn
+    const receives = seg.receives.map((r) => {
+      const fromServer = byId.get(r.id)
+      if (!fromServer) return r
+      const item: ReceiveItem = {
+        ...r,
+        content: fromServer.content,
+      }
+      if (typeof fromServer.reasoning === 'string' && fromServer.reasoning.length > 0) {
+        item.reasoning = fromServer.reasoning
+      } else {
+        delete item.reasoning
+      }
+      return item
+    })
+    let ai = payload.activeReceiveIndex
+    if (receives.length > 0) {
+      ai = Math.min(Math.max(0, ai), receives.length - 1)
+    }
+    const nextSegments = [...segments]
+    nextSegments[segIdx] = { ...seg, receives, activeReceiveIndex: ai }
+    const activeSeg = nextSegments[segIdx]!
+    return {
+      ...turn,
+      user: payload.finalUserText,
+      segments: nextSegments,
+      activeSegmentIndex: segIdx,
+      receives: activeSeg.receives,
+      activeReceiveIndex: activeSeg.activeReceiveIndex,
+      ...(payload.plugins !== undefined ? { plugins: payload.plugins } : {}),
+    }
+  }
   const receives = turn.receives.map((r) => {
     const fromServer = byId.get(r.id)
     if (!fromServer) return r
@@ -351,7 +388,7 @@ export async function persistTurnToServer(
     if (body?.ok !== true || typeof body.finalUserText !== 'string') {
       return { ok: true, turn }
     }
-    return { ok: true, turn: mergeTurnFromPatchPersist(turn, body) }
+    return { ok: true, turn: mergeTurnFromPatchPersist(turn, body, opts?.segmentIndex) }
   } catch {
     return { ok: false }
   }

@@ -25,4 +25,6 @@ export {
   findTracePayloadInTurnPlugins,
   resolveLiveTraceState,
   resolveLiveTraceStates,
+  resolveTraceForSegment,
+  tracePanelMetaForSegment,
 } from './trace-state-resolve.js'

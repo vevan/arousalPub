@@ -734,8 +734,7 @@ export async function buildConversationOutboundMessages(
   ): OutgoingRegexContext => ({
     tailOrdinal,
     sourceHistoryMessages: memoryPipeline.recentHistoryMessages.map((m) => ({
-      role: m.role,
-      content: m.content,
+      ...m,
     })),
     sourceHistoryTurnOrdinals: memoryPipeline.recentHistoryTurnOrdinals,
     trimmedHistoryMessages: state.historyMessages.map((m) => ({ ...m })),
@@ -796,8 +795,7 @@ export async function buildConversationOutboundMessages(
   const outgoingRegexCtx: OutgoingRegexContext = {
     tailOrdinal,
     sourceHistoryMessages: memoryPipeline.recentHistoryMessages.map((m) => ({
-      role: m.role,
-      content: m.content,
+      ...m,
     })),
     sourceHistoryTurnOrdinals: memoryPipeline.recentHistoryTurnOrdinals,
     trimmedHistoryMessages: trimmedHistoryForMacros(trimState.historyMessages),

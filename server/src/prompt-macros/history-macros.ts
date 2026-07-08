@@ -1,5 +1,5 @@
 import { getTurnUserText, type TurnRecord } from '../chat-storage.js'
-import { getTurnSegments } from '../group-chat-turn.js'
+import { getActiveSegment, getActiveSegmentIndex, getTurnSegments } from '../group-chat-turn.js'
 
 export interface FlatHistoryMessage {
   role: 'user' | 'assistant'
@@ -76,15 +76,24 @@ export function flattenTurnsToChatMessages(
   return out
 }
 
-function swipeFieldsForTurn(turn: TurnRecord | null | undefined): {
+function swipeFieldsForTurn(
+  turn: TurnRecord | null | undefined,
+  defaultSpeakerCharacterId = '',
+): {
   lastSwipeId: string
   currentSwipeId: string
 } {
   if (!turn) return { lastSwipeId: '0', currentSwipeId: '0' }
-  const receives = turn.receives ?? []
+  const defaultSpeaker =
+    defaultSpeakerCharacterId.trim() ||
+    turn.speakerCharacterId?.trim() ||
+    turn.segments[0]?.speakerCharacterId?.trim() ||
+    ''
+  const seg = getActiveSegment(turn, defaultSpeaker)
+  const receives = seg?.receives ?? []
   if (receives.length === 0) return { lastSwipeId: '0', currentSwipeId: '0' }
   const activeIdx = Math.min(
-    Math.max(0, Math.floor(turn.activeReceiveIndex) || 0),
+    Math.max(0, Math.floor(seg?.activeReceiveIndex ?? 0) || 0),
     receives.length - 1,
   )
   return {

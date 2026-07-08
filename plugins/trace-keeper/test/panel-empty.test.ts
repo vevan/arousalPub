@@ -79,6 +79,53 @@ describe('resolvePanelView', () => {
     }
   })
 
+  it('shows prior segment trace while waiting for next bot in same turn', () => {
+    const r = resolvePanelView(
+      bundle,
+      [
+        {
+          turnOrdinal: 0,
+          activeSegmentIndex: 1,
+          segments: [
+            {
+              speakerCharacterId: 'char-a',
+              receives: [{ id: 'r0', content: 'alice ok' }],
+              activeReceiveIndex: 0,
+            },
+            {
+              speakerCharacterId: 'char-b',
+              receives: [],
+              activeReceiveIndex: 0,
+            },
+          ],
+          plugins: [
+            {
+              pluginId: 'trace-keeper',
+              payload: {
+                state: {
+                  scene: { location: 'AlicePrior', time: 't', weather: 'w' },
+                  mood: 'm',
+                },
+                epoch: 0,
+                receiveId: 'r0',
+              },
+            },
+          ],
+        },
+      ],
+      epoch,
+      null,
+      false,
+    )
+    assert.equal(r.kind, 'content')
+    if (r.kind === 'content') {
+      assert.match(r.html, /AlicePrior/)
+      assert.equal(r.turnOrdinal, 0)
+      assert.equal(r.segmentIndex, 0)
+      assert.equal(r.actionsDisabled, true)
+    }
+  })
+
   it('shows prior turn state while current turn pending (chat wait)', () => {
     const r = resolvePanelView(
       bundle,
@@ -220,7 +267,7 @@ describe('resolvePanelView', () => {
         },
       ],
       epoch,
-      1,
+      { turnOrdinal: 1, segmentIndex: 0 },
     )
     assert.equal(r.kind, 'empty')
     if (r.kind === 'empty') {
@@ -307,6 +354,99 @@ describe('resolvePanelView', () => {
     if (r.kind === 'empty') {
       assert.equal(r.reason, 'render_failed')
       assert.equal(r.canRegenerate, true)
+    }
+  })
+
+  it('group chat: live view shows active segment trace', () => {
+    const multiSegTurn = {
+      turnOrdinal: 2,
+      activeSegmentIndex: 1,
+      segments: [
+        {
+          speakerCharacterId: 'char-a',
+          receives: [{ id: 'r0', content: '' }],
+          activeReceiveIndex: 0,
+        },
+        {
+          speakerCharacterId: 'char-b',
+          receives: [{ id: 'r1', content: '' }],
+          activeReceiveIndex: 0,
+        },
+      ],
+      plugins: [
+        {
+          pluginId: 'trace-keeper',
+          payload: {
+            state: { scene: { location: 'AliceLoc', time: 't', weather: 'w' }, mood: 'm' },
+            epoch: 0,
+            receiveId: 'r0',
+          },
+        },
+        {
+          pluginId: 'trace-keeper',
+          payload: {
+            state: { scene: { location: 'BettyLoc', time: 't', weather: 'w' }, mood: 'm' },
+            epoch: 0,
+            receiveId: 'r1',
+          },
+        },
+      ],
+    }
+    const r = resolvePanelView(bundle, [multiSegTurn], epoch, null)
+    assert.equal(r.kind, 'content')
+    if (r.kind === 'content') {
+      assert.match(r.html, /BettyLoc/)
+      assert.equal(r.segmentIndex, 1)
+      assert.equal(r.turnOrdinal, 2)
+    }
+  })
+
+  it('group chat: pinned segment switches trace view', () => {
+    const multiSegTurn = {
+      turnOrdinal: 2,
+      activeSegmentIndex: 1,
+      segments: [
+        {
+          speakerCharacterId: 'char-a',
+          receives: [{ id: 'r0', content: '' }],
+          activeReceiveIndex: 0,
+        },
+        {
+          speakerCharacterId: 'char-b',
+          receives: [{ id: 'r1', content: '' }],
+          activeReceiveIndex: 0,
+        },
+      ],
+      plugins: [
+        {
+          pluginId: 'trace-keeper',
+          payload: {
+            state: { scene: { location: 'AliceLoc', time: 't', weather: 'w' }, mood: 'm' },
+            epoch: 0,
+            receiveId: 'r0',
+          },
+        },
+        {
+          pluginId: 'trace-keeper',
+          payload: {
+            state: { scene: { location: 'BettyLoc', time: 't', weather: 'w' }, mood: 'm' },
+            epoch: 0,
+            receiveId: 'r1',
+          },
+        },
+      ],
+    }
+    const r = resolvePanelView(
+      bundle,
+      [multiSegTurn],
+      epoch,
+      { turnOrdinal: 2, segmentIndex: 0 },
+    )
+    assert.equal(r.kind, 'content')
+    if (r.kind === 'content') {
+      assert.match(r.html, /AliceLoc/)
+      assert.equal(r.segmentIndex, 0)
+      assert.equal(r.mode, 'pinned')
     }
   })
 })

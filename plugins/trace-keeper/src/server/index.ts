@@ -14,6 +14,7 @@ import { extractTraceKeeperState } from '../parse-block.js'
 import { buildTrackerSystemPrompt } from '../tracker-prompt.js'
 import { regenerateSeparateState } from './separate-regenerate.js'
 import { patchTraceKeeperState } from './patch-state.js'
+import { segmentIndexForAction } from '../host-segment-snapshot.js'
 
 /** DOC/38 §3.2 · manifest `assembleInjection.slots.default` 可覆盖 */
 const TRACE_KEEPER_CHAT_DEPTH = 0
@@ -169,9 +170,37 @@ export async function runPluginAction(
         ? Math.round(body.turnOrdinal)
         : undefined
     const debugCapture = body.debugCapture === true
+    const hostApi = api as Parameters<typeof regenerateSeparateState>[1]
+    const targetOrdinal =
+      turnOrdinal ??
+      (await hostApi.readConversationTurnsTail(conversationId, 1)).slice(-1)[0]
+        ?.turnOrdinal
+    let segmentIndex: number | undefined
+    if (typeof targetOrdinal === 'number') {
+      const snap = await hostApi.readConversationTurnAtOrdinal(
+        conversationId,
+        targetOrdinal,
+      )
+      if (snap) {
+        const resolved = segmentIndexForAction(snap, body)
+        if (!resolved.ok) {
+          return {
+            ok: false as const,
+            code: resolved.code,
+            status: resolved.status,
+          }
+        }
+        segmentIndex = resolved.segmentIndex
+      }
+    }
     const result = await regenerateSeparateState(
-      { conversationId, turnOrdinal, debugCapture },
-      api as Parameters<typeof regenerateSeparateState>[1],
+      {
+        conversationId,
+        turnOrdinal,
+        segmentIndex,
+        debugCapture,
+      },
+      hostApi,
     )
     if (!result.ok) {
       const status =
@@ -205,9 +234,33 @@ export async function runPluginAction(
       typeof body.turnOrdinal === 'number' && Number.isFinite(body.turnOrdinal)
         ? Math.round(body.turnOrdinal)
         : NaN
+    const hostApi = api as Parameters<typeof patchTraceKeeperState>[1]
+    let segmentIndex: number | undefined
+    if (Number.isFinite(turnOrdinal)) {
+      const snap = await hostApi.readConversationTurnAtOrdinal(
+        conversationId,
+        Math.round(turnOrdinal),
+      )
+      if (snap) {
+        const resolved = segmentIndexForAction(snap, body)
+        if (!resolved.ok) {
+          return {
+            ok: false as const,
+            code: resolved.code,
+            status: resolved.status,
+          }
+        }
+        segmentIndex = resolved.segmentIndex
+      }
+    }
     const result = await patchTraceKeeperState(
-      { conversationId, turnOrdinal, state: body.state },
-      api as Parameters<typeof patchTraceKeeperState>[1],
+      {
+        conversationId,
+        turnOrdinal,
+        state: body.state,
+        ...(segmentIndex !== undefined ? { segmentIndex } : {}),
+      },
+      hostApi,
     )
     if (!result.ok) {
       const status =

@@ -62,6 +62,7 @@ AssistantSegment {
 | **每 bot 发言额度** | `members[].speakQuota`（默认见 §2.7）；**实际发言**与 **掷骰失败**均消耗额度（见 §2.7）；**抢麦失败不扣额度** |
 | **turn 段数上限** | `maxSegmentsPerTurn`（可选）；达上限结束本 user turn |
 | **regenerate / swipe** | 仅作用于 **当前 segment** 的 receive |
+| **落盘** | assistant 正文 **仅**在 `segments[i].receives[]`（无 turn 级镜像，见 [`DOC/44`](44-turn-segment-only-storage.md)） |
 | **迁移** | 旧 turn 无 speaker → 包装为单 segment，`speakerCharacterId = characterIds[0]` |
 
 组装 history：按 segment 顺序展开多条 assistant（带 speaker 标记）；生成时 `{{char}}` = **当前 segment 的 speaker**（非固定 char1）。
@@ -398,6 +399,7 @@ charN        → 可选；characterIds[N-1]（Phase 2+）
 - `[NEXT@]` 提取在 **turn-plugin 链固定 phase**（模型原文阶段）。
 - trace-keeper 在正文后 append 块 **不影响** 已提取的 `nextSpeakerHint`。
 - trace 块内的 `[NEXT@…]` **不**当接续标记。
+- **群聊多 segment（2026-07-08 · TK-O1）**：组装 history / Separate transcript 按 segment 逐条 assistant 输出；近 `skipLastNTurns` 轮各 segment 正文内保留 `<ex-trace-keeper>` 供下一段 bot 续写；Separate 仅剥 **目标 segment** 块。见 [`DOC/30`](30-plugin-trace-keeper.md) §10 · [`DOC/44`](44-turn-segment-only-storage.md)。
 
 ---
 

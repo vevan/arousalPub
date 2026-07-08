@@ -15,6 +15,16 @@ import { TRACE_KEEPER_SEPARATE_LAYOUT } from '../shared/separate-prompt-layout.j
 import { buildSeparateSystemPrompt } from '../tracker-prompt.js'
 import type { TraceKeeperSeparateDebug } from '../separate-debug.js'
 import type { CompleteWithContextRequest } from '../../../shared/plugin-context-blocks.js'
+import {
+  activeSegmentReceive,
+  type HostTurnWithSegments,
+} from '../host-segment-snapshot.js'
+
+type HostTurnSnapshot = HostTurnWithSegments & {
+  turnOrdinal: number
+  userText?: string
+  plugins: unknown[]
+}
 
 type SeparateApi = {
   getUserPluginSettings: (pluginId: string) => Promise<Record<string, unknown>>
@@ -25,25 +35,11 @@ type SeparateApi = {
   readConversationTurnsTail: (
     conversationId: string,
     limit?: number,
-  ) => Promise<
-    {
-      turnOrdinal: number
-      activeReceiveIndex: number
-      userText?: string
-      plugins: unknown[]
-      receives: { id: string; content: string }[]
-    }[]
-  >
+  ) => Promise<HostTurnSnapshot[]>
   readConversationTurnAtOrdinal: (
     conversationId: string,
     turnOrdinal: number,
-  ) => Promise<{
-    turnOrdinal: number
-    activeReceiveIndex: number
-    userText?: string
-    plugins: unknown[]
-    receives: { id: string; content: string }[]
-  } | null>
+  ) => Promise<HostTurnSnapshot | null>
   completeWithContext: (
     req: CompleteWithContextRequest,
   ) => Promise<
@@ -68,6 +64,7 @@ type SeparateApi = {
 export interface RegenerateSeparateInput {
   conversationId: string
   turnOrdinal?: number
+  segmentIndex?: number
   /** 会话 auditDebug.enabled 时由路由传入 */
   debugCapture?: boolean
 }
@@ -100,21 +97,6 @@ function mergeSeparateDebug(
   }
 }
 
-function activeReceive(
-  turn: {
-    activeReceiveIndex: number
-    receives: { id: string; content: string }[]
-  },
-): { id: string; content: string } | null {
-  const receives = turn.receives
-  if (!receives.length) return null
-  const idx = Math.min(
-    Math.max(0, Math.floor(turn.activeReceiveIndex)),
-    receives.length - 1,
-  )
-  return receives[idx] ?? null
-}
-
 export async function regenerateSeparateState(
   input: RegenerateSeparateInput,
   api: SeparateApi,
@@ -145,7 +127,7 @@ export async function regenerateSeparateState(
   )
   if (!turn) return { ok: false, code: 'turn_not_found' }
 
-  const receive = activeReceive(turn)
+  const receive = activeSegmentReceive(turn, input.segmentIndex)
   if (!receive?.id) return { ok: false, code: 'receive_not_found' }
 
   const assistantText = stripTraceKeeperBlocks(receive.content)
@@ -163,6 +145,10 @@ export async function regenerateSeparateState(
   const blocks = prepareTraceKeeperSeparateContextBlocks({
     targetOrdinal,
     windowTurnCount,
+    ...(typeof input.segmentIndex === 'number' &&
+    Number.isFinite(input.segmentIndex)
+      ? { targetSegmentIndex: Math.round(input.segmentIndex) }
+      : {}),
   })
 
   const result = await api.completeWithContext({

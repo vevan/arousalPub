@@ -1,10 +1,13 @@
-import { getTurnUserText, patchTurnDisplayContent, type TurnRecord } from './chat-storage.js'
-import { applyRegexRulesToText, filterRegexRules } from './regex-apply.js'
-import { resolveOutgoingSkipTailOrdinal } from './regex-outgoing.js'
+import { getTurnUserText, type TurnRecord } from './chat-storage.js'
+import { getTurnSegments } from './group-chat-turn.js'
+import { filterRegexRules } from './regex-apply.js'
+import { applyOutgoingRegexToTurnRecord } from './regex-outgoing.js'
 import { readRegexRulesDocument } from './regex-rules-file.js'
 import type { RegexRule } from './regex-rules-types.js'
-import { normalizeXmlTextBeforeProcessing } from './prompt-xml.js'
-import { assistantTextFromTurn, wrapTurnRoleLine } from './turn-memory-xml.js'
+import {
+  assistantTextFromSegment,
+  wrapTurnRoleLine,
+} from './turn-memory-xml.js'
 
 export const PLUGIN_SUMMARIZE_BATCH_MAX = 50
 
@@ -33,45 +36,9 @@ export function applyOutgoingRegexToSummaryTurn(
   regexApplyAllTurns = false,
 ): TurnRecord {
   if (rules.length === 0) return turn
-
-  const ord = turn.turnOrdinal
-  const skipTailOrdinal = resolveOutgoingSkipTailOrdinal(tailOrdinal)
-  const regexCtxBase = {
-    phase: 'outgoing' as const,
-    tailOrdinal: skipTailOrdinal,
-    ...(regexApplyAllTurns ? { ignoreSkipLastNTurns: true as const } : {}),
-  }
-  let userText = normalizeXmlTextBeforeProcessing(getTurnUserText(turn))
-  let userChanged = false
-  if (userText.trim()) {
-    const next = applyRegexRulesToText(userText, rules, {
-      ...regexCtxBase,
-      field: 'user',
-      turnOrdinal: ord,
-    })
-    if (next !== userText) {
-      userText = next
-      userChanged = true
-    }
-  }
-
-  let assistant = normalizeXmlTextBeforeProcessing(assistantTextFromTurn(turn))
-  let assistantChanged = false
-  if (assistant.trim()) {
-    const next = applyRegexRulesToText(assistant, rules, {
-      ...regexCtxBase,
-      field: 'assistant',
-      turnOrdinal: ord,
-    })
-    if (next !== assistant) {
-      assistant = next
-      assistantChanged = true
-    }
-  }
-
-  if (!userChanged && !assistantChanged) return turn
-
-  return patchTurnDisplayContent(turn, userText, assistant)
+  return applyOutgoingRegexToTurnRecord(turn, rules, tailOrdinal, {
+    regexApplyAllTurns,
+  })
 }
 
 export function applyOutgoingRegexToSummaryTurns(
@@ -98,15 +65,59 @@ export function formatSummarizeTranscript(
   turns: TurnRecord[],
   _userName: string,
   _assistantName: string,
+  defaultSpeakerCharacterId = '',
 ): string {
+  const defaultSpeaker = defaultSpeakerCharacterId.trim()
   const lines: string[] = []
   for (const t of turns) {
     const userLine = wrapSummarizeTurnLine('user', getTurnUserText(t))
     if (userLine) lines.push(userLine)
-    const charLine = wrapSummarizeTurnLine('assistant', assistantTextFromTurn(t))
-    if (charLine) lines.push(charLine)
+    for (const seg of getTurnSegments(t, defaultSpeaker)) {
+      const charLine = wrapSummarizeTurnLine(
+        'assistant',
+        assistantTextFromSegment(seg),
+      )
+      if (charLine) lines.push(charLine)
+    }
   }
   return lines.join('\n')
+}
+
+/** 剥除 toTurn 指定 segment active receive 上的插件块标签 */
+export function stripBlockTagsOnTurnSegment(
+  turn: TurnRecord,
+  tags: string[],
+  segmentIndex?: number,
+): TurnRecord {
+  if (tags.length === 0 || turn.segments.length === 0) return turn
+  const segIdx =
+    typeof segmentIndex === 'number' && Number.isFinite(segmentIndex)
+      ? Math.min(
+          Math.max(0, Math.round(segmentIndex)),
+          turn.segments.length - 1,
+        )
+      : Math.min(
+          Math.max(0, Math.floor(turn.activeSegmentIndex)),
+          turn.segments.length - 1,
+        )
+  const seg = turn.segments[segIdx]
+  if (!seg) return turn
+  const receives = [...seg.receives]
+  const activeIdx = Math.min(
+    Math.max(0, Math.floor(seg.activeReceiveIndex) || 0),
+    Math.max(0, receives.length - 1),
+  )
+  const rec = receives[activeIdx]
+  if (!rec) return turn
+  const stripped = stripBlockTagsFromAssistant(rec.content, tags)
+  if (stripped === rec.content) return turn
+  receives[activeIdx] = { ...rec, content: stripped }
+  return {
+    ...turn,
+    segments: turn.segments.map((s, i) =>
+      i === segIdx ? { ...s, receives } : s,
+    ),
+  }
 }
 
 export function asPluginString(v: unknown): string {

@@ -96,7 +96,7 @@ export async function runConversationRegexBatchApply(
 
   if (hasEnabledPersistRules(persistRules)) {
     for (const turn of turns) {
-      if (!turn.receives?.length) continue
+      if (!turn.segments.some((s) => (s.receives?.length ?? 0) > 0)) continue
       const original = turnRecordToContentPatch(turn)
       const normalized = applyRegexPersistToTurnPatch(
         doc.rules,

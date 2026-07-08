@@ -1,29 +1,42 @@
 import { PLUGIN_ID } from './constants.js'
 
+export type PinnedTraceView = {
+  turnOrdinal: number
+  segmentIndex: number
+}
+
 let pinnedConversationId: string | null = null
-let pinnedTurnOrdinal: number | null = null
+let pinnedView: PinnedTraceView | null = null
 let regeneratingConversationId: string | null = null
 let regenerating = false
 let panelRevision = 0
 
-export function getPinnedTurnOrdinal(conversationId: string): number | null {
+export function getPinnedView(conversationId: string): PinnedTraceView | null {
   const cid = conversationId.trim()
   if (!cid || pinnedConversationId !== cid) return null
-  return pinnedTurnOrdinal
+  return pinnedView
 }
 
-export function setPinnedTurnOrdinal(
+/** @deprecated 使用 getPinnedView */
+export function getPinnedTurnOrdinal(conversationId: string): number | null {
+  return getPinnedView(conversationId)?.turnOrdinal ?? null
+}
+
+export function setPinnedView(
   conversationId: string,
-  ord: number | null,
+  view: PinnedTraceView | null,
 ): void {
   const cid = conversationId.trim()
-  if (!cid || ord == null) {
+  if (!cid || view == null) {
     pinnedConversationId = null
-    pinnedTurnOrdinal = null
+    pinnedView = null
     return
   }
   pinnedConversationId = cid
-  pinnedTurnOrdinal = ord
+  pinnedView = {
+    turnOrdinal: view.turnOrdinal,
+    segmentIndex: Math.max(0, Math.floor(view.segmentIndex)),
+  }
 }
 
 export function isRegenerating(conversationId: string): boolean {

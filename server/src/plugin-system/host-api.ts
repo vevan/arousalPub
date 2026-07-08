@@ -12,9 +12,7 @@ import {
   toRegexRuleSummary,
 } from '../regex-apply.js'
 import { readRegexRulesDocument } from '../regex-rules-file.js'
-import type {
-  RegexApplyContext,
-} from '../regex-rules-types.js'
+import type { RegexApplyContext } from '../regex-rules-types.js'
 import { readChunkContainingOrdinal, readTurnsTail } from '../chunk-chain.js'
 import {
   readConversationIndex,
@@ -27,26 +25,44 @@ import { readPluginPackageFile } from './loader.js'
 import { getCurrentUserId } from '../user-context.js'
 import type { PluginServerHostApi } from './types.js'
 import type { ChatMessage } from '../assemble-prompts.js'
+import { getActiveSegmentIndex, getTurnSegments } from '../group-chat-turn.js'
+
+export type PluginHostSegmentSnapshot = {
+  id: string
+  speakerCharacterId: string
+  receives: { id: string; content: string }[]
+  activeReceiveIndex: number
+}
 
 export type PluginHostTurnSnapshot = {
   turnOrdinal: number
-  activeReceiveIndex: number
   userText: string
   plugins: unknown[]
-  receives: { id: string; content: string }[]
+  segments: PluginHostSegmentSnapshot[]
+  activeSegmentIndex: number
 }
 
 function mapTurnToHostSnapshot(t: TurnRecord): PluginHostTurnSnapshot {
-  return {
-    turnOrdinal: t.turnOrdinal,
-    activeReceiveIndex:
-      typeof t.activeReceiveIndex === 'number' ? t.activeReceiveIndex : 0,
-    userText: getTurnUserText(t),
-    plugins: Array.isArray(t.plugins) ? t.plugins : [],
-    receives: (t.receives ?? []).map((r) => ({
+  const defaultSpeaker =
+    t.speakerCharacterId?.trim() ||
+    t.segments[0]?.speakerCharacterId?.trim() ||
+    ''
+  const segments = getTurnSegments(t, defaultSpeaker).map((seg) => ({
+    id: seg.id,
+    speakerCharacterId: seg.speakerCharacterId,
+    receives: (seg.receives ?? []).map((r) => ({
       id: typeof r.id === 'string' ? r.id : '',
       content: typeof r.content === 'string' ? r.content : '',
     })),
+    activeReceiveIndex:
+      typeof seg.activeReceiveIndex === 'number' ? seg.activeReceiveIndex : 0,
+  }))
+  return {
+    turnOrdinal: t.turnOrdinal,
+    userText: getTurnUserText(t),
+    plugins: Array.isArray(t.plugins) ? t.plugins : [],
+    segments,
+    activeSegmentIndex: getActiveSegmentIndex(t),
   }
 }
 

@@ -270,6 +270,43 @@ describe('applyRegexOutgoingToMessages', () => {
     assert.match(out[0]!.content, /charName="艾拉"/)
   })
 
+  it('applyOutgoingRegexToMemoryItems strips all segments in multi-segment turn', () => {
+    const track = '<<track>>'
+    const turn: TurnRecord = testTurn({
+      turnOrdinal: 0,
+      userText: 'u',
+      activeSegmentIndex: 1,
+      segments: [
+        {
+          id: 's0',
+          speakerCharacterId: 'alice',
+          receives: [{ id: 'r0', content: `a0 ${track}` }],
+          activeReceiveIndex: 0,
+        },
+        {
+          id: 's1',
+          speakerCharacterId: 'betty',
+          receives: [{ id: 'r1', content: `b0 ${track}` }],
+          activeReceiveIndex: 0,
+        },
+      ],
+    })
+    const items = [{ turn, score: 1 }]
+    const rules = [
+      rule({
+        id: '11111111',
+        fields: ['assistant'],
+        pattern: track,
+        replacement: '',
+      }),
+    ]
+    const out = applyOutgoingRegexToMemoryItems(items, rules, 5)
+    const xml = formatMemoryXml(out)
+    assert.match(xml, /a0<\/assistant>/)
+    assert.match(xml, /b0<\/assistant>/)
+    assert.doesNotMatch(xml, /track/)
+  })
+
   it('strips tracker when turn text stores XML entities on disk', () => {
     const items = [
       {

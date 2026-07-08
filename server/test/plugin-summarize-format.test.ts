@@ -5,6 +5,7 @@ import { testTurn } from './fixtures/turn-record.js'
 import {
   applyOutgoingRegexToSummaryTurn,
   formatSummarizeTranscript,
+  stripBlockTagsOnTurnSegment,
   wrapSummarizeTurnLine,
 } from '../src/plugin-summarize-format.js'
 import type { RegexRule } from '../src/regex-rules-types.js'
@@ -47,6 +48,72 @@ describe('formatSummarizeTranscript', () => {
       '<user userName="{{user}}">hi</user>\n<assistant charName="{{char}}">hello back</assistant>',
     )
   })
+
+  it('emits one assistant line per segment in group chat turn', () => {
+    const turns: TurnRecord[] = [
+      testTurn({
+        turnId: 't1',
+        turnOrdinal: 1,
+        userText: 'both',
+        segments: [
+          {
+            id: 's0',
+            speakerCharacterId: 'char-a',
+            receives: [{ id: 'r0', content: 'Alice says hi' }],
+            activeReceiveIndex: 0,
+          },
+          {
+            id: 's1',
+            speakerCharacterId: 'char-b',
+            receives: [{ id: 'r1', content: 'Betty says hey' }],
+            activeReceiveIndex: 0,
+          },
+        ],
+        activeSegmentIndex: 1,
+      }),
+    ]
+    const out = formatSummarizeTranscript(turns, 'User', 'Bot')
+    assert.equal(
+      out,
+      '<user userName="{{user}}">both</user>\n<assistant charName="{{char}}">Alice says hi</assistant>\n<assistant charName="{{char}}">Betty says hey</assistant>',
+    )
+  })
+})
+
+describe('stripBlockTagsOnTurnSegment', () => {
+  it('strips only the targeted segment on multi-segment turn', () => {
+    const turn = testTurn({
+      turnId: 't2',
+      turnOrdinal: 2,
+      userText: 'u',
+      segments: [
+        {
+          id: 's0',
+          receives: [
+            {
+              id: 'r0',
+              content: 'a<ex-fixture-block>{"a":1}</ex-fixture-block>',
+            },
+          ],
+          activeReceiveIndex: 0,
+        },
+        {
+          id: 's1',
+          receives: [
+            {
+              id: 'r1',
+              content: 'b<ex-fixture-block>{"b":2}</ex-fixture-block>',
+            },
+          ],
+          activeReceiveIndex: 0,
+        },
+      ],
+      activeSegmentIndex: 1,
+    })
+    const out = stripBlockTagsOnTurnSegment(turn, ['ex-fixture-block'], 0)
+    assert.equal(out.segments[0]?.receives[0]?.content, 'a')
+    assert.match(out.segments[1]?.receives[0]?.content ?? '', /ex-fixture-block/)
+  })
 })
 
 describe('applyOutgoingRegexToSummaryTurn', () => {
@@ -75,7 +142,31 @@ describe('applyOutgoingRegexToSummaryTurn', () => {
     })
     const out = applyOutgoingRegexToSummaryTurn(turn, [rule], 0)
     assert.equal(getTurnUserText(out), 'TRACK hi')
-    assert.equal(out.receives[0]?.content, ' ok')
+    assert.equal(out.segments[0]?.receives[0]?.content, ' ok')
+  })
+
+  it('applies outgoing rules to every segment in group chat turn', () => {
+    const turn = testTurn({
+      turnId: 't1',
+      turnOrdinal: 1,
+      userText: 'u',
+      segments: [
+        {
+          id: 's0',
+          receives: [{ id: 'r0', content: 'TRACK a' }],
+          activeReceiveIndex: 0,
+        },
+        {
+          id: 's1',
+          receives: [{ id: 'r1', content: 'TRACK b' }],
+          activeReceiveIndex: 0,
+        },
+      ],
+      activeSegmentIndex: 1,
+    })
+    const out = applyOutgoingRegexToSummaryTurn(turn, [rule], 1)
+    assert.equal(out.segments[0]?.receives[0]?.content, ' a')
+    assert.equal(out.segments[1]?.receives[0]?.content, ' b')
   })
 
   it('regexApplyAllTurns ignores skipLastNTurns on recent turns', () => {
@@ -91,8 +182,8 @@ describe('applyOutgoingRegexToSummaryTurn', () => {
       receives: [{ id: 'r0', content: 'TRACK ok' }],
     })
     const skipped = applyOutgoingRegexToSummaryTurn(turn, [skipRule], 10, false)
-    assert.equal(skipped.receives[0]?.content, 'TRACK ok')
+    assert.equal(skipped.segments[0]?.receives[0]?.content, 'TRACK ok')
     const applied = applyOutgoingRegexToSummaryTurn(turn, [skipRule], 10, true)
-    assert.equal(applied.receives[0]?.content, ' ok')
+    assert.equal(applied.segments[0]?.receives[0]?.content, ' ok')
   })
 })

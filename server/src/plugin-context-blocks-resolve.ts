@@ -1,7 +1,5 @@
 import { readCharacterDocument } from './character-storage.js'
 import {
-  getTurnUserText,
-  patchTurnDisplayContent,
   readConversationIndex,
   resolvedCharacterIds,
   type TurnRecord,
@@ -21,9 +19,8 @@ import {
   loadSummarizeOutgoingRegexRules,
   normalizeRegexRuleIds,
   PLUGIN_SUMMARIZE_BATCH_MAX,
-  stripBlockTagsFromAssistant,
+  stripBlockTagsOnTurnSegment,
 } from './plugin-summarize-format.js'
-import { assistantTextFromTurn } from './turn-memory-xml.js'
 
 const DEFAULT_USER = 'User'
 const DEFAULT_ASSISTANT = 'Assistant'
@@ -68,6 +65,43 @@ function normalizeStripBlockTags(raw: unknown): string[] {
     .filter((x): x is string => typeof x === 'string')
     .map((x) => x.trim())
     .filter(Boolean)
+}
+
+function parseStripBlockTagsFields(raw: Record<string, unknown>): {
+  stripBlockTagsOnToTurn: string[]
+  stripBlockTagsOnToTurnSegmentIndex?: number
+} {
+  const stripBlockTagsOnToTurn = normalizeStripBlockTags(raw.stripBlockTagsOnToTurn)
+  const stripBlockTagsOnToTurnSegmentIndex =
+    typeof raw.stripBlockTagsOnToTurnSegmentIndex === 'number' &&
+    Number.isFinite(raw.stripBlockTagsOnToTurnSegmentIndex)
+      ? Math.round(raw.stripBlockTagsOnToTurnSegmentIndex)
+      : undefined
+  return { stripBlockTagsOnToTurn, stripBlockTagsOnToTurnSegmentIndex }
+}
+
+function stripStripFieldsSpread(fields: ReturnType<typeof parseStripBlockTagsFields>) {
+  return {
+    ...(fields.stripBlockTagsOnToTurn.length > 0
+      ? { stripBlockTagsOnToTurn: fields.stripBlockTagsOnToTurn }
+      : {}),
+    ...(fields.stripBlockTagsOnToTurnSegmentIndex !== undefined
+      ? { stripBlockTagsOnToTurnSegmentIndex: fields.stripBlockTagsOnToTurnSegmentIndex }
+      : {}),
+  }
+}
+
+function applyStripTagsOnTargetTurn(
+  turns: TurnRecord[],
+  tags: string[],
+  targetOrdinal: number,
+  segmentIndex?: number,
+): TurnRecord[] {
+  if (tags.length === 0) return turns
+  return turns.map((t) => {
+    if (t.turnOrdinal !== targetOrdinal) return t
+    return stripBlockTagsOnTurnSegment(t, tags, segmentIndex)
+  })
 }
 
 function normalizeEntryIds(raw: unknown): string[] {
@@ -210,17 +244,14 @@ async function resolveTranscriptBlock(
     return { ok: false, code: 'no_turns_in_range' }
   }
 
-  const stripTags = normalizeStripBlockTags(spec.stripBlockTagsOnToTurn)
-  const processedTurns =
-    stripTags.length > 0
-      ? turns.map((t) => {
-          if (t.turnOrdinal !== toTurn) return t
-          const assistant = assistantTextFromTurn(t)
-          const stripped = stripBlockTagsFromAssistant(assistant, stripTags)
-          if (stripped === assistant) return t
-          return patchTurnDisplayContent(t, getTurnUserText(t), stripped)
-        })
-      : turns
+  const { stripBlockTagsOnToTurn, stripBlockTagsOnToTurnSegmentIndex } =
+    parseStripBlockTagsFields(spec)
+  const processedTurns = applyStripTagsOnTargetTurn(
+    turns,
+    stripBlockTagsOnToTurn,
+    toTurn,
+    stripBlockTagsOnToTurnSegmentIndex,
+  )
 
   const tailOrdinal =
     typeof spec.tailOrdinal === 'number' &&
@@ -269,18 +300,15 @@ async function resolveTranscriptTailBlock(
     return { ok: false, code: 'no_turns_in_range' }
   }
 
-  const stripTags = normalizeStripBlockTags(spec.stripBlockTagsOnToTurn)
+  const { stripBlockTagsOnToTurn, stripBlockTagsOnToTurnSegmentIndex } =
+    parseStripBlockTagsFields(spec)
   const lastOrdinal = turns.reduce((max, t) => Math.max(max, t.turnOrdinal), 0)
-  const processedTurns =
-    stripTags.length > 0
-      ? turns.map((t) => {
-          if (t.turnOrdinal !== lastOrdinal) return t
-          const assistant = assistantTextFromTurn(t)
-          const stripped = stripBlockTagsFromAssistant(assistant, stripTags)
-          if (stripped === assistant) return t
-          return patchTurnDisplayContent(t, getTurnUserText(t), stripped)
-        })
-      : turns
+  const processedTurns = applyStripTagsOnTargetTurn(
+    turns,
+    stripBlockTagsOnToTurn,
+    lastOrdinal,
+    stripBlockTagsOnToTurnSegmentIndex,
+  )
 
   const tailOrdinal =
     typeof spec.tailOrdinal === 'number' &&
@@ -324,7 +352,7 @@ function parseContextBlockSpec(raw: unknown): ContextBlockSpec | null {
   }
 
   if (source === 'conversation.transcript') {
-    const stripBlockTagsOnToTurn = normalizeStripBlockTags(o.stripBlockTagsOnToTurn)
+    const stripFields = parseStripBlockTagsFields(o)
     return {
       source: 'conversation.transcript',
       blockId,
@@ -333,12 +361,12 @@ function parseContextBlockSpec(raw: unknown): ContextBlockSpec | null {
       regexRuleIds: Array.isArray(o.regexRuleIds) ? o.regexRuleIds : undefined,
       regexApplyAllTurns: o.regexApplyAllTurns === true,
       tailOrdinal: typeof o.tailOrdinal === 'number' ? o.tailOrdinal : undefined,
-      ...(stripBlockTagsOnToTurn.length > 0 ? { stripBlockTagsOnToTurn } : {}),
+      ...stripStripFieldsSpread(stripFields),
     }
   }
 
   if (source === 'conversation.transcript.tail') {
-    const stripBlockTagsOnToTurn = normalizeStripBlockTags(o.stripBlockTagsOnToTurn)
+    const stripFields = parseStripBlockTagsFields(o)
     return {
       source: 'conversation.transcript.tail',
       blockId,
@@ -346,7 +374,7 @@ function parseContextBlockSpec(raw: unknown): ContextBlockSpec | null {
       regexRuleIds: Array.isArray(o.regexRuleIds) ? o.regexRuleIds : undefined,
       regexApplyAllTurns: o.regexApplyAllTurns === true,
       tailOrdinal: typeof o.tailOrdinal === 'number' ? o.tailOrdinal : undefined,
-      ...(stripBlockTagsOnToTurn.length > 0 ? { stripBlockTagsOnToTurn } : {}),
+      ...stripStripFieldsSpread(stripFields),
     }
   }
 

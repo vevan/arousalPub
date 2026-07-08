@@ -3,9 +3,15 @@ export interface TurnCtx {
     turnOrdinal?: number
     plugins?: unknown[]
     activeReceiveIndex?: number
+    activeSegmentIndex?: number
+    segments?: {
+      activeReceiveIndex?: number
+      receives?: { id?: string; content?: string }[]
+    }[]
     receives?: { id?: string; content?: string }[]
   }
   listIndex?: number
+  segmentIndex?: number
 }
 
 export interface PluginHost {

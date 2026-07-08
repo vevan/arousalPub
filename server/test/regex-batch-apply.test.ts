@@ -59,16 +59,16 @@ describe('parseRegexBatchApplyBody', () => {
   })
 })
 
+import { testTurn } from './fixtures/turn-record.js'
+
 describe('turnRecordToContentPatch', () => {
   it('maps turn record to patch input', () => {
-    const turn: TurnRecord = {
+    const turn = testTurn({
       turnId: 't1',
       turnOrdinal: 2,
-      send: { userText: 'u...' },
+      userText: 'u...',
       receives: [{ id: 'r1', content: 'a...' }],
-      activeReceiveIndex: 0,
-      plugins: [],
-    }
+    })
     const patch = turnRecordToContentPatch(turn)
     assert.equal(patch.turnOrdinal, 2)
     assert.equal(patch.userText, 'u...')
@@ -84,22 +84,18 @@ describe('regex batch persist patches', () => {
       rule({ id: '33333333', order: 30, pattern: 'foo', replacement: 'bar', fields: ['assistant'] }),
     ]
     const turns: TurnRecord[] = [
-      {
+      testTurn({
         turnId: 't0',
         turnOrdinal: 0,
-        send: { userText: 'a...' },
+        userText: 'a...',
         receives: [{ id: 'r0', content: 'b...' }],
-        activeReceiveIndex: 0,
-        plugins: [],
-      },
-      {
+      }),
+      testTurn({
         turnId: 't1',
         turnOrdinal: 1,
-        send: { userText: 'same' },
+        userText: 'same',
         receives: [{ id: 'r1', content: 'same' }],
-        activeReceiveIndex: 0,
-        plugins: [],
-      },
+      }),
     ]
     const patches = []
     for (const turn of turns) {

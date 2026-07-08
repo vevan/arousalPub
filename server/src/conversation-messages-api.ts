@@ -22,15 +22,6 @@ import {
 export interface MessagesSegmentDto {
   id: string
   speakerCharacterId: string
-  receives: MessagesTurnDto['receives']
-  activeReceiveIndex: number
-  meta?: { nextSpeakerHint?: string; skipSpeakQuotaDeduction?: boolean }
-}
-
-export interface MessagesTurnDto {
-  turnId: string
-  turnOrdinal: number
-  user: string
   receives: {
     id: string
     content: string
@@ -41,8 +32,15 @@ export interface MessagesTurnDto {
     model?: string
   }[]
   activeReceiveIndex: number
-  segments?: MessagesSegmentDto[]
-  activeSegmentIndex?: number
+  meta?: { nextSpeakerHint?: string; skipSpeakQuotaDeduction?: boolean }
+}
+
+export interface MessagesTurnDto {
+  turnId: string
+  turnOrdinal: number
+  user: string
+  segments: MessagesSegmentDto[]
+  activeSegmentIndex: number
   speakerQueue?: string[]
   speakerCharacterId?: string
   groupChatTurnState?: {
@@ -64,7 +62,7 @@ export interface MessagesListResponse {
 }
 
 function mapReceive(r: TurnReceive) {
-  const base: MessagesTurnDto['receives'][number] = {
+  const base: MessagesSegmentDto['receives'][number] = {
     id: typeof r.id === 'string' ? r.id : '',
     content: typeof r.content === 'string' ? r.content : '',
   }
@@ -117,7 +115,6 @@ export function mapTurnRecordsToMessagesDto(
       t.segments?.[0]?.speakerCharacterId?.trim() ||
       ''
     const segments = getTurnSegments(t, defaultSpeaker)
-    const recs = (t.receives ?? []).map(mapReceive)
     const ord =
       typeof t.turnOrdinal === 'number' && !Number.isNaN(t.turnOrdinal)
         ? t.turnOrdinal
@@ -141,55 +138,12 @@ export function mapTurnRecordsToMessagesDto(
         ...(segMeta ? { meta: segMeta } : {}),
       }
     })
-    if (recs.length === 0) {
-      return {
-        turnId: t.turnId,
-        turnOrdinal: ord,
-        user: activeUserText,
-        receives: [],
-        activeReceiveIndex: 0,
-        ...(segmentDtos.length > 0
-          ? {
-              segments: segmentDtos,
-              activeSegmentIndex: getActiveSegmentIndex(t),
-            }
-          : {}),
-        ...(Array.isArray(t.speakerQueue) && t.speakerQueue.length > 0
-          ? { speakerQueue: t.speakerQueue }
-          : {}),
-        ...(typeof t.speakerCharacterId === 'string' && t.speakerCharacterId.trim()
-          ? { speakerCharacterId: t.speakerCharacterId.trim() }
-          : {}),
-        ...(t.groupChatTurnState
-          ? {
-              groupChatTurnState: {
-                quotaRemaining: { ...t.groupChatTurnState.quotaRemaining },
-                speakCount: { ...t.groupChatTurnState.speakCount },
-              },
-            }
-          : {}),
-        ...(Array.isArray(t.plugins) && t.plugins.length > 0
-          ? { plugins: t.plugins }
-          : {}),
-      }
-    }
-    let ai =
-      typeof t.activeReceiveIndex === 'number' && !Number.isNaN(t.activeReceiveIndex)
-        ? t.activeReceiveIndex
-        : 0
-    ai = Math.min(Math.max(0, ai), recs.length - 1)
     return {
       turnId: t.turnId,
       turnOrdinal: ord,
       user: activeUserText,
-      receives: recs,
-      activeReceiveIndex: ai,
-      ...(segmentDtos.length > 0
-        ? {
-            segments: segmentDtos,
-            activeSegmentIndex: getActiveSegmentIndex(t),
-          }
-        : {}),
+      segments: segmentDtos,
+      activeSegmentIndex: getActiveSegmentIndex(t),
       ...(Array.isArray(t.speakerQueue) && t.speakerQueue.length > 0
         ? { speakerQueue: t.speakerQueue }
         : {}),

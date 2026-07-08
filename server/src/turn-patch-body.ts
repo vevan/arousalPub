@@ -1,5 +1,6 @@
 import type { TurnReceive, TurnRecord } from './chat-storage.js'
 import { getTurnUserText } from './chat-storage.js'
+import { getActiveSegment, getActiveSegmentIndex } from './group-chat-turn.js'
 
 /** 单次 messages 区间读 / 批量 PATCH 上限 */
 export const CONVERSATION_BATCH_MAX_TURNS = 50
@@ -123,7 +124,13 @@ export function parseTurnPatchBody(body: unknown): ParseTurnPatchResult {
 }
 
 export function turnRecordToContentPatch(turn: TurnRecord): TurnContentPatchInput {
-  const receives: TurnReceive[] = (turn.receives ?? []).map((r) => {
+  const defaultSpeaker =
+    turn.speakerCharacterId?.trim() ||
+    turn.segments?.[0]?.speakerCharacterId?.trim() ||
+    ''
+  const segIdx = getActiveSegmentIndex(turn)
+  const seg = getActiveSegment(turn, defaultSpeaker)
+  const receives: TurnReceive[] = (seg?.receives ?? []).map((r) => {
     const rec: TurnReceive = {
       id: r.id,
       content: typeof r.content === 'string' ? r.content : '',
@@ -136,13 +143,15 @@ export function turnRecordToContentPatch(turn: TurnRecord): TurnContentPatchInpu
     }
     return rec
   })
-  let active = turn.activeReceiveIndex
+  let active = seg?.activeReceiveIndex ?? 0
   if (receives.length === 0) {
     return {
       turnOrdinal: turn.turnOrdinal,
       userText: getTurnUserText(turn),
       receives: [],
       activeReceiveIndex: 0,
+      segmentIndex: segIdx,
+      activeSegmentIndex: segIdx,
     }
   }
   active = Math.min(Math.max(0, active), receives.length - 1)
@@ -151,6 +160,8 @@ export function turnRecordToContentPatch(turn: TurnRecord): TurnContentPatchInpu
     userText: getTurnUserText(turn),
     receives,
     activeReceiveIndex: active,
+    segmentIndex: segIdx,
+    activeSegmentIndex: segIdx,
   }
 }
 

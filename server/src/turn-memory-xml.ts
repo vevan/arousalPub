@@ -26,7 +26,7 @@ export function assistantTextFromTurn(
   return typeof c === 'string' ? c : ''
 }
 
-function segmentAssistantText(seg: AssistantSegmentRecord): string {
+export function assistantTextFromSegment(seg: AssistantSegmentRecord): string {
   const rs = seg.receives ?? []
   if (rs.length === 0) return ''
   const ai = Math.min(
@@ -77,7 +77,7 @@ function turnToXmlInner(
     lines.push(`    ${wrapTurnRoleLine('user', user)}`)
   }
   for (const seg of segments) {
-    const assistant = segmentAssistantText(seg).trim()
+    const assistant = assistantTextFromSegment(seg).trim()
     if (assistant) {
       lines.push(`    ${wrapTurnRoleLine('assistant', assistant)}`)
     }
@@ -139,7 +139,7 @@ export function turnsToHistoryMessages(
     const segLimit = Math.min(Math.max(0, partial), segments.length)
     for (let si = 0; si < segLimit; si++) {
       const seg = segments[si]!
-      const assistant = segmentAssistantText(seg).trim()
+      const assistant = assistantTextFromSegment(seg).trim()
       if (!assistant) continue
       const receives = seg.receives ?? []
       const activeIdx = Math.min(
@@ -193,7 +193,7 @@ export function turnEmbeddingCorpus(
   const u = getTurnUserText(turn).trim()
   const segments = getTurnSegments(turn, defaultSpeakerCharacterId.trim())
   const assistantParts = segments
-    .map((seg) => segmentAssistantText(seg).trim())
+    .map((seg) => assistantTextFromSegment(seg).trim())
     .filter((x) => x.length > 0)
   const a = assistantParts.join('\n\n')
   return [u, a].filter((x) => x.length > 0).join('\n\n')

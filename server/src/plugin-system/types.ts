@@ -211,10 +211,15 @@ export interface PluginServerHostApi {
   ) => Promise<
     {
       turnOrdinal: number
-      activeReceiveIndex: number
       userText: string
       plugins: unknown[]
-      receives: { id: string; content: string }[]
+      segments: {
+        id: string
+        speakerCharacterId: string
+        receives: { id: string; content: string }[]
+        activeReceiveIndex: number
+      }[]
+      activeSegmentIndex: number
     }[]
   >
   readConversationTurnAtOrdinal: (
@@ -222,10 +227,15 @@ export interface PluginServerHostApi {
     turnOrdinal: number,
   ) => Promise<{
     turnOrdinal: number
-    activeReceiveIndex: number
     userText: string
     plugins: unknown[]
-    receives: { id: string; content: string }[]
+    segments: {
+      id: string
+      speakerCharacterId: string
+      receives: { id: string; content: string }[]
+      activeReceiveIndex: number
+    }[]
+    activeSegmentIndex: number
   } | null>
   readPluginPackageText: (
     pluginId: string,

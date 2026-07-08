@@ -13,6 +13,7 @@ const props = defineProps<{
   slotName: string
   turn?: ChatTurnItem
   listIndex?: number
+  segmentIndex?: number
 }>()
 
 const pluginHost = inject(PLUGIN_HOST_KEY)
@@ -40,6 +41,7 @@ function slotCtx(): PluginSlotContext {
   return {
     turn: props.turn,
     listIndex: props.listIndex,
+    segmentIndex: props.segmentIndex,
   }
 }
 

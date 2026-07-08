@@ -337,6 +337,7 @@ plugins/trace-keeper/
 ## 10. 与正则 / 审计
 
 - 剥块规则见 §3；近 `skipLastNTurns` 轮保留块供模型续写，更早轮 outgoing/persist 剥除。
+- **群聊多 segment（2026-07-08）**：`formatSummarizeTranscript` / Separate `conversation.transcript` 按 segment 展开 assistant 行；`stripBlockTagsOnToTurnSegmentIndex` 仅剥目标 segment；`resolveLiveTraceStates` 同 turn 各 segment 独立条目。侧栏 pinned / patch / Separate 见 [`DOC/44`](44-turn-segment-only-storage.md) · [`DOC/04`](04-TODO.md) 迹录节。
 - 审计中合法 XML 转义见 `DOC/24` §2.3（与标签名无关的通用说明）。
 
 ---

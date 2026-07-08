@@ -275,6 +275,7 @@ const speakerAvatarLetter = computed(() =>
           slot-name="assistant-turn-footer"
           :turn="turn"
           :list-index="listIndex"
+          :segment-index="segmentIndex"
         />
       </div>
       <div class="turn-toolbar turn-toolbar--assistant">

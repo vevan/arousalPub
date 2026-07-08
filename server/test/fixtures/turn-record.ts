@@ -33,8 +33,6 @@ export function testTurn(params: {
     turnOrdinal: params.turnOrdinal,
     ...(params.createdAt ? { createdAt: params.createdAt } : {}),
     send: { userText: params.userText ?? '' },
-    receives,
-    activeReceiveIndex,
     segments,
     activeSegmentIndex: params.activeSegmentIndex ?? 0,
     plugins: params.plugins ?? [],

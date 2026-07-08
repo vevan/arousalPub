@@ -1,6 +1,7 @@
 import type { ChatMessage } from './assemble-prompts.js'
 import type { TurnRecord } from './chat-storage.js'
-import { getTurnUserText, patchTurnDisplayContent } from './chat-storage.js'
+import { getTurnUserText } from './chat-storage.js'
+import { getTurnSegments } from './group-chat-turn.js'
 import { applyPromptMacroPipeline } from './prompt-macros/index.js'
 import type { PromptMacroContext } from './prompt-macros/index.js'
 import {
@@ -13,7 +14,7 @@ import { readRegexRulesDocument } from './regex-rules-file.js'
 import type { RegexRule } from './regex-rules-types.js'
 import { normalizeXmlTextBeforeProcessing } from './prompt-xml.js'
 import {
-  assistantTextFromTurn,
+  assistantTextFromSegment,
   formatMemoryXml,
 } from './turn-memory-xml.js'
 
@@ -42,15 +43,77 @@ export function isMemoryXmlContent(content: string): boolean {
   return content.trimStart().startsWith('<memory>')
 }
 
-function patchTurnRecordContent(
+export type OutgoingRegexTurnOptions = ApplyRegexOptions & {
+  regexApplyAllTurns?: boolean
+}
+
+/** 对单 turn 全部 segment 的 user/assistant 应用 outgoing（含 skipLastNTurns） */
+export function applyOutgoingRegexToTurnRecord(
   turn: TurnRecord,
-  userText: string,
-  assistantContent: string,
+  rules: RegexRule[],
+  tailOrdinal: number,
+  opts?: OutgoingRegexTurnOptions,
 ): TurnRecord {
-  const userChanged = getTurnUserText(turn) !== userText
-  const assistantChanged = assistantTextFromTurn(turn) !== assistantContent
-  if (!userChanged && !assistantChanged) return turn
-  return patchTurnDisplayContent(turn, userText, assistantContent)
+  const outgoingRules = filterRegexRules(rules, { phases: ['outgoing'] })
+  if (!hasEnabledOutgoingRules(outgoingRules)) return turn
+
+  const ord = turn.turnOrdinal
+  const skipTailOrdinal = resolveOutgoingSkipTailOrdinal(tailOrdinal)
+  const regexCtxBase = {
+    phase: 'outgoing' as const,
+    tailOrdinal: skipTailOrdinal,
+    ...(opts?.regexApplyAllTurns ? { ignoreSkipLastNTurns: true as const } : {}),
+  }
+  let userText = normalizeXmlTextBeforeProcessing(getTurnUserText(turn))
+  let userChanged = false
+  if (userText.trim()) {
+    const next = applyRegexRulesToText(
+      userText,
+      outgoingRules,
+      { ...regexCtxBase, field: 'user', turnOrdinal: ord },
+      opts,
+    )
+    if (next !== userText) {
+      userText = next
+      userChanged = true
+    }
+  }
+
+  const segments = getTurnSegments(turn, '')
+  let segmentsChanged = false
+  const nextSegments = turn.segments.map((rawSeg, si) => {
+    const seg = segments[si]
+    if (!seg) return rawSeg
+    let assistant = normalizeXmlTextBeforeProcessing(
+      assistantTextFromSegment(seg),
+    )
+    if (!assistant.trim()) return rawSeg
+    const next = applyRegexRulesToText(
+      assistant,
+      outgoingRules,
+      { ...regexCtxBase, field: 'assistant', turnOrdinal: ord },
+      opts,
+    )
+    if (next === assistant) return rawSeg
+    segmentsChanged = true
+    const receives = [...rawSeg.receives]
+    const activeIdx = Math.min(
+      Math.max(0, Math.floor(rawSeg.activeReceiveIndex) || 0),
+      Math.max(0, receives.length - 1),
+    )
+    if (receives[activeIdx]) {
+      receives[activeIdx] = { ...receives[activeIdx], content: next }
+    }
+    return { ...rawSeg, receives }
+  })
+
+  if (!userChanged && !segmentsChanged) return turn
+
+  let next: TurnRecord = userChanged ? { ...turn, send: { userText } } : { ...turn }
+  if (segmentsChanged) {
+    next = { ...next, segments: nextSegments }
+  }
+  return next
 }
 
 /** 对 memory 块内各轮 user/assistant 按 turnOrdinal 应用 outgoing（含 skipLastNTurns） */
@@ -58,44 +121,17 @@ export function applyOutgoingRegexToMemoryItems(
   items: MemoryRegexItem[],
   rules: RegexRule[],
   tailOrdinal: number,
-  opts?: ApplyRegexOptions,
+  opts?: OutgoingRegexTurnOptions,
 ): MemoryRegexItem[] {
   const outgoingRules = filterRegexRules(rules, { phases: ['outgoing'] })
   if (!hasEnabledOutgoingRules(outgoingRules) || items.length === 0) {
     return items
   }
 
-  const skipTailOrdinal = resolveOutgoingSkipTailOrdinal(tailOrdinal)
-
-  return items.map(({ turn, score }) => {
-    const ord = turn.turnOrdinal
-    const userText = applyRegexRulesToText(
-      normalizeXmlTextBeforeProcessing(getTurnUserText(turn)),
-      outgoingRules,
-      {
-        phase: 'outgoing',
-        field: 'user',
-        turnOrdinal: ord,
-        tailOrdinal: skipTailOrdinal,
-      },
-      opts,
-    )
-    const assistantContent = applyRegexRulesToText(
-      normalizeXmlTextBeforeProcessing(assistantTextFromTurn(turn)),
-      outgoingRules,
-      {
-        phase: 'outgoing',
-        field: 'assistant',
-        turnOrdinal: ord,
-        tailOrdinal: skipTailOrdinal,
-      },
-      opts,
-    )
-    return {
-      turn: patchTurnRecordContent(turn, userText, assistantContent),
-      ...(typeof score === 'number' ? { score } : {}),
-    }
-  })
+  return items.map(({ turn, score }) => ({
+    turn: applyOutgoingRegexToTurnRecord(turn, outgoingRules, tailOrdinal, opts),
+    ...(typeof score === 'number' ? { score } : {}),
+  }))
 }
 
 function patchMemoryMessagesInPlace(
@@ -142,30 +178,43 @@ export function hasEnabledOutgoingRules(rules: RegexRule[]): boolean {
   return rules.some((r) => r.enabled && r.phases.includes('outgoing'))
 }
 
-/** 每轮 0–2 条 message（user / assistant）对应同一 turnOrdinal */
+/** history 条 → turnOrdinal；群聊同 turn 多 assistant 时优先读 message.turnOrdinal */
 export function buildPerMessageTurnOrdinals(
   historyMessages: ChatMessage[],
   turnOrdinals: number[],
 ): number[] {
+  const roleMessages = historyMessages.filter(
+    (m) => m.role === 'user' || m.role === 'assistant',
+  )
+  if (
+    roleMessages.length > 0 &&
+    roleMessages.every(
+      (m) =>
+        typeof m.turnOrdinal === 'number' && Number.isFinite(m.turnOrdinal),
+    )
+  ) {
+    return roleMessages.map((m) => m.turnOrdinal as number)
+  }
+
   const out: number[] = []
   let msgIdx = 0
   for (const ord of turnOrdinals) {
     if (
-      msgIdx < historyMessages.length &&
-      historyMessages[msgIdx]?.role === 'user'
+      msgIdx < roleMessages.length &&
+      roleMessages[msgIdx]?.role === 'user'
     ) {
       out.push(ord)
       msgIdx++
     }
     if (
-      msgIdx < historyMessages.length &&
-      historyMessages[msgIdx]?.role === 'assistant'
+      msgIdx < roleMessages.length &&
+      roleMessages[msgIdx]?.role === 'assistant'
     ) {
       out.push(ord)
       msgIdx++
     }
   }
-  while (msgIdx < historyMessages.length) {
+  while (msgIdx < roleMessages.length) {
     const lastOrd = turnOrdinals[turnOrdinals.length - 1]
     out.push(typeof lastOrd === 'number' ? lastOrd : 0)
     msgIdx++

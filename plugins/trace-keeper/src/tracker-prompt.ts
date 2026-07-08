@@ -51,11 +51,13 @@ export function buildSeparateRegenerateMessages(
   targetOrdinal: number,
   windowTurnCount: number,
   bundle: TraceBundle,
+  targetSegmentIndex?: number,
 ): SeparateRegenerateMessage[] {
   const dialogue = buildSeparateDialogueMessages(
     tail,
     targetOrdinal,
     windowTurnCount,
+    targetSegmentIndex,
   )
   return [...dialogue, { role: 'system', content: buildSeparateSystemPrompt(bundle) }]
 }

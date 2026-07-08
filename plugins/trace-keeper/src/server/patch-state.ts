@@ -1,11 +1,13 @@
 import { PLUGIN_ID } from '../constants.js'
 import { normalizePatchState, upsertTraceKeeperBlockInAssistant } from '../parse-block.js'
 import { trackerEpochFromSettings } from '../bundle-resolve.js'
+import {
+  activeSegmentReceive,
+  type HostTurnWithSegments,
+} from '../host-segment-snapshot.js'
 
-type HostTurnSnapshot = {
+type HostTurnSnapshot = HostTurnWithSegments & {
   turnOrdinal: number
-  activeReceiveIndex: number
-  receives: { id: string; content: string }[]
 }
 
 type PatchApi = {
@@ -23,6 +25,7 @@ export interface PatchTraceKeeperStateInput {
   conversationId: string
   turnOrdinal: number
   state: unknown
+  segmentIndex?: number
 }
 
 export type PatchTraceKeeperStateResult =
@@ -39,18 +42,6 @@ export type PatchTraceKeeperStateResult =
       }
     }
   | { ok: false; code: string }
-
-function activeReceive(turn: HostTurnSnapshot): { id: string } | null {
-  const receives = turn.receives
-  if (!receives?.length) return null
-  const idx = Math.min(
-    Math.max(0, Math.floor(turn.activeReceiveIndex)),
-    receives.length - 1,
-  )
-  const rec = receives[idx]
-  if (!rec?.id?.trim()) return null
-  return { id: rec.id.trim() }
-}
 
 export async function patchTraceKeeperState(
   input: PatchTraceKeeperStateInput,
@@ -78,14 +69,11 @@ export async function patchTraceKeeperState(
   if (!turn) return { ok: false, code: 'turn_not_found' }
 
   const epoch = trackerEpochFromSettings(convSettings)
-  const receive = activeReceive(turn)
+  const receive = activeSegmentReceive(turn, input.segmentIndex)
   if (!receive?.id) return { ok: false, code: 'receive_not_found' }
 
-  const active = turn.receives.find((r) => r.id === receive.id)
-  if (!active) return { ok: false, code: 'receive_not_found' }
-
   const payload: Record<string, unknown> = { state, epoch, receiveId: receive.id }
-  const assistantContent = upsertTraceKeeperBlockInAssistant(active.content, state)
+  const assistantContent = upsertTraceKeeperBlockInAssistant(receive.content, state)
 
   const entry = {
     pluginId: PLUGIN_ID,

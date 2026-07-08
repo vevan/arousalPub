@@ -17,39 +17,51 @@ import { runSeparateRegenerate, SeparateRegenerateError } from './separate-regen
 import { auditDebugEnabled, logSeparateDebugIfPresent } from './audit-debug.js'
 import {
   bumpPanelRevision,
-  getPinnedTurnOrdinal,
+  getPinnedView,
   isRegenerating,
   k,
   PLACEMENT,
-  setPinnedTurnOrdinal,
+  setPinnedView,
   setRegenerating,
+  type PinnedTraceView,
 } from './state.js'
+import { resolveViewSegmentIndex, type TurnViewRef } from './turn-view-segment.js'
 import type { PluginHost, TurnCtx } from './types.js'
 
 const EDIT_DIALOG_ID = 'edit-state-json'
 
-type HostTurn = {
-  turnOrdinal: number
-  activeReceiveIndex?: number
-  receives?: { id?: string; content?: string }[]
-  plugins?: unknown[]
-}
-
 type EditContext = {
   turnOrdinal: number
+  segmentIndex: number
   state: Record<string, unknown>
 }
 
-function turnsFromHost(host: PluginHost): HostTurn[] {
+function turnsFromHost(host: PluginHost): TurnViewRef[] {
   const raw = host.session.turns as
-    | HostTurn[]
-    | { value?: HostTurn[] }
+    | TurnViewRef[]
+    | { value?: TurnViewRef[] }
     | undefined
   if (Array.isArray(raw)) return raw
   if (raw && typeof raw === 'object' && Array.isArray(raw.value)) {
     return raw.value
   }
   return []
+}
+
+function fullTurnForOrdinal(
+  turns: TurnViewRef[],
+  turnOrdinal: number,
+): TurnViewRef | null {
+  return turns.find((t) => t.turnOrdinal === turnOrdinal) ?? null
+}
+
+function segmentIndexFromCtx(ctx: TurnCtx): number {
+  if (typeof ctx.segmentIndex === 'number' && Number.isFinite(ctx.segmentIndex)) {
+    return Math.max(0, Math.floor(ctx.segmentIndex))
+  }
+  const turn = ctx.turn
+  if (!turn) return 0
+  return resolveViewSegmentIndex(turn as TurnViewRef)
 }
 
 const SHELL_STYLES = `
@@ -81,6 +93,7 @@ function renderActionBar(
     editEnabled: boolean
     regenEnabled: boolean
     regenerating?: boolean
+    segmentNav?: { segmentIndex: number; segmentCount: number }
   },
 ): string {
   if (!opts.showActions) return ''
@@ -90,8 +103,17 @@ function renderActionBar(
   const regenDisabled =
     opts.regenEnabled && !opts.regenerating ? '' : ' disabled'
   const regenBusy = opts.regenerating ? ' aria-busy="true"' : ''
+  const nav = opts.segmentNav
+  const navHtml =
+    nav && nav.segmentCount > 1
+      ? [
+          `<button type="button" class="tk-icon-btn" data-tk-action="segment-prev"${nav.segmentIndex <= 0 ? ' disabled' : ''} title="prev" aria-label="prev"><i class="mdi mdi-chevron-left" aria-hidden="true"></i></button>`,
+          `<button type="button" class="tk-icon-btn" data-tk-action="segment-next"${nav.segmentIndex >= nav.segmentCount - 1 ? ' disabled' : ''} title="next" aria-label="next"><i class="mdi mdi-chevron-right" aria-hidden="true"></i></button>`,
+        ].join('\n')
+      : ''
   return [
     '<div class="tk-actions">',
+    navHtml,
     `<button type="button" class="tk-icon-btn" data-tk-action="edit-state-json" title="${editTitle}" aria-label="${editTitle}"${editDisabled}><i class="mdi mdi-pencil-outline" aria-hidden="true"></i></button>`,
     `<button type="button" class="tk-icon-btn" data-tk-action="regenerate-separate" title="${regenTitle}" aria-label="${regenTitle}"${regenDisabled}${regenBusy}><i class="mdi mdi-refresh" aria-hidden="true"></i></button>`,
     '</div>',
@@ -104,12 +126,12 @@ function wrapPanelShell(
   opts: {
     emptyReason?: PanelEmptyReason
     emptyDetail?: string
-    /** 无数据空态：保留原文案旁的主按钮 */
     showEmptyRegenButton?: boolean
     showActions?: boolean
     editEnabled?: boolean
     regenEnabled?: boolean
     regenerating?: boolean
+    segmentNav?: { segmentIndex: number; segmentCount: number }
   },
 ): string {
   const parts: string[] = ['<div class="trace-keeper-shell">']
@@ -154,6 +176,7 @@ function wrapPanelShell(
       editEnabled: opts.editEnabled === true,
       regenEnabled: opts.regenEnabled === true,
       regenerating: opts.regenerating,
+      segmentNav: opts.segmentNav,
     }),
   )
   parts.push('</div>')
@@ -169,9 +192,17 @@ function escapeHtml(text: string): string {
 }
 
 let lastEditContext: EditContext | null = null
+let lastLiveContext: { turnOrdinal: number; segmentIndex: number } | null = null
 
 function conversationIdFrom(host: PluginHost): string {
   return host.conversation.getId?.()?.trim() ?? ''
+}
+
+function segmentCountForTurn(turn: TurnViewRef | null | undefined): number {
+  if (!turn) return 0
+  const n = turn.segments?.length ?? 0
+  if (n > 0) return n
+  return (turn.receives?.length ?? 0) > 0 ? 1 : 0
 }
 
 async function refreshPanel(host: PluginHost): Promise<void> {
@@ -186,7 +217,7 @@ async function refreshPanel(host: PluginHost): Promise<void> {
     const epoch = trackerEpochFromSettings(convSettings)
     const turns = turnsFromHost(host)
     const conversationId = conversationIdFrom(host)
-    const pinned = getPinnedTurnOrdinal(conversationId)
+    const pinned = getPinnedView(conversationId)
     const regenBusy = isRegenerating(conversationId)
 
     const resolved = resolvePanelView(
@@ -197,34 +228,60 @@ async function refreshPanel(host: PluginHost): Promise<void> {
       regenBusy,
     )
 
+    const viewingSegmentIndex =
+      resolved.kind === 'content'
+        ? resolved.segmentIndex
+        : resolved.segmentIndex ?? 0
+    const viewingOrdinal =
+      resolved.kind === 'content'
+        ? resolved.turnOrdinal
+        : resolved.turnOrdinal
+
     lastEditContext =
       resolved.kind === 'content' && !resolved.actionsDisabled
         ? {
             turnOrdinal: resolved.turnOrdinal,
+            segmentIndex: resolved.segmentIndex,
             state: resolved.editState,
           }
         : null
 
     const lastTurn = turns.length > 0 ? turns[turns.length - 1]! : null
-    const viewingOrdinal =
-      resolved.kind === 'content'
-        ? resolved.turnOrdinal
-        : resolved.turnOrdinal
     const isLastTurnView =
       lastTurn !== null &&
       typeof viewingOrdinal === 'number' &&
       viewingOrdinal === lastTurn.turnOrdinal
+    const liveSegmentIndex = lastTurn ? resolveViewSegmentIndex(lastTurn) : 0
+    lastLiveContext =
+      lastTurn != null
+        ? { turnOrdinal: lastTurn.turnOrdinal, segmentIndex: liveSegmentIndex }
+        : null
+
     const actionsDisabled =
       resolved.kind === 'content' && resolved.actionsDisabled === true
+    const viewingTurn =
+      typeof viewingOrdinal === 'number'
+        ? fullTurnForOrdinal(turns, viewingOrdinal)
+        : null
+    const segmentNav =
+      pinned && viewingTurn
+        ? {
+            segmentIndex: viewingSegmentIndex,
+            segmentCount: segmentCountForTurn(viewingTurn),
+          }
+        : undefined
+
     const shellActions = {
       showActions: turns.length > 0,
       editEnabled: resolved.kind === 'content' && !actionsDisabled,
       regenEnabled:
         !actionsDisabled &&
         isLastTurnView &&
+        viewingSegmentIndex === liveSegmentIndex &&
         (resolved.kind === 'content' ||
           (resolved.kind === 'empty' && resolved.canRegenerate)),
       regenerating: regenBusy,
+      segmentNav,
     }
 
     const html =
@@ -254,10 +311,28 @@ function openEditStateDialog(host: PluginHost): void {
     PLUGIN_ID,
     {
       turnOrdinal: lastEditContext.turnOrdinal,
+      segmentIndex: lastEditContext.segmentIndex,
       stateJson: JSON.stringify(lastEditContext.state, null, 2),
     },
     EDIT_DIALOG_ID,
   )
+}
+
+function shiftPinnedSegment(host: PluginHost, delta: number): void {
+  const conversationId = conversationIdFrom(host)
+  const pinned = getPinnedView(conversationId)
+  if (!pinned) return
+  const turn = fullTurnForOrdinal(turnsFromHost(host), pinned.turnOrdinal)
+  const count = segmentCountForTurn(turn)
+  if (count <= 1) return
+  const next = Math.min(
+    Math.max(0, pinned.segmentIndex + delta),
+    count - 1,
+  )
+  if (next === pinned.segmentIndex) return
+  setPinnedView(conversationId, { ...pinned, segmentIndex: next })
+  void refreshPanel(host)
+  host.refreshSlotButtons()
 }
 
 async function handlePatchStateSubmit(
@@ -266,6 +341,7 @@ async function handlePatchStateSubmit(
 ): Promise<void> {
   const conversationId = host.conversation.getId?.()
   const turnOrdinal = model.turnOrdinal
+  const segmentIndex = model.segmentIndex
   const stateJson = String(model.stateJson ?? '')
   if (!conversationId || typeof turnOrdinal !== 'number') return
 
@@ -276,7 +352,10 @@ async function handlePatchStateSubmit(
   }
 
   try {
-    await runPatchState(host, conversationId, turnOrdinal, state)
+    await runPatchState(host, conversationId, turnOrdinal, state, {
+      segmentIndex:
+        typeof segmentIndex === 'number' ? Math.round(segmentIndex) : undefined,
+    })
     if (host.conversation.refresh) {
       await host.conversation.refresh()
     }
@@ -288,7 +367,10 @@ async function handlePatchStateSubmit(
   }
 }
 
-async function handleRegenerateSeparate(host: PluginHost): Promise<void> {
+async function handleRegenerateSeparate(
+  host: PluginHost,
+  segmentIndex?: number,
+): Promise<void> {
   const conversationId = conversationIdFrom(host)
   if (!conversationId || isRegenerating(conversationId)) return
 
@@ -296,11 +378,21 @@ async function handleRegenerateSeparate(host: PluginHost): Promise<void> {
   const lastTurn = turns[turns.length - 1]
   if (!lastTurn) return
 
+  const segIdx =
+    typeof segmentIndex === 'number'
+      ? segmentIndex
+      : resolveViewSegmentIndex(lastTurn)
+
   setRegenerating(conversationId, true)
   void refreshPanel(host)
   const wantDebug = auditDebugEnabled(host)
   try {
-    const result = await runSeparateRegenerate(host, conversationId, lastTurn.turnOrdinal)
+    const result = await runSeparateRegenerate(
+      host,
+      conversationId,
+      lastTurn.turnOrdinal,
+      { segmentIndex: segIdx },
+    )
     logSeparateDebugIfPresent(result.debug)
     if (wantDebug && !result.debug) {
       console.warn(
@@ -371,60 +463,73 @@ export function registerPanel(host: PluginHost): void {
   host.ui.panel.onEvent(PLACEMENT, PLUGIN_ID, {
     onAction: (ev) => {
       if (ev.action === 'regenerate-separate') {
-        void handleRegenerateSeparate(host)
+        void handleRegenerateSeparate(host, lastLiveContext?.segmentIndex)
       }
       if (ev.action === 'edit-state-json') {
         openEditStateDialog(host)
+      }
+      if (ev.action === 'segment-prev') {
+        shiftPinnedSegment(host, -1)
+      }
+      if (ev.action === 'segment-next') {
+        shiftPinnedSegment(host, 1)
       }
     },
   })
   void refreshPanel(host)
 }
 
+function pinnedMatches(ctx: TurnCtx, pinned: PinnedTraceView | null): boolean {
+  if (!pinned) return false
+  const ord = ctx.turn?.turnOrdinal
+  if (typeof ord !== 'number' || ord !== pinned.turnOrdinal) return false
+  return segmentIndexFromCtx(ctx) === pinned.segmentIndex
+}
+
 export function registerTurnButton(host: PluginHost): void {
-  host.registerSlotButton('turn-block-head', {
+  host.registerSlotButton('assistant-turn-footer', {
     id: `${PLUGIN_ID}-view`,
     icon: 'mdi-map-marker-radius-outline',
     tooltipKey: (ctx: TurnCtx) => {
       const ord = ctx.turn?.turnOrdinal
       if (typeof ord !== 'number') return k(host, 'tooltipTurnEmpty')
       const conversationId = conversationIdFrom(host)
-      const pinned = getPinnedTurnOrdinal(conversationId)
+      const pinned = getPinnedView(conversationId)
+      const segIdx = segmentIndexFromCtx(ctx)
       const epoch = trackerEpochFromSettings(
         host.conversation.getPluginSettingsSnapshot(),
       )
-      const hit = findTracePayloadForTurn(ctx.turn, epoch)
-      if (pinned === ord && !hit) return k(host, 'tooltipTurnPinnedEmpty')
+      const hit = findTracePayloadForTurn(ctx.turn as TurnViewRef, epoch, segIdx)
+      if (pinnedMatches(ctx, pinned) && !hit) return k(host, 'tooltipTurnPinnedEmpty')
       return hit ? k(host, 'tooltipTurnView') : k(host, 'tooltipTurnEmpty')
     },
     disabled: (ctx: TurnCtx) => {
       const ord = ctx.turn?.turnOrdinal
       if (typeof ord !== 'number') return true
       const conversationId = conversationIdFrom(host)
-      const pinned = getPinnedTurnOrdinal(conversationId)
-      if (pinned === ord) return false
+      if (pinnedMatches(ctx, getPinnedView(conversationId))) return false
       const epoch = trackerEpochFromSettings(
         host.conversation.getPluginSettingsSnapshot(),
       )
-      return !findTracePayloadForTurn(ctx.turn, epoch)
+      return !findTracePayloadForTurn(
+        ctx.turn as TurnViewRef,
+        epoch,
+        segmentIndexFromCtx(ctx),
+      )
     },
-    filled: (ctx: TurnCtx) => {
-      const conversationId = conversationIdFrom(host)
-      const pinned = getPinnedTurnOrdinal(conversationId)
-      const ord = ctx.turn?.turnOrdinal
-      return pinned !== null && ord === pinned
-    },
-    when: (ctx: TurnCtx) =>
-      typeof ctx.turn?.turnOrdinal === 'number',
+    filled: (ctx: TurnCtx) => pinnedMatches(ctx, getPinnedView(conversationIdFrom(host))),
+    when: (ctx: TurnCtx) => typeof ctx.turn?.turnOrdinal === 'number',
     onClick: (ctx: TurnCtx) => {
       const ord = ctx.turn?.turnOrdinal
       if (typeof ord !== 'number') return
       const conversationId = conversationIdFrom(host)
-      const pinned = getPinnedTurnOrdinal(conversationId)
-      setPinnedTurnOrdinal(
-        conversationId,
-        pinned === ord ? null : ord,
-      )
+      const segIdx = segmentIndexFromCtx(ctx)
+      const pinned = getPinnedView(conversationId)
+      const next: PinnedTraceView | null =
+        pinned?.turnOrdinal === ord && pinned.segmentIndex === segIdx
+          ? null
+          : { turnOrdinal: ord, segmentIndex: segIdx }
+      setPinnedView(conversationId, next)
       host.refreshSlotButtons()
       void refreshPanel(host)
       host.ui.panel.open(PLACEMENT, PLUGIN_ID)

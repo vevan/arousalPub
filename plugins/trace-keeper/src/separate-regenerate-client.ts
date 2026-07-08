@@ -48,11 +48,16 @@ export async function runSeparateRegenerate(
   host: PluginHost,
   conversationId: string,
   turnOrdinal?: number,
+  opts?: { segmentIndex?: number; receiveId?: string },
 ): Promise<SeparateRegenerateResult> {
   try {
     const data = await host.plugin.runAction('regenerate-separate', {
       conversationId,
       ...(typeof turnOrdinal === 'number' ? { turnOrdinal } : {}),
+      ...(typeof opts?.segmentIndex === 'number'
+        ? { segmentIndex: opts.segmentIndex }
+        : {}),
+      ...(opts?.receiveId?.trim() ? { receiveId: opts.receiveId.trim() } : {}),
     })
     if (!data || typeof data.state !== 'object') {
       throw new Error('regenerate_separate_invalid_response')

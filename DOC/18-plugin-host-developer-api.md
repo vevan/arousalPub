@@ -437,13 +437,15 @@ const data = await host.plugin.runAction('my-action', {
 | `runPluginMacroExpand(req)` | 同 Web `macros.expand` |
 | **`completeWithContext(req)`** | 同 Web；Server 插件长流程直接调用 |
 | **`runPluginAction(action, body, api)`** | 同 Web `runAction` |
+| **`readConversationTurnAtOrdinal(conversationId, turnOrdinal)`** | 读单轮快照：`segments[]`、`activeSegmentIndex`、`userText`、`plugins`（**无** turn 级 `receives` 镜像，见 **`DOC/44`**) |
+| **`readConversationTurnsTail(conversationId, limit?)`** | 尾部多轮，同上 DTO |
 | **`regex.listRules` / `applyText` / `applyMessages`** | 同 Web `host.regex`（读盘 `regex-rules.json` · `server/src/regex-apply.ts`） |
 
 ### 4.3 `runPluginAction` 与 `turnMerge`
 
 - manifest **`serverActions`**：`{ "name": "kebab-case", "permissions": ["…"] }`（name 匹配 `^[a-z0-9][a-z0-9-]{0,63}$`）。
 - 插件 **`runPluginAction(action, body, api)`** 返回：
-  - 成功：`{ ok: true, …自定义字段 }`；可选 **`turnMerge`**：`{ turnOrdinal, receiveId, assistantContent, entry }` 由宿主合并写盘。
+  - 成功：`{ ok: true, …自定义字段 }`；可选 **`turnMerge`**：`{ turnOrdinal, receiveId, assistantContent, entry }` 由宿主按 **`receiveId` 定位 segment** 合并 `segments[i].receives` 正文与 `turn.plugins[]`（见 **`DOC/44`**）。
   - 失败：`{ ok: false, code, status?, debug? }`。
 - Web 侧统一 **`host.plugin.runAction(action, body)`**；**禁止**在 `web.mjs` 内 `fetch('/api/plugins/…/actions/…')`。
 

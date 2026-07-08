@@ -13,11 +13,16 @@ export async function runPatchState(
   conversationId: string,
   turnOrdinal: number,
   state: Record<string, unknown>,
+  opts?: { segmentIndex?: number; receiveId?: string },
 ): Promise<PatchStateResult> {
   const data = await host.plugin.runAction('patch-state', {
     conversationId,
     turnOrdinal,
     state,
+    ...(typeof opts?.segmentIndex === 'number'
+      ? { segmentIndex: opts.segmentIndex }
+      : {}),
+    ...(opts?.receiveId?.trim() ? { receiveId: opts.receiveId.trim() } : {}),
   })
   if (!data || typeof data.state !== 'object') {
     throw new Error('patch_state_invalid_response')

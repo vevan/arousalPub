@@ -1077,7 +1077,7 @@ export async function persistTurnAfterModelReply(params: {
         return { ok: false, error: ApiErrorCodes.first_turn_persist_maybe_exists }
       }
       const firstTurn = saved.chunk.turns[0]
-      const rec = firstTurn?.receives[0]
+      const rec = firstTurn?.segments[0]?.receives[0]
       return finishPersistResult(
         conversationId,
         {
@@ -1256,7 +1256,7 @@ export async function persistTurnAfterModelReply(params: {
       return { ok: false, error: ApiErrorCodes.first_turn_persist_maybe_exists }
     }
     const firstTurn = saved.chunk.turns[0]
-    const rec = firstTurn?.receives[0]
+    const rec = firstTurn?.segments[0]?.receives[0]
     const nextResolved = saved.nextResolved ?? { speakerCharacterId: null }
     return finishPersistResult(
       conversationId,

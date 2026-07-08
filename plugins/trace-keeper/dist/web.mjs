@@ -5998,6 +5998,48 @@ function diagnoseAssistantTrace(assistantContent) {
 // plugins/trace-keeper/src/panel-render.ts
 var import_handlebars = __toESM(require_handlebars());
 
+// plugins/trace-keeper/src/turn-view-segment.ts
+function resolveViewSegmentIndex(turn, segmentIndex) {
+  const segments = turn.segments ?? [];
+  if (segments.length === 0) return 0;
+  const raw = typeof segmentIndex === "number" && Number.isFinite(segmentIndex) ? Math.floor(segmentIndex) : Math.floor(turn.activeSegmentIndex ?? 0);
+  return Math.min(Math.max(0, raw), segments.length - 1);
+}
+function viewSegmentAt(turn, segmentIndex) {
+  const segments = turn.segments;
+  if (segments?.length) {
+    const seg = segments[resolveViewSegmentIndex(turn, segmentIndex)];
+    return {
+      receives: seg.receives ?? [],
+      activeReceiveIndex: typeof seg.activeReceiveIndex === "number" ? seg.activeReceiveIndex : 0,
+      ...typeof seg.speakerCharacterId === "string" ? {
+        speakerCharacterId: seg.speakerCharacterId.trim()
+      } : {}
+    };
+  }
+  const receives = turn.receives ?? [];
+  if (receives.length === 0) return null;
+  return {
+    receives,
+    activeReceiveIndex: typeof turn.activeReceiveIndex === "number" ? turn.activeReceiveIndex : 0,
+    ...turn.speakerCharacterId?.trim() ? { speakerCharacterId: turn.speakerCharacterId.trim() } : {}
+  };
+}
+function activeReceiveFromView(turn, segmentIndex) {
+  const seg = viewSegmentAt(turn, segmentIndex);
+  const receives = seg?.receives ?? [];
+  if (!receives.length) return null;
+  const idx = Math.min(
+    Math.max(0, Math.floor(seg?.activeReceiveIndex ?? 0)),
+    receives.length - 1
+  );
+  return receives[idx] ?? null;
+}
+function turnHasAssistantReceives(turn) {
+  if (turn.segments?.some((s) => (s.receives?.length ?? 0) > 0)) return true;
+  return (turn.receives?.length ?? 0) > 0;
+}
+
 // plugins/trace-keeper/src/trace-state-resolve.ts
 function payloadReceiveId(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";
@@ -6030,6 +6072,9 @@ function payloadFromEntry(raw, epoch) {
   };
 }
 function findTracePayloadInTurnPlugins(plugins, epoch, ctx) {
+  if (Array.isArray(ctx?.receives) && ctx.receives.length === 0) {
+    return null;
+  }
   const targetReceiveId = activeReceiveId(ctx);
   const list = Array.isArray(plugins) ? plugins : [];
   if (targetReceiveId) {
@@ -6050,15 +6095,33 @@ function findTracePayloadInTurnPlugins(plugins, epoch, ctx) {
   }
   return null;
 }
-function turnLookup(turn) {
+function turnLookup(turn, segmentIndex) {
+  const seg = viewSegmentAt(turn, segmentIndex);
+  if (!seg) return {};
   return {
-    activeReceiveIndex: turn.activeReceiveIndex,
-    receives: turn.receives
+    activeReceiveIndex: seg.activeReceiveIndex,
+    receives: seg.receives
   };
 }
-function findTracePayloadForTurn(turn, epoch) {
+function resolveTraceForSegment(turn, epoch, segmentIndex) {
   if (!turn) return null;
-  return findTracePayloadInTurnPlugins(turn.plugins, epoch, turnLookup(turn));
+  return findTracePayloadInTurnPlugins(
+    turn.plugins,
+    epoch,
+    turnLookup(turn, segmentIndex)
+  );
+}
+function findTracePayloadForTurn(turn, epoch, segmentIndex) {
+  return resolveTraceForSegment(turn, epoch, segmentIndex);
+}
+function tracePanelMetaForSegment(turn, segmentIndex) {
+  const rec = activeReceiveFromView(turn, segmentIndex);
+  const speaker = viewSegmentAt(turn, segmentIndex)?.speakerCharacterId?.trim() || turn.speakerCharacterId?.trim() || void 0;
+  return {
+    segmentIndex,
+    ...rec?.id?.trim() ? { receiveId: rec.id.trim() } : {},
+    ...speaker ? { speakerCharacterId: speaker } : {}
+  };
 }
 
 // plugins/trace-keeper/src/panel-render.ts
@@ -6076,42 +6139,54 @@ function renderTracePanelHtml(bundle, data, meta) {
 }
 
 // plugins/trace-keeper/src/panel-empty.ts
-function findPriorTraceStateForLive(turns, epoch) {
-  if (turns.length < 2) return null;
+function findPriorTraceStateForLive(turns, epoch, currentTurn, currentSegmentIndex) {
+  for (let si = currentSegmentIndex - 1; si >= 0; si -= 1) {
+    const hit = findTracePayloadForTurn(currentTurn, epoch, si);
+    if (hit) {
+      return {
+        state: hit.state,
+        turnOrdinal: currentTurn.turnOrdinal,
+        segmentIndex: si
+      };
+    }
+  }
   for (let i = turns.length - 2; i >= 0; i -= 1) {
     const turn = turns[i];
-    const hit = findTracePayloadForTurn(turn, epoch);
+    const segCount = turn.segments?.length ?? 0;
+    if (segCount > 0) {
+      for (let si = segCount - 1; si >= 0; si -= 1) {
+        const hit2 = findTracePayloadForTurn(turn, epoch, si);
+        if (hit2) {
+          return {
+            state: hit2.state,
+            turnOrdinal: turn.turnOrdinal,
+            segmentIndex: si
+          };
+        }
+      }
+      continue;
+    }
+    const segIdx = resolveViewSegmentIndex(turn);
+    const hit = findTracePayloadForTurn(turn, epoch, segIdx);
     if (hit) {
-      return { state: hit.state, turnOrdinal: turn.turnOrdinal };
+      return { state: hit.state, turnOrdinal: turn.turnOrdinal, segmentIndex: segIdx };
     }
   }
   return null;
 }
-function activeReceiveContent(turn) {
-  const receives = turn.receives;
-  if (!receives?.length) return "";
-  const idx = Math.min(
-    Math.max(0, Math.floor(turn.activeReceiveIndex ?? 0)),
-    receives.length - 1
-  );
-  const content = receives[idx]?.content;
-  return typeof content === "string" ? content : "";
+function activeReceiveContent(turn, segmentIndex) {
+  const rec = activeReceiveFromView(turn, segmentIndex);
+  return typeof rec?.content === "string" ? rec.content : "";
 }
-function activeReceiveId2(turn) {
-  const receives = turn.receives;
-  if (!receives?.length) return void 0;
-  const idx = Math.min(
-    Math.max(0, Math.floor(turn.activeReceiveIndex ?? 0)),
-    receives.length - 1
-  );
-  const id = receives[idx]?.id;
+function activeReceiveId2(turn, segmentIndex) {
+  const id = activeReceiveFromView(turn, segmentIndex)?.id;
   return typeof id === "string" && id.trim() ? id.trim() : void 0;
 }
-function isTurnAwaitingAssistantReply(turn) {
-  return !turn.receives?.length;
+function isTurnAwaitingAssistantReply(turn, segmentIndex) {
+  return !activeReceiveFromView(turn, segmentIndex);
 }
-function detectInvalidPluginState(turn, epoch) {
-  const targetReceiveId = activeReceiveId2(turn);
+function detectInvalidPluginState(turn, epoch, segmentIndex) {
+  const targetReceiveId = activeReceiveId2(turn, segmentIndex);
   const list = Array.isArray(turn.plugins) ? turn.plugins : [];
   for (const raw of list) {
     if (!raw || typeof raw !== "object") continue;
@@ -6141,14 +6216,17 @@ function diagnosisToReason(d) {
       return "snapshot_missing";
   }
 }
-function resolveCurrentTurnEmptyReason(turn, epoch) {
-  if (detectInvalidPluginState(turn, epoch)) {
+function resolveCurrentTurnEmptyReason(turn, epoch, segmentIndex) {
+  if (detectInvalidPluginState(turn, epoch, segmentIndex)) {
     return { reason: "invalid_state" };
   }
-  const diagnosis = diagnoseAssistantTrace(activeReceiveContent(turn));
+  const diagnosis = diagnoseAssistantTrace(activeReceiveContent(turn, segmentIndex));
   const reason = diagnosisToReason(diagnosis);
   const detail = diagnosis.kind === "json_parse_failed" ? diagnosis.detail : void 0;
   return { reason, detail };
+}
+function liveSegmentIndex(lastTurn) {
+  return resolveViewSegmentIndex(lastTurn);
 }
 function resolvePanelView(bundle, turns, epoch, pinned, isSeparateRegenerating = false) {
   if (turns.length === 0) {
@@ -6163,8 +6241,9 @@ function resolvePanelView(bundle, turns, epoch, pinned, isSeparateRegenerating =
   const lastTurn = turns[turns.length - 1];
   const lastOrdinal = lastTurn.turnOrdinal;
   const mode = pinned !== null ? "pinned" : "live";
-  const viewingTurn = pinned !== null ? turns.find((t) => t.turnOrdinal === pinned) : lastTurn;
+  const viewingTurn = pinned !== null ? turns.find((t) => t.turnOrdinal === pinned.turnOrdinal) : lastTurn;
   const viewingOrdinal = viewingTurn?.turnOrdinal;
+  const viewingSegmentIndex = pinned !== null ? pinned.segmentIndex : viewingTurn ? liveSegmentIndex(viewingTurn) : 0;
   const isCurrentTurnView = viewingTurn !== void 0 && viewingOrdinal === lastOrdinal;
   if (!viewingTurn || viewingOrdinal === void 0) {
     return {
@@ -6172,7 +6251,8 @@ function resolvePanelView(bundle, turns, epoch, pinned, isSeparateRegenerating =
       reason: "no_data_history",
       canRegenerate: false,
       mode,
-      turnOrdinal: pinned ?? void 0,
+      turnOrdinal: pinned?.turnOrdinal,
+      segmentIndex: pinned?.segmentIndex,
       epoch
     };
   }
@@ -6183,14 +6263,16 @@ function resolvePanelView(bundle, turns, epoch, pinned, isSeparateRegenerating =
       canRegenerate: false,
       mode,
       turnOrdinal: viewingOrdinal,
+      segmentIndex: viewingSegmentIndex,
       epoch
     };
   }
-  const hit = findTracePayloadForTurn(viewingTurn, epoch);
+  const hit = findTracePayloadForTurn(viewingTurn, epoch, viewingSegmentIndex);
   const meta = {
     mode,
     turnOrdinal: viewingOrdinal,
-    epoch
+    epoch,
+    ...tracePanelMetaForSegment(viewingTurn, viewingSegmentIndex)
   };
   if (hit) {
     try {
@@ -6200,6 +6282,7 @@ function resolvePanelView(bundle, turns, epoch, pinned, isSeparateRegenerating =
         html,
         mode,
         turnOrdinal: viewingOrdinal,
+        segmentIndex: viewingSegmentIndex,
         epoch,
         editState: hit.state
       };
@@ -6212,6 +6295,7 @@ function resolvePanelView(bundle, turns, epoch, pinned, isSeparateRegenerating =
         canRegenerate: isCurrentTurnView,
         mode,
         turnOrdinal: viewingOrdinal,
+        segmentIndex: viewingSegmentIndex,
         epoch
       };
     }
@@ -6223,22 +6307,31 @@ function resolvePanelView(bundle, turns, epoch, pinned, isSeparateRegenerating =
       canRegenerate: false,
       mode,
       turnOrdinal: viewingOrdinal,
+      segmentIndex: viewingSegmentIndex,
       epoch
     };
   }
-  const prior = isTurnAwaitingAssistantReply(viewingTurn) ? findPriorTraceStateForLive(turns, epoch) : null;
+  const prior = isTurnAwaitingAssistantReply(viewingTurn, viewingSegmentIndex) ? findPriorTraceStateForLive(
+    turns,
+    epoch,
+    viewingTurn,
+    viewingSegmentIndex
+  ) : null;
   if (prior) {
+    const priorTurn = turns.find((t) => t.turnOrdinal === prior.turnOrdinal) ?? viewingTurn;
     try {
       const html = renderTracePanelHtml(bundle, prior.state, {
         mode,
         turnOrdinal: prior.turnOrdinal,
-        epoch
+        epoch,
+        ...tracePanelMetaForSegment(priorTurn, prior.segmentIndex)
       });
       return {
         kind: "content",
         html,
         mode,
         turnOrdinal: prior.turnOrdinal,
+        segmentIndex: prior.segmentIndex,
         epoch,
         editState: prior.state,
         actionsDisabled: true
@@ -6252,18 +6345,24 @@ function resolvePanelView(bundle, turns, epoch, pinned, isSeparateRegenerating =
         canRegenerate: true,
         mode,
         turnOrdinal: viewingOrdinal,
+        segmentIndex: viewingSegmentIndex,
         epoch
       };
     }
   }
-  const { reason, detail } = resolveCurrentTurnEmptyReason(viewingTurn, epoch);
+  const { reason, detail } = resolveCurrentTurnEmptyReason(
+    viewingTurn,
+    epoch,
+    viewingSegmentIndex
+  );
   return {
     kind: "empty",
     reason,
     detail,
-    canRegenerate: true,
+    canRegenerate: turnHasAssistantReceives(viewingTurn),
     mode,
     turnOrdinal: viewingOrdinal,
+    segmentIndex: viewingSegmentIndex,
     epoch
   };
 }
@@ -6291,11 +6390,13 @@ function panelEmptyLocaleKey(reason) {
 }
 
 // plugins/trace-keeper/src/patch-state-client.ts
-async function runPatchState(host, conversationId, turnOrdinal, state) {
+async function runPatchState(host, conversationId, turnOrdinal, state, opts) {
   const data = await host.plugin.runAction("patch-state", {
     conversationId,
     turnOrdinal,
-    state
+    state,
+    ...typeof opts?.segmentIndex === "number" ? { segmentIndex: opts.segmentIndex } : {},
+    ...opts?.receiveId?.trim() ? { receiveId: opts.receiveId.trim() } : {}
   });
   if (!data || typeof data.state !== "object") {
     throw new Error("patch_state_invalid_response");
@@ -6335,11 +6436,13 @@ function actionErrorDebug(e) {
   }
   return void 0;
 }
-async function runSeparateRegenerate(host, conversationId, turnOrdinal) {
+async function runSeparateRegenerate(host, conversationId, turnOrdinal, opts) {
   try {
     const data = await host.plugin.runAction("regenerate-separate", {
       conversationId,
-      ...typeof turnOrdinal === "number" ? { turnOrdinal } : {}
+      ...typeof turnOrdinal === "number" ? { turnOrdinal } : {},
+      ...typeof opts?.segmentIndex === "number" ? { segmentIndex: opts.segmentIndex } : {},
+      ...opts?.receiveId?.trim() ? { receiveId: opts.receiveId.trim() } : {}
     });
     if (!data || typeof data.state !== "object") {
       throw new Error("regenerate_separate_invalid_response");
@@ -6410,24 +6513,27 @@ function logSeparateDebugIfPresent(debug) {
 
 // plugins/trace-keeper/src/state.ts
 var pinnedConversationId = null;
-var pinnedTurnOrdinal = null;
+var pinnedView = null;
 var regeneratingConversationId = null;
 var regenerating = false;
 var panelRevision = 0;
-function getPinnedTurnOrdinal(conversationId) {
+function getPinnedView(conversationId) {
   const cid = conversationId.trim();
   if (!cid || pinnedConversationId !== cid) return null;
-  return pinnedTurnOrdinal;
+  return pinnedView;
 }
-function setPinnedTurnOrdinal(conversationId, ord) {
+function setPinnedView(conversationId, view) {
   const cid = conversationId.trim();
-  if (!cid || ord == null) {
+  if (!cid || view == null) {
     pinnedConversationId = null;
-    pinnedTurnOrdinal = null;
+    pinnedView = null;
     return;
   }
   pinnedConversationId = cid;
-  pinnedTurnOrdinal = ord;
+  pinnedView = {
+    turnOrdinal: view.turnOrdinal,
+    segmentIndex: Math.max(0, Math.floor(view.segmentIndex))
+  };
 }
 function isRegenerating(conversationId) {
   const cid = conversationId.trim();
@@ -6462,6 +6568,17 @@ function turnsFromHost(host) {
   }
   return [];
 }
+function fullTurnForOrdinal(turns, turnOrdinal) {
+  return turns.find((t) => t.turnOrdinal === turnOrdinal) ?? null;
+}
+function segmentIndexFromCtx(ctx) {
+  if (typeof ctx.segmentIndex === "number" && Number.isFinite(ctx.segmentIndex)) {
+    return Math.max(0, Math.floor(ctx.segmentIndex));
+  }
+  const turn = ctx.turn;
+  if (!turn) return 0;
+  return resolveViewSegmentIndex(turn);
+}
 var SHELL_STYLES = `
 .trace-keeper-shell{display:flex;flex-direction:column;gap:8px;min-height:2.5rem}
 .trace-keeper-shell .tk-empty{margin:0}
@@ -6490,8 +6607,14 @@ function renderActionBar(host, opts) {
   const editDisabled = opts.editEnabled ? "" : " disabled";
   const regenDisabled = opts.regenEnabled && !opts.regenerating ? "" : " disabled";
   const regenBusy = opts.regenerating ? ' aria-busy="true"' : "";
+  const nav = opts.segmentNav;
+  const navHtml = nav && nav.segmentCount > 1 ? [
+    `<button type="button" class="tk-icon-btn" data-tk-action="segment-prev"${nav.segmentIndex <= 0 ? " disabled" : ""} title="prev" aria-label="prev"><i class="mdi mdi-chevron-left" aria-hidden="true"></i></button>`,
+    `<button type="button" class="tk-icon-btn" data-tk-action="segment-next"${nav.segmentIndex >= nav.segmentCount - 1 ? " disabled" : ""} title="next" aria-label="next"><i class="mdi mdi-chevron-right" aria-hidden="true"></i></button>`
+  ].join("\n") : "";
   return [
     '<div class="tk-actions">',
+    navHtml,
     `<button type="button" class="tk-icon-btn" data-tk-action="edit-state-json" title="${editTitle}" aria-label="${editTitle}"${editDisabled}><i class="mdi mdi-pencil-outline" aria-hidden="true"></i></button>`,
     `<button type="button" class="tk-icon-btn" data-tk-action="regenerate-separate" title="${regenTitle}" aria-label="${regenTitle}"${regenDisabled}${regenBusy}><i class="mdi mdi-refresh" aria-hidden="true"></i></button>`,
     "</div>"
@@ -6539,7 +6662,8 @@ function wrapPanelShell(host, innerHtml, opts) {
       showActions: opts.showActions === true,
       editEnabled: opts.editEnabled === true,
       regenEnabled: opts.regenEnabled === true,
-      regenerating: opts.regenerating
+      regenerating: opts.regenerating,
+      segmentNav: opts.segmentNav
     })
   );
   parts.push("</div>");
@@ -6549,8 +6673,15 @@ function escapeHtml(text) {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 var lastEditContext = null;
+var lastLiveContext = null;
 function conversationIdFrom(host) {
   return host.conversation.getId?.()?.trim() ?? "";
+}
+function segmentCountForTurn(turn) {
+  if (!turn) return 0;
+  const n = turn.segments?.length ?? 0;
+  if (n > 0) return n;
+  return (turn.receives?.length ?? 0) > 0 ? 1 : 0;
 }
 async function refreshPanel(host) {
   try {
@@ -6564,7 +6695,7 @@ ${SHELL_STYLES}`);
     const epoch = trackerEpochFromSettings(convSettings);
     const turns = turnsFromHost(host);
     const conversationId = conversationIdFrom(host);
-    const pinned = getPinnedTurnOrdinal(conversationId);
+    const pinned = getPinnedView(conversationId);
     const regenBusy = isRegenerating(conversationId);
     const resolved = resolvePanelView(
       bundle,
@@ -6573,19 +6704,29 @@ ${SHELL_STYLES}`);
       pinned,
       regenBusy
     );
+    const viewingSegmentIndex = resolved.kind === "content" ? resolved.segmentIndex : resolved.segmentIndex ?? 0;
+    const viewingOrdinal = resolved.kind === "content" ? resolved.turnOrdinal : resolved.turnOrdinal;
     lastEditContext = resolved.kind === "content" && !resolved.actionsDisabled ? {
       turnOrdinal: resolved.turnOrdinal,
+      segmentIndex: resolved.segmentIndex,
       state: resolved.editState
     } : null;
     const lastTurn = turns.length > 0 ? turns[turns.length - 1] : null;
-    const viewingOrdinal = resolved.kind === "content" ? resolved.turnOrdinal : resolved.turnOrdinal;
     const isLastTurnView = lastTurn !== null && typeof viewingOrdinal === "number" && viewingOrdinal === lastTurn.turnOrdinal;
+    const liveSegmentIndex2 = lastTurn ? resolveViewSegmentIndex(lastTurn) : 0;
+    lastLiveContext = lastTurn != null ? { turnOrdinal: lastTurn.turnOrdinal, segmentIndex: liveSegmentIndex2 } : null;
     const actionsDisabled = resolved.kind === "content" && resolved.actionsDisabled === true;
+    const viewingTurn = typeof viewingOrdinal === "number" ? fullTurnForOrdinal(turns, viewingOrdinal) : null;
+    const segmentNav = pinned && viewingTurn ? {
+      segmentIndex: viewingSegmentIndex,
+      segmentCount: segmentCountForTurn(viewingTurn)
+    } : void 0;
     const shellActions = {
       showActions: turns.length > 0,
       editEnabled: resolved.kind === "content" && !actionsDisabled,
-      regenEnabled: !actionsDisabled && isLastTurnView && (resolved.kind === "content" || resolved.kind === "empty" && resolved.canRegenerate),
-      regenerating: regenBusy
+      regenEnabled: !actionsDisabled && isLastTurnView && viewingSegmentIndex === liveSegmentIndex2 && (resolved.kind === "content" || resolved.kind === "empty" && resolved.canRegenerate),
+      regenerating: regenBusy,
+      segmentNav
     };
     const html = resolved.kind === "content" ? wrapPanelShell(host, resolved.html, shellActions) : wrapPanelShell(host, "", {
       emptyReason: resolved.reason,
@@ -6609,14 +6750,32 @@ function openEditStateDialog(host) {
     PLUGIN_ID,
     {
       turnOrdinal: lastEditContext.turnOrdinal,
+      segmentIndex: lastEditContext.segmentIndex,
       stateJson: JSON.stringify(lastEditContext.state, null, 2)
     },
     EDIT_DIALOG_ID
   );
 }
+function shiftPinnedSegment(host, delta) {
+  const conversationId = conversationIdFrom(host);
+  const pinned = getPinnedView(conversationId);
+  if (!pinned) return;
+  const turn = fullTurnForOrdinal(turnsFromHost(host), pinned.turnOrdinal);
+  const count = segmentCountForTurn(turn);
+  if (count <= 1) return;
+  const next = Math.min(
+    Math.max(0, pinned.segmentIndex + delta),
+    count - 1
+  );
+  if (next === pinned.segmentIndex) return;
+  setPinnedView(conversationId, { ...pinned, segmentIndex: next });
+  void refreshPanel(host);
+  host.refreshSlotButtons();
+}
 async function handlePatchStateSubmit(host, model) {
   const conversationId = host.conversation.getId?.();
   const turnOrdinal = model.turnOrdinal;
+  const segmentIndex = model.segmentIndex;
   const stateJson = String(model.stateJson ?? "");
   if (!conversationId || typeof turnOrdinal !== "number") return;
   const state = parseStateJsonText(stateJson);
@@ -6625,7 +6784,9 @@ async function handlePatchStateSubmit(host, model) {
     return;
   }
   try {
-    await runPatchState(host, conversationId, turnOrdinal, state);
+    await runPatchState(host, conversationId, turnOrdinal, state, {
+      segmentIndex: typeof segmentIndex === "number" ? Math.round(segmentIndex) : void 0
+    });
     if (host.conversation.refresh) {
       await host.conversation.refresh();
     }
@@ -6636,17 +6797,23 @@ async function handlePatchStateSubmit(host, model) {
     console.warn("[trace-keeper]", host.t(k(host, "toastPatchFailed"), { code }));
   }
 }
-async function handleRegenerateSeparate(host) {
+async function handleRegenerateSeparate(host, segmentIndex) {
   const conversationId = conversationIdFrom(host);
   if (!conversationId || isRegenerating(conversationId)) return;
   const turns = turnsFromHost(host);
   const lastTurn = turns[turns.length - 1];
   if (!lastTurn) return;
+  const segIdx = typeof segmentIndex === "number" ? segmentIndex : resolveViewSegmentIndex(lastTurn);
   setRegenerating(conversationId, true);
   void refreshPanel(host);
   const wantDebug = auditDebugEnabled(host);
   try {
-    const result = await runSeparateRegenerate(host, conversationId, lastTurn.turnOrdinal);
+    const result = await runSeparateRegenerate(
+      host,
+      conversationId,
+      lastTurn.turnOrdinal,
+      { segmentIndex: segIdx }
+    );
     logSeparateDebugIfPresent(result.debug);
     if (wantDebug && !result.debug) {
       console.warn(
@@ -6715,58 +6882,68 @@ function registerPanel(host) {
   host.ui.panel.onEvent(PLACEMENT, PLUGIN_ID, {
     onAction: (ev) => {
       if (ev.action === "regenerate-separate") {
-        void handleRegenerateSeparate(host);
+        void handleRegenerateSeparate(host, lastLiveContext?.segmentIndex);
       }
       if (ev.action === "edit-state-json") {
         openEditStateDialog(host);
+      }
+      if (ev.action === "segment-prev") {
+        shiftPinnedSegment(host, -1);
+      }
+      if (ev.action === "segment-next") {
+        shiftPinnedSegment(host, 1);
       }
     }
   });
   void refreshPanel(host);
 }
+function pinnedMatches(ctx, pinned) {
+  if (!pinned) return false;
+  const ord = ctx.turn?.turnOrdinal;
+  if (typeof ord !== "number" || ord !== pinned.turnOrdinal) return false;
+  return segmentIndexFromCtx(ctx) === pinned.segmentIndex;
+}
 function registerTurnButton(host) {
-  host.registerSlotButton("turn-block-head", {
+  host.registerSlotButton("assistant-turn-footer", {
     id: `${PLUGIN_ID}-view`,
     icon: "mdi-map-marker-radius-outline",
     tooltipKey: (ctx) => {
       const ord = ctx.turn?.turnOrdinal;
       if (typeof ord !== "number") return k(host, "tooltipTurnEmpty");
       const conversationId = conversationIdFrom(host);
-      const pinned = getPinnedTurnOrdinal(conversationId);
+      const pinned = getPinnedView(conversationId);
+      const segIdx = segmentIndexFromCtx(ctx);
       const epoch = trackerEpochFromSettings(
         host.conversation.getPluginSettingsSnapshot()
       );
-      const hit = findTracePayloadForTurn(ctx.turn, epoch);
-      if (pinned === ord && !hit) return k(host, "tooltipTurnPinnedEmpty");
+      const hit = findTracePayloadForTurn(ctx.turn, epoch, segIdx);
+      if (pinnedMatches(ctx, pinned) && !hit) return k(host, "tooltipTurnPinnedEmpty");
       return hit ? k(host, "tooltipTurnView") : k(host, "tooltipTurnEmpty");
     },
     disabled: (ctx) => {
       const ord = ctx.turn?.turnOrdinal;
       if (typeof ord !== "number") return true;
       const conversationId = conversationIdFrom(host);
-      const pinned = getPinnedTurnOrdinal(conversationId);
-      if (pinned === ord) return false;
+      if (pinnedMatches(ctx, getPinnedView(conversationId))) return false;
       const epoch = trackerEpochFromSettings(
         host.conversation.getPluginSettingsSnapshot()
       );
-      return !findTracePayloadForTurn(ctx.turn, epoch);
+      return !findTracePayloadForTurn(
+        ctx.turn,
+        epoch,
+        segmentIndexFromCtx(ctx)
+      );
     },
-    filled: (ctx) => {
-      const conversationId = conversationIdFrom(host);
-      const pinned = getPinnedTurnOrdinal(conversationId);
-      const ord = ctx.turn?.turnOrdinal;
-      return pinned !== null && ord === pinned;
-    },
+    filled: (ctx) => pinnedMatches(ctx, getPinnedView(conversationIdFrom(host))),
     when: (ctx) => typeof ctx.turn?.turnOrdinal === "number",
     onClick: (ctx) => {
       const ord = ctx.turn?.turnOrdinal;
       if (typeof ord !== "number") return;
       const conversationId = conversationIdFrom(host);
-      const pinned = getPinnedTurnOrdinal(conversationId);
-      setPinnedTurnOrdinal(
-        conversationId,
-        pinned === ord ? null : ord
-      );
+      const segIdx = segmentIndexFromCtx(ctx);
+      const pinned = getPinnedView(conversationId);
+      const next = pinned?.turnOrdinal === ord && pinned.segmentIndex === segIdx ? null : { turnOrdinal: ord, segmentIndex: segIdx };
+      setPinnedView(conversationId, next);
       host.refreshSlotButtons();
       void refreshPanel(host);
       host.ui.panel.open(PLACEMENT, PLUGIN_ID);

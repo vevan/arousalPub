@@ -190,7 +190,7 @@
     "eagerOnRoutes": ["chat"],
     "slots": [
       {
-        "name": "turn-block-head",
+        "name": "assistant-turn-footer",
         "entry": "./dist/web.mjs"
       }
     ]

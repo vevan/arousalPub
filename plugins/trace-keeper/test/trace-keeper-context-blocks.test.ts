@@ -25,6 +25,15 @@ describe('buildTraceKeeperSeparateBlockSpecs', () => {
       stripBlockTagsOnToTurn: [BLOCK_TAG],
     })
   })
+
+  it('includes target segment index for group chat separate', () => {
+    const specs = buildTraceKeeperSeparateBlockSpecs({
+      targetOrdinal: 4,
+      windowTurnCount: 2,
+      targetSegmentIndex: 0,
+    })
+    assert.equal(specs[0]?.stripBlockTagsOnToTurnSegmentIndex, 0)
+  })
 })
 
 describe('formatTraceKeeperLayoutBlocks', () => {

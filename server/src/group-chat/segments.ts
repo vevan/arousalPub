@@ -45,20 +45,49 @@ export function getActiveSegment(
   return segments[idx] ?? segments[0]!
 }
 
-/** 将 active segment 同步到 turn.receives / activeReceiveIndex（API 与 swipe 宏） */
-export function syncTurnReceivesFromActiveSegment(turn: TurnRecord): void {
+export function turnHasAssistantContent(turn: TurnRecord): boolean {
+  return turn.segments.some((s) => (s.receives?.length ?? 0) > 0)
+}
+
+/** 写盘后从 active segment 更新 turn.speakerCharacterId（无 turn.receives 镜像） */
+export function syncTurnSpeakerFromActiveSegment(turn: TurnRecord): void {
   const defaultSpeaker =
     turn.segments[0]?.speakerCharacterId?.trim() ??
     turn.speakerCharacterId?.trim() ??
     ''
   const seg = getActiveSegment(turn, defaultSpeaker)
-  if (!seg) return
-  turn.receives = seg.receives
-  turn.activeReceiveIndex = Math.min(
-    Math.max(0, seg.activeReceiveIndex),
-    Math.max(0, seg.receives.length - 1),
-  )
-  turn.speakerCharacterId = seg.speakerCharacterId
+  const speaker = seg?.speakerCharacterId?.trim()
+  if (speaker) turn.speakerCharacterId = speaker
+}
+
+export function getSegmentAtIndex(
+  turn: TurnRecord,
+  segmentIndex: number,
+  defaultSpeakerCharacterId = '',
+): AssistantSegmentRecord | null {
+  const segments = getTurnSegments(turn, defaultSpeakerCharacterId)
+  if (segmentIndex < 0 || segmentIndex >= segments.length) return null
+  return segments[segmentIndex] ?? null
+}
+
+/** 在 turn 全部 segment 中定位 receive.id */
+export function findReceiveInTurn(
+  turn: TurnRecord,
+  receiveId: string,
+): { segmentIndex: number; receiveIndex: number; receive: import('../chat-storage.js').TurnReceive } | null {
+  const rid = receiveId.trim()
+  if (!rid) return null
+  for (let si = 0; si < turn.segments.length; si += 1) {
+    const seg = turn.segments[si]!
+    const receives = seg.receives ?? []
+    for (let ri = 0; ri < receives.length; ri += 1) {
+      const rec = receives[ri]!
+      if (typeof rec.id === 'string' && rec.id.trim() === rid) {
+        return { segmentIndex: si, receiveIndex: ri, receive: rec }
+      }
+    }
+  }
+  return null
 }
 
 export function segmentSkipQuotaDeductionOnRecord(

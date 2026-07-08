@@ -140,7 +140,7 @@ describe('st-chat-import', () => {
       assert.ok(tail)
       assert.equal(tail.turns.length, 3)
       assert.equal(tail.turns[0]!.send.userText, '')
-      assert.equal(tail.turns[1]!.receives[0]?.reasoning, 'think')
+      assert.equal(tail.turns[1]!.segments[0]!.receives[0]?.reasoning, 'think')
     })
 
     it('importStChatFromStream writes via streaming session', async () => {

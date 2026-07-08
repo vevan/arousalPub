@@ -36,6 +36,7 @@ describe('parseContextBlockSpecs', () => {
         toTurn: 5,
         regexRuleIds: ['r1'],
         stripBlockTagsOnToTurn: ['ex-fixture-block'],
+        stripBlockTagsOnToTurnSegmentIndex: 1,
       },
     ])
     assert.deepEqual(specs[0], {
@@ -47,6 +48,7 @@ describe('parseContextBlockSpecs', () => {
       regexApplyAllTurns: false,
       tailOrdinal: undefined,
       stripBlockTagsOnToTurn: ['ex-fixture-block'],
+      stripBlockTagsOnToTurnSegmentIndex: 1,
     })
   })
 })

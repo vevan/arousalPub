@@ -26,5 +26,8 @@ export interface TraceKeeperPayload {
 export interface TracePanelMeta {
   mode: 'live' | 'pinned'
   turnOrdinal?: number
+  segmentIndex?: number
+  receiveId?: string
+  speakerCharacterId?: string
   epoch: number
 }

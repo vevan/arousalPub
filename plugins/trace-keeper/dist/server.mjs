@@ -320,6 +320,68 @@ function resolveSeparateTurnCount(userSettings, convSettings) {
   return SEPARATE_TURN_COUNT_DEFAULT;
 }
 
+// plugins/trace-keeper/src/host-segment-snapshot.ts
+function activeReceiveFromSegment(seg) {
+  const receives = seg.receives ?? [];
+  if (!receives.length) return null;
+  const idx = Math.min(
+    Math.max(0, Math.floor(seg.activeReceiveIndex)),
+    receives.length - 1
+  );
+  return receives[idx] ?? null;
+}
+function resolveSegmentIndexFromBody(turn, body) {
+  const hasSegmentIndex = typeof body.segmentIndex === "number" && Number.isFinite(body.segmentIndex);
+  const receiveId = typeof body.receiveId === "string" ? body.receiveId.trim() : "";
+  if (hasSegmentIndex) {
+    const idx = Math.round(body.segmentIndex);
+    if (idx >= 0 && idx < turn.segments.length) {
+      return { kind: "ok", segmentIndex: idx };
+    }
+    if (!receiveId) {
+      return { kind: "error", code: "invalid_segment_index" };
+    }
+  }
+  if (receiveId) {
+    for (let i = 0; i < turn.segments.length; i += 1) {
+      const seg = turn.segments[i];
+      for (const r of seg.receives) {
+        if (r.id?.trim() === receiveId) return { kind: "ok", segmentIndex: i };
+      }
+    }
+    return { kind: "error", code: "receive_not_found" };
+  }
+  return { kind: "default" };
+}
+function segmentIndexForAction(snap, body) {
+  const resolved = resolveSegmentIndexFromBody(snap, body);
+  if (resolved.kind === "error") {
+    const status = resolved.code === "receive_not_found" ? 404 : 400;
+    return { ok: false, code: resolved.code, status };
+  }
+  if (resolved.kind === "ok") {
+    return { ok: true, segmentIndex: resolved.segmentIndex };
+  }
+  return { ok: true };
+}
+function activeSegmentReceive(turn, segmentIndex) {
+  const segments = turn.segments;
+  if (!segments.length) return null;
+  let segIdx;
+  if (typeof segmentIndex === "number" && Number.isFinite(segmentIndex)) {
+    segIdx = Math.floor(segmentIndex);
+    if (segIdx < 0 || segIdx >= segments.length) return null;
+  } else {
+    segIdx = Math.min(
+      Math.max(0, Math.floor(turn.activeSegmentIndex)),
+      segments.length - 1
+    );
+  }
+  const seg = segments[segIdx];
+  if (!seg) return null;
+  return activeReceiveFromSegment(seg);
+}
+
 // plugins/trace-keeper/src/tracker-prompt.ts
 function formatSampleStateForPrompt(bundle) {
   const raw = bundle.sampleStatePromptText?.trim();
@@ -353,6 +415,7 @@ function buildTraceKeeperSeparateBlockSpecs(input) {
     Math.floor(input.windowTurnCount)
   );
   const fromTurn = Math.max(0, input.targetOrdinal - cap + 1);
+  const segIdx = input.targetSegmentIndex;
   return [
     {
       source: "conversation.transcript",
@@ -360,7 +423,8 @@ function buildTraceKeeperSeparateBlockSpecs(input) {
       fromTurn,
       toTurn: input.targetOrdinal,
       tailOrdinal: input.targetOrdinal,
-      stripBlockTagsOnToTurn: [BLOCK_TAG]
+      stripBlockTagsOnToTurn: [BLOCK_TAG],
+      ...typeof segIdx === "number" && Number.isFinite(segIdx) ? { stripBlockTagsOnToTurnSegmentIndex: Math.round(segIdx) } : {}
     }
   ];
 }
@@ -398,15 +462,6 @@ function mergeSeparateDebug(messages, code, extra) {
     ...extra
   };
 }
-function activeReceive(turn) {
-  const receives = turn.receives;
-  if (!receives.length) return null;
-  const idx = Math.min(
-    Math.max(0, Math.floor(turn.activeReceiveIndex)),
-    receives.length - 1
-  );
-  return receives[idx] ?? null;
-}
 async function regenerateSeparateState(input, api) {
   const conversationId = input.conversationId.trim();
   if (!conversationId) return { ok: false, code: "invalid_conversation_id" };
@@ -424,7 +479,7 @@ async function regenerateSeparateState(input, api) {
     targetOrdinal
   );
   if (!turn) return { ok: false, code: "turn_not_found" };
-  const receive = activeReceive(turn);
+  const receive = activeSegmentReceive(turn, input.segmentIndex);
   if (!receive?.id) return { ok: false, code: "receive_not_found" };
   const assistantText = stripTraceKeeperBlocks(receive.content);
   if (!assistantText) return { ok: false, code: "assistant_content_empty" };
@@ -438,7 +493,8 @@ async function regenerateSeparateState(input, api) {
   const debugCapture = input.debugCapture === true;
   const blocks = prepareTraceKeeperSeparateContextBlocks({
     targetOrdinal,
-    windowTurnCount
+    windowTurnCount,
+    ...typeof input.segmentIndex === "number" && Number.isFinite(input.segmentIndex) ? { targetSegmentIndex: Math.round(input.segmentIndex) } : {}
   });
   const result = await api.completeWithContext({
     conversationId,
@@ -505,17 +561,6 @@ async function regenerateSeparateState(input, api) {
 }
 
 // plugins/trace-keeper/src/server/patch-state.ts
-function activeReceive2(turn) {
-  const receives = turn.receives;
-  if (!receives?.length) return null;
-  const idx = Math.min(
-    Math.max(0, Math.floor(turn.activeReceiveIndex)),
-    receives.length - 1
-  );
-  const rec = receives[idx];
-  if (!rec?.id?.trim()) return null;
-  return { id: rec.id.trim() };
-}
 async function patchTraceKeeperState(input, api) {
   const conversationId = input.conversationId.trim();
   if (!conversationId) return { ok: false, code: "invalid_conversation_id" };
@@ -531,12 +576,10 @@ async function patchTraceKeeperState(input, api) {
   ]);
   if (!turn) return { ok: false, code: "turn_not_found" };
   const epoch = trackerEpochFromSettings(convSettings);
-  const receive = activeReceive2(turn);
+  const receive = activeSegmentReceive(turn, input.segmentIndex);
   if (!receive?.id) return { ok: false, code: "receive_not_found" };
-  const active = turn.receives.find((r) => r.id === receive.id);
-  if (!active) return { ok: false, code: "receive_not_found" };
   const payload = { state, epoch, receiveId: receive.id };
-  const assistantContent = upsertTraceKeeperBlockInAssistant(active.content, state);
+  const assistantContent = upsertTraceKeeperBlockInAssistant(receive.content, state);
   const entry = {
     pluginId: PLUGIN_ID,
     schemaVersion: 1,
@@ -640,9 +683,34 @@ async function runPluginAction(action, body, api) {
   if (action === "regenerate-separate") {
     const turnOrdinal = typeof body.turnOrdinal === "number" && Number.isFinite(body.turnOrdinal) ? Math.round(body.turnOrdinal) : void 0;
     const debugCapture = body.debugCapture === true;
+    const hostApi = api;
+    const targetOrdinal = turnOrdinal ?? (await hostApi.readConversationTurnsTail(conversationId, 1)).slice(-1)[0]?.turnOrdinal;
+    let segmentIndex;
+    if (typeof targetOrdinal === "number") {
+      const snap = await hostApi.readConversationTurnAtOrdinal(
+        conversationId,
+        targetOrdinal
+      );
+      if (snap) {
+        const resolved = segmentIndexForAction(snap, body);
+        if (!resolved.ok) {
+          return {
+            ok: false,
+            code: resolved.code,
+            status: resolved.status
+          };
+        }
+        segmentIndex = resolved.segmentIndex;
+      }
+    }
     const result = await regenerateSeparateState(
-      { conversationId, turnOrdinal, debugCapture },
-      api
+      {
+        conversationId,
+        turnOrdinal,
+        segmentIndex,
+        debugCapture
+      },
+      hostApi
     );
     if (!result.ok) {
       const status = result.code === "parse_failed" || result.code === "assistant_content_empty" ? 422 : result.code === "turn_not_found" || result.code === "no_turns" ? 404 : 400;
@@ -667,9 +735,33 @@ async function runPluginAction(action, body, api) {
   }
   if (action === "patch-state") {
     const turnOrdinal = typeof body.turnOrdinal === "number" && Number.isFinite(body.turnOrdinal) ? Math.round(body.turnOrdinal) : NaN;
+    const hostApi = api;
+    let segmentIndex;
+    if (Number.isFinite(turnOrdinal)) {
+      const snap = await hostApi.readConversationTurnAtOrdinal(
+        conversationId,
+        Math.round(turnOrdinal)
+      );
+      if (snap) {
+        const resolved = segmentIndexForAction(snap, body);
+        if (!resolved.ok) {
+          return {
+            ok: false,
+            code: resolved.code,
+            status: resolved.status
+          };
+        }
+        segmentIndex = resolved.segmentIndex;
+      }
+    }
     const result = await patchTraceKeeperState(
-      { conversationId, turnOrdinal, state: body.state },
-      api
+      {
+        conversationId,
+        turnOrdinal,
+        state: body.state,
+        ...segmentIndex !== void 0 ? { segmentIndex } : {}
+      },
+      hostApi
     );
     if (!result.ok) {
       const status = result.code === "invalid_state" ? 422 : result.code === "turn_not_found" || result.code === "no_turns" ? 404 : result.code === "invalid_conversation_id" || result.code === "invalid_turn_ordinal" ? 400 : 400;

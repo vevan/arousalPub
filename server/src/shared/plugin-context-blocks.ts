@@ -33,6 +33,8 @@ export type ConversationTranscriptBlockSpec = {
   tailOrdinal?: number
   /** 仅对 toTurn 的 assistant 正文剥除指定块标签（Separate 补生成等） */
   stripBlockTagsOnToTurn?: string[]
+  /** 与 stripBlockTagsOnToTurn 联用：仅剥 toTurn 的指定 segment（缺省 = activeSegmentIndex） */
+  stripBlockTagsOnToTurnSegmentIndex?: number
 }
 
 export type ConversationTranscriptTailBlockSpec = {
@@ -44,6 +46,8 @@ export type ConversationTranscriptTailBlockSpec = {
   tailOrdinal?: number
   /** 仅对 tail 末轮的 assistant 正文剥除指定块标签 */
   stripBlockTagsOnToTurn?: string[]
+  /** 与 stripBlockTagsOnToTurn 联用：仅剥末轮指定 segment（缺省 = activeSegmentIndex） */
+  stripBlockTagsOnToTurnSegmentIndex?: number
 }
 
 export type ContextBlockSpec =

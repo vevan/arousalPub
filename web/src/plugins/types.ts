@@ -15,6 +15,7 @@ import type {
   ContextBlockSpec,
   PluginContextBlocksSuccess,
 } from '@/shared/plugin-context-blocks'
+import type { NotificationAction } from '@/utils/notification-storage'
 
 export type ChatSession = ReturnType<typeof useChatSession>
 
@@ -146,12 +147,7 @@ export interface PluginNotifyOptions {
   /** 立即写入通知列表（未读）；用于须 bell 回顾的结果 */
   persist?: boolean
   level?: 'info' | 'success' | 'warning' | 'error'
-  action?: {
-    type: 'route' | 'conversation' | 'settings-tab' | 'external'
-    href?: string
-    conversationId?: string
-    settingsTab?: string
-  }
+  action?: NotificationAction
   snackbarActions?: Array<{
     label: string
     action?: PluginNotifyOptions['action']

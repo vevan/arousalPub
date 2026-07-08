@@ -37,6 +37,7 @@ import type {
 import { useConnectionStore } from '@/stores/connection'
 import { useNarrowLayout } from '@/composables/use-narrow-layout'
 import { useUiContextStore } from '@/stores/ui-context'
+import { coreNotify } from '@/utils/core-notify'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -140,10 +141,11 @@ function performDeletePreset() {
     const ok = await store.deletePreset(editingPresetId.value)
     presetDeleteOpen.value = false
     if (!ok) {
-      snackbarColor.value = 'error'
-      snackbarText.value =
-        store.lastError?.trim() || t('prompts.presetDeleteFailed')
-      snackbar.value = true
+      coreNotify(
+        store.lastError?.trim() || t('prompts.presetDeleteFailed'),
+        undefined,
+        { level: 'error' },
+      )
     }
   })()
 }
@@ -151,10 +153,11 @@ function switchPreset(id: string) {
   void (async () => {
     const ok = await store.selectPreset(id)
     if (!ok) {
-      snackbarColor.value = 'error'
-      snackbarText.value =
-        store.lastError?.trim() || t('prompts.presetSwitchFailed')
-      snackbar.value = true
+      coreNotify(
+        store.lastError?.trim() || t('prompts.presetSwitchFailed'),
+        undefined,
+        { level: 'error' },
+      )
       return
     }
     presetSwitchOpen.value = false
@@ -162,22 +165,17 @@ function switchPreset(id: string) {
 }
 
 const setDefaultPresetLoading = ref(false)
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref<'success' | 'error'>('success')
 
 async function onSetDefaultPreset() {
   if (isEditingPresetDefault.value) return
   setDefaultPresetLoading.value = true
   try {
     await store.setGlobalDefaultPreset()
-    snackbarColor.value = 'success'
-    snackbarText.value = t('prompts.setDefaultPresetOk')
-    snackbar.value = true
+    coreNotify(t('prompts.setDefaultPresetOk'), undefined, { level: 'success' })
   } catch (e) {
-    snackbarColor.value = 'error'
-    snackbarText.value = e instanceof Error ? e.message : String(e)
-    snackbar.value = true
+    coreNotify(e instanceof Error ? e.message : String(e), undefined, {
+      level: 'error',
+    })
   } finally {
     setDefaultPresetLoading.value = false
   }
@@ -2205,9 +2203,6 @@ const canDeleteGroup = (g: PromptGroup) =>
       </v-card>
     </v-dialog>
 
-    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
-      {{ snackbarText }}
-    </v-snackbar>
   </div>
 </template>
 

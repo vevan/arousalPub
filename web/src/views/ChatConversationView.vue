@@ -11,6 +11,7 @@ import { CONVERSATION_BRANCH_KEY } from '@/composables/conversation-branch-conte
 import { useConversationBranches } from '@/composables/useConversationBranches'
 import { useMemoryRebuild } from '@/composables/useMemoryRebuild'
 import { bootstrapAppData } from '@/bootstrap/app-data'
+import { coreNotify } from '@/utils/core-notify'
 import { fetchDefaultLorebookIds, fetchLorebookPickerItems } from '@/utils/default-lorebook'
 import { useConnectionStore } from '@/stores/connection'
 import { usePreferencesStore } from '@/stores/preferences'
@@ -167,28 +168,17 @@ const createBranchSubtitle = computed(() => {
   return t('chat.branches.createBranchForkFrom', { n })
 })
 
-const branchSnackOpen = ref(false)
-const branchSnackText = ref('')
-const branchSnackColor = ref<'success' | 'error'>('error')
-const branchSnackTimeout = ref(4000)
-
 watch(branchSuccessMessage, (msg) => {
   const text = msg.trim()
   if (!text) return
-  branchSnackText.value = text
-  branchSnackColor.value = 'success'
-  branchSnackTimeout.value = 3000
-  branchSnackOpen.value = true
+  coreNotify(text, undefined, { level: 'success', timeout: 3000 })
   branchSuccessMessage.value = ''
 })
 
 watch(branchActionError, (msg) => {
   const text = msg.trim()
   if (!text) return
-  branchSnackText.value = text
-  branchSnackColor.value = 'error'
-  branchSnackTimeout.value = 4000
-  branchSnackOpen.value = true
+  coreNotify(text, undefined, { level: 'error', timeout: 4000 })
   branchActionError.value = ''
 })
 
@@ -1111,14 +1101,6 @@ watch(
         @update:model-value="(open) => { if (!open) cancelCreateBranch() }"
         @confirm="confirmCreateBranch"
       />
-      <v-snackbar
-        v-model="branchSnackOpen"
-        :timeout="branchSnackTimeout"
-        location="bottom"
-        :color="branchSnackColor"
-      >
-        {{ branchSnackText }}
-      </v-snackbar>
       <v-dialog
         v-model="memoryRebuildDialogOpen"
         max-width="32rem"

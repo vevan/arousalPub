@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { characterImageUrl } from '@/utils/authenticated-media-url'
+import { coreNotify } from '@/utils/core-notify'
 import { useAuthStore } from '@/stores/auth'
 import { apiFetch } from '@/utils/api-fetch'
 import { generateShortId } from '@/utils/short-id'
@@ -119,8 +120,6 @@ const charFormPost = ref('')
 const charFormNameError = ref('')
 const previewUserMarkSaving = ref(false)
 const charFormDialogError = ref('')
-const snackOpen = ref(false)
-const snackMessage = ref('')
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const portraitInputRef = ref<HTMLInputElement | null>(null)
 const charPortraitFile = ref<File | null>(null)
@@ -564,8 +563,7 @@ async function savePreviewUserMark(value: boolean | null) {
       body: JSON.stringify({ isUser: value }),
     })
     if (!res.ok) {
-      snackMessage.value = t('characters.userMarkFailed')
-      snackOpen.value = true
+      coreNotify(t('characters.userMarkFailed'), undefined, { level: 'error' })
       return
     }
     const doc = (await res.json()) as CharacterDoc
@@ -596,8 +594,7 @@ async function savePreviewUserMark(value: boolean | null) {
       }
     }
   } catch {
-    snackMessage.value = t('characters.userMarkFailed')
-    snackOpen.value = true
+    coreNotify(t('characters.userMarkFailed'), undefined, { level: 'error' })
   } finally {
     previewUserMarkSaving.value = false
   }
@@ -647,8 +644,7 @@ async function submitCharForm() {
         return
       }
       charFormOpen.value = false
-      snackMessage.value = t('characters.createOk')
-      snackOpen.value = true
+      coreNotify(t('characters.createOk'), undefined, { level: 'success' })
       bumpPortraitTick()
       clearPortraitPick()
       await reloadFromStart()
@@ -682,8 +678,7 @@ async function submitCharForm() {
       }
       detail.value = docJson
       charFormOpen.value = false
-      snackMessage.value = t('characters.editOk')
-      snackOpen.value = true
+      coreNotify(t('characters.editOk'), undefined, { level: 'success' })
       bumpPortraitTick()
       clearPortraitPick()
       await refreshListKeepSelection()
@@ -717,8 +712,7 @@ async function onImportFile(ev: Event) {
         errorText.value = j.error ?? t('characters.importFailed')
         return
       }
-      snackMessage.value = t('characters.importOk')
-      snackOpen.value = true
+      coreNotify(t('characters.importOk'), undefined, { level: 'success' })
       bumpPortraitTick()
       try {
         await reloadFromStart()
@@ -748,8 +742,7 @@ async function onImportFile(ev: Event) {
       errorText.value = j.error ?? t('characters.importFailed')
       return
     }
-    snackMessage.value = t('characters.importOk')
-    snackOpen.value = true
+    coreNotify(t('characters.importOk'), undefined, { level: 'success' })
     bumpPortraitTick()
     try {
       await reloadFromStart()
@@ -1539,12 +1532,6 @@ onUnmounted(() => {
       </v-card>
     </v-dialog>
 
-    <v-snackbar v-model="snackOpen" :timeout="3200" location="bottom">
-      {{ snackMessage }}
-      <template #actions>
-        <v-btn variant="text" @click="snackOpen = false">OK</v-btn>
-      </template>
-    </v-snackbar>
   </div>
 </template>
 

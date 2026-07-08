@@ -283,6 +283,7 @@ export function useChatSession(props: ChatSessionProps) {
       composerDraft.clearDraftAfterSend(props.conversationId)
     },
     scrollToTurnOrdinal,
+    getConversationId: () => props.conversationId ?? '',
     t,
   })
   const {
@@ -296,8 +297,6 @@ export function useChatSession(props: ChatSessionProps) {
     dismissGroupContinue,
     setPendingGroupContinueSpeaker,
     pendingGroupContinue,
-    groupChatNoticeOpen,
-    groupChatNoticeMessage,
     regeneratingSegmentIndex,
   } = outbound
 
@@ -438,8 +437,6 @@ export function useChatSession(props: ChatSessionProps) {
       errorText.value = ''
       turnEditDelete.resetState()
       dismissGroupContinue()
-      groupChatNoticeOpen.value = false
-      groupChatNoticeMessage.value = ''
       emitTurnDataChanged()
       void regexDisplay.ensureRulesLoaded()
       void loadMessages()
@@ -532,8 +529,6 @@ export function useChatSession(props: ChatSessionProps) {
     dismissGroupContinue,
     setPendingGroupContinueSpeaker,
     pendingGroupContinue,
-    groupChatNoticeOpen,
-    groupChatNoticeMessage,
     groupChatEnabled,
     groupChatSettings,
     isEditingAssistantSegment: turnEditDelete.isEditingAssistantSegment,

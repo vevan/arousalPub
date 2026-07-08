@@ -19,6 +19,15 @@ export const useUiContextStore = defineStore('uiContext', () => {
   /** 递增以触发 App 关闭设置并打开提示词导入 */
   const openPromptsImportSignal = ref(0)
 
+  /** 递增以触发 App 打开设置对话框 */
+  const openSettingsSignal = ref(0)
+  /** 打开设置时优先选中的 tab（单次消费） */
+  const pendingSettingsTab = ref<string | null>(null)
+  /** 打开角色库时优先聚焦的角色 id（单次消费） */
+  const pendingCharacterFocusId = ref<string | null>(null)
+  /** 递增以触发 App 打开角色库对话框 */
+  const openCharactersSignal = ref(0)
+
   function setConversationLorebookIds(ids: string[]) {
     conversationLorebookIds.value = ids.filter(
       (id) => typeof id === 'string' && id.trim().length > 0,
@@ -63,6 +72,32 @@ export const useUiContextStore = defineStore('uiContext', () => {
     openPromptsImportSignal.value += 1
   }
 
+  function requestOpenSettingsDialog(tab?: string | null) {
+    pendingSettingsTab.value =
+      typeof tab === 'string' && tab.trim() ? tab.trim() : null
+    openSettingsSignal.value += 1
+  }
+
+  function consumePendingSettingsTab(): string | null {
+    const tab = pendingSettingsTab.value
+    pendingSettingsTab.value = null
+    return tab
+  }
+
+  function requestOpenCharactersDialog(focusCharacterId?: string | null) {
+    pendingCharacterFocusId.value =
+      typeof focusCharacterId === 'string' && focusCharacterId.trim()
+        ? focusCharacterId.trim()
+        : null
+    openCharactersSignal.value += 1
+  }
+
+  function consumePendingCharacterFocusId(): string | null {
+    const id = pendingCharacterFocusId.value
+    pendingCharacterFocusId.value = null
+    return id
+  }
+
   function consumePendingPromptsAutoImport(): boolean {
     const v = pendingPromptsAutoImport.value
     pendingPromptsAutoImport.value = false
@@ -78,6 +113,10 @@ export const useUiContextStore = defineStore('uiContext', () => {
     openPromptsSignal.value = 0
     openPromptsImportSignal.value = 0
     pendingPromptsAutoImport.value = false
+    openSettingsSignal.value = 0
+    pendingSettingsTab.value = null
+    pendingCharacterFocusId.value = null
+    openCharactersSignal.value = 0
   }
 
   return {
@@ -86,13 +125,19 @@ export const useUiContextStore = defineStore('uiContext', () => {
     openLorebooksSignal,
     openPromptsSignal,
     openPromptsImportSignal,
+    openSettingsSignal,
+    openCharactersSignal,
     setConversationLorebookIds,
     setConversationPromptPresetId,
     requestOpenLorebooksDialog,
     requestOpenPromptsDialog,
     requestOpenPromptsImport,
+    requestOpenSettingsDialog,
+    requestOpenCharactersDialog,
     consumePendingLorebookFocusId,
     consumePendingPromptFocusPresetId,
+    consumePendingSettingsTab,
+    consumePendingCharacterFocusId,
     consumePendingPromptsAutoImport,
     clearSessionData,
   }

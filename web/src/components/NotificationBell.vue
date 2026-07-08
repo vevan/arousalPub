@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationCenterStore } from '@/stores/notification-center'
+import { executeNotificationAction } from '@/utils/notification-action'
 import type { NotificationRecord } from '@/utils/notification-storage'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
@@ -62,6 +63,9 @@ function formatTime(iso: string): string {
 function onItemClick(item: NotificationRecord): void {
   if (!item.readAt) {
     notificationCenter.markRead(item.id)
+  }
+  if (item.action) {
+    void executeNotificationAction(item.action)
   }
 }
 

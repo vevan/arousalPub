@@ -2,15 +2,15 @@
 import { useUiContextStore } from '@/stores/ui-context'
 import { useAuthStore } from '@/stores/auth'
 import { characterImageUrl } from '@/utils/authenticated-media-url'
+import { coreNotify } from '@/utils/core-notify'
 import { generateConversationId } from '@/utils/conversation-id'
+import type { NotificationAction } from '@/utils/notification-storage'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 
 const { t } = useI18n()
 const uiContext = useUiContextStore()
 const auth = useAuthStore()
-const router = useRouter()
 
 interface CharacterItem {
   id: string
@@ -35,12 +35,6 @@ interface StChatPreview {
   warnings: string[]
   suggestedTitle: string
 }
-
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref<'success' | 'error'>('success')
-const snackbarAction = ref<'lore' | 'chat' | null>(null)
-const snackbarTargetId = ref('')
 
 const loreFileRef = ref<HTMLInputElement | null>(null)
 const chatFileRef = ref<HTMLInputElement | null>(null)
@@ -168,17 +162,47 @@ function selectChatCharacter(id: string) {
   chatCharId.value = id
 }
 
-function showSnackbar(
-  text: string,
-  color: 'success' | 'error',
-  action: 'lore' | 'chat' | null = null,
-  targetId = '',
-) {
-  snackbarText.value = text
-  snackbarColor.value = color
-  snackbarAction.value = action
-  snackbarTargetId.value = targetId
-  snackbar.value = true
+function notifyImportError(text: string): void {
+  coreNotify(text, undefined, { level: 'error' })
+}
+
+function notifyImportSuccessLore(lorebookId: string): void {
+  const action: NotificationAction = {
+    type: 'library-panel',
+    panel: 'lorebooks',
+    focusId: lorebookId || undefined,
+  }
+  coreNotify(t('settings.importSuccess'), undefined, {
+    level: 'success',
+    persist: true,
+    timeout: 6000,
+    action,
+    snackbarActions: [
+      {
+        label: t('settings.importOpenLorebooks'),
+        action,
+      },
+    ],
+  })
+}
+
+function notifyImportSuccessChat(conversationId: string): void {
+  const action: NotificationAction = {
+    type: 'conversation',
+    conversationId,
+  }
+  coreNotify(t('settings.importSuccess'), undefined, {
+    level: 'success',
+    persist: true,
+    timeout: 6000,
+    action,
+    snackbarActions: [
+      {
+        label: t('settings.importOpenChat'),
+        action,
+      },
+    ],
+  })
 }
 
 async function extractApiError(res: Response): Promise<string | null> {
@@ -211,7 +235,7 @@ async function onLoreFileChange(ev: Event) {
       body: fd,
     })
     if (!res.ok) {
-      showSnackbar(mapErrorCode(await extractApiError(res)), 'error')
+      notifyImportError(mapErrorCode(await extractApiError(res)))
       return
     }
     const preview = (await res.json()) as StLorePreview
@@ -220,7 +244,7 @@ async function onLoreFileChange(ev: Event) {
     loreNameDraft.value = preview.name
     loreConfirmOpen.value = true
   } catch {
-    showSnackbar(t('settings.importFailed'), 'error')
+    notifyImportError(t('settings.importFailed'))
   } finally {
     loreDoing.value = false
   }
@@ -242,20 +266,15 @@ async function confirmLoreImport() {
       }),
     })
     if (!res.ok) {
-      showSnackbar(mapErrorCode(await extractApiError(res)), 'error')
+      notifyImportError(mapErrorCode(await extractApiError(res)))
       return
     }
     const j = (await res.json()) as { id?: string }
     loreConfirmOpen.value = false
     lorePendingFile.value = null
-    showSnackbar(
-      t('settings.importSuccess'),
-      'success',
-      'lore',
-      typeof j.id === 'string' ? j.id : '',
-    )
+    notifyImportSuccessLore(typeof j.id === 'string' ? j.id : '')
   } catch {
-    showSnackbar(t('settings.importFailed'), 'error')
+    notifyImportError(t('settings.importFailed'))
   } finally {
     loreDoing.value = false
   }
@@ -276,7 +295,7 @@ async function onChatFileChange(ev: Event) {
       body: fd,
     })
     if (!res.ok) {
-      showSnackbar(mapErrorCode(await extractApiError(res)), 'error')
+      notifyImportError(mapErrorCode(await extractApiError(res)))
       return
     }
     const preview = (await res.json()) as StChatPreview
@@ -285,7 +304,7 @@ async function onChatFileChange(ev: Event) {
     chatTitleDraft.value = preview.suggestedTitle
     chatConfirmOpen.value = true
   } catch {
-    showSnackbar(t('settings.importFailed'), 'error')
+    notifyImportError(t('settings.importFailed'))
   } finally {
     chatDoing.value = false
   }
@@ -338,35 +357,23 @@ async function confirmChatImport() {
         }).catch(() => {})
         created = false
       }
-      showSnackbar(mapErrorCode(code), 'error')
+      notifyImportError(mapErrorCode(code))
       return
     }
 
     chatConfirmOpen.value = false
     chatPendingFile.value = null
-    showSnackbar(t('settings.importSuccess'), 'success', 'chat', conversationId)
+    notifyImportSuccessChat(conversationId)
   } catch {
     if (created) {
       await fetch(`/api/chat/conversations/${conversationId}`, {
         method: 'DELETE',
       }).catch(() => {})
     }
-    showSnackbar(t('settings.importFailed'), 'error')
+    notifyImportError(t('settings.importFailed'))
   } finally {
     chatDoing.value = false
   }
-}
-
-function onSnackbarAction() {
-  if (snackbarAction.value === 'lore') {
-    uiContext.requestOpenLorebooksDialog(snackbarTargetId.value || null)
-  } else if (snackbarAction.value === 'chat' && snackbarTargetId.value) {
-    void router.push({
-      name: 'chat',
-      params: { conversationId: snackbarTargetId.value },
-    })
-  }
-  snackbar.value = false
 }
 </script>
 
@@ -684,19 +691,6 @@ function onSnackbarAction() {
         </v-card-actions>
       </v-card>
     </v-dialog>
-
-    <v-snackbar v-model="snackbar" :timeout="6000" :color="snackbarColor">
-      {{ snackbarText }}
-      <template v-if="snackbarAction" #actions>
-        <v-btn variant="text" @click="onSnackbarAction">
-          {{
-            snackbarAction === 'lore'
-              ? t('settings.importOpenLorebooks')
-              : t('settings.importOpenChat')
-          }}
-        </v-btn>
-      </template>
-    </v-snackbar>
   </section>
 </template>
 

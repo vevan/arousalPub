@@ -4,12 +4,20 @@ export const NOTIFICATION_SCHEMA_VERSION = 1
 
 export type NotificationLevel = 'info' | 'success' | 'warning' | 'error'
 
-export type NotificationAction = {
-  type: 'route' | 'conversation' | 'settings-tab' | 'external'
-  href?: string
-  conversationId?: string
-  settingsTab?: string
-}
+export type NotificationLibraryPanel = 'lorebooks' | 'characters' | 'prompts'
+
+export type NotificationAction =
+  | {
+      type: 'route' | 'conversation' | 'settings-tab' | 'external'
+      href?: string
+      conversationId?: string
+      settingsTab?: string
+    }
+  | {
+      type: 'library-panel'
+      panel: NotificationLibraryPanel
+      focusId?: string
+    }
 
 export type NotificationSnackbarAction = {
   label: string

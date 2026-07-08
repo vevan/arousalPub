@@ -18,14 +18,16 @@ import {
   parseDryBreakersFromTextarea,
 } from '@/utils/dry-sampler'
 import type { ApiConfigReference } from '@/utils/api-config-references'
+import { coreNotify } from '@/utils/core-notify'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
-const snackbar = ref(false)
-const snackbarText = ref('')
-const snackbarColor = ref<'success' | 'error' | 'warning'>('success')
+
+function notifyConn(text: string, level: 'success' | 'error' | 'warning'): void {
+  coreNotify(text, undefined, { level })
+}
 
 const connectionTestLoading = ref(false)
 const referencesDialogOpen = ref(false)
@@ -165,9 +167,7 @@ function closeApiKeyManager() {
 
 async function saveApiKeyManager() {
   if (aliasHasError.value) {
-    snackbarColor.value = 'warning'
-    snackbarText.value = t('conn.apiKeyAliasDupSnackbar')
-    snackbar.value = true
+    notifyConn(t('conn.apiKeyAliasDupSnackbar'), 'warning')
     return
   }
   const existingIds = new Set(apiKeysStore.keys.map((k) => k.id))
@@ -200,9 +200,7 @@ async function saveApiKeyManager() {
     if (refs?.length) {
       openReferencesDialog(t('conn.deleteKeyBlocked'), refs)
     } else {
-      snackbarColor.value = 'error'
-      snackbarText.value = e instanceof Error ? e.message : String(e)
-      snackbar.value = true
+      notifyConn(e instanceof Error ? e.message : String(e), 'error')
     }
     return
   }
@@ -216,16 +214,12 @@ async function saveApiKeyManager() {
 function saveCurrentKeyAs() {
   const txt = conn.apiKey.trim()
   if (!txt) {
-    snackbarColor.value = 'warning'
-    snackbarText.value = t('conn.apiKeyEmpty')
-    snackbar.value = true
+    notifyConn(t('conn.apiKeyEmpty'), 'warning')
     return
   }
   const created = apiKeysStore.createKey({ keyDraft: txt })
   conn.setApiKeyId(created.id)
-  snackbarColor.value = 'success'
-  snackbarText.value = t('conn.apiKeySavedSnackbar', { alias: created.alias })
-  snackbar.value = true
+  notifyConn(t('conn.apiKeySavedSnackbar', { alias: created.alias }), 'success')
 }
 
 function aliasErrorOf(d: KeyDraft): string | null {
@@ -344,15 +338,11 @@ const canTestConnection = computed(
 
 async function onTestConnection() {
   if (!canFetchModels.value) {
-    snackbarColor.value = 'warning'
-    snackbarText.value = t('conn.needBaseAndKey')
-    snackbar.value = true
+    notifyConn(t('conn.needBaseAndKey'), 'warning')
     return
   }
   if (!conn.model.trim()) {
-    snackbarColor.value = 'warning'
-    snackbarText.value = t('conn.needModelForTest')
-    snackbar.value = true
+    notifyConn(t('conn.needModelForTest'), 'warning')
     return
   }
   connectionTestLoading.value = true
@@ -384,9 +374,7 @@ async function onTestConnection() {
       })
     }
   } catch (e) {
-    snackbarColor.value = 'error'
-    snackbarText.value = e instanceof Error ? e.message : String(e)
-    snackbar.value = true
+    notifyConn(e instanceof Error ? e.message : String(e), 'error')
   } finally {
     connectionTestLoading.value = false
   }
@@ -397,25 +385,19 @@ async function onDeleteCurrentPreset() {
   try {
     await conn.saveToServer()
   } catch (e) {
-    snackbarColor.value = 'error'
-    snackbarText.value = e instanceof Error ? e.message : String(e)
-    snackbar.value = true
+    notifyConn(e instanceof Error ? e.message : String(e), 'error')
     return
   }
   const result = await conn.removeActivePreset()
   if (result.ok) {
-    snackbarColor.value = 'success'
-    snackbarText.value = t('conn.deletePresetOk')
-    snackbar.value = true
+    notifyConn(t('conn.deletePresetOk'), 'success')
     return
   }
   if (result.references?.length) {
     openReferencesDialog(t('conn.deletePresetBlocked'), result.references)
     return
   }
-  snackbarColor.value = 'error'
-  snackbarText.value = result.error
-  snackbar.value = true
+  notifyConn(result.error, 'error')
 }
 
 function openModelPicker() {
@@ -449,14 +431,12 @@ async function save() {
       conn.parseCustomParams()
     }
     await conn.saveToServer()
-    snackbarColor.value = 'success'
-    snackbarText.value = t('conn.savedSnackbar', { path: settingsPath.value })
-    snackbar.value = true
+    notifyConn(t('conn.savedSnackbar', { path: settingsPath.value }), 'success')
   } catch (e) {
-    snackbarColor.value = 'error'
-    snackbarText.value =
-      e instanceof Error ? e.message : t('conn.saveFailedJson')
-    snackbar.value = true
+    notifyConn(
+      e instanceof Error ? e.message : t('conn.saveFailedJson'),
+      'error',
+    )
   }
 }
 
@@ -474,14 +454,12 @@ async function onSetGlobalPreset() {
       conn.parseCustomParams()
     }
     await conn.setGlobalActivePreset()
-    snackbarColor.value = 'success'
-    snackbarText.value = t('conn.setGlobalPresetOk')
-    snackbar.value = true
+    notifyConn(t('conn.setGlobalPresetOk'), 'success')
   } catch (e) {
-    snackbarColor.value = 'error'
-    snackbarText.value =
-      e instanceof Error ? e.message : t('conn.saveFailedJson')
-    snackbar.value = true
+    notifyConn(
+      e instanceof Error ? e.message : t('conn.saveFailedJson'),
+      'error',
+    )
   } finally {
     setGlobalPresetLoading.value = false
   }
@@ -530,14 +508,12 @@ async function confirmExport() {
     })
     triggerDownload(json, filename)
     exportDialogOpen.value = false
-    snackbarColor.value = 'success'
-    snackbarText.value = t('conn.apiExportDoneSnackbar', { name: filename })
-    snackbar.value = true
+    notifyConn(t('conn.apiExportDoneSnackbar', { name: filename }), 'success')
   } catch (e) {
-    snackbarColor.value = 'error'
-    snackbarText.value =
-      e instanceof Error ? e.message : t('conn.saveFailedJson')
-    snackbar.value = true
+    notifyConn(
+      e instanceof Error ? e.message : t('conn.saveFailedJson'),
+      'error',
+    )
   }
 }
 
@@ -560,10 +536,10 @@ async function onImportFileChange(evt: Event) {
     importApplyLinked.value = exportDocHasLinkedPreset(doc)
     importDialogOpen.value = true
   } catch (e) {
-    snackbarColor.value = 'error'
-    snackbarText.value =
-      e instanceof Error ? e.message : t('conn.apiImportParseFailed')
-    snackbar.value = true
+    notifyConn(
+      e instanceof Error ? e.message : t('conn.apiImportParseFailed'),
+      'error',
+    )
   }
 }
 
@@ -578,14 +554,12 @@ async function confirmImport() {
         importApplyLinked.value && exportDocHasLinkedPreset(doc),
     })
     closeImportDialog()
-    snackbarColor.value = 'success'
-    snackbarText.value = t('conn.apiImportedSnackbar')
-    snackbar.value = true
+    notifyConn(t('conn.apiImportedSnackbar'), 'success')
   } catch (e) {
-    snackbarColor.value = 'error'
-    snackbarText.value =
-      e instanceof Error ? e.message : t('conn.saveFailedJson')
-    snackbar.value = true
+    notifyConn(
+      e instanceof Error ? e.message : t('conn.saveFailedJson'),
+      'error',
+    )
   }
 }
 
@@ -1433,15 +1407,6 @@ function closeImportDialog() {
       </v-card-actions>
     </v-card>
   </v-dialog>
-
-  <v-snackbar
-    v-model="snackbar"
-    :color="snackbarColor"
-    location="bottom"
-    :timeout="2800"
-  >
-    {{ snackbarText }}
-  </v-snackbar>
 </template>
 
 <style scoped>

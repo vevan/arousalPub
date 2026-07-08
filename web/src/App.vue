@@ -305,6 +305,41 @@ watch(
   },
 )
 
+const SETTINGS_TAB_IDS = new Set([
+  'system',
+  'display',
+  'account',
+  'lorebook',
+  'vectorRecall',
+  'history',
+  'budgetTrim',
+  'regexRules',
+  'plugins',
+  'import',
+  'debug',
+] as const)
+
+type SettingsTabId = typeof settingsInitialTab.value
+
+watch(
+  () => uiContext.openSettingsSignal,
+  () => {
+    const tab = uiContext.consumePendingSettingsTab()
+    if (tab && SETTINGS_TAB_IDS.has(tab as SettingsTabId)) {
+      settingsInitialTab.value = tab as SettingsTabId
+    }
+    settingsDialogOpen.value = true
+  },
+)
+
+watch(
+  () => uiContext.openCharactersSignal,
+  () => {
+    uiContext.consumePendingCharacterFocusId()
+    openCharactersDialog()
+  },
+)
+
 watch(
   () => route.query.panel,
   (panelRaw) => {

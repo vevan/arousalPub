@@ -20,6 +20,7 @@ import {
   getTurnSegments,
 } from '@/utils/group-chat-turn'
 import { patchRegenSegments } from '@/utils/regen-turn-segments'
+import { coreNotify } from '@/utils/core-notify'
 import { buildReceiveItem, collectUsedReceiveIds, nextTurnOrdinal0 } from './turn-helpers.js'
 import type { createChatCompletionRunner } from './completion.js'
 import type { createReplyEventHub } from './reply-events.js'
@@ -104,12 +105,20 @@ export function useChatOutbound(opts: {
   scrollToTurnOrdinal: (
     turnOrdinal: number,
   ) => Promise<'ok' | 'not_found' | 'future'>
+  getConversationId?: () => string
   t: ComposerTranslation
 }) {
   const pendingGroupContinue = ref<PendingGroupContinue | null>(null)
   const regeneratingSegmentIndex = ref<number | null>(null)
-  const groupChatNoticeOpen = ref(false)
-  const groupChatNoticeMessage = ref('')
+
+  function groupChatNotify(key: string, title: string): void {
+    const convId = opts.getConversationId?.()?.trim()
+    coreNotify(title, undefined, {
+      level: 'warning',
+      timeout: 6000,
+      dedupeKey: convId ? `group-chat:${convId}:${key}` : undefined,
+    })
+  }
 
   function resolveTurnListIndex(
     turnOrd: number,
@@ -183,12 +192,13 @@ export function useChatOutbound(opts: {
     listIndexHint?: number,
   ): PendingGroupContinue | null {
     if (persist?.groupChatDecayStopped) {
-      groupChatNoticeMessage.value = opts.t('chat.groupChat.decayStopped')
-      groupChatNoticeOpen.value = true
+      groupChatNotify('decay-stopped', opts.t('chat.groupChat.decayStopped'))
     }
     if (persist?.groupChatNeedsManualContinue) {
-      groupChatNoticeMessage.value = opts.t('chat.groupChat.needsManualContinue')
-      groupChatNoticeOpen.value = true
+      groupChatNotify(
+        'needs-manual-continue',
+        opts.t('chat.groupChat.needsManualContinue'),
+      )
     }
 
     const settings =
@@ -348,14 +358,12 @@ export function useChatOutbound(opts: {
       return
     }
     if (!hasUnmatchedAtSlashNames(raw, opts.getBoundDisplayNames?.() ?? [])) return
-    groupChatNoticeMessage.value = opts.t('chat.groupChat.atNameUnmatched')
-    groupChatNoticeOpen.value = true
+    groupChatNotify('at-unmatched', opts.t('chat.groupChat.atNameUnmatched'))
   }
 
   function maybeWarnQueueNeedsEnabled(queueLength: number) {
     if (queueLength <= 1 || (opts.isGroupChatEnabled?.() ?? false)) return
-    groupChatNoticeMessage.value = opts.t('chat.groupChat.queueNeedsEnabled')
-    groupChatNoticeOpen.value = true
+    groupChatNotify('queue-needs-enabled', opts.t('chat.groupChat.queueNeedsEnabled'))
   }
 
   function resolveSpeakerQueueFromParsed(
@@ -852,7 +860,5 @@ export function useChatOutbound(opts: {
     setPendingGroupContinueSpeaker,
     pendingGroupContinue,
     regeneratingSegmentIndex,
-    groupChatNoticeOpen,
-    groupChatNoticeMessage,
   }
 }

@@ -3,6 +3,8 @@ import {
   useNotificationCenterStore,
   type SnackbarQueueItem,
 } from '@/stores/notification-center'
+import type { NotificationSnackbarAction } from '@/utils/notification-storage'
+import { executeNotificationAction } from '@/utils/notification-action'
 import { storeToRefs } from 'pinia'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -51,7 +53,14 @@ function onIconClose(item: SnackbarQueueItem, closeFn: () => void): void {
   closeFn()
 }
 
-function onActionClick(item: SnackbarQueueItem, closeFn: () => void): void {
+function onActionClick(
+  item: SnackbarQueueItem,
+  snackAction: NotificationSnackbarAction,
+  closeFn: () => void,
+): void {
+  if (snackAction.action) {
+    void executeNotificationAction(snackAction.action)
+  }
   store.dismissSnackbar(item.notificationId, 'action')
   closeFn()
 }
@@ -89,7 +98,7 @@ onUnmounted(() => {
         v-for="(action, index) in (item as SnackbarQueueItem).snackbarActions ?? []"
         :key="`${action.label}-${index}`"
         variant="text"
-        @click="onActionClick(item as SnackbarQueueItem, closeProps.onClick)"
+        @click="onActionClick(item as SnackbarQueueItem, action, closeProps.onClick)"
       >
         {{ action.label }}
       </v-btn>

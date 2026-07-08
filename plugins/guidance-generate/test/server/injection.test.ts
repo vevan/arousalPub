@@ -103,7 +103,7 @@ describe('guidance-generate resolveAfterAssemblePromptsAddition', () => {
         position: {
           kind: 'chat',
           depth: 0,
-          injectionOrder: 10,
+          injectionOrder: 0,
         },
       },
     ])
@@ -134,7 +134,7 @@ describe('guidance-generate resolveAfterAssemblePromptsAddition', () => {
     )
   })
 
-  it('revise returns assistant 11 + system 12 descriptors', async () => {
+  it('revise returns assistant 0 + system 1 descriptors', async () => {
     const injections = await resolveAfterAssemblePromptsAddition(
       {
         pluginId: 'guidance-generate',
@@ -156,7 +156,7 @@ describe('guidance-generate resolveAfterAssemblePromptsAddition', () => {
         position: {
           kind: 'chat',
           depth: 0,
-          injectionOrder: 11,
+          injectionOrder: 0,
         },
       },
       {
@@ -165,7 +165,7 @@ describe('guidance-generate resolveAfterAssemblePromptsAddition', () => {
         position: {
           kind: 'chat',
           depth: 0,
-          injectionOrder: 12,
+          injectionOrder: 1,
         },
       },
     ])

@@ -1,11 +1,42 @@
+// shared/plugin-prompt-injection.ts
+var CHAT_INJECTION_ORDER_DEFAULT = 100;
+
+// shared/post-user-injection-order.ts
+var POST_USER_INJECTION_ORDER_HOST_DEFAULTS = {
+  /** 描述符省略 / ST 默认 */
+  default: CHAT_INJECTION_ORDER_DEFAULT,
+  /** 群聊 afterUserInput */
+  afterUserInput: 20,
+  /** assemble hoist 无元数据的 preset chat depth 0 tail */
+  presetChatDepth0: CHAT_INJECTION_ORDER_DEFAULT
+};
+var POST_USER_INJECTION_ORDER_SLOT_DEFAULTS = {
+  send: 0,
+  reviseAssistant: 0,
+  reviseSystem: 1,
+  default: 500
+};
+var ORDER_MIN = 0;
+var ORDER_MAX = 9999;
+function clampInjectionOrder(raw) {
+  if (!Number.isFinite(raw)) return CHAT_INJECTION_ORDER_DEFAULT;
+  return Math.max(ORDER_MIN, Math.min(ORDER_MAX, Math.floor(raw)));
+}
+function resolveAssembleInjectionOrderSlot(slots, key, fallback) {
+  const k = key.trim();
+  if (k && slots && typeof slots[k] === "number") {
+    return clampInjectionOrder(slots[k]);
+  }
+  return clampInjectionOrder(fallback);
+}
+var AFTER_USER_INPUT_IMPLICIT_INJECTION_ORDER = POST_USER_INJECTION_ORDER_HOST_DEFAULTS.afterUserInput;
+var PRESET_CHAT_DEPTH0_IMPLICIT_INJECTION_ORDER = POST_USER_INJECTION_ORDER_HOST_DEFAULTS.presetChatDepth0;
+
 // plugins/guidance-generate/src/server/index.ts
 var PLUGIN_ID = "guidance-generate";
 var DEFAULT_SYSTEM_PREFIX = "Please generate a reply according to this guidance together with the user's message: ";
 var DEFAULT_REVISE_SYSTEM_PREFIX = "Please revise the assistant reply above according to this guidance while preserving the main meaning: ";
 var CHAT_DEPTH = 0;
-var SEND_GUIDANCE_INJECTION_ORDER = 10;
-var REVISE_ASSISTANT_INJECTION_ORDER = 11;
-var REVISE_SYSTEM_INJECTION_ORDER = 12;
 function parsePayload(raw) {
   if (!raw || typeof raw !== "object") return null;
   const o = raw;
@@ -50,6 +81,7 @@ async function resolveAfterAssemblePromptsAddition(ctx, api) {
   );
   if (!guidance) return null;
   const settings = await api.getUserPluginSettings(PLUGIN_ID);
+  const slots = ctx.injectionOrderSlots;
   if (parsed.mode === "revise") {
     const assistantText = parsed.assistantText?.trim();
     if (!assistantText) return null;
@@ -62,7 +94,11 @@ async function resolveAfterAssemblePromptsAddition(ctx, api) {
         position: {
           kind: "chat",
           depth: CHAT_DEPTH,
-          injectionOrder: REVISE_ASSISTANT_INJECTION_ORDER
+          injectionOrder: resolveAssembleInjectionOrderSlot(
+            slots,
+            "reviseAssistant",
+            POST_USER_INJECTION_ORDER_SLOT_DEFAULTS.reviseAssistant
+          )
         }
       },
       {
@@ -71,7 +107,11 @@ async function resolveAfterAssemblePromptsAddition(ctx, api) {
         position: {
           kind: "chat",
           depth: CHAT_DEPTH,
-          injectionOrder: REVISE_SYSTEM_INJECTION_ORDER
+          injectionOrder: resolveAssembleInjectionOrderSlot(
+            slots,
+            "reviseSystem",
+            POST_USER_INJECTION_ORDER_SLOT_DEFAULTS.reviseSystem
+          )
         }
       }
     ];
@@ -85,7 +125,11 @@ async function resolveAfterAssemblePromptsAddition(ctx, api) {
       position: {
         kind: "chat",
         depth: CHAT_DEPTH,
-        injectionOrder: SEND_GUIDANCE_INJECTION_ORDER
+        injectionOrder: resolveAssembleInjectionOrderSlot(
+          slots,
+          "send",
+          POST_USER_INJECTION_ORDER_SLOT_DEFAULTS.send
+        )
       }
     }
   ];

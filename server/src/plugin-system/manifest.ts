@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { getInstalledPluginManifestPath } from './paths.js'
+import { normalizeInjectionOrderSlots } from '../shared/post-user-injection-order.js'
 import { normalizeSettingsSchema } from './settings-schema.js'
 import type { PluginManifest } from './types.js'
 
@@ -84,6 +85,34 @@ export async function readPluginManifest(
                 'string'
                   ? (m.turnPlugins as { receiveIdKey: string }).receiveIdKey.trim()
                   : undefined,
+            }
+          : undefined,
+      assembleInjection:
+        m.assembleInjection && typeof m.assembleInjection === 'object'
+          ? {
+              slots: normalizeInjectionOrderSlots(
+                (m.assembleInjection as { slots?: unknown }).slots,
+              ),
+              slotSettingsKeys: (() => {
+                const raw = (m.assembleInjection as { slotSettingsKeys?: unknown })
+                  .slotSettingsKeys
+                if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+                  return undefined
+                }
+                const out: Record<string, string> = {}
+                for (const [slotKey, settingsKey] of Object.entries(
+                  raw as Record<string, unknown>,
+                )) {
+                  const sk = slotKey.trim()
+                  const fk =
+                    typeof settingsKey === 'string' ? settingsKey.trim() : ''
+                  if (!sk || !fk || !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(fk)) {
+                    continue
+                  }
+                  out[sk] = fk
+                }
+                return Object.keys(out).length > 0 ? out : undefined
+              })(),
             }
           : undefined,
       serverActions: normalizeServerActions(

@@ -41,13 +41,20 @@ import {
   type DefaultAuthorsNotePatch,
   type DefaultAuthorsNoteTemplate,
 } from './authors-note-settings.js'
-import { prepareHybridFtsSettings } from './hybrid-fts-dict.js'
+import {
+  hostPolicyToStoredPatch,
+  mergePostUserInjectionOrderHostPatch,
+  normalizePostUserInjectionOrderHostPolicy,
+  type PostUserInjectionOrderHostPatch,
+  type PostUserInjectionOrderHostPolicy,
+} from './shared/post-user-injection-order.js'
 import {
   HYBRID_FTS_SETTINGS_DEFAULTS,
   normalizeHybridFtsSettings,
   profileRequiresDict,
   type HybridFtsSettings,
 } from './hybrid-fts-settings.js'
+import { prepareHybridFtsSettings } from './hybrid-fts-dict.js'
 import {
   resolveSecretFromDisk,
   secretToDiskFields,
@@ -70,6 +77,8 @@ export interface UserPreferencesDocument {
   chunk?: Partial<ChunkSettings>
   defaultAuthorsNote?: DefaultAuthorsNoteTemplate
   hybridFts?: Partial<HybridFtsSettings>
+  /** post-user 区宿主隐式 injectionOrder 覆盖（DOC/38 §3.2） */
+  postUserInjectionOrder?: PostUserInjectionOrderHostPatch
   /** ST 式全局宏变量（`{{setglobalvar}}` / `{{getglobalvar}}`） */
   macroGlobalVars?: Record<string, string>
 }
@@ -89,6 +98,7 @@ interface UserPreferencesDocumentDisk {
   chunk?: Partial<ChunkSettings>
   defaultAuthorsNote?: DefaultAuthorsNoteTemplate
   hybridFts?: Partial<HybridFtsSettings>
+  postUserInjectionOrder?: PostUserInjectionOrderHostPatch
   macroGlobalVars?: Record<string, string>
 }
 
@@ -146,6 +156,7 @@ function preferencesToDisk(
     chunk: doc.chunk,
     defaultAuthorsNote: doc.defaultAuthorsNote,
     hybridFts: doc.hybridFts,
+    postUserInjectionOrder: doc.postUserInjectionOrder,
   }
 }
 
@@ -196,6 +207,49 @@ export async function readGlobalBudgetTrimSettings(): Promise<BudgetTrimSettings
   return normalizeBudgetTrimSettings(doc.budgetTrim)
 }
 
+export async function readGlobalPostUserInjectionOrderHostPolicy(): Promise<PostUserInjectionOrderHostPolicy> {
+  const doc = await readPreferencesFileRaw()
+  return normalizePostUserInjectionOrderHostPolicy(doc?.postUserInjectionOrder)
+}
+
+export async function updateGlobalPostUserInjectionOrder(
+  patch: PostUserInjectionOrderHostPatch | null,
+): Promise<PostUserInjectionOrderHostPolicy> {
+  const prev = await readUserPreferencesDocument()
+  if (patch === null) {
+    await writeUserPreferencesDocument({
+      lorebook: prev.lorebook,
+      history: prev.history,
+      memory: prev.memory,
+      budgetTrim: prev.budgetTrim,
+      embeddingApi: prev.embeddingApi,
+      chunk: prev.chunk,
+      defaultAuthorsNote: prev.defaultAuthorsNote,
+      hybridFts: prev.hybridFts,
+      postUserInjectionOrder: undefined,
+    })
+    return normalizePostUserInjectionOrderHostPolicy(undefined)
+  }
+  const merged = mergePostUserInjectionOrderHostPatch(
+    prev.postUserInjectionOrder,
+    patch,
+  )
+  const postUserInjectionOrder =
+    hostPolicyToStoredPatch(merged) ?? undefined
+  await writeUserPreferencesDocument({
+    lorebook: prev.lorebook,
+    history: prev.history,
+    memory: prev.memory,
+    budgetTrim: prev.budgetTrim,
+    embeddingApi: prev.embeddingApi,
+    chunk: prev.chunk,
+    defaultAuthorsNote: prev.defaultAuthorsNote,
+    hybridFts: prev.hybridFts,
+    postUserInjectionOrder,
+  })
+  return merged
+}
+
 export async function readGlobalEmbeddingApiSettings(): Promise<EmbeddingApiSettings> {
   const doc = await readPreferencesFileRaw()
   if (!doc) return { ...EMBEDDING_API_SETTINGS_DEFAULTS }
@@ -236,6 +290,10 @@ export async function readUserPreferencesDocument(): Promise<UserPreferencesDocu
     doc?.defaultAuthorsNote,
   )
   const hybridFts = normalizeHybridFtsSettings(doc?.hybridFts)
+  const postUserInjectionOrder =
+    doc?.postUserInjectionOrder && typeof doc.postUserInjectionOrder === 'object'
+      ? { ...doc.postUserInjectionOrder }
+      : undefined
   return {
     version: 1,
     savedAt:
@@ -248,6 +306,7 @@ export async function readUserPreferencesDocument(): Promise<UserPreferencesDocu
     chunk,
     defaultAuthorsNote,
     hybridFts,
+    postUserInjectionOrder,
     macroGlobalVars: normalizeMacroGlobalVars(doc?.macroGlobalVars),
   }
 }
@@ -263,6 +322,7 @@ async function writeUserPreferencesDocument(
     | 'chunk'
     | 'defaultAuthorsNote'
     | 'hybridFts'
+    | 'postUserInjectionOrder'
     | 'macroGlobalVars'
   >,
 ): Promise<UserPreferencesDocument> {
@@ -278,6 +338,12 @@ async function writeUserPreferencesDocument(
     chunk: partial.chunk ?? prev.chunk,
     defaultAuthorsNote: partial.defaultAuthorsNote ?? prev.defaultAuthorsNote,
     hybridFts: partial.hybridFts ?? prev.hybridFts,
+    postUserInjectionOrder: Object.prototype.hasOwnProperty.call(
+      partial,
+      'postUserInjectionOrder',
+    )
+      ? partial.postUserInjectionOrder
+      : prev.postUserInjectionOrder,
     macroGlobalVars: partial.macroGlobalVars ?? prev.macroGlobalVars,
   }
   await mkdir(getUserDataDir(getCurrentUserId()), { recursive: true })

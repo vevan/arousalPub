@@ -8,6 +8,7 @@ import {
   type SpeakerMode,
 } from '@/utils/group-chat-settings'
 import { characterNameById } from '@/utils/group-chat-turn'
+import InjectionOrderField from '@/components/settings/InjectionOrderField.vue'
 import { useAuthStore } from '@/stores/auth'
 import { characterImageUrl } from '@/utils/authenticated-media-url'
 import { computed, ref, watch } from 'vue'
@@ -276,11 +277,17 @@ async function save() {
             variant="text"
             size="small"
             :disabled="!draftSettings.enabled"
-            class="mb-4 px-0"
+            class="mb-2 px-0"
             @click="resetGroupAssembleInstruction()"
           >
             {{ $t('chat.groupChat.settings.groupAssembleInstructionReset') }}
           </v-btn>
+          <InjectionOrderField
+            field-key="afterUserInput"
+            density="compact"
+            :disabled="!draftSettings.enabled"
+            class="mb-4"
+          />
         </template>
 
         <template v-if="showContinueAssembleInstruction">

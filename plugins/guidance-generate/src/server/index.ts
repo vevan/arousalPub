@@ -1,5 +1,9 @@
-export type { PluginPromptInjection } from '../../../shared/plugin-prompt-injection.js'
-import type { PluginPromptInjection } from '../../../shared/plugin-prompt-injection.js'
+export type { PluginPromptInjection } from '../../../../shared/plugin-prompt-injection.js'
+import type { PluginPromptInjection } from '../../../../shared/plugin-prompt-injection.js'
+import {
+  POST_USER_INJECTION_ORDER_SLOT_DEFAULTS,
+  resolveAssembleInjectionOrderSlot,
+} from '../../../../shared/post-user-injection-order.js'
 
 const PLUGIN_ID = 'guidance-generate'
 
@@ -9,11 +13,7 @@ const DEFAULT_SYSTEM_PREFIX =
 const DEFAULT_REVISE_SYSTEM_PREFIX =
   'Please revise the assistant reply above according to this guidance while preserving the main meaning: '
 
-/** DOC/38 §3.2 · chat depth 0 post-user injectionOrder（暂硬编码 · 见 DOC/04 可配置化 TODO） */
 const CHAT_DEPTH = 0
-const SEND_GUIDANCE_INJECTION_ORDER = 10
-const REVISE_ASSISTANT_INJECTION_ORDER = 11
-const REVISE_SYSTEM_INJECTION_ORDER = 12
 
 export type GuidanceMode = 'send' | 'regenerate' | 'revise'
 
@@ -87,6 +87,7 @@ export async function resolveAfterAssemblePromptsAddition(
     pluginId: string
     macroContext: unknown
     plugins?: Record<string, unknown> | null
+    injectionOrderSlots?: Record<string, number>
   },
   api: {
     applyPromptMacroPipeline: (
@@ -106,6 +107,7 @@ export async function resolveAfterAssemblePromptsAddition(
   )
   if (!guidance) return null
   const settings = await api.getUserPluginSettings(PLUGIN_ID)
+  const slots = ctx.injectionOrderSlots
   if (parsed.mode === 'revise') {
     const assistantText = parsed.assistantText?.trim()
     if (!assistantText) return null
@@ -121,7 +123,11 @@ export async function resolveAfterAssemblePromptsAddition(
         position: {
           kind: 'chat',
           depth: CHAT_DEPTH,
-          injectionOrder: REVISE_ASSISTANT_INJECTION_ORDER,
+          injectionOrder: resolveAssembleInjectionOrderSlot(
+            slots,
+            'reviseAssistant',
+            POST_USER_INJECTION_ORDER_SLOT_DEFAULTS.reviseAssistant,
+          ),
         },
       },
       {
@@ -130,7 +136,11 @@ export async function resolveAfterAssemblePromptsAddition(
         position: {
           kind: 'chat',
           depth: CHAT_DEPTH,
-          injectionOrder: REVISE_SYSTEM_INJECTION_ORDER,
+          injectionOrder: resolveAssembleInjectionOrderSlot(
+            slots,
+            'reviseSystem',
+            POST_USER_INJECTION_ORDER_SLOT_DEFAULTS.reviseSystem,
+          ),
         },
       },
     ]
@@ -145,7 +155,11 @@ export async function resolveAfterAssemblePromptsAddition(
       position: {
         kind: 'chat',
         depth: CHAT_DEPTH,
-        injectionOrder: SEND_GUIDANCE_INJECTION_ORDER,
+        injectionOrder: resolveAssembleInjectionOrderSlot(
+          slots,
+          'send',
+          POST_USER_INJECTION_ORDER_SLOT_DEFAULTS.send,
+        ),
       },
     },
   ]

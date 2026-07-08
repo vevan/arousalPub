@@ -20,6 +20,7 @@ import { useThemeOklchStore } from '@/stores/theme-oklch'
 import PluginSettingsPanel from '@/components/settings/PluginSettingsPanel.vue'
 import HybridFtsSwitchDialog from '@/components/settings/HybridFtsSwitchDialog.vue'
 import BudgetTrimSettingsPanel from '@/components/settings/BudgetTrimSettingsPanel.vue'
+import InjectionOrderField from '@/components/settings/InjectionOrderField.vue'
 import ImportSettingsPanel from '@/components/settings/ImportSettingsPanel.vue'
 import RegexRulesSettingsPanel from '@/components/settings/RegexRulesSettingsPanel.vue'
 import { useRegexRulesStore } from '@/stores/regex-rules'
@@ -1317,6 +1318,22 @@ onMounted(() => {
             <p class="text-body-2 text-medium-emphasis mb-4">
               {{ $t('settings.writeChatPromptHint') }}
             </p>
+            <v-sheet
+              class="settings-debug-injection mb-4 pa-3"
+              rounded="lg"
+              border
+            >
+              <h3 class="text-subtitle-2 font-weight-medium mb-1">
+                {{ $t('settings.injectionOrderAdvanced.title') }}
+              </h3>
+              <p class="text-caption text-medium-emphasis mb-3">
+                {{ $t('settings.injectionOrderAdvanced.hint') }}
+              </p>
+              <div class="d-flex flex-column ga-3">
+                <InjectionOrderField field-key="presetChatDepth0" density="compact" />
+                <InjectionOrderField field-key="default" density="compact" />
+              </div>
+            </v-sheet>
             <v-switch
               v-model="writeChatPromptSnapshot"
               :label="$t('settings.writeChatPromptSnapshot')"

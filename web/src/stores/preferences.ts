@@ -54,6 +54,12 @@ import {
   normalizeDefaultAuthorsNoteTemplate,
   type DefaultAuthorsNoteTemplate,
 } from '@/utils/authors-note-settings'
+import {
+  clonePostUserInjectionOrderHostPolicy,
+  normalizePostUserInjectionOrderHostPolicy,
+  postUserInjectionOrderHostPolicyEqual,
+  type PostUserInjectionOrderHostPolicy,
+} from '@/utils/post-user-injection-order'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useApiKeysStore } from '@/stores/apiKeys'
@@ -360,6 +366,9 @@ export const usePreferencesStore = defineStore('preferences', () => {
   const defaultAuthorsNote = ref<DefaultAuthorsNoteTemplate>({
     ...DEFAULT_AUTHORS_NOTE_TEMPLATE,
   })
+  const postUserInjectionOrderHostPolicy = ref<PostUserInjectionOrderHostPolicy>(
+    normalizePostUserInjectionOrderHostPolicy(undefined),
+  )
   const userPreferencesLoaded = ref(false)
   let lorebookPatchInFlight = false
   let historyPatchInFlight = false
@@ -369,8 +378,12 @@ export const usePreferencesStore = defineStore('preferences', () => {
   let embeddingPatchInFlight = false
   let chunkPatchInFlight = false
   let defaultAuthorsNotePatchInFlight = false
+  let postUserInjectionOrderPatchInFlight = false
   let budgetTrimLastSynced = cloneBudgetTrimSettings(
     budgetTrimSettings.value,
+  )
+  let postUserInjectionOrderLastSynced = clonePostUserInjectionOrderHostPolicy(
+    postUserInjectionOrderHostPolicy.value,
   )
   let memoryLastSynced = cloneMemorySettings(
     normalizeMemorySettings({
@@ -476,6 +489,28 @@ export const usePreferencesStore = defineStore('preferences', () => {
       budgetTrimLastSynced = cloneBudgetTrimSettings(n)
     }
     budgetTrimPatchInFlight = false
+  }
+
+  function applyPostUserInjectionOrderLocal(
+    next: PostUserInjectionOrderHostPolicy,
+    markSynced: boolean,
+  ): void {
+    const n = normalizePostUserInjectionOrderHostPolicy(next)
+    postUserInjectionOrderPatchInFlight = true
+    postUserInjectionOrderHostPolicy.value =
+      clonePostUserInjectionOrderHostPolicy(n)
+    if (markSynced) {
+      postUserInjectionOrderLastSynced =
+        clonePostUserInjectionOrderHostPolicy(n)
+    }
+    postUserInjectionOrderPatchInFlight = false
+  }
+
+  function resetPostUserInjectionOrderHostPolicy(): void {
+    applyPostUserInjectionOrderLocal(
+      normalizePostUserInjectionOrderHostPolicy(undefined),
+      false,
+    )
   }
 
   watch(
@@ -816,6 +851,56 @@ export const usePreferencesStore = defineStore('preferences', () => {
     }
   }
 
+  async function patchGlobalPostUserInjectionOrderToServer(
+    policy: PostUserInjectionOrderHostPolicy,
+  ): Promise<void> {
+    const full = normalizePostUserInjectionOrderHostPolicy(policy)
+    const res = await fetch('/api/user-preferences', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        postUserInjectionOrder: full,
+      }),
+    })
+    if (!res.ok) {
+      const txt = await res.text()
+      throw new Error(txt.slice(0, 200))
+    }
+    const j = (await res.json()) as {
+      postUserInjectionOrder?: PostUserInjectionOrderHostPolicy
+    }
+    if (j.postUserInjectionOrder) {
+      const n = normalizePostUserInjectionOrderHostPolicy(
+        j.postUserInjectionOrder,
+      )
+      if (!postUserInjectionOrderHostPolicyEqual(
+        n,
+        postUserInjectionOrderHostPolicy.value,
+      )) {
+        applyPostUserInjectionOrderLocal(n, true)
+      } else {
+        postUserInjectionOrderLastSynced =
+          clonePostUserInjectionOrderHostPolicy(n)
+      }
+    }
+  }
+
+  async function patchGlobalPostUserInjectionOrderResetToServer(): Promise<void> {
+    const res = await fetch('/api/user-preferences', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ postUserInjectionOrder: null }),
+    })
+    if (!res.ok) {
+      const txt = await res.text()
+      throw new Error(txt.slice(0, 200))
+    }
+    applyPostUserInjectionOrderLocal(
+      normalizePostUserInjectionOrderHostPolicy(undefined),
+      true,
+    )
+  }
+
   async function patchGlobalHistoryToServer(
     patch: Partial<HistorySettings>,
   ): Promise<void> {
@@ -1026,6 +1111,38 @@ export const usePreferencesStore = defineStore('preferences', () => {
   )
 
   watch(
+    postUserInjectionOrderHostPolicy,
+    (v) => {
+      schedulePrefPatch('postUserInjectionOrder', async () => {
+        if (!userPreferencesLoaded.value || postUserInjectionOrderPatchInFlight) {
+          return
+        }
+        const n = normalizePostUserInjectionOrderHostPolicy(v)
+        if (!postUserInjectionOrderHostPolicyEqual(n, v)) {
+          applyPostUserInjectionOrderLocal(n, false)
+          return
+        }
+        if (postUserInjectionOrderHostPolicyEqual(n, postUserInjectionOrderLastSynced)) {
+          return
+        }
+        postUserInjectionOrderPatchInFlight = true
+        try {
+          await patchGlobalPostUserInjectionOrderToServer(n)
+          postUserInjectionOrderLastSynced =
+            clonePostUserInjectionOrderHostPolicy(
+              postUserInjectionOrderHostPolicy.value,
+            )
+        } catch {
+          /* 设置页可重试 */
+        } finally {
+          postUserInjectionOrderPatchInFlight = false
+        }
+      })
+    },
+    { deep: true, flush: 'post' },
+  )
+
+  watch(
     [embeddingApiKeyId, embeddingDimensions],
     scheduleEmbeddingPatch,
     { flush: 'post' },
@@ -1050,6 +1167,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     memoryPatchInFlight = false
     hybridFtsPatchInFlight = false
     budgetTrimPatchInFlight = false
+    postUserInjectionOrderPatchInFlight = false
     embeddingPatchInFlight = false
     chunkPatchInFlight = false
     defaultAuthorsNotePatchInFlight = false
@@ -1072,6 +1190,10 @@ export const usePreferencesStore = defineStore('preferences', () => {
     hybridFtsProfile.value = hfts.profile
     hybridFtsDictVariant.value = hfts.dictVariant ?? null
     applyBudgetTrimLocal(cloneBudgetTrimSettings(BUDGET_TRIM_SETTINGS_DEFAULTS), true)
+    applyPostUserInjectionOrderLocal(
+      normalizePostUserInjectionOrderHostPolicy(undefined),
+      true,
+    )
     applyEmbeddingFromServer(undefined)
     chunkTurnsPerFile.value = normalizeChunkSettings(undefined).turnsPerFile
     defaultAuthorsNote.value = normalizeDefaultAuthorsNoteTemplate(undefined)
@@ -1079,6 +1201,9 @@ export const usePreferencesStore = defineStore('preferences', () => {
     composerEnterMode.value = readStoredComposerEnterMode()
     embeddingLastSyncedPatch = ''
     budgetTrimLastSynced = cloneBudgetTrimSettings(budgetTrimSettings.value)
+    postUserInjectionOrderLastSynced = clonePostUserInjectionOrderHostPolicy(
+      postUserInjectionOrderHostPolicy.value,
+    )
     resetUserPreferencesLoadState()
   }
 
@@ -1098,6 +1223,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
           chunk?: Partial<ChunkSettings>
           defaultAuthorsNote?: Partial<DefaultAuthorsNoteTemplate>
           hybridFts?: Partial<HybridFtsSettings>
+          postUserInjectionOrder?: Partial<PostUserInjectionOrderHostPolicy>
         }
         lorebookPatchInFlight = true
         historyPatchInFlight = true
@@ -1107,6 +1233,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
         chunkPatchInFlight = true
         budgetTrimPatchInFlight = true
         defaultAuthorsNotePatchInFlight = true
+        postUserInjectionOrderPatchInFlight = true
         const lore = normalizeLorebookSettings(doc.lorebook)
         lorebookRecursiveEnabled.value = lore.recursiveEnabled
         lorebookMaxRecursionDepth.value = lore.maxRecursionDepth
@@ -1135,6 +1262,10 @@ export const usePreferencesStore = defineStore('preferences', () => {
         defaultAuthorsNote.value = normalizeDefaultAuthorsNoteTemplate(
           doc.defaultAuthorsNote,
         )
+        const injectionOrder = normalizePostUserInjectionOrderHostPolicy(
+          doc.postUserInjectionOrder,
+        )
+        applyPostUserInjectionOrderLocal(injectionOrder, true)
         syncEmbeddingLastSyncedPatch()
       } catch {
         /* 使用 localStorage 缓存 */
@@ -1147,6 +1278,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
         embeddingPatchInFlight = false
         chunkPatchInFlight = false
         defaultAuthorsNotePatchInFlight = false
+        postUserInjectionOrderPatchInFlight = false
         userPreferencesLoaded.value = true
         loadPrefsInflight = null
       }
@@ -1307,6 +1439,9 @@ export const usePreferencesStore = defineStore('preferences', () => {
     isHybridFtsPatchInFlight,
     isDefaultAuthorsNotePatchInFlight,
     budgetTrimSettings,
+    postUserInjectionOrderHostPolicy,
+    resetPostUserInjectionOrderHostPolicy,
+    patchGlobalPostUserInjectionOrderResetToServer,
     embeddingBaseUrl,
     embeddingApiKey,
     embeddingApiKeyId,

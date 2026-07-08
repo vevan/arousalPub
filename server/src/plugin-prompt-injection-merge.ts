@@ -7,21 +7,27 @@ import {
 } from './assemble-prompts.js'
 import { findHistorySpanInMessages } from './regex-outgoing.js'
 import {
-  CHAT_INJECTION_ORDER_DEFAULT,
   resolvePluginInjectionOrder,
   type PluginPromptInjection,
 } from './shared/plugin-prompt-injection.js'
+
+import {
+  POST_USER_INJECTION_ORDER_HOST_DEFAULTS,
+  type PostUserInjectionOrderHostPolicy,
+} from './shared/post-user-injection-order.js'
 
 export type PluginPromptInjectionSpan = {
   historyStart: number
   historyEnd: number
 }
 
-/** DOC/38 §3.4 · 群聊 afterUserInput 在 post-user 排序空间内的隐式 injectionOrder（暂硬编码） */
-export const AFTER_USER_INPUT_IMPLICIT_INJECTION_ORDER = 20
+/** @deprecated 使用 POST_USER_INJECTION_ORDER_HOST_DEFAULTS.afterUserInput */
+export const AFTER_USER_INPUT_IMPLICIT_INJECTION_ORDER =
+  POST_USER_INJECTION_ORDER_HOST_DEFAULTS.afterUserInput
 
-/** assemble 已插入的 preset chat depth 0 等 post-user 条目默认 injectionOrder（一期无 messages 元数据） */
-export const PRESET_CHAT_DEPTH0_IMPLICIT_INJECTION_ORDER = CHAT_INJECTION_ORDER_DEFAULT
+/** @deprecated 使用 POST_USER_INJECTION_ORDER_HOST_DEFAULTS.presetChatDepth0 */
+export const PRESET_CHAT_DEPTH0_IMPLICIT_INJECTION_ORDER =
+  POST_USER_INJECTION_ORDER_HOST_DEFAULTS.presetChatDepth0
 
 /** @deprecated 使用 AFTER_USER_INPUT_IMPLICIT_INJECTION_ORDER */
 export const AFTER_USER_INPUT_IMPLICIT_ORDER = AFTER_USER_INPUT_IMPLICIT_INJECTION_ORDER
@@ -39,6 +45,8 @@ export type PluginPromptMergeAfterUserInput = {
 export type PluginPromptInjectionMergeOptions = {
   /** assemble 阶段已插入的群聊说明；与插件描述符同一 injectionOrder 空间归并 */
   afterUserInput?: PluginPromptMergeAfterUserInput
+  /** 宿主隐式档位（用户偏好 + 默认；DOC/38 §3.2 可配置化） */
+  hostInjectionOrderPolicy?: PostUserInjectionOrderHostPolicy
 }
 
 function findLastUserIndex(messages: ChatMessage[]): number {
@@ -127,6 +135,8 @@ function hoistPostUserTailIntoInjections(
   opts: PluginPromptInjectionMergeOptions | undefined,
   injections: PluginPromptInjection[],
 ): { messages: ChatMessage[]; injections: PluginPromptInjection[] } {
+  const hostPolicy =
+    opts?.hostInjectionOrderPolicy ?? POST_USER_INJECTION_ORDER_HOST_DEFAULTS
   const lastUserIdx = findLastUserIndex(messages)
   if (lastUserIdx < 0) return { messages, injections }
 
@@ -146,7 +156,7 @@ function hoistPostUserTailIntoInjections(
       const injectionOrder =
         hint?.implicitInjectionOrder ??
         hint?.implicitOrder ??
-        AFTER_USER_INPUT_IMPLICIT_INJECTION_ORDER
+        hostPolicy.afterUserInput
       tailInjections.push({
         role: m.role as PluginPromptInjection['role'],
         content: m.content,
@@ -165,7 +175,7 @@ function hoistPostUserTailIntoInjections(
       position: {
         kind: 'chat',
         depth: 0,
-        injectionOrder: PRESET_CHAT_DEPTH0_IMPLICIT_INJECTION_ORDER,
+        injectionOrder: hostPolicy.presetChatDepth0,
       },
     })
   }
@@ -215,7 +225,10 @@ function shiftHistorySpanAfterInsert(
   return { historyStart, historyEnd }
 }
 
-function injectionToPromptEntry(inj: PluginPromptInjection): PromptEntry {
+function injectionToPromptEntry(
+  inj: PluginPromptInjection,
+  defaultInjectionOrder: number,
+): PromptEntry {
   const depth = Math.max(0, Math.floor(inj.position.depth))
   return {
     id: '',
@@ -228,7 +241,10 @@ function injectionToPromptEntry(inj: PluginPromptInjection): PromptEntry {
     role: inj.role as PromptRole,
     injectionPosition: 'chat',
     injectionDepth: depth,
-    injectionOrder: resolvePluginInjectionOrder(inj.position),
+    injectionOrder: resolvePluginInjectionOrder(
+      inj.position,
+      defaultInjectionOrder,
+    ),
     order: 0,
     triggers: [],
     createdAt: '',
@@ -236,10 +252,14 @@ function injectionToPromptEntry(inj: PluginPromptInjection): PromptEntry {
   }
 }
 
-function compareInjections(a: PluginPromptInjection, b: PluginPromptInjection): number {
+function compareInjections(
+  a: PluginPromptInjection,
+  b: PluginPromptInjection,
+  defaultInjectionOrder: number,
+): number {
   return compareInjectionEntries(
-    injectionToPromptEntry(a),
-    injectionToPromptEntry(b),
+    injectionToPromptEntry(a, defaultInjectionOrder),
+    injectionToPromptEntry(b, defaultInjectionOrder),
   )
 }
 
@@ -261,6 +281,10 @@ export function mergePluginPromptInjectionsIntoMessages(
     return { messages: [...out], span: { ...span } }
   }
 
+  const hostPolicy =
+    opts?.hostInjectionOrderPolicy ?? POST_USER_INJECTION_ORDER_HOST_DEFAULTS
+  const defaultInjectionOrder = hostPolicy.default
+
   let { historyStart, historyEnd } = span
 
   const byDepth = new Map<number, PluginPromptInjection[]>()
@@ -273,7 +297,9 @@ export function mergePluginPromptInjectionsIntoMessages(
 
   const sortedDepths = [...byDepth.keys()].sort((a, b) => b - a)
   for (const depth of sortedDepths) {
-    const items = (byDepth.get(depth) ?? []).slice().sort(compareInjections)
+    const items = (byDepth.get(depth) ?? [])
+      .slice()
+      .sort((a, b) => compareInjections(a, b, defaultInjectionOrder))
     const insertAt = resolveChatDepthInsertIndex(out, depth, historyStart)
     const chunk: ChatMessage[] = items.map((inj) => ({
       role: inj.role,

@@ -12,6 +12,12 @@
   "toastFailed": "Guided generation failed",
   "systemPrefixLabel": "System prefix (prepended to guidance)",
   "systemPrefixDesc": "Hidden system message prefix injected before the guidance text for guided send / regenerate.",
+  "injectionOrderSendLabel": "Injection order · guided send",
+  "injectionOrderSendDesc": "Post-user merge order (lower = closer to user). Default 0.",
+  "injectionOrderReviseAssistantLabel": "Injection order · revise assistant draft",
+  "injectionOrderReviseAssistantDesc": "Assistant draft slot for guided revise. Default 0.",
+  "injectionOrderReviseSystemLabel": "Injection order · revise guidance system",
+  "injectionOrderReviseSystemDesc": "Guidance system slot for guided revise. Default 1.",
   "reviseSystemPrefixLabel": "Guided revision system prefix",
   "reviseSystemPrefixDesc": "Hidden system prefix for revise mode, placed after the current assistant reply and before the guidance text."
 }

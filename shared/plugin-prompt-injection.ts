@@ -19,8 +19,9 @@ export type PluginPromptInjection = {
 
 export function resolvePluginInjectionOrder(
   position: PluginPromptInjectionPosition,
+  fallback: number = CHAT_INJECTION_ORDER_DEFAULT,
 ): number {
-  return position.injectionOrder ?? CHAT_INJECTION_ORDER_DEFAULT
+  return position.injectionOrder ?? fallback
 }
 
 function isRole(raw: unknown): raw is PluginPromptInjectionRole {

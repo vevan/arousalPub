@@ -4,9 +4,48 @@
   "version": "1.0.0",
   "permissions": ["turn.read", "turn.plugins.write", "prompt.inject"],
   "hooks": ["resolveAfterAssemblePromptsAddition"],
+  "assembleInjection": {
+    "slots": {
+      "send": 0,
+      "reviseAssistant": 0,
+      "reviseSystem": 1
+    },
+    "slotSettingsKeys": {
+      "send": "injectionOrderSend",
+      "reviseAssistant": "injectionOrderReviseAssistant",
+      "reviseSystem": "injectionOrderReviseSystem"
+    }
+  },
   "settingsSchema": {
     "version": 1,
     "fields": [
+      {
+        "key": "injectionOrderSend",
+        "type": "number",
+        "labelKey": "injectionOrderSendLabel",
+        "descriptionKey": "injectionOrderSendDesc",
+        "min": 0,
+        "max": 9999,
+        "default": 0
+      },
+      {
+        "key": "injectionOrderReviseAssistant",
+        "type": "number",
+        "labelKey": "injectionOrderReviseAssistantLabel",
+        "descriptionKey": "injectionOrderReviseAssistantDesc",
+        "min": 0,
+        "max": 9999,
+        "default": 0
+      },
+      {
+        "key": "injectionOrderReviseSystem",
+        "type": "number",
+        "labelKey": "injectionOrderReviseSystemLabel",
+        "descriptionKey": "injectionOrderReviseSystemDesc",
+        "min": 0,
+        "max": 9999,
+        "default": 1
+      },
       {
         "key": "systemPrefix",
         "type": "text",

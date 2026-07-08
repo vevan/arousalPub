@@ -30,6 +30,8 @@
   "toastRegenerateFailedDebugHint": "重新生成失败：{code}（详情见浏览器控制台）",
   "toastEditNoState": "当前轮次无可编辑的 tracker 状态",
   "tooltipLiveView": "查看最新场景状态",
+  "injectionOrderDefaultLabel": "注入档位 · tracker",
+  "injectionOrderDefaultDesc": "Together 模式 tracker system 在 post-user 区的归并顺序。默认 500（越靠栈底）。",
   "activeBundleIdLabel": "默认套件",
   "activeBundleIdDesc": "从下方已保存的套件中选择；内置样例始终可用",
   "apiConfigIdLabel": "Separate 补生成 API 预设",

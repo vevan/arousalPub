@@ -18,6 +18,7 @@ const SCRIPTS = [
   'sync-group-chat-settings-shared.mjs',
   'sync-plugin-context-blocks-shared.mjs',
   'sync-plugin-prompt-injection-shared.mjs',
+  'sync-post-user-injection-order-shared.mjs',
   'sync-turn-plugin-merge-shared.mjs',
 ]
 

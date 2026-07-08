@@ -530,6 +530,24 @@
       "inheritTriModeGlobalOn": "全局开启",
       "inheritTriModeGlobalOff": "全局关闭"
     },
+    "injectionOrderField": {
+      "afterUserInput": {
+        "label": "群聊说明注入档位",
+        "hint": "群聊 assemble 说明在 post-user 区的归并顺序（越小越靠近 user）。默认 {default}。"
+      },
+      "presetChatDepth0": {
+        "label": "Preset chat depth 0 档位",
+        "hint": "无元数据的 preset tail 在 post-user 区的归并顺序。默认 {default}。"
+      },
+      "default": {
+        "label": "插件描述符默认档",
+        "hint": "插件省略 injectionOrder 或未返回描述符而返回 ChatMessage[] 时的默认档位。默认 {default}。"
+      }
+    },
+    "injectionOrderAdvanced": {
+      "title": "组装注入档位（高级）",
+      "hint": "影响全局 assemble 隐式档位；各插件档位请在对应插件设置中调整。"
+    },
     "writeChatPromptSnapshot": "启用会话 debug 审计",
     "writeChatPromptHint": "开启后，发送/再生落盘成功时由服务端写入 chat-audit.json（messages、组装命中、出站调用）。关闭后不写入；已保存条目仍可在助手消息旁查看。",
     "promptSnapshotMaxStored": "最多保留审计条数",

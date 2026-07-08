@@ -70,6 +70,7 @@ import {
   readGlobalHistorySettings,
   readGlobalLorebookSettings,
   readGlobalMemorySettings,
+  readGlobalPostUserInjectionOrderHostPolicy,
 } from './user-preferences-file.js'
 import { resolveBudgetTrimSettings } from './budget-trim-settings.js'
 import { normalizePresetForAssemble } from './prompt-preset-normalize.js'
@@ -411,6 +412,7 @@ export async function buildConversationOutboundMessages(
   const globalHistory = await readGlobalHistorySettings()
   const globalMemory = await readGlobalMemorySettings()
   const globalBudgetTrim = await readGlobalBudgetTrimSettings()
+  const hostInjectionOrderPolicy = await readGlobalPostUserInjectionOrderHostPolicy()
   const effectiveHistory = resolveHistorySettings(
     globalHistory,
     idx.historySettings,
@@ -704,6 +706,7 @@ export async function buildConversationOutboundMessages(
     plugins: params.plugins,
     tokenModel,
     additionCache: pluginCache,
+    hostInjectionOrderPolicy,
   }
   const pluginTokenReserve =
     maxTokens != null && maxTokens > 0
@@ -848,6 +851,7 @@ export async function buildConversationOutboundMessages(
     assembleRuntime: assembleCtx.assembleRuntime,
     trimmedHistoryMessages: trimmedHistoryForPlugins,
     afterUserInput: pluginAfterUserInputForApply,
+    hostInjectionOrderPolicy,
   })
   if (macroContext) {
     applyMacrosToMessages(messagesAfterPlugins, macroContext, {

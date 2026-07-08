@@ -15,7 +15,7 @@
 |------|------|------|
 | `resolveAfterAssemblePromptsAddition` | guidance-generate · trace-keeper | ✅ 返回 `PluginPromptInjection[]`；宿主 post-user 区归并 |
 | `afterAssemblePrompts` | — | escape hatch；有描述符时不再走主路径 |
-| legacy `ChatMessage[]` addition | 未迁插件 | 暂映射 depth 0 · `injectionOrder` **500** |
+| legacy `ChatMessage[]` addition | **100**（同 default） | 无单独档位；归并时用 `postUserInjectionOrder.default` |
 
 若未来引入 Worker 沙箱，整包 messages 的 IPC 序列化将成为热路径主要开销；注入协议应先改为「描述符 + 宿主 splice」。
 
@@ -88,18 +88,38 @@ resolveAfterAssemblePromptsAddition(
 
 **`position.injectionOrder` 与 ST 一致**（`DOC/03` §6.6 · preset `injectionOrder`）：**数值小 = 更靠近 user（post-user 区顶部）；数值大 = 更靠近栈底（生成前尾部）**。省略时默认 **100**（与 ST 导入 / 提示词 UI 一致）。**勿**与 preset 列表字段 `PromptEntry.order`（组内顺序）混淆；**勿**与插件 registry `order`（hook 调用顺序）混淆。
 
-### 3.2 官方插件 injectionOrder 定案（暂硬编码）
+### 3.2 官方插件 injectionOrder 定案（一期可配置）
 
-| 来源 | `injectionOrder` | 说明 |
-|------|------------------|------|
-| `guidance-generate` send/regenerate | **10** | 指导紧贴 user |
-| `guidance-generate` revise | assistant **11** + system **12** | 草稿在指导 system 前 |
-| 群聊 `afterUserInput` | **20** | 宿主 `AFTER_USER_INPUT_IMPLICIT_INJECTION_ORDER` |
-| preset chat depth 0（无元数据时） | **100** | 与 ST 默认 `injection_order` 一致 |
-| （省略字段时） | **100** | 插件描述符默认档 |
-| `trace-keeper` | **500** | post-user 区最末 |
+**默认值**（`shared/post-user-injection-order.ts` · 小=近 user · 大=近栈底）：
 
-出站顺序示例（同 depth 0）：**guide(10) → groupChat(20) → preset(100) → tracker(500)**。
+| 来源 | 默认 `injectionOrder` | 覆盖方式 |
+|------|----------------------|----------|
+| `guidance-generate` send/regenerate | **0** | manifest `assembleInjection.slots.send` |
+| `guidance-generate` revise | assistant **0** + system **1** | `slots.reviseAssistant` / `slots.reviseSystem` |
+| 群聊 `afterUserInput` | **20** | 用户偏好 `postUserInjectionOrder.afterUserInput` |
+| preset chat depth 0（无元数据时） | **100** | `postUserInjectionOrder.presetChatDepth0` |
+| （省略字段时） | **100** | `postUserInjectionOrder.default` |
+| `trace-keeper` | **500** | manifest `assembleInjection.slots.default` |
+
+**manifest 示例**（`guidance-generate`）：
+
+```json
+"assembleInjection": {
+  "slots": { "send": 0, "reviseAssistant": 0, "reviseSystem": 1 }
+}
+```
+
+**用户偏好示例**（分散入口 · v1 无集中设置页）：
+
+- 群聊设置 → `afterUserInput`
+- 设置 · 调试 → `default` / `presetChatDepth0`
+- 各插件设置 → `assembleInjection.slotSettingsKeys` 映射字段
+
+```json
+"postUserInjectionOrder": { "afterUserInput": 25 }
+```
+
+宿主在 assemble 时将 manifest slots（+ 用户插件 settings 覆盖）经 `ctx.injectionOrderSlots` 传入 hook；归并器读 `postUserInjectionOrder` 覆盖隐式档位。
 
 ### 3.3 宿主两阶段（保持）
 
@@ -219,7 +239,7 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 | `server/src/plugin-complete.ts` | complete 密钥解析 |
 | `server/src/assemble-prompts.ts` | `resolveChatDepthInsertIndex` · `compareInjectionEntries` |
 | `server/src/chat-assemble.ts` | 两阶段 token 预留 · regex 后 `resolveAssembledBlockContentAfterRegex` · apply |
-| `plugins/guidance-generate/src/server/index.ts` | `resolveAfterAssemblePromptsAddition` · `injectionOrder` 10 / revise 11+12 |
+| `plugins/guidance-generate/src/server/index.ts` | `resolveAfterAssemblePromptsAddition` · send **0** / revise **0+1** |
 | `plugins/trace-keeper/src/server/index.ts` | `resolveAfterAssemblePromptsAddition` · `injectionOrder` 500 |
 
 ---

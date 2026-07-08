@@ -1,3 +1,39 @@
+// shared/plugin-prompt-injection.ts
+var CHAT_INJECTION_ORDER_DEFAULT = 100;
+
+// shared/post-user-injection-order.ts
+var POST_USER_INJECTION_ORDER_HOST_DEFAULTS = {
+  /** 描述符省略 / ST 默认 */
+  default: CHAT_INJECTION_ORDER_DEFAULT,
+  /** 群聊 afterUserInput */
+  afterUserInput: 20,
+  /** assemble hoist 无元数据的 preset chat depth 0 tail */
+  presetChatDepth0: CHAT_INJECTION_ORDER_DEFAULT,
+  /** legacy ChatMessage[] addition */
+  legacy: 500
+};
+var POST_USER_INJECTION_ORDER_SLOT_DEFAULTS = {
+  send: 10,
+  reviseAssistant: 11,
+  reviseSystem: 12,
+  default: 500
+};
+var ORDER_MIN = 0;
+var ORDER_MAX = 9999;
+function clampInjectionOrder(raw) {
+  if (!Number.isFinite(raw)) return CHAT_INJECTION_ORDER_DEFAULT;
+  return Math.max(ORDER_MIN, Math.min(ORDER_MAX, Math.floor(raw)));
+}
+function resolveAssembleInjectionOrderSlot(slots, key, fallback) {
+  const k = key.trim();
+  if (k && slots && typeof slots[k] === "number") {
+    return clampInjectionOrder(slots[k]);
+  }
+  return clampInjectionOrder(fallback);
+}
+var AFTER_USER_INPUT_IMPLICIT_INJECTION_ORDER = POST_USER_INJECTION_ORDER_HOST_DEFAULTS.afterUserInput;
+var PRESET_CHAT_DEPTH0_IMPLICIT_INJECTION_ORDER = POST_USER_INJECTION_ORDER_HOST_DEFAULTS.presetChatDepth0;
+
 // plugins/trace-keeper/src/constants.ts
 var PLUGIN_ID = "trace-keeper";
 var DEFAULT_BUNDLE_ID = "scene-tracker-default";
@@ -525,7 +561,6 @@ function formatPluginContextBlocks(resolved, _ctx) {
 
 // plugins/trace-keeper/src/server/index.ts
 var TRACE_KEEPER_CHAT_DEPTH = 0;
-var TRACE_KEEPER_INJECTION_ORDER = 500;
 async function resolveTraceKeeperInjection(ctx, api) {
   if (ctx.pluginId !== PLUGIN_ID) return null;
   const conversationId = ctx.macroContext.conversationId?.trim();
@@ -553,7 +588,11 @@ async function resolveAfterAssemblePromptsAddition(ctx, api) {
       position: {
         kind: "chat",
         depth: TRACE_KEEPER_CHAT_DEPTH,
-        injectionOrder: TRACE_KEEPER_INJECTION_ORDER
+        injectionOrder: resolveAssembleInjectionOrderSlot(
+          ctx.injectionOrderSlots,
+          "default",
+          POST_USER_INJECTION_ORDER_SLOT_DEFAULTS.default
+        )
       }
     }
   ];

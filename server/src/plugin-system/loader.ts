@@ -17,6 +17,7 @@ import {
   getPluginUserSettingsPath,
 } from './paths.js'
 import { refreshTurnPluginPolicies } from './turn-plugin-policies.js'
+import { refreshAssembleInjectionOrderPolicies } from './assemble-injection-order-policies.js'
 import { readPluginRegistry, writePluginRegistry } from './registry.js'
 import type {
   LoadedServerPlugin,
@@ -133,6 +134,7 @@ export async function seedBundledPlugins(): Promise<void> {
       }
     }
     await refreshTurnPluginPolicies()
+    await refreshAssembleInjectionOrderPolicies()
     bundledPluginsSeeded = true
   })()
 

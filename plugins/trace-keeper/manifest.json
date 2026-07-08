@@ -7,6 +7,14 @@
     "resolveTurnPluginEntriesFromAssistant",
     "formatPluginContextBlocks"
   ],
+  "assembleInjection": {
+    "slots": {
+      "default": 500
+    },
+    "slotSettingsKeys": {
+      "default": "injectionOrderDefault"
+    }
+  },
   "turnPlugins": {
     "mergeMode": "receive-scoped",
     "receiveIdKey": "receiveId"
@@ -37,6 +45,15 @@
     "version": 1,
     "dialogMaxWidth": 920,
     "fields": [
+      {
+        "key": "injectionOrderDefault",
+        "type": "number",
+        "labelKey": "injectionOrderDefaultLabel",
+        "descriptionKey": "injectionOrderDefaultDesc",
+        "min": 0,
+        "max": 9999,
+        "default": 500
+      },
       {
         "key": "activeBundleId",
         "type": "string",

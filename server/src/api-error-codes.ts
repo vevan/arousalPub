@@ -274,6 +274,8 @@ export const ApiErrorCodes = {
   user_preferences_read_failed: 'user_preferences_read_failed',
   user_preferences_requires_section: 'user_preferences_requires_section',
   user_preferences_save_failed: 'user_preferences_save_failed',
+  post_user_injection_order_invalid: 'post_user_injection_order_invalid',
+  post_user_injection_order_requires_field: 'post_user_injection_order_requires_field',
   hybrid_fts_profile_invalid: 'hybrid_fts_profile_invalid',
   hybrid_fts_dict_variant_invalid: 'hybrid_fts_dict_variant_invalid',
   user_text_must_be_string: 'user_text_must_be_string',

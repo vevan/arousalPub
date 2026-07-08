@@ -16,15 +16,15 @@
 宿主 `resolveAfterAssemblePromptsAddition` 返回 **`PluginPromptInjection[]`**（`chat` depth + `injectionOrder`），post-user 区归并 splice；裁切前 token 预留逻辑不变。详 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §3。
 
 - [x] **A0 契约** — `PluginPromptInjection` 类型；`plugin-prompt-injection-merge.ts` 归并器（复用 `resolveChatDepthInsertIndex` / `compareInjectionEntries`）
-- [x] **A1 宿主元数据** — `chat-assemble` 向 apply 传入 `trimmedHistoryMessages` / `historySpan`；`applyPluginsAfterAssemblePrompts` 走归并器（legacy `ChatMessage[]` 暂映射 `injectionOrder` 500）
-- [x] **A2 guidance-generate** — 迁描述符：depth **0** `injectionOrder` **10**；revise assistant **11** + system **12**；移除整表 `afterAssemblePrompts` 主路径
+- [x] **A1 宿主元数据** — `chat-assemble` 向 apply 传入 `trimmedHistoryMessages` / `historySpan`；`applyPluginsAfterAssemblePrompts` 走归并器（裸 `ChatMessage[]` 回退映射 `default` 档 **100**）
+- [x] **A2 guidance-generate** — 迁描述符：depth **0** `injectionOrder` **0**；revise assistant **0** + system **1**；移除整表 `afterAssemblePrompts` 主路径
 - [x] **A3 trace-keeper Together** — depth **0** `injectionOrder` **500**（显式描述符，替代 legacy append）
 - [x] **A4 单测** — 多插件 `injectionOrder` 共存、群聊 `afterUserInput`、revise 双条、`additionCache` / token 预留
 - [x] **A4+ afterUserInput 审计** — regex 后 synthetic 解析群聊 / depth 0 作者注正文；hoist 精确匹配，避免误标 preset / authorsNote
 
-**`injectionOrder` 默认值（暂硬编码 · 小=近 user · 大=近栈底）**：省略 **100** · guidance **10** · revise **11 / 12** · 群聊 afterUserInput **20** · trace-keeper **500** · preset tail（无元数据）**100**。
+**`injectionOrder` 默认值**（`shared/post-user-injection-order.ts` · 可通过 manifest / `user-preferences.json` 覆盖）：省略 **100** · guidance **0 / revise 0+1** · 群聊 afterUserInput **20** · trace-keeper **500** · preset tail **100**。
 
-- [ ] **注入 `injectionOrder` 可配置化** — 上述档位现分散在插件常量与 `plugin-prompt-injection-merge.ts`；后续改为 manifest 策略字段或宿主/设置页可配（含群聊 afterUserInput、preset 元数据、revise 子档）
+- [x] **注入 `injectionOrder` 可配置化（一期）** — 宿主档位：群聊设置 / 调试；插件档位在各自插件设置
 
 ### Phase B — 服务端 Worker 沙箱（P0 · 依赖 A · **✅ 已完成**）
 

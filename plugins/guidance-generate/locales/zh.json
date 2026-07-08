@@ -12,6 +12,12 @@
   "toastFailed": "指导生成失败",
   "systemPrefixLabel": "系统前缀（加在指导文本前）",
   "systemPrefixDesc": "注入给模型的隐藏 system 消息前缀，位于指导正文之前。用于指导发送 / 指导再生。",
+  "injectionOrderSendLabel": "注入档位 · 指导发送",
+  "injectionOrderSendDesc": "post-user 区归并顺序（越小越靠近 user）。默认 0。",
+  "injectionOrderReviseAssistantLabel": "注入档位 · 修改草稿 assistant",
+  "injectionOrderReviseAssistantDesc": "指导修改时 assistant 草稿档位。默认 0。",
+  "injectionOrderReviseSystemLabel": "注入档位 · 修改指导 system",
+  "injectionOrderReviseSystemDesc": "指导修改时指导 system 档位。默认 1。",
   "reviseSystemPrefixLabel": "指导修改系统前缀",
   "reviseSystemPrefixDesc": "指导修改模式下，加在当前助手回复与指导正文之间的 hidden system 前缀。"
 }

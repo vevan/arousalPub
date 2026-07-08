@@ -1,5 +1,9 @@
-import type { PluginPromptInjection } from '../../../shared/plugin-prompt-injection.js'
+import type { PluginPromptInjection } from '../../../../shared/plugin-prompt-injection.js'
 export type { PluginPromptInjection }
+import {
+  POST_USER_INJECTION_ORDER_SLOT_DEFAULTS,
+  resolveAssembleInjectionOrderSlot,
+} from '../../../../shared/post-user-injection-order.js'
 import { PLUGIN_ID } from '../constants.js'
 import {
   DEFAULT_TRACE_BUNDLE,
@@ -11,9 +15,8 @@ import { buildTrackerSystemPrompt } from '../tracker-prompt.js'
 import { regenerateSeparateState } from './separate-regenerate.js'
 import { patchTraceKeeperState } from './patch-state.js'
 
-/** DOC/38 §3.2 · post-user 区最末（暂硬编码 · 见 DOC/04 可配置化 TODO） */
+/** DOC/38 §3.2 · manifest `assembleInjection.slots.default` 可覆盖 */
 const TRACE_KEEPER_CHAT_DEPTH = 0
-const TRACE_KEEPER_INJECTION_ORDER = 500
 
 type ServerApi = {
   getUserPluginSettings: (pluginId: string) => Promise<Record<string, unknown>>
@@ -36,6 +39,7 @@ export type TraceKeeperInjectionContext = {
   macroContext: { conversationId?: string }
   plugins?: Record<string, unknown> | null
   tokenModel?: string
+  injectionOrderSlots?: Record<string, number>
 }
 
 export { buildTrackerSystemPrompt } from '../tracker-prompt.js'
@@ -82,7 +86,11 @@ export async function resolveAfterAssemblePromptsAddition(
       position: {
         kind: 'chat',
         depth: TRACE_KEEPER_CHAT_DEPTH,
-        injectionOrder: TRACE_KEEPER_INJECTION_ORDER,
+        injectionOrder: resolveAssembleInjectionOrderSlot(
+          ctx.injectionOrderSlots,
+          'default',
+          POST_USER_INJECTION_ORDER_SLOT_DEFAULTS.default,
+        ),
       },
     },
   ]

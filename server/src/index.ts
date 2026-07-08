@@ -114,12 +114,20 @@ import {
   updateGlobalChunkSettings,
   updateGlobalDefaultAuthorsNote,
   updateGlobalHybridFtsSettings,
+  updateGlobalPostUserInjectionOrder,
 } from './user-preferences-file.js'
 import {
   normalizeHybridFtsProfile,
   normalizeHybridFtsSettings,
   type HybridFtsSettings,
 } from './hybrid-fts-settings.js'
+import {
+  clampInjectionOrder,
+  normalizePostUserInjectionOrderHostPolicy,
+  POST_USER_INJECTION_ORDER_HOST_KEYS,
+  type PostUserInjectionOrderHostKey,
+  type PostUserInjectionOrderHostPatch,
+} from './shared/post-user-injection-order.js'
 import { registerHybridFtsRoutes } from './hybrid-fts-routes.js'
 import { parseBudgetTrimSettingsPatch } from './budget-trim-settings.js'
 import { parseMemorySettingsPatch } from './memory-settings.js'
@@ -1979,6 +1987,11 @@ interface PatchUserPreferencesBody {
     profile?: string
     dictVariant?: string | null
   }
+  postUserInjectionOrder?: {
+    default?: number
+    afterUserInput?: number
+    presetChatDepth0?: number
+  } | null
 }
 
 app.patch<{ Body: PatchUserPreferencesBody }>(
@@ -1996,6 +2009,10 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
       'defaultAuthorsNote',
     )
     const hasHybridFts = b.hybridFts && typeof b.hybridFts === 'object'
+    const hasPostUserInjectionOrder = Object.prototype.hasOwnProperty.call(
+      b,
+      'postUserInjectionOrder',
+    )
     if (
       !hasLore &&
       !hasHist &&
@@ -2004,7 +2021,8 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
       !hasEmbed &&
       !hasChunk &&
       !hasDefaultAuthorsNote &&
-      !hasHybridFts
+      !hasHybridFts &&
+      !hasPostUserInjectionOrder
     ) {
       return reply.status(400).send({
         error: ApiErrorCodes.user_preferences_requires_section,
@@ -2019,6 +2037,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
       let chunk
       let defaultAuthorsNote
       let hybridFts
+      let postUserInjectionOrder
       if (hasLore) {
         const patch: {
           recursiveEnabled?: boolean
@@ -2251,6 +2270,38 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         }
         hybridFts = await updateGlobalHybridFtsSettings(patch)
       }
+      if (hasPostUserInjectionOrder) {
+        if (b.postUserInjectionOrder === null) {
+          postUserInjectionOrder = await updateGlobalPostUserInjectionOrder(null)
+        } else if (
+          b.postUserInjectionOrder &&
+          typeof b.postUserInjectionOrder === 'object' &&
+          !Array.isArray(b.postUserInjectionOrder)
+        ) {
+          const patch: PostUserInjectionOrderHostPatch = {}
+          for (const key of POST_USER_INJECTION_ORDER_HOST_KEYS) {
+            if (
+              !Object.prototype.hasOwnProperty.call(b.postUserInjectionOrder, key)
+            ) {
+              continue
+            }
+            const raw = b.postUserInjectionOrder[key as PostUserInjectionOrderHostKey]
+            if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+              return reply.status(400).send({
+                error: ApiErrorCodes.post_user_injection_order_invalid,
+              })
+            }
+            patch[key as PostUserInjectionOrderHostKey] = clampInjectionOrder(raw)
+          }
+          postUserInjectionOrder = await updateGlobalPostUserInjectionOrder(
+            Object.keys(patch).length > 0 ? patch : null,
+          )
+        } else {
+          return reply.status(400).send({
+            error: ApiErrorCodes.post_user_injection_order_invalid,
+          })
+        }
+      }
       const doc = await readUserPreferencesDocument()
       const embeddingPublic = embeddingApi
         ? await sanitizeEmbeddingApiForGet(embeddingApi)
@@ -2267,6 +2318,9 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         chunk: chunk ?? doc.chunk,
         defaultAuthorsNote: defaultAuthorsNote ?? doc.defaultAuthorsNote,
         hybridFts: hybridFts ?? doc.hybridFts,
+        postUserInjectionOrder:
+          postUserInjectionOrder ??
+          normalizePostUserInjectionOrderHostPolicy(doc.postUserInjectionOrder),
         savedAt: doc.savedAt,
       }
     } catch (e) {

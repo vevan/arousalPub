@@ -15,15 +15,19 @@ import {
 } from './plugin-prompt-injection-merge.js'
 import {
   parsePluginPromptInjections,
+  resolvePluginInjectionOrder,
   type PluginPromptInjection,
 } from './shared/plugin-prompt-injection.js'
+import {
+  POST_USER_INJECTION_ORDER_HOST_DEFAULTS,
+  type AssembleInjectionOrderSlots,
+  type PostUserInjectionOrderHostPolicy,
+} from './shared/post-user-injection-order.js'
+import { resolveEffectiveAssembleInjectionOrderSlots } from './plugin-system/resolve-effective-assemble-injection-slots.js'
 
 export { mergePluginPromptInjectionsIntoMessages } from './plugin-prompt-injection-merge.js'
 export type { PluginPromptInjectionSpan } from './plugin-prompt-injection-merge.js'
 export { resolvePluginInjectionSpan } from './plugin-prompt-injection-merge.js'
-
-/** legacy `ChatMessage[]` addition 在迁描述符前映射为 depth 0 · injectionOrder 500（legacy 默认档） */
-const LEGACY_CHAT_INJECTION_ORDER = 500
 
 export type PluginAssembleAdditionResolved =
   | { kind: 'injections'; injections: PluginPromptInjection[] }
@@ -57,6 +61,10 @@ export interface AfterAssemblePromptsContext {
     implicitInjectionOrder?: number
     excludeContents?: string[]
   }
+  /** 宿主隐式 injectionOrder 档位（用户偏好覆盖） */
+  hostInjectionOrderPolicy?: PostUserInjectionOrderHostPolicy
+  /** 单次 assemble 内缓存 manifest+settings 合并后的 injectionOrder slots */
+  injectionOrderSlotsCache?: Map<string, AssembleInjectionOrderSlots>
 }
 
 function normalizeHookAddition(raw: unknown): PluginAssembleAdditionResolved | null {
@@ -82,6 +90,7 @@ function normalizeHookAddition(raw: unknown): PluginAssembleAdditionResolved | n
 
 function legacyMessagesToInjections(
   messages: ChatMessage[],
+  defaultOrder: number,
 ): PluginPromptInjection[] {
   return messages.map((m) => ({
     role: m.role,
@@ -89,17 +98,28 @@ function legacyMessagesToInjections(
     position: {
       kind: 'chat' as const,
       depth: 0,
-      injectionOrder: LEGACY_CHAT_INJECTION_ORDER,
+      injectionOrder: defaultOrder,
     },
   }))
 }
 
 export function additionToInjections(
   resolved: PluginAssembleAdditionResolved,
+  hostPolicy: PostUserInjectionOrderHostPolicy = POST_USER_INJECTION_ORDER_HOST_DEFAULTS,
 ): PluginPromptInjection[] {
-  return resolved.kind === 'injections'
-    ? resolved.injections
-    : legacyMessagesToInjections(resolved.messages)
+  if (resolved.kind === 'legacy') {
+    return legacyMessagesToInjections(resolved.messages, hostPolicy.default)
+  }
+  return resolved.injections.map((inj) => ({
+    ...inj,
+    position: {
+      ...inj.position,
+      injectionOrder: resolvePluginInjectionOrder(
+        inj.position,
+        hostPolicy.default,
+      ),
+    },
+  }))
 }
 
 export function countPluginAssembleAdditionTokens(
@@ -136,6 +156,20 @@ async function ensureAssembleRuntime(
   return ctx.assembleRuntime
 }
 
+async function resolveEffectiveSlotsCached(
+  pluginId: string,
+  ctx: AfterAssemblePromptsContext,
+): Promise<Awaited<ReturnType<typeof resolveEffectiveAssembleInjectionOrderSlots>>> {
+  if (!ctx.injectionOrderSlotsCache) {
+    ctx.injectionOrderSlotsCache = new Map()
+  }
+  const cached = ctx.injectionOrderSlotsCache.get(pluginId)
+  if (cached) return cached
+  const slots = await resolveEffectiveAssembleInjectionOrderSlots(pluginId)
+  ctx.injectionOrderSlotsCache.set(pluginId, slots)
+  return slots
+}
+
 async function resolvePluginAddition(
   pluginId: string,
   module: LoadedServerPlugin['module'],
@@ -155,6 +189,7 @@ async function resolvePluginAddition(
       pluginId,
       macroContext: ctx.macroContext,
       plugins: ctx.plugins,
+      injectionOrderSlots: await resolveEffectiveSlotsCached(pluginId, ctx),
     },
     api,
   )
@@ -192,10 +227,13 @@ export async function applyPluginsAfterAssemblePrompts(
   const collected: PluginPromptInjection[] = []
   const escapeHatchPlugins: LoadedServerPlugin[] = []
 
+  const hostPolicy =
+    ctx.hostInjectionOrderPolicy ?? POST_USER_INJECTION_ORDER_HOST_DEFAULTS
+
   for (const p of plugins) {
     const addition = await resolvePluginAddition(p.id, p.module, ctx, api, cache)
     if (addition) {
-      collected.push(...additionToInjections(addition))
+      collected.push(...additionToInjections(addition, hostPolicy))
       continue
     }
     if (typeof p.module.afterAssemblePrompts === 'function') {
@@ -205,20 +243,23 @@ export async function applyPluginsAfterAssemblePrompts(
 
   let messages = ctx.messages ?? []
   if (collected.length > 0) {
+    const mergeOpts: Parameters<typeof mergePluginPromptInjectionsIntoMessages>[3] = {
+      hostInjectionOrderPolicy: hostPolicy,
+    }
+    if (ctx.afterUserInput?.content?.trim()) {
+      mergeOpts.afterUserInput = {
+        content: ctx.afterUserInput.content,
+        role: ctx.afterUserInput.role,
+        implicitInjectionOrder:
+          ctx.afterUserInput.implicitInjectionOrder ?? hostPolicy.afterUserInput,
+        excludeContents: ctx.afterUserInput.excludeContents,
+      }
+    }
     const merged = mergePluginPromptInjectionsIntoMessages(
       messages,
       collected,
       span,
-      ctx.afterUserInput?.content?.trim()
-        ? {
-            afterUserInput: {
-              content: ctx.afterUserInput.content,
-              role: ctx.afterUserInput.role,
-              implicitInjectionOrder: ctx.afterUserInput.implicitInjectionOrder,
-              excludeContents: ctx.afterUserInput.excludeContents,
-            },
-          }
-        : undefined,
+      mergeOpts,
     )
     messages = merged.messages
   }

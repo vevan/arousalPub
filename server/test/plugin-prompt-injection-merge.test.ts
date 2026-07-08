@@ -5,6 +5,7 @@ import {
   buildPluginAfterUserInputHintFromMessages,
   mergePluginPromptInjectionsIntoMessages,
 } from '../src/plugin-prompt-injection-merge.js'
+import { normalizePostUserInjectionOrderHostPolicy } from '../src/shared/post-user-injection-order.js'
 import {
   isPluginPromptInjection,
   parsePluginPromptInjections,
@@ -153,6 +154,45 @@ describe('mergePluginPromptInjectionsIntoMessages', () => {
     )
   })
 
+  it('interleaves custom afterUserInput order between guidance and tracker', () => {
+    const base = [
+      { role: 'system' as const, content: 'main' },
+      { role: 'user' as const, content: 'hello' },
+      { role: 'system' as const, content: 'GROUP-CHAT-RULE' },
+    ]
+    const hostPolicy = normalizePostUserInjectionOrderHostPolicy({
+      afterUserInput: 25,
+      presetChatDepth0: 100,
+    })
+    const { messages } = mergePluginPromptInjectionsIntoMessages(
+      base,
+      [
+        {
+          role: 'system',
+          content: 'tracker',
+          position: { kind: 'chat', depth: 0, injectionOrder: 500 },
+        },
+        {
+          role: 'system',
+          content: 'guide',
+          position: { kind: 'chat', depth: 0, injectionOrder: 10 },
+        },
+      ],
+      { historyStart: -1, historyEnd: -1 },
+      {
+        hostInjectionOrderPolicy: hostPolicy,
+        afterUserInput: {
+          content: 'GROUP-CHAT-RULE',
+          role: 'system',
+        },
+      },
+    )
+    assert.deepEqual(
+      messages.map((m) => m.content),
+      ['main', 'hello', 'guide', 'GROUP-CHAT-RULE', 'tracker'],
+    )
+  })
+
   it('hoists preset chat depth 0 after guidance when both sit in post-user tail', () => {
     const base = [
       { role: 'system' as const, content: 'main' },
@@ -266,6 +306,35 @@ describe('mergePluginPromptInjectionsIntoMessages', () => {
         'PRESET-CHAT-0',
         'tracker',
       ],
+    )
+  })
+
+  it('uses hostPolicy.default when descriptor omits injectionOrder', () => {
+    const base = [
+      { role: 'system' as const, content: 'main' },
+      { role: 'user' as const, content: 'hello' },
+    ]
+    const hostPolicy = normalizePostUserInjectionOrderHostPolicy({ default: 50 })
+    const { messages } = mergePluginPromptInjectionsIntoMessages(
+      base,
+      [
+        {
+          role: 'system',
+          content: 'explicit-60',
+          position: { kind: 'chat', depth: 0, injectionOrder: 60 },
+        },
+        {
+          role: 'system',
+          content: 'implicit-50',
+          position: { kind: 'chat', depth: 0 },
+        },
+      ],
+      { historyStart: -1, historyEnd: -1 },
+      { hostInjectionOrderPolicy: hostPolicy },
+    )
+    assert.deepEqual(
+      messages.map((m) => m.content),
+      ['main', 'hello', 'implicit-50', 'explicit-60'],
     )
   })
 })

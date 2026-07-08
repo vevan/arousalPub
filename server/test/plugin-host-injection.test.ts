@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  additionToInjections,
   applyPluginsAfterAssemblePrompts,
   countPluginAssembleAdditionTokens,
   estimatePluginsAfterAssembleTokenReserve,
   type PluginAssembleAdditionCache,
 } from '../src/plugin-host.js'
+import { normalizePostUserInjectionOrderHostPolicy } from '../src/shared/post-user-injection-order.js'
 import { resolvePluginInjectionSpan } from '../src/plugin-prompt-injection-merge.js'
 import type { LoadedServerPlugin, PluginServerHostApi } from '../src/plugin-system/types.js'
 
@@ -364,5 +366,43 @@ describe('plugin assemble additionCache and token reserve', () => {
     })
     assert.equal(descriptorTokens, legacyTokens)
     assert.ok(descriptorTokens > 0)
+  })
+})
+
+describe('additionToInjections', () => {
+  it('fills missing injectionOrder from hostPolicy.default', () => {
+    const hostPolicy = normalizePostUserInjectionOrderHostPolicy({ default: 77 })
+    const injections = additionToInjections(
+      {
+        kind: 'injections',
+        injections: [
+          {
+            role: 'system',
+            content: 'x',
+            position: { kind: 'chat', depth: 0 },
+          },
+        ],
+      },
+      hostPolicy,
+    )
+    assert.equal(injections[0]!.position.injectionOrder, 77)
+  })
+
+  it('preserves explicit injectionOrder on descriptors', () => {
+    const hostPolicy = normalizePostUserInjectionOrderHostPolicy({ default: 77 })
+    const injections = additionToInjections(
+      {
+        kind: 'injections',
+        injections: [
+          {
+            role: 'system',
+            content: 'x',
+            position: { kind: 'chat', depth: 0, injectionOrder: 5 },
+          },
+        ],
+      },
+      hostPolicy,
+    )
+    assert.equal(injections[0]!.position.injectionOrder, 5)
   })
 })

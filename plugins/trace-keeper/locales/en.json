@@ -30,6 +30,8 @@
   "toastRegenerateFailedDebugHint": "Regenerate failed: {code} (see browser console for details)",
   "toastEditNoState": "No editable tracker state for this turn",
   "tooltipLiveView": "View latest scene state",
+  "injectionOrderDefaultLabel": "Injection order · tracker",
+  "injectionOrderDefaultDesc": "Post-user merge order for Together tracker system. Default 500 (closer to stack bottom).",
   "activeBundleIdLabel": "Default bundle",
   "activeBundleIdDesc": "Pick from saved bundles below; built-in sample is always available",
   "apiConfigIdLabel": "Separate regenerate API preset",

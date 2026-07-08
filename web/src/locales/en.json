@@ -530,6 +530,24 @@
       "inheritTriModeGlobalOn": "global on",
       "inheritTriModeGlobalOff": "global off"
     },
+    "injectionOrderField": {
+      "afterUserInput": {
+        "label": "Group chat note injection order",
+        "hint": "Merge order for group assemble note in post-user region (lower = closer to user). Default {default}."
+      },
+      "presetChatDepth0": {
+        "label": "Preset chat depth 0 order",
+        "hint": "Merge order for preset tail without metadata. Default {default}."
+      },
+      "default": {
+        "label": "Descriptor default order",
+        "hint": "Default when a plugin omits injectionOrder or returns ChatMessage[] instead of descriptors. Default {default}."
+      }
+    },
+    "injectionOrderAdvanced": {
+      "title": "Assembly injection order (advanced)",
+      "hint": "Global implicit assemble orders; per-plugin slots are in each plugin’s settings."
+    },
     "writeChatPromptSnapshot": "Enable session debug audit",
     "writeChatPromptHint": "When enabled, the server writes chat-audit.json after send/regenerate (messages, assembly hits, outbound calls). When disabled, nothing new is written; existing entries remain viewable on assistant turns.",
     "promptSnapshotMaxStored": "Max stored audit entries",

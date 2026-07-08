@@ -145,6 +145,12 @@ export interface PluginManifest {
     mergeMode?: 'replace-by-plugin-id' | 'receive-scoped'
     receiveIdKey?: string
   }
+  /** post-user 组装注入槽位 injectionOrder（键名插件自定；宿主透传 hook ctx） */
+  assembleInjection?: {
+    slots?: Record<string, number>
+    /** settingsSchema 字段 key → assembleInjection.slots 键 */
+    slotSettingsKeys?: Record<string, string>
+  }
   serverActions?: Array<{
     name: string
     permissions: string[]
@@ -279,6 +285,8 @@ export interface AfterAssemblePromptsPluginContext {
   messages: ChatMessage[]
   macroContext: PromptMacroContext
   plugins?: ChatPluginsBody | null
+  /** manifest `assembleInjection.slots` + 用户偏好后的有效槽位（DOC/38 §3.2 可配置化） */
+  injectionOrderSlots?: Record<string, number>
 }
 
 export interface LoadedServerPlugin {

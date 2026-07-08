@@ -6515,6 +6515,7 @@ function logSeparateDebugIfPresent(debug) {
 var pinnedConversationId = null;
 var pinnedView = null;
 var activeConversationId = null;
+var liveTailByConversation = null;
 var regeneratingConversationId = null;
 var regenerating = false;
 var panelRevision = 0;
@@ -6522,14 +6523,36 @@ function clearPinnedView() {
   pinnedConversationId = null;
   pinnedView = null;
 }
+function clearLiveTailTracking() {
+  liveTailByConversation = null;
+}
 function syncActiveConversation(conversationId) {
   const cid = conversationId.trim();
   if (!cid) return false;
   if (activeConversationId === cid) return false;
   activeConversationId = cid;
   clearPinnedView();
+  clearLiveTailTracking();
   regenerating = false;
   regeneratingConversationId = null;
+  return true;
+}
+function clearPinIfLiveTailAdvanced(conversationId, tail) {
+  const cid = conversationId.trim();
+  if (!cid) return false;
+  if (!tail) {
+    if (liveTailByConversation?.conversationId === cid) {
+      liveTailByConversation = null;
+    }
+    return false;
+  }
+  const prev = liveTailByConversation?.conversationId === cid ? liveTailByConversation.tail : null;
+  liveTailByConversation = { conversationId: cid, tail };
+  const pinned = getPinnedView(cid);
+  if (!prev || !pinned) return false;
+  const advanced = tail.turnOrdinal > prev.turnOrdinal || tail.turnOrdinal === prev.turnOrdinal && (tail.segmentIndex > prev.segmentIndex || tail.segmentIndex === prev.segmentIndex && tail.fingerprint !== prev.fingerprint);
+  if (!advanced) return false;
+  clearPinnedView();
   return true;
 }
 function getPinnedView(conversationId) {
@@ -6697,6 +6720,40 @@ function segmentCountForTurn(turn) {
   if (n > 0) return n;
   return (turn.receives?.length ?? 0) > 0 ? 1 : 0;
 }
+function fingerprintTurnTail(turn) {
+  const segs = turn.segments ?? [];
+  if (segs.length > 0) {
+    return segs.map((seg) => {
+      const rs2 = seg.receives ?? [];
+      const ai2 = Math.min(
+        Math.max(0, Math.floor(seg.activeReceiveIndex ?? 0)),
+        Math.max(0, rs2.length - 1)
+      );
+      const rec2 = rs2[ai2];
+      const id2 = rec2?.id?.trim() ?? "";
+      const len2 = typeof rec2?.content === "string" ? rec2.content.length : 0;
+      return `${id2}:${len2}:${rs2.length}:${ai2}`;
+    }).join("|");
+  }
+  const rs = turn.receives ?? [];
+  const ai = Math.min(
+    Math.max(0, Math.floor(turn.activeReceiveIndex ?? 0)),
+    Math.max(0, rs.length - 1)
+  );
+  const rec = rs[ai];
+  const id = rec?.id?.trim() ?? "";
+  const len = typeof rec?.content === "string" ? rec.content.length : 0;
+  return `${id}:${len}:${rs.length}:${ai}`;
+}
+function liveTailSnapshotFromTurns(turns) {
+  const last = turns[turns.length - 1];
+  if (!last) return null;
+  return {
+    turnOrdinal: last.turnOrdinal,
+    segmentIndex: resolveViewSegmentIndex(last),
+    fingerprint: fingerprintTurnTail(last)
+  };
+}
 async function refreshPanel(host) {
   try {
     const [userSettings, convSettings] = await Promise.all([
@@ -6710,6 +6767,10 @@ ${SHELL_STYLES}`);
     const turns = turnsFromHost(host);
     const conversationId = conversationIdFrom(host);
     const conversationSwitched = syncActiveConversation(conversationId);
+    const pinClearedByNewReply = clearPinIfLiveTailAdvanced(
+      conversationId,
+      liveTailSnapshotFromTurns(turns)
+    );
     const pinned = getPinnedView(conversationId);
     const regenBusy = isRegenerating(conversationId);
     const resolved = resolvePanelView(
@@ -6752,7 +6813,7 @@ ${SHELL_STYLES}`);
     host.ui.panel.setHtml(PLACEMENT, PLUGIN_ID, html, {
       revision: bumpPanelRevision()
     });
-    if (conversationSwitched) {
+    if (conversationSwitched || pinClearedByNewReply) {
       host.refreshSlotButtons();
     }
   } catch (e) {

@@ -17,6 +17,7 @@ import { runSeparateRegenerate, SeparateRegenerateError } from './separate-regen
 import { auditDebugEnabled, logSeparateDebugIfPresent } from './audit-debug.js'
 import {
   bumpPanelRevision,
+  clearPinIfLiveTailAdvanced,
   getPinnedView,
   isRegenerating,
   k,
@@ -24,6 +25,7 @@ import {
   setPinnedView,
   setRegenerating,
   syncActiveConversation,
+  type LiveTailSnapshot,
   type PinnedTraceView,
 } from './state.js'
 import { resolveViewSegmentIndex, type TurnViewRef } from './turn-view-segment.js'
@@ -206,6 +208,46 @@ function segmentCountForTurn(turn: TurnViewRef | null | undefined): number {
   return (turn.receives?.length ?? 0) > 0 ? 1 : 0
 }
 
+function fingerprintTurnTail(turn: TurnViewRef): string {
+  const segs = turn.segments ?? []
+  if (segs.length > 0) {
+    return segs
+      .map((seg) => {
+        const rs = seg.receives ?? []
+        const ai = Math.min(
+          Math.max(0, Math.floor(seg.activeReceiveIndex ?? 0)),
+          Math.max(0, rs.length - 1),
+        )
+        const rec = rs[ai]
+        const id = rec?.id?.trim() ?? ''
+        const len = typeof rec?.content === 'string' ? rec.content.length : 0
+        return `${id}:${len}:${rs.length}:${ai}`
+      })
+      .join('|')
+  }
+  const rs = turn.receives ?? []
+  const ai = Math.min(
+    Math.max(0, Math.floor(turn.activeReceiveIndex ?? 0)),
+    Math.max(0, rs.length - 1),
+  )
+  const rec = rs[ai]
+  const id = rec?.id?.trim() ?? ''
+  const len = typeof rec?.content === 'string' ? rec.content.length : 0
+  return `${id}:${len}:${rs.length}:${ai}`
+}
+
+function liveTailSnapshotFromTurns(
+  turns: TurnViewRef[],
+): LiveTailSnapshot | null {
+  const last = turns[turns.length - 1]
+  if (!last) return null
+  return {
+    turnOrdinal: last.turnOrdinal,
+    segmentIndex: resolveViewSegmentIndex(last),
+    fingerprint: fingerprintTurnTail(last),
+  }
+}
+
 async function refreshPanel(host: PluginHost): Promise<void> {
   try {
     const [userSettings, convSettings] = await Promise.all([
@@ -219,6 +261,10 @@ async function refreshPanel(host: PluginHost): Promise<void> {
     const turns = turnsFromHost(host)
     const conversationId = conversationIdFrom(host)
     const conversationSwitched = syncActiveConversation(conversationId)
+    const pinClearedByNewReply = clearPinIfLiveTailAdvanced(
+      conversationId,
+      liveTailSnapshotFromTurns(turns),
+    )
     const pinned = getPinnedView(conversationId)
     const regenBusy = isRegenerating(conversationId)
 
@@ -299,7 +345,7 @@ async function refreshPanel(host: PluginHost): Promise<void> {
     host.ui.panel.setHtml(PLACEMENT, PLUGIN_ID, html, {
       revision: bumpPanelRevision(),
     })
-    if (conversationSwitched) {
+    if (conversationSwitched || pinClearedByNewReply) {
       host.refreshSlotButtons()
     }
   } catch (e) {

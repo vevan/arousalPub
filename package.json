@@ -23,7 +23,6 @@
     "check:host-no-plugin-ids": "node scripts/check-host-no-plugin-ids.mjs",
     "verify:host-no-bundled": "node scripts/verify-host-build-without-bundled.mjs",
     "check:ci": "node scripts/verify-shared-sync.mjs && npm run check:host-no-plugin-ids && npm run verify:host-no-bundled && npm run build:plugins && npm run typecheck && npm test -w server",
-    "migrate:curated-memory": "node --import tsx scripts/migrate-curated-memory-to-plot-summary.ts",
     "generate:bundled-registry": "node scripts/generate-bundled-registry.mjs --write",
     "typecheck": "npm run typecheck -w web",
     "build": "node scripts/build.mjs",

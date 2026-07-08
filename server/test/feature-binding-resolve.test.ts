@@ -63,32 +63,37 @@ describe('feature-binding-resolve', () => {
     assert.equal(hit?.source, 'conversation')
   })
 
-  it('does not resolve plugin from activePresetId', () => {
-    const hit = resolvePluginFeatureBindingMeta(mockSettings(), FIXTURE_PLUGIN)
+  it('does not resolve plugin from activePresetId without fallback option', () => {
+    const hit = resolvePluginFeatureBindingMeta(mockSettings(), FIXTURE_PLUGIN, {
+      fallbackToGlobalDefault: false,
+    })
     assert.equal(hit, null)
   })
 
-  it('conversation plugin binding wins', () => {
+  it('conversation pluginSettings apiConfigId wins', () => {
     const hit = resolvePluginFeatureBindingMeta(
       mockSettings(),
       FIXTURE_PLUGIN,
-      {
-        plugins: { [FIXTURE_PLUGIN]: { apiConfigId: 'global-id' } },
-      },
+      { conversationPluginApiConfigId: 'global-id' },
     )
     assert.equal(hit?.apiConfigId, 'global-id')
     assert.equal(hit?.source, 'conversation')
   })
 
-  it('falls back to plugin settings apiConfigId', () => {
+  it('falls back to global plugin settings apiConfigId', () => {
     const hit = resolvePluginFeatureBindingMeta(
       mockSettings(),
       FIXTURE_PLUGIN,
-      undefined,
-      'legacy-id',
+      { globalPluginApiConfigId: 'legacy-id' },
     )
     assert.equal(hit?.apiConfigId, 'legacy-id')
     assert.equal(hit?.source, 'plugin_settings')
+  })
+
+  it('falls back to activePresetId when fallback enabled', () => {
+    const hit = resolvePluginFeatureBindingMeta(mockSettings(), FIXTURE_PLUGIN)
+    assert.equal(hit?.apiConfigId, 'legacy-id')
+    assert.equal(hit?.source, 'global')
   })
 
   it('toResolvedFeatureAudit strips preset details', () => {

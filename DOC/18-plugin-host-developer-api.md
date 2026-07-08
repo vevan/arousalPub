@@ -252,7 +252,7 @@ interface ConversationBatchContext {
 
 ```ts
 {
-  apiConfigId?: string      // 省略时：对话 apiPreset.plugins[pluginId] → apiPreset.plugin → 插件 settings
+  apiConfigId?: string      // 省略时：§1.1 三层链 → 默认 activePresetId
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
   modelOverride?: string
   stream?: boolean          // v1 仅非流式可靠
@@ -303,7 +303,7 @@ interface ConversationBatchContext {
   responseFormat?: 'json_object' | 'text'
   dryRun?: boolean
   captureDebug?: boolean
-  fallbackToChat?: boolean   // 未绑 apiConfigId 时回退 chat API（插件 manifest 场景自行声明）
+  fallbackToChat?: boolean   // 默认 true：未绑 apiConfigId 时回退全局 activePresetId；显式 false 关闭
   draft?: { kind: string; fromTurn?; toTurn?; blockTurns? }
   // kind：插件 opaque 字符串；lore/sidecar 等私有字段放 pluginSettings，由 parseCompleteDraftContent 解释
 }
@@ -651,5 +651,7 @@ class PluginHostApiError {
 | 2026-06-23 | §3.14 `host.regex` 标为已实现（2026-06-10）；§4.2 补 `api.regex` |
 | 2026-07-07 | **DOC/39 落地**：`prepareContextBlocks` / `assemblePluginPrompt` / `completeWithContext`；移除 legacy prepareContext / complete-draft |
 | 2026-07-07 | **Phase 3**：trace-keeper Separate 迁 `completeWithContext`；契约补 `stripBlockTagsOnToTurn` / `fallbackToChat` / `captureDebug` |
+| 2026-07-08 | **`fallbackToChat` 默认 true**：回退 **activePresetId**（非对话 chat） |
+| 2026-07-08 | 插件 API 链简化为三层 `pluginSettings`（[`DOC/43`](43-plugin-api-binding-audit-checklist.md)） |
 | 2026-07-07 | **宿主去特化**：`host.plugin.runAction` + manifest `serverActions`；`draft.kind` 改为 opaque `string`；settings schema widget 文档 |
 | 2026-07-07 | §10 通知中心改为 **localStorage**（`DOC/40`）；权限：`lorebook.read` 仅 lore 块时要求 |

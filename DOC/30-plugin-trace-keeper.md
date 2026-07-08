@@ -11,7 +11,7 @@
 | Together 落盘 | `resolveTurnPluginEntriesFromAssistant` 解析 `<ex-trace-keeper>` → `turn.plugins[]` |
 | 记忆语料剥离 | manifest `memory.stripBlockTags: ["ex-trace-keeper"]`（用户开启剥离时自动并入；见 `DOC/03` §14.4.4） |
 | 组装注入 | `resolveAfterAssemblePromptsAddition`：system 仅 **格式说明 + sample**；历史 state 由正则保留在 assistant 正文；计入 token 预算且不可 trim |
-| Separate 补生成 | `POST …/regenerate-separate` → **`completeWithContext`**（`DOC/39`）；`conversation.transcript` 窗口 + `stripBlockTagsOnToTurn`；`TRACE_KEEPER_SEPARATE_LAYOUT`；`fallbackToChat: true` |
+| Separate 补生成 | `POST …/regenerate-separate` → **`completeWithContext`**（`DOC/39`）；`conversation.transcript` 窗口 + `stripBlockTagsOnToTurn`；`TRACE_KEEPER_SEPARATE_LAYOUT`；可省略 `fallbackToChat`（宿主默认 true） |
 | 侧栏 | `host.ui.panel` · live/pinned；只读 `plugins[]` 渲染；无 snapshot **空态+原因**（§4.4）；最后一轮可 Separate |
 | Swipe | 按 `receiveId` 多 snapshot（`mergeTurnPluginEntry`） |
 | 套件 | 用户 settings `bundleList` + 内置 `scene-tracker-default`；设置页编辑器 |
@@ -56,7 +56,7 @@ prepareTraceKeeperSeparateContextBlocks
   → stripBlockTagsOnToTurn: ['ex-trace-keeper']（仅 target 轮 assistant）
   → formatPluginContextBlocks → <dialogue> 块
   → TRACE_KEEPER_SEPARATE_LAYOUT（user: dialogue + system: separateSystemPrompt + sample）
-  → plugin.complete（json_object；未绑 apiConfigId 时 fallbackToChat）
+  → plugin.complete（json_object；未绑 apiConfigId 时默认回退 activePresetId）
   → parseTraceKeeperJson → 双写 turn.plugins[] + assistant 正文
 ```
 

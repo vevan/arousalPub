@@ -2,6 +2,7 @@ import { resolvePluginCompleteApi } from './plugin-api-resolve.js'
 import { runAssemblePluginPrompt, parsePromptLayout } from './plugin-assemble-prompt.js'
 import { runPluginComplete } from './plugin-complete.js'
 import { runPluginContextBlocksResolve, parseContextBlockSpecs } from './plugin-context-blocks-resolve.js'
+import { resolvePluginCaptureDebug } from './plugin-audit-gate.js'
 import { loadEnabledServerPlugins } from './plugin-system/loader.js'
 import { createPluginServerHostApi } from './plugin-system/host-api.js'
 import type {
@@ -140,7 +141,7 @@ export async function resolveApiConfigIdForCompleteWithContext(
       pluginId: pluginId.trim(),
       conversationId,
       userId,
-      fallbackToChat: req.fallbackToChat === true,
+      fallbackToChat: req.fallbackToChat !== false,
     })
     if (!hit.ok) {
       if (req.dryRun === true) {
@@ -163,6 +164,10 @@ async function completeOnce(
   userId?: string,
 ): Promise<CompleteWithContextResult> {
   const conversationId = req.conversationId.trim()
+  const captureDebug = await resolvePluginCaptureDebug(
+    conversationId,
+    req.captureDebug === true,
+  )
   const blocks = Array.isArray(req.blocks) ? req.blocks : []
   const prepared = req.preparedContext
   if (!prepared && blocks.length === 0) {
@@ -224,11 +229,11 @@ async function completeOnce(
     messages: assembled.messages,
     modelOverride: apiHit.modelOverride,
     responseFormat: req.responseFormat ?? 'json_object',
-    captureDebug: req.captureDebug === true,
+    captureDebug,
   })
   if (!complete.ok) {
     const debug =
-      req.captureDebug === true
+      captureDebug
         ? {
             messages: assembled.messages,
             ...(complete.debug ?? {}),
@@ -237,7 +242,7 @@ async function completeOnce(
     return {
       ok: false,
       code: complete.code ?? 'plugin_complete_failed',
-      ...(req.captureDebug === true ? { messages: assembled.messages } : {}),
+      ...(captureDebug ? { messages: assembled.messages } : {}),
       ...(debug ? { debug } : {}),
     }
   }

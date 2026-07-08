@@ -88,17 +88,23 @@ export async function runPluginActionRoute(
   }
 
   let actionBody: Record<string, unknown> = { ...body }
+  let auditDebugWrite = false
   if (conversationId) {
     const idx = await readConversationIndex(conversationId)
-    if (idx && isAuditDebugWriteEnabled(idx)) {
+    auditDebugWrite = !!idx && isAuditDebugWriteEnabled(idx)
+    if (auditDebugWrite) {
       actionBody = { ...actionBody, debugCapture: true }
+    } else {
+      delete actionBody.debugCapture
     }
+  } else {
+    delete actionBody.debugCapture
   }
 
   const api = createPluginServerHostApi(pluginId, userId)
   const result = await plugin.module.runPluginAction(action, actionBody, api)
   if (!result.ok) {
-    if (result.debug) {
+    if (auditDebugWrite && result.debug) {
       // eslint-disable-next-line no-console
       console.warn(`[plugin-action:${pluginId}:${action}] debug`, result.debug)
     }
@@ -106,7 +112,7 @@ export async function runPluginActionRoute(
       ok: false,
       code: result.code,
       status: result.status,
-      debug: result.debug,
+      ...(auditDebugWrite && result.debug ? { debug: result.debug } : {}),
     }
   }
 
@@ -120,9 +126,13 @@ export async function runPluginActionRoute(
     }
   }
 
+  const fields = pickActionResponseFields(result)
+  if (!auditDebugWrite) {
+    delete fields.debug
+  }
   return {
     ok: true,
-    ...pickActionResponseFields(result),
+    ...fields,
   }
 }
 

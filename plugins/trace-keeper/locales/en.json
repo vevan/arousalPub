@@ -35,7 +35,7 @@
   "activeBundleIdLabel": "Default bundle",
   "activeBundleIdDesc": "Pick from saved bundles below; built-in sample is always available",
   "apiConfigIdLabel": "Separate regenerate API preset",
-  "apiConfigIdDesc": "API preset for Separate tracker regeneration; leave empty to use this conversation's chat preset or the global active preset.",
+  "apiConfigIdDesc": "API preset for Separate tracker regeneration; leave empty to inherit conversation plugin settings, global plugin settings, or the global default preset.",
   "bundleListLabel": "Bundles",
   "bundleListDesc": "Add or edit TraceBundles: name, system prompt, sample JSON, Handlebars template, and stylesheet. Bundle ids are assigned automatically.",
   "bundleItemLabelLabel": "Bundle name",

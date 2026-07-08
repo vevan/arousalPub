@@ -9,7 +9,7 @@
 |------|------|
 | 新 Agent / 接手 | [`06-工作交接.md`](06-工作交接.md) → [`03-实现细节.md`](03-实现细节.md) |
 | 部署 / 安全 | [`25-security-deployment.md`](25-security-deployment.md)、[`17-admin-console.md`](17-admin-console.md)、[`data/README.md`](../data/README.md) |
-| 插件开发 | [`41`](41-plugin-host-generic-principles.md)（**宿主强制**）→ [`42`](42-host-generic-audit-checklist.md)（审计/checklist）→ [`09`](09-plugin-system-and-guidance-generate.md) → [`18`](18-plugin-host-developer-api.md) → [`39`](39-plugin-context-and-prompt-assembly.md)（✅）→ [`38`](38-plugin-sandbox-and-host-evolution.md)（规划 · TODO 见 [`04`](04-TODO.md) §Sandbox）→ [`10`](10-plugin-conversation-host.md) |
+| 插件开发 | [`41`](41-plugin-host-generic-principles.md)（**宿主强制**）→ [`42`](42-host-generic-audit-checklist.md)（审计/checklist）→ [`09`](09-plugin-system-and-guidance-generate.md) → [`18`](18-plugin-host-developer-api.md) → [`39`](39-plugin-context-and-prompt-assembly.md)（✅）→ [`38`](38-plugin-sandbox-and-host-evolution.md)（规划 · TODO 见 [`04`](04-TODO.md) §Sandbox）→ [`43`](43-plugin-api-binding-audit-checklist.md)（Sandbox 交叉 checklist）→ [`10`](10-plugin-conversation-host.md) |
 | Historian | [`12-plugin-plot-summary.md`](12-plugin-plot-summary.md) · 二次 LLM 演进 [`39`](39-plugin-context-and-prompt-assembly.md) |
 | 迹录（Trace Keeper） | [`30-plugin-trace-keeper.md`](30-plugin-trace-keeper.md) |
 | 主布局 / 插件 Rail | [`31-main-layout-plugin-rails.md`](31-main-layout-plugin-rails.md) |
@@ -49,6 +49,7 @@
 | [`41`](41-plugin-host-generic-principles.md) | **定案 · 强制** | **宿主零特化**：禁止 pluginId 字面量、manifest 扩展、CI 门禁 |
 | [`42`](42-host-generic-audit-checklist.md) | **审计 · 迁移完成** | Phase 0–3、§8 审计（含二次审计 §8.4）、`npm run check:ci` |
 | [`38`](38-plugin-sandbox-and-host-evolution.md) | ✅ Phase A+B | 插件沙箱、注入描述符、API 绑定（宿主选择器） |
+| [`43`](43-plugin-api-binding-audit-checklist.md) | **进行中** | Sandbox 交叉：API 绑定 · 审计 · Fallback **逐条 checklist** |
 | [`39`](39-plugin-context-and-prompt-assembly.md) | ✅ 已落地 | 二次 LLM 上下文块、`completeWithContext`（Historian + trace-keeper Separate） |
 | [`40`](40-notification-center.md) | 规划 P1 | **通知中心**：统一发送、**localStorage**、已读/未读、删除、列表 UI |
 | [`20`](20-user-file-library.md) | 定案 | 用户文件库 / charFile（未实现） |

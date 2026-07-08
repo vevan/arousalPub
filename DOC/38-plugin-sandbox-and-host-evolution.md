@@ -176,12 +176,23 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 
 | 步骤 | 宿主职责 |
 |------|----------|
-| 设置页 | `settingsSchema` 字段 `type: "apiPreset"` → 宿主 `PluginSchemaForm` 渲染下拉（`loadApiPresetSelectItems`） |
-| 持久化 | 用户选择写入插件 `settings.json` 的 `apiConfigId`（或对话 `apiPreset.plugins[pluginId]`）；**仅存 id** |
-| 运行时 | 插件经 Host API `complete` / `getUserPluginSettings` 使用已绑定 id；**不**暴露 `api_configs` 列表与其它 preset |
+| **全局**设置页 | `settingsSchema` 字段 `type: "apiPreset"` → `PluginSchemaForm` 下拉（`loadApiPresetSelectItems`）→ `settings.json` |
+| **对话**插件 Tab | `conversationSettingsSchema` 的 `type: "apiPreset"` → **`pluginSettings[pluginId].apiConfigId`**（见 [`DOC/43`](43-plugin-api-binding-audit-checklist.md) §1.1） |
+| 持久化 | **仅存 `apiConfigId`**（及可选 `modelOverride`） |
+| 运行时 | 插件经 Host API `complete` / `getUserPluginSettings` 使用已解析 id；**不**暴露 `api_configs` 列表与其它 preset |
 | 出站 | 宿主解析密钥；插件永远不见明文 |
 
-解析链：`对话 apiPreset.plugins[pluginId]` → `apiPreset.plugin` → 插件 settings `apiConfigId`（`plugin-api-resolve.ts`）。
+解析链（`plugin-api-resolve.ts` · [`DOC/43`](43-plugin-api-binding-audit-checklist.md) §1.1）：
+
+```text
+对话 pluginSettings.apiConfigId
+  → 全局 settings.json apiConfigId
+  → 全局 activePresetId
+```
+
+显式 `fallbackToChat: false` 关闭末级回退。
+
+**交叉项 checklist**：[`DOC/43`](43-plugin-api-binding-audit-checklist.md)。
 
 ---
 
@@ -257,3 +268,5 @@ regex 之后、`messages` 中最后一条 user 之后可能已有：
 | 2026-07-07 | 契约：`position.injectionOrder`（≡ ST）；默认 **100**；官方档 **10 / 20 / 500**（revise **11+12**） |
 | 2026-07-07 | **Phase B**：Worker 沙箱 + Host API 代理 + loader fallback；`PLUGIN_SERVER_SANDBOX` 默认 off |
 | 2026-07-07 | **Phase C**：`worker_threads` → `child_process.fork` + Node `--permission` |
+| 2026-07-08 | §5：插件 API 解析链简化为三层 pluginSettings；默认 **fallbackToChat** → **activePresetId** |
+| 2026-07-08 | §5：per-plugin API UI 定案 → 仅插件 Tab（链 [`DOC/43`](43-plugin-api-binding-audit-checklist.md) §1.1） |

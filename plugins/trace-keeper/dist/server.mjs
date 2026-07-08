@@ -8,14 +8,12 @@ var POST_USER_INJECTION_ORDER_HOST_DEFAULTS = {
   /** 群聊 afterUserInput */
   afterUserInput: 20,
   /** assemble hoist 无元数据的 preset chat depth 0 tail */
-  presetChatDepth0: CHAT_INJECTION_ORDER_DEFAULT,
-  /** legacy ChatMessage[] addition */
-  legacy: 500
+  presetChatDepth0: CHAT_INJECTION_ORDER_DEFAULT
 };
 var POST_USER_INJECTION_ORDER_SLOT_DEFAULTS = {
-  send: 10,
-  reviseAssistant: 11,
-  reviseSystem: 12,
+  send: 0,
+  reviseAssistant: 0,
+  reviseSystem: 1,
   default: 500
 };
 var ORDER_MIN = 0;

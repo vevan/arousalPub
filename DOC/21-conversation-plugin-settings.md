@@ -1,7 +1,7 @@
 # 会话级插件设置（Conversation Plugin Settings Tab）
 
 > **状态**：**v1 已落地**（`conversationSettingsSchema`、对话齿轮 → 插件 Tab、`plot-summary` 迁移）。  
-> **更名（v1.6）**：插件 id 自 `curated-memory` 改为 `plot-summary`；宿主启动时迁移 registry / `pluginSettings` / 用户 settings（`migrate-plot-summary.ts`）。  
+> **更名（v1.6）**：插件 id 自 `curated-memory` 改为 `plot-summary`（2026-06 一次性迁移已完成；无启动时自动迁移）。  
 > **关联**：`DOC/09` §5.6、`DOC/11` §4、`DOC/18` §6、`DOC/12` Historian（剧情纪要）字段拆分。  
 > **auto ensure**：**v1.4 已落地**（`host.lorebook.ensure`）；manual 无摘要资料库时仍弹框选书。
 
@@ -18,6 +18,7 @@
 | 与全局分离 | `settingsSchema` ↔ 用户 `settings.json`；`conversationSettingsSchema` ↔ 会话 `pluginSettings`；两套字段**可完全不相交** |
 | 合并语义 | 宿主不解释业务字段；**插件代码**定义继承（如 `loadMergedSettings`） |
 | 运行时字段 | `lastSummarizedEnd`、`sidecarEntryIds` 等**不得**出现在任一 schema |
+| **API preset** | `type: "apiPreset"` → 落盘 **`apiConfigId`**（对话级在 **`pluginSettings[pluginId]`**）。见 [`DOC/43`](43-plugin-api-binding-audit-checklist.md) §1.1 |
 
 **开关 / 排序**：仍在系统设置 → 插件列表（registry），不属于 schema。
 
@@ -58,7 +59,7 @@
 |------|------------|
 | 列举（含 schema） | `GET /api/plugins/manage` → `conversationSettingsSchema`、`hasConversationSettings` |
 | 读会话 | `GET /api/chat/conversations/:id` → `pluginSettings[id]` |
-| 写会话 | `PATCH /api/chat/conversations/:id` → `{ pluginSettings: { [id]: partial } }`；值 `null` 删键 |
+| 写会话 | `PATCH …/conversations/:id` → `{ pluginSettings: { [id]: partial } }`（含 `apiConfigId`） |
 | Web 封装 | `fetchConversationPluginSettings` / `patchConversationPluginSettings` |
 
 ---

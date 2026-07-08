@@ -362,6 +362,8 @@ auditDebug.enabled && maxStored >= 1 && 落盘成功（/api/chat persist）
 
 ### 3.6 插件与审计范围（2026-06-08 定案）
 
+**插件 debug（2026-07-08 · B1.2）**：`plugin.complete` / `completeWithContext` / `serverActions` 的 **`captureDebug` / `debugCapture`** 与响应 **`debug`** 字段，**仅**当会话 **`auditDebug.enabled && maxStored ≥ 1`** 时由宿主开启（`server/src/plugin-audit-gate.ts`）。客户端/插件传 `true` **不能**绕过；**不**写入 `chat-audit.json`（插件异步出站仍不进 sync audit）。
+
 **P0 结论**：当前**没有**必须在 `chat-audit.json` 每轮条目里记录的插件出站 LLM。
 
 | 插件 | 与本轮 audit 的关系 |

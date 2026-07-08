@@ -35,7 +35,7 @@ plugins/{pluginId}/
 
 **插件作者主文档（宿主 API 单一入口）**：**`DOC/18-plugin-host-developer-api.md`**。
 
-**插件出站 API 解析**（`complete` / `preflight` / `complete-with-context`）：`对话 apiPreset.plugins[pluginId]` → `apiPreset.plugin` → **插件设置页 `apiConfigId`**。连接设置无全局 plugin binding。实现：`server/src/plugin-api-resolve.ts`。
+**插件出站 API 解析**：`对话 pluginSettings.apiConfigId` → `全局 settings.apiConfigId` → `activePresetId`。实现：`server/src/plugin-api-resolve.ts` · [`DOC/43`](43-plugin-api-binding-audit-checklist.md) §1.1。
 
 **插件系统**（manifest、懒加载、设置页）：**`DOC/09-plugin-system-and-guidance-generate.md`**。
 

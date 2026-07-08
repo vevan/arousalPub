@@ -54,8 +54,6 @@
 
 - **`draft.kind: string`**；sidecar 等 lore 语义仅在插件 **`pluginSettings`** 内传递
 
-- 一次性迁移：**`npm run migrate:curated-memory`**（增强：registry / 会话残留检测）
-
 
 
 **门禁未覆盖（有意）**：
@@ -164,9 +162,9 @@
 
 |--------|------|
 
-| 迁移脚本 seed 后 no-op | `userNeedsMigration`：registry / 会话 `pluginSettings` / userData / 安装目录 |
+| 迁移脚本 seed 后 no-op | （2026-07 脚本已移除）历史：`userNeedsMigration` 检测 registry / 会话 `pluginSettings` / userData |
 
-| registry-only 残留 | 同上；registry 含 `curated-memory` 即迁移并移除 |
+| registry-only 残留 | （历史）registry 含 `curated-memory` 时需手动改为 `plot-summary` |
 
 | `mergeTurnPluginEntries` 按 pluginId 替换 | → 逐条 `mergeTurnPluginEntry`（receive-scoped 策略） |
 

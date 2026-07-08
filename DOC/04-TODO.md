@@ -38,7 +38,10 @@
 
 ### 相关（与 Sandbox 交叉 · 仍开放）
 
-- [ ] 插件实例与 API 绑定、插件审计、fallback 策略（部分见 [`DOC/10`](10-plugin-conversation-host.md)）
+> **逐条 checklist**：[`DOC/43`](43-plugin-api-binding-audit-checklist.md)
+
+- [ ] 插件实例与 API 绑定、插件审计（部分见 [`DOC/10`](10-plugin-conversation-host.md)）— 细项见 **DOC/43** §3–§4
+- [x] **插件 API fallback（C1）** — 三层链末级 → `activePresetId`（[`DOC/43`](43-plugin-api-binding-audit-checklist.md) §1.1）— 余项见 **DOC/43** §5
 
 ### 非目标（v1 Sandbox）
 
@@ -68,7 +71,7 @@
 - [x] **lifecycle** — `onCharacterPrimaryChanged` 分发
 - [x] **persist extras** — `resolveConversationPersistExtras` hook
 - [x] **bundled-registry** — loader/registry 读 `plugins/bundled-registry.json`
-- [x] **migrate-plot-summary** — `scripts/migrate-curated-memory-to-plot-summary.ts` + `npm run migrate:curated-memory`
+- [x] **migrate-plot-summary** — `curated-memory` → `plot-summary` 一次性迁移（2026-06 已完成；脚本已移除）
 
 ### Phase 2 — Web 宿主
 

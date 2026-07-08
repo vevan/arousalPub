@@ -70,6 +70,5 @@
       { "name": "user-turn-footer", "entry": "./dist/web.mjs" },
       { "name": "assistant-turn-footer", "entry": "./dist/web.mjs" }
     ]
-  },
-  "connection": { "policy": "userFirst" }
+  }
 }

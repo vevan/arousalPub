@@ -1,5 +1,6 @@
 import { applyPromptMacroPipeline } from '../prompt-macros/index.js'
 import { resolvePluginCompleteApi } from '../plugin-api-resolve.js'
+import { resolvePluginCaptureDebug } from '../plugin-audit-gate.js'
 import { runPluginComplete } from '../plugin-complete.js'
 import { runCompleteWithContext } from '../plugin-complete-with-context.js'
 import { runPluginCompletePreflight } from '../plugin-complete-preflight.js'
@@ -72,7 +73,7 @@ export function createPluginServerHostApi(
           pluginId: pid,
           userId: uid,
           conversationId: req.conversationId,
-          fallbackToChat: req.fallbackToChat === true,
+          fallbackToChat: req.fallbackToChat !== false,
         })
         if (!hit.ok) {
           return { ok: false, code: hit.code }
@@ -82,13 +83,17 @@ export function createPluginServerHostApi(
           modelOverride = hit.resolved.modelOverride
         }
       }
+      const captureDebug = await resolvePluginCaptureDebug(
+        req.conversationId,
+        req.captureDebug === true,
+      )
       return runPluginComplete({
         apiConfigId,
         messages: req.messages,
         modelOverride,
         stream: false,
         responseFormat: req.responseFormat,
-        captureDebug: req.captureDebug === true,
+        captureDebug,
       })
     },
     async runPluginCompletePreflight(req) {

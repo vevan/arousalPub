@@ -90,42 +90,13 @@ function readConversationFeatureBinding(
   return { apiConfigId: id, modelOverride }
 }
 
-function readConversationPluginBinding(
-  apiPreset: unknown,
-  pluginId: string,
-): { apiConfigId: string; modelOverride?: string } | null {
-  if (!apiPreset || typeof apiPreset !== 'object' || Array.isArray(apiPreset)) {
-    return null
-  }
-  const o = apiPreset as Record<string, unknown>
-  const plugins = o.plugins
-  if (plugins && typeof plugins === 'object' && !Array.isArray(plugins)) {
-    const hit = extractApiConfigIdFromBinding(
-      (plugins as Record<string, unknown>)[pluginId],
-    )
-    if (hit) {
-      const raw = (plugins as Record<string, unknown>)[pluginId]
-      const modelOverride =
-        raw &&
-        typeof raw === 'object' &&
-        !Array.isArray(raw) &&
-        typeof (raw as { modelOverride?: unknown }).modelOverride === 'string'
-          ? (raw as { modelOverride: string }).modelOverride.trim() || undefined
-          : undefined
-      return { apiConfigId: hit, modelOverride }
-    }
-  }
-  const fallback = extractApiConfigIdFromBinding(o.plugin)
-  if (!fallback) return null
-  const raw = o.plugin
-  const modelOverride =
-    raw &&
-    typeof raw === 'object' &&
-    !Array.isArray(raw) &&
-    typeof (raw as { modelOverride?: unknown }).modelOverride === 'string'
-      ? (raw as { modelOverride: string }).modelOverride.trim() || undefined
-      : undefined
-  return { apiConfigId: fallback, modelOverride }
+export type ResolvePluginFeatureBindingOptions = {
+  /** 对话 pluginSettings.apiConfigId（插件 Tab） */
+  conversationPluginApiConfigId?: string | null
+  /** 全局 plugins/{id}/settings.json apiConfigId */
+  globalPluginApiConfigId?: string | null
+  /** 未绑定时回退全局 activePresetId；默认 true */
+  fallbackToGlobalDefault?: boolean
 }
 
 export function resolveFeatureBindingMeta(
@@ -175,35 +146,45 @@ export function resolveChatApiConfigId(
 export function resolvePluginFeatureBindingMeta(
   settings: Pick<ApiSettingsDocument, 'activePresetId'>,
   pluginId: string,
-  conversationApiPreset?: unknown,
-  pluginSettingsApiConfigId?: string | null,
+  options?: ResolvePluginFeatureBindingOptions,
 ): ResolvedFeatureBinding | null {
   const pid = pluginId.trim()
   if (!pid) return null
 
-  const fromConversation = readConversationPluginBinding(
-    conversationApiPreset,
-    pid,
-  )
-  if (fromConversation) {
+  const convId = options?.conversationPluginApiConfigId?.trim()
+  if (convId) {
     return {
       featureType: 'plugin',
       featureRefId: pid,
       pluginId: pid,
-      apiConfigId: fromConversation.apiConfigId,
-      modelOverride: fromConversation.modelOverride,
+      apiConfigId: convId,
       source: 'conversation',
     }
   }
 
-  const settingsId = pluginSettingsApiConfigId?.trim()
-  if (settingsId) {
+  const globalId = options?.globalPluginApiConfigId?.trim()
+  if (globalId) {
     return {
       featureType: 'plugin',
       featureRefId: pid,
       pluginId: pid,
-      apiConfigId: settingsId,
+      apiConfigId: globalId,
       source: 'plugin_settings',
+    }
+  }
+
+  if (options?.fallbackToGlobalDefault === false) {
+    return null
+  }
+
+  const active = settings.activePresetId?.trim()
+  if (active) {
+    return {
+      featureType: 'plugin',
+      featureRefId: pid,
+      pluginId: pid,
+      apiConfigId: active,
+      source: 'global',
     }
   }
 
@@ -228,17 +209,9 @@ export function resolveFeatureApi(
 export function resolvePluginFeatureApi(
   settings: ApiSettingsDocument,
   pluginId: string,
-  options?: {
-    conversationApiPreset?: unknown
-    pluginSettingsApiConfigId?: string | null
-  },
+  options?: ResolvePluginFeatureBindingOptions,
 ): ResolvedFeatureApi | null {
-  const meta = resolvePluginFeatureBindingMeta(
-    settings,
-    pluginId,
-    options?.conversationApiPreset,
-    options?.pluginSettingsApiConfigId,
-  )
+  const meta = resolvePluginFeatureBindingMeta(settings, pluginId, options)
   if (!meta) return null
   const preset = settings.presets.find((p) => p.id === meta.apiConfigId) ?? null
   if (!preset) return null

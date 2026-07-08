@@ -21,7 +21,7 @@ export interface ApiConfigReference {
   presetAlias?: string
   conversationId?: string
   conversationTitle?: string
-  /** 对话 apiPreset 内路径，如 chat / plugins.{pluginId} */
+  /** 对话 apiPreset / pluginSettings 内路径，如 chat / pluginSettings.{pluginId} */
   path?: string
 }
 
@@ -31,7 +31,7 @@ export function extractApiConfigIdFromBinding(val: unknown): string | null {
   return typeof id === 'string' && id.trim() ? id.trim() : null
 }
 
-/** 从会话 index.json 的 apiPreset 对象收集 apiConfigId 引用 */
+/** 从会话 index.json 的 apiPreset 对象收集 apiConfigId 引用（功能键：chat / rag / rerank 等） */
 export function collectApiConfigIdsFromApiPreset(
   apiPreset: unknown,
 ): Array<{ path: string; apiConfigId: string }> {
@@ -41,17 +41,29 @@ export function collectApiConfigIdsFromApiPreset(
   }
   const o = apiPreset as Record<string, unknown>
   for (const [key, val] of Object.entries(o)) {
-    if (key === 'plugins' && val && typeof val === 'object' && !Array.isArray(val)) {
-      for (const [pluginId, pluginVal] of Object.entries(
-        val as Record<string, unknown>,
-      )) {
-        const id = extractApiConfigIdFromBinding(pluginVal)
-        if (id) out.push({ path: `plugins.${pluginId}`, apiConfigId: id })
-      }
-      continue
-    }
     const id = extractApiConfigIdFromBinding(val)
     if (id) out.push({ path: key, apiConfigId: id })
+  }
+  return out
+}
+
+/** 从会话 index.json 的 pluginSettings 收集各插件 apiConfigId 引用 */
+export function collectApiConfigIdsFromPluginSettings(
+  pluginSettings: unknown,
+): Array<{ path: string; apiConfigId: string }> {
+  const out: Array<{ path: string; apiConfigId: string }> = []
+  if (
+    !pluginSettings ||
+    typeof pluginSettings !== 'object' ||
+    Array.isArray(pluginSettings)
+  ) {
+    return out
+  }
+  for (const [pluginId, val] of Object.entries(
+    pluginSettings as Record<string, unknown>,
+  )) {
+    const id = extractApiConfigIdFromBinding(val)
+    if (id) out.push({ path: `pluginSettings.${pluginId}`, apiConfigId: id })
   }
   return out
 }
@@ -61,6 +73,7 @@ interface ConversationIndexScan {
   title: string
   relPath: string
   apiPreset?: unknown
+  pluginSettings?: unknown
 }
 
 async function readConversationIndexAt(
@@ -75,6 +88,7 @@ async function readConversationIndexAt(
     const idx = parsed as {
       title?: unknown
       apiPreset?: unknown
+      pluginSettings?: unknown
     }
     const title =
       typeof idx.title === 'string' && idx.title.trim()
@@ -85,6 +99,7 @@ async function readConversationIndexAt(
       title,
       relPath,
       apiPreset: idx.apiPreset,
+      pluginSettings: idx.pluginSettings,
     }
   } catch {
     return null
@@ -160,8 +175,15 @@ export function findPresetReferencesInSettings(
   }
 
   for (const scan of conversationScans) {
-    if (!scan.apiPreset) continue
-    for (const hit of collectApiConfigIdsFromApiPreset(scan.apiPreset)) {
+    const hits = [
+      ...(scan.apiPreset
+        ? collectApiConfigIdsFromApiPreset(scan.apiPreset)
+        : []),
+      ...(scan.pluginSettings
+        ? collectApiConfigIdsFromPluginSettings(scan.pluginSettings)
+        : []),
+    ]
+    for (const hit of hits) {
       if (hit.apiConfigId !== pid) continue
       const pathLabel =
         scan.relPath === 'index.json' || !scan.relPath

@@ -35,7 +35,7 @@
   "activeBundleIdLabel": "默认套件",
   "activeBundleIdDesc": "从下方已保存的套件中选择；内置样例始终可用",
   "apiConfigIdLabel": "Separate 补生成 API 预设",
-  "apiConfigIdDesc": "Separate 重新生成 tracker 时使用的 API；留空则使用本对话 chat 预设或全局当前预设。",
+  "apiConfigIdDesc": "Separate 重新生成 tracker 时使用的 API；留空则按对话插件设置 → 全局插件设置 → 全局默认预设继承。",
   "bundleListLabel": "套件列表",
   "bundleListDesc": "新增或编辑 TraceBundle：填写名称与提示词、样本 JSON、Handlebars 模板与样式表。套件 id 由系统自动生成。",
   "bundleItemLabelLabel": "套件名称",

@@ -1,7 +1,9 @@
 import { readApiSettingsFromFile } from './api-settings-file.js'
-import { readConversationIndex } from './chat-storage.js'
 import {
-  resolveChatApiConfigId,
+  readConversationIndex,
+  readConversationPluginSettings,
+} from './chat-storage.js'
+import {
   resolvePluginFeatureApi,
   type ResolvedFeatureApi,
 } from './feature-binding-resolve.js'
@@ -14,9 +16,23 @@ export interface ResolvePluginCompleteApiInput {
   /** 请求体显式传入时优先使用，不走解析链 */
   apiConfigId?: string
   userId?: string
-  /** 插件未绑定时回退到会话/全局 chat API（`fallbackToChat`） */
+  /**
+   * 未绑定时回退全局 **activePresetId**（连接设置「全局默认预设」）。
+   * 默认 **true**；显式 `false` 关闭。
+   * @deprecated 别名 `fallbackToChat` 仍接受，语义已改为全局默认 preset（非对话主 chat）。
+   */
   fallbackToChat?: boolean
 }
+
+/** 未传或 `true` 时回退全局默认 preset；仅显式 `false` 关闭 */
+export function shouldPluginFallbackToGlobalDefault(
+  input: Pick<ResolvePluginCompleteApiInput, 'fallbackToChat'>,
+): boolean {
+  return input.fallbackToChat !== false
+}
+
+/** @deprecated 使用 shouldPluginFallbackToGlobalDefault */
+export const shouldPluginFallbackToChat = shouldPluginFallbackToGlobalDefault
 
 export type ResolvePluginCompleteApiResult =
   | { ok: true; resolved: ResolvedFeatureApi }
@@ -24,8 +40,8 @@ export type ResolvePluginCompleteApiResult =
 
 export interface ResolvePluginCompleteApiSources {
   settings: Awaited<ReturnType<typeof readApiSettingsFromFile>>
-  conversationApiPreset?: unknown
-  pluginSettings: Record<string, unknown>
+  conversationPluginApiConfigId?: string | null
+  globalPluginApiConfigId?: string | null
 }
 
 function pluginSettingsApiConfigId(
@@ -72,35 +88,12 @@ export function resolvePluginCompleteApiFromSources(
   }
 
   const resolved = resolvePluginFeatureApi(settings, pluginId, {
-    conversationApiPreset: sources.conversationApiPreset,
-    pluginSettingsApiConfigId: pluginSettingsApiConfigId(sources.pluginSettings),
+    conversationPluginApiConfigId: sources.conversationPluginApiConfigId,
+    globalPluginApiConfigId: sources.globalPluginApiConfigId,
+    fallbackToGlobalDefault: shouldPluginFallbackToGlobalDefault(input),
   })
   if (resolved) {
     return { ok: true, resolved }
-  }
-
-  if (input.fallbackToChat) {
-    const chatMeta = resolveChatApiConfigId(settings, sources.conversationApiPreset)
-    if (chatMeta) {
-      const preset =
-        settings.presets.find((p) => p.id === chatMeta.apiConfigId) ?? null
-      if (preset) {
-        const model = chatMeta.modelOverride?.trim() || preset.model
-        return {
-          ok: true,
-          resolved: {
-            featureType: 'plugin',
-            featureRefId: pluginId,
-            pluginId,
-            apiConfigId: chatMeta.apiConfigId,
-            modelOverride: chatMeta.modelOverride,
-            source: chatMeta.source,
-            preset,
-            model,
-          },
-        }
-      }
-    }
   }
 
   return { ok: false, code: 'api_config_not_found' }
@@ -116,20 +109,23 @@ export async function resolvePluginCompleteApi(
 
   const settings = await readApiSettingsFromFile()
 
-  let conversationApiPreset: unknown
+  let conversationPluginApiConfigId: string | null = null
   const convId =
     typeof input.conversationId === 'string' ? input.conversationId.trim() : ''
   if (convId) {
     const idx = await readConversationIndex(convId)
-    conversationApiPreset = idx?.apiPreset
+    if (idx) {
+      const convPluginSettings = readConversationPluginSettings(idx, pluginId)
+      conversationPluginApiConfigId = pluginSettingsApiConfigId(convPluginSettings)
+    }
   }
 
   const uid = input.userId ?? getCurrentUserId()
-  const pluginSettings = await readMergedPluginUserSettings(pluginId, uid)
+  const globalPluginSettings = await readMergedPluginUserSettings(pluginId, uid)
 
   return resolvePluginCompleteApiFromSources(input, {
     settings,
-    conversationApiPreset,
-    pluginSettings,
+    conversationPluginApiConfigId,
+    globalPluginApiConfigId: pluginSettingsApiConfigId(globalPluginSettings),
   })
 }

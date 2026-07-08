@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   collectApiConfigIdsFromApiPreset,
+  collectApiConfigIdsFromPluginSettings,
   extractApiConfigIdFromBinding,
   findKeyReferencesInSettings,
   findPresetReferencesInSettings,
@@ -19,24 +20,30 @@ describe('extractApiConfigIdFromBinding', () => {
 })
 
 describe('collectApiConfigIdsFromApiPreset', () => {
-  it('collects feature keys and plugins', () => {
+  it('collects feature keys only', () => {
     const hits = collectApiConfigIdsFromApiPreset({
       chat: { apiConfigId: 'p-chat' },
       rerank: { apiConfigId: 'p-rerank', modelOverride: 'm' },
-      plugins: {
-        'fixture-plugin-a': { apiConfigId: 'p-plugin' },
-      },
-      plugin: { apiConfigId: 'p-default' },
     })
     assert.deepEqual(
       hits.sort((a, b) => a.path.localeCompare(b.path)),
       [
         { path: 'chat', apiConfigId: 'p-chat' },
-        { path: 'plugin', apiConfigId: 'p-default' },
-        { path: 'plugins.fixture-plugin-a', apiConfigId: 'p-plugin' },
         { path: 'rerank', apiConfigId: 'p-rerank' },
       ],
     )
+  })
+})
+
+describe('collectApiConfigIdsFromPluginSettings', () => {
+  it('collects per-plugin apiConfigId', () => {
+    const hits = collectApiConfigIdsFromPluginSettings({
+      'fixture-plugin-a': { apiConfigId: 'p-plugin' },
+      'fixture-plugin-b': { autoSummarizeEnabled: true },
+    })
+    assert.deepEqual(hits, [
+      { path: 'pluginSettings.fixture-plugin-a', apiConfigId: 'p-plugin' },
+    ])
   })
 })
 
@@ -77,7 +84,9 @@ describe('findPresetReferencesInSettings', () => {
           relPath: 'index.json',
           apiPreset: {
             chat: { apiConfigId: 'keep-me' },
-            plugins: { foo: { apiConfigId: 'other' } },
+          },
+          pluginSettings: {
+            foo: { apiConfigId: 'other' },
           },
         },
       ],

@@ -134,10 +134,10 @@ interface PluginCompleteResponse {
 4. 返回 assistant 正文（或流式 SSE，v1 可仅非流式）。  
 5. **不**写 turn、**不**改 `index.json`（除非插件另调 PATCH）。
 
-### 2.2 与 `apiPreset.plugins[pluginId]` 的关系
+### 2.2 与对话 `pluginSettings` 的关系
 
-- 对话级 **`index.json` → `apiPreset.plugins[pluginId]`** 仍可表示「本对话默认用哪条 API」（见 `DOC/03` §1.2.1）。  
-- 本节 **`complete` 请求体显式带 `apiConfigId`**，以插件 settings / 会话覆盖为准；若请求省略，实现时可回退 `resolvedPlugin(pluginId)`（实现时写死一种优先级）。
+- 对话级 **`index.json` → `pluginSettings[pluginId].apiConfigId`**（插件 Tab · `type: apiPreset`）表示本对话对该插件的 API 覆盖（见 `DOC/03` §1.2.1）。  
+- 请求省略 `apiConfigId` 时，宿主按 §1.2.1 三层链解析；皆无则 **默认** 回退 **`activePresetId`**（`fallbackToChat`，2026-07）。显式 `fallbackToChat: false` 则必须已绑插件 API。
 
 ### 2.3 Web 侧
 

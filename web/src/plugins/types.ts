@@ -243,7 +243,7 @@ export interface LorebookEntryPatchBody {
 }
 
 export interface PluginCompleteRequest {
-  /** 省略时由宿主按对话 apiPreset.plugins → 插件设置解析 */
+  /** 省略时由宿主按对话 pluginSettings → 全局插件 settings → activePresetId 解析 */
   apiConfigId?: string
   messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
   modelOverride?: string

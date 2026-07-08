@@ -226,7 +226,7 @@
 
   "apiConfigIdLabel": "Summary API preset",
 
-  "apiConfigIdDesc": "API preset for summarization; leave empty to use this conversation's apiPreset.plugins override when set.",
+  "apiConfigIdDesc": "API preset for summarization; leave empty to inherit conversation plugin settings, global plugin settings, or the global default preset.",
 
   "triggerEveryNTurnsLabel": "Turns per block (N)",
 

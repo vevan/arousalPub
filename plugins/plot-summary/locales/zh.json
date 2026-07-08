@@ -232,7 +232,7 @@
 
   "apiConfigIdLabel": "摘要 API 预设",
 
-  "apiConfigIdDesc": "用于生成摘要的 API 预设；留空时使用本对话 apiPreset.plugins 覆盖（若有）。",
+  "apiConfigIdDesc": "用于生成摘要的 API 预设；留空时按对话插件设置 → 全局插件设置 → 全局默认预设继承。",
 
   "triggerEveryNTurnsLabel": "每块摘要轮数 N",
 

@@ -528,7 +528,12 @@
       "inheritTriModeOff": "Off",
       "inheritTriModeInherit": "Inherit ({value})",
       "inheritTriModeGlobalOn": "global on",
-      "inheritTriModeGlobalOff": "global off"
+      "inheritTriModeGlobalOff": "global off",
+      "apiPresetEffectiveLine": "Current preset: {source} - {name}",
+      "apiPresetEffectiveSourceConversation": "this conversation",
+      "apiPresetEffectiveSourceGlobalPlugin": "global plugin",
+      "apiPresetEffectiveSourceGlobalDefault": "global default",
+      "selectApiPresetInherit": "Inherit (see effective preset below)"
     },
     "injectionOrderField": {
       "afterUserInput": {

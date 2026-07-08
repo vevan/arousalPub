@@ -202,6 +202,15 @@
     "version": 1,
     "fields": [
       {
+        "key": "apiConfigId",
+        "type": "apiPreset",
+        "labelKey": "convApiConfigIdLabel",
+        "descriptionKey": "convApiConfigIdDesc",
+        "default": "",
+        "conversationInherit": true,
+        "inheritFromGlobalKey": "apiConfigId"
+      },
+      {
         "key": "targetLorebookId",
         "type": "lorebook",
         "labelKey": "convTargetLorebookIdLabel",

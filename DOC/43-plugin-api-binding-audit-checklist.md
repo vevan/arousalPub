@@ -1,337 +1,140 @@
 # Sandbox 交叉项 — 插件 API 绑定 · 审计 · Fallback Checklist
 
-
-
-> **状态**：**进行中**（2026-07-08）  
-
-> **索引**：[`DOC/04`](04-TODO.md) §Sandbox「相关（与 Sandbox 交叉 · 仍开放）」  
-
-> **关联**：[`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §5 · [`DOC/03`](03-实现细节.md) §1.2–§1.3 · [`DOC/18`](18-plugin-host-developer-api.md) · [`DOC/21`](21-conversation-plugin-settings.md) · [`DOC/10`](10-plugin-conversation-host.md) · [`DOC/24`](24-regex-and-session-audit.md) §3.6  
-
-
+> **状态**：**已闭合**（2026-07-08）；**A3 包内自维护 API** 延后（无插件需求）  
+> **索引**：[`DOC/04`](04-TODO.md) §Sandbox「相关（与 Sandbox 交叉）」  
+> **关联**：[`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §5 · [`DOC/03`](03-实现细节.md) §1.2–§1.3 · [`DOC/18`](18-plugin-host-developer-api.md) · [`DOC/21`](21-conversation-plugin-settings.md) · [`DOC/10`](10-plugin-conversation-host.md) §7 · [`DOC/24`](24-regex-and-session-audit.md) §3.6
 
 ---
-
-
 
 ## 1. 范围
 
+Phase A（注入描述符）与 Phase B（Worker 沙箱）已落地。本节 checklist **已闭合**（B4 权限 enforce 已落地）。
 
-
-Phase A（注入描述符）与 Phase B（Worker 沙箱）已落地。本节跟踪 **与 Sandbox 交叉、仍未闭合** 的两块：
-
-
-
-| 块 | 摘要 |
-
-|----|------|
-
-| **A. 插件 API 绑定** | 三层解析链 + 插件 Tab UI；**无** `connection.policy` / `apiPreset.plugin` |
-
-| **B. 插件审计** | 审计范围定案（§1.3）；Web `host.conversation` 权限 enforce |
-
-
+| 块 | 摘要 | 状态 |
+|----|------|------|
+| **A. 插件 API 绑定** | 三层解析链 + 插件 Tab UI | **✅ P0** |
+| **B. 插件审计 + 权限** | 审计定案 + Web `host.conversation` enforce | **✅** |
+| **A3 包内自维护 API** | 无插件使用 | **延后**（见 §3 A3） |
 
 **Fallback（C1）**：未绑 API preset 时回退 **全局默认预设**（`activePresetId`）— **已实现**。
 
+**非目标 / 不再跟踪**：
 
-
-**非目标（v1）**：`manifest.connection.policy`（`userPreset` / `userFirst` / `embedded` 策略矩阵）、`index.apiPreset.plugin` 对话级泛化默认、`host.capabilities` 跨插件 RPC、浏览器 Worker 沙箱。
-
-
+- `manifest.connection.policy`、`index.apiPreset.plugin`、audit 出站 LLM 落盘（B2）
+- `host.capabilities` 跨插件 RPC、浏览器 Worker 沙箱
+- **C2** 沙箱运维 — 见 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §5 Phase B
 
 ### 1.1 插件出站 API 解析链（定案 · 2026-07-08）
 
-
-
-每层均为 **自维护 API**（包内连接，未落地）**或** 用户 **`apiPreset` 下拉**；选定自维护则用自维护，否则看该层 `apiConfigId`，再向下一层。
-
-
-
 ```text
-
-① 对话 pluginSettings.apiConfigId     （对话齿轮 → 插件 Tab · schema type: apiPreset）
-
+① 对话 pluginSettings.apiConfigId
   ↓ 未配置
-
-② 全局 settings.json apiConfigId        （系统设置 → 插件 Tab）
-
+② 全局 settings.json apiConfigId
   ↓ 未配置
-
-③ 全局 activePresetId                   （连接设置「全局默认预设」）
-
+③ 全局 activePresetId
 ```
 
-
-
-- **主对话** `apiPreset.chat` **不参与**插件解析（与插件出站分离）。
-
-- **不**使用 `index.apiPreset.plugin` / `index.apiPreset.plugins[pluginId]`（已删除，无读兼容）。
-
+- **主对话** `apiPreset.chat` **不参与**插件解析。
 - 实现：`server/src/plugin-api-resolve.ts` · `server/src/feature-binding-resolve.ts`
-
-
 
 ### 1.2 UI 定案
 
+| 层级 | 入口 | 落盘 | UI 行为 |
+|------|------|------|---------|
+| 全局 | 系统设置 → 插件 | `settings.json` → `apiConfigId` | 非必填 `apiPreset` 可清空；hint「当前生效预设：来源 - 预设名」 |
+| 对话 | 对话齿轮 → 插件 Tab | `pluginSettings[pluginId].apiConfigId` | `conversationInherit`；清空 PATCH `null` |
 
+实现：`PluginSchemaForm.vue` · `plugin-api-preset-effective.ts`
 
-| 层级 | 入口 | 落盘 |
+### 1.3 插件与对话审计（定案）
 
-|------|------|------|
+见 §4 B1；[`DOC/24`](24-regex-and-session-audit.md) §3.6。
 
-| 全局 | 系统设置 → **插件** → 配置 | `settings.json` → `apiConfigId` |
+### 1.4 Web `host.conversation` 权限（定案 · B4）
 
-| 对话 | 对话齿轮 → **插件 Tab** → 配置 | `index.json` → **`pluginSettings[pluginId].apiConfigId`** |
+`GET /api/plugins/registry` 下发 **`permissions`**；`createScopedPluginHost` 经 **`conversation-host-gate.ts`** enforce：
 
+| API | 所需权限 |
+|-----|----------|
+| `getMeta` / `runScope`·`read` / `refresh` / `getPluginSettings*` | `conversation.read` |
+| `patchPluginSettings` | `conversation.read`（作用域已限定本插件 `pluginSettings` bag；含运行时键） |
+| `ctx.patchTurns` | 按 DOC/10 §7 字段级：`turn.send.write` · `turn.receive.content.write` · `turn.receive.reasoning.write` · `turn.receive.prune` |
 
+缺权限抛 **`PluginPermissionDeniedError`**（`plugin_permission_denied:{pluginId}:{permission}`）。
 
-对话 **API Tab** 仅 **主 chat**；**不**在此做 per-plugin 控件。
-
-
-
-### 1.3 插件与对话审计（定案 · 2026-07-08）
-
-
-
-**原则**：插件出站 LLM **默认不进** `chat-audit.json`；仅 **参与主 chat 组装** 的插件随本轮 `/api/chat` 审计体现。
-
-
-
-| 类别 | 插件 | 可观测性 |
-
-|------|------|----------|
-
-| **主提示词注入** | **guidance-generate**、**trace-keeper** | 组装阶段注入 system / tracker；已在对话审计 **`messages`**（outgoing 最终态）与 **`assembly.plugins`**（token 分项）中展示 |
-
-| **出站 LLM · 仅预览** | **plot-summary** 等 | 插件设置内 **`completeWithContext({ dryRun: true })`** 提示词组装预览；**不**写入 `chat-audit.json`、**不**占用轮次 audit 条目 |
-
-| **无出站 LLM** | reply-complete-sound、swipe-cleaner、conversation-export 等 | 不参与 audit |
-
-
-
-**Separate / 异步 `plugin.complete`**（如 trace-keeper Separate）：仍 **不进** sync `chat-audit`；`auditDebug` 开启时仅 **`captureDebug`** 响应 / 控制台调试（§B1.2），非常开。
-
-
-
-**非目标**：`calls[].kind: "plugin.complete"` 落盘、`entries[].plugins[]` 出站元数据写入 — schema 预留，**不排期**。
-
-
+实现：`web/src/plugins/conversation-host-gate.ts` · `conversation-turn-patch-permissions.ts` · `stores/plugin-permissions.ts`
 
 ---
-
-
 
 ## 2. 现状对照
 
-
-
-| 能力 | 读（运行时） | 写（PATCH/UI） |
-
-|------|-------------|----------------|
-
-| 对话 `pluginSettings[id].apiConfigId` | ✅ | ✅ 对话插件 Tab（`apiPreset` 字段 → 同 bag） |
-
-| 全局 `settings.json` `apiConfigId` | ✅ | ✅ 系统设置 → 插件 |
-
-| 全局 `activePresetId` fallback | ✅ | ✅ 连接设置 |
-
-| 包内自维护 API | ❌ 未实现 | — |
-
-
+| 能力 | 读 | 写 |
+|------|----|----|
+| 对话/全局 `apiConfigId` + effective hint | ✅ | ✅ |
+| 全局 `activePresetId` fallback | ✅ | ✅ |
+| Web `host.conversation` 权限 | ✅ enforce | ✅ turn 字段级 + pluginSettings |
+| 包内自维护 API（A3） | — | **延后** |
 
 ---
 
+## 3. A — 插件 API 绑定（✅）
 
+### A1–A2 · A4 · A2.5
 
-## 3. A — 插件 API 绑定
+- [x] 三层链、对话/全局 Tab UI、effective hint、全局可清空、单测（见历史条目）
 
+### A3 包内自维护 API（~~P2~~ **延后**）
 
+> **2026-07-08**：当前 **无** 自维护 API 插件；暂不排期。若新增插件再开 A3.1–A3.2。
 
-### A1 对话 pluginSettings 写 apiConfigId（P0）
-
-
-
-- [x] **A1.1** 运行时读 `pluginSettings[pluginId].apiConfigId`（`resolvePluginCompleteApi`）
-
-- [x] **A1.2** 三层链 + 全局默认 fallback（`feature-binding-resolve`）
-
-- [x] **A1.3** 移除 `apiPreset.plugins` 读兼容（用户盘无旧数据）
-
-- [x] **A1.4** 删除 preset 时引用扫描含 `pluginSettings.*.apiConfigId`（`api-config-references`）
-
-
-
-**验收**：PATCH `pluginSettings` 内 `apiConfigId` 后 complete 走对话级 preset。
-
-
-
-### A2 插件 Tab UI（P0）
-
-
-
-- [ ] **A2.1** 需出站 LLM 的插件：`settingsSchema` + `conversationSettingsSchema` 含 `type: "apiPreset"`（可 `conversationInherit`）
-
-- [ ] **A2.2** 表单 hint：effective 来源（本对话 / 全局插件 / 全局默认）
-
-- [ ] **A2.3** i18n
-
-- [ ] **A2.4** **禁止**对话 API Tab per-plugin 控件
-
-
-
-### A3 包内自维护 API（P2 · 可选）
-
-
-
-- [ ] **A3.1** 插件设置可选「使用包内 API」+ 宿主保管密钥
-
-- [ ] **A3.2** 选定自维护时短路 ①–③ 的 preset 链
-
-
-
-### A4 Web scoped 收口（P0）
-
-
-
-- [ ] **A4.1** `complete*` 均带 `conversationId`，解析走 §1.1 链
-
-- [ ] **A4.2** 单测矩阵（对话覆盖 > 全局 > activePresetId）
-
-
+- [ ] **A3.1** 插件设置「使用包内 API」+ 宿主保管密钥 — **延后**
+- [ ] **A3.2** 选定自维护时短路 ①–③ — **延后**
 
 ---
 
+## 4. B — 插件审计 + 权限（✅）
 
+### B1–B3
 
-## 4. B — 插件审计
+- [x] 审计三分法 · audit gate · plot-summary dryRun 预览 · DOC/24 §3.6
 
+### B4 Web conversation 权限（P1 · ✅）
 
-
-（与 v1 清单相同，略）
-
-
-
-### B1 产品定案（P1）
-
-
-
-- [x] **B1.1** **定案**：见 §1.3 — **guidance-generate / trace-keeper** 随主 chat 审计；**plot-summary** 等仅 dryRun 预览；其余插件不进 audit
-
-- [x] **B1.2** **定案**：所有插件 debug/审计（`captureDebug` / `debugCapture`、响应 `debug` 字段）**仅**在会话 **`auditDebug.enabled && maxStored ≥ 1`** 时启用；宿主服务端门控（`plugin-audit-gate.ts`），非常开
-
-- [x] **B1.3** 更新 [`DOC/24`](24-regex-and-session-audit.md) §3.6
-
-
-
-### B2 `plugin.complete` 写入 `chat-audit.json`（~~P1~~ **非目标**）
-
-
-
-- [x] **B2.N/A** 产品定案：**不**将插件出站 LLM 写入 `chat-audit.json`（§1.3）；`calls[].plugin.complete` 仅 schema 预留
-
-
-
-### B3 审计 UI（P2 · 收窄）
-
-
-
-- [x] **B3.1** 主链路注入插件：已有 **`ChatTurnPromptDialog`** 组装 Tab（`assembly.plugins`）
-
-- [ ] **B3.2** 出站 LLM 插件：设置内 dryRun 预览（plot-summary 已落地；新插件复用同一模式）
-
-
-
-### B4 Web conversation 权限（P1）
-
-
-
-- [ ] **B4.1**–**B4.4** · 交叉 [`DOC/10`](10-plugin-conversation-host.md) §9
-
-
+- [x] **B4.1** `conversation.read` → `getMeta` / `runScope`·`read` / `refresh` / pluginSettings 读
+- [x] **B4.2** `patchPluginSettings` 需 `conversation.read`（本插件 bag）
+- [x] **B4.3** `patchTurns` 按 DOC/10 §7 字段级校验（对比 patch 前 turn 快照）
+- [x] **B4.4** 单测：`web/test/plugin-conversation-permissions.test.ts`
 
 ---
 
+## 5. C — Fallback（✅）
 
-
-## 5. C — Fallback
-
-
-
-### C1 全局默认 preset（P0 · ✅ 2026-07-08）
-
-
-
-- [x] **C1.1** 未绑 ①–② 时回退 `activePresetId`（**非**对话 `apiPreset.chat`）
-
-- [x] **C1.2** `fallbackToChat: false` 关闭回退（请求字段名保留）
-
-- [x] **C1.3** 单测 + 文档
-
-
-
-### C2 沙箱 Worker fallback（P2）
-
-
-
-- [ ] **C2.1** 运维矩阵：`PLUGIN_SERVER_SANDBOX` / `STRICT`（见 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md)）
-
-
+- [x] **C1** 全局默认 preset
+- [x] **C2.N/A** 见 DOC/38
 
 ---
-
-
 
 ## 6. 建议实施顺序
 
-
-
 ```text
-
-P0   A2 插件 Tab apiPreset 字段 + hint
-
-     A4 单测 / scoped 收口
-
-P1   B4 权限 · B3.2 预览模式文档化
-
-P2   A3 包内自维护 API · C2 沙箱运维
-
+✅ P0  A1–A2 · A4 · C1
+✅ P1  B4  Web host.conversation 权限
+—   A3  延后（无自维护 API 插件）
 ```
 
-
-
 ---
 
+## 7. DoD（✅）
 
+- [x] **D1**–**D5**（含 **D4** B4 enforce）
 
-## 7. DoD
-
-
-
-- [ ] **D1** 对话 / 全局插件 Tab 可选 preset；effective 符合 §1.1
-
-- [x] **D2** 皆留空时用全局默认 preset（**C1**）
-
-- [ ] **D3**–**D5**（审计 / 权限 / CI）
-
-
+**归档**：本 checklist 可归档；**A3** 单列议题待有插件时再开。
 
 ---
-
-
 
 ## 8. 修订记录
 
-
-
 | 日期 | 说明 |
-
 |------|------|
-
-| 2026-07-08 | 首版 checklist |
-
-| 2026-07-08 | **C1** fallback → 全局 activePresetId |
-
-| 2026-07-08 | **§1.3 / B1.1**：插件审计三分法（主链路注入 / dryRun 预览 / 不进 audit）；取消 B2 落盘 |
-
-
+| 2026-07-08 | 首版 · C1 · A2/A4 · P0 闭合 |
+| 2026-07-08 | **B4** Web 权限 enforce；**A3 延后**；清单 **归档** |

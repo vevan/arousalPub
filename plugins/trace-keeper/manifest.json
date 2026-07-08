@@ -156,6 +156,15 @@
     "version": 1,
     "fields": [
       {
+        "key": "apiConfigId",
+        "type": "apiPreset",
+        "labelKey": "convApiConfigIdLabel",
+        "descriptionKey": "convApiConfigIdDesc",
+        "default": "",
+        "conversationInherit": true,
+        "inheritFromGlobalKey": "apiConfigId"
+      },
+      {
         "key": "bundleId",
         "type": "string",
         "labelKey": "convBundleIdLabel",

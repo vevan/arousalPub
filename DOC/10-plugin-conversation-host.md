@@ -295,20 +295,19 @@ Regex **outgoing** 走宿主原生管道；**批量清理已存对话**走 `rege
 
 ---
 
-## 7. manifest 权限（规划）
+## 7. manifest 权限
 
-`permissions` 今日仅为声明，实现 conversation host 后应对 read/patch **enforce**：
+`permissions` 在 Web **`createScopedPluginHost`** 侧 enforce（[`DOC/43`](43-plugin-api-binding-audit-checklist.md) §1.4 · B4）：
 
 | 权限 | 说明 |
 |------|------|
-| `conversation.read` | 允许 `read` |
-| `turn.send.write` | 允许 patch `user` |
-| `turn.receive.content.write` | 允许 patch `receives[].content` |
-| `turn.receive.reasoning.write` | 允许 patch `reasoning` |
-| `turn.receive.prune` | 允许减少 `receives.length`（清理滑动） |
-| `turn.plugins.write` | 已有声明；写 `turn.plugins[]` |
+| `conversation.read` | `getMeta` · `runScope`/`read` · `refresh` · `pluginSettings` 读/写（本插件 bag） |
+| `turn.send.write` | patch `user` |
+| `turn.receive.content.write` | patch `receives[].content` / 切换 active |
+| `turn.receive.reasoning.write` | patch `reasoning` |
+| `turn.receive.prune` | 减少 `receives.length` |
 
-未声明的字段在 patch 时**忽略或 403**（实现时选一种并写死）。
+缺权限 → **`PluginPermissionDeniedError`**（插件应 catch 并提示用户）。
 
 ---
 
@@ -335,7 +334,7 @@ Regex **outgoing** 走宿主原生管道；**批量清理已存对话**走 `rege
 - [x] `ChatTurnAssistant`：`assistant-turn-footer` 接 `PluginSlotMount`
 - [x] `ChatTurnBlock`：**`turn-block-head`**（章回 divider 下）接 `PluginSlotMount`（Historian（剧情纪要）区间选择等，见 `DOC/12` §7.2）
 - [x] 常量 `CONVERSATION_BATCH_MAX_TURNS = 50`；`range_too_large` / `conversation_busy` / `conversation_locked`
-- [ ] `manifest.permissions` 校验（read/patch 字段级）
+- [x] `manifest.permissions` 校验（read/patch 字段级）— [`DOC/43`](43-plugin-api-binding-audit-checklist.md) §1.4 · `conversation-host-gate.ts`
 - [x] 内置插件 `swipe-cleaner`、`conversation-export`
 - [x] 宿主原生 **正则**（`DOC/24` §2）；**`host.regex`**（2026-06-10）
 - [ ] Web **`host.capabilities`** 能力注册表（`DOC/09` §8.7；**不含** regex 试点）

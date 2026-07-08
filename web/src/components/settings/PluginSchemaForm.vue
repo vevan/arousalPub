@@ -37,6 +37,14 @@ import {
   type PluginSchemaSelectItem,
 } from '@/utils/plugin-schema-selects'
 import {
+  apiPresetDisplayName,
+  formatPluginApiPresetEffectiveHint,
+  resolveGlobalPluginApiPresetEffective,
+  resolvePluginApiPresetEffective,
+} from '@/utils/plugin-api-preset-effective'
+import { useConnectionStore } from '@/stores/connection'
+import { storeToRefs } from 'pinia'
+import {
   fieldsUsingOptionsSource,
   loadCheckboxOptionsForField,
   optionsSourceCacheKey,
@@ -63,6 +71,8 @@ const emit = defineEmits<{
 }>()
 
 const { t, te } = useI18n()
+const connectionStore = useConnectionStore()
+const { activePresetId, presets } = storeToRefs(connectionStore)
 const uploadingKey = ref<string | null>(null)
 const uploadError = ref('')
 const apiPresetItems = ref<PluginSchemaSelectItem[]>([])
@@ -319,7 +329,21 @@ function resourceSelectItems(field: PluginSettingsFieldSchema): PluginSchemaSele
 }
 
 function resourceSelectClearable(field: PluginSettingsFieldSchema): boolean {
-  return field.type === 'lorebook'
+  if (field.type === 'lorebook') return true
+  if (field.type === 'apiPreset' && !field.required) return true
+  return false
+}
+
+function setResourceSelectField(field: PluginSettingsFieldSchema, value: unknown) {
+  const raw = value ?? ''
+  const empty = typeof raw !== 'string' || !raw.trim()
+  if (empty) {
+    const next = { ...props.modelValue }
+    delete next[field.key]
+    emit('update:modelValue', next)
+    return
+  }
+  setField(field.key, raw)
 }
 
 function pluginText(key: string, params?: Record<string, unknown>): string {
@@ -342,6 +366,7 @@ function hintFor(field: PluginSettingsFieldSchema): string | undefined {
 }
 
 function inheritGlobalHint(field: PluginSettingsFieldSchema): string | undefined {
+  if (field.type === 'apiPreset') return undefined
   if (!field.conversationInherit || !field.inheritFromGlobalKey) return undefined
   const global = props.globalSettings
   if (!global) return undefined
@@ -357,6 +382,41 @@ function fullHintFor(field: PluginSettingsFieldSchema): string | undefined {
   const inh = inheritGlobalHint(field)
   if (inh) parts.push(inh)
   return parts.length > 0 ? parts.join(' ') : undefined
+}
+
+function apiPresetEffectiveHint(field: PluginSettingsFieldSchema): string | undefined {
+  if (field.type !== 'apiPreset') return undefined
+  const inConversation = props.globalSettings !== undefined
+  const globalKey = field.inheritFromGlobalKey ?? 'apiConfigId'
+  const effective = inConversation
+    ? resolvePluginApiPresetEffective({
+        conversationApiConfigId: fieldValue(field.key),
+        globalPluginApiConfigId: props.globalSettings?.[globalKey],
+        activePresetId: activePresetId.value,
+      })
+    : resolveGlobalPluginApiPresetEffective({
+        globalPluginApiConfigId: fieldValue(field.key),
+        activePresetId: activePresetId.value,
+      })
+  if (!effective) return undefined
+  const formatted = formatPluginApiPresetEffectiveHint(
+    effective,
+    apiPresetDisplayName(effective.presetId, {
+      selectItems: apiPresetItems.value,
+      presets: presets.value,
+    }),
+    (key, params) => (params ? t(key, params) : t(key)),
+  )
+  return formatted ?? undefined
+}
+
+function apiPresetSelectHint(field: PluginSettingsFieldSchema): string | undefined {
+  const parts: string[] = []
+  const desc = hintFor(field)
+  if (desc) parts.push(desc)
+  const eff = apiPresetEffectiveHint(field)
+  if (eff) parts.push(eff)
+  return parts.length > 0 ? parts.join('\n') : undefined
 }
 
 function isInheritNumberEmpty(value: unknown): boolean {
@@ -1073,7 +1133,7 @@ function inheritTriModeSheetRows(field: PluginSettingsFieldSchema) {
           item-title="title"
           item-value="value"
           :label="labelFor(field)"
-          :hint="hintFor(field)"
+          :hint="field.type === 'apiPreset' ? apiPresetSelectHint(field) : hintFor(field)"
           persistent-hint
           variant="outlined"
           density="compact"
@@ -1083,9 +1143,11 @@ function inheritTriModeSheetRows(field: PluginSettingsFieldSchema) {
           :placeholder="
             field.type === 'lorebook'
               ? t('settings.plugins.selectEmptyDefault')
-              : t('settings.plugins.selectApiPreset')
+              : field.conversationInherit
+                ? t('settings.plugins.selectApiPresetInherit')
+                : t('settings.plugins.selectApiPreset')
           "
-          @update:model-value="setField(field.key, $event ?? '')"
+          @update:model-value="setResourceSelectField(field, $event)"
         />
 
         <div

@@ -2,98 +2,6 @@
 
 > **阶段**：已脱离 MVP（2026-05+）。下列为**仍待做**；已实现能力见 `DOC/03` §14.7、各专题文档、`DOC/README` 归档表、本文 **§已归档**。
 
-## Sandbox（`DOC/38` · **Phase A + B 已完成（含 B3+）**）
-
-> **说明**：远程分支 `sandbox` 用于近期插件/DOC 落地提交；**本节**指 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) 的**插件沙箱化 + 组装注入描述符**工程。**Phase A、Phase B（含 B3+）已落地**。  
-> **顺序定案**：前置 DOC/39 → **Phase A 注入** → **Phase B Worker 沙箱**。
-
-### 前置（已满足 · 非 Sandbox 本体）
-
-- [x] **DOC/39** 二次 LLM 上下文 + Prompt 组装 — `prepareContextBlocks` / `assemblePluginPrompt` / `completeWithContext`；Historian + trace-keeper Separate 已迁；见 [`DOC/39`](39-plugin-context-and-prompt-assembly.md) §6
-
-### Phase A — 注入描述符 + §6.6 chat depth（**✅ 已完成**）
-
-宿主 `resolveAfterAssemblePromptsAddition` 返回 **`PluginPromptInjection[]`**（`chat` depth + `injectionOrder`），post-user 区归并 splice；裁切前 token 预留逻辑不变。详 [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) §3。
-
-- [x] **A0 契约** — `PluginPromptInjection` 类型；`plugin-prompt-injection-merge.ts` 归并器（复用 `resolveChatDepthInsertIndex` / `compareInjectionEntries`）
-- [x] **A1 宿主元数据** — `chat-assemble` 向 apply 传入 `trimmedHistoryMessages` / `historySpan`；`applyPluginsAfterAssemblePrompts` 走归并器（裸 `ChatMessage[]` 回退映射 `default` 档 **100**）
-- [x] **A2 guidance-generate** — 迁描述符：depth **0** `injectionOrder` **0**；revise assistant **0** + system **1**；移除整表 `afterAssemblePrompts` 主路径
-- [x] **A3 trace-keeper Together** — depth **0** `injectionOrder` **500**（显式描述符，替代 legacy append）
-- [x] **A4 单测** — 多插件 `injectionOrder` 共存、群聊 `afterUserInput`、revise 双条、`additionCache` / token 预留
-- [x] **A4+ afterUserInput 审计** — regex 后 synthetic 解析群聊 / depth 0 作者注正文；hoist 精确匹配，避免误标 preset / authorsNote
-
-**`injectionOrder` 默认值**（`shared/post-user-injection-order.ts` · 可通过 manifest / `user-preferences.json` 覆盖）：省略 **100** · guidance **0 / revise 0+1** · 群聊 afterUserInput **20** · trace-keeper **500** · preset tail **100**。
-
-- [x] **注入 `injectionOrder` 可配置化（一期）** — 宿主档位：群聊设置 / 调试；插件档位在各自插件设置
-
-### Phase B — 服务端 Worker 沙箱（P0 · 依赖 A · **✅ 已完成**）
-
-- [x] **B0 Worker 运行时** — `plugin-worker-bootstrap.mjs` 加载 `dist/server.mjs`；`plugin-worker-protocol.ts` 结构化 IPC
-- [x] **B1 Host API 代理** — `plugin-worker-client.ts` 分发 settings / complete / regex / macro / `completeWithContext`
-- [x] **B2 安装路径** — `loader.loadPluginServerModule`：bundled 与第三方同一 Worker 路径
-- [x] **B3 回归** — `plugin-worker-sandbox.test.ts`；默认同进程 `import`；Worker 失败 fallback；`guidance-generate` `await applyPromptMacroPipeline`
-- [x] **B3+** — `npm run test:sandbox -w server`（`PLUGIN_SERVER_SANDBOX=1` 全量回归，707 项通过）
-- [x] **B4 加固** — userId IPC · 串行 · 超时 · STRICT
-- [x] **B5 子进程 + Permission** — `fork` 替代 `worker_threads`；`--permission` 只读插件目录
-
-### 相关（与 Sandbox 交叉 · 仍开放）
-
-> **逐条 checklist**：[`DOC/43`](43-plugin-api-binding-audit-checklist.md)
-
-- [ ] 插件实例与 API 绑定、插件审计（部分见 [`DOC/10`](10-plugin-conversation-host.md)）— 细项见 **DOC/43** §3–§4
-- [x] **插件 API fallback（C1）** — 三层链末级 → `activePresetId`（[`DOC/43`](43-plugin-api-binding-audit-checklist.md) §1.1）— 余项见 **DOC/43** §5
-
-### 非目标（v1 Sandbox）
-
-- 浏览器 `web.mjs` Worker 沙箱（CSP + 宿主 API 已约束；另议题）
-- 插件 capabilities 跨插件 RPC（[`DOC/09`](09-plugin-system-and-guidance-generate.md) §8.7）
-
----
-
-## 宿主去特化（`DOC/41` · **P0 · 强制**）
-
-> **定案**：[`DOC/41`](41-plugin-host-generic-principles.md) · **审计/checklist**：[`DOC/42`](42-host-generic-audit-checklist.md) · Cursor `.cursor/rules/plugin-host-generic.mdc`  
-> **原则**：宿主只提供 generic 能力；**禁止** bundled 插件 id 字面量、按 id 分支、产品语义命名/路由/类型。  
-> **现状（2026-07-07）**：**Phase 0–3 已完成**；§8.2 审计项 **已全部修复**；可选 CI 接入门禁（DOC/42 §6.0.2）。  
-> **门禁**：`npm run check:host-no-plugin-ids`
-
-### Phase 0 — 门禁与注释（P0）
-
-- [x] **0.1 CI grep** — `scripts/check-host-no-plugin-ids.mjs` + `npm run check:host-no-plugin-ids`
-- [x] **0.2 注释 sweep** — S-F7-* / W-F7-*（2026-07-07）
-- [x] **0.3 legacy 删除** — `server/src/plot-summary/`、`plugin-prepare-context.ts`
-
-### Phase 1 — Server
-
-- [x] **serverActions** — `POST /api/plugins/:pluginId/actions/:action` + manifest `serverActions`
-- [x] **turnPlugins merge** — `shared/turn-plugin-merge.ts` + manifest `turnPlugins`
-- [x] **删 trace 专用路由** — `plugin-action-route.ts` 替代
-- [x] **lifecycle** — `onCharacterPrimaryChanged` 分发
-- [x] **persist extras** — `resolveConversationPersistExtras` hook
-- [x] **bundled-registry** — loader/registry 读 `plugins/bundled-registry.json`
-- [x] **migrate-plot-summary** — `curated-memory` → `plot-summary` 一次性迁移（2026-06 已完成；脚本已移除）
-
-### Phase 2 — Web 宿主
-
-- [x] **eagerOnRoutes** — registry 暴露 + `usePluginHost({ routeKeys: ['chat'] })`
-- [x] **chat plugins 载荷** — `Record<string, unknown>`
-- [x] **persist-display** — 仅 `persist.plugins` 透传
-- [x] **设置壳** — schema widget（`bundleSelect` / `companionPanel` 等 · DOC/42 §2 W-X）
-
-### Phase 3 — 类型与单测
-
-- [x] **draft.kind** — shared 改为 opaque `string`
-- [x] **单测 fixture** — 宿主测试 `fixture-plugin-*`
-- [x] **Web actions** — `host.plugin.runAction`（trace-keeper 已迁）
-
-### DoD
-
-- [x] DOC/41 §8 CI grep 零命中
-- [x] DOC/41 §7 三问 — DOC/42 §8.2 已修复
-- [ ] GitHub Actions 接入门禁（可选；本地 **`npm run check:ci`**）
-
----
-
 ## P0 余项
 - [ ] **Composer Slash 命令** — 定案见 [`DOC/35`](35-group-chat.md) §2.3（群聊 `/@`）；输入框 `/` 命令层（与聊天 turns、输入历史分离）
   - [x] **S0** 宿主 `submitComposer` 统一入口 + 命令解析/路由（raw → 命令 + 剩余正文）
@@ -169,6 +77,7 @@
 - [x] **远期记忆尾段 buffer 文档同步**（2026-07-04）：`DOC/23` §4.4 / §5.1 · `DOC/03` §14.5.1 / §14.7；运行时 buffer 已于 `c3a3c4f` 移除
 - [x] **角色库 userCardList 全链路**（2026-07-04）：Index/API · 角色库 UI · 新建会话 picker 默认 · 单测 — 见 `DOC/03` §12.2–§12.5
 - [x] **远期记忆尾段 buffer 死代码清理**（2026-07-04 · `40407e6`）：删除 `memory-tail-buffer.ts` · `sealChunkMemorySegment` / 增量 upsert 迁入 `memory-index.ts` — 见 `DOC/23` §4.4 · §5.1
+- [x] **Sandbox + 宿主去特化归档**（2026-07-08）：[`DOC/04`](04-TODO.md) §已归档 · [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) · [`DOC/42`](42-host-generic-audit-checklist.md) · [`DOC/43`](43-plugin-api-binding-audit-checklist.md)
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
 
@@ -182,3 +91,5 @@
 | **向量召回设置独立 Tab** | 2026-06-25 · `d276720` | [`DOC/03`](03-实现细节.md) §9.6 · `SettingsView` / `ConversationContextSettings` |
 | **远期记忆重建 SSE 进度条** | 2026-07-04 · `8fffdd0` | [`DOC/03`](03-实现细节.md) §14.5.1 · `memory-reindex-sse.ts` · `useMemoryRebuild.ts` |
 | **DOC/39 二次 LLM 上下文 + 拼 prompt**（Historian + trace-keeper Separate · `completeWithContext`） | 2026-07-07 | [`DOC/39`](39-plugin-context-and-prompt-assembly.md) §6 · `sandbox` 分支 commit `de8e1f7` / `3847d0f` |
+| **Sandbox Phase A+B**（注入描述符 · Worker 沙箱 · DOC/43 交叉项） | 2026-07-08 | [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) · [`DOC/43`](43-plugin-api-binding-audit-checklist.md) · **延后**：包内自维护 API（A3） |
+| **宿主去特化 Phase 0–3**（`check:host-no-plugin-ids` · serverActions · schema 壳） | 2026-07-07 | [`DOC/41`](41-plugin-host-generic-principles.md) · [`DOC/42`](42-host-generic-audit-checklist.md) · **可选**：GitHub Actions 接入门禁 |

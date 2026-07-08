@@ -379,6 +379,7 @@ export interface PluginRegistryPublicEntry {
   order: number
   slots: string[]
   webEntry: string | null
+  permissions?: string[]
   eagerOnRoutes?: string[]
 }
 
@@ -390,6 +391,7 @@ export interface PluginManageEntry {
   order: number
   hooks: string[]
   slots: string[]
+  permissions?: string[]
   settingsSchema: PluginSettingsSchema | null
   hasSettings: boolean
   conversationSettingsSchema: PluginSettingsSchema | null

@@ -29,6 +29,10 @@
 
   "convTargetLorebookIdLabel": "Summary lorebook",
 
+  "convApiConfigIdLabel": "API preset",
+
+  "convApiConfigIdDesc": "Leave empty to inherit global plugin settings, then the global default preset.",
+
   "convTargetLorebookIdDesc": "Summary entries are written here. Empty = pick when summarizing or on auto block. Not the same as inject lorebooks in Bindings.",
 
   "convAutoSummarizeEnabledLabel": "Auto summarize",

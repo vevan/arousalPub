@@ -52,6 +52,7 @@
 |------|------|
 | `conversationInherit: true` | 表单项可清空；保存时对该键传 `null`，从 `pluginSettings` 删除，运行时回落全局 |
 | `inheritFromGlobalKey` | 与 `settings.json` 中键名对应；hint 展示「未设置时继承全局：{值}」 |
+| `type: "apiPreset"`（全局 `settingsSchema`） | 非必填时可清空；删键后走 [`DOC/43`](43-plugin-api-binding-audit-checklist.md) §1.1 链 ③；hint **「当前生效预设：来源 - 预设名」** |
 
 ### 2.3 HTTP / 宿主 API
 

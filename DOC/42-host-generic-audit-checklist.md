@@ -6,7 +6,7 @@
 
 > **原则**：[`DOC/41`](41-plugin-host-generic-principles.md) · Cursor `.cursor/rules/plugin-host-generic.mdc`  
 
-> **待办索引**：[`DOC/04`](04-TODO.md) §宿主去特化  
+> **待办索引**：[`DOC/04`](04-TODO.md) §已归档（宿主去特化）  
 
 > **可选本地 CI**：`npm run check:ci`（shared 校验 + 门禁 + D.2 + build:plugins + typecheck + server 测试）
 

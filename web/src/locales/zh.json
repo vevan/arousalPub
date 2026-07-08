@@ -528,7 +528,12 @@
       "inheritTriModeOff": "关闭",
       "inheritTriModeInherit": "继承（{value}）",
       "inheritTriModeGlobalOn": "全局开启",
-      "inheritTriModeGlobalOff": "全局关闭"
+      "inheritTriModeGlobalOff": "全局关闭",
+      "apiPresetEffectiveLine": "当前生效预设：{source} - {name}",
+      "apiPresetEffectiveSourceConversation": "本对话",
+      "apiPresetEffectiveSourceGlobalPlugin": "全局插件",
+      "apiPresetEffectiveSourceGlobalDefault": "全局默认",
+      "selectApiPresetInherit": "继承（见下方生效预设）"
     },
     "injectionOrderField": {
       "afterUserInput": {

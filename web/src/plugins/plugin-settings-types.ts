@@ -125,6 +125,7 @@ export interface PluginManageEntry {
   order: number
   hooks: string[]
   slots: string[]
+  permissions?: string[]
   settingsSchema: PluginSettingsSchema | null
   hasSettings: boolean
   conversationSettingsSchema: PluginSettingsSchema | null

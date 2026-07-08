@@ -29,6 +29,10 @@
 
   "convTargetLorebookIdLabel": "摘要资料库",
 
+  "convApiConfigIdLabel": "API 预设",
+
+  "convApiConfigIdDesc": "留空则继承全局插件设置 → 全局默认预设。",
+
   "convTargetLorebookIdDesc": "摘要条目写入本书；留空则摘要或自动块触发时弹框选择。与绑定 Tab 的「资料库」注入无关。",
 
   "convAutoSummarizeEnabledLabel": "自动摘要",

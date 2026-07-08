@@ -298,6 +298,7 @@ export async function listPublicPluginRegistry(
       )
         ? webPath
         : null,
+      permissions: manifest.permissions?.length ? [...manifest.permissions] : undefined,
       ...(eagerOnRoutes ? { eagerOnRoutes } : {}),
     })
   }
@@ -328,6 +329,7 @@ export async function listPluginsManage(
       order: entry.order,
       hooks: manifest.hooks ?? [],
       slots,
+      permissions: manifest.permissions?.length ? [...manifest.permissions] : undefined,
       settingsSchema: schema,
       hasSettings: pluginHasSettingsSchema(schema),
       conversationSettingsSchema: convSchema,

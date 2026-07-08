@@ -64,6 +64,8 @@
   "bundleTemplateDefault": "<div class=\"trace-keeper-panel\">\n  <h4 class=\"tk-title\">Scene tracker</h4>\n  <dl class=\"tk-fields\">\n    <dt>Location</dt>\n    <dd>{{data.scene.location}}</dd>\n    <dt>Time</dt>\n    <dd>{{data.scene.time}}</dd>\n    <dt>Weather</dt>\n    <dd>{{data.scene.weather}}</dd>\n    <dt>Mood</dt>\n    <dd>{{data.mood}}</dd>\n  </dl>\n  {{#if data.notes}}\n  <p class=\"tk-notes\">{{data.notes}}</p>\n  {{/if}}\n  <p class=\"tk-meta text-caption\">epoch {{meta.epoch}}{{#if meta.turnOrdinal}} · turn {{meta.turnOrdinal}}{{/if}}</p>\n</div>",
   "bundleStylesheetDefault": ".trace-keeper-panel {\n  font-size: 0.875rem;\n  line-height: 1.45;\n}\n\n.trace-keeper-panel .tk-title {\n  margin: 0 0 8px;\n  font-weight: 600;\n  font-size: 0.95rem;\n}\n\n.trace-keeper-panel .tk-fields {\n  margin: 0 0 8px;\n  display: grid;\n  grid-template-columns: auto 1fr;\n  gap: 4px 10px;\n}\n\n.trace-keeper-panel .tk-fields dt {\n  margin: 0;\n  opacity: 0.72;\n}\n\n.trace-keeper-panel .tk-fields dd {\n  margin: 0;\n}\n\n.trace-keeper-panel .tk-notes {\n  margin: 8px 0 0;\n  padding: 8px;\n  border-radius: 6px;\n  background: rgba(var(--v-theme-on-surface), 0.04);\n}\n\n.trace-keeper-panel .tk-meta {\n  margin: 10px 0 0;\n  opacity: 0.55;\n}",
   "convBundleIdLabel": "Conversation bundle",
+  "convApiConfigIdLabel": "API preset",
+  "convApiConfigIdDesc": "Leave empty to inherit global plugin settings, then the global default preset. Separate regenerate uses the same chain.",
   "convBundleIdDesc": "Leave empty to inherit user default or built-in sample",
   "convBundleInheritOption": "Inherit default",
   "separateTurnCountLabel": "Separate dialogue window (turns)",

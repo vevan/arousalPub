@@ -58,6 +58,10 @@ import {
   setPluginPanelHtml,
   setPluginPanelHidden,
 } from '@/plugins/plugin-panel-registry'
+import {
+  assertPluginConversationRead,
+  wrapConversationHostForPlugin,
+} from '@/plugins/conversation-host-gate'
 import { useConversationPluginSettingsStore } from '@/stores/conversation-plugin-settings'
 import { usePluginUserSettingsStore } from '@/stores/plugin-user-settings'
 import { loadPluginUserSettings } from '@/utils/plugin-user-settings-loader'
@@ -96,14 +100,16 @@ export function createScopedPluginHost(
 ): PluginWebHost {
   const id = pluginId.trim()
   const convId = () => base.conversation.getId()
+  const gatedConversation = wrapConversationHostForPlugin(base.conversation, id)
   return {
     ...base,
     pluginKey(key: string) {
       return `plugins.${id}.${key}`
     },
     conversation: {
-      ...base.conversation,
+      ...gatedConversation,
       getPluginSettings() {
+        assertPluginConversationRead(id)
         const store = useConversationPluginSettingsStore()
         const cid = convId()
         if (store.isLoaded(cid, id)) {
@@ -112,9 +118,11 @@ export function createScopedPluginHost(
         return fetchConversationPluginSettings(cid, id)
       },
       getPluginSettingsSnapshot() {
+        assertPluginConversationRead(id)
         return useConversationPluginSettingsStore().getSnapshot(convId(), id)
       },
       onPluginSettingsChanged(handler) {
+        assertPluginConversationRead(id)
         return useConversationPluginSettingsStore().subscribe(
           convId(),
           id,
@@ -122,6 +130,7 @@ export function createScopedPluginHost(
         )
       },
       patchPluginSettings(partial) {
+        assertPluginConversationRead(id)
         return patchConversationPluginSettings(convId(), id, partial)
       },
     },

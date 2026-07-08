@@ -2,7 +2,7 @@
   "id": "custom-styles",
   "name": "自定义样式",
   "version": "1.0.0",
-  "permissions": [],
+  "permissions": ["conversation.read"],
   "hooks": [],
   "settingsSchema": {
     "version": 1,

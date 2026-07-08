@@ -532,7 +532,8 @@ export interface PluginRegistryPublicEntry {
   order: number
   slots: string[]
   webEntry: string | null
-  /** manifest.ui.eagerOnRoutes；匹配时进页即加载 web.mjs */
+  /** manifest.permissions；Web host.conversation enforce 用 */
+  permissions?: string[]
   eagerOnRoutes?: string[]
 }
 

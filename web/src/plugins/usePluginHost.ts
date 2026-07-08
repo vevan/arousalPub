@@ -15,6 +15,7 @@ import type {
   PluginSlotContext,
 } from '@/plugins/types'
 import type { useChatSession } from '@/composables/useChatSession'
+import { usePluginPermissionsStore } from '@/stores/plugin-permissions'
 import { apiFetch } from '@/utils/api-fetch'
 import { onMounted, ref, watch } from 'vue'
 
@@ -66,6 +67,7 @@ export function usePluginHost(
               (a, b) => a.order - b.order || a.id.localeCompare(b.id),
             )
           : []
+        usePluginPermissionsStore().syncFromRegistry(registry.value)
         registryLoaded.value = true
       } catch (e) {
         console.warn('[plugin-host] registry load failed', e)

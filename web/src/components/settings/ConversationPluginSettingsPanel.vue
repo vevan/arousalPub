@@ -119,7 +119,8 @@ function buildPatch(
       v === undefined ||
       v === null ||
       v === '' ||
-      (field.type === 'lorebook' && typeof v === 'string' && !v.trim())
+      (field.type === 'lorebook' && typeof v === 'string' && !v.trim()) ||
+      (field.type === 'apiPreset' && typeof v === 'string' && !v.trim())
     if ((field.conversationInherit || field.type === 'lorebook') && empty) {
       patch[key] = null
     } else {

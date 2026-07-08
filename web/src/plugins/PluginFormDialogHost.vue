@@ -189,7 +189,9 @@ function resourceSelectItems(field: PluginFormFieldDef): PluginSchemaSelectItem[
 }
 
 function resourceSelectClearable(field: PluginFormFieldDef): boolean {
-  return field.type === 'lorebook'
+  if (field.type === 'lorebook') return true
+  if (field.type === 'apiPreset') return true
+  return false
 }
 </script>
 

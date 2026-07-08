@@ -4,7 +4,7 @@ var k = (host, key) => host.pluginKey(key);
 function notifyGuidanceFailed(host, detail) {
   const title = host.t(k(host, "toastFailed"));
   const body = detail?.trim();
-  host.ui.notify(title, body || void 0, { color: "error" });
+  host.ui.notify(title, body || void 0, { level: "error" });
 }
 function resolveMode(raw) {
   if (raw === "regenerate") return "regenerate";

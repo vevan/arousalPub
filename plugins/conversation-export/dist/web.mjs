@@ -624,7 +624,7 @@ async function exportConversation(host, range, regexRuleIds) {
   const tailOrdinal = maxTurnOrdinal(host);
   const { from: rangeFrom, to: rangeTo, maxOrd } = range;
   if (maxOrd < 0 || rangeFrom > rangeTo) {
-    host.ui.notify(host.t(k("toastEmpty")));
+    host.ui.notify(host.t(k("toastEmpty")), void 0, { level: "info" });
     return;
   }
   const conversationId = host.conversation.getId();
@@ -704,10 +704,10 @@ async function exportConversation(host, range, regexRuleIds) {
         );
       }
     );
-    host.ui.notify(host.t(k("toastDone")));
+    host.ui.notify(host.t(k("toastDone")), void 0, { level: "success" });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    host.ui.notify(`${host.t(k("toastFailed"))}: ${msg}`, void 0, { color: "error" });
+    host.ui.notify(`${host.t(k("toastFailed"))}: ${msg}`, void 0, { level: "error" });
   } finally {
     host.ui.clearProgress();
   }
@@ -781,7 +781,7 @@ function register(host) {
     onClick: async () => {
       const maxOrd = maxTurnOrdinal(host);
       if (maxOrd < 0) {
-        host.ui.notify(host.t(k("toastEmpty")));
+        host.ui.notify(host.t(k("toastEmpty")), void 0, { level: "info" });
         return;
       }
       const ruleOptions = await loadExportRegexRuleOptions(host);

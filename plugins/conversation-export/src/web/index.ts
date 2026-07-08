@@ -67,7 +67,7 @@ type ExportHost = {
     ): Promise<string>
   }
   ui: {
-    notify(title: string, body?: string, opts?: { color?: string }): void
+    notify(title: string, body?: string, opts?: { level?: 'info' | 'success' | 'warning' | 'error'; snackbar?: boolean }): void
     progress(opts: { message: string; done: number; total: number }): void
     clearProgress(): void
   }
@@ -862,7 +862,7 @@ async function exportConversation(
 
   const { from: rangeFrom, to: rangeTo, maxOrd } = range
   if (maxOrd < 0 || rangeFrom > rangeTo) {
-    host.ui.notify(host.t(k('toastEmpty')))
+    host.ui.notify(host.t(k('toastEmpty')), undefined, { level: 'info' })
     return
   }
 
@@ -951,10 +951,10 @@ async function exportConversation(
         )
       },
     )
-    host.ui.notify(host.t(k('toastDone')))
+    host.ui.notify(host.t(k('toastDone')), undefined, { level: 'success' })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    host.ui.notify(`${host.t(k('toastFailed'))}: ${msg}`, undefined, { color: 'error' })
+    host.ui.notify(`${host.t(k('toastFailed'))}: ${msg}`, undefined, { level: 'error' })
   } finally {
     host.ui.clearProgress()
   }
@@ -1038,7 +1038,7 @@ export function register(host: ExportHost): void {
     onClick: async () => {
       const maxOrd = maxTurnOrdinal(host)
       if (maxOrd < 0) {
-        host.ui.notify(host.t(k('toastEmpty')))
+        host.ui.notify(host.t(k('toastEmpty')), undefined, { level: 'info' })
         return
       }
       const ruleOptions = await loadExportRegexRuleOptions(host)

@@ -23,8 +23,8 @@ class MockHostApiError extends Error {
   }
 }
 
-function mockHost(): PluginHost & { notifies: { title: string; body?: string; color?: string }[] } {
-  const notifies: { title: string; body?: string; color?: string }[] = []
+function mockHost(): PluginHost & { notifies: { title: string; body?: string; level?: string }[] } {
+  const notifies: { title: string; body?: string; level?: string }[] = []
   return {
     notifies,
     pluginKey(key: string) {
@@ -35,8 +35,8 @@ function mockHost(): PluginHost & { notifies: { title: string; body?: string; co
       return key
     },
     ui: {
-      notify(title: string, body?: string, opts?: { color?: string }) {
-        notifies.push({ title, body, color: opts?.color })
+      notify(title: string, body?: string, opts?: { level?: string }) {
+        notifies.push({ title, body, level: opts?.level })
       },
       progress() {},
       clearProgress() {},
@@ -85,7 +85,7 @@ describe('plot-summary errors', () => {
     assert.equal(host.notifies.length, 1)
     assert.match(host.notifies[0]?.title ?? '', /12000/)
     assert.match(host.notifies[0]?.title ?? '', /8192/)
-    assert.equal(host.notifies[0]?.color, 'warning')
+    assert.equal(host.notifies[0]?.level, 'warning')
   })
 
   it('preflightToast shows context length missing for plugin API code', () => {
@@ -96,6 +96,6 @@ describe('plot-summary errors', () => {
     )
     assert.equal(host.notifies.length, 1)
     assert.match(host.notifies[0]?.title ?? '', /toastContextLengthMissing|contextLength/)
-    assert.equal(host.notifies[0]?.color, 'warning')
+    assert.equal(host.notifies[0]?.level, 'warning')
   })
 })

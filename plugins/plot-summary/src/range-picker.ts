@@ -42,11 +42,11 @@ function onRangeEndClick(host: PluginHost, ctx: SlotCtx) {
   const start = getRangeStartTurn()
   if (controlsDisabled(host)) return
   if (start === null) {
-    host.ui.notify(host.t(k(host, 'toastRangeStartRequired')), undefined, { color: 'warning' })
+    host.ui.notify(host.t(k(host, 'toastRangeStartRequired')), undefined, { level: 'warning' })
     return
   }
   if (ord === null || ord < start) {
-    host.ui.notify(host.t(k(host, 'toastInvalidRange')), undefined, { color: 'warning' })
+    host.ui.notify(host.t(k(host, 'toastInvalidRange')), undefined, { level: 'warning' })
     return
   }
   openManualSummarize(host, { startTurn: start, endTurn: ord })

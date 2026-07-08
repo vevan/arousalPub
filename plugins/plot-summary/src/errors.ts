@@ -64,26 +64,26 @@ export function preflightToast(host: PluginHost, e: unknown) {
     host.ui.notify(host.t(k(host, 'toastContextExceeded'), {
         used: used ?? '?',
         budget: budget ?? '?',
-      }), undefined, { color: 'warning' })
+      }), undefined, { level: 'warning' })
     return
   }
   if (
     code === 'context_length_unconfigured' ||
     code === 'plugin_complete_context_length_unconfigured'
   ) {
-    host.ui.notify(host.t(k(host, 'toastContextLengthMissing')), undefined, { color: 'warning' })
+    host.ui.notify(host.t(k(host, 'toastContextLengthMissing')), undefined, { level: 'warning' })
     return
   }
   if (isLorebookNotFoundError(e)) {
-    host.ui.notify(host.t(k(host, 'toastTargetLorebookDeleted')), undefined, { color: 'warning' })
+    host.ui.notify(host.t(k(host, 'toastTargetLorebookDeleted')), undefined, { level: 'warning' })
     return
   }
   if (isLorebookEntryMissingError(e)) {
-    host.ui.notify(host.t(k(host, 'toastSidecarEntryMissing')), undefined, { color: 'warning' })
+    host.ui.notify(host.t(k(host, 'toastSidecarEntryMissing')), undefined, { level: 'warning' })
     return
   }
   if (code === 'parse_failed') {
-    host.ui.notify(host.t(k(host, 'toastParseFailed')), undefined, { color: 'error' })
+    host.ui.notify(host.t(k(host, 'toastParseFailed')), undefined, { level: 'error' })
     return
   }
   const apiCode = lorebookErrorCode(e)
@@ -91,12 +91,12 @@ export function preflightToast(host: PluginHost, e: unknown) {
     apiCode === 'plugin_complete_draft_failed' ||
     apiCode === 'parse_failed'
   ) {
-    host.ui.notify(host.t(k(host, 'toastParseFailed')), undefined, { color: 'error' })
+    host.ui.notify(host.t(k(host, 'toastParseFailed')), undefined, { level: 'error' })
     return
   }
   if (apiCode === 'sidecar_prompt_required') {
-    host.ui.notify(host.t(k(host, 'toastSummarizeFailed')), undefined, { color: 'error' })
+    host.ui.notify(host.t(k(host, 'toastSummarizeFailed')), undefined, { level: 'error' })
     return
   }
-  host.ui.notify(host.t(k(host, 'toastSummarizeFailed')), undefined, { color: 'error' })
+  host.ui.notify(host.t(k(host, 'toastSummarizeFailed')), undefined, { level: 'error' })
 }

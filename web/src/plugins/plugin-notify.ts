@@ -51,7 +51,7 @@ export function sendPluginNotify(
 
   if (opts?.snackbar !== false) {
     showPluginNotifySnackbar(record.id, snackbarMessage(title, body), {
-      color: opts?.color ?? levelToColor(opts?.level) ?? 'surface-variant',
+      color: levelToColor(opts?.level) ?? 'surface-variant',
       timeout: opts?.timeout ?? 4000,
       snackbarActions: opts?.snackbarActions,
     })

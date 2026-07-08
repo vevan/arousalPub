@@ -16,7 +16,7 @@
 | 全局插件 settings 缓存 | [`32-plugin-user-settings-cache.md`](32-plugin-user-settings-cache.md)（**✅ 已实现** · `a7ca4ea`） |
 | 移动端兼容性 | [`33-mobile-compatibility.md`](33-mobile-compatibility.md)（**Phase 1 布局已落地**） |
 | 待办 | [`04-TODO.md`](04-TODO.md) |
-| 通知中心 | [`40-notification-center.md`](40-notification-center.md)（**规划** · P0） |
+| 通知中心 | [`40-notification-center.md`](40-notification-center.md)（**NC1–NC5 已实现**）· 宿主迁移 [`45`](45-notification-center-core-migration.md) |
 
 ## 核心（01–08）
 

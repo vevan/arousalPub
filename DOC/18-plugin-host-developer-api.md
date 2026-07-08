@@ -41,7 +41,7 @@ export function register(host) {
     icon: 'mdi-puzzle',
     tooltipKey: host.pluginKey('tooltipAction'),
     onClick: () => {
-      host.ui.notify(host.t(host.pluginKey('done')), undefined, { color: 'success' })
+      host.ui.notify(host.t(host.pluginKey('done')), undefined, { level: 'success' })
     },
   })
 }

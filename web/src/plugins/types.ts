@@ -141,7 +141,6 @@ export interface PluginConfirmOptions {
 export interface PluginNotifyOptions {
   /** 是否弹 snackbar；默认 true；静默通知显式 false */
   snackbar?: boolean
-  color?: string
   /** snackbar 自动关闭毫秒；默认 4000；仅影响浮层，不影响中心未读 */
   timeout?: number
   level?: 'info' | 'success' | 'warning' | 'error'

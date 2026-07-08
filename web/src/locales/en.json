@@ -20,9 +20,8 @@
   "notifications": {
     "title": "Notifications",
     "empty": "No notifications yet",
-    "markRead": "Mark as read",
-    "markAllRead": "Mark all read",
-    "delete": "Delete"
+    "delete": "Delete",
+    "deleteAll": "Delete all"
   },
   "entryTransfer": {
     "copy": "Duplicate",

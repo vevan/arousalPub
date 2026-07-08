@@ -32,9 +32,8 @@ function levelIcon(level?: NotificationRecord['level']): string {
     case 'warning':
       return 'mdi-alert-outline'
     case 'info':
-      return 'mdi-information-outline'
     default:
-      return 'mdi-bell-outline'
+      return 'mdi-information-outline'
   }
 }
 
@@ -47,9 +46,8 @@ function levelColor(level?: NotificationRecord['level']): string {
     case 'warning':
       return 'warning'
     case 'info':
-      return 'info'
     default:
-      return 'medium-emphasis'
+      return 'info'
   }
 }
 
@@ -61,16 +59,19 @@ function formatTime(iso: string): string {
   }
 }
 
-function onMarkRead(item: NotificationRecord): void {
-  notificationCenter.markRead(item.id)
+function onItemClick(item: NotificationRecord): void {
+  if (!item.readAt) {
+    notificationCenter.markRead(item.id)
+  }
 }
 
-function onDelete(item: NotificationRecord): void {
+function onDelete(item: NotificationRecord, event: Event): void {
+  event.stopPropagation()
   notificationCenter.delete(item.id)
 }
 
-function onMarkAllRead(): void {
-  notificationCenter.markRead('all')
+function onDeleteAll(): void {
+  notificationCenter.deleteAll()
 }
 </script>
 
@@ -111,13 +112,14 @@ function onMarkAllRead(): void {
         </span>
         <v-spacer />
         <v-btn
-          v-if="unreadCount > 0"
+          v-if="displayItems.length > 0"
           variant="text"
           size="small"
           class="text-none"
-          @click="onMarkAllRead"
+          color="error"
+          @click="onDeleteAll"
         >
-          {{ t('notifications.markAllRead') }}
+          {{ t('notifications.deleteAll') }}
         </v-btn>
       </v-card-title>
       <v-divider />
@@ -138,15 +140,21 @@ function onMarkAllRead(): void {
         <v-list-item
           v-for="item in displayItems"
           :key="item.id"
-          :class="{ 'notification-bell__item--unread': !item.readAt }"
+          :class="{
+            'notification-bell__item--unread': !item.readAt,
+            'notification-bell__item--read': !!item.readAt,
+          }"
           rounded="lg"
           class="notification-bell__item mx-1"
+          :ripple="!item.readAt"
+          @click="onItemClick(item)"
         >
           <template #prepend>
             <v-icon
               :icon="levelIcon(item.level)"
               :color="levelColor(item.level)"
-              size="20"
+              size="16"
+              class="notification-bell__level-icon"
             />
           </template>
 
@@ -164,25 +172,15 @@ function onMarkAllRead(): void {
           </v-list-item-subtitle>
 
           <template #append>
-            <div class="d-flex flex-column ga-0">
-              <v-btn
-                v-if="!item.readAt"
-                icon="mdi-email-open-outline"
-                variant="text"
-                size="x-small"
-                density="compact"
-                :aria-label="t('notifications.markRead')"
-                @click.stop="onMarkRead(item)"
-              />
-              <v-btn
-                icon="mdi-delete-outline"
-                variant="text"
-                size="x-small"
-                density="compact"
-                :aria-label="t('notifications.delete')"
-                @click.stop="onDelete(item)"
-              />
-            </div>
+            <v-btn
+              icon="mdi-delete-outline"
+              variant="text"
+              size="x-small"
+              density="compact"
+              class="notification-bell__delete-btn"
+              :aria-label="t('notifications.delete')"
+              @click="onDelete(item, $event)"
+            />
           </template>
         </v-list-item>
       </v-list>
@@ -200,12 +198,47 @@ function onMarkAllRead(): void {
   overflow-y: auto;
 }
 
+.notification-bell__item :deep(.v-list-item__prepend) {
+  align-self: flex-start;
+  width: 1.125rem;
+  min-width: 1.125rem;
+  margin-inline-end: 0.5rem;
+  padding-top: 0.125rem;
+}
+
+.notification-bell__item :deep(.v-list-item__prepend > .v-icon) {
+  margin-inline-end: 0;
+  opacity: 1;
+}
+
+.notification-bell__level-icon {
+  flex-shrink: 0;
+}
+
 .notification-bell__item :deep(.v-list-item__content) {
   min-width: 0;
 }
 
+.notification-bell__item :deep(.v-list-item__append) {
+  align-self: flex-start;
+  padding-top: 0;
+}
+
 .notification-bell__item--unread {
   background: rgba(var(--v-theme-primary), 0.06);
+  cursor: pointer;
+}
+
+.notification-bell__item--read {
+  opacity: 0.72;
+}
+
+.notification-bell__delete-btn {
+  opacity: 0.55;
+}
+
+.notification-bell__item:hover .notification-bell__delete-btn {
+  opacity: 1;
 }
 
 .notification-bell__empty {

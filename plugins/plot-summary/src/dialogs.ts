@@ -70,10 +70,10 @@ async function createTargetLorebookFromTemplate(host: PluginHost, settings: Merg
   })
   const id = asString(ensured?.id)
   if (!id) {
-    host.ui.notify(host.t(k(host, 'toastAutoLorebookFailed')), undefined, { color: 'error' })
+    host.ui.notify(host.t(k(host, 'toastAutoLorebookFailed')), undefined, { level: 'error' })
     return ''
   }
-  host.ui.notify(host.t(k(host, 'toastAutoLorebookCreated'), { name: ensured.name || id }), undefined, { color: 'success' })
+  host.ui.notify(host.t(k(host, 'toastAutoLorebookCreated'), { name: ensured.name || id }), undefined, { level: 'success' })
   return id
 }
 
@@ -81,7 +81,7 @@ export async function ensureTargetLorebook(host: PluginHost, settings: MergedSet
   const existing = asString(settings.targetLorebookId)
   if (existing) {
     if (await isTargetLorebookAvailable(host, existing)) return existing
-    host.ui.notify(host.t(k(host, 'toastTargetLorebookDeleted')), undefined, { color: 'warning' })
+    host.ui.notify(host.t(k(host, 'toastTargetLorebookDeleted')), undefined, { level: 'warning' })
     try {
       return await promptRecoverLorebook(host, settings)
     } catch {
@@ -96,12 +96,12 @@ export async function ensureTargetLorebook(host: PluginHost, settings: MergedSet
       await host.conversation.patchPluginSettings({ targetLorebookId: id })
       return id
     } catch {
-      host.ui.notify(host.t(k(host, 'toastAutoLorebookFailed')), undefined, { color: 'error' })
+      host.ui.notify(host.t(k(host, 'toastAutoLorebookFailed')), undefined, { level: 'error' })
       return ''
     }
   }
 
-  host.ui.notify(host.t(k(host, 'toastTargetLorebookMissingWarn')), undefined, { color: 'warning' })
+  host.ui.notify(host.t(k(host, 'toastTargetLorebookMissingWarn')), undefined, { level: 'warning' })
   try {
     return await promptPickLorebook(host)
   } catch {
@@ -216,7 +216,7 @@ export function registerRecoverLorebookDialog(host: PluginHost) {
           try {
             id = await createTargetLorebookFromTemplate(h, settings)
           } catch {
-            h.ui.notify(h.t(k(h, 'toastAutoLorebookFailed')), undefined, { color: 'error' })
+            h.ui.notify(h.t(k(h, 'toastAutoLorebookFailed')), undefined, { level: 'error' })
             return
           }
           if (!id) return
@@ -333,7 +333,7 @@ function registerSessionDialog(host: PluginHost, settings: MergedSettings) {
           patch.entrySortMode = sortMode
         }
         await h.conversation.patchPluginSettings(patch)
-        h.ui.notify(h.t(k(h, 'sessionSubmit')), undefined, { color: 'success' })
+        h.ui.notify(h.t(k(h, 'sessionSubmit')), undefined, { level: 'success' })
       },
     },
     DIALOG_SESSION,
@@ -413,7 +413,7 @@ function registerSummarizeDialog(
         const fromTurn = asInt(model.startTurn, 0, 500_000)
         const toTurn = asInt(model.endTurn, fromTurn, 500_000)
         if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
-          h.ui.notify(h.t(k(h, 'toastTurnRangeTooLong')), undefined, { color: 'warning' })
+          h.ui.notify(h.t(k(h, 'toastTurnRangeTooLong')), undefined, { level: 'warning' })
           return
         }
         const selectedTasks = isEnable
@@ -426,7 +426,7 @@ function registerSummarizeDialog(
           : model.selectedTasks
         const tasks = tasksFromSelection(settings, selectedTasks)
         if (tasks.length === 0) {
-          h.ui.notify(h.t(k(h, 'toastNoTasksSelected')), undefined, { color: 'warning' })
+          h.ui.notify(h.t(k(h, 'toastNoTasksSelected')), undefined, { level: 'warning' })
           return
         }
         if (isEnable) {
@@ -462,7 +462,7 @@ export async function reorderTargetLorebookNow(host: PluginHost) {
   const settings = await loadMergedSettings(host)
   const targetId = asString(settings.targetLorebookId)
   if (!targetId) {
-    host.ui.notify(host.t(k(host, 'toastReorderLorebookNoTarget')), undefined, { color: 'warning' })
+    host.ui.notify(host.t(k(host, 'toastReorderLorebookNoTarget')), undefined, { level: 'warning' })
     return
   }
   try {
@@ -477,10 +477,10 @@ export async function reorderTargetLorebookNow(host: PluginHost) {
       sidecarEntryIds,
       settings.sidecars.map((s) => s.id),
     )
-    host.ui.notify(host.t(k(host, 'toastReorderLorebookDone')), undefined, { color: 'success' })
+    host.ui.notify(host.t(k(host, 'toastReorderLorebookDone')), undefined, { level: 'success' })
   } catch (e) {
     console.warn('[plot-summary] reorder lorebook failed', e)
-    host.ui.notify(host.t(k(host, 'toastTaskSkipped')), undefined, { color: 'warning' })
+    host.ui.notify(host.t(k(host, 'toastTaskSkipped')), undefined, { level: 'warning' })
   }
 }
 
@@ -554,7 +554,7 @@ async function resumeAutoSummarizeEnable(host: PluginHost, settings: MergedSetti
       from: range.fromTurn,
       to: range.toTurn,
       turn: trigger,
-    }), undefined, { color: 'success' })
+    }), undefined, { level: 'success' })
 }
 
 export async function applyShortAutoSummarizeEnable(host: PluginHost, settings: MergedSettings) {
@@ -567,7 +567,7 @@ export async function applyShortAutoSummarizeEnable(host: PluginHost, settings: 
   })
   refreshAutoSummarizeUi(host)
   host.ui.notify(host.t(k(host, 'toastAutoSummarizeScheduled'), { turn: X }), undefined, {
-    color: 'success',
+    level: 'success',
   })
 }
 
@@ -590,7 +590,7 @@ async function tryEnableAutoSummarize(host: PluginHost) {
 export async function toggleAutoSummarize(host: PluginHost) {
   if (isAutoSummarizeEnabled(host)) {
     await host.conversation.patchPluginSettings({ autoSummarizeEnabled: false })
-    host.ui.notify(host.t(k(host, 'toastAutoSummarizeDisabled')), undefined, { color: 'info' })
+    host.ui.notify(host.t(k(host, 'toastAutoSummarizeDisabled')), undefined, { level: 'info' })
     return
   }
   await tryEnableAutoSummarize(host)

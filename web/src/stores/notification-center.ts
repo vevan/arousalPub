@@ -159,6 +159,13 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
     persist()
   }
 
+  function deleteAll(): void {
+    if (items.value.length === 0) return
+    items.value = []
+    unreadCount.value = 0
+    persist()
+  }
+
   return {
     userId,
     items,
@@ -171,5 +178,6 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
     list,
     markRead,
     delete: deleteNotifications,
+    deleteAll,
   }
 })

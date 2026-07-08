@@ -82,7 +82,7 @@ export interface PluginHost {
     }) => Promise<{ ok: boolean; promptTokens: number; budget: number; code?: string }>
   }
   ui: {
-    notify: (title: string, body?: string, opts?: { color?: string }) => void
+    notify: (title: string, body?: string, opts?: { level?: 'info' | 'success' | 'warning' | 'error' }) => void
     progress: (opts: Record<string, unknown>) => void
     clearProgress: () => void
     openFormDialog: (

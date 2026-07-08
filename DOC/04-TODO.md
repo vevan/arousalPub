@@ -58,7 +58,15 @@
 
 #### NC-F · 后续（非阻塞 · 择机）
 
-- [ ] **NC-F1 宿主核心场景** — 导入完成/失败、memory 重建结束、登录安全提示等改走 `notificationCenter.send`
+- [ ] **NC-F1 宿主核心场景** — 独立 snackbar 迁入通知中心；方案见 [`DOC/45`](45-notification-center-core-migration.md)（`coreNotify` · action 执行 · 6 文件 ~35 处）
+  - [ ] **NC-F1.0** — Store 队列 + **`v-snackbar-queue`** 单例 · `persist` · 图标关闭 · 废除 `pluginSnackbar`
+  - [ ] **NC-F1.1** — `PluginUiHost` / `NotificationBell` 执行 `action`
+  - [ ] **NC-F1.2** — `PromptsView` · `CharactersView` · `ChatConversationView`
+  - [ ] **NC-F1.3** — `ConnectionSettingsCard`
+  - [ ] **NC-F1.4** — `ImportSettingsPanel`（含跳转操作）
+  - [ ] **NC-F1.5** — 群聊提示（`use-chat-outbound`）
+  - [ ] **NC-F1.6** — memory 重建完成可选通知
+  - [ ] **NC-F1.V** — 验收（§6 `DOC/45`）
 - [ ] **NC-F2 Server → Web 推送（可选）** — SSE/响应体 `notifications[]` → 前端入库（仍写 localStorage；v1 无 REST 持久化）
 - [ ] **NC-F3 增强** — `dedupeKey` 合并 · `expiresAt` 清理 · 按 plugin/level 筛选 · 移动端系统通知（若需要）
 

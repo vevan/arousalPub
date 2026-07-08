@@ -2,14 +2,6 @@
 var CHAT_INJECTION_ORDER_DEFAULT = 100;
 
 // shared/post-user-injection-order.ts
-var POST_USER_INJECTION_ORDER_HOST_DEFAULTS = {
-  /** 描述符省略 / ST 默认 */
-  default: CHAT_INJECTION_ORDER_DEFAULT,
-  /** 群聊 afterUserInput */
-  afterUserInput: 20,
-  /** assemble hoist 无元数据的 preset chat depth 0 tail */
-  presetChatDepth0: CHAT_INJECTION_ORDER_DEFAULT
-};
 var POST_USER_INJECTION_ORDER_SLOT_DEFAULTS = {
   send: 0,
   reviseAssistant: 0,
@@ -29,8 +21,6 @@ function resolveAssembleInjectionOrderSlot(slots, key, fallback) {
   }
   return clampInjectionOrder(fallback);
 }
-var AFTER_USER_INPUT_IMPLICIT_INJECTION_ORDER = POST_USER_INJECTION_ORDER_HOST_DEFAULTS.afterUserInput;
-var PRESET_CHAT_DEPTH0_IMPLICIT_INJECTION_ORDER = POST_USER_INJECTION_ORDER_HOST_DEFAULTS.presetChatDepth0;
 
 // plugins/trace-keeper/src/constants.ts
 var PLUGIN_ID = "trace-keeper";
@@ -140,15 +130,6 @@ function collectUserBundles(user) {
     const entry = parseUserBundleEntry(item, parseOpts);
     if (!entry) continue;
     out[entry.id] = { ...out[entry.id], ...entry };
-  }
-  const legacy = user.bundles;
-  if (isPlainObject(legacy)) {
-    for (const [key, val] of Object.entries(legacy)) {
-      if (!isPlainObject(val)) continue;
-      const entry = parseUserBundleEntry({ ...val, id: key }, parseOpts);
-      if (!entry) continue;
-      out[entry.id] = { ...out[entry.id], ...entry };
-    }
   }
   return out;
 }
@@ -294,15 +275,6 @@ function normalizeSeparateTurnCount(raw) {
     Math.min(SEPARATE_TURN_COUNT_MAX, n)
   );
 }
-function legacyLiveStateTurnCount(raw) {
-  if (raw === null || raw === void 0 || raw === "") return null;
-  const n = typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.max(
-    SEPARATE_TURN_COUNT_MIN,
-    Math.min(SEPARATE_TURN_COUNT_MAX, n)
-  );
-}
 function resolveSeparateTurnCount(userSettings, convSettings) {
   const conv = convSettings ?? {};
   if (Object.prototype.hasOwnProperty.call(conv, "separateTurnCount")) {
@@ -315,8 +287,6 @@ function resolveSeparateTurnCount(userSettings, convSettings) {
   if (Object.prototype.hasOwnProperty.call(user, "separateTurnCount")) {
     return normalizeSeparateTurnCount(user.separateTurnCount);
   }
-  const legacy = legacyLiveStateTurnCount(conv.liveStateTurnCount) ?? legacyLiveStateTurnCount(user.liveStateTurnCount);
-  if (legacy !== null) return legacy;
   return SEPARATE_TURN_COUNT_DEFAULT;
 }
 
@@ -338,9 +308,7 @@ function resolveSegmentIndexFromBody(turn, body) {
     if (idx >= 0 && idx < turn.segments.length) {
       return { kind: "ok", segmentIndex: idx };
     }
-    if (!receiveId) {
-      return { kind: "error", code: "invalid_segment_index" };
-    }
+    return { kind: "error", code: "invalid_segment_index" };
   }
   if (receiveId) {
     for (let i = 0; i < turn.segments.length; i += 1) {
@@ -506,7 +474,7 @@ async function regenerateSeparateState(input, api) {
     anchorToTurn: targetOrdinal,
     responseFormat: "json_object",
     captureDebug: debugCapture,
-    fallbackToChat: true
+    fallbackToGlobalDefault: true
   });
   const messages = result.ok ? result.messages : result.messages ?? result.debug?.messages ?? [];
   if (!result.ok) {

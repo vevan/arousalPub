@@ -23,10 +23,10 @@ class MockHostApiError extends Error {
   }
 }
 
-function mockHost(): PluginHost & { toasts: { text: string; color?: string }[] } {
-  const toasts: { text: string; color?: string }[] = []
+function mockHost(): PluginHost & { notifies: { title: string; body?: string; color?: string }[] } {
+  const notifies: { title: string; body?: string; color?: string }[] = []
   return {
-    toasts,
+    notifies,
     pluginKey(key: string) {
       return `plugins.plot-summary.${key}`
     },
@@ -35,13 +35,13 @@ function mockHost(): PluginHost & { toasts: { text: string; color?: string }[] }
       return key
     },
     ui: {
-      toast(text: string, opts?: { color?: string }) {
-        toasts.push({ text, color: opts?.color })
+      notify(title: string, body?: string, opts?: { color?: string }) {
+        notifies.push({ title, body, color: opts?.color })
       },
       progress() {},
       clearProgress() {},
     },
-  } as unknown as PluginHost & { toasts: { text: string; color?: string }[] }
+  } as unknown as PluginHost & { notifies: { title: string; body?: string; color?: string }[] }
 }
 
 describe('plot-summary errors', () => {
@@ -82,10 +82,10 @@ describe('plot-summary errors', () => {
         budget: 8192,
       }),
     )
-    assert.equal(host.toasts.length, 1)
-    assert.match(host.toasts[0]?.text ?? '', /12000/)
-    assert.match(host.toasts[0]?.text ?? '', /8192/)
-    assert.equal(host.toasts[0]?.color, 'warning')
+    assert.equal(host.notifies.length, 1)
+    assert.match(host.notifies[0]?.title ?? '', /12000/)
+    assert.match(host.notifies[0]?.title ?? '', /8192/)
+    assert.equal(host.notifies[0]?.color, 'warning')
   })
 
   it('preflightToast shows context length missing for plugin API code', () => {
@@ -94,8 +94,8 @@ describe('plot-summary errors', () => {
       host,
       new MockHostApiError('plugin_complete_context_length_unconfigured'),
     )
-    assert.equal(host.toasts.length, 1)
-    assert.match(host.toasts[0]?.text ?? '', /toastContextLengthMissing|contextLength/)
-    assert.equal(host.toasts[0]?.color, 'warning')
+    assert.equal(host.notifies.length, 1)
+    assert.match(host.notifies[0]?.title ?? '', /toastContextLengthMissing|contextLength/)
+    assert.equal(host.notifies[0]?.color, 'warning')
   })
 })

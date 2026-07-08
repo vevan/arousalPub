@@ -2,14 +2,6 @@
 var CHAT_INJECTION_ORDER_DEFAULT = 100;
 
 // shared/post-user-injection-order.ts
-var POST_USER_INJECTION_ORDER_HOST_DEFAULTS = {
-  /** 描述符省略 / ST 默认 */
-  default: CHAT_INJECTION_ORDER_DEFAULT,
-  /** 群聊 afterUserInput */
-  afterUserInput: 20,
-  /** assemble hoist 无元数据的 preset chat depth 0 tail */
-  presetChatDepth0: CHAT_INJECTION_ORDER_DEFAULT
-};
 var POST_USER_INJECTION_ORDER_SLOT_DEFAULTS = {
   send: 0,
   reviseAssistant: 0,
@@ -29,8 +21,6 @@ function resolveAssembleInjectionOrderSlot(slots, key, fallback) {
   }
   return clampInjectionOrder(fallback);
 }
-var AFTER_USER_INPUT_IMPLICIT_INJECTION_ORDER = POST_USER_INJECTION_ORDER_HOST_DEFAULTS.afterUserInput;
-var PRESET_CHAT_DEPTH0_IMPLICIT_INJECTION_ORDER = POST_USER_INJECTION_ORDER_HOST_DEFAULTS.presetChatDepth0;
 
 // plugins/guidance-generate/src/server/index.ts
 var PLUGIN_ID = "guidance-generate";

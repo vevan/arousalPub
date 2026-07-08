@@ -10,8 +10,6 @@ import type { ChatTurnItem } from '../../../src/types/chat-turn.js'
 
 const baseTurn: ChatTurnItem = {
   user: 'hi',
-  receives: [{ id: 'r0', content: 'done' }],
-  activeReceiveIndex: 0,
   turnOrdinal: 1,
   segments: [
     {
@@ -36,8 +34,9 @@ describe('turn-segment-match pending', () => {
     assert.equal(isTurnAwaitingAssistantSegment(1, 1, 0, 1), false)
   })
 
-  it('matches any segment when segmentIndex is omitted', () => {
-    assert.equal(isTurnAwaitingAssistantSegment(1, 1, 1), true)
+  it('defaults to segment 0 when segmentIndex is omitted', () => {
+    assert.equal(isTurnAwaitingAssistantSegment(1, 1, 0), true)
+    assert.equal(isTurnAwaitingAssistantSegment(1, 1, 1), false)
   })
 })
 
@@ -47,9 +46,13 @@ describe('turn-segment-match regenerate', () => {
     assert.equal(isTurnRegeneratingAssistantSegment(1, 1, 0, 1), false)
   })
 
-  it('isAssistantSegmentLoading without segmentIndex matches regenerating turn', () => {
+  it('isAssistantSegmentLoading without segmentIndex defaults to segment 0', () => {
     assert.equal(
       isAssistantSegmentLoading(baseTurn, null, null, 1, 1),
+      false,
+    )
+    assert.equal(
+      isAssistantSegmentLoading(baseTurn, null, null, 1, 0),
       true,
     )
   })

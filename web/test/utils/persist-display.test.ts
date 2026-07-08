@@ -3,6 +3,22 @@ import { describe, it } from 'node:test'
 import type { ChatTurnItem } from '../../src/types/chat-turn.js'
 import { applyPersistTurnPlugins, mergeReceiveRuntimeFromPersist } from '../../src/utils/persist-display.js'
 
+function turnWithReceive(turnOrdinal: number, receiveId: string, content: string): ChatTurnItem {
+  return {
+    turnOrdinal,
+    user: 'hi',
+    segments: [
+      {
+        id: 'seg0',
+        speakerCharacterId: '',
+        receives: [{ id: receiveId, content }],
+        activeReceiveIndex: 0,
+      },
+    ],
+    activeSegmentIndex: 0,
+  }
+}
+
 describe('mergeReceiveRuntimeFromPersist', () => {
   it('fills missing token fields from persist', () => {
     const merged = mergeReceiveRuntimeFromPersist(
@@ -37,14 +53,7 @@ describe('mergeReceiveRuntimeFromPersist', () => {
 
 describe('applyPersistTurnPlugins', () => {
   it('patches plugins on matching turnOrdinal', () => {
-    const turns: ChatTurnItem[] = [
-      {
-        turnOrdinal: 0,
-        user: 'hi',
-        receives: [{ id: 'r1', content: 'ok' }],
-        activeReceiveIndex: 0,
-      },
-    ]
+    const turns: ChatTurnItem[] = [turnWithReceive(0, 'r1', 'ok')]
     const plugins = [
       {
         pluginId: 'fixture-plugin-a',
@@ -63,14 +72,7 @@ describe('applyPersistTurnPlugins', () => {
   })
 
   it('no-op when persist.plugins missing', () => {
-    const turns: ChatTurnItem[] = [
-      {
-        turnOrdinal: 1,
-        user: 'hi',
-        receives: [{ id: 'rx', content: '' }],
-        activeReceiveIndex: 0,
-      },
-    ]
+    const turns: ChatTurnItem[] = [turnWithReceive(1, 'rx', '')]
     const next = applyPersistTurnPlugins(turns, {
       ok: true,
       turnOrdinal: 1,
@@ -81,14 +83,7 @@ describe('applyPersistTurnPlugins', () => {
   })
 
   it('patches turnId on matching turnOrdinal', () => {
-    const turns: ChatTurnItem[] = [
-      {
-        turnOrdinal: 2,
-        user: 'hi',
-        receives: [{ id: 'r1', content: 'ok' }],
-        activeReceiveIndex: 0,
-      },
-    ]
+    const turns: ChatTurnItem[] = [turnWithReceive(2, 'r1', 'ok')]
     const next = applyPersistTurnPlugins(turns, {
       ok: true,
       turnOrdinal: 2,
@@ -99,14 +94,7 @@ describe('applyPersistTurnPlugins', () => {
   })
 
   it('no-op when plugins missing', () => {
-    const turns: ChatTurnItem[] = [
-      {
-        turnOrdinal: 0,
-        user: 'hi',
-        receives: [{ id: 'r1', content: 'ok' }],
-        activeReceiveIndex: 0,
-      },
-    ]
+    const turns: ChatTurnItem[] = [turnWithReceive(0, 'r1', 'ok')]
     const next = applyPersistTurnPlugins(turns, { ok: true, turnOrdinal: 0 })
     assert.equal(next, turns)
   })

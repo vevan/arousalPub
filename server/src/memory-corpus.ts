@@ -8,14 +8,12 @@ import { assistantTextFromTurn } from './turn-memory-xml.js'
 export interface MemoryCorpusOptions {
   stripPluginBlocks: boolean
   stripBlockTags: string[]
-  stripExPrefixElements: boolean
 }
 
 /** 测试 / 无剥离语料判定 */
 export const RAW_MEMORY_CORPUS_OPTIONS: MemoryCorpusOptions = {
   stripPluginBlocks: false,
   stripBlockTags: [],
-  stripExPrefixElements: false,
 }
 
 function escapeRegExpTag(tag: string): string {
@@ -36,9 +34,6 @@ export function stripMemoryCorpusText(
       )
     }
   }
-  if (opts.stripExPrefixElements) {
-    s = s.replace(/<ex-[\w-]+>\s*[\s\S]*?\s*<\/ex-[\w-]+>/gi, '')
-  }
   return s.trim()
 }
 
@@ -53,7 +48,6 @@ export async function resolveMemoryCorpusOptions(
   return {
     stripPluginBlocks: settings.stripPluginBlocks,
     stripBlockTags: merged,
-    stripExPrefixElements: settings.stripExPrefixElements,
   }
 }
 

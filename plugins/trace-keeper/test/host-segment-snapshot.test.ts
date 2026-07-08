@@ -61,13 +61,13 @@ describe('resolveSegmentIndexFromBody', () => {
     )
   })
 
-  it('falls back to receiveId when segmentIndex out of range', () => {
+  it('errors when segmentIndex out of range even with receiveId', () => {
     assert.deepEqual(
       resolveSegmentIndexFromBody(multiSegTurn, {
         segmentIndex: 9,
         receiveId: 'recv-a',
       }),
-      { kind: 'ok', segmentIndex: 0 },
+      { kind: 'error', code: 'invalid_segment_index' },
     )
   })
 

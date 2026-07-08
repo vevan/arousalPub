@@ -49,7 +49,6 @@ interface ChatListEntry {
   updatedAt: string
   userName?: string
   userCharacterId?: string
-  characterId?: string | null
   characterIds?: string[]
   characterNames?: string[]
   searchTags?: string[]

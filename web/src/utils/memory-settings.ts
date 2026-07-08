@@ -5,7 +5,6 @@ export interface MemorySettings {
   memoryTopK: number
   stripPluginBlocks: boolean
   stripBlockTags: string[]
-  stripExPrefixElements: boolean
   recallFuseLastAssistant: boolean
   recallUserWeight: number
 }
@@ -15,7 +14,6 @@ export const MEMORY_SETTINGS_DEFAULTS: MemorySettings = {
   memoryTopK: 4,
   stripPluginBlocks: true,
   stripBlockTags: [],
-  stripExPrefixElements: false,
   recallFuseLastAssistant: true,
   recallUserWeight: 0.85,
 }
@@ -63,10 +61,6 @@ export function normalizeMemorySettings(
       ? raw.stripPluginBlocks === true
       : MEMORY_SETTINGS_DEFAULTS.stripPluginBlocks
   const stripBlockTags = normalizeStripBlockTags(raw?.stripBlockTags)
-  const stripExPrefixElements =
-    raw?.stripExPrefixElements !== undefined
-      ? raw.stripExPrefixElements === true
-      : MEMORY_SETTINGS_DEFAULTS.stripExPrefixElements
   const recallFuseLastAssistant =
     raw?.recallFuseLastAssistant !== undefined
       ? raw.recallFuseLastAssistant === true
@@ -77,7 +71,6 @@ export function normalizeMemorySettings(
     memoryTopK,
     stripPluginBlocks,
     stripBlockTags,
-    stripExPrefixElements,
     recallFuseLastAssistant,
     recallUserWeight,
   }
@@ -101,7 +94,6 @@ export function resolveMemorySettings(
     'memoryTopK',
     'stripPluginBlocks',
     'stripBlockTags',
-    'stripExPrefixElements',
     'recallFuseLastAssistant',
     'recallUserWeight',
   ] as const) {
@@ -130,7 +122,6 @@ export function memorySettingsEqual(a: MemorySettings, b: MemorySettings): boole
   if (a.memoryEnabled !== b.memoryEnabled) return false
   if (a.memoryTopK !== b.memoryTopK) return false
   if (a.stripPluginBlocks !== b.stripPluginBlocks) return false
-  if (a.stripExPrefixElements !== b.stripExPrefixElements) return false
   if (a.recallFuseLastAssistant !== b.recallFuseLastAssistant) return false
   if (a.recallUserWeight !== b.recallUserWeight) return false
   if (a.stripBlockTags.length !== b.stripBlockTags.length) return false

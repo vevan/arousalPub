@@ -189,11 +189,6 @@ export function formatEntryTitle(
   const core = (() => {
     const parsed = base.match(/^\[MEMO-(\d+)\]-(.+)-\[(\d+)-(\d+)\]$/)
     if (parsed) return parsed[2].trim()
-    const legacy = base.match(/-(\d+)-(\d+)$/)
-    if (legacy && legacy.index !== undefined) {
-      const stripped = base.slice(0, legacy.index).trim()
-      if (stripped) return stripped
-    }
     return base
   })()
   const memoIndex = (() => {

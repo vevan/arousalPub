@@ -39,9 +39,7 @@ export function resolveSegmentIndexFromBody(
     if (idx >= 0 && idx < turn.segments.length) {
       return { kind: 'ok', segmentIndex: idx }
     }
-    if (!receiveId) {
-      return { kind: 'error', code: 'invalid_segment_index' }
-    }
+    return { kind: 'error', code: 'invalid_segment_index' }
   }
 
   if (receiveId) {

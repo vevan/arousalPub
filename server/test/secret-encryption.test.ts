@@ -35,19 +35,16 @@ describe('secret-encryption', () => {
     )
   })
 
-  it('resolveSecretFromDisk prefers encrypted over legacy', () => {
+  it('resolveSecretFromDisk reads encrypted only', () => {
     const { keyEnc } = secretToDiskFields('enc-key', {
       key: TEST_KEY,
       aad: 'ctx',
     })
     assert.equal(
-      resolveSecretFromDisk('legacy-key', keyEnc, { key: TEST_KEY, aad: 'ctx' }),
+      resolveSecretFromDisk(keyEnc, { key: TEST_KEY, aad: 'ctx' }),
       'enc-key',
     )
-    assert.equal(
-      resolveSecretFromDisk('legacy-only', undefined, { key: TEST_KEY }),
-      'legacy-only',
-    )
+    assert.equal(resolveSecretFromDisk(undefined, { key: TEST_KEY }), '')
   })
 
   it('secretToDiskFields omits empty', () => {

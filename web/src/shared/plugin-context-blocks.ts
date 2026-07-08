@@ -143,7 +143,7 @@ export type CompleteWithContextRequest = {
   /** 会话 auditDebug 开启且宿主确认后生效；客户端传 true 仍由 index.auditDebug 门控 */
   captureDebug?: boolean
   /** 未绑 apiConfigId 时回退全局 activePresetId；默认 true，显式 false 关闭 */
-  fallbackToChat?: boolean
+  fallbackToGlobalDefault?: boolean
 }
 
 export type CompleteWithContextDebugCapture = {

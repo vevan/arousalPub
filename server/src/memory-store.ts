@@ -32,11 +32,8 @@ import {
 export type { TurnMemoryRow } from './turn-memory-arrow.js'
 
 const TABLE_NAME = 'turn_memory'
-/** 旧版每 chunk 一表；wipe 时一并删除 */
-const LEGACY_CHUNK_TABLE_PREFIX = 'mem_'
 
 const primaryKeyReady = new Set<string>()
-const legacyMemoryWarned = new Set<string>()
 const conversationMemoryChains = new Map<string, Promise<unknown>>()
 
 function memoryDbUri(conversationId: string): string {
@@ -77,29 +74,12 @@ async function connectDb(conversationId: string) {
   return openLanceDb(memoryDbUri(conversationId))
 }
 
-function warnLegacyMemoryTablesOnce(
-  conversationId: string,
-  tableNames: string[],
-): void {
-  const key = conversationId
-  if (legacyMemoryWarned.has(key)) return
-  const hasLegacy = tableNames.some((n) => n.startsWith(LEGACY_CHUNK_TABLE_PREFIX))
-  const hasV2 = tableNames.includes(TABLE_NAME)
-  if (!hasLegacy || hasV2) return
-  legacyMemoryWarned.add(key)
-  // eslint-disable-next-line no-console
-  console.warn(
-    `[memory] conversation ${conversationId} has legacy mem_* tables without v2 turn_memory; rebuild recommended`,
-  )
-}
-
 async function openMemoryTable(
   conversationId: string,
 ): Promise<Table | null> {
   const uri = memoryDbUri(conversationId)
   const db = await connectDb(conversationId)
   const names = await listLanceTableNames(db, uri)
-  warnLegacyMemoryTablesOnce(conversationId, names)
   if (!names.includes(TABLE_NAME)) return null
   return openLanceTableWithManifestMigration(db, TABLE_NAME, uri)
 }
@@ -374,7 +354,6 @@ async function deleteConversationMemoryIndexUnsafe(
 ): Promise<void> {
   const uri = memoryDbUri(conversationId)
   primaryKeyReady.delete(primaryKeyCacheKey(conversationId))
-  legacyMemoryWarned.delete(conversationId)
   closeLanceDb(uri)
   await rm(uri, { recursive: true, force: true })
 }

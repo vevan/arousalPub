@@ -40,8 +40,6 @@ export interface PromptsAssemblePreviewBody {
   conversationUserName?: string
   /** 省略时使用服务端内置示例角色（moka / cocoa） */
   characters?: BoundCharacterSlice[]
-  useBoundCharacterSystem?: boolean
-  useBoundCharacterPostHistory?: boolean
   model?: string
   contextLength?: number | null
   locale?: string

@@ -62,7 +62,7 @@ describe('resolveApiConfigIdForCompleteWithContext', () => {
 })
 
 describe('parseCompleteWithContextBody', () => {
-  it('parses fallbackToChat and captureDebug flags', () => {
+  it('parses fallbackToGlobalDefault and captureDebug flags', () => {
     const body = parseCompleteWithContextBody({
       conversationId: 'abcd1234',
       anchorToTurn: 2,
@@ -75,11 +75,11 @@ describe('parseCompleteWithContextBody', () => {
         },
       ],
       layout: { messages: [{ role: 'user', content: '{{blocks.dialogue}}' }] },
-      fallbackToChat: true,
+      fallbackToGlobalDefault: true,
       captureDebug: true,
     })
     assert.ok(body)
-    assert.equal(body?.fallbackToChat, true)
+    assert.equal(body?.fallbackToGlobalDefault, true)
     assert.equal(body?.captureDebug, true)
   })
 

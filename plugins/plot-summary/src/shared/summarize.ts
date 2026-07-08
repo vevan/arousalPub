@@ -106,11 +106,6 @@ export function extractSummaryCoreTitle(rawTitle: string): string {
   const t = rawTitle.trim()
   const parsed = parsePlotSummaryEntryTitle(t)
   if (parsed?.coreTitle) return parsed.coreTitle
-  const legacy = t.match(/-(\d+)-(\d+)$/)
-  if (legacy && legacy.index !== undefined) {
-    const core = t.slice(0, legacy.index).trim()
-    if (core) return core
-  }
   return t || '摘要'
 }
 

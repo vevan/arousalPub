@@ -230,7 +230,7 @@ applyText / applyMessages  // 同语义
 
 ### 3.2 文件：`chat-audit.json`
 
-路径：`chats/{conversationId}/chat-audit.json`（与 chunk 并列）。**废止**独立维护 `chat-prompt.json`；读盘可一期兼容：仅有 `chat-prompt.json` 时迁移为 `entries[].messages`。
+路径：`chats/{conversationId}/chat-audit.json`（与 chunk 并列）。**废止**独立维护 `chat-prompt.json`；**不再**读盘迁移。
 
 ```json
 {

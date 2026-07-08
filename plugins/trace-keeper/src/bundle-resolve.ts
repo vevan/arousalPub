@@ -99,15 +99,6 @@ function collectUserBundles(
     if (!entry) continue
     out[entry.id] = { ...out[entry.id], ...entry }
   }
-  const legacy = user.bundles
-  if (isPlainObject(legacy)) {
-    for (const [key, val] of Object.entries(legacy)) {
-      if (!isPlainObject(val)) continue
-      const entry = parseUserBundleEntry({ ...val, id: key }, parseOpts)
-      if (!entry) continue
-      out[entry.id] = { ...out[entry.id], ...entry }
-    }
-  }
   return out
 }
 

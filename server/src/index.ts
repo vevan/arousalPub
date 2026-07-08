@@ -32,13 +32,11 @@ import {
   resolvedCharacterIds,
   removeTurnAtOrdinalInTailChunk,
   appendConversationTurn,
-  readChatPromptFile,
   updateConversationAuditDebug,
   saveOpeningTurn,
   saveFirstTurn,
   updateConversationTitle,
   updateConversationCharacterBindings,
-  updateConversationPromptDebugMax,
   updateConversationPromptPresetId,
   updateConversationLorebookIds,
   updateConversationLorebookSettings,
@@ -82,7 +80,6 @@ import {
 import { reindexConversationMemory } from './memory-index.js'
 import { startConversationMemoryReindexSse } from './memory-reindex-sse.js'
 import {
-  ensureDataSkeleton,
   resolveClientWhitelist,
   resolveCorsOrigins,
   resolveListenHost,
@@ -352,8 +349,6 @@ interface ChatMessage {
 interface ChatBody {
   alias?: string
   baseUrl?: string
-  /** @deprecated 服务端读盘解析；客户端不应再传 */
-  apiKey?: string
   /** 默认 activePresetId */
   apiPresetId?: string
   apiKeyId?: string | null
@@ -412,8 +407,6 @@ function normalizeBaseUrl(raw: string | undefined): string {
 
 interface ModelsListBody {
   baseUrl?: string
-  /** @deprecated 服务端读盘解析 */
-  apiKey?: string
   apiPresetId?: string
   apiKeyId?: string | null
 }
@@ -628,8 +621,6 @@ interface PatchConvBody {
   title?: string
   /** 调试：chat-audit.json；`enabled` + `maxStored`（1～200） */
   auditDebug?: { enabled?: boolean; maxStored?: number }
-  /** @deprecated 使用 auditDebug */
-  promptDebug?: { maxStored?: number }
   /** 会话绑定的多张角色卡 id，顺序即主槽、次槽…；传 [] 清空绑定 */
   characterIds?: string[]
   /** 对话级提示词预设 id；传 `null` 或未设置且显式清除时用 null 移除（见 handler） */
@@ -703,11 +694,6 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       typeof ad === 'object' &&
       (typeof (ad as { enabled?: unknown }).enabled === 'boolean' ||
         typeof (ad as { maxStored?: unknown }).maxStored === 'number')
-    const pd = b.promptDebug
-    const hasPromptDebug =
-      pd &&
-      typeof pd === 'object' &&
-      typeof (pd as { maxStored?: unknown }).maxStored === 'number'
     const hasCharIds = Array.isArray(b.characterIds)
     const hasPromptPreset = Object.prototype.hasOwnProperty.call(b, 'promptPresetId')
     const hasLorebookIds = Array.isArray(b.lorebookIds)
@@ -741,7 +727,6 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
     if (
       !hasTitle &&
       !hasAuditDebug &&
-      !hasPromptDebug &&
       !hasCharIds &&
       !hasPromptPreset &&
       !hasLorebookIds &&
@@ -785,23 +770,16 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       const next = await updateConversationAuditDebug(id, { enabled, maxStored })
       if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       idx = next
-    } else if (hasPromptDebug) {
-      const m = (pd as { maxStored: number }).maxStored
-      const next = await updateConversationPromptDebugMax(id, m)
-      if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
-      idx = next
     }
     if (hasCharIds) {
       const raw = b.characterIds as unknown[]
       if (!raw.every((x) => typeof x === 'string')) {
         return reply.status(400).send({ error: ApiErrorCodes.character_ids_must_be_string_array })
       }
-      const prevPrimary =
-        idx.characterIds?.[0] ?? idx.characterId ?? ''
+      const prevPrimary = idx.characterIds?.[0] ?? ''
       const next = await updateConversationCharacterBindings(id, raw)
       if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
-      const nextPrimary =
-        next.characterIds?.[0] ?? next.characterId ?? ''
+      const nextPrimary = next.characterIds?.[0] ?? ''
       if (prevPrimary !== nextPrimary) {
         const patches = await dispatchConversationLifecycle(
           'onCharacterPrimaryChanged',
@@ -1902,30 +1880,6 @@ app.get<{ Params: { id: string } }>(
   },
 )
 
-/** @deprecated 使用 chat-audit；仅返回 messages 条目以兼容旧客户端 */
-app.get<{ Params: { id: string } }>(
-  '/api/chat/conversations/:id/chat-prompt',
-  async (request, reply) => {
-    const id = request.params.id
-    if (!isValidConversationId(id)) {
-      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
-    }
-    const idx = await readConversationIndex(id)
-    if (!idx) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
-    const audit = await readChatAuditFile(id)
-    return {
-      schemaVersion: 1 as const,
-      entries: audit.entries.map((e) => ({
-        savedAt: e.savedAt,
-        chunkName: e.chunkName,
-        turnId: e.turnId,
-        turnOrdinal: e.turnOrdinal,
-        messages: e.messages,
-      })),
-    }
-  },
-)
-
 app.get('/api/user-preferences', async (_request, reply) => {
   try {
     const doc = await readUserPreferencesDocument()
@@ -1956,7 +1910,6 @@ interface PatchUserPreferencesBody {
     memoryTopK?: number
     stripPluginBlocks?: boolean
     stripBlockTags?: string[]
-    stripExPrefixElements?: boolean
     recallFuseLastAssistant?: boolean
     recallUserWeight?: number
   }

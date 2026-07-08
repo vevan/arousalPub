@@ -1,15 +1,12 @@
 import assert from 'node:assert/strict'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
 import path from 'node:path'
-import { existsSync } from 'node:fs'
 import { describe, it } from 'node:test'
-import { getUserDataDir } from '../src/config.js'
 import {
   ensureDictVariantReady,
   hybridFtsDictPath,
   hybridFtsModelHome,
   hybridFtsRoot,
-  isDictVariantDownloaded,
   languageModelHomeForSettings,
   toUserDataRelativePath,
 } from '../src/hybrid-fts-dict.js'
@@ -74,35 +71,6 @@ describe('languageModelHomeForSettings', () => {
     })
     assert.ok(home)
     assert.match(home!, /hybrid-fts[\\/]zh-jieba[\\/]default$/)
-  })
-})
-
-describe('legacy dict migration', () => {
-  const userId = 'c0ffee00'
-
-  it('migrates lance-language-models/jieba/variants layout on read', async () => {
-    const legacy = path.join(
-      getUserDataDir(userId),
-      'lance-language-models',
-      'jieba',
-      'variants',
-      'small',
-      'dict.txt',
-    )
-    const migrated = hybridFtsDictPath(userId, 'zh-jieba', 'small')
-    await mkdir(path.dirname(legacy), { recursive: true })
-    await writeFile(legacy, '# jieba legacy dict\n', 'utf8')
-    try {
-      if (existsSync(migrated)) {
-        await rm(migrated)
-      }
-      const ok = await isDictVariantDownloaded('zh-jieba', 'small', userId)
-      assert.equal(ok, true)
-      assert.ok(existsSync(migrated))
-    } finally {
-      await rm(path.dirname(legacy), { recursive: true, force: true })
-      await rm(hybridFtsRoot(userId), { recursive: true, force: true })
-    }
   })
 })
 

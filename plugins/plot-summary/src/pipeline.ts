@@ -54,12 +54,12 @@ export async function runSummarizeTasks(
   },
 ) {
   if (summarizeRunning) {
-    host.ui.toast(host.t(k(host, 'toastBusy')), { color: 'info' })
+    host.ui.notify(host.t(k(host, 'toastBusy')), undefined, { color: 'info' })
     return { ok: false, reason: 'busy' }
   }
   const tasks = opts.tasks ?? []
   if (tasks.length === 0) {
-    host.ui.toast(host.t(k(host, 'toastNoTasksSelected')), { color: 'warning' })
+    host.ui.notify(host.t(k(host, 'toastNoTasksSelected')), undefined, { color: 'warning' })
     return { ok: false, reason: 'no_tasks' }
   }
 
@@ -81,11 +81,11 @@ export async function runSummarizeTasks(
     const fromTurn = opts.fromTurn
     const toTurn = opts.toTurn
     if (fromTurn > toTurn) {
-      host.ui.toast(host.t(k(host, 'toastInvalidRange')), { color: 'warning' })
+      host.ui.notify(host.t(k(host, 'toastInvalidRange')), undefined, { color: 'warning' })
       return { ok: false, reason: 'invalid_range' }
     }
     if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
-      host.ui.toast(host.t(k(host, 'toastTurnRangeTooLong')), { color: 'warning' })
+      host.ui.notify(host.t(k(host, 'toastTurnRangeTooLong')), undefined, { color: 'warning' })
       return { ok: false, reason: 'turn_range_too_long' }
     }
 
@@ -121,7 +121,7 @@ export async function runSummarizeTasks(
       toTurn,
     )
     if (!prepared.userContent?.trim()) {
-      host.ui.toast(host.t(k(host, 'toastNoTurnsInRange')), { color: 'warning' })
+      host.ui.notify(host.t(k(host, 'toastNoTurnsInRange')), undefined, { color: 'warning' })
       return { ok: false, reason: 'no_turns' }
     }
     const preparedContext = prepared.preparedContext
@@ -221,19 +221,19 @@ export async function runSummarizeTasks(
       } catch (e) {
         if (isAbortError(e)) {
           aborted = true
-          host.ui.toast(host.t(k(host, 'toastProgressAborted')), { color: 'info' })
+          host.ui.notify(host.t(k(host, 'toastProgressAborted')), undefined, { color: 'info' })
           break
         }
         if (e instanceof Error && e.message === 'review_skipped') {
           skippedTasks += 1
-          host.ui.toast(host.t(k(host, 'toastReviewSkipped')), { color: 'info' })
+          host.ui.notify(host.t(k(host, 'toastReviewSkipped')), undefined, { color: 'info' })
           done += 1
           bumpTaskProgress(host, done, tasks.length)
           continue
         }
         if (e instanceof Error && e.message === 'review_aborted') {
           aborted = true
-          host.ui.toast(host.t(k(host, 'toastReviewAborted')), { color: 'info' })
+          host.ui.notify(host.t(k(host, 'toastReviewAborted')), undefined, { color: 'info' })
           break
         }
         console.warn('[plot-summary] task failed', task, e)
@@ -244,7 +244,7 @@ export async function runSummarizeTasks(
         }
         preflightToast(host, e)
         skippedTasks += 1
-        host.ui.toast(host.t(k(host, 'toastTaskSkipped')), { color: 'warning' })
+        host.ui.notify(host.t(k(host, 'toastTaskSkipped')), undefined, { color: 'warning' })
         done += 1
         bumpTaskProgress(host, done, tasks.length)
         continue
@@ -264,14 +264,11 @@ export async function runSummarizeTasks(
 
     if (completedTasks === 0) {
       if (skippedTasks > 0) {
-        host.ui.toast(
-          host.t(k(host, 'toastSummarizeSummary'), {
+        host.ui.notify(host.t(k(host, 'toastSummarizeSummary'), {
             done: 0,
             skipped: skippedTasks,
             total: tasks.length,
-          }),
-          { color: aborted ? 'warning' : 'info' },
-        )
+          }), undefined, { color: aborted ? 'warning' : 'info' })
       }
       return {
         ok: false,
@@ -316,16 +313,13 @@ export async function runSummarizeTasks(
     }
 
     if (completedTasks === tasks.length && skippedTasks === 0) {
-      host.ui.toast(host.t(k(host, 'toastSummarizeDone')), { color: 'success' })
+      host.ui.notify(host.t(k(host, 'toastSummarizeDone')), undefined, { color: 'success' })
     } else if (completedTasks > 0 || skippedTasks > 0) {
-      host.ui.toast(
-        host.t(k(host, 'toastSummarizeSummary'), {
+      host.ui.notify(host.t(k(host, 'toastSummarizeSummary'), {
           done: completedTasks,
           skipped: skippedTasks,
           total: tasks.length,
-        }),
-        { color: aborted ? 'warning' : 'info' },
-      )
+        }), undefined, { color: aborted ? 'warning' : 'info' })
     }
     return {
       ok: completedTasks === tasks.length && skippedTasks === 0,

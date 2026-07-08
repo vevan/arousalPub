@@ -19,20 +19,16 @@ export interface ResolvePluginCompleteApiInput {
   /**
    * 未绑定时回退全局 **activePresetId**（连接设置「全局默认预设」）。
    * 默认 **true**；显式 `false` 关闭。
-   * @deprecated 别名 `fallbackToChat` 仍接受，语义已改为全局默认 preset（非对话主 chat）。
    */
-  fallbackToChat?: boolean
+  fallbackToGlobalDefault?: boolean
 }
 
 /** 未传或 `true` 时回退全局默认 preset；仅显式 `false` 关闭 */
 export function shouldPluginFallbackToGlobalDefault(
-  input: Pick<ResolvePluginCompleteApiInput, 'fallbackToChat'>,
+  input: Pick<ResolvePluginCompleteApiInput, 'fallbackToGlobalDefault'>,
 ): boolean {
-  return input.fallbackToChat !== false
+  return input.fallbackToGlobalDefault !== false
 }
-
-/** @deprecated 使用 shouldPluginFallbackToGlobalDefault */
-export const shouldPluginFallbackToChat = shouldPluginFallbackToGlobalDefault
 
 export type ResolvePluginCompleteApiResult =
   | { ok: true; resolved: ResolvedFeatureApi }

@@ -261,7 +261,7 @@ UI 文案：仅补充网关扩展参数（如 `stop`），不可改 `messages`/`
 
 - **算法**：AES-256-GCM；字段 `keyEnc` / `apiKeyEnc`（`EncryptedSecretV1`：`v/iv/tag/ct`）。
 - **DEK**：`DATA_ENCRYPTION_KEY` → `config.yaml` → `data/.data-encryption-key`；AAD 绑定 `userId`。
-- **迁移**：读兼容 legacy 明文；写路径加密。
+- **迁移**：**仅** `keyEnc` / `apiKeyEnc` 读盘（2026-07-08 移除 legacy 明文回退）；写路径一律加密。旧明文须在 UI 重新保存或 `rotate-data-key`。
 - **轮换**：运维台 `DOC/17` → `rotate-data-key`（维护模式 + 进度）。
 
 ### 15.3 与备份

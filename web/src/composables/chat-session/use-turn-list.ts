@@ -156,8 +156,6 @@ export function useTurnList(opts: {
       ...cur,
       segments,
       activeSegmentIndex: segmentIndex,
-      receives: [],
-      activeReceiveIndex: 0,
       speakerCharacterId: speakerId,
     })
     opts.pendingSendTurnOrdinal.value = ord
@@ -186,8 +184,6 @@ export function useTurnList(opts: {
         ...cur,
         segments,
         activeSegmentIndex: prevIdx,
-        receives: activeSeg.receives,
-        activeReceiveIndex: activeSeg.activeReceiveIndex,
         speakerCharacterId: activeSeg.speakerCharacterId,
       })
     }
@@ -238,13 +234,10 @@ export function useTurnList(opts: {
         activeReceiveIndex: 0,
       })
     }
-    const activeSeg = segments[meta.activeSegmentIndex] ?? segments[segments.length - 1]!
     replaceTurnAt(idx, {
       ...cur,
       segments,
       activeSegmentIndex: meta.activeSegmentIndex,
-      receives: activeSeg.receives,
-      activeReceiveIndex: activeSeg.activeReceiveIndex,
       speakerCharacterId: meta.speakerCharacterId,
     })
     clearPendingSend()

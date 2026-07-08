@@ -530,47 +530,11 @@ export async function enumerateAllChunkChains(
   return out
 }
 
-/**
- * 沿 chunk 链按 turnId 定位块文件（仅主路径 chunk 链）。
- * @deprecated 分支场景请使用分支路径下的 chunk 读取；保留供遗留调用。
- */
-export async function readChunkContainingTurnId(
-  conversationId: string,
-  turnId: string,
-): Promise<{ chunk: ChunkFile; fileName: string } | null> {
-  const id = turnId.trim()
-  if (!id) return null
-  const idx = await readConversationIndex(conversationId)
-  if (!idx?.tailChunkFile) return null
-  let fileName: string | null = idx.tailChunkFile
-  const guard = new Set<string>()
-  while (fileName) {
-    if (guard.has(fileName)) break
-    guard.add(fileName)
-    const chunk = await readChunkFile(conversationId, fileName)
-    if (chunk?.turns.some((t) => t.turnId === id)) {
-      return { chunk, fileName }
-    }
-    fileName = chunk?.meta.links.previous ?? null
-  }
-  return null
-}
-
 export function isTailChunkFile(
   idx: ConversationIndex,
   chunkFileName: string,
 ): boolean {
   return idx.tailChunkFile === chunkFileName
-}
-
-function chunkOrdinalRangeOverlaps(
-  chunk: ChunkFile,
-  from: number,
-  to: number,
-): boolean {
-  const start = chunk.meta.ordinalRange?.start ?? 0
-  const end = chunk.meta.ordinalRange?.end ?? start
-  return end >= from && start <= to
 }
 
 /** 尾部 N 轮的 ordinal 闭区间（纯函数，单测用） */
@@ -685,33 +649,6 @@ export async function readTurnsTail(
     minOrdinal,
     maxOrdinal: turns.length > 0 ? maxOrdinal : null,
   }
-}
-
-/**
- * 加载与 [from,to] 可能相交的 chunk（每文件至多读一次；仅主路径）。
- * @deprecated 分支场景请使用 `resolveActivePathTurns`；保留供遗留调用。
- */
-export async function loadConversationChunksForOrdinalRange(
-  conversationId: string,
-  from: number,
-  to: number,
-): Promise<Map<string, ChunkFile>> {
-  const idx = await readConversationIndex(conversationId)
-  const map = new Map<string, ChunkFile>()
-  if (!idx?.tailChunkFile) return map
-  let fileName: string | null = idx.tailChunkFile
-  const guard = new Set<string>()
-  while (fileName) {
-    if (guard.has(fileName)) break
-    guard.add(fileName)
-    const chunk = await readChunkFile(conversationId, fileName)
-    if (!chunk) break
-    if (chunkOrdinalRangeOverlaps(chunk, from, to)) {
-      map.set(fileName, chunk)
-    }
-    fileName = chunk.meta.links.previous ?? null
-  }
-  return map
 }
 
 /** 仅读取 ordinal 闭区间 [from, to] 内的 turn（active 路径合并读） */

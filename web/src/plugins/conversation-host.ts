@@ -3,6 +3,11 @@ import {
   fetchConversationTurnsRange,
   persistTurnsBatchToServer,
 } from '@/utils/chat-messages'
+import {
+  getActiveReceiveIndex,
+  getActiveSegmentIndex,
+  getSegmentReceives,
+} from '@/utils/group-chat-turn'
 
 export const CONVERSATION_BATCH_MAX_TURNS = 50
 
@@ -19,6 +24,8 @@ export interface ConversationTurnDto {
     model?: string
   }[]
   activeReceiveIndex: number
+  /** 多 segment turn：PATCH 目标 segment（缺省 active） */
+  segmentIndex?: number
 }
 
 export interface BatchPatchResult {
@@ -52,10 +59,12 @@ export class ConversationHostError extends Error {
 }
 
 export function turnToConversationDto(turn: ChatTurnItem): ConversationTurnDto {
+  const segIdx = getActiveSegmentIndex(turn)
+  const receives = getSegmentReceives(turn, segIdx)
   return {
     turnOrdinal: turn.turnOrdinal,
     user: turn.user,
-    receives: turn.receives.map((r) => ({
+    receives: receives.map((r) => ({
       id: r.id,
       content: r.content,
       ...(r.reasoning ? { reasoning: r.reasoning } : {}),
@@ -64,24 +73,34 @@ export function turnToConversationDto(turn: ChatTurnItem): ConversationTurnDto {
       ...(r.completionTokens ? { completionTokens: r.completionTokens } : {}),
       ...(r.model ? { model: r.model } : {}),
     })),
-    activeReceiveIndex: turn.activeReceiveIndex,
+    activeReceiveIndex: getActiveReceiveIndex(turn, segIdx),
   }
 }
 
 export function conversationDtoToTurnItem(dto: ConversationTurnDto): ChatTurnItem {
+  const segIdx = dto.segmentIndex ?? 0
+  const segments = Array.from({ length: segIdx + 1 }, (_, i) => ({
+    id: '',
+    speakerCharacterId: '',
+    receives:
+      i === segIdx
+        ? dto.receives.map((r) => ({
+            id: r.id,
+            content: r.content,
+            ...(r.reasoning ? { reasoning: r.reasoning } : {}),
+            ...(r.durationMs ? { durationMs: r.durationMs } : {}),
+            ...(r.estimatedTokens ? { estimatedTokens: r.estimatedTokens } : {}),
+            ...(r.completionTokens ? { completionTokens: r.completionTokens } : {}),
+            ...(r.model ? { model: r.model } : {}),
+          }))
+        : [],
+    activeReceiveIndex: i === segIdx ? dto.activeReceiveIndex : 0,
+  }))
   return {
     turnOrdinal: dto.turnOrdinal,
     user: dto.user,
-    receives: dto.receives.map((r) => ({
-      id: r.id,
-      content: r.content,
-      ...(r.reasoning ? { reasoning: r.reasoning } : {}),
-      ...(r.durationMs ? { durationMs: r.durationMs } : {}),
-      ...(r.estimatedTokens ? { estimatedTokens: r.estimatedTokens } : {}),
-      ...(r.completionTokens ? { completionTokens: r.completionTokens } : {}),
-      ...(r.model ? { model: r.model } : {}),
-    })),
-    activeReceiveIndex: dto.activeReceiveIndex,
+    segments,
+    activeSegmentIndex: segIdx,
   }
 }
 

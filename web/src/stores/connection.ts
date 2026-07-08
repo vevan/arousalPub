@@ -11,7 +11,6 @@ import { translateApiError } from '@/utils/api-error-message'
 import type { ApiConfigReference } from '@/utils/api-config-references'
 import {
   type DrySamplerFields,
-  migrateLegacyDryField,
   normalizeDrySequenceBreakers,
 } from '@/utils/dry-sampler'
 import { allocateShortId } from '@/utils/short-id'
@@ -91,9 +90,6 @@ function defaultPresetFields(): ApiSettingsSnapshot {
 }
 
 function normalizePreset(p: ApiPreset): ApiPreset {
-  const legacy = migrateLegacyDryField(p as unknown as Record<string, unknown>)
-  const raw = { ...p, ...legacy } as ApiPreset & { dry?: number }
-  const { dry: _legacyDry, ...rest } = raw
   const link =
     typeof p.linkedPromptPresetId === 'string' && p.linkedPromptPresetId.trim()
       ? p.linkedPromptPresetId.trim()
@@ -103,8 +99,8 @@ function normalizePreset(p: ApiPreset): ApiPreset {
       ? p.apiKeyId.trim()
       : null
   return {
-    ...rest,
-    drySequenceBreakers: normalizeDrySequenceBreakers(rest.drySequenceBreakers),
+    ...p,
+    drySequenceBreakers: normalizeDrySequenceBreakers(p.drySequenceBreakers),
     linkedPromptPresetId: link,
     apiKeyId: keyId,
     showReasoningChain:
@@ -249,13 +245,6 @@ export const useConnectionStore = defineStore('connection', () => {
     }
     if (Array.isArray(o.drySequenceBreakers)) {
       drySequenceBreakers.value = normalizeDrySequenceBreakers(o.drySequenceBreakers)
-    }
-    const legacyDry = migrateLegacyDryField(o as Record<string, unknown>)
-    if (
-      legacyDry.dryMultiplier !== undefined &&
-      dryMultiplier.value === null
-    ) {
-      dryMultiplier.value = legacyDry.dryMultiplier ?? null
     }
     if (o.frequencyPenalty === null || typeof o.frequencyPenalty === 'number') {
       frequencyPenalty.value = o.frequencyPenalty ?? null
@@ -590,7 +579,6 @@ export const useConnectionStore = defineStore('connection', () => {
       const v = raw[k as string]
       return typeof v === 'string' ? v : def
     }
-    const legacyDry = migrateLegacyDryField(raw)
     return {
       alias:
         typeof raw.alias === 'string' && raw.alias.trim()
@@ -614,12 +602,10 @@ export const useConnectionStore = defineStore('connection', () => {
       temperature: num('temperature'),
       topP: num('topP'),
       topK: num('topK'),
-      dryMultiplier: num('dryMultiplier') ?? legacyDry.dryMultiplier ?? null,
-      dryBase: num('dryBase') ?? legacyDry.dryBase ?? null,
-      dryAllowedLength:
-        num('dryAllowedLength') ?? legacyDry.dryAllowedLength ?? null,
-      dryPenaltyLastN:
-        num('dryPenaltyLastN') ?? legacyDry.dryPenaltyLastN ?? null,
+      dryMultiplier: num('dryMultiplier'),
+      dryBase: num('dryBase'),
+      dryAllowedLength: num('dryAllowedLength'),
+      dryPenaltyLastN: num('dryPenaltyLastN'),
       drySequenceBreakers: Array.isArray(raw.drySequenceBreakers)
         ? normalizeDrySequenceBreakers(raw.drySequenceBreakers)
         : d.drySequenceBreakers,

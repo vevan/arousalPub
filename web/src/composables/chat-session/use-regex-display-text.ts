@@ -44,17 +44,17 @@ export function createRegexDisplayText(opts: {
     return applyFieldDisplay(turn.user, 'user', turn.turnOrdinal)
   }
 
-  function displayAssistantText(turn: ChatTurnItem): string {
+  function displayAssistantText(turn: ChatTurnItem, segmentIndex?: number): string {
     return applyFieldDisplay(
-      assistantText(turn),
+      assistantText(turn, segmentIndex),
       'assistant',
       turn.turnOrdinal,
     )
   }
 
-  function displayAssistantReasoning(turn: ChatTurnItem): string {
+  function displayAssistantReasoning(turn: ChatTurnItem, segmentIndex?: number): string {
     return applyFieldDisplay(
-      assistantReasoning(turn),
+      assistantReasoning(turn, segmentIndex),
       'reasoning',
       turn.turnOrdinal,
     )

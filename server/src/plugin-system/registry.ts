@@ -1,12 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { cp, mkdir } from 'node:fs/promises'
+import { mkdir } from 'node:fs/promises'
 import { getUserDataDir } from '../config.js'
 import { getCurrentUserId } from '../user-context.js'
-import {
-  getPluginRegistryPath,
-  getLegacyGlobalPluginRegistryPath,
-} from './paths.js'
+import { getPluginRegistryPath } from './paths.js'
 import { assertValidPluginId } from './plugin-id.js'
 import type { PluginRegistryDocument, PluginRegistryEntry } from './types.js'
 
@@ -34,16 +31,10 @@ function normalizeEntry(raw: unknown): PluginRegistryEntry | null {
   return { id, enabled, order }
 }
 
-async function migrateUserRegistryIfNeeded(userId: string): Promise<void> {
+async function ensureUserRegistryFile(userId: string): Promise<void> {
   const userPath = getPluginRegistryPath(userId)
   if (existsSync(userPath)) return
   await mkdir(getUserDataDir(userId), { recursive: true })
-
-  const globalLegacy = getLegacyGlobalPluginRegistryPath()
-  if (existsSync(globalLegacy)) {
-    await cp(globalLegacy, userPath)
-    return
-  }
   await writeFile(
     userPath,
     `${JSON.stringify(DEFAULT_REGISTRY, null, 2)}\n`,
@@ -55,7 +46,7 @@ export async function readPluginRegistry(
   userId?: string,
 ): Promise<PluginRegistryDocument> {
   const uid = userId ?? getCurrentUserId()
-  await migrateUserRegistryIfNeeded(uid)
+  await ensureUserRegistryFile(uid)
   const p = getPluginRegistryPath(uid)
   try {
     const raw = await readFile(p, 'utf8')
@@ -82,7 +73,7 @@ export async function writePluginRegistry(
   userId?: string,
 ): Promise<void> {
   const uid = userId ?? getCurrentUserId()
-  await migrateUserRegistryIfNeeded(uid)
+  await ensureUserRegistryFile(uid)
   const sorted = {
     version: 1 as const,
     plugins: [...doc.plugins].sort(

@@ -1,5 +1,5 @@
 import type { PromptTrigger } from '@/stores/prompts'
-import type { ChatPersistPayload, ChatTurnItem, PersistTurnToServerResult } from '@/types/chat-turn'
+import type { ChatPersistPayload, ChatTurnItem, PersistTurnToServerResult, ReceiveItem } from '@/types/chat-turn'
 import { resolveFinalUserTextAfterPersist, applyRetroPersistToTurns, applyPersistTurnPlugins } from '@/utils/persist-display'
 import { isAbortError } from '@/utils/abort-error'
 import type { ConversationChatRequestPlugins } from '@/utils/chat-api'
@@ -67,7 +67,7 @@ export function useChatOutbound(opts: {
   rollbackPendingSegment: (ord: number, segmentIndex: number) => void
   finalizePendingTurn: (
     ord: number,
-    receive: ChatTurnItem['receives'][number],
+    receive: ReceiveItem,
     finalUserText?: string,
     meta?: {
       speakerCharacterId?: string
@@ -79,7 +79,7 @@ export function useChatOutbound(opts: {
   ) => void
   finalizePendingSegment: (
     ord: number,
-    receive: ChatTurnItem['receives'][number],
+    receive: ReceiveItem,
     meta: {
       segmentIndex: number
       speakerCharacterId: string
@@ -303,13 +303,10 @@ export function useChatOutbound(opts: {
       receives: [...targetSeg.receives, receive],
       activeReceiveIndex: targetSeg.receives.length,
     }
-    const activeSeg = segments[segIdx]!
     opts.replaceTurnAt(listIndex, {
       ...cur,
       segments,
       activeSegmentIndex: segIdx,
-      receives: activeSeg.receives,
-      activeReceiveIndex: activeSeg.activeReceiveIndex,
     })
   }
 
@@ -548,7 +545,7 @@ export function useChatOutbound(opts: {
   function applyRegenerateReceive(
     listIndex: number,
     segIdx: number,
-    receive: ChatTurnItem['receives'][number],
+    receive: ReceiveItem,
     persist: ChatPersistPayload | undefined,
     userTextFallback?: string,
   ): boolean {
@@ -559,16 +556,12 @@ export function useChatOutbound(opts: {
     const source = [...getTurnSegments(cur)]
     if (!source[segIdx]) return false
     const segments = patchRegenSegments(source, segIdx, receive)
-    const activeSeg =
-      segments[persist?.activeSegmentIndex ?? segIdx] ?? segments[segIdx]!
     const next: ChatTurnItem = mergeTurnGroupChatStateFromPersist(
       {
         ...cur,
         ...(finalUser !== undefined ? { user: finalUser } : {}),
         segments,
         activeSegmentIndex: persist?.activeSegmentIndex ?? segIdx,
-        receives: activeSeg.receives,
-        activeReceiveIndex: activeSeg.activeReceiveIndex,
       },
       persist,
     )
@@ -808,20 +801,17 @@ export function useChatOutbound(opts: {
     const a = seg.activeReceiveIndex
 
     const applyVariantSwitch = (nextSegActive: number) => {
-      const nextSegments = [...getTurnSegments(turn)]
+      const nextSegments = [...(turn.segments ?? getTurnSegments(turn))]
       const baseSeg = nextSegments[segIdx]
       if (!baseSeg) return
       nextSegments[segIdx] = {
         ...baseSeg,
         activeReceiveIndex: nextSegActive,
       }
-      const activeSeg = nextSegments[segIdx]!
       const next: ChatTurnItem = {
         ...turn,
         segments: nextSegments,
         activeSegmentIndex: segIdx,
-        receives: activeSeg.receives,
-        activeReceiveIndex: activeSeg.activeReceiveIndex,
       }
       void opts.persistTurnToServer(next, { segmentIndex: segIdx }).then((result) => {
         if (result.ok) {

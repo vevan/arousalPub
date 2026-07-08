@@ -42,8 +42,21 @@ export function formatAuditEntryForDisplay(entry: {
   calls?: unknown[]
   plugins?: unknown[]
 }): string {
+  const messageItems = entry.messages.map((m) => formatMessage(m, '    '))
+  const messagesBlock =
+    messageItems.length > 0
+      ? `[\n${messageItems.join(',\n')}\n  ]`
+      : '[]'
   const parts: string[] = [
-    formatPromptSnapshotForDisplay(entry),
+    [
+      '{',
+      `  "savedAt": ${JSON.stringify(entry.savedAt)},`,
+      `  "chunkName": ${JSON.stringify(entry.chunkName)},`,
+      `  "turnId": ${JSON.stringify(entry.turnId)},`,
+      `  "turnOrdinal": ${entry.turnOrdinal},`,
+      `  "messages": ${messagesBlock}`,
+      '}',
+    ].join('\n'),
   ]
   if (entry.assembly) {
     parts.push(
@@ -57,28 +70,4 @@ export function formatAuditEntryForDisplay(entry: {
     parts.push('\n--- plugins ---\n' + JSON.stringify(entry.plugins, null, 2))
   }
   return parts.join('')
-}
-
-/** @deprecated 使用 formatAuditEntryForDisplay */
-export function formatPromptSnapshotForDisplay(entry: {
-  savedAt: string
-  chunkName: string
-  turnId: string
-  turnOrdinal: number
-  messages: { role: string; content: string }[]
-}): string {
-  const messageItems = entry.messages.map((m) => formatMessage(m, '    '))
-  const messagesBlock =
-    messageItems.length > 0
-      ? `[\n${messageItems.join(',\n')}\n  ]`
-      : '[]'
-  return [
-    '{',
-    `  "savedAt": ${JSON.stringify(entry.savedAt)},`,
-    `  "chunkName": ${JSON.stringify(entry.chunkName)},`,
-    `  "turnId": ${JSON.stringify(entry.turnId)},`,
-    `  "turnOrdinal": ${entry.turnOrdinal},`,
-    `  "messages": ${messagesBlock}`,
-    '}',
-  ].join('\n')
 }

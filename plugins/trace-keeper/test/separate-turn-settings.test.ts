@@ -14,8 +14,8 @@ describe('resolveSeparateTurnCount', () => {
     )
   })
 
-  it('falls back to legacy liveStateTurnCount', () => {
-    assert.equal(resolveSeparateTurnCount({ liveStateTurnCount: 2 }, {}), 2)
+  it('falls back to user separateTurnCount', () => {
+    assert.equal(resolveSeparateTurnCount({ separateTurnCount: 2 }, {}), 2)
   })
 
   it('defaults when unset', () => {

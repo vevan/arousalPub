@@ -2,6 +2,7 @@ import type { ChatTurnItem } from '@/types/chat-turn'
 import {
   assistantCompletionTokens,
   assistantDurationMs,
+  segmentReceiveCount,
   turnSendEstimatedTokens,
 } from '@/utils/chat-turn-display'
 import { formatDurationMs } from '@/utils/format-duration'
@@ -65,7 +66,7 @@ export function useTurnBubbleUi(opts: {
     if (isAssistantBubbleLoading(turn, segmentIndex)) {
       return formatDurationMs(opts.generationElapsedMs())
     }
-    const d = assistantDurationMs(turn)
+    const d = assistantDurationMs(turn, segmentIndex)
     return d != null ? formatDurationMs(d) : null
   }
 
@@ -90,7 +91,7 @@ export function useTurnBubbleUi(opts: {
       const n = opts.pendingReceiveCompletionTokens.value
       if (n != null && n > 0) return String(n)
     }
-    const n = assistantCompletionTokens(turn)
+    const n = assistantCompletionTokens(turn, segmentIndex)
     return n != null ? String(n) : null
   }
 
@@ -104,7 +105,7 @@ export function useTurnBubbleUi(opts: {
       segmentLoading: isAssistantBubbleLoading(turn, segmentIndex),
       listIndex,
       lastListIndex: opts.turns.value.length - 1,
-      receivesLength: turn.receives.length,
+      receivesLength: segmentReceiveCount(turn, segIdx),
       isEditingThisSegment:
         opts.editingTurnOrdinal.value === turn.turnOrdinal &&
         opts.editingSide.value === 'assistant' &&

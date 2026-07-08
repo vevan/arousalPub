@@ -628,12 +628,6 @@ async function fetchAssemblePreview() {
   previewError.value = ''
   previewResult.value = null
   const p = activePreset.value
-  const useSys = p.prompts.some(
-    (e) => e.bindingSlot === 'boundCharacterSystem' && e.enabled,
-  )
-  const usePost = p.prompts.some(
-    (e) => e.bindingSlot === 'boundCharacterPostHistory' && e.enabled,
-  )
   try {
     const res = await fetch('/api/prompts/assemble-preview', {
       method: 'POST',
@@ -642,8 +636,6 @@ async function fetchAssemblePreview() {
         presetId: p.id,
         promptTrigger: previewTrigger.value,
         conversationUserName: 'User',
-        useBoundCharacterSystem: useSys,
-        useBoundCharacterPostHistory: usePost,
         model: conn.model.trim() || undefined,
         contextLength: conn.contextLength ?? undefined,
       }),
@@ -744,8 +736,6 @@ function groupBoundTitleKey(kind: GroupKind | undefined): string {
 
 function bindingSlotBundlePartsKey(slot: string | undefined): string | null {
   switch (slot) {
-    case 'boundCharacterSystem':
-      return 'prompts.boundCharacterSystemBundleParts'
     case 'boundUserPersona':
       return 'prompts.boundUserPersonaBundleParts'
     case 'boundCharSystemPrompt':
@@ -767,12 +757,8 @@ function bindingSlotAllowsToggle(slot: string | undefined): boolean {
 
 function bindingSlotLabelKey(slot: string | undefined): string {
   switch (slot) {
-    case 'boundCharacterSystem':
-      return 'prompts.boundCharacterSystemLabel'
     case 'boundUserPersona':
       return 'prompts.boundUserPersonaLabel'
-    case 'boundWorld':
-      return 'prompts.boundWorldLabel'
     case 'boundWorldBefore':
       return 'prompts.boundWorldBeforeLabel'
     case 'boundWorldAfter':
@@ -804,8 +790,8 @@ function bindingSlotLabelKey(slot: string | undefined): string {
 
 function bindingSlotIsRequired(slot: string | undefined): boolean {
   return (
-    slot === 'boundWorld' ||
     slot === 'boundWorldBefore' ||
+    slot === 'boundWorldAfter' ||
     slot === 'boundUserInput' ||
     slot === 'boundUserPersona'
   )
@@ -860,8 +846,6 @@ const listBundleEditor = computed((): {
 
 function bindingSlotListHintKey(slot: string | undefined): string {
   switch (slot) {
-    case 'boundCharacterSystem':
-      return 'prompts.boundCharacterListHintSystem'
     case 'boundCharSystemPrompt':
       return 'prompts.boundCharSystemPromptListHint'
     case 'boundUserPersona':
@@ -872,7 +856,6 @@ function bindingSlotListHintKey(slot: string | undefined): string {
       return 'prompts.boundCharPersonalityListHint'
     case 'boundScenario':
       return 'prompts.boundScenarioListHint'
-    case 'boundWorld':
     case 'boundWorldBefore':
     case 'boundWorldAfter':
       return 'prompts.boundWorldListHint'
@@ -889,8 +872,6 @@ function bindingSlotListHintKey(slot: string | undefined): string {
 
 function bindingSlotEditorDescKey(slot: string | undefined): string {
   switch (slot) {
-    case 'boundCharacterSystem':
-      return 'prompts.boundCharacterEditorDescSystem'
     case 'boundCharSystemPrompt':
       return 'prompts.boundCharSystemPromptEditorDesc'
     case 'boundUserPersona':
@@ -901,7 +882,6 @@ function bindingSlotEditorDescKey(slot: string | undefined): string {
       return 'prompts.boundCharPersonalityEditorDesc'
     case 'boundScenario':
       return 'prompts.boundScenarioEditorDesc'
-    case 'boundWorld':
     case 'boundWorldBefore':
     case 'boundWorldAfter':
       return 'prompts.boundWorldEditorDesc'

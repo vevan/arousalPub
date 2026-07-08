@@ -28,7 +28,7 @@ describe('resolvePluginInjectionSpan', () => {
 })
 
 describe('applyPluginsAfterAssemblePrompts', () => {
-  it('merges legacy addition after last user when history span provided', async () => {
+  it('merges injection descriptor after last user when history span provided', async () => {
     const history = [
       { role: 'user' as const, content: 'u1' },
       { role: 'assistant' as const, content: 'a1' },
@@ -47,7 +47,11 @@ describe('applyPluginsAfterAssemblePrompts', () => {
           order: 10,
           module: {
             resolveAfterAssemblePromptsAddition: async () => [
-              { role: 'system' as const, content: 'tracker' },
+              {
+                role: 'system' as const,
+                content: 'tracker',
+                position: { kind: 'chat' as const, depth: 0, injectionOrder: 10 },
+              },
             ],
           },
         },
@@ -347,24 +351,17 @@ describe('plugin assemble additionCache and token reserve', () => {
     assert.equal(hookCalls, 1)
   })
 
-  it('counts descriptor and legacy additions for token reserve', () => {
-    const descriptorTokens = countPluginAssembleAdditionTokens(
-      {
-        kind: 'injections',
-        injections: [
-          {
-            role: 'system',
-            content: 'abc',
-            position: { kind: 'chat', depth: 0, order: 1 },
-          },
-        ],
-      },
-    )
-    const legacyTokens = countPluginAssembleAdditionTokens({
-      kind: 'legacy',
-      messages: [{ role: 'system', content: 'abc' }],
+  it('counts descriptor additions for token reserve', () => {
+    const descriptorTokens = countPluginAssembleAdditionTokens({
+      kind: 'injections',
+      injections: [
+        {
+          role: 'system',
+          content: 'abc',
+          position: { kind: 'chat', depth: 0, injectionOrder: 1 },
+        },
+      ],
     })
-    assert.equal(descriptorTokens, legacyTokens)
     assert.ok(descriptorTokens > 0)
   })
 })

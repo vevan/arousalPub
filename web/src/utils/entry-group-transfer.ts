@@ -7,37 +7,19 @@ import { groupAllowsPromptEntries } from '@/stores/prompts'
 
 
 const CHARACTER_SLOTS = new Set([
-
   'boundUserPersona',
-
   'boundCharSystemPrompt',
-
   'boundCharDescription',
-
   'boundCharPersonality',
-
   'boundScenario',
-
   'boundEnhanceDefinitions',
-
   'boundDialogueExamples',
-
-  'boundCharacterSystem',
-
 ])
 
-
-
 const WORLD_SLOTS = new Set([
-
   'boundWorldBefore',
-
   'boundWorldAfter',
-
-  'boundWorld',
-
   'boundMemory',
-
 ])
 
 

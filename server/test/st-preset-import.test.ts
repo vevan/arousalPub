@@ -4,8 +4,9 @@ import type { MacroCharacterFields } from '../src/prompt-macros/index.js'
 import { assemblePrompts } from '../src/assemble-prompts.js'
 import {
   convertStPresetToArousalPub,
-  isLegacyStGapGroupId,
 } from '../src/st-preset-import.js'
+
+const LEGACY_ST_GAP_GROUP_ID_PREFIX = 'group-st-gap-'
 
 const SAMPLE_FIELDS: MacroCharacterFields = {
   description: 'DESC',
@@ -25,11 +26,11 @@ function assertNoStGapGroups(
   preset: ReturnType<typeof convertStPresetToArousalPub>,
 ) {
   assert.ok(
-    !preset.groups.some((g) => isLegacyStGapGroupId(g.id)),
+    !preset.groups.some((g) => g.id.startsWith(LEGACY_ST_GAP_GROUP_ID_PREFIX)),
     'must not create ST gap container groups',
   )
   assert.ok(
-    !preset.prompts.some((p) => isLegacyStGapGroupId(p.groupId)),
+    !preset.prompts.some((p) => p.groupId.startsWith(LEGACY_ST_GAP_GROUP_ID_PREFIX)),
     'must not place prompts in ST gap container groups',
   )
 }
@@ -242,7 +243,7 @@ describe('convertStPresetToArousalPub', () => {
         { cardBody: 'CARD', macroFields: SAMPLE_FIELDS, postHistory: 'POST' },
       ],
       userCharacter: { cardBody: 'USER' },
-      world: 'LORE',
+      world: '<lores>\n<lore name="world">\nLORE\n</lore>\n</lores>',
       history: [{ role: 'user', content: 'u' }],
       userInput: 'now',
     })
@@ -304,7 +305,7 @@ describe('convertStPresetToArousalPub', () => {
 
     const { messages } = assemblePrompts(preset, {
       characters: [{ cardBody: 'CARD', macroFields: SAMPLE_FIELDS }],
-      world: 'LORE',
+      world: '<lores>\n<lore name="world">\nLORE\n</lore>\n</lores>',
       history: [{ role: 'user', content: 'u' }],
       userInput: 'now',
     })
@@ -493,7 +494,7 @@ describe('convertStPresetToArousalPub', () => {
         { cardBody: 'CARD', macroFields: SAMPLE_FIELDS, postHistory: 'POST' },
       ],
       userCharacter: { cardBody: 'USER' },
-      world: 'LORE',
+      world: '<lores>\n<lore name="world">\nLORE\n</lore>\n</lores>',
       history: [{ role: 'user', content: 'u' }],
     })
     const contents = messages.map((m) => m.content)

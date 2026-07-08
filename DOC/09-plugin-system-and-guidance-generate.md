@@ -37,7 +37,7 @@ data/
         secrets/             # 可选
 ```
 
-**迁移**：旧版全局 `data/plugin-registry.json` 会在用户首次访问时复制到 `data/{userId}/plugin-registry.json`。
+**注册表路径**：`data/{userId}/plugin-registry.json`（每用户一份；**无**全局 `data/plugin-registry.json` 启动拷贝）。
 
 ---
 

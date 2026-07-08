@@ -1,10 +1,13 @@
 import type { ChatTurnItem, ReceiveItem } from '@/types/chat-turn'
+import { getTurnSegments } from '@/utils/group-chat-turn'
 
 export function collectUsedReceiveIds(turns: ChatTurnItem[]): Set<string> {
   const used = new Set<string>()
   for (const t of turns) {
-    for (const r of t.receives) {
-      if (r.id?.trim()) used.add(r.id.trim())
+    for (const seg of getTurnSegments(t)) {
+      for (const r of seg.receives) {
+        if (r.id?.trim()) used.add(r.id.trim())
+      }
     }
   }
   return used

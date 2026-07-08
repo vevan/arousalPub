@@ -20,10 +20,9 @@ describe('parseMemorySettingsPatch', () => {
 })
 
 describe('normalizeMemorySettings defaults', () => {
-  it('enables strip by default without ex-prefix wildcard', () => {
+  it('enables strip by default', () => {
     const s = normalizeMemorySettings({})
     assert.equal(s.stripPluginBlocks, true)
-    assert.equal(s.stripExPrefixElements, false)
     assert.equal(s.recallFuseLastAssistant, true)
     assert.equal(s.recallUserWeight, 0.85)
   })

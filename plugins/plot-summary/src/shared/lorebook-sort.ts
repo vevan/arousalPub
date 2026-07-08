@@ -1,7 +1,6 @@
 /** Historian 资料库条目分类与组内排序（plot-summary 插件算法） */
 
 export const PLOT_SUMMARY_TURN_RANGE_SUFFIX_RE = /\[(\d+)-(\d+)\]$/
-export const LEGACY_TURN_RANGE_SUFFIX_RE = /-(\d+)-(\d+)$/
 export const PLOT_SUMMARY_MEMO_PREFIX_RE = /^\[MEMO-(\d+)\]-/
 
 export type PlotSummaryEntryKind = 'other' | 'sidecar' | 'summary'
@@ -22,15 +21,12 @@ export function parseTurnRangeSuffix(
   title: string,
 ): { start: number; end: number } | null {
   const t = (title ?? '').trim()
-  for (const re of [PLOT_SUMMARY_TURN_RANGE_SUFFIX_RE, LEGACY_TURN_RANGE_SUFFIX_RE]) {
-    const m = t.match(re)
-    if (!m) continue
-    const start = Number(m[1])
-    const end = Number(m[2])
-    if (!Number.isFinite(start) || !Number.isFinite(end)) continue
-    return { start, end }
-  }
-  return null
+  const m = t.match(PLOT_SUMMARY_TURN_RANGE_SUFFIX_RE)
+  if (!m) return null
+  const start = Number(m[1])
+  const end = Number(m[2])
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null
+  return { start, end }
 }
 
 export function parseMemoIndex(title: string): number | null {

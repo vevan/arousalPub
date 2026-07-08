@@ -108,10 +108,7 @@ export function resolveTraceForSegment(
 }
 
 function traceSegmentCount(turn: TraceTurnRef): number {
-  const segs = turn.segments ?? []
-  if (segs.length > 0) return segs.length
-  if ((turn.receives?.length ?? 0) > 0) return 1
-  return 0
+  return turn.segments?.length ?? 0
 }
 
 /** 从 tail 中按时间顺序取最多 limit 条 epoch 匹配 trace（同 turn 多 segment 逐段展开） */

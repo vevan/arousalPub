@@ -43,7 +43,7 @@ export function useTurnEditDelete(opts: {
     editingTurnOrdinal.value = turn.turnOrdinal
     editingSegmentIndex.value = segmentIndex
     editingSide.value = 'assistant'
-    editDraft.value = assistantText(turn)
+    editDraft.value = assistantText(turn, segmentIndex)
   }
 
   function openEditUser(turn: ChatTurnItem) {
@@ -94,13 +94,10 @@ export function useTurnEditDelete(opts: {
       )
       const nextSegments = [...segments]
       nextSegments[segIdx] = { ...seg, receives: newReceives }
-      const activeSeg = nextSegments[segIdx]!
       const draft: ChatTurnItem = {
         ...turn,
         segments: nextSegments,
         activeSegmentIndex: segIdx,
-        receives: activeSeg.receives,
-        activeReceiveIndex: activeSeg.activeReceiveIndex,
       }
       cancelEdit()
       const result = await opts.persistTurnToServer(draft, { segmentIndex: segIdx })
@@ -156,13 +153,10 @@ export function useTurnEditDelete(opts: {
           receives: newReceives,
           activeReceiveIndex: newActive,
         }
-        const activeSeg = nextSegments[segIdx]!
         const next: ChatTurnItem = {
           ...turn,
           segments: nextSegments,
           activeSegmentIndex: segIdx,
-          receives: activeSeg.receives,
-          activeReceiveIndex: activeSeg.activeReceiveIndex,
         }
         opts.replaceTurnAt(listIndex, next)
         cancelDelete()

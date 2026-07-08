@@ -29,9 +29,10 @@ export { mergePluginPromptInjectionsIntoMessages } from './plugin-prompt-injecti
 export type { PluginPromptInjectionSpan } from './plugin-prompt-injection-merge.js'
 export { resolvePluginInjectionSpan } from './plugin-prompt-injection-merge.js'
 
-export type PluginAssembleAdditionResolved =
-  | { kind: 'injections'; injections: PluginPromptInjection[] }
-  | { kind: 'legacy'; messages: ChatMessage[] }
+export type PluginAssembleAdditionResolved = {
+  kind: 'injections'
+  injections: PluginPromptInjection[]
+}
 
 export type PluginAssembleAdditionCache = Map<
   string,
@@ -72,44 +73,13 @@ function normalizeHookAddition(raw: unknown): PluginAssembleAdditionResolved | n
   if (injections) {
     return { kind: 'injections', injections }
   }
-  if (!Array.isArray(raw) || raw.length === 0) return null
-  const messages: ChatMessage[] = []
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') return null
-    const role = (item as ChatMessage).role
-    const content = (item as ChatMessage).content
-    if (role !== 'system' && role !== 'user' && role !== 'assistant') {
-      return null
-    }
-    if (typeof content !== 'string' || !content.trim()) continue
-    messages.push({ role, content })
-  }
-  if (messages.length === 0) return null
-  return { kind: 'legacy', messages }
-}
-
-function legacyMessagesToInjections(
-  messages: ChatMessage[],
-  defaultOrder: number,
-): PluginPromptInjection[] {
-  return messages.map((m) => ({
-    role: m.role,
-    content: m.content,
-    position: {
-      kind: 'chat' as const,
-      depth: 0,
-      injectionOrder: defaultOrder,
-    },
-  }))
+  return null
 }
 
 export function additionToInjections(
   resolved: PluginAssembleAdditionResolved,
   hostPolicy: PostUserInjectionOrderHostPolicy = POST_USER_INJECTION_ORDER_HOST_DEFAULTS,
 ): PluginPromptInjection[] {
-  if (resolved.kind === 'legacy') {
-    return legacyMessagesToInjections(resolved.messages, hostPolicy.default)
-  }
   return resolved.injections.map((inj) => ({
     ...inj,
     position: {
@@ -126,13 +96,10 @@ export function countPluginAssembleAdditionTokens(
   resolved: PluginAssembleAdditionResolved,
   tokenModel?: string,
 ): number {
-  const messages =
-    resolved.kind === 'legacy'
-      ? resolved.messages
-      : resolved.injections.map((i) => ({
-          role: i.role,
-          content: i.content,
-        }))
+  const messages = resolved.injections.map((i) => ({
+    role: i.role,
+    content: i.content,
+  }))
   return countChatMessagesTokens(messages, { model: tokenModel })
 }
 

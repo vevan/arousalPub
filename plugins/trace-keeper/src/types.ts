@@ -2,13 +2,11 @@ export interface TurnCtx {
   turn?: {
     turnOrdinal?: number
     plugins?: unknown[]
-    activeReceiveIndex?: number
     activeSegmentIndex?: number
     segments?: {
       activeReceiveIndex?: number
       receives?: { id?: string; content?: string }[]
     }[]
-    receives?: { id?: string; content?: string }[]
   }
   listIndex?: number
   segmentIndex?: number
@@ -21,8 +19,11 @@ export interface PluginHost {
     turns?: {
       turnOrdinal: number
       plugins?: unknown[]
-      activeReceiveIndex?: number
-      receives?: { id?: string; content?: string }[]
+      activeSegmentIndex?: number
+      segments?: {
+        activeReceiveIndex?: number
+        receives?: { id?: string; content?: string }[]
+      }[]
     }[]
     loading?: boolean | { value?: boolean }
     regeneratingTurnOrdinal?: number | null | { value?: number | null }

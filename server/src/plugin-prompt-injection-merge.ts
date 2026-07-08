@@ -21,25 +21,12 @@ export type PluginPromptInjectionSpan = {
   historyEnd: number
 }
 
-/** @deprecated 使用 POST_USER_INJECTION_ORDER_HOST_DEFAULTS.afterUserInput */
-export const AFTER_USER_INPUT_IMPLICIT_INJECTION_ORDER =
-  POST_USER_INJECTION_ORDER_HOST_DEFAULTS.afterUserInput
-
-/** @deprecated 使用 POST_USER_INJECTION_ORDER_HOST_DEFAULTS.presetChatDepth0 */
-export const PRESET_CHAT_DEPTH0_IMPLICIT_INJECTION_ORDER =
-  POST_USER_INJECTION_ORDER_HOST_DEFAULTS.presetChatDepth0
-
-/** @deprecated 使用 AFTER_USER_INPUT_IMPLICIT_INJECTION_ORDER */
-export const AFTER_USER_INPUT_IMPLICIT_ORDER = AFTER_USER_INPUT_IMPLICIT_INJECTION_ORDER
-
 export type PluginPromptMergeAfterUserInput = {
   content: string
   role?: PluginPromptInjection['role']
   implicitInjectionOrder?: number
   /** 展宏后需排除的 post-user 条目（如 depth 0 authorsNote），避免误标为 afterUserInput */
   excludeContents?: string[]
-  /** @deprecated 使用 implicitInjectionOrder */
-  implicitOrder?: number
 }
 
 export type PluginPromptInjectionMergeOptions = {
@@ -155,7 +142,6 @@ function hoistPostUserTailIntoInjections(
     if (isAfterUserInput) {
       const injectionOrder =
         hint?.implicitInjectionOrder ??
-        hint?.implicitOrder ??
         hostPolicy.afterUserInput
       tailInjections.push({
         role: m.role as PluginPromptInjection['role'],

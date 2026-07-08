@@ -22,10 +22,7 @@ export function extractAssistantContent(json: unknown): string {
   const first = choices[0]
   if (!first || typeof first !== 'object') return ''
   const msg = (first as { message?: unknown }).message
-  if (!msg || typeof msg !== 'object') {
-    const legacy = (first as { text?: unknown }).text
-    return typeof legacy === 'string' ? legacy.trim() : ''
-  }
+  if (!msg || typeof msg !== 'object') return ''
   const content = (msg as { content?: unknown }).content
   if (typeof content === 'string') return content.trim()
   if (Array.isArray(content)) {

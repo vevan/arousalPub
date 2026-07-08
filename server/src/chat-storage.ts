@@ -139,22 +139,10 @@ function finalizeAuditPersistDiskMs(
     typeof regex === 'number' ? regex + diskAndAudit : diskAndAudit
 }
 
-/** 与 {@link getChatsRoot} 相同，保留旧名供外部引用 */
-export function chatRoot(): string {
-  return getChatsRoot()
-}
-
-/** @deprecated 使用 {@link chatListFile} */
-export const CHAT_ROOT = chatRoot
 
 function chatListFile(): string {
   return path.join(getChatsRoot(), 'chat.index.json')
 }
-
-/** @deprecated 首块文件名请用 {@link buildFirstChunkDescriptor} */
-export const CHUNK_NAME_FIRST = 'turn-000000-000099.json'
-export const CHAT_PROMPT_FILE = 'chat-prompt.json'
-export const DEFAULT_PROMPT_DEBUG_MAX = 10
 
 export interface ChatListEntry {
   conversationId: string
@@ -162,8 +150,6 @@ export interface ChatListEntry {
   updatedAt: string
   /** 用户 persona 卡 id；组装时注入 `<user>` 块，宏仍用 userName 快照 */
   userCharacterId?: string
-  /** 兼容：首张卡 id，等同于 characterIds[0] */
-  characterId?: string | null
   /** 会话绑定的多张角色卡 id，顺序即主槽 {{char}}、次槽 {{char2}}… */
   characterIds?: string[]
   /** 对话级提示词预设 id；缺省则客户端用全局激活预设 */
@@ -192,8 +178,7 @@ export interface ConversationIndex {
   schemaVersion: 1
   conversationId: string
   title: string
-  characterId?: string | null
-  /** 多卡绑定；优先于单独的 characterId。写盘时会同步 characterId = characterIds[0] ?? null */
+  /** 多卡绑定 */
   characterIds?: string[]
   createdAt: string
   updatedAt: string
@@ -205,12 +190,10 @@ export interface ConversationIndex {
   backupSettings?: { everyNRounds: number; maxKeptBackups: number }
   branches?: unknown[]
   /**
-   * 调试：chat-audit.json（`auditDebug` 定案；`promptDebug` 为遗留）。
+   * 调试：chat-audit.json（`auditDebug`）。
    * `enabled === false` 或 `maxStored < 1` 时不写入新审计条目。
    */
   auditDebug?: { enabled: boolean; maxStored: number }
-  /** @deprecated 使用 auditDebug；读盘时仍兼容 */
-  promptDebug?: { maxStored: number }
   /**
    * 对话级提示词预设（`data/{user}/prompts/` 内预设 `id`）。
    * 缺省或未写入：客户端使用全局「当前激活预设」。
@@ -448,11 +431,13 @@ function applyTurnContentUpdate(
     Math.max(0, activeReceiveIndex),
     mappedReceives.length - 1,
   )
+  const prevActiveSegIdx = getActiveSegmentIndex(turn)
   turn.send = { userText }
   activeSeg.receives = mappedReceives
   activeSeg.activeReceiveIndex = activeIdx
-  turn.activeSegmentIndex = segIdx
-  syncTurnSpeakerFromActiveSegment(turn)
+  if (segIdx === prevActiveSegIdx) {
+    syncTurnSpeakerFromActiveSegment(turn)
+  }
 }
 
 /** 更新指定 segment 的 receives（regenerate/swipe 仅当前 segment） */
@@ -704,43 +689,21 @@ export async function batchUpdateConversationTurns(
   }
 }
 
-export interface ChatPromptMessage {
-  role: 'system' | 'user' | 'assistant'
-  content: string
-}
-
-export interface ChatPromptEntry {
-  savedAt: string
-  chunkName: string
-  turnId: string
-  turnOrdinal: number
-  messages: ChatPromptMessage[]
-}
-
-export interface ChatPromptFile {
-  schemaVersion: 1
-  entries: ChatPromptEntry[]
-}
-
 /** 解析会话绑定的角色卡 id（顺序即 {{char}}、{{char2}}…） */
 export function resolvedCharacterIds(
-  idx: Pick<ConversationIndex, 'characterIds' | 'characterId'>,
+  idx: Pick<ConversationIndex, 'characterIds'>,
 ): string[] {
-  if (Array.isArray(idx.characterIds)) {
-    const seen = new Set<string>()
-    const out: string[] = []
-    for (const raw of idx.characterIds) {
-      if (typeof raw !== 'string') continue
-      const id = raw.trim()
-      if (!id || seen.has(id)) continue
-      seen.add(id)
-      out.push(id)
-    }
-    if (out.length > 0) return out
+  if (!Array.isArray(idx.characterIds)) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of idx.characterIds) {
+    if (typeof raw !== 'string') continue
+    const id = raw.trim()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
   }
-  const legacy = idx.characterId
-  if (typeof legacy === 'string' && legacy.trim()) return [legacy.trim()]
-  return []
+  return out
 }
 
 /** 解析会话绑定的资料库 id 列表 */
@@ -760,7 +723,7 @@ export function resolvedLorebookIds(
   return out
 }
 
-/** 写盘前同步 characterId ↔ characterIds[0]，避免只存其一造成歧义 */
+/** 写盘前规范化 characterIds */
 export function syncConversationCharacterFields(
   idx: ConversationIndex,
 ): ConversationIndex {
@@ -768,7 +731,6 @@ export function syncConversationCharacterFields(
   return {
     ...idx,
     characterIds: ids.length > 0 ? ids : undefined,
-    characterId: ids[0] ?? null,
   }
 }
 
@@ -788,7 +750,6 @@ export function chatListEntryFromIndex(idx: ConversationIndex): ChatListEntry {
     ...(typeof idx.userName === 'string' && idx.userName.trim()
       ? { userName: idx.userName.trim() }
       : {}),
-    characterId: ids[0] ?? null,
     characterIds: ids.length > 0 ? ids : undefined,
     ...(typeof idx.promptPresetId === 'string' && idx.promptPresetId.trim()
       ? { promptPresetId: idx.promptPresetId.trim() }
@@ -869,7 +830,6 @@ export async function updateConversationCharacterBindings(
   const next: ConversationIndex = {
     ...idx,
     characterIds: cleaned,
-    characterId: cleaned[0] ?? null,
     updatedAt: t,
   }
   await writeConversationIndex(conversationId, next)
@@ -1401,18 +1361,6 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
-export function conversationPromptPath(id: string): string {
-  return path.join(conversationDir(id), CHAT_PROMPT_FILE)
-}
-
-export function getPromptDebugMaxStored(idx: ConversationIndex | null): number {
-  const n = idx?.promptDebug?.maxStored
-  if (typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 200) {
-    return n
-  }
-  return DEFAULT_PROMPT_DEBUG_MAX
-}
-
 function withGroupChatAuditSnapshot(
   snapshot: ChatAuditSnapshotInput | undefined,
   segmentSpeakerCharacterId: string,
@@ -1525,98 +1473,6 @@ export async function writeBranchConversationIndex(
   await writeFile(filePath, JSON.stringify(normalized, null, 2), 'utf8')
 }
 
-export async function readChatPromptFile(
-  conversationId: string,
-): Promise<ChatPromptFile> {
-  try {
-    const raw = await readFile(conversationPromptPath(conversationId), 'utf8')
-    const j = JSON.parse(raw) as ChatPromptFile
-    if (!j || j.schemaVersion !== 1 || !Array.isArray(j.entries)) {
-      return { schemaVersion: 1, entries: [] }
-    }
-    return j
-  } catch {
-    return { schemaVersion: 1, entries: [] }
-  }
-}
-
-function validatePromptMessages(raw: unknown): ChatPromptMessage[] | null {
-  if (!Array.isArray(raw) || raw.length === 0) return null
-  const out: ChatPromptMessage[] = []
-  for (const m of raw) {
-    if (!m || typeof m !== 'object') return null
-    const role = (m as { role?: unknown }).role
-    const content = (m as { content?: unknown }).content
-    if (role !== 'system' && role !== 'user' && role !== 'assistant') return null
-    if (typeof content !== 'string') return null
-    out.push({ role, content })
-  }
-  return out
-}
-
-export async function appendChatPromptDebugEntry(
-  conversationId: string,
-  params: {
-    chunkName: string
-    turnId: string
-    turnOrdinal: number
-    messages: unknown
-  },
-): Promise<void> {
-  const idx = await readConversationIndex(conversationId)
-  const max = getPromptDebugMaxStored(idx)
-  /** 索引 maxStored=0：不写新快照（中断/未配置亦同） */
-  if (max < 1) return
-  const msgs = validatePromptMessages(params.messages)
-  if (!msgs) return
-  const file = await readChatPromptFile(conversationId)
-  const filtered = file.entries.filter((e) => e.turnId !== params.turnId)
-  filtered.push({
-    savedAt: nowIso(),
-    chunkName: params.chunkName,
-    turnId: params.turnId,
-    turnOrdinal: params.turnOrdinal,
-    messages: msgs,
-  })
-  const entries = filtered.slice(-max)
-  await mkdir(conversationDir(conversationId), { recursive: true })
-  await writeFile(
-    conversationPromptPath(conversationId),
-    JSON.stringify({ schemaVersion: 1, entries }, null, 2),
-    'utf8',
-  )
-}
-
-async function removeChatPromptEntriesByTurnId(
-  conversationId: string,
-  turnId: string,
-): Promise<void> {
-  try {
-    const file = await readChatPromptFile(conversationId)
-    const entries = file.entries.filter((e) => e.turnId !== turnId)
-    if (entries.length === file.entries.length) return
-    await writeFile(
-      conversationPromptPath(conversationId),
-      JSON.stringify({ schemaVersion: 1, entries }, null, 2),
-      'utf8',
-    )
-  } catch {
-    /* 文件可能不存在 */
-  }
-}
-
-/** 遗留：仅 maxStored；enabled 由 maxStored>=1 隐含 */
-export async function updateConversationPromptDebugMax(
-  conversationId: string,
-  maxStored: number,
-): Promise<ConversationIndex | null> {
-  const clamped = Math.min(200, Math.max(0, Math.floor(maxStored)))
-  return updateConversationAuditDebug(conversationId, {
-    enabled: clamped >= 1,
-    maxStored: clamped >= 1 ? clamped : DEFAULT_PROMPT_DEBUG_MAX,
-  })
-}
-
 export async function updateConversationAuditDebug(
   conversationId: string,
   auditDebug: { enabled: boolean; maxStored: number },
@@ -1627,7 +1483,6 @@ export async function updateConversationAuditDebug(
   const clamped = Math.min(200, Math.max(0, Math.floor(auditDebug.maxStored)))
   const maxStored = enabled && clamped >= 1 ? clamped : clamped
   idx.auditDebug = { enabled, maxStored: maxStored >= 1 ? maxStored : DEFAULT_AUDIT_DEBUG_MAX }
-  delete idx.promptDebug
   idx.updatedAt = nowIso()
   await writeConversationIndex(conversationId, idx)
   if (enabled && maxStored >= 1) {
@@ -1808,9 +1663,6 @@ export async function syncChatListConversationStats(
   })
 }
 
-/** @deprecated 使用 syncChatListConversationStats */
-export const syncChatListActiveTurnCount = syncChatListConversationStats
-
 export async function upsertChatListEntry(
   entry: ChatListEntry,
   source?: ConversationIndex,
@@ -1939,14 +1791,13 @@ export async function createConversationStub(
     schemaVersion: 1,
     conversationId,
     title: title.trim() || '新对话',
-    characterId: null,
     createdAt: t,
     updatedAt: t,
     headChunkFile: null,
     tailChunkFile: null,
     backupSettings: { everyNRounds: 0, maxKeptBackups: 0 },
     branches: [],
-    promptDebug: { maxStored: DEFAULT_PROMPT_DEBUG_MAX },
+    auditDebug: { enabled: false, maxStored: DEFAULT_AUDIT_DEBUG_MAX },
   }
   const defaultTemplate = await readGlobalDefaultAuthorsNote()
   const seededAuthorsNote = seedAuthorsNoteFromTemplate(defaultTemplate)

@@ -177,7 +177,7 @@ export interface PluginServerHostApi {
     messages: PluginCompleteDraftMessage[]
     modelOverride?: string
     responseFormat?: 'json_object' | 'text'
-    fallbackToChat?: boolean
+    fallbackToGlobalDefault?: boolean
     captureDebug?: boolean
   }) => Promise<
     | { ok: true; content: string; usage?: { promptTokens?: number; completionTokens?: number }; latencyMs: number; debug?: import('../plugin-complete.js').PluginCompleteDebugCapture }

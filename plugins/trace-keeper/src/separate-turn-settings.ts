@@ -19,22 +19,7 @@ export function normalizeSeparateTurnCount(raw: unknown): number {
   )
 }
 
-function legacyLiveStateTurnCount(raw: unknown): number | null {
-  if (raw === null || raw === undefined || raw === '') return null
-  const n =
-    typeof raw === 'number' && Number.isFinite(raw)
-      ? Math.floor(raw)
-      : typeof raw === 'string'
-        ? Number.parseInt(raw, 10)
-        : NaN
-  if (!Number.isFinite(n) || n <= 0) return null
-  return Math.max(
-    SEPARATE_TURN_COUNT_MIN,
-    Math.min(SEPARATE_TURN_COUNT_MAX, n),
-  )
-}
-
-/** 会话 separateTurnCount 覆盖；否则用户设置；否则兼容旧 liveStateTurnCount；默认 4。 */
+/** 会话 separateTurnCount 覆盖；否则用户设置；默认 4。 */
 export function resolveSeparateTurnCount(
   userSettings?: Record<string, unknown> | null,
   convSettings?: Record<string, unknown> | null,
@@ -50,9 +35,5 @@ export function resolveSeparateTurnCount(
   if (Object.prototype.hasOwnProperty.call(user, 'separateTurnCount')) {
     return normalizeSeparateTurnCount(user.separateTurnCount)
   }
-  const legacy =
-    legacyLiveStateTurnCount(conv.liveStateTurnCount) ??
-    legacyLiveStateTurnCount(user.liveStateTurnCount)
-  if (legacy !== null) return legacy
   return SEPARATE_TURN_COUNT_DEFAULT
 }

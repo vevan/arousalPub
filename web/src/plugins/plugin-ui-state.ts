@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import type { NotificationSnackbarAction } from '@/utils/notification-storage'
 
 export interface PluginConfirmOptions {
   title: string
@@ -18,9 +19,11 @@ interface ConfirmState extends PluginConfirmOptions {
 export const pluginConfirmOpen = ref<ConfirmState | null>(null)
 
 export const pluginSnackbar = ref<{
+  notificationId: string
   message: string
   color: string
   timeout: number
+  snackbarActions?: NotificationSnackbarAction[]
 } | null>(null)
 
 export function showPluginConfirm(opts: PluginConfirmOptions): Promise<boolean> {
@@ -43,17 +46,25 @@ export function resolvePluginConfirm(value: boolean): void {
   state.resolve(value)
 }
 
-export function showPluginToast(
+export function showPluginNotifySnackbar(
+  notificationId: string,
   message: string,
-  opts?: { color?: string; timeout?: number },
+  opts?: {
+    color?: string
+    timeout?: number
+    snackbarActions?: NotificationSnackbarAction[]
+  },
 ): void {
   pluginSnackbar.value = {
+    notificationId,
     message,
     color: opts?.color ?? 'surface-variant',
     timeout: opts?.timeout ?? 4000,
+    snackbarActions: opts?.snackbarActions,
   }
 }
 
+/** 关闭浮层；超时自动消失时调用，不标已读 */
 export function clearPluginSnackbar(): void {
   pluginSnackbar.value = null
 }

@@ -15,7 +15,7 @@ import {
   releaseMaintenanceLock,
 } from '../maintenance-lock.js'
 import {
-  resolveSecretFromDisk,
+  decryptSecret,
   secretToDiskFields,
   type EncryptedSecretV1,
 } from '../secret-encryption.js'
@@ -124,17 +124,22 @@ function aadForEmbeddingApiKey(userId: string): string {
   return `arousal:${userId}:embedding`
 }
 
+function resolvePlainForRotation(
+  encrypted: EncryptedSecretV1 | undefined,
+  aad: string,
+  oldKey: Buffer,
+): string {
+  if (!encrypted) return ''
+  return decryptSecret(encrypted, { key: oldKey, aad })
+}
+
 function reencryptSecretField(
-  legacyPlain: string | undefined,
   encrypted: EncryptedSecretV1 | undefined,
   aad: string,
   oldKey: Buffer,
   newKey: Buffer,
 ): { changed: boolean; keyEnc?: EncryptedSecretV1 } {
-  const plain = resolveSecretFromDisk(legacyPlain, encrypted, {
-    key: oldKey,
-    aad,
-  })
+  const plain = resolvePlainForRotation(encrypted, aad, oldKey)
   if (!plain.trim()) return { changed: false }
   const { keyEnc } = secretToDiskFields(plain, { key: newKey, aad })
   return { changed: true, keyEnc }
@@ -149,7 +154,6 @@ export function rotateApiKeysDocument(
   let count = 0
   const keys = doc.keys.map((entry) => {
     const { changed, keyEnc } = reencryptSecretField(
-      entry.key,
       entry.keyEnc,
       aadForApiKey(userId, entry.id),
       oldKey,
@@ -175,7 +179,6 @@ export function rotateApiSettingsDocument(
   let count = 0
   const presets = doc.presets.map((preset) => {
     const { changed, keyEnc } = reencryptSecretField(
-      preset.apiKey,
       preset.apiKeyEnc,
       aadForPresetApiKey(userId, preset.id),
       oldKey,
@@ -203,7 +206,6 @@ export function rotateUserPreferencesDocument(
     return { doc, count: 0 }
   }
   const { changed, keyEnc } = reencryptSecretField(
-    typeof raw.apiKey === 'string' ? raw.apiKey : undefined,
     raw.apiKeyEnc,
     aadForEmbeddingApiKey(userId),
     oldKey,

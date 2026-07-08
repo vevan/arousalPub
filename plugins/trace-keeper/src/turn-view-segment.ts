@@ -2,9 +2,6 @@ import type { TraceTurnRef } from './trace-state-resolve.js'
 
 export type TurnViewRef = TraceTurnRef & {
   turnOrdinal: number
-  /** Web parse 时 derived（= 某 segment）；segment-scoped 视图亦可能仅带 flat receives */
-  receives?: { id?: string; content?: string }[]
-  activeReceiveIndex?: number
   speakerCharacterId?: string
 }
 
@@ -30,30 +27,19 @@ export function viewSegmentAt(
   speakerCharacterId?: string
 } | null {
   const segments = turn.segments
-  if (segments?.length) {
-    const seg = segments[resolveViewSegmentIndex(turn, segmentIndex)]!
-    return {
-      receives: seg.receives ?? [],
-      activeReceiveIndex:
-        typeof seg.activeReceiveIndex === 'number' ? seg.activeReceiveIndex : 0,
-      ...(typeof (seg as { speakerCharacterId?: string }).speakerCharacterId ===
-      'string'
-        ? {
-            speakerCharacterId: (
-              seg as { speakerCharacterId?: string }
-            ).speakerCharacterId!.trim(),
-          }
-        : {}),
-    }
-  }
-  const receives = turn.receives ?? []
-  if (receives.length === 0) return null
+  if (!segments?.length) return null
+  const seg = segments[resolveViewSegmentIndex(turn, segmentIndex)]!
   return {
-    receives,
+    receives: seg.receives ?? [],
     activeReceiveIndex:
-      typeof turn.activeReceiveIndex === 'number' ? turn.activeReceiveIndex : 0,
-    ...(turn.speakerCharacterId?.trim()
-      ? { speakerCharacterId: turn.speakerCharacterId.trim() }
+      typeof seg.activeReceiveIndex === 'number' ? seg.activeReceiveIndex : 0,
+    ...(typeof (seg as { speakerCharacterId?: string }).speakerCharacterId ===
+    'string'
+      ? {
+          speakerCharacterId: (
+            seg as { speakerCharacterId?: string }
+          ).speakerCharacterId!.trim(),
+        }
       : {}),
   }
 }
@@ -73,6 +59,5 @@ export function activeReceiveFromView(
 }
 
 export function turnHasAssistantReceives(turn: TurnViewRef): boolean {
-  if (turn.segments?.some((s) => (s.receives?.length ?? 0) > 0)) return true
-  return (turn.receives?.length ?? 0) > 0
+  return (turn.segments ?? []).some((s) => (s.receives?.length ?? 0) > 0)
 }

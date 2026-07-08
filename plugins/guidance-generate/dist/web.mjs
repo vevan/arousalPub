@@ -4,20 +4,29 @@ var k = (host, key) => host.pluginKey(key);
 function notifyGuidanceFailed(host, detail) {
   const title = host.t(k(host, "toastFailed"));
   const body = detail?.trim();
-  if (body) {
-    host.ui.notify(title, body, { color: "error" });
-  } else {
-    host.ui.toast(title, { color: "error" });
-  }
+  host.ui.notify(title, body || void 0, { color: "error" });
 }
 function resolveMode(raw) {
   if (raw === "regenerate") return "regenerate";
   if (raw === "revise") return "revise";
   return "send";
 }
-function activeAssistantText(turn) {
-  const receives = turn.receives ?? [];
-  const idx = typeof turn.activeReceiveIndex === "number" && !Number.isNaN(turn.activeReceiveIndex) ? turn.activeReceiveIndex : 0;
+function segmentReceivesAt(turn, segmentIndex) {
+  const segments = turn.segments ?? [];
+  if (segments.length === 0) return [];
+  const raw = typeof segmentIndex === "number" && Number.isFinite(segmentIndex) ? segmentIndex : turn.activeSegmentIndex ?? 0;
+  const idx = Math.min(Math.max(0, Math.floor(raw)), segments.length - 1);
+  return segments[idx]?.receives ?? [];
+}
+function activeAssistantText(turn, segmentIndex) {
+  const segments = turn.segments ?? [];
+  const segIdx = segments.length === 0 ? 0 : Math.min(
+    Math.max(0, segmentIndex ?? turn.activeSegmentIndex ?? 0),
+    segments.length - 1
+  );
+  const receives = segmentReceivesAt(turn, segIdx);
+  const seg = segments[segIdx];
+  const idx = typeof seg?.activeReceiveIndex === "number" && !Number.isNaN(seg.activeReceiveIndex) ? seg.activeReceiveIndex : 0;
   const content = receives[idx]?.content;
   return typeof content === "string" ? content.trim() : "";
 }
@@ -86,11 +95,11 @@ function register(host) {
     icon: "mdi-lightbulb-on-outline",
     tooltipKey: k(host, "reviseTooltip"),
     filled: true,
-    when: (ctx) => !!ctx.turn && activeAssistantText(ctx.turn).length > 0,
+    when: (ctx) => !!ctx.turn && activeAssistantText(ctx.turn, ctx.segmentIndex).length > 0,
     disabled: (ctx) => host.session.loading || host.session.regeneratingTurnOrdinal !== null || (ctx.turn ? host.turn.isTurnAwaitingAssistant(ctx.turn) : false),
     onClick: (ctx) => {
       if (!ctx.turn || ctx.listIndex == null) return;
-      const assistantText = activeAssistantText(ctx.turn);
+      const assistantText = activeAssistantText(ctx.turn, ctx.segmentIndex);
       if (!assistantText) return;
       host.openFormDialog(PLUGIN_ID, {
         mode: "revise",

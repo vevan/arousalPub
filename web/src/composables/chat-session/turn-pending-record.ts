@@ -1,12 +1,12 @@
 import type { ChatTurnItem, ReceiveItem } from '../../types/chat-turn.js'
 import type { GroupChatTurnState } from '../../utils/group-chat-settings.js'
 import { allocateShortId } from '../../utils/short-id.js'
+import { getTurnSegments } from '../../utils/group-chat-turn.js'
 
 export function collectUsedIdsFromTurn(turn: ChatTurnItem): Set<string> {
   const used = new Set<string>()
-  for (const r of turn.receives) used.add(r.id)
-  for (const seg of turn.segments ?? []) {
-    used.add(seg.id)
+  for (const seg of getTurnSegments(turn)) {
+    if (seg.id) used.add(seg.id)
     for (const r of seg.receives) used.add(r.id)
   }
   return used
@@ -35,8 +35,6 @@ export function buildPendingUserTurnItem(
   }
   return {
     user: userText,
-    receives: [],
-    activeReceiveIndex: 0,
     turnOrdinal: ord,
     segments: [pendingSegment],
     activeSegmentIndex: 0,
@@ -75,12 +73,9 @@ export function mergeFinalizedPendingTurn(
     segments[0] = finalizedSeg
   }
   const activeSegIdx = meta?.activeSegmentIndex ?? segIdx
-  const activeSeg = segments[activeSegIdx] ?? finalizedSeg
   return {
     ...cur,
     ...(finalUserText !== undefined ? { user: finalUserText } : {}),
-    receives: activeSeg.receives,
-    activeReceiveIndex: activeSeg.activeReceiveIndex,
     segments,
     activeSegmentIndex: activeSegIdx,
     ...(meta?.speakerQueue?.length ? { speakerQueue: meta.speakerQueue } : {}),

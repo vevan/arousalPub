@@ -138,16 +138,11 @@ export function parseConversationTurnsFromApi(
             Math.max(0, segments.length - 1),
           )
         : 0
-    const activeSeg = segments[activeSegmentIndex]
-    const receives = activeSeg?.receives ?? []
-    const activeReceiveIndex = activeSeg?.activeReceiveIndex ?? 0
     return {
       ...(typeof row.turnId === 'string' && row.turnId.trim()
         ? { turnId: row.turnId.trim() }
         : {}),
       user,
-      receives,
-      activeReceiveIndex,
       turnOrdinal: ord,
       segments,
       activeSegmentIndex,
@@ -237,19 +232,13 @@ export async function fetchConversationTurnsRange(
 }
 
 function turnToPatchPayload(turn: ChatTurnItem) {
+  const body = buildTurnPatchRequestBody(turn)
   return {
     turnOrdinal: turn.turnOrdinal,
-    userText: turn.user,
-    receives: turn.receives.map((r) => ({
-      id: r.id,
-      content: r.content,
-      ...(r.reasoning ? { reasoning: r.reasoning } : {}),
-      ...(r.durationMs ? { durationMs: r.durationMs } : {}),
-      ...(r.estimatedTokens ? { estimatedTokens: r.estimatedTokens } : {}),
-      ...(r.completionTokens ? { completionTokens: r.completionTokens } : {}),
-      ...(r.model ? { model: r.model } : {}),
-    })),
-    activeReceiveIndex: turn.activeReceiveIndex,
+    userText: body.userText as string,
+    receives: body.receives,
+    activeReceiveIndex: body.activeReceiveIndex,
+    ...(body.segmentIndex !== undefined ? { segmentIndex: body.segmentIndex } : {}),
   }
 }
 
@@ -308,41 +297,9 @@ export function mergeTurnFromPatchPersist(
   const byId = new Map(payload.receives.map((r) => [r.id, r]))
   const segIdx = segmentIndex ?? getActiveSegmentIndex(turn)
   const segments = getTurnSegments(turn)
-  if (segments.length > 0) {
-    const seg = segments[segIdx]
-    if (!seg) return turn
-    const receives = seg.receives.map((r) => {
-      const fromServer = byId.get(r.id)
-      if (!fromServer) return r
-      const item: ReceiveItem = {
-        ...r,
-        content: fromServer.content,
-      }
-      if (typeof fromServer.reasoning === 'string' && fromServer.reasoning.length > 0) {
-        item.reasoning = fromServer.reasoning
-      } else {
-        delete item.reasoning
-      }
-      return item
-    })
-    let ai = payload.activeReceiveIndex
-    if (receives.length > 0) {
-      ai = Math.min(Math.max(0, ai), receives.length - 1)
-    }
-    const nextSegments = [...segments]
-    nextSegments[segIdx] = { ...seg, receives, activeReceiveIndex: ai }
-    const activeSeg = nextSegments[segIdx]!
-    return {
-      ...turn,
-      user: payload.finalUserText,
-      segments: nextSegments,
-      activeSegmentIndex: segIdx,
-      receives: activeSeg.receives,
-      activeReceiveIndex: activeSeg.activeReceiveIndex,
-      ...(payload.plugins !== undefined ? { plugins: payload.plugins } : {}),
-    }
-  }
-  const receives = turn.receives.map((r) => {
+  const seg = segments[segIdx]
+  if (!seg) return turn
+  const receives = seg.receives.map((r) => {
     const fromServer = byId.get(r.id)
     if (!fromServer) return r
     const item: ReceiveItem = {
@@ -360,11 +317,17 @@ export function mergeTurnFromPatchPersist(
   if (receives.length > 0) {
     ai = Math.min(Math.max(0, ai), receives.length - 1)
   }
+  const storedSegments = turn.segments ?? []
+  const nextSegments =
+    storedSegments.length > 0
+      ? [...storedSegments]
+      : [...segments]
+  nextSegments[segIdx] = { ...seg, receives, activeReceiveIndex: ai }
   return {
     ...turn,
     user: payload.finalUserText,
-    receives,
-    activeReceiveIndex: ai,
+    segments: nextSegments,
+    activeSegmentIndex: segIdx,
     ...(payload.plugins !== undefined ? { plugins: payload.plugins } : {}),
   }
 }

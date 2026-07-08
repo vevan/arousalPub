@@ -4,8 +4,11 @@ import ChatTurnBranchActions from '@/components/chat/ChatTurnBranchActions.vue'
 import type { useChatSession } from '@/composables/useChatSession'
 import type { ChatTurnItem } from '@/types/chat-turn'
 import {
-  renderRichMessageToHtml,
-} from '@/utils/render-rich-message'
+  assistantModelName,
+  segmentActiveReceiveIndex,
+  segmentReceiveCount,
+} from '@/utils/chat-turn-display'
+import { renderRichMessageToHtml } from '@/utils/render-rich-message'
 import PluginSlotMount from '@/plugins/PluginSlotMount.vue'
 import { useConnectionStore } from '@/stores/connection'
 import { storeToRefs } from 'pinia'
@@ -15,6 +18,7 @@ const props = defineProps<{
   turn: ChatTurnItem
   listIndex: number
   segmentIndex?: number
+  speakerCharacterId?: string
   session: ReturnType<typeof useChatSession>
 }>()
 
@@ -56,6 +60,15 @@ const {
 
 const segIdx = computed(() => props.segmentIndex ?? 0)
 const copyKey = computed(() => `a-${props.turn.turnOrdinal}-${segIdx.value}`)
+const segmentSpeakerId = computed(
+  () => props.speakerCharacterId?.trim() || props.turn.speakerCharacterId,
+)
+const swipeActiveIndex = computed(() =>
+  segmentActiveReceiveIndex(props.turn, segIdx.value),
+)
+const swipeReceiveCount = computed(() =>
+  segmentReceiveCount(props.turn, segIdx.value),
+)
 
 function bubbleLoading() {
   return isAssistantBubbleLoading(props.turn, segIdx.value)
@@ -73,25 +86,21 @@ const liveAssistantTimerLabel = computed(() => {
 })
 
 const displayModelName = computed(() => {
-  const t = props.turn
   if (bubbleLoading()) {
     return connModel.value.trim()
   }
-  const idx = t.activeReceiveIndex
-  const r = t.receives[idx]
-  const stored =
-    typeof r?.model === 'string' && r.model.trim() ? r.model.trim() : ''
+  const stored = assistantModelName(props.turn, segIdx.value)
   return stored || connModel.value.trim()
 })
 
 const speakerRoleName = computed(() =>
-  props.session.assistantRoleNameForSpeaker(props.turn.speakerCharacterId),
+  props.session.assistantRoleNameForSpeaker(segmentSpeakerId.value),
 )
 const speakerAvatarUrl = computed(() =>
-  props.session.assistantAvatarUrlForSpeaker(props.turn.speakerCharacterId),
+  props.session.assistantAvatarUrlForSpeaker(segmentSpeakerId.value),
 )
 const speakerAvatarLetter = computed(() =>
-  props.session.assistantAvatarLetterForSpeaker(props.turn.speakerCharacterId),
+  props.session.assistantAvatarLetterForSpeaker(segmentSpeakerId.value),
 )
 </script>
 
@@ -150,7 +159,7 @@ const speakerAvatarLetter = computed(() =>
             class="turn-role__indicator"
             :class="{
               'is-filled':
-                assistantReasoning(turn).length > 0 ||
+                assistantReasoning(turn, segIdx).length > 0 ||
                 (bubbleLoading() && !!streamingReasoning),
             }"
             role="img"
@@ -195,13 +204,13 @@ const speakerAvatarLetter = computed(() =>
     <ChatReasoningChain
       v-if="
         conn.showReasoningChain &&
-        assistantReasoning(turn).length > 0 &&
+        assistantReasoning(turn, segIdx).length > 0 &&
         !bubbleLoading() &&
         !bubbleEditing()
       "
       :key="`reasoning-${turn.turnOrdinal}`"
       :turn-ordinal="turn.turnOrdinal"
-      :reasoning-text="displayAssistantReasoning(turn)"
+      :reasoning-text="displayAssistantReasoning(turn, segIdx)"
       :copy-key="`r-${turn.turnOrdinal}`"
       :session="session"
     />
@@ -248,7 +257,7 @@ const speakerAvatarLetter = computed(() =>
       <template v-else>
         <div
           class="chat-rich-text"
-          v-html="renderRichMessageToHtml(displayAssistantText(turn))"
+          v-html="renderRichMessageToHtml(displayAssistantText(turn, segIdx))"
         />
       </template>
     </div>
@@ -296,7 +305,7 @@ const speakerAvatarLetter = computed(() =>
         :data-tt="copiedTurnKey === copyKey ? $t('chat.copied') : $t('chat.copy')"
         :class="{ 'is-success': copiedTurnKey === copyKey }"
         :aria-label="$t('chat.copy')"
-        @click="copyTurnText(displayAssistantText(turn), copyKey)"
+        @click="copyTurnText(displayAssistantText(turn, segIdx), copyKey)"
       >
         <v-icon size="16">{{ copiedTurnKey === copyKey ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
       </button>
@@ -326,8 +335,8 @@ const speakerAvatarLetter = computed(() =>
         class="swipe"
         :aria-label="
           $t('chat.swipePosition', {
-            current: turn.activeReceiveIndex + 1,
-            total: turn.receives.length,
+            current: swipeActiveIndex + 1,
+            total: swipeReceiveCount,
           })
         "
       >
@@ -341,7 +350,7 @@ const speakerAvatarLetter = computed(() =>
           <v-icon size="16">mdi-chevron-left</v-icon>
         </button>
         <span class="swipe__count tabular-nums">
-          {{ turn.activeReceiveIndex + 1 }} / {{ turn.receives.length }}
+          {{ swipeActiveIndex + 1 }} / {{ swipeReceiveCount }}
         </span>
         <button
           type="button"

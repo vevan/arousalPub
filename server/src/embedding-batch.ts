@@ -136,27 +136,16 @@ async function createEmbeddingsBatchRequest(
   }
 }
 
-/** 单批失败时回退为逐条请求（兼容不支持 input 数组的上游） */
-async function embedBatchWithFallback(
+/** 单批 embedding 请求 */
+async function embedBatch(
   creds: ResolvedEmbeddingCredentials,
   items: EmbeddingBatchItem[],
 ): Promise<EmbeddingBatchVectorsResult> {
-  const batch = await createEmbeddingsBatchRequest(creds, items)
-  if ('ok' in batch && batch.ok) return batch
-
-  const vectors = new Map<string, number[]>()
-  let model = creds.embeddingModel
-  for (const it of items) {
-    const emb = await createEmbeddingWithCredentials(creds, it.text)
-    if ('error' in emb) return emb
-    vectors.set(it.key, emb.vector)
-    model = emb.model
-  }
-  return { ok: true, vectors, model }
+  return createEmbeddingsBatchRequest(creds, items)
 }
 
 /**
- * 批量 embedding：先按批请求，失败则逐条回退；多批之间有限并发。
+ * 批量 embedding：按批请求；多批之间有限并发。
  */
 export async function embedTextsInBatches(
   creds: ResolvedEmbeddingCredentials,
@@ -203,7 +192,7 @@ export async function embedTextsInBatches(
       const chunk = chunks[chunkIndex]
       if (!chunk) return
 
-      const result = await embedBatchWithFallback(creds, chunk)
+      const result = await embedBatch(creds, chunk)
       if (!isEmbeddingBatchOk(result)) {
         firstError = result
         return

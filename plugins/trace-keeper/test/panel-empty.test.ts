@@ -16,6 +16,31 @@ const bundle: TraceBundle = {
 }
 const epoch = 0
 
+function segTurn(
+  turnOrdinal: number,
+  receive: { id: string; content: string } | { id: string; content: string }[] | null,
+  plugins: unknown[] = [],
+) {
+  const receives = receive
+    ? Array.isArray(receive)
+      ? receive
+      : [receive]
+    : []
+  return {
+    turnOrdinal,
+    segments: [
+      {
+        id: 'seg0',
+        speakerCharacterId: '',
+        receives,
+        activeReceiveIndex: 0,
+      },
+    ],
+    activeSegmentIndex: 0,
+    plugins,
+  }
+}
+
 describe('resolvePanelView', () => {
   it('empty_session when no turns', () => {
     const r = resolvePanelView(bundle, [], epoch, null)
@@ -30,11 +55,7 @@ describe('resolvePanelView', () => {
     const r = resolvePanelView(
       bundle,
       [
-        {
-          turnOrdinal: 1,
-          receives: [{ id: 'r1', content: 'plain reply' }],
-          plugins: [],
-        },
+        segTurn(1, { id: 'r1', content: 'plain reply' }, []),
       ],
       epoch,
       null,
@@ -50,23 +71,19 @@ describe('resolvePanelView', () => {
     const r = resolvePanelView(
       bundle,
       [
-        {
-          turnOrdinal: 1,
-          receives: [{ id: 'r1', content: 'plain reply' }],
-          plugins: [
-            {
-              pluginId: 'trace-keeper',
-              payload: {
-                state: {
-                  scene: { location: 'A', time: 't', weather: 'w' },
-                  mood: 'm',
-                },
-                epoch: 0,
-                receiveId: 'r1',
+        segTurn(1, { id: 'r1', content: 'plain reply' }, [
+          {
+            pluginId: 'trace-keeper',
+            payload: {
+              state: {
+                scene: { location: 'A', time: 't', weather: 'w' },
+                mood: 'm',
               },
+              epoch: 0,
+              receiveId: 'r1',
             },
-          ],
-        },
+          },
+        ]),
       ],
       epoch,
       null,
@@ -130,28 +147,20 @@ describe('resolvePanelView', () => {
     const r = resolvePanelView(
       bundle,
       [
-        {
-          turnOrdinal: 0,
-          receives: [{ id: 'r0', content: 'ok' }],
-          plugins: [
-            {
-              pluginId: 'trace-keeper',
-              payload: {
-                state: {
-                  scene: { location: 'Prior', time: 't', weather: 'w' },
-                  mood: 'm',
-                },
-                epoch: 0,
-                receiveId: 'r0',
+        segTurn(0, { id: 'r0', content: 'ok' }, [
+          {
+            pluginId: 'trace-keeper',
+            payload: {
+              state: {
+                scene: { location: 'Prior', time: 't', weather: 'w' },
+                mood: 'm',
               },
+              epoch: 0,
+              receiveId: 'r0',
             },
-          ],
-        },
-        {
-          turnOrdinal: 1,
-          receives: [],
-          plugins: [],
-        },
+          },
+        ]),
+        segTurn(1, null, []),
       ],
       epoch,
       null,
@@ -169,33 +178,23 @@ describe('resolvePanelView', () => {
     const r = resolvePanelView(
       bundle,
       [
-        {
-          turnOrdinal: 0,
-          receives: [{ id: 'r0', content: 'ok' }],
-          plugins: [
-            {
-              pluginId: 'trace-keeper',
-              payload: {
-                state: {
-                  scene: { location: 'Prior', time: 't', weather: 'w' },
-                  mood: 'm',
-                },
-                epoch: 0,
-                receiveId: 'r0',
+        segTurn(0, { id: 'r0', content: 'ok' }, [
+          {
+            pluginId: 'trace-keeper',
+            payload: {
+              state: {
+                scene: { location: 'Prior', time: 't', weather: 'w' },
+                mood: 'm',
               },
+              epoch: 0,
+              receiveId: 'r0',
             },
-          ],
-        },
-        {
-          turnOrdinal: 1,
-          receives: [
-            {
-              id: 'r1',
-              content: 'x<ex-trace-keeper>{not json</ex-trace-keeper>',
-            },
-          ],
-          plugins: [],
-        },
+          },
+        ]),
+        segTurn(1, {
+          id: 'r1',
+          content: 'x<ex-trace-keeper>{not json</ex-trace-keeper>',
+        }, []),
       ],
       epoch,
       null,
@@ -212,28 +211,20 @@ describe('resolvePanelView', () => {
     const r = resolvePanelView(
       bundle,
       [
-        {
-          turnOrdinal: 0,
-          receives: [{ id: 'r0', content: 'ok' }],
-          plugins: [
-            {
-              pluginId: 'trace-keeper',
-              payload: {
-                state: {
-                  scene: { location: 'Prior', time: 't', weather: 'w' },
-                  mood: 'm',
-                },
-                epoch: 0,
-                receiveId: 'r0',
+        segTurn(0, { id: 'r0', content: 'ok' }, [
+          {
+            pluginId: 'trace-keeper',
+            payload: {
+              state: {
+                scene: { location: 'Prior', time: 't', weather: 'w' },
+                mood: 'm',
               },
+              epoch: 0,
+              receiveId: 'r0',
             },
-          ],
-        },
-        {
-          turnOrdinal: 1,
-          receives: [{ id: 'r1', content: 'plain reply without tag' }],
-          plugins: [],
-        },
+          },
+        ]),
+        segTurn(1, { id: 'r1', content: 'plain reply without tag' }, []),
       ],
       epoch,
       null,
@@ -250,21 +241,13 @@ describe('resolvePanelView', () => {
     const r = resolvePanelView(
       bundle,
       [
-        {
-          turnOrdinal: 1,
-          receives: [{ id: 'r1', content: '{bad}' }],
-          plugins: [],
-        },
-        {
-          turnOrdinal: 2,
-          receives: [{ id: 'r2', content: 'ok' }],
-          plugins: [
-            {
-              pluginId: 'trace-keeper',
-              payload: { state: { mood: 'x' }, epoch: 0, receiveId: 'r2' },
-            },
-          ],
-        },
+        segTurn(1, { id: 'r1', content: '{bad}' }, []),
+        segTurn(2, { id: 'r2', content: 'ok' }, [
+          {
+            pluginId: 'trace-keeper',
+            payload: { state: { mood: 'x' }, epoch: 0, receiveId: 'r2' },
+          },
+        ]),
       ],
       epoch,
       { turnOrdinal: 1, segmentIndex: 0 },
@@ -280,20 +263,16 @@ describe('resolvePanelView', () => {
     const r = resolvePanelView(
       bundle,
       [
-        {
-          turnOrdinal: 1,
-          receives: [{ id: 'r1', content: '' }],
-          plugins: [
-            {
-              pluginId: 'trace-keeper',
-              payload: {
-                state: { scene: { location: 'A', time: 't', weather: 'w' }, mood: 'm' },
-                epoch: 0,
-                receiveId: 'r1',
-              },
+        segTurn(1, { id: 'r1', content: '' }, [
+          {
+            pluginId: 'trace-keeper',
+            payload: {
+              state: { scene: { location: 'A', time: 't', weather: 'w' }, mood: 'm' },
+              epoch: 0,
+              receiveId: 'r1',
             },
-          ],
-        },
+          },
+        ]),
       ],
       epoch,
       null,
@@ -308,16 +287,10 @@ describe('resolvePanelView', () => {
     const r = resolvePanelView(
       bundle,
       [
-        {
-          turnOrdinal: 1,
-          receives: [
-            {
-              id: 'r1',
-              content: 'x<ex-trace-keeper>{"mood":"ok"}</ex-trace-keeper>',
-            },
-          ],
-          plugins: [],
-        },
+        segTurn(1, {
+          id: 'r1',
+          content: 'x<ex-trace-keeper>{"mood":"ok"}</ex-trace-keeper>',
+        }, []),
       ],
       epoch,
       null,
@@ -336,16 +309,12 @@ describe('resolvePanelView', () => {
     const r = resolvePanelView(
       badBundle,
       [
-        {
-          turnOrdinal: 1,
-          receives: [{ id: 'r1', content: '' }],
-          plugins: [
-            {
-              pluginId: 'trace-keeper',
-              payload: { state: { mood: 'x' }, epoch: 0, receiveId: 'r1' },
-            },
-          ],
-        },
+        segTurn(1, { id: 'r1', content: '' }, [
+          {
+            pluginId: 'trace-keeper',
+            payload: { state: { mood: 'x' }, epoch: 0, receiveId: 'r1' },
+          },
+        ]),
       ],
       epoch,
       null,

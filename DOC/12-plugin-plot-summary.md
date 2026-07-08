@@ -61,7 +61,7 @@
 
 1. 组内：**other** → **sidecar**（配置顺序）→ **summary**
 2. summary：按轮次后缀 **`[from-to]`** 升序（`start`，再 `end`）；同区间再比 **MEMO-n**
-3. **兼容**：仍识别旧版 `TITLE-from-to` 后缀（无 `[MEMO-]` 前缀）
+3. 标题须为 **`[MEMO-n]-TITLE-[from-to]`**；旧版 `TITLE-from-to` 后缀**不再**识别
 
 实现：`plugins/plot-summary/src/shared/lorebook-sort.ts`（插件侧选 `<previous-summaries>` 条）。
 
@@ -91,5 +91,5 @@
 - [ ] 手动/自动摘要 → 预览 → 确认写入 lore  
 - [ ] 关再开自动摘要：指针不漂移（91+ 续接）  
 - [ ] 手动预填区间与自动块等长（`end = T - buffer`，`start = end - (blockTurns - 1)`）  
-- [ ] 写入 lore 条目标题为 `[MEMO-n]-TITLE-[from-to]`；旧条目 `-from-to` 仍可排序  
+- [ ] 写入 lore 条目标题为 `[MEMO-n]-TITLE-[from-to]`
 - [ ] `regexApplyAllTurns` 对摘要 history 全区间生效  

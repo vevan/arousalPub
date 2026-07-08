@@ -15,6 +15,7 @@ import {
   reasoningCharsCount,
   turnLabelN,
 } from '@/utils/chat-turn-display'
+import { fingerprintTurnReceives } from '@/utils/group-chat-turn'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -454,7 +455,7 @@ export function useChatSession(props: ChatSessionProps) {
     () =>
       turns.value.map(
         (t) =>
-          `${t.turnOrdinal}:${t.activeReceiveIndex}:${t.receives.map((r) => r.id).join(',')}:${JSON.stringify(t.plugins ?? [])}`,
+          `${t.turnOrdinal}:${fingerprintTurnReceives(t)}:${JSON.stringify(t.plugins ?? [])}`,
       ),
     () => {
       emitTurnDataChanged()

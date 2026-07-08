@@ -82,7 +82,7 @@ export interface PluginHost {
     }) => Promise<{ ok: boolean; promptTokens: number; budget: number; code?: string }>
   }
   ui: {
-    toast: (msg: string, opts?: { color?: string }) => void
+    notify: (title: string, body?: string, opts?: { color?: string }) => void
     progress: (opts: Record<string, unknown>) => void
     clearProgress: () => void
     openFormDialog: (

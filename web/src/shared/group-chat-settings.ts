@@ -13,9 +13,6 @@ export interface GroupChatMemberSettings {
   speakQuota?: number
 }
 
-/** @deprecated G2；normalize 时 `weighted` → `speakerMode: dice` */
-export type GroupChatMode = 'weighted' | 'sequential'
-
 export type SpeakerMode = 'sequential' | 'dice' | 'next@'
 
 /** 群聊角色扮演说明（注入 user 消息后；可在会话群聊设置中覆盖） */
@@ -34,8 +31,6 @@ export interface GroupChatTurnState {
 export interface GroupChatSettings {
   enabled?: boolean
   speakerMode?: SpeakerMode
-  /** @deprecated 使用 speakerMode */
-  mode?: GroupChatMode
   autoContinue?: boolean
   confirmContinue?: boolean
   maxSegmentsPerTurn?: number
@@ -71,8 +66,6 @@ function resolveSpeakerModeFromRaw(
     const m = o.speakerMode.trim().toLowerCase()
     if (m === 'sequential' || m === 'dice' || m === 'next@') return m
   }
-  const legacy = typeof o.mode === 'string' ? o.mode.trim().toLowerCase() : ''
-  if (legacy === 'sequential') return 'sequential'
   return base.speakerMode ?? 'dice'
 }
 
@@ -84,7 +77,6 @@ export function defaultGroupChatSettings(): GroupChatSettings {
   return {
     enabled: false,
     speakerMode: 'dice',
-    mode: 'weighted',
     autoContinue: false,
     confirmContinue: true,
     maxSegmentsPerTurn: DEFAULT_MAX_SEGMENTS_PER_TURN,
@@ -137,13 +129,9 @@ export function normalizeGroupChatSettings(raw: unknown): GroupChatSettings {
   if (!raw || typeof raw !== 'object') return base
   const o = raw as Record<string, unknown>
   const speakerMode = resolveSpeakerModeFromRaw(o, base)
-  const modeRaw = typeof o.mode === 'string' ? o.mode.trim().toLowerCase() : ''
-  const mode: GroupChatMode =
-    modeRaw === 'sequential' ? 'sequential' : 'weighted'
   return {
     enabled: typeof o.enabled === 'boolean' ? o.enabled : base.enabled,
     speakerMode,
-    mode,
     autoContinue:
       typeof o.autoContinue === 'boolean' ? o.autoContinue : base.autoContinue,
     confirmContinue:
@@ -320,10 +308,6 @@ export function mergeGroupChatSettings(
   if (typeof o.speakerMode === 'string') {
     const m = o.speakerMode.trim().toLowerCase()
     if (m === 'sequential' || m === 'dice' || m === 'next@') next.speakerMode = m
-  }
-  if (typeof o.mode === 'string') {
-    const m = o.mode.trim().toLowerCase()
-    if (m === 'weighted' || m === 'sequential') next.mode = m
   }
   if (Object.prototype.hasOwnProperty.call(o, 'maxSegmentsPerTurn')) {
     next.maxSegmentsPerTurn = normalizePositiveInt(

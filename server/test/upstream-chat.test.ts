@@ -40,4 +40,13 @@ describe('extractAssistantContent', () => {
       'hello',
     )
   })
+
+  it('ignores legacy completion text field', () => {
+    assert.equal(
+      extractAssistantContent({
+        choices: [{ text: 'legacy' }],
+      }),
+      '',
+    )
+  })
 })

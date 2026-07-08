@@ -42,9 +42,7 @@ function parsePosition(raw: unknown): PluginPromptInjectionPosition | null {
       ? Math.max(0, Math.floor(o.depth))
       : NaN
   if (!Number.isFinite(depth)) return null
-  const injectionOrder =
-    parseInjectionOrder(o.injectionOrder) ??
-    parseInjectionOrder(o.order)
+  const injectionOrder = parseInjectionOrder(o.injectionOrder)
   return {
     kind: 'chat',
     depth,

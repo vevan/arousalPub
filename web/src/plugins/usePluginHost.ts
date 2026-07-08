@@ -17,6 +17,7 @@ import type {
 import type { useChatSession } from '@/composables/useChatSession'
 import { usePluginPermissionsStore } from '@/stores/plugin-permissions'
 import { apiFetch } from '@/utils/api-fetch'
+import { fingerprintTurnReceives } from '@/utils/group-chat-turn'
 import { onMounted, ref, watch } from 'vue'
 
 type ChatSession = ReturnType<typeof useChatSession>
@@ -171,7 +172,7 @@ export function usePluginHost(
   watch(
     () =>
       session.turns.map(
-        (t) => `${t.turnOrdinal}:${t.receives.length}:${t.activeReceiveIndex}`,
+        (t) => `${t.turnOrdinal}:${fingerprintTurnReceives(t)}`,
       ),
     () => {
       slotButtonRevision.value += 1
@@ -189,8 +190,6 @@ export function usePluginHost(
     registry,
     loadError,
     registryLoaded,
-    /** @deprecated 使用 registryLoaded；保留兼容 */
-    loaded: registryLoaded,
     ensureSlotPlugins,
     ensureEagerOnRoutes,
     ensurePluginById,

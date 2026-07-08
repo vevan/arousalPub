@@ -68,16 +68,15 @@ export function decryptSecret(
   return plain.toString('utf8')
 }
 
-/** 读盘：密文优先，否则 legacy 明文 */
+/** 读盘：仅解密 keyEnc；明文 apiKey 字段不再读取 */
 export function resolveSecretFromDisk(
-  legacyPlain: string | undefined,
   encrypted: EncryptedSecretV1 | undefined,
   opts: SecretCryptoOptions,
 ): string {
   if (encrypted) {
     return decryptSecret(encrypted, opts)
   }
-  return typeof legacyPlain === 'string' ? legacyPlain : ''
+  return ''
 }
 
 /** 写盘：非空则加密，空则两者皆省略 */

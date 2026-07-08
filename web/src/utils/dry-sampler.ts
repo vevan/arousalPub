@@ -10,16 +10,6 @@ export interface DrySamplerFields {
 
 export const DEFAULT_DRY_SEQUENCE_BREAKERS = ['\n', ':', '"', '*']
 
-/** 将旧版单字段 `dry` 迁移为 `dryMultiplier` */
-export function migrateLegacyDryField(
-  raw: Record<string, unknown>,
-): Partial<DrySamplerFields> {
-  if ('dryMultiplier' in raw) return {}
-  const legacy = raw.dry
-  if (typeof legacy !== 'number' || !Number.isFinite(legacy)) return {}
-  return { dryMultiplier: legacy }
-}
-
 export function normalizeDrySequenceBreakers(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
   const out: string[] = []

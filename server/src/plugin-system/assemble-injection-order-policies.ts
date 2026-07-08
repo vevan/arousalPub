@@ -76,13 +76,6 @@ export function getAssembleInjectionOrderPolicy(
   return policyByPluginId.get(pluginId) ?? { slots: {}, slotSettingsKeys: {} }
 }
 
-/** @deprecated 使用 resolveEffectiveAssembleInjectionOrderSlots */
-export function getAssembleInjectionOrderSlots(
-  pluginId: string,
-): AssembleInjectionOrderSlots {
-  return getAssembleInjectionOrderPolicy(pluginId).slots
-}
-
 export function __setAssembleInjectionOrderSlotsForTest(
   pluginId: string,
   slots: AssembleInjectionOrderSlots,

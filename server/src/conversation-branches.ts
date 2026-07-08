@@ -287,7 +287,6 @@ function branchIndexStubFromRoot(root: ConversationIndex): ConversationIndex {
     schemaVersion: 1,
     conversationId: root.conversationId,
     title: root.title,
-    characterId: root.characterId ?? null,
     ...(root.characterIds?.length ? { characterIds: root.characterIds } : {}),
     createdAt: t,
     updatedAt: t,

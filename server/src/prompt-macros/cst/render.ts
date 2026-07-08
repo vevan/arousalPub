@@ -1,4 +1,3 @@
-import { preprocessLegacyAngleTags } from '../preprocess-angle-tags.js'
 import type { PromptMacroContext } from '../types.js'
 import { getCachedMacroDocument } from './document-cache.js'
 import { walkCstDocument } from './walker.js'
@@ -12,7 +11,7 @@ function renderPromptMacrosCstOnce(
   ctx: PromptMacroContext,
 ): string {
   if (!text) return text
-  const normalized = preprocessLegacyAngleTags(text)
+  const normalized = text
   if (!normalized.includes('{{') && !normalized.includes('\\')) return normalized
   return walkCstDocument(getCachedMacroDocument(normalized), ctx)
 }

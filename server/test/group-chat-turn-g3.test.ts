@@ -7,7 +7,7 @@ import {
   DEFAULT_GROUP_CONTINUE_ASSEMBLE_INSTRUCTION,
 } from '../src/shared/group-chat-settings.js'
 import {
-  groupChatNextAtInstruction,
+  groupChatAssembleInstruction,
   buildGroupChatSpeakerAudit,
   segmentPickAuditFromCarriedNextSpeaker,
   diceBiddingPick,
@@ -388,9 +388,9 @@ describe('group-chat-turn G3', () => {
     assert.equal(resolved.speakerCharacterId, null)
   })
 
-  it('groupChatNextAtInstruction only for next@ mode', () => {
+  it('groupChatAssembleInstruction next@ concatenates group and continue', () => {
     assert.equal(
-      groupChatNextAtInstruction({
+      groupChatAssembleInstruction({
         ...groupChat,
         speakerMode: 'next@',
         enabled: true,
@@ -399,8 +399,11 @@ describe('group-chat-turn G3', () => {
       }),
       `${DEFAULT_GROUP_CHAT_ASSEMBLE_INSTRUCTION}\n${DEFAULT_GROUP_CONTINUE_ASSEMBLE_INSTRUCTION}`,
     )
-    assert.equal(groupChatNextAtInstruction({ ...groupChat, speakerMode: 'dice' }), null)
-    assert.equal(groupChatNextAtInstruction({ ...groupChat, enabled: false }), null)
+    assert.equal(
+      groupChatAssembleInstruction({ ...groupChat, speakerMode: 'dice' }),
+      DEFAULT_GROUP_CHAT_ASSEMBLE_INSTRUCTION,
+    )
+    assert.equal(groupChatAssembleInstruction({ ...groupChat, enabled: false }), null)
   })
 
   it('diceBiddingPick records full roster with dice audit rows', () => {

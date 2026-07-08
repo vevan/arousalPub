@@ -44,11 +44,6 @@ export async function runRequestUserAsync(
   })
 }
 
-/** @deprecated 优先使用 {@link runRequestUser} */
-export function enterRequestUser(userId: string): void {
-  userStorage.enterWith(assertValidRequestUserId(userId))
-}
-
 /** 可选：读取当前请求用户，未登录时为 undefined */
 export function tryGetCurrentUserId(): string | undefined {
   return userStorage.getStore()

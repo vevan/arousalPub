@@ -10,6 +10,7 @@ describe('buildChatAuditEntry', () => {
         chunkName: 'branch1/chunk-0001.json',
         turnId: 't1',
         turnOrdinal: 0,
+        segmentIndex: 0,
       },
       [{ role: 'user', content: 'hi' }],
       {

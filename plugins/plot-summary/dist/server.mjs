@@ -76,11 +76,6 @@ function extractSummaryCoreTitle(rawTitle) {
   const t = rawTitle.trim();
   const parsed = parsePlotSummaryEntryTitle(t);
   if (parsed?.coreTitle) return parsed.coreTitle;
-  const legacy = t.match(/-(\d+)-(\d+)$/);
-  if (legacy && legacy.index !== void 0) {
-    const core = t.slice(0, legacy.index).trim();
-    if (core) return core;
-  }
   return t || "\u6458\u8981";
 }
 function resolveMemoIndex(rawTitle, fromTurn, blockTurns) {

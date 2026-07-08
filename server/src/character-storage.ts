@@ -147,9 +147,7 @@ async function refStats(): Promise<
     { count: number; lastConversationAt: string | null }
   >()
   for (const entry of list.conversations) {
-    const ids = resolvedCharacterIds(
-      entry as { characterIds?: string[]; characterId?: string | null },
-    )
+    const ids = resolvedCharacterIds(entry)
     const convRecent =
       (typeof entry.lastChatAt === 'string' && entry.lastChatAt.trim()) ||
       (typeof entry.updatedAt === 'string' ? entry.updatedAt : null)
@@ -713,14 +711,11 @@ function bindingIdsForEnrich(
   entry: ChatListEntry,
   source?: Pick<
     ConversationIndex,
-    'userName' | 'userCharacterId' | 'characterIds' | 'characterId'
+    'userName' | 'userCharacterId' | 'characterIds'
   >,
 ): string[] {
   if (source) return resolvedCharacterIds(source)
-  return resolvedCharacterIds({
-    characterIds: entry.characterIds,
-    characterId: entry.characterId ?? null,
-  })
+  return resolvedCharacterIds({ characterIds: entry.characterIds })
 }
 
 export function listLastChatAtFromStats(
@@ -766,7 +761,7 @@ export async function enrichChatListEntry(
   entry: ChatListEntry,
   source?: Pick<
     ConversationIndex,
-    'userName' | 'userCharacterId' | 'characterIds' | 'characterId'
+    'userName' | 'userCharacterId' | 'characterIds'
   >,
 ): Promise<ChatListEntry> {
   const map = await getCharacterIndexMetaMap()

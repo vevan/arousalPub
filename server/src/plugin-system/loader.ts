@@ -11,8 +11,6 @@ import {
   getGlobalPluginsDir,
   getInstalledPluginDir,
   getInstalledPluginServerEntry,
-  getLegacyUserPluginDir,
-  getLegacyUserPluginSettingsPath,
   getPluginUserDataDir,
   getPluginUserSettingsPath,
 } from './paths.js'
@@ -178,20 +176,6 @@ async function ensureBundledPluginUserSettings(userId: string): Promise<void> {
 
     const userDir = getPluginUserDataDir(pluginId, userId)
     await mkdir(userDir, { recursive: true })
-
-    const legacySettings = getLegacyUserPluginSettingsPath(pluginId, userId)
-    if (existsSync(legacySettings)) {
-      await cp(legacySettings, settingsPath)
-      const legacySecrets = path.join(
-        getLegacyUserPluginDir(pluginId, userId),
-        'secrets',
-      )
-      const newSecrets = path.join(userDir, 'secrets')
-      if (existsSync(legacySecrets) && !existsSync(newSecrets)) {
-        await cp(legacySecrets, newSecrets, { recursive: true })
-      }
-      continue
-    }
 
     const template = path.join(
       getBundledPluginSourceDirForEntry(entry),

@@ -3,7 +3,12 @@ import type {
   ChatTurnItem,
   ReceiveItem,
   RetroPersistTurnPayload,
-} from '@/types/chat-turn'
+} from '../types/chat-turn'
+import {
+  getActiveSegmentIndex,
+  getSegmentReceives,
+  getTurnSegments,
+} from './group-chat-turn'
 
 function resolvePersistPluginsForTurn(
   persist: ChatPersistPayload,
@@ -87,10 +92,12 @@ export function resolveFinalUserTextAfterPersist(
 function mapRetroReceives(
   item: RetroPersistTurnPayload,
   fallback: ChatTurnItem,
-): ChatTurnItem['receives'] {
+): ReceiveItem[] {
+  const segIdx = getActiveSegmentIndex(fallback)
+  const fallbackReceives = getSegmentReceives(fallback, segIdx)
   if (item.receives?.length) {
     return item.receives.map((r, i) => {
-      const prev = fallback.receives[i]
+      const prev = fallbackReceives[i]
       return {
         id: r.id,
         content: r.content,
@@ -106,7 +113,7 @@ function mapRetroReceives(
       }
     })
   }
-  return fallback.receives.map((r, i) =>
+  return fallbackReceives.map((r, i) =>
     i === item.activeReceiveIndex
       ? {
           ...r,
@@ -154,14 +161,21 @@ export function applyRetroPersistToTurns(
     const idx = next.findIndex((t) => t.turnOrdinal === item.turnOrdinal)
     if (idx < 0) continue
     const cur = next[idx]!
+    const segIdx = getActiveSegmentIndex(cur)
+    const segments = [...getTurnSegments(cur)]
+    const seg = segments[segIdx]
+    if (!seg) continue
+    const receives = mapRetroReceives(item, cur)
+    const activeReceiveIndex = Math.min(
+      Math.max(0, item.activeReceiveIndex),
+      Math.max(0, receives.length - 1),
+    )
+    segments[segIdx] = { ...seg, receives, activeReceiveIndex }
     const patched: ChatTurnItem = {
       ...cur,
       user: item.finalUserText,
-      receives: mapRetroReceives(item, cur),
-      activeReceiveIndex: Math.min(
-        Math.max(0, item.activeReceiveIndex),
-        Math.max(0, item.receives?.length ?? cur.receives.length) - 1,
-      ),
+      segments,
+      activeSegmentIndex: segIdx,
     }
     next = next.map((t, i) => (i === idx ? patched : t))
   }

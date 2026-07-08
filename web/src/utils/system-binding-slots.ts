@@ -25,11 +25,6 @@ export const CHAR_CORE_ASSEMBLY_FIRST: PromptBindingSlot =
 export const CHAR_CORE_ASSEMBLY_SECOND: PromptBindingSlot =
   'boundCharDescription'
 
-/** @deprecated 用 CHAR_CORE_BUNDLE_LIST_ANCHOR / CHAR_CORE_BUNDLE_INNER */
-export const CHAR_CORE_BUNDLE_ANCHOR = CHAR_CORE_BUNDLE_INNER
-/** @deprecated 用 CHAR_CORE_BUNDLE_LIST_ANCHOR */
-export const CHAR_CORE_BUNDLE_FOLLOWER = CHAR_CORE_BUNDLE_LIST_ANCHOR
-
 export function isCharCoreListAnchor(entry: PromptEntry): boolean {
   return entry.bindingSlot === CHAR_CORE_BUNDLE_LIST_ANCHOR
 }
@@ -51,14 +46,6 @@ export function shouldHideCharSystemPromptInList(
   return groupPrompts.some(
     (e) => e.bindingSlot === CHAR_CORE_BUNDLE_LIST_ANCHOR,
   )
-}
-
-/** @deprecated 用 shouldHideCharSystemPromptInList */
-export function shouldHideCharDescriptionInList(
-  entry: PromptEntry,
-  groupPrompts: PromptEntry[],
-): boolean {
-  return shouldHideCharSystemPromptInList(entry, groupPrompts)
 }
 
 export function findCharCoreBundlePartner(
@@ -128,31 +115,18 @@ export function historyListInnerEntry(
   return findHistoryBundlePartner(listAnchor, prompts)
 }
 
-/** 仅用于 normalize：旧版「卡前 / 槽 / 卡后」分区 → 展平为单一 order */
-function characterBundleListPartitionLegacy(e: PromptEntry): number {
-  if (e.bindingSlot === 'boundCharacterSystem') return 1
-  if (e.characterBundlePosition === 'after') return 2
-  return 0
-}
-
-/** 旧版 characterBundlePosition 分区 → 组内扁平 order */
+/** Character 组内按 order 展平为 0..n-1 */
 export function migrateCharacterGroupToFlatOrder(
   prompts: PromptEntry[],
   charGroupId: string,
 ): PromptEntry[] {
   const inGroup = prompts.filter((e) => e.groupId === charGroupId)
   if (inGroup.length === 0) return prompts
-  const sorted = inGroup.slice().sort((a, b) => {
-    const pa = characterBundleListPartitionLegacy(a)
-    const pb = characterBundleListPartitionLegacy(b)
-    if (pa !== pb) return pa - pb
-    return a.order - b.order
-  })
+  const sorted = inGroup.slice().sort((a, b) => a.order - b.order)
   const idOrder = new Map(sorted.map((e, i) => [e.id, i]))
   return prompts.map((e) => {
     if (e.groupId !== charGroupId) return e
-    const { characterBundlePosition: _drop, ...rest } = e
-    return { ...rest, order: idOrder.get(e.id)! }
+    return { ...e, order: idOrder.get(e.id)! }
   })
 }
 
@@ -289,50 +263,6 @@ export function pinCharSystemPromptBeforeDescription(
   return next
 }
 
-/** @deprecated 会重算整组 order；finalize 已改用 pinCharSystemPromptBeforeDescription */
-export function alignCharCoreAssemblyPair(
-  prompts: PromptEntry[],
-  charGroupId: string,
-): PromptEntry[] {
-  const system = prompts.find(
-    (e) =>
-      e.groupId === charGroupId && e.bindingSlot === CHAR_CORE_ASSEMBLY_FIRST,
-  )
-  const description = prompts.find(
-    (e) =>
-      e.groupId === charGroupId && e.bindingSlot === CHAR_CORE_ASSEMBLY_SECOND,
-  )
-  if (!system || !description) return prompts
-
-  const inChar = prompts
-    .filter((e) => e.groupId === charGroupId)
-    .slice()
-    .sort((a, b) => a.order - b.order)
-  const sysIdx = inChar.findIndex((e) => e.id === system.id)
-  const descIdx = inChar.findIndex((e) => e.id === description.id)
-  if (sysIdx >= 0 && descIdx === sysIdx + 1) return prompts
-
-  const reordered = inChar.filter((e) => e.id !== system.id)
-  const newDescIdx = reordered.findIndex((e) => e.id === description.id)
-  if (newDescIdx < 0) return prompts
-  reordered.splice(newDescIdx, 0, system)
-
-  const idToOrder = new Map(reordered.map((e, i) => [e.id, i]))
-  return prompts.map((e) => {
-    if (e.groupId !== charGroupId) return e
-    const o = idToOrder.get(e.id)
-    return o !== undefined ? { ...e, order: o } : e
-  })
-}
-
-/** @deprecated 用 alignCharCoreAssemblyPair */
-export function ensureCharCoreBundleOrder(
-  prompts: PromptEntry[],
-  charGroupId: string,
-): PromptEntry[] {
-  return alignCharCoreAssemblyPair(prompts, charGroupId)
-}
-
 export function presetHasGranularCharacterFields(
   prompts: PromptEntry[],
   charGroupId?: string,
@@ -346,11 +276,6 @@ export function presetHasGranularCharacterFields(
   )
 }
 
-export interface FinalizeCharacterBindingsOptions {
-  legacySystemPromptEnabled?: boolean
-}
-
-/** CCv2：Character 组必须含 boundCharSystemPrompt；有 granular 时移除 legacy boundCharacterSystem */
 export function finalizeCharacterGroupBindings(
   prompts: PromptEntry[],
   charGroupId: string,
@@ -360,37 +285,12 @@ export function finalizeCharacterGroupBindings(
     id: string,
     enabled?: boolean,
   ) => PromptEntry,
-  opts: FinalizeCharacterBindingsOptions = {},
 ): PromptEntry[] {
   let next = prompts
-  const legacy = next.find(
-    (e) =>
-      e.groupId === charGroupId && e.bindingSlot === 'boundCharacterSystem',
-  )
-  const hasGranular =
-    presetHasGranularCharacterFields(next, charGroupId) ||
-    next.some(
-      (e) =>
-        e.groupId === charGroupId &&
-        e.bindingSlot === 'boundCharDescription',
-    )
   const hasCharSystemPromptInGroup = next.some(
     (e) =>
       e.groupId === charGroupId && e.bindingSlot === 'boundCharSystemPrompt',
   )
-  let legacySysOn = opts.legacySystemPromptEnabled
-
-  if (legacy && (hasGranular || hasCharSystemPromptInGroup)) {
-    if (legacySysOn === undefined) legacySysOn = legacy.enabled !== false
-    next = next.filter(
-      (e) =>
-        !(
-          e.groupId === charGroupId &&
-          e.bindingSlot === 'boundCharacterSystem'
-        ),
-    )
-  }
-
   const charDesc = next.find(
     (e) =>
       e.groupId === charGroupId && e.bindingSlot === 'boundCharDescription',
@@ -399,12 +299,14 @@ export function finalizeCharacterGroupBindings(
     (e) =>
       e.groupId === charGroupId && e.bindingSlot === 'boundCharSystemPrompt',
   )
-  const enabled = legacySysOn !== undefined ? legacySysOn !== false : true
 
-  if (!hasCharSystemPromptInGroup || (charDesc && charSystem && charSystem.order !== charDesc.order - 1)) {
+  if (
+    !hasCharSystemPromptInGroup ||
+    (charDesc && charSystem && charSystem.order !== charDesc.order - 1)
+  ) {
     next = pinCharSystemPromptBeforeDescription(next, charGroupId, makeEntry, {
       existing: charSystem,
-      enabled,
+      enabled: charSystem?.enabled !== false,
     })
   }
 
@@ -442,8 +344,6 @@ export function bindingSlotUsesFlatSubBlockUi(
   }
   if (slot === CHAR_CORE_BUNDLE_INNER) return false
   if (slot === HISTORY_BUNDLE_INNER) return false
-  if (slot === 'boundCharacterSystem') return false
-  if (slot === 'boundWorld') return false
   if (slot === 'boundUserInput') return false
   return (
     GRANULAR_CHARACTER_FIELD_SLOTS.includes(slot) ||
@@ -487,8 +387,6 @@ export function bindingSlotUsesLegacyBundle(
   ) {
     return true
   }
-  if (slot === 'boundCharacterSystem') return kind === 'character'
-  if (slot === 'boundWorld') return kind === 'world'
   if (slot === 'boundUserInput') return kind === 'userInput'
   return false
 }

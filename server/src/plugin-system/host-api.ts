@@ -89,7 +89,7 @@ export function createPluginServerHostApi(
           pluginId: pid,
           userId: uid,
           conversationId: req.conversationId,
-          fallbackToChat: req.fallbackToChat !== false,
+          fallbackToGlobalDefault: req.fallbackToGlobalDefault !== false,
         })
         if (!hit.ok) {
           return { ok: false, code: hit.code }

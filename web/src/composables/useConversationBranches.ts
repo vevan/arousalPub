@@ -12,6 +12,7 @@ import {
 } from '@/utils/conversation-branches-api'
 import { ApiRequestError } from '@/utils/api-error-message'
 import type { ChatTurnItem } from '@/types/chat-turn'
+import { getActiveReceive } from '@/utils/group-chat-turn'
 import { computed, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -163,7 +164,7 @@ export function useConversationBranches(params: {
     branchBusy.value = true
     branchLoadError.value = ''
     try {
-      const receive = turn.receives[turn.activeReceiveIndex]
+      const receive = getActiveReceive(turn)
       const trimmed = label.trim()
       const result = await createConversationBranch(id, {
         forkTurnId,

@@ -9,8 +9,6 @@ export interface MemorySettings {
   stripPluginBlocks: boolean
   /** 用户额外剥离标签（与已启用插件 manifest 合并） */
   stripBlockTags: string[]
-  /** @deprecated 仅兼容旧配置；UI 已移除，按标签名精确剥离 */
-  stripExPrefixElements: boolean
   /** 召回向量是否融合上一轮助手 */
   recallFuseLastAssistant: boolean
   /** 召回向量用户权重 α∈[0,1]；1=仅用户 */
@@ -24,7 +22,6 @@ export const MEMORY_SETTINGS_DEFAULTS: MemorySettings = {
   memoryTopK: 4,
   stripPluginBlocks: true,
   stripBlockTags: [],
-  stripExPrefixElements: false,
   recallFuseLastAssistant: true,
   recallUserWeight: 0.85,
 }
@@ -75,10 +72,6 @@ export function normalizeMemorySettings(
       ? raw.stripPluginBlocks === true
       : MEMORY_SETTINGS_DEFAULTS.stripPluginBlocks
   const stripBlockTags = normalizeStripBlockTags(raw?.stripBlockTags)
-  const stripExPrefixElements =
-    raw?.stripExPrefixElements !== undefined
-      ? raw.stripExPrefixElements === true
-      : MEMORY_SETTINGS_DEFAULTS.stripExPrefixElements
   const recallFuseLastAssistant =
     raw?.recallFuseLastAssistant !== undefined
       ? raw.recallFuseLastAssistant === true
@@ -89,7 +82,6 @@ export function normalizeMemorySettings(
     memoryTopK,
     stripPluginBlocks,
     stripBlockTags,
-    stripExPrefixElements,
     recallFuseLastAssistant,
     recallUserWeight,
   }
@@ -113,7 +105,6 @@ export function resolveMemorySettings(
     'memoryTopK',
     'stripPluginBlocks',
     'stripBlockTags',
-    'stripExPrefixElements',
     'recallFuseLastAssistant',
     'recallUserWeight',
   ] as const) {
@@ -144,9 +135,6 @@ export function memorySettingsOverrideFromEffective(
   ) {
     o.stripBlockTags = [...effective.stripBlockTags]
   }
-  if (effective.stripExPrefixElements !== global.stripExPrefixElements) {
-    o.stripExPrefixElements = effective.stripExPrefixElements
-  }
   if (effective.recallFuseLastAssistant !== global.recallFuseLastAssistant) {
     o.recallFuseLastAssistant = effective.recallFuseLastAssistant
   }
@@ -162,7 +150,6 @@ export type MemorySettingsPatchError =
   | 'memory_settings_memory_enabled_boolean'
   | 'memory_settings_memory_top_k_number'
   | 'memory_strip_plugin_blocks_boolean'
-  | 'memory_strip_ex_prefix_boolean'
   | 'memory_strip_block_tags_invalid'
   | 'memory_recall_fuse_last_assistant_boolean'
   | 'memory_recall_user_weight_number'
@@ -217,12 +204,6 @@ export function parseMemorySettingsPatch(
         return { ok: false, error: 'memory_strip_plugin_blocks_boolean' }
       }
       patch.stripPluginBlocks = b.stripPluginBlocks
-    }
-    if (Object.prototype.hasOwnProperty.call(b, 'stripExPrefixElements')) {
-      if (typeof b.stripExPrefixElements !== 'boolean') {
-        return { ok: false, error: 'memory_strip_ex_prefix_boolean' }
-      }
-      patch.stripExPrefixElements = b.stripExPrefixElements
     }
     if (Object.prototype.hasOwnProperty.call(b, 'stripBlockTags')) {
       const tags = b.stripBlockTags

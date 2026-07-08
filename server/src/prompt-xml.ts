@@ -7,7 +7,7 @@ export const ASSEMBLE_INJECT_PLACEHOLDER = {
   chatHistory: '<inject slot="chat_history" />',
   userInput: '<inject slot="user_input" />',
   memory: '<inject slot="memory" />',
-  boundCharacterSystem: '<inject slot="bound_character.system_prompt" />',
+  boundCharSystemPrompt: '<inject slot="bound_character.system_prompt" />',
   boundUserPersona: '<inject slot="user_persona" />',
   boundCharDescription: '<inject slot="bound_character.description" />',
   boundCharPersonality: '<inject slot="bound_character.personality" />',
@@ -60,11 +60,6 @@ export function normalizeXmlTextBeforeProcessing(raw: string): string {
  */
 export function prepareXmlElementText(raw: string): string {
   return escapeXmlElementText(normalizeXmlTextBeforeProcessing(raw))
-}
-
-/** @deprecated 使用 escapeXmlAttribute / prepareXmlElementText */
-export function escapeXmlText(raw: string): string {
-  return escapeXmlAttribute(raw)
 }
 
 const CARD_TEXT_FIELDS = [
@@ -230,10 +225,9 @@ export function mergeLorebookXmlGroups(
   )
 }
 
-/** 世界书注入：已为 `<lores>` 时原样返回，否则兼容旧单块包裹 */
+/** 世界书注入：`ctx.world` 须已为 `<lores>`（由 resolve/trim 管线生成） */
 export function loreTextToXmlBlock(text: string): string {
   const t = text.trim()
-  if (!t) return ''
-  if (t.startsWith('<lores')) return t
-  return `<lore>\n${prepareXmlElementText(t)}\n</lore>`
+  if (!t || !t.startsWith('<lores')) return ''
+  return t
 }

@@ -50,7 +50,7 @@ AssistantSegment {
 | 层 | 规则 |
 |----|------|
 | **GET …/messages** | 仅返回 `segments[]` + `activeSegmentIndex`；**不**再返回顶层 `receives` |
-| **PATCH / persist body** | `receives` / `activeReceiveIndex` 表示 **目标 segment**（`segmentIndex` 或 `activeSegmentIndex` 指定）；写盘只改 `segments[i]` |
+| **PATCH / persist body** | `receives` / `activeReceiveIndex` 表示 **目标 segment**（`segmentIndex` 指定）；写盘只改 `segments[i]`。**batch PATCH**（swipe-cleaner 等）清理非 active segment 时 **不改** `activeSegmentIndex` |
 | **Web `ChatTurnItem`** | `receives` / `activeReceiveIndex` 为 **parse 时 derived**（= active segment），不当作持久化字段；UI 群聊按 `segments` 渲染 |
 
 ---

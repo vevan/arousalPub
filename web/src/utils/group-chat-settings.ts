@@ -2,7 +2,6 @@ export type {
   GroupChatDecaySettings,
   GroupChatDiceSkipReason,
   GroupChatMemberSettings,
-  GroupChatMode,
   GroupChatSettings,
   GroupChatTurnState,
   SpeakerMode,

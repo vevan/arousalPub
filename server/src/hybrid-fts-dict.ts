@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { dictVariantEntryForProfile, catalogEntryForProfile } from './hybrid-fts-catalog.js'
@@ -14,7 +14,6 @@ import { getUserDataDir } from './config.js'
 import { getCurrentUserId } from './user-context.js'
 
 const HYBRID_FTS_ROOT = 'hybrid-fts'
-const LEGACY_LANCE_MODEL_ROOT = 'lance-language-models'
 
 const downloadInflight = new Map<string, Promise<void>>()
 
@@ -56,34 +55,6 @@ export function hybridFtsDictPath(
   throw new Error(`unsupported dict profile: ${profile}`)
 }
 
-function legacyLanceModelRoot(userId: string): string {
-  return path.join(getUserDataDir(userId), LEGACY_LANCE_MODEL_ROOT)
-}
-
-/** @deprecated 旧布局；仅迁移用 */
-function legacyDictVariantPath(
-  userId: string,
-  variant: HybridFtsDictVariant,
-): string {
-  return path.join(
-    legacyLanceModelRoot(userId),
-    'jieba',
-    'variants',
-    variant,
-    'dict.txt',
-  )
-}
-
-/** @deprecated 旧布局「激活槽」；仅迁移用 */
-function legacyActiveDictPath(userId: string): string {
-  return path.join(
-    legacyLanceModelRoot(userId),
-    'jieba',
-    'default',
-    'dict.txt',
-  )
-}
-
 function dictLooksValid(head: string): boolean {
   return head.length > 0 && !head.includes('<!DOCTYPE') && !head.includes('<html')
 }
@@ -121,28 +92,6 @@ function hybridFtsModelHomeRelative(
   return toUserDataRelativePath(userId, hybridFtsModelHome(userId, profile, variant))
 }
 
-async function migrateLegacyDictIfNeeded(
-  profile: HybridFtsProfile,
-  variant: HybridFtsDictVariant,
-  userId: string,
-): Promise<boolean> {
-  if (profile !== 'zh-jieba') return false
-  const dest = hybridFtsDictPath(userId, profile, variant)
-  const candidates = [legacyDictVariantPath(userId, variant)]
-  if (variant === 'default') {
-    candidates.push(legacyActiveDictPath(userId))
-  }
-  for (const legacy of candidates) {
-    if (!existsSync(legacy)) continue
-    const head = await readDictHead(legacy)
-    if (!head || !dictLooksValid(head)) continue
-    await mkdir(path.dirname(dest), { recursive: true })
-    await copyFile(legacy, dest)
-    return true
-  }
-  return false
-}
-
 export async function isDictVariantDownloaded(
   profile: HybridFtsProfile,
   variant: HybridFtsDictVariant,
@@ -151,9 +100,7 @@ export async function isDictVariantDownloaded(
   if (!profileRequiresDict(profile)) return true
   const uid = resolveUserId(userId)
   const dictPath = hybridFtsDictPath(uid, profile, variant)
-  if (!existsSync(dictPath)) {
-    return migrateLegacyDictIfNeeded(profile, variant, uid)
-  }
+  if (!existsSync(dictPath)) return false
   const head = await readDictHead(dictPath)
   return head != null && dictLooksValid(head)
 }

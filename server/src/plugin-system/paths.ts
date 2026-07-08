@@ -25,11 +25,6 @@ export function getGlobalPluginsDir(): string {
   return path.join(DATA_DIR, 'plugins')
 }
 
-/** 全局旧注册表 `data/plugin-registry.json`（迁移用） */
-export function getLegacyGlobalPluginRegistryPath(): string {
-  return path.join(DATA_DIR, 'plugin-registry.json')
-}
-
 /** 分用户插件注册表 `data/{userId}/plugin-registry.json` */
 export function getPluginRegistryPath(userId?: string): string {
   return path.join(
@@ -89,25 +84,6 @@ export function getPluginUserSecretsDir(
   userId?: string,
 ): string {
   return path.join(getPluginUserDataDir(pluginId, userId), 'secrets')
-}
-
-/** 旧布局 `data/{userId}/plugins/<pluginId>/`（仅迁移用） */
-export function getLegacyUserPluginDir(
-  pluginId: string,
-  userId: string,
-): string {
-  return path.join(getUserDataDir(userId), 'plugins', pluginId.trim())
-}
-
-export function getLegacyUserPluginSettingsPath(
-  pluginId: string,
-  userId: string,
-): string {
-  return path.join(getLegacyUserPluginDir(pluginId, userId), 'settings.json')
-}
-
-export function getLegacyPluginRegistryPath(userId: string): string {
-  return path.join(getUserDataDir(userId), 'plugin-registry.json')
 }
 
 export function getPluginUserAssetsDir(

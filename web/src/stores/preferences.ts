@@ -391,7 +391,6 @@ export const usePreferencesStore = defineStore('preferences', () => {
       memoryTopK: memoryTopK.value,
       stripPluginBlocks: memoryStripPluginBlocks.value,
       stripBlockTags: memoryStripBlockTags.value,
-      stripExPrefixElements: false,
       recallFuseLastAssistant: memoryRecallFuseLastAssistant.value,
       recallUserWeight: memoryRecallUserWeight.value,
     }),
@@ -660,7 +659,6 @@ export const usePreferencesStore = defineStore('preferences', () => {
       memoryTopK: memoryTopK.value,
       stripPluginBlocks: memoryStripPluginBlocks.value,
       stripBlockTags: memoryStripBlockTags.value,
-      stripExPrefixElements: false,
       recallFuseLastAssistant: memoryRecallFuseLastAssistant.value,
       recallUserWeight: memoryRecallUserWeight.value,
     })

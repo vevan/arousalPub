@@ -15,7 +15,6 @@ import {
 } from './prompt-xml.js'
 import { countChatMessagesTokens } from './token-count.js'
 import {
-  isLegacyBindingSlot,
   isSystemBindingSlot,
 } from './system-binding-slots.js'
 
@@ -44,10 +43,6 @@ export type PromptBindingSlot =
   | 'boundCharacterPostHistory'
   | 'boundUserInput'
   | 'boundMemory'
-  /** @deprecated 粗粒度 legacy；新预设请用系统子块 */
-  | 'boundCharacterSystem'
-  /** @deprecated 请用 boundWorldBefore */
-  | 'boundWorld'
 
 export interface PromptGroup {
   id: string
@@ -76,7 +71,6 @@ export interface PromptEntry {
   order: number
   isSeed?: boolean
   bindingSlot?: PromptBindingSlot
-  characterBundlePosition?: 'before' | 'after'
   createdAt: string
   updatedAt: string
 }
@@ -384,7 +378,7 @@ function resolveSystemBindingContent(
       case 'boundEnhanceDefinitions':
         return e.content.trim() || undefined
       case 'boundCharSystemPrompt':
-        return ASSEMBLE_INJECT_PLACEHOLDER.boundCharacterSystem
+        return ASSEMBLE_INJECT_PLACEHOLDER.boundCharSystemPrompt
       case 'boundCharDescription':
         return ASSEMBLE_INJECT_PLACEHOLDER.boundCharDescription
       case 'boundCharPersonality':
@@ -395,7 +389,6 @@ function resolveSystemBindingContent(
         return ASSEMBLE_INJECT_PLACEHOLDER.boundDialogueExamples
       case 'boundWorldBefore':
       case 'boundWorldAfter':
-      case 'boundWorld':
         return tryConsumeWorldLoreSlot(ctx, flags)
       case 'boundUserPersona':
         return PLACEHOLDER.userPersona
@@ -419,41 +412,12 @@ function resolveSystemBindingContent(
       return mergedMacroFieldFromCharacters(ctx, 'mesExample')
     case 'boundWorldBefore':
     case 'boundWorldAfter':
-    case 'boundWorld':
       return tryConsumeWorldLoreSlot(ctx, flags)
     case 'boundUserPersona':
       return mergedUserPersonaBody(ctx) ?? PLACEHOLDER.userPersona
     default:
       return undefined
   }
-}
-
-function injectLegacyCharacterSystemBlock(
-  messages: ChatMessage[],
-  ctx: AssembleContext,
-  enabled: boolean,
-): void {
-  if (ctx.bindingPlaceholderMode) {
-    if (enabled) {
-      messages.push({
-        role: 'system',
-        content: ASSEMBLE_INJECT_PLACEHOLDER.boundCharacterSystem,
-      })
-    }
-    messages.push({
-      role: 'system',
-      content: PLACEHOLDER.character,
-    })
-    return
-  }
-  if (enabled) {
-    const sys = mergedCharSystemPrompt(ctx)
-    if (sys) messages.push({ role: 'system', content: sys })
-  }
-  messages.push({
-    role: 'system',
-    content: mergedCharCardBody(ctx) ?? PLACEHOLDER.character,
-  })
 }
 
 function assembleGroupByBindingOrder(
@@ -480,9 +444,6 @@ function assembleGroupByBindingOrder(
     if (e.bindingSlot) {
       if (e.enabled === false) continue
       switch (e.bindingSlot) {
-        case 'boundCharacterSystem':
-          injectLegacyCharacterSystemBlock(messages, ctx, e.enabled)
-          break
         case 'boundChatHistory': {
           if (historyInjectedInGroup) break
           const block = injectChatHistoryBlock(messages, ctx, {
@@ -617,11 +578,7 @@ function groupUsesBindingOrderAssembly(
     g.kind === 'world' ||
     g.kind === 'userInput'
   ) {
-    return sorted.some(
-      (e) =>
-        isSystemBindingSlot(e.bindingSlot) ||
-        isLegacyBindingSlot(e.bindingSlot),
-    )
+    return sorted.some((e) => isSystemBindingSlot(e.bindingSlot))
   }
   return false
 }
@@ -712,7 +669,6 @@ function entryMatchesTrigger(
   trigger: PromptTrigger | undefined,
 ): boolean {
   if (
-    entry.bindingSlot === 'boundWorld' ||
     entry.bindingSlot === 'boundWorldBefore' ||
     entry.bindingSlot === 'boundWorldAfter' ||
     entry.bindingSlot === 'boundUserInput' ||
@@ -888,7 +844,7 @@ export function assemblePrompts(
         if (ctx.bindingPlaceholderMode) {
           messages.push({
             role: 'system',
-            content: ASSEMBLE_INJECT_PLACEHOLDER.boundCharacterSystem,
+            content: ASSEMBLE_INJECT_PLACEHOLDER.boundCharSystemPrompt,
           })
           messages.push({
             role: 'system',

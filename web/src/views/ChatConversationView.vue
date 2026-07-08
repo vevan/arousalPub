@@ -399,7 +399,6 @@ function globalMemoryFromStore(): MemorySettings {
     memoryTopK: prefStore.memoryTopK,
     stripPluginBlocks: prefStore.memoryStripPluginBlocks,
     stripBlockTags: prefStore.memoryStripBlockTags,
-    stripExPrefixElements: false,
     recallFuseLastAssistant: prefStore.memoryRecallFuseLastAssistant,
     recallUserWeight: prefStore.memoryRecallUserWeight,
   })
@@ -485,9 +484,6 @@ function clientResolvedCharacterIds(idx: Record<string, unknown>): string[] {
       out.push(id)
     }
     return out
-  }
-  if (typeof idx.characterId === 'string' && idx.characterId.trim()) {
-    return [idx.characterId.trim()]
   }
   return []
 }

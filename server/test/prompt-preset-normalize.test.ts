@@ -175,26 +175,42 @@ describe('normalizePresetForAssemble', () => {
     )
   })
 
-  it('migrates characterBundlePosition to flat order before finalize', () => {
+  it('keeps removed binding slots on normalize', () => {
     const out = normalizePresetForAssemble(
       makePreset([
         makeEntry({
-          id: 'after',
-          groupId: 'group-character',
-          order: 0,
-          characterBundlePosition: 'after',
-          content: 'after custom',
-        }),
-        makeEntry({
-          id: 'legacy',
+          id: 'legacy-char',
           groupId: 'group-character',
           order: 0,
           bindingSlot: 'boundCharacterSystem',
         }),
         makeEntry({
+          id: 'legacy-world',
+          groupId: 'group-world',
+          order: 0,
+          bindingSlot: 'boundWorld',
+        }),
+      ]),
+    )
+    assert.ok(
+      out.prompts.some((e) => e.bindingSlot === 'boundCharacterSystem'),
+    )
+    assert.ok(out.prompts.some((e) => e.bindingSlot === 'boundWorld'))
+  })
+
+  it('sorts character custom entries by order after normalize', () => {
+    const out = normalizePresetForAssemble(
+      makePreset([
+        makeEntry({
+          id: 'after',
+          groupId: 'group-character',
+          order: 2,
+          content: 'after custom',
+        }),
+        makeEntry({
           id: 'before',
           groupId: 'group-character',
-          order: 1,
+          order: 0,
           content: 'before custom',
         }),
       ]),
@@ -204,36 +220,6 @@ describe('normalizePresetForAssemble', () => {
       .sort((a, b) => a.order - b.order)
       .map((e) => e.id)
     assert.deepEqual(charCustom, ['before', 'after'])
-    assert.ok(
-      !out.prompts.some((e) => e.characterBundlePosition != null),
-    )
-  })
-
-  it('inherits useBoundCharacterSystemPrompt into char system enabled', () => {
-    const out = normalizePresetForAssemble(
-      makePreset(
-        [
-          makeEntry({
-            id: 'legacy',
-            groupId: 'group-character',
-            order: 0,
-            bindingSlot: 'boundCharacterSystem',
-            enabled: true,
-          }),
-          makeEntry({
-            id: 'desc',
-            groupId: 'group-character',
-            order: 1,
-            bindingSlot: 'boundCharDescription',
-          }),
-        ],
-        { useBoundCharacterSystemPrompt: false } as PromptPreset,
-      ),
-    )
-    const sys = out.prompts.find(
-      (e) => e.bindingSlot === 'boundCharSystemPrompt',
-    )
-    assert.equal(sys?.enabled, false)
   })
 
   it('forces required binding slots enabled', () => {

@@ -118,7 +118,6 @@ function embeddingApiFromDisk(
 ): Partial<EmbeddingApiSettings> | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   const apiKey = resolveSecretFromDisk(
-    typeof raw.apiKey === 'string' ? raw.apiKey : undefined,
     raw.apiKeyEnc,
     { aad: aadForEmbeddingApiKey(userId) },
   )

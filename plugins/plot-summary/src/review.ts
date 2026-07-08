@@ -94,7 +94,7 @@ async function runReviewRegenerate(host: PluginHost, dialogId: string) {
       return
     }
     console.warn('[plot-summary] review regenerate failed', e)
-    host.ui.toast(host.t(k(host, 'toastReviewRegenerateFailed')), { color: 'warning' })
+    host.ui.notify(host.t(k(host, 'toastReviewRegenerateFailed')), undefined, { color: 'warning' })
   }
 }
 

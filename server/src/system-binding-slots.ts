@@ -18,14 +18,7 @@ export const SYSTEM_BINDING_SLOTS = [
   'boundMemory',
 ] as const satisfies readonly PromptBindingSlot[]
 
-/** 已废弃的粗粒度槽；组装仍兼容 */
-export const LEGACY_BINDING_SLOTS = [
-  'boundCharacterSystem',
-  'boundWorld',
-] as const satisfies readonly PromptBindingSlot[]
-
 const SYSTEM_SET = new Set<string>(SYSTEM_BINDING_SLOTS)
-const LEGACY_SET = new Set<string>(LEGACY_BINDING_SLOTS)
 
 export function isSystemBindingSlot(
   slot: PromptBindingSlot | undefined,
@@ -33,19 +26,10 @@ export function isSystemBindingSlot(
   return slot != null && SYSTEM_SET.has(slot)
 }
 
-export function isLegacyBindingSlot(
-  slot: PromptBindingSlot | undefined,
-): boolean {
-  return slot != null && LEGACY_SET.has(slot)
-}
-
 export function isKnownBindingSlot(
   slot: PromptBindingSlot | undefined,
 ): boolean {
-  return (
-    slot != null &&
-    (SYSTEM_SET.has(slot) || LEGACY_SET.has(slot))
-  )
+  return isSystemBindingSlot(slot)
 }
 
 export function presetUsesSystemSubBlocks(preset: PromptPreset): boolean {
@@ -114,11 +98,6 @@ export function presetHasGranularCharacterFields(
       ) &&
       (charGroupId == null || e.groupId === charGroupId),
   )
-}
-
-export interface FinalizeCharacterBindingsOptions {
-  /** 从 legacy boundCharacterSystem 迁移的 system_prompt 开关 */
-  legacySystemPromptEnabled?: boolean
 }
 
 /**
@@ -191,31 +170,18 @@ export function pinCharSystemPromptBeforeDescription(
   return next
 }
 
-/** 仅用于 normalize：旧版「卡前 / 槽 / 卡后」分区 → 展平为单一 order */
-function characterBundleListPartitionLegacy(e: PromptEntry): number {
-  if (e.bindingSlot === 'boundCharacterSystem') return 1
-  if (e.characterBundlePosition === 'after') return 2
-  return 0
-}
-
-/** 旧版 characterBundlePosition 分区 → 组内扁平 order（与 Web 提示词库一致） */
+/** Character 组内按 order 展平为 0..n-1 */
 export function migrateCharacterGroupToFlatOrder(
   prompts: PromptEntry[],
   charGroupId: string,
 ): PromptEntry[] {
   const inGroup = prompts.filter((e) => e.groupId === charGroupId)
   if (inGroup.length === 0) return prompts
-  const sorted = inGroup.slice().sort((a, b) => {
-    const pa = characterBundleListPartitionLegacy(a)
-    const pb = characterBundleListPartitionLegacy(b)
-    if (pa !== pb) return pa - pb
-    return a.order - b.order
-  })
+  const sorted = inGroup.slice().sort((a, b) => a.order - b.order)
   const idOrder = new Map(sorted.map((e, i) => [e.id, i]))
   return prompts.map((e) => {
     if (e.groupId !== charGroupId) return e
-    const { characterBundlePosition: _drop, ...rest } = e
-    return { ...rest, order: idOrder.get(e.id)! }
+    return { ...e, order: idOrder.get(e.id)! }
   })
 }
 
@@ -273,54 +239,7 @@ export function pinPostHistoryAfterChatHistory(
   return next
 }
 
-/** @deprecated 会重算整组 order；finalize 已改用 pinCharSystemPromptBeforeDescription */
-export function alignCharCoreAssemblyPair(
-  prompts: PromptEntry[],
-  charGroupId: string,
-): PromptEntry[] {
-  const system = prompts.find(
-    (e) =>
-      e.groupId === charGroupId && e.bindingSlot === 'boundCharSystemPrompt',
-  )
-  const description = prompts.find(
-    (e) =>
-      e.groupId === charGroupId && e.bindingSlot === 'boundCharDescription',
-  )
-  if (!system || !description) return prompts
-
-  const inChar = prompts
-    .filter((e) => e.groupId === charGroupId)
-    .slice()
-    .sort((a, b) => a.order - b.order)
-  const sysIdx = inChar.findIndex((e) => e.id === system.id)
-  const descIdx = inChar.findIndex((e) => e.id === description.id)
-  if (sysIdx >= 0 && descIdx === sysIdx + 1) return prompts
-
-  const reordered = inChar.filter((e) => e.id !== system.id)
-  const newDescIdx = reordered.findIndex((e) => e.id === description.id)
-  if (newDescIdx < 0) return prompts
-  reordered.splice(newDescIdx, 0, system)
-
-  const idToOrder = new Map(reordered.map((e, i) => [e.id, i]))
-  return prompts.map((e) => {
-    if (e.groupId !== charGroupId) return e
-    const o = idToOrder.get(e.id)
-    return o !== undefined ? { ...e, order: o } : e
-  })
-}
-
-/** @deprecated 用 alignCharCoreAssemblyPair */
-export function ensureCharCoreBundleOrder(
-  prompts: PromptEntry[],
-  charGroupId: string,
-): PromptEntry[] {
-  return alignCharCoreAssemblyPair(prompts, charGroupId)
-}
-
-/**
- * CCv2：Character 组必须含 boundCharSystemPrompt（即使卡字段为空）。
- * 有 granular 子块时移除 legacy boundCharacterSystem。
- */
+/** CCv2：Character 组必须含 boundCharSystemPrompt（即使卡字段为空）。 */
 export function finalizeCharacterGroupBindings(
   prompts: PromptEntry[],
   charGroupId: string,
@@ -330,37 +249,12 @@ export function finalizeCharacterGroupBindings(
     id: string,
     enabled?: boolean,
   ) => PromptEntry,
-  opts: FinalizeCharacterBindingsOptions = {},
 ): PromptEntry[] {
   let next = prompts
-  const legacy = next.find(
-    (e) =>
-      e.groupId === charGroupId && e.bindingSlot === 'boundCharacterSystem',
-  )
-  const hasGranular =
-    presetHasGranularCharacterFields(next, charGroupId) ||
-    next.some(
-      (e) =>
-        e.groupId === charGroupId &&
-        e.bindingSlot === 'boundCharDescription',
-    )
   const hasCharSystemPromptInGroup = next.some(
     (e) =>
       e.groupId === charGroupId && e.bindingSlot === 'boundCharSystemPrompt',
   )
-  let legacySysOn = opts.legacySystemPromptEnabled
-
-  if (legacy && (hasGranular || hasCharSystemPromptInGroup)) {
-    if (legacySysOn === undefined) legacySysOn = legacy.enabled !== false
-    next = next.filter(
-      (e) =>
-        !(
-          e.groupId === charGroupId &&
-          e.bindingSlot === 'boundCharacterSystem'
-        ),
-    )
-  }
-
   const charDesc = next.find(
     (e) =>
       e.groupId === charGroupId && e.bindingSlot === 'boundCharDescription',
@@ -369,12 +263,14 @@ export function finalizeCharacterGroupBindings(
     (e) =>
       e.groupId === charGroupId && e.bindingSlot === 'boundCharSystemPrompt',
   )
-  const enabled = legacySysOn !== undefined ? legacySysOn !== false : true
 
-  if (!hasCharSystemPromptInGroup || (charDesc && charSystem && charSystem.order !== charDesc.order - 1)) {
+  if (
+    !hasCharSystemPromptInGroup ||
+    (charDesc && charSystem && charSystem.order !== charDesc.order - 1)
+  ) {
     next = pinCharSystemPromptBeforeDescription(next, charGroupId, makeEntry, {
       existing: charSystem,
-      enabled,
+      enabled: charSystem?.enabled !== false,
     })
   }
 

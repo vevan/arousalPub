@@ -7,17 +7,17 @@ import type {
   PluginProgressOptions,
   PluginSlotButtonDef,
   PluginSlotContext,
-  PluginToastOptions,
   PluginFormDialogOpenOpts,
   PluginWebHost,
 } from '@/plugins/types'
 import {
   showPluginConfirm,
-  showPluginToast,
   showPluginProgress,
   clearPluginProgress,
   getPluginProgressAbortSignal,
 } from '@/plugins/plugin-ui-state'
+import { sendPluginNotify } from '@/plugins/plugin-notify'
+import { useAuthStore } from '@/stores/auth'
 import {
   fetchConversationMeta,
 } from '@/plugins/conversation-meta'
@@ -261,6 +261,13 @@ export function createScopedPluginHost(
     },
     ui: {
       ...base.ui,
+      notify(title, body?, opts?: PluginNotifyOptions) {
+        const auth = useAuthStore()
+        sendPluginNotify(title, body, opts, {
+          userId: auth.user?.id,
+          pluginId: id,
+        })
+      },
       panel: {
         register(opts) {
           registerPluginPanel({ ...opts, pluginId: id })
@@ -472,12 +479,9 @@ export function createPluginWebHost(session: ChatSession): {
       reasoningToHtml: renderReasoningMarkdownToHtml,
     },
     ui: {
-      toast(message, opts?: PluginToastOptions) {
-        showPluginToast(message, opts)
-      },
       notify(title, body?, opts?: PluginNotifyOptions) {
-        const text = body?.trim() ? `${title}\n${body}` : title
-        showPluginToast(text, opts)
+        const auth = useAuthStore()
+        sendPluginNotify(title, body, opts, { userId: auth.user?.id })
       },
       confirm(opts: PluginConfirmOptions) {
         return showPluginConfirm(opts)

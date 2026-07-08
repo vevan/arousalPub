@@ -22,8 +22,64 @@ function mapReceiveForPatch(r: ReceiveItem): Record<string, unknown> {
   }
 }
 
+function syntheticPendingSegment(turn: ChatTurnItem): AssistantSegmentItem {
+  return {
+    id: '',
+    speakerCharacterId: turn.speakerCharacterId?.trim() ?? '',
+    receives: [],
+    activeReceiveIndex: 0,
+  }
+}
+
+/** 无 segments 时返回单条合成 segment（待发 assistant） */
 export function getTurnSegments(turn: ChatTurnItem): AssistantSegmentItem[] {
-  return turn.segments ?? []
+  const segments = turn.segments ?? []
+  if (segments.length > 0) return segments
+  return [syntheticPendingSegment(turn)]
+}
+
+function resolveSegmentIndex(turn: ChatTurnItem, segmentIndex?: number): number {
+  const segments = getTurnSegments(turn)
+  const raw =
+    typeof segmentIndex === 'number' && Number.isFinite(segmentIndex)
+      ? segmentIndex
+      : getActiveSegmentIndex(turn)
+  return Math.min(Math.max(0, Math.floor(raw)), segments.length - 1)
+}
+
+export function getSegmentReceives(
+  turn: ChatTurnItem,
+  segmentIndex?: number,
+): ReceiveItem[] {
+  return getTurnSegments(turn)[resolveSegmentIndex(turn, segmentIndex)]?.receives ?? []
+}
+
+export function getActiveReceiveIndex(
+  turn: ChatTurnItem,
+  segmentIndex?: number,
+): number {
+  const receives = getSegmentReceives(turn, segmentIndex)
+  if (receives.length === 0) return 0
+  const seg = getTurnSegments(turn)[resolveSegmentIndex(turn, segmentIndex)]
+  const ai = seg?.activeReceiveIndex ?? 0
+  return Math.min(Math.max(0, ai), receives.length - 1)
+}
+
+export function getActiveReceive(
+  turn: ChatTurnItem,
+  segmentIndex?: number,
+): ReceiveItem | null {
+  const receives = getSegmentReceives(turn, segmentIndex)
+  if (receives.length === 0) return null
+  return receives[getActiveReceiveIndex(turn, segmentIndex)] ?? null
+}
+
+export function fingerprintTurnReceives(turn: ChatTurnItem): string {
+  const segments = turn.segments ?? []
+  if (segments.length === 0) return '0:'
+  return segments
+    .map((seg) => `${seg.activeReceiveIndex}:${seg.receives.map((r) => r.id).join(',')}`)
+    .join('|')
 }
 
 export function getActiveSegmentIndex(turn: ChatTurnItem): number {
@@ -44,18 +100,14 @@ export function getActiveSegment(
   return segments[getActiveSegmentIndex(turn)] ?? segments[0]!
 }
 
-/** PATCH /turns/:ord — 有 segment 时按 segment 提交；无 segment 时仅 user 正文（待发轮次） */
+/** PATCH /turns/:ord — 按 segment 提交 receives */
 export function buildTurnPatchRequestBody(
   turn: ChatTurnItem,
   segmentIndex?: number,
 ): Record<string, unknown> {
-  const segments = getTurnSegments(turn)
+  const segments = turn.segments ?? []
   if (segments.length === 0) {
-    return {
-      userText: turn.user,
-      receives: turn.receives.map(mapReceiveForPatch),
-      activeReceiveIndex: turn.activeReceiveIndex,
-    }
+    throw new Error(`turn ${turn.turnOrdinal} has no segments`)
   }
   const segIdx = segmentIndex ?? getActiveSegmentIndex(turn)
   const seg = segments[segIdx]
@@ -67,7 +119,6 @@ export function buildTurnPatchRequestBody(
     receives: seg.receives.map(mapReceiveForPatch),
     activeReceiveIndex: seg.activeReceiveIndex,
     segmentIndex: segIdx,
-    activeSegmentIndex: segIdx,
   }
 }
 

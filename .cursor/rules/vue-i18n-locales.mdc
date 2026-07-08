@@ -1,0 +1,38 @@
+---
+description: vue-i18n v11 与 locales JSON 易错点
+globs: web/src/locales/**,web/**/*.vue,web/src/utils/plugin-locale-text.ts
+alwaysApply: false
+---
+
+# vue-i18n（v11）易错点
+
+项目使用 **Composition API**（`legacy: false`）。文案在 `web/src/locales/zh.json` / `en.json`；插件文案合并到 `plugins.{pluginId}`。
+
+## Message Format 特殊字符
+
+编译 `locales/*.json` 时，`{` `}` `@` `$` `|` 有特殊含义。要**原样显示**宏、`[NEXT@]`、XML 标签等，必须转义，否则易出现 `Message compilation error` 并连带组件渲染失败。
+
+| 用途 | 界面 | JSON 写法 |
+|------|------|-----------|
+| i18n 插值 | `共 {n} 条` | `"共 {n} 条"` + `$t('key', { n })` |
+| 提示词宏 | `{{user}}` | `"\\{\\{user\\}\\}"` |
+| `@` | `/ @` | `/{'@'}` 或 `\\@` |
+| XML 标签 | `<memory>` | `{'<'}memory{'>'}` |
+| 字面量 `{` `}` | 单花括号 | `\\{` `\\}` |
+
+**勿**用旧式 `'{'{'user{'}'}'` 拼接；**勿**在 JSON 里写 `@:`、`@.` 开头（链接语法）。
+
+## 插件文案
+
+含 `<history>`、`{` 等且**无插值**时，用 `readPluginLocaleMessage` / `translatePluginI18nKey`（见 `plugin-locale-text.ts`），避免 `$t` 误解析。
+
+## 维护
+
+- `zh` / `en` **同步**改键。
+- 改 locales 后可在仓库根验证：`node --input-type=module -e "import { createI18n } from 'vue-i18n'; import zh from './web/src/locales/zh.json' with { type: 'json' }; createI18n({ legacy: false, locale: 'zh', messages: { zh } }); console.log('zh ok');"`
+
+## 不经过 i18n 的内容
+
+服务端群聊说明、提示词预设、角色卡正文保持真实 `{{user}}` / `[NEXT@]`，**不要**按 locales 规则转义。
+
+完整表见根目录 `cursor.md` §易错。

@@ -143,15 +143,9 @@ describe('finalizeCharacterGroupBindings', () => {
     ])
   })
 
-  it('removes legacy boundCharacterSystem when granular fields exist', () => {
+  it('pins boundCharSystemPrompt before description when missing', () => {
     const prompts = finalizeCharacterGroupBindings(
       [
-        makeEntry({
-          id: 'legacy',
-          bindingSlot: 'boundCharacterSystem',
-          order: 0,
-          enabled: false,
-        }),
         makeEntry({
           id: 'd1',
           bindingSlot: 'boundCharDescription',
@@ -162,11 +156,12 @@ describe('finalizeCharacterGroupBindings', () => {
       (slot, order, id, enabled = true) =>
         makeEntry({ id, bindingSlot: slot, order, enabled }),
     )
-    assert.ok(
-      !prompts.some((e) => e.bindingSlot === 'boundCharacterSystem'),
-    )
     const sys = prompts.find((e) => e.bindingSlot === 'boundCharSystemPrompt')
-    assert.equal(sys?.enabled, false)
+    assert.ok(sys)
+    assert.equal(sys?.enabled, true)
+    assert.equal(sys?.order, 1)
+    const desc = prompts.find((e) => e.bindingSlot === 'boundCharDescription')
+    assert.equal(desc?.order, 2)
   })
 })
 

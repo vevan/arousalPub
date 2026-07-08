@@ -57,19 +57,10 @@ const NORMALIZE_DEPS = {
   makeBindingSlotEntry,
 }
 
-/**
- * 组装前补全绑定槽（与 Web `normalizePreset` 共用 `shared/prompt-preset-normalize`）。
- */
+/** 组装前补全绑定槽（与 Web `normalizePreset` 共用 `shared/prompt-preset-normalize`）。 */
 export function normalizePresetForAssemble(p: PromptPreset): PromptPreset {
-  const rawLegacy = p as PromptPreset & {
-    useBoundCharacterSystemPrompt?: boolean
-  }
   return normalizePresetCore(
     p as unknown as SharedPromptPreset,
     NORMALIZE_DEPS as unknown as NormalizePresetDeps,
-    {
-      legacySystemPromptEnabled:
-        rawLegacy.useBoundCharacterSystemPrompt !== false,
-    },
   ) as PromptPreset
 }

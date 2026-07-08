@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  AFTER_USER_INPUT_IMPLICIT_INJECTION_ORDER,
   buildPluginAfterUserInputHintFromMessages,
   mergePluginPromptInjectionsIntoMessages,
 } from '../src/plugin-prompt-injection-merge.js'
-import { normalizePostUserInjectionOrderHostPolicy } from '../src/shared/post-user-injection-order.js'
+import {
+  POST_USER_INJECTION_ORDER_HOST_DEFAULTS,
+  normalizePostUserInjectionOrderHostPolicy,
+} from '../src/shared/post-user-injection-order.js'
 import {
   isPluginPromptInjection,
   parsePluginPromptInjections,
@@ -25,7 +27,7 @@ describe('parsePluginPromptInjections', () => {
     assert.equal(parsed![0]!.content, 'guidance')
   })
 
-  it('accepts legacy position.order alias', () => {
+  it('ignores position.order alias', () => {
     const parsed = parsePluginPromptInjections([
       {
         role: 'system',
@@ -34,7 +36,7 @@ describe('parsePluginPromptInjections', () => {
       },
     ])
     assert.ok(parsed)
-    assert.equal(parsed![0]!.position.injectionOrder, 10)
+    assert.equal(parsed![0]!.position.injectionOrder, undefined)
   })
 
   it('rejects empty content', () => {
@@ -144,7 +146,7 @@ describe('mergePluginPromptInjectionsIntoMessages', () => {
         afterUserInput: {
           content: 'GROUP-CHAT-RULE',
           role: 'system',
-          implicitInjectionOrder: AFTER_USER_INPUT_IMPLICIT_INJECTION_ORDER,
+          implicitInjectionOrder: POST_USER_INJECTION_ORDER_HOST_DEFAULTS.afterUserInput,
         },
       },
     )

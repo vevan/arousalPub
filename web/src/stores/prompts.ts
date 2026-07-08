@@ -38,10 +38,6 @@ export type PromptBindingSlot =
   | 'boundCharacterPostHistory'
   | 'boundUserInput'
   | 'boundMemory'
-  /** @deprecated 粗粒度 legacy */
-  | 'boundCharacterSystem'
-  /** @deprecated 请用 boundWorldBefore */
-  | 'boundWorld'
 
 const SYSTEM_BINDING_SLOTS: PromptBindingSlot[] = [
   'boundMain',
@@ -112,10 +108,6 @@ export interface PromptEntry {
   isSeed?: boolean
   /** 若为绑定槽位，组装时使用会话角色卡字段而非 content */
   bindingSlot?: PromptBindingSlot
-  /**
-   * @deprecated 角色组已改为仅用 `order` 与绑定槽混排；加载预设时由 normalize 剥离。
-   */
-  characterBundlePosition?: 'before' | 'after'
   createdAt: string
   updatedAt: string
 }
@@ -245,7 +237,6 @@ const NORMALIZE_DEPS = {
 
 function bindingSlotIsRequired(slot: PromptBindingSlot | undefined): boolean {
   return (
-    slot === 'boundWorld' ||
     slot === 'boundWorldBefore' ||
     slot === 'boundUserInput' ||
     slot === 'boundUserPersona'
@@ -256,23 +247,9 @@ function bindingSlotIsRequired(slot: PromptBindingSlot | undefined): boolean {
  * 去掉旧版预设级开关、补全绑定槽位条目（与 Server `normalizePresetForAssemble` 共用核心）。
  */
 export function normalizePreset(p: PromptPreset): PromptPreset {
-  const raw = p as PromptPreset & {
-    useBoundCharacterSystemPrompt?: boolean
-    useBoundCharacterPostHistory?: boolean
-  }
-  const {
-    useBoundCharacterSystemPrompt: _a,
-    useBoundCharacterPostHistory: _b,
-    ...rest
-  } = raw
-
   const normalized = normalizePresetCore(
-    rest as import('@/shared/prompt-preset-normalize').PromptPreset,
+    p as import('@/shared/prompt-preset-normalize').PromptPreset,
     NORMALIZE_DEPS,
-    {
-      legacySystemPromptEnabled:
-        raw.useBoundCharacterSystemPrompt !== false,
-    },
   )
 
   return normalized as PromptPreset
@@ -1385,7 +1362,7 @@ export const usePromptsStore = defineStore('prompts', () => {
       .filter((e) => {
         if (!q) return true
         if (
-          e.bindingSlot === 'boundCharacterSystem' &&
+          e.bindingSlot === 'boundCharSystemPrompt' &&
           (q.includes('system') ||
             q.includes('绑定') ||
             q.includes('角色') ||
@@ -1403,7 +1380,8 @@ export const usePromptsStore = defineStore('prompts', () => {
           return true
         }
         if (
-          e.bindingSlot === 'boundWorld' &&
+          (e.bindingSlot === 'boundWorldBefore' ||
+            e.bindingSlot === 'boundWorldAfter') &&
           (q.includes('world') || q.includes('lore') || q.includes('世界'))
         ) {
           return true

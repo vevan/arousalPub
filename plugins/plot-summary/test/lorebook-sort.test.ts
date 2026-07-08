@@ -22,8 +22,8 @@ describe('parseTurnRangeSuffix', () => {
     })
   })
 
-  it('parses legacy trailing from-to suffix', () => {
-    assert.deepEqual(parseTurnRangeSuffix('冒险摘要-1-50'), { start: 1, end: 50 })
+  it('returns null for legacy trailing from-to suffix', () => {
+    assert.equal(parseTurnRangeSuffix('冒险摘要-1-50'), null)
   })
 
   it('returns null when suffix missing', () => {
@@ -54,10 +54,10 @@ describe('classifyPlotSummaryEntry', () => {
     )
   })
 
-  it('classifies legacy summary by turn suffix', () => {
+  it('does not classify legacy summary by turn suffix', () => {
     assert.equal(
       classifyPlotSummaryEntry({ id: 'm1', title: '摘要-10-20' }, sidecarSet),
-      'summary',
+      'other',
     )
   })
 })

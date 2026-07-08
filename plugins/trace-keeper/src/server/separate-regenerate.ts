@@ -161,7 +161,7 @@ export async function regenerateSeparateState(
     anchorToTurn: targetOrdinal,
     responseFormat: 'json_object',
     captureDebug: debugCapture,
-    fallbackToChat: true,
+    fallbackToGlobalDefault: true,
   })
 
   const messages = result.ok

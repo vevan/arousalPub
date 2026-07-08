@@ -311,41 +311,38 @@ function preflightToast(host, e) {
   const code = pipelineErrorCode(e);
   if (code === "context_exceeded" || code === "plugin_complete_context_exceeded") {
     const { used, budget } = contextExceededToastParams(e);
-    host.ui.toast(
-      host.t(k(host, "toastContextExceeded"), {
-        used: used ?? "?",
-        budget: budget ?? "?"
-      }),
-      { color: "warning" }
-    );
+    host.ui.notify(host.t(k(host, "toastContextExceeded"), {
+      used: used ?? "?",
+      budget: budget ?? "?"
+    }), void 0, { color: "warning" });
     return;
   }
   if (code === "context_length_unconfigured" || code === "plugin_complete_context_length_unconfigured") {
-    host.ui.toast(host.t(k(host, "toastContextLengthMissing")), { color: "warning" });
+    host.ui.notify(host.t(k(host, "toastContextLengthMissing")), void 0, { color: "warning" });
     return;
   }
   if (isLorebookNotFoundError(e)) {
-    host.ui.toast(host.t(k(host, "toastTargetLorebookDeleted")), { color: "warning" });
+    host.ui.notify(host.t(k(host, "toastTargetLorebookDeleted")), void 0, { color: "warning" });
     return;
   }
   if (isLorebookEntryMissingError(e)) {
-    host.ui.toast(host.t(k(host, "toastSidecarEntryMissing")), { color: "warning" });
+    host.ui.notify(host.t(k(host, "toastSidecarEntryMissing")), void 0, { color: "warning" });
     return;
   }
   if (code === "parse_failed") {
-    host.ui.toast(host.t(k(host, "toastParseFailed")), { color: "error" });
+    host.ui.notify(host.t(k(host, "toastParseFailed")), void 0, { color: "error" });
     return;
   }
   const apiCode = lorebookErrorCode(e);
   if (apiCode === "plugin_complete_draft_failed" || apiCode === "parse_failed") {
-    host.ui.toast(host.t(k(host, "toastParseFailed")), { color: "error" });
+    host.ui.notify(host.t(k(host, "toastParseFailed")), void 0, { color: "error" });
     return;
   }
   if (apiCode === "sidecar_prompt_required") {
-    host.ui.toast(host.t(k(host, "toastSummarizeFailed")), { color: "error" });
+    host.ui.notify(host.t(k(host, "toastSummarizeFailed")), void 0, { color: "error" });
     return;
   }
-  host.ui.toast(host.t(k(host, "toastSummarizeFailed")), { color: "error" });
+  host.ui.notify(host.t(k(host, "toastSummarizeFailed")), void 0, { color: "error" });
 }
 
 // plugins/plot-summary/src/shared/summary-prompt-layout.ts
@@ -479,7 +476,7 @@ async function runReviewRegenerate(host, dialogId) {
       return;
     }
     console.warn("[plot-summary] review regenerate failed", e);
-    host.ui.toast(host.t(k(host, "toastReviewRegenerateFailed")), { color: "warning" });
+    host.ui.notify(host.t(k(host, "toastReviewRegenerateFailed")), void 0, { color: "warning" });
   }
 }
 async function generateReviewDraft(host, settings, opts) {
@@ -603,19 +600,15 @@ function promptReview(host, draft, dialogId, regenerateFn, lorebookName) {
 
 // plugins/plot-summary/src/shared/lorebook-sort.ts
 var PLOT_SUMMARY_TURN_RANGE_SUFFIX_RE = /\[(\d+)-(\d+)\]$/;
-var LEGACY_TURN_RANGE_SUFFIX_RE = /-(\d+)-(\d+)$/;
 var PLOT_SUMMARY_MEMO_PREFIX_RE = /^\[MEMO-(\d+)\]-/;
 function parseTurnRangeSuffix(title) {
   const t = (title ?? "").trim();
-  for (const re of [PLOT_SUMMARY_TURN_RANGE_SUFFIX_RE, LEGACY_TURN_RANGE_SUFFIX_RE]) {
-    const m = t.match(re);
-    if (!m) continue;
-    const start = Number(m[1]);
-    const end = Number(m[2]);
-    if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
-    return { start, end };
-  }
-  return null;
+  const m = t.match(PLOT_SUMMARY_TURN_RANGE_SUFFIX_RE);
+  if (!m) return null;
+  const start = Number(m[1]);
+  const end = Number(m[2]);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  return { start, end };
 }
 function parseMemoIndex(title) {
   const m = (title ?? "").trim().match(PLOT_SUMMARY_MEMO_PREFIX_RE);
@@ -972,12 +965,12 @@ function bumpTaskProgress2(host, done, total) {
 }
 async function runSummarizeTasks(host, opts) {
   if (summarizeRunning) {
-    host.ui.toast(host.t(k(host, "toastBusy")), { color: "info" });
+    host.ui.notify(host.t(k(host, "toastBusy")), void 0, { color: "info" });
     return { ok: false, reason: "busy" };
   }
   const tasks = opts.tasks ?? [];
   if (tasks.length === 0) {
-    host.ui.toast(host.t(k(host, "toastNoTasksSelected")), { color: "warning" });
+    host.ui.notify(host.t(k(host, "toastNoTasksSelected")), void 0, { color: "warning" });
     return { ok: false, reason: "no_tasks" };
   }
   setSummarizeRunning(true);
@@ -995,11 +988,11 @@ async function runSummarizeTasks(host, opts) {
     const fromTurn = opts.fromTurn;
     const toTurn = opts.toTurn;
     if (fromTurn > toTurn) {
-      host.ui.toast(host.t(k(host, "toastInvalidRange")), { color: "warning" });
+      host.ui.notify(host.t(k(host, "toastInvalidRange")), void 0, { color: "warning" });
       return { ok: false, reason: "invalid_range" };
     }
     if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
-      host.ui.toast(host.t(k(host, "toastTurnRangeTooLong")), { color: "warning" });
+      host.ui.notify(host.t(k(host, "toastTurnRangeTooLong")), void 0, { color: "warning" });
       return { ok: false, reason: "turn_range_too_long" };
     }
     const sidecarConfigIds = settings.sidecars.map((s) => s.id);
@@ -1033,7 +1026,7 @@ async function runSummarizeTasks(host, opts) {
       toTurn
     );
     if (!prepared.userContent?.trim()) {
-      host.ui.toast(host.t(k(host, "toastNoTurnsInRange")), { color: "warning" });
+      host.ui.notify(host.t(k(host, "toastNoTurnsInRange")), void 0, { color: "warning" });
       return { ok: false, reason: "no_turns" };
     }
     const preparedContext = prepared.preparedContext;
@@ -1127,19 +1120,19 @@ async function runSummarizeTasks(host, opts) {
       } catch (e) {
         if (isAbortError(e)) {
           aborted = true;
-          host.ui.toast(host.t(k(host, "toastProgressAborted")), { color: "info" });
+          host.ui.notify(host.t(k(host, "toastProgressAborted")), void 0, { color: "info" });
           break;
         }
         if (e instanceof Error && e.message === "review_skipped") {
           skippedTasks += 1;
-          host.ui.toast(host.t(k(host, "toastReviewSkipped")), { color: "info" });
+          host.ui.notify(host.t(k(host, "toastReviewSkipped")), void 0, { color: "info" });
           done += 1;
           bumpTaskProgress2(host, done, tasks.length);
           continue;
         }
         if (e instanceof Error && e.message === "review_aborted") {
           aborted = true;
-          host.ui.toast(host.t(k(host, "toastReviewAborted")), { color: "info" });
+          host.ui.notify(host.t(k(host, "toastReviewAborted")), void 0, { color: "info" });
           break;
         }
         console.warn("[plot-summary] task failed", task, e);
@@ -1150,7 +1143,7 @@ async function runSummarizeTasks(host, opts) {
         }
         preflightToast(host, e);
         skippedTasks += 1;
-        host.ui.toast(host.t(k(host, "toastTaskSkipped")), { color: "warning" });
+        host.ui.notify(host.t(k(host, "toastTaskSkipped")), void 0, { color: "warning" });
         done += 1;
         bumpTaskProgress2(host, done, tasks.length);
         continue;
@@ -1168,14 +1161,11 @@ async function runSummarizeTasks(host, opts) {
     }
     if (completedTasks === 0) {
       if (skippedTasks > 0) {
-        host.ui.toast(
-          host.t(k(host, "toastSummarizeSummary"), {
-            done: 0,
-            skipped: skippedTasks,
-            total: tasks.length
-          }),
-          { color: aborted ? "warning" : "info" }
-        );
+        host.ui.notify(host.t(k(host, "toastSummarizeSummary"), {
+          done: 0,
+          skipped: skippedTasks,
+          total: tasks.length
+        }), void 0, { color: aborted ? "warning" : "info" });
       }
       return {
         ok: false,
@@ -1210,16 +1200,13 @@ async function runSummarizeTasks(host, opts) {
       refreshAutoSummarizeUi(host);
     }
     if (completedTasks === tasks.length && skippedTasks === 0) {
-      host.ui.toast(host.t(k(host, "toastSummarizeDone")), { color: "success" });
+      host.ui.notify(host.t(k(host, "toastSummarizeDone")), void 0, { color: "success" });
     } else if (completedTasks > 0 || skippedTasks > 0) {
-      host.ui.toast(
-        host.t(k(host, "toastSummarizeSummary"), {
-          done: completedTasks,
-          skipped: skippedTasks,
-          total: tasks.length
-        }),
-        { color: aborted ? "warning" : "info" }
-      );
+      host.ui.notify(host.t(k(host, "toastSummarizeSummary"), {
+        done: completedTasks,
+        skipped: skippedTasks,
+        total: tasks.length
+      }), void 0, { color: aborted ? "warning" : "info" });
     }
     return {
       ok: completedTasks === tasks.length && skippedTasks === 0,
@@ -1312,14 +1299,14 @@ function summarizeDialogCanPreview(model, settings) {
 async function resolveTargetLorebookIdForPreview(host, settings) {
   const id = asString(settings.targetLorebookId);
   if (!id) {
-    host.ui.toast(host.t(k(host, "toastTargetLorebookMissingWarn")), { color: "warning" });
+    host.ui.notify(host.t(k(host, "toastTargetLorebookMissingWarn")), void 0, { color: "warning" });
     return "";
   }
   try {
     await host.lorebook.get(id);
     return id;
   } catch {
-    host.ui.toast(host.t(k(host, "toastTargetLorebookDeleted")), { color: "warning" });
+    host.ui.notify(host.t(k(host, "toastTargetLorebookDeleted")), void 0, { color: "warning" });
     return "";
   }
 }
@@ -1362,18 +1349,18 @@ async function previewManualSummarizePrompt(host, model) {
   if (!auditDebugEnabled(host)) return;
   const settings = await loadMergedSettings(host);
   if (!summarizeDialogCanPreview(model, settings)) {
-    host.ui.toast(host.t(k(host, "toastInvalidRange")), { color: "warning" });
+    host.ui.notify(host.t(k(host, "toastInvalidRange")), void 0, { color: "warning" });
     return;
   }
   const fromTurn = asInt(model.startTurn, 0, 5e5);
   const toTurn = asInt(model.endTurn, fromTurn, 5e5);
   if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
-    host.ui.toast(host.t(k(host, "toastTurnRangeTooLong")), { color: "warning" });
+    host.ui.notify(host.t(k(host, "toastTurnRangeTooLong")), void 0, { color: "warning" });
     return;
   }
   const tasks = tasksFromSelection(settings, model.selectedTasks);
   if (tasks.length === 0) {
-    host.ui.toast(host.t(k(host, "toastNoTasksSelected")), { color: "warning" });
+    host.ui.notify(host.t(k(host, "toastNoTasksSelected")), void 0, { color: "warning" });
     return;
   }
   host.ui.progress({
@@ -1404,7 +1391,7 @@ async function previewManualSummarizePrompt(host, model) {
       toTurn
     );
     if (!prepared.userContent?.trim()) {
-      host.ui.toast(host.t(k(host, "toastNoTurnsInRange")), { color: "warning" });
+      host.ui.notify(host.t(k(host, "toastNoTurnsInRange")), void 0, { color: "warning" });
       return;
     }
     const sections = [
@@ -1436,7 +1423,7 @@ async function previewManualSummarizePrompt(host, model) {
     );
   } catch (e) {
     console.warn("[plot-summary] prompt preview failed", e);
-    host.ui.toast(host.t(k(host, "promptPreviewFailed")), { color: "error" });
+    host.ui.notify(host.t(k(host, "promptPreviewFailed")), void 0, { color: "error" });
   } finally {
     host.ui.clearProgress();
   }
@@ -1470,20 +1457,17 @@ async function createTargetLorebookFromTemplate(host, settings) {
   });
   const id = asString(ensured?.id);
   if (!id) {
-    host.ui.toast(host.t(k(host, "toastAutoLorebookFailed")), { color: "error" });
+    host.ui.notify(host.t(k(host, "toastAutoLorebookFailed")), void 0, { color: "error" });
     return "";
   }
-  host.ui.toast(
-    host.t(k(host, "toastAutoLorebookCreated"), { name: ensured.name || id }),
-    { color: "success" }
-  );
+  host.ui.notify(host.t(k(host, "toastAutoLorebookCreated"), { name: ensured.name || id }), void 0, { color: "success" });
   return id;
 }
 async function ensureTargetLorebook(host, settings) {
   const existing = asString(settings.targetLorebookId);
   if (existing) {
     if (await isTargetLorebookAvailable(host, existing)) return existing;
-    host.ui.toast(host.t(k(host, "toastTargetLorebookDeleted")), { color: "warning" });
+    host.ui.notify(host.t(k(host, "toastTargetLorebookDeleted")), void 0, { color: "warning" });
     try {
       return await promptRecoverLorebook(host, settings);
     } catch {
@@ -1497,11 +1481,11 @@ async function ensureTargetLorebook(host, settings) {
       await host.conversation.patchPluginSettings({ targetLorebookId: id });
       return id;
     } catch {
-      host.ui.toast(host.t(k(host, "toastAutoLorebookFailed")), { color: "error" });
+      host.ui.notify(host.t(k(host, "toastAutoLorebookFailed")), void 0, { color: "error" });
       return "";
     }
   }
-  host.ui.toast(host.t(k(host, "toastTargetLorebookMissingWarn")), { color: "warning" });
+  host.ui.notify(host.t(k(host, "toastTargetLorebookMissingWarn")), void 0, { color: "warning" });
   try {
     return await promptPickLorebook(host);
   } catch {
@@ -1606,7 +1590,7 @@ function registerRecoverLorebookDialog(host) {
           try {
             id = await createTargetLorebookFromTemplate(h, settings);
           } catch {
-            h.ui.toast(h.t(k(h, "toastAutoLorebookFailed")), { color: "error" });
+            h.ui.notify(h.t(k(h, "toastAutoLorebookFailed")), void 0, { color: "error" });
             return;
           }
           if (!id) return;
@@ -1720,7 +1704,7 @@ function registerSessionDialog(host, settings) {
           patch.entrySortMode = sortMode;
         }
         await h.conversation.patchPluginSettings(patch);
-        h.ui.toast(h.t(k(h, "sessionSubmit")), { color: "success" });
+        h.ui.notify(h.t(k(h, "sessionSubmit")), void 0, { color: "success" });
       }
     },
     DIALOG_SESSION
@@ -1792,7 +1776,7 @@ function registerSummarizeDialog(host, settings, mode) {
         const fromTurn = asInt(model.startTurn, 0, 5e5);
         const toTurn = asInt(model.endTurn, fromTurn, 5e5);
         if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
-          h.ui.toast(h.t(k(h, "toastTurnRangeTooLong")), { color: "warning" });
+          h.ui.notify(h.t(k(h, "toastTurnRangeTooLong")), void 0, { color: "warning" });
           return;
         }
         const selectedTasks = isEnable ? [
@@ -1803,7 +1787,7 @@ function registerSummarizeDialog(host, settings, mode) {
         ] : model.selectedTasks;
         const tasks = tasksFromSelection(settings, selectedTasks);
         if (tasks.length === 0) {
-          h.ui.toast(h.t(k(h, "toastNoTasksSelected")), { color: "warning" });
+          h.ui.notify(h.t(k(h, "toastNoTasksSelected")), void 0, { color: "warning" });
           return;
         }
         if (isEnable) {
@@ -1838,7 +1822,7 @@ async function reorderTargetLorebookNow(host) {
   const settings = await loadMergedSettings(host);
   const targetId = asString(settings.targetLorebookId);
   if (!targetId) {
-    host.ui.toast(host.t(k(host, "toastReorderLorebookNoTarget")), { color: "warning" });
+    host.ui.notify(host.t(k(host, "toastReorderLorebookNoTarget")), void 0, { color: "warning" });
     return;
   }
   try {
@@ -1853,10 +1837,10 @@ async function reorderTargetLorebookNow(host) {
       sidecarEntryIds,
       settings.sidecars.map((s) => s.id)
     );
-    host.ui.toast(host.t(k(host, "toastReorderLorebookDone")), { color: "success" });
+    host.ui.notify(host.t(k(host, "toastReorderLorebookDone")), void 0, { color: "success" });
   } catch (e) {
     console.warn("[plot-summary] reorder lorebook failed", e);
-    host.ui.toast(host.t(k(host, "toastTaskSkipped")), { color: "warning" });
+    host.ui.notify(host.t(k(host, "toastTaskSkipped")), void 0, { color: "warning" });
   }
 }
 function openSessionSettings(host) {
@@ -1918,14 +1902,11 @@ async function resumeAutoSummarizeEnable(host, settings) {
     nextBlockStart
   });
   refreshAutoSummarizeUi(host);
-  host.ui.toast(
-    host.t(k(host, "toastAutoSummarizeResumed"), {
-      from: range.fromTurn,
-      to: range.toTurn,
-      turn: trigger
-    }),
-    { color: "success" }
-  );
+  host.ui.notify(host.t(k(host, "toastAutoSummarizeResumed"), {
+    from: range.fromTurn,
+    to: range.toTurn,
+    turn: trigger
+  }), void 0, { color: "success" });
 }
 async function applyShortAutoSummarizeEnable(host, settings) {
   const X = firstAutoTriggerTurnOrdinal({ ...settings, nextBlockStart: 0 });
@@ -1936,7 +1917,7 @@ async function applyShortAutoSummarizeEnable(host, settings) {
     autoSidecarIds
   });
   refreshAutoSummarizeUi(host);
-  host.ui.toast(host.t(k(host, "toastAutoSummarizeScheduled"), { turn: X }), {
+  host.ui.notify(host.t(k(host, "toastAutoSummarizeScheduled"), { turn: X }), void 0, {
     color: "success"
   });
 }
@@ -1958,7 +1939,7 @@ async function tryEnableAutoSummarize(host) {
 async function toggleAutoSummarize(host) {
   if (isAutoSummarizeEnabled(host)) {
     await host.conversation.patchPluginSettings({ autoSummarizeEnabled: false });
-    host.ui.toast(host.t(k(host, "toastAutoSummarizeDisabled")), { color: "info" });
+    host.ui.notify(host.t(k(host, "toastAutoSummarizeDisabled")), void 0, { color: "info" });
     return;
   }
   await tryEnableAutoSummarize(host);
@@ -2048,11 +2029,11 @@ function onRangeEndClick(host, ctx) {
   const start = getRangeStartTurn();
   if (controlsDisabled(host)) return;
   if (start === null) {
-    host.ui.toast(host.t(k(host, "toastRangeStartRequired")), { color: "warning" });
+    host.ui.notify(host.t(k(host, "toastRangeStartRequired")), void 0, { color: "warning" });
     return;
   }
   if (ord === null || ord < start) {
-    host.ui.toast(host.t(k(host, "toastInvalidRange")), { color: "warning" });
+    host.ui.notify(host.t(k(host, "toastInvalidRange")), void 0, { color: "warning" });
     return;
   }
   openManualSummarize(host, { startTurn: start, endTurn: ord });

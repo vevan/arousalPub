@@ -76,10 +76,6 @@ export function useTurnPrompt(opts: {
         (e) => (typeof e.segmentIndex === 'number' ? e.segmentIndex : 0) === segIdx,
       )
       let entry = exact.length ? exact[exact.length - 1] : null
-      if (!entry && segIdx === 0) {
-        const legacy = entriesForTurn.filter((e) => e.segmentIndex === undefined)
-        if (legacy.length) entry = legacy[legacy.length - 1]
-      }
       if (!entry) {
         turnPromptIsEmpty.value = true
         return

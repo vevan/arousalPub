@@ -138,14 +138,24 @@ export interface PluginConfirmOptions {
   confirmColor?: string
 }
 
-export interface PluginToastOptions {
+export interface PluginNotifyOptions {
+  /** 是否弹 snackbar；默认 true；静默通知显式 false */
+  snackbar?: boolean
   color?: string
+  /** snackbar 自动关闭毫秒；默认 4000；仅影响浮层，不影响中心未读 */
   timeout?: number
-}
-
-export interface PluginNotifyOptions extends PluginToastOptions {
-  /** reserved for persistent notifications */
-  persistent?: boolean
+  level?: 'info' | 'success' | 'warning' | 'error'
+  action?: {
+    type: 'route' | 'conversation' | 'settings-tab' | 'external'
+    href?: string
+    conversationId?: string
+    settingsTab?: string
+  }
+  snackbarActions?: Array<{
+    label: string
+    action?: PluginNotifyOptions['action']
+  }>
+  dedupeKey?: string
 }
 
 export interface PluginProgressOptions {
@@ -476,7 +486,6 @@ export interface PluginWebHost {
     reasoningToHtml(text: string): string
   }
   ui: {
-    toast(message: string, opts?: PluginToastOptions): void
     notify(title: string, body?: string, opts?: PluginNotifyOptions): void
     confirm(opts: PluginConfirmOptions): Promise<boolean>
     openFormDialog(

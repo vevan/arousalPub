@@ -2,7 +2,6 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { generateShortId } from './short-id.js'
 import { getApiSettingsPath, getUserDataDir } from './config.js'
 import { getCurrentUserId } from './user-context.js'
-import { migrateLegacyDryOnPreset } from './dry-sampler.js'
 import {
   isEncryptedSecretV1,
   resolveSecretFromDisk,
@@ -67,7 +66,7 @@ function aadForPresetApiKey(userId: string, presetId: string): string {
 }
 
 function presetDiskToMemory(raw: ApiPresetDisk, userId: string): ApiPreset {
-  const apiKey = resolveSecretFromDisk(raw.apiKey, raw.apiKeyEnc, {
+  const apiKey = resolveSecretFromDisk(raw.apiKeyEnc, {
     aad: aadForPresetApiKey(userId, raw.id),
   })
   const { apiKey: _p, apiKeyEnc: _e, ...rest } = raw
@@ -116,8 +115,7 @@ function normalizeDocumentFromDisk(
   const presetsRaw = (d.presets as unknown[]).filter(isApiPresetDisk)
   if (presetsRaw.length === 0) return null
   const presets: ApiPreset[] = presetsRaw.map((p) => {
-    const migrated = migrateLegacyDryOnPreset(p as unknown as Record<string, unknown>)
-    const m = migrated as Partial<ApiPresetDisk>
+    const m = p as Partial<ApiPresetDisk>
     const breakers = Array.isArray(m.drySequenceBreakers)
       ? m.drySequenceBreakers.filter((x): x is string => typeof x === 'string')
       : []

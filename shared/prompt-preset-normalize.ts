@@ -37,7 +37,6 @@ export interface PromptEntry {
   order: number
   isSeed?: boolean
   bindingSlot?: PromptBindingSlot
-  characterBundlePosition?: 'before' | 'after'
   createdAt: string
   updatedAt: string
 }
@@ -49,11 +48,6 @@ export interface PromptPreset {
   prompts: PromptEntry[]
   createdAt: string
   updatedAt: string
-}
-
-export interface NormalizePresetOptions {
-  /** 从 legacy `useBoundCharacterSystemPrompt` 预设级开关继承 */
-  legacySystemPromptEnabled?: boolean
 }
 
 export interface NormalizePresetDeps {
@@ -82,7 +76,6 @@ export interface NormalizePresetDeps {
       id: string,
       enabled?: boolean,
     ) => PromptEntry,
-    opts?: { legacySystemPromptEnabled?: boolean },
   ) => PromptEntry[]
   DEFAULT_CHARACTER_SYSTEM_SLOTS: PromptBindingSlot[]
   DEFAULT_HISTORY_SYSTEM_SLOTS: PromptBindingSlot[]
@@ -106,12 +99,12 @@ function normalizeGroups(groups: PromptGroup[]): PromptGroup[] {
 
 function bindingSlotIsRequired(slot: PromptBindingSlot | undefined): boolean {
   return (
-    slot === 'boundWorld' ||
     slot === 'boundWorldBefore' ||
     slot === 'boundUserInput' ||
     slot === 'boundUserPersona'
   )
 }
+
 
 function ensureSystemSubBlocks(
   prompts: PromptEntry[],
@@ -136,14 +129,10 @@ function ensureSystemSubBlocks(
   return next
 }
 
-/**
- * 加载/组装前补全绑定槽、迁移 legacy 分区与槽位别名。
- * Server 组装与 Web 提示词库 UI 共用同一算法。
- */
+/** 加载/组装前补全绑定槽与组内 order。 */
 export function normalizePresetCore(
   p: PromptPreset,
   deps: NormalizePresetDeps,
-  opts: NormalizePresetOptions = {},
 ): PromptPreset {
   const charG = p.groups.find((g) => g.kind === 'character')
   const worldG = p.groups.find((g) => g.kind === 'world')
@@ -155,12 +144,9 @@ export function normalizePresetCore(
     enabled: bindingSlotIsRequired(e.bindingSlot) ? true : e.enabled,
   }))
 
-  const hasLegacyChar = prompts.some(
-    (e) => e.bindingSlot === 'boundCharacterSystem',
-  )
   const hasSystemSub = deps.presetUsesSystemSubBlocks({ ...p, prompts })
 
-  if (charG && !hasLegacyChar && !hasSystemSub) {
+  if (charG && !hasSystemSub) {
     prompts = ensureSystemSubBlocks(
       prompts,
       charG,
@@ -173,13 +159,11 @@ export function normalizePresetCore(
   if (
     charG &&
     !prompts.some((e) => e.bindingSlot === 'boundUserPersona') &&
-    (hasLegacyChar || hasSystemSub)
+    hasSystemSub
   ) {
     const anchor = prompts.find(
       (e) =>
-        e.groupId === charG.id &&
-        (e.bindingSlot === 'boundCharacterSystem' ||
-          e.bindingSlot === 'boundCharSystemPrompt'),
+        e.groupId === charG.id && e.bindingSlot === 'boundCharSystemPrompt',
     )
     const insertAfter =
       anchor?.order ??
@@ -201,7 +185,7 @@ export function normalizePresetCore(
     )
   }
 
-  if (histG && !hasSystemSub && !hasLegacyChar) {
+  if (histG && !hasSystemSub) {
     prompts = ensureSystemSubBlocks(
       prompts,
       histG,
@@ -223,29 +207,19 @@ export function normalizePresetCore(
 
   if (
     worldG &&
-    !prompts.some((e) => e.bindingSlot === 'boundWorld') &&
     !prompts.some(
       (e) =>
         e.bindingSlot === 'boundWorldBefore' ||
         e.bindingSlot === 'boundWorldAfter',
     )
   ) {
-    if (hasSystemSub || !hasLegacyChar) {
-      prompts = ensureSystemSubBlocks(
-        prompts,
-        worldG,
-        deps.DEFAULT_WORLD_SYSTEM_SLOTS,
-        deps,
-        'binding-slot',
-      )
-    } else {
-      prompts = prompts.map((e) =>
-        e.groupId === worldG.id ? { ...e, order: e.order + 1 } : e,
-      )
-      prompts.push(
-        deps.makeBindingSlotEntry(worldG.id, 'boundWorld', 0, 'binding-slot-world'),
-      )
-    }
+    prompts = ensureSystemSubBlocks(
+      prompts,
+      worldG,
+      deps.DEFAULT_WORLD_SYSTEM_SLOTS,
+      deps,
+      'binding-slot',
+    )
   }
 
   if (
@@ -272,9 +246,6 @@ export function normalizePresetCore(
       charG.id,
       (slot, order, id, enabled = true) =>
         deps.makeBindingSlotEntry(charG.id, slot, order, id, enabled),
-      {
-        legacySystemPromptEnabled: opts.legacySystemPromptEnabled,
-      },
     )
   }
 

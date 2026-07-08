@@ -42,10 +42,9 @@ describe('rotate-data-key documents', () => {
     assert.equal(plain, 'sk-secret')
   })
 
-  it('reencrypts legacy plaintext in api-settings', () => {
+  it('skips plaintext-only api-settings presets', () => {
     const userId = 'a1b2c3d4'
     const presetId = 'preset01'
-    const aad = `arousal:${userId}:preset:${presetId}`
     const doc = {
       version: 1 as const,
       savedAt: '2026-01-01T00:00:00.000Z',
@@ -59,24 +58,19 @@ describe('rotate-data-key documents', () => {
       ],
     }
     const rotated = rotateApiSettingsDocument(doc, userId, OLD_KEY, NEW_KEY)
-    assert.equal(rotated.count, 1)
-    const blob = rotated.doc.presets[0].apiKeyEnc
-    assert.ok(blob)
-    assert.equal(
-      decryptSecret(blob, { key: NEW_KEY, aad }),
-      'inline-key',
-    )
-    assert.equal(rotated.doc.presets[0].apiKey, undefined)
+    assert.equal(rotated.count, 0)
+    assert.equal(rotated.doc.presets[0].apiKeyEnc, undefined)
   })
 
-  it('reencrypts embedding key in user-preferences', () => {
+  it('reencrypts encrypted embedding key in user-preferences', () => {
     const userId = 'a1b2c3d4'
     const aad = `arousal:${userId}:embedding`
+    const keyEnc = encryptSecret('emb-key', { key: OLD_KEY, aad })
     const doc = {
       version: 1 as const,
       savedAt: '2026-01-01T00:00:00.000Z',
       embeddingApi: {
-        apiKey: 'emb-key',
+        apiKeyEnc: keyEnc,
         baseUrl: 'http://localhost',
       },
     }

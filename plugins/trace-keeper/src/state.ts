@@ -97,11 +97,6 @@ export function getPinnedView(conversationId: string): PinnedTraceView | null {
   return pinnedView
 }
 
-/** @deprecated 使用 getPinnedView */
-export function getPinnedTurnOrdinal(conversationId: string): number | null {
-  return getPinnedView(conversationId)?.turnOrdinal ?? null
-}
-
 export function setPinnedView(
   conversationId: string,
   view: PinnedTraceView | null,

@@ -1,6 +1,37 @@
 const PLUGIN_ID = 'swipe-cleaner'
 const BATCH_MAX = 50
 
+function getActiveSegmentIndex(turn) {
+  const segments = turn.segments ?? []
+  if (segments.length === 0) return 0
+  const raw = turn.activeSegmentIndex ?? 0
+  return Math.min(Math.max(0, raw), segments.length - 1)
+}
+
+function getSegmentReceives(turn, segmentIndex) {
+  const segments = turn.segments ?? []
+  if (segments.length === 0) return []
+  const idx =
+    typeof segmentIndex === 'number' && Number.isFinite(segmentIndex)
+      ? segmentIndex
+      : getActiveSegmentIndex(turn)
+  return segments[idx]?.receives ?? []
+}
+
+function getActiveReceiveIndex(turn, segmentIndex) {
+  const segments = turn.segments ?? []
+  if (segments.length === 0) return 0
+  const idx =
+    typeof segmentIndex === 'number' && Number.isFinite(segmentIndex)
+      ? segmentIndex
+      : getActiveSegmentIndex(turn)
+  const seg = segments[idx]
+  const receives = seg?.receives ?? []
+  if (receives.length === 0) return 0
+  const ai = seg?.activeReceiveIndex ?? 0
+  return Math.min(Math.max(0, ai), receives.length - 1)
+}
+
 function pruneDto(turn) {
   if (!turn?.receives || turn.receives.length <= 1) return null
   const idx = Math.min(
@@ -16,11 +47,13 @@ function pruneDto(turn) {
   }
 }
 
-function turnItemToDto(turn) {
+function turnItemToDto(turn, segmentIndex) {
+  const receives = getSegmentReceives(turn, segmentIndex)
   return {
     turnOrdinal: turn.turnOrdinal,
     user: turn.user,
-    receives: turn.receives.map((r) => ({
+    segmentIndex,
+    receives: receives.map((r) => ({
       id: r.id,
       content: r.content,
       ...(r.reasoning ? { reasoning: r.reasoning } : {}),
@@ -29,8 +62,12 @@ function turnItemToDto(turn) {
       ...(r.completionTokens ? { completionTokens: r.completionTokens } : {}),
       ...(r.model ? { model: r.model } : {}),
     })),
-    activeReceiveIndex: turn.activeReceiveIndex,
+    activeReceiveIndex: getActiveReceiveIndex(turn, segmentIndex),
   }
+}
+
+function segmentSwipeCount(turn, segmentIndex) {
+  return getSegmentReceives(turn, segmentIndex).length
 }
 
 function isBusy(host) {
@@ -44,17 +81,21 @@ function isBusy(host) {
 function conversationHasSwipes(host) {
   const turns = host.session.turns
   if (!Array.isArray(turns)) return false
-  return turns.some((t) => (t.receives?.length ?? 0) > 1)
+  return turns.some((t) =>
+    (t.segments ?? []).some((seg) => (seg.receives?.length ?? 0) > 1),
+  )
 }
 
 function summarizeConversation(host) {
   let turnCount = 0
   let swipeRemoveTotal = 0
   for (const t of host.session.turns ?? []) {
-    const len = t.receives?.length ?? 0
-    if (len > 1) {
-      turnCount += 1
-      swipeRemoveTotal += len - 1
+    for (const seg of t.segments ?? []) {
+      const len = seg.receives?.length ?? 0
+      if (len > 1) {
+        turnCount += 1
+        swipeRemoveTotal += len - 1
+      }
     }
   }
   return { turnCount, swipeRemoveTotal }
@@ -78,8 +119,8 @@ async function patchWithCheck(host, ctx, dtos) {
   }
 }
 
-async function cleanTurn(host, turn) {
-  const dto = turnItemToDto(turn)
+async function cleanTurn(host, turn, segmentIndex) {
+  const dto = turnItemToDto(turn, segmentIndex)
   const pruned = pruneDto(dto)
   if (!pruned) return
   await host.conversation.runBatch(async (ctx) => {
@@ -89,21 +130,22 @@ async function cleanTurn(host, turn) {
 }
 
 async function cleanAllConversation(host) {
-  const maxOrd = maxTurnOrdinal(host)
-  await host.conversation.runBatch(async (ctx) => {
-    for (let from = 0; from <= maxOrd; from += BATCH_MAX) {
-      const to = Math.min(from + BATCH_MAX - 1, maxOrd)
-      const batch = await ctx.read({ range: { from, to } })
-      const changed = []
-      for (const turn of batch) {
-        const pruned = pruneDto(turn)
-        if (pruned) changed.push(pruned)
-      }
-      if (changed.length) {
-        await patchWithCheck(host, ctx, changed)
-      }
+  const patches = []
+  for (const turn of host.session.turns ?? []) {
+    const segCount = turn.segments?.length ?? 0
+    for (let segIdx = 0; segIdx < segCount; segIdx++) {
+      const dto = turnItemToDto(turn, segIdx)
+      const pruned = pruneDto(dto)
+      if (pruned) patches.push(pruned)
     }
-  })
+  }
+  if (patches.length === 0) return
+  for (let i = 0; i < patches.length; i += BATCH_MAX) {
+    const chunk = patches.slice(i, i + BATCH_MAX)
+    await host.conversation.runBatch(async (ctx) => {
+      await patchWithCheck(host, ctx, chunk)
+    })
+  }
   await host.conversation.refresh()
 }
 
@@ -114,14 +156,17 @@ export function register(host) {
     id: `${PLUGIN_ID}-turn`,
     icon: 'mdi-broom',
     tooltipKey: k('tooltip'),
-    when: (ctx) => (ctx.turn?.receives.length ?? 0) > 1,
+    when: (ctx) =>
+      !!ctx.turn && segmentSwipeCount(ctx.turn, ctx.segmentIndex) > 1,
     disabled: () => isBusy(host),
     onClick: async (ctx) => {
       const turn = ctx.turn
-      if (!turn || turn.receives.length <= 1) return
-      const nRemove = turn.receives.length - 1
-      const current = turn.activeReceiveIndex + 1
-      const total = turn.receives.length
+      const segIdx = ctx.segmentIndex ?? getActiveSegmentIndex(turn ?? {})
+      if (!turn || segmentSwipeCount(turn, segIdx) <= 1) return
+      const receives = getSegmentReceives(turn, segIdx)
+      const nRemove = receives.length - 1
+      const current = getActiveReceiveIndex(turn, segIdx) + 1
+      const total = receives.length
       const ok = await host.ui.confirm({
         title: host.t(k('confirmTurnTitle')),
         body: host.t(k('confirmTurnBody'), { nRemove, current, total }),
@@ -131,11 +176,11 @@ export function register(host) {
       })
       if (!ok) return
       try {
-        await cleanTurn(host, turn)
-        host.ui.toast(host.t(k('toastTurnDone')), { color: 'success' })
+        await cleanTurn(host, turn, segIdx)
+        host.ui.notify(host.t(k('toastTurnDone')), undefined, { color: 'success' })
       } catch (e) {
         console.warn('[swipe-cleaner] turn clean failed', e)
-        host.ui.toast(host.t(k('toastFailed')), { color: 'error' })
+        host.ui.notify(host.t(k('toastFailed')), undefined, { color: 'error' })
       }
     },
   })
@@ -159,10 +204,10 @@ export function register(host) {
       if (!ok) return
       try {
         await cleanAllConversation(host)
-        host.ui.toast(host.t(k('toastAllDone')), { color: 'success' })
+        host.ui.notify(host.t(k('toastAllDone')), undefined, { color: 'success' })
       } catch (e) {
         console.warn('[swipe-cleaner] all clean failed', e)
-        host.ui.toast(host.t(k('toastFailed')), { color: 'error' })
+        host.ui.notify(host.t(k('toastFailed')), undefined, { color: 'error' })
       }
     },
   })

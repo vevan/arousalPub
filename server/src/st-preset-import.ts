@@ -26,13 +26,6 @@ import type {
   PromptTrigger,
 } from './assemble-prompts.js'
 
-/** 旧版 ST 导入动态插入的夹缝组 id 前缀（现策略不再产生） */
-export const LEGACY_ST_GAP_GROUP_ID_PREFIX = 'group-st-gap-'
-
-export function isLegacyStGapGroupId(id: string): boolean {
-  return id.startsWith(LEGACY_ST_GAP_GROUP_ID_PREFIX)
-}
-
 const GROUP = {
   pre: 'group-pre',
   character: 'group-character',

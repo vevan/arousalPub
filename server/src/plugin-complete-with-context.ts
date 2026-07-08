@@ -127,7 +127,7 @@ export type ResolveApiConfigIdForCompleteResult =
 export async function resolveApiConfigIdForCompleteWithContext(
   req: Pick<
     CompleteWithContextRequest,
-    'conversationId' | 'apiConfigId' | 'dryRun' | 'fallbackToChat'
+    'conversationId' | 'apiConfigId' | 'dryRun' | 'fallbackToGlobalDefault'
   >,
   pluginId: string,
   userId?: string,
@@ -141,7 +141,7 @@ export async function resolveApiConfigIdForCompleteWithContext(
       pluginId: pluginId.trim(),
       conversationId,
       userId,
-      fallbackToChat: req.fallbackToChat !== false,
+      fallbackToGlobalDefault: req.fallbackToGlobalDefault !== false,
     })
     if (!hit.ok) {
       if (req.dryRun === true) {
@@ -387,6 +387,6 @@ export function parseCompleteWithContextBody(
     preparedContext,
     draft,
     captureDebug: o.captureDebug === true,
-    fallbackToChat: o.fallbackToChat === true,
+    fallbackToGlobalDefault: o.fallbackToGlobalDefault !== false,
   }
 }

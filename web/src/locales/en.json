@@ -17,6 +17,13 @@
     "settings": "Settings",
     "closeModal": "Close"
   },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "No notifications yet",
+    "markRead": "Mark as read",
+    "markAllRead": "Mark all read",
+    "delete": "Delete"
+  },
   "entryTransfer": {
     "copy": "Duplicate",
     "copyTo": "Copy to…",
@@ -1632,6 +1639,7 @@
     }
   },
   "pluginHost": {
-    "progressAbort": "Force abort"
+    "progressAbort": "Force abort",
+    "snackbarClose": "Close"
   }
 }

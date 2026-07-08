@@ -40,8 +40,6 @@ export interface AssistantSegmentItem {
 export interface ChatTurnItem {
   turnId?: string
   user: string
-  receives: ReceiveItem[]
-  activeReceiveIndex: number
   turnOrdinal: number
   segments?: AssistantSegmentItem[]
   activeSegmentIndex?: number

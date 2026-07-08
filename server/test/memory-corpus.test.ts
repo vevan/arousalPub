@@ -29,7 +29,6 @@ describe('stripMemoryCorpusText', () => {
   const opts = {
     stripPluginBlocks: true,
     stripBlockTags: ['ex-fixture-block', 'route-selector'],
-    stripExPrefixElements: false,
   }
 
   it('strips declared tags by exact name', () => {
@@ -42,11 +41,6 @@ describe('stripMemoryCorpusText', () => {
     const raw = 'a<route-selector>{"y":2}</route-selector>b'
     assert.equal(stripMemoryCorpusText(raw, opts), 'ab')
   })
-
-  it('does not strip ex-* wildcard when stripExPrefixElements is off', () => {
-    const raw = 'a<ex-custom>{"y":2}</ex-custom>b'
-    assert.equal(stripMemoryCorpusText(raw, opts), 'a<ex-custom>{"y":2}</ex-custom>b')
-  })
 })
 
 describe('buildMemoryEmbeddingCorpus', () => {
@@ -54,7 +48,6 @@ describe('buildMemoryEmbeddingCorpus', () => {
     const opts = {
       stripPluginBlocks: true,
       stripBlockTags: ['ex-fixture-block'],
-      stripExPrefixElements: false,
     }
     const corpus = buildMemoryEmbeddingCorpus(
       turn({

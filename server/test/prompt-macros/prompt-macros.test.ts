@@ -142,10 +142,10 @@ describe('Phase A macros', () => {
     assert.match(applyPromptMacroPipeline('{{roll::1d6}}', ctx()), /^[1-6]$/)
   })
 
-  it('preprocesses legacy angle tags', () => {
+  it('does not expand legacy angle tags', () => {
     assert.equal(
       applyPromptMacroPipeline('<USER> says hi to <CHAR>', ctx()),
-      '小明 says hi to 艾拉',
+      '<USER> says hi to <CHAR>',
     )
   })
 

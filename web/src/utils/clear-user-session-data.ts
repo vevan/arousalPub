@@ -9,6 +9,7 @@ import { usePromptsStore } from '@/stores/prompts'
 import { useRegexRulesDisplayStore } from '@/stores/regex-rules-display'
 import { useRegexRulesStore } from '@/stores/regex-rules'
 import { useUiContextStore } from '@/stores/ui-context'
+import { useNotificationCenterStore } from '@/stores/notification-center'
 import { invalidateRegexHostRulesCache } from '@/plugins/plugin-host-regex'
 import { clearPluginUserSettingsInflight } from '@/utils/plugin-user-settings-loader'
 import {
@@ -35,4 +36,5 @@ export function clearUserBrowserSessionData(): void {
   useRegexRulesStore().clearSessionData()
   useRegexRulesDisplayStore().invalidate()
   useUiContextStore().clearSessionData()
+  useNotificationCenterStore().clearSession()
 }

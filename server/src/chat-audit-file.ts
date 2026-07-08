@@ -15,16 +15,14 @@ import {
   auditEntryIdentityKey,
   auditEntryIsAfterSegment,
   auditEntryMatchesIdentity,
-  normalizeAuditSegmentIndex,
+  requireAuditSegmentIndex,
 } from './chat-audit-identity.js'
 
 export const CHAT_AUDIT_FILE = 'chat-audit.json'
-export const CHAT_PROMPT_LEGACY_FILE = 'chat-prompt.json'
 export const DEFAULT_AUDIT_DEBUG_MAX = 10
 
 type AuditIndexLike = {
   auditDebug?: { enabled?: boolean; maxStored?: number }
-  promptDebug?: { maxStored?: number }
 } | null
 
 function conversationDir(id: string): string {
@@ -45,15 +43,6 @@ export function resolveAuditDebugSettings(idx: AuditIndexLike): AuditDebugSettin
         : DEFAULT_AUDIT_DEBUG_MAX
     return { enabled, maxStored }
   }
-  const legacyMax = idx?.promptDebug?.maxStored
-  if (
-    typeof legacyMax === 'number' &&
-    Number.isInteger(legacyMax) &&
-    legacyMax >= 0 &&
-    legacyMax <= 200
-  ) {
-    return { enabled: legacyMax >= 1, maxStored: legacyMax }
-  }
   return { enabled: false, maxStored: DEFAULT_AUDIT_DEBUG_MAX }
 }
 
@@ -64,10 +53,6 @@ export function isAuditDebugWriteEnabled(idx: AuditIndexLike): boolean {
 
 function conversationAuditPath(id: string): string {
   return path.join(conversationDir(id), CHAT_AUDIT_FILE)
-}
-
-function conversationLegacyPromptPath(id: string): string {
-  return path.join(conversationDir(id), CHAT_PROMPT_LEGACY_FILE)
 }
 
 function validateAuditMessages(raw: ChatMessage[]): ChatAuditMessage[] | null {
@@ -82,48 +67,6 @@ function validateAuditMessages(raw: ChatMessage[]): ChatAuditMessage[] | null {
     out.push({ role, content })
   }
   return out
-}
-
-async function readLegacyPromptAsAudit(
-  conversationId: string,
-): Promise<ChatAuditFile | null> {
-  const legacyPath = conversationLegacyPromptPath(conversationId)
-  if (!existsSync(legacyPath)) return null
-  try {
-    const raw = await readFile(legacyPath, 'utf8')
-    const j = JSON.parse(raw) as {
-      schemaVersion?: number
-      entries?: Array<{
-        savedAt?: string
-        chunkName?: string
-        turnId?: string
-        turnOrdinal?: number
-        messages?: ChatAuditMessage[]
-      }>
-    }
-    if (!j || !Array.isArray(j.entries)) return null
-    const entries: ChatAuditEntry[] = []
-    for (const e of j.entries) {
-      if (
-        !e ||
-        typeof e.turnId !== 'string' ||
-        typeof e.turnOrdinal !== 'number' ||
-        !Array.isArray(e.messages)
-      ) {
-        continue
-      }
-      entries.push({
-        savedAt: typeof e.savedAt === 'string' ? e.savedAt : new Date().toISOString(),
-        chunkName: typeof e.chunkName === 'string' ? e.chunkName : '',
-        turnId: e.turnId,
-        turnOrdinal: e.turnOrdinal,
-        messages: e.messages,
-      })
-    }
-    return { schemaVersion: 2, entries }
-  } catch {
-    return null
-  }
 }
 
 export async function readChatAuditFile(
@@ -145,8 +88,6 @@ export async function readChatAuditFile(
       /* fall through */
     }
   }
-  const legacy = await readLegacyPromptAsAudit(conversationId)
-  if (legacy) return legacy
   return { schemaVersion: 2, entries: [] }
 }
 
@@ -160,13 +101,13 @@ export function buildChatAuditEntry(
     chunkName: string
     turnId: string
     turnOrdinal: number
-    segmentIndex?: number
+    segmentIndex: number
     receiveId?: string
   },
   messages: ChatAuditMessage[],
   snapshot: ChatAuditSnapshotInput,
 ): ChatAuditEntry {
-  const segmentIndex = normalizeAuditSegmentIndex(meta.segmentIndex)
+  const segmentIndex = requireAuditSegmentIndex(meta.segmentIndex)
   return {
     savedAt: meta.savedAt,
     chunkName: meta.chunkName,
@@ -190,7 +131,7 @@ export async function appendChatAuditEntry(
     chunkName: string
     turnId: string
     turnOrdinal: number
-    segmentIndex?: number
+    segmentIndex: number
     receiveId?: string
     snapshot: ChatAuditSnapshotInput
   },
@@ -200,7 +141,7 @@ export async function appendChatAuditEntry(
   const msgs = validateAuditMessages(params.snapshot.messages)
   if (!msgs) return
 
-  const segmentIndex = normalizeAuditSegmentIndex(params.segmentIndex)
+  const segmentIndex = requireAuditSegmentIndex(params.segmentIndex)
   const file = await readChatAuditFile(conversationId)
   const replaceKey = auditEntryIdentityKey({ turnId: params.turnId, segmentIndex })
   const filtered = file.entries.filter(
@@ -257,32 +198,14 @@ export async function removeChatAuditEntriesByTurnId(
   turnId: string,
 ): Promise<void> {
   const auditPath = conversationAuditPath(conversationId)
+  if (!existsSync(auditPath)) return
   try {
-    if (existsSync(auditPath)) {
-      const file = await readChatAuditFile(conversationId)
-      const entries = file.entries.filter((e) => e.turnId !== turnId)
-      if (entries.length === file.entries.length) return
-      await writeFile(
-        auditPath,
-        `${JSON.stringify({ schemaVersion: 3, entries }, null, 2)}\n`,
-        'utf8',
-      )
-      return
-    }
-  } catch {
-    /* try legacy */
-  }
-  const legacyPath = conversationLegacyPromptPath(conversationId)
-  if (!existsSync(legacyPath)) return
-  try {
-    const raw = await readFile(legacyPath, 'utf8')
-    const j = JSON.parse(raw) as { schemaVersion?: number; entries?: { turnId: string }[] }
-    if (!j || !Array.isArray(j.entries)) return
-    const entries = j.entries.filter((e) => e.turnId !== turnId)
-    if (entries.length === j.entries.length) return
+    const file = await readChatAuditFile(conversationId)
+    const entries = file.entries.filter((e) => e.turnId !== turnId)
+    if (entries.length === file.entries.length) return
     await writeFile(
-      legacyPath,
-      `${JSON.stringify({ schemaVersion: 1, entries }, null, 2)}\n`,
+      auditPath,
+      `${JSON.stringify({ schemaVersion: 3, entries }, null, 2)}\n`,
       'utf8',
     )
   } catch {

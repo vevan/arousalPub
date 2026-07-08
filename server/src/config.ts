@@ -261,9 +261,6 @@ export function getLorebooksIndexPath(userId?: string): string {
   return path.join(getLorebooksDir(userId), 'index.json')
 }
 
-/** @deprecated 请使用 {@link getChatsRoot} */
-export const CHAT_ROOT = getChatsRoot
-
 export function ensureDataSkeletonForUser(userId: string): void {
   const userDir = getUserDataDir(userId)
   for (const d of [
@@ -281,11 +278,6 @@ export function ensureDataSkeletonForUser(userId: string): void {
       console.warn(`[config] failed to create ${d}:`, e)
     }
   }
-}
-
-/** @deprecated 使用 {@link ensureDataSkeletonForUser}；须在已 enterRequestUser 后调用 */
-export function ensureDataSkeleton(): void {
-  ensureDataSkeletonForUser(getCurrentUserId())
 }
 
 // eslint-disable-next-line no-console

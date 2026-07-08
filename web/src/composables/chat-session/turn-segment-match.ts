@@ -7,9 +7,9 @@ export function isTurnAwaitingAssistantSegment(
   segmentIndex?: number,
 ): boolean {
   if (pendingSendTurnOrdinal !== turnOrdinal) return false
-  if (segmentIndex === undefined) return true
-  if (pendingSendSegmentIndex === null) return segmentIndex === 0
-  return pendingSendSegmentIndex === segmentIndex
+  const seg = segmentIndex ?? 0
+  if (pendingSendSegmentIndex === null) return seg === 0
+  return pendingSendSegmentIndex === seg
 }
 
 export function isTurnRegeneratingAssistantSegment(
@@ -19,9 +19,9 @@ export function isTurnRegeneratingAssistantSegment(
   segmentIndex?: number,
 ): boolean {
   if (regeneratingTurnOrdinal !== turnOrdinal) return false
-  if (segmentIndex === undefined) return true
-  if (regeneratingSegmentIndex === null) return segmentIndex === 0
-  return regeneratingSegmentIndex === segmentIndex
+  const seg = segmentIndex ?? 0
+  if (regeneratingSegmentIndex === null) return seg === 0
+  return regeneratingSegmentIndex === seg
 }
 
 export function isAssistantSegmentLoading(

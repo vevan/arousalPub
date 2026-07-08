@@ -5850,15 +5850,6 @@ function collectUserBundles(user) {
     if (!entry) continue;
     out[entry.id] = { ...out[entry.id], ...entry };
   }
-  const legacy = user.bundles;
-  if (isPlainObject(legacy)) {
-    for (const [key, val] of Object.entries(legacy)) {
-      if (!isPlainObject(val)) continue;
-      const entry = parseUserBundleEntry({ ...val, id: key }, parseOpts);
-      if (!entry) continue;
-      out[entry.id] = { ...out[entry.id], ...entry };
-    }
-  }
   return out;
 }
 function mergeBundlePartial(base, partial) {
@@ -6007,22 +5998,14 @@ function resolveViewSegmentIndex(turn, segmentIndex) {
 }
 function viewSegmentAt(turn, segmentIndex) {
   const segments = turn.segments;
-  if (segments?.length) {
-    const seg = segments[resolveViewSegmentIndex(turn, segmentIndex)];
-    return {
-      receives: seg.receives ?? [],
-      activeReceiveIndex: typeof seg.activeReceiveIndex === "number" ? seg.activeReceiveIndex : 0,
-      ...typeof seg.speakerCharacterId === "string" ? {
-        speakerCharacterId: seg.speakerCharacterId.trim()
-      } : {}
-    };
-  }
-  const receives = turn.receives ?? [];
-  if (receives.length === 0) return null;
+  if (!segments?.length) return null;
+  const seg = segments[resolveViewSegmentIndex(turn, segmentIndex)];
   return {
-    receives,
-    activeReceiveIndex: typeof turn.activeReceiveIndex === "number" ? turn.activeReceiveIndex : 0,
-    ...turn.speakerCharacterId?.trim() ? { speakerCharacterId: turn.speakerCharacterId.trim() } : {}
+    receives: seg.receives ?? [],
+    activeReceiveIndex: typeof seg.activeReceiveIndex === "number" ? seg.activeReceiveIndex : 0,
+    ...typeof seg.speakerCharacterId === "string" ? {
+      speakerCharacterId: seg.speakerCharacterId.trim()
+    } : {}
   };
 }
 function activeReceiveFromView(turn, segmentIndex) {
@@ -6036,8 +6019,7 @@ function activeReceiveFromView(turn, segmentIndex) {
   return receives[idx] ?? null;
 }
 function turnHasAssistantReceives(turn) {
-  if (turn.segments?.some((s) => (s.receives?.length ?? 0) > 0)) return true;
-  return (turn.receives?.length ?? 0) > 0;
+  return (turn.segments ?? []).some((s) => (s.receives?.length ?? 0) > 0);
 }
 
 // plugins/trace-keeper/src/trace-state-resolve.ts
@@ -6715,35 +6697,21 @@ function conversationIdFrom(host) {
   return host.conversation.getId?.()?.trim() ?? "";
 }
 function segmentCountForTurn(turn) {
-  if (!turn) return 0;
-  const n = turn.segments?.length ?? 0;
-  if (n > 0) return n;
-  return (turn.receives?.length ?? 0) > 0 ? 1 : 0;
+  return turn?.segments?.length ?? 0;
 }
 function fingerprintTurnTail(turn) {
   const segs = turn.segments ?? [];
-  if (segs.length > 0) {
-    return segs.map((seg) => {
-      const rs2 = seg.receives ?? [];
-      const ai2 = Math.min(
-        Math.max(0, Math.floor(seg.activeReceiveIndex ?? 0)),
-        Math.max(0, rs2.length - 1)
-      );
-      const rec2 = rs2[ai2];
-      const id2 = rec2?.id?.trim() ?? "";
-      const len2 = typeof rec2?.content === "string" ? rec2.content.length : 0;
-      return `${id2}:${len2}:${rs2.length}:${ai2}`;
-    }).join("|");
-  }
-  const rs = turn.receives ?? [];
-  const ai = Math.min(
-    Math.max(0, Math.floor(turn.activeReceiveIndex ?? 0)),
-    Math.max(0, rs.length - 1)
-  );
-  const rec = rs[ai];
-  const id = rec?.id?.trim() ?? "";
-  const len = typeof rec?.content === "string" ? rec.content.length : 0;
-  return `${id}:${len}:${rs.length}:${ai}`;
+  return segs.map((seg) => {
+    const rs = seg.receives ?? [];
+    const ai = Math.min(
+      Math.max(0, Math.floor(seg.activeReceiveIndex ?? 0)),
+      Math.max(0, rs.length - 1)
+    );
+    const rec = rs[ai];
+    const id = rec?.id?.trim() ?? "";
+    const len = typeof rec?.content === "string" ? rec.content.length : 0;
+    return `${id}:${len}:${rs.length}:${ai}`;
+  }).join("|");
 }
 function liveTailSnapshotFromTurns(turns) {
   const last = turns[turns.length - 1];

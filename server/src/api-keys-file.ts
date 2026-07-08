@@ -46,7 +46,7 @@ function diskEntryToMemory(
   entry: ApiKeyEntryDisk,
   userId: string,
 ): ApiKeyEntry {
-  const key = resolveSecretFromDisk(entry.key, entry.keyEnc, {
+  const key = resolveSecretFromDisk(entry.keyEnc, {
     aad: aadForApiKey(userId, entry.id),
   })
   return {

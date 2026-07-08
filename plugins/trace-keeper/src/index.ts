@@ -202,38 +202,24 @@ function conversationIdFrom(host: PluginHost): string {
 }
 
 function segmentCountForTurn(turn: TurnViewRef | null | undefined): number {
-  if (!turn) return 0
-  const n = turn.segments?.length ?? 0
-  if (n > 0) return n
-  return (turn.receives?.length ?? 0) > 0 ? 1 : 0
+  return turn?.segments?.length ?? 0
 }
 
 function fingerprintTurnTail(turn: TurnViewRef): string {
   const segs = turn.segments ?? []
-  if (segs.length > 0) {
-    return segs
-      .map((seg) => {
-        const rs = seg.receives ?? []
-        const ai = Math.min(
-          Math.max(0, Math.floor(seg.activeReceiveIndex ?? 0)),
-          Math.max(0, rs.length - 1),
-        )
-        const rec = rs[ai]
-        const id = rec?.id?.trim() ?? ''
-        const len = typeof rec?.content === 'string' ? rec.content.length : 0
-        return `${id}:${len}:${rs.length}:${ai}`
-      })
-      .join('|')
-  }
-  const rs = turn.receives ?? []
-  const ai = Math.min(
-    Math.max(0, Math.floor(turn.activeReceiveIndex ?? 0)),
-    Math.max(0, rs.length - 1),
-  )
-  const rec = rs[ai]
-  const id = rec?.id?.trim() ?? ''
-  const len = typeof rec?.content === 'string' ? rec.content.length : 0
-  return `${id}:${len}:${rs.length}:${ai}`
+  return segs
+    .map((seg) => {
+      const rs = seg.receives ?? []
+      const ai = Math.min(
+        Math.max(0, Math.floor(seg.activeReceiveIndex ?? 0)),
+        Math.max(0, rs.length - 1),
+      )
+      const rec = rs[ai]
+      const id = rec?.id?.trim() ?? ''
+      const len = typeof rec?.content === 'string' ? rec.content.length : 0
+      return `${id}:${len}:${rs.length}:${ai}`
+    })
+    .join('|')
 }
 
 function liveTailSnapshotFromTurns(

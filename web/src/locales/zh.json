@@ -17,6 +17,13 @@
     "settings": "设置",
     "closeModal": "关闭"
   },
+  "notifications": {
+    "title": "通知",
+    "empty": "暂无通知",
+    "markRead": "标为已读",
+    "markAllRead": "全部已读",
+    "delete": "删除"
+  },
   "entryTransfer": {
     "copy": "复制",
     "copyTo": "复制到…",
@@ -1632,6 +1639,7 @@
     }
   },
   "pluginHost": {
-    "progressAbort": "强制中断"
+    "progressAbort": "强制中断",
+    "snackbarClose": "关闭"
   }
 }

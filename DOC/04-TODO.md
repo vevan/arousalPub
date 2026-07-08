@@ -19,38 +19,38 @@
 
 定案见 [`DOC/40`](40-notification-center.md)。**仅 `host.ui.notify`**（**删除 `toast`**，无兼容层）：每条写通知中心；`snackbar` 默认 `true`；静默显式 `snackbar: false`；snackbar 互动钮 → 已读。
 
-| 层 | 已具备 | 缺口 |
-|----|--------|------|
-| **发送** | `toast` + `notify` 双 API（均仅 snackbar） | 仅 `notify` + 中心落盘 + 删 `toast` |
-| **存储** | `composer-draft-storage` 等分键惯例 | `notification-storage.ts` envelope |
-| **UI** | — | 顶栏 bell + 列表 + 带操作钮 snackbar |
-| **插件契约** | `DOC/18` §3.9 签名 | `create-plugin-web-host` 迁入 |
+| 层 | 状态 |
+|----|------|
+| **发送** | ✅ 仅 `notify`（删 `toast`）；默认 snackbar；`snackbar: false` 静默 |
+| **存储** | ✅ `notification-storage.ts` envelope |
+| **UI** | ✅ 顶栏 bell + 列表 + 带操作钮 snackbar |
+| **插件契约** | ✅ `create-plugin-web-host` · bundled 插件已迁 |
 
-**推荐顺序**：NC0 盘点 → **NC1** 存储 → **NC2** store/API → **NC3** UI → **NC4** 多 Tab → **NC5** notify 迁移 → NC-V 验收。
+**推荐顺序**：~~NC0~~ → ~~NC1~~ → ~~NC2~~ → ~~NC3~~ → ~~NC4~~ → ~~NC5~~ → **NC-V** 验收。
 
 #### NC0 · 盘点（先行）
 
-- [ ] **NC0** — 全库 `toast` / `notify` 调用点清单（含 bundled 插件）；迁移：`toast` → `notify(title, undefined, opts)`；静默场景标 `snackbar: false`；定案 §3.1 · §4.2
+- [x] **NC0** — 全库 `toast` / `notify` 调用点清单（含 bundled 插件）；迁移：`toast` → `notify(title, undefined, opts)`；静默场景标 `snackbar: false`；定案 §3.1 · §4.2
 
 #### NC1 · 存储层
 
-- [ ] **NC1** — `web/src/utils/notification-storage.ts`：`{ schemaVersion, unreadCount, items[] }` · 键 `arousal-notifications-{userId}` · 登出随 `clearUserSessionLocalStorage` 清除 · 条数上限裁剪（如 200）
+- [x] **NC1** — `web/src/utils/notification-storage.ts`：`{ schemaVersion, unreadCount, items[] }` · 键 `arousal-notifications-{userId}` · 登出随 `clearUserSessionLocalStorage` 清除 · 条数上限裁剪（如 200）
 
 #### NC2 · Store / API
 
-- [ ] **NC2** — Pinia `notification-center` store：`send` / `list` / `markRead` / `delete` / `unreadCount` · 变更订阅（供角标/列表）
+- [x] **NC2** — Pinia `notification-center` store：`send` / `list` / `markRead` / `delete` / `unreadCount` · 变更订阅（供角标/列表）
 
 #### NC3 · 顶栏 UI
 
-- [ ] **NC3** — 顶栏 bell 未读角标 · 通知列表抽屉/菜单 · snackbar（关闭/操作钮 → markRead）· 单条/批量已读·删除 · 空态 · i18n
+- [x] **NC3** — 顶栏 bell 未读角标 · 通知列表抽屉/菜单 · snackbar（关闭/操作钮 → markRead）· 单条/批量已读·删除 · 空态 · i18n
 
 #### NC4 · 多 Tab 同步
 
-- [ ] **NC4** — 同浏览器多 Tab：`window` `storage` 事件同步未读角标与列表
+- [x] **NC4** — 同浏览器多 Tab：`window` `storage` 事件同步未读角标与列表
 
 #### NC5 · `host.ui` 迁移
 
-- [ ] **NC5** — **删除** `host.ui.toast` / `PluginToastOptions` · 实现 `notify`（写中心 + 默认 snackbar）· 全库改调用（plot-summary / guidance-generate / conversation-export / swipe-cleaner / Web 核心）· `DOC/18` · `DOC/10`
+- [x] **NC5** — **删除** `host.ui.toast` / `PluginToastOptions` · 实现 `notify`（写中心 + 默认 snackbar）· 全库改调用（plot-summary / guidance-generate / conversation-export / swipe-cleaner / Web 核心）· `DOC/18` · `DOC/10`
 
 #### NC-V · 验收
 
@@ -123,6 +123,7 @@
 - [x] **ST 导入 Tab 全链路**（2026-06～07）：设置页「导入」· ST 世界书 / 聊天记录 / 预设跳转 · M3 回归 — 见 [`DOC/37`](37-st-import-settings-tab.md)
 - [x] **迹录 segment 级 TK-O1 + 主线闭环**（2026-07-08）：多 segment transcript / resolveLiveTraceStates / Separate 目标 segment 剥块 — 见 [`DOC/30`](30-plugin-trace-keeper.md) §10 · [`DOC/35`](35-group-chat.md) §6 · [`DOC/44`](44-turn-segment-only-storage.md)
 - [x] **迹录 TK-F + UI/pinned 收尾**（2026-07-08）：outgoing/memory 多 segment 单测 · 侧栏 segment E2E · 槽位迁 `assistant-turn` · 同会话新回复 live tail 取消 pinned（`50725a0`）— 见 [`DOC/30`](30-plugin-trace-keeper.md) §4.3 · §6.2
+- [x] **兼容/过渡代码大清理**（2026-07-08 · 未提交）：`.cursor/rules/no-compatibility-code.mdc` · 预设 granular 槽 · TK-D · audit/密钥/FTS/宏/ Historian 后缀等；审计清单 [`.tmp/compatibility-code-audit.md`](../.tmp/compatibility-code-audit.md) · 同步 `DOC/03` §6/§13/§14/§15 · `DOC/25` §15.2 · `DOC/29` · `DOC/12` §4.2
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
 

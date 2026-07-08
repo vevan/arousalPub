@@ -37,14 +37,3 @@ export function appendDrySamplerToPayload(
     payload.dry_sequence_breakers = drySequenceBreakers
   }
 }
-
-/** 读取 API 预设时：旧 `dry` → `dryMultiplier` */
-export function migrateLegacyDryOnPreset(
-  p: Record<string, unknown>,
-): Record<string, unknown> {
-  if ('dryMultiplier' in p) return p
-  const legacy = p.dry
-  if (typeof legacy !== 'number' || !Number.isFinite(legacy)) return p
-  const { dry: _removed, ...rest } = p
-  return { ...rest, dryMultiplier: legacy }
-}

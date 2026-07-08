@@ -137,9 +137,9 @@ describe('resolvePluginCompleteApiFromSources', () => {
     }
   })
 
-  it('does not fall back to global default when fallbackToChat is false', () => {
+  it('does not fall back to global default when fallbackToGlobalDefault is false', () => {
     const hit = resolvePluginCompleteApiFromSources(
-      { pluginId: 'fixture-plugin-b', fallbackToChat: false },
+      { pluginId: 'fixture-plugin-b', fallbackToGlobalDefault: false },
       { settings, globalPluginApiConfigId: null },
     )
     assert.equal(hit.ok, false)

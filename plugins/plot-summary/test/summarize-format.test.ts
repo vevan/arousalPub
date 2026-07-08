@@ -19,8 +19,8 @@ describe('formatEntryTitle', () => {
     )
   })
 
-  it('strips legacy suffix before formatting', () => {
-    assert.equal(formatEntryTitle('冒险-0-14', 0, 15, 15), '[MEMO-1]-冒险-[0-15]')
+  it('keeps non-bracket titles when formatting', () => {
+    assert.equal(formatEntryTitle('冒险-0-14', 0, 15, 15), '[MEMO-1]-冒险-0-14-[0-15]')
   })
 })
 
@@ -36,8 +36,8 @@ describe('parsePlotSummaryEntryTitle', () => {
 })
 
 describe('extractSummaryCoreTitle', () => {
-  it('extracts core from legacy suffix title', () => {
-    assert.equal(extractSummaryCoreTitle('冒险摘要-1-50'), '冒险摘要')
+  it('returns raw title when not memo bracket format', () => {
+    assert.equal(extractSummaryCoreTitle('冒险摘要-1-50'), '冒险摘要-1-50')
   })
 })
 

@@ -1,8 +1,7 @@
-/** 会话列表项是否引用某角色卡 id（含 user persona 与 legacy characterId） */
+/** 会话列表项是否引用某角色卡 id（含 user persona） */
 export function conversationUsesCharacter(
   entry: {
     userCharacterId?: string
-    characterId?: string | null
     characterIds?: string[]
   },
   characterId: string,
@@ -13,9 +12,8 @@ export function conversationUsesCharacter(
   return boundCharacterIds(entry).includes(cid)
 }
 
-/** 会话绑定的角色卡 id（去重、保序；legacy characterId 作兜底） */
+/** 会话绑定的角色卡 id（去重、保序） */
 export function boundCharacterIds(entry: {
-  characterId?: string | null
   characterIds?: string[]
 }): string[] {
   const ids: string[] = []
@@ -28,11 +26,6 @@ export function boundCharacterIds(entry: {
       seen.add(id)
       ids.push(id)
     }
-  }
-  if (ids.length === 0) {
-    const legacy =
-      typeof entry.characterId === 'string' ? entry.characterId.trim() : ''
-    if (legacy) ids.push(legacy)
   }
   return ids
 }

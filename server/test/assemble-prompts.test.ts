@@ -84,7 +84,7 @@ describe('assemblePrompts group.enabled', () => {
           id: 'bound-world',
           groupId: 'g-world',
           content: '',
-          bindingSlot: 'boundWorld',
+          bindingSlot: 'boundWorldBefore',
           order: 0,
         }),
         makeEntry({
@@ -96,7 +96,7 @@ describe('assemblePrompts group.enabled', () => {
       ],
     )
     const { messages } = assemblePrompts(preset, {
-      world: '<lore>castle</lore>',
+      world: '<lores>\n<lore name="world">\ncastle\n</lore>\n</lores>',
     })
     assert.equal(messages.some((m) => m.content.includes('castle')), true)
     assert.equal(messages.some((m) => m.content === 'world-custom'), false)
@@ -303,7 +303,9 @@ describe('assemblePrompts audit fixes', () => {
         }),
       ],
     )
-    const { messages } = assemblePrompts(preset, { world: 'LORE-XML' })
+    const { messages } = assemblePrompts(preset, {
+      world: '<lores>\n<lore name="world">\nLORE-XML\n</lore>\n</lores>',
+    })
     const loreHits = messages.filter((m) => m.content.includes('LORE-XML'))
     assert.equal(loreHits.length, 1)
   })
@@ -662,35 +664,48 @@ describe('assemblePrompts character/user split', () => {
           order: 0,
         }),
         makeEntry({
-          id: 'bound-char',
+          id: 'bound-sys',
           groupId: 'g-char',
           content: '',
-          bindingSlot: 'boundCharacterSystem',
+          bindingSlot: 'boundCharSystemPrompt',
           order: 1,
+        }),
+        makeEntry({
+          id: 'bound-desc',
+          groupId: 'g-char',
+          content: '',
+          bindingSlot: 'boundCharDescription',
+          order: 2,
         }),
         makeEntry({
           id: 'between',
           groupId: 'g-char',
           content: 'between',
-          order: 2,
+          order: 3,
         }),
         makeEntry({
           id: 'bound-user',
           groupId: 'g-char',
           content: '',
           bindingSlot: 'boundUserPersona',
-          order: 3,
+          order: 4,
         }),
         makeEntry({
           id: 'after',
           groupId: 'g-char',
           content: 'after-user',
-          order: 4,
+          order: 5,
         }),
       ],
     )
     const { messages } = assemblePrompts(preset, {
-      characters: [{ cardBody: 'CHAR', systemPrompt: 'CHAR-SP' }],
+      characters: [
+        {
+          cardBody: 'CHAR',
+          systemPrompt: 'CHAR-SP',
+          macroFields: { description: 'CHAR' },
+        },
+      ],
       userCharacter: { cardBody: 'USER', systemPrompt: 'USER-SP' },
     })
     assert.deepEqual(
@@ -698,7 +713,7 @@ describe('assemblePrompts character/user split', () => {
       [
         'before-char',
         '<char name="角色" attribute="system_prompt">CHAR-SP</char>',
-        'CHAR',
+        '<char name="角色" attribute="description">CHAR</char>',
         'between',
         '<user name="用户" attribute="system_prompt">USER-SP</user>\n\nUSER',
         'after-user',
@@ -807,7 +822,7 @@ describe('assemblePrompts bindingPlaceholderMode', () => {
           postHistory: 'Sample post_history',
         },
       ],
-      world: '<lore>castle</lore>',
+      world: '<lores>\n<lore name="world">\ncastle\n</lore>\n</lores>',
       memoryText: '<memory>turn summary</memory>',
       history: [{ role: 'user', content: 'hello' }],
     })

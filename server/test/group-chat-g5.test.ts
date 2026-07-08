@@ -7,7 +7,6 @@ import {
 import {
   buildGroupChatNotChar,
   groupChatAssembleInstruction,
-  groupChatNextAtInstruction,
 } from '../src/group-chat-turn.js'
 import { buildPromptMacroContext } from '../src/prompt-macros/context.js'
 import { renderPromptMacrosCst } from '../src/prompt-macros/cst/render.js'
@@ -25,18 +24,17 @@ describe('group-chat G5', () => {
     continueAssembleInstruction: '',
   }
 
-  it('groupChatNextAtInstruction only for next@ mode', () => {
+  it('groupChatAssembleInstruction dice mode uses group prompt only', () => {
     assert.equal(
-      groupChatNextAtInstruction({
+      groupChatAssembleInstruction({
         ...groupChat,
-        speakerMode: 'next@',
+        speakerMode: 'dice',
         groupAssembleInstruction: 'G',
         continueAssembleInstruction: 'C',
       }),
-      'G\nC',
+      'G',
     )
-    assert.equal(groupChatNextAtInstruction({ ...groupChat, speakerMode: 'dice' }), null)
-    assert.equal(groupChatNextAtInstruction({ ...groupChat, enabled: false }), null)
+    assert.equal(groupChatAssembleInstruction({ ...groupChat, enabled: false }), null)
   })
 
   it('buildGroupChatNotChar excludes current speaker when group enabled', () => {

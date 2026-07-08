@@ -1,18 +1,14 @@
 <script setup lang="ts">
 import {
   abortPluginProgress,
-  clearPluginSnackbar,
   pluginConfirmOpen,
   pluginProgressOpen,
-  pluginSnackbar,
   resolvePluginConfirm,
 } from '@/plugins/plugin-ui-state'
-import { useNotificationCenterStore } from '@/stores/notification-center'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
-const notificationCenter = useNotificationCenterStore()
 
 const confirmOpen = computed({
   get: () => pluginConfirmOpen.value != null,
@@ -22,18 +18,6 @@ const confirmOpen = computed({
 })
 
 const confirmState = computed(() => pluginConfirmOpen.value)
-
-const snackbarOpen = computed({
-  get: () => pluginSnackbar.value != null,
-  set: (v: boolean) => {
-    if (!v) clearPluginSnackbar()
-  },
-})
-
-const snackbarMessage = computed(() => pluginSnackbar.value?.message ?? '')
-const snackbarColor = computed(() => pluginSnackbar.value?.color ?? 'surface-variant')
-const snackbarTimeout = computed(() => pluginSnackbar.value?.timeout ?? 4000)
-const snackbarActions = computed(() => pluginSnackbar.value?.snackbarActions ?? [])
 
 const progressState = computed(() => pluginProgressOpen.value)
 
@@ -52,12 +36,6 @@ const progressAbortable = computed(() => progressState.value?.abortable === true
 const progressAbortLabel = computed(
   () => progressState.value?.abortLabel?.trim() || t('pluginHost.progressAbort'),
 )
-
-function dismissSnackbarAsRead(): void {
-  const id = pluginSnackbar.value?.notificationId
-  if (id) notificationCenter.markRead(id)
-  clearPluginSnackbar()
-}
 </script>
 
 <template>
@@ -129,30 +107,4 @@ function dismissSnackbarAsRead(): void {
       </v-card-actions>
     </v-card>
   </v-dialog>
-
-  <v-snackbar
-    v-model="snackbarOpen"
-    :color="snackbarColor"
-    :timeout="snackbarTimeout"
-    location="bottom"
-    multi-line
-  >
-    <span class="text-pre-wrap">{{ snackbarMessage }}</span>
-    <template #actions>
-      <v-btn
-        v-for="(action, index) in snackbarActions"
-        :key="`${action.label}-${index}`"
-        variant="text"
-        @click="dismissSnackbarAsRead()"
-      >
-        {{ action.label }}
-      </v-btn>
-      <v-btn
-        icon="mdi-close"
-        variant="text"
-        :aria-label="t('pluginHost.snackbarClose')"
-        @click="dismissSnackbarAsRead()"
-      />
-    </template>
-  </v-snackbar>
 </template>

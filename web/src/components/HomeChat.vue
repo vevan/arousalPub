@@ -6,7 +6,6 @@ import ChatDeleteDialog from '@/components/chat/ChatDeleteDialog.vue'
 import ChatMessageList from '@/components/chat/ChatMessageList.vue'
 import ChatTurnPromptDialog from '@/components/chat/ChatTurnPromptDialog.vue'
 import PluginFormDialogHost from '@/plugins/PluginFormDialogHost.vue'
-import PluginUiHost from '@/plugins/PluginUiHost.vue'
 import { PLUGIN_HOST_KEY } from '@/plugins/injection'
 import { usePluginHost } from '@/plugins/usePluginHost'
 import { useChatSession, type ChatSessionProps } from '@/composables/useChatSession'
@@ -61,7 +60,6 @@ const chatSessionStyle = computed(() => ({
     <ChatAssemblePreviewDialog :session="session" />
     <ChatTurnPromptDialog :session="session" />
     <PluginFormDialogHost />
-    <PluginUiHost />
     <v-snackbar
       v-model="session.groupChatNoticeOpen"
       :timeout="6000"

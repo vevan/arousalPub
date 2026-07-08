@@ -143,6 +143,8 @@ export interface PluginNotifyOptions {
   snackbar?: boolean
   /** snackbar 自动关闭毫秒；默认 4000；仅影响浮层，不影响中心未读 */
   timeout?: number
+  /** 立即写入通知列表（未读）；用于须 bell 回顾的结果 */
+  persist?: boolean
   level?: 'info' | 'success' | 'warning' | 'error'
   action?: {
     type: 'route' | 'conversation' | 'settings-tab' | 'external'

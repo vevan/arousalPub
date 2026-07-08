@@ -1,29 +1,22 @@
 import type { PluginNotifyOptions } from '@/plugins/types'
 import { useNotificationCenterStore } from '@/stores/notification-center'
+import { useAuthStore } from '@/stores/auth'
 
-export type PluginNotifyContext = {
-  userId?: string | null
-  pluginId?: string | null
-}
-
-export function sendPluginNotify(
+export function coreNotify(
   title: string,
   body?: string,
   opts?: PluginNotifyOptions,
-  ctx: PluginNotifyContext = {},
 ): string {
+  const auth = useAuthStore()
   const store = useNotificationCenterStore()
-  if (ctx.userId) {
-    store.bindUser(ctx.userId)
+  if (auth.user?.id) {
+    store.bindUser(auth.user.id)
   }
-
   return store.notify({
     title,
     body: body?.trim() || undefined,
     level: opts?.level,
-    source: ctx.pluginId
-      ? { kind: 'plugin', pluginId: ctx.pluginId }
-      : { kind: 'core' },
+    source: { kind: 'core' },
     action: opts?.action,
     snackbarActions: opts?.snackbarActions,
     dedupeKey: opts?.dedupeKey,

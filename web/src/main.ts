@@ -10,6 +10,7 @@ import { createPinia } from 'pinia'
 import { createApp } from 'vue'
 import { createVuetify } from 'vuetify'
 import { VIconBtn } from 'vuetify/labs/VIconBtn'
+import { VSnackbarQueue } from 'vuetify/components'
 import App from './App.vue'
 import '@/styles/vuetify-overrides.css'
 import { installAuthenticatedFetch } from '@/utils/install-authenticated-fetch'
@@ -17,6 +18,7 @@ import { installAuthenticatedFetch } from '@/utils/install-authenticated-fetch'
 const vuetify = createVuetify({
   components: {
     VIconBtn,
+    VSnackbarQueue,
   },
   theme: {
     defaultTheme: readStoredTheme(),

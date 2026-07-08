@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import ConnectionSettingsCard from '@/components/ConnectionSettingsCard.vue'
 import NotificationBell from '@/components/NotificationBell.vue'
+import NotificationSnackbarQueue from '@/components/NotificationSnackbarQueue.vue'
 import PluginRailHost from '@/components/PluginRailHost.vue'
+import PluginUiHost from '@/plugins/PluginUiHost.vue'
 import {
   clearPanelHtmlForInactiveRoutes,
   isPluginPanelHidden,
@@ -816,6 +818,9 @@ onUnmounted(() => {
         </v-card-text>
       </v-card>
     </v-dialog>
+
+    <NotificationSnackbarQueue />
+    <PluginUiHost />
   </v-app>
 </template>
 

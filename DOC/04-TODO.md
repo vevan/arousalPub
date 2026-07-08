@@ -15,60 +15,55 @@
   - [ ] **S3** 插件注册命令（如 `plot-summary` `/summary 36-55`）；输入历史存 raw 提交
   - [x] **S4** Composer `/` 补全菜单（`#composer-slash-layer` + CSS anchor、`60dvh`、两行列表）
 
-### 迹录 segment 级状态（trace-keeper）
+### 通知中心（Notification Center）
 
-群聊同 turn 多 segment 时，侧栏与 server action 已支持 **segment / receive 级** pinned 与写回（TK-P）；**TK-O1** 组装 / Separate transcript 逐 segment 展开 tracker 块。**迹录 segment 级** 主线已闭环（TK-D / TK-H / TK-P / TK-O / TK-V）。
+定案见 [`DOC/40`](40-notification-center.md)。**仅 `host.ui.notify`**（**删除 `toast`**，无兼容层）：每条写通知中心；`snackbar` 默认 `true`；静默显式 `snackbar: false`；snackbar 互动钮 → 已读。
 
 | 层 | 已具备 | 缺口 |
 |----|--------|------|
-| **落盘** | `appendSegmentToTurn` 每段独立 `receiveId` → `turn.plugins[]`（receive-scoped merge）；**TK0 已规范化** | — |
-| **磁盘模型** | **TK-D** 定案 + 一次性 strip 镜像（[`DOC/44`](44-turn-segment-only-storage.md) · TK-D2 ✅） | — |
-| **对话 API** | `GET …/messages` 仅 `segments[]` + `activeSegmentIndex`（无顶层 `receives`） | — |
-| **宿主 Host API** | `readConversationTurnAtOrdinal` 快照含 `segments[]` · `mergeTurnPluginEntriesAtOrdinal` 按 `receiveId` 写 segment | — |
-| **插件包** | TK-P1–P3 + TK-O1 + TK-V 自动化验收 | — |
+| **发送** | `toast` + `notify` 双 API（均仅 snackbar） | 仅 `notify` + 中心落盘 + 删 `toast` |
+| **存储** | `composer-draft-storage` 等分键惯例 | `notification-storage.ts` envelope |
+| **UI** | — | 顶栏 bell + 列表 + 带操作钮 snackbar |
+| **插件契约** | `DOC/18` §3.9 签名 | `create-plugin-web-host` 迁入 |
 
-**推荐顺序**：TK0 审计 → **TK-D** 去镜像 → **TK-H** 宿主 → **TK-P** 插件包 → TK-O（按需）→ TK-V 验收。
+**推荐顺序**：NC0 盘点 → **NC1** 存储 → **NC2** store/API → **NC3** UI → **NC4** 多 Tab → **NC5** notify 迁移 → NC-V 验收。
 
-#### TK0 · 审计（先行）
+#### NC0 · 盘点（先行）
 
-- [x] **TK0**（2026-07-08）— 全库 1496 turn / 11 多 segment：**落盘格式已正确**（`receiveId` ↔ segment receive 一一对应）；**无** chunk schema 变更。缺口在 Host API / 插件 resolve（见上表）。规范化迁移动作：补 1 条缺 `receiveId`、 prune 103 条 swipe 孤儿 snapshot、去重 1 条；迁移后 323 条 trace 条目全部满足不变量。审计全文：`.tmp/tk0-audit-report.md`（一次性脚本已执行并删除）。
+- [ ] **NC0** — 全库 `toast` / `notify` 调用点清单（含 bundled 插件）；迁移：`toast` → `notify(title, undefined, opts)`；静默场景标 `snackbar: false`；定案 §3.1 · §4.2
 
-**定案不变量**（`turn.plugins[]` + `turnPlugins.receive-scoped`，**不**新增 `segmentIndex` 字段）：
+#### NC1 · 存储层
 
-1. 每条 trace 必有 `payload.receiveId` ∈ `segments[*].receives[*].id`
-2. 每 `receiveId` 至多一条 trace 条目
-3. assistant 正文与 swipe **仅**存于 `segments[i].receives[]`（**无** turn 级镜像，见 [`DOC/44`](44-turn-segment-only-storage.md)）
+- [ ] **NC1** — `web/src/utils/notification-storage.ts`：`{ schemaVersion, unreadCount, items[] }` · 键 `arousal-notifications-{userId}` · 登出随 `clearUserSessionLocalStorage` 清除 · 条数上限裁剪（如 200）
 
-#### TK-D · 去 turn.receives 镜像（[`DOC/44`](44-turn-segment-only-storage.md) · 阻塞干净 Host/插件契约）
+#### NC2 · Store / API
 
-- [x] **TK-D1 定案 + 代码** — `TurnRecord` 删 `receives` / `activeReceiveIndex`；删 `syncTurnReceivesFromActiveSegment`；API / Host 快照仅 `segments[]`
-- [x] **TK-D2 数据** — 一次性 strip：22 chunk / 1496 turn，1490 条删镜像键（2026-07-08）
+- [ ] **NC2** — Pinia `notification-center` store：`send` / `list` / `markRead` / `delete` / `unreadCount` · 变更订阅（供角标/列表）
 
-#### TK-H · 宿主 generic（[`DOC/41`](41-plugin-host-generic-principles.md) §4 · 阻塞 TK-P3）
+#### NC3 · 顶栏 UI
 
-- [x] **TK-H1 快照** — `PluginHostTurnSnapshot` 含 `segments` / `activeSegmentIndex`；`readConversationTurnAtOrdinal` · `readConversationTurnsTail` 透传
-- [x] **TK-H2 写回** — `mergeTurnPluginEntriesAtOrdinal` 按 `receiveId` 定位 segment；`plugin-action-route` `turnMerge` 透传；单测 `server/test/merge-turn-plugin-entries.test.ts`；`DOC/18` §4.2–§4.3 同步
+- [ ] **NC3** — 顶栏 bell 未读角标 · 通知列表抽屉/菜单 · snackbar（关闭/操作钮 → markRead）· 单条/批量已读·删除 · 空态 · i18n
 
-#### TK-P · 插件包（`plugins/trace-keeper/`）
+#### NC4 · 多 Tab 同步
 
-- [x] **TK-P1 resolve** — `resolveTraceForSegment` · `turn-view-segment.ts` · `panel-empty` / `trace-state-resolve` 按 segment 解析
-- [x] **TK-P2 侧栏 UX** — pinned `(turnOrdinal, segmentIndex)` · `assistant-turn-footer` 按钮 · segment prev/next · Handlebars `meta` 增 `speakerCharacterId` / `segmentIndex` / `receiveId`
-- [x] **TK-P3 actions** — `patch-state` / `regenerate-separate` body 接受 `segmentIndex` \| `receiveId`；写回经 TK-H `turnMerge`
+- [ ] **NC4** — 同浏览器多 Tab：`window` `storage` 事件同步未读角标与列表
 
-#### TK-O / TK-V · 按需与验收
+#### NC5 · `host.ui` 迁移
 
-- [x] **TK-O1 组装注入** — `resolveLiveTraceStates` 同 turn 多 segment 展开；`formatSummarizeTranscript` 逐 segment 输出；Separate transcript `stripBlockTagsOnToTurnSegmentIndex` + `buildSeparateDialogueMessages` 目标 segment 剥块；与 outgoing 正则 skip 窗口策略一致（[`DOC/30`](30-plugin-trace-keeper.md) §10）
-- [x] **TK-V 验收** — 自动化单测 + `npm run check:ci`；sandbox smoke 见 `npm run test:sandbox -w server`
+- [ ] **NC5** — **删除** `host.ui.toast` / `PluginToastOptions` · 实现 `notify`（写中心 + 默认 snackbar）· 全库改调用（plot-summary / guidance-generate / conversation-export / swipe-cleaner / Web 核心）· `DOC/18` · `DOC/10`
 
-#### TK-F · 后续（非阻塞 · 择机）
+#### NC-V · 验收
 
-- [x] **TK-F1 主对话 outgoing × 群聊 assemble 集成测试** — `turnsToHistoryMessages` 多 segment + `skipLastNTurns`：断言 assemble 后近轮保留 `<ex-trace-keeper>`、远轮剥除；`buildPerMessageTurnOrdinals` 读 `message.turnOrdinal`（2026-07-08 · `group-chat-outgoing-assemble.test.ts`）
-- [x] **TK-F2 memory 块 outgoing 多 segment** — `applyOutgoingRegexToTurnRecord` 全 segment；`applyOutgoingRegexToMemoryItems` 复用（2026-07-08 · `regex-outgoing.test.ts`）
-- [x] **TK-F3 侧栏浏览器 E2E** — 群聊多 bot：pinned / segment prev-next / patch / Separate 流程单测（2026-07-08 · `sidebar-segment-e2e.test.ts`；无 Playwright 基础设施，以单元级 E2E 替代）
+- [ ] **NC-V** — storage/store 单测 · 手动：`notify` → 角标 · snackbar 点关闭已读 / 超时仍未读 · 登出清空 · `npm run check:ci`
+
+#### NC-F · 后续（非阻塞 · 择机）
+
+- [ ] **NC-F1 宿主核心场景** — 导入完成/失败、memory 重建结束、登录安全提示等改走 `notificationCenter.send`
+- [ ] **NC-F2 Server → Web 推送（可选）** — SSE/响应体 `notifications[]` → 前端入库（仍写 localStorage；v1 无 REST 持久化）
+- [ ] **NC-F3 增强** — `dedupeKey` 合并 · `expiresAt` 清理 · 按 plugin/level 筛选 · 移动端系统通知（若需要）
 
 ## P1
 
-- [ ] **通知中心**（[`DOC/40`](40-notification-center.md)）— 统一通知发送与管理：**localStorage**（`arousal-notifications-{userId}`）、已读/未读、删除；顶栏列表 UI；`host.ui.notify` 迁入（现等同 toast）
 - [ ] **ST 聊天记录群聊多 bot 导入** — 当前 ST JSONL 导入全部 segment 绑定 `characterIds[0]`；需按 ST `name` 与会话 `characterIds`/`displayNames` 映射各 bot 为 speaker（单 bot 行为不变）。见 [`DOC/37`](37-st-import-settings-tab.md)
 - [ ] **独立文档 RAG**（≠ 世界书 vector）— 可选；前置 `DOC/20` M1+M4
 - [ ] RAG 参数面板、会话/角色批量导入导出、备份示例脚本
@@ -127,6 +122,7 @@
 - [x] **Sandbox + 宿主去特化归档**（2026-07-08）：[`DOC/04`](04-TODO.md) §已归档 · [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) · [`DOC/42`](42-host-generic-audit-checklist.md) · [`DOC/43`](43-plugin-api-binding-audit-checklist.md)
 - [x] **ST 导入 Tab 全链路**（2026-06～07）：设置页「导入」· ST 世界书 / 聊天记录 / 预设跳转 · M3 回归 — 见 [`DOC/37`](37-st-import-settings-tab.md)
 - [x] **迹录 segment 级 TK-O1 + 主线闭环**（2026-07-08）：多 segment transcript / resolveLiveTraceStates / Separate 目标 segment 剥块 — 见 [`DOC/30`](30-plugin-trace-keeper.md) §10 · [`DOC/35`](35-group-chat.md) §6 · [`DOC/44`](44-turn-segment-only-storage.md)
+- [x] **迹录 TK-F + UI/pinned 收尾**（2026-07-08）：outgoing/memory 多 segment 单测 · 侧栏 segment E2E · 槽位迁 `assistant-turn` · 同会话新回复 live tail 取消 pinned（`50725a0`）— 见 [`DOC/30`](30-plugin-trace-keeper.md) §4.3 · §6.2
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
 
@@ -142,3 +138,4 @@
 | **DOC/39 二次 LLM 上下文 + 拼 prompt**（Historian + trace-keeper Separate · `completeWithContext`） | 2026-07-07 | [`DOC/39`](39-plugin-context-and-prompt-assembly.md) §6 · `sandbox` 分支 commit `de8e1f7` / `3847d0f` |
 | **Sandbox Phase A+B**（注入描述符 · Worker 沙箱 · DOC/43 交叉项） | 2026-07-08 | [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) · [`DOC/43`](43-plugin-api-binding-audit-checklist.md) · **延后**：包内自维护 API（A3） |
 | **宿主去特化 Phase 0–3**（`check:host-no-plugin-ids` · serverActions · schema 壳） | 2026-07-07 | [`DOC/41`](41-plugin-host-generic-principles.md) · [`DOC/42`](42-host-generic-audit-checklist.md) · **可选**：GitHub Actions 接入门禁 |
+| **迹录 segment 级（TK0–TK-F）** | 2026-07-08 | [`DOC/30`](30-plugin-trace-keeper.md) §10 · [`DOC/44`](44-turn-segment-only-storage.md) · [`DOC/35`](35-group-chat.md) §6 · `430849b` / `9065626` / `50725a0` |

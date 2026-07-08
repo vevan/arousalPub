@@ -20,7 +20,7 @@
 | | `refresh()` | 写盘后刷新 UI |
 | `host.lifecycle` | `onAssistantReplyPersisted` / `onAssistantReplyComplete` | 落盘 / 流程结束 |
 | `host.chat` | `sendWithPlugins` / `regenerateWithPlugins` | **正常聊天**（含组装），**不是**摘要 |
-| `host.ui` | `toast` / `confirm` / `progress` / … | |
+| `host.ui` | `notify` / `confirm` / `progress` / … | |
 | `host.render` | `richMessageToHtml` / `reasoningToHtml` | |
 | 注册 | `registerSlotButton` / `registerFormDialog` / `registerStyles` | 见 `DOC/09` §8、`DOC/18` §3.1 |
 

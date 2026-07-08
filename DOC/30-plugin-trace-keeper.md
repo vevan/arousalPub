@@ -92,6 +92,9 @@ prepareTraceKeeperSeparateContextBlocks
   meta: {
     mode: 'live' | 'pinned',
     turnOrdinal?: number,
+    segmentIndex?: number,       // 群聊 segment；单 bot 恒为 0
+    receiveId?: string,          // 当前 viewing segment 的 active receive
+    speakerCharacterId?: string, // 群聊发言角色 id
     epoch: number,
   },
 }
@@ -107,8 +110,9 @@ prepareTraceKeeperSeparateContextBlocks
 ### 4.3 Swipe 与侧栏视图
 
 - 每个 `receive` Together 解析成功写独立 payload（含 **`receiveId`**）。
-- **live**：**仅最后一轮**、该轮 **`activeReceiveIndex`** 对应 snapshot（不向前回溯）；无 snapshot 时 **空态 + 原因文案**（仅最后一轮可读 assistant 诊断）+ Separate 按钮；**不用 sampleState 占位**。
-- **pinned**：固定 `turnOrdinal`；无 snapshot 时 **统一「该轮暂无数据」**（不展示解析细节）；**不**回退 live；head 按钮仍 filled、可点。pinned 在最后一轮且无 snapshot 时与 live 相同诊断 + Separate。
+- **live**：**仅最后一轮**、该轮 **active segment** 的 **`activeReceiveIndex`** 对应 snapshot（不向前回溯）；无 snapshot 时 **空态 + 原因文案**（仅最后一轮可读 assistant 诊断）+ Separate 按钮；**不用 sampleState 占位**。
+- **pinned**：固定 `(turnOrdinal, segmentIndex)`；无 snapshot 时 **统一「该轮暂无数据」**（不展示解析细节）；**不**回退 live；角色行按钮仍 filled、可点。pinned 在最后一轮且无 snapshot 时与 live 相同诊断 + Separate。
+- **live tail 自动取消 pinned**（2026-07-08）：同会话内 live 尾端前进（新 turn、同 turn 新 segment、末段 regenerate 导致 receive 指纹变化）时，**自动** `clearPinnedView` 并刷新槽位，侧栏回到 live；**仅** swipe 历史轮或编辑旧轮、尾端未变时 **保留** pinned。
 - 展示 **只读** `turn.plugins[]` 渲染 snapshot；**不**用 assistant 作 state fallback。空态时 **仅最后一轮** 可读 active receive 正文做 **diagnose-only**（与落盘解析同源）。
 
 ### 4.4 侧栏空态原因（2026-06）
@@ -223,11 +227,12 @@ interface TraceBundle {
 
 ### 6.2 每轮按钮
 
-- **Slot**：`turn-block-head`（`registerSlotButton`；仅图标）。
-- **无数据且未 pinned 该轮**：disabled + tooltip「本轮无 tracker」。
-- **pinned 该轮但无 snapshot**：**可点**；tooltip「固定查看：本轮无 tracker 数据」；drawer 显示空态文案。
-- **有 snapshot 或 pinned**：点击 → 切换 pinned + 打开 drawer；pinned 轮 **filled**。
-- **live 默认**：最后一轮 snapshot；无则 **空态**（原因见 §4.4）+ Separate（仅 viewing 为最后一轮）。
+- **Slot**：`assistant-turn`（`registerSlotButton`；`order: -100`，位于助手角色行 `charName | plugins | meta | indicators` 的 plugin 区；仅图标）。
+- **无数据且未 pinned 该 segment**：disabled + tooltip「本轮无 tracker」。
+- **pinned 该 segment 但无 snapshot**：**可点**；tooltip「固定查看：本轮无 tracker 数据」；drawer 显示空态文案。
+- **有 snapshot 或 pinned**：点击 → 切换 pinned `(turnOrdinal, segmentIndex)` + 打开 drawer；pinned segment **filled**。
+- **live 默认**：最后一轮 active segment 的 snapshot；无则 **空态**（原因见 §4.4）+ Separate（仅 viewing 为最后一轮）。
+- **侧栏 segment 导航**（群聊 pinned）：面板 action `segment-prev` / `segment-next` 在同 turn 内切换 pinned segment。
 
 ### 6.3 设置页
 
@@ -337,7 +342,7 @@ plugins/trace-keeper/
 ## 10. 与正则 / 审计
 
 - 剥块规则见 §3；近 `skipLastNTurns` 轮保留块供模型续写，更早轮 outgoing/persist 剥除。
-- **群聊多 segment（2026-07-08）**：`formatSummarizeTranscript` / Separate `conversation.transcript` 按 segment 展开 assistant 行；`stripBlockTagsOnToTurnSegmentIndex` 仅剥目标 segment；`resolveLiveTraceStates` 同 turn 各 segment 独立条目。侧栏 pinned / patch / Separate 见 [`DOC/44`](44-turn-segment-only-storage.md) · [`DOC/04`](04-TODO.md) 迹录节。
+- **群聊多 segment（2026-07-08）**：`formatSummarizeTranscript` / Separate `conversation.transcript` 按 segment 展开 assistant 行；`stripBlockTagsOnToTurnSegmentIndex` 仅剥目标 segment；`resolveLiveTraceStates` 同 turn 各 segment 独立条目。侧栏 pinned `(turnOrdinal, segmentIndex)` / patch / Separate / live tail 取消 pin 见 [`DOC/44`](44-turn-segment-only-storage.md) · [`DOC/04`](04-TODO.md) §已归档。
 - 审计中合法 XML 转义见 `DOC/24` §2.3（与标签名无关的通用说明）。
 
 ---
@@ -349,7 +354,7 @@ plugins/trace-keeper/
 - [x] 用户可编辑 **sampleState / template / stylesheet**；默认样例可渲染侧栏
 - [x] `host.ui.panel` 消毒 + `interactive` 委托
 - [x] 左 rail 隐藏按钮 + Tab
-- [x] live / pinned；swipe `receiveId` 多 snapshot；无 snapshot 空态 + 原因（§4.4）
+- [x] live / pinned `(turnOrdinal, segmentIndex)`；同会话新回复 live tail 自动取消 pinned；swipe `receiveId` 多 snapshot；无 snapshot 空态 + 原因（§4.4）
 - [x] Separate 补生成（侧栏 + API）
 - [x] 组装审计 `assembly.plugins`（插件注入 token 预留）
 - [x] 侧栏 JSON 编辑写回（`patch-state` + 编辑按钮）

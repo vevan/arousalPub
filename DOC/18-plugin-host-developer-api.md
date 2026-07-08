@@ -41,7 +41,7 @@ export function register(host) {
     icon: 'mdi-puzzle',
     tooltipKey: host.pluginKey('tooltipAction'),
     onClick: () => {
-      host.ui.toast(host.t(host.pluginKey('done')), { color: 'success' })
+      host.ui.notify(host.t(host.pluginKey('done')), undefined, { color: 'success' })
     },
   })
 }
@@ -369,8 +369,7 @@ const data = await host.plugin.runAction('my-action', {
 
 | 方法 | 说明 |
 |------|------|
-| `toast(message, opts?)` | 短提示 |
-| `notify(title, body?, opts?)` | 持久通知（**规划** [`DOC/40`](40-notification-center.md)；当前等同 toast） |
+| `notify(title, body?, opts?)` | **唯一通知出口**（[`DOC/40`](40-notification-center.md)）：写中心；`snackbar` 默认 true |
 | `confirm(opts)` | 确认框 → `Promise<boolean>` |
 | `openFormDialog(...)` | 同顶层 `openFormDialog` |
 | `progress(opts)` | 进度条；`indeterminate`、`abortable` + `abortLabel` |

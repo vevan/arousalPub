@@ -286,7 +286,7 @@ data/
 - **动作弹框**：`host.registerFormDialog` + `host.openFormDialog`（字段类型见 §3.1；宿主 `PluginFormDialogHost` 支持 `radio` / `integer` / `textarea`）
 - **对话批处理**：`host.conversation.runScope` / `runBatch`、`getMeta`、`host.render.*`、`host.ui.progress` — 见 DOC/10
 - **插件间协作（规划）**：`host.capabilities.register` / `get` — 见 §8.7
-- **Toast / Confirm**：`host.ui.toast` / `host.ui.confirm`
+- **Notify / Confirm**：`host.ui.notify` / `host.ui.confirm`
 - **发消息扩展**：`host.chat.sendWithPlugins` / `regenerateWithPlugins` + server `resolveTurnPluginEntries`
 
 ### 8.5 加载时机（避免「我的插件没反应」）

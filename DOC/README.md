@@ -16,7 +16,7 @@
 | 全局插件 settings 缓存 | [`32-plugin-user-settings-cache.md`](32-plugin-user-settings-cache.md)（**✅ 已实现** · `a7ca4ea`） |
 | 移动端兼容性 | [`33-mobile-compatibility.md`](33-mobile-compatibility.md)（**Phase 1 布局已落地**） |
 | 待办 | [`04-TODO.md`](04-TODO.md) |
-| 通知中心 | [`40-notification-center.md`](40-notification-center.md)（**规划** · P1） |
+| 通知中心 | [`40-notification-center.md`](40-notification-center.md)（**规划** · P0） |
 
 ## 核心（01–08）
 
@@ -51,13 +51,13 @@
 | [`38`](38-plugin-sandbox-and-host-evolution.md) | ✅ Phase A+B | 插件沙箱、注入描述符、API 绑定（宿主选择器） |
 | [`43`](43-plugin-api-binding-audit-checklist.md) | ✅ 已归档 | Sandbox 交叉：API 绑定 · 审计 · B4 权限；**A3 延后** |
 | [`39`](39-plugin-context-and-prompt-assembly.md) | ✅ 已落地 | 二次 LLM 上下文块、`completeWithContext`（Historian + trace-keeper Separate） |
-| [`40`](40-notification-center.md) | 规划 P1 | **通知中心**：统一发送、**localStorage**、已读/未读、删除、列表 UI |
+| [`40`](40-notification-center.md) | 规划 **P0** | **通知中心**：统一发送、**localStorage**、已读/未读、删除、列表 UI（NC0–NC-V） |
 | [`20`](20-user-file-library.md) | 定案 | 用户文件库 / charFile（未实现） |
 | [`21`](21-conversation-plugin-settings.md) | ✅ | 会话插件 Tab schema |
 | [`23`](23-conversation-branches.md) | ✅ | S1–S5 + 顶栏分支树；persist `turnId` patch；from/to/total 副标题；§9.3 审计已关闭 |
 | [`24`](24-regex-and-session-audit.md) | 主体 ✅ | 正则三阶段、debug 审计 |
 | [`25`](25-security-deployment.md) | ✅ | 部署硬化、**API Key 隔离与磁盘加密** §15 |
-| [`30`](30-plugin-trace-keeper.md) | ✅ v1 | **迹录** `trace-keeper`：Together、Separate、TraceBundle、左栏 HTML 面板 |
+| [`30`](30-plugin-trace-keeper.md) | ✅ v1 + segment | **迹录** `trace-keeper`：Together、Separate、TraceBundle、segment pinned、左栏 HTML 面板（TK0–TK-F 已闭环） |
 | [`31`](31-main-layout-plugin-rails.md) | ✅ | **主布局三列 Grid**、插件 left/right rail、`routes` 路由门控、`hidden`、统一空态 |
 | [`32`](32-plugin-user-settings-cache.md) | ✅ | 全局 `getUserSettings` 缓存 + 订阅（对齐 `DOC/21` 会话 store · `a7ca4ea`） |
 | [`33`](33-mobile-compatibility.md) | **Phase 1** | 40rem rail overlay + hidden 持久化；余 composer/安全区验收 |

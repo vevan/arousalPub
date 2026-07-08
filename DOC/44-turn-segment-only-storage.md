@@ -75,7 +75,7 @@ AssistantSegment {
 
 ## 6. 与迹录 TK 的衔接
 
-- TK-H Host 快照 / 写回直接基于 `segments[]`（见 [`DOC/04`](04-TODO.md) §TK-H）
+- TK-H Host 快照 / 写回直接基于 `segments[]`（见 [`DOC/30`](30-plugin-trace-keeper.md) · [`DOC/04`](04-TODO.md) §已归档）
 - `turn.plugins[]` + `payload.receiveId` 不变；receive 必须 ∈ `segments[*].receives[*].id`
 
 ---

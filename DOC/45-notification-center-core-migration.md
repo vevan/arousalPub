@@ -1,9 +1,9 @@
 # 通知中心 — 宿主核心场景迁移方案
 
-> **状态**：定案 · **待实施**（2026-07-09）  
+> **状态**：**NC-F1.0–F1.5 已实现**（2026-07-09）· F1.6 / F1.V 待办  
 > **目标**：**所有用户可见瞬时消息**均由 **通知中心统一发出**；业务组件禁止自建 snackbar。浮层用 **`v-snackbar-queue`**；列表落盘规则见 [`DOC/40`](40-notification-center.md) §3.1。  
 > **前置**：NC1–NC5 已落地（store · bell · 插件 `host.ui.notify` · `level`）。  
-> **关联**：[`DOC/40`](40-notification-center.md) · [`DOC/04`](04-TODO.md) §NC-F1 · `web/src/plugins/plugin-notify.ts`
+> **关联**：[`DOC/40`](40-notification-center.md) · [`DOC/04`](04-TODO.md) §NC-F1 · `web/src/utils/core-notify.ts`
 
 ---
 
@@ -15,7 +15,7 @@
 
 | 类型 | 现实现 | 迁移后 |
 |------|--------|--------|
-| 独立 `v-snackbar` | 6 处组件内自建 state | 删除；改 `coreNotify`（通知中心发出） |
+| 独立 `v-snackbar` | ~~6 处组件内自建 state~~ | ✅ 已删；改 `coreNotify` |
 | 插件 `host.ui.notify` | 已走 `sendPluginNotify` | **已完成**，维持 |
 
 ### 1.2 不纳入（保持现状）
@@ -209,18 +209,16 @@ coreNotify(opts.t('chat.groupChat.atNameUnmatched'), undefined, {
 
 与 [`DOC/04`](04-TODO.md) 对齐，建议顺序：
 
-| 子任务 | 内容 | 依赖 |
+| 子任务 | 内容 | 状态 |
 |--------|------|------|
-| **NC-F1.0** | Store 队列语义 · `v-snackbar-queue` 单例 · `persist` · 图标关闭 · 废除 `pluginSnackbar` | — |
-| **NC-F1.1** | `PluginUiHost` snackbar 执行 action；`NotificationBell` 列表支持 action 点击 | F1.0 |
-| **NC-F1.2** | 迁移 `PromptsView` · `CharactersView` · `ChatConversationView` | F1.0 |
-| **NC-F1.3** | 迁移 `ConnectionSettingsCard` | F1.0 |
-| **NC-F1.4** | 迁移 `ImportSettingsPanel`（含 action） | F1.1 |
-| **NC-F1.5** | 迁移群聊提示（`use-chat-outbound`） | F1.0 |
-| **NC-F1.6** | memory 重建成功/失败可选 `coreNotify`；删除残留 snackbar state | F1.0 |
-| **NC-F1.V** | 验收：全库 `rg 'v-snackbar'` 仅 `PluginUiHost`；手动清单 §6 | 全部 |
-
-**预估**：F1.0–F1.2 可一个 PR；F1.3–F1.5 可第二个 PR；避免单次 diff 过大。
+| **NC-F1.0** | Store 队列语义 · `v-snackbar-queue` 单例 · `persist` · 图标关闭 · 废除 `pluginSnackbar` | ✅ |
+| **NC-F1.1** | `NotificationSnackbarQueue` / `NotificationBell` 执行 `action` | ✅ |
+| **NC-F1.2** | 迁移 `PromptsView` · `CharactersView` · `ChatConversationView` | ✅ |
+| **NC-F1.3** | 迁移 `ConnectionSettingsCard` | ✅ |
+| **NC-F1.4** | 迁移 `ImportSettingsPanel`（含 action） | ✅ |
+| **NC-F1.5** | 迁移群聊提示（`use-chat-outbound`） | ✅ |
+| **NC-F1.6** | memory 重建成功/失败可选 `coreNotify` | 待办 |
+| **NC-F1.V** | 验收：§6 手动清单 | 待办（静态项已通过） |
 
 ---
 
@@ -228,10 +226,10 @@ coreNotify(opts.t('chat.groupChat.atNameUnmatched'), undefined, {
 
 ### 6.1 静态
 
-- [ ] `web/src` 内除 **`NotificationSnackbarQueue.vue`（或等价）** 外 **无** `v-snackbar` / `v-snackbar-queue`
-- [ ] 无 `pluginSnackbar` / `showPluginNotifySnackbar` 业务直调
-- [ ] snackbar 关闭为 **图标**；无文字关闭钮
-- [ ] 手动关闭浮层 → bell **无**该条；超时 → bell **有**未读
+- [x] `web/src` 内除 **`NotificationSnackbarQueue.vue`** 外 **无** `v-snackbar` / `v-snackbar-queue`
+- [x] 无 `pluginSnackbar` / `showPluginNotifySnackbar` 业务直调
+- [x] snackbar 关闭为 **图标**；无文字关闭钮
+- [ ] 手动关闭浮层 → bell **无**该条；超时 → bell **有**未读（待手动确认）
 
 ### 6.2 功能（手动）
 
@@ -247,7 +245,8 @@ coreNotify(opts.t('chat.groupChat.atNameUnmatched'), undefined, {
 
 ### 6.3 测试
 
-- [ ] `notification-action.test.ts` — `executeNotificationAction` 路由表
+- [x] `notification-action.test.ts` — `executeNotificationAction`（library-panel · settings-tab）
+- [x] `notification-center.test.ts` — close / timeout / persist 语义
 - [ ] 可选：`core-notify.test.ts` — mock store，断言 `source.kind === 'core'`
 
 ---
@@ -265,11 +264,11 @@ coreNotify(opts.t('chat.groupChat.atNameUnmatched'), undefined, {
 
 | 文件 | 变更 |
 |------|------|
-| [`DOC/40`](40-notification-center.md) | 状态改为 NC1–NC5 已实现；§6 Phase 2 指向本文 |
-| [`DOC/04`](04-TODO.md) | NC-F1 拆为 F1.0–F1.V 子勾选 |
-| [`DOC/18`](18-plugin-host-developer-api.md) | 补充宿主 `coreNotify` 与插件 `notify` 共用存储 |
-| `web/src/utils/notification-storage.ts` | `NotificationAction` 增加 `library-panel` |
-| `web/src/plugins/types.ts` | `PluginNotifyOptions.action` 同步扩展 |
+| [`DOC/40`](40-notification-center.md) | NC-F1.0–F1.5 已实现；代码索引更新 |
+| [`DOC/04`](04-TODO.md) | NC-F1 子任务勾选 |
+| [`DOC/18`](18-plugin-host-developer-api.md) | 宿主 `coreNotify` 与插件 `notify` 共用存储 |
+| `web/src/utils/notification-storage.ts` | ✅ `NotificationAction` 增加 `library-panel` |
+| `web/src/plugins/types.ts` | ✅ `PluginNotifyOptions.persist` · `action` 同步 |
 
 ---
 
@@ -277,5 +276,6 @@ coreNotify(opts.t('chat.groupChat.atNameUnmatched'), undefined, {
 
 | 日期 | 说明 |
 |------|------|
+| 2026-07-09 | **NC-F1.0–F1.5 落地**：6 处宿主 snackbar 迁移 · `coreNotify` · `executeNotificationAction` |
 | 2026-07-09 | 对齐 `DOC/40`：`v-snackbar-queue` · 图标关闭 · 手动关闭不入列表 · `persist` |
 | 2026-07-09 | 首版：宿主 6 处 snackbar 盘点 · `coreNotify` · action 路由 · 分期与验收 |

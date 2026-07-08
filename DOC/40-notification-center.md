@@ -1,6 +1,6 @@
 # 通知中心 — 设计定案（规划）
 
-> **状态**：**NC1–NC5 已实现**（2026-07-09）· 宿主核心迁移见 [`DOC/45`](45-notification-center-core-migration.md) · **优先级 P0**（[`DOC/04`](04-TODO.md) §通知中心 · NC0–NC-V）。  
+> **状态**：**NC1–NC5 + NC-F1.0–F1.5 已实现**（2026-07-09）· F1.6 / 验收见 [`DOC/45`](45-notification-center-core-migration.md) · [`DOC/04`](04-TODO.md) §NC-V / NC-F1.V。  
 > **关联**：`DOC/04` P0 · `DOC/10` §4.4 `host.ui` · `DOC/18` §3.9 · `web/src/plugins/create-plugin-web-host.ts`
 
 ---
@@ -212,17 +212,18 @@ v1 **仅 Web Pinia + localStorage**；REST 路由 **不开**。
 
 ### Phase 1 — 核心（P0 · NC0–NC-V）
 
-- [ ] `NotificationCenter` 模块（Pinia store + `localStorage` 读写 · `web/src/utils/notification-storage.ts`）
-- [ ] `send` / `list` / `markRead` / `delete` / `unreadCount`
-- [ ] 顶栏入口 + 通知列表面板
-- [ ] 同浏览器多 Tab：`storage` 事件同步未读角标与列表
-- [ ] **仅 `notify`**：写中心；`snackbar` 默认 true；**删除 `toast`**；全库改调用；互动按钮 → markRead（§4.2）
+- [x] `NotificationCenter` 模块（Pinia store + `localStorage` 读写 · `web/src/utils/notification-storage.ts`）
+- [x] `notify` / `list` / `markRead` / `delete` / `unreadCount` · `dismissSnackbar(id, reason)`
+- [x] 顶栏入口 + 通知列表面板
+- [x] 同浏览器多 Tab：`storage` 事件同步未读角标与列表
+- [x] **仅 `notify`**：删 `toast`；全库改调用；浮层/列表语义 §3.1
 
-### Phase 2 — 整合（NC-F1 · 择机）
+### Phase 2 — 整合（NC-F1 · 2026-07-09）
 
-- [ ] 宿主核心场景接入 — **方案** [`DOC/45`](45-notification-center-core-migration.md)（`coreNotify` · 6 处 snackbar · action 导航）
-- [ ] 插件文档与 `DOC/18` 示例更新
-- [ ] 可选 Server → Web 推送（插件 server.mjs 完成回调；仍由 Web 写 localStorage）
+- [x] 宿主核心场景 — [`DOC/45`](45-notification-center-core-migration.md)（`coreNotify` · 6 处 snackbar · `executeNotificationAction`）
+- [x] `NotificationAction` 扩展 `library-panel` · `PluginNotifyOptions.persist`
+- [ ] memory 重建完成可选 `coreNotify`（NC-F1.6）
+- [ ] 可选 Server → Web 推送（NC-F2）
 
 ### Phase 3 — 增强（NC-F3 · P2/P3）
 
@@ -241,16 +242,19 @@ v1 **仅 Web Pinia + localStorage**；REST 路由 **不开**。
 
 ---
 
-## 8. 代码索引（现状 · 待替换）
+## 8. 代码索引
 
 | 路径 | 说明 |
 |------|------|
-| `web/src/plugins/create-plugin-web-host.ts` | 实现统一 `notify`；**删除** `toast` |
-| `web/src/plugins/types.ts` | `PluginNotifyOptions`（`snackbar` 等）；**删除** `toast` / `PluginToastOptions` / `persistent` |
-| `plugins/plot-summary/` · `guidance-generate/` · `conversation-export/` · `swipe-cleaner/` | `host.ui.toast` → `notify`（NC5） |
-| `web/src/utils/user-session-storage.ts` | 登出清 `arousal-*` 会话键（通知键随清） |
-| `web/src/utils/composer-draft-storage.ts` | **参考**：按 `userId` 分键的 localStorage 模式 |
-| `DOC/10` §4.4 | 仅 `notify` 产品说明 |
+| `web/src/stores/notification-center.ts` | Pinia：`notify` · `snackbarQueue` · `dismissSnackbar` · `persist` |
+| `web/src/components/NotificationSnackbarQueue.vue` | 全站唯一 `v-snackbar-queue` |
+| `web/src/components/NotificationBell.vue` | 顶栏 bell + 列表 |
+| `web/src/utils/core-notify.ts` | 宿主统一出口（`source.kind === 'core'`） |
+| `web/src/utils/notification-action.ts` | `executeNotificationAction`（conversation / library-panel / settings-tab 等） |
+| `web/src/plugins/plugin-notify.ts` | 插件 `sendPluginNotify` → 同一 store |
+| `web/src/plugins/create-plugin-web-host.ts` | `host.ui.notify` |
+| `web/test/stores/notification-center.test.ts` | close / timeout / persist 语义单测 |
+| `web/test/utils/notification-action.test.ts` | action 路由单测 |
 
 ---
 
@@ -258,6 +262,7 @@ v1 **仅 Web Pinia + localStorage**；REST 路由 **不开**。
 
 | 日期 | 说明 |
 |------|------|
+| 2026-07-09 | **NC-F1.0–F1.5 已实现**：宿主 6 处 snackbar → `coreNotify` · `executeNotificationAction` |
 | 2026-07-09 | **浮层定案**：`v-snackbar-queue` · 图标关闭 · 手动关闭不入列表 · 超时入列表 · `persist` |
 | 2026-07-09 | NC1–NC5 标记已实现；宿主迁移 [`DOC/45`](45-notification-center-core-migration.md) |
 | 2026-07-08 | **无兼容**：删除 `toast` API；`snackbar` 默认 true、静默显式 false |

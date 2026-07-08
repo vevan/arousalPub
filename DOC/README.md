@@ -16,7 +16,7 @@
 | 全局插件 settings 缓存 | [`32-plugin-user-settings-cache.md`](32-plugin-user-settings-cache.md)（**✅ 已实现** · `a7ca4ea`） |
 | 移动端兼容性 | [`33-mobile-compatibility.md`](33-mobile-compatibility.md)（**Phase 1 布局已落地**） |
 | 待办 | [`04-TODO.md`](04-TODO.md) |
-| 通知中心 | [`40-notification-center.md`](40-notification-center.md)（**NC1–NC5 已实现**）· 宿主迁移 [`45`](45-notification-center-core-migration.md) |
+| 通知中心 | [`40-notification-center.md`](40-notification-center.md)（**NC1–NC5 + F1.0–F1.5 已实现**）· 验收 [`45`](45-notification-center-core-migration.md) §6 |
 
 ## 核心（01–08）
 
@@ -51,7 +51,7 @@
 | [`38`](38-plugin-sandbox-and-host-evolution.md) | ✅ Phase A+B | 插件沙箱、注入描述符、API 绑定（宿主选择器） |
 | [`43`](43-plugin-api-binding-audit-checklist.md) | ✅ 已归档 | Sandbox 交叉：API 绑定 · 审计 · B4 权限；**A3 延后** |
 | [`39`](39-plugin-context-and-prompt-assembly.md) | ✅ 已落地 | 二次 LLM 上下文块、`completeWithContext`（Historian + trace-keeper Separate） |
-| [`40`](40-notification-center.md) | 规划 **P0** | **通知中心**：统一发送、**localStorage**、已读/未读、删除、列表 UI（NC0–NC-V） |
+| [`40`](40-notification-center.md) | **P0 核心已落地** | **通知中心**：`v-snackbar-queue` · localStorage · bell · `coreNotify` / `host.ui.notify`（NC0–NC5 · F1.0–F1.5） |
 | [`20`](20-user-file-library.md) | 定案 | 用户文件库 / charFile（未实现） |
 | [`21`](21-conversation-plugin-settings.md) | ✅ | 会话插件 Tab schema |
 | [`23`](23-conversation-branches.md) | ✅ | S1–S5 + 顶栏分支树；persist `turnId` patch；from/to/total 副标题；§9.3 审计已关闭 |

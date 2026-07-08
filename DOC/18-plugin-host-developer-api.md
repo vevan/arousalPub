@@ -369,11 +369,13 @@ const data = await host.plugin.runAction('my-action', {
 
 | 方法 | 说明 |
 |------|------|
-| `notify(title, body?, opts?)` | **唯一通知出口**（[`DOC/40`](40-notification-center.md)）：写中心；`snackbar` 默认 true |
+| `notify(title, body?, opts?)` | **唯一通知出口**（[`DOC/40`](40-notification-center.md)）：经 store 入队浮层 + 条件落列表；`snackbar` 默认 true · `persist` 立即落列表 |
 | `confirm(opts)` | 确认框 → `Promise<boolean>` |
 | `openFormDialog(...)` | 同顶层 `openFormDialog` |
 | `progress(opts)` | 进度条；`indeterminate`、`abortable` + `abortLabel` |
 | `clearProgress()` | 清除进度（预览弹框前应调用，避免遮罩挡住对话框） |
+
+宿主 Web 核心（非插件）须用 **`coreNotify`**（`web/src/utils/core-notify.ts`），与 `host.ui.notify` 共用同一 Pinia store 与 `localStorage` 键；禁止组件内自建 `v-snackbar`。
 
 #### 3.13.1 `host.ui.panel`（✅ · **`DOC/30`** 迹录）
 

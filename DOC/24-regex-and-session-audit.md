@@ -360,22 +360,24 @@ auditDebug.enabled && maxStored >= 1 && 落盘成功（/api/chat persist）
 - [x] **群聊 audit 按 segment 落盘**（2026-07-03 · `chat-audit-identity.ts` · `segmentIndex`/`receiveId` · `groupChat` snapshot · regen carry）
 - [ ] 客户端「按下发送」计时（`clientTimings`，可选）
 
-### 3.6 插件与审计范围（2026-06-08 定案）
+### 3.6 插件与审计范围（2026-07-08 定案）
 
-**插件 debug（2026-07-08 · B1.2）**：`plugin.complete` / `completeWithContext` / `serverActions` 的 **`captureDebug` / `debugCapture`** 与响应 **`debug`** 字段，**仅**当会话 **`auditDebug.enabled && maxStored ≥ 1`** 时由宿主开启（`server/src/plugin-audit-gate.ts`）。客户端/插件传 `true` **不能**绕过；**不**写入 `chat-audit.json`（插件异步出站仍不进 sync audit）。
+**总原则**：插件 **基本不进** 独立 audit 条目；仅两类例外见下表。
 
-**P0 结论**：当前**没有**必须在 `chat-audit.json` 每轮条目里记录的插件出站 LLM。
+**插件 debug（B1.2）**：`plugin.complete` / `completeWithContext` / `serverActions` 的 **`captureDebug` / `debugCapture`** 与响应 **`debug`** 字段，**仅**当会话 **`auditDebug.enabled && maxStored ≥ 1`** 时由宿主开启（`server/src/plugin-audit-gate.ts`）。**不**写入 `chat-audit.json`。
 
-| 插件 | 与本轮 audit 的关系 |
-|------|---------------------|
-| **guidance-generate** | 组装阶段注入 system；已体现在 **`messages`** + 主 **`chat`** `calls[]` |
-| **trace-keeper** | 组装阶段注入 tracker system；token 计入 **`assembly.plugins`**；Together 落盘在 **`turn.plugins[]`**（非 audit `plugins[]`）；Separate 为独立 API，不进本轮 sync audit |
-| **plot-summary** | 唯一声明 `plugin.complete`；`completeWithContext` 在 **落盘成功后**由前端 lifecycle 异步调用，**不在** `/api/chat` persist 同步链路 |
-| **reply-complete-sound** / **swipe-cleaner** / **conversation-export** | 无出站 LLM，不参与本轮 audit |
+| 类别 | 插件 | 与对话审计的关系 |
+|------|------|------------------|
+| **主提示词注入** | **guidance-generate** | 组装阶段注入 system；体现在 **`messages`** + 主 **`chat`** `calls[]` |
+| **主提示词注入** | **trace-keeper** | 组装阶段注入 tracker system；token 计入 **`assembly.plugins`**；Together 模式落盘在 **`turn.plugins[]`**（chunk，非 audit `plugins[]`） |
+| **出站 LLM · 仅预览** | **plot-summary** | **`completeWithContext({ dryRun: true })`** 在插件设置内预览组装 prompt；真实摘要在落盘后 **异步** `plugin.complete`，**不进** sync audit |
+| **无出站 LLM** | reply-complete-sound / swipe-cleaner / conversation-export | 不参与 audit |
 
-**预留字段**：`calls[].kind: "plugin.complete"`、`plugins[]` 保留于 schema，供未来「插件出站与 chat 同请求」或「落盘后补写 audit」扩展；**未排期**，不挡 P0 验收。
+**trace-keeper Separate**（独立补生成 API）：不进本轮 sync audit；`auditDebug` 时仅 `captureDebug` 调试输出（§B1.2）。
 
-**`turn.plugins[]`**（chunk 内，如 guidance 载荷）与 audit 的 `plugins[]` **不同**；前者已随轮次落盘，后者为 debug 出站元数据，当前未使用。
+**非目标（不排期）**：`calls[].kind: "plugin.complete"`、`entries[].plugins[]` 写入 `chat-audit.json` — schema 预留。
+
+**`turn.plugins[]`**（chunk 内 guidance 载荷等）与 audit 顶层预留的 **`plugins[]`** **不同**；前者随轮次落盘，后者为 debug 出站元数据，当前未使用。
 
 ---
 

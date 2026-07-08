@@ -150,7 +150,7 @@ host.plugin.completeWithContext({
 
 - 宿主顺序：**resolve API** → `formatPluginContextBlocks` hook → assemble（含 preflight）→ complete → `parseCompleteDraftContent` hook（若传 `draft`）。
 - **无 preset**（D5）。
-- **Prompt 预览**（D8）：Historian `prompt-preview.ts` 调 `completeWithContext({ dryRun: true })`；不进 `chat-audit.json`。
+- **Prompt 预览**（D8）：Historian `prompt-preview.ts` 调 `completeWithContext({ dryRun: true })`；**不进** `chat-audit.json`（定案 · **`DOC/43` §1.3**：出站 LLM 插件仅设置内预览，不进轮次 audit）。
 
 ---
 

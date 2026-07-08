@@ -39,7 +39,7 @@
 - 菜单「手动摘要」；区间 picker 两键选 start/end 优先。
 - **默认预填**（无 picker）：`end = T - bufferTurns`，`start = max(0, end - (blockTurns - 1))`（T = 当前最大 turnOrdinal；与自动块等长）。
 - 写盘：开关与指针分次 patch；摘要成功后再更新 `lastSummarizedEnd` / `nextBlockStart`。
-- **Prompt 预览**：debug 审计开启时对话框第四按钮（`completeWithContext` · `dryRun: true`）。
+- **Prompt 预览**：插件设置对话框内 **`completeWithContext({ dryRun: true })`** 组装预览（**不进** `chat-audit.json`；见 **`DOC/43` §1.3**）。预览入口与 debug 审计开关联动（`auditDebugEnabled`）。
 
 ### 4.2 条目标题与排序
 

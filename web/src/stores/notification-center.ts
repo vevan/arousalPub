@@ -238,9 +238,7 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
       enqueueSnackbar(record, input.timeout)
     }
 
-    if (showSnackbar || input.snackbar === false) {
-      maybeShowDesktopNotification(record)
-    }
+    maybeShowDesktopNotification(record)
 
     return id
   }

@@ -255,9 +255,6 @@ function notifyDraftParseOutcome(
   lorebookName: string,
   dialogId: string,
 ): void {
-  if (outcome === 'success' && typeof document !== 'undefined' && !document.hidden) {
-    return
-  }
   const conversationId = host.conversation.getId()?.trim()
   const dedupeSuffix = `${conversationId ?? 'unknown'}:${dialogId}`
   if (outcome === 'success') {

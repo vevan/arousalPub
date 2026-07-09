@@ -1,3 +1,5 @@
+import { router } from '@/router'
+import type { RouteLocationRaw } from 'vue-router'
 import { useUiContextStore } from '../stores/ui-context.js'
 import type { NotificationAction } from './notification-storage.js'
 
@@ -15,10 +17,7 @@ const SETTINGS_TABS = new Set([
   'debug',
 ])
 
-async function pushRoute(location: Parameters<
-  Awaited<typeof import('../router/index.js')>['router']['push']
->[0]): Promise<void> {
-  const { router } = await import('../router/index.js')
+async function pushRoute(location: RouteLocationRaw): Promise<void> {
   await router.push(location)
 }
 

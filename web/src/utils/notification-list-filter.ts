@@ -46,14 +46,3 @@ export function filterNotificationRecords(
   }
   return result
 }
-
-export function collectPluginIds(items: NotificationRecord[]): string[] {
-  const ids = new Set<string>()
-  for (const item of items) {
-    const pluginId = item.source?.pluginId?.trim()
-    if (item.source?.kind === 'plugin' && pluginId) {
-      ids.add(pluginId)
-    }
-  }
-  return [...ids].sort((a, b) => a.localeCompare(b))
-}

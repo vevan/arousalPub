@@ -8,7 +8,8 @@ import {
   requestDesktopNotifyPermission,
   writeDesktopNotifyEnabled,
 } from '@/utils/desktop-notification'
-import { collectPluginIds } from '@/utils/notification-list-filter'
+import { planNotificationBulkDelete } from '@/utils/notification-bulk-delete'
+import { resolvePluginDisplayName } from '@/utils/plugin-locale-text'
 import type {
   NotificationLevel,
   NotificationRecord,
@@ -22,11 +23,11 @@ const auth = useAuthStore()
 const notificationCenter = useNotificationCenterStore()
 const { unreadCount } = storeToRefs(notificationCenter)
 
+const LIST_DISPLAY_LIMIT = 50
+
 const menuOpen = ref(false)
 const readFilter = ref<'all' | 'unread'>('all')
 const levelFilter = ref<NotificationLevel | null>(null)
-const sourceFilter = ref<'all' | 'core' | 'plugin'>('all')
-const pluginIdFilter = ref<string | null>(null)
 const searchQuery = ref('')
 const desktopNotifyEnabled = ref(readDesktopNotifyEnabled())
 const desktopNotifyPermissionState = ref(desktopNotifyPermission())
@@ -48,26 +49,9 @@ const levelFilterItems = computed(() => [
   { title: t('notifications.levelError'), value: 'error' as const },
 ])
 
-const pluginFilterItems = computed(() => {
-  const ids = collectPluginIds(notificationCenter.items)
-  return [
-    { title: t('notifications.filterPluginAll'), value: null },
-    ...ids.map((id) => ({ title: id, value: id })),
-  ]
-})
-
-const listSourceFilter = computed(() => {
-  if (sourceFilter.value === 'all') return undefined
-  if (sourceFilter.value === 'plugin' && pluginIdFilter.value) {
-    return { kind: 'plugin' as const, pluginId: pluginIdFilter.value }
-  }
-  return { kind: sourceFilter.value }
-})
-
 const listFilterBase = computed(() => ({
   unreadOnly: readFilter.value === 'unread',
   level: levelFilter.value ?? undefined,
-  source: listSourceFilter.value,
   searchQuery: searchQuery.value,
 }))
 
@@ -75,8 +59,6 @@ const hasActiveFilter = computed(
   () =>
     readFilter.value === 'unread' ||
     levelFilter.value != null ||
-    sourceFilter.value !== 'all' ||
-    pluginIdFilter.value != null ||
     searchQuery.value.trim().length > 0,
 )
 
@@ -84,13 +66,33 @@ const filteredItemsForDelete = computed(() =>
   notificationCenter.list(listFilterBase.value),
 )
 
-const displayItems = computed(() =>
-  notificationCenter.list({ ...listFilterBase.value, limit: 50 }),
+const filteredTotalCount = computed(
+  () => filteredItemsForDelete.value.length,
 )
 
-watch(sourceFilter, (next) => {
-  if (next !== 'plugin') pluginIdFilter.value = null
-})
+const displayItems = computed(() =>
+  notificationCenter.list({
+    ...listFilterBase.value,
+    limit: LIST_DISPLAY_LIMIT,
+  }),
+)
+
+const listTruncated = computed(
+  () => filteredTotalCount.value > displayItems.value.length,
+)
+
+function sourceLabel(item: NotificationRecord): string | null {
+  if (item.source?.kind === 'core') {
+    return t('notifications.sourceCore')
+  }
+  const pluginId = item.source?.pluginId?.trim()
+  if (item.source?.kind === 'plugin' && pluginId) {
+    return t('notifications.sourcePlugin', {
+      name: resolvePluginDisplayName(pluginId, pluginId),
+    })
+  }
+  return null
+}
 
 function levelIcon(level?: NotificationRecord['level']): string {
   switch (level) {
@@ -143,13 +145,30 @@ function onDelete(item: NotificationRecord, event: Event): void {
 }
 
 function onDeleteAll(): void {
-  if (hasActiveFilter.value) {
-    const ids = filteredItemsForDelete.value.map((item) => item.id)
-    if (ids.length > 0) notificationCenter.delete(ids)
+  const plan = planNotificationBulkDelete({
+    displayItemIds: displayItems.value.map((item) => item.id),
+    filteredItemIds: filteredItemsForDelete.value.map((item) => item.id),
+    listTruncated: listTruncated.value,
+    hasActiveFilter: hasActiveFilter.value,
+  })
+  if (plan.scope === 'all') {
+    notificationCenter.deleteAll()
     return
   }
-  notificationCenter.deleteAll()
+  if (plan.ids.length > 0) {
+    notificationCenter.delete(plan.ids)
+  }
 }
+
+const bulkDeleteLabel = computed(() => {
+  if (listTruncated.value) {
+    return t('notifications.deleteShown')
+  }
+  if (hasActiveFilter.value) {
+    return t('notifications.deleteFiltered')
+  }
+  return t('notifications.deleteAll')
+})
 
 const showBulkDelete = computed(() =>
   hasActiveFilter.value
@@ -231,9 +250,7 @@ async function onDesktopNotifyToggle(enabled: boolean | null): Promise<void> {
           @click="onDeleteAll"
         >
           {{
-            hasActiveFilter
-              ? t('notifications.deleteFiltered')
-              : t('notifications.deleteAll')
+            bulkDeleteLabel
           }}
         </v-btn>
       </v-card-title>
@@ -274,34 +291,6 @@ async function onDesktopNotifyToggle(enabled: boolean | null): Promise<void> {
           class="notification-bell__level-select"
           :label="t('notifications.filterLevel')"
         />
-        <v-btn-toggle
-          v-model="sourceFilter"
-          density="compact"
-          divided
-          mandatory
-        >
-          <v-btn value="all" size="small" class="text-none">
-            {{ t('notifications.filterAll') }}
-          </v-btn>
-          <v-btn value="core" size="small" class="text-none">
-            {{ t('notifications.filterSourceCore') }}
-          </v-btn>
-          <v-btn value="plugin" size="small" class="text-none">
-            {{ t('notifications.filterSourcePlugin') }}
-          </v-btn>
-        </v-btn-toggle>
-        <v-select
-          v-if="sourceFilter === 'plugin' && pluginFilterItems.length > 1"
-          v-model="pluginIdFilter"
-          :items="pluginFilterItems"
-          item-title="title"
-          item-value="value"
-          density="compact"
-          hide-details
-          variant="outlined"
-          class="notification-bell__plugin-select"
-          :label="t('notifications.filterPlugin')"
-        />
       </div>
       <div class="notification-bell__desktop-toggle px-3 pb-2">
         <v-switch
@@ -327,7 +316,7 @@ async function onDesktopNotifyToggle(enabled: boolean | null): Promise<void> {
         class="notification-bell__empty pa-6 text-center text-medium-emphasis text-body-2"
       >
         {{
-          searchQuery.trim() || readFilter === 'unread' || levelFilter || sourceFilter !== 'all' || pluginIdFilter
+          searchQuery.trim() || readFilter === 'unread' || levelFilter
             ? t('notifications.emptyFiltered')
             : t('notifications.empty')
         }}
@@ -369,6 +358,12 @@ async function onDesktopNotifyToggle(enabled: boolean | null): Promise<void> {
           >
             {{ item.body }}
           </v-list-item-subtitle>
+          <v-list-item-subtitle
+            v-if="sourceLabel(item)"
+            class="text-caption text-medium-emphasis"
+          >
+            {{ sourceLabel(item) }}
+          </v-list-item-subtitle>
           <v-list-item-subtitle class="text-caption mt-1">
             {{ formatTime(item.createdAt) }}
           </v-list-item-subtitle>
@@ -386,16 +381,22 @@ async function onDesktopNotifyToggle(enabled: boolean | null): Promise<void> {
           </template>
         </v-list-item>
       </v-list>
+      <div
+        v-if="listTruncated"
+        class="notification-bell__truncated px-3 py-2 text-caption text-medium-emphasis text-center"
+      >
+        {{
+          t('notifications.listTruncated', {
+            shown: displayItems.length,
+            total: filteredTotalCount,
+          })
+        }}
+      </div>
     </v-card>
   </v-menu>
 </template>
 
 <style scoped>
-.notification-bell__plugin-select {
-  flex: 1 1 100%;
-  min-width: 0;
-}
-
 .notification-bell__level-select {
   flex: 1 1 7rem;
   min-width: 7rem;

@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  collectPluginIds,
   filterNotificationRecords,
   notificationMatchesSearch,
 } from '../../src/utils/notification-list-filter.js'
 import type { NotificationRecord } from '../../src/utils/notification-storage.js'
+
+const FIXTURE_PLUGIN = 'fixture-plugin-notify'
 
 const sample: NotificationRecord[] = [
   {
@@ -24,7 +25,7 @@ const sample: NotificationRecord[] = [
     title: 'Summary failed',
     body: 'Context exceeded',
     level: 'error',
-    source: { kind: 'plugin', pluginId: 'plot-summary' },
+    source: { kind: 'plugin', pluginId: FIXTURE_PLUGIN },
   },
 ]
 
@@ -41,7 +42,7 @@ describe('notification-list-filter', () => {
     assert.equal(bySearch[0]?.id, '2')
 
     const byPlugin = filterNotificationRecords(sample, {
-      source: { kind: 'plugin', pluginId: 'plot-summary' },
+      source: { kind: 'plugin', pluginId: FIXTURE_PLUGIN },
     })
     assert.equal(byPlugin.length, 1)
 
@@ -49,7 +50,14 @@ describe('notification-list-filter', () => {
     assert.equal(unread.length, 1)
   })
 
-  it('collectPluginIds returns sorted unique ids', () => {
-    assert.deepEqual(collectPluginIds(sample), ['plot-summary'])
+  it('filterNotificationRecords applies limit', () => {
+    const many = Array.from({ length: 60 }, (_, i) => ({
+      id: `n-${i}`,
+      createdAt: new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString(),
+      readAt: null,
+      title: `Item ${i}`,
+    }))
+    const limited = filterNotificationRecords(many, { limit: 50 })
+    assert.equal(limited.length, 50)
   })
 })

@@ -139,7 +139,6 @@ export function useMemoryRebuild(getConversationId: () => string) {
         }),
         {
           level: 'success',
-          persist: true,
           action: { type: 'conversation', conversationId: id },
           dedupeKey: `memory-rebuild:${id}`,
         },
@@ -147,7 +146,6 @@ export function useMemoryRebuild(getConversationId: () => string) {
     } else if (error.value) {
       coreNotify(t('notifications.memoryRebuildFailedTitle'), error.value, {
         level: 'error',
-        persist: true,
         dedupeKey: `memory-rebuild:${id}:error`,
       })
     }

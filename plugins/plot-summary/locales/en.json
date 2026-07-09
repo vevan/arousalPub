@@ -145,6 +145,9 @@
   "reviewAbort": "Abort",
 
   "reviewRegenerate": "Regenerate",
+  "notifyReviewReady": "Summary ready for review: {name}",
+  "notifyReviewReadyBody": "Model output is ready. Open the chat to review and save to the lorebook.",
+  "notifyReviewReadyOpen": "Open chat",
 
   "notifyReviewRegenerateFailed": "Regenerate failed; retry or skip",
 
@@ -210,7 +213,8 @@
 
   "notifySummarizeFailed": "Summarize failed",
 
-  "notifyParseFailed": "Could not parse model JSON",
+  "notifyParseFailed": "Summary JSON parse failed: {name}",
+  "notifyParseFailedBody": "Model output was invalid; this step was skipped.",
 
   "notifyContextExceeded": "About {used} tokens, exceeds budget {budget}. Shorten the range.",
 

@@ -14,8 +14,18 @@ const store = useNotificationCenterStore()
 const { snackbarQueue } = storeToRefs(store)
 
 const manualCloseIds = new Set<string>()
+/** 已在 onIconClose / onActionClick 中 commit 过 store，避免后续 handler 误判为 timeout */
+const handledDismissIds = new Set<string>()
 const queueModel = ref<SnackbarQueueItem[]>([])
 const activeDisplayId = ref<string | null>(null)
+
+function clearDismissTracking(notificationId: string): void {
+  manualCloseIds.delete(notificationId)
+  handledDismissIds.delete(notificationId)
+  if (activeDisplayId.value === notificationId) {
+    activeDisplayId.value = null
+  }
+}
 
 function syncQueueModelFromStore(): void {
   queueModel.value = [...snackbarQueue.value]
@@ -32,24 +42,40 @@ watch(
 function onQueueModelUpdate(next: SnackbarQueueItem[]): void {
   const prev = queueModel.value
   if (next.length < prev.length && prev[0]) {
-    activeDisplayId.value = prev[0].notificationId
-    manualCloseIds.delete(prev[0].notificationId)
+    const removedId = prev[0].notificationId
+    const headRemoved = !next.some((item) => item.notificationId === removedId)
+    if (headRemoved) {
+      if (handledDismissIds.has(removedId)) {
+        clearDismissTracking(removedId)
+      } else {
+        const reason = manualCloseIds.has(removedId) ? 'close' : 'timeout'
+        clearDismissTracking(removedId)
+        store.dismissSnackbar(removedId, reason)
+      }
+    }
   }
   queueModel.value = next
   store.replaceSnackbarQueue(next)
 }
 
 function onSnackbarClosed(notificationId: string, visible: boolean): void {
-  if (visible) return
-  if (activeDisplayId.value !== notificationId) return
+  if (visible) {
+    activeDisplayId.value = notificationId
+    return
+  }
+  if (handledDismissIds.has(notificationId)) {
+    clearDismissTracking(notificationId)
+    return
+  }
   const reason = manualCloseIds.has(notificationId) ? 'close' : 'timeout'
-  manualCloseIds.delete(notificationId)
-  activeDisplayId.value = null
+  clearDismissTracking(notificationId)
   store.dismissSnackbar(notificationId, reason)
 }
 
 function onIconClose(item: SnackbarQueueItem, closeFn: () => void): void {
   manualCloseIds.add(item.notificationId)
+  handledDismissIds.add(item.notificationId)
+  store.dismissSnackbar(item.notificationId, 'close')
   closeFn()
 }
 
@@ -61,6 +87,7 @@ function onActionClick(
   if (snackAction.action) {
     void executeNotificationAction(snackAction.action)
   }
+  handledDismissIds.add(item.notificationId)
   store.dismissSnackbar(item.notificationId, 'action')
   closeFn()
 }

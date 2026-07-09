@@ -1,4 +1,5 @@
 import { k } from './settings.js'
+import { notifyOutcome } from './notify-outcome.js'
 import type { PluginHost } from './types.js'
 
 const PIPELINE_FATAL_CODES = new Set([
@@ -57,8 +58,16 @@ function contextExceededToastParams(e: unknown): { used?: number; budget?: numbe
   }
 }
 
+export function isParseFailedError(e: unknown): boolean {
+  const code = pipelineErrorCode(e)
+  return code === 'parse_failed' || code === 'plugin_complete_draft_failed'
+}
+
 export function preflightNotify(host: PluginHost, e: unknown) {
   const code = pipelineErrorCode(e)
+  if (isParseFailedError(e)) {
+    return
+  }
   if (code === 'context_exceeded' || code === 'plugin_complete_context_exceeded') {
     const { used, budget } = contextExceededToastParams(e)
     host.ui.notify(host.t(k(host, 'notifyContextExceeded'), {
@@ -82,21 +91,10 @@ export function preflightNotify(host: PluginHost, e: unknown) {
     host.ui.notify(host.t(k(host, 'notifySidecarEntryMissing')), undefined, { level: 'warning' })
     return
   }
-  if (code === 'parse_failed') {
-    host.ui.notify(host.t(k(host, 'notifyParseFailed')), undefined, { level: 'error' })
-    return
-  }
   const apiCode = lorebookErrorCode(e)
-  if (
-    apiCode === 'plugin_complete_draft_failed' ||
-    apiCode === 'parse_failed'
-  ) {
-    host.ui.notify(host.t(k(host, 'notifyParseFailed')), undefined, { level: 'error' })
-    return
-  }
   if (apiCode === 'sidecar_prompt_required') {
-    host.ui.notify(host.t(k(host, 'notifySummarizeFailed')), undefined, { level: 'error' })
+    notifyOutcome(host, 'notifySummarizeFailed', 'error')
     return
   }
-  host.ui.notify(host.t(k(host, 'notifySummarizeFailed')), undefined, { level: 'error' })
+  notifyOutcome(host, 'notifySummarizeFailed', 'error')
 }

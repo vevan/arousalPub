@@ -1,5 +1,5 @@
 import { DIALOG_REVIEW, DIALOG_REVIEW_SIDECAR } from './constants.js'
-import { isAbortError, isPipelineFatalError, preflightNotify } from './errors.js'
+import { isAbortError, isParseFailedError, isPipelineFatalError, preflightNotify } from './errors.js'
 import {
   generateReviewDraft,
   promptReview,
@@ -10,6 +10,7 @@ import { applyPlotSummaryEntrySort } from './shared/entry-sort.js'
 import { flushPendingLorebookCreates, type PendingLorebookCreate } from './batch-write.js'
 import { entryKeys, writeSidecarEntry } from './sidecar.js'
 import { k, loadMergedSettings } from './settings.js'
+import { notifyOutcome } from './notify-outcome.js'
 import {
   setSummarizeBatchProgress,
   setSummarizeRunning,
@@ -156,6 +157,8 @@ export async function runSummarizeTasks(
             preparedContext,
             fromTurn,
             toTurn,
+            lorebookName,
+            dialogId: DIALOG_REVIEW,
           })
           const reviewed = await promptReview(
             host,
@@ -167,6 +170,8 @@ export async function runSummarizeTasks(
                 preparedContext,
                 fromTurn,
                 toTurn,
+                lorebookName,
+                dialogId: DIALOG_REVIEW,
               }),
             lorebookName,
           )
@@ -190,6 +195,8 @@ export async function runSummarizeTasks(
             fromTurn,
             toTurn,
             sc,
+            lorebookName,
+            dialogId: DIALOG_REVIEW_SIDECAR,
           })
           const reviewed = await promptReview(
             host,
@@ -202,6 +209,8 @@ export async function runSummarizeTasks(
                 fromTurn,
                 toTurn,
                 sc,
+                lorebookName,
+                dialogId: DIALOG_REVIEW_SIDECAR,
               }),
             lorebookName,
           )
@@ -242,9 +251,14 @@ export async function runSummarizeTasks(
           aborted = true
           break
         }
-        preflightNotify(host, e)
+        const parseFailed = isParseFailedError(e)
+        if (!parseFailed) {
+          preflightNotify(host, e)
+        }
         skippedTasks += 1
-        host.ui.notify(host.t(k(host, 'notifyTaskSkipped')), undefined, { level: 'warning' })
+        if (!parseFailed) {
+          host.ui.notify(host.t(k(host, 'notifyTaskSkipped')), undefined, { level: 'warning' })
+        }
         done += 1
         bumpTaskProgress(host, done, tasks.length)
         continue
@@ -264,11 +278,11 @@ export async function runSummarizeTasks(
 
     if (completedTasks === 0) {
       if (skippedTasks > 0) {
-        host.ui.notify(host.t(k(host, 'notifySummarizeSummary'), {
+        notifyOutcome(host, 'notifySummarizeSummary', aborted ? 'warning' : 'info', {
             done: 0,
             skipped: skippedTasks,
             total: tasks.length,
-          }), undefined, { level: aborted ? 'warning' : 'info' })
+          })
       }
       return {
         ok: false,
@@ -313,13 +327,13 @@ export async function runSummarizeTasks(
     }
 
     if (completedTasks === tasks.length && skippedTasks === 0) {
-      host.ui.notify(host.t(k(host, 'notifySummarizeDone')), undefined, { level: 'success' })
+      notifyOutcome(host, 'notifySummarizeDone', 'success')
     } else if (completedTasks > 0 || skippedTasks > 0) {
-      host.ui.notify(host.t(k(host, 'notifySummarizeSummary'), {
+      notifyOutcome(host, 'notifySummarizeSummary', aborted ? 'warning' : 'info', {
           done: completedTasks,
           skipped: skippedTasks,
           total: tasks.length,
-        }), undefined, { level: aborted ? 'warning' : 'info' })
+        })
     }
     return {
       ok: completedTasks === tasks.length && skippedTasks === 0,

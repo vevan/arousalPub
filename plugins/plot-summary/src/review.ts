@@ -1,5 +1,5 @@
 import { PLUGIN_ID, DIALOG_REVIEW, DIALOG_REVIEW_SIDECAR } from './constants.js'
-import { isAbortError } from './errors.js'
+import { isAbortError, isParseFailedError } from './errors.js'
 import type { ContextBlockSpec, PreparedPluginContextBlocks } from '../../../shared/plugin-context-blocks.js'
 import { PLOT_SUMMARY_COMPLETE_LAYOUT } from './shared/summary-prompt-layout.js'
 import {
@@ -13,6 +13,7 @@ import {
   summarizeBatchProgress,
 } from './state.js'
 import { k, sidecarPromptTemplate } from './settings.js'
+import { notifyOutcome } from './notify-outcome.js'
 import { keywordsToText, parseKeywordsText, asString } from './shared/utils.js'
 import type { MergedSettings, PluginHost, SidecarConfig } from './types.js'
 
@@ -94,7 +95,9 @@ async function runReviewRegenerate(host: PluginHost, dialogId: string) {
       return
     }
     console.warn('[plot-summary] review regenerate failed', e)
-    host.ui.notify(host.t(k(host, 'notifyReviewRegenerateFailed')), undefined, { level: 'warning' })
+    if (!isParseFailedError(e)) {
+      notifyOutcome(host, 'notifyReviewRegenerateFailed', 'warning')
+    }
   }
 }
 
@@ -108,6 +111,8 @@ export async function generateReviewDraft(
     fromTurn?: number
     toTurn?: number
     sc?: SidecarConfig
+    lorebookName?: string
+    dialogId?: string
   },
 ) {
   showCurrentBatchTaskProgress(host)
@@ -148,7 +153,15 @@ export async function generateReviewDraft(
     if (!result.draft) {
       throw new Error('plugin_complete_draft_failed')
     }
+    if (opts.lorebookName && opts.dialogId) {
+      notifyDraftParseOutcome(host, 'success', opts.lorebookName, opts.dialogId)
+    }
     return result.draft
+  } catch (e) {
+    if (opts.lorebookName && opts.dialogId && isParseFailedError(e)) {
+      notifyDraftParseOutcome(host, 'failure', opts.lorebookName, opts.dialogId)
+    }
+    throw e
   } finally {
     host.ui.clearProgress()
   }
@@ -234,6 +247,52 @@ export function registerReviewDialogs(host: PluginHost) {
     bodyKey: 'reviewDialogBodySidecar',
     lockTitle: true,
   })
+}
+
+function notifyDraftParseOutcome(
+  host: PluginHost,
+  outcome: 'success' | 'failure',
+  lorebookName: string,
+  dialogId: string,
+): void {
+  if (outcome === 'success' && typeof document !== 'undefined' && !document.hidden) {
+    return
+  }
+  const conversationId = host.conversation.getId()?.trim()
+  const dedupeSuffix = `${conversationId ?? 'unknown'}:${dialogId}`
+  if (outcome === 'success') {
+    const action =
+      conversationId ?
+        ({ type: 'conversation' as const, conversationId })
+      : undefined
+    host.ui.notify(
+      host.t(k(host, 'notifyReviewReady'), { name: lorebookName }),
+      host.t(k(host, 'notifyReviewReadyBody')),
+      {
+        level: 'info',
+        dedupeKey: `plot-summary:review-ready:${dedupeSuffix}`,
+        action,
+        snackbarActions:
+          action ?
+            [
+              {
+                label: host.t(k(host, 'notifyReviewReadyOpen')),
+                action,
+              },
+            ]
+          : undefined,
+      },
+    )
+    return
+  }
+  host.ui.notify(
+    host.t(k(host, 'notifyParseFailed'), { name: lorebookName }),
+    host.t(k(host, 'notifyParseFailedBody')),
+    {
+      level: 'error',
+      dedupeKey: `plot-summary:parse-failed:${dedupeSuffix}`,
+    },
+  )
 }
 
 export function promptReview(

@@ -13,6 +13,7 @@ import {
 import { isSummarizeTurnSpanTooLarge } from './shared/range-limits.js'
 import { PLOT_SUMMARY_COMPLETE_LAYOUT } from './shared/summary-prompt-layout.js'
 import { preparePlotSummarySummarizeContext } from './prepare-context.js'
+import { notifyOutcome } from './notify-outcome.js'
 import { asInt, asString } from './shared/utils.js'
 import type { MergedSettings, PluginHost, SummarizeTask } from './types.js'
 
@@ -236,7 +237,7 @@ export async function previewManualSummarizePrompt(
     )
   } catch (e) {
     console.warn('[plot-summary] prompt preview failed', e)
-    host.ui.notify(host.t(k(host, 'promptPreviewFailed')), undefined, { level: 'error' })
+    notifyOutcome(host, 'promptPreviewFailed', 'error')
   } finally {
     host.ui.clearProgress()
   }

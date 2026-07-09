@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  isParseFailedError,
   isPipelineFatalError,
   pipelineErrorCode,
   preflightNotify,
@@ -97,5 +98,20 @@ describe('plot-summary errors', () => {
     assert.equal(host.notifies.length, 1)
     assert.match(host.notifies[0]?.title ?? '', /notifyContextLengthMissing|contextLength/)
     assert.equal(host.notifies[0]?.level, 'warning')
+  })
+
+  it('isParseFailedError detects parse_failed and plugin_complete_draft_failed', () => {
+    assert.equal(isParseFailedError(new MockHostApiError('parse_failed')), true)
+    assert.equal(
+      isParseFailedError(new MockHostApiError('plugin_complete_draft_failed')),
+      true,
+    )
+    assert.equal(isParseFailedError(new Error('context_exceeded')), false)
+  })
+
+  it('preflightNotify skips parse failures (handled at draft boundary)', () => {
+    const host = mockHost()
+    preflightNotify(host, new MockHostApiError('parse_failed'))
+    assert.equal(host.notifies.length, 0)
   })
 })

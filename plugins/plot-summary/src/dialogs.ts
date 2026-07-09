@@ -1,4 +1,4 @@
-﻿import {
+import {
   PLUGIN_ID,
   DIALOG_ENABLE,
   DIALOG_MANUAL,
@@ -7,6 +7,7 @@
   DIALOG_SESSION,
 } from './constants.js'
 import { isLorebookNotFoundError } from './errors.js'
+import { notifyOutcome } from './notify-outcome.js'
 import { runSummarizeTasks } from './pipeline.js'
 import {
   clearLorebookPickResolver,
@@ -70,10 +71,10 @@ async function createTargetLorebookFromTemplate(host: PluginHost, settings: Merg
   })
   const id = asString(ensured?.id)
   if (!id) {
-    host.ui.notify(host.t(k(host, 'notifyAutoLorebookFailed')), undefined, { level: 'error' })
+    notifyOutcome(host, 'notifyAutoLorebookFailed', 'error')
     return ''
   }
-  host.ui.notify(host.t(k(host, 'notifyAutoLorebookCreated'), { name: ensured.name || id }), undefined, { level: 'success' })
+  notifyOutcome(host, 'notifyAutoLorebookCreated', 'success', { name: ensured.name || id })
   return id
 }
 
@@ -96,7 +97,7 @@ export async function ensureTargetLorebook(host: PluginHost, settings: MergedSet
       await host.conversation.patchPluginSettings({ targetLorebookId: id })
       return id
     } catch {
-      host.ui.notify(host.t(k(host, 'notifyAutoLorebookFailed')), undefined, { level: 'error' })
+      notifyOutcome(host, 'notifyAutoLorebookFailed', 'error')
       return ''
     }
   }
@@ -216,7 +217,7 @@ export function registerRecoverLorebookDialog(host: PluginHost) {
           try {
             id = await createTargetLorebookFromTemplate(h, settings)
           } catch {
-            h.ui.notify(h.t(k(h, 'notifyAutoLorebookFailed')), undefined, { level: 'error' })
+            notifyOutcome(h, 'notifyAutoLorebookFailed', 'error')
             return
           }
           if (!id) return
@@ -333,7 +334,7 @@ function registerSessionDialog(host: PluginHost, settings: MergedSettings) {
           patch.entrySortMode = sortMode
         }
         await h.conversation.patchPluginSettings(patch)
-        h.ui.notify(h.t(k(h, 'sessionSubmit')), undefined, { level: 'success' })
+        notifyOutcome(h, 'sessionSubmit', 'success')
       },
     },
     DIALOG_SESSION,
@@ -477,7 +478,7 @@ export async function reorderTargetLorebookNow(host: PluginHost) {
       sidecarEntryIds,
       settings.sidecars.map((s) => s.id),
     )
-    host.ui.notify(host.t(k(host, 'notifyReorderLorebookDone')), undefined, { level: 'success' })
+    notifyOutcome(host, 'notifyReorderLorebookDone', 'success')
   } catch (e) {
     console.warn('[plot-summary] reorder lorebook failed', e)
     host.ui.notify(host.t(k(host, 'notifyTaskSkipped')), undefined, { level: 'warning' })

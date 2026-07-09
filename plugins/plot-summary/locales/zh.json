@@ -150,6 +150,9 @@
   "reviewAbort": "中断",
 
   "reviewRegenerate": "重新生成",
+  "notifyReviewReady": "摘要待确认：{name}",
+  "notifyReviewReadyBody": "模型已返回，请打开对话确认并写入资料库",
+  "notifyReviewReadyOpen": "打开对话",
 
   "notifyReviewRegenerateFailed": "重新生成失败，请重试或跳过",
 
@@ -215,7 +218,8 @@
 
   "notifySummarizeFailed": "摘要失败",
 
-  "notifyParseFailed": "无法解析模型返回的 JSON",
+  "notifyParseFailed": "摘要 JSON 解析失败：{name}",
+  "notifyParseFailedBody": "模型返回格式无效，该项已跳过",
 
   "notifyContextExceeded": "约 {used} tokens，超过预算 {budget}，请缩短区间",
 

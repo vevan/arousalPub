@@ -174,7 +174,6 @@ function notifyImportSuccessLore(lorebookId: string): void {
   }
   coreNotify(t('settings.importSuccess'), undefined, {
     level: 'success',
-    persist: true,
     timeout: 6000,
     action,
     snackbarActions: [
@@ -193,7 +192,6 @@ function notifyImportSuccessChat(conversationId: string): void {
   }
   coreNotify(t('settings.importSuccess'), undefined, {
     level: 'success',
-    persist: true,
     timeout: 6000,
     action,
     snackbarActions: [

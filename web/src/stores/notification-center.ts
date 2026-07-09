@@ -1,6 +1,5 @@
 import {
   NOTIFICATION_MAX_ITEMS,
-  notificationStorageKey,
   readNotificationEnvelope,
   writeNotificationEnvelope,
   type NotificationRecord,
@@ -33,8 +32,6 @@ export type NotificationNotifyInput = {
   expiresAt?: string
   /** 默认 true */
   snackbar?: boolean
-  /** 立即写入通知列表（未读） */
-  persist?: boolean
   timeout?: number
 }
 
@@ -93,8 +90,6 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
   const items = ref<NotificationRecord[]>([])
   const unreadCount = ref(0)
   const snackbarQueue = ref<SnackbarQueueItem[]>([])
-  const pendingById = ref(new Map<string, NotificationRecord>())
-  let storageListener: ((e: StorageEvent) => void) | null = null
   let snackbarHooks: SnackbarHooks = {}
 
   const hasUnread = computed(() => unreadCount.value > 0)
@@ -105,7 +100,7 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
     unreadCount.value = recomputeUnread(items.value)
   }
 
-  function persist(): void {
+  function flushToStorage(): void {
     if (!userId.value) return
     writeNotificationEnvelope(userId.value, {
       schemaVersion: 1,
@@ -119,22 +114,13 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
     applyEnvelope(readNotificationEnvelope(userId.value))
   }
 
-  function teardownStorageListener(): void {
-    if (storageListener && typeof window !== 'undefined') {
-      window.removeEventListener('storage', storageListener)
-    }
-    storageListener = null
-  }
-
   function clearTransient(): void {
     snackbarQueue.value = []
-    pendingById.value = new Map()
   }
 
   function bindUser(uid: string | null | undefined): void {
     const next = typeof uid === 'string' && uid.trim() ? uid.trim() : null
     if (next === userId.value) return
-    teardownStorageListener()
     userId.value = next
     clearTransient()
     if (!next) {
@@ -143,18 +129,9 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
       return
     }
     syncFromStorage()
-    if (typeof window === 'undefined') return
-    const boundKey = notificationStorageKey(next)
-    storageListener = (e: StorageEvent) => {
-      if (!userId.value) return
-      if (e.key !== boundKey) return
-      syncFromStorage()
-    }
-    window.addEventListener('storage', storageListener)
   }
 
   function clearSession(): void {
-    teardownStorageListener()
     userId.value = null
     items.value = []
     unreadCount.value = 0
@@ -172,7 +149,7 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
     ).slice(0, NOTIFICATION_MAX_ITEMS)
     items.value = next
     unreadCount.value = recomputeUnread(next)
-    persist()
+    flushToStorage()
   }
 
   function replaceCommittedByDedupeKey(
@@ -187,15 +164,13 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
     ).slice(0, NOTIFICATION_MAX_ITEMS)
     items.value = next
     unreadCount.value = recomputeUnread(next)
-    persist()
+    flushToStorage()
     return true
   }
 
-  function findPendingIdByDedupeKey(dedupeKey: string): string | null {
-    for (const [id, pending] of pendingById.value.entries()) {
-      if (pending.dedupeKey === dedupeKey) return id
-    }
-    return null
+  function findCommittedIdByDedupeKey(dedupeKey: string): string | null {
+    const existing = items.value.find((item) => item.dedupeKey === dedupeKey)
+    return existing?.id ?? null
   }
 
   function removeSnackbarForNotification(id: string): void {
@@ -237,17 +212,11 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
   function notify(input: NotificationNotifyInput): string {
     const dedupeKey = input.dedupeKey?.trim() || undefined
     let id: string = crypto.randomUUID()
-    let mergedIntoList = false
 
     if (dedupeKey) {
-      const pendingId = findPendingIdByDedupeKey(dedupeKey)
-      if (pendingId) {
-        id = pendingId
-      } else {
-        const existing = items.value.find((item) => item.dedupeKey === dedupeKey)
-        if (existing) {
-          id = existing.id
-        }
+      const existingId = findCommittedIdByDedupeKey(dedupeKey)
+      if (existingId) {
+        id = existingId
       }
     }
 
@@ -257,26 +226,11 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
     }
 
     const showSnackbar = input.snackbar !== false
-    const persistNow = input.persist === true || input.snackbar === false
 
     if (dedupeKey && replaceCommittedByDedupeKey(dedupeKey, record)) {
-      mergedIntoList = true
-      const nextPending = new Map(pendingById.value)
-      nextPending.delete(id)
-      pendingById.value = nextPending
-    } else if (persistNow) {
-      const pending = new Map(pendingById.value)
-      pending.delete(id)
-      pendingById.value = pending
-      commitRecord(record)
+      // merged into existing list row
     } else {
-      const pending = new Map(pendingById.value)
-      if (dedupeKey) {
-        const pendingId = findPendingIdByDedupeKey(dedupeKey)
-        if (pendingId) pending.delete(pendingId)
-      }
-      pending.set(id, record)
-      pendingById.value = pending
+      commitRecord(record)
     }
 
     if (showSnackbar) {
@@ -284,21 +238,11 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
       enqueueSnackbar(record, input.timeout)
     }
 
-    if (mergedIntoList && !showSnackbar) {
-      removeSnackbarForNotification(id)
-    }
-
-    if (showSnackbar || persistNow) {
+    if (showSnackbar || input.snackbar === false) {
       maybeShowDesktopNotification(record)
     }
 
     return id
-  }
-
-  /** @deprecated 使用 notify；等价于 persist: true */
-  function send(input: NotificationNotifyInput): NotificationRecord {
-    const id = notify({ ...input, persist: true })
-    return items.value.find((item) => item.id === id) ?? buildRecord(input, id)
   }
 
   function dismissSnackbar(id: string, reason: SnackbarDismissReason): void {
@@ -306,15 +250,8 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
       (item) => item.notificationId !== id,
     )
 
-    const pending = pendingById.value.get(id)
-    if (!pending) return
-
-    const nextPending = new Map(pendingById.value)
-    nextPending.delete(id)
-    pendingById.value = nextPending
-
-    if (reason === 'timeout' || reason === 'action') {
-      commitRecord(pending)
+    if (reason === 'close' || reason === 'action') {
+      deleteNotifications(id)
     }
   }
 
@@ -341,7 +278,7 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
     })
     if (!changed) return
     unreadCount.value = recomputeUnread(items.value)
-    persist()
+    flushToStorage()
   }
 
   function deleteNotifications(id: string | string[]): void {
@@ -350,7 +287,7 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
     if (next.length === items.value.length) return
     items.value = next
     unreadCount.value = recomputeUnread(next)
-    persist()
+    flushToStorage()
   }
 
   function purgeExpired(): void {
@@ -358,14 +295,14 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
     if (next.length === items.value.length) return
     items.value = next
     unreadCount.value = recomputeUnread(next)
-    persist()
+    flushToStorage()
   }
 
   function deleteAll(): void {
     if (items.value.length === 0) return
     items.value = []
     unreadCount.value = 0
-    persist()
+    flushToStorage()
   }
 
   return {
@@ -379,7 +316,6 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
     syncFromStorage,
     registerSnackbarHooks,
     notify,
-    send,
     dismissSnackbar,
     replaceSnackbarQueue,
     list,

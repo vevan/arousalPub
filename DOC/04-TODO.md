@@ -15,67 +15,6 @@
   - [ ] **S3** 插件注册命令（如 `plot-summary` `/summary 36-55`）；输入历史存 raw 提交
   - [x] **S4** Composer `/` 补全菜单（`#composer-slash-layer` + CSS anchor、`60dvh`、两行列表）
 
-### 通知中心（Notification Center）
-
-定案见 [`DOC/40`](40-notification-center.md)。**仅 `host.ui.notify` / `coreNotify`**（**删除 `toast`**，无兼容层）：浮层由 **`v-snackbar-queue`** 统一发出；列表落盘见 §3.1（手动关闭不入列表 · 超时/`persist` 入未读）。
-
-| 层 | 状态 |
-|----|------|
-| **发送** | ✅ 插件 `notify` · 宿主 `coreNotify`；默认 snackbar；`snackbar: false` 静默 |
-| **浮层** | ✅ 全站 `NotificationSnackbarQueue` · 图标关闭 · 手动关闭不入列表 |
-| **存储** | ✅ `notification-storage.ts` envelope · `notify`/`persist`/超时语义 |
-| **UI** | ✅ 顶栏 bell + 列表 · snackbar 业务钮 / 列表项 `action` |
-| **插件契约** | ✅ `create-plugin-web-host` · bundled 插件已迁 |
-| **宿主迁移** | ✅ NC-F1.0–F1.6（含 memory 重建通知）；F1.V 手动项待验收 |
-
-**推荐顺序**：~~NC0~~ → ~~NC1~~ → ~~NC2~~ → ~~NC3~~ → ~~NC4~~ → ~~NC5~~ → ~~NC-F1.0–F1.5~~ → **NC-V** / **NC-F1.V** 验收。
-
-#### NC0 · 盘点（先行）
-
-- [x] **NC0** — 全库 `toast` / `notify` 调用点清单（含 bundled 插件）；迁移：`toast` → `notify(title, undefined, opts)`；静默场景标 `snackbar: false`；定案 §3.1 · §4.2
-
-#### NC1 · 存储层
-
-- [x] **NC1** — `web/src/utils/notification-storage.ts`：`{ schemaVersion, unreadCount, items[] }` · 键 `arousal-notifications-{userId}` · 登出随 `clearUserSessionLocalStorage` 清除 · 条数上限裁剪（如 200）
-
-#### NC2 · Store / API
-
-- [x] **NC2** — Pinia `notification-center` store：`send` / `list` / `markRead` / `delete` / `unreadCount` · 变更订阅（供角标/列表）
-
-#### NC3 · 顶栏 UI
-
-- [x] **NC3** — 顶栏 bell 未读角标 · 通知列表抽屉/菜单 · snackbar（关闭/操作钮 → markRead）· 单条/批量已读·删除 · 空态 · i18n
-
-#### NC4 · 多 Tab 同步
-
-- [x] **NC4** — 同浏览器多 Tab：`window` `storage` 事件同步未读角标与列表
-
-#### NC5 · `host.ui` 迁移
-
-- [x] **NC5** — **删除** `host.ui.toast` / `PluginToastOptions` · 实现 `notify`（写中心 + 默认 snackbar）· 全库改调用（plot-summary / guidance-generate / conversation-export / swipe-cleaner / Web 核心）· `DOC/18` · `DOC/10`
-
-#### NC-V · 验收
-
-- [x] **NC-V（单测）** — `notification-center.test.ts` · `notification-action.test.ts` · `npm run check:ci` 通过
-- [ ] **NC-V（手动）** — 多 Tab 角标 · 手动关闭 vs 超时落盘 · 登出清空 · 导入跳转 action
-
-#### NC-F · 后续（非阻塞 · 择机）
-
-- [x] **NC-F1 宿主核心场景** — 方案 [`DOC/45`](45-notification-center-core-migration.md)（`coreNotify` · `executeNotificationAction`）
-  - [x] **NC-F1.0** — Store 队列 + **`v-snackbar-queue`** 单例 · `persist` · 图标关闭 · 废除 `pluginSnackbar`
-  - [x] **NC-F1.1** — `NotificationSnackbarQueue` / `NotificationBell` 执行 `action` · `notification-action.ts`
-  - [x] **NC-F1.2** — `PromptsView` · `CharactersView` · `ChatConversationView`
-  - [x] **NC-F1.3** — `ConnectionSettingsCard`
-  - [x] **NC-F1.4** — `ImportSettingsPanel`（`persist` + 世界书/对话跳转）
-  - [x] **NC-F1.5** — 群聊提示（`use-chat-outbound` · `dedupeKey`）
-  - [x] **NC-F1.6** — memory 重建成功/失败 `coreNotify`（`persist` · 对话 `action`）
-  - [ ] **NC-F1.V** — 手动验收（§6 `DOC/45`）；静态项已通过（`rg v-snackbar` 仅队列组件）
-- [ ] **NC-F2 Server → Web 推送** — **延后**（无对应 Server 推送场景；见 `DOC/40` §Phase 2）
-- [x] **NC-F3 增强**
-  - [x] **NC-F3.1** — `dedupeKey` 合并 · `expiresAt` 清理
-  - [x] **NC-F3.2** — bell 筛选 / 搜索 / 全部已读 / pluginId
-  - [x] **NC-F3.3** — 桌面系统通知（Web Notification · 后台 Tab）
-
 ## P1
 
 - [ ] **ST 聊天记录群聊多 bot 导入** — 当前 ST JSONL 导入全部 segment 绑定 `characterIds[0]`；需按 ST `name` 与会话 `characterIds`/`displayNames` 映射各 bot 为 speaker（单 bot 行为不变）。见 [`DOC/37`](37-st-import-settings-tab.md)
@@ -102,6 +41,7 @@
 - [ ] ST 宏扩展备忘 [`DOC/14`](14-st-macros-porting.md)；Embedding MRL / Reranker / Qwen instruct（低优先级）
 - [ ] **沙箱 Phase C（可选）** — 包内自维护 API（[`DOC/38`](38-plugin-sandbox-and-host-evolution.md) A3 · 已归档延后项）
 - [ ] **CI 宿主门禁（可选）** — GitHub Actions 接 `check:host-no-plugin-ids` · `verify-host-build-without-bundled`（[`DOC/42`](42-host-generic-audit-checklist.md)）
+- [ ] **NC-F2 通知中心 Server → Web 推送（可选）** — 延后；无对应 Server 推送场景（[`DOC/40`](40-notification-center.md) §Phase 2）
 
 ## 文档
 
@@ -138,6 +78,7 @@
 - [x] **迹录 segment 级 TK-O1 + 主线闭环**（2026-07-08）：多 segment transcript / resolveLiveTraceStates / Separate 目标 segment 剥块 — 见 [`DOC/30`](30-plugin-trace-keeper.md) §10 · [`DOC/35`](35-group-chat.md) §6 · [`DOC/44`](44-turn-segment-only-storage.md)
 - [x] **迹录 TK-F + UI/pinned 收尾**（2026-07-08）：outgoing/memory 多 segment 单测 · 侧栏 segment E2E · 槽位迁 `assistant-turn` · 同会话新回复 live tail 取消 pinned（`50725a0`）— 见 [`DOC/30`](30-plugin-trace-keeper.md) §4.3 · §6.2
 - [x] **兼容/过渡代码大清理**（2026-07-08 · 未提交）：`.cursor/rules/no-compatibility-code.mdc` · 预设 granular 槽 · TK-D · audit/密钥/FTS/宏/ Historian 后缀等；审计清单 [`.tmp/compatibility-code-audit.md`](../.tmp/compatibility-code-audit.md) · 同步 `DOC/03` §6/§13/§14/§15 · `DOC/25` §15.2 · `DOC/29` · `DOC/12` §4.2
+- [x] **通知中心 NC0–NC-F1 + NC-F3 + NC-V**（2026-07-09）：`v-snackbar-queue` · `coreNotify` / `host.ui.notify` · bell · 桌面通知 · 宿主 6 处 snackbar 迁移 · plot-summary parse 边界通知 — 见 [`DOC/40`](40-notification-center.md) · 验收 [`DOC/45`](45-notification-center-core-migration.md) §6.10 · **延后** NC-F2 Server 推送
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
 
@@ -154,3 +95,4 @@
 | **Sandbox Phase A+B**（注入描述符 · Worker 沙箱 · DOC/43 交叉项） | 2026-07-08 | [`DOC/38`](38-plugin-sandbox-and-host-evolution.md) · [`DOC/43`](43-plugin-api-binding-audit-checklist.md) · **延后**：包内自维护 API（A3） |
 | **宿主去特化 Phase 0–3**（`check:host-no-plugin-ids` · serverActions · schema 壳） | 2026-07-07 | [`DOC/41`](41-plugin-host-generic-principles.md) · [`DOC/42`](42-host-generic-audit-checklist.md) · **可选**：GitHub Actions 接入门禁 |
 | **迹录 segment 级（TK0–TK-F）** | 2026-07-08 | [`DOC/30`](30-plugin-trace-keeper.md) §10 · [`DOC/44`](44-turn-segment-only-storage.md) · [`DOC/35`](35-group-chat.md) §6 · `430849b` / `9065626` / `50725a0` |
+| **通知中心（NC0–NC-F1 + NC-F3 + NC-V）** | 2026-07-09 | [`DOC/40`](40-notification-center.md) · 迁移验收 [`DOC/45`](45-notification-center-core-migration.md) §6.10 · **延后** NC-F2 Server 推送 |

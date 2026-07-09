@@ -29,7 +29,6 @@ export function sendPluginNotify(
     dedupeKey: opts?.dedupeKey,
     expiresAt: opts?.expiresAt,
     snackbar: opts?.snackbar,
-    persist: opts?.persist,
     timeout: opts?.timeout,
   })
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { PLUGIN_HOST_KEY } from '@/plugins/injection'
+import { translatePluginI18nKey } from '@/utils/plugin-locale-text'
 import type {
   PluginSlotButtonDef,
   PluginSlotContext,
@@ -17,7 +18,7 @@ const props = defineProps<{
 }>()
 
 const pluginHost = inject(PLUGIN_HOST_KEY)
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 onMounted(() => {
   void pluginHost?.ensureSlotPlugins(props.slotName)
@@ -76,6 +77,10 @@ function resolveLabelKey(item: PluginSlotMenuItemDef): string {
     : item.labelKey
 }
 
+function pluginUiText(key: string): string {
+  return translatePluginI18nKey(key, t, te)
+}
+
 function isFilled(
   value: boolean | ((ctx: PluginSlotContext) => boolean) | undefined,
 ): boolean {
@@ -132,8 +137,8 @@ function onPlainClick(btn: PluginSlotButtonDef) {
           :class="[resolveExtraClass(btn.class), { 'is-filled': isFilled(btn.filled) }]"
           :disabled="isDisabled(btn.disabled)"
           v-bind="menuProps"
-          :data-tt="t(resolveTooltipKey(btn))"
-          :aria-label="t(resolveTooltipKey(btn))"
+          :data-tt="pluginUiText(resolveTooltipKey(btn))"
+          :aria-label="pluginUiText(resolveTooltipKey(btn))"
         >
           <v-icon :size="resolveIconSize(btn)">{{ resolveIcon(btn.icon) }}</v-icon>
         </button>
@@ -162,7 +167,7 @@ function onPlainClick(btn: PluginSlotButtonDef) {
             </v-icon>
           </template>
           <v-list-item-title class="text-body-2">
-            {{ t(resolveLabelKey(item)) }}
+            {{ pluginUiText(resolveLabelKey(item)) }}
           </v-list-item-title>
         </v-list-item>
       </v-list>
@@ -174,8 +179,8 @@ function onPlainClick(btn: PluginSlotButtonDef) {
       class="plugin-slot"
       :class="[resolveExtraClass(btn.class), { 'is-filled': isFilled(btn.filled) }]"
       :disabled="isDisabled(btn.disabled)"
-      :data-tt="t(resolveTooltipKey(btn))"
-      :aria-label="t(resolveTooltipKey(btn))"
+      :data-tt="pluginUiText(resolveTooltipKey(btn))"
+      :aria-label="pluginUiText(resolveTooltipKey(btn))"
       @click="onPlainClick(btn)"
     >
       <v-icon :size="resolveIconSize(btn)">{{ resolveIcon(btn.icon) }}</v-icon>

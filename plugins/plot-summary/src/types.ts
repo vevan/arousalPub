@@ -9,6 +9,7 @@ export interface PluginHost {
     writeChatPromptSnapshot?: boolean | { value: boolean }
   }
   conversation: {
+    getId: () => string
     getPluginSettings: () => Promise<Record<string, unknown>>
     getPluginSettingsSnapshot: () => Record<string, unknown>
     onPluginSettingsChanged: (
@@ -82,7 +83,20 @@ export interface PluginHost {
     }) => Promise<{ ok: boolean; promptTokens: number; budget: number; code?: string }>
   }
   ui: {
-    notify: (title: string, body?: string, opts?: { level?: 'info' | 'success' | 'warning' | 'error' }) => void
+    notify: (
+      title: string,
+      body?: string,
+      opts?: {
+        level?: 'info' | 'success' | 'warning' | 'error'
+        snackbar?: boolean
+        dedupeKey?: string
+        action?: { type: 'conversation'; conversationId: string }
+        snackbarActions?: Array<{
+          label: string
+          action?: { type: 'conversation'; conversationId: string }
+        }>
+      },
+    ) => void
     progress: (opts: Record<string, unknown>) => void
     clearProgress: () => void
     openFormDialog: (

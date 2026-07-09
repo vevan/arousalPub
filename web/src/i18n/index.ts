@@ -30,6 +30,8 @@ export async function ensureLocaleMessages(locale: AppLocale): Promise<void> {
   const mod = await localeLoaders[locale]()
   i18n.global.setLocaleMessage(locale, mod.default)
   loadedLocales.add(locale)
+  const { remergeAllPluginLocales } = await import('@/plugins/merge-plugin-locales')
+  await remergeAllPluginLocales()
 }
 
 export async function bootstrapI18n(): Promise<void> {

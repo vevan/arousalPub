@@ -1,7 +1,7 @@
-# 通知中心 — 设计定案（规划）
+# 通知中心 — 设计定案（已实现）
 
-> **状态**：**NC1–NC5 + NC-F1 + NC-F3 已实现**（2026-07-09）· F1.V / NC-V 手动验收 · **NC-F2 延后**（无 Server 推送场景）。  
-> **关联**：`DOC/04` P0 · `DOC/10` §4.4 `host.ui` · `DOC/18` §3.9 · `web/src/plugins/create-plugin-web-host.ts`
+> **状态**：**✅ 已完成并归档**（2026-07-09）· NC0–NC5 · NC-F1 · NC-F3 · NC-V / NC-F1.V 签核 · **NC-F2 Server 推送延后**（无对应场景）。  
+> **关联**：[`DOC/45`](45-notification-center-core-migration.md)（宿主迁移与验收）· `DOC/10` §4.4 · `DOC/18` §3.9
 
 ---
 
@@ -11,9 +11,7 @@
 
 | 能力 | 实现 | 局限 |
 |------|------|------|
-| `host.ui.toast` | Vuetify snackbar · 自动消失 | 无持久化、无历史、无已读 |
-| `host.ui.notify` | **当前等同 toast**（`title + body` 合并为一行 snackbar） | `PluginNotifyOptions.persistent` 已预留但未落地 |
-| 插件 / 宿主各模块 | 分散调用 toast | 无统一队列、优先级、去重 |
+| `host.ui.notify` | 通知中心统一调度（浮层队列 + 列表） | — |
 
 用户无法回顾「刚才发生了什么」；插件长任务完成、导入结果、后台摘要失败等 **适合持久化** 的消息与 **瞬时 toast** 混在同一通道，难以管理。
 
@@ -29,17 +27,17 @@
 
 - **仅 `host.ui.notify`** — **删除** `toast` API 与类型，**不做**兼容别名或转发 shim；全库调用点直接改为 `notify`（NC0 / NC5）。
 - **`opts.snackbar` 默认 `true`** — 常规通知同时弹浮层；**静默**须显式 `snackbar: false`。
-- 移除 `PluginNotifyOptions.persistent` 等历史预留字段。
 
 **产品定案（2026-07-09）**：
 
 - **浮层 UI**：全站 **唯一** `v-snackbar-queue`（由通知中心 store 驱动）；废除 `PluginUiHost` 单条 `v-snackbar` 及组件内分散 snackbar。  
 - **关闭控件**：snackbar **仅图标关闭**（如 `mdi-close`），**禁止**文字钮（「OK」「关闭」等）。  
 - **列表写入时机**（与旧 §3.1「关闭即已读」**废止**）：
-  - **手动点关闭图标**：仅出队浮层，**不写入**通知列表（bell 不可回顾）。  
-  - **浮层超时自动消失**（用户未点关闭）：**写入**通知列表（未读）。  
-  - **`snackbar: false`**：跳过浮层，**立即写入**列表（静默通知）。  
-  - **`persist: true`**（显式）：**立即写入**列表；若 `snackbar !== false` 同时入队浮层（手动关闭仍**不**重复落盘，列表已有则保留）。
+  - **`notify` 默认**（`snackbar !== false`）：**立即写入**通知列表（未读），并显示浮层。
+  - **手动点关闭图标**：出队浮层，并从列表**删除**该条（bell 不可回顾；**唯一例外**）。
+  - **浮层超时**：仅出队浮层，列表条目**保留**（未读，供 bell 回顾）。
+  - **业务文字钮**（如「打开对话」）：执行 `action` 后出队浮层，并从列表**删除**（视为用户已知晓）。
+  - **`snackbar: false`**：跳过浮层，**立即写入**列表（静默通知）。
 
 ---
 
@@ -51,12 +49,12 @@
 | 存储介质 | **`localStorage` 单键 JSON**（`{ schemaVersion, unreadCount, items: NotificationRecord[] }`）；**不写** Server 用户 data 目录 |
 | 发送 API | **仅 `notify`**；**无** `toast` |
 | snackbar | `opts.snackbar` 默认 **`true`**（入 **snackbar 队列**）；**静默**须显式 **`snackbar: false`**（仅列表） |
-| 列表落盘 | 默认：**超时**入列表；**手动关闭浮层**不入列表；`persist: true` 或 `snackbar: false` 立即入列表（§3.1） |
-| 已读规则 | 列表内点击未读项标已读；**snackbar 关闭图标不标已读、不写列表**；`snackbarActions` 业务钮执行 `action` 后按产品决定是否 `persist` |
+| 列表落盘 | 默认：**立即**入列表 + 浮层；**手动关闭浮层**从列表删除；超时保留 · 业务钮删列表 |
+| 已读规则 | 列表内点击未读项标已读（+ 可选执行 `action`）；浮层关闭图标**删除**列表项；`snackbarActions` 业务钮执行 `action` 后**删除**列表项 |
 | 与 chat-audit | **正交**；通知中心不存完整 prompt，仅存摘要文案与跳转链接 |
 | 插件 | 经 `host.ui.notify` / `notificationCenter` API；**禁止**插件直读写 `localStorage` |
 | 登出 | 随 `clearUserSessionLocalStorage()` 清除（`arousal-notifications-*` 不在 `PRESERVED_LOCAL_STORAGE_KEYS` 内） |
-| 跨设备 / 跨 Tab | v1 **不** Syncthing、**不** Server 落盘；同浏览器多 Tab 可经 **`storage` 事件** 同步角标与列表；换设备/换浏览器 **不** 同步历史 |
+| 跨设备 / 跨 Tab | v1 **不** Syncthing、**不** Server 落盘、**不** 多 Tab 实时同步；各 Tab 在 `bindUser` / 刷新时从 localStorage 加载；换设备/换浏览器 **不** 同步历史 |
 
 ---
 
@@ -83,10 +81,9 @@ type NotificationRecord = {
     conversationId?: string
     settingsTab?: string
   }
-  /** snackbar 浮层上的操作按钮（可选）；任一点击 → markRead(id) 并执行 action */
+  /** snackbar 浮层上的操作按钮（可选）；点击 → 执行 action 并从列表删除 */
   snackbarActions?: Array<{
     label: string
-    /** 缺省 = 仅关闭浮层并标已读 */
     action?: NotificationRecord['action']
   }>
   /** 同 source + 同 dedupeKey 在窗口内合并为一条（可选） */
@@ -111,12 +108,11 @@ type NotificationRecord = {
 
 | 场景 | 浮层队列 | 通知列表（bell） |
 |------|----------|------------------|
-| `notify` + 默认 `snackbar` | 入 `v-snackbar-queue` | **超时**后写入未读；**手动点关闭图标** → **不写入** |
+| `notify` + 默认 `snackbar` | 入 `v-snackbar-queue` | **立即**写入未读；**手动点关闭图标** → **从列表删除** |
 | `notify` + `snackbar: false` | 不展示 | **立即**写入未读 |
-| `notify` + `persist: true` | 若 `snackbar !== false` 则入队 | **立即**写入未读（须回顾的操作结果、导入成功等） |
 | 列表内点击未读项 | — | 标已读（+ 可选执行 `action`） |
 | 列表删除 | — | 移除 |
-| `snackbarActions` 业务按钮（非关闭图标） | 出队浮层 | 若已 `persist` / 已超时落盘则保留；执行 `action`；**关闭图标不算此类** |
+| `snackbarActions` 业务按钮（非关闭图标） | 出队浮层 | **删除**（用户已互动知晓）；执行 `action` |
 
 ---
 
@@ -126,9 +122,9 @@ type NotificationRecord = {
 
 | 方法 | 说明 |
 |------|------|
-| `notificationCenter.send(record)` | 调度通知：按 opts 入 snackbar 队列 / 写列表（§3.1） |
+| `notificationCenter.notify(input)` | 调度通知：按 opts 入 snackbar 队列 / 写列表（§3.1） |
 | `notificationCenter.enqueueSnackbar(item)` | 内部：推入 `v-snackbar-queue` 数据源 |
-| `notificationCenter.dismissSnackbar(id, reason)` | `reason: 'close' \| 'timeout' \| 'action'` — 仅 `timeout`（及已 `persist` 的立即写）落列表 |
+| `notificationCenter.dismissSnackbar(id, reason)` | `reason: 'close'` / `'action'` 从列表删除；`'timeout'` 仅出队浮层 |
 | `notificationCenter.list(filter?)` | 分页列表 · `unreadOnly` · `source` |
 | `notificationCenter.markRead(id \| ids \| 'all')` | 标记已读 |
 | `notificationCenter.delete(id \| ids)` | 删除 |
@@ -145,8 +141,6 @@ interface PluginNotifyOptions {
   /** snackbar 自动关闭毫秒；默认 4000；仅影响浮层，不影响中心未读 */
   timeout?: number
   level?: 'info' | 'success' | 'warning' | 'error'
-  /** 立即写入通知列表（未读）；用于须 bell 回顾的结果（导入成功等） */
-  persist?: boolean
   action?: NotificationRecord['action']
   snackbarActions?: NotificationRecord['snackbarActions']
   dedupeKey?: string
@@ -155,7 +149,7 @@ interface PluginNotifyOptions {
 
 | API | 行为 |
 |-----|------|
-| **`notify(title, body?, opts?)`** | 经通知中心统一发出：默认入 **snackbar 队列**；列表落盘见 §3.1（超时 / `persist` / `snackbar: false`） |
+| **`notify(title, body?, opts?)`** | 经通知中心统一发出：默认入 **snackbar 队列** + **立即写入列表**；见 §3.1 |
 
 **NC5 迁移（无兼容层）**：
 
@@ -166,15 +160,15 @@ interface PluginNotifyOptions {
 
 **snackbar 浮层**（`v-snackbar-queue` · Vuetify 3）：
 
-- 每条必带 **图标关闭**（`mdi-close`）→ `dismissSnackbar(id, 'close')`，**不写列表**
-- `snackbarActions` 为 **文字业务按钮**（如「打开对话」）→ 执行 `action` 后出队
-- **超时**自动关 → `dismissSnackbar(id, 'timeout')` → **写入列表**（未读）
+- 每条必带 **图标关闭**（`mdi-close`）→ `dismissSnackbar(id, 'close')`，**从列表删除**
+- `snackbarActions` 为 **文字业务按钮**（如「打开对话」）→ 执行 `action` 后出队，**从列表删除**
+- **超时**自动关 → `dismissSnackbar(id, 'timeout')` → 仅出队浮层（列表已在 `notify` 时写入）
 
 ### 4.3 Server 侧产生通知（Phase 2 · 可选）
 
 Server **不** 持久化通知列表（无磁盘 / DB）。插件 `server.mjs` 或宿主核心若需「服务端任务完成」类通知，Phase 2 可选：
 
-- WebSocket / SSE 推至当前已连接浏览器 → 前端 `notificationCenter.send` 写入 **localStorage**；或  
+- WebSocket / SSE 推至当前已连接浏览器 → 前端 `notificationCenter.notify` 写入 **localStorage**；或  
 - 响应体携带 `notifications[]` 由 Web 层入库（仅当次会话在线时可见）
 
 v1 **仅 Web Pinia + localStorage**；REST 路由 **不开**。
@@ -188,7 +182,7 @@ v1 **仅 Web Pinia + localStorage**；REST 路由 **不开**。
 | **顶栏 / 页脚 bell 图标** | 未读角标；点击打开通知抽屉或全屏列表 |
 | **通知列表** | 时间倒序；未读高亮；点击标已读；单条/全部删除 |
 | **空态** | 无通知时的占位文案 |
-| **snackbar** | 全站 **单一** `v-snackbar-queue`；关闭 **仅图标**；手动关闭不入列表（§3.1） |
+| **snackbar** | 全站 **单一** `v-snackbar-queue`；关闭 **仅图标**；手动 × 从列表删除（§3.1） |
 | **i18n** | 宿主壳文案；插件通知 title/body 由发送方负责（通常已 i18n） |
 
 布局位置与 `DOC/31` 顶栏/页脚协调；**不**占用插件 rail。
@@ -203,9 +197,8 @@ v1 **仅 Web Pinia + localStorage**；REST 路由 **不开**。
 |--------|------|
 | **NC0** | 调用点盘点 · 统一 `notify` 语义定案 |
 | **NC1** | `notification-storage.ts` · localStorage envelope |
-| **NC2** | Pinia store · send/list/markRead/delete/unreadCount |
+| **NC2** | Pinia store · notify/list/markRead/delete/unreadCount |
 | **NC3** | 顶栏 bell + 列表面板 |
-| **NC4** | 多 Tab `storage` 同步 |
 | **NC5** | 仅 `notify` · 删 `toast` · 全库改调用 · snackbar 互动已读 |
 | **NC-V** | 单测 + 手动验收 |
 | **NC-F** | 宿主场景 · Server 推送 · dedupe/筛选（非阻塞） |
@@ -215,13 +208,12 @@ v1 **仅 Web Pinia + localStorage**；REST 路由 **不开**。
 - [x] `NotificationCenter` 模块（Pinia store + `localStorage` 读写 · `web/src/utils/notification-storage.ts`）
 - [x] `notify` / `list` / `markRead` / `delete` / `unreadCount` · `dismissSnackbar(id, reason)`
 - [x] 顶栏入口 + 通知列表面板
-- [x] 同浏览器多 Tab：`storage` 事件同步未读角标与列表
 - [x] **仅 `notify`**：删 `toast`；全库改调用；浮层/列表语义 §3.1
 
 ### Phase 2 — 整合（NC-F1 · 2026-07-09）
 
 - [x] 宿主核心场景 — [`DOC/45`](45-notification-center-core-migration.md)（`coreNotify` · 6 处 snackbar · `executeNotificationAction` · memory 重建通知）
-- [x] `NotificationAction` 扩展 `library-panel` · `PluginNotifyOptions.persist`
+- [x] `NotificationAction` 扩展 `library-panel`
 - [x] memory 重建成功/失败 `coreNotify`（NC-F1.6）
 - [ ] **NC-F2 Server → Web 推送** — **延后**（当前无服务端任务完成推送场景；待 SSE/后台 job 定案后再做）
 
@@ -247,7 +239,7 @@ v1 **仅 Web Pinia + localStorage**；REST 路由 **不开**。
 
 | 路径 | 说明 |
 |------|------|
-| `web/src/stores/notification-center.ts` | Pinia：`notify` · `snackbarQueue` · `dismissSnackbar` · `persist` |
+| `web/src/stores/notification-center.ts` | Pinia：`notify` · `snackbarQueue` · `dismissSnackbar` |
 | `web/src/components/NotificationSnackbarQueue.vue` | 全站唯一 `v-snackbar-queue` |
 | `web/src/components/NotificationBell.vue` | 顶栏 bell + 列表 |
 | `web/src/utils/core-notify.ts` | 宿主统一出口（`source.kind === 'core'`） |
@@ -256,8 +248,13 @@ v1 **仅 Web Pinia + localStorage**；REST 路由 **不开**。
 | `web/src/plugins/create-plugin-web-host.ts` | `host.ui.notify` |
 | `web/src/utils/notification-list-filter.ts` | 列表筛选 / 搜索 / pluginId 聚合 |
 | `web/src/utils/desktop-notification.ts` | Web Notification API · 后台 Tab |
+| `web/src/utils/notification-bulk-delete.ts` | 列表截断时批量删除策略（仅删已显示） |
+| `web/src/components/NotificationSnackbarQueue.vue` | 全站浮层队列 · × / 超时 / 业务钮 |
+| `web/src/components/NotificationBell.vue` | 铃铛列表 · 筛选 · 删除已显示 |
+| `web/test/utils/notification-bulk-delete.test.ts` | 截断列表批量删除单测 |
+| `web/test/utils/desktop-notification.test.ts` | 桌面通知 · 仅后台 Tab |
 | `web/test/utils/notification-list-filter.test.ts` | 筛选与搜索单测 |
-| `web/test/stores/notification-center.test.ts` | close / timeout / persist · dedupe · 搜索 |
+| `web/test/stores/notification-center.test.ts` | close / timeout / action · dedupe · 搜索 · 上限 · 多用户 |
 | `web/test/utils/notification-action.test.ts` | action 路由单测 |
 
 ---
@@ -266,10 +263,14 @@ v1 **仅 Web Pinia + localStorage**；REST 路由 **不开**。
 
 | 日期 | 说明 |
 |------|------|
+| 2026-07-09 | **已完成并归档**；NC-V / NC-F1.V 签核；A2 · D5 体验修复 |
+| 2026-07-09 | **NC-V / NC-F1.V 签核**（[`DOC/45`](45-notification-center-core-migration.md) §6.10）；A2 浮层 × 竞态 · D5 删除已显示 |
+| 2026-07-09 | 移除多 Tab `storage` 实时同步（各 Tab 独立，刷新/`bindUser` 读盘） |
+| 2026-07-09 | 移除 `PluginNotifyOptions.persist` 与 store `send()`；文档与 §3.1 对齐 |
 | 2026-07-09 | **NC-F3 收尾**：F3.4 移动端原生通知列为非目标（产品不需要） |
 | 2026-07-09 | **NC-F3.2–F3.3**：bell 搜索/筛选/全部已读 · 桌面系统通知；**NC-F2 延后** |
 | 2026-07-09 | **NC-F1.0–F1.5 已实现**：宿主 6 处 snackbar → `coreNotify` · `executeNotificationAction` |
-| 2026-07-09 | **浮层定案**：`v-snackbar-queue` · 图标关闭 · 手动关闭不入列表 · 超时入列表 · `persist` |
+| 2026-07-09 | **浮层定案**：`v-snackbar-queue` · 图标关闭 · 手动 × 删列表 · 超时保留 |
 | 2026-07-09 | NC1–NC5 标记已实现；宿主迁移 [`DOC/45`](45-notification-center-core-migration.md) |
 | 2026-07-08 | **无兼容**：删除 `toast` API；`snackbar` 默认 true、静默显式 false |
 | 2026-07-08 | **API 定案**：仅 `notify`；互动按钮标已读 |

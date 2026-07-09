@@ -369,7 +369,7 @@ const data = await host.plugin.runAction('my-action', {
 
 | 方法 | 说明 |
 |------|------|
-| `notify(title, body?, opts?)` | **唯一通知出口**（[`DOC/40`](40-notification-center.md)）：经 store 入队浮层 + 条件落列表；`snackbar` 默认 true · `persist` 立即落列表 |
+| `notify(title, body?, opts?)` | **唯一通知出口**（[`DOC/40`](40-notification-center.md)）：经 store 入队浮层 + 立即写入列表；`snackbar` 默认 true |
 | `confirm(opts)` | 确认框 → `Promise<boolean>` |
 | `openFormDialog(...)` | 同顶层 `openFormDialog` |
 | `progress(opts)` | 进度条；`indeterminate`、`abortable` + `abortLabel` |

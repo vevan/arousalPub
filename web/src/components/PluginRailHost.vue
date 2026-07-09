@@ -11,6 +11,7 @@ import {
   setPluginPanelHidden,
   type PluginPanelPlacement,
 } from '@/plugins/plugin-panel-registry'
+import { translatePluginI18nKey } from '@/utils/plugin-locale-text'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
@@ -35,7 +36,7 @@ const showPanelContent = computed(() => Boolean(active.value?.html?.trim()))
 const contentRef = ref<HTMLElement | null>(null)
 
 function tabLabel(key: string): string {
-  return te(key) ? t(key) : key
+  return translatePluginI18nKey(key, t, te)
 }
 
 function panelRoutable(pluginId: string): boolean {

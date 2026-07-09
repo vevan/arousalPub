@@ -23,18 +23,30 @@ export function readPluginLocaleMessage(
   key: string,
   locale?: string,
 ): string | undefined {
+  const readFrom = (loc: string): string | undefined => {
+    const root = i18n.global.getLocaleMessage(loc) as Record<string, unknown>
+    const plugins = root?.plugins
+    if (!plugins || typeof plugins !== 'object' || Array.isArray(plugins)) {
+      return undefined
+    }
+    const bag = (plugins as Record<string, unknown>)[pluginId]
+    if (!bag || typeof bag !== 'object' || Array.isArray(bag)) {
+      return undefined
+    }
+    const v = (bag as Record<string, unknown>)[key]
+    return typeof v === 'string' ? v : undefined
+  }
+
   const loc = (locale ?? i18n.global.locale.value) as string
-  const root = i18n.global.getLocaleMessage(loc) as Record<string, unknown>
-  const plugins = root?.plugins
-  if (!plugins || typeof plugins !== 'object' || Array.isArray(plugins)) {
-    return undefined
+  const primary = readFrom(loc)
+  if (primary !== undefined) return primary
+
+  const fb = i18n.global.fallbackLocale
+  const fbLoc = typeof fb === 'string' ? fb : Array.isArray(fb) ? fb[0] : undefined
+  if (fbLoc && fbLoc !== loc) {
+    return readFrom(fbLoc)
   }
-  const bag = (plugins as Record<string, unknown>)[pluginId]
-  if (!bag || typeof bag !== 'object' || Array.isArray(bag)) {
-    return undefined
-  }
-  const v = (bag as Record<string, unknown>)[key]
-  return typeof v === 'string' ? v : undefined
+  return undefined
 }
 
 export function hasPluginLocaleMessage(
@@ -73,6 +85,8 @@ export function translatePluginI18nKey(
   if (parsed) {
     const raw = readPluginLocaleMessage(parsed.pluginId, parsed.key)
     if (raw !== undefined) return raw
+    const tail = parsed.key
+    if (tail) return tail
   }
   return te(fullKey) ? t(fullKey) : fullKey
 }

@@ -153,6 +153,7 @@ export interface PluginNotifyOptions {
     action?: PluginNotifyOptions['action']
   }>
   dedupeKey?: string
+  expiresAt?: string
 }
 
 export interface PluginProgressOptions {

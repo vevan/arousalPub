@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 import {
   isPipelineFatalError,
   pipelineErrorCode,
-  preflightToast,
+  preflightNotify,
 } from '../src/errors.js'
 import type { PluginHost } from '../src/types.js'
 
@@ -73,9 +73,9 @@ describe('plot-summary errors', () => {
     )
   })
 
-  it('preflightToast shows context exceeded with token counts from API error', () => {
+  it('preflightNotify shows context exceeded with token counts from API error', () => {
     const host = mockHost()
-    preflightToast(
+    preflightNotify(
       host,
       new MockHostApiError('plugin_complete_context_exceeded', {
         promptTokens: 12000,
@@ -88,14 +88,14 @@ describe('plot-summary errors', () => {
     assert.equal(host.notifies[0]?.level, 'warning')
   })
 
-  it('preflightToast shows context length missing for plugin API code', () => {
+  it('preflightNotify shows context length missing for plugin API code', () => {
     const host = mockHost()
-    preflightToast(
+    preflightNotify(
       host,
       new MockHostApiError('plugin_complete_context_length_unconfigured'),
     )
     assert.equal(host.notifies.length, 1)
-    assert.match(host.notifies[0]?.title ?? '', /toastContextLengthMissing|contextLength/)
+    assert.match(host.notifies[0]?.title ?? '', /notifyContextLengthMissing|contextLength/)
     assert.equal(host.notifies[0]?.level, 'warning')
   })
 })

@@ -167,7 +167,7 @@ function closeApiKeyManager() {
 
 async function saveApiKeyManager() {
   if (aliasHasError.value) {
-    notifyConn(t('conn.apiKeyAliasDupSnackbar'), 'warning')
+    notifyConn(t('conn.apiKeyAliasDupNotify'), 'warning')
     return
   }
   const existingIds = new Set(apiKeysStore.keys.map((k) => k.id))
@@ -219,7 +219,7 @@ function saveCurrentKeyAs() {
   }
   const created = apiKeysStore.createKey({ keyDraft: txt })
   conn.setApiKeyId(created.id)
-  notifyConn(t('conn.apiKeySavedSnackbar', { alias: created.alias }), 'success')
+  notifyConn(t('conn.apiKeySavedNotify', { alias: created.alias }), 'success')
 }
 
 function aliasErrorOf(d: KeyDraft): string | null {
@@ -431,7 +431,7 @@ async function save() {
       conn.parseCustomParams()
     }
     await conn.saveToServer()
-    notifyConn(t('conn.savedSnackbar', { path: settingsPath.value }), 'success')
+    notifyConn(t('conn.savedNotify', { path: settingsPath.value }), 'success')
   } catch (e) {
     notifyConn(
       e instanceof Error ? e.message : t('conn.saveFailedJson'),
@@ -508,7 +508,7 @@ async function confirmExport() {
     })
     triggerDownload(json, filename)
     exportDialogOpen.value = false
-    notifyConn(t('conn.apiExportDoneSnackbar', { name: filename }), 'success')
+    notifyConn(t('conn.apiExportDoneNotify', { name: filename }), 'success')
   } catch (e) {
     notifyConn(
       e instanceof Error ? e.message : t('conn.saveFailedJson'),
@@ -554,7 +554,7 @@ async function confirmImport() {
         importApplyLinked.value && exportDocHasLinkedPreset(doc),
     })
     closeImportDialog()
-    notifyConn(t('conn.apiImportedSnackbar'), 'success')
+    notifyConn(t('conn.apiImportedNotify'), 'success')
   } catch (e) {
     notifyConn(
       e instanceof Error ? e.message : t('conn.saveFailedJson'),

@@ -57,11 +57,11 @@ function contextExceededToastParams(e: unknown): { used?: number; budget?: numbe
   }
 }
 
-export function preflightToast(host: PluginHost, e: unknown) {
+export function preflightNotify(host: PluginHost, e: unknown) {
   const code = pipelineErrorCode(e)
   if (code === 'context_exceeded' || code === 'plugin_complete_context_exceeded') {
     const { used, budget } = contextExceededToastParams(e)
-    host.ui.notify(host.t(k(host, 'toastContextExceeded'), {
+    host.ui.notify(host.t(k(host, 'notifyContextExceeded'), {
         used: used ?? '?',
         budget: budget ?? '?',
       }), undefined, { level: 'warning' })
@@ -71,19 +71,19 @@ export function preflightToast(host: PluginHost, e: unknown) {
     code === 'context_length_unconfigured' ||
     code === 'plugin_complete_context_length_unconfigured'
   ) {
-    host.ui.notify(host.t(k(host, 'toastContextLengthMissing')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(k(host, 'notifyContextLengthMissing')), undefined, { level: 'warning' })
     return
   }
   if (isLorebookNotFoundError(e)) {
-    host.ui.notify(host.t(k(host, 'toastTargetLorebookDeleted')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(k(host, 'notifyTargetLorebookDeleted')), undefined, { level: 'warning' })
     return
   }
   if (isLorebookEntryMissingError(e)) {
-    host.ui.notify(host.t(k(host, 'toastSidecarEntryMissing')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(k(host, 'notifySidecarEntryMissing')), undefined, { level: 'warning' })
     return
   }
   if (code === 'parse_failed') {
-    host.ui.notify(host.t(k(host, 'toastParseFailed')), undefined, { level: 'error' })
+    host.ui.notify(host.t(k(host, 'notifyParseFailed')), undefined, { level: 'error' })
     return
   }
   const apiCode = lorebookErrorCode(e)
@@ -91,12 +91,12 @@ export function preflightToast(host: PluginHost, e: unknown) {
     apiCode === 'plugin_complete_draft_failed' ||
     apiCode === 'parse_failed'
   ) {
-    host.ui.notify(host.t(k(host, 'toastParseFailed')), undefined, { level: 'error' })
+    host.ui.notify(host.t(k(host, 'notifyParseFailed')), undefined, { level: 'error' })
     return
   }
   if (apiCode === 'sidecar_prompt_required') {
-    host.ui.notify(host.t(k(host, 'toastSummarizeFailed')), undefined, { level: 'error' })
+    host.ui.notify(host.t(k(host, 'notifySummarizeFailed')), undefined, { level: 'error' })
     return
   }
-  host.ui.notify(host.t(k(host, 'toastSummarizeFailed')), undefined, { level: 'error' })
+  host.ui.notify(host.t(k(host, 'notifySummarizeFailed')), undefined, { level: 'error' })
 }

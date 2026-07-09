@@ -53,7 +53,7 @@ type GuidanceTurn = {
 const k = (host: GuidanceHost, key: string) => host.pluginKey(key)
 
 function notifyGuidanceFailed(host: GuidanceHost, detail?: string): void {
-  const title = host.t(k(host, 'toastFailed'))
+  const title = host.t(k(host, 'notifyFailed'))
   const body = detail?.trim()
   host.ui.notify(title, body || undefined, { level: 'error' })
 }

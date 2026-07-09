@@ -1,3 +1,5 @@
+import { DESKTOP_NOTIFY_ENABLED_KEY } from './desktop-notification.js'
+
 /** 登出后保留的设备级 localStorage（非用户会话缓存） */
 const PRESERVED_LOCAL_STORAGE_KEYS = new Set([
   'arousal-auth-token',
@@ -12,6 +14,7 @@ const PRESERVED_LOCAL_STORAGE_KEYS = new Set([
   'arousal-chat-font-size-rem',
   'arousal-composer-enter-mode',
   'arousal-plugin-panel-hidden',
+  DESKTOP_NOTIFY_ENABLED_KEY,
 ])
 
 const USER_SESSION_PREFIX = 'arousal-'

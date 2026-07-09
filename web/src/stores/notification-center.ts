@@ -6,6 +6,8 @@ import {
   type NotificationRecord,
   type NotificationSnackbarAction,
 } from '../utils/notification-storage'
+import { filterNotificationRecords } from '../utils/notification-list-filter'
+import { maybeShowDesktopNotification } from '../utils/desktop-notification'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
@@ -38,7 +40,9 @@ export type NotificationNotifyInput = {
 
 export type NotificationListFilter = {
   unreadOnly?: boolean
+  level?: NotificationRecord['level']
   source?: NotificationRecord['source']
+  searchQuery?: string
   limit?: number
 }
 
@@ -71,6 +75,19 @@ function formatNotifyText(title: string, body?: string): string {
   return b ? `${t}\n${b}` : t
 }
 
+function purgeExpiredItems(records: NotificationRecord[]): NotificationRecord[] {
+  const now = Date.now()
+  return records.filter((item) => {
+    if (!item.expiresAt) return true
+    const expiresMs = Date.parse(item.expiresAt)
+    return !Number.isFinite(expiresMs) || expiresMs > now
+  })
+}
+
+function recomputeUnread(records: NotificationRecord[]): number {
+  return records.filter((item) => !item.readAt).length
+}
+
 export const useNotificationCenterStore = defineStore('notificationCenter', () => {
   const userId = ref<string | null>(null)
   const items = ref<NotificationRecord[]>([])
@@ -83,8 +100,9 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
   const hasUnread = computed(() => unreadCount.value > 0)
 
   function applyEnvelope(envelope: ReturnType<typeof readNotificationEnvelope>): void {
-    items.value = sortByCreatedDesc(envelope.items)
-    unreadCount.value = envelope.unreadCount
+    const purged = purgeExpiredItems(envelope.items)
+    items.value = sortByCreatedDesc(purged)
+    unreadCount.value = recomputeUnread(items.value)
   }
 
   function persist(): void {
@@ -148,10 +166,42 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
   }
 
   function commitRecord(record: NotificationRecord): void {
-    const next = [record, ...items.value].slice(0, NOTIFICATION_MAX_ITEMS)
+    const withoutDup = items.value.filter((item) => item.id !== record.id)
+    const next = purgeExpiredItems(
+      sortByCreatedDesc([record, ...withoutDup]),
+    ).slice(0, NOTIFICATION_MAX_ITEMS)
     items.value = next
-    unreadCount.value = next.filter((item) => !item.readAt).length
+    unreadCount.value = recomputeUnread(next)
     persist()
+  }
+
+  function replaceCommittedByDedupeKey(
+    dedupeKey: string,
+    record: NotificationRecord,
+  ): boolean {
+    const index = items.value.findIndex((item) => item.dedupeKey === dedupeKey)
+    if (index < 0) return false
+    const without = items.value.filter((item) => item.id !== record.id)
+    const next = purgeExpiredItems(
+      sortByCreatedDesc([record, ...without.filter((item) => item.dedupeKey !== dedupeKey)]),
+    ).slice(0, NOTIFICATION_MAX_ITEMS)
+    items.value = next
+    unreadCount.value = recomputeUnread(next)
+    persist()
+    return true
+  }
+
+  function findPendingIdByDedupeKey(dedupeKey: string): string | null {
+    for (const [id, pending] of pendingById.value.entries()) {
+      if (pending.dedupeKey === dedupeKey) return id
+    }
+    return null
+  }
+
+  function removeSnackbarForNotification(id: string): void {
+    snackbarQueue.value = snackbarQueue.value.filter(
+      (item) => item.notificationId !== id,
+    )
   }
 
   function buildRecord(input: NotificationNotifyInput, id: string): NotificationRecord {
@@ -185,21 +235,61 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
   }
 
   function notify(input: NotificationNotifyInput): string {
-    const id = crypto.randomUUID()
-    const record = buildRecord(input, id)
+    const dedupeKey = input.dedupeKey?.trim() || undefined
+    let id: string = crypto.randomUUID()
+    let mergedIntoList = false
+
+    if (dedupeKey) {
+      const pendingId = findPendingIdByDedupeKey(dedupeKey)
+      if (pendingId) {
+        id = pendingId
+      } else {
+        const existing = items.value.find((item) => item.dedupeKey === dedupeKey)
+        if (existing) {
+          id = existing.id
+        }
+      }
+    }
+
+    const record: NotificationRecord = {
+      ...buildRecord(input, id),
+      readAt: null,
+    }
+
     const showSnackbar = input.snackbar !== false
     const persistNow = input.persist === true || input.snackbar === false
 
-    if (persistNow) {
+    if (dedupeKey && replaceCommittedByDedupeKey(dedupeKey, record)) {
+      mergedIntoList = true
+      const nextPending = new Map(pendingById.value)
+      nextPending.delete(id)
+      pendingById.value = nextPending
+    } else if (persistNow) {
+      const pending = new Map(pendingById.value)
+      pending.delete(id)
+      pendingById.value = pending
       commitRecord(record)
     } else {
       const pending = new Map(pendingById.value)
+      if (dedupeKey) {
+        const pendingId = findPendingIdByDedupeKey(dedupeKey)
+        if (pendingId) pending.delete(pendingId)
+      }
       pending.set(id, record)
       pendingById.value = pending
     }
 
     if (showSnackbar) {
+      removeSnackbarForNotification(id)
       enqueueSnackbar(record, input.timeout)
+    }
+
+    if (mergedIntoList && !showSnackbar) {
+      removeSnackbarForNotification(id)
+    }
+
+    if (showSnackbar || persistNow) {
+      maybeShowDesktopNotification(record)
     }
 
     return id
@@ -233,22 +323,7 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
   }
 
   function list(filter?: NotificationListFilter): NotificationRecord[] {
-    let result = items.value
-    if (filter?.unreadOnly) {
-      result = result.filter((item) => !item.readAt)
-    }
-    if (filter?.source?.kind) {
-      result = result.filter((item) => item.source?.kind === filter.source?.kind)
-    }
-    if (filter?.source?.pluginId) {
-      result = result.filter(
-        (item) => item.source?.pluginId === filter.source?.pluginId,
-      )
-    }
-    if (typeof filter?.limit === 'number' && filter.limit > 0) {
-      result = result.slice(0, filter.limit)
-    }
-    return result
+    return filterNotificationRecords(items.value, filter)
   }
 
   function markRead(id: string | string[] | 'all'): void {
@@ -265,7 +340,7 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
       return { ...item, readAt: now }
     })
     if (!changed) return
-    unreadCount.value = items.value.filter((item) => !item.readAt).length
+    unreadCount.value = recomputeUnread(items.value)
     persist()
   }
 
@@ -274,7 +349,15 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
     const next = items.value.filter((item) => !ids.has(item.id))
     if (next.length === items.value.length) return
     items.value = next
-    unreadCount.value = next.filter((item) => !item.readAt).length
+    unreadCount.value = recomputeUnread(next)
+    persist()
+  }
+
+  function purgeExpired(): void {
+    const next = purgeExpiredItems(items.value)
+    if (next.length === items.value.length) return
+    items.value = next
+    unreadCount.value = recomputeUnread(next)
     persist()
   }
 
@@ -303,5 +386,6 @@ export const useNotificationCenterStore = defineStore('notificationCenter', () =
     markRead,
     delete: deleteNotifications,
     deleteAll,
+    purgeExpired,
   }
 })

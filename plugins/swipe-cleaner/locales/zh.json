@@ -8,9 +8,9 @@
   "confirmAllBody": "将在 {turnCount} 个回合中删除共 {swipeRemoveTotal} 条未选中的 swipe，保留每轮当前显示的内容。此操作不可撤销。",
   "confirmOk": "清理",
   "confirmCancel": "取消",
-  "toastTurnDone": "已清理本回合滑动",
-  "toastAllDone": "已清理本聊天滑动",
-  "toastFailed": "清理滑动失败",
+  "notifyTurnDone": "已清理本回合滑动",
+  "notifyAllDone": "已清理本聊天滑动",
+  "notifyFailed": "清理滑动失败",
   "batchSizeLabel": "批大小",
   "batchSizeDesc": "清理整聊时每批处理的轮次数（最多 50）"
 }

@@ -6696,6 +6696,9 @@ var lastLiveContext = null;
 function conversationIdFrom(host) {
   return host.conversation.getId?.()?.trim() ?? "";
 }
+function tkNotify(host, messageKey, level, params) {
+  host.ui.notify(host.t(k(host, messageKey), params), void 0, { level });
+}
 function segmentCountForTurn(turn) {
   return turn?.segments?.length ?? 0;
 }
@@ -6790,7 +6793,7 @@ ${SHELL_STYLES}`);
 }
 function openEditStateDialog(host) {
   if (!lastEditContext || !host.openFormDialog) {
-    console.warn("[trace-keeper]", host.t(k(host, "toastEditNoState")));
+    tkNotify(host, "notifyEditNoState", "warning");
     return;
   }
   host.openFormDialog(
@@ -6827,7 +6830,7 @@ async function handlePatchStateSubmit(host, model) {
   if (!conversationId || typeof turnOrdinal !== "number") return;
   const state = parseStateJsonText(stateJson);
   if (!state) {
-    console.warn("[trace-keeper]", host.t(k(host, "toastPatchInvalidJson")));
+    tkNotify(host, "notifyPatchInvalidJson", "warning");
     return;
   }
   try {
@@ -6839,9 +6842,10 @@ async function handlePatchStateSubmit(host, model) {
     }
     await refreshPanel(host);
     host.refreshSlotButtons();
+    tkNotify(host, "notifyPatchDone", "success");
   } catch (e) {
     const code = e instanceof Error ? e.message : "patch_failed";
-    console.warn("[trace-keeper]", host.t(k(host, "toastPatchFailed"), { code }));
+    tkNotify(host, "notifyPatchFailed", "error", { code });
   }
 }
 async function handleRegenerateSeparate(host, segmentIndex) {
@@ -6870,6 +6874,7 @@ async function handleRegenerateSeparate(host, segmentIndex) {
     if (host.conversation.refresh) {
       await host.conversation.refresh();
     }
+    tkNotify(host, "notifyRegenerateDone", "success");
   } catch (e) {
     if (e instanceof SeparateRegenerateError) {
       logSeparateDebugIfPresent(e.debug);
@@ -6878,15 +6883,9 @@ async function handleRegenerateSeparate(host, segmentIndex) {
           "[trace-keeper] \u5DF2\u8BF7\u6C42 debug \u4F46\u9519\u8BEF\u54CD\u5E94\u65E0 debug \u5B57\u6BB5\uFF1B\u8BF7\u91CD\u542F\u670D\u52A1\u7AEF\u5E76\u786E\u8BA4 Separate \u8DEF\u7531\u5DF2\u66F4\u65B0"
         );
       }
-      console.warn(
-        "[trace-keeper]",
-        host.t(k(host, "toastRegenerateFailed"), { code: e.code })
-      );
+      tkNotify(host, "notifyRegenerateFailed", "error", { code: e.code });
     } else if (e instanceof Error) {
-      console.warn(
-        "[trace-keeper]",
-        host.t(k(host, "toastRegenerateFailed"), { code: e.message })
-      );
+      tkNotify(host, "notifyRegenerateFailed", "error", { code: e.message });
     }
   } finally {
     setRegenerating(conversationId, false);

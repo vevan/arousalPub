@@ -15,7 +15,7 @@
 
   "tooltipRangeEnd": "Select end turn and open manual summarize",
 
-  "toastRangeStartRequired": "Select a start turn with the right icon first",
+  "notifyRangeStartRequired": "Select a start turn with the right icon first",
 
   "tooltipSummarizeNow": "Summarize to lorebook now",
 
@@ -102,7 +102,7 @@
 
   "manualTurnRangeHint": "Keep the range within 512 turns (macro indexing window). Wider ranges cannot be submitted—narrow start/end.",
 
-  "toastTurnRangeTooLong": "Turn range exceeds 512 turns. Narrow the start/end and try again.",
+  "notifyTurnRangeTooLong": "Turn range exceeds 512 turns. Narrow the start/end and try again.",
 
   "manualTasksLabel": "Tasks",
 
@@ -146,15 +146,15 @@
 
   "reviewRegenerate": "Regenerate",
 
-  "toastReviewRegenerateFailed": "Regenerate failed; retry or skip",
+  "notifyReviewRegenerateFailed": "Regenerate failed; retry or skip",
 
-  "toastReviewSkipped": "Skipped this item",
+  "notifyReviewSkipped": "Skipped this item",
 
-  "toastReviewAborted": "Summarize aborted",
+  "notifyReviewAborted": "Summarize aborted",
 
-  "toastTaskSkipped": "This step failed; skipped and continuing",
+  "notifyTaskSkipped": "This step failed; skipped and continuing",
 
-  "toastSummarizeSummary": "Done {done}, skipped {skipped} of {total}",
+  "notifySummarizeSummary": "Done {done}, skipped {skipped} of {total}",
 
   "enableDialogTitle": "Enable auto summarize",
 
@@ -164,11 +164,11 @@
 
   "enableSubmit": "Enable & summarize",
 
-  "toastAutoSummarizeEnabled": "Auto summarize enabled",
+  "notifyAutoSummarizeEnabled": "Auto summarize enabled",
 
-  "toastAutoSummarizeScheduled": "Auto summarize will start at turn {turn}",
+  "notifyAutoSummarizeScheduled": "Auto summarize will start at turn {turn}",
 
-  "toastAutoSummarizeResumed": "Resumed from last summary; next batch {from}–{to}, trigger around turn {turn}",
+  "notifyAutoSummarizeResumed": "Resumed from last summary; next batch {from}–{to}, trigger around turn {turn}",
 
   "pickLorebookDialogTitle": "Choose target lorebook",
 
@@ -188,9 +188,9 @@
 
   "recoverLorebookConfirm": "Confirm",
 
-  "toastTargetLorebookDeleted": "Summary lorebook was deleted — pick or create one",
+  "notifyTargetLorebookDeleted": "Summary lorebook was deleted — pick or create one",
 
-  "toastTargetLorebookMissingWarn": "Target lorebook missing — select one before summarizing",
+  "notifyTargetLorebookMissingWarn": "Target lorebook missing — select one before summarizing",
 
   "autoSummarizeDefaultEnabledLabel": "Enable auto summarize on new chats",
 
@@ -200,33 +200,33 @@
 
   "sessionAutoSidecarsHint": "Plot summary is always included; pick Sidecars to update on each auto block.",
 
-  "toastAutoSummarizeDisabled": "Auto summarize disabled",
+  "notifyAutoSummarizeDisabled": "Auto summarize disabled",
 
-  "toastNoTargetLorebook": "No target lorebook configured",
+  "notifyNoTargetLorebook": "No target lorebook configured",
 
-  "toastNoApiConfig": "No API preset configured for summarization",
+  "notifyNoApiConfig": "No API preset configured for summarization",
 
-  "toastSummarizeDone": "Summarize complete",
+  "notifySummarizeDone": "Summarize complete",
 
-  "toastSummarizeFailed": "Summarize failed",
+  "notifySummarizeFailed": "Summarize failed",
 
-  "toastParseFailed": "Could not parse model JSON",
+  "notifyParseFailed": "Could not parse model JSON",
 
-  "toastContextExceeded": "About {used} tokens, exceeds budget {budget}. Shorten the range.",
+  "notifyContextExceeded": "About {used} tokens, exceeds budget {budget}. Shorten the range.",
 
-  "toastContextLengthMissing": "Configure context length on the API preset",
-  "toastSidecarEntryMissing": "Sidecar entry was deleted; recreating",
-  "toastSummarizePartial": "Completed {done}/{total}; later steps failed",
-  "toastNoTasksSelected": "Select at least one summarize task",
-  "toastInvalidRange": "Start turn cannot exceed end turn",
+  "notifyContextLengthMissing": "Configure context length on the API preset",
+  "notifySidecarEntryMissing": "Sidecar entry was deleted; recreating",
+  "notifySummarizePartial": "Completed {done}/{total}; later steps failed",
+  "notifyNoTasksSelected": "Select at least one summarize task",
+  "notifyInvalidRange": "Start turn cannot exceed end turn",
 
-  "toastBusy": "Conversation busy; skipped auto summarize",
+  "notifyBusy": "Conversation busy; skipped auto summarize",
 
   "progressSummarize": "Generating summary…",
 
   "progressAbort": "Force abort",
 
-  "toastProgressAborted": "Summarize force-aborted",
+  "notifyProgressAborted": "Summarize force-aborted",
 
   "apiConfigIdLabel": "Summary API preset",
 
@@ -252,9 +252,9 @@
 
   "autoLorebookNameTemplateDesc": "Supports \\{\\{conversationTitle\\}\\}; appends the current conversation id if the name already exists.",
 
-  "toastAutoLorebookCreated": "Created summary lorebook: {name}",
+  "notifyAutoLorebookCreated": "Created summary lorebook: {name}",
 
-  "toastAutoLorebookFailed": "Failed to auto-create summary lorebook",
+  "notifyAutoLorebookFailed": "Failed to auto-create summary lorebook",
 
   "previousSummariesLimitLabel": "Recent summaries in context",
 
@@ -278,9 +278,9 @@
 
   "tooltipReorderLorebook": "Reorder target lorebook entries",
 
-  "toastReorderLorebookDone": "Target lorebook entries reordered",
+  "notifyReorderLorebookDone": "Target lorebook entries reordered",
 
-  "toastReorderLorebookNoTarget": "Set a target lorebook first",
+  "notifyReorderLorebookNoTarget": "Set a target lorebook first",
 
   "defaultEntryTriggerModeLabel": "New entry trigger mode",
 

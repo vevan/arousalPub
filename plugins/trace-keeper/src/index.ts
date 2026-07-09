@@ -201,6 +201,17 @@ function conversationIdFrom(host: PluginHost): string {
   return host.conversation.getId?.()?.trim() ?? ''
 }
 
+type TkNotifyLevel = 'info' | 'success' | 'warning' | 'error'
+
+function tkNotify(
+  host: PluginHost,
+  messageKey: string,
+  level: TkNotifyLevel,
+  params?: Record<string, unknown>,
+): void {
+  host.ui.notify(host.t(k(host, messageKey), params), undefined, { level })
+}
+
 function segmentCountForTurn(turn: TurnViewRef | null | undefined): number {
   return turn?.segments?.length ?? 0
 }
@@ -341,7 +352,7 @@ async function refreshPanel(host: PluginHost): Promise<void> {
 
 function openEditStateDialog(host: PluginHost): void {
   if (!lastEditContext || !host.openFormDialog) {
-    console.warn('[trace-keeper]', host.t(k(host, 'toastEditNoState')))
+    tkNotify(host, 'notifyEditNoState', 'warning')
     return
   }
   host.openFormDialog(
@@ -384,7 +395,7 @@ async function handlePatchStateSubmit(
 
   const state = parseStateJsonText(stateJson)
   if (!state) {
-    console.warn('[trace-keeper]', host.t(k(host, 'toastPatchInvalidJson')))
+    tkNotify(host, 'notifyPatchInvalidJson', 'warning')
     return
   }
 
@@ -398,9 +409,10 @@ async function handlePatchStateSubmit(
     }
     await refreshPanel(host)
     host.refreshSlotButtons()
+    tkNotify(host, 'notifyPatchDone', 'success')
   } catch (e) {
     const code = e instanceof Error ? e.message : 'patch_failed'
-    console.warn('[trace-keeper]', host.t(k(host, 'toastPatchFailed'), { code }))
+    tkNotify(host, 'notifyPatchFailed', 'error', { code })
   }
 }
 
@@ -439,6 +451,7 @@ async function handleRegenerateSeparate(
     if (host.conversation.refresh) {
       await host.conversation.refresh()
     }
+    tkNotify(host, 'notifyRegenerateDone', 'success')
   } catch (e) {
     if (e instanceof SeparateRegenerateError) {
       logSeparateDebugIfPresent(e.debug)
@@ -447,15 +460,9 @@ async function handleRegenerateSeparate(
           '[trace-keeper] 已请求 debug 但错误响应无 debug 字段；请重启服务端并确认 Separate 路由已更新',
         )
       }
-      console.warn(
-        '[trace-keeper]',
-        host.t(k(host, 'toastRegenerateFailed'), { code: e.code }),
-      )
+      tkNotify(host, 'notifyRegenerateFailed', 'error', { code: e.code })
     } else if (e instanceof Error) {
-      console.warn(
-        '[trace-keeper]',
-        host.t(k(host, 'toastRegenerateFailed'), { code: e.message }),
-      )
+      tkNotify(host, 'notifyRegenerateFailed', 'error', { code: e.message })
     }
   } finally {
     setRegenerating(conversationId, false)

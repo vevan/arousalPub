@@ -8,9 +8,9 @@
   "confirmAllBody": "This will delete {swipeRemoveTotal} unselected swipes across {turnCount} turns and keep what you currently see in each turn. This cannot be undone.",
   "confirmOk": "Clean",
   "confirmCancel": "Cancel",
-  "toastTurnDone": "Swipes cleaned for this turn",
-  "toastAllDone": "Swipes cleaned for this chat",
-  "toastFailed": "Could not clean swipes",
+  "notifyTurnDone": "Swipes cleaned for this turn",
+  "notifyAllDone": "Swipes cleaned for this chat",
+  "notifyFailed": "Could not clean swipes",
   "batchSizeLabel": "Batch size",
   "batchSizeDesc": "Turns processed per batch when cleaning the whole chat (max 50)"
 }

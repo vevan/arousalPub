@@ -1,6 +1,6 @@
 # 通知中心 — 宿主核心场景迁移方案
 
-> **状态**：**NC-F1.0–F1.5 已实现**（2026-07-09）· F1.6 / F1.V 待办  
+> **状态**：**NC-F1.0–F1.6 + NC-F3 已实现**（2026-07-09）· F1.V / NC-V 手动验收待办  
 > **目标**：**所有用户可见瞬时消息**均由 **通知中心统一发出**；业务组件禁止自建 snackbar。浮层用 **`v-snackbar-queue`**；列表落盘规则见 [`DOC/40`](40-notification-center.md) §3.1。  
 > **前置**：NC1–NC5 已落地（store · bell · 插件 `host.ui.notify` · `level`）。  
 > **关联**：[`DOC/40`](40-notification-center.md) · [`DOC/04`](04-TODO.md) §NC-F1 · `web/src/utils/core-notify.ts`
@@ -217,7 +217,7 @@ coreNotify(opts.t('chat.groupChat.atNameUnmatched'), undefined, {
 | **NC-F1.3** | 迁移 `ConnectionSettingsCard` | ✅ |
 | **NC-F1.4** | 迁移 `ImportSettingsPanel`（含 action） | ✅ |
 | **NC-F1.5** | 迁移群聊提示（`use-chat-outbound`） | ✅ |
-| **NC-F1.6** | memory 重建成功/失败可选 `coreNotify` | 待办 |
+| **NC-F1.6** | memory 重建成功/失败 `coreNotify` | ✅ |
 | **NC-F1.V** | 验收：§6 手动清单 | 待办（静态项已通过） |
 
 ---
@@ -245,16 +245,15 @@ coreNotify(opts.t('chat.groupChat.atNameUnmatched'), undefined, {
 
 ### 6.3 测试
 
-- [x] `notification-action.test.ts` — `executeNotificationAction`（library-panel · settings-tab）
-- [x] `notification-center.test.ts` — close / timeout / persist 语义
-- [ ] 可选：`core-notify.test.ts` — mock store，断言 `source.kind === 'core'`
+- [x] `notification-action.test.ts` — `executeNotificationAction`（library-panel · settings-tab · route pusher）
+- [x] `notification-center.test.ts` — close / timeout / persist · dedupe · expiresAt · filter
 
 ---
 
 ## 7. 非目标（本方案不做）
 
 - 将面板内 `v-alert` 迁入通知中心
-- Server 推送 / SSE `notifications[]`（见 `DOC/40` NC-F2）
+- Server 推送 / SSE `notifications[]`（**延后** · NC-F2 · 见 `DOC/40`）
 - `dedupeKey` 全场景强制（仅群聊等高频点建议）
 - 通知列表内嵌「操作按钮」UI（v1 靠 snackbar 钮 + 点击整项执行 `action` 即可）
 

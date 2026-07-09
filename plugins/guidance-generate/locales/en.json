@@ -9,7 +9,7 @@
   "revise": "Revise with guidance",
   "reviseTooltip": "Guided revision",
   "assistantLabel": "Current assistant reply (revision base)",
-  "toastFailed": "Guided generation failed",
+  "notifyFailed": "Guided generation failed",
   "systemPrefixLabel": "System prefix (prepended to guidance)",
   "systemPrefixDesc": "Hidden system message prefix injected before the guidance text for guided send / regenerate.",
   "injectionOrderSendLabel": "Injection order · guided send",

@@ -97,14 +97,14 @@ async function resolveTargetLorebookIdForPreview(
 ): Promise<string> {
   const id = asString(settings.targetLorebookId)
   if (!id) {
-    host.ui.notify(host.t(k(host, 'toastTargetLorebookMissingWarn')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(k(host, 'notifyTargetLorebookMissingWarn')), undefined, { level: 'warning' })
     return ''
   }
   try {
     await host.lorebook.get(id)
     return id
   } catch {
-    host.ui.notify(host.t(k(host, 'toastTargetLorebookDeleted')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(k(host, 'notifyTargetLorebookDeleted')), undefined, { level: 'warning' })
     return ''
   }
 }
@@ -153,19 +153,19 @@ export async function previewManualSummarizePrompt(
 
   const settings = await loadMergedSettings(host)
   if (!summarizeDialogCanPreview(model, settings)) {
-    host.ui.notify(host.t(k(host, 'toastInvalidRange')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(k(host, 'notifyInvalidRange')), undefined, { level: 'warning' })
     return
   }
 
   const fromTurn = asInt(model.startTurn, 0, 500_000)
   const toTurn = asInt(model.endTurn, fromTurn, 500_000)
   if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
-    host.ui.notify(host.t(k(host, 'toastTurnRangeTooLong')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(k(host, 'notifyTurnRangeTooLong')), undefined, { level: 'warning' })
     return
   }
   const tasks = tasksFromSelection(settings, model.selectedTasks)
   if (tasks.length === 0) {
-    host.ui.notify(host.t(k(host, 'toastNoTasksSelected')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(k(host, 'notifyNoTasksSelected')), undefined, { level: 'warning' })
     return
   }
 
@@ -201,7 +201,7 @@ export async function previewManualSummarizePrompt(
       toTurn,
     )
     if (!prepared.userContent?.trim()) {
-      host.ui.notify(host.t(k(host, 'toastNoTurnsInRange')), undefined, { level: 'warning' })
+      host.ui.notify(host.t(k(host, 'notifyNoTurnsInRange')), undefined, { level: 'warning' })
       return
     }
 

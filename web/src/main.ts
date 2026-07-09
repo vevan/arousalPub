@@ -14,6 +14,7 @@ import { VSnackbarQueue } from 'vuetify/components'
 import App from './App.vue'
 import '@/styles/vuetify-overrides.css'
 import { installAuthenticatedFetch } from '@/utils/install-authenticated-fetch'
+import { setNotificationRoutePusher } from '@/utils/notification-action'
 
 const vuetify = createVuetify({
   components: {
@@ -32,6 +33,7 @@ async function bootstrap(): Promise<void> {
   const app = createApp(App)
   app.use(createPinia())
   installAuthenticatedFetch()
+  setNotificationRoutePusher((location) => router.push(location))
   app.use(router)
   app.use(i18n)
   app.use(vuetify)

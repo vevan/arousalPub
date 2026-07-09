@@ -9,7 +9,7 @@
   "revise": "指导修改",
   "reviseTooltip": "指导修改",
   "assistantLabel": "当前助手回复（作为修改基准）",
-  "toastFailed": "指导生成失败",
+  "notifyFailed": "指导生成失败",
   "systemPrefixLabel": "系统前缀（加在指导文本前）",
   "systemPrefixDesc": "注入给模型的隐藏 system 消息前缀，位于指导正文之前。用于指导发送 / 指导再生。",
   "injectionOrderSendLabel": "注入档位 · 指导发送",

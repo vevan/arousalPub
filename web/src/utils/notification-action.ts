@@ -1,7 +1,20 @@
-import { router } from '@/router'
 import type { RouteLocationRaw } from 'vue-router'
 import { useUiContextStore } from '../stores/ui-context.js'
 import type { NotificationAction } from './notification-storage.js'
+
+let routePusher: ((location: RouteLocationRaw) => Promise<unknown>) | null = null
+
+/** App bootstrap wires vue-router without importing router in this module (Node tests). */
+export function setNotificationRoutePusher(
+  pusher: (location: RouteLocationRaw) => Promise<unknown>,
+): void {
+  routePusher = pusher
+}
+
+async function pushRoute(location: RouteLocationRaw): Promise<void> {
+  if (!routePusher) return
+  await routePusher(location)
+}
 
 const SETTINGS_TABS = new Set([
   'system',
@@ -16,10 +29,6 @@ const SETTINGS_TABS = new Set([
   'import',
   'debug',
 ])
-
-async function pushRoute(location: RouteLocationRaw): Promise<void> {
-  await router.push(location)
-}
 
 export async function executeNotificationAction(
   action: NotificationAction | undefined,

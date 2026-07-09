@@ -1,5 +1,5 @@
 import { DIALOG_REVIEW, DIALOG_REVIEW_SIDECAR } from './constants.js'
-import { isAbortError, isPipelineFatalError, preflightToast } from './errors.js'
+import { isAbortError, isPipelineFatalError, preflightNotify } from './errors.js'
 import {
   generateReviewDraft,
   promptReview,
@@ -54,12 +54,12 @@ export async function runSummarizeTasks(
   },
 ) {
   if (summarizeRunning) {
-    host.ui.notify(host.t(k(host, 'toastBusy')), undefined, { level: 'info' })
+    host.ui.notify(host.t(k(host, 'notifyBusy')), undefined, { level: 'info' })
     return { ok: false, reason: 'busy' }
   }
   const tasks = opts.tasks ?? []
   if (tasks.length === 0) {
-    host.ui.notify(host.t(k(host, 'toastNoTasksSelected')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(k(host, 'notifyNoTasksSelected')), undefined, { level: 'warning' })
     return { ok: false, reason: 'no_tasks' }
   }
 
@@ -81,11 +81,11 @@ export async function runSummarizeTasks(
     const fromTurn = opts.fromTurn
     const toTurn = opts.toTurn
     if (fromTurn > toTurn) {
-      host.ui.notify(host.t(k(host, 'toastInvalidRange')), undefined, { level: 'warning' })
+      host.ui.notify(host.t(k(host, 'notifyInvalidRange')), undefined, { level: 'warning' })
       return { ok: false, reason: 'invalid_range' }
     }
     if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
-      host.ui.notify(host.t(k(host, 'toastTurnRangeTooLong')), undefined, { level: 'warning' })
+      host.ui.notify(host.t(k(host, 'notifyTurnRangeTooLong')), undefined, { level: 'warning' })
       return { ok: false, reason: 'turn_range_too_long' }
     }
 
@@ -121,7 +121,7 @@ export async function runSummarizeTasks(
       toTurn,
     )
     if (!prepared.userContent?.trim()) {
-      host.ui.notify(host.t(k(host, 'toastNoTurnsInRange')), undefined, { level: 'warning' })
+      host.ui.notify(host.t(k(host, 'notifyNoTurnsInRange')), undefined, { level: 'warning' })
       return { ok: false, reason: 'no_turns' }
     }
     const preparedContext = prepared.preparedContext
@@ -221,30 +221,30 @@ export async function runSummarizeTasks(
       } catch (e) {
         if (isAbortError(e)) {
           aborted = true
-          host.ui.notify(host.t(k(host, 'toastProgressAborted')), undefined, { level: 'info' })
+          host.ui.notify(host.t(k(host, 'notifyProgressAborted')), undefined, { level: 'info' })
           break
         }
         if (e instanceof Error && e.message === 'review_skipped') {
           skippedTasks += 1
-          host.ui.notify(host.t(k(host, 'toastReviewSkipped')), undefined, { level: 'info' })
+          host.ui.notify(host.t(k(host, 'notifyReviewSkipped')), undefined, { level: 'info' })
           done += 1
           bumpTaskProgress(host, done, tasks.length)
           continue
         }
         if (e instanceof Error && e.message === 'review_aborted') {
           aborted = true
-          host.ui.notify(host.t(k(host, 'toastReviewAborted')), undefined, { level: 'info' })
+          host.ui.notify(host.t(k(host, 'notifyReviewAborted')), undefined, { level: 'info' })
           break
         }
         console.warn('[plot-summary] task failed', task, e)
         if (isPipelineFatalError(e)) {
-          preflightToast(host, e)
+          preflightNotify(host, e)
           aborted = true
           break
         }
-        preflightToast(host, e)
+        preflightNotify(host, e)
         skippedTasks += 1
-        host.ui.notify(host.t(k(host, 'toastTaskSkipped')), undefined, { level: 'warning' })
+        host.ui.notify(host.t(k(host, 'notifyTaskSkipped')), undefined, { level: 'warning' })
         done += 1
         bumpTaskProgress(host, done, tasks.length)
         continue
@@ -264,7 +264,7 @@ export async function runSummarizeTasks(
 
     if (completedTasks === 0) {
       if (skippedTasks > 0) {
-        host.ui.notify(host.t(k(host, 'toastSummarizeSummary'), {
+        host.ui.notify(host.t(k(host, 'notifySummarizeSummary'), {
             done: 0,
             skipped: skippedTasks,
             total: tasks.length,
@@ -313,9 +313,9 @@ export async function runSummarizeTasks(
     }
 
     if (completedTasks === tasks.length && skippedTasks === 0) {
-      host.ui.notify(host.t(k(host, 'toastSummarizeDone')), undefined, { level: 'success' })
+      host.ui.notify(host.t(k(host, 'notifySummarizeDone')), undefined, { level: 'success' })
     } else if (completedTasks > 0 || skippedTasks > 0) {
-      host.ui.notify(host.t(k(host, 'toastSummarizeSummary'), {
+      host.ui.notify(host.t(k(host, 'notifySummarizeSummary'), {
           done: completedTasks,
           skipped: skippedTasks,
           total: tasks.length,
@@ -332,7 +332,7 @@ export async function runSummarizeTasks(
       return { ok: false, reason: 'aborted', aborted: true }
     }
     console.warn('[plot-summary] summarize failed', e)
-    preflightToast(host, e)
+    preflightNotify(host, e)
     return { ok: false, reason: 'error' }
   } finally {
     setSummarizeBatchProgress(null)

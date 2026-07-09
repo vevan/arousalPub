@@ -15,7 +15,7 @@
 
   "tooltipRangeEnd": "选择摘要结束轮并打开手动摘要",
 
-  "toastRangeStartRequired": "请先点击右侧图标选择起始轮",
+  "notifyRangeStartRequired": "请先点击右侧图标选择起始轮",
 
   "tooltipSummarizeNow": "立即摘要到资料库",
 
@@ -106,7 +106,7 @@
 
   "manualTurnRangeHint": "摘要区间建议不超过 512 轮（与宏索引窗口一致）；超出将无法提交，请缩小起止轮次。",
 
-  "toastTurnRangeTooLong": "摘要区间过长（超过 512 轮），请缩小起止轮次后重试。",
+  "notifyTurnRangeTooLong": "摘要区间过长（超过 512 轮），请缩小起止轮次后重试。",
 
   "manualTasksLabel": "摘要项",
 
@@ -151,15 +151,15 @@
 
   "reviewRegenerate": "重新生成",
 
-  "toastReviewRegenerateFailed": "重新生成失败，请重试或跳过",
+  "notifyReviewRegenerateFailed": "重新生成失败，请重试或跳过",
 
-  "toastReviewSkipped": "已跳过该项",
+  "notifyReviewSkipped": "已跳过该项",
 
-  "toastReviewAborted": "已中断摘要",
+  "notifyReviewAborted": "已中断摘要",
 
-  "toastTaskSkipped": "该项失败，已跳过并继续",
+  "notifyTaskSkipped": "该项失败，已跳过并继续",
 
-  "toastSummarizeSummary": "已完成 {done} 项，跳过 {skipped} 项（共 {total} 项）",
+  "notifySummarizeSummary": "已完成 {done} 项，跳过 {skipped} 项（共 {total} 项）",
 
   "enableDialogTitle": "开启自动摘要",
 
@@ -169,11 +169,11 @@
 
   "enableSubmit": "开启并摘要",
 
-  "toastAutoSummarizeEnabled": "已开启自动摘要",
+  "notifyAutoSummarizeEnabled": "已开启自动摘要",
 
-  "toastAutoSummarizeScheduled": "将在第 {turn} 轮开始自动摘要",
+  "notifyAutoSummarizeScheduled": "将在第 {turn} 轮开始自动摘要",
 
-  "toastAutoSummarizeResumed": "已从已摘要进度续接，下一批 {from}–{to}，预计第 {turn} 轮触发",
+  "notifyAutoSummarizeResumed": "已从已摘要进度续接，下一批 {from}–{to}，预计第 {turn} 轮触发",
 
   "pickLorebookDialogTitle": "选择目标资料库",
 
@@ -193,9 +193,9 @@
 
   "recoverLorebookConfirm": "确认",
 
-  "toastTargetLorebookDeleted": "摘要资料库已删除，请重新指定或新建",
+  "notifyTargetLorebookDeleted": "摘要资料库已删除，请重新指定或新建",
 
-  "toastTargetLorebookMissingWarn": "目标资料库缺失，请选择后再摘要",
+  "notifyTargetLorebookMissingWarn": "目标资料库缺失，请选择后再摘要",
 
   "autoSummarizeDefaultEnabledLabel": "新对话默认开启自动摘要",
 
@@ -205,34 +205,34 @@
 
   "sessionAutoSidecarsHint": "剧情纪要始终包含；此处仅选择自动块要更新的 Sidecar。",
 
-  "toastAutoSummarizeDisabled": "已关闭自动摘要",
+  "notifyAutoSummarizeDisabled": "已关闭自动摘要",
 
-  "toastNoTargetLorebook": "未配置目标资料库",
+  "notifyNoTargetLorebook": "未配置目标资料库",
 
-  "toastNoApiConfig": "未配置摘要 API 预设",
+  "notifyNoApiConfig": "未配置摘要 API 预设",
 
-  "toastSummarizeDone": "摘要完成",
+  "notifySummarizeDone": "摘要完成",
 
-  "toastSummarizeFailed": "摘要失败",
+  "notifySummarizeFailed": "摘要失败",
 
-  "toastParseFailed": "无法解析模型返回的 JSON",
+  "notifyParseFailed": "无法解析模型返回的 JSON",
 
-  "toastContextExceeded": "约 {used} tokens，超过预算 {budget}，请缩短区间",
+  "notifyContextExceeded": "约 {used} tokens，超过预算 {budget}，请缩短区间",
 
-  "toastContextLengthMissing": "请在该 API 预设中配置 context length",
-  "toastSidecarEntryMissing": "Sidecar 条目已不存在，将重新创建",
-  "toastSummarizePartial": "已完成 {done}/{total} 项，后续步骤失败",
-  "toastNoTasksSelected": "请至少选择一项摘要任务",
-  "toastInvalidRange": "起始轮次不能大于结束轮次",
-  "toastNoTurnsInRange": "所选轮次范围内没有可读 turn",
+  "notifyContextLengthMissing": "请在该 API 预设中配置 context length",
+  "notifySidecarEntryMissing": "Sidecar 条目已不存在，将重新创建",
+  "notifySummarizePartial": "已完成 {done}/{total} 项，后续步骤失败",
+  "notifyNoTasksSelected": "请至少选择一项摘要任务",
+  "notifyInvalidRange": "起始轮次不能大于结束轮次",
+  "notifyNoTurnsInRange": "所选轮次范围内没有可读 turn",
 
-  "toastBusy": "对话忙碌，已跳过自动摘要",
+  "notifyBusy": "对话忙碌，已跳过自动摘要",
 
   "progressSummarize": "正在生成摘要…",
 
   "progressAbort": "强制中断",
 
-  "toastProgressAborted": "已强制中断摘要",
+  "notifyProgressAborted": "已强制中断摘要",
 
   "apiConfigIdLabel": "摘要 API 预设",
 
@@ -258,9 +258,9 @@
 
   "autoLorebookNameTemplateDesc": "支持宏 \\{\\{conversationTitle\\}\\}；重名时在名称后追加当前对话 id。",
 
-  "toastAutoLorebookCreated": "已自动创建摘要资料库：{name}",
+  "notifyAutoLorebookCreated": "已自动创建摘要资料库：{name}",
 
-  "toastAutoLorebookFailed": "自动创建摘要资料库失败",
+  "notifyAutoLorebookFailed": "自动创建摘要资料库失败",
 
   "previousSummariesLimitLabel": "摘要时附带最近条数",
 
@@ -284,9 +284,9 @@
 
   "tooltipReorderLorebook": "整理目标资料库顺序",
 
-  "toastReorderLorebookDone": "已整理目标资料库条目顺序",
+  "notifyReorderLorebookDone": "已整理目标资料库条目顺序",
 
-  "toastReorderLorebookNoTarget": "请先指定摘要资料库",
+  "notifyReorderLorebookNoTarget": "请先指定摘要资料库",
 
   "defaultEntryTriggerModeLabel": "新建条目触发方式",
 

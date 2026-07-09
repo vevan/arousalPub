@@ -1,6 +1,6 @@
 # 通知中心 — 设计定案（规划）
 
-> **状态**：**NC1–NC5 + NC-F1.0–F1.5 已实现**（2026-07-09）· F1.6 / 验收见 [`DOC/45`](45-notification-center-core-migration.md) · [`DOC/04`](04-TODO.md) §NC-V / NC-F1.V。  
+> **状态**：**NC1–NC5 + NC-F1 + NC-F3 已实现**（2026-07-09）· F1.V / NC-V 手动验收 · **NC-F2 延后**（无 Server 推送场景）。  
 > **关联**：`DOC/04` P0 · `DOC/10` §4.4 `host.ui` · `DOC/18` §3.9 · `web/src/plugins/create-plugin-web-host.ts`
 
 ---
@@ -220,16 +220,16 @@ v1 **仅 Web Pinia + localStorage**；REST 路由 **不开**。
 
 ### Phase 2 — 整合（NC-F1 · 2026-07-09）
 
-- [x] 宿主核心场景 — [`DOC/45`](45-notification-center-core-migration.md)（`coreNotify` · 6 处 snackbar · `executeNotificationAction`）
+- [x] 宿主核心场景 — [`DOC/45`](45-notification-center-core-migration.md)（`coreNotify` · 6 处 snackbar · `executeNotificationAction` · memory 重建通知）
 - [x] `NotificationAction` 扩展 `library-panel` · `PluginNotifyOptions.persist`
-- [ ] memory 重建完成可选 `coreNotify`（NC-F1.6）
-- [ ] 可选 Server → Web 推送（NC-F2）
+- [x] memory 重建成功/失败 `coreNotify`（NC-F1.6）
+- [ ] **NC-F2 Server → Web 推送** — **延后**（当前无服务端任务完成推送场景；待 SSE/后台 job 定案后再做）
 
 ### Phase 3 — 增强（NC-F3 · P2/P3）
 
-- [ ] `dedupeKey` 合并 · `expiresAt` 清理任务
-- [ ] 筛选（按 plugin / level）· 搜索
-- [ ] 与移动端 / 系统通知集成（若产品需要）
+- [x] **NC-F3.1** — `dedupeKey` 合并 · `expiresAt` 清理
+- [x] **NC-F3.2** — bell 筛选（未读 / level / 宿主·插件 / pluginId）· 搜索 · 全部已读
+- [x] **NC-F3.3** — 桌面系统通知（Web Notification API · 后台 Tab · 用户开关）
 
 ---
 
@@ -238,6 +238,7 @@ v1 **仅 Web Pinia + localStorage**；REST 路由 **不开**。
 - Syncthing / Server 磁盘同步通知历史
 - 跨设备通知一致（localStorage 为 **本机本浏览器** 状态）
 - 邮件 / 第三方 push
+- **移动端原生 / OS 级通知**（产品不需要；桌面 Web Notification 已覆盖后台 Tab 场景）
 - 替 chat-audit 或插件 debug 日志
 
 ---
@@ -253,7 +254,10 @@ v1 **仅 Web Pinia + localStorage**；REST 路由 **不开**。
 | `web/src/utils/notification-action.ts` | `executeNotificationAction`（conversation / library-panel / settings-tab 等） |
 | `web/src/plugins/plugin-notify.ts` | 插件 `sendPluginNotify` → 同一 store |
 | `web/src/plugins/create-plugin-web-host.ts` | `host.ui.notify` |
-| `web/test/stores/notification-center.test.ts` | close / timeout / persist 语义单测 |
+| `web/src/utils/notification-list-filter.ts` | 列表筛选 / 搜索 / pluginId 聚合 |
+| `web/src/utils/desktop-notification.ts` | Web Notification API · 后台 Tab |
+| `web/test/utils/notification-list-filter.test.ts` | 筛选与搜索单测 |
+| `web/test/stores/notification-center.test.ts` | close / timeout / persist · dedupe · 搜索 |
 | `web/test/utils/notification-action.test.ts` | action 路由单测 |
 
 ---
@@ -262,6 +266,8 @@ v1 **仅 Web Pinia + localStorage**；REST 路由 **不开**。
 
 | 日期 | 说明 |
 |------|------|
+| 2026-07-09 | **NC-F3 收尾**：F3.4 移动端原生通知列为非目标（产品不需要） |
+| 2026-07-09 | **NC-F3.2–F3.3**：bell 搜索/筛选/全部已读 · 桌面系统通知；**NC-F2 延后** |
 | 2026-07-09 | **NC-F1.0–F1.5 已实现**：宿主 6 处 snackbar → `coreNotify` · `executeNotificationAction` |
 | 2026-07-09 | **浮层定案**：`v-snackbar-queue` · 图标关闭 · 手动关闭不入列表 · 超时入列表 · `persist` |
 | 2026-07-09 | NC1–NC5 标记已实现；宿主迁移 [`DOC/45`](45-notification-center-core-migration.md) |

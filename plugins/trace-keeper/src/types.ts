@@ -72,7 +72,13 @@ export interface PluginHost {
     ): Promise<Record<string, unknown>>
   }
   ui: {
-    toast?: (message: string, opts?: { color?: string }) => void
+    notify(
+      title: string,
+      body?: string,
+      opts?: {
+        level?: 'info' | 'success' | 'warning' | 'error'
+      },
+    ): void
     panel: {
       register: (opts: Record<string, unknown>) => void
       setHtml: (

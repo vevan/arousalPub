@@ -26,7 +26,7 @@
 | **存储** | ✅ `notification-storage.ts` envelope · `notify`/`persist`/超时语义 |
 | **UI** | ✅ 顶栏 bell + 列表 · snackbar 业务钮 / 列表项 `action` |
 | **插件契约** | ✅ `create-plugin-web-host` · bundled 插件已迁 |
-| **宿主迁移** | ✅ NC-F1.0–F1.5（6 处自建 snackbar 已删）；F1.6 / F1.V 待办 |
+| **宿主迁移** | ✅ NC-F1.0–F1.6（含 memory 重建通知）；F1.V 手动项待验收 |
 
 **推荐顺序**：~~NC0~~ → ~~NC1~~ → ~~NC2~~ → ~~NC3~~ → ~~NC4~~ → ~~NC5~~ → ~~NC-F1.0–F1.5~~ → **NC-V** / **NC-F1.V** 验收。
 
@@ -61,17 +61,20 @@
 
 #### NC-F · 后续（非阻塞 · 择机）
 
-- [ ] **NC-F1 宿主核心场景** — 方案 [`DOC/45`](45-notification-center-core-migration.md)（`coreNotify` · `executeNotificationAction`）
+- [x] **NC-F1 宿主核心场景** — 方案 [`DOC/45`](45-notification-center-core-migration.md)（`coreNotify` · `executeNotificationAction`）
   - [x] **NC-F1.0** — Store 队列 + **`v-snackbar-queue`** 单例 · `persist` · 图标关闭 · 废除 `pluginSnackbar`
   - [x] **NC-F1.1** — `NotificationSnackbarQueue` / `NotificationBell` 执行 `action` · `notification-action.ts`
   - [x] **NC-F1.2** — `PromptsView` · `CharactersView` · `ChatConversationView`
   - [x] **NC-F1.3** — `ConnectionSettingsCard`
   - [x] **NC-F1.4** — `ImportSettingsPanel`（`persist` + 世界书/对话跳转）
   - [x] **NC-F1.5** — 群聊提示（`use-chat-outbound` · `dedupeKey`）
-  - [ ] **NC-F1.6** — memory 重建完成可选通知
+  - [x] **NC-F1.6** — memory 重建成功/失败 `coreNotify`（`persist` · 对话 `action`）
   - [ ] **NC-F1.V** — 手动验收（§6 `DOC/45`）；静态项已通过（`rg v-snackbar` 仅队列组件）
-- [ ] **NC-F2 Server → Web 推送（可选）** — SSE/响应体 `notifications[]` → 前端入库（仍写 localStorage；v1 无 REST 持久化）
-- [ ] **NC-F3 增强** — `dedupeKey` 合并 · `expiresAt` 清理 · 按 plugin/level 筛选 · 移动端系统通知（若需要）
+- [ ] **NC-F2 Server → Web 推送** — **延后**（无对应 Server 推送场景；见 `DOC/40` §Phase 2）
+- [x] **NC-F3 增强**
+  - [x] **NC-F3.1** — `dedupeKey` 合并 · `expiresAt` 清理
+  - [x] **NC-F3.2** — bell 筛选 / 搜索 / 全部已读 / pluginId
+  - [x] **NC-F3.3** — 桌面系统通知（Web Notification · 后台 Tab）
 
 ## P1
 

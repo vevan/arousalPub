@@ -2,7 +2,7 @@
 var PLUGIN_ID = "guidance-generate";
 var k = (host, key) => host.pluginKey(key);
 function notifyGuidanceFailed(host, detail) {
-  const title = host.t(k(host, "toastFailed"));
+  const title = host.t(k(host, "notifyFailed"));
   const body = detail?.trim();
   host.ui.notify(title, body || void 0, { level: "error" });
 }

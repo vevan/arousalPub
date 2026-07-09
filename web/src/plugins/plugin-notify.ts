@@ -27,6 +27,7 @@ export function sendPluginNotify(
     action: opts?.action,
     snackbarActions: opts?.snackbarActions,
     dedupeKey: opts?.dedupeKey,
+    expiresAt: opts?.expiresAt,
     snackbar: opts?.snackbar,
     persist: opts?.persist,
     timeout: opts?.timeout,

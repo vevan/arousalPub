@@ -1,3 +1,4 @@
+import { coreNotify } from '@/utils/core-notify'
 import { readJsonSseStream } from '@/utils/json-sse'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -126,6 +127,29 @@ export function useMemoryRebuild(getConversationId: () => string) {
         e instanceof Error ? e.message : t('chatConversation.memoryRebuildFailed')
     } finally {
       loading.value = false
+    }
+
+    if (finished && nextModel) {
+      coreNotify(
+        t('notifications.memoryRebuildSuccess'),
+        t('notifications.memoryRebuildSuccessBody', {
+          indexed: done.value,
+          turns: turns.value,
+          loreEntries: loreEntries.value,
+        }),
+        {
+          level: 'success',
+          persist: true,
+          action: { type: 'conversation', conversationId: id },
+          dedupeKey: `memory-rebuild:${id}`,
+        },
+      )
+    } else if (error.value) {
+      coreNotify(t('notifications.memoryRebuildFailedTitle'), error.value, {
+        level: 'error',
+        persist: true,
+        dedupeKey: `memory-rebuild:${id}:error`,
+      })
     }
 
     return nextModel

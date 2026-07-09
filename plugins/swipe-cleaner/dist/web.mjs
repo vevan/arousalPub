@@ -177,10 +177,10 @@ export function register(host) {
       if (!ok) return
       try {
         await cleanTurn(host, turn, segIdx)
-        host.ui.notify(host.t(k('toastTurnDone')), undefined, { level: 'success' })
+        host.ui.notify(host.t(k('notifyTurnDone')), undefined, { level: 'success' })
       } catch (e) {
         console.warn('[swipe-cleaner] turn clean failed', e)
-        host.ui.notify(host.t(k('toastFailed')), undefined, { level: 'error' })
+        host.ui.notify(host.t(k('notifyFailed')), undefined, { level: 'error' })
       }
     },
   })
@@ -204,10 +204,10 @@ export function register(host) {
       if (!ok) return
       try {
         await cleanAllConversation(host)
-        host.ui.notify(host.t(k('toastAllDone')), undefined, { level: 'success' })
+        host.ui.notify(host.t(k('notifyAllDone')), undefined, { level: 'success' })
       } catch (e) {
         console.warn('[swipe-cleaner] all clean failed', e)
-        host.ui.notify(host.t(k('toastFailed')), undefined, { level: 'error' })
+        host.ui.notify(host.t(k('notifyFailed')), undefined, { level: 'error' })
       }
     },
   })

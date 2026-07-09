@@ -4403,7 +4403,6 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
         apiPresetId: resolved.presetId,
         baseUrl: undefined,
         apiKeyId: undefined,
-        apiKey: undefined,
       }
     } else {
       const creds = await resolveChatCredentials({

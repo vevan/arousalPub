@@ -272,9 +272,9 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     }
   }
 
-  async function loadFromServer(): Promise<void> {
-    if (loaded.value) return
-    if (loadPromise) return loadPromise
+  async function loadFromServer(force = false): Promise<void> {
+    if (loaded.value && !force) return
+    if (loadPromise && !force) return loadPromise
     loadPromise = (async () => {
       loading.value = true
       lastError.value = null
@@ -483,11 +483,18 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     if (!loaded.value) await loadFromServer()
   }
 
+  async function reloadFromServer(): Promise<void> {
+    await loadFromServer(true)
+  }
+
   async function applyOpenFocus(
     conversationIds: string[],
     preferredId?: string | null,
   ): Promise<void> {
     await ensureLoaded()
+    if (preferredId?.trim() && !focusLorebookById(preferredId)) {
+      await reloadFromServer()
+    }
     focusConversationLorebooks(conversationIds, preferredId)
   }
 
@@ -857,6 +864,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     lastSavedAt,
     lastError,
     loadFromServer,
+    reloadFromServer,
     clearSessionData,
     upsertEntryFromPlugin,
     upsertLorebookFromPlugin,

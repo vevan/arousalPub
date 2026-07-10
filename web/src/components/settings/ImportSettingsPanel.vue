@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useUiContextStore } from '@/stores/ui-context'
 import { useAuthStore } from '@/stores/auth'
+import { useLorebooksStore } from '@/stores/lorebooks'
 import { characterImageUrl } from '@/utils/authenticated-media-url'
 import { coreNotify } from '@/utils/core-notify'
 import { generateConversationId } from '@/utils/conversation-id'
@@ -11,6 +12,7 @@ import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 const uiContext = useUiContextStore()
 const auth = useAuthStore()
+const lorebooksStore = useLorebooksStore()
 
 interface CharacterItem {
   id: string
@@ -268,9 +270,14 @@ async function confirmLoreImport() {
       return
     }
     const j = (await res.json()) as { id?: string }
+    const lorebookId = typeof j.id === 'string' ? j.id : ''
+    await lorebooksStore.reloadFromServer()
+    if (lorebookId) {
+      lorebooksStore.focusLorebookById(lorebookId)
+    }
     loreConfirmOpen.value = false
     lorePendingFile.value = null
-    notifyImportSuccessLore(typeof j.id === 'string' ? j.id : '')
+    notifyImportSuccessLore(lorebookId)
   } catch {
     notifyImportError(t('settings.importFailed'))
   } finally {

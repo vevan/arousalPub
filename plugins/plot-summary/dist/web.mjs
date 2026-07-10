@@ -604,9 +604,6 @@ function registerReviewDialogs(host) {
   });
 }
 function notifyDraftParseOutcome(host, outcome, lorebookName, dialogId) {
-  if (outcome === "success" && typeof document !== "undefined" && !document.hidden) {
-    return;
-  }
   const conversationId = host.conversation.getId()?.trim();
   const dedupeSuffix = `${conversationId ?? "unknown"}:${dialogId}`;
   if (outcome === "success") {

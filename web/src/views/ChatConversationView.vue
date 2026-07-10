@@ -65,8 +65,9 @@ import {
   normalizeGroupChatSettings,
   type GroupChatSettings,
 } from '@/utils/group-chat-settings'
+import { onConversationIndexPatched } from '@/utils/conversation-index-sync'
 import { storeToRefs } from 'pinia'
-import { computed, provide, ref, watch } from 'vue'
+import { computed, onScopeDispose, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -711,6 +712,13 @@ function onConvContextPatched(index: Record<string, unknown>) {
   convBindings.value = bindingsFromIndex(index)
   maybePromptMemoryRebuild()
 }
+
+onScopeDispose(
+  onConversationIndexPatched((cid, index) => {
+    if (cid !== props.conversationId) return
+    onConvContextPatched(index)
+  }),
+)
 
 async function patchAuditDebugToServer(id: string) {
   await fetch(`/api/chat/conversations/${id}`, {

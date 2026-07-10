@@ -223,7 +223,8 @@ interface ConversationBatchContext {
 
 ```ts
 {
-  nameTemplate?: string   // 默认取插件 settings.autoLorebookNameTemplate；支持 {{conversationTitle}}
+  nameTemplate?: string   // 默认取插件 settings.autoLorebookNameTemplate；${conversationTitle}|${conversationId}|${char}
+  // 绑定注入列表：host.conversation.getLorebookIds / patchLorebookIds（需 conversation.bindings.write）
 }
 // → { ok: true, lorebook: { id, name, ... } }
 ```

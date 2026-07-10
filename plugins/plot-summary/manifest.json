@@ -11,6 +11,7 @@
     "lorebook.read",
     "lorebook.entry.write",
     "conversation.read",
+    "conversation.bindings.write",
     "lorebook.write"
   ],
   "settingsSchema": {
@@ -53,7 +54,7 @@
         "type": "string",
         "labelKey": "autoLorebookNameTemplateLabel",
         "descriptionKey": "autoLorebookNameTemplateDesc",
-        "default": "{{conversationTitle}}-summary",
+        "default": "${conversationTitle}-summary",
         "visibleWhen": {
           "field": "targetLorebookMode",
           "equals": "auto"

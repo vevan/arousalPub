@@ -31,6 +31,8 @@ import {
   fetchLorebookList,
   normalizeLorebookEntryRefs,
   applyLorebookOrder,
+  fetchConversationLorebookIds,
+  patchConversationLorebookIds,
   patchConversationPluginSettings,
   patchLorebookEntry,
   expandPluginMacros,
@@ -60,11 +62,14 @@ import {
 } from '@/plugins/plugin-panel-registry'
 import {
   assertPluginConversationRead,
+  PLUGIN_CONVERSATION_BINDINGS_WRITE,
   wrapConversationHostForPlugin,
 } from '@/plugins/conversation-host-gate'
 import { useConversationPluginSettingsStore } from '@/stores/conversation-plugin-settings'
 import { usePluginUserSettingsStore } from '@/stores/plugin-user-settings'
 import { loadPluginUserSettings } from '@/utils/plugin-user-settings-loader'
+import { assertPluginPermission } from '@/plugins/plugin-permission-gate'
+import { usePluginPermissionsStore } from '@/stores/plugin-permissions'
 import { translatePluginI18nKey } from '@/utils/plugin-locale-text'
 import { useI18n } from 'vue-i18n'
 import { ref, type Ref } from 'vue'
@@ -132,6 +137,18 @@ export function createScopedPluginHost(
       patchPluginSettings(partial) {
         assertPluginConversationRead(id)
         return patchConversationPluginSettings(convId(), id, partial)
+      },
+      getLorebookIds() {
+        assertPluginConversationRead(id)
+        return fetchConversationLorebookIds(convId())
+      },
+      patchLorebookIds(lorebookIds) {
+        assertPluginPermission(
+          id,
+          usePluginPermissionsStore().getPermissions(id),
+          PLUGIN_CONVERSATION_BINDINGS_WRITE,
+        )
+        return patchConversationLorebookIds(convId(), lorebookIds)
       },
     },
     lorebook: {

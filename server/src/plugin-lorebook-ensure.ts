@@ -1,4 +1,5 @@
-import { readConversationIndex } from './chat-storage.js'
+import { readCharacterDocument } from './character-storage.js'
+import { readConversationIndex, resolvedCharacterIds } from './chat-storage.js'
 import { isValidConversationId } from './conversation-id.js'
 import {
   listLorebookIds,
@@ -8,8 +9,23 @@ import {
 } from './lorebook-file.js'
 import { allocateShortId } from './short-id.js'
 
-const DEFAULT_NAME_TEMPLATE = '{{conversationTitle}}-summary'
+export const DEFAULT_NAME_TEMPLATE = '${conversationTitle}-summary'
 const MAX_LOREBOOK_NAME_LEN = 120
+
+/** 自动建书名称模板可用占位符（${key}，非提示词宏） */
+export const AUTO_LOREBOOK_TEMPLATE_VAR_KEYS = [
+  'conversationTitle',
+  'conversationId',
+  'char',
+] as const
+
+export type AutoLorebookTemplateVarKey = (typeof AUTO_LOREBOOK_TEMPLATE_VAR_KEYS)[number]
+
+export interface AutoLorebookNameVars {
+  conversationTitle: string
+  conversationId: string
+  char: string
+}
 
 export interface EnsurePluginLorebookInput {
   conversationId: string
@@ -23,6 +39,8 @@ export interface EnsurePluginLorebookResult {
   lorebook: Lorebook
 }
 
+const TEMPLATE_VAR_PATTERN = /\$\{(\w+)\}/g
+
 function resolveConversationTitle(
   idx: Awaited<ReturnType<typeof readConversationIndex>>,
 ): string {
@@ -31,16 +49,38 @@ function resolveConversationTitle(
   return '未命名对话'
 }
 
+async function resolvePrimaryCharacterName(
+  idx: Awaited<ReturnType<typeof readConversationIndex>>,
+): Promise<string> {
+  if (!idx) return ''
+  const firstId = resolvedCharacterIds(idx)[0]
+  if (!firstId) return ''
+  const doc = await readCharacterDocument(firstId)
+  if (!doc?.card || typeof doc.card !== 'object') return ''
+  const nameRaw = (doc.card as Record<string, unknown>).name
+  if (typeof nameRaw !== 'string' || !nameRaw.trim()) return ''
+  return nameRaw.trim().slice(0, 80)
+}
+
 export function resolveAutoLorebookName(
   template: string,
-  conversationTitle: string,
+  vars: AutoLorebookNameVars,
 ): string {
-  const raw = (template.trim() || DEFAULT_NAME_TEMPLATE).replace(
-    /\{\{conversationTitle\}\}/g,
-    conversationTitle.trim() || '未命名对话',
-  )
+  const title = vars.conversationTitle.trim() || '未命名对话'
+  const values: Record<AutoLorebookTemplateVarKey, string> = {
+    conversationTitle: title,
+    conversationId: vars.conversationId.trim(),
+    char: vars.char.trim(),
+  }
+  const tpl = template.trim() || DEFAULT_NAME_TEMPLATE
+  const raw = tpl.replace(TEMPLATE_VAR_PATTERN, (match, key: string) => {
+    if (Object.prototype.hasOwnProperty.call(values, key)) {
+      return values[key as AutoLorebookTemplateVarKey]
+    }
+    return match
+  })
   const name = raw.trim().replace(/\s+/g, ' ')
-  if (!name) return `${conversationTitle.trim() || '未命名对话'}-summary`
+  if (!name) return `${title}-summary`
   return name.length > MAX_LOREBOOK_NAME_LEN
     ? name.slice(0, MAX_LOREBOOK_NAME_LEN)
     : name
@@ -98,10 +138,12 @@ export async function ensurePluginLorebook(
   if (!idx) return null
 
   const title = resolveConversationTitle(idx)
-  const baseName = resolveAutoLorebookName(
-    input.nameTemplate ?? DEFAULT_NAME_TEMPLATE,
-    title,
-  )
+  const char = await resolvePrimaryCharacterName(idx)
+  const baseName = resolveAutoLorebookName(input.nameTemplate ?? DEFAULT_NAME_TEMPLATE, {
+    conversationTitle: title,
+    conversationId,
+    char,
+  })
 
   const summaries = await readLorebooksIndexSummary()
   const nameSet = new Set(summaries.map((s) => s.name))

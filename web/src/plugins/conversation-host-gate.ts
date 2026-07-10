@@ -7,6 +7,7 @@ import type { ConversationScopeOptions } from '@/plugins/types'
 import { usePluginPermissionsStore } from '@/stores/plugin-permissions'
 
 export const PLUGIN_CONVERSATION_READ = 'conversation.read'
+export const PLUGIN_CONVERSATION_BINDINGS_WRITE = 'conversation.bindings.write'
 
 function pluginPermissions(pluginId: string): readonly string[] {
   return usePluginPermissionsStore().getPermissions(pluginId)

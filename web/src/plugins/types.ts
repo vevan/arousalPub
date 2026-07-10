@@ -386,6 +386,10 @@ export interface PluginWebHost {
     patchPluginSettings(
       partial: Record<string, unknown>,
     ): Promise<Record<string, unknown>>
+    /** 本对话已绑定的资料库 id 列表（注入用） */
+    getLorebookIds(): Promise<string[]>
+    /** 替换本对话资料库绑定列表；需 manifest `conversation.bindings.write` */
+    patchLorebookIds(lorebookIds: string[]): Promise<string[]>
     /** 摘要预览等插件流程占用对话：禁止发送新消息 */
     setPluginHold(hold: boolean): void
   }

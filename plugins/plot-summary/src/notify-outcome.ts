@@ -12,3 +12,13 @@ export function notifyOutcome(
 ): void {
   host.ui.notify(host.t(k(host, key), params), undefined, { level })
 }
+
+/** 串行摘要任务通知：标题含资料库与任务名 */
+export function notifySummarizeTask(
+  host: PluginHost,
+  key: string,
+  level: OutcomeLevel,
+  taskLabel: string,
+): void {
+  host.ui.notify(host.t(k(host, key), { task: taskLabel }), undefined, { level })
+}

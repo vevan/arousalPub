@@ -150,17 +150,18 @@
   "reviewAbort": "中断",
 
   "reviewRegenerate": "重新生成",
-  "notifyReviewReady": "摘要待确认：{name}",
+  "notifyReviewReady": "摘要待确认：{task}",
   "notifyReviewReadyBody": "模型已返回，请打开对话确认并写入资料库",
   "notifyReviewReadyOpen": "打开对话",
 
   "notifyReviewRegenerateFailed": "重新生成失败，请重试或跳过",
 
-  "notifyReviewSkipped": "已跳过该项",
+  "notifyReviewSkipped": "已跳过：{task}",
 
   "notifyReviewAborted": "已中断摘要",
 
-  "notifyTaskSkipped": "该项失败，已跳过并继续",
+  "notifyTaskSkipped": "失败已跳过：{task}",
+  "notifyTaskSkippedGeneric": "该项失败，已跳过并继续",
 
   "notifySummarizeSummary": "已完成 {done} 项，跳过 {skipped} 项（共 {total} 项）",
 
@@ -218,7 +219,7 @@
 
   "notifySummarizeFailed": "摘要失败",
 
-  "notifyParseFailed": "摘要 JSON 解析失败：{name}",
+  "notifyParseFailed": "摘要 JSON 解析失败：{task}",
   "notifyParseFailedBody": "模型返回格式无效，该项已跳过",
 
   "notifyContextExceeded": "约 {used} tokens，超过预算 {budget}，请缩短区间",
@@ -260,9 +261,19 @@
 
   "autoLorebookNameTemplateLabel": "自动建书名称模板",
 
-  "autoLorebookNameTemplateDesc": "支持宏 \\{\\{conversationTitle\\}\\}；重名时在名称后追加当前对话 id。",
+  "autoLorebookNameTemplateDesc": "模板占位符（非提示词宏）：${conversationTitle}、${conversationId}、${char}（首张角色卡）；重名时自动追加对话 id。",
 
   "notifyAutoLorebookCreated": "已自动创建摘要资料库：{name}",
+
+  "bindLorebookConfirmTitle": "绑定资料库到本对话",
+
+  "bindLorebookConfirmBody": "已将「{name}」创建为摘要目标。是否同时绑定到本对话，以便注入提示词？（可与已有设定集并存）",
+
+  "bindLorebookConfirm": "绑定",
+
+  "bindLorebookSkip": "暂不",
+
+  "notifyLorebookBound": "已绑定资料库：{name}",
 
   "notifyAutoLorebookFailed": "自动创建摘要资料库失败",
 

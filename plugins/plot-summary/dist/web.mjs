@@ -156,7 +156,7 @@ async function loadMergedSettings(host) {
   const convMode = asString(conv.targetLorebookMode);
   const globalMode = asString(global.targetLorebookMode);
   const targetLorebookMode = convMode === "auto" || convMode === "manual" ? convMode : globalMode === "auto" || globalMode === "manual" ? globalMode : "manual";
-  const autoLorebookNameTemplate = asString(conv.autoLorebookNameTemplate) || asString(global.autoLorebookNameTemplate) || "{{conversationTitle}}-summary";
+  const autoLorebookNameTemplate = asString(conv.autoLorebookNameTemplate) || asString(global.autoLorebookNameTemplate) || "${conversationTitle}-summary";
   const apiConfigId = asString(global.apiConfigId);
   const defaultEntryTriggerMode = asString(global.defaultEntryTriggerMode) || "vector";
   const sidecarEntryIds = conv.sidecarEntryIds && typeof conv.sidecarEntryIds === "object" ? { ...conv.sidecarEntryIds } : {};
@@ -270,6 +270,9 @@ function firstAutoTriggerTurnOrdinal(settings) {
 function notifyOutcome(host, key, level, params) {
   host.ui.notify(host.t(k(host, key), params), void 0, { level });
 }
+function notifySummarizeTask(host, key, level, taskLabel2) {
+  host.ui.notify(host.t(k(host, key), { task: taskLabel2 }), void 0, { level });
+}
 
 // plugins/plot-summary/src/errors.ts
 var PIPELINE_FATAL_CODES = /* @__PURE__ */ new Set([
@@ -316,29 +319,33 @@ function isParseFailedError(e) {
   const code = pipelineErrorCode(e);
   return code === "parse_failed" || code === "plugin_complete_draft_failed";
 }
-function preflightNotify(host, e) {
+function preflightNotify(host, e, taskLabel2) {
   const code = pipelineErrorCode(e);
   if (isParseFailedError(e)) {
     return;
   }
+  const withTask = (title) => {
+    const task = taskLabel2?.trim();
+    return task ? `${task}\uFF1A${title}` : title;
+  };
   if (code === "context_exceeded" || code === "plugin_complete_context_exceeded") {
     const { used, budget } = contextExceededToastParams(e);
-    host.ui.notify(host.t(k(host, "notifyContextExceeded"), {
+    host.ui.notify(withTask(host.t(k(host, "notifyContextExceeded"), {
       used: used ?? "?",
       budget: budget ?? "?"
-    }), void 0, { level: "warning" });
+    })), void 0, { level: "warning" });
     return;
   }
   if (code === "context_length_unconfigured" || code === "plugin_complete_context_length_unconfigured") {
-    host.ui.notify(host.t(k(host, "notifyContextLengthMissing")), void 0, { level: "warning" });
+    host.ui.notify(withTask(host.t(k(host, "notifyContextLengthMissing"))), void 0, { level: "warning" });
     return;
   }
   if (isLorebookNotFoundError(e)) {
-    host.ui.notify(host.t(k(host, "notifyTargetLorebookDeleted")), void 0, { level: "warning" });
+    host.ui.notify(withTask(host.t(k(host, "notifyTargetLorebookDeleted"))), void 0, { level: "warning" });
     return;
   }
   if (isLorebookEntryMissingError(e)) {
-    host.ui.notify(host.t(k(host, "notifySidecarEntryMissing")), void 0, { level: "warning" });
+    host.ui.notify(withTask(host.t(k(host, "notifySidecarEntryMissing"))), void 0, { level: "warning" });
     return;
   }
   const apiCode = lorebookErrorCode(e);
@@ -346,7 +353,7 @@ function preflightNotify(host, e) {
     notifyOutcome(host, "notifySummarizeFailed", "error");
     return;
   }
-  notifyOutcome(host, "notifySummarizeFailed", "error");
+  host.ui.notify(withTask(host.t(k(host, "notifySummarizeFailed"))), void 0, { level: "error" });
 }
 
 // plugins/plot-summary/src/shared/summary-prompt-layout.ts
@@ -519,13 +526,13 @@ async function generateReviewDraft(host, settings, opts) {
     if (!result.draft) {
       throw new Error("plugin_complete_draft_failed");
     }
-    if (opts.lorebookName && opts.dialogId) {
-      notifyDraftParseOutcome(host, "success", opts.lorebookName, opts.dialogId);
+    if (opts.taskNotifyLabel && opts.dialogId) {
+      notifyDraftParseOutcome(host, "success", opts.taskNotifyLabel, opts.dialogId);
     }
     return result.draft;
   } catch (e) {
-    if (opts.lorebookName && opts.dialogId && isParseFailedError(e)) {
-      notifyDraftParseOutcome(host, "failure", opts.lorebookName, opts.dialogId);
+    if (opts.taskNotifyLabel && opts.dialogId && isParseFailedError(e)) {
+      notifyDraftParseOutcome(host, "failure", opts.taskNotifyLabel, opts.dialogId);
     }
     throw e;
   } finally {
@@ -603,13 +610,13 @@ function registerReviewDialogs(host) {
     lockTitle: true
   });
 }
-function notifyDraftParseOutcome(host, outcome, lorebookName, dialogId) {
+function notifyDraftParseOutcome(host, outcome, taskLabel2, dialogId) {
   const conversationId = host.conversation.getId()?.trim();
   const dedupeSuffix = `${conversationId ?? "unknown"}:${dialogId}`;
   if (outcome === "success") {
     const action = conversationId ? { type: "conversation", conversationId } : void 0;
     host.ui.notify(
-      host.t(k(host, "notifyReviewReady"), { name: lorebookName }),
+      host.t(k(host, "notifyReviewReady"), { task: taskLabel2 }),
       host.t(k(host, "notifyReviewReadyBody")),
       {
         level: "info",
@@ -626,7 +633,7 @@ function notifyDraftParseOutcome(host, outcome, lorebookName, dialogId) {
     return;
   }
   host.ui.notify(
-    host.t(k(host, "notifyParseFailed"), { name: lorebookName }),
+    host.t(k(host, "notifyParseFailed"), { task: taskLabel2 }),
     host.t(k(host, "notifyParseFailedBody")),
     {
       level: "error",
@@ -817,6 +824,42 @@ async function writeSidecarEntry(host, settings, sidecarEntryIds, sc, reviewed, 
   const created = await host.lorebook.createEntry(settings.targetLorebookId, body);
   sidecarEntryIds[sc.id] = created.id;
   return created.id;
+}
+
+// plugins/plot-summary/src/shared/summarize.ts
+var PLOT_SUMMARY_ENTRY_TITLE_RE = /^\[MEMO-(\d+)\]-(.+)-\[(\d+)-(\d+)\]$/;
+function parsePlotSummaryEntryTitle(title) {
+  const m = (title ?? "").trim().match(PLOT_SUMMARY_ENTRY_TITLE_RE);
+  if (!m) return null;
+  const memoIndex = Number(m[1]);
+  const start = Number(m[3]);
+  const end = Number(m[4]);
+  if (!Number.isFinite(memoIndex) || !Number.isFinite(start) || !Number.isFinite(end)) {
+    return null;
+  }
+  return { memoIndex, coreTitle: m[2].trim(), start, end };
+}
+function resolveMemoIndex(rawTitle, fromTurn, blockTurns) {
+  const parsed = parsePlotSummaryEntryTitle(rawTitle.trim());
+  if (parsed) return parsed.memoIndex;
+  const bt = Math.max(1, Math.round(blockTurns));
+  return Math.floor(Math.max(0, fromTurn) / bt) + 1;
+}
+
+// plugins/plot-summary/src/shared/task-notify-label.ts
+function formatSummarizeTaskTitlePart(host, task, fromTurn, toTurn, blockTurns) {
+  if (task.kind === "sidecar") {
+    return task.sidecar.name.trim();
+  }
+  const memoIndex = resolveMemoIndex("", fromTurn, blockTurns);
+  const memo = String(memoIndex).padStart(2, "0");
+  const core = host.t(k(host, "manualTaskMemory"));
+  return `[MEMO-${memo}] ${core} [${fromTurn}-${toTurn}]`;
+}
+function formatSummarizeTaskNotifyLabel(host, lorebookName, task, fromTurn, toTurn, blockTurns) {
+  const book = lorebookName.trim();
+  const part = formatSummarizeTaskTitlePart(host, task, fromTurn, toTurn, blockTurns);
+  return book ? `${book} - ${part}` : part;
 }
 
 // plugins/plot-summary/src/shared/range-limits.ts
@@ -1093,6 +1136,14 @@ async function runSummarizeTasks(host, opts) {
     setSummarizeBatchProgress({ taskIndex: 0, total: tasks.length });
     for (let taskIndex = 0; taskIndex < tasks.length; taskIndex++) {
       const task = tasks[taskIndex];
+      const taskLabel2 = formatSummarizeTaskNotifyLabel(
+        host,
+        lorebookName,
+        task,
+        fromTurn,
+        toTurn,
+        settings.blockTurns
+      );
       setSummarizeBatchProgress({ taskIndex, total: tasks.length });
       showCurrentBatchTaskProgress(host);
       try {
@@ -1103,6 +1154,7 @@ async function runSummarizeTasks(host, opts) {
             fromTurn,
             toTurn,
             lorebookName,
+            taskNotifyLabel: taskLabel2,
             dialogId: DIALOG_REVIEW
           });
           const reviewed = await promptReview(
@@ -1115,6 +1167,7 @@ async function runSummarizeTasks(host, opts) {
               fromTurn,
               toTurn,
               lorebookName,
+              taskNotifyLabel: taskLabel2,
               dialogId: DIALOG_REVIEW
             }),
             lorebookName
@@ -1140,6 +1193,7 @@ async function runSummarizeTasks(host, opts) {
             toTurn,
             sc,
             lorebookName,
+            taskNotifyLabel: taskLabel2,
             dialogId: DIALOG_REVIEW_SIDECAR
           });
           const reviewed = await promptReview(
@@ -1153,6 +1207,7 @@ async function runSummarizeTasks(host, opts) {
               toTurn,
               sc,
               lorebookName,
+              taskNotifyLabel: taskLabel2,
               dialogId: DIALOG_REVIEW_SIDECAR
             }),
             lorebookName
@@ -1178,7 +1233,7 @@ async function runSummarizeTasks(host, opts) {
         }
         if (e instanceof Error && e.message === "review_skipped") {
           skippedTasks += 1;
-          host.ui.notify(host.t(k(host, "notifyReviewSkipped")), void 0, { level: "info" });
+          notifySummarizeTask(host, "notifyReviewSkipped", "info", taskLabel2);
           done += 1;
           bumpTaskProgress2(host, done, tasks.length);
           continue;
@@ -1190,17 +1245,17 @@ async function runSummarizeTasks(host, opts) {
         }
         console.warn("[plot-summary] task failed", task, e);
         if (isPipelineFatalError(e)) {
-          preflightNotify(host, e);
+          preflightNotify(host, e, taskLabel2);
           aborted = true;
           break;
         }
         const parseFailed = isParseFailedError(e);
         if (!parseFailed) {
-          preflightNotify(host, e);
+          preflightNotify(host, e, taskLabel2);
         }
         skippedTasks += 1;
         if (!parseFailed) {
-          host.ui.notify(host.t(k(host, "notifyTaskSkipped")), void 0, { level: "warning" });
+          notifySummarizeTask(host, "notifyTaskSkipped", "warning", taskLabel2);
         }
         done += 1;
         bumpTaskProgress2(host, done, tasks.length);
@@ -1518,8 +1573,23 @@ async function createTargetLorebookFromTemplate(host, settings) {
     notifyOutcome(host, "notifyAutoLorebookFailed", "error");
     return "";
   }
-  notifyOutcome(host, "notifyAutoLorebookCreated", "success", { name: ensured.name || id });
+  const name = ensured.name || id;
+  notifyOutcome(host, "notifyAutoLorebookCreated", "success", { name });
+  await promptBindCreatedLorebook(host, id, name);
   return id;
+}
+async function promptBindCreatedLorebook(host, lorebookId, lorebookName) {
+  const ok = await host.ui.confirm({
+    title: host.t(k(host, "bindLorebookConfirmTitle")),
+    body: host.t(k(host, "bindLorebookConfirmBody"), { name: lorebookName }),
+    confirmLabel: host.t(k(host, "bindLorebookConfirm")),
+    cancelLabel: host.t(k(host, "bindLorebookSkip"))
+  });
+  if (!ok) return;
+  const current = await host.conversation.getLorebookIds();
+  if (current.includes(lorebookId)) return;
+  await host.conversation.patchLorebookIds([...current, lorebookId]);
+  notifyOutcome(host, "notifyLorebookBound", "success", { name: lorebookName });
 }
 async function ensureTargetLorebook(host, settings) {
   const existing = asString(settings.targetLorebookId);
@@ -1898,7 +1968,7 @@ async function reorderTargetLorebookNow(host) {
     notifyOutcome(host, "notifyReorderLorebookDone", "success");
   } catch (e) {
     console.warn("[plot-summary] reorder lorebook failed", e);
-    host.ui.notify(host.t(k(host, "notifyTaskSkipped")), void 0, { level: "warning" });
+    host.ui.notify(host.t(k(host, "notifyTaskSkippedGeneric")), void 0, { level: "warning" });
   }
 }
 function openSessionSettings(host) {

@@ -63,32 +63,36 @@ export function isParseFailedError(e: unknown): boolean {
   return code === 'parse_failed' || code === 'plugin_complete_draft_failed'
 }
 
-export function preflightNotify(host: PluginHost, e: unknown) {
+export function preflightNotify(host: PluginHost, e: unknown, taskLabel?: string) {
   const code = pipelineErrorCode(e)
   if (isParseFailedError(e)) {
     return
   }
+  const withTask = (title: string) => {
+    const task = taskLabel?.trim()
+    return task ? `${task}：${title}` : title
+  }
   if (code === 'context_exceeded' || code === 'plugin_complete_context_exceeded') {
     const { used, budget } = contextExceededToastParams(e)
-    host.ui.notify(host.t(k(host, 'notifyContextExceeded'), {
+    host.ui.notify(withTask(host.t(k(host, 'notifyContextExceeded'), {
         used: used ?? '?',
         budget: budget ?? '?',
-      }), undefined, { level: 'warning' })
+      })), undefined, { level: 'warning' })
     return
   }
   if (
     code === 'context_length_unconfigured' ||
     code === 'plugin_complete_context_length_unconfigured'
   ) {
-    host.ui.notify(host.t(k(host, 'notifyContextLengthMissing')), undefined, { level: 'warning' })
+    host.ui.notify(withTask(host.t(k(host, 'notifyContextLengthMissing'))), undefined, { level: 'warning' })
     return
   }
   if (isLorebookNotFoundError(e)) {
-    host.ui.notify(host.t(k(host, 'notifyTargetLorebookDeleted')), undefined, { level: 'warning' })
+    host.ui.notify(withTask(host.t(k(host, 'notifyTargetLorebookDeleted'))), undefined, { level: 'warning' })
     return
   }
   if (isLorebookEntryMissingError(e)) {
-    host.ui.notify(host.t(k(host, 'notifySidecarEntryMissing')), undefined, { level: 'warning' })
+    host.ui.notify(withTask(host.t(k(host, 'notifySidecarEntryMissing'))), undefined, { level: 'warning' })
     return
   }
   const apiCode = lorebookErrorCode(e)
@@ -96,5 +100,5 @@ export function preflightNotify(host: PluginHost, e: unknown) {
     notifyOutcome(host, 'notifySummarizeFailed', 'error')
     return
   }
-  notifyOutcome(host, 'notifySummarizeFailed', 'error')
+  host.ui.notify(withTask(host.t(k(host, 'notifySummarizeFailed'))), undefined, { level: 'error' })
 }

@@ -74,8 +74,28 @@ async function createTargetLorebookFromTemplate(host: PluginHost, settings: Merg
     notifyOutcome(host, 'notifyAutoLorebookFailed', 'error')
     return ''
   }
-  notifyOutcome(host, 'notifyAutoLorebookCreated', 'success', { name: ensured.name || id })
+  const name = ensured.name || id
+  notifyOutcome(host, 'notifyAutoLorebookCreated', 'success', { name })
+  await promptBindCreatedLorebook(host, id, name)
   return id
+}
+
+async function promptBindCreatedLorebook(
+  host: PluginHost,
+  lorebookId: string,
+  lorebookName: string,
+) {
+  const ok = await host.ui.confirm({
+    title: host.t(k(host, 'bindLorebookConfirmTitle')),
+    body: host.t(k(host, 'bindLorebookConfirmBody'), { name: lorebookName }),
+    confirmLabel: host.t(k(host, 'bindLorebookConfirm')),
+    cancelLabel: host.t(k(host, 'bindLorebookSkip')),
+  })
+  if (!ok) return
+  const current = await host.conversation.getLorebookIds()
+  if (current.includes(lorebookId)) return
+  await host.conversation.patchLorebookIds([...current, lorebookId])
+  notifyOutcome(host, 'notifyLorebookBound', 'success', { name: lorebookName })
 }
 
 export async function ensureTargetLorebook(host: PluginHost, settings: MergedSettings) {
@@ -481,7 +501,7 @@ export async function reorderTargetLorebookNow(host: PluginHost) {
     notifyOutcome(host, 'notifyReorderLorebookDone', 'success')
   } catch (e) {
     console.warn('[plot-summary] reorder lorebook failed', e)
-    host.ui.notify(host.t(k(host, 'notifyTaskSkipped')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(k(host, 'notifyTaskSkippedGeneric')), undefined, { level: 'warning' })
   }
 }
 

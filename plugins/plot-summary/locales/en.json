@@ -145,17 +145,18 @@
   "reviewAbort": "Abort",
 
   "reviewRegenerate": "Regenerate",
-  "notifyReviewReady": "Summary ready for review: {name}",
+  "notifyReviewReady": "Summary ready for review: {task}",
   "notifyReviewReadyBody": "Model output is ready. Open the chat to review and save to the lorebook.",
   "notifyReviewReadyOpen": "Open chat",
 
   "notifyReviewRegenerateFailed": "Regenerate failed; retry or skip",
 
-  "notifyReviewSkipped": "Skipped this item",
+  "notifyReviewSkipped": "Skipped: {task}",
 
   "notifyReviewAborted": "Summarize aborted",
 
-  "notifyTaskSkipped": "This step failed; skipped and continuing",
+  "notifyTaskSkipped": "Failed, skipped: {task}",
+  "notifyTaskSkippedGeneric": "This step failed; skipped and continuing",
 
   "notifySummarizeSummary": "Done {done}, skipped {skipped} of {total}",
 
@@ -213,7 +214,7 @@
 
   "notifySummarizeFailed": "Summarize failed",
 
-  "notifyParseFailed": "Summary JSON parse failed: {name}",
+  "notifyParseFailed": "Summary JSON parse failed: {task}",
   "notifyParseFailedBody": "Model output was invalid; this step was skipped.",
 
   "notifyContextExceeded": "About {used} tokens, exceeds budget {budget}. Shorten the range.",
@@ -254,9 +255,19 @@
 
   "autoLorebookNameTemplateLabel": "Auto lorebook name template",
 
-  "autoLorebookNameTemplateDesc": "Supports \\{\\{conversationTitle\\}\\}; appends the current conversation id if the name already exists.",
+  "autoLorebookNameTemplateDesc": "Template placeholders (not prompt macros): ${conversationTitle}, ${conversationId}, ${char} (first character card); appends conversation id on name clash.",
 
   "notifyAutoLorebookCreated": "Created summary lorebook: {name}",
+
+  "bindLorebookConfirmTitle": "Bind lorebook to this chat",
+
+  "bindLorebookConfirmBody": "「{name}」 is now the summary write target. Also bind it to this chat for prompt injection? (Existing lorebooks stay bound.)",
+
+  "bindLorebookConfirm": "Bind",
+
+  "bindLorebookSkip": "Not now",
+
+  "notifyLorebookBound": "Bound lorebook: {name}",
 
   "notifyAutoLorebookFailed": "Failed to auto-create summary lorebook",
 

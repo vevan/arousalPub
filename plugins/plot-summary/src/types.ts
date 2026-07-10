@@ -16,6 +16,8 @@ export interface PluginHost {
       handler: (settings: Record<string, unknown>) => void,
     ) => () => void
     patchPluginSettings: (partial: Record<string, unknown>) => Promise<Record<string, unknown>>
+    getLorebookIds: () => Promise<string[]>
+    patchLorebookIds: (lorebookIds: string[]) => Promise<string[]>
     setPluginHold?: (hold: boolean) => void
   }
   lorebook: {
@@ -105,6 +107,13 @@ export interface PluginHost {
       dialogId?: string,
       opts?: { titleParams?: Record<string, unknown> },
     ) => void
+    confirm: (opts: {
+      title: string
+      body: string
+      confirmLabel?: string
+      cancelLabel?: string
+      confirmColor?: string
+    }) => Promise<boolean>
   }
   lifecycle: {
     onAssistantReplyPersisted: (handler: (event: {

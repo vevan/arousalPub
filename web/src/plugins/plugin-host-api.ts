@@ -1,4 +1,5 @@
 import { apiFetch } from '@/utils/api-fetch'
+import { emitConversationIndexPatched } from '@/utils/conversation-index-sync'
 import { useLorebooksStore } from '@/stores/lorebooks'
 import type { LorebookEntry } from '@/stores/lorebooks'
 import { useConversationPluginSettingsStore } from '@/stores/conversation-plugin-settings'
@@ -474,6 +475,52 @@ export async function fetchConversationPluginSettings(
     bag && typeof bag === 'object' && !Array.isArray(bag) ? { ...bag } : {}
   useConversationPluginSettingsStore().setBag(conversationId, pluginId, saved)
   return saved
+}
+
+function parseConversationLorebookIds(source: { lorebookIds?: unknown }): string[] {
+  if (!Array.isArray(source.lorebookIds)) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of source.lorebookIds) {
+    if (typeof raw !== 'string') continue
+    const id = raw.trim()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
+}
+
+export async function fetchConversationLorebookIds(
+  conversationId: string,
+): Promise<string[]> {
+  const res = await apiFetch(
+    `/api/chat/conversations/${encodeURIComponent(conversationId)}`,
+  )
+  await throwIfNotOk(res, 'conversation_not_found')
+  const idx = (await res.json()) as Record<string, unknown>
+  return parseConversationLorebookIds(idx)
+}
+
+export async function patchConversationLorebookIds(
+  conversationId: string,
+  lorebookIds: string[],
+): Promise<string[]> {
+  const normalized = parseConversationLorebookIds({ lorebookIds })
+  const res = await apiFetch(
+    `/api/chat/conversations/${encodeURIComponent(conversationId)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lorebookIds: normalized }),
+    },
+  )
+  await throwIfNotOk(res, 'patch_conversation_failed')
+  const data = (await res.json()) as { index?: Record<string, unknown> }
+  if (data.index && typeof data.index === 'object') {
+    emitConversationIndexPatched(conversationId, data.index)
+  }
+  return parseConversationLorebookIds(data.index ?? {})
 }
 
 export async function patchConversationPluginSettings(

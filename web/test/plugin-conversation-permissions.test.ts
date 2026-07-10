@@ -27,7 +27,8 @@ function baseTurn(): ConversationTurnDto {
 describe('pluginHasPermission', () => {
   it('checks manifest permissions list', () => {
     assert.equal(pluginHasPermission(['conversation.read'], 'conversation.read'), true)
-    assert.equal(pluginHasPermission(['conversation.read'], 'turn.receive.prune'), false)
+    assert.equal(pluginHasPermission(['conversation.bindings.write'], 'conversation.bindings.write'), true)
+    assert.equal(pluginHasPermission(['conversation.read'], 'conversation.bindings.write'), false)
   })
 })
 

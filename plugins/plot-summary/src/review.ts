@@ -112,6 +112,7 @@ export async function generateReviewDraft(
     toTurn?: number
     sc?: SidecarConfig
     lorebookName?: string
+    taskNotifyLabel?: string
     dialogId?: string
   },
 ) {
@@ -153,13 +154,13 @@ export async function generateReviewDraft(
     if (!result.draft) {
       throw new Error('plugin_complete_draft_failed')
     }
-    if (opts.lorebookName && opts.dialogId) {
-      notifyDraftParseOutcome(host, 'success', opts.lorebookName, opts.dialogId)
+    if (opts.taskNotifyLabel && opts.dialogId) {
+      notifyDraftParseOutcome(host, 'success', opts.taskNotifyLabel, opts.dialogId)
     }
     return result.draft
   } catch (e) {
-    if (opts.lorebookName && opts.dialogId && isParseFailedError(e)) {
-      notifyDraftParseOutcome(host, 'failure', opts.lorebookName, opts.dialogId)
+    if (opts.taskNotifyLabel && opts.dialogId && isParseFailedError(e)) {
+      notifyDraftParseOutcome(host, 'failure', opts.taskNotifyLabel, opts.dialogId)
     }
     throw e
   } finally {
@@ -252,7 +253,7 @@ export function registerReviewDialogs(host: PluginHost) {
 function notifyDraftParseOutcome(
   host: PluginHost,
   outcome: 'success' | 'failure',
-  lorebookName: string,
+  taskLabel: string,
   dialogId: string,
 ): void {
   const conversationId = host.conversation.getId()?.trim()
@@ -263,7 +264,7 @@ function notifyDraftParseOutcome(
         ({ type: 'conversation' as const, conversationId })
       : undefined
     host.ui.notify(
-      host.t(k(host, 'notifyReviewReady'), { name: lorebookName }),
+      host.t(k(host, 'notifyReviewReady'), { task: taskLabel }),
       host.t(k(host, 'notifyReviewReadyBody')),
       {
         level: 'info',
@@ -283,7 +284,7 @@ function notifyDraftParseOutcome(
     return
   }
   host.ui.notify(
-    host.t(k(host, 'notifyParseFailed'), { name: lorebookName }),
+    host.t(k(host, 'notifyParseFailed'), { task: taskLabel }),
     host.t(k(host, 'notifyParseFailedBody')),
     {
       level: 'error',

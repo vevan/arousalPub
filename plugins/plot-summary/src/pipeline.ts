@@ -10,7 +10,8 @@ import { applyPlotSummaryEntrySort } from './shared/entry-sort.js'
 import { flushPendingLorebookCreates, type PendingLorebookCreate } from './batch-write.js'
 import { entryKeys, writeSidecarEntry } from './sidecar.js'
 import { k, loadMergedSettings } from './settings.js'
-import { notifyOutcome } from './notify-outcome.js'
+import { notifyOutcome, notifySummarizeTask } from './notify-outcome.js'
+import { formatSummarizeTaskNotifyLabel } from './shared/task-notify-label.js'
 import {
   setSummarizeBatchProgress,
   setSummarizeRunning,
@@ -147,6 +148,14 @@ export async function runSummarizeTasks(
 
     for (let taskIndex = 0; taskIndex < tasks.length; taskIndex++) {
       const task = tasks[taskIndex]
+      const taskLabel = formatSummarizeTaskNotifyLabel(
+        host,
+        lorebookName,
+        task,
+        fromTurn,
+        toTurn,
+        settings.blockTurns,
+      )
       setSummarizeBatchProgress({ taskIndex, total: tasks.length })
       showCurrentBatchTaskProgress(host)
 
@@ -158,6 +167,7 @@ export async function runSummarizeTasks(
             fromTurn,
             toTurn,
             lorebookName,
+            taskNotifyLabel: taskLabel,
             dialogId: DIALOG_REVIEW,
           })
           const reviewed = await promptReview(
@@ -171,6 +181,7 @@ export async function runSummarizeTasks(
                 fromTurn,
                 toTurn,
                 lorebookName,
+                taskNotifyLabel: taskLabel,
                 dialogId: DIALOG_REVIEW,
               }),
             lorebookName,
@@ -196,6 +207,7 @@ export async function runSummarizeTasks(
             toTurn,
             sc,
             lorebookName,
+            taskNotifyLabel: taskLabel,
             dialogId: DIALOG_REVIEW_SIDECAR,
           })
           const reviewed = await promptReview(
@@ -210,6 +222,7 @@ export async function runSummarizeTasks(
                 toTurn,
                 sc,
                 lorebookName,
+                taskNotifyLabel: taskLabel,
                 dialogId: DIALOG_REVIEW_SIDECAR,
               }),
             lorebookName,
@@ -235,7 +248,7 @@ export async function runSummarizeTasks(
         }
         if (e instanceof Error && e.message === 'review_skipped') {
           skippedTasks += 1
-          host.ui.notify(host.t(k(host, 'notifyReviewSkipped')), undefined, { level: 'info' })
+          notifySummarizeTask(host, 'notifyReviewSkipped', 'info', taskLabel)
           done += 1
           bumpTaskProgress(host, done, tasks.length)
           continue
@@ -247,17 +260,17 @@ export async function runSummarizeTasks(
         }
         console.warn('[plot-summary] task failed', task, e)
         if (isPipelineFatalError(e)) {
-          preflightNotify(host, e)
+          preflightNotify(host, e, taskLabel)
           aborted = true
           break
         }
         const parseFailed = isParseFailedError(e)
         if (!parseFailed) {
-          preflightNotify(host, e)
+          preflightNotify(host, e, taskLabel)
         }
         skippedTasks += 1
         if (!parseFailed) {
-          host.ui.notify(host.t(k(host, 'notifyTaskSkipped')), undefined, { level: 'warning' })
+          notifySummarizeTask(host, 'notifyTaskSkipped', 'warning', taskLabel)
         }
         done += 1
         bumpTaskProgress(host, done, tasks.length)

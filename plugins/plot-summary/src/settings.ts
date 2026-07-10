@@ -179,7 +179,7 @@ export async function loadMergedSettings(host: PluginHost): Promise<MergedSettin
   const autoLorebookNameTemplate =
     asString(conv.autoLorebookNameTemplate) ||
     asString(global.autoLorebookNameTemplate) ||
-    '{{conversationTitle}}-summary'
+    '${conversationTitle}-summary'
   const apiConfigId = asString(global.apiConfigId)
   const defaultEntryTriggerMode = asString(global.defaultEntryTriggerMode) || 'vector'
   const sidecarEntryIds =

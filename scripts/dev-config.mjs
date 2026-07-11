@@ -10,7 +10,7 @@ export const DEFAULT_WEB_PORT = 3451
 function parsePort(value, label) {
   const n = Number(value)
   if (!Number.isInteger(n) || n < 1 || n > 65535) {
-    throw new Error(`无效的 ${label}：${value}（须为 1–65535 的整数）`)
+    throw new Error(`invalid ${label}: ${value} (must be an integer from 1 to 65535)`)
   }
   return n
 }
@@ -19,7 +19,7 @@ function parseNonNegativeInt(value, label, fallback) {
   const n = Number(value)
   if (!Number.isInteger(n) || n < 0) {
     if (value == null || value === '') return fallback
-    throw new Error(`无效的 ${label}：${value}（须为 ≥0 的整数）`)
+    throw new Error(`invalid ${label}: ${value} (must be an integer ≥ 0)`)
   }
   return n
 }

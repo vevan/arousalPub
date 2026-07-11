@@ -116,14 +116,14 @@ export async function buildPlugins(opts = {}) {
 export async function ensurePluginDistForDev() {
   const stale = listStalePlugins()
   if (stale.length === 0) {
-    console.log('[dev] plugin dist 已是最新')
+    console.log('[dev] plugin dist is up to date')
     return []
   }
-  console.log(`[dev] 检测到 plugin dist 过期，正在重建: ${stale.join(', ')}`)
+  console.log(`[dev] stale plugin dist detected, rebuilding: ${stale.join(', ')}`)
   for (const id of stale) {
     await runPluginBuild(id)
   }
-  console.log('[dev] plugin dist 重建完成')
+  console.log('[dev] plugin dist rebuild complete')
   return stale
 }
 

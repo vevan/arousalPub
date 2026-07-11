@@ -146,17 +146,17 @@ async function main() {
   if (jsonOut) {
     console.log(JSON.stringify({ violations: allHits, count: allHits.length }, null, 2))
   } else if (allHits.length === 0) {
-    console.log('[check:host-no-plugin-ids] OK — 零违规')
+    console.log('[check:host-no-plugin-ids] OK — no violations')
   } else {
     console.error(
-      `[check:host-no-plugin-ids] FAIL — ${allHits.length} 处违规（DOC/42 · DOC/41 §8）\n`,
+      `[check:host-no-plugin-ids] FAIL — ${allHits.length} violation(s) (DOC/42 · DOC/41 §8)\n`,
     )
     for (const h of allHits) {
       const loc = h.line ? `${h.file}:${h.line}` : h.file
       console.error(`  [${h.kind}] ${loc}`)
       if (h.text) console.error(`    ${h.text}`)
     }
-    console.error('\n修复进度见 DOC/42-host-generic-audit-checklist.md')
+    console.error('\nSee DOC/42-host-generic-audit-checklist.md for remediation')
   }
 
   process.exit(allHits.length > 0 ? 1 : 0)

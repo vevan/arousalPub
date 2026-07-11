@@ -9,7 +9,7 @@ const force = process.argv.includes('--force')
 async function main() {
   const built = await buildPlugins({ force })
   if (built.length === 0) {
-    console.log('[build:plugins] dist 已是最新（使用 --force 强制全量重建）')
+    console.log('[build:plugins] dist is up to date (use --force for a full rebuild)')
   } else {
     console.log('[build:plugins] done:', built.join(', '))
   }

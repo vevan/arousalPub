@@ -2,6 +2,7 @@
   "pluginDisplayName": "Guided generation",
   "tooltip": "Guided send",
   "dialogTitle": "Guided generation",
+  "reviseDialogTitle": "Guided revision",
   "userLabel": "User input (visible)",
   "guidanceLabel": "Guidance (hidden, appended at end of prompt)",
   "send": "Send with guidance",

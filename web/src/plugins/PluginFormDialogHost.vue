@@ -39,6 +39,19 @@ const dialogTitle = computed(() => {
   const def = activeDef.value
   const state = pluginHost?.openForm.value
   if (!def || !state) return ''
+  if (def.titleKeys) {
+    const mode = model.value.mode
+    if (mode === 'regenerate') {
+      return t(def.titleKeys.regenerate, state.titleParams ?? {})
+    }
+    if (mode === 'revise') {
+      return t(
+        def.titleKeys.revise ?? def.titleKeys.regenerate,
+        state.titleParams ?? {},
+      )
+    }
+    return t(def.titleKeys.send, state.titleParams ?? {})
+  }
   return t(def.titleKey, state.titleParams ?? {})
 })
 

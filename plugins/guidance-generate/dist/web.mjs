@@ -112,6 +112,11 @@ function register(host) {
   });
   host.registerFormDialog(PLUGIN_ID, {
     titleKey: k(host, "dialogTitle"),
+    titleKeys: {
+      send: k(host, "dialogTitle"),
+      regenerate: k(host, "dialogTitle"),
+      revise: k(host, "reviseDialogTitle")
+    },
     fields: [
       {
         key: "userText",

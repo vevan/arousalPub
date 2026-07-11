@@ -2,6 +2,7 @@
   "pluginDisplayName": "指导生成",
   "tooltip": "指导生成",
   "dialogTitle": "指导生成",
+  "reviseDialogTitle": "指导修改",
   "userLabel": "用户输入（可见）",
   "guidanceLabel": "指导输入（隐藏，追加到 prompt 末尾）",
   "send": "指导发送",

@@ -95,6 +95,8 @@ export interface PluginFormFieldDef {
 
 export interface PluginFormDialogDef {
   titleKey: string
+  /** 多模式标题（send / regenerate / revise）；有则按 `model.mode` 选取，否则用 titleKey */
+  titleKeys?: { send: string; regenerate: string; revise?: string }
   bodyKey?: string
   fields: PluginFormFieldDef[]
   /** 双模式（send / regenerate / revise），与 submitKey 二选一 */

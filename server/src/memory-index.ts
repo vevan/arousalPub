@@ -290,16 +290,24 @@ async function indexTurnMemory(
     : loc.branchPath
   const resolvedChunk = loc.chunkFileName
 
-  await upsertTurnMemoryRowsBatch(conversationId, [
+  await upsertTurnMemoryRowsBatch(
+    conversationId,
+    [
+      {
+        turnId: turn.turnId,
+        turnOrdinal: turn.turnOrdinal,
+        branchPath: resolvedBranch,
+        chunkFileName: resolvedChunk,
+        corpus,
+        vector: emb.vector,
+      },
+    ],
     {
-      turnId: turn.turnId,
-      turnOrdinal: turn.turnOrdinal,
-      branchPath: resolvedBranch,
-      chunkFileName: resolvedChunk,
-      corpus,
-      vector: emb.vector,
+      skipIf: () =>
+        (memoryReindexEpoch.get(conversationId) ?? 0) !== epochAtStart,
     },
-  ])
+  )
+  if ((memoryReindexEpoch.get(conversationId) ?? 0) !== epochAtStart) return
   await markConversationMemoryEmbeddingModelIfChanged(conversationId)
 }
 

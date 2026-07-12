@@ -548,7 +548,7 @@ async function updateBranchRegistryInParentIndex(
       changed = true
       return next
     })
-    if (!changed) return null
+    if (!changed) return idx
     const next: ConversationIndex = {
       ...idx,
       branches: nextBranches,
@@ -567,7 +567,7 @@ async function updateBranchRegistryInParentIndex(
       changed = true
       return next
     })
-    if (!changed) return null
+    if (!changed) return idx
     return {
       ...idx,
       branches: nextBranches,

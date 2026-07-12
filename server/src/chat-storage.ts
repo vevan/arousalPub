@@ -2019,10 +2019,15 @@ export async function saveFirstTurn(params: {
   await writeChunkFile(conversationId, firstChunkFile, chunk)
 
   const t = nowIso()
-  idx.headChunkFile = firstChunkFile
-  idx.tailChunkFile = firstChunkFile
-  idx.updatedAt = t
-  await writeConversationIndex(conversationId, idx)
+  const written = await mutateConversationIndex(conversationId, (fresh) => {
+    if (fresh.headChunkFile) return null
+    fresh.headChunkFile = firstChunkFile
+    fresh.tailChunkFile = firstChunkFile
+    fresh.updatedAt = t
+    return fresh
+  })
+  if (!written) return null
+  idx = written
   await upsertChatListEntry(chatListEntryFromIndex(idx), idx, {
     refreshConversationStats: true,
   })
@@ -2104,10 +2109,15 @@ export async function saveOpeningTurn(params: {
   await writeChunkFile(conversationId, firstChunkFile, chunk)
 
   const t = nowIso()
-  idx.headChunkFile = firstChunkFile
-  idx.tailChunkFile = firstChunkFile
-  idx.updatedAt = t
-  await writeConversationIndex(conversationId, idx)
+  const written = await mutateConversationIndex(conversationId, (fresh) => {
+    if (fresh.headChunkFile) return null
+    fresh.headChunkFile = firstChunkFile
+    fresh.tailChunkFile = firstChunkFile
+    fresh.updatedAt = t
+    return fresh
+  })
+  if (!written) return null
+  idx = written
   await upsertChatListEntry(chatListEntryFromIndex(idx), idx, {
     refreshConversationStats: true,
   })
@@ -2281,12 +2291,12 @@ export async function openConversationImportSession(params: {
     savedTail: string | null,
     savedUpdatedAt: string,
   ): Promise<void> {
-    const cur = await readConversationIndex(conversationId)
-    if (!cur) return
-    cur.headChunkFile = savedHead
-    cur.tailChunkFile = savedTail
-    cur.updatedAt = savedUpdatedAt
-    await writeConversationIndex(conversationId, cur)
+    await mutateConversationIndex(conversationId, (cur) => {
+      cur.headChunkFile = savedHead
+      cur.tailChunkFile = savedTail
+      cur.updatedAt = savedUpdatedAt
+      return cur
+    })
     invalidateChunkIndexSyncCache(conversationId)
   }
 
@@ -2321,18 +2331,27 @@ export async function openConversationImportSession(params: {
         const savedUpdatedAt = freshIdx.updatedAt
         const chunkFilesSnapshot = [...writtenChunkFiles]
         const t = nowIso()
-        freshIdx.headChunkFile = headChunkFile
-        freshIdx.tailChunkFile = tailChunkFile
-        freshIdx.updatedAt = t
+        let writtenIdx: ConversationIndex
         try {
-          await writeConversationIndex(conversationId, freshIdx)
+          const written = await mutateConversationIndex(conversationId, (cur) => {
+            if (cur.headChunkFile) return null
+            cur.headChunkFile = headChunkFile
+            cur.tailChunkFile = tailChunkFile
+            cur.updatedAt = t
+            return cur
+          })
+          if (!written) {
+            await rollbackWritten()
+            throw new Error('conversation no longer empty')
+          }
+          writtenIdx = written
           invalidateChunkIndexSyncCache(conversationId)
         } catch (e) {
           await rollbackWritten()
           throw e
         }
         try {
-          await upsertChatListEntry(chatListEntryFromIndex(freshIdx), freshIdx, {
+          await upsertChatListEntry(chatListEntryFromIndex(writtenIdx), writtenIdx, {
             refreshConversationStats: true,
           })
         } catch (e) {
@@ -2341,7 +2360,7 @@ export async function openConversationImportSession(params: {
           throw e
         }
         await scheduleMemoryForImportChunks(conversationId, chunkFilesSnapshot)
-        return { index: freshIdx, turnCount }
+        return { index: writtenIdx, turnCount }
       } finally {
         releaseConversationImportLock(conversationId)
       }
@@ -2678,9 +2697,13 @@ export async function appendSegmentToTurn(params: {
   const storagePath = chunkStorageRelativePath(branchPath, chunkName)
   await writeChunkFile(conversationId, storagePath, chunk)
   const t = nowIso()
-  idx.updatedAt = t
-  await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
+  const touched = await mutateConversationIndex(conversationId, (fresh) => {
+    fresh.updatedAt = t
+    return fresh
+  })
+  if (touched) {
+    await upsertChatListEntry(chatListEntryFromIndex(touched), touched)
+  }
   if (auditSnapshot !== undefined) {
     finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
     const idxForAudit = await readConversationIndex(conversationId)
@@ -2782,11 +2805,12 @@ export async function mergeTurnPluginEntriesAtOrdinal(
     chunkStorageRelativePath(branchPath, chunkName),
     chunk,
   )
-  const idx = await readConversationIndex(conversationId)
-  if (idx) {
-    idx.updatedAt = nowIso()
-    await writeConversationIndex(conversationId, idx)
-    await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
+  const touched = await mutateConversationIndex(conversationId, (fresh) => {
+    fresh.updatedAt = nowIso()
+    return fresh
+  })
+  if (touched) {
+    await upsertChatListEntry(chatListEntryFromIndex(touched), touched)
   }
   return 'ok'
 }
@@ -2834,9 +2858,13 @@ export async function updateTurnContentInTailChunk(
   const storagePath = chunkStorageRelativePath(branchPath, chunkName)
   await writeChunkFile(conversationId, storagePath, chunk)
   const t = nowIso()
-  idx.updatedAt = t
-  await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
+  const touched = await mutateConversationIndex(conversationId, (fresh) => {
+    fresh.updatedAt = t
+    return fresh
+  })
+  if (touched) {
+    await upsertChatListEntry(chatListEntryFromIndex(touched), touched)
+  }
   if (auditSnapshot !== undefined) {
     finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
     const idxForAudit = await readConversationIndex(conversationId)
@@ -2955,9 +2983,13 @@ export async function updateTurnSegmentInTailChunk(
   const storagePath = chunkStorageRelativePath(branchPath, chunkName)
   await writeChunkFile(conversationId, storagePath, chunk)
   const t = nowIso()
-  idx.updatedAt = t
-  await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
+  const touched = await mutateConversationIndex(conversationId, (fresh) => {
+    fresh.updatedAt = t
+    return fresh
+  })
+  if (touched) {
+    await upsertChatListEntry(chatListEntryFromIndex(touched), touched)
+  }
   if (auditSnapshot !== undefined) {
     finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
     const idxForAudit = await readConversationIndex(conversationId)

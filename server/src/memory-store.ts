@@ -222,6 +222,8 @@ async function optimizeTurnMemoryTableUnsafe(
 export interface UpsertTurnMemoryRowsBatchOptions {
   /** 全量重建时延后建 FTS，避免批间 mergeInsert 触碰 jieba 索引 */
   deferFts?: boolean
+  /** Evaluated under the conversation memory lock; skip upsert when true */
+  skipIf?: () => boolean
 }
 
 /** 批量 mergeInsert 到会话单表 turn_memory */
@@ -240,6 +242,7 @@ async function upsertTurnMemoryRowsBatchUnsafe(
   rows: TurnMemoryRow[],
   options?: UpsertTurnMemoryRowsBatchOptions,
 ): Promise<void> {
+  if (options?.skipIf?.()) return
   if (!rows.length) return
   const valid = rows.filter((r) => r.vector.length > 0)
   if (!valid.length) return

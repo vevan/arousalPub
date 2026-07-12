@@ -1,6 +1,6 @@
-# 用户文件库与 charFile 媒体管线（定案 · P3）
+# 用户文件库与 charFile 媒体管线（定案 · P0）
 
-> **状态**：设计定案，**未实现**（列入 `DOC/04` P3）。  
+> **状态**：设计定案，**未实现**（列入 [`DOC/04`](04-TODO.md) **P0** · 2026-07-12 升优先级）。  
 > **定案日期**：2026-06-08  
 > **关联**：`DOC/03` §15 宏、连接设置 / 对话 `apiPreset.rag`（RAG 出站 API）、立绘鉴权 `web/src/utils/authenticated-media-url.ts`、`server/src/auth.ts` `allowsQueryAccessToken`。
 
@@ -209,7 +209,7 @@ P1「独立知识库 RAG」的**文档管线**依赖本文件库 **M1 + M4**；`
 | **M4** | 文档切片 + 独立 Lance + 对话绑知识库 | M1、RAG API 设定 |
 | **M5** | 引用检查、批量导入、视频预览优化 | M1–M3 |
 
-P3 排期：**至少完成 M1–M3** 可交付「文件库 + charFile + 展示」闭环；M4 与 P1 独立 RAG 合并推进。
+P0 排期：**至少完成 M1–M3** 可交付「文件库 + charFile + 展示」闭环；M4（独立文档 RAG）同列 P0，与 RAG API 设定一并推进。
 
 ---
 

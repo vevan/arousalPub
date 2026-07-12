@@ -15,17 +15,27 @@
   - [ ] **S3** 插件注册命令（如 `plot-summary` `/summary 36-55`）；输入历史存 raw 提交
   - [x] **S4** Composer `/` 补全菜单（`#composer-slash-layer` + CSS anchor、`60dvh`、两行列表）
 
+### 用户文件库与独立文档 RAG
+
+> **定案**：[`DOC/20`](20-user-file-library.md)。媒体（图/音/视频）与文档共用 `files/`；独立文档 RAG ≠ 世界书 vector。升 P0（2026-07-12）：为媒体一等公民与后续插件（如 ComfyUI）铺路。
+
+- [ ] **用户文件库** [`DOC/20`](20-user-file-library.md) M1–M5
+  - [ ] **M1** `files/` 落盘 + REST + `allowsQueryAccessToken` + `/files` 基础 UI
+  - [ ] **M2** 角色 `imageFiles` + `{{charFileN}}` 宏 + `fileContentUrl`
+  - [ ] **M3** `render-rich-message` / 对话 BGM·背景 + `withAccessToken`
+  - [ ] **M5** 引用检查、批量导入、视频预览优化（依赖 M1–M3）
+- [ ] **独立文档 RAG**（≠ 世界书 vector）— [`DOC/20`](20-user-file-library.md) **M4**；前置 M1 + RAG API 设定
+  - [ ] 文档切片 + 独立 Lance 表 + 对话绑知识库
+
 ## P1
 
 - [ ] **ST 聊天记录群聊多 bot 导入** — 当前 ST JSONL 导入全部 segment 绑定 `characterIds[0]`；需按 ST `name` 与会话 `characterIds`/`displayNames` 映射各 bot 为 speaker（单 bot 行为不变）。见 [`DOC/37`](37-st-import-settings-tab.md)
-- [ ] **独立文档 RAG**（≠ 世界书 vector）— 可选；前置 `DOC/20` M1+M4
 - [ ] RAG 参数面板、会话/角色批量导入导出、备份示例脚本
 
 ## P2
 
 - [ ] **作者注分层** [`DOC/28`](28-authors-note-layers.md) — Phase 2 角色 AN + `{{charAuthorsNote}}`（Phase 1 全局 default ✅）
 - [ ] **角色卡内嵌世界书** [`DOC/27`](27-embedded-character-book.md) — Phase 1 组装（constant + keyword、`position`、叠加内嵌优先）；Phase 2 角色库查看 / 编辑 UI
-- [ ] **用户文件库** [`DOC/20`](20-user-file-library.md) M1–M5
 
 > ST 导入 Tab / 世界书 / 聊天记录 / M3 回归已关闭，见下方 **§文档**（2026-06～07 · [`DOC/37`](37-st-import-settings-tab.md)）。
 

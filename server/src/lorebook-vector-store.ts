@@ -10,6 +10,7 @@ import {
 } from 'apache-arrow'
 import { makeArrowTable } from '@lancedb/lancedb'
 import type { Table } from '@lancedb/lancedb'
+import { createKeyedSerialQueue } from './keyed-serial-queue.js'
 import { closeLanceDb, openLanceDb } from './lance-connection-pool.js'
 import {
   listLanceTableNames,
@@ -28,6 +29,9 @@ import { getUserDataDir } from './config.js'
 import { getCurrentUserId } from './user-context.js'
 
 const TABLE_NAME = 'lore_entries'
+
+/** Serialize Lance replace/rm/search for the same lorebook URI. */
+const lorebookLanceQueue = createKeyedSerialQueue()
 
 export interface LoreEntryVectorRow {
   entryId: string
@@ -106,6 +110,15 @@ export async function replaceLorebookVectorIndex(
   lorebookId: string,
   rows: LoreEntryVectorRow[],
 ): Promise<void> {
+  await lorebookLanceQueue.run(lorebookId, () =>
+    replaceLorebookVectorIndexUnsafe(lorebookId, rows),
+  )
+}
+
+async function replaceLorebookVectorIndexUnsafe(
+  lorebookId: string,
+  rows: LoreEntryVectorRow[],
+): Promise<void> {
   const uri = lorebookDbUri(lorebookId)
   closeLanceDb(uri)
   await rm(uri, { recursive: true, force: true })
@@ -130,6 +143,14 @@ export async function replaceLorebookVectorIndex(
 export async function deleteLorebookVectorIndex(
   lorebookId: string,
 ): Promise<void> {
+  await lorebookLanceQueue.run(lorebookId, () =>
+    deleteLorebookVectorIndexUnsafe(lorebookId),
+  )
+}
+
+async function deleteLorebookVectorIndexUnsafe(
+  lorebookId: string,
+): Promise<void> {
   const uri = lorebookDbUri(lorebookId)
   closeLanceDb(uri)
   await rm(uri, { recursive: true, force: true })
@@ -149,6 +170,24 @@ export async function searchLorebookEntryVectors(
   excludeEntryIds: Set<string> = new Set(),
 ): Promise<LoreEntryVectorHit[]> {
   if (!queryVector.length || topK < 1) return []
+  return lorebookLanceQueue.run(lorebookId, () =>
+    searchLorebookEntryVectorsUnsafe(
+      lorebookId,
+      queryVector,
+      queryText,
+      topK,
+      excludeEntryIds,
+    ),
+  )
+}
+
+async function searchLorebookEntryVectorsUnsafe(
+  lorebookId: string,
+  queryVector: number[],
+  queryText: string,
+  topK: number,
+  excludeEntryIds: Set<string>,
+): Promise<LoreEntryVectorHit[]> {
   const uri = lorebookDbUri(lorebookId)
   const db = await connectDb(lorebookId)
   const names = await listLanceTableNames(db, uri)

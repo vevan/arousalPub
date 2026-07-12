@@ -12,6 +12,7 @@ import path from 'node:path'
 import { getChatsRoot } from './config.js'
 import { normalizeBranchPath, chunkStorageRelativePath } from './chunk-path.js'
 import { isValidConversationId } from './conversation-id.js'
+import { createKeyedSerialQueue } from './keyed-serial-queue.js'
 import type { ResolvedFeatureAudit } from './feature-binding-resolve.js'
 import type {
   ChatAuditSnapshotInput,
@@ -662,9 +663,13 @@ export async function batchUpdateConversationTurns(
   let memoryEmbedsQueued = 0
   if (ok > 0) {
     const t = nowIso()
-    idx.updatedAt = t
-    await writeConversationIndex(conversationId, idx)
-    await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
+    const idx = await mutateConversationIndex(conversationId, (fresh) => {
+      fresh.updatedAt = t
+      return fresh
+    })
+    if (idx) {
+      await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
+    }
     for (const branchPath of touchedBranchPaths) {
       if (!branchPath) continue
       const branchIdx = await readBranchConversationIndex(conversationId, branchPath)
@@ -776,65 +781,58 @@ export async function updateConversationUserCharacterId(
   conversationId: string,
   userCharacterId: string | null,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  if (
-    userCharacterId === null ||
-    (typeof userCharacterId === 'string' && !userCharacterId.trim())
-  ) {
-    delete next.userCharacterId
-  } else if (typeof userCharacterId === 'string') {
-    next.userCharacterId = userCharacterId.trim()
-  }
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    if (
+      userCharacterId === null ||
+      (typeof userCharacterId === 'string' && !userCharacterId.trim())
+    ) {
+      delete next.userCharacterId
+    } else if (typeof userCharacterId === 'string') {
+      next.userCharacterId = userCharacterId.trim()
+    }
+    return next
+  })
 }
 
 export async function updateConversationUserName(
   conversationId: string,
   userName: string | null,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  if (userName === null || (typeof userName === 'string' && !userName.trim())) {
-    delete next.userName
-  } else if (typeof userName === 'string') {
-    next.userName = userName.trim()
-  }
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    if (userName === null || (typeof userName === 'string' && !userName.trim())) {
+      delete next.userName
+    } else if (typeof userName === 'string') {
+      next.userName = userName.trim()
+    }
+    return next
+  })
 }
 
 export async function updateConversationCharacterBindings(
   conversationId: string,
   characterIds: string[],
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
-  const seen = new Set<string>()
-  const cleaned: string[] = []
-  for (const raw of characterIds) {
-    if (typeof raw !== 'string') continue
-    const id = raw.trim()
-    if (!id || seen.has(id)) continue
-    seen.add(id)
-    cleaned.push(id)
-  }
-  const t = nowIso()
-  const next: ConversationIndex = {
-    ...idx,
-    characterIds: cleaned,
-    updatedAt: t,
-  }
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const seen = new Set<string>()
+    const cleaned: string[] = []
+    for (const raw of characterIds) {
+      if (typeof raw !== 'string') continue
+      const id = raw.trim()
+      if (!id || seen.has(id)) continue
+      seen.add(id)
+      cleaned.push(id)
+    }
+    const t = nowIso()
+    return {
+      ...idx,
+      characterIds: cleaned,
+      updatedAt: t,
+    }
+  })
 }
 
 /** 对话级提示词预设：传 `null` 或空字符串则移除字段（回退全局预设） */
@@ -842,20 +840,18 @@ export async function updateConversationPromptPresetId(
   conversationId: string,
   promptPresetId: string | null,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  const trimmed =
-    typeof promptPresetId === 'string' ? promptPresetId.trim() : ''
-  if (!trimmed) {
-    delete next.promptPresetId
-  } else {
-    next.promptPresetId = trimmed
-  }
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    const trimmed =
+      typeof promptPresetId === 'string' ? promptPresetId.trim() : ''
+    if (!trimmed) {
+      delete next.promptPresetId
+    } else {
+      next.promptPresetId = trimmed
+    }
+    return next
+  })
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -896,32 +892,30 @@ export async function updateConversationPluginSettings(
   conversationId: string,
   patches: Record<string, Record<string, unknown>>,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  const merged: Record<string, Record<string, unknown>> = {
-    ...(idx.pluginSettings ?? {}),
-  }
-  for (const [pluginId, partial] of Object.entries(patches)) {
-    const pid = pluginId.trim()
-    if (!pid || !isPlainObject(partial)) continue
-    const prev = merged[pid] ?? {}
-    const bag = mergePluginSettingsPartial(prev, partial)
-    if (Object.keys(bag).length === 0) {
-      delete merged[pid]
-    } else {
-      merged[pid] = bag
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    const merged: Record<string, Record<string, unknown>> = {
+      ...(idx.pluginSettings ?? {}),
     }
-  }
-  if (Object.keys(merged).length === 0) {
-    delete next.pluginSettings
-  } else {
-    next.pluginSettings = merged
-  }
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+    for (const [pluginId, partial] of Object.entries(patches)) {
+      const pid = pluginId.trim()
+      if (!pid || !isPlainObject(partial)) continue
+      const prev = merged[pid] ?? {}
+      const bag = mergePluginSettingsPartial(prev, partial)
+      if (Object.keys(bag).length === 0) {
+        delete merged[pid]
+      } else {
+        merged[pid] = bag
+      }
+    }
+    if (Object.keys(merged).length === 0) {
+      delete next.pluginSettings
+    } else {
+      next.pluginSettings = merged
+    }
+    return next
+  })
 }
 
 /** 对话级世界书 id 列表（占位；传 `[]` 清空） */
@@ -929,41 +923,37 @@ export async function updateConversationLorebookIds(
   conversationId: string,
   lorebookIds: string[],
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
-  const seen = new Set<string>()
-  const cleaned: string[] = []
-  for (const raw of lorebookIds) {
-    if (typeof raw !== 'string') continue
-    const id = raw.trim()
-    if (!id || seen.has(id)) continue
-    seen.add(id)
-    cleaned.push(id)
-  }
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  if (cleaned.length === 0) {
-    delete next.lorebookIds
-  } else {
-    next.lorebookIds = cleaned
-  }
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const seen = new Set<string>()
+    const cleaned: string[] = []
+    for (const raw of lorebookIds) {
+      if (typeof raw !== 'string') continue
+      const id = raw.trim()
+      if (!id || seen.has(id)) continue
+      seen.add(id)
+      cleaned.push(id)
+    }
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    if (cleaned.length === 0) {
+      delete next.lorebookIds
+    } else {
+      next.lorebookIds = cleaned
+    }
+    return next
+  })
 }
 
 /** 清除会话资料库递归覆盖（恢复继承全局） */
 export async function clearConversationLorebookSettings(
   conversationId: string,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  delete next.lorebookSettings
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    delete next.lorebookSettings
+    return next
+  })
 }
 
 /** 资料库递归：在「全局 + 当前覆盖」上合并 patch，稀疏写盘 */
@@ -971,37 +961,33 @@ export async function updateConversationLorebookSettings(
   conversationId: string,
   patch: Partial<LorebookSettings>,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
   const global = await readGlobalLorebookSettings()
-  const current = resolveLorebookSettings(global, idx.lorebookSettings)
-  const effective = normalizeLorebookSettings({ ...current, ...patch })
-  const sparse = lorebookSettingsOverrideFromEffective(effective, global)
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  if (sparse) {
-    next.lorebookSettings = sparse
-  } else {
-    // 会话显式覆盖：与全局相同也保留快照，避免被误判为「继承全局」
-    next.lorebookSettings = { ...effective }
-  }
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const current = resolveLorebookSettings(global, idx.lorebookSettings)
+    const effective = normalizeLorebookSettings({ ...current, ...patch })
+    const sparse = lorebookSettingsOverrideFromEffective(effective, global)
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    if (sparse) {
+      next.lorebookSettings = sparse
+    } else {
+      // 会话显式覆盖：与全局相同也保留快照，避免被误判为「继承全局」
+      next.lorebookSettings = { ...effective }
+    }
+    return next
+  })
 }
 
 /** 清除会话历史轮数覆盖（恢复继承全局） */
 export async function clearConversationHistorySettings(
   conversationId: string,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  delete next.historySettings
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    delete next.historySettings
+    return next
+  })
 }
 
 /** 历史轮数：在「全局 + 当前覆盖」上合并 patch，稀疏写盘 */
@@ -1009,36 +995,32 @@ export async function updateConversationHistorySettings(
   conversationId: string,
   patch: Partial<HistorySettings>,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
   const global = await readGlobalHistorySettings()
-  const current = resolveHistorySettings(global, idx.historySettings)
-  const effective = normalizeHistorySettings({ ...current, ...patch })
-  const sparse = historySettingsOverrideFromEffective(effective, global)
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  if (sparse) {
-    next.historySettings = sparse
-  } else {
-    next.historySettings = { ...effective }
-  }
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const current = resolveHistorySettings(global, idx.historySettings)
+    const effective = normalizeHistorySettings({ ...current, ...patch })
+    const sparse = historySettingsOverrideFromEffective(effective, global)
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    if (sparse) {
+      next.historySettings = sparse
+    } else {
+      next.historySettings = { ...effective }
+    }
+    return next
+  })
 }
 
 /** 清除会话记忆覆盖（恢复继承全局） */
 export async function clearConversationMemorySettings(
   conversationId: string,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  delete next.memorySettings
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    delete next.memorySettings
+    return next
+  })
 }
 
 /** 对话记忆：在「全局 + 当前覆盖」上合并 patch，稀疏写盘 */
@@ -1046,44 +1028,40 @@ export async function updateConversationMemorySettings(
   conversationId: string,
   patch: Partial<MemorySettings>,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
   const global = await readGlobalMemorySettings()
-  const current = resolveMemorySettings(global, idx.memorySettings)
-  const effective = normalizeMemorySettings({ ...current, ...patch })
-  const sparse = memorySettingsOverrideFromEffective(effective, global)
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  if (sparse) {
-    next.memorySettings = sparse
-  } else {
-    next.memorySettings = { ...effective }
-  }
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const current = resolveMemorySettings(global, idx.memorySettings)
+    const effective = normalizeMemorySettings({ ...current, ...patch })
+    const sparse = memorySettingsOverrideFromEffective(effective, global)
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    if (sparse) {
+      next.memorySettings = sparse
+    } else {
+      next.memorySettings = { ...effective }
+    }
+    return next
+  })
 }
 
 /** 清除会话 chat API 覆盖 */
 export async function clearConversationChatApiSettings(
   conversationId: string,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  if (next.apiPreset && typeof next.apiPreset === 'object') {
-    const ap = { ...(next.apiPreset as Record<string, unknown>) }
-    delete ap.chat
-    if (Object.keys(ap).length === 0) {
-      delete next.apiPreset
-    } else {
-      next.apiPreset = ap
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    if (next.apiPreset && typeof next.apiPreset === 'object') {
+      const ap = { ...(next.apiPreset as Record<string, unknown>) }
+      delete ap.chat
+      if (Object.keys(ap).length === 0) {
+        delete next.apiPreset
+      } else {
+        next.apiPreset = ap
+      }
     }
-  }
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+    return next
+  })
 }
 
 /** 更新会话 chat API 覆盖（apiPreset.chat） */
@@ -1091,65 +1069,61 @@ export async function updateConversationChatApiSettings(
   conversationId: string,
   patch: ConversationChatBinding | null,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
   const settings = await readApiSettingsFromFile()
   const globalPresetId = settings?.activePresetId ?? ''
   const globalPreset =
     settings?.presets.find((p) => p.id === globalPresetId) ?? null
 
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  const ap =
-    next.apiPreset && typeof next.apiPreset === 'object' && !Array.isArray(next.apiPreset)
-      ? { ...(next.apiPreset as Record<string, unknown>) }
-      : {}
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    const ap =
+      next.apiPreset && typeof next.apiPreset === 'object' && !Array.isArray(next.apiPreset)
+        ? { ...(next.apiPreset as Record<string, unknown>) }
+        : {}
 
-  if (patch === null) {
-    delete ap.chat
-  } else {
-    const presetId = (patch.apiConfigId?.trim() || globalPresetId).trim()
-    const preset =
-      settings?.presets.find((p) => p.id === presetId) ?? globalPreset
-    if (!preset) {
-      throw new Error('api_preset_not_found')
-    }
-    const effective = mergePresetWithChatBinding(preset, patch)
-    const sparse = chatBindingOverrideFromEffective(
-      preset,
-      effective,
-      patch.apiConfigId?.trim(),
-    )
-    if (sparse) {
-      ap.chat = sparse
+    if (patch === null) {
+      delete ap.chat
     } else {
-      // 会话显式覆盖：与 preset 相同也保留快照，避免被误判为「继承全局」
-      ap.chat = conversationChatBindingSnapshot(preset, effective, patch)
+      const presetId = (patch.apiConfigId?.trim() || globalPresetId).trim()
+      const preset =
+        settings?.presets.find((p) => p.id === presetId) ?? globalPreset
+      if (!preset) {
+        throw new Error('api_preset_not_found')
+      }
+      const effective = mergePresetWithChatBinding(preset, patch)
+      const sparse = chatBindingOverrideFromEffective(
+        preset,
+        effective,
+        patch.apiConfigId?.trim(),
+      )
+      if (sparse) {
+        ap.chat = sparse
+      } else {
+        // 会话显式覆盖：与 preset 相同也保留快照，避免被误判为「继承全局」
+        ap.chat = conversationChatBindingSnapshot(preset, effective, patch)
+      }
     }
-  }
 
-  if (Object.keys(ap).length === 0) {
-    delete next.apiPreset
-  } else {
-    next.apiPreset = ap
-  }
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+    if (Object.keys(ap).length === 0) {
+      delete next.apiPreset
+    } else {
+      next.apiPreset = ap
+    }
+    return next
+  })
 }
 
 /** 清除会话 Embedding 参数覆盖 */
 export async function clearConversationEmbeddingApiSettings(
   conversationId: string,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  delete next.embeddingApiSettings
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    delete next.embeddingApiSettings
+    return next
+  })
 }
 
 /** 对话 Embedding 参数：稀疏写盘 */
@@ -1157,31 +1131,29 @@ export async function updateConversationEmbeddingApiSettings(
   conversationId: string,
   patch: ConversationEmbeddingApiSettingsOverride,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
   const { readGlobalEmbeddingApiSettings } = await import(
     './user-preferences-file.js'
   )
   const global = await readGlobalEmbeddingApiSettings()
-  const effective = resolveConversationEmbeddingModelSettings(global, {
-    ...idx.embeddingApiSettings,
-    ...patch,
-  })
-  const sparse = conversationEmbeddingOverrideFromEffective(effective, global)
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  if (sparse) {
-    next.embeddingApiSettings = sparse
-  } else {
-    // 会话显式覆盖：与全局相同也保留快照
-    next.embeddingApiSettings = {
-      embeddingModel: effective.embeddingModel,
-      embeddingDimensions: effective.embeddingDimensions,
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const effective = resolveConversationEmbeddingModelSettings(global, {
+      ...idx.embeddingApiSettings,
+      ...patch,
+    })
+    const sparse = conversationEmbeddingOverrideFromEffective(effective, global)
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    if (sparse) {
+      next.embeddingApiSettings = sparse
+    } else {
+      // 会话显式覆盖：与全局相同也保留快照
+      next.embeddingApiSettings = {
+        embeddingModel: effective.embeddingModel,
+        embeddingDimensions: effective.embeddingDimensions,
+      }
     }
-  }
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+    return next
+  })
 }
 
 export {
@@ -1197,18 +1169,16 @@ export async function updateConversationAuthorsNote(
   conversationId: string,
   patch: AuthorsNotePatch | null,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  if (patch === null) {
-    delete next.authorsNote
-  } else {
-    next.authorsNote = mergeAuthorsNote(idx.authorsNote, patch)
-  }
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    if (patch === null) {
+      delete next.authorsNote
+    } else {
+      next.authorsNote = mergeAuthorsNote(idx.authorsNote, patch)
+    }
+    return next
+  })
 }
 
 /** 更新会话群聊设置；`patch === null` 重置为默认 */
@@ -1216,31 +1186,26 @@ export async function updateConversationGroupChat(
   conversationId: string,
   patch: unknown,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
-  const t = nowIso()
-  const next: ConversationIndex = {
-    ...idx,
-    updatedAt: t,
-    groupChat: mergeGroupChatSettings(idx.groupChat, patch),
-  }
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const t = nowIso()
+    return {
+      ...idx,
+      updatedAt: t,
+      groupChat: mergeGroupChatSettings(idx.groupChat, patch),
+    }
+  })
 }
 
 /** 清除会话预算裁切覆盖（恢复继承全局） */
 export async function clearConversationBudgetTrimSettings(
   conversationId: string,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  delete next.budgetTrimSettings
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    delete next.budgetTrimSettings
+    return next
+  })
 }
 
 /** 预算裁切：在「全局 + 当前覆盖」上合并 patch，稀疏写盘 */
@@ -1248,33 +1213,31 @@ export async function updateConversationBudgetTrimSettings(
   conversationId: string,
   patch: BudgetTrimSettingsOverride,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
   const global = await readGlobalBudgetTrimSettings()
-  const current = resolveBudgetTrimSettings(global, idx.budgetTrimSettings)
-  const effective = normalizeBudgetTrimSettings({
-    trimOrder: Object.prototype.hasOwnProperty.call(patch, 'trimOrder')
-      ? patch.trimOrder
-      : current.trimOrder,
-    minRetain: {
-      ...current.minRetain,
-      ...(patch.minRetain ?? {}),
-    },
-  })
-  const sparse = budgetTrimSettingsOverrideFromEffective(effective, global)
-  const t = nowIso()
-  const next: ConversationIndex = { ...idx, updatedAt: t }
-  if (sparse) {
-    next.budgetTrimSettings = sparse
-  } else {
-    next.budgetTrimSettings = {
-      trimOrder: [...effective.trimOrder],
-      minRetain: { ...effective.minRetain },
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const current = resolveBudgetTrimSettings(global, idx.budgetTrimSettings)
+    const effective = normalizeBudgetTrimSettings({
+      trimOrder: Object.prototype.hasOwnProperty.call(patch, 'trimOrder')
+        ? patch.trimOrder
+        : current.trimOrder,
+      minRetain: {
+        ...current.minRetain,
+        ...(patch.minRetain ?? {}),
+      },
+    })
+    const sparse = budgetTrimSettingsOverrideFromEffective(effective, global)
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    if (sparse) {
+      next.budgetTrimSettings = sparse
+    } else {
+      next.budgetTrimSettings = {
+        trimOrder: [...effective.trimOrder],
+        minRetain: { ...effective.minRetain },
+      }
     }
-  }
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+    return next
+  })
 }
 
 /** 记录本会话远期记忆向量索引所用的 embedding 模型与维度 */
@@ -1284,28 +1247,25 @@ export async function updateConversationMemoryEmbeddingModel(
   embeddingDimensions?: number | null,
   hybridFtsProfile?: string | null,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
-  const model = embeddingModel.trim()
-  const t = nowIso()
-  const dims =
-    embeddingDimensions === undefined
-      ? idx.memoryEmbeddingDimensions ?? null
-      : embeddingDimensions
-  const ftsProfile =
-    hybridFtsProfile === undefined
-      ? idx.memoryHybridFtsProfile ?? null
-      : hybridFtsProfile
-  const next: ConversationIndex = {
-    ...idx,
-    updatedAt: t,
-    memoryEmbeddingModel: model || null,
-    memoryEmbeddingDimensions: dims,
-    memoryHybridFtsProfile: ftsProfile,
-  }
-  await writeConversationIndex(conversationId, next)
-  await upsertChatListEntry(chatListEntryFromIndex(next), next)
-  return next
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const model = embeddingModel.trim()
+    const t = nowIso()
+    const dims =
+      embeddingDimensions === undefined
+        ? idx.memoryEmbeddingDimensions ?? null
+        : embeddingDimensions
+    const ftsProfile =
+      hybridFtsProfile === undefined
+        ? idx.memoryHybridFtsProfile ?? null
+        : hybridFtsProfile
+    return {
+      ...idx,
+      updatedAt: t,
+      memoryEmbeddingModel: model || null,
+      memoryEmbeddingDimensions: dims,
+      memoryHybridFtsProfile: ftsProfile,
+    }
+  })
 }
 
 /** 从 send 块读取当前用户正文 */
@@ -1477,14 +1437,18 @@ export async function updateConversationAuditDebug(
   conversationId: string,
   auditDebug: { enabled: boolean; maxStored: number },
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
   const enabled = auditDebug.enabled === true
   const clamped = Math.min(200, Math.max(0, Math.floor(auditDebug.maxStored)))
   const maxStored = enabled && clamped >= 1 ? clamped : clamped
-  idx.auditDebug = { enabled, maxStored: maxStored >= 1 ? maxStored : DEFAULT_AUDIT_DEBUG_MAX }
-  idx.updatedAt = nowIso()
-  await writeConversationIndex(conversationId, idx)
+  const idx = await mutateConversationIndex(conversationId, (cur) => {
+    cur.auditDebug = {
+      enabled,
+      maxStored: maxStored >= 1 ? maxStored : DEFAULT_AUDIT_DEBUG_MAX,
+    }
+    cur.updatedAt = nowIso()
+    return cur
+  })
+  if (!idx) return null
   if (enabled && maxStored >= 1) {
     await trimChatAuditEntries(conversationId, maxStored)
   }
@@ -1783,7 +1747,20 @@ async function writeJsonFileAtomic(
   }
 }
 
-export async function writeConversationIndex(
+/**
+ * Serialize root conversation index.json mutations per conversationId.
+ * Queue is not reentrant — use writeConversationIndexUnsafe inside tasks.
+ */
+const conversationIndexQueue = createKeyedSerialQueue()
+
+export function runConversationIndexTask<T>(
+  conversationId: string,
+  task: () => Promise<T>,
+): Promise<T> {
+  return conversationIndexQueue.run(conversationId, task)
+}
+
+export async function writeConversationIndexUnsafe(
   id: string,
   data: ConversationIndex,
 ): Promise<void> {
@@ -1793,17 +1770,64 @@ export async function writeConversationIndex(
   await writeJsonFileAtomic(conversationIndexPath(id), normalized)
 }
 
+export async function writeConversationIndex(
+  id: string,
+  data: ConversationIndex,
+): Promise<void> {
+  await runConversationIndexTask(id, () => writeConversationIndexUnsafe(id, data))
+}
+
+/**
+ * Read-modify-write under the per-conversation index lock (re-read on lock).
+ * Prefer this over read-outside + writeConversationIndex to avoid lost fields
+ * when plugins and chat persist update the same index.
+ */
+export async function mutateConversationIndex(
+  conversationId: string,
+  mutator: (
+    idx: ConversationIndex,
+  ) =>
+    | ConversationIndex
+    | null
+    | Promise<ConversationIndex | null>,
+): Promise<ConversationIndex | null> {
+  return runConversationIndexTask(conversationId, async () => {
+    const idx = await readConversationIndex(conversationId)
+    if (!idx) return null
+    const next = await mutator(idx)
+    if (!next) return null
+    await writeConversationIndexUnsafe(conversationId, next)
+    return next
+  })
+}
+
+async function updateConversationIndexAndList(
+  conversationId: string,
+  mutator: (
+    idx: ConversationIndex,
+  ) =>
+    | ConversationIndex
+    | null
+    | Promise<ConversationIndex | null>,
+  listOpts?: { refreshConversationStats?: boolean },
+): Promise<ConversationIndex | null> {
+  const next = await mutateConversationIndex(conversationId, mutator)
+  if (!next) return null
+  await upsertChatListEntry(chatListEntryFromIndex(next), next, listOpts)
+  return next
+}
+
 /** 仅更新 macroLocalVars（读-改-写单字段，降低并发覆盖其它索引字段的风险） */
 export async function patchConversationMacroLocalVars(
   conversationId: string,
   merge: (current: Record<string, string>) => Record<string, string>,
 ): Promise<boolean> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return false
-  idx.macroLocalVars = merge(idx.macroLocalVars ?? {})
-  idx.updatedAt = nowIso()
-  await writeConversationIndex(conversationId, idx)
-  return true
+  const next = await mutateConversationIndex(conversationId, (idx) => {
+    idx.macroLocalVars = merge(idx.macroLocalVars ?? {})
+    idx.updatedAt = nowIso()
+    return idx
+  })
+  return next !== null
 }
 
 /** 创建空会话（仅索引，无 chunk），供首页列表展示 */
@@ -1838,14 +1862,12 @@ export async function updateConversationTitle(
   conversationId: string,
   title: string,
 ): Promise<ConversationIndex | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return null
-  const t = nowIso()
-  idx.title = title.trim() || idx.title
-  idx.updatedAt = t
-  await writeConversationIndex(conversationId, idx)
-  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
-  return idx
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const t = nowIso()
+    idx.title = title.trim() || idx.title
+    idx.updatedAt = t
+    return idx
+  })
 }
 
 /** 首条用户消息 + 首条助手回复落盘后调用：写 chunk、更新会话索引与列表 */
@@ -2478,21 +2500,30 @@ export async function appendConversationTurn(params: {
   const storagePath = chunkStorageRelativePath(branchPath, chunkName)
   await writeChunkFile(conversationId, storagePath, chunk)
   const t = nowIso()
-  if (prepared.isNewBranchChunk || !idx.headChunkFile) {
-    idx.headChunkFile = chunkName
-  }
-  idx.tailChunkFile = chunkName
-  idx.updatedAt = t
   if (branchPath) {
+    if (prepared.isNewBranchChunk || !idx.headChunkFile) {
+      idx.headChunkFile = chunkName
+    }
+    idx.tailChunkFile = chunkName
+    idx.updatedAt = t
     await writeBranchConversationIndex(conversationId, branchPath, idx)
+    await mutateConversationIndex(conversationId, (fresh) => {
+      fresh.updatedAt = t
+      return fresh
+    })
   } else {
-    await writeConversationIndex(conversationId, idx)
+    await mutateConversationIndex(conversationId, (fresh) => {
+      if (prepared.isNewBranchChunk || !fresh.headChunkFile) {
+        fresh.headChunkFile = chunkName
+      }
+      fresh.tailChunkFile = chunkName
+      fresh.updatedAt = t
+      return fresh
+    })
   }
   invalidateChunkIndexSyncCache(conversationId)
   const rootIdx = await readConversationIndex(conversationId)
   if (rootIdx) {
-    rootIdx.updatedAt = t
-    await writeConversationIndex(conversationId, rootIdx)
     await upsertChatListEntry(chatListEntryFromIndex(rootIdx), rootIdx, {
       refreshConversationStats: true,
     })
@@ -3021,14 +3052,28 @@ export async function removeTurnAtOrdinalInTailChunk(
     idx.updatedAt = t
     if (bp) {
       await writeBranchConversationIndex(conversationId, bp, idx)
+      await mutateConversationIndex(conversationId, (fresh) => {
+        fresh.updatedAt = t
+        return fresh
+      })
     } else {
-      await writeConversationIndex(conversationId, idx)
+      await mutateConversationIndex(conversationId, (fresh) => {
+        if (previousFile) {
+          fresh.tailChunkFile = previousFile
+          if (fresh.headChunkFile === tailFileName) {
+            fresh.headChunkFile = previousFile
+          }
+        } else {
+          fresh.headChunkFile = null
+          fresh.tailChunkFile = null
+        }
+        fresh.updatedAt = t
+        return fresh
+      })
     }
     invalidateChunkIndexSyncCache(conversationId)
     const rootIdx = await readConversationIndex(conversationId)
     if (rootIdx) {
-      rootIdx.updatedAt = t
-      await writeConversationIndex(conversationId, rootIdx)
       await upsertChatListEntry(chatListEntryFromIndex(rootIdx), rootIdx, {
         refreshConversationStats: true,
       })
@@ -3047,16 +3092,21 @@ export async function removeTurnAtOrdinalInTailChunk(
   }
 
   await writeChunkFile(conversationId, storagePath, chunk)
-  idx.updatedAt = t
   if (bp) {
+    idx.updatedAt = t
     await writeBranchConversationIndex(conversationId, bp, idx)
+    await mutateConversationIndex(conversationId, (fresh) => {
+      fresh.updatedAt = t
+      return fresh
+    })
   } else {
-    await writeConversationIndex(conversationId, idx)
+    await mutateConversationIndex(conversationId, (fresh) => {
+      fresh.updatedAt = t
+      return fresh
+    })
   }
   const rootIdx = await readConversationIndex(conversationId)
   if (rootIdx) {
-    rootIdx.updatedAt = t
-    await writeConversationIndex(conversationId, rootIdx)
     await upsertChatListEntry(chatListEntryFromIndex(rootIdx), rootIdx, {
       refreshConversationStats: true,
     })

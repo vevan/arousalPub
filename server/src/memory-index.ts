@@ -6,6 +6,7 @@ import {
   type TurnRecord,
 } from './chat-storage.js'
 import { resolveEmbeddingApiCredentials } from './embedding-credential-resolve.js'
+import { createKeyedCoalesceScheduler } from './keyed-serial-queue.js'
 import {
   countLorebookVectorEntriesByIds,
   reindexLorebooksByIds,
@@ -163,7 +164,59 @@ export async function sealChunkMemorySegment(
 export async function wipeConversationMemoryIndex(
   conversationId: string,
 ): Promise<void> {
+  bumpMemoryReindexEpoch(conversationId)
   await deleteConversationMemoryIndex(conversationId)
+}
+
+type TurnMemoryScheduleOp =
+  | {
+      kind: 'upsert'
+      conversationId: string
+      turn: TurnRecord
+      chunkFileName: string
+      branchPath: string
+    }
+  | { kind: 'delete'; conversationId: string; turnId: string }
+
+function turnMemoryOpKey(op: TurnMemoryScheduleOp): string {
+  const turnId = op.kind === 'upsert' ? op.turn.turnId : op.turnId
+  return `${op.conversationId}:${turnId}`
+}
+
+/**
+ * Same turnId: coalesce fire-and-forget upserts to latest; delete overrides
+ * pending upsert so embed order cannot resurrect a deleted row.
+ */
+const turnMemoryScheduler = createKeyedCoalesceScheduler<TurnMemoryScheduleOp>({
+  keyOf: turnMemoryOpKey,
+  process: async (op) => {
+    if (op.kind === 'delete') {
+      await deleteTurnMemoryVector(op.conversationId, op.turnId)
+      return
+    }
+    await indexTurnMemory(
+      op.conversationId,
+      op.turn,
+      op.chunkFileName,
+      op.branchPath,
+    )
+  },
+  onError: (e) => {
+    // eslint-disable-next-line no-console
+    console.warn('[memory-index] schedule failed:', e)
+  },
+})
+
+/** Bumped on full reindex so in-flight per-turn embeds skip stale upserts. */
+const memoryReindexEpoch = new Map<string, number>()
+
+function bumpMemoryReindexEpoch(conversationId: string): number {
+  const next = (memoryReindexEpoch.get(conversationId) ?? 0) + 1
+  memoryReindexEpoch.set(conversationId, next)
+  turnMemoryScheduler.clearPendingWhere((key) =>
+    key.startsWith(`${conversationId}:`),
+  )
+  return next
 }
 
 /** 落盘后异步索引单轮（失败仅打日志） */
@@ -173,21 +226,23 @@ export function scheduleMemoryIndexUpsert(
   chunkFileName: string,
   branchPath = '',
 ): void {
-  void indexTurnMemory(conversationId, turn, chunkFileName, branchPath).catch(
-    (e) => {
-      // eslint-disable-next-line no-console
-      console.warn('[memory-index] upsert failed:', e)
-    },
-  )
+  turnMemoryScheduler.schedule({
+    kind: 'upsert',
+    conversationId,
+    turn,
+    chunkFileName,
+    branchPath,
+  })
 }
 
 export function scheduleMemoryIndexDelete(
   conversationId: string,
   turnId: string,
 ): void {
-  void deleteTurnMemoryVector(conversationId, turnId).catch((e) => {
-    // eslint-disable-next-line no-console
-    console.warn('[memory-index] delete failed:', e)
+  turnMemoryScheduler.schedule({
+    kind: 'delete',
+    conversationId,
+    turnId,
   })
 }
 
@@ -217,6 +272,7 @@ async function indexTurnMemory(
   chunkFileName: string,
   branchPath: string,
 ): Promise<void> {
+  const epochAtStart = memoryReindexEpoch.get(conversationId) ?? 0
   const idx = await readConversationIndex(conversationId)
   const global = await readGlobalMemorySettings()
   const effective = resolveMemorySettings(global, idx?.memorySettings)
@@ -226,6 +282,7 @@ async function indexTurnMemory(
   if (!corpus.trim()) return
   const emb = await createEmbedding(corpus)
   if (!emb) return
+  if ((memoryReindexEpoch.get(conversationId) ?? 0) !== epochAtStart) return
 
   const loc = mainPathChunkLocation(chunkFileName)
   const resolvedBranch = branchPath.trim()
@@ -255,6 +312,7 @@ export async function reindexConversationMemory(
   if (!creds) {
     return { ok: false, error: 'Embeddings API 未配置' }
   }
+  bumpMemoryReindexEpoch(conversationId)
   const plan = await planConversationMemoryReindex(conversationId)
   const total = plan.total
   let done = 0

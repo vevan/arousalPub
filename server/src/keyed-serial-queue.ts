@@ -56,5 +56,16 @@ export function createKeyedCoalesceScheduler<T>(options: {
     })
   }
 
-  return { schedule, runExclusive }
+  /** Drop a coalesced pending item without running it (e.g. superseded by delete). */
+  function clearPending(key: string): void {
+    latest.delete(key)
+  }
+
+  function clearPendingWhere(predicate: (key: string) => boolean): void {
+    for (const key of [...latest.keys()]) {
+      if (predicate(key)) latest.delete(key)
+    }
+  }
+
+  return { schedule, runExclusive, clearPending, clearPendingWhere }
 }

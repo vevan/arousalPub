@@ -1,8 +1,8 @@
 import { readChunkContainingOrdinal } from './chunk-chain.js'
 import {
   batchUpdateConversationTurns,
+  mutateConversationIndex,
   readConversationIndex,
-  writeConversationIndex,
   type ConversationIndex,
 } from './chat-storage.js'
 import { applyRegexPersistToTurnPatch } from './regex-persist-patch.js'
@@ -114,22 +114,25 @@ async function persistRetroPendingOrdinals(
   conversationId: string,
   pending: number[],
 ): Promise<void> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return
-  const current = readRetroPersistPending(idx)
-  if (
-    current.length === pending.length &&
-    current.every((v, i) => v === pending[i])
-  ) {
-    return
-  }
-  const next: ConversationIndex = { ...idx, updatedAt: new Date().toISOString() }
-  if (pending.length > 0) {
-    next.retroPersistPending = pending
-  } else {
-    delete next.retroPersistPending
-  }
-  await writeConversationIndex(conversationId, next)
+  await mutateConversationIndex(conversationId, (idx) => {
+    const current = readRetroPersistPending(idx)
+    if (
+      current.length === pending.length &&
+      current.every((v, i) => v === pending[i])
+    ) {
+      return null
+    }
+    const next: ConversationIndex = {
+      ...idx,
+      updatedAt: new Date().toISOString(),
+    }
+    if (pending.length > 0) {
+      next.retroPersistPending = pending
+    } else {
+      delete next.retroPersistPending
+    }
+    return next
+  })
 }
 
 export function attachRetroToPersistResult<T extends { ok: boolean }>(

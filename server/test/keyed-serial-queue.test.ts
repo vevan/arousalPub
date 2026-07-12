@@ -87,4 +87,37 @@ describe('createKeyedCoalesceScheduler', () => {
     await delay(10)
     assert.deepEqual(order, ['sched:1', 'exclusive'])
   })
+
+  it('clearPendingWhere drops coalesced items by key predicate', async () => {
+    const processed: string[] = []
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    let firstEntered = false
+
+    const scheduler = createKeyedCoalesceScheduler<{ id: string; tag: string }>({
+      keyOf: (x) => x.id,
+      process: async (item) => {
+        processed.push(item.tag)
+        if (!firstEntered) {
+          firstEntered = true
+          await gate
+        }
+      },
+    })
+
+    scheduler.schedule({ id: 'a', tag: 'A' })
+    await delay(5)
+    scheduler.schedule({ id: 'a', tag: 'A2' })
+    scheduler.schedule({ id: 'b', tag: 'B' })
+    scheduler.clearPendingWhere((key) => key === 'a')
+    release()
+    await delay(40)
+
+    assert.equal(processed.includes('A2'), false)
+    assert.equal(processed.includes('A'), true)
+    assert.equal(processed.includes('B'), true)
+    assert.equal(processed.length, 2)
+  })
 })

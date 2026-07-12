@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
   LOREBOOK_ID_RE,
@@ -11,6 +11,7 @@ import {
   type LorebooksIndexDocument,
 } from './lorebook-types.js'
 import { getLorebooksDir, getLorebooksIndexPath, getUserDataDir } from './config.js'
+import { createKeyedSerialQueue } from './keyed-serial-queue.js'
 import { getCurrentUserId } from './user-context.js'
 
 export {
@@ -20,6 +21,33 @@ export {
   type LorebookGroup,
   type LorebooksDocument,
 } from './lorebook-types.js'
+
+/**
+ * Serialize all lorebook JSON + index.json mutations (non-reentrant).
+ * Callers doing read-modify-write must use this and writeLorebookUnsafe inside.
+ */
+const lorebookFileQueue = createKeyedSerialQueue()
+const LOREBOOK_FILES_KEY = 'lorebooks'
+
+export function runLorebookFileTask<T>(task: () => Promise<T>): Promise<T> {
+  return lorebookFileQueue.run(LOREBOOK_FILES_KEY, task)
+}
+
+async function writeJsonFileAtomic(
+  filePath: string,
+  data: unknown,
+): Promise<void> {
+  await mkdir(path.dirname(filePath), { recursive: true })
+  const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`
+  const body = `${JSON.stringify(data, null, 2)}\n`
+  await writeFile(tmp, body, 'utf8')
+  try {
+    await rename(tmp, filePath)
+  } catch (e) {
+    await rm(tmp, { force: true }).catch(() => {})
+    throw e
+  }
+}
 
 function lorebookFilePath(lorebookId: string): string {
   if (!LOREBOOK_ID_RE.test(lorebookId)) {
@@ -180,6 +208,12 @@ export async function readLorebooksByIds(
 export async function writeLorebooksDocument(
   data: LorebooksDocument,
 ): Promise<void> {
+  await runLorebookFileTask(() => writeLorebooksDocumentUnsafe(data))
+}
+
+async function writeLorebooksDocumentUnsafe(
+  data: LorebooksDocument,
+): Promise<void> {
   const dir = getLorebooksDir()
   await mkdir(dir, { recursive: true })
   await mkdir(getUserDataDir(getCurrentUserId()), { recursive: true })
@@ -193,11 +227,7 @@ export async function writeLorebooksDocument(
     const id = lb.id
     keepIds.add(id)
     const body: Lorebook = { ...lb, updatedAt: savedAt }
-    await writeFile(
-      lorebookFilePath(id),
-      `${JSON.stringify(body, null, 2)}\n`,
-      'utf8',
-    )
+    await writeJsonFileAtomic(lorebookFilePath(id), body)
     indexEntries.push(indexEntryFromLorebook(body as unknown as Record<string, unknown>))
   }
 
@@ -206,11 +236,7 @@ export async function writeLorebooksDocument(
     savedAt,
     lorebooks: indexEntries,
   }
-  await writeFile(
-    getLorebooksIndexPath(),
-    `${JSON.stringify(indexDoc, null, 2)}\n`,
-    'utf8',
-  )
+  await writeJsonFileAtomic(getLorebooksIndexPath(), indexDoc)
 
   const names = await readdir(dir).catch(() => [] as string[])
   for (const name of names) {
@@ -295,6 +321,13 @@ function validateEntryShape(
 
 /** 写入单本世界书并更新 index.json 中对应条目的 updatedAt */
 export async function writeLorebook(lb: Lorebook): Promise<string> {
+  return runLorebookFileTask(() => writeLorebookUnsafe(lb))
+}
+
+/**
+ * Must only be called from runLorebookFileTask (queue is not reentrant).
+ */
+export async function writeLorebookUnsafe(lb: Lorebook): Promise<string> {
   validateLorebookShape(lb)
   const dir = getLorebooksDir()
   await mkdir(dir, { recursive: true })
@@ -302,11 +335,7 @@ export async function writeLorebook(lb: Lorebook): Promise<string> {
 
   const savedAt = lb.updatedAt || new Date().toISOString()
   const body: Lorebook = { ...lb, updatedAt: savedAt }
-  await writeFile(
-    lorebookFilePath(body.id),
-    `${JSON.stringify(body, null, 2)}\n`,
-    'utf8',
-  )
+  await writeJsonFileAtomic(lorebookFilePath(body.id), body)
 
   const indexPath = getLorebooksIndexPath()
   let indexDoc: LorebooksIndexDocument
@@ -330,7 +359,7 @@ export async function writeLorebook(lb: Lorebook): Promise<string> {
     indexDoc.lorebooks.push(entry)
   }
   indexDoc.savedAt = savedAt
-  await writeFile(indexPath, `${JSON.stringify(indexDoc, null, 2)}\n`, 'utf8')
+  await writeJsonFileAtomic(indexPath, indexDoc)
   return savedAt
 }
 

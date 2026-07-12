@@ -448,7 +448,7 @@ export function filterMemorySearchRawRows(
   return out
 }
 
-/** 单表 hybrid TopK（Memory v2） */
+/** 单表 hybrid TopK（Memory v2）；与 replace/rm/upsert 同会话串行 */
 export async function searchTurnMemoryVectors(
   conversationId: string,
   queryVector: number[],
@@ -459,6 +459,28 @@ export async function searchTurnMemoryVectors(
   allowedBranchPaths?: Set<string>,
 ): Promise<MemorySearchHit[]> {
   if (!queryVector.length || topK < 1) return []
+  return runConversationMemoryTask(conversationId, () =>
+    searchTurnMemoryVectorsUnsafe(
+      conversationId,
+      queryVector,
+      queryText,
+      topK,
+      excludeTurnIds,
+      maxOrdinalExclusive,
+      allowedBranchPaths,
+    ),
+  )
+}
+
+async function searchTurnMemoryVectorsUnsafe(
+  conversationId: string,
+  queryVector: number[],
+  queryText: string,
+  topK: number,
+  excludeTurnIds: Set<string>,
+  maxOrdinalExclusive?: number,
+  allowedBranchPaths?: Set<string>,
+): Promise<MemorySearchHit[]> {
   const k = Math.min(64, Math.max(topK * 3, topK))
 
   const table = await openMemoryTable(conversationId)

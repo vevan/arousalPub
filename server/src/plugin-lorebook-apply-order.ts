@@ -1,4 +1,9 @@
-import { LOREBOOK_ID_RE, readLorebookById, writeLorebook } from './lorebook-file.js'
+import {
+  LOREBOOK_ID_RE,
+  readLorebookById,
+  runLorebookFileTask,
+  writeLorebookUnsafe,
+} from './lorebook-file.js'
 import type { Lorebook } from './lorebook-types.js'
 
 export type ApplyLorebookOrderScope = 'full' | 'partial'
@@ -113,61 +118,63 @@ export async function runApplyLorebookOrder(
     return { ok: false, code: 'lorebook_id_required' }
   }
 
-  const lb = await readLorebookById(lorebookId)
-  if (!lb) return { ok: false, code: 'lorebook_not_found' }
+  return runLorebookFileTask(async () => {
+    const lb = await readLorebookById(lorebookId)
+    if (!lb) return { ok: false as const, code: 'lorebook_not_found' }
 
-  const valid = validateApplyLorebookOrderLayout(lb, req)
-  if (!valid.ok) return valid
+    const valid = validateApplyLorebookOrderLayout(lb, req)
+    if (!valid.ok) return valid
 
-  const t = new Date().toISOString()
-  let changed = 0
+    const t = new Date().toISOString()
+    let changed = 0
 
-  let groups = lb.groups
-  if (Array.isArray(req.groupIds) && req.groupIds.length > 0) {
-    const orderMap = new Map(
-      req.groupIds.map((id, i) => [id.trim(), i] as const),
-    )
-    groups = lb.groups.map((g) => {
-      const nextOrder = orderMap.get(g.id)
-      if (typeof nextOrder !== 'number' || nextOrder === g.order) return g
-      changed += 1
-      return { ...g, order: nextOrder }
-    })
-  }
-
-  let entries = lb.entries
-  const entriesByGroup = req.entriesByGroup
-  if (entriesByGroup && typeof entriesByGroup === 'object') {
-    const orderMaps = new Map<string, Map<string, number>>()
-    for (const [gid, ids] of Object.entries(entriesByGroup)) {
-      const m = new Map<string, number>()
-      ids.forEach((id, i) => m.set(id.trim(), i))
-      orderMaps.set(gid, m)
+    let groups = lb.groups
+    if (Array.isArray(req.groupIds) && req.groupIds.length > 0) {
+      const orderMap = new Map(
+        req.groupIds.map((id, i) => [id.trim(), i] as const),
+      )
+      groups = lb.groups.map((g) => {
+        const nextOrder = orderMap.get(g.id)
+        if (typeof nextOrder !== 'number' || nextOrder === g.order) return g
+        changed += 1
+        return { ...g, order: nextOrder }
+      })
     }
-    entries = lb.entries.map((e) => {
-      const m = orderMaps.get(e.groupId)
-      if (!m) return e
-      const nextOrder = m.get(e.id)
-      if (typeof nextOrder !== 'number' || nextOrder === e.order) return e
-      changed += 1
-      return { ...e, order: nextOrder, updatedAt: t }
+
+    let entries = lb.entries
+    const entriesByGroup = req.entriesByGroup
+    if (entriesByGroup && typeof entriesByGroup === 'object') {
+      const orderMaps = new Map<string, Map<string, number>>()
+      for (const [gid, ids] of Object.entries(entriesByGroup)) {
+        const m = new Map<string, number>()
+        ids.forEach((id, i) => m.set(id.trim(), i))
+        orderMaps.set(gid, m)
+      }
+      entries = lb.entries.map((e) => {
+        const m = orderMaps.get(e.groupId)
+        if (!m) return e
+        const nextOrder = m.get(e.id)
+        if (typeof nextOrder !== 'number' || nextOrder === e.order) return e
+        changed += 1
+        return { ...e, order: nextOrder, updatedAt: t }
+      })
+    }
+
+    if (changed === 0) {
+      return { ok: true as const, lorebook: lb, changed: 0, savedAt: lb.updatedAt }
+    }
+
+    const savedAt = await writeLorebookUnsafe({
+      ...lb,
+      groups,
+      entries,
+      updatedAt: t,
     })
-  }
-
-  if (changed === 0) {
-    return { ok: true, lorebook: lb, changed: 0, savedAt: lb.updatedAt }
-  }
-
-  const savedAt = await writeLorebook({
-    ...lb,
-    groups,
-    entries,
-    updatedAt: t,
+    return {
+      ok: true as const,
+      lorebook: { ...lb, groups, entries, updatedAt: savedAt },
+      changed,
+      savedAt,
+    }
   })
-  return {
-    ok: true,
-    lorebook: { ...lb, groups, entries, updatedAt: savedAt },
-    changed,
-    savedAt,
-  }
 }

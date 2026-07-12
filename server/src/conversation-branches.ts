@@ -4,6 +4,7 @@ import { ApiErrorCodes } from './api-error-codes.js'
 import {
   chatListEntryFromIndex,
   conversationDir,
+  mutateConversationIndex,
   readBranchConversationIndex,
   readConversationIndex,
   upsertChatListEntry,
@@ -148,15 +149,13 @@ async function writeBranchForkTurnIds(
   conversationId: string,
   ids: string[],
 ): Promise<void> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx) return
   const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))]
-  const next: ConversationIndex = {
+  const next = await mutateConversationIndex(conversationId, (idx) => ({
     ...idx,
     branchForkTurnIds: unique,
     updatedAt: nowIso(),
-  }
-  await writeConversationIndex(conversationId, next)
+  }))
+  if (!next) return
   await upsertChatListEntry(chatListEntryFromIndex(next), next)
 }
 
@@ -310,28 +309,42 @@ async function upsertBranchRegistryInParentIndex(
   entry: BranchRegistryEntry,
 ): Promise<ConversationIndex | null> {
   const parent = normalizeBranchPath(parentBranchPath)
-  const idx = await readParentConversationIndex(conversationId, parent)
-  if (!idx) return null
-  const branches = Array.isArray(idx.branches) ? idx.branches.slice() : []
-  const existingIdx = branches.findIndex((e) =>
-    registryEntryMatchesSegment(e, entry.path),
-  )
-  if (existingIdx >= 0) {
-    branches[existingIdx] = entry
-  } else {
-    branches.push(entry)
-  }
-  const next: ConversationIndex = {
-    ...idx,
-    branches,
-    updatedAt: nowIso(),
-  }
   if (parent) {
+    const idx = await readParentConversationIndex(conversationId, parent)
+    if (!idx) return null
+    const branches = Array.isArray(idx.branches) ? idx.branches.slice() : []
+    const existingIdx = branches.findIndex((e) =>
+      registryEntryMatchesSegment(e, entry.path),
+    )
+    if (existingIdx >= 0) {
+      branches[existingIdx] = entry
+    } else {
+      branches.push(entry)
+    }
+    const next: ConversationIndex = {
+      ...idx,
+      branches,
+      updatedAt: nowIso(),
+    }
     await writeBranchConversationIndex(conversationId, parent, next)
-  } else {
-    await writeConversationIndex(conversationId, next)
+    return next
   }
-  return next
+  return mutateConversationIndex(conversationId, (idx) => {
+    const branches = Array.isArray(idx.branches) ? idx.branches.slice() : []
+    const existingIdx = branches.findIndex((e) =>
+      registryEntryMatchesSegment(e, entry.path),
+    )
+    if (existingIdx >= 0) {
+      branches[existingIdx] = entry
+    } else {
+      branches.push(entry)
+    }
+    return {
+      ...idx,
+      branches,
+      updatedAt: nowIso(),
+    }
+  })
 }
 
 async function appendBranchRegistryToForkChunk(
@@ -415,22 +428,34 @@ async function removeBranchRegistryFromParentIndex(
   segment: string,
 ): Promise<ConversationIndex | null> {
   const parent = normalizeBranchPath(parentBranchPath)
-  const idx = await readParentConversationIndex(conversationId, parent)
-  if (!idx) return null
-  const branches = Array.isArray(idx.branches) ? idx.branches : []
-  const nextBranches = branches.filter((e) => !registryEntryMatchesSegment(e, segment))
-  if (nextBranches.length === branches.length) return null
-  const next: ConversationIndex = {
-    ...idx,
-    branches: nextBranches,
-    updatedAt: nowIso(),
-  }
   if (parent) {
+    const idx = await readParentConversationIndex(conversationId, parent)
+    if (!idx) return null
+    const branches = Array.isArray(idx.branches) ? idx.branches : []
+    const nextBranches = branches.filter(
+      (e) => !registryEntryMatchesSegment(e, segment),
+    )
+    if (nextBranches.length === branches.length) return null
+    const next: ConversationIndex = {
+      ...idx,
+      branches: nextBranches,
+      updatedAt: nowIso(),
+    }
     await writeBranchConversationIndex(conversationId, parent, next)
-  } else {
-    await writeConversationIndex(conversationId, next)
+    return next
   }
-  return next
+  return mutateConversationIndex(conversationId, (idx) => {
+    const branches = Array.isArray(idx.branches) ? idx.branches : []
+    const nextBranches = branches.filter(
+      (e) => !registryEntryMatchesSegment(e, segment),
+    )
+    if (nextBranches.length === branches.length) return null
+    return {
+      ...idx,
+      branches: nextBranches,
+      updatedAt: nowIso(),
+    }
+  })
 }
 
 async function removeBranchRegistryFromForkChunk(
@@ -511,29 +536,44 @@ async function updateBranchRegistryInParentIndex(
   label: string | null,
 ): Promise<ConversationIndex | null> {
   const parent = normalizeBranchPath(parentBranchPath)
-  const idx = await readParentConversationIndex(conversationId, parent)
-  if (!idx) return null
-  const branches = Array.isArray(idx.branches) ? idx.branches : []
-  let changed = false
-  const nextBranches = branches.map((e) => {
-    if (!registryEntryMatchesSegment(e, segment)) return e
-    const next = branchRegistryEntryWithLabel(e, label)
-    if (!next) return e
-    changed = true
-    return next
-  })
-  if (!changed) return null
-  const next: ConversationIndex = {
-    ...idx,
-    branches: nextBranches,
-    updatedAt: nowIso(),
-  }
   if (parent) {
+    const idx = await readParentConversationIndex(conversationId, parent)
+    if (!idx) return null
+    const branches = Array.isArray(idx.branches) ? idx.branches : []
+    let changed = false
+    const nextBranches = branches.map((e) => {
+      if (!registryEntryMatchesSegment(e, segment)) return e
+      const next = branchRegistryEntryWithLabel(e, label)
+      if (!next) return e
+      changed = true
+      return next
+    })
+    if (!changed) return null
+    const next: ConversationIndex = {
+      ...idx,
+      branches: nextBranches,
+      updatedAt: nowIso(),
+    }
     await writeBranchConversationIndex(conversationId, parent, next)
-  } else {
-    await writeConversationIndex(conversationId, next)
+    return next
   }
-  return next
+  return mutateConversationIndex(conversationId, (idx) => {
+    const branches = Array.isArray(idx.branches) ? idx.branches : []
+    let changed = false
+    const nextBranches = branches.map((e) => {
+      if (!registryEntryMatchesSegment(e, segment)) return e
+      const next = branchRegistryEntryWithLabel(e, label)
+      if (!next) return e
+      changed = true
+      return next
+    })
+    if (!changed) return null
+    return {
+      ...idx,
+      branches: nextBranches,
+      updatedAt: nowIso(),
+    }
+  })
 }
 
 async function updateBranchRegistryInForkChunk(
@@ -889,18 +929,16 @@ export async function createEmptyConversationBranch(params: {
     forkTurnId,
   }
   if (setActive) {
-    const currentRoot = await readConversationIndex(conversationId)
-    if (!currentRoot) {
-      await rollbackCreatedConversationBranch(conversationId, rollbackCtx)
-      return { error: ApiErrorCodes.branch_create_failed, status: 500 }
-    }
     try {
-      const nextRoot: ConversationIndex = {
+      const nextRoot = await mutateConversationIndex(conversationId, (currentRoot) => ({
         ...currentRoot,
         activeBranchPath: fullPath,
         updatedAt: nowIso(),
+      }))
+      if (!nextRoot) {
+        await rollbackCreatedConversationBranch(conversationId, rollbackCtx)
+        return { error: ApiErrorCodes.branch_create_failed, status: 500 }
       }
-      await writeConversationIndex(conversationId, nextRoot)
       await upsertChatListEntry(chatListEntryFromIndex(nextRoot), nextRoot)
       activeBranchPath = fullPath
     } catch {
@@ -1104,16 +1142,9 @@ export async function updateConversationActiveBranchPath(
   if (!id) {
     return { error: ApiErrorCodes.validation_failed, status: 400 }
   }
-  const idx = await readConversationIndex(id)
-  if (!idx) {
-    return { error: ApiErrorCodes.conversation_not_found, status: 404 }
-  }
 
-  const next: ConversationIndex = { ...idx, updatedAt: nowIso() }
-  if (activeBranchPath === null || activeBranchPath === '') {
-    delete next.activeBranchPath
-  } else {
-    let normalized: string
+  let normalized: string | null = null
+  if (activeBranchPath !== null && activeBranchPath !== '') {
     try {
       normalized = normalizeBranchPath(activeBranchPath)
     } catch {
@@ -1122,10 +1153,21 @@ export async function updateConversationActiveBranchPath(
     if (!(await branchPathIsRegistered(id, normalized))) {
       return { error: ApiErrorCodes.branch_path_not_found, status: 404 }
     }
-    next.activeBranchPath = normalized
   }
 
-  await writeConversationIndex(id, next)
+  const next = await mutateConversationIndex(id, (idx) => {
+    const out: ConversationIndex = { ...idx, updatedAt: nowIso() }
+    if (normalized === null) {
+      delete out.activeBranchPath
+    } else {
+      out.activeBranchPath = normalized
+    }
+    return out
+  })
+  if (!next) {
+    return { error: ApiErrorCodes.conversation_not_found, status: 404 }
+  }
+
   await upsertChatListEntry(chatListEntryFromIndex(next), next)
   const { syncChatListConversationStats } = await import('./chat-storage.js')
   await syncChatListConversationStats(id)

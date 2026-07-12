@@ -2,6 +2,7 @@ import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import {
   conversationDir,
+  mutateConversationIndex,
   readBranchConversationIndex,
   readConversationIndex,
   writeBranchConversationIndex,
@@ -815,7 +816,12 @@ async function rotateTailChunk(
   if (bp) {
     await writeBranchConversationIndex(conversationId, bp, idx)
   } else {
-    await writeConversationIndex(conversationId, idx)
+    const next = await mutateConversationIndex(conversationId, (fresh) => {
+      fresh.tailChunkFile = newFileName
+      fresh.updatedAt = new Date().toISOString()
+      return fresh
+    })
+    if (next) idx = next
   }
   return {
     idx,
@@ -911,7 +917,12 @@ export async function splitOversizedTailChunkIfNeeded(
   if (bp) {
     await writeBranchConversationIndex(conversationId, bp, idx)
   } else {
-    await writeConversationIndex(conversationId, idx)
+    await mutateConversationIndex(conversationId, (fresh) => {
+      fresh.tailChunkFile = prevFile
+      if (!fresh.headChunkFile) fresh.headChunkFile = tailName
+      fresh.updatedAt = new Date().toISOString()
+      return fresh
+    })
   }
   return sealed
 }
@@ -1175,14 +1186,20 @@ async function writeChunkIndexHeadTail(
   tailChunkFile: string | null,
 ): Promise<void> {
   const bp = normalizeBranchPath(branchPath)
-  idx.headChunkFile = headChunkFile
-  idx.tailChunkFile = tailChunkFile
-  idx.updatedAt = new Date().toISOString()
+  const t = new Date().toISOString()
   if (bp) {
+    idx.headChunkFile = headChunkFile
+    idx.tailChunkFile = tailChunkFile
+    idx.updatedAt = t
     await writeBranchConversationIndex(conversationId, bp, idx)
-  } else {
-    await writeConversationIndex(conversationId, idx)
+    return
   }
+  await mutateConversationIndex(conversationId, (fresh) => {
+    fresh.headChunkFile = headChunkFile
+    fresh.tailChunkFile = tailChunkFile
+    fresh.updatedAt = t
+    return fresh
+  })
 }
 
 async function syncChunkIndexScopeIfDrifted(

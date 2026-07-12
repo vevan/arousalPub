@@ -1,6 +1,7 @@
 import { createEmbedding } from './embedding-client.js'
 import { embedTextsInBatches, isEmbeddingBatchOk } from './embedding-batch.js'
 import type { ResolvedEmbeddingCredentials } from './embedding-credential-resolve.js'
+import { createKeyedCoalesceScheduler } from './keyed-serial-queue.js'
 import { readLorebookById } from './lorebook-file.js'
 import type { Lorebook } from './lorebook-types.js'
 import {
@@ -24,19 +25,35 @@ export interface LorebookVectorReindexError {
   lorebookId?: string
 }
 
-/** 保存资料库后异步重建向量索引（仅 vector 触发且启用的条目） */
-export function scheduleLorebookVectorReindex(lorebooks: Lorebook[]): void {
-  void reindexLorebooksVector(lorebooks).catch((e) => {
+/**
+ * Same lorebookId: serialize Lance replace; coalesce fire-and-forget schedules
+ * so consecutive saves cannot rm/create the same index concurrently.
+ */
+const lorebookVectorScheduler = createKeyedCoalesceScheduler<Lorebook>({
+  keyOf: (lb) => lb.id,
+  process: async (lb) => {
+    await reindexOneLorebookVector(lb)
+  },
+  onError: (e) => {
     // eslint-disable-next-line no-console
     console.warn('[lorebook-vector-index] reindex failed:', e)
-  })
+  },
+})
+
+/** 保存资料库后异步重建向量索引（仅 vector 触发且启用的条目） */
+export function scheduleLorebookVectorReindex(lorebooks: Lorebook[]): void {
+  for (const lb of lorebooks) {
+    lorebookVectorScheduler.schedule(lb)
+  }
 }
 
 export async function reindexLorebooksVector(
   lorebooks: Lorebook[],
 ): Promise<void> {
   for (const lb of lorebooks) {
-    await reindexOneLorebookVector(lb)
+    await lorebookVectorScheduler.runExclusive(lb.id, async () => {
+      await reindexOneLorebookVector(lb)
+    })
   }
 }
 
@@ -91,7 +108,9 @@ export async function reindexLorebooksByIds(
   for (const id of ids) {
     const lb = await readLorebookById(id)
     if (!lb) continue
-    const result = await reindexOneLorebookVector(lb, creds, options)
+    const result = await lorebookVectorScheduler.runExclusive(id, () =>
+      reindexOneLorebookVector(lb, creds, options),
+    )
     if ('error' in result) {
       return { ...result, lorebookId: id }
     }

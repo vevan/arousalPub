@@ -64,19 +64,32 @@ interface BackupStatusResponse {
 }
 
 async function waitForBackupComplete(): Promise<void> {
-  const poll = async (): Promise<void> => {
+  const poll = async (attempt = 0): Promise<void> => {
     try {
       const res = await fetch('/api/backup/status')
-      if (!res.ok) return
+      if (!res.ok) {
+        // 服务未完全就绪时重试，勿当作「无备份」直接放行
+        if (attempt < 40) {
+          await new Promise((resolve) => setTimeout(resolve, 250))
+          return poll(attempt + 1)
+        }
+        backupBlocking.value = false
+        return
+      }
       const data = (await res.json()) as BackupStatusResponse
       if (data.running) {
         backupBlocking.value = true
         backupFilesDone.value = data.filesDone
         backupFilesTotal.value = data.filesTotal
         await new Promise((resolve) => setTimeout(resolve, 500))
-        return poll()
+        return poll(0)
       }
     } catch {
+      if (attempt < 40) {
+        await new Promise((resolve) => setTimeout(resolve, 250))
+        return poll(attempt + 1)
+      }
+      backupBlocking.value = false
       return
     }
     backupBlocking.value = false

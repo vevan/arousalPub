@@ -1549,6 +1549,7 @@
       "branch_delete_failed": "Failed to delete branch",
       "branch_label_invalid": "Invalid branch name (max 64 characters)",
       "branch_registry_broken": "Branch registry is inconsistent; try repairing chunk index",
+      "conversation_chunks_unreadable": "Conversation history is temporarily unreadable (sync in progress?). Try again shortly",
       "branch_update_failed": "Failed to update branch",
       "branch_path_conflict": "Branch path conflict",
       "branch_path_not_found": "Branch path not found",

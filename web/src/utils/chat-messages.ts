@@ -177,20 +177,38 @@ export async function fetchConversationTurns(
   return parseConversationTurnsFromApi(j.turns ?? [])
 }
 
+const EMPTY_MESSAGES_PAGE: MessagesPageInfo = {
+  hasMoreBefore: false,
+  from: 0,
+  to: -1,
+}
+
+async function sleepMs(ms: number): Promise<void> {
+  await new Promise((r) => setTimeout(r, ms))
+}
+
 export async function fetchConversationTurnsTail(
   conversationId: string,
   tail = CONVERSATION_UI_TAIL_LIMIT,
 ): Promise<{ turns: ChatTurnItem[]; page: MessagesPageInfo | null }> {
   const qs = new URLSearchParams({ tail: String(tail) })
-  const res = await fetch(
-    `/api/chat/conversations/${conversationId}/messages?${qs.toString()}`,
-  )
-  if (!res.ok) return { turns: [], page: null }
-  const j = (await res.json()) as MessagesApiResponse
-  return {
-    turns: parseConversationTurnsFromApi(j.turns ?? []),
-    page: j.page ?? null,
+  const url = `/api/chat/conversations/${conversationId}/messages?${qs.toString()}`
+  // 503：chunk 暂不可读；短暂重试一次
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch(url)
+    if (res.status === 503 && attempt === 0) {
+      await sleepMs(200)
+      continue
+    }
+    if (!res.ok) return { turns: [], page: null }
+    const j = (await res.json()) as MessagesApiResponse
+    return {
+      turns: parseConversationTurnsFromApi(j.turns ?? []),
+      // 成功响应缺 page（旧服务端空对话）视为空窗口，勿当加载失败
+      page: j.page ?? EMPTY_MESSAGES_PAGE,
+    }
   }
+  return { turns: [], page: null }
 }
 
 export async function fetchConversationTurnsBefore(

@@ -733,6 +733,51 @@ async function patchAuditDebugToServer(id: string) {
   })
 }
 
+/** 与服务端 updateConversationAuditDebug 对齐的期望值 */
+function desiredAuditDebugFromPrefs(): { enabled: boolean; maxStored: number } {
+  const enabled = prefStore.writeChatPromptSnapshot === true
+  const maxStored = Math.min(
+    200,
+    Math.max(1, Math.floor(Number(prefStore.promptDebugMaxStored)) || 10),
+  )
+  return { enabled, maxStored }
+}
+
+function auditDebugFromIndex(
+  idx: Record<string, unknown> | null | undefined,
+): { enabled: boolean; maxStored: number } | null {
+  const raw = idx?.auditDebug
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const o = raw as { enabled?: unknown; maxStored?: unknown }
+  return {
+    enabled: o.enabled === true,
+    maxStored:
+      typeof o.maxStored === 'number' && Number.isFinite(o.maxStored)
+        ? Math.min(200, Math.max(0, Math.floor(o.maxStored)))
+        : -1,
+  }
+}
+
+function auditDebugMatchesPrefs(
+  current: { enabled: boolean; maxStored: number } | null,
+): boolean {
+  if (!current || current.maxStored < 0) return false
+  const desired = desiredAuditDebugFromPrefs()
+  return (
+    current.enabled === desired.enabled && current.maxStored === desired.maxStored
+  )
+}
+
+/** 仅当会话 auditDebug 与全局 Debug 偏好不一致时才 PATCH（打开对话默认不写盘） */
+async function syncAuditDebugIfNeeded(
+  id: string,
+  idx?: Record<string, unknown> | null,
+): Promise<void> {
+  const current = auditDebugFromIndex(idx ?? null)
+  if (auditDebugMatchesPrefs(current)) return
+  await patchAuditDebugToServer(id)
+}
+
 watch(
   [
     lorebookRecursiveEnabled,
@@ -791,11 +836,9 @@ async function ensureConversation(id: string) {
   loading.value = true
   errorText.value = ''
   try {
-    await bootstrapAppData()
-    if (!promptsStore.loaded) {
-      await promptsStore.loadIndexFromServer()
-    }
-    await loadLorebookNameMap()
+    // 与读会话并行；首屏不因偏好/连接初始化阻塞
+    const boot = bootstrapAppData()
+
     let res = await fetch(`/api/chat/conversations/${id}`)
     if (res.status === 404) {
       const created = await fetch('/api/chat/conversations', {
@@ -808,6 +851,7 @@ async function ensureConversation(id: string) {
       })
       if (!created.ok) {
         errorText.value = t('chatConversation.loadFailed')
+        loading.value = false
         return
       }
       const defaultLorebookIds = await fetchDefaultLorebookIds()
@@ -822,6 +866,7 @@ async function ensureConversation(id: string) {
     }
     if (!res.ok) {
       errorText.value = t('chatConversation.loadFailed')
+      loading.value = false
       return
     }
     const idx = (await res.json()) as Record<string, unknown>
@@ -831,12 +876,28 @@ async function ensureConversation(id: string) {
     applyConversationMemoryIndexMeta(idx)
     convBindings.value = bindingsFromIndex(idx)
     syncActiveFromIndex(idx)
-    void refreshBranchTree()
-    void patchAuditDebugToServer(id)
-    maybePromptMemoryRebuild()
+
+    // 关键路径结束：挂载 HomeChat → loadMessages；其余靠后
+    loading.value = false
+
+    void (async () => {
+      try {
+        await boot
+        if (props.conversationId !== id) return
+        if (!promptsStore.loaded) {
+          await promptsStore.loadIndexFromServer()
+        }
+        await loadLorebookNameMap()
+        if (props.conversationId !== id) return
+        void refreshBranchTree()
+        void syncAuditDebugIfNeeded(id, idx)
+        maybePromptMemoryRebuild()
+      } catch {
+        /* 次要初始化失败不阻断已展示的对话 */
+      }
+    })()
   } catch {
     errorText.value = t('chatConversation.loadFailed')
-  } finally {
     loading.value = false
   }
 }
@@ -876,17 +937,21 @@ watch(
   { immediate: true },
 )
 
-/** 偏好变更时同步会话索引中的 prompt 快照开关（maxStored=0 表示不写） */
+/** 仅全局 Debug 偏好变更时同步；进页同步见 ensureConversation 延后任务 */
 watch(
   () =>
-    [
-      props.conversationId,
-      prefStore.writeChatPromptSnapshot,
-      prefStore.promptDebugMaxStored,
-    ] as const,
-  ([id]) => {
+    [prefStore.writeChatPromptSnapshot, prefStore.promptDebugMaxStored] as const,
+  async () => {
+    const id = props.conversationId
     if (!id || loading.value) return
-    void patchAuditDebugToServer(id)
+    try {
+      const res = await fetch(`/api/chat/conversations/${id}`)
+      if (!res.ok) return
+      const idx = (await res.json()) as Record<string, unknown>
+      await syncAuditDebugIfNeeded(id, idx)
+    } catch {
+      /* 偏好同步失败不阻断聊天 */
+    }
   },
 )
 

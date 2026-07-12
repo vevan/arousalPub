@@ -95,6 +95,7 @@ export const ApiErrorCodes = {
   branch_delete_failed: 'branch_delete_failed',
   branch_label_invalid: 'branch_label_invalid',
   branch_registry_broken: 'branch_registry_broken',
+  conversation_chunks_unreadable: 'conversation_chunks_unreadable',
   branch_update_failed: 'branch_update_failed',
   branch_path_conflict: 'branch_path_conflict',
   branch_path_not_found: 'branch_path_not_found',

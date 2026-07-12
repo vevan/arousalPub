@@ -1466,7 +1466,11 @@ app.get<{
           ? (loaded.error as (typeof ApiErrorCodes)[keyof typeof ApiErrorCodes])
           : ApiErrorCodes.validation_failed
       const status =
-        loaded.error === ApiErrorCodes.branch_registry_broken ? 409 : 400
+        loaded.error === ApiErrorCodes.branch_registry_broken
+          ? 409
+          : loaded.error === ApiErrorCodes.conversation_chunks_unreadable
+            ? 503
+            : 400
       return reply.status(status).send({ error: code })
     }
     return loaded.response

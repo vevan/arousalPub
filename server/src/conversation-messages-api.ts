@@ -5,6 +5,7 @@ import {
   readTurnsTail,
   resolveActivePathTurns,
   isBranchRegistryBrokenError,
+  isConversationChunksUnreadableError,
 } from './chunk-chain.js'
 import { normalizeBranchPath } from './chunk-path.js'
 import { getTurnUserText, readConversationIndex, resolvedCharacterIds, type TurnReceive, type TurnRecord } from './chat-storage.js'
@@ -205,6 +206,10 @@ function branchRegistryError(): { ok: false; error: string } {
   return { ok: false, error: 'branch_registry_broken' }
 }
 
+function chunksUnreadableError(): { ok: false; error: string } {
+  return { ok: false, error: 'conversation_chunks_unreadable' }
+}
+
 export async function loadConversationMessages(
   conversationId: string,
   query: {
@@ -247,29 +252,36 @@ export async function loadConversationMessages(
 
   try {
     if (mode === 'tail') {
-    const tail = clampPageLimit(
-      query.tail,
-      CONVERSATION_MESSAGES_DEFAULT_TAIL,
-    )
-    const result = await readTurnsTail(conversationId, tail, activeBranchPath)
-    const turns = mapTurnRecordsToMessagesDto(result.turns, defaultSpeaker)
-    if (turns.length === 0) {
-      return { ok: true, response: { turns } }
+      const tail = clampPageLimit(
+        query.tail,
+        CONVERSATION_MESSAGES_DEFAULT_TAIL,
+      )
+      const result = await readTurnsTail(conversationId, tail, activeBranchPath)
+      const turns = mapTurnRecordsToMessagesDto(result.turns, defaultSpeaker)
+      // 空尾部也必须带 page：Web 用 page===null 表示 HTTP 失败，缺 page 会被误判为「加载失败」
+      if (turns.length === 0) {
+        return {
+          ok: true,
+          response: {
+            turns,
+            page: { hasMoreBefore: false, from: 0, to: -1 },
+          },
+        }
+      }
+      const from =
+        result.minOrdinal ??
+        Math.min(...turns.map((t) => t.turnOrdinal))
+      const to =
+        result.maxOrdinal ??
+        Math.max(...turns.map((t) => t.turnOrdinal))
+      return {
+        ok: true,
+        response: {
+          turns,
+          page: { hasMoreBefore: result.hasMoreBefore, from, to },
+        },
+      }
     }
-    const from =
-      result.minOrdinal ??
-      Math.min(...turns.map((t) => t.turnOrdinal))
-    const to =
-      result.maxOrdinal ??
-      Math.max(...turns.map((t) => t.turnOrdinal))
-    return {
-      ok: true,
-      response: {
-        turns,
-        page: { hasMoreBefore: result.hasMoreBefore, from, to },
-      },
-    }
-  }
 
   if (mode === 'before') {
     const before = Number.parseInt(String(query.before), 10)
@@ -348,6 +360,7 @@ export async function loadConversationMessages(
   }
   } catch (e) {
     if (isBranchRegistryBrokenError(e)) return branchRegistryError()
+    if (isConversationChunksUnreadableError(e)) return chunksUnreadableError()
     throw e
   }
 }

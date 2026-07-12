@@ -201,7 +201,10 @@ export async function readAllTurnsAtBranchPath(
   const collected: TurnRecord[] = []
   for (const fileName of files) {
     const chunk = await readChunkFileAt(conversationId, bp, fileName)
-    if (chunk?.turns?.length) collected.push(...chunk.turns)
+    if (!chunk) {
+      throw new ConversationChunksUnreadableError(conversationId, bp, fileName)
+    }
+    if (chunk.turns?.length) collected.push(...chunk.turns)
   }
   return sortTurnsUnique(collected)
 }
@@ -248,6 +251,29 @@ export function isBranchRegistryBrokenError(
   e: unknown,
 ): e is BranchRegistryBrokenError {
   return e instanceof BranchRegistryBrokenError
+}
+
+/**
+ * index 声称有 chunk，但读盘失败 / 解析失败（写盘中途、短暂 I/O 等）。
+ * 禁止静默返回空 turns，否则有历史的对话会被 UI 当成「加载失败 / 空会话」。
+ */
+export class ConversationChunksUnreadableError extends Error {
+  readonly code = 'conversation_chunks_unreadable'
+
+  constructor(
+    readonly conversationId: string,
+    readonly branchPath: string,
+    readonly chunkFileName?: string,
+  ) {
+    super('conversation_chunks_unreadable')
+    this.name = 'ConversationChunksUnreadableError'
+  }
+}
+
+export function isConversationChunksUnreadableError(
+  e: unknown,
+): e is ConversationChunksUnreadableError {
+  return e instanceof ConversationChunksUnreadableError
 }
 
 /**
@@ -498,7 +524,10 @@ export async function listChunkFileNamesAt(
     guard.add(fileName)
     reversed.push(fileName)
     const chunk = await readChunkFileAt(conversationId, bp, fileName)
-    const prev = chunk?.meta.links.previous
+    if (!chunk) {
+      throw new ConversationChunksUnreadableError(conversationId, bp, fileName)
+    }
+    const prev = chunk.meta.links.previous
     fileName = prev ? normalizeTailChunkBasename(prev, bp) : null
   }
   return reversed.reverse()
@@ -626,6 +655,17 @@ export async function readTurnsTail(
   const active = await effectiveActiveBranchPath(conversationId, activeBranchPath)
   const onPath = await resolveActivePathTurns(conversationId, active)
   if (onPath.length === 0) {
+    // listChunk 已对不可读 throw；此处再兜底：index 有 tail 却 0 轮（不应静默当空会话）
+    const idx = active
+      ? await readBranchConversationIndex(conversationId, active)
+      : await readConversationIndex(conversationId)
+    if (idx?.tailChunkFile) {
+      throw new ConversationChunksUnreadableError(
+        conversationId,
+        active,
+        idx.tailChunkFile,
+      )
+    }
     return {
       turns: [],
       hasMoreBefore: false,

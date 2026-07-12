@@ -9,7 +9,7 @@
 |------|------|
 | `readTurnsInOrdinalRange` / `readTurnsTail` / `readTurnsBefore` | `server/src/chunk-chain.ts` |
 | `GET .../messages?from=&to=`（≤50 轮） | `server/src/conversation-messages-api.ts` |
-| `GET .../messages?tail=N` · 响应 `page.hasMoreBefore` / `page.from` / `page.to` | 同上 |
+| `GET .../messages?tail=N` · 响应 `page.hasMoreBefore` / `page.from` / `page.to`（**空对话也带 `page`**；index 有 `tailChunkFile` 但 chunk 读失败 → **503** `conversation_chunks_unreadable`，禁止静默空数组） | 同上 |
 | `GET .../messages?before=ordinal&limit=N` | 同上 |
 | Web 打开对话默认 `tail=30` | `web/src/composables/chat-session/use-turn-list.ts` |
 | 上滚距顶 ≤120px 自动追加；手动「加载更早的对话」按钮 | `use-turn-list.ts` · `ChatMessageList.vue` |
@@ -39,6 +39,18 @@
 
 ## 错误码
 
-`messages_range_invalid`、`messages_range_incomplete`、`range_too_large`（`api-error-codes.ts`）。
+`messages_range_invalid`、`messages_range_incomplete`、`range_too_large`（`api-error-codes.ts`）。  
+`conversation_chunks_unreadable`（503）：index 有 `tailChunkFile` 但 chunk 读失败。
 
 Web 加载失败文案：`chat.errors.loadMessagesFailed` · `chat.errors.loadOlderFailed`。
+
+## 冷启动竞态（2026-07-13）
+
+进对话页时 `ensureConversation` 曾 **无条件** fire-and-forget 写 `auditDebug`，并与 bootstrap / lore 名表等串行，拖慢首屏；写 index 还曾与 `loadMessages` 并发读竞态。
+
+定案：
+1. **关键路径**：`GET` 会话 index → 应用绑定 → `loading=false`（挂载 `HomeChat` / `loadMessages`）
+2. **延后**：bootstrap 收尾、提示词库、lore 名表、分支树、`auditDebug` 差异同步、记忆重建提示
+3. **`auditDebug`**：仅与全局 Debug 偏好不一致时 PATCH；打开对话默认不写盘
+4. **`index.json`**：原子写（tmp+rename）+ 解析失败短重试
+5. chunk 不可读 → 503 `conversation_chunks_unreadable`（禁止静默空 `turns`）

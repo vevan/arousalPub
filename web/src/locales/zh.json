@@ -1549,6 +1549,7 @@
       "branch_delete_failed": "删除分支失败",
       "branch_label_invalid": "分支名称无效（最多 64 个字符）",
       "branch_registry_broken": "分支注册表不一致，请尝试修复 chunk 索引",
+      "conversation_chunks_unreadable": "对话记录暂时无法读取（可能正在同步），请稍后重试",
       "branch_update_failed": "更新分支失败",
       "branch_path_conflict": "分支路径冲突",
       "branch_path_not_found": "分支路径不存在",

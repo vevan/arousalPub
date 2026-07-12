@@ -55,6 +55,8 @@ export function useTurnList(opts: {
   let autoLoadArmed = false
   let loadOlderCooldownUntil = 0
   let scrollHintRaf = 0
+  /** 忽略过期的 loadMessages 响应（切换对话竞态） */
+  let loadMessagesGeneration = 0
 
   function replaceTurnAt(listIndex: number, next: ChatTurnItem) {
     opts.turns.value = opts.turns.value.map((t, i) => (i === listIndex ? next : t))
@@ -265,15 +267,23 @@ export function useTurnList(opts: {
   }
 
   async function loadMessages() {
+    const conversationId = opts.getConversationId()
+    const generation = ++loadMessagesGeneration
     messagesLoading.value = true
     initialScrollPending.value = true
     autoLoadArmed = false
     hasMoreBefore.value = false
     try {
       const { turns: loaded, page } = await fetchConversationTurnsTail(
-        opts.getConversationId(),
+        conversationId,
         CONVERSATION_UI_TAIL_LIMIT,
       )
+      if (
+        generation !== loadMessagesGeneration ||
+        opts.getConversationId() !== conversationId
+      ) {
+        return
+      }
       if (page === null) {
         opts.onLoadMessagesFailed()
         return
@@ -281,8 +291,15 @@ export function useTurnList(opts: {
       opts.turns.value = loaded
       hasMoreBefore.value = page.hasMoreBefore ?? false
     } catch {
+      if (
+        generation !== loadMessagesGeneration ||
+        opts.getConversationId() !== conversationId
+      ) {
+        return
+      }
       opts.onLoadMessagesFailed()
     } finally {
+      if (generation !== loadMessagesGeneration) return
       messagesLoading.value = false
       await opts.scrollChatToBottom()
       initialScrollPending.value = false

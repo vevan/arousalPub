@@ -7,7 +7,7 @@ import {
   type AuthorsNotePatch,
   type AuthorsNoteSettings,
 } from './authors-note-settings.js'
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { getChatsRoot } from './config.js'
 import { normalizeBranchPath, chunkStorageRelativePath } from './chunk-path.js'
@@ -1470,7 +1470,7 @@ export async function writeBranchConversationIndex(
   const filePath = branchConversationIndexPath(id, bp)
   await mkdir(path.dirname(filePath), { recursive: true })
   const normalized = syncConversationCharacterFields(data)
-  await writeFile(filePath, JSON.stringify(normalized, null, 2), 'utf8')
+  await writeJsonFileAtomic(filePath, normalized)
 }
 
 export async function updateConversationAuditDebug(
@@ -1746,11 +1746,40 @@ export async function readBranchConversationIndex(
 export async function readConversationIndex(
   id: string,
 ): Promise<ConversationIndex | null> {
+  const filePath = conversationIndexPath(id)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const raw = await readFile(filePath, 'utf8')
+      return JSON.parse(raw) as ConversationIndex
+    } catch (e) {
+      // 并发非原子写盘时可能读到半截 JSON；短延迟后重试一次
+      const isParse =
+        e instanceof SyntaxError ||
+        (e instanceof Error && e.message.includes('JSON'))
+      if (isParse && attempt === 0) {
+        await new Promise((r) => setTimeout(r, 15))
+        continue
+      }
+      return null
+    }
+  }
+  return null
+}
+
+/** 同目录临时文件 + rename，避免并发读到半截 JSON */
+async function writeJsonFileAtomic(
+  filePath: string,
+  data: unknown,
+): Promise<void> {
+  await mkdir(path.dirname(filePath), { recursive: true })
+  const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`
+  const body = `${JSON.stringify(data, null, 2)}\n`
+  await writeFile(tmp, body, 'utf8')
   try {
-    const raw = await readFile(conversationIndexPath(id), 'utf8')
-    return JSON.parse(raw) as ConversationIndex
-  } catch {
-    return null
+    await rename(tmp, filePath)
+  } catch (e) {
+    await rm(tmp, { force: true }).catch(() => {})
+    throw e
   }
 }
 
@@ -1761,11 +1790,7 @@ export async function writeConversationIndex(
   const dir = conversationDir(id)
   await mkdir(dir, { recursive: true })
   const normalized = syncConversationCharacterFields(data)
-  await writeFile(
-    conversationIndexPath(id),
-    JSON.stringify(normalized, null, 2),
-    'utf8',
-  )
+  await writeJsonFileAtomic(conversationIndexPath(id), normalized)
 }
 
 /** 仅更新 macroLocalVars（读-改-写单字段，降低并发覆盖其它索引字段的风险） */

@@ -20,9 +20,9 @@
 > **定案**：[`DOC/20`](20-user-file-library.md)。媒体（图/音/视频）与文档共用 `files/`；独立文档 RAG ≠ 世界书 vector。升 P0（2026-07-12）：为媒体一等公民与后续插件（如 ComfyUI）铺路。
 
 - [ ] **用户文件库** [`DOC/20`](20-user-file-library.md) M1–M5
-  - [ ] **M1** `files/` 落盘 + REST + `allowsQueryAccessToken` + `/files` 基础 UI
+  - [x] **M1** `files/` 落盘 + REST + 公开 `/api/m` + `/files` 基础 UI
   - [ ] **M2** 角色 `imageFiles` + `{{charFileN}}` 宏 + `fileContentUrl`
-  - [ ] **M3** `render-rich-message` / 对话 BGM·背景 + `withAccessToken`
+  - [ ] **M3** 对话 BGM·背景绑定 fileId（公开 URL，无需 withAccessToken）
   - [ ] **M5** 引用检查、批量导入、视频预览优化（依赖 M1–M3）
 - [ ] **独立文档 RAG**（≠ 世界书 vector）— [`DOC/20`](20-user-file-library.md) **M4**；前置 M1 + RAG API 设定
   - [ ] 文档切片 + 独立 Lance 表 + 对话绑知识库

@@ -15,6 +15,7 @@ function skipSharedSync() {
 const SCRIPTS = [
   'sync-prompt-preset-shared.mjs',
   'sync-portrait-media-shared.mjs',
+  'sync-file-media-shared.mjs',
   'sync-group-chat-settings-shared.mjs',
   'sync-plugin-context-blocks-shared.mjs',
   'sync-plugin-prompt-injection-shared.mjs',

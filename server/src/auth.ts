@@ -64,6 +64,7 @@ function isPublicRoute(url: string): boolean {
   if (AUTH_PUBLIC_PATHS.has(pathOnly)) return true
   if (pathOnly === `/api/users/${RESERVED_USER_ID}/avatar`) return true
   if (/^\/api\/i\/[A-Za-z0-9_-]+$/i.test(pathOnly)) return true
+  if (/^\/api\/m\/[A-Za-z0-9_-]+$/i.test(pathOnly)) return true
   return false
 }
 

@@ -333,9 +333,27 @@ import {
   updateCharacterPortrait,
 } from './character-storage.js'
 import {
+  createFileLibraryEntry,
+  deleteFileLibraryEntry,
+  FileLibraryError,
+  getFileLibraryMeta,
+  listFileLibrary,
+  patchFileLibraryMeta,
+  replaceFileLibraryContent,
+  resolveFileLibraryContent,
+  type FileLibraryKind,
+} from './file-library-storage.js'
+import { fileContentUrl } from './file-content-url.js'
+import {
   portraitImageCacheControl,
   resolvePortraitImageResponse,
 } from './portrait-image.js'
+import {
+  fileMediaCacheControl,
+  resolveFileLibraryMediaResponse,
+} from './file-library-media.js'
+import { decodeFileMediaToken } from './shared/file-media-token.js'
+import { createReadStream } from 'node:fs'
 
 const DEFAULT_BASE = 'https://api.openai.com/v1'
 
@@ -3008,6 +3026,267 @@ app.get('/api/characters', async (request, reply) => {
   }
 })
 
+function parseFileLibraryKindQuery(
+  raw: string | undefined,
+): FileLibraryKind | 'all' {
+  if (
+    raw === 'image' ||
+    raw === 'document' ||
+    raw === 'audio' ||
+    raw === 'video'
+  ) {
+    return raw
+  }
+  return 'all'
+}
+
+function parseTagsField(raw: unknown): unknown {
+  if (raw == null || raw === '') return undefined
+  if (typeof raw === 'string') {
+    const t = raw.trim()
+    if (!t) return undefined
+    try {
+      return JSON.parse(t) as unknown
+    } catch {
+      return t.split(/[,，]/).map((s) => s.trim()).filter(Boolean)
+    }
+  }
+  return raw
+}
+
+app.get('/api/files', async (request, reply) => {
+  const q = request.query as Record<string, string | undefined>
+  const offset = Math.max(0, parseInt(q.offset ?? '0', 10) || 0)
+  const limit = Math.min(100, Math.max(1, parseInt(q.limit ?? '24', 10) || 24))
+  const search = typeof q.search === 'string' ? q.search : ''
+  const kind = parseFileLibraryKindQuery(q.kind)
+  try {
+    const { items, total } = await listFileLibrary({
+      offset,
+      limit,
+      search,
+      kind,
+    })
+    const hasMore = offset + items.length < total
+    return { items, total, offset, limit, hasMore }
+  } catch (e) {
+    app.log.error(e)
+    return reply.status(500).send({ error: ApiErrorCodes.files_read_failed })
+  }
+})
+
+app.post('/api/files', async (request, reply) => {
+  try {
+    const ct = request.headers['content-type'] ?? ''
+    if (!ct.includes('multipart/form-data')) {
+      return reply
+        .status(400)
+        .send({ error: ApiErrorCodes.multipart_payload_required })
+    }
+    let fileBuf: Buffer | undefined
+    let filename: string | undefined
+    let mime: string | undefined
+    let kindField: string | undefined
+    let nameField: string | undefined
+    let tagsField: unknown
+    const parts = request.parts()
+    for await (const part of parts) {
+      if (part.type === 'file' && part.fieldname === 'file') {
+        fileBuf = await part.toBuffer()
+        filename = part.filename
+        mime = part.mimetype
+      } else if (part.type === 'field') {
+        const v = part.value
+        if (part.fieldname === 'kind' && typeof v === 'string') kindField = v
+        else if (part.fieldname === 'name' && typeof v === 'string') nameField = v
+        else if (part.fieldname === 'tags') tagsField = v
+      }
+    }
+    if (!fileBuf) {
+      return reply.status(400).send({ error: ApiErrorCodes.missing_file_field })
+    }
+    const meta = await createFileLibraryEntry({
+      buffer: fileBuf,
+      filename,
+      mime,
+      kind: kindField,
+      name: nameField,
+      tags: parseTagsField(tagsField),
+    })
+    return {
+      ok: true as const,
+      ...meta,
+      contentUrl: fileContentUrl(meta.fileId),
+    }
+  } catch (e) {
+    if (e instanceof FileLibraryError) {
+      return reply.status(400).send({ error: ApiErrorCodes[e.code] ?? e.code })
+    }
+    app.log.error(e)
+    return reply.status(500).send({ error: ApiErrorCodes.file_create_failed })
+  }
+})
+
+app.get<{ Params: { fileId: string } }>(
+  '/api/files/:fileId',
+  async (request, reply) => {
+    const fileId = request.params.fileId
+    if (!isValidShortId(fileId)) {
+      return reply.status(400).send({ error: ApiErrorCodes.file_invalid_id })
+    }
+    try {
+      const meta = await getFileLibraryMeta(fileId)
+      if (!meta) {
+        return reply.status(404).send({ error: ApiErrorCodes.file_not_found })
+      }
+      return { ...meta, contentUrl: fileContentUrl(meta.fileId) }
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.files_read_failed })
+    }
+  },
+)
+
+app.get<{ Params: { fileId: string } }>(
+  '/api/files/:fileId/content',
+  async (request, reply) => {
+    const fileId = request.params.fileId
+    if (!isValidShortId(fileId)) {
+      return reply.status(400).send({ error: ApiErrorCodes.file_invalid_id })
+    }
+    try {
+      const resolved = await resolveFileLibraryContent(fileId)
+      if (!resolved) {
+        return reply.status(404).send({ error: ApiErrorCodes.file_not_found })
+      }
+      const { contentPath, meta } = resolved
+      return reply
+        .header('Content-Length', String(meta.size))
+        .header(
+          'Content-Disposition',
+          `inline; filename*=UTF-8''${encodeURIComponent(meta.name)}`,
+        )
+        .type(meta.mime)
+        .send(createReadStream(contentPath))
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.files_read_failed })
+    }
+  },
+)
+
+/** 原地更新二进制：fileId / 公开 URL 不变；文件名可不同 */
+app.put<{ Params: { fileId: string } }>(
+  '/api/files/:fileId/content',
+  async (request, reply) => {
+    const fileId = request.params.fileId
+    if (!isValidShortId(fileId)) {
+      return reply.status(400).send({ error: ApiErrorCodes.file_invalid_id })
+    }
+    try {
+      const ct = request.headers['content-type'] ?? ''
+      if (!ct.includes('multipart/form-data')) {
+        return reply
+          .status(400)
+          .send({ error: ApiErrorCodes.multipart_payload_required })
+      }
+      let fileBuf: Buffer | undefined
+      let filename: string | undefined
+      let mime: string | undefined
+      let nameField: string | undefined
+      let keepName = false
+      const parts = request.parts()
+      for await (const part of parts) {
+        if (part.type === 'file' && part.fieldname === 'file') {
+          fileBuf = await part.toBuffer()
+          filename = part.filename
+          mime = part.mimetype
+        } else if (part.type === 'field') {
+          const v = part.value
+          if (part.fieldname === 'name' && typeof v === 'string') nameField = v
+          else if (
+            part.fieldname === 'keepName' &&
+            (v === '1' || v === 'true' || v === true)
+          ) {
+            keepName = true
+          }
+        }
+      }
+      if (!fileBuf) {
+        return reply.status(400).send({ error: ApiErrorCodes.missing_file_field })
+      }
+      const meta = await replaceFileLibraryContent(fileId, {
+        buffer: fileBuf,
+        filename,
+        mime,
+        name: nameField,
+        keepName,
+      })
+      return {
+        ok: true as const,
+        ...meta,
+        contentUrl: fileContentUrl(meta.fileId),
+      }
+    } catch (e) {
+      if (e instanceof FileLibraryError) {
+        if (e.code === 'file_not_found') {
+          return reply.status(404).send({ error: ApiErrorCodes.file_not_found })
+        }
+        return reply.status(400).send({ error: ApiErrorCodes[e.code] ?? e.code })
+      }
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.file_update_failed })
+    }
+  },
+)
+
+app.patch<{ Params: { fileId: string } }>(
+  '/api/files/:fileId',
+  async (request, reply) => {
+    const fileId = request.params.fileId
+    if (!isValidShortId(fileId)) {
+      return reply.status(400).send({ error: ApiErrorCodes.file_invalid_id })
+    }
+    const body = (request.body ?? {}) as Record<string, unknown>
+    try {
+      const meta = await patchFileLibraryMeta(fileId, {
+        name: body.name,
+        tags: body.tags !== undefined ? body.tags : undefined,
+      })
+      return { ok: true as const, ...meta, contentUrl: fileContentUrl(meta.fileId) }
+    } catch (e) {
+      if (e instanceof FileLibraryError) {
+        if (e.code === 'file_not_found') {
+          return reply.status(404).send({ error: ApiErrorCodes.file_not_found })
+        }
+        return reply.status(400).send({ error: ApiErrorCodes[e.code] ?? e.code })
+      }
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.file_update_failed })
+    }
+  },
+)
+
+app.delete<{ Params: { fileId: string } }>(
+  '/api/files/:fileId',
+  async (request, reply) => {
+    const fileId = request.params.fileId
+    if (!isValidShortId(fileId)) {
+      return reply.status(400).send({ error: ApiErrorCodes.file_invalid_id })
+    }
+    try {
+      const ok = await deleteFileLibraryEntry(fileId)
+      if (!ok) {
+        return reply.status(404).send({ error: ApiErrorCodes.file_not_found })
+      }
+      return { ok: true as const }
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.file_delete_failed })
+    }
+  },
+)
+
 app.post('/api/characters/import', async (request, reply) => {
   try {
     const card = normalizeImportCard(request.body)
@@ -3113,6 +3392,53 @@ app.get<{
       .header('Cache-Control', portraitImageCacheControl(request.query.size))
       .header('ETag', result.etag)
       .send(result.body)
+  },
+)
+
+app.get<{
+  Params: { token: string }
+  Querystring: { size?: string; v?: string }
+}>(
+  '/api/m/:token',
+  async (request, reply) => {
+    const ref = decodeFileMediaToken(request.params.token)
+    if (!ref) {
+      return reply.status(404).send({ error: ApiErrorCodes.file_not_found })
+    }
+    const result = await resolveFileLibraryMediaResponse(
+      ref.userId,
+      ref.fileId,
+      request.query.size,
+    )
+    if (!result.ok) {
+      if (result.reason === 'invalid_size') {
+        return reply
+          .status(400)
+          .send({ error: ApiErrorCodes.invalid_request_body })
+      }
+      return reply.status(404).send({ error: ApiErrorCodes.file_not_found })
+    }
+    const ifNoneMatch = request.headers['if-none-match']
+    if (ifNoneMatch === result.etag) {
+      return reply.status(304).send()
+    }
+    if (result.mode === 'buffer') {
+      return reply
+        .header('Content-Type', result.mime)
+        .header('Cache-Control', fileMediaCacheControl(request.query.size))
+        .header('ETag', result.etag)
+        .send(result.body)
+    }
+    return reply
+      .header('Content-Type', result.mime)
+      .header('Content-Length', String(result.size))
+      .header(
+        'Content-Disposition',
+        `inline; filename*=UTF-8''${encodeURIComponent(result.name)}`,
+      )
+      .header('Cache-Control', fileMediaCacheControl(undefined))
+      .header('ETag', result.etag)
+      .send(result.stream)
   },
 )
 

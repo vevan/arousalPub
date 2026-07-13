@@ -245,6 +245,10 @@ export function getCharactersDir(userId?: string): string {
   return path.join(getUserDataDir(userId ?? getCurrentUserId()), 'characters')
 }
 
+export function getFilesDir(userId?: string): string {
+  return path.join(getUserDataDir(userId ?? getCurrentUserId()), 'files')
+}
+
 export function getPromptsDir(userId?: string): string {
   return path.join(getUserDataDir(userId ?? getCurrentUserId()), 'prompts')
 }
@@ -269,6 +273,7 @@ export function ensureDataSkeletonForUser(userId: string): void {
     getChatsRoot(userId),
     getLorebooksDir(userId),
     getCharactersDir(userId),
+    getFilesDir(userId),
     getPromptsDir(userId),
   ]) {
     try {

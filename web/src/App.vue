@@ -44,6 +44,7 @@ const CharactersView = defineAsyncComponent(
 const LorebooksView = defineAsyncComponent(
   () => import('@/views/LorebooksView.vue'),
 )
+const FilesView = defineAsyncComponent(() => import('@/views/FilesView.vue'))
 
 const userBarAvatarSrc = computed(() =>
   auth.user ? userAvatarUrl(auth.user.id) : null,
@@ -176,6 +177,7 @@ watch(settingsDialogOpen, (open) => {
 const promptsDialogOpen = ref(false)
 const charactersDialogOpen = ref(false)
 const lorebooksDialogOpen = ref(false)
+const filesDialogOpen = ref(false)
 const mobileNavOpen = ref(false)
 const conn = useConnectionStore()
 const lorebooksStore = useLorebooksStore()
@@ -211,19 +213,29 @@ function clearPanelQuery() {
 function openPromptsDialog() {
   charactersDialogOpen.value = false
   lorebooksDialogOpen.value = false
+  filesDialogOpen.value = false
   promptsDialogOpen.value = true
 }
 
 function openCharactersDialog() {
   promptsDialogOpen.value = false
   lorebooksDialogOpen.value = false
+  filesDialogOpen.value = false
   charactersDialogOpen.value = true
 }
 
 function openLorebooksDialog() {
   promptsDialogOpen.value = false
   charactersDialogOpen.value = false
+  filesDialogOpen.value = false
   lorebooksDialogOpen.value = true
+}
+
+function openFilesDialog() {
+  promptsDialogOpen.value = false
+  charactersDialogOpen.value = false
+  lorebooksDialogOpen.value = false
+  filesDialogOpen.value = true
 }
 
 function closeMobileNav() {
@@ -248,6 +260,11 @@ function mobileNavOpenCharacters() {
 function mobileNavOpenLorebooks() {
   closeMobileNav()
   openLorebooksDialog()
+}
+
+function mobileNavOpenFiles() {
+  closeMobileNav()
+  openFilesDialog()
 }
 
 async function focusLorebooksForOpen(): Promise<void> {
@@ -361,16 +378,25 @@ watch(
       promptsDialogOpen.value = true
       charactersDialogOpen.value = false
       lorebooksDialogOpen.value = false
+      filesDialogOpen.value = false
       void nextTick(() => clearPanelQuery())
     } else if (panel === 'characters') {
       charactersDialogOpen.value = true
       promptsDialogOpen.value = false
       lorebooksDialogOpen.value = false
+      filesDialogOpen.value = false
       void nextTick(() => clearPanelQuery())
     } else if (panel === 'lorebooks') {
       lorebooksDialogOpen.value = true
       promptsDialogOpen.value = false
       charactersDialogOpen.value = false
+      filesDialogOpen.value = false
+      void nextTick(() => clearPanelQuery())
+    } else if (panel === 'files') {
+      filesDialogOpen.value = true
+      promptsDialogOpen.value = false
+      charactersDialogOpen.value = false
+      lorebooksDialogOpen.value = false
       void nextTick(() => clearPanelQuery())
     }
   },
@@ -583,6 +609,12 @@ onUnmounted(() => {
               rounded="lg"
               @click="mobileNavOpenLorebooks"
             />
+            <v-list-item
+              :title="$t('app.files')"
+              :active="filesDialogOpen"
+              rounded="lg"
+              @click="mobileNavOpenFiles"
+            />
           </v-list>
           </v-menu>
         </div>
@@ -667,6 +699,15 @@ onUnmounted(() => {
             @click="openLorebooksDialog"
           >
             {{ $t('app.lorebooks') }}
+          </v-btn>
+          <v-btn
+            variant="text"
+            :active="filesDialogOpen"
+            class="app-bar__menu-btn"
+            size="small"
+            @click="openFilesDialog"
+          >
+            {{ $t('app.files') }}
           </v-btn>
         </nav>
       </div>
@@ -862,6 +903,23 @@ onUnmounted(() => {
             v-if="lorebooksDialogOpen"
             embedded
             @close="lorebooksDialogOpen = false"
+          />
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog
+      v-model="filesDialogOpen"
+      scrollable
+      content-class="library-dialog-surface"
+      @keydown.esc="filesDialogOpen = false"
+    >
+      <v-card rounded="lg" class="library-dialog-card">
+        <v-card-text class="pa-0 library-dialog-body">
+          <FilesView
+            v-if="filesDialogOpen"
+            embedded
+            @close="filesDialogOpen = false"
           />
         </v-card-text>
       </v-card>

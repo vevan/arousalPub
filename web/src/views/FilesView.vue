@@ -53,10 +53,22 @@ const search = ref('')
 const searchDebounced = ref('')
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
+/** Vuetify clearable 可能写出 null，统一成字符串 */
+watch(
+  search,
+  (v) => {
+    if (v == null) search.value = ''
+  },
+  { flush: 'sync' },
+)
+
 const selectedId = ref<string | null>(null)
 const renameOpen = ref(false)
 const renameDraft = ref('')
 const renameDoing = ref(false)
+const tagsOpen = ref(false)
+const tagsDraft = ref('')
+const tagsDoing = ref(false)
 const deleteOpen = ref(false)
 const deleteDoing = ref(false)
 const uploading = ref(false)
@@ -128,7 +140,7 @@ function buildQuery(offset: number): string {
   u.searchParams.set('offset', String(offset))
   u.searchParams.set('limit', String(PAGE))
   if (kind.value !== 'all') u.searchParams.set('kind', kind.value)
-  const q = searchDebounced.value.trim()
+  const q = String(searchDebounced.value ?? '').trim()
   if (q) u.searchParams.set('search', q)
   return u.pathname + u.search
 }
@@ -178,7 +190,8 @@ watch(kind, () => reload())
 watch(search, (v) => {
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(() => {
-    searchDebounced.value = v
+    // clearable 会把 v-model 置为 null，不能直接 .trim()
+    searchDebounced.value = typeof v === 'string' ? v : ''
     reload()
   }, 250)
 })
@@ -307,6 +320,50 @@ async function submitRename() {
     coreNotify(t('files.renameFailed'), undefined, { level: 'error' })
   } finally {
     renameDoing.value = false
+  }
+}
+
+function formatTagsDraft(tags: string[]): string {
+  return tags.join(', ')
+}
+
+function parseTagsDraft(raw: string): string[] {
+  return [
+    ...new Set(
+      raw
+        .split(/[,，]/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  ].slice(0, 32)
+}
+
+function openTags() {
+  if (!selected.value) return
+  tagsDraft.value = formatTagsDraft(selected.value.tags ?? [])
+  tagsOpen.value = true
+}
+
+async function submitTags() {
+  if (!selected.value) return
+  const tags = parseTagsDraft(tagsDraft.value)
+  tagsDoing.value = true
+  try {
+    const res = await apiFetch(`/api/files/${selected.value.fileId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tags }),
+    })
+    if (!res.ok) {
+      coreNotify(t('files.tagsFailed'), undefined, { level: 'error' })
+      return
+    }
+    tagsOpen.value = false
+    await fetchSlice(0, false)
+  } catch {
+    coreNotify(t('files.tagsFailed'), undefined, { level: 'error' })
+  } finally {
+    tagsDoing.value = false
   }
 }
 
@@ -453,6 +510,13 @@ async function submitDelete() {
               <div class="filelib-card__meta">
                 <span class="filelib-card__name text-truncate">{{ item.name }}</span>
                 <span class="filelib-card__sub">{{ formatSize(item.size) }}</span>
+                <div v-if="item.tags?.length" class="filelib-card__tags">
+                  <span
+                    v-for="tg in item.tags.slice(0, 3)"
+                    :key="tg"
+                    class="filelib-card__tag"
+                  >{{ tg }}</span>
+                </div>
               </div>
             </button>
           </div>
@@ -498,6 +562,17 @@ async function submitDelete() {
               </div>
             </div>
             <h2 class="filelib-detail__title">{{ selected.name }}</h2>
+            <div class="filelib-detail__tags">
+              <span
+                v-for="tg in selected.tags"
+                :key="tg"
+                class="filelib-detail__tag"
+              >{{ tg }}</span>
+              <span
+                v-if="!selected.tags?.length"
+                class="filelib-detail__tags-empty"
+              >{{ $t('files.tagsEmpty') }}</span>
+            </div>
             <dl class="filelib-detail__dl">
               <div>
                 <dt>{{ $t('files.fieldId') }}</dt>
@@ -566,6 +641,18 @@ async function submitDelete() {
                   />
                 </template>
               </v-tooltip>
+              <v-tooltip location="top" :text="$t('files.editTags')">
+                <template #activator="{ props: tip }">
+                  <v-btn
+                    v-bind="tip"
+                    icon="mdi-tag-outline"
+                    size="small"
+                    variant="tonal"
+                    :aria-label="$t('files.editTags')"
+                    @click="openTags"
+                  />
+                </template>
+              </v-tooltip>
               <v-tooltip location="top" :text="$t('files.delete')">
                 <template #activator="{ props: tip }">
                   <v-btn
@@ -603,6 +690,33 @@ async function submitDelete() {
           <v-spacer />
           <v-btn variant="text" @click="renameOpen = false">{{ $t('files.cancel') }}</v-btn>
           <v-btn color="primary" :loading="renameDoing" @click="submitRename">
+            {{ $t('files.save') }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="tagsOpen" max-width="28rem">
+      <v-card>
+        <v-card-title>{{ $t('files.tagsTitle') }}</v-card-title>
+        <v-card-text>
+          <p class="text-medium-emphasis text-caption mb-2">
+            {{ $t('files.tagsHint') }}
+          </p>
+          <v-text-field
+            v-model="tagsDraft"
+            density="compact"
+            hide-details
+            variant="outlined"
+            autofocus
+            :placeholder="$t('files.tagsPlaceholder')"
+            @keydown.enter.prevent="submitTags"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="tagsOpen = false">{{ $t('files.cancel') }}</v-btn>
+          <v-btn color="primary" :loading="tagsDoing" @click="submitTags">
             {{ $t('files.save') }}
           </v-btn>
         </v-card-actions>
@@ -715,6 +829,23 @@ async function submitDelete() {
   font-size: 0.7rem;
   opacity: 0.7;
 }
+.filelib-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  margin-top: 0.15rem;
+}
+.filelib-card__tag {
+  font-size: 0.65rem;
+  line-height: 1.2;
+  padding: 0.05rem 0.3rem;
+  border-radius: 0.25rem;
+  background: rgba(var(--v-theme-on-surface), 0.08);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .filelib-more {
   margin-top: 0.75rem;
   text-align: center;
@@ -762,6 +893,24 @@ async function submitDelete() {
   font-weight: 650;
   margin: 0;
   word-break: break-word;
+}
+.filelib-detail__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  min-height: 1.25rem;
+}
+.filelib-detail__tag {
+  font-size: 0.72rem;
+  line-height: 1.3;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.3rem;
+  background: rgba(var(--v-theme-primary), 0.12);
+  color: rgb(var(--v-theme-primary));
+}
+.filelib-detail__tags-empty {
+  font-size: 0.75rem;
+  opacity: 0.55;
 }
 .filelib-detail__dl {
   margin: 0;

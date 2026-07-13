@@ -42,6 +42,12 @@ interface ListResponse {
 }
 
 const PAGE = 24
+const UPLOAD_ACCEPT =
+  'image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif,' +
+  'text/plain,text/markdown,application/pdf,application/json,.txt,.md,.markdown,.pdf,.json,' +
+  'audio/mpeg,audio/ogg,audio/wav,audio/aac,audio/mp4,audio/webm,.mp3,.ogg,.wav,.aac,.m4a,.webm,' +
+  'video/mp4,video/webm,video/quicktime,video/ogg,.mp4,.webm,.mov,.ogv'
+
 const items = ref<FileListItem[]>([])
 const total = ref(0)
 const hasMore = ref(true)
@@ -52,6 +58,8 @@ const kind = ref<'all' | FileKind>('all')
 const search = ref('')
 const searchDebounced = ref('')
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+/** 忽略过期的列表响应（快速切换 kind / 搜索时） */
+let fetchGeneration = 0
 
 /** Vuetify clearable 可能写出 null，统一成字符串 */
 watch(
@@ -101,6 +109,34 @@ const selectedContentPath = computed(() =>
   selected.value ? contentPathForCopy(selected.value.fileId) : null,
 )
 
+const selectedTags = computed(() => selected.value?.tags ?? [])
+
+const replaceAccept = computed(() => {
+  const k = selected.value?.kind
+  if (!k) return UPLOAD_ACCEPT
+  return acceptForKind(k)
+})
+
+function acceptForKind(k: FileKind): string {
+  switch (k) {
+    case 'image':
+      return 'image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif'
+    case 'document':
+      return 'text/plain,text/markdown,application/pdf,application/json,.txt,.md,.markdown,.pdf,.json'
+    case 'audio':
+      return 'audio/mpeg,audio/ogg,audio/wav,audio/aac,audio/mp4,audio/webm,.mp3,.ogg,.wav,.aac,.m4a,.webm'
+    case 'video':
+      return 'video/mp4,video/webm,video/quicktime,video/ogg,.mp4,.webm,.mov,.ogv'
+  }
+}
+
+function normalizeListItem(raw: FileListItem): FileListItem {
+  return {
+    ...raw,
+    tags: Array.isArray(raw.tags) ? raw.tags.filter((t) => typeof t === 'string') : [],
+  }
+}
+
 function formatSize(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
@@ -146,18 +182,22 @@ function buildQuery(offset: number): string {
 }
 
 async function fetchSlice(offset: number, append: boolean) {
+  const gen = ++fetchGeneration
   if (append) loadingMore.value = true
   else loading.value = true
   errorText.value = ''
   try {
     const res = await apiFetch(buildQuery(offset))
+    if (gen !== fetchGeneration) return
     if (!res.ok) {
       errorText.value = t('files.loadFailed')
       return
     }
     const data = (await res.json()) as ListResponse
-    if (append) items.value = [...items.value, ...data.items]
-    else items.value = data.items
+    if (gen !== fetchGeneration) return
+    const slice = (data.items ?? []).map(normalizeListItem)
+    if (append) items.value = [...items.value, ...slice]
+    else items.value = slice
     total.value = data.total
     hasMore.value = data.hasMore
     if (
@@ -170,10 +210,13 @@ async function fetchSlice(offset: number, append: boolean) {
       selectedId.value = items.value[0].fileId
     }
   } catch {
+    if (gen !== fetchGeneration) return
     errorText.value = t('files.loadFailed')
   } finally {
-    loading.value = false
-    loadingMore.value = false
+    if (gen === fetchGeneration) {
+      loading.value = false
+      loadingMore.value = false
+    }
   }
 }
 
@@ -340,7 +383,7 @@ function parseTagsDraft(raw: string): string[] {
 
 function openTags() {
   if (!selected.value) return
-  tagsDraft.value = formatTagsDraft(selected.value.tags ?? [])
+  tagsDraft.value = formatTagsDraft(selectedTags.value)
   tagsOpen.value = true
 }
 
@@ -465,12 +508,14 @@ async function submitDelete() {
           ref="fileInputRef"
           type="file"
           class="d-none"
+          :accept="UPLOAD_ACCEPT"
           @change="onFilePicked"
         >
         <input
           ref="replaceInputRef"
           type="file"
           class="d-none"
+          :accept="replaceAccept"
           @change="onReplacePicked"
         >
       </div>
@@ -564,12 +609,12 @@ async function submitDelete() {
             <h2 class="filelib-detail__title">{{ selected.name }}</h2>
             <div class="filelib-detail__tags">
               <span
-                v-for="tg in selected.tags"
+                v-for="tg in selectedTags"
                 :key="tg"
                 class="filelib-detail__tag"
               >{{ tg }}</span>
               <span
-                v-if="!selected.tags?.length"
+                v-if="!selectedTags.length"
                 class="filelib-detail__tags-empty"
               >{{ $t('files.tagsEmpty') }}</span>
             </div>

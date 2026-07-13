@@ -3159,15 +3159,24 @@ app.get<{ Params: { fileId: string } }>(
       if (!resolved) {
         return reply.status(404).send({ error: ApiErrorCodes.file_not_found })
       }
-      const { contentPath, meta } = resolved
+      const { contentPath, meta, byteSize } = resolved
+      const stream = createReadStream(contentPath)
+      stream.on('error', (err) => {
+        request.log.error({ err }, 'file library content stream error')
+        if (!reply.sent) {
+          void reply.status(500).send({ error: ApiErrorCodes.files_read_failed })
+        } else {
+          reply.raw.destroy(err)
+        }
+      })
       return reply
-        .header('Content-Length', String(meta.size))
+        .header('Content-Length', String(byteSize))
         .header(
           'Content-Disposition',
           `inline; filename*=UTF-8''${encodeURIComponent(meta.name)}`,
         )
         .type(meta.mime)
-        .send(createReadStream(contentPath))
+        .send(stream)
     } catch (e) {
       app.log.error(e)
       return reply.status(500).send({ error: ApiErrorCodes.files_read_failed })
@@ -3429,6 +3438,15 @@ app.get<{
         .header('ETag', result.etag)
         .send(result.body)
     }
+    const stream = result.stream
+    stream.on('error', (err) => {
+      request.log.error({ err }, 'file library media stream error')
+      if (!reply.sent) {
+        void reply.status(500).send({ error: ApiErrorCodes.files_read_failed })
+      } else {
+        reply.raw.destroy(err)
+      }
+    })
     return reply
       .header('Content-Type', result.mime)
       .header('Content-Length', String(result.size))
@@ -3438,7 +3456,7 @@ app.get<{
       )
       .header('Cache-Control', fileMediaCacheControl(undefined))
       .header('ETag', result.etag)
-      .send(result.stream)
+      .send(stream)
   },
 )
 

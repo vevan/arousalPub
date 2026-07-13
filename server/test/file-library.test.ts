@@ -91,6 +91,7 @@ describe('file library storage + public media url', () => {
 
     const resolved = await storage.resolveFileLibraryContent(meta.fileId)
     assert.ok(resolved)
+    assert.equal(resolved.byteSize, png.length)
     const bytes = await readFile(resolved.contentPath)
     assert.deepEqual(bytes, png)
 
@@ -237,11 +238,93 @@ describe('file library storage + public media url', () => {
     assert.equal(result.mode, 'stream')
     if (result.mode !== 'stream') return
     assert.equal(result.mime, 'text/plain')
+    assert.equal(result.size, Buffer.byteLength('plain-text-body'))
     const chunks: Buffer[] = []
     for await (const chunk of result.stream) {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
     }
     assert.equal(Buffer.concat(chunks).toString('utf8'), 'plain-text-body')
     await storage.deleteFileLibraryEntry(meta.fileId)
+  })
+
+  it('coerces missing or dirty tags on read', async () => {
+    const meta = await storage.createFileLibraryEntry({
+      buffer: Buffer.from('tagless'),
+      filename: 't.txt',
+      mime: 'text/plain',
+    })
+    const metaPath = path.join(
+      tmp,
+      TEST_USER,
+      'files',
+      meta.fileId,
+      'meta.json',
+    )
+    const raw = JSON.parse(await readFile(metaPath, 'utf8')) as Record<
+      string,
+      unknown
+    >
+    delete raw.tags
+    await writeFile(metaPath, `${JSON.stringify(raw, null, 2)}\n`, 'utf8')
+
+    const got = await storage.getFileLibraryMeta(meta.fileId)
+    assert.ok(got)
+    assert.deepEqual(got.tags, [])
+
+    const idxPath = path.join(tmp, TEST_USER, 'files', 'index.json')
+    const idx = JSON.parse(await readFile(idxPath, 'utf8')) as {
+      entries: Array<Record<string, unknown>>
+    }
+    const ent = idx.entries.find((e) => e.fileId === meta.fileId)
+    assert.ok(ent)
+    ent.tags = [1, 'ok', '', '  ', 'ok'] as unknown as string[]
+    await writeFile(idxPath, `${JSON.stringify(idx, null, 2)}\n`, 'utf8')
+
+    const listed = await storage.listFileLibrary({ offset: 0, limit: 50 })
+    const row = listed.items.find((i) => i.fileId === meta.fileId)
+    assert.ok(row)
+    assert.deepEqual(row.tags, ['ok'])
+
+    await storage.deleteFileLibraryEntry(meta.fileId)
+  })
+
+  it('serializes concurrent creates without losing index entries', async () => {
+    const n = 8
+    const created = await Promise.all(
+      Array.from({ length: n }, (_, i) =>
+        storage.createFileLibraryEntry({
+          buffer: Buffer.from(`c-${i}`),
+          filename: `c-${i}.txt`,
+          mime: 'text/plain',
+        }),
+      ),
+    )
+    assert.equal(new Set(created.map((m) => m.fileId)).size, n)
+    const listed = await storage.listFileLibrary({ offset: 0, limit: 100 })
+    for (const m of created) {
+      assert.ok(listed.items.some((i) => i.fileId === m.fileId))
+      await storage.deleteFileLibraryEntry(m.fileId)
+    }
+  })
+
+  it('delete is idempotent when clearing orphan index entries', async () => {
+    const meta = await storage.createFileLibraryEntry({
+      buffer: Buffer.from('orphan'),
+      filename: 'o.txt',
+      mime: 'text/plain',
+    })
+    await rm(path.join(tmp, TEST_USER, 'files', meta.fileId), {
+      recursive: true,
+      force: true,
+    })
+    const first = await storage.deleteFileLibraryEntry(meta.fileId)
+    assert.equal(first, true)
+    const listed = await storage.listFileLibrary({ offset: 0, limit: 50 })
+    assert.equal(
+      listed.items.some((i) => i.fileId === meta.fileId),
+      false,
+    )
+    const second = await storage.deleteFileLibraryEntry(meta.fileId)
+    assert.equal(second, false)
   })
 })

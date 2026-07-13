@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import sharp from 'sharp'
 import { getFilesDir } from './config.js'
@@ -60,7 +60,7 @@ export function fileMediaCacheControl(
 
 /**
  * 公开 `/api/m/:token` 解析。
- * 图片 + size= 时缓冲缩放为 PNG；其余流式原文件。
+ * 图片 + size= 时缓冲缩放为 PNG；其余流式原文件（先 stat）。
  */
 export async function resolveFileLibraryMediaResponse(
   userId: string,
@@ -78,21 +78,26 @@ export async function resolveFileLibraryMediaResponse(
 
   let mime = 'application/octet-stream'
   let name = fid
-  let byteSize = 0
   let updatedAt = ''
   try {
     const raw = JSON.parse(await readFile(metaPath, 'utf8')) as {
       mime?: string
       name?: string
-      size?: number
       updatedAt?: string
       fileId?: string
     }
     if (raw.fileId && raw.fileId !== fid) return { ok: false, reason: 'not_found' }
     if (typeof raw.mime === 'string' && raw.mime) mime = raw.mime
     if (typeof raw.name === 'string' && raw.name) name = raw.name
-    if (typeof raw.size === 'number') byteSize = raw.size
     if (typeof raw.updatedAt === 'string') updatedAt = raw.updatedAt
+  } catch {
+    return { ok: false, reason: 'not_found' }
+  }
+
+  let st
+  try {
+    st = await stat(contentPath)
+    if (!st.isFile()) return { ok: false, reason: 'not_found' }
   } catch {
     return { ok: false, reason: 'not_found' }
   }
@@ -119,19 +124,17 @@ export async function resolveFileLibraryMediaResponse(
     }
   }
 
-  try {
-    const etag = weakEtag(`${fid}:${byteSize}:${updatedAt}:${mime}`)
-    return {
-      ok: true,
-      mode: 'stream',
-      contentPath,
-      mime,
-      size: byteSize,
-      etag,
-      name,
-      stream: createReadStream(contentPath),
-    }
-  } catch {
-    return { ok: false, reason: 'not_found' }
+  const etag = weakEtag(
+    `${fid}:${st.size}:${st.mtimeMs}:${updatedAt}:${mime}`,
+  )
+  return {
+    ok: true,
+    mode: 'stream',
+    contentPath,
+    mime,
+    size: st.size,
+    etag,
+    name,
+    stream: createReadStream(contentPath),
   }
 }

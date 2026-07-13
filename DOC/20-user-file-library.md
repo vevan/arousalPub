@@ -18,7 +18,7 @@
 产品缺口：
 
 1. **用户级统一文件库**：上传与管理图片、文档、音频、视频；独立 UI（**不是**世界书编辑器）。
-2. **角色绑定图片槽**：`{{charFileN}}` / `{{char2FileN}}` 在 **assemble 发送前** 展宏为稳定 **path 字符串**（无 token），供 LLM 在 HTML 等输出中引用（如内心剧场 `src`）。
+2. **角色绑定图片槽**：`{{charFileN}}` / `{{char2FileN}}` 在 **assemble 发送前** 展宏为稳定公开 URL（`/api/m/{token}`，token 内编码 userId+fileId，**无** JWT），供 LLM 在 HTML 等输出中引用（如内心剧场 `src`）。
 3. **对话级媒体**：BGM（音频 `fileId`）、背景图（图片 `fileId`），存于对话 `index.json`，**不走宏**。
 4. **文档式 RAG**：长文档经文件库入库 → 切片 → 独立 Lance 表 → 对话绑知识库检索；**文档不进 charFile**。
 
@@ -107,7 +107,7 @@ data/{userId}/files/
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `GET` | `/api/files` | 列表（`?kind=&search=&page=`） |
+| `GET` | `/api/files` | 列表（`?kind=&search=&offset=&limit=`） |
 | `POST` | `/api/files` | multipart 上传（`file` + 可选 `kind`、`name`、`tags`） |
 | `GET` | `/api/files/:fileId` | 元数据 |
 | `GET` | `/api/files/:fileId/content` | 流式二进制（**需 JWT Bearer**；供 API/工具）；浏览器展示请用下方公开 URL |
@@ -188,7 +188,8 @@ P1「独立知识库 RAG」的**文档管线**依赖本文件库 **M1 + M4**；`
 ## 9. 前端 UI（规划）
 
 - **路由**：`/files`（或 `/library`），侧栏与「角色」「资料库」并列。
-- **能力**：网格/列表、按 kind 筛选、上传、预览、**更新内容**（`PUT …/content`，URL 不变）、**标签**（详情展示 + 编辑；`PATCH` `tags`；搜索可匹配）、删除、复制内容 URL（**相对 path** `/api/m/…`）；详情「内容 URL」为可点击超链接；详情操作区为 **图标按钮**（tooltip：复制 / 更新 / 重命名 / 标签 / 删除）；文档项显示 RAG 索引状态。
+- **能力（M1）**：网格、按 kind 筛选、上传、预览、**更新内容**（`PUT …/content`，URL 不变）、**标签**（详情展示 + 编辑；`PATCH` `tags`；搜索可匹配）、删除、复制内容 URL（**相对 path** `/api/m/…`）；详情「内容 URL」为可点击超链接；详情操作区为 **图标按钮**（tooltip：复制 / 更新 / 重命名 / 标签 / 删除）。
+- **后续**：文档项 RAG 索引状态、网格/列表切换、角色编辑器选图等见 M2+。
 - **角色编辑**：在角色表单中「图片槽」从文件库选择图片（写 `imageFiles`）。
 - **对话设置**：背景 / BGM / 知识库选择器（引用 fileId / kbId）。
 

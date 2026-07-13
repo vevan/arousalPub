@@ -3,13 +3,16 @@ import {
   mkdir,
   readFile,
   readdir,
+  rename,
   rm,
   stat,
   writeFile,
 } from 'node:fs/promises'
 import path from 'node:path'
 import { getFilesDir } from './config.js'
+import { createKeyedSerialQueue } from './keyed-serial-queue.js'
 import { generateShortId, isValidShortId } from './short-id.js'
+import { getCurrentUserId } from './user-context.js'
 
 export type FileLibraryKind = 'image' | 'document' | 'audio' | 'video'
 
@@ -115,6 +118,17 @@ const EXT_MIME: Record<string, string> = {
   '.mov': 'video/quicktime',
 }
 
+const fileLibraryQueue = createKeyedSerialQueue()
+
+function filesQueueKey(): string {
+  return `files:${getCurrentUserId()}`
+}
+
+/** 同用户 files/ 读写串行（index RMW / 创建 / 删除） */
+export function runFileLibraryTask<T>(task: () => Promise<T>): Promise<T> {
+  return fileLibraryQueue.run(filesQueueKey(), task)
+}
+
 function nowIso(): string {
   return new Date().toISOString()
 }
@@ -135,6 +149,37 @@ export function fileContentPath(fileId: string): string {
   return path.join(fileDir(fileId), 'content')
 }
 
+async function writeJsonFileAtomic(
+  filePath: string,
+  data: unknown,
+): Promise<void> {
+  await mkdir(path.dirname(filePath), { recursive: true })
+  const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`
+  const body = `${JSON.stringify(data, null, 2)}\n`
+  await writeFile(tmp, body, 'utf8')
+  try {
+    await rename(tmp, filePath)
+  } catch (e) {
+    await rm(tmp, { force: true }).catch(() => {})
+    throw e
+  }
+}
+
+async function writeBinaryFileAtomic(
+  filePath: string,
+  buf: Buffer,
+): Promise<void> {
+  await mkdir(path.dirname(filePath), { recursive: true })
+  const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`
+  await writeFile(tmp, buf)
+  try {
+    await rename(tmp, filePath)
+  } catch (e) {
+    await rm(tmp, { force: true }).catch(() => {})
+    throw e
+  }
+}
+
 function normalizeMime(raw: string): string {
   return raw.trim().toLowerCase().split(';')[0]?.trim() ?? ''
 }
@@ -148,10 +193,7 @@ function normalizeKind(raw: unknown): FileLibraryKind | null {
 
 function kindForMime(mime: string): FileLibraryKind | null {
   for (const kind of Object.keys(KIND_MIME_WHITELIST) as FileLibraryKind[]) {
-    if (KIND_MIME_WHITELIST[kind].has(mime)) {
-      if (kind === 'image' && mime === 'image/jpg') return 'image'
-      return kind
-    }
+    if (KIND_MIME_WHITELIST[kind].has(mime)) return kind
   }
   return null
 }
@@ -194,6 +236,7 @@ function assertMimeAllowed(kind: FileLibraryKind, mime: string): void {
   throw new FileLibraryError('file_mime_not_allowed')
 }
 
+/** 写入校验：非法结构抛错 */
 function normalizeTags(raw: unknown): string[] {
   if (raw == null) return []
   if (!Array.isArray(raw)) {
@@ -205,6 +248,19 @@ function normalizeTags(raw: unknown): string[] {
     const s = t.trim()
     if (!s) continue
     if (s.length > 64) throw new FileLibraryError('file_tags_invalid')
+    out.push(s)
+  }
+  return [...new Set(out)].slice(0, 32)
+}
+
+/** 读盘宽容：脏 tags 降级为空数组 */
+function coerceTags(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  const out: string[] = []
+  for (const t of raw) {
+    if (typeof t !== 'string') continue
+    const s = t.trim()
+    if (!s || s.length > 64) continue
     out.push(s)
   }
   return [...new Set(out)].slice(0, 32)
@@ -235,6 +291,32 @@ function entryFromMeta(meta: FileLibraryMeta): FileLibraryIndexEntry {
   }
 }
 
+function normalizeIndexEntry(raw: unknown): FileLibraryIndexEntry | null {
+  if (!raw || typeof raw !== 'object') return null
+  const e = raw as Record<string, unknown>
+  const fileId = typeof e.fileId === 'string' ? e.fileId.trim().toLowerCase() : ''
+  if (!isValidShortId(fileId)) return null
+  const kind = normalizeKind(e.kind)
+  if (!kind) return null
+  const name = typeof e.name === 'string' ? e.name : fileId
+  const mime = typeof e.mime === 'string' ? e.mime : 'application/octet-stream'
+  const size = typeof e.size === 'number' && Number.isFinite(e.size) ? e.size : 0
+  const createdAt =
+    typeof e.createdAt === 'string' ? e.createdAt : new Date(0).toISOString()
+  const updatedAt =
+    typeof e.updatedAt === 'string' ? e.updatedAt : createdAt
+  return {
+    fileId,
+    kind,
+    name,
+    mime,
+    size,
+    createdAt,
+    updatedAt,
+    tags: coerceTags(e.tags),
+  }
+}
+
 function emptyIndex(): FileLibraryIndexFile {
   return {
     schemaVersion: 1,
@@ -254,7 +336,19 @@ async function readIndexFile(): Promise<FileLibraryIndexFile | null> {
     ) {
       return null
     }
-    return raw as FileLibraryIndexFile
+    const entries: FileLibraryIndexEntry[] = []
+    for (const ent of (raw as FileLibraryIndexFile).entries) {
+      const n = normalizeIndexEntry(ent)
+      if (n) entries.push(n)
+    }
+    return {
+      schemaVersion: 1,
+      generatedAt:
+        typeof (raw as FileLibraryIndexFile).generatedAt === 'string'
+          ? (raw as FileLibraryIndexFile).generatedAt
+          : nowIso(),
+      entries,
+    }
   } catch {
     return null
   }
@@ -262,47 +356,67 @@ async function readIndexFile(): Promise<FileLibraryIndexFile | null> {
 
 async function writeIndexFile(data: FileLibraryIndexFile): Promise<void> {
   data.generatedAt = nowIso()
-  await mkdir(getFilesDir(), { recursive: true })
-  await writeFile(filesIndexPath(), `${JSON.stringify(data, null, 2)}\n`, 'utf8')
+  await writeJsonFileAtomic(filesIndexPath(), data)
 }
 
 async function readMetaFile(fileId: string): Promise<FileLibraryMeta | null> {
   try {
     const raw = JSON.parse(await readFile(fileMetaPath(fileId), 'utf8')) as unknown
-    if (
-      !raw ||
-      typeof raw !== 'object' ||
-      (raw as FileLibraryMeta).schemaVersion !== 1 ||
-      (raw as FileLibraryMeta).fileId !== fileId
-    ) {
-      return null
+    if (!raw || typeof raw !== 'object') return null
+    const m = raw as Record<string, unknown>
+    if (m.schemaVersion !== 1) return null
+    const id =
+      typeof m.fileId === 'string' ? m.fileId.trim().toLowerCase() : ''
+    if (id !== fileId) return null
+    const kind = normalizeKind(m.kind)
+    if (!kind) return null
+    return {
+      schemaVersion: 1,
+      fileId: id,
+      kind,
+      name: typeof m.name === 'string' ? m.name : id,
+      mime: typeof m.mime === 'string' ? m.mime : 'application/octet-stream',
+      size: typeof m.size === 'number' && Number.isFinite(m.size) ? m.size : 0,
+      createdAt:
+        typeof m.createdAt === 'string' ? m.createdAt : new Date(0).toISOString(),
+      updatedAt:
+        typeof m.updatedAt === 'string'
+          ? m.updatedAt
+          : typeof m.createdAt === 'string'
+            ? m.createdAt
+            : new Date(0).toISOString(),
+      tags: coerceTags(m.tags),
+      indexedAt:
+        m.indexedAt === null || typeof m.indexedAt === 'string'
+          ? (m.indexedAt as string | null)
+          : undefined,
+      chunkCount:
+        typeof m.chunkCount === 'number' || m.chunkCount === null
+          ? (m.chunkCount as number | null)
+          : undefined,
+      embeddingModel:
+        m.embeddingModel === null || typeof m.embeddingModel === 'string'
+          ? (m.embeddingModel as string | null)
+          : undefined,
     }
-    const m = raw as FileLibraryMeta
-    if (!normalizeKind(m.kind)) return null
-    return m
   } catch {
     return null
   }
 }
 
 async function writeMetaFile(meta: FileLibraryMeta): Promise<void> {
-  await mkdir(fileDir(meta.fileId), { recursive: true })
-  await writeFile(
-    fileMetaPath(meta.fileId),
-    `${JSON.stringify(meta, null, 2)}\n`,
-    'utf8',
-  )
+  await writeJsonFileAtomic(fileMetaPath(meta.fileId), meta)
 }
 
-export async function rebuildFileLibraryIndexFromDisk(): Promise<FileLibraryIndexFile> {
+async function rebuildFileLibraryIndexFromDiskUnsafe(): Promise<FileLibraryIndexFile> {
   await mkdir(getFilesDir(), { recursive: true })
   const names = await readdir(getFilesDir(), { withFileTypes: true })
   const entries: FileLibraryIndexEntry[] = []
   for (const ent of names) {
     if (!ent.isDirectory()) continue
-    const id = ent.name
+    const id = ent.name.toLowerCase()
     if (!isValidShortId(id)) continue
-    const meta = await readMetaFile(id.toLowerCase())
+    const meta = await readMetaFile(id)
     if (!meta) continue
     if (!existsSync(fileContentPath(meta.fileId))) continue
     entries.push(entryFromMeta(meta))
@@ -314,14 +428,18 @@ export async function rebuildFileLibraryIndexFromDisk(): Promise<FileLibraryInde
   return file
 }
 
-async function loadOrRebuildIndex(): Promise<FileLibraryIndexFile> {
-  const idx = await readIndexFile()
-  if (idx) return idx
-  return rebuildFileLibraryIndexFromDisk()
+export async function rebuildFileLibraryIndexFromDisk(): Promise<FileLibraryIndexFile> {
+  return runFileLibraryTask(() => rebuildFileLibraryIndexFromDiskUnsafe())
 }
 
-async function upsertIndexEntry(meta: FileLibraryMeta): Promise<void> {
-  const idx = await loadOrRebuildIndex()
+async function loadOrRebuildIndexUnsafe(): Promise<FileLibraryIndexFile> {
+  const idx = await readIndexFile()
+  if (idx) return idx
+  return rebuildFileLibraryIndexFromDiskUnsafe()
+}
+
+async function upsertIndexEntryUnsafe(meta: FileLibraryMeta): Promise<void> {
+  const idx = await loadOrRebuildIndexUnsafe()
   const ent = entryFromMeta(meta)
   const i = idx.entries.findIndex((e) => e.fileId === meta.fileId)
   if (i >= 0) idx.entries[i] = ent
@@ -329,8 +447,8 @@ async function upsertIndexEntry(meta: FileLibraryMeta): Promise<void> {
   await writeIndexFile(idx)
 }
 
-async function removeIndexEntry(fileId: string): Promise<void> {
-  const idx = await loadOrRebuildIndex()
+async function removeIndexEntryUnsafe(fileId: string): Promise<void> {
+  const idx = await loadOrRebuildIndexUnsafe()
   idx.entries = idx.entries.filter((e) => e.fileId !== fileId)
   await writeIndexFile(idx)
 }
@@ -341,27 +459,29 @@ export async function listFileLibrary(params: {
   search?: string
   kind?: FileLibraryKind | 'all'
 }): Promise<{ items: FileLibraryListItem[]; total: number }> {
-  await mkdir(getFilesDir(), { recursive: true })
-  const idx = await loadOrRebuildIndex()
-  let rows = [...idx.entries]
-  const kind = params.kind ?? 'all'
-  if (kind !== 'all') {
-    rows = rows.filter((r) => r.kind === kind)
-  }
-  const q = (params.search ?? '').trim().toLowerCase()
-  if (q) {
-    rows = rows.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        r.mime.toLowerCase().includes(q) ||
-        r.fileId.toLowerCase().includes(q) ||
-        r.tags.some((t) => t.toLowerCase().includes(q)),
-    )
-  }
-  rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-  const total = rows.length
-  const items = rows.slice(params.offset, params.offset + params.limit)
-  return { items, total }
+  return runFileLibraryTask(async () => {
+    await mkdir(getFilesDir(), { recursive: true })
+    const idx = await loadOrRebuildIndexUnsafe()
+    let rows = [...idx.entries]
+    const kind = params.kind ?? 'all'
+    if (kind !== 'all') {
+      rows = rows.filter((r) => r.kind === kind)
+    }
+    const q = (params.search ?? '').trim().toLowerCase()
+    if (q) {
+      rows = rows.filter(
+        (r) =>
+          r.name.toLowerCase().includes(q) ||
+          r.mime.toLowerCase().includes(q) ||
+          r.fileId.toLowerCase().includes(q) ||
+          (r.tags ?? []).some((t) => t.toLowerCase().includes(q)),
+      )
+    }
+    rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    const total = rows.length
+    const items = rows.slice(params.offset, params.offset + params.limit)
+    return { items, total }
+  })
 }
 
 export async function getFileLibraryMeta(
@@ -383,94 +503,122 @@ export async function createFileLibraryEntry(input: {
   name?: unknown
   tags?: unknown
 }): Promise<FileLibraryMeta> {
-  if (!input.buffer || input.buffer.length === 0) {
-    throw new FileLibraryError('missing_file_field')
-  }
-  const mime = canonicalizeMime(
-    resolveUploadMime(input.filename, input.mime),
-  )
-  const forced = normalizeKind(input.kind)
-  const inferred = kindForMime(mime)
-  let kind: FileLibraryKind
-  if (forced) {
-    try {
-      assertMimeAllowed(forced, mime)
-    } catch {
-      throw new FileLibraryError('file_kind_mismatch')
+  return runFileLibraryTask(async () => {
+    if (!input.buffer || input.buffer.length === 0) {
+      throw new FileLibraryError('missing_file_field')
     }
-    kind = forced
-  } else if (inferred) {
-    kind = inferred
-  } else {
-    throw new FileLibraryError('file_mime_not_allowed')
-  }
+    const mime = canonicalizeMime(
+      resolveUploadMime(input.filename, input.mime),
+    )
+    const forced = normalizeKind(input.kind)
+    const inferred = kindForMime(mime)
+    let kind: FileLibraryKind
+    if (forced) {
+      try {
+        assertMimeAllowed(forced, mime)
+      } catch {
+        throw new FileLibraryError('file_kind_mismatch')
+      }
+      kind = forced
+    } else if (inferred) {
+      kind = inferred
+    } else {
+      throw new FileLibraryError('file_mime_not_allowed')
+    }
 
-  const name = normalizeName(
-    input.name,
-    input.filename?.trim() || `${kind}-${Date.now()}`,
-  )
-  const tags = normalizeTags(input.tags)
+    const name = normalizeName(
+      input.name,
+      input.filename?.trim() || `${kind}-${Date.now()}`,
+    )
+    const tags = normalizeTags(input.tags)
 
-  await mkdir(getFilesDir(), { recursive: true })
-  const used = new Set(
-    (await loadOrRebuildIndex()).entries.map((e) => e.fileId),
-  )
-  let fileId = generateShortId()
-  while (used.has(fileId) || existsSync(fileDir(fileId))) {
-    fileId = generateShortId()
-  }
+    await mkdir(getFilesDir(), { recursive: true })
+    const used = new Set(
+      (await loadOrRebuildIndexUnsafe()).entries.map((e) => e.fileId),
+    )
+    let fileId = generateShortId()
+    let created = false
+    for (let attempt = 0; attempt < 32; attempt++) {
+      while (used.has(fileId)) fileId = generateShortId()
+      used.add(fileId)
+      try {
+        await mkdir(fileDir(fileId), { recursive: false })
+        created = true
+        break
+      } catch (e) {
+        const err = e as NodeJS.ErrnoException
+        if (err.code === 'EEXIST') {
+          fileId = generateShortId()
+          continue
+        }
+        throw e
+      }
+    }
+    if (!created) {
+      throw new Error('failed to allocate file id')
+    }
 
-  const t = nowIso()
-  const meta: FileLibraryMeta = {
-    schemaVersion: 1,
-    fileId,
-    kind,
-    name,
-    mime,
-    size: input.buffer.length,
-    createdAt: t,
-    updatedAt: t,
-    tags,
-  }
+    const t = nowIso()
+    const meta: FileLibraryMeta = {
+      schemaVersion: 1,
+      fileId,
+      kind,
+      name,
+      mime,
+      size: input.buffer.length,
+      createdAt: t,
+      updatedAt: t,
+      tags,
+    }
 
-  await mkdir(fileDir(fileId), { recursive: true })
-  try {
-    await writeFile(fileContentPath(fileId), input.buffer)
-    await writeMetaFile(meta)
-    await upsertIndexEntry(meta)
-  } catch (e) {
-    await rm(fileDir(fileId), { recursive: true, force: true }).catch(() => {})
-    throw e
-  }
-  return meta
+    try {
+      await writeBinaryFileAtomic(fileContentPath(fileId), input.buffer)
+      await writeMetaFile(meta)
+      await upsertIndexEntryUnsafe(meta)
+    } catch (e) {
+      await rm(fileDir(fileId), { recursive: true, force: true }).catch(() => {})
+      throw e
+    }
+    return meta
+  })
 }
 
 export async function patchFileLibraryMeta(
   fileId: string,
   patch: { name?: unknown; tags?: unknown },
 ): Promise<FileLibraryMeta> {
-  const meta = await getFileLibraryMeta(fileId)
-  if (!meta) throw new FileLibraryError('file_not_found')
-  let changed = false
-  if (patch.name !== undefined) {
-    meta.name = normalizeName(patch.name, meta.name)
-    changed = true
-  }
-  if (patch.tags !== undefined) {
-    meta.tags = normalizeTags(patch.tags)
-    changed = true
-  }
-  if (!changed) return meta
-  meta.updatedAt = nowIso()
-  await writeMetaFile(meta)
-  await upsertIndexEntry(meta)
-  return meta
+  return runFileLibraryTask(async () => {
+    const meta = await getFileLibraryMeta(fileId)
+    if (!meta) throw new FileLibraryError('file_not_found')
+    let changed = false
+    if (patch.name !== undefined) {
+      meta.name = normalizeName(patch.name, meta.name)
+      changed = true
+    }
+    if (patch.tags !== undefined) {
+      meta.tags = normalizeTags(patch.tags)
+      changed = true
+    }
+    if (!changed) return meta
+    meta.updatedAt = nowIso()
+    await writeMetaFile(meta)
+    try {
+      await upsertIndexEntryUnsafe(meta)
+    } catch (e) {
+      try {
+        await rebuildFileLibraryIndexFromDiskUnsafe()
+      } catch {
+        throw e
+      }
+    }
+    return meta
+  })
 }
 
 /**
  * 原地更新二进制：fileId / URL 不变。
  * - 新文件须与现有 **同 kind**（MIME 白名单）
- * - 展示名：显式 `name` > 新上传文件名 > 保留旧名（文件名可与旧的不同，如 avatar-v2.png）
+ * - 展示名：显式 `name` > 新上传文件名 > 保留旧名
  */
 export async function replaceFileLibraryContent(
   fileId: string,
@@ -482,70 +630,95 @@ export async function replaceFileLibraryContent(
     keepName?: boolean
   },
 ): Promise<FileLibraryMeta> {
-  const meta = await getFileLibraryMeta(fileId)
-  if (!meta) throw new FileLibraryError('file_not_found')
-  if (!input.buffer || input.buffer.length === 0) {
-    throw new FileLibraryError('missing_file_field')
-  }
+  return runFileLibraryTask(async () => {
+    const meta = await getFileLibraryMeta(fileId)
+    if (!meta) throw new FileLibraryError('file_not_found')
+    if (!input.buffer || input.buffer.length === 0) {
+      throw new FileLibraryError('missing_file_field')
+    }
 
-  const mime = canonicalizeMime(
-    resolveUploadMime(input.filename, input.mime),
-  )
-  try {
-    assertMimeAllowed(meta.kind, mime)
-  } catch {
-    throw new FileLibraryError('file_kind_mismatch')
-  }
+    const mime = canonicalizeMime(
+      resolveUploadMime(input.filename, input.mime),
+    )
+    try {
+      assertMimeAllowed(meta.kind, mime)
+    } catch {
+      throw new FileLibraryError('file_kind_mismatch')
+    }
 
-  if (input.keepName) {
-    // keep meta.name
-  } else if (input.name !== undefined && input.name !== '') {
-    meta.name = normalizeName(input.name, meta.name)
-  } else if (input.filename?.trim()) {
-    meta.name = normalizeName(input.filename.trim(), meta.name)
-  }
+    if (input.keepName) {
+      // keep meta.name
+    } else if (input.name !== undefined && input.name !== '') {
+      meta.name = normalizeName(input.name, meta.name)
+    } else if (input.filename?.trim()) {
+      meta.name = normalizeName(input.filename.trim(), meta.name)
+    }
 
-  meta.mime = mime
-  meta.size = input.buffer.length
-  meta.updatedAt = nowIso()
-  // 文档更新后 RAG 索引作废（M4）；先清状态
-  if (meta.kind === 'document') {
-    meta.indexedAt = null
-    meta.chunkCount = null
-    meta.embeddingModel = null
-  }
+    meta.mime = mime
+    meta.size = input.buffer.length
+    meta.updatedAt = nowIso()
+    if (meta.kind === 'document') {
+      meta.indexedAt = null
+      meta.chunkCount = null
+      meta.embeddingModel = null
+    }
 
-  await writeFile(fileContentPath(meta.fileId), input.buffer)
-  await writeMetaFile(meta)
-  await upsertIndexEntry(meta)
-  return meta
+    await writeBinaryFileAtomic(fileContentPath(meta.fileId), input.buffer)
+    await writeMetaFile(meta)
+    try {
+      await upsertIndexEntryUnsafe(meta)
+    } catch (e) {
+      try {
+        await rebuildFileLibraryIndexFromDiskUnsafe()
+      } catch {
+        throw e
+      }
+    }
+    return meta
+  })
 }
 
 export async function deleteFileLibraryEntry(fileId: string): Promise<boolean> {
-  if (!isValidShortId(fileId)) return false
-  const id = fileId.trim().toLowerCase()
-  const dir = fileDir(id)
-  if (!existsSync(dir)) {
-    await removeIndexEntry(id)
-    return false
-  }
-  await rm(dir, { recursive: true, force: true })
-  await removeIndexEntry(id)
-  return true
+  return runFileLibraryTask(async () => {
+    if (!isValidShortId(fileId)) return false
+    const id = fileId.trim().toLowerCase()
+    const dir = fileDir(id)
+    const existedDir = existsSync(dir)
+    if (existedDir) {
+      await rm(dir, { recursive: true, force: true })
+    }
+    const idx = await loadOrRebuildIndexUnsafe()
+    const hadEntry = idx.entries.some((e) => e.fileId === id)
+    if (hadEntry) {
+      try {
+        await removeIndexEntryUnsafe(id)
+      } catch (e) {
+        try {
+          await rebuildFileLibraryIndexFromDiskUnsafe()
+        } catch {
+          throw e
+        }
+      }
+    }
+    // 幂等：目录或 index 任一曾存在则视为删除成功（避免幽灵项清理却 404）
+    return existedDir || hadEntry
+  })
 }
 
 /** HTTP content GET：解析 meta + 磁盘路径 */
 export async function resolveFileLibraryContent(fileId: string): Promise<{
   contentPath: string
   meta: FileLibraryMeta
+  byteSize: number
 } | null> {
   const meta = await getFileLibraryMeta(fileId)
   if (!meta) return null
   const contentPath = fileContentPath(meta.fileId)
   try {
-    await stat(contentPath)
+    const st = await stat(contentPath)
+    if (!st.isFile()) return null
+    return { contentPath, meta, byteSize: st.size }
   } catch {
     return null
   }
-  return { contentPath, meta }
 }

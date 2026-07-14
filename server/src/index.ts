@@ -272,6 +272,7 @@ import {
   loadMacroLocalVarsForConversation,
   persistMacroVarMutations,
 } from './prompt-macros/macro-vars-persist.js'
+import { loadCharFileLookupsForIds } from './load-char-file-lookups.js'
 import {
   runPromptsAssemblePreview,
   type PromptsAssemblePreviewBody,
@@ -330,6 +331,8 @@ import {
   readCharacterDocument,
   readCharacterDocumentForApi,
   readCharacterPngBuffer,
+  getCharacterImageFiles,
+  putCharacterImageFiles,
   updateCharacterPortrait,
 } from './character-storage.js'
 import {
@@ -1328,9 +1331,13 @@ app.post<{ Params: { id: string }; Body: OpeningTurnBody }>(
         }
       }
     }
-    const [macroLocalVars, macroGlobalVars] = await Promise.all([
+    const [macroLocalVars, macroGlobalVars, fileLookups] = await Promise.all([
       loadMacroLocalVarsForConversation(id),
       loadMacroGlobalVarsForContext(),
+      loadCharFileLookupsForIds(
+        resolvedCharacterIds(idxForMacro ?? {}),
+        idxForMacro?.userCharacterId,
+      ),
     ])
     const openingMacroCtx = buildPromptMacroContext({
       conversationUserName: idxForMacro?.userName,
@@ -1339,6 +1346,8 @@ app.post<{ Params: { id: string }; Body: OpeningTurnBody }>(
       conversationId: id,
       macroLocalVars,
       macroGlobalVars,
+      charFileLookups: fileLookups.charFileLookups,
+      userFileLookup: fileLookups.userFileLookup,
     })
 
     const receives: TurnReceive[] = []
@@ -3574,6 +3583,49 @@ app.patch<{ Params: { id: string }; Body: { card?: unknown; isUser?: unknown } }
       app.log.error(e)
       return reply.status(500).send({ error: ApiErrorCodes.character_update_failed })
     }
+  },
+)
+
+app.get<{ Params: { id: string } }>(
+  '/api/characters/:id/image-files',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!isValidShortId(id)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    const data = await getCharacterImageFiles(id)
+    if (!data) {
+      return reply.status(404).send({ error: ApiErrorCodes.character_not_found })
+    }
+    return data
+  },
+)
+
+app.put<{ Params: { id: string }; Body: { fileIds?: unknown } }>(
+  '/api/characters/:id/image-files',
+  async (request, reply) => {
+    const id = request.params.id
+    if (!isValidShortId(id)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    const body = request.body
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return reply
+        .status(400)
+        .send({ error: ApiErrorCodes.image_files_body_invalid })
+    }
+    const result = await putCharacterImageFiles(
+      id,
+      (body as { fileIds?: unknown }).fileIds,
+    )
+    if (!result.ok) {
+      const status = result.error === 'character_not_found' ? 404 : 400
+      return reply.status(status).send({
+        error: ApiErrorCodes[result.error],
+        ...(result.detail ? { detail: result.detail } : {}),
+      })
+    }
+    return result.data
   },
 )
 

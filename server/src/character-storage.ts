@@ -13,6 +13,15 @@ import {
 } from './character-png.js'
 import { compareCharacterNamesAsc } from './character-name-sort.js'
 import { generateShortId, isValidShortId } from './short-id.js'
+import {
+  CHARACTER_IMAGE_FILES_MAX,
+  findDuplicateNamesInMetas,
+  loadMetasForFileIds,
+  normalizeImageFileIdList,
+  normalizeImageFilesByCharacterId,
+  type CharacterImageFilesMap,
+} from './character-image-files.js'
+import { fileContentUrl } from './file-content-url.js'
 
 const SHORT_PNG = /^([0-9a-f]{8})\.png$/i
 
@@ -46,6 +55,8 @@ interface CharacterIndexFile {
   entries: CharacterIndexEntry[]
   /** 本库中标记为用户身份卡的角色 id（不写入 PNG） */
   userCardList?: string[]
+  /** 角色绑定的文件库 fileId 列表（不写入 PNG；每角色 ≤30） */
+  imageFilesByCharacterId?: CharacterImageFilesMap
 }
 
 export type CharacterListKind = 'all' | 'user' | 'notUser'
@@ -116,6 +127,10 @@ function normalizeUserCardList(
 function finalizeIndexFile(data: CharacterIndexFile): CharacterIndexFile {
   const validIds = new Set(data.entries.map((e) => e.id))
   data.userCardList = normalizeUserCardList(data.userCardList, validIds)
+  data.imageFilesByCharacterId = normalizeImageFilesByCharacterId(
+    data.imageFilesByCharacterId,
+    validIds,
+  )
   return data
 }
 
@@ -380,6 +395,10 @@ export async function rebuildCharacterIndexFromDisk(): Promise<CharacterIndexFil
     generatedAt: nowIso(),
     entries,
     userCardList: normalizeUserCardList(old?.userCardList, validIds),
+    imageFilesByCharacterId: normalizeImageFilesByCharacterId(
+      old?.imageFilesByCharacterId,
+      validIds,
+    ),
   }
   await writeIndexFile(file)
   return file
@@ -430,6 +449,11 @@ async function removeIndexEntry(id: string): Promise<void> {
   idx.entries = idx.entries.filter((e) => e.id !== id)
   if (idx.userCardList?.length) {
     idx.userCardList = idx.userCardList.filter((x) => x !== id)
+  }
+  if (idx.imageFilesByCharacterId?.[id]) {
+    const next = { ...idx.imageFilesByCharacterId }
+    delete next[id]
+    idx.imageFilesByCharacterId = next
   }
   await writeIndexFile(idx)
 }
@@ -1036,4 +1060,137 @@ export async function readCharacterPngBuffer(id: string): Promise<Buffer | null>
   } catch {
     return null
   }
+}
+
+export interface CharacterImageFilesDto {
+  fileIds: string[]
+  items: Array<{
+    fileId: string
+    name: string
+    kind: string
+    mime: string
+    size: number
+    createdAt: string
+    updatedAt: string
+    contentUrl: string
+    missing: boolean
+  }>
+  nameConflict: boolean
+  duplicateNameKeys: string[]
+}
+
+export type PutCharacterImageFilesError =
+  | 'character_not_found'
+  | 'image_files_too_many'
+  | 'image_files_name_conflict'
+
+export async function getCharacterImageFiles(
+  characterId: string,
+): Promise<CharacterImageFilesDto | null> {
+  if (!isValidShortId(characterId)) return null
+  const id = characterId.trim().toLowerCase()
+  const doc = await readOneFile(id)
+  if (!doc) return null
+  const idx = await loadOrRebuildIndex()
+  const fileIds = normalizeImageFileIdList(
+    idx.imageFilesByCharacterId?.[id] ?? [],
+  )
+  const metas = await loadMetasForFileIds(fileIds)
+  const metaById = new Map(metas.map((m) => [m.fileId, m]))
+  const conflicts = findDuplicateNamesInMetas(metas)
+  const items = fileIds.map((fid) => {
+    const m = metaById.get(fid)
+    if (!m) {
+      return {
+        fileId: fid,
+        name: '',
+        kind: '',
+        mime: '',
+        size: 0,
+        createdAt: '',
+        updatedAt: '',
+        contentUrl: fileContentUrl(fid),
+        missing: true,
+      }
+    }
+    return {
+      fileId: m.fileId,
+      name: m.name,
+      kind: m.kind,
+      mime: m.mime,
+      size: m.size,
+      createdAt: m.createdAt,
+      updatedAt: m.updatedAt,
+      contentUrl: fileContentUrl(m.fileId),
+      missing: false,
+    }
+  })
+  return {
+    fileIds,
+    items,
+    nameConflict: conflicts.length > 0,
+    duplicateNameKeys: conflicts.map((c) => c.nameKey),
+  }
+}
+
+export async function putCharacterImageFiles(
+  characterId: string,
+  rawFileIds: unknown,
+): Promise<
+  | { ok: true; data: CharacterImageFilesDto }
+  | { ok: false; error: PutCharacterImageFilesError; detail?: string }
+> {
+  if (!isValidShortId(characterId)) {
+    return { ok: false, error: 'character_not_found' }
+  }
+  const id = characterId.trim().toLowerCase()
+  const doc = await readOneFile(id)
+  if (!doc) return { ok: false, error: 'character_not_found' }
+
+  const requested = normalizeImageFileIdList(rawFileIds)
+  if (requested.length > CHARACTER_IMAGE_FILES_MAX) {
+    return { ok: false, error: 'image_files_too_many' }
+  }
+
+  // 库内已删的 fileId 自动剪除（不报 not_found），便于绑定页确认保存
+  const metas = await loadMetasForFileIds(requested)
+  const have = new Set(metas.map((m) => m.fileId))
+  const fileIds = requested.filter((f) => have.has(f))
+
+  const conflicts = findDuplicateNamesInMetas(metas)
+  if (conflicts.length > 0) {
+    return {
+      ok: false,
+      error: 'image_files_name_conflict',
+      detail: conflicts.map((c) => c.nameKey).join(','),
+    }
+  }
+
+  const idx = await loadOrRebuildIndex()
+  const map = { ...(idx.imageFilesByCharacterId ?? {}) }
+  if (fileIds.length === 0) delete map[id]
+  else map[id] = fileIds
+  idx.imageFilesByCharacterId = map
+  await writeIndexFile(idx)
+
+  const data = await getCharacterImageFiles(id)
+  if (!data) return { ok: false, error: 'character_not_found' }
+  return { ok: true, data }
+}
+
+/** 一次读 index，供多角色宏预加载 */
+export async function getImageFilesByCharacterIdMap(): Promise<
+  Record<string, string[]>
+> {
+  const idx = await loadOrRebuildIndex()
+  return normalizeImageFilesByCharacterId(idx.imageFilesByCharacterId)
+}
+
+export async function getImageFileIdsForCharacter(
+  characterId: string,
+): Promise<string[]> {
+  if (!isValidShortId(characterId)) return []
+  const id = characterId.trim().toLowerCase()
+  const map = await getImageFilesByCharacterIdMap()
+  return map[id] ?? []
 }

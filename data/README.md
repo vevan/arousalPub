@@ -42,7 +42,7 @@ data/
 | `plugin-registry.json` | 该用户插件 enabled / order |
 | `avatar.png` | 用户头像 |
 | `chats/` | 对话会话与消息 |
-| `prompts/`、`characters/`、`lorebooks/` | 资料与预设（角色主存 **`characters/{id}.png`**，`id` 为 8 位 hex，见 `DOC/03` §6.7） |
+| `prompts/`、`characters/`、`lorebooks/` | 资料与预设（角色主存 **`characters/{id}.png`**，`id` 为 8 位 hex，见 `DOC/03` §6.7；宿主元数据 **`characters/index.json`**：`userCardList`、**`imageFilesByCharacterId`**（M2 文件绑定，不进 PNG）） |
 | `files/` | 用户文件库（`index.json` + `{fileId}/meta.json` + `{fileId}/content`；见 `DOC/20` · `DOC/03` §17） |
 | `api-settings.json`、`api-keys.json` | API 配置（内联 key 落盘为 **`apiKeyEnc` / `keyEnc`**，见 `DOC/25` §15） |
 | `user-preferences.json` | 全局偏好（含 embedding **`apiKeyEnc`**、**`hybridFts`** 记忆检索分词，见 `DOC/03` §14.4.3） |

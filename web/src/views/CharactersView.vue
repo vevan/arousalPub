@@ -4,6 +4,7 @@ import { coreNotify } from '@/utils/core-notify'
 import { useAuthStore } from '@/stores/auth'
 import { apiFetch } from '@/utils/api-fetch'
 import { generateShortId } from '@/utils/short-id'
+import CharacterImageFilesPanel from '@/components/CharacterImageFilesPanel.vue'
 import { computed, mergeProps, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -90,6 +91,10 @@ const detailLoading = ref(false)
 const deleteOpen = ref(false)
 const deleteDoing = ref(false)
 const exportDoing = ref(false)
+const imageFilesOpen = ref(false)
+const imageFilesPanelRef = ref<{
+  openPicker: () => void | Promise<void>
+} | null>(null)
 
 type CharFormMode = 'create' | 'edit'
 const charFormOpen = ref(false)
@@ -1075,6 +1080,14 @@ onUnmounted(() => {
                 <v-btn variant="outlined" size="small" :disabled="!detail" @click="openCharForm('edit')">
                   {{ $t('characters.edit') }}
                 </v-btn>
+                <v-btn
+                  variant="outlined"
+                  size="small"
+                  :disabled="!selectedId"
+                  @click="imageFilesOpen = true"
+                >
+                  {{ $t('characters.imageFilesTitle') }}
+                </v-btn>
                 <v-btn variant="outlined" size="small" :disabled="!detail || exportDoing" @click="exportPng">
                   {{ $t('characters.exportPng') }}
                 </v-btn>
@@ -1509,6 +1522,41 @@ onUnmounted(() => {
           </v-btn>
           <v-btn color="primary" :loading="charFormDoing" @click="submitCharForm">
             {{ charFormSaveLabel }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog
+      v-model="imageFilesOpen"
+      max-width="560"
+      scrollable
+      content-class="cif-dialog"
+    >
+      <v-card class="cif-dialog__card">
+        <v-card-title>{{ $t('characters.imageFilesTitle') }}</v-card-title>
+        <v-card-text class="cif-dialog__body">
+          <CharacterImageFilesPanel
+            v-if="imageFilesOpen && selectedId"
+            ref="imageFilesPanelRef"
+            :character-id="selectedId"
+            :embedded="true"
+          />
+        </v-card-text>
+        <v-card-actions class="cif-dialog-footer">
+          <p class="text-caption text-medium-emphasis cif-dialog-footer__hint mb-0">
+            {{ $t('characters.imageFilesHint', { max: 30 }) }}
+          </p>
+          <v-spacer />
+          <v-btn variant="text" @click="imageFilesOpen = false">
+            {{ $t('characters.cancel') }}
+          </v-btn>
+          <v-btn
+            color="primary"
+            variant="tonal"
+            @click="imageFilesPanelRef?.openPicker()"
+          >
+            {{ $t('characters.imageFilesPick') }}
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -2423,5 +2471,32 @@ onUnmounted(() => {
   margin-top: 0.625rem;
   padding-top: 0.625rem;
   border-top: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.08);
+}
+
+.cif-dialog-footer {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.cif-dialog-footer__hint {
+  flex: 1 1 12rem;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 1.35;
+}
+
+.cif-dialog__card {
+  display: flex;
+  flex-direction: column;
+  min-height: 50vh;
+  max-height: min(90vh, calc(100dvh - 3rem));
+}
+
+.cif-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 </style>

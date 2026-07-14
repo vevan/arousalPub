@@ -1,7 +1,7 @@
 # 用户文件库与 charFile 媒体管线（定案 · P0）
 
-> **状态**：设计定案；**M1 已落地**（`files/` 落盘 + REST + **公开 `/api/m/:token`** + `/files` UI · 2026-07-13；内容 URL **独立于**立绘 `/api/i/`，不拼 query `access_token`）。M2–M5 未实现。  
-> **定案日期**：2026-06-08  
+> **状态**：设计定案；**M1 已落地**（2026-07-13）。**M2 已落地**（2026-07-14 · 宿主 index 绑定 + FileID/FileName 宏 + 角色预览绑定 UI）。M3–M5 未实现。  
+> **定案日期**：2026-06-08（M2 细节 2026-07-14）  
 > **关联**：`DOC/03` §15 宏、§17 文件库、`shared/file-media-token.ts`、`web/src/utils/authenticated-media-url.ts`。
 
 ---
@@ -18,9 +18,9 @@
 产品缺口：
 
 1. **用户级统一文件库**：上传与管理图片、文档、音频、视频；独立 UI（**不是**世界书编辑器）。
-2. **角色绑定图片槽**：`{{charFileN}}` / `{{char2FileN}}` 在 **assemble 发送前** 展宏为稳定公开 URL（`/api/m/{token}`，token 内编码 userId+fileId，**无** JWT），供 LLM 在 HTML 等输出中引用（如内心剧场 `src`）。
+2. **角色绑定文件 + 宏**：`{{char{k}FileID::…}}` / `{{char{k}FileName::…}}`（及 persona 对称）在 **assemble / opening 展宏前** 展开为稳定公开 URL（`/api/m/{token}`），供 LLM 在 HTML 等输出中引用。
 3. **对话级媒体**：BGM（音频 `fileId`）、背景图（图片 `fileId`），存于对话 `index.json`，**不走宏**。
-4. **文档式 RAG**：长文档经文件库入库 → 切片 → 独立 Lance 表 → 对话绑知识库检索；**文档不进 charFile**。
+4. **文档式 RAG**：长文档经文件库入库 → 切片 → 独立 Lance 表 → 对话绑知识库检索；**文档不进绑定表的产品主路径**（绑定表技术上允许任意 kind，见 §3.3）。
 
 本项 **不** 在 P3 阶段实现全功能，先以本文档固化边界与分期，避免与 P0 `api_configs`、P1 独立 RAG、插件 `fileAsset` 混用同一抽象。
 
@@ -31,14 +31,14 @@
 | 能力 | 定案 | 消费方 |
 |------|------|--------|
 | **用户文件库** | 用户级 CRUD + 二进制落盘 + 列表/筛选 UI | 全产品 |
-| **`{{charFileN}}` / `{{char2FileN}}`** | **仅图片槽**；角色字段 `imageFiles[]`（`fileId` 有序） | assemble 展宏 → LLM 上下文 |
-| **发给 LLM** | 只传 **公开 `/api/m/:token` 字符串**（token 内编码 userId+fileId），**不传**图片 body | `assemble-messages` / 插件 complete |
-| **助手 HTML 落盘** | turn **无需**再展宏；模型输出已抄写 `/api/m/…` | 气泡 `<img src>` **直接可用**（公开 GET） |
-| **展示鉴权** | 公开 media token URL（**独立路由** `/api/m/`，不复用立绘 `/api/i/`）；**不**拼 JWT `access_token` | Web 气泡 / 内心剧场 |
-| **文档** | 文件库 kind=`document` → RAG 索引（独立 Lance 表） | `rag_generate` + 对话 `knowledgeBaseIds`（字段名实现时定） |
-| **对话 BGM** | `conversation.index` 存音频 `fileId` | 对话页播放器 |
-| **对话背景** | `conversation.index` 存图片 `fileId` | 对话页样式 |
-| **插件 `fileAsset`** | 短期保留；长期可迁到 `fileId` 引用（非 P3 必做） | plot-summary 等 |
+| **角色 / persona 绑定** | **不进** `{id}.png` / `chara`；写在 **`characters/index.json` 顶层**（仿 `userCardList`） | 角色预览绑定 UI + 宏 |
+| **宏** | `{{char{k}FileID::id}}` / `{{char{k}FileName::name}}`；persona：`{{userFileID::…}}` / `{{userFileName::…}}` | assemble / opening |
+| **发给 LLM** | 只传 **公开 `/api/m/:token` 相对路径字符串**，**不传**图片 body、**不**拼 JWT | `assemble-messages` / 插件 complete |
+| **助手 HTML 落盘** | turn **无需**再展宏；模型输出已抄写 `/api/m/…` | 气泡 `<img src>` **直接可用** |
+| **展示鉴权** | 公开 media token URL（**独立路由** `/api/m/`） | Web 气泡 / 内心剧场 |
+| **文档** | 文件库 kind=`document` → RAG 索引（独立 Lance 表） | `rag_generate` + 对话 `knowledgeBaseIds` |
+| **对话 BGM / 背景** | `conversation.index` 存 fileId（**M3**） | 对话页 |
+| **插件 `fileAsset`** | 短期保留；长期可迁到 `fileId` 引用（非必做） | plot-summary 等 |
 
 ---
 
@@ -49,44 +49,60 @@
 ```
 data/{userId}/files/
   index.json          # 列表摘要（fileId、kind、name、mime、size、createdAt、updatedAt、tags?）
-  {fileId}/           # fileId = 8 位 hex（与 character id 同风格）
-    meta.json         # 元数据 + 可选 RAG 状态（indexedAt、chunkCount、embeddingModel）
-    content           # 原始字节（或 content.bin；实现时二选一固定）
+  {fileId}/           # fileId = 8 位 hex
+    meta.json
+    content
 ```
 
-- **归属**：CRUD 仅靠 JWT `sub` ↔ `userId`；**禁止**在 REST 路径中嵌入 `userId`。内容展示走 **`/api/m/:token`**（token 内编码 `userId` + `fileId`，公开 GET；**不**复用立绘 `/api/i/`）。
-- **索引**：`index.json` 损坏时可从 `{fileId}/meta.json` 重建（与 `characters/index.json` 模式对齐）。
+- **归属**：CRUD 仅靠 JWT `sub` ↔ `userId`；内容展示走 **`/api/m/:token`**。
+- **索引**：`files/index.json` 损坏时可从 `{fileId}/meta.json` 重建。
 
 ### 3.2 `kind` 与 MIME
 
-| kind | 典型 MIME | charFile | RAG | BGM | 背景 |
+| kind | 典型 MIME | 角色绑定 | RAG | BGM | 背景 |
 |------|-----------|----------|-----|-----|------|
-| `image` | image/png, image/jpeg, image/webp, image/gif | ✅ | ❌ | ❌ | ✅ |
-| `document` | text/plain, text/markdown, application/pdf, … | ❌ | ✅ | ❌ | ❌ |
-| `audio` | audio/mpeg, audio/ogg, … | ❌ | ❌ | ✅ | ❌ |
-| `video` | video/mp4, … | ❌ | ❌ | ❌ | ❌ |
+| `image` | image/png, jpeg, webp, gif | ✅ | ❌ | ❌ | ✅ |
+| `document` | text/plain, markdown, pdf, … | ✅（允许；失效自负） | ✅ | ❌ | ❌ |
+| `audio` | audio/mpeg, ogg, … | ✅ | ❌ | ✅ | ❌ |
+| `video` | video/mp4, … | ✅ | ❌ | ❌ | ❌ |
 
-上传时校验 kind ↔ MIME 白名单；超大文件受 Fastify `bodyLimit` / multipart 上限约束（与角色 PNG 导入同级策略）。
+上传时校验 kind ↔ MIME 白名单。**展示名 `name` 允许全库重名**（唯一键仅为 `fileId`）。
 
-### 3.3 角色 `imageFiles`
+### 3.3 角色 / persona 文件绑定（M2 · 2026-07-14）
 
-角色卡（ST v2 `card` 或扩展字段，实现时写入 `extensions.arousalPub.imageFiles` 或并列顶层字段，**以实现定案为准**）：
+**不落角色卡。** 卡正文权威仍是 `{id}.png`（`chara`）；宿主元数据写在 **`characters/index.json`**，与 `userCardList` 同模式：
 
 ```json
 {
-  "imageFiles": [
-    { "fileId": "a1b2c3d4", "label": "立绘变体", "slot": 1 },
-    { "fileId": "e5f6a7b8", "slot": 2 }
-  ]
+  "schemaVersion": 1,
+  "entries": [ /* 由 PNG 派生的列表摘要 */ ],
+  "userCardList": ["…"],
+  "imageFilesByCharacterId": {
+    "a1b2c3d4": ["f1le0001", "f1le0002"]
+  }
 }
 ```
 
-- **槽位 N** 对应宏 `{{charFileN}}`（主角色）/ `{{char2FileN}}`（会话 `characterIds[1]`，与现有 `char2` 宏序号一致）。
-- 未绑定或 file 已删：展宏为空字符串或占位文案（与 `{{char}}` 缺失策略对齐，实现时单测锁定）。
+| 规则 | 定案 |
+|------|------|
+| 每角色上限 | **30** 个 `fileId` |
+| 存储内容 | 仅有序 `fileId[]`（不快照 name） |
+| 允许 kind | **任意**已存在文件；非图片由用户自负 |
+| 导出 PNG / JSON | **不含**本字段（永不写入 `chara`） |
+| rebuild index | 重写 `entries` 后 **merge** 旧 `imageFilesByCharacterId`，并丢掉已删角色 id |
+| persona | 会话 `userCharacterId` 对应卡走同一 map；宏见 §5 |
 
-### 3.4 对话级引用
+**绑定时重名（同角色绑定集内）**：
 
-`data/{userId}/chats/{chatId}/index.json`（字段名实现时与 `DOC/03` §7 对齐）：
+1. 文件库 **允许** 全库重名。
+2. **绑定 / 保存绑定列表**时：若新集合内存在 **trim + 大小写不敏感** 同名（按当前 `meta.name`），**拒绝**并提示。
+3. **绑定后**在文件库改名导致集合内重名：
+   - 角色绑定 UI **显示警告**（仍保持绑定，不自动解绑）；
+   - `FileName` 展宏：在绑定集内按 name 匹配，**多条时取 `createdAt` 最早，并列则 `fileId` 字典序**（避免破图）；UI 文案须说明此规则。
+
+### 3.4 对话级引用（M3）
+
+`chats/{chatId}/index.json`：
 
 ```json
 {
@@ -97,83 +113,75 @@ data/{userId}/files/
 ```
 
 - BGM / 背景：**直接 fileId**，不经宏。
-- 知识库：指向「文档集合」或「文件子集」配置（RAG Phase 与连接 / 对话 API 设定一并定案）。
+- 知识库：RAG Phase 另定。
 
 ---
 
-## 4. HTTP API（规划）
+## 4. HTTP API
 
-所有路由在全局 JWT 之后；`sub` 必须等于文件 owner。
+### 4.1 文件库（M1 ✅）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET` | `/api/files` | 列表（`?kind=&search=&offset=&limit=`） |
-| `POST` | `/api/files` | multipart 上传（`file` + 可选 `kind`、`name`、`tags`） |
-| `GET` | `/api/files/:fileId` | 元数据 |
-| `GET` | `/api/files/:fileId/content` | 流式二进制（**需 JWT Bearer**；供 API/工具）；浏览器展示请用下方公开 URL |
-| `PUT` | `/api/files/:fileId/content` | **原地更新**二进制（multipart `file`）；`fileId` / 公开 URL **不变**；默认同 kind；展示名默认跟新文件名（可不同，如 `avatar-v2.png`）；可选 `keepName` / `name` |
-| `PATCH` | `/api/files/:fileId` | 改名、标签 |
-| `DELETE` | `/api/files/:fileId` | 删除；需引用检查（角色槽、对话 BGM/背景、RAG 索引） |
+| `POST` | `/api/files` | multipart 上传 |
+| `GET` | `/api/files/:fileId` | 元数据 + `contentUrl` |
+| `GET` | `/api/files/:fileId/content` | 二进制（JWT） |
+| `PUT` | `/api/files/:fileId/content` | 原地更新（fileId/URL 不变） |
+| `PATCH` | `/api/files/:fileId` | 改名、标签（**允许**与它文件重名） |
+| `DELETE` | `/api/files/:fileId` | 删除；**M2 允许删**（引用变空/404）；完整引用检查见 **M5** |
+| `GET` | `/api/m/:token` | 公开内容 |
 
-**内容 URL（展宏 / 模型抄写 / 气泡 `src`）**：
+内容 URL：`fileContentUrl(fileId)` → `/api/m/{token}`（相对路径）。
 
-```
-/api/m/{token}
-```
+**删后恢复引用（可选 · 非 M2 必做）**：换图优先 `PUT …/content` 保 id；另可后续支持「空闲 fileId 重建」以恢复误删 URL。
 
-- `token` = base64url(userId 4B + fileId 4B)，见 `shared/file-media-token.ts`（**独立于**立绘 `portrait-media-token`）。
-- assemble、落盘、气泡 **均使用该公开 URL**；**不**拼 `access_token`。
-- 图片可带 `?size=xs|s|m|l|xl`。
+### 4.2 角色绑定（M2）
 
-### 4.1 鉴权说明
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/characters/:id/image-files` | `{ fileIds, items[], nameConflict: boolean }`（items 含现 meta + contentUrl） |
+| `PUT` | `/api/characters/:id/image-files` | Body `{ fileIds: string[] }`；**已删 fileId 自动剪除**；≤30、**集内 name 唯一**；否则 400 |
 
-- **CRUD**（列表/上传/meta/PATCH/DELETE）与 **`GET /api/files/:id/content`**：全局 JWT。
-- **展示**：`GET /api/m/:token` 为公开路由（`isPublicRoute`），**不**走 `allowsQueryAccessToken`。
-- 立绘仍为 `GET /api/i/:token`；二者路由与 token 格式分离。
+- 亦可并入 `GET/PATCH /api/characters/:id` 响应/body 扩展字段，实现时二选一，以本节路由为准。
+- **禁止**把绑定列表写入 `card` 浅合并进 PNG。
 
-### 4.2 服务端辅助
+---
 
-```ts
-// server/src/file-content-url.ts
-export function fileContentUrl(fileId: string, userId?: string): string {
-  // → /api/m/{encodeFileMediaToken({ userId, fileId })}
-}
-```
+## 5. 宏展宏（M2）
 
-与立绘 URL 辅助对称，但 **path 前缀为 `/api/m/`**。---
+在 `prompt-macros`（CST）增加带 `::` 参数的宏（仅服务端；**assemble / opening / plugin macro-expand** 一并展）：
 
-## 5. 宏展宏（assemble 前）
+| 宏 | 含义 |
+|----|------|
+| `{{charFileID::fileId}}` / `{{char1FileID::fileId}}` | `characterIds[0]` 绑定集 |
+| `{{char{k}FileID::fileId}}` | `characterIds[k-1]`（k≥1） |
+| `{{char{k}FileName::name}}` | 同上，按展示名查 |
+| `{{userFileID::fileId}}` / `{{userFileName::name}}` | 会话 `userCharacterId` 卡的绑定集 |
 
-在 `server/src/prompt-macros/` 增加 handler（名称实现时定）：
+规则：
 
-1. 解析当前会话 `characterIds`；
-2. 读取各角色 `imageFiles[slot]`；
-3. 将 `{{charFileN}}` / `{{char2FileN}}` 替换为 `fileContentUrl(fileId)`（公开 `/api/m/…`）；
-4. 仅影响 **发往模型的 messages**；**不**改写已落盘历史（历史 assistant 内容已是模型生成的 URL）。
-
-与 §15 一致：**仅服务端展宏**；Web 不保留宏展开副本。
+1. 解析 `characterIds` / `userCharacterId` → 读 `imageFilesByCharacterId`。
+2. **FileID**：参数为 8 位 hex；须在该角色绑定集内且文件仍存在 → `fileContentUrl`；否则 `""`。
+3. **FileName**：在绑定集内按 name（trim、大小写不敏感）匹配；0 → `""`；1 → URL；**>1 → 最早 `createdAt`（并列 `fileId`）**。
+4. 展开结果仅为 **相对** `/api/m/…`（无 host、无 `access_token`、默认无 `?size=`）。
+5. 不改写已落盘历史 turn。
 
 ---
 
 ## 6. 展示层（Web）
 
-1. `fileLibraryContentUrl(userId, fileId)` → `/api/m/{token}`（**无** `access_token`）；
-2. 气泡 HTML 中的 `/api/m/…` **无需** `render-rich-message` 再改写；
-3. 对话页 BGM / 背景组件直接使用该 URL。
+1. `fileLibraryContentUrl(userId, fileId)` → `/api/m/{token}`。
+2. 气泡 `/api/m/…` 无需再改写。
+3. **M2 UI**：角色预览按钮组「文件库绑定」——**仅从已有文件库多选**（不在此上传）；显示集内重名警告；保存走 §4.2。
 
 ---
 
 ## 7. 文档 RAG（与文件库的关系）
 
-- **入口**：用户在文件库上传文档 → 可选「加入知识库」→ 后台切片 + embedding → **独立 Lance 表**（与 `memory/conversations/*`、`lorebook-vector` **分表**）。
-- **检索**：对话绑定 `knowledgeBaseIds`；assemble 时 TopK 注入（`resolveFeatureApi('rag_generate')`，API 在功能设置或对话 `apiPreset.rag` 配置）。
-- **明确不做**：PDF/txt **不** 进入 `{{charFileN}}`；世界书手工条目仍走现有 `lorebook-resolve`。
-- **索引策略（与 §14.4.2 对齐）**：
-  - 上线时可先 **FTS + flat 向量**（及必要 scalar，如 `fileId` / `kbId`）。
-  - **ANN**（`IVF_PQ` 等）：切片知识库行数过阈值后再建；**不**默认套用到 turn memory / 世界书小表。
-  - Memory / lore 已有的 scalar **不**替代文档表 ANN；文档表可独立演进。
-
-P1「独立知识库 RAG」的**文档管线**依赖本文件库 **M1 + M4**；`rag_generate` 在 RAG 功能设置页或对话 API 设定中接线。
+- **入口**：文件库上传文档 → 可选「加入知识库」→ 切片 + embedding → **独立 Lance 表**。
+- **明确不做**：文档管线 **不**替代世界书；绑定表与 RAG 索引分离。
+- **索引策略**：先 FTS + flat；ANN 行数门控见 `DOC/03` §14.4.2 / M4。
 
 ---
 
@@ -181,62 +189,57 @@ P1「独立知识库 RAG」的**文档管线**依赖本文件库 **M1 + M4**；`
 
 | 现有 | 关系 |
 |------|------|
-| 角色立绘 `/api/i/:token` | 公开立绘 URL；文件库用 **独立** `/api/m/:token`，不复用立绘路由；charFile 为附加图片槽，不替换立绘 |
-| 世界书 vector | 条目级触发；与文档 RAG **并存、分表** |
-| turn memory Lance | 对话摘要向量；与文档 RAG **分表** |
-| 插件 `host.fileAsset` | 小文件侧车；P3 不强制迁移 |
-| 连接 / 对话 API 设定 | `rag_generate` 绑定独立；与 chat 主 API 分离 |
+| 角色立绘 `/api/i/:token` | 不复用；绑定文件是附加资源，不替换立绘 |
+| `userCardList` | 同文件宿主元数据模式 |
+| 世界书 / turn memory Lance | 与文档 RAG 分表 |
+| 插件 `host.fileAsset` | 短期保留 |
 
 ---
 
-## 9. 前端 UI（规划）
+## 9. 前端 UI
 
-- **路由**：`/files`（或 `/library`），侧栏与「角色」「资料库」并列。
-- **能力（M1）**：网格、按 kind 筛选、上传、预览、**更新内容**（`PUT …/content`，URL 不变）、**标签**（详情展示 + 编辑；`PATCH` `tags`；搜索可匹配）、删除、复制内容 URL（**相对 path** `/api/m/…`）；详情「内容 URL」为可点击超链接；详情操作区为 **图标按钮**（tooltip：复制 / 更新 / 重命名 / 标签 / 删除）。
-- **后续**：文档项 RAG 索引状态、网格/列表切换、角色编辑器选图等见 M2+。
-- **角色编辑**：在角色表单中「图片槽」从文件库选择图片（写 `imageFiles`）。
-- **对话设置**：背景 / BGM / 知识库选择器（引用 fileId / kbId）。
+- **M1 ✅**：`/files` 网格、kind、上传、更新内容、标签、删除、复制 URL。
+- **M2**：角色预览「文件库绑定」对话框（文件库选择器 + 重名警告）；persona 卡同能力。
+- **M3**：对话设置背景 / BGM 选择器。
 
 **不是**：在世界书编辑器内嵌通用上传区。
 
 ---
 
-## 10. 实施分期（建议）
+## 10. 实施分期
 
 | 阶段 | 内容 | 依赖 |
 |------|------|------|
-| **M1** ✅ 2026-07-13 | `files/` 落盘 + REST + 公开 `/api/m` + `/files` UI | — |
-| **M2** | 角色 `imageFiles` + `{{charFileN}}` 宏 + `fileContentUrl` | M1 |
-| **M3** | 对话 BGM·背景绑定 fileId（URL 已公开，无需 withAccessToken） | M1 |
-| **M4** | 文档切片 + 独立 Lance + 对话绑知识库 | M1、RAG API 设定 |
-| **M5** | 引用检查、批量导入、视频预览优化 | M1–M3 |
-
-P0 排期：**至少完成 M1–M3** 可交付「文件库 + charFile + 展示」闭环；M4（独立文档 RAG）同列 P0，与 RAG API 设定一并推进。
+| **M1** ✅ 2026-07-13 | `files/` + REST + `/api/m` + `/files` UI | — |
+| **M2** ✅ 2026-07-14 | `imageFilesByCharacterId` + FileID/FileName 宏 + 角色绑定 UI | M1 |
+| **M3** | 对话 BGM·背景 fileId | M1 |
+| **M4** | 文档切片 + 独立 Lance + 知识库 | M1、RAG API |
+| **M5** | 引用检查、批量导入、视频预览；可选指定 id 重建 | M1–M3 |
 
 ---
 
-## 11. 验收要点（实现后）
+## 11. 验收要点（M2）
 
-- [ ] 上传图片后，角色槽 N 绑定，`assemble-preview` 中可见 `/api/m/{token}` **且无** `access_token`
-- [ ] 模型返回含该 URL 的 HTML，刷新页面后图片仍可显示（公开 GET，无需前端拼 token）
-- [ ] 改密或 session 失效后，**历史 turn 内 `/api/m/…` 不变且仍可显示**（删文件则 404）
-- [ ] 文档上传不出现在 charFile 宏；RAG 检索命中来自独立 Lance 表
-- [ ] 删除被角色/对话引用的文件时返回 409 或明确错误码
+- [ ] 角色绑定 ≤30；集内同名拒绝保存
+- [ ] `assemble` / opening / plugin-macro-expand 中 `FileID`/`FileName` 展开为 `/api/m/{token}` 且无 `access_token`（`assemble-preview` 用样例卡、无真实绑定）
+- [ ] 缺失 / 未绑 / 已删 → `""`；PUT 自动剪除缺失 id
+- [ ] 事后改名致重名：绑定页警告；FileName 取最早文件 URL
+- [ ] 导出 PNG/JSON **不含**绑定列表
+- [ ] 删文件允许；宏变空；历史 turn 内旧 URL 可 404
 
 ---
 
-## 12. 开放问题（实现前定案）
+## 12. 开放问题
 
-1. `imageFiles` 写入角色卡 ST `extensions` 命名空间 vs 宿主并列字段；
-2. 知识库实体是「文件多选」还是独立 `knowledge-bases/` 目录；
-3. PDF 切片器选型（纯文本提取 vs 外部工具）；
-4. 单用户文件配额与总容量提示（内网默认可不设）。
+1. ~~`imageFiles` 写入角色卡 vs 宿主字段~~ → **已定：宿主 `characters/index.json`**。
+2. 知识库实体形态（M4）。
+3. PDF 切片器选型（M4）。
+4. 单用户文件配额（内网默认可不设）。
+5. 删后指定 fileId 重建（可选，非 M2 阻塞）。
 
 ---
 
 ## 13. 文档维护
 
-- 接口落地后更新 `DOC/03` 新章节（建议 §16 或并入 §6 媒体）；
-- `data/README.md` 补充 `files/` 说明；
-- `DOC/04` P3 条目勾选进度；
-- RAG 功能设置与 `resolveFeatureApi('rag_generate')` 引用本文档为前置。
+- 落地后更新 `DOC/03` §17（M2 小节）；`DOC/04` 勾选 M2。
+- `data/README.md` 补充 `imageFilesByCharacterId`。

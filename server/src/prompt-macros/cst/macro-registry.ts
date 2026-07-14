@@ -22,6 +22,7 @@ import {
   formatTimeWithUtcOffset,
   isKnownMacroToken,
   normalizeMacroHead,
+  parseCharFileMacroHead,
   pickRandomArg,
   resolveAllChatRange,
   resolveAuthorsNote,
@@ -54,6 +55,10 @@ import {
 } from '../macro-values.js'
 import { trimScopedBlockContent } from '../macro-truthy.js'
 import type { PromptMacroContext } from '../types.js'
+import {
+  resolveBoundFileById,
+  resolveBoundFileByName,
+} from '../../character-image-files.js'
 
 function repeatChar(ch: string, countRaw: string | undefined): string {
   const n = Number.parseInt(String(countRaw ?? 1), 10)
@@ -102,6 +107,17 @@ export function invokeCstMacro(
   if (/^char\d+$/.test(name)) {
     const n = Number.parseInt(name.slice(4), 10)
     return resolveCharName(ctx, n)
+  }
+  const charFile = parseCharFileMacroHead(name)
+  if (charFile) {
+    const arg = args[0] ?? ''
+    const lookup =
+      charFile.target === 'user'
+        ? ctx.userFileLookup
+        : ctx.charFileLookups?.[charFile.target - 1]
+    return charFile.kind === 'id'
+      ? resolveBoundFileById(lookup, arg)
+      : resolveBoundFileByName(lookup, arg)
   }
   if (name === 'model') return resolveModel(ctx)
   if (name === 'maxprompt' || name === 'context') return resolveContextLength(ctx)

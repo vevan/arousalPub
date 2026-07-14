@@ -22,6 +22,7 @@ import {
   loadMacroLocalVarsForConversation,
   persistMacroVarMutations,
 } from './prompt-macros/macro-vars-persist.js'
+import { loadCharFileLookupsForIds } from './load-char-file-lookups.js'
 
 export interface PluginMacroExpandRequest {
   text: string
@@ -69,6 +70,8 @@ export async function runPluginMacroExpand(
   let characters: MacroContextCharacterInput[] = []
   let authorsNote: string | undefined
   let defaultAuthorsNote: string | undefined
+  let charIdsForFiles: string[] = []
+  let userCharacterIdForFiles: string | null | undefined
 
   let enabledPluginIds: string[] = []
   let historyFields = buildMacroHistoryFields({
@@ -96,6 +99,8 @@ export async function runPluginMacroExpand(
     if (idx) {
       conversationUserName = idx.userName
       const charIds = resolvedCharacterIds(idx)
+      charIdsForFiles = charIds
+      userCharacterIdForFiles = idx.userCharacterId
       characters = await loadMacroCharacters(charIds)
       authorsNote = authorsNoteMacroText(idx.authorsNote)
       const beforeEx = macroBeforeExclusiveFromToTurn(req.toTurn)
@@ -134,9 +139,10 @@ export async function runPluginMacroExpand(
     }
   }
 
-  const [macroLocalVars, macroGlobalVars] = await Promise.all([
+  const [macroLocalVars, macroGlobalVars, fileLookups] = await Promise.all([
     convId ? loadMacroLocalVarsForConversation(convId) : Promise.resolve({}),
     loadMacroGlobalVarsForContext(),
+    loadCharFileLookupsForIds(charIdsForFiles, userCharacterIdForFiles),
   ])
 
   const macroContext = buildPromptMacroContext({
@@ -153,6 +159,8 @@ export async function runPluginMacroExpand(
     locale: req.locale,
     macroLocalVars,
     macroGlobalVars,
+    charFileLookups: fileLookups.charFileLookups,
+    userFileLookup: fileLookups.userFileLookup,
   })
 
   const expanded = applyPromptMacroPipeline(text, macroContext)

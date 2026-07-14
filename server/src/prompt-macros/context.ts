@@ -2,6 +2,7 @@ import type { MacroCharacterFields } from './character-fields.js'
 import type { MacroHistoryFields } from './history-macros.js'
 import { cloneMacroVarMap } from './macro-vars.js'
 import type { PromptMacroContext } from './types.js'
+import type { BoundFileLookup } from '../character-image-files.js'
 
 const DEFAULT_USER_LABEL = '用户'
 const DEFAULT_CHAR_LABEL = '角色'
@@ -34,6 +35,8 @@ export function buildPromptMacroContext(params: {
   group?: string | null
   groupNotMuted?: string | null
   groupChatEnabled?: boolean | null
+  charFileLookups?: BoundFileLookup[] | null
+  userFileLookup?: BoundFileLookup | null
 }): PromptMacroContext {
   const raw = params.conversationUserName
   const userName =
@@ -127,6 +130,12 @@ export function buildPromptMacroContext(params: {
       ? { groupNotMuted: params.groupNotMuted }
       : {}),
     ...(params.groupChatEnabled === true ? { groupChatEnabled: true } : {}),
+    ...(Array.isArray(params.charFileLookups)
+      ? { charFileLookups: params.charFileLookups }
+      : {}),
+    ...(params.userFileLookup
+      ? { userFileLookup: params.userFileLookup }
+      : {}),
   }
 }
 

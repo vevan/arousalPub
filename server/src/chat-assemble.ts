@@ -10,6 +10,7 @@ import {
 } from './assemble-prompts.js'
 import { buildPromptMacroContext } from './prompt-macros/index.js'
 import { patchPromptMacroHistoryFields } from './prompt-macros/context.js'
+import { loadCharFileLookupsForIds } from './load-char-file-lookups.js'
 import { buildMacroHistoryFields, type TrimmedHistoryMessage } from './prompt-macros/history-macros.js'
 import { extractMacroCharacterFields } from './prompt-macros/index.js'
 import { applyMacrosToMessages, applyPromptMacroPipeline } from './prompt-macros/index.js'
@@ -597,9 +598,10 @@ export async function buildConversationOutboundMessages(
     speakerCharacterId,
   })
 
-  const [macroLocalVars, macroGlobalVars] = await Promise.all([
+  const [macroLocalVars, macroGlobalVars, fileLookups] = await Promise.all([
     loadMacroLocalVarsForConversation(conversationId),
     loadMacroGlobalVarsForContext(),
+    loadCharFileLookupsForIds(charIds, idx.userCharacterId),
   ])
 
   let macroContext = buildPromptMacroContext({
@@ -624,6 +626,8 @@ export async function buildConversationOutboundMessages(
     group: groupMacroStrings.group,
     groupNotMuted: groupMacroStrings.groupNotMuted,
     groupChatEnabled: Boolean(groupChat.enabled),
+    charFileLookups: fileLookups.charFileLookups,
+    userFileLookup: fileLookups.userFileLookup,
   })
 
   const authorsNote = authorsNoteForInjection(idx.authorsNote)

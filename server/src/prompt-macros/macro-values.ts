@@ -396,7 +396,25 @@ export function isKnownMacroToken(inner: string): boolean {
   const head = macroTokenHead(raw)
   if (KNOWN_MACRO_HEADS.has(head)) return true
   if (/^char\d+$/i.test(head)) return true
+  if (parseCharFileMacroHead(head)) return true
   return false
+}
+
+/** `charFileID` / `char2FileName` / `userFileID` 等 */
+export function parseCharFileMacroHead(head: string): {
+  kind: 'id' | 'name'
+  /** 1-based characterIds index，或 user persona */
+  target: number | 'user'
+} | null {
+  const h = head.trim().toLowerCase()
+  if (h === 'userfileid') return { kind: 'id', target: 'user' }
+  if (h === 'userfilename') return { kind: 'name', target: 'user' }
+  const m = /^char(\d*)file(id|name)$/.exec(h)
+  if (!m) return null
+  const nRaw = m[1]!
+  const n = nRaw === '' ? 1 : Number.parseInt(nRaw, 10)
+  if (!Number.isFinite(n) || n < 1) return null
+  return { kind: m[2] === 'id' ? 'id' : 'name', target: n }
 }
 
 export function unsupportedMacroPlaceholder(inner: string): string {

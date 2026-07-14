@@ -1,5 +1,6 @@
 import type { MacroCharacterFields } from './character-fields.js'
 import type { MacroVarMap } from './macro-vars.js'
+import type { BoundFileLookup } from '../character-image-files.js'
 
 /** 宏展开上下文（仅服务端构造） */
 
@@ -60,4 +61,8 @@ export interface PromptMacroContext {
   macroLocalVarTouched?: Set<string>
   /** 本轮变更过的全局变量键（并发写盘时 merge） */
   macroGlobalVarTouched?: Set<string>
+  /** M2：按 characterIds 顺序的文件绑定 lookup */
+  charFileLookups?: BoundFileLookup[]
+  /** M2：userCharacterId 文件绑定 lookup */
+  userFileLookup?: BoundFileLookup
 }

@@ -26,6 +26,7 @@
   - [ ] **M5** 引用检查、批量导入、视频预览优化（依赖 M1–M3）
 - [ ] **独立文档 RAG**（≠ 世界书 vector）— [`DOC/20`](20-user-file-library.md) **M4**；前置 M1 + RAG API 设定
   - [ ] 文档切片 + 独立 Lance 表 + 对话绑知识库
+  - [ ] （M4 后）切片知识库过行数阈值再加 **ANN**；memory/lore **scalar** 已先落地（`DOC/03` §14.4.2）
 
 ## P1
 

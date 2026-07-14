@@ -23,6 +23,10 @@ import {
   LORE_FTS_COLUMN,
   runLanceHybridSearch,
 } from './lance-hybrid-search.js'
+import {
+  ensureScalarIndexes,
+  LORE_SCALAR_INDEX_SPECS,
+} from './lance-scalar-index.js'
 import { readGlobalHybridFtsSettings } from './user-preferences-file.js'
 import { languageModelHomeForSettings } from './hybrid-fts-dict.js'
 import { getUserDataDir } from './config.js'
@@ -138,6 +142,7 @@ async function replaceLorebookVectorIndexUnsafe(
     uri,
     getCurrentUserId(),
   )
+  await ensureScalarIndexes(table, LORE_SCALAR_INDEX_SPECS)
 }
 
 export async function deleteLorebookVectorIndex(
@@ -193,6 +198,7 @@ async function searchLorebookEntryVectorsUnsafe(
   const names = await listLanceTableNames(db, uri)
   if (!names.includes(TABLE_NAME)) return []
   const table = await openLanceTableWithManifestMigration(db, TABLE_NAME, uri)
+  await ensureScalarIndexes(table, LORE_SCALAR_INDEX_SPECS, { soft: true })
   const k = Math.min(64, Math.max(topK * 3, topK))
   const settings = await readGlobalHybridFtsSettings()
   const userId = getCurrentUserId()

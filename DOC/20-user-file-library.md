@@ -168,6 +168,10 @@ export function fileContentUrl(fileId: string, userId?: string): string {
 - **入口**：用户在文件库上传文档 → 可选「加入知识库」→ 后台切片 + embedding → **独立 Lance 表**（与 `memory/conversations/*`、`lorebook-vector` **分表**）。
 - **检索**：对话绑定 `knowledgeBaseIds`；assemble 时 TopK 注入（`resolveFeatureApi('rag_generate')`，API 在功能设置或对话 `apiPreset.rag` 配置）。
 - **明确不做**：PDF/txt **不** 进入 `{{charFileN}}`；世界书手工条目仍走现有 `lorebook-resolve`。
+- **索引策略（与 §14.4.2 对齐）**：
+  - 上线时可先 **FTS + flat 向量**（及必要 scalar，如 `fileId` / `kbId`）。
+  - **ANN**（`IVF_PQ` 等）：切片知识库行数过阈值后再建；**不**默认套用到 turn memory / 世界书小表。
+  - Memory / lore 已有的 scalar **不**替代文档表 ANN；文档表可独立演进。
 
 P1「独立知识库 RAG」的**文档管线**依赖本文件库 **M1 + M4**；`rag_generate` 在 RAG 功能设置页或对话 API 设定中接线。
 

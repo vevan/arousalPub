@@ -20,6 +20,10 @@ import {
   runLanceHybridSearch,
   withHybridFtsSettingsContext,
 } from './lance-hybrid-search.js'
+import {
+  ensureScalarIndexes,
+  MEMORY_SCALAR_INDEX_SPECS,
+} from './lance-scalar-index.js'
 import { getCurrentUserId } from './user-context.js'
 import {
   isTurnIdNullable,
@@ -58,6 +62,14 @@ async function ensureMemoryHybridFtsIndex(
     memoryDbUri(conversationId),
     userId,
   )
+}
+
+async function ensureMemoryLanceIndexes(
+  conversationId: string,
+  table: Table,
+): Promise<void> {
+  await ensureMemoryHybridFtsIndex(conversationId, table)
+  await ensureScalarIndexes(table, MEMORY_SCALAR_INDEX_SPECS)
 }
 
 async function withMemoryHybridFtsContext<T>(fn: () => Promise<T>): Promise<T> {
@@ -133,7 +145,7 @@ async function migrateMissingCorpusColumn(
   if (rows.length === 0) return null
   const withCorpus = rows.map((r) => ({ ...r, corpus: r.corpus || '' }))
   const recreated = await createTurnMemoryTable(conversationId, withCorpus)
-  await ensureMemoryHybridFtsIndex(conversationId, recreated)
+  await ensureMemoryLanceIndexes(conversationId, recreated)
   return recreated
 }
 
@@ -254,7 +266,9 @@ async function upsertTurnMemoryRowsBatchUnsafe(
   if (!existing) {
     const table = await createTurnMemoryTable(conversationId, valid)
     if (!options?.deferFts) {
-      await ensureMemoryHybridFtsIndex(conversationId, table)
+      await ensureMemoryLanceIndexes(conversationId, table)
+    } else {
+      await ensureScalarIndexes(table, MEMORY_SCALAR_INDEX_SPECS)
     }
     return
   }
@@ -265,6 +279,8 @@ async function upsertTurnMemoryRowsBatchUnsafe(
       .whenNotMatchedInsertAll()
       .execute(rowsToTurnMemoryArrowTable(valid))
   })
+  // deferFts 只延后 FTS；scalar 与 FTS 无关，merge 后始终确保
+  await ensureScalarIndexes(existing, MEMORY_SCALAR_INDEX_SPECS)
 }
 
 /** 弃用分支子树时删除对应 Lance 行（含嵌套 branchPath） */
@@ -341,7 +357,7 @@ async function replaceTurnMemoryIndexUnsafe(
   const valid = rows.filter((r) => r.vector.length > 0)
   if (!valid.length) return
   const table = await createTurnMemoryTable(conversationId, valid)
-  await ensureMemoryHybridFtsIndex(conversationId, table)
+  await ensureMemoryLanceIndexes(conversationId, table)
 }
 
 export async function deleteConversationMemoryIndex(
@@ -488,6 +504,7 @@ async function searchTurnMemoryVectorsUnsafe(
 
   const table = await openMemoryTable(conversationId)
   if (!table) return []
+  await ensureScalarIndexes(table, MEMORY_SCALAR_INDEX_SPECS, { soft: true })
 
   const whereClause = buildMemoryVectorSearchWhereClause(
     allowedBranchPaths,

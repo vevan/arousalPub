@@ -58,6 +58,7 @@ export class FileLibraryError extends Error {
       | 'file_kind_mismatch'
       | 'file_mime_not_allowed'
       | 'file_invalid_id'
+      | 'file_id_taken'
       | 'file_name_invalid'
       | 'file_tags_invalid'
       | 'missing_file_field',
@@ -502,6 +503,11 @@ export async function createFileLibraryEntry(input: {
   kind?: unknown
   name?: unknown
   tags?: unknown
+  /**
+   * 可选：在空闲 short id 上重建（恢复误删后的 `/api/m` URL）。
+   * 已存在内容则 `file_id_taken`；非法 id → `file_invalid_id`。
+   */
+  fileId?: unknown
 }): Promise<FileLibraryMeta> {
   return runFileLibraryTask(async () => {
     if (!input.buffer || input.buffer.length === 0) {
@@ -532,26 +538,63 @@ export async function createFileLibraryEntry(input: {
     )
     const tags = normalizeTags(input.tags)
 
+    let preferredId: string | null = null
+    if (input.fileId !== undefined && input.fileId !== null && input.fileId !== '') {
+      if (typeof input.fileId !== 'string' || !isValidShortId(input.fileId)) {
+        throw new FileLibraryError('file_invalid_id')
+      }
+      preferredId = input.fileId.trim().toLowerCase()
+    }
+
     await mkdir(getFilesDir(), { recursive: true })
     const used = new Set(
       (await loadOrRebuildIndexUnsafe()).entries.map((e) => e.fileId),
     )
-    let fileId = generateShortId()
+
+    let fileId: string
     let created = false
-    for (let attempt = 0; attempt < 32; attempt++) {
-      while (used.has(fileId)) fileId = generateShortId()
-      used.add(fileId)
+
+    if (preferredId) {
+      // 已有可读内容 → 占用；幽灵目录/index 项可清掉后重建
+      if (await getFileLibraryMeta(preferredId)) {
+        throw new FileLibraryError('file_id_taken')
+      }
+      if (existsSync(fileDir(preferredId))) {
+        await rm(fileDir(preferredId), { recursive: true, force: true })
+      }
+      if (used.has(preferredId)) {
+        await removeIndexEntryUnsafe(preferredId)
+        used.delete(preferredId)
+      }
+      fileId = preferredId
       try {
         await mkdir(fileDir(fileId), { recursive: false })
-        created = true
-        break
       } catch (e) {
         const err = e as NodeJS.ErrnoException
-        if (err.code === 'EEXIST') {
-          fileId = generateShortId()
-          continue
+        if (err.code === 'EEXIST' || (await getFileLibraryMeta(preferredId))) {
+          throw new FileLibraryError('file_id_taken')
         }
         throw e
+      }
+      used.add(fileId)
+      created = true
+    } else {
+      fileId = generateShortId()
+      for (let attempt = 0; attempt < 32; attempt++) {
+        while (used.has(fileId)) fileId = generateShortId()
+        used.add(fileId)
+        try {
+          await mkdir(fileDir(fileId), { recursive: false })
+          created = true
+          break
+        } catch (e) {
+          const err = e as NodeJS.ErrnoException
+          if (err.code === 'EEXIST') {
+            fileId = generateShortId()
+            continue
+          }
+          throw e
+        }
       }
     }
     if (!created) {

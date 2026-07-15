@@ -1,7 +1,7 @@
 # 用户文件库与 charFile 媒体管线（定案 · P0）
 
-> **状态**：设计定案；**M1 已落地**（2026-07-13）。**M2 已落地**（2026-07-14 · 宿主 index 绑定 + FileID/FileName 宏 + 角色预览绑定 UI）。**M3 已落地**（2026-07-15 · 对话 `backgroundImageFileId` / `bgmFileId` + 设置选择器 + 对话页展示）。M4–M5 未实现。  
-> **定案日期**：2026-06-08（M2 细节 2026-07-14；M3 2026-07-15）  
+> **状态**：设计定案；**M1–M3、M5 已落地**（M5：2026-07-15 · 引用扫描/强删清引用 · 多文件上传 · 视频预览）。**M4** 未实现。  
+> **定案日期**：2026-06-08（M2 细节 2026-07-14；M3/M5 2026-07-15）  
 > **关联**：`DOC/03` §15 宏、§17 文件库、`shared/file-media-token.ts`、`web/src/utils/authenticated-media-url.ts`。
 
 ---
@@ -124,17 +124,18 @@ data/{userId}/files/
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET` | `/api/files` | 列表（`?kind=&search=&offset=&limit=`） |
-| `POST` | `/api/files` | multipart 上传 |
+| `POST` | `/api/files` | multipart 上传；可选字段 `fileId`（空闲 id 重建，见上） |
 | `GET` | `/api/files/:fileId` | 元数据 + `contentUrl` |
 | `GET` | `/api/files/:fileId/content` | 二进制（JWT） |
 | `PUT` | `/api/files/:fileId/content` | 原地更新（fileId/URL 不变） |
 | `PATCH` | `/api/files/:fileId` | 改名、标签（**允许**与它文件重名） |
-| `DELETE` | `/api/files/:fileId` | 删除；**M2 允许删**（引用变空/404）；完整引用检查见 **M5** |
+| `DELETE` | `/api/files/:fileId` | 删除；**M5**：见 §4.4（无 force 有引用 → 409；`?force=1` 清引用后删） |
+| `GET` | `/api/files/:fileId/references` | **M5** 引用扫描（文件已缺失但有悬空引用时仍返回；`missing: true`） |
 | `GET` | `/api/m/:token` | 公开内容 |
 
 内容 URL：`fileContentUrl(fileId)` → `/api/m/{token}`（相对路径）。
 
-**删后恢复引用（可选 · 非 M2 必做）**：换图优先 `PUT …/content` 保 id；另可后续支持「空闲 fileId 重建」以恢复误删 URL。
+**删后恢复引用**：换图优先 `PUT …/content` 保 id；**空闲 fileId 重建**（M5）：`POST /api/files` 表单字段 `fileId`（8 位 hex）在未占用 id 上创建，公开 `/api/m` URL 与删前一致。已占用 → `409 file_id_taken`。
 
 ### 4.2 角色绑定（M2）
 
@@ -155,7 +156,34 @@ data/{userId}/files/
 | `backgroundImageFileId` | `image` | `null` / `""` 清除；否则须存在且 kind=image |
 | `bgmFileId` | `audio` | 同上，kind=audio |
 
-错误码：`file_invalid_id` · `file_not_found` · `file_kind_mismatch`。删文件后悬空引用允许（UI 显示缺失；引用检查见 M5）。
+错误码：`file_invalid_id` · `file_not_found` · `file_kind_mismatch`。M1–M3 删文件后悬空引用允许（UI 显示缺失）；**M5** 起走 §4.4。
+
+### 4.4 删除引用检查与强制清除（M5 · 定案 2026-07-15）
+
+**交互定案**：**列出引用 → 用户确认 → 强制删除，并同步清除相关引用**（不是「有引用就 409 永久拒绝」）。
+
+对齐 API 预设/Key 的「先扫引用」形态，但删除策略不同：文件库允许确认后强删，并**主动清掉**仍指向该 `fileId` 的宿主字段。
+
+| 步骤 | 行为 |
+|------|------|
+| 1. 扫描 | `GET /api/files/:fileId/references` → `references[]`（可空） |
+| 2. UI | 有引用时对话框列出引用方；无引用可直接删 |
+| 3. 确认强删 | `DELETE /api/files/:fileId?force=1`；**顺序：先删文件目录，再清宿主引用**（删失败则引用仍在；force 下文件已不存在时仍清悬空引用并返回成功） |
+| 4. 无 force 且有引用 | **409** + `references[]`（与预设删除提示一致，逼 UI 走确认） |
+
+**须扫描并清除的引用（权威字段）**：
+
+| kind | 位置 | 清除动作 |
+|------|------|----------|
+| `character_image_file` | `characters/index.json` → `imageFilesByCharacterId[*]` | 从该角色 `fileId[]` 中移除 |
+| `conversation_background` | `chats/{id}/index.json` → `backgroundImageFileId` | `delete` 该字段 |
+| `conversation_bgm` | `chats/{id}/index.json` → `bgmFileId` | `delete` 该字段 |
+| （M4 后）知识库 / 文档索引 | 待 M4 定案补 kind | 解绑或从索引摘除 |
+
+**明确不做（M5）**：
+
+- **不**扫描历史 turn 正文里已抄写的 `/api/m/…`（落盘助手 HTML 不改写；旧 URL 可 404）。
+- **不**因引用存在而禁止删除（确认后必须能删干净宿主字段 + 文件）。
 
 ---
 
@@ -212,6 +240,7 @@ data/{userId}/files/
 - **M1 ✅**：`/files` 网格、kind、上传、更新内容、标签、删除、复制 URL。
 - **M2**：角色预览「文件库绑定」对话框（文件库选择器 + 重名警告）；persona 卡同能力。
 - **M3 ✅**：对话设置「绑定」区背景 / BGM 选择器；对话页 CSS 背景 + `<audio>` 循环（顶栏静音）。
+- **M5 ✅**：`/files` 删除前拉引用列表；有引用则确认对话框 → 强删并清除绑定/对话媒体字段；多文件上传；网格/详情视频 `preload=metadata`；上传栏「指定 ID」恢复误删 URL。
 
 **不是**：在世界书编辑器内嵌通用上传区。
 
@@ -225,7 +254,7 @@ data/{userId}/files/
 | **M2** ✅ 2026-07-14 | `imageFilesByCharacterId` + FileID/FileName 宏 + 角色绑定 UI | M1 |
 | **M3** ✅ 2026-07-15 | 对话 BGM·背景 fileId + 设置选择器 + 对话页展示 | M1 |
 | **M4** | 文档切片 + 独立 Lance + 知识库 | M1、RAG API |
-| **M5** | 引用检查、批量导入、视频预览；可选指定 id 重建 | M1–M3 |
+| **M5** ✅ 2026-07-15 | 引用检查（列引用→确认强删→清引用）、批量导入、视频预览、指定 id 重建 | M1–M3 |
 
 ---
 
@@ -243,14 +272,15 @@ data/{userId}/files/
 ## 12. 开放问题
 
 1. ~~`imageFiles` 写入角色卡 vs 宿主字段~~ → **已定：宿主 `characters/index.json`**。
-2. 知识库实体形态（M4）。
-3. PDF 切片器选型（M4）。
-4. 单用户文件配额（内网默认可不设）。
-5. 删后指定 fileId 重建（可选，非 M2 阻塞）。
+2. ~~删除时有引用如何处理~~ → **已定（M5）**：列出引用 → 确认后强制删 → 同步清除宿主引用字段（§4.4）；不扫历史 turn URL。
+3. 知识库实体形态（M4）。
+4. PDF 切片器选型（M4）。
+5. 单用户文件配额（内网默认可不设）。
+6. ~~删后指定 fileId 重建~~ → **已定（M5）**：`POST /api/files` 可选 `fileId`；空闲则重建，占用 → `file_id_taken`。
 
 ---
 
 ## 13. 文档维护
 
-- 落地后更新 `DOC/03` §17（M2/M3 小节）；`DOC/04` 勾选 M2/M3。
+- 落地后更新 `DOC/03` §17（M2/M3/M5 小节）；`DOC/04` 勾选对应项。
 - `data/README.md` 补充 `imageFilesByCharacterId`、对话 `backgroundImageFileId` / `bgmFileId`。

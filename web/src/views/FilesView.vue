@@ -79,10 +79,28 @@ const tagsDraft = ref('')
 const tagsDoing = ref(false)
 const deleteOpen = ref(false)
 const deleteDoing = ref(false)
+const deleteLoadingRefs = ref(false)
+const deleteReferences = ref<FileLibraryReference[]>([])
 const uploading = ref(false)
+const uploadProgress = ref<{ done: number; total: number } | null>(null)
+/** 可选：单文件上传时指定空闲 8 位 hex，恢复误删 URL */
+const preferredFileId = ref('')
 const replacing = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const replaceInputRef = ref<HTMLInputElement | null>(null)
+
+type FileLibraryReferenceKind =
+  | 'character_image_file'
+  | 'conversation_background'
+  | 'conversation_bgm'
+
+interface FileLibraryReference {
+  kind: FileLibraryReferenceKind
+  characterId?: string
+  characterName?: string
+  conversationId?: string
+  conversationTitle?: string
+}
 
 const selected = computed(
   () => items.value.find((i) => i.fileId === selectedId.value) ?? null,
@@ -260,33 +278,99 @@ function triggerReplace() {
   replaceInputRef.value?.click()
 }
 
-async function onFilePicked(ev: Event) {
-  const input = ev.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ''
-  if (!file) return
-  uploading.value = true
+async function uploadOneFile(
+  file: File,
+  preferredId?: string | null,
+): Promise<
+  | { ok: true; fileId: string; name: string }
+  | { ok: false; name: string; error?: string }
+> {
+  const fd = new FormData()
+  fd.append('file', file, file.name)
+  const id = preferredId?.trim().toLowerCase()
+  if (id) fd.append('fileId', id)
   try {
-    const fd = new FormData()
-    fd.append('file', file, file.name)
     const res = await apiFetch('/api/files', { method: 'POST', body: fd })
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as { error?: string }
-      coreNotify(
-        t('files.uploadFailed'),
-        body.error ? t(`api.errors.${body.error}`, body.error) : undefined,
-        { level: 'error' },
-      )
-      return
+      return { ok: false, name: file.name, error: body.error }
     }
     const meta = (await res.json()) as FileListItem & { fileId: string }
-    coreNotify(t('files.uploadOk'), meta.name, { level: 'success' })
-    await fetchSlice(0, false)
-    selectedId.value = meta.fileId
+    return { ok: true, fileId: meta.fileId, name: meta.name || file.name }
   } catch {
-    coreNotify(t('files.uploadFailed'), undefined, { level: 'error' })
+    return { ok: false, name: file.name }
+  }
+}
+
+async function onFilePicked(ev: Event) {
+  const input = ev.target as HTMLInputElement
+  const list = input.files ? Array.from(input.files) : []
+  input.value = ''
+  if (list.length === 0) return
+  const preferred =
+    list.length === 1 ? preferredFileId.value.trim().toLowerCase() : ''
+  if (preferred && !/^[0-9a-f]{8}$/i.test(preferred)) {
+    coreNotify(t('files.preferredIdInvalid'), undefined, { level: 'error' })
+    return
+  }
+  uploading.value = true
+  uploadProgress.value = { done: 0, total: list.length }
+  let lastOkId: string | null = null
+  let okCount = 0
+  let failCount = 0
+  try {
+    for (const file of list) {
+      const result = await uploadOneFile(
+        file,
+        list.length === 1 ? preferred || null : null,
+      )
+      uploadProgress.value = {
+        done: (uploadProgress.value?.done ?? 0) + 1,
+        total: list.length,
+      }
+      if (result.ok) {
+        okCount += 1
+        lastOkId = result.fileId
+      } else {
+        failCount += 1
+        if (list.length === 1) {
+          coreNotify(
+            t('files.uploadFailed'),
+            result.error
+              ? t(`api.errors.${result.error}`, result.error)
+              : undefined,
+            { level: 'error' },
+          )
+        }
+      }
+    }
+    await fetchSlice(0, false)
+    if (lastOkId) selectedId.value = lastOkId
+    if (list.length > 1) {
+      if (failCount === 0) {
+        coreNotify(t('files.uploadBatchOk', { n: okCount }), undefined, {
+          level: 'success',
+        })
+      } else {
+        coreNotify(
+          t('files.uploadBatchPartial', { ok: okCount, fail: failCount }),
+          undefined,
+          { level: failCount === list.length ? 'error' : 'warning' },
+        )
+      }
+    } else if (okCount === 1) {
+      coreNotify(
+        preferred
+          ? t('files.uploadRebuildOk', { id: preferred })
+          : t('files.uploadOk'),
+        undefined,
+        { level: 'success' },
+      )
+      preferredFileId.value = ''
+    }
   } finally {
     uploading.value = false
+    uploadProgress.value = null
   }
 }
 
@@ -410,24 +494,82 @@ async function submitTags() {
   }
 }
 
-function openDelete() {
+function formatReferenceLine(ref: FileLibraryReference): string {
+  switch (ref.kind) {
+    case 'character_image_file':
+      return t('files.refCharacter', {
+        name: ref.characterName || ref.characterId || '—',
+      })
+    case 'conversation_background':
+      return t('files.refConversationBackground', {
+        title: ref.conversationTitle || ref.conversationId || '—',
+      })
+    case 'conversation_bgm':
+      return t('files.refConversationBgm', {
+        title: ref.conversationTitle || ref.conversationId || '—',
+      })
+    default:
+      return String((ref as FileLibraryReference).kind)
+  }
+}
+
+async function openDelete() {
   if (!selected.value) return
+  deleteReferences.value = []
   deleteOpen.value = true
+  deleteLoadingRefs.value = true
+  const id = selected.value.fileId
+  try {
+    const res = await apiFetch(`/api/files/${id}/references`)
+    if (res.ok) {
+      const body = (await res.json()) as { references?: FileLibraryReference[] }
+      deleteReferences.value = Array.isArray(body.references)
+        ? body.references
+        : []
+    }
+  } catch {
+    deleteReferences.value = []
+  } finally {
+    deleteLoadingRefs.value = false
+  }
 }
 
 async function submitDelete() {
   if (!selected.value) return
   deleteDoing.value = true
   const id = selected.value.fileId
+  const force = deleteReferences.value.length > 0
   try {
-    const res = await apiFetch(`/api/files/${id}`, { method: 'DELETE' })
+    const q = force ? '?force=1' : ''
+    const res = await apiFetch(`/api/files/${id}${q}`, { method: 'DELETE' })
+    if (res.status === 409) {
+      const body = (await res.json().catch(() => ({}))) as {
+        references?: FileLibraryReference[]
+      }
+      deleteReferences.value = Array.isArray(body.references)
+        ? body.references
+        : deleteReferences.value
+      coreNotify(t('files.deleteInUse'), undefined, { level: 'warning' })
+      return
+    }
     if (!res.ok) {
-      coreNotify(t('files.deleteFailed'), undefined, { level: 'error' })
+      const body = (await res.json().catch(() => ({}))) as { error?: string }
+      coreNotify(
+        t('files.deleteFailed'),
+        body.error ? t(`api.errors.${body.error}`, body.error) : undefined,
+        { level: 'error' },
+      )
       return
     }
     deleteOpen.value = false
+    deleteReferences.value = []
     selectedId.value = null
     await fetchSlice(0, false)
+    coreNotify(
+      force ? t('files.deleteForceOk') : t('files.deleteOk'),
+      undefined,
+      { level: 'success' },
+    )
   } catch {
     coreNotify(t('files.deleteFailed'), undefined, { level: 'error' })
   } finally {
@@ -504,13 +646,33 @@ async function submitDelete() {
         >
           {{ $t('files.upload') }}
         </v-btn>
+        <v-text-field
+          v-model="preferredFileId"
+          :label="$t('files.preferredId')"
+          :hint="$t('files.preferredIdHint')"
+          persistent-hint
+          density="compact"
+          variant="outlined"
+          hide-details="auto"
+          clearable
+          class="filelib-preferred-id"
+          :disabled="uploading"
+          maxlength="8"
+        />
         <input
           ref="fileInputRef"
           type="file"
           class="d-none"
+          multiple
           :accept="UPLOAD_ACCEPT"
           @change="onFilePicked"
         >
+        <span
+          v-if="uploadProgress"
+          class="text-caption text-medium-emphasis"
+        >
+          {{ $t('files.uploadProgress', uploadProgress) }}
+        </span>
         <input
           ref="replaceInputRef"
           type="file"
@@ -548,6 +710,14 @@ async function submitDelete() {
                   alt=""
                   class="filelib-card__img"
                 >
+                <video
+                  v-else-if="item.kind === 'video'"
+                  :src="mediaUrl(item.fileId, item.updatedAt) ?? undefined"
+                  class="filelib-card__video"
+                  muted
+                  playsinline
+                  preload="metadata"
+                />
                 <v-icon v-else size="36" class="filelib-card__icon">
                   {{ kindIcon(item.kind) }}
                 </v-icon>
@@ -597,8 +767,11 @@ async function submitDelete() {
               />
               <video
                 v-else-if="selected.kind === 'video' && selectedPreviewUrl"
+                :key="selected.fileId + selected.updatedAt"
                 :src="selectedPreviewUrl"
                 controls
+                playsinline
+                preload="metadata"
                 class="filelib-detail__video"
               />
               <div v-else class="filelib-detail__doc">
@@ -768,17 +941,57 @@ async function submitDelete() {
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="deleteOpen" max-width="28rem">
+    <v-dialog v-model="deleteOpen" max-width="32rem">
       <v-card>
         <v-card-title>{{ $t('files.deleteTitle') }}</v-card-title>
-        <v-card-text>
-          {{ $t('files.deleteConfirm', { name: selected?.name ?? '' }) }}
+        <v-card-text class="d-flex flex-column ga-3">
+          <p class="mb-0">
+            {{ $t('files.deleteConfirm', { name: selected?.name ?? '' }) }}
+          </p>
+          <div
+            v-if="deleteLoadingRefs"
+            class="text-caption text-medium-emphasis"
+          >
+            {{ $t('files.deleteRefsLoading') }}
+          </div>
+          <template v-else-if="deleteReferences.length">
+            <v-alert
+              type="warning"
+              variant="tonal"
+              density="compact"
+            >
+              {{ $t('files.deleteRefsHint', { n: deleteReferences.length }) }}
+            </v-alert>
+            <ul class="filelib-delete-refs">
+              <li
+                v-for="(ref, i) in deleteReferences"
+                :key="`${ref.kind}-${ref.characterId ?? ''}-${ref.conversationId ?? ''}-${i}`"
+              >
+                {{ formatReferenceLine(ref) }}
+              </li>
+            </ul>
+          </template>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" @click="deleteOpen = false">{{ $t('files.cancel') }}</v-btn>
-          <v-btn color="error" :loading="deleteDoing" @click="submitDelete">
-            {{ $t('files.delete') }}
+          <v-btn
+            variant="text"
+            :disabled="deleteDoing"
+            @click="deleteOpen = false"
+          >
+            {{ $t('files.cancel') }}
+          </v-btn>
+          <v-btn
+            color="error"
+            :loading="deleteDoing || deleteLoadingRefs"
+            :disabled="deleteLoadingRefs"
+            @click="submitDelete"
+          >
+            {{
+              deleteReferences.length
+                ? $t('files.deleteForce')
+                : $t('files.delete')
+            }}
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -812,6 +1025,11 @@ async function submitDelete() {
   flex: 1 1 12rem;
   min-width: 10rem;
   max-width: 20rem;
+}
+.filelib-preferred-id {
+  flex: 0 1 11rem;
+  min-width: 8rem;
+  max-width: 12rem;
 }
 .filelib-body {
   display: grid;
@@ -860,10 +1078,21 @@ async function submitDelete() {
   justify-content: center;
   overflow: hidden;
 }
-.filelib-card__img {
+.filelib-card__img,
+.filelib-card__video {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
+  pointer-events: none;
+  background: #000;
+}
+.filelib-delete-refs {
+  margin: 0;
+  padding-left: 1.15rem;
+  font-size: 0.875rem;
+  max-height: 12rem;
+  overflow: auto;
 }
 .filelib-card__name {
   display: block;
@@ -920,9 +1149,14 @@ async function submitDelete() {
   max-height: 14rem;
   object-fit: contain;
 }
-.filelib-detail__audio,
+.filelib-detail__audio {
+  width: 100%;
+}
 .filelib-detail__video {
   width: 100%;
+  max-height: 18rem;
+  background: #000;
+  border-radius: 0.35rem;
 }
 .filelib-detail__doc {
   display: flex;

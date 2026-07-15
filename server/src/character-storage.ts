@@ -1194,3 +1194,43 @@ export async function getImageFileIdsForCharacter(
   const map = await getImageFilesByCharacterIdMap()
   return map[id] ?? []
 }
+
+/** 从全部角色绑定中移除某 fileId；返回受影响角色数 */
+export async function removeFileIdFromAllCharacterImageFiles(
+  fileId: string,
+): Promise<number> {
+  if (!isValidShortId(fileId)) return 0
+  const fid = fileId.trim().toLowerCase()
+  const idx = await loadOrRebuildIndex()
+  const map = { ...(idx.imageFilesByCharacterId ?? {}) }
+  let touched = 0
+  for (const [cid, list] of Object.entries(map)) {
+    if (!Array.isArray(list)) continue
+    const next = list.filter((x) => typeof x === 'string' && x !== fid)
+    if (next.length === list.length) continue
+    touched += 1
+    if (next.length === 0) delete map[cid]
+    else map[cid] = next
+  }
+  if (touched === 0) return 0
+  idx.imageFilesByCharacterId = map
+  await writeIndexFile(idx)
+  return touched
+}
+
+/** 批量解析角色展示名（index.entries；缺失则跳过） */
+export async function resolveCharacterNamesByIds(
+  characterIds: readonly string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  if (characterIds.length === 0) return out
+  const idx = await loadOrRebuildIndex()
+  const byId = new Map(idx.entries.map((e) => [e.id, e.name]))
+  for (const raw of characterIds) {
+    if (!isValidShortId(raw)) continue
+    const id = raw.trim().toLowerCase()
+    const name = byId.get(id)
+    if (typeof name === 'string' && name.trim()) out.set(id, name.trim())
+  }
+  return out
+}

@@ -327,4 +327,60 @@ describe('file library storage + public media url', () => {
     const second = await storage.deleteFileLibraryEntry(meta.fileId)
     assert.equal(second, false)
   })
+
+  it('recreates at preferred free fileId; rejects taken or invalid id', async () => {
+    const { FileLibraryError } = await import('../src/file-library-storage.js')
+    const { fileContentUrl: contentUrl } = await import(
+      '../src/file-content-url.js'
+    )
+
+    const first = await storage.createFileLibraryEntry({
+      buffer: Buffer.from('v1'),
+      filename: 'keep.txt',
+      mime: 'text/plain',
+      name: '原件',
+    })
+    const targetId = first.fileId
+    const urlBefore = contentUrl(targetId, TEST_USER)
+
+    await storage.deleteFileLibraryEntry(targetId)
+    assert.equal(await storage.getFileLibraryMeta(targetId), null)
+
+    const rebuilt = await storage.createFileLibraryEntry({
+      buffer: Buffer.from('v2-restored'),
+      filename: 'keep.txt',
+      mime: 'text/plain',
+      name: '重建',
+      fileId: targetId,
+    })
+    assert.equal(rebuilt.fileId, targetId)
+    assert.equal(rebuilt.name, '重建')
+    assert.equal(contentUrl(rebuilt.fileId, TEST_USER), urlBefore)
+
+    await assert.rejects(
+      () =>
+        storage.createFileLibraryEntry({
+          buffer: Buffer.from('x'),
+          filename: 'x.txt',
+          mime: 'text/plain',
+          fileId: targetId,
+        }),
+      (e: unknown) =>
+        e instanceof FileLibraryError && e.code === 'file_id_taken',
+    )
+
+    await assert.rejects(
+      () =>
+        storage.createFileLibraryEntry({
+          buffer: Buffer.from('x'),
+          filename: 'x.txt',
+          mime: 'text/plain',
+          fileId: 'not-hex!',
+        }),
+      (e: unknown) =>
+        e instanceof FileLibraryError && e.code === 'file_invalid_id',
+    )
+
+    await storage.deleteFileLibraryEntry(targetId)
+  })
 })

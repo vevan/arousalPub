@@ -25,7 +25,7 @@
   - [x] **M1** `files/` 落盘 + REST + 公开 `/api/m` + `/files` 基础 UI
   - [x] **M2** `imageFilesByCharacterId` + FileID/FileName 宏 + 角色绑定 UI（2026-07-14 · `[DOC/20](20-user-file-library.md)`）
   - [x] **M3** 对话 BGM·背景绑定 fileId（公开 URL，无需 withAccessToken）（2026-07-15 · `[DOC/20](20-user-file-library.md)`）
-  - [ ] **M5** 引用检查、批量导入、视频预览优化（依赖 M1–M3）
+  - [x] **M5** 引用检查（列引用→确认强删→清引用）· 批量导入 · 视频预览 · 指定 id 重建（2026-07-15 · `[DOC/20](20-user-file-library.md)` §4.4）
 - [ ] **独立文档 RAG**（≠ 世界书 vector）— `[DOC/20](20-user-file-library.md)` **M4**；前置 M1 + RAG API 设定
   - [ ] 文档切片 + 独立 Lance 表 + 对话绑知识库
   - [ ] （M4 后）切片知识库过行数阈值再加 **ANN**；memory/lore **scalar** 已先落地（`DOC/03` §14.4.2）
@@ -105,6 +105,7 @@
 - [x] **兼容/过渡代码大清理**（2026-07-08 · 未提交）：`.cursor/rules/no-compatibility-code.mdc` · 预设 granular 槽 · TK-D · audit/密钥/FTS/宏/ Historian 后缀等；审计清单 `[.tmp/compatibility-code-audit.md](../.tmp/compatibility-code-audit.md)` · 同步 `DOC/03` §6/§13/§14/§15 · `DOC/25` §15.2 · `DOC/29` · `DOC/12` §4.2
 - [x] **通知中心 NC0–NC-F1 + NC-F3 + NC-V**（2026-07-09）：`v-snackbar-queue` · `coreNotify` / `host.ui.notify` · bell · 桌面通知 · 宿主 6 处 snackbar 迁移 · plot-summary parse 边界通知 — 见 `[DOC/40](40-notification-center.md)` · 验收 `[DOC/45](45-notification-center-core-migration.md)` §6.10 · **延后** NC-F2 Server 推送
 - [x] **用户文件库 M3 对话背景/BGM**（2026-07-15）：`backgroundImageFileId` / `bgmFileId` · PATCH 校验 kind · 对话设置选择器 · 对话页背景+循环音频 — 见 `[DOC/20](20-user-file-library.md)` · `DOC/03` §17.5
+- [x] **用户文件库 M5 引用检查+批量导入+视频预览+指定 id 重建**（2026-07-15）：`GET …/references` · `DELETE ?force=1` · `POST fileId` 空闲重建 · FilesView — 见 `[DOC/20](20-user-file-library.md)` §4.4 · `DOC/03` §17.6
 
 
 

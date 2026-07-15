@@ -340,7 +340,6 @@ import {
 } from './character-storage.js'
 import {
   createFileLibraryEntry,
-  deleteFileLibraryEntry,
   FileLibraryError,
   getFileLibraryMeta,
   listFileLibrary,
@@ -349,6 +348,11 @@ import {
   resolveFileLibraryContent,
   type FileLibraryKind,
 } from './file-library-storage.js'
+import {
+  deleteFileLibraryEntryWithReferenceCheck,
+  FileLibraryInUseError,
+  findFileLibraryReferences,
+} from './file-library-references.js'
 import { fileContentUrl } from './file-content-url.js'
 import {
   portraitImageCacheControl,
@@ -3132,6 +3136,7 @@ app.post('/api/files', async (request, reply) => {
     let mime: string | undefined
     let kindField: string | undefined
     let nameField: string | undefined
+    let fileIdField: string | undefined
     let tagsField: unknown
     const parts = request.parts()
     for await (const part of parts) {
@@ -3143,24 +3148,37 @@ app.post('/api/files', async (request, reply) => {
         const v = part.value
         if (part.fieldname === 'kind' && typeof v === 'string') kindField = v
         else if (part.fieldname === 'name' && typeof v === 'string') nameField = v
-        else if (part.fieldname === 'tags') tagsField = v
+        else if (part.fieldname === 'fileId' && typeof v === 'string') {
+          fileIdField = v
+        } else if (part.fieldname === 'tags') tagsField = v
       }
     }
     if (!fileBuf) {
       return reply.status(400).send({ error: ApiErrorCodes.missing_file_field })
     }
-    const meta = await createFileLibraryEntry({
-      buffer: fileBuf,
-      filename,
-      mime,
-      kind: kindField,
-      name: nameField,
-      tags: parseTagsField(tagsField),
-    })
-    return {
-      ok: true as const,
-      ...meta,
-      contentUrl: fileContentUrl(meta.fileId),
+    try {
+      const meta = await createFileLibraryEntry({
+        buffer: fileBuf,
+        filename,
+        mime,
+        kind: kindField,
+        name: nameField,
+        tags: parseTagsField(tagsField),
+        fileId: fileIdField,
+      })
+      return {
+        ok: true as const,
+        ...meta,
+        contentUrl: fileContentUrl(meta.fileId),
+      }
+    } catch (e) {
+      if (e instanceof FileLibraryError) {
+        if (e.code === 'file_id_taken') {
+          return reply.status(409).send({ error: ApiErrorCodes.file_id_taken })
+        }
+        return reply.status(400).send({ error: ApiErrorCodes[e.code] ?? e.code })
+      }
+      throw e
     }
   } catch (e) {
     if (e instanceof FileLibraryError) {
@@ -3320,20 +3338,54 @@ app.patch<{ Params: { fileId: string } }>(
   },
 )
 
-app.delete<{ Params: { fileId: string } }>(
+app.get<{ Params: { fileId: string } }>(
+  '/api/files/:fileId/references',
+  async (request, reply) => {
+    const fileId = request.params.fileId
+    if (!isValidShortId(fileId)) {
+      return reply.status(400).send({ error: ApiErrorCodes.file_invalid_id })
+    }
+    const references = await findFileLibraryReferences(fileId)
+    const meta = await getFileLibraryMeta(fileId)
+    // 文件已删但仍有悬空宿主引用时仍返回列表，便于排查 / 强制清理
+    if (!meta && references.length === 0) {
+      return reply.status(404).send({ error: ApiErrorCodes.file_not_found })
+    }
+    return {
+      references,
+      missing: !meta,
+    }
+  },
+)
+
+app.delete<{
+  Params: { fileId: string }
+  Querystring: { force?: string }
+}>(
   '/api/files/:fileId',
   async (request, reply) => {
     const fileId = request.params.fileId
     if (!isValidShortId(fileId)) {
       return reply.status(400).send({ error: ApiErrorCodes.file_invalid_id })
     }
+    const forceRaw = request.query?.force
+    const force =
+      forceRaw === '1' ||
+      forceRaw === 'true' ||
+      forceRaw === 'yes'
     try {
-      const ok = await deleteFileLibraryEntry(fileId)
+      const ok = await deleteFileLibraryEntryWithReferenceCheck(fileId, { force })
       if (!ok) {
         return reply.status(404).send({ error: ApiErrorCodes.file_not_found })
       }
       return { ok: true as const }
     } catch (e) {
+      if (e instanceof FileLibraryInUseError) {
+        return reply.status(409).send({
+          error: ApiErrorCodes.file_in_use,
+          references: e.references,
+        })
+      }
       app.log.error(e)
       return reply.status(500).send({ error: ApiErrorCodes.file_delete_failed })
     }

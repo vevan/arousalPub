@@ -49,6 +49,8 @@ import {
   updateConversationBudgetTrimSettings,
   updateConversationUserCharacterId,
   updateConversationUserName,
+  updateConversationBackgroundImageFileId,
+  updateConversationBgmFileId,
   updateConversationAuthorsNote,
   updateConversationGroupChat,
   clearConversationChatApiSettings,
@@ -65,6 +67,7 @@ import {
   type TurnReceive,
 } from './chat-storage.js'
 import { parseGroupContinueBody } from './group-chat-turn.js'
+import { parseConversationMediaFileId } from './conversation-media-files.js'
 import {
   createEmptyConversationBranch,
   deleteConversationBranch,
@@ -698,6 +701,10 @@ interface PatchConvBody {
   activeBranchPath?: string | null
   /** 群聊设置；`null` 重置为默认 */
   groupChat?: Record<string, unknown> | null
+  /** 对话背景图 fileId（image）；`null` / `""` 清除 */
+  backgroundImageFileId?: string | null
+  /** 对话 BGM fileId（audio）；`null` / `""` 清除 */
+  bgmFileId?: string | null
 }
 
 app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
@@ -745,6 +752,11 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
     const hasPluginSettings = Object.prototype.hasOwnProperty.call(b, 'pluginSettings')
     const hasActiveBranchPath = Object.prototype.hasOwnProperty.call(b, 'activeBranchPath')
     const hasGroupChat = Object.prototype.hasOwnProperty.call(b, 'groupChat')
+    const hasBackgroundImageFileId = Object.prototype.hasOwnProperty.call(
+      b,
+      'backgroundImageFileId',
+    )
+    const hasBgmFileId = Object.prototype.hasOwnProperty.call(b, 'bgmFileId')
     if (
       !hasTitle &&
       !hasAuditDebug &&
@@ -762,7 +774,9 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       !hasEmbeddingApiSettings &&
       !hasPluginSettings &&
       !hasActiveBranchPath &&
-      !hasGroupChat
+      !hasGroupChat &&
+      !hasBackgroundImageFileId &&
+      !hasBgmFileId
     ) {
       return reply
         .status(400)
@@ -1151,6 +1165,27 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
         return reply.status(400).send({ error: ApiErrorCodes.validation_failed })
       }
       const next = await updateConversationGroupChat(id, raw)
+      if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+      idx = next
+    }
+    if (hasBackgroundImageFileId) {
+      const parsed = await parseConversationMediaFileId(
+        b.backgroundImageFileId,
+        'image',
+      )
+      if (!parsed.ok) {
+        return reply.status(400).send({ error: ApiErrorCodes[parsed.error] })
+      }
+      const next = await updateConversationBackgroundImageFileId(id, parsed.fileId)
+      if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+      idx = next
+    }
+    if (hasBgmFileId) {
+      const parsed = await parseConversationMediaFileId(b.bgmFileId, 'audio')
+      if (!parsed.ok) {
+        return reply.status(400).send({ error: ApiErrorCodes[parsed.error] })
+      }
+      const next = await updateConversationBgmFileId(id, parsed.fileId)
       if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       idx = next
     }

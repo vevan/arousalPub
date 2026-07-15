@@ -248,6 +248,10 @@ export interface ConversationIndex {
   branchForkTurnIds?: string[]
   /** 群聊开关与接续策略（§35） */
   groupChat?: GroupChatSettings
+  /** 对话背景图（文件库 image `fileId`；公开 `/api/m`；M3） */
+  backgroundImageFileId?: string
+  /** 对话 BGM（文件库 audio `fileId`；公开 `/api/m`；M3） */
+  bgmFileId?: string
 }
 
 export interface TurnReceive {
@@ -791,6 +795,44 @@ export async function updateConversationUserCharacterId(
       delete next.userCharacterId
     } else if (typeof userCharacterId === 'string') {
       next.userCharacterId = userCharacterId.trim()
+    }
+    return next
+  })
+}
+
+export async function updateConversationBackgroundImageFileId(
+  conversationId: string,
+  backgroundImageFileId: string | null,
+): Promise<ConversationIndex | null> {
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    if (
+      backgroundImageFileId === null ||
+      (typeof backgroundImageFileId === 'string' && !backgroundImageFileId.trim())
+    ) {
+      delete next.backgroundImageFileId
+    } else {
+      next.backgroundImageFileId = backgroundImageFileId.trim().toLowerCase()
+    }
+    return next
+  })
+}
+
+export async function updateConversationBgmFileId(
+  conversationId: string,
+  bgmFileId: string | null,
+): Promise<ConversationIndex | null> {
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    if (
+      bgmFileId === null ||
+      (typeof bgmFileId === 'string' && !bgmFileId.trim())
+    ) {
+      delete next.bgmFileId
+    } else {
+      next.bgmFileId = bgmFileId.trim().toLowerCase()
     }
     return next
   })

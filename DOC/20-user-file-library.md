@@ -1,7 +1,7 @@
 # 用户文件库与 charFile 媒体管线（定案 · P0）
 
-> **状态**：设计定案；**M1 已落地**（2026-07-13）。**M2 已落地**（2026-07-14 · 宿主 index 绑定 + FileID/FileName 宏 + 角色预览绑定 UI）。M3–M5 未实现。  
-> **定案日期**：2026-06-08（M2 细节 2026-07-14）  
+> **状态**：设计定案；**M1 已落地**（2026-07-13）。**M2 已落地**（2026-07-14 · 宿主 index 绑定 + FileID/FileName 宏 + 角色预览绑定 UI）。**M3 已落地**（2026-07-15 · 对话 `backgroundImageFileId` / `bgmFileId` + 设置选择器 + 对话页展示）。M4–M5 未实现。  
+> **定案日期**：2026-06-08（M2 细节 2026-07-14；M3 2026-07-15）  
 > **关联**：`DOC/03` §15 宏、§17 文件库、`shared/file-media-token.ts`、`web/src/utils/authenticated-media-url.ts`。
 
 ---
@@ -146,6 +146,17 @@ data/{userId}/files/
 - 亦可并入 `GET/PATCH /api/characters/:id` 响应/body 扩展字段，实现时二选一，以本节路由为准。
 - **禁止**把绑定列表写入 `card` 浅合并进 PNG。
 
+### 4.3 对话媒体（M3 ✅）
+
+经既有 `PATCH /api/chat/conversations/:id`：
+
+| 字段 | kind | 说明 |
+|------|------|------|
+| `backgroundImageFileId` | `image` | `null` / `""` 清除；否则须存在且 kind=image |
+| `bgmFileId` | `audio` | 同上，kind=audio |
+
+错误码：`file_invalid_id` · `file_not_found` · `file_kind_mismatch`。删文件后悬空引用允许（UI 显示缺失；引用检查见 M5）。
+
 ---
 
 ## 5. 宏展宏（M2）
@@ -200,7 +211,7 @@ data/{userId}/files/
 
 - **M1 ✅**：`/files` 网格、kind、上传、更新内容、标签、删除、复制 URL。
 - **M2**：角色预览「文件库绑定」对话框（文件库选择器 + 重名警告）；persona 卡同能力。
-- **M3**：对话设置背景 / BGM 选择器。
+- **M3 ✅**：对话设置「绑定」区背景 / BGM 选择器；对话页 CSS 背景 + `<audio>` 循环（顶栏静音）。
 
 **不是**：在世界书编辑器内嵌通用上传区。
 
@@ -212,7 +223,7 @@ data/{userId}/files/
 |------|------|------|
 | **M1** ✅ 2026-07-13 | `files/` + REST + `/api/m` + `/files` UI | — |
 | **M2** ✅ 2026-07-14 | `imageFilesByCharacterId` + FileID/FileName 宏 + 角色绑定 UI | M1 |
-| **M3** | 对话 BGM·背景 fileId | M1 |
+| **M3** ✅ 2026-07-15 | 对话 BGM·背景 fileId + 设置选择器 + 对话页展示 | M1 |
 | **M4** | 文档切片 + 独立 Lance + 知识库 | M1、RAG API |
 | **M5** | 引用检查、批量导入、视频预览；可选指定 id 重建 | M1–M3 |
 
@@ -241,5 +252,5 @@ data/{userId}/files/
 
 ## 13. 文档维护
 
-- 落地后更新 `DOC/03` §17（M2 小节）；`DOC/04` 勾选 M2。
-- `data/README.md` 补充 `imageFilesByCharacterId`。
+- 落地后更新 `DOC/03` §17（M2/M3 小节）；`DOC/04` 勾选 M2/M3。
+- `data/README.md` 补充 `imageFilesByCharacterId`、对话 `backgroundImageFileId` / `bgmFileId`。

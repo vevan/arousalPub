@@ -15,6 +15,7 @@ import {
 import { usePreferencesStore } from '@/stores/preferences'
 import BudgetTrimSettingsPanel from '@/components/settings/BudgetTrimSettingsPanel.vue'
 import ConversationApiSettingsPanel from '@/components/settings/ConversationApiSettingsPanel.vue'
+import ConversationMediaFileField from '@/components/ConversationMediaFileField.vue'
 import ConversationPluginSettingsPanel from '@/components/settings/ConversationPluginSettingsPanel.vue'
 import ConversationRegexApplyPanel from '@/components/settings/ConversationRegexApplyPanel.vue'
 import ConversationRecallTestDialog from '@/components/settings/ConversationRecallTestDialog.vue'
@@ -85,6 +86,10 @@ const props = defineProps<{
   initialUserName?: string | null
   /** 用户 persona 角色卡 id */
   initialUserCharacterId?: string | null
+  /** 对话背景图 fileId（image） */
+  initialBackgroundImageFileId?: string | null
+  /** 对话 BGM fileId（audio） */
+  initialBgmFileId?: string | null
   initialAuthorsNote?: AuthorsNoteSettings
   /** 会话 index.apiPreset（含 chat 覆盖） */
   initialApiPreset?: unknown
@@ -95,7 +100,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'patched', index: Record<string, unknown>): void
+  (e: 'patched', index: Record<string, unknown>, conversationId: string): void
   (e: 'memoryRebuilt', embeddingModel: string): void
   (e: 'regexApplied'): void
 }>()
@@ -124,10 +129,14 @@ const INHERIT_VALUE = ''
 const presetModel = ref<string>(INHERIT_VALUE)
 const characterModel = ref<string[]>([])
 const userCharacterModel = ref<string | null>(null)
+const backgroundImageFileId = ref<string | null>(null)
+const bgmFileId = ref<string | null>(null)
 
 const savingPreset = ref(false)
 const savingChars = ref(false)
 const savingUserCharacter = ref(false)
+const savingBackgroundImage = ref(false)
+const savingBgm = ref(false)
 const savingLorebooks = ref(false)
 const savingLoreSettings = ref(false)
 const savingHistorySettings = ref(false)
@@ -363,6 +372,8 @@ const isSaving = computed(
     savingPreset.value ||
     savingChars.value ||
     savingUserCharacter.value ||
+    savingBackgroundImage.value ||
+    savingBgm.value ||
     savingLorebooks.value ||
     savingLoreSettings.value ||
     savingHistorySettings.value ||
@@ -589,6 +600,16 @@ function propsUserCharacterId(): string | null {
   return typeof id === 'string' && id.trim() ? id.trim() : null
 }
 
+function propsBackgroundImageFileId(): string | null {
+  const id = props.initialBackgroundImageFileId
+  return typeof id === 'string' && id.trim() ? id.trim().toLowerCase() : null
+}
+
+function propsBgmFileId(): string | null {
+  const id = props.initialBgmFileId
+  return typeof id === 'string' && id.trim() ? id.trim().toLowerCase() : null
+}
+
 function propsAuthorsNote(): AuthorsNoteSettings {
   return normalizeAuthorsNote(props.initialAuthorsNote)
 }
@@ -606,6 +627,8 @@ function syncFromProps() {
   presetModel.value = propsPresetTarget() ?? INHERIT_VALUE
   characterModel.value = [...props.initialCharacterIds]
   userCharacterModel.value = propsUserCharacterId()
+  backgroundImageFileId.value = propsBackgroundImageFileId()
+  bgmFileId.value = propsBgmFileId()
   lorebookModel.value = [...props.initialLorebookIds]
   loreUseGlobal.value = propsLoreUseGlobal()
   syncLoreFieldsFromProps()
@@ -683,6 +706,8 @@ watch(
     props.initialBudgetTrimSettings,
     props.initialUserName,
     props.initialUserCharacterId,
+    props.initialBackgroundImageFileId,
+    props.initialBgmFileId,
     props.initialAuthorsNote,
     props.initialApiPreset,
     props.initialChatApiUseGlobal,
@@ -717,6 +742,42 @@ watch(userCharacterModel, async (id) => {
     savingUserCharacter.value = false
   }
 })
+
+async function onBackgroundImageFileId(id: string | null) {
+  const next =
+    typeof id === 'string' && id.trim() ? id.trim().toLowerCase() : null
+  if (next === propsBackgroundImageFileId()) return
+  backgroundImageFileId.value = next
+  savingBackgroundImage.value = true
+  errorText.value = ''
+  try {
+    await patchConversation({ backgroundImageFileId: next })
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingBackgroundImage.value = false
+  }
+}
+
+async function onBgmFileId(id: string | null) {
+  const next =
+    typeof id === 'string' && id.trim() ? id.trim().toLowerCase() : null
+  if (next === propsBgmFileId()) return
+  bgmFileId.value = next
+  savingBgm.value = true
+  errorText.value = ''
+  try {
+    await patchConversation({ bgmFileId: next })
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingBgm.value = false
+  }
+}
 
 watch(presetModel, async () => {
   const target = currentPresetTarget()
@@ -1411,7 +1472,8 @@ async function onSaveEmbeddingApi(
 }
 
 async function patchConversation(body: Record<string, unknown>) {
-  const res = await fetch(`/api/chat/conversations/${props.conversationId}`, {
+  const cid = props.conversationId
+  const res = await fetch(`/api/chat/conversations/${cid}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -1420,8 +1482,11 @@ async function patchConversation(body: Record<string, unknown>) {
     const txt = await res.text()
     throw new Error(txt.slice(0, 200))
   }
+  // 切会话后丢弃过期 PATCH，避免旧背景/BGM 写回当前视图
+  if (props.conversationId !== cid) return
   const j = (await res.json()) as { index?: Record<string, unknown> }
-  if (j.index) emit('patched', j.index)
+  if (props.conversationId !== cid) return
+  if (j.index) emit('patched', j.index, cid)
 }
 </script>
 
@@ -1586,6 +1651,28 @@ async function patchConversation(body: Record<string, unknown>) {
                 <p class="conv-settings-field__hint">
                   {{ $t('chat.convSettings.lorebooksHint') }}
                 </p>
+              </div>
+
+              <div class="conv-settings-field">
+                <ConversationMediaFileField
+                  kind="image"
+                  :file-id="backgroundImageFileId"
+                  :label="$t('chat.convSettings.backgroundImage')"
+                  :hint="$t('chat.convSettings.backgroundImageHint')"
+                  :saving="savingBackgroundImage"
+                  @update:file-id="onBackgroundImageFileId"
+                />
+              </div>
+
+              <div class="conv-settings-field">
+                <ConversationMediaFileField
+                  kind="audio"
+                  :file-id="bgmFileId"
+                  :label="$t('chat.convSettings.bgm')"
+                  :hint="$t('chat.convSettings.bgmHint')"
+                  :saving="savingBgm"
+                  @update:file-id="onBgmFileId"
+                />
               </div>
             </div>
 

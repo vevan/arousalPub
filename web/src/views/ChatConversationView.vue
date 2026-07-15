@@ -66,8 +66,10 @@ import {
   type GroupChatSettings,
 } from '@/utils/group-chat-settings'
 import { onConversationIndexPatched } from '@/utils/conversation-index-sync'
+import { fileLibraryContentUrl } from '@/utils/authenticated-media-url'
+import { useAuthStore } from '@/stores/auth'
 import { storeToRefs } from 'pinia'
-import { computed, onScopeDispose, provide, ref, watch } from 'vue'
+import { computed, nextTick, onScopeDispose, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -77,6 +79,7 @@ const props = defineProps<{
 
 const { t } = useI18n()
 const router = useRouter()
+const auth = useAuthStore()
 const conn = useConnectionStore()
 const prefStore = usePreferencesStore()
 const promptsStore = usePromptsStore()
@@ -364,6 +367,10 @@ interface ConvContextBindings {
   userName: string | null
   /** 用户 persona 卡 id；仅用于 UI 回显头像 */
   userCharacterId: string | null
+  /** 对话背景图 fileId */
+  backgroundImageFileId: string | null
+  /** 对话 BGM fileId */
+  bgmFileId: string | null
   authorsNote: AuthorsNoteSettings
 }
 
@@ -524,6 +531,12 @@ function bindingsFromIndex(idx: Record<string, unknown>): ConvContextBindings {
   const uci = idx.userCharacterId
   const userCharacterId =
     typeof uci === 'string' && uci.trim() ? uci.trim() : null
+  const bgImg = idx.backgroundImageFileId
+  const backgroundImageFileId =
+    typeof bgImg === 'string' && bgImg.trim() ? bgImg.trim().toLowerCase() : null
+  const bgm = idx.bgmFileId
+  const bgmFileId =
+    typeof bgm === 'string' && bgm.trim() ? bgm.trim().toLowerCase() : null
   const cn = idx.characterNames
   const characterNames = Array.isArray(cn)
     ? cn.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
@@ -545,6 +558,8 @@ function bindingsFromIndex(idx: Record<string, unknown>): ConvContextBindings {
     embeddingApi: embeddingApiContextFromIndex(idx),
     userName,
     userCharacterId,
+    backgroundImageFileId,
+    bgmFileId,
     authorsNote: authorsNoteFromIndex(idx),
   }
 }
@@ -589,8 +604,111 @@ const convBindings = ref<ConvContextBindings>({
   },
   userName: null,
   userCharacterId: null,
+  backgroundImageFileId: null,
+  bgmFileId: null,
   authorsNote: normalizeAuthorsNote(),
 })
+
+const backgroundImageUrl = computed(() =>
+  fileLibraryContentUrl(auth.user?.id, convBindings.value.backgroundImageFileId),
+)
+
+const bgmUrl = computed(() =>
+  fileLibraryContentUrl(auth.user?.id, convBindings.value.bgmFileId),
+)
+
+const bgmMuted = ref(false)
+const bgmAudioRef = ref<HTMLAudioElement | null>(null)
+/** 递增以丢弃过期的 BGM play/load 异步结果 */
+let bgmApplyGen = 0
+
+const chatPaneStyle = computed(() => {
+  const url = backgroundImageUrl.value
+  if (!url) return undefined
+  // JSON.stringify 保证 CSS url() 引号与转义安全（token URL 本身无引号，防御查询串）
+  const cssUrl = JSON.stringify(url)
+  return {
+    backgroundImage: `linear-gradient(rgba(var(--v-theme-surface), 0.72), rgba(var(--v-theme-surface), 0.82)), url(${cssUrl})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundAttachment: 'local',
+  } as Record<string, string>
+})
+
+function stopBgmAudio() {
+  bgmApplyGen += 1
+  const el = bgmAudioRef.value
+  if (!el) return
+  el.pause()
+  el.removeAttribute('src')
+  try {
+    el.load()
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 切会话 / 卸载：立刻清掉上一会话的背景与 BGM，避免串播 */
+function clearConversationMediaBindings() {
+  stopBgmAudio()
+  convBindings.value = {
+    ...convBindings.value,
+    backgroundImageFileId: null,
+    bgmFileId: null,
+  }
+}
+
+async function applyBgmUrl(url: string | null) {
+  const gen = ++bgmApplyGen
+  await nextTick()
+  if (gen !== bgmApplyGen) return
+  const el = bgmAudioRef.value
+  if (!el) return
+  if (!url) {
+    el.pause()
+    el.removeAttribute('src')
+    try {
+      el.load()
+    } catch {
+      /* ignore */
+    }
+    return
+  }
+  if (el.src && el.getAttribute('src') === url) {
+    el.loop = true
+    el.muted = bgmMuted.value
+    return
+  }
+  el.src = url
+  el.loop = true
+  el.muted = bgmMuted.value
+  try {
+    await el.play()
+  } catch {
+    // 浏览器可能拦截无手势自动播放；用户点静音/取消静音后再播
+  }
+  // 过期 gen 不再动 el，避免 pause 掉更新的音轨
+}
+
+watch(
+  () => bgmUrl.value,
+  (url) => {
+    void applyBgmUrl(url)
+  },
+)
+
+watch(bgmMuted, (muted) => {
+  const el = bgmAudioRef.value
+  if (!el) return
+  el.muted = muted
+  if (!muted && bgmUrl.value) {
+    void el.play().catch(() => {})
+  }
+})
+
+function toggleBgmMuted() {
+  bgmMuted.value = !bgmMuted.value
+}
 
 const headerChatLabel = computed(() => {
   if (!conn.isApiKeyConfigured) return ''
@@ -707,18 +825,30 @@ function applyConversationMemoryIndexMeta(index: Record<string, unknown>): void 
     typeof memFts === 'string' && memFts.trim() ? memFts.trim() : null
 }
 
-function onConvContextPatched(index: Record<string, unknown>) {
+function onConvContextPatched(
+  index: Record<string, unknown>,
+  expectedConversationId?: string,
+) {
+  if (
+    expectedConversationId &&
+    expectedConversationId !== props.conversationId
+  ) {
+    return
+  }
   applyConversationMemoryIndexMeta(index)
   convBindings.value = bindingsFromIndex(index)
   maybePromptMemoryRebuild()
 }
 
-onScopeDispose(
-  onConversationIndexPatched((cid, index) => {
-    if (cid !== props.conversationId) return
-    onConvContextPatched(index)
-  }),
-)
+const stopIndexPatched = onConversationIndexPatched((cid, index) => {
+  if (cid !== props.conversationId) return
+  onConvContextPatched(index)
+})
+
+onScopeDispose(() => {
+  stopIndexPatched()
+  stopBgmAudio()
+})
 
 async function patchAuditDebugToServer(id: string) {
   await fetch(`/api/chat/conversations/${id}`, {
@@ -850,11 +980,15 @@ async function ensureConversation(id: string) {
         }),
       })
       if (!created.ok) {
-        errorText.value = t('chatConversation.loadFailed')
-        loading.value = false
+        if (props.conversationId === id) {
+          errorText.value = t('chatConversation.loadFailed')
+          loading.value = false
+        }
         return
       }
+      if (props.conversationId !== id) return
       const defaultLorebookIds = await fetchDefaultLorebookIds()
+      if (props.conversationId !== id) return
       if (defaultLorebookIds.length > 0) {
         await fetch(`/api/chat/conversations/${id}`, {
           method: 'PATCH',
@@ -862,14 +996,19 @@ async function ensureConversation(id: string) {
           body: JSON.stringify({ lorebookIds: defaultLorebookIds }),
         })
       }
+      if (props.conversationId !== id) return
       res = await fetch(`/api/chat/conversations/${id}`)
     }
     if (!res.ok) {
-      errorText.value = t('chatConversation.loadFailed')
-      loading.value = false
+      if (props.conversationId === id) {
+        errorText.value = t('chatConversation.loadFailed')
+        loading.value = false
+      }
       return
     }
     const idx = (await res.json()) as Record<string, unknown>
+    // 快速切换会话时丢弃过期响应，避免旧背景/BGM/绑定写回
+    if (props.conversationId !== id) return
     title.value = typeof idx.title === 'string' ? idx.title : t('chat.newConversation')
     hasConversationTurns.value =
       typeof idx.headChunkFile === 'string' && idx.headChunkFile.length > 0
@@ -897,8 +1036,10 @@ async function ensureConversation(id: string) {
       }
     })()
   } catch {
-    errorText.value = t('chatConversation.loadFailed')
-    loading.value = false
+    if (props.conversationId === id) {
+      errorText.value = t('chatConversation.loadFailed')
+      loading.value = false
+    }
   }
 }
 
@@ -932,6 +1073,7 @@ watch(
     memoryRebuildDialogOpen.value = false
     branchPanelOpen.value = false
     branchLoadError.value = ''
+    clearConversationMediaBindings()
     void ensureConversation(id)
   },
   { immediate: true },
@@ -972,8 +1114,17 @@ watch(
 <template>
   <div
     class="chat_pane app-page-shell"
-    :class="{ 'chat_pane--state': loading || !!errorText }"
+    :class="{
+      'chat_pane--state': loading || !!errorText,
+      'chat_pane--has-bg': !!backgroundImageUrl,
+    }"
+    :style="chatPaneStyle"
   >
+    <audio
+      ref="bgmAudioRef"
+      class="chat-bgm-audio"
+      preload="metadata"
+    />
     <div
       v-if="loading"
       class="chat-body chat-body--state pa-4 text-body-2 text-medium-emphasis"
@@ -1122,6 +1273,25 @@ watch(
             @click="groupChatDialogOpen = true"
           >
             <v-icon icon="mdi-account-group-outline" size="20" />
+          </v-btn>
+          <v-btn
+            v-if="bgmUrl"
+            icon
+            variant="text"
+            density="comfortable"
+            size="small"
+            class="chat-header__bgm"
+            :aria-label="
+              bgmMuted
+                ? $t('chatConversation.bgmUnmute')
+                : $t('chatConversation.bgmMute')
+            "
+            @click="toggleBgmMuted"
+          >
+            <v-icon
+              :icon="bgmMuted ? 'mdi-volume-off' : 'mdi-music-note'"
+              size="20"
+            />
           </v-btn>
           <v-btn
             icon="mdi-cog-outline"
@@ -1311,12 +1481,14 @@ watch(
         :global-hybrid-fts-spec="globalHybridFtsSpec"
         :initial-user-name="convBindings.userName"
         :initial-user-character-id="convBindings.userCharacterId"
+        :initial-background-image-file-id="convBindings.backgroundImageFileId"
+        :initial-bgm-file-id="convBindings.bgmFileId"
         :initial-authors-note="convBindings.authorsNote"
         :initial-api-preset="convBindings.chatApi.apiPresetRaw"
         :initial-chat-api-use-global="convBindings.chatApi.useGlobal"
         :initial-embedding-api-use-global="convBindings.embeddingApi.useGlobal"
         :initial-embedding-api-settings="convBindings.embeddingApi.override"
-        @patched="onConvContextPatched"
+        @patched="(index, cid) => onConvContextPatched(index, cid)"
         @memory-rebuilt="onMemoryRebuiltFromSettings"
         @regex-applied="onRegexAppliedFromSettings"
       />
@@ -1332,6 +1504,14 @@ watch(
   height: 100%;
   min-height: 0;
   flex: 1 1 auto;
+}
+
+.chat_pane--has-bg {
+  background-repeat: no-repeat;
+}
+
+.chat-bgm-audio {
+  display: none;
 }
 
 .chat_pane--state {

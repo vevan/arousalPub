@@ -1,7 +1,7 @@
 import { PassThrough } from 'node:stream'
 import type { FastifyReply } from 'fastify'
 import {
-  reindexKnowledgeBase,
+  reindexKnowledgeBaseExclusive,
   type KnowledgeReindexProgress,
 } from './knowledge-vector-index.js'
 
@@ -35,7 +35,7 @@ export function startKnowledgeBaseReindexSse(
         files,
         total: Math.max(1, files + 1),
       })
-      const result = await reindexKnowledgeBase(kbId, undefined, undefined, {
+      const result = await reindexKnowledgeBaseExclusive(kbId, undefined, undefined, {
         onProgress: (progress) => {
           writeSseLine(stream, { type: 'progress', ...progress })
         },

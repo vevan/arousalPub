@@ -47,6 +47,25 @@ export const KNOWLEDGE_SCALAR_INDEX_SPECS: readonly ScalarIndexSpec[] = [
 
 const knowledgeLanceQueue = createKeyedSerialQueue()
 
+/** replace/delete 递增；队列外 ANN 训练前校验，避免对已作废代次写索引 */
+const knowledgeIndexGenerations = new Map<string, number>()
+
+/**
+ * 在途 ANN 训练（队列外，可达数分钟）。replace/delete 在队内先 await 它，
+ * 训练期间不得 rm/重建同一目录；promise 在队内注册，后续队任务必然可见。
+ */
+const knowledgeAnnBuilds = new Map<string, Promise<void>>()
+
+function bumpKnowledgeIndexGeneration(queueKey: string): number {
+  const next = (knowledgeIndexGenerations.get(queueKey) ?? 0) + 1
+  knowledgeIndexGenerations.set(queueKey, next)
+  return next
+}
+
+function knowledgeIndexGeneration(queueKey: string): number {
+  return knowledgeIndexGenerations.get(queueKey) ?? 0
+}
+
 /** 队列 key 按用户隔离：不同用户即使 kbId 碰撞也不互相串行/串数据 */
 function knowledgeQueueKey(kbId: string): string {
   return `${getCurrentUserId()}\0${kbId}`
@@ -131,8 +150,16 @@ export async function replaceKnowledgeVectorIndex(
   kbId: string,
   rows: DocChunkVectorRow[],
 ): Promise<void> {
-  await knowledgeLanceQueue.run(knowledgeQueueKey(kbId), async () => {
-    const uri = knowledgeDbUri(kbId)
+  const uri = knowledgeDbUri(kbId)
+  const qkey = knowledgeQueueKey(kbId)
+  let buildGen = 0
+  let rowCount = 0
+  let annPromise: Promise<void> | undefined
+  let resolveAnn: (() => void) | undefined
+  await knowledgeLanceQueue.run(qkey, async () => {
+    const prevAnn = knowledgeAnnBuilds.get(qkey)
+    if (prevAnn) await prevAnn
+    buildGen = bumpKnowledgeIndexGeneration(qkey)
     closeLanceDb(uri)
     await rm(uri, { recursive: true, force: true })
     if (!rows.length) return
@@ -151,17 +178,46 @@ export async function replaceKnowledgeVectorIndex(
       )
       await ensureScalarIndexes(table, KNOWLEDGE_SCALAR_INDEX_SPECS)
     })
-    // ANN 不依赖 jieba 词典，放在 env 锁外：大库训练（可达数分钟）
-    // 不得阻塞其他用户的 hybrid FTS。soft：失败降级 flat 搜索，只告警。
-    await ensureIvfPqIndex(table, KNOWLEDGE_ANN_VECTOR_COLUMN, {
-      rowCount: rows.length,
-      soft: true,
+    rowCount = rows.length
+    annPromise = new Promise<void>((r) => {
+      resolveAnn = r
     })
+    knowledgeAnnBuilds.set(qkey, annPromise)
   })
+  if (!annPromise) return
+  // ANN 不依赖 jieba 词典，且训练可达数分钟：移出 Lance 队列，避免阻塞同库召回。
+  // 后续 replace/delete 进队后先 await 本 promise，训练期间目录不会被抹。
+  // 全程 soft：ANN 失败只降级 flat 搜索，不影响本次重建结果。
+  try {
+    if (knowledgeIndexGeneration(qkey) === buildGen) {
+      const db = await connectDb(kbId)
+      const table = await openLanceTableWithManifestMigration(
+        db,
+        TABLE_NAME,
+        uri,
+      )
+      await ensureIvfPqIndex(table, KNOWLEDGE_ANN_VECTOR_COLUMN, {
+        rowCount,
+        soft: true,
+      })
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[knowledge-vector-store] ANN build skipped:', e)
+  } finally {
+    resolveAnn?.()
+    if (knowledgeAnnBuilds.get(qkey) === annPromise) {
+      knowledgeAnnBuilds.delete(qkey)
+    }
+  }
 }
 
 export async function deleteKnowledgeVectorIndex(kbId: string): Promise<void> {
-  await knowledgeLanceQueue.run(knowledgeQueueKey(kbId), async () => {
+  const qkey = knowledgeQueueKey(kbId)
+  await knowledgeLanceQueue.run(qkey, async () => {
+    const prevAnn = knowledgeAnnBuilds.get(qkey)
+    if (prevAnn) await prevAnn
+    bumpKnowledgeIndexGeneration(qkey)
     const uri = knowledgeDbUri(kbId)
     closeLanceDb(uri)
     await rm(uri, { recursive: true, force: true })

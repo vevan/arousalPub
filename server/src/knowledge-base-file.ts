@@ -222,6 +222,32 @@ export async function readKnowledgeBasesByIds(
   return out
 }
 
+/** 校验对话绑定用 id 均存在；返回去重有序列表或首个缺失 id */
+export async function validateKnowledgeBaseIds(
+  rawIds: string[],
+): Promise<
+  | { ok: true; ids: string[] }
+  | { ok: false; missingId: string }
+> {
+  const seen = new Set<string>()
+  const cleaned: string[] = []
+  for (const raw of rawIds) {
+    if (typeof raw !== 'string') continue
+    const id = raw.trim()
+    if (!id || seen.has(id)) continue
+    if (!KNOWLEDGE_BASE_ID_RE.test(id)) {
+      return { ok: false, missingId: id }
+    }
+    seen.add(id)
+    cleaned.push(id)
+  }
+  for (const id of cleaned) {
+    const kb = await readKnowledgeBaseById(id)
+    if (!kb) return { ok: false, missingId: id }
+  }
+  return { ok: true, ids: cleaned }
+}
+
 export async function listKnowledgeBases(): Promise<KnowledgeBase[]> {
   const idx = await readKnowledgeBasesIndexSummary()
   const out: KnowledgeBase[] = []
@@ -310,6 +336,41 @@ export async function writeKnowledgeBase(kb: KnowledgeBase): Promise<void> {
   })
 }
 
+export type KnowledgeBaseIndexFieldsPatch = {
+  indexStatus: NonNullable<KnowledgeBase['indexStatus']>
+  indexedAt?: string
+  chunkCount?: number
+  indexError?: string
+  clearIndexError?: boolean
+}
+
+/**
+ * 在 KB 文件队列内 RMW 只改索引字段，避免与并发改名/改描述互相覆盖。
+ * 库不存在返回 null；成功返回更新后的完整 KB。
+ */
+export async function updateKnowledgeBaseIndexFields(
+  kbId: string,
+  patch: KnowledgeBaseIndexFieldsPatch,
+): Promise<KnowledgeBase | null> {
+  if (!KNOWLEDGE_BASE_ID_RE.test(kbId)) return null
+  return runKnowledgeBaseFileTask(async () => {
+    const cur = await readKbFile(kbId)
+    if (!cur) return null
+    const next: KnowledgeBase = {
+      ...cur,
+      indexStatus: patch.indexStatus,
+      updatedAt: new Date().toISOString(),
+    }
+    if (patch.indexedAt !== undefined) next.indexedAt = patch.indexedAt
+    if (patch.chunkCount !== undefined) next.chunkCount = patch.chunkCount
+    if (patch.clearIndexError) delete next.indexError
+    else if (patch.indexError !== undefined) next.indexError = patch.indexError
+    await writeJsonFileAtomic(kbFilePath(kbId), next)
+    await upsertIndexEntryUnsafe(next)
+    return next
+  })
+}
+
 export async function patchKnowledgeBase(
   kbId: string,
   patch: {
@@ -365,6 +426,19 @@ export async function patchKnowledgeBase(
     await writeJsonFileAtomic(kbFilePath(kbId), next)
     await upsertIndexEntryUnsafe(next)
     return next
+  })
+}
+
+/** 仅清派生切片目录（kb 文件已不存在时清理写入竞态残留） */
+export async function removeKnowledgeBaseDerivedFiles(
+  kbId: string,
+): Promise<void> {
+  if (!KNOWLEDGE_BASE_ID_RE.test(kbId)) return
+  await runKnowledgeBaseFileTask(async () => {
+    await rm(path.join(getKnowledgeBasesDir(), kbId), {
+      recursive: true,
+      force: true,
+    })
   })
 }
 

@@ -140,17 +140,17 @@ import { parseMemorySettingsPatch } from './memory-settings.js'
 import { parseKnowledgeSettingsPatch } from './knowledge-settings.js'
 import {
   createKnowledgeBase,
-  deleteKnowledgeBase,
   listKnowledgeBases,
   patchKnowledgeBase,
   readKnowledgeBaseById,
   readKnowledgeBasesIndexSummary,
+  validateKnowledgeBaseIds,
 } from './knowledge-base-file.js'
 import {
-  reindexKnowledgeBase,
+  deleteKnowledgeBaseWithExclusiveLock,
+  reindexKnowledgeBaseExclusive,
   scheduleKnowledgeBaseReindex,
 } from './knowledge-vector-index.js'
-import { deleteKnowledgeVectorIndex } from './knowledge-vector-store.js'
 import { normalizeEmbeddingDimensions, normalizeEmbeddingApiSettings } from './embedding-api-settings.js'
 import {
   isValidConversationId,
@@ -906,7 +906,13 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
             .status(400)
             .send({ error: ApiErrorCodes.knowledge_base_ids_must_be_string_array })
         }
-        const next = await updateConversationKnowledgeBaseIds(id, arr)
+        const validated = await validateKnowledgeBaseIds(arr)
+        if (!validated.ok) {
+          return reply
+            .status(400)
+            .send({ error: ApiErrorCodes.knowledge_base_not_found })
+        }
+        const next = await updateConversationKnowledgeBaseIds(id, validated.ids)
         if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
         idx = next
       }
@@ -3423,11 +3429,30 @@ app.patch<{ Params: { fileId: string } }>(
       return reply.status(400).send({ error: ApiErrorCodes.file_invalid_id })
     }
     const body = (request.body ?? {}) as Record<string, unknown>
+    const hadName = typeof body.name === 'string'
     try {
+      const prev = hadName ? await getFileLibraryMeta(fileId) : null
       const meta = await patchFileLibraryMeta(fileId, {
         name: body.name,
         tags: body.tags !== undefined ? body.tags : undefined,
       })
+      if (
+        hadName &&
+        meta.kind === 'document' &&
+        prev &&
+        prev.name !== meta.name
+      ) {
+        const { findKnowledgeBasesContainingFile } = await import(
+          './knowledge-base-file.js'
+        )
+        const { scheduleKnowledgeBasesReindex } = await import(
+          './knowledge-vector-index.js'
+        )
+        const kbs = await findKnowledgeBasesContainingFile(meta.fileId)
+        if (kbs.length) {
+          scheduleKnowledgeBasesReindex(kbs.map((k) => k.id))
+        }
+      }
       return { ok: true as const, ...meta, contentUrl: fileContentUrl(meta.fileId) }
     } catch (e) {
       if (e instanceof FileLibraryError) {
@@ -3694,9 +3719,8 @@ app.delete<{ Params: { id: string } }>(
       if (!existing) {
         return reply.status(404).send({ error: ApiErrorCodes.knowledge_base_not_found })
       }
-      await deleteKnowledgeVectorIndex(id)
-      const ok = await deleteKnowledgeBase(id)
-      if (!ok) {
+      const deleted = await deleteKnowledgeBaseWithExclusiveLock(id)
+      if (!deleted) {
         return reply.status(404).send({ error: ApiErrorCodes.knowledge_base_not_found })
       }
       await removeKnowledgeBaseIdFromAllConversations(id)
@@ -3727,7 +3751,7 @@ app.post<{ Params: { id: string }; Querystring: { stream?: string } }>(
         )
         return reply.send(stream)
       }
-      const { chunkCount } = await reindexKnowledgeBase(id)
+      const { chunkCount } = await reindexKnowledgeBaseExclusive(id)
       return { ok: true as const, chunkCount }
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e)

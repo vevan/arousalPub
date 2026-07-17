@@ -12,12 +12,12 @@ import {
   KnowledgeTextExtractError,
 } from './knowledge-text-extract.js'
 import {
-  readKnowledgeBaseById,
-  writeKnowledgeBase,
+  deleteKnowledgeBase,
+  removeKnowledgeBaseDerivedFiles,
+  updateKnowledgeBaseIndexFields,
   writeKnowledgeChunksDocument,
 } from './knowledge-base-file.js'
 import type {
-  KnowledgeBase,
   KnowledgeChunksDocument,
   KnowledgeFileChunks,
 } from './knowledge-base-types.js'
@@ -55,6 +55,28 @@ export function scheduleKnowledgeBaseReindex(kbId: string): void {
 
 export function scheduleKnowledgeBasesReindex(kbIds: string[]): void {
   for (const id of kbIds) scheduleKnowledgeBaseReindex(id)
+}
+
+/** HTTP/SSE 手动重建：与 schedule 共用 per-kb 串行队列，避免并发写盘竞态 */
+export async function reindexKnowledgeBaseExclusive(
+  kbId: string,
+  creds?: ResolvedEmbeddingCredentials,
+  settings?: KnowledgeSettings,
+  options?: { onProgress?: (progress: KnowledgeReindexProgress) => void },
+): Promise<{ chunkCount: number }> {
+  return knowledgeIndexScheduler.runExclusive(kbId, () =>
+    reindexKnowledgeBase(kbId, creds, settings, options),
+  )
+}
+
+/** 删库与重建互斥：持锁期间清空 pending coalesce，防止删后重建「复活」 */
+export async function deleteKnowledgeBaseWithExclusiveLock(
+  kbId: string,
+): Promise<boolean> {
+  return knowledgeIndexScheduler.runExclusive(kbId, async () => {
+    await deleteKnowledgeVectorIndex(kbId)
+    return deleteKnowledgeBase(kbId)
+  })
 }
 
 async function streamToBuffer(stream: Readable): Promise<Buffer> {
@@ -115,16 +137,11 @@ export async function reindexKnowledgeBase(
   settings?: KnowledgeSettings,
   options?: { onProgress?: (progress: KnowledgeReindexProgress) => void },
 ): Promise<{ chunkCount: number }> {
-  const kb = await readKnowledgeBaseById(kbId)
-  if (!kb) return { chunkCount: 0 }
-
-  const marking: KnowledgeBase = {
-    ...kb,
+  const kb = await updateKnowledgeBaseIndexFields(kbId, {
     indexStatus: 'indexing',
-    updatedAt: new Date().toISOString(),
-  }
-  delete marking.indexError
-  await writeKnowledgeBase(marking)
+    clearIndexError: true,
+  })
+  if (!kb) return { chunkCount: 0 }
 
   const fileTotal = kb.fileIds.length
   let done = 0
@@ -275,28 +292,28 @@ export async function reindexKnowledgeBase(
       await replaceKnowledgeVectorIndex(kbId, rows)
     }
 
-    const doneKb: KnowledgeBase = {
-      ...kb,
+    const stillExists = await updateKnowledgeBaseIndexFields(kbId, {
       indexStatus: 'ready',
       indexedAt: new Date().toISOString(),
       chunkCount: rows.length,
-      updatedAt: new Date().toISOString(),
+      clearIndexError: true,
+    })
+    if (!stillExists) {
+      // 库在重建期间被删：清掉刚写入的向量与 chunks.json 残留
+      await deleteKnowledgeVectorIndex(kbId)
+      await removeKnowledgeBaseDerivedFiles(kbId)
+      return { chunkCount: 0 }
     }
-    delete doneKb.indexError
-    await writeKnowledgeBase(doneKb)
 
     done = total
     tick('finalizing', 1, 1)
     return { chunkCount: rows.length }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    const failed: KnowledgeBase = {
-      ...kb,
+    await updateKnowledgeBaseIndexFields(kbId, {
       indexStatus: 'error',
       indexError: msg,
-      updatedAt: new Date().toISOString(),
-    }
-    await writeKnowledgeBase(failed)
+    })
     throw e
   }
 }

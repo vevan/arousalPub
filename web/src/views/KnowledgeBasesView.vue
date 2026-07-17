@@ -172,24 +172,43 @@ async function loadList() {
   }
 }
 
+const FILE_PAGE_LIMIT = 100
+let documentNamesLoadGen = 0
+
 async function loadDocumentNames() {
+  const gen = ++documentNamesLoadGen
   try {
-    const res = await apiFetch('/api/files?kind=document&offset=0&limit=200')
-    if (!res.ok) return
-    const data = (await res.json()) as {
-      items?: { fileId?: string; name?: string }[]
-    }
     const map: Record<string, string> = {}
     const list: DocFileItem[] = []
-    for (const raw of data.items ?? []) {
-      if (typeof raw.fileId !== 'string' || !raw.fileId.trim()) continue
-      const name =
-        typeof raw.name === 'string' && raw.name.trim()
-          ? raw.name.trim()
-          : raw.fileId
-      map[raw.fileId] = name
-      list.push({ fileId: raw.fileId, name })
+    let offset = 0
+    for (;;) {
+      const res = await apiFetch(
+        `/api/files?kind=document&offset=${offset}&limit=${FILE_PAGE_LIMIT}`,
+      )
+      if (!res.ok) {
+        // 首页即失败：保留旧列表；翻页途中失败：落已取到的部分
+        if (offset === 0) return
+        break
+      }
+      if (gen !== documentNamesLoadGen) return
+      const data = (await res.json()) as {
+        items?: { fileId?: string; name?: string }[]
+        hasMore?: boolean
+      }
+      const batch = data.items ?? []
+      for (const raw of batch) {
+        if (typeof raw.fileId !== 'string' || !raw.fileId.trim()) continue
+        const name =
+          typeof raw.name === 'string' && raw.name.trim()
+            ? raw.name.trim()
+            : raw.fileId
+        map[raw.fileId] = name
+        list.push({ fileId: raw.fileId, name })
+      }
+      if (!data.hasMore || batch.length === 0) break
+      offset += batch.length
     }
+    if (gen !== documentNamesLoadGen) return
     docNameById.value = map
     docItems.value = list
   } catch {

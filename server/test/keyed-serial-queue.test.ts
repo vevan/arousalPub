@@ -38,6 +38,105 @@ describe('createKeyedSerialQueue', () => {
     await Promise.all([q.run('a', bump), q.run('b', bump)])
     assert.equal(maxConcurrent, 2)
   })
+
+  it('same-key nested run executes inline without deadlock', async () => {
+    const q = createKeyedSerialQueue()
+    const order: string[] = []
+    await q.run('k', async () => {
+      order.push('outer-start')
+      await q.run('k', async () => {
+        order.push('inner')
+      })
+      order.push('outer-end')
+    })
+    assert.deepEqual(order, ['outer-start', 'inner', 'outer-end'])
+  })
+
+  it('does not treat a finished holder captured via ALS as reentry', async () => {
+    const q1 = createKeyedSerialQueue()
+    const q2 = createKeyedSerialQueue()
+    const order: string[] = []
+
+    // 占住 q2，让 A 中发起的 q2.run 延后到 A 结束之后才执行
+    let releaseQ2!: () => void
+    const q2Blocker = q2.run('k2', async () => {
+      await new Promise<void>((r) => {
+        releaseQ2 = r
+      })
+    })
+
+    let deferred: Promise<void> | undefined
+    await q1.run('kx', async () => {
+      order.push('A-start')
+      // 注册于 A 的 ALS 上下文；将在 A 结束后才真正运行
+      deferred = q2.run('k2', async () => {
+        order.push('deferred-start')
+        // A 已结束，其对 q1:kx 的持有必须失效 → 此处不得 inline，
+        // 必须排在 q1 当前占用者之后
+        await q1.run('kx', async () => {
+          order.push('deferred-inner')
+        })
+        order.push('deferred-end')
+      })
+      order.push('A-end')
+    })
+
+    // A 结束后让 holder 占住 q1:kx，验证 deferred-inner 会等它
+    let releaseHolder!: () => void
+    const holder = q1.run('kx', async () => {
+      order.push('holder-start')
+      await new Promise<void>((r) => {
+        releaseHolder = r
+      })
+      order.push('holder-end')
+    })
+    await delay(5)
+    releaseQ2()
+    await delay(20)
+    releaseHolder()
+    await Promise.all([q2Blocker, deferred!, holder])
+
+    assert.ok(
+      order.indexOf('deferred-inner') > order.indexOf('holder-end'),
+      `stale ALS hold must not bypass serialization: ${order.join(', ')}`,
+    )
+  })
+
+  it('different queue instances with the same key string remain independent', async () => {
+    const indexQueue = createKeyedSerialQueue()
+    const lanceQueue = createKeyedSerialQueue()
+    const order: string[] = []
+
+    const searchPromise = lanceQueue.run('u\0kb', async () => {
+      order.push('search-start')
+      await delay(30)
+      order.push('search-end')
+    })
+
+    await delay(5)
+
+    const indexPromise = indexQueue.run('u\0kb', async () => {
+      order.push('index-start')
+      await lanceQueue.run('u\0kb', async () => {
+        order.push('lance-write')
+      })
+      order.push('index-end')
+    })
+
+    await Promise.all([searchPromise, indexPromise])
+
+    assert.ok(order.includes('search-start'))
+    assert.ok(order.includes('search-end'))
+    assert.ok(order.includes('lance-write'))
+    assert.ok(
+      order.indexOf('lance-write') > order.indexOf('search-end'),
+      `lance write must wait for concurrent search: ${order.join(', ')}`,
+    )
+    assert.ok(
+      order.indexOf('index-end') > order.indexOf('lance-write'),
+      `index end follows lance write: ${order.join(', ')}`,
+    )
+  })
 })
 
 describe('createKeyedCoalesceScheduler', () => {

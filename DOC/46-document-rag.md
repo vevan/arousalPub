@@ -66,9 +66,9 @@ data/{userId}/knowledgeBases/{kbId}/chunks.json
 | 切点 | 三级边界优先，否则硬切：空行 `\n\n`（窗口 ≥40% 处）→ 单换行（≥50%）→ **句末标点**（≥60%；`。！？!?…；;`，西文 `.` 可隔闭合符后跟空白且**排除缩写**——单字母首字母 `J.`、点分缩写 `e.g.`/`U.S.`、常见缩写表 `Mr./Dr./etc.` 等；紧随闭合引号/括号 `」』"'’”)】]》〉` 并入当前片）→ 固定字符硬切 |
 | 空文档 | 允许入库，0 chunk，索引成功 |
 
-文件 `PUT …/content` 或从库移除 fileId → 触发该 kb 重索引（或摘除该 file 的行）。
+文件 `PUT …/content`、**文档改名**（`PATCH /api/files/:fileId` 的 `name` 变更）或从库移除 fileId → 触发该 kb 重索引（或摘除该 file 的行）。
 
-**索引完整性**：重索引若产出切片但 embedding 返回向量数 < 切片数，视为失败（`embedding_incomplete`），`indexStatus` 落 `error` 而非假 `ready`，避免「就绪但召回缺片」；重试即重新 `reindex`。重索引经 keyed coalesce 调度器串行合并，key 以**用户 + kbId** 隔离，任务在调度者的用户上下文中执行（多用户并发不串号）。
+**索引完整性**：重索引若产出切片但 embedding 返回向量数 < 切片数，视为失败（`embedding_incomplete`），`indexStatus` 落 `error` 而非假 `ready`，避免「就绪但召回缺片」；重试即重新 `reindex`。重索引经 keyed coalesce 调度器串行合并，key 以**用户 + kbId** 隔离，任务在调度者的用户上下文中执行（多用户并发不串号）。**手动** `POST …/reindex`（含 SSE）与 **删库** 走同一队列的 `runExclusive`，避免与后台 schedule 并发写盘；收尾只回写 `indexStatus`/`chunkCount` 等索引字段（重读当前 KB，不覆盖并发改名）；删库持锁期间丢弃 pending coalesce，防止删后重建「复活」。IVF_PQ 训练在 Lance 队列外执行（世代号校验，避免对已作废代次写 ANN），不阻塞同库召回；队列重入检测按**实例 + key** 隔离，重建队列与 Lance 队列同 key 字符串仍互斥。
 
 ## 5. 召回与组装
 
@@ -103,7 +103,7 @@ data/{userId}/knowledgeBases/{kbId}/chunks.json
 | POST | `/api/knowledge-bases` | 创建 `{ name, fileIds? }` |
 | GET/PATCH/DELETE | `/api/knowledge-bases/:id` | 读 / 改名·改 fileIds·改 `fileAliases`（fileId → 别名，空串删除）/ 删 |
 | POST | `/api/knowledge-bases/:id/reindex` | 重建索引；`?stream=1` 时 SSE 推送进度（extracting → embedding → writing） |
-| PATCH | `/api/chat/conversations/:id` | `knowledgeBaseIds`、`knowledgeSettings` |
+| PATCH | `/api/chat/conversations/:id` | `knowledgeBaseIds`（须全部存在，否则 400）、`knowledgeSettings` |
 
 ## 8. 设置
 

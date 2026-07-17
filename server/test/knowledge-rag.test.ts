@@ -5,6 +5,7 @@ import {
   extractKnowledgeText,
   isKnowledgeDocumentSupported,
   KnowledgeTextExtractError,
+  stripMarkdownFrontMatter,
 } from '../src/knowledge-text-extract.js'
 import {
   formatKnowledgeXml,
@@ -166,6 +167,92 @@ describe('knowledge chunk + extract', () => {
       (e: unknown) =>
         e instanceof KnowledgeTextExtractError &&
         e.code === 'document_type_unsupported',
+    )
+  })
+
+  it('strips closed YAML and TOML markdown front matter', () => {
+    assert.equal(
+      stripMarkdownFrontMatter(
+        '---\ntitle: Note\ntags: [a]\n---\n# Hello\n\nbody',
+      ),
+      '# Hello\n\nbody',
+    )
+    assert.equal(
+      stripMarkdownFrontMatter('+++\ntitle = "Note"\n+++\nBody line'),
+      'Body line',
+    )
+    assert.equal(
+      stripMarkdownFrontMatter('---\r\ntitle: CRLF\r\n---\r\n# CRLF body'),
+      '# CRLF body',
+    )
+  })
+
+  it('keeps unclosed front matter and body horizontal rules', () => {
+    const unclosed = '---\ntitle: incomplete\n# still body'
+    assert.equal(stripMarkdownFrontMatter(unclosed), unclosed)
+    const hrInBody = '# Title\n\n---\n\nmore'
+    assert.equal(stripMarkdownFrontMatter(hrInBody), hrInBody)
+  })
+
+  it('keeps leading-horizontal-rule prose without key/value lines', () => {
+    // 正文以水平线开头且首个「块」无 key: / key= —— 不得当 front matter 剥掉
+    const proseWithLeadingHr = '---\n\n序章的引言段落。\n\n---\n\n第一节正文'
+    assert.equal(
+      stripMarkdownFrontMatter(proseWithLeadingHr),
+      proseWithLeadingHr,
+    )
+    // 真 front matter（含 kv）照常剥
+    assert.equal(
+      stripMarkdownFrontMatter('---\n\ntitle: ok\n\n---\nbody'),
+      'body',
+    )
+  })
+
+  it('does not strip when closing delimiter is beyond the scan window', () => {
+    // 开头 `---` 后接大段含 kv 形态的正文，结束线远在 100 行外 → 保留全文
+    const far =
+      '---\n' +
+      Array.from({ length: 150 }, (_, i) => `line${i}: value`).join('\n') +
+      '\n---\nrest'
+    assert.equal(stripMarkdownFrontMatter(far), far)
+  })
+
+  it('strips front matter only for markdown extracts, with BOM', () => {
+    const md =
+      '\uFEFF---\ntitle: bom\n---\n# After BOM'
+    assert.equal(
+      extractKnowledgeText({
+        buffer: Buffer.from(md, 'utf8'),
+        mime: 'text/markdown',
+        filename: 'note.md',
+      }),
+      '# After BOM',
+    )
+    assert.equal(
+      extractKnowledgeText({
+        buffer: Buffer.from(md, 'utf8'),
+        mime: 'application/octet-stream',
+        filename: 'note.markdown',
+      }),
+      '# After BOM',
+    )
+    const txtWithDashes = '---\nnot front matter for txt\n---\nkeep'
+    assert.equal(
+      extractKnowledgeText({
+        buffer: Buffer.from(txtWithDashes, 'utf8'),
+        mime: 'text/plain',
+        filename: 'a.txt',
+      }),
+      txtWithDashes,
+    )
+    const jsonLike = '---\nnot yaml\n---\n{}'
+    assert.equal(
+      extractKnowledgeText({
+        buffer: Buffer.from(jsonLike, 'utf8'),
+        mime: 'application/json',
+        filename: 'a.json',
+      }),
+      jsonLike,
     )
   })
 

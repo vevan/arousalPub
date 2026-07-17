@@ -1,8 +1,8 @@
-# 用户文件库与 charFile 媒体管线（定案 · P0）
+# 用户文件库与 charFile 媒体管线（✅ 已归档 · 2026-07-17）
 
-> **状态**：设计定案；**M1–M3、M5 已落地**（M5：2026-07-15 · 引用扫描/强删清引用 · 多文件上传 · 视频预览）。**M4** 未实现。  
-> **定案日期**：2026-06-08（M2 细节 2026-07-14；M3/M5 2026-07-15）  
-> **关联**：`DOC/03` §15 宏、§17 文件库、`shared/file-media-token.ts`、`web/src/utils/authenticated-media-url.ts`。
+> **状态**：✅ **全部落地（M1–M5 · 2026-07-17 关闭）**——M5：引用扫描/强删清引用 · 多文件上传 · 视频预览（2026-07-15）；M4 独立文档 RAG 见 [`DOC/46`](46-document-rag.md)（2026-07-17）；Markdown 导入（front matter 剥离）同日收尾。  
+> **定案日期**：2026-06-08（M2 细节 2026-07-14；M3/M5 2026-07-15；M4/Markdown 2026-07-17）  
+> **关联**：`DOC/03` §15 宏、§17 文件库、`shared/file-media-token.ts`、`web/src/utils/authenticated-media-url.ts`；里程碑见 [`DOC/04`](04-TODO.md) §已归档。
 
 ---
 
@@ -285,5 +285,6 @@ data/{userId}/files/
 
 ## 13. 文档维护
 
-- 落地后更新 `DOC/03` §17（M2/M3/M5 小节）；`DOC/04` 勾选对应项。
-- `data/README.md` 补充 `imageFilesByCharacterId`、对话 `backgroundImageFileId` / `bgmFileId`。
+- ✅ 已更新 `DOC/03` §17（M2/M3/M5/M4 小节）；`DOC/04` 整节移入 **§已归档**（2026-07-17）。
+- ✅ `data/README.md` 已补充 `imageFilesByCharacterId`、对话 `backgroundImageFileId` / `bgmFileId`。
+- 剩余开放：单用户文件配额（内网默认可不设，§12.5）。

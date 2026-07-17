@@ -218,6 +218,24 @@ describe('file library storage + public media url', () => {
     await storage.deleteFileLibraryEntry(meta.fileId)
   })
 
+  it('infers markdown document from .md/.markdown when mime is octet-stream', async () => {
+    for (const filename of ['note.md', 'chapter.markdown'] as const) {
+      const meta = await storage.createFileLibraryEntry({
+        buffer: Buffer.from('---\ntitle: x\n---\n# Body', 'utf8'),
+        filename,
+        mime: 'application/octet-stream',
+      })
+      assert.equal(meta.kind, 'document')
+      assert.equal(meta.mime, 'text/markdown')
+      // 原文落盘保留 front matter；剥离仅发生在 RAG 抽取
+      const resolved = await storage.resolveFileLibraryContent(meta.fileId)
+      assert.ok(resolved)
+      const raw = await readFile(resolved.contentPath, 'utf8')
+      assert.match(raw, /^---\n/)
+      await storage.deleteFileLibraryEntry(meta.fileId)
+    }
+  })
+
   it('corrupt index triggers rebuild via list', async () => {
     const meta = await storage.createFileLibraryEntry({
       buffer: Buffer.from([0x00, 0x00]),

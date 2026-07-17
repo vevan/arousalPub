@@ -17,27 +17,6 @@
 
 
 
-### 用户文件库与独立文档 RAG
-
-> **定案**：`[DOC/20](20-user-file-library.md)`。媒体（图/音/视频）与文档共用 `files/`；独立文档 RAG ≠ 世界书 vector。升 P0（2026-07-12）：为媒体一等公民与后续插件（如 ComfyUI）铺路。
-
-- [ ] **用户文件库** `[DOC/20](20-user-file-library.md)` M1–M5
-  - [x] **M1** `files/` 落盘 + REST + 公开 `/api/m` + `/files` 基础 UI
-  - [x] **M2** `imageFilesByCharacterId` + FileID/FileName 宏 + 角色绑定 UI（2026-07-14 · `[DOC/20](20-user-file-library.md)`）
-  - [x] **M3** 对话 BGM·背景绑定 fileId（公开 URL，无需 withAccessToken）（2026-07-15 · `[DOC/20](20-user-file-library.md)`）
-  - [x] **M5** 引用检查（列引用→确认强删→清引用）· 批量导入 · 视频预览 · 指定 id 重建（2026-07-15 · `[DOC/20](20-user-file-library.md)` §4.4）
-  - [ ] **导入 Markdown（`.md`）** — 资产库上传/识别为 `kind=document`，进入知识库切片与召回管线（与 txt 等同；首版范围待定：仅纯文本 / 是否剥 front matter）
-- [x] **独立文档 RAG**（≠ 世界书 vector）— `[DOC/46](46-document-rag.md)` · `[DOC/20](20-user-file-library.md)` **M4**（2026-07-17）
-  - [x] R0 定案文档（`DOC/46`）
-  - [x] R1 知识库 CRUD + 对话 `knowledgeBaseIds` + 文件引用扩展
-  - [x] R2 切片 + 独立 Lance + 索引
-  - [x] R3 召回注入 + `boundKnowledge` + 预算槽 `knowledge`
-  - [x] R4 UI + i18n
-  - [x] R5 单测（切片/抽取/XML/trimOrder）；配额后置
-  - [x] （M4 后）切片知识库过行数阈值（≥10k）**IVF_PQ ANN**（2026-07-17）；memory/lore 仍 flat；scalar 已先落地（`DOC/03` §14.4.2）
-
-
-
 ## P1
 
 - [ ] **ST 聊天记录群聊多 bot 导入** — 当前 ST JSONL 导入全部 segment 绑定 `characterIds[0]`；需按 ST `name` 与会话 `characterIds`/`displayNames` 映射各 bot 为 speaker（单 bot 行为不变）。见 `[DOC/37](37-st-import-settings-tab.md)`
@@ -117,6 +96,7 @@
 - [x] **用户文件库 M3 对话背景/BGM**（2026-07-15）：`backgroundImageFileId` / `bgmFileId` · PATCH 校验 kind · 对话设置选择器 · 对话页背景+循环音频 — 见 `[DOC/20](20-user-file-library.md)` · `DOC/03` §17.5
 - [x] **用户文件库 M5 引用检查+批量导入+视频预览+指定 id 重建**（2026-07-15）：`GET …/references` · `DELETE ?force=1` · `POST fileId` 空闲重建 · FilesView — 见 `[DOC/20](20-user-file-library.md)` §4.4 · `DOC/03` §17.6
 - [x] **独立文档 RAG M4**（2026-07-17）：知识库集合 · 切片 · Lance `doc_chunks` · `boundKnowledge` · 预算槽 `knowledge` · UI — 见 `[DOC/46](46-document-rag.md)` · `DOC/03` §17.7
+- [x] **导入 Markdown（`.md`）**（2026-07-17）：资产库批量上传识别 `kind=document` · RAG 抽取保守剥离闭合 YAML/TOML front matter（原文落盘不变）— 见 `[DOC/46](46-document-rag.md)` §4
 
 
 
@@ -137,5 +117,6 @@
 | **宿主去特化 Phase 0–3**（`check:host-no-plugin-ids` · serverActions · schema 壳）                  | 2026-07-07             | `[DOC/41](41-plugin-host-generic-principles.md)` · `[DOC/42](42-host-generic-audit-checklist.md)` · **可选**：GitHub Actions 接入门禁                                |
 | **迹录 segment 级（TK0–TK-F）**                                                                  | 2026-07-08             | `[DOC/30](30-plugin-trace-keeper.md)` §10 · `[DOC/44](44-turn-segment-only-storage.md)` · `[DOC/35](35-group-chat.md)` §6 · `430849b` / `9065626` / `50725a0` |
 | **通知中心（NC0–NC-F1 + NC-F3 + NC-V）**                                                          | 2026-07-09             | `[DOC/40](40-notification-center.md)` · 迁移验收 `[DOC/45](45-notification-center-core-migration.md)` §6.10 · **延后** NC-F2 Server 推送                              |
+| **用户文件库 M1–M5 + 独立文档 RAG + Markdown 导入**（`files/` · 角色/对话绑定 · 引用检查/强删 · 知识库切片召回 · IVF_PQ ANN · front matter 剥离） | 2026-07-17             | `[DOC/20](20-user-file-library.md)` · `[DOC/46](46-document-rag.md)` · `[DOC/03](03-实现细节.md)` §17 · §14.4.2                                                    |
 
 

@@ -1,7 +1,7 @@
 # 46 — 独立文档 RAG（M4）
 
-> **状态**：✅ 已落地（2026-07-17）  
-> **关联**：[`DOC/20`](20-user-file-library.md) §7 / M4、[`DOC/03`](03-实现细节.md) §14 / §17.7、[`DOC/04`](04-TODO.md) P0
+> **状态**：✅ **已落地并归档**（2026-07-17）  
+> **关联**：[`DOC/20`](20-user-file-library.md) §7 / M4、[`DOC/03`](03-实现细节.md) §14 / §17.7、[`DOC/04`](04-TODO.md) §已归档
 
 ## 1. 目标与边界
 
@@ -60,8 +60,9 @@ data/{userId}/knowledgeBases/{kbId}/chunks.json
 
 | 项 | 首版定案 |
 |----|----------|
-| 支持 | `text/plain`、`text/markdown`、`application/json`（及 `.txt` / `.md` / `.json`） |
+| 支持 | `text/plain`、`text/markdown`、`application/json`（及 `.txt` / `.md` / `.markdown` / `.json`） |
 | PDF | **暂不支持**（加入知识库 / 索引返回 `document_type_unsupported`）；选型后置 |
+| Markdown | 资产库上传 `.md`/`.markdown` 为 `kind=document`（原文完整落盘）；RAG 抽取时剥离文件开头**闭合完整**的 YAML (`---`) / TOML (`+++`) front matter（含 BOM/CRLF；结束线须在前 100 行内且块内至少一行 `key:`/`key=`，否则视为正文保留）；未闭合则保留；正文水平线与 Markdown 语法**不**纯文本化 |
 | 默认 | `chunkSizeChars=1200`，`chunkOverlapChars=200`（按 Unicode **码点**计数与查界，增补平面字符不漂移） |
 | 切点 | 三级边界优先，否则硬切：空行 `\n\n`（窗口 ≥40% 处）→ 单换行（≥50%）→ **句末标点**（≥60%；`。！？!?…；;`，西文 `.` 可隔闭合符后跟空白且**排除缩写**——单字母首字母 `J.`、点分缩写 `e.g.`/`U.S.`、常见缩写表 `Mr./Dr./etc.` 等；紧随闭合引号/括号 `」』"'’”)】]》〉` 并入当前片）→ 固定字符硬切 |
 | 空文档 | 允许入库，0 chunk，索引成功 |

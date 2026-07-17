@@ -61,7 +61,8 @@ data/{userId}/knowledgeBases/{kbId}/chunks.json
 |----|----------|
 | 支持 | `text/plain`、`text/markdown`、`application/json`（及 `.txt` / `.md` / `.json`） |
 | PDF | **暂不支持**（加入知识库 / 索引返回 `document_type_unsupported`）；选型后置 |
-| 默认 | `chunkSizeChars=1200`，`chunkOverlapChars=200`（按 Unicode 码点近似；边界优先段落空行） |
+| 默认 | `chunkSizeChars=1200`，`chunkOverlapChars=200`（按 Unicode **码点**计数与查界，增补平面字符不漂移） |
+| 切点 | 三级边界优先，否则硬切：空行 `\n\n`（窗口 ≥40% 处）→ 单换行（≥50%）→ **句末标点**（≥60%；`。！？!?…；;`，西文 `.` 须后跟空白；紧随闭合引号/括号 `」』"'’”)】]》〉` 并入当前片）→ 固定字符硬切 |
 | 空文档 | 允许入库，0 chunk，索引成功 |
 
 文件 `PUT …/content` 或从库移除 fileId → 触发该 kb 重索引（或摘除该 file 的行）。

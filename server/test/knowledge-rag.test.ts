@@ -39,6 +39,78 @@ describe('knowledge chunk + extract', () => {
     )
   })
 
+  it('falls back to sentence-ending punctuation when no newline in window', () => {
+    // 无换行长段：每 90 字一个句号，窗口 100，句号在 ≥60% 处 → 应在句号后切
+    const sentence = '甲'.repeat(89) + '。'
+    const text = sentence.repeat(5)
+    const chunks = sliceKnowledgeText(text, {
+      chunkSizeChars: 100,
+      chunkOverlapChars: 0,
+    })
+    assert.ok(chunks.length >= 4)
+    for (const c of chunks.slice(0, -1)) {
+      assert.ok(c.endsWith('。'), `chunk should end at sentence: …${c.slice(-5)}`)
+    }
+  })
+
+  it('includes trailing closers after sentence ender in the same chunk', () => {
+    const corner = '「' + '乙'.repeat(86) + '。」'
+    const curly = '“' + '丙'.repeat(86) + '。”'
+    for (const [label, sentence, suffix] of [
+      ['corner', corner, '。」'],
+      ['curly', curly, '。”'],
+    ] as const) {
+      const chunks = sliceKnowledgeText(sentence.repeat(4), {
+        chunkSizeChars: 100,
+        chunkOverlapChars: 0,
+      })
+      assert.ok(chunks.length >= 3, label)
+      for (const c of chunks.slice(0, -1)) {
+        assert.ok(
+          c.endsWith(suffix),
+          `${label}: closer should stay with sentence: …${c.slice(-5)}`,
+        )
+      }
+    }
+  })
+
+  it('treats ascii period as ender only when followed by whitespace', () => {
+    // 「3.14」中的点不应成为切点；后跟空格的句点可以
+    const text = ('pi is 3.14159 ok. ' + 'x'.repeat(72)).repeat(4)
+    const chunks = sliceKnowledgeText(text, {
+      chunkSizeChars: 100,
+      chunkOverlapChars: 0,
+    })
+    for (const c of chunks) {
+      assert.ok(!c.startsWith('14159'), 'must not split inside 3.14159')
+    }
+  })
+
+  it('keeps chunk size and newline breaks accurate with astral characters', () => {
+    // 60 个 emoji（增补平面）+ 换行 + 120 个汉字；窗口 100 → 应恰好切在换行处
+    const text = '😀'.repeat(60) + '\n' + '辛'.repeat(120)
+    const chunks = sliceKnowledgeText(text, {
+      chunkSizeChars: 100,
+      chunkOverlapChars: 0,
+    })
+    assert.ok(chunks.length >= 2)
+    assert.match(chunks[0]!, /^😀+$/u)
+    assert.equal(Array.from(chunks[0]!).length, 60)
+    for (const c of chunks) {
+      assert.ok(Array.from(c).length <= 100, 'chunk must not exceed size')
+    }
+  })
+
+  it('hard-cuts at fixed size when no boundary qualifies', () => {
+    const text = '丙'.repeat(350)
+    const chunks = sliceKnowledgeText(text, {
+      chunkSizeChars: 100,
+      chunkOverlapChars: 10,
+    })
+    assert.equal(chunks[0]!.length, 100)
+    assert.ok(chunks.every((c) => Array.from(c).length <= 100))
+  })
+
   it('extracts utf8 text and rejects pdf mime', () => {
     const buf = Buffer.from('hello knowledge', 'utf8')
     assert.equal(

@@ -66,10 +66,12 @@ data/{userId}/knowledgeBases/{kbId}/chunks.json
 
 文件 `PUT …/content` 或从库移除 fileId → 触发该 kb 重索引（或摘除该 file 的行）。
 
+**索引完整性**：重索引若产出切片但 embedding 返回向量数 < 切片数，视为失败（`embedding_incomplete`），`indexStatus` 落 `error` 而非假 `ready`，避免「就绪但召回缺片」；重试即重新 `reindex`。重索引经 keyed coalesce 调度器串行合并，key 以**用户 + kbId** 隔离，任务在调度者的用户上下文中执行（多用户并发不串号）。
+
 ## 5. 召回与组装
 
 1. `runMemoryPipeline` 之后、lore 匹配可用同一 `scanCorpus`（`userText + memory + history`）。
-2. 对每个绑定 `kbId` hybrid TopK（全局/会话 `knowledgeTopK`，默认 **4**）；多库结果按分合并截断总 TopK。
+2. 召回前先校验绑定的知识库仍存在（`readKnowledgeBasesByIds`）；全部无效直接返回空，**不发** embedding 请求。对每个有效 `kbId` hybrid TopK（全局/会话 `knowledgeTopK`，默认 **4**）；多库结果按分合并截断总 TopK。
 3. 注入 XML（独立槽，**不**并入 `<lores>` / `<memory>`）：
 
 ```xml

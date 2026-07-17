@@ -314,6 +314,7 @@ resolveActivePathTurns(conversationId, activeBranchPath, range?)
 1. 删除子树 JSON 与目录（产品流程）。
 2. 从父级 `branches[]` 移除注册项。
 3. 调用 `deleteTurnMemoryByBranchSubtree(conversationId, branchPath)`。
+   实现注记：`branchPath` 为 **BITMAP** scalar 索引列，Lance 不支持对其做 `LIKE` 前缀谓词；实现先枚举表内 `branchPath`、在应用层做前缀匹配，再按等值 `IN (…)` 删除子树行。
 4. 若用户仍在该分支，将 `activeBranchPath` 重置到父路径或主路径。
 
 ---

@@ -26,6 +26,7 @@
   - [x] **M2** `imageFilesByCharacterId` + FileID/FileName 宏 + 角色绑定 UI（2026-07-14 · `[DOC/20](20-user-file-library.md)`）
   - [x] **M3** 对话 BGM·背景绑定 fileId（公开 URL，无需 withAccessToken）（2026-07-15 · `[DOC/20](20-user-file-library.md)`）
   - [x] **M5** 引用检查（列引用→确认强删→清引用）· 批量导入 · 视频预览 · 指定 id 重建（2026-07-15 · `[DOC/20](20-user-file-library.md)` §4.4）
+  - [ ] **导入 Markdown（`.md`）** — 资产库上传/识别为 `kind=document`，进入知识库切片与召回管线（与 txt 等同；首版范围待定：仅纯文本 / 是否剥 front matter）
 - [x] **独立文档 RAG**（≠ 世界书 vector）— `[DOC/46](46-document-rag.md)` · `[DOC/20](20-user-file-library.md)` **M4**（2026-07-17）
   - [x] R0 定案文档（`DOC/46`）
   - [x] R1 知识库 CRUD + 对话 `knowledgeBaseIds` + 文件引用扩展

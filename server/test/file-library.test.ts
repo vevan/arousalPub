@@ -4,7 +4,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import { fileContentUrl } from '../src/file-content-url.js'
-import { decodeFileMediaToken } from '../src/shared/file-media-token.js'
+import {
+  decodeFileMediaToken,
+  resolveFileIdFromRepairInput,
+} from '../src/shared/file-media-token.js'
 
 const TEST_USER = 'f0000001'
 
@@ -42,6 +45,55 @@ describe('file library storage + public media url', () => {
     assert.equal(ref.userId, TEST_USER)
     assert.equal(ref.fileId, 'a1b2c3d4')
     assert.equal(url.includes('access_token'), false)
+  })
+
+  it('resolveFileIdFromRepairInput accepts hex, path, absolute URL, and rejects foreign user', () => {
+    const url = fileContentUrl('a1b2c3d4', TEST_USER)
+    const token = url.slice('/api/m/'.length)
+
+    assert.deepEqual(resolveFileIdFromRepairInput('a1b2c3d4', TEST_USER), {
+      ok: true,
+      fileId: 'a1b2c3d4',
+    })
+    assert.deepEqual(resolveFileIdFromRepairInput(url, TEST_USER), {
+      ok: true,
+      fileId: 'a1b2c3d4',
+    })
+    assert.deepEqual(
+      resolveFileIdFromRepairInput(`${url}?size=m&v=1`, TEST_USER),
+      { ok: true, fileId: 'a1b2c3d4' },
+    )
+    assert.deepEqual(
+      resolveFileIdFromRepairInput(
+        `https://example.test${url}?size=m`,
+        TEST_USER,
+      ),
+      { ok: true, fileId: 'a1b2c3d4' },
+    )
+    assert.deepEqual(resolveFileIdFromRepairInput(token, TEST_USER), {
+      ok: true,
+      fileId: 'a1b2c3d4',
+    })
+    assert.deepEqual(resolveFileIdFromRepairInput(url, 'ffffffff'), {
+      ok: false,
+      error: 'wrong_user',
+    })
+    assert.deepEqual(resolveFileIdFromRepairInput('not-a-url', TEST_USER), {
+      ok: false,
+      error: 'invalid',
+    })
+    assert.deepEqual(resolveFileIdFromRepairInput(null, TEST_USER), {
+      ok: false,
+      error: 'invalid',
+    })
+    assert.deepEqual(resolveFileIdFromRepairInput(`"${url}"`, TEST_USER), {
+      ok: true,
+      fileId: 'a1b2c3d4',
+    })
+    assert.deepEqual(
+      resolveFileIdFromRepairInput(`<img src="${url}">`, TEST_USER),
+      { ok: true, fileId: 'a1b2c3d4' },
+    )
   })
 
   it('create → list → meta → content → patch → delete', async () => {

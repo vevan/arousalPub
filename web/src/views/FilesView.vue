@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { fileLibraryContentUrl } from '@/utils/authenticated-media-url'
+import { resolveFileIdFromRepairInput } from '@/shared/file-media-token'
 import { apiFetch } from '@/utils/api-fetch'
 import { coreNotify } from '@/utils/core-notify'
 import { useAuthStore } from '@/stores/auth'
@@ -83,11 +84,23 @@ const deleteLoadingRefs = ref(false)
 const deleteReferences = ref<FileLibraryReference[]>([])
 const uploading = ref(false)
 const uploadProgress = ref<{ done: number; total: number } | null>(null)
-/** 可选：单文件上传时指定空闲 8 位 hex，恢复误删 URL */
-const preferredFileId = ref('')
+/** 修复弹窗：8 hex 或 /api/m URL，恢复误删公开地址 */
+const repairOpen = ref(false)
+const repairDraft = ref('')
+/** 点上传后、选完文件前锁定的目标 fileId（避免关弹窗清空 draft） */
+let repairPendingFileId: string | null = null
 const replacing = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const repairFileInputRef = ref<HTMLInputElement | null>(null)
 const replaceInputRef = ref<HTMLInputElement | null>(null)
+
+watch(
+  repairDraft,
+  (v) => {
+    if (v == null) repairDraft.value = ''
+  },
+  { flush: 'sync' },
+)
 
 type FileLibraryReferenceKind =
   | 'character_image_file'
@@ -273,6 +286,55 @@ function triggerUpload() {
   fileInputRef.value?.click()
 }
 
+function openRepair() {
+  repairDraft.value = ''
+  repairPendingFileId = null
+  repairOpen.value = true
+}
+
+function closeRepair() {
+  if (uploading.value) return
+  repairOpen.value = false
+  repairDraft.value = ''
+  repairPendingFileId = null
+}
+
+watch(repairOpen, (open) => {
+  if (!open && !uploading.value) {
+    repairDraft.value = ''
+    repairPendingFileId = null
+  }
+})
+
+function resolveRepairFileId(): string | null {
+  const uid = auth.user?.id
+  if (!uid) {
+    coreNotify(t('files.preferredIdInvalid'), undefined, { level: 'error' })
+    return null
+  }
+  const resolved = resolveFileIdFromRepairInput(repairDraft.value, uid)
+  if (!resolved.ok) {
+    coreNotify(
+      t(
+        resolved.error === 'wrong_user'
+          ? 'files.preferredIdWrongUser'
+          : 'files.preferredIdInvalid',
+      ),
+      undefined,
+      { level: 'error' },
+    )
+    return null
+  }
+  return resolved.fileId
+}
+
+function triggerRepairUpload() {
+  const id = resolveRepairFileId()
+  if (!id) return
+  repairPendingFileId = id
+  repairFileInputRef.value?.click()
+}
+
 function triggerReplace() {
   if (!selected.value) return
   replaceInputRef.value?.click()
@@ -307,12 +369,6 @@ async function onFilePicked(ev: Event) {
   const list = input.files ? Array.from(input.files) : []
   input.value = ''
   if (list.length === 0) return
-  const preferred =
-    list.length === 1 ? preferredFileId.value.trim().toLowerCase() : ''
-  if (preferred && !/^[0-9a-f]{8}$/i.test(preferred)) {
-    coreNotify(t('files.preferredIdInvalid'), undefined, { level: 'error' })
-    return
-  }
   uploading.value = true
   uploadProgress.value = { done: 0, total: list.length }
   let lastOkId: string | null = null
@@ -320,10 +376,7 @@ async function onFilePicked(ev: Event) {
   let failCount = 0
   try {
     for (const file of list) {
-      const result = await uploadOneFile(
-        file,
-        list.length === 1 ? preferred || null : null,
-      )
+      const result = await uploadOneFile(file, null)
       uploadProgress.value = {
         done: (uploadProgress.value?.done ?? 0) + 1,
         total: list.length,
@@ -359,18 +412,43 @@ async function onFilePicked(ev: Event) {
         )
       }
     } else if (okCount === 1) {
-      coreNotify(
-        preferred
-          ? t('files.uploadRebuildOk', { id: preferred })
-          : t('files.uploadOk'),
-        undefined,
-        { level: 'success' },
-      )
-      preferredFileId.value = ''
+      coreNotify(t('files.uploadOk'), undefined, { level: 'success' })
     }
   } finally {
     uploading.value = false
     uploadProgress.value = null
+  }
+}
+
+async function onRepairPicked(ev: Event) {
+  const input = ev.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  const preferred = repairPendingFileId
+  repairPendingFileId = null
+  if (!file || !preferred) return
+  uploading.value = true
+  try {
+    const result = await uploadOneFile(file, preferred)
+    if (!result.ok) {
+      coreNotify(
+        t('files.uploadFailed'),
+        result.error
+          ? t(`api.errors.${result.error}`, result.error)
+          : undefined,
+        { level: 'error' },
+      )
+      return
+    }
+    await fetchSlice(0, false)
+    selectedId.value = result.fileId
+    coreNotify(t('files.uploadRebuildOk', { id: preferred }), undefined, {
+      level: 'success',
+    })
+    repairOpen.value = false
+    repairDraft.value = ''
+  } finally {
+    uploading.value = false
   }
 }
 
@@ -646,19 +724,15 @@ async function submitDelete() {
         >
           {{ $t('files.upload') }}
         </v-btn>
-        <v-text-field
-          v-model="preferredFileId"
-          :label="$t('files.preferredId')"
-          :hint="$t('files.preferredIdHint')"
-          persistent-hint
-          density="compact"
-          variant="outlined"
-          hide-details="auto"
-          clearable
-          class="filelib-preferred-id"
+        <v-btn
+          size="small"
+          variant="tonal"
+          prepend-icon="mdi-wrench-outline"
           :disabled="uploading"
-          maxlength="8"
-        />
+          @click="openRepair"
+        >
+          {{ $t('files.repair') }}
+        </v-btn>
         <input
           ref="fileInputRef"
           type="file"
@@ -666,6 +740,13 @@ async function submitDelete() {
           multiple
           :accept="UPLOAD_ACCEPT"
           @change="onFilePicked"
+        >
+        <input
+          ref="repairFileInputRef"
+          type="file"
+          class="d-none"
+          :accept="UPLOAD_ACCEPT"
+          @change="onRepairPicked"
         >
         <span
           v-if="uploadProgress"
@@ -891,6 +972,43 @@ async function submitDelete() {
       </div>
     </div>
 
+    <v-dialog v-model="repairOpen" max-width="28rem" :persistent="uploading">
+      <v-card>
+        <v-card-title>{{ $t('files.repairTitle') }}</v-card-title>
+        <v-card-text class="d-flex flex-column ga-3">
+          <v-text-field
+            v-model="repairDraft"
+            :label="$t('files.preferredId')"
+            density="compact"
+            variant="outlined"
+            hide-details="auto"
+            clearable
+            autofocus
+            :disabled="uploading"
+            @keydown.enter.prevent="triggerRepairUpload"
+          />
+          <v-btn
+            color="primary"
+            :loading="uploading"
+            :disabled="!String(repairDraft ?? '').trim()"
+            prepend-icon="mdi-upload"
+            @click="triggerRepairUpload"
+          >
+            {{ $t('files.upload') }}
+          </v-btn>
+        </v-card-text>
+        <v-card-actions class="filelib-repair-footer px-4 pb-4">
+          <p class="text-caption text-medium-emphasis mb-0">
+            {{ $t('files.preferredIdHint') }}
+          </p>
+          <v-spacer />
+          <v-btn variant="text" :disabled="uploading" @click="closeRepair">
+            {{ $t('files.cancel') }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="renameOpen" max-width="28rem">
       <v-card>
         <v-card-title>{{ $t('files.renameTitle') }}</v-card-title>
@@ -1026,10 +1144,14 @@ async function submitDelete() {
   min-width: 10rem;
   max-width: 20rem;
 }
-.filelib-preferred-id {
-  flex: 0 1 11rem;
-  min-width: 8rem;
-  max-width: 12rem;
+.filelib-repair-footer {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.filelib-repair-footer > p {
+  flex: 1 1 12rem;
+  line-height: 1.4;
 }
 .filelib-body {
   display: grid;

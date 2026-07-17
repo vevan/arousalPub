@@ -80,6 +80,63 @@ export function decodeFileMediaToken(token: string): FileMediaRef | null {
   }
 }
 
+export type ResolveFileIdFromRepairInputResult =
+  | { ok: true; fileId: string }
+  | { ok: false; error: 'invalid' | 'wrong_user' }
+
+/**
+ * 从「8 hex fileId」或「/api/m/{token}」（可含 host / query / 引号）解析 fileId。
+ * URL / token 形态会校验 token 内 userId 与 expectedUserId 一致。
+ */
+export function resolveFileIdFromRepairInput(
+  raw: string | null | undefined,
+  expectedUserId: string,
+): ResolveFileIdFromRepairInputResult {
+  const s = String(raw ?? '')
+    .trim()
+    .replace(/^['"]+|['"]+$/g, '')
+  if (!s) return { ok: false, error: 'invalid' }
+
+  const uid = expectedUserId.trim().toLowerCase()
+  if (!SHORT_ID_RE.test(uid)) return { ok: false, error: 'invalid' }
+
+  if (SHORT_ID_RE.test(s)) {
+    return { ok: true, fileId: s.toLowerCase() }
+  }
+
+  const token = extractFileMediaTokenFromInput(s)
+  if (!token) return { ok: false, error: 'invalid' }
+  const ref = decodeFileMediaToken(token)
+  if (!ref) return { ok: false, error: 'invalid' }
+  if (ref.userId !== uid) return { ok: false, error: 'wrong_user' }
+  return { ok: true, fileId: ref.fileId }
+}
+
+/** 从路径、绝对 URL 或裸 token 抽出 media token */
+function extractFileMediaTokenFromInput(raw: string): string | null {
+  let s = raw.trim()
+  if (!s) return null
+
+  if (/^[a-z][a-z0-9+.-]*:/i.test(s)) {
+    try {
+      s = new URL(s).pathname
+    } catch {
+      return null
+    }
+  } else {
+    const q = s.indexOf('?')
+    if (q >= 0) s = s.slice(0, q)
+    const h = s.indexOf('#')
+    if (h >= 0) s = s.slice(0, h)
+  }
+
+  const m = s.match(/\/api\/m\/([A-Za-z0-9_-]+)/i)
+  if (m?.[1]) return m[1]
+
+  if (/^[A-Za-z0-9_-]+$/.test(s)) return s
+  return null
+}
+
 export function parseFileMediaImageSize(
   raw: string | null | undefined,
 ): FileMediaImageSize | null {

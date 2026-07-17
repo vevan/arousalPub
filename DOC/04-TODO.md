@@ -32,8 +32,8 @@
   - [x] R2 切片 + 独立 Lance + 索引
   - [x] R3 召回注入 + `boundKnowledge` + 预算槽 `knowledge`
   - [x] R4 UI + i18n
-  - [x] R5 单测（切片/抽取/XML/trimOrder）；ANN / 配额后置
-  - [ ] （M4 后）切片知识库过行数阈值再加 **ANN**；memory/lore **scalar** 已先落地（`DOC/03` §14.4.2）
+  - [x] R5 单测（切片/抽取/XML/trimOrder）；配额后置
+  - [x] （M4 后）切片知识库过行数阈值（≥10k）**IVF_PQ ANN**（2026-07-17）；memory/lore 仍 flat；scalar 已先落地（`DOC/03` §14.4.2）
 
 
 

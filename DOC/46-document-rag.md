@@ -14,7 +14,7 @@
 | 替代世界书 | 文档 RAG ≠ `lore_entries` / keyword lore |
 | 混入 turn memory | 表与 `turn_memory` 分离 |
 | 角色 `imageFiles` 主路径 | 文档不进角色绑定表产品路径 |
-| 首版 ANN | FTS + flat vector；行数门控 ANN 后置 |
+| memory/lore ANN | 仅知识库 `doc_chunks` 行数门控 IVF_PQ；memory / lore 仍 flat |
 | 多跳检索 | 单次 TopK |
 | 改写历史 turn URL | 同文件库 M5 |
 
@@ -50,8 +50,9 @@ data/{userId}/knowledgeBases/{kbId}/chunks.json
 | 表 | `doc_chunks` |
 | 行 | `chunkId`, `kbId`, `fileId`, `ordinal` (int), `text`, `vector` |
 | FTS | 列 `text`；分词 = 用户 `hybridFts` |
-| 检索 | `runLanceHybridSearch`（与 lore/memory 同） |
+| 检索 | `runLanceHybridSearch`（与 lore/memory 同）；知识库侧 `refineFactor: 2`（无 ANN 时 Lance 忽略） |
 | Scalar | `chunkId` BTREE、`fileId` BITMAP（懒建） |
+| ANN | 行数 ≥ **10_000** 时，重索引写入路径建 **IVF_PQ**（`distanceType: l2`；`numPartitions`/`numSubVectors` 用 Lance 默认；`waitTimeoutSeconds: 600`）；未満 flat；**不**在召回路径懒建。实现：`lance-vector-ann-index.ts`（Lance PQ 训练自身另需 ≥256 行，产品门槛已覆盖） |
 
 **Syncthing**：`memory/` 仍建议忽略；`chunks.json` 为权威。
 
@@ -120,7 +121,8 @@ data/{userId}/knowledgeBases/{kbId}/chunks.json
 | R2 | 抽取/切片 + Lance + reindex |
 | R3 | 召回 + `boundKnowledge` + trim + 审计 |
 | R4 | UI + i18n |
-| R5 | 单测；ANN/配额后置 |
+| R5 | 单测；配额后置 |
+| R6 | 行数门控 IVF_PQ ANN（≥10k，2026-07-17） |
 
 ## 10. 开放问题（关闭）
 

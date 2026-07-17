@@ -27,6 +27,10 @@ import {
   ensureScalarIndexes,
   type ScalarIndexSpec,
 } from './lance-scalar-index.js'
+import {
+  ensureIvfPqIndex,
+  KNOWLEDGE_ANN_VECTOR_COLUMN,
+} from './lance-vector-ann-index.js'
 import { readGlobalHybridFtsSettings } from './user-preferences-file.js'
 import { languageModelHomeForSettings } from './hybrid-fts-dict.js'
 import { getUserDataDir } from './config.js'
@@ -140,6 +144,9 @@ export async function replaceKnowledgeVectorIndex(
         userId,
       )
       await ensureScalarIndexes(table, KNOWLEDGE_SCALAR_INDEX_SPECS)
+      await ensureIvfPqIndex(table, KNOWLEDGE_ANN_VECTOR_COLUMN, {
+        rowCount: rows.length,
+      })
     })
   })
 }
@@ -190,6 +197,7 @@ async function searchKnowledgeChunkVectorsUnsafe(
     textColumn: KNOWLEDGE_FTS_COLUMN,
     limit: k,
     languageModelHome: languageModelHomeForSettings(userId, settings),
+    refineFactor: 2,
   })
   const hits: DocChunkVectorHit[] = []
   for (const row of raw) {

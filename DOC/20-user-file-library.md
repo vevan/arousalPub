@@ -221,8 +221,8 @@ data/{userId}/files/
 定案见 **[`DOC/46-document-rag.md`](46-document-rag.md)**（M4）。
 
 - **入口**：文件库上传文档 → 加入知识库（命名集合 `fileIds[]`）→ 切片 + embedding → **独立 Lance 表** `doc_chunks`。
-- **明确不做**：文档管线 **不**替代世界书；绑定表与 RAG 索引分离；首版无 PDF / 无 ANN。
-- **索引策略**：先 FTS + flat；ANN 行数门控见 `DOC/03` §14.4.2 / M4 后。
+- **明确不做**：文档管线 **不**替代世界书；绑定表与 RAG 索引分离；首版无 PDF。
+- **索引策略**：FTS + scalar；知识库行数 ≥10k 时 IVF_PQ ANN（`DOC/46` §3 / `DOC/03` §14.4.2）。
 - **组装**：`boundKnowledge` + `<knowledge>`；预算槽 `knowledge`；embedding 与 memory 同源；`rag_generate` 仅审计占位。
 
 ---

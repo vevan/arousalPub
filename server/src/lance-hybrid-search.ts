@@ -195,6 +195,11 @@ export interface LanceHybridSearchParams {
   whereClause?: string
   /** zh-jieba 查询时传入用户词典根目录；其它分词器传 null */
   languageModelHome?: string | null
+  /**
+   * IVF_PQ refine 倍数；无向量索引时 Lance 忽略。
+   * 知识库召回传 2 以校正 PQ 近似距离。
+   */
+  refineFactor?: number
 }
 
 /**
@@ -211,8 +216,16 @@ export async function runLanceHybridSearch(
     limit,
     whereClause,
     languageModelHome = null,
+    refineFactor,
   } = params
   if (!queryVector.length || limit < 1) return []
+
+  const refine =
+    typeof refineFactor === 'number' &&
+    Number.isFinite(refineFactor) &&
+    refineFactor >= 1
+      ? Math.floor(refineFactor)
+      : undefined
 
   const trimmedQuery = queryText.trim()
   if (trimmedQuery.length > 0) {
@@ -224,8 +237,9 @@ export async function runLanceHybridSearch(
             return null
           }
           const reranker = await sharedRrfReranker()
-          let query = table
-            .vectorSearch(queryVector)
+          let query = table.vectorSearch(queryVector)
+          if (refine !== undefined) query = query.refineFactor(refine)
+          query = query
             .fullTextSearch(new MatchQuery(trimmedQuery, textColumn))
             .rerank(reranker)
           if (whereClause) {
@@ -242,6 +256,7 @@ export async function runLanceHybridSearch(
   }
 
   let vectorQuery = table.vectorSearch(queryVector)
+  if (refine !== undefined) vectorQuery = vectorQuery.refineFactor(refine)
   if (whereClause) {
     vectorQuery = vectorQuery.where(whereClause)
   }

@@ -29,6 +29,7 @@ import {
 } from './lance-scalar-index.js'
 import {
   ensureIvfPqIndex,
+  KNOWLEDGE_ANN_REFINE_FACTOR,
   KNOWLEDGE_ANN_VECTOR_COLUMN,
 } from './lance-vector-ann-index.js'
 import { readGlobalHybridFtsSettings } from './user-preferences-file.js'
@@ -45,6 +46,11 @@ export const KNOWLEDGE_SCALAR_INDEX_SPECS: readonly ScalarIndexSpec[] = [
 ]
 
 const knowledgeLanceQueue = createKeyedSerialQueue()
+
+/** 队列 key 按用户隔离：不同用户即使 kbId 碰撞也不互相串行/串数据 */
+function knowledgeQueueKey(kbId: string): string {
+  return `${getCurrentUserId()}\0${kbId}`
+}
 
 export interface DocChunkVectorRow {
   chunkId: string
@@ -125,7 +131,7 @@ export async function replaceKnowledgeVectorIndex(
   kbId: string,
   rows: DocChunkVectorRow[],
 ): Promise<void> {
-  await knowledgeLanceQueue.run(kbId, async () => {
+  await knowledgeLanceQueue.run(knowledgeQueueKey(kbId), async () => {
     const uri = knowledgeDbUri(kbId)
     closeLanceDb(uri)
     await rm(uri, { recursive: true, force: true })
@@ -144,15 +150,18 @@ export async function replaceKnowledgeVectorIndex(
         userId,
       )
       await ensureScalarIndexes(table, KNOWLEDGE_SCALAR_INDEX_SPECS)
-      await ensureIvfPqIndex(table, KNOWLEDGE_ANN_VECTOR_COLUMN, {
-        rowCount: rows.length,
-      })
+    })
+    // ANN 不依赖 jieba 词典，放在 env 锁外：大库训练（可达数分钟）
+    // 不得阻塞其他用户的 hybrid FTS。soft：失败降级 flat 搜索，只告警。
+    await ensureIvfPqIndex(table, KNOWLEDGE_ANN_VECTOR_COLUMN, {
+      rowCount: rows.length,
+      soft: true,
     })
   })
 }
 
 export async function deleteKnowledgeVectorIndex(kbId: string): Promise<void> {
-  await knowledgeLanceQueue.run(kbId, async () => {
+  await knowledgeLanceQueue.run(knowledgeQueueKey(kbId), async () => {
     const uri = knowledgeDbUri(kbId)
     closeLanceDb(uri)
     await rm(uri, { recursive: true, force: true })
@@ -166,7 +175,7 @@ export async function searchKnowledgeChunkVectors(
   topK: number,
 ): Promise<DocChunkVectorHit[]> {
   if (!queryVector.length || topK < 1) return []
-  return knowledgeLanceQueue.run(kbId, () =>
+  return knowledgeLanceQueue.run(knowledgeQueueKey(kbId), () =>
     searchKnowledgeChunkVectorsUnsafe(kbId, queryVector, queryText, topK),
   )
 }
@@ -197,7 +206,7 @@ async function searchKnowledgeChunkVectorsUnsafe(
     textColumn: KNOWLEDGE_FTS_COLUMN,
     limit: k,
     languageModelHome: languageModelHomeForSettings(userId, settings),
-    refineFactor: 2,
+    refineFactor: KNOWLEDGE_ANN_REFINE_FACTOR,
   })
   const hits: DocChunkVectorHit[] = []
   for (const row of raw) {

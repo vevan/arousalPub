@@ -59,6 +59,7 @@ describe('listHasIvfPqIndex / isIvfPqIndexType', () => {
     assert.equal(isIvfPqIndexType('IvfPq'), true)
     assert.equal(isIvfPqIndexType('IVF_PQ'), true)
     assert.equal(isIvfPqIndexType('ivf_pq'), true)
+    assert.equal(isIvfPqIndexType('IVF-PQ'), true)
     assert.equal(isIvfPqIndexType('BTree'), false)
     assert.equal(
       listHasIvfPqIndex(
@@ -157,5 +158,47 @@ describe('ensureIvfPqIndex', () => {
       threshold: 10_000,
     })
     assert.equal(created, false)
+  })
+
+  it('soft mode swallows createIndex failures after listIndices succeeds', async () => {
+    let createCalls = 0
+    const fakeTable = {
+      countRows: async () => 20_000,
+      listIndices: async () => [],
+      createIndex: async () => {
+        createCalls++
+        throw new Error('create_index_boom')
+      },
+    }
+    const created = await ensureIvfPqIndex(fakeTable as never, 'vector', {
+      soft: true,
+      threshold: 10_000,
+    })
+    assert.equal(created, false)
+    assert.equal(createCalls, 1)
+
+    await assert.rejects(
+      ensureIvfPqIndex(fakeTable as never, 'vector', { threshold: 10_000 }),
+      /create_index_boom/,
+    )
+  })
+
+  it('falls back to default threshold when injected threshold is not finite', async () => {
+    let createCalls = 0
+    const fakeTable = {
+      countRows: async () => 500,
+      listIndices: async () => [],
+      createIndex: async () => {
+        createCalls++
+      },
+    }
+    // NaN / Infinity 阈值不得使门控失效：500 行 < 默认 10_000 → 不建索
+    for (const threshold of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      const created = await ensureIvfPqIndex(fakeTable as never, 'vector', {
+        threshold,
+      })
+      assert.equal(created, false)
+    }
+    assert.equal(createCalls, 0)
   })
 })

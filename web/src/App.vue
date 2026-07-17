@@ -44,9 +44,8 @@ const CharactersView = defineAsyncComponent(
 const LorebooksView = defineAsyncComponent(
   () => import('@/views/LorebooksView.vue'),
 )
-const FilesView = defineAsyncComponent(() => import('@/views/FilesView.vue'))
-const KnowledgeBasesView = defineAsyncComponent(
-  () => import('@/views/KnowledgeBasesView.vue'),
+const LibraryHubView = defineAsyncComponent(
+  () => import('@/views/LibraryHubView.vue'),
 )
 
 const userBarAvatarSrc = computed(() =>
@@ -180,8 +179,8 @@ watch(settingsDialogOpen, (open) => {
 const promptsDialogOpen = ref(false)
 const charactersDialogOpen = ref(false)
 const lorebooksDialogOpen = ref(false)
-const filesDialogOpen = ref(false)
-const knowledgeBasesDialogOpen = ref(false)
+const libraryDialogOpen = ref(false)
+const libraryTab = ref<'assets' | 'knowledge'>('assets')
 const mobileNavOpen = ref(false)
 const conn = useConnectionStore()
 const lorebooksStore = useLorebooksStore()
@@ -217,41 +216,30 @@ function clearPanelQuery() {
 function openPromptsDialog() {
   charactersDialogOpen.value = false
   lorebooksDialogOpen.value = false
-  filesDialogOpen.value = false
-  knowledgeBasesDialogOpen.value = false
+  libraryDialogOpen.value = false
   promptsDialogOpen.value = true
 }
 
 function openCharactersDialog() {
   promptsDialogOpen.value = false
   lorebooksDialogOpen.value = false
-  filesDialogOpen.value = false
-  knowledgeBasesDialogOpen.value = false
+  libraryDialogOpen.value = false
   charactersDialogOpen.value = true
 }
 
 function openLorebooksDialog() {
   promptsDialogOpen.value = false
   charactersDialogOpen.value = false
-  filesDialogOpen.value = false
-  knowledgeBasesDialogOpen.value = false
+  libraryDialogOpen.value = false
   lorebooksDialogOpen.value = true
 }
 
-function openFilesDialog() {
+function openLibraryDialog(tab?: 'assets' | 'knowledge') {
   promptsDialogOpen.value = false
   charactersDialogOpen.value = false
   lorebooksDialogOpen.value = false
-  knowledgeBasesDialogOpen.value = false
-  filesDialogOpen.value = true
-}
-
-function openKnowledgeBasesDialog() {
-  promptsDialogOpen.value = false
-  charactersDialogOpen.value = false
-  lorebooksDialogOpen.value = false
-  filesDialogOpen.value = false
-  knowledgeBasesDialogOpen.value = true
+  if (tab) libraryTab.value = tab
+  libraryDialogOpen.value = true
 }
 
 function closeMobileNav() {
@@ -278,14 +266,9 @@ function mobileNavOpenLorebooks() {
   openLorebooksDialog()
 }
 
-function mobileNavOpenFiles() {
+function mobileNavOpenLibrary() {
   closeMobileNav()
-  openFilesDialog()
-}
-
-function mobileNavOpenKnowledgeBases() {
-  closeMobileNav()
-  openKnowledgeBasesDialog()
+  openLibraryDialog()
 }
 
 async function focusLorebooksForOpen(): Promise<void> {
@@ -399,36 +382,25 @@ watch(
       promptsDialogOpen.value = true
       charactersDialogOpen.value = false
       lorebooksDialogOpen.value = false
-      filesDialogOpen.value = false
-      knowledgeBasesDialogOpen.value = false
+      libraryDialogOpen.value = false
       void nextTick(() => clearPanelQuery())
     } else if (panel === 'characters') {
       charactersDialogOpen.value = true
       promptsDialogOpen.value = false
       lorebooksDialogOpen.value = false
-      filesDialogOpen.value = false
-      knowledgeBasesDialogOpen.value = false
+      libraryDialogOpen.value = false
       void nextTick(() => clearPanelQuery())
     } else if (panel === 'lorebooks') {
       lorebooksDialogOpen.value = true
       promptsDialogOpen.value = false
       charactersDialogOpen.value = false
-      filesDialogOpen.value = false
-      knowledgeBasesDialogOpen.value = false
+      libraryDialogOpen.value = false
       void nextTick(() => clearPanelQuery())
     } else if (panel === 'files') {
-      filesDialogOpen.value = true
-      promptsDialogOpen.value = false
-      charactersDialogOpen.value = false
-      lorebooksDialogOpen.value = false
-      knowledgeBasesDialogOpen.value = false
+      openLibraryDialog('assets')
       void nextTick(() => clearPanelQuery())
     } else if (panel === 'knowledge') {
-      knowledgeBasesDialogOpen.value = true
-      promptsDialogOpen.value = false
-      charactersDialogOpen.value = false
-      lorebooksDialogOpen.value = false
-      filesDialogOpen.value = false
+      openLibraryDialog('knowledge')
       void nextTick(() => clearPanelQuery())
     }
   },
@@ -642,16 +614,10 @@ onUnmounted(() => {
               @click="mobileNavOpenLorebooks"
             />
             <v-list-item
-              :title="$t('app.knowledgeBases')"
-              :active="knowledgeBasesDialogOpen"
-              rounded="lg"
-              @click="mobileNavOpenKnowledgeBases"
-            />
-            <v-list-item
               :title="$t('app.files')"
-              :active="filesDialogOpen"
+              :active="libraryDialogOpen"
               rounded="lg"
-              @click="mobileNavOpenFiles"
+              @click="mobileNavOpenLibrary"
             />
           </v-list>
           </v-menu>
@@ -740,19 +706,10 @@ onUnmounted(() => {
           </v-btn>
           <v-btn
             variant="text"
-            :active="knowledgeBasesDialogOpen"
+            :active="libraryDialogOpen"
             class="app-bar__menu-btn"
             size="small"
-            @click="openKnowledgeBasesDialog"
-          >
-            {{ $t('app.knowledgeBases') }}
-          </v-btn>
-          <v-btn
-            variant="text"
-            :active="filesDialogOpen"
-            class="app-bar__menu-btn"
-            size="small"
-            @click="openFilesDialog"
+            @click="openLibraryDialog()"
           >
             {{ $t('app.files') }}
           </v-btn>
@@ -956,34 +913,18 @@ onUnmounted(() => {
     </v-dialog>
 
     <v-dialog
-      v-model="filesDialogOpen"
+      v-model="libraryDialogOpen"
       scrollable
       content-class="library-dialog-surface"
-      @keydown.esc="filesDialogOpen = false"
+      @keydown.esc="libraryDialogOpen = false"
     >
       <v-card rounded="lg" class="library-dialog-card">
         <v-card-text class="pa-0 library-dialog-body">
-          <FilesView
-            v-if="filesDialogOpen"
+          <LibraryHubView
+            v-if="libraryDialogOpen"
+            v-model:tab="libraryTab"
             embedded
-            @close="filesDialogOpen = false"
-          />
-        </v-card-text>
-      </v-card>
-    </v-dialog>
-
-    <v-dialog
-      v-model="knowledgeBasesDialogOpen"
-      scrollable
-      content-class="library-dialog-surface"
-      @keydown.esc="knowledgeBasesDialogOpen = false"
-    >
-      <v-card rounded="lg" class="library-dialog-card">
-        <v-card-text class="pa-0 library-dialog-body">
-          <KnowledgeBasesView
-            v-if="knowledgeBasesDialogOpen"
-            embedded
-            @close="knowledgeBasesDialogOpen = false"
+            @close="libraryDialogOpen = false"
           />
         </v-card-text>
       </v-card>

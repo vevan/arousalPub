@@ -86,6 +86,40 @@ describe('knowledge chunk + extract', () => {
     }
   })
 
+  it('does not treat abbreviations or initials as sentence enders', () => {
+    // 把缩写点精确放在窗口 ≥60% 处（前有空格成独立词）；误判句末就会切在缩写后
+    for (const abbr of ['Mr.', 'e.g.', 'U.S.', 'J.']) {
+      const before = 'a'.repeat(79 - abbr.length) + ' '
+      const text = (before + abbr + ' Smith went on ' + 'y'.repeat(40)).repeat(3)
+      const chunks = sliceKnowledgeText(text, {
+        chunkSizeChars: 100,
+        chunkOverlapChars: 0,
+      })
+      for (const c of chunks) {
+        assert.ok(
+          !c.startsWith('Smith'),
+          `must not split after ${abbr}: got chunk starting …${c.slice(0, 12)}`,
+        )
+      }
+    }
+  })
+
+  it('recognizes period followed by closing quote as sentence end', () => {
+    // `He said "Hi."` 式对话体：. 后是引号再空白，仍应视为句末且引号并入当前片
+    const sentence = 'w'.repeat(70) + ' said "Hi."'
+    const text = (sentence + ' Next part ' + 'z'.repeat(10)).repeat(3)
+    const chunks = sliceKnowledgeText(text, {
+      chunkSizeChars: 100,
+      chunkOverlapChars: 0,
+    })
+    assert.ok(
+      chunks.some((c) => c.endsWith('"Hi."')),
+      `closing quote should stay with sentence: ${chunks
+        .map((c) => `…${c.slice(-8)}`)
+        .join(' | ')}`,
+    )
+  })
+
   it('keeps chunk size and newline breaks accurate with astral characters', () => {
     // 60 个 emoji（增补平面）+ 换行 + 120 个汉字；窗口 100 → 应恰好切在换行处
     const text = '😀'.repeat(60) + '\n' + '辛'.repeat(120)

@@ -10,8 +10,10 @@ import { useI18n } from 'vue-i18n'
 const props = withDefaults(
   defineProps<{
     embedded?: boolean
+    /** 由资产/知识库壳页提供页头时隐藏自身页头 */
+    chromeless?: boolean
   }>(),
-  { embedded: false },
+  { embedded: false, chromeless: false },
 )
 
 const emit = defineEmits<{
@@ -779,9 +781,13 @@ async function submitDelete() {
   >
     <div
       class="filelib__inner"
-      :class="props.embedded ? 'filelib__inner--embedded' : 'app-page-shell'"
+      :class="[
+        props.embedded ? 'filelib__inner--embedded' : 'app-page-shell',
+        { 'filelib__inner--chromeless': props.chromeless },
+      ]"
     >
       <header
+        v-if="!props.chromeless"
         class="library-page-head"
         :class="{ 'library-page-head--with-close': props.embedded }"
       >
@@ -1306,6 +1312,9 @@ async function submitDelete() {
 }
 .filelib__inner--embedded {
   padding-top: 0.75rem;
+}
+.filelib__inner--chromeless {
+  padding-top: 0;
 }
 .filelib-toolbar {
   display: flex;

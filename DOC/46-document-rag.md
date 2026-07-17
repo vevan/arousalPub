@@ -50,9 +50,9 @@ data/{userId}/knowledgeBases/{kbId}/chunks.json
 | 表 | `doc_chunks` |
 | 行 | `chunkId`, `kbId`, `fileId`, `ordinal` (int), `text`, `vector` |
 | FTS | 列 `text`；分词 = 用户 `hybridFts` |
-| 检索 | `runLanceHybridSearch`（与 lore/memory 同）；知识库侧 `refineFactor: 2`（无 ANN 时 Lance 忽略） |
+| 检索 | `runLanceHybridSearch`（与 lore/memory 同）；知识库侧 `refineFactor: KNOWLEDGE_ANN_REFINE_FACTOR = 2`（无 ANN 时 Lance 忽略） |
 | Scalar | `chunkId` BTREE、`fileId` BITMAP（懒建） |
-| ANN | 行数 ≥ **10_000** 时，重索引写入路径建 **IVF_PQ**（`distanceType: l2`；`numPartitions`/`numSubVectors` 用 Lance 默认；`waitTimeoutSeconds: 600`）；未満 flat；**不**在召回路径懒建。实现：`lance-vector-ann-index.ts`（Lance PQ 训练自身另需 ≥256 行，产品门槛已覆盖） |
+| ANN | 行数 ≥ **10_000** 时，重索引写入路径建 **IVF_PQ**（`distanceType: l2`；`numPartitions`/`numSubVectors` 用 Lance 默认；`waitTimeoutSeconds: 600`）；未满 flat；**不**在召回路径懒建。建索在 jieba `LANCE_LANGUAGE_MODEL_HOME` 锁**之外**（ANN 不依赖词典，训练期不得阻塞其他用户 FTS）；**soft 降级**：ANN 失败只告警，索引仍 ready（flat 可搜）。实现：`lance-vector-ann-index.ts`（Lance PQ 训练自身另需 ≥256 行，产品门槛已覆盖） |
 
 **Syncthing**：`memory/` 仍建议忽略；`chunks.json` 为权威。
 
@@ -63,7 +63,7 @@ data/{userId}/knowledgeBases/{kbId}/chunks.json
 | 支持 | `text/plain`、`text/markdown`、`application/json`（及 `.txt` / `.md` / `.json`） |
 | PDF | **暂不支持**（加入知识库 / 索引返回 `document_type_unsupported`）；选型后置 |
 | 默认 | `chunkSizeChars=1200`，`chunkOverlapChars=200`（按 Unicode **码点**计数与查界，增补平面字符不漂移） |
-| 切点 | 三级边界优先，否则硬切：空行 `\n\n`（窗口 ≥40% 处）→ 单换行（≥50%）→ **句末标点**（≥60%；`。！？!?…；;`，西文 `.` 须后跟空白；紧随闭合引号/括号 `」』"'’”)】]》〉` 并入当前片）→ 固定字符硬切 |
+| 切点 | 三级边界优先，否则硬切：空行 `\n\n`（窗口 ≥40% 处）→ 单换行（≥50%）→ **句末标点**（≥60%；`。！？!?…；;`，西文 `.` 可隔闭合符后跟空白且**排除缩写**——单字母首字母 `J.`、点分缩写 `e.g.`/`U.S.`、常见缩写表 `Mr./Dr./etc.` 等；紧随闭合引号/括号 `」』"'’”)】]》〉` 并入当前片）→ 固定字符硬切 |
 | 空文档 | 允许入库，0 chunk，索引成功 |
 
 文件 `PUT …/content` 或从库移除 fileId → 触发该 kb 重索引（或摘除该 file 的行）。
@@ -110,6 +110,7 @@ data/{userId}/knowledgeBases/{kbId}/chunks.json
 - **全局** `user-preferences.json` → `knowledge`：`enabled`（默认 true）、`topK`、`chunkSizeChars`、`chunkOverlapChars`
 - **会话** `knowledgeSettings` 稀疏覆盖 `enabled` / `topK`
 - UI：设置 → **向量召回** →「知识库（文档 RAG）」；对话设置绑定多选 + TopK；文件库文档可「加入知识库」
+- **入口（2026-07-17）**：知识库管理并入「文件」模态——主导航仅一个「文件」菜单项，打开 `LibraryHubView` 单一模态，内部 tab 切换「资产库」（原文件库 `FilesView`，界面更名）/「知识库」（`KnowledgeBasesView`）；`?panel=files` / `?panel=knowledge` 直达对应 tab；两个子视图以 `chromeless` 嵌入，页头由 hub 提供
 - **命中测试**：`POST .../context/recall-test` 含 `knowledge`（与组装同 `scanCorpus`；请求 `topK` 可覆盖会话设置）
 
 ## 9. 分期对照

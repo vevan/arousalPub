@@ -1,5 +1,8 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 
+// --check：只比对不写盘；api.errors 与 api-error-codes.ts 不同步时退出码 1
+const checkMode = process.argv.includes('--check')
+
 const migrateSrc = readFileSync('scripts/migrate-api-errors.mjs', 'utf8')
 const block = migrateSrc.slice(
   migrateSrc.indexOf('const LEGACY_TO_PROP = '),
@@ -37,23 +40,46 @@ function enLabel(code) {
   return code.replace(/_/g, ' ')
 }
 
-const zh = {}
-const en = {}
-for (const code of codes) {
-  zh[code] = zhByCode[code] ?? enLabel(code)
-  en[code] = enLabel(code)
-}
-
 const docZh = JSON.parse(readFileSync('web/src/locales/zh.json', 'utf8'))
 const account = docZh.settings?.accountApiErrors ?? {}
 for (const [code, msg] of Object.entries(account)) {
-  if (typeof msg === 'string') zh[code] = msg
+  if (typeof msg === 'string') zhByCode[code] = msg
 }
-const docZh2 = JSON.parse(readFileSync('web/src/locales/zh.json', 'utf8'))
-docZh2.api = { errors: zh }
-writeFileSync('web/src/locales/zh.json', JSON.stringify(docZh2, null, 2) + '\n')
 
-const docEn = JSON.parse(readFileSync('web/src/locales/en.json', 'utf8'))
-docEn.api = { errors: en }
-writeFileSync('web/src/locales/en.json', JSON.stringify(docEn, null, 2) + '\n')
-console.log('i18n keys', Object.keys(zh).length)
+/**
+ * 非破坏性生成：已有键值一律保留（手工润色/前端独有错误码不丢），
+ * 只为 api-error-codes.ts 中缺失的码补默认文案。check 模式只比对不写盘。
+ */
+function emit(path, defaultsByCode) {
+  const doc = JSON.parse(readFileSync(path, 'utf8'))
+  const existing =
+    doc.api && typeof doc.api.errors === 'object' ? doc.api.errors : {}
+  const errors = { ...existing }
+  const missing = []
+  for (const code of codes) {
+    if (typeof errors[code] === 'string') continue
+    errors[code] = defaultsByCode[code] ?? enLabel(code)
+    missing.push(code)
+  }
+  doc.api = { errors }
+  const next = JSON.stringify(doc, null, 2) + '\n'
+  if (checkMode) {
+    if (missing.length > 0) {
+      console.error(
+        `[gen-api-i18n] ${path} 缺少 ${missing.length} 个错误码文案（如 ${missing
+          .slice(0, 5)
+          .join(', ')}）；请运行 node scripts/gen-api-i18n.mjs`,
+      )
+      process.exitCode = 1
+    }
+    return missing.length
+  }
+  if (missing.length > 0) writeFileSync(path, next)
+  return missing.length
+}
+
+const zhAdded = emit('web/src/locales/zh.json', zhByCode)
+const enAdded = emit('web/src/locales/en.json', {})
+console.log(
+  `i18n codes ${codes.length}; zh +${zhAdded}, en +${enAdded}${checkMode ? ' (check)' : ''}`,
+)

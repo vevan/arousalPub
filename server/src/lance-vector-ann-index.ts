@@ -2,10 +2,13 @@ import { Index, type Table } from '@lancedb/lancedb'
 
 type LanceIndexInfo = Awaited<ReturnType<Table['listIndices']>>[number]
 
-/** 知识库 `doc_chunks`：行数达到此阈值才建 IVF_PQ（未満保持 flat） */
+/** 知识库 `doc_chunks`：行数达到此阈值才建 IVF_PQ（未满保持 flat） */
 export const KNOWLEDGE_ANN_ROW_THRESHOLD = 10_000
 
 export const KNOWLEDGE_ANN_VECTOR_COLUMN = 'vector'
+
+/** IVF_PQ 召回补偿：取 refineFactor×limit 候选按真实距离重排（无 ANN 索引时 Lance 忽略） */
+export const KNOWLEDGE_ANN_REFINE_FACTOR = 2
 
 export interface EnsureIvfPqIndexOptions {
   /** 已知行数；省略则 `table.countRows()` */
@@ -13,8 +16,8 @@ export interface EnsureIvfPqIndexOptions {
   /** 默认 {@link KNOWLEDGE_ANN_ROW_THRESHOLD}；单测可注入更小阈值 */
   threshold?: number
   /**
-   * 失败只 warn、不抛错。写入路径默认硬失败；
-   * ANN 训练重，产品召回路径**不应**懒建。
+   * 失败只 warn、不抛错。ANN 仅是加速层：写入路径以 soft 调用，
+   * 失败降级 flat 搜索（数据仍可召回）；召回路径**不应**懒建（训练重）。
    */
   soft?: boolean
   /** 建索等待上限（秒）；默认 600 */
@@ -22,10 +25,10 @@ export interface EnsureIvfPqIndexOptions {
 }
 
 function normalizeIvfPqType(indexType: string): string {
-  return String(indexType).toLowerCase().replace(/_/g, '')
+  return String(indexType).toLowerCase().replace(/[_-]/g, '')
 }
 
-/** `IvfPq` / `IVF_PQ` 等均视为 IVF_PQ */
+/** `IvfPq` / `IVF_PQ` / `IVF-PQ` 等均视为 IVF_PQ */
 export function isIvfPqIndexType(indexType: string): boolean {
   return normalizeIvfPqType(indexType) === 'ivfpq'
 }
@@ -74,10 +77,11 @@ async function ensureIvfPqIndexUnsafe(
   column: string,
   options?: EnsureIvfPqIndexOptions,
 ): Promise<boolean> {
-  const threshold = Math.max(
-    1,
-    options?.threshold ?? KNOWLEDGE_ANN_ROW_THRESHOLD,
-  )
+  const threshold =
+    typeof options?.threshold === 'number' &&
+    Number.isFinite(options.threshold)
+      ? Math.max(1, Math.floor(options.threshold))
+      : KNOWLEDGE_ANN_ROW_THRESHOLD
   const rowCount =
     typeof options?.rowCount === 'number' && Number.isFinite(options.rowCount)
       ? Math.max(0, Math.floor(options.rowCount))

@@ -45,6 +45,9 @@ const LorebooksView = defineAsyncComponent(
   () => import('@/views/LorebooksView.vue'),
 )
 const FilesView = defineAsyncComponent(() => import('@/views/FilesView.vue'))
+const KnowledgeBasesView = defineAsyncComponent(
+  () => import('@/views/KnowledgeBasesView.vue'),
+)
 
 const userBarAvatarSrc = computed(() =>
   auth.user ? userAvatarUrl(auth.user.id) : null,
@@ -178,6 +181,7 @@ const promptsDialogOpen = ref(false)
 const charactersDialogOpen = ref(false)
 const lorebooksDialogOpen = ref(false)
 const filesDialogOpen = ref(false)
+const knowledgeBasesDialogOpen = ref(false)
 const mobileNavOpen = ref(false)
 const conn = useConnectionStore()
 const lorebooksStore = useLorebooksStore()
@@ -214,6 +218,7 @@ function openPromptsDialog() {
   charactersDialogOpen.value = false
   lorebooksDialogOpen.value = false
   filesDialogOpen.value = false
+  knowledgeBasesDialogOpen.value = false
   promptsDialogOpen.value = true
 }
 
@@ -221,6 +226,7 @@ function openCharactersDialog() {
   promptsDialogOpen.value = false
   lorebooksDialogOpen.value = false
   filesDialogOpen.value = false
+  knowledgeBasesDialogOpen.value = false
   charactersDialogOpen.value = true
 }
 
@@ -228,6 +234,7 @@ function openLorebooksDialog() {
   promptsDialogOpen.value = false
   charactersDialogOpen.value = false
   filesDialogOpen.value = false
+  knowledgeBasesDialogOpen.value = false
   lorebooksDialogOpen.value = true
 }
 
@@ -235,7 +242,16 @@ function openFilesDialog() {
   promptsDialogOpen.value = false
   charactersDialogOpen.value = false
   lorebooksDialogOpen.value = false
+  knowledgeBasesDialogOpen.value = false
   filesDialogOpen.value = true
+}
+
+function openKnowledgeBasesDialog() {
+  promptsDialogOpen.value = false
+  charactersDialogOpen.value = false
+  lorebooksDialogOpen.value = false
+  filesDialogOpen.value = false
+  knowledgeBasesDialogOpen.value = true
 }
 
 function closeMobileNav() {
@@ -265,6 +281,11 @@ function mobileNavOpenLorebooks() {
 function mobileNavOpenFiles() {
   closeMobileNav()
   openFilesDialog()
+}
+
+function mobileNavOpenKnowledgeBases() {
+  closeMobileNav()
+  openKnowledgeBasesDialog()
 }
 
 async function focusLorebooksForOpen(): Promise<void> {
@@ -379,24 +400,35 @@ watch(
       charactersDialogOpen.value = false
       lorebooksDialogOpen.value = false
       filesDialogOpen.value = false
+      knowledgeBasesDialogOpen.value = false
       void nextTick(() => clearPanelQuery())
     } else if (panel === 'characters') {
       charactersDialogOpen.value = true
       promptsDialogOpen.value = false
       lorebooksDialogOpen.value = false
       filesDialogOpen.value = false
+      knowledgeBasesDialogOpen.value = false
       void nextTick(() => clearPanelQuery())
     } else if (panel === 'lorebooks') {
       lorebooksDialogOpen.value = true
       promptsDialogOpen.value = false
       charactersDialogOpen.value = false
       filesDialogOpen.value = false
+      knowledgeBasesDialogOpen.value = false
       void nextTick(() => clearPanelQuery())
     } else if (panel === 'files') {
       filesDialogOpen.value = true
       promptsDialogOpen.value = false
       charactersDialogOpen.value = false
       lorebooksDialogOpen.value = false
+      knowledgeBasesDialogOpen.value = false
+      void nextTick(() => clearPanelQuery())
+    } else if (panel === 'knowledge') {
+      knowledgeBasesDialogOpen.value = true
+      promptsDialogOpen.value = false
+      charactersDialogOpen.value = false
+      lorebooksDialogOpen.value = false
+      filesDialogOpen.value = false
       void nextTick(() => clearPanelQuery())
     }
   },
@@ -610,6 +642,12 @@ onUnmounted(() => {
               @click="mobileNavOpenLorebooks"
             />
             <v-list-item
+              :title="$t('app.knowledgeBases')"
+              :active="knowledgeBasesDialogOpen"
+              rounded="lg"
+              @click="mobileNavOpenKnowledgeBases"
+            />
+            <v-list-item
               :title="$t('app.files')"
               :active="filesDialogOpen"
               rounded="lg"
@@ -699,6 +737,15 @@ onUnmounted(() => {
             @click="openLorebooksDialog"
           >
             {{ $t('app.lorebooks') }}
+          </v-btn>
+          <v-btn
+            variant="text"
+            :active="knowledgeBasesDialogOpen"
+            class="app-bar__menu-btn"
+            size="small"
+            @click="openKnowledgeBasesDialog"
+          >
+            {{ $t('app.knowledgeBases') }}
           </v-btn>
           <v-btn
             variant="text"
@@ -920,6 +967,23 @@ onUnmounted(() => {
             v-if="filesDialogOpen"
             embedded
             @close="filesDialogOpen = false"
+          />
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog
+      v-model="knowledgeBasesDialogOpen"
+      scrollable
+      content-class="library-dialog-surface"
+      @keydown.esc="knowledgeBasesDialogOpen = false"
+    >
+      <v-card rounded="lg" class="library-dialog-card">
+        <v-card-text class="pa-0 library-dialog-body">
+          <KnowledgeBasesView
+            v-if="knowledgeBasesDialogOpen"
+            embedded
+            @close="knowledgeBasesDialogOpen = false"
           />
         </v-card-text>
       </v-card>

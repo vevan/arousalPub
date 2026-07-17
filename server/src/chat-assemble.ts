@@ -69,6 +69,7 @@ import {
   readGlobalBudgetTrimSettings,
   readGlobalDefaultAuthorsNote,
   readGlobalHistorySettings,
+  readGlobalKnowledgeSettings,
   readGlobalLorebookSettings,
   readGlobalMemorySettings,
   readGlobalPostUserInjectionOrderHostPolicy,
@@ -99,11 +100,17 @@ import { readTurnsInOrdinalRange } from './chunk-chain.js'
 import { loadTurnsForMacroIndexing } from './prompt-macros/macro-indexing-turns.js'
 import { readPluginRegistry } from './plugin-system/registry.js'
 import {
+  knowledgeTextFromTrimState,
   memoryTextFromTrimState,
   runPromptBudgetTrimLoop,
   type PromptBudgetTrimState,
   worldTextFromTrimState,
 } from './prompt-budget-trim.js'
+import { recallKnowledgeForConversation } from './knowledge-resolve.js'
+import {
+  normalizeKnowledgeSettings,
+  resolveKnowledgeSettings,
+} from './knowledge-settings.js'
 import {
   applyRegexOutgoingToMessages,
   hasEnabledOutgoingRules,
@@ -366,6 +373,7 @@ export interface BuildConversationMessagesResult {
   droppedLoreCount: number
   droppedHistoryCount: number
   droppedMemoryCount: number
+  droppedKnowledgeCount: number
   memoryTurnIds?: string[]
   memoryText?: string
   /** 已配置 rag_generate 时返回；独立知识库 RAG 未接线前仅作占位审计 */
@@ -656,8 +664,24 @@ export async function buildConversationOutboundMessages(
       : { constantLoreGroups: [], matchedLore: [] }
   const afterLoreAt = auditEnabled ? performance.now() : 0
 
+  const kbIds = Array.isArray(idx.knowledgeBaseIds) ? idx.knowledgeBaseIds : []
+  const globalKnowledge = await readGlobalKnowledgeSettings()
+  const effectiveKnowledge = resolveKnowledgeSettings(
+    normalizeKnowledgeSettings(globalKnowledge),
+    idx.knowledgeSettings,
+  )
+  const knowledgeRecall = kbIds.length
+    ? await recallKnowledgeForConversation({
+        knowledgeBaseIds: kbIds,
+        queryText: scanCorpus || memoryQueryText,
+        conversationId,
+        knowledgeSettings: idx.knowledgeSettings,
+      })
+    : { items: [], knowledgeText: '' }
+
   const initialMatchedLore = loreParts.matchedLore.slice()
   const initialMemoryItems = memoryPipeline.memoryItems.slice()
+  const initialKnowledgeItems = knowledgeRecall.items.slice()
 
   const tokenModel =
     typeof params.tokenModel === 'string' && params.tokenModel.trim().length > 0
@@ -668,6 +692,7 @@ export async function buildConversationOutboundMessages(
     constantLoreGroups: loreParts.constantLoreGroups,
     matchedLore: loreParts.matchedLore.slice(),
     memoryItems: memoryPipeline.memoryItems.slice(),
+    knowledgeItems: knowledgeRecall.items.slice(),
     historyMessages: memoryPipeline.recentHistoryMessages.map((m) => ({ ...m })),
   }
 
@@ -688,11 +713,13 @@ export async function buildConversationOutboundMessages(
   const assembleFromState = (state: PromptBudgetTrimState): ChatMessage[] => {
     const worldText = worldTextFromTrimState(state)
     const memoryText = memoryTextFromTrimState(state)
+    const knowledgeText = knowledgeTextFromTrimState(state)
     return assemblePrompts(preset, {
       ...assembleCtxBase,
       history:
         state.historyMessages.length > 0 ? state.historyMessages : undefined,
       memoryText: memoryText || undefined,
+      knowledgeText: knowledgeText || undefined,
       ...(worldText.length > 0 ? { world: worldText } : {}),
     }).messages
   }
@@ -701,6 +728,7 @@ export async function buildConversationOutboundMessages(
   let estimatedTokens: number
   let droppedLoreCount = 0
   let droppedMemoryCount = 0
+  let droppedKnowledgeCount = 0
   let droppedHistoryCount = 0
   let tokensBeforeTrim: number | undefined
 
@@ -771,6 +799,7 @@ export async function buildConversationOutboundMessages(
     tokensBeforeTrim = trimmed.tokensBeforeTrim
     droppedLoreCount = trimmed.drops.droppedLoreCount
     droppedMemoryCount = trimmed.drops.droppedMemoryCount
+    droppedKnowledgeCount = trimmed.drops.droppedKnowledgeCount
     droppedHistoryCount = trimmed.drops.droppedHistoryCount
   } else {
     messages = assembleFromState(trimState)
@@ -886,6 +915,10 @@ export async function buildConversationOutboundMessages(
       tokensBeforeTrim,
       lorebookIds,
       lorebookNameToId,
+      knowledgeBaseIds: kbIds,
+      knowledgeEnabled: effectiveKnowledge.enabled,
+      initialKnowledgeItems,
+      droppedKnowledgeCount,
       memoryPipeline,
       loreParts,
       initialMatchedLore,
@@ -927,6 +960,7 @@ export async function buildConversationOutboundMessages(
     droppedLoreCount,
     droppedHistoryCount,
     droppedMemoryCount,
+    droppedKnowledgeCount,
     memoryTurnIds: trimState.memoryItems.map((x) => x.turn.turnId),
     memoryText: finalMemoryText || undefined,
     ...(assemblyAudit ? { assemblyAudit } : {}),

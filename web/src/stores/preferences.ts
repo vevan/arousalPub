@@ -22,6 +22,13 @@ import {
   type MemorySettings,
 } from '@/utils/memory-settings'
 import {
+  cloneKnowledgeSettings,
+  KNOWLEDGE_SETTINGS_DEFAULTS,
+  knowledgeSettingsEqual,
+  normalizeKnowledgeSettings,
+  type KnowledgeSettings,
+} from '@/utils/knowledge-settings'
+import {
   BUDGET_TRIM_SETTINGS_DEFAULTS,
   budgetTrimSettingsEqual,
   cloneBudgetTrimSettings,
@@ -75,6 +82,10 @@ export const HISTORY_LIMIT_STORAGE_KEY = 'arousal-history-limit-enabled'
 export const HISTORY_MAX_TURNS_STORAGE_KEY = 'arousal-history-max-turns'
 export const MEMORY_ENABLED_STORAGE_KEY = 'arousal-memory-enabled'
 export const MEMORY_TOPK_STORAGE_KEY = 'arousal-memory-topk'
+export const KNOWLEDGE_ENABLED_STORAGE_KEY = 'arousal-knowledge-enabled'
+export const KNOWLEDGE_TOPK_STORAGE_KEY = 'arousal-knowledge-topk'
+export const KNOWLEDGE_CHUNK_SIZE_STORAGE_KEY = 'arousal-knowledge-chunk-size'
+export const KNOWLEDGE_CHUNK_OVERLAP_STORAGE_KEY = 'arousal-knowledge-chunk-overlap'
 export const EMBEDDING_BASE_URL_STORAGE_KEY = 'arousal-embedding-base-url'
 export const EMBEDDING_API_KEY_STORAGE_KEY = 'arousal-embedding-api-key'
 export const EMBEDDING_API_KEY_ID_STORAGE_KEY = 'arousal-embedding-api-key-id'
@@ -223,6 +234,55 @@ function readStoredMemoryTopK(): number {
   }
 }
 
+function readStoredKnowledgeEnabled(): boolean {
+  try {
+    const raw = localStorage.getItem(KNOWLEDGE_ENABLED_STORAGE_KEY)
+    if (raw === '1' || raw === 'true') return true
+    if (raw === '0' || raw === 'false') return false
+  } catch {
+    /* ignore */
+  }
+  return KNOWLEDGE_SETTINGS_DEFAULTS.enabled
+}
+
+function readStoredKnowledgeTopK(): number {
+  try {
+    const raw = localStorage.getItem(KNOWLEDGE_TOPK_STORAGE_KEY)
+    if (raw == null || raw === '') return KNOWLEDGE_SETTINGS_DEFAULTS.topK
+    return normalizeKnowledgeSettings({
+      topK: Number.parseInt(raw, 10),
+    }).topK
+  } catch {
+    return KNOWLEDGE_SETTINGS_DEFAULTS.topK
+  }
+}
+
+function readStoredKnowledgeChunkSize(): number {
+  try {
+    const raw = localStorage.getItem(KNOWLEDGE_CHUNK_SIZE_STORAGE_KEY)
+    if (raw == null || raw === '') return KNOWLEDGE_SETTINGS_DEFAULTS.chunkSizeChars
+    return normalizeKnowledgeSettings({
+      chunkSizeChars: Number.parseInt(raw, 10),
+    }).chunkSizeChars
+  } catch {
+    return KNOWLEDGE_SETTINGS_DEFAULTS.chunkSizeChars
+  }
+}
+
+function readStoredKnowledgeChunkOverlap(): number {
+  try {
+    const raw = localStorage.getItem(KNOWLEDGE_CHUNK_OVERLAP_STORAGE_KEY)
+    if (raw == null || raw === '') {
+      return KNOWLEDGE_SETTINGS_DEFAULTS.chunkOverlapChars
+    }
+    return normalizeKnowledgeSettings({
+      chunkOverlapChars: Number.parseInt(raw, 10),
+    }).chunkOverlapChars
+  } catch {
+    return KNOWLEDGE_SETTINGS_DEFAULTS.chunkOverlapChars
+  }
+}
+
 function readStoredHybridFtsProfile(): HybridFtsProfile {
   try {
     const raw = localStorage.getItem(HYBRID_FTS_PROFILE_STORAGE_KEY)
@@ -346,6 +406,10 @@ export const usePreferencesStore = defineStore('preferences', () => {
     MEMORY_SETTINGS_DEFAULTS.recallFuseLastAssistant,
   )
   const memoryRecallUserWeight = ref(MEMORY_SETTINGS_DEFAULTS.recallUserWeight)
+  const knowledgeEnabled = ref(readStoredKnowledgeEnabled())
+  const knowledgeTopK = ref(readStoredKnowledgeTopK())
+  const knowledgeChunkSizeChars = ref(readStoredKnowledgeChunkSize())
+  const knowledgeChunkOverlapChars = ref(readStoredKnowledgeChunkOverlap())
   const hybridFtsProfile = ref<HybridFtsProfile>(readStoredHybridFtsProfile())
   const hybridFtsDictVariant = ref<HybridFtsDictVariant | null>(
     readStoredHybridFtsDictVariant(),
@@ -373,6 +437,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
   let lorebookPatchInFlight = false
   let historyPatchInFlight = false
   let memoryPatchInFlight = false
+  let knowledgePatchInFlight = false
   let hybridFtsPatchInFlight = false
   let budgetTrimPatchInFlight = false
   let embeddingPatchInFlight = false
@@ -393,6 +458,14 @@ export const usePreferencesStore = defineStore('preferences', () => {
       stripBlockTags: memoryStripBlockTags.value,
       recallFuseLastAssistant: memoryRecallFuseLastAssistant.value,
       recallUserWeight: memoryRecallUserWeight.value,
+    }),
+  )
+  let knowledgeLastSynced = cloneKnowledgeSettings(
+    normalizeKnowledgeSettings({
+      enabled: knowledgeEnabled.value,
+      topK: knowledgeTopK.value,
+      chunkSizeChars: knowledgeChunkSizeChars.value,
+      chunkOverlapChars: knowledgeChunkOverlapChars.value,
     }),
   )
   const PREF_PATCH_DEBOUNCE_MS = 400
@@ -673,6 +746,42 @@ export const usePreferencesStore = defineStore('preferences', () => {
     }
   }
 
+  function applyKnowledgeSettingsFromNormalized(k: KnowledgeSettings) {
+    knowledgeEnabled.value = k.enabled
+    knowledgeTopK.value = k.topK
+    knowledgeChunkSizeChars.value = k.chunkSizeChars
+    knowledgeChunkOverlapChars.value = k.chunkOverlapChars
+  }
+
+  function buildKnowledgePatchPayload(): KnowledgeSettings {
+    return normalizeKnowledgeSettings({
+      enabled: knowledgeEnabled.value,
+      topK: knowledgeTopK.value,
+      chunkSizeChars: knowledgeChunkSizeChars.value,
+      chunkOverlapChars: knowledgeChunkOverlapChars.value,
+    })
+  }
+
+  function persistKnowledgeLocal() {
+    try {
+      localStorage.setItem(
+        KNOWLEDGE_ENABLED_STORAGE_KEY,
+        knowledgeEnabled.value ? '1' : '0',
+      )
+      localStorage.setItem(KNOWLEDGE_TOPK_STORAGE_KEY, String(knowledgeTopK.value))
+      localStorage.setItem(
+        KNOWLEDGE_CHUNK_SIZE_STORAGE_KEY,
+        String(knowledgeChunkSizeChars.value),
+      )
+      localStorage.setItem(
+        KNOWLEDGE_CHUNK_OVERLAP_STORAGE_KEY,
+        String(knowledgeChunkOverlapChars.value),
+      )
+    } catch {
+      /* ignore */
+    }
+  }
+
   function persistHybridFtsLocal() {
     try {
       localStorage.setItem(HYBRID_FTS_PROFILE_STORAGE_KEY, hybridFtsProfile.value)
@@ -797,6 +906,35 @@ export const usePreferencesStore = defineStore('preferences', () => {
         }
       }
       persistMemoryLocal()
+    }
+  }
+
+  async function patchGlobalKnowledgeToServer(
+    patch: Partial<KnowledgeSettings>,
+  ): Promise<void> {
+    const res = await fetch('/api/user-preferences', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ knowledge: patch }),
+    })
+    if (!res.ok) {
+      const txt = await res.text()
+      throw new Error(txt.slice(0, 200))
+    }
+    const j = (await res.json()) as { knowledge?: Partial<KnowledgeSettings> }
+    if (j.knowledge) {
+      const n = normalizeKnowledgeSettings(j.knowledge)
+      knowledgeLastSynced = cloneKnowledgeSettings(n)
+      const local = buildKnowledgePatchPayload()
+      if (!knowledgeSettingsEqual(n, local)) {
+        knowledgePatchInFlight = true
+        try {
+          applyKnowledgeSettingsFromNormalized(n)
+        } finally {
+          knowledgePatchInFlight = false
+        }
+      }
+      persistKnowledgeLocal()
     }
   }
 
@@ -1079,6 +1217,44 @@ export const usePreferencesStore = defineStore('preferences', () => {
   )
 
   watch(
+    [
+      knowledgeEnabled,
+      knowledgeTopK,
+      knowledgeChunkSizeChars,
+      knowledgeChunkOverlapChars,
+    ],
+    () => {
+      schedulePrefPatch('knowledge', async () => {
+        if (!userPreferencesLoaded.value || knowledgePatchInFlight) return
+        const n = buildKnowledgePatchPayload()
+        if (n.topK !== knowledgeTopK.value) {
+          knowledgeTopK.value = n.topK
+          return
+        }
+        if (n.chunkSizeChars !== knowledgeChunkSizeChars.value) {
+          knowledgeChunkSizeChars.value = n.chunkSizeChars
+          return
+        }
+        if (n.chunkOverlapChars !== knowledgeChunkOverlapChars.value) {
+          knowledgeChunkOverlapChars.value = n.chunkOverlapChars
+          return
+        }
+        if (knowledgeSettingsEqual(n, knowledgeLastSynced)) return
+        persistKnowledgeLocal()
+        knowledgePatchInFlight = true
+        try {
+          await patchGlobalKnowledgeToServer(n)
+        } catch {
+          /* 设置页可重试 */
+        } finally {
+          knowledgePatchInFlight = false
+        }
+      })
+    },
+    { flush: 'post' },
+  )
+
+  watch(
     budgetTrimSettings,
     (v) => {
       schedulePrefPatch('budgetTrim', async () => {
@@ -1163,6 +1339,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     lorebookPatchInFlight = false
     historyPatchInFlight = false
     memoryPatchInFlight = false
+    knowledgePatchInFlight = false
     hybridFtsPatchInFlight = false
     budgetTrimPatchInFlight = false
     postUserInjectionOrderPatchInFlight = false
@@ -1184,6 +1361,9 @@ export const usePreferencesStore = defineStore('preferences', () => {
     const mem = normalizeMemorySettings(undefined)
     applyMemorySettingsFromNormalized(mem)
     memoryLastSynced = cloneMemorySettings(mem)
+    const know = normalizeKnowledgeSettings(undefined)
+    applyKnowledgeSettingsFromNormalized(know)
+    knowledgeLastSynced = cloneKnowledgeSettings(know)
     const hfts = normalizeHybridFtsSettings(undefined)
     hybridFtsProfile.value = hfts.profile
     hybridFtsDictVariant.value = hfts.dictVariant ?? null
@@ -1216,6 +1396,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
           lorebook?: Partial<LorebookSettings>
           history?: Partial<HistorySettings>
           memory?: Partial<MemorySettings>
+          knowledge?: Partial<KnowledgeSettings>
           budgetTrim?: Partial<BudgetTrimSettings>
           embeddingApi?: Partial<EmbeddingApiSettings>
           chunk?: Partial<ChunkSettings>
@@ -1226,6 +1407,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
         lorebookPatchInFlight = true
         historyPatchInFlight = true
         memoryPatchInFlight = true
+        knowledgePatchInFlight = true
         hybridFtsPatchInFlight = true
         embeddingPatchInFlight = true
         chunkPatchInFlight = true
@@ -1247,6 +1429,10 @@ export const usePreferencesStore = defineStore('preferences', () => {
         applyMemorySettingsFromNormalized(mem)
         memoryLastSynced = cloneMemorySettings(mem)
         persistMemoryLocal()
+        const know = normalizeKnowledgeSettings(doc.knowledge)
+        applyKnowledgeSettingsFromNormalized(know)
+        knowledgeLastSynced = cloneKnowledgeSettings(know)
+        persistKnowledgeLocal()
         const hfts = normalizeHybridFtsSettings(doc.hybridFts)
         hybridFtsProfile.value = hfts.profile
         hybridFtsDictVariant.value = hfts.dictVariant ?? null
@@ -1271,6 +1457,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
         lorebookPatchInFlight = false
         historyPatchInFlight = false
         memoryPatchInFlight = false
+        knowledgePatchInFlight = false
         hybridFtsPatchInFlight = false
         budgetTrimPatchInFlight = false
         embeddingPatchInFlight = false
@@ -1430,6 +1617,10 @@ export const usePreferencesStore = defineStore('preferences', () => {
     memoryRecallUserWeight,
     setMemoryEnabled,
     setMemoryTopK,
+    knowledgeEnabled,
+    knowledgeTopK,
+    knowledgeChunkSizeChars,
+    knowledgeChunkOverlapChars,
     hybridFtsProfile,
     hybridFtsDictVariant,
     setHybridFtsProfile,

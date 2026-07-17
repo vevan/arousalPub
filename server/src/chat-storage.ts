@@ -44,6 +44,12 @@ import {
   type MemorySettings,
 } from './memory-settings.js'
 import {
+  knowledgeSettingsOverrideFromEffective,
+  normalizeKnowledgeSettings,
+  resolveKnowledgeSettings,
+  type KnowledgeSettingsOverride,
+} from './knowledge-settings.js'
+import {
   budgetTrimSettingsOverrideFromEffective,
   normalizeBudgetTrimSettings,
   resolveBudgetTrimSettings,
@@ -68,6 +74,7 @@ import {
   readGlobalBudgetTrimSettings,
   readGlobalDefaultAuthorsNote,
   readGlobalHistorySettings,
+  readGlobalKnowledgeSettings,
   readGlobalLorebookSettings,
   readGlobalMemorySettings,
   readGlobalChunkSettings,
@@ -210,6 +217,10 @@ export interface ConversationIndex {
   historySettings?: Partial<HistorySettings>
   /** 对话记忆稀疏覆盖（未写字段继承全局 user-preferences） */
   memorySettings?: Partial<MemorySettings>
+  /** 对话绑定的知识库 id 列表（顺序 = 检索合并顺序） */
+  knowledgeBaseIds?: string[]
+  /** 知识库 RAG 稀疏覆盖（未写字段继承全局 user-preferences） */
+  knowledgeSettings?: KnowledgeSettingsOverride
   /** §14.4.1 预算裁切稀疏覆盖（未写字段继承全局 user-preferences） */
   budgetTrimSettings?: BudgetTrimSettingsOverride
   /**
@@ -986,6 +997,32 @@ export async function updateConversationLorebookIds(
   })
 }
 
+/** 对话级知识库 id 列表（传 `[]` 清空） */
+export async function updateConversationKnowledgeBaseIds(
+  conversationId: string,
+  knowledgeBaseIds: string[],
+): Promise<ConversationIndex | null> {
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const seen = new Set<string>()
+    const cleaned: string[] = []
+    for (const raw of knowledgeBaseIds) {
+      if (typeof raw !== 'string') continue
+      const id = raw.trim()
+      if (!id || seen.has(id)) continue
+      seen.add(id)
+      cleaned.push(id)
+    }
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    if (cleaned.length === 0) {
+      delete next.knowledgeBaseIds
+    } else {
+      next.knowledgeBaseIds = cleaned
+    }
+    return next
+  })
+}
+
 /** 清除会话资料库递归覆盖（恢复继承全局） */
 export async function clearConversationLorebookSettings(
   conversationId: string,
@@ -1018,6 +1055,70 @@ export async function updateConversationLorebookSettings(
     }
     return next
   })
+}
+
+/** 清除会话知识库 RAG 覆盖（恢复继承全局） */
+export async function clearConversationKnowledgeSettings(
+  conversationId: string,
+): Promise<ConversationIndex | null> {
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    delete next.knowledgeSettings
+    return next
+  })
+}
+
+/** 知识库 RAG：在「全局 + 当前覆盖」上合并 patch，稀疏写盘 */
+export async function updateConversationKnowledgeSettings(
+  conversationId: string,
+  patch: KnowledgeSettingsOverride,
+): Promise<ConversationIndex | null> {
+  const global = await readGlobalKnowledgeSettings()
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const current = resolveKnowledgeSettings(global, idx.knowledgeSettings)
+    const effective = normalizeKnowledgeSettings({ ...current, ...patch })
+    const sparse = knowledgeSettingsOverrideFromEffective(effective, global)
+    const t = nowIso()
+    const next: ConversationIndex = { ...idx, updatedAt: t }
+    if (sparse) {
+      next.knowledgeSettings = sparse
+    } else {
+      next.knowledgeSettings = { ...effective }
+    }
+    return next
+  })
+}
+
+/**
+ * 从所有会话的 knowledgeBaseIds 中摘除 kbId（删库时用）。
+ * 扫描 chats 根目录下各会话 index。
+ */
+export async function removeKnowledgeBaseIdFromAllConversations(
+  kbId: string,
+): Promise<number> {
+  const id = typeof kbId === 'string' ? kbId.trim() : ''
+  if (!id) return 0
+  await ensureChatRoot()
+  let entries
+  try {
+    entries = await readdir(getChatsRoot(), { withFileTypes: true })
+  } catch {
+    return 0
+  }
+  let cleared = 0
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue
+    const conversationId = String(ent.name)
+    if (!isValidConversationId(conversationId)) continue
+    const idx = await readConversationIndex(conversationId)
+    if (!idx || !Array.isArray(idx.knowledgeBaseIds)) continue
+    if (!idx.knowledgeBaseIds.includes(id)) continue
+    const nextIds = idx.knowledgeBaseIds.filter((x) => x !== id)
+    await updateConversationKnowledgeBaseIds(conversationId, nextIds)
+    cleared += 1
+  }
+  return cleared
 }
 
 /** 清除会话历史轮数覆盖（恢复继承全局） */

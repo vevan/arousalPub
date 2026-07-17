@@ -50,6 +50,7 @@ export function formatWorldFromLoreParts(parts: LorebookInjectionParts): string 
     constantLoreGroups: parts.constantLoreGroups,
     matchedLore: parts.matchedLore,
     memoryItems: [],
+    knowledgeItems: [],
     historyMessages: [],
   })
 }

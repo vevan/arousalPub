@@ -25,6 +25,14 @@ import {
   type MemorySettings,
 } from './memory-settings.js'
 import {
+  KNOWLEDGE_SETTINGS_DEFAULTS,
+  normalizeKnowledgeSettings,
+  type KnowledgeSettings,
+  type KnowledgeSettingsOverride,
+} from './knowledge-settings.js'
+
+export type { KnowledgeSettings, KnowledgeSettingsOverride }
+import {
   CHUNK_SETTINGS_DEFAULTS,
   normalizeChunkSettings,
   type ChunkSettings,
@@ -72,6 +80,7 @@ export interface UserPreferencesDocument {
   lorebook?: Partial<LorebookSettings>
   history?: Partial<HistorySettings>
   memory?: Partial<MemorySettings>
+  knowledge?: Partial<KnowledgeSettings>
   budgetTrim?: Partial<BudgetTrimSettings>
   embeddingApi?: Partial<EmbeddingApiSettings>
   chunk?: Partial<ChunkSettings>
@@ -93,6 +102,7 @@ interface UserPreferencesDocumentDisk {
   lorebook?: Partial<LorebookSettings>
   history?: Partial<HistorySettings>
   memory?: Partial<MemorySettings>
+  knowledge?: Partial<KnowledgeSettings>
   budgetTrim?: Partial<BudgetTrimSettings>
   embeddingApi?: EmbeddingApiSettingsDisk
   chunk?: Partial<ChunkSettings>
@@ -150,6 +160,7 @@ function preferencesToDisk(
     lorebook: doc.lorebook,
     history: doc.history,
     memory: doc.memory,
+    knowledge: doc.knowledge,
     budgetTrim: doc.budgetTrim,
     embeddingApi: embeddingApiToDisk(doc.embeddingApi, userId),
     chunk: doc.chunk,
@@ -200,6 +211,12 @@ export async function readGlobalMemorySettings(): Promise<MemorySettings> {
   return normalizeMemorySettings(doc.memory)
 }
 
+export async function readGlobalKnowledgeSettings(): Promise<KnowledgeSettings> {
+  const doc = await readPreferencesFileRaw()
+  if (!doc) return { ...KNOWLEDGE_SETTINGS_DEFAULTS }
+  return normalizeKnowledgeSettings(doc.knowledge)
+}
+
 export async function readGlobalBudgetTrimSettings(): Promise<BudgetTrimSettings> {
   const doc = await readPreferencesFileRaw()
   if (!doc) return { ...BUDGET_TRIM_SETTINGS_DEFAULTS }
@@ -220,6 +237,7 @@ export async function updateGlobalPostUserInjectionOrder(
       lorebook: prev.lorebook,
       history: prev.history,
       memory: prev.memory,
+      knowledge: prev.knowledge,
       budgetTrim: prev.budgetTrim,
       embeddingApi: prev.embeddingApi,
       chunk: prev.chunk,
@@ -239,6 +257,7 @@ export async function updateGlobalPostUserInjectionOrder(
     lorebook: prev.lorebook,
     history: prev.history,
     memory: prev.memory,
+    knowledge: prev.knowledge,
     budgetTrim: prev.budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
@@ -282,6 +301,7 @@ export async function readUserPreferencesDocument(): Promise<UserPreferencesDocu
   const lorebook = normalizeLorebookSettings(doc?.lorebook)
   const history = normalizeHistorySettings(doc?.history)
   const memory = normalizeMemorySettings(doc?.memory)
+  const knowledge = normalizeKnowledgeSettings(doc?.knowledge)
   const budgetTrim = normalizeBudgetTrimSettings(doc?.budgetTrim)
   const embeddingApi = await readGlobalEmbeddingApiSettings()
   const chunk = normalizeChunkSettings(doc?.chunk)
@@ -300,6 +320,7 @@ export async function readUserPreferencesDocument(): Promise<UserPreferencesDocu
     lorebook,
     history,
     memory,
+    knowledge,
     budgetTrim,
     embeddingApi,
     chunk,
@@ -316,6 +337,7 @@ async function writeUserPreferencesDocument(
     | 'lorebook'
     | 'history'
     | 'memory'
+    | 'knowledge'
     | 'budgetTrim'
     | 'embeddingApi'
     | 'chunk'
@@ -332,6 +354,7 @@ async function writeUserPreferencesDocument(
     lorebook: partial.lorebook ?? prev.lorebook,
     history: partial.history ?? prev.history,
     memory: partial.memory ?? prev.memory,
+    knowledge: partial.knowledge ?? prev.knowledge,
     budgetTrim: partial.budgetTrim ?? prev.budgetTrim,
     embeddingApi: partial.embeddingApi ?? prev.embeddingApi,
     chunk: partial.chunk ?? prev.chunk,
@@ -365,6 +388,7 @@ export async function updateGlobalLorebookSettings(
     lorebook,
     history: prev.history,
     memory: prev.memory,
+    knowledge: prev.knowledge,
     budgetTrim: prev.budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
@@ -386,6 +410,7 @@ export async function updateGlobalHistorySettings(
     lorebook: prev.lorebook,
     history,
     memory: prev.memory,
+    knowledge: prev.knowledge,
     budgetTrim: prev.budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
@@ -407,6 +432,7 @@ export async function updateGlobalMemorySettings(
     lorebook: prev.lorebook,
     history: prev.history,
     memory,
+    knowledge: prev.knowledge,
     budgetTrim: prev.budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
@@ -414,6 +440,28 @@ export async function updateGlobalMemorySettings(
     hybridFts: prev.hybridFts,
   })
   return memory
+}
+
+export async function updateGlobalKnowledgeSettings(
+  patch: KnowledgeSettingsOverride,
+): Promise<KnowledgeSettings> {
+  const prev = await readUserPreferencesDocument()
+  const knowledge = normalizeKnowledgeSettings({
+    ...prev.knowledge,
+    ...patch,
+  })
+  await writeUserPreferencesDocument({
+    lorebook: prev.lorebook,
+    history: prev.history,
+    memory: prev.memory,
+    knowledge,
+    budgetTrim: prev.budgetTrim,
+    embeddingApi: prev.embeddingApi,
+    chunk: prev.chunk,
+    defaultAuthorsNote: prev.defaultAuthorsNote,
+    hybridFts: prev.hybridFts,
+  })
+  return knowledge
 }
 
 export async function updateGlobalBudgetTrimSettings(
@@ -434,6 +482,7 @@ export async function updateGlobalBudgetTrimSettings(
     lorebook: prev.lorebook,
     history: prev.history,
     memory: prev.memory,
+    knowledge: prev.knowledge,
     budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
@@ -457,6 +506,7 @@ export async function updateGlobalEmbeddingApiSettings(
     lorebook: prev.lorebook,
     history: prev.history,
     memory: prev.memory,
+    knowledge: prev.knowledge,
     budgetTrim: prev.budgetTrim,
     embeddingApi,
     chunk: prev.chunk,
@@ -478,6 +528,7 @@ export async function updateGlobalChunkSettings(
     lorebook: prev.lorebook,
     history: prev.history,
     memory: prev.memory,
+    knowledge: prev.knowledge,
     budgetTrim: prev.budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk,
@@ -498,6 +549,7 @@ export async function updateGlobalHybridFtsSettings(
     lorebook: prev.lorebook,
     history: prev.history,
     memory: prev.memory,
+    knowledge: prev.knowledge,
     budgetTrim: prev.budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
@@ -525,6 +577,7 @@ export async function updateGlobalDefaultAuthorsNote(
     lorebook: prev.lorebook,
     history: prev.history,
     memory: prev.memory,
+    knowledge: prev.knowledge,
     budgetTrim: prev.budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,
@@ -547,6 +600,7 @@ export async function updateGlobalMacroGlobalVars(
     lorebook: prev.lorebook,
     history: prev.history,
     memory: prev.memory,
+    knowledge: prev.knowledge,
     budgetTrim: prev.budgetTrim,
     embeddingApi: prev.embeddingApi,
     chunk: prev.chunk,

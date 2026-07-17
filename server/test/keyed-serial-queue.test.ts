@@ -4,6 +4,7 @@ import {
   createKeyedCoalesceScheduler,
   createKeyedSerialQueue,
 } from '../src/keyed-serial-queue.js'
+import { getCurrentUserId, runRequestUserAsync } from '../src/user-context.js'
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -119,5 +120,89 @@ describe('createKeyedCoalesceScheduler', () => {
     assert.equal(processed.includes('A'), true)
     assert.equal(processed.includes('B'), true)
     assert.equal(processed.length, 2)
+  })
+
+  it('isolates same raw key across users and drains in the scheduling user context', async () => {
+    const USER_A = 'aaaa0001'
+    const USER_B = 'bbbb0002'
+    const seen: { tag: string; userId: string }[] = []
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    let firstEntered = false
+
+    const scheduler = createKeyedCoalesceScheduler<{ id: string; tag: string }>({
+      keyOf: (x) => x.id,
+      process: async (item) => {
+        seen.push({ tag: item.tag, userId: getCurrentUserId() })
+        if (!firstEntered) {
+          firstEntered = true
+          await gate
+        }
+      },
+    })
+
+    await runRequestUserAsync(USER_A, async () => {
+      scheduler.schedule({ id: 'kb', tag: 'from-a' })
+    })
+    await delay(5)
+    // A 的首个 drain 仍阻塞在 gate；B 用相同 raw key 调度不应被 A 的 drain 吞掉
+    await runRequestUserAsync(USER_B, async () => {
+      scheduler.schedule({ id: 'kb', tag: 'from-b' })
+    })
+    await delay(20)
+    release()
+    await delay(40)
+
+    assert.deepEqual(
+      seen
+        .map((s) => `${s.tag}@${s.userId}`)
+        .sort(),
+      ['from-a@aaaa0001', 'from-b@bbbb0002'],
+    )
+  })
+
+  it('clearPendingWhere only drops pending items of the current user', async () => {
+    const USER_A = 'aaaa0001'
+    const USER_B = 'bbbb0002'
+    const processed: string[] = []
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    let firstEntered = false
+
+    const scheduler = createKeyedCoalesceScheduler<{ id: string; tag: string }>({
+      keyOf: (x) => x.id,
+      process: async (item) => {
+        processed.push(item.tag)
+        if (!firstEntered) {
+          firstEntered = true
+          await gate
+        }
+      },
+    })
+
+    await runRequestUserAsync(USER_A, async () => {
+      scheduler.schedule({ id: 'conv:1', tag: 'a-first' })
+    })
+    await delay(5)
+    await runRequestUserAsync(USER_A, async () => {
+      scheduler.schedule({ id: 'conv:1', tag: 'a-pending' })
+    })
+    await runRequestUserAsync(USER_B, async () => {
+      scheduler.schedule({ id: 'conv:1', tag: 'b-pending' })
+    })
+    // A 清自己 conv 前缀的 pending，不应影响 B
+    await runRequestUserAsync(USER_A, async () => {
+      scheduler.clearPendingWhere((key) => key.startsWith('conv:'))
+    })
+    release()
+    await delay(40)
+
+    assert.equal(processed.includes('a-pending'), false)
+    assert.equal(processed.includes('a-first'), true)
+    assert.equal(processed.includes('b-pending'), true)
   })
 })

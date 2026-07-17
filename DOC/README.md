@@ -52,7 +52,8 @@
 | [`43`](43-plugin-api-binding-audit-checklist.md) | ✅ 已归档 | Sandbox 交叉：API 绑定 · 审计 · B4 权限；**A3 延后** |
 | [`39`](39-plugin-context-and-prompt-assembly.md) | ✅ 已落地 | 二次 LLM 上下文块、`completeWithContext`（Historian + trace-keeper Separate） |
 | [`40`](40-notification-center.md) | ✅ **已归档** | **通知中心**：`v-snackbar-queue` · localStorage · bell · `coreNotify` / `host.ui.notify`（NC0–NC5 · F1 · F3 · NC-V 2026-07-09） |
-| [`20`](20-user-file-library.md) | 定案 · **P0** · M1 ✅ · M2 定案收口 | 用户文件库 / 角色绑定宏 / 独立文档 RAG（M2 实现中；M3–M5 未实现） |
+| [`20`](20-user-file-library.md) | 定案 · **P0** · M1–M5 ✅ | 用户文件库 / 角色绑定宏 / 独立文档 RAG |
+| [`46`](46-document-rag.md) | ✅ **已落地** | **独立文档 RAG（M4）**：知识库集合、切片、Lance、`boundKnowledge` |
 | [`21`](21-conversation-plugin-settings.md) | ✅ | 会话插件 Tab schema |
 | [`23`](23-conversation-branches.md) | ✅ | S1–S5 + 顶栏分支树；persist `turnId` patch；from/to/total 副标题；§9.3 审计已关闭 |
 | [`24`](24-regex-and-session-audit.md) | 主体 ✅ | 正则三阶段、debug 审计 |

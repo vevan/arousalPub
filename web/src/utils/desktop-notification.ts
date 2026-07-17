@@ -3,6 +3,11 @@ import type { NotificationRecord } from './notification-storage.js'
 
 export const DESKTOP_NOTIFY_ENABLED_KEY = 'arousal-desktop-notify-enabled'
 
+/** `renotify` 是标准 Notification API 字段，但 TS lib.dom 类型尚未收录 */
+type NotificationOptionsWithRenotify = NotificationOptions & {
+  renotify?: boolean
+}
+
 export function readDesktopNotifyEnabled(): boolean {
   try {
     return localStorage.getItem(DESKTOP_NOTIFY_ENABLED_KEY) === '1'
@@ -61,12 +66,13 @@ function warnDesktopFailure(error: unknown, record: NotificationRecord): void {
 function showDesktopNotificationNow(record: NotificationRecord): boolean {
   try {
     const body = record.body?.trim()
-    const notification = new Notification(record.title, {
+    const options: NotificationOptionsWithRenotify = {
       body: body || undefined,
       tag: desktopNotificationTag(record),
       renotify: true,
       silent: false,
-    })
+    }
+    const notification = new Notification(record.title, options)
     notification.onclick = () => {
       window.focus()
       if (record.action) {
@@ -117,11 +123,12 @@ export function probeDesktopNotification(): {
   }
   try {
     const tag = `probe-${Date.now()}`
-    const n = new Notification('Arousal 通知探测', {
+    const probeOptions: NotificationOptionsWithRenotify = {
       body: 'Tab 在后台',
       tag,
       renotify: true,
-    })
+    }
+    const n = new Notification('Arousal 通知探测', probeOptions)
     n.onclick = () => {
       window.focus()
       n.close()

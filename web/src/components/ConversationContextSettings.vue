@@ -61,6 +61,14 @@ const props = defineProps<{
   initialLorebookKeywordTopK?: number
   initialLorebookVectorEnabled?: boolean
   initialLorebookVectorTopK?: number
+  /** 对话绑定的知识库 id */
+  initialKnowledgeBaseIds?: string[]
+  /** 未覆盖时继承全局 */
+  initialKnowledgeSettingsUseGlobal?: boolean
+  /** 全局知识库召回 TopK */
+  globalKnowledgeTopK?: number
+  /** 会话有效知识库 TopK（含全局默认） */
+  initialKnowledgeTopK?: number
   initialHistorySettingsUseGlobal?: boolean
   globalHistoryLimitEnabled?: boolean
   globalHistoryMaxTurns?: number
@@ -139,6 +147,8 @@ const savingBackgroundImage = ref(false)
 const savingBgm = ref(false)
 const savingLorebooks = ref(false)
 const savingLoreSettings = ref(false)
+const savingKnowledgeBases = ref(false)
+const savingKnowledgeSettings = ref(false)
 const savingHistorySettings = ref(false)
 const savingMemorySettings = ref(false)
 const savingBudgetTrimSettings = ref(false)
@@ -152,6 +162,9 @@ const embeddingApiUseGlobal = ref(true)
 const errorText = ref('')
 
 const lorebookModel = ref<string[]>([])
+const knowledgeBaseModel = ref<string[]>([])
+const knowledgeUseGlobal = ref(true)
+const knowledgeTopK = ref(4)
 const loreUseGlobal = ref(true)
 const loreRecursiveEnabled = ref(false)
 type LoreRecursionDepth = 0 | 1 | 2 | 3
@@ -248,6 +261,8 @@ const charItems = ref<CharItem[]>([])
 const charItemsLoading = ref(false)
 const lorebookItems = ref<LorebookItem[]>([])
 const lorebookItemsLoading = ref(false)
+const knowledgeBaseItems = ref<LorebookItem[]>([])
+const knowledgeBaseItemsLoading = ref(false)
 const showPluginsTab = ref(false)
 const savingPluginSettings = ref(false)
 const pluginSettingsPanelRef = ref<InstanceType<
@@ -583,6 +598,22 @@ function propsMemoryTopK(): number {
   return Math.max(1, Math.min(20, Math.floor(d)))
 }
 
+function propsKnowledgeUseGlobal(): boolean {
+  return props.initialKnowledgeSettingsUseGlobal !== false
+}
+
+function propsGlobalKnowledgeTopK(): number {
+  const d = props.globalKnowledgeTopK
+  if (typeof d !== 'number' || !Number.isFinite(d)) return 4
+  return Math.max(1, Math.min(32, Math.floor(d)))
+}
+
+function propsKnowledgeTopK(): number {
+  const d = props.initialKnowledgeTopK
+  if (typeof d !== 'number' || !Number.isFinite(d)) return 4
+  return Math.max(1, Math.min(32, Math.floor(d)))
+}
+
 function propsBudgetTrimUseGlobal(): boolean {
   return props.initialBudgetTrimSettingsUseGlobal !== false
 }
@@ -630,6 +661,11 @@ function syncFromProps() {
   backgroundImageFileId.value = propsBackgroundImageFileId()
   bgmFileId.value = propsBgmFileId()
   lorebookModel.value = [...props.initialLorebookIds]
+  knowledgeBaseModel.value = [...(props.initialKnowledgeBaseIds ?? [])]
+  knowledgeUseGlobal.value = propsKnowledgeUseGlobal()
+  knowledgeTopK.value = knowledgeUseGlobal.value
+    ? propsGlobalKnowledgeTopK()
+    : propsKnowledgeTopK()
   loreUseGlobal.value = propsLoreUseGlobal()
   syncLoreFieldsFromProps()
   historyUseGlobal.value = propsHistoryUseGlobal()
@@ -680,6 +716,10 @@ watch(
     props.initialPromptPresetId,
     props.initialCharacterIds,
     props.initialLorebookIds,
+    props.initialKnowledgeBaseIds,
+    props.initialKnowledgeSettingsUseGlobal,
+    props.globalKnowledgeTopK,
+    props.initialKnowledgeTopK,
     props.initialLorebookSettingsUseGlobal,
     props.globalLoreRecursiveEnabled,
     props.globalLoreMaxRecursionDepth,
@@ -839,6 +879,70 @@ watch(
   },
   { deep: true },
 )
+
+watch(
+  knowledgeBaseModel,
+  async (ids) => {
+    const a = [...ids].sort().join('\u0000')
+    const b = [...(props.initialKnowledgeBaseIds ?? [])].sort().join('\u0000')
+    if (a === b) return
+    savingKnowledgeBases.value = true
+    errorText.value = ''
+    try {
+      await patchConversation({ knowledgeBaseIds: [...ids] })
+    } catch (e) {
+      errorText.value =
+        e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+      syncFromProps()
+    } finally {
+      savingKnowledgeBases.value = false
+    }
+  },
+  { deep: true },
+)
+
+watch(knowledgeUseGlobal, async (useGlobal) => {
+  if (useGlobal === propsKnowledgeUseGlobal()) return
+  savingKnowledgeSettings.value = true
+  errorText.value = ''
+  try {
+    if (useGlobal) {
+      await patchConversation({ knowledgeSettings: null })
+    } else {
+      await patchConversation({
+        knowledgeSettings: { topK: knowledgeTopK.value },
+      })
+    }
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingKnowledgeSettings.value = false
+  }
+})
+
+watch(knowledgeTopK, async (topK) => {
+  const target = knowledgeUseGlobal.value
+    ? propsGlobalKnowledgeTopK()
+    : propsKnowledgeTopK()
+  const next =
+    typeof topK === 'number' && Number.isFinite(topK)
+      ? Math.max(1, Math.min(32, Math.floor(topK)))
+      : target
+  if (next === target) return
+  savingKnowledgeSettings.value = true
+  errorText.value = ''
+  try {
+    await patchConversation({ knowledgeSettings: { topK: next } })
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingKnowledgeSettings.value = false
+  }
+})
 
 watch(loreUseGlobal, async (useGlobal) => {
   if (useGlobal === propsLoreUseGlobal()) return
@@ -1376,6 +1480,7 @@ onMounted(() => {
   syncFromProps()
   void loadCharacters()
   void loadLorebooks()
+  void loadKnowledgeBases()
   void refreshPluginsTabVisibility()
 })
 
@@ -1398,6 +1503,29 @@ async function loadLorebooks() {
     /* ignore */
   } finally {
     lorebookItemsLoading.value = false
+  }
+}
+
+async function loadKnowledgeBases() {
+  knowledgeBaseItemsLoading.value = true
+  try {
+    const res = await fetch('/api/knowledge-bases/summary')
+    if (!res.ok) return
+    const raw: unknown = await res.json()
+    if (!raw || typeof raw !== 'object') return
+    const list = (
+      raw as { knowledgeBases?: { id?: string; name?: string }[] }
+    ).knowledgeBases
+    knowledgeBaseItems.value = (list ?? [])
+      .filter((x) => typeof x.id === 'string' && x.id.trim())
+      .map((x) => ({
+        id: x.id as string,
+        name: typeof x.name === 'string' ? x.name : (x.id as string),
+      }))
+  } catch {
+    /* ignore */
+  } finally {
+    knowledgeBaseItemsLoading.value = false
   }
 }
 
@@ -1654,6 +1782,26 @@ async function patchConversation(body: Record<string, unknown>) {
               </div>
 
               <div class="conv-settings-field">
+                <v-select
+                  v-model="knowledgeBaseModel"
+                  :items="knowledgeBaseItems"
+                  item-title="name"
+                  item-value="id"
+                  :label="$t('chat.convSettings.knowledgeBases')"
+                  density="comfortable"
+                  variant="outlined"
+                  multiple
+                  chips
+                  closable-chips
+                  hide-details="auto"
+                  :loading="knowledgeBaseItemsLoading || savingKnowledgeBases"
+                />
+                <p class="conv-settings-field__hint">
+                  {{ $t('chat.convSettings.knowledgeBasesHint') }}
+                </p>
+              </div>
+
+              <div class="conv-settings-field">
                 <ConversationMediaFileField
                   kind="image"
                   :file-id="backgroundImageFileId"
@@ -1878,6 +2026,49 @@ async function patchConversation(body: Record<string, unknown>) {
                     class="conv-settings-field__hint"
                   >
                     {{ $t('chat.convSettings.loreVectorTopKHint') }}
+                  </p>
+                </div>
+              </div>
+
+              <v-divider class="my-4" />
+
+              <div class="conv-settings-subsection">
+                <h4 class="conv-settings-subsection__title">
+                  {{ $t('chat.convSettings.sectionKnowledge') }}
+                </h4>
+                <div class="conv-settings-field">
+                  <v-switch
+                    v-model="knowledgeUseGlobal"
+                    :label="$t('chat.convSettings.knowledgeUseGlobal')"
+                    density="comfortable"
+                    hide-details
+                    color="primary"
+                    :loading="savingKnowledgeSettings"
+                    :disabled="savingKnowledgeSettings"
+                  />
+                  <p
+                    v-if="knowledgeUseGlobal"
+                    class="conv-settings-field__hint"
+                  >
+                    {{ $t('chat.convSettings.knowledgeInheritGlobalHint') }}
+                  </p>
+                </div>
+                <div class="conv-settings-field">
+                  <v-text-field
+                    v-model.number="knowledgeTopK"
+                    type="number"
+                    min="1"
+                    max="32"
+                    step="1"
+                    :label="$t('chat.convSettings.knowledgeTopK')"
+                    density="comfortable"
+                    variant="outlined"
+                    hide-details="auto"
+                    :loading="savingKnowledgeSettings"
+                    :disabled="knowledgeUseGlobal || savingKnowledgeSettings"
+                  />
+                  <p class="conv-settings-field__hint">
+                    {{ $t('chat.convSettings.knowledgeTopKHint') }}
                   </p>
                 </div>
               </div>

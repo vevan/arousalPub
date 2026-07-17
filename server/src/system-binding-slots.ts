@@ -16,6 +16,7 @@ export const SYSTEM_BINDING_SLOTS = [
   'boundCharacterPostHistory',
   'boundUserInput',
   'boundMemory',
+  'boundKnowledge',
 ] as const satisfies readonly PromptBindingSlot[]
 
 const SYSTEM_SET = new Set<string>(SYSTEM_BINDING_SLOTS)

@@ -3,7 +3,7 @@ import type { MemoryPipelineResult } from './memory-pipeline.js'
 import type { AssemblyAudit } from './chat-audit-types.js'
 import type { PromptBudgetTrimState } from './prompt-budget-trim.js'
 import type { LorebookXmlGroup } from './prompt-xml.js'
-import type { ChatMessage } from './assemble-prompts.js'
+import type { KnowledgeHitItem } from './knowledge-resolve.js'
 import {
   countPluginAssembleAdditionTokens,
   type PluginAssembleAdditionCache,
@@ -17,6 +17,10 @@ export interface BuildAssemblyAuditParams {
   tokensBeforeTrim?: number
   lorebookIds: string[]
   lorebookNameToId: Map<string, string>
+  knowledgeBaseIds: string[]
+  knowledgeEnabled: boolean
+  initialKnowledgeItems: KnowledgeHitItem[]
+  droppedKnowledgeCount: number
   memoryPipeline: MemoryPipelineResult
   loreParts: LorebookInjectionParts
   initialMatchedLore: LorebookInjectionParts['matchedLore']
@@ -78,6 +82,9 @@ export function buildAssemblyAudit(
   const includedLoreIds = new Set(
     params.trimState.matchedLore.map((x) => x.entry.id),
   )
+  const includedKnowledgeIds = new Set(
+    params.trimState.knowledgeItems.map((x) => x.chunkId),
+  )
 
   const memoryHits: AssemblyAudit['memory']['hits'] = []
   for (const item of params.initialMemoryItems) {
@@ -118,6 +125,19 @@ export function buildAssemblyAudit(
     })
   }
 
+  const knowledgeHits: NonNullable<AssemblyAudit['knowledge']>['hits'] =
+    params.initialKnowledgeItems.map((item) => ({
+      kbId: item.kbId,
+      kbName: item.kbName,
+      fileId: item.fileId,
+      fileName: item.fileName,
+      chunkId: item.chunkId,
+      ordinal: item.ordinal,
+      score: item.score,
+      included: includedKnowledgeIds.has(item.chunkId),
+    }))
+  knowledgeHits.sort((a, b) => b.score - a.score)
+
   const pluginAudit = buildPluginAssemblyAudit(
     params.pluginAdditionCache,
     params.tokenModel,
@@ -135,6 +155,12 @@ export function buildAssemblyAudit(
       lorebookIds: params.lorebookIds,
       matched,
       droppedCount: params.droppedLoreCount,
+    },
+    knowledge: {
+      knowledgeBaseIds: params.knowledgeBaseIds,
+      enabled: params.knowledgeEnabled,
+      hits: knowledgeHits,
+      droppedCount: params.droppedKnowledgeCount,
     },
     history: {
       turnOrdinals: params.memoryPipeline.recentHistoryTurnOrdinals,

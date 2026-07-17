@@ -49,27 +49,22 @@ function memoryDbUri(conversationId: string): string {
   )
 }
 
-async function ensureMemoryHybridFtsIndex(
+async function ensureMemoryLanceIndexes(
   conversationId: string,
   table: Table,
 ): Promise<void> {
   const userId = getCurrentUserId()
   const settings = await readGlobalHybridFtsSettings()
-  await ensureHybridFtsIndex(
-    table,
-    MEMORY_FTS_COLUMN,
-    settings,
-    memoryDbUri(conversationId),
-    userId,
-  )
-}
-
-async function ensureMemoryLanceIndexes(
-  conversationId: string,
-  table: Table,
-): Promise<void> {
-  await ensureMemoryHybridFtsIndex(conversationId, table)
-  await ensureScalarIndexes(table, MEMORY_SCALAR_INDEX_SPECS)
+  await withHybridFtsSettingsContext(userId, settings, async () => {
+    await ensureHybridFtsIndex(
+      table,
+      MEMORY_FTS_COLUMN,
+      settings,
+      memoryDbUri(conversationId),
+      userId,
+    )
+    await ensureScalarIndexes(table, MEMORY_SCALAR_INDEX_SPECS)
+  })
 }
 
 async function withMemoryHybridFtsContext<T>(fn: () => Promise<T>): Promise<T> {
@@ -302,8 +297,20 @@ async function deleteTurnMemoryByBranchSubtreeUnsafe(
 
   const table = await openMemoryTable(conversationId)
   if (!table) return
-  const esc = toSqlString(bp)
-  await table.delete(`branchPath = '${esc}' OR branchPath LIKE '${esc}/%'`)
+  // branchPath 为 bitmap 索引列，Lance 不支持 LIKE 前缀谓词；
+  // 先枚举子树内实际存在的 branchPath，再按等值 IN 删除。
+  const raw = (await table
+    .query()
+    .select(['branchPath'])
+    .toArray()) as { branchPath?: unknown }[]
+  const targets = new Set<string>()
+  for (const r of raw) {
+    const p = String(r.branchPath ?? '')
+    if (p === bp || p.startsWith(`${bp}/`)) targets.add(p)
+  }
+  if (targets.size === 0) return
+  const list = [...targets].map((p) => `'${toSqlString(p)}'`).join(', ')
+  await table.delete(`branchPath IN (${list})`)
 }
 
 /** 读取 Lance turn_memory 全表行（测试 / 诊断） */

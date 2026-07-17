@@ -255,6 +255,21 @@ applyText / applyMessages  // 同语义
           "matched": [{ "lorebookId": "…", "entryId": "…", "mode": "keyword", "included": true }],
           "droppedCount": 1
         },
+        "knowledge": {
+          "knowledgeBaseIds": ["kb-1"],
+          "enabled": true,
+          "hits": [{
+            "kbId": "kb-1",
+            "kbName": "…",
+            "fileId": "…",
+            "fileName": "doc.md",
+            "chunkId": "…",
+            "ordinal": 0,
+            "score": 0.02,
+            "included": true
+          }],
+          "droppedCount": 0
+        },
         "history": { "turnOrdinals": [8, 9, 10, 11], "droppedCount": 0 },
         "budgetTrim": {
           "maxTokens": 65000,

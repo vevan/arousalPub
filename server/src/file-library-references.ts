@@ -13,11 +13,17 @@ import {
   resolveCharacterNamesByIds,
 } from './character-storage.js'
 import { deleteFileLibraryEntry } from './file-library-storage.js'
+import {
+  findKnowledgeBasesContainingFile,
+  removeFileIdFromAllKnowledgeBases,
+} from './knowledge-base-file.js'
+import { scheduleKnowledgeBasesReindex } from './knowledge-vector-index.js'
 
 export type FileLibraryReferenceKind =
   | 'character_image_file'
   | 'conversation_background'
   | 'conversation_bgm'
+  | 'knowledge_base_document'
 
 export interface FileLibraryReference {
   kind: FileLibraryReferenceKind
@@ -25,6 +31,8 @@ export interface FileLibraryReference {
   characterName?: string
   conversationId?: string
   conversationTitle?: string
+  knowledgeBaseId?: string
+  knowledgeBaseName?: string
 }
 
 export class FileLibraryInUseError extends Error {
@@ -102,9 +110,18 @@ export async function findFileLibraryReferences(
     }
   }
 
+  const kbs = await findKnowledgeBasesContainingFile(id)
+  for (const kb of kbs) {
+    refs.push({
+      kind: 'knowledge_base_document',
+      knowledgeBaseId: kb.id,
+      knowledgeBaseName: kb.name,
+    })
+  }
+
   refs.sort((a, b) => {
-    const ka = `${a.kind}:${a.characterId ?? ''}:${a.conversationId ?? ''}`
-    const kb = `${b.kind}:${b.characterId ?? ''}:${b.conversationId ?? ''}`
+    const ka = `${a.kind}:${a.characterId ?? ''}:${a.conversationId ?? ''}:${a.knowledgeBaseId ?? ''}`
+    const kb = `${b.kind}:${b.characterId ?? ''}:${b.conversationId ?? ''}:${b.knowledgeBaseId ?? ''}`
     return ka.localeCompare(kb, 'en')
   })
   return refs
@@ -115,6 +132,7 @@ export async function clearFileLibraryReferences(fileId: string): Promise<{
   clearedCharacterBindings: number
   clearedConversationBackgrounds: number
   clearedConversationBgms: number
+  clearedKnowledgeBases: number
 }> {
   const id = normalizeFileId(fileId)
   if (!id) {
@@ -122,6 +140,7 @@ export async function clearFileLibraryReferences(fileId: string): Promise<{
       clearedCharacterBindings: 0,
       clearedConversationBackgrounds: 0,
       clearedConversationBgms: 0,
+      clearedKnowledgeBases: 0,
     }
   }
 
@@ -144,10 +163,17 @@ export async function clearFileLibraryReferences(fileId: string): Promise<{
     }
   }
 
+  const affectedKbIds = await removeFileIdFromAllKnowledgeBases(id)
+  if (affectedKbIds.length > 0) {
+    scheduleKnowledgeBasesReindex(affectedKbIds)
+  }
+  const clearedKnowledgeBases = affectedKbIds.length
+
   return {
     clearedCharacterBindings,
     clearedConversationBackgrounds,
     clearedConversationBgms,
+    clearedKnowledgeBases,
   }
 }
 
@@ -179,6 +205,7 @@ export async function deleteFileLibraryEntryWithReferenceCheck(
   const clearedAny =
     cleared.clearedCharacterBindings > 0 ||
     cleared.clearedConversationBackgrounds > 0 ||
-    cleared.clearedConversationBgms > 0
+    cleared.clearedConversationBgms > 0 ||
+    cleared.clearedKnowledgeBases > 0
   return deleted || clearedAny
 }

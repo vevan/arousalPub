@@ -114,6 +114,7 @@ function slotLabel(slot: BudgetTrimSlot): string {
     </ul>
     <p class="budget-trim-panel__foot text-caption text-medium-emphasis mb-0">
       {{ $t('settings.budgetTrimDefaultsNote', {
+        knowledge: BUDGET_TRIM_SETTINGS_DEFAULTS.minRetain.knowledge,
         lore: BUDGET_TRIM_SETTINGS_DEFAULTS.minRetain.lore,
         memory: BUDGET_TRIM_SETTINGS_DEFAULTS.minRetain.memory,
         history: BUDGET_TRIM_SETTINGS_DEFAULTS.minRetain.history,

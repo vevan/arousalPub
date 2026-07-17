@@ -22,6 +22,7 @@ import {
   hybridScoreKind,
   LORE_FTS_COLUMN,
   runLanceHybridSearch,
+  withHybridFtsSettingsContext,
 } from './lance-hybrid-search.js'
 import {
   ensureScalarIndexes,
@@ -135,14 +136,17 @@ async function replaceLorebookVectorIndexUnsafe(
     rowsToLoreEntryVectorArrowTable(rows),
   )
   const settings = await readGlobalHybridFtsSettings()
-  await ensureHybridFtsIndex(
-    table,
-    LORE_FTS_COLUMN,
-    settings,
-    uri,
-    getCurrentUserId(),
-  )
-  await ensureScalarIndexes(table, LORE_SCALAR_INDEX_SPECS)
+  const userId = getCurrentUserId()
+  await withHybridFtsSettingsContext(userId, settings, async () => {
+    await ensureHybridFtsIndex(
+      table,
+      LORE_FTS_COLUMN,
+      settings,
+      uri,
+      userId,
+    )
+    await ensureScalarIndexes(table, LORE_SCALAR_INDEX_SPECS)
+  })
 }
 
 export async function deleteLorebookVectorIndex(
@@ -198,10 +202,12 @@ async function searchLorebookEntryVectorsUnsafe(
   const names = await listLanceTableNames(db, uri)
   if (!names.includes(TABLE_NAME)) return []
   const table = await openLanceTableWithManifestMigration(db, TABLE_NAME, uri)
-  await ensureScalarIndexes(table, LORE_SCALAR_INDEX_SPECS, { soft: true })
-  const k = Math.min(64, Math.max(topK * 3, topK))
   const settings = await readGlobalHybridFtsSettings()
   const userId = getCurrentUserId()
+  await withHybridFtsSettingsContext(userId, settings, async () => {
+    await ensureScalarIndexes(table, LORE_SCALAR_INDEX_SPECS, { soft: true })
+  })
+  const k = Math.min(64, Math.max(topK * 3, topK))
   const raw = await runLanceHybridSearch({
     table,
     queryVector,

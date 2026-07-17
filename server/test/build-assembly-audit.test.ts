@@ -32,6 +32,21 @@ describe('buildAssemblyAudit', () => {
       estimatedTokens: 100,
       lorebookIds: ['lb1'],
       lorebookNameToId: new Map([['Book', 'lb1']]),
+      knowledgeBaseIds: ['kb1'],
+      knowledgeEnabled: true,
+      initialKnowledgeItems: [
+        {
+          kbId: 'kb1',
+          kbName: 'KB',
+          fileId: 'f1',
+          fileName: 'doc.txt',
+          chunkId: 'c1',
+          ordinal: 0,
+          text: 'chunk',
+          score: 0.5,
+        },
+      ],
+      droppedKnowledgeCount: 1,
       memoryPipeline,
       loreParts: { constantLoreGroups: [], matchedLore: [] },
       initialMatchedLore: [
@@ -61,6 +76,7 @@ describe('buildAssemblyAudit', () => {
         constantLoreGroups: [],
         matchedLore: [],
         memoryItems: [],
+        knowledgeItems: [],
         historyMessages: [],
       },
       droppedLoreCount: 1,
@@ -71,8 +87,10 @@ describe('buildAssemblyAudit', () => {
 
     assert.equal(audit.memory.hits[0]?.included, false)
     assert.equal(audit.lore.matched[0]?.included, false)
+    assert.equal(audit.knowledge?.hits[0]?.included, false)
     assert.equal(audit.memory.droppedCount, 1)
     assert.equal(audit.lore.droppedCount, 1)
+    assert.equal(audit.knowledge?.droppedCount, 1)
   })
 
   it('includes plugin token reserve from additionCache', () => {
@@ -96,6 +114,10 @@ describe('buildAssemblyAudit', () => {
       estimatedTokens: 10,
       lorebookIds: [],
       lorebookNameToId: new Map(),
+      knowledgeBaseIds: [],
+      knowledgeEnabled: true,
+      initialKnowledgeItems: [],
+      droppedKnowledgeCount: 0,
       memoryPipeline: {
         recentHistoryMessages: [],
         recentHistoryTurnOrdinals: [],
@@ -112,6 +134,7 @@ describe('buildAssemblyAudit', () => {
         constantLoreGroups: [],
         matchedLore: [],
         memoryItems: [],
+        knowledgeItems: [],
         historyMessages: [],
       },
       droppedLoreCount: 0,

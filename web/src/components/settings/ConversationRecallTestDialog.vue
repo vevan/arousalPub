@@ -51,6 +51,10 @@ function loreItemKey(entryId: string): string {
   return `lore:${entryId}`
 }
 
+function knowledgeItemKey(chunkId: string): string {
+  return `knowledge:${chunkId}`
+}
+
 function isExpanded(key: string): boolean {
   return expandedKey.value === key
 }
@@ -113,7 +117,7 @@ watch(
 <template>
   <v-dialog
     v-model="open"
-    max-width="56rem"
+    max-width="72rem"
     scrollable
   >
     <v-card>
@@ -306,6 +310,81 @@ watch(
                 </button>
               </div>
             </section>
+
+            <section class="recall-test-column">
+              <h4 class="text-subtitle-2 mb-2">
+                {{ $t('chat.convSettings.recallTestSectionKnowledge') }}
+                <span class="text-caption text-medium-emphasis">
+                  ({{ result.knowledge.hits.length }})
+                </span>
+              </h4>
+              <p
+                v-if="result.knowledge.knowledgeBaseIds.length === 0"
+                class="text-body-2 text-medium-emphasis"
+              >
+                {{ $t('chat.convSettings.recallTestNoKnowledgeBases') }}
+              </p>
+              <p
+                v-else-if="result.knowledge.hits.length === 0"
+                class="text-body-2 text-medium-emphasis"
+              >
+                {{ $t('chat.convSettings.recallTestEmpty') }}
+              </p>
+              <div
+                v-else
+                class="recall-test-list"
+              >
+                <button
+                  v-for="hit in result.knowledge.hits"
+                  :key="hit.chunkId"
+                  type="button"
+                  class="recall-test-list__item"
+                  :class="{
+                    'recall-test-list__item--expanded': isExpanded(
+                      knowledgeItemKey(hit.chunkId),
+                    ),
+                  }"
+                  @click="toggleExpand(knowledgeItemKey(hit.chunkId))"
+                >
+                  <div class="recall-test-list__head text-body-2 font-weight-medium">
+                    <v-icon
+                      :icon="
+                        isExpanded(knowledgeItemKey(hit.chunkId))
+                          ? 'mdi-chevron-down'
+                          : 'mdi-chevron-right'
+                      "
+                      size="small"
+                      class="recall-test-list__chevron"
+                    />
+                    <span>
+                      {{ hit.kbName }} · {{ hit.fileName }}
+                      <span class="text-caption text-medium-emphasis">
+                        ({{
+                          $t('chat.convSettings.recallTestChunkOrdinal', {
+                            ord: hit.ordinal,
+                          })
+                        }}
+                        · {{ formatScore(hit.score) }})
+                      </span>
+                    </span>
+                  </div>
+                  <div
+                    class="recall-test-list__body text-body-2"
+                    :class="{
+                      'recall-test-list__body--clamp': !isExpanded(
+                        knowledgeItemKey(hit.chunkId),
+                      ),
+                    }"
+                  >
+                    {{
+                      isExpanded(knowledgeItemKey(hit.chunkId))
+                        ? hit.content
+                        : hit.preview
+                    }}
+                  </div>
+                </button>
+              </div>
+            </section>
           </div>
         </template>
       </v-card-text>
@@ -426,7 +505,7 @@ watch(
   white-space: pre-wrap;
 }
 
-@media (max-width: 40rem) {
+@media (max-width: 56rem) {
   .recall-test-columns {
     flex-direction: column;
   }

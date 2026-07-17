@@ -41,6 +41,10 @@ import {
   updateConversationLorebookIds,
   updateConversationLorebookSettings,
   clearConversationLorebookSettings,
+  updateConversationKnowledgeBaseIds,
+  updateConversationKnowledgeSettings,
+  clearConversationKnowledgeSettings,
+  removeKnowledgeBaseIdFromAllConversations,
   clearConversationHistorySettings,
   updateConversationHistorySettings,
   clearConversationMemorySettings,
@@ -82,6 +86,7 @@ import {
 } from './turn-patch-body.js'
 import { reindexConversationMemory } from './memory-index.js'
 import { startConversationMemoryReindexSse } from './memory-reindex-sse.js'
+import { startKnowledgeBaseReindexSse } from './knowledge-reindex-sse.js'
 import {
   resolveClientWhitelist,
   resolveCorsOrigins,
@@ -109,6 +114,7 @@ import {
   updateGlobalHistorySettings,
   updateGlobalLorebookSettings,
   updateGlobalMemorySettings,
+  updateGlobalKnowledgeSettings,
   updateGlobalBudgetTrimSettings,
   updateGlobalEmbeddingApiSettings,
   updateGlobalChunkSettings,
@@ -131,6 +137,20 @@ import {
 import { registerHybridFtsRoutes } from './hybrid-fts-routes.js'
 import { parseBudgetTrimSettingsPatch } from './budget-trim-settings.js'
 import { parseMemorySettingsPatch } from './memory-settings.js'
+import { parseKnowledgeSettingsPatch } from './knowledge-settings.js'
+import {
+  createKnowledgeBase,
+  deleteKnowledgeBase,
+  listKnowledgeBases,
+  patchKnowledgeBase,
+  readKnowledgeBaseById,
+  readKnowledgeBasesIndexSummary,
+} from './knowledge-base-file.js'
+import {
+  reindexKnowledgeBase,
+  scheduleKnowledgeBaseReindex,
+} from './knowledge-vector-index.js'
+import { deleteKnowledgeVectorIndex } from './knowledge-vector-store.js'
 import { normalizeEmbeddingDimensions, normalizeEmbeddingApiSettings } from './embedding-api-settings.js'
 import {
   isValidConversationId,
@@ -655,12 +675,21 @@ interface PatchConvBody {
   promptPresetId?: string | null
   /** 世界书 id 列表；传 [] 清空 */
   lorebookIds?: string[]
+  /** 知识库 id 列表；传 [] 或 `null` 清空 */
+  knowledgeBaseIds?: string[] | null
   /** 资料库递归 / 向量：`recursiveEnabled`、`maxRecursionDepth`、`vectorEnabled`、`vectorTopK` */
   lorebookSettings?: {
     recursiveEnabled?: boolean
     maxRecursionDepth?: number
     vectorEnabled?: boolean
     vectorTopK?: number
+  } | null
+  /** 知识库 RAG：`enabled`、`topK`、`chunkSizeChars`、`chunkOverlapChars`；`null` 清除覆盖 */
+  knowledgeSettings?: {
+    enabled?: boolean
+    topK?: number
+    chunkSizeChars?: number
+    chunkOverlapChars?: number
   } | null
   /** 历史轮数：`limitEnabled`、`maxTurns`；`null` 清除覆盖 */
   historySettings?: {
@@ -674,8 +703,9 @@ interface PatchConvBody {
   } | null
   /** §14.4.1 预算裁切：`trimOrder`、`minRetain`；`null` 清除覆盖 */
   budgetTrimSettings?: {
-    trimOrder?: ('lore' | 'memory' | 'history')[]
+    trimOrder?: ('knowledge' | 'lore' | 'memory' | 'history')[]
     minRetain?: {
+      knowledge?: number
       lore?: number
       memory?: number
       history?: number
@@ -729,9 +759,15 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
     const hasCharIds = Array.isArray(b.characterIds)
     const hasPromptPreset = Object.prototype.hasOwnProperty.call(b, 'promptPresetId')
     const hasLorebookIds = Array.isArray(b.lorebookIds)
+    const hasKnowledgeBaseIds =
+      Array.isArray(b.knowledgeBaseIds) || b.knowledgeBaseIds === null
     const hasLorebookSettings = Object.prototype.hasOwnProperty.call(
       b,
       'lorebookSettings',
+    )
+    const hasKnowledgeSettings = Object.prototype.hasOwnProperty.call(
+      b,
+      'knowledgeSettings',
     )
     const hasHistorySettings = Object.prototype.hasOwnProperty.call(
       b,
@@ -767,7 +803,9 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       !hasCharIds &&
       !hasPromptPreset &&
       !hasLorebookIds &&
+      !hasKnowledgeBaseIds &&
       !hasLorebookSettings &&
+      !hasKnowledgeSettings &&
       !hasHistorySettings &&
       !hasMemorySettings &&
       !hasBudgetTrimSettings &&
@@ -855,6 +893,24 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
       if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
       idx = next
     }
+    if (hasKnowledgeBaseIds) {
+      const raw = b.knowledgeBaseIds
+      if (raw === null) {
+        const next = await updateConversationKnowledgeBaseIds(id, [])
+        if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+        idx = next
+      } else {
+        const arr = raw as unknown[]
+        if (!arr.every((x) => typeof x === 'string')) {
+          return reply
+            .status(400)
+            .send({ error: ApiErrorCodes.knowledge_base_ids_must_be_string_array })
+        }
+        const next = await updateConversationKnowledgeBaseIds(id, arr)
+        if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+        idx = next
+      }
+    }
     if (hasLorebookSettings) {
       const raw = b.lorebookSettings
       if (raw === null) {
@@ -925,6 +981,24 @@ app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
           })
         }
         const next = await updateConversationLorebookSettings(id, patch)
+        if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+        idx = next
+      }
+    }
+    if (hasKnowledgeSettings) {
+      const raw = b.knowledgeSettings
+      if (raw === null) {
+        const next = await clearConversationKnowledgeSettings(id)
+        if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+        idx = next
+      } else if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return reply.status(400).send({ error: ApiErrorCodes.knowledge_settings_invalid })
+      } else {
+        const parsed = parseKnowledgeSettingsPatch(raw)
+        if (!parsed) {
+          return reply.status(400).send({ error: ApiErrorCodes.knowledge_settings_invalid })
+        }
+        const next = await updateConversationKnowledgeSettings(id, parsed)
         if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
         idx = next
       }
@@ -1983,9 +2057,16 @@ interface PatchUserPreferencesBody {
     recallFuseLastAssistant?: boolean
     recallUserWeight?: number
   }
+  knowledge?: {
+    enabled?: boolean
+    topK?: number
+    chunkSizeChars?: number
+    chunkOverlapChars?: number
+  }
   budgetTrim?: {
-    trimOrder?: ('lore' | 'memory' | 'history')[]
+    trimOrder?: ('knowledge' | 'lore' | 'memory' | 'history')[]
     minRetain?: {
+      knowledge?: number
       lore?: number
       memory?: number
       history?: number
@@ -2024,6 +2105,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
     const hasLore = b.lorebook && typeof b.lorebook === 'object'
     const hasHist = b.history && typeof b.history === 'object'
     const hasMem = b.memory && typeof b.memory === 'object'
+    const hasKnowledge = b.knowledge && typeof b.knowledge === 'object'
     const hasBudgetTrim = b.budgetTrim && typeof b.budgetTrim === 'object'
     const hasEmbed = b.embeddingApi && typeof b.embeddingApi === 'object'
     const hasChunk = b.chunk && typeof b.chunk === 'object'
@@ -2040,6 +2122,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
       !hasLore &&
       !hasHist &&
       !hasMem &&
+      !hasKnowledge &&
       !hasBudgetTrim &&
       !hasEmbed &&
       !hasChunk &&
@@ -2055,6 +2138,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
       let lorebook
       let history
       let memory
+      let knowledge
       let budgetTrim
       let embeddingApi
       let chunk
@@ -2154,6 +2238,13 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
             .send({ error: ApiErrorCodes[code] ?? ApiErrorCodes.memory_settings_invalid })
         }
         memory = await updateGlobalMemorySettings(parsed.patch)
+      }
+      if (hasKnowledge) {
+        const parsed = parseKnowledgeSettingsPatch(b.knowledge)
+        if (!parsed) {
+          return reply.status(400).send({ error: ApiErrorCodes.knowledge_settings_invalid })
+        }
+        knowledge = await updateGlobalKnowledgeSettings(parsed)
       }
       if (hasBudgetTrim) {
         const parsed = parseBudgetTrimSettingsPatch(b.budgetTrim)
@@ -2336,6 +2427,7 @@ app.patch<{ Body: PatchUserPreferencesBody }>(
         lorebook: lorebook ?? doc.lorebook,
         history: history ?? doc.history,
         memory: memory ?? doc.memory,
+        knowledge: knowledge ?? doc.knowledge,
         budgetTrim: budgetTrim ?? doc.budgetTrim,
         embeddingApi: embeddingPublic,
         chunk: chunk ?? doc.chunk,
@@ -3293,6 +3385,18 @@ app.put<{ Params: { fileId: string } }>(
         name: nameField,
         keepName,
       })
+      if (meta.kind === 'document') {
+        const { findKnowledgeBasesContainingFile } = await import(
+          './knowledge-base-file.js'
+        )
+        const { scheduleKnowledgeBasesReindex } = await import(
+          './knowledge-vector-index.js'
+        )
+        const kbs = await findKnowledgeBasesContainingFile(meta.fileId)
+        if (kbs.length) {
+          scheduleKnowledgeBasesReindex(kbs.map((k) => k.id))
+        }
+      }
       return {
         ok: true as const,
         ...meta,
@@ -3388,6 +3492,250 @@ app.delete<{
       }
       app.log.error(e)
       return reply.status(500).send({ error: ApiErrorCodes.file_delete_failed })
+    }
+  },
+)
+
+const KNOWLEDGE_BASE_CLIENT_ERROR_CODES = new Set([
+  'name_required',
+  'invalid_id',
+  'kb_id_taken',
+  'file_not_found',
+  'file_not_document',
+])
+
+function knowledgeBaseClientErrorCode(e: unknown): string | null {
+  if (!e || typeof e !== 'object') return null
+  const code = (e as { code?: unknown }).code
+  if (typeof code !== 'string') return null
+  return KNOWLEDGE_BASE_CLIENT_ERROR_CODES.has(code) ? code : null
+}
+
+app.get('/api/knowledge-bases', async (_request, reply) => {
+  try {
+    const knowledgeBases = await listKnowledgeBases()
+    return { knowledgeBases }
+  } catch (e) {
+    app.log.error(e)
+    return reply.status(500).send({ error: ApiErrorCodes.knowledge_bases_read_failed })
+  }
+})
+
+app.get('/api/knowledge-bases/summary', async (_request, reply) => {
+  try {
+    const data = await readKnowledgeBasesIndexSummary()
+    return data
+  } catch (e) {
+    app.log.error(e)
+    return reply.status(500).send({ error: ApiErrorCodes.knowledge_bases_read_failed })
+  }
+})
+
+app.post('/api/knowledge-bases', async (request, reply) => {
+  const body = (request.body ?? {}) as {
+    name?: unknown
+    description?: unknown
+    fileIds?: unknown
+    id?: unknown
+  }
+  if (typeof body.name !== 'string') {
+    return reply.status(400).send({ error: ApiErrorCodes.name_required })
+  }
+  if (
+    body.fileIds !== undefined &&
+    (!Array.isArray(body.fileIds) ||
+      !body.fileIds.every((x) => typeof x === 'string'))
+  ) {
+    return reply.status(400).send({ error: ApiErrorCodes.invalid_request_body })
+  }
+  if (
+    body.id !== undefined &&
+    body.id !== null &&
+    typeof body.id !== 'string'
+  ) {
+    return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+  }
+  if (
+    body.description !== undefined &&
+    body.description !== null &&
+    typeof body.description !== 'string'
+  ) {
+    return reply.status(400).send({ error: ApiErrorCodes.invalid_request_body })
+  }
+  try {
+    const kb = await createKnowledgeBase({
+      name: body.name,
+      description:
+        typeof body.description === 'string' ? body.description : undefined,
+      fileIds: Array.isArray(body.fileIds)
+        ? (body.fileIds as string[])
+        : undefined,
+      id: typeof body.id === 'string' ? body.id : undefined,
+    })
+    scheduleKnowledgeBaseReindex(kb.id)
+    return kb
+  } catch (e) {
+    const code = knowledgeBaseClientErrorCode(e)
+    if (code) {
+      return reply
+        .status(400)
+        .send({ error: ApiErrorCodes[code as keyof typeof ApiErrorCodes] ?? code })
+    }
+    app.log.error(e)
+    return reply.status(500).send({ error: ApiErrorCodes.knowledge_bases_write_failed })
+  }
+})
+
+app.get<{ Params: { id: string } }>(
+  '/api/knowledge-bases/:id',
+  async (request, reply) => {
+    const id = request.params.id
+    try {
+      const kb = await readKnowledgeBaseById(id)
+      if (!kb) {
+        return reply.status(404).send({ error: ApiErrorCodes.knowledge_base_not_found })
+      }
+      return kb
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.knowledge_bases_read_failed })
+    }
+  },
+)
+
+app.patch<{ Params: { id: string } }>(
+  '/api/knowledge-bases/:id',
+  async (request, reply) => {
+    const id = request.params.id
+    const body = (request.body ?? {}) as Record<string, unknown>
+    const patch: {
+      name?: string
+      description?: string | null
+      fileIds?: string[]
+      fileAliases?: Record<string, string>
+    } = {}
+    if (Object.prototype.hasOwnProperty.call(body, 'name')) {
+      if (typeof body.name !== 'string') {
+        return reply.status(400).send({ error: ApiErrorCodes.name_required })
+      }
+      patch.name = body.name
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'description')) {
+      if (body.description !== null && typeof body.description !== 'string') {
+        return reply.status(400).send({ error: ApiErrorCodes.invalid_request_body })
+      }
+      patch.description = body.description as string | null
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'fileIds')) {
+      if (
+        !Array.isArray(body.fileIds) ||
+        !body.fileIds.every((x) => typeof x === 'string')
+      ) {
+        return reply.status(400).send({ error: ApiErrorCodes.invalid_request_body })
+      }
+      patch.fileIds = body.fileIds as string[]
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'fileAliases')) {
+      const fa = body.fileAliases
+      if (
+        !fa ||
+        typeof fa !== 'object' ||
+        Array.isArray(fa) ||
+        !Object.values(fa as Record<string, unknown>).every(
+          (v) => typeof v === 'string',
+        )
+      ) {
+        return reply.status(400).send({ error: ApiErrorCodes.invalid_request_body })
+      }
+      patch.fileAliases = fa as Record<string, string>
+    }
+    if (
+      patch.name === undefined &&
+      patch.description === undefined &&
+      patch.fileIds === undefined &&
+      patch.fileAliases === undefined
+    ) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_request_body })
+    }
+    try {
+      const prev =
+        patch.fileIds !== undefined ? await readKnowledgeBaseById(id) : null
+      const kb = await patchKnowledgeBase(id, patch)
+      if (!kb) {
+        return reply.status(404).send({ error: ApiErrorCodes.knowledge_base_not_found })
+      }
+      if (patch.fileIds !== undefined) {
+        const prevIds = prev?.fileIds ?? []
+        const changed =
+          prevIds.length !== kb.fileIds.length ||
+          prevIds.some((fid, i) => fid !== kb.fileIds[i])
+        if (changed) scheduleKnowledgeBaseReindex(kb.id)
+      }
+      return kb
+    } catch (e) {
+      const code = knowledgeBaseClientErrorCode(e)
+      if (code) {
+        return reply
+          .status(400)
+          .send({ error: ApiErrorCodes[code as keyof typeof ApiErrorCodes] ?? code })
+      }
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.knowledge_bases_write_failed })
+    }
+  },
+)
+
+app.delete<{ Params: { id: string } }>(
+  '/api/knowledge-bases/:id',
+  async (request, reply) => {
+    const id = request.params.id
+    try {
+      const existing = await readKnowledgeBaseById(id)
+      if (!existing) {
+        return reply.status(404).send({ error: ApiErrorCodes.knowledge_base_not_found })
+      }
+      await deleteKnowledgeVectorIndex(id)
+      const ok = await deleteKnowledgeBase(id)
+      if (!ok) {
+        return reply.status(404).send({ error: ApiErrorCodes.knowledge_base_not_found })
+      }
+      await removeKnowledgeBaseIdFromAllConversations(id)
+      return { ok: true as const }
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(500).send({ error: ApiErrorCodes.knowledge_bases_write_failed })
+    }
+  },
+)
+
+app.post<{ Params: { id: string }; Querystring: { stream?: string } }>(
+  '/api/knowledge-bases/:id/reindex',
+  async (request, reply) => {
+    const id = request.params.id
+    try {
+      const existing = await readKnowledgeBaseById(id)
+      if (!existing) {
+        return reply.status(404).send({ error: ApiErrorCodes.knowledge_base_not_found })
+      }
+      const wantStream =
+        request.query.stream === '1' || request.query.stream === 'true'
+      if (wantStream) {
+        const stream = startKnowledgeBaseReindexSse(
+          id,
+          reply,
+          existing.fileIds.length,
+        )
+        return reply.send(stream)
+      }
+      const { chunkCount } = await reindexKnowledgeBase(id)
+      return { ok: true as const, chunkCount }
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e)
+      app.log.error(e)
+      return reply.status(500).send({
+        error: ApiErrorCodes.reindex_failed,
+        detail,
+      })
     }
   },
 )

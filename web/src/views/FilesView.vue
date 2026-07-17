@@ -94,6 +94,18 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 const repairFileInputRef = ref<HTMLInputElement | null>(null)
 const replaceInputRef = ref<HTMLInputElement | null>(null)
 
+interface KbListItem {
+  id: string
+  name: string
+  fileIds: string[]
+}
+
+const documentKbMembership = ref<KbListItem[]>([])
+const documentKbLoading = ref(false)
+const joinKbId = ref<string | null>(null)
+const joinKbDoing = ref(false)
+const allKnowledgeBases = ref<KbListItem[]>([])
+
 watch(
   repairDraft,
   (v) => {
@@ -106,6 +118,7 @@ type FileLibraryReferenceKind =
   | 'character_image_file'
   | 'conversation_background'
   | 'conversation_bgm'
+  | 'knowledge_base_document'
 
 interface FileLibraryReference {
   kind: FileLibraryReferenceKind
@@ -113,6 +126,8 @@ interface FileLibraryReference {
   characterName?: string
   conversationId?: string
   conversationTitle?: string
+  knowledgeBaseId?: string
+  knowledgeBaseName?: string
 }
 
 const selected = computed(
@@ -586,10 +601,111 @@ function formatReferenceLine(ref: FileLibraryReference): string {
       return t('files.refConversationBgm', {
         title: ref.conversationTitle || ref.conversationId || '—',
       })
+    case 'knowledge_base_document':
+      return t('files.refKnowledgeBase', {
+        name: ref.knowledgeBaseName || ref.knowledgeBaseId || '—',
+      })
     default:
       return String((ref as FileLibraryReference).kind)
   }
 }
+
+const joinableKnowledgeBases = computed(() => {
+  const fid = selected.value?.fileId
+  if (!fid) return []
+  const memberIds = new Set(documentKbMembership.value.map((k) => k.id))
+  return allKnowledgeBases.value.filter((k) => !memberIds.has(k.id))
+})
+
+async function refreshDocumentKbMembership() {
+  const sel = selected.value
+  if (!sel || sel.kind !== 'document') {
+    documentKbMembership.value = []
+    allKnowledgeBases.value = []
+    return
+  }
+  documentKbLoading.value = true
+  try {
+    const res = await apiFetch('/api/knowledge-bases')
+    // 异步返回时选中项可能已切换；丢弃过期结果
+    if (selected.value?.fileId !== sel.fileId) return
+    if (!res.ok) {
+      documentKbMembership.value = []
+      allKnowledgeBases.value = []
+      return
+    }
+    const data = (await res.json()) as {
+      knowledgeBases?: {
+        id?: string
+        name?: string
+        fileIds?: string[]
+      }[]
+    }
+    if (selected.value?.fileId !== sel.fileId) return
+    const list: KbListItem[] = (data.knowledgeBases ?? [])
+      .filter((x) => typeof x.id === 'string' && x.id.trim())
+      .map((x) => ({
+        id: x.id as string,
+        name: typeof x.name === 'string' ? x.name : (x.id as string),
+        fileIds: Array.isArray(x.fileIds)
+          ? x.fileIds.filter((f): f is string => typeof f === 'string')
+          : [],
+      }))
+    allKnowledgeBases.value = list
+    documentKbMembership.value = list.filter((k) =>
+      k.fileIds.includes(sel.fileId),
+    )
+  } catch {
+    documentKbMembership.value = []
+    allKnowledgeBases.value = []
+  } finally {
+    documentKbLoading.value = false
+  }
+}
+
+async function joinSelectedToKnowledgeBase() {
+  const sel = selected.value
+  const kbId = joinKbId.value
+  if (!sel || sel.kind !== 'document' || !kbId) return
+  const kb = allKnowledgeBases.value.find((k) => k.id === kbId)
+  if (!kb) return
+  if (kb.fileIds.includes(sel.fileId)) {
+    joinKbId.value = null
+    return
+  }
+  joinKbDoing.value = true
+  try {
+    const res = await apiFetch(`/api/knowledge-bases/${kbId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileIds: [...kb.fileIds, sel.fileId] }),
+    })
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string }
+      coreNotify(
+        t('files.joinKbFailed'),
+        body.error ? t(`api.errors.${body.error}`, body.error) : undefined,
+        { level: 'error' },
+      )
+      return
+    }
+    joinKbId.value = null
+    await refreshDocumentKbMembership()
+    coreNotify(t('files.joinKbOk'), undefined, { level: 'success' })
+  } catch {
+    coreNotify(t('files.joinKbFailed'), undefined, { level: 'error' })
+  } finally {
+    joinKbDoing.value = false
+  }
+}
+
+watch(
+  () => [selected.value?.fileId, selected.value?.kind] as const,
+  ([fileId], [prevFileId]) => {
+    if (fileId !== prevFileId) joinKbId.value = null
+    void refreshDocumentKbMembership()
+  },
+)
 
 async function openDelete() {
   if (!selected.value) return
@@ -902,6 +1018,64 @@ async function submitDelete() {
                 </dd>
               </div>
             </dl>
+            <div
+              v-if="selected.kind === 'document'"
+              class="filelib-detail__kb"
+            >
+              <h3 class="filelib-detail__kb-title">
+                {{ $t('files.kbMembershipTitle') }}
+              </h3>
+              <p
+                v-if="documentKbLoading"
+                class="text-caption text-medium-emphasis mb-2"
+              >
+                {{ $t('files.loading') }}
+              </p>
+              <template v-else>
+                <ul
+                  v-if="documentKbMembership.length"
+                  class="filelib-detail__kb-list"
+                >
+                  <li
+                    v-for="kb in documentKbMembership"
+                    :key="kb.id"
+                  >
+                    {{ kb.name }}
+                  </li>
+                </ul>
+                <p
+                  v-else
+                  class="text-caption text-medium-emphasis mb-2"
+                >
+                  {{ $t('files.kbMembershipEmpty') }}
+                </p>
+              </template>
+              <v-select
+                v-model="joinKbId"
+                :items="joinableKnowledgeBases"
+                item-title="name"
+                item-value="id"
+                :label="$t('files.joinKb')"
+                density="compact"
+                variant="outlined"
+                hide-details="auto"
+                clearable
+                :loading="joinKbDoing || documentKbLoading"
+                :disabled="joinKbDoing || !joinableKnowledgeBases.length"
+                class="mt-2"
+              />
+              <v-btn
+                class="mt-2"
+                size="small"
+                variant="tonal"
+                color="primary"
+                :loading="joinKbDoing"
+                :disabled="!joinKbId || joinKbDoing"
+                @click="joinSelectedToKnowledgeBase"
+              >
+                {{ $t('files.joinKbConfirm') }}
+              </v-btn>
+            </div>
             <div class="filelib-detail__actions">
               <v-tooltip location="top" :text="$t('files.copyPath')">
                 <template #activator="{ props: tip }">
@@ -1083,7 +1257,7 @@ async function submitDelete() {
             <ul class="filelib-delete-refs">
               <li
                 v-for="(ref, i) in deleteReferences"
-                :key="`${ref.kind}-${ref.characterId ?? ''}-${ref.conversationId ?? ''}-${i}`"
+                :key="`${ref.kind}-${ref.characterId ?? ''}-${ref.conversationId ?? ''}-${ref.knowledgeBaseId ?? ''}-${i}`"
               >
                 {{ formatReferenceLine(ref) }}
               </li>
@@ -1336,6 +1510,20 @@ async function submitDelete() {
 }
 .filelib-detail__url:hover {
   opacity: 0.85;
+}
+.filelib-detail__kb {
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  padding-top: 0.75rem;
+}
+.filelib-detail__kb-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.filelib-detail__kb-list {
+  margin: 0 0 0.35rem;
+  padding-left: 1.1rem;
+  font-size: 0.8125rem;
 }
 .filelib-detail__actions {
   display: flex;

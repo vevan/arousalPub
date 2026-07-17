@@ -32,6 +32,7 @@ const conversationActions = inject(CHAT_CONVERSATION_ACTIONS_KEY, null)
 const hasBudgetDrops = computed(() => {
   const m = assemblePreviewMeta.value
   return (
+    m.droppedKnowledgeCount > 0 ||
     m.droppedLoreCount > 0 ||
     m.droppedMemoryCount > 0 ||
     m.droppedHistoryCount > 0
@@ -90,6 +91,12 @@ function onJumpMemoryRebuild() {
         class="preview-card__topbar preview-card__topbar--drops"
       >
         <span class="preview-card__meta-label">{{ $t('prompts.previewDroppedLabel') }}</span>
+        <span
+          v-if="assemblePreviewMeta.droppedKnowledgeCount > 0"
+          class="preview-card__meta preview-card__meta--warn"
+        >
+          {{ $t('prompts.previewDroppedKnowledge', { n: assemblePreviewMeta.droppedKnowledgeCount }) }}
+        </span>
         <span
           v-if="assemblePreviewMeta.droppedLoreCount > 0"
           class="preview-card__meta preview-card__meta--warn"

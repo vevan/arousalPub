@@ -359,6 +359,69 @@ function formatTokenSource(
                     </tbody>
                   </v-table>
 
+                  <h4 class="text-subtitle-2 mb-2">{{ $t('chat.turnAuditSectionKnowledge') }}</h4>
+                  <v-table
+                    density="compact"
+                    class="audit-table audit-table--kv mb-2"
+                  >
+                    <tbody>
+                      <tr>
+                        <td class="audit-table__label">{{ $t('chat.turnAuditKnowledgeEnabled') }}</td>
+                        <td>
+                          {{
+                            (assembly.knowledge?.enabled ?? false)
+                              ? $t('chat.turnAuditYes')
+                              : $t('chat.turnAuditNo')
+                          }}
+                        </td>
+                      </tr>
+                      <tr v-if="(assembly.knowledge?.knowledgeBaseIds?.length ?? 0) > 0">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditKnowledgeBases') }}</td>
+                        <td class="audit-table__mono">
+                          {{ assembly.knowledge!.knowledgeBaseIds.join(', ') }}
+                        </td>
+                      </tr>
+                      <tr v-if="(assembly.knowledge?.droppedCount ?? 0) > 0">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditKnowledgeDropped') }}</td>
+                        <td class="text-error">{{ assembly.knowledge!.droppedCount }}</td>
+                      </tr>
+                    </tbody>
+                  </v-table>
+                  <v-table
+                    v-if="(assembly.knowledge?.hits?.length ?? 0) > 0"
+                    density="compact"
+                    class="audit-table mb-4"
+                  >
+                    <thead>
+                      <tr>
+                        <th>{{ $t('chat.turnAuditColKbName') }}</th>
+                        <th>{{ $t('chat.turnAuditColFileName') }}</th>
+                        <th>{{ $t('chat.turnAuditColChunkOrdinal') }}</th>
+                        <th>{{ $t('chat.turnAuditColScore') }}</th>
+                        <th>{{ $t('chat.turnAuditColIncluded') }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="hit in assembly.knowledge!.hits"
+                        :key="hit.chunkId"
+                        :class="{ 'audit-table__row--muted': !hit.included }"
+                      >
+                        <td>{{ hit.kbName }}</td>
+                        <td class="audit-table__mono">{{ hit.fileName }}</td>
+                        <td>{{ hit.ordinal }}</td>
+                        <td>{{ formatScore(hit.score) }}</td>
+                        <td>
+                          <v-icon
+                            :icon="hit.included ? 'mdi-check-circle' : 'mdi-close-circle-outline'"
+                            :color="hit.included ? 'success' : 'disabled'"
+                            size="small"
+                          />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </v-table>
+
                   <h4 class="text-subtitle-2 mb-2">{{ $t('chat.turnAuditSectionHistory') }}</h4>
                   <v-table
                     density="compact"

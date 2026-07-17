@@ -30,6 +30,12 @@ import {
   type MemorySettings,
 } from '@/utils/memory-settings'
 import {
+  hasKnowledgeSettingsOverride,
+  normalizeKnowledgeSettings,
+  resolveKnowledgeSettings,
+  type KnowledgeSettings,
+} from '@/utils/knowledge-settings'
+import {
   hasBudgetTrimSettingsOverride,
   normalizeBudgetTrimSettings,
   resolveBudgetTrimSettings,
@@ -96,6 +102,10 @@ const {
   historyMaxTurns,
   memoryEnabled,
   memoryTopK,
+  knowledgeEnabled,
+  knowledgeTopK,
+  knowledgeChunkSizeChars,
+  knowledgeChunkOverlapChars,
   budgetTrimSettings,
   embeddingModel,
   embeddingDimensions,
@@ -350,6 +360,11 @@ interface EmbeddingApiContextBinding {
   override?: ConversationEmbeddingApiSettingsOverride
 }
 
+interface KnowledgeContextBinding {
+  useGlobal: boolean
+  effective: KnowledgeSettings
+}
+
 interface ConvContextBindings {
   promptPresetId: string | null
   characterIds: string[]
@@ -357,6 +372,8 @@ interface ConvContextBindings {
   groupChatEnabled: boolean
   groupChat: GroupChatSettings
   lorebookIds: string[]
+  knowledgeBaseIds: string[]
+  knowledge: KnowledgeContextBinding
   lorebook: LorebookContextBinding
   history: HistoryContextBinding
   memory: MemoryContextBinding
@@ -404,6 +421,31 @@ function globalMemoryFromStore(): MemorySettings {
 
 function globalBudgetTrimFromStore(): BudgetTrimSettings {
   return normalizeBudgetTrimSettings(budgetTrimSettings.value)
+}
+
+function globalKnowledgeFromStore(): KnowledgeSettings {
+  return normalizeKnowledgeSettings({
+    enabled: knowledgeEnabled.value,
+    topK: knowledgeTopK.value,
+    chunkSizeChars: knowledgeChunkSizeChars.value,
+    chunkOverlapChars: knowledgeChunkOverlapChars.value,
+  })
+}
+
+function knowledgeContextFromIndex(
+  idx: Record<string, unknown>,
+): KnowledgeContextBinding {
+  const global = globalKnowledgeFromStore()
+  const raw = idx.knowledgeSettings
+  const override =
+    raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? (raw as Partial<KnowledgeSettings>)
+      : undefined
+  const useGlobal = !hasKnowledgeSettingsOverride(override)
+  return {
+    useGlobal,
+    effective: resolveKnowledgeSettings(global, override),
+  }
 }
 
 function memoryContextFromIndex(
@@ -525,6 +567,10 @@ function bindingsFromIndex(idx: Record<string, unknown>): ConvContextBindings {
   const lorebookIds = Array.isArray(lb)
     ? lb.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
     : []
+  const kb = idx.knowledgeBaseIds
+  const knowledgeBaseIds = Array.isArray(kb)
+    ? kb.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+    : []
   const un = idx.userName
   const userName =
     typeof un === 'string' && un.trim() ? un.trim() : null
@@ -550,6 +596,8 @@ function bindingsFromIndex(idx: Record<string, unknown>): ConvContextBindings {
     groupChatEnabled,
     groupChat,
     lorebookIds,
+    knowledgeBaseIds,
+    knowledge: knowledgeContextFromIndex(idx),
     lorebook: lorebookContextFromIndex(idx),
     history: historyContextFromIndex(idx),
     memory: memoryContextFromIndex(idx),
@@ -571,6 +619,11 @@ const convBindings = ref<ConvContextBindings>({
   groupChatEnabled: false,
   groupChat: normalizeGroupChatSettings(undefined),
   lorebookIds: [],
+  knowledgeBaseIds: [],
+  knowledge: {
+    useGlobal: true,
+    effective: normalizeKnowledgeSettings(),
+  },
   lorebook: {
     useGlobal: true,
     effective: {
@@ -955,6 +1008,26 @@ watch(
     convBindings.value = {
       ...convBindings.value,
       memory: {
+        useGlobal: true,
+        effective: global,
+      },
+    }
+  },
+)
+
+watch(
+  [
+    knowledgeEnabled,
+    knowledgeTopK,
+    knowledgeChunkSizeChars,
+    knowledgeChunkOverlapChars,
+  ],
+  () => {
+    if (!convBindings.value.knowledge.useGlobal) return
+    const global = globalKnowledgeFromStore()
+    convBindings.value = {
+      ...convBindings.value,
+      knowledge: {
         useGlobal: true,
         effective: global,
       },
@@ -1450,6 +1523,10 @@ watch(
         :initial-prompt-preset-id="convBindings.promptPresetId"
         :initial-character-ids="convBindings.characterIds"
         :initial-lorebook-ids="convBindings.lorebookIds"
+        :initial-knowledge-base-ids="convBindings.knowledgeBaseIds"
+        :initial-knowledge-settings-use-global="convBindings.knowledge.useGlobal"
+        :global-knowledge-top-k="knowledgeTopK"
+        :initial-knowledge-top-k="convBindings.knowledge.effective.topK"
         :initial-lorebook-settings-use-global="convBindings.lorebook.useGlobal"
         :global-lore-recursive-enabled="lorebookRecursiveEnabled"
         :global-lore-max-recursion-depth="lorebookMaxRecursionDepth"

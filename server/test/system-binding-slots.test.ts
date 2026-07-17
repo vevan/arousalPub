@@ -193,12 +193,16 @@ describe('pinPostHistoryAfterChatHistory', () => {
 })
 
 describe('system binding slot inventory', () => {
-  it('keeps 14 product system slots and 10 ST anchor mappings', () => {
-    assert.equal(SYSTEM_BINDING_SLOTS.length, 14)
+  it('keeps 15 product system slots and 10 ST anchor mappings', () => {
+    assert.equal(SYSTEM_BINDING_SLOTS.length, 15)
     assert.equal(Object.keys(ST_ANCHOR_BINDING_SLOT).length, 10)
     assert.ok(
       SYSTEM_BINDING_SLOTS.includes('boundCharacterPostHistory'),
       'post-history slot remains for native presets / normalize',
+    )
+    assert.ok(
+      SYSTEM_BINDING_SLOTS.includes('boundKnowledge'),
+      'knowledge slot for document RAG injection',
     )
   })
 })

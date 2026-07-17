@@ -410,6 +410,12 @@ export function createPluginWebHost(session: ChatSession): {
       patchPluginSettings() {
         throw new Error('plugin_host_requires_scoped_host')
       },
+      getLorebookIds() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
+      patchLorebookIds() {
+        throw new Error('plugin_host_requires_scoped_host')
+      },
       setPluginHold(hold: boolean) {
         session.setPluginHold(hold)
       },

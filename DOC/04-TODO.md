@@ -26,8 +26,13 @@
   - [x] **M2** `imageFilesByCharacterId` + FileID/FileName 宏 + 角色绑定 UI（2026-07-14 · `[DOC/20](20-user-file-library.md)`）
   - [x] **M3** 对话 BGM·背景绑定 fileId（公开 URL，无需 withAccessToken）（2026-07-15 · `[DOC/20](20-user-file-library.md)`）
   - [x] **M5** 引用检查（列引用→确认强删→清引用）· 批量导入 · 视频预览 · 指定 id 重建（2026-07-15 · `[DOC/20](20-user-file-library.md)` §4.4）
-- [ ] **独立文档 RAG**（≠ 世界书 vector）— `[DOC/20](20-user-file-library.md)` **M4**；前置 M1 + RAG API 设定
-  - [ ] 文档切片 + 独立 Lance 表 + 对话绑知识库
+- [x] **独立文档 RAG**（≠ 世界书 vector）— `[DOC/46](46-document-rag.md)` · `[DOC/20](20-user-file-library.md)` **M4**（2026-07-17）
+  - [x] R0 定案文档（`DOC/46`）
+  - [x] R1 知识库 CRUD + 对话 `knowledgeBaseIds` + 文件引用扩展
+  - [x] R2 切片 + 独立 Lance + 索引
+  - [x] R3 召回注入 + `boundKnowledge` + 预算槽 `knowledge`
+  - [x] R4 UI + i18n
+  - [x] R5 单测（切片/抽取/XML/trimOrder）；ANN / 配额后置
   - [ ] （M4 后）切片知识库过行数阈值再加 **ANN**；memory/lore **scalar** 已先落地（`DOC/03` §14.4.2）
 
 
@@ -42,6 +47,7 @@
 - [ ] 角色卡扩展规划：json格式以xml结构插入提示词，宿主提供接口，插件可改申请字段。
 - [ ] 系统提示词应该可编辑
 - [ ] 提示词和lorebook添加多选及批量复制、移动功能（预设及组）
+- [ ] 为群聊的bot添加颜色picker（或在对话创建时自动随机选择颜色，并可修改），反应在对话气泡上用来区分角色
 
 
 
@@ -80,6 +86,7 @@
 - [x] 库编辑器失焦保存与 PUT/PATCH 去重（2026-06-17）：提示词 / 世界书 / Embedding / 对话 API·插件 schema 文本字段；见 `DOC/03` §15.10、`DOC/25` §8.1
 - [x] 对话页顶栏 UI（2026-06-17）：`chat-header` pill 层级、effective 预设/模型、绑定提示词与世界书菜单、设置入口；见 `DOC/03` §11.2
 - [x] 对话设置上下文 Tab 命中测试（2026-06-18）：`POST .../context/recall-test` · `ConversationRecallTestDialog` · 全库 Memory hybrid + 资料库；不排除近期 N 轮
+- [x] 命中测试含知识库（2026-07-17）：同 scanCorpus；`knowledge` 列；TopK 覆盖会话设置
 - [x] 全局插件 settings 缓存与订阅（2026-06-18 · `a7ca4ea`）：`plugin-user-settings` Pinia store · `getUserSettingsSnapshot` / `onUserSettingsChanged` · trace-keeper 验收；见 `DOC/32`
 - [x] 对话分支创建定案（2026-06-18）：**空分支 + 从下一轮继续** · chunk 命名 · 顶栏分支树 UI · API 草案 — 见 `DOC/23` §1.4–§1.5、§5.3、§6.4–§6.5
 - [x] 对话分支第三轮审计关闭（2026-06-18）：`branchForkTurnIds`、深树 `GET /branches` 批量构建、`rollbackDeleteBranchRegistry` — 见 `DOC/23` §9.3
@@ -108,6 +115,7 @@
 - [x] **通知中心 NC0–NC-F1 + NC-F3 + NC-V**（2026-07-09）：`v-snackbar-queue` · `coreNotify` / `host.ui.notify` · bell · 桌面通知 · 宿主 6 处 snackbar 迁移 · plot-summary parse 边界通知 — 见 `[DOC/40](40-notification-center.md)` · 验收 `[DOC/45](45-notification-center-core-migration.md)` §6.10 · **延后** NC-F2 Server 推送
 - [x] **用户文件库 M3 对话背景/BGM**（2026-07-15）：`backgroundImageFileId` / `bgmFileId` · PATCH 校验 kind · 对话设置选择器 · 对话页背景+循环音频 — 见 `[DOC/20](20-user-file-library.md)` · `DOC/03` §17.5
 - [x] **用户文件库 M5 引用检查+批量导入+视频预览+指定 id 重建**（2026-07-15）：`GET …/references` · `DELETE ?force=1` · `POST fileId` 空闲重建 · FilesView — 见 `[DOC/20](20-user-file-library.md)` §4.4 · `DOC/03` §17.6
+- [x] **独立文档 RAG M4**（2026-07-17）：知识库集合 · 切片 · Lance `doc_chunks` · `boundKnowledge` · 预算槽 `knowledge` · UI — 见 `[DOC/46](46-document-rag.md)` · `DOC/03` §17.7
 
 
 

@@ -7,6 +7,7 @@ export const ASSEMBLE_INJECT_PLACEHOLDER = {
   chatHistory: '<inject slot="chat_history" />',
   userInput: '<inject slot="user_input" />',
   memory: '<inject slot="memory" />',
+  knowledge: '<inject slot="knowledge" />',
   boundCharSystemPrompt: '<inject slot="bound_character.system_prompt" />',
   boundUserPersona: '<inject slot="user_persona" />',
   boundCharDescription: '<inject slot="bound_character.description" />',

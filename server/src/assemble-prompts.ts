@@ -43,6 +43,7 @@ export type PromptBindingSlot =
   | 'boundCharacterPostHistory'
   | 'boundUserInput'
   | 'boundMemory'
+  | 'boundKnowledge'
 
 export interface PromptGroup {
   id: string
@@ -115,6 +116,8 @@ export interface AssembleContext {
   world?: string
   /** §14：已格式化的 `<memory>…</memory>` */
   memoryText?: string
+  /** DOC/46：已格式化的 `<knowledge>…</knowledge>` */
+  knowledgeText?: string
   /** §14：近期 N 轮，按 turn 展开为 user/assistant 消息 */
   history?: ChatMessage[]
   userInput?: string
@@ -430,6 +433,7 @@ function assembleGroupByBindingOrder(
 ): { historyStart: number; historyEnd: number } {
   let { historyStart, historyEnd } = span
   let memoryInjected = false
+  let knowledgeInjected = false
   let historyInjectedInGroup = false
   const deferredPostHistory: string[] = []
 
@@ -512,6 +516,22 @@ function assembleGroupByBindingOrder(
           }
           break
         }
+        case 'boundKnowledge': {
+          if (ctx.bindingPlaceholderMode) {
+            messages.push({
+              role: 'system',
+              content: ASSEMBLE_INJECT_PLACEHOLDER.knowledge,
+            })
+            knowledgeInjected = true
+            break
+          }
+          const kb = ctx.knowledgeText?.trim()
+          if (kb) {
+            messages.push({ role: 'system', content: kb })
+            knowledgeInjected = true
+          }
+          break
+        }
         default: {
           const content = resolveSystemBindingContent(e, ctx, flags)
           if (content) {
@@ -532,6 +552,16 @@ function assembleGroupByBindingOrder(
     !ctx.bindingPlaceholderMode
   ) {
     messages.push({ role: 'system', content: ctx.memoryText.trim() })
+  }
+
+  if (
+    g.kind === 'world' &&
+    !knowledgeInjected &&
+    !sorted.some((x) => x.bindingSlot === 'boundKnowledge') &&
+    ctx.knowledgeText?.trim() &&
+    !ctx.bindingPlaceholderMode
+  ) {
+    messages.push({ role: 'system', content: ctx.knowledgeText.trim() })
   }
 
   if (
@@ -674,6 +704,7 @@ function entryMatchesTrigger(
     entry.bindingSlot === 'boundUserInput' ||
     entry.bindingSlot === 'boundUserPersona' ||
     entry.bindingSlot === 'boundMemory' ||
+    entry.bindingSlot === 'boundKnowledge' ||
     entry.bindingSlot === 'boundChatHistory' ||
     entry.bindingSlot === 'boundMain'
   ) {
@@ -883,6 +914,10 @@ export function assemblePrompts(
             role: 'system',
             content: ASSEMBLE_INJECT_PLACEHOLDER.memory,
           })
+          messages.push({
+            role: 'system',
+            content: ASSEMBLE_INJECT_PLACEHOLDER.knowledge,
+          })
         } else {
           const lore = tryConsumeWorldLoreSlot(ctx, injectFlags)
           if (lore) {
@@ -890,6 +925,12 @@ export function assemblePrompts(
           }
           if (ctx.memoryText?.trim()) {
             messages.push({ role: 'system', content: ctx.memoryText.trim() })
+          }
+          if (ctx.knowledgeText?.trim()) {
+            messages.push({
+              role: 'system',
+              content: ctx.knowledgeText.trim(),
+            })
           }
         }
       }

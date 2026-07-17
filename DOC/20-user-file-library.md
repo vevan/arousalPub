@@ -218,9 +218,12 @@ data/{userId}/files/
 
 ## 7. 文档 RAG（与文件库的关系）
 
-- **入口**：文件库上传文档 → 可选「加入知识库」→ 切片 + embedding → **独立 Lance 表**。
-- **明确不做**：文档管线 **不**替代世界书；绑定表与 RAG 索引分离。
-- **索引策略**：先 FTS + flat；ANN 行数门控见 `DOC/03` §14.4.2 / M4。
+定案见 **[`DOC/46-document-rag.md`](46-document-rag.md)**（M4）。
+
+- **入口**：文件库上传文档 → 加入知识库（命名集合 `fileIds[]`）→ 切片 + embedding → **独立 Lance 表** `doc_chunks`。
+- **明确不做**：文档管线 **不**替代世界书；绑定表与 RAG 索引分离；首版无 PDF / 无 ANN。
+- **索引策略**：先 FTS + flat；ANN 行数门控见 `DOC/03` §14.4.2 / M4 后。
+- **组装**：`boundKnowledge` + `<knowledge>`；预算槽 `knowledge`；embedding 与 memory 同源；`rag_generate` 仅审计占位。
 
 ---
 
@@ -253,7 +256,7 @@ data/{userId}/files/
 | **M1** ✅ 2026-07-13 | `files/` + REST + `/api/m` + `/files` UI | — |
 | **M2** ✅ 2026-07-14 | `imageFilesByCharacterId` + FileID/FileName 宏 + 角色绑定 UI | M1 |
 | **M3** ✅ 2026-07-15 | 对话 BGM·背景 fileId + 设置选择器 + 对话页展示 | M1 |
-| **M4** | 文档切片 + 独立 Lance + 知识库 | M1、RAG API |
+| **M4** ✅ 2026-07-17 | 文档切片 + 独立 Lance + 知识库 — 见 [`DOC/46`](46-document-rag.md) | M1、embedding |
 | **M5** ✅ 2026-07-15 | 引用检查（列引用→确认强删→清引用）、批量导入、视频预览、指定 id 重建 | M1–M3 |
 
 ---
@@ -273,8 +276,8 @@ data/{userId}/files/
 
 1. ~~`imageFiles` 写入角色卡 vs 宿主字段~~ → **已定：宿主 `characters/index.json`**。
 2. ~~删除时有引用如何处理~~ → **已定（M5）**：列出引用 → 确认后强制删 → 同步清除宿主引用字段（§4.4）；不扫历史 turn URL。
-3. 知识库实体形态（M4）。
-4. PDF 切片器选型（M4）。
+3. ~~知识库实体形态（M4）~~ → **已定**：命名集合，见 [`DOC/46`](46-document-rag.md) §2。
+4. ~~PDF 切片器选型（M4）~~ → **首版不支持**；后置选型（`DOC/46` §4）。
 5. 单用户文件配额（内网默认可不设）。
 6. ~~删后指定 fileId 重建~~ → **已定（M5）**：`POST /api/files` 可选 `fileId`；空闲则重建，占用 → `file_id_taken`。
 

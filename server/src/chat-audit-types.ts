@@ -27,6 +27,17 @@ export interface LoreAuditMatch {
   included: boolean
 }
 
+export interface KnowledgeAuditHit {
+  kbId: string
+  kbName: string
+  fileId: string
+  fileName: string
+  chunkId: string
+  ordinal: number
+  score: number
+  included: boolean
+}
+
 export interface AssemblyAudit {
   estimatedTokens: number
   tokenModel?: string
@@ -38,6 +49,13 @@ export interface AssemblyAudit {
   lore: {
     lorebookIds: string[]
     matched: LoreAuditMatch[]
+    droppedCount: number
+  }
+  /** 旧条目可能缺省 */
+  knowledge?: {
+    knowledgeBaseIds: string[]
+    enabled: boolean
+    hits: KnowledgeAuditHit[]
     droppedCount: number
   }
   history: {

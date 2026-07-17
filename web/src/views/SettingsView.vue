@@ -102,6 +102,10 @@ const {
   memoryStripBlockTags,
   memoryRecallFuseLastAssistant,
   memoryRecallUserWeight,
+  knowledgeEnabled,
+  knowledgeTopK,
+  knowledgeChunkSizeChars,
+  knowledgeChunkOverlapChars,
   hybridFtsProfile,
   hybridFtsDictVariant,
   budgetTrimSettings,
@@ -1095,6 +1099,73 @@ onMounted(() => {
                 persistent-hint
                 hide-details="auto"
                 :disabled="!lorebookVectorEnabled"
+              />
+            </v-sheet>
+
+            <v-sheet
+              class="settings-vector-recall-block"
+              rounded="lg"
+              border
+            >
+              <header class="settings-vector-recall-block__header">
+                <h3 class="settings-vector-recall-block__title">
+                  {{ $t('settings.knowledgeSection') }}
+                </h3>
+                <p class="settings-vector-recall-block__hint text-body-2 text-medium-emphasis">
+                  {{ $t('settings.knowledgeSectionHint') }}
+                </p>
+              </header>
+              <v-switch
+                v-model="knowledgeEnabled"
+                :label="$t('settings.knowledgeEnabled')"
+                color="primary"
+                hide-details
+                density="compact"
+              />
+              <v-text-field
+                v-model.number="knowledgeTopK"
+                type="number"
+                min="1"
+                max="32"
+                step="1"
+                class="mt-3"
+                density="comfortable"
+                variant="outlined"
+                :label="$t('settings.knowledgeTopK')"
+                :hint="$t('settings.knowledgeTopKHint')"
+                persistent-hint
+                hide-details="auto"
+                :disabled="!knowledgeEnabled"
+              />
+              <v-text-field
+                v-model.number="knowledgeChunkSizeChars"
+                type="number"
+                min="200"
+                max="8000"
+                step="50"
+                class="mt-3"
+                density="comfortable"
+                variant="outlined"
+                :label="$t('settings.knowledgeChunkSize')"
+                :hint="$t('settings.knowledgeChunkSizeHint')"
+                persistent-hint
+                hide-details="auto"
+                :disabled="!knowledgeEnabled"
+              />
+              <v-text-field
+                v-model.number="knowledgeChunkOverlapChars"
+                type="number"
+                min="0"
+                max="2000"
+                step="10"
+                class="mt-3"
+                density="comfortable"
+                variant="outlined"
+                :label="$t('settings.knowledgeChunkOverlap')"
+                :hint="$t('settings.knowledgeChunkOverlapHint')"
+                persistent-hint
+                hide-details="auto"
+                :disabled="!knowledgeEnabled"
               />
             </v-sheet>
 

@@ -70,4 +70,24 @@ describe('withLanceLanguageModelHome', () => {
       process.env[LANCE_LANGUAGE_MODEL_HOME_ENV] = prev
     }
   })
+
+  it('is reentrant: nested same home does not deadlock', async () => {
+    const prev = process.env[LANCE_LANGUAGE_MODEL_HOME_ENV]
+    delete process.env[LANCE_LANGUAGE_MODEL_HOME_ENV]
+
+    let nestedRan = false
+    await withLanceLanguageModelHome('/tmp/nested', async () => {
+      await withLanceLanguageModelHome('/tmp/nested', async () => {
+        nestedRan = true
+        assert.equal(process.env[LANCE_LANGUAGE_MODEL_HOME_ENV], '/tmp/nested')
+        assert.equal(getLanceLanguageModelHomeFromContext(), '/tmp/nested')
+      })
+    })
+
+    assert.equal(nestedRan, true)
+    assert.equal(process.env[LANCE_LANGUAGE_MODEL_HOME_ENV], prev)
+    if (prev !== undefined) {
+      process.env[LANCE_LANGUAGE_MODEL_HOME_ENV] = prev
+    }
+  })
 })

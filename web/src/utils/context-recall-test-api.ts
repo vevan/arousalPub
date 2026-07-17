@@ -18,6 +18,18 @@ export interface ContextRecallLoreHit {
   content: string
 }
 
+export interface ContextRecallKnowledgeHit {
+  kbId: string
+  kbName: string
+  fileId: string
+  fileName: string
+  chunkId: string
+  ordinal: number
+  score: number
+  preview: string
+  content: string
+}
+
 export interface ContextRecallTestResult {
   query: string
   topK: number
@@ -30,6 +42,10 @@ export interface ContextRecallTestResult {
   lore: {
     lorebookIds: string[]
     hits: ContextRecallLoreHit[]
+  }
+  knowledge: {
+    knowledgeBaseIds: string[]
+    hits: ContextRecallKnowledgeHit[]
   }
 }
 

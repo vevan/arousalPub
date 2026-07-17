@@ -72,6 +72,7 @@ function baseState(): PromptBudgetTrimState {
       { turn: turn('m1', 1, 'mem low'), score: 0.2 },
       { turn: turn('m2', 2, 'mem high'), score: 0.9 },
     ],
+    knowledgeItems: [],
     historyMessages: [
       { role: 'user', content: 'old user' },
       { role: 'assistant', content: 'old assistant' },
@@ -149,6 +150,7 @@ describe('estimateTrimTokenDelta', () => {
     const snapshot = {
       worldText: 'before',
       memoryText: '',
+      knowledgeText: '',
     }
     trimOneMatchedLore(state, 1)
     const delta = estimateTrimTokenDelta(state, 'lore', snapshot)

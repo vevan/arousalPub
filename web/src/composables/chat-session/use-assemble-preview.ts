@@ -22,6 +22,7 @@ export function useAssemblePreview(opts: {
   const assemblePreviewMeta = ref({
     messages: 0,
     estimatedTokens: 0,
+    droppedKnowledgeCount: 0,
     droppedLoreCount: 0,
     droppedMemoryCount: 0,
     droppedHistoryCount: 0,
@@ -52,6 +53,7 @@ export function useAssemblePreview(opts: {
     assemblePreviewMeta.value = {
       messages: 0,
       estimatedTokens: 0,
+      droppedKnowledgeCount: 0,
       droppedLoreCount: 0,
       droppedMemoryCount: 0,
       droppedHistoryCount: 0,
@@ -95,6 +97,7 @@ export function useAssemblePreview(opts: {
       const data = (await res.json()) as {
         messages?: unknown[]
         estimatedTokens?: number
+        droppedKnowledgeCount?: number
         droppedLoreCount?: number
         droppedMemoryCount?: number
         droppedHistoryCount?: number
@@ -105,6 +108,10 @@ export function useAssemblePreview(opts: {
         messages: messages.length,
         estimatedTokens:
           typeof data.estimatedTokens === 'number' ? data.estimatedTokens : 0,
+        droppedKnowledgeCount:
+          typeof data.droppedKnowledgeCount === 'number'
+            ? data.droppedKnowledgeCount
+            : 0,
         droppedLoreCount:
           typeof data.droppedLoreCount === 'number' ? data.droppedLoreCount : 0,
         droppedMemoryCount:

@@ -249,6 +249,17 @@ export function getFilesDir(userId?: string): string {
   return path.join(getUserDataDir(userId ?? getCurrentUserId()), 'files')
 }
 
+export function getKnowledgeBasesDir(userId?: string): string {
+  return path.join(
+    getUserDataDir(userId ?? getCurrentUserId()),
+    'knowledgeBases',
+  )
+}
+
+export function getKnowledgeBasesIndexPath(userId?: string): string {
+  return path.join(getKnowledgeBasesDir(userId), 'index.json')
+}
+
 export function getPromptsDir(userId?: string): string {
   return path.join(getUserDataDir(userId ?? getCurrentUserId()), 'prompts')
 }
@@ -274,6 +285,7 @@ export function ensureDataSkeletonForUser(userId: string): void {
     getLorebooksDir(userId),
     getCharactersDir(userId),
     getFilesDir(userId),
+    getKnowledgeBasesDir(userId),
     getPromptsDir(userId),
   ]) {
     try {

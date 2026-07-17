@@ -1,6 +1,5 @@
 import { buildAllowedBranchPathsForActive } from './chunk-path.js'
 import {
-  readConversationIndex,
   resolvedLorebookIds,
   type ConversationIndex,
 } from './chat-storage.js'
@@ -24,6 +23,7 @@ import {
   resolveMemoryCorpusOptions,
 } from './memory-corpus.js'
 import { resolveMemorySettings } from './memory-settings.js'
+import { recallKnowledgeForConversation } from './knowledge-resolve.js'
 import {
   readGlobalHistorySettings,
   readGlobalLorebookSettings,
@@ -61,6 +61,18 @@ export interface ContextRecallLoreHit {
   content: string
 }
 
+export interface ContextRecallKnowledgeHit {
+  kbId: string
+  kbName: string
+  fileId: string
+  fileName: string
+  chunkId: string
+  ordinal: number
+  score: number
+  preview: string
+  content: string
+}
+
 export interface ContextRecallTestResult {
   query: string
   topK: number
@@ -73,6 +85,10 @@ export interface ContextRecallTestResult {
   lore: {
     lorebookIds: string[]
     hits: ContextRecallLoreHit[]
+  }
+  knowledge: {
+    knowledgeBaseIds: string[]
+    hits: ContextRecallKnowledgeHit[]
   }
 }
 
@@ -147,6 +163,9 @@ export async function runContextRecallTest(
 ): Promise<ContextRecallTestResult> {
   const { query, topK, simulateTurnOrdinal } = request
   const lorebookIds = resolvedLorebookIds(idx)
+  const knowledgeBaseIds = Array.isArray(idx.knowledgeBaseIds)
+    ? idx.knowledgeBaseIds.filter((id) => typeof id === 'string' && id.trim())
+    : []
   const activeBranchPath = idx.activeBranchPath ?? ''
 
   const globalMemory = await readGlobalMemorySettings()
@@ -280,6 +299,31 @@ export async function runContextRecallTest(
     })
   }
 
+  const knowledgeQuery = scanCorpus || query
+  const knowledgeRecall = knowledgeBaseIds.length
+    ? await recallKnowledgeForConversation({
+        knowledgeBaseIds,
+        queryText: knowledgeQuery,
+        conversationId,
+        knowledgeSettings: idx.knowledgeSettings,
+        topK,
+      })
+    : { items: [], knowledgeText: '' }
+
+  const knowledgeHits: ContextRecallKnowledgeHit[] = knowledgeRecall.items.map(
+    (item) => ({
+      kbId: item.kbId,
+      kbName: item.kbName,
+      fileId: item.fileId,
+      fileName: item.fileName,
+      chunkId: item.chunkId,
+      ordinal: item.ordinal,
+      score: item.score,
+      preview: previewText(item.text),
+      content: item.text,
+    }),
+  )
+
   return {
     query,
     topK,
@@ -292,6 +336,10 @@ export async function runContextRecallTest(
     lore: {
       lorebookIds,
       hits: loreHits,
+    },
+    knowledge: {
+      knowledgeBaseIds,
+      hits: knowledgeHits,
     },
   }
 }

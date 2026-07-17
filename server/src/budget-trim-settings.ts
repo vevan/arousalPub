@@ -1,14 +1,16 @@
 /** §14.4.1 预算裁切：全局 user-preferences + 会话稀疏覆盖 */
 
-export type BudgetTrimSlot = 'lore' | 'memory' | 'history'
+export type BudgetTrimSlot = 'knowledge' | 'lore' | 'memory' | 'history'
 
 export const BUDGET_TRIM_SLOTS: readonly BudgetTrimSlot[] = [
+  'knowledge',
   'lore',
   'memory',
   'history',
 ]
 
 export interface BudgetTrimMinRetain {
+  knowledge: number
   lore: number
   memory: number
   history: number
@@ -25,32 +27,55 @@ export type BudgetTrimSettingsOverride = Partial<{
 }>
 
 export const BUDGET_TRIM_SETTINGS_DEFAULTS: BudgetTrimSettings = {
-  trimOrder: ['lore', 'memory', 'history'],
-  minRetain: { lore: 1, memory: 1, history: 1 },
+  trimOrder: ['knowledge', 'lore', 'memory', 'history'],
+  minRetain: { knowledge: 1, lore: 1, memory: 1, history: 1 },
 }
 
 export const MIN_RETAIN_MIN = 0
 export const MIN_RETAIN_MAX = 32
 
+const LEGACY_3: readonly BudgetTrimSlot[] = ['lore', 'memory', 'history']
+
 function isTrimSlot(x: unknown): x is BudgetTrimSlot {
-  return x === 'lore' || x === 'memory' || x === 'history'
+  return (
+    x === 'knowledge' || x === 'lore' || x === 'memory' || x === 'history'
+  )
 }
 
+/** 接受 4 槽全排列；旧 3 槽（无 knowledge）自动在队首补 knowledge */
 export function normalizeTrimOrder(raw: unknown): BudgetTrimSlot[] {
-  if (!Array.isArray(raw) || raw.length !== 3) {
-    return [...BUDGET_TRIM_SETTINGS_DEFAULTS.trimOrder]
+  const defaults = [...BUDGET_TRIM_SETTINGS_DEFAULTS.trimOrder]
+  if (!Array.isArray(raw)) return defaults
+
+  if (raw.length === 3) {
+    const seen = new Set<BudgetTrimSlot>()
+    const out: BudgetTrimSlot[] = []
+    for (const item of raw) {
+      if (!isTrimSlot(item) || item === 'knowledge' || seen.has(item)) {
+        return defaults
+      }
+      seen.add(item)
+      out.push(item)
+    }
+    if (
+      out.length === 3 &&
+      LEGACY_3.every((s) => seen.has(s))
+    ) {
+      return ['knowledge', ...out]
+    }
+    return defaults
   }
+
+  if (raw.length !== 4) return defaults
   const seen = new Set<BudgetTrimSlot>()
   const out: BudgetTrimSlot[] = []
   for (const item of raw) {
-    if (!isTrimSlot(item) || seen.has(item)) {
-      return [...BUDGET_TRIM_SETTINGS_DEFAULTS.trimOrder]
-    }
+    if (!isTrimSlot(item) || seen.has(item)) return defaults
     seen.add(item)
     out.push(item)
   }
-  if (out.length !== 3) {
-    return [...BUDGET_TRIM_SETTINGS_DEFAULTS.trimOrder]
+  if (out.length !== 4 || !BUDGET_TRIM_SLOTS.every((s) => seen.has(s))) {
+    return defaults
   }
   return out
 }
@@ -70,6 +95,10 @@ export function normalizeBudgetTrimSettings(
       : [...defaults.trimOrder]
   const minRaw = raw?.minRetain
   const minRetain: BudgetTrimMinRetain = {
+    knowledge:
+      minRaw && Object.prototype.hasOwnProperty.call(minRaw, 'knowledge')
+        ? clampMinRetain(minRaw.knowledge, defaults.minRetain.knowledge)
+        : defaults.minRetain.knowledge,
     lore:
       minRaw && Object.prototype.hasOwnProperty.call(minRaw, 'lore')
         ? clampMinRetain(minRaw.lore, defaults.minRetain.lore)
@@ -98,60 +127,43 @@ export function resolveBudgetTrimSettings(
 ): BudgetTrimSettings {
   const g = normalizeBudgetTrimSettings(global)
   if (!override || typeof override !== 'object') return g
-  const patch: Partial<BudgetTrimSettings> = {}
-  if (Object.prototype.hasOwnProperty.call(override, 'trimOrder')) {
-    patch.trimOrder = normalizeTrimOrder(override.trimOrder)
-  }
-  if (override.minRetain && typeof override.minRetain === 'object') {
-    patch.minRetain = {
-      lore: Object.prototype.hasOwnProperty.call(override.minRetain, 'lore')
-        ? clampMinRetain(override.minRetain.lore, g.minRetain.lore)
-        : g.minRetain.lore,
-      memory: Object.prototype.hasOwnProperty.call(override.minRetain, 'memory')
-        ? clampMinRetain(override.minRetain.memory, g.minRetain.memory)
-        : g.minRetain.memory,
-      history: Object.prototype.hasOwnProperty.call(
-        override.minRetain,
-        'history',
-      )
-        ? clampMinRetain(override.minRetain.history, g.minRetain.history)
-        : g.minRetain.history,
-    }
-  }
-  return normalizeBudgetTrimSettings({ ...g, ...patch })
+  return normalizeBudgetTrimSettings({
+    trimOrder: override.trimOrder ?? g.trimOrder,
+    minRetain: { ...g.minRetain, ...override.minRetain },
+  })
 }
 
 export function budgetTrimSettingsOverrideFromEffective(
   effective: BudgetTrimSettings,
   global: BudgetTrimSettings,
-): BudgetTrimSettingsOverride | undefined {
+): BudgetTrimSettingsOverride | null {
+  const e = normalizeBudgetTrimSettings(effective)
+  const g = normalizeBudgetTrimSettings(global)
   const o: BudgetTrimSettingsOverride = {}
   if (
-    effective.trimOrder.length !== global.trimOrder.length ||
-    effective.trimOrder.some((s, i) => s !== global.trimOrder[i])
+    e.trimOrder.length !== g.trimOrder.length ||
+    e.trimOrder.some((s, i) => s !== g.trimOrder[i])
   ) {
-    o.trimOrder = [...effective.trimOrder]
+    o.trimOrder = [...e.trimOrder]
   }
-  const mr: Partial<BudgetTrimMinRetain> = {}
-  if (effective.minRetain.lore !== global.minRetain.lore) {
-    mr.lore = effective.minRetain.lore
+  const min: Partial<BudgetTrimMinRetain> = {}
+  if (e.minRetain.knowledge !== g.minRetain.knowledge) {
+    min.knowledge = e.minRetain.knowledge
   }
-  if (effective.minRetain.memory !== global.minRetain.memory) {
-    mr.memory = effective.minRetain.memory
+  if (e.minRetain.lore !== g.minRetain.lore) min.lore = e.minRetain.lore
+  if (e.minRetain.memory !== g.minRetain.memory) min.memory = e.minRetain.memory
+  if (e.minRetain.history !== g.minRetain.history) {
+    min.history = e.minRetain.history
   }
-  if (effective.minRetain.history !== global.minRetain.history) {
-    mr.history = effective.minRetain.history
-  }
-  if (Object.keys(mr).length > 0) {
-    o.minRetain = mr
-  }
-  return Object.keys(o).length > 0 ? o : undefined
+  if (Object.keys(min).length) o.minRetain = min
+  return Object.keys(o).length > 0 ? o : null
 }
 
 export function budgetTrimSettingsEqual(
   a: BudgetTrimSettings,
   b: BudgetTrimSettings,
 ): boolean {
+  if (a.minRetain.knowledge !== b.minRetain.knowledge) return false
   if (a.minRetain.lore !== b.minRetain.lore) return false
   if (a.minRetain.memory !== b.minRetain.memory) return false
   if (a.minRetain.history !== b.minRetain.history) return false
@@ -160,13 +172,24 @@ export function budgetTrimSettingsEqual(
 }
 
 export function isValidTrimOrder(raw: unknown): raw is BudgetTrimSlot[] {
-  if (!Array.isArray(raw) || raw.length !== 3) return false
+  if (!Array.isArray(raw)) return false
+  if (raw.length === 3) {
+    const seen = new Set<BudgetTrimSlot>()
+    for (const item of raw) {
+      if (!isTrimSlot(item) || item === 'knowledge' || seen.has(item)) {
+        return false
+      }
+      seen.add(item)
+    }
+    return LEGACY_3.every((s) => seen.has(s))
+  }
+  if (raw.length !== 4) return false
   const seen = new Set<BudgetTrimSlot>()
   for (const item of raw) {
     if (!isTrimSlot(item) || seen.has(item)) return false
     seen.add(item)
   }
-  return seen.size === 3
+  return BUDGET_TRIM_SLOTS.every((s) => seen.has(s))
 }
 
 export type BudgetTrimPatchParseError =
@@ -179,7 +202,9 @@ export type BudgetTrimPatchParseError =
 
 export function parseBudgetTrimSettingsPatch(
   raw: unknown,
-): { ok: true; patch: BudgetTrimSettingsOverride } | { ok: false; error: BudgetTrimPatchParseError } {
+):
+  | { ok: true; patch: BudgetTrimSettingsOverride }
+  | { ok: false; error: BudgetTrimPatchParseError } {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return { ok: false, error: 'budget_trim_settings_invalid' }
   }
@@ -189,7 +214,7 @@ export function parseBudgetTrimSettingsPatch(
     if (!isValidTrimOrder(obj.trimOrder)) {
       return { ok: false, error: 'budget_trim_trim_order_invalid' }
     }
-    patch.trimOrder = [...obj.trimOrder]
+    patch.trimOrder = normalizeTrimOrder(obj.trimOrder)
   }
   if (Object.prototype.hasOwnProperty.call(obj, 'minRetain')) {
     const mr = obj.minRetain

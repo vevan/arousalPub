@@ -1,7 +1,7 @@
 # 群聊（多角色发言轮次）— 设计定案
 
 > **状态**：定案 · **G0–G5 已落地**（2026-07-03）  
-> **关联**：`DOC/03` §6.8（turn/chunk · 群聊落盘）、`DOC/04` **已归档**（G0–G5）、`DOC/14` / `DOC/26`（ST 群聊宏）、Composer Slash（`submitComposer` · S0–S4 ✅ · [`DOC/36`](36-composer-slash.md)）
+> **关联**：`DOC/03` §6.8（turn/chunk · 群聊落盘）、`DOC/04` **已归档**（G0–G5 · Composer Slash S0–S4）、`DOC/14` / `DOC/26`（ST 群聊宏）、Composer Slash（[`DOC/36`](36-composer-slash.md) · **已归档**）
 
 ---
 
@@ -147,7 +147,7 @@ submitComposer(raw)
   → 输入历史可存 raw（已有 composer-input-history）
 ```
 
-**Slash 未实现前（群聊 G1 过渡期）**：~~可在 `send()` 做最小 `/@` 解析~~ **已在 S2 落地**；`speakerQueue` 接 API 待 G1。
+**Slash / `/@`（已归档）**：S2 起由 Composer Slash 统一解析；`speakerQueue` 已接 G1 persist/API。详见 [`DOC/36`](36-composer-slash.md)。
 
 ### 2.4 助手接续：`[NEXT@DisplayName]`
 
@@ -414,7 +414,7 @@ charN        → 可选；characterIds[N-1]（Phase 2+）
 | **G4** | **`speakerMode=next@` 全量**：hint 失败手动、首段掷骰；`confirmContinue` 改选；audit 掷骰表 + 群聊审计 Tab（本段/下段选人 · 2026-07-03） |
 | **G5** | 群聊说明注入按模式分支、`{{notChar}}` 群聊语义、`{{charIfNotGroup}}`、**Group chat** 预设种子（新用户） |
 
-**依赖：** G1 的 `/@` 与 **Composer Slash（P0）** 同批或略早（最小 `submitComposer` 路由即可）。
+**依赖：** G1 的 `/@` 依赖 Composer Slash（**S0–S4 已归档** · [`DOC/36`](36-composer-slash.md)）。
 
 ### 7.1 代码布局（2026-07-03）
 
@@ -452,6 +452,6 @@ charN        → 可选；characterIds[N-1]（Phase 2+）
 ## 9. 交叉引用
 
 - 存储 / API：`DOC/03` §6.8
-- 里程碑归档：`DOC/04` **§已归档**（群聊 G0–G5）；Composer Slash **S0–S4** 见 [`DOC/36`](36-composer-slash.md)
+- 里程碑归档：`DOC/04` **§已归档**（群聊 G0–G5 · Composer Slash S0–S4）
 - 宏对照：`DOC/26`
-- Slash 宿主：[`DOC/36`](36-composer-slash.md)
+- Slash 宿主：[`DOC/36`](36-composer-slash.md)（**已归档**）

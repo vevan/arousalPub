@@ -63,7 +63,7 @@
 | [`32`](32-plugin-user-settings-cache.md) | ✅ | 全局 `getUserSettings` 缓存 + 订阅（对齐 `DOC/21` 会话 store · `a7ca4ea`） |
 | [`33`](33-mobile-compatibility.md) | **Phase 1** | 40rem rail overlay + hidden 持久化；余 composer/安全区验收 |
 | [`35`](35-group-chat.md) | ✅ **G0–G5** | **群聊**：segment、`speakerMode`、宏、`preset-group-chat` 种子 |
-| [`36`](36-composer-slash.md) | ✅ S0–S4 | **Composer Slash**：submitComposer、`/goto`、`/@`、插件 `registerComposerSlashCommand`、补全浮层 |
+| [`36`](36-composer-slash.md) | ✅ **已归档**（2026-07-20） | **Composer Slash** S0–S4：`submitComposer`、`/goto`、`/@`、插件 `registerComposerSlashCommand`、补全浮层、Historian `/plot` |
 | [`37`](37-st-import-settings-tab.md) | 定案 **P2** | **设置「导入」Tab**：ST 聊天记录 / 世界书 / 提示词预设（预设委托 `PromptsView` 原流程） |
 
 ## 已归档（勿再新建同级文档）
@@ -77,6 +77,7 @@
 | `DOC/04` 对话分支 S1–S5 实现清单 | 2026-06-18 完成 → [`23`](23-conversation-branches.md) |
 | `DOC/04` P0 落盘 persist 缺 turnId | 2026-06-23 · `15c7900` → [`23`](23-conversation-branches.md) §6.4、[`03`](03-实现细节.md) §6.8 |
 | `DOC/04` P0 通知中心 NC0–NC-V | 2026-07-09 → [`40`](40-notification-center.md) · [`45`](45-notification-center-core-migration.md) §6.10 |
+| `DOC/04` P0 Composer Slash S0–S4 | 2026-07-20 · `fd80c7f` → [`36`](36-composer-slash.md) |
 
 ## 运维备忘
 

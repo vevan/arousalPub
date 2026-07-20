@@ -1,8 +1,8 @@
 # Composer Slash 命令 — 实现说明
 
-> **状态**：S0–S4 **已实现**（S3 插件命令路由 2026-07-20）  
+> **状态**：**✅ 已完成并归档**（2026-07-20）· S0–S4（S3 插件命令路由含 Historian `/plot` · `fd80c7f`）  
 > **定案**：群聊 `/@` 语义见 [`DOC/35`](35-group-chat.md) §2.3  
-> **待办**：无（S0–S4 已关闭；见 [`DOC/04`](04-TODO.md) 已勾项）
+> **待办**：无；里程碑见 [`DOC/04`](04-TODO.md) **§已归档**
 
 ---
 
@@ -12,7 +12,7 @@
 |--------|------|------|
 | **S0** | ✅ | `submitComposerParse` 统一解析 raw → 命令 + LLM 可见正文 |
 | **S1** | ✅ | `/goto N` 跳转章回（`scrollToTurnOrdinal`，不足则 `loadOlderMessages`） |
-| **S2** | ✅ | `/@ Name …` 解析 + strip；`speakerQueue` 待群聊 G1 接入 API |
+| **S2** | ✅ | `/@ Name …` 解析 + strip；`speakerQueue` 已接群聊 G1 persist/API |
 | **S3** | ✅ | 插件经 `host.registerComposerSlashCommand(name, handler, spec)` 注册；submit 路由执行 handler（**宿主零插件 id 特化**） |
 | **S4** | ✅ | 首行 `/` 补全浮层（见 §2） |
 

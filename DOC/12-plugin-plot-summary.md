@@ -37,7 +37,7 @@
 ## 4. 手动摘要
 
 - 菜单「手动摘要」；区间 picker 两键选 start/end 优先。
-- **Composer Slash**（`/plot`，S3 · `[DOC/36](36-composer-slash.md)`）：只打开手动摘要 modal 预填参数，**不**自动跑；用户确认后才写。
+- **Composer Slash**（`/plot`，S3 · `[DOC/36](36-composer-slash.md)` **已归档**）：只打开手动摘要 modal 预填参数，**不**自动跑；用户确认后才写。
   - `/plot` → 默认区间 + 上次 `manualSummarizeTasks`
   - `/plot summary [N-M]` → 勾选 memory；省略范围则用 §4 默认预填
   - `/plot sidecar <name|"含空格名称"> [N-M]` → 仅按 **name**（trim、**大小写敏感**）匹配一条 sidecar；含空格须双引号；重名/未找到报错退出

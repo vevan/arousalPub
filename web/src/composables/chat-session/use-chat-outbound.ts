@@ -6,6 +6,7 @@ import type { ConversationChatRequestPlugins } from '@/utils/chat-api'
 import { allocateShortId } from '@/utils/short-id'
 import { isOpeningTurn } from '@/utils/chat-turn-display'
 import { submitComposerParse, hasUnmatchedAtSlashNames } from '@/utils/composer-slash'
+import { getComposerSlashPluginHandler } from '@/utils/composer-slash-registry'
 import {
   defaultGroupChatSettings,
   type GroupChatSettings,
@@ -330,19 +331,40 @@ export function useChatOutbound(opts: {
 
   async function runSlashCommands(
     commands: ReturnType<typeof submitComposerParse>['commands'],
+    raw: string,
   ): Promise<void> {
     for (const cmd of commands) {
-      if (cmd.kind !== 'goto') continue
-      const result = await opts.scrollToTurnOrdinal(cmd.turnOrdinal)
-      if (result === 'ok') continue
-      if (result === 'future') {
-        opts.errorText.value = opts.t('chat.slash.gotoFuture', {
-          n: cmd.turnOrdinal,
-        })
-      } else {
-        opts.errorText.value = opts.t('chat.slash.gotoNotFound', {
-          n: cmd.turnOrdinal,
-        })
+      if (cmd.kind === 'goto') {
+        const result = await opts.scrollToTurnOrdinal(cmd.turnOrdinal)
+        if (result === 'ok') continue
+        if (result === 'future') {
+          opts.errorText.value = opts.t('chat.slash.gotoFuture', {
+            n: cmd.turnOrdinal,
+          })
+        } else {
+          opts.errorText.value = opts.t('chat.slash.gotoNotFound', {
+            n: cmd.turnOrdinal,
+          })
+        }
+        continue
+      }
+      if (cmd.kind === 'plugin') {
+        const handler = getComposerSlashPluginHandler(cmd.name)
+        if (!handler) continue
+        try {
+          await handler({
+            conversationId: opts.getConversationId?.() ?? '',
+            raw,
+            args: cmd.args,
+          })
+        } catch (e) {
+          // 插件 handler 失败不阻断后续命令；避免未捕获 rejection 卡死发送路径
+          console.warn('[composer-slash] plugin handler failed:', cmd.name, e)
+          coreNotify(opts.t('chat.slash.pluginHandlerFailed', { name: cmd.name }), undefined, {
+            level: 'warning',
+            timeout: 6000,
+          })
+        }
       }
     }
   }
@@ -487,15 +509,24 @@ export function useChatOutbound(opts: {
       boundDisplayNames: opts.getBoundDisplayNames?.() ?? [],
     })
 
+    const messageBody = parsed.body.trim()
+    const hasPluginSlash = parsed.commands.some((c) => c.kind === 'plugin')
+    if (hasPluginSlash && messageBody) {
+      coreNotify(opts.t('chat.slash.pluginWithBody'), undefined, {
+        level: 'warning',
+        timeout: 6000,
+      })
+      return
+    }
+
     maybeWarnUnmatchedAtSlash(raw)
 
     opts.recordInputHistoryOnSend?.(raw)
 
     if (parsed.commands.length > 0) {
-      await runSlashCommands(parsed.commands)
+      await runSlashCommands(parsed.commands, raw)
     }
 
-    const messageBody = parsed.body.trim()
     if (!messageBody) {
       opts.userInput.value = ''
       opts.clearComposerAfterSlash?.()

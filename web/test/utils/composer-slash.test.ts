@@ -1,11 +1,17 @@
 import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
+import { describe, it, beforeEach, afterEach } from 'node:test'
 import {
   canSubmitComposerInput,
   parseAtSlashDisplayNames,
   parseComposerSubmit,
   submitComposerParse,
 } from '../../src/utils/composer-slash.js'
+import {
+  clearComposerSlashPluginCommandsForTests,
+  getComposerSlashPluginHandler,
+  registerComposerSlashCommand,
+  unregisterComposerSlashCommandsForPlugin,
+} from '../../src/utils/composer-slash-registry.js'
 
 describe('parseComposerSubmit', () => {
   it('plain message without slash', () => {
@@ -100,5 +106,65 @@ describe('submitComposerParse', () => {
     const r = submitComposerParse('/@ Alice hi', { boundDisplayNames: ['Alice'] })
     assert.deepEqual(r.speakerQueue, ['Alice'])
     assert.equal(r.body, 'hi')
+  })
+})
+
+describe('plugin slash (generic fixture)', () => {
+  beforeEach(() => {
+    clearComposerSlashPluginCommandsForTests()
+  })
+  afterEach(() => {
+    clearComposerSlashPluginCommandsForTests()
+  })
+
+  it('registered command is stripped from body and parsed as plugin', () => {
+    registerComposerSlashCommand('fixture-cmd', () => undefined, {
+      example: '/fixture-cmd demo',
+    })
+    const r = parseComposerSubmit('/fixture-cmd alpha beta')
+    assert.deepEqual(r.commands, [
+      { kind: 'plugin', name: 'fixture-cmd', args: 'alpha beta' },
+    ])
+    assert.equal(r.body, '')
+  })
+
+  it('allows plugin-only submit without chat body', () => {
+    registerComposerSlashCommand('fixture-cmd', () => undefined)
+    assert.equal(canSubmitComposerInput('/fixture-cmd'), true)
+  })
+
+  it('plugin command with following body still parses both (host send policy blocks)', () => {
+    registerComposerSlashCommand('fixture-cmd', () => undefined)
+    const r = parseComposerSubmit('/fixture-cmd args\nhello')
+    assert.deepEqual(r.commands, [
+      { kind: 'plugin', name: 'fixture-cmd', args: 'args' },
+    ])
+    assert.equal(r.body, 'hello')
+    assert.equal(canSubmitComposerInput('/fixture-cmd args\nhello'), true)
+  })
+
+  it('unregisterComposerSlashCommandsForPlugin removes only that plugin', () => {
+    registerComposerSlashCommand(
+      'fixture-cmd',
+      () => undefined,
+      { pluginId: 'fixture-plugin-a' },
+    )
+    registerComposerSlashCommand(
+      'other-cmd',
+      () => undefined,
+      { pluginId: 'fixture-plugin-b' },
+    )
+    unregisterComposerSlashCommandsForPlugin('fixture-plugin-a')
+    assert.equal(getComposerSlashPluginHandler('fixture-cmd'), undefined)
+    assert.ok(getComposerSlashPluginHandler('other-cmd'))
+    const r = parseComposerSubmit('/fixture-cmd alone')
+    assert.deepEqual(r.commands, [])
+    assert.equal(r.body, '/fixture-cmd alone')
+  })
+
+  it('unregistered slash remains body (no host specialization)', () => {
+    const r = parseComposerSubmit('/fixture-cmd alone')
+    assert.deepEqual(r.commands, [])
+    assert.equal(r.body, '/fixture-cmd alone')
   })
 })

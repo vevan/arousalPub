@@ -1990,24 +1990,34 @@ function openSessionSettings(host) {
     host.openFormDialog(PLUGIN_ID, model, DIALOG_SESSION);
   });
 }
-function openManualSummarize(host, preset) {
-  loadMergedSettings(host).then((s) => {
+async function openManualSummarize(host, preset) {
+  try {
+    const s = await loadMergedSettings(host);
     registerSummarizeDialog(host, s, "manual");
+    const rangePreset = typeof preset?.startTurn === "number" && typeof preset?.endTurn === "number" ? { startTurn: preset.startTurn, endTurn: preset.endTurn } : void 0;
     const { startTurn, endTurn } = manualSummarizeDefaultRange(
       s,
-      preset,
+      rangePreset,
       maxTurnOrdinal(host)
     );
+    const selectedTasks = Array.isArray(preset?.selectedTasks) ? [...preset.selectedTasks] : [...s.manualSummarizeTasks];
     host.openFormDialog(
       PLUGIN_ID,
       {
         startTurn,
         endTurn,
-        selectedTasks: [...s.manualSummarizeTasks]
+        selectedTasks
       },
       DIALOG_MANUAL
     );
-  });
+  } catch (e) {
+    host.ui.notify(
+      host.t(k(host, "slashErrOpenManualFailed")),
+      void 0,
+      { level: "warning" }
+    );
+    console.warn("[plot-summary] openManualSummarize failed", e);
+  }
 }
 function openEnableLongDialog(host, settings) {
   const { startTurn, endTurn } = tailAnchoredBlockRange(maxTurnOrdinal(host), settings);
@@ -2126,6 +2136,159 @@ function registerLifecycle(host) {
       }
     });
   });
+}
+
+// plugins/plot-summary/src/parse-plot-slash.ts
+var RANGE_RE = /^(\d+)-(\d+)$/;
+function parseRangeToken(token) {
+  const m = RANGE_RE.exec(token);
+  if (!m) return { ok: false, code: "invalid_range" };
+  const scopeStart = Number.parseInt(m[1], 10);
+  const scopeEnd = Number.parseInt(m[2], 10);
+  if (!Number.isFinite(scopeStart) || !Number.isFinite(scopeEnd) || scopeStart < 0 || scopeEnd < scopeStart) {
+    return { ok: false, code: "invalid_range" };
+  }
+  return { ok: true, scopeStart, scopeEnd };
+}
+function parseEntryName(rest) {
+  const s = rest.trim();
+  if (!s) return { ok: false, code: "missing_entry" };
+  if (s.startsWith('"')) {
+    let i = 1;
+    let name2 = "";
+    let closed = false;
+    while (i < s.length) {
+      const ch = s[i];
+      if (ch === "\\" && i + 1 < s.length) {
+        name2 += s[i + 1];
+        i += 2;
+        continue;
+      }
+      if (ch === '"') {
+        closed = true;
+        i += 1;
+        break;
+      }
+      name2 += ch;
+      i += 1;
+    }
+    if (!closed) return { ok: false, code: "unclosed_quote" };
+    const trimmedName = name2.trim();
+    if (!trimmedName) return { ok: false, code: "missing_entry" };
+    return { ok: true, name: trimmedName, remainder: s.slice(i).trim() };
+  }
+  const space = s.search(/\s/);
+  if (space < 0) {
+    return { ok: true, name: s, remainder: "" };
+  }
+  const name = s.slice(0, space);
+  const remainder = s.slice(space + 1).trim();
+  if (!name) return { ok: false, code: "missing_entry" };
+  if (remainder && !RANGE_RE.test(remainder)) {
+    return { ok: false, code: "unquoted_spaces" };
+  }
+  return { ok: true, name, remainder };
+}
+function parsePlotSlashArgs(args) {
+  const trimmed = args.trim();
+  if (!trimmed) return { ok: true, kind: "bare" };
+  const space = trimmed.search(/\s/);
+  const type = (space < 0 ? trimmed : trimmed.slice(0, space)).toLowerCase();
+  const rest = space < 0 ? "" : trimmed.slice(space + 1).trim();
+  if (type === "summary") {
+    if (!rest) return { ok: true, kind: "summary" };
+    const range = parseRangeToken(rest);
+    if (!range.ok) {
+      if (rest.includes(" ")) return { ok: false, code: "trailing_garbage" };
+      return { ok: false, code: "invalid_range" };
+    }
+    return {
+      ok: true,
+      kind: "summary",
+      scopeStart: range.scopeStart,
+      scopeEnd: range.scopeEnd
+    };
+  }
+  if (type === "sidecar") {
+    const entry = parseEntryName(rest);
+    if (!entry.ok) return entry;
+    if (!entry.remainder) {
+      return { ok: true, kind: "sidecar", entryName: entry.name };
+    }
+    if (entry.remainder.includes(" ")) {
+      return { ok: false, code: "trailing_garbage" };
+    }
+    const range = parseRangeToken(entry.remainder);
+    if (!range.ok) return range;
+    return {
+      ok: true,
+      kind: "sidecar",
+      entryName: entry.name,
+      scopeStart: range.scopeStart,
+      scopeEnd: range.scopeEnd
+    };
+  }
+  return { ok: false, code: "unknown_type" };
+}
+
+// plugins/plot-summary/src/plot-slash.ts
+function notifySlashError(host, code, params) {
+  const keyMap = {
+    unknown_type: "slashErrUnknownType",
+    missing_entry: "slashErrMissingEntry",
+    unquoted_spaces: "slashErrUnquotedSpaces",
+    unclosed_quote: "slashErrUnclosedQuote",
+    invalid_range: "slashErrInvalidRange",
+    trailing_garbage: "slashErrTrailingGarbage",
+    entry_not_found: "slashErrEntryNotFound",
+    entry_ambiguous: "slashErrEntryAmbiguous"
+  };
+  const msgKey = keyMap[code] ?? "slashErrUnknownType";
+  host.ui.notify(host.t(k(host, msgKey), params), void 0, { level: "warning" });
+}
+async function handlePlotSlashCommand(host, args) {
+  const parsed = parsePlotSlashArgs(args);
+  if (!parsed.ok) {
+    notifySlashError(host, parsed.code);
+    return;
+  }
+  if (parsed.kind === "bare") {
+    await openManualSummarize(host);
+    return;
+  }
+  const range = typeof parsed.scopeStart === "number" && typeof parsed.scopeEnd === "number" ? { startTurn: parsed.scopeStart, endTurn: parsed.scopeEnd } : void 0;
+  if (parsed.kind === "summary") {
+    await openManualSummarize(host, {
+      ...range,
+      selectedTasks: ["memory"]
+    });
+    return;
+  }
+  const settings = await loadMergedSettings(host);
+  const entryName = parsed.entryName;
+  const matches = settings.sidecars.filter((sc) => sc.name.trim() === entryName);
+  if (matches.length === 0) {
+    notifySlashError(host, "entry_not_found", { name: entryName });
+    return;
+  }
+  if (matches.length > 1) {
+    notifySlashError(host, "entry_ambiguous", { name: entryName });
+    return;
+  }
+  await openManualSummarize(host, {
+    ...range,
+    selectedTasks: [`sidecar:${matches[0].id}`]
+  });
+}
+function registerPlotSlashCommand(host) {
+  host.registerComposerSlashCommand(
+    "plot",
+    (ctx) => handlePlotSlashCommand(host, ctx.args),
+    {
+      example: "/plot summary 99-150",
+      descriptionKey: k(host, "slashPlotDescription")
+    }
+  );
 }
 
 // plugins/plot-summary/src/range-picker.ts
@@ -2269,6 +2432,7 @@ function register(host) {
   });
   registerRangePicker(host);
   registerLifecycle(host);
+  registerPlotSlashCommand(host);
 }
 export {
   register

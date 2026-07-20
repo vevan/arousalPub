@@ -122,6 +122,19 @@ export interface PluginHost {
     }) => void) => () => void
   }
   registerSlotButton: (slot: string, def: Record<string, unknown>) => void
+  registerComposerSlashCommand: (
+    name: string,
+    handler: (ctx: {
+      conversationId: string
+      raw: string
+      args: string
+    }) => void | Promise<void>,
+    spec?: {
+      id?: string
+      example?: string
+      descriptionKey?: string
+    },
+  ) => void
   registerFormDialog: (pluginId: string, def: Record<string, unknown>, dialogId?: string) => void
   openFormDialog: (
     pluginId: string,

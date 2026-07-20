@@ -82,6 +82,7 @@ export function register(host) {
 | 成员 | 说明 |
 |------|------|
 | `registerSlotButton(slot, def)` | 注册工具栏等 slot 按钮；支持 `menu[]` 子菜单、`when` / `disabled` / 动态 `icon` / 动态 **`class`** |
+| `registerComposerSlashCommand(name, handler, spec?)` | 注册 Composer 行首 slash（S3）；`handler(ctx: { conversationId, raw, args })`；子参数由插件自解析；宿主不特化插件 id；scoped host 自动绑定本插件以便注销 |
 | `registerFormDialog(pluginId, def, dialogId?)` | 注册动作弹框（与设置页 schema 表单分离） |
 | `openFormDialog(pluginId, model, dialogId?)` | 打开已注册弹框 |
 | `refreshSlotButtons()` | 动态改按钮状态后刷新 UI |

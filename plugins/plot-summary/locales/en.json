@@ -351,7 +351,27 @@
 
   "promptTemplateRequired": "Prompt cannot be empty",
 
-  "promptTemplateRestoreDefault": "Restore default"
+  "promptTemplateRestoreDefault": "Restore default",
+
+  "slashPlotDescription": "Historian: open manual summarize. e.g. /plot, /plot summary 99-150, /plot sidecar name 99-150 (name is case-sensitive)",
+
+  "slashErrUnknownType": "Unknown subcommand. Use: /plot, /plot summary [N-M], /plot sidecar name or quoted name [N-M]",
+
+  "slashErrMissingEntry": "Sidecar entry name is required",
+
+  "slashErrUnquotedSpaces": "Names with spaces must be double-quoted, e.g. /plot sidecar \"My Lore\" 99-150",
+
+  "slashErrUnclosedQuote": "Unclosed quote in entry name",
+
+  "slashErrInvalidRange": "Invalid turn range; use N-M (turnOrdinal, 0-based inclusive)",
+
+  "slashErrTrailingGarbage": "Extra or malformed arguments",
+
+  "slashErrEntryNotFound": "No sidecar entry named \"{name}\" (names are case-sensitive)",
+
+  "slashErrEntryAmbiguous": "Multiple sidecar entries named \"{name}\"; rename to unique names",
+
+  "slashErrOpenManualFailed": "Could not open the manual summarize dialog"
 
 }
 

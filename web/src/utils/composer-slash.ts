@@ -1,5 +1,7 @@
 /** Composer 行首 Slash 命令解析（与 turns 正文分离；输入历史仍存 raw） */
 
+import { getComposerSlashPluginHandler } from './composer-slash-registry.js'
+
 export interface SlashGotoCommand {
   kind: 'goto'
   turnOrdinal: number
@@ -11,7 +13,17 @@ export interface SlashAtCommand {
   names: string[]
 }
 
-export type ParsedSlashCommand = SlashGotoCommand | SlashAtCommand
+/** 插件注册的命令（S3）；name 为 registry 键，args 为 head 之后原文 */
+export interface SlashPluginCommand {
+  kind: 'plugin'
+  name: string
+  args: string
+}
+
+export type ParsedSlashCommand =
+  | SlashGotoCommand
+  | SlashAtCommand
+  | SlashPluginCommand
 
 export interface ComposerSubmitParseResult {
   raw: string
@@ -41,6 +53,11 @@ function parseSlashLineHead(line: string): ParsedSlashCommand | 'unknown' | null
 
   if (head === '@') {
     return { kind: 'at', names: [] }
+  }
+
+  // 通用插件命令：仅当已注册时吞掉该行；未注册仍视为正文（保持旧行为）
+  if (getComposerSlashPluginHandler(head)) {
+    return { kind: 'plugin', name: head, args }
   }
 
   return 'unknown'
@@ -141,13 +158,13 @@ export function collectSpeakerQueueFromCommands(
   return names
 }
 
-/** 是否允许点发送：纯 `/goto` 不要求 API；含正文时仍走聊天发送 */
+/** 是否允许点发送：纯 `/goto` / 插件 slash 不要求 API；含正文时仍走聊天发送 */
 export function canSubmitComposerInput(raw: string): boolean {
   const trimmed = raw.trim()
   if (!trimmed) return false
   const { body, commands } = parseComposerSubmit(trimmed)
   if (body.length > 0) return true
-  return commands.some((c) => c.kind === 'goto')
+  return commands.some((c) => c.kind === 'goto' || c.kind === 'plugin')
 }
 
 export interface SubmitComposerResult {

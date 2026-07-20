@@ -17,6 +17,7 @@ import {
   getPluginProgressAbortSignal,
 } from '@/plugins/plugin-ui-state'
 import { sendPluginNotify } from '@/plugins/plugin-notify'
+import { registerComposerSlashCommand as registerComposerSlashCommandInRegistry } from '@/utils/composer-slash-registry'
 import { useAuthStore } from '@/stores/auth'
 import {
   fetchConversationMeta,
@@ -276,6 +277,15 @@ export function createScopedPluginHost(
     registerSlotButton(slot, def) {
       base.registerSlotButton(slot, { ...def, pluginId: id })
     },
+    registerComposerSlashCommand(name, handler, spec) {
+      registerComposerSlashCommandInRegistry(name, handler, {
+        id: spec?.id,
+        example: spec?.example ?? `/${name.trim()}`,
+        descriptionKey:
+          spec?.descriptionKey ?? 'chat.slash.commands.plugin.description',
+        pluginId: id,
+      })
+    },
     ui: {
       ...base.ui,
       notify(title, body?, opts?: PluginNotifyOptions) {
@@ -342,6 +352,15 @@ export function createPluginWebHost(session: ChatSession): {
       })
       slotButtons.set(slot, list)
     },
+    registerComposerSlashCommand(name, handler, spec) {
+      registerComposerSlashCommandInRegistry(name, handler, {
+        id: spec?.id,
+        example: spec?.example ?? `/${name.trim()}`,
+        descriptionKey:
+          spec?.descriptionKey ?? 'chat.slash.commands.plugin.description',
+      })
+    },
+
     registerFormDialog(pluginId, def, dialogId) {
       formDialogs.set(formDialogKey(pluginId, dialogId), def)
     },

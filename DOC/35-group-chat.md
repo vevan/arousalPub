@@ -1,7 +1,7 @@
 # 群聊（多角色发言轮次）— 设计定案
 
 > **状态**：定案 · **G0–G5 已落地**（2026-07-03）  
-> **关联**：`DOC/03` §6.8（turn/chunk · 群聊落盘）、`DOC/04` **已归档**（G0–G5）、`DOC/14` / `DOC/26`（ST 群聊宏）、Composer Slash（`submitComposer` · **S3 仍开放**）
+> **关联**：`DOC/03` §6.8（turn/chunk · 群聊落盘）、`DOC/04` **已归档**（G0–G5）、`DOC/14` / `DOC/26`（ST 群聊宏）、Composer Slash（`submitComposer` · S0–S4 ✅ · [`DOC/36`](36-composer-slash.md)）
 
 ---
 
@@ -17,7 +17,7 @@
 | `speakerMode` 三选一 + 掷骰竞标 + `groupChatTurnState` | ✅ G3 |
 | Continue 改选 / `[NEXT@]` / 群聊 audit Tab | ✅ G4 |
 | ST 群聊宏 `{{group}}` 等 | ✅ G2（`{{group}}` / `{{groupNotMuted}}`） |
-| Composer Slash / `/@` | ✅ S0–S2、S4；**S3 插件执行**待做）见 [`DOC/36`](36-composer-slash.md) |
+| Composer Slash / `/@` | ✅ S0–S4（插件命令路由 ✅）见 [`DOC/36`](36-composer-slash.md) |
 | `speakerQueue` → turn / chat API | ✅ G1 |
 | 手动 Continue（`groupContinue`） | ✅ G1 |
 
@@ -452,6 +452,6 @@ charN        → 可选；characterIds[N-1]（Phase 2+）
 ## 9. 交叉引用
 
 - 存储 / API：`DOC/03` §6.8
-- 里程碑归档：`DOC/04` **§已归档**（群聊 G0–G5）；**仍开放**：Composer Slash **S3**（插件命令）
+- 里程碑归档：`DOC/04` **§已归档**（群聊 G0–G5）；Composer Slash **S0–S4** 见 [`DOC/36`](36-composer-slash.md)
 - 宏对照：`DOC/26`
 - Slash 宿主：[`DOC/36`](36-composer-slash.md)

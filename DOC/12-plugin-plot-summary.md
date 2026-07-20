@@ -37,7 +37,12 @@
 ## 4. 手动摘要
 
 - 菜单「手动摘要」；区间 picker 两键选 start/end 优先。
-- **默认预填**（无 picker）：`end = T - bufferTurns`，`start = max(0, end - (blockTurns - 1))`（T = 当前最大 turnOrdinal；与自动块等长）。
+- **Composer Slash**（`/plot`，S3 · `[DOC/36](36-composer-slash.md)`）：只打开手动摘要 modal 预填参数，**不**自动跑；用户确认后才写。
+  - `/plot` → 默认区间 + 上次 `manualSummarizeTasks`
+  - `/plot summary [N-M]` → 勾选 memory；省略范围则用 §4 默认预填
+  - `/plot sidecar <name|"含空格名称"> [N-M]` → 仅按 **name**（trim、**大小写敏感**）匹配一条 sidecar；含空格须双引号；重名/未找到报错退出
+  - `N-M` 为 **turnOrdinal** 闭区间（与 UI「第 n 回」、`/goto` 一致，0 起）
+- **默认预填**（无 picker / 无 slash 范围）：`end = T - bufferTurns`，`start = max(0, end - (blockTurns - 1))`（T = 当前最大 turnOrdinal；与自动块等长）。
 - 写盘：开关与指针分次 patch；摘要成功后再更新 `lastSummarizedEnd` / `nextBlockStart`。
 - **Prompt 预览**：插件设置对话框内 **`completeWithContext({ dryRun: true })`** 组装预览（**不进** `chat-audit.json`；见 **`DOC/43` §1.3**）。预览入口与 debug 审计开关联动（`auditDebugEnabled`）。
 
@@ -80,7 +85,7 @@
 
 | 区域 | 路径 |
 |------|------|
-| 插件 Web | `plugins/plot-summary/src/`（`pipeline.ts`、`review.ts`、`prepare-context.ts`、`prompt-preview.ts`） |
+| 插件 Web | `plugins/plot-summary/src/`（`pipeline.ts`、`review.ts`、`prepare-context.ts`、`prompt-preview.ts`、`plot-slash.ts`、`parse-plot-slash.ts`） |
 | 插件 Server hooks | `plugins/plot-summary/src/server/complete-context-hooks.ts` |
 | 宿主管线 | `server/src/plugin-context-blocks-resolve.ts`、`plugin-assemble-prompt.ts`、`plugin-complete-with-context.ts` |
 | 自动摘要 UI | `web/src/utils/plot-summary-auto-summarize-status.ts`、`PlotSummaryAutoSummarizeBlock.vue` |

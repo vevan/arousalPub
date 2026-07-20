@@ -15,20 +15,37 @@ export type SlashCommandHandler = (
 interface PluginSlashRegistration {
   spec: ComposerSlashCommandSpec
   handler: SlashCommandHandler
+  /** 注册来源插件 id（scoped host 注入；用于按插件注销） */
+  pluginId?: string
 }
 
 const pluginCommands = new Map<string, PluginSlashRegistration>()
+/** pluginId → 已注册命令名（小写） */
+const commandsByPluginId = new Map<string, Set<string>>()
 
 export function registerComposerSlashCommand(
   name: string,
   handler: SlashCommandHandler,
-  spec?: Omit<ComposerSlashCommandSpec, 'source' | 'id'> & { id?: string },
+  spec?: Omit<ComposerSlashCommandSpec, 'source' | 'id'> & {
+    id?: string
+    pluginId?: string
+  },
 ): void {
   const key = name.trim().toLowerCase()
   if (!key) return
   const id = spec?.id?.trim() || name.trim()
+  const pluginId = spec?.pluginId?.trim() || undefined
+
+  const prev = pluginCommands.get(key)
+  if (prev?.pluginId) {
+    const set = commandsByPluginId.get(prev.pluginId)
+    set?.delete(key)
+    if (set && set.size === 0) commandsByPluginId.delete(prev.pluginId)
+  }
+
   pluginCommands.set(key, {
     handler,
+    pluginId,
     spec: {
       id,
       example: spec?.example ?? `/${id}`,
@@ -36,6 +53,28 @@ export function registerComposerSlashCommand(
       source: 'plugin',
     },
   })
+
+  if (pluginId) {
+    let set = commandsByPluginId.get(pluginId)
+    if (!set) {
+      set = new Set()
+      commandsByPluginId.set(pluginId, set)
+    }
+    set.add(key)
+  }
+}
+
+/** 注销某插件注册的全部 Composer slash（插件禁用 / 卸载时） */
+export function unregisterComposerSlashCommandsForPlugin(pluginId: string): void {
+  const id = pluginId.trim()
+  if (!id) return
+  const keys = commandsByPluginId.get(id)
+  if (!keys) return
+  for (const key of keys) {
+    const reg = pluginCommands.get(key)
+    if (reg?.pluginId === id) pluginCommands.delete(key)
+  }
+  commandsByPluginId.delete(id)
 }
 
 export function getComposerSlashPluginHandler(
@@ -50,4 +89,10 @@ export function listComposerSlashPluginSpecs(): ComposerSlashCommandSpec[] {
 
 export function listComposerSlashPluginCommands(): string[] {
   return [...pluginCommands.keys()].sort()
+}
+
+/** 单测用：清空插件 slash 注册表 */
+export function clearComposerSlashPluginCommandsForTests(): void {
+  pluginCommands.clear()
+  commandsByPluginId.clear()
 }

@@ -17,6 +17,7 @@ import type {
 import type { useChatSession } from '@/composables/useChatSession'
 import { usePluginPermissionsStore } from '@/stores/plugin-permissions'
 import { apiFetch } from '@/utils/api-fetch'
+import { unregisterComposerSlashCommandsForPlugin } from '@/utils/composer-slash-registry'
 import { fingerprintTurnReceives } from '@/utils/group-chat-turn'
 import { onMounted, ref, watch } from 'vue'
 
@@ -69,6 +70,7 @@ export function usePluginHost(
             )
           : []
         usePluginPermissionsStore().syncFromRegistry(registry.value)
+        prunePluginsMissingFromRegistry()
         registryLoaded.value = true
       } catch (e) {
         console.warn('[plugin-host] registry load failed', e)
@@ -78,6 +80,19 @@ export function usePluginHost(
       }
     })()
     return loadRegistryInflight
+  }
+
+  /** public registry 不再包含的插件：注销其 slash，允许日后重新 ensure 加载 */
+  function prunePluginsMissingFromRegistry(): void {
+    const enabled = new Set(registry.value.map((e) => e.id))
+    let changed = false
+    for (const id of [...loadedPluginIds]) {
+      if (enabled.has(id)) continue
+      unregisterComposerSlashCommandsForPlugin(id)
+      loadedPluginIds.delete(id)
+      changed = true
+    }
+    if (changed) slotButtonRevision.value += 1
   }
 
   async function ensurePluginLoaded(entry: PluginRegistryPublicEntry): Promise<void> {

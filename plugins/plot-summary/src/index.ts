@@ -12,6 +12,7 @@ import {
 } from './dialogs.js'
 import { registerLifecycle } from './lifecycle.js'
 import { registerPromptPreviewDialog } from './prompt-preview.js'
+import { registerPlotSlashCommand } from './plot-slash.js'
 import { registerRangePicker } from './range-picker.js'
 import { registerReviewDialogs } from './review.js'
 import { k } from './settings.js'
@@ -75,4 +76,5 @@ export function register(host: PluginHost) {
 
   registerRangePicker(host)
   registerLifecycle(host)
+  registerPlotSlashCommand(host)
 }

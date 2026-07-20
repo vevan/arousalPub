@@ -1346,6 +1346,8 @@
     "slash": {
       "gotoNotFound": "Turn {n} not found",
       "gotoFuture": "Turn {n} does not exist yet",
+      "pluginWithBody": "Plugin slash commands cannot be sent with a message body. Submit the command alone, or remove it before sending.",
+      "pluginHandlerFailed": "Plugin command /{name} failed",
       "menuAria": "Slash commands",
       "commands": {
         "goto": {

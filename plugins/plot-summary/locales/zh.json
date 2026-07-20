@@ -357,7 +357,27 @@
 
   "promptTemplateRequired": "提示词不能为空",
 
-  "promptTemplateRestoreDefault": "恢复默认"
+  "promptTemplateRestoreDefault": "恢复默认",
+
+  "slashPlotDescription": "剧情纪要：打开手动摘要。例：/plot、/plot summary 99-150、/plot sidecar 名称 99-150（名称大小写敏感）",
+
+  "slashErrUnknownType": "未知子命令。用法：/plot、/plot summary [N-M]、/plot sidecar 名称 或带引号名称 [N-M]",
+
+  "slashErrMissingEntry": "请指定 sidecar 条目名称",
+
+  "slashErrUnquotedSpaces": "名称含空格时须用双引号包裹，例如 /plot sidecar \"My Lore\" 99-150",
+
+  "slashErrUnclosedQuote": "名称引号未闭合",
+
+  "slashErrInvalidRange": "轮次范围无效，请使用 N-M（turnOrdinal，0 起闭区间）",
+
+  "slashErrTrailingGarbage": "参数多余或格式错误",
+
+  "slashErrEntryNotFound": "未找到名为「{name}」的 sidecar 条目（名称大小写敏感）",
+
+  "slashErrEntryAmbiguous": "存在多个名为「{name}」的 sidecar 条目，请改为唯一名称",
+
+  "slashErrOpenManualFailed": "无法打开手动摘要对话框"
 
 }
 

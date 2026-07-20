@@ -525,27 +525,48 @@ export function openSessionSettings(host: PluginHost) {
   })
 }
 
-export function openManualSummarize(
+export async function openManualSummarize(
   host: PluginHost,
-  preset?: { startTurn: number; endTurn: number },
-) {
-  loadMergedSettings(host).then((s) => {
+  preset?: {
+    startTurn?: number
+    endTurn?: number
+    /** 预填勾选：`memory` / `sidecar:<id>`；省略则用上次 manualSummarizeTasks */
+    selectedTasks?: string[]
+  },
+): Promise<void> {
+  try {
+    const s = await loadMergedSettings(host)
     registerSummarizeDialog(host, s, 'manual')
+    const rangePreset =
+      typeof preset?.startTurn === 'number' &&
+      typeof preset?.endTurn === 'number'
+        ? { startTurn: preset.startTurn, endTurn: preset.endTurn }
+        : undefined
     const { startTurn, endTurn } = manualSummarizeDefaultRange(
       s,
-      preset,
+      rangePreset,
       maxTurnOrdinal(host),
     )
+    const selectedTasks = Array.isArray(preset?.selectedTasks)
+      ? [...preset.selectedTasks]
+      : [...s.manualSummarizeTasks]
     host.openFormDialog(
       PLUGIN_ID,
       {
         startTurn,
         endTurn,
-        selectedTasks: [...s.manualSummarizeTasks],
+        selectedTasks,
       },
       DIALOG_MANUAL,
     )
-  })
+  } catch (e) {
+    host.ui.notify(
+      host.t(k(host, 'slashErrOpenManualFailed')),
+      undefined,
+      { level: 'warning' },
+    )
+    console.warn('[plot-summary] openManualSummarize failed', e)
+  }
 }
 
 function openEnableLongDialog(host: PluginHost, settings: MergedSettings) {

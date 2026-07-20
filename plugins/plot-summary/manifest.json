@@ -188,6 +188,7 @@
     ]
   },
   "ui": {
+    "eagerOnRoutes": ["chat"],
     "slots": [
       {
         "name": "composer-toolbar",

@@ -1346,6 +1346,8 @@
     "slash": {
       "gotoNotFound": "未找到第 {n} 回",
       "gotoFuture": "第 {n} 回尚未产生",
+      "pluginWithBody": "插件命令不能与正文同一条发送；请先单独提交命令，或删掉命令后再发消息。",
+      "pluginHandlerFailed": "插件命令 /{name} 执行失败",
       "menuAria": "Slash 命令",
       "commands": {
         "goto": {

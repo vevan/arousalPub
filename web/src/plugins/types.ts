@@ -325,6 +325,22 @@ export type PluginChatSendError = string | undefined
 
 export interface PluginWebHost {
   registerSlotButton(slot: string, def: PluginSlotButtonDef): void
+  /**
+   * 注册 Composer 行首 slash 命令（S3）。
+   * 仅注册命令名与 handler；宿主不解析子参数、不做插件特化。
+   * scoped host 会绑定本插件 id，供 `unregisterComposerSlashCommandsForPlugin` 使用。
+   */
+  registerComposerSlashCommand(
+    name: string,
+    handler: (
+      ctx: { conversationId: string; raw: string; args: string },
+    ) => void | Promise<void>,
+    spec?: {
+      id?: string
+      example?: string
+      descriptionKey?: string
+    },
+  ): void
   registerFormDialog(
     pluginId: string,
     def: PluginFormDialogDef,

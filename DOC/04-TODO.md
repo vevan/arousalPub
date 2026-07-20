@@ -8,11 +8,11 @@
 
 ### Composer Slash
 
-- [ ] **Composer Slash 命令** — 定案见 `[DOC/35](35-group-chat.md)` §2.3（群聊 `/@`）；输入框 `/` 命令层（与聊天 turns、输入历史分离）
+- [x] **Composer Slash 命令** — 定案见 `[DOC/35](35-group-chat.md)` §2.3（群聊 `/@`）；输入框 `/` 命令层（与聊天 turns、输入历史分离）— `[DOC/36](36-composer-slash.md)`
   - [x] **S0** 宿主 `submitComposer` 统一入口 + 命令解析/路由（raw → 命令 + 剩余正文）
   - [x] **S1** 内置 `/goto N` 跳转轮次
   - [x] **S2** 内置 `/@ Name [Name…]` — 解析 + strip；`speakerQueue` 已接入 G1 persist/API；**正文裸** `@` **不参与选人**
-  - [ ] **S3** 插件注册命令（如 `plot-summary` `/summary 36-55`）；输入历史存 raw 提交
+  - [x] **S3** 插件注册命令（`host.registerComposerSlashCommand` + submit 路由）；例：`plot-summary` `/plot summary` / `/plot sidecar …`；输入历史存 raw 提交
   - [x] **S4** Composer `/` 补全菜单（`#composer-slash-layer` + CSS anchor、`60dvh`、两行列表）
 
 
@@ -77,7 +77,7 @@
 - [x] 指导生成 · 指导修改（2026-07-01）：`guidance-generate` `mode: 'revise'` · `assistant-turn-footer` · `reviseSystemPrefix` 设置项 · `DOC/09` §7.1、`DOC/18` §3.3
 - [x] Web 首屏 bundle 体积优化（2026-07-01 · **已验收关闭**）：入口 JS ~1.55 MB → `index` ~190 KB（gzip ~59 KB）；`manualChunks`（vuetify / virtua / vue-i18n / vue-vendor / marked）· 路由与模态懒加载 · i18n 分 locale · `npm run build:analyze`。**不追** `@mdi/font` → `@mdi/js`（woff2 ~403 KB 保留）
 - [x] 群聊设计定案（2026-07-01）：`DOC/35-group-chat.md` — segment 模型、`/@`、裸 `@` 关闭、`[NEXT@Name]`、G0–G4 里程碑
-- [x] Composer Slash S0–S2/S4（2026-07-01）：`submitComposer`、`/goto`、`/@`、补全浮层 — 见 `[DOC/36](36-composer-slash.md)`；**S3 插件执行**仍开放
+- [x] Composer Slash S0–S4（2026-07-01 / S3 2026-07-20）：`submitComposer`、`/goto`、`/@`、插件 `registerComposerSlashCommand`、补全浮层 — 见 `[DOC/36](36-composer-slash.md)`
 - [x] 架构/接口变更时同步 `DOC/01`–`03`（2026-07-02）：预设编辑/全局分离、`chat.index` 写锁与列表统计、群聊成员头像 — 见 `DOC/03` §1.2、§7.1、§15.10 · `DOC/35` §2.2
 - [x] 群聊选人模型修订定案（2026-07-02）：`speakerMode` 三选一、掷骰竞标、额度与不连说、`next@` hint 失败仅手动 — 见 `DOC/35` §2.6–§3、§8
 - [x] 群聊 G3/G4 实现 + audit 按 segment 落盘（2026-07-03）：`groupChatTurnState` · 掷骰 roster · `ChatTurnPromptDialog` 群聊 Tab · `(turnId, segmentIndex)` 去重 — 见 `DOC/24` §3.2–§3.4、`DOC/35` §7

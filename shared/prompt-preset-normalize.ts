@@ -205,7 +205,7 @@ export function normalizePresetCore(
     )
   }
 
-  // 缺 Before/After 时补进 World 组；不改已有槽位的分组/顺序（由用户维护）
+  // 缺 boundWorldBefore 时补进 World 组末尾；不挪已有槽位
   if (worldG) {
     prompts = ensureSystemSubBlocks(
       prompts,
@@ -241,6 +241,25 @@ export function normalizePresetCore(
       (slot, order, id, enabled = true) =>
         deps.makeBindingSlotEntry(charG.id, slot, order, id, enabled),
     )
+  }
+
+  // 缺 boundWorldAfter：角色组末尾；无角色组则回退 World 组末尾
+  if (!prompts.some((e) => e.bindingSlot === 'boundWorldAfter')) {
+    const afterHost = charG ?? worldG
+    if (afterHost) {
+      const maxOrder = prompts
+        .filter((e) => e.groupId === afterHost.id)
+        .reduce((m, e) => Math.max(m, e.order), -1)
+      prompts = [
+        ...prompts,
+        deps.makeBindingSlotEntry(
+          afterHost.id,
+          'boundWorldAfter',
+          maxOrder + 1,
+          'binding-slot-boundWorldAfter',
+        ),
+      ]
+    }
   }
 
   return { ...p, groups: normalizeGroups(p.groups), prompts }

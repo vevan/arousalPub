@@ -157,18 +157,11 @@ export function resolveNextSpeakerForTurn(params: {
     }
   }
 
-  // dice
-  const eligible = listEligibleCharacterIds({
-    characterIds: params.characterIds,
-    settings: groupChat,
-    turnState,
-    lastSpeakerCharacterId: lastSpeaker,
-  })
+  // dice：资格由 resolveDiceSkipReason 自算；审计含全员（含 skip）
   const dice = diceBiddingPick({
     groupChat,
     characterIds: params.characterIds,
     turnState,
-    eligibleIds: eligible,
     segmentCount,
     conversationId: params.conversationId,
     turnOrdinal: params.turn.turnOrdinal,
@@ -258,17 +251,10 @@ export function resolveFirstSegmentSpeaker(params: {
   }
 
   // dice 或 next@ 首段
-  const eligible = listEligibleCharacterIds({
-    characterIds: params.characterIds,
-    settings: groupChat,
-    turnState,
-    lastSpeakerCharacterId: null,
-  })
   const dice = diceBiddingPick({
     groupChat,
     characterIds: params.characterIds,
     turnState,
-    eligibleIds: eligible,
     segmentCount: 0,
     conversationId: params.conversationId,
     turnOrdinal: params.turnOrdinal,

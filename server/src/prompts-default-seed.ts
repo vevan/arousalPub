@@ -107,14 +107,22 @@ type PresetBindingGroupIds = {
 }
 
 function buildBindingSlotPrompts(groupIds: PresetBindingGroupIds) {
+  const characterSlots = DEFAULT_CHARACTER_SYSTEM_SLOTS.map((slot, i) =>
+    makeBindingSlotEntry(
+      groupIds.character,
+      slot,
+      i,
+      `binding-slot-${slot.replace(/^bound/, '')}`,
+    ),
+  )
   return [
-    ...DEFAULT_CHARACTER_SYSTEM_SLOTS.map((slot, i) =>
-      makeBindingSlotEntry(
-        groupIds.character,
-        slot,
-        i,
-        `binding-slot-${slot.replace(/^bound/, '')}`,
-      ),
+    ...characterSlots,
+    // After 默认挂在 Character 末尾（与 normalize 缺槽补全一致）
+    makeBindingSlotEntry(
+      groupIds.character,
+      'boundWorldAfter',
+      characterSlots.length,
+      'binding-slot-WorldAfter',
     ),
     ...DEFAULT_WORLD_SYSTEM_SLOTS.map((slot, i) =>
       makeBindingSlotEntry(

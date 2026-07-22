@@ -11,11 +11,21 @@ import {
 
 describe('prompts-default-seed', () => {
   it('seeds default + group chat presets', () => {
-    const def = buildDefaultPromptPreset() as { id: string; prompts: unknown[] }
+    const def = buildDefaultPromptPreset() as {
+      id: string
+      prompts: Array<{ bindingSlot?: string; groupId: string; order: number }>
+    }
     const group = buildGroupChatPromptPreset() as {
       id: string
       name: string
-      prompts: Array<{ id: string; enabled: boolean; content: string }>
+      prompts: Array<{
+        id: string
+        enabled: boolean
+        content: string
+        bindingSlot?: string
+        groupId: string
+        order: number
+      }>
     }
     assert.equal(def.id, DEFAULT_PROMPT_PRESET_ID)
     assert.equal(group.id, GROUP_CHAT_PRESET_ID)
@@ -26,6 +36,20 @@ describe('prompts-default-seed', () => {
     assert.ok(groupSeeds.some((p) => p.content.includes('{{group}}')))
     assert.ok(groupSeeds.some((p) => p.content.includes('{{notChar}}')))
     assert.ok(groupSeeds.some((p) => p.content.includes('{{charIfNotGroup}}')))
+
+    const defBefore = def.prompts.find((p) => p.bindingSlot === 'boundWorldBefore')
+    const defAfter = def.prompts.find((p) => p.bindingSlot === 'boundWorldAfter')
+    assert.equal(defBefore?.groupId, 'group-world')
+    assert.equal(defAfter?.groupId, 'group-character')
+    const charMax = def.prompts
+      .filter((p) => p.groupId === 'group-character')
+      .reduce((m, p) => Math.max(m, p.order), -1)
+    assert.equal(defAfter?.order, charMax)
+
+    const gcBefore = group.prompts.find((p) => p.bindingSlot === 'boundWorldBefore')
+    const gcAfter = group.prompts.find((p) => p.bindingSlot === 'boundWorldAfter')
+    assert.equal(gcBefore?.groupId, 'group-chat-world')
+    assert.equal(gcAfter?.groupId, 'group-chat-character')
   })
 
   it('isPromptsSeedPut matches both seed presets', () => {

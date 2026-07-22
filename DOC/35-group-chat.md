@@ -26,7 +26,7 @@
 ### 1.2 与多卡绑定的关系
 
 - **绑定多卡 ≠ 群聊**：仅 `groupChat.enabled === true` 时启用多 segment 接龙。
-- **新建多人对话**（≥2 bot）：创建时默认写入开启群聊的初始设置（掷骰竞标、`confirmContinue`、额度 2、衰减开、`maxSegmentsPerTurn = bot数+2`、成员色预分配）；单 bot 仍不开启。
+- **定案 · 新建多人对话**（≥2 bot）：创建时**默认开启群聊**并写入 `initialMultiBotGroupChatSettings`（掷骰竞标、`confirmContinue`、额度 2、衰减开、`maxSegmentsPerTurn = bot数+2`、成员色预分配）。单 bot / 旧会话不自动开启；用户仍可在群聊对话框关闭。
 - **未开群聊**：默认 **char1**（`characterIds[0]`）生成 **1 段**；`/@` 仍可强制指定任意已绑定角色（1 段）。
 - 角色卡 XML 组装逻辑不变；本文只定义 **发言轮次、选人、接续标记**。
 
@@ -119,7 +119,9 @@ AssistantSegment {
 
 **UI**：对话顶栏 `chat-header` 群聊图标 → 开关、`speakerMode`、`autoContinue` / `confirmContinue`、`maxSegmentsPerTurn`、**群聊提示词**（全模式）、**接续提示词**（仅 `next@`）、衰减与额度、**成员列表**（角色立绘头像、`characterImageUrl` size `s`、displayName、**颜色 picker**〔`members[].color`〕、权重〔`dice`/`next@`〕、静音、上下排序〔`sequential`〕改 `characterIds`）。群聊开启时聊天区按 `speakerCharacterId` 给助手头像边框与气泡上色（见 `DOC/03` 群聊 UI）。
 
-**流式首段 speaker**：组装（含掷骰）结束后服务端立刻开 SSE，经 `X-Speaker-Character-Id` / `arousal.speakerCharacterId` 下发当选 bot；前端 `patchPendingSpeakerCharacterId` 更新 pending 气泡。**不以客户端复算掷骰**；无 `/@` 时 pending 初始可为空，群聊未知 speaker 不回退 `characterIds[0]`。
+**流式首段 speaker**：组装（含掷骰）结束后服务端立刻开 SSE（HTTP **仍为 2xx**），经响应头 `X-Speaker-Character-Id` 与首包 `data: {"arousal":{"speakerCharacterId":"…"}}` 下发当选 bot；前端 `patchPendingSpeakerCharacterId` 更新 pending 气泡。**不以客户端复算掷骰**；无 `/@` 时 pending 初始可为空，群聊未知 speaker 不回退 `characterIds[0]`。
+
+**流式错误契约（定案）**：因 speaker 早下发，上游 `fetch` 失败 / 非 2xx / 管道错误**不再**改写为 HTTP 502；改为同流内 `data: {"arousal":{"error":"<code>","detail?":"…"}}`（`formatArousalStreamErrorSseLine`）后结束。客户端须解析 SSE `arousal.error`（本仓 `readSseStream` 会 throw），**不能**只看 HTTP status。客户端中止生成时走既有 abort 绑定，避免旧流回写新会话。
 
 ### 2.3 用户指定发言者：`/@`（Slash 内置）
 

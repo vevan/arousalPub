@@ -62,7 +62,7 @@
 | [`31`](31-main-layout-plugin-rails.md) | ✅ | **主布局三列 Grid**、插件 left/right rail、`routes` 路由门控、`hidden`、统一空态 |
 | [`32`](32-plugin-user-settings-cache.md) | ✅ | 全局 `getUserSettings` 缓存 + 订阅（对齐 `DOC/21` 会话 store · `a7ca4ea`） |
 | [`33`](33-mobile-compatibility.md) | **Phase 1** | 40rem rail overlay + hidden 持久化；余 composer/安全区验收 |
-| [`35`](35-group-chat.md) | ✅ **G0–G5** + 成员色 / 流式 speaker | **群聊**：segment、`speakerMode`、宏、成员色、组装后早下发 speaker |
+| [`35`](35-group-chat.md) | ✅ **G0–G5** + 成员色 / 流式 speaker | **群聊**：segment、`speakerMode`、宏、成员色、组装后早下发 speaker、流式 `arousal.error` |
 | [`36`](36-composer-slash.md) | ✅ **已归档**（2026-07-20） | **Composer Slash** S0–S4：`submitComposer`、`/goto`、`/@`、插件 `registerComposerSlashCommand`、补全浮层、Historian `/plot` |
 | [`37`](37-st-import-settings-tab.md) | 定案 **P2** | **设置「导入」Tab**：ST 聊天记录 / 世界书 / 提示词预设（预设委托 `PromptsView` 原流程） |
 

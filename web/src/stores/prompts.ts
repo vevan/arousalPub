@@ -74,7 +74,6 @@ const DEFAULT_CHARACTER_SYSTEM_SLOTS: PromptBindingSlot[] = [
 
 const DEFAULT_WORLD_SYSTEM_SLOTS: PromptBindingSlot[] = [
   'boundWorldBefore',
-  'boundWorldAfter',
 ]
 
 const DEFAULT_HISTORY_SYSTEM_SLOTS: PromptBindingSlot[] = [

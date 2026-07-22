@@ -105,7 +105,7 @@ interface EmbeddedLorebook {
 
 ### 4.3 `position` 与组装槽位
 
-默认预设分组顺序：**Character → World → History**（`prompts-default-seed`）。`before_char` / `after_char` 分别注入 `boundWorldBefore` / `boundWorldAfter`（ST：`worldInfoBefore` / `worldInfoAfter`）；**槽位所在组与相对顺序由用户维护**，normalize 仅补缺槽、不挪位。ST 导入可将 After 交错进 Character 组。
+默认预设分组顺序：**Character → World → History**（`prompts-default-seed`）。`before_char` / `after_char` 分别注入 `boundWorldBefore` / `boundWorldAfter`（ST：`worldInfoBefore` / `worldInfoAfter`）。**默认种子**：Before 在 World；After 在 Character 末尾。**已有槽位**所在组与相对顺序由用户维护，normalize **不挪位**。缺槽补全：**缺 `boundWorldBefore` → World 组末尾**；**缺 `boundWorldAfter` → Character 组末尾**（无 Character 组则回退 World 末尾）。ST 导入可将 After 交错进 Character 组。
 
 | `position` | 注入落点 |
 |------------|----------|

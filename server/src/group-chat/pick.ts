@@ -140,13 +140,11 @@ export function diceBiddingPick(params: {
   groupChat: GroupChatSettings
   characterIds: string[]
   turnState: GroupChatTurnState
-  eligibleIds: string[]
   segmentCount: number
   conversationId: string
   turnOrdinal: number
   lastSpeakerCharacterId?: string | null
 }): DiceBiddingResult {
-  void params.eligibleIds
   const settings = normalizeGroupChatSettings(params.groupChat)
   const decay = settings.decay ?? defaultGroupChatDecaySettings()
   let turnState = cloneGroupChatTurnState(params.turnState)
@@ -303,17 +301,10 @@ export function resolveFirstSegmentSpeakerId(params: {
     )
   }
 
-  const eligible = listEligibleCharacterIds({
-    characterIds: params.characterIds,
-    settings: groupChat,
-    turnState,
-    lastSpeakerCharacterId: null,
-  })
   const dice = diceBiddingPick({
     groupChat,
     characterIds: params.characterIds,
     turnState,
-    eligibleIds: eligible,
     segmentCount: 0,
     conversationId: params.conversationId,
     turnOrdinal: params.turnOrdinal,

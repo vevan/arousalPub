@@ -71,6 +71,7 @@ describe('normalizePresetForAssemble', () => {
         'boundCharDescription',
         'boundCharPersonality',
         'boundScenario',
+        'boundWorldAfter',
       ],
     )
     assert.deepEqual(
@@ -79,7 +80,7 @@ describe('normalizePresetForAssemble', () => {
     )
     assert.deepEqual(
       bindingOrder(out, 'group-world').map((x) => x.slot),
-      ['boundWorldBefore', 'boundWorldAfter'],
+      ['boundWorldBefore'],
     )
     assert.deepEqual(
       bindingOrder(out, 'group-user-input').map((x) => x.slot),
@@ -238,7 +239,7 @@ describe('normalizePresetForAssemble', () => {
     assert.equal(persona?.enabled, true)
   })
 
-  it('backfills boundWorldAfter into World when only Before exists', () => {
+  it('backfills boundWorldAfter at end of Character when only Before exists', () => {
     const out = normalizePresetForAssemble(
       makePreset([
         makeEntry({
@@ -249,8 +250,33 @@ describe('normalizePresetForAssemble', () => {
         }),
       ]),
     )
-    const worldSlots = bindingOrder(out, 'group-world').map((x) => x.slot)
-    assert.deepEqual(worldSlots, ['boundWorldBefore', 'boundWorldAfter'])
+    assert.deepEqual(
+      bindingOrder(out, 'group-world').map((x) => x.slot),
+      ['boundWorldBefore'],
+    )
+    const charSlots = bindingOrder(out, 'group-character')
+    assert.equal(charSlots[charSlots.length - 1]?.slot, 'boundWorldAfter')
+  })
+
+  it('backfills boundWorldBefore into World when only After exists', () => {
+    const out = normalizePresetForAssemble(
+      makePreset([
+        makeEntry({
+          id: 'wi-after',
+          groupId: 'group-character',
+          order: 0,
+          bindingSlot: 'boundWorldAfter',
+        }),
+      ]),
+    )
+    assert.deepEqual(
+      bindingOrder(out, 'group-world').map((x) => x.slot),
+      ['boundWorldBefore'],
+    )
+    assert.equal(
+      out.prompts.find((e) => e.bindingSlot === 'boundWorldAfter')?.groupId,
+      'group-character',
+    )
   })
 
   it('does not relocate existing Before/After when World is after Character', () => {

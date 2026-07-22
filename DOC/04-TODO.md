@@ -4,7 +4,7 @@
 
 ## P0
 
-- [x] **世界书条目插入位置（角色前/后）** — 条目 `position: before_char | after_char`（缺省 after）；匹配结果分别注入 `boundWorldBefore` / `boundWorldAfter`（取消共用一次消费）；ST 世界书导入映射 `position`/`0|1`。与 `[DOC/27](27-embedded-character-book.md)` 内嵌书 position 共用语义，会话 lore 先行。
+- [x] **世界书条目插入位置（角色前/后）** — 条目 `position: before_char | after_char`（缺省 after）；匹配结果分别注入 `boundWorldBefore` / `boundWorldAfter`（取消共用一次消费）；ST 世界书导入映射 `position`/`0|1`。缺槽：Before → World；After → Character 末尾（与默认种子对齐）。与 `[DOC/27](27-embedded-character-book.md)` 内嵌书 position 共用语义，会话 lore 先行。
 - [x] 提示词和lorebook添加多选及批量复制、移动功能（包括其它预设及组）
 - [x] 为群聊的bot添加颜色picker（或在对话创建时自动随机选择颜色，并可修改），反应在头像边框和对话气泡上用来区分角色
 
@@ -114,5 +114,8 @@
 | **首轮审计 ordinal / turnId**（落盘回写 · `messagesLoading` 禁发 · 按 turnId 回退） | 2026-07-22 | `[DOC/03](03-实现细节.md)` · `use-chat-outbound` / `useChatSession` / `ChatConversationView` |
 | **远期记忆增量漏 FTS 戳记误报重建**（增量写 `memoryHybridFtsProfile` · 空戳记启发式） | 2026-07-22 | `[DOC/03](03-实现细节.md)` §11.5 · `memory-index.ts` · `shouldOfferMemoryRebuild` |
 | **流式首段 speaker 早下发**（组装后 SSE/`X-Speaker-Character-Id` · `patchPendingSpeakerCharacterId`） | 2026-07-22 | `[DOC/35](35-group-chat.md)` · `[DOC/03](03-实现细节.md)` §6.8 · `sse-assistant.ts` / `chat-api.ts` |
+| **流式上游失败改 SSE `arousal.error`**（早开流后 HTTP 仍 2xx · 客户端须解析事件） | 2026-07-22 | `[DOC/35](35-group-chat.md)` §2.2 · `[DOC/03](03-实现细节.md)` §6.8 |
+| **缺槽 After → Character 末尾**（种子 / normalize 对齐 · `DEFAULT_WORLD` 仅 Before） | 2026-07-22 | `[DOC/27](27-embedded-character-book.md)` §4.3 · `[DOC/03](03-实现细节.md)` §15.9 · `prompt-preset-normalize` / `prompts-default-seed` |
+| **掷骰去掉死参数 `eligibleIds`**（资格由 `resolveDiceSkipReason` · 审计仍含全员） | 2026-07-22 | `group-chat/pick.ts` · `resolve.ts` |
 
 

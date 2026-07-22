@@ -5,7 +5,7 @@
 ## P0
 
 - [x] **世界书条目插入位置（角色前/后）** — 条目 `position: before_char | after_char`（缺省 after）；匹配结果分别注入 `boundWorldBefore` / `boundWorldAfter`（取消共用一次消费）；ST 世界书导入映射 `position`/`0|1`。与 `[DOC/27](27-embedded-character-book.md)` 内嵌书 position 共用语义，会话 lore 先行。
-- [ ] 提示词和lorebook添加多选及批量复制、移动功能（其它预设及组）
+- [x] 提示词和lorebook添加多选及批量复制、移动功能（包括其它预设及组）
 - [ ] 为群聊的bot添加颜色picker（或在对话创建时自动随机选择颜色，并可修改），反应在头像边框和对话气泡上用来区分角色
 
 ## P1
@@ -108,5 +108,6 @@
 | **通知中心（NC0–NC-F1 + NC-F3 + NC-V）**                                                                                         | 2026-07-09             | `[DOC/40](40-notification-center.md)` · 迁移验收 `[DOC/45](45-notification-center-core-migration.md)` §6.10 · **延后** NC-F2 Server 推送                                                          |
 | **用户文件库 M1–M5 + 独立文档 RAG + Markdown 导入**（`files/` · 角色/对话绑定 · 引用检查/强删 · 知识库切片召回 · IVF_PQ ANN · front matter 剥离）            | 2026-07-17             | `[DOC/20](20-user-file-library.md)` · `[DOC/46](46-document-rag.md)` · `[DOC/03](03-实现细节.md)` §17 · §14.4.2                                                                               |
 | **Composer Slash S0–S4**（`submitComposer` · `/goto` · `/@` · 插件 `registerComposerSlashCommand` · 补全浮层 · Historian `/plot`） | 2026-07-20 · `fd80c7f` | `[DOC/36](36-composer-slash.md)` · `[DOC/35](35-group-chat.md)` §2.3 · `[DOC/03](03-实现细节.md)` §11.5 · `[DOC/12](12-plugin-plot-summary.md)` · `[DOC/18](18-plugin-host-developer-api.md)` |
+| **提示词 / 世界书多选批量复制·移动**（跨预设 / 跨书 · 跳过 bindingSlot） | 2026-07-22 | `[DOC/03](03-实现细节.md)` §13.4 · §15.11 · `entry-batch-transfer.ts` · `EntryBatchTargetDialog` |
 
 

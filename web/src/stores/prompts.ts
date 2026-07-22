@@ -1,5 +1,13 @@
 import { allocateShortId, generateShortId } from '@/utils/short-id'
-import { promptEntryAllowedInGroup } from '@/utils/entry-group-transfer'
+import {
+  promptEntryAllowedInGroup,
+  promptGroupPickerItems,
+} from '@/utils/entry-group-transfer'
+import {
+  partitionPromptIdsForBatch,
+  rebuildEntriesAfterRemoval,
+  rebuildEntriesAfterSameLibraryMove,
+} from '@/utils/entry-batch-transfer'
 import {
   finalizeCharacterGroupBindings,
   findBundleDragPartner,
@@ -334,6 +342,8 @@ export const usePromptsStore = defineStore('prompts', () => {
   )
 
   const selectedPromptId = ref<string | null>(null)
+  const multiSelectMode = ref(false)
+  const selectedPromptIds = ref<string[]>([])
   const activeGroupId = ref<string | null>(null)
   const searchText = ref('')
 
@@ -385,11 +395,6 @@ export const usePromptsStore = defineStore('prompts', () => {
   let pendingIndexPatch = false
   const SAVE_BATCH_MS = 150
   const lastPersistedBodies: Record<string, string> = {}
-
-  function presetBodySnapshot(presetId: string): string {
-    const body = presetBodies.value[presetId]
-    return body ? JSON.stringify(body) : ''
-  }
 
   function scheduleSave() {
     if (!loaded.value || !activePresetReady.value) return
@@ -445,29 +450,30 @@ export const usePromptsStore = defineStore('prompts', () => {
   }
 
   async function flushSave(): Promise<void> {
-    const presetId = editingPresetId.value
-    const body = presetBodies.value[presetId]
-    if (!body) return
-    const snapshot = presetBodySnapshot(presetId)
-    if (snapshot && snapshot === lastPersistedBodies[presetId]) return
-    const res = await fetch(
-      `/api/prompts/${encodeURIComponent(presetId)}`,
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      },
-    )
-    if (!res.ok) {
-      const txt = await res.text()
-      throw new Error(
-        `PUT /api/prompts/${presetId} ${res.status}: ${txt.slice(0, 200)}`,
+    for (const presetId of Object.keys(presetBodies.value)) {
+      const body = presetBodies.value[presetId]
+      if (!body) continue
+      const snapshot = JSON.stringify(body)
+      if (snapshot && snapshot === lastPersistedBodies[presetId]) continue
+      const res = await fetch(
+        `/api/prompts/${encodeURIComponent(presetId)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
       )
+      if (!res.ok) {
+        const txt = await res.text()
+        throw new Error(
+          `PUT /api/prompts/${presetId} ${res.status}: ${txt.slice(0, 200)}`,
+        )
+      }
+      const j = (await res.json()) as { savedAt?: string }
+      if (typeof j.savedAt === 'string') lastSavedAt.value = j.savedAt
+      lastPersistedBodies[presetId] = snapshot
+      syncIndexEntryFromBody(body)
     }
-    const j = (await res.json()) as { savedAt?: string }
-    if (typeof j.savedAt === 'string') lastSavedAt.value = j.savedAt
-    lastPersistedBodies[presetId] = snapshot
-    syncIndexEntryFromBody(body)
   }
 
   async function flushPending(): Promise<boolean> {
@@ -1000,6 +1006,10 @@ export const usePromptsStore = defineStore('prompts', () => {
       }
       if (!(await flushPending())) return false
     }
+    if (multiSelectMode.value) {
+      multiSelectMode.value = false
+      selectedPromptIds.value = []
+    }
     editingPresetId.value = presetId
     selectedPromptId.value = null
     activeGroupId.value = null
@@ -1207,6 +1217,236 @@ export const usePromptsStore = defineStore('prompts', () => {
     activeGroupId.value = gid
     selectedPromptId.value = id
     return true
+  }
+
+  function enterMultiSelect() {
+    multiSelectMode.value = true
+    selectedPromptIds.value = []
+    selectedPromptId.value = null
+  }
+
+  function exitMultiSelect() {
+    multiSelectMode.value = false
+    selectedPromptIds.value = []
+  }
+
+  function togglePromptMultiSelected(promptId: string) {
+    const entry = activePreset.value.prompts.find((e) => e.id === promptId)
+    if (!entry || entry.bindingSlot) return
+    const set = new Set(selectedPromptIds.value)
+    if (set.has(promptId)) set.delete(promptId)
+    else set.add(promptId)
+    selectedPromptIds.value = [...set]
+  }
+
+  function setSelectedPromptIds(ids: string[]) {
+    const allowed = new Set(
+      activePreset.value.prompts
+        .filter((e) => !e.bindingSlot)
+        .map((e) => e.id),
+    )
+    selectedPromptIds.value = [...new Set(ids.filter((id) => allowed.has(id)))]
+  }
+
+  function clearMultiSelection() {
+    selectedPromptIds.value = []
+  }
+
+  type BatchTransferResult =
+    | { ok: true; count: number; skippedSlots: number }
+    | {
+        ok: false
+        reason: 'empty' | 'target_missing' | 'group_missing'
+        skippedSlots: number
+      }
+
+  function resolvePromptsForBatch(ids: string[]): {
+    sources: PromptEntry[]
+    skippedSlots: number
+  } {
+    const { transferable, skippedSlots } = partitionPromptIdsForBatch(
+      activePreset.value.prompts,
+      ids,
+    )
+    return { sources: transferable, skippedSlots }
+  }
+
+  function patchPresetById(
+    presetId: string,
+    patch: (p: PromptPreset) => PromptPreset,
+  ): boolean {
+    const cur = presetBodies.value[presetId]
+    if (!cur) return false
+    setPresetBody({ ...patch(cur), updatedAt: nowIso() })
+    return true
+  }
+
+  async function batchDuplicatePrompts(
+    ids: string[],
+    targetPresetId: string,
+    targetGroupId: string,
+  ): Promise<BatchTransferResult> {
+    const { sources, skippedSlots } = resolvePromptsForBatch(ids)
+    if (sources.length === 0) {
+      return { ok: false, reason: 'empty', skippedSlots }
+    }
+    await ensurePresetLoaded(targetPresetId)
+    const target = presetBodies.value[targetPresetId]
+    if (!target) return { ok: false, reason: 'target_missing', skippedSlots }
+    const targetGroup = target.groups.find((g) => g.id === targetGroupId)
+    if (!targetGroup || !groupAllowsPromptEntries(targetGroup.kind)) {
+      return { ok: false, reason: 'group_missing', skippedSlots }
+    }
+
+    const t = nowIso()
+    const usedBodies = { ...presetBodies.value }
+    let nextOrder =
+      target.prompts
+        .filter((p) => p.groupId === targetGroupId)
+        .reduce((m, p) => Math.max(m, p.order), -1) + 1
+    const clones: PromptEntry[] = []
+    for (const src of sources) {
+      const id = makeId(usedBodies)
+      const copy: PromptEntry = {
+        ...src,
+        id,
+        groupId: targetGroupId,
+        title: src.title ? `${src.title} (副本)` : '',
+        tags: src.tags.slice(),
+        triggers: src.triggers.slice(),
+        isSeed: false,
+        bindingSlot: undefined,
+        order: nextOrder++,
+        createdAt: t,
+        updatedAt: t,
+      }
+      clones.push(copy)
+      const cur = usedBodies[targetPresetId] ?? target
+      usedBodies[targetPresetId] = {
+        ...cur,
+        prompts: [...cur.prompts, copy],
+      }
+    }
+
+    const ok = patchPresetById(targetPresetId, (p) => ({
+      ...p,
+      prompts: [...p.prompts, ...clones],
+    }))
+    if (!ok) return { ok: false, reason: 'target_missing', skippedSlots }
+    scheduleSave()
+    scheduleIndexPatch()
+    return { ok: true, count: clones.length, skippedSlots }
+  }
+
+  async function batchMovePrompts(
+    ids: string[],
+    targetPresetId: string,
+    targetGroupId: string,
+  ): Promise<BatchTransferResult> {
+    const { sources, skippedSlots } = resolvePromptsForBatch(ids)
+    if (sources.length === 0) {
+      return { ok: false, reason: 'empty', skippedSlots }
+    }
+    await ensurePresetLoaded(targetPresetId)
+    const target = presetBodies.value[targetPresetId]
+    if (!target) return { ok: false, reason: 'target_missing', skippedSlots }
+    const targetGroup = target.groups.find((g) => g.id === targetGroupId)
+    if (!targetGroup || !groupAllowsPromptEntries(targetGroup.kind)) {
+      return { ok: false, reason: 'group_missing', skippedSlots }
+    }
+
+    const moveIds = new Set(sources.map((e) => e.id))
+    const sourceId = editingPresetId.value
+    const t = nowIso()
+
+    if (sourceId === targetPresetId) {
+      const rebuilt = rebuildEntriesAfterSameLibraryMove(
+        activePreset.value.prompts,
+        moveIds,
+        sources,
+        targetGroupId,
+        (e, order) => ({ ...e, order, updatedAt: t }),
+      )
+      patchActivePreset((p) => ({ ...p, prompts: rebuilt }))
+      selectedPromptIds.value = selectedPromptIds.value.filter(
+        (id) => !moveIds.has(id),
+      )
+      return { ok: true, count: sources.length, skippedSlots }
+    }
+
+    const usedBodies = { ...presetBodies.value }
+    const finalClones: PromptEntry[] = []
+    let nextOrder =
+      target.prompts
+        .filter((p) => p.groupId === targetGroupId)
+        .reduce((m, p) => Math.max(m, p.order), -1) + 1
+    for (const src of sources) {
+      const id = makeId(usedBodies)
+      const copy: PromptEntry = {
+        ...src,
+        id,
+        groupId: targetGroupId,
+        tags: src.tags.slice(),
+        triggers: src.triggers.slice(),
+        isSeed: false,
+        bindingSlot: undefined,
+        order: nextOrder++,
+        createdAt: t,
+        updatedAt: t,
+      }
+      finalClones.push(copy)
+      const cur = usedBodies[targetPresetId] ?? target
+      usedBodies[targetPresetId] = {
+        ...cur,
+        prompts: [...cur.prompts, copy],
+      }
+    }
+
+    // 先写入目标再删源，失败时可回滚目标，避免丢数据
+    const cloneIds = new Set(finalClones.map((c) => c.id))
+    const targetOk = patchPresetById(targetPresetId, (p) => ({
+      ...p,
+      prompts: [...p.prompts, ...finalClones],
+    }))
+    if (!targetOk) {
+      return { ok: false, reason: 'target_missing', skippedSlots }
+    }
+
+    const sourceOk = patchPresetById(sourceId, (p) => ({
+      ...p,
+      prompts: rebuildEntriesAfterRemoval(p.prompts, moveIds, (e, order) => ({
+        ...e,
+        order,
+      })),
+    }))
+    if (!sourceOk) {
+      patchPresetById(targetPresetId, (p) => ({
+        ...p,
+        prompts: p.prompts.filter((e) => !cloneIds.has(e.id)),
+      }))
+      return { ok: false, reason: 'target_missing', skippedSlots }
+    }
+
+    selectedPromptIds.value = selectedPromptIds.value.filter(
+      (id) => !moveIds.has(id),
+    )
+    if (selectedPromptId.value && moveIds.has(selectedPromptId.value)) {
+      selectedPromptId.value = null
+    }
+    scheduleSave()
+    scheduleIndexPatch()
+    return { ok: true, count: finalClones.length, skippedSlots }
+  }
+
+  function groupsForPreset(presetId: string) {
+    const p = presetBodies.value[presetId]
+    if (!p) return []
+    const counts: Record<string, number> = {}
+    for (const g of p.groups) counts[g.id] = 0
+    for (const e of p.prompts) {
+      if (e.groupId in counts) counts[e.groupId]++
+    }
+    return promptGroupPickerItems(p.groups, counts, null)
   }
 
   /**
@@ -1458,6 +1698,8 @@ export const usePromptsStore = defineStore('prompts', () => {
     editingPresetId.value = ''
     selectedPromptId.value = null
     activeGroupId.value = null
+    multiSelectMode.value = false
+    selectedPromptIds.value = []
     searchText.value = ''
     loaded.value = false
     loading.value = false
@@ -1514,6 +1756,17 @@ export const usePromptsStore = defineStore('prompts', () => {
     movePromptToGroup,
     reorderPrompt,
     selectPrompt,
+
+    multiSelectMode,
+    selectedPromptIds,
+    enterMultiSelect,
+    exitMultiSelect,
+    togglePromptMultiSelected,
+    setSelectedPromptIds,
+    clearMultiSelection,
+    batchDuplicatePrompts,
+    batchMovePrompts,
+    groupsForPreset,
 
     setSearchText,
 

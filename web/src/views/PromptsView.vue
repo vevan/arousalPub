@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import AssembledMessagesPanel from '@/components/prompts/AssembledMessagesPanel.vue'
+import EntryBatchTargetDialog from '@/components/EntryBatchTargetDialog.vue'
 import GroupTargetPickerDialog from '@/components/GroupTargetPickerDialog.vue'
 import {
   groupAllowsPromptEntries,
   usePromptsStore,
 } from '@/stores/prompts'
 import { promptGroupPickerItems } from '@/utils/entry-group-transfer'
+import { mergeSelectAllVisible } from '@/utils/entry-batch-transfer'
+import type { BatchTransferTarget } from '@/utils/entry-batch-transfer'
 import {
   bindingSlotUsesFlatSubBlockUi,
   bindingSlotUsesLegacyBundle,
@@ -92,12 +95,16 @@ const {
   visiblePrompts,
   activePrompts,
   groupCounts,
+  multiSelectMode,
+  selectedPromptIds,
 } = storeToRefs(store)
 
 const { isNarrow } = useNarrowLayout()
 const mobileMasterDetail = computed(() => props.embedded && isNarrow.value)
 const showEditorPane = computed(
-  () => !mobileMasterDetail.value || Boolean(selectedPromptId.value),
+  () =>
+    !multiSelectMode.value &&
+    (!mobileMasterDetail.value || Boolean(selectedPromptId.value)),
 )
 
 function backToPromptList() {
@@ -359,6 +366,10 @@ const entryDragOverIdx = ref<number | null>(null)
 const titleInputRef = ref<HTMLInputElement | null>(null)
 
 function onEntryDragStart(id: string, evt: DragEvent) {
+  if (multiSelectMode.value) {
+    evt.preventDefault()
+    return
+  }
   entryDragId.value = id
   if (evt.dataTransfer) {
     evt.dataTransfer.effectAllowed = 'move'
@@ -397,6 +408,10 @@ function onEntryDragEnd() {
 }
 
 function selectEntry(id: string) {
+  if (multiSelectMode.value) {
+    store.togglePromptMultiSelected(id)
+    return
+  }
   store.selectPrompt(id)
 }
 
@@ -443,7 +458,109 @@ function onGroupTransferPick(targetGroupId: string) {
   }
 }
 
+const batchTransferOpen = ref(false)
+const batchTransferMode = ref<'copy' | 'move'>('copy')
+
+const batchLibraries = computed(() =>
+  presets.value.map((p) => ({ id: p.id, name: p.name })),
+)
+
+const batchCurrentGroupId = computed(() => {
+  const ids = selectedPromptIds.value
+  if (ids.length === 0) return activeGroupId.value
+  const gids = new Set(
+    activePreset.value.prompts
+      .filter((e) => ids.includes(e.id))
+      .map((e) => e.groupId),
+  )
+  return gids.size === 1 ? [...gids][0]! : null
+})
+
+function openBatchTransfer(mode: 'copy' | 'move') {
+  if (selectedPromptIds.value.length === 0) return
+  batchTransferMode.value = mode
+  batchTransferOpen.value = true
+}
+
+function selectAllVisiblePrompts() {
+  const visibleIds = visiblePrompts.value
+    .filter((e) => !e.bindingSlot)
+    .map((e) => e.id)
+  store.setSelectedPromptIds(
+    mergeSelectAllVisible(selectedPromptIds.value, visibleIds),
+  )
+}
+
+async function ensureBatchLibrary(libraryId: string) {
+  try {
+    await store.ensurePresetLoaded(libraryId)
+  } catch (e) {
+    coreNotify(
+      store.lastError?.trim() ||
+        (e instanceof Error ? e.message : String(e)) ||
+        t('entryTransfer.batchTargetMissing'),
+      undefined,
+      { level: 'error', snackbar: true },
+    )
+    throw e
+  }
+}
+
+async function onBatchTransferPick(target: BatchTransferTarget) {
+  const ids = selectedPromptIds.value.slice()
+  const result =
+    batchTransferMode.value === 'copy'
+      ? await store.batchDuplicatePrompts(
+          ids,
+          target.libraryId,
+          target.groupId,
+        )
+      : await store.batchMovePrompts(ids, target.libraryId, target.groupId)
+  if (result.skippedSlots > 0) {
+    coreNotify(
+      t('entryTransfer.batchSkippedSlots', { n: result.skippedSlots }),
+      undefined,
+      { level: 'warning', snackbar: true },
+    )
+  }
+  if (!result.ok) {
+    const key =
+      result.reason === 'empty'
+        ? 'entryTransfer.batchNothingToTransfer'
+        : 'entryTransfer.batchTargetMissing'
+    coreNotify(t(key), undefined, { level: 'warning', snackbar: true })
+    return
+  }
+  coreNotify(
+    t(
+      batchTransferMode.value === 'copy'
+        ? 'entryTransfer.batchOkCopy'
+        : 'entryTransfer.batchOkMove',
+      { n: result.count },
+    ),
+    undefined,
+    { level: 'success', snackbar: true },
+  )
+}
+
 const entryDeleteOpen = ref(false)
+
+function onMultiSelectKeydown(evt: KeyboardEvent) {
+  if (evt.key !== 'Escape' || !multiSelectMode.value) return
+  if (
+    batchTransferOpen.value ||
+    groupTransferOpen.value ||
+    entryDeleteOpen.value
+  ) {
+    return
+  }
+  store.exitMultiSelect()
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onMultiSelectKeydown)
+})
+
 function confirmDeleteEntry() {
   if (!selected.value) return
   entryDeleteOpen.value = true
@@ -571,6 +688,7 @@ watch(activeGroupId, (id, prevId) => {
 }, { immediate: true })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onMultiSelectKeydown)
   const id = selectedPromptId.value
   if (id) commitAllDraftsForEntry(id)
   const gid = activeGroupId.value
@@ -1318,35 +1436,82 @@ const canDeleteGroup = (g: PromptGroup) =>
         <!-- ====== Left list ====== -->
         <aside class="prompts-list">
           <div class="prompts-search">
-            <svg
-              class="prompts-search__icon"
-              viewBox="0 0 16 16"
-              fill="none"
-              aria-hidden="true"
-            >
-              <circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.3" />
-              <path d="M10.5 10.5 L13.5 13.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
-            </svg>
-            <input
-              :value="searchText"
-              type="text"
-              class="prompts-search__input"
-              :placeholder="$t('prompts.searchPlaceholder')"
-              :aria-label="$t('prompts.searchPlaceholder')"
-              @input="store.setSearchText(($event.target as HTMLInputElement).value)"
-            />
+            <div class="prompts-search__field">
+              <svg
+                class="prompts-search__icon"
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
+              >
+                <circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.3" />
+                <path d="M10.5 10.5 L13.5 13.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+              </svg>
+              <input
+                :value="searchText"
+                type="text"
+                class="prompts-search__input"
+                :placeholder="$t('prompts.searchPlaceholder')"
+                :aria-label="$t('prompts.searchPlaceholder')"
+                @input="store.setSearchText(($event.target as HTMLInputElement).value)"
+              />
+              <button
+                v-if="searchText"
+                type="button"
+                class="prompts-search__clear"
+                :aria-label="$t('prompts.clearSearch')"
+                @click="store.setSearchText('')"
+              >×</button>
+            </div>
             <button
-              v-if="searchText"
+              v-if="!multiSelectMode"
               type="button"
-              class="prompts-search__clear"
-              :aria-label="$t('prompts.clearSearch')"
-              @click="store.setSearchText('')"
-            >×</button>
+              class="prompts-search__multi"
+              @click="store.enterMultiSelect()"
+            >{{ $t('entryTransfer.multiSelect') }}</button>
+            <button
+              v-else
+              type="button"
+              class="prompts-search__multi is-active"
+              @click="store.exitMultiSelect()"
+            >{{ $t('entryTransfer.multiSelectDone') }}</button>
+          </div>
+
+          <div
+            v-if="multiSelectMode"
+            class="entry-batch-bar"
+          >
+            <span class="entry-batch-bar__count">
+              {{ $t('entryTransfer.batchSelected', { n: selectedPromptIds.length }) }}
+            </span>
+            <button
+              type="button"
+              class="entry-batch-bar__btn"
+              @click="selectAllVisiblePrompts"
+            >{{ $t('entryTransfer.batchSelectAllVisible') }}</button>
+            <button
+              type="button"
+              class="entry-batch-bar__btn"
+              :disabled="selectedPromptIds.length === 0"
+              @click="store.clearMultiSelection()"
+            >{{ $t('entryTransfer.batchClearSelection') }}</button>
+            <v-spacer />
+            <button
+              type="button"
+              class="entry-batch-bar__btn entry-batch-bar__btn--primary"
+              :disabled="selectedPromptIds.length === 0"
+              @click="openBatchTransfer('copy')"
+            >{{ $t('entryTransfer.batchCopyTo') }}</button>
+            <button
+              type="button"
+              class="entry-batch-bar__btn entry-batch-bar__btn--primary"
+              :disabled="selectedPromptIds.length === 0"
+              @click="openBatchTransfer('move')"
+            >{{ $t('entryTransfer.batchMoveTo') }}</button>
           </div>
 
           <div class="prompts-list__scroll">
             <button
-              v-if="isEntryListGroup"
+              v-if="isEntryListGroup && !multiSelectMode"
               type="button"
               class="entry-card entry-card--new"
               @click="createEntry"
@@ -1357,7 +1522,7 @@ const canDeleteGroup = (g: PromptGroup) =>
 
             <template v-for="(row, rowIdx) in listRenderRows" :key="row.key">
               <span
-                v-if="entryDragOverIdx === rowIdx && isEntryListGroup"
+                v-if="entryDragOverIdx === rowIdx && isEntryListGroup && !multiSelectMode"
                 class="entry-drop-indicator"
               />
               <div
@@ -1365,17 +1530,18 @@ const canDeleteGroup = (g: PromptGroup) =>
                 class="character-system-bundle"
                 :class="{
                   'is-active':
-                    selected?.id === row.entry.id ||
-                    selected?.id === row.innerEntry.id,
+                    !multiSelectMode &&
+                    (selected?.id === row.entry.id ||
+                      selected?.id === row.innerEntry.id),
                   'is-disabled': isEntryMutedByGroup(row.entry),
                   'is-dragging':
                     entryDragId === row.entry.id ||
                     entryDragId === row.innerEntry.id,
                 }"
                 tabindex="0"
-                draggable="true"
-                @click="selectEntry(row.entry.id)"
-                @keydown.enter="selectEntry(row.entry.id)"
+                :draggable="!multiSelectMode"
+                @click="multiSelectMode ? undefined : selectEntry(row.entry.id)"
+                @keydown.enter="multiSelectMode ? undefined : selectEntry(row.entry.id)"
                 @dragstart="onEntryDragStart(row.entry.id, $event)"
                 @dragover="onEntryDragOver(rowIdx, $event)"
                 @drop="onEntryDropAtRow(rowIdx)"
@@ -1432,9 +1598,7 @@ const canDeleteGroup = (g: PromptGroup) =>
                       @click.stop="
                         onInnerSlotEnabledToggle(row.innerEntry)
                       "
-                    >
-                      <span class="entry-card__enabled-dot" />
-                    </button>
+                    ></button>
                     <h2 class="entry-card__title entry-card__title--bundle-inner">
                       {{ $t(bindingSlotLabelKey(row.innerEntry.bindingSlot)) }}
                     </h2>
@@ -1455,12 +1619,16 @@ const canDeleteGroup = (g: PromptGroup) =>
                 v-else
                 class="entry-card"
                 :class="{
-                  'is-active': selected?.id === row.entry.id,
+                  'is-active': !multiSelectMode && selected?.id === row.entry.id,
+                  'is-selected':
+                    multiSelectMode &&
+                    !row.entry.bindingSlot &&
+                    selectedPromptIds.includes(row.entry.id),
                   'is-disabled': !row.entry.enabled || isEntryMutedByGroup(row.entry),
                   'is-dragging': entryDragId === row.entry.id,
                 }"
                 tabindex="0"
-                draggable="true"
+                :draggable="!multiSelectMode"
                 @click="selectEntry(row.entry.id)"
                 @keydown.enter="selectEntry(row.entry.id)"
                 @dragstart="onEntryDragStart(row.entry.id, $event)"
@@ -1469,7 +1637,21 @@ const canDeleteGroup = (g: PromptGroup) =>
                 @dragend="onEntryDragEnd"
               >
                 <div class="entry-card__row">
-                  <v-icon size="14" class="entry-card__handle" :title="$t('prompts.dragHandle')">
+                  <v-checkbox
+                    v-if="multiSelectMode && !row.entry.bindingSlot"
+                    :model-value="selectedPromptIds.includes(row.entry.id)"
+                    density="compact"
+                    hide-details
+                    class="entry-card__check"
+                    @click.stop
+                    @update:model-value="store.togglePromptMultiSelected(row.entry.id)"
+                  />
+                  <v-icon
+                    v-else-if="!multiSelectMode"
+                    size="14"
+                    class="entry-card__handle"
+                    :title="$t('prompts.dragHandle')"
+                  >
                     mdi-drag-vertical
                   </v-icon>
                   <button
@@ -1480,9 +1662,7 @@ const canDeleteGroup = (g: PromptGroup) =>
                     :aria-pressed="row.entry.enabled"
                     :title="$t('prompts.fieldEnabled')"
                     @click.stop="store.updatePrompt(row.entry.id, { enabled: !row.entry.enabled })"
-                  >
-                    <span class="entry-card__enabled-dot" />
-                  </button>
+                  ></button>
                   <h2 class="entry-card__title">
                     <template v-if="row.entry.bindingSlot">{{
                       $t(bindingSlotLabelKey(row.entry.bindingSlot))
@@ -2201,6 +2381,17 @@ const canDeleteGroup = (g: PromptGroup) =>
       :groups="groupPickerItems"
       :current-group-id="activeGroupId ?? undefined"
       @pick="onGroupTransferPick"
+    />
+
+    <EntryBatchTargetDialog
+      v-model:open="batchTransferOpen"
+      :mode="batchTransferMode"
+      :libraries="batchLibraries"
+      :current-library-id="editingPresetId"
+      :current-group-id="batchCurrentGroupId"
+      :resolve-groups="store.groupsForPreset"
+      :ensure-library="ensureBatchLibrary"
+      @pick="onBatchTransferPick"
     />
 
     <v-dialog v-model="entryDeleteOpen">

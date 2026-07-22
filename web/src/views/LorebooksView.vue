@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import EntryBatchTargetDialog from '@/components/EntryBatchTargetDialog.vue'
 import GroupTargetPickerDialog from '@/components/GroupTargetPickerDialog.vue'
 import { useLorebooksStore } from '@/stores/lorebooks'
 import { lorebookGroupPickerItems } from '@/utils/entry-group-transfer'
+import { mergeSelectAllVisible } from '@/utils/entry-batch-transfer'
+import type { BatchTransferTarget } from '@/utils/entry-batch-transfer'
+import { coreNotify } from '@/utils/core-notify'
 import type { LorebookGroup } from '@/stores/lorebooks'
 import {
   entryKeysInputDisabled,
@@ -31,9 +35,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const store = useLorebooksStore()
-onMounted(() => {
-  void store.loadFromServer()
-})
 
 const {
   lorebooks,
@@ -49,12 +50,16 @@ const {
   loading,
   saving,
   lastError,
+  multiSelectMode,
+  selectedEntryIds,
 } = storeToRefs(store)
 
 const { isNarrow } = useNarrowLayout()
 const mobileMasterDetail = computed(() => props.embedded && isNarrow.value)
 const showEditorPane = computed(
-  () => !mobileMasterDetail.value || Boolean(selectedEntryId.value),
+  () =>
+    !multiSelectMode.value &&
+    (!mobileMasterDetail.value || Boolean(selectedEntryId.value)),
 )
 
 function backToEntryList() {
@@ -176,11 +181,23 @@ const entryDragOverIdx = ref<number | null>(null)
 const titleInputRef = ref<HTMLInputElement | null>(null)
 
 function onEntryDragStart(id: string, evt: DragEvent) {
+  if (multiSelectMode.value) {
+    evt.preventDefault()
+    return
+  }
   entryDragId.value = id
   if (evt.dataTransfer) {
     evt.dataTransfer.effectAllowed = 'move'
     evt.dataTransfer.setData('text/plain', id)
   }
+}
+
+function onEntryCardClick(entryId: string) {
+  if (multiSelectMode.value) {
+    store.toggleEntryMultiSelected(entryId)
+    return
+  }
+  store.selectEntry(entryId)
 }
 function onEntryDragOver(idx: number, evt: DragEvent) {
   if (!entryDragId.value) return
@@ -232,7 +249,84 @@ function onGroupTransferPick(targetGroupId: string) {
   }
 }
 
+const batchTransferOpen = ref(false)
+const batchTransferMode = ref<'copy' | 'move'>('copy')
+
+const batchLibraries = computed(() =>
+  lorebooks.value.map((lb) => ({ id: lb.id, name: lb.name })),
+)
+
+const batchCurrentGroupId = computed(() => {
+  const ids = selectedEntryIds.value
+  if (ids.length === 0) return activeGroupId.value
+  const gids = new Set(
+    activeLorebook.value.entries
+      .filter((e) => ids.includes(e.id))
+      .map((e) => e.groupId),
+  )
+  return gids.size === 1 ? [...gids][0]! : null
+})
+
+function openBatchTransfer(mode: 'copy' | 'move') {
+  if (selectedEntryIds.value.length === 0) return
+  batchTransferMode.value = mode
+  batchTransferOpen.value = true
+}
+
+function selectAllVisibleEntries() {
+  store.setSelectedEntryIds(
+    mergeSelectAllVisible(
+      selectedEntryIds.value,
+      visibleEntries.value.map((e) => e.id),
+    ),
+  )
+}
+
+function onBatchTransferPick(target: BatchTransferTarget) {
+  const ids = selectedEntryIds.value.slice()
+  const result =
+    batchTransferMode.value === 'copy'
+      ? store.batchDuplicateEntries(ids, target.libraryId, target.groupId)
+      : store.batchMoveEntries(ids, target.libraryId, target.groupId)
+  if (!result.ok) {
+    const key =
+      result.reason === 'empty'
+        ? 'entryTransfer.batchNothingToTransfer'
+        : 'entryTransfer.batchTargetMissing'
+    coreNotify(t(key), undefined, { level: 'warning', snackbar: true })
+    return
+  }
+  coreNotify(
+    t(
+      batchTransferMode.value === 'copy'
+        ? 'entryTransfer.batchOkCopy'
+        : 'entryTransfer.batchOkMove',
+      { n: result.count },
+    ),
+    undefined,
+    { level: 'success', snackbar: true },
+  )
+}
+
 const entryDeleteOpen = ref(false)
+
+function onMultiSelectKeydown(evt: KeyboardEvent) {
+  if (evt.key !== 'Escape' || !multiSelectMode.value) return
+  if (
+    batchTransferOpen.value ||
+    groupTransferOpen.value ||
+    entryDeleteOpen.value
+  ) {
+    return
+  }
+  store.exitMultiSelect()
+}
+
+onMounted(() => {
+  void store.loadFromServer()
+  window.addEventListener('keydown', onMultiSelectKeydown)
+})
+
 function confirmDeleteEntry() {
   if (!selectedEntry.value) return
   entryDeleteOpen.value = true
@@ -339,6 +433,7 @@ watch(selectedEntryId, (id, prevId) => {
 }, { immediate: true })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onMultiSelectKeydown)
   const id = selectedEntryId.value
   if (id) commitAllDraftsForEntry(id)
 })
@@ -647,33 +742,80 @@ async function confirmImportLorebook() {
       <div class="prompts-layout">
         <aside class="prompts-list">
           <div class="prompts-search">
-            <svg
-              class="prompts-search__icon"
-              viewBox="0 0 16 16"
-              fill="none"
-              aria-hidden="true"
-            >
-              <circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.3" />
-              <path d="M10.5 10.5 L13.5 13.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
-            </svg>
-            <input
-              :value="searchText"
-              type="text"
-              class="prompts-search__input"
-              :placeholder="$t('lorebooks.searchPlaceholder')"
-              @input="store.setSearchText(($event.target as HTMLInputElement).value)"
-            />
+            <div class="prompts-search__field">
+              <svg
+                class="prompts-search__icon"
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
+              >
+                <circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.3" />
+                <path d="M10.5 10.5 L13.5 13.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+              </svg>
+              <input
+                :value="searchText"
+                type="text"
+                class="prompts-search__input"
+                :placeholder="$t('lorebooks.searchPlaceholder')"
+                @input="store.setSearchText(($event.target as HTMLInputElement).value)"
+              />
+              <button
+                v-if="searchText"
+                type="button"
+                class="prompts-search__clear"
+                @click="store.setSearchText('')"
+              >×</button>
+            </div>
             <button
-              v-if="searchText"
+              v-if="!multiSelectMode"
               type="button"
-              class="prompts-search__clear"
-              @click="store.setSearchText('')"
-            >×</button>
+              class="prompts-search__multi"
+              @click="store.enterMultiSelect()"
+            >{{ $t('entryTransfer.multiSelect') }}</button>
+            <button
+              v-else
+              type="button"
+              class="prompts-search__multi is-active"
+              @click="store.exitMultiSelect()"
+            >{{ $t('entryTransfer.multiSelectDone') }}</button>
+          </div>
+
+          <div
+            v-if="multiSelectMode"
+            class="entry-batch-bar"
+          >
+            <span class="entry-batch-bar__count">
+              {{ $t('entryTransfer.batchSelected', { n: selectedEntryIds.length }) }}
+            </span>
+            <button
+              type="button"
+              class="entry-batch-bar__btn"
+              @click="selectAllVisibleEntries"
+            >{{ $t('entryTransfer.batchSelectAllVisible') }}</button>
+            <button
+              type="button"
+              class="entry-batch-bar__btn"
+              :disabled="selectedEntryIds.length === 0"
+              @click="store.clearMultiSelection()"
+            >{{ $t('entryTransfer.batchClearSelection') }}</button>
+            <v-spacer />
+            <button
+              type="button"
+              class="entry-batch-bar__btn entry-batch-bar__btn--primary"
+              :disabled="selectedEntryIds.length === 0"
+              @click="openBatchTransfer('copy')"
+            >{{ $t('entryTransfer.batchCopyTo') }}</button>
+            <button
+              type="button"
+              class="entry-batch-bar__btn entry-batch-bar__btn--primary"
+              :disabled="selectedEntryIds.length === 0"
+              @click="openBatchTransfer('move')"
+            >{{ $t('entryTransfer.batchMoveTo') }}</button>
           </div>
 
           <div class="prompts-list__scroll">
             <button
-              v-if="activeGroupId"
+              v-if="activeGroupId && !multiSelectMode"
               type="button"
               class="entry-card entry-card--new"
               @click="createEntry"
@@ -690,20 +832,31 @@ async function confirmImportLorebook() {
               <article
                 class="entry-card"
                 :class="{
-                  'is-active': selectedEntryId === e.id,
+                  'is-active': !multiSelectMode && selectedEntryId === e.id,
+                  'is-selected': multiSelectMode && selectedEntryIds.includes(e.id),
                   'is-disabled': !e.enabled,
                   'is-dragging': entryDragId === e.id,
                 }"
                 tabindex="0"
-                draggable="true"
-                @click="store.selectEntry(e.id)"
+                :draggable="!multiSelectMode"
+                @click="onEntryCardClick(e.id)"
                 @dragstart="onEntryDragStart(e.id, $event)"
                 @dragover="onEntryDragOver(idx, $event)"
                 @drop="onEntryDrop(idx)"
                 @dragend="onEntryDragEnd"
               >
                 <div class="entry-card__row">
+                  <v-checkbox
+                    v-if="multiSelectMode"
+                    :model-value="selectedEntryIds.includes(e.id)"
+                    density="compact"
+                    hide-details
+                    class="entry-card__check"
+                    @click.stop
+                    @update:model-value="store.toggleEntryMultiSelected(e.id)"
+                  />
                   <v-icon
+                    v-else
                     size="14"
                     class="entry-card__handle"
                     :title="$t('prompts.dragHandle')"
@@ -715,9 +868,7 @@ async function confirmImportLorebook() {
                     class="entry-card__enabled"
                     :class="{ 'is-on': e.enabled }"
                     @click.stop="store.updateEntry(e.id, { enabled: !e.enabled })"
-                  >
-                    <span class="entry-card__enabled-dot" />
-                  </button>
+                  ></button>
                   <h2 class="entry-card__title">
                     {{ e.title || $t('lorebooks.untitled') }}
                   </h2>
@@ -1098,6 +1249,16 @@ async function confirmImportLorebook() {
       :groups="groupPickerItems"
       :current-group-id="activeGroupId ?? undefined"
       @pick="onGroupTransferPick"
+    />
+
+    <EntryBatchTargetDialog
+      v-model:open="batchTransferOpen"
+      :mode="batchTransferMode"
+      :libraries="batchLibraries"
+      :current-library-id="activeLorebookId"
+      :current-group-id="batchCurrentGroupId"
+      :resolve-groups="store.groupsForLorebook"
+      @pick="onBatchTransferPick"
     />
 
     <v-dialog v-model="entryDeleteOpen" max-width="24rem">

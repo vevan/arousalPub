@@ -3,6 +3,8 @@ import {
   downloadLorebookExport,
   parseLorebookImport,
 } from '@/utils/lorebooks-package'
+import { lorebookGroupPickerItems } from '@/utils/entry-group-transfer'
+import { rebuildEntriesAfterRemoval, rebuildEntriesAfterSameLibraryMove } from '@/utils/entry-batch-transfer'
 import { allocateShortId } from '@/utils/short-id'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
@@ -126,6 +128,8 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
   const activeLorebookId = ref('')
   const activeGroupId = ref<string | null>(null)
   const selectedEntryId = ref<string | null>(null)
+  const multiSelectMode = ref(false)
+  const selectedEntryIds = ref<string[]>([])
   const searchText = ref('')
 
   const loaded = ref(false)
@@ -350,6 +354,20 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     if (save !== false) scheduleSave(save)
   }
 
+  function patchLorebookById(
+    lorebookId: string,
+    patch: (lb: Lorebook) => Lorebook,
+    options?: { save?: SaveTiming | false },
+  ): boolean {
+    const i = lorebooks.value.findIndex((x) => x.id === lorebookId)
+    if (i < 0) return false
+    const next = normalizeLorebook(patch({ ...lorebooks.value[i] }))
+    lorebooks.value[i] = { ...next, updatedAt: nowIso() }
+    const save = options?.save ?? 'immediate'
+    if (save !== false) scheduleSave(save)
+    return true
+  }
+
   /** 插件经 API 写入条目后同步本地缓存（不触发 PUT 回写） */
   function upsertEntryFromPlugin(
     lorebookId: string,
@@ -441,6 +459,8 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
   }
 
   function selectLorebook(id: string) {
+    multiSelectMode.value = false
+    selectedEntryIds.value = []
     activeLorebookId.value = id
     const lb = lorebooks.value.find((x) => x.id === id)
     activeGroupId.value = lb ? firstGroupIdOf(lb) : null
@@ -453,6 +473,8 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     if (!id) return false
     const lb = lorebooks.value.find((x) => x.id === id)
     if (!lb) return false
+    multiSelectMode.value = false
+    selectedEntryIds.value = []
     activeLorebookId.value = lb.id
     activeGroupId.value = firstGroupIdOf(lb)
     selectedEntryId.value = null
@@ -745,6 +767,184 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     return true
   }
 
+  function enterMultiSelect() {
+    multiSelectMode.value = true
+    selectedEntryIds.value = []
+    selectedEntryId.value = null
+  }
+
+  function exitMultiSelect() {
+    multiSelectMode.value = false
+    selectedEntryIds.value = []
+  }
+
+  function toggleEntryMultiSelected(entryId: string) {
+    const set = new Set(selectedEntryIds.value)
+    if (set.has(entryId)) set.delete(entryId)
+    else set.add(entryId)
+    selectedEntryIds.value = [...set]
+  }
+
+  function setSelectedEntryIds(ids: string[]) {
+    selectedEntryIds.value = [...new Set(ids)]
+  }
+
+  function clearMultiSelection() {
+    selectedEntryIds.value = []
+  }
+
+  type BatchTransferResult =
+    | { ok: true; count: number }
+    | { ok: false; reason: 'empty' | 'target_missing' | 'group_missing' }
+
+  function resolveEntriesInOrder(ids: string[]): LorebookEntry[] {
+    const byId = new Map(activeLorebook.value.entries.map((e) => [e.id, e]))
+    const out: LorebookEntry[] = []
+    for (const id of ids) {
+      const e = byId.get(id)
+      if (e) out.push(e)
+    }
+    return out
+  }
+
+  function batchDuplicateEntries(
+    ids: string[],
+    targetLorebookId: string,
+    targetGroupId: string,
+  ): BatchTransferResult {
+    const sources = resolveEntriesInOrder(ids)
+    if (sources.length === 0) return { ok: false, reason: 'empty' }
+    const target = lorebooks.value.find((x) => x.id === targetLorebookId)
+    if (!target) return { ok: false, reason: 'target_missing' }
+    if (!target.groups.some((g) => g.id === targetGroupId)) {
+      return { ok: false, reason: 'group_missing' }
+    }
+
+    const t = nowIso()
+    const used = collectAllLorebookIds(lorebooks.value)
+    const inTarget = target.entries.filter((e) => e.groupId === targetGroupId)
+    let nextOrder = inTarget.reduce((m, e) => Math.max(m, e.order), -1) + 1
+    const clones: LorebookEntry[] = sources.map((src) => {
+      const id = allocateShortId(used)
+      used.add(id)
+      const entry: LorebookEntry = {
+        ...src,
+        id,
+        groupId: targetGroupId,
+        title: src.title ? `${src.title} (副本)` : '',
+        keys: src.keys.slice(),
+        order: nextOrder++,
+        createdAt: t,
+        updatedAt: t,
+      }
+      return entry
+    })
+
+    const ok = patchLorebookById(targetLorebookId, (lb) => ({
+      ...lb,
+      entries: [...lb.entries, ...clones],
+    }))
+    if (!ok) return { ok: false, reason: 'target_missing' }
+    return { ok: true, count: clones.length }
+  }
+
+  function batchMoveEntries(
+    ids: string[],
+    targetLorebookId: string,
+    targetGroupId: string,
+  ): BatchTransferResult {
+    const sources = resolveEntriesInOrder(ids)
+    if (sources.length === 0) return { ok: false, reason: 'empty' }
+    const sourceId = activeLorebookId.value
+    const target = lorebooks.value.find((x) => x.id === targetLorebookId)
+    if (!target) return { ok: false, reason: 'target_missing' }
+    if (!target.groups.some((g) => g.id === targetGroupId)) {
+      return { ok: false, reason: 'group_missing' }
+    }
+
+    const moveIds = new Set(sources.map((e) => e.id))
+    const t = nowIso()
+
+    if (sourceId === targetLorebookId) {
+      const rebuilt = rebuildEntriesAfterSameLibraryMove(
+        activeLorebook.value.entries,
+        moveIds,
+        sources,
+        targetGroupId,
+        (e, order) => ({ ...e, order, updatedAt: t }),
+      )
+      patchActiveLorebook((lb) => ({ ...lb, entries: rebuilt }))
+      selectedEntryIds.value = selectedEntryIds.value.filter(
+        (id) => !moveIds.has(id),
+      )
+      return { ok: true, count: sources.length }
+    }
+
+    // 跨书：同一数组一次写完，避免「源已删、目标未写入」半成功
+    const sourceIdx = lorebooks.value.findIndex((x) => x.id === sourceId)
+    const targetIdx = lorebooks.value.findIndex((x) => x.id === targetLorebookId)
+    if (sourceIdx < 0 || targetIdx < 0) {
+      return { ok: false, reason: 'target_missing' }
+    }
+
+    const used = collectAllLorebookIds(lorebooks.value)
+    let nextOrder =
+      target.entries
+        .filter((e) => e.groupId === targetGroupId)
+        .reduce((m, e) => Math.max(m, e.order), -1) + 1
+    const clones = sources.map((src) => {
+      const id = allocateShortId(used)
+      used.add(id)
+      return {
+        ...src,
+        id,
+        groupId: targetGroupId,
+        keys: src.keys.slice(),
+        order: nextOrder++,
+        createdAt: t,
+        updatedAt: t,
+      } satisfies LorebookEntry
+    })
+
+    const next = lorebooks.value.slice()
+    const srcBook = next[sourceIdx]!
+    const dstBook = next[targetIdx]!
+    next[sourceIdx] = normalizeLorebook({
+      ...srcBook,
+      entries: rebuildEntriesAfterRemoval(srcBook.entries, moveIds, (e, order) => ({
+        ...e,
+        order,
+      })),
+      updatedAt: t,
+    })
+    next[targetIdx] = normalizeLorebook({
+      ...dstBook,
+      entries: [...dstBook.entries, ...clones],
+      updatedAt: t,
+    })
+    lorebooks.value = next
+    scheduleSave()
+
+    selectedEntryIds.value = selectedEntryIds.value.filter(
+      (id) => !moveIds.has(id),
+    )
+    if (selectedEntryId.value && moveIds.has(selectedEntryId.value)) {
+      selectedEntryId.value = null
+    }
+    return { ok: true, count: clones.length }
+  }
+
+  function groupsForLorebook(lorebookId: string) {
+    const lb = lorebooks.value.find((x) => x.id === lorebookId)
+    if (!lb) return []
+    const counts: Record<string, number> = {}
+    for (const g of lb.groups) counts[g.id] = 0
+    for (const e of lb.entries) {
+      if (e.groupId in counts) counts[e.groupId]++
+    }
+    return lorebookGroupPickerItems(lb.groups, counts)
+  }
+
   function updateEntry(
     entryId: string,
     patch: Partial<LorebookEntry>,
@@ -844,6 +1044,8 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     activeLorebookId.value = ''
     activeGroupId.value = null
     selectedEntryId.value = null
+    multiSelectMode.value = false
+    selectedEntryIds.value = []
     searchText.value = ''
     loaded.value = false
     loading.value = false
@@ -871,6 +1073,8 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     saving,
     lastSavedAt,
     lastError,
+    multiSelectMode,
+    selectedEntryIds,
     loadFromServer,
     reloadFromServer,
     clearSessionData,
@@ -901,5 +1105,13 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     reorderEntry,
     selectEntry,
     setSearchText,
+    enterMultiSelect,
+    exitMultiSelect,
+    toggleEntryMultiSelected,
+    setSelectedEntryIds,
+    clearMultiSelection,
+    batchDuplicateEntries,
+    batchMoveEntries,
+    groupsForLorebook,
   }
 })

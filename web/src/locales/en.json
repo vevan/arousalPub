@@ -1431,6 +1431,8 @@
         "decayStep": "Step per segment",
         "decayFloor": "Floor",
         "members": "Members",
+        "color": "Color",
+        "colorReset": "Reset to default color",
         "weight": "Weight",
         "muted": "Muted",
         "saveFailed": "Could not save group chat settings"

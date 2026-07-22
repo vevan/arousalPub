@@ -169,6 +169,7 @@ export function useChatSession(props: ChatSessionProps) {
     appendPendingUserTurn,
     rollbackPendingUserTurn,
     appendPendingSegment,
+    patchPendingSpeakerCharacterId,
     rollbackPendingSegment,
     finalizePendingTurn,
     finalizePendingSegment,
@@ -191,6 +192,9 @@ export function useChatSession(props: ChatSessionProps) {
     streamingReasoning,
     pendingSendEstimatedTokens,
     pendingReceiveCompletionTokens,
+    pendingSendTurnOrdinal,
+    pendingSendSegmentIndex,
+    patchPendingSpeakerCharacterId,
     emitAssistantReplyPersisted,
     resolveDurationMs: stopGenerationTimer,
   })
@@ -325,6 +329,7 @@ export function useChatSession(props: ChatSessionProps) {
       conversationWriteLocked.value ||
       pluginHoldConversation.value ||
       loading.value ||
+      messagesLoading.value ||
       regeneratingTurnOrdinal.value !== null
     ) {
       return false
@@ -366,6 +371,9 @@ export function useChatSession(props: ChatSessionProps) {
     getAuthUserId: () => auth.user?.id ?? auth.defaultUserId,
     getConnAlias: () => conn.alias,
     getConnModel: () => conn.model,
+    isGroupChatEnabled: () => props.groupChatEnabled === true,
+    getGroupChatSettings: () =>
+      normalizeGroupChatSettings(props.groupChatSettings),
     t,
   })
 
@@ -429,6 +437,8 @@ export function useChatSession(props: ChatSessionProps) {
   watch(
     () => props.conversationId,
     (newId, oldId) => {
+      // 先中止进行中的流，避免旧会话 SSE/落盘回写到已切换的 turns
+      abortChatGeneration()
       composerDraft.switchConversationDraft(oldId, newId ?? '')
       switchConversationInputHistory(oldId, newId ?? '')
       turns.value = []

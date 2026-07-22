@@ -93,6 +93,29 @@ describe('applyPersistTurnPlugins', () => {
     assert.equal(next[0]?.turnId, 't9')
   })
 
+  it('syncs turnOrdinal via clientPendingOrdinal when server ordinal differs', () => {
+    const turns: ChatTurnItem[] = [turnWithReceive(0, 'r1', 'ok')]
+    const next = applyPersistTurnPlugins(
+      turns,
+      {
+        ok: true,
+        turnOrdinal: 1,
+        turnId: 't-server',
+        plugins: [
+          {
+            pluginId: 'fixture-plugin-a',
+            schemaVersion: 1,
+            payload: { state: {}, epoch: 0, receiveId: 'r1' },
+          },
+        ],
+      },
+      0,
+    )
+    assert.equal(next[0]?.turnOrdinal, 1)
+    assert.equal(next[0]?.turnId, 't-server')
+    assert.ok(next[0]?.plugins)
+  })
+
   it('no-op when plugins missing', () => {
     const turns: ChatTurnItem[] = [turnWithReceive(0, 'r1', 'ok')]
     const next = applyPersistTurnPlugins(turns, { ok: true, turnOrdinal: 0 })

@@ -122,6 +122,7 @@ export async function readSseStream(
   onCompletionTokens?: (n: number) => void,
   onPersist?: (persist: ChatPersistPayload) => void,
   signal?: AbortSignal,
+  onSpeakerCharacterId?: (speakerCharacterId: string) => void,
 ): Promise<void> {
   if (!body) throw new Error(noStreamMessage)
   const reader = body.getReader()
@@ -131,60 +132,88 @@ export async function readSseStream(
     void reader.cancel()
   }
   signal?.addEventListener('abort', onAbort)
+  const processDataLine = (line: string): void => {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('data:')) return
+    const data = trimmed.slice(5).trim()
+    if (data === '[DONE]') return
+    try {
+      const j = JSON.parse(data) as {
+        arousal?: {
+          persist?: ChatPersistPayload
+          speakerCharacterId?: string
+          error?: string
+          detail?: string
+        }
+        choices?: {
+          delta?: {
+            content?: string
+            reasoning_content?: string
+            reasoning?: string
+            thinking?: string
+          }
+        }[]
+      }
+      const arousal = j.arousal
+      if (arousal && typeof arousal === 'object') {
+        if (typeof arousal.speakerCharacterId === 'string') {
+          const sid = arousal.speakerCharacterId.trim()
+          if (sid) onSpeakerCharacterId?.(sid)
+        }
+        if (typeof arousal.error === 'string' && arousal.error.trim()) {
+          const detail =
+            typeof arousal.detail === 'string' ? arousal.detail.trim() : ''
+          throw new Error((detail || arousal.error.trim()).slice(0, 2000))
+        }
+        const persist = arousal.persist
+        if (persist && typeof persist === 'object' && 'ok' in persist) {
+          onPersist?.(persist)
+          return
+        }
+        if (typeof arousal.speakerCharacterId === 'string') {
+          return
+        }
+      }
+      const ct = completionTokensFromSsePayload(j)
+      if (ct) onCompletionTokens?.(ct)
+      const d = j.choices?.[0]?.delta
+      if (!d) return
+      const out: { text?: string; reasoning?: string } = {}
+      if (typeof d.content === 'string' && d.content.length > 0) {
+        out.text = d.content
+      }
+      const rs =
+        typeof d.reasoning_content === 'string'
+          ? d.reasoning_content
+          : typeof d.reasoning === 'string'
+            ? d.reasoning
+            : typeof d.thinking === 'string'
+              ? d.thinking
+              : ''
+      if (rs.length > 0) out.reasoning = rs
+      if (out.text !== undefined || out.reasoning !== undefined) onDelta(out)
+    } catch (e) {
+      if (e instanceof SyntaxError) return
+      throw e
+    }
+  }
   try {
     while (true) {
       if (signal?.aborted) {
         throw new DOMException('Aborted', 'AbortError')
       }
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        buffer += decoder.decode()
+        if (buffer.trim()) {
+          for (const line of buffer.split('\n')) processDataLine(line)
+        }
+        break
+      }
       buffer += decoder.decode(value, { stream: true })
       const parts = buffer.split('\n')
       buffer = parts.pop() ?? ''
-      for (const line of parts) {
-        const trimmed = line.trim()
-        if (!trimmed.startsWith('data:')) continue
-        const data = trimmed.slice(5).trim()
-        if (data === '[DONE]') continue
-        try {
-          const j = JSON.parse(data) as {
-            arousal?: { persist?: ChatPersistPayload }
-            choices?: {
-              delta?: {
-                content?: string
-                reasoning_content?: string
-                reasoning?: string
-                thinking?: string
-              }
-            }[]
-          }
-          const persist = j.arousal?.persist
-          if (persist && typeof persist === 'object' && 'ok' in persist) {
-            onPersist?.(persist)
-            continue
-          }
-          const ct = completionTokensFromSsePayload(j)
-          if (ct) onCompletionTokens?.(ct)
-          const d = j.choices?.[0]?.delta
-          if (!d) continue
-          const out: { text?: string; reasoning?: string } = {}
-          if (typeof d.content === 'string' && d.content.length > 0) {
-            out.text = d.content
-          }
-          const rs =
-            typeof d.reasoning_content === 'string'
-              ? d.reasoning_content
-              : typeof d.reasoning === 'string'
-                ? d.reasoning
-                : typeof d.thinking === 'string'
-                  ? d.thinking
-                  : ''
-          if (rs.length > 0) out.reasoning = rs
-          if (out.text !== undefined || out.reasoning !== undefined) onDelta(out)
-        } catch {
-          /* ignore non-JSON lines */
-        }
-      }
+      for (const line of parts) processDataLine(line)
     }
   } finally {
     signal?.removeEventListener('abort', onAbort)
@@ -204,6 +233,8 @@ export async function runChatRequest(options: {
   onCompletionTokens?: (n: number) => void
   /** 流式：服务端落盘完成后经 SSE 推送；非流式：随 JSON 一并返回时也会调用 */
   onPersist?: (persist: ChatPersistPayload) => void
+  /** 组装/掷骰完成后尽早下发的当选 speaker */
+  onSpeakerCharacterId?: (speakerCharacterId: string) => void
   signal?: AbortSignal
 }): Promise<{
   content: string
@@ -212,6 +243,7 @@ export async function runChatRequest(options: {
   durationMs?: number
   estimatedTokens?: number
   completionTokens?: number
+  speakerCharacterId?: string
 }> {
   const { conn, conversationId, params, requestFailedMessage, noStreamMessage } =
     options
@@ -254,6 +286,12 @@ export async function runChatRequest(options: {
         options.onPromptEstimatedTokens?.(et)
       }
     }
+    let streamSpeakerId: string | undefined
+    const speakerHeader = res.headers.get('X-Speaker-Character-Id')?.trim()
+    if (speakerHeader) {
+      streamSpeakerId = speakerHeader
+      options.onSpeakerCharacterId?.(speakerHeader)
+    }
     let acc = ''
     let accR = ''
     let completionTokens: number | undefined
@@ -275,6 +313,10 @@ export async function runChatRequest(options: {
         options.onPersist?.(persist)
       },
       options.signal,
+      (sid) => {
+        streamSpeakerId = sid
+        options.onSpeakerCharacterId?.(sid)
+      },
     )
     const reasoning = accR.trim() || undefined
     return {
@@ -284,6 +326,7 @@ export async function runChatRequest(options: {
       durationMs: Math.round(performance.now() - startedAt),
       estimatedTokens: streamEstimatedTokens,
       completionTokens,
+      ...(streamSpeakerId ? { speakerCharacterId: streamSpeakerId } : {}),
     }
   }
 
@@ -292,6 +335,7 @@ export async function runChatRequest(options: {
     persist?: ChatPersistPayload
     estimatedTokens?: number
     completionTokens?: number
+    speakerCharacterId?: string
   }
   const msg = data.message
   const content = typeof msg?.content === 'string' ? msg.content : ''
@@ -312,6 +356,13 @@ export async function runChatRequest(options: {
   if (completionTokens) {
     options.onCompletionTokens?.(completionTokens)
   }
+  const speakerCharacterId =
+    typeof data.speakerCharacterId === 'string'
+      ? data.speakerCharacterId.trim()
+      : ''
+  if (speakerCharacterId) {
+    options.onSpeakerCharacterId?.(speakerCharacterId)
+  }
   if (data.persist && typeof data.persist === 'object' && 'ok' in data.persist) {
     options.onPersist?.(data.persist)
   }
@@ -322,5 +373,6 @@ export async function runChatRequest(options: {
     durationMs: Math.round(performance.now() - startedAt),
     estimatedTokens,
     completionTokens,
+    ...(speakerCharacterId ? { speakerCharacterId } : {}),
   }
 }

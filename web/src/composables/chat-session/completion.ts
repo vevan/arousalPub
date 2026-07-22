@@ -39,6 +39,13 @@ export interface ChatCompletionDeps {
   streamingReasoning: Ref<string>
   pendingSendEstimatedTokens: Ref<number | null>
   pendingReceiveCompletionTokens: Ref<number | null>
+  pendingSendTurnOrdinal: Ref<number | null>
+  pendingSendSegmentIndex: Ref<number | null>
+  patchPendingSpeakerCharacterId: (
+    ord: number,
+    segmentIndex: number,
+    speakerCharacterId: string,
+  ) => void
   emitAssistantReplyPersisted: (event: AssistantReplyPersistedEvent) => void
   resolveDurationMs: () => number
 }
@@ -82,6 +89,12 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
         },
         onCompletionTokens: (n) => {
           deps.pendingReceiveCompletionTokens.value = n
+        },
+        onSpeakerCharacterId: (sid) => {
+          const ord = deps.pendingSendTurnOrdinal.value
+          if (ord == null) return
+          const segIdx = deps.pendingSendSegmentIndex.value ?? 0
+          deps.patchPendingSpeakerCharacterId(ord, segIdx, sid)
         },
         onPersist: (persist) => {
           if (persist.ok) {

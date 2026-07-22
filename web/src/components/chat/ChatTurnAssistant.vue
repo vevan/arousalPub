@@ -102,12 +102,21 @@ const speakerAvatarUrl = computed(() =>
 const speakerAvatarLetter = computed(() =>
   props.session.assistantAvatarLetterForSpeaker(segmentSpeakerId.value),
 )
+const speakerAccent = computed(() =>
+  props.session.speakerAccentColor(segmentSpeakerId.value),
+)
+const speakerAccentStyle = computed(() => {
+  const c = speakerAccent.value
+  return c ? ({ '--speaker-accent': c } as Record<string, string>) : undefined
+})
 </script>
 
 <template>
   <div
     class="turn turn--assistant"
+    :class="{ 'turn--has-speaker-accent': !!speakerAccent }"
     :data-turn-ordinal="turn.turnOrdinal"
+    :style="speakerAccentStyle"
   >
     <div class="turn-avatar avatar avatar--assistant" aria-hidden="true">
       <img v-if="speakerAvatarUrl" :src="speakerAvatarUrl" alt="" />

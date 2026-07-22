@@ -249,21 +249,27 @@ export function scheduleMemoryIndexDelete(
 async function markConversationMemoryEmbeddingModelIfChanged(
   conversationId: string,
 ): Promise<string> {
-  const { embeddingModel, embeddingDimensions } =
-    await readGlobalEmbeddingApiSettings()
+  const creds = await resolveEmbeddingApiCredentials(conversationId)
+  const hybridFtsSpec = formatHybridFtsSpec(await readGlobalHybridFtsSettings())
+  if (!creds) {
+    const { embeddingModel } = await readGlobalEmbeddingApiSettings()
+    return embeddingModel
+  }
   const idx = await readConversationIndex(conversationId)
   if (
-    idx?.memoryEmbeddingModel === embeddingModel &&
-    idx?.memoryEmbeddingDimensions === embeddingDimensions
+    idx?.memoryEmbeddingModel === creds.embeddingModel &&
+    idx?.memoryEmbeddingDimensions === creds.embeddingDimensions &&
+    idx?.memoryHybridFtsProfile === hybridFtsSpec
   ) {
-    return embeddingModel
+    return creds.embeddingModel
   }
   await updateConversationMemoryEmbeddingModel(
     conversationId,
-    embeddingModel,
-    embeddingDimensions,
+    creds.embeddingModel,
+    creds.embeddingDimensions,
+    hybridFtsSpec,
   )
-  return embeddingModel
+  return creds.embeddingModel
 }
 
 async function indexTurnMemory(
@@ -280,7 +286,7 @@ async function indexTurnMemory(
   const corpusOptions = await resolveMemoryCorpusOptions(effective)
   const corpus = buildMemoryEmbeddingCorpus(turn, corpusOptions)
   if (!corpus.trim()) return
-  const emb = await createEmbedding(corpus)
+  const emb = await createEmbedding(corpus, conversationId)
   if (!emb) return
   if ((memoryReindexEpoch.get(conversationId) ?? 0) !== epochAtStart) return
 

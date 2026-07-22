@@ -4,7 +4,7 @@ import multipart from '@fastify/multipart'
 import Fastify from 'fastify'
 import { closeAllLanceConnections } from './lance-connection-pool.js'
 import { generateShortId, isValidShortId } from './short-id.js'
-import { Transform } from 'node:stream'
+import { PassThrough, Transform } from 'node:stream'
 import {
   readApiSettingsFromFile,
   writeApiSettingsToFile,
@@ -332,6 +332,8 @@ import {
 import type { PerformanceAudit } from './chat-audit-types.js'
 import {
   formatArousalPersistSseLine,
+  formatArousalSpeakerSseLine,
+  formatArousalStreamErrorSseLine,
   parseSseDataLine,
 } from './sse-assistant.js'
 import { buildStV2CharacterExport, isPngBuffer } from './character-png.js'
@@ -5293,6 +5295,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
     | undefined
   let performanceAuditBase: PerformanceAudit | undefined
   let buildFinishedAt = 0
+  let assembledSpeakerCharacterId = ''
   if (convId) {
     const promptsDoc = await readPromptsDocument()
     if (!promptsDoc) {
@@ -5341,6 +5344,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
     assemblyAudit = built.assemblyAudit
     assemblyEmbeddingCalls = built.assemblyEmbeddingCalls
     performanceAuditBase = built.performanceAudit
+    assembledSpeakerCharacterId = built.speakerCharacterId?.trim() ?? ''
     buildFinishedAt = performance.now()
   } else {
     const v = validateChatMessages(body.messages)
@@ -5378,9 +5382,10 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
               ? body.regenerateSegmentIndex
               : undefined,
           speakerCharacterId:
-            typeof body.speakerCharacterId === 'string'
+            assembledSpeakerCharacterId ||
+            (typeof body.speakerCharacterId === 'string'
               ? body.speakerCharacterId.trim()
-              : undefined,
+              : undefined),
           speakerQueue: Array.isArray(body.speakerQueue)
             ? body.speakerQueue.filter(
                 (id): id is string => typeof id === 'string' && id.trim().length > 0,
@@ -5424,6 +5429,208 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
     ? bindChatClientAbort(request, clientAbort)
     : () => {}
 
+  /** 流式：组装（含掷骰）结束后立刻开 SSE 下发 speaker，再拉上游 */
+  if (wantStream) {
+    const out = new PassThrough()
+    reply.header('Content-Type', 'text/event-stream; charset=utf-8')
+    reply.header('Cache-Control', 'no-cache')
+    reply.header('Connection', 'keep-alive')
+    reply.header('X-Accel-Buffering', 'no')
+    if (typeof estimatedTokens === 'number' && estimatedTokens > 0) {
+      reply.header('X-Prompt-Estimated-Tokens', String(Math.round(estimatedTokens)))
+    }
+    if (assembledSpeakerCharacterId) {
+      reply.header('X-Speaker-Character-Id', assembledSpeakerCharacterId)
+      const speakerLine = formatArousalSpeakerSseLine(assembledSpeakerCharacterId)
+      if (speakerLine) out.write(speakerLine)
+    }
+
+    void (async () => {
+      let upstream: Response
+      try {
+        upstream = await fetchWithTimeout(
+          url,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify(payload),
+            ...(clientAbort
+              ? {
+                  signal: mergeChatUpstreamAbortSignals(
+                    clientAbort,
+                    streamTimeoutMs,
+                  ),
+                }
+              : {}),
+          },
+          streamTimeoutMs,
+        )
+      } catch (err) {
+        unbindClientAbort()
+        request.log.error(err, 'stream upstream fetch error')
+        if (!out.destroyed) {
+          out.write(
+            formatArousalStreamErrorSseLine(
+              ApiErrorCodes.upstream_api_error,
+              err instanceof Error ? err.message : String(err),
+            ),
+          )
+          out.end()
+        }
+        return
+      }
+
+      if (!upstream.ok || !upstream.body) {
+        unbindClientAbort()
+        const text = upstream.ok ? '' : await upstream.text()
+        request.log.warn(
+          { status: upstream.status, body: text.slice(0, 500) },
+          'upstream error',
+        )
+        if (!out.destroyed) {
+          out.write(
+            formatArousalStreamErrorSseLine(
+              ApiErrorCodes.upstream_api_error,
+              text.slice(0, 2000) || `status ${upstream.status}`,
+            ),
+          )
+          out.end()
+        }
+        return
+      }
+
+      const responseHeadersAt = performance.now()
+      const trackStreamPerf = Boolean(performanceAuditBase)
+
+      let sseBuffer = ''
+      let accContent = ''
+      let accReasoning = ''
+      let accCompletionTokens: number | undefined
+      let firstTokenAt: number | undefined
+      let lastTokenAt: number | undefined
+
+      const tap = new Transform({
+        transform(chunk, _enc, cb) {
+          sseBuffer += chunk.toString('utf8')
+          const parts = sseBuffer.split('\n')
+          sseBuffer = parts.pop() ?? ''
+          for (const line of parts) {
+            const d = parseSseDataLine(line)
+            if (!d) continue
+            if (trackStreamPerf && isSseContentDelta(d)) {
+              const now = performance.now()
+              if (firstTokenAt === undefined) firstTokenAt = now
+              lastTokenAt = now
+            }
+            if (d.text) accContent += d.text
+            if (d.reasoning) accReasoning += d.reasoning
+            if (d.completionTokens) accCompletionTokens = d.completionTokens
+          }
+          cb(null, chunk)
+        },
+        flush(cb) {
+          if (sseBuffer.trim()) {
+            for (const line of sseBuffer.split('\n')) {
+              const d = parseSseDataLine(line)
+              if (!d) continue
+              if (trackStreamPerf && isSseContentDelta(d)) {
+                const now = performance.now()
+                if (firstTokenAt === undefined) firstTokenAt = now
+                lastTokenAt = now
+              }
+              if (d.text) accContent += d.text
+              if (d.reasoning) accReasoning += d.reasoning
+              if (d.completionTokens) accCompletionTokens = d.completionTokens
+            }
+            sseBuffer = ''
+          }
+          if (!persistParams || !accContent.trim()) {
+            cb()
+            return
+          }
+          const streamEndedAt = performance.now()
+          const performanceAudit = buildPerformanceForPersist(
+            persistParams.performanceAudit,
+            {
+              upstreamStartedAt,
+              responseHeadersAt,
+              firstTokenAt,
+              lastTokenAt,
+              streamEndedAt,
+              completionTokensUpstream: accCompletionTokens,
+              assistantContent: accContent,
+              assistantReasoning: accReasoning.trim() || undefined,
+              model,
+              preUpstreamMs,
+            },
+          )
+          void persistTurnAfterModelReply({
+            ...persistParams,
+            assistantContent: accContent,
+            assistantReasoning: accReasoning.trim() || undefined,
+            durationMs: Math.round(streamEndedAt - upstreamStartedAt),
+            estimatedTokens: persistParams.estimatedTokens,
+            completionTokens: accCompletionTokens,
+            performanceAudit,
+          })
+            .then((persist) => {
+              if (!persist.ok) {
+                request.log.warn({ persist }, 'stream persist failed')
+              }
+              this.push(formatArousalPersistSseLine(persist))
+              cb()
+            })
+            .catch((err) => {
+              request.log.error(err, 'stream persist error')
+              this.push(
+                formatArousalPersistSseLine({
+                  ok: false,
+                  error: ApiErrorCodes.persist_error,
+                }),
+              )
+              cb()
+            })
+        },
+      })
+
+      const nodeStream = pipeUpstreamSseBody(
+        upstream.body as ReadableStream<Uint8Array>,
+        tap,
+        request.log,
+      )
+      nodeStream.once('close', unbindClientAbort)
+      nodeStream.once('error', (err) => {
+        request.log.warn({ err }, 'chat upstream SSE pipeline')
+        unbindClientAbort()
+        try {
+          nodeStream.unpipe(out)
+        } catch {
+          /* ignore */
+        }
+        if (out.destroyed || out.writableEnded) return
+        const detail =
+          err instanceof Error ? err.message : String(err ?? 'stream error')
+        try {
+          out.write(
+            formatArousalStreamErrorSseLine(
+              ApiErrorCodes.upstream_api_error,
+              detail,
+            ),
+          )
+          out.end()
+        } catch {
+          out.destroy(err instanceof Error ? err : undefined)
+        }
+      })
+      nodeStream.pipe(out)
+    })()
+
+    return reply.send(out)
+  }
+
   let upstream: Response
   try {
     upstream = await fetchWithTimeout(
@@ -5435,14 +5642,6 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify(payload),
-        ...(clientAbort
-          ? {
-              signal: mergeChatUpstreamAbortSignals(
-                clientAbort,
-                streamTimeoutMs,
-              ),
-            }
-          : {}),
       },
       streamTimeoutMs,
     )
@@ -5466,116 +5665,6 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   }
 
   const responseHeadersAt = performance.now()
-  const trackStreamPerf = Boolean(performanceAuditBase)
-
-  if (wantStream && upstream.body) {
-    reply.header('Content-Type', 'text/event-stream; charset=utf-8')
-    reply.header('Cache-Control', 'no-cache')
-    reply.header('Connection', 'keep-alive')
-    reply.header('X-Accel-Buffering', 'no')
-    if (typeof estimatedTokens === 'number' && estimatedTokens > 0) {
-      reply.header('X-Prompt-Estimated-Tokens', String(Math.round(estimatedTokens)))
-    }
-
-    let sseBuffer = ''
-    let accContent = ''
-    let accReasoning = ''
-    let accCompletionTokens: number | undefined
-    let firstTokenAt: number | undefined
-    let lastTokenAt: number | undefined
-
-    const tap = new Transform({
-      transform(chunk, _enc, cb) {
-        sseBuffer += chunk.toString('utf8')
-        const parts = sseBuffer.split('\n')
-        sseBuffer = parts.pop() ?? ''
-        for (const line of parts) {
-          const d = parseSseDataLine(line)
-          if (!d) continue
-          if (trackStreamPerf && isSseContentDelta(d)) {
-            const now = performance.now()
-            if (firstTokenAt === undefined) firstTokenAt = now
-            lastTokenAt = now
-          }
-          if (d.text) accContent += d.text
-          if (d.reasoning) accReasoning += d.reasoning
-          if (d.completionTokens) accCompletionTokens = d.completionTokens
-        }
-        cb(null, chunk)
-      },
-      flush(cb) {
-        if (sseBuffer.trim()) {
-          for (const line of sseBuffer.split('\n')) {
-            const d = parseSseDataLine(line)
-            if (!d) continue
-            if (trackStreamPerf && isSseContentDelta(d)) {
-              const now = performance.now()
-              if (firstTokenAt === undefined) firstTokenAt = now
-              lastTokenAt = now
-            }
-            if (d.text) accContent += d.text
-            if (d.reasoning) accReasoning += d.reasoning
-            if (d.completionTokens) accCompletionTokens = d.completionTokens
-          }
-          sseBuffer = ''
-        }
-        if (!persistParams || !accContent.trim()) {
-          cb()
-          return
-        }
-        const streamEndedAt = performance.now()
-        const performanceAudit = buildPerformanceForPersist(
-          persistParams.performanceAudit,
-          {
-            upstreamStartedAt,
-            responseHeadersAt,
-            firstTokenAt,
-            lastTokenAt,
-            streamEndedAt,
-            completionTokensUpstream: accCompletionTokens,
-            assistantContent: accContent,
-            assistantReasoning: accReasoning.trim() || undefined,
-            model,
-            preUpstreamMs,
-          },
-        )
-        void persistTurnAfterModelReply({
-          ...persistParams,
-          assistantContent: accContent,
-          assistantReasoning: accReasoning.trim() || undefined,
-          durationMs: Math.round(streamEndedAt - upstreamStartedAt),
-          estimatedTokens: persistParams.estimatedTokens,
-          completionTokens: accCompletionTokens,
-          performanceAudit,
-        })
-          .then((persist) => {
-            if (!persist.ok) {
-              request.log.warn({ persist }, 'stream persist failed')
-            }
-            this.push(formatArousalPersistSseLine(persist))
-            cb()
-          })
-          .catch((err) => {
-            request.log.error(err, 'stream persist error')
-            this.push(
-              formatArousalPersistSseLine({
-                ok: false,
-                error: ApiErrorCodes.persist_error,
-              }),
-            )
-            cb()
-          })
-      },
-    })
-
-    const nodeStream = pipeUpstreamSseBody(
-      upstream.body as ReadableStream<Uint8Array>,
-      tap,
-      request.log,
-    )
-    nodeStream.once('close', unbindClientAbort)
-    return reply.send(nodeStream)
-  }
 
   unbindClientAbort()
   const text = await upstream.text()
@@ -5635,6 +5724,9 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
       ...(reasoning ? { reasoning } : {}),
     },
     ...(persist !== undefined ? { persist } : {}),
+    ...(assembledSpeakerCharacterId
+      ? { speakerCharacterId: assembledSpeakerCharacterId }
+      : {}),
     ...(typeof estimatedTokens === 'number' && estimatedTokens > 0
       ? { estimatedTokens }
       : {}),

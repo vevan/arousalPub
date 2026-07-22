@@ -22,6 +22,7 @@ import ConversationRecallTestDialog from '@/components/settings/ConversationReca
 import { fetchPluginsManage } from '@/utils/plugin-settings-api'
 import {
   readConversationChatBinding,
+  resolveConversationEmbeddingModelSettings,
   type ConversationChatBinding,
   type ConversationEmbeddingApiSettingsOverride,
 } from '@/utils/conversation-api-settings'
@@ -40,6 +41,11 @@ import {
   hybridFtsSpecsMatch,
   parseHybridFtsSpec,
 } from '@/utils/hybrid-fts-settings'
+import {
+  groupChatWithEnsuredMemberColors,
+  normalizeGroupChatSettings,
+  type GroupChatSettings,
+} from '@/utils/group-chat-settings'
 
 const props = defineProps<{
   conversationId: string
@@ -48,6 +54,8 @@ const props = defineProps<{
   /** `null` / 未绑定：使用全局激活预设 */
   initialPromptPresetId?: string | null
   initialCharacterIds: string[]
+  /** 会话群聊设置（改 characterIds 时若已开启则补成员色） */
+  initialGroupChat?: GroupChatSettings | null
   initialLorebookIds: string[]
   /** 未覆盖时继承全局 */
   initialLorebookSettingsUseGlobal?: boolean
@@ -86,6 +94,10 @@ const props = defineProps<{
   globalEmbeddingModel?: string
   /** 本会话已索引的 Embedding 模型 */
   conversationMemoryEmbeddingModel?: string | null
+  /** 本会话已索引的 Embedding 维度 */
+  conversationMemoryEmbeddingDimensions?: number | null
+  /** 是否已有轮次（无轮次不提示重建，与对话页弹窗一致） */
+  hasConversationTurns?: boolean
   /** 本会话已索引的 Hybrid FTS spec（如 zh-jieba:default） */
   conversationMemoryHybridFtsSpec?: string | null
   /** 全局 Hybrid FTS spec */
@@ -232,14 +244,27 @@ const effectiveMemoryEnabled = computed(() =>
 
 const memoryRebuildNeedsAttention = computed(() => {
   if (!effectiveMemoryEnabled.value) return false
-  const global = props.globalEmbeddingModel?.trim() ?? ''
-  if (!global) return false
-  const stored = props.conversationMemoryEmbeddingModel?.trim() ?? ''
-  if (!stored) return false
+  if (props.hasConversationTurns === false) return false
+  const globalModel = props.globalEmbeddingModel?.trim() ?? ''
+  if (!globalModel) return false
+  const storedModel = props.conversationMemoryEmbeddingModel?.trim() ?? ''
+  if (!storedModel) return false
+  const globalDims = props.globalEmbeddingDimensions ?? null
+  const effective = resolveConversationEmbeddingModelSettings(
+    { embeddingModel: globalModel, embeddingDimensions: globalDims },
+    embeddingApiUseGlobal.value ? null : propsEmbeddingOverride() ?? null,
+  )
+  const storedDims = props.conversationMemoryEmbeddingDimensions ?? null
+  const embeddingMatches =
+    storedModel === effective.embeddingModel &&
+    (storedDims ?? null) === (effective.embeddingDimensions ?? null)
   const globalFts = props.globalHybridFtsSpec?.trim() ?? 'zh-ngram'
   const storedFts = props.conversationMemoryHybridFtsSpec?.trim() ?? null
-  const ftsMismatch = !hybridFtsSpecsMatch(storedFts, parseHybridFtsSpec(globalFts))
-  return stored !== global || ftsMismatch
+  // 与 ChatConversationView：空 FTS 戳记时以 embedding 对齐为准，不因漏戳记误报
+  const ftsMatches = !storedFts
+    ? embeddingMatches
+    : hybridFtsSpecsMatch(storedFts, parseHybridFtsSpec(globalFts))
+  return !(embeddingMatches && ftsMatches)
 })
 
 async function onRebuildMemoryClick() {
@@ -847,7 +872,12 @@ watch(
     savingChars.value = true
     errorText.value = ''
     try {
-      await patchConversation({ characterIds: [...ids] })
+      const body: Record<string, unknown> = { characterIds: [...ids] }
+      const gc = normalizeGroupChatSettings(props.initialGroupChat)
+      if (gc.enabled) {
+        body.groupChat = groupChatWithEnsuredMemberColors(gc, ids)
+      }
+      await patchConversation(body)
     } catch (e) {
       errorText.value =
         e instanceof Error ? e.message : t('chat.convSettings.saveFailed')

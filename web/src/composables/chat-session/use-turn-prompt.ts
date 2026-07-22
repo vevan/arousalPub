@@ -71,11 +71,19 @@ export function useTurnPrompt(opts: {
       }
       const data = (await res.json()) as { entries?: ChatAuditSnapshotEntry[] }
       const entries = Array.isArray(data.entries) ? data.entries : []
+      const segMatch = (e: ChatAuditSnapshotEntry) =>
+        (typeof e.segmentIndex === 'number' ? e.segmentIndex : 0) === segIdx
       const entriesForTurn = entries.filter((e) => e.turnOrdinal === turn.turnOrdinal)
-      const exact = entriesForTurn.filter(
-        (e) => (typeof e.segmentIndex === 'number' ? e.segmentIndex : 0) === segIdx,
-      )
-      let entry = exact.length ? exact[exact.length - 1] : null
+      let exact = entriesForTurn.filter(segMatch)
+      let entry = exact.length ? exact[exact.length - 1]! : null
+      // 客户端曾用错误 ordinal 时，按 turnId 回退匹配
+      if (!entry) {
+        const tid = turn.turnId?.trim()
+        if (tid) {
+          const byId = entries.filter((e) => e.turnId === tid && segMatch(e))
+          entry = byId.length ? byId[byId.length - 1]! : null
+        }
+      }
       if (!entry) {
         turnPromptIsEmpty.value = true
         return

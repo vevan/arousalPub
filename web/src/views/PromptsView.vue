@@ -1906,7 +1906,7 @@ const canDeleteGroup = (g: PromptGroup) =>
                       <textarea
                         v-model="contentDraft"
                         class="editor-card__content-input"
-                        rows="12"
+                        rows="18"
                         spellcheck="false"
                         :placeholder="$t('prompts.contentPlaceholder')"
                         @blur="commitPromptEditorDraftsFromBlur()"
@@ -2145,7 +2145,7 @@ const canDeleteGroup = (g: PromptGroup) =>
                 <textarea
                   v-model="contentDraft"
                   class="editor-card__content-input"
-                  rows="12"
+                  rows="18"
                   spellcheck="false"
                   :placeholder="$t('prompts.contentPlaceholder')"
                   @blur="commitPromptEditorDraftsFromBlur()"

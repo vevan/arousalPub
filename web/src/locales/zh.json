@@ -1431,6 +1431,8 @@
         "decayStep": "每段递减",
         "decayFloor": "下限",
         "members": "成员",
+        "color": "颜色",
+        "colorReset": "恢复默认颜色",
         "weight": "权重",
         "muted": "静音",
         "saveFailed": "保存群聊设置失败"

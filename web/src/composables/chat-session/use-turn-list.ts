@@ -102,6 +102,8 @@ export function useTurnList(opts: {
       segmentIndex?: number
       activeSegmentIndex?: number
       groupChatTurnState?: import('@/utils/group-chat-settings').GroupChatTurnState
+      turnOrdinal?: number
+      turnId?: string
     },
   ) {
     const sendEt = opts.pendingSendEstimatedTokens.value
@@ -115,7 +117,14 @@ export function useTurnList(opts: {
         ? { completionTokens: recvCt }
         : {}),
     }
-    const idx = opts.turns.value.findIndex((t) => t.turnOrdinal === ord)
+    let idx = opts.turns.value.findIndex((t) => t.turnOrdinal === ord)
+    if (
+      idx < 0 &&
+      typeof meta?.turnOrdinal === 'number' &&
+      meta.turnOrdinal !== ord
+    ) {
+      idx = opts.turns.value.findIndex((t) => t.turnOrdinal === meta.turnOrdinal)
+    }
     if (idx >= 0) {
       replaceTurnAt(
         idx,
@@ -163,6 +172,43 @@ export function useTurnList(opts: {
     opts.pendingSendTurnOrdinal.value = ord
     opts.pendingSendSegmentIndex.value = segmentIndex
     void opts.scrollChatToBottom()
+  }
+
+  /** 流式组装完成后服务端下发的 speaker：仅 patch 尚无内容的 pending segment */
+  function patchPendingSpeakerCharacterId(
+    ord: number,
+    segmentIndex: number,
+    speakerCharacterId: string,
+  ) {
+    const speakerId = speakerCharacterId.trim()
+    if (!speakerId) return
+    const idx = opts.turns.value.findIndex((t) => t.turnOrdinal === ord)
+    if (idx < 0) return
+    const cur = opts.turns.value[idx]!
+    const segments = [...(cur.segments ?? [])]
+    const existing = segments[segmentIndex]
+    if (existing?.receives.length) return
+    if (existing) {
+      segments[segmentIndex] = {
+        ...existing,
+        speakerCharacterId: speakerId,
+      }
+    } else if (segmentIndex === segments.length || segments.length === 0) {
+      segments.push({
+        id: allocateShortId(collectUsedIdsFromTurn(cur)),
+        speakerCharacterId: speakerId,
+        receives: [],
+        activeReceiveIndex: 0,
+      })
+    } else {
+      return
+    }
+    replaceTurnAt(idx, {
+      ...cur,
+      segments,
+      activeSegmentIndex: segmentIndex,
+      speakerCharacterId: speakerId,
+    })
   }
 
   function rollbackPendingSegment(ord: number, segmentIndex: number) {
@@ -439,6 +485,7 @@ export function useTurnList(opts: {
     appendPendingUserTurn,
     rollbackPendingUserTurn,
     appendPendingSegment,
+    patchPendingSpeakerCharacterId,
     rollbackPendingSegment,
     finalizePendingTurn,
     finalizePendingSegment,

@@ -68,6 +68,8 @@ import {
   normalizeHybridFtsSettings,
 } from '@/utils/hybrid-fts-settings'
 import {
+  groupChatWithEnsuredMemberColors,
+  memberColorsIncomplete,
   normalizeGroupChatSettings,
   type GroupChatSettings,
 } from '@/utils/group-chat-settings'
@@ -246,10 +248,11 @@ function shouldOfferMemoryRebuild(): boolean {
   const embeddingMatches =
     storedModel === effectiveEmbedding.embeddingModel &&
     embeddingDimsMatch(storedDims, effectiveEmbedding.embeddingDimensions)
-  const ftsMatches = hybridFtsSpecsMatch(
-    conversationMemoryHybridFtsSpec.value,
-    globalHybridFtsSettings.value,
-  )
+  const storedFts = conversationMemoryHybridFtsSpec.value
+  // 增量索引曾漏写 FTS 戳记：embedding 已对齐且戳记为空时不因 FTS 误报重建
+  const ftsMatches = !storedFts?.trim()
+    ? embeddingMatches
+    : hybridFtsSpecsMatch(storedFts, globalHybridFtsSettings.value)
   if (embeddingMatches && ftsMatches) {
     return false
   }
@@ -831,6 +834,42 @@ function onGroupChatSettingsSaved(payload: {
   }
 }
 
+/** 已开启群聊但成员缺色时写回一次，保证气泡/边框能着色 */
+async function persistMissingMemberColorsIfNeeded(
+  conversationId: string,
+  bindings: ConvContextBindings,
+): Promise<void> {
+  if (!bindings.groupChatEnabled) return
+  if (!memberColorsIncomplete(bindings.characterIds, bindings.groupChat.members)) {
+    return
+  }
+  const groupChat = groupChatWithEnsuredMemberColors(
+    bindings.groupChat,
+    bindings.characterIds,
+  )
+  try {
+    const res = await fetch(`/api/chat/conversations/${conversationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ groupChat }),
+    })
+    if (!res.ok) return
+    if (props.conversationId !== conversationId) return
+    const j = (await res.json()) as { index?: Record<string, unknown> }
+    if (j.index) {
+      convBindings.value = bindingsFromIndex(j.index)
+    } else {
+      convBindings.value = {
+        ...convBindings.value,
+        groupChat,
+        groupChatEnabled: true,
+      }
+    }
+  } catch {
+    /* 补色失败不阻断对话加载 */
+  }
+}
+
 watch(
   () => convBindings.value.lorebookIds,
   (ids) => {
@@ -1089,11 +1128,20 @@ async function ensureConversation(id: string) {
     convBindings.value = bindingsFromIndex(idx)
     syncActiveFromIndex(idx)
 
+    // 先对齐 auditDebug，避免首条消息在开关写入前落盘而跳过审计
+    try {
+      await syncAuditDebugIfNeeded(id, idx)
+    } catch {
+      /* 审计开关失败不阻断打开对话 */
+    }
+    if (props.conversationId !== id) return
+
     // 关键路径结束：挂载 HomeChat → loadMessages；其余靠后
     loading.value = false
 
     void (async () => {
       try {
+        await persistMissingMemberColorsIfNeeded(id, convBindings.value)
         await boot
         if (props.conversationId !== id) return
         if (!promptsStore.loaded) {
@@ -1102,7 +1150,6 @@ async function ensureConversation(id: string) {
         await loadLorebookNameMap()
         if (props.conversationId !== id) return
         void refreshBranchTree()
-        void syncAuditDebugIfNeeded(id, idx)
         maybePromptMemoryRebuild()
       } catch {
         /* 次要初始化失败不阻断已展示的对话 */
@@ -1522,6 +1569,7 @@ watch(
         :conversation-title="title"
         :initial-prompt-preset-id="convBindings.promptPresetId"
         :initial-character-ids="convBindings.characterIds"
+        :initial-group-chat="convBindings.groupChat"
         :initial-lorebook-ids="convBindings.lorebookIds"
         :initial-knowledge-base-ids="convBindings.knowledgeBaseIds"
         :initial-knowledge-settings-use-global="convBindings.knowledge.useGlobal"
@@ -1554,6 +1602,8 @@ watch(
         :global-embedding-model="embeddingModel"
         :global-embedding-dimensions="embeddingDimensions"
         :conversation-memory-embedding-model="conversationMemoryEmbeddingModel"
+        :conversation-memory-embedding-dimensions="conversationMemoryEmbeddingDimensions"
+        :has-conversation-turns="hasConversationTurns"
         :conversation-memory-hybrid-fts-spec="conversationMemoryHybridFtsSpec"
         :global-hybrid-fts-spec="globalHybridFtsSpec"
         :initial-user-name="convBindings.userName"

@@ -8,6 +8,23 @@ export function formatArousalPersistSseLine(
   return `data: ${JSON.stringify({ arousal: { persist } })}\n\n`
 }
 
+/** 组装/掷骰完成后尽早下发当选 speaker（前端 patch pending 气泡） */
+export function formatArousalSpeakerSseLine(speakerCharacterId: string): string {
+  const id = speakerCharacterId.trim()
+  if (!id) return ''
+  return `data: ${JSON.stringify({ arousal: { speakerCharacterId: id } })}\n\n`
+}
+
+/** 已开始 SSE 后的上游失败（不能再改成 JSON 502） */
+export function formatArousalStreamErrorSseLine(error: string, detail?: string): string {
+  return `data: ${JSON.stringify({
+    arousal: {
+      error: error.trim() || 'upstream_api_error',
+      ...(detail?.trim() ? { detail: detail.trim().slice(0, 2000) } : {}),
+    },
+  })}\n\n`
+}
+
 /** 从 OpenAI 兼容 SSE 行解析 assistant 增量（与前端 readSseStream 对齐） */
 
 export function parseSseDataLine(line: string): {

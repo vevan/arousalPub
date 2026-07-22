@@ -384,6 +384,8 @@ export interface BuildConversationMessagesResult {
   assemblyEmbeddingCalls?: CallAuditEntry[]
   /** debug 审计：组装阶段耗时 */
   performanceAudit?: PerformanceAudit
+  /** 本轮 outbound {{char}} / 首段 speaker（掷骰或队列解析结果） */
+  speakerCharacterId?: string
 }
 
 export async function buildConversationOutboundMessages(
@@ -964,6 +966,7 @@ export async function buildConversationOutboundMessages(
     droppedKnowledgeCount,
     memoryTurnIds: trimState.memoryItems.map((x) => x.turn.turnId),
     memoryText: finalMemoryText || undefined,
+    speakerCharacterId,
     ...(assemblyAudit ? { assemblyAudit } : {}),
     ...(assemblyEmbeddingCalls ? { assemblyEmbeddingCalls } : {}),
     ...(performanceAudit ? { performanceAudit } : {}),

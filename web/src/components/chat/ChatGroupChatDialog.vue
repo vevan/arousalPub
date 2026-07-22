@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import {
+  allocateDistinctMemberColors,
   defaultGroupChatSettings,
   DEFAULT_GROUP_CHAT_ASSEMBLE_INSTRUCTION,
   DEFAULT_GROUP_CONTINUE_ASSEMBLE_INSTRUCTION,
+  groupChatWithEnsuredMemberColors,
   normalizeGroupChatSettings,
+  parseMemberColor,
   type GroupChatSettings,
   type SpeakerMode,
 } from '@/utils/group-chat-settings'
@@ -47,9 +50,35 @@ watch(
   (isOpen) => {
     if (!isOpen) return
     errorText.value = ''
-    draftSettings.value = normalizeGroupChatSettings(props.groupChat)
     draftCharacterIds.value = [...props.characterIds]
+    draftSettings.value = groupChatWithEnsuredMemberColors(
+      normalizeGroupChatSettings(props.groupChat),
+      draftCharacterIds.value,
+    )
   },
+)
+
+watch(
+  () => draftSettings.value.enabled,
+  (enabled, wasEnabled) => {
+    if (!enabled || wasEnabled === true) return
+    draftSettings.value = groupChatWithEnsuredMemberColors(
+      draftSettings.value,
+      draftCharacterIds.value,
+    )
+  },
+)
+
+watch(
+  draftCharacterIds,
+  (ids) => {
+    if (!draftSettings.value.enabled) return
+    draftSettings.value = groupChatWithEnsuredMemberColors(
+      draftSettings.value,
+      ids,
+    )
+  },
+  { deep: true },
 )
 
 const canSave = computed(() => draftCharacterIds.value.length >= 2)
@@ -98,6 +127,33 @@ function memberSpeakQuota(id: string): number {
     draftSettings.value.defaultSpeakQuota ??
     2
   )
+}
+
+function memberColor(id: string): string | null {
+  return parseMemberColor(draftSettings.value.members?.[id]?.color)
+}
+
+function setMemberColor(id: string, color: unknown) {
+  const parsed = parseMemberColor(
+    typeof color === 'string' ? color : String(color ?? ''),
+  )
+  if (!parsed) return
+  const members = { ...(draftSettings.value.members ?? {}) }
+  members[id] = { ...members[id], color: parsed }
+  draftSettings.value = { ...draftSettings.value, members }
+}
+
+/** 按其余成员已占用色，重新分配该 bot 的默认色 */
+function defaultMemberColor(id: string): string {
+  const occupied = draftCharacterIds.value
+    .filter((other) => other !== id)
+    .map((other) => parseMemberColor(draftSettings.value.members?.[other]?.color))
+    .filter((c): c is string => c != null)
+  return allocateDistinctMemberColors(occupied, 1)[0] ?? '#2563eb'
+}
+
+function resetMemberColor(id: string) {
+  setMemberColor(id, defaultMemberColor(id))
 }
 
 function setMemberSpeakQuota(id: string, speakQuota: number) {
@@ -150,11 +206,19 @@ async function save() {
   saving.value = true
   errorText.value = ''
   try {
+    let settingsToSave = draftSettings.value
+    if (settingsToSave.enabled) {
+      settingsToSave = groupChatWithEnsuredMemberColors(
+        settingsToSave,
+        draftCharacterIds.value,
+      )
+      draftSettings.value = settingsToSave
+    }
     const res = await fetch(`/api/chat/conversations/${props.conversationId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        groupChat: draftSettings.value,
+        groupChat: settingsToSave,
         characterIds: draftCharacterIds.value,
       }),
     })
@@ -165,7 +229,7 @@ async function save() {
     const j = (await res.json()) as { index?: Record<string, unknown> }
     const savedGroupChat = j.index
       ? normalizeGroupChatSettings(j.index.groupChat)
-      : draftSettings.value
+      : settingsToSave
     const savedCharIds = j.index && Array.isArray(j.index.characterIds)
       ? (j.index.characterIds as string[]).filter(
           (x): x is string => typeof x === 'string' && x.trim().length > 0,
@@ -244,7 +308,10 @@ async function save() {
           v-model="draftSettings.speakerMode"
           :disabled="!draftSettings.enabled"
           mandatory
+          divided
           density="compact"
+          color="primary"
+          variant="outlined"
           class="mb-4"
         >
           <v-btn value="sequential" size="small">
@@ -422,6 +489,11 @@ async function save() {
               rounded="sm"
               class="group-chat-member-row__avatar"
               :aria-label="displayName(id)"
+              :style="
+                memberColor(id)
+                  ? { border: `0.125rem solid ${memberColor(id)}` }
+                  : undefined
+              "
             >
               <v-img
                 v-if="memberAvatarSrc(id)"
@@ -432,60 +504,125 @@ async function save() {
             </v-avatar>
             <span class="group-chat-member-row__name">{{ displayName(id) }}</span>
           </div>
-          <div v-if="showMemberWeight" class="group-chat-num-item group-chat-num-item--member">
-            <div class="text-caption text-medium-emphasis mb-1">
-              {{ $t('chat.groupChat.settings.weight') }}
+          <div class="group-chat-member-row__fields">
+            <div class="group-chat-num-item group-chat-num-item--member group-chat-num-item--color">
+              <div class="group-chat-member-row__field-label">
+                {{ $t('chat.groupChat.settings.color') }}
+              </div>
+              <div class="group-chat-member-row__field-control">
+                <v-menu
+                  :disabled="!draftSettings.enabled"
+                  :close-on-content-click="false"
+                  location="bottom"
+                >
+                  <template #activator="{ props: menuProps }">
+                    <button
+                      v-bind="menuProps"
+                      type="button"
+                      class="group-chat-member-row__swatch"
+                      :style="{
+                        background:
+                          memberColor(id) ?? 'rgba(var(--v-theme-on-surface), 0.2)',
+                      }"
+                      :disabled="!draftSettings.enabled"
+                      :aria-label="$t('chat.groupChat.settings.color')"
+                      :title="$t('chat.groupChat.settings.color')"
+                    ></button>
+                  </template>
+                  <v-card class="pa-2 group-chat-member-row__color-menu">
+                    <v-color-picker
+                      :model-value="memberColor(id) ?? defaultMemberColor(id)"
+                      mode="hex"
+                      hide-inputs
+                      elevation="0"
+                      width="18rem"
+                      @update:model-value="(v) => setMemberColor(id, v)"
+                    />
+                    <div class="group-chat-member-row__color-actions">
+                      <v-btn
+                        size="small"
+                        variant="text"
+                        prepend-icon="mdi-backup-restore"
+                        :disabled="!draftSettings.enabled"
+                        :aria-label="$t('chat.groupChat.settings.colorReset')"
+                        @click="resetMemberColor(id)"
+                      >
+                        {{ $t('chat.groupChat.settings.colorReset') }}
+                      </v-btn>
+                    </div>
+                  </v-card>
+                </v-menu>
+              </div>
             </div>
-            <v-text-field
-              :model-value="memberWeight(id)"
-              :disabled="!draftSettings.enabled"
-              type="number"
-              min="0"
-              step="0.1"
-              density="compact"
-              hide-details="auto"
-              @update:model-value="(v) => setMemberWeight(id, Number(v))"
-            />
-          </div>
-          <div class="group-chat-num-item group-chat-num-item--member">
-            <div class="text-caption text-medium-emphasis mb-1">
-              {{ $t('chat.groupChat.settings.speakQuota') }}
+            <div
+              v-if="showMemberWeight"
+              class="group-chat-num-item group-chat-num-item--member"
+            >
+              <div class="group-chat-member-row__field-label">
+                {{ $t('chat.groupChat.settings.weight') }}
+              </div>
+              <div class="group-chat-member-row__field-control">
+                <v-text-field
+                  :model-value="memberWeight(id)"
+                  :disabled="!draftSettings.enabled"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  density="compact"
+                  hide-details
+                  @update:model-value="(v) => setMemberWeight(id, Number(v))"
+                />
+              </div>
             </div>
-            <v-text-field
-              :model-value="memberSpeakQuota(id)"
-              :disabled="!draftSettings.enabled"
-              type="number"
-              min="0"
-              step="1"
-              density="compact"
-              hide-details="auto"
-              @update:model-value="(v) => setMemberSpeakQuota(id, Number(v))"
-            />
-          </div>
-          <v-switch
-            :model-value="memberMuted(id)"
-            :disabled="!draftSettings.enabled"
-            :label="$t('chat.groupChat.settings.muted')"
-            color="primary"
-            density="compact"
-            hide-details="auto"
-            @update:model-value="(v) => setMemberMuted(id, Boolean(v))"
-          />
-          <div v-if="showMemberOrder" class="group-chat-member-row__order">
-            <v-btn
-              icon="mdi-chevron-up"
-              size="x-small"
-              variant="text"
-              :disabled="!draftSettings.enabled || index === 0"
-              @click="moveMember(index, -1)"
-            />
-            <v-btn
-              icon="mdi-chevron-down"
-              size="x-small"
-              variant="text"
-              :disabled="!draftSettings.enabled || index === draftCharacterIds.length - 1"
-              @click="moveMember(index, 1)"
-            />
+            <div class="group-chat-num-item group-chat-num-item--member">
+              <div class="group-chat-member-row__field-label">
+                {{ $t('chat.groupChat.settings.speakQuota') }}
+              </div>
+              <div class="group-chat-member-row__field-control">
+                <v-text-field
+                  :model-value="memberSpeakQuota(id)"
+                  :disabled="!draftSettings.enabled"
+                  type="number"
+                  min="0"
+                  step="1"
+                  density="compact"
+                  hide-details
+                  @update:model-value="(v) => setMemberSpeakQuota(id, Number(v))"
+                />
+              </div>
+            </div>
+            <div class="group-chat-num-item group-chat-num-item--member group-chat-num-item--muted">
+              <div class="group-chat-member-row__field-label">
+                {{ $t('chat.groupChat.settings.muted') }}
+              </div>
+              <div class="group-chat-member-row__field-control">
+                <v-switch
+                  :model-value="memberMuted(id)"
+                  :disabled="!draftSettings.enabled"
+                  :aria-label="$t('chat.groupChat.settings.muted')"
+                  color="primary"
+                  density="compact"
+                  hide-details
+                  @update:model-value="(v) => setMemberMuted(id, Boolean(v))"
+                />
+              </div>
+            </div>
+            <div v-if="showMemberOrder" class="group-chat-member-row__order">
+              <v-btn
+                icon="mdi-chevron-up"
+                size="x-small"
+                variant="text"
+                :disabled="!draftSettings.enabled || index === 0"
+                @click="moveMember(index, -1)"
+              />
+              <v-btn
+                icon="mdi-chevron-down"
+                size="x-small"
+                variant="text"
+                :disabled="!draftSettings.enabled || index === draftCharacterIds.length - 1"
+                @click="moveMember(index, 1)"
+              />
+            </div>
           </div>
         </div>
       </v-card-text>
@@ -535,9 +672,62 @@ async function save() {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.group-chat-member-row__fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem 0.75rem;
+  flex: 0 1 auto;
+}
+.group-chat-num-item--member {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 5.5rem;
+  min-width: 4.5rem;
+}
+.group-chat-num-item--color,
+.group-chat-num-item--muted {
+  flex: 0 0 auto;
+  min-width: 2.75rem;
+}
+.group-chat-member-row__field-label {
+  margin-bottom: 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+}
+.group-chat-member-row__field-control {
+  display: flex;
+  align-items: center;
+  min-height: 2.5rem;
+}
+.group-chat-member-row__swatch {
+  display: block;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.375rem;
+  border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.25);
+  padding: 0;
+  cursor: pointer;
+}
+.group-chat-member-row__swatch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.group-chat-member-row__color-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.25rem;
+}
+.group-chat-member-row__color-menu {
+  width: fit-content;
+}
 .group-chat-member-row__order {
   display: flex;
+  align-items: center;
+  align-self: flex-end;
   gap: 0.125rem;
+  min-height: 2.5rem;
 }
 .group-chat-num-grid {
   display: grid;
@@ -548,10 +738,6 @@ async function save() {
 }
 .group-chat-num-grid--3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-.group-chat-num-item--member {
-  flex: 0 1 5.5rem;
-  min-width: 4.5rem;
 }
 @media (max-width: 30rem) {
   .group-chat-num-grid--2,

@@ -77,6 +77,8 @@ export function useChatOutbound(opts: {
       segmentIndex?: number
       activeSegmentIndex?: number
       groupChatTurnState?: GroupChatTurnState
+      turnOrdinal?: number
+      turnId?: string
     },
   ) => void
   finalizePendingSegment: (
@@ -274,13 +276,16 @@ export function useChatOutbound(opts: {
     await opts.loadMessages()
     reconcilePendingGroupContinueListIndex()
   }
-  function applyPersistRetroPatches(persist?: ChatPersistPayload) {
+  function applyPersistRetroPatches(
+    persist?: ChatPersistPayload,
+    clientPendingOrdinal?: number,
+  ) {
     opts.setPersistWarning(persist)
     let next = opts.turns.value
     if (persist?.retro?.length) {
       next = applyRetroPersistToTurns(next, persist)
     }
-    next = applyPersistTurnPlugins(next, persist)
+    next = applyPersistTurnPlugins(next, persist, clientPendingOrdinal)
     opts.turns.value = next
   }
 
@@ -449,7 +454,7 @@ export function useChatOutbound(opts: {
         speakerQueueDisplayNames: sendOpts?.speakerQueueDisplayNames,
         ...(sendOpts?.plugins ? { plugins: sendOpts.plugins } : {}),
       })
-      applyPersistRetroPatches(persist)
+      applyPersistRetroPatches(persist, ord)
       opts.finalizePendingTurn(
         ord,
         receive,
@@ -460,12 +465,16 @@ export function useChatOutbound(opts: {
           segmentIndex: persist?.segmentIndex,
           activeSegmentIndex: persist?.activeSegmentIndex,
           groupChatTurnState: persist?.groupChatTurnState,
+          turnOrdinal: persist?.turnOrdinal,
+          turnId: persist?.turnId,
         },
       )
       if (shouldReload) await reloadMessagesAndReconcileContinue()
+      const resolvedOrd =
+        typeof persist?.turnOrdinal === 'number' ? persist.turnOrdinal : ord
       deferredAutoContinue = updatePendingContinueFromPersist(
         persist,
-        opts.turns.value.findIndex((t) => t.turnOrdinal === ord),
+        opts.turns.value.findIndex((t) => t.turnOrdinal === resolvedOrd),
       )
       opts.emitAssistantReplyComplete({ mode: 'send', traceId })
       return undefined

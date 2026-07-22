@@ -52,6 +52,9 @@ export function mergeFinalizedPendingTurn(
     segmentIndex?: number
     activeSegmentIndex?: number
     groupChatTurnState?: GroupChatTurnState
+    /** 服务端落盘后的真实 ordinal（纠正客户端在 turns 未加载时的预测） */
+    turnOrdinal?: number
+    turnId?: string
   },
   finalUserText?: string,
 ): ChatTurnItem {
@@ -73,9 +76,14 @@ export function mergeFinalizedPendingTurn(
     segments[0] = finalizedSeg
   }
   const activeSegIdx = meta?.activeSegmentIndex ?? segIdx
+  const turnId = meta?.turnId?.trim()
   return {
     ...cur,
     ...(finalUserText !== undefined ? { user: finalUserText } : {}),
+    ...(typeof meta?.turnOrdinal === 'number' && Number.isFinite(meta.turnOrdinal)
+      ? { turnOrdinal: meta.turnOrdinal }
+      : {}),
+    ...(turnId ? { turnId } : {}),
     segments,
     activeSegmentIndex: activeSegIdx,
     ...(meta?.speakerQueue?.length ? { speakerQueue: meta.speakerQueue } : {}),

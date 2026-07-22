@@ -126,6 +126,7 @@ import {
   type GroupChatTurnState,
   type ResolveNextSpeakerResult,
   mergeGroupChatSettings,
+  groupChatWithEnsuredMemberColors,
 } from './group-chat-turn.js'
 
 export type {
@@ -880,11 +881,17 @@ export async function updateConversationCharacterBindings(
       cleaned.push(id)
     }
     const t = nowIso()
-    return {
+    const next: ConversationIndex = {
       ...idx,
       characterIds: cleaned,
       updatedAt: t,
     }
+    const gc = groupChatWithEnsuredMemberColors(
+      normalizeGroupChatSettings(idx.groupChat),
+      cleaned,
+    )
+    if (gc.enabled) next.groupChat = gc
+    return next
   })
 }
 
@@ -1331,10 +1338,15 @@ export async function updateConversationGroupChat(
 ): Promise<ConversationIndex | null> {
   return updateConversationIndexAndList(conversationId, (idx) => {
     const t = nowIso()
+    const merged = mergeGroupChatSettings(idx.groupChat, patch)
+    const groupChat = groupChatWithEnsuredMemberColors(
+      merged,
+      idx.characterIds ?? [],
+    )
     return {
       ...idx,
       updatedAt: t,
-      groupChat: mergeGroupChatSettings(idx.groupChat, patch),
+      groupChat,
     }
   })
 }

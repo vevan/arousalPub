@@ -3,6 +3,7 @@ import { boundCharacterIds } from '@/utils/chat-list-character-ids'
 import { characterImageUrl } from '@/utils/authenticated-media-url'
 import { generateConversationId } from '@/utils/conversation-id'
 import { allocateShortId } from '@/utils/short-id'
+import { initialMultiBotGroupChatSettings } from '@/utils/group-chat-settings'
 import { pickDefaultLorebookIds, fetchLorebookPickerItems } from '@/utils/default-lorebook'
 import CharacterConversationsDialog from '@/components/home/CharacterConversationsDialog.vue'
 import HomeCharacterGrid from '@/components/home/HomeCharacterGrid.vue'
@@ -322,15 +323,20 @@ async function createAndOpen() {
       createErrorText.value = t('conversationList.createFailed')
       return
     }
+    const characterIds = characters.map((c) => c.id)
+    const patchBody: Record<string, unknown> = {
+      userCharacterId: userCard.id,
+      userName: userCard.name,
+      characterIds,
+      lorebookIds: [...selectedLorebookIds.value],
+    }
+    if (characterIds.length >= 2) {
+      patchBody.groupChat = initialMultiBotGroupChatSettings(characterIds)
+    }
     const patch = await fetch(`/api/chat/conversations/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userCharacterId: userCard.id,
-        userName: userCard.name,
-        characterIds: characters.map((c) => c.id),
-        lorebookIds: [...selectedLorebookIds.value],
-      }),
+      body: JSON.stringify(patchBody),
     })
     if (!patch.ok) {
       createErrorText.value = t('conversationList.createFailed')

@@ -26,6 +26,7 @@
 ### 1.2 与多卡绑定的关系
 
 - **绑定多卡 ≠ 群聊**：仅 `groupChat.enabled === true` 时启用多 segment 接龙。
+- **新建多人对话**（≥2 bot）：创建时默认写入开启群聊的初始设置（掷骰竞标、`confirmContinue`、额度 2、衰减开、`maxSegmentsPerTurn = bot数+2`、成员色预分配）；单 bot 仍不开启。
 - **未开群聊**：默认 **char1**（`characterIds[0]`）生成 **1 段**；`/@` 仍可强制指定任意已绑定角色（1 段）。
 - 角色卡 XML 组装逻辑不变；本文只定义 **发言轮次、选人、接续标记**。
 
@@ -90,7 +91,8 @@ AssistantSegment {
       "<characterId>": {
         "weight": 1.0,
         "muted": false,
-        "speakQuota": 2
+        "speakQuota": 2,
+        "color": "#e11d48"
       }
     },
     "groupAssembleInstruction": "…群聊角色说明（{{char}}）…",
@@ -104,6 +106,7 @@ AssistantSegment {
 | `speakerMode` | **`sequential` \| `dice` \| `next@`**，三选一（§3）；**无段间 fallback** |
 | `maxSegmentsPerTurn` | 本 user turn 内 assistant segment 硬上限（可选） |
 | `members[].speakQuota` | 该 bot 在本 user turn 内的发言预算（§2.7） |
+| `members[].color` | 会话级 bot 区分色（`#rrggbb`）；开启群聊或成员变更时对缺色成员自动分配；UI 头像边框 / 助手气泡着色；**仅 bot**，user 不配色 |
 | `decay` | **per-bot** 个人衰减曲线默认模板（§2.7）；G2 过渡代码仍用全局段序号衰减 |
 | `groupAssembleInstruction` | 群聊角色说明；注入于 **user 消息之后**（`afterUserInput`）；空串用英文默认 |
 | `continueAssembleInstruction` | `[NEXT@]` 接续说明；**仅 `speakerMode=next@`** 时与群聊说明 **拼接为一条 system** |
@@ -114,7 +117,9 @@ AssistantSegment {
 | `false` | char1 或 `/@` | 通常 1；`/@` 可指定他人 |
 | `true` | 见 §3（**不再默认 char1**） | 多 segment + 额度 / confirm |
 
-**UI**：对话顶栏 `chat-header` 群聊图标 → 开关、`speakerMode`、`autoContinue` / `confirmContinue`、`maxSegmentsPerTurn`、**群聊提示词**（全模式）、**接续提示词**（仅 `next@`）、衰减与额度、**成员列表**（角色立绘头像、`characterImageUrl` size `s`、displayName、权重〔`dice`/`next@`〕、静音、上下排序〔`sequential`〕改 `characterIds`）。
+**UI**：对话顶栏 `chat-header` 群聊图标 → 开关、`speakerMode`、`autoContinue` / `confirmContinue`、`maxSegmentsPerTurn`、**群聊提示词**（全模式）、**接续提示词**（仅 `next@`）、衰减与额度、**成员列表**（角色立绘头像、`characterImageUrl` size `s`、displayName、**颜色 picker**〔`members[].color`〕、权重〔`dice`/`next@`〕、静音、上下排序〔`sequential`〕改 `characterIds`）。群聊开启时聊天区按 `speakerCharacterId` 给助手头像边框与气泡上色（见 `DOC/03` 群聊 UI）。
+
+**流式首段 speaker**：组装（含掷骰）结束后服务端立刻开 SSE，经 `X-Speaker-Character-Id` / `arousal.speakerCharacterId` 下发当选 bot；前端 `patchPendingSpeakerCharacterId` 更新 pending 气泡。**不以客户端复算掷骰**；无 `/@` 时 pending 初始可为空，群聊未知 speaker 不回退 `characterIds[0]`。
 
 ### 2.3 用户指定发言者：`/@`（Slash 内置）
 
@@ -433,7 +438,7 @@ charN        → 可选；characterIds[N-1]（Phase 2+）
 
 ## 8. 硬规则清单
 
-1. 群聊须 **`groupChat.enabled` 手动开启**；多卡绑定不自动接龙。
+1. 群聊须 **`groupChat.enabled`**；**新建 ≥2 bot 对话**会默认开启（见 §1.2），单 bot / 旧会话仍须手动开启。多卡绑定本身不自动接龙。
 2. **同一 bot 不得连说**；**额度**控制每 bot 每 user turn 最多发言次数（§2.6–§2.7）。
 3. **`speakerMode` 三选一**；段间 **无模式 fallback**（`next@` hint 失败 → **仅手动**，§3.1）。
 4. **`/@`（L0）** 优先于一切 `speakerMode`。

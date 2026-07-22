@@ -282,6 +282,14 @@
       transparent 60%);
 }
 
+.turn--has-speaker-accent .avatar--assistant {
+  border-color: var(--speaker-accent);
+  color       : var(--speaker-accent);
+  background-image: radial-gradient(circle at 30% 25%,
+      color-mix(in srgb, var(--speaker-accent) 20%, transparent),
+      transparent 60%);
+}
+
 /* ========== Role 行 · label + plugin slots ========== */
 .turn-role {
   display    : flex;
@@ -610,6 +618,19 @@
   border    : 0.0625rem solid rgba(var(--v-theme-on-surface), 0.10);
 }
 
+.turn--has-speaker-accent .turn-bubble--assistant {
+  background: color-mix(
+    in srgb,
+    var(--speaker-accent) 8%,
+    rgb(var(--v-theme-surface-light))
+  );
+  border    : 0.0625rem solid color-mix(
+    in srgb,
+    var(--speaker-accent) 35%,
+    rgba(var(--v-theme-on-surface), 0.10)
+  );
+}
+
 .turn-bubble--assistant::before {
   content      : '';
   position     : absolute;
@@ -621,6 +642,24 @@
   border-bottom: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.10);
   border-left  : 0.0625rem solid rgba(var(--v-theme-on-surface), 0.10);
   transform    : rotate(45deg);
+}
+
+.turn--has-speaker-accent .turn-bubble--assistant::before {
+  background   : color-mix(
+    in srgb,
+    var(--speaker-accent) 8%,
+    rgb(var(--v-theme-surface-light))
+  );
+  border-bottom: 0.0625rem solid color-mix(
+    in srgb,
+    var(--speaker-accent) 35%,
+    rgba(var(--v-theme-on-surface), 0.10)
+  );
+  border-left  : 0.0625rem solid color-mix(
+    in srgb,
+    var(--speaker-accent) 35%,
+    rgba(var(--v-theme-on-surface), 0.10)
+  );
 }
 
 .turn-bubble--streaming {

@@ -3,6 +3,7 @@ import {
   cloneGroupChatTurnState,
   defaultGroupChatDecaySettings,
   groupChatMemberWeight,
+  initGroupChatTurnState,
   listEligibleCharacterIds,
   normalizeGroupChatDecaySettings,
   normalizeGroupChatSettings,
@@ -27,7 +28,8 @@ export interface DiceBiddingResult {
   diceAudit?: GroupChatDiceAudit
 }
 
-function seededUnit(seed: string): number {
+/** SHA-256 前 4 字节 → [0,1) */
+export function seededUnit(seed: string): number {
   const hash = createHash('sha256').update(seed).digest()
   return hash.readUInt32BE(0) / 0xffffffff
 }
@@ -144,6 +146,7 @@ export function diceBiddingPick(params: {
   turnOrdinal: number
   lastSpeakerCharacterId?: string | null
 }): DiceBiddingResult {
+  void params.eligibleIds
   const settings = normalizeGroupChatSettings(params.groupChat)
   const decay = settings.decay ?? defaultGroupChatDecaySettings()
   let turnState = cloneGroupChatTurnState(params.turnState)
@@ -236,7 +239,6 @@ export function diceBiddingPick(params: {
 
   // 全员掷骰失败 → 结束 turn 流程
   if (params.segmentCount === 0) {
-    // 首段中止结束
     for (const b of bids) {
       turnState = deductSpeakQuota(turnState, b.id)
     }
@@ -258,4 +260,64 @@ export function diceBiddingPick(params: {
     decayStopped: true,
     diceAudit: buildDiceAudit(null, 'allFailedStop'),
   }
+}
+
+/** 首段选人 id（无 audit）；与 resolveFirstSegmentSpeaker 的 speaker id 一致 */
+export function resolveFirstSegmentSpeakerId(params: {
+  groupChat: GroupChatSettings
+  characterIds: string[]
+  conversationId: string
+  turnOrdinal: number
+  speakerQueueIds: string[]
+  defaultCharacterId: string
+}): string {
+  const groupChat = normalizeGroupChatSettings(params.groupChat)
+  const defaultId = params.defaultCharacterId.trim()
+  if (!groupChat.enabled) {
+    return pickFirstSpeakerForSend({
+      groupChatEnabled: false,
+      speakerQueueIds: params.speakerQueueIds,
+      defaultCharacterId: defaultId,
+    })
+  }
+
+  const turnState = initGroupChatTurnState(groupChat, params.characterIds)
+  const fromQueue = pickFromSpeakerQueue({
+    speakerQueue: params.speakerQueueIds,
+    characterIds: params.characterIds,
+    settings: groupChat,
+    turnState,
+    lastSpeakerCharacterId: null,
+  })
+  if (fromQueue) return fromQueue
+
+  const speakerMode = groupChat.speakerMode ?? 'dice'
+  if (speakerMode === 'sequential') {
+    return (
+      pickSequentialSpeaker({
+        characterIds: params.characterIds,
+        settings: groupChat,
+        turnState,
+        lastSpeakerCharacterId: null,
+      }) ?? defaultId
+    )
+  }
+
+  const eligible = listEligibleCharacterIds({
+    characterIds: params.characterIds,
+    settings: groupChat,
+    turnState,
+    lastSpeakerCharacterId: null,
+  })
+  const dice = diceBiddingPick({
+    groupChat,
+    characterIds: params.characterIds,
+    turnState,
+    eligibleIds: eligible,
+    segmentCount: 0,
+    conversationId: params.conversationId,
+    turnOrdinal: params.turnOrdinal,
+    lastSpeakerCharacterId: null,
+  })
+  return dice.speakerCharacterId?.trim() || defaultId
 }

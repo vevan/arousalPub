@@ -126,23 +126,34 @@ function mapRetroReceives(
   )
 }
 
-/** 将 persist 落盘字段（plugins / turnId）合并进对应轮次，避免为插件快照全量 reload messages */
+/** 将 persist 落盘字段（plugins / turnId / turnOrdinal）合并进对应轮次，避免为插件快照全量 reload messages */
 export function applyPersistTurnPlugins(
   turns: ChatTurnItem[],
   persist?: ChatPersistPayload,
+  /** 客户端发送时预测的 ordinal；与 persist.turnOrdinal 不一致时用于定位 pending 行 */
+  clientPendingOrdinal?: number,
 ): ChatTurnItem[] {
   if (!persist?.ok || typeof persist.turnOrdinal !== 'number') return turns
-  const ord = persist.turnOrdinal
-  const idx = turns.findIndex((t) => t.turnOrdinal === ord)
+  const serverOrd = persist.turnOrdinal
+  let idx = turns.findIndex((t) => t.turnOrdinal === serverOrd)
+  if (
+    idx < 0 &&
+    typeof clientPendingOrdinal === 'number' &&
+    clientPendingOrdinal !== serverOrd
+  ) {
+    idx = turns.findIndex((t) => t.turnOrdinal === clientPendingOrdinal)
+  }
   if (idx < 0) return turns
   const cur = turns[idx]!
   const plugins = resolvePersistPluginsForTurn(persist)
   const turnId = persist.turnId?.trim()
-  if (!plugins && !turnId) return turns
+  const ordinalNeedsSync = cur.turnOrdinal !== serverOrd
+  if (!plugins && !turnId && !ordinalNeedsSync) return turns
   return turns.map((t, i) =>
     i === idx
       ? {
           ...cur,
+          ...(ordinalNeedsSync ? { turnOrdinal: serverOrd } : {}),
           ...(plugins ? { plugins } : {}),
           ...(turnId ? { turnId } : {}),
         }

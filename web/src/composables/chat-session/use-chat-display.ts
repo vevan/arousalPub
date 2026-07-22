@@ -1,4 +1,8 @@
 import { characterImageUrl } from '@/utils/chat-turn-display'
+import {
+  groupChatMemberColor,
+  type GroupChatSettings,
+} from '@/utils/group-chat-settings'
 import { characterNameById } from '@/utils/group-chat-turn'
 import { computed, ref, watch } from 'vue'
 import type { ComposerTranslation } from 'vue-i18n'
@@ -11,6 +15,8 @@ export function useChatDisplay(opts: {
   getAuthUserId: () => string | null | undefined
   getConnAlias: () => string
   getConnModel: () => string
+  isGroupChatEnabled?: () => boolean
+  getGroupChatSettings?: () => GroupChatSettings | null | undefined
   t: ComposerTranslation
 }) {
   const assistantDisplayName = ref('')
@@ -49,11 +55,17 @@ export function useChatDisplay(opts: {
   function resolveSpeakerCharacterId(speakerCharacterId?: string): string {
     const id = speakerCharacterId?.trim()
     if (id) return id
+    // 群聊未知 speaker 时不回退到 characterIds[0]，避免掷骰非首位时短暂错显
+    if (opts.isGroupChatEnabled?.()) return ''
     const charIds = opts.getCharacterIds() ?? []
     return charIds[0]?.trim() ?? ''
   }
 
   function assistantRoleNameForSpeaker(speakerCharacterId?: string): string {
+    const raw = speakerCharacterId?.trim()
+    if (!raw && opts.isGroupChatEnabled?.()) {
+      return assistantRoleName.value
+    }
     const id = resolveSpeakerCharacterId(speakerCharacterId)
     const charIds = opts.getCharacterIds() ?? []
     const names = opts.getBoundDisplayNames?.() ?? []
@@ -65,6 +77,8 @@ export function useChatDisplay(opts: {
   }
 
   function assistantAvatarUrlForSpeaker(speakerCharacterId?: string): string | null {
+    const raw = speakerCharacterId?.trim()
+    if (!raw && opts.isGroupChatEnabled?.()) return null
     const id = resolveSpeakerCharacterId(speakerCharacterId)
     if (!id) return turnAvatarUrls.value.assistant
     return characterImageUrl(opts.getAuthUserId(), id, { size: 's' })
@@ -72,6 +86,16 @@ export function useChatDisplay(opts: {
 
   function assistantAvatarLetterForSpeaker(speakerCharacterId?: string): string {
     return avatarLetterFromName(assistantRoleNameForSpeaker(speakerCharacterId))
+  }
+
+  /** 群聊开启且成员有合法 color 时返回 `#rrggbb`，否则 null（走默认 primary） */
+  function speakerAccentColor(speakerCharacterId?: string): string | null {
+    if (!opts.isGroupChatEnabled?.()) return null
+    const settings = opts.getGroupChatSettings?.()
+    if (!settings) return null
+    const id = resolveSpeakerCharacterId(speakerCharacterId)
+    if (!id) return null
+    return groupChatMemberColor(id, settings)
   }
 
   const turnAvatarUrls = ref<Record<'user' | 'assistant', string | null>>({
@@ -122,5 +146,6 @@ export function useChatDisplay(opts: {
     assistantRoleNameForSpeaker,
     assistantAvatarUrlForSpeaker,
     assistantAvatarLetterForSpeaker,
+    speakerAccentColor,
   }
 }

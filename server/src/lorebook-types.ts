@@ -11,6 +11,9 @@ export interface LorebookGroup {
 /** 条目触发方式：关键字 / 恒定 / 向量语义 */
 export type LorebookTriggerMode = 'keyword' | 'constant' | 'vector'
 
+/** ST World Info：角色定义前 / 后 → boundWorldBefore / boundWorldAfter */
+export type LorebookEntryPosition = 'before_char' | 'after_char'
+
 /**
  * 世界书条目（单条 lore）。
  * 触发与注入细则后续接组装管线；框架期先落盘结构与 CRUD。
@@ -22,7 +25,10 @@ export interface LorebookEntry {
   content: string
   comment?: string
   enabled: boolean
-  /** 组内排序，从 0 起 */
+  /**
+   * 注入顺序（同书、同插入位置内）；**越小越靠前**。
+   * 列表拖拽会重写为 0…n；亦可在编辑器手填。
+   */
   order: number
   /** 关键字触发（空 = 仅依赖 constant / 后续扩展） */
   keys: string[]
@@ -30,7 +36,12 @@ export interface LorebookEntry {
   constant: boolean
   /** 触发方式；缺省时由 constant 推断 */
   triggerMode?: LorebookTriggerMode
-  /** 同轮多条命中时的优先级，数值越大越优先 */
+  /**
+   * 插入位置；缺省 `after_char`。
+   * before_char → boundWorldBefore；after_char → boundWorldAfter。
+   */
+  position?: LorebookEntryPosition
+  /** 预算裁切 / 命中并列时保留优先级；**越大越优先**（与 order 语义相反） */
   priority: number
   createdAt: string
   updatedAt: string

@@ -48,7 +48,7 @@ describe('buildAssemblyAudit', () => {
       ],
       droppedKnowledgeCount: 1,
       memoryPipeline,
-      loreParts: { constantLoreGroups: [], matchedLore: [] },
+      loreParts: { constantLore: [], matchedLore: [] },
       initialMatchedLore: [
         {
           lorebookId: 'lb1',
@@ -73,7 +73,7 @@ describe('buildAssemblyAudit', () => {
       ],
       initialMemoryItems: memoryPipeline.memoryItems,
       trimState: {
-        constantLoreGroups: [],
+        constantLore: [],
         matchedLore: [],
         memoryItems: [],
         knowledgeItems: [],
@@ -127,11 +127,11 @@ describe('buildAssemblyAudit', () => {
         memoryTurnIds: [],
         memoryHits: [],
       },
-      loreParts: { constantLoreGroups: [], matchedLore: [] },
+      loreParts: { constantLore: [], matchedLore: [] },
       initialMatchedLore: [],
       initialMemoryItems: [],
       trimState: {
-        constantLoreGroups: [],
+        constantLore: [],
         matchedLore: [],
         memoryItems: [],
         knowledgeItems: [],

@@ -72,6 +72,7 @@ export const DEFAULT_CHARACTER_SYSTEM_SLOTS: PromptBindingSlot[] = [
 
 export const DEFAULT_WORLD_SYSTEM_SLOTS: PromptBindingSlot[] = [
   'boundWorldBefore',
+  'boundWorldAfter',
 ]
 
 export const DEFAULT_HISTORY_SYSTEM_SLOTS: PromptBindingSlot[] = [

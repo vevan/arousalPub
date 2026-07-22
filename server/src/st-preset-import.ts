@@ -131,7 +131,8 @@ type StructuralBucket = 'pre' | 'world' | 'character' | 'history'
 
 function anchorIdToBucket(id: string): StructuralBucket | null {
   if (id === 'main') return 'pre'
-  if (id === 'worldInfoBefore' || id === 'worldInfoAfter') return 'world'
+  // worldInfoAfter 可交错进 Character 组，不单独占结构桶；仅 Before 决定 World 组顺序
+  if (id === 'worldInfoBefore') return 'world'
   if (id === 'personaDescription') return 'character'
   if ((ST_CHARACTER_ROOT_ANCHORS as readonly string[]).includes(id)) {
     return 'character'
@@ -225,6 +226,12 @@ function makeBindingSlotEntry(
   t: string,
   enabled = true,
   content = '',
+  opts?: {
+    role?: PromptRole
+    injectionPosition?: InjectionPosition
+    injectionDepth?: number
+    injectionOrder?: number
+  },
 ): PromptEntry {
   return {
     id,
@@ -234,10 +241,12 @@ function makeBindingSlotEntry(
     description: '',
     tags: ['st-import'],
     enabled,
-    role: 'system',
-    injectionPosition: 'relative',
-    injectionDepth: 0,
-    injectionOrder: 100,
+    role: opts?.role ?? 'system',
+    injectionPosition: opts?.injectionPosition ?? 'relative',
+    injectionDepth: Math.max(0, Math.floor(opts?.injectionDepth ?? 0)),
+    injectionOrder: Number.isFinite(opts?.injectionOrder)
+      ? Number(opts!.injectionOrder)
+      : 100,
     triggers: [],
     order,
     bindingSlot: slot,
@@ -308,9 +317,19 @@ export function convertStPresetToArousalPub(
     if (!slot) return
     if (bindingPlaced.has(slot)) return
     const groupId = sectionGroupId(section)
-    const content = ST_ANCHOR_CONTENT_FROM_PROMPT.has(anchorId)
-      ? (st.content ?? '')
-      : ''
+    const fromPrompt = ST_ANCHOR_CONTENT_FROM_PROMPT.has(anchorId)
+    const content = fromPrompt ? (st.content ?? '') : ''
+    const injectOpts = fromPrompt
+      ? {
+          role: mapRole(st.role),
+          injectionPosition:
+            st.injection_position === 1
+              ? ('chat' as const)
+              : ('relative' as const),
+          injectionDepth: st.injection_depth,
+          injectionOrder: st.injection_order,
+        }
+      : undefined
     prompts.push(
       makeBindingSlotEntry(
         groupId,
@@ -320,6 +339,7 @@ export function convertStPresetToArousalPub(
         t,
         enabled,
         content,
+        injectOpts,
       ),
     )
     bindingPlaced.add(slot)
@@ -345,8 +365,20 @@ export function convertStPresetToArousalPub(
     if (ST_ANCHOR_BINDING_SLOT[id]) {
       if (id === 'main') {
         section = 'pre'
-      } else if (id === 'worldInfoBefore' || id === 'worldInfoAfter') {
+      } else if (id === 'worldInfoBefore') {
         section = 'world'
+      } else if (id === 'worldInfoAfter') {
+        // ST：After 常夹在角色字段与 dialogueExamples 之间 → 落入 Character 组保序
+        const charStarted = prompts.some(
+          (p) =>
+            p.groupId === GROUP.character && p.bindingSlot != null,
+        )
+        const placeSection: ImportSection = charStarted
+          ? 'character'
+          : 'world'
+        placeStAnchor(id, st, placeSection, enabled)
+        section = placeSection
+        continue
       } else if (id === 'personaDescription') {
         section = 'user'
       } else if (

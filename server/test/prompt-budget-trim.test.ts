@@ -12,6 +12,7 @@ import {
   trimOneHistoryMessage,
   trimOneMatchedLore,
   trimOneMemoryItem,
+  worldTextsFromTrimState,
   type PromptBudgetTrimState,
 } from '../src/prompt-budget-trim.js'
 import type { ChatMessage } from '../src/assemble-prompts.js'
@@ -27,6 +28,7 @@ function loreEntry(id: string, priority: number, content: string): LorebookEntry
     enabled: true,
     order: 0,
     priority,
+    constant: false,
     triggerMode: 'keyword',
     createdAt: '',
     updatedAt: '',
@@ -46,10 +48,11 @@ function turn(id: string, ordinal: number, text: string): TurnRecord {
 
 function baseState(): PromptBudgetTrimState {
   return {
-    constantLoreGroups: [
+    constantLore: [
       {
+        lorebookId: 'lb1',
         lorebookName: 'World',
-        entries: [{ name: 'constant', content: 'must keep' }],
+        entry: loreEntry('constant', 100, 'must keep'),
       },
     ],
     matchedLore: [
@@ -96,6 +99,112 @@ function messagesFromState(s: PromptBudgetTrimState): ChatMessage[] {
 }
 
 const DEFAULT_TRIM: BudgetTrimSettings = BUDGET_TRIM_SETTINGS_DEFAULTS
+
+describe('worldTextsFromTrimState', () => {
+  it('splits before_char and after_char; missing position defaults to after_char', () => {
+    const state: PromptBudgetTrimState = {
+      constantLore: [
+        {
+          lorebookId: 'lb1',
+          lorebookName: 'World',
+          entry: {
+            ...loreEntry('c-before', 10, 'CONST-BEFORE'),
+            position: 'before_char',
+          },
+        },
+        {
+          lorebookId: 'lb1',
+          lorebookName: 'World',
+          entry: {
+            ...loreEntry('c-after', 10, 'CONST-AFTER'),
+            position: 'after_char',
+          },
+        },
+      ],
+      matchedLore: [
+        {
+          lorebookId: 'lb1',
+          lorebookName: 'World',
+          entry: {
+            ...loreEntry('m-before', 5, 'MATCH-BEFORE'),
+            position: 'before_char',
+          },
+          mode: 'keyword',
+          score: 5,
+        },
+        {
+          lorebookId: 'lb1',
+          lorebookName: 'World',
+          entry: loreEntry('m-default', 5, 'MATCH-DEFAULT'),
+          mode: 'keyword',
+          score: 5,
+        },
+      ],
+      memoryItems: [],
+      knowledgeItems: [],
+      historyMessages: [],
+    }
+    const { worldBefore, worldAfter } = worldTextsFromTrimState(state)
+    assert.ok(worldBefore.includes('CONST-BEFORE'))
+    assert.ok(worldBefore.includes('MATCH-BEFORE'))
+    assert.equal(worldBefore.includes('CONST-AFTER'), false)
+    assert.equal(worldBefore.includes('MATCH-DEFAULT'), false)
+    assert.ok(worldAfter.includes('CONST-AFTER'))
+    assert.ok(worldAfter.includes('MATCH-DEFAULT'))
+    assert.equal(worldAfter.includes('CONST-BEFORE'), false)
+    assert.equal(worldAfter.includes('MATCH-BEFORE'), false)
+  })
+
+  it('orders injected lore by entry.order ascending (smaller first)', () => {
+    const state: PromptBudgetTrimState = {
+      constantLore: [
+        {
+          lorebookId: 'lb1',
+          lorebookName: 'World',
+          entry: {
+            ...loreEntry('late-const', 1, 'LATE-CONST'),
+            order: 30,
+            position: 'after_char',
+          },
+        },
+      ],
+      matchedLore: [
+        {
+          lorebookId: 'lb1',
+          lorebookName: 'World',
+          entry: {
+            ...loreEntry('early-match', 1, 'EARLY-MATCH'),
+            order: 10,
+            position: 'after_char',
+          },
+          mode: 'keyword',
+          score: 1,
+        },
+        {
+          lorebookId: 'lb1',
+          lorebookName: 'World',
+          entry: {
+            ...loreEntry('mid-match', 1, 'MID-MATCH'),
+            order: 20,
+            position: 'after_char',
+          },
+          mode: 'keyword',
+          score: 1,
+        },
+      ],
+      memoryItems: [],
+      knowledgeItems: [],
+      historyMessages: [],
+    }
+    const { worldAfter } = worldTextsFromTrimState(state)
+    const early = worldAfter.indexOf('EARLY-MATCH')
+    const mid = worldAfter.indexOf('MID-MATCH')
+    const late = worldAfter.indexOf('LATE-CONST')
+    assert.ok(early >= 0 && mid >= 0 && late >= 0)
+    assert.ok(early < mid)
+    assert.ok(mid < late)
+  })
+})
 
 describe('trimOneMatchedLore', () => {
   it('drops lowest keyword priority first', () => {

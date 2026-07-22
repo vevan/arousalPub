@@ -6,12 +6,14 @@ import {
   LOREBOOK_ID_RE,
 } from './lorebook-file.js'
 import {
+  normalizeEntryPosition,
   normalizeEntryTriggerFields,
   resolveEntryTriggerMode,
 } from './lorebook-entry-utils.js'
 import type {
   Lorebook,
   LorebookEntry,
+  LorebookEntryPosition,
   LorebookTriggerMode,
 } from './lorebook-types.js'
 
@@ -26,6 +28,7 @@ export interface LorebookEntryCreateBody {
   enabled?: boolean
   constant?: boolean
   triggerMode?: LorebookTriggerMode
+  position?: LorebookEntryPosition
   priority?: number
   order?: number
 }
@@ -38,6 +41,7 @@ export interface LorebookEntryPatchBody {
   enabled?: boolean
   constant?: boolean
   triggerMode?: LorebookTriggerMode
+  position?: LorebookEntryPosition
   priority?: number
   order?: number
   groupId?: string
@@ -104,6 +108,7 @@ export async function createLorebookEntry(
         : defaultGroupId(lb.groups)
 
     const triggerMode = resolveTriggerFromBody(body)
+    const position = normalizeEntryPosition(body.position) ?? 'after_char'
     const t = new Date().toISOString()
     const entry: LorebookEntry = normalizeEntryTriggerFields({
       id: `entry-${generateShortId()}`,
@@ -119,6 +124,7 @@ export async function createLorebookEntry(
       keys: normalizeKeys(body.keys),
       constant: triggerMode === 'constant',
       triggerMode,
+      position,
       priority:
         typeof body.priority === 'number' && Number.isFinite(body.priority)
           ? body.priority
@@ -164,6 +170,7 @@ export async function createLorebookEntriesBatch(
           : defaultGroupId(lb.groups)
 
       const triggerMode = resolveTriggerFromBody(body)
+      const position = normalizeEntryPosition(body.position) ?? 'after_char'
       const entry: LorebookEntry = normalizeEntryTriggerFields({
         id: `entry-${generateShortId()}`,
         groupId,
@@ -178,6 +185,7 @@ export async function createLorebookEntriesBatch(
         keys: normalizeKeys(body.keys),
         constant: triggerMode === 'constant',
         triggerMode,
+        position,
         priority:
           typeof body.priority === 'number' && Number.isFinite(body.priority)
             ? body.priority
@@ -235,6 +243,10 @@ export async function patchLorebookEntry(
     if (body.keys !== undefined) next.keys = normalizeKeys(body.keys)
     if (typeof body.priority === 'number' && Number.isFinite(body.priority)) {
       next.priority = body.priority
+    }
+    if (body.position !== undefined) {
+      const pos = normalizeEntryPosition(body.position)
+      if (pos) next.position = pos
     }
     if (typeof body.groupId === 'string' && groupIds.has(body.groupId)) {
       next.groupId = body.groupId

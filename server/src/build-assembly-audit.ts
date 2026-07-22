@@ -1,8 +1,10 @@
 import type { LorebookInjectionParts } from './lorebook-resolve.js'
 import type { MemoryPipelineResult } from './memory-pipeline.js'
 import type { AssemblyAudit } from './chat-audit-types.js'
-import type { PromptBudgetTrimState } from './prompt-budget-trim.js'
-import type { LorebookXmlGroup } from './prompt-xml.js'
+import type {
+  ConstantLoreItem,
+  PromptBudgetTrimState,
+} from './prompt-budget-trim.js'
 import type { KnowledgeHitItem } from './knowledge-resolve.js'
 import {
   countPluginAssembleAdditionTokens,
@@ -34,24 +36,19 @@ export interface BuildAssemblyAuditParams {
 }
 
 function constantLoreMatches(
-  groups: LorebookXmlGroup[],
-  lorebookNameToId: Map<string, string>,
-  fallbackLorebookId: string,
+  items: ConstantLoreItem[],
 ): AssemblyAudit['lore']['matched'] {
   const out: AssemblyAudit['lore']['matched'] = []
-  for (const g of groups) {
-    const name = g.lorebookName.trim() || '未命名'
-    const lorebookId = lorebookNameToId.get(name) ?? fallbackLorebookId
-    for (const e of g.entries) {
-      if (!e.content.trim()) continue
-      out.push({
-        lorebookId,
-        entryId: `constant:${name}:${e.name}`,
-        title: e.name.trim() || undefined,
-        mode: 'constant',
-        included: true,
-      })
-    }
+  for (const c of items) {
+    const content = c.entry.content.trim()
+    if (!content) continue
+    out.push({
+      lorebookId: c.lorebookId,
+      entryId: c.entry.id,
+      title: c.entry.title.trim() || undefined,
+      mode: 'constant',
+      included: true,
+    })
   }
   return out
 }
@@ -107,11 +104,7 @@ export function buildAssemblyAudit(
   memoryHits.sort((a, b) => b.score - a.score)
 
   const matched: AssemblyAudit['lore']['matched'] = [
-    ...constantLoreMatches(
-      params.loreParts.constantLoreGroups,
-      params.lorebookNameToId,
-      params.lorebookIds[0] ?? 'unknown',
-    ),
+    ...constantLoreMatches(params.loreParts.constantLore),
   ]
   for (const m of params.initialMatchedLore) {
     matched.push({

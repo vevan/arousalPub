@@ -107,4 +107,74 @@ describe('st-lorebook-import', () => {
       /超过导入上限/,
     )
   })
+
+  it('maps ST position 0/before_char → before_char and 1/after_char/default → after_char', async () => {
+    const lb = await convertStLorebookToLorebook(
+      {
+        entries: {
+          a: {
+            uid: 1,
+            key: ['a'],
+            content: 'before-0',
+            comment: 'pos0',
+            position: 0,
+            order: 0,
+          },
+          b: {
+            uid: 2,
+            key: ['b'],
+            content: 'before-str',
+            comment: 'pos-before',
+            position: 'before_char',
+            order: 1,
+          },
+          c: {
+            uid: 3,
+            key: ['c'],
+            content: 'after-1',
+            comment: 'pos1',
+            position: 1,
+            order: 2,
+          },
+          d: {
+            uid: 4,
+            key: ['d'],
+            content: 'after-str',
+            comment: 'pos-after',
+            position: 'after_char',
+            order: 3,
+          },
+          e: {
+            uid: 5,
+            key: ['e'],
+            content: 'after-default',
+            comment: 'pos-missing',
+            order: 4,
+          },
+        },
+      },
+      { lorebookId: 'lore-st-pos', name: 'pos map' },
+    )
+    const byTitle = Object.fromEntries(lb.entries.map((e) => [e.title, e]))
+    assert.equal(byTitle.pos0?.position, 'before_char')
+    assert.equal(byTitle['pos-before']?.position, 'before_char')
+    assert.equal(byTitle.pos1?.position, 'after_char')
+    assert.equal(byTitle['pos-after']?.position, 'after_char')
+    assert.equal(byTitle['pos-missing']?.position, 'after_char')
+  })
+
+  it('warns and falls back to after_char for unsupported ST positions', () => {
+    const preview = previewStLorebookImport({
+      entries: {
+        x: {
+          uid: 9,
+          key: ['x'],
+          content: 'outlet',
+          comment: 'pos-outlet',
+          position: 5,
+        },
+      },
+    })
+    assert.ok(preview.warnings.some((w) => w.includes('未支持') && w.includes('after_char')))
+  })
 })

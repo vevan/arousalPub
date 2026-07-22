@@ -1,10 +1,6 @@
 import type { LorebookGroup } from '@/stores/lorebooks'
-
 import type { PromptEntry, PromptGroup } from '@/stores/prompts'
-
 import { groupAllowsPromptEntries } from '@/stores/prompts'
-
-
 
 const CHARACTER_SLOTS = new Set([
   'boundUserPersona',
@@ -16,129 +12,71 @@ const CHARACTER_SLOTS = new Set([
   'boundDialogueExamples',
 ])
 
-const WORLD_SLOTS = new Set([
-  'boundWorldBefore',
-  'boundWorldAfter',
-  'boundMemory',
-])
+const WORLD_BEFORE_SLOTS = new Set(['boundWorldBefore'])
+const WORLD_MEMORY_SLOTS = new Set(['boundMemory'])
 
-
+/** World Info (before/after)：可与 ST 一样插在角色字段缝隙（Character 组） */
+const WORLD_AFTER_SLOTS = new Set(['boundWorldAfter'])
 
 const HISTORY_SLOTS = new Set([
-
   'boundChatHistory',
-
   'boundCharacterPostHistory',
-
 ])
 
-
-
 /** 提示词条目是否可迁入目标分组 */
-
 export function promptEntryAllowedInGroup(
-
   entry: Pick<PromptEntry, 'bindingSlot'>,
-
   group: Pick<PromptGroup, 'kind'>,
-
 ): boolean {
-
   if (!groupAllowsPromptEntries(group.kind)) return false
-
   const slot = entry.bindingSlot
-
   if (!slot) return true
-
   if (slot === 'boundMain') return group.kind === 'normal'
-
   if (CHARACTER_SLOTS.has(slot)) return group.kind === 'character'
-
-  if (WORLD_SLOTS.has(slot)) return group.kind === 'world'
-
+  if (WORLD_AFTER_SLOTS.has(slot) || WORLD_BEFORE_SLOTS.has(slot)) {
+    return group.kind === 'world' || group.kind === 'character'
+  }
+  if (WORLD_MEMORY_SLOTS.has(slot)) return group.kind === 'world'
   if (HISTORY_SLOTS.has(slot)) return group.kind === 'history'
-
   if (slot === 'boundUserInput') return group.kind === 'userInput'
-
   return false
-
 }
-
-
 
 export interface GroupPickerItem {
-
   id: string
-
   name: string
-
   count: number
-
   disabled?: boolean
-
 }
-
-
 
 export function lorebookGroupPickerItems(
-
   groups: LorebookGroup[],
-
   counts: Record<string, number>,
-
 ): GroupPickerItem[] {
-
   return groups
-
     .slice()
-
     .sort((a, b) => a.order - b.order)
-
     .map((g) => ({
-
       id: g.id,
-
       name: g.name,
-
       count: counts[g.id] ?? 0,
-
     }))
-
 }
-
-
 
 export function promptGroupPickerItems(
-
   groups: PromptGroup[],
-
   counts: Record<string, number>,
-
   entry: Pick<PromptEntry, 'bindingSlot'> | null,
-
 ): GroupPickerItem[] {
-
   return groups
-
     .slice()
-
     .sort((a, b) => a.order - b.order)
-
     .map((g) => ({
-
       id: g.id,
-
       name: g.name,
-
       count: counts[g.id] ?? 0,
-
       disabled: entry
-
         ? !promptEntryAllowedInGroup(entry, g)
-
         : !groupAllowsPromptEntries(g.kind),
-
     }))
-
 }
-

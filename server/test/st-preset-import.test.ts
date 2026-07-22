@@ -243,7 +243,7 @@ describe('convertStPresetToArousalPub', () => {
         { cardBody: 'CARD', macroFields: SAMPLE_FIELDS, postHistory: 'POST' },
       ],
       userCharacter: { cardBody: 'USER' },
-      world: '<lores>\n<lore name="world">\nLORE\n</lore>\n</lores>',
+      worldBefore: '<lores>\n<lore name="world">\nLORE\n</lore>\n</lores>',
       history: [{ role: 'user', content: 'u' }],
       userInput: 'now',
     })
@@ -305,7 +305,7 @@ describe('convertStPresetToArousalPub', () => {
 
     const { messages } = assemblePrompts(preset, {
       characters: [{ cardBody: 'CARD', macroFields: SAMPLE_FIELDS }],
-      world: '<lores>\n<lore name="world">\nLORE\n</lore>\n</lores>',
+      worldAfter: '<lores>\n<lore name="world">\nLORE\n</lore>\n</lores>',
       history: [{ role: 'user', content: 'u' }],
       userInput: 'now',
     })
@@ -494,7 +494,7 @@ describe('convertStPresetToArousalPub', () => {
         { cardBody: 'CARD', macroFields: SAMPLE_FIELDS, postHistory: 'POST' },
       ],
       userCharacter: { cardBody: 'USER' },
-      world: '<lores>\n<lore name="world">\nLORE\n</lore>\n</lores>',
+      worldBefore: '<lores>\n<lore name="world">\nLORE\n</lore>\n</lores>',
       history: [{ role: 'user', content: 'u' }],
     })
     const contents = messages.map((m) => m.content)
@@ -539,6 +539,203 @@ describe('convertStPresetToArousalPub', () => {
     )
 
     assertNoStGapGroups(preset)
+    const wiAfter = preset.prompts.find((p) => p.bindingSlot === 'boundWorldAfter')
+    assert.equal(wiAfter?.groupId, 'group-world')
+  })
+
+  it('places worldInfoAfter in character group between scenario and dialogueExamples', () => {
+    const preset = convertStPresetToArousalPub(
+      {
+        name: 'ST wi-after interleave',
+        prompts: [
+          { identifier: 'main', name: 'Main', content: 'MAIN' },
+          {
+            identifier: 'worldInfoBefore',
+            name: 'WI before',
+            marker: true,
+            content: '',
+          },
+          {
+            identifier: 'personaDescription',
+            name: 'Persona',
+            marker: true,
+            content: '',
+          },
+          {
+            identifier: 'charDescription',
+            name: 'Char',
+            marker: true,
+            content: '',
+          },
+          {
+            identifier: 'charPersonality',
+            name: 'Pers',
+            marker: true,
+            content: '',
+          },
+          {
+            identifier: 'scenario',
+            name: 'Scenario',
+            marker: true,
+            content: '',
+          },
+          {
+            identifier: 'worldInfoAfter',
+            name: 'WI after',
+            marker: true,
+            content: '',
+          },
+          {
+            identifier: 'dialogueExamples',
+            name: 'Examples',
+            marker: true,
+            content: '',
+          },
+          {
+            identifier: 'chatHistory',
+            name: 'Hist',
+            marker: true,
+            content: '',
+          },
+        ],
+        prompt_order: [
+          {
+            character_id: 100001,
+            order: [
+              { identifier: 'main', enabled: true },
+              { identifier: 'worldInfoBefore', enabled: true },
+              { identifier: 'personaDescription', enabled: true },
+              { identifier: 'charDescription', enabled: true },
+              { identifier: 'charPersonality', enabled: true },
+              { identifier: 'scenario', enabled: true },
+              { identifier: 'worldInfoAfter', enabled: true },
+              { identifier: 'dialogueExamples', enabled: true },
+              { identifier: 'chatHistory', enabled: true },
+            ],
+          },
+        ],
+      },
+      { presetId: 'preset-wi-after' },
+    )
+
+    const wiAfter = preset.prompts.find((p) => p.bindingSlot === 'boundWorldAfter')
+    assert.equal(wiAfter?.groupId, 'group-character')
+
+    const charBindings = preset.prompts
+      .filter((p) => p.groupId === 'group-character' && p.bindingSlot)
+      .sort((a, b) => a.order - b.order)
+      .map((p) => p.bindingSlot)
+    assert.deepEqual(charBindings, [
+      'boundUserPersona',
+      'boundCharSystemPrompt',
+      'boundCharDescription',
+      'boundCharPersonality',
+      'boundScenario',
+      'boundWorldAfter',
+      'boundDialogueExamples',
+    ])
+
+    const { messages } = assemblePrompts(preset, {
+      characters: [
+        { cardBody: 'CARD', macroFields: SAMPLE_FIELDS, postHistory: 'POST' },
+      ],
+      userCharacter: { cardBody: 'USER' },
+      worldBefore:
+        '<lores>\n<lore name="before">\nLORE-BEFORE\n</lore>\n</lores>',
+      worldAfter: '<lores>\n<lore name="after">\nLORE-AFTER\n</lore>\n</lores>',
+      history: [{ role: 'user', content: 'u' }],
+      userInput: 'now',
+    })
+    let contents = messages.map((m) => m.content)
+    assert.ok(contents[0] === 'MAIN')
+    const beforeIdx = contents.findIndex((c) => c.includes('LORE-BEFORE'))
+    const afterIdx = contents.findIndex((c) => c.includes('LORE-AFTER'))
+    const userIdx = contents.indexOf('USER')
+    const scenIdx = contentIndexOf(contents, 'SCEN')
+    const exIdx = contentIndexOf(contents, 'MES-EX')
+    assert.ok(beforeIdx >= 0 && beforeIdx < userIdx)
+    assert.ok(scenIdx < afterIdx && afterIdx < exIdx)
+    assert.ok(scenIdx < exIdx)
+
+    const afterOnly = convertStPresetToArousalPub(
+      {
+        name: 'ST wi-after only',
+        prompts: [
+          { identifier: 'main', name: 'Main', content: 'MAIN' },
+          {
+            identifier: 'worldInfoBefore',
+            name: 'WI before',
+            marker: true,
+            content: '',
+          },
+          {
+            identifier: 'personaDescription',
+            name: 'Persona',
+            marker: true,
+            content: '',
+          },
+          {
+            identifier: 'charDescription',
+            name: 'Char',
+            marker: true,
+            content: '',
+          },
+          {
+            identifier: 'scenario',
+            name: 'Scenario',
+            marker: true,
+            content: '',
+          },
+          {
+            identifier: 'worldInfoAfter',
+            name: 'WI after',
+            marker: true,
+            content: '',
+          },
+          {
+            identifier: 'dialogueExamples',
+            name: 'Examples',
+            marker: true,
+            content: '',
+          },
+          {
+            identifier: 'chatHistory',
+            name: 'Hist',
+            marker: true,
+            content: '',
+          },
+        ],
+        prompt_order: [
+          {
+            character_id: 100001,
+            order: [
+              { identifier: 'main', enabled: true },
+              { identifier: 'worldInfoBefore', enabled: false },
+              { identifier: 'personaDescription', enabled: true },
+              { identifier: 'charDescription', enabled: true },
+              { identifier: 'scenario', enabled: true },
+              { identifier: 'worldInfoAfter', enabled: true },
+              { identifier: 'dialogueExamples', enabled: true },
+              { identifier: 'chatHistory', enabled: true },
+            ],
+          },
+        ],
+      },
+      { presetId: 'preset-wi-after-only' },
+    )
+    const { messages: msgs2 } = assemblePrompts(afterOnly, {
+      characters: [{ cardBody: 'CARD', macroFields: SAMPLE_FIELDS }],
+      userCharacter: { cardBody: 'USER' },
+      worldAfter: '<lores>\n<lore name="world">\nLORE\n</lore>\n</lores>',
+      history: [{ role: 'user', content: 'u' }],
+      userInput: 'now',
+    })
+    contents = msgs2.map((m) => m.content)
+    const lore2 = contents.findIndex((c) => c.includes('LORE'))
+    const scen2 = contentIndexOf(contents, 'SCEN')
+    const ex2 = contentIndexOf(contents, 'MES-EX')
+    assert.ok(scen2 < lore2)
+    assert.ok(lore2 < ex2)
   })
 
   it('places customs between main and worldInfoBefore in pre group', () => {
@@ -666,6 +863,80 @@ describe('convertStPresetToArousalPub', () => {
       'group-user-input',
       'group-post',
     )
+  })
+
+  it('imports main chat injection_position, depth, order, and role', () => {
+    const preset = convertStPresetToArousalPub(
+      {
+        name: 'ST main chat',
+        prompts: [
+          {
+            identifier: 'main',
+            name: 'Main',
+            content: 'MAIN-CHAT',
+            role: 'system',
+            injection_position: 1,
+            injection_depth: 2,
+            injection_order: 50,
+          },
+          {
+            identifier: 'personaDescription',
+            name: 'Persona',
+            marker: true,
+            content: '',
+          },
+          {
+            identifier: 'charDescription',
+            name: 'Char',
+            marker: true,
+            content: '',
+          },
+          {
+            identifier: 'chatHistory',
+            name: 'Hist',
+            marker: true,
+            content: '',
+          },
+        ],
+        prompt_order: [
+          {
+            character_id: 100001,
+            order: [
+              { identifier: 'main', enabled: true },
+              { identifier: 'personaDescription', enabled: true },
+              { identifier: 'charDescription', enabled: true },
+              { identifier: 'chatHistory', enabled: true },
+            ],
+          },
+        ],
+      },
+      { presetId: 'preset-main-chat' },
+    )
+
+    const mainSlot = preset.prompts.find((p) => p.bindingSlot === 'boundMain')
+    assert.equal(mainSlot?.content, 'MAIN-CHAT')
+    assert.equal(mainSlot?.injectionPosition, 'chat')
+    assert.equal(mainSlot?.injectionDepth, 2)
+    assert.equal(mainSlot?.injectionOrder, 50)
+    assert.equal(mainSlot?.role, 'system')
+
+    const { messages } = assemblePrompts(preset, {
+      characters: [{ cardBody: 'CARD', macroFields: SAMPLE_FIELDS }],
+      history: [
+        { role: 'assistant', content: 'a0' },
+        { role: 'user', content: 'u0' },
+        { role: 'assistant', content: 'a1' },
+        { role: 'user', content: 'u1' },
+      ],
+      userInput: 'now',
+    })
+    const contents = messages.map((m) => m.content)
+    const mainIdx = contents.indexOf('MAIN-CHAT')
+    const lastUserIdx = contents.lastIndexOf('now')
+    assert.ok(mainIdx >= 0)
+    assert.ok(lastUserIdx >= 0)
+    // depth 2: insert before the 2nd message above the last user
+    assert.ok(mainIdx < lastUserIdx)
   })
 
   it('throws when prompt_order is empty', () => {

@@ -205,14 +205,8 @@ export function normalizePresetCore(
     )
   }
 
-  if (
-    worldG &&
-    !prompts.some(
-      (e) =>
-        e.bindingSlot === 'boundWorldBefore' ||
-        e.bindingSlot === 'boundWorldAfter',
-    )
-  ) {
+  // 缺 Before/After 时补进 World 组；不改已有槽位的分组/顺序（由用户维护）
+  if (worldG) {
     prompts = ensureSystemSubBlocks(
       prompts,
       worldG,

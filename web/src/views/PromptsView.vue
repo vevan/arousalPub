@@ -753,6 +753,11 @@ function bindingSlotAllowsToggle(slot: string | undefined): boolean {
   return !bindingSlotIsRequired(slot)
 }
 
+/** 正文来自预设本身（ST main / enhanceDefinitions），可编辑 */
+function bindingSlotHasEditableContent(slot: string | undefined): boolean {
+  return slot === 'boundMain' || slot === 'boundEnhanceDefinitions'
+}
+
 function bindingSlotLabelKey(slot: string | undefined): string {
   switch (slot) {
     case 'boundUserPersona':
@@ -844,6 +849,10 @@ const listBundleEditor = computed((): {
 
 function bindingSlotListHintKey(slot: string | undefined): string {
   switch (slot) {
+    case 'boundMain':
+      return 'prompts.boundMainListHint'
+    case 'boundEnhanceDefinitions':
+      return 'prompts.boundEnhanceDefinitionsListHint'
     case 'boundCharSystemPrompt':
       return 'prompts.boundCharSystemPromptListHint'
     case 'boundUserPersona':
@@ -870,6 +879,10 @@ function bindingSlotListHintKey(slot: string | undefined): string {
 
 function bindingSlotEditorDescKey(slot: string | undefined): string {
   switch (slot) {
+    case 'boundMain':
+      return 'prompts.boundMainEditorDesc'
+    case 'boundEnhanceDefinitions':
+      return 'prompts.boundEnhanceDefinitionsEditorDesc'
     case 'boundCharSystemPrompt':
       return 'prompts.boundCharSystemPromptEditorDesc'
     case 'boundUserPersona':
@@ -1486,10 +1499,17 @@ const canDeleteGroup = (g: PromptGroup) =>
                   >{{ $t('prompts.seedTag') }}</span>
                 </div>
                 <p
-                  v-if="!row.entry.bindingSlot && (row.entry.description || row.entry.content)"
+                  v-if="
+                    (row.entry.description || row.entry.content) &&
+                    (!row.entry.bindingSlot ||
+                      bindingSlotHasEditableContent(row.entry.bindingSlot))
+                  "
                   class="entry-card__body"
                 >{{ previewBody(row.entry) }}</p>
-                <div v-if="!row.entry.bindingSlot" class="entry-card__meta">
+                <div
+                  v-if="!row.entry.bindingSlot || bindingSlotHasEditableContent(row.entry.bindingSlot)"
+                  class="entry-card__meta"
+                >
                   <span class="entry-card__role-chip" :class="`role-${row.entry.role}`">
                     {{ $t(`prompts.role${row.entry.role.charAt(0).toUpperCase() + row.entry.role.slice(1)}`) }}
                   </span>
@@ -1502,7 +1522,7 @@ const canDeleteGroup = (g: PromptGroup) =>
                       : `${$t('prompts.positionChat')} · ${$t('prompts.fieldDepth')} ${row.entry.injectionDepth}` }}
                   </span>
                   <span
-                    v-if="row.entry.triggers.length"
+                    v-if="!row.entry.bindingSlot && row.entry.triggers.length"
                     class="entry-card__trigs"
                   >
                     {{ row.entry.triggers.map((t) => $t(`prompts.trigger${t.charAt(0).toUpperCase() + t.slice(1)}`)).join(' · ') }}
@@ -1632,6 +1652,87 @@ const canDeleteGroup = (g: PromptGroup) =>
                 <div class="binding-editor__section-body">
                   <p>{{ $t(bindingSlotListHintKey(selected.bindingSlot)) }}</p>
                   <p>{{ $t(bindingSlotEditorDescKey(selected.bindingSlot)) }}</p>
+                  <template v-if="bindingSlotHasEditableContent(selected.bindingSlot)">
+                    <div class="editor-card__field-row">
+                      <div class="editor-card__field-block">
+                        <label class="editor-card__field-label">{{ $t('prompts.fieldRole') }}</label>
+                        <div class="pill-group">
+                          <button
+                            v-for="opt in ROLE_OPTIONS"
+                            :key="opt.id"
+                            type="button"
+                            class="pill"
+                            :class="{ 'is-on': selected.role === opt.id, [`role-${opt.id}`]: true }"
+                            @click="setRole(opt.id)"
+                          >{{ $t(opt.key) }}</button>
+                        </div>
+                      </div>
+
+                      <div class="editor-card__field-block">
+                        <label class="editor-card__field-label">
+                          {{ $t('prompts.fieldPosition') }}
+                          <span class="editor-card__field-hint">
+                            {{ selected.injectionPosition === 'relative'
+                              ? $t('prompts.positionRelativeHint')
+                              : $t('prompts.positionChatHint') }}
+                          </span>
+                        </label>
+                        <div class="pill-group">
+                          <button
+                            type="button"
+                            class="pill"
+                            :class="{ 'is-on': selected.injectionPosition === 'relative' }"
+                            @click="setPosition('relative')"
+                          >{{ $t('prompts.positionRelative') }}</button>
+                          <button
+                            type="button"
+                            class="pill"
+                            :class="{ 'is-on': selected.injectionPosition === 'chat' }"
+                            @click="setPosition('chat')"
+                          >{{ $t('prompts.positionChat') }}</button>
+                          <template v-if="selected.injectionPosition === 'chat'">
+                            <span class="pill-divider" />
+                            <span class="num-field">
+                              <span class="num-field__label">{{ $t('prompts.fieldDepth') }}</span>
+                              <input
+                                v-model.number="depthDraft"
+                                type="number"
+                                min="0"
+                                class="num-field__input"
+                                :title="$t('prompts.depthHint')"
+                                @blur="commitPromptEditorDraftsFromBlur()"
+                              />
+                            </span>
+                            <span class="num-field">
+                              <span class="num-field__label">{{ $t('prompts.fieldOrder') }}</span>
+                              <input
+                                v-model.number="orderDraft"
+                                type="number"
+                                class="num-field__input"
+                                :title="$t('prompts.orderHint')"
+                                @blur="commitPromptEditorDraftsFromBlur()"
+                              />
+                            </span>
+                          </template>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="editor-card__field">
+                      <label class="editor-card__field-label">
+                        {{ $t('prompts.fieldContent') }}
+                        <span class="editor-card__field-hint">{{ $t('prompts.contentHint') }}</span>
+                      </label>
+                      <textarea
+                        v-model="contentDraft"
+                        class="editor-card__content-input"
+                        rows="12"
+                        spellcheck="false"
+                        :placeholder="$t('prompts.contentPlaceholder')"
+                        @blur="commitPromptEditorDraftsFromBlur()"
+                      ></textarea>
+                    </div>
+                  </template>
                 </div>
               </section>
               <footer class="editor-card__foot">

@@ -58,6 +58,42 @@ function makePreset(
 }
 
 describe('assemblePrompts group.enabled', () => {
+  it('orders normal-group relative entries by list order, not injectionOrder', () => {
+    const pre = makeGroup({ id: 'g-pre', kind: 'normal', order: 0 })
+    const preset = makePreset(
+      [pre],
+      [
+        makeEntry({
+          id: 'main',
+          groupId: 'g-pre',
+          content: 'MAIN-FIRST',
+          bindingSlot: 'boundMain',
+          order: 0,
+          injectionOrder: 100,
+        }),
+        makeEntry({
+          id: 'custom-a',
+          groupId: 'g-pre',
+          content: 'CUSTOM-A',
+          order: 1,
+          injectionOrder: 1,
+        }),
+        makeEntry({
+          id: 'custom-b',
+          groupId: 'g-pre',
+          content: 'CUSTOM-B',
+          order: 2,
+          injectionOrder: 0,
+        }),
+      ],
+    )
+    const { messages } = assemblePrompts(preset)
+    assert.deepEqual(
+      messages.map((m) => m.content),
+      ['MAIN-FIRST', 'CUSTOM-A', 'CUSTOM-B'],
+    )
+  })
+
   it('skips custom entries in a disabled normal group', () => {
     const pre = makeGroup({ id: 'g-pre', kind: 'normal', order: 0, enabled: false })
     const preset = makePreset(
@@ -96,7 +132,7 @@ describe('assemblePrompts group.enabled', () => {
       ],
     )
     const { messages } = assemblePrompts(preset, {
-      world: '<lores>\n<lore name="world">\ncastle\n</lore>\n</lores>',
+      worldBefore: '<lores>\n<lore name="world">\ncastle\n</lore>\n</lores>',
     })
     assert.equal(messages.some((m) => m.content.includes('castle')), true)
     assert.equal(messages.some((m) => m.content === 'world-custom'), false)
@@ -282,7 +318,7 @@ describe('assemblePrompts history group order', () => {
 })
 
 describe('assemblePrompts audit fixes', () => {
-  it('injects world lore only once when before and after slots are both enabled', () => {
+  it('injects worldBefore and worldAfter independently when both slots are enabled', () => {
     const world = makeGroup({ id: 'g-world', kind: 'world', order: 0 })
     const preset = makePreset(
       [world],
@@ -304,10 +340,70 @@ describe('assemblePrompts audit fixes', () => {
       ],
     )
     const { messages } = assemblePrompts(preset, {
-      world: '<lores>\n<lore name="world">\nLORE-XML\n</lore>\n</lores>',
+      worldBefore:
+        '<lores>\n<lore name="before-book">\nBEFORE-LORE\n</lore>\n</lores>',
+      worldAfter:
+        '<lores>\n<lore name="after-book">\nAFTER-LORE\n</lore>\n</lores>',
     })
-    const loreHits = messages.filter((m) => m.content.includes('LORE-XML'))
-    assert.equal(loreHits.length, 1)
+    const beforeHits = messages.filter((m) => m.content.includes('BEFORE-LORE'))
+    const afterHits = messages.filter((m) => m.content.includes('AFTER-LORE'))
+    assert.equal(beforeHits.length, 1)
+    assert.equal(afterHits.length, 1)
+    const beforeIdx = messages.findIndex((m) => m.content.includes('BEFORE-LORE'))
+    const afterIdx = messages.findIndex((m) => m.content.includes('AFTER-LORE'))
+    assert.ok(beforeIdx < afterIdx)
+  })
+
+  it('places before_char lore before character description and after_char after it', () => {
+    const character = makeGroup({ id: 'g-char', kind: 'character', order: 0 })
+    const world = makeGroup({ id: 'g-world', kind: 'world', order: 1 })
+    const preset = makePreset(
+      [character, world],
+      [
+        makeEntry({
+          id: 'wi-before',
+          groupId: 'g-char',
+          content: '',
+          bindingSlot: 'boundWorldBefore',
+          order: 0,
+        }),
+        makeEntry({
+          id: 'desc',
+          groupId: 'g-char',
+          content: '',
+          bindingSlot: 'boundCharDescription',
+          order: 1,
+        }),
+        makeEntry({
+          id: 'wi-after',
+          groupId: 'g-world',
+          content: '',
+          bindingSlot: 'boundWorldAfter',
+          order: 0,
+        }),
+      ],
+    )
+    const { messages } = assemblePrompts(preset, {
+      worldBefore:
+        '<lores>\n<lore name="b">\nBEFORE-CHAR\n</lore>\n</lores>',
+      worldAfter: '<lores>\n<lore name="a">\nAFTER-CHAR\n</lore>\n</lores>',
+      characters: [
+        {
+          name: 'moka',
+          cardBody: 'ignored-when-macro',
+          macroFields: { description: 'CARD-DESC' },
+        },
+      ],
+    })
+    const contents = messages.map((m) => m.content)
+    const beforeIdx = contents.findIndex((c) => c.includes('BEFORE-CHAR'))
+    const cardIdx = contents.findIndex((c) => c.includes('CARD-DESC'))
+    const afterIdx = contents.findIndex((c) => c.includes('AFTER-CHAR'))
+    assert.ok(beforeIdx >= 0)
+    assert.ok(cardIdx >= 0)
+    assert.ok(afterIdx >= 0)
+    assert.ok(beforeIdx < cardIdx)
+    assert.ok(cardIdx < afterIdx)
   })
 
   it('does not duplicate chat history when post history appears before chat history slot', () => {
@@ -822,7 +918,7 @@ describe('assemblePrompts bindingPlaceholderMode', () => {
           postHistory: 'Sample post_history',
         },
       ],
-      world: '<lores>\n<lore name="world">\ncastle\n</lore>\n</lores>',
+      worldAfter: '<lores>\n<lore name="world">\ncastle\n</lore>\n</lores>',
       memoryText: '<memory>turn summary</memory>',
       history: [{ role: 'user', content: 'hello' }],
     })

@@ -12,9 +12,7 @@ import {
   runMemoryPipeline,
 } from './memory-pipeline.js'
 import { searchTurnMemoryVectors } from './memory-store.js'
-import { readLorebooksByIds } from './lorebook-file.js'
 import { resolveLorebookInjectionParts } from './lorebook-resolve.js'
-import type { Lorebook } from './lorebook-types.js'
 import { buildScanText } from './lore-scan.js'
 import { resolveLorebookSettings } from './lorebook-settings.js'
 import {
@@ -142,20 +140,6 @@ function previewText(text: string): string {
   return `${t.slice(0, PREVIEW_MAX_LEN)}…`
 }
 
-function lorebookNameMap(
-  lorebookIds: string[],
-  byId: Map<string, Lorebook>,
-): Map<string, string> {
-  const out = new Map<string, string>()
-  for (const id of lorebookIds) {
-    const lb = byId.get(id)
-    const name = lb?.name.trim() || id
-    out.set(name, id)
-    out.set(id, id)
-  }
-  return out
-}
-
 export async function runContextRecallTest(
   conversationId: string,
   request: ContextRecallTestRequest,
@@ -262,26 +246,19 @@ export async function runContextRecallTest(
   })
 
   const loreHits: ContextRecallLoreHit[] = []
-  const lorebooks = await readLorebooksByIds(lorebookIds)
-  const byId = new Map(lorebooks.map((lb) => [lb.id, lb]))
-  const nameToId = lorebookNameMap(lorebookIds, byId)
 
-  for (const g of parts.constantLoreGroups) {
-    const lorebookId = nameToId.get(g.lorebookName.trim()) ?? g.lorebookName
-    const lorebookName = g.lorebookName.trim() || lorebookId
-    for (const e of g.entries) {
-      const content = e.content.trim()
-      if (!content) continue
-      loreHits.push({
-        lorebookId,
-        lorebookName,
-        entryId: `constant:${lorebookId}:${e.name}`,
-        title: e.name.trim() || '未命名',
-        mode: 'constant',
-        preview: previewText(content),
-        content,
-      })
-    }
+  for (const c of parts.constantLore) {
+    const content = c.entry.content.trim()
+    if (!content) continue
+    loreHits.push({
+      lorebookId: c.lorebookId,
+      lorebookName: c.lorebookName,
+      entryId: c.entry.id,
+      title: c.entry.title.trim() || '未命名',
+      mode: 'constant',
+      preview: previewText(content),
+      content,
+    })
   }
 
   for (const m of parts.matchedLore) {

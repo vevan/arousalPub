@@ -9,7 +9,9 @@ import {
   lorebookEntryMissingKeywords,
   parseLorebookKeysInput,
   patchForTriggerMode,
+  resolveEntryPosition,
   resolveEntryTriggerMode,
+  type LorebookEntryPosition,
   type LorebookTriggerMode,
 } from '@/utils/lorebook-entry'
 import { parseLorebookImport } from '@/utils/lorebooks-package'
@@ -246,6 +248,7 @@ const titleDraft = ref('')
 const commentDraft = ref('')
 const contentDraft = ref('')
 const priorityDraft = ref(0)
+const orderDraft = ref(0)
 
 function syncEntryEditorDraftsFromEntry(): void {
   const e = selectedEntry.value
@@ -254,12 +257,14 @@ function syncEntryEditorDraftsFromEntry(): void {
     commentDraft.value = ''
     contentDraft.value = ''
     priorityDraft.value = 0
+    orderDraft.value = 0
     return
   }
   titleDraft.value = e.title
   commentDraft.value = e.comment ?? ''
   contentDraft.value = e.content
   priorityDraft.value = e.priority
+  orderDraft.value = e.order
 }
 
 function commitEntryEditorDrafts(entryId?: string): void {
@@ -273,6 +278,7 @@ function commitEntryEditorDrafts(entryId?: string): void {
     comment?: string
     content?: string
     priority?: number
+    order?: number
   } = {}
 
   if (titleDraft.value !== e.title) patch.title = titleDraft.value
@@ -284,6 +290,10 @@ function commitEntryEditorDrafts(entryId?: string): void {
   const pri = Number(priorityDraft.value)
   const normalizedPri = Number.isFinite(pri) ? pri : 0
   if (normalizedPri !== e.priority) patch.priority = normalizedPri
+
+  const ord = Number(orderDraft.value)
+  const normalizedOrd = Number.isFinite(ord) ? ord : 0
+  if (normalizedOrd !== e.order) patch.order = normalizedOrd
 
   if (Object.keys(patch).length > 0) {
     store.updateEntry(id, patch)
@@ -357,18 +367,27 @@ function formatDate(iso: string): string {
 function entryMetaLine(e: {
   constant: boolean
   triggerMode?: LorebookTriggerMode
+  position?: LorebookEntryPosition
   keys: string[]
 }): string {
   const mode = resolveEntryTriggerMode(e)
-  if (mode === 'constant') return t('lorebooks.constant')
-  if (mode === 'vector') return t('lorebooks.triggerVector')
+  const pos =
+    resolveEntryPosition(e) === 'before_char'
+      ? t('lorebooks.positionBeforeChar')
+      : t('lorebooks.positionAfterChar')
+  if (mode === 'constant') return `${t('lorebooks.constant')} · ${pos}`
+  if (mode === 'vector') return `${t('lorebooks.triggerVector')} · ${pos}`
   if (lorebookEntryMissingKeywords(e)) return t('lorebooks.entryMissingKeys')
-  if (e.keys.length) return e.keys.join(' · ')
-  return '—'
+  if (e.keys.length) return `${e.keys.join(' · ')} · ${pos}`
+  return pos
 }
 
 function setEntryTriggerMode(entryId: string, mode: LorebookTriggerMode) {
   store.updateEntry(entryId, patchForTriggerMode(mode))
+}
+
+function setEntryPosition(entryId: string, position: LorebookEntryPosition) {
+  store.updateEntry(entryId, { position })
 }
 
 /** ============== 当前资料库导入 / 导出 ============== */
@@ -715,7 +734,7 @@ async function confirmImportLorebook() {
                       'is-warn': lorebookEntryMissingKeywords(e),
                     }"
                   >{{ entryMetaLine(e) }}</span>
-                  <span class="entry-card__trigs">{{ $t('lorebooks.priority') }} {{ e.priority }}</span>
+                  <span class="entry-card__trigs">{{ $t('lorebooks.order') }} {{ e.order }} · {{ $t('lorebooks.priority') }} {{ e.priority }}</span>
                 </div>
               </article>
             </template>
@@ -787,7 +806,7 @@ async function confirmImportLorebook() {
                 </div>
               </header>
 
-              <div class="editor-card__field-row editor-card__field-row--side-compact">
+              <div class="editor-card__field-row editor-card__field-row--trigger-pos">
                 <div class="editor-card__field-block">
                   <label class="editor-card__field-label">{{ $t('lorebooks.triggerMode') }}</label>
                   <div class="pill-group">
@@ -818,7 +837,49 @@ async function confirmImportLorebook() {
                   </p>
                 </div>
                 <div class="editor-card__field-block">
-                  <label class="editor-card__field-label">{{ $t('lorebooks.priority') }}</label>
+                  <label class="editor-card__field-label">
+                    {{ $t('lorebooks.position') }}
+                  </label>
+                  <div class="pill-group">
+                    <button
+                      type="button"
+                      class="pill"
+                      :class="{ 'is-on': resolveEntryPosition(selectedEntry) === 'before_char' }"
+                      @click="setEntryPosition(selectedEntry.id, 'before_char')"
+                    >{{ $t('lorebooks.positionBeforeChar') }}</button>
+                    <button
+                      type="button"
+                      class="pill"
+                      :class="{ 'is-on': resolveEntryPosition(selectedEntry) === 'after_char' }"
+                      @click="setEntryPosition(selectedEntry.id, 'after_char')"
+                    >{{ $t('lorebooks.positionAfterChar') }}</button>
+                  </div>
+                  <p class="text-caption text-medium-emphasis mt-1 mb-0">
+                    {{ $t('lorebooks.positionHint') }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="editor-card__field-row editor-card__field-row--nums">
+                <div class="editor-card__field-block">
+                  <label class="editor-card__field-label">
+                    {{ $t('lorebooks.order') }}
+                    <span class="editor-card__field-hint">{{ $t('lorebooks.orderHint') }}</span>
+                  </label>
+                  <span class="num-field">
+                    <input
+                      v-model.number="orderDraft"
+                      type="number"
+                      class="num-field__input"
+                      @blur="commitEntryEditorDrafts()"
+                    />
+                  </span>
+                </div>
+                <div class="editor-card__field-block">
+                  <label class="editor-card__field-label">
+                    {{ $t('lorebooks.priority') }}
+                    <span class="editor-card__field-hint">{{ $t('lorebooks.priorityHint') }}</span>
+                  </label>
                   <span class="num-field">
                     <input
                       v-model.number="priorityDraft"
@@ -864,7 +925,7 @@ async function confirmImportLorebook() {
                 <textarea
                   v-model="contentDraft"
                   class="editor-card__content-input"
-                  rows="12"
+                  rows="18"
                   spellcheck="false"
                   :placeholder="$t('lorebooks.entryContentPlaceholder')"
                   @blur="commitEntryEditorDrafts()"

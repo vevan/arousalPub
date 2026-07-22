@@ -1256,6 +1256,14 @@
 .editor-card__field-row--side-compact .editor-card__field-block:last-child {
   padding-inline: 1rem;
 }
+/* 顺序 + 优先级：两列并排，各占一半 */
+.editor-card__field-row--nums {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+/* 触发方式 + 插入位置 */
+.editor-card__field-row--trigger-pos {
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+}
 .editor-card__field-block {
   padding: 0.75rem 1.375rem;
 }

@@ -113,7 +113,10 @@ export interface AssembleContext {
   characterSystemPrompt?: string
   characterPostHistory?: string
   character?: string
-  world?: string
+  /** before_char lore → boundWorldBefore */
+  worldBefore?: string
+  /** after_char lore → boundWorldAfter */
+  worldAfter?: string
   /** §14：已格式化的 `<memory>…</memory>` */
   memoryText?: string
   /** DOC/46：已格式化的 `<knowledge>…</knowledge>` */
@@ -333,33 +336,50 @@ function mergedMacroFieldFromCharacters(
   return undefined
 }
 
-/** 组装期去重：world before/after/legacy 共用一份 lore，只注入一次 */
+/** 组装期：before / after 各注入一次，不再共用消费标志 */
 interface AssembleInjectFlags {
-  worldLoreConsumed: boolean
+  worldBeforeInjected: boolean
+  worldAfterInjected: boolean
 }
 
 function createAssembleInjectFlags(): AssembleInjectFlags {
-  return { worldLoreConsumed: false }
+  return { worldBeforeInjected: false, worldAfterInjected: false }
 }
 
-function worldInjectionText(ctx: AssembleContext): string {
-  if (ctx.bindingPlaceholderMode) return PLACEHOLDER.world
-  const w = ctx.world
-  const usePlaceholder =
-    w === undefined ||
-    w === null ||
-    w === PLACEHOLDER.world ||
-    !String(w).trim()
-  return usePlaceholder ? PLACEHOLDER.world : loreTextToXmlBlock(String(w))
+function loreTextOrPlaceholder(
+  raw: string | undefined,
+  placeholderMode: boolean,
+): string | undefined {
+  if (placeholderMode) return PLACEHOLDER.world
+  if (raw === undefined || raw === null) return undefined
+  if (raw === PLACEHOLDER.world) return PLACEHOLDER.world
+  const t = String(raw).trim()
+  if (!t) return undefined
+  return loreTextToXmlBlock(t)
 }
 
-function tryConsumeWorldLoreSlot(
+function tryConsumeWorldBeforeSlot(
   ctx: AssembleContext,
   flags: AssembleInjectFlags,
 ): string | undefined {
-  if (flags.worldLoreConsumed) return undefined
-  flags.worldLoreConsumed = true
-  return worldInjectionText(ctx)
+  if (flags.worldBeforeInjected) return undefined
+  flags.worldBeforeInjected = true
+  return loreTextOrPlaceholder(
+    ctx.worldBefore,
+    ctx.bindingPlaceholderMode === true,
+  )
+}
+
+function tryConsumeWorldAfterSlot(
+  ctx: AssembleContext,
+  flags: AssembleInjectFlags,
+): string | undefined {
+  if (flags.worldAfterInjected) return undefined
+  flags.worldAfterInjected = true
+  return loreTextOrPlaceholder(
+    ctx.worldAfter,
+    ctx.bindingPlaceholderMode === true,
+  )
 }
 
 function hasEnabledChatHistoryBinding(entries: PromptEntry[]): boolean {
@@ -391,8 +411,9 @@ function resolveSystemBindingContent(
       case 'boundDialogueExamples':
         return ASSEMBLE_INJECT_PLACEHOLDER.boundDialogueExamples
       case 'boundWorldBefore':
+        return tryConsumeWorldBeforeSlot(ctx, flags)
       case 'boundWorldAfter':
-        return tryConsumeWorldLoreSlot(ctx, flags)
+        return tryConsumeWorldAfterSlot(ctx, flags)
       case 'boundUserPersona':
         return PLACEHOLDER.userPersona
       default:
@@ -414,8 +435,9 @@ function resolveSystemBindingContent(
     case 'boundDialogueExamples':
       return mergedMacroFieldFromCharacters(ctx, 'mesExample')
     case 'boundWorldBefore':
+      return tryConsumeWorldBeforeSlot(ctx, flags)
     case 'boundWorldAfter':
-      return tryConsumeWorldLoreSlot(ctx, flags)
+      return tryConsumeWorldAfterSlot(ctx, flags)
     case 'boundUserPersona':
       return mergedUserPersonaBody(ctx) ?? PLACEHOLDER.userPersona
     default:
@@ -664,19 +686,6 @@ export function compareInjectionEntries(
   return ROLE_RANK[a.role] - ROLE_RANK[b.role]
 }
 
-function sortRelativeSlice(
-  entries: PromptEntry[],
-  afterAnchor: boolean,
-): PromptEntry[] {
-  return entries
-    .slice()
-    .sort((a, b) =>
-      compareInjectionEntries(a, b, {
-        depthDirection: afterAnchor ? 'asc' : 'desc',
-      }),
-    )
-}
-
 function sortByListOrder(entries: PromptEntry[]): PromptEntry[] {
   return entries.slice().sort((a, b) => a.order - b.order)
 }
@@ -705,8 +714,7 @@ function entryMatchesTrigger(
     entry.bindingSlot === 'boundUserPersona' ||
     entry.bindingSlot === 'boundMemory' ||
     entry.bindingSlot === 'boundKnowledge' ||
-    entry.bindingSlot === 'boundChatHistory' ||
-    entry.bindingSlot === 'boundMain'
+    entry.bindingSlot === 'boundChatHistory'
   ) {
     return true
   }
@@ -850,11 +858,14 @@ export function assemblePrompts(
 
   for (const g of groups) {
     if (g.kind === 'normal') {
-      const entries = sortRelativeSlice(
+      // 相对位：与 ST Prompt Manager 拖拽顺序一致，按组内 list order；勿用 injectionOrder
+      // （injectionOrder 仅用于 injectionPosition === 'chat'）
+      const entries = sortByListOrder(
         relativeEntriesForGroup(preset, g, trigger),
-        false,
       )
       for (const e of entries) {
+        const text = e.content.trim()
+        if (!text) continue
         messages.push({ role: e.role, content: e.content })
       }
     } else if (g.kind === 'character') {
@@ -906,9 +917,13 @@ export function assemblePrompts(
         historyEnd = span.historyEnd
       } else {
         if (ctx.bindingPlaceholderMode) {
-          const lore = tryConsumeWorldLoreSlot(ctx, injectFlags)
-          if (lore) {
-            messages.push({ role: 'system', content: lore })
+          const before = tryConsumeWorldBeforeSlot(ctx, injectFlags)
+          if (before) {
+            messages.push({ role: 'system', content: before })
+          }
+          const after = tryConsumeWorldAfterSlot(ctx, injectFlags)
+          if (after) {
+            messages.push({ role: 'system', content: after })
           }
           messages.push({
             role: 'system',
@@ -919,9 +934,13 @@ export function assemblePrompts(
             content: ASSEMBLE_INJECT_PLACEHOLDER.knowledge,
           })
         } else {
-          const lore = tryConsumeWorldLoreSlot(ctx, injectFlags)
-          if (lore) {
-            messages.push({ role: 'system', content: lore })
+          const before = tryConsumeWorldBeforeSlot(ctx, injectFlags)
+          if (before) {
+            messages.push({ role: 'system', content: before })
+          }
+          const after = tryConsumeWorldAfterSlot(ctx, injectFlags)
+          if (after) {
+            messages.push({ role: 'system', content: after })
           }
           if (ctx.memoryText?.trim()) {
             messages.push({ role: 'system', content: ctx.memoryText.trim() })

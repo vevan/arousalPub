@@ -2,6 +2,12 @@
 
 > **阶段**：已脱离 MVP（2026-05+）。下列为**仍待做**；已实现能力见 `DOC/03` §14.7、各专题文档、`DOC/README` 归档表、本文 **§已归档**。
 
+## P0
+
+- [x] **世界书条目插入位置（角色前/后）** — 条目 `position: before_char | after_char`（缺省 after）；匹配结果分别注入 `boundWorldBefore` / `boundWorldAfter`（取消共用一次消费）；ST 世界书导入映射 `position`/`0|1`。与 `[DOC/27](27-embedded-character-book.md)` 内嵌书 position 共用语义，会话 lore 先行。
+- [ ] 提示词和lorebook添加多选及批量复制、移动功能（其它预设及组）
+- [ ] 为群聊的bot添加颜色picker（或在对话创建时自动随机选择颜色，并可修改），反应在头像边框和对话气泡上用来区分角色
+
 ## P1
 
 - [ ] **ST 聊天记录群聊多 bot 导入** — 当前 ST JSONL 导入全部 segment 绑定 `characterIds[0]`；需按 ST `name` 与会话 `characterIds`/`displayNames` 映射各 bot 为 speaker（单 bot 行为不变）。见 `[DOC/37](37-st-import-settings-tab.md)`
@@ -10,9 +16,9 @@
 - [ ] 调研插件设置的导出和导入
 - [ ] 调研summary适配lorebook分组
 - [ ] 角色卡扩展规划：json格式以xml结构插入提示词，宿主提供接口，插件可改申请字段。
-- [ ] 系统提示词应该可编辑
-- [ ] 提示词和lorebook添加多选及批量复制、移动功能（预设及组）
-- [ ] 为群聊的bot添加颜色picker（或在对话创建时自动随机选择颜色，并可修改），反应在头像边框和对话气泡上用来区分角色
+- [ ] 群聊浮动头像组，快捷静音
+
+
 
 ## P2
 
@@ -20,6 +26,8 @@
 - [ ] **角色卡内嵌世界书** `[DOC/27](27-embedded-character-book.md)` — Phase 1 组装（constant + keyword、`position`、叠加内嵌优先）；Phase 2 角色库查看 / 编辑 UI
 
 > ST 导入 Tab / 世界书 / 聊天记录 / M3 回归已关闭，见下方 **§文档**（2026-06～07 · `[DOC/37](37-st-import-settings-tab.md)`）。
+
+
 
 ## P3
 
@@ -34,6 +42,8 @@
 - [ ] **沙箱 Phase C（可选）** — 包内自维护 API（`[DOC/38](38-plugin-sandbox-and-host-evolution.md)` A3 · 已归档延后项）
 - [ ] **CI 宿主门禁（可选）** — GitHub Actions 接 `check:host-no-plugin-ids` · `verify-host-build-without-bundled`（`[DOC/42](42-host-generic-audit-checklist.md)`）
 - [ ] **NC-F2 通知中心 Server → Web 推送（可选）** — 延后；无对应 Server 推送场景（`[DOC/40](40-notification-center.md)` §Phase 2）
+
+
 
 ## 文档
 
@@ -75,7 +85,9 @@
 - [x] **用户文件库 M3 对话背景/BGM**（2026-07-15）：`backgroundImageFileId` / `bgmFileId` · PATCH 校验 kind · 对话设置选择器 · 对话页背景+循环音频 — 见 `[DOC/20](20-user-file-library.md)` · `DOC/03` §17.5
 - [x] **用户文件库 M5 引用检查+批量导入+视频预览+指定 id 重建**（2026-07-15）：`GET …/references` · `DELETE ?force=1` · `POST fileId` 空闲重建 · FilesView — 见 `[DOC/20](20-user-file-library.md)` §4.4 · `DOC/03` §17.6
 - [x] **独立文档 RAG M4**（2026-07-17）：知识库集合 · 切片 · Lance `doc_chunks` · `boundKnowledge` · 预算槽 `knowledge` · UI — 见 `[DOC/46](46-document-rag.md)` · `DOC/03` §17.7
-- [x] **导入 Markdown（`.md`）**（2026-07-17）：资产库批量上传识别 `kind=document` · RAG 抽取保守剥离闭合 YAML/TOML front matter（原文落盘不变）— 见 `[DOC/46](46-document-rag.md)` §4
+- [x] **导入 Markdown（**`.md`**）**（2026-07-17）：资产库批量上传识别 `kind=document` · RAG 抽取保守剥离闭合 YAML/TOML front matter（原文落盘不变）— 见 `[DOC/46](46-document-rag.md)` §4
+
+
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
 

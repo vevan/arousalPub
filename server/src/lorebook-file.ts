@@ -317,6 +317,13 @@ function validateEntryShape(
   if (typeof e.priority !== 'number' || !Number.isFinite(e.priority)) {
     throw new Error(`条目 ${e.id} priority 无效`)
   }
+  if (
+    e.position !== undefined &&
+    e.position !== 'before_char' &&
+    e.position !== 'after_char'
+  ) {
+    throw new Error(`条目 ${e.id} position 无效`)
+  }
 }
 
 /** 写入单本世界书并更新 index.json 中对应条目的 updatedAt */

@@ -226,7 +226,7 @@ export function mergeLorebookXmlGroups(
   )
 }
 
-/** 世界书注入：`ctx.world` 须已为 `<lores>`（由 resolve/trim 管线生成） */
+/** 世界书注入：`ctx.worldBefore` / `ctx.worldAfter` 须已为 `<lores>`（由 resolve/trim 管线生成） */
 export function loreTextToXmlBlock(text: string): string {
   const t = text.trim()
   if (!t || !t.startsWith('<lores')) return ''

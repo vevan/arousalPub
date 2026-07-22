@@ -59,7 +59,7 @@ if (outputPath) {
 const preview = assemblePrompts(preset, {
   character: '[character]',
   characterPostHistory: '[post]',
-  world: '[world]',
+  worldAfter: '[world]',
   history: [
     { role: 'user', content: 'hi' },
     { role: 'assistant', content: 'hello' },

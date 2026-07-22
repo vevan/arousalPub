@@ -64,7 +64,10 @@ const DEFAULT_CHARACTER_SYSTEM_SLOTS: PromptBindingSlot[] = [
   'boundScenario',
 ]
 
-const DEFAULT_WORLD_SYSTEM_SLOTS: PromptBindingSlot[] = ['boundWorldBefore']
+const DEFAULT_WORLD_SYSTEM_SLOTS: PromptBindingSlot[] = [
+  'boundWorldBefore',
+  'boundWorldAfter',
+]
 
 const DEFAULT_HISTORY_SYSTEM_SLOTS: PromptBindingSlot[] = [
   'boundChatHistory',
@@ -1119,6 +1122,23 @@ export const usePromptsStore = defineStore('prompts', () => {
     if (cur?.bindingSlot != null) {
       if (bindingSlotIsRequired(cur.bindingSlot)) {
         nextPatch = {}
+      } else if (
+        cur.bindingSlot === 'boundMain' ||
+        cur.bindingSlot === 'boundEnhanceDefinitions'
+      ) {
+        nextPatch = {}
+        if (patch.enabled !== undefined) nextPatch.enabled = patch.enabled
+        if (patch.content !== undefined) nextPatch.content = patch.content
+        if (patch.role !== undefined) nextPatch.role = patch.role
+        if (patch.injectionPosition !== undefined) {
+          nextPatch.injectionPosition = patch.injectionPosition
+        }
+        if (patch.injectionDepth !== undefined) {
+          nextPatch.injectionDepth = patch.injectionDepth
+        }
+        if (patch.injectionOrder !== undefined) {
+          nextPatch.injectionOrder = patch.injectionOrder
+        }
       } else {
         nextPatch =
           patch.enabled !== undefined ? { enabled: patch.enabled } : {}

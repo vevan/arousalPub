@@ -4,7 +4,12 @@
 
 import { pickUniqueLorebookName } from './plugin-lorebook-ensure.js'
 import { readLorebooksIndexSummary } from './lorebook-file.js'
-import type { Lorebook, LorebookEntry, LorebookTriggerMode } from './lorebook-types.js'
+import type {
+  Lorebook,
+  LorebookEntry,
+  LorebookEntryPosition,
+  LorebookTriggerMode,
+} from './lorebook-types.js'
 import { allocateShortId } from './short-id.js'
 
 export const ST_LOREBOOK_GROUP_ID = 'group-default'
@@ -20,6 +25,8 @@ export interface StLorebookEntry {
   disable?: boolean
   order?: number
   priority?: number
+  /** ST: 0/before_char | 1/after_char | other (AN/depth/…) */
+  position?: number | string
 }
 
 export interface StLorebookJson {
@@ -54,6 +61,22 @@ export function isStLorebookJson(raw: unknown): raw is StLorebookJson {
   const vals = Object.values(entries)
   if (vals.length === 0) return true
   return vals.some((v) => v != null && typeof v === 'object')
+}
+
+function resolveStEntryPosition(
+  entry: StLorebookEntry,
+): { position: LorebookEntryPosition; unsupported?: boolean } {
+  const raw = entry.position
+  if (raw === undefined || raw === null) {
+    return { position: 'after_char' }
+  }
+  if (raw === 'before_char' || raw === 0 || raw === '0') {
+    return { position: 'before_char' }
+  }
+  if (raw === 'after_char' || raw === 1 || raw === '1') {
+    return { position: 'after_char' }
+  }
+  return { position: 'after_char', unsupported: true }
 }
 
 function resolveStEntryTriggerMode(entry: StLorebookEntry): LorebookTriggerMode {
@@ -96,6 +119,12 @@ export function previewStLorebookImport(st: StLorebookJson): StLorebookPreview {
     if (entry.disable === true) disabledCount++
     if (typeof entry.content !== 'string') {
       warnings.push(`条目缺少 content（uid ${entry.uid ?? '?'})`)
+    }
+    const pos = resolveStEntryPosition(entry)
+    if (pos.unsupported) {
+      warnings.push(
+        `条目插入位置 ${JSON.stringify(entry.position)} 未支持，已按 after_char 导入（uid ${entry.uid ?? '?'}）`,
+      )
     }
   }
   const rawName = typeof st.name === 'string' ? st.name.trim() : ''
@@ -150,6 +179,7 @@ export async function convertStLorebookToLorebook(
       typeof entry.priority === 'number' && Number.isFinite(entry.priority)
         ? entry.priority
         : 0
+    const { position } = resolveStEntryPosition(entry)
     return {
       id: `entry-${allocateShortId(used)}`,
       groupId: ST_LOREBOOK_GROUP_ID,
@@ -160,6 +190,7 @@ export async function convertStLorebookToLorebook(
       keys,
       constant: triggerMode === 'constant',
       triggerMode,
+      position,
       priority,
       createdAt: t,
       updatedAt: t,

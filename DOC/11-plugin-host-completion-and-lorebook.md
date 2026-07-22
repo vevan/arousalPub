@@ -293,7 +293,7 @@ interface ConversationIndex {
 
 两字段 **可指向同一本书，也可分离**（例如 RP 用 A 书注入，摘要只写 B 书「会话记忆」）。
 
-**注入路径（定案）**：用户勾选进 `lorebookIds` 后，**仅**由聊天组装管线 `resolveLorebookInjectionText` → `assemblePrompts` 的 `ctx.world` 注入 LLM；插件只维护 `targetLorebookId` 上的条目，**不得**默认 PATCH `lorebookIds`。
+**注入路径（定案）**：用户勾选进 `lorebookIds` 后，**仅**由聊天组装管线 `resolveLorebookInjectionParts` → `worldBefore` / `worldAfter` → `assemblePrompts` 的 `boundWorldBefore` / `boundWorldAfter` 注入 LLM；插件只维护 `targetLorebookId` 上的条目，**不得**默认 PATCH `lorebookIds`。
 
 **多书绑定 XML（已实现，见 `DOC/03` §13.2）**：`lorebookIds.length > 1` 时，命中条目按 **资料库 `name`** 分组为 `<lorebook name="…">` 子块；单本仍用扁平 `<lores><lore>…</lore></lores>` 以兼容旧 prompt。
 

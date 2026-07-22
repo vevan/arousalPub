@@ -1,6 +1,3 @@
-import {
-  type LorebookXmlGroup,
-} from './prompt-xml.js'
 import { readLorebooksByIds } from './lorebook-file.js'
 import type { Lorebook, LorebookEntry } from './lorebook-types.js'
 import { resolveEntryTriggerMode } from './lorebook-entry-utils.js'
@@ -12,8 +9,14 @@ import {
   resolveLorebookSettings,
 } from './lorebook-settings.js'
 import { readGlobalLorebookSettings } from './user-preferences-file.js'
-import type { TrimmableLoreEntry } from './prompt-budget-trim.js'
-import { worldTextFromTrimState } from './prompt-budget-trim.js'
+import type {
+  ConstantLoreItem,
+  TrimmableLoreEntry,
+} from './prompt-budget-trim.js'
+import {
+  worldTextFromTrimState,
+  worldTextsFromTrimState,
+} from './prompt-budget-trim.js'
 
 export type { LorebookSettings } from './lorebook-settings.js'
 export {
@@ -31,7 +34,7 @@ export interface LorebookResolveContext {
 }
 
 export interface LorebookInjectionParts {
-  constantLoreGroups: LorebookXmlGroup[]
+  constantLore: ConstantLoreItem[]
   matchedLore: TrimmableLoreEntry[]
 }
 
@@ -45,9 +48,23 @@ export async function resolveLorebookInjectionText(
   return formatWorldFromLoreParts(parts)
 }
 
+/** 合并 before+after（调试 / 单测用） */
 export function formatWorldFromLoreParts(parts: LorebookInjectionParts): string {
   return worldTextFromTrimState({
-    constantLoreGroups: parts.constantLoreGroups,
+    constantLore: parts.constantLore,
+    matchedLore: parts.matchedLore,
+    memoryItems: [],
+    knowledgeItems: [],
+    historyMessages: [],
+  })
+}
+
+export function formatWorldTextsFromLoreParts(parts: LorebookInjectionParts): {
+  worldBefore: string
+  worldAfter: string
+} {
+  return worldTextsFromTrimState({
+    constantLore: parts.constantLore,
     matchedLore: parts.matchedLore,
     memoryItems: [],
     knowledgeItems: [],
@@ -60,11 +77,11 @@ export async function resolveLorebookInjectionParts(
   context: LorebookResolveContext = {},
 ): Promise<LorebookInjectionParts> {
   if (!lorebookIds.length) {
-    return { constantLoreGroups: [], matchedLore: [] }
+    return { constantLore: [], matchedLore: [] }
   }
   const lorebooks = await readLorebooksByIds(lorebookIds)
   if (!lorebooks.length) {
-    return { constantLoreGroups: [], matchedLore: [] }
+    return { constantLore: [], matchedLore: [] }
   }
 
   let resolved: LorebookSettings
@@ -80,16 +97,29 @@ export async function resolveLorebookInjectionParts(
   const scanSeed = (context.scanCorpus ?? context.userText ?? '').trim()
   const seenEntryIds = new Set<string>()
 
-  const constantTagged: TaggedLoreEntry[] = []
+  const constantLore: ConstantLoreItem[] = []
   for (const lid of lorebookIds) {
     const lb = byId.get(lid)
     if (!lb) continue
-    for (const e of lb.entries) {
-      if (!e.enabled || !e.content.trim()) continue
-      if (resolveEntryTriggerMode(e) !== 'constant') continue
-      if (seenEntryIds.has(e.id)) continue
+    const constants = lb.entries
+      .filter(
+        (e) =>
+          e.enabled &&
+          e.content.trim() &&
+          resolveEntryTriggerMode(e) === 'constant' &&
+          !seenEntryIds.has(e.id),
+      )
+      .sort((a, b) => {
+        if (a.order !== b.order) return a.order - b.order
+        return a.id.localeCompare(b.id)
+      })
+    for (const e of constants) {
       seenEntryIds.add(e.id)
-      constantTagged.push({ lorebookId: lid, entry: e })
+      constantLore.push({
+        lorebookId: lid,
+        lorebookName: lb.name.trim() || lid,
+        entry: e,
+      })
     }
   }
 
@@ -160,33 +190,7 @@ export async function resolveLorebookInjectionParts(
     }
   }
 
-  return {
-    constantLoreGroups: buildLorebookXmlGroups(lorebookIds, byId, constantTagged),
-    matchedLore,
-  }
-}
-
-function buildLorebookXmlGroups(
-  lorebookIds: string[],
-  byId: Map<string, Lorebook>,
-  ordered: TaggedLoreEntry[],
-): LorebookXmlGroup[] {
-  const groups: LorebookXmlGroup[] = []
-  for (const lid of lorebookIds) {
-    const lb = byId.get(lid)
-    if (!lb) continue
-    const entries = ordered
-      .filter((t) => t.lorebookId === lid)
-      .map((t) => ({
-        name: t.entry.title.trim() || '未命名',
-        content: t.entry.content.trim(),
-      }))
-      .filter((e) => e.content.length > 0)
-    if (entries.length === 0) continue
-    const displayName = lb.name.trim() || lid
-    groups.push({ lorebookName: displayName, entries })
-  }
-  return groups
+  return { constantLore, matchedLore }
 }
 
 async function collectVectorMatches(

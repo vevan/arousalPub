@@ -79,7 +79,7 @@ describe('normalizePresetForAssemble', () => {
     )
     assert.deepEqual(
       bindingOrder(out, 'group-world').map((x) => x.slot),
-      ['boundWorldBefore'],
+      ['boundWorldBefore', 'boundWorldAfter'],
     )
     assert.deepEqual(
       bindingOrder(out, 'group-user-input').map((x) => x.slot),
@@ -236,5 +236,65 @@ describe('normalizePresetForAssemble', () => {
     )
     const persona = out.prompts.find((e) => e.bindingSlot === 'boundUserPersona')
     assert.equal(persona?.enabled, true)
+  })
+
+  it('backfills boundWorldAfter into World when only Before exists', () => {
+    const out = normalizePresetForAssemble(
+      makePreset([
+        makeEntry({
+          id: 'wi-before',
+          groupId: 'group-world',
+          order: 0,
+          bindingSlot: 'boundWorldBefore',
+        }),
+      ]),
+    )
+    const worldSlots = bindingOrder(out, 'group-world').map((x) => x.slot)
+    assert.deepEqual(worldSlots, ['boundWorldBefore', 'boundWorldAfter'])
+  })
+
+  it('does not relocate existing Before/After when World is after Character', () => {
+    const out = normalizePresetForAssemble(
+      makePreset(
+        [
+          makeEntry({
+            id: 'persona',
+            groupId: 'group-character',
+            order: 0,
+            bindingSlot: 'boundUserPersona',
+          }),
+          makeEntry({
+            id: 'wi-before',
+            groupId: 'group-world',
+            order: 0,
+            bindingSlot: 'boundWorldBefore',
+          }),
+          makeEntry({
+            id: 'wi-after',
+            groupId: 'group-character',
+            order: 1,
+            bindingSlot: 'boundWorldAfter',
+          }),
+        ],
+        {
+          groups: [
+            { id: 'group-pre', name: 'Pre', kind: 'normal', order: 0 },
+            { id: 'group-character', name: 'Character', kind: 'character', order: 1 },
+            { id: 'group-world', name: 'World', kind: 'world', order: 2 },
+            { id: 'group-history', name: 'History', kind: 'history', order: 3 },
+            { id: 'group-user-input', name: 'User input', kind: 'userInput', order: 4 },
+            { id: 'group-post', name: 'Post', kind: 'normal', order: 5 },
+          ],
+        },
+      ),
+    )
+    assert.equal(
+      out.prompts.find((e) => e.bindingSlot === 'boundWorldBefore')?.groupId,
+      'group-world',
+    )
+    assert.equal(
+      out.prompts.find((e) => e.bindingSlot === 'boundWorldAfter')?.groupId,
+      'group-character',
+    )
   })
 })

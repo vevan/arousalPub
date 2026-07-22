@@ -104,7 +104,7 @@ import {
   memoryTextFromTrimState,
   runPromptBudgetTrimLoop,
   type PromptBudgetTrimState,
-  worldTextFromTrimState,
+  worldTextsFromTrimState,
 } from './prompt-budget-trim.js'
 import { recallKnowledgeForConversation } from './knowledge-resolve.js'
 import {
@@ -661,7 +661,7 @@ export async function buildConversationOutboundMessages(
           conversationId,
           lorebookSettings: effectiveLore,
         })
-      : { constantLoreGroups: [], matchedLore: [] }
+      : { constantLore: [], matchedLore: [] }
   const afterLoreAt = auditEnabled ? performance.now() : 0
 
   const kbIds = Array.isArray(idx.knowledgeBaseIds) ? idx.knowledgeBaseIds : []
@@ -689,7 +689,7 @@ export async function buildConversationOutboundMessages(
       : undefined
 
   const trimState: PromptBudgetTrimState = {
-    constantLoreGroups: loreParts.constantLoreGroups,
+    constantLore: loreParts.constantLore,
     matchedLore: loreParts.matchedLore.slice(),
     memoryItems: memoryPipeline.memoryItems.slice(),
     knowledgeItems: knowledgeRecall.items.slice(),
@@ -711,7 +711,7 @@ export async function buildConversationOutboundMessages(
   }
 
   const assembleFromState = (state: PromptBudgetTrimState): ChatMessage[] => {
-    const worldText = worldTextFromTrimState(state)
+    const { worldBefore, worldAfter } = worldTextsFromTrimState(state)
     const memoryText = memoryTextFromTrimState(state)
     const knowledgeText = knowledgeTextFromTrimState(state)
     return assemblePrompts(preset, {
@@ -720,7 +720,8 @@ export async function buildConversationOutboundMessages(
         state.historyMessages.length > 0 ? state.historyMessages : undefined,
       memoryText: memoryText || undefined,
       knowledgeText: knowledgeText || undefined,
-      ...(worldText.length > 0 ? { world: worldText } : {}),
+      ...(worldBefore.length > 0 ? { worldBefore } : {}),
+      ...(worldAfter.length > 0 ? { worldAfter } : {}),
     }).messages
   }
 

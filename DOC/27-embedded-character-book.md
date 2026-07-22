@@ -11,7 +11,7 @@
 ### 1.1 现状
 
 - **存储**：`normalizeTavernCardV2Data`（`server/src/character-png.ts`）在导入 / PATCH 时**透传** `character_book`，写入 PNG `chara` 元数据。
-- **组装**：`chat-assemble.ts` **不读取**内嵌书；会话 lore 仅来自 `lorebookIds` → `lorebook-resolve.ts` → `ctx.world` / `boundWorld`。
+- **组装**：`chat-assemble.ts` **不读取**内嵌书；会话 lore 仅来自 `lorebookIds` → `lorebook-resolve.ts` → `ctx.worldBefore` / `ctx.worldAfter`（→ `boundWorldBefore` / `boundWorldAfter`）。
 - **UI**：角色库可编辑 `card` 扁平字段，**无**内嵌世界书查看 / 编辑界面。
 
 ### 1.2 目标
@@ -105,18 +105,19 @@ interface EmbeddedLorebook {
 
 ### 4.3 `position` 与组装槽位
 
-默认预设分组顺序：**Character → World → History**（`prompts-default-seed`）。
+默认预设分组顺序：**Character → World → History**（`prompts-default-seed`）。`before_char` / `after_char` 分别注入 `boundWorldBefore` / `boundWorldAfter`（ST：`worldInfoBefore` / `worldInfoAfter`）；**槽位所在组与相对顺序由用户维护**，normalize 仅补缺槽、不挪位。ST 导入可将 After 交错进 Character 组。
 
 | `position` | 注入落点 |
 |------------|----------|
-| **`after_char`**（缺省） | 现有 **`ctx.world` / `boundWorld`**（World 组在 Character 之后，语义与 ST 一致） |
-| **`before_char`** | **Character 组内、角色 XML 之前**（**新能力**） |
+| **`after_char`**（缺省） | **`ctx.worldAfter` → `boundWorldAfter`** |
+| **`before_char`** | **`ctx.worldBefore` → `boundWorldBefore`** |
 
-实现要点：
+会话 lore（`DOC/04` P0）已按上表拆桶；内嵌书 Phase 1 应**并入同一对 ctx 字段**，勿再单独硬编码 `embeddedLoreBeforeChar`。
 
-- `assemblePrompts` 增加例如 **`ctx.embeddedLoreBeforeChar?: string`**（已格式化的 `<lores>…</lores>` 块）。
-- `character` 组在 `mergedCharacterCardBody` **之前** push 一条 system message。
-- `after_char` 内嵌条目与会话 lore 合并进 `ctx.world`；组内顺序：内嵌 constant → 内嵌 matched → 会话 constant → 会话 matched（或按现有 trim 分组约定）。
+实现要点（内嵌书）：
+
+- 与会话 lore 叠加后 `splitByPosition`，写入 `worldBefore` / `worldAfter`。
+- `after_char` 内嵌条目与会话 lore 合并进对应桶；组内顺序：内嵌 constant → 内嵌 matched → 会话 constant → 会话 matched（或按现有 trim 分组约定）。
 
 ---
 
@@ -131,8 +132,8 @@ buildConversationOutboundMessages
   ├─ mergeWithEmbeddedPrecedence(embedded, session)
   ├─ splitByPosition(before_char | after_char)
   └─ assemblePrompts({
-        embeddedLoreBeforeChar?,
-        world: after_char_embedded + session,
+        worldBefore: before_char_embedded + session,
+        worldAfter: after_char_embedded + session,
         …
      })
 ```
@@ -144,7 +145,7 @@ buildConversationOutboundMessages
 | `lorebook-resolve.ts` | 抽公共 resolve 或并行 `resolveEmbeddedLoreParts` |
 | `prompt-xml.ts` | 继续 `formatLoresXmlGroupedBlock` / `formatLoresInjectionXml` |
 | `chat-assemble.ts` | 内嵌 resolve + merge + 传入 assemble ctx |
-| `assemble-prompts.ts` | `embeddedLoreBeforeChar` 注入点 |
+| `assemble-prompts.ts` | 使用既有 `boundWorldBefore` / `boundWorldAfter`（会话与内嵌共用 ctx） |
 | `prompt-budget-trim.ts` | embedded / session 来源标记 + 裁切顺序 |
 | `buildAssemblyAudit` | `lore.matched[]` 增加 `source: 'embedded' \| 'session'`、`characterId?`、`position?` |
 
@@ -161,7 +162,7 @@ buildConversationOutboundMessages
 
 - [ ] `character-book-adapt.ts`：ST JSON → `EmbeddedLorebook`
 - [ ] `resolveEmbeddedLoreParts`：constant + keyword（含 selective / case_sensitive）
-- [ ] `after_char` → `ctx.world`；`before_char` → `embeddedLoreBeforeChar`
+- [ ] `before_char` / `after_char` → 并入 `ctx.worldBefore` / `ctx.worldAfter`（与会话 lore 同槽）
 - [ ] 与会话 lore 叠加 + 内嵌优先 dedupe / trim
 - [ ] 审计字段 `source: embedded`
 - [ ] 单元测试：适配、position 拆分、merge 优先级

@@ -16,6 +16,9 @@ export interface LorebookGroup {
 
 export type LorebookTriggerMode = 'keyword' | 'constant' | 'vector'
 
+/** ST：角色定义前 / 后 → boundWorldBefore / boundWorldAfter */
+export type LorebookEntryPosition = 'before_char' | 'after_char'
+
 export interface LorebookEntry {
   id: string
   groupId: string
@@ -23,10 +26,14 @@ export interface LorebookEntry {
   content: string
   comment?: string
   enabled: boolean
+  /** 注入顺序；越小越靠前（拖拽或编辑器手填） */
   order: number
   keys: string[]
   constant: boolean
   triggerMode?: LorebookTriggerMode
+  /** 缺省 after_char */
+  position?: LorebookEntryPosition
+  /** 裁切保留优先级；越大越优先 */
   priority: number
   createdAt: string
   updatedAt: string
@@ -641,6 +648,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
       keys: [],
       constant: false,
       triggerMode: 'keyword',
+      position: 'after_char',
       priority: 100,
       createdAt: t,
       updatedAt: t,

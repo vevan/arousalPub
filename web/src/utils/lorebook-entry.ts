@@ -1,5 +1,7 @@
 export type LorebookTriggerMode = 'keyword' | 'constant' | 'vector'
 
+export type LorebookEntryPosition = 'before_char' | 'after_char'
+
 /** 将关键字数组格式化为输入框展示（英文逗号 + 空格） */
 export function formatLorebookKeysInput(keys: string[]): string {
   return keys.join(', ')
@@ -20,6 +22,12 @@ export function resolveEntryTriggerMode(entry: {
   const m = entry.triggerMode
   if (m === 'keyword' || m === 'constant' || m === 'vector') return m
   return entry.constant ? 'constant' : 'keyword'
+}
+
+export function resolveEntryPosition(entry: {
+  position?: LorebookEntryPosition
+}): LorebookEntryPosition {
+  return entry.position === 'before_char' ? 'before_char' : 'after_char'
 }
 
 /** 关键字触发模式下是否缺少有效关键字 */

@@ -132,6 +132,8 @@ const convContextSettingsRef = ref<InstanceType<
   typeof ConversationContextSettings
 > | null>(null)
 const homeChatRef = ref<InstanceType<typeof HomeChat> | null>(null)
+/** Settings dialog teleports; pass HomeChat.pluginHost down for companion ensurePluginById */
+const chatPluginHost = computed(() => homeChatRef.value?.pluginHost ?? null)
 const hasConversationTurns = ref(false)
 
 const {
@@ -1566,6 +1568,7 @@ watch(
       <ConversationContextSettings
         ref="convContextSettingsRef"
         :conversation-id="conversationId"
+        :plugin-host="chatPluginHost"
         :conversation-title="title"
         :initial-prompt-preset-id="convBindings.promptPresetId"
         :initial-character-ids="convBindings.characterIds"

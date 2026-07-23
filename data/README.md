@@ -113,6 +113,7 @@ data/
 | **输出** | 默认仓库根 `backup-out/backup-<时间戳>.zip`；可传参数指定输出目录 |
 | **依赖** | Node（只读解析 `config.yaml`，不会创建该文件）+ 系统 `tar`（写 zip；Windows 10+ 自带 `tar.exe`） |
 | **约束** | 输出目录不得位于 `dataDir` 内（避免自包含）；默认写出仓库根 `backup-out/`（已 `.gitignore`） |
+| **失败输出** | `backup-data.mjs` 失败时向 stderr 打印英文诊断（argv、spawn error、exit/signal、stdout/stderr 摘要）；wrapper 原样透传退出码 |
 
 ```bat
 REM 先停止应用

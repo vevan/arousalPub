@@ -72,6 +72,18 @@ async function resolveLayoutBlocks(
   return defaultLayoutBlocks(resolved)
 }
 
+/** 宿主对 hook 返回 draft 的唯一硬约束：须含 string `content`（其余键 opaque） */
+export function isCompleteWithContextDraftPayload(
+  draft: unknown,
+): draft is Record<string, unknown> & { content: string } {
+  return (
+    !!draft &&
+    typeof draft === 'object' &&
+    !Array.isArray(draft) &&
+    typeof (draft as Record<string, unknown>).content === 'string'
+  )
+}
+
 async function parseDraftViaHook(
   pluginId: string,
   conversationId: string,
@@ -107,11 +119,7 @@ async function parseDraftViaHook(
       content,
       api,
     )
-    if (
-      !parsed?.draft ||
-      typeof parsed.draft !== 'object' ||
-      Array.isArray(parsed.draft)
-    ) {
+    if (!isCompleteWithContextDraftPayload(parsed?.draft)) {
       return { ok: false, code: 'plugin_complete_draft_failed' }
     }
     return { ok: true, draft: parsed.draft }

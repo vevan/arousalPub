@@ -140,4 +140,39 @@ describe('parseCompleteWithContextBody', () => {
     assert.ok(body)
     assert.equal(body?.draft?.kind, 'custom-task')
   })
+
+  it('keeps extra opaque draft fields in body', () => {
+    const body = parseCompleteWithContextBody({
+      conversationId: 'abcd1234',
+      anchorToTurn: 2,
+      blocks: [
+        {
+          source: 'conversation.transcript',
+          blockId: 'history',
+          fromTurn: 0,
+          toTurn: 1,
+        },
+      ],
+      layout: { messages: [{ role: 'user', content: 'x' }] },
+      draft: { kind: 'fixture-task', fromTurn: 3, extraField: 2 },
+    })
+    assert.ok(body)
+    assert.equal(body?.draft?.kind, 'fixture-task')
+    assert.equal(body?.draft?.fromTurn, 3)
+    assert.equal(body?.draft?.extraField, 2)
+  })
+})
+
+describe('isCompleteWithContextDraftPayload', () => {
+  it('requires object with string content', async () => {
+    const { isCompleteWithContextDraftPayload } = await import(
+      '../src/plugin-complete-with-context.js'
+    )
+    assert.equal(isCompleteWithContextDraftPayload({ content: 'ok' }), true)
+    assert.equal(isCompleteWithContextDraftPayload({ content: '' }), true)
+    assert.equal(isCompleteWithContextDraftPayload({ title: 't' }), false)
+    assert.equal(isCompleteWithContextDraftPayload({ content: 1 }), false)
+    assert.equal(isCompleteWithContextDraftPayload([]), false)
+    assert.equal(isCompleteWithContextDraftPayload(null), false)
+  })
 })

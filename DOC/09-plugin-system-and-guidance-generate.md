@@ -172,7 +172,7 @@ data/
 宿主 API（聊天页 inject `PLUGIN_HOST_KEY`）：
 
 - `ensureSlotPlugins(slotName: string): Promise<void>`
-- `ensurePluginById(pluginId: string): Promise<void>` — 极少用；表单等需确保已 register 时
+- `ensurePluginById(pluginId: string): Promise<void>` — 极少用；表单 / settings companion 等需确保已 register 时（设置 `v-dialog` teleport 后勿依赖与 `HomeChat` 的 inject 树，须 prop 下传 `pluginHost` 再调用）
 - `registryLoaded` — registry 是否已拉取（原 `loaded` 别名仍保留）
 
 ### 5.2 设置页 → 插件 Tab

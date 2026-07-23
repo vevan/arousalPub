@@ -19,6 +19,8 @@ import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
   conversationId: string
+  /** 自聊天页下传；设置 dialog teleport 后 inject 不可用 */
+  pluginHost?: import('@/plugins/injection').PluginHostContext | null
 }>()
 
 const emit = defineEmits<{
@@ -298,6 +300,7 @@ defineExpose({ reload: load, backToList })
               :companion-panel="companionPanel"
               :plugin-id="selectedPlugin.id"
               :conversation-id="conversationId"
+              :plugin-host="pluginHost"
               :conv-model="convModels[selectedPlugin.id]"
               :global-model="globalModels[selectedPlugin.id]"
             />

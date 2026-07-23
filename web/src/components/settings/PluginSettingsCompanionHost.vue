@@ -1,36 +1,43 @@
 <script setup lang="ts">
 import { PLUGIN_HOST_KEY } from '@/plugins/injection'
+import type { PluginHostContext } from '@/plugins/injection'
 import {
   getSettingsCompanionPanel,
   settingsCompanionRevision,
 } from '@/plugins/plugin-settings-companion-registry'
-import { computed, inject, onMounted, watch } from 'vue'
+import { computed, inject, watch } from 'vue'
 
 const props = defineProps<{
   companionPanel: string
   pluginId: string
   conversationId: string
+  /** 对话设置在 v-dialog teleport 外；由页面从 HomeChat 下传，优先于 inject */
+  pluginHost?: PluginHostContext | null
   convModel?: Record<string, unknown>
   globalModel?: Record<string, unknown>
 }>()
 
-const pluginHost = inject(PLUGIN_HOST_KEY, null)
-
-onMounted(() => {
-  void pluginHost?.ensurePluginById(props.pluginId)
-})
+const injectedHost = inject(PLUGIN_HOST_KEY, null)
+const resolvedHost = computed(
+  () => props.pluginHost ?? injectedHost ?? null,
+)
 
 watch(
-  () => props.pluginId,
-  (id) => {
-    void pluginHost?.ensurePluginById(id)
+  () =>
+    [resolvedHost.value, props.pluginId, props.companionPanel] as const,
+  ([host, pluginId]) => {
+    if (!host || !pluginId.trim()) return
+    void host.ensurePluginById(pluginId)
   },
+  { immediate: true },
 )
 
 const view = computed(() => {
   const panelId = props.companionPanel.trim()
   if (!panelId) return null
   void settingsCompanionRevision.value
+  // host 就绪后 revision / ensure 会触发重算；未注册时返回 null
+  void resolvedHost.value
   const def = getSettingsCompanionPanel(props.pluginId, panelId)
   if (!def) return null
   return def.getView({

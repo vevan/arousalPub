@@ -49,6 +49,11 @@ import {
 
 const props = defineProps<{
   conversationId: string
+  /**
+   * 自 HomeChat 下传的插件宿主（设置 v-dialog 会 teleport，inject 树断裂）。
+   * 仅用于 settings companion ensurePluginById，无插件语义特化。
+   */
+  pluginHost?: import('@/plugins/injection').PluginHostContext | null
   /** 对话标题（页脚展示；空则用「新对话」） */
   conversationTitle?: string | null
   /** `null` / 未绑定：使用全局激活预设 */
@@ -2449,6 +2454,7 @@ async function patchConversation(body: Record<string, unknown>) {
               <ConversationPluginSettingsPanel
                 ref="pluginSettingsPanelRef"
                 :conversation-id="conversationId"
+                :plugin-host="pluginHost"
                 @saving-change="savingPluginSettings = $event"
                 @error="onPluginSettingsError"
               />

@@ -32,11 +32,14 @@ const emit = defineEmits<{
 
 const session = useChatSession(props)
 
-defineExpose({
-  reloadTurns: () => session.loadMessages(),
-})
 const pluginHost = usePluginHost(session, { routeKeys: ['chat'] })
 provide(PLUGIN_HOST_KEY, pluginHost)
+
+defineExpose({
+  reloadTurns: () => session.loadMessages(),
+  /** 供对话页设置对话框（v-dialog teleport）下传 companion，不依赖 inject 树 */
+  pluginHost,
+})
 
 const { chatFontSizeRem } = storeToRefs(usePreferencesStore())
 

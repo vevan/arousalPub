@@ -147,7 +147,7 @@ host.plugin.completeWithContext({
 ```
 
 - **`pluginSettings`**：assemble / complete 共用；`parseCompleteDraftContent` hook 收到同一份（如 plot-summary sidecar 标题放 `pluginSettings.sidecarName`）。
-- **`draft` 成功体**：宿主返回 `Record<string, unknown>`（不锁 `{ title, content, keywords }`）；插件自述字段。
+- **`draft` 成功体**：宿主硬校验仅要求对象含 **`content: string`**（可空串）；其余键 opaque 透传（不锁 title/keywords 等）；插件自述字段。
 
 - 宿主顺序：**resolve API** → `formatPluginContextBlocks` hook → assemble（含 preflight）→ complete → `parseCompleteDraftContent` hook（若传 `draft`）。
 - **无 preset**（D5）。
@@ -235,3 +235,4 @@ host.plugin.completeWithContext({
 | 2026-07-07 | **Phase 3 落地**：trace-keeper Separate；`stripBlockTagsOnToTurn`；`fallbackToChat` / `captureDebug` 审计修复 |
 | 2026-07-07 | §6 分期优先级与 **`DOC/04` P0** 对齐；合并 main 通知中心 localStorage 文档 |
 | 2026-07-23 | `completeWithContext` draft 改为 opaque `Record`；hook `params` 透传；宿主不再锁 `{ title, content, keywords }` |
+| 2026-07-23 | draft 宿主硬校验收紧为仅 `content: string`（可空）；其余键仍 opaque |

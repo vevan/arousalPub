@@ -84,7 +84,7 @@ export function register(host) {
 | `registerSlotButton(slot, def)` | 注册工具栏等 slot 按钮；支持 `menu[]` 子菜单、`when` / `disabled` / 动态 `icon` / 动态 **`class`** |
 | `registerComposerSlashCommand(name, handler, spec?)` | 注册 Composer 行首 slash（S3）；`handler(ctx: { conversationId, raw, args })`；子参数由插件自解析；宿主不特化插件 id；scoped host 自动绑定本插件以便注销 |
 | `registerFormDialog(pluginId, def, dialogId?)` | 注册动作弹框（与设置页 schema 表单分离）；`titleKeys`/`submitKeys` 为 `Record<string,string>` 按 `model.mode` 查表；可选 `extraAction*` 第四钮；integer 字段可选 `min`/`max` |
-| `registerSettingsCompanionPanel(pluginId, def)` | 对话设置 companion：`def.id` 对应 schema `companionPanel`；`getView(ctx)` 返回通用 status/action view model；注册表为模块级（设置壳与聊天区兄弟节点亦可读） |
+| `registerSettingsCompanionPanel(pluginId, def)` | 对话设置 companion：`def.id` 对应 schema `companionPanel`；`getView(ctx)` 返回通用 status/action view model；注册表为模块级。设置 `v-dialog` 会 teleport，须由聊天页把 `pluginHost` **prop 下传**至 companion 壳并 `ensurePluginById`（勿依赖与 `HomeChat` 的 inject 树） |
 | `openFormDialog(pluginId, model, dialogId?)` | 打开已注册弹框 |
 | `refreshSlotButtons()` | 动态改按钮状态后刷新 UI |
 | `registerStyles(css)` | 注入 `<style data-plugin-styles="{pluginId}">`；同插件重复调用为**覆盖**更新（仅 scoped host） |
@@ -456,7 +456,7 @@ const data = await host.plugin.runAction('my-action', {
   - 失败：`{ ok: false, code, status?, debug? }`。
 - Web 侧统一 **`host.plugin.runAction(action, body)`**；**禁止**在 `web.mjs` 内 `fetch('/api/plugins/…/actions/…')`。
 
-**`parseCompleteDraftContent` 约定**：抛出 `parse_failed` 时宿主映射为 `plugin_complete_draft_failed`。`ctx.pluginSettings` 为 complete 请求的 `pluginSettings` 副本；sidecar / lore 私有字段由插件自行约定（宿主不声明 `sidecarName` 等键）。
+**`parseCompleteDraftContent` 约定**：抛出 `parse_failed` 时宿主映射为 `plugin_complete_draft_failed`。`ctx.pluginSettings` 为 complete 请求的 `pluginSettings` 副本；sidecar / lore 私有字段由插件自行约定（宿主不声明 `sidecarName` 等键）。宿主对返回 `draft` 的**唯一**硬校验：须为含 **`content: string`** 的对象（可空串）；其余键 opaque 透传，**不**校验 title/keywords 等产品字段。
 
 ---
 
@@ -545,7 +545,7 @@ manifest 可选声明 **`memory.stripBlockTags`**：`string[]`，标签名与助
 | `bundleSelect.builtinValue` / `inheritOption` | 内置项 / 会话「继承全局」 |
 | `objectListValidation: 'bundleList'` | bundle 列表 label/id/JSON 校验 |
 | `validateSampleStateWhen` | 控制 JSON 校验开关字段 key |
-| `companionPanel` | 对话设置 boolean 下方 companion 面板 id；插件经 `registerSettingsCompanionPanel(pluginId, { id, getView })` 注册 view model，宿主只渲染通用 status/action 壳 |
+| `companionPanel` | 对话设置 boolean 下方 companion 面板 id；插件经 `registerSettingsCompanionPanel` 注册；宿主通用壳渲染。聊天页须 **prop 下传** `pluginHost`（dialog teleport），companion 再 `ensurePluginById` |
 | `inheritTriModeSheetList.globalListFieldKey` | 全局 objectList 字段（如样式 sheets） |
 | `dialogMaxWidth` | 全局设置对话框宽度（schema 根） |
 
@@ -665,3 +665,4 @@ class PluginHostApiError {
 | 2026-07-07 | **宿主去特化**：`host.plugin.runAction` + manifest `serverActions`；`draft.kind` 改为 opaque `string`；settings schema widget 文档 |
 | 2026-07-07 | §10 通知中心改为 **localStorage**（`DOC/40`）；权限：`lorebook.read` 仅 lore 块时要求 |
 | 2026-07-23 | **零字节特化**：`registerSettingsCompanionPanel`；FormDialog `extraAction*` + `titleKeys`/`submitKeys` Record；`completeWithContext` draft opaque；integer `min`/`max` |
+| 2026-07-23 | companion：设置 dialog teleport → 聊天页 prop 下传 `pluginHost` + `ensurePluginById`；draft 宿主硬校验仅 `content: string` |

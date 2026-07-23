@@ -117,22 +117,100 @@ function main() {
 
   // Windows 10+ and Unix: tar can write zip with -a
   const args = ['-a', '-cf', outFile, '--exclude', 'backups', '-C', dataDir, '.']
-  const r = spawnSync('tar', args, { stdio: 'inherit', shell: false })
-  if (r.error) {
+  // eslint-disable-next-line no-console
+  console.log(`[backup] running: tar ${args.map((a) => JSON.stringify(a)).join(' ')}`)
+
+  const r = spawnSync('tar', args, {
+    encoding: 'utf8',
+    shell: false,
+    maxBuffer: 16 * 1024 * 1024,
+  })
+
+  if (r.error || r.status !== 0) {
     // eslint-disable-next-line no-console
-    console.error('[backup] failed to spawn tar:', r.error.message)
+    console.error('[backup] tar failed')
     // eslint-disable-next-line no-console
-    console.error('[backup] Install tar (Windows 10+ includes tar.exe) or run from a shell that has it on PATH.')
-    process.exit(1)
-  }
-  if (r.status !== 0) {
+    console.error(`[backup] cwd (implied via -C): ${dataDir}`)
     // eslint-disable-next-line no-console
-    console.error(`[backup] tar exited with code ${r.status}`)
+    console.error(`[backup] argv: tar ${args.map((a) => JSON.stringify(a)).join(' ')}`)
+    if (r.error) {
+      const err = /** @type {NodeJS.ErrnoException} */ (r.error)
+      // eslint-disable-next-line no-console
+      console.error(`[backup] spawn error name: ${err.name}`)
+      // eslint-disable-next-line no-console
+      console.error(`[backup] spawn error message: ${err.message}`)
+      if (err.code) {
+        // eslint-disable-next-line no-console
+        console.error(`[backup] spawn error code: ${err.code}`)
+      }
+      if (err.stack) {
+        // eslint-disable-next-line no-console
+        console.error('[backup] spawn stack:')
+        // eslint-disable-next-line no-console
+        console.error(err.stack)
+      }
+      // eslint-disable-next-line no-console
+      console.error(
+        '[backup] Hint: install tar (Windows 10+ ships tar.exe) or ensure it is on PATH.',
+      )
+    }
+    if (r.status != null) {
+      // eslint-disable-next-line no-console
+      console.error(`[backup] exit status: ${r.status}`)
+    }
+    if (r.signal) {
+      // eslint-disable-next-line no-console
+      console.error(`[backup] signal: ${r.signal}`)
+    }
+    const stdout = typeof r.stdout === 'string' ? r.stdout : ''
+    const stderr = typeof r.stderr === 'string' ? r.stderr : ''
+    if (stdout.trim()) {
+      // eslint-disable-next-line no-console
+      console.error('[backup] stdout:')
+      // eslint-disable-next-line no-console
+      console.error(stdout.trimEnd())
+    }
+    if (stderr.trim()) {
+      // eslint-disable-next-line no-console
+      console.error('[backup] stderr:')
+      // eslint-disable-next-line no-console
+      console.error(stderr.trimEnd())
+    }
+    if (!r.error && !stdout.trim() && !stderr.trim()) {
+      // eslint-disable-next-line no-console
+      console.error('[backup] No stdout/stderr captured from tar.')
+    }
     process.exit(r.status ?? 1)
+  }
+
+  if (typeof r.stdout === 'string' && r.stdout.trim()) {
+    // eslint-disable-next-line no-console
+    console.log(r.stdout.trimEnd())
+  }
+  if (typeof r.stderr === 'string' && r.stderr.trim()) {
+    // eslint-disable-next-line no-console
+    console.warn(r.stderr.trimEnd())
   }
 
   // eslint-disable-next-line no-console
   console.log(`[backup] done: ${outFile}`)
 }
 
-main()
+try {
+  main()
+} catch (e) {
+  // eslint-disable-next-line no-console
+  console.error('[backup] unexpected error')
+  if (e instanceof Error) {
+    // eslint-disable-next-line no-console
+    console.error(`[backup] ${e.name}: ${e.message}`)
+    if (e.stack) {
+      // eslint-disable-next-line no-console
+      console.error(e.stack)
+    }
+  } else {
+    // eslint-disable-next-line no-console
+    console.error('[backup]', e)
+  }
+  process.exit(1)
+}

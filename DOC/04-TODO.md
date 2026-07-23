@@ -4,7 +4,7 @@
 
 ## P0
 
-> （当前无未完成 P0）
+- [ ] 为指导润色分离原文和润色后的内容，润色和发送按钮根据条件禁用
 
 ## P1
 
@@ -113,7 +113,7 @@
 | **流式上游失败改 SSE** `arousal.error`（早开流后 HTTP 仍 2xx · 客户端须解析事件）                                                                | 2026-07-22             | `[DOC/35](35-group-chat.md)` §2.2 · `[DOC/03](03-实现细节.md)` §6.8                                                                                                                           |
 | **缺槽 After → Character 末尾**（种子 / normalize 对齐 · `DEFAULT_WORLD` 仅 Before）                                                  | 2026-07-22             | `[DOC/27](27-embedded-character-book.md)` §4.3 · `[DOC/03](03-实现细节.md)` §15.9 · `prompt-preset-normalize` / `prompts-default-seed`                                                        |
 | **掷骰去掉死参数** `eligibleIds`（资格由 `resolveDiceSkipReason` · 审计仍含全员）                                                            | 2026-07-22             | `group-chat/pick.ts` · `resolve.ts`                                                                                                                                                       |
-| **RAG 参数面板 + 备份示例脚本**（知识库 Settings/`ConversationContextSettings` 文档对齐 · `scripts/ops/backup.example.*`）                      | 2026-07-23             | `[DOC/03](03-实现细节.md)` §8.7 · §9.6 · `[DOC/46](46-document-rag.md)` · `data/README.md` · `scripts/ops/`                                                                                    |
-| **指导发送 · 润色**（美化用户输入 · `transcript.tail` · `polishHistoryTurns`）                                                               | 2026-07-23             | `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1 · `plugins/guidance-generate`                                                                                                     |
+| **RAG 参数面板 + 备份示例脚本**（知识库 Settings/`ConversationContextSettings` 文档对齐 · `scripts/ops/backup.example.`*）                    | 2026-07-23             | `[DOC/03](03-实现细节.md)` §8.7 · §9.6 · `[DOC/46](46-document-rag.md)` · `data/README.md` · `scripts/ops/`                                                                                   |
+| **指导发送 · 润色**（美化用户输入 · `transcript.tail` · `polishHistoryTurns`）                                                           | 2026-07-23             | `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1 · `plugins/guidance-generate`                                                                                                  |
 
 

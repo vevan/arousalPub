@@ -19,7 +19,7 @@ authIdleMinutes: 15
 authDefaultRefreshDays: 7
 authAccessMinutes: 30
 
-# --- 冷备 ---
+# --- 冷备（产品内 §8.8 → data/backups/；可选运维样例见 scripts/ops/backup.example.*）---
 backupEnabled: true
 backupIntervalDays: 7
 backupMaxKept: 5

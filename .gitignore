@@ -70,3 +70,6 @@ _design/*.jpeg
 # Agent / scratch
 .tmp/
 .tmp-hybrid-fts/
+
+# Ops sample backup output (scripts/ops/backup.example.*)
+/backup-out/

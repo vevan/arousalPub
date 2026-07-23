@@ -102,6 +102,30 @@ data/
 
 ~~对话轮次增量备份（§8.4）~~：**无限期延后**，不实现；`chats/.../index.json` 内 `backupSettings` 仅为历史占位。
 
+### 运维示例脚本（可选 · `DOC/03` §8.7）
+
+停服后手动打包整棵 `dataDir`（**排除** `backups/`），**不替代**上文产品内冷备：
+
+| 项 | 说明 |
+|----|------|
+| **入口** | `scripts/ops/backup.example.bat`（Windows）· `scripts/ops/backup.example.sh`（Unix）· 共用 `scripts/ops/backup-data.mjs` |
+| **数据根** | 环境变量 `DATA_DIR` / `AROUSAL_DATA_DIR`，否则读仓库根 `config.yaml` 的 `dataDir`，再否则 `./data` |
+| **输出** | 默认仓库根 `backup-out/backup-<时间戳>.zip`；可传参数指定输出目录 |
+| **依赖** | Node（只读解析 `config.yaml`，不会创建该文件）+ 系统 `tar`（写 zip；Windows 10+ 自带 `tar.exe`） |
+| **约束** | 输出目录不得位于 `dataDir` 内（避免自包含）；默认写出仓库根 `backup-out/`（已 `.gitignore`） |
+
+```bat
+REM 先停止应用
+scripts\ops\backup.example.bat
+scripts\ops\backup.example.bat D:\cold-copies
+```
+
+```bash
+# 先停止应用
+./scripts/ops/backup.example.sh
+./scripts/ops/backup.example.sh /mnt/cold-copies
+```
+
 ### Syncthing 与多机边界
 
 | 同步 | 忽略 / 注意 |

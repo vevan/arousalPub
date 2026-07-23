@@ -23,7 +23,15 @@ describe('formatSummarizeTaskTitlePart', () => {
     const task: SummarizeTask = { kind: 'memory' }
     assert.equal(
       formatSummarizeTaskTitlePart(host, task, 31, 45, 7),
-      '[MEMO-05] 剧情纪要 [31-45]',
+      '[MEMO-01] 剧情纪要 [31-45]',
+    )
+  })
+
+  it('formats memory task with explicit session memoIndex', () => {
+    const task: SummarizeTask = { kind: 'memory' }
+    assert.equal(
+      formatSummarizeTaskTitlePart(host, task, 31, 45, 7, 12),
+      '[MEMO-12] 剧情纪要 [31-45]',
     )
   })
 
@@ -52,7 +60,7 @@ describe('formatSummarizeTaskNotifyLabel', () => {
     const task: SummarizeTask = { kind: 'memory' }
     assert.equal(
       formatSummarizeTaskNotifyLabel(host, 'LTM - alice', task, 31, 45, 7),
-      'LTM - alice - [MEMO-05] 剧情纪要 [31-45]',
+      'LTM - alice - [MEMO-01] 剧情纪要 [31-45]',
     )
   })
 

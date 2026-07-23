@@ -213,7 +213,7 @@ data/
 
 | 模式 | Slot | 弹框字段 | 宿主 API |
 |------|------|----------|----------|
-| 指导发送 | `composer-toolbar` | 用户文 + 指导文 | `host.chat.sendWithPlugins` |
+| 指导发送 | `composer-toolbar` | **生成** / **润色** 双 Tab：生成=用户文+指导；润色=用户文（可润色后普通发送） | 生成：`sendWithPlugins`；润色：`complete` + **`host.chat.send`** |
 | 指导再生 | `user-turn-footer`（最后 user turn） | 用户文 + 指导文 | `host.chat.regenerateWithPlugins` |
 | **指导修改** | `assistant-turn-footer` | 当前助手回复（只读）+ 指导文 | `host.chat.regenerateWithPlugins`（`mode: 'revise'`） |
 
@@ -223,6 +223,10 @@ data/
 |----|------|
 | `systemPrefix` | send / regenerate：指导 system 前缀 |
 | `reviseSystemPrefix` | revise：加在当前助手回复与指导正文之间的 system 前缀 |
+| `polishSystemPrefix` | 润色 Tab：二次 LLM system 指令（只输出润色后的用户输入） |
+| `polishHistoryTurns` | 润色时 `conversation.transcript.tail` 的 `tailCount`（默认 8，0～40） |
+
+**润色 Tab（仅指导发送弹框）**：宿主表单 `tabs`（生成 / 润色）。润色流程：点「润色」→ `prepareContextBlocks` + `complete`（`system` 历史 → `user` 草稿 → `system` 润色前缀）回填用户文 → 点「发送」走 **`host.chat.send`**（无指导注入）。权限：`plugin.complete` + `conversation.read`。
 
 **Prompt · send/regenerate**：指导以 hidden system 插在**最后一条 user 消息之后**（非 messages 末尾）；前缀 **`settings.systemPrefix`**。
 
@@ -287,7 +291,7 @@ data/
 - **对话批处理**：`host.conversation.runScope` / `runBatch`、`getMeta`、`host.render.*`、`host.ui.progress` — 见 DOC/10
 - **插件间协作（规划）**：`host.capabilities.register` / `get` — 见 §8.7
 - **Notify / Confirm**：`host.ui.notify` / `host.ui.confirm`
-- **发消息扩展**：`host.chat.sendWithPlugins` / `regenerateWithPlugins` + server `resolveTurnPluginEntries`
+- **发消息扩展**：`host.chat.send` / `sendWithPlugins` / `regenerateWithPlugins` + server `resolveTurnPluginEntries`
 
 ### 8.5 加载时机（避免「我的插件没反应」）
 

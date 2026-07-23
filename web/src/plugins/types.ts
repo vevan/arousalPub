@@ -87,20 +87,46 @@ export interface PluginFormFieldDef {
   labelKey: string
   type?: 'text' | 'textarea' | 'integer' | 'radio' | 'apiPreset' | 'lorebook' | 'checkboxGroup'
   options?: PluginFormFieldOption[]
-  visibleWhen?: { field: string; equals: unknown }
+  /** 单条件，或数组（全部满足才显示） */
+  visibleWhen?:
+    | { field: string; equals: unknown }
+    | Array<{ field: string; equals: unknown }>
   hintKey?: string
+  /** integer：可选下限（缺省 0） */
+  min?: number
+  /** integer：可选上限 */
+  max?: number
   /** 为 true 时字段只读展示 */
   readOnly?: boolean
 }
 
+export interface PluginFormDialogTabDef {
+  id: string
+  labelKey: string
+  /** 该 Tab 下主按钮文案；缺省回退 submitKey / submitKeys */
+  submitKey?: string
+}
+
 export interface PluginFormDialogDef {
   titleKey: string
-  /** 多模式标题（send / regenerate / revise）；有则按 `model.mode` 选取，否则用 titleKey */
-  titleKeys?: { send: string; regenerate: string; revise?: string }
+  /**
+   * 多模式标题：按 `String(model.mode)` 查表；缺键回退 `titleKey`。
+   * 模式名由插件自定，宿主不解释。
+   */
+  titleKeys?: Record<string, string>
   bodyKey?: string
   fields: PluginFormFieldDef[]
-  /** 双模式（send / regenerate / revise），与 submitKey 二选一 */
-  submitKeys?: { send: string; regenerate: string; revise?: string }
+  /**
+   * 可选顶栏 Tab。激活 id 写在 model[tabField]（默认 `tab`）。
+   * 字段可用 `visibleWhen: { field: 'tab', equals: '…' }` 切换。
+   */
+  tabs?: PluginFormDialogTabDef[]
+  /** Tab 状态字段名，默认 `tab` */
+  tabField?: string
+  /** 为 false 时不展示 Tab 栏（如按 mode 隐藏） */
+  tabsVisible?: (model: Record<string, unknown>) => boolean
+  /** 多模式主按钮文案，按 `String(model.mode)` 查表；与 submitKey 二选一 */
+  submitKeys?: Record<string, string>
   /** 单按钮对话框（如导出） */
   submitKey?: string
   cancelKey?: string
@@ -121,16 +147,46 @@ export interface PluginFormDialogDef {
     host: PluginWebHost,
     model: Record<string, unknown>,
   ) => void | Promise<void>
-  /** 可选第四按钮（如预览「重新生成」） */
-  regenerateKey?: string
-  /** 为 false 时不展示 regenerate 按钮（如 debug 门控） */
-  regenerateVisible?: (host: PluginWebHost) => boolean
-  /** 与 canSubmit 类似，控制 regenerate 是否可点 */
-  regenerateCanSubmit?: (model: Record<string, unknown>) => boolean
-  onRegenerate?: (
+  /** 可选额外动作按钮文案（如预览「重新生成」、润色） */
+  extraActionKey?: string
+  /** 为 false 时不展示额外动作（如 debug 门控、按 mode 隐藏） */
+  extraActionVisible?: (
+    host: PluginWebHost,
+    model: Record<string, unknown>,
+  ) => boolean
+  /** 与 canSubmit 类似，控制额外动作是否可点 */
+  extraActionCanSubmit?: (model: Record<string, unknown>) => boolean
+  onExtraAction?: (
     host: PluginWebHost,
     model: Record<string, unknown>,
   ) => void | Promise<void>
+}
+
+export interface PluginSettingsCompanionStatusRow {
+  icon: string
+  text: string
+  tone?: 'muted' | 'accent'
+}
+
+export interface PluginSettingsCompanionView {
+  title: string
+  rows: PluginSettingsCompanionStatusRow[]
+  actionLabel?: string
+  onAction?: () => void
+}
+
+export interface PluginSettingsCompanionPanelContext {
+  conversationId: string
+  convModel: Record<string, unknown>
+  globalModel: Record<string, unknown>
+}
+
+export interface PluginSettingsCompanionPanelDef {
+  /** 与 schema `companionPanel` 字符串匹配 */
+  id: string
+  getView: (
+    ctx: PluginSettingsCompanionPanelContext,
+  ) => PluginSettingsCompanionView | null
 }
 
 export interface PluginConfirmOptions {
@@ -320,7 +376,7 @@ export interface PluginCompletePreflightResult {
 export type { PluginHostApiError } from '@/plugins/plugin-host-api-error'
 export { isPluginHostApiError } from '@/plugins/plugin-host-api-error'
 
-/** `sendWithPlugins` / `regenerateWithPlugins`：成功为 undefined，失败为可展示文案（用户中止不返回） */
+/** `send` / `sendWithPlugins` / `regenerateWithPlugins`：成功为 undefined，失败为可展示文案（用户中止不返回） */
 export type PluginChatSendError = string | undefined
 
 export interface PluginWebHost {
@@ -352,6 +408,11 @@ export interface PluginWebHost {
     dialogId?: string,
     opts?: PluginFormDialogOpenOpts,
   ): void
+  /** 对话设置 schema companion：插件提供 view model，宿主只渲染通用壳 */
+  registerSettingsCompanionPanel(
+    pluginId: string,
+    def: PluginSettingsCompanionPanelDef,
+  ): void
   composer: ComposerRef
   session: ChatSession
   t: (key: string, params?: Record<string, unknown>) => string
@@ -362,6 +423,8 @@ export interface PluginWebHost {
     isTurnAwaitingAssistant: (turn: ChatTurnItem) => boolean
   }
   chat: {
+    /** 普通发送（不传 body.plugins）；成功为 undefined，失败为可展示文案 */
+    send: (userText: string) => Promise<PluginChatSendError>
     sendWithPlugins: (
       userText: string,
       plugins: ConversationChatRequestPlugins,

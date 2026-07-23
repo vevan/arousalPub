@@ -90,7 +90,7 @@ describe('assertTurnPatchPermissions', () => {
     }
     assert.throws(
       () =>
-        assertTurnPatchPermissions('swipe-cleaner', ['conversation.read'], before, after),
+        assertTurnPatchPermissions('fixture-plugin-swipe', ['conversation.read'], before, after),
       PluginPermissionDeniedError,
     )
     assert.equal(
@@ -104,7 +104,7 @@ describe('assertTurnPatchPermissions', () => {
     const perms = ['conversation.read']
     assert.equal(canPerformTurnPatch(perms, before, before), true)
     assert.throws(
-      () => assertPluginPermission('conversation-export', perms, 'turn.receive.prune'),
+      () => assertPluginPermission('fixture-plugin-export', perms, 'turn.receive.prune'),
       PluginPermissionDeniedError,
     )
   })

@@ -9,12 +9,16 @@ export function formatSummarizeTaskTitlePart(
   fromTurn: number,
   toTurn: number,
   blockTurns: number,
+  memoIndex?: number,
 ): string {
   if (task.kind === 'sidecar') {
     return task.sidecar.name.trim()
   }
-  const memoIndex = resolveMemoIndex('', fromTurn, blockTurns)
-  const memo = String(memoIndex).padStart(2, '0')
+  const idx = resolveMemoIndex('', fromTurn, {
+    blockTurns,
+    ...(typeof memoIndex === 'number' ? { memoIndex } : {}),
+  })
+  const memo = String(idx).padStart(2, '0')
   const core = host.t(k(host, 'manualTaskMemory'))
   return `[MEMO-${memo}] ${core} [${fromTurn}-${toTurn}]`
 }
@@ -27,8 +31,16 @@ export function formatSummarizeTaskNotifyLabel(
   fromTurn: number,
   toTurn: number,
   blockTurns: number,
+  memoIndex?: number,
 ): string {
   const book = lorebookName.trim()
-  const part = formatSummarizeTaskTitlePart(host, task, fromTurn, toTurn, blockTurns)
+  const part = formatSummarizeTaskTitlePart(
+    host,
+    task,
+    fromTurn,
+    toTurn,
+    blockTurns,
+    memoIndex,
+  )
   return book ? `${book} - ${part}` : part
 }

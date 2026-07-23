@@ -45,6 +45,10 @@
 
   "convAutoSummarizeProgressDone": "已剧情纪要至第 {end} 轮（含）",
 
+  "convAutoSummarizeProgressMemo": "已摘要至 MEMO-{n}",
+
+  "convAutoSummarizeProgressMemoNever": "尚未有纪要编号",
+
   "convAutoSummarizeProgressPending": "待摘要块：第 {from}–{to} 轮",
 
   "convAutoSummarizeProgressNext": "下次触发：第 {turn} 轮落盘后",
@@ -65,6 +69,12 @@
 
   "convAutoSummarizeResetNever": "尚未摘要（清空指针）",
 
+  "convAutoSummarizeResetMemoLabel": "已摘要至 MEMO-N",
+
+  "convAutoSummarizeResetMemoHint": "与「已摘要至第 N 轮」同语义；下次新建为 N+1。旧会话不从资料库推断。按轮次重排请用插件菜单「按轮次重排纪要编号」。",
+
+  "convAutoSummarizeResetMemoNever": "尚未有纪要编号（清空）",
+
   "convAutoSummarizeResetConfirm": "确认",
 
   "convBlockTurnsLabel": "每块摘要轮数",
@@ -74,6 +84,10 @@
   "convBufferTurnsLabel": "缓冲轮数",
 
   "convBufferTurnsDesc": "块尾后保留最近 N 轮不纳入本块；清空则继承全局默认。",
+
+  "convLastMemoIndexLabel": "已摘要至 MEMO-N",
+
+  "convLastMemoIndexDesc": "手动/自动共用纪要序号指针；下次新建为 N+1。清空表示尚未有编号。按轮次重排请用插件菜单。",
 
   "sessionBlockTurnsLabel": "每块摘要轮数 N",
 
@@ -299,7 +313,11 @@
 
   "tooltipReorderLorebook": "整理目标资料库顺序",
 
+  "tooltipRenumberMemory": "按轮次重排纪要编号",
+
   "notifyReorderLorebookDone": "已整理目标资料库条目顺序",
+
+  "notifyRenumberMemoryDone": "已按轮次重排纪要编号（改 {count} 条标题）",
 
   "notifyReorderLorebookNoTarget": "请先指定摘要资料库",
 

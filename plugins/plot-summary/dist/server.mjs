@@ -78,15 +78,18 @@ function extractSummaryCoreTitle(rawTitle) {
   if (parsed?.coreTitle) return parsed.coreTitle;
   return t || "\u6458\u8981";
 }
-function resolveMemoIndex(rawTitle, fromTurn, blockTurns) {
+function resolveMemoIndex(rawTitle, _fromTurn, blockTurnsOrOpts = 15) {
+  const opts = typeof blockTurnsOrOpts === "number" ? { blockTurns: blockTurnsOrOpts } : blockTurnsOrOpts ?? {};
+  if (typeof opts.memoIndex === "number" && Number.isFinite(opts.memoIndex) && opts.memoIndex >= 1) {
+    return Math.round(opts.memoIndex);
+  }
   const parsed = parsePlotSummaryEntryTitle(rawTitle.trim());
   if (parsed) return parsed.memoIndex;
-  const bt = Math.max(1, Math.round(blockTurns));
-  return Math.floor(Math.max(0, fromTurn) / bt) + 1;
+  return 1;
 }
-function formatEntryTitle(rawTitle, startTurn, endTurn, blockTurns = 15) {
+function formatEntryTitle(rawTitle, startTurn, endTurn, blockTurnsOrOpts = 15) {
   const title = extractSummaryCoreTitle(rawTitle);
-  const memoIndex = resolveMemoIndex(rawTitle, startTurn, blockTurns);
+  const memoIndex = resolveMemoIndex(rawTitle, startTurn, blockTurnsOrOpts);
   return `[MEMO-${memoIndex}]-${title}-[${startTurn}-${endTurn}]`;
 }
 
@@ -169,8 +172,13 @@ function sidecarNameFromSettings(settings) {
   const raw = settings?.sidecarName;
   return typeof raw === "string" ? raw.trim() : "";
 }
+function asFiniteNumber(raw) {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  return void 0;
+}
 function parseCompleteDraftContent(ctx, content, _api) {
   const raw = parseModelJson(content);
+  const params = ctx.params ?? {};
   if (ctx.kind === "sidecar") {
     const sidecarName = sidecarNameFromSettings(ctx.pluginSettings);
     const sidecar = normalizeSidecarPayload(sidecarName, raw);
@@ -183,10 +191,16 @@ function parseCompleteDraftContent(ctx, content, _api) {
     };
   }
   const summary = normalizeSummaryPayload(raw);
-  const fromTurn = typeof ctx.fromTurn === "number" ? ctx.fromTurn : 0;
-  const toTurn = typeof ctx.toTurn === "number" ? ctx.toTurn : fromTurn;
-  const blockTurns = typeof ctx.blockTurns === "number" && Number.isFinite(ctx.blockTurns) ? Math.max(1, Math.round(ctx.blockTurns)) : 15;
-  const entryTitle = formatEntryTitle(summary.title, fromTurn, toTurn, blockTurns);
+  const fromTurn = asFiniteNumber(params.fromTurn) ?? 0;
+  const toTurn = asFiniteNumber(params.toTurn) ?? fromTurn;
+  const blockTurnsRaw = asFiniteNumber(params.blockTurns);
+  const blockTurns = blockTurnsRaw != null ? Math.max(1, Math.round(blockTurnsRaw)) : 15;
+  const memoIndexRaw = asFiniteNumber(params.memoIndex);
+  const memoIndex = memoIndexRaw != null ? Math.max(1, Math.round(memoIndexRaw)) : void 0;
+  const entryTitle = formatEntryTitle(summary.title, fromTurn, toTurn, {
+    blockTurns,
+    ...memoIndex != null ? { memoIndex } : {}
+  });
   return {
     draft: {
       title: entryTitle,

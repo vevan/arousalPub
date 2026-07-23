@@ -81,7 +81,7 @@ async function parseDraftViaHook(
   pluginSettings: Record<string, unknown> | undefined,
   userId?: string,
 ): Promise<
-  | { ok: true; draft: { title: string; content: string; keywords: string[] } }
+  | { ok: true; draft: Record<string, unknown> }
   | { ok: false; code: string; detail?: string }
 > {
   const loaded = await loadEnabledServerPlugins(userId)
@@ -90,25 +90,28 @@ async function parseDraftViaHook(
     return { ok: false, code: 'plugin_hook_not_supported' }
   }
   const api = createPluginServerHostApi(pluginId, userId)
+  const { kind, ...params } = draft
   try {
     const parsed = await plugin.module.parseCompleteDraftContent(
       {
         pluginId,
         conversationId,
         apiConfigId,
-        kind: draft.kind,
+        kind,
         systemReferenceContext: '',
         userContent: '',
         systemPromptTemplate: '',
-        fromTurn: draft.fromTurn,
-        toTurn: draft.toTurn,
-        blockTurns: draft.blockTurns,
+        params,
         pluginSettings,
       },
       content,
       api,
     )
-    if (!parsed?.draft || typeof parsed.draft.content !== 'string') {
+    if (
+      !parsed?.draft ||
+      typeof parsed.draft !== 'object' ||
+      Array.isArray(parsed.draft)
+    ) {
       return { ok: false, code: 'plugin_complete_draft_failed' }
     }
     return { ok: true, draft: parsed.draft }
@@ -365,10 +368,7 @@ export function parseCompleteWithContextBody(
     const d = o.draft as Record<string, unknown>
     const kind = typeof d.kind === 'string' ? d.kind.trim() : ''
     if (!kind) return null
-    draft = { kind }
-    if (typeof d.fromTurn === 'number') draft.fromTurn = d.fromTurn
-    if (typeof d.toTurn === 'number') draft.toTurn = d.toTurn
-    if (typeof d.blockTurns === 'number') draft.blockTurns = d.blockTurns
+    draft = { ...d, kind }
   }
 
   return {

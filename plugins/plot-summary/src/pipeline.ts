@@ -9,9 +9,10 @@ import {
 import { applyPlotSummaryEntrySort } from './shared/entry-sort.js'
 import { flushPendingLorebookCreates, type PendingLorebookCreate } from './batch-write.js'
 import { entryKeys, writeSidecarEntry } from './sidecar.js'
-import { k, loadMergedSettings } from './settings.js'
+import { k, loadMergedSettings, nextMemoIndexFromLast } from './settings.js'
 import { notifyOutcome, notifySummarizeTask } from './notify-outcome.js'
 import { formatSummarizeTaskNotifyLabel } from './shared/task-notify-label.js'
+import { parseMemoIndex } from './shared/lorebook-sort.js'
 import {
   setSummarizeBatchProgress,
   setSummarizeRunning,
@@ -134,6 +135,7 @@ export async function runSummarizeTasks(
     let wroteToLorebook = false
     let skippedTasks = 0
     let aborted = false
+    let allocatedMemoIndex: number | null = null
     const pendingCreates: PendingLorebookCreate[] = []
 
     host.ui.progress({
@@ -155,6 +157,7 @@ export async function runSummarizeTasks(
         fromTurn,
         toTurn,
         settings.blockTurns,
+        task.kind === 'memory' ? nextMemoIndexFromLast(settings.lastMemoIndex) : undefined,
       )
       setSummarizeBatchProgress({ taskIndex, total: tasks.length })
       showCurrentBatchTaskProgress(host)
@@ -196,6 +199,11 @@ export async function runSummarizeTasks(
               priority: 100,
             },
           })
+          const usedMemo = parseMemoIndex(reviewed.title)
+          allocatedMemoIndex =
+            typeof usedMemo === 'number' && usedMemo >= 1
+              ? usedMemo
+              : nextMemoIndexFromLast(settings.lastMemoIndex)
           ranMemory = true
           wroteToLorebook = true
         } else if (task.kind === 'sidecar') {
@@ -324,6 +332,13 @@ export async function runSummarizeTasks(
       )
       patch.lastSummarizedEnd = last
       patch.nextBlockStart = Math.max(settings.nextBlockStart ?? 0, last + 1)
+    }
+
+    if (allocatedMemoIndex != null) {
+      patch.lastMemoIndex = Math.max(
+        typeof settings.lastMemoIndex === 'number' ? settings.lastMemoIndex : 0,
+        allocatedMemoIndex,
+      )
     }
 
     if (JSON.stringify(sidecarEntryIds) !== JSON.stringify(persistedSidecarEntryIds)) {

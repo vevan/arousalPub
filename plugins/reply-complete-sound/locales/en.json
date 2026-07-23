@@ -5,6 +5,8 @@
   "soundSourceDesc": "Use the bundled default clip or your uploaded file.",
   "soundSourceDefault": "Default",
   "soundSourceCustom": "Custom file",
+  "defaultSoundPreviewLabel": "Default sound",
+  "defaultSoundPreviewDesc": "Preview the bundled clip (not stored in settings).",
   "soundFileLabel": "Custom audio file",
   "soundFileDesc": "Upload MP3 or WAV (max 5 MB). Used when source is Custom.",
   "repeatCountLabel": "Repeat count",

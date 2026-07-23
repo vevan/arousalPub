@@ -5,6 +5,8 @@
   "soundSourceDesc": "使用内置默认提示音，或上传自定义文件。",
   "soundSourceDefault": "默认",
   "soundSourceCustom": "自定义文件",
+  "defaultSoundPreviewLabel": "默认提示音",
+  "defaultSoundPreviewDesc": "内置音频试听（不写入设置）。",
   "soundFileLabel": "自定义音频",
   "soundFileDesc": "上传 MP3 或 WAV（最大 5 MB）；仅在音源为「自定义」时生效。",
   "repeatCountLabel": "重复次数",

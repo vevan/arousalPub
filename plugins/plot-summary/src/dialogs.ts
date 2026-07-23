@@ -15,7 +15,7 @@ import {
   setLorebookPickResolver,
   summarizeRunning,
 } from './state.js'
-import { applyPlotSummaryEntrySort } from './shared/entry-sort.js'
+import { applyPlotSummaryEntrySort, renumberMemoryMemosByTurn } from './shared/entry-sort.js'
 import { isSummarizeTurnSpanTooLarge } from './shared/range-limits.js'
 import { asInt, asString } from './shared/utils.js'
 import {
@@ -413,11 +413,12 @@ function registerSummarizeDialog(
       cancelKey: k(host, 'sessionCancel'),
       ...(!isEnable
         ? {
-            regenerateKey: k(host, 'manualPreviewPrompt'),
-            regenerateVisible: (h: PluginHost) => auditDebugEnabled(h),
-            regenerateCanSubmit: (m: Record<string, unknown>) =>
+            extraActionKey: k(host, 'manualPreviewPrompt'),
+            extraActionVisible: (h: PluginHost, _m: Record<string, unknown>) =>
+              auditDebugEnabled(h),
+            extraActionCanSubmit: (m: Record<string, unknown>) =>
               summarizeDialogCanPreview(m, settings),
-            onRegenerate: async (h: PluginHost, model: Record<string, unknown>) => {
+            onExtraAction: async (h: PluginHost, model: Record<string, unknown>) => {
               await previewManualSummarizePrompt(h, model)
             },
           }
@@ -501,6 +502,37 @@ export async function reorderTargetLorebookNow(host: PluginHost) {
     notifyOutcome(host, 'notifyReorderLorebookDone', 'success')
   } catch (e) {
     console.warn('[plot-summary] reorder lorebook failed', e)
+    host.ui.notify(host.t(k(host, 'notifyTaskSkippedGeneric')), undefined, { level: 'warning' })
+  }
+}
+
+/** 按 turn 重排 memory [MEMO-n] 并写回 lastMemoIndex；不改 sidecar */
+export async function renumberMemoryMemosNow(host: PluginHost) {
+  const settings = await loadMergedSettings(host)
+  const targetId = asString(settings.targetLorebookId)
+  if (!targetId) {
+    host.ui.notify(host.t(k(host, 'notifyReorderLorebookNoTarget')), undefined, {
+      level: 'warning',
+    })
+    return
+  }
+  try {
+    const sidecarEntryIds = await host.lorebook.normalizeEntryRefs({
+      lorebookId: targetId,
+      entryIds: settings.sidecarEntryIds,
+      validKeys: settings.sidecars.map((s) => s.id),
+    })
+    const result = await renumberMemoryMemosByTurn(
+      host,
+      targetId,
+      sidecarEntryIds,
+      settings.sidecars.map((s) => s.id),
+    )
+    notifyOutcome(host, 'notifyRenumberMemoryDone', 'success', {
+      count: result.changedTitles,
+    })
+  } catch (e) {
+    console.warn('[plot-summary] renumber memory memos failed', e)
     host.ui.notify(host.t(k(host, 'notifyTaskSkippedGeneric')), undefined, { level: 'warning' })
   }
 }

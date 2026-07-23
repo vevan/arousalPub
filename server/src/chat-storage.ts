@@ -2925,7 +2925,7 @@ function tailChunkPath(
   return path.join(conversationDir(conversationId), idx.tailChunkFile)
 }
 
-/** 仅合并 turn.plugins 条目（Separate 重新生成等）；可选同步 active receive 正文 */
+/** 仅合并 turn.plugins 条目（如 receive 补写）；可选同步 active receive 正文 */
 export async function mergeTurnPluginEntriesAtOrdinal(
   conversationId: string,
   turnOrdinal: number,

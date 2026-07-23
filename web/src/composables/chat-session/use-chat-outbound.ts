@@ -590,6 +590,37 @@ export function useChatOutbound(opts: {
     return err
   }
 
+  /** 普通发送：与 sendWithPlugins 同管线，但不传 body.plugins */
+  async function sendUserText(userText: string): Promise<string | undefined> {
+    if (!opts.isConversationWritable()) return opts.t('chat.errors.network')
+    opts.errorText.value = ''
+    const raw = userText.trim()
+    if (!raw) return opts.t('chat.errors.network')
+
+    const parsed = submitComposerParse(raw)
+    const messageBody = parsed.body.trim()
+    if (!messageBody) return opts.t('chat.errors.network')
+
+    maybeWarnUnmatchedAtSlash(raw, {
+      onlyWhenSpeakerQueue: true,
+      speakerQueueLength: parsed.speakerQueue.length,
+    })
+
+    const prepErr = prepareOutboundRequest()
+    if (prepErr) return prepErr
+
+    const { speakerQueueIds, speakerQueueDisplayNames } =
+      resolveSpeakerQueueFromParsed(parsed)
+    opts.recordInputHistoryOnSend?.(messageBody)
+
+    const err = await sendMessageBody(messageBody, {
+      speakerQueue: speakerQueueIds.length > 0 ? speakerQueueIds : undefined,
+      speakerQueueDisplayNames,
+    })
+    maybeWarnQueueNeedsEnabled(parsed.speakerQueue.length)
+    return err
+  }
+
   function applyRegenerateReceive(
     listIndex: number,
     segIdx: number,
@@ -890,6 +921,7 @@ export function useChatOutbound(opts: {
 
   return {
     send,
+    sendUserText,
     sendWithPlugins,
     regenerateAssistant,
     regenerateWithPlugins,

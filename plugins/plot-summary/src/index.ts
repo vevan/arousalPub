@@ -1,9 +1,11 @@
+import { registerAutoSummarizeCompanion } from './auto-summarize-companion.js'
 import { PLUGIN_ID } from './constants.js'
 import {
   isBusy,
   openManualSummarize,
   openSessionSettings,
   reorderTargetLorebookNow,
+  renumberMemoryMemosNow,
   refreshAutoSummarizeUi,
   registerPickLorebookDialog,
   registerRecoverLorebookDialog,
@@ -27,6 +29,7 @@ export function register(host: PluginHost) {
   registerPromptPreviewDialog(host)
   registerPickLorebookDialog(host)
   registerRecoverLorebookDialog(host)
+  registerAutoSummarizeCompanion(host)
 
   host.conversation.onPluginSettingsChanged(() => {
     refreshAutoSummarizeUi(host)
@@ -69,6 +72,15 @@ export function register(host: PluginHost) {
         disabled: () => isBusy(host) || summarizeRunning,
         onClick: () => {
           void reorderTargetLorebookNow(host)
+        },
+      },
+      {
+        id: `${PLUGIN_ID}-renumber-memos`,
+        labelKey: k(host, 'tooltipRenumberMemory'),
+        icon: 'mdi-sort-numeric-ascending',
+        disabled: () => isBusy(host) || summarizeRunning,
+        onClick: () => {
+          void renumberMemoryMemosNow(host)
         },
       },
     ],

@@ -614,8 +614,10 @@ async function onFilePicked(field: PluginSettingsFieldSchema, files: File[] | Fi
   }
 }
 
-function previewDefaultSound(): string {
-  return pluginMediaUrl(props.pluginId, 'assets', 'default.mp3')
+function bundledAssetPreviewUrl(field: PluginSettingsFieldSchema): string | null {
+  const rel = typeof field.assetPath === 'string' ? field.assetPath.trim() : ''
+  if (!rel || rel.includes('..')) return null
+  return pluginMediaUrl(props.pluginId, 'assets', rel)
 }
 
 function sliderStep(field: PluginSettingsFieldSchema): number {
@@ -1573,6 +1575,30 @@ function inheritTriModeSheetRows(field: PluginSettingsFieldSchema) {
         />
 
         <div
+          v-else-if="field.type === 'bundledAssetPreview' && bundledAssetPreviewUrl(field)"
+          class="plugin-default-preview"
+        >
+          <div class="text-body-2 font-weight-medium mb-1">
+            {{ labelFor(field) }}
+          </div>
+          <p
+            v-if="hintFor(field)"
+            class="text-caption text-medium-emphasis mb-2"
+          >
+            {{ hintFor(field) }}
+          </p>
+          <div class="text-caption text-medium-emphasis mb-1">
+            {{ field.assetPath }}
+          </div>
+          <audio
+            controls
+            preload="none"
+            class="plugin-file-asset__player"
+            :src="bundledAssetPreviewUrl(field) ?? undefined"
+          />
+        </div>
+
+        <div
           v-else-if="field.type === 'fileAsset'"
           class="plugin-file-asset"
         >
@@ -1626,21 +1652,6 @@ function inheritTriModeSheetRows(field: PluginSettingsFieldSchema) {
         </div>
       </template>
     </template>
-
-    <div
-      v-if="pluginId === 'reply-complete-sound'"
-      class="plugin-default-preview"
-    >
-      <div class="text-caption text-medium-emphasis mb-1">
-        default.mp3
-      </div>
-      <audio
-        controls
-        preload="none"
-        class="plugin-file-asset__player"
-        :src="previewDefaultSound()"
-      />
-    </div>
 
     <v-dialog
       v-model="objectListRemoveOpen"

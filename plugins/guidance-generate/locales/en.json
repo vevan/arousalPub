@@ -9,8 +9,13 @@
   "regenerate": "Regenerate with guidance",
   "revise": "Revise with guidance",
   "reviseTooltip": "Guided revision",
+  "polish": "Polish",
+  "polishSend": "Send",
+  "tabGenerate": "Generate",
+  "tabPolish": "Polish",
   "assistantLabel": "Current assistant reply (revision base)",
   "notifyFailed": "Guided generation failed",
+  "notifyPolishFailed": "User-message polish failed",
   "systemPrefixLabel": "System prefix (prepended to guidance)",
   "systemPrefixDesc": "Hidden system message prefix injected before the guidance text for guided send / regenerate.",
   "injectionOrderSendLabel": "Injection order · guided send",
@@ -20,5 +25,9 @@
   "injectionOrderReviseSystemLabel": "Injection order · revise guidance system",
   "injectionOrderReviseSystemDesc": "Guidance system slot for guided revise. Default 1.",
   "reviseSystemPrefixLabel": "Guided revision system prefix",
-  "reviseSystemPrefixDesc": "Hidden system prefix for revise mode, placed after the current assistant reply and before the guidance text."
+  "reviseSystemPrefixDesc": "Hidden system prefix for revise mode, placed after the current assistant reply and before the guidance text.",
+  "polishSystemPrefixLabel": "User-message polish system prefix",
+  "polishSystemPrefixDesc": "System instruction for polishing the visible user input in the guided-send dialog, with recent history. Output the polished user message only.",
+  "polishHistoryTurnsLabel": "Polish history turn count",
+  "polishHistoryTurnsDesc": "How many recent conversation turns to attach via transcript.tail when polishing (0–40, default 8)."
 }

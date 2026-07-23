@@ -20,6 +20,7 @@
 |------|------|
 | `autoSummarizeEnabled` | 自动块开关 |
 | `nextBlockStart` / `lastSummarizedEnd` | 块指针（`nextBlockStart ≥ lastSummarizedEnd + 1`） |
+| `lastMemoIndex` | 已摘要至 **MEMO-n**（手动/自动**共用**；缺省尚未；下次 = N+1；**不**从 lore 自动推断；与 sidecar 无关） |
 | `targetLorebookId` | 写入目标书 |
 | `blockTurns` / `bufferTurns` | 可覆盖全局 |
 | `manualSummarizeTasks` / `autoSidecarIds` | 任务勾选 |
@@ -60,7 +61,13 @@
 |----|------|
 | `TITLE` | 模型 JSON `title`（重摘要时会剥掉旧格式后缀） |
 | `[from-to]` | 摘要区间起止轮（0 起、含 end） |
-| `MEMO-n` | 标题已是新格式则**保留**原 `n`；否则 `n = floor(fromTurn / blockTurns) + 1`（`completeWithContext` 的 `draft.blockTurns`，默认 15） |
+| `MEMO-n` | **新建**：取会话 `(lastMemoIndex ?? 0) + 1`（`draft.memoIndex`；显式序号**优先于**模型 title 里碰巧带的 `[MEMO-n]`）。写入成功后 `lastMemoIndex = used`。仅当**未**传 `memoIndex` 且标题已是新格式时保留原 `n`。与 sidecar **无关**。 |
+
+**校正指针 UI**（对话设置 companion · 插件注册 `registerSettingsCompanionPanel`）：
+
+- 宿主只渲染通用 status/action 壳；进度算法与校正表单在 `plugins/plot-summary`（`auto-summarize-companion.ts`）。
+- 进度行含：已摘要轮次、`lastMemoIndex`（已摘要至 MEMO-n）、待摘要块、下次触发；校正对话框可改轮次与序号（清空序号 = 尚未有编号）。旧会话**不**从 lore 自动 seed。
+- **按轮次重排纪要**：插件菜单「按轮次重排纪要编号」→ `renumberMemoryMemosByTurn`（仅 memory；写回 `lastMemoIndex`；**不改** sidecar）。
 
 **自动排序**（`entrySortMode: auto-turn-suffix`，批次结束后 `applyPlotSummaryEntrySort`）：
 
@@ -68,7 +75,7 @@
 2. summary：按轮次后缀 **`[from-to]`** 升序（`start`，再 `end`）；同区间再比 **MEMO-n**
 3. 标题须为 **`[MEMO-n]-TITLE-[from-to]`**；旧版 `TITLE-from-to` 后缀**不再**识别
 
-实现：`plugins/plot-summary/src/shared/lorebook-sort.ts`（插件侧选 `<previous-summaries>` 条）。
+实现：`plugins/plot-summary/src/shared/lorebook-sort.ts`（`planRenumberMemoryMemosByTurn`）、`shared/entry-sort.ts`。
 
 ## 5. 二次 LLM 上下文（摘要）
 
@@ -76,7 +83,7 @@
 
 - XML：`<previous-summaries>` / `<sidecars>`（system reference）；待摘要 `<history>`（user）。
 - 勾选 `regexRuleIds` 时对 `conversation.transcript` 块应用 outgoing 正则；`regexApplyAllTurns` 控制 skip。
-- **宏引擎**：assemble / complete 经 `runPluginMacroExpand`；须传 **`anchorToTurn`**（Historian 用 `toTurn`）；memory 类 draft 另传 **`blockTurns`** 供条目标题 `[MEMO-n]` 计算。
+- **宏引擎**：assemble / complete 经 `runPluginMacroExpand`；须传 **`anchorToTurn`**（Historian 用 `toTurn`）；memory 类 draft 传 **`memoIndex`**（`(lastMemoIndex ?? 0) + 1`）供条目标题 `[MEMO-n]`。
 - **区间建议**：手动/自动摘要 UI 限制 **≤512 轮**（`endTurn - startTurn + 1`）；超出禁用提交并 toast。
 - 服务端：`plugin-context-blocks-resolve.ts`、`plugin-assemble-prompt.ts`、`plugin-complete-with-context.ts`、`plugin-summarize-format.ts`、`plugin-macro-expand.ts`。
 - 插件：`prepare-context.ts`、`plot-summary-context-blocks.ts`、`summary-prompt-layout.ts`、`server/complete-context-hooks.ts`。
@@ -88,13 +95,14 @@
 | 插件 Web | `plugins/plot-summary/src/`（`pipeline.ts`、`review.ts`、`prepare-context.ts`、`prompt-preview.ts`、`plot-slash.ts`、`parse-plot-slash.ts`） |
 | 插件 Server hooks | `plugins/plot-summary/src/server/complete-context-hooks.ts` |
 | 宿主管线 | `server/src/plugin-context-blocks-resolve.ts`、`plugin-assemble-prompt.ts`、`plugin-complete-with-context.ts` |
-| 自动摘要 UI | `web/src/utils/plot-summary-auto-summarize-status.ts`、`PlotSummaryAutoSummarizeBlock.vue` |
-| 条目排序 / 标题 | `plugins/plot-summary/src/shared/lorebook-sort.ts`、`shared/summarize.ts` |
+| 自动摘要 UI | 插件 `auto-summarize-companion.ts` + `auto-summarize-progress.ts`；宿主仅通用壳 `PluginSettingsCompanionHost` + `plugin-settings-companion-registry`（重排在插件菜单） |
+| 条目排序 / 标题 | `plugins/plot-summary/src/shared/lorebook-sort.ts`、`shared/summarize.ts`、`shared/entry-sort.ts` |
 
 ## 7. 验收要点
 
 - [ ] 手动/自动摘要 → 预览 → 确认写入 lore  
 - [ ] 关再开自动摘要：指针不漂移（91+ 续接）  
 - [ ] 手动预填区间与自动块等长（`end = T - buffer`，`start = end - (blockTurns - 1)`）  
-- [ ] 写入 lore 条目标题为 `[MEMO-n]-TITLE-[from-to]`
+- [ ] 写入 lore 条目标题为 `[MEMO-n]-TITLE-[from-to]`（序号来自 `lastMemoIndex + 1`）  
+- [ ] 校正进度可手动填写 `lastMemoIndex`；插件菜单「按轮次重排」只改 memory、不改 sidecar  
 - [ ] `regexApplyAllTurns` 对摘要 history 全区间生效  

@@ -138,6 +138,20 @@ export function readLastSummarizedEnd(
   return undefined
 }
 
+/** 已摘要至 MEMO-n；null/缺省表示尚未有纪要编号（不从 lore 推断） */
+export function readLastMemoIndex(conv: Record<string, unknown>): number | undefined {
+  if (typeof conv.lastMemoIndex === 'number' && Number.isFinite(conv.lastMemoIndex)) {
+    const n = Math.round(conv.lastMemoIndex)
+    return n >= 1 ? n : undefined
+  }
+  return undefined
+}
+
+/** 下次新建 memory 纪要编号 */
+export function nextMemoIndexFromLast(lastMemoIndex: number | undefined): number {
+  return (typeof lastMemoIndex === 'number' && lastMemoIndex >= 1 ? lastMemoIndex : 0) + 1
+}
+
 /** 指针不得落后于已摘要末尾：nextBlockStart ≥ lastSummarizedEnd + 1 */
 export function normalizedNextBlockStart(
   nextBlockStart: number,
@@ -188,6 +202,7 @@ export async function loadMergedSettings(host: PluginHost): Promise<MergedSettin
       : {}
   const sidecars = effectiveSidecars(global, conv)
   const lastSummarizedEnd = readLastSummarizedEnd(conv)
+  const lastMemoIndex = readLastMemoIndex(conv)
   const rawNextBlockStart =
     typeof conv.nextBlockStart === 'number'
       ? Math.max(0, Math.round(conv.nextBlockStart))
@@ -207,6 +222,7 @@ export async function loadMergedSettings(host: PluginHost): Promise<MergedSettin
     autoSummarizeEnabled: conv.autoSummarizeEnabled === true,
     nextBlockStart: normalizedNextBlockStart(rawNextBlockStart, lastSummarizedEnd),
     lastSummarizedEnd,
+    lastMemoIndex,
     sidecarEntryIds,
     sidecars,
     autoSidecarIds: parseAutoSidecarIdsRaw(conv.autoSidecarIds, sidecars),

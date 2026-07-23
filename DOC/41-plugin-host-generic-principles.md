@@ -1,8 +1,21 @@
 # 插件宿主通用性原则 — 定案（强制）
 
 > **状态**：**定案 · 强制**（2026-07）。  
-> **适用范围**：`server/src` 宿主核心、`web/src/plugins` 与 Web 宿主桥接、`shared/` 跨端契约、上述路径的单测。  
-> **关联**：[`DOC/18`](18-plugin-host-developer-api.md)（插件 API）· [`DOC/09`](09-plugin-system-and-guidance-generate.md) · [`DOC/04`](04-TODO.md) §宿主去特化
+> **适用范围**：`server/src` 宿主核心、`web/src/plugins` 与 Web 宿主桥接、`web/src/components/settings` 设置壳、`shared/` 跨端契约、上述路径的单测。  
+> **关联**：[`DOC/18`](18-plugin-host-developer-api.md)（插件 API）· [`DOC/09`](09-plugin-system-and-guidance-generate.md) · [`DOC/04`](04-TODO.md) §宿主去特化 · Cursor `.cursor/rules/plugin-host-generic.mdc`
+
+---
+
+## 0. 用户立场（不可妥协）
+
+**用户对宿主特化深恶痛绝。绝不允许任何一个功能特化相关字节出现在宿主中。**
+
+| 态度 | 含义 |
+|------|------|
+| **零字节** | 宿主源码中不得出现任何「只服务某一插件产品能力」的实现、类型、契约字段、UI、注释或测试夹具 |
+| **重能力不重改名** | 把 `Historian*` 改成 `AutoSummarize*`、把 id 比较改成 opaque companion 字符串，若算法/状态机仍绑死某一插件领域 → **仍算特化，禁止** |
+| **禁止过渡态** | 不接受「先塞进宿主再迁出」；新能力必须一开始就走 manifest / hook / 通用壳，业务在 `plugins/<id>/` |
+| **门禁不足够** | `check:host-no-plugin-ids` 只抓 id 字面量；合入前仍须用 §7 **能力问** 自检 |
 
 ---
 
@@ -14,7 +27,7 @@
 - 宿主 **不得** 识别具体 id 的语义，也 **不得** 因某个 id 走不同代码路径。
 - 插件差异 **100%** 由 **插件包 + manifest 声明 + 通用 hook / action 分发** 表达。
 
-**类比**：宿主 = 操作系统；插件 = 应用。内核只提供 syscall，**不得** 内建 `if (app === 'wechat')`。
+**类比**：宿主 = 操作系统；插件 = 应用。内核只提供 syscall，**不得** 内建 `if (app === 'wechat')`，也 **不得** 内建「微信专用消息气泡算法」再假装是通用 UI。
 
 ---
 
@@ -39,10 +52,11 @@
 | F2 | **按 id 分支** | `if (pluginId === '…')`、`switch (pluginId)` 针对已知插件 |
 | F3 | **产品语义命名** | `TraceKeeper*`、`PlotSummary*`、`Historian*`、`patchTraceKeeper*`、`regenerateSeparate*` |
 | F4 | **专用路由 / 文件名** | `trace-keeper-regenerate-route.ts`、`POST …/regenerate-separate` |
-| F5 | **宿主内嵌插件业务** | Historian 选条/XML、trace 块解析、某插件 payload 的 TS 类型 |
+| F5 | **宿主内嵌插件业务（能力特化）** | 自动摘要进度状态机、MEMO 标题算法、某插件 draft `{title,content,keywords}`、专用 companion 实现 |
 | F6 | **硬编码内置插件列表** | `loader.ts` 内 `['guidance-generate', …]` |
-| F7 | **注释 / 示例绑真实 bundled id** | 「见 trace-keeper §…」出现在 `server/src` |
+| F7 | **注释 / 示例绑真实 bundled id 或产品话术** | 「见 trace-keeper §…」「Historian」「MEMO-n」出现在宿主源码 |
 | F8 | **单测使用真实 bundled id** | 应用 `fixture-plugin-*` |
+| F9 | **以改名洗白特化** | 文件/符号改成 generic 名，但字段键、公式、UI 仍只服务一个插件 |
 
 **块标签名**（如 `<ex-trace-keeper>`）是 assistant **消息格式**，不是 pluginId。宿主若处理剥离，须来自 manifest 聚合的 `memory.stripBlockTags`，**不得**在宿主写死标签字符串。
 
@@ -101,11 +115,12 @@ manifest 声明  →  宿主读声明  →  通用 dispatcher  →  plugin hook 
 
 ---
 
-## 7. 判定标准（PR 三问）
+## 7. 判定标准（PR 三问 + 能力问）
 
 1. **删掉所有 bundled 插件后，这段宿主代码是否仍有意义？** 否 → 移入插件或 manifest。
 2. **换一个从未见过的 `pluginId`，行为是否仅由 manifest/hook 决定？** 否 → 存在特化，须重构。
 3. **CI grep 能否在宿主目录搜到任何 bundled 插件 id？** 能 → 未达标。
+4. **能力问（强制）**：这段代码是否编码了某一插件的产品算法、会话状态机、条目标题格式、或专用 draft/UI 契约？是 → **即使零 id 字面量也禁止**；一个特化字节都不得合入宿主。
 
 ---
 
@@ -170,3 +185,4 @@ rg -n "$PATTERN" \
 | 2026-07-07 | 首版：宿主零特化、零 pluginId 字面量、manifest 扩展方向、CI 门禁 |
 | 2026-07-07 | 链入 DOC/42 审计清单；门禁脚本 `npm run check:host-no-plugin-ids` |
 | 2026-07-07 | **迁移完成**：Phase 0–3；DOC/42 §8 迁移后审计 |
+| 2026-07-23 | §0 用户立场：深恶痛绝 · 零字节特化 · 重能力不重改名；F5/F7/F9 强化；§7 能力问 |

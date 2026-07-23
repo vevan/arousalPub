@@ -6,6 +6,7 @@ export type PluginSettingsFieldType =
   | 'text'
   | 'enum'
   | 'fileAsset'
+  | 'bundledAssetPreview'
   | 'apiPreset'
   | 'lorebook'
   | 'objectList'
@@ -79,6 +80,8 @@ export interface PluginSettingsFieldSchema {
   enum?: string[]
   accept?: string[]
   purpose?: string
+  /** bundledAssetPreview：插件包内相对路径，如 default.mp3 */
+  assetPath?: string
   visibleWhen?: { field: string; equals: unknown }
   widget?: 'slider' | 'promptTemplate' | 'bundleSelect' | 'inheritTriMode' | 'inheritTriModeSheetList'
   step?: number

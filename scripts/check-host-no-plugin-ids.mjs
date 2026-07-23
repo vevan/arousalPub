@@ -18,6 +18,9 @@ const BUNDLED_PLUGIN_IDS = [
   'plot-summary',
   'guidance-generate',
   'curated-memory',
+  'reply-complete-sound',
+  'conversation-export',
+  'swipe-cleaner',
 ]
 
 const ID_PATTERN = new RegExp(BUNDLED_PLUGIN_IDS.join('|'), 'i')

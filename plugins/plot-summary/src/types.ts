@@ -136,6 +136,22 @@ export interface PluginHost {
     },
   ) => void
   registerFormDialog: (pluginId: string, def: Record<string, unknown>, dialogId?: string) => void
+  registerSettingsCompanionPanel: (
+    pluginId: string,
+    def: {
+      id: string
+      getView: (ctx: {
+        conversationId: string
+        convModel: Record<string, unknown>
+        globalModel: Record<string, unknown>
+      }) => {
+        title: string
+        rows: { icon: string; text: string; tone?: 'muted' | 'accent' }[]
+        actionLabel?: string
+        onAction?: () => void
+      } | null
+    },
+  ) => void
   openFormDialog: (
     pluginId: string,
     model: Record<string, unknown>,
@@ -169,6 +185,11 @@ export interface MergedSettings {
   autoSummarizeEnabled: boolean
   nextBlockStart: number
   lastSummarizedEnd?: number
+  /**
+   * 已摘要至 MEMO-n（≥1）；缺省表示尚未有纪要编号。
+   * 下次分配 = (lastMemoIndex ?? 0) + 1；与 sidecar 无关；改 blockTurns 不重算。
+   */
+  lastMemoIndex?: number
   sidecarEntryIds: Record<string, string>
   sidecars: SidecarConfig[]
   autoSidecarIds: string[]

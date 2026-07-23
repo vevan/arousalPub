@@ -22,9 +22,7 @@ type DraftParseContext = {
   conversationId: string
   apiConfigId?: string
   kind: 'memory' | 'sidecar'
-  fromTurn?: number
-  toTurn?: number
-  blockTurns?: number
+  params: Record<string, unknown>
   pluginSettings?: Record<string, unknown>
 }
 
@@ -35,12 +33,18 @@ function sidecarNameFromSettings(
   return typeof raw === 'string' ? raw.trim() : ''
 }
 
+function asFiniteNumber(raw: unknown): number | undefined {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+  return undefined
+}
+
 export function parseCompleteDraftContent(
   ctx: DraftParseContext,
   content: string,
   _api: unknown,
 ): { draft: { title: string; content: string; keywords: string[] } } {
   const raw = parseModelJson(content)
+  const params = ctx.params ?? {}
 
   if (ctx.kind === 'sidecar') {
     const sidecarName = sidecarNameFromSettings(ctx.pluginSettings)
@@ -55,13 +59,18 @@ export function parseCompleteDraftContent(
   }
 
   const summary = normalizeSummaryPayload(raw)
-  const fromTurn = typeof ctx.fromTurn === 'number' ? ctx.fromTurn : 0
-  const toTurn = typeof ctx.toTurn === 'number' ? ctx.toTurn : fromTurn
+  const fromTurn = asFiniteNumber(params.fromTurn) ?? 0
+  const toTurn = asFiniteNumber(params.toTurn) ?? fromTurn
+  const blockTurnsRaw = asFiniteNumber(params.blockTurns)
   const blockTurns =
-    typeof ctx.blockTurns === 'number' && Number.isFinite(ctx.blockTurns)
-      ? Math.max(1, Math.round(ctx.blockTurns))
-      : 15
-  const entryTitle = formatEntryTitle(summary.title, fromTurn, toTurn, blockTurns)
+    blockTurnsRaw != null ? Math.max(1, Math.round(blockTurnsRaw)) : 15
+  const memoIndexRaw = asFiniteNumber(params.memoIndex)
+  const memoIndex =
+    memoIndexRaw != null ? Math.max(1, Math.round(memoIndexRaw)) : undefined
+  const entryTitle = formatEntryTitle(summary.title, fromTurn, toTurn, {
+    blockTurns,
+    ...(memoIndex != null ? { memoIndex } : {}),
+  })
   return {
     draft: {
       title: entryTitle,

@@ -144,6 +144,7 @@ function normalizeField(raw: unknown): PluginSettingsFieldSchema | null {
     'text',
     'enum',
     'fileAsset',
+    'bundledAssetPreview',
     'apiPreset',
     'lorebook',
     'objectList',
@@ -172,6 +173,9 @@ function normalizeField(raw: unknown): PluginSettingsFieldSchema | null {
   }
   if (typeof o.purpose === 'string' && o.purpose.trim()) {
     field.purpose = o.purpose.trim()
+  }
+  if (typeof o.assetPath === 'string' && o.assetPath.trim()) {
+    field.assetPath = o.assetPath.trim().replace(/^\/+/, '')
   }
   if (o.visibleWhen && typeof o.visibleWhen === 'object') {
     const vw = o.visibleWhen as Record<string, unknown>
@@ -281,6 +285,7 @@ export function schemaDefaults(
   const out: Record<string, unknown> = { schemaVersion: schema?.version ?? 1 }
   if (!schema) return out
   for (const field of schema.fields) {
+    if (field.type === 'bundledAssetPreview') continue
     if ('default' in field) out[field.key] = field.default
   }
   return out
@@ -299,6 +304,7 @@ export function validatePluginSettings(
     schemaVersion: schema.version,
   }
   for (const field of schema.fields) {
+    if (field.type === 'bundledAssetPreview') continue
     out[field.key] = coerceField(field, input[field.key], base[field.key])
   }
   return out
@@ -311,6 +317,7 @@ export function validatePluginSettingsStrict(
   const doc = validatePluginSettings(schema, raw)
   if (!schema) return doc
   for (const field of schema.fields) {
+    if (field.type === 'bundledAssetPreview') continue
     assertFieldValid(field, doc[field.key])
   }
   return doc
@@ -488,6 +495,8 @@ function coerceField(
       if (!base || base.includes('..')) return ''
       return base
     }
+    case 'bundledAssetPreview':
+      return undefined
     case 'checkboxGroup':
       return parseStringArrayValue(value, fallback)
     default:

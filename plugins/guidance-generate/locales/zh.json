@@ -9,8 +9,13 @@
   "regenerate": "指导再生",
   "revise": "指导修改",
   "reviseTooltip": "指导修改",
+  "polish": "润色",
+  "polishSend": "发送",
+  "tabGenerate": "生成",
+  "tabPolish": "润色",
   "assistantLabel": "当前助手回复（作为修改基准）",
   "notifyFailed": "指导生成失败",
+  "notifyPolishFailed": "用户输入润色失败",
   "systemPrefixLabel": "系统前缀（加在指导文本前）",
   "systemPrefixDesc": "注入给模型的隐藏 system 消息前缀，位于指导正文之前。用于指导发送 / 指导再生。",
   "injectionOrderSendLabel": "注入档位 · 指导发送",
@@ -20,5 +25,9 @@
   "injectionOrderReviseSystemLabel": "注入档位 · 修改指导 system",
   "injectionOrderReviseSystemDesc": "指导修改时指导 system 档位。默认 1。",
   "reviseSystemPrefixLabel": "指导修改系统前缀",
-  "reviseSystemPrefixDesc": "指导修改模式下，加在当前助手回复与指导正文之间的 hidden system 前缀。"
+  "reviseSystemPrefixDesc": "指导修改模式下，加在当前助手回复与指导正文之间的 hidden system 前缀。",
+  "polishSystemPrefixLabel": "用户输入润色系统前缀",
+  "polishSystemPrefixDesc": "指导发送弹框点「润色」时二次 LLM 的 system 指令：结合近期历史美化「用户输入」，只输出润色后的用户文。",
+  "polishHistoryTurnsLabel": "润色附带历史轮数",
+  "polishHistoryTurnsDesc": "润色时通过 transcript.tail 附带的近期对话轮数（0～40，默认 8）。"
 }

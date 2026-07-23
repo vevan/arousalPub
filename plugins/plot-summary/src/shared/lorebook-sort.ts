@@ -1,5 +1,7 @@
 /** Historian 资料库条目分类与组内排序（plot-summary 插件算法） */
 
+import { parsePlotSummaryEntryTitle } from './summarize.js'
+
 export const PLOT_SUMMARY_TURN_RANGE_SUFFIX_RE = /\[(\d+)-(\d+)\]$/
 export const PLOT_SUMMARY_MEMO_PREFIX_RE = /^\[MEMO-(\d+)\]-/
 
@@ -143,4 +145,60 @@ export function pickRecentSummaryEntriesBeforeTurn<T extends PlotSummaryLoreEntr
   )
   if (limit <= 0) return []
   return sorted.slice(-limit)
+}
+
+/**
+ * 仅 memory（summary）条目：按 turn 区间排序后重编 [MEMO-1..] 标题。
+ * 返回需 patch 的 title，以及新的 lastMemoIndex；不改 sidecar / other。
+ */
+export function planRenumberMemoryMemosByTurn(
+  entries: PlotSummaryLoreEntry[],
+  sidecarEntryIds: Record<string, string>,
+): {
+  titlePatches: { id: string; title: string }[]
+  lastMemoIndex: number | null
+  orderedMemoryIds: string[]
+} {
+  const sidecarSet = new Set(Object.values(sidecarEntryIds))
+  const memory = entries.filter(
+    (e) => classifyPlotSummaryEntry(e, sidecarSet) === 'summary',
+  )
+  const sorted = memory.slice().sort((a, b) => {
+    const ra = parseTurnRangeSuffix(a.title)
+    const rb = parseTurnRangeSuffix(b.title)
+    if (!ra && !rb) return a.id.localeCompare(b.id)
+    if (!ra) return 1
+    if (!rb) return -1
+    if (ra.start !== rb.start) return ra.start - rb.start
+    if (ra.end !== rb.end) return ra.end - rb.end
+    return a.id.localeCompare(b.id)
+  })
+
+  const titlePatches: { id: string; title: string }[] = []
+  let nextN = 0
+  for (const e of sorted) {
+    const parsed = parsePlotSummaryEntryTitle(e.title)
+    const range = parsed
+      ? { start: parsed.start, end: parsed.end }
+      : parseTurnRangeSuffix(e.title)
+    if (!range) continue
+    nextN += 1
+    const coreTitle =
+      parsed?.coreTitle?.trim() ||
+      e.title
+        .replace(PLOT_SUMMARY_TURN_RANGE_SUFFIX_RE, '')
+        .replace(PLOT_SUMMARY_MEMO_PREFIX_RE, '')
+        .trim() ||
+      '摘要'
+    const nextTitle = `[MEMO-${nextN}]-${coreTitle}-[${range.start}-${range.end}]`
+    if (nextTitle !== e.title.trim()) {
+      titlePatches.push({ id: e.id, title: nextTitle })
+    }
+  }
+
+  return {
+    titlePatches,
+    lastMemoIndex: nextN >= 1 ? nextN : null,
+    orderedMemoryIds: sorted.map((e) => e.id),
+  }
 }

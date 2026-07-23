@@ -1,4 +1,9 @@
-/** 自动摘要进度计算（与插件 settings 中块逻辑对齐，供对话设置 companion UI） */
+import {
+  normalizedNextBlockStart,
+  readLastSummarizedEnd,
+} from './settings.js'
+
+export { normalizedNextBlockStart }
 
 function asInt(
   value: unknown,
@@ -45,30 +50,6 @@ export function firstAutoTriggerTurnOrdinal(
   return blockEndFromStart(nextBlockStart, blockTurns) + bufferTurns
 }
 
-export function readLastSummarizedEnd(conv: Record<string, unknown>): number | null {
-  if (typeof conv.lastSummarizedEnd === 'number' && Number.isFinite(conv.lastSummarizedEnd)) {
-    return Math.round(conv.lastSummarizedEnd)
-  }
-  if (
-    typeof conv.lastTriggeredTurnOrdinal === 'number' &&
-    Number.isFinite(conv.lastTriggeredTurnOrdinal)
-  ) {
-    return Math.round(conv.lastTriggeredTurnOrdinal)
-  }
-  return null
-}
-
-export function normalizedNextBlockStart(
-  nextBlockStart: number,
-  lastSummarizedEnd: number | null | undefined,
-): number {
-  const start = Math.max(0, Math.round(nextBlockStart))
-  if (typeof lastSummarizedEnd === 'number' && lastSummarizedEnd >= 0) {
-    return Math.max(start, lastSummarizedEnd + 1)
-  }
-  return start
-}
-
 export function computeAutoSummarizeProgress(
   conv: Record<string, unknown>,
   global: Record<string, unknown>,
@@ -84,12 +65,14 @@ export function computeAutoSummarizeProgress(
     500,
   )
   const bufferTurns = effectiveInt(conv, global, 'bufferTurns', 'bufferTurns', 5, 0, 500)
-  const lastSummarizedEnd = readLastSummarizedEnd(conv)
+  const lastRaw = readLastSummarizedEnd(conv)
+  const lastSummarizedEnd =
+    typeof lastRaw === 'number' ? lastRaw : null
   const rawNextBlockStart =
     typeof conv.nextBlockStart === 'number' && Number.isFinite(conv.nextBlockStart)
       ? Math.max(0, Math.round(conv.nextBlockStart))
       : 0
-  const nextBlockStart = normalizedNextBlockStart(rawNextBlockStart, lastSummarizedEnd)
+  const nextBlockStart = normalizedNextBlockStart(rawNextBlockStart, lastRaw)
   const pendingToTurn = blockEndFromStart(nextBlockStart, blockTurns)
   const nextTriggerTurn = firstAutoTriggerTurnOrdinal(
     nextBlockStart,
@@ -109,18 +92,28 @@ export function computeAutoSummarizeProgress(
 /** 用户手动校正自动摘要指针；null 表示尚未摘要 */
 export function buildAutoSummarizePointerResetPatch(
   lastSummarizedEnd: number | null,
+  lastMemoIndex?: number | null,
 ): Record<string, unknown> {
-  if (lastSummarizedEnd === null) {
-    return {
-      lastSummarizedEnd: null,
-      nextBlockStart: 0,
-      lastTriggeredTurnOrdinal: null,
-    }
+  const patch: Record<string, unknown> =
+    lastSummarizedEnd === null
+      ? {
+          lastSummarizedEnd: null,
+          nextBlockStart: 0,
+          lastTriggeredTurnOrdinal: null,
+        }
+      : {
+          lastSummarizedEnd: Math.max(-1, Math.round(lastSummarizedEnd)),
+          nextBlockStart: Math.max(-1, Math.round(lastSummarizedEnd)) + 1,
+          lastTriggeredTurnOrdinal: null,
+        }
+  if (lastMemoIndex === null) {
+    patch.lastMemoIndex = null
+  } else if (
+    typeof lastMemoIndex === 'number' &&
+    Number.isFinite(lastMemoIndex) &&
+    lastMemoIndex >= 1
+  ) {
+    patch.lastMemoIndex = Math.round(lastMemoIndex)
   }
-  const end = Math.max(-1, Math.round(lastSummarizedEnd))
-  return {
-    lastSummarizedEnd: end,
-    nextBlockStart: end + 1,
-    lastTriggeredTurnOrdinal: null,
-  }
+  return patch
 }

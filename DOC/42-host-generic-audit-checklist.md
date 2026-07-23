@@ -2,9 +2,11 @@
 
 
 
-> **状态**：**迁移完成 · 审计项已修复**（2026-07-07）。  
+> **状态**：**迁移完成 · 审计项已修复**（2026-07-07；2026-07-23 能力债续清）。  
 
 > **原则**：[`DOC/41`](41-plugin-host-generic-principles.md) · Cursor `.cursor/rules/plugin-host-generic.mdc`  
+
+> **用户立场（不可妥协）**：**对宿主特化深恶痛绝；绝不允许任何一个功能特化相关字节出现在宿主中。** 重能力不重改名；门禁 grepid 不够，须过 DOC/41 §7 能力问。  
 
 > **待办索引**：[`DOC/04`](04-TODO.md) §已归档（宿主去特化）  
 
@@ -202,9 +204,7 @@
 
 | 严重度 | 项 | 说明 |
 |--------|-----|------|
-| **低** | `companionPanel === 'auto-summarize-progress'` | opaque companion id，非 pluginId（DOC/18 允许） |
-| **低** | 门禁未扫 `web/src/components`（settings 外） | 当前 spot-check **0 命中** |
-| **运维** | 工作区 **未提交** | 删文件（legacy 特化）在 git 中为 `D`，合入 main 前需 commit |
+| **运维** | 工作区 **未提交** | 合入前需 commit |
 
 
 

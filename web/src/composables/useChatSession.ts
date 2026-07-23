@@ -292,6 +292,7 @@ export function useChatSession(props: ChatSessionProps) {
   })
   const {
     send,
+    sendUserText,
     sendWithPlugins,
     regenerateAssistant,
     regenerateWithPlugins,
@@ -552,6 +553,7 @@ export function useChatSession(props: ChatSessionProps) {
     confirmDelete: turnEditDelete.confirmDelete,
     copyTurnText,
     sendWithPlugins,
+    sendUserText,
     regenerateWithPlugins,
     isLastUserTurn: (turn: ChatTurnItem) => isLastUserTurn(turns.value, turn),
     onAssistantReplyComplete,

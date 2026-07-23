@@ -12,7 +12,7 @@ import {
   setReviewTitleParams,
   summarizeBatchProgress,
 } from './state.js'
-import { k, sidecarPromptTemplate } from './settings.js'
+import { k, nextMemoIndexFromLast, sidecarPromptTemplate } from './settings.js'
 import { notifyOutcome } from './notify-outcome.js'
 import { keywordsToText, parseKeywordsText, asString } from './shared/utils.js'
 import type { MergedSettings, PluginHost, SidecarConfig } from './types.js'
@@ -66,6 +66,20 @@ export async function resolveTargetLorebookName(
   } catch {
     return id
   }
+}
+
+function coerceSummaryDraft(raw: Record<string, unknown>): {
+  title: string
+  content: string
+  keywords: string[]
+} {
+  const title = typeof raw.title === 'string' ? raw.title : ''
+  const content = typeof raw.content === 'string' ? raw.content : ''
+  const keywords = Array.isArray(raw.keywords)
+    ? raw.keywords.filter((x): x is string => typeof x === 'string')
+    : []
+  if (!content) throw new Error('plugin_complete_draft_failed')
+  return { title, content, keywords }
 }
 
 function openReviewFormDialog(
@@ -149,6 +163,9 @@ export async function generateReviewDraft(
         fromTurn: opts.fromTurn,
         toTurn: opts.toTurn,
         blockTurns: settings.blockTurns,
+        ...(opts.kind === 'memory'
+          ? { memoIndex: nextMemoIndexFromLast(settings.lastMemoIndex) }
+          : {}),
       },
     })
     if (!result.draft) {
@@ -157,7 +174,7 @@ export async function generateReviewDraft(
     if (opts.taskNotifyLabel && opts.dialogId) {
       notifyDraftParseOutcome(host, 'success', opts.taskNotifyLabel, opts.dialogId)
     }
-    return result.draft
+    return coerceSummaryDraft(result.draft)
   } catch (e) {
     if (opts.taskNotifyLabel && opts.dialogId && isParseFailedError(e)) {
       notifyDraftParseOutcome(host, 'failure', opts.taskNotifyLabel, opts.dialogId)
@@ -202,7 +219,7 @@ function registerReviewDialog(host: PluginHost, opts: ReviewDialogOpts) {
       submitKey: k(host, 'reviewConfirm'),
       skipKey: k(host, 'reviewSkip'),
       cancelKey: k(host, 'reviewAbort'),
-      regenerateKey: k(host, 'reviewRegenerate'),
+      extraActionKey: k(host, 'reviewRegenerate'),
       persistent: true,
       canSubmit: (m: Record<string, unknown>) =>
         opts.lockTitle
@@ -230,7 +247,7 @@ function registerReviewDialog(host: PluginHost, opts: ReviewDialogOpts) {
         clearReviewSession()
         resolver.reject(new Error('review_aborted'))
       },
-      onRegenerate: async (h: PluginHost) => {
+      onExtraAction: async (h: PluginHost) => {
         await runReviewRegenerate(h, opts.dialogId)
       },
     },

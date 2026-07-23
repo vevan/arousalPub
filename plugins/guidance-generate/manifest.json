@@ -2,8 +2,16 @@
   "id": "guidance-generate",
   "name": "指导生成",
   "version": "1.0.0",
-  "permissions": ["turn.read", "turn.plugins.write", "prompt.inject"],
-  "hooks": ["resolveAfterAssemblePromptsAddition"],
+  "permissions": [
+    "turn.read",
+    "turn.plugins.write",
+    "prompt.inject",
+    "plugin.complete",
+    "conversation.read"
+  ],
+  "hooks": [
+    "resolveAfterAssemblePromptsAddition"
+  ],
   "assembleInjection": {
     "slots": {
       "send": 0,
@@ -61,14 +69,40 @@
         "descriptionKey": "reviseSystemPrefixDesc",
         "default": "Please revise the assistant reply above according to this guidance while preserving the main meaning: ",
         "maxLength": 4000
+      },
+      {
+        "key": "polishSystemPrefix",
+        "type": "text",
+        "labelKey": "polishSystemPrefixLabel",
+        "descriptionKey": "polishSystemPrefixDesc",
+        "default": "# Role: RP Narrative Editor\n\n## Objective\nYou are an editing engine dedicated to optimizing role-play (RP) text. Your task is to take the [user's current draft] and—drawing upon the [recent conversation history]—polish it into a final version that suits the current RP scene, offers vivid imagery, flows naturally, and aligns with the user's persona.\n\n## Rules & Constraints\n1. **Preserve Intent**: Core actions, dialogue, internal thoughts, and decisions must be retained 100%; do not alter the user's intent or make significant, unstated decisions on their behalf.\n2. **Contextual Coherence**: Refer to the [recent conversation history] to ensure that actions, tone, forms of address, and environmental interactions flow naturally from the ongoing narrative, avoiding any jarring transitions.\n3. **Enhance Detail**:\n- Incorporate descriptions of micro-expressions, body language, internal thoughts, or environmental interactions. \n- Supplement emotional dialogue with appropriate descriptions of facial expressions or tone of voice. \n- Avoid dry, expository text; prioritize the \"Show, don't tell\" approach.\n4. **Formatting Standards**:\n- Maintain standard RP formatting (e.g., using plain text for actions/descriptions and quotation marks for dialogue, or adhering to the specific platform's conventions). \n- Do not include AI explanations, introductory prefixes (such as \"Polished result:\"), or superfluous pleasantries.\n\n## Output Format\nOutput only the **final polished text**; do not include Markdown code block tags, prefixes, or explanations.",
+        "maxLength": 4000
+      },
+      {
+        "key": "polishHistoryTurns",
+        "type": "number",
+        "labelKey": "polishHistoryTurnsLabel",
+        "descriptionKey": "polishHistoryTurnsDesc",
+        "min": 0,
+        "max": 40,
+        "default": 8
       }
     ]
   },
   "ui": {
     "slots": [
-      { "name": "composer-toolbar", "entry": "./dist/web.mjs" },
-      { "name": "user-turn-footer", "entry": "./dist/web.mjs" },
-      { "name": "assistant-turn-footer", "entry": "./dist/web.mjs" }
+      {
+        "name": "composer-toolbar",
+        "entry": "./dist/web.mjs"
+      },
+      {
+        "name": "user-turn-footer",
+        "entry": "./dist/web.mjs"
+      },
+      {
+        "name": "assistant-turn-footer",
+        "entry": "./dist/web.mjs"
+      }
     ]
   }
 }

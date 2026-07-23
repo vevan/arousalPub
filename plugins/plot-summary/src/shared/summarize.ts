@@ -111,13 +111,25 @@ export function extractSummaryCoreTitle(rawTitle: string): string {
 
 export function resolveMemoIndex(
   rawTitle: string,
-  fromTurn: number,
-  blockTurns: number,
+  _fromTurn: number,
+  blockTurnsOrOpts: number | { blockTurns?: number; memoIndex?: number } = 15,
 ): number {
+  const opts =
+    typeof blockTurnsOrOpts === 'number'
+      ? { blockTurns: blockTurnsOrOpts }
+      : (blockTurnsOrOpts ?? {})
+  // 会话显式分配优先于模型标题里碰巧带上的 [MEMO-n]
+  if (
+    typeof opts.memoIndex === 'number' &&
+    Number.isFinite(opts.memoIndex) &&
+    opts.memoIndex >= 1
+  ) {
+    return Math.round(opts.memoIndex)
+  }
   const parsed = parsePlotSummaryEntryTitle(rawTitle.trim())
   if (parsed) return parsed.memoIndex
-  const bt = Math.max(1, Math.round(blockTurns))
-  return Math.floor(Math.max(0, fromTurn) / bt) + 1
+  // 无会话序号、无旧标题格式时从 1 起（不再用 fromTurn/blockTurns 推算）
+  return 1
 }
 
 /** 剧情纪要 lore 条目标题：[MEMO-n]-TITLE-[from-to] */
@@ -125,9 +137,9 @@ export function formatEntryTitle(
   rawTitle: string,
   startTurn: number,
   endTurn: number,
-  blockTurns = 15,
+  blockTurnsOrOpts: number | { blockTurns?: number; memoIndex?: number } = 15,
 ): string {
   const title = extractSummaryCoreTitle(rawTitle)
-  const memoIndex = resolveMemoIndex(rawTitle, startTurn, blockTurns)
+  const memoIndex = resolveMemoIndex(rawTitle, startTurn, blockTurnsOrOpts)
   return `[MEMO-${memoIndex}]-${title}-[${startTurn}-${endTurn}]`
 }

@@ -42,7 +42,23 @@ describe('extractSummaryCoreTitle', () => {
 })
 
 describe('resolveMemoIndex', () => {
-  it('derives index from fromTurn and blockTurns', () => {
-    assert.equal(resolveMemoIndex('新标题', 30, 15), 3)
+  it('defaults to 1 when no memoIndex and title is not memo format', () => {
+    assert.equal(resolveMemoIndex('新标题', 30, 15), 1)
+  })
+
+  it('uses explicit memoIndex over title-embedded MEMO-n', () => {
+    assert.equal(resolveMemoIndex('新标题', 30, { memoIndex: 7 }), 7)
+    assert.equal(
+      resolveMemoIndex('[MEMO-3]-旧-[0-10]', 0, { memoIndex: 9 }),
+      9,
+    )
+    assert.equal(
+      formatEntryTitle('冒险', 0, 15, { memoIndex: 4 }),
+      '[MEMO-4]-冒险-[0-15]',
+    )
+  })
+
+  it('preserves existing MEMO-n when memoIndex not provided', () => {
+    assert.equal(resolveMemoIndex('[MEMO-3]-旧-[0-10]', 0, 15), 3)
   })
 })

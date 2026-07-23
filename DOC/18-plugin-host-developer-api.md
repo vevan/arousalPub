@@ -8,11 +8,11 @@
 
 ## 1. 核心原则
 
-> **宿主实现强制约束**：[`DOC/41-plugin-host-generic-principles.md`](41-plugin-host-generic-principles.md) · `.cursor/rules/plugin-host-generic.mdc` — 宿主源码**不得**出现 bundled 插件 id 或按 id 特化；**本文档**面向插件作者，下文 bundled 插件名仅作**说明性示例**。
+> **宿主实现强制约束**：[`DOC/41-plugin-host-generic-principles.md`](41-plugin-host-generic-principles.md) · `.cursor/rules/plugin-host-generic.mdc` — **用户对宿主特化深恶痛绝；绝不允许任何一个功能特化相关字节出现在宿主中**（含能力特化，不限 id 字面量）。**本文档**面向插件作者，下文 bundled 插件名仅作**说明性示例**。
 
 | 项 | 定案 |
 |----|------|
-| **宿主通用性** | 宿主只提供 generic 能力；插件差异由 manifest + hook/action 表达 — 详见 **DOC/41** |
+| **宿主通用性** | 宿主只提供 generic 能力；**零字节特化**；插件差异由 manifest + hook/action 表达 — 详见 **DOC/41 §0–§7** |
 | **数据与密钥** | 插件在浏览器**不**持 API Key；出站模型调用、读盘均由服务端完成 |
 | **访问路径** | 聊天页插件**只**通过 `register(host)` 注入的 **`host.*`** 访问能力；**禁止**在 `web.mjs` 里直 `fetch('/api/lorebooks')`、`fetch('/api/settings')` 等本体 REST |
 | **业务边界** | 宿主提供 **原语**（read/patch、转发 messages、lore 条目 CRUD）；摘要 prompt、解析、触发策略等 **插件自建** |
@@ -83,7 +83,8 @@ export function register(host) {
 |------|------|
 | `registerSlotButton(slot, def)` | 注册工具栏等 slot 按钮；支持 `menu[]` 子菜单、`when` / `disabled` / 动态 `icon` / 动态 **`class`** |
 | `registerComposerSlashCommand(name, handler, spec?)` | 注册 Composer 行首 slash（S3）；`handler(ctx: { conversationId, raw, args })`；子参数由插件自解析；宿主不特化插件 id；scoped host 自动绑定本插件以便注销 |
-| `registerFormDialog(pluginId, def, dialogId?)` | 注册动作弹框（与设置页 schema 表单分离） |
+| `registerFormDialog(pluginId, def, dialogId?)` | 注册动作弹框（与设置页 schema 表单分离）；`titleKeys`/`submitKeys` 为 `Record<string,string>` 按 `model.mode` 查表；可选 `extraAction*` 第四钮；integer 字段可选 `min`/`max` |
+| `registerSettingsCompanionPanel(pluginId, def)` | 对话设置 companion：`def.id` 对应 schema `companionPanel`；`getView(ctx)` 返回通用 status/action view model；注册表为模块级（设置壳与聊天区兄弟节点亦可读） |
 | `openFormDialog(pluginId, model, dialogId?)` | 打开已注册弹框 |
 | `refreshSlotButtons()` | 动态改按钮状态后刷新 UI |
 | `registerStyles(css)` | 注入 `<style data-plugin-styles="{pluginId}">`；同插件重复调用为**覆盖**更新（仅 scoped host） |
@@ -118,7 +119,9 @@ export function register(host: PluginWebHost) {
 }
 ```
 
-**表单字段 `type`**：`text`、`textarea`、`integer`、`radio`、`apiPreset`、`lorebook`、`checkboxGroup`；支持 `visibleWhen`、`readOnly`、`persistent`、`skipKey` / `regenerateKey` 等（见 `PluginFormDialogDef`）。`submitKeys` 可为 `{ send, regenerate, revise? }`（`PluginFormDialogHost` 按 `model.mode` 选按钮文案）。
+**表单字段 `type`**：`text`、`textarea`、`integer`、`radio`、`apiPreset`、`lorebook`、`checkboxGroup`；支持 `visibleWhen`（单条件或**数组 AND**）、`readOnly`、`persistent`、`skipKey` / `extraAction*` 等（见 `PluginFormDialogDef`）。`titleKeys` / `submitKeys` 为 **`Record<string, string>`**，按 `String(model.mode)` 查表（模式名由插件自定）。integer 可选 **`min` / `max`**。
+
+**表单 Tab（可选）**：`tabs?: { id, labelKey, submitKey? }[]`，激活 id 存 `model[tabField]`（默认 `tab`）；`tabsVisible?: (model) => boolean` 按 mode 等隐藏。字段用 `visibleWhen: { field: 'tab', equals: '…' }` 切换。
 
 ### 3.2 `host.turn`
 
@@ -131,10 +134,11 @@ export function register(host: PluginWebHost) {
 
 | 方法 | 说明 |
 |------|------|
+| **`send(userText)`** | **普通发送**（不传 `body.plugins`）；与 `sendWithPlugins` 同出站管线，**不**跑 composer slash 命令（仅解析 `@` 说话队列） |
 | `sendWithPlugins(userText, plugins)` | 带 `body.plugins` 发消息（走 `/api/chat` 组装） |
 | `regenerateWithPlugins(listIndex, userText, plugins)` | 再生；**指导修改**亦走此 API（`plugins['guidance-generate'].mode: 'revise'` + `assistantText`） |
 
-用于 **guidance-generate** 等需要在正常聊天管线注入的插件；**不是**独立 LLM 任务入口。
+用于 **guidance-generate** 等需要在正常聊天管线注入的插件；**不是**独立 LLM 任务入口。润色后无指导注入时用 **`send`**。
 
 ### 3.4 `host.lifecycle`
 
@@ -541,7 +545,7 @@ manifest 可选声明 **`memory.stripBlockTags`**：`string[]`，标签名与助
 | `bundleSelect.builtinValue` / `inheritOption` | 内置项 / 会话「继承全局」 |
 | `objectListValidation: 'bundleList'` | bundle 列表 label/id/JSON 校验 |
 | `validateSampleStateWhen` | 控制 JSON 校验开关字段 key |
-| `companionPanel` | 对话设置 boolean 下方 companion 面板 id（宿主 slot 解析） |
+| `companionPanel` | 对话设置 boolean 下方 companion 面板 id；插件经 `registerSettingsCompanionPanel(pluginId, { id, getView })` 注册 view model，宿主只渲染通用 status/action 壳 |
 | `inheritTriModeSheetList.globalListFieldKey` | 全局 objectList 字段（如样式 sheets） |
 | `dialogMaxWidth` | 全局设置对话框宽度（schema 根） |
 
@@ -660,3 +664,4 @@ class PluginHostApiError {
 | 2026-07-08 | 插件 API 链简化为三层 `pluginSettings`（[`DOC/43`](43-plugin-api-binding-audit-checklist.md)） |
 | 2026-07-07 | **宿主去特化**：`host.plugin.runAction` + manifest `serverActions`；`draft.kind` 改为 opaque `string`；settings schema widget 文档 |
 | 2026-07-07 | §10 通知中心改为 **localStorage**（`DOC/40`）；权限：`lorebook.read` 仅 lore 块时要求 |
+| 2026-07-23 | **零字节特化**：`registerSettingsCompanionPanel`；FormDialog `extraAction*` + `titleKeys`/`submitKeys` Record；`completeWithContext` draft opaque；integer `min`/`max` |

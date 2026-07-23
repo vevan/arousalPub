@@ -26,6 +26,7 @@ export type PluginSettingsFieldType =
   | 'text'
   | 'enum'
   | 'fileAsset'
+  | 'bundledAssetPreview'
   | 'apiPreset'
   | 'lorebook'
   | 'objectList'
@@ -94,6 +95,8 @@ export interface PluginSettingsFieldSchema {
   enum?: string[]
   accept?: string[]
   purpose?: string
+  /** bundledAssetPreview：插件包内相对路径 */
+  assetPath?: string
   visibleWhen?: { field: string; equals: unknown }
   /** 表单控件：`slider` 用于 number/integer；`promptTemplate` 用于带恢复默认的 text */
   widget?: 'slider' | 'promptTemplate' | 'bundleSelect' | 'inheritTriMode' | 'inheritTriModeSheetList'
@@ -277,15 +280,14 @@ export interface PluginParseCompleteDraftContext {
   systemReferenceContext?: string
   userContent?: string
   systemPromptTemplate?: string
-  fromTurn?: number
-  toTurn?: number
-  blockTurns?: number
+  /** request.draft 去掉 kind 后的 opaque 字段；语义由插件解释 */
+  params: Record<string, unknown>
   /** complete 请求 pluginSettings 原样透传；语义由插件解释 */
   pluginSettings?: Record<string, unknown>
 }
 
 export interface PluginParseCompleteDraftResult {
-  draft: { title: string; content: string; keywords: string[] }
+  draft: Record<string, unknown>
   usage?: { promptTokens?: number; completionTokens?: number }
   latencyMs?: number
 }

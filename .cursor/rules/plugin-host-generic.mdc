@@ -1,38 +1,49 @@
 ---
-description: 插件宿主只提供 generic 能力，禁止任何插件 id 特化
-globs: server/src/**/*.ts,web/src/plugins/**/*,web/src/utils/persist-display.ts,web/src/utils/chat-api.ts,web/src/types/chat-turn.ts,shared/**/*.ts
+description: 宿主零特化：禁止任何插件功能特化字节出现在宿主（用户强制）
+globs: server/src/**/*,web/src/plugins/**/*,web/src/components/settings/**/*,web/src/utils/persist-display.ts,web/src/utils/chat-api.ts,web/src/utils/plugin-*.ts,web/src/types/chat-turn.ts,shared/**/*
 alwaysApply: true
 ---
 
-# 插件宿主通用性（强制）
+# 插件宿主通用性（强制 · 零字节特化）
 
 完整定案见 **`DOC/41-plugin-host-generic-principles.md`**。
+
+## 用户立场（不可妥协）
+
+**用户对宿主特化深恶痛绝。绝不允许任何一个功能特化相关字节出现在宿主中。**
+
+- 不接受「先写进宿主再改名 / 再抽象」的过渡态。
+- 不接受「opaque id / 改个通用文件名」洗白仍绑定某一插件领域逻辑的代码。
+- 门禁 grepid **不够**：关键在**能力**（算法、契约形状、UI 状态机、产品字段），不是名称 alone。
+- 发现特化 → **立刻迁出到插件或改成纯 generic**；不得留「临时特化」。
 
 ## 一条原则
 
 宿主只提供 **generic** 能力；**不得**针对任何一个插件（含 bundled）特化。
 
-## 禁止（宿主源码零例外）
+删掉全部 bundled 插件后，宿主这段代码须仍有意义（仅服务 manifest + hook / action / 通用壳）。
+
+## 禁止（宿主源码零例外 · 零字节）
 
 - 任何 **bundled 插件 id 字面量**：`trace-keeper`、`plot-summary`、`guidance-generate`、`curated-memory` 等
 - **`if (pluginId === '…')` / `switch (pluginId)`** 针对已知插件
-- **产品语义** 函数/类型/文件名：`TraceKeeper*`、`PlotSummary*`、`Historian*`、`patchTraceKeeper*`、`*-trace-keeper-*`
-- **宿主内嵌** 某插件业务逻辑或该插件专用 TS 类型
+- **产品语义** 函数/类型/文件名：`TraceKeeper*`、`PlotSummary*`、`Historian*`、`patchTraceKeeper*`、`*-trace-keeper-*`、自动摘要进度算法、MEMO 标题格式等
+- **宿主内嵌** 某插件业务逻辑、专用 UI、专用 TS 类型、专用 draft 形状（如 `{ title, content, keywords }`）
 - **`loader.ts` 硬编码** 内置插件 id 数组
 - **宿主单测** 使用真实 bundled id（只用 `fixture-plugin-*`）
-- **宿主注释** 绑定真实 bundled id
+- **宿主注释 / 示例** 绑定真实 bundled id 或产品话术（Historian、MEMO、Separate 等）
 
 ## 允许
 
 - `pluginId: string` 作路由参数、循环变量、JSON 键（**无语义分支**）
-- 行为由 **manifest 字段 + 通用 hook / `runPluginAction` / lifecycle** 驱动
+- 行为由 **manifest 字段 + 通用 hook / `runPluginAction` / lifecycle / 声明式 companion view** 驱动
 - id 仅出现在：`plugins/*/manifest.json`、构建生成的 `plugins/bundled-registry.json`、用户 data
 
 ## 扩展插件行为时
 
-1. 先加 manifest 声明或通用 hook 名，**不要**在宿主加 if/switch。
+1. 先加 manifest 声明或通用 hook / 通用壳，**不要**在宿主加 if/switch 或领域算法。
 2. 块标签剥离等格式处理：读 manifest 聚合的 `memory.stripBlockTags`，不写死标签名。
-3. PR 自检：CI grep（见 DOC/41 §8）与「三问」（DOC/41 §7）。
+3. PR 自检：CI grep（DOC/41 §8）与「三问 + 能力问」（DOC/41 §7）。若答案是否 → **零字节不得合入宿主**。
 
 ## 与 DOC/18
 

@@ -40,17 +40,9 @@ const dialogTitle = computed(() => {
   const state = pluginHost?.openForm.value
   if (!def || !state) return ''
   if (def.titleKeys) {
-    const mode = model.value.mode
-    if (mode === 'regenerate') {
-      return t(def.titleKeys.regenerate, state.titleParams ?? {})
-    }
-    if (mode === 'revise') {
-      return t(
-        def.titleKeys.revise ?? def.titleKeys.regenerate,
-        state.titleParams ?? {},
-      )
-    }
-    return t(def.titleKeys.send, state.titleParams ?? {})
+    const mode = String(model.value.mode ?? '')
+    const key = def.titleKeys[mode]
+    if (key) return t(key, state.titleParams ?? {})
   }
   return t(def.titleKey, state.titleParams ?? {})
 })
@@ -58,7 +50,9 @@ const dialogTitle = computed(() => {
 const visibleFields = computed(() => {
   const def = activeDef.value
   if (!def) return []
-  return def.fields.filter((field) => isFieldVisible(field, model.value))
+  return def.fields
+    .map((field, index) => ({ field, index }))
+    .filter(({ field }) => isFieldVisible(field, model.value))
 })
 
 const canSubmit = computed(() => {
@@ -70,12 +64,57 @@ const canSubmit = computed(() => {
 const submitLabel = computed(() => {
   const def = activeDef.value
   if (!def) return ''
+  const tabId = activeTabId.value
+  if (
+    tabId &&
+    def.tabs?.length &&
+    (!def.tabsVisible || def.tabsVisible(model.value))
+  ) {
+    const tab = def.tabs.find((x) => x.id === tabId)
+    if (tab?.submitKey) return t(tab.submitKey)
+  }
   if (def.submitKey) return t(def.submitKey)
-  const mode = model.value.mode
-  if (mode === 'regenerate') return t(def.submitKeys?.regenerate ?? '')
-  if (mode === 'revise') return t(def.submitKeys?.revise ?? def.submitKeys?.regenerate ?? '')
-  return t(def.submitKeys?.send ?? '')
+  const mode = String(model.value.mode ?? '')
+  const key = def.submitKeys?.[mode]
+  return key ? t(key) : ''
 })
+
+const tabFieldName = computed(() => activeDef.value?.tabField?.trim() || 'tab')
+
+const dialogTabs = computed(() => {
+  const def = activeDef.value
+  if (!def?.tabs?.length) return []
+  if (def.tabsVisible && !def.tabsVisible(model.value)) return []
+  return def.tabs
+})
+
+const activeTabId = computed(() => {
+  const tabs = dialogTabs.value
+  if (!tabs.length) return ''
+  const raw = model.value[tabFieldName.value]
+  if (typeof raw === 'string' && tabs.some((t) => t.id === raw)) return raw
+  return tabs[0]!.id
+})
+
+const activeTabModel = computed({
+  get: () => activeTabId.value,
+  set: (id: unknown) => {
+    const state = pluginHost?.openForm.value
+    if (!state || typeof id !== 'string') return
+    if (!dialogTabs.value.some((t) => t.id === id)) return
+    state.model[tabFieldName.value] = id
+  },
+})
+
+watch(
+  activeTabId,
+  (id) => {
+    const state = pluginHost?.openForm.value
+    if (!state || !id) return
+    if (state.model[tabFieldName.value] === id) return
+    state.model[tabFieldName.value] = id
+  },
+)
 
 const cancelLabel = computed(() => {
   const def = activeDef.value
@@ -91,25 +130,29 @@ const skipLabel = computed(() => {
 
 const hasSkip = computed(() => Boolean(activeDef.value?.skipKey && activeDef.value?.onSkip))
 
-const regenerateLabel = computed(() => {
+const extraActionLabel = computed(() => {
   const def = activeDef.value
-  if (!def?.regenerateKey) return ''
-  return t(def.regenerateKey)
+  if (!def?.extraActionKey) return ''
+  return t(def.extraActionKey)
 })
 
-const hasRegenerate = computed(() => {
+const hasExtraAction = computed(() => {
   const def = activeDef.value
-  if (!def?.onRegenerate) return false
-  if (def.regenerateVisible && pluginHost && !def.regenerateVisible(pluginHost.host)) {
+  if (!def?.onExtraAction) return false
+  if (
+    def.extraActionVisible &&
+    pluginHost &&
+    !def.extraActionVisible(pluginHost.host, model.value)
+  ) {
     return false
   }
   return true
 })
 
-const canRegenerate = computed(() => {
+const canExtraAction = computed(() => {
   const def = activeDef.value
-  if (!hasRegenerate.value || !def) return false
-  if (def.regenerateCanSubmit && !def.regenerateCanSubmit(model.value)) return false
+  if (!hasExtraAction.value || !def) return false
+  if (def.extraActionCanSubmit && !def.extraActionCanSubmit(model.value)) return false
   return !submitting.value
 })
 
@@ -128,6 +171,12 @@ watch(
     if (!state || !pluginHost) return
     const def = pluginHost.formDialogs.get(formDialogKey(state.pluginId, state.dialogId))
     if (!def) return
+    if (def.tabs?.length && (!def.tabsVisible || def.tabsVisible(state.model))) {
+      const field = def.tabField?.trim() || 'tab'
+      const cur = state.model[field]
+      const known = def.tabs.some((t) => t.id === cur)
+      if (!known) state.model[field] = def.tabs[0]!.id
+    }
     const needApi = needsApiPresetSelect(def.fields)
     const needLb = needsLorebookSelect(def.fields)
     if (!needApi && !needLb) return
@@ -151,7 +200,8 @@ function isFieldVisible(
 ): boolean {
   const vw = field.visibleWhen
   if (!vw) return true
-  return m[vw.field] === vw.equals
+  const rules = Array.isArray(vw) ? vw : [vw]
+  return rules.every((rule) => m[rule.field] === rule.equals)
 }
 
 function fieldValue(key: string): string {
@@ -226,22 +276,37 @@ function resourceSelectClearable(field: PluginFormFieldDef): boolean {
       >
         {{ t(activeDef.bodyKey) }}
       </v-card-text>
+      <v-tabs
+        v-if="dialogTabs.length > 0"
+        v-model="activeTabModel"
+        color="primary"
+        density="compact"
+        class="px-2 plugin-form-dialog__tabs"
+      >
+        <v-tab
+          v-for="tab in dialogTabs"
+          :key="tab.id"
+          :value="tab.id"
+        >
+          {{ t(tab.labelKey) }}
+        </v-tab>
+      </v-tabs>
       <v-divider />
       <v-card-text class="pa-4 plugin-form-dialog__fields">
         <template
-          v-for="field in visibleFields"
-          :key="field.key"
+          v-for="row in visibleFields"
+          :key="`${row.field.key}:${row.index}`"
         >
           <div class="plugin-form-dialog__field">
             <v-radio-group
-              v-if="field.type === 'radio' && field.options?.length"
-              :model-value="fieldValue(field.key)"
-              :label="t(field.labelKey)"
+              v-if="row.field.type === 'radio' && row.field.options?.length"
+              :model-value="fieldValue(row.field.key)"
+              :label="t(row.field.labelKey)"
               hide-details
-              @update:model-value="setFieldValue(field.key, $event)"
+              @update:model-value="setFieldValue(row.field.key, $event)"
             >
               <v-radio
-                v-for="opt in field.options"
+                v-for="opt in row.field.options"
                 :key="opt.value"
                 :label="optionLabel(opt)"
                 :value="opt.value"
@@ -249,107 +314,108 @@ function resourceSelectClearable(field: PluginFormFieldDef): boolean {
             </v-radio-group>
 
             <div
-              v-else-if="field.type === 'checkboxGroup' && field.options?.length"
+              v-else-if="row.field.type === 'checkboxGroup' && row.field.options?.length"
               class="plugin-form-dialog__checkbox-group"
             >
               <div class="text-body-2 font-weight-medium mb-1">
-                {{ t(field.labelKey) }}
+                {{ t(row.field.labelKey) }}
               </div>
               <v-checkbox
-                v-for="opt in field.options"
+                v-for="opt in row.field.options"
                 :key="opt.value"
-                :model-value="isCheckboxSelected(field.key, opt.value)"
+                :model-value="isCheckboxSelected(row.field.key, opt.value)"
                 :label="optionLabel(opt)"
                 :disabled="opt.locked === true"
                 hide-details
                 density="compact"
-                @update:model-value="toggleCheckbox(field.key, opt.value, $event, opt.locked)"
+                @update:model-value="toggleCheckbox(row.field.key, opt.value, $event, opt.locked)"
               />
               <p
-                v-if="field.hintKey"
+                v-if="row.field.hintKey"
                 class="plugin-form-dialog__hint text-caption text-medium-emphasis"
               >
-                {{ t(field.hintKey) }}
+                {{ t(row.field.hintKey) }}
               </p>
             </div>
 
-            <template v-else-if="field.type === 'text'">
+            <template v-else-if="row.field.type === 'text'">
               <v-text-field
-                :model-value="fieldValue(field.key)"
-                :label="t(field.labelKey)"
+                :model-value="fieldValue(row.field.key)"
+                :label="t(row.field.labelKey)"
                 variant="outlined"
                 density="comfortable"
                 hide-details="auto"
-                :readonly="field.readOnly === true"
-                @update:model-value="setFieldValue(field.key, $event, field.readOnly)"
+                :readonly="row.field.readOnly === true"
+                @update:model-value="setFieldValue(row.field.key, $event, row.field.readOnly)"
               />
               <p
-                v-if="field.hintKey"
+                v-if="row.field.hintKey"
                 class="plugin-form-dialog__hint text-caption text-medium-emphasis"
               >
-                {{ t(field.hintKey) }}
+                {{ t(row.field.hintKey) }}
               </p>
             </template>
 
-            <template v-else-if="field.type === 'integer'">
+            <template v-else-if="row.field.type === 'integer'">
               <v-text-field
-                :model-value="fieldValue(field.key)"
-                :label="t(field.labelKey)"
+                :model-value="fieldValue(row.field.key)"
+                :label="t(row.field.labelKey)"
                 type="number"
-                min="0"
+                :min="row.field.min ?? 0"
+                :max="row.field.max"
                 variant="outlined"
                 density="comfortable"
                 hide-details
-                :readonly="field.readOnly === true"
-                @update:model-value="setFieldValue(field.key, $event, field.readOnly)"
+                :readonly="row.field.readOnly === true"
+                @update:model-value="setFieldValue(row.field.key, $event, row.field.readOnly)"
               />
               <p
-                v-if="field.hintKey"
+                v-if="row.field.hintKey"
                 class="plugin-form-dialog__hint text-caption text-medium-emphasis"
               >
-                {{ t(field.hintKey) }}
+                {{ t(row.field.hintKey) }}
               </p>
             </template>
 
-            <template v-else-if="field.type === 'apiPreset' || field.type === 'lorebook'">
+            <template v-else-if="row.field.type === 'apiPreset' || row.field.type === 'lorebook'">
               <v-select
-                :model-value="fieldValue(field.key) || null"
-                :items="resourceSelectItems(field)"
+                :model-value="fieldValue(row.field.key) || null"
+                :items="resourceSelectItems(row.field)"
                 item-title="title"
                 item-value="value"
-                :label="t(field.labelKey)"
+                :label="t(row.field.labelKey)"
                 variant="outlined"
                 density="comfortable"
                 hide-details="auto"
                 :loading="selectsLoading"
-                :clearable="resourceSelectClearable(field)"
+                :clearable="resourceSelectClearable(row.field)"
                 :placeholder="
-                  field.type === 'lorebook'
+                  row.field.type === 'lorebook'
                     ? t('settings.plugins.selectEmptyDefault')
                     : t('settings.plugins.selectApiPreset')
                 "
-                @update:model-value="setFieldValue(field.key, $event)"
+                @update:model-value="setFieldValue(row.field.key, $event)"
               />
               <p
-                v-if="field.hintKey"
+                v-if="row.field.hintKey"
                 class="plugin-form-dialog__hint text-caption text-medium-emphasis"
               >
-                {{ t(field.hintKey) }}
+                {{ t(row.field.hintKey) }}
               </p>
             </template>
 
             <v-textarea
               v-else
-              :model-value="fieldValue(field.key)"
-              :label="t(field.labelKey)"
+              :model-value="fieldValue(row.field.key)"
+              :label="t(row.field.labelKey)"
               rows="3"
               auto-grow
               max-rows="12"
               variant="outlined"
               density="comfortable"
               hide-details="auto"
-              :readonly="field.readOnly === true"
-              @update:model-value="setFieldValue(field.key, $event, field.readOnly)"
+              :readonly="row.field.readOnly === true"
+              @update:model-value="setFieldValue(row.field.key, $event, row.field.readOnly)"
             />
           </div>
         </template>
@@ -374,13 +440,13 @@ function resourceSelectClearable(field: PluginFormFieldDef): boolean {
         </v-btn>
         <v-spacer />
         <v-btn
-          v-if="hasRegenerate"
+          v-if="hasExtraAction"
           variant="text"
           :loading="submitting"
-          :disabled="!canRegenerate"
-          @click="pluginHost.regenerateOpenForm()"
+          :disabled="!canExtraAction"
+          @click="pluginHost.runFormExtraAction()"
         >
-          {{ regenerateLabel }}
+          {{ extraActionLabel }}
         </v-btn>
         <v-btn
           color="primary"

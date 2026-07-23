@@ -4,7 +4,7 @@
 
 ## P0
 
-- [ ] 为指导修改添加“指导撰写功能”，将用户输入美化
+> （当前无未完成 P0）
 
 ## P1
 
@@ -80,6 +80,7 @@
 - [x] **用户文件库 M5 引用检查+批量导入+视频预览+指定 id 重建**（2026-07-15）：`GET …/references` · `DELETE ?force=1` · `POST fileId` 空闲重建 · FilesView — 见 `[DOC/20](20-user-file-library.md)` §4.4 · `DOC/03` §17.6
 - [x] **独立文档 RAG M4**（2026-07-17）：知识库集合 · 切片 · Lance `doc_chunks` · `boundKnowledge` · 预算槽 `knowledge` · UI — 见 `[DOC/46](46-document-rag.md)` · `DOC/03` §17.7
 - [x] **导入 Markdown（**`.md`**）**（2026-07-17）：资产库批量上传识别 `kind=document` · RAG 抽取保守剥离闭合 YAML/TOML front matter（原文落盘不变）— 见 `[DOC/46](46-document-rag.md)` §4
+- [x] **指导发送 · 润色**（2026-07-23）：美化用户输入 · `transcript.tail` 固定轮历史 · `polishHistoryTurns` / `polishSystemPrefix` — 见 `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1
 
 
 
@@ -113,5 +114,6 @@
 | **缺槽 After → Character 末尾**（种子 / normalize 对齐 · `DEFAULT_WORLD` 仅 Before）                                                  | 2026-07-22             | `[DOC/27](27-embedded-character-book.md)` §4.3 · `[DOC/03](03-实现细节.md)` §15.9 · `prompt-preset-normalize` / `prompts-default-seed`                                                        |
 | **掷骰去掉死参数** `eligibleIds`（资格由 `resolveDiceSkipReason` · 审计仍含全员）                                                            | 2026-07-22             | `group-chat/pick.ts` · `resolve.ts`                                                                                                                                                       |
 | **RAG 参数面板 + 备份示例脚本**（知识库 Settings/`ConversationContextSettings` 文档对齐 · `scripts/ops/backup.example.*`）                      | 2026-07-23             | `[DOC/03](03-实现细节.md)` §8.7 · §9.6 · `[DOC/46](46-document-rag.md)` · `data/README.md` · `scripts/ops/`                                                                                    |
+| **指导发送 · 润色**（美化用户输入 · `transcript.tail` · `polishHistoryTurns`）                                                               | 2026-07-23             | `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1 · `plugins/guidance-generate`                                                                                                     |
 
 

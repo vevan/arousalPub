@@ -16,6 +16,14 @@
         "default": "default"
       },
       {
+        "key": "defaultSoundPreview",
+        "type": "bundledAssetPreview",
+        "labelKey": "defaultSoundPreviewLabel",
+        "descriptionKey": "defaultSoundPreviewDesc",
+        "assetPath": "default.mp3",
+        "visibleWhen": { "field": "soundSource", "equals": "default" }
+      },
+      {
         "key": "soundFile",
         "type": "fileAsset",
         "labelKey": "soundFileLabel",

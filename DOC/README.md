@@ -9,7 +9,7 @@
 |------|------|
 | 新 Agent / 接手 | [`06-工作交接.md`](06-工作交接.md) → [`03-实现细节.md`](03-实现细节.md) |
 | 部署 / 安全 | [`25-security-deployment.md`](25-security-deployment.md)、[`17-admin-console.md`](17-admin-console.md)、[`data/README.md`](../data/README.md) |
-| 插件开发 | [`41`](41-plugin-host-generic-principles.md)（**宿主强制**）→ [`42`](42-host-generic-audit-checklist.md)（✅ 迁移完成）→ [`09`](09-plugin-system-and-guidance-generate.md) → [`18`](18-plugin-host-developer-api.md) → [`39`](39-plugin-context-and-prompt-assembly.md)（✅）→ [`38`](38-plugin-sandbox-and-host-evolution.md)（✅ Phase A+B）→ [`43`](43-plugin-api-binding-audit-checklist.md)（✅ 已归档）→ [`10`](10-plugin-conversation-host.md) |
+| 插件开发 | [`41`](41-plugin-host-generic-principles.md)（**宿主强制 · 零字节特化**）→ [`42`](42-host-generic-audit-checklist.md)（✅）→ [`09`](09-plugin-system-and-guidance-generate.md) → [`18`](18-plugin-host-developer-api.md) → [`39`](39-plugin-context-and-prompt-assembly.md)（✅）→ [`38`](38-plugin-sandbox-and-host-evolution.md)（✅ Phase A+B）→ [`43`](43-plugin-api-binding-audit-checklist.md)（✅ 已归档）→ [`10`](10-plugin-conversation-host.md) |
 | Historian | [`12-plugin-plot-summary.md`](12-plugin-plot-summary.md) · 二次 LLM 演进 [`39`](39-plugin-context-and-prompt-assembly.md) |
 | 迹录（Trace Keeper） | [`30-plugin-trace-keeper.md`](30-plugin-trace-keeper.md) |
 | 主布局 / 插件 Rail | [`31-main-layout-plugin-rails.md`](31-main-layout-plugin-rails.md) |
@@ -46,8 +46,8 @@
 | [`15`](15-conversation-messages-lazy-load.md) | ✅ | 消息 UI 懒加载 + virtua 虚拟列表 |
 | [`17`](17-admin-console.md) | ✅ | 本机运维台、DEK 轮换 |
 | [`18`](18-plugin-host-developer-api.md) | ✅ | 插件 API 表 |
-| [`41`](41-plugin-host-generic-principles.md) | **定案 · 强制** | **宿主零特化**：禁止 pluginId 字面量、manifest 扩展、CI 门禁 |
-| [`42`](42-host-generic-audit-checklist.md) | ✅ **已归档** | Phase 0–3 完成；门禁 `check:host-no-plugin-ids` |
+| [`41`](41-plugin-host-generic-principles.md) | **定案 · 强制** | **宿主零特化（零字节）**：用户深恶痛绝功能特化；禁止 id/能力特化、改名洗白；CI 门禁 + §7 能力问 |
+| [`42`](42-host-generic-audit-checklist.md) | ✅ **已归档** | Phase 0–3 完成；门禁 `check:host-no-plugin-ids`；须持续过能力问 |
 | [`38`](38-plugin-sandbox-and-host-evolution.md) | ✅ Phase A+B | 插件沙箱、注入描述符、API 绑定（宿主选择器） |
 | [`43`](43-plugin-api-binding-audit-checklist.md) | ✅ 已归档 | Sandbox 交叉：API 绑定 · 审计 · B4 权限；**A3 延后** |
 | [`39`](39-plugin-context-and-prompt-assembly.md) | ✅ 已落地 | 二次 LLM 上下文块、`completeWithContext`（Historian + trace-keeper Separate） |

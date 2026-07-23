@@ -109,7 +109,7 @@
   user-select  : none;
 }
 
-/* 章回分隔下方 · 每轮插件 slot（如 Historian 区间选择）；常驻占位避免懒加载后滚动回退 */
+/* 章回分隔下方 · 每轮插件 slot；常驻占位避免懒加载后滚动回退 */
 .turn-block-head {
   display        : flex;
   justify-content: flex-start;
@@ -554,7 +554,7 @@
   opacity: 0.5;
 }
 
-/* turn-block-head：Historian 区间选择；图标自带圆环，按钮不再描边 */
+/* turn-block-head：插件区间选择等；图标自带圆环，按钮不再描边 */
 .turn-block-head__slots {
   gap: 0.25rem;
 }

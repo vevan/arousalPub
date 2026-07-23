@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import PluginAutoSummarizeProgressPanel from '@/components/settings/PluginAutoSummarizeProgressPanel.vue'
+import PluginSettingsCompanionHost from '@/components/settings/PluginSettingsCompanionHost.vue'
 import PluginSchemaForm from '@/components/settings/PluginSchemaForm.vue'
 import type { PluginManageEntry } from '@/plugins/plugin-settings-types'
 import {
@@ -193,10 +193,6 @@ function backToList() {
   selectedPluginId.value = null
 }
 
-function onPointerResetError(message: string) {
-  emit('error', message)
-}
-
 watch(
   () => props.conversationId,
   () => {
@@ -298,13 +294,12 @@ defineExpose({ reload: load, backToList })
           @update:model-value="onModelUpdate(selectedPlugin, $event)"
         >
           <template #field-companion-panel="{ companionPanel }">
-            <PluginAutoSummarizeProgressPanel
-              v-if="companionPanel === 'auto-summarize-progress'"
+            <PluginSettingsCompanionHost
+              :companion-panel="companionPanel"
               :plugin-id="selectedPlugin.id"
               :conversation-id="conversationId"
               :conv-model="convModels[selectedPlugin.id]"
               :global-model="globalModels[selectedPlugin.id]"
-              @error="onPointerResetError"
             />
           </template>
         </PluginSchemaForm>

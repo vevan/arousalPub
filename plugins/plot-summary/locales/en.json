@@ -45,6 +45,10 @@
 
   "convAutoSummarizeProgressDone": "Plot summarized through turn {end} (inclusive)",
 
+  "convAutoSummarizeProgressMemo": "Plot summarized through MEMO-{n}",
+
+  "convAutoSummarizeProgressMemoNever": "No memo index yet",
+
   "convAutoSummarizeProgressPending": "Pending block: turns {from}–{to}",
 
   "convAutoSummarizeProgressNext": "Next trigger: after turn {turn} is persisted",
@@ -65,6 +69,12 @@
 
   "convAutoSummarizeResetNever": "Not summarized yet (clear pointers)",
 
+  "convAutoSummarizeResetMemoLabel": "Summarized through MEMO-N",
+
+  "convAutoSummarizeResetMemoHint": "Same idea as “summarized through turn N”; next new memo is N+1. Old chats do not infer from lore. Use the plugin menu “Renumber memos by turn” to rewrite titles.",
+
+  "convAutoSummarizeResetMemoNever": "No memo index yet (clear)",
+
   "convAutoSummarizeResetConfirm": "Confirm",
 
   "convBlockTurnsLabel": "Turns per block",
@@ -74,6 +84,10 @@
   "convBufferTurnsLabel": "Buffer turns",
 
   "convBufferTurnsDesc": "Recent turns kept out of the current block; clear to inherit global default.",
+
+  "convLastMemoIndexLabel": "Summarized through MEMO-N",
+
+  "convLastMemoIndexDesc": "Shared memo index for manual/auto runs; next new memo is N+1. Clear means none yet. Use the plugin menu to renumber by turn.",
 
   "sessionBlockTurnsLabel": "Turns per block (N)",
 
@@ -293,7 +307,11 @@
 
   "tooltipReorderLorebook": "Reorder target lorebook entries",
 
+  "tooltipRenumberMemory": "Renumber memos by turn",
+
   "notifyReorderLorebookDone": "Target lorebook entries reordered",
+
+  "notifyRenumberMemoryDone": "Renumbered memory memos by turn ({count} titles updated)",
 
   "notifyReorderLorebookNoTarget": "Set a target lorebook first",
 

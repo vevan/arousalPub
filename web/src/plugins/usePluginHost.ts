@@ -1,6 +1,6 @@
 import {
   cancelOpenPluginForm,
-  regenerateOpenPluginForm,
+  runFormExtraAction,
   createPluginWebHost,
   createScopedPluginHost,
   getSlotButtonsFor,
@@ -41,8 +41,14 @@ export function usePluginHost(
   session: ChatSession,
   routeContext: PluginHostRouteContext = {},
 ) {
-  const { host, slotButtons, formDialogs, openForm, formSubmitting, slotButtonRevision } =
-    createPluginWebHost(session)
+  const {
+    host,
+    slotButtons,
+    formDialogs,
+    openForm,
+    formSubmitting,
+    slotButtonRevision,
+  } = createPluginWebHost(session)
   const registry = ref<PluginRegistryPublicEntry[]>([])
   const loadError = ref('')
   /** registry 已拉取；web 模块按 slot 懒加载 */
@@ -232,8 +238,8 @@ export function usePluginHost(
         formDialogs,
         host,
       }),
-    regenerateOpenForm: () =>
-      regenerateOpenPluginForm({
+    runFormExtraAction: () =>
+      runFormExtraAction({
         openForm: openForm as { value: OpenPluginFormState | null },
         formDialogs,
         host,

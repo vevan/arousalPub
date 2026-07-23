@@ -1,14 +1,3 @@
-// plugins/plot-summary/src/constants.ts
-var PLUGIN_ID = "plot-summary";
-var DIALOG_SESSION = "session";
-var DIALOG_MANUAL = "manual";
-var DIALOG_ENABLE = "enable";
-var DIALOG_REVIEW = "review";
-var DIALOG_REVIEW_SIDECAR = "review-sidecar";
-var DIALOG_PICK_LOREBOOK = "pick-lorebook";
-var DIALOG_RECOVER_LOREBOOK = "recover-lorebook";
-var DIALOG_PROMPT_PREVIEW = "prompt-preview";
-
 // plugins/plot-summary/src/shared/utils.ts
 function asString(v) {
   return typeof v === "string" ? v.trim() : "";
@@ -130,6 +119,16 @@ function readLastSummarizedEnd(conv) {
   }
   return void 0;
 }
+function readLastMemoIndex(conv) {
+  if (typeof conv.lastMemoIndex === "number" && Number.isFinite(conv.lastMemoIndex)) {
+    const n = Math.round(conv.lastMemoIndex);
+    return n >= 1 ? n : void 0;
+  }
+  return void 0;
+}
+function nextMemoIndexFromLast(lastMemoIndex) {
+  return (typeof lastMemoIndex === "number" && lastMemoIndex >= 1 ? lastMemoIndex : 0) + 1;
+}
 function normalizedNextBlockStart(nextBlockStart, lastSummarizedEnd) {
   const start = Math.max(0, Math.round(nextBlockStart));
   if (typeof lastSummarizedEnd === "number" && lastSummarizedEnd >= 0) {
@@ -162,6 +161,7 @@ async function loadMergedSettings(host) {
   const sidecarEntryIds = conv.sidecarEntryIds && typeof conv.sidecarEntryIds === "object" ? { ...conv.sidecarEntryIds } : {};
   const sidecars = effectiveSidecars(global, conv);
   const lastSummarizedEnd = readLastSummarizedEnd(conv);
+  const lastMemoIndex = readLastMemoIndex(conv);
   const rawNextBlockStart = typeof conv.nextBlockStart === "number" ? Math.max(0, Math.round(conv.nextBlockStart)) : 0;
   return {
     global,
@@ -177,6 +177,7 @@ async function loadMergedSettings(host) {
     autoSummarizeEnabled: conv.autoSummarizeEnabled === true,
     nextBlockStart: normalizedNextBlockStart(rawNextBlockStart, lastSummarizedEnd),
     lastSummarizedEnd,
+    lastMemoIndex,
     sidecarEntryIds,
     sidecars,
     autoSidecarIds: parseAutoSidecarIdsRaw(conv.autoSidecarIds, sidecars),
@@ -264,6 +265,234 @@ function outgoingTailOrdinal(host) {
 function firstAutoTriggerTurnOrdinal(settings) {
   const start = settings.nextBlockStart ?? 0;
   return blockEndFromStart(start, settings.blockTurns) + settings.bufferTurns;
+}
+
+// plugins/plot-summary/src/auto-summarize-progress.ts
+function asInt2(value, fallback, min, max) {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+function effectiveInt(conv, global, convKey, globalKey, fallback, min, max) {
+  const raw = conv[convKey] ?? global[globalKey];
+  return asInt2(raw, fallback, min, max);
+}
+function blockEndFromStart2(start, blockTurns) {
+  return start + blockTurns - 1;
+}
+function firstAutoTriggerTurnOrdinal2(nextBlockStart, blockTurns, bufferTurns) {
+  return blockEndFromStart2(nextBlockStart, blockTurns) + bufferTurns;
+}
+function computeAutoSummarizeProgress(conv, global) {
+  const autoSummarizeEnabled = conv.autoSummarizeEnabled === true;
+  const blockTurns = effectiveInt(
+    conv,
+    global,
+    "blockTurns",
+    "triggerEveryNTurns",
+    4,
+    1,
+    500
+  );
+  const bufferTurns = effectiveInt(conv, global, "bufferTurns", "bufferTurns", 5, 0, 500);
+  const lastRaw = readLastSummarizedEnd(conv);
+  const lastSummarizedEnd = typeof lastRaw === "number" ? lastRaw : null;
+  const rawNextBlockStart = typeof conv.nextBlockStart === "number" && Number.isFinite(conv.nextBlockStart) ? Math.max(0, Math.round(conv.nextBlockStart)) : 0;
+  const nextBlockStart = normalizedNextBlockStart(rawNextBlockStart, lastRaw);
+  const pendingToTurn = blockEndFromStart2(nextBlockStart, blockTurns);
+  const nextTriggerTurn = firstAutoTriggerTurnOrdinal2(
+    nextBlockStart,
+    blockTurns,
+    bufferTurns
+  );
+  return {
+    autoSummarizeEnabled,
+    lastSummarizedEnd,
+    nextBlockStart,
+    pendingFromTurn: nextBlockStart,
+    pendingToTurn,
+    nextTriggerTurn
+  };
+}
+function buildAutoSummarizePointerResetPatch(lastSummarizedEnd, lastMemoIndex) {
+  const patch = lastSummarizedEnd === null ? {
+    lastSummarizedEnd: null,
+    nextBlockStart: 0,
+    lastTriggeredTurnOrdinal: null
+  } : {
+    lastSummarizedEnd: Math.max(-1, Math.round(lastSummarizedEnd)),
+    nextBlockStart: Math.max(-1, Math.round(lastSummarizedEnd)) + 1,
+    lastTriggeredTurnOrdinal: null
+  };
+  if (lastMemoIndex === null) {
+    patch.lastMemoIndex = null;
+  } else if (typeof lastMemoIndex === "number" && Number.isFinite(lastMemoIndex) && lastMemoIndex >= 1) {
+    patch.lastMemoIndex = Math.round(lastMemoIndex);
+  }
+  return patch;
+}
+
+// plugins/plot-summary/src/constants.ts
+var PLUGIN_ID = "plot-summary";
+var DIALOG_SESSION = "session";
+var DIALOG_MANUAL = "manual";
+var DIALOG_ENABLE = "enable";
+var DIALOG_REVIEW = "review";
+var DIALOG_REVIEW_SIDECAR = "review-sidecar";
+var DIALOG_PICK_LOREBOOK = "pick-lorebook";
+var DIALOG_RECOVER_LOREBOOK = "recover-lorebook";
+var DIALOG_PROMPT_PREVIEW = "prompt-preview";
+var DIALOG_POINTER_RESET = "pointer-reset";
+
+// plugins/plot-summary/src/auto-summarize-companion.ts
+function isBlank(raw) {
+  return raw === null || raw === void 0 || typeof raw === "string" && !raw.trim();
+}
+function parseOptionalInt(raw) {
+  if (typeof raw === "number" && Number.isFinite(raw)) return Math.round(raw);
+  if (typeof raw === "string" && raw.trim()) {
+    const n = Math.round(Number(raw));
+    return Number.isFinite(n) ? n : void 0;
+  }
+  return void 0;
+}
+function parseMemoIndexField(raw) {
+  if (isBlank(raw)) return null;
+  const n = parseOptionalInt(raw);
+  if (n === void 0) return void 0;
+  return n >= 1 ? n : null;
+}
+function memoOnlyPatch(memo) {
+  return { lastMemoIndex: memo };
+}
+function registerAutoSummarizeCompanion(host) {
+  host.registerFormDialog(
+    PLUGIN_ID,
+    {
+      titleKey: k(host, "convAutoSummarizeResetTitle"),
+      bodyKey: k(host, "convAutoSummarizeResetHint"),
+      fields: [
+        {
+          key: "lastSummarizedEnd",
+          labelKey: k(host, "convAutoSummarizeResetEndLabel"),
+          type: "integer",
+          min: -1
+        },
+        {
+          key: "lastMemoIndex",
+          labelKey: k(host, "convAutoSummarizeResetMemoLabel"),
+          type: "integer",
+          min: 1,
+          max: 9999,
+          hintKey: k(host, "convAutoSummarizeResetMemoHint")
+        }
+      ],
+      submitKey: k(host, "convAutoSummarizeResetConfirm"),
+      cancelKey: k(host, "sessionCancel"),
+      skipKey: k(host, "convAutoSummarizeResetNever"),
+      canSubmit: (m) => {
+        const memo = parseMemoIndexField(m.lastMemoIndex);
+        if (memo === void 0) return false;
+        if (isBlank(m.lastSummarizedEnd)) return true;
+        const n = parseOptionalInt(m.lastSummarizedEnd);
+        return typeof n === "number" && n >= -1;
+      },
+      onSkip: async (h) => {
+        await h.conversation.patchPluginSettings(
+          buildAutoSummarizePointerResetPatch(null, null)
+        );
+      },
+      onSubmit: async (h, model) => {
+        const memo = parseMemoIndexField(model.lastMemoIndex);
+        if (memo === void 0) return;
+        if (isBlank(model.lastSummarizedEnd)) {
+          await h.conversation.patchPluginSettings(memoOnlyPatch(memo));
+          return;
+        }
+        const n = parseOptionalInt(model.lastSummarizedEnd);
+        if (typeof n !== "number") return;
+        await h.conversation.patchPluginSettings(
+          buildAutoSummarizePointerResetPatch(n, memo)
+        );
+      }
+    },
+    DIALOG_POINTER_RESET
+  );
+  host.registerSettingsCompanionPanel(PLUGIN_ID, {
+    id: "auto-summarize-progress",
+    getView: (ctx) => {
+      const p = computeAutoSummarizeProgress(ctx.convModel, ctx.globalModel);
+      const lastMemo = readLastMemoIndex(ctx.convModel);
+      const rows = [];
+      if (p.lastSummarizedEnd !== null && p.lastSummarizedEnd >= 0) {
+        rows.push({
+          icon: "mdi-check-circle-outline",
+          text: host.t(k(host, "convAutoSummarizeProgressDone"), {
+            end: p.lastSummarizedEnd
+          })
+        });
+      } else {
+        rows.push({
+          icon: "mdi-circle-outline",
+          text: host.t(k(host, "convAutoSummarizeProgressNever")),
+          tone: "muted"
+        });
+      }
+      if (typeof lastMemo === "number" && lastMemo >= 1) {
+        rows.push({
+          icon: "mdi-numeric",
+          text: host.t(k(host, "convAutoSummarizeProgressMemo"), {
+            n: lastMemo
+          })
+        });
+      } else {
+        rows.push({
+          icon: "mdi-numeric-off",
+          text: host.t(k(host, "convAutoSummarizeProgressMemoNever")),
+          tone: "muted"
+        });
+      }
+      rows.push({
+        icon: "mdi-format-list-bulleted",
+        text: host.t(k(host, "convAutoSummarizeProgressPending"), {
+          from: p.pendingFromTurn,
+          to: p.pendingToTurn
+        })
+      });
+      if (p.autoSummarizeEnabled) {
+        rows.push({
+          icon: "mdi-calendar-clock",
+          text: host.t(k(host, "convAutoSummarizeProgressNext"), {
+            turn: p.nextTriggerTurn
+          }),
+          tone: "accent"
+        });
+      } else {
+        rows.push({
+          icon: "mdi-pause-circle-outline",
+          text: host.t(k(host, "convAutoSummarizeProgressOff")),
+          tone: "muted"
+        });
+      }
+      return {
+        title: host.t(k(host, "convAutoSummarizeProgressTitle")),
+        rows,
+        actionLabel: host.t(k(host, "convAutoSummarizeResetBtn")),
+        onAction: () => {
+          const last = readLastSummarizedEnd(ctx.convModel);
+          const memo = readLastMemoIndex(ctx.convModel);
+          host.openFormDialog(
+            PLUGIN_ID,
+            {
+              lastSummarizedEnd: typeof last === "number" ? String(last) : "",
+              lastMemoIndex: typeof memo === "number" ? String(memo) : ""
+            },
+            DIALOG_POINTER_RESET
+          );
+        }
+      };
+    }
+  });
 }
 
 // plugins/plot-summary/src/notify-outcome.ts
@@ -465,6 +694,13 @@ async function resolveTargetLorebookName(host, lorebookId) {
     return id;
   }
 }
+function coerceSummaryDraft(raw) {
+  const title = typeof raw.title === "string" ? raw.title : "";
+  const content = typeof raw.content === "string" ? raw.content : "";
+  const keywords = Array.isArray(raw.keywords) ? raw.keywords.filter((x) => typeof x === "string") : [];
+  if (!content) throw new Error("plugin_complete_draft_failed");
+  return { title, content, keywords };
+}
 function openReviewFormDialog(host, draft, dialogId) {
   const model = {
     title: draft.title,
@@ -520,7 +756,8 @@ async function generateReviewDraft(host, settings, opts) {
         kind: opts.kind,
         fromTurn: opts.fromTurn,
         toTurn: opts.toTurn,
-        blockTurns: settings.blockTurns
+        blockTurns: settings.blockTurns,
+        ...opts.kind === "memory" ? { memoIndex: nextMemoIndexFromLast(settings.lastMemoIndex) } : {}
       }
     });
     if (!result.draft) {
@@ -529,7 +766,7 @@ async function generateReviewDraft(host, settings, opts) {
     if (opts.taskNotifyLabel && opts.dialogId) {
       notifyDraftParseOutcome(host, "success", opts.taskNotifyLabel, opts.dialogId);
     }
-    return result.draft;
+    return coerceSummaryDraft(result.draft);
   } catch (e) {
     if (opts.taskNotifyLabel && opts.dialogId && isParseFailedError(e)) {
       notifyDraftParseOutcome(host, "failure", opts.taskNotifyLabel, opts.dialogId);
@@ -567,7 +804,7 @@ function registerReviewDialog(host, opts) {
       submitKey: k(host, "reviewConfirm"),
       skipKey: k(host, "reviewSkip"),
       cancelKey: k(host, "reviewAbort"),
-      regenerateKey: k(host, "reviewRegenerate"),
+      extraActionKey: k(host, "reviewRegenerate"),
       persistent: true,
       canSubmit: (m) => opts.lockTitle ? asString(m.content).length > 0 : asString(m.title).length > 0 && asString(m.content).length > 0,
       onSubmit: async (_h, model) => {
@@ -592,7 +829,7 @@ function registerReviewDialog(host, opts) {
         clearReviewSession();
         resolver.reject(new Error("review_aborted"));
       },
-      onRegenerate: async (h) => {
+      onExtraAction: async (h) => {
         await runReviewRegenerate(h, opts.dialogId);
       }
     },
@@ -648,6 +885,29 @@ function promptReview(host, draft, dialogId, regenerateFn, lorebookName) {
     setReviewTitleParams({ name: lorebookName });
     openReviewFormDialog(host, draft, dialogId);
   });
+}
+
+// plugins/plot-summary/src/shared/summarize.ts
+var PLOT_SUMMARY_ENTRY_TITLE_RE = /^\[MEMO-(\d+)\]-(.+)-\[(\d+)-(\d+)\]$/;
+function parsePlotSummaryEntryTitle(title) {
+  const m = (title ?? "").trim().match(PLOT_SUMMARY_ENTRY_TITLE_RE);
+  if (!m) return null;
+  const memoIndex = Number(m[1]);
+  const start = Number(m[3]);
+  const end = Number(m[4]);
+  if (!Number.isFinite(memoIndex) || !Number.isFinite(start) || !Number.isFinite(end)) {
+    return null;
+  }
+  return { memoIndex, coreTitle: m[2].trim(), start, end };
+}
+function resolveMemoIndex(rawTitle, _fromTurn, blockTurnsOrOpts = 15) {
+  const opts = typeof blockTurnsOrOpts === "number" ? { blockTurns: blockTurnsOrOpts } : blockTurnsOrOpts ?? {};
+  if (typeof opts.memoIndex === "number" && Number.isFinite(opts.memoIndex) && opts.memoIndex >= 1) {
+    return Math.round(opts.memoIndex);
+  }
+  const parsed = parsePlotSummaryEntryTitle(rawTitle.trim());
+  if (parsed) return parsed.memoIndex;
+  return 1;
 }
 
 // plugins/plot-summary/src/shared/lorebook-sort.ts
@@ -742,6 +1002,40 @@ function pickRecentSummaryEntriesBeforeTurn(entries, beforeTurn, sidecarEntryIdS
   if (limit <= 0) return [];
   return sorted.slice(-limit);
 }
+function planRenumberMemoryMemosByTurn(entries, sidecarEntryIds) {
+  const sidecarSet = new Set(Object.values(sidecarEntryIds));
+  const memory = entries.filter(
+    (e) => classifyPlotSummaryEntry(e, sidecarSet) === "summary"
+  );
+  const sorted = memory.slice().sort((a, b) => {
+    const ra = parseTurnRangeSuffix(a.title);
+    const rb = parseTurnRangeSuffix(b.title);
+    if (!ra && !rb) return a.id.localeCompare(b.id);
+    if (!ra) return 1;
+    if (!rb) return -1;
+    if (ra.start !== rb.start) return ra.start - rb.start;
+    if (ra.end !== rb.end) return ra.end - rb.end;
+    return a.id.localeCompare(b.id);
+  });
+  const titlePatches = [];
+  let nextN = 0;
+  for (const e of sorted) {
+    const parsed = parsePlotSummaryEntryTitle(e.title);
+    const range = parsed ? { start: parsed.start, end: parsed.end } : parseTurnRangeSuffix(e.title);
+    if (!range) continue;
+    nextN += 1;
+    const coreTitle = parsed?.coreTitle?.trim() || e.title.replace(PLOT_SUMMARY_TURN_RANGE_SUFFIX_RE, "").replace(PLOT_SUMMARY_MEMO_PREFIX_RE, "").trim() || "\u6458\u8981";
+    const nextTitle = `[MEMO-${nextN}]-${coreTitle}-[${range.start}-${range.end}]`;
+    if (nextTitle !== e.title.trim()) {
+      titlePatches.push({ id: e.id, title: nextTitle });
+    }
+  }
+  return {
+    titlePatches,
+    lastMemoIndex: nextN >= 1 ? nextN : null,
+    orderedMemoryIds: sorted.map((e) => e.id)
+  };
+}
 
 // plugins/plot-summary/src/shared/entry-sort.ts
 async function applyPlotSummaryEntrySort(host, lorebookId, sidecarEntryIds, sidecarConfigIds) {
@@ -771,6 +1065,49 @@ async function applyPlotSummaryEntrySort(host, lorebookId, sidecarEntryIds, side
     entriesByGroup
   });
   return true;
+}
+async function renumberMemoryMemosByTurn(host, lorebookId, sidecarEntryIds, sidecarConfigIds) {
+  const id = lorebookId.trim();
+  if (!id) return { changedTitles: 0, lastMemoIndex: null };
+  const lb = await host.lorebook.get(id);
+  const entries = (Array.isArray(lb.entries) ? lb.entries : []).map((e) => ({
+    id: String(e.id),
+    groupId: typeof e.groupId === "string" ? e.groupId : "",
+    title: typeof e.title === "string" ? e.title : "",
+    createdAt: typeof e.createdAt === "string" ? e.createdAt : void 0
+  }));
+  const plan = planRenumberMemoryMemosByTurn(entries, sidecarEntryIds);
+  for (const p of plan.titlePatches) {
+    await host.lorebook.patchEntry(id, p.id, { title: p.title });
+  }
+  const byId = new Map(entries.map((e) => [e.id, { ...e }]));
+  for (const p of plan.titlePatches) {
+    const cur = byId.get(p.id);
+    if (cur) cur.title = p.title;
+  }
+  const groups = Array.isArray(lb.groups) ? lb.groups : [];
+  const { entriesByGroup } = computePlotSummaryApplyOrderLayout(
+    {
+      groups: groups.map((g) => ({
+        id: String(g.id),
+        order: typeof g.order === "number" ? g.order : 0
+      })),
+      entries: [...byId.values()]
+    },
+    sidecarEntryIds,
+    sidecarConfigIds
+  );
+  await host.lorebook.applyOrder(id, {
+    scope: "full",
+    entriesByGroup
+  });
+  await host.conversation.patchPluginSettings({
+    lastMemoIndex: plan.lastMemoIndex
+  });
+  return {
+    changedTitles: plan.titlePatches.length,
+    lastMemoIndex: plan.lastMemoIndex
+  };
 }
 
 // plugins/plot-summary/src/batch-write.ts
@@ -826,39 +1163,29 @@ async function writeSidecarEntry(host, settings, sidecarEntryIds, sc, reviewed, 
   return created.id;
 }
 
-// plugins/plot-summary/src/shared/summarize.ts
-var PLOT_SUMMARY_ENTRY_TITLE_RE = /^\[MEMO-(\d+)\]-(.+)-\[(\d+)-(\d+)\]$/;
-function parsePlotSummaryEntryTitle(title) {
-  const m = (title ?? "").trim().match(PLOT_SUMMARY_ENTRY_TITLE_RE);
-  if (!m) return null;
-  const memoIndex = Number(m[1]);
-  const start = Number(m[3]);
-  const end = Number(m[4]);
-  if (!Number.isFinite(memoIndex) || !Number.isFinite(start) || !Number.isFinite(end)) {
-    return null;
-  }
-  return { memoIndex, coreTitle: m[2].trim(), start, end };
-}
-function resolveMemoIndex(rawTitle, fromTurn, blockTurns) {
-  const parsed = parsePlotSummaryEntryTitle(rawTitle.trim());
-  if (parsed) return parsed.memoIndex;
-  const bt = Math.max(1, Math.round(blockTurns));
-  return Math.floor(Math.max(0, fromTurn) / bt) + 1;
-}
-
 // plugins/plot-summary/src/shared/task-notify-label.ts
-function formatSummarizeTaskTitlePart(host, task, fromTurn, toTurn, blockTurns) {
+function formatSummarizeTaskTitlePart(host, task, fromTurn, toTurn, blockTurns, memoIndex) {
   if (task.kind === "sidecar") {
     return task.sidecar.name.trim();
   }
-  const memoIndex = resolveMemoIndex("", fromTurn, blockTurns);
-  const memo = String(memoIndex).padStart(2, "0");
+  const idx = resolveMemoIndex("", fromTurn, {
+    blockTurns,
+    ...typeof memoIndex === "number" ? { memoIndex } : {}
+  });
+  const memo = String(idx).padStart(2, "0");
   const core = host.t(k(host, "manualTaskMemory"));
   return `[MEMO-${memo}] ${core} [${fromTurn}-${toTurn}]`;
 }
-function formatSummarizeTaskNotifyLabel(host, lorebookName, task, fromTurn, toTurn, blockTurns) {
+function formatSummarizeTaskNotifyLabel(host, lorebookName, task, fromTurn, toTurn, blockTurns, memoIndex) {
   const book = lorebookName.trim();
-  const part = formatSummarizeTaskTitlePart(host, task, fromTurn, toTurn, blockTurns);
+  const part = formatSummarizeTaskTitlePart(
+    host,
+    task,
+    fromTurn,
+    toTurn,
+    blockTurns,
+    memoIndex
+  );
   return book ? `${book} - ${part}` : part;
 }
 
@@ -1124,6 +1451,7 @@ async function runSummarizeTasks(host, opts) {
     let wroteToLorebook = false;
     let skippedTasks = 0;
     let aborted = false;
+    let allocatedMemoIndex = null;
     const pendingCreates = [];
     host.ui.progress({
       message: host.t(k(host, "progressSummarize")),
@@ -1142,7 +1470,8 @@ async function runSummarizeTasks(host, opts) {
         task,
         fromTurn,
         toTurn,
-        settings.blockTurns
+        settings.blockTurns,
+        task.kind === "memory" ? nextMemoIndexFromLast(settings.lastMemoIndex) : void 0
       );
       setSummarizeBatchProgress({ taskIndex, total: tasks.length });
       showCurrentBatchTaskProgress(host);
@@ -1182,6 +1511,8 @@ async function runSummarizeTasks(host, opts) {
               priority: 100
             }
           });
+          const usedMemo = parseMemoIndex(reviewed.title);
+          allocatedMemoIndex = typeof usedMemo === "number" && usedMemo >= 1 ? usedMemo : nextMemoIndexFromLast(settings.lastMemoIndex);
           ranMemory = true;
           wroteToLorebook = true;
         } else if (task.kind === "sidecar") {
@@ -1302,6 +1633,12 @@ async function runSummarizeTasks(host, opts) {
       );
       patch.lastSummarizedEnd = last;
       patch.nextBlockStart = Math.max(settings.nextBlockStart ?? 0, last + 1);
+    }
+    if (allocatedMemoIndex != null) {
+      patch.lastMemoIndex = Math.max(
+        typeof settings.lastMemoIndex === "number" ? settings.lastMemoIndex : 0,
+        allocatedMemoIndex
+      );
     }
     if (JSON.stringify(sidecarEntryIds) !== JSON.stringify(persistedSidecarEntryIds)) {
       patch.sidecarEntryIds = Object.keys(sidecarEntryIds).length > 0 ? sidecarEntryIds : null;
@@ -1885,10 +2222,10 @@ function registerSummarizeDialog(host, settings, mode) {
       submitKey: k(host, isEnable ? "enableSubmit" : "manualSubmit"),
       cancelKey: k(host, "sessionCancel"),
       ...!isEnable ? {
-        regenerateKey: k(host, "manualPreviewPrompt"),
-        regenerateVisible: (h) => auditDebugEnabled(h),
-        regenerateCanSubmit: (m) => summarizeDialogCanPreview(m, settings),
-        onRegenerate: async (h, model) => {
+        extraActionKey: k(host, "manualPreviewPrompt"),
+        extraActionVisible: (h, _m) => auditDebugEnabled(h),
+        extraActionCanSubmit: (m) => summarizeDialogCanPreview(m, settings),
+        onExtraAction: async (h, model) => {
           await previewManualSummarizePrompt(h, model);
         }
       } : {},
@@ -1968,6 +2305,35 @@ async function reorderTargetLorebookNow(host) {
     notifyOutcome(host, "notifyReorderLorebookDone", "success");
   } catch (e) {
     console.warn("[plot-summary] reorder lorebook failed", e);
+    host.ui.notify(host.t(k(host, "notifyTaskSkippedGeneric")), void 0, { level: "warning" });
+  }
+}
+async function renumberMemoryMemosNow(host) {
+  const settings = await loadMergedSettings(host);
+  const targetId = asString(settings.targetLorebookId);
+  if (!targetId) {
+    host.ui.notify(host.t(k(host, "notifyReorderLorebookNoTarget")), void 0, {
+      level: "warning"
+    });
+    return;
+  }
+  try {
+    const sidecarEntryIds = await host.lorebook.normalizeEntryRefs({
+      lorebookId: targetId,
+      entryIds: settings.sidecarEntryIds,
+      validKeys: settings.sidecars.map((s) => s.id)
+    });
+    const result = await renumberMemoryMemosByTurn(
+      host,
+      targetId,
+      sidecarEntryIds,
+      settings.sidecars.map((s) => s.id)
+    );
+    notifyOutcome(host, "notifyRenumberMemoryDone", "success", {
+      count: result.changedTitles
+    });
+  } catch (e) {
+    console.warn("[plot-summary] renumber memory memos failed", e);
     host.ui.notify(host.t(k(host, "notifyTaskSkippedGeneric")), void 0, { level: "warning" });
   }
 }
@@ -2386,6 +2752,7 @@ function register(host) {
   registerPromptPreviewDialog(host);
   registerPickLorebookDialog(host);
   registerRecoverLorebookDialog(host);
+  registerAutoSummarizeCompanion(host);
   host.conversation.onPluginSettingsChanged(() => {
     refreshAutoSummarizeUi(host);
   });
@@ -2426,6 +2793,15 @@ function register(host) {
         disabled: () => isBusy(host) || summarizeRunning,
         onClick: () => {
           void reorderTargetLorebookNow(host);
+        }
+      },
+      {
+        id: `${PLUGIN_ID}-renumber-memos`,
+        labelKey: k(host, "tooltipRenumberMemory"),
+        icon: "mdi-sort-numeric-ascending",
+        disabled: () => isBusy(host) || summarizeRunning,
+        onClick: () => {
+          void renumberMemoryMemosNow(host);
         }
       }
     ]

@@ -62,6 +62,9 @@ import {
   setPluginPanelHidden,
 } from '@/plugins/plugin-panel-registry'
 import {
+  registerSettingsCompanionPanel as registerSettingsCompanionInRegistry,
+} from '@/plugins/plugin-settings-companion-registry'
+import {
   assertPluginConversationRead,
   PLUGIN_CONVERSATION_BINDINGS_WRITE,
   wrapConversationHostForPlugin,
@@ -274,6 +277,9 @@ export function createScopedPluginHost(
     registerStyles(css: string) {
       registerPluginStyles(id, css)
     },
+    registerSettingsCompanionPanel(pluginId, def) {
+      base.registerSettingsCompanionPanel(pluginId.trim() || id, def)
+    },
     registerSlotButton(slot, def) {
       base.registerSlotButton(slot, { ...def, pluginId: id })
     },
@@ -364,6 +370,10 @@ export function createPluginWebHost(session: ChatSession): {
     registerFormDialog(pluginId, def, dialogId) {
       formDialogs.set(formDialogKey(pluginId, dialogId), def)
     },
+    registerSettingsCompanionPanel(pluginId, def) {
+      registerSettingsCompanionInRegistry(pluginId, def)
+      slotButtonRevision.value += 1
+    },
     openFormDialog(pluginId, model, dialogId, opts) {
       formSubmitting.value = false
       openForm.value = openPluginFormState(pluginId, model, dialogId, opts)
@@ -379,6 +389,7 @@ export function createPluginWebHost(session: ChatSession): {
       isTurnAwaitingAssistant: session.isTurnAwaitingAssistant,
     },
     chat: {
+      send: (userText) => session.sendUserText(userText),
       sendWithPlugins: (userText, plugins) =>
         session.sendWithPlugins(userText, plugins),
       regenerateWithPlugins: (listIndex, userText, plugins) =>
@@ -566,7 +577,14 @@ export function createPluginWebHost(session: ChatSession): {
     },
   }
 
-  return { host, slotButtons, formDialogs, openForm, formSubmitting, slotButtonRevision }
+  return {
+    host,
+    slotButtons,
+    formDialogs,
+    openForm,
+    formSubmitting,
+    slotButtonRevision,
+  }
 }
 
 function compareSlotButtons(
@@ -660,7 +678,7 @@ export function skipOpenPluginForm(params: {
   params.openForm.value = null
 }
 
-export async function regenerateOpenPluginForm(params: {
+export async function runFormExtraAction(params: {
   openForm: { value: OpenPluginFormState | null }
   formDialogs: Map<string, PluginFormDialogDef>
   host: PluginWebHost
@@ -669,11 +687,11 @@ export async function regenerateOpenPluginForm(params: {
   const state = params.openForm.value
   if (!state) return
   const def = params.formDialogs.get(formDialogKey(state.pluginId, state.dialogId))
-  if (!def?.onRegenerate) return
+  if (!def?.onExtraAction) return
   params.formSubmitting.value = true
   try {
     const scopedHost = createScopedPluginHost(params.host, state.pluginId)
-    await def.onRegenerate(scopedHost, state.model)
+    await def.onExtraAction(scopedHost, state.model)
   } finally {
     params.formSubmitting.value = false
   }

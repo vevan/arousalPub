@@ -7,6 +7,7 @@ describe('parseCompleteDraftContent sidecar', () => {
     pluginId: 'plot-summary',
     conversationId: 'abcd1234',
     kind: 'sidecar' as const,
+    params: {},
     pluginSettings: { sidecarName: '关系' },
   }
 
@@ -38,5 +39,22 @@ describe('parseCompleteDraftContent sidecar', () => {
       () => parseCompleteDraftContent(base, '{"keywords":[]}', null),
       /parse_failed/,
     )
+  })
+})
+
+describe('parseCompleteDraftContent memory', () => {
+  it('uses params.memoIndex for entry title', () => {
+    const { draft } = parseCompleteDraftContent(
+      {
+        pluginId: 'plot-summary',
+        conversationId: 'abcd1234',
+        kind: 'memory',
+        params: { fromTurn: 0, toTurn: 15, blockTurns: 15, memoIndex: 7 },
+      },
+      '{"title":"冒险","content":"once upon","keywords":["a"]}',
+      null,
+    )
+    assert.equal(draft.title, '[MEMO-7]-冒险-[0-15]')
+    assert.equal(draft.content, 'once upon')
   })
 })

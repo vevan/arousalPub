@@ -31,7 +31,7 @@ export type ConversationTranscriptBlockSpec = {
   regexRuleIds?: string[]
   regexApplyAllTurns?: boolean
   tailOrdinal?: number
-  /** 仅对 toTurn 的 assistant 正文剥除指定块标签（Separate 补生成等） */
+  /** 仅对 toTurn 的 assistant 正文剥除指定块标签（如末轮补生成） */
   stripBlockTagsOnToTurn?: string[]
   /** 与 stripBlockTagsOnToTurn 联用：仅剥 toTurn 的指定 segment（缺省 = activeSegmentIndex） */
   stripBlockTagsOnToTurnSegmentIndex?: number
@@ -118,13 +118,10 @@ export type AssemblePluginPromptResult =
   | AssemblePluginPromptSuccess
   | { ok: false; code: string; promptTokens?: number; budget?: number }
 
+/** completeWithContext 出站后解析提示；除 kind 外字段由插件自述，宿主原样透传 */
 export type CompleteWithContextDraftParse = {
-  /** 插件定义的 draft 类型；宿主不解释语义 */
   kind: string
-  fromTurn?: number
-  toTurn?: number
-  blockTurns?: number
-}
+} & Record<string, unknown>
 
 export type CompleteWithContextRequest = {
   conversationId: string
@@ -160,7 +157,8 @@ export type CompleteWithContextSuccess = {
   usage?: { promptTokens?: number; completionTokens?: number }
   latencyMs?: number
   messages: PromptLayoutMessage[]
-  draft?: { title: string; content: string; keywords: string[] }
+  /** 插件 hook 解析结果；宿主不解释字段语义 */
+  draft?: Record<string, unknown>
   preflight?: AssemblePluginPromptSuccess['preflight']
   debug?: CompleteWithContextDebugCapture
 }

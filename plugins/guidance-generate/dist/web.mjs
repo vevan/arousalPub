@@ -1,8 +1,33 @@
 // plugins/guidance-generate/src/web/index.ts
 var PLUGIN_ID = "guidance-generate";
+var DEFAULT_POLISH_SYSTEM_PREFIX = `# Role: RP Narrative Editor
+
+## Objective
+You are an editing engine dedicated to optimizing role-play (RP) text. Your task is to take the [user's current draft] and\u2014drawing upon the [recent conversation history]\u2014polish it into a final version that suits the current RP scene, offers vivid imagery, flows naturally, and aligns with the user's persona.
+
+## Rules & Constraints
+1. **Preserve Intent**: Core actions, dialogue, internal thoughts, and decisions must be retained 100%; do not alter the user's intent or make significant, unstated decisions on their behalf.
+2. **Contextual Coherence**: Refer to the [recent conversation history] to ensure that actions, tone, forms of address, and environmental interactions flow naturally from the ongoing narrative, avoiding any jarring transitions.
+3. **Enhance Detail**:
+- Incorporate descriptions of micro-expressions, body language, internal thoughts, or environmental interactions. 
+- Supplement emotional dialogue with appropriate descriptions of facial expressions or tone of voice. 
+- Avoid dry, expository text; prioritize the "Show, don't tell" approach.
+4. **Formatting Standards**:
+- Maintain standard RP formatting (e.g., using plain text for actions/descriptions and quotation marks for dialogue, or adhering to the specific platform's conventions). 
+- Do not include AI explanations, introductory prefixes (such as "Polished result:"), or superfluous pleasantries.
+
+## Output Format
+Output only the **final polished text**; do not include Markdown code block tags, prefixes, or explanations.`;
+var DEFAULT_POLISH_HISTORY_TURNS = 8;
+var HISTORY_BLOCK_ID = "polishHistory";
 var k = (host, key) => host.pluginKey(key);
 function notifyGuidanceFailed(host, detail) {
   const title = host.t(k(host, "notifyFailed"));
+  const body = detail?.trim();
+  host.ui.notify(title, body || void 0, { level: "error" });
+}
+function notifyPolishFailed(host, detail) {
+  const title = host.t(k(host, "notifyPolishFailed"));
   const body = detail?.trim();
   host.ui.notify(title, body || void 0, { level: "error" });
 }
@@ -10,6 +35,21 @@ function resolveMode(raw) {
   if (raw === "regenerate") return "regenerate";
   if (raw === "revise") return "revise";
   return "send";
+}
+function readPolishSettings(host) {
+  const snap = host.plugins.getUserSettingsSnapshot();
+  const rawPrefix = snap?.polishSystemPrefix;
+  const systemPrefix = typeof rawPrefix === "string" && rawPrefix.trim() ? rawPrefix.trim() : DEFAULT_POLISH_SYSTEM_PREFIX;
+  const rawTurns = snap?.polishHistoryTurns;
+  let historyTurns = DEFAULT_POLISH_HISTORY_TURNS;
+  if (typeof rawTurns === "number" && Number.isFinite(rawTurns)) {
+    historyTurns = Math.floor(rawTurns);
+  } else if (typeof rawTurns === "string" && rawTurns.trim()) {
+    const n = Number(rawTurns);
+    if (Number.isFinite(n)) historyTurns = Math.floor(n);
+  }
+  historyTurns = Math.min(40, Math.max(0, historyTurns));
+  return { systemPrefix, historyTurns };
 }
 function segmentReceivesAt(turn, segmentIndex) {
   const segments = turn.segments ?? [];
@@ -30,9 +70,19 @@ function activeAssistantText(turn, segmentIndex) {
   const content = receives[idx]?.content;
   return typeof content === "string" ? content.trim() : "";
 }
+function resolvePanel(raw) {
+  return raw === "polish" ? "polish" : "generate";
+}
 async function runGuidanceSubmit(hostApi, model) {
-  const guidanceText = String(model.guidanceText ?? "").trim();
   const mode = resolveMode(model.mode);
+  const userText = String(model.userText ?? "").trim();
+  if (mode === "send" && resolvePanel(model.tab) === "polish") {
+    if (!userText) return;
+    const err2 = await hostApi.chat.send(userText);
+    if (err2) notifyGuidanceFailed(hostApi, err2);
+    return;
+  }
+  const guidanceText = String(model.guidanceText ?? "").trim();
   const plugins = {
     [PLUGIN_ID]: mode === "revise" ? {
       mode,
@@ -41,20 +91,72 @@ async function runGuidanceSubmit(hostApi, model) {
     } : { mode, guidanceText }
   };
   if (mode === "send") {
-    const userText2 = String(model.userText ?? "").trim();
-    const err2 = await hostApi.chat.sendWithPlugins(userText2, plugins);
+    const err2 = await hostApi.chat.sendWithPlugins(userText, plugins);
     if (err2) notifyGuidanceFailed(hostApi, err2);
     return;
   }
   const listIndex = model.listIndex;
   if (typeof listIndex !== "number") return;
-  const userText = String(model.userText ?? "").trim();
   const err = await hostApi.chat.regenerateWithPlugins(
     listIndex,
     userText,
     plugins
   );
   if (err) notifyGuidanceFailed(hostApi, err);
+}
+async function fetchHistoryBlock(hostApi, historyTurns) {
+  if (historyTurns <= 0) return { ok: true, text: "" };
+  try {
+    const prepared = await hostApi.plugin.prepareContextBlocks({
+      blocks: [
+        {
+          source: "conversation.transcript.tail",
+          blockId: HISTORY_BLOCK_ID,
+          tailCount: historyTurns
+        }
+      ]
+    });
+    const text = prepared.blocks?.[HISTORY_BLOCK_ID];
+    return { ok: true, text: typeof text === "string" ? text.trim() : "" };
+  } catch (e) {
+    return {
+      ok: false,
+      detail: e instanceof Error ? e.message : String(e)
+    };
+  }
+}
+async function runGuidancePolish(hostApi, model) {
+  if (resolveMode(model.mode) !== "send") return;
+  if (resolvePanel(model.tab) !== "polish") return;
+  const userText = String(model.userText ?? "").trim();
+  if (!userText) return;
+  const { systemPrefix, historyTurns } = readPolishSettings(hostApi);
+  const hist = await fetchHistoryBlock(hostApi, historyTurns);
+  if (!hist.ok) {
+    notifyPolishFailed(hostApi, hist.detail);
+    return;
+  }
+  const history = hist.text;
+  const messages = [
+    {
+      role: "system",
+      content: history || "(no recent conversation history)"
+    },
+    { role: "user", content: userText },
+    { role: "system", content: systemPrefix }
+  ];
+  try {
+    const result = await hostApi.plugin.complete({ messages });
+    const polished = String(result.content ?? "").trim();
+    if (!polished) {
+      notifyPolishFailed(hostApi);
+      return;
+    }
+    model.userText = polished;
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    notifyPolishFailed(hostApi, detail);
+  }
 }
 function register(host) {
   host.registerSlotButton("composer-toolbar", {
@@ -65,6 +167,7 @@ function register(host) {
     onClick: () => {
       host.openFormDialog(PLUGIN_ID, {
         mode: "send",
+        tab: "generate",
         userText: host.composer.userInput,
         guidanceText: "",
         assistantText: "",
@@ -117,6 +220,19 @@ function register(host) {
       regenerate: k(host, "dialogTitle"),
       revise: k(host, "reviseDialogTitle")
     },
+    tabs: [
+      {
+        id: "generate",
+        labelKey: k(host, "tabGenerate"),
+        submitKey: k(host, "send")
+      },
+      {
+        id: "polish",
+        labelKey: k(host, "tabPolish"),
+        submitKey: k(host, "polishSend")
+      }
+    ],
+    tabsVisible: (m) => resolveMode(m.mode) === "send",
     fields: [
       {
         key: "userText",
@@ -124,8 +240,21 @@ function register(host) {
         visibleWhen: { field: "mode", equals: "send" }
       },
       {
+        key: "guidanceText",
+        labelKey: k(host, "guidanceLabel"),
+        visibleWhen: [
+          { field: "mode", equals: "send" },
+          { field: "tab", equals: "generate" }
+        ]
+      },
+      {
         key: "userText",
         labelKey: k(host, "userLabel"),
+        visibleWhen: { field: "mode", equals: "regenerate" }
+      },
+      {
+        key: "guidanceText",
+        labelKey: k(host, "guidanceLabel"),
         visibleWhen: { field: "mode", equals: "regenerate" }
       },
       {
@@ -134,21 +263,38 @@ function register(host) {
         readOnly: true,
         visibleWhen: { field: "mode", equals: "revise" }
       },
-      { key: "guidanceText", labelKey: k(host, "guidanceLabel") }
+      {
+        key: "guidanceText",
+        labelKey: k(host, "guidanceLabel"),
+        visibleWhen: { field: "mode", equals: "revise" }
+      }
     ],
     submitKeys: {
       send: k(host, "send"),
       regenerate: k(host, "regenerate"),
       revise: k(host, "revise")
     },
+    extraActionKey: k(host, "polish"),
+    extraActionVisible: (_h, m) => resolveMode(m.mode) === "send" && resolvePanel(m.tab) === "polish",
+    extraActionCanSubmit: (m) => {
+      if (resolveMode(m.mode) !== "send" || resolvePanel(m.tab) !== "polish") {
+        return false;
+      }
+      return String(m.userText ?? "").trim().length > 0;
+    },
+    onExtraAction: (hostApi, model) => runGuidancePolish(hostApi, model),
     canSubmit: (model) => {
+      const mode = resolveMode(model.mode);
+      const userText = String(model.userText ?? "").trim();
+      if (mode === "send" && resolvePanel(model.tab) === "polish") {
+        return userText.length > 0;
+      }
       const guidanceText = String(model.guidanceText ?? "").trim();
       if (!guidanceText) return false;
-      const mode = resolveMode(model.mode);
       if (mode === "revise") {
         return String(model.assistantText ?? "").trim().length > 0;
       }
-      return String(model.userText ?? "").trim().length > 0;
+      return userText.length > 0;
     },
     onSubmit: (hostApi, model) => {
       void runGuidanceSubmit(hostApi, model);

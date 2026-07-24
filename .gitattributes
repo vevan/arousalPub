@@ -1,4 +1,5 @@
-# 本仓库统一 LF（与 .editorconfig 一致）。Windows 请对本仓库设 core.autocrlf=false，见 DOC/05。
+# 本仓库统一 LF（与 .editorconfig 一致）。Windows 全局 autocrlf=true 时由
+# ensure-deps / npm run check:git-eol 自动设本地 core.autocrlf=false（见 DOC/05）。
 
 # 默认：文本按 LF 检出/入库
 * text=auto eol=lf

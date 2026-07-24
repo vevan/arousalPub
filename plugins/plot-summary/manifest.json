@@ -114,6 +114,17 @@
         "default": "vector"
       },
       {
+        "key": "summaryGroupPlacement",
+        "type": "enum",
+        "labelKey": "summaryGroupPlacementLabel",
+        "descriptionKey": "summaryGroupPlacementDesc",
+        "enum": [
+          "first",
+          "last"
+        ],
+        "default": "last"
+      },
+      {
         "key": "systemPromptTemplate",
         "type": "text",
         "labelKey": "systemPromptTemplateLabel",
@@ -269,6 +280,19 @@
           "auto-turn-suffix"
         ],
         "default": "auto-turn-suffix"
+      },
+      {
+        "key": "summaryGroupPlacement",
+        "type": "enum",
+        "labelKey": "summaryGroupPlacementLabel",
+        "descriptionKey": "summaryGroupPlacementDesc",
+        "enum": [
+          "first",
+          "last"
+        ],
+        "default": "last",
+        "conversationInherit": true,
+        "inheritFromGlobalKey": "summaryGroupPlacement"
       }
     ]
   }

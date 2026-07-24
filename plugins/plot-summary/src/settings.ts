@@ -1,3 +1,4 @@
+import { parseSummaryGroupPlacement } from './shared/summary-group-placement.js'
 import { asBool, asInt, asString } from './shared/utils.js'
 import type { MergedSettings, PluginHost, SidecarConfig, SummarizeTask } from './types.js'
 
@@ -181,6 +182,10 @@ export async function loadMergedSettings(host: PluginHost): Promise<MergedSettin
   const entrySortModeRaw = asString(conv.entrySortMode)
   const entrySortMode: 'manual' | 'auto-turn-suffix' =
     entrySortModeRaw === 'manual' ? 'manual' : 'auto-turn-suffix'
+  // 会话 conversationInherit 同步值优先，否则全局；非法/缺省 → last
+  const summaryGroupPlacement = parseSummaryGroupPlacement(
+    conv.summaryGroupPlacement ?? global.summaryGroupPlacement,
+  )
   const targetLorebookId = asString(conv.targetLorebookId)
   const convMode = asString(conv.targetLorebookMode)
   const globalMode = asString(global.targetLorebookMode)
@@ -216,6 +221,7 @@ export async function loadMergedSettings(host: PluginHost): Promise<MergedSettin
     bufferTurns,
     previousSummariesLimit,
     entrySortMode,
+    summaryGroupPlacement,
     defaultEntryTriggerMode,
     systemPromptTemplate:
       asString(global.systemPromptTemplate) || resolveDefaultSystemPrompt(host),

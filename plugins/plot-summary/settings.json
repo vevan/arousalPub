@@ -6,6 +6,7 @@
   "bufferTurns": 5,
   "previousSummariesLimit": 8,
   "defaultEntryTriggerMode": "vector",
+  "summaryGroupPlacement": "last",
   "sidecarEnabled": false,
   "sidecars": "[]",
   "systemPromptTemplate": ""

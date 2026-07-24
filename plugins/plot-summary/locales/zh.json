@@ -331,6 +331,14 @@
 
   "defaultEntryTriggerModeVector": "向量触发",
 
+  "summaryGroupPlacementLabel": "新建纪要落组",
+
+  "summaryGroupPlacementDesc": "新建剧情纪要（MEMO）写入目标资料库的首个或末个分组（按分组顺序）。单组时两者等价。不影响 Sidecar，也不改动已有条目。",
+
+  "summaryGroupPlacementFirst": "最前分组",
+
+  "summaryGroupPlacementLast": "最后分组",
+
   "sidecarEnabledLabel": "启用 Sidecar",
 
   "sidecarEnabledDesc": "自动摘要时串行更新 Sidecar 条目（固定条目覆盖写，非每块新建）。",

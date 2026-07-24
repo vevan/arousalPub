@@ -7,12 +7,12 @@
 
 - **剧情纪要**：每块 N 轮 → 模型 `{ title, content, keywords }` → lore **新条目**；标题格式 **`[MEMO-n]-TITLE-[from-to]`**（`formatEntryTitle`，`plugins/plot-summary/src/shared/summarize.ts`）。
 - **Sidecar**：固定条目，每次 **覆盖** content。
-- **写入**：插件写 `targetLorebookId`；**注入**靠用户勾选对话 `lorebookIds`（插件不改绑定）。
+- **写入**：插件写 `targetLorebookId`；新建 **MEMO** 落组由全局 **`summaryGroupPlacement`**（`first` | `last`，默认 **`last`**；会话 `conversationInherit`）决定；**Sidecar** 仍走宿主默认组。**注入**靠用户勾选对话 `lorebookIds`（插件不改绑定）。
 - 与 **turn 向量 memory**（§14）互补。
 
 ## 2. 配置
 
-**全局** `settings.json`：`blockTurns`（设置页 `triggerEveryNTurns`）、`bufferTurns`、`systemPromptTemplate`、`sidecars`、`targetLorebookMode`（manual|auto）、`autoLorebookNameTemplate`、`previousSummariesLimit`、`regexRuleIds`、`regexApplyAllTurns` 等。
+**全局** `settings.json`：`blockTurns`（设置页 `triggerEveryNTurns`）、`bufferTurns`、`systemPromptTemplate`、`sidecars`、`targetLorebookMode`（manual|auto）、`autoLorebookNameTemplate`、`previousSummariesLimit`、`summaryGroupPlacement`（`first`|`last`，默认 `last`）、`regexRuleIds`、`regexApplyAllTurns` 等。
 
 **会话** `pluginSettings.plot-summary`：
 
@@ -23,6 +23,7 @@
 | `lastMemoIndex` | 已摘要至 **MEMO-n**（手动/自动**共用**；缺省尚未；下次 = N+1；**不**从 lore 自动推断；与 sidecar 无关） |
 | `targetLorebookId` | 写入目标书 |
 | `blockTurns` / `bufferTurns` | 可覆盖全局 |
+| `summaryGroupPlacement` | 继承全局：新建 MEMO 写入目标书首/末分组；**不**影响已有条目与 Sidecar |
 | `manualSummarizeTasks` / `autoSidecarIds` | 任务勾选 |
 | `regexRuleIds` | 摘要前 outgoing 规则 id 列表 |
 | `regexApplyAllTurns` | 为 true 时摘要区间**忽略**规则 `skipLastNTurns` |

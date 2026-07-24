@@ -8,6 +8,7 @@ import {
 } from './review.js'
 import { applyPlotSummaryEntrySort } from './shared/entry-sort.js'
 import { flushPendingLorebookCreates, type PendingLorebookCreate } from './batch-write.js'
+import { resolveSummaryTargetGroupId } from './shared/summary-group-placement.js'
 import { entryKeys, writeSidecarEntry } from './sidecar.js'
 import { k, loadMergedSettings, nextMemoIndexFromLast } from './settings.js'
 import { notifyOutcome, notifySummarizeTask } from './notify-outcome.js'
@@ -117,6 +118,21 @@ export async function runSummarizeTasks(
     }
     settings.sidecarEntryIds = sidecarEntryIds
 
+    let memoryGroupId: string | undefined
+    try {
+      const lb = await host.lorebook.get(settings.targetLorebookId)
+      const groups = (Array.isArray(lb.groups) ? lb.groups : []).map((g) => ({
+        id: String(g.id),
+        order: typeof g.order === 'number' ? g.order : 0,
+      }))
+      memoryGroupId = resolveSummaryTargetGroupId(
+        groups,
+        settings.summaryGroupPlacement,
+      )
+    } catch {
+      memoryGroupId = undefined
+    }
+
     const prepared = await preparePlotSummarySummarizeContext(
       host,
       settings,
@@ -197,6 +213,7 @@ export async function runSummarizeTasks(
               keys: entryKeys(reviewed.keywords),
               triggerMode: settings.defaultEntryTriggerMode,
               priority: 100,
+              ...(memoryGroupId ? { groupId: memoryGroupId } : {}),
             },
           })
           const usedMemo = parseMemoIndex(reviewed.title)

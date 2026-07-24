@@ -10,7 +10,6 @@
 
 - [ ] **ST 聊天记录群聊多 bot 导入** — 当前 ST JSONL 导入全部 segment 绑定 `characterIds[0]`；需按 ST `name` 与会话 `characterIds`/`displayNames` 映射各 bot 为 speaker（单 bot 行为不变）。见 `[DOC/37](37-st-import-settings-tab.md)`
 - [ ] 调研插件设置的导出和导入
-- [ ] 调研summary适配lorebook分组
 - [ ] 角色卡扩展规划：json格式以xml结构插入提示词，宿主提供接口，插件可改申请字段。
 - [ ] 群聊浮动头像组，快捷静音
 
@@ -78,6 +77,7 @@
 - [x] **导入 Markdown（**`.md`**）**（2026-07-17）：资产库批量上传识别 `kind=document` · RAG 抽取保守剥离闭合 YAML/TOML front matter（原文落盘不变）— 见 `[DOC/46](46-document-rag.md)` §4
 - [x] **指导发送 · 润色**（2026-07-23）：美化用户输入 · `transcript.tail` 固定轮历史 · `polishHistoryTurns` / `polishSystemPrefix` — 见 `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1
 - [x] **指导润色 · 原文/润色后分离**（2026-07-24）：`userText` + `polishedText` + `polishSource`；润色不覆盖原文；发送仅出站润色后 — 见 `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1
+- [x] **Historian · 新建 MEMO 落组**（2026-07-24）：`summaryGroupPlacement` `first`|`last`（默认 `last`，会话继承全局）— 见 `[DOC/12](12-plugin-plot-summary.md)` §1–§2
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
 
@@ -111,5 +111,6 @@
 | **RAG 参数面板 + 备份示例脚本**（知识库 Settings/`ConversationContextSettings` 文档对齐 · `scripts/ops/backup.example.`*）                    | 2026-07-23             | `[DOC/03](03-实现细节.md)` §8.7 · §9.6 · `[DOC/46](46-document-rag.md)` · `data/README.md` · `scripts/ops/`                                                                                   |
 | **指导发送 · 润色**（美化用户输入 · `transcript.tail` · `polishHistoryTurns`）                                                           | 2026-07-23             | `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1 · `plugins/guidance-generate`                                                                                                  |
 | **指导润色 · 原文/润色后分离**（`polishedText` · `polishSource` · 按钮门控）                                                                  | 2026-07-24             | `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1 · `plugins/guidance-generate`                                                                                                  |
+| **Historian · 新建 MEMO 落组**（`summaryGroupPlacement` first|last）                                                                      | 2026-07-24             | `[DOC/12](12-plugin-plot-summary.md)` · `plugins/plot-summary`                                                                                                                            |
 
 

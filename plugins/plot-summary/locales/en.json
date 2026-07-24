@@ -325,6 +325,14 @@
 
   "defaultEntryTriggerModeVector": "Semantic (vector) trigger",
 
+  "summaryGroupPlacementLabel": "New summary group placement",
+
+  "summaryGroupPlacementDesc": "Place new plot MEMO entries in the first or last group of the target lorebook (by group order). Equivalent when there is only one group. Does not affect Sidecars or existing entries.",
+
+  "summaryGroupPlacementFirst": "First group",
+
+  "summaryGroupPlacementLast": "Last group",
+
   "sidecarEnabledLabel": "Enable Sidecar",
 
   "sidecarEnabledDesc": "Auto runs patch fixed Sidecar entries after each plot block (overwrite, not append).",

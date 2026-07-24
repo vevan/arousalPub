@@ -1,3 +1,15 @@
+// plugins/plot-summary/src/shared/summary-group-placement.ts
+function parseSummaryGroupPlacement(raw) {
+  return raw === "first" ? "first" : "last";
+}
+function resolveSummaryTargetGroupId(groups, placement) {
+  if (!groups.length) return void 0;
+  const sorted = groups.slice().sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+  const g = placement === "first" ? sorted[0] : sorted[sorted.length - 1];
+  const id = typeof g?.id === "string" ? g.id.trim() : "";
+  return id || void 0;
+}
+
 // plugins/plot-summary/src/shared/utils.ts
 function asString(v) {
   return typeof v === "string" ? v.trim() : "";
@@ -151,6 +163,9 @@ async function loadMergedSettings(host) {
   const previousSummariesLimit = asInt(global.previousSummariesLimit, 8, 50);
   const entrySortModeRaw = asString(conv.entrySortMode);
   const entrySortMode = entrySortModeRaw === "manual" ? "manual" : "auto-turn-suffix";
+  const summaryGroupPlacement = parseSummaryGroupPlacement(
+    conv.summaryGroupPlacement ?? global.summaryGroupPlacement
+  );
   const targetLorebookId = asString(conv.targetLorebookId);
   const convMode = asString(conv.targetLorebookMode);
   const globalMode = asString(global.targetLorebookMode);
@@ -172,6 +187,7 @@ async function loadMergedSettings(host) {
     bufferTurns,
     previousSummariesLimit,
     entrySortMode,
+    summaryGroupPlacement,
     defaultEntryTriggerMode,
     systemPromptTemplate: asString(global.systemPromptTemplate) || resolveDefaultSystemPrompt(host),
     autoSummarizeEnabled: conv.autoSummarizeEnabled === true,
@@ -1434,6 +1450,20 @@ async function runSummarizeTasks(host, opts) {
       });
     }
     settings.sidecarEntryIds = sidecarEntryIds;
+    let memoryGroupId;
+    try {
+      const lb = await host.lorebook.get(settings.targetLorebookId);
+      const groups = (Array.isArray(lb.groups) ? lb.groups : []).map((g) => ({
+        id: String(g.id),
+        order: typeof g.order === "number" ? g.order : 0
+      }));
+      memoryGroupId = resolveSummaryTargetGroupId(
+        groups,
+        settings.summaryGroupPlacement
+      );
+    } catch {
+      memoryGroupId = void 0;
+    }
     const prepared = await preparePlotSummarySummarizeContext(
       host,
       settings,
@@ -1508,7 +1538,8 @@ async function runSummarizeTasks(host, opts) {
               content: reviewed.content,
               keys: entryKeys(reviewed.keywords),
               triggerMode: settings.defaultEntryTriggerMode,
-              priority: 100
+              priority: 100,
+              ...memoryGroupId ? { groupId: memoryGroupId } : {}
             }
           });
           const usedMemo = parseMemoIndex(reviewed.title);

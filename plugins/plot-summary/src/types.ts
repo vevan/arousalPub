@@ -180,6 +180,8 @@ export interface MergedSettings {
   bufferTurns: number
   previousSummariesLimit: number
   entrySortMode: 'manual' | 'auto-turn-suffix'
+  /** 新建 MEMO 写入目标书的首/末分组（仅 memory；默认 last） */
+  summaryGroupPlacement: 'first' | 'last'
   defaultEntryTriggerMode: string
   systemPromptTemplate: string
   autoSummarizeEnabled: boolean

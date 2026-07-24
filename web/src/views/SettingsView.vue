@@ -606,12 +606,21 @@ onMounted(() => {
     }"
   >
     <div class="settings-page-inner">
-      <h1
+      <header
         v-if="!embedded"
-        class="text-h6 font-weight-medium mb-4"
+        class="settings-page-header mb-4"
       >
-        {{ $t('settings.pageTitle') }}
-      </h1>
+        <h1 class="settings-page-header__title text-h6 font-weight-medium">
+          {{ $t('settings.pageTitle') }}
+        </h1>
+        <div
+          class="settings-page-header__sep"
+          aria-hidden="true"
+        />
+        <p class="settings-page-header__intro text-body-2 text-medium-emphasis mb-0">
+          {{ $t('settings.intro') }}
+        </p>
+      </header>
 
       <div class="settings-layout">
         <nav
@@ -637,10 +646,6 @@ onMounted(() => {
         </nav>
 
         <div class="settings-panel">
-          <p class="text-body-2 text-medium-emphasis settings-panel-intro">
-            {{ $t('settings.intro') }}
-          </p>
-
           <section
             v-show="activeTab === 'system'"
             class="settings-section"
@@ -1656,6 +1661,32 @@ onMounted(() => {
   width: 100%;
 }
 
+.settings-page-header {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  min-width: 0;
+}
+
+.settings-page-header__title {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.settings-page-header__sep {
+  flex-shrink: 0;
+  align-self: stretch;
+  width: 0.0625rem;
+  min-height: 1.75rem;
+  background: rgba(var(--v-theme-on-surface), 0.14);
+}
+
+.settings-page-header__intro {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.4;
+}
+
 .settings-page--embedded {
   max-width: none;
   margin-inline: 0;
@@ -1713,10 +1744,6 @@ onMounted(() => {
   min-height: 0;
   overflow-y: auto;
   padding: 1rem 1.25rem 1.25rem;
-}
-
-.settings-panel-intro {
-  margin-bottom: 1.25rem;
 }
 
 .settings-page--embedded .settings-section {

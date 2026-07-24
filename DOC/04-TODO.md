@@ -4,12 +4,16 @@
 
 ## P0
 
-（无）
+- [ ] **插件设置导出 / 导入**（调研 ✅ · **定案** 2026-07-24 · 待实现）  
+  - **范围**：仅**全局** `settings.json` + registry **`enabled`**；**无**会话 `pluginSettings`；不含 `secrets/` / `assets/` / `order`。  
+  - **API（后端专用）**：`GET/POST /api/plugins/:pluginId/settings/export|import`（路径以实现为准）；包体 envelope（`format` + `pluginId` + `enabled` + `settings`）；导入走 schema 校验后写盘并改启用态。  
+  - **导入语义（默认）**：settings **整表替换**（非浅合并）；缺字段由 schema 默认补齐（与现有 write 路径一致）。若需改合并策略另议。  
+  - **UI**：单插件设置对话框（`PluginSettingsPanel`）**标题栏右侧**放「导入 / 导出」按钮（与标题同行，关闭/保存仍在底部）；成功后刷新 manage 列表 + settings cache。  
+  - 详录：[`.tmp/plugin-settings-import-export-research.md`](../.tmp/plugin-settings-import-export-research.md) · `DOC/09` · `DOC/18`
 
 ## P1
 
 - [ ] **ST 聊天记录群聊多 bot 导入** — 当前 ST JSONL 导入全部 segment 绑定 `characterIds[0]`；需按 ST `name` 与会话 `characterIds`/`displayNames` 映射各 bot 为 speaker（单 bot 行为不变）。见 `[DOC/37](37-st-import-settings-tab.md)`
-- [ ] 调研插件设置的导出和导入
 - [ ] 角色卡扩展规划：json格式以xml结构插入提示词，宿主提供接口，插件可改申请字段。
 
 ## P2

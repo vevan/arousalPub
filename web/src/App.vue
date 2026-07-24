@@ -830,16 +830,28 @@ onUnmounted(() => {
       @keydown.esc="settingsDialogOpen = false"
     >
       <v-card rounded="lg" class="settings-dialog-card">
-        <v-card-title class="d-flex align-center py-3 flex-wrap">
-          <span class="text-h6 font-weight-medium">{{ $t('settings.pageTitle') }}</span>
-          <v-spacer />
-          <v-btn
-            icon="mdi-close"
-            variant="text"
-            density="comfortable"
-            :aria-label="$t('settings.closeModal')"
-            @click="settingsDialogOpen = false"
-          />
+        <v-card-title class="settings-dialog-title py-3">
+          <div class="settings-dialog-title__row">
+            <span class="settings-dialog-title__main text-h6 font-weight-medium">
+              {{ $t('settings.pageTitle') }}
+            </span>
+            <div
+              class="settings-dialog-title__sep"
+              aria-hidden="true"
+            />
+            <p class="settings-dialog-title__intro text-body-2 text-medium-emphasis mb-0 min-w-0">
+              {{ $t('settings.intro') }}
+            </p>
+            <v-spacer />
+            <v-btn
+              icon="mdi-close"
+              variant="text"
+              density="comfortable"
+              class="flex-shrink-0"
+              :aria-label="$t('settings.closeModal')"
+              @click="settingsDialogOpen = false"
+            />
+          </div>
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-3 pa-sm-4 settings-dialog-body">
@@ -944,6 +956,36 @@ onUnmounted(() => {
   min-height: 0;
   height: 100%;
   max-height: 100%;
+}
+
+.settings-dialog-title {
+  flex-shrink: 0;
+}
+
+.settings-dialog-title__row {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.settings-dialog-title__main {
+  flex-shrink: 0;
+}
+
+.settings-dialog-title__sep {
+  flex-shrink: 0;
+  align-self: stretch;
+  width: 0.0625rem;
+  min-height: 2.25rem;
+  background: rgba(var(--v-theme-on-surface), 0.14);
+}
+
+.settings-dialog-title__intro {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.4;
 }
 
 .settings-dialog-body {

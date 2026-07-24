@@ -2,8 +2,11 @@
 import PluginSchemaForm from '@/components/settings/PluginSchemaForm.vue'
 import type { PluginManageEntry } from '@/plugins/plugin-settings-types'
 import {
+  downloadPluginSettingsExport,
+  exportPluginSettings,
   fetchPluginSettings,
   fetchPluginsManage,
+  importPluginSettings,
   savePluginRegistry,
   savePluginSettings,
 } from '@/utils/plugin-settings-api'
@@ -14,6 +17,7 @@ import {
 import { resolvePluginDisplayName } from '@/utils/plugin-locale-text'
 import { mergePluginLocales } from '@/plugins/merge-plugin-locales'
 import { notifyPluginUserSettingsSaved } from '@/utils/plugin-user-settings-events'
+import { translateApiError } from '@/utils/api-error-message'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -41,9 +45,87 @@ const settingsSaving = ref(false)
 const settingsError = ref('')
 const footerValidationError = ref('')
 const settingsFormRef = ref<InstanceType<typeof PluginSchemaForm> | null>(null)
+const settingsPortBusy = ref(false)
+const importFileInputRef = ref<HTMLInputElement | null>(null)
 
 function onFooterValidationError(message: string | null) {
   footerValidationError.value = message ?? ''
+}
+
+function portabilityErrorMessage(code: string): string {
+  return translateApiError(code) || t('settings.plugins.importFailed')
+}
+
+async function onExportSettings() {
+  const plugin = settingsPlugin.value
+  if (!plugin || settingsPortBusy.value) return
+  settingsPortBusy.value = true
+  settingsError.value = ''
+  try {
+    const envelope = await exportPluginSettings(plugin.id)
+    downloadPluginSettingsExport(envelope)
+  } catch (e) {
+    const code = e instanceof Error ? e.message : ''
+    settingsError.value = code
+      ? portabilityErrorMessage(code)
+      : t('settings.plugins.exportFailed')
+  } finally {
+    settingsPortBusy.value = false
+  }
+}
+
+function onImportSettingsClick() {
+  if (settingsPortBusy.value) return
+  importFileInputRef.value?.click()
+}
+
+async function onImportFileChange(ev: Event) {
+  const plugin = settingsPlugin.value
+  const input = ev.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!plugin || !file) return
+  const importPluginId = plugin.id
+  settingsPortBusy.value = true
+  settingsError.value = ''
+  try {
+    const text = await file.text()
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(text) as unknown
+    } catch {
+      if (settingsPlugin.value?.id === importPluginId) {
+        settingsError.value = t('settings.plugins.importInvalidFile')
+      }
+      return
+    }
+    const result = await importPluginSettings(importPluginId, parsed)
+    const row = plugins.value.find((p) => p.id === importPluginId)
+    if (row) row.enabled = result.enabled
+    notifyPluginUserSettingsSaved(importPluginId, result.settings)
+    // 对话框已切到其它插件或已关闭：磁盘已写入，勿污染当前表单
+    if (settingsPlugin.value?.id !== importPluginId || !settingsOpen.value) {
+      return
+    }
+    settingsModel.value = result.settings
+    hydratePluginSettingsDefaults(
+      settingsModel.value,
+      settingsPlugin.value.settingsSchema,
+      importPluginId,
+      t,
+      te,
+    )
+    footerValidationError.value = ''
+    settingsPlugin.value.enabled = result.enabled
+  } catch (e) {
+    if (settingsPlugin.value?.id !== importPluginId) return
+    const code = e instanceof Error ? e.message : ''
+    settingsError.value = code
+      ? portabilityErrorMessage(code)
+      : t('settings.plugins.importFailed')
+  } finally {
+    settingsPortBusy.value = false
+  }
 }
 
 async function load() {
@@ -83,9 +165,14 @@ async function persistRegistry() {
 }
 
 function onToggleEnabled(plugin: PluginManageEntry, enabled: boolean | null) {
-  if (enabled === null) return
+  if (enabled === null || settingsPortBusy.value) return
   plugin.enabled = enabled
   void persistRegistry()
+}
+
+function requestCloseSettings() {
+  if (settingsSaving.value || settingsPortBusy.value) return
+  closeSettings()
 }
 
 function onDragStart(index: number) {
@@ -137,7 +224,7 @@ function closeSettings() {
 
 async function submitSettings() {
   const plugin = settingsPlugin.value
-  if (!plugin) return
+  if (!plugin || settingsPortBusy.value) return
   settingsFormRef.value?.commitAllTextDrafts()
   const sampleError =
     settingsFormRef.value?.validateAllJsonSampleStateFields() ?? null
@@ -246,6 +333,7 @@ onMounted(() => {
               color="primary"
               density="compact"
               hide-details
+              :disabled="settingsPortBusy || saving"
               :aria-label="$t('settings.plugins.enabledAria', { name: pluginDisplayName(plugin.id, plugin.name) })"
               @update:model-value="onToggleEnabled(plugin, $event)"
             />
@@ -283,11 +371,46 @@ onMounted(() => {
       v-model="settingsOpen"
       :max-width="settingsDialogMaxWidth"
       scrollable
-      @click:outside="closeSettings"
+      :persistent="settingsPortBusy || settingsSaving"
+      @click:outside="requestCloseSettings"
     >
       <v-card v-if="settingsPlugin">
-        <v-card-title class="text-h6">
-          {{ pluginDisplayName(settingsPlugin.id, settingsPlugin.name) }}
+        <v-card-title class="plugin-settings-dialog__title py-3">
+          <div class="plugin-settings-dialog__title-row">
+            <span class="text-h6 font-weight-medium text-truncate min-w-0">
+              {{ pluginDisplayName(settingsPlugin.id, settingsPlugin.name) }}
+            </span>
+            <v-spacer />
+            <div class="plugin-settings-dialog__port-actions">
+              <v-btn
+                variant="text"
+                size="small"
+                class="text-none"
+                :loading="settingsPortBusy"
+                :disabled="settingsSaving"
+                @click="onImportSettingsClick"
+              >
+                {{ $t('settings.plugins.importSettings') }}
+              </v-btn>
+              <v-btn
+                variant="text"
+                size="small"
+                class="text-none"
+                :loading="settingsPortBusy"
+                :disabled="settingsSaving"
+                @click="onExportSettings"
+              >
+                {{ $t('settings.plugins.exportSettings') }}
+              </v-btn>
+            </div>
+          </div>
+          <input
+            ref="importFileInputRef"
+            type="file"
+            accept="application/json,.json"
+            class="plugin-settings-dialog__file-input"
+            @change="onImportFileChange"
+          />
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-4">
@@ -321,8 +444,8 @@ onMounted(() => {
             variant="tonal"
             size="small"
             class="text-none"
-            :disabled="settingsSaving"
-            @click="closeSettings"
+            :disabled="settingsSaving || settingsPortBusy"
+            @click="requestCloseSettings"
           >
             {{ $t('settings.themeCancel') }}
           </v-btn>
@@ -330,6 +453,7 @@ onMounted(() => {
             color="primary"
             variant="flat"
             :loading="settingsSaving"
+            :disabled="settingsPortBusy"
             @click="submitSettings"
           >
             {{ $t('settings.plugins.saveSettings') }}
@@ -372,6 +496,25 @@ onMounted(() => {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem 1rem;
+}
+
+.plugin-settings-dialog__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.plugin-settings-dialog__port-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 0.25rem;
+}
+
+.plugin-settings-dialog__file-input {
+  display: none;
 }
 
 .plugin-settings-dialog__validation-error {

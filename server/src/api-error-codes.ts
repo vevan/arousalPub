@@ -247,6 +247,8 @@ export const ApiErrorCodes = {
   target_lorebook_required: 'target_lorebook_required',
   lorebook_id_required: 'lorebook_id_required',
   plugin_settings_invalid: 'plugin_settings_invalid',
+  plugin_settings_import_invalid: 'plugin_settings_import_invalid',
+  plugin_settings_plugin_mismatch: 'plugin_settings_plugin_mismatch',
   lorebook_entry_not_found: 'lorebook_entry_not_found',
   lorebook_entry_create_failed: 'lorebook_entry_create_failed',
   lorebook_entry_patch_failed: 'lorebook_entry_patch_failed',

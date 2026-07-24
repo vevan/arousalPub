@@ -240,7 +240,13 @@ import {
   readPluginLocaleFile,
   savePluginRegistry,
   writePluginUserSettings,
+  invalidatePluginLoaderCache,
 } from './plugin-system/loader.js'
+import {
+  exportPluginUserSettingsPortable,
+  importPluginUserSettingsPortable,
+  PluginSettingsPortabilityError,
+} from './plugin-system/settings-portability.js'
 import {
   readPluginBundledAsset,
   readPluginUserAsset,
@@ -4361,6 +4367,69 @@ app.put<{ Params: { pluginId: string }; Body: Record<string, unknown> }>(
         return reply.status(400).send({ error: ApiErrorCodes.plugin_settings_invalid })
       }
       return reply.status(404).send({ error: 'not_found' })
+    }
+  },
+)
+
+app.get<{ Params: { pluginId: string } }>(
+  '/api/plugins/:pluginId/settings/export',
+  async (request, reply) => {
+    try {
+      return await exportPluginUserSettingsPortable(request.params.pluginId)
+    } catch (e) {
+      if (e instanceof PluginSettingsPortabilityError) {
+        if (e.code === 'plugin_not_found') {
+          return reply.status(404).send({ error: ApiErrorCodes.plugin_not_found })
+        }
+        if (e.code === 'invalid_plugin_id') {
+          return reply.status(400).send({ error: ApiErrorCodes.invalid_plugin_id })
+        }
+        return reply.status(400).send({ error: e.code })
+      }
+      throw e
+    }
+  },
+)
+
+app.post<{ Params: { pluginId: string }; Body: unknown }>(
+  '/api/plugins/:pluginId/settings/import',
+  async (request, reply) => {
+    try {
+      const result = await importPluginUserSettingsPortable(
+        request.params.pluginId,
+        request.body ?? {},
+      )
+      invalidatePluginLoaderCache()
+      return result
+    } catch (e) {
+      if (e instanceof PluginSettingsPortabilityError) {
+        if (e.code === 'plugin_not_found') {
+          return reply.status(404).send({ error: ApiErrorCodes.plugin_not_found })
+        }
+        if (e.code === 'invalid_plugin_id') {
+          return reply.status(400).send({ error: ApiErrorCodes.invalid_plugin_id })
+        }
+        if (e.code === 'plugin_settings_plugin_mismatch') {
+          return reply
+            .status(400)
+            .send({ error: ApiErrorCodes.plugin_settings_plugin_mismatch })
+        }
+        return reply
+          .status(400)
+          .send({ error: ApiErrorCodes.plugin_settings_import_invalid })
+      }
+      if (
+        e &&
+        typeof e === 'object' &&
+        'code' in e &&
+        (e as { code: string }).code === 'plugin_settings_invalid'
+      ) {
+        return reply.status(400).send({ error: ApiErrorCodes.plugin_settings_invalid })
+      }
+      if (e instanceof Error && e.message === 'plugin_not_found') {
+        return reply.status(404).send({ error: ApiErrorCodes.plugin_not_found })
+      }
+      throw e
     }
   },
 )

@@ -52,6 +52,79 @@ export async function savePluginSettings(
   return data.settings ?? {}
 }
 
+export type PluginSettingsExportEnvelope = {
+  format: string
+  pluginId: string
+  pluginVersion?: string
+  exportedAt: string
+  enabled: boolean
+  settings: Record<string, unknown>
+}
+
+export async function exportPluginSettings(
+  pluginId: string,
+): Promise<PluginSettingsExportEnvelope> {
+  const res = await apiFetch(
+    `/api/plugins/${encodeURIComponent(pluginId)}/settings/export`,
+  )
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(
+      typeof (data as { error?: string }).error === 'string'
+        ? (data as { error: string }).error
+        : `plugin_settings_export_${res.status}`,
+    )
+  }
+  return (await res.json()) as PluginSettingsExportEnvelope
+}
+
+export async function importPluginSettings(
+  pluginId: string,
+  envelope: unknown,
+): Promise<{ settings: Record<string, unknown>; enabled: boolean }> {
+  const res = await apiFetch(
+    `/api/plugins/${encodeURIComponent(pluginId)}/settings/import`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(envelope),
+    },
+  )
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(
+      typeof (data as { error?: string }).error === 'string'
+        ? (data as { error: string }).error
+        : `plugin_settings_import_${res.status}`,
+    )
+  }
+  const body = data as {
+    settings?: Record<string, unknown>
+    enabled?: boolean
+  }
+  if (typeof body.enabled !== 'boolean') {
+    throw new Error('plugin_settings_import_invalid')
+  }
+  return {
+    settings: body.settings ?? {},
+    enabled: body.enabled,
+  }
+}
+
+export function downloadPluginSettingsExport(
+  envelope: PluginSettingsExportEnvelope,
+): void {
+  const blob = new Blob([`${JSON.stringify(envelope, null, 2)}\n`], {
+    type: 'application/json',
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${envelope.pluginId}-settings.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export function pluginI18nKey(pluginId: string, key: string): string {
   return `plugins.${pluginId}.${key}`
 }

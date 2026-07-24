@@ -1,6 +1,6 @@
 # 插件系统 — 设计与实现
 
-> **状态**：**已实现**（动态加载、`settingsSchema` 设置页、两个内置插件）。  
+> **状态**：**已实现**（动态加载、`settingsSchema` 设置页、内置插件、全局 settings 导出/导入）。  
 > **关联**：`DOC/01` §7、`DOC/03` §1.4、`DOC/03` §6.8 `turn.plugins[]`；`plugins/README.md`。
 
 ---
@@ -109,11 +109,31 @@ data/
 | GET | `/api/plugins/manage` | 设置页完整列表 + `settingsSchema` |
 | PUT | `/api/plugins/registry` | 保存 `{ plugins: [{ id, enabled, order }] }` |
 | GET/PUT | `/api/plugins/:id/settings` | 读写合并后的 settings |
+| GET | `/api/plugins/:id/settings/export` | 导出全局 settings + registry `enabled`（见下） |
+| POST | `/api/plugins/:id/settings/import` | 导入 envelope：schema 校验后整表写入 settings，并写 `enabled`（不改 `order`；无会话级） |
 | GET | `/api/plugins/:id/dist/web.mjs` | 动态加载 Web 模块（需 JWT） |
 | GET | `/api/plugins/:id/locales/:locale.json` | 插件 i18n |
 | GET | `/api/plugins/:id/assets/:name` | 全局 bundled 资源 |
 | GET | `/api/plugins/:id/user-assets/:name` | 用户上传资源（支持 `?access_token=`） |
 | POST | `/api/plugins/:id/user-assets` | multipart 上传（`file` + 可选 `fieldKey`） |
+
+**settings 可移植性（`arousal-plugin-settings-v1`）**
+
+- **范围**：仅全局 `data/plugins/<id>/<userId>/settings.json` + `plugin-registry.json` 的 **`enabled`**；不含会话 `pluginSettings`、`secrets/`、`assets/`、`order`。
+- **UI**：设置 → 插件 → 单插件对话框标题栏右侧「导入 / 导出」。
+- **导入语义**：与 `PUT …/settings` 相同——`validatePluginSettingsStrict` 后整文件覆盖（缺键补 schema 默认；schema 外键丢弃）。目标机须已有该插件 registry 条目，否则 `plugin_not_found`。
+- **envelope**：
+
+```json
+{
+  "format": "arousal-plugin-settings-v1",
+  "pluginId": "<id>",
+  "pluginVersion": "<manifest.version>",
+  "exportedAt": "<ISO8601>",
+  "enabled": true,
+  "settings": { }
+}
+```
 
 发消息扩展（指导生成等）：
 

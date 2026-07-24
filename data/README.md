@@ -70,7 +70,7 @@ data/
 
 - **轮次 state**：`chats/.../turn-*.json` 的 **`turn.plugins[]`**。
 - **插件代码**：`data/plugins/<pluginId>/`（全局）。
-- **插件配置**：`data/plugins/<pluginId>/{userId}/settings.json`；上传文件在 **`.../{userId}/assets/`**。
+- **插件配置**：`data/plugins/<pluginId>/{userId}/settings.json`；上传文件在 **`.../{userId}/assets/`**。全局 settings + registry `enabled` 可经设置页「导入 / 导出」迁出（`DOC/09` §4）；不含会话覆盖与 secrets。
 - 详见 **`DOC/09-plugin-system-and-guidance-generate.md`**。
 
 ## 备份

@@ -4,12 +4,7 @@
 
 ## P0
 
-- [ ] **插件设置导出 / 导入**（调研 ✅ · **定案** 2026-07-24 · 待实现）  
-  - **范围**：仅**全局** `settings.json` + registry **`enabled`**；**无**会话 `pluginSettings`；不含 `secrets/` / `assets/` / `order`。  
-  - **API（后端专用）**：`GET/POST /api/plugins/:pluginId/settings/export|import`（路径以实现为准）；包体 envelope（`format` + `pluginId` + `enabled` + `settings`）；导入走 schema 校验后写盘并改启用态。  
-  - **导入语义（默认）**：settings **整表替换**（非浅合并）；缺字段由 schema 默认补齐（与现有 write 路径一致）。若需改合并策略另议。  
-  - **UI**：单插件设置对话框（`PluginSettingsPanel`）**标题栏右侧**放「导入 / 导出」按钮（与标题同行，关闭/保存仍在底部）；成功后刷新 manage 列表 + settings cache。  
-  - 详录：[`.tmp/plugin-settings-import-export-research.md`](../.tmp/plugin-settings-import-export-research.md) · `DOC/09` · `DOC/18`
+- [ ] lorebook和prompt下拉默认宽度
 
 ## P1
 
@@ -82,6 +77,7 @@
 - [x] **指导润色 · 原文/润色后分离**（2026-07-24）：`userText` + `polishedText` + `polishSource`；润色不覆盖原文；发送仅出站润色后 — 见 `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1
 - [x] **Historian · 新建 MEMO 落组**（2026-07-24）：`summaryGroupPlacement` `first`|`last`（默认 `last`，会话继承全局）— 见 `[DOC/12](12-plugin-plot-summary.md)` §1–§2
 - [x] **群聊浮动头像组**（2026-07-24）：锚定 `chat-header`；Mic 角标只读；展开静音 + Chat Bubble（一次 `/@` 一人）— 见 `[DOC/35](35-group-chat.md)` §2.8
+- [x] **插件设置导出 / 导入**（2026-07-24）：全局 settings + `enabled`；`GET/POST …/settings/export|import`；标题栏导入/导出 — 见 `[DOC/09](09-plugin-system-and-guidance-generate.md)` §4
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
 
@@ -114,8 +110,9 @@
 | **掷骰去掉死参数** `eligibleIds`（资格由 `resolveDiceSkipReason` · 审计仍含全员）                                                            | 2026-07-22             | `group-chat/pick.ts` · `resolve.ts`                                                                                                                                                       |
 | **RAG 参数面板 + 备份示例脚本**（知识库 Settings/`ConversationContextSettings` 文档对齐 · `scripts/ops/backup.example.`*）                    | 2026-07-23             | `[DOC/03](03-实现细节.md)` §8.7 · §9.6 · `[DOC/46](46-document-rag.md)` · `data/README.md` · `scripts/ops/`                                                                                   |
 | **指导发送 · 润色**（美化用户输入 · `transcript.tail` · `polishHistoryTurns`）                                                           | 2026-07-23             | `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1 · `plugins/guidance-generate`                                                                                                  |
-| **指导润色 · 原文/润色后分离**（`polishedText` · `polishSource` · 按钮门控）                                                                  | 2026-07-24             | `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1 · `plugins/guidance-generate`                                                                                                  |
-| **Historian · 新建 MEMO 落组**（`summaryGroupPlacement` first|last）                                                                      | 2026-07-24             | `[DOC/12](12-plugin-plot-summary.md)` · `plugins/plot-summary`                                                                                                                            |
-| **群聊浮动头像组**（header 锚点 · Mic 只读 · 一次 `/@` 一人）                                                                                 | 2026-07-24             | `[DOC/35](35-group-chat.md)` §2.8 · `ChatComposerGroupRoster`                                                                                                                            |
+| **指导润色 · 原文/润色后分离**（`polishedText` · `polishSource` · 按钮门控）                                                                | 2026-07-24             | `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1 · `plugins/guidance-generate`                                                                                                  |
+| **Historian · 新建 MEMO 落组**（`summaryGroupPlacement` first                                                                   | last）                  | 2026-07-24                                                                                                                                                                                |
+| **群聊浮动头像组**（header 锚点 · Mic 只读 · 一次 `/@` 一人）                                                                               | 2026-07-24             | `[DOC/35](35-group-chat.md)` §2.8 · `ChatComposerGroupRoster`                                                                                                                             |
+| **插件设置导出 / 导入**（全局 settings + `enabled` · 专用 API · 标题栏按钮）                                                                  | 2026-07-24             | `[DOC/09](09-plugin-system-and-guidance-generate.md)` §4 · `settings-portability.ts` · `PluginSettingsPanel`                                                                              |
 
 

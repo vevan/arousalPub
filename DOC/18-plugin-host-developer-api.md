@@ -470,6 +470,8 @@ const data = await host.plugin.runAction('my-action', {
 | GET | `/api/plugins/manage` | 登录即可 |
 | PUT | `/api/plugins/registry` | 登录即可 |
 | GET/PUT | `/api/plugins/:id/settings` | 登录即可 |
+| GET | `/api/plugins/:id/settings/export` | 登录即可（全局 settings + `enabled` envelope） |
+| POST | `/api/plugins/:id/settings/import` | 登录即可（整表替换 settings + 写 `enabled`；见 `DOC/09` §4） |
 | GET | `/api/plugins/:id/dist/:file` | 登录即可 |
 | GET | `/api/plugins/:id/locales/:locale` | 登录即可 |
 | GET | `/api/plugins/:id/assets/:name` | 登录即可 |
@@ -666,3 +668,4 @@ class PluginHostApiError {
 | 2026-07-07 | §10 通知中心改为 **localStorage**（`DOC/40`）；权限：`lorebook.read` 仅 lore 块时要求 |
 | 2026-07-23 | **零字节特化**：`registerSettingsCompanionPanel`；FormDialog `extraAction*` + `titleKeys`/`submitKeys` Record；`completeWithContext` draft opaque；integer `min`/`max` |
 | 2026-07-23 | companion：设置 dialog teleport → 聊天页 prop 下传 `pluginHost` + `ensurePluginById`；draft 宿主硬校验仅 `content: string` |
+| 2026-07-24 | 全局插件 settings 导出/导入：`GET/POST …/settings/export|import`（`DOC/09` §4） |

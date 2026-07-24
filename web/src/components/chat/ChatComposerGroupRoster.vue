@@ -38,7 +38,7 @@ const ownerUserId = computed(
 )
 
 const members = computed(() =>
-  props.characterIds.map((id, i) => {
+  props.characterIds.map((id) => {
     const name =
       characterNameById(id, props.characterIds, props.characterDisplayNames) ||
       id
@@ -92,7 +92,7 @@ watch(
   },
 )
 
-function onAt(id: string, name: string) {
+function onAt(name: string) {
   const next = setAtSlashDisplayName(
     props.userInput,
     name,
@@ -237,7 +237,7 @@ async function onToggleMute(id: string) {
           variant="tonal"
           density="comfortable"
           :aria-label="t('chat.groupChat.roster.atAction', { name: m.name })"
-          @click.stop="onAt(m.id, m.name)"
+          @click.stop="onAt(m.name)"
         >
           <v-icon
             icon="mdi-chat"

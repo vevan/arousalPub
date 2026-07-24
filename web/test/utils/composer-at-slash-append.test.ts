@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { setAtSlashDisplayName } from '../utils/composer-at-slash-append.ts'
+import { setAtSlashDisplayName } from '../../src/utils/composer-at-slash-append.js'
 
 describe('setAtSlashDisplayName', () => {
   it('prepends /@ when absent', () => {

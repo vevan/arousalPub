@@ -296,6 +296,7 @@ decay.enabled=false → P_k = 1
 
 - 按 `characterIds` 顺序竖直排列成员头像（立绘 `characterImageUrl`；可用 `members[].color` 描边）；行间距 **1rem**。
 - 头像角标：**Mic / Mic Off**（`mdi-microphone` / `mdi-microphone-off`）仅表示 **是否静音**。
+- **已静音**头像加 **`grayscale` 滤镜**（可读状态，与角标一致）。
 - **角标只读、无点击**；不单独作为 mute 控件。
 
 **展开态**：

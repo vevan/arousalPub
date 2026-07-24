@@ -158,7 +158,10 @@ async function onToggleMute(id: string) {
       v-for="m in members"
       :key="m.id"
       class="composer-group-roster__row"
-      :class="{ 'composer-group-roster__row--expanded': isExpanded(m.id) }"
+      :class="{
+        'composer-group-roster__row--expanded': isExpanded(m.id),
+        'composer-group-roster__row--muted': m.muted,
+      }"
       @mouseenter="onRowEnter(m.id)"
       @mouseleave="onRowLeave(m.id)"
     >
@@ -293,6 +296,11 @@ async function onToggleMute(id: string) {
   display: block;
 }
 
+.composer-group-roster__row--muted .composer-group-roster__avatar {
+  filter: grayscale(1);
+  opacity: 0.72;
+}
+
 .composer-group-roster__avatar--fallback {
   display: inline-flex;
   align-items: center;
@@ -300,6 +308,11 @@ async function onToggleMute(id: string) {
   font-size: 0.75rem;
   font-weight: 600;
   color: rgba(var(--v-theme-on-surface), 0.7);
+}
+
+.composer-group-roster__row--muted .composer-group-roster__avatar--fallback {
+  filter: grayscale(1);
+  opacity: 0.72;
 }
 
 .composer-group-roster__mic-badge {

@@ -236,7 +236,7 @@ export async function runContextRecallTest(
   const effectiveLore = resolveLorebookSettings(globalLore, idx.lorebookSettings)
   const scanCorpus = buildScanText(
     query,
-    memoryPipeline.memoryText,
+    memoryPipeline.memoryScanText,
     memoryPipeline.recentHistoryScanText,
   )
   const parts = await resolveLorebookInjectionParts(lorebookIds, {

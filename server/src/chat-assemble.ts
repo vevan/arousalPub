@@ -648,7 +648,7 @@ export async function buildConversationOutboundMessages(
   const effectiveLore = resolveLorebookSettings(globalLore, idx.lorebookSettings)
   const scanCorpus = buildScanText(
     userInput,
-    memoryPipeline.memoryText,
+    memoryPipeline.memoryScanText,
     memoryPipeline.recentHistoryScanText,
   )
   const lorebooks =

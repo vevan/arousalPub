@@ -3,38 +3,17 @@ import { getTurnUserText } from './chat-storage.js'
 import { createEmbedding } from './embedding-client.js'
 import type { MemorySettings } from './memory-settings.js'
 import { collectPluginMemoryStripTags } from './memory-plugin-strip-tags.js'
+import {
+  RAW_MEMORY_CORPUS_OPTIONS,
+  stripMemoryCorpusText,
+  type MemoryCorpusOptions,
+} from './memory-corpus-strip.js'
 import { assistantTextFromTurn } from './turn-memory-xml.js'
 
-export interface MemoryCorpusOptions {
-  stripPluginBlocks: boolean
-  stripBlockTags: string[]
-}
-
-/** 测试 / 无剥离语料判定 */
-export const RAW_MEMORY_CORPUS_OPTIONS: MemoryCorpusOptions = {
-  stripPluginBlocks: false,
-  stripBlockTags: [],
-}
-
-function escapeRegExpTag(tag: string): string {
-  return tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-export function stripMemoryCorpusText(
-  text: string,
-  opts: MemoryCorpusOptions,
-): string {
-  let s = text
-  if (opts.stripPluginBlocks) {
-    for (const tag of opts.stripBlockTags) {
-      const esc = escapeRegExpTag(tag)
-      s = s.replace(
-        new RegExp(`<${esc}>\\s*[\\s\\S]*?\\s*<\\/${esc}>`, 'gi'),
-        '',
-      )
-    }
-  }
-  return s.trim()
+export {
+  RAW_MEMORY_CORPUS_OPTIONS,
+  stripMemoryCorpusText,
+  type MemoryCorpusOptions,
 }
 
 export async function resolveMemoryCorpusOptions(

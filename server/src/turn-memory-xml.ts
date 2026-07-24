@@ -5,6 +5,10 @@ import {
   type AssistantSegmentRecord,
 } from './group-chat-turn.js'
 import {
+  stripMemoryCorpusText,
+  type MemoryCorpusOptions,
+} from './memory-corpus-strip.js'
+import {
   escapeXmlAttribute,
   prepareXmlElementText,
 } from './prompt-xml.js'
@@ -162,12 +166,35 @@ export function turnsToHistoryMessages(
   return out
 }
 
-/** 资料库关键字扫描语料（与 XML history 块正文等价，不含标签）。 */
-export function turnsToHistoryScanPlainText(turns: TurnRecord[]): string {
+/** 资料库 / 知识库扫描语料（与 XML history 块正文等价，不含标签）。 */
+export function turnsToHistoryScanPlainText(
+  turns: TurnRecord[],
+  corpusOptions?: MemoryCorpusOptions,
+): string {
   return turns
-    .map((t) => turnEmbeddingCorpus(t))
+    .map((t) => {
+      const raw = turnEmbeddingCorpus(t)
+      return corpusOptions ? stripMemoryCorpusText(raw, corpusOptions) : raw
+    })
     .filter((s) => s.length > 0)
     .join('\n\n')
+}
+
+/**
+ * 召回 memory 轮次的扫描纯文本（剥插件块；不用于 prompt 注入 XML）。
+ */
+export function memoryItemsToScanPlainText(
+  items: { turn: TurnRecord }[],
+  corpusOptions?: MemoryCorpusOptions,
+): string {
+  if (!items.length) return ''
+  const sorted = items
+    .slice()
+    .sort((a, b) => a.turn.turnOrdinal - b.turn.turnOrdinal)
+  return turnsToHistoryScanPlainText(
+    sorted.map((x) => x.turn),
+    corpusOptions,
+  )
 }
 
 export function formatMemoryXml(

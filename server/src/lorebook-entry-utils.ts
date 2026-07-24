@@ -3,6 +3,7 @@ import type {
   LorebookEntryPosition,
   LorebookTriggerMode,
 } from './lorebook-types.js'
+import { lorebookEntryKeysCorpusAppendix } from './lorebook-vector-key-rerank.js'
 
 /** 读盘兼容：无 triggerMode 时由 constant 推断 */
 export function resolveEntryTriggerMode(
@@ -27,12 +28,18 @@ export function normalizeEntryPosition(
   return undefined
 }
 
-/** 向量索引语料：标题 + 正文 */
+/**
+ * 向量 / FTS 索引语料：标题 + 正文 + keys 低权重附录。
+ * keys 仅在已有 title/content 时追加一行 `Keywords: …`；改语料后须重建该资料库索引。
+ */
 export function lorebookEntryEmbeddingCorpus(e: LorebookEntry): string {
   const title = e.title.trim()
   const content = e.content.trim()
-  if (title && content) return `${title}\n\n${content}`
-  return title || content
+  const base = title && content ? `${title}\n\n${content}` : title || content
+  if (!base) return ''
+  const keysPart = lorebookEntryKeysCorpusAppendix(e.keys ?? [])
+  if (!keysPart) return base
+  return `${base}\n\n${keysPart}`
 }
 
 export function entryNeedsKeywordWarning(e: LorebookEntry): boolean {

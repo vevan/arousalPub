@@ -16,6 +16,7 @@ import {
 import {
   assistantTextFromTurn,
   formatMemoryXml,
+  memoryItemsToScanPlainText,
   turnsToHistoryMessages,
   turnsToHistoryScanPlainText,
 } from './turn-memory-xml.js'
@@ -52,12 +53,14 @@ export interface MemoryPipelineResult {
   recentHistoryMessages: { role: 'user' | 'assistant'; content: string }[]
   /** 近期 history 对应 turnOrdinal（审计用） */
   recentHistoryTurnOrdinals: number[]
-  /** 供 lore 扫描，非注入 XML */
+  /** 供 lore / 知识库扫描（已按 memory 剥离设置去噪；非注入 XML） */
   recentHistoryScanText: string
   /** 向量召回项（裁切前全量；§14.4 统一预算循环在 assemble 侧处理） */
   memoryItems: { turn: TurnRecord; score: number }[]
-  /** 由 memoryItems 格式化的 XML，供 lore scanCorpus */
+  /** 由 memoryItems 格式化的 XML，供 prompt 注入 */
   memoryText: string
+  /** 召回 memory 的扫描纯文本（剥离插件块；供 lore/knowledge scan） */
+  memoryScanText: string
   memoryTurnIds: string[]
   memoryHits: MemorySearchHit[]
   embeddingCall?: MemoryEmbeddingCallAudit
@@ -161,7 +164,6 @@ export async function runMemoryPipeline(
     defaultSpeakerCharacterId: input.defaultSpeakerCharacterId,
     partialTurn: input.historyPartialTurn,
   })
-  const recentHistoryScanText = turnsToHistoryScanPlainText(recentTurns)
   const recentTurnIds = new Set(recentTurns.map((t) => t.turnId))
 
   let memoryItems: { turn: TurnRecord; score: number }[] = []
@@ -169,10 +171,12 @@ export async function runMemoryPipeline(
 
   const userText = input.userText.trim()
   let embeddingCall: MemoryEmbeddingCallAudit | undefined
+  const corpusOptions = await resolveMemoryCorpusOptions(input.memorySettings)
+  const recentHistoryScanText = turnsToHistoryScanPlainText(
+    recentTurns,
+    corpusOptions,
+  )
   if (input.memorySettings.memoryEnabled && userText.length > 0) {
-    const corpusOptions = await resolveMemoryCorpusOptions(
-      input.memorySettings,
-    )
     const lastAssistant = lastAssistantBeforeExclusive(
       pipelineTurns,
       input.historyBeforeTurnOrdinalExclusive,
@@ -210,6 +214,7 @@ export async function runMemoryPipeline(
   }
 
   const memoryText = formatMemoryXml(memoryItems)
+  const memoryScanText = memoryItemsToScanPlainText(memoryItems, corpusOptions)
   const memoryTurnIds = memoryItems.map((x) => x.turn.turnId)
 
   return {
@@ -219,6 +224,7 @@ export async function runMemoryPipeline(
     recentHistoryScanText,
     memoryItems,
     memoryText,
+    memoryScanText,
     memoryTurnIds,
     memoryHits,
     ...(embeddingCall ? { embeddingCall } : {}),

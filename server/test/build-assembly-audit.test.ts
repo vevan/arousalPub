@@ -7,6 +7,7 @@ import type { MemoryPipelineResult } from '../src/memory-pipeline.js'
 describe('buildAssemblyAudit', () => {
   it('marks trimmed memory and lore as not included', () => {
     const memoryPipeline = {
+      recentTurns: [],
       recentHistoryMessages: [],
       recentHistoryTurnOrdinals: [1, 2],
       recentHistoryScanText: '',
@@ -24,6 +25,7 @@ describe('buildAssemblyAudit', () => {
         },
       ],
       memoryText: '',
+      memoryScanText: '',
       memoryTurnIds: ['a1'],
       memoryHits: [{ turnId: 'a1', turnOrdinal: 3, branchPath: '', chunkFileName: 'c.json', score: 0.9 }],
     } satisfies MemoryPipelineResult
@@ -119,11 +121,13 @@ describe('buildAssemblyAudit', () => {
       initialKnowledgeItems: [],
       droppedKnowledgeCount: 0,
       memoryPipeline: {
+        recentTurns: [],
         recentHistoryMessages: [],
         recentHistoryTurnOrdinals: [],
         recentHistoryScanText: '',
         memoryItems: [],
         memoryText: '',
+        memoryScanText: '',
         memoryTurnIds: [],
         memoryHits: [],
       },

@@ -1,6 +1,10 @@
 import { readLorebooksByIds } from './lorebook-file.js'
 import type { Lorebook, LorebookEntry } from './lorebook-types.js'
 import { resolveEntryTriggerMode } from './lorebook-entry-utils.js'
+import {
+  applyVectorKeyScoreBoost,
+  vectorRerankCandidateLimit,
+} from './lorebook-vector-key-rerank.js'
 import { createEmbedding } from './embedding-client.js'
 import { searchLorebookEntryVectors } from './lorebook-vector-store.js'
 import {
@@ -211,6 +215,8 @@ async function collectVectorMatches(
     scoreKind: 'rrf' | 'vector_fallback'
   }
   const ranked: Ranked[] = []
+  const candidateLimit = vectorRerankCandidateLimit(topK)
+  const scanLower = queryText.toLowerCase()
 
   for (const lid of lorebookIds) {
     const lb = byId.get(lid)
@@ -219,7 +225,7 @@ async function collectVectorMatches(
       lid,
       emb.vector,
       queryText,
-      topK,
+      candidateLimit,
       seenEntryIds,
     )
     const entryById = new Map(lb.entries.map((e) => [e.id, e]))
@@ -231,7 +237,7 @@ async function collectVectorMatches(
       ranked.push({
         lorebookId: lid,
         entry: e,
-        score: hit.score,
+        score: applyVectorKeyScoreBoost(hit.score, e.keys ?? [], scanLower),
         scoreKind: hit.scoreKind,
       })
     }

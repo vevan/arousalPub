@@ -157,12 +157,23 @@
   cursor: pointer;
   transition: border-color 0.15s;
   overflow: hidden;
+  text-align: start;
 }
 .preset-bar__current-name {
+  width: 12rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  flex-shrink: 0;
+  text-align: start;
+  justify-content: flex-start;
+}
+.preset-bar__current-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .preset-bar__caret {
   flex-shrink: 0;

@@ -592,7 +592,17 @@ async function confirmImportLorebook() {
                 v-bind="act"
                 :disabled="loading"
               >
-                <span class="preset-bar__current-name">{{ activeLorebook.name }}</span>
+                <v-tooltip
+                  location="top start"
+                  :text="activeLorebook.name"
+                >
+                  <template #activator="{ props: tipProps }">
+                    <span
+                      v-bind="tipProps"
+                      class="preset-bar__current-name"
+                    >{{ activeLorebook.name }}</span>
+                  </template>
+                </v-tooltip>
                 <v-icon size="14" class="preset-bar__caret">mdi-chevron-down</v-icon>
               </button>
             </template>

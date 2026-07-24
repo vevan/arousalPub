@@ -4,7 +4,7 @@
 
 ## P0
 
-- [ ] lorebook和prompt下拉默认宽度
+（无）
 
 ## P1
 
@@ -78,6 +78,7 @@
 - [x] **Historian · 新建 MEMO 落组**（2026-07-24）：`summaryGroupPlacement` `first`|`last`（默认 `last`，会话继承全局）— 见 `[DOC/12](12-plugin-plot-summary.md)` §1–§2
 - [x] **群聊浮动头像组**（2026-07-24）：锚定 `chat-header`；Mic 角标只读；展开静音 + Chat Bubble（一次 `/@` 一人）— 见 `[DOC/35](35-group-chat.md)` §2.8
 - [x] **插件设置导出 / 导入**（2026-07-24）：全局 settings + `enabled`；`GET/POST …/settings/export|import`；标题栏导入/导出 — 见 `[DOC/09](09-plugin-system-and-guidance-generate.md)` §4
+- [x] **lorebook / prompt 当前名宽度**（2026-07-24）：`.preset-bar__current-name` 12rem + tooltip 完整名
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
 

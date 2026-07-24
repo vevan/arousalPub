@@ -1187,18 +1187,29 @@ const canDeleteGroup = (g: PromptGroup) =>
                 v-bind="act"
                 :aria-label="$t('prompts.presetSwitch')"
               >
-                <span class="preset-bar__current-name d-inline-flex align-center ga-1">
-                  <v-icon
-                    v-if="isEditingPresetDefault"
-                    size="14"
-                    color="primary"
-                    :title="$t('prompts.defaultPresetMark')"
-                    :aria-label="$t('prompts.defaultPresetMark')"
-                  >
-                    mdi-heart
-                  </v-icon>
-                  <span>{{ activePreset.name }}</span>
-                </span>
+                <v-tooltip
+                  location="top start"
+                  :text="activePreset.name"
+                >
+                  <template #activator="{ props: tipProps }">
+                    <span
+                      v-bind="tipProps"
+                      class="preset-bar__current-name d-inline-flex align-center ga-1"
+                    >
+                      <v-icon
+                        v-if="isEditingPresetDefault"
+                        size="14"
+                        color="primary"
+                        class="flex-shrink-0"
+                        :title="$t('prompts.defaultPresetMark')"
+                        :aria-label="$t('prompts.defaultPresetMark')"
+                      >
+                        mdi-heart
+                      </v-icon>
+                      <span class="preset-bar__current-name-text">{{ activePreset.name }}</span>
+                    </span>
+                  </template>
+                </v-tooltip>
                 <v-icon size="14" class="preset-bar__caret">mdi-chevron-down</v-icon>
               </button>
             </template>

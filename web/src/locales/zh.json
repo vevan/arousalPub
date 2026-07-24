@@ -1436,6 +1436,15 @@
         "weight": "权重",
         "muted": "静音",
         "saveFailed": "保存群聊设置失败"
+      },
+      "roster": {
+        "aria": "群聊成员快捷栏",
+        "muted": "已静音",
+        "unmuted": "未静音",
+        "muteAction": "静音",
+        "unmuteAction": "取消静音",
+        "atAction": "写入 /{'@'} {name}",
+        "muteFailed": "更新静音失败"
       }
     }
   },

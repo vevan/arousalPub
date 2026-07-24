@@ -39,6 +39,7 @@ defineExpose({
   reloadTurns: () => session.loadMessages(),
   /** 供对话页设置对话框（v-dialog teleport）下传 companion，不依赖 inject 树 */
   pluginHost,
+  session,
 })
 
 const { chatFontSizeRem } = storeToRefs(usePreferencesStore())

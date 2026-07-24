@@ -3,6 +3,7 @@ import ConversationContextSettings from '@/components/ConversationContextSetting
 import ChatBranchPanel from '@/components/chat/ChatBranchPanel.vue'
 import ChatBranchLabelDialog from '@/components/chat/ChatBranchLabelDialog.vue'
 import ChatGroupChatDialog from '@/components/chat/ChatGroupChatDialog.vue'
+import ChatComposerGroupRoster from '@/components/chat/ChatComposerGroupRoster.vue'
 import HomeChat from '@/components/HomeChat.vue'
 import {
   CHAT_CONVERSATION_ACTIONS_KEY,
@@ -836,6 +837,31 @@ function onGroupChatSettingsSaved(payload: {
   }
 }
 
+function onGroupChatRosterSaved(groupChat: GroupChatSettings): void {
+  convBindings.value = {
+    ...convBindings.value,
+    groupChat,
+    groupChatEnabled: groupChat.enabled === true,
+  }
+}
+
+const showGroupRoster = computed(
+  () =>
+    convBindings.value.groupChatEnabled &&
+    convBindings.value.characterIds.length > 0,
+)
+
+const rosterUserInput = computed({
+  get: () => {
+    const s = homeChatRef.value?.session as { userInput?: string } | undefined
+    return typeof s?.userInput === 'string' ? s.userInput : ''
+  },
+  set: (value: string) => {
+    const s = homeChatRef.value?.session as { userInput?: string } | undefined
+    if (s) s.userInput = value
+  },
+})
+
 /** 已开启群聊但成员缺色时写回一次，保证气泡/边框能着色 */
 async function persistMissingMemberColorsIfNeeded(
   conversationId: string,
@@ -1265,7 +1291,10 @@ watch(
       </v-btn>
     </div>
     <template v-else>
-      <header class="chat-header">
+      <header
+        class="chat-header"
+        :class="{ 'chat-header--roster-anchor': showGroupRoster }"
+      >
         <v-btn
           icon="mdi-arrow-left"
           variant="text"
@@ -1426,6 +1455,16 @@ watch(
           />
         </div>
       </header>
+      <ChatComposerGroupRoster
+        v-if="showGroupRoster"
+        :conversation-id="conversationId"
+        :character-ids="convBindings.characterIds"
+        :character-display-names="convBindings.characterNames"
+        :group-chat="convBindings.groupChat"
+        :user-input="rosterUserInput"
+        @update:user-input="rosterUserInput = $event"
+        @group-chat-saved="onGroupChatRosterSaved"
+      />
       <HomeChat
         ref="homeChatRef"
         :conversation-id="conversationId"
@@ -1662,6 +1701,10 @@ watch(
   padding: 0.875rem 0.25rem 0.75rem;
   border-bottom: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.06);
   min-width: 0;
+}
+
+.chat-header--roster-anchor {
+  anchor-name: --chat-header-roster-anchor;
 }
 
 .chat-header__back {

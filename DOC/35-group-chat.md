@@ -117,7 +117,7 @@ AssistantSegment {
 | `false` | char1 或 `/@` | 通常 1；`/@` 可指定他人 |
 | `true` | 见 §3（**不再默认 char1**） | 多 segment + 额度 / confirm |
 
-**UI**：对话顶栏 `chat-header` 群聊图标 → 开关、`speakerMode`、`autoContinue` / `confirmContinue`、`maxSegmentsPerTurn`、**群聊提示词**（全模式）、**接续提示词**（仅 `next@`）、衰减与额度、**成员列表**（角色立绘头像、`characterImageUrl` size `s`、displayName、**颜色 picker**〔`members[].color`〕、权重〔`dice`/`next@`〕、静音、上下排序〔`sequential`〕改 `characterIds`）。群聊开启时聊天区按 `speakerCharacterId` 给助手头像边框与气泡上色（见 `DOC/03` 群聊 UI）。
+**UI**：对话顶栏 `chat-header` 群聊图标 → 开关、`speakerMode`、`autoContinue` / `confirmContinue`、`maxSegmentsPerTurn`、**群聊提示词**（全模式）、**接续提示词**（仅 `next@`）、衰减与额度、**成员列表**（角色立绘头像、`characterImageUrl` size `s`、displayName、**颜色 picker**〔`members[].color`〕、权重〔`dice`/`next@`〕、静音、上下排序〔`sequential`〕改 `characterIds`）。群聊开启时聊天区按 `speakerCharacterId` 给助手头像边框与气泡上色（见 `DOC/03` 群聊 UI）。**对话页快捷成员条**见 §2.8（锚定 `chat-header` 的浮动头像组；与顶栏设置弹窗互补）。
 
 **流式首段 speaker**：组装（含掷骰）结束后服务端立刻开 SSE（HTTP **仍为 2xx**），经响应头 `X-Speaker-Character-Id` 与首包 `data: {"arousal":{"speakerCharacterId":"…"}}` 下发当选 bot；前端 `patchPendingSpeakerCharacterId` 更新 pending 气泡。**不以客户端复算掷骰**；无 `/@` 时 pending 初始可为空，群聊未知 speaker 不回退 `characterIds[0]`。
 
@@ -279,6 +279,34 @@ decay.enabled=false → P_k = 1
 - queue 空时：在 **eligible**（§2.6）内按 **`characterIds` 顺序**取第一个。  
 - **不掷骰**、**不读 hint** 选人。  
 - 首段同样走顺序（**不用 char1 硬编码**；eligible 第一个即列表序第一个未 mute、有额度的 bot）。
+
+### 2.8 对话页浮动成员头像组（快捷静音与 `/@` · 定案 2026-07-24）
+
+> **状态**：定案已落地（2026-07-24）。与 §2.2 顶栏群聊设置弹窗**互补**（完整配置仍进弹窗）。
+
+**显隐**：仅当本会话 **`groupChat.enabled === true`** 且绑定 bot ≥ 1 时展示。
+
+**定位（非侧栏）**：
+
+- **浮动**叠在对话页上，**不**占 `chat_pane` grid 列、**不**做成推开消息区的 rail。
+- 使用 **CSS Anchor Positioning**，锚定对话页 **`chat-header`**（`anchor-name: --chat-header-roster-anchor`）。
+- 落点：`right: calc(anchor(right) - 3em)`；`top: calc(anchor(end) + 3em)`。窄屏（≤600px）：`right: calc(anchor(right) - 30em)`。
+
+**默认态（收起）**：
+
+- 按 `characterIds` 顺序竖直排列成员头像（立绘 `characterImageUrl`；可用 `members[].color` 描边）；行间距 **1rem**。
+- 头像角标：**Mic / Mic Off**（`mdi-microphone` / `mdi-microphone-off`）仅表示 **是否静音**。
+- **角标只读、无点击**；不单独作为 mute 控件。
+
+**展开态**：
+
+- **桌面**：指针移入该成员头像（或行）后展开动作按钮。
+- **触屏**：无稳定 hover → **点按头像 toggle 展开**（勿依赖纯 `:hover`）。
+- 展开后提供（动作按钮间距 **0.5rem**）：
+  1. **静音切换**（可写控件；与角标状态同步）→ PATCH 会话 `groupChat.members[id].muted`（与设置弹窗同源字段）。
+  2. **Chat Bubble**（`mdi-chat`）→ 向 composer **写入** `/@ <displayName>`（**一次仅一人**：替换已有 `/@` 行上的名字，不叠多名）。仍走现有 Slash / `submitComposer`；**禁止**恢复正文裸 `@` 选人。
+
+**非目标**：改 SpeakerResolver、改 mute 服务端语义、在顶栏塞头像条、占宽侧栏。
 
 ---
 
@@ -459,6 +487,6 @@ charN        → 可选；characterIds[N-1]（Phase 2+）
 ## 9. 交叉引用
 
 - 存储 / API：`DOC/03` §6.8
-- 里程碑归档：`DOC/04` **§已归档**（群聊 G0–G5 · Composer Slash S0–S4）
+- 里程碑归档：`DOC/04` **§已归档**（群聊 G0–G5 · Composer Slash S0–S4 · 浮动成员条 §2.8）
 - 宏对照：`DOC/26`
 - Slash 宿主：[`DOC/36`](36-composer-slash.md)（**已归档**）

@@ -11,7 +11,6 @@
 - [ ] **ST 聊天记录群聊多 bot 导入** — 当前 ST JSONL 导入全部 segment 绑定 `characterIds[0]`；需按 ST `name` 与会话 `characterIds`/`displayNames` 映射各 bot 为 speaker（单 bot 行为不变）。见 `[DOC/37](37-st-import-settings-tab.md)`
 - [ ] 调研插件设置的导出和导入
 - [ ] 角色卡扩展规划：json格式以xml结构插入提示词，宿主提供接口，插件可改申请字段。
-- [ ] 群聊浮动头像组，快捷静音
 
 ## P2
 
@@ -78,6 +77,7 @@
 - [x] **指导发送 · 润色**（2026-07-23）：美化用户输入 · `transcript.tail` 固定轮历史 · `polishHistoryTurns` / `polishSystemPrefix` — 见 `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1
 - [x] **指导润色 · 原文/润色后分离**（2026-07-24）：`userText` + `polishedText` + `polishSource`；润色不覆盖原文；发送仅出站润色后 — 见 `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1
 - [x] **Historian · 新建 MEMO 落组**（2026-07-24）：`summaryGroupPlacement` `first`|`last`（默认 `last`，会话继承全局）— 见 `[DOC/12](12-plugin-plot-summary.md)` §1–§2
+- [x] **群聊浮动头像组**（2026-07-24）：锚定 `chat-header`；Mic 角标只读；展开静音 + Chat Bubble（一次 `/@` 一人）— 见 `[DOC/35](35-group-chat.md)` §2.8
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
 
@@ -112,5 +112,6 @@
 | **指导发送 · 润色**（美化用户输入 · `transcript.tail` · `polishHistoryTurns`）                                                           | 2026-07-23             | `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1 · `plugins/guidance-generate`                                                                                                  |
 | **指导润色 · 原文/润色后分离**（`polishedText` · `polishSource` · 按钮门控）                                                                  | 2026-07-24             | `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1 · `plugins/guidance-generate`                                                                                                  |
 | **Historian · 新建 MEMO 落组**（`summaryGroupPlacement` first|last）                                                                      | 2026-07-24             | `[DOC/12](12-plugin-plot-summary.md)` · `plugins/plot-summary`                                                                                                                            |
+| **群聊浮动头像组**（header 锚点 · Mic 只读 · 一次 `/@` 一人）                                                                                 | 2026-07-24             | `[DOC/35](35-group-chat.md)` §2.8 · `ChatComposerGroupRoster`                                                                                                                            |
 
 

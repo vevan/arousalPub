@@ -1436,6 +1436,15 @@
         "weight": "Weight",
         "muted": "Muted",
         "saveFailed": "Could not save group chat settings"
+      },
+      "roster": {
+        "aria": "Group chat member shortcuts",
+        "muted": "Muted",
+        "unmuted": "Not muted",
+        "muteAction": "Mute",
+        "unmuteAction": "Unmute",
+        "atAction": "Insert /{'@'} {name}",
+        "muteFailed": "Could not update mute"
       }
     }
   },

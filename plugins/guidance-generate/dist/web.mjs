@@ -77,8 +77,12 @@ async function runGuidanceSubmit(hostApi, model) {
   const mode = resolveMode(model.mode);
   const userText = String(model.userText ?? "").trim();
   if (mode === "send" && resolvePanel(model.tab) === "polish") {
-    if (!userText) return;
-    const err2 = await hostApi.chat.send(userText);
+    const polishedText = String(model.polishedText ?? "").trim();
+    const polishSource = String(model.polishSource ?? "");
+    if (!polishedText || String(model.userText ?? "") !== polishSource) {
+      return;
+    }
+    const err2 = await hostApi.chat.send(polishedText);
     if (err2) notifyGuidanceFailed(hostApi, err2);
     return;
   }
@@ -152,7 +156,8 @@ async function runGuidancePolish(hostApi, model) {
       notifyPolishFailed(hostApi);
       return;
     }
-    model.userText = polished;
+    model.polishedText = polished;
+    model.polishSource = String(model.userText ?? "");
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     notifyPolishFailed(hostApi, detail);
@@ -169,6 +174,8 @@ function register(host) {
         mode: "send",
         tab: "generate",
         userText: host.composer.userInput,
+        polishedText: "",
+        polishSource: "",
         guidanceText: "",
         assistantText: "",
         listIndex: null
@@ -237,7 +244,10 @@ function register(host) {
       {
         key: "userText",
         labelKey: k(host, "userLabel"),
-        visibleWhen: { field: "mode", equals: "send" }
+        visibleWhen: [
+          { field: "mode", equals: "send" },
+          { field: "tab", equals: "generate" }
+        ]
       },
       {
         key: "guidanceText",
@@ -245,6 +255,23 @@ function register(host) {
         visibleWhen: [
           { field: "mode", equals: "send" },
           { field: "tab", equals: "generate" }
+        ]
+      },
+      {
+        key: "userText",
+        labelKey: k(host, "userTextPolishOriginalLabel"),
+        hintKey: k(host, "polishOriginalHint"),
+        visibleWhen: [
+          { field: "mode", equals: "send" },
+          { field: "tab", equals: "polish" }
+        ]
+      },
+      {
+        key: "polishedText",
+        labelKey: k(host, "polishedTextLabel"),
+        visibleWhen: [
+          { field: "mode", equals: "send" },
+          { field: "tab", equals: "polish" }
         ]
       },
       {
@@ -287,7 +314,8 @@ function register(host) {
       const mode = resolveMode(model.mode);
       const userText = String(model.userText ?? "").trim();
       if (mode === "send" && resolvePanel(model.tab) === "polish") {
-        return userText.length > 0;
+        const polishedText = String(model.polishedText ?? "").trim();
+        return polishedText.length > 0 && String(model.userText ?? "") === String(model.polishSource ?? "");
       }
       const guidanceText = String(model.guidanceText ?? "").trim();
       if (!guidanceText) return false;

@@ -4,7 +4,7 @@
 
 ## P0
 
-- [ ] 为指导润色分离原文和润色后的内容，润色和发送按钮根据条件禁用
+（无）
 
 ## P1
 
@@ -21,8 +21,6 @@
 
 > ST 导入 Tab / 世界书 / 聊天记录 / M3 回归已关闭，见下方 **§文档**（2026-06～07 · `[DOC/37](37-st-import-settings-tab.md)`）。
 
-
-
 ## P3
 
 - [ ] **移动端兼容性修复（iOS）** — `DOC/33` §6（iOS 软键盘空白 · 2026-06-25 友测 · 2026-07 降 P3）：~~窄屏 grid/rail overlay~~（已落地）。**待做**：
@@ -36,8 +34,6 @@
 - [ ] **沙箱 Phase C（可选）** — 包内自维护 API（`[DOC/38](38-plugin-sandbox-and-host-evolution.md)` A3 · 已归档延后项）
 - [ ] **CI 宿主门禁（可选）** — GitHub Actions 接 `check:host-no-plugin-ids` · `verify-host-build-without-bundled`（`[DOC/42](42-host-generic-audit-checklist.md)`）
 - [ ] **NC-F2 通知中心 Server → Web 推送（可选）** — 延后；无对应 Server 推送场景（`[DOC/40](40-notification-center.md)` §Phase 2）
-
-
 
 ## 文档
 
@@ -81,8 +77,7 @@
 - [x] **独立文档 RAG M4**（2026-07-17）：知识库集合 · 切片 · Lance `doc_chunks` · `boundKnowledge` · 预算槽 `knowledge` · UI — 见 `[DOC/46](46-document-rag.md)` · `DOC/03` §17.7
 - [x] **导入 Markdown（**`.md`**）**（2026-07-17）：资产库批量上传识别 `kind=document` · RAG 抽取保守剥离闭合 YAML/TOML front matter（原文落盘不变）— 见 `[DOC/46](46-document-rag.md)` §4
 - [x] **指导发送 · 润色**（2026-07-23）：美化用户输入 · `transcript.tail` 固定轮历史 · `polishHistoryTurns` / `polishSystemPrefix` — 见 `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1
-
-
+- [x] **指导润色 · 原文/润色后分离**（2026-07-24）：`userText` + `polishedText` + `polishSource`；润色不覆盖原文；发送仅出站润色后 — 见 `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
 
@@ -115,5 +110,6 @@
 | **掷骰去掉死参数** `eligibleIds`（资格由 `resolveDiceSkipReason` · 审计仍含全员）                                                            | 2026-07-22             | `group-chat/pick.ts` · `resolve.ts`                                                                                                                                                       |
 | **RAG 参数面板 + 备份示例脚本**（知识库 Settings/`ConversationContextSettings` 文档对齐 · `scripts/ops/backup.example.`*）                    | 2026-07-23             | `[DOC/03](03-实现细节.md)` §8.7 · §9.6 · `[DOC/46](46-document-rag.md)` · `data/README.md` · `scripts/ops/`                                                                                   |
 | **指导发送 · 润色**（美化用户输入 · `transcript.tail` · `polishHistoryTurns`）                                                           | 2026-07-23             | `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1 · `plugins/guidance-generate`                                                                                                  |
+| **指导润色 · 原文/润色后分离**（`polishedText` · `polishSource` · 按钮门控）                                                                  | 2026-07-24             | `[DOC/09](09-plugin-system-and-guidance-generate.md)` §7.1 · `plugins/guidance-generate`                                                                                                  |
 
 

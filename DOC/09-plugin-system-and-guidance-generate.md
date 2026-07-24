@@ -213,7 +213,7 @@ data/
 
 | 模式 | Slot | 弹框字段 | 宿主 API |
 |------|------|----------|----------|
-| 指导发送 | `composer-toolbar` | **生成** / **润色** 双 Tab：生成=用户文+指导；润色=用户文（可润色后普通发送） | 生成：`sendWithPlugins`；润色：`complete` + **`host.chat.send`** |
+| 指导发送 | `composer-toolbar` | **生成** / **润色** 双 Tab：生成=用户文+指导；润色=原文 `userText` + 润色后 `polishedText` | 生成：`sendWithPlugins`；润色：`complete` + **`host.chat.send(polishedText)`** |
 | 指导再生 | `user-turn-footer`（最后 user turn） | 用户文 + 指导文 | `host.chat.regenerateWithPlugins` |
 | **指导修改** | `assistant-turn-footer` | 当前助手回复（只读）+ 指导文 | `host.chat.regenerateWithPlugins`（`mode: 'revise'`） |
 
@@ -226,7 +226,7 @@ data/
 | `polishSystemPrefix` | 润色 Tab：二次 LLM system 指令（只输出润色后的用户输入） |
 | `polishHistoryTurns` | 润色时 `conversation.transcript.tail` 的 `tailCount`（默认 8，0～40） |
 
-**润色 Tab（仅指导发送弹框）**：宿主表单 `tabs`（生成 / 润色）。润色流程：点「润色」→ `prepareContextBlocks` + `complete`（`system` 历史 → `user` 草稿 → `system` 润色前缀）回填用户文 → 点「发送」走 **`host.chat.send`**（无指导注入）。权限：`plugin.complete` + `conversation.read`。
+**润色 Tab（仅指导发送弹框）**：宿主表单 `tabs`（生成 / 润色）。字段：`userText`（原文，不覆盖）+ `polishedText`（润色结果）+ 指纹 `polishSource`。流程：点「润色」（原文非空）→ `prepareContextBlocks` + `complete`（`system` 历史 → `user` 原文 → `system` 润色前缀）写入 `polishedText` 且 `polishSource = userText` → 点「发送」（`polishedText` 非空且原文未改）走 **`host.chat.send(polishedText)`**（无指导注入）。权限：`plugin.complete` + `conversation.read`。
 
 **Prompt · send/regenerate**：指导以 hidden system 插在**最后一条 user 消息之后**（非 messages 末尾）；前缀 **`settings.systemPrefix`**。
 

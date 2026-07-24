@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
+import { warnIfGitEolMisconfigured } from './check-git-eol.mjs'
 import { spawnSyncNpm } from './spawn-npm.mjs'
 
 const STAMP_REL = path.join('node_modules', '.deps-stamp.json')
@@ -64,6 +65,7 @@ function runNpmInstall(repoRoot) {
  * @param {{ label?: string }} [options]
  */
 export function ensureDependencies(repoRoot, { label = 'start' } = {}) {
+  warnIfGitEolMisconfigured()
   const nodeModules = path.join(repoRoot, 'node_modules')
   const fingerprint = computeDepsFingerprint(repoRoot)
   const stamped = readStamp(repoRoot)

@@ -21,6 +21,7 @@
     "dev:web": "npm run dev -w web",
     "build:plugins": "node scripts/build-plugins.mjs",
     "check:host-no-plugin-ids": "node scripts/check-host-no-plugin-ids.mjs",
+    "check:git-eol": "node scripts/check-git-eol.mjs",
     "verify:host-no-bundled": "node scripts/verify-host-build-without-bundled.mjs",
     "check:ci": "node scripts/verify-shared-sync.mjs && npm run check:host-no-plugin-ids && npm run verify:host-no-bundled && npm run build:plugins && npm run typecheck && npm test -w server",
     "generate:bundled-registry": "node scripts/generate-bundled-registry.mjs --write",

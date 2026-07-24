@@ -1,7 +1,37 @@
-# Shell scripts must use LF for Linux containers (avoid exec … no such file)
+# 本仓库统一 LF（与 .editorconfig 一致）。Windows 请对本仓库设 core.autocrlf=false，见 DOC/05。
+
+# 默认：文本按 LF 检出/入库
+* text=auto eol=lf
+
+# Windows 批处理保留 CRLF
+*.{bat,cmd} text eol=crlf
+
+# 明确二进制（避免被 text=auto 误判）
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.mp3 binary
+*.wav binary
+*.ogg binary
+*.mp4 binary
+*.webm binary
+*.pdf binary
+*.zip binary
+*.7z binary
+*.gz binary
+*.lance binary
+
+# Shell / 容器脚本必须 LF
 *.sh text eol=lf
 
-# Plugin text sources / bundles: LF so esbuild embed matches Linux CI dist
+# 插件源与打包产物：LF，避免 Windows 检出 CRLF 导致 esbuild embed 与 Linux CI 不一致
 *.hbs text eol=lf
 *.css text eol=lf
 plugins/**/*.ts text eol=lf

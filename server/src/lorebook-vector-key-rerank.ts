@@ -3,7 +3,7 @@
  * 宿主 generic：任意 lore entry.keys + query 文本，不绑定具体插件。
  */
 
-/** 相对加分上限：final = base * (1 + MAX * hitRatio)；命中全部 key 时最多 +12% */
+/** 相对加分上限：final = base * (1 + MAX * hitRatio)；满额时最多 +12% */
 export const VECTOR_KEYS_SCORE_BOOST_MAX = 0.12
 
 /** hybrid 多召回倍数，供 keys 精排后再截断 */
@@ -11,6 +11,12 @@ export const VECTOR_KEYS_RERANK_CANDIDATE_FACTOR = 3
 
 /** 精排命中忽略过短 key，降低单字误加分（入库附录仍保留原 keys） */
 export const VECTOR_KEYS_MIN_HIT_LENGTH = 2
+
+/**
+ * hitRatio 分母上限：min(totalKeys, 本值)。
+ * 摘要类条目常有 15–30 个 keys；若用 hits/total，单次命中加分可忽略不计。
+ */
+export const VECTOR_KEYS_HITS_FOR_FULL_BOOST = 3
 
 export function normalizeLoreEntryKeys(keys: readonly string[]): string[] {
   const out: string[] = []
@@ -52,7 +58,10 @@ export function countLoreKeyHitsInScan(
   return { hits, total: cleaned.length }
 }
 
-/** hitRatio = hits/total；无 key 或无命中时返回 baseScore */
+/**
+ * hitRatio = hits / min(total, HITS_FOR_FULL_BOOST)，封顶 1。
+ * 无 key 或无命中时返回 baseScore。
+ */
 export function applyVectorKeyScoreBoost(
   baseScore: number,
   keys: readonly string[],
@@ -62,7 +71,8 @@ export function applyVectorKeyScoreBoost(
   if (!Number.isFinite(baseScore)) return baseScore
   const { hits, total } = countLoreKeyHitsInScan(keys, scanLower)
   if (hits <= 0 || total <= 0) return baseScore
-  const ratio = hits / total
+  const denom = Math.min(total, VECTOR_KEYS_HITS_FOR_FULL_BOOST)
+  const ratio = Math.min(1, hits / denom)
   const cap = Math.max(0, boostMax)
   return baseScore * (1 + cap * ratio)
 }

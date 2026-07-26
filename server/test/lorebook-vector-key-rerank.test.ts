@@ -105,6 +105,22 @@ describe('lorebook-vector-key-rerank', () => {
     )
   })
 
+  it('caps hitRatio denominator so long key lists still boost', () => {
+    const base = 0.05
+    const manyKeys = Array.from({ length: 20 }, (_, i) => `kw${String(i).padStart(2, '0')}`)
+    manyKeys[0] = '银烛台'
+    // 20 keys → denom=3; 1 hit → ratio 1/3
+    const oneHit = applyVectorKeyScoreBoost(base, manyKeys, '桌上有银烛台')
+    assert.equal(oneHit, base * (1 + VECTOR_KEYS_SCORE_BOOST_MAX / 3))
+    const threeHitKeys = ['银烛台', '东厢', '钥匙', ...manyKeys.slice(3)]
+    const threeHits = applyVectorKeyScoreBoost(
+      base,
+      threeHitKeys,
+      '银烛台 东厢 钥匙',
+    )
+    assert.equal(threeHits, base * (1 + VECTOR_KEYS_SCORE_BOOST_MAX))
+  })
+
   it('caps candidate limit', () => {
     assert.equal(vectorRerankCandidateLimit(5), 15)
     assert.equal(vectorRerankCandidateLimit(30), 64)

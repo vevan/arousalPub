@@ -91,11 +91,6 @@ export function ensureGitEolConfigured() {
   return { fixed: true, skipped: false }
 }
 
-/** @deprecated use ensureGitEolConfigured */
-export function warnIfGitEolMisconfigured() {
-  ensureGitEolConfigured()
-}
-
 const isMain =
   process.argv[1] &&
   /check-git-eol\.mjs$/i.test(process.argv[1].replace(/\\/g, '/'))

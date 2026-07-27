@@ -2,7 +2,7 @@
 
 完成本章后：配好 Embeddings API，理解远期记忆 / 资料库向量大致怎么开，并知道何时「重建记忆索引」。
 
-上一章：[09 · 设置页导览](09-settings-tour.md) · 下一章：[11 · 数据在哪、怎么备份](11-data-and-backup.md) · [目录](00-menu.md)
+上一章：[09 · 设置页导览](09-settings-tour.md) · 下一章：[11 · 数据在哪、怎么备份](11-data-and-backup.md) · [目录](00-menu.md) · [English](../EN/10-vector-recall.md)
 
 ---
 

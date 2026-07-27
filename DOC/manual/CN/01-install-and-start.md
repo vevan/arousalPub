@@ -2,7 +2,7 @@
 
 完成本章后：本机能跑起 arousalPub，浏览器能打开界面。
 
-上一章：无（本篇为起点） · 下一章：[02 · 首次登录与账户](02-first-login.md) · [目录](00-menu.md)
+上一章：无（本篇为起点） · 下一章：[02 · 首次登录与账户](02-first-login.md) · [目录](00-menu.md) · [English](../EN/01-install-and-start.md)
 
 ---
 
@@ -69,4 +69,4 @@ http://localhost:6633/
 
 ## 若打不开
 
-见 [17 · 常见问题排查](17-troubleshooting.md)。常见原因：窗口已关、端口被占用、地址端口写错。
+见 [19 · 常见问题排查](19-troubleshooting.md)。常见原因：窗口已关、端口被占用、地址端口写错。

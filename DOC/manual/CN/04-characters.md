@@ -2,7 +2,7 @@
 
 完成本章后：角色库里至少有一张「对方」角色卡；若需要，再准备一张「用户」卡。
 
-上一章：[03 · 连接 API](03-connect-api.md) · 下一章：[05 · 发起第一场对话](05-first-chat.md) · [目录](00-menu.md)
+上一章：[03 · 连接 API](03-connect-api.md) · 下一章：[05 · 发起第一场对话](05-first-chat.md) · [目录](00-menu.md) · [English](../EN/04-characters.md)
 
 ---
 

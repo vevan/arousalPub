@@ -2,7 +2,7 @@
 
 完成本章后：能用 Docker Compose 构建并启动，浏览器访问健康服务，并知道数据挂在哪。
 
-上一章：[11 · 数据在哪、怎么备份](11-data-and-backup.md) · 下一章：[13 · 启动方式对照与倒计时](13-startup-options.md) · [目录](00-menu.md)
+上一章：[11 · 数据在哪、怎么备份](11-data-and-backup.md) · 下一章：[13 · 启动方式对照与倒计时](13-startup-options.md) · [目录](00-menu.md) · [English](../EN/12-docker.md)
 
 ---
 

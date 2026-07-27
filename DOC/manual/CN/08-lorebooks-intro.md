@@ -2,7 +2,7 @@
 
 完成本章后：能新建或导入资料库，并在对话中勾选要注入的本。
 
-上一章：[07 · 提示词预设入门](07-prompts-intro.md) · 下一章：[09 · 设置页导览](09-settings-tour.md) · [目录](00-menu.md)
+上一章：[07 · 提示词预设入门](07-prompts-intro.md) · 下一章：[09 · 设置页导览](09-settings-tour.md) · [目录](00-menu.md) · [English](../EN/08-lorebooks-intro.md)
 
 ---
 

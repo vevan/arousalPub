@@ -2,7 +2,7 @@
 
 完成本章后：知道多角色群聊和对话分支分别在哪开、各自解决什么问题。细节参数可之后再慢慢调。
 
-上一章：[13 · 启动方式对照与倒计时](13-startup-options.md) · 下一章：[15 · 插件与扩展能力简介](15-plugins-intro.md) · [目录](00-menu.md)
+上一章：[13 · 启动方式对照与倒计时](13-startup-options.md) · 下一章：[15 · 插件与扩展能力简介](15-plugins-intro.md) · [目录](00-menu.md) · [English](../EN/14-group-and-branches.md)
 
 ---
 

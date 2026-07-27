@@ -2,7 +2,7 @@
 
 类 SillyTavern 的本地 AI 角色对话应用：管理角色卡、提示词预设、资料库（世界书），在浏览器里与模型流式对话。数据保存在本机目录，可备份或同步。
 
-[English README](../README.md)
+[新手教程](manual/00-menu.md) · [中文教程](manual/CN/00-menu.md) · [English guide](manual/EN/00-menu.md) · [English README](../README.md)
 
 ---
 
@@ -193,7 +193,7 @@ API 密钥保存在本机数据目录，不会写入浏览器公开存储。
 
 ## 开发者文档
 
-架构、接口与实现细节见 **`DOC/devNotes/`** 目录；项目索引见 [`cursor.md`](../cursor.md)。文档总览见 [`DOC/README.md`](README.md)。
+架构、接口与实现细节见 **`DOC/devNotes/`** 目录；项目索引见 [`cursor.md`](../cursor.md)。新手教程见 [`manual/`](manual/00-menu.md)（[中文](manual/CN/00-menu.md) · [English](manual/EN/00-menu.md)）。文档总览见 [`DOC/README.md`](README.md)。
 
 开发模式：
 

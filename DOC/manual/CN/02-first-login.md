@@ -2,7 +2,7 @@
 
 完成本章后：有可用账号，能进入主界面；并知道「默认用户」是什么。
 
-上一章：[01 · 安装与启动](01-install-and-start.md) · 下一章：[03 · 连接 API](03-connect-api.md) · [目录](00-menu.md)
+上一章：[01 · 安装与启动](01-install-and-start.md) · 下一章：[03 · 连接 API](03-connect-api.md) · [目录](00-menu.md) · [English](../EN/02-first-login.md)
 
 ---
 

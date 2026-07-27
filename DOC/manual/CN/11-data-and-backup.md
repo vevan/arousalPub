@@ -2,7 +2,7 @@
 
 完成本章后：知道数据默认在哪个文件夹、怎么整包备份与换机恢复，以及不要同时双写同一目录。
 
-上一章：[10 · 向量召回](10-vector-recall.md) · 下一章：[12 · 用 Docker 跑](12-docker.md) · [目录](00-menu.md)
+上一章：[10 · 向量召回](10-vector-recall.md) · 下一章：[12 · 用 Docker 跑](12-docker.md) · [目录](00-menu.md) · [English](../EN/11-data-and-backup.md)
 
 ---
 

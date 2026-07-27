@@ -2,7 +2,7 @@
 
 完成本章后：建好一场对话，发出消息，并看到模型流式回复。
 
-上一章：[04 · 角色卡：导入或新建](04-characters.md) · 下一章：[06 · 对话里常用操作](06-chat-basics.md) · [目录](00-menu.md)
+上一章：[04 · 角色卡：导入或新建](04-characters.md) · 下一章：[06 · 对话里常用操作](06-chat-basics.md) · [目录](00-menu.md) · [English](../EN/05-first-chat.md)
 
 ---
 

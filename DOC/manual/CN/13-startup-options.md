@@ -2,7 +2,7 @@
 
 完成本章后：能按场景选对启动方式，并知道倒计时里 `B` / 空格的含义。
 
-上一章：[12 · 用 Docker 跑](12-docker.md) · 下一章：[14 · 群聊与分支简介](14-group-and-branches.md) · [目录](00-menu.md)
+上一章：[12 · 用 Docker 跑](12-docker.md) · 下一章：[14 · 群聊与分支简介](14-group-and-branches.md) · [目录](00-menu.md) · [English](../EN/13-startup-options.md)
 
 ---
 

@@ -2,7 +2,7 @@
 
 完成本章后：填好兼容 OpenAI 的接口，并通过「测试连接」，对话才能真正收到模型回复。
 
-上一章：[02 · 首次登录与账户](02-first-login.md) · 下一章：[04 · 角色卡：导入或新建](04-characters.md) · [目录](00-menu.md)
+上一章：[02 · 首次登录与账户](02-first-login.md) · 下一章：[04 · 角色卡：导入或新建](04-characters.md) · [目录](00-menu.md) · [English](../EN/03-connect-api.md)
 
 ---
 

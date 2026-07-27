@@ -2,7 +2,7 @@
 
 完成本章后：知道角色卡、世界书、提示词预设、聊天记录各自从哪导入，以及目前的限制。
 
-上一章：[15 · 插件与扩展能力简介](15-plugins-intro.md) · 下一章：[17 · 常见问题排查](17-troubleshooting.md) · [目录](00-menu.md)
+上一章：[15 · 插件与扩展能力简介](15-plugins-intro.md) · 下一章：[17 · 会话 debug 审计](17-session-debug-audit.md) · [目录](00-menu.md) · [English](../EN/16-from-sillytavern.md)
 
 ---
 
@@ -60,4 +60,4 @@
 - [ ] 至少成功导入过一种：角色 / 世界书 / 预设 / 聊天记录。
 - [ ] 知道角色导入在角色库，其它多项在 **设置 → 导入**。
 
-最后一章：[17 · 常见问题排查](17-troubleshooting.md)。
+下一步：[17 · 会话 debug 审计](17-session-debug-audit.md)（可选）或 [18 · 第一方插件使用指南](18-bundled-plugins.md)。

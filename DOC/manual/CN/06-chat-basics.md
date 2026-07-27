@@ -2,7 +2,7 @@
 
 完成本章后：会再生、翻看多条助手回复（swipe），并会在「本对话设置」里换角色或资料库。
 
-上一章：[05 · 发起第一场对话](05-first-chat.md) · 下一章：[07 · 提示词预设入门](07-prompts-intro.md) · [目录](00-menu.md)
+上一章：[05 · 发起第一场对话](05-first-chat.md) · 下一章：[07 · 提示词预设入门](07-prompts-intro.md) · [目录](00-menu.md) · [English](../EN/06-chat-basics.md)
 
 ---
 

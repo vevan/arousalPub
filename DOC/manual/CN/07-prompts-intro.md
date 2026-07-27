@@ -2,7 +2,7 @@
 
 完成本章后：知道预设怎么组织，并能给一场对话绑定某个预设。
 
-上一章：[06 · 对话里常用操作](06-chat-basics.md) · 下一章：[08 · 资料库（世界书）入门](08-lorebooks-intro.md) · [目录](00-menu.md)
+上一章：[06 · 对话里常用操作](06-chat-basics.md) · 下一章：[08 · 资料库（世界书）入门](08-lorebooks-intro.md) · [目录](00-menu.md) · [English](../EN/07-prompts-intro.md)
 
 ---
 

@@ -4,7 +4,7 @@
 
 进阶开发 / 插件定案请看 [`../../devNotes/`](../../devNotes/)，不要从这里起步。
 
-[教程语言入口](../00-menu.md) · [English README](../../../README.md) · [中文说明](../../README.zh.md)
+[教程语言入口](../00-menu.md) · [English manual](../EN/00-menu.md) · [English README](../../../README.md) · [中文说明](../../README.zh.md)
 
 ---
 
@@ -57,16 +57,16 @@
 | 序号 | 文档 | 你将完成 |
 |------|------|----------|
 | 14 | [群聊与分支简介](14-group-and-branches.md) | 多角色发言、对话分支树大概怎么用 |
-| 15 | [插件与扩展能力简介](15-plugins-intro.md) | 认识内置插件入口；不写插件代码 |
+| 15 | [插件与扩展能力简介](15-plugins-intro.md) | 启用、排序、会话覆盖等通用入口 |
 | 16 | [从 SillyTavern 迁过来](16-from-sillytavern.md) | 角色卡 / 世界书 / 预设等可带什么、注意什么 |
-| 17 | [常见问题排查](17-troubleshooting.md) | 打不开页、没回复、改代码界面不变、忘记密码 |
+| 17 | [会话 debug 审计](17-session-debug-audit.md) | 开启审计、查看提示词 / 组装 / 性能 |
+| 18 | [第一方插件使用指南](18-bundled-plugins.md) | 7 个捆绑插件分别怎么用 |
+| 19 | [常见问题排查](19-troubleshooting.md) | 打不开页、没回复、审计与插件异常等 |
 
 ---
 
 ## 状态说明
 
-中文各章正文（01–17）已就绪，均在本目录 `DOC/manual/CN/`。
-
-对等英语版将随后放在 `DOC/manual/EN/`（见 [教程语言入口](../00-menu.md)）。
+中文各章正文（01–19）已就绪，均在本目录 `DOC/manual/CN/`。每章导航可切到对等 [English](../EN/00-menu.md) 版。
 
 有产品级总览（非逐步教程）可直接读 [`../../README.zh.md`](../../README.zh.md)。

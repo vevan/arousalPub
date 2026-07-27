@@ -1,8 +1,23 @@
 # arousalPub
 
-A SillyTavern-like local AI character chat app: manage character cards, prompt presets, and lorebooks (world info), then stream conversations with models in the browser. All data stays on disk for backup or sync.
+A local AI character chat app: manage character cards, prompt presets, and lorebooks (world info), then stream conversations with models in the browser. All data stays on disk for backup or sync.
 
 [English guide](DOC/manual/EN/00-menu.md) · [中文教程](DOC/manual/CN/00-menu.md) · [中文说明](DOC/README.zh.md)
+
+---
+
+## What stands out
+
+- **Chunked chat storage** — Conversations are stored as linked turn chunks on disk, so long chats stay manageable for backup and tools like Syncthing (avoid writing the same data dir from two machines at once).
+- **Readable session audit** — Open an assistant message’s **Audit** panel to inspect prompt assembly, regex stages, and group-chat speaker picks when debug audit is on ([guide](DOC/manual/EN/D-04-session-debug-audit.md)).
+- **Native regex pipeline** — User-level display / outgoing / persist rules, plus batch apply on history ([guide](DOC/manual/EN/B-06-regex-rules.md)).
+- **Drag-and-drop prompt groups** — Prompt presets use groups and entries you can reorder by dragging, with clear injection / trigger controls ([guide](DOC/manual/EN/B-02-prompts-intro.md)).
+- **Group chat speaker modes** — Multi-segment turns: sequential, dice bidding, or LLM `[NEXT@]`, plus `/@` mentions that override the mode ([guide](DOC/manual/EN/D-01-group-and-branches.md)).
+- **Isolated API keys** — Keys stay on the server (not exposed to the browser UI); list APIs return masked status, and reveal requires your login password.
+- **Plugin sandbox & host boundary** — Plugins call models and disk through the host; browser plugins never hold plaintext keys. Optional server Worker sandbox for stronger isolation ([guide](DOC/manual/EN/D-02-plugins-intro.md)).
+- **Conversation branches** — Fork a storyline from a message without destroying the main line ([same chapter](DOC/manual/EN/D-01-group-and-branches.md)).
+
+Everyday “how do I…” steps live in the [beginner manual](DOC/manual/EN/00-menu.md).
 
 ---
 

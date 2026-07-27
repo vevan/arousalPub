@@ -622,64 +622,83 @@ function closeImportDialog() {
         </span>
       </template>
     </v-select>
-    <div class="d-flex flex-wrap ga-2 mb-4">
-      <v-btn
-        size="small"
-        variant="tonal"
-        color="primary"
-        prepend-icon="mdi-check-circle-outline"
-        :loading="setGlobalPresetLoading"
-        :disabled="conn.isEditingPresetGlobal"
+    <div class="d-flex flex-wrap ga-1 mb-4 align-center">
+      <span
+        class="d-inline-flex"
         :title="
           conn.isEditingPresetGlobal
             ? $t('conn.setGlobalPresetAlready')
-            : undefined
+            : $t('conn.setGlobalPreset')
         "
-        @click="onSetGlobalPreset"
       >
-        {{ $t('conn.setGlobalPreset') }}
-      </v-btn>
+        <v-btn
+          icon
+          size="small"
+          variant="tonal"
+          color="primary"
+          :loading="setGlobalPresetLoading"
+          :disabled="conn.isEditingPresetGlobal"
+          :aria-label="$t('conn.setGlobalPreset')"
+          @click="onSetGlobalPreset"
+        >
+          <v-icon size="18">mdi-check-circle-outline</v-icon>
+        </v-btn>
+      </span>
       <v-btn
+        icon
         size="small"
         variant="tonal"
+        :title="$t('conn.newPreset')"
+        :aria-label="$t('conn.newPreset')"
         @click="conn.addPreset()"
       >
-        {{ $t('conn.newPreset') }}
+        <v-icon size="18">mdi-plus</v-icon>
       </v-btn>
+      <span class="d-inline-flex" :title="$t('conn.deleteCurrent')">
+        <v-btn
+          icon
+          size="small"
+          variant="tonal"
+          color="error"
+          :disabled="conn.presets.length <= 1"
+          :aria-label="$t('conn.deleteCurrent')"
+          @click="onDeleteCurrentPreset"
+        >
+          <v-icon size="18">mdi-trash-can-outline</v-icon>
+        </v-btn>
+      </span>
+      <span class="d-inline-flex" :title="$t('conn.testConnection')">
+        <v-btn
+          icon
+          size="small"
+          variant="tonal"
+          :loading="connectionTestLoading"
+          :disabled="!canTestConnection"
+          :aria-label="$t('conn.testConnection')"
+          @click="onTestConnection"
+        >
+          <v-icon size="18">mdi-lan-connect</v-icon>
+        </v-btn>
+      </span>
       <v-btn
-        size="small"
-        variant="text"
-        color="error"
-        :disabled="conn.presets.length <= 1"
-        @click="onDeleteCurrentPreset"
-      >
-        {{ $t('conn.deleteCurrent') }}
-      </v-btn>
-      <v-btn
+        icon
         size="small"
         variant="tonal"
-        prepend-icon="mdi-lan-connect"
-        :loading="connectionTestLoading"
-        :disabled="!canTestConnection"
-        @click="onTestConnection"
-      >
-        {{ $t('conn.testConnection') }}
-      </v-btn>
-      <v-btn
-        size="small"
-        variant="tonal"
-        prepend-icon="mdi-tray-arrow-up"
+        :title="$t('conn.apiExport')"
+        :aria-label="$t('conn.apiExport')"
         @click="openExportDialog"
       >
-        {{ $t('conn.apiExport') }}
+        <v-icon size="18">mdi-tray-arrow-up</v-icon>
       </v-btn>
       <v-btn
+        icon
         size="small"
         variant="tonal"
-        prepend-icon="mdi-tray-arrow-down"
+        :title="$t('conn.apiImport')"
+        :aria-label="$t('conn.apiImport')"
         @click="openImportPick"
       >
-        {{ $t('conn.apiImport') }}
+        <v-icon size="18">mdi-tray-arrow-down</v-icon>
       </v-btn>
     </div>
 
@@ -740,12 +759,15 @@ function closeImportDialog() {
         class="flex-grow-1"
       />
       <v-btn
+        icon
         size="small"
         variant="tonal"
-        prepend-icon="mdi-key-chain-variant"
+        class="flex-shrink-0"
+        :title="$t('conn.apiKeyManage')"
+        :aria-label="$t('conn.apiKeyManage')"
         @click="openApiKeyManager"
       >
-        {{ $t('conn.apiKeyManage') }}
+        <v-icon size="18">mdi-key-chain-variant</v-icon>
       </v-btn>
     </div>
 

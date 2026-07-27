@@ -2,7 +2,15 @@ import type { useConnectionStore } from '@/stores/connection'
 import type { PromptTrigger } from '@/stores/prompts'
 import type { ChatPersistPayload } from '@/types/chat-turn'
 import { translateApiError } from '@/utils/api-error-message'
+import { apiFetch } from '@/utils/api-fetch'
 import { hasAnyDrySamplerField } from '@/utils/dry-sampler'
+
+/** 与服务端 generationId 同形：16 hex，请求前预生成以便提前 cancel */
+export function generateClientChatGenerationId(): string {
+  const bytes = new Uint8Array(8)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+}
 
 type ConnectionStore = ReturnType<typeof useConnectionStore>
 
@@ -235,6 +243,10 @@ export async function runChatRequest(options: {
   onPersist?: (persist: ChatPersistPayload) => void
   /** 组装/掷骰完成后尽早下发的当选 speaker */
   onSpeakerCharacterId?: (speakerCharacterId: string) => void
+  /** 流式：服务端 generationId，供显式 cancel */
+  onGenerationId?: (generationId: string) => void
+  /** 客户端预生成；写入请求体并与 header 对齐 */
+  generationId?: string
   signal?: AbortSignal
 }): Promise<{
   content: string
@@ -248,12 +260,14 @@ export async function runChatRequest(options: {
   const { conn, conversationId, params, requestFailedMessage, noStreamMessage } =
     options
   const startedAt = performance.now()
+  const body = {
+    ...buildConversationChatRequestBody(conn, conversationId, params),
+    ...(options.generationId ? { generationId: options.generationId } : {}),
+  }
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(
-      buildConversationChatRequestBody(conn, conversationId, params),
-    ),
+    body: JSON.stringify(body),
     signal: options.signal,
   })
 
@@ -277,6 +291,10 @@ export async function runChatRequest(options: {
 
   const ct = res.headers.get('content-type') ?? ''
   if (conn.stream && ct.includes('text/event-stream') && res.body) {
+    const generationId = res.headers.get('X-Chat-Generation-Id')?.trim()
+    if (generationId) {
+      options.onGenerationId?.(generationId)
+    }
     let streamEstimatedTokens: number | undefined
     const etRaw = res.headers.get('X-Prompt-Estimated-Tokens')
     if (etRaw) {
@@ -375,4 +393,18 @@ export async function runChatRequest(options: {
     completionTokens,
     ...(speakerCharacterId ? { speakerCharacterId } : {}),
   }
+}
+
+/** 显式中止服务端上游；keepalive 便于关页/切后台时仍发出 */
+export function cancelChatGenerationRequest(
+  conversationId: string,
+  generationId: string,
+): void {
+  const cid = conversationId.trim()
+  const gid = generationId.trim()
+  if (!cid || !gid) return
+  const url = `/api/chat/conversations/${encodeURIComponent(cid)}/generation/${encodeURIComponent(gid)}/cancel`
+  void apiFetch(url, { method: 'POST', keepalive: true }).catch(() => {
+    /* 竞态下忽略 */
+  })
 }

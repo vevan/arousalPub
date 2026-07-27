@@ -3,7 +3,6 @@ import type { ChatPersistPayload, ChatTurnItem, PersistTurnToServerResult, Recei
 import { resolveFinalUserTextAfterPersist, applyRetroPersistToTurns, applyPersistTurnPlugins } from '@/utils/persist-display'
 import { isAbortError } from '@/utils/abort-error'
 import type { ConversationChatRequestPlugins } from '@/utils/chat-api'
-import { allocateShortId } from '@/utils/short-id'
 import { isOpeningTurn } from '@/utils/chat-turn-display'
 import { submitComposerParse, hasUnmatchedAtSlashNames } from '@/utils/composer-slash'
 import { getComposerSlashPluginHandler } from '@/utils/composer-slash-registry'
@@ -22,8 +21,14 @@ import {
 } from '@/utils/group-chat-turn'
 import { patchRegenSegments } from '@/utils/regen-turn-segments'
 import { coreNotify } from '@/utils/core-notify'
-import { buildReceiveItem, collectUsedReceiveIds, nextTurnOrdinal0 } from './turn-helpers.js'
-import type { createChatCompletionRunner } from './completion.js'
+import { nextTurnOrdinal0 } from './turn-helpers.js'
+import {
+  abortLocalChatStream,
+  clearRetainedChatGeneration,
+  isChatGenerationAbortError,
+  type ChatAbortKind,
+  type createChatCompletionRunner,
+} from './completion.js'
 import type { createReplyEventHub } from './reply-events.js'
 import { nextTick, ref, type Ref } from 'vue'
 import type { ComposerTranslation } from 'vue-i18n'
@@ -43,6 +48,8 @@ export function useChatOutbound(opts: {
   pendingReceiveCompletionTokens: Ref<number | null>
   streamingText: Ref<string>
   streamingReasoning: Ref<string>
+  /** 断线等待后台落盘；由 session 持有以便 write-lock / canSend 共用 */
+  awaitingBackgroundResume: Ref<boolean>
   isConversationWritable: () => boolean
   parseCustomParamsOrThrow: CompletionRunner['parseCustomParamsOrThrow']
   customParamsErrorMessage: CompletionRunner['customParamsErrorMessage']
@@ -113,6 +120,179 @@ export function useChatOutbound(opts: {
 }) {
   const pendingGroupContinue = ref<PendingGroupContinue | null>(null)
   const regeneratingSegmentIndex = ref<number | null>(null)
+  const awaitingBackgroundResume = opts.awaitingBackgroundResume
+  /** 与上游流式 timeout 对齐 */
+  const BACKGROUND_RESUME_TTL_MS = 360_000
+  /** 流式失败或切后台后，回前台再对一次账 */
+  let expectBackgroundResume = false
+  /** 回前台已从服务端恢复时，忽略随后的本地 Abort finalize */
+  let suppressAbortFinalize = false
+  /** 等待后台落盘时用于对账的 turnOrdinal */
+  let resumeWatchTurnOrdinal: number | null = null
+  /** 群聊 continue 断线时待回滚的 segment；send/regen 为 null */
+  let resumeWatchSegmentIndex: number | null = null
+  let resumeDeadlineMs = 0
+  /** 出站世代：旧请求 supersede catch 不得清掉新请求的 resume 状态 */
+  let outboundEpoch = 0
+
+  function setAwaitingBackgroundResume(on: boolean): void {
+    awaitingBackgroundResume.value = on
+    expectBackgroundResume = on
+    if (on) {
+      resumeDeadlineMs = Date.now() + BACKGROUND_RESUME_TTL_MS
+    } else {
+      resumeDeadlineMs = 0
+      resumeWatchTurnOrdinal = null
+      resumeWatchSegmentIndex = null
+    }
+  }
+
+  /** 出站忙碌：生成中或断线等待后台落盘 */
+  function isOutboundBusy(): boolean {
+    return (
+      awaitingBackgroundResume.value ||
+      opts.loading.value ||
+      opts.regeneratingTurnOrdinal.value !== null
+    )
+  }
+
+  /** 切会话时清 resume 状态，并抬高 epoch 使旧 catch 失效 */
+  function resetBackgroundResumeState(): void {
+    setAwaitingBackgroundResume(false)
+    suppressAbortFinalize = false
+    outboundEpoch += 1
+    clearRetainedChatGeneration()
+  }
+
+  function currentConversationId(): string {
+    return opts.getConversationId?.()?.trim() ?? ''
+  }
+
+  function isStillSameConversation(startedId: string): boolean {
+    return Boolean(startedId) && currentConversationId() === startedId
+  }
+
+  function countPersistedReceives(turns: ChatTurnItem[]): number {
+    let n = 0
+    for (const turn of turns) {
+      for (const seg of getTurnSegments(turn)) {
+        for (const r of seg.receives) {
+          if (r.content?.trim()) n += 1
+        }
+      }
+    }
+    return n
+  }
+
+  function turnHasAssistantContent(
+    turns: ChatTurnItem[],
+    turnOrdinal: number,
+  ): boolean {
+    const turn = turns.find((t) => t.turnOrdinal === turnOrdinal)
+    if (!turn) return false
+    return getTurnSegments(turn).some((seg) =>
+      seg.receives.some((r) => Boolean(r.content?.trim())),
+    )
+  }
+
+  function resolveAbortKind(e: unknown): ChatAbortKind | null {
+    if (isChatGenerationAbortError(e)) return e.kind
+    if (isAbortError(e)) return 'local'
+    return null
+  }
+
+  function notifyReplyMayStillGenerate(): void {
+    opts.errorText.value = ''
+    coreNotify(opts.t('chat.toast.replyMayStillGenerate'), undefined, {
+      level: 'info',
+      timeout: 5000,
+    })
+  }
+
+  async function tryResumeCompletedReplyFromServer(): Promise<boolean> {
+    const watchOrd = resumeWatchTurnOrdinal
+    const hadWatchContent =
+      watchOrd != null && turnHasAssistantContent(opts.turns.value, watchOrd)
+    const before = countPersistedReceives(opts.turns.value)
+    await opts.loadMessages()
+    const after = countPersistedReceives(opts.turns.value)
+    const watchReady =
+      watchOrd != null &&
+      !hadWatchContent &&
+      turnHasAssistantContent(opts.turns.value, watchOrd)
+    if (!watchReady && after <= before) return false
+    opts.errorText.value = ''
+    setAwaitingBackgroundResume(false)
+    clearRetainedChatGeneration()
+    coreNotify(opts.t('chat.toast.replyReadyAfterBackground'), undefined, {
+      level: 'success',
+      timeout: 4000,
+    })
+    await nextTick()
+    await opts.scrollChatToBottom()
+    return true
+  }
+
+  async function expireBackgroundResume(): Promise<void> {
+    rollbackAwaitingPending()
+    setAwaitingBackgroundResume(false)
+    suppressAbortFinalize = false
+    opts.abortChatGeneration()
+    await opts.loadMessages()
+    coreNotify(opts.t('chat.toast.backgroundResumeExpired'), undefined, {
+      level: 'warning',
+      timeout: 6000,
+    })
+  }
+
+  async function onDocumentVisible(): Promise<void> {
+    if (
+      awaitingBackgroundResume.value &&
+      resumeDeadlineMs > 0 &&
+      Date.now() > resumeDeadlineMs
+    ) {
+      await expireBackgroundResume()
+      return
+    }
+    const generating =
+      opts.loading.value || opts.regeneratingTurnOrdinal.value !== null
+    if (!expectBackgroundResume && !generating) return
+    const recovered = await tryResumeCompletedReplyFromServer()
+    if (!recovered) return
+    if (generating) {
+      suppressAbortFinalize = true
+      abortLocalChatStream()
+    }
+  }
+
+  /** 连接断开且服务端可能仍在生成：保留 pending，等回前台对账 */
+  function keepPendingForBackgroundResume(
+    turnOrdinal: number,
+    segmentIndex?: number,
+  ): void {
+    resumeWatchTurnOrdinal = turnOrdinal
+    resumeWatchSegmentIndex =
+      typeof segmentIndex === 'number' ? segmentIndex : null
+    setAwaitingBackgroundResume(true)
+    notifyReplyMayStillGenerate()
+  }
+
+  function rollbackAwaitingPending(): void {
+    const ord = resumeWatchTurnOrdinal
+    const segIdx = resumeWatchSegmentIndex
+    if (ord == null) return
+    if (segIdx != null) {
+      opts.rollbackPendingSegment(ord, segIdx)
+      return
+    }
+    if (!turnHasAssistantContent(opts.turns.value, ord)) {
+      const turn = opts.turns.value.find((t) => t.turnOrdinal === ord)
+      opts.rollbackPendingUserTurn(ord, turn?.user)
+      return
+    }
+    opts.streamingText.value = ''
+    opts.streamingReasoning.value = ''
+  }
 
   function groupChatNotify(key: string, title: string): void {
     const convId = opts.getConversationId?.()?.trim()
@@ -289,44 +469,8 @@ export function useChatOutbound(opts: {
     opts.turns.value = next
   }
 
-  function partialReceiveFromStream(durationMs: number) {
-    const content = opts.streamingText.value
-    const reasoning = opts.streamingReasoning.value.trim() || undefined
-    if (!content.trim() && !reasoning) return null
-    return buildReceiveItem(
-      opts.getModel(),
-      allocateShortId(collectUsedReceiveIds(opts.turns.value)),
-      content,
-      {
-        reasoning,
-        durationMs,
-      },
-    )
-  }
-
-  function finalizeAbortedRegenerate(listIndex: number, durationMs: number) {
-    const receive = partialReceiveFromStream(durationMs)
-    if (!receive) return
-    const cur = opts.turns.value[listIndex]
-    if (!cur) return
-    const segIdx =
-      regeneratingSegmentIndex.value ?? getActiveSegmentIndex(cur)
-    const segments = [...getTurnSegments(cur)]
-    const targetSeg = segments[segIdx]
-    if (!targetSeg) return
-    segments[segIdx] = {
-      ...targetSeg,
-      receives: [...targetSeg.receives, receive],
-      activeReceiveIndex: targetSeg.receives.length,
-    }
-    opts.replaceTurnAt(listIndex, {
-      ...cur,
-      segments,
-      activeSegmentIndex: segIdx,
-    })
-  }
-
   function beginRegeneratingUi(turnOrdinal: number) {
+    opts.loading.value = false
     opts.regeneratingTurnOrdinal.value = turnOrdinal
     opts.pendingSendEstimatedTokens.value = null
     opts.pendingReceiveCompletionTokens.value = null
@@ -434,6 +578,9 @@ export function useChatOutbound(opts: {
       plugins?: ConversationChatRequestPlugins
     },
   ): Promise<string | undefined> {
+    if (isOutboundBusy()) {
+      return opts.t('chat.errors.backgroundResumeBusy')
+    }
     const ord = nextTurnOrdinal0(opts.turns.value)
     const pendingSpeakerId = sendOpts?.speakerQueue?.[0]?.trim()
     opts.appendPendingUserTurn(userText, ord, {
@@ -445,6 +592,10 @@ export function useChatOutbound(opts: {
     opts.loading.value = true
     opts.startGenerationTimer()
     opts.pendingSendSegmentIndex.value = 0
+    resumeWatchTurnOrdinal = ord
+    setAwaitingBackgroundResume(true)
+    const startedConvId = currentConversationId()
+    const epoch = ++outboundEpoch
     dismissGroupContinue()
     let deferredAutoContinue: PendingGroupContinue | null = null
     try {
@@ -477,30 +628,53 @@ export function useChatOutbound(opts: {
         opts.turns.value.findIndex((t) => t.turnOrdinal === resolvedOrd),
       )
       opts.emitAssistantReplyComplete({ mode: 'send', traceId })
+      if (epoch === outboundEpoch) {
+        setAwaitingBackgroundResume(false)
+      }
       return undefined
     } catch (e) {
-      if (isAbortError(e)) {
-        const durationMs = opts.stopGenerationTimer()
-        const receive = partialReceiveFromStream(durationMs)
-        if (receive) {
-          opts.finalizePendingTurn(ord, receive)
-        } else {
-          opts.rollbackPendingUserTurn(ord, userText)
-        }
+      if (epoch !== outboundEpoch) return undefined
+      if (!isStillSameConversation(startedConvId)) {
+        setAwaitingBackgroundResume(false)
+        suppressAbortFinalize = false
         return undefined
       }
-      opts.rollbackPendingUserTurn(ord, userText)
-      const msg =
-        e instanceof Error ? e.message : opts.t('chat.errors.network')
-      opts.errorText.value = msg
-      return msg
+      const abortKind = resolveAbortKind(e)
+      if (abortKind) {
+        if (suppressAbortFinalize) {
+          suppressAbortFinalize = false
+          setAwaitingBackgroundResume(false)
+          return undefined
+        }
+        if (abortKind === 'user') {
+          setAwaitingBackgroundResume(false)
+          opts.rollbackPendingUserTurn(ord, userText)
+          opts.streamingText.value = ''
+          opts.streamingReasoning.value = ''
+          return undefined
+        }
+        if (abortKind === 'supersede') {
+          // 新出站已接管；勿动 resume 标志
+          return undefined
+        }
+        // local：读流被停但未 cancel 上游 → 保留 pending 等对账
+        keepPendingForBackgroundResume(ord)
+        return undefined
+      }
+      if (await tryResumeCompletedReplyFromServer()) {
+        return undefined
+      }
+      keepPendingForBackgroundResume(ord)
+      return undefined
     } finally {
-      if (opts.loading.value) {
+      if (epoch === outboundEpoch && opts.loading.value) {
         opts.stopGenerationTimer()
         opts.loading.value = false
       }
-      opts.pendingSendSegmentIndex.value = null
-      if (deferredAutoContinue) {
+      if (epoch === outboundEpoch) {
+        opts.pendingSendSegmentIndex.value = null
+      }
+      if (deferredAutoContinue && epoch === outboundEpoch) {
         const next = refreshPendingContinueListIndex(deferredAutoContinue)
         if (next) void continueGroupChat(next)
       }
@@ -561,6 +735,7 @@ export function useChatOutbound(opts: {
     plugins: ConversationChatRequestPlugins,
   ): Promise<string | undefined> {
     if (!opts.isConversationWritable()) return opts.t('chat.errors.network')
+    if (isOutboundBusy()) return opts.t('chat.errors.backgroundResumeBusy')
     opts.errorText.value = ''
     const raw = userText.trim()
     if (!raw) return opts.t('chat.errors.network')
@@ -593,6 +768,7 @@ export function useChatOutbound(opts: {
   /** 普通发送：与 sendWithPlugins 同管线，但不传 body.plugins */
   async function sendUserText(userText: string): Promise<string | undefined> {
     if (!opts.isConversationWritable()) return opts.t('chat.errors.network')
+    if (isOutboundBusy()) return opts.t('chat.errors.backgroundResumeBusy')
     opts.errorText.value = ''
     const raw = userText.trim()
     if (!raw) return opts.t('chat.errors.network')
@@ -669,6 +845,7 @@ export function useChatOutbound(opts: {
       userTextFallback?: string
     },
   ): Promise<string | undefined> {
+    if (isOutboundBusy()) return opts.t('chat.errors.backgroundResumeBusy')
     const turn = opts.turns.value[listIndex]
     if (!turn) return opts.t('chat.errors.network')
 
@@ -677,6 +854,10 @@ export function useChatOutbound(opts: {
     regeneratingSegmentIndex.value = segIdx
     opts.errorText.value = ''
     opts.startGenerationTimer()
+    resumeWatchTurnOrdinal = turn.turnOrdinal
+    setAwaitingBackgroundResume(true)
+    const startedConvId = currentConversationId()
+    const epoch = ++outboundEpoch
     dismissGroupContinue()
     let deferredAutoContinue: PendingGroupContinue | null = null
 
@@ -684,6 +865,9 @@ export function useChatOutbound(opts: {
       try {
         opts.parseCustomParamsOrThrow()
       } catch (e) {
+        if (epoch === outboundEpoch) {
+          setAwaitingBackgroundResume(false)
+        }
         opts.errorText.value = opts.customParamsErrorMessage(e)
         return opts.errorText.value
       }
@@ -714,26 +898,48 @@ export function useChatOutbound(opts: {
         persist,
         opts.turns.value.findIndex((t) => t.turnOrdinal === turn.turnOrdinal),
       )
+      if (epoch === outboundEpoch) {
+        setAwaitingBackgroundResume(false)
+      }
       return undefined
     } catch (e) {
-      if (isAbortError(e)) {
-        const durationMs = opts.stopGenerationTimer()
-        finalizeAbortedRegenerate(listIndex, durationMs)
-        await nextTick()
-        await opts.scrollChatToBottom()
+      if (epoch !== outboundEpoch) return undefined
+      if (!isStillSameConversation(startedConvId)) {
+        setAwaitingBackgroundResume(false)
+        suppressAbortFinalize = false
         return undefined
       }
-      const msg =
-        e instanceof Error ? e.message : opts.t('chat.errors.network')
-      opts.errorText.value = msg
-      return msg
+      const abortKind = resolveAbortKind(e)
+      if (abortKind) {
+        if (suppressAbortFinalize) {
+          suppressAbortFinalize = false
+          setAwaitingBackgroundResume(false)
+          return undefined
+        }
+        if (abortKind === 'user') {
+          setAwaitingBackgroundResume(false)
+          opts.streamingText.value = ''
+          opts.streamingReasoning.value = ''
+          return undefined
+        }
+        if (abortKind === 'supersede') {
+          return undefined
+        }
+        keepPendingForBackgroundResume(turn.turnOrdinal)
+        return undefined
+      }
+      if (await tryResumeCompletedReplyFromServer()) {
+        return undefined
+      }
+      keepPendingForBackgroundResume(turn.turnOrdinal)
+      return undefined
     } finally {
-      if (opts.regeneratingTurnOrdinal.value !== null) {
+      if (epoch === outboundEpoch && opts.regeneratingTurnOrdinal.value !== null) {
         opts.stopGenerationTimer()
         opts.endRegeneratingUi()
         regeneratingSegmentIndex.value = null
       }
-      if (deferredAutoContinue) {
+      if (deferredAutoContinue && epoch === outboundEpoch) {
         const next = refreshPendingContinueListIndex(deferredAutoContinue)
         if (next) void continueGroupChat(next)
       }
@@ -762,6 +968,7 @@ export function useChatOutbound(opts: {
     plugins: ConversationChatRequestPlugins,
   ): Promise<string | undefined> {
     if (!opts.isConversationWritable()) return opts.t('chat.errors.network')
+    if (isOutboundBusy()) return opts.t('chat.errors.backgroundResumeBusy')
     const turn = opts.turns.value[listIndex]
     if (!turn) return opts.t('chat.errors.network')
     const trimmed = userText.trim()
@@ -786,7 +993,7 @@ export function useChatOutbound(opts: {
     if (!rawPending || !opts.isConversationWritable()) return
     const pending = refreshPendingContinueListIndex(rawPending)
     if (!pending) return
-    if (opts.loading.value || opts.regeneratingTurnOrdinal.value !== null) return
+    if (isOutboundBusy()) return
     opts.errorText.value = ''
     try {
       opts.parseCustomParamsOrThrow()
@@ -807,6 +1014,11 @@ export function useChatOutbound(opts: {
     opts.appendPendingSegment(turnOrdinal, segmentIndex, nextSpeakerCharacterId)
     opts.loading.value = true
     opts.startGenerationTimer()
+    resumeWatchTurnOrdinal = turnOrdinal
+    resumeWatchSegmentIndex = segmentIndex
+    setAwaitingBackgroundResume(true)
+    const startedConvId = currentConversationId()
+    const epoch = ++outboundEpoch
     let deferredAutoContinue: PendingGroupContinue | null = null
     try {
       const { receive, traceId, persist, shouldReload } =
@@ -828,32 +1040,45 @@ export function useChatOutbound(opts: {
       )
       if (shouldReload) await reloadMessagesAndReconcileContinue()
       opts.emitAssistantReplyComplete({ mode: 'send', traceId })
+      if (epoch === outboundEpoch) {
+        setAwaitingBackgroundResume(false)
+      }
     } catch (e) {
-      if (isAbortError(e)) {
-        const durationMs = opts.stopGenerationTimer()
-        const receive = partialReceiveFromStream(durationMs)
-        if (receive) {
-          opts.finalizePendingSegment(turnOrdinal, receive, {
-            segmentIndex,
-            speakerCharacterId: nextSpeakerCharacterId,
-            activeSegmentIndex: segmentIndex,
-          })
-        } else {
-          opts.rollbackPendingSegment(turnOrdinal, segmentIndex)
-        }
+      if (epoch !== outboundEpoch) {
+        /* superseded */
+      } else if (!isStillSameConversation(startedConvId)) {
+        setAwaitingBackgroundResume(false)
+        suppressAbortFinalize = false
       } else {
-        opts.rollbackPendingSegment(turnOrdinal, segmentIndex)
-        opts.errorText.value =
-          e instanceof Error ? e.message : opts.t('chat.errors.network')
+        const abortKind = resolveAbortKind(e)
+        if (abortKind) {
+          if (suppressAbortFinalize) {
+            suppressAbortFinalize = false
+            setAwaitingBackgroundResume(false)
+          } else if (abortKind === 'user') {
+            setAwaitingBackgroundResume(false)
+            opts.rollbackPendingSegment(turnOrdinal, segmentIndex)
+            opts.streamingText.value = ''
+            opts.streamingReasoning.value = ''
+          } else if (abortKind === 'supersede') {
+            /* 新出站已接管 */
+          } else {
+            keepPendingForBackgroundResume(turnOrdinal, segmentIndex)
+          }
+        } else if (await tryResumeCompletedReplyFromServer()) {
+          /* recovered */
+        } else {
+          keepPendingForBackgroundResume(turnOrdinal, segmentIndex)
+        }
       }
     } finally {
-      if (opts.loading.value) {
+      if (epoch === outboundEpoch && opts.loading.value) {
         opts.stopGenerationTimer()
         opts.loading.value = false
         opts.pendingSendTurnOrdinal.value = null
         opts.pendingSendSegmentIndex.value = null
       }
-      if (deferredAutoContinue) {
+      if (deferredAutoContinue && epoch === outboundEpoch) {
         const next = refreshPendingContinueListIndex(deferredAutoContinue)
         if (next) void continueGroupChat(next)
       }
@@ -861,6 +1086,19 @@ export function useChatOutbound(opts: {
   }
 
   function abortCurrentReply() {
+    const disconnectedAwaiting =
+      awaitingBackgroundResume.value &&
+      !opts.loading.value &&
+      opts.regeneratingTurnOrdinal.value === null
+    if (disconnectedAwaiting) {
+      rollbackAwaitingPending()
+      setAwaitingBackgroundResume(false)
+      suppressAbortFinalize = false
+      opts.abortChatGeneration()
+      return
+    }
+    setAwaitingBackgroundResume(false)
+    suppressAbortFinalize = false
     opts.abortChatGeneration()
   }
 
@@ -870,6 +1108,7 @@ export function useChatOutbound(opts: {
     segmentIndex?: number,
   ) {
     if (!opts.isConversationWritable()) return
+    if (isOutboundBusy()) return
     const turn = opts.turns.value[listIndex]
     if (!turn) return
     const segIdx = segmentIndex ?? getActiveSegmentIndex(turn)
@@ -932,5 +1171,8 @@ export function useChatOutbound(opts: {
     setPendingGroupContinueSpeaker,
     pendingGroupContinue,
     regeneratingSegmentIndex,
+    awaitingBackgroundResume,
+    resetBackgroundResumeState,
+    onDocumentVisible,
   }
 }

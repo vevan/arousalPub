@@ -205,6 +205,7 @@ export const ApiErrorCodes = {
   patch_conversation_requires_field: 'patch_conversation_requires_field',
   payload_invalid_json: 'payload_invalid_json',
   persist_error: 'persist_error',
+  persist_cancelled_by_user: 'persist_cancelled_by_user',
   persist_failed: 'persist_failed',
   setup_localhost_only: 'setup_localhost_only',
   png_image_required: 'png_image_required',

@@ -1373,11 +1373,17 @@
       "invalidCustomJson": "自定义参数 JSON 无效",
       "requestFailedStatus": "请求失败（{status}）",
       "network": "网络错误",
+      "backgroundResumeBusy": "仍有回复在后台生成，请稍候或先中止",
       "persistFirstTurnFailed": "首条对话保存到服务端失败",
       "persistAppendTurnFailed": "追加对话轮次保存到服务端失败",
       "deleteTurnFailed": "删除失败",
       "loadMessagesFailed": "加载对话消息失败",
       "loadOlderFailed": "加载更早的对话失败"
+    },
+    "toast": {
+      "replyReadyAfterBackground": "回复已在后台完成",
+      "replyMayStillGenerate": "连接已断开，回复可能仍在后台生成，回前台后将自动同步",
+      "backgroundResumeExpired": "后台生成已超时，已取消并同步对话"
     },
     "slash": {
       "gotoNotFound": "未找到第 {n} 回",

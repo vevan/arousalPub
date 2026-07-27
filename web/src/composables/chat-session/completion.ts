@@ -1,7 +1,10 @@
 import type { PromptTrigger } from '@/stores/prompts'
 import type { ChatPersistPayload, ChatTurnItem, ReceiveItem } from '@/types/chat-turn'
+import { isAbortError } from '@/utils/abort-error'
 import {
   buildConversationChatRequestBody,
+  cancelChatGenerationRequest,
+  generateClientChatGenerationId,
   runChatRequest,
   type ConversationChatRequestPlugins,
 } from '@/utils/chat-api'
@@ -52,8 +55,68 @@ export interface ChatCompletionDeps {
 
 let chatAbortController: AbortController | null = null
 
+/** 本地 abort 原因（按 AbortController 区分，避免并发顶替串味） */
+export type ChatAbortKind = 'user' | 'local' | 'supersede'
+
+const abortKindByController = new WeakMap<AbortController, ChatAbortKind>()
+
+/** 可供中止的服务端 generation（含断线 resume 期间） */
+let cancelTarget: { conversationId: string; generationId: string } | null = null
+
+export class ChatGenerationAbortError extends Error {
+  readonly name = 'ChatGenerationAbortError'
+  constructor(readonly kind: ChatAbortKind) {
+    super('Aborted')
+  }
+}
+
+export function isChatGenerationAbortError(
+  e: unknown,
+): e is ChatGenerationAbortError {
+  return e instanceof ChatGenerationAbortError
+}
+
+export function hasRetainedChatGeneration(): boolean {
+  return cancelTarget != null
+}
+
+export function clearRetainedChatGeneration(): void {
+  cancelTarget = null
+}
+
+function setCancelTarget(conversationId: string, generationId: string): void {
+  const cid = conversationId.trim()
+  const gid = generationId.trim()
+  if (!cid || !gid) return
+  cancelTarget = { conversationId: cid, generationId: gid }
+}
+
+function abortLocalController(kind: ChatAbortKind): void {
+  const c = chatAbortController
+  if (!c) return
+  abortKindByController.set(c, kind)
+  c.abort()
+}
+
+function cancelActiveServerGeneration(): void {
+  if (cancelTarget) {
+    cancelChatGenerationRequest(
+      cancelTarget.conversationId,
+      cancelTarget.generationId,
+    )
+    cancelTarget = null
+  }
+}
+
+/** 仅停止本地读流（不 cancel 服务端；用于回前台已落盘时收尾） */
+export function abortLocalChatStream(): void {
+  abortLocalController('local')
+}
+
+/** 用户中止：cancel 服务端上游 + 停本地读流 */
 export function abortChatGeneration(): void {
-  chatAbortController?.abort()
+  cancelActiveServerGeneration()
+  abortLocalController('user')
 }
 
 export function createChatCompletionRunner(deps: ChatCompletionDeps) {
@@ -72,14 +135,24 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
     const mode = trace?.mode ?? 'send'
     const traceId = trace?.traceId ?? makeReplyTraceId(mode)
 
-    chatAbortController?.abort()
-    chatAbortController = new AbortController()
-    const signal = chatAbortController.signal
+    cancelActiveServerGeneration()
+    abortLocalController('supersede')
+    const ownedController = new AbortController()
+    chatAbortController = ownedController
+    const signal = ownedController.signal
+    const conversationId = deps.getConversationId()
+    const clientGenerationId = deps.conn.stream
+      ? generateClientChatGenerationId()
+      : undefined
+    if (clientGenerationId) {
+      setCancelTarget(conversationId, clientGenerationId)
+    }
     try {
       const result = await runChatRequest({
         conn: deps.conn,
-        conversationId: deps.getConversationId(),
+        conversationId,
         params,
+        generationId: clientGenerationId,
         requestFailedMessage: (status) =>
           deps.t('chat.errors.requestFailedStatus', { status }),
         noStreamMessage: deps.t('chat.errors.noStream'),
@@ -89,6 +162,11 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
         },
         onCompletionTokens: (n) => {
           deps.pendingReceiveCompletionTokens.value = n
+        },
+        onGenerationId: (gid) => {
+          if (chatAbortController?.signal === signal) {
+            setCancelTarget(conversationId, gid)
+          }
         },
         onSpeakerCharacterId: (sid) => {
           const ord = deps.pendingSendTurnOrdinal.value
@@ -109,13 +187,22 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
         },
         signal,
       })
+      clearRetainedChatGeneration()
       return { ...result, traceId }
+    } catch (e) {
+      if (isAbortError(e) || isChatGenerationAbortError(e)) {
+        const kind =
+          (isChatGenerationAbortError(e) ? e.kind : null) ??
+          abortKindByController.get(ownedController) ??
+          'local'
+        throw new ChatGenerationAbortError(kind)
+      }
+      throw e
     } finally {
       if (chatAbortController?.signal === signal) {
         chatAbortController = null
       }
     }
-
   }
 
   function parseCustomParamsOrThrow(): void {

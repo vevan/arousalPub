@@ -1,8 +1,11 @@
 import type { FastifyBaseLogger, FastifyRequest } from 'fastify'
-import { Readable, type Transform } from 'node:stream'
+import { PassThrough, Readable, type Transform, Writable } from 'node:stream'
 import type { ReadableStream as NodeWebReadableStream } from 'node:stream/web'
 
-/** 客户端断开时 abort 上游 fetch，避免空转直到 timeout。 */
+/**
+ * @deprecated 客户端断线不再 abort 上游；主路径请用 generation cancel。
+ * 仍保留供单测与对照。
+ */
 export function bindChatClientAbort(
   request: FastifyRequest,
   abort: AbortController,
@@ -48,4 +51,53 @@ export function pipeUpstreamSseBody(
   const out = source.pipe(tap)
   guardReadableStreamError(out, log, 'chat upstream SSE pipeline')
   return out
+}
+
+/**
+ * 尽力向客户端写 SSE；客户端断开时忽略写失败，不销毁 upstreamPipeline。
+ * upstreamPipeline 应已包含 tap（含 persist 行）。
+ */
+export function attachBestEffortClientSseSink(
+  upstreamPipeline: Readable,
+  clientOut: PassThrough,
+  log: FastifyBaseLogger,
+): void {
+  const sink = new Writable({
+    write(chunk, _enc, cb) {
+      if (!clientOut.destroyed && clientOut.writable) {
+        try {
+          clientOut.write(chunk)
+        } catch (err) {
+          log.warn({ err }, 'chat client sse write ignored')
+        }
+      }
+      cb()
+    },
+    final(cb) {
+      if (!clientOut.destroyed && !clientOut.writableEnded) {
+        try {
+          clientOut.end()
+        } catch (err) {
+          log.warn({ err }, 'chat client sse end ignored')
+        }
+      }
+      cb()
+    },
+  })
+  sink.on('error', (err) => {
+    log.warn({ err }, 'chat client sse sink')
+  })
+  clientOut.on('error', (err) => {
+    log.warn({ err }, 'chat client sse out')
+  })
+  upstreamPipeline.pipe(sink)
+  upstreamPipeline.on('error', (err) => {
+    if (!clientOut.destroyed && !clientOut.writableEnded) {
+      try {
+        clientOut.destroy(err instanceof Error ? err : new Error(String(err)))
+      } catch {
+        /* ignore */
+      }
+    }
+  })
 }

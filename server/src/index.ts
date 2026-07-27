@@ -98,10 +98,17 @@ import { mergeCustomParamsIntoPayload } from './custom-params-merge.js'
 import { appendDrySamplerToPayload } from './dry-sampler.js'
 import { tryAcquireAuthRateLimitSlot } from './auth-rate-limit.js'
 import {
-  bindChatClientAbort,
+  attachBestEffortClientSseSink,
   mergeChatUpstreamAbortSignals,
   pipeUpstreamSseBody,
 } from './chat-upstream-stream.js'
+import {
+  cancelChatGeneration,
+  getChatGeneration,
+  isChatGenerationIdFormat,
+  registerChatGeneration,
+  unregisterChatGeneration,
+} from './chat-generation-registry.js'
 import {
   fetchWithTimeout,
   UPSTREAM_FETCH_TIMEOUT_MS,
@@ -438,6 +445,11 @@ interface ChatBody {
   }
   /** 聊天请求体中的 per-plugin 载荷（键为 pluginId） */
   plugins?: Record<string, unknown>
+  /**
+   * 客户端预生成的 generationId（16 hex），便于响应头到达前即可 cancel。
+   * 非法则忽略并由服务端签发。
+   */
+  generationId?: string
   contextLength?: number | null
   maxTokens?: number | null
   stream?: boolean
@@ -1630,6 +1642,31 @@ app.get<{
     return loaded.response
   },
 )
+
+/** 显式中止进行中的流式生成（客户端断线不会调用此接口） */
+app.post<{
+  Params: { id: string; generationId: string }
+}>(
+  '/api/chat/conversations/:id/generation/:generationId/cancel',
+  async (request, reply) => {
+    const id = request.params.id
+    const generationId = request.params.generationId?.trim() ?? ''
+    if (!isValidConversationId(id)) {
+      return reply.status(400).send({ error: ApiErrorCodes.invalid_id })
+    }
+    if (!generationId || !/^[a-f0-9]{16}$/i.test(generationId)) {
+      return reply.status(400).send({ error: ApiErrorCodes.validation_failed })
+    }
+    const idx = await readConversationIndex(id)
+    if (!idx) {
+      return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+    }
+    // 已结束或不存在时仍 200，便于客户端 abort 竞态
+    const cancelled = cancelChatGeneration(id, generationId)
+    return { ok: true as const, cancelled }
+  },
+)
+
 app.patch<{
   Params: { id: string; turnOrdinal: string }
   Body: {
@@ -5493,10 +5530,18 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
   const streamTimeoutMs = wantStream
     ? UPSTREAM_STREAM_FETCH_TIMEOUT_MS
     : UPSTREAM_FETCH_TIMEOUT_MS
-  const clientAbort = wantStream ? new AbortController() : null
-  const unbindClientAbort = clientAbort
-    ? bindChatClientAbort(request, clientAbort)
-    : () => {}
+  /** 仅显式 cancel / timeout 会 abort；客户端断线不绑定 */
+  const generationAbort = wantStream ? new AbortController() : null
+  let generationId: string | null = null
+  if (wantStream && generationAbort && convId) {
+    const clientGid =
+      typeof body.generationId === 'string' ? body.generationId.trim() : ''
+    generationId = registerChatGeneration(
+      convId,
+      generationAbort,
+      isChatGenerationIdFormat(clientGid) ? clientGid : undefined,
+    )
+  }
 
   /** 流式：组装（含掷骰）结束后立刻开 SSE 下发 speaker，再拉上游 */
   if (wantStream) {
@@ -5505,6 +5550,9 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
     reply.header('Cache-Control', 'no-cache')
     reply.header('Connection', 'keep-alive')
     reply.header('X-Accel-Buffering', 'no')
+    if (generationId) {
+      reply.header('X-Chat-Generation-Id', generationId)
+    }
     if (typeof estimatedTokens === 'number' && estimatedTokens > 0) {
       reply.header('X-Prompt-Estimated-Tokens', String(Math.round(estimatedTokens)))
     }
@@ -5515,6 +5563,9 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
     }
 
     void (async () => {
+      const finishGeneration = (): void => {
+        if (generationId) unregisterChatGeneration(generationId)
+      }
       let upstream: Response
       try {
         upstream = await fetchWithTimeout(
@@ -5526,10 +5577,10 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
               Authorization: `Bearer ${apiKey}`,
             },
             body: JSON.stringify(payload),
-            ...(clientAbort
+            ...(generationAbort
               ? {
                   signal: mergeChatUpstreamAbortSignals(
-                    clientAbort,
+                    generationAbort,
                     streamTimeoutMs,
                   ),
                 }
@@ -5538,7 +5589,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
           streamTimeoutMs,
         )
       } catch (err) {
-        unbindClientAbort()
+        finishGeneration()
         request.log.error(err, 'stream upstream fetch error')
         if (!out.destroyed) {
           out.write(
@@ -5553,7 +5604,7 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
       }
 
       if (!upstream.ok || !upstream.body) {
-        unbindClientAbort()
+        finishGeneration()
         const text = upstream.ok ? '' : await upstream.text()
         request.log.warn(
           { status: upstream.status, body: text.slice(0, 500) },
@@ -5616,7 +5667,10 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
             }
             sseBuffer = ''
           }
-          if (!persistParams || !accContent.trim()) {
+          const isUserCancelled = (): boolean =>
+            generationId != null &&
+            Boolean(getChatGeneration(generationId)?.userCancelled)
+          if (isUserCancelled() || !persistParams || !accContent.trim()) {
             cb()
             return
           }
@@ -5636,32 +5690,47 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
               preUpstreamMs,
             },
           )
-          void persistTurnAfterModelReply({
-            ...persistParams,
-            assistantContent: accContent,
-            assistantReasoning: accReasoning.trim() || undefined,
-            durationMs: Math.round(streamEndedAt - upstreamStartedAt),
-            estimatedTokens: persistParams.estimatedTokens,
-            completionTokens: accCompletionTokens,
-            performanceAudit,
-          })
-            .then((persist) => {
+          void (async () => {
+            if (isUserCancelled()) {
+              cb()
+              return
+            }
+            try {
+              const persist = await persistTurnAfterModelReply({
+                ...persistParams,
+                assistantContent: accContent,
+                assistantReasoning: accReasoning.trim() || undefined,
+                durationMs: Math.round(streamEndedAt - upstreamStartedAt),
+                estimatedTokens: persistParams.estimatedTokens,
+                completionTokens: accCompletionTokens,
+                performanceAudit,
+                isCancelled: isUserCancelled,
+              })
+              if (
+                isUserCancelled() ||
+                persist.error === ApiErrorCodes.persist_cancelled_by_user
+              ) {
+                cb()
+                return
+              }
               if (!persist.ok) {
                 request.log.warn({ persist }, 'stream persist failed')
               }
               this.push(formatArousalPersistSseLine(persist))
               cb()
-            })
-            .catch((err) => {
+            } catch (err) {
               request.log.error(err, 'stream persist error')
-              this.push(
-                formatArousalPersistSseLine({
-                  ok: false,
-                  error: ApiErrorCodes.persist_error,
-                }),
-              )
+              if (!isUserCancelled()) {
+                this.push(
+                  formatArousalPersistSseLine({
+                    ok: false,
+                    error: ApiErrorCodes.persist_error,
+                  }),
+                )
+              }
               cb()
-            })
+            }
+          })()
         },
       })
 
@@ -5670,57 +5739,51 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
         tap,
         request.log,
       )
-      nodeStream.once('close', unbindClientAbort)
       nodeStream.once('error', (err) => {
         request.log.warn({ err }, 'chat upstream SSE pipeline')
-        unbindClientAbort()
-        try {
-          nodeStream.unpipe(out)
-        } catch {
-          /* ignore */
-        }
         if (out.destroyed || out.writableEnded) return
         const detail =
           err instanceof Error ? err.message : String(err ?? 'stream error')
         try {
-          out.write(
-            formatArousalStreamErrorSseLine(
-              ApiErrorCodes.upstream_api_error,
-              detail,
-            ),
-          )
-          out.end()
+          if (!out.destroyed && out.writable) {
+            out.write(
+              formatArousalStreamErrorSseLine(
+                ApiErrorCodes.upstream_api_error,
+                detail,
+              ),
+            )
+            out.end()
+          }
         } catch {
-          out.destroy(err instanceof Error ? err : undefined)
+          try {
+            out.destroy(err instanceof Error ? err : undefined)
+          } catch {
+            /* ignore */
+          }
         }
       })
-      nodeStream.pipe(out)
+      // 须在 tap.flush（含 cancel 判定与 persist）之后再注销 generation
+      nodeStream.once('close', finishGeneration)
+      attachBestEffortClientSseSink(nodeStream, out, request.log)
     })()
 
     return reply.send(out)
   }
 
-  let upstream: Response
-  try {
-    upstream = await fetchWithTimeout(
-      url,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(payload),
+  const upstream = await fetchWithTimeout(
+    url,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
       },
-      streamTimeoutMs,
-    )
-  } catch (err) {
-    unbindClientAbort()
-    throw err
-  }
+      body: JSON.stringify(payload),
+    },
+    streamTimeoutMs,
+  )
 
   if (!upstream.ok) {
-    unbindClientAbort()
     const text = await upstream.text()
     request.log.warn(
       { status: upstream.status, body: text.slice(0, 500) },
@@ -5735,7 +5798,6 @@ app.post<{ Body: ChatBody }>('/api/chat', async (request, reply) => {
 
   const responseHeadersAt = performance.now()
 
-  unbindClientAbort()
   const text = await upstream.text()
   let data: unknown
   try {

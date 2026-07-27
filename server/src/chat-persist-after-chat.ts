@@ -565,11 +565,17 @@ export async function persistTurnAfterModelReply(params: {
   speakerQueue?: string[]
   speakerQueueDisplayNames?: string[]
   groupContinue?: GroupContinueBody
+  /** 显式 cancel / 顶替时跳过写盘 */
+  isCancelled?: () => boolean
 }): Promise<ChatPersistResult> {
   const conversationId = params.conversationId.trim()
   const groupContinue = params.groupContinue
   const rawUserText = params.userText.trim()
   const rawAssistantContent = params.assistantContent.trim()
+  const cancelled = (): boolean => Boolean(params.isCancelled?.())
+  if (cancelled()) {
+    return { ok: false, error: ApiErrorCodes.persist_cancelled_by_user }
+  }
   if (!conversationId || (!rawUserText && !groupContinue)) {
     return { ok: false, error: ApiErrorCodes.missing_conversation_or_user_text }
   }
@@ -810,6 +816,9 @@ export async function persistTurnAfterModelReply(params: {
     ]
     const segmentIndex = groupContinue.afterSegmentIndex + 1
     const groupChatResolveOut: { nextResolved?: ResolveNextSpeakerResult } = {}
+    if (cancelled()) {
+      return { ok: false, error: ApiErrorCodes.persist_cancelled_by_user }
+    }
     const ok = await appendSegmentToTurn({
       conversationId,
       turnOrdinal: turnOrd,
@@ -995,6 +1004,9 @@ export async function persistTurnAfterModelReply(params: {
         defaultSpeaker,
         regenSpeaker,
       )
+      if (cancelled()) {
+        return { ok: false, error: ApiErrorCodes.persist_cancelled_by_user }
+      }
       const ok = await updateTurnSegmentInTailChunk(
         conversationId,
         regenOrd,
@@ -1060,6 +1072,9 @@ export async function persistTurnAfterModelReply(params: {
       if (regenOrd !== 0) {
         return { ok: false, error: ApiErrorCodes.regenerate_turn_not_found }
       }
+      if (cancelled()) {
+        return { ok: false, error: ApiErrorCodes.persist_cancelled_by_user }
+      }
       const saved = await saveFirstTurn({
         conversationId,
         userText,
@@ -1119,6 +1134,9 @@ export async function persistTurnAfterModelReply(params: {
         ...(runtime ? { runtime } : {}),
       },
     ]
+    if (cancelled()) {
+      return { ok: false, error: ApiErrorCodes.persist_cancelled_by_user }
+    }
     const ok = await appendConversationTurn({
       conversationId,
       userText: appendFields.userText,
@@ -1226,6 +1244,9 @@ export async function persistTurnAfterModelReply(params: {
   )
 
   if (!idx.headChunkFile && !activeBranchPath) {
+    if (cancelled()) {
+      return { ok: false, error: ApiErrorCodes.persist_cancelled_by_user }
+    }
     const saved = await saveFirstTurn({
       conversationId,
       userText,
@@ -1298,6 +1319,9 @@ export async function persistTurnAfterModelReply(params: {
     },
   ]
   const groupChatResolveOut: { nextResolved?: ResolveNextSpeakerResult } = {}
+  if (cancelled()) {
+    return { ok: false, error: ApiErrorCodes.persist_cancelled_by_user }
+  }
   const ok = await appendConversationTurn({
     conversationId,
     userText,

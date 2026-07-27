@@ -11,6 +11,7 @@ export function useConversationWriteLock(opts: {
   getConversationId: () => string
   loading: Ref<boolean>
   regeneratingTurnOrdinal: Ref<number | null>
+  awaitingBackgroundResume?: Ref<boolean>
 }) {
   const conversationWriteLocked = ref(false)
 
@@ -29,7 +30,9 @@ export function useConversationWriteLock(opts: {
     }
     if (
       requireIdle &&
-      (opts.loading.value || opts.regeneratingTurnOrdinal.value !== null)
+      (opts.loading.value ||
+        opts.regeneratingTurnOrdinal.value !== null ||
+        opts.awaitingBackgroundResume?.value === true)
     ) {
       throw new ConversationHostError('conversation_busy')
     }

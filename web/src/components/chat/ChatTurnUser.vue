@@ -18,6 +18,7 @@ const {
   regeneratingTurnOrdinal,
   turnAvatarUrls,
   copiedTurnKey,
+  isGenerating,
 } = toRefs(props.session)
 const {
   isTurnAwaitingAssistant,
@@ -132,12 +133,12 @@ const { userDisplayName, userAvatarLetter } = toRefs(props.session)
       </div>      <div class="turn-toolbar turn-toolbar--user">
         <ChatTurnBranchActions
           :turn="turn"
-          :disabled="regeneratingTurnOrdinal !== null || isTurnAwaitingAssistant(turn)"
+          :disabled="isGenerating || isTurnAwaitingAssistant(turn)"
         />
         <button
           type="button"
           class="turn-toolbar__btn"
-          :disabled="regeneratingTurnOrdinal !== null || isTurnAwaitingAssistant(turn)"
+          :disabled="isGenerating || isTurnAwaitingAssistant(turn)"
           :data-tt="$t('chat.edit')"
           :aria-label="$t('chat.edit')"
           @click="openEditUser(turn)"
@@ -157,7 +158,7 @@ const { userDisplayName, userAvatarLetter } = toRefs(props.session)
         <button
           type="button"
           class="turn-toolbar__btn turn-toolbar__btn--danger"
-          :disabled="regeneratingTurnOrdinal !== null || isTurnAwaitingAssistant(turn)"
+          :disabled="isGenerating || isTurnAwaitingAssistant(turn)"
           :data-tt="$t('chat.delete')"
           :aria-label="$t('chat.delete')"
           @click="requestDeleteWholeTurnFromUser(listIndex)"

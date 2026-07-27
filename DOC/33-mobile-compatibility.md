@@ -147,6 +147,19 @@ flowchart TB
 - Composer `position: fixed` 贴 visual 底（与 virtua 滚动联动复杂，作备选）
 - 原生 App / PWA
 
+### 6.6 切后台等待回复（2026-07）
+
+| 项 | 预期 |
+|----|------|
+| 发送后切到其他 App / 锁屏导致 SSE 断开 | **服务端继续**拉上游并落盘；**不**因客户端 close abort |
+| 客户端读流失败且尚未落盘 | **不 rollback** pending；`awaitingBackgroundResume` 禁发、仍可中止；提示可能仍在后台生成 |
+| 回前台 | `visibilitychange` → `loadMessages`；若已有新助手轮则轻提示「回复已在后台完成」；超时（~6min）则 cancel 并同步 |
+| 点「中止」 | cancel API（客户端预生成 id，响应头到达前也可）；**不**把半成品写入 UI |
+| 后台保活前提 | **仅流式**（`stream: true`）；非流式不注册 generation |
+| 后台期间逐字流 | **不保证**（连接断了就看不到流） |
+
+详见 `DOC/03` §6.8「落盘与客户端连接解耦」。
+
 ---
 
 ## 7. 参考
@@ -167,3 +180,4 @@ flowchart TB
 | 2026-06-19 | 立项 P0 |
 | 2026-06-19 | 定案：40rem、零列 grid、rail abs、`::after`、panel 25rem、hidden 持久化；Phase 1 布局落地 |
 | 2026-06-25 | iOS 友测：软键盘 / 底部空白；分析记入 §6、`DOC/04` P0 |
+| 2026-07-27 | §6.6 切后台：SSE 断线不中止上游；回前台 loadMessages |

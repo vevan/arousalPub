@@ -1,8 +1,8 @@
-# 15 · Plugins and extensions intro
+# 16 · Plugins and extensions intro
 
 After this chapter: you know where to enable plugins and open runtime panels; this is not about writing plugin code.
 
-Prev: [14 · Group chat and branches intro](14-group-and-branches.md) · Next: [16 · Migrating from SillyTavern](16-from-sillytavern.md) · [Menu](00-menu.md) · [中文](../CN/15-plugins-intro.md)
+Prev: [15 · Group chat and branches intro](15-group-and-branches.md) · Next: [17 · Migrating from SillyTavern](17-from-sillytavern.md) · [Menu](00-menu.md) · [中文](../CN/16-plugins-intro.md)
 
 ---
 
@@ -38,7 +38,7 @@ After install and enable, bundled plugins usually appear in the list; if not, ch
 
 1. Finish the required path and stable chatting first.
 2. Enable one plugin at a time; confirm behavior before the next.
-3. Developer docs live in `DOC/devNotes/` — **out of scope** here. Per-plugin usage: [18 · Bundled plugins guide](18-bundled-plugins.md).
+3. Developer docs live in `DOC/devNotes/` — **out of scope** here. Per-plugin usage: [19 · Bundled plugins guide](19-bundled-plugins.md).
 
 ---
 
@@ -47,4 +47,4 @@ After install and enable, bundled plugins usually appear in the list; if not, ch
 - [ ] Opened **Settings → Plugins**.
 - [ ] Know chats have plugin panels / per-chat overrides.
 
-Next: [16 · Migrating from SillyTavern](16-from-sillytavern.md).
+Next: [17 · Migrating from SillyTavern](17-from-sillytavern.md).

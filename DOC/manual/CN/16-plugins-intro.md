@@ -1,8 +1,8 @@
-# 15 · 插件与扩展能力简介
+# 16 · 插件与扩展能力简介
 
 完成本章后：知道在哪里启用插件、哪里打开运行时面板；不涉及写插件代码。
 
-上一章：[14 · 群聊与分支简介](14-group-and-branches.md) · 下一章：[16 · 从 SillyTavern 迁过来](16-from-sillytavern.md) · [目录](00-menu.md) · [English](../EN/15-plugins-intro.md)
+上一章：[15 · 群聊与分支简介](15-group-and-branches.md) · 下一章：[17 · 从 SillyTavern 迁过来](17-from-sillytavern.md) · [目录](00-menu.md) · [English](../EN/16-plugins-intro.md)
 
 ---
 
@@ -38,7 +38,7 @@
 
 1. 先完成必做路径与稳定开聊。
 2. 一次只启用一个你需要的插件，确认行为后再开下一个。
-3. 开发文档在 `DOC/devNotes/`，**不是**本章范围。各捆绑插件用法见 [18 · 第一方插件使用指南](18-bundled-plugins.md)。
+3. 开发文档在 `DOC/devNotes/`，**不是**本章范围。各捆绑插件用法见 [19 · 第一方插件使用指南](19-bundled-plugins.md)。
 
 ---
 
@@ -47,4 +47,4 @@
 - [ ] 打开过 **设置 → 插件**。
 - [ ] 知道对话页有插件面板 / 本对话设置可覆盖。
 
-下一步：[16 · 从 SillyTavern 迁过来](16-from-sillytavern.md)。
+下一步：[17 · 从 SillyTavern 迁过来](17-from-sillytavern.md)。

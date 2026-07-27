@@ -1,8 +1,8 @@
-# 13 · 启动方式对照与倒计时
+# 14 · 启动方式对照与倒计时
 
 完成本章后：能按场景选对启动方式，并知道倒计时里 `B` / 空格的含义。
 
-上一章：[12 · 用 Docker 跑](12-docker.md) · 下一章：[14 · 群聊与分支简介](14-group-and-branches.md) · [目录](00-menu.md) · [English](../EN/13-startup-options.md)
+上一章：[13 · 用 Docker 跑](13-docker.md) · 下一章：[15 · 群聊与分支简介](15-group-and-branches.md) · [目录](00-menu.md) · [English](../EN/14-startup-options.md)
 
 ---
 
@@ -11,7 +11,7 @@
 | 方式 | 适合谁 | 浏览器地址 |
 |------|------|----------|
 | **`!_start.bat` / `!_start.sh`** | 本机日常使用（推荐） | `config.yaml` 的 **`serverPort`**（默认 6633） |
-| **Docker** | NAS / 服务器容器 | 一般为宿主机映射的 6633，见 [12](12-docker.md) |
+| **Docker** | NAS / 服务器容器 | 一般为宿主机映射的 6633，见 [13](13-docker.md) |
 | **`npm run dev`** | 改代码、热更新 | **`webPort`**（默认常为 **6699**），与正式端口不同 |
 
 日常聊天请用 `!_start` 或 Docker，不要误开 dev 端口当生产入口。
@@ -53,4 +53,4 @@ npm run dev
 - [ ] 能说出自己平时该用 `!_start`、Docker 还是 `npm run dev`。
 - [ ] 知道按 **`B`** 是强制重编译。
 
-进阶可选：[14 · 群聊与分支简介](14-group-and-branches.md)。
+进阶可选：[15 · 群聊与分支简介](15-group-and-branches.md)。

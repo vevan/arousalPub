@@ -1,8 +1,8 @@
-# 12 · 用 Docker 跑
+# 13 · 用 Docker 跑
 
 完成本章后：能用 Docker Compose 构建并启动，浏览器访问健康服务，并知道数据挂在哪。
 
-上一章：[11 · 数据在哪、怎么备份](11-data-and-backup.md) · 下一章：[13 · 启动方式对照与倒计时](13-startup-options.md) · [目录](00-menu.md) · [English](../EN/12-docker.md)
+上一章：[12 · 数据在哪、怎么备份](12-data-and-backup.md) · 下一章：[14 · 启动方式对照与倒计时](14-startup-options.md) · [目录](00-menu.md) · [English](../EN/13-docker.md)
 
 ---
 
@@ -42,7 +42,7 @@ AROUSALPUB_PORT=8080 docker compose up -d --build
 
 ## 数据
 
-默认把项目内 **`./data`** 挂到容器 **`/data`**，与本地 `!_start` 使用同一套目录布局，便于备份（[11](11-data-and-backup.md)）。
+默认把项目内 **`./data`** 挂到容器 **`/data`**，与本地 `!_start` 使用同一套目录布局，便于备份（[12](12-data-and-backup.md)）。
 
 **不要**让多个容器实例同时读写同一数据目录。  
 也**不要**本机 `!_start` 与 Docker 同时占用 **6633**。
@@ -79,4 +79,4 @@ AROUSALPUB_PORT=8080 docker compose up -d --build
 - [ ] 浏览器能打开 6633（或你改过的端口）。
 - [ ] 明白 `./data` 即持久化数据。
 
-下一步：[13 · 启动方式对照与倒计时](13-startup-options.md)。
+下一步：[14 · 启动方式对照与倒计时](14-startup-options.md)。

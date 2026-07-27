@@ -42,7 +42,7 @@
 - 提示词库内：**「导入预设…」**
 - 或 **设置 → 导入**，再选打开提示词库导入
 
-更完整的迁移说明见 [16 · 从 SillyTavern 迁过来](16-from-sillytavern.md)。
+更完整的迁移说明见 [17 · 从 SillyTavern 迁过来](17-from-sillytavern.md)。
 
 ---
 

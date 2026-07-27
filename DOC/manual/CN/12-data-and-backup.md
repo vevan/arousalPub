@@ -1,8 +1,8 @@
-# 11 · 数据在哪、怎么备份
+# 12 · 数据在哪、怎么备份
 
 完成本章后：知道数据默认在哪个文件夹、怎么整包备份与换机恢复，以及不要同时双写同一目录。
 
-上一章：[10 · 向量召回](10-vector-recall.md) · 下一章：[12 · 用 Docker 跑](12-docker.md) · [目录](00-menu.md) · [English](../EN/11-data-and-backup.md)
+上一章：[11 · 向量召回](11-vector-recall.md) · 下一章：[13 · 用 Docker 跑](13-docker.md) · [目录](00-menu.md) · [English](../EN/12-data-and-backup.md)
 
 ---
 
@@ -60,4 +60,4 @@ data/
 - [ ] 能在资源管理器 / Finder 里找到项目下的 `data/`。
 - [ ] 知道「整目录复制」就是主备份方式。
 
-下一步（按需）：[12 · 用 Docker 跑](12-docker.md)。
+下一步（按需）：[13 · 用 Docker 跑](13-docker.md)。

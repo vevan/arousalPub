@@ -36,16 +36,16 @@ On the chat page top bar, open the **gear** → **This chat settings**.
 | **Prompt preset** | Which prompt set this chat uses; can **Follow global current preset** |
 | **User / other characters** | Rebind character cards |
 | **Lorebooks** | Which world-info books inject here (multi-select; order affects merge) |
-| **Knowledge bases** | Document RAG (optional) |
-| **Background / BGM** | Cosmetic, optional |
+| **Knowledge bases** | Document RAG (upload files first; see [09](09-files-and-assets.md)) |
+| **Background / BGM** | Pick image/audio from the asset library (see [09](09-files-and-assets.md)) |
 
-Changes apply as you continue chatting — no need to recreate the conversation.
+Changes apply as you continue chatting — no need to recreate the conversation. Upload files under top-bar **Files**, not in this panel.
 
 ### Other tabs (know the entry points)
 
-- **Vector recall**: per-chat overrides and **Rebuild memory index** (see [10](10-vector-recall.md))
-- **Plugins**: per-chat override of global defaults (see [15](15-plugins-intro.md))
-- **Group chat**: when you have multiple characters — [14](14-group-and-branches.md)
+- **Vector recall**: per-chat overrides and **Rebuild memory index** (see [11](11-vector-recall.md))
+- **Plugins**: per-chat override of global defaults (see [16](16-plugins-intro.md))
+- **Group chat**: when you have multiple characters — [15](15-group-and-branches.md)
 
 ---
 

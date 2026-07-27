@@ -4,7 +4,7 @@ For first-time arousalPub users: follow the chapters in order to go from install
 
 Developer design notes live in [`../../devNotes/`](../../devNotes/) — do not start there.
 
-[Language hub](../00-menu.md) · [中文教程](../CN/00-menu.md) · [English README](../../../README.md) · [中文说明](../../README.zh.md)
+[中文教程](../CN/00-menu.md) · [English README](../../../README.md) · [中文说明](../../README.zh.md)
 
 ---
 
@@ -37,8 +37,9 @@ Through **05**, everyday chatting is enough.
 | 06 | [Common chat actions](06-chat-basics.md) | Regenerate, swipe versions, bind characters/lorebooks |
 | 07 | [Prompt presets intro](07-prompts-intro.md) | Learn presets and entries; bind a preset to a chat |
 | 08 | [Lorebooks (world info) intro](08-lorebooks-intro.md) | Create lorebook / group / entry; select books for a chat |
-| 09 | [Settings tour](09-settings-tour.md) | Find language, theme, history depth, and other tabs |
-| 10 | [Vector recall](10-vector-recall.md) | Open vector recall, configure Embeddings, understand long-term memory |
+| 09 | [Asset library (Files) intro](09-files-and-assets.md) | Upload images/audio/docs; set background & BGM; meet knowledge bases |
+| 10 | [Settings tour](10-settings-tour.md) | Find language, theme, history depth, and other tabs |
+| 11 | [Vector recall](11-vector-recall.md) | Open vector recall, configure Embeddings, understand long-term memory |
 
 ---
 
@@ -46,9 +47,9 @@ Through **05**, everyday chatting is enough.
 
 | # | Doc | You will |
 |------|------|----------|
-| 11 | [Where data lives and how to back up](11-data-and-backup.md) | Find `data/`, full-directory backup and restore |
-| 12 | [Run with Docker](12-docker.md) | Container start, ports, mounts, common open failures |
-| 13 | [Startup options and countdown](13-startup-options.md) | `!_start` / Docker / `npm run dev`; press `B` to rebuild |
+| 12 | [Where data lives and how to back up](12-data-and-backup.md) | Find `data/`, full-directory backup and restore |
+| 13 | [Run with Docker](13-docker.md) | Container start, ports, mounts, common open failures |
+| 14 | [Startup options and countdown](14-startup-options.md) | `!_start` / Docker / `npm run dev`; press `B` to rebuild |
 
 ---
 
@@ -56,17 +57,17 @@ Through **05**, everyday chatting is enough.
 
 | # | Doc | You will |
 |------|------|----------|
-| 14 | [Group chat and branches intro](14-group-and-branches.md) | Multi-speaker chat and the branch tree |
-| 15 | [Plugins and extensions intro](15-plugins-intro.md) | Enable, order, per-chat overrides |
-| 16 | [Migrating from SillyTavern](16-from-sillytavern.md) | What you can bring (cards / world info / presets / chats) |
-| 17 | [Session debug audit](17-session-debug-audit.md) | Turn on audit; view prompts / assembly / performance |
-| 18 | [Bundled plugins guide](18-bundled-plugins.md) | How to use each of the seven shipped plugins |
-| 19 | [Troubleshooting](19-troubleshooting.md) | Page won’t open, no reply, audit and plugin issues, etc. |
+| 15 | [Group chat and branches intro](15-group-and-branches.md) | Multi-speaker chat and the branch tree |
+| 16 | [Plugins and extensions intro](16-plugins-intro.md) | Enable, order, per-chat overrides |
+| 17 | [Migrating from SillyTavern](17-from-sillytavern.md) | What you can bring (cards / world info / presets / chats) |
+| 18 | [Session debug audit](18-session-debug-audit.md) | Turn on audit; view prompts / assembly / performance |
+| 19 | [Bundled plugins guide](19-bundled-plugins.md) | How to use each of the seven shipped plugins |
+| 20 | [Troubleshooting](20-troubleshooting.md) | Page won’t open, no reply, audit and plugin issues, etc. |
 
 ---
 
 ## Status
 
-English chapters 01–19 mirror the Chinese set under `DOC/manual/EN/`. Each chapter links to its [中文](../CN/00-menu.md) twin.
+English chapters 01–20 mirror the Chinese set under `DOC/manual/EN/`. Each chapter links to its [中文](../CN/00-menu.md) twin.
 
 Product overview (not a tutorial): [`../../../README.md`](../../../README.md).

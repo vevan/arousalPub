@@ -4,7 +4,7 @@
 
 进阶开发 / 插件定案请看 [`../../devNotes/`](../../devNotes/)，不要从这里起步。
 
-[教程语言入口](../00-menu.md) · [English manual](../EN/00-menu.md) · [English README](../../../README.md) · [中文说明](../../README.zh.md)
+[English manual](../EN/00-menu.md) · [English README](../../../README.md) · [中文说明](../../README.zh.md)
 
 ---
 
@@ -37,8 +37,9 @@
 | 06 | [对话里常用操作](06-chat-basics.md) | 重新生成、swipe 多版本、侧栏绑定角色/资料库 |
 | 07 | [提示词预设入门](07-prompts-intro.md) | 认识预设与条目、给对话绑定一个预设 |
 | 08 | [资料库（世界书）入门](08-lorebooks-intro.md) | 建资料库 / 分组 / 条目，并在对话中勾选注入 |
-| 09 | [设置页导览](09-settings-tour.md) | 语言、主题、历史轮数等入口在哪 |
-| 10 | [向量召回](10-vector-recall.md) | 打开向量召回、配置 Embeddings、理解远期记忆如何参与对话 |
+| 09 | [资产库（文件）入门](09-files-and-assets.md) | 上传图片/音频/文档，设对话背景与 BGM，了解知识库 |
+| 10 | [设置页导览](10-settings-tour.md) | 语言、主题、历史轮数等入口在哪 |
+| 11 | [向量召回](11-vector-recall.md) | 打开向量召回、配置 Embeddings、理解远期记忆如何参与对话 |
 
 ---
 
@@ -46,9 +47,9 @@
 
 | 序号 | 文档 | 你将完成 |
 |------|------|----------|
-| 11 | [数据在哪、怎么备份](11-data-and-backup.md) | 找到 `data/`、整目录备份与换机恢复注意点 |
-| 12 | [用 Docker 跑](12-docker.md) | 容器启动、端口、挂载数据、常见打不开排查 |
-| 13 | [启动方式对照与倒计时](13-startup-options.md) | `!_start` / Docker / `npm run dev`；按 `B` 重编译 |
+| 12 | [数据在哪、怎么备份](12-data-and-backup.md) | 找到 `data/`、整目录备份与换机恢复注意点 |
+| 13 | [用 Docker 跑](13-docker.md) | 容器启动、端口、挂载数据、常见打不开排查 |
+| 14 | [启动方式对照与倒计时](14-startup-options.md) | `!_start` / Docker / `npm run dev`；按 `B` 重编译 |
 
 ---
 
@@ -56,17 +57,17 @@
 
 | 序号 | 文档 | 你将完成 |
 |------|------|----------|
-| 14 | [群聊与分支简介](14-group-and-branches.md) | 多角色发言、对话分支树大概怎么用 |
-| 15 | [插件与扩展能力简介](15-plugins-intro.md) | 启用、排序、会话覆盖等通用入口 |
-| 16 | [从 SillyTavern 迁过来](16-from-sillytavern.md) | 角色卡 / 世界书 / 预设等可带什么、注意什么 |
-| 17 | [会话 debug 审计](17-session-debug-audit.md) | 开启审计、查看提示词 / 组装 / 性能 |
-| 18 | [第一方插件使用指南](18-bundled-plugins.md) | 7 个捆绑插件分别怎么用 |
-| 19 | [常见问题排查](19-troubleshooting.md) | 打不开页、没回复、审计与插件异常等 |
+| 15 | [群聊与分支简介](15-group-and-branches.md) | 多角色发言、对话分支树大概怎么用 |
+| 16 | [插件与扩展能力简介](16-plugins-intro.md) | 启用、排序、会话覆盖等通用入口 |
+| 17 | [从 SillyTavern 迁过来](17-from-sillytavern.md) | 角色卡 / 世界书 / 预设等可带什么、注意什么 |
+| 18 | [会话 debug 审计](18-session-debug-audit.md) | 开启审计、查看提示词 / 组装 / 性能 |
+| 19 | [第一方插件使用指南](19-bundled-plugins.md) | 7 个捆绑插件分别怎么用 |
+| 20 | [常见问题排查](20-troubleshooting.md) | 打不开页、没回复、审计与插件异常等 |
 
 ---
 
 ## 状态说明
 
-中文各章正文（01–19）已就绪，均在本目录 `DOC/manual/CN/`。每章导航可切到对等 [English](../EN/00-menu.md) 版。
+中文各章正文（01–20）已就绪，均在本目录 `DOC/manual/CN/`。每章导航可切到对等 [English](../EN/00-menu.md) 版。
 
 有产品级总览（非逐步教程）可直接读 [`../../README.zh.md`](../../README.zh.md)。

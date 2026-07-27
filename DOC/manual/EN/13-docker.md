@@ -1,8 +1,8 @@
-# 12 · Run with Docker
+# 13 · Run with Docker
 
 After this chapter: you can build and start with Docker Compose, open a healthy service in the browser, and know where data is mounted.
 
-Prev: [11 · Where data lives and how to back up](11-data-and-backup.md) · Next: [13 · Startup options and countdown](13-startup-options.md) · [Menu](00-menu.md) · [中文](../CN/12-docker.md)
+Prev: [12 · Where data lives and how to back up](12-data-and-backup.md) · Next: [14 · Startup options and countdown](14-startup-options.md) · [Menu](00-menu.md) · [中文](../CN/13-docker.md)
 
 ---
 
@@ -42,7 +42,7 @@ AROUSALPUB_PORT=8080 docker compose up -d --build
 
 ## Data
 
-By default project **`./data`** mounts to container **`/data`**, same layout as local `!_start` — easy to back up ([11](11-data-and-backup.md)).
+By default project **`./data`** mounts to container **`/data`**, same layout as local `!_start` — easy to back up ([12](12-data-and-backup.md)).
 
 **Do not** let multiple container instances read/write the same data directory.  
 **Do not** run local `!_start` and Docker on **6633** at the same time.
@@ -79,4 +79,4 @@ Optional env vars (under `environment` in `docker-compose.yml`): `JWT_SECRET`, `
 - [ ] Browser opens 6633 (or your remapped port).
 - [ ] You know `./data` is the persisted data.
 
-Next: [13 · Startup options and countdown](13-startup-options.md).
+Next: [14 · Startup options and countdown](14-startup-options.md).

@@ -1,8 +1,8 @@
-# 17 · 会话 debug 审计
+# 18 · 会话 debug 审计
 
 完成本章后：能打开审计开关，在发送/再生后查看某轮的提示词、组装命中与性能数据；并知道「预览」与磁盘上的审计文件是什么关系。
 
-上一章：[16 · 从 SillyTavern 迁过来](16-from-sillytavern.md) · 下一章：[18 · 第一方插件使用指南](18-bundled-plugins.md) · [目录](00-menu.md) · [English](../EN/17-session-debug-audit.md)
+上一章：[17 · 从 SillyTavern 迁过来](17-from-sillytavern.md) · 下一章：[19 · 第一方插件使用指南](19-bundled-plugins.md) · [目录](00-menu.md) · [English](../EN/18-session-debug-audit.md)
 
 ---
 
@@ -81,4 +81,4 @@
 - [ ] 发送或再生后，助手消息旁能点 **审计**，并能在 **提示词** / **组装命中** Tab 看到内容。
 - [ ] 知道 **预览** 也依赖同一开关。
 
-下一步：[18 · 第一方插件使用指南](18-bundled-plugins.md)。
+下一步：[19 · 第一方插件使用指南](19-bundled-plugins.md)。

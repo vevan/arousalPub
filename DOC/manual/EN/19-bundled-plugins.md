@@ -1,10 +1,10 @@
-# 18 · Bundled plugins guide
+# 19 · Bundled plugins guide
 
 After this chapter: you know what each of the seven shipped plugins does, how to enable them, and where to click in a chat.
 
-Prev: [17 · Session debug audit](17-session-debug-audit.md) · Next: [19 · Troubleshooting](19-troubleshooting.md) · [Menu](00-menu.md) · [中文](../CN/18-bundled-plugins.md)
+Prev: [18 · Session debug audit](18-session-debug-audit.md) · Next: [20 · Troubleshooting](20-troubleshooting.md) · [Menu](00-menu.md) · [中文](../CN/19-bundled-plugins.md)
 
-Generic plugin entry points (enable, order, import/export) are in [15 · Plugins and extensions intro](15-plugins-intro.md). This chapter covers **first-party (bundled) plugins** only.
+Generic plugin entry points (enable, order, import/export) are in [16 · Plugins and extensions intro](16-plugins-intro.md). This chapter covers **first-party (bundled) plugins** only.
 
 ---
 
@@ -129,4 +129,4 @@ After editing CSS, **refresh or re-enter the chat**. Custom CSS is at your own r
 - [ ] Know toolbar plugin buttons vs **This chat settings → Plugins**.
 - [ ] If using Historian, can explain “write to lorebook” vs “bind lorebook for injection”.
 
-Last chapter: [19 · Troubleshooting](19-troubleshooting.md).
+Last chapter: [20 · Troubleshooting](20-troubleshooting.md).

@@ -1,8 +1,8 @@
-# 14 · Group chat and branches intro
+# 15 · Group chat and branches intro
 
 After this chapter: you know where multi-character group chat and conversation branches live, and what problem each solves. Fine-tune parameters later.
 
-Prev: [13 · Startup options and countdown](13-startup-options.md) · Next: [15 · Plugins and extensions intro](15-plugins-intro.md) · [Menu](00-menu.md) · [中文](../CN/14-group-and-branches.md)
+Prev: [14 · Startup options and countdown](14-startup-options.md) · Next: [16 · Plugins and extensions intro](16-plugins-intro.md) · [Menu](00-menu.md) · [中文](../CN/15-group-and-branches.md)
 
 ---
 
@@ -51,4 +51,4 @@ Swipe on a branch may lock at the fork anchor — expected.
 - [ ] Can find **Group chat settings**, or know you need ≥2 bound characters first.
 - [ ] Can open **Branch tree**, or see **Branch from here** on a message.
 
-Next: [15 · Plugins and extensions intro](15-plugins-intro.md).
+Next: [16 · Plugins and extensions intro](16-plugins-intro.md).

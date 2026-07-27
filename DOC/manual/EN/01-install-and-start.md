@@ -69,4 +69,4 @@ Then continue to [02 · First login and account](02-first-login.md).
 
 ## If it will not open
 
-See [19 · Troubleshooting](19-troubleshooting.md). Common causes: window closed, port in use, wrong port in the URL.
+See [20 · Troubleshooting](20-troubleshooting.md). Common causes: window closed, port in use, wrong port in the URL.

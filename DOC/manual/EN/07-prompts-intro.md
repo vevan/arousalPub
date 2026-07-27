@@ -42,7 +42,7 @@ Different chats under the same account can use different prompt strategies.
 - In the prompt library: **Import preset…**
 - Or **Settings → Import**, then open the prompt library to import
 
-Fuller migration notes: [16 · Migrating from SillyTavern](16-from-sillytavern.md).
+Fuller migration notes: [17 · Migrating from SillyTavern](17-from-sillytavern.md).
 
 ---
 

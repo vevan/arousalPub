@@ -1,8 +1,8 @@
-# 09 · 设置页导览
+# 10 · 设置页导览
 
 完成本章后：知道顶栏「设置」里各 Tab 是干什么的，以后改语言、主题、历史轮数时不用到处找。
 
-上一章：[08 · 资料库（世界书）入门](08-lorebooks-intro.md) · 下一章：[10 · 向量召回](10-vector-recall.md) · [目录](00-menu.md) · [English](../EN/09-settings-tour.md)
+上一章：[09 · 资产库（文件）入门](09-files-and-assets.md) · 下一章：[11 · 向量召回](11-vector-recall.md) · [目录](00-menu.md) · [English](../EN/10-settings-tour.md)
 
 ---
 
@@ -23,12 +23,12 @@
 | **显示** | 主题与主色、首页默认视图等 |
 | **对话历史** | 是否限制历史轮数、最多带多少轮进上下文 |
 | **资料库** | 全局关键字递归等（单本内容仍在「资料库」页编辑） |
-| **向量召回** | Embeddings、远期记忆、资料库向量、知识库 RAG——专章见 [10](10-vector-recall.md) |
+| **向量召回** | Embeddings、远期记忆、资料库向量、知识库 RAG——专章见 [11](11-vector-recall.md) |
 | **预算裁切** | 上下文超预算时的丢弃顺序 |
 | **正则替换** | 用户级正则管线 |
-| **插件** | 启用、排序、各插件设置（见 [15](15-plugins-intro.md)） |
-| **导入** | 从 SillyTavern 导入世界书 / 预设 / 聊天记录等（见 [16](16-from-sillytavern.md)） |
-| **调试** | **会话 debug 审计**开关、版本信息、会话 debug 审计等（见 [17](17-session-debug-audit.md)） |
+| **插件** | 启用、排序、各插件设置（见 [16](16-plugins-intro.md)） |
+| **导入** | 从 SillyTavern 导入世界书 / 预设 / 聊天记录等（见 [17](17-from-sillytavern.md)） |
+| **调试** | **会话 debug 审计**开关、版本信息、会话 debug 审计等（见 [18](18-session-debug-audit.md)） |
 
 ---
 
@@ -51,4 +51,4 @@
 - [ ] 能打开设置并在左侧切换两个以上 Tab。
 - [ ] 知道改语言在 **系统**，向量相关在 **向量召回**，API 在顶栏 **连接**。
 
-下一步：[10 · 向量召回](10-vector-recall.md)。
+下一步：[11 · 向量召回](11-vector-recall.md)。

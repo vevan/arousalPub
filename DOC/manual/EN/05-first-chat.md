@@ -25,7 +25,7 @@ On the home page click **New chat**.
 |------|------|
 | **Chat name** | Anything you can find later in the list |
 | **User card** | Pick a user character (or whatever the UI offers if you have none yet) |
-| **Main character card** | Pick the other character; use **Add character slot** for more (group chat: [14](14-group-and-branches.md)) |
+| **Main character card** | Pick the other character; use **Add character slot** for more (group chat: [15](15-group-and-branches.md)) |
 | **Bound lorebooks** | Beginners can keep defaults or clear them; lorebooks: [08](08-lorebooks-intro.md) |
 
 Click **Start chat**.

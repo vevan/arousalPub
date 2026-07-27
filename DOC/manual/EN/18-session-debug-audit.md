@@ -1,8 +1,8 @@
-# 17 · Session debug audit
+# 18 · Session debug audit
 
 After this chapter: you can turn audit on, inspect a turn’s prompts, assembly hits, and performance after send/regenerate, and you know how **Preview** relates to on-disk audit files.
 
-Prev: [16 · Migrating from SillyTavern](16-from-sillytavern.md) · Next: [18 · Bundled plugins guide](18-bundled-plugins.md) · [Menu](00-menu.md) · [中文](../CN/17-session-debug-audit.md)
+Prev: [17 · Migrating from SillyTavern](17-from-sillytavern.md) · Next: [19 · Bundled plugins guide](19-bundled-plugins.md) · [Menu](00-menu.md) · [中文](../CN/18-session-debug-audit.md)
 
 ---
 
@@ -81,4 +81,4 @@ Backing up `data/` includes audit files. Do not let two machines write the same 
 - [ ] After send/regenerate, **Audit** on an assistant message opens **Messages** / **Assembly** with content.
 - [ ] You know **Preview** uses the same toggle.
 
-Next: [18 · Bundled plugins guide](18-bundled-plugins.md).
+Next: [19 · Bundled plugins guide](19-bundled-plugins.md).

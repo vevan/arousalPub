@@ -1,8 +1,8 @@
-# 11 · Where data lives and how to back up
+# 12 · Where data lives and how to back up
 
 After this chapter: you know the default data folder, how to back up the whole tree and restore on another machine, and not to double-write the same directory.
 
-Prev: [10 · Vector recall](10-vector-recall.md) · Next: [12 · Run with Docker](12-docker.md) · [Menu](00-menu.md) · [中文](../CN/11-data-and-backup.md)
+Prev: [11 · Vector recall](11-vector-recall.md) · Next: [13 · Run with Docker](13-docker.md) · [Menu](00-menu.md) · [中文](../CN/12-data-and-backup.md)
 
 ---
 
@@ -60,4 +60,4 @@ With Syncthing etc.: **do not** let two machines write the same `dataDir` at onc
 - [ ] You can find project `data/` in Explorer / Finder.
 - [ ] You know “copy the whole directory” is the primary backup method.
 
-Next (as needed): [12 · Run with Docker](12-docker.md).
+Next (as needed): [13 · Run with Docker](13-docker.md).

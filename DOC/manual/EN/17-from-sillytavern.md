@@ -1,8 +1,8 @@
-# 16 · Migrating from SillyTavern
+# 17 · Migrating from SillyTavern
 
 After this chapter: you know where to import character cards, world info, prompt presets, and chat logs, plus current limits.
 
-Prev: [15 · Plugins and extensions intro](15-plugins-intro.md) · Next: [17 · Session debug audit](17-session-debug-audit.md) · [Menu](00-menu.md) · [中文](../CN/16-from-sillytavern.md)
+Prev: [16 · Plugins and extensions intro](16-plugins-intro.md) · Next: [18 · Session debug audit](18-session-debug-audit.md) · [Menu](00-menu.md) · [中文](../CN/17-from-sillytavern.md)
 
 ---
 
@@ -60,4 +60,4 @@ Multi-bot group-chat history mapping may still be limited; inspect complex group
 - [ ] Successfully imported at least one of: character / world info / preset / chat log.
 - [ ] Know characters import in the character library; several other types via **Settings → Import**.
 
-Next (optional): [17 · Session debug audit](17-session-debug-audit.md) or [18 · Bundled plugins guide](18-bundled-plugins.md).
+Next (optional): [18 · Session debug audit](18-session-debug-audit.md) or [19 · Bundled plugins guide](19-bundled-plugins.md).

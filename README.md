@@ -2,7 +2,7 @@
 
 A SillyTavern-like local AI character chat app: manage character cards, prompt presets, and lorebooks (world info), then stream conversations with models in the browser. All data stays on disk for backup or sync.
 
-[Beginner manual](DOC/manual/00-menu.md) · [English guide](DOC/manual/EN/00-menu.md) · [中文教程](DOC/manual/CN/00-menu.md) · [中文说明](DOC/README.zh.md)
+[English guide](DOC/manual/EN/00-menu.md) · [中文教程](DOC/manual/CN/00-menu.md) · [中文说明](DOC/README.zh.md)
 
 ---
 
@@ -193,7 +193,7 @@ Path details: [`data/README.md`](data/README.md).
 
 ## Developer docs
 
-Architecture, APIs, and implementation notes: **`DOC/devNotes/`**. Project index: [`cursor.md`](cursor.md). Beginner manual: [`DOC/manual/`](DOC/manual/00-menu.md) ([EN](DOC/manual/EN/00-menu.md) · [CN](DOC/manual/CN/00-menu.md)). Chinese overview: [`DOC/README.zh.md`](DOC/README.zh.md). Docs hub: [`DOC/README.md`](DOC/README.md).
+Architecture, APIs, and implementation notes: **`DOC/devNotes/`**. Project index: [`cursor.md`](cursor.md). Beginner manual: [EN](DOC/manual/EN/00-menu.md) · [CN](DOC/manual/CN/00-menu.md). Chinese overview: [`DOC/README.zh.md`](DOC/README.zh.md). Docs hub: [`DOC/README.md`](DOC/README.md).
 
 Dev mode:
 

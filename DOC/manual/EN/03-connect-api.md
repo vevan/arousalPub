@@ -46,7 +46,7 @@ Save as the panel prompts. Config is written under the local data directory (e.g
 ## vs Vector recall
 
 Chat API lives in **Connection**.  
-**Embeddings** (vectors / long-term memory) live under **Settings → Vector recall**, separate from this chapter; see [10 · Vector recall](10-vector-recall.md) when needed.
+**Embeddings** (vectors / long-term memory) live under **Settings → Vector recall**, separate from this chapter; see [11 · Vector recall](11-vector-recall.md) when needed.
 
 ---
 

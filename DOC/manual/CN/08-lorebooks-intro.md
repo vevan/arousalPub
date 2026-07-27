@@ -2,7 +2,7 @@
 
 完成本章后：能新建或导入资料库，并在对话中勾选要注入的本。
 
-上一章：[07 · 提示词预设入门](07-prompts-intro.md) · 下一章：[09 · 设置页导览](09-settings-tour.md) · [目录](00-menu.md) · [English](../EN/08-lorebooks-intro.md)
+上一章：[07 · 提示词预设入门](07-prompts-intro.md) · 下一章：[09 · 资产库（文件）入门](09-files-and-assets.md) · [目录](00-menu.md) · [English](../EN/08-lorebooks-intro.md)
 
 ---
 
@@ -16,7 +16,7 @@
 
 - **恒定注入**
 - **关键字触发**
-- **向量触发**（依赖 Embeddings，见 [10](10-vector-recall.md)）
+- **向量触发**（依赖 Embeddings，见 [11](11-vector-recall.md)）
 
 ---
 
@@ -31,7 +31,7 @@
 - **「导入资料库（追加一本）」**
 - **「导出当前资料库（JSON）」**
 
-从 ST 世界书迁移见 [16](16-from-sillytavern.md)。
+从 ST 世界书迁移见 [17](17-from-sillytavern.md)。
 
 ---
 
@@ -50,7 +50,7 @@
 ## 全局相关设置（可选）
 
 **设置 → 资料库**：关键字递归、递归深度等。  
-资料库的**向量 TopK** 等在 **设置 → 向量召回**（[10](10-vector-recall.md)）。
+资料库的**向量 TopK** 等在 **设置 → 向量召回**（[11](11-vector-recall.md)）。
 
 ---
 
@@ -59,4 +59,4 @@
 - [ ] 打开过资料库页，能看到至少一本库或会新建。
 - [ ] 知道在「本对话设置 → 绑定」里勾选资料库。
 
-下一步：[09 · 设置页导览](09-settings-tour.md)。
+下一步：[09 · 资产库（文件）入门](09-files-and-assets.md)。

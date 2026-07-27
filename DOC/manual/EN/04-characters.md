@@ -52,6 +52,8 @@ When creating a chat:
 
 The library **manages cards**; who a chat uses is set under **This chat settings → Bindings** (see [06 · Common chat actions](06-chat-basics.md)).
 
+To attach extra images/media to a character: upload under top-bar **Files**, then use **Asset library bindings** on the character page (see [09 · Asset library (Files) intro](09-files-and-assets.md)).
+
 ---
 
 ## Checklist

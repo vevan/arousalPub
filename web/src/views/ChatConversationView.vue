@@ -156,6 +156,8 @@ const {
   switchActiveBranch,
   createBranchDialogOpen,
   pendingCreateTurn,
+  createBranchSwipeOptions,
+  createBranchInitialSwipeId,
   requestCreateBranchFromTurn,
   confirmCreateBranch,
   cancelCreateBranch,
@@ -164,6 +166,7 @@ const {
   openBranchPanel,
   clearBranchHighlight,
   isForkTurn,
+  isForkAnchorOnActivePath,
 } = useConversationBranches({
   getConversationId: () => props.conversationId,
   onActivePathChanged: async () => {
@@ -179,6 +182,7 @@ provide(CONVERSATION_BRANCH_KEY, {
   openBranchPanel,
   requestCreateBranchFromTurn,
   isForkTurn,
+  isForkAnchorOnActivePath,
 })
 
 const createBranchSubtitle = computed(() => {
@@ -1501,6 +1505,8 @@ watch(
         :confirm-text="$t('chat.branches.createBranchConfirm')"
         :busy="branchBusy"
         :error-text="branchLoadError"
+        :swipe-options="createBranchSwipeOptions"
+        :initial-swipe-id="createBranchInitialSwipeId"
         show-stay-checkbox
         @update:model-value="(open) => { if (!open) cancelCreateBranch() }"
         @confirm="confirmCreateBranch"

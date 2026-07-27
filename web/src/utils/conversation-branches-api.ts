@@ -158,6 +158,28 @@ export function collectForkTurnIdsWithSiblings(nodes: BranchTreeNodeDto[]): Set<
   return out
 }
 
+/**
+ * 当前 active 路径上各层分支的 forkTurnId（读路径会按 forkMessageId overlay 的锚点）。
+ * 主路径 `""` → 空集。
+ */
+export function collectForkAnchorTurnIdsOnActivePath(
+  nodes: BranchTreeNodeDto[],
+  activeBranchPath: string,
+): Set<string> {
+  const out = new Set<string>()
+  const active = activeBranchPath.trim()
+  if (!active) return out
+  const parts = active.split('/').filter(Boolean)
+  let acc = ''
+  for (const part of parts) {
+    acc = acc ? `${acc}/${part}` : part
+    const node = findBranchTreeNode(nodes, acc)
+    const id = node?.forkTurnId?.trim()
+    if (id) out.add(id)
+  }
+  return out
+}
+
 export function findBranchTreeNode(
   nodes: BranchTreeNodeDto[],
   path: string,

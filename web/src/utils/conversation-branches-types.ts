@@ -15,3 +15,10 @@ export interface BranchTreeResponse {
   activeBranchPath: string
   nodes: BranchTreeNodeDto[]
 }
+
+/** 创建分支对话框：多 swipe 候选 */
+export type BranchSwipeOption = {
+  id: string
+  index: number
+  preview: string
+}

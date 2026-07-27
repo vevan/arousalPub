@@ -153,6 +153,73 @@ export function parseBranchRegistryForkTurnId(entry: unknown): string | null {
   return raw.trim()
 }
 
+/** 从 branches[] 单条解析 forkMessageId（可选） */
+export function parseBranchRegistryForkMessageId(entry: unknown): string | null {
+  if (!entry || typeof entry !== 'object') return null
+  const raw = (entry as { forkMessageId?: unknown }).forkMessageId
+  if (typeof raw !== 'string' || !raw.trim()) return null
+  return raw.trim()
+}
+
+/**
+ * 读路径：按 forkMessageId 覆盖 fork 轮 activeReceiveIndex / activeSegmentIndex。
+ * 浅拷贝受影响 turn，不改父路径磁盘对象。
+ */
+export function applyForkReceiveOverlay(
+  turns: TurnRecord[],
+  forkTurnId: string,
+  forkMessageId: string,
+): TurnRecord[] {
+  const tid = forkTurnId.trim()
+  const mid = forkMessageId.trim()
+  if (!tid || !mid || turns.length === 0) return turns
+
+  const idx = turns.findIndex((t) => t.turnId === tid)
+  if (idx < 0) return turns
+  const turn = turns[idx]!
+  const segments = turn.segments ?? []
+  let segIdx = -1
+  let recvIdx = -1
+  for (let si = 0; si < segments.length; si++) {
+    const receives = segments[si]?.receives ?? []
+    for (let ri = 0; ri < receives.length; ri++) {
+      const id = receives[ri]?.id
+      if (typeof id === 'string' && id.trim() === mid) {
+        segIdx = si
+        recvIdx = ri
+        break
+      }
+    }
+    if (segIdx >= 0) break
+  }
+  if (segIdx < 0 || recvIdx < 0) return turns
+
+  const seg = segments[segIdx]!
+  const speaker =
+    typeof seg.speakerCharacterId === 'string'
+      ? seg.speakerCharacterId.trim()
+      : ''
+  if (
+    seg.activeReceiveIndex === recvIdx &&
+    turn.activeSegmentIndex === segIdx &&
+    (!speaker || turn.speakerCharacterId === speaker)
+  ) {
+    return turns
+  }
+
+  const nextSegments = segments.slice()
+  nextSegments[segIdx] = { ...seg, activeReceiveIndex: recvIdx }
+  const nextTurn: TurnRecord = {
+    ...turn,
+    segments: nextSegments,
+    activeSegmentIndex: segIdx,
+    ...(speaker ? { speakerCharacterId: speaker } : {}),
+  }
+  const out = turns.slice()
+  out[idx] = nextTurn
+  return out
+}
+
 /** 在 parent 分支 index.branches[] 中查找相对 segment 的注册项 */
 export async function findBranchRegistryEntry(
   conversationId: string,
@@ -322,7 +389,12 @@ export async function resolveActivePathTurns(
       if (!step) {
         throw new BranchRegistryBrokenError(conversationId, active, segment)
       }
-      merged = step.merged
+      const forkMessageId = entry
+        ? parseBranchRegistryForkMessageId(entry)
+        : null
+      merged = forkMessageId
+        ? applyForkReceiveOverlay(step.merged, forkTurnId, forkMessageId)
+        : step.merged
       lastForkOrdinal = step.forkOrdinal
       parentPath = segments.slice(0, i + 1).join('/')
     }

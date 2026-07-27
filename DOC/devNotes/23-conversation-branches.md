@@ -50,7 +50,7 @@
 | **分叉引用** | `forkTurnId` = 共享前缀最后一轮的 `turnId`；UI 展示「第 N 轮」时 N = 该 turn 在 active 路径上的 `turnOrdinal` |
 | **分支首条新 turn** | 用户在分支上首次发消息后落盘；**`turnOrdinal = forkTurnOrdinal + 1`**（路径内连续编号，**不从 0 重置**） |
 | **主路径** | 创建分支**不修改**主路径已有 turn；主路径可在 fork 之后继续追加，与分支并行 |
-| **`forkMessageId`** | 可选；记录创建分支时 fork 轮上的 `receive.id`（或 UI 锚点），供消息树 / 总览展示；**不**触发在 fork 轮重写 `receives[]`（那是 swipe 语义） |
+| **`forkMessageId`** | 可选；创建分支时写入 fork 轮上所选 `receive.id`（多 swipe 时 UI 可选；须属于当前 **active segment**；默认当前 active）。**不**在父路径磁盘改写 `receives[]` / `activeReceiveIndex`。读该分支（及以其为祖先的路径）时，`resolveActivePathTurns` **浅拷贝** fork 轮并把对应 segment 的 `activeReceiveIndex` / `activeSegmentIndex` / `speakerCharacterId` 覆盖为该 id，供**展示与组装**；父路径读盘不受影响。**Lance / memory 语料仍按落盘内容索引**（fork 轮在父路径上），召回片段不随 overlay 改写。分支视图上该 fork 锚点 **禁止 swipe**（避免写父盘后被 overlay 盖回） |
 | **创建后 active** | 建议 API 创建成功后将会话 **`activeBranchPath` 切到新分支**，并 sync `chat.index.json` |
 
 **不支持（v1 明确不做）**：
@@ -359,7 +359,7 @@ resolveActivePathTurns(conversationId, activeBranchPath, range?)
 | `GET .../conversations/:id/branches` | 分支树总览（递归 `branches[]` + fork 元数据 + 各 path 的 turn 计数）；供顶栏树 UI |
 | `PATCH .../conversations/:id` | 支持 `activeBranchPath` 更新（字段已存在于 `ConversationIndex`） |
 | **对话顶栏分支树** | `ChatConversationView` `.chat-header__meta` 增加分支图标（如 `mdi-source-branch`）；点击打开 drawer / overlay 展示 §6.5 树；当前 active 高亮 |
-| **任意 turn 分叉** | 消息气泡菜单「从此处分支」→ `POST .../branches`；fork 点可为任意历史 turn（不仅最后一轮） |
+| **任意 turn 分叉** | 消息气泡菜单「从此处分支」→ `POST .../branches`；fork 点可为任意历史 turn（不仅最后一轮）；fork 轮多 swipe 时对话框可选 `forkMessageId`（读路径 overlay，见 §1.4） |
 | **Fork 点标记** | 列表内在有 sibling 分支的 turn 上显示指示；点击跳转分支总览并定位节点 |
 | **分支树轮次副标题** | `ChatBranchPanel`：分支节点 `turnRange`（`from {forkOrdinal}, to {mergedTurnCount}, total {turnCount}`）；主线 `turnRangeMain`；计算见 `branchTurnRangeParts` |
 | **落盘 SSE `turnId`** | `ChatPersistResult` / SSE `arousal.persist` 带回 `turnId`；前端 `applyPersistTurnPlugins` 写入本地 turn，避免有 `finalAssistantContent` 时 skip reload 导致 `ChatTurnBranchActions` 因缺 `turnId` 禁用 |

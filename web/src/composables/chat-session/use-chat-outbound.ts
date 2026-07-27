@@ -30,7 +30,8 @@ import {
   type createChatCompletionRunner,
 } from './completion.js'
 import type { createReplyEventHub } from './reply-events.js'
-import { nextTick, ref, type Ref } from 'vue'
+import { CONVERSATION_BRANCH_KEY } from '@/composables/conversation-branch-context'
+import { nextTick, ref, type Ref, inject } from 'vue'
 import type { ComposerTranslation } from 'vue-i18n'
 
 type CompletionRunner = ReturnType<typeof createChatCompletionRunner>
@@ -118,6 +119,7 @@ export function useChatOutbound(opts: {
   getConversationId?: () => string
   t: ComposerTranslation
 }) {
+  const branchCtx = inject(CONVERSATION_BRANCH_KEY, null)
   const pendingGroupContinue = ref<PendingGroupContinue | null>(null)
   const regeneratingSegmentIndex = ref<number | null>(null)
   const awaitingBackgroundResume = opts.awaitingBackgroundResume
@@ -1111,6 +1113,10 @@ export function useChatOutbound(opts: {
     if (isOutboundBusy()) return
     const turn = opts.turns.value[listIndex]
     if (!turn) return
+    if (branchCtx?.isForkAnchorOnActivePath(turn)) {
+      coreNotify(opts.t('chat.branches.swipeLockedOnBranchFork'))
+      return
+    }
     const segIdx = segmentIndex ?? getActiveSegmentIndex(turn)
     const segments = getTurnSegments(turn)
     const seg = segments[segIdx]

@@ -1,5 +1,6 @@
 import {
   branchPathLabel,
+  collectForkAnchorTurnIdsOnActivePath,
   collectForkTurnIdsWithSiblings,
   createConversationBranch,
   deleteConversationBranch,
@@ -12,9 +13,22 @@ import {
 } from '@/utils/conversation-branches-api'
 import { ApiRequestError } from '@/utils/api-error-message'
 import type { ChatTurnItem } from '@/types/chat-turn'
-import { getActiveReceive } from '@/utils/group-chat-turn'
+import type { BranchSwipeOption } from '@/utils/conversation-branches-types'
+import {
+  getActiveReceive,
+  getActiveReceiveIndex,
+  getSegmentReceives,
+} from '@/utils/group-chat-turn'
 import { computed, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
+
+const SWIPE_PREVIEW_MAX = 80
+
+function truncateSwipePreview(content: string): string {
+  const flat = content.replace(/\s+/g, ' ').trim()
+  if (flat.length <= SWIPE_PREVIEW_MAX) return flat
+  return `${flat.slice(0, SWIPE_PREVIEW_MAX)}…`
+}
 
 function errorMessage(e: unknown): string {
   if (e instanceof ApiRequestError) return e.message
@@ -45,6 +59,34 @@ export function useConversationBranches(params: {
 
   const createBranchDialogOpen = ref(false)
   const pendingCreateTurn = ref<ChatTurnItem | null>(null)
+
+  const createBranchSwipeOptions = computed((): BranchSwipeOption[] => {
+    const turn = pendingCreateTurn.value
+    if (!turn) return []
+    return getSegmentReceives(turn)
+      .map((r, index) => ({
+        id: r.id?.trim() ?? '',
+        index,
+        preview: truncateSwipePreview(r.content ?? ''),
+      }))
+      .filter((o) => !!o.id)
+  })
+
+  const forkAnchorTurnIdsOnActivePath = computed(() =>
+    collectForkAnchorTurnIdsOnActivePath(
+      branchTreeNodes.value,
+      activeBranchPath.value,
+    ),
+  )
+
+  const createBranchInitialSwipeId = computed(() => {
+    const turn = pendingCreateTurn.value
+    if (!turn) return undefined
+    const active = getActiveReceive(turn)
+    const id = active?.id?.trim()
+    if (id) return id
+    return createBranchSwipeOptions.value[0]?.id
+  })
 
   const forkTurnIdsWithSiblings = computed(
     () => collectForkTurnIdsWithSiblings(branchTreeNodes.value),
@@ -154,7 +196,11 @@ export function useConversationBranches(params: {
     createBranchDialogOpen.value = true
   }
 
-  async function confirmCreateBranch(label: string, setActive = true) {
+  async function confirmCreateBranch(
+    label: string,
+    setActive = true,
+    forkMessageId?: string,
+  ) {
     const id = params.getConversationId()
     const turn = pendingCreateTurn.value
     if (!id || !turn || branchBusy.value) return
@@ -164,11 +210,16 @@ export function useConversationBranches(params: {
     branchBusy.value = true
     branchLoadError.value = ''
     try {
-      const receive = getActiveReceive(turn)
+      const chosenId = forkMessageId?.trim()
+      const receiveId =
+        chosenId ||
+        getActiveReceive(turn)?.id?.trim() ||
+        getSegmentReceives(turn)[getActiveReceiveIndex(turn)]?.id?.trim() ||
+        ''
       const trimmed = label.trim()
       const result = await createConversationBranch(id, {
         forkTurnId,
-        ...(receive?.id ? { forkMessageId: receive.id } : {}),
+        ...(receiveId ? { forkMessageId: receiveId } : {}),
         ...(trimmed ? { label: trimmed } : {}),
         ...(setActive ? {} : { setActive: false }),
       })
@@ -265,6 +316,11 @@ export function useConversationBranches(params: {
     return !!tid && forkTurnIdsWithSiblings.value.has(tid)
   }
 
+  function isForkAnchorOnActivePath(turn: ChatTurnItem): boolean {
+    const tid = turn.turnId?.trim()
+    return !!tid && forkAnchorTurnIdsOnActivePath.value.has(tid)
+  }
+
   return {
     activeBranchPath,
     branchPanelOpen,
@@ -278,6 +334,8 @@ export function useConversationBranches(params: {
     branchRegistryBroken,
     createBranchDialogOpen,
     pendingCreateTurn,
+    createBranchSwipeOptions,
+    createBranchInitialSwipeId,
     forkTurnIdsWithSiblings,
     activeBranchDisplayLabel,
     syncActiveFromIndex,
@@ -292,5 +350,6 @@ export function useConversationBranches(params: {
     openBranchPanel,
     clearBranchHighlight,
     isForkTurn,
+    isForkAnchorOnActivePath,
   }
 }

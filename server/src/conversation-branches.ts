@@ -21,6 +21,7 @@ import {
   findBranchRegistryEntry,
   isBranchRegistryBrokenError,
   parseBranchRegistryForkTurnId,
+  parseBranchRegistryForkMessageId,
   parseBranchRegistryPath,
   readAllTurnsAtBranchPath,
   readChunkContainingOrdinal,
@@ -234,13 +235,6 @@ export function allocateBranchSegmentName(existingPaths: string[]): string | nul
 function parseBranchRegistryLabel(entry: unknown): string | undefined {
   if (!entry || typeof entry !== 'object') return undefined
   const raw = (entry as { label?: unknown }).label
-  if (typeof raw !== 'string' || !raw.trim()) return undefined
-  return raw.trim()
-}
-
-function parseBranchRegistryForkMessageId(entry: unknown): string | undefined {
-  if (!entry || typeof entry !== 'object') return undefined
-  const raw = (entry as { forkMessageId?: unknown }).forkMessageId
   if (typeof raw !== 'string' || !raw.trim()) return undefined
   return raw.trim()
 }
@@ -833,6 +827,26 @@ export async function createEmptyConversationBranch(params: {
     return { error: ApiErrorCodes.fork_turn_not_on_active_path, status: 400 }
   }
 
+  const forkMessageIdRaw =
+    typeof params.forkMessageId === 'string' ? params.forkMessageId.trim() : ''
+  if (forkMessageIdRaw) {
+    const segments = forkTurn.segments ?? []
+    const segIdx =
+      segments.length === 0
+        ? -1
+        : Math.min(
+            Math.max(0, Math.floor(forkTurn.activeSegmentIndex ?? 0)),
+            segments.length - 1,
+          )
+    const receives = segIdx >= 0 ? (segments[segIdx]?.receives ?? []) : []
+    const found = receives.some(
+      (r) => typeof r.id === 'string' && r.id.trim() === forkMessageIdRaw,
+    )
+    if (!found) {
+      return { error: ApiErrorCodes.validation_failed, status: 400 }
+    }
+  }
+
   const located = await readChunkContainingOrdinal(
     conversationId,
     forkTurn.turnOrdinal,
@@ -861,8 +875,8 @@ export async function createEmptyConversationBranch(params: {
     forkTurnId,
     path: segment,
   }
-  if (typeof params.forkMessageId === 'string' && params.forkMessageId.trim()) {
-    entry.forkMessageId = params.forkMessageId.trim()
+  if (forkMessageIdRaw) {
+    entry.forkMessageId = forkMessageIdRaw
   }
   const labelNorm = normalizeBranchLabelInput(params.label, { optional: true })
   if ('error' in labelNorm) return labelNorm

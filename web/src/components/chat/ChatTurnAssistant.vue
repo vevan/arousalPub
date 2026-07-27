@@ -10,9 +10,10 @@ import {
 } from '@/utils/chat-turn-display'
 import { renderRichMessageToHtml } from '@/utils/render-rich-message'
 import PluginSlotMount from '@/plugins/PluginSlotMount.vue'
+import { CONVERSATION_BRANCH_KEY } from '@/composables/conversation-branch-context'
 import { useConnectionStore } from '@/stores/connection'
 import { storeToRefs } from 'pinia'
-import { computed, toRefs } from 'vue'
+import { computed, inject, toRefs } from 'vue'
 
 const props = defineProps<{
   turn: ChatTurnItem
@@ -21,6 +22,11 @@ const props = defineProps<{
   speakerCharacterId?: string
   session: ReturnType<typeof useChatSession>
 }>()
+
+const branchCtx = inject(CONVERSATION_BRANCH_KEY, null)
+const swipeLockedOnBranchFork = computed(() =>
+  branchCtx?.isForkAnchorOnActivePath(props.turn) ?? false,
+)
 
 const conn = useConnectionStore()
 const { model: connModel } = storeToRefs(conn)
@@ -343,17 +349,25 @@ const speakerAccentStyle = computed(() => {
       <div
         v-if="showAssistantSwipeFooter(turn, listIndex, segIdx)"
         class="swipe"
+        :class="{ 'swipe--locked': swipeLockedOnBranchFork }"
         :aria-label="
-          $t('chat.swipePosition', {
-            current: swipeActiveIndex + 1,
-            total: swipeReceiveCount,
-          })
+          swipeLockedOnBranchFork
+            ? $t('chat.branches.swipeLockedOnBranchFork')
+            : $t('chat.swipePosition', {
+                current: swipeActiveIndex + 1,
+                total: swipeReceiveCount,
+              })
+        "
+        :data-tt="
+          swipeLockedOnBranchFork
+            ? $t('chat.branches.swipeLockedOnBranchFork')
+            : undefined
         "
       >
         <button
           type="button"
           class="swipe__btn"
-          :disabled="isGenerating"
+          :disabled="isGenerating || swipeLockedOnBranchFork"
           :aria-label="$t('chat.prevAssistant')"
           @click="slideAssistant(listIndex, 'left', segIdx)"
         >
@@ -365,7 +379,7 @@ const speakerAccentStyle = computed(() => {
         <button
           type="button"
           class="swipe__btn"
-          :disabled="isGenerating"
+          :disabled="isGenerating || swipeLockedOnBranchFork"
           :aria-label="$t('chat.nextAssistant')"
           @click="slideAssistant(listIndex, 'right', segIdx)"
         >

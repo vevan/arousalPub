@@ -79,6 +79,7 @@
 - [x] **群聊浮动头像组**（2026-07-24）：锚定 `chat-header`；Mic 角标只读；展开静音 + Chat Bubble（一次 `/@` 一人）— 见 `[DOC/devNotes/35](35-group-chat.md)` §2.8
 - [x] **插件设置导出 / 导入**（2026-07-24）：全局 settings + `enabled`；`GET/POST …/settings/export|import`；标题栏导入/导出 — 见 `[DOC/devNotes/09](09-plugin-system-and-guidance-generate.md)` §4
 - [x] **lorebook / prompt 当前名宽度**（2026-07-24）：`.preset-bar__current-name` 12rem + tooltip 完整名
+- [x] **创建分支时选择 swipe 分叉点**（2026-07-27）：多 swipe 对话框可选 → `forkMessageId`；读路径 overlay active；见 `[DOC/devNotes/23](23-conversation-branches.md)` §1.4
 
 ## 已归档（原 P0 / 实现清单 · 勿再在本文件维护细项）
 
@@ -107,6 +108,7 @@
 | **远期记忆增量漏 FTS 戳记误报重建**（增量写 `memoryHybridFtsProfile` · 空戳记启发式）                                                              | 2026-07-22             | `[DOC/devNotes/03](03-实现细节.md)` §11.5 · `memory-index.ts` · `shouldOfferMemoryRebuild`                                                                                                             |
 | **流式首段 speaker 早下发**（组装后 SSE/`X-Speaker-Character-Id` · `patchPendingSpeakerCharacterId`）                                  | 2026-07-22             | `[DOC/devNotes/35](35-group-chat.md)` · `[DOC/devNotes/03](03-实现细节.md)` §6.8 · `sse-assistant.ts` / `chat-api.ts`                                                                                           |
 | **流式上游失败改 SSE** `arousal.error`（早开流后 HTTP 仍 2xx · 客户端须解析事件）                                                                | 2026-07-22             | `[DOC/devNotes/35](35-group-chat.md)` §2.2 · `[DOC/devNotes/03](03-实现细节.md)` §6.8                                                                                                                           |
+| **创建分支时选择 swipe 分叉点**（对话框多 swipe · `forkMessageId` · 读路径 overlay）                                                              | 2026-07-27             | `[DOC/devNotes/23](23-conversation-branches.md)` §1.4 · `ChatBranchLabelDialog` · `applyForkReceiveOverlay` · `conversation-branches-fork-message.test.ts`                                                      |
 | **缺槽 After → Character 末尾**（种子 / normalize 对齐 · `DEFAULT_WORLD` 仅 Before）                                                  | 2026-07-22             | `[DOC/devNotes/27](27-embedded-character-book.md)` §4.3 · `[DOC/devNotes/03](03-实现细节.md)` §15.9 · `prompt-preset-normalize` / `prompts-default-seed`                                                        |
 | **掷骰去掉死参数** `eligibleIds`（资格由 `resolveDiceSkipReason` · 审计仍含全员）                                                            | 2026-07-22             | `group-chat/pick.ts` · `resolve.ts`                                                                                                                                                       |
 | **RAG 参数面板 + 备份示例脚本**（知识库 Settings/`ConversationContextSettings` 文档对齐 · `scripts/ops/backup.example.`*）                    | 2026-07-23             | `[DOC/devNotes/03](03-实现细节.md)` §8.7 · §9.6 · `[DOC/devNotes/46](46-document-rag.md)` · `data/README.md` · `scripts/ops/`                                                                                   |

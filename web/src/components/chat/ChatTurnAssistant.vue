@@ -35,7 +35,6 @@ const {
   streamingText,
   streamingReasoning,
   editDraft,
-  regeneratingTurnOrdinal,
   copiedTurnKey,
   writeChatPromptSnapshot,
   generationTimerTick,

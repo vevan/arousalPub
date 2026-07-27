@@ -44,6 +44,10 @@ export interface LorebookInjectionParts {
 
 type TaggedLoreEntry = { lorebookId: string; entry: LorebookEntry }
 
+export function lorebookSeenEntryKey(lorebookId: string, entryId: string): string {
+  return `${lorebookId}:${entryId}`
+}
+
 export async function resolveLorebookInjectionText(
   lorebookIds: string[],
   context: LorebookResolveContext = {},
@@ -99,7 +103,7 @@ export async function resolveLorebookInjectionParts(
   const keywordTopK = settings.keywordTopK
   const byId = new Map(lorebooks.map((lb) => [lb.id, lb]))
   const scanSeed = (context.scanCorpus ?? context.userText ?? '').trim()
-  const seenEntryIds = new Set<string>()
+  const seenEntryKeys = new Set<string>()
 
   const constantLore: ConstantLoreItem[] = []
   for (const lid of lorebookIds) {
@@ -111,14 +115,14 @@ export async function resolveLorebookInjectionParts(
           e.enabled &&
           e.content.trim() &&
           resolveEntryTriggerMode(e) === 'constant' &&
-          !seenEntryIds.has(e.id),
+          !seenEntryKeys.has(lorebookSeenEntryKey(lid, e.id)),
       )
       .sort((a, b) => {
         if (a.order !== b.order) return a.order - b.order
         return a.id.localeCompare(b.id)
       })
     for (const e of constants) {
-      seenEntryIds.add(e.id)
+      seenEntryKeys.add(lorebookSeenEntryKey(lid, e.id))
       constantLore.push({
         lorebookId: lid,
         lorebookName: lb.name.trim() || lid,
@@ -138,10 +142,15 @@ export async function resolveLorebookInjectionParts(
     for (const lid of lorebookIds) {
       const lb = byId.get(lid)
       if (!lb) continue
-      const batch = collectNewKeywordMatchesForRound(lb, scanLower, seenEntryIds)
+      const batch = collectNewKeywordMatchesForRound(
+        lb,
+        scanLower,
+        seenEntryKeys,
+        lid,
+      )
       for (const e of batch) {
         if (keywordOrdered.length >= keywordTopK) break
-        seenEntryIds.add(e.id)
+        seenEntryKeys.add(lorebookSeenEntryKey(lid, e.id))
         keywordOrdered.push({ lorebookId: lid, entry: e })
         addedThisRound = true
       }
@@ -155,7 +164,7 @@ export async function resolveLorebookInjectionParts(
       const lb = byId.get(lid)
       if (!lb) continue
       for (const e of lb.entries) {
-        if (!seenEntryIds.has(e.id)) continue
+        if (!seenEntryKeys.has(lorebookSeenEntryKey(lid, e.id))) continue
         const c = e.content.trim()
         if (c) appendParts.push(c)
       }
@@ -178,11 +187,11 @@ export async function resolveLorebookInjectionParts(
       byId,
       scanSeed,
       settings.vectorTopK,
-      seenEntryIds,
+      seenEntryKeys,
       context.conversationId,
     )
     for (const hit of vectorHits) {
-      seenEntryIds.add(hit.entry.id)
+      seenEntryKeys.add(lorebookSeenEntryKey(hit.lorebookId, hit.entry.id))
       matchedLore.push({
         lorebookId: hit.lorebookId,
         lorebookName: byId.get(hit.lorebookId)?.name.trim() || hit.lorebookId,
@@ -202,10 +211,17 @@ async function collectVectorMatches(
   byId: Map<string, Lorebook>,
   queryText: string,
   topK: number,
-  seenEntryIds: Set<string>,
+  seenEntryKeys: Set<string>,
   conversationId?: string,
 ): Promise<Array<TaggedLoreEntry & { score: number; scoreKind: 'rrf' | 'vector_fallback' }>> {
-  const emb = await createEmbedding(queryText, conversationId)
+  let emb: Awaited<ReturnType<typeof createEmbedding>>
+  try {
+    emb = await createEmbedding(queryText, conversationId)
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[lorebook-resolve] createEmbedding failed:', e)
+    return []
+  }
   if (!emb) return []
 
   type Cand = {
@@ -222,17 +238,33 @@ async function collectVectorMatches(
   for (const lid of lorebookIds) {
     const lb = byId.get(lid)
     if (!lb) continue
-    const hits = await searchLorebookEntryVectors(
-      lid,
-      emb.vector,
-      queryText,
-      candidateLimit,
-      seenEntryIds,
-    )
+    const excludeEntryIds = new Set<string>()
+    for (const k of seenEntryKeys) {
+      const prefix = `${lid}:`
+      if (k.startsWith(prefix)) {
+        excludeEntryIds.add(k.slice(prefix.length))
+      }
+    }
+    let hits: Awaited<ReturnType<typeof searchLorebookEntryVectors>>
+    try {
+      hits = await searchLorebookEntryVectors(
+        lid,
+        emb.vector,
+        queryText,
+        candidateLimit,
+        excludeEntryIds,
+      )
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[lorebook-resolve] vector search failed:', e)
+      continue
+    }
     const entryById = new Map(lb.entries.map((e) => [e.id, e]))
     for (const hit of hits) {
       const e = entryById.get(hit.entryId)
-      if (!e || !e.enabled || seenEntryIds.has(e.id)) continue
+      if (!e || !e.enabled || seenEntryKeys.has(lorebookSeenEntryKey(lid, e.id))) {
+        continue
+      }
       if (resolveEntryTriggerMode(e) !== 'vector') continue
       if (!e.content.trim()) continue
       candidates.push({
@@ -276,7 +308,8 @@ async function collectVectorMatches(
 function collectNewKeywordMatchesForRound(
   lb: Lorebook,
   scanLower: string,
-  seenEntryIds: Set<string>,
+  seenEntryKeys: Set<string>,
+  lorebookId: string,
 ): LorebookEntry[] {
   const groupOrder = new Map(
     lb.groups
@@ -289,7 +322,7 @@ function collectNewKeywordMatchesForRound(
     .filter(
       (e) =>
         e.enabled &&
-        !seenEntryIds.has(e.id) &&
+        !seenEntryKeys.has(lorebookSeenEntryKey(lorebookId, e.id)) &&
         entryMatchesKeywordScan(e, scanLower),
     )
     .sort((a, b) => {

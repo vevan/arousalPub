@@ -15,7 +15,6 @@ const {
   editingTurnOrdinal,
   editingSide,
   editDraft,
-  regeneratingTurnOrdinal,
   turnAvatarUrls,
   copiedTurnKey,
   isGenerating,

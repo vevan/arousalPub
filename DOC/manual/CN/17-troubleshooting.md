@@ -1,0 +1,66 @@
+# 17 · 常见问题排查
+
+完成本章后：能对照常见症状快速自查；仍不行时知道该看日志或启动窗口报错。
+
+上一章：[16 · 从 SillyTavern 迁过来](16-from-sillytavern.md) · 下一章：无 · [目录](00-menu.md)
+
+---
+
+## 打不开页面
+
+1. 启动窗口 / 容器是否还在跑？关掉就等于停服。
+2. 地址端口是否与 `config.yaml` 的 **`serverPort`** 一致？（默认 `http://localhost:6633/`）
+3. Docker 用户：是否误开了 **6699**？正式入口是 **6633**（见 [12](12-docker.md)）。
+4. 本机 `!_start` 与 Docker **不要同时**占用同一端口。
+5. Docker：`docker compose ps`、`docker compose logs -f`；`curl http://127.0.0.1:6633/health` 应返回 `{"ok":true}`。
+
+---
+
+## 能打开但没有 AI 回复
+
+1. 顶栏是否警告去配 **连接**？→ [03 · 连接 API](03-connect-api.md)。
+2. 打开 **连接**，确认 Base URL（含 `/v1`）、Key、模型 ID，点 **测试连接**。
+3. 服务商侧额度、网络、防火墙是否拦截。
+
+---
+
+## 改了代码 / 更新后界面没变
+
+1. 用 `!_start` 重启。
+2. 倒计时期间按 **`B`** 强制重新编译（见 [13](13-startup-options.md)）。
+3. 开发调试请用 `npm run dev`，并访问 **`webPort`**，不要和正式端口搞混。
+
+---
+
+## 忘记密码
+
+应用**没有**邮箱重置。
+
+- 还记得旧密码： **设置 → 账号 → 修改密码**。
+- 完全忘记：只能在数据目录处理 `users.index.json` 中的用户记录，或删除该用户数据后重新注册——**会丢失该用户全部数据**。操作前请先备份 `data/`（[11](11-data-and-backup.md)）。运维细节见 `DOC/devNotes/`。
+
+---
+
+## 向量 / 记忆异常
+
+1. **设置 → 向量召回**：Embeddings **测试 Embedding** 是否通过（[10](10-vector-recall.md)）。
+2. **本对话设置 → 向量召回 → 重建记忆索引**。
+3. 刚改过 Hybrid 分词：对各相关会话重建索引。
+
+---
+
+## 导入失败（ST）
+
+1. 角色请走 **角色库 → 导入**，不是设置导入 Tab 的角色批量入口。
+2. 聊天 JSONL：须先选用户角色与对话角色；目标会话已有消息时可能失败（[16](16-from-sillytavern.md)）。
+3. 文件是否确为对应格式（PNG/JSON / 世界书 JSON / 预设 JSON / JSONL）。
+
+---
+
+## 仍无法解决
+
+1. 完整复制启动窗口或 `docker compose logs` 中的报错。
+2. 确认 Node ≥ 22、磁盘空间足够、`data/` 可写。
+3. 开发向问题查阅 [`DOC/devNotes/`](../../devNotes/)；产品总览见 [`DOC/README.zh.md`](../../README.zh.md)。
+
+返回目录：[00-menu.md](00-menu.md)。

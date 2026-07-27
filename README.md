@@ -1,205 +1,207 @@
 # arousalPub
 
-类 SillyTavern 的本地 AI 角色对话应用：管理角色卡、提示词预设、资料库（世界书），在浏览器里与模型流式对话。数据保存在本机目录，可备份或同步。
+A SillyTavern-like local AI character chat app: manage character cards, prompt presets, and lorebooks (world info), then stream conversations with models in the browser. All data stays on disk for backup or sync.
+
+[中文说明](DOC/README.zh.md)
 
 ---
 
-## 环境要求
+## Requirements
 
-- **Node.js 22 或更高**（[nodejs.org](https://nodejs.org/) 安装 LTS 即可；与 `vue-i18n` 等依赖要求一致）
-- 现代浏览器（Chrome、Edge、Firefox 等）
-- Windows 可直接双击 `!_start.bat`；macOS / Linux 使用 `!_start.sh`
+- **Node.js 22+** ([nodejs.org](https://nodejs.org/) LTS is fine; matches dependency requirements such as `vue-i18n`)
+- A modern browser (Chrome, Edge, Firefox, etc.)
+- On Windows, double-click `!_start.bat`; on macOS / Linux, use `!_start.sh`
 
 ---
 
-## 快速开始
+## Quick start
 
-### 1. 首次运行
+### 1. First run
 
-1. 解压或克隆本项目到本地目录。
-2. 若尚无 `config.yaml`，将 **`config.example.yaml`** 复制为 **`config.yaml`**（也可在首次启动时由程序自动从示例生成）。
-3. 双击 **`!_start.bat`**（Windows）或终端执行 **`./!_start.sh`**。
+1. Unpack or clone this project to a local directory.
+2. If you do not have `config.yaml` yet, copy **`config.example.yaml`** to **`config.yaml`** (the app can also generate it from the example on first start).
+3. Double-click **`!_start.bat`** (Windows) or run **`./!_start.sh`** in a terminal.
 
-首次运行会自动安装依赖；**`git pull` 等更新后若 `package-lock.json` 或 workspace 的 `package.json` 有变，启动时也会自动 `npm install`**。若缺少构建产物，会自动编译后再启动。**请保持启动窗口不要关闭**，关闭即停止服务。
+The first run installs dependencies automatically. After a `git pull` (or similar), if `package-lock.json` or a workspace `package.json` changed, startup also runs `npm install` as needed. If build artifacts are missing, the app compiles them before starting. **Keep the startup window open** — closing it stops the service.
 
-### 2. 打开页面
+### 2. Open the app
 
-启动成功后，终端会显示可点击的地址，一般为：
+When startup succeeds, the terminal shows a clickable URL, typically:
 
 ```text
 http://localhost:6633/
 ```
 
-端口由 `config.yaml` 里的 **`serverPort`** 决定（示例默认为 `6633`）。
+The port comes from **`serverPort`** in `config.yaml` (example default: `6633`).
 
-### 3. 首次登录
+### 3. First login
 
-- 第一次打开会引导**设置管理员账号**（用户名与密码）。
-- 登录后可勾选 **「设为默认用户」**：本机下次可免密进入（数据仍保存在本地）。
-- 可在 **设置 → 账户** 中修改密码或注册更多用户。
+- The first visit walks you through creating an **admin account** (username and password).
+- After login you can check **“Set as default user”** so this machine can enter without a password next time (data still lives on disk).
+- Change the password or register more users under **Settings → Account**.
 
 ---
 
-## 启动说明
+## Startup options
 
-| 方式 | 适用 |
+| Method | When to use |
 |------|------|
-| **`!_start.bat` / `!_start.sh`** | 日常使用（推荐） |
-| **Docker** | NAS / Linux 服务器等容器环境 |
-| **`npm run dev`** | 开发者改代码时使用（双端口 + 热更新） |
+| **`!_start.bat` / `!_start.sh`** | Everyday use (recommended) |
+| **Docker** | NAS / Linux servers and other container hosts |
+| **`npm run dev`** | Local development (two ports + hot reload) |
 
-### 启动倒计时
+### Startup countdown
 
-`!_start.bat` 启动前有 **`startCountdownSeconds`** 秒倒计时（默认 5 秒，可在 `config.yaml` 修改；设为 `0` 则跳过）。
+Before `!_start.bat` launches, there is a **`startCountdownSeconds`** countdown (default 5 seconds; set in `config.yaml`; `0` skips it).
 
-- **不按键**：倒计时结束后使用已有编译结果快速启动。
-- **按 `B`**：重新编译前端与后端后再启动（改过程序代码后建议按 B）。
-- **按空格**：跳过倒计时，立即启动（不重新 build）。
+- **No key**: after the countdown, start quickly with the existing build.
+- **Press `B`**: rebuild frontend and backend, then start (use this after changing app code).
+- **Press Space**: skip the countdown and start immediately (no rebuild).
 
-若缺少 `web/dist` 或 `server/dist`，或当前 git 版本与上次编译记录不一致（例如 `git pull` 更新后），会自动编译。依赖清单变更时会在编译前自动 `npm install`（一般无需手动执行）。开发者本地改代码未提交时，倒计时期间按 **B** 手动重新编译即可。
+If `web/dist` or `server/dist` is missing, or the current git revision differs from the last build record (for example after `git pull`), a rebuild runs automatically. When dependency manifests change, `npm install` runs before the build (usually no need to run it by hand). If you edited code locally without committing, press **B** during the countdown to force a rebuild.
 
 ---
 
-## Docker 部署
+## Docker
 
-需要已安装 [Docker](https://docs.docker.com/get-docker/) 与 Docker Compose。
+Requires [Docker](https://docs.docker.com/get-docker/) and Docker Compose.
 
-### 构建并启动
+### Build and start
 
 ```bash
 docker compose up -d --build
 ```
 
-首次或代码更新后请带 **`--build`**。若本地还没有镜像，Compose 会自行构建，**不会**从 Docker Hub 拉取 `arousalpub:local`（该 tag 仅用于本地）。
+Use **`--build`** on first run and after code updates. If the local image does not exist yet, Compose builds it; it does **not** pull `arousalpub:local` from Docker Hub (that tag is local-only).
 
-浏览器访问 **`http://127.0.0.1:6633/`**（**不是** dev 的 `webPort` 6699）。改端口：`AROUSALPUB_PORT=8080 docker compose up -d --build`
+Open **`http://127.0.0.1:6633/`** in a browser (**not** the dev `webPort` 6699). To change the host port: `AROUSALPUB_PORT=8080 docker compose up -d --build`
 
-### 浏览器打不开？
+### Cannot open in the browser?
 
-1. 确认地址为 **`http://127.0.0.1:6633/`**（带 `http://`，勿用 https；勿用 6699）。
-2. 运行 **`docker compose ps`**，应看到 `0.0.0.0:6633->6633/tcp` 且状态为 **Up**（healthy）。
-3. 若本机 **`!_start.bat` 已在跑**，可能占用 6633：先关掉 bat 窗口，再 `docker compose up -d`。
-4. 查看日志：**`docker compose logs -f`**，应有 `static web:` 与 `listening on`。
-5. 快速自检：**`curl http://127.0.0.1:6633/health`** 应返回 `{"ok":true}`。
+1. Confirm the URL is **`http://127.0.0.1:6633/`** (include `http://`; do not use https; do not use 6699).
+2. Run **`docker compose ps`** — you should see `0.0.0.0:6633->6633/tcp` and status **Up** (healthy).
+3. If **`!_start.bat` is already running** locally, it may hold port 6633: close that window, then `docker compose up -d`.
+4. Check logs: **`docker compose logs -f`** — look for `static web:` and `listening on`.
+5. Quick check: **`curl http://127.0.0.1:6633/health`** should return `{"ok":true}`.
 
-### 数据持久化
+### Data persistence
 
-默认将项目内的 **`./data`** 挂载到容器内 `/data`（对话、角色、API 密钥等），与 `!_start.bat` 使用本地 `data/` 时路径一致，便于直接备份或 Syncthing 同步。
+By default, project **`./data`** is mounted at `/data` in the container (chats, characters, API keys, etc.), same path layout as local `!_start.bat` use of `data/` — easy to back up or sync with Syncthing.
 
-**请勿**让多个容器实例同时读写同一数据目录。
+**Do not** let multiple container instances read/write the same data directory at once.
 
-### 常用命令
+### Common commands
 
-| 命令 | 说明 |
+| Command | Description |
 |------|------|
-| `docker compose logs -f` | 查看日志 |
-| `docker compose down` | 停止并移除容器 |
-| `docker compose up -d --build` | 更新镜像后重建并启动 |
+| `docker compose logs -f` | Follow logs |
+| `docker compose down` | Stop and remove the container |
+| `docker compose up -d --build` | Rebuild and start after image updates |
 
-镜像内已预编译前端与后端，**不会**在容器启动时执行 `git pull` 或本地 rebuild。升级版本请重新 `docker compose up -d --build` 或拉取新镜像。
+The image ships with frontend and backend prebuilt; it does **not** run `git pull` or a local rebuild on container start. To upgrade, run `docker compose up -d --build` again or pull a new image.
 
-可选环境变量（在 `docker-compose.yml` 的 `environment` 中设置）：
+Optional environment variables (set under `environment` in `docker-compose.yml`):
 
-| 变量 | 说明 |
+| Variable | Description |
 |------|------|
-| `JWT_SECRET` | JWT 密钥（≥16 字符）；未设时首次启动写入 `/data/.jwt-secret` |
-| `DATA_DIR` | 数据目录，默认 `/data` |
-| `PORT` | 监听端口，默认 `6633` |
+| `JWT_SECRET` | JWT secret (≥16 characters); if unset, first start writes `/data/.jwt-secret` |
+| `DATA_DIR` | Data directory, default `/data` |
+| `PORT` | Listen port, default `6633` |
 
 ---
 
-## 基本使用
+## Basic usage
 
-### 对话
+### Chat
 
-1. 首页 **「新建对话」**：选择用户角色卡、主角色卡，可填对话标题并勾选资料库。
-2. 进入对话后输入消息发送；支持流式回复、思维链展示、重新生成与多版本滑动（swipe）。
-3. 侧栏可绑定/更换角色、资料库，并调整本对话的提示词与记忆等选项。
+1. On the home page, **“New chat”**: pick a user persona card and main character card; optionally set a title and select lorebooks.
+2. In a chat, type and send; supports streaming replies, reasoning display, regenerate, and multi-version swipes.
+3. The sidebar can bind/switch characters and lorebooks, and adjust prompt / memory options for this chat.
 
-### 角色库
+### Characters
 
-顶栏 **「角色」**：导入 SillyTavern PNG/JSON、新建或编辑角色卡，导出 PNG/JSON。会话内绑定的角色在对话侧栏设置。
+Top bar **“Characters”**: import SillyTavern PNG/JSON, create or edit cards, export PNG/JSON. Session bindings are set in the chat sidebar.
 
-### 提示词
+### Prompts
 
-顶栏 **「提示词」**：管理预设与分组条目，控制注入顺序与触发方式；对话可绑定某一预设。
+Top bar **“Prompts”**: manage presets and grouped entries (injection order and triggers); a chat can bind one preset.
 
-### 资料库（世界书）
+### Lorebooks (world info)
 
-顶栏 **「资料库」**：按资料库 → 分组 → 条目组织设定；对话创建或侧栏中勾选要注入的资料库。
+Top bar **“Lorebooks”**: organize by lorebook → group → entry; select which lorebooks to inject when creating a chat or in the sidebar.
 
-### 设置
+### Settings
 
-顶栏 **「设置」**：
+Top bar **“Settings”**:
 
-- **连接 / API**：填写 OpenAI 兼容接口的地址、密钥、模型等。
-- **对话历史 / 资料库 / 向量召回**：历史轮数、资料库递归、远期记忆与 Embeddings API、Hybrid 分词等（向量相关项集中在「向量召回」Tab）。
-- **语言**：界面中/英文切换。
-- **主题、字号** 等显示选项。
+- **Connection / API**: OpenAI-compatible base URL, key, model, etc.
+- **Chat history / lorebooks / vector recall**: history depth, lorebook recursion, long-term memory and Embeddings API, hybrid tokenization, etc. (vector options are under the “Vector recall” tab).
+- **Language**: switch UI between Chinese and English.
+- **Theme, font size**, and other display options.
 
-API 密钥保存在本机数据目录，不会写入浏览器公开存储。
+API keys live in the local data directory, not in public browser storage.
 
 ---
 
-## 配置（`config.yaml`）
+## Configuration (`config.yaml`)
 
-常用项：
+Common keys:
 
-| 配置项 | 说明 |
+| Key | Description |
 |--------|------|
-| `dataDir` | 数据目录，默认 `./data` |
-| `serverPort` | 启动后浏览器访问端口（`!_start.bat` 使用） |
-| `startCountdownSeconds` | 启动前倒计时秒数；`0` = 不等待 |
-| `authIdleMinutes` 等 | 登录会话超时（可选） |
+| `dataDir` | Data directory, default `./data` |
+| `serverPort` | Browser port after start (`!_start.bat`) |
+| `startCountdownSeconds` | Countdown seconds before start; `0` = no wait |
+| `authIdleMinutes`, etc. | Login session timeout (optional) |
 
-完整说明见 `config.example.yaml` 中的注释。
-
----
-
-## 数据与备份
-
-所有对话、角色、提示词、资料库、API 配置等均在 **`dataDir`** 下（默认项目内的 **`data/`** 文件夹），按用户分子目录。
-
-- **备份**：复制整个 `data/` 目录即可。
-- **换机恢复**：在新机器安装程序后，用备份的 `data/` 替换即可。
-- **同步**（如 Syncthing）：请避免两台机器**同时**写入同一数据目录，以免文件冲突。
-
-更细的路径说明见 [`data/README.md`](data/README.md)。
+Full comments are in `config.example.yaml`.
 
 ---
 
-## 常见问题
+## Data and backup
 
-**打不开页面**
+Chats, characters, prompts, lorebooks, API config, and related files all live under **`dataDir`** (default project **`data/`**), one subdirectory per user.
 
-- 确认启动窗口仍在运行，且端口未被其它程序占用。
-- 检查 `config.yaml` 的 `serverPort` 与浏览器地址是否一致。
+- **Backup**: copy the whole `data/` directory.
+- **Restore on another machine**: install the app, then replace with your backed-up `data/`.
+- **Sync** (e.g. Syncthing): avoid two machines writing the same data directory **at the same time**, or you risk conflicts.
 
-**改代码后界面没变化**
-
-- 重新 `!_start.bat`，倒计时期间按 **`B`** 强制重新编译。
-
-**忘记密码**
-
-- 需在数据目录中处理用户记录，或删除对应用户数据后重新注册（会丢失该用户数据）。开发/运维细节见 `DOC/devNotes/` 文档。
-
-**生产环境 JWT**
-
-- 首次 `!_start.bat` 启动会在 `data/.jwt-secret` 自动生成密钥；也可在 `config.yaml` 设置 `jwtSecret`（≥16 字符）。
+Path details: [`data/README.md`](data/README.md).
 
 ---
 
-## 开发者文档
+## FAQ
 
-架构、接口与实现细节见 **`DOC/devNotes/`** 目录；项目索引见 [`cursor.md`](cursor.md)。
+**Page will not open**
 
-开发模式：
+- Confirm the startup window is still running and the port is free.
+- Check that `config.yaml` `serverPort` matches the URL in the browser.
+
+**UI did not update after code changes**
+
+- Restart with `!_start.bat` and press **`B`** during the countdown to force a rebuild.
+
+**Forgot password**
+
+- Adjust user records under the data directory, or delete that user’s data and register again (that user’s data is lost). Ops details are in `DOC/devNotes/`.
+
+**JWT in production**
+
+- First `!_start.bat` run can write a secret to `data/.jwt-secret`; you can also set `jwtSecret` in `config.yaml` (≥16 characters).
+
+---
+
+## Developer docs
+
+Architecture, APIs, and implementation notes: **`DOC/devNotes/`**. Project index: [`cursor.md`](cursor.md). Chinese user guide: [`DOC/README.zh.md`](DOC/README.zh.md). Docs hub: [`DOC/README.md`](DOC/README.md).
+
+Dev mode:
 
 ```bash
 npm install
 npm run dev
 ```
 
-`npm run dev` 会并行启动 **`scripts/watch-plugins.mjs`**：监听仓库 `plugins/*/src` 等，仅在源码新于 `dist` 时重建（避免 Windows 监听误报）。调试：`PLUGIN_WATCH_DEBUG=1`。
+`npm run dev` also starts **`scripts/watch-plugins.mjs`** in parallel: it watches repo `plugins/*/src` and rebuilds only when sources are newer than `dist` (avoids false positives on Windows watchers). Debug: `PLUGIN_WATCH_DEBUG=1`.
 
-浏览器访问 `config.yaml` 中的 **`webPort`**（默认与 `serverPort` 不同）。
+Open the **`webPort`** from `config.yaml` in the browser (default differs from `serverPort`).

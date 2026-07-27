@@ -47,7 +47,7 @@
 
 ### 3.2 扫描语料
 
-与 §13.5 一致：`scanCorpus = buildScanText(userText, memoryText, historyText)`（`chat-assemble` 在 memory / history 就绪后调用）。内嵌与会话 lore **共用**同一语料与递归深度上限（默认最多 2 轮）。
+与 §13.5 / §14.4.5 一致：`scanCorpus = buildScanText(userText, memoryScanText, recentHistoryScanText)`（`chat-assemble` 在 memory / history 就绪后调用；扫描用剥离纯文本）。内嵌与会话 lore **共用**同一语料与递归深度上限（默认最多 2 轮）。
 
 ### 3.3 内嵌优先（冲突与裁切）
 

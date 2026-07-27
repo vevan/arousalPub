@@ -2,7 +2,7 @@ import { readLorebooksByIds } from './lorebook-file.js'
 import type { Lorebook, LorebookEntry } from './lorebook-types.js'
 import { resolveEntryTriggerMode } from './lorebook-entry-utils.js'
 import {
-  applyVectorKeyScoreBoost,
+  selectTopAfterVectorKeyBoost,
   vectorRerankCandidateLimit,
 } from './lorebook-vector-key-rerank.js'
 import { createEmbedding } from './embedding-client.js'
@@ -208,13 +208,14 @@ async function collectVectorMatches(
   const emb = await createEmbedding(queryText, conversationId)
   if (!emb) return []
 
-  type Ranked = {
+  type Cand = {
     lorebookId: string
     entry: LorebookEntry
-    score: number
+    baseScore: number
     scoreKind: 'rrf' | 'vector_fallback'
   }
-  const ranked: Ranked[] = []
+  const candidates: Cand[] = []
+  /** resolve 侧已放大候选；store 按该 limit 取 hybrid，不再二次 ×3 */
   const candidateLimit = vectorRerankCandidateLimit(topK)
   const scanLower = queryText.toLowerCase()
 
@@ -234,29 +235,39 @@ async function collectVectorMatches(
       if (!e || !e.enabled || seenEntryIds.has(e.id)) continue
       if (resolveEntryTriggerMode(e) !== 'vector') continue
       if (!e.content.trim()) continue
-      ranked.push({
+      candidates.push({
         lorebookId: lid,
         entry: e,
-        score: applyVectorKeyScoreBoost(hit.score, e.keys ?? [], scanLower),
+        baseScore: hit.score,
         scoreKind: hit.scoreKind,
       })
     }
   }
 
-  ranked.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score
-    return b.entry.priority - a.entry.priority
-  })
+  const byIdCand = new Map(candidates.map((c) => [c.entry.id, c]))
+  const selected = selectTopAfterVectorKeyBoost(
+    candidates.map((c) => ({
+      id: c.entry.id,
+      keys: c.entry.keys ?? [],
+      baseScore: c.baseScore,
+      priority: c.entry.priority,
+    })),
+    scanLower,
+    topK,
+  )
 
   const out: Array<
     TaggedLoreEntry & { score: number; scoreKind: 'rrf' | 'vector_fallback' }
   > = []
-  const taken = new Set<string>()
-  for (const r of ranked) {
-    if (out.length >= topK) break
-    if (taken.has(r.entry.id)) continue
-    taken.add(r.entry.id)
-    out.push(r)
+  for (const s of selected) {
+    const c = byIdCand.get(s.id)
+    if (!c) continue
+    out.push({
+      lorebookId: c.lorebookId,
+      entry: c.entry,
+      score: s.score,
+      scoreKind: c.scoreKind,
+    })
   }
   return out
 }

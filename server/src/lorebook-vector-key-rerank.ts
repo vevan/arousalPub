@@ -85,3 +85,41 @@ export function vectorRerankCandidateLimit(
   const f = Math.max(1, Math.floor(factor))
   return Math.min(64, Math.max(k * f, k))
 }
+
+export type VectorKeyRerankCandidate = {
+  id: string
+  keys: readonly string[]
+  baseScore: number
+  /** 同分时越大越优先；默认 0 */
+  priority?: number
+}
+
+/**
+ * keys 加分 → 按 score / priority 排序 → 截断 TopK（去重 id）。
+ * `collectVectorMatches` 与单测共用，保证精排语义一致。
+ */
+export function selectTopAfterVectorKeyBoost(
+  candidates: readonly VectorKeyRerankCandidate[],
+  scanLower: string,
+  topK: number,
+): Array<{ id: string; score: number }> {
+  const limit = Math.max(1, Math.floor(topK))
+  const ranked = candidates.map((c) => ({
+    id: c.id,
+    priority: c.priority ?? 0,
+    score: applyVectorKeyScoreBoost(c.baseScore, c.keys, scanLower),
+  }))
+  ranked.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score
+    return b.priority - a.priority
+  })
+  const out: Array<{ id: string; score: number }> = []
+  const taken = new Set<string>()
+  for (const r of ranked) {
+    if (out.length >= limit) break
+    if (taken.has(r.id)) continue
+    taken.add(r.id)
+    out.push({ id: r.id, score: r.score })
+  }
+  return out
+}

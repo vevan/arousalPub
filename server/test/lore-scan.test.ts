@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { buildScanText, xmlBlockToPlainText } from '../src/lore-scan.js'
+import { buildScanText } from '../src/lore-scan.js'
 
 describe('buildScanText', () => {
   it('joins plain memory/history without stripping angle brackets', () => {
@@ -16,14 +16,5 @@ describe('buildScanText', () => {
 
   it('trims and drops empty parts', () => {
     assert.equal(buildScanText('  a  ', '', null), 'a')
-  })
-})
-
-describe('xmlBlockToPlainText', () => {
-  it('strips tags for legacy XML helpers', () => {
-    assert.equal(
-      xmlBlockToPlainText('<memory>hello<x>y</x></memory>'),
-      'hello y',
-    )
   })
 })

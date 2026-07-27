@@ -7,6 +7,7 @@ import {
   countLoreKeyHitsInScan,
   lorebookEntryKeysCorpusAppendix,
   normalizeLoreEntryKeys,
+  selectTopAfterVectorKeyBoost,
   VECTOR_KEYS_SCORE_BOOST_MAX,
   vectorRerankCandidateLimit,
 } from '../src/lorebook-vector-key-rerank.js'
@@ -124,6 +125,60 @@ describe('lorebook-vector-key-rerank', () => {
   it('caps candidate limit', () => {
     assert.equal(vectorRerankCandidateLimit(5), 15)
     assert.equal(vectorRerankCandidateLimit(30), 64)
+  })
+
+  it('all single-char keys yield no boost', () => {
+    const base = 0.05
+    assert.equal(
+      applyVectorKeyScoreBoost(base, ['的', '了', '是'], '的了是银烛台'),
+      base,
+    )
+  })
+
+  it('more than three hits still caps at full boost', () => {
+    const base = 0.05
+    const boosted = applyVectorKeyScoreBoost(
+      base,
+      ['银烛台', '东厢', '钥匙', '抽屉'],
+      '银烛台 东厢 钥匙 抽屉',
+    )
+    assert.equal(boosted, base * (1 + VECTOR_KEYS_SCORE_BOOST_MAX))
+  })
+
+  it('key boost can promote a weaker hybrid hit into TopK', () => {
+    const out = selectTopAfterVectorKeyBoost(
+      [
+        { id: 'strong-near', keys: [], baseScore: 0.05, priority: 100 },
+        {
+          id: 'keyed-mid',
+          keys: ['银烛台'],
+          baseScore: 0.045,
+          priority: 100,
+        },
+      ],
+      '桌上有银烛台',
+      1,
+    )
+    // 0.045 * 1.12 = 0.0504 > 0.05
+    assert.deepEqual(
+      out.map((x) => x.id),
+      ['keyed-mid'],
+    )
+  })
+
+  it('without key hits, higher baseScore stays on top', () => {
+    const out = selectTopAfterVectorKeyBoost(
+      [
+        { id: 'strong-near', keys: ['无关词'], baseScore: 0.05, priority: 100 },
+        { id: 'keyed-mid', keys: ['银烛台'], baseScore: 0.045, priority: 100 },
+      ],
+      '完全不沾边的扫描语料',
+      1,
+    )
+    assert.deepEqual(
+      out.map((x) => x.id),
+      ['strong-near'],
+    )
   })
 })
 

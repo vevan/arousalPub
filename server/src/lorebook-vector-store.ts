@@ -207,7 +207,8 @@ async function searchLorebookEntryVectorsUnsafe(
   await withHybridFtsSettingsContext(userId, settings, async () => {
     await ensureScalarIndexes(table, LORE_SCALAR_INDEX_SPECS, { soft: true })
   })
-  const k = Math.min(64, Math.max(topK * 3, topK))
+  // 调用方（keys 精排）已传入放大后的 candidateLimit；此处不再二次 ×3
+  const k = Math.min(64, Math.max(1, Math.floor(topK)))
   const raw = await runLanceHybridSearch({
     table,
     queryVector,

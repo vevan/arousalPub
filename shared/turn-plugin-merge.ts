@@ -1,4 +1,4 @@
-/** turn.plugins[] merge 策略（宿主 generic · DOC/41 / DOC/42） */
+/** turn.plugins[] merge 策略（宿主 generic · DOC/devNotes/41 / DOC/devNotes/42） */
 
 export type TurnPluginMergeMode = 'replace-by-plugin-id' | 'receive-scoped'
 

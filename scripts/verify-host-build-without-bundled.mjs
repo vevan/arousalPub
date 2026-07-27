@@ -1,5 +1,5 @@
 /**
- * DOC/42 DoD D.2：bundled-registry 为空时宿主仍可 TypeScript 编译。
+ * DOC/devNotes/42 DoD D.2：bundled-registry 为空时宿主仍可 TypeScript 编译。
  *
  * 临时写入空 registry → server tsc + web typecheck → 恢复原文件。
  */

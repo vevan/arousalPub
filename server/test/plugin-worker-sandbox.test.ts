@@ -25,7 +25,7 @@ const ECHO_HOOK_BODY = `export async function resolveAfterAssemblePromptsAdditio
 }
 `
 
-describe('plugin worker sandbox (DOC/38 Phase B)', () => {
+describe('plugin worker sandbox (DOC/devNotes/38 Phase B)', () => {
   let pluginDir = ''
   let entryPath = ''
 

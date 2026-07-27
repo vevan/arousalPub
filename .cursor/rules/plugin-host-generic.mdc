@@ -6,7 +6,7 @@ alwaysApply: true
 
 # 插件宿主通用性（强制 · 零字节特化）
 
-完整定案见 **`DOC/41-plugin-host-generic-principles.md`**。
+完整定案见 **`DOC/devNotes/41-plugin-host-generic-principles.md`**。
 
 ## 用户立场（不可妥协）
 
@@ -43,8 +43,8 @@ alwaysApply: true
 
 1. 先加 manifest 声明或通用 hook / 通用壳，**不要**在宿主加 if/switch 或领域算法。
 2. 块标签剥离等格式处理：读 manifest 聚合的 `memory.stripBlockTags`，不写死标签名。
-3. PR 自检：CI grep（DOC/41 §8）与「三问 + 能力问」（DOC/41 §7）。若答案是否 → **零字节不得合入宿主**。
+3. PR 自检：CI grep（DOC/devNotes/41 §8）与「三问 + 能力问」（DOC/devNotes/41 §7）。若答案是否 → **零字节不得合入宿主**。
 
-## 与 DOC/18
+## 与 DOC/devNotes/18
 
-DOC/18 示例可用 bundled 插件**说明**；**宿主实现**不得引用其 id。
+DOC/devNotes/18 示例可用 bundled 插件**说明**；**宿主实现**不得引用其 id。

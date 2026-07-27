@@ -31,15 +31,15 @@ plugins/{pluginId}/
 | `conversation-export` | 对话导出 HTML（分批 read、`runScope`、导出对话框） |
 | `plot-summary` | Historian：剧情纪要摘要、sidecar、预览确认、`prepareContextBlocks` / `completeWithContext` |
 | `custom-styles` | 自定义样式注入：全局 CSS 样式表 + 对话级开关覆盖，`registerStyles` |
-| `trace-keeper` | **迹录**：RP 场景状态追踪、Together + Separate（`completeWithContext`）、左栏 HTML 面板；见 **`DOC/30`** |
+| `trace-keeper` | **迹录**：RP 场景状态追踪、Together + Separate（`completeWithContext`）、左栏 HTML 面板；见 **`DOC/devNotes/30`** |
 
-**插件作者主文档（宿主 API 单一入口）**：**`DOC/18-plugin-host-developer-api.md`**。
+**插件作者主文档（宿主 API 单一入口）**：**`DOC/devNotes/18-plugin-host-developer-api.md`**。
 
-**插件出站 API 解析**：`对话 pluginSettings.apiConfigId` → `全局 settings.apiConfigId` → `activePresetId`。实现：`server/src/plugin-api-resolve.ts` · [`DOC/43`](43-plugin-api-binding-audit-checklist.md) §1.1。
+**插件出站 API 解析**：`对话 pluginSettings.apiConfigId` → `全局 settings.apiConfigId` → `activePresetId`。实现：`server/src/plugin-api-resolve.ts` · [`DOC/devNotes/43`](43-plugin-api-binding-audit-checklist.md) §1.1。
 
-**插件系统**（manifest、懒加载、设置页）：**`DOC/09-plugin-system-and-guidance-generate.md`**。
+**插件系统**（manifest、懒加载、设置页）：**`DOC/devNotes/09-plugin-system-and-guidance-generate.md`**。
 
-**业务示例**：Historian **`DOC/12-plugin-plot-summary.md`**；对话 read/patch 细节 **`DOC/10-plugin-conversation-host.md`**；补全/lorebook 产品定案 **`DOC/11-plugin-host-completion-and-lorebook.md`**。
+**业务示例**：Historian **`DOC/devNotes/12-plugin-plot-summary.md`**；对话 read/patch 细节 **`DOC/devNotes/10-plugin-conversation-host.md`**；补全/lorebook 产品定案 **`DOC/devNotes/11-plugin-host-completion-and-lorebook.md`**。
 
 ## 新增 bundled 插件
 

@@ -6,7 +6,7 @@ export type RegexExecResult =
   | { ok: true; text: string }
   | { ok: false; code: 'regex_exec_timeout' | 'regex_exec_error' }
 
-/** 在隔离 VM 中执行 replace，超时则中止（DOC/24） */
+/** 在隔离 VM 中执行 replace，超时则中止（DOC/devNotes/24） */
 export function replaceRegexWithTimeout(
   pattern: string,
   flags: string,

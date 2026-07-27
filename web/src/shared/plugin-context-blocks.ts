@@ -1,4 +1,4 @@
-/** DOC/39 · 插件二次 LLM 上下文块 catalog（shared 契约） */
+/** DOC/devNotes/39 · 插件二次 LLM 上下文块 catalog（shared 契约） */
 
 export const CONTEXT_BLOCK_SOURCES = [
   'conversation.transcript',
@@ -96,7 +96,7 @@ export type AssemblePluginPromptRequest = {
   blocks: Record<string, string>
   layout: PromptLayout
   pluginSettings?: Record<string, unknown>
-  /** 显式传入；宿主不设默认（DOC/39 D3） */
+  /** 显式传入；宿主不设默认（DOC/devNotes/39 D3） */
   anchorToTurn: number
   apiConfigId?: string
   /** dry run：拼 messages + 可选 preflight，不出站 */

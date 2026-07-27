@@ -16,7 +16,7 @@ import { regenerateSeparateState } from './separate-regenerate.js'
 import { patchTraceKeeperState } from './patch-state.js'
 import { segmentIndexForAction } from '../host-segment-snapshot.js'
 
-/** DOC/38 §3.2 · manifest `assembleInjection.slots.default` 可覆盖 */
+/** DOC/devNotes/38 §3.2 · manifest `assembleInjection.slots.default` 可覆盖 */
 const TRACE_KEEPER_CHAT_DEPTH = 0
 
 type ServerApi = {

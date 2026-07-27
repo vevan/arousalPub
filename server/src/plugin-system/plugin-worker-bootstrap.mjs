@@ -1,5 +1,5 @@
 /**
- * Plugin 沙箱子进程入口（DOC/38 Phase B/C）
+ * Plugin 沙箱子进程入口（DOC/devNotes/38 Phase B/C）
  * fork 加载 dist/server.mjs；Host API 经 process.send IPC 代理。
  * 进程级隔离 + Node --permission（见 plugin-worker-permissions.ts）。
  */

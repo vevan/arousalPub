@@ -370,7 +370,7 @@ export async function writeLorebookUnsafe(lb: Lorebook): Promise<string> {
   return savedAt
 }
 
-/** 整包 PUT `/api/lorebooks` 上限（DOC/22 M4）；插件条目级 API 不受此限 */
+/** 整包 PUT `/api/lorebooks` 上限（DOC/devNotes/22 M4）；插件条目级 API 不受此限 */
 export const LOREBOOKS_BULK_PUT_MAX_BOOKS = 64
 export const LOREBOOKS_BULK_PUT_MAX_ENTRIES = 3000
 export const LOREBOOKS_BULK_PUT_MAX_JSON_BYTES = 8 * 1024 * 1024

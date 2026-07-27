@@ -1,4 +1,4 @@
-/** DOC/38 · 插件组装注入描述符（chat depth + injectionOrder） */
+/** DOC/devNotes/38 · 插件组装注入描述符（chat depth + injectionOrder） */
 
 export type PluginPromptInjectionRole = 'system' | 'user' | 'assistant'
 

@@ -80,7 +80,7 @@ export function ensureGitEolConfigured() {
     console.warn(
       '[check-git-eol] Failed to set local config. Run manually: git config core.autocrlf false',
     )
-    console.warn('[check-git-eol] See DOC/05 §换行.')
+    console.warn('[check-git-eol] See DOC/devNotes/05 §换行.')
     return { fixed: false, skipped: false }
   }
 

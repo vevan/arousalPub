@@ -2036,7 +2036,7 @@ export async function saveFirstTurn(params: {
   estimatedTokens?: number
   completionTokens?: number
   resolvedFeature?: ResolvedFeatureAudit
-  /** debug 审计快照（服务端组装；见 DOC/24） */
+  /** debug 审计快照（服务端组装；见 DOC/devNotes/24） */
   auditSnapshot?: ChatAuditSnapshotInput
   turnPluginEntries?: TurnPluginEntry[]
   speakerCharacterId?: string

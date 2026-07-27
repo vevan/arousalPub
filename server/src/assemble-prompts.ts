@@ -119,7 +119,7 @@ export interface AssembleContext {
   worldAfter?: string
   /** §14：已格式化的 `<memory>…</memory>` */
   memoryText?: string
-  /** DOC/46：已格式化的 `<knowledge>…</knowledge>` */
+  /** DOC/devNotes/46：已格式化的 `<knowledge>…</knowledge>` */
   knowledgeText?: string
   /** §14：近期 N 轮，按 turn 展开为 user/assistant 消息 */
   history?: ChatMessage[]

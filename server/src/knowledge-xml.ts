@@ -1,4 +1,4 @@
-/** 知识库召回注入 XML（DOC/46 §5） */
+/** 知识库召回注入 XML（DOC/devNotes/46 §5） */
 
 export interface KnowledgeXmlChunk {
   kbName: string

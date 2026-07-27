@@ -32,7 +32,7 @@ export type PluginPromptMergeAfterUserInput = {
 export type PluginPromptInjectionMergeOptions = {
   /** assemble 阶段已插入的群聊说明；与插件描述符同一 injectionOrder 空间归并 */
   afterUserInput?: PluginPromptMergeAfterUserInput
-  /** 宿主隐式档位（用户偏好 + 默认；DOC/38 §3.2 可配置化） */
+  /** 宿主隐式档位（用户偏好 + 默认；DOC/devNotes/38 §3.2 可配置化） */
   hostInjectionOrderPolicy?: PostUserInjectionOrderHostPolicy
 }
 

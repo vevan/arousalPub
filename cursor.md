@@ -58,7 +58,7 @@
 node --input-type=module -e "import { createI18n } from 'vue-i18n'; import zh from './web/src/locales/zh.json' with { type: 'json' }; createI18n({ legacy: false, locale: 'zh', messages: { zh } }); console.log('zh ok');"
 ```
 
-完整说明：`DOC/03-实现细节.md` §9.5。
+完整说明：`DOC/devNotes/03-实现细节.md` §9.5。
 
 ## 项目概况
 
@@ -68,16 +68,16 @@ node --input-type=module -e "import { createI18n } from 'vue-i18n'; import zh fr
 
 ## 文档
 
-**主索引**：[`DOC/README.md`](DOC/README.md)
+**主索引**：[`DOC/devNotes/README.md`](DOC/devNotes/README.md)
 
 | 常用 | 路径 |
 |------|------|
-| 实现细节 | `DOC/03-实现细节.md` |
-| 工作交接 | `DOC/06-工作交接.md` |
-| 待办 | `DOC/04-TODO.md` |
-| 安全 / API Key | `DOC/25-security-deployment.md` |
-| Historian | `DOC/12-plugin-plot-summary.md` |
+| 实现细节 | `DOC/devNotes/03-实现细节.md` |
+| 工作交接 | `DOC/devNotes/06-工作交接.md` |
+| 待办 | `DOC/devNotes/04-TODO.md` |
+| 安全 / API Key | `DOC/devNotes/25-security-deployment.md` |
+| Historian | `DOC/devNotes/12-plugin-plot-summary.md` |
 | 数据目录 | `data/README.md` |
 | 启动 | 根目录 `README.md` |
 
-`cursor.md` 仅保留概况与索引；详细设计在 `DOC/`。
+`cursor.md` 仅保留概况与索引；详细设计在 `DOC/devNotes/`。

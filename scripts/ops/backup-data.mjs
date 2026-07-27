@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Ops helper: zip the data root (excluding backups/), without starting the server.
- * Invoked by backup.example.bat / backup.example.sh — see DOC/03 §8.7.
+ * Invoked by backup.example.bat / backup.example.sh — see DOC/devNotes/03 §8.7.
  *
  * Usage:
  *   node scripts/ops/backup-data.mjs [output-dir]
@@ -83,7 +83,7 @@ function main() {
   // eslint-disable-next-line no-console
   console.log('Stop the app before running this script (avoid half-written files).')
   // eslint-disable-next-line no-console
-  console.log('This does NOT replace product cold backup (DOC/03 §8.8 → data/backups/).')
+  console.log('This does NOT replace product cold backup (DOC/devNotes/03 §8.8 → data/backups/).')
   // eslint-disable-next-line no-console
   console.log('Syncthing should ignore backups/; this archive also excludes that folder.')
   // eslint-disable-next-line no-console

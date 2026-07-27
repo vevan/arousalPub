@@ -41,15 +41,15 @@ data/
 |------|------|
 | `plugin-registry.json` | 该用户插件 enabled / order |
 | `avatar.png` | 用户头像 |
-| `chats/` | 对话会话与消息（`index.json` 可含 **`backgroundImageFileId`** / **`bgmFileId`**，见 `DOC/20` M3） |
-| `prompts/`、`characters/`、`lorebooks/` | 资料与预设（角色主存 **`characters/{id}.png`**，`id` 为 8 位 hex，见 `DOC/03` §6.7；宿主元数据 **`characters/index.json`**：`userCardList`、**`imageFilesByCharacterId`**（M2 文件绑定，不进 PNG）） |
-| `files/` | 用户文件库（`index.json` + `{fileId}/meta.json` + `{fileId}/content`；见 `DOC/20` · `DOC/03` §17） |
-| `knowledgeBases/` | 独立文档 RAG 知识库（`index.json` + `{kbId}.json` + `{kbId}/chunks.json`；Lance 派生在 `memory/knowledge/`；见 `DOC/46`） |
-| `api-settings.json`、`api-keys.json` | API 配置（内联 key 落盘为 **`apiKeyEnc` / `keyEnc`**，见 `DOC/25` §15） |
-| `user-preferences.json` | 全局偏好（含 embedding **`apiKeyEnc`**、**`hybridFts`** 记忆检索分词，见 `DOC/03` §14.4.3） |
-| `memory/` | Lance 远期记忆索引（**派生**，可重建；Syncthing 建议忽略，见 `DOC/03` §14.5） |
-| `hybrid-fts/` | Hybrid BM25 分词资源（如 `zh-jieba/{variant}/jieba/default/dict.txt`，`variant` 为 small / default / big；见 `DOC/03` §14.4.3） |
-| `regex-rules.json` | 原生正则规则（用户级；**无**会话级副本，见 **`DOC/24`** §2.1、§6） |
+| `chats/` | 对话会话与消息（`index.json` 可含 **`backgroundImageFileId`** / **`bgmFileId`**，见 `DOC/devNotes/20` M3） |
+| `prompts/`、`characters/`、`lorebooks/` | 资料与预设（角色主存 **`characters/{id}.png`**，`id` 为 8 位 hex，见 `DOC/devNotes/03` §6.7；宿主元数据 **`characters/index.json`**：`userCardList`、**`imageFilesByCharacterId`**（M2 文件绑定，不进 PNG）） |
+| `files/` | 用户文件库（`index.json` + `{fileId}/meta.json` + `{fileId}/content`；见 `DOC/devNotes/20` · `DOC/devNotes/03` §17） |
+| `knowledgeBases/` | 独立文档 RAG 知识库（`index.json` + `{kbId}.json` + `{kbId}/chunks.json`；Lance 派生在 `memory/knowledge/`；见 `DOC/devNotes/46`） |
+| `api-settings.json`、`api-keys.json` | API 配置（内联 key 落盘为 **`apiKeyEnc` / `keyEnc`**，见 `DOC/devNotes/25` §15） |
+| `user-preferences.json` | 全局偏好（含 embedding **`apiKeyEnc`**、**`hybridFts`** 记忆检索分词，见 `DOC/devNotes/03` §14.4.3） |
+| `memory/` | Lance 远期记忆索引（**派生**，可重建；Syncthing 建议忽略，见 `DOC/devNotes/03` §14.5） |
+| `hybrid-fts/` | Hybrid BM25 分词资源（如 `zh-jieba/{variant}/jieba/default/dict.txt`，`variant` 为 small / default / big；见 `DOC/devNotes/03` §14.4.3） |
+| `regex-rules.json` | 原生正则规则（用户级；**无**会话级副本，见 **`DOC/devNotes/24`** §2.1、§6） |
 
 ## 密钥文件（`data/` 根目录）
 
@@ -64,20 +64,20 @@ data/
 
 **dev / prod**：无 env/config 时，开发与生产均读写 `data/.data-encryption-key`（首次启动自动生成 64 位 hex，勿再依赖固定 dev 默认钥）。
 
-**轮换 DEK**：本机 `http://127.0.0.1:<serverPort>/admin`（种子用户）→「生成推荐」+「开始轮换」；见 `DOC/17`。
+**轮换 DEK**：本机 `http://127.0.0.1:<serverPort>/admin`（种子用户）→「生成推荐」+「开始轮换」；见 `DOC/devNotes/17`。
 
 ## 插件与 Syncthing
 
 - **轮次 state**：`chats/.../turn-*.json` 的 **`turn.plugins[]`**。
 - **插件代码**：`data/plugins/<pluginId>/`（全局）。
-- **插件配置**：`data/plugins/<pluginId>/{userId}/settings.json`；上传文件在 **`.../{userId}/assets/`**。全局 settings + registry `enabled` 可经设置页「导入 / 导出」迁出（`DOC/09` §4）；不含会话覆盖与 secrets。
-- 详见 **`DOC/09-plugin-system-and-guidance-generate.md`**。
+- **插件配置**：`data/plugins/<pluginId>/{userId}/settings.json`；上传文件在 **`.../{userId}/assets/`**。全局 settings + registry `enabled` 可经设置页「导入 / 导出」迁出（`DOC/devNotes/09` §4）；不含会话覆盖与 secrets。
+- 详见 **`DOC/devNotes/09-plugin-system-and-guidance-generate.md`**。
 
 ## 备份
 
-以整个 `data/` 为单元备份；含 API Key 与密码哈希，须与生产环境同等访问控制。运维细节见 **`DOC/03` §8**。
+以整个 `data/` 为单元备份；含 API Key 与密码哈希，须与生产环境同等访问控制。运维细节见 **`DOC/devNotes/03` §8**。
 
-### 产品内冷备（`data/backups/` · `DOC/03` §8.8）
+### 产品内冷备（`data/backups/` · `DOC/devNotes/03` §8.8）
 
 | 项 | 说明 |
 |----|------|
@@ -102,7 +102,7 @@ data/
 
 ~~对话轮次增量备份（§8.4）~~：**无限期延后**，不实现；`chats/.../index.json` 内 `backupSettings` 仅为历史占位。
 
-### 运维示例脚本（可选 · `DOC/03` §8.7）
+### 运维示例脚本（可选 · `DOC/devNotes/03` §8.7）
 
 停服后手动打包整棵 `dataDir`（**排除** `backups/`），**不替代**上文产品内冷备：
 
@@ -132,7 +132,7 @@ scripts\ops\backup.example.bat D:\cold-copies
 | 同步 | 忽略 / 注意 |
 |------|------|
 | `chats/`、JSON 配置、chunk 等**权威数据** | **`backups/`** 整个目录 |
-| 可选：各机本地重建 | **`memory/`** Lance 索引（推荐 `.stignore`，见 `DOC/03` §14.5） |
+| 可选：各机本地重建 | **`memory/`** Lance 索引（推荐 `.stignore`，见 `DOC/devNotes/03` §14.5） |
 
 **单写者**：同一 `dataDir` 上**只运行一个 server**（勿 prod 与 dev 双开）；否则 Lance 易损坏（`memory_vector_index_corrupt` → 设置页重建索引）。
 
@@ -145,7 +145,7 @@ memory
 
 各实例须使用**相同** `DATA_ENCRYPTION_KEY`（或同步 `.data-encryption-key`），否则无法解密 API Key（见上文 §密钥文件）。
 
-### 恢复流程（`DOC/03` §8.5）
+### 恢复流程（`DOC/devNotes/03` §8.5）
 
 1. **停止**应用（避免半写文件）。
 2. 将当前 `data` **改名为** `data.broken-<时间戳>`（保留现场）。

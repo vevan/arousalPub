@@ -324,7 +324,7 @@ export interface PluginCompleteResponse {
   latencyMs?: number
 }
 
-/** DOC/39 · prepareContextBlocks（步骤 1 取块） */
+/** DOC/devNotes/39 · prepareContextBlocks（步骤 1 取块） */
 export interface PluginPrepareContextBlocksRequest {
   blocks: ContextBlockSpec[]
 }
@@ -524,7 +524,7 @@ export interface PluginWebHost {
   }
   plugin: {
     complete(req: PluginCompleteRequest): Promise<PluginCompleteResponse>
-    /** DOC/39 · 步骤 1 声明式取块 */
+    /** DOC/devNotes/39 · 步骤 1 声明式取块 */
     prepareContextBlocks(
       req: PluginPrepareContextBlocksRequest,
     ): Promise<PluginPrepareContextBlocksResponse>

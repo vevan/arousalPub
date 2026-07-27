@@ -1,4 +1,4 @@
-/** 插件沙箱子进程 ↔ Host IPC（DOC/38 Phase B/C · child_process.fork） */
+/** 插件沙箱子进程 ↔ Host IPC（DOC/devNotes/38 Phase B/C · child_process.fork） */
 
 export const PLUGIN_WORKER_INVOKE_TIMEOUT_MS = 120_000
 export const PLUGIN_WORKER_API_REQUEST_TIMEOUT_MS = 120_000

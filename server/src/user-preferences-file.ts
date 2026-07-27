@@ -86,7 +86,7 @@ export interface UserPreferencesDocument {
   chunk?: Partial<ChunkSettings>
   defaultAuthorsNote?: DefaultAuthorsNoteTemplate
   hybridFts?: Partial<HybridFtsSettings>
-  /** post-user 区宿主隐式 injectionOrder 覆盖（DOC/38 §3.2） */
+  /** post-user 区宿主隐式 injectionOrder 覆盖（DOC/devNotes/38 §3.2） */
   postUserInjectionOrder?: PostUserInjectionOrderHostPatch
   /** ST 式全局宏变量（`{{setglobalvar}}` / `{{getglobalvar}}`） */
   macroGlobalVars?: Record<string, string>

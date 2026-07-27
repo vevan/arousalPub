@@ -15,7 +15,7 @@ function receiveMetadataChanged(prev: ReceiveDto, next: ReceiveDto): boolean {
   )
 }
 
-/** 与 DOC/10 §7 对齐的 turn PATCH 所需权限 */
+/** 与 DOC/devNotes/10 §7 对齐的 turn PATCH 所需权限 */
 export function requiredPermissionsForTurnPatch(
   before: ConversationTurnDto,
   after: ConversationTurnDto,

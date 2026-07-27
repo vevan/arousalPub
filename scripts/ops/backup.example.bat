@@ -1,5 +1,5 @@
 @echo off
-REM Optional ops backup sample (DOC/03 §8.7). Does NOT replace product cold backup (§8.8).
+REM Optional ops backup sample (DOC/devNotes/03 §8.7). Does NOT replace product cold backup (§8.8).
 REM Stop the application before running.
 REM
 REM Usage:
@@ -9,7 +9,7 @@ REM Data root: DATA_DIR | AROUSAL_DATA_DIR | config.yaml dataDir | ./data
 REM Archive excludes the dataDir\backups\ subdirectory.
 
 setlocal
-echo Stop the app before backup. This is an optional ops sample — see DOC/03 §8.7 / data/README.md.
+echo Stop the app before backup. This is an optional ops sample — see DOC/devNotes/03 §8.7 / data/README.md.
 if "%~1"=="" (
   node "%~dp0backup-data.mjs"
 ) else (

@@ -244,7 +244,7 @@ export interface PluginServerHostApi {
     pluginId: string,
     relPath: string,
   ) => Promise<string | null>
-  /** DOC/39 · 插件二次 LLM 一键管线（Server 侧） */
+  /** DOC/devNotes/39 · 插件二次 LLM 一键管线（Server 侧） */
   completeWithContext: (
     req: import('../shared/plugin-context-blocks.js').CompleteWithContextRequest,
   ) => Promise<import('../shared/plugin-context-blocks.js').CompleteWithContextResult>
@@ -297,7 +297,7 @@ export interface AfterAssemblePromptsPluginContext {
   messages: ChatMessage[]
   macroContext: PromptMacroContext
   plugins?: ChatPluginsBody | null
-  /** manifest `assembleInjection.slots` + 用户偏好后的有效槽位（DOC/38 §3.2 可配置化） */
+  /** manifest `assembleInjection.slots` + 用户偏好后的有效槽位（DOC/devNotes/38 §3.2 可配置化） */
   injectionOrderSlots?: Record<string, number>
 }
 
@@ -353,12 +353,12 @@ export interface PluginServerModule {
     ctx: ResolveTurnPluginEntriesFromAssistantContext,
     api: PluginServerHostApi,
   ) => TurnPluginEntry[] | Promise<TurnPluginEntry[]>
-  /** DOC/39 · completeWithContext 步骤 1 后格式化 blocks（插件 hook） */
+  /** DOC/devNotes/39 · completeWithContext 步骤 1 后格式化 blocks（插件 hook） */
   formatPluginContextBlocks?: (
     resolved: import('../shared/plugin-context-blocks.js').PluginContextBlocksSuccess,
     ctx: { anchorToTurn: number },
   ) => Record<string, string> | Promise<Record<string, string>>
-  /** DOC/39 · completeWithContext 出站后解析 draft */
+  /** DOC/devNotes/39 · completeWithContext 出站后解析 draft */
   parseCompleteDraftContent?: (
     ctx: PluginParseCompleteDraftContext,
     content: string,

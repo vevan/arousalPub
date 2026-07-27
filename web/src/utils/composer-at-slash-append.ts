@@ -1,4 +1,4 @@
-/** 向 composer 设置单人 `/@ displayName`（DOC/35 §2.8：一次仅一人） */
+/** 向 composer 设置单人 `/@ displayName`（DOC/devNotes/35 §2.8：一次仅一人） */
 
 import { parseAtSlashDisplayNames } from './composer-slash'
 

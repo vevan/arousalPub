@@ -1,4 +1,4 @@
-/** DOC/38 §3.2 · post-user 区 injectionOrder 档位（宿主 + manifest 可覆盖） */
+/** DOC/devNotes/38 §3.2 · post-user 区 injectionOrder 档位（宿主 + manifest 可覆盖） */
 
 import { CHAT_INJECTION_ORDER_DEFAULT } from './plugin-prompt-injection.js'
 

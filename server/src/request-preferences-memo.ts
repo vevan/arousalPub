@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { UserPreferencesDocument } from './user-preferences-file.js'
 
-/** 单次 HTTP 请求内 user-preferences.json 读盘 memo（DOC/22 M5） */
+/** 单次 HTTP 请求内 user-preferences.json 读盘 memo（DOC/devNotes/22 M5） */
 interface RequestPreferencesMemo {
   /** undefined = 未加载；null = 文件缺失 */
   preferencesDoc?: UserPreferencesDocument | null

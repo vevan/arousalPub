@@ -1,4 +1,4 @@
-/** 请求是否来自本机 loopback（见 DOC/17 §2.1、DOC/25 §4.1） */
+/** 请求是否来自本机 loopback（见 DOC/devNotes/17 §2.1、DOC/devNotes/25 §4.1） */
 export function isLoopbackAddress(ip: string | undefined): boolean {
   if (!ip) return false
   const n = ip.toLowerCase()

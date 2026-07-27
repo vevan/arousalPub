@@ -112,7 +112,7 @@ function parseBoolFromEnv(name: string): boolean | undefined {
   return undefined
 }
 
-/** 客户端 IP 白名单；空数组=不限制（DOC/25 §3） */
+/** 客户端 IP 白名单；空数组=不限制（DOC/devNotes/25 §3） */
 export function resolveClientWhitelist(): string[] {
   const fromEnv = parseStringListFromEnv('CLIENT_WHITELIST')
   if (fromEnv) return fromEnv
@@ -136,7 +136,7 @@ export function resolveAllowPublicRegister(): boolean {
   return true
 }
 
-/** 浏览器 CORS Origin 白名单；空=仅无 Origin 请求（DOC/25 §7） */
+/** 浏览器 CORS Origin 白名单；空=仅无 Origin 请求（DOC/devNotes/25 §7） */
 export function resolveCorsOrigins(): string[] {
   const fromEnv = parseStringListFromEnv('CORS_ORIGINS')
   if (fromEnv) return fromEnv

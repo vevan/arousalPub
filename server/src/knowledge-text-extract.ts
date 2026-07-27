@@ -1,5 +1,5 @@
 /**
- * 从文件库 document 抽取纯文本（DOC/46 §4）。
+ * 从文件库 document 抽取纯文本（DOC/devNotes/46 §4）。
  * 首版：txt / md / json；PDF → document_type_unsupported。
  * Markdown：索引前剥离闭合完整的 YAML/TOML front matter；原文落盘不变。
  */

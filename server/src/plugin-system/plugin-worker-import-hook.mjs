@@ -1,6 +1,6 @@
 /**
  * Plugin Worker 模块解析钩子：禁止读盘、子进程、原生 HTTP 等。
- * 出站须经 Host API 代理（DOC/38 Phase B）。
+ * 出站须经 Host API 代理（DOC/devNotes/38 Phase B）。
  */
 const DENIED = new Set([
   'fs',

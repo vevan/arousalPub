@@ -63,7 +63,7 @@ function parseSlashLineHead(line: string): ParsedSlashCommand | 'unknown' | null
   return 'unknown'
 }
 
-/** 从 `/@` 参数段按空格分词匹配 displayName（与 DOC/35 §2.3 一致） */
+/** 从 `/@` 参数段按空格分词匹配 displayName（与 DOC/devNotes/35 §2.3 一致） */
 export function parseAtSlashDisplayNames(
   argsText: string,
   boundDisplayNames: readonly string[],

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Optional ops backup sample (DOC/03 §8.7). Does NOT replace product cold backup (§8.8).
+# Optional ops backup sample (DOC/devNotes/03 §8.7). Does NOT replace product cold backup (§8.8).
 # Stop the application before running.
 #
 # Usage:
@@ -12,5 +12,5 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-echo "Stop the app before backup. This is an optional ops sample — see DOC/03 §8.7 / data/README.md."
+echo "Stop the app before backup. This is an optional ops sample — see DOC/devNotes/03 §8.7 / data/README.md."
 exec node "$SCRIPT_DIR/backup-data.mjs" "$@"

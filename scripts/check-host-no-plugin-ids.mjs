@@ -1,5 +1,5 @@
 /**
- * DOC/41 · 宿主目录禁止出现 bundled 插件 id 字面量。
+ * DOC/devNotes/41 · 宿主目录禁止出现 bundled 插件 id 字面量。
  * 用法：node scripts/check-host-no-plugin-ids.mjs [--json]
  * 退出码：0 无违规；1 有违规。
  */
@@ -12,7 +12,7 @@ const REPO_ROOT = path.resolve(
   '..',
 )
 
-/** bundled 第一方插件 id（与 DOC/42 一致） */
+/** bundled 第一方插件 id（与 DOC/devNotes/42 一致） */
 const BUNDLED_PLUGIN_IDS = [
   'trace-keeper',
   'plot-summary',
@@ -152,14 +152,14 @@ async function main() {
     console.log('[check:host-no-plugin-ids] OK — no violations')
   } else {
     console.error(
-      `[check:host-no-plugin-ids] FAIL — ${allHits.length} violation(s) (DOC/42 · DOC/41 §8)\n`,
+      `[check:host-no-plugin-ids] FAIL — ${allHits.length} violation(s) (DOC/devNotes/42 · DOC/devNotes/41 §8)\n`,
     )
     for (const h of allHits) {
       const loc = h.line ? `${h.file}:${h.line}` : h.file
       console.error(`  [${h.kind}] ${loc}`)
       if (h.text) console.error(`    ${h.text}`)
     }
-    console.error('\nSee DOC/42-host-generic-audit-checklist.md for remediation')
+    console.error('\nSee DOC/devNotes/42-host-generic-audit-checklist.md for remediation')
   }
 
   process.exit(allHits.length > 0 ? 1 : 0)

@@ -33,7 +33,7 @@ function isBlockedHostname(hostname: string): boolean {
   return false
 }
 
-/** public-only 策略下校验出站 URL（含重定向目标，DOC/25 §8） */
+/** public-only 策略下校验出站 URL（含重定向目标，DOC/devNotes/25 §8） */
 export function assertUpstreamUrlAllowed(
   url: string,
   policy: UpstreamUrlPolicy,
@@ -56,7 +56,7 @@ export function assertUpstreamUrlAllowed(
   }
 }
 
-/** public-only 策略下校验出站 baseUrl（DOC/25 §8） */
+/** public-only 策略下校验出站 baseUrl（DOC/devNotes/25 §8） */
 export function assertUpstreamBaseUrlAllowed(
   baseUrl: string,
   policy: UpstreamUrlPolicy,

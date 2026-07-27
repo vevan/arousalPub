@@ -1,4 +1,4 @@
-/** customParams 不得覆盖的顶层键（DOC/25 §6） */
+/** customParams 不得覆盖的顶层键（DOC/devNotes/25 §6） */
 export const CUSTOM_PARAMS_PROTECTED_KEYS = new Set([
   'messages',
   'model',

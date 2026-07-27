@@ -1,4 +1,4 @@
-/** 全局 / 会话知识库 RAG 设置（DOC/46） */
+/** 全局 / 会话知识库 RAG 设置（DOC/devNotes/46） */
 
 export interface KnowledgeSettings {
   enabled: boolean

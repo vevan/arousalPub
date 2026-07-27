@@ -1,6 +1,6 @@
 /**
  * 记忆语料剥离原语（无 turn / embedding 依赖，避免模块环）。
- * 语义定案见 DOC/03 §14.4.4。
+ * 语义定案见 DOC/devNotes/03 §14.4.4。
  */
 
 export interface MemoryCorpusOptions {

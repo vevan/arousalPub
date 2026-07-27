@@ -14,7 +14,7 @@ export function resolveEntryTriggerMode(
   return e.constant ? 'constant' : 'keyword'
 }
 
-/** 缺省 after_char（与 ST / DOC/27 一致） */
+/** 缺省 after_char（与 ST / DOC/devNotes/27 一致） */
 export function resolveEntryPosition(
   e: Pick<LorebookEntry, 'position'>,
 ): LorebookEntryPosition {

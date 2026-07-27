@@ -1,4 +1,4 @@
-# 复制为 config.yaml 后修改。环境变量可覆盖多数项。详见 DOC/25
+# 复制为 config.yaml 后修改。环境变量可覆盖多数项。详见 DOC/devNotes/25
 
 # --- 路径与端口 ---
 dataDir: ./data
@@ -8,7 +8,7 @@ startCountdownSeconds: 5
 host: 0.0.0.0
 staticDir: ./web/dist
 
-# --- 安全（DOC/25）---
+# --- 安全（DOC/devNotes/25）---
 clientWhitelist: []
 allowPublicRegister: true
 corsOrigins: []

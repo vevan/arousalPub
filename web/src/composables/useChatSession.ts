@@ -130,10 +130,13 @@ export function useChatSession(props: ChatSessionProps) {
     switchConversationInputHistory,
   } = composerInputHistory
 
+  const awaitingBackgroundResume = ref(false)
+
   const writeLock = useConversationWriteLock({
     getConversationId: () => props.conversationId,
     loading,
     regeneratingTurnOrdinal,
+    awaitingBackgroundResume,
   })
   const {
     conversationWriteLocked,
@@ -251,6 +254,7 @@ export function useChatSession(props: ChatSessionProps) {
     pendingReceiveCompletionTokens,
     streamingText,
     streamingReasoning,
+    awaitingBackgroundResume,
     isConversationWritable,
     parseCustomParamsOrThrow,
     customParamsErrorMessage,
@@ -303,7 +307,15 @@ export function useChatSession(props: ChatSessionProps) {
     setPendingGroupContinueSpeaker,
     pendingGroupContinue,
     regeneratingSegmentIndex,
+    resetBackgroundResumeState,
+    onDocumentVisible,
   } = outbound
+
+  function onVisibilityChange() {
+    if (document.visibilityState === 'visible') {
+      void onDocumentVisible()
+    }
+  }
 
   const bubbleUi = useTurnBubbleUi({
     turns,
@@ -322,7 +334,10 @@ export function useChatSession(props: ChatSessionProps) {
   })
 
   const isGenerating = computed(
-    () => loading.value || regeneratingTurnOrdinal.value !== null,
+    () =>
+      loading.value ||
+      regeneratingTurnOrdinal.value !== null ||
+      awaitingBackgroundResume.value,
   )
 
   const canSend = computed(() => {
@@ -331,7 +346,8 @@ export function useChatSession(props: ChatSessionProps) {
       pluginHoldConversation.value ||
       loading.value ||
       messagesLoading.value ||
-      regeneratingTurnOrdinal.value !== null
+      regeneratingTurnOrdinal.value !== null ||
+      awaitingBackgroundResume.value
     ) {
       return false
     }
@@ -388,10 +404,12 @@ export function useChatSession(props: ChatSessionProps) {
   onMounted(() => {
     window.addEventListener('keydown', onGlobalKeyR)
     window.addEventListener('pagehide', composerDraft.flushComposerDraftOnPageHide)
+    document.addEventListener('visibilitychange', onVisibilityChange)
   })
   onBeforeUnmount(() => {
     window.removeEventListener('keydown', onGlobalKeyR)
     window.removeEventListener('pagehide', composerDraft.flushComposerDraftOnPageHide)
+    document.removeEventListener('visibilitychange', onVisibilityChange)
     composerDraft.dispose()
     disposeTimer()
   })
@@ -423,7 +441,7 @@ export function useChatSession(props: ChatSessionProps) {
     }
   })
 
-  watch([loading, regeneratingTurnOrdinal], () => {
+  watch([loading, regeneratingTurnOrdinal, awaitingBackgroundResume], () => {
     emitGeneratingChanged()
   })
 
@@ -440,6 +458,7 @@ export function useChatSession(props: ChatSessionProps) {
     (newId, oldId) => {
       // 先中止进行中的流，避免旧会话 SSE/落盘回写到已切换的 turns
       abortChatGeneration()
+      resetBackgroundResumeState()
       composerDraft.switchConversationDraft(oldId, newId ?? '')
       switchConversationInputHistory(oldId, newId ?? '')
       turns.value = []

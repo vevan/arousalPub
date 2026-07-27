@@ -1373,11 +1373,17 @@
       "invalidCustomJson": "Custom parameters JSON is invalid",
       "requestFailedStatus": "Request failed ({status})",
       "network": "Network error",
+      "backgroundResumeBusy": "A reply is still generating in the background. Wait or abort first.",
       "persistFirstTurnFailed": "Failed to save the first turn on the server",
       "persistAppendTurnFailed": "Failed to append this turn on the server",
       "deleteTurnFailed": "Could not delete",
       "loadMessagesFailed": "Could not load conversation messages",
       "loadOlderFailed": "Could not load earlier turns"
+    },
+    "toast": {
+      "replyReadyAfterBackground": "Reply finished in the background",
+      "replyMayStillGenerate": "Connection lost; the reply may still be generating. It will sync when you return.",
+      "backgroundResumeExpired": "Background generation timed out; cancelled and synced."
     },
     "slash": {
       "gotoNotFound": "Turn {n} not found",

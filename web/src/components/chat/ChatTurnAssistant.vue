@@ -33,6 +33,7 @@ const {
   copiedTurnKey,
   writeChatPromptSnapshot,
   generationTimerTick,
+  isGenerating,
 } = toRefs(props.session)
 
 const {
@@ -286,12 +287,12 @@ const speakerAccentStyle = computed(() => {
       <div class="turn-toolbar turn-toolbar--assistant">
       <ChatTurnBranchActions
         :turn="turn"
-        :disabled="regeneratingTurnOrdinal !== null || isTurnAwaitingAssistant(turn, segIdx)"
+        :disabled="isGenerating || isTurnAwaitingAssistant(turn, segIdx)"
       />
       <button
         type="button"
         class="turn-toolbar__btn"
-        :disabled="regeneratingTurnOrdinal !== null"
+        :disabled="isGenerating"
         :data-tt="$t('chat.edit')"
         :aria-label="$t('chat.edit')"
         @click="openEditAssistant(turn, segIdx)"
@@ -301,7 +302,7 @@ const speakerAccentStyle = computed(() => {
       <button
         type="button"
         class="turn-toolbar__btn"
-        :disabled="regeneratingTurnOrdinal !== null || !turn.user.trim()"
+        :disabled="isGenerating || !turn.user.trim()"
         :data-tt="$t('chat.regenerate')"
         :aria-label="$t('chat.regenerate')"
         @click="regenerateAssistant(listIndex, 'regenerate', segIdx)"
@@ -322,7 +323,7 @@ const speakerAccentStyle = computed(() => {
         v-if="writeChatPromptSnapshot"
         type="button"
         class="turn-toolbar__btn"
-        :disabled="regeneratingTurnOrdinal !== null"
+        :disabled="isGenerating"
         :data-tt="$t('chat.viewTurnPrompt')"
         :aria-label="$t('chat.viewTurnPrompt')"
         @click="openTurnPromptSnapshot(turn, segIdx)"
@@ -332,7 +333,7 @@ const speakerAccentStyle = computed(() => {
       <button
         type="button"
         class="turn-toolbar__btn turn-toolbar__btn--danger"
-        :disabled="regeneratingTurnOrdinal !== null"
+        :disabled="isGenerating"
         :data-tt="$t('chat.delete')"
         :aria-label="$t('chat.delete')"
         @click="requestDelete(listIndex, segIdx)"
@@ -352,7 +353,7 @@ const speakerAccentStyle = computed(() => {
         <button
           type="button"
           class="swipe__btn"
-          :disabled="regeneratingTurnOrdinal !== null"
+          :disabled="isGenerating"
           :aria-label="$t('chat.prevAssistant')"
           @click="slideAssistant(listIndex, 'left', segIdx)"
         >
@@ -364,7 +365,7 @@ const speakerAccentStyle = computed(() => {
         <button
           type="button"
           class="swipe__btn"
-          :disabled="regeneratingTurnOrdinal !== null"
+          :disabled="isGenerating"
           :aria-label="$t('chat.nextAssistant')"
           @click="slideAssistant(listIndex, 'right', segIdx)"
         >

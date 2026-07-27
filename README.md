@@ -220,3 +220,15 @@ npm run dev
 `npm run dev` also starts **`scripts/watch-plugins.mjs`** in parallel: it watches repo `plugins/*/src` and rebuilds only when sources are newer than `dist` (avoids false positives on Windows watchers). Debug: `PLUGIN_WATCH_DEBUG=1`.
 
 Open the **`webPort`** from `config.yaml` in the browser (default differs from `serverPort`).
+
+---
+
+## Acknowledgments
+
+Special thanks to the following pioneers and projects for inspiration:
+
+- [SillyTavern](https://github.com/SillyTavern/SillyTavern) — SillyTavern team
+- [SillyTavern Memory Books (STMB)](https://github.com/aikohanasaki/SillyTavern-MemoryBooks) — aikohanasaki
+- [SillyTavern WTracker](https://github.com/bmen25124/SillyTavern-WTracker) — bmen25124
+- [Guided Generations](https://github.com/Samueras/GuidedGenerations-Extension) — Samueras
+- [All But This Swipe](https://github.com/Avilnetro/all-but-this-swipe) — Avilnetro

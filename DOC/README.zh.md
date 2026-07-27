@@ -220,3 +220,15 @@ npm run dev
 `npm run dev` 会并行启动 **`scripts/watch-plugins.mjs`**：监听仓库 `plugins/*/src` 等，仅在源码新于 `dist` 时重建（避免 Windows 监听误报）。调试：`PLUGIN_WATCH_DEBUG=1`。
 
 浏览器访问 `config.yaml` 中的 **`webPort`**（默认与 `serverPort` 不同）。
+
+---
+
+## 致谢
+
+特别感谢以下先驱作者与软件带来的灵感与启示：
+
+- [SillyTavern](https://github.com/SillyTavern/SillyTavern) — SillyTavern 团队
+- [SillyTavern Memory Books (STMB)](https://github.com/aikohanasaki/SillyTavern-MemoryBooks) — aikohanasaki
+- [SillyTavern WTracker](https://github.com/bmen25124/SillyTavern-WTracker) — bmen25124
+- [Guided Generations](https://github.com/Samueras/GuidedGenerations-Extension) — Samueras
+- [All But This Swipe](https://github.com/Avilnetro/all-but-this-swipe) — Avilnetro

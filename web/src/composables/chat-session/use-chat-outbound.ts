@@ -174,13 +174,16 @@ export function useChatOutbound(opts: {
     return Boolean(startedId) && currentConversationId() === startedId
   }
 
-  function countPersistedReceives(turns: ChatTurnItem[]): number {
+  function countReceivesOnTurn(
+    turns: ChatTurnItem[],
+    turnOrdinal: number,
+  ): number {
+    const turn = turns.find((t) => t.turnOrdinal === turnOrdinal)
+    if (!turn) return 0
     let n = 0
-    for (const turn of turns) {
-      for (const seg of getTurnSegments(turn)) {
-        for (const r of seg.receives) {
-          if (r.content?.trim()) n += 1
-        }
+    for (const seg of getTurnSegments(turn)) {
+      for (const r of seg.receives) {
+        if (r.content?.trim()) n += 1
       }
     }
     return n
@@ -190,11 +193,17 @@ export function useChatOutbound(opts: {
     turns: ChatTurnItem[],
     turnOrdinal: number,
   ): boolean {
-    const turn = turns.find((t) => t.turnOrdinal === turnOrdinal)
-    if (!turn) return false
-    return getTurnSegments(turn).some((seg) =>
-      seg.receives.some((r) => Boolean(r.content?.trim())),
-    )
+    return countReceivesOnTurn(turns, turnOrdinal) > 0
+  }
+
+  /** 仅登记对账锚点；真正进入后台等待须走 keepPendingForBackgroundResume */
+  function armResumeWatch(
+    turnOrdinal: number,
+    segmentIndex?: number,
+  ): void {
+    resumeWatchTurnOrdinal = turnOrdinal
+    resumeWatchSegmentIndex =
+      typeof segmentIndex === 'number' ? segmentIndex : null
   }
 
   function resolveAbortKind(e: unknown): ChatAbortKind | null {
@@ -213,16 +222,16 @@ export function useChatOutbound(opts: {
 
   async function tryResumeCompletedReplyFromServer(): Promise<boolean> {
     const watchOrd = resumeWatchTurnOrdinal
-    const hadWatchContent =
-      watchOrd != null && turnHasAssistantContent(opts.turns.value, watchOrd)
-    const before = countPersistedReceives(opts.turns.value)
+    if (watchOrd == null) return false
+    const beforeWatch = countReceivesOnTurn(opts.turns.value, watchOrd)
+    // loadMessages 会整表替换 turns，失败时须还原，否则 pending 气泡被冲掉
+    const snapshotTurns = opts.turns.value
     await opts.loadMessages()
-    const after = countPersistedReceives(opts.turns.value)
-    const watchReady =
-      watchOrd != null &&
-      !hadWatchContent &&
-      turnHasAssistantContent(opts.turns.value, watchOrd)
-    if (!watchReady && after <= before) return false
+    const afterWatch = countReceivesOnTurn(opts.turns.value, watchOrd)
+    if (afterWatch <= beforeWatch) {
+      opts.turns.value = snapshotTurns
+      return false
+    }
     opts.errorText.value = ''
     setAwaitingBackgroundResume(false)
     clearRetainedChatGeneration()
@@ -248,17 +257,13 @@ export function useChatOutbound(opts: {
   }
 
   async function onDocumentVisible(): Promise<void> {
-    if (
-      awaitingBackgroundResume.value &&
-      resumeDeadlineMs > 0 &&
-      Date.now() > resumeDeadlineMs
-    ) {
+    if (!expectBackgroundResume && !awaitingBackgroundResume.value) return
+    if (resumeDeadlineMs > 0 && Date.now() > resumeDeadlineMs) {
       await expireBackgroundResume()
       return
     }
     const generating =
       opts.loading.value || opts.regeneratingTurnOrdinal.value !== null
-    if (!expectBackgroundResume && !generating) return
     const recovered = await tryResumeCompletedReplyFromServer()
     if (!recovered) return
     if (generating) {
@@ -272,9 +277,7 @@ export function useChatOutbound(opts: {
     turnOrdinal: number,
     segmentIndex?: number,
   ): void {
-    resumeWatchTurnOrdinal = turnOrdinal
-    resumeWatchSegmentIndex =
-      typeof segmentIndex === 'number' ? segmentIndex : null
+    armResumeWatch(turnOrdinal, segmentIndex)
     setAwaitingBackgroundResume(true)
     notifyReplyMayStillGenerate()
   }
@@ -594,8 +597,7 @@ export function useChatOutbound(opts: {
     opts.loading.value = true
     opts.startGenerationTimer()
     opts.pendingSendSegmentIndex.value = 0
-    resumeWatchTurnOrdinal = ord
-    setAwaitingBackgroundResume(true)
+    armResumeWatch(ord)
     const startedConvId = currentConversationId()
     const epoch = ++outboundEpoch
     dismissGroupContinue()
@@ -856,8 +858,7 @@ export function useChatOutbound(opts: {
     regeneratingSegmentIndex.value = segIdx
     opts.errorText.value = ''
     opts.startGenerationTimer()
-    resumeWatchTurnOrdinal = turn.turnOrdinal
-    setAwaitingBackgroundResume(true)
+    armResumeWatch(turn.turnOrdinal)
     const startedConvId = currentConversationId()
     const epoch = ++outboundEpoch
     dismissGroupContinue()
@@ -1016,9 +1017,7 @@ export function useChatOutbound(opts: {
     opts.appendPendingSegment(turnOrdinal, segmentIndex, nextSpeakerCharacterId)
     opts.loading.value = true
     opts.startGenerationTimer()
-    resumeWatchTurnOrdinal = turnOrdinal
-    resumeWatchSegmentIndex = segmentIndex
-    setAwaitingBackgroundResume(true)
+    armResumeWatch(turnOrdinal, segmentIndex)
     const startedConvId = currentConversationId()
     const epoch = ++outboundEpoch
     let deferredAutoContinue: PendingGroupContinue | null = null

@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import AssembledMessagesPanel from '@/components/prompts/AssembledMessagesPanel.vue'
 import EntryBatchTargetDialog from '@/components/EntryBatchTargetDialog.vue'
-import GroupTargetPickerDialog from '@/components/GroupTargetPickerDialog.vue'
 import {
   groupAllowsPromptEntries,
   usePromptsStore,
 } from '@/stores/prompts'
-import { promptGroupPickerItems } from '@/utils/entry-group-transfer'
 import { mergeSelectAllVisible } from '@/utils/entry-batch-transfer'
 import type { BatchTransferTarget } from '@/utils/entry-batch-transfer'
 import {
@@ -433,40 +431,17 @@ function duplicateCurrent() {
   store.duplicatePrompt(selected.value.id)
 }
 
-const groupTransferOpen = ref(false)
-const groupTransferMode = ref<'copy' | 'move'>('copy')
-const groupPickerItems = computed(() =>
-  promptGroupPickerItems(
-    activeGroups.value,
-    groupCounts.value,
-    selected.value,
-  ),
-)
-
-function openGroupTransfer(mode: 'copy' | 'move') {
-  if (!selected.value || selected.value.bindingSlot) return
-  groupTransferMode.value = mode
-  groupTransferOpen.value = true
-}
-
-function onGroupTransferPick(targetGroupId: string) {
-  if (!selected.value) return
-  if (groupTransferMode.value === 'copy') {
-    store.duplicatePrompt(selected.value.id, targetGroupId)
-  } else {
-    store.movePromptToGroup(selected.value.id, targetGroupId)
-  }
-}
-
 const batchTransferOpen = ref(false)
 const batchTransferMode = ref<'copy' | 'move'>('copy')
+const batchTransferSingle = ref(false)
+const pendingTransferIds = ref<string[]>([])
 
 const batchLibraries = computed(() =>
   presets.value.map((p) => ({ id: p.id, name: p.name })),
 )
 
 const batchCurrentGroupId = computed(() => {
-  const ids = selectedPromptIds.value
+  const ids = pendingTransferIds.value
   if (ids.length === 0) return activeGroupId.value
   const gids = new Set(
     activePreset.value.prompts
@@ -478,9 +453,25 @@ const batchCurrentGroupId = computed(() => {
 
 function openBatchTransfer(mode: 'copy' | 'move') {
   if (selectedPromptIds.value.length === 0) return
+  batchTransferSingle.value = false
+  pendingTransferIds.value = selectedPromptIds.value.slice()
   batchTransferMode.value = mode
   batchTransferOpen.value = true
 }
+
+function openEntryTransfer(mode: 'copy' | 'move') {
+  if (!selected.value || selected.value.bindingSlot) return
+  batchTransferSingle.value = true
+  pendingTransferIds.value = [selected.value.id]
+  batchTransferMode.value = mode
+  batchTransferOpen.value = true
+}
+
+watch(batchTransferOpen, (open) => {
+  if (open) return
+  pendingTransferIds.value = []
+  batchTransferSingle.value = false
+})
 
 function selectAllVisiblePrompts() {
   const visibleIds = visiblePrompts.value
@@ -507,7 +498,7 @@ async function ensureBatchLibrary(libraryId: string) {
 }
 
 async function onBatchTransferPick(target: BatchTransferTarget) {
-  const ids = selectedPromptIds.value.slice()
+  const ids = pendingTransferIds.value.slice()
   const result =
     batchTransferMode.value === 'copy'
       ? await store.batchDuplicatePrompts(
@@ -547,11 +538,7 @@ const entryDeleteOpen = ref(false)
 
 function onMultiSelectKeydown(evt: KeyboardEvent) {
   if (evt.key !== 'Escape' || !multiSelectMode.value) return
-  if (
-    batchTransferOpen.value ||
-    groupTransferOpen.value ||
-    entryDeleteOpen.value
-  ) {
+  if (batchTransferOpen.value || entryDeleteOpen.value) {
     return
   }
   store.exitMultiSelect()
@@ -2174,12 +2161,12 @@ const canDeleteGroup = (g: PromptGroup) =>
                   <button
                     type="button"
                     class="editor-card__btn"
-                    @click="openGroupTransfer('copy')"
+                    @click="openEntryTransfer('copy')"
                   >{{ $t('entryTransfer.copyTo') }}</button>
                   <button
                     type="button"
                     class="editor-card__btn"
-                    @click="openGroupTransfer('move')"
+                    @click="openEntryTransfer('move')"
                   >{{ $t('entryTransfer.moveTo') }}</button>
                   <button
                     type="button"
@@ -2386,14 +2373,6 @@ const canDeleteGroup = (g: PromptGroup) =>
       </v-card>
     </v-dialog>
 
-    <GroupTargetPickerDialog
-      v-model:open="groupTransferOpen"
-      :mode="groupTransferMode"
-      :groups="groupPickerItems"
-      :current-group-id="activeGroupId ?? undefined"
-      @pick="onGroupTransferPick"
-    />
-
     <EntryBatchTargetDialog
       v-model:open="batchTransferOpen"
       :mode="batchTransferMode"
@@ -2402,6 +2381,7 @@ const canDeleteGroup = (g: PromptGroup) =>
       :current-group-id="batchCurrentGroupId"
       :resolve-groups="store.groupsForPreset"
       :ensure-library="ensureBatchLibrary"
+      :single-entry="batchTransferSingle"
       @pick="onBatchTransferPick"
     />
 

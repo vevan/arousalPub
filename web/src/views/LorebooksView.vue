@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import EntryBatchTargetDialog from '@/components/EntryBatchTargetDialog.vue'
-import GroupTargetPickerDialog from '@/components/GroupTargetPickerDialog.vue'
 import { useLorebooksStore } from '@/stores/lorebooks'
-import { lorebookGroupPickerItems } from '@/utils/entry-group-transfer'
 import { mergeSelectAllVisible } from '@/utils/entry-batch-transfer'
 import type { BatchTransferTarget } from '@/utils/entry-batch-transfer'
 import { coreNotify } from '@/utils/core-notify'
@@ -223,41 +221,22 @@ function createEntry() {
   void nextTick(() => titleInputRef.value?.focus())
 }
 
-const groupTransferOpen = ref(false)
-const groupTransferMode = ref<'copy' | 'move'>('copy')
-const groupPickerItems = computed(() =>
-  lorebookGroupPickerItems(activeGroups.value, groupCounts.value),
-)
-
 function duplicateCurrentEntry() {
   if (!selectedEntry.value) return
   store.duplicateEntry(selectedEntry.value.id)
 }
 
-function openGroupTransfer(mode: 'copy' | 'move') {
-  if (!selectedEntry.value) return
-  groupTransferMode.value = mode
-  groupTransferOpen.value = true
-}
-
-function onGroupTransferPick(targetGroupId: string) {
-  if (!selectedEntry.value) return
-  if (groupTransferMode.value === 'copy') {
-    store.duplicateEntry(selectedEntry.value.id, targetGroupId)
-  } else {
-    store.moveEntryToGroup(selectedEntry.value.id, targetGroupId)
-  }
-}
-
 const batchTransferOpen = ref(false)
 const batchTransferMode = ref<'copy' | 'move'>('copy')
+const batchTransferSingle = ref(false)
+const pendingTransferIds = ref<string[]>([])
 
 const batchLibraries = computed(() =>
   lorebooks.value.map((lb) => ({ id: lb.id, name: lb.name })),
 )
 
 const batchCurrentGroupId = computed(() => {
-  const ids = selectedEntryIds.value
+  const ids = pendingTransferIds.value
   if (ids.length === 0) return activeGroupId.value
   const gids = new Set(
     activeLorebook.value.entries
@@ -269,9 +248,25 @@ const batchCurrentGroupId = computed(() => {
 
 function openBatchTransfer(mode: 'copy' | 'move') {
   if (selectedEntryIds.value.length === 0) return
+  batchTransferSingle.value = false
+  pendingTransferIds.value = selectedEntryIds.value.slice()
   batchTransferMode.value = mode
   batchTransferOpen.value = true
 }
+
+function openEntryTransfer(mode: 'copy' | 'move') {
+  if (!selectedEntry.value) return
+  batchTransferSingle.value = true
+  pendingTransferIds.value = [selectedEntry.value.id]
+  batchTransferMode.value = mode
+  batchTransferOpen.value = true
+}
+
+watch(batchTransferOpen, (open) => {
+  if (open) return
+  pendingTransferIds.value = []
+  batchTransferSingle.value = false
+})
 
 function selectAllVisibleEntries() {
   store.setSelectedEntryIds(
@@ -283,7 +278,7 @@ function selectAllVisibleEntries() {
 }
 
 function onBatchTransferPick(target: BatchTransferTarget) {
-  const ids = selectedEntryIds.value.slice()
+  const ids = pendingTransferIds.value.slice()
   const result =
     batchTransferMode.value === 'copy'
       ? store.batchDuplicateEntries(ids, target.libraryId, target.groupId)
@@ -312,11 +307,7 @@ const entryDeleteOpen = ref(false)
 
 function onMultiSelectKeydown(evt: KeyboardEvent) {
   if (evt.key !== 'Escape' || !multiSelectMode.value) return
-  if (
-    batchTransferOpen.value ||
-    groupTransferOpen.value ||
-    entryDeleteOpen.value
-  ) {
+  if (batchTransferOpen.value || entryDeleteOpen.value) {
     return
   }
   store.exitMultiSelect()
@@ -1104,12 +1095,12 @@ async function confirmImportLorebook() {
                   <button
                     type="button"
                     class="editor-card__btn"
-                    @click="openGroupTransfer('copy')"
+                    @click="openEntryTransfer('copy')"
                   >{{ $t('entryTransfer.copyTo') }}</button>
                   <button
                     type="button"
                     class="editor-card__btn"
-                    @click="openGroupTransfer('move')"
+                    @click="openEntryTransfer('move')"
                   >{{ $t('entryTransfer.moveTo') }}</button>
                   <button
                     type="button"
@@ -1253,14 +1244,6 @@ async function confirmImportLorebook() {
       </v-card>
     </v-dialog>
 
-    <GroupTargetPickerDialog
-      v-model:open="groupTransferOpen"
-      :mode="groupTransferMode"
-      :groups="groupPickerItems"
-      :current-group-id="activeGroupId ?? undefined"
-      @pick="onGroupTransferPick"
-    />
-
     <EntryBatchTargetDialog
       v-model:open="batchTransferOpen"
       :mode="batchTransferMode"
@@ -1268,6 +1251,7 @@ async function confirmImportLorebook() {
       :current-library-id="activeLorebookId"
       :current-group-id="batchCurrentGroupId"
       :resolve-groups="store.groupsForLorebook"
+      :single-entry="batchTransferSingle"
       @pick="onBatchTransferPick"
     />
 

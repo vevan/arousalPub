@@ -19,6 +19,8 @@ const props = defineProps<{
   resolveGroups: (libraryId: string) => GroupPickerItem[]
   /** 选库进入分组步之前可选加载（如提示词预设 body） */
   ensureLibrary?: (libraryId: string) => void | Promise<void>
+  /** 单条条目「复制到/移动到」时用非「批量」文案 */
+  singleEntry?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -56,11 +58,16 @@ watch(open, (v) => {
   }
 })
 
-const title = computed(() =>
-  props.mode === 'copy'
+const title = computed(() => {
+  if (props.singleEntry) {
+    return props.mode === 'copy'
+      ? t('entryTransfer.pickGroupCopyTitle')
+      : t('entryTransfer.pickGroupMoveTitle')
+  }
+  return props.mode === 'copy'
     ? t('entryTransfer.batchPickCopyTitle')
-    : t('entryTransfer.batchPickMoveTitle'),
-)
+    : t('entryTransfer.batchPickMoveTitle')
+})
 
 const libraryHint = computed(() =>
   props.mode === 'copy'
@@ -68,11 +75,16 @@ const libraryHint = computed(() =>
     : t('entryTransfer.batchPickLibraryMoveHint'),
 )
 
-const groupHint = computed(() =>
-  props.mode === 'copy'
+const groupHint = computed(() => {
+  if (props.singleEntry) {
+    return props.mode === 'copy'
+      ? t('entryTransfer.pickGroupCopyHint')
+      : t('entryTransfer.pickGroupMoveHint')
+  }
+  return props.mode === 'copy'
     ? t('entryTransfer.batchPickGroupCopyHint')
-    : t('entryTransfer.batchPickGroupMoveHint'),
-)
+    : t('entryTransfer.batchPickGroupMoveHint')
+})
 
 const targetGroups = computed(() => {
   const lid = targetLibraryId.value
@@ -85,6 +97,16 @@ const targetLibraryName = computed(() => {
   if (!lid) return ''
   return props.libraries.find((x) => x.id === lid)?.name ?? lid
 })
+
+function isCurrentLibrary(lib: BatchLibraryItem): boolean {
+  return lib.id === props.currentLibraryId
+}
+
+function isCurrentGroup(g: GroupPickerItem): boolean {
+  const lid = targetLibraryId.value
+  if (!lid || lid !== props.currentLibraryId) return false
+  return Boolean(props.currentGroupId && g.id === props.currentGroupId)
+}
 
 function onPickLibrary(lib: BatchLibraryItem) {
   if (loadingLibrary.value) return
@@ -111,6 +133,18 @@ function backToLibraries() {
   step.value = 'library'
   targetLibraryId.value = null
 }
+
+function librarySubtitle(lib: BatchLibraryItem): string | undefined {
+  return isCurrentLibrary(lib) ? t('entryTransfer.batchCurrentLibrary') : undefined
+}
+
+function groupSubtitle(g: GroupPickerItem): string {
+  const count = t('entryTransfer.groupEntryCount', { n: g.count })
+  if (isCurrentGroup(g)) {
+    return `${t('entryTransfer.batchCurrentGroup')} · ${count}`
+  }
+  return count
+}
 </script>
 
 <template>
@@ -130,12 +164,9 @@ function backToLibraries() {
           v-for="lib in libraries"
           :key="lib.id"
           :title="lib.name"
+          :subtitle="librarySubtitle(lib)"
           :disabled="loadingLibrary"
-          :subtitle="
-            lib.id === currentLibraryId
-              ? $t('entryTransfer.batchCurrentLibrary')
-              : undefined
-          "
+          :class="{ 'entry-batch-target--current': isCurrentLibrary(lib) }"
           @click="onPickLibrary(lib)"
         />
       </v-list>
@@ -146,7 +177,8 @@ function backToLibraries() {
           :key="g.id"
           :disabled="groupDisabled(g)"
           :title="g.name"
-          :subtitle="t('entryTransfer.groupEntryCount', { n: g.count })"
+          :subtitle="groupSubtitle(g)"
+          :class="{ 'entry-batch-target--current': isCurrentGroup(g) }"
           @click="onPickGroup(g)"
         />
       </v-list>
@@ -163,3 +195,14 @@ function backToLibraries() {
     </v-card>
   </v-dialog>
 </template>
+
+<style scoped>
+.entry-batch-target--current :deep(.v-list-item-title) {
+  color: rgb(var(--v-theme-primary));
+  font-weight: 600;
+}
+.entry-batch-target--current :deep(.v-list-item-subtitle) {
+  color: rgb(var(--v-theme-primary));
+  opacity: 0.85;
+}
+</style>

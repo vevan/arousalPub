@@ -3,6 +3,7 @@ import type { ChatPersistPayload, ChatTurnItem, PersistTurnToServerResult, Recei
 import { resolveFinalUserTextAfterPersist, applyRetroPersistToTurns, applyPersistTurnPlugins } from '@/utils/persist-display'
 import { isAbortError } from '@/utils/abort-error'
 import type { ConversationChatRequestPlugins } from '@/utils/chat-api'
+import { isChatRequestFailure } from '@/utils/chat-request-failure'
 import { isOpeningTurn } from '@/utils/chat-turn-display'
 import { submitComposerParse, hasUnmatchedAtSlashNames } from '@/utils/composer-slash'
 import { getComposerSlashPluginHandler } from '@/utils/composer-slash-registry'
@@ -218,6 +219,45 @@ export function useChatOutbound(opts: {
       level: 'info',
       timeout: 5000,
     })
+  }
+
+  /** 明确业务/HTTP 失败：展示服务端文案并回滚 pending，不走后台保活提示 */
+  function surfaceDefiniteOutboundFailure(
+    e: unknown,
+    rollback: () => void,
+  ): string {
+    setAwaitingBackgroundResume(false)
+    const msg =
+      e instanceof Error && e.message.trim()
+        ? e.message.trim().slice(0, 2000)
+        : opts.t('chat.errors.network')
+    opts.errorText.value = msg
+    rollback()
+    opts.streamingText.value = ''
+    opts.streamingReasoning.value = ''
+    return msg
+  }
+
+  /**
+   * 非 abort 失败：先尝试对账已完成回复；
+   * 明确 ChatRequestFailure 展示错误；其余（断连等）保留 pending 等回前台。
+   */
+  async function handleNonAbortOutboundFailure(
+    e: unknown,
+    resume: {
+      turnOrdinal: number
+      segmentIndex?: number
+    },
+    rollback: () => void,
+  ): Promise<string | undefined> {
+    if (await tryResumeCompletedReplyFromServer()) {
+      return undefined
+    }
+    if (isChatRequestFailure(e)) {
+      return surfaceDefiniteOutboundFailure(e, rollback)
+    }
+    keepPendingForBackgroundResume(resume.turnOrdinal, resume.segmentIndex)
+    return undefined
   }
 
   async function tryResumeCompletedReplyFromServer(): Promise<boolean> {
@@ -665,11 +705,11 @@ export function useChatOutbound(opts: {
         keepPendingForBackgroundResume(ord)
         return undefined
       }
-      if (await tryResumeCompletedReplyFromServer()) {
-        return undefined
-      }
-      keepPendingForBackgroundResume(ord)
-      return undefined
+      return handleNonAbortOutboundFailure(
+        e,
+        { turnOrdinal: ord },
+        () => opts.rollbackPendingUserTurn(ord, userText),
+      )
     } finally {
       if (epoch === outboundEpoch && opts.loading.value) {
         opts.stopGenerationTimer()
@@ -931,11 +971,13 @@ export function useChatOutbound(opts: {
         keepPendingForBackgroundResume(turn.turnOrdinal)
         return undefined
       }
-      if (await tryResumeCompletedReplyFromServer()) {
-        return undefined
-      }
-      keepPendingForBackgroundResume(turn.turnOrdinal)
-      return undefined
+      return handleNonAbortOutboundFailure(
+        e,
+        { turnOrdinal: turn.turnOrdinal },
+        () => {
+          /* regenerate：不回滚已有 receives，仅清流式态 */
+        },
+      )
     } finally {
       if (epoch === outboundEpoch && opts.regeneratingTurnOrdinal.value !== null) {
         opts.stopGenerationTimer()
@@ -1066,10 +1108,12 @@ export function useChatOutbound(opts: {
           } else {
             keepPendingForBackgroundResume(turnOrdinal, segmentIndex)
           }
-        } else if (await tryResumeCompletedReplyFromServer()) {
-          /* recovered */
         } else {
-          keepPendingForBackgroundResume(turnOrdinal, segmentIndex)
+          await handleNonAbortOutboundFailure(
+            e,
+            { turnOrdinal, segmentIndex },
+            () => opts.rollbackPendingSegment(turnOrdinal, segmentIndex),
+          )
         }
       }
     } finally {

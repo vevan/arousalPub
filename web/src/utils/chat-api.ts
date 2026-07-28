@@ -3,7 +3,15 @@ import type { PromptTrigger } from '@/stores/prompts'
 import type { ChatPersistPayload } from '@/types/chat-turn'
 import { translateApiError } from '@/utils/api-error-message'
 import { apiFetch } from '@/utils/api-fetch'
+import {
+  ChatRequestFailure,
+} from '@/utils/chat-request-failure'
 import { hasAnyDrySamplerField } from '@/utils/dry-sampler'
+
+export {
+  ChatRequestFailure,
+  isChatRequestFailure,
+} from '@/utils/chat-request-failure'
 
 /** 与服务端 generationId 同形：16 hex，请求前预生成以便提前 cancel */
 export function generateClientChatGenerationId(): string {
@@ -132,7 +140,7 @@ export async function readSseStream(
   signal?: AbortSignal,
   onSpeakerCharacterId?: (speakerCharacterId: string) => void,
 ): Promise<void> {
-  if (!body) throw new Error(noStreamMessage)
+  if (!body) throw new ChatRequestFailure(noStreamMessage)
   const reader = body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -169,9 +177,12 @@ export async function readSseStream(
           if (sid) onSpeakerCharacterId?.(sid)
         }
         if (typeof arousal.error === 'string' && arousal.error.trim()) {
+          const code = arousal.error.trim()
           const detail =
             typeof arousal.detail === 'string' ? arousal.detail.trim() : ''
-          throw new Error((detail || arousal.error.trim()).slice(0, 2000))
+          throw new ChatRequestFailure(
+            (detail || translateApiError(code)).slice(0, 2000),
+          )
         }
         const persist = arousal.persist
         if (persist && typeof persist === 'object' && 'ok' in persist) {
@@ -284,7 +295,7 @@ export async function runChatRequest(options: {
     } catch {
       /* not JSON */
     }
-    throw new Error(
+    throw new ChatRequestFailure(
       msg.slice(0, 2000) || requestFailedMessage(String(res.status)),
     )
   }

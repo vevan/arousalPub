@@ -40,12 +40,12 @@ export function lorebookEntryMissingKeywords(entry: {
   return !entry.keys.some((k) => k.trim().length > 0)
 }
 
+/** 恒定注入不依赖 keys；vector 可用 keys 做入库附录与召回精排，故可编辑 */
 export function entryKeysInputDisabled(entry: {
   constant: boolean
   triggerMode?: LorebookTriggerMode
 }): boolean {
-  const mode = resolveEntryTriggerMode(entry)
-  return mode === 'constant' || mode === 'vector'
+  return resolveEntryTriggerMode(entry) === 'constant'
 }
 
 export function patchForTriggerMode(

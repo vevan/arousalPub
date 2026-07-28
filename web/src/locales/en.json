@@ -318,7 +318,7 @@
     "entryContent": "Content",
     "entryContentPlaceholder": "Lore text injected into the model…",
     "entryKeys": "Keywords",
-    "entryKeysHint": "In keyword mode, add at least one keyword (comma-separated); saved on blur or Enter",
+    "entryKeysHint": "Keyword mode needs at least one keyword; vector mode may add optional keywords for index appendix and rerank. Comma-separated; saved on blur or Enter",
     "entryKeysPlaceholder": "e.g. tavern, hearth, Tris",
     "entryMissingKeys": "Missing keywords",
     "entryMissingKeysAlert": "Keyword trigger is on but no keywords are set—this entry will not be injected. Add keywords or switch to always inject.",

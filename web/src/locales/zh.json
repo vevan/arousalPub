@@ -318,7 +318,7 @@
     "entryContent": "正文",
     "entryContentPlaceholder": "写入注入模型的资料库内容…",
     "entryKeys": "关键字",
-    "entryKeysHint": "关键字触发模式下须至少填一词；多个词用逗号分隔，失焦或 Enter 后保存",
+    "entryKeysHint": "关键字触发须至少填一词；向量触发可选填，用于入库附录与召回精排。多个词用逗号分隔，失焦或 Enter 后保存",
     "entryKeysPlaceholder": "如：酒馆, 壁炉, 特里斯",
     "entryMissingKeys": "缺少关键字",
     "entryMissingKeysAlert": "当前为关键字触发但未填写关键字，该条目不会注入提示词。请填写关键字或改为「恒定注入」。",

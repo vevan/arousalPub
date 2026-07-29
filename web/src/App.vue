@@ -1103,8 +1103,45 @@ onUnmounted(() => {
   }
 }
 
+.auth-app {
+  background:
+    radial-gradient(
+      90% 55% at 50% -8%,
+      rgba(var(--v-theme-primary), 0.14),
+      transparent 60%
+    ),
+    radial-gradient(
+      70% 45% at 50% 100%,
+      rgba(var(--v-theme-secondary), 0.08),
+      transparent 65%
+    ),
+    rgb(var(--v-theme-background));
+}
+
 .auth-app__main {
   min-height: 100dvh;
+  padding-block: 1rem;
+}
+
+@media (min-width: 56rem) {
+  .auth-app {
+    background:
+      radial-gradient(
+        55% 70% at 22% 48%,
+        rgba(var(--v-theme-primary), 0.16),
+        transparent 62%
+      ),
+      radial-gradient(
+        40% 50% at 78% 42%,
+        rgba(var(--v-theme-secondary), 0.08),
+        transparent 68%
+      ),
+      rgb(var(--v-theme-background));
+  }
+
+  .auth-app__main {
+    padding-inline: 1rem;
+  }
 }
 
 /* ========== AppBar · Tavern × Linear ==========

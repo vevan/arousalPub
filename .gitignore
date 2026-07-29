@@ -72,5 +72,8 @@ _design/*.jpeg
 .tmp/
 .tmp-hybrid-fts/
 
+# Graphify knowledge-graph outputs (local rebuild via /graphify)
+graphify-out/
+
 # Ops sample backup output (scripts/ops/backup.example.*)
 /backup-out/

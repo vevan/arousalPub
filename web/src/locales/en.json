@@ -81,11 +81,13 @@
     "filesProgress": "{done} / {total} files processed"
   },
   "auth": {
+    "brandAlt": "Arousal Pub",
     "setupTitle": "Welcome",
     "setupHint": "Set a username and password for the seed account to get started.",
     "loginTitle": "Sign in",
     "loginHint": "Sign in with your username and password. Check “Default on this device” to skip sign-in next time.",
     "registerTitle": "Register",
+    "registerHint": "Create an account to get started. Check “Default on this device” to skip sign-in next time.",
     "username": "Username",
     "displayNameOptional": "Display name (optional)",
     "password": "Password",

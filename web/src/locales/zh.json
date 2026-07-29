@@ -81,11 +81,13 @@
     "filesProgress": "已处理 {done} / {total} 个文件"
   },
   "auth": {
+    "brandAlt": "Arousal Pub",
     "setupTitle": "欢迎使用",
     "setupHint": "为种子账号设置用户名与密码，完成后即可开始使用。",
     "loginTitle": "登录",
     "loginHint": "使用用户名与密码登录；可勾选「本机默认用户」以跳过下次登录。",
     "registerTitle": "注册",
+    "registerHint": "创建账号后即可开始使用；可勾选「本机默认用户」以便下次跳过登录。",
     "username": "用户名",
     "displayNameOptional": "显示名（可选）",
     "password": "密码",

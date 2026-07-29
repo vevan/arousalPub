@@ -4,7 +4,19 @@
 
 ## P0
 
-（无）
+- [ ] **Graphify 图谱优化全项** — 明细见 [`DOC/devNotes/47`](47-graphify-optimization-backlog.md)；建议顺序：server cycles → server 跟进 → web → plugins
+  - [ ] **server · CS-P0a**：切开 `chat-storage.ts` 中心环（chunk-chain / memory-index / turn-patch / memory-corpus；以及 group-chat audit·continue·outbound·resolve 四环）— §2.1
+  - [ ] **server · CS-P0b**：切开插件沙箱环（`host-api` → `loader` → `sandbox` → `worker-client` → `host-api`）及 `plugin-complete-with-context` ↔ `host-api` — §2.2
+  - [ ] **server · SR1**：小 2-file cycles（`regex-persist`↔patch、`st-preset-import`↔limits、`assemble-prompts`↔`system-binding-slots`、preferences memo 三角、prompt-macros 环）— §3
+  - [ ] **server · SR2**：瘦身 `src/index.ts`（出度过高，路由/注册分文件）— §3
+  - [ ] **server · GF1**：建图排除 `test/**`（消除指向测试的 INFERRED 假边）— §3
+  - [ ] **server 验收**：测试 + typecheck；重跑 `server` directed 图谱确认 cycle 消失（或仅剩已文档化例外）
+  - [ ] **web**：拆分巨型 Vue（优先：`ConversationContextSettings` · `PromptsView` · `CharactersView` · `ConversationListView` · `ChatConversationView` · `PluginSchemaForm` · `LorebooksView`）— §4.1
+  - [ ] **web**：抽公共页面状态 composable（auth / loading / delete-dialog / i18n 等跨页重复模式）— §4.1
+  - [ ] **plugins**：`plot-summary` 继续分包（dialogs / pipeline / settings / review）— §4.2
+  - [ ] **plugins**：`trace-keeper` 保持 panel / separate / server 边界，避免再向 index 堆 — §4.2
+  - [ ] **plugins**：短名 `k()` 改为可读名（guidance-generate / plot-summary / trace-keeper）— §4.2
+  - [ ] **plugins**：`isAutoSummarizeEnabled` 单点导出（消除 dialogs + index 双定义）— §4.2
 
 ## P1
 

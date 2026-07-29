@@ -15,6 +15,7 @@
 
 - [ ] **作者注分层** `[DOC/devNotes/28](28-authors-note-layers.md)` — Phase 2 角色 AN + `{{charAuthorsNote}}`（Phase 1 全局 default ✅）
 - [ ] **角色卡内嵌世界书** `[DOC/devNotes/27](27-embedded-character-book.md)` — Phase 1 组装（constant + keyword、`position`、叠加内嵌优先）；Phase 2 角色库查看 / 编辑 UI
+- [ ] **视觉小说模式** — 对话页 VN 式呈现（立绘/场景布局、按句推进等）；待定案与专题文档
 
 > ST 导入 Tab / 世界书 / 聊天记录 / M3 回归已关闭，见下方 **§文档**（2026-06～07 · `[DOC/devNotes/37](37-st-import-settings-tab.md)`）。
 

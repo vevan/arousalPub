@@ -261,6 +261,74 @@ describe('Phase C macros', () => {
     )
   })
 
+  it('keeps nested :: intact inside setvar values (inner-first)', () => {
+    const c = ctx()
+    applyPromptMacroPipeline(
+      "{{setvar::gmNotebookTemplate::<details><summary>📓 GM'S NOTEBOOK</summary>{{getvar::gmNotebook::- [R] No active notes.}}<br></details>}}",
+      c,
+    )
+    assert.equal(
+      c.macroLocalVars?.gmNotebookTemplate,
+      "<details><summary>📓 GM'S NOTEBOOK</summary>- [R] No active notes.<br></details>",
+    )
+
+    const c2 = ctx({ macroLocalVars: { gmNotebook: 'note-a' } })
+    applyPromptMacroPipeline(
+      '{{setvar::tpl::before {{getvar::gmNotebook::fallback}} after}}',
+      c2,
+    )
+    assert.equal(c2.macroLocalVars?.tpl, 'before note-a after')
+  })
+
+  it('getvar uses trailing args as default when unset', () => {
+    const c = ctx()
+    assert.equal(
+      applyPromptMacroPipeline('{{getvar::missing::- [R] No active notes.}}', c),
+      '- [R] No active notes.',
+    )
+    assert.equal(
+      applyPromptMacroPipeline('{{getvar::missing::a::b::c}}', c),
+      'a::b::c',
+    )
+    assert.equal(
+      applyPromptMacroPipeline('{{getvar::missing::hi {{user}}}}', c),
+      'hi 小明',
+    )
+    assert.equal(
+      applyPromptMacroPipeline('{{getglobalvar::gmissing::GDEF}}', c),
+      'GDEF',
+    )
+    applyPromptMacroPipeline('{{setvar::missing::}}', c)
+    assert.equal(
+      applyPromptMacroPipeline('{{getvar::missing::default}}', c),
+      '',
+    )
+  })
+
+  it('supports if:: with nested getvar default', () => {
+    // unset → default "1" → truthy
+    assert.equal(
+      applyPromptMacroPipeline(
+        '{{if::{{getvar::flag::1}}}}yes{{else}}no{{/if}}',
+        ctx(),
+      ),
+      'yes',
+    )
+    // defined "0" → falsy（不用默认值；且勿把 "0" 误扩成 {{0}}）
+    const c = ctx({ macroLocalVars: { flag: '0' } })
+    assert.equal(
+      applyPromptMacroPipeline(
+        '{{if::{{getvar::flag::1}}}}yes{{else}}no{{/if}}',
+        c,
+      ),
+      'no',
+    )
+    assert.equal(
+      applyPromptMacroPipeline('{{if 0}}yes{{else}}no{{/if}}', ctx()),
+      'no',
+    )
+  })
+
   it('supports scoped setvar blocks', () => {
     const c = ctx()
     const out = applyPromptMacroPipeline(

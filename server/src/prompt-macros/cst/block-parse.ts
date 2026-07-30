@@ -1,12 +1,17 @@
-import { findNextBalancedMacroTag, parseMacroTagInner } from '../macro-tag-parse.js'
+import {
+  findNextBalancedMacroTag,
+  parseMacroTagInner,
+  splitColonArgs,
+} from '../macro-tag-parse.js'
 import { findBalancedMacroClose } from './lexer.js'
 
 export function extractIfCondition(inner: string): string {
   let raw = inner.trim()
   if (raw.startsWith('#')) raw = raw.slice(1).trim()
   if (raw.includes('::')) {
-    const parts = raw.split('::').map((s) => s.trim())
-    if (parts[0]!.toLowerCase() === 'if') {
+    // 嵌套感知：勿切开 / 勿 trim 掉内层 `{{getvar:: a :: b }}` 里的空白
+    const parts = splitColonArgs(raw)
+    if ((parts[0] ?? '').trim().toLowerCase() === 'if') {
       return parts.slice(1).join('::').trim()
     }
   }

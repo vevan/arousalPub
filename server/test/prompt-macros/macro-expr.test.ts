@@ -6,6 +6,7 @@ import {
   unwrapConditionBraces,
 } from '../../src/prompt-macros/macro-expr.js'
 import { buildPromptMacroContext } from '../../src/prompt-macros/context.js'
+import { applyPromptMacroPipeline } from '../../src/prompt-macros/pipeline.js'
 
 describe('macro-expr', () => {
   it('unwraps condition braces', () => {
@@ -45,5 +46,17 @@ describe('macro-expr', () => {
       macroLocalVars: { thoughtscope: '1' },
     })
     assert.equal(evaluateStCondition('.thoughtscope == "1"', c2), true)
+  })
+
+  it('evaluates nested getvar defaults and literal 0 as falsy', () => {
+    const c = buildPromptMacroContext({
+      conversationUserName: 'u',
+      characters: [{ name: 'c' }],
+      macroLocalVars: { flag: '0' },
+    })
+    const render = (s: string) => applyPromptMacroPipeline(s, c)
+    assert.equal(evaluateStCondition('{{getvar::flag::1}}', c, render), false)
+    assert.equal(evaluateStCondition('0', c, render), false)
+    assert.equal(evaluateStCondition('user', c, render), true)
   })
 })

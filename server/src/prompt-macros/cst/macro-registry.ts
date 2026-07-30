@@ -7,6 +7,8 @@ import {
   decrementLocalVar,
   getGlobalVar,
   getLocalVar,
+  hasGlobalVar,
+  hasLocalVar,
   incrementGlobalVar,
   incrementLocalVar,
   resolveHasGlobalVarMacro,
@@ -14,7 +16,10 @@ import {
   setGlobalVar,
   setLocalVar,
 } from '../macro-vars.js'
-import type { ParsedMacroTag } from '../macro-tag-parse.js'
+import {
+  splitColonArgs,
+  type ParsedMacroTag,
+} from '../macro-tag-parse.js'
 import {
   COLON_MACRO_HEADS,
   formatDatetimeParts,
@@ -68,12 +73,22 @@ function repeatChar(ch: string, countRaw: string | undefined): string {
 
 export function macroTagArgs(tag: ParsedMacroTag): string[] {
   if (tag.args.includes('::')) {
-    return tag.args.split('::')
+    return splitColonArgs(tag.args)
   }
   if (tag.args.trim()) {
     return tag.args.trim().split(/\s+/)
   }
   return []
+}
+
+/** 已定义则取值；未定义时用 `::` 后剩余段拼成默认值 */
+function resolveVarOrDefault(
+  defined: boolean,
+  value: string,
+  args: string[],
+): string {
+  if (defined) return value
+  return args.length > 1 ? args.slice(1).join('::') : ''
 }
 
 export function isSupportedCstMacroTag(tag: ParsedMacroTag): boolean {
@@ -201,7 +216,12 @@ export function invokeCstMacro(
   }
 
   if (name === 'getvar') {
-    return getLocalVar(ctx, args[0] ?? '')
+    const key = args[0] ?? ''
+    return resolveVarOrDefault(
+      hasLocalVar(ctx, key),
+      getLocalVar(ctx, key),
+      args,
+    )
   }
   if (name === 'setvar') {
     const varName = args[0] ?? ''
@@ -225,7 +245,12 @@ export function invokeCstMacro(
     return resolveHasVarMacro(ctx, args[0] ?? '')
   }
   if (name === 'getglobalvar') {
-    return getGlobalVar(ctx, args[0] ?? '')
+    const key = args[0] ?? ''
+    return resolveVarOrDefault(
+      hasGlobalVar(ctx, key),
+      getGlobalVar(ctx, key),
+      args,
+    )
   }
   if (name === 'setglobalvar') {
     const varName = args[0] ?? ''

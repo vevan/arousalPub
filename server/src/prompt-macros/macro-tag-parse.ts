@@ -14,9 +14,47 @@ export function findNextBalancedMacroTag(
 
 /** 解析 `{{ … }}` 内层（不含外层花括号） */
 
+/**
+ * 按 `::` 切分参数，但**不切开**嵌套 `{{…}}` 内部的 `::`。
+ * 例如 `a::{{getvar::k::d}}::b` → `['a', '{{getvar::k::d}}', 'b']`
+ */
+export function splitColonArgs(args: string): string[] {
+  if (!args.includes('::')) return args ? [args] : []
+  if (!args.includes('{{')) return args.split('::')
+
+  const parts: string[] = []
+  let buf = ''
+  let i = 0
+  let depth = 0
+  while (i < args.length) {
+    if (args.startsWith('{{', i)) {
+      depth += 1
+      buf += '{{'
+      i += 2
+      continue
+    }
+    if (args.startsWith('}}', i)) {
+      depth = Math.max(0, depth - 1)
+      buf += '}}'
+      i += 2
+      continue
+    }
+    if (depth === 0 && args.startsWith('::', i)) {
+      parts.push(buf)
+      buf = ''
+      i += 2
+      continue
+    }
+    buf += args[i]!
+    i += 1
+  }
+  parts.push(buf)
+  return parts
+}
+
 /** `head::arg…` — 各段 trim；**最后一段**仅 `trimStart`（保留尾部换行等） */
 export function splitColonMacroBody(body: string): { name: string; args: string } {
-  const parts = body.split('::')
+  const parts = splitColonArgs(body)
   const name = (parts[0] ?? '').trim().toLowerCase()
   const rest = parts.slice(1)
   if (rest.length === 0) return { name, args: '' }

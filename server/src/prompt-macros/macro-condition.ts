@@ -4,7 +4,7 @@ import {
   resolveComparisonOperand,
   unwrapConditionBraces,
 } from './macro-expr.js'
-import { normalizeMacroHead } from './macro-values.js'
+import { isKnownMacroToken, normalizeMacroHead } from './macro-values.js'
 import { getGlobalVar, getLocalVar } from './macro-vars.js'
 import { isStTruthy } from './macro-truthy.js'
 import type { PromptMacroContext } from './types.js'
@@ -24,12 +24,12 @@ export function evaluateStCondition(
     c = c.slice(1).trim()
   }
 
-  c = unwrapConditionBraces(c)
-
+  // 先展开嵌套宏，再剥外层 `{{…}}`。
+  // 若先 unwrap，`{{getvar::k::d}}` 会变成无法再求值的字面量 `getvar::k::d`。
   if (c.includes('{{') && renderSnippet) {
     c = renderSnippet(c).trim()
-    c = unwrapConditionBraces(c)
   }
+  c = unwrapConditionBraces(c)
 
   const comparison = parseComparisonExpression(c)
   if (comparison) {
@@ -44,7 +44,8 @@ export function evaluateStCondition(
     truthy = isStTruthy(getLocalVar(ctx, c.slice(1)))
   } else if (c.startsWith('$') && c.length > 1) {
     truthy = isStTruthy(getGlobalVar(ctx, c.slice(1)))
-  } else if (/^[\w-]+$/.test(c) && renderSnippet) {
+  } else if (/^[\w-]+$/.test(c) && renderSnippet && isKnownMacroToken(c)) {
+    // 仅 `{{if user}}` 这类裸宏名二次展开；勿把求值结果 `0` 当成 `{{0}}`
     const head = normalizeMacroHead(c)
     if (head === 'else' || head === 'if') {
       truthy = isStTruthy(c)

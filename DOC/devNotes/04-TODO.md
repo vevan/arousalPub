@@ -20,6 +20,7 @@
 
 ## P1
 
+- [ ] **内置 Embedding（Transformers.js · 服务端）** — 无本地 LLM / 独立 Embedding 服务条件时的后路；Provider=`builtin`，非请求热备、非浏览器主路径；切换须重建索引。见 [`DOC/devNotes/48`](48-builtin-embedding-transformers.md)
 - [ ] **ST 聊天记录群聊多 bot 导入** — 当前 ST JSONL 导入全部 segment 绑定 `characterIds[0]`；需按 ST `name` 与会话 `characterIds`/`displayNames` 映射各 bot 为 speaker（单 bot 行为不变）。见 `[DOC/devNotes/37](37-st-import-settings-tab.md)`
 - [ ] 角色卡扩展规划：json格式以xml结构插入提示词，宿主提供接口，插件可改申请字段。
 

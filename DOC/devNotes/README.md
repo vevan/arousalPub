@@ -66,6 +66,7 @@
 | [`36`](36-composer-slash.md) | ✅ **已归档**（2026-07-20） | **Composer Slash** S0–S4：`submitComposer`、`/goto`、`/@`、插件 `registerComposerSlashCommand`、补全浮层、Historian `/plot` |
 | [`37`](37-st-import-settings-tab.md) | 定案 **P2** | **设置「导入」Tab**：ST 聊天记录 / 世界书 / 提示词预设（预设委托 `PromptsView` 原流程） |
 | [`47`](47-graphify-optimization-backlog.md) | **待办 · P0** | **Graphify 图谱审计**：server / web / plugins 全项；见 [`04`](04-TODO.md) §P0 |
+| [`48`](48-builtin-embedding-transformers.md) | **定案 · P1** | **内置 Embedding**：服务端 Transformers.js 后路（无本地 LLM 条件）；非热备 / 非浏览器主路径 |
 
 ## 已归档（勿再新建同级文档）
 

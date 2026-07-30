@@ -363,6 +363,17 @@ describe('Phase C macros', () => {
       applyPromptMacroPipeline('{{char}}   {{trim}}', ctx()),
       '艾拉',
     )
+    assert.equal(
+      applyPromptMacroPipeline(
+        '{{// comment}}{{trim}}\n\n<header_instructions>\nHi\n</header_instructions>',
+        ctx(),
+      ),
+      '<header_instructions>\nHi\n</header_instructions>',
+    )
+    assert.equal(
+      applyPromptMacroPipeline('A{{trim}}\r\n\r\nB', ctx()),
+      'AB',
+    )
   })
 
   it('supports D2.5 shorthand operators', () => {

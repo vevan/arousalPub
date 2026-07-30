@@ -2,6 +2,11 @@ import type { PromptMacroContext } from '../types.js'
 import { getCachedMacroDocument } from './document-cache.js'
 import { walkCstDocument } from './walker.js'
 
+/** ST: strip newlines immediately after no-arg {{trim}}. */
+function stripLeadingNewlines(s: string): string {
+  return s.replace(/^(?:\r?\n)+/, '')
+}
+
 function textHasNoArgTrim(text: string): boolean {
   return /\{\{\s*trim\s*\}\}/i.test(text) && !/\{\{\s*trim\s*::/i.test(text)
 }
@@ -24,10 +29,14 @@ export function renderPromptMacrosCst(
   if (!textHasNoArgTrim(text)) {
     return renderPromptMacrosCstOnce(text, ctx)
   }
+  // Align with ST: drop newlines on both sides of {{trim}}.
   const parts = text.split(/\{\{\s*trim\s*\}\}/i)
   let out = ''
   for (let i = 0; i < parts.length; i++) {
-    out += renderPromptMacrosCstOnce(parts[i]!, ctx)
+    let chunk = renderPromptMacrosCstOnce(parts[i]!, ctx)
+    if (i > 0) chunk = stripLeadingNewlines(chunk)
+    out += chunk
+    // Before next trim: trimEnd also clears trailing spaces (existing preset/tests).
     if (i < parts.length - 1) out = out.trimEnd()
   }
   return out

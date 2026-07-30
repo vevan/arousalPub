@@ -21,6 +21,11 @@ function isNoArgTrimTag(tag: ParsedMacroTag): boolean {
   return tag.name === 'trim' && !tag.raw.includes('::') && !tag.args.trim()
 }
 
+/** ST: strip newlines immediately after no-arg {{trim}}. */
+function stripLeadingNewlines(s: string): string {
+  return s.replace(/^(?:\r?\n)+/, '')
+}
+
 export function walkCstDocument(
   doc: CstDocument,
   ctx: PromptMacroContext,
@@ -42,12 +47,20 @@ function walkCstNodes(
   }
 
   let out = ''
+  /** After no-arg {{trim}}: drop leading newlines on following output (skip empty macros). */
+  let trimLeadingNewlines = false
   for (const node of nodes) {
     if (node.kind === 'macro' && isNoArgTrimTag(node.tag)) {
       out = out.trimEnd()
+      trimLeadingNewlines = true
       continue
     }
-    out += walkCstNode(node, ctx, depth, renderNested)
+    let piece = walkCstNode(node, ctx, depth, renderNested)
+    if (trimLeadingNewlines) {
+      piece = stripLeadingNewlines(piece)
+      if (piece.length > 0) trimLeadingNewlines = false
+    }
+    out += piece
   }
   return out
 }

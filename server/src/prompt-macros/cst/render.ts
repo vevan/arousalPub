@@ -1,11 +1,7 @@
+import { stripLeadingNewlines } from '../macro-truthy.js'
 import type { PromptMacroContext } from '../types.js'
 import { getCachedMacroDocument } from './document-cache.js'
 import { walkCstDocument } from './walker.js'
-
-/** ST: strip newlines immediately after no-arg {{trim}}. */
-function stripLeadingNewlines(s: string): string {
-  return s.replace(/^(?:\r?\n)+/, '')
-}
 
 function textHasNoArgTrim(text: string): boolean {
   return /\{\{\s*trim\s*\}\}/i.test(text) && !/\{\{\s*trim\s*::/i.test(text)

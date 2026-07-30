@@ -17,6 +17,11 @@ export function findNextBalancedMacroTag(
 /**
  * 按 `::` 切分参数，但**不切开**嵌套 `{{…}}` 内部的 `::`。
  * 例如 `a::{{getvar::k::d}}::b` → `['a', '{{getvar::k::d}}', 'b']`
+ *
+ * 畸形输入约定（不抛错）：
+ * - 未闭合 `{{…`：深度保持升高，其后 `::` 不再切开（整段归入当前参数）
+ * - 多余 `}}`：深度不低于 0，字面量保留
+ * - 多层嵌套：按 `{{` / `}}` 配对增减 depth
  */
 export function splitColonArgs(args: string): string[] {
   if (!args.includes('::')) return args ? [args] : []

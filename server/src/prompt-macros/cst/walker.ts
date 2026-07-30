@@ -3,7 +3,10 @@ import {
   evaluateVariableShorthand,
   parseVariableShorthand,
 } from '../macro-shorthand-op.js'
-import { trimScopedBlockContent } from '../macro-truthy.js'
+import {
+  stripLeadingNewlines,
+  trimScopedBlockContent,
+} from '../macro-truthy.js'
 import { restoreMacroEscapes } from '../preprocess-escape.js'
 import type { PromptMacroContext } from '../types.js'
 import type { ParsedMacroTag } from '../macro-tag-parse.js'
@@ -19,11 +22,6 @@ export const MAX_MACRO_DOCUMENT_CHARS = 512_000
 
 function isNoArgTrimTag(tag: ParsedMacroTag): boolean {
   return tag.name === 'trim' && !tag.raw.includes('::') && !tag.args.trim()
-}
-
-/** ST: strip newlines immediately after no-arg {{trim}}. */
-function stripLeadingNewlines(s: string): string {
-  return s.replace(/^(?:\r?\n)+/, '')
 }
 
 export function walkCstDocument(

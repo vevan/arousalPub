@@ -56,4 +56,14 @@ describe('CST parser & blocks', () => {
       'Y',
     )
   })
+
+  it('supports if:: with three-level nested getvar defaults', () => {
+    assert.equal(
+      renderPromptMacrosCst(
+        '{{if::{{getvar::a::{{getvar::b::1}}}}}}Y{{else}}N{{/if}}',
+        ctx(),
+      ),
+      'Y',
+    )
+  })
 })

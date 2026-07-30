@@ -16,3 +16,8 @@ export function trimScopedBlockContent(body: string): string {
   else if (s.endsWith('\n')) s = s.slice(0, -1)
   return s.trimEnd()
 }
+
+/** ST: strip newlines immediately after no-arg `{{trim}}`. */
+export function stripLeadingNewlines(s: string): string {
+  return s.replace(/^(?:\r?\n)+/, '')
+}

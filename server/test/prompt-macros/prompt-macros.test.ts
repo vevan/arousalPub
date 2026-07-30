@@ -305,6 +305,30 @@ describe('Phase C macros', () => {
     )
   })
 
+  it('getglobalvar skips default when key exists as empty string', () => {
+    const c = ctx({ macroGlobalVars: { g: '' } })
+    assert.equal(
+      applyPromptMacroPipeline('{{getglobalvar::g::DEFAULT}}', c),
+      '',
+    )
+    assert.equal(
+      applyPromptMacroPipeline(
+        '{{if::{{getglobalvar::g::1}}}}yes{{else}}no{{/if}}',
+        c,
+      ),
+      'no',
+    )
+  })
+
+  it('expands three-level nested getvar defaults inside setvar', () => {
+    const c = ctx()
+    applyPromptMacroPipeline(
+      '{{setvar::tpl::{{getvar::outer::{{getvar::inner::deep}}}}}}',
+      c,
+    )
+    assert.equal(c.macroLocalVars?.tpl, 'deep')
+  })
+
   it('supports if:: with nested getvar default', () => {
     // unset → default "1" → truthy
     assert.equal(

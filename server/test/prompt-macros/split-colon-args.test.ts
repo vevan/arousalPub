@@ -11,12 +11,34 @@ describe('splitColonArgs', () => {
     assert.deepEqual(splitColonArgs('a::b::c'), ['a', 'b', 'c'])
   })
 
+  it('returns empty array for empty input', () => {
+    assert.deepEqual(splitColonArgs(''), [])
+  })
+
   it('does not split :: inside nested macros', () => {
     assert.deepEqual(splitColonArgs('tpl::{{getvar::k::default}}::tail'), [
       'tpl',
       '{{getvar::k::default}}',
       'tail',
     ])
+  })
+
+  it('does not split :: inside three-level nested macros', () => {
+    assert.deepEqual(
+      splitColonArgs('a::{{outer::{{inner::x::y}}::z}}::b'),
+      ['a', '{{outer::{{inner::x::y}}::z}}', 'b'],
+    )
+  })
+
+  it('keeps unclosed {{ segment intact without splitting later ::', () => {
+    assert.deepEqual(splitColonArgs('a::{{getvar::x::y'), [
+      'a',
+      '{{getvar::x::y',
+    ])
+  })
+
+  it('treats stray }} as literal and still splits at depth 0', () => {
+    assert.deepEqual(splitColonArgs('a}}::b::c'), ['a}}', 'b', 'c'])
   })
 
   it('preserves nested macros when splitting setvar body', () => {

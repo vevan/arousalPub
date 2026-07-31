@@ -8,7 +8,7 @@
 | 读者 | 先读 |
 |------|------|
 | 新 Agent / 接手 | [`06-工作交接.md`](06-工作交接.md) → [`03-实现细节.md`](03-实现细节.md) |
-| 部署 / 安全 | [`25-security-deployment.md`](25-security-deployment.md)、[`17-admin-console.md`](17-admin-console.md)、[`data/README.md`](../../data/README.md) |
+| 部署 / 安全 | [`25-security-deployment.md`](25-security-deployment.md)、[`17-admin-console.md`](17-admin-console.md)、[`data/README.md`](../../data/README.md) / [`README.zh.md`](../../data/README.zh.md) |
 | 插件开发 | [`41`](41-plugin-host-generic-principles.md)（**宿主强制 · 零字节特化**）→ [`42`](42-host-generic-audit-checklist.md)（✅）→ [`09`](09-plugin-system-and-guidance-generate.md) → [`18`](18-plugin-host-developer-api.md) → [`39`](39-plugin-context-and-prompt-assembly.md)（✅）→ [`38`](38-plugin-sandbox-and-host-evolution.md)（✅ Phase A+B）→ [`43`](43-plugin-api-binding-audit-checklist.md)（✅ 已归档）→ [`10`](10-plugin-conversation-host.md) |
 | Historian | [`12-plugin-plot-summary.md`](12-plugin-plot-summary.md) · 二次 LLM 演进 [`39`](39-plugin-context-and-prompt-assembly.md) |
 | 迹录（Trace Keeper） | [`30-plugin-trace-keeper.md`](30-plugin-trace-keeper.md) |

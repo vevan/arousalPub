@@ -77,7 +77,7 @@ node --input-type=module -e "import { createI18n } from 'vue-i18n'; import zh fr
 | 待办 | `DOC/devNotes/04-TODO.md` |
 | 安全 / API Key | `DOC/devNotes/25-security-deployment.md` |
 | Historian | `DOC/devNotes/12-plugin-plot-summary.md` |
-| 数据目录 | `data/README.md` |
+| 数据目录 | `data/README.md` · `data/README.zh.md` |
 | 启动 | 根目录 `README.md` |
 
 `cursor.md` 仅保留概况与索引；详细设计在 `DOC/devNotes/`。

@@ -27,7 +27,7 @@ data/
     ...
 ```
 
-更细的路径说明见仓库 [`data/README.md`](../../../data/README.md)。
+更细的路径说明见仓库 [`data/README.zh.md`](../../../data/README.zh.md)（[English](../../../data/README.md)）。
 
 ---
 

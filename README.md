@@ -205,7 +205,7 @@ Chats, characters, prompts, lorebooks, API config, and related files all live un
 - **Restore on another machine**: install the app, then replace with your backed-up `data/`.
 - **Sync** (e.g. Syncthing): avoid two machines writing the same data directory **at the same time**, or you risk conflicts.
 
-Path details: [`data/README.md`](data/README.md).
+Path details: [`data/README.md`](data/README.md) ([中文](data/README.zh.md)).
 
 ---
 

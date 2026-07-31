@@ -1,94 +1,102 @@
-# 数据目录
+# Data directory
 
-应用运行时数据根目录，默认位于仓库根下的 `data/`（可在 `config.yaml` 的 `dataDir` 或环境变量中覆盖）。
+[中文](README.zh.md)
 
-## 多用户布局
+Runtime data root. Default path: `data/` under the repo (override with `config.yaml` → `dataDir` or env `DATA_DIR` / `AROUSAL_DATA_DIR`).
+
+Do **not** commit real user data. This folder is gitignored except for these READMEs.
+
+## Multi-user layout
 
 ```
 data/
-  users.index.json          # 用户注册表（用户名、密码哈希、显示名等）
-  .jwt-secret               # JWT 签名密钥（可选自动生成）
-  .data-encryption-key      # API Key 磁盘加密主密钥（可选自动生成）
-  backups/                  # 产品内全量冷备 zip（§8.8；Syncthing 勿同步，见 §备份）
-    backup-<时间>.zip
+  users.index.json          # User registry (username, password hash, display name, …)
+  .jwt-secret               # JWT signing secret (may be auto-generated)
+  .data-encryption-key      # Disk encryption master key for API keys (may be auto-generated)
+  backups/                  # In-app full cold-backup zips (§8.8; do not Syncthing this)
+    backup-<timestamp>.zip
     backup-manifest.json
-  plugins/                  # 全局插件包（安装一次，全用户共用代码）
+  plugins/                  # Global plugin packages (install once; shared code)
     <pluginId>/
       manifest.json
       dist/
       locales/
-      assets/               # 可选：如 default.mp3
-      {userId}/             # 该用户在此插件下的配置与上传
+      assets/               # Optional (e.g. default.mp3)
+      {userId}/             # Per-user settings & uploads for this plugin
         settings.json
         assets/
         secrets/
-  00000000/                 # 种子账号
-    plugin-registry.json    # 该用户插件启用与 hook 排序
+  00000000/                 # Seed account
+    plugin-registry.json    # Per-user plugin enablement & hook order
     chats/
     ...
-  {8位hex}/
+  {8-hex}/
     plugin-registry.json
     ...
 ```
 
-- **用户 ID**：8 位小写十六进制。
-- **插件 registry**：**每个用户一份** `data/{userId}/plugin-registry.json`（非全局根目录）。旧版 `data/plugin-registry.json` 会在首次 seed 时迁移到用户目录。
-- **认证**：除公开路由外，`/api/*` 需 JWT。
+- **User ID**: 8 lowercase hex digits.
+- **Plugin registry**: one file per user at `data/{userId}/plugin-registry.json` (not at the data root). Legacy `data/plugin-registry.json` migrates into the user dir on first seed.
+- **Auth**: `/api/*` requires JWT except public routes.
 
-## 单用户目录 `{userId}/`
+## Per-user directory `{userId}/`
 
-| 路径 | 说明 |
-|------|------|
-| `plugin-registry.json` | 该用户插件 enabled / order |
-| `avatar.png` | 用户头像 |
-| `chats/` | 对话会话与消息（`index.json` 可含 **`backgroundImageFileId`** / **`bgmFileId`**，见 `DOC/devNotes/20` M3） |
-| `prompts/`、`characters/`、`lorebooks/` | 资料与预设（角色主存 **`characters/{id}.png`**，`id` 为 8 位 hex，见 `DOC/devNotes/03` §6.7；宿主元数据 **`characters/index.json`**：`userCardList`、**`imageFilesByCharacterId`**（M2 文件绑定，不进 PNG）） |
-| `files/` | 用户文件库（`index.json` + `{fileId}/meta.json` + `{fileId}/content`；见 `DOC/devNotes/20` · `DOC/devNotes/03` §17） |
-| `knowledgeBases/` | 独立文档 RAG 知识库（`index.json` + `{kbId}.json` + `{kbId}/chunks.json`；Lance 派生在 `memory/knowledge/`；见 `DOC/devNotes/46`） |
-| `api-settings.json`、`api-keys.json` | API 配置（内联 key 落盘为 **`apiKeyEnc` / `keyEnc`**，见 `DOC/devNotes/25` §15） |
-| `user-preferences.json` | 全局偏好（含 embedding **`apiKeyEnc`**、**`hybridFts`** 记忆检索分词，见 `DOC/devNotes/03` §14.4.3） |
-| `memory/` | Lance 远期记忆索引（**派生**，可重建；Syncthing 建议忽略，见 `DOC/devNotes/03` §14.5） |
-| `hybrid-fts/` | Hybrid BM25 分词资源（如 `zh-jieba/{variant}/jieba/default/dict.txt`，`variant` 为 small / default / big；见 `DOC/devNotes/03` §14.4.3） |
-| `regex-rules.json` | 原生正则规则（用户级；**无**会话级副本，见 **`DOC/devNotes/24`** §2.1、§6） |
+| Path | Notes |
+|------|--------|
+| `plugin-registry.json` | Plugin `enabled` / `order` for this user |
+| `avatar.png` | User avatar |
+| `chats/` | Conversations & messages (`index.json` may include **`backgroundImageFileId`** / **`bgmFileId`**; see `DOC/devNotes/20` M3). Branches live under conversation folders; optional **`chat-audit.json`** when session debug audit is on (`DOC/devNotes/24`) |
+| `prompts/` | Prompt presets (`index.json` + `preset-*.json`) |
+| `characters/` | Character cards — primary store **`{id}.png`** (8-hex id); host metadata in **`index.json`** (`userCardList`, **`imageFilesByCharacterId`**; see `DOC/devNotes/03` §6.7 / §12) |
+| `lorebooks/` | Lorebooks (`index.json` + per-book JSON) |
+| `files/` | User file library (`index.json` + `{fileId}/meta.json` + `{fileId}/content`; `DOC/devNotes/20`, `DOC/devNotes/03` §17) |
+| `knowledgeBases/` | Document RAG libraries (`index.json` + `{kbId}.json` + `{kbId}/chunks.json`; Lance under `memory/knowledge/`; `DOC/devNotes/46`) |
+| `api-settings.json`, `api-keys.json` | API presets & key aliases (inline keys on disk as **`apiKeyEnc` / `keyEnc`**; `DOC/devNotes/25` §15) |
+| `user-preferences.json` | Global prefs (embedding **`apiKeyEnc`**, **`hybridFts`**, default authors’ note, budget trim, …; `DOC/devNotes/03` §14.4.3) |
+| `memory/` | Lance indexes (**derived**, rebuildable; prefer ignoring in Syncthing; `DOC/devNotes/03` §14.5) — turns under `memory/conversations/`, knowledge under `memory/knowledge/` |
+| `hybrid-fts/` | Hybrid BM25 tokenizer assets (e.g. `zh-jieba/{variant}/…`; `DOC/devNotes/03` §14.4.3) |
+| `regex-rules.json` | Native regex rules (user-level only; no per-chat copy; `DOC/devNotes/24` §2.1, §6) |
 
-## 密钥文件（`data/` 根目录）
+New users also receive English **seed** content (default API preset, prompt presets, lorebook, regex rule) written once at registration.
 
-| 文件 / 环境变量 | 用途 |
-|----------------|------|
-| `.jwt-secret` | JWT 签名密钥（生产可首次自动生成） |
-| `.data-encryption-key` | API Key **磁盘加密**主密钥（AES-256-GCM） |
-| `JWT_SECRET` / `config.yaml` → `jwtSecret` | 覆盖 JWT 密钥 |
-| `DATA_ENCRYPTION_KEY` / `config.yaml` → `dataEncryptionKey` | 覆盖磁盘加密密钥 |
+## Secret files (`data/` root)
 
-**Syncthing / 多机**：同步 `data/{userId}/` 下 JSON 密文即可；各实例须使用**相同** `DATA_ENCRYPTION_KEY`（或同步 `.data-encryption-key`），否则无法解密 API Key。
+| File / env | Purpose |
+|------------|---------|
+| `.jwt-secret` | JWT signing secret (production may generate on first start) |
+| `.data-encryption-key` | Master key for **disk encryption** of API keys (AES-256-GCM) |
+| `JWT_SECRET` / `config.yaml` → `jwtSecret` | Override JWT secret |
+| `DATA_ENCRYPTION_KEY` / `config.yaml` → `dataEncryptionKey` | Override disk encryption key |
 
-**dev / prod**：无 env/config 时，开发与生产均读写 `data/.data-encryption-key`（首次启动自动生成 64 位 hex，勿再依赖固定 dev 默认钥）。
+**Syncthing / multi-machine**: syncing ciphertext under `data/{userId}/` is fine; every instance must use the **same** `DATA_ENCRYPTION_KEY` (or sync `.data-encryption-key`), or API keys cannot be decrypted.
 
-**轮换 DEK**：本机 `http://127.0.0.1:<serverPort>/admin`（种子用户）→「生成推荐」+「开始轮换」；见 `DOC/devNotes/17`。
+**dev / prod**: without env/config, both read/write `data/.data-encryption-key` (64-hex auto-generated on first start; no fixed dev default key).
 
-## 插件与 Syncthing
+**Rotate DEK**: open `http://127.0.0.1:<serverPort>/admin` (seed user) → generate recommendation → start rotation; see `DOC/devNotes/17`.
 
-- **轮次 state**：`chats/.../turn-*.json` 的 **`turn.plugins[]`**。
-- **插件代码**：`data/plugins/<pluginId>/`（全局）。
-- **插件配置**：`data/plugins/<pluginId>/{userId}/settings.json`；上传文件在 **`.../{userId}/assets/`**。全局 settings + registry `enabled` 可经设置页「导入 / 导出」迁出（`DOC/devNotes/09` §4）；不含会话覆盖与 secrets。
-- 详见 **`DOC/devNotes/09-plugin-system-and-guidance-generate.md`**。
+## Plugins and Syncthing
 
-## 备份
+- **Per-turn plugin state**: `chats/.../turn-*.json` → **`turn.plugins[]`**.
+- **Plugin code**: `data/plugins/<pluginId>/` (global).
+- **Plugin config**: `data/plugins/<pluginId>/{userId}/settings.json`; uploads under **`.../{userId}/assets/`**. Global settings + registry `enabled` can be imported/exported from Settings (`DOC/devNotes/09` §4); excludes conversation overrides and secrets.
+- Details: **`DOC/devNotes/09-plugin-system-and-guidance-generate.md`**.
 
-以整个 `data/` 为单元备份；含 API Key 与密码哈希，须与生产环境同等访问控制。运维细节见 **`DOC/devNotes/03` §8**。
+## Backup
 
-### 产品内冷备（`data/backups/` · `DOC/devNotes/03` §8.8）
+Back up the whole `data/` tree. It contains password hashes and encrypted API keys — treat it like production secrets. Ops detail: **`DOC/devNotes/03` §8**.
 
-| 项 | 说明 |
-|----|------|
-| **触发** | 服务启动后：距上次**成功**冷备超过 `config.yaml` → `backupIntervalDays`（默认 7 天），或从未备份 |
-| **落盘** | `{dataDir}/backups/backup-<ISO8601>.zip` + `backup-manifest.json` |
-| **保留** | `backupMaxKept`（默认 5），超出删最旧 zip |
-| **范围** | 整棵 `data/`（含各 `{userId}/`、`memory/` Lance、`.jwt-secret`、`.data-encryption-key` 等），**不含** `backups/` 自身 |
-| **进行中** | 备份期间 Web 全屏进度；变更 `data` 的写 API 返回 **503** `backup_in_progress` |
-| **状态 API** | `GET /api/backup/status`（免 JWT）：`running`、`filesDone`、`filesTotal`、`lastSuccessAt`、`lastError` |
+### In-app cold backup (`data/backups/` · `DOC/devNotes/03` §8.8)
 
-**`backup-manifest.json`**（示例字段）：
+| Item | Notes |
+|------|--------|
+| **Trigger** | After server start: if longer than `config.yaml` → `backupIntervalDays` (default 7) since last **successful** cold backup, or never backed up |
+| **Output** | `{dataDir}/backups/backup-<ISO8601>.zip` + `backup-manifest.json` |
+| **Retention** | `backupMaxKept` (default 5); oldest zips deleted |
+| **Scope** | Entire `data/` (all `{userId}/`, `memory/` Lance, `.jwt-secret`, `.data-encryption-key`, …), **excluding** `backups/` itself |
+| **While running** | Full-screen progress in the Web UI; write APIs that mutate `data` return **503** `backup_in_progress` |
+| **Status API** | `GET /api/backup/status` (no JWT): `running`, `filesDone`, `filesTotal`, `lastSuccessAt`, `lastError` |
+
+**`backup-manifest.json`** (example fields):
 
 ```json
 {
@@ -98,59 +106,59 @@ data/
 }
 ```
 
-配置（`config.yaml` 或 `config.example.yaml`）：`backupEnabled`（默认 `true`）、`backupIntervalDays`、`backupMaxKept`、`backupRetryHours`（失败后暂缓重试，默认 24h）。
+Config (`config.yaml` / `config.example.yaml`): `backupEnabled` (default `true`), `backupIntervalDays`, `backupMaxKept`, `backupRetryHours` (defer retries after failure, default 24h).
 
-~~对话轮次增量备份（§8.4）~~：**无限期延后**，不实现；`chats/.../index.json` 内 `backupSettings` 仅为历史占位。
+~~Per-turn incremental backup (§8.4)~~: **indefinitely deferred** — not implemented. `backupSettings` inside `chats/.../index.json` is a historical placeholder only.
 
-### 运维示例脚本（可选 · `DOC/devNotes/03` §8.7）
+### Optional ops scripts (`DOC/devNotes/03` §8.7)
 
-停服后手动打包整棵 `dataDir`（**排除** `backups/`），**不替代**上文产品内冷备：
+Manual zip of the whole `dataDir` **after stopping the app** (excludes `backups/`). Does **not** replace in-app cold backup:
 
-| 项 | 说明 |
-|----|------|
-| **入口** | `scripts/ops/backup.example.bat`（Windows）· `scripts/ops/backup.example.sh`（Unix）· 共用 `scripts/ops/backup-data.mjs` |
-| **数据根** | 环境变量 `DATA_DIR` / `AROUSAL_DATA_DIR`，否则读仓库根 `config.yaml` 的 `dataDir`，再否则 `./data` |
-| **输出** | 默认仓库根 `backup-out/backup-<时间戳>.zip`；可传参数指定输出目录 |
-| **依赖** | Node（只读解析 `config.yaml`，不会创建该文件）+ 系统 `tar`（写 zip；Windows 10+ 自带 `tar.exe`） |
-| **约束** | 输出目录不得位于 `dataDir` 内（避免自包含）；默认写出仓库根 `backup-out/`（已 `.gitignore`） |
-| **失败输出** | `backup-data.mjs` 失败时向 stderr 打印英文诊断（argv、spawn error、exit/signal、stdout/stderr 摘要）；wrapper 原样透传退出码 |
+| Item | Notes |
+|------|--------|
+| **Entry** | `scripts/ops/backup.example.bat` (Windows) · `scripts/ops/backup.example.sh` (Unix) · shared `scripts/ops/backup-data.mjs` |
+| **Data root** | Env `DATA_DIR` / `AROUSAL_DATA_DIR`, else repo `config.yaml` `dataDir`, else `./data` |
+| **Output** | Default repo-root `backup-out/backup-<timestamp>.zip`; optional argv for output directory |
+| **Deps** | Node (reads `config.yaml` only; never creates it) + system `tar` (zip; Windows 10+ ships `tar.exe`) |
+| **Constraint** | Output directory must not sit inside `dataDir`; default `backup-out/` is `.gitignore`d |
+| **On failure** | English diagnostics on stderr (argv, spawn, exit/signal, stdout/stderr summary); wrappers pass through exit code |
 
 ```bat
-REM 先停止应用
+REM Stop the app first
 scripts\ops\backup.example.bat
 scripts\ops\backup.example.bat D:\cold-copies
 ```
 
 ```bash
-# 先停止应用
+# Stop the app first
 ./scripts/ops/backup.example.sh
 ./scripts/ops/backup.example.sh /mnt/cold-copies
 ```
 
-### Syncthing 与多机边界
+### Syncthing / multi-machine boundaries
 
-| 同步 | 忽略 / 注意 |
-|------|------|
-| `chats/`、JSON 配置、chunk 等**权威数据** | **`backups/`** 整个目录 |
-| 可选：各机本地重建 | **`memory/`** Lance 索引（推荐 `.stignore`，见 `DOC/devNotes/03` §14.5） |
+| Sync | Ignore / caution |
+|------|------------------|
+| Authoritative data: `chats/`, JSON config, chunks, … | Entire **`backups/`** |
+| Optional: rebuild locally | **`memory/`** Lance indexes (recommended in `.stignore`; `DOC/devNotes/03` §14.5) |
 
-**单写者**：同一 `dataDir` 上**只运行一个 server**（勿 prod 与 dev 双开）；否则 Lance 易损坏（`memory_vector_index_corrupt` → 设置页重建索引）。
+**Single writer**: only **one** server process on a given `dataDir` (do not run prod and dev against the same tree). Otherwise Lance may corrupt (`memory_vector_index_corrupt` → rebuild from Settings).
 
-在 Syncthing 共享文件夹的 **Ignore Patterns**（`.stignore`）中建议：
+Suggested Syncthing **Ignore Patterns** (`.stignore`):
 
 ```
 backups
 memory
 ```
 
-各实例须使用**相同** `DATA_ENCRYPTION_KEY`（或同步 `.data-encryption-key`），否则无法解密 API Key（见上文 §密钥文件）。
+Instances must share the same `DATA_ENCRYPTION_KEY` (or sync `.data-encryption-key`); see **Secret files** above.
 
-### 恢复流程（`DOC/devNotes/03` §8.5）
+### Restore (`DOC/devNotes/03` §8.5)
 
-1. **停止**应用（避免半写文件）。
-2. 将当前 `data` **改名为** `data.broken-<时间戳>`（保留现场）。
-3. 从 `backups/` 选定 zip **解压到原 `dataDir`**（覆盖还原整棵 `data/`）。
-4. **启动**并验证登录、对话、API Key reveal、插件。
-5. 使用 Syncthing 时：恢复期间宜**暂停同步**或指定单方权威副本后再同步，避免旧副本覆盖新恢复数据。
+1. **Stop** the app (avoid half-written files).
+2. Rename current `data` to `data.broken-<timestamp>` (keep the broken tree).
+3. Unzip the chosen archive from `backups/` into the original `dataDir`.
+4. **Start** and verify login, chats, API key reveal, plugins.
+5. With Syncthing: **pause sync** during restore, or designate one authoritative copy before syncing again.
 
-手动离线拷贝：可直接复制整棵 `data/`（含密钥文件）；与产品内 zip 冷备互为补充。
+Offline copy of the whole `data/` tree (including secret files) is a valid complement to in-app zip backups.

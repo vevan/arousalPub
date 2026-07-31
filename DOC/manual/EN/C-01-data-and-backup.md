@@ -27,7 +27,7 @@ data/
     ...
 ```
 
-Path details: [`data/README.md`](../../../data/README.md).
+Path details: [`data/README.md`](../../../data/README.md) ([中文](../../../data/README.zh.md)).
 
 ---
 

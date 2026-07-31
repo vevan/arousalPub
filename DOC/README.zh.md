@@ -205,7 +205,7 @@ API 密钥保存在本机数据目录，不会写入浏览器公开存储。
 - **换机恢复**：在新机器安装程序后，用备份的 `data/` 替换即可。
 - **同步**（如 Syncthing）：请避免两台机器**同时**写入同一数据目录，以免文件冲突。
 
-更细的路径说明见 [`data/README.md`](../data/README.md)。
+更细的路径说明见 [`data/README.zh.md`](../data/README.zh.md)（[English](../data/README.md)）。
 
 ---
 

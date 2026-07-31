@@ -22,7 +22,7 @@ export function buildDefaultRegexRulesDocument(
     rules: [
       {
         id: DEFAULT_REGEX_SEED_RULE_ID,
-        label: '规范省略号',
+        label: 'Normalize ellipsis',
         order: 10,
         enabled: false,
         phases: ['display'],

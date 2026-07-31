@@ -11,7 +11,7 @@ import { runRequestUser } from './user-context.js'
 function buildDefaultApiPreset(id: string): ApiPreset {
   return {
     id,
-    alias: '默认',
+    alias: 'Default',
     baseUrl: 'https://api.openai.com/v1',
     apiKey: '',
     model: 'gpt-4o-mini',

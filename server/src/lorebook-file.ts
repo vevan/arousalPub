@@ -110,7 +110,7 @@ export function buildDefaultLorebook(): Lorebook {
         groupId: mainGroupId,
         title: 'Tavern tone',
         content:
-          'Arousal Pub 坐落于三王国岔路口，灯火昏黄、木梁吱呀。叙事偏慢节奏奇幻，重视气味与触感，避免现代俚语。',
+          'Arousal Pub sits at the crossroads of three kingdoms: low firelight, creaking beams. Prefer slow-paced fantasy narration with smell and touch; avoid modern slang.',
         comment: 'Seed entry · constant',
         enabled: true,
         order: 0,

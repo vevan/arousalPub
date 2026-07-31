@@ -36,7 +36,7 @@ export function resolveJwtSecret(): string {
     persistGeneratedSecret(secret)
     // eslint-disable-next-line no-console
     console.log(
-      `[auth] 已在 ${SECRET_FILE} 生成 JWT 密钥（可在 config.yaml 设置 jwtSecret 覆盖）`,
+      `[auth] Generated JWT secret at ${SECRET_FILE} (override with config.yaml jwtSecret)`,
     )
     return secret
   }

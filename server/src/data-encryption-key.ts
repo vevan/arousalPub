@@ -78,7 +78,7 @@ export function resolveDataEncryptionKey(): Buffer {
   persistGeneratedKey(secret)
   // eslint-disable-next-line no-console
   console.log(
-    `[crypto] 已在 ${KEY_FILE} 生成数据加密密钥（dev/prod 共用；可设 DATA_ENCRYPTION_KEY 或 config.yaml dataEncryptionKey 覆盖）`,
+    `[crypto] Generated data encryption key at ${KEY_FILE} (shared by dev/prod; override with DATA_ENCRYPTION_KEY or config.yaml dataEncryptionKey)`,
   )
   return normalizeEncryptionKeyMaterial(secret)
 }

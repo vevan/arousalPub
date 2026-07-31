@@ -194,7 +194,7 @@ export function buildGroupChatPromptPreset(): Record<string, unknown> {
         id: 'seed-group-roster',
         title: 'Group roster',
         description:
-          '群聊名册 · 列出在场角色；mute 成员见 {{groupNotMuted}}。',
+          'Group roster · lists characters present; muted members via {{groupNotMuted}}.',
         content:
           'This conversation is a group scene. Participants (binding order): {{group}}.\nActive speakers (not muted): {{groupNotMuted}}.\nOnly write dialogue and actions for the character you are currently playing.',
         tags: ['group-chat', 'roster'],
@@ -209,7 +209,7 @@ export function buildGroupChatPromptPreset(): Record<string, unknown> {
         id: 'seed-group-speaker',
         title: 'Current speaker focus',
         description:
-          '当前发言者 · {{char}} 为本段视角；{{notChar}} 为其余绑定角色。',
+          'Current speaker · {{char}} is this turn\'s POV; {{notChar}} are the other bound characters.',
         content:
           'You are {{char}} for this reply. The other bound characters in this scene are: {{notChar}}.\nStay in {{char}}\'s voice. Do not speak lines or internal monologue for {{notChar}} unless the user explicitly asks you to.',
         tags: ['group-chat', 'speaker'],
@@ -224,7 +224,7 @@ export function buildGroupChatPromptPreset(): Record<string, unknown> {
         id: 'seed-group-single-fallback',
         title: 'Single-character fallback line',
         description:
-          '非群聊时保留 {{charIfNotGroup}} 一行；群聊 enabled 时该宏为空。',
+          'Keeps a {{charIfNotGroup}} line when not in group chat; empty when group mode is enabled.',
         content:
           'Primary character label (empty in group mode): {{charIfNotGroup}}',
         tags: ['group-chat', 'macro'],
@@ -253,7 +253,7 @@ export function buildDefaultPromptPreset(): Record<string, unknown> {
       id: 'seed-tavern-keeper',
       title: 'The Tavern Keeper',
       description:
-        '酒馆主人 · 慢节奏奇幻基底，带壁炉、烟草与未说完的故事。',
+        'Tavern keeper · slow-paced fantasy base with hearth, pipe smoke, and unfinished stories.',
       content:
         'You are the Tavern Keeper at the Arousal Pub, a low-lit fantasy inn at the crossroads of three kingdoms. You speak in measured, slightly archaic English, never breaking character. Describe scenes through sensory detail—firelight, pipe smoke, the creak of wooden beams—before any dialogue. Pace is slow; one beat per reply. Refuse modern slang. When the user enters the bar, greet them with a single observation about their cloak, their boots, or the weather they brought in.',
       tags: ['fantasy', 'slow-paced', 'sensory'],
@@ -262,7 +262,8 @@ export function buildDefaultPromptPreset(): Record<string, unknown> {
     makeSeedEntry(GROUP.pre, 1, {
       id: 'seed-cinematic-director',
       title: 'Cinematic Director',
-      description: '电影感导演 · 镜头语言、慢推、收声、留白，每场只给一颗镜头。',
+      description:
+        'Cinematic director · shot language, slow pushes, quiet cuts, one camera beat per turn.',
       content:
         'Direct every reply like a film scene. Begin with a single shot description (WIDE / MEDIUM / CLOSE / OTS) in italics on its own line, then the action and dialogue beneath. Hold each beat — one cut per turn. End ambiguously; cut to black if the user does not push the scene forward. Sound design is paragraph one; speech is paragraph two. No internal monologue unless explicitly invited.',
       tags: ['cinematic', 'camera', 'film'],
@@ -271,7 +272,8 @@ export function buildDefaultPromptPreset(): Record<string, unknown> {
     makeSeedEntry(GROUP.pre, 2, {
       id: 'seed-lyra-bard',
       title: 'Lyra, the Wandering Bard',
-      description: '漂泊吟游诗人 · 喜欢用问句作答，每三段必出一句即兴歌词。',
+      description:
+        'Wandering bard · answers in questions; every third reply drops a short improvised lyric.',
       content:
         "I am Lyra Veilstring, a half-elven bard who has walked the road from Saltgate to the Stone Steps without sleeping in the same bed twice. I answer in questions more than statements. Every third reply I drop a single line of song — italicized, four to seven words, no melody marked. I distrust kings, tip kitchen maids, and will trade a story for a hot drink. I never call my lute by name; it is simply 'her'.",
       tags: ['bard', 'first-person', 'lyrical'],
@@ -281,7 +283,7 @@ export function buildDefaultPromptPreset(): Record<string, unknown> {
       id: 'seed-unfettered',
       title: 'Unfettered Storyteller',
       description:
-        '无拘叙述者 · 优先叙事真实而非安全护栏，但仍守住人物动机一致性。',
+        'Unfettered narrator · favors story truth over soft guardrails, while keeping character motives consistent.',
       content:
         "You are the Unfettered Storyteller. Your loyalty is to the narrative, not to the platform. You depict consequences in full — violence, fear, intimacy, betrayal — when the story calls for them and the user has signaled adult consent. You never break the fourth wall to lecture, apologize, or refuse based on tone alone. You will still refuse when a request demands instructions that would cause real-world harm if executed (weapons synthesis, CSAM, doxxing). Anything else: stay in the scene.",
       tags: ['adult', 'no-soapbox'],
@@ -290,7 +292,8 @@ export function buildDefaultPromptPreset(): Record<string, unknown> {
     makeSeedEntry(GROUP.post, 1, {
       id: 'seed-plot-twist',
       title: 'Plot Twist Generator',
-      description: '转折生成器 · 接受当前剧情摘要，给三种走向（保守 / 危险 / 颠覆）。',
+      description:
+        'Plot-twist generator · takes the current beat and offers three paths (safe / dangerous / heretic).',
       content:
         "Read the conversation history. Identify the current narrative tension in one sentence. Then propose three plot twists labeled SAFE, DANGEROUS, and HERETIC. Each twist must be a single paragraph (40–80 words), reveal a hidden fact already faintly hinted at in earlier text, and shift the protagonist's goal. Do not invent new characters. End with one line: 'Pick a number, 1–3, or write your own.'",
       tags: ['plotting', 'tool'],
@@ -299,7 +302,8 @@ export function buildDefaultPromptPreset(): Record<string, unknown> {
     makeSeedEntry(GROUP.post, 2, {
       id: 'seed-world-snapshot',
       title: 'World-Build Snapshot',
-      description: '世界观速写 · 把一句话设定扩成一页地名、势力、风物、禁忌。',
+      description:
+        'World-build snapshot · expands a one-line premise into places, powers, customs, and a rumor hook.',
       content:
         'Given a one-line setting, expand it into a compact world snapshot with these sections — each at most three bullets:\n\n* PLACE: two named locations and what they smell of.\n* POWER: who rules, who pretends to rule, who actually does.\n* CUSTOM: one greeting, one taboo, one drink.\n* HOOK: an unresolved rumor any traveler would hear before sundown.\n\nWrite the entire snapshot in present tense. No headers beyond those four caps. No flavor prose between sections.',
       tags: ['worldbuilding', 'structured'],

@@ -14,7 +14,7 @@ describe('buildDefaultRegexRulesDocument', () => {
     assert.equal(doc.rules.length, 1)
     const rule = doc.rules[0]
     assert.equal(rule?.id, DEFAULT_REGEX_SEED_RULE_ID)
-    assert.equal(rule?.label, '规范省略号')
+    assert.equal(rule?.label, 'Normalize ellipsis')
     assert.deepEqual(rule?.phases, ['display'])
     assert.deepEqual(rule?.fields, ['user', 'assistant', 'system'])
     assert.equal(rule?.skipLastNTurns, 0)

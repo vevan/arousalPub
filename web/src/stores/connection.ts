@@ -70,7 +70,7 @@ function defaultDryFields(): DrySamplerFields {
 
 function defaultPresetFields(): ApiSettingsSnapshot {
   return {
-    alias: '默认',
+    alias: 'Default',
     baseUrl: 'https://api.openai.com/v1',
     apiKey: '',
     model: 'gpt-4o-mini',
@@ -353,7 +353,7 @@ export const useConnectionStore = defineStore('connection', () => {
     const p: ApiPreset = {
       id,
       ...defaultPresetFields(),
-      alias: `预设 ${presets.value.length + 1}`,
+      alias: `Preset ${presets.value.length + 1}`,
       linkedPromptPresetId: null,
       apiKeyId: null,
     }
@@ -539,7 +539,7 @@ export const useConnectionStore = defineStore('connection', () => {
     if (!t) return undefined
     const parsed: unknown = JSON.parse(t)
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('自定义参数须为 JSON 对象，例如 {"key": 1}')
+      throw new Error('Custom parameters must be a JSON object, e.g. {"key": 1}')
     }
     return parsed as Record<string, unknown>
   }
@@ -627,9 +627,9 @@ export const useConnectionStore = defineStore('connection', () => {
   }): Promise<{ json: string; filename: string }> {
     syncFormToActivePreset()
     const aid = editingPresetId.value
-    if (!aid) throw new Error('未选择 API 预设')
+    if (!aid) throw new Error('No API preset selected')
     const cur = presets.value.find((p) => p.id === aid)
-    if (!cur) throw new Error('当前 API 预设不存在')
+    if (!cur) throw new Error('Current API preset not found')
     const snap = snapshot()
     const apiPreset: Record<string, unknown> = {
       alias: snap.alias,
@@ -747,7 +747,7 @@ export const useConnectionStore = defineStore('connection', () => {
       opts?.globalPresetId?.trim() ||
       activePresetId.value ||
       editingPresetId.value
-    if (!globalId) throw new Error('未选择全局预设')
+    if (!globalId) throw new Error('No global preset selected')
     const editingId = editingPresetId.value
     return {
       activePresetId: globalId,
@@ -826,7 +826,7 @@ export const useConnectionStore = defineStore('connection', () => {
       body: JSON.stringify(body),
     })
     if (!res.ok) {
-      let msg = `保存失败 (${res.status})`
+      let msg = `Save failed (${res.status})`
       try {
         const j = (await res.json()) as { error?: string }
         if (j.error) msg = translateApiError(j.error)

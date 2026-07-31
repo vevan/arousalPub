@@ -1379,6 +1379,13 @@
 .editor-card__field-row--trigger-pos {
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
 }
+/* ROLE（3 pills）+ POSITION：左列按内容撑开，避免默认 1:2 挤换行 */
+.editor-card__field-row--role-pos {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+.editor-card__field-row--role-pos > .editor-card__field-block:first-child .pill-group {
+  flex-wrap: nowrap;
+}
 .editor-card__field-block {
   padding: 0.75rem 1.375rem;
 }

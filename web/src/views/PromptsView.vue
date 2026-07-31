@@ -1831,7 +1831,7 @@ const canDeleteGroup = (g: PromptGroup) =>
                   <p>{{ $t(bindingSlotListHintKey(selected.bindingSlot)) }}</p>
                   <p>{{ $t(bindingSlotEditorDescKey(selected.bindingSlot)) }}</p>
                   <template v-if="bindingSlotHasEditableContent(selected.bindingSlot)">
-                    <div class="editor-card__field-row">
+                    <div class="editor-card__field-row editor-card__field-row--role-pos">
                       <div class="editor-card__field-block">
                         <label class="editor-card__field-label">{{ $t('prompts.fieldRole') }}</label>
                         <div class="pill-group">
@@ -2036,7 +2036,7 @@ const canDeleteGroup = (g: PromptGroup) =>
                 </div>
               </header>
 
-              <div class="editor-card__field-row">
+              <div class="editor-card__field-row editor-card__field-row--role-pos">
                 <div class="editor-card__field-block">
                   <label class="editor-card__field-label">{{ $t('prompts.fieldRole') }}</label>
                   <div class="pill-group">

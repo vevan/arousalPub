@@ -228,6 +228,12 @@ API 密钥保存在本机数据目录，不会写入浏览器公开存储。
 
 - 首次 `!_start.bat` 启动会在 `data/.jwt-secret` 自动生成密钥；也可在 `config.yaml` 设置 `jwtSecret`（≥16 字符）。
 
+**`npm audit` 报 high / 提示 `--force`**
+
+- 终端用户只需 `./start.sh` / `!_start.bat`（或 `npm start`），**不必**跑 `npm audit`，也**不要**执行 `npm audit fix --force`（会跨大版本升级，容易装坏）。
+- 当前 `main` 已固定修补后的 **`@fastify/static`**、**`sharp`**、**`vue-tsc`**。`git pull` 后正常安装，`npm audit` 应为 **0 vulnerabilities**；旧克隆可能仍显示过期告警，更新即可。
+- `allow-scripts` 关于 esbuild / sharp 安装脚本的提示属于正常原生依赖安装，与上述 CVE 不是一类问题。
+
 ---
 
 ## 开发者文档

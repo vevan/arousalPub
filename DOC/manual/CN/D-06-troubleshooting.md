@@ -91,6 +91,15 @@
 
 ---
 
+## `npm audit` 看起来很吓人
+
+1. 使用本应用**不必**跑 `npm audit`；按 `./start.sh` / `!_start.bat` 即可。
+2. **不要**执行 `npm audit fix --force`——可能跨大版本乱升依赖并装坏。
+3. 当前 `main` 已修好生产依赖（`@fastify/static`、`sharp`）与前端类型检查工具（`vue-tsc`）；`git pull` 后正常安装，`npm audit` 应干净。
+4. esbuild / sharp 的 `allow-scripts` 提示是正常安装脚本，与上面的 CVE 列表不是一类问题。
+
+---
+
 ## 仍无法解决
 
 1. 完整复制启动窗口或 `docker compose logs` 中的报错。

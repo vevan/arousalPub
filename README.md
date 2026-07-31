@@ -228,6 +228,13 @@ Path details: [`data/README.md`](data/README.md) ([中文](data/README.zh.md)).
 
 - First `!_start.bat` run can write a secret to `data/.jwt-secret`; you can also set `jwtSecret` in `config.yaml` (≥16 characters).
 
+**`npm audit` shows high severity / suggests `--force`**
+
+- End users only need `./start.sh` / `!_start.bat` (or `npm start`). You do **not** need to run `npm audit` or `npm audit fix --force`.
+- Do **not** run `npm audit fix --force` — it can jump major versions and break the install.
+- Current `main` pins patched **`@fastify/static`**, **`sharp`**, and **`vue-tsc`**. After `git pull` + a normal install, `npm audit` should report **0 vulnerabilities**. Older clones may still show stale advisories until you update.
+- `allow-scripts` warnings (esbuild / sharp install scripts) are normal for a Node app that compiles native/binary helpers; they are not the same as the audit CVEs above.
+
 ---
 
 ## Developer docs

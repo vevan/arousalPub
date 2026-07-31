@@ -2,17 +2,23 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
-import {
+import { fileURLToPath } from 'node:url'
+import { ensureDependencies } from './ensure-deps.mjs'
+import { spawnSyncNpm } from './spawn-npm.mjs'
+
+/** Must run before any import that needs root `yaml` (fresh clone has no node_modules). */
+const repoRootEarly = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+ensureDependencies(repoRootEarly, { label: 'start' })
+
+const {
   buildMetaPath,
   getGitHeadCommit,
   isBuildStaleForGit,
   readBuildMeta,
-} from './build-meta.mjs'
-import { loadDevConfig } from './dev-config.mjs'
-import { ensureDependencies } from './ensure-deps.mjs'
-import { runBuildCountdownPrompt } from './prompt-build-countdown.mjs'
-import { spawnSyncNpm } from './spawn-npm.mjs'
-import { printTerminalLink } from './terminal-link.mjs'
+} = await import('./build-meta.mjs')
+const { loadDevConfig } = await import('./dev-config.mjs')
+const { runBuildCountdownPrompt } = await import('./prompt-build-countdown.mjs')
+const { printTerminalLink } = await import('./terminal-link.mjs')
 
 const { serverPort, repoRoot, startCountdownSeconds } = loadDevConfig()
 
@@ -39,8 +45,6 @@ function logGitStaleReason() {
     `[start] Git commit changed (${built} → ${now}), rebuilding …`,
   )
 }
-
-ensureDependencies(repoRoot, { label: 'start' })
 
 const missingDist =
   !existsSync(webIndex) || !existsSync(serverEntry)

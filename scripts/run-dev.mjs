@@ -3,15 +3,18 @@ import { createConnection } from 'node:net'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
-import { loadDevConfig } from './dev-config.mjs'
 import { ensureDependencies } from './ensure-deps.mjs'
-import { ensurePluginDistForDev } from './plugin-dist.mjs'
 import { spawnNpm } from './spawn-npm.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const { serverPort, webPort, repoRoot: root } = loadDevConfig()
 
-ensureDependencies(root, { label: 'dev' })
+/** Must run before any import that needs root `yaml` (fresh clone has no node_modules). */
+ensureDependencies(path.resolve(__dirname, '..'), { label: 'dev' })
+
+const { loadDevConfig } = await import('./dev-config.mjs')
+const { ensurePluginDistForDev } = await import('./plugin-dist.mjs')
+
+const { serverPort, webPort, repoRoot: root } = loadDevConfig()
 
 await ensurePluginDistForDev()
 

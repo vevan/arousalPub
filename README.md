@@ -25,17 +25,41 @@ Everyday “how do I…” steps live in the [beginner manual](DOC/manual/EN/00-
 
 - **Node.js 22+** ([nodejs.org](https://nodejs.org/) LTS is fine; matches dependency requirements such as `vue-i18n`)
 - A modern browser (Chrome, Edge, Firefox, etc.)
-- On Windows, double-click `!_start.bat`; on macOS / Linux, use `!_start.sh`
+- On Windows, double-click `!_start.bat`; on macOS / Linux, use `start.sh`
 
 ---
 
 ## Quick start
 
+### 0. Get the code (command line)
+
+Install [Git](https://git-scm.com/) first if needed. In a terminal:
+
+**First time — clone the repository**
+
+```bash
+git clone https://github.com/vevan/arousalPub.git
+cd arousalPub
+```
+
+**Later — pull the latest version** (run inside the project folder)
+
+```bash
+cd arousalPub
+git pull
+```
+
+Then start the app as usual (`!_start.bat` / `./start.sh`). After `git pull`, startup may auto-run `npm install` and rebuild when needed.
+
+You can also download a ZIP from GitHub and extract it; ZIP installs do not get `git pull` updates — download a new ZIP or switch to `git clone` above.
+
+Step-by-step for beginners: [Install and start](DOC/manual/EN/A-01-install-and-start.md).
+
 ### 1. First run
 
-1. Unpack or clone this project to a local directory.
+1. Have the project folder ready (see **§0** above, or unpack a ZIP).
 2. If you do not have `config.yaml` yet, copy **`config.example.yaml`** to **`config.yaml`** (the app can also generate it from the example on first start).
-3. Double-click **`!_start.bat`** (Windows) or run **`./!_start.sh`** in a terminal.
+3. Double-click **`!_start.bat`** (Windows) or run **`./start.sh`** in a terminal.
 
 The first run installs dependencies automatically. After a `git pull` (or similar), if `package-lock.json` or a workspace `package.json` changed, startup also runs `npm install` as needed. If build artifacts are missing, the app compiles them before starting. **Keep the startup window open** — closing it stops the service.
 
@@ -61,7 +85,7 @@ The port comes from **`serverPort`** in `config.yaml` (example default: `6633`).
 
 | Method | When to use |
 |------|------|
-| **`!_start.bat` / `!_start.sh`** | Everyday use (recommended) |
+| **`!_start.bat` / `start.sh`** | Everyday use (recommended) |
 | **Docker** | NAS / Linux servers and other container hosts |
 | **`npm run dev`** | Local development (two ports + hot reload) |
 

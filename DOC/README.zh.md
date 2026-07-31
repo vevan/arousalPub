@@ -25,17 +25,41 @@
 
 - **Node.js 22 或更高**（[nodejs.org](https://nodejs.org/) 安装 LTS 即可；与 `vue-i18n` 等依赖要求一致）
 - 现代浏览器（Chrome、Edge、Firefox 等）
-- Windows 可直接双击 `!_start.bat`；macOS / Linux 使用 `!_start.sh`
+- Windows 可直接双击 `!_start.bat`；macOS / Linux 使用 `start.sh`
 
 ---
 
 ## 快速开始
 
+### 0. 用命令行获取 / 更新代码
+
+若尚未安装 [Git](https://git-scm.com/)，请先安装。打开终端后：
+
+**第一次：从仓库克隆**
+
+```bash
+git clone https://github.com/vevan/arousalPub.git
+cd arousalPub
+```
+
+**以后：拉取最新版本**（在项目目录内执行）
+
+```bash
+cd arousalPub
+git pull
+```
+
+然后按平时方式启动（`!_start.bat` / `./start.sh`）。`git pull` 之后若依赖或构建有变，启动脚本通常会自动 `npm install` / 重新编译。
+
+也可以从 GitHub 下载 ZIP 再解压；ZIP 方式**不能**用 `git pull` 更新，需重新下 ZIP，或改用上面的 `git clone`。
+
+逐步说明见教程：[A-01 · 安装与启动](manual/CN/A-01-install-and-start.md)。
+
 ### 1. 首次运行
 
-1. 解压或克隆本项目到本地目录。
+1. 准备好本项目文件夹（见上方 **§0**，或解压 ZIP）。
 2. 若尚无 `config.yaml`，将 **`config.example.yaml`** 复制为 **`config.yaml`**（也可在首次启动时由程序自动从示例生成）。
-3. 双击 **`!_start.bat`**（Windows）或终端执行 **`./!_start.sh`**。
+3. 双击 **`!_start.bat`**（Windows）或终端执行 **`./start.sh`**。
 
 首次运行会自动安装依赖；**`git pull` 等更新后若 `package-lock.json` 或 workspace 的 `package.json` 有变，启动时也会自动 `npm install`**。若缺少构建产物，会自动编译后再启动。**请保持启动窗口不要关闭**，关闭即停止服务。
 
@@ -61,7 +85,7 @@ http://localhost:6633/
 
 | 方式 | 适用 |
 |------|------|
-| **`!_start.bat` / `!_start.sh`** | 日常使用（推荐） |
+| **`!_start.bat` / `start.sh`** | 日常使用（推荐） |
 | **Docker** | NAS / Linux 服务器等容器环境 |
 | **`npm run dev`** | 开发者改代码时使用（双端口 + 热更新） |
 

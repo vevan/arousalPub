@@ -8,7 +8,7 @@
 
 ## 适用场景
 
-NAS、Linux 服务器，或你更习惯容器部署时。本机日常开发/使用仍可用 `!_start.bat` / `!_start.sh`（见 [A-01](A-01-install-and-start.md)）。
+NAS、Linux 服务器，或你更习惯容器部署时。本机日常开发/使用仍可用 `!_start.bat` / `start.sh`（见 [A-01](A-01-install-and-start.md)）。
 
 需要已安装 [Docker](https://docs.docker.com/get-docker/) 与 Docker Compose。
 

@@ -26,8 +26,9 @@ Prev: [D-05 · Bundled plugins guide](D-05-bundled-plugins.md) · Next: none · 
 
 ## UI did not change after code / update
 
-1. Restart with `!_start`.
-2. During countdown press **`B`** to force rebuild (see [C-03](C-03-startup-options.md)).
+1. If you installed via Git: run **`git pull`** in the project root (see [A-01](A-01-install-and-start.md)), then start again.
+2. Restart with `!_start`.
+3. During countdown press **`B`** to force rebuild (see [C-03](C-03-startup-options.md)).
 3. For local editing use `npm run dev` and **`webPort`** — do not confuse it with the prod port.
 
 ---

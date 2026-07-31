@@ -10,7 +10,7 @@
 
 | 方式 | 适合谁 | 浏览器地址 |
 |------|------|----------|
-| **`!_start.bat` / `!_start.sh`** | 本机日常使用（推荐） | `config.yaml` 的 **`serverPort`**（默认 6633） |
+| **`!_start.bat` / `start.sh`** | 本机日常使用（推荐） | `config.yaml` 的 **`serverPort`**（默认 6633） |
 | **Docker** | NAS / 服务器容器 | 一般为宿主机映射的 6633，见 [C-02](C-02-docker.md) |
 | **`npm run dev`** | 改代码、热更新 | **`webPort`**（默认常为 **6699**），与正式端口不同 |
 

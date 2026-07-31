@@ -22,7 +22,7 @@
 
 | 编号 | 文档 | 你将完成 |
 |------|------|----------|
-| A-01 | [安装与启动](A-01-install-and-start.md) | 装好 Node、启动程序、在浏览器打开页面 |
+| A-01 | [安装与启动](A-01-install-and-start.md) | `git clone` / `git pull`、装好 Node、启动程序、在浏览器打开页面 |
 | A-02 | [首次登录与账户](A-02-first-login.md) | 创建管理员、了解默认用户与多用户 |
 | A-03 | [连接 API](A-03-connect-api.md) | 填好兼容 OpenAI 的地址、密钥与模型，通过测试 |
 | A-04 | [角色卡：导入或新建](A-04-characters.md) | 导入 SillyTavern PNG/JSON，或自己建一张卡 |

@@ -8,7 +8,7 @@ Prev: [C-01 · Where data lives and how to back up](C-01-data-and-backup.md) · 
 
 ## When to use this
 
-NAS, Linux servers, or when you prefer containers. For everyday local use, `!_start.bat` / `!_start.sh` is still fine (see [A-01](A-01-install-and-start.md)).
+NAS, Linux servers, or when you prefer containers. For everyday local use, `!_start.bat` / `start.sh` is still fine (see [A-01](A-01-install-and-start.md)).
 
 Requires [Docker](https://docs.docker.com/get-docker/) and Docker Compose.
 

@@ -22,7 +22,7 @@ Design notes / plugin specs live under [`../../devNotes/`](../../devNotes/) — 
 
 | ID | Doc | You will |
 |----|-----|----------|
-| A-01 | [Install and start](A-01-install-and-start.md) | Install Node, start the app, open it in a browser |
+| A-01 | [Install and start](A-01-install-and-start.md) | `git clone` / `git pull`, install Node, start the app, open it in a browser |
 | A-02 | [First login and account](A-02-first-login.md) | Create the admin account, learn default user and multi-user |
 | A-03 | [Connect the API](A-03-connect-api.md) | Fill OpenAI-compatible URL, key, and model; pass the test |
 | A-04 | [Character cards: import or create](A-04-characters.md) | Import SillyTavern PNG/JSON, or create a card |

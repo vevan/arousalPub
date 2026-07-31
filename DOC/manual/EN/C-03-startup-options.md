@@ -10,7 +10,7 @@ Prev: [C-02 · Run with Docker](C-02-docker.md) · Next: [D-01 · Group chat and
 
 | Method | Best for | Browser URL |
 |------|------|----------|
-| **`!_start.bat` / `!_start.sh`** | Everyday local use (recommended) | `config.yaml` **`serverPort`** (default 6633) |
+| **`!_start.bat` / `start.sh`** | Everyday local use (recommended) | `config.yaml` **`serverPort`** (default 6633) |
 | **Docker** | NAS / server containers | Usually host-mapped 6633; see [C-02](C-02-docker.md) |
 | **`npm run dev`** | Editing code, hot reload | **`webPort`** (often **6699**), different from prod |
 

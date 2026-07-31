@@ -26,8 +26,9 @@
 
 ## 改了代码 / 更新后界面没变
 
-1. 用 `!_start` 重启。
-2. 倒计时期间按 **`B`** 强制重新编译（见 [C-03](C-03-startup-options.md)）。
+1. 若项目是用 Git 克隆的：在项目根目录执行 **`git pull`** 拉最新代码（见 [A-01](A-01-install-and-start.md)），再启动。
+2. 用 `!_start` 重启。
+3. 倒计时期间按 **`B`** 强制重新编译（见 [C-03](C-03-startup-options.md)）。
 3. 开发调试请用 `npm run dev`，并访问 **`webPort`**，不要和正式端口搞混。
 
 ---

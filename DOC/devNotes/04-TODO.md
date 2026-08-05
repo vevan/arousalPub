@@ -36,7 +36,7 @@
 
 ## 文档
 
-- [x] **Graphify 图谱优化全项**（2026-08-05 · 分支 `Graphify`）：server Import Cycles / SR1–SR2 / GF1 · web 七巨型 Vue + composable · plugins `tKey` / `isAutoSummarizeEnabled`；循环审计切断 `turn-memory-xml` 等残留值依赖 — 见 `[DOC/devNotes/47](47-graphify-optimization-backlog.md)` · 本文 §已归档
+- [x] **Graphify 图谱优化全项**（2026-08-05 · 分支 `Graphify`）：server Import Cycles **20 → 0** / SR1–SR2 / GF1 · web 七巨型 Vue + composable · plugins `tKey` / `isAutoSummarizeEnabled`；`feature-binding-types` 清零残留 type 环 — 见 `[DOC/devNotes/47](47-graphify-optimization-backlog.md)` · 本文 §已归档
 - [x] Historian 摘要起始轮 toggle 取消（2026-06-12）：`range-picker` 再次点击同一 `turn-block-head` 起始按钮清除 `rangeStartTurn`
 - [x] 对话页正则批量 apply UI（2026-06-12）：`ConversationRegexApplyPanel` · 对话设置 Tab「正则批量」· `POST .../regex/apply` dry-run / apply
 - [x] Web / Server 提示词预设 normalize 完全对齐（2026-06-13）：共用 `shared/prompt-preset-normalize.ts` + `server/src/prompt-preset-normalize.test.ts` 矩阵单测
@@ -120,6 +120,6 @@
 | **Historian · 新建 MEMO 落组**（`summaryGroupPlacement` first                                                                   | last）                  | 2026-07-24                                                                                                                                                                                |
 | **群聊浮动头像组**（header 锚点 · Mic 只读 · 一次 `/@` 一人）                                                                               | 2026-07-24             | `[DOC/devNotes/35](35-group-chat.md)` §2.8 · `ChatComposerGroupRoster`                                                                                                                             |
 | **插件设置导出 / 导入**（全局 settings + `enabled` · 专用 API · 标题栏按钮）                                                                  | 2026-07-24             | `[DOC/devNotes/09](09-plugin-system-and-guidance-generate.md)` §4 · `settings-portability.ts` · `PluginSettingsPanel`                                                                              |
-| **Graphify 图谱优化全项**（server 解环 · `index` 路由拆分 · web 巨型 Vue · plugins `tKey` / autoSummarize）                                      | 2026-08-05 · `Graphify` | `[DOC/devNotes/47](47-graphify-optimization-backlog.md)` · `.graphifyignore` · `chat-group-turn-ops` / `chat-storage-io` / `src/routes/*`                                                          |
+| **Graphify 图谱优化全项**（server Import Cycles 20→0 · `index` 路由拆分 · web 巨型 Vue · plugins `tKey` / autoSummarize）                      | 2026-08-05 · `Graphify` | `[DOC/devNotes/47](47-graphify-optimization-backlog.md)` · `.graphifyignore` · `chat-group-turn-ops` / `feature-binding-types` / `src/routes/*`                                                    |
 
 

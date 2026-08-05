@@ -1,38 +1,24 @@
 import { extractApiConfigIdFromBinding } from './api-config-references.js'
 import type { ApiPreset, ApiSettingsDocument } from './api-settings-file.js'
 import { readConversationChatBinding } from './conversation-api-settings.js'
+import {
+  type FeatureType,
+  type ResolvedFeatureAudit,
+  type ResolvedFeatureBinding,
+} from './feature-binding-types.js'
 
-export const FEATURE_TYPES = ['chat', 'rag_generate', 'rerank'] as const
-export type FeatureType = (typeof FEATURE_TYPES)[number]
-
-export type ResolvedFeatureSource =
-  | 'conversation'
-  | 'global'
-  | 'plugin_settings'
-
-export type ResolvedFeatureType = FeatureType | 'plugin'
-
-export interface ResolvedFeatureBinding {
-  featureType: ResolvedFeatureType
-  featureRefId: string
-  pluginId?: string
-  apiConfigId: string
-  modelOverride?: string
-  source: ResolvedFeatureSource
-}
+export {
+  FEATURE_TYPES,
+  type FeatureType,
+  type ResolvedFeatureAudit,
+  type ResolvedFeatureBinding,
+  type ResolvedFeatureSource,
+  type ResolvedFeatureType,
+} from './feature-binding-types.js'
 
 export interface ResolvedFeatureApi extends ResolvedFeatureBinding {
   preset: ApiPreset
   model: string
-}
-
-/** 落盘 / 组装预览审计字段（不含 preset 与密钥） */
-export interface ResolvedFeatureAudit {
-  featureType: ResolvedFeatureType
-  apiConfigId: string
-  source: ResolvedFeatureSource
-  pluginId?: string
-  model?: string
 }
 
 export function toResolvedFeatureAudit(

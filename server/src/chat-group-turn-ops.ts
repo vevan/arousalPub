@@ -7,7 +7,7 @@ import { allocateShortId } from './short-id.js'
 import { mergeTurnPluginEntry, attachReceiveIdToTurnPluginEntries } from './turn-plugin-utils.js'
 import type { TurnPluginEntry } from './plugin-types.js'
 import { mkdir } from 'node:fs/promises'
-import type { ResolvedFeatureAudit } from './feature-binding-resolve.js'
+import type { ResolvedFeatureAudit } from './feature-binding-types.js'
 import type { ChatAuditSnapshotInput } from './chat-audit-types.js'
 import {
   appendChatAuditEntry,

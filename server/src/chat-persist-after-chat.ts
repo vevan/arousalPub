@@ -45,7 +45,7 @@ import {
   type GroupContinueBody,
   type ResolveNextSpeakerResult,
 } from './group-chat-turn.js'
-import type { ResolvedFeatureAudit } from './feature-binding-resolve.js'
+import type { ResolvedFeatureAudit } from './feature-binding-types.js'
 import {
   mergeTurnPluginEntries,
   resolveTurnPluginEntriesFromAssistant,

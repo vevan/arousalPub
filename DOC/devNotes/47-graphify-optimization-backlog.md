@@ -17,9 +17,10 @@
 
 | 仓 | 节点 / 边（约） | 主要发现 |
 |----|-----------------|----------|
-| **server**（directed） | 3089 / 10525 | **20 组 Import Cycles**；`chat-storage.ts` 出现在 19 组中；运行时枢纽清晰 |
-| **web** | 3554 / 4547 | 巨型 Vue 单文件；大社区 cohesion≈0.02；多页面状态模式重复 |
-| **plugins** | 722 / 1811 | `plot-summary` / `trace-keeper` 度质量和占主导；短名 `k()` 多实例 |
+| **server**（directed · 解环前） | 3089 / 10525 | **20 组 Import Cycles**；`chat-storage.ts` 出现在 19 组中 |
+| **server**（directed · 2026-08-05 重跑） | ~2888 / 10253 | **Import Cycles: None**；`.graphifyignore` 排除 test；路由拆分后 `registerChatRoutes` 入度上升 |
+| **web** | 3554 / 4547 | 巨型 Vue 单文件（解环前基线；Phase 7 已拆分） |
+| **plugins** | 722 / 1811 | `plot-summary` / `trace-keeper` 度高质量占主导；短名 `k()` 已改 `tKey` |
 
 **说明**：首轮 server 无向图曾出现「几乎无边」——属 AST 抽取不完整事故，**不是**业务稀疏；以 directed 重建图为准。
 
@@ -62,7 +63,7 @@
 - [x] PS1：host-api ↔ loader ↔ sandbox ↔ worker 解环  
 - [x] PS2：complete-with-context ↔ host-api 解环  
 - [x] 回归：`npm run check:ci`（或至少 server 测试 + typecheck）  
-- [x] 验收：双向 Import Cycles 已断；仍允许文档化单向边与 `host-api` 对 `runCompleteWithContext` 的动态 `import()`（重跑 graphify 可选）  
+- [x] 验收：server directed 重跑 **Import Cycles: None**；仍允许文档化单向边与 `host-api` 对 `runCompleteWithContext` 的动态 `import()`
 
 **P0 Phase 1–4 落地摘要（2026-08-05）**
 
@@ -84,6 +85,7 @@
 - `turn-memory-xml` / `history-macros` / `plugin-summarize-format` / `regex-outgoing`：`getTurnUserText`/`TurnRecord` 改自 accessors+types；segment 辅助改自 `group-chat/segments`（消除 `memory-corpus`→`turn-memory-xml`→`chat-storage` 残留值依赖边）
 - `api-config-references`：`conversationDir` 改自 `chat-storage-io`
 - 值导入静态扫环：CS1–CS9 / PS / SR1 目标模块无自环；`npm run check:ci` 通过
+- **残留 type 环清零**：`feature-binding-types.ts`（`ResolvedFeatureAudit` / `ResolvedFeatureBinding` / `FEATURE_TYPES`）；`chat-turn-accessors` 等改依赖 types；server directed 重跑 **Import Cycles 0**
 
 
 ---
@@ -234,3 +236,4 @@ graphify extract server   # 或按 skill 流水线；建图时 directed=True
 | 2026-08-05 | **P0 全项闭合**（分支 `Graphify`）：server 解环 + SR1/SR2/GF1 + web 拆分 + plugins `tKey` / autoSummarize 单点；见 `04` §P0 |
 | 2026-08-05 | **P0 Phase 3 hoist**：`chat-group-turn-ops` + `chat-turn-mutate`；`chat-storage` 零 value-import `group-chat/*` 实现；见 §2.1 落地摘要 |
 | 2026-08-05 | **循环审计修复**：切断 `turn-memory-xml` 等对 `chat-storage` 的残留值依赖；`README` §47 状态改为已落地；值导入扫环 + `check:ci` 通过 |
+| 2026-08-05 | **残留 type 环清零**：`ResolvedFeatureAudit` 等下沉 `feature-binding-types.ts`；`chat-turn-accessors` 不再依赖 `feature-binding-resolve`；server directed 重跑 Import Cycles **20 → 0** |

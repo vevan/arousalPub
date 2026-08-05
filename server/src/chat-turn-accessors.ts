@@ -1,4 +1,4 @@
-import type { ResolvedFeatureAudit } from './feature-binding-resolve.js'
+import type { ResolvedFeatureAudit } from './feature-binding-types.js'
 import {
   getActiveSegmentIndex,
   syncTurnSpeakerFromActiveSegment,

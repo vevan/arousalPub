@@ -1,0 +1,4 @@
+**/test/**
+**/*.test.ts
+**/*.test.js
+**/graphify-out/**

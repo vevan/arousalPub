@@ -6,13 +6,15 @@ import { ensureDataSkeletonForUser } from '../config.js'
 import { runRequestUserAsync } from '../user-context.js'
 import { generateShortId } from '../short-id.js'
 import {
-  appendConversationTurn,
   createConversationStub,
   readBranchConversationIndex,
-  saveFirstTurn,
   writeBranchConversationIndex,
   writeChunkFile,
 } from '../chat-storage.js'
+import {
+  appendConversationTurn,
+  saveFirstTurn,
+} from '../chat-group-turn-ops.js'
 import {
   readAllTurns,
   rebuildHeadTailFromLinks,

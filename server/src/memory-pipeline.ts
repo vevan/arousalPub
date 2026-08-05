@@ -24,7 +24,7 @@ import {
   readTurnsInOrdinalRange,
   readTurnsTail,
 } from './chunk-chain.js'
-import { type TurnRecord } from './chat-storage.js'
+import type { TurnRecord } from './chat-turn-types.js'
 import { buildAllowedBranchPathsForActive } from './chunk-path.js'
 
 export interface MemoryPipelineInput {

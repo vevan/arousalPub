@@ -3,7 +3,7 @@ import {
   computeAutoSummarizeProgress,
 } from './auto-summarize-progress.js'
 import { DIALOG_POINTER_RESET, PLUGIN_ID } from './constants.js'
-import { k, readLastMemoIndex, readLastSummarizedEnd } from './settings.js'
+import { tKey, readLastMemoIndex, readLastSummarizedEnd } from './settings.js'
 import type { PluginHost } from './types.js'
 
 function isBlank(raw: unknown): boolean {
@@ -35,27 +35,27 @@ export function registerAutoSummarizeCompanion(host: PluginHost) {
   host.registerFormDialog(
     PLUGIN_ID,
     {
-      titleKey: k(host, 'convAutoSummarizeResetTitle'),
-      bodyKey: k(host, 'convAutoSummarizeResetHint'),
+      titleKey: tKey(host, 'convAutoSummarizeResetTitle'),
+      bodyKey: tKey(host, 'convAutoSummarizeResetHint'),
       fields: [
         {
           key: 'lastSummarizedEnd',
-          labelKey: k(host, 'convAutoSummarizeResetEndLabel'),
+          labelKey: tKey(host, 'convAutoSummarizeResetEndLabel'),
           type: 'integer',
           min: -1,
         },
         {
           key: 'lastMemoIndex',
-          labelKey: k(host, 'convAutoSummarizeResetMemoLabel'),
+          labelKey: tKey(host, 'convAutoSummarizeResetMemoLabel'),
           type: 'integer',
           min: 1,
           max: 9999,
-          hintKey: k(host, 'convAutoSummarizeResetMemoHint'),
+          hintKey: tKey(host, 'convAutoSummarizeResetMemoHint'),
         },
       ],
-      submitKey: k(host, 'convAutoSummarizeResetConfirm'),
-      cancelKey: k(host, 'sessionCancel'),
-      skipKey: k(host, 'convAutoSummarizeResetNever'),
+      submitKey: tKey(host, 'convAutoSummarizeResetConfirm'),
+      cancelKey: tKey(host, 'sessionCancel'),
+      skipKey: tKey(host, 'convAutoSummarizeResetNever'),
       canSubmit: (m: Record<string, unknown>) => {
         const memo = parseMemoIndexField(m.lastMemoIndex)
         if (memo === undefined) return false
@@ -99,14 +99,14 @@ export function registerAutoSummarizeCompanion(host: PluginHost) {
       if (p.lastSummarizedEnd !== null && p.lastSummarizedEnd >= 0) {
         rows.push({
           icon: 'mdi-check-circle-outline',
-          text: host.t(k(host, 'convAutoSummarizeProgressDone'), {
+          text: host.t(tKey(host, 'convAutoSummarizeProgressDone'), {
             end: p.lastSummarizedEnd,
           }),
         })
       } else {
         rows.push({
           icon: 'mdi-circle-outline',
-          text: host.t(k(host, 'convAutoSummarizeProgressNever')),
+          text: host.t(tKey(host, 'convAutoSummarizeProgressNever')),
           tone: 'muted',
         })
       }
@@ -114,21 +114,21 @@ export function registerAutoSummarizeCompanion(host: PluginHost) {
       if (typeof lastMemo === 'number' && lastMemo >= 1) {
         rows.push({
           icon: 'mdi-numeric',
-          text: host.t(k(host, 'convAutoSummarizeProgressMemo'), {
+          text: host.t(tKey(host, 'convAutoSummarizeProgressMemo'), {
             n: lastMemo,
           }),
         })
       } else {
         rows.push({
           icon: 'mdi-numeric-off',
-          text: host.t(k(host, 'convAutoSummarizeProgressMemoNever')),
+          text: host.t(tKey(host, 'convAutoSummarizeProgressMemoNever')),
           tone: 'muted',
         })
       }
 
       rows.push({
         icon: 'mdi-format-list-bulleted',
-        text: host.t(k(host, 'convAutoSummarizeProgressPending'), {
+        text: host.t(tKey(host, 'convAutoSummarizeProgressPending'), {
           from: p.pendingFromTurn,
           to: p.pendingToTurn,
         }),
@@ -137,7 +137,7 @@ export function registerAutoSummarizeCompanion(host: PluginHost) {
       if (p.autoSummarizeEnabled) {
         rows.push({
           icon: 'mdi-calendar-clock',
-          text: host.t(k(host, 'convAutoSummarizeProgressNext'), {
+          text: host.t(tKey(host, 'convAutoSummarizeProgressNext'), {
             turn: p.nextTriggerTurn,
           }),
           tone: 'accent',
@@ -145,15 +145,15 @@ export function registerAutoSummarizeCompanion(host: PluginHost) {
       } else {
         rows.push({
           icon: 'mdi-pause-circle-outline',
-          text: host.t(k(host, 'convAutoSummarizeProgressOff')),
+          text: host.t(tKey(host, 'convAutoSummarizeProgressOff')),
           tone: 'muted',
         })
       }
 
       return {
-        title: host.t(k(host, 'convAutoSummarizeProgressTitle')),
+        title: host.t(tKey(host, 'convAutoSummarizeProgressTitle')),
         rows,
-        actionLabel: host.t(k(host, 'convAutoSummarizeResetBtn')),
+        actionLabel: host.t(tKey(host, 'convAutoSummarizeResetBtn')),
         onAction: () => {
           const last = readLastSummarizedEnd(ctx.convModel)
           const memo = readLastMemoIndex(ctx.convModel)

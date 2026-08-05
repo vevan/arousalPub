@@ -2,7 +2,7 @@
  * SillyTavern OpenAI 预设 JSON 识别（导入分流用）。
  */
 
-import type { StPresetJson } from './st-preset-import.js'
+import type { StPresetJson } from './st-preset-types.js'
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return x != null && typeof x === 'object' && !Array.isArray(x)

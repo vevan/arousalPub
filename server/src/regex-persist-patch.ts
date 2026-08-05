@@ -10,7 +10,7 @@ import {
 import { readChunkContainingOrdinal, resolveActivePathTurns, readConversationActiveBranchPath } from './chunk-chain.js'
 import { readRegexRulesDocument } from './regex-rules-file.js'
 import type { RegexRule } from './regex-rules-types.js'
-import { hasEnabledPersistRules } from './regex-persist.js'
+import { hasEnabledPersistRules } from './regex-persist-enabled.js'
 
 export async function resolveConversationTailOrdinal(
   conversationId: string,

@@ -1,5 +1,5 @@
 import type { MacroCharacterFields } from './character-fields.js'
-import type { MacroVarMap } from './macro-vars.js'
+import type { MacroVarMap } from './macro-var-types.js'
 import type { BoundFileLookup } from '../character-image-files.js'
 
 /** 宏展开上下文（仅服务端构造） */

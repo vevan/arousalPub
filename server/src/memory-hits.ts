@@ -1,6 +1,6 @@
 import { readChunkFileAt } from './chunk-chain.js'
 import { chunkLocationKey } from './chunk-path.js'
-import type { TurnRecord } from './chat-storage.js'
+import type { TurnRecord } from './chat-turn-types.js'
 import type { MemorySearchHit } from './memory-store.js'
 
 export interface MemoryHitTurnItem {

@@ -96,16 +96,16 @@ type GuidanceTurn = {
   activeSegmentIndex?: number
 }
 
-const k = (host: GuidanceHost, key: string) => host.pluginKey(key)
+const tKey = (host: GuidanceHost, key: string) => host.pluginKey(key)
 
 function notifyGuidanceFailed(host: GuidanceHost, detail?: string): void {
-  const title = host.t(k(host, 'notifyFailed'))
+  const title = host.t(tKey(host, 'notifyFailed'))
   const body = detail?.trim()
   host.ui.notify(title, body || undefined, { level: 'error' })
 }
 
 function notifyPolishFailed(host: GuidanceHost, detail?: string): void {
-  const title = host.t(k(host, 'notifyPolishFailed'))
+  const title = host.t(tKey(host, 'notifyPolishFailed'))
   const body = detail?.trim()
   host.ui.notify(title, body || undefined, { level: 'error' })
 }
@@ -295,7 +295,7 @@ export function register(host: GuidanceHost): void {
   host.registerSlotButton('composer-toolbar', {
     id: `${PLUGIN_ID}-composer`,
     icon: 'mdi-lightbulb-on-outline',
-    tooltipKey: k(host, 'tooltip'),
+    tooltipKey: tKey(host, 'tooltip'),
     filled: false,
     onClick: () => {
       host.openFormDialog(PLUGIN_ID, {
@@ -314,7 +314,7 @@ export function register(host: GuidanceHost): void {
   host.registerSlotButton('user-turn-footer', {
     id: `${PLUGIN_ID}-regen`,
     icon: 'mdi-lightbulb-on-outline',
-    tooltipKey: k(host, 'tooltip'),
+    tooltipKey: tKey(host, 'tooltip'),
     filled: true,
     when: (ctx) =>
       !!ctx.turn &&
@@ -339,7 +339,7 @@ export function register(host: GuidanceHost): void {
   host.registerSlotButton('assistant-turn-footer', {
     id: `${PLUGIN_ID}-revise`,
     icon: 'mdi-lightbulb-on-outline',
-    tooltipKey: k(host, 'reviseTooltip'),
+    tooltipKey: tKey(host, 'reviseTooltip'),
     filled: true,
     when: (ctx) => !!ctx.turn && activeAssistantText(ctx.turn, ctx.segmentIndex).length > 0,
     disabled: (ctx) =>
@@ -361,29 +361,29 @@ export function register(host: GuidanceHost): void {
   })
 
   host.registerFormDialog(PLUGIN_ID, {
-    titleKey: k(host, 'dialogTitle'),
+    titleKey: tKey(host, 'dialogTitle'),
     titleKeys: {
-      send: k(host, 'dialogTitle'),
-      regenerate: k(host, 'dialogTitle'),
-      revise: k(host, 'reviseDialogTitle'),
+      send: tKey(host, 'dialogTitle'),
+      regenerate: tKey(host, 'dialogTitle'),
+      revise: tKey(host, 'reviseDialogTitle'),
     },
     tabs: [
       {
         id: 'generate',
-        labelKey: k(host, 'tabGenerate'),
-        submitKey: k(host, 'send'),
+        labelKey: tKey(host, 'tabGenerate'),
+        submitKey: tKey(host, 'send'),
       },
       {
         id: 'polish',
-        labelKey: k(host, 'tabPolish'),
-        submitKey: k(host, 'polishSend'),
+        labelKey: tKey(host, 'tabPolish'),
+        submitKey: tKey(host, 'polishSend'),
       },
     ],
     tabsVisible: (m) => resolveMode(m.mode) === 'send',
     fields: [
       {
         key: 'userText',
-        labelKey: k(host, 'userLabel'),
+        labelKey: tKey(host, 'userLabel'),
         visibleWhen: [
           { field: 'mode', equals: 'send' },
           { field: 'tab', equals: 'generate' },
@@ -391,7 +391,7 @@ export function register(host: GuidanceHost): void {
       },
       {
         key: 'guidanceText',
-        labelKey: k(host, 'guidanceLabel'),
+        labelKey: tKey(host, 'guidanceLabel'),
         visibleWhen: [
           { field: 'mode', equals: 'send' },
           { field: 'tab', equals: 'generate' },
@@ -399,8 +399,8 @@ export function register(host: GuidanceHost): void {
       },
       {
         key: 'userText',
-        labelKey: k(host, 'userTextPolishOriginalLabel'),
-        hintKey: k(host, 'polishOriginalHint'),
+        labelKey: tKey(host, 'userTextPolishOriginalLabel'),
+        hintKey: tKey(host, 'polishOriginalHint'),
         visibleWhen: [
           { field: 'mode', equals: 'send' },
           { field: 'tab', equals: 'polish' },
@@ -408,7 +408,7 @@ export function register(host: GuidanceHost): void {
       },
       {
         key: 'polishedText',
-        labelKey: k(host, 'polishedTextLabel'),
+        labelKey: tKey(host, 'polishedTextLabel'),
         visibleWhen: [
           { field: 'mode', equals: 'send' },
           { field: 'tab', equals: 'polish' },
@@ -416,32 +416,32 @@ export function register(host: GuidanceHost): void {
       },
       {
         key: 'userText',
-        labelKey: k(host, 'userLabel'),
+        labelKey: tKey(host, 'userLabel'),
         visibleWhen: { field: 'mode', equals: 'regenerate' },
       },
       {
         key: 'guidanceText',
-        labelKey: k(host, 'guidanceLabel'),
+        labelKey: tKey(host, 'guidanceLabel'),
         visibleWhen: { field: 'mode', equals: 'regenerate' },
       },
       {
         key: 'assistantText',
-        labelKey: k(host, 'assistantLabel'),
+        labelKey: tKey(host, 'assistantLabel'),
         readOnly: true,
         visibleWhen: { field: 'mode', equals: 'revise' },
       },
       {
         key: 'guidanceText',
-        labelKey: k(host, 'guidanceLabel'),
+        labelKey: tKey(host, 'guidanceLabel'),
         visibleWhen: { field: 'mode', equals: 'revise' },
       },
     ],
     submitKeys: {
-      send: k(host, 'send'),
-      regenerate: k(host, 'regenerate'),
-      revise: k(host, 'revise'),
+      send: tKey(host, 'send'),
+      regenerate: tKey(host, 'regenerate'),
+      revise: tKey(host, 'revise'),
     },
-    extraActionKey: k(host, 'polish'),
+    extraActionKey: tKey(host, 'polish'),
     extraActionVisible: (_h: GuidanceHost, m: Record<string, unknown>) =>
       resolveMode(m.mode) === 'send' && resolvePanel(m.tab) === 'polish',
     extraActionCanSubmit: (m: Record<string, unknown>) => {

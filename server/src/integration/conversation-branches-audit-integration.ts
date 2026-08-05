@@ -8,16 +8,18 @@ import { generateShortId } from '../short-id.js'
 import { ensureDataSkeletonForUser } from '../config.js'
 import { runRequestUserAsync } from '../user-context.js'
 import {
-  appendConversationTurn,
   chatListEntryFromIndex,
   conversationDir,
   createConversationStub,
   readConversationIndex,
-  saveFirstTurn,
   upsertChatListEntry,
   writeChunkFile,
   writeConversationIndex,
 } from '../chat-storage.js'
+import {
+  appendConversationTurn,
+  saveFirstTurn,
+} from '../chat-group-turn-ops.js'
 import {
   collectRegisteredBranchPaths,
   readChunkContainingOrdinal,

@@ -18,7 +18,7 @@ describe('mergeTurnPluginEntriesAtOrdinal (receive-scoped segment write)', () =>
   let tmp = ''
   let conversationId = ''
   let createConversationStub: typeof import('../src/chat-storage.js').createConversationStub
-  let mergeTurnPluginEntriesAtOrdinal: typeof import('../src/chat-storage.js').mergeTurnPluginEntriesAtOrdinal
+  let mergeTurnPluginEntriesAtOrdinal: typeof import('../src/chat-group-turn-ops.js').mergeTurnPluginEntriesAtOrdinal
   let writeChunkFile: typeof import('../src/chat-storage.js').writeChunkFile
   let readChunkContainingOrdinal: typeof import('../src/chunk-chain.js').readChunkContainingOrdinal
   let syncChunkIndexIfDrifted: typeof import('../src/chunk-chain.js').syncChunkIndexIfDrifted
@@ -36,9 +36,9 @@ describe('mergeTurnPluginEntriesAtOrdinal (receive-scoped segment write)', () =>
     await mkdir(path.join(tmp, TEST_USER, 'chats'), { recursive: true })
     ;({
       createConversationStub,
-      mergeTurnPluginEntriesAtOrdinal,
       writeChunkFile,
     } = await import('../src/chat-storage.js'))
+    ;({ mergeTurnPluginEntriesAtOrdinal } = await import('../src/chat-group-turn-ops.js'))
     ;({ readChunkContainingOrdinal, syncChunkIndexIfDrifted } = await import('../src/chunk-chain.js'))
     ;({ chunkStorageRelativePath } = await import('../src/chunk-path.js'))
 

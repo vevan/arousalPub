@@ -1,5 +1,6 @@
-import { getTurnUserText, type TurnRecord } from './chat-storage.js'
-import { getTurnSegments } from './group-chat-turn.js'
+import { getTurnUserText } from './chat-turn-accessors.js'
+import type { TurnRecord } from './chat-turn-types.js'
+import { getTurnSegments } from './group-chat/segments.js'
 import { filterRegexRules } from './regex-apply.js'
 import { applyOutgoingRegexToTurnRecord } from './regex-outgoing.js'
 import { readRegexRulesDocument } from './regex-rules-file.js'

@@ -1,5 +1,5 @@
 import type { ChatMessage } from './assemble-prompts.js'
-import type { TurnRecord } from './chat-storage.js'
+import type { TurnRecord } from './chat-turn-types.js'
 import type {
   LorebookEntry,
   LorebookEntryPosition,

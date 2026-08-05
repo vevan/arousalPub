@@ -1,5 +1,6 @@
-import { getTurnUserText, type TurnRecord } from '../chat-storage.js'
-import { getActiveSegment, getActiveSegmentIndex, getTurnSegments } from '../group-chat-turn.js'
+import { getTurnUserText } from '../chat-turn-accessors.js'
+import type { TurnRecord } from '../chat-turn-types.js'
+import { getActiveSegment, getActiveSegmentIndex, getTurnSegments } from '../group-chat/segments.js'
 
 export interface FlatHistoryMessage {
   role: 'user' | 'assistant'

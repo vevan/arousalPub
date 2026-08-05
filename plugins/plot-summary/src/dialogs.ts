@@ -21,7 +21,8 @@ import { asInt, asString } from './shared/utils.js'
 import {
   firstAutoTriggerTurnOrdinal,
   hasAutoSummarizeHistory,
-  k,
+  isAutoSummarizeEnabled,
+  tKey,
   loadMergedSettings,
   manualSummarizeDefaultRange,
   maxTurnOrdinal,
@@ -39,10 +40,6 @@ import {
   previewManualSummarizePrompt,
   summarizeDialogCanPreview,
 } from './prompt-preview.js'
-
-function isAutoSummarizeEnabled(host: PluginHost): boolean {
-  return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true
-}
 
 export function refreshAutoSummarizeUi(host: PluginHost) {
   host.refreshSlotButtons()
@@ -86,10 +83,10 @@ async function promptBindCreatedLorebook(
   lorebookName: string,
 ) {
   const ok = await host.ui.confirm({
-    title: host.t(k(host, 'bindLorebookConfirmTitle')),
-    body: host.t(k(host, 'bindLorebookConfirmBody'), { name: lorebookName }),
-    confirmLabel: host.t(k(host, 'bindLorebookConfirm')),
-    cancelLabel: host.t(k(host, 'bindLorebookSkip')),
+    title: host.t(tKey(host, 'bindLorebookConfirmTitle')),
+    body: host.t(tKey(host, 'bindLorebookConfirmBody'), { name: lorebookName }),
+    confirmLabel: host.t(tKey(host, 'bindLorebookConfirm')),
+    cancelLabel: host.t(tKey(host, 'bindLorebookSkip')),
   })
   if (!ok) return
   const current = await host.conversation.getLorebookIds()
@@ -102,7 +99,7 @@ export async function ensureTargetLorebook(host: PluginHost, settings: MergedSet
   const existing = asString(settings.targetLorebookId)
   if (existing) {
     if (await isTargetLorebookAvailable(host, existing)) return existing
-    host.ui.notify(host.t(k(host, 'notifyTargetLorebookDeleted')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(tKey(host, 'notifyTargetLorebookDeleted')), undefined, { level: 'warning' })
     try {
       return await promptRecoverLorebook(host, settings)
     } catch {
@@ -122,7 +119,7 @@ export async function ensureTargetLorebook(host: PluginHost, settings: MergedSet
     }
   }
 
-  host.ui.notify(host.t(k(host, 'notifyTargetLorebookMissingWarn')), undefined, { level: 'warning' })
+  host.ui.notify(host.t(tKey(host, 'notifyTargetLorebookMissingWarn')), undefined, { level: 'warning' })
   try {
     return await promptPickLorebook(host)
   } catch {
@@ -138,7 +135,7 @@ function buildSummarizeTaskOptions(
   const options: { value: string; label: string; locked?: boolean }[] = [
     {
       value: 'memory',
-      label: host.t(k(host, 'manualTaskMemory')),
+      label: host.t(tKey(host, 'manualTaskMemory')),
       ...(opts?.memoryLocked ? { locked: true } : {}),
     },
   ]
@@ -173,17 +170,17 @@ export function registerPickLorebookDialog(host: PluginHost) {
   host.registerFormDialog(
     PLUGIN_ID,
     {
-      titleKey: k(host, 'pickLorebookDialogTitle'),
-      bodyKey: k(host, 'pickLorebookDialogBody'),
+      titleKey: tKey(host, 'pickLorebookDialogTitle'),
+      bodyKey: tKey(host, 'pickLorebookDialogBody'),
       fields: [
         {
           key: 'targetLorebookId',
-          labelKey: k(host, 'sessionTargetLorebookLabel'),
+          labelKey: tKey(host, 'sessionTargetLorebookLabel'),
           type: 'lorebook',
         },
       ],
-      submitKey: k(host, 'pickLorebookConfirm'),
-      cancelKey: k(host, 'sessionCancel'),
+      submitKey: tKey(host, 'pickLorebookConfirm'),
+      cancelKey: tKey(host, 'sessionCancel'),
       canSubmit: (m: Record<string, unknown>) => asString(m.targetLorebookId).length > 0,
       onSubmit: async (h: PluginHost, model: Record<string, unknown>) => {
         const id = asString(model.targetLorebookId)
@@ -203,27 +200,27 @@ export function registerRecoverLorebookDialog(host: PluginHost) {
   host.registerFormDialog(
     PLUGIN_ID,
     {
-      titleKey: k(host, 'recoverLorebookDialogTitle'),
-      bodyKey: k(host, 'recoverLorebookDialogBody'),
+      titleKey: tKey(host, 'recoverLorebookDialogTitle'),
+      bodyKey: tKey(host, 'recoverLorebookDialogBody'),
       fields: [
         {
           key: 'mode',
-          labelKey: k(host, 'recoverLorebookModeLabel'),
+          labelKey: tKey(host, 'recoverLorebookModeLabel'),
           type: 'radio',
           options: [
-            { value: 'pick', labelKey: k(host, 'recoverLorebookModePick') },
-            { value: 'create', labelKey: k(host, 'recoverLorebookModeCreate') },
+            { value: 'pick', labelKey: tKey(host, 'recoverLorebookModePick') },
+            { value: 'create', labelKey: tKey(host, 'recoverLorebookModeCreate') },
           ],
         },
         {
           key: 'targetLorebookId',
-          labelKey: k(host, 'sessionTargetLorebookLabel'),
+          labelKey: tKey(host, 'sessionTargetLorebookLabel'),
           type: 'lorebook',
           visibleWhen: { field: 'mode', equals: 'pick' },
         },
       ],
-      submitKey: k(host, 'recoverLorebookConfirm'),
-      cancelKey: k(host, 'sessionCancel'),
+      submitKey: tKey(host, 'recoverLorebookConfirm'),
+      cancelKey: tKey(host, 'sessionCancel'),
       canSubmit: (m: Record<string, unknown>) => {
         const mode = asString(m.mode)
         if (mode === 'create') return true
@@ -283,57 +280,57 @@ function registerSessionDialog(host: PluginHost, settings: MergedSettings) {
   const fields: Record<string, unknown>[] = [
     {
       key: 'targetLorebookId',
-      labelKey: k(host, 'sessionTargetLorebookLabel'),
+      labelKey: tKey(host, 'sessionTargetLorebookLabel'),
       type: 'lorebook',
-      hintKey: k(host, 'sessionTargetLorebookHint'),
+      hintKey: tKey(host, 'sessionTargetLorebookHint'),
     },
     {
       key: 'blockTurns',
-      labelKey: k(host, 'sessionBlockTurnsLabel'),
+      labelKey: tKey(host, 'sessionBlockTurnsLabel'),
       type: 'integer',
     },
     {
       key: 'bufferTurns',
-      labelKey: k(host, 'sessionBufferTurnsLabel'),
+      labelKey: tKey(host, 'sessionBufferTurnsLabel'),
       type: 'integer',
     },
     {
       key: 'sidecarEnabled',
-      labelKey: k(host, 'sessionSidecarEnabledLabel'),
+      labelKey: tKey(host, 'sessionSidecarEnabledLabel'),
       type: 'radio',
       options: [
-        { value: 'inherit', labelKey: k(host, 'sessionSidecarInherit') },
-        { value: 'on', labelKey: k(host, 'sessionSidecarOn') },
-        { value: 'off', labelKey: k(host, 'sessionSidecarOff') },
+        { value: 'inherit', labelKey: tKey(host, 'sessionSidecarInherit') },
+        { value: 'on', labelKey: tKey(host, 'sessionSidecarOn') },
+        { value: 'off', labelKey: tKey(host, 'sessionSidecarOff') },
       ],
     },
     {
       key: 'entrySortMode',
-      labelKey: k(host, 'entrySortModeLabel'),
+      labelKey: tKey(host, 'entrySortModeLabel'),
       type: 'radio',
       options: [
-        { value: 'manual', labelKey: k(host, 'entrySortModeManual') },
-        { value: 'auto-turn-suffix', labelKey: k(host, 'entrySortModeAuto-turn-suffix') },
+        { value: 'manual', labelKey: tKey(host, 'entrySortModeManual') },
+        { value: 'auto-turn-suffix', labelKey: tKey(host, 'entrySortModeAuto-turn-suffix') },
       ],
-      hintKey: k(host, 'entrySortModeDesc'),
+      hintKey: tKey(host, 'entrySortModeDesc'),
     },
   ]
   if (settings.sidecars.length > 0) {
     fields.push({
       key: 'autoSidecarTasks',
-      labelKey: k(host, 'sessionAutoSidecarsLabel'),
+      labelKey: tKey(host, 'sessionAutoSidecarsLabel'),
       type: 'checkboxGroup',
       options: buildAutoSidecarTaskOptions(settings),
-      hintKey: k(host, 'sessionAutoSidecarsHint'),
+      hintKey: tKey(host, 'sessionAutoSidecarsHint'),
     })
   }
   host.registerFormDialog(
     PLUGIN_ID,
     {
-      titleKey: k(host, 'sessionDialogTitle'),
+      titleKey: tKey(host, 'sessionDialogTitle'),
       fields,
-      submitKey: k(host, 'sessionSubmit'),
-      cancelKey: k(host, 'sessionCancel'),
+      submitKey: tKey(host, 'sessionSubmit'),
+      cancelKey: tKey(host, 'sessionCancel'),
       canSubmit: () => true,
       onSubmit: async (h: PluginHost, model: Record<string, unknown>) => {
         const patch: Record<string, unknown> = {
@@ -371,16 +368,16 @@ function registerSummarizeDialog(
   const fields: Record<string, unknown>[] = [
     {
       key: 'startTurn',
-      labelKey: k(host, 'manualStartTurnLabel'),
+      labelKey: tKey(host, 'manualStartTurnLabel'),
       type: 'integer',
-      hintKey: k(host, 'manualTurnRangeHint'),
+      hintKey: tKey(host, 'manualTurnRangeHint'),
       ...(isEnable ? { readOnly: true } : {}),
     },
     {
       key: 'endTurn',
-      labelKey: k(host, 'manualEndTurnLabel'),
+      labelKey: tKey(host, 'manualEndTurnLabel'),
       type: 'integer',
-      hintKey: k(host, 'manualTurnRangeHint'),
+      hintKey: tKey(host, 'manualTurnRangeHint'),
       ...(isEnable ? { readOnly: true } : {}),
     },
   ]
@@ -388,32 +385,32 @@ function registerSummarizeDialog(
     if (settings.sidecars.length > 0) {
       fields.push({
         key: 'selectedTasks',
-        labelKey: k(host, 'manualTasksLabel'),
+        labelKey: tKey(host, 'manualTasksLabel'),
         type: 'checkboxGroup',
         options: buildSummarizeTaskOptions(host, settings, { memoryLocked: true }),
-        hintKey: k(host, 'enableTasksHint'),
+        hintKey: tKey(host, 'enableTasksHint'),
       })
     }
   } else {
     fields.push({
       key: 'selectedTasks',
-      labelKey: k(host, 'manualTasksLabel'),
+      labelKey: tKey(host, 'manualTasksLabel'),
       type: 'checkboxGroup',
       options: buildSummarizeTaskOptions(host, settings, { memoryLocked: false }),
-      hintKey: k(host, 'manualTasksHint'),
+      hintKey: tKey(host, 'manualTasksHint'),
     })
   }
   host.registerFormDialog(
     PLUGIN_ID,
     {
-      titleKey: k(host, isEnable ? 'enableDialogTitle' : 'manualDialogTitle'),
-      bodyKey: k(host, isEnable ? 'enableDialogBody' : 'manualDialogBody'),
+      titleKey: tKey(host, isEnable ? 'enableDialogTitle' : 'manualDialogTitle'),
+      bodyKey: tKey(host, isEnable ? 'enableDialogBody' : 'manualDialogBody'),
       fields,
-      submitKey: k(host, isEnable ? 'enableSubmit' : 'manualSubmit'),
-      cancelKey: k(host, 'sessionCancel'),
+      submitKey: tKey(host, isEnable ? 'enableSubmit' : 'manualSubmit'),
+      cancelKey: tKey(host, 'sessionCancel'),
       ...(!isEnable
         ? {
-            extraActionKey: k(host, 'manualPreviewPrompt'),
+            extraActionKey: tKey(host, 'manualPreviewPrompt'),
             extraActionVisible: (h: PluginHost, _m: Record<string, unknown>) =>
               auditDebugEnabled(h),
             extraActionCanSubmit: (m: Record<string, unknown>) =>
@@ -435,7 +432,7 @@ function registerSummarizeDialog(
         const fromTurn = asInt(model.startTurn, 0, 500_000)
         const toTurn = asInt(model.endTurn, fromTurn, 500_000)
         if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
-          h.ui.notify(h.t(k(h, 'notifyTurnRangeTooLong')), undefined, { level: 'warning' })
+          h.ui.notify(h.t(tKey(h, 'notifyTurnRangeTooLong')), undefined, { level: 'warning' })
           return
         }
         const selectedTasks = isEnable
@@ -448,7 +445,7 @@ function registerSummarizeDialog(
           : model.selectedTasks
         const tasks = tasksFromSelection(settings, selectedTasks)
         if (tasks.length === 0) {
-          h.ui.notify(h.t(k(h, 'notifyNoTasksSelected')), undefined, { level: 'warning' })
+          h.ui.notify(h.t(tKey(h, 'notifyNoTasksSelected')), undefined, { level: 'warning' })
           return
         }
         if (isEnable) {
@@ -484,7 +481,7 @@ export async function reorderTargetLorebookNow(host: PluginHost) {
   const settings = await loadMergedSettings(host)
   const targetId = asString(settings.targetLorebookId)
   if (!targetId) {
-    host.ui.notify(host.t(k(host, 'notifyReorderLorebookNoTarget')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(tKey(host, 'notifyReorderLorebookNoTarget')), undefined, { level: 'warning' })
     return
   }
   try {
@@ -502,7 +499,7 @@ export async function reorderTargetLorebookNow(host: PluginHost) {
     notifyOutcome(host, 'notifyReorderLorebookDone', 'success')
   } catch (e) {
     console.warn('[plot-summary] reorder lorebook failed', e)
-    host.ui.notify(host.t(k(host, 'notifyTaskSkippedGeneric')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(tKey(host, 'notifyTaskSkippedGeneric')), undefined, { level: 'warning' })
   }
 }
 
@@ -511,7 +508,7 @@ export async function renumberMemoryMemosNow(host: PluginHost) {
   const settings = await loadMergedSettings(host)
   const targetId = asString(settings.targetLorebookId)
   if (!targetId) {
-    host.ui.notify(host.t(k(host, 'notifyReorderLorebookNoTarget')), undefined, {
+    host.ui.notify(host.t(tKey(host, 'notifyReorderLorebookNoTarget')), undefined, {
       level: 'warning',
     })
     return
@@ -533,7 +530,7 @@ export async function renumberMemoryMemosNow(host: PluginHost) {
     })
   } catch (e) {
     console.warn('[plot-summary] renumber memory memos failed', e)
-    host.ui.notify(host.t(k(host, 'notifyTaskSkippedGeneric')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(tKey(host, 'notifyTaskSkippedGeneric')), undefined, { level: 'warning' })
   }
 }
 
@@ -593,7 +590,7 @@ export async function openManualSummarize(
     )
   } catch (e) {
     host.ui.notify(
-      host.t(k(host, 'slashErrOpenManualFailed')),
+      host.t(tKey(host, 'slashErrOpenManualFailed')),
       undefined,
       { level: 'warning' },
     )
@@ -624,7 +621,7 @@ async function resumeAutoSummarizeEnable(host: PluginHost, settings: MergedSetti
     nextBlockStart,
   })
   refreshAutoSummarizeUi(host)
-  host.ui.notify(host.t(k(host, 'notifyAutoSummarizeResumed'), {
+  host.ui.notify(host.t(tKey(host, 'notifyAutoSummarizeResumed'), {
       from: range.fromTurn,
       to: range.toTurn,
       turn: trigger,
@@ -640,7 +637,7 @@ export async function applyShortAutoSummarizeEnable(host: PluginHost, settings: 
     autoSidecarIds,
   })
   refreshAutoSummarizeUi(host)
-  host.ui.notify(host.t(k(host, 'notifyAutoSummarizeScheduled'), { turn: X }), undefined, {
+  host.ui.notify(host.t(tKey(host, 'notifyAutoSummarizeScheduled'), { turn: X }), undefined, {
     level: 'success',
   })
 }
@@ -664,7 +661,7 @@ async function tryEnableAutoSummarize(host: PluginHost) {
 export async function toggleAutoSummarize(host: PluginHost) {
   if (isAutoSummarizeEnabled(host)) {
     await host.conversation.patchPluginSettings({ autoSummarizeEnabled: false })
-    host.ui.notify(host.t(k(host, 'notifyAutoSummarizeDisabled')), undefined, { level: 'info' })
+    host.ui.notify(host.t(tKey(host, 'notifyAutoSummarizeDisabled')), undefined, { level: 'info' })
     return
   }
   await tryEnableAutoSummarize(host)

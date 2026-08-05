@@ -7,9 +7,10 @@ import {
   markMacroGlobalVarTouched,
   markMacroLocalVarTouched,
 } from './macro-var-touched.js'
+import type { MacroVarMap } from './macro-var-types.js'
 import type { PromptMacroContext } from './types.js'
 
-export type MacroVarMap = Record<string, string>
+export type { MacroVarMap } from './macro-var-types.js'
 
 export function cloneMacroVarMap(src?: MacroVarMap | null): MacroVarMap {
   return sanitizeMacroVarMap(src)

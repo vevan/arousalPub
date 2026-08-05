@@ -4,7 +4,7 @@ import {
   readApiSettingsFromFile,
   type ApiPreset,
 } from './api-settings-file.js'
-import { conversationDir } from './chat-storage.js'
+import { conversationDir } from './chat-storage-io.js'
 import { getChatsRoot } from './config.js'
 import { isValidConversationId } from './conversation-id.js'
 import { readUserPreferencesDocument } from './user-preferences-file.js'

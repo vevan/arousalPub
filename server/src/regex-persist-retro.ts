@@ -6,7 +6,7 @@ import {
   type ConversationIndex,
 } from './chat-storage.js'
 import { applyRegexPersistToTurnPatch } from './regex-persist-patch.js'
-import { hasEnabledPersistRules } from './regex-persist.js'
+import { hasEnabledPersistRules } from './regex-persist-enabled.js'
 import { readRegexRulesDocument } from './regex-rules-file.js'
 import type { RegexRule } from './regex-rules-types.js'
 import { resolveSkipLastNTurns } from './regex-rules-types.js'

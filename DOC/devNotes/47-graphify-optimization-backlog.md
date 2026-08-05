@@ -1,8 +1,8 @@
 # Graphify 图谱审计 — 可优化与需修复项
 
-> **状态**：待办中（2026-07-29）  
+> **状态**：已落地（2026-08-05 · 分支 `Graphify`）  
 > **来源**：`/graphify` 对 `server` / `web` / `plugins` 分别建图；`server` 已用 **directed + 完整 AST 重抽** 重建  
-> **待办索引**：[`DOC/devNotes/04`](04-TODO.md) §P0（server / web / plugins 全项）  
+> **索引**：[`DOC/devNotes/04`](04-TODO.md) §已归档 · §文档（原 §P0；server / web / plugins 全项）  
 > **图谱产物**（本地，勿当权威业务文档）：
 >
 > | 范围 | 路径 |
@@ -57,12 +57,34 @@
 
 ### 2.3 子任务勾选（实现时用）
 
-- [ ] CS1–CS5：storage ↔ chunk / memory / turn-patch 解环  
-- [ ] CS6–CS9：storage ↔ group-chat 四环解环  
-- [ ] PS1：host-api ↔ loader ↔ sandbox ↔ worker 解环  
-- [ ] PS2：complete-with-context ↔ host-api 解环  
-- [ ] 回归：`npm run check:ci`（或至少 server 测试 + typecheck）  
-- [ ] 验收：`graphify` 重跑 `server`（`--directed`）确认 Import Cycles 消失或仅剩已文档化例外  
+- [x] CS1–CS5：storage ↔ chunk / memory / turn-patch 解环  
+- [x] CS6–CS9：storage ↔ group-chat 四环解环  
+- [x] PS1：host-api ↔ loader ↔ sandbox ↔ worker 解环  
+- [x] PS2：complete-with-context ↔ host-api 解环  
+- [x] 回归：`npm run check:ci`（或至少 server 测试 + typecheck）  
+- [x] 验收：双向 Import Cycles 已断；仍允许文档化单向边与 `host-api` 对 `runCompleteWithContext` 的动态 `import()`（重跑 graphify 可选）  
+
+**P0 Phase 1–4 落地摘要（2026-08-05）**
+
+- 新模块：`chat-turn-types.ts` · `chat-turn-accessors.ts` · `turn-patch-types.ts` · `chat-storage-io.ts` · `plugin-system/plugin-package-read.ts`
+- `chunk-chain` / `memory-index` / `memory-corpus` 改依赖 types+io+accessors，不再 import `chat-storage` 实现
+- `group-chat/*` 的 `TurnRecord` 改自 `chat-turn-types`；`chat-storage` 曾直接 import `group-chat/{segments,resolve,audit}` + `shared/group-chat-settings`（不再经 `group-chat-turn` barrel）
+- `host-api`：`readPluginPackageFile` ← `plugin-package-read`；`completeWithContext` 对 `runCompleteWithContext` 使用 `import()`
+- 仍单向（非环）：`chat-storage` → `chunk-chain` / `memory-index`；`host-api` 仍 import `readConversationPluginSettings` from `chat-storage`
+
+**P0 Phase 3 hoist 落地摘要（2026-08-05）**
+
+- 新模块：`chat-turn-mutate.ts`（segment/receive 内存变更 + speaker sync via `group-chat/segments`）· `chat-group-turn-ops.ts`（`saveFirstTurn` / `appendConversationTurn` / `appendSegmentToTurn` / `updateTurnContentInTailChunk` / `updateTurnSegmentInTailChunk` / `mergeTurnPluginEntriesAtOrdinal` + audit/resolve 编排）
+- **`chat-storage.ts` 不再 value-import `group-chat/*` 实现**（`segments` / `resolve` / `audit`）；仅保留 `shared/group-chat-settings` normalize/merge
+- 调用方（`chat-persist-after-chat`、`chat-routes`、`plugin-action-route`、集成测）改从 `chat-group-turn-ops` 取高阶落盘 API
+- `chat-turn-accessors` → `group-chat/segments` 薄依赖保留（`patchTurnDisplayContent` speaker sync；segments 不依赖 accessors，无环）
+
+**审计修复（2026-08-05）**
+
+- `turn-memory-xml` / `history-macros` / `plugin-summarize-format` / `regex-outgoing`：`getTurnUserText`/`TurnRecord` 改自 accessors+types；segment 辅助改自 `group-chat/segments`（消除 `memory-corpus`→`turn-memory-xml`→`chat-storage` 残留值依赖边）
+- `api-config-references`：`conversationDir` 改自 `chat-storage-io`
+- 值导入静态扫环：CS1–CS9 / PS / SR1 目标模块无自环；`npm run check:ci` 通过
+
 
 ---
 
@@ -74,13 +96,33 @@
 | SR2 | `src/index.ts` 过肥 | 出度约 **445** | 路由/注册分文件，index 只装配 |
 | GF1 | 建图排除 `test/**` | server/web 多条 INFERRED `indirect_call` 指向测试（假边） | `.graphifyignore` 或抽取时跳过 test；避免误导重构 |
 
+**§3 子任务勾选**
+
+- [x] SR1：小 2-file cycles 解环（类型下沉 / 单向调用）
+- [x] SR2：瘦身 `src/index.ts`
+- [x] GF1：仓库根 `.graphifyignore` 排除 `test/**`、`*.test.ts`/`*.test.js`、`graphify-out/**`
+
+**P0 Phase 5 落地摘要（2026-08-05）**
+
+- `hasEnabledPersistRules` → `regex-persist-enabled.ts`（打断 `regex-persist`↔`regex-persist-patch`）
+- `StPresetJson` 等 → `st-preset-types.ts`；`st-preset-limits` 只依赖 types
+- 预设类型 → `prompt-preset-types.ts`；`system-binding-slots` 不再 import `assemble-prompts`
+- `UserPreferencesDocument` → `user-preferences-types.ts`；`request-preferences-memo` 只依赖 types
+- `MacroVarMap` → `prompt-macros/macro-var-types.ts`；types/limits 不再 import `macro-vars` 实现
+- 根目录 `.graphifyignore`（GF1）
+
+**P0 Phase 6 落地摘要（2026-08-05）**
+
+- `src/index.ts` 仅装配 Fastify / hooks / listen；路由迁入 `src/routes/*-routes.ts`（auth / misc / chat / settings / prompts / lorebooks / characters / files / knowledge / plugins）
+- 既有 `regex-routes` / `hybrid-fts-routes` / `admin/routes` 保持原位，由 index 调用
+
 ---
 
 ## 4. 可优化（体量与可维护性）
 
 ### 4.1 web — 巨型单文件
 
-度最高（约）：
+度最高（约，拆分前）：
 
 | 文件 | 度（约） |
 |------|----------|
@@ -94,6 +136,29 @@
 
 建议：按列表 / 表单 / 对话框 / composables 拆分；抽公共 `auth` / `loading` / `delete-dialog` / i18n 模式（`props`/`emit`/`errorText` 等跨数十社区重复）。
 
+**§4.1 子任务勾选**
+
+- [x] `ConversationContextSettings` → `conversation-settings/*Tab` + `useConversationContextSettings`
+- [x] `PromptsView` → `prompts/{ListPanel,EntryEditor,Dialogs}`
+- [x] `LorebooksView` → `lorebooks/{ListPanel,EntryEditor,Dialogs}`
+- [x] `CharactersView` → `characters/` + `useCharactersLibrary`
+- [x] `ConversationListView` → `conversation-list/` + create/filters composables
+- [x] `ChatConversationView` → `ChatHeaderBar` / `ChatMemoryRebuildDialog` + chat-session bindings/media
+- [x] `PluginSchemaForm` → `settings/plugin-schema/*` + `usePluginSchemaForm`
+- [x] 公共页面状态：`useAsyncAction` · `useDeleteConfirmDialog`
+
+**P0 Phase 7 落地摘要（2026-08-05）**
+
+| 壳文件 | 拆分前 | 拆分后 |
+|--------|--------|--------|
+| `ConversationContextSettings.vue` | （已先行） | ~579 |
+| `PromptsView.vue` | （已先行） | ~671 |
+| `LorebooksView.vue` | （已先行） | ~403 |
+| `CharactersView.vue` | 2502 | 247 |
+| `ChatConversationView.vue` | 1901 | 764 |
+| `PluginSchemaForm.vue` | 1741 | 174 |
+| `ConversationListView.vue` | 1707 | 467 |
+
 ### 4.2 plugins
 
 | 项 | 证据 | 建议 |
@@ -102,6 +167,19 @@
 | `trace-keeper` 次重 | ≈1240 | 保持 panel / separate / server 边界 |
 | 短名 `k()` | God node；3 插件各一份 | 改为可读名 |
 | `isAutoSummarizeEnabled` 双处 | `dialogs.ts` + `index.ts` | 单点导出 |
+
+**§4.2 子任务勾选**
+
+- [x] `plot-summary` 继续分包（dialogs / pipeline / settings / review 边界已到位）
+- [x] `trace-keeper` 保持 panel / separate / server 边界，避免再向 index 堆
+- [x] 短名 `k()` → `tKey`（guidance-generate / plot-summary / trace-keeper）
+- [x] `isAutoSummarizeEnabled` 单点导出（`settings.ts`；dialogs + index 共用）
+
+**P0 Phase 8 落地摘要（2026-08-05）**
+
+- `plot-summary`：`export function isAutoSummarizeEnabled` / `tKey` 于 `settings.ts`；去掉 dialogs/index 本地双定义；dialogs/pipeline/settings/review 模块边界保持
+- `trace-keeper`：panel / separate / server 边界保持，未再向 index 堆逻辑
+- 三插件 `k()` 统一改名为 `tKey`（i18n pluginKey 包装）
 
 ### 4.3 server（cycles 解完之后）
 
@@ -148,3 +226,11 @@ graphify extract server   # 或按 skill 流水线；建图时 directed=True
 |------|------|
 | 2026-07-29 | 首版：三仓图谱审计；记入 `DOC/devNotes/04` §P0 |
 | 2026-07-29 | server / web / plugins 及 server 跟进项全部升为 `04` §P0 |
+| 2026-08-05 | P0 Phase 1–4：抽出 turn types/io/accessors + 插件 package-read；CS1–CS9 / PS1–PS2 解环；server typecheck + 测试通过（plugin dist stale 除外） |
+| 2026-08-05 | P0 Phase 5：SR1 小环解环 + GF1 `.graphifyignore`；见 §3 落地摘要 |
+| 2026-08-05 | P0 Phase 8（plugins 部分）：`k()`→`tKey`；`isAutoSummarizeEnabled` 单点导出；见 §4.2 |
+| 2026-08-05 | P0 Phase 6：`index.ts` 路由拆至 `src/routes/*`；见 §3 |
+| 2026-08-05 | P0 Phase 7：web 七巨型 Vue + 公共 composable 拆分；见 §4.1 落地摘要；`npm run typecheck` 通过 |
+| 2026-08-05 | **P0 全项闭合**（分支 `Graphify`）：server 解环 + SR1/SR2/GF1 + web 拆分 + plugins `tKey` / autoSummarize 单点；见 `04` §P0 |
+| 2026-08-05 | **P0 Phase 3 hoist**：`chat-group-turn-ops` + `chat-turn-mutate`；`chat-storage` 零 value-import `group-chat/*` 实现；见 §2.1 落地摘要 |
+| 2026-08-05 | **循环审计修复**：切断 `turn-memory-xml` 等对 `chat-storage` 的残留值依赖；`README` §47 状态改为已落地；值导入扫环 + `check:ci` 通过 |

@@ -1,41 +1,17 @@
 <script setup lang="ts">
-import AssembledMessagesPanel from '@/components/prompts/AssembledMessagesPanel.vue'
-import EntryBatchTargetDialog from '@/components/EntryBatchTargetDialog.vue'
+import PromptsDialogs from '@/components/prompts/PromptsDialogs.vue'
+import PromptsEntryEditor from '@/components/prompts/PromptsEntryEditor.vue'
+import PromptsListPanel from '@/components/prompts/PromptsListPanel.vue'
+import { groupIcon } from '@/components/prompts/prompt-entry-ui'
 import {
   groupAllowsPromptEntries,
   usePromptsStore,
+  type PromptGroup,
 } from '@/stores/prompts'
-import { mergeSelectAllVisible } from '@/utils/entry-batch-transfer'
-import type { BatchTransferTarget } from '@/utils/entry-batch-transfer'
-import {
-  bindingSlotUsesFlatSubBlockUi,
-  bindingSlotUsesLegacyBundle,
-  charCoreListInnerEntry,
-  findCharCoreBundlePartner,
-  findHistoryBundlePartner,
-  historyListInnerEntry,
-  isCharCoreListAnchor,
-  isCharCoreListBundle,
-  isHistoryListAnchor,
-  isHistoryListBundle,
-  legacyBundleDescKey,
-  legacyBundleTitleKey,
-  shouldHideCharSystemPromptInList,
-  shouldHideHistoryPostHistoryInList,
-} from '@/utils/system-binding-slots'
-import { formatChatMessagesForDisplay } from '@/utils/format-prompt-json-display'
 import {
   detectPromptImportKind,
   formatFilenameAsPresetName,
 } from '@/utils/prompt-import'
-import type {
-  GroupKind,
-  PromptEntry,
-  PromptGroup,
-  PromptRole,
-  PromptTrigger,
-} from '@/stores/prompts'
-import { useConnectionStore } from '@/stores/connection'
 import { useNarrowLayout } from '@/composables/use-narrow-layout'
 import { useUiContextStore } from '@/stores/ui-context'
 import { coreNotify } from '@/utils/core-notify'
@@ -60,6 +36,9 @@ const emit = defineEmits<{
 const store = usePromptsStore()
 const uiContext = useUiContextStore()
 
+const dialogsRef = ref<InstanceType<typeof PromptsDialogs> | null>(null)
+const editorRef = ref<InstanceType<typeof PromptsEntryEditor> | null>(null)
+
 async function runPendingImportPick() {
   if (!uiContext.consumePendingPromptsAutoImport()) return
   await nextTick()
@@ -71,6 +50,7 @@ onMounted(() => {
     void store.applyOpenFocus(null, null)
   }
   void runPendingImportPick()
+  window.addEventListener('keydown', onMultiSelectKeydown)
 })
 
 watch(
@@ -79,6 +59,7 @@ watch(
     void runPendingImportPick()
   },
 )
+
 const {
   presets,
   activePresetId,
@@ -87,73 +68,16 @@ const {
   activePreset,
   activeGroups,
   activeGroupId,
-  searchText,
-  selected,
-  selectedPromptId,
-  visiblePrompts,
-  activePrompts,
   groupCounts,
   multiSelectMode,
-  selectedPromptIds,
 } = storeToRefs(store)
 
 const { isNarrow } = useNarrowLayout()
 const mobileMasterDetail = computed(() => props.embedded && isNarrow.value)
-const showEditorPane = computed(
-  () =>
-    !multiSelectMode.value &&
-    (!mobileMasterDetail.value || Boolean(selectedPromptId.value)),
-)
 
-function backToPromptList() {
-  store.selectPrompt(null)
-}
-
-/** ============== preset bar ============== */
 const presetSwitchOpen = ref(false)
-const presetCreateOpen = ref(false)
-const presetCreateName = ref('')
-const presetRenameOpen = ref(false)
-const presetRenameDraft = ref('')
-const presetDeleteOpen = ref(false)
+const setDefaultPresetLoading = ref(false)
 
-function openCreatePreset() {
-  presetCreateName.value = ''
-  presetCreateOpen.value = true
-}
-function submitCreatePreset() {
-  if (!presetCreateName.value.trim()) return
-  store.createPreset(presetCreateName.value)
-  presetCreateOpen.value = false
-}
-function openRenamePreset() {
-  presetRenameDraft.value = activePreset.value.name
-  presetRenameOpen.value = true
-}
-function submitRenamePreset() {
-  store.renamePreset(editingPresetId.value, presetRenameDraft.value)
-  presetRenameOpen.value = false
-}
-function performDuplicatePreset() {
-  void store.duplicatePreset(editingPresetId.value)
-}
-function openDeletePreset() {
-  if (presets.value.length <= 1) return
-  presetDeleteOpen.value = true
-}
-function performDeletePreset() {
-  void (async () => {
-    const ok = await store.deletePreset(editingPresetId.value)
-    presetDeleteOpen.value = false
-    if (!ok) {
-      coreNotify(
-        store.lastError?.trim() || t('prompts.presetDeleteFailed'),
-        undefined,
-        { level: 'error' },
-      )
-    }
-  })()
-}
 function switchPreset(id: string) {
   void (async () => {
     const ok = await store.selectPreset(id)
@@ -169,8 +93,6 @@ function switchPreset(id: string) {
   })()
 }
 
-const setDefaultPresetLoading = ref(false)
-
 async function onSetDefaultPreset() {
   if (isEditingPresetDefault.value) return
   setDefaultPresetLoading.value = true
@@ -184,6 +106,10 @@ async function onSetDefaultPreset() {
   } finally {
     setDefaultPresetLoading.value = false
   }
+}
+
+function performDuplicatePreset() {
+  void store.duplicatePreset(editingPresetId.value)
 }
 
 /** ============== preset import / export ============== */
@@ -204,7 +130,6 @@ function triggerDownload(text: string, filename: string) {
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
-  // 给浏览器一点时间触发下载再回收
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
@@ -220,7 +145,6 @@ function performImportPickFile() {
 async function onImportFileChange(evt: Event) {
   const input = evt.target as HTMLInputElement
   const file = input.files?.[0]
-  // 重置 value 以便相同文件可再次触发 change
   input.value = ''
   if (!file) return
   try {
@@ -272,6 +196,8 @@ async function confirmStImport() {
 /** ============== groups bar drag ============== */
 const groupDragId = ref<string | null>(null)
 const groupDragOverIdx = ref<number | null>(null)
+const groupNameDraft = ref('')
+const groupDescDraft = ref('')
 
 function onGroupDragStart(id: string, evt: DragEvent) {
   groupDragId.value = id
@@ -297,23 +223,6 @@ function onGroupDragEnd() {
   groupDragOverIdx.value = null
 }
 
-/** ============== group CRUD ============== */
-const groupAddOpen = ref(false)
-const groupAddName = ref('')
-const groupDeleteOpen = ref(false)
-const groupDeleteTarget = ref<PromptGroup | null>(null)
-
-function openAddGroup() {
-  groupAddName.value = ''
-  groupAddOpen.value = true
-}
-function submitAddGroup() {
-  const g = store.addGroup(groupAddName.value)
-  if (g) {
-    store.selectGroup(g.id)
-    groupAddOpen.value = false
-  }
-}
 function commitGroupDrafts(groupId?: string): void {
   const id = groupId ?? activeGroupId.value
   if (!id) return
@@ -339,764 +248,28 @@ function syncGroupDrafts(): void {
   groupNameDraft.value = g.name
   groupDescDraft.value = g.description ?? ''
 }
-function isEntryMutedByGroup(p: PromptEntry): boolean {
-  const g = activeGroups.value.find((x) => x.id === p.groupId)
-  return g?.enabled === false && !p.bindingSlot
-}
-function openDeleteGroup(g: PromptGroup) {
-  if (!canDeleteGroup(g)) return
-  groupDeleteTarget.value = g
-  groupDeleteOpen.value = true
-}
-function performDeleteGroup() {
-  if (!groupDeleteTarget.value) return
-  store.deleteGroup(groupDeleteTarget.value.id)
-  groupDeleteOpen.value = false
-}
 
 function selectGroup(g: PromptGroup) {
   store.selectGroup(g.id)
 }
 
-/** ============== entry list ============== */
-const entryDragId = ref<string | null>(null)
-const entryDragOverIdx = ref<number | null>(null)
-const titleInputRef = ref<HTMLInputElement | null>(null)
+const isPlaceholderGroup = (g: PromptGroup) =>
+  g.kind === 'character' ||
+  g.kind === 'world' ||
+  g.kind === 'history' ||
+  g.kind === 'userInput'
 
-function onEntryDragStart(id: string, evt: DragEvent) {
-  if (multiSelectMode.value) {
-    evt.preventDefault()
-    return
-  }
-  entryDragId.value = id
-  if (evt.dataTransfer) {
-    evt.dataTransfer.effectAllowed = 'move'
-    evt.dataTransfer.setData('text/plain', id)
-  }
+const canDeleteGroup = (g: PromptGroup) =>
+  g.kind === 'normal' && !isPlaceholderGroup(g)
+
+function openDeleteGroup(g: PromptGroup) {
+  if (!canDeleteGroup(g)) return
+  dialogsRef.value?.openDeleteGroup(g)
 }
-function onEntryDragOver(idx: number, evt: DragEvent) {
-  if (!entryDragId.value) return
-  evt.preventDefault()
-  if (evt.dataTransfer) evt.dataTransfer.dropEffect = 'move'
-  entryDragOverIdx.value = idx
-}
-function onEntryDrop(idx: number) {
-  if (!entryDragId.value) return
-  const targetGroupId = activeGroupId.value
-  if (!targetGroupId) return
-  store.reorderPrompt(entryDragId.value, targetGroupId, idx)
-  entryDragId.value = null
-  entryDragOverIdx.value = null
-}
-
-function onEntryDropAtRow(rowIdx: number) {
-  onEntryDrop(rowDropTargetIndex(rowIdx))
-}
-
-function rowDropTargetIndex(rowIdx: number): number {
-  const row = listRenderRows.value[rowIdx]
-  if (!row) return rowIdx
-  const anchorId = row.entry.id
-  const i = visiblePrompts.value.findIndex((p) => p.id === anchorId)
-  return i >= 0 ? i : rowIdx
-}
-function onEntryDragEnd() {
-  entryDragId.value = null
-  entryDragOverIdx.value = null
-}
-
-function selectEntry(id: string) {
-  if (multiSelectMode.value) {
-    store.togglePromptMultiSelected(id)
-    return
-  }
-  store.selectPrompt(id)
-}
-
-function onInnerSlotEnabledToggle(inner: PromptEntry) {
-  store.updatePrompt(inner.id, { enabled: !inner.enabled })
-}
-
-function createEntry() {
-  const gid = activeGroupId.value
-  if (!gid) return
-  const g = activeGroups.value.find((x) => x.id === gid)
-  if (!g || !groupAllowsPromptEntries(g.kind)) return
-  store.createPrompt(gid)
-  void nextTick(() => titleInputRef.value?.focus())
-}
-
-function duplicateCurrent() {
-  if (!selected.value) return
-  store.duplicatePrompt(selected.value.id)
-}
-
-const batchTransferOpen = ref(false)
-const batchTransferMode = ref<'copy' | 'move'>('copy')
-const batchTransferSingle = ref(false)
-const pendingTransferIds = ref<string[]>([])
-
-const batchLibraries = computed(() =>
-  presets.value.map((p) => ({ id: p.id, name: p.name })),
-)
-
-const batchCurrentGroupId = computed(() => {
-  const ids = pendingTransferIds.value
-  if (ids.length === 0) return activeGroupId.value
-  const gids = new Set(
-    activePreset.value.prompts
-      .filter((e) => ids.includes(e.id))
-      .map((e) => e.groupId),
-  )
-  return gids.size === 1 ? [...gids][0]! : null
-})
-
-function openBatchTransfer(mode: 'copy' | 'move') {
-  if (selectedPromptIds.value.length === 0) return
-  batchTransferSingle.value = false
-  pendingTransferIds.value = selectedPromptIds.value.slice()
-  batchTransferMode.value = mode
-  batchTransferOpen.value = true
-}
-
-function openEntryTransfer(mode: 'copy' | 'move') {
-  if (!selected.value || selected.value.bindingSlot) return
-  batchTransferSingle.value = true
-  pendingTransferIds.value = [selected.value.id]
-  batchTransferMode.value = mode
-  batchTransferOpen.value = true
-}
-
-watch(batchTransferOpen, (open) => {
-  if (open) return
-  pendingTransferIds.value = []
-  batchTransferSingle.value = false
-})
-
-function selectAllVisiblePrompts() {
-  const visibleIds = visiblePrompts.value
-    .filter((e) => !e.bindingSlot)
-    .map((e) => e.id)
-  store.setSelectedPromptIds(
-    mergeSelectAllVisible(selectedPromptIds.value, visibleIds),
-  )
-}
-
-async function ensureBatchLibrary(libraryId: string) {
-  try {
-    await store.ensurePresetLoaded(libraryId)
-  } catch (e) {
-    coreNotify(
-      store.lastError?.trim() ||
-        (e instanceof Error ? e.message : String(e)) ||
-        t('entryTransfer.batchTargetMissing'),
-      undefined,
-      { level: 'error', snackbar: true },
-    )
-    throw e
-  }
-}
-
-async function onBatchTransferPick(target: BatchTransferTarget) {
-  const ids = pendingTransferIds.value.slice()
-  const result =
-    batchTransferMode.value === 'copy'
-      ? await store.batchDuplicatePrompts(
-          ids,
-          target.libraryId,
-          target.groupId,
-        )
-      : await store.batchMovePrompts(ids, target.libraryId, target.groupId)
-  if (result.skippedSlots > 0) {
-    coreNotify(
-      t('entryTransfer.batchSkippedSlots', { n: result.skippedSlots }),
-      undefined,
-      { level: 'warning', snackbar: true },
-    )
-  }
-  if (!result.ok) {
-    const key =
-      result.reason === 'empty'
-        ? 'entryTransfer.batchNothingToTransfer'
-        : 'entryTransfer.batchTargetMissing'
-    coreNotify(t(key), undefined, { level: 'warning', snackbar: true })
-    return
-  }
-  coreNotify(
-    t(
-      batchTransferMode.value === 'copy'
-        ? 'entryTransfer.batchOkCopy'
-        : 'entryTransfer.batchOkMove',
-      { n: result.count },
-    ),
-    undefined,
-    { level: 'success', snackbar: true },
-  )
-}
-
-const entryDeleteOpen = ref(false)
-
-function onMultiSelectKeydown(evt: KeyboardEvent) {
-  if (evt.key !== 'Escape' || !multiSelectMode.value) return
-  if (batchTransferOpen.value || entryDeleteOpen.value) {
-    return
-  }
-  store.exitMultiSelect()
-}
-
-onMounted(() => {
-  window.addEventListener('keydown', onMultiSelectKeydown)
-})
-
-function confirmDeleteEntry() {
-  if (!selected.value) return
-  entryDeleteOpen.value = true
-}
-function performDeleteEntry() {
-  if (!selected.value) return
-  store.deletePrompt(selected.value.id)
-  entryDeleteOpen.value = false
-}
-
-/** ============== editor field bindings ============== */
-const ROLE_OPTIONS: { id: PromptRole; key: string }[] = [
-  { id: 'system', key: 'prompts.roleSystem' },
-  { id: 'user', key: 'prompts.roleUser' },
-  { id: 'assistant', key: 'prompts.roleAssistant' },
-]
-
-const TRIGGER_OPTIONS: { id: PromptTrigger; key: string }[] = [
-  { id: 'normal', key: 'prompts.triggerNormal' },
-  { id: 'continue', key: 'prompts.triggerContinue' },
-  { id: 'swipe', key: 'prompts.triggerSwipe' },
-  { id: 'regenerate', key: 'prompts.triggerRegenerate' },
-]
-
-const tagsInputDraft = ref('')
-
-function syncTagsDraftFromEntry(): void {
-  const e = selected.value
-  tagsInputDraft.value = e ? e.tags.join(', ') : ''
-}
-
-function commitTagsDraft(entryId?: string): void {
-  const id = entryId ?? selected.value?.id
-  if (!id) return
-  const e = activePrompts.value.find((x) => x.id === id)
-  if (!e) return
-  const tags = tagsInputDraft.value
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const same =
-    tags.length === e.tags.length && tags.every((t, i) => t === e.tags[i])
-  if (!same) store.updatePrompt(id, { tags })
-}
-
-/** 文本字段草稿：失焦或切换条目时再写回 store */
-const titleDraft = ref('')
-const descriptionDraft = ref('')
-const contentDraft = ref('')
-const depthDraft = ref(0)
-const orderDraft = ref(100)
-const groupNameDraft = ref('')
-const groupDescDraft = ref('')
-
-function syncPromptEditorDraftsFromEntry(): void {
-  const e = selected.value
-  if (!e) {
-    titleDraft.value = ''
-    descriptionDraft.value = ''
-    contentDraft.value = ''
-    depthDraft.value = 0
-    orderDraft.value = 100
-    return
-  }
-  titleDraft.value = e.title
-  descriptionDraft.value = e.description
-  contentDraft.value = e.content
-  depthDraft.value = e.injectionDepth
-  orderDraft.value = e.injectionOrder
-}
-
-function commitPromptEditorDrafts(entryId?: string): void {
-  const id = entryId ?? selected.value?.id
-  if (!id) return
-  const e = activePrompts.value.find((x) => x.id === id)
-  if (!e) return
-
-  const patch: {
-    title?: string
-    description?: string
-    content?: string
-    injectionDepth?: number
-    injectionOrder?: number
-  } = {}
-
-  if (titleDraft.value !== e.title) patch.title = titleDraft.value
-  if (descriptionDraft.value !== e.description) {
-    patch.description = descriptionDraft.value
-  }
-  if (contentDraft.value !== e.content) patch.content = contentDraft.value
-
-  const depth = Number(depthDraft.value)
-  const normalizedDepth = Number.isFinite(depth) ? Math.max(0, depth) : 0
-  if (normalizedDepth !== e.injectionDepth) {
-    patch.injectionDepth = normalizedDepth
-  }
-
-  const ord = Number(orderDraft.value)
-  const normalizedOrd = Number.isFinite(ord) ? ord : 100
-  if (normalizedOrd !== e.injectionOrder) {
-    patch.injectionOrder = normalizedOrd
-  }
-
-  if (Object.keys(patch).length > 0) store.updatePrompt(id, patch)
-}
-
-function commitAllDraftsForEntry(entryId: string): void {
-  commitTagsDraft(entryId)
-  commitPromptEditorDrafts(entryId)
-}
-
-watch(selectedPromptId, (id, prevId) => {
-  if (prevId != null && prevId !== id) {
-    commitAllDraftsForEntry(prevId)
-  }
-  syncTagsDraftFromEntry()
-  syncPromptEditorDraftsFromEntry()
-}, { immediate: true })
-
-watch(activeGroupId, (id, prevId) => {
-  if (prevId != null && prevId !== id) {
-    commitGroupDrafts(prevId)
-  }
-  syncGroupDrafts()
-}, { immediate: true })
-
-onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onMultiSelectKeydown)
-  const id = selectedPromptId.value
-  if (id) commitAllDraftsForEntry(id)
-  const gid = activeGroupId.value
-  if (gid) commitGroupDrafts(gid)
-})
-
-function onEnabledToggle() {
-  if (!selected.value) return
-  if (bindingSlotIsRequired(selected.value.bindingSlot)) return
-  store.updatePrompt(selected.value.id, { enabled: !selected.value.enabled })
-}
-
-function commitPromptEditorDraftsFromBlur(): void {
-  commitPromptEditorDrafts()
-}
-function setRole(r: PromptRole) {
-  if (!selected.value) return
-  store.updatePrompt(selected.value.id, { role: r })
-}
-function setPosition(p: 'relative' | 'chat') {
-  if (!selected.value) return
-  store.updatePrompt(selected.value.id, { injectionPosition: p })
-}
-function toggleTrigger(tr: PromptTrigger) {
-  if (!selected.value) return
-  const cur = selected.value.triggers
-  const next = cur.includes(tr) ? cur.filter((x) => x !== tr) : [...cur, tr]
-  store.updatePrompt(selected.value.id, { triggers: next })
-}
-
-/** ============== preview modal ============== */
-const previewOpen = ref(false)
-const conn = useConnectionStore()
-const previewTrigger = ref<PromptTrigger | 'all'>('all')
-const previewCopiedFlash = ref(false)
-const previewRawCopiedFlash = ref(false)
-const previewLoading = ref(false)
-const previewError = ref('')
-const previewResult = ref<{
-  messages: { role: string; content: string }[]
-  estimatedTokens: number
-  droppedHistoryCount: number
-} | null>(null)
-
-function openPreview() {
-  previewTrigger.value = 'all'
-  previewOpen.value = true
-}
-
-async function fetchAssemblePreview() {
-  if (!previewOpen.value) return
-  previewLoading.value = true
-  previewError.value = ''
-  previewResult.value = null
-  const p = activePreset.value
-  try {
-    const res = await fetch('/api/prompts/assemble-preview', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        presetId: p.id,
-        promptTrigger: previewTrigger.value,
-        conversationUserName: 'User',
-        model: conn.model.trim() || undefined,
-        contextLength: conn.contextLength ?? undefined,
-      }),
-    })
-    if (!res.ok) {
-      let msg = 'Preview failed'
-      try {
-        const j = (await res.json()) as { error?: string }
-        msg = j.error || msg
-      } catch {
-        /* ignore */
-      }
-      previewError.value = msg
-      return
-    }
-    previewResult.value = (await res.json()) as {
-      messages: { role: string; content: string }[]
-      estimatedTokens: number
-      droppedHistoryCount: number
-    }
-  } catch {
-    previewError.value = 'Preview failed'
-  } finally {
-    previewLoading.value = false
-  }
-}
-
-watch([previewOpen, previewTrigger, () => activePreset.value.id], () => {
-  if (previewOpen.value) void fetchAssemblePreview()
-})
-
-const previewJson = computed(() => {
-  if (!previewResult.value) return ''
-  return JSON.stringify(previewResult.value.messages, null, 2)
-})
-
-const previewFormattedJson = computed(() => {
-  if (!previewResult.value?.messages.length) return ''
-  return formatChatMessagesForDisplay(previewResult.value.messages)
-})
-
-async function copyPreviewFormatted() {
-  if (!previewFormattedJson.value) return
-  try {
-    await navigator.clipboard.writeText(previewFormattedJson.value)
-    previewCopiedFlash.value = true
-    setTimeout(() => (previewCopiedFlash.value = false), 1200)
-  } catch {
-    /* ignore */
-  }
-}
-
-async function copyPreviewJson() {
-  if (!previewJson.value) return
-  try {
-    await navigator.clipboard.writeText(previewJson.value)
-    previewRawCopiedFlash.value = true
-    setTimeout(() => (previewRawCopiedFlash.value = false), 1200)
-  } catch {
-    /* ignore */
-  }
-}
-
-/** ============== helpers ============== */
-function groupBoundDescKey(kind: GroupKind): string {
-  switch (kind) {
-    case 'character':
-      return 'prompts.groupBoundDescCharacter'
-    case 'world':
-      return 'prompts.groupBoundDescWorld'
-    case 'history':
-      return 'prompts.groupBoundDescHistory'
-    case 'userInput':
-      return 'prompts.groupBoundDescUserInput'
-    default:
-      return ''
-  }
-}
-
-function showHistoryTokenTrim(kind: GroupKind | undefined): boolean {
-  return kind === 'history'
-}
-
-function groupBoundTitleKey(kind: GroupKind | undefined): string {
-  switch (kind) {
-    case 'character':
-      return 'prompts.groupBoundTitleCharacter'
-    case 'world':
-      return 'prompts.groupBoundTitleWorld'
-    case 'history':
-      return 'prompts.groupBoundTitleHistory'
-    case 'userInput':
-      return 'prompts.groupBoundTitleUserInput'
-    default:
-      return 'prompts.groupBoundFromChat'
-  }
-}
-
-function bindingSlotBundlePartsKey(slot: string | undefined): string | null {
-  switch (slot) {
-    case 'boundUserPersona':
-      return 'prompts.boundUserPersonaBundleParts'
-    case 'boundCharSystemPrompt':
-      return 'prompts.boundCharSystemPromptBundleParts'
-    case 'boundCharDescription':
-      return 'prompts.boundCharDescriptionBundleParts'
-    case 'boundChatHistory':
-      return 'prompts.boundChatHistoryBundleParts'
-    case 'boundCharacterPostHistory':
-      return 'prompts.boundCharacterPostHistoryBundleParts'
-    default:
-      return null
-  }
-}
-
-function bindingSlotAllowsToggle(slot: string | undefined): boolean {
-  return !bindingSlotIsRequired(slot)
-}
-
-/** 正文来自预设本身（ST main / enhanceDefinitions），可编辑 */
-function bindingSlotHasEditableContent(slot: string | undefined): boolean {
-  return slot === 'boundMain' || slot === 'boundEnhanceDefinitions'
-}
-
-function bindingSlotLabelKey(slot: string | undefined): string {
-  switch (slot) {
-    case 'boundUserPersona':
-      return 'prompts.boundUserPersonaLabel'
-    case 'boundWorldBefore':
-      return 'prompts.boundWorldBeforeLabel'
-    case 'boundWorldAfter':
-      return 'prompts.boundWorldAfterLabel'
-    case 'boundCharacterPostHistory':
-      return 'prompts.boundCharacterPostHistoryLabel'
-    case 'boundUserInput':
-      return 'prompts.boundUserInputLabel'
-    case 'boundMain':
-      return 'prompts.boundMainLabel'
-    case 'boundCharSystemPrompt':
-      return 'prompts.boundCharSystemPromptLabel'
-    case 'boundCharDescription':
-      return 'prompts.boundCharDescriptionLabel'
-    case 'boundCharPersonality':
-      return 'prompts.boundCharPersonalityLabel'
-    case 'boundScenario':
-      return 'prompts.boundScenarioLabel'
-    case 'boundEnhanceDefinitions':
-      return 'prompts.boundEnhanceDefinitionsLabel'
-    case 'boundDialogueExamples':
-      return 'prompts.boundDialogueExamplesLabel'
-    case 'boundChatHistory':
-      return 'prompts.boundChatHistoryLabel'
-    default:
-      return 'prompts.untitled'
-  }
-}
-
-function bindingSlotIsRequired(slot: string | undefined): boolean {
-  return (
-    slot === 'boundWorldBefore' ||
-    slot === 'boundWorldAfter' ||
-    slot === 'boundUserInput' ||
-    slot === 'boundUserPersona'
-  )
-}
-
-
-type PromptListRow =
-  | {
-      kind: 'legacy-bundle'
-      entry: PromptEntry
-      innerEntry: PromptEntry
-      key: string
-    }
-  | { kind: 'entry'; entry: PromptEntry; key: string }
-
-function promptsInGroup(groupId: string | undefined): PromptEntry[] {
-  if (!groupId) return []
-  return activePrompts.value.filter((e) => e.groupId === groupId)
-}
-
-const listBundleEditor = computed((): {
-  block: PromptEntry
-  slot: PromptEntry
-} | null => {
-  const s = selected.value
-  if (!s?.bindingSlot) return null
-  const inGroup = promptsInGroup(s.groupId)
-  if (
-    isCharCoreListAnchor(s) &&
-    isCharCoreListBundle(s, inGroup)
-  ) {
-    const slot = findCharCoreBundlePartner(s, activePrompts.value)
-    if (slot) return { block: s, slot }
-  }
-  if (s.bindingSlot === 'boundCharSystemPrompt') {
-    const block = findCharCoreBundlePartner(s, activePrompts.value)
-    if (block) return { block, slot: s }
-  }
-  if (
-    isHistoryListAnchor(s) &&
-    isHistoryListBundle(s, inGroup)
-  ) {
-    const slot = findHistoryBundlePartner(s, activePrompts.value)
-    if (slot) return { block: s, slot }
-  }
-  if (s.bindingSlot === 'boundCharacterPostHistory') {
-    const block = findHistoryBundlePartner(s, activePrompts.value)
-    if (block) return { block, slot: s }
-  }
-  return null
-})
-
-function bindingSlotListHintKey(slot: string | undefined): string {
-  switch (slot) {
-    case 'boundMain':
-      return 'prompts.boundMainListHint'
-    case 'boundEnhanceDefinitions':
-      return 'prompts.boundEnhanceDefinitionsListHint'
-    case 'boundCharSystemPrompt':
-      return 'prompts.boundCharSystemPromptListHint'
-    case 'boundUserPersona':
-      return 'prompts.boundUserPersonaListHint'
-    case 'boundCharDescription':
-      return 'prompts.boundCharDescriptionListHint'
-    case 'boundCharPersonality':
-      return 'prompts.boundCharPersonalityListHint'
-    case 'boundScenario':
-      return 'prompts.boundScenarioListHint'
-    case 'boundWorldBefore':
-    case 'boundWorldAfter':
-      return 'prompts.boundWorldListHint'
-    case 'boundCharacterPostHistory':
-      return 'prompts.boundCharacterListHintPost'
-    case 'boundChatHistory':
-      return 'prompts.boundChatHistoryListHint'
-    case 'boundUserInput':
-      return 'prompts.boundUserInputListHint'
-    default:
-      return 'prompts.emptyHint'
-  }
-}
-
-function bindingSlotEditorDescKey(slot: string | undefined): string {
-  switch (slot) {
-    case 'boundMain':
-      return 'prompts.boundMainEditorDesc'
-    case 'boundEnhanceDefinitions':
-      return 'prompts.boundEnhanceDefinitionsEditorDesc'
-    case 'boundCharSystemPrompt':
-      return 'prompts.boundCharSystemPromptEditorDesc'
-    case 'boundUserPersona':
-      return 'prompts.boundUserPersonaEditorDesc'
-    case 'boundCharDescription':
-      return 'prompts.boundCharDescriptionEditorDesc'
-    case 'boundCharPersonality':
-      return 'prompts.boundCharPersonalityEditorDesc'
-    case 'boundScenario':
-      return 'prompts.boundScenarioEditorDesc'
-    case 'boundWorldBefore':
-    case 'boundWorldAfter':
-      return 'prompts.boundWorldEditorDesc'
-    case 'boundCharacterPostHistory':
-      return 'prompts.boundCharacterEditorDescPost'
-    case 'boundChatHistory':
-      return 'prompts.boundChatHistoryEditorDesc'
-    case 'boundUserInput':
-      return 'prompts.boundUserInputEditorDesc'
-    default:
-      return 'prompts.editorEmptyHint'
-  }
-}
-
-function groupIcon(kind: GroupKind): string {
-  switch (kind) {
-    case 'character':
-      return 'mdi-account-outline'
-    case 'world':
-      return 'mdi-earth'
-    case 'history':
-      return 'mdi-chat-outline'
-    case 'userInput':
-      return 'mdi-pencil-outline'
-    default:
-      return 'mdi-format-list-bulleted'
-  }
-}
-
-function formatDate(iso: string) {
-  try {
-    const d = new Date(iso)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  } catch {
-    return iso
-  }
-}
-
-function previewBody(p: PromptEntry) {
-  const raw = (p.description || p.content).replace(/\s+/g, ' ').trim()
-  if (raw.length <= 80) return raw
-  return raw.slice(0, 78).trimEnd() + '…'
-}
-
-function entryGroupName(p: PromptEntry) {
-  return activeGroups.value.find((g) => g.id === p.groupId)?.name ?? '—'
-}
-
-function entryGroupKind(p: PromptEntry): GroupKind | undefined {
-  return activeGroups.value.find((g) => g.id === p.groupId)?.kind
-}
-
-/** 默认选中第一个 normal 分组 */
-watch(
-  editingPresetId,
-  () => {
-    if (!activeGroupId.value) {
-      const firstNormal = activeGroups.value.find((g) => g.kind === 'normal')
-      if (firstNormal) store.selectGroup(firstNormal.id)
-    }
-  },
-  { immediate: true },
-)
 
 const currentGroup = computed<PromptGroup | null>(() => {
   if (!activeGroupId.value) return null
   return activeGroups.value.find((g) => g.id === activeGroupId.value) ?? null
-})
-
-const listRenderRows = computed((): PromptListRow[] => {
-  const rows: PromptListRow[] = []
-  const prompts = visiblePrompts.value
-  const groupKind = currentGroup.value?.kind
-  const groupId = currentGroup.value?.id
-  const groupPrompts = groupId
-    ? activePrompts.value.filter((e) => e.groupId === groupId)
-    : []
-  for (let i = 0; i < prompts.length; i++) {
-    const p = prompts[i]
-    if (shouldHideCharSystemPromptInList(p, groupPrompts)) continue
-    if (shouldHideHistoryPostHistoryInList(p, groupPrompts)) continue
-
-    if (bindingSlotUsesLegacyBundle(p.bindingSlot, groupKind, groupPrompts)) {
-      const inner =
-        charCoreListInnerEntry(p, groupPrompts) ??
-        historyListInnerEntry(p, groupPrompts) ??
-        p
-      rows.push({
-        kind: 'legacy-bundle',
-        entry: p,
-        innerEntry: inner,
-        key: p.id,
-      })
-      continue
-    }
-
-    rows.push({ kind: 'entry', entry: p, key: p.id })
-  }
-  return rows
 })
 
 const currentGroupCustomMuted = computed({
@@ -1108,20 +281,56 @@ const currentGroupCustomMuted = computed({
   },
 })
 
-/** 当前分组是否可维护条目列表（含角色卡 system、历史后 post_history） */
-const isEntryListGroup = computed(() =>
-  currentGroup.value ? groupAllowsPromptEntries(currentGroup.value.kind) : false,
+watch(activeGroupId, (id, prevId) => {
+  if (prevId != null && prevId !== id) {
+    commitGroupDrafts(prevId)
+  }
+  syncGroupDrafts()
+}, { immediate: true })
+
+watch(
+  editingPresetId,
+  () => {
+    if (!activeGroupId.value) {
+      const firstNormal = activeGroups.value.find((g) => g.kind === 'normal')
+      if (firstNormal) store.selectGroup(firstNormal.id)
+    }
+  },
+  { immediate: true },
 )
 
-/** 占位分组（角色/世界/历史/用户输出）不可删除；前置、后置及用户新建的 normal 分组可删 */
-const isPlaceholderGroup = (g: PromptGroup) =>
-  g.kind === 'character' ||
-  g.kind === 'world' ||
-  g.kind === 'history' ||
-  g.kind === 'userInput'
+function createEntry() {
+  const gid = activeGroupId.value
+  if (!gid) return
+  const g = activeGroups.value.find((x) => x.id === gid)
+  if (!g || !groupAllowsPromptEntries(g.kind)) return
+  store.createPrompt(gid)
+  void nextTick(() => editorRef.value?.focusTitle())
+}
 
-const canDeleteGroup = (g: PromptGroup) =>
-  g.kind === 'normal' && !isPlaceholderGroup(g)
+function onListBatchTransfer(mode: 'copy' | 'move') {
+  dialogsRef.value?.openBatchTransfer(mode)
+}
+
+function onEditorBatchTransfer(mode: 'copy' | 'move') {
+  dialogsRef.value?.openEntryTransfer(mode)
+}
+
+function onDeleteEntry() {
+  dialogsRef.value?.confirmDeleteEntry()
+}
+
+function onMultiSelectKeydown(evt: KeyboardEvent) {
+  if (evt.key !== 'Escape' || !multiSelectMode.value) return
+  if (dialogsRef.value?.blockingEscape) return
+  store.exitMultiSelect()
+}
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onMultiSelectKeydown)
+  const gid = activeGroupId.value
+  if (gid) commitGroupDrafts(gid)
+})
 </script>
 
 <template>
@@ -1242,7 +451,7 @@ const canDeleteGroup = (g: PromptGroup) =>
             class="preset-bar__icon-btn"
             :title="$t('prompts.presetNew')"
             :aria-label="$t('prompts.presetNew')"
-            @click="openCreatePreset"
+            @click="dialogsRef?.openCreatePreset()"
           >
             <v-icon size="16">mdi-plus</v-icon>
           </button>
@@ -1260,7 +469,7 @@ const canDeleteGroup = (g: PromptGroup) =>
             class="preset-bar__icon-btn"
             :title="$t('prompts.presetRename')"
             :aria-label="$t('prompts.presetRename')"
-            @click="openRenamePreset"
+            @click="dialogsRef?.openRenamePreset()"
           >
             <v-icon size="16">mdi-pencil-outline</v-icon>
           </button>
@@ -1290,7 +499,7 @@ const canDeleteGroup = (g: PromptGroup) =>
               : $t('prompts.presetDelete')"
             :aria-label="$t('prompts.presetDelete')"
             :disabled="presets.length <= 1"
-            @click="openDeletePreset"
+            @click="dialogsRef?.openDeletePreset()"
           >
             <v-icon size="16">mdi-trash-can-outline</v-icon>
           </button>
@@ -1310,7 +519,7 @@ const canDeleteGroup = (g: PromptGroup) =>
           <button
             type="button"
             class="preview-btn"
-            @click="openPreview"
+            @click="dialogsRef?.openPreview()"
           >
             <v-icon size="14" class="mr-1">mdi-eye-outline</v-icon>
             {{ $t('prompts.preview') }}
@@ -1371,7 +580,7 @@ const canDeleteGroup = (g: PromptGroup) =>
           type="button"
           class="group-chip group-chip--add"
           :title="$t('prompts.groupAdd')"
-          @click="openAddGroup"
+          @click="dialogsRef?.openAddGroup()"
           @dragover="onGroupDragOver(activeGroups.length, $event)"
           @drop="onGroupDrop(activeGroups.length)"
         >
@@ -1431,1061 +640,29 @@ const canDeleteGroup = (g: PromptGroup) =>
 
       <!-- ============ Layout ============ -->
       <div class="prompts-layout">
-        <!-- ====== Left list ====== -->
-        <aside class="prompts-list">
-          <div class="prompts-search">
-            <div class="prompts-search__field">
-              <svg
-                class="prompts-search__icon"
-                viewBox="0 0 16 16"
-                fill="none"
-                aria-hidden="true"
-              >
-                <circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.3" />
-                <path d="M10.5 10.5 L13.5 13.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
-              </svg>
-              <input
-                :value="searchText"
-                type="text"
-                class="prompts-search__input"
-                :placeholder="$t('prompts.searchPlaceholder')"
-                :aria-label="$t('prompts.searchPlaceholder')"
-                @input="store.setSearchText(($event.target as HTMLInputElement).value)"
-              />
-              <button
-                v-if="searchText"
-                type="button"
-                class="prompts-search__clear"
-                :aria-label="$t('prompts.clearSearch')"
-                @click="store.setSearchText('')"
-              >×</button>
-            </div>
-            <button
-              v-if="!multiSelectMode"
-              type="button"
-              class="prompts-search__multi"
-              @click="store.enterMultiSelect()"
-            >{{ $t('entryTransfer.multiSelect') }}</button>
-            <button
-              v-else
-              type="button"
-              class="prompts-search__multi is-active"
-              @click="store.exitMultiSelect()"
-            >{{ $t('entryTransfer.multiSelectDone') }}</button>
-          </div>
-
-          <div
-            v-if="multiSelectMode"
-            class="entry-batch-bar"
-          >
-            <span class="entry-batch-bar__count">
-              {{ $t('entryTransfer.batchSelected', { n: selectedPromptIds.length }) }}
-            </span>
-            <button
-              type="button"
-              class="entry-batch-bar__btn"
-              @click="selectAllVisiblePrompts"
-            >{{ $t('entryTransfer.batchSelectAllVisible') }}</button>
-            <button
-              type="button"
-              class="entry-batch-bar__btn"
-              :disabled="selectedPromptIds.length === 0"
-              @click="store.clearMultiSelection()"
-            >{{ $t('entryTransfer.batchClearSelection') }}</button>
-            <v-spacer />
-            <button
-              type="button"
-              class="entry-batch-bar__btn entry-batch-bar__btn--primary"
-              :disabled="selectedPromptIds.length === 0"
-              @click="openBatchTransfer('copy')"
-            >{{ $t('entryTransfer.batchCopyTo') }}</button>
-            <button
-              type="button"
-              class="entry-batch-bar__btn entry-batch-bar__btn--primary"
-              :disabled="selectedPromptIds.length === 0"
-              @click="openBatchTransfer('move')"
-            >{{ $t('entryTransfer.batchMoveTo') }}</button>
-          </div>
-
-          <div class="prompts-list__scroll">
-            <button
-              v-if="isEntryListGroup && !multiSelectMode"
-              type="button"
-              class="entry-card entry-card--new"
-              @click="createEntry"
-            >
-              <span class="entry-card--new__plus">+</span>
-              <span class="entry-card--new__label">{{ $t('prompts.newPrompt') }}</span>
-            </button>
-
-            <template v-for="(row, rowIdx) in listRenderRows" :key="row.key">
-              <span
-                v-if="entryDragOverIdx === rowIdx && isEntryListGroup && !multiSelectMode"
-                class="entry-drop-indicator"
-              />
-              <div
-                v-if="row.kind === 'legacy-bundle'"
-                class="character-system-bundle"
-                :class="{
-                  'is-active':
-                    !multiSelectMode &&
-                    (selected?.id === row.entry.id ||
-                      selected?.id === row.innerEntry.id),
-                  'is-disabled': isEntryMutedByGroup(row.entry),
-                  'is-dragging':
-                    entryDragId === row.entry.id ||
-                    entryDragId === row.innerEntry.id,
-                }"
-                tabindex="0"
-                :draggable="!multiSelectMode"
-                @click="multiSelectMode ? undefined : selectEntry(row.entry.id)"
-                @keydown.enter="multiSelectMode ? undefined : selectEntry(row.entry.id)"
-                @dragstart="onEntryDragStart(row.entry.id, $event)"
-                @dragover="onEntryDragOver(rowIdx, $event)"
-                @drop="onEntryDropAtRow(rowIdx)"
-                @dragend="onEntryDragEnd"
-              >
-                <div class="character-system-bundle__chrome">
-                  <v-icon
-                    size="14"
-                    class="character-system-bundle__handle"
-                    :title="$t('prompts.dragHandle')"
-                  >
-                    mdi-drag-vertical
-                  </v-icon>
-                  <v-icon size="20" class="character-system-bundle__icon">
-                    {{ groupIcon(currentGroup!.kind) }}
-                  </v-icon>
-                  <div class="character-system-bundle__title">
-                    {{ $t(legacyBundleTitleKey(row.entry.bindingSlot, currentGroup?.kind)) }}
-                  </div>
-                  <div class="character-system-bundle__desc group-bound-desc">
-                    <p>
-                      {{ $t(legacyBundleDescKey(row.entry.bindingSlot, currentGroup?.kind)) }}
-                    </p>
-                    <p
-                      v-if="
-                        row.entry.bindingSlot === 'boundChatHistory' &&
-                        showHistoryTokenTrim(currentGroup?.kind)
-                      "
-                    >
-                      {{ $t('prompts.groupBoundHistoryTokenTrim') }}
-                    </p>
-                    <p class="group-bound-desc__drag">
-                      {{ $t('prompts.groupBoundDragHint') }}
-                    </p>
-                  </div>
-                </div>
-                <article
-                  class="entry-card entry-card--in-character-bundle"
-                  :class="{
-                    'is-active': selected?.id === row.innerEntry.id,
-                    'is-disabled': !row.innerEntry.enabled,
-                  }"
-                  draggable="false"
-                  @click.stop="selectEntry(row.innerEntry.id)"
-                >
-                  <div class="entry-card__row">
-                    <button
-                      v-if="bindingSlotAllowsToggle(row.innerEntry.bindingSlot)"
-                      type="button"
-                      class="entry-card__enabled"
-                      :class="{ 'is-on': row.innerEntry.enabled }"
-                      :aria-pressed="row.innerEntry.enabled"
-                      :title="$t('prompts.fieldEnabled')"
-                      @click.stop="
-                        onInnerSlotEnabledToggle(row.innerEntry)
-                      "
-                    ></button>
-                    <h2 class="entry-card__title entry-card__title--bundle-inner">
-                      {{ $t(bindingSlotLabelKey(row.innerEntry.bindingSlot)) }}
-                    </h2>
-                    <span class="entry-card__binding">{{ $t('prompts.bindingSlotTag') }}</span>
-                  </div>
-                  <div class="entry-card__meta entry-card__meta--binding">
-                    <span
-                      v-if="bindingSlotBundlePartsKey(row.innerEntry.bindingSlot)"
-                      class="entry-card__bundle-parts"
-                    >
-                      {{ $t(bindingSlotBundlePartsKey(row.innerEntry.bindingSlot)!) }}
-                    </span>
-                    <span class="entry-card__pos">{{ $t('prompts.positionRelative') }}</span>
-                  </div>
-                </article>
-              </div>
-              <article
-                v-else
-                class="entry-card"
-                :class="{
-                  'is-active': !multiSelectMode && selected?.id === row.entry.id,
-                  'is-selected':
-                    multiSelectMode &&
-                    !row.entry.bindingSlot &&
-                    selectedPromptIds.includes(row.entry.id),
-                  'is-disabled': !row.entry.enabled || isEntryMutedByGroup(row.entry),
-                  'is-dragging': entryDragId === row.entry.id,
-                }"
-                tabindex="0"
-                :draggable="!multiSelectMode"
-                @click="selectEntry(row.entry.id)"
-                @keydown.enter="selectEntry(row.entry.id)"
-                @dragstart="onEntryDragStart(row.entry.id, $event)"
-                @dragover="onEntryDragOver(rowIdx, $event)"
-                @drop="onEntryDropAtRow(rowIdx)"
-                @dragend="onEntryDragEnd"
-              >
-                <div class="entry-card__row">
-                  <v-checkbox
-                    v-if="multiSelectMode && !row.entry.bindingSlot"
-                    :model-value="selectedPromptIds.includes(row.entry.id)"
-                    density="compact"
-                    hide-details
-                    class="entry-card__check"
-                    @click.stop
-                    @update:model-value="store.togglePromptMultiSelected(row.entry.id)"
-                  />
-                  <v-icon
-                    v-else-if="!multiSelectMode"
-                    size="14"
-                    class="entry-card__handle"
-                    :title="$t('prompts.dragHandle')"
-                  >
-                    mdi-drag-vertical
-                  </v-icon>
-                  <button
-                    v-if="!row.entry.bindingSlot || bindingSlotAllowsToggle(row.entry.bindingSlot)"
-                    type="button"
-                    class="entry-card__enabled"
-                    :class="{ 'is-on': row.entry.enabled }"
-                    :aria-pressed="row.entry.enabled"
-                    :title="$t('prompts.fieldEnabled')"
-                    @click.stop="store.updatePrompt(row.entry.id, { enabled: !row.entry.enabled })"
-                  ></button>
-                  <h2 class="entry-card__title">
-                    <template v-if="row.entry.bindingSlot">{{
-                      $t(bindingSlotLabelKey(row.entry.bindingSlot))
-                    }}</template>
-                    <template v-else>{{ row.entry.title || $t('prompts.untitled') }}</template>
-                  </h2>
-                  <span
-                    v-if="row.entry.bindingSlot"
-                    class="entry-card__binding"
-                  >{{ $t('prompts.bindingSlotTag') }}</span>
-                  <span
-                    v-else-if="row.entry.isSeed"
-                    class="entry-card__seed"
-                  >{{ $t('prompts.seedTag') }}</span>
-                </div>
-                <p
-                  v-if="
-                    (row.entry.description || row.entry.content) &&
-                    (!row.entry.bindingSlot ||
-                      bindingSlotHasEditableContent(row.entry.bindingSlot))
-                  "
-                  class="entry-card__body"
-                >{{ previewBody(row.entry) }}</p>
-                <div
-                  v-if="!row.entry.bindingSlot || bindingSlotHasEditableContent(row.entry.bindingSlot)"
-                  class="entry-card__meta"
-                >
-                  <span class="entry-card__role-chip" :class="`role-${row.entry.role}`">
-                    {{ $t(`prompts.role${row.entry.role.charAt(0).toUpperCase() + row.entry.role.slice(1)}`) }}
-                  </span>
-                  <span
-                    class="entry-card__pos"
-                    :class="{ 'is-chat': row.entry.injectionPosition === 'chat' }"
-                  >
-                    {{ row.entry.injectionPosition === 'relative'
-                      ? $t('prompts.positionRelative')
-                      : `${$t('prompts.positionChat')} · ${$t('prompts.fieldDepth')} ${row.entry.injectionDepth}` }}
-                  </span>
-                  <span
-                    v-if="!row.entry.bindingSlot && row.entry.triggers.length"
-                    class="entry-card__trigs"
-                  >
-                    {{ row.entry.triggers.map((t) => $t(`prompts.trigger${t.charAt(0).toUpperCase() + t.slice(1)}`)).join(' · ') }}
-                  </span>
-                </div>
-                <div v-else class="entry-card__meta entry-card__meta--binding">
-                  <span class="entry-card__pos">{{ $t('prompts.positionRelative') }}</span>
-                </div>
-              </article>
-            </template>
-            <span
-              v-if="entryDragOverIdx === listRenderRows.length && isEntryListGroup"
-              class="entry-drop-indicator"
-            />
-
-            <div
-              v-if="isEntryListGroup && listRenderRows.length === 0"
-              class="prompts-empty"
-            >
-              <div class="prompts-empty__title">{{ $t('prompts.emptyTitle') }}</div>
-              <div class="prompts-empty__hint">{{ $t('prompts.emptyHint') }}</div>
-            </div>
-          </div>
-        </aside>
-
-        <!-- ====== Right editor ====== -->
-        <section v-if="showEditorPane" class="prompts-editor">
-          <div class="prompts-editor__panel">
-          <button
-            v-if="mobileMasterDetail"
-            type="button"
-            class="prompts-editor__back"
-            @click="backToPromptList"
-          >
-            <v-icon size="18">mdi-chevron-left</v-icon>
-            {{ $t('prompts.backToList') }}
-          </button>
-          <div class="prompts-editor__scroll">
-          <template v-if="listBundleEditor">
-            <div class="editor-card editor-card--binding">
-              <section class="binding-editor__block">
-                <header class="binding-editor__section-head">
-                  <h2 class="binding-editor__block-title">
-                    {{ $t(legacyBundleTitleKey(listBundleEditor.block.bindingSlot, entryGroupKind(listBundleEditor.block))) }}
-                  </h2>
-                  <span class="binding-editor__section-tag">
-                    {{ $t('prompts.bindingEditorBlockTag') }}
-                  </span>
-                </header>
-                <div class="binding-editor__section-body group-bound-desc">
-                  <p>
-                    {{ $t(legacyBundleDescKey(listBundleEditor.block.bindingSlot, entryGroupKind(listBundleEditor.block))) }}
-                  </p>
-                  <p
-                    v-if="showHistoryTokenTrim(entryGroupKind(listBundleEditor.block))"
-                  >
-                    {{ $t('prompts.groupBoundHistoryTokenTrim') }}
-                  </p>
-                  <p class="group-bound-desc__drag">
-                    {{ $t('prompts.groupBoundDragHint') }}
-                  </p>
-                </div>
-              </section>
-
-              <section class="binding-editor__slot">
-                <header
-                  class="binding-editor__section-head binding-editor__section-head--slot"
-                >
-                  <button
-                    v-if="bindingSlotAllowsToggle(listBundleEditor.slot.bindingSlot)"
-                    type="button"
-                    class="editor-card__enabled"
-                    :class="{ 'is-on': listBundleEditor.slot.enabled }"
-                    :aria-pressed="listBundleEditor.slot.enabled"
-                    :title="$t('prompts.fieldEnabled')"
-                    :aria-label="$t('prompts.fieldEnabled')"
-                    @click="onInnerSlotEnabledToggle(listBundleEditor.slot)"
-                  >
-                    <span class="editor-card__enabled-track" />
-                    <span class="editor-card__enabled-thumb" />
-                  </button>
-                  <h3 class="binding-editor__slot-title">
-                    {{ $t(bindingSlotLabelKey(listBundleEditor.slot.bindingSlot)) }}
-                  </h3>
-                  <span class="binding-editor__section-tag">
-                    {{ $t('prompts.bindingEditorSlotTag') }}
-                  </span>
-                </header>
-                <div class="binding-editor__section-body">
-                  <p>{{ $t(bindingSlotListHintKey(listBundleEditor.slot.bindingSlot)) }}</p>
-                  <p>{{ $t(bindingSlotEditorDescKey(listBundleEditor.slot.bindingSlot)) }}</p>
-                </div>
-              </section>
-
-              <footer class="editor-card__foot">
-                <span class="editor-card__autosave">{{ $t('prompts.autosaveHint') }}</span>
-              </footer>
-            </div>
-          </template>
-
-          <template v-else-if="selected?.bindingSlot && bindingSlotUsesFlatSubBlockUi(selected.bindingSlot, entryGroupKind(selected), promptsInGroup(selected.groupId))">
-            <div class="editor-card editor-card--binding">
-              <section class="binding-editor__slot binding-editor__slot--standalone">
-                <header
-                  class="binding-editor__section-head binding-editor__section-head--slot"
-                >
-                  <button
-                    v-if="!bindingSlotIsRequired(selected.bindingSlot)"
-                    type="button"
-                    class="editor-card__enabled"
-                    :class="{ 'is-on': selected.enabled }"
-                    :aria-pressed="selected.enabled"
-                    :title="$t('prompts.fieldEnabled')"
-                    :aria-label="$t('prompts.fieldEnabled')"
-                    @click="onEnabledToggle"
-                  >
-                    <span class="editor-card__enabled-track" />
-                    <span class="editor-card__enabled-thumb" />
-                  </button>
-                  <h2 class="binding-editor__slot-title binding-editor__slot-title--standalone">
-                    {{ $t(bindingSlotLabelKey(selected.bindingSlot)) }}
-                  </h2>
-                  <span class="binding-editor__section-tag">
-                    {{ $t('prompts.bindingEditorSlotTag') }}
-                  </span>
-                </header>
-                <div class="binding-editor__section-body">
-                  <p>{{ $t(bindingSlotListHintKey(selected.bindingSlot)) }}</p>
-                  <p>{{ $t(bindingSlotEditorDescKey(selected.bindingSlot)) }}</p>
-                  <template v-if="bindingSlotHasEditableContent(selected.bindingSlot)">
-                    <div class="editor-card__field-row editor-card__field-row--role-pos">
-                      <div class="editor-card__field-block">
-                        <label class="editor-card__field-label">{{ $t('prompts.fieldRole') }}</label>
-                        <div class="pill-group">
-                          <button
-                            v-for="opt in ROLE_OPTIONS"
-                            :key="opt.id"
-                            type="button"
-                            class="pill"
-                            :class="{ 'is-on': selected.role === opt.id, [`role-${opt.id}`]: true }"
-                            @click="setRole(opt.id)"
-                          >{{ $t(opt.key) }}</button>
-                        </div>
-                      </div>
-
-                      <div class="editor-card__field-block">
-                        <label class="editor-card__field-label">
-                          {{ $t('prompts.fieldPosition') }}
-                          <span class="editor-card__field-hint">
-                            {{ selected.injectionPosition === 'relative'
-                              ? $t('prompts.positionRelativeHint')
-                              : $t('prompts.positionChatHint') }}
-                          </span>
-                        </label>
-                        <div class="pill-group">
-                          <button
-                            type="button"
-                            class="pill"
-                            :class="{ 'is-on': selected.injectionPosition === 'relative' }"
-                            @click="setPosition('relative')"
-                          >{{ $t('prompts.positionRelative') }}</button>
-                          <button
-                            type="button"
-                            class="pill"
-                            :class="{ 'is-on': selected.injectionPosition === 'chat' }"
-                            @click="setPosition('chat')"
-                          >{{ $t('prompts.positionChat') }}</button>
-                          <template v-if="selected.injectionPosition === 'chat'">
-                            <span class="pill-divider" />
-                            <span class="num-field">
-                              <span class="num-field__label">{{ $t('prompts.fieldDepth') }}</span>
-                              <input
-                                v-model.number="depthDraft"
-                                type="number"
-                                min="0"
-                                class="num-field__input"
-                                :title="$t('prompts.depthHint')"
-                                @blur="commitPromptEditorDraftsFromBlur()"
-                              />
-                            </span>
-                            <span class="num-field">
-                              <span class="num-field__label">{{ $t('prompts.fieldOrder') }}</span>
-                              <input
-                                v-model.number="orderDraft"
-                                type="number"
-                                class="num-field__input"
-                                :title="$t('prompts.orderHint')"
-                                @blur="commitPromptEditorDraftsFromBlur()"
-                              />
-                            </span>
-                          </template>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="editor-card__field">
-                      <label class="editor-card__field-label">
-                        {{ $t('prompts.fieldContent') }}
-                        <span class="editor-card__field-hint">{{ $t('prompts.contentHint') }}</span>
-                      </label>
-                      <textarea
-                        v-model="contentDraft"
-                        class="editor-card__content-input"
-                        rows="18"
-                        spellcheck="false"
-                        :placeholder="$t('prompts.contentPlaceholder')"
-                        @blur="commitPromptEditorDraftsFromBlur()"
-                      ></textarea>
-                    </div>
-                  </template>
-                </div>
-              </section>
-              <footer class="editor-card__foot">
-                <span class="editor-card__autosave">{{ $t('prompts.autosaveHint') }}</span>
-              </footer>
-            </div>
-          </template>
-
-          <template v-else-if="selected?.bindingSlot">
-            <div class="editor-card editor-card--binding">
-              <section class="binding-editor__block">
-                <header class="binding-editor__section-head">
-                  <h2 class="binding-editor__block-title">
-                    {{ $t(legacyBundleTitleKey(selected.bindingSlot, entryGroupKind(selected))) }}
-                  </h2>
-                  <span class="binding-editor__section-tag">
-                    {{ $t('prompts.bindingEditorBlockTag') }}
-                  </span>
-                </header>
-                <div class="binding-editor__section-body group-bound-desc">
-                  <p>
-                    {{ $t(legacyBundleDescKey(selected.bindingSlot, entryGroupKind(selected))) }}
-                  </p>
-                  <p
-                    v-if="
-                      selected.bindingSlot === 'boundCharacterPostHistory' &&
-                      showHistoryTokenTrim(entryGroupKind(selected))
-                    "
-                  >
-                    {{ $t('prompts.groupBoundHistoryTokenTrim') }}
-                  </p>
-                  <p class="group-bound-desc__drag">
-                    {{ $t('prompts.groupBoundDragHint') }}
-                  </p>
-                </div>
-              </section>
-
-              <section class="binding-editor__slot">
-                <header
-                  class="binding-editor__section-head binding-editor__section-head--slot"
-                >
-                  <button
-                    v-if="!bindingSlotIsRequired(selected.bindingSlot)"
-                    type="button"
-                    class="editor-card__enabled"
-                    :class="{ 'is-on': selected.enabled }"
-                    :aria-pressed="selected.enabled"
-                    :title="$t('prompts.fieldEnabled')"
-                    :aria-label="$t('prompts.fieldEnabled')"
-                    @click="onEnabledToggle"
-                  >
-                    <span class="editor-card__enabled-track" />
-                    <span class="editor-card__enabled-thumb" />
-                  </button>
-                  <h3 class="binding-editor__slot-title">
-                    {{ $t(bindingSlotLabelKey(selected.bindingSlot)) }}
-                  </h3>
-                  <span class="binding-editor__section-tag">
-                    {{ $t('prompts.bindingEditorSlotTag') }}
-                  </span>
-                </header>
-                <div class="binding-editor__section-body">
-                  <p>{{ $t(bindingSlotListHintKey(selected.bindingSlot)) }}</p>
-                  <p>{{ $t(bindingSlotEditorDescKey(selected.bindingSlot)) }}</p>
-                </div>
-              </section>
-
-              <footer class="editor-card__foot">
-                <span class="editor-card__autosave">{{ $t('prompts.autosaveHint') }}</span>
-              </footer>
-            </div>
-          </template>
-
-          <template v-else-if="selected">
-            <div class="editor-card">
-              <header class="editor-card__head">
-                <div class="editor-card__head-row">
-                  <button
-                    type="button"
-                    class="editor-card__enabled"
-                    :class="{ 'is-on': selected.enabled }"
-                    :aria-pressed="selected.enabled"
-                    :title="$t('prompts.fieldEnabled')"
-                    @click="onEnabledToggle"
-                  >
-                    <span class="editor-card__enabled-track" />
-                    <span class="editor-card__enabled-thumb" />
-                  </button>
-                  <input
-                    ref="titleInputRef"
-                    v-model="titleDraft"
-                    type="text"
-                    class="editor-card__title-input"
-                    :placeholder="$t('prompts.titlePlaceholder')"
-                    :aria-label="$t('prompts.fieldTitle')"
-                    @blur="commitPromptEditorDraftsFromBlur()"
-                  />
-                  <span v-if="selected.isSeed" class="editor-card__seed">
-                    {{ $t('prompts.seedTag') }}
-                  </span>
-                </div>
-                <input
-                  v-model="descriptionDraft"
-                  type="text"
-                  class="editor-card__description-input"
-                  :placeholder="$t('prompts.descriptionPlaceholder')"
-                  :aria-label="$t('prompts.fieldDescription')"
-                  @blur="commitPromptEditorDraftsFromBlur()"
-                />
-                <div class="editor-card__meta">
-                  <span>
-                    <span class="editor-card__meta-label">{{ $t('prompts.fieldGroup') }}</span>
-                    {{ entryGroupName(selected) }}
-                  </span>
-                  <span>
-                    <span class="editor-card__meta-label">{{ $t('prompts.fieldUpdatedAt') }}</span>
-                    {{ formatDate(selected.updatedAt) }}
-                  </span>
-                  <span>
-                    <span class="editor-card__meta-label">{{ $t('prompts.fieldChars') }}</span>
-                    {{ selected.content.length }}
-                  </span>
-                </div>
-              </header>
-
-              <div class="editor-card__field-row editor-card__field-row--role-pos">
-                <div class="editor-card__field-block">
-                  <label class="editor-card__field-label">{{ $t('prompts.fieldRole') }}</label>
-                  <div class="pill-group">
-                    <button
-                      v-for="opt in ROLE_OPTIONS"
-                      :key="opt.id"
-                      type="button"
-                      class="pill"
-                      :class="{ 'is-on': selected.role === opt.id, [`role-${opt.id}`]: true }"
-                      @click="setRole(opt.id)"
-                    >{{ $t(opt.key) }}</button>
-                  </div>
-                </div>
-
-                <div class="editor-card__field-block">
-                  <label class="editor-card__field-label">
-                    {{ $t('prompts.fieldPosition') }}
-                    <span class="editor-card__field-hint">
-                      {{ selected.injectionPosition === 'relative'
-                        ? $t('prompts.positionRelativeHint')
-                        : $t('prompts.positionChatHint') }}
-                    </span>
-                  </label>
-                  <div class="pill-group">
-                    <button
-                      type="button"
-                      class="pill"
-                      :class="{ 'is-on': selected.injectionPosition === 'relative' }"
-                      @click="setPosition('relative')"
-                    >{{ $t('prompts.positionRelative') }}</button>
-                    <button
-                      type="button"
-                      class="pill"
-                      :class="{ 'is-on': selected.injectionPosition === 'chat' }"
-                      @click="setPosition('chat')"
-                    >{{ $t('prompts.positionChat') }}</button>
-                    <template v-if="selected.injectionPosition === 'chat'">
-                      <span class="pill-divider" />
-                      <span class="num-field">
-                        <span class="num-field__label">{{ $t('prompts.fieldDepth') }}</span>
-                        <input
-                          v-model.number="depthDraft"
-                          type="number"
-                          min="0"
-                          class="num-field__input"
-                          :title="$t('prompts.depthHint')"
-                          @blur="commitPromptEditorDraftsFromBlur()"
-                        />
-                      </span>
-                      <span class="num-field">
-                        <span class="num-field__label">{{ $t('prompts.fieldOrder') }}</span>
-                        <input
-                          v-model.number="orderDraft"
-                          type="number"
-                          class="num-field__input"
-                          :title="$t('prompts.orderHint')"
-                          @blur="commitPromptEditorDraftsFromBlur()"
-                        />
-                      </span>
-                    </template>
-                  </div>
-                </div>
-              </div>
-
-              <div class="editor-card__field">
-                <label class="editor-card__field-label">
-                  {{ $t('prompts.fieldTriggers') }}
-                  <span class="editor-card__field-hint">{{ $t('prompts.triggersHint') }}</span>
-                </label>
-                <div class="pill-group">
-                  <button
-                    v-for="opt in TRIGGER_OPTIONS"
-                    :key="opt.id"
-                    type="button"
-                    class="pill pill--check"
-                    :class="{ 'is-on': selected.triggers.includes(opt.id) }"
-                    @click="toggleTrigger(opt.id)"
-                  >
-                    <span class="pill__tick">{{ selected.triggers.includes(opt.id) ? '✓' : '' }}</span>
-                    {{ $t(opt.key) }}
-                  </button>
-                </div>
-              </div>
-
-              <div class="editor-card__field">
-                <label class="editor-card__field-label">
-                  {{ $t('prompts.fieldTags') }}
-                  <span class="editor-card__field-hint">{{ $t('prompts.tagsHint') }}</span>
-                </label>
-                <input
-                  v-model="tagsInputDraft"
-                  type="text"
-                  class="editor-card__tags-input"
-                  :placeholder="$t('prompts.tagsPlaceholder')"
-                  @blur="commitTagsDraft()"
-                />
-              </div>
-
-              <div class="editor-card__field">
-                <label class="editor-card__field-label">
-                  {{ $t('prompts.fieldContent') }}
-                  <span class="editor-card__field-hint">{{ $t('prompts.contentHint') }}</span>
-                </label>
-                <textarea
-                  v-model="contentDraft"
-                  class="editor-card__content-input"
-                  rows="18"
-                  spellcheck="false"
-                  :placeholder="$t('prompts.contentPlaceholder')"
-                  @blur="commitPromptEditorDraftsFromBlur()"
-                ></textarea>
-              </div>
-
-              <footer class="editor-card__foot">
-                <span class="editor-card__autosave">{{ $t('prompts.autosaveHint') }}</span>
-                <span class="editor-card__actions">
-                  <button
-                    type="button"
-                    class="editor-card__btn"
-                    @click="duplicateCurrent"
-                  >{{ $t('entryTransfer.copy') }}</button>
-                  <button
-                    type="button"
-                    class="editor-card__btn"
-                    @click="openEntryTransfer('copy')"
-                  >{{ $t('entryTransfer.copyTo') }}</button>
-                  <button
-                    type="button"
-                    class="editor-card__btn"
-                    @click="openEntryTransfer('move')"
-                  >{{ $t('entryTransfer.moveTo') }}</button>
-                  <button
-                    type="button"
-                    class="editor-card__btn editor-card__btn--danger"
-                    @click="confirmDeleteEntry"
-                  >{{ $t('prompts.deletePrompt') }}</button>
-                </span>
-              </footer>
-            </div>
-          </template>
-
-          <template v-else>
-            <div class="editor-empty">
-              <v-icon size="44" class="editor-empty__icon">
-                {{ currentGroup ? groupIcon(currentGroup.kind) : 'mdi-file-document-outline' }}
-              </v-icon>
-              <h2 class="editor-empty__title">
-                {{ currentGroup && !isEntryListGroup
-                  ? $t(groupBoundTitleKey(currentGroup.kind))
-                  : $t('prompts.editorEmptyTitle') }}
-              </h2>
-              <p
-                v-if="currentGroup && !isEntryListGroup"
-                class="editor-empty__hint group-bound-desc"
-              >
-                <span class="group-bound-desc__line">{{
-                  $t(groupBoundDescKey(currentGroup.kind))
-                }}</span>
-                <span
-                  v-if="showHistoryTokenTrim(currentGroup.kind)"
-                  class="group-bound-desc__line"
-                >{{ $t('prompts.groupBoundHistoryTokenTrim') }}</span>
-                <span class="group-bound-desc__line group-bound-desc__drag">{{
-                  $t('prompts.groupBoundDragHint')
-                }}</span>
-              </p>
-              <p v-else class="editor-empty__hint">
-                {{ $t('prompts.editorEmptyHint') }}
-              </p>
-              <button
-                v-if="isEntryListGroup"
-                type="button"
-                class="editor-empty__cta"
-                @click="createEntry"
-              >+ {{ $t('prompts.newPrompt') }}</button>
-            </div>
-          </template>
-          </div>
-          </div>
-        </section>
+        <PromptsListPanel
+          @batch-transfer="onListBatchTransfer"
+          @create-entry="createEntry"
+        />
+        <PromptsEntryEditor
+          ref="editorRef"
+          :embedded="props.embedded"
+          @batch-transfer="onEditorBatchTransfer"
+          @delete-entry="onDeleteEntry"
+          @create-entry="createEntry"
+        />
       </div>
     </div>
 
-    <!-- ============ Dialogs ============ -->
-    <v-dialog v-model="presetCreateOpen">
-      <v-card>
-        <v-card-title class="text-subtitle-1">{{ $t('prompts.presetNewDialogTitle') }}</v-card-title>
-        <v-card-text>
-          <v-text-field
-            v-model="presetCreateName"
-            :label="$t('prompts.presetNewName')"
-            variant="outlined"
-            density="comfortable"
-            hide-details="auto"
-            autofocus
-            @keydown.enter.prevent="submitCreatePreset"
-          />
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="presetCreateOpen = false">{{ $t('settings.themeCancel') }}</v-btn>
-          <v-btn color="primary" variant="flat" :disabled="!presetCreateName.trim()" @click="submitCreatePreset">
-            {{ $t('settings.themeConfirm') }}
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <v-dialog v-model="presetRenameOpen">
-      <v-card>
-        <v-card-title class="text-subtitle-1">{{ $t('prompts.presetRenameDialogTitle') }}</v-card-title>
-        <v-card-text>
-          <v-text-field
-            v-model="presetRenameDraft"
-            :label="$t('prompts.presetNewName')"
-            variant="outlined"
-            density="comfortable"
-            hide-details="auto"
-            autofocus
-            @keydown.enter.prevent="submitRenamePreset"
-          />
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="presetRenameOpen = false">{{ $t('settings.themeCancel') }}</v-btn>
-          <v-btn color="primary" variant="flat" :disabled="!presetRenameDraft.trim()" @click="submitRenamePreset">
-            {{ $t('settings.themeConfirm') }}
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <v-dialog v-model="stImportConfirmOpen" max-width="32rem">
-      <v-card>
-        <v-card-title class="text-subtitle-1">
-          {{ $t('prompts.stImportConfirmTitle') }}
-        </v-card-title>
-        <v-card-text class="text-body-2">
-          <p class="mb-2">{{ $t('prompts.stImportConfirmLead') }}</p>
-          <ul class="pl-4 mb-3">
-            <li>{{ $t('prompts.stImportConfirmBulletOrder') }}</li>
-            <li>{{ $t('prompts.stImportConfirmBulletEnabled') }}</li>
-            <li>{{ $t('prompts.stImportConfirmBulletEdit') }}</li>
-          </ul>
-          <p class="mb-0">
-            {{ $t('prompts.stImportConfirmName', { name: stImportPreviewName }) }}
-          </p>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn
-            variant="text"
-            :disabled="stImportDoing"
-            @click="stImportConfirmOpen = false"
-          >
-            {{ $t('settings.themeCancel') }}
-          </v-btn>
-          <v-btn
-            color="primary"
-            variant="flat"
-            :loading="stImportDoing"
-            @click="confirmStImport"
-          >
-            {{ $t('prompts.stImportConfirmAction') }}
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <v-dialog v-model="importErrorOpen">
-      <v-card>
-        <v-card-title class="text-subtitle-1">
-          {{ $t('prompts.presetImportErrorTitle') }}
-        </v-card-title>
-        <v-card-text class="text-body-2">{{ importErrorMsg }}</v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn color="primary" variant="flat" @click="importErrorOpen = false">
-            {{ $t('prompts.previewClose') }}
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <v-dialog v-model="presetDeleteOpen">
-      <v-card>
-        <v-card-title class="text-subtitle-1">{{ $t('prompts.presetDeleteDialogTitle') }}</v-card-title>
-        <v-card-text class="text-body-2">
-          {{ $t('prompts.presetDeleteDialogBody', { name: activePreset.name }) }}
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="presetDeleteOpen = false">{{ $t('settings.themeCancel') }}</v-btn>
-          <v-btn color="error" variant="flat" @click="performDeletePreset">{{ $t('prompts.presetDelete') }}</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <v-dialog v-model="groupAddOpen">
-      <v-card>
-        <v-card-title class="text-subtitle-1">{{ $t('prompts.groupAddDialogTitle') }}</v-card-title>
-        <v-card-text>
-          <v-text-field
-            v-model="groupAddName"
-            :label="$t('prompts.groupAddName')"
-            variant="outlined"
-            density="comfortable"
-            hide-details="auto"
-            autofocus
-            @keydown.enter.prevent="submitAddGroup"
-          />
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="groupAddOpen = false">{{ $t('settings.themeCancel') }}</v-btn>
-          <v-btn color="primary" variant="flat" :disabled="!groupAddName.trim()" @click="submitAddGroup">
-            {{ $t('settings.themeConfirm') }}
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <v-dialog v-model="groupDeleteOpen">
-      <v-card>
-        <v-card-title class="text-subtitle-1">{{ $t('prompts.groupDeleteDialogTitle') }}</v-card-title>
-        <v-card-text class="text-body-2">
-          {{ $t('prompts.groupDeleteDialogBody', { name: groupDeleteTarget?.name ?? '' }) }}
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="groupDeleteOpen = false">{{ $t('settings.themeCancel') }}</v-btn>
-          <v-btn color="error" variant="flat" @click="performDeleteGroup">{{ $t('prompts.groupDelete') }}</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <EntryBatchTargetDialog
-      v-model:open="batchTransferOpen"
-      :mode="batchTransferMode"
-      :libraries="batchLibraries"
-      :current-library-id="editingPresetId"
-      :current-group-id="batchCurrentGroupId"
-      :resolve-groups="store.groupsForPreset"
-      :ensure-library="ensureBatchLibrary"
-      :single-entry="batchTransferSingle"
-      @pick="onBatchTransferPick"
+    <PromptsDialogs
+      ref="dialogsRef"
+      v-model:import-error-open="importErrorOpen"
+      v-model:st-import-confirm-open="stImportConfirmOpen"
+      :import-error-msg="importErrorMsg"
+      :st-import-doing="stImportDoing"
+      :st-import-preview-name="stImportPreviewName"
+      @confirm-st-import="confirmStImport"
     />
-
-    <v-dialog v-model="entryDeleteOpen">
-      <v-card>
-        <v-card-title class="text-subtitle-1">{{ $t('prompts.deleteDialogTitle') }}</v-card-title>
-        <v-card-text class="text-body-2">
-          {{ $t('prompts.deleteDialogBody', { title: selected?.title || $t('prompts.untitled') }) }}
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="entryDeleteOpen = false">{{ $t('settings.themeCancel') }}</v-btn>
-          <v-btn color="error" variant="flat" @click="performDeleteEntry">{{ $t('prompts.deletePrompt') }}</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <!-- ============ Preview modal ============ -->
-    <v-dialog v-model="previewOpen" scrollable>
-      <v-card class="preview-card">
-        <v-card-title class="preview-card__title">
-          <span>{{ $t('prompts.previewDialogTitle') }}</span>
-          <v-spacer />
-          <v-btn
-            icon="mdi-close"
-            variant="text"
-            density="comfortable"
-            @click="previewOpen = false"
-          />
-        </v-card-title>
-        <div class="preview-card__topbar">
-          <span class="preview-card__topbar-label">{{ $t('prompts.previewTriggerLabel') }}</span>
-          <div class="pill-group">
-            <button
-              type="button"
-              class="pill"
-              :class="{ 'is-on': previewTrigger === 'all' }"
-              @click="previewTrigger = 'all'"
-            >{{ $t('prompts.previewTriggerAll') }}</button>
-            <button
-              v-for="opt in TRIGGER_OPTIONS"
-              :key="opt.id"
-              type="button"
-              class="pill"
-              :class="{ 'is-on': previewTrigger === opt.id }"
-              @click="previewTrigger = opt.id"
-            >{{ $t(opt.key) }}</button>
-          </div>
-          <span class="preview-card__topbar-sep" />
-          <span class="preview-card__meta">
-            <span class="preview-card__meta-label">{{ $t('prompts.previewMessagesLabel') }}</span>
-            {{ previewResult?.messages.length ?? 0 }}
-          </span>
-          <span class="preview-card__meta">
-            <span class="preview-card__meta-label">{{ $t('prompts.previewTokensLabel') }}</span>
-            {{ previewResult?.estimatedTokens ?? 0 }}
-          </span>
-          <span
-            v-if="(previewResult?.droppedHistoryCount ?? 0) > 0"
-            class="preview-card__meta preview-card__meta--warn"
-          >
-            {{ $t('prompts.previewDropped', { n: previewResult?.droppedHistoryCount ?? 0 }) }}
-          </span>
-        </div>
-        <v-card-text class="preview-card__body">
-          <v-progress-linear
-            v-if="previewLoading"
-            indeterminate
-            class="mb-2 rounded"
-            color="primary"
-          />
-          <v-alert
-            v-else-if="previewError"
-            type="error"
-            variant="tonal"
-            density="compact"
-            class="mb-0"
-          >
-            {{ previewError }}
-          </v-alert>
-          <AssembledMessagesPanel
-            v-else-if="previewResult?.messages.length"
-            :messages="previewResult.messages"
-          />
-        </v-card-text>
-        <v-card-actions class="preview-card__foot">
-          <v-spacer />
-          <button
-            type="button"
-            class="editor-card__btn"
-            :class="{ 'is-flash': previewCopiedFlash }"
-            @click="copyPreviewFormatted"
-          >{{ previewCopiedFlash ? $t('prompts.previewCopied') : $t('prompts.previewCopy') }}</button>
-          <button
-            type="button"
-            class="editor-card__btn"
-            :class="{ 'is-flash': previewRawCopiedFlash }"
-            @click="copyPreviewJson"
-          >{{ previewRawCopiedFlash ? $t('prompts.previewCopied') : $t('prompts.previewCopyRaw') }}</button>
-          <v-btn variant="text" @click="previewOpen = false">{{ $t('prompts.previewClose') }}</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
   </div>
 </template>
 

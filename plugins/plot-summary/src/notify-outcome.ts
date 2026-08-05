@@ -1,4 +1,4 @@
-import { k } from './settings.js'
+import { tKey } from './settings.js'
 import type { PluginHost } from './types.js'
 
 type OutcomeLevel = 'success' | 'error' | 'warning' | 'info'
@@ -10,7 +10,7 @@ export function notifyOutcome(
   level: OutcomeLevel,
   params?: Record<string, unknown>,
 ): void {
-  host.ui.notify(host.t(k(host, key), params), undefined, { level })
+  host.ui.notify(host.t(tKey(host, key), params), undefined, { level })
 }
 
 /** 串行摘要任务通知：标题含资料库与任务名 */
@@ -20,5 +20,5 @@ export function notifySummarizeTask(
   level: OutcomeLevel,
   taskLabel: string,
 ): void {
-  host.ui.notify(host.t(k(host, key), { task: taskLabel }), undefined, { level })
+  host.ui.notify(host.t(tKey(host, key), { task: taskLabel }), undefined, { level })
 }

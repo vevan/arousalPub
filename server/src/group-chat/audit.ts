@@ -1,4 +1,4 @@
-import type { TurnRecord } from '../chat-storage.js'
+import type { TurnRecord } from '../chat-turn-types.js'
 import {
   DEFAULT_MAX_SEGMENTS_PER_TURN,
   normalizeGroupChatSettings,

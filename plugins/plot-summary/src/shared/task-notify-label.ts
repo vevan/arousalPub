@@ -1,4 +1,4 @@
-import { k } from '../settings.js'
+import { tKey } from '../settings.js'
 import { resolveMemoIndex } from './summarize.js'
 import type { PluginHost, SummarizeTask } from '../types.js'
 
@@ -19,7 +19,7 @@ export function formatSummarizeTaskTitlePart(
     ...(typeof memoIndex === 'number' ? { memoIndex } : {}),
   })
   const memo = String(idx).padStart(2, '0')
-  const core = host.t(k(host, 'manualTaskMemory'))
+  const core = host.t(tKey(host, 'manualTaskMemory'))
   return `[MEMO-${memo}] ${core} [${fromTurn}-${toTurn}]`
 }
 

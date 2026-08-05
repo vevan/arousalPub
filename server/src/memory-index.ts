@@ -1,10 +1,10 @@
 import { createEmbedding } from './embedding-client.js'
+import type { TurnRecord } from './chat-turn-types.js'
 import {
   readConversationIndex,
   resolvedLorebookIds,
   updateConversationMemoryEmbeddingModel,
-  type TurnRecord,
-} from './chat-storage.js'
+} from './chat-storage-io.js'
 import { resolveEmbeddingApiCredentials } from './embedding-credential-resolve.js'
 import { createKeyedCoalesceScheduler } from './keyed-serial-queue.js'
 import {

@@ -6572,7 +6572,7 @@ function bumpPanelRevision() {
   panelRevision += 1;
   return panelRevision;
 }
-function k(host, key) {
+function tKey(host, key) {
   return host.pluginKey(key);
 }
 var PLACEMENT = "leftRail";
@@ -6621,8 +6621,8 @@ var SHELL_STYLES = `
 `;
 function renderActionBar(host, opts) {
   if (!opts.showActions) return "";
-  const editTitle = escapeHtml(host.t(k(host, "panelFabEditTooltip")));
-  const regenTitle = escapeHtml(host.t(k(host, "panelFabRegenerateTooltip")));
+  const editTitle = escapeHtml(host.t(tKey(host, "panelFabEditTooltip")));
+  const regenTitle = escapeHtml(host.t(tKey(host, "panelFabRegenerateTooltip")));
   const editDisabled = opts.editEnabled ? "" : " disabled";
   const regenDisabled = opts.regenEnabled && !opts.regenerating ? "" : " disabled";
   const regenBusy = opts.regenerating ? ' aria-busy="true"' : "";
@@ -6643,7 +6643,7 @@ function wrapPanelShell(host, innerHtml, opts) {
   const parts = ['<div class="trace-keeper-shell">'];
   if (opts.emptyReason) {
     if (opts.emptyReason === "awaiting_reply") {
-      const msg = escapeHtml(host.t(k(host, "panelEmptyAwaitingReply")));
+      const msg = escapeHtml(host.t(tKey(host, "panelEmptyAwaitingReply")));
       parts.push('<div class="tk-pending" role="status">');
       parts.push(
         '<i class="mdi mdi-timer-sand tk-pending-hourglass" aria-hidden="true"></i>'
@@ -6654,7 +6654,7 @@ function wrapPanelShell(host, innerHtml, opts) {
       const msgKey = panelEmptyLocaleKey(opts.emptyReason);
       parts.push('<div class="tk-empty" role="status">');
       parts.push(
-        `<p class="tk-empty-msg">${escapeHtml(host.t(k(host, msgKey)))}</p>`
+        `<p class="tk-empty-msg">${escapeHtml(host.t(tKey(host, msgKey)))}</p>`
       );
       if (opts.emptyDetail?.trim()) {
         parts.push(
@@ -6664,7 +6664,7 @@ function wrapPanelShell(host, innerHtml, opts) {
       parts.push("</div>");
       if (opts.showEmptyRegenButton) {
         parts.push('<div class="tk-empty-actions">');
-        const label = escapeHtml(host.t(k(host, "panelRegenerateSeparate")));
+        const label = escapeHtml(host.t(tKey(host, "panelRegenerateSeparate")));
         const busy = opts.regenerating ? ' disabled aria-busy="true"' : "";
         parts.push(
           `<button type="button" class="tk-empty-regen-btn" data-tk-action="regenerate-separate"${busy}>${label}</button>`
@@ -6697,7 +6697,7 @@ function conversationIdFrom(host) {
   return host.conversation.getId?.()?.trim() ?? "";
 }
 function tkNotify(host, messageKey, level, params) {
-  host.ui.notify(host.t(k(host, messageKey), params), void 0, { level });
+  host.ui.notify(host.t(tKey(host, messageKey), params), void 0, { level });
 }
 function segmentCountForTurn(turn) {
   return turn?.segments?.length ?? 0;
@@ -6898,16 +6898,16 @@ function registerEditStateDialog(host) {
   host.registerFormDialog(
     PLUGIN_ID,
     {
-      titleKey: k(host, "editStateDialogTitle"),
+      titleKey: tKey(host, "editStateDialogTitle"),
       fields: [
         {
           key: "stateJson",
-          labelKey: k(host, "editStateJsonLabel"),
+          labelKey: tKey(host, "editStateJsonLabel"),
           type: "textarea"
         }
       ],
-      submitKey: k(host, "editStateSave"),
-      cancelKey: k(host, "editStateCancel"),
+      submitKey: tKey(host, "editStateSave"),
+      cancelKey: tKey(host, "editStateCancel"),
       canSubmit: (model) => parseStateJsonText(String(model.stateJson ?? "")) !== null,
       onSubmit: async (hostApi, model) => {
         await handlePatchStateSubmit(hostApi, model);
@@ -6922,7 +6922,7 @@ function registerPanel(host) {
     placement: PLACEMENT,
     pluginId: PLUGIN_ID,
     tabIcon: "mdi-map-marker-radius-outline",
-    tabLabelKey: k(host, "tabLabel"),
+    tabLabelKey: tKey(host, "tabLabel"),
     interactive: true
   });
   host.ui.panel.onEvent(PLACEMENT, PLUGIN_ID, {
@@ -6956,7 +6956,7 @@ function registerTurnButton(host) {
     icon: "mdi-map-marker-radius-outline",
     tooltipKey: (ctx) => {
       const ord = ctx.turn?.turnOrdinal;
-      if (typeof ord !== "number") return k(host, "tooltipTurnEmpty");
+      if (typeof ord !== "number") return tKey(host, "tooltipTurnEmpty");
       const conversationId = conversationIdFrom(host);
       const pinned = getPinnedView(conversationId);
       const segIdx = segmentIndexFromCtx(ctx);
@@ -6964,8 +6964,8 @@ function registerTurnButton(host) {
         host.conversation.getPluginSettingsSnapshot()
       );
       const hit = findTracePayloadForTurn(ctx.turn, epoch, segIdx);
-      if (pinnedMatches(ctx, pinned) && !hit) return k(host, "tooltipTurnPinnedEmpty");
-      return hit ? k(host, "tooltipTurnView") : k(host, "tooltipTurnEmpty");
+      if (pinnedMatches(ctx, pinned) && !hit) return tKey(host, "tooltipTurnPinnedEmpty");
+      return hit ? tKey(host, "tooltipTurnView") : tKey(host, "tooltipTurnEmpty");
     },
     disabled: (ctx) => {
       const ord = ctx.turn?.turnOrdinal;

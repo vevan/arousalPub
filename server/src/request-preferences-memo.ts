@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import type { UserPreferencesDocument } from './user-preferences-file.js'
+import type { UserPreferencesDocument } from './user-preferences-types.js'
 
 /** 单次 HTTP 请求内 user-preferences.json 读盘 memo（DOC/devNotes/22 M5） */
 interface RequestPreferencesMemo {

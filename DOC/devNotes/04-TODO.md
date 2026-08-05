@@ -4,19 +4,7 @@
 
 ## P0
 
-- [ ] **Graphify 图谱优化全项** — 明细见 [`DOC/devNotes/47`](47-graphify-optimization-backlog.md)；建议顺序：server cycles → server 跟进 → web → plugins
-  - [ ] **server · CS-P0a**：切开 `chat-storage.ts` 中心环（chunk-chain / memory-index / turn-patch / memory-corpus；以及 group-chat audit·continue·outbound·resolve 四环）— §2.1
-  - [ ] **server · CS-P0b**：切开插件沙箱环（`host-api` → `loader` → `sandbox` → `worker-client` → `host-api`）及 `plugin-complete-with-context` ↔ `host-api` — §2.2
-  - [ ] **server · SR1**：小 2-file cycles（`regex-persist`↔patch、`st-preset-import`↔limits、`assemble-prompts`↔`system-binding-slots`、preferences memo 三角、prompt-macros 环）— §3
-  - [ ] **server · SR2**：瘦身 `src/index.ts`（出度过高，路由/注册分文件）— §3
-  - [ ] **server · GF1**：建图排除 `test/**`（消除指向测试的 INFERRED 假边）— §3
-  - [ ] **server 验收**：测试 + typecheck；重跑 `server` directed 图谱确认 cycle 消失（或仅剩已文档化例外）
-  - [ ] **web**：拆分巨型 Vue（优先：`ConversationContextSettings` · `PromptsView` · `CharactersView` · `ConversationListView` · `ChatConversationView` · `PluginSchemaForm` · `LorebooksView`）— §4.1
-  - [ ] **web**：抽公共页面状态 composable（auth / loading / delete-dialog / i18n 等跨页重复模式）— §4.1
-  - [ ] **plugins**：`plot-summary` 继续分包（dialogs / pipeline / settings / review）— §4.2
-  - [ ] **plugins**：`trace-keeper` 保持 panel / separate / server 边界，避免再向 index 堆 — §4.2
-  - [ ] **plugins**：短名 `k()` 改为可读名（guidance-generate / plot-summary / trace-keeper）— §4.2
-  - [ ] **plugins**：`isAutoSummarizeEnabled` 单点导出（消除 dialogs + index 双定义）— §4.2
+（暂无）
 
 ## P1
 
@@ -48,6 +36,7 @@
 
 ## 文档
 
+- [x] **Graphify 图谱优化全项**（2026-08-05 · 分支 `Graphify`）：server Import Cycles / SR1–SR2 / GF1 · web 七巨型 Vue + composable · plugins `tKey` / `isAutoSummarizeEnabled`；循环审计切断 `turn-memory-xml` 等残留值依赖 — 见 `[DOC/devNotes/47](47-graphify-optimization-backlog.md)` · 本文 §已归档
 - [x] Historian 摘要起始轮 toggle 取消（2026-06-12）：`range-picker` 再次点击同一 `turn-block-head` 起始按钮清除 `rangeStartTurn`
 - [x] 对话页正则批量 apply UI（2026-06-12）：`ConversationRegexApplyPanel` · 对话设置 Tab「正则批量」· `POST .../regex/apply` dry-run / apply
 - [x] Web / Server 提示词预设 normalize 完全对齐（2026-06-13）：共用 `shared/prompt-preset-normalize.ts` + `server/src/prompt-preset-normalize.test.ts` 矩阵单测
@@ -131,5 +120,6 @@
 | **Historian · 新建 MEMO 落组**（`summaryGroupPlacement` first                                                                   | last）                  | 2026-07-24                                                                                                                                                                                |
 | **群聊浮动头像组**（header 锚点 · Mic 只读 · 一次 `/@` 一人）                                                                               | 2026-07-24             | `[DOC/devNotes/35](35-group-chat.md)` §2.8 · `ChatComposerGroupRoster`                                                                                                                             |
 | **插件设置导出 / 导入**（全局 settings + `enabled` · 专用 API · 标题栏按钮）                                                                  | 2026-07-24             | `[DOC/devNotes/09](09-plugin-system-and-guidance-generate.md)` §4 · `settings-portability.ts` · `PluginSettingsPanel`                                                                              |
+| **Graphify 图谱优化全项**（server 解环 · `index` 路由拆分 · web 巨型 Vue · plugins `tKey` / autoSummarize）                                      | 2026-08-05 · `Graphify` | `[DOC/devNotes/47](47-graphify-optimization-backlog.md)` · `.graphifyignore` · `chat-group-turn-ops` / `chat-storage-io` / `src/routes/*`                                                          |
 
 

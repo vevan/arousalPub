@@ -10,7 +10,7 @@ import { applyPlotSummaryEntrySort } from './shared/entry-sort.js'
 import { flushPendingLorebookCreates, type PendingLorebookCreate } from './batch-write.js'
 import { resolveSummaryTargetGroupId } from './shared/summary-group-placement.js'
 import { entryKeys, writeSidecarEntry } from './sidecar.js'
-import { k, loadMergedSettings, nextMemoIndexFromLast } from './settings.js'
+import { tKey, loadMergedSettings, nextMemoIndexFromLast } from './settings.js'
 import { notifyOutcome, notifySummarizeTask } from './notify-outcome.js'
 import { formatSummarizeTaskNotifyLabel } from './shared/task-notify-label.js'
 import { parseMemoIndex } from './shared/lorebook-sort.js'
@@ -38,12 +38,12 @@ function setPluginHold(host: PluginHost, hold: boolean) {
 
 function bumpTaskProgress(host: PluginHost, done: number, total: number) {
   host.ui.progress({
-    message: host.t(k(host, 'progressSummarize')),
+    message: host.t(tKey(host, 'progressSummarize')),
     done,
     total,
     indeterminate: true,
     abortable: true,
-    abortLabel: host.t(k(host, 'progressAbort')),
+    abortLabel: host.t(tKey(host, 'progressAbort')),
   })
 }
 
@@ -58,12 +58,12 @@ export async function runSummarizeTasks(
   },
 ) {
   if (summarizeRunning) {
-    host.ui.notify(host.t(k(host, 'notifyBusy')), undefined, { level: 'info' })
+    host.ui.notify(host.t(tKey(host, 'notifyBusy')), undefined, { level: 'info' })
     return { ok: false, reason: 'busy' }
   }
   const tasks = opts.tasks ?? []
   if (tasks.length === 0) {
-    host.ui.notify(host.t(k(host, 'notifyNoTasksSelected')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(tKey(host, 'notifyNoTasksSelected')), undefined, { level: 'warning' })
     return { ok: false, reason: 'no_tasks' }
   }
 
@@ -85,11 +85,11 @@ export async function runSummarizeTasks(
     const fromTurn = opts.fromTurn
     const toTurn = opts.toTurn
     if (fromTurn > toTurn) {
-      host.ui.notify(host.t(k(host, 'notifyInvalidRange')), undefined, { level: 'warning' })
+      host.ui.notify(host.t(tKey(host, 'notifyInvalidRange')), undefined, { level: 'warning' })
       return { ok: false, reason: 'invalid_range' }
     }
     if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
-      host.ui.notify(host.t(k(host, 'notifyTurnRangeTooLong')), undefined, { level: 'warning' })
+      host.ui.notify(host.t(tKey(host, 'notifyTurnRangeTooLong')), undefined, { level: 'warning' })
       return { ok: false, reason: 'turn_range_too_long' }
     }
 
@@ -140,7 +140,7 @@ export async function runSummarizeTasks(
       toTurn,
     )
     if (!prepared.userContent?.trim()) {
-      host.ui.notify(host.t(k(host, 'notifyNoTurnsInRange')), undefined, { level: 'warning' })
+      host.ui.notify(host.t(tKey(host, 'notifyNoTurnsInRange')), undefined, { level: 'warning' })
       return { ok: false, reason: 'no_turns' }
     }
     const preparedContext = prepared.preparedContext
@@ -155,12 +155,12 @@ export async function runSummarizeTasks(
     const pendingCreates: PendingLorebookCreate[] = []
 
     host.ui.progress({
-      message: host.t(k(host, 'progressSummarize')),
+      message: host.t(tKey(host, 'progressSummarize')),
       done: 0,
       total: tasks.length,
       indeterminate: true,
       abortable: true,
-      abortLabel: host.t(k(host, 'progressAbort')),
+      abortLabel: host.t(tKey(host, 'progressAbort')),
     })
     setSummarizeBatchProgress({ taskIndex: 0, total: tasks.length })
 
@@ -268,7 +268,7 @@ export async function runSummarizeTasks(
       } catch (e) {
         if (isAbortError(e)) {
           aborted = true
-          host.ui.notify(host.t(k(host, 'notifyProgressAborted')), undefined, { level: 'info' })
+          host.ui.notify(host.t(tKey(host, 'notifyProgressAborted')), undefined, { level: 'info' })
           break
         }
         if (e instanceof Error && e.message === 'review_skipped') {
@@ -280,7 +280,7 @@ export async function runSummarizeTasks(
         }
         if (e instanceof Error && e.message === 'review_aborted') {
           aborted = true
-          host.ui.notify(host.t(k(host, 'notifyReviewAborted')), undefined, { level: 'info' })
+          host.ui.notify(host.t(tKey(host, 'notifyReviewAborted')), undefined, { level: 'info' })
           break
         }
         console.warn('[plot-summary] task failed', task, e)

@@ -73,24 +73,9 @@ import {
   invalidateRequestPreferencesMemo,
   setMemoizedPreferencesDoc,
 } from './request-preferences-memo.js'
+import type { UserPreferencesDocument } from './user-preferences-types.js'
 
-export interface UserPreferencesDocument {
-  version: 1
-  savedAt: string
-  lorebook?: Partial<LorebookSettings>
-  history?: Partial<HistorySettings>
-  memory?: Partial<MemorySettings>
-  knowledge?: Partial<KnowledgeSettings>
-  budgetTrim?: Partial<BudgetTrimSettings>
-  embeddingApi?: Partial<EmbeddingApiSettings>
-  chunk?: Partial<ChunkSettings>
-  defaultAuthorsNote?: DefaultAuthorsNoteTemplate
-  hybridFts?: Partial<HybridFtsSettings>
-  /** post-user 区宿主隐式 injectionOrder 覆盖（DOC/devNotes/38 §3.2） */
-  postUserInjectionOrder?: PostUserInjectionOrderHostPatch
-  /** ST 式全局宏变量（`{{setglobalvar}}` / `{{getglobalvar}}`） */
-  macroGlobalVars?: Record<string, string>
-}
+export type { UserPreferencesDocument } from './user-preferences-types.js'
 
 type EmbeddingApiSettingsDisk = Partial<EmbeddingApiSettings> & {
   apiKeyEnc?: EncryptedSecretV1

@@ -4,13 +4,19 @@ import ChatBranchPanel from '@/components/chat/ChatBranchPanel.vue'
 import ChatBranchLabelDialog from '@/components/chat/ChatBranchLabelDialog.vue'
 import ChatGroupChatDialog from '@/components/chat/ChatGroupChatDialog.vue'
 import ChatComposerGroupRoster from '@/components/chat/ChatComposerGroupRoster.vue'
+import ChatHeaderBar from '@/components/chat/ChatHeaderBar.vue'
+import ChatMemoryRebuildDialog from '@/components/chat/ChatMemoryRebuildDialog.vue'
 import HomeChat from '@/components/HomeChat.vue'
 import {
   CHAT_CONVERSATION_ACTIONS_KEY,
 } from '@/composables/chat-conversation-actions'
+import type { ConvContextBindings } from '@/composables/chat-session/conv-bindings-types'
+import { syncAuditDebugIfNeeded } from '@/composables/chat-session/use-conversation-audit-debug'
+import { useConvBindings } from '@/composables/chat-session/use-conv-bindings'
+import { useConversationMedia } from '@/composables/chat-session/use-conversation-media'
+import { useMemoryRebuildOffer } from '@/composables/chat-session/use-memory-rebuild-offer'
 import { CONVERSATION_BRANCH_KEY } from '@/composables/conversation-branch-context'
 import { useConversationBranches } from '@/composables/useConversationBranches'
-import { useMemoryRebuild } from '@/composables/useMemoryRebuild'
 import { bootstrapAppData } from '@/bootstrap/app-data'
 import { coreNotify } from '@/utils/core-notify'
 import { fetchDefaultLorebookIds, fetchLorebookPickerItems } from '@/utils/default-lorebook'
@@ -18,67 +24,16 @@ import { useConnectionStore } from '@/stores/connection'
 import { usePreferencesStore } from '@/stores/preferences'
 import { usePromptsStore } from '@/stores/prompts'
 import { useUiContextStore } from '@/stores/ui-context'
-import {
-  hasHistorySettingsOverride,
-  normalizeHistorySettings,
-  resolveHistorySettings,
-  type HistorySettings,
-} from '@/utils/history-settings'
-import {
-  hasMemorySettingsOverride,
-  normalizeMemorySettings,
-  resolveMemorySettings,
-  type MemorySettings,
-} from '@/utils/memory-settings'
-import {
-  hasKnowledgeSettingsOverride,
-  normalizeKnowledgeSettings,
-  resolveKnowledgeSettings,
-  type KnowledgeSettings,
-} from '@/utils/knowledge-settings'
-import {
-  hasBudgetTrimSettingsOverride,
-  normalizeBudgetTrimSettings,
-  resolveBudgetTrimSettings,
-  type BudgetTrimSettings,
-} from '@/utils/budget-trim-settings'
-import {
-  hasLorebookSettingsOverride,
-  normalizeLorebookSettings,
-  resolveLorebookSettings,
-  type LorebookSettings,
-} from '@/utils/lorebook-settings'
-import {
-  authorsNoteComposerActive,
-  authorsNoteFromIndex,
-  normalizeAuthorsNote,
-  type AuthorsNoteSettings,
-} from '@/utils/authors-note-settings'
-import {
-  hasConversationChatOverride,
-  hasConversationEmbeddingOverride,
-  readConversationEmbeddingOverride,
-  resolveConversationChatDisplay,
-  resolveConversationEmbeddingModelSettings,
-  type ConversationEmbeddingApiSettingsOverride,
-  type ResolvedConversationChatDisplay,
-} from '@/utils/conversation-api-settings'
-import {
-  formatHybridFtsSpec,
-  hybridFtsSpecsMatch,
-  normalizeHybridFtsSettings,
-} from '@/utils/hybrid-fts-settings'
+import { authorsNoteComposerActive } from '@/utils/authors-note-settings'
 import {
   groupChatWithEnsuredMemberColors,
   memberColorsIncomplete,
-  normalizeGroupChatSettings,
   type GroupChatSettings,
 } from '@/utils/group-chat-settings'
 import { onConversationIndexPatched } from '@/utils/conversation-index-sync'
-import { fileLibraryContentUrl } from '@/utils/authenticated-media-url'
 import { useAuthStore } from '@/stores/auth'
 import { storeToRefs } from 'pinia'
-import { computed, nextTick, onScopeDispose, provide, ref, watch } from 'vue'
+import { computed, onScopeDispose, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -105,24 +60,11 @@ const {
   historyMaxTurns,
   memoryEnabled,
   memoryTopK,
-  knowledgeEnabled,
   knowledgeTopK,
-  knowledgeChunkSizeChars,
-  knowledgeChunkOverlapChars,
   budgetTrimSettings,
   embeddingModel,
   embeddingDimensions,
-  hybridFtsProfile,
-  hybridFtsDictVariant,
 } = storeToRefs(prefStore)
-
-const globalHybridFtsSettings = computed(() =>
-  normalizeHybridFtsSettings({
-    profile: hybridFtsProfile.value,
-    dictVariant: hybridFtsDictVariant.value,
-  }),
-)
-const globalHybridFtsSpec = computed(() => formatHybridFtsSpec(globalHybridFtsSettings.value))
 
 const loading = ref(true)
 const errorText = ref('')
@@ -136,6 +78,63 @@ const homeChatRef = ref<InstanceType<typeof HomeChat> | null>(null)
 /** Settings dialog teleports; pass HomeChat.pluginHost down for companion ensurePluginById */
 const chatPluginHost = computed(() => homeChatRef.value?.pluginHost ?? null)
 const hasConversationTurns = ref(false)
+
+const { convBindings, bindingsFromIndex } = useConvBindings()
+
+const bgmAudioRef = ref<HTMLAudioElement | null>(null)
+const {
+  backgroundImageUrl,
+  bgmUrl,
+  bgmMuted,
+  chatPaneStyle,
+  stopBgmAudio,
+  clearConversationMediaBindings,
+  toggleBgmMuted,
+} = useConversationMedia({
+  getUserId: () => auth.user?.id,
+  getBackgroundImageFileId: () => convBindings.value.backgroundImageFileId,
+  getBgmFileId: () => convBindings.value.bgmFileId,
+  bgmAudioRef,
+  clearMediaFileIds: () => {
+    convBindings.value = {
+      ...convBindings.value,
+      backgroundImageFileId: null,
+      bgmFileId: null,
+    }
+  },
+})
+
+const {
+  globalHybridFtsSpec,
+  conversationMemoryEmbeddingModel,
+  conversationMemoryEmbeddingDimensions,
+  conversationMemoryHybridFtsSpec,
+  memoryRebuildDialogOpen,
+  memoryRebuildLoading,
+  memoryRebuildError,
+  memoryRebuildDone,
+  memoryRebuildTotal,
+  memoryRebuildTurns,
+  memoryRebuildLoreEntries,
+  memoryRebuildStageLabel,
+  memoryRebuildPercent,
+  maybePromptMemoryRebuild,
+  openMemoryRebuildDialog,
+  dismissMemoryRebuild,
+  confirmMemoryRebuild,
+  onMemoryRebuiltFromSettings,
+  applyConversationMemoryIndexMeta,
+  resetMemoryRebuildOffer,
+} = useMemoryRebuildOffer({
+  getConversationId: () => props.conversationId,
+  convBindings,
+  hasConversationTurns,
+  loading,
+})
+
+provide(CHAT_CONVERSATION_ACTIONS_KEY, {
+  openMemoryRebuild: openMemoryRebuildDialog,
+})
 
 const {
   activeBranchPath,
@@ -209,568 +208,8 @@ watch(branchPanelOpen, (open) => {
   if (!open) clearBranchHighlight()
 })
 
-const conversationMemoryEmbeddingModel = ref<string | null>(null)
-const conversationMemoryEmbeddingDimensions = ref<number | null>(null)
-const conversationMemoryHybridFtsSpec = ref<string | null>(null)
-const memoryRebuildDialogOpen = ref(false)
-let memoryRebuildDismissKey = ''
-
-const {
-  loading: memoryRebuildLoading,
-  error: memoryRebuildError,
-  done: memoryRebuildDone,
-  total: memoryRebuildTotal,
-  turns: memoryRebuildTurns,
-  loreEntries: memoryRebuildLoreEntries,
-  stageLabel: memoryRebuildStageLabel,
-  percent: memoryRebuildPercent,
-  rebuild: rebuildMemoryIndex,
-} = useMemoryRebuild(() => props.conversationId)
-
-function memoryRebuildDismissToken(
-  storedModel: string | null,
-  globalModel: string,
-  storedDims: number | null,
-  globalDims: number | null,
-  storedFtsSpec: string | null,
-  globalFtsSpec: string,
-): string {
-  return `${storedModel ?? ''}|${globalModel}|${storedDims ?? ''}|${globalDims ?? ''}|${storedFtsSpec ?? ''}|${globalFtsSpec}`
-}
-
-function embeddingDimsMatch(a: number | null, b: number | null): boolean {
-  return (a ?? null) === (b ?? null)
-}
-
-function shouldOfferMemoryRebuild(): boolean {
-  if (!hasConversationTurns.value) return false
-  if (!convBindings.value.memory.effective.memoryEnabled) return false
-  const globalModel = embeddingModel.value.trim()
-  if (!globalModel) return false
-  const globalDims = embeddingDimensions.value
-  const effectiveEmbedding = convBindings.value.embeddingApi.effective
-  const storedModel = conversationMemoryEmbeddingModel.value
-  const storedDims = conversationMemoryEmbeddingDimensions.value
-  if (!storedModel) return false
-  const embeddingMatches =
-    storedModel === effectiveEmbedding.embeddingModel &&
-    embeddingDimsMatch(storedDims, effectiveEmbedding.embeddingDimensions)
-  const storedFts = conversationMemoryHybridFtsSpec.value
-  // 增量索引曾漏写 FTS 戳记：embedding 已对齐且戳记为空时不因 FTS 误报重建
-  const ftsMatches = !storedFts?.trim()
-    ? embeddingMatches
-    : hybridFtsSpecsMatch(storedFts, globalHybridFtsSettings.value)
-  if (embeddingMatches && ftsMatches) {
-    return false
-  }
-  const token = memoryRebuildDismissToken(
-    storedModel,
-    globalModel,
-    storedDims,
-    globalDims,
-    conversationMemoryHybridFtsSpec.value,
-    globalHybridFtsSpec.value,
-  )
-  if (memoryRebuildDismissKey === token) return false
-  return true
-}
-
-function maybePromptMemoryRebuild(): void {
-  if (shouldOfferMemoryRebuild()) {
-    memoryRebuildError.value = ''
-    memoryRebuildDialogOpen.value = true
-  }
-}
-
-function openMemoryRebuildDialog(): void {
-  memoryRebuildError.value = ''
-  memoryRebuildDialogOpen.value = true
-}
-
-provide(CHAT_CONVERSATION_ACTIONS_KEY, {
-  openMemoryRebuild: openMemoryRebuildDialog,
-})
-
-function dismissMemoryRebuild(): void {
-  memoryRebuildDismissKey = memoryRebuildDismissToken(
-    conversationMemoryEmbeddingModel.value,
-    embeddingModel.value.trim(),
-    conversationMemoryEmbeddingDimensions.value,
-    embeddingDimensions.value,
-    conversationMemoryHybridFtsSpec.value,
-    globalHybridFtsSpec.value,
-  )
-  memoryRebuildDialogOpen.value = false
-  memoryRebuildError.value = ''
-}
-
-async function confirmMemoryRebuild(): Promise<void> {
-  const nextModel = await rebuildMemoryIndex()
-  if (!nextModel) return
-  conversationMemoryEmbeddingModel.value = nextModel
-  conversationMemoryHybridFtsSpec.value = globalHybridFtsSpec.value
-  memoryRebuildDismissKey = memoryRebuildDismissToken(
-    nextModel,
-    embeddingModel.value.trim(),
-    embeddingDimensions.value,
-    embeddingDimensions.value,
-    globalHybridFtsSpec.value,
-    globalHybridFtsSpec.value,
-  )
-  memoryRebuildDialogOpen.value = false
-}
-
-function onMemoryRebuiltFromSettings(model: string): void {
-  conversationMemoryEmbeddingModel.value = model
-  conversationMemoryEmbeddingDimensions.value = embeddingDimensions.value
-  conversationMemoryHybridFtsSpec.value = globalHybridFtsSpec.value
-  memoryRebuildDismissKey = memoryRebuildDismissToken(
-    model,
-    embeddingModel.value.trim(),
-    embeddingDimensions.value,
-    embeddingDimensions.value,
-    globalHybridFtsSpec.value,
-    globalHybridFtsSpec.value,
-  )
-}
-
 function onRegexAppliedFromSettings(): void {
   void homeChatRef.value?.reloadTurns()
-}
-
-interface LorebookContextBinding {
-  useGlobal: boolean
-  effective: LorebookSettings
-}
-
-interface HistoryContextBinding {
-  useGlobal: boolean
-  effective: HistorySettings
-}
-
-interface MemoryContextBinding {
-  useGlobal: boolean
-  effective: MemorySettings
-}
-
-interface BudgetTrimContextBinding {
-  useGlobal: boolean
-  effective: BudgetTrimSettings
-}
-
-interface ApiContextBinding {
-  useGlobal: boolean
-  effective: ResolvedConversationChatDisplay | null
-  apiPresetRaw: unknown
-}
-
-interface EmbeddingApiContextBinding {
-  useGlobal: boolean
-  effective: { embeddingModel: string; embeddingDimensions: number | null }
-  override?: ConversationEmbeddingApiSettingsOverride
-}
-
-interface KnowledgeContextBinding {
-  useGlobal: boolean
-  effective: KnowledgeSettings
-}
-
-interface ConvContextBindings {
-  promptPresetId: string | null
-  characterIds: string[]
-  characterNames: string[]
-  groupChatEnabled: boolean
-  groupChat: GroupChatSettings
-  lorebookIds: string[]
-  knowledgeBaseIds: string[]
-  knowledge: KnowledgeContextBinding
-  lorebook: LorebookContextBinding
-  history: HistoryContextBinding
-  memory: MemoryContextBinding
-  budgetTrim: BudgetTrimContextBinding
-  chatApi: ApiContextBinding
-  embeddingApi: EmbeddingApiContextBinding
-  /** 会话 `{{user}}`；null 表示未设置 */
-  userName: string | null
-  /** 用户 persona 卡 id；仅用于 UI 回显头像 */
-  userCharacterId: string | null
-  /** 对话背景图 fileId */
-  backgroundImageFileId: string | null
-  /** 对话 BGM fileId */
-  bgmFileId: string | null
-  authorsNote: AuthorsNoteSettings
-}
-
-function globalLoreFromStore(): LorebookSettings {
-  return normalizeLorebookSettings({
-    recursiveEnabled: prefStore.lorebookRecursiveEnabled,
-    maxRecursionDepth: prefStore.lorebookMaxRecursionDepth,
-    keywordTopK: prefStore.lorebookKeywordTopK,
-    vectorEnabled: prefStore.lorebookVectorEnabled,
-    vectorTopK: prefStore.lorebookVectorTopK,
-  })
-}
-
-function globalHistoryFromStore(): HistorySettings {
-  return normalizeHistorySettings({
-    limitEnabled: prefStore.historyLimitEnabled,
-    maxTurns: prefStore.historyMaxTurns,
-  })
-}
-
-function globalMemoryFromStore(): MemorySettings {
-  return normalizeMemorySettings({
-    memoryEnabled: prefStore.memoryEnabled,
-    memoryTopK: prefStore.memoryTopK,
-    stripPluginBlocks: prefStore.memoryStripPluginBlocks,
-    stripBlockTags: prefStore.memoryStripBlockTags,
-    recallFuseLastAssistant: prefStore.memoryRecallFuseLastAssistant,
-    recallUserWeight: prefStore.memoryRecallUserWeight,
-  })
-}
-
-function globalBudgetTrimFromStore(): BudgetTrimSettings {
-  return normalizeBudgetTrimSettings(budgetTrimSettings.value)
-}
-
-function globalKnowledgeFromStore(): KnowledgeSettings {
-  return normalizeKnowledgeSettings({
-    enabled: knowledgeEnabled.value,
-    topK: knowledgeTopK.value,
-    chunkSizeChars: knowledgeChunkSizeChars.value,
-    chunkOverlapChars: knowledgeChunkOverlapChars.value,
-  })
-}
-
-function knowledgeContextFromIndex(
-  idx: Record<string, unknown>,
-): KnowledgeContextBinding {
-  const global = globalKnowledgeFromStore()
-  const raw = idx.knowledgeSettings
-  const override =
-    raw && typeof raw === 'object' && !Array.isArray(raw)
-      ? (raw as Partial<KnowledgeSettings>)
-      : undefined
-  const useGlobal = !hasKnowledgeSettingsOverride(override)
-  return {
-    useGlobal,
-    effective: resolveKnowledgeSettings(global, override),
-  }
-}
-
-function memoryContextFromIndex(
-  idx: Record<string, unknown>,
-): MemoryContextBinding {
-  const global = globalMemoryFromStore()
-  const raw = idx.memorySettings
-  const override =
-    raw && typeof raw === 'object' && !Array.isArray(raw)
-      ? (raw as Partial<MemorySettings>)
-      : undefined
-  const useGlobal = !hasMemorySettingsOverride(override)
-  return {
-    useGlobal,
-    effective: resolveMemorySettings(global, override),
-  }
-}
-
-function historyContextFromIndex(
-  idx: Record<string, unknown>,
-): HistoryContextBinding {
-  const global = globalHistoryFromStore()
-  const raw = idx.historySettings
-  const override =
-    raw && typeof raw === 'object' && !Array.isArray(raw)
-      ? (raw as Partial<HistorySettings>)
-      : undefined
-  const useGlobal = !hasHistorySettingsOverride(override)
-  return {
-    useGlobal,
-    effective: resolveHistorySettings(global, override),
-  }
-}
-
-function budgetTrimContextFromIndex(
-  idx: Record<string, unknown>,
-): BudgetTrimContextBinding {
-  const global = globalBudgetTrimFromStore()
-  const raw = idx.budgetTrimSettings
-  const override =
-    raw && typeof raw === 'object' && !Array.isArray(raw)
-      ? (raw as Partial<BudgetTrimSettings>)
-      : undefined
-  const useGlobal = !hasBudgetTrimSettingsOverride(override)
-  return {
-    useGlobal,
-    effective: resolveBudgetTrimSettings(global, override),
-  }
-}
-
-function lorebookContextFromIndex(
-  idx: Record<string, unknown>,
-): LorebookContextBinding {
-  const global = globalLoreFromStore()
-  const raw = idx.lorebookSettings
-  const override =
-    raw && typeof raw === 'object' && !Array.isArray(raw)
-      ? (raw as Partial<LorebookSettings>)
-      : undefined
-  const useGlobal = !hasLorebookSettingsOverride(override)
-  return {
-    useGlobal,
-    effective: resolveLorebookSettings(global, override),
-  }
-}
-
-function clientResolvedCharacterIds(idx: Record<string, unknown>): string[] {
-  if (Array.isArray(idx.characterIds)) {
-    const seen = new Set<string>()
-    const out: string[] = []
-    for (const raw of idx.characterIds) {
-      if (typeof raw !== 'string') continue
-      const id = raw.trim()
-      if (!id || seen.has(id)) continue
-      seen.add(id)
-      out.push(id)
-    }
-    return out
-  }
-  return []
-}
-
-function globalEmbeddingFromStore() {
-  return {
-    embeddingModel: embeddingModel.value.trim(),
-    embeddingDimensions: embeddingDimensions.value,
-  }
-}
-
-function chatApiContextFromIndex(idx: Record<string, unknown>): ApiContextBinding {
-  const apiPresetRaw = idx.apiPreset
-  const useGlobal = !hasConversationChatOverride(apiPresetRaw)
-  const effective = resolveConversationChatDisplay(
-    conn.presets,
-    conn.activePresetId,
-    apiPresetRaw,
-  )
-  return { useGlobal, effective, apiPresetRaw }
-}
-
-function embeddingApiContextFromIndex(
-  idx: Record<string, unknown>,
-): EmbeddingApiContextBinding {
-  const global = globalEmbeddingFromStore()
-  const override = readConversationEmbeddingOverride(idx)
-  const useGlobal = !hasConversationEmbeddingOverride(override)
-  return {
-    useGlobal,
-    effective: resolveConversationEmbeddingModelSettings(global, override),
-    override,
-  }
-}
-
-function bindingsFromIndex(idx: Record<string, unknown>): ConvContextBindings {
-  const pid = idx.promptPresetId
-  const promptPresetId =
-    typeof pid === 'string' && pid.trim() ? pid.trim() : null
-  const lb = idx.lorebookIds
-  const lorebookIds = Array.isArray(lb)
-    ? lb.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
-    : []
-  const kb = idx.knowledgeBaseIds
-  const knowledgeBaseIds = Array.isArray(kb)
-    ? kb.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
-    : []
-  const un = idx.userName
-  const userName =
-    typeof un === 'string' && un.trim() ? un.trim() : null
-  const uci = idx.userCharacterId
-  const userCharacterId =
-    typeof uci === 'string' && uci.trim() ? uci.trim() : null
-  const bgImg = idx.backgroundImageFileId
-  const backgroundImageFileId =
-    typeof bgImg === 'string' && bgImg.trim() ? bgImg.trim().toLowerCase() : null
-  const bgm = idx.bgmFileId
-  const bgmFileId =
-    typeof bgm === 'string' && bgm.trim() ? bgm.trim().toLowerCase() : null
-  const cn = idx.characterNames
-  const characterNames = Array.isArray(cn)
-    ? cn.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
-    : []
-  const groupChat = normalizeGroupChatSettings(idx.groupChat)
-  const groupChatEnabled = groupChat.enabled === true
-  return {
-    promptPresetId,
-    characterIds: clientResolvedCharacterIds(idx),
-    characterNames,
-    groupChatEnabled,
-    groupChat,
-    lorebookIds,
-    knowledgeBaseIds,
-    knowledge: knowledgeContextFromIndex(idx),
-    lorebook: lorebookContextFromIndex(idx),
-    history: historyContextFromIndex(idx),
-    memory: memoryContextFromIndex(idx),
-    budgetTrim: budgetTrimContextFromIndex(idx),
-    chatApi: chatApiContextFromIndex(idx),
-    embeddingApi: embeddingApiContextFromIndex(idx),
-    userName,
-    userCharacterId,
-    backgroundImageFileId,
-    bgmFileId,
-    authorsNote: authorsNoteFromIndex(idx),
-  }
-}
-
-const convBindings = ref<ConvContextBindings>({
-  promptPresetId: null,
-  characterIds: [],
-  characterNames: [],
-  groupChatEnabled: false,
-  groupChat: normalizeGroupChatSettings(undefined),
-  lorebookIds: [],
-  knowledgeBaseIds: [],
-  knowledge: {
-    useGlobal: true,
-    effective: normalizeKnowledgeSettings(),
-  },
-  lorebook: {
-    useGlobal: true,
-    effective: {
-      recursiveEnabled: false,
-      maxRecursionDepth: 2,
-      keywordTopK: 64,
-      vectorEnabled: false,
-      vectorTopK: 5,
-    },
-  },
-  history: {
-    useGlobal: true,
-    effective: { limitEnabled: false, maxTurns: 20 },
-  },
-  memory: {
-    useGlobal: true,
-    effective: normalizeMemorySettings(),
-  },
-  budgetTrim: {
-    useGlobal: true,
-    effective: normalizeBudgetTrimSettings(),
-  },
-  chatApi: {
-    useGlobal: true,
-    effective: null,
-    apiPresetRaw: undefined,
-  },
-  embeddingApi: {
-    useGlobal: true,
-    effective: { embeddingModel: '', embeddingDimensions: null },
-  },
-  userName: null,
-  userCharacterId: null,
-  backgroundImageFileId: null,
-  bgmFileId: null,
-  authorsNote: normalizeAuthorsNote(),
-})
-
-const backgroundImageUrl = computed(() =>
-  fileLibraryContentUrl(auth.user?.id, convBindings.value.backgroundImageFileId),
-)
-
-const bgmUrl = computed(() =>
-  fileLibraryContentUrl(auth.user?.id, convBindings.value.bgmFileId),
-)
-
-const bgmMuted = ref(false)
-const bgmAudioRef = ref<HTMLAudioElement | null>(null)
-/** 递增以丢弃过期的 BGM play/load 异步结果 */
-let bgmApplyGen = 0
-
-const chatPaneStyle = computed(() => {
-  const url = backgroundImageUrl.value
-  if (!url) return undefined
-  // JSON.stringify 保证 CSS url() 引号与转义安全（token URL 本身无引号，防御查询串）
-  const cssUrl = JSON.stringify(url)
-  return {
-    backgroundImage: `linear-gradient(rgba(var(--v-theme-surface), 0.72), rgba(var(--v-theme-surface), 0.82)), url(${cssUrl})`,
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    backgroundAttachment: 'local',
-  } as Record<string, string>
-})
-
-function stopBgmAudio() {
-  bgmApplyGen += 1
-  const el = bgmAudioRef.value
-  if (!el) return
-  el.pause()
-  el.removeAttribute('src')
-  try {
-    el.load()
-  } catch {
-    /* ignore */
-  }
-}
-
-/** 切会话 / 卸载：立刻清掉上一会话的背景与 BGM，避免串播 */
-function clearConversationMediaBindings() {
-  stopBgmAudio()
-  convBindings.value = {
-    ...convBindings.value,
-    backgroundImageFileId: null,
-    bgmFileId: null,
-  }
-}
-
-async function applyBgmUrl(url: string | null) {
-  const gen = ++bgmApplyGen
-  await nextTick()
-  if (gen !== bgmApplyGen) return
-  const el = bgmAudioRef.value
-  if (!el) return
-  if (!url) {
-    el.pause()
-    el.removeAttribute('src')
-    try {
-      el.load()
-    } catch {
-      /* ignore */
-    }
-    return
-  }
-  if (el.src && el.getAttribute('src') === url) {
-    el.loop = true
-    el.muted = bgmMuted.value
-    return
-  }
-  el.src = url
-  el.loop = true
-  el.muted = bgmMuted.value
-  try {
-    await el.play()
-  } catch {
-    // 浏览器可能拦截无手势自动播放；用户点静音/取消静音后再播
-  }
-  // 过期 gen 不再动 el，避免 pause 掉更新的音轨
-}
-
-watch(
-  () => bgmUrl.value,
-  (url) => {
-    void applyBgmUrl(url)
-  },
-)
-
-watch(bgmMuted, (muted) => {
-  const el = bgmAudioRef.value
-  if (!el) return
-  el.muted = muted
-  if (!muted && bgmUrl.value) {
-    void el.play().catch(() => {})
-  }
-})
-
-function toggleBgmMuted() {
-  bgmMuted.value = !bgmMuted.value
 }
 
 const headerChatLabel = computed(() => {
@@ -935,20 +374,6 @@ async function loadLorebookNameMap(): Promise<void> {
   lorebookNameById.value = map
 }
 
-function applyConversationMemoryIndexMeta(index: Record<string, unknown>): void {
-  const memModel = index.memoryEmbeddingModel
-  conversationMemoryEmbeddingModel.value =
-    typeof memModel === 'string' && memModel.trim() ? memModel.trim() : null
-  const memDims = index.memoryEmbeddingDimensions
-  conversationMemoryEmbeddingDimensions.value =
-    typeof memDims === 'number' && Number.isFinite(memDims) && memDims > 0
-      ? Math.floor(memDims)
-      : null
-  const memFts = index.memoryHybridFtsProfile
-  conversationMemoryHybridFtsSpec.value =
-    typeof memFts === 'string' && memFts.trim() ? memFts.trim() : null
-}
-
 function onConvContextPatched(
   index: Record<string, unknown>,
   expectedConversationId?: string,
@@ -973,138 +398,6 @@ onScopeDispose(() => {
   stopIndexPatched()
   stopBgmAudio()
 })
-
-async function patchAuditDebugToServer(id: string) {
-  await fetch(`/api/chat/conversations/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      auditDebug: {
-        enabled: prefStore.writeChatPromptSnapshot,
-        maxStored: prefStore.promptDebugMaxStored,
-      },
-    }),
-  })
-}
-
-/** 与服务端 updateConversationAuditDebug 对齐的期望值 */
-function desiredAuditDebugFromPrefs(): { enabled: boolean; maxStored: number } {
-  const enabled = prefStore.writeChatPromptSnapshot === true
-  const maxStored = Math.min(
-    200,
-    Math.max(1, Math.floor(Number(prefStore.promptDebugMaxStored)) || 10),
-  )
-  return { enabled, maxStored }
-}
-
-function auditDebugFromIndex(
-  idx: Record<string, unknown> | null | undefined,
-): { enabled: boolean; maxStored: number } | null {
-  const raw = idx?.auditDebug
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
-  const o = raw as { enabled?: unknown; maxStored?: unknown }
-  return {
-    enabled: o.enabled === true,
-    maxStored:
-      typeof o.maxStored === 'number' && Number.isFinite(o.maxStored)
-        ? Math.min(200, Math.max(0, Math.floor(o.maxStored)))
-        : -1,
-  }
-}
-
-function auditDebugMatchesPrefs(
-  current: { enabled: boolean; maxStored: number } | null,
-): boolean {
-  if (!current || current.maxStored < 0) return false
-  const desired = desiredAuditDebugFromPrefs()
-  return (
-    current.enabled === desired.enabled && current.maxStored === desired.maxStored
-  )
-}
-
-/** 仅当会话 auditDebug 与全局 Debug 偏好不一致时才 PATCH（打开对话默认不写盘） */
-async function syncAuditDebugIfNeeded(
-  id: string,
-  idx?: Record<string, unknown> | null,
-): Promise<void> {
-  const current = auditDebugFromIndex(idx ?? null)
-  if (auditDebugMatchesPrefs(current)) return
-  await patchAuditDebugToServer(id)
-}
-
-watch(
-  [
-    lorebookRecursiveEnabled,
-    lorebookMaxRecursionDepth,
-    lorebookKeywordTopK,
-    lorebookVectorEnabled,
-    lorebookVectorTopK,
-  ],
-  () => {
-  if (!convBindings.value.lorebook.useGlobal) return
-  const global = globalLoreFromStore()
-  convBindings.value = {
-    ...convBindings.value,
-    lorebook: {
-      useGlobal: true,
-      effective: global,
-    },
-  }
-})
-
-watch([historyLimitEnabled, historyMaxTurns], () => {
-  if (!convBindings.value.history.useGlobal) return
-  const global = globalHistoryFromStore()
-  convBindings.value = {
-    ...convBindings.value,
-    history: {
-      useGlobal: true,
-      effective: global,
-    },
-  }
-})
-
-watch(
-  [
-    memoryEnabled,
-    memoryTopK,
-    () => prefStore.memoryStripPluginBlocks,
-    () => prefStore.memoryStripBlockTags,
-    () => prefStore.memoryRecallFuseLastAssistant,
-    () => prefStore.memoryRecallUserWeight,
-  ],
-  () => {
-    if (!convBindings.value.memory.useGlobal) return
-    const global = globalMemoryFromStore()
-    convBindings.value = {
-      ...convBindings.value,
-      memory: {
-        useGlobal: true,
-        effective: global,
-      },
-    }
-  },
-)
-
-watch(
-  [
-    knowledgeEnabled,
-    knowledgeTopK,
-    knowledgeChunkSizeChars,
-    knowledgeChunkOverlapChars,
-  ],
-  () => {
-    if (!convBindings.value.knowledge.useGlobal) return
-    const global = globalKnowledgeFromStore()
-    convBindings.value = {
-      ...convBindings.value,
-      knowledge: {
-        useGlobal: true,
-        effective: global,
-      },
-    }
-  },
-)
 
 async function ensureConversation(id: string) {
   loading.value = true
@@ -1221,8 +514,7 @@ async function saveTitle() {
 watch(
   () => props.conversationId,
   (id) => {
-    memoryRebuildDismissKey = ''
-    memoryRebuildDialogOpen.value = false
+    resetMemoryRebuildOffer()
     branchPanelOpen.value = false
     branchLoadError.value = ''
     clearConversationMediaBindings()
@@ -1246,19 +538,6 @@ watch(
     } catch {
       /* 偏好同步失败不阻断聊天 */
     }
-  },
-)
-
-watch([embeddingModel, embeddingDimensions, hybridFtsProfile, hybridFtsDictVariant], () => {
-  if (loading.value) return
-  maybePromptMemoryRebuild()
-})
-
-watch(
-  () => convBindings.value.memory.effective.memoryEnabled,
-  () => {
-    if (loading.value) return
-    maybePromptMemoryRebuild()
   },
 )
 </script>
@@ -1295,170 +574,30 @@ watch(
       </v-btn>
     </div>
     <template v-else>
-      <header
-        class="chat-header"
-        :class="{ 'chat-header--roster-anchor': showGroupRoster }"
-      >
-        <v-btn
-          icon="mdi-arrow-left"
-          variant="text"
-          density="comfortable"
-          size="small"
-          class="chat-header__back"
-          :aria-label="$t('chatConversation.backHome')"
-          @click="router.push({ name: 'home' })"
-        />
-        <div class="chat-header__title-wrap">
-          <input
-            v-model="title"
-            type="text"
-            class="chat-header__title-input"
-            :placeholder="$t('chat.newConversation')"
-            :disabled="titleSaving"
-            @blur="saveTitle"
-            @keydown.enter.prevent="($event.target as HTMLInputElement)?.blur()"
-          />
-          <v-progress-circular
-            v-if="titleSaving"
-            indeterminate
-            size="14"
-            width="2"
-            class="chat-header__saving"
-          />
-          <button
-            type="button"
-            class="chat-header__pill chat-header__pill--clickable chat-header__pill--branch"
-            :title="$t('chat.branches.openPanel')"
-            :aria-label="$t('chat.branches.openPanel')"
-            :disabled="branchBusy"
-            @click="openBranchPanel()"
-          >
-            <v-icon
-              icon="mdi-source-branch"
-              size="14"
-              class="chat-header__pill-icon"
-            />
-            <span class="chat-header__pill-label">
-              {{ activeBranchDisplayLabel }}
-            </span>
-          </button>
-        </div>
-        <div class="chat-header__meta">
-          <span
-            v-if="!conn.isApiKeyConfigured"
-            class="chat-header__pill chat-header__pill--warning"
-          >
-            <span class="chat-header__dot chat-header__dot--warning" />
-            {{ $t('chat.hintConfigureApi') }}
-          </span>
-          <template v-else>
-            <span
-              v-if="headerChatLabel"
-              class="chat-header__pill"
-            >
-              {{ headerChatLabel }}
-            </span>
-            <button
-              v-if="boundPromptLabel"
-              type="button"
-              class="chat-header__pill chat-header__pill--prompt chat-header__pill--clickable"
-              :title="boundPromptLabel"
-              :aria-label="boundPromptLabel"
-              @click="openBoundPrompt"
-            >
-              <v-icon
-                icon="mdi-text-box-outline"
-                size="14"
-                class="chat-header__pill-icon"
-              />
-              <span class="chat-header__pill-label">{{ boundPromptLabel }}</span>
-            </button>
-            <v-menu
-              v-if="boundLorebooks.length > 0"
-              location="bottom end"
-              :open-on-hover="true"
-              :close-on-content-click="true"
-            >
-              <template #activator="{ props: menuProps }">
-                <v-btn
-                  v-bind="menuProps"
-                  icon
-                  variant="text"
-                  density="comfortable"
-                  size="small"
-                  class="chat-header__lorebook-btn"
-                  :aria-label="$t('chatConversation.boundLorebook')"
-                >
-                  <v-badge
-                    class="chat-header__lorebook-badge"
-                    :content="boundLorebooks.length"
-                    color="primary"
-                    floating
-                  >
-                    <v-icon
-                      icon="mdi-book-open-page-variant-outline"
-                      size="20"
-                    />
-                  </v-badge>
-                </v-btn>
-              </template>
-              <v-list
-                density="compact"
-                class="chat-header__lorebook-menu"
-              >
-                <v-list-item
-                  v-for="lb in boundLorebooks"
-                  :key="lb.id"
-                  :title="lb.label"
-                  :aria-label="lb.label"
-                  @click="openBoundLorebook(lb.id)"
-                />
-              </v-list>
-            </v-menu>
-          </template>
-          <v-btn
-            v-if="canOpenGroupChatSettings"
-            icon
-            variant="text"
-            density="comfortable"
-            size="small"
-            class="chat-header__group-chat"
-            :color="convBindings.groupChatEnabled ? 'primary' : undefined"
-            :aria-label="$t('chat.groupChat.settings.openButton')"
-            @click="groupChatDialogOpen = true"
-          >
-            <v-icon icon="mdi-account-group-outline" size="20" />
-          </v-btn>
-          <v-btn
-            v-if="bgmUrl"
-            icon
-            variant="text"
-            density="comfortable"
-            size="small"
-            class="chat-header__bgm"
-            :aria-label="
-              bgmMuted
-                ? $t('chatConversation.bgmUnmute')
-                : $t('chatConversation.bgmMute')
-            "
-            @click="toggleBgmMuted"
-          >
-            <v-icon
-              :icon="bgmMuted ? 'mdi-volume-off' : 'mdi-music-note'"
-              size="20"
-            />
-          </v-btn>
-          <v-btn
-            icon="mdi-cog-outline"
-            variant="text"
-            density="comfortable"
-            size="small"
-            class="chat-header__settings"
-            :aria-label="$t('chat.convSettings.openButton')"
-            @click="convContextSettingsRef?.open()"
-          />
-        </div>
-      </header>
+      <ChatHeaderBar
+        :title="title"
+        :title-saving="titleSaving"
+        :show-group-roster="showGroupRoster"
+        :branch-busy="branchBusy"
+        :active-branch-display-label="activeBranchDisplayLabel"
+        :api-key-configured="conn.isApiKeyConfigured"
+        :header-chat-label="headerChatLabel"
+        :bound-prompt-label="boundPromptLabel"
+        :bound-lorebooks="boundLorebooks"
+        :can-open-group-chat-settings="canOpenGroupChatSettings"
+        :group-chat-enabled="convBindings.groupChatEnabled"
+        :has-bgm="!!bgmUrl"
+        :bgm-muted="bgmMuted"
+        @update:title="title = $event"
+        @save-title="saveTitle"
+        @back="router.push({ name: 'home' })"
+        @open-branch-panel="openBranchPanel()"
+        @open-bound-prompt="openBoundPrompt"
+        @open-bound-lorebook="openBoundLorebook"
+        @open-group-chat="groupChatDialogOpen = true"
+        @toggle-bgm="toggleBgmMuted"
+        @open-settings="convContextSettingsRef?.open()"
+      />
       <ChatComposerGroupRoster
         v-if="showGroupRoster"
         :conversation-id="conversationId"
@@ -1511,97 +650,22 @@ watch(
         @update:model-value="(open) => { if (!open) cancelCreateBranch() }"
         @confirm="confirmCreateBranch"
       />
-      <v-dialog
+      <ChatMemoryRebuildDialog
         v-model="memoryRebuildDialogOpen"
-        max-width="32rem"
-        persistent
-      >
-        <v-card>
-          <v-card-title class="text-body-1 font-weight-medium">
-            {{ $t('chatConversation.memoryRebuildTitle') }}
-          </v-card-title>
-          <v-card-text>
-            <p class="text-body-2 mb-3">
-              {{ $t('chatConversation.memoryRebuildBody') }}
-            </p>
-            <div class="text-body-2 text-medium-emphasis">
-              <div v-if="conversationMemoryEmbeddingModel">
-                {{ $t('chatConversation.memoryRebuildStoredModel') }}:
-                <code>{{ conversationMemoryEmbeddingModel }}</code>
-              </div>
-              <div v-else>
-                {{ $t('chatConversation.memoryRebuildStoredUnknown') }}
-              </div>
-              <div class="mt-1">
-                {{ $t('chatConversation.memoryRebuildCurrentModel') }}:
-                <code>{{ embeddingModel }}</code>
-                <template v-if="embeddingDimensions != null">
-                  · {{ embeddingDimensions }}d
-                </template>
-              </div>
-            </div>
-            <v-alert
-              v-if="memoryRebuildError"
-              type="error"
-              variant="tonal"
-              density="compact"
-              class="mt-3"
-            >
-              {{ memoryRebuildError }}
-            </v-alert>
-            <div
-              v-if="memoryRebuildLoading"
-              class="mt-3"
-            >
-              <div class="text-body-2 text-medium-emphasis mb-1">
-                {{ memoryRebuildStageLabel }} ·
-                {{
-                  $t('chatConversation.memoryRebuildProgress', {
-                    done: memoryRebuildDone,
-                    total: memoryRebuildTotal,
-                  })
-                }}
-              </div>
-              <div
-                v-if="memoryRebuildTotal > 0"
-                class="text-caption text-medium-emphasis mb-2"
-              >
-                {{
-                  $t('chatConversation.memoryRebuildProgressDetail', {
-                    turns: memoryRebuildTurns,
-                    loreEntries: memoryRebuildLoreEntries,
-                  })
-                }}
-              </div>
-              <v-progress-linear
-                :model-value="memoryRebuildTotal > 0 ? memoryRebuildPercent : undefined"
-                :indeterminate="memoryRebuildTotal < 1"
-                height="8"
-                rounded
-                color="primary"
-              />
-            </div>
-          </v-card-text>
-          <v-card-actions>
-            <v-spacer />
-            <v-btn
-              variant="text"
-              :disabled="memoryRebuildLoading"
-              @click="dismissMemoryRebuild"
-            >
-              {{ $t('chatConversation.memoryRebuildLater') }}
-            </v-btn>
-            <v-btn
-              color="primary"
-              variant="flat"
-              :loading="memoryRebuildLoading"
-              @click="confirmMemoryRebuild"
-            >
-              {{ $t('chatConversation.memoryRebuildConfirm') }}
-            </v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-dialog>
+        :stored-model="conversationMemoryEmbeddingModel"
+        :current-model="embeddingModel"
+        :embedding-dimensions="embeddingDimensions"
+        :loading="memoryRebuildLoading"
+        :error-text="memoryRebuildError"
+        :done="memoryRebuildDone"
+        :total="memoryRebuildTotal"
+        :turns="memoryRebuildTurns"
+        :lore-entries="memoryRebuildLoreEntries"
+        :stage-label="memoryRebuildStageLabel"
+        :percent="memoryRebuildPercent"
+        @dismiss="dismissMemoryRebuild"
+        @confirm="confirmMemoryRebuild"
+      />
       <ChatGroupChatDialog
         v-model="groupChatDialogOpen"
         :conversation-id="conversationId"
@@ -1696,206 +760,5 @@ watch(
 .chat-body--state {
   min-height: 0;
   overflow: auto;
-}
-
-/* ========== Chat Header · Tavern × Linear ========== */
-.chat-header {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.875rem 0.25rem 0.75rem;
-  border-bottom: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.06);
-  min-width: 0;
-}
-
-.chat-header--roster-anchor {
-  anchor-name: --chat-header-roster-anchor;
-}
-
-.chat-header__back {
-  color: rgba(var(--v-theme-on-surface), 0.7) !important;
-}
-
-.chat-header__title-wrap {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: max-content;
-  align-items: center;
-  justify-content: start;
-  gap: 0.5rem;
-  min-width: 0;
-}
-
-.chat-header__title-input {
-  width: 8em;
-  max-width: 8em;
-  min-width: 0;
-  box-sizing: border-box;
-  background: transparent;
-  border: none;
-  font-family: var(--font-display);
-  font-size: 1.1875rem;
-  font-weight: 500;
-  color: rgb(var(--v-theme-on-surface));
-  letter-spacing: 0.005em;
-  padding: 0.25rem 0.375rem;
-  border-radius: 0.25rem;
-  outline: none;
-  transition:
-    background 0.15s,
-    max-width 0.2s ease;
-}
-@supports (field-sizing: content) {
-  .chat-header__title-input {
-    field-sizing: content;
-    width: auto;
-    min-width: 2.5em;
-  }
-}
-.chat-header__title-input:hover {
-  background: rgba(var(--v-theme-on-surface), 0.03);
-}
-.chat-header__title-input:focus {
-  max-width: 18em;
-  background: rgba(var(--v-theme-on-surface), 0.04);
-  box-shadow: inset 0 -0.0625rem 0 rgba(var(--v-theme-primary), 0.6);
-}
-.chat-header__title-input::placeholder {
-  color: rgba(var(--v-theme-on-surface), 0.35);
-  font-style: italic;
-}
-.chat-header__title-input:disabled {
-  opacity: 0.5;
-}
-
-.chat-header__saving {
-  color: rgb(var(--v-theme-primary)) !important;
-}
-
-.chat-header__meta {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  flex-shrink: 0;
-  min-width: 0;
-}
-
-.chat-header__settings {
-  flex-shrink: 0;
-  margin-left: 0.125rem;
-}
-
-.chat-header__lorebook-btn {
-  color: rgba(var(--v-theme-on-surface), 0.75) !important;
-}
-
-.chat-header__lorebook-btn :deep(.chat-header__lorebook-badge .v-badge__badge) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 2em;
-  height: 2.5em;
-  padding: 1em;
-  line-height: 1;
-  transform: scale(0.3);
-  transform-origin: bottom left;
-  border-radius: 1em;
-}
-
-.chat-header__pill-icon {
-  flex-shrink: 0;
-}
-
-.chat-header__pill-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-header__pill--prompt {
-  max-width: 15em;
-  min-width: 0;
-}
-
-.chat-header__pill--branch {
-  width: max-content;
-  max-width: 8em;
-  min-width: 0;
-}
-
-:deep(.chat-header__lorebook-menu .v-list-item-title) {
-  max-width: 15em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-header__pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.1875rem 0.5625rem;
-  border: 0.0625rem solid rgba(var(--v-theme-on-surface), 0.10);
-  border-radius: var(--radius-sm);
-  background: rgb(var(--v-theme-surface-light));
-  color: rgba(var(--v-theme-on-surface), 0.75);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
-.chat-header__pill--warning {
-  border-color: rgba(var(--v-theme-warning), 0.5);
-  background: rgba(var(--v-theme-warning), 0.08);
-  color: rgb(var(--v-theme-warning));
-  font-family: var(--font-ui);
-  font-size: 0.71875rem;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.chat-header__pill--clickable {
-  cursor: pointer;
-  font: inherit;
-  appearance: none;
-  transition:
-    border-color 0.15s ease,
-    background-color 0.15s ease;
-}
-.chat-header__pill--clickable:hover {
-  border-color: rgba(var(--v-theme-primary), 0.35);
-  background: rgba(var(--v-theme-primary), 0.06);
-}
-
-.chat-header__dot--warning {
-  background: rgb(var(--v-theme-warning));
-  box-shadow: 0 0 0 0.1875rem rgba(var(--v-theme-warning), 0.18);
-}
-
-@media (max-width: 40rem) {
-  .chat-header {
-    gap: 0.5rem;
-    padding-inline: 0;
-  }
-
-  .chat-header__pill--branch .chat-header__pill-label,
-  .chat-header__pill--prompt .chat-header__pill-label {
-    display: none;
-  }
-
-  .chat-header__pill--branch,
-  .chat-header__pill--prompt {
-    width: auto;
-    max-width: none;
-    padding: 0.3125rem;
-    justify-content: center;
-  }
-
-  .chat-header__pill--branch :deep(.v-icon),
-  .chat-header__pill--prompt :deep(.v-icon) {
-    font-size: 1.125rem;
-  }
 }
 </style>

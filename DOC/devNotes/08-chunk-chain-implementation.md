@@ -218,7 +218,8 @@ async function splitOversizedTailChunkIfNeeded(conversationId: string): Promise<
 ## 8. 风险与 Syncthing
 
 - **大 JSON 同步**：单块 100 轮仍可能很大；切分后单次同步增量更小。  
-- **半写文件**：chunk / index 写盘走 **tmp + rename** 原子写（`chat-storage-io.writeJsonFileAtomic`）；读盘对 JSON 撕裂有一次短重试。相对路径经 `resolveConversationChunkFilePath`（`splitChunkStoragePath`）做 containment。  
+- **半写文件**：chunk / index 写盘走 **tmp + rename** 原子写（`chat-storage-io.writeJsonFileAtomic`）；临时文件名包含随机 UUID，避免同进程同毫秒并发写入发生碰撞；读盘对 JSON 撕裂有一次短重试。相对路径经 `resolveConversationChunkFilePath`（`splitChunkStoragePath`）做 containment。
+- **批量更新并发**：`batchUpdateConversationTurns` 的完整 chunk read-modify-write 事务按会话进入同一可重入键控队列，竞争 PATCH 不会互相覆盖；队列内的 index 更新保持 inline，避免嵌套等待死锁。
 - **分支 index 并发**：分支 `index.json` 与根 index 一样走键控串行队列；热路径 RMW 用 `mutateBranchConversationIndex`（锁内重读），仅**新建分支 stub** 可直接 `writeBranchConversationIndex`。  
 - **repair**：`repairConversationChunkIndex` 任一 scope 写失败或链断裂时聚合 `ok: false`（分支断裂不会因主链健康而误报成功）。  
 - **删空 tail**：先校验并加载 `previous`，再 `rm` 空块，避免坏链留下半截状态。  

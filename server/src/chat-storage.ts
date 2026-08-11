@@ -116,6 +116,7 @@ import {
   readConversationIndex,
   resolveConversationChunkFilePath,
   resolvedCharacterIds,
+  runConversationIndexTask,
   writeChunkFile,
   writeConversationIndex,
 } from './chat-storage-io.js'
@@ -226,7 +227,7 @@ function cloneChunkFile(chunk: ChunkFile): ChunkFile {
  * 批量更新多轮：每个 chunk 至多 read+write 一次，index 至多写一次。
  * 先完成全部 chunk 读取与内存变更，再统一写入；跨 chunk 写失败时回滚已成功写入的 chunk。
  */
-export async function batchUpdateConversationTurns(
+async function batchUpdateConversationTurnsUnsafe(
   conversationId: string,
   patches: TurnContentPatchInput[],
 ): Promise<BatchTurnUpdateResult> {
@@ -415,6 +416,20 @@ export async function batchUpdateConversationTurns(
     memoryEmbedsQueued,
     ...(rolledBack ? { rolledBack: true } : {}),
   }
+}
+
+/**
+ * Serialize the complete chunk read/modify/write transaction per conversation.
+ * The unsafe implementation may call index mutations internally; the keyed
+ * queue is re-entrant for the same key, so those calls remain inline.
+ */
+export function batchUpdateConversationTurns(
+  conversationId: string,
+  patches: TurnContentPatchInput[],
+): Promise<BatchTurnUpdateResult> {
+  return runConversationIndexTask(conversationId, () =>
+    batchUpdateConversationTurnsUnsafe(conversationId, patches),
+  )
 }
 
 export function chatListEntryFromIndex(idx: ConversationIndex): ChatListEntry {

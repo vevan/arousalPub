@@ -1,4 +1,5 @@
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { getChatsRoot } from './config.js'
 import {
@@ -82,7 +83,10 @@ async function writeJsonFileAtomic(
   data: unknown,
 ): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true })
-  const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`
+  // Date.now() is not unique within a process.  Concurrent writers to the
+  // same target must never share a temporary path (especially on Windows,
+  // where opening/removing the other's temp file can fail with EPERM).
+  const tmp = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`
   const body = `${JSON.stringify(data, null, 2)}\n`
   await writeFile(tmp, body, 'utf8')
   try {

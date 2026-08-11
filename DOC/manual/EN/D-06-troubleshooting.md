@@ -93,6 +93,14 @@ There is **no** email reset.
 
 ---
 
+## Build error: cannot find `@huggingface/transformers`
+
+1. Symptom: `server` `tsc` fails with `TS2307: Cannot find module '@huggingface/transformers'` (common right after `git pull` brings in the built-in Embedding dependency, before a local reinstall).
+2. From the repo root run `npm install`, or use `./start.sh` / `!_start.bat` so `ensure-deps` installs for you, then `npm run build` again.
+3. Keep the pinned `4.0.1` in `server/package.json` (do not widen to `^`). If install-script approval notices appear, see the next section.
+
+---
+
 ## `npm audit` looks scary
 
 1. You do **not** need to run `npm audit` to use the app. Prefer `./start.sh` / `!_start.bat`.

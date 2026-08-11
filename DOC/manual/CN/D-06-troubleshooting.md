@@ -93,6 +93,14 @@
 
 ---
 
+## 构建报错：找不到 `@huggingface/transformers`
+
+1. 症状：`server` 构建阶段 `tsc` 报 `TS2307: Cannot find module '@huggingface/transformers'`（常见于刚 `git pull` 进内置 Embedding 依赖后、本地尚未重装依赖）。
+2. 在项目根执行 `npm install`，或用 `./start.sh` / `!_start.bat` 让 `ensure-deps` 自动安装，然后再 `npm run build`。
+3. 版本须为锁定的 `4.0.1`（见 `server/package.json`）；勿手改成 `^` 范围。若安装脚本有待审批提示，见下一节。
+
+---
+
 ## `npm audit` 看起来很吓人
 
 1. 使用本应用**不必**跑 `npm audit`；按 `./start.sh` / `!_start.bat` 即可。

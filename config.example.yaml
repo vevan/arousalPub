@@ -16,7 +16,7 @@ upstreamUrlPolicy: open # open | public-only
 
 # --- 后端出站代理（修改后需重启）---
 enableProxy: false
-proxyUrl: http://127.0.0.1:15888
+proxyUrl: http://127.0.0.1:7890
 proxyNoProxy:
   - localhost
   - 127.0.0.1

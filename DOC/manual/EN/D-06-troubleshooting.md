@@ -98,7 +98,7 @@ There is **no** email reset.
 1. You do **not** need to run `npm audit` to use the app. Prefer `./start.sh` / `!_start.bat`.
 2. **Never** run `npm audit fix --force` — it can install unrelated major upgrades and break the tree.
 3. On current `main`, production deps (`@fastify/static`, `sharp`) and the Vue typechecker (`vue-tsc`) are already on patched versions; `npm audit` should be clean after `git pull` and a normal install.
-4. `allow-scripts` notices for esbuild/sharp are expected install scripts, not the CVE list above.
+4. The root `package.json` pins approved install scripts for `esbuild@0.28.1`, `onnxruntime-node@1.24.3`, `protobufjs@7.6.5`, and `vue-demi@0.14.10`, so a normal install should not show pending notices. On an older checkout, review the installed versions and run `npm approve-scripts esbuild onnxruntime-node protobufjs vue-demi`; these notices are separate from the CVE list above.
 
 ---
 

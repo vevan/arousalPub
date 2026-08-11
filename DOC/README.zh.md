@@ -235,7 +235,7 @@ API 密钥保存在本机数据目录，不会写入浏览器公开存储。
 
 - 终端用户只需 `./start.sh` / `!_start.bat`（或 `npm start`），**不必**跑 `npm audit`，也**不要**执行 `npm audit fix --force`（会跨大版本升级，容易装坏）。
 - 当前 `main` 已固定修补后的 **`@fastify/static`**、**`sharp`**、**`vue-tsc`**。`git pull` 后正常安装，`npm audit` 应为 **0 vulnerabilities**；旧克隆可能仍显示过期告警，更新即可。
-- `allow-scripts` 关于 esbuild / sharp 安装脚本的提示属于正常原生依赖安装，与上述 CVE 不是一类问题。
+- 根 `package.json` 已按版本固定批准 `esbuild@0.28.1`、`onnxruntime-node@1.24.3`、`protobufjs@7.6.5` 和 `vue-demi@0.14.10` 的安装脚本。当前代码正常安装时不应再出现 `allow-scripts` 待审批提示；旧检出版本如有提示，应先审阅当前安装版本，再执行 `npm approve-scripts esbuild onnxruntime-node protobufjs vue-demi`。这类提示与上面的 CVE 不是一类问题。
 
 ---
 

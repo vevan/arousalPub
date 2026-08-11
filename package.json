@@ -32,5 +32,11 @@
     "typecheck": "npm run typecheck -w web",
     "build": "node scripts/build.mjs",
     "start": "node scripts/run-prod.mjs"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "onnxruntime-node@1.24.3": true,
+    "protobufjs@7.6.5": true,
+    "vue-demi@0.14.10": true
   }
 }

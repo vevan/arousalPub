@@ -1,4 +1,3 @@
-import { createEmbedding } from './embedding-client.js'
 import { embedTextsInBatches, isEmbeddingBatchOk } from './embedding-batch.js'
 import {
   resolveEmbeddingApiCredentials,
@@ -209,60 +208,38 @@ export async function reindexKnowledgeBase(
 
     let embeddingModel: string | undefined
     let embeddingDimensions: number | null = null
+    let embeddingProfile: string | null = null
 
     const rows: DocChunkVectorRow[] = []
     if (embedItems.length > 0) {
       const resolvedCreds = creds ?? (await resolveEmbeddingApiCredentials())
-      if (resolvedCreds) {
-        let reported = 0
-        const batch = await embedTextsInBatches(resolvedCreds, embedItems, {
-          onProgress: (progress) => {
-            reported = progress.completedItems
-            done = fileTotal + reported
-            tick('embedding', reported, embedItems.length)
-          },
-        })
-        if (!isEmbeddingBatchOk(batch)) {
-          throw new Error(batch.error || 'embedding_batch_failed')
+      let reported = 0
+      const batch = await embedTextsInBatches(resolvedCreds, embedItems, {
+        onProgress: (progress) => {
+          reported = progress.completedItems
+          done = fileTotal + reported
+          tick('embedding', reported, embedItems.length)
+        },
+      })
+      if (!isEmbeddingBatchOk(batch)) {
+        throw new Error(batch.error || 'embedding_batch_failed')
+      }
+      embeddingModel = batch.model
+      embeddingDimensions = resolvedCreds.embeddingDimensions
+      embeddingProfile = resolvedCreds.embeddingProfile
+      for (const fc of fileChunks) {
+        for (const c of fc.chunks) {
+          const vector = batch.vectors.get(c.chunkId)
+          if (!vector?.length) continue
+          rows.push({
+            chunkId: c.chunkId,
+            kbId,
+            fileId: fc.fileId,
+            ordinal: c.ordinal,
+            text: c.text,
+            vector,
+          })
         }
-        embeddingModel = batch.model
-        embeddingDimensions = resolvedCreds.embeddingDimensions
-        for (const fc of fileChunks) {
-          for (const c of fc.chunks) {
-            const vector = batch.vectors.get(c.chunkId)
-            if (!vector?.length) continue
-            rows.push({
-              chunkId: c.chunkId,
-              kbId,
-              fileId: fc.fileId,
-              ordinal: c.ordinal,
-              text: c.text,
-              vector,
-            })
-          }
-        }
-      } else {
-        let embedded = 0
-        for (const fc of fileChunks) {
-          for (const c of fc.chunks) {
-            const emb = await createEmbedding(c.text)
-            embedded += 1
-            done = fileTotal + embedded
-            tick('embedding', embedded, embedItems.length)
-            if (!emb) continue
-            embeddingModel = emb.model
-            rows.push({
-              chunkId: c.chunkId,
-              kbId,
-              fileId: fc.fileId,
-              ordinal: c.ordinal,
-              text: c.text,
-              vector: emb.vector,
-            })
-          }
-        }
-        const resolved = await resolveEmbeddingApiCredentials()
-        embeddingDimensions = resolved?.embeddingDimensions ?? null
       }
     }
 
@@ -281,6 +258,7 @@ export async function reindexKnowledgeBase(
       kbId,
       embeddingModel,
       embeddingDimensions,
+      embeddingProfile,
       updatedAt: new Date().toISOString(),
       files: fileChunks,
     }

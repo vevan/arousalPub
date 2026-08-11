@@ -11,6 +11,7 @@ describe('createEmptyConversationBranch forkMessageId', () => {
   let prevDataDir: string | undefined
   let prevTestUser: string | undefined
   let chatStorage: typeof import('../src/chat-storage.js')
+  let chatGroupTurnOps: typeof import('../src/chat-group-turn-ops.js')
   let branches: typeof import('../src/conversation-branches.js')
   let chunkChain: typeof import('../src/chunk-chain.js')
 
@@ -21,6 +22,7 @@ describe('createEmptyConversationBranch forkMessageId', () => {
     process.env.DATA_DIR = tmp
     process.env.AROUSAL_TEST_USER_ID = TEST_USER
     chatStorage = await import('../src/chat-storage.js')
+    chatGroupTurnOps = await import('../src/chat-group-turn-ops.js')
     branches = await import('../src/conversation-branches.js')
     chunkChain = await import('../src/chunk-chain.js')
   })
@@ -36,14 +38,14 @@ describe('createEmptyConversationBranch forkMessageId', () => {
   it('rejects unknown forkMessageId; accepts valid and overlays on read', async () => {
     const conversationId = 'c0fork01'
     await chatStorage.createConversationStub(conversationId, 'fork swipe')
-    const first = await chatStorage.saveFirstTurn({
+    const first = await chatGroupTurnOps.saveFirstTurn({
       conversationId,
       userText: 'u0',
       assistantText: 'a0',
     })
     assert.ok(first)
 
-    const okAppend = await chatStorage.appendConversationTurn({
+    const okAppend = await chatGroupTurnOps.appendConversationTurn({
       conversationId,
       userText: 'u1',
       receives: [

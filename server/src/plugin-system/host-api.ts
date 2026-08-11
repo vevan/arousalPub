@@ -2,7 +2,6 @@ import { applyPromptMacroPipeline } from '../prompt-macros/index.js'
 import { resolvePluginCompleteApi } from '../plugin-api-resolve.js'
 import { resolvePluginCaptureDebug } from '../plugin-audit-gate.js'
 import { runPluginComplete } from '../plugin-complete.js'
-import { runCompleteWithContext } from '../plugin-complete-with-context.js'
 import { runPluginCompletePreflight } from '../plugin-complete-preflight.js'
 import { runPluginMacroExpand } from '../plugin-macro-expand.js'
 import {
@@ -14,14 +13,12 @@ import {
 import { readRegexRulesDocument } from '../regex-rules-file.js'
 import type { RegexApplyContext } from '../regex-rules-types.js'
 import { readChunkContainingOrdinal, readTurnsTail } from '../chunk-chain.js'
-import {
-  readConversationIndex,
-  readConversationPluginSettings,
-  getTurnUserText,
-  type TurnRecord,
-} from '../chat-storage.js'
+import { getTurnUserText } from '../chat-turn-accessors.js'
+import type { TurnRecord } from '../chat-turn-types.js'
+import { readConversationIndex } from '../chat-storage-io.js'
+import { readConversationPluginSettings } from '../chat-storage.js'
 import { readMergedPluginUserSettings } from './settings.js'
-import { readPluginPackageFile } from './loader.js'
+import { readPluginPackageFile } from './plugin-package-read.js'
 import { getCurrentUserId } from '../user-context.js'
 import type { PluginServerHostApi } from './types.js'
 import type { ChatMessage } from '../assemble-prompts.js'
@@ -206,6 +203,9 @@ export function createPluginServerHostApi(
       if (!pid) {
         return { ok: false, code: 'plugin_id_required' }
       }
+      const { runCompleteWithContext } = await import(
+        '../plugin-complete-with-context.js'
+      )
       return runCompleteWithContext(pid, req, uid)
     },
     regex: {

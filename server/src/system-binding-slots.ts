@@ -1,4 +1,8 @@
-import type { PromptBindingSlot, PromptEntry, PromptPreset } from './assemble-prompts.js'
+import type {
+  PromptBindingSlot,
+  PromptEntry,
+  PromptPreset,
+} from './prompt-preset-types.js'
 
 /** 与 SillyTavern marker 对齐的系统子块（原生预设与 ST 导入共用） */
 export const SYSTEM_BINDING_SLOTS = [

@@ -1,4 +1,4 @@
-import type { TurnRecord } from '../chat-storage.js'
+import type { TurnRecord } from '../chat-turn-types.js'
 import {
   isGroupChatMemberMuted,
   type GroupChatSettings,

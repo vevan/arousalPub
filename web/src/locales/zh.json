@@ -909,6 +909,17 @@
     },
     "embeddingApiSection": "Embeddings API",
     "embeddingApiSectionHint": "与对话 API 分离；仅用于远期记忆向量索引与召回。可与聊天使用不同服务商或模型。",
+    "embeddingProvider": "Embedding 提供方式",
+    "embeddingProviderOpenAiCompatible": "OpenAI 兼容 API",
+    "embeddingProviderBuiltin": "内置本地模型",
+    "embeddingBuiltinDescription": "固定使用 {model}（{dimensions} 维、CPU、q8）。模型仅在首次使用时下载到本机缓存，文本不会发往第三方。",
+    "embeddingBuiltinPrepare": "下载并准备模型",
+    "embeddingBuiltinState": {
+      "not_prepared": "状态：尚未准备",
+      "preparing": "状态：正在准备",
+      "ready": "状态：已就绪",
+      "error": "状态：准备失败"
+    },
     "embeddingBaseUrl": "API Base URL",
     "embeddingModel": "Embedding 模型",
     "embeddingModelHint": "如 text-embedding-3-small、BAAI/bge-m3 等（取决于服务商）。",

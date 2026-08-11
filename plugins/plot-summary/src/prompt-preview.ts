@@ -1,6 +1,6 @@
 import { PLUGIN_ID, DIALOG_MANUAL, DIALOG_PROMPT_PREVIEW } from './constants.js'
 import {
-  k,
+  tKey,
   loadMergedSettings,
   sidecarPromptTemplate,
   tasksFromSelection,
@@ -51,7 +51,7 @@ function formatMessagesForDisplay(messages: { role: string; content: string }[])
 }
 
 function taskLabel(host: PluginHost, task: SummarizeTask): string {
-  if (task.kind === 'memory') return host.t(k(host, 'manualTaskMemory'))
+  if (task.kind === 'memory') return host.t(tKey(host, 'manualTaskMemory'))
   return task.sidecar.name
 }
 
@@ -72,12 +72,12 @@ function preflightLineFromDryRun(
 ): string {
   if (!preflight) return ''
   if (preflight.ok) {
-    return host.t(k(host, 'promptPreviewPreflightOk'), {
+    return host.t(tKey(host, 'promptPreviewPreflightOk'), {
       tokens: preflight.promptTokens,
       budget: preflight.budget,
     })
   }
-  return host.t(k(host, 'promptPreviewPreflightFail'), {
+  return host.t(tKey(host, 'promptPreviewPreflightFail'), {
     tokens: preflight.promptTokens,
     budget: preflight.budget,
     code: preflight.code ?? '',
@@ -98,14 +98,14 @@ async function resolveTargetLorebookIdForPreview(
 ): Promise<string> {
   const id = asString(settings.targetLorebookId)
   if (!id) {
-    host.ui.notify(host.t(k(host, 'notifyTargetLorebookMissingWarn')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(tKey(host, 'notifyTargetLorebookMissingWarn')), undefined, { level: 'warning' })
     return ''
   }
   try {
     await host.lorebook.get(id)
     return id
   } catch {
-    host.ui.notify(host.t(k(host, 'notifyTargetLorebookDeleted')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(tKey(host, 'notifyTargetLorebookDeleted')), undefined, { level: 'warning' })
     return ''
   }
 }
@@ -114,18 +114,18 @@ export function registerPromptPreviewDialog(host: PluginHost) {
   host.registerFormDialog(
     PLUGIN_ID,
     {
-      titleKey: k(host, 'promptPreviewTitle'),
-      bodyKey: k(host, 'promptPreviewBody'),
+      titleKey: tKey(host, 'promptPreviewTitle'),
+      bodyKey: tKey(host, 'promptPreviewBody'),
       fields: [
         {
           key: 'previewText',
-          labelKey: k(host, 'promptPreviewTextLabel'),
+          labelKey: tKey(host, 'promptPreviewTextLabel'),
           type: 'textarea',
           readOnly: true,
         },
       ],
-      submitKey: k(host, 'promptPreviewClose'),
-      cancelKey: k(host, 'sessionCancel'),
+      submitKey: tKey(host, 'promptPreviewClose'),
+      cancelKey: tKey(host, 'sessionCancel'),
       canSubmit: () => true,
       onSubmit: async (h: PluginHost) => {
         const restore = getPromptPreviewRestore()
@@ -154,24 +154,24 @@ export async function previewManualSummarizePrompt(
 
   const settings = await loadMergedSettings(host)
   if (!summarizeDialogCanPreview(model, settings)) {
-    host.ui.notify(host.t(k(host, 'notifyInvalidRange')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(tKey(host, 'notifyInvalidRange')), undefined, { level: 'warning' })
     return
   }
 
   const fromTurn = asInt(model.startTurn, 0, 500_000)
   const toTurn = asInt(model.endTurn, fromTurn, 500_000)
   if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
-    host.ui.notify(host.t(k(host, 'notifyTurnRangeTooLong')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(tKey(host, 'notifyTurnRangeTooLong')), undefined, { level: 'warning' })
     return
   }
   const tasks = tasksFromSelection(settings, model.selectedTasks)
   if (tasks.length === 0) {
-    host.ui.notify(host.t(k(host, 'notifyNoTasksSelected')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(tKey(host, 'notifyNoTasksSelected')), undefined, { level: 'warning' })
     return
   }
 
   host.ui.progress({
-    message: host.t(k(host, 'promptPreviewLoading')),
+    message: host.t(tKey(host, 'promptPreviewLoading')),
     done: 0,
     total: 1,
     indeterminate: true,
@@ -202,12 +202,12 @@ export async function previewManualSummarizePrompt(
       toTurn,
     )
     if (!prepared.userContent?.trim()) {
-      host.ui.notify(host.t(k(host, 'notifyNoTurnsInRange')), undefined, { level: 'warning' })
+      host.ui.notify(host.t(tKey(host, 'notifyNoTurnsInRange')), undefined, { level: 'warning' })
       return
     }
 
     const sections: string[] = [
-      host.t(k(host, 'promptPreviewRange'), { from: fromTurn, to: toTurn }),
+      host.t(tKey(host, 'promptPreviewRange'), { from: fromTurn, to: toTurn }),
       '',
     ]
 

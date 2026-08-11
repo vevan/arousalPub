@@ -5,6 +5,11 @@ import {
   type EmbeddingRequestError,
   type EmbeddingResult,
 } from './embedding-client.js'
+import {
+  BUILTIN_EMBEDDING_BATCH_MAX_INPUTS,
+  BUILTIN_EMBEDDING_MODEL,
+  createBuiltinEmbeddings,
+} from './builtin-embedding.js'
 
 /** 单次 Embeddings API 请求最多条数（OpenAI 兼容 input 数组） */
 export const EMBEDDING_BATCH_MAX_INPUTS = 32
@@ -57,6 +62,24 @@ async function createEmbeddingsBatchRequest(
 ): Promise<EmbeddingBatchVectorsResult> {
   if (!items.length) {
     return { ok: true, vectors: new Map(), model: creds.embeddingModel }
+  }
+
+  if (creds.provider === 'builtin') {
+    try {
+      const rows = await createBuiltinEmbeddings(items.map((it) => it.text.trim()))
+      const vectors = new Map<string, number[]>()
+      for (let i = 0; i < items.length; i += 1) {
+        const vector = rows[i]
+        if (!vector) return { error: '内置 Embedding 批量响应条数与请求不一致' }
+        vectors.set(items[i]!.key, vector)
+      }
+      return { ok: true, vectors, model: BUILTIN_EMBEDDING_MODEL }
+    } catch (e) {
+      return {
+        error: '内置 Embedding 推理失败',
+        detail: e instanceof Error ? e.message : String(e),
+      }
+    }
   }
 
   const inputs = items.map((it) => it.text.trim())
@@ -164,15 +187,23 @@ export async function embedTextsInBatches(
   const batchSize = Math.max(
     1,
     Math.min(
-      options?.batchSize ?? EMBEDDING_BATCH_MAX_INPUTS,
-      EMBEDDING_BATCH_MAX_INPUTS,
+      options?.batchSize ?? (
+        creds.provider === 'builtin'
+          ? BUILTIN_EMBEDDING_BATCH_MAX_INPUTS
+          : EMBEDDING_BATCH_MAX_INPUTS
+      ),
+      creds.provider === 'builtin'
+        ? BUILTIN_EMBEDDING_BATCH_MAX_INPUTS
+        : EMBEDDING_BATCH_MAX_INPUTS,
     ),
   )
   const concurrency = Math.max(
     1,
     Math.min(
-      options?.concurrency ?? EMBEDDING_REINDEX_BATCH_CONCURRENCY,
-      EMBEDDING_REINDEX_BATCH_CONCURRENCY,
+      creds.provider === 'builtin'
+        ? 1
+        : options?.concurrency ?? EMBEDDING_REINDEX_BATCH_CONCURRENCY,
+      creds.provider === 'builtin' ? 1 : EMBEDDING_REINDEX_BATCH_CONCURRENCY,
     ),
   )
 

@@ -1,4 +1,4 @@
-import type { StPresetJson } from './st-preset-import.js'
+import type { StPresetJson } from './st-preset-types.js'
 
 export const ST_PRESET_MAX_PROMPTS = 512
 export const ST_PRESET_MAX_ORDER_ITEMS = 512

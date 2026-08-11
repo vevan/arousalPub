@@ -1,17 +1,16 @@
 import { readTailChunk } from './chat-storage.js'
 import { applyRegexPersistToTurnFields, filterRegexRules } from './regex-apply.js'
+import { hasEnabledPersistRules } from './regex-persist-enabled.js'
 import { resolveConversationTailOrdinal } from './regex-persist-patch.js'
 import { readRegexRulesDocument } from './regex-rules-file.js'
 import type { RegexRule } from './regex-rules-types.js'
+
+export { hasEnabledPersistRules }
 
 export interface PersistRegexFields {
   userText: string
   assistantContent: string
   assistantReasoning?: string
-}
-
-export function hasEnabledPersistRules(rules: RegexRule[]): boolean {
-  return rules.some((r) => r.enabled && r.phases.includes('persist'))
 }
 
 /** 落盘轮 ordinal（新轮 = 尾轮 + 1；再生 = 指定轮） */

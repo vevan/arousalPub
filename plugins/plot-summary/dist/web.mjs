@@ -36,16 +36,19 @@ function entryKeys(keywords) {
 }
 
 // plugins/plot-summary/src/settings.ts
-function k(host, key) {
+function tKey(host, key) {
   return host.pluginKey(key);
 }
+function isAutoSummarizeEnabled(host) {
+  return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true;
+}
 function resolveDefaultSystemPrompt(host) {
-  const key = k(host, "systemPromptTemplateDefault");
+  const key = tKey(host, "systemPromptTemplateDefault");
   const text = host.t(key);
   return text && text !== key ? text : "";
 }
 function resolveDefaultSidecarPrompt(host) {
-  const key = k(host, "sidecarSystemPromptTemplateDefault");
+  const key = tKey(host, "sidecarSystemPromptTemplateDefault");
   const text = host.t(key);
   return text && text !== key ? text : "";
 }
@@ -385,27 +388,27 @@ function registerAutoSummarizeCompanion(host) {
   host.registerFormDialog(
     PLUGIN_ID,
     {
-      titleKey: k(host, "convAutoSummarizeResetTitle"),
-      bodyKey: k(host, "convAutoSummarizeResetHint"),
+      titleKey: tKey(host, "convAutoSummarizeResetTitle"),
+      bodyKey: tKey(host, "convAutoSummarizeResetHint"),
       fields: [
         {
           key: "lastSummarizedEnd",
-          labelKey: k(host, "convAutoSummarizeResetEndLabel"),
+          labelKey: tKey(host, "convAutoSummarizeResetEndLabel"),
           type: "integer",
           min: -1
         },
         {
           key: "lastMemoIndex",
-          labelKey: k(host, "convAutoSummarizeResetMemoLabel"),
+          labelKey: tKey(host, "convAutoSummarizeResetMemoLabel"),
           type: "integer",
           min: 1,
           max: 9999,
-          hintKey: k(host, "convAutoSummarizeResetMemoHint")
+          hintKey: tKey(host, "convAutoSummarizeResetMemoHint")
         }
       ],
-      submitKey: k(host, "convAutoSummarizeResetConfirm"),
-      cancelKey: k(host, "sessionCancel"),
-      skipKey: k(host, "convAutoSummarizeResetNever"),
+      submitKey: tKey(host, "convAutoSummarizeResetConfirm"),
+      cancelKey: tKey(host, "sessionCancel"),
+      skipKey: tKey(host, "convAutoSummarizeResetNever"),
       canSubmit: (m) => {
         const memo = parseMemoIndexField(m.lastMemoIndex);
         if (memo === void 0) return false;
@@ -443,34 +446,34 @@ function registerAutoSummarizeCompanion(host) {
       if (p.lastSummarizedEnd !== null && p.lastSummarizedEnd >= 0) {
         rows.push({
           icon: "mdi-check-circle-outline",
-          text: host.t(k(host, "convAutoSummarizeProgressDone"), {
+          text: host.t(tKey(host, "convAutoSummarizeProgressDone"), {
             end: p.lastSummarizedEnd
           })
         });
       } else {
         rows.push({
           icon: "mdi-circle-outline",
-          text: host.t(k(host, "convAutoSummarizeProgressNever")),
+          text: host.t(tKey(host, "convAutoSummarizeProgressNever")),
           tone: "muted"
         });
       }
       if (typeof lastMemo === "number" && lastMemo >= 1) {
         rows.push({
           icon: "mdi-numeric",
-          text: host.t(k(host, "convAutoSummarizeProgressMemo"), {
+          text: host.t(tKey(host, "convAutoSummarizeProgressMemo"), {
             n: lastMemo
           })
         });
       } else {
         rows.push({
           icon: "mdi-numeric-off",
-          text: host.t(k(host, "convAutoSummarizeProgressMemoNever")),
+          text: host.t(tKey(host, "convAutoSummarizeProgressMemoNever")),
           tone: "muted"
         });
       }
       rows.push({
         icon: "mdi-format-list-bulleted",
-        text: host.t(k(host, "convAutoSummarizeProgressPending"), {
+        text: host.t(tKey(host, "convAutoSummarizeProgressPending"), {
           from: p.pendingFromTurn,
           to: p.pendingToTurn
         })
@@ -478,7 +481,7 @@ function registerAutoSummarizeCompanion(host) {
       if (p.autoSummarizeEnabled) {
         rows.push({
           icon: "mdi-calendar-clock",
-          text: host.t(k(host, "convAutoSummarizeProgressNext"), {
+          text: host.t(tKey(host, "convAutoSummarizeProgressNext"), {
             turn: p.nextTriggerTurn
           }),
           tone: "accent"
@@ -486,14 +489,14 @@ function registerAutoSummarizeCompanion(host) {
       } else {
         rows.push({
           icon: "mdi-pause-circle-outline",
-          text: host.t(k(host, "convAutoSummarizeProgressOff")),
+          text: host.t(tKey(host, "convAutoSummarizeProgressOff")),
           tone: "muted"
         });
       }
       return {
-        title: host.t(k(host, "convAutoSummarizeProgressTitle")),
+        title: host.t(tKey(host, "convAutoSummarizeProgressTitle")),
         rows,
-        actionLabel: host.t(k(host, "convAutoSummarizeResetBtn")),
+        actionLabel: host.t(tKey(host, "convAutoSummarizeResetBtn")),
         onAction: () => {
           const last = readLastSummarizedEnd(ctx.convModel);
           const memo = readLastMemoIndex(ctx.convModel);
@@ -513,10 +516,10 @@ function registerAutoSummarizeCompanion(host) {
 
 // plugins/plot-summary/src/notify-outcome.ts
 function notifyOutcome(host, key, level, params) {
-  host.ui.notify(host.t(k(host, key), params), void 0, { level });
+  host.ui.notify(host.t(tKey(host, key), params), void 0, { level });
 }
 function notifySummarizeTask(host, key, level, taskLabel2) {
-  host.ui.notify(host.t(k(host, key), { task: taskLabel2 }), void 0, { level });
+  host.ui.notify(host.t(tKey(host, key), { task: taskLabel2 }), void 0, { level });
 }
 
 // plugins/plot-summary/src/errors.ts
@@ -575,22 +578,22 @@ function preflightNotify(host, e, taskLabel2) {
   };
   if (code === "context_exceeded" || code === "plugin_complete_context_exceeded") {
     const { used, budget } = contextExceededToastParams(e);
-    host.ui.notify(withTask(host.t(k(host, "notifyContextExceeded"), {
+    host.ui.notify(withTask(host.t(tKey(host, "notifyContextExceeded"), {
       used: used ?? "?",
       budget: budget ?? "?"
     })), void 0, { level: "warning" });
     return;
   }
   if (code === "context_length_unconfigured" || code === "plugin_complete_context_length_unconfigured") {
-    host.ui.notify(withTask(host.t(k(host, "notifyContextLengthMissing"))), void 0, { level: "warning" });
+    host.ui.notify(withTask(host.t(tKey(host, "notifyContextLengthMissing"))), void 0, { level: "warning" });
     return;
   }
   if (isLorebookNotFoundError(e)) {
-    host.ui.notify(withTask(host.t(k(host, "notifyTargetLorebookDeleted"))), void 0, { level: "warning" });
+    host.ui.notify(withTask(host.t(tKey(host, "notifyTargetLorebookDeleted"))), void 0, { level: "warning" });
     return;
   }
   if (isLorebookEntryMissingError(e)) {
-    host.ui.notify(withTask(host.t(k(host, "notifySidecarEntryMissing"))), void 0, { level: "warning" });
+    host.ui.notify(withTask(host.t(tKey(host, "notifySidecarEntryMissing"))), void 0, { level: "warning" });
     return;
   }
   const apiCode = lorebookErrorCode(e);
@@ -598,7 +601,7 @@ function preflightNotify(host, e, taskLabel2) {
     notifyOutcome(host, "notifySummarizeFailed", "error");
     return;
   }
-  host.ui.notify(withTask(host.t(k(host, "notifySummarizeFailed"))), void 0, { level: "error" });
+  host.ui.notify(withTask(host.t(tKey(host, "notifySummarizeFailed"))), void 0, { level: "error" });
 }
 
 // plugins/plot-summary/src/shared/summary-prompt-layout.ts
@@ -682,12 +685,12 @@ function resolveSystemPrompt(host, settings, opts) {
 }
 function bumpTaskProgress(host, done, total) {
   host.ui.progress({
-    message: host.t(k(host, "progressSummarize")),
+    message: host.t(tKey(host, "progressSummarize")),
     done,
     total,
     indeterminate: true,
     abortable: true,
-    abortLabel: host.t(k(host, "progressAbort"))
+    abortLabel: host.t(tKey(host, "progressAbort"))
   });
 }
 function showCurrentBatchTaskProgress(host) {
@@ -796,31 +799,31 @@ function registerReviewDialog(host, opts) {
   host.registerFormDialog(
     PLUGIN_ID,
     {
-      titleKey: k(host, "reviewDialogTitle"),
-      bodyKey: k(host, opts.bodyKey),
+      titleKey: tKey(host, "reviewDialogTitle"),
+      bodyKey: tKey(host, opts.bodyKey),
       fields: [
         {
           key: "title",
-          labelKey: k(host, "reviewTitleLabel"),
+          labelKey: tKey(host, "reviewTitleLabel"),
           type: "text",
           ...opts.lockTitle ? { readOnly: true } : {}
         },
         {
           key: "content",
-          labelKey: k(host, "reviewContentLabel"),
+          labelKey: tKey(host, "reviewContentLabel"),
           type: "textarea"
         },
         {
           key: "keywordsText",
-          labelKey: k(host, "reviewKeywordsLabel"),
+          labelKey: tKey(host, "reviewKeywordsLabel"),
           type: "textarea",
-          hintKey: k(host, "reviewKeywordsHint")
+          hintKey: tKey(host, "reviewKeywordsHint")
         }
       ],
-      submitKey: k(host, "reviewConfirm"),
-      skipKey: k(host, "reviewSkip"),
-      cancelKey: k(host, "reviewAbort"),
-      extraActionKey: k(host, "reviewRegenerate"),
+      submitKey: tKey(host, "reviewConfirm"),
+      skipKey: tKey(host, "reviewSkip"),
+      cancelKey: tKey(host, "reviewAbort"),
+      extraActionKey: tKey(host, "reviewRegenerate"),
       persistent: true,
       canSubmit: (m) => opts.lockTitle ? asString(m.content).length > 0 : asString(m.title).length > 0 && asString(m.content).length > 0,
       onSubmit: async (_h, model) => {
@@ -869,15 +872,15 @@ function notifyDraftParseOutcome(host, outcome, taskLabel2, dialogId) {
   if (outcome === "success") {
     const action = conversationId ? { type: "conversation", conversationId } : void 0;
     host.ui.notify(
-      host.t(k(host, "notifyReviewReady"), { task: taskLabel2 }),
-      host.t(k(host, "notifyReviewReadyBody")),
+      host.t(tKey(host, "notifyReviewReady"), { task: taskLabel2 }),
+      host.t(tKey(host, "notifyReviewReadyBody")),
       {
         level: "info",
         dedupeKey: `plot-summary:review-ready:${dedupeSuffix}`,
         action,
         snackbarActions: action ? [
           {
-            label: host.t(k(host, "notifyReviewReadyOpen")),
+            label: host.t(tKey(host, "notifyReviewReadyOpen")),
             action
           }
         ] : void 0
@@ -886,8 +889,8 @@ function notifyDraftParseOutcome(host, outcome, taskLabel2, dialogId) {
     return;
   }
   host.ui.notify(
-    host.t(k(host, "notifyParseFailed"), { task: taskLabel2 }),
-    host.t(k(host, "notifyParseFailedBody")),
+    host.t(tKey(host, "notifyParseFailed"), { task: taskLabel2 }),
+    host.t(tKey(host, "notifyParseFailedBody")),
     {
       level: "error",
       dedupeKey: `plot-summary:parse-failed:${dedupeSuffix}`
@@ -1189,7 +1192,7 @@ function formatSummarizeTaskTitlePart(host, task, fromTurn, toTurn, blockTurns, 
     ...typeof memoIndex === "number" ? { memoIndex } : {}
   });
   const memo = String(idx).padStart(2, "0");
-  const core = host.t(k(host, "manualTaskMemory"));
+  const core = host.t(tKey(host, "manualTaskMemory"));
   return `[MEMO-${memo}] ${core} [${fromTurn}-${toTurn}]`;
 }
 function formatSummarizeTaskNotifyLabel(host, lorebookName, task, fromTurn, toTurn, blockTurns, memoIndex) {
@@ -1386,22 +1389,22 @@ function setPluginHold(host, hold) {
 }
 function bumpTaskProgress2(host, done, total) {
   host.ui.progress({
-    message: host.t(k(host, "progressSummarize")),
+    message: host.t(tKey(host, "progressSummarize")),
     done,
     total,
     indeterminate: true,
     abortable: true,
-    abortLabel: host.t(k(host, "progressAbort"))
+    abortLabel: host.t(tKey(host, "progressAbort"))
   });
 }
 async function runSummarizeTasks(host, opts) {
   if (summarizeRunning) {
-    host.ui.notify(host.t(k(host, "notifyBusy")), void 0, { level: "info" });
+    host.ui.notify(host.t(tKey(host, "notifyBusy")), void 0, { level: "info" });
     return { ok: false, reason: "busy" };
   }
   const tasks = opts.tasks ?? [];
   if (tasks.length === 0) {
-    host.ui.notify(host.t(k(host, "notifyNoTasksSelected")), void 0, { level: "warning" });
+    host.ui.notify(host.t(tKey(host, "notifyNoTasksSelected")), void 0, { level: "warning" });
     return { ok: false, reason: "no_tasks" };
   }
   setSummarizeRunning(true);
@@ -1419,11 +1422,11 @@ async function runSummarizeTasks(host, opts) {
     const fromTurn = opts.fromTurn;
     const toTurn = opts.toTurn;
     if (fromTurn > toTurn) {
-      host.ui.notify(host.t(k(host, "notifyInvalidRange")), void 0, { level: "warning" });
+      host.ui.notify(host.t(tKey(host, "notifyInvalidRange")), void 0, { level: "warning" });
       return { ok: false, reason: "invalid_range" };
     }
     if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
-      host.ui.notify(host.t(k(host, "notifyTurnRangeTooLong")), void 0, { level: "warning" });
+      host.ui.notify(host.t(tKey(host, "notifyTurnRangeTooLong")), void 0, { level: "warning" });
       return { ok: false, reason: "turn_range_too_long" };
     }
     const sidecarConfigIds = settings.sidecars.map((s) => s.id);
@@ -1471,7 +1474,7 @@ async function runSummarizeTasks(host, opts) {
       toTurn
     );
     if (!prepared.userContent?.trim()) {
-      host.ui.notify(host.t(k(host, "notifyNoTurnsInRange")), void 0, { level: "warning" });
+      host.ui.notify(host.t(tKey(host, "notifyNoTurnsInRange")), void 0, { level: "warning" });
       return { ok: false, reason: "no_turns" };
     }
     const preparedContext = prepared.preparedContext;
@@ -1484,12 +1487,12 @@ async function runSummarizeTasks(host, opts) {
     let allocatedMemoIndex = null;
     const pendingCreates = [];
     host.ui.progress({
-      message: host.t(k(host, "progressSummarize")),
+      message: host.t(tKey(host, "progressSummarize")),
       done: 0,
       total: tasks.length,
       indeterminate: true,
       abortable: true,
-      abortLabel: host.t(k(host, "progressAbort"))
+      abortLabel: host.t(tKey(host, "progressAbort"))
     });
     setSummarizeBatchProgress({ taskIndex: 0, total: tasks.length });
     for (let taskIndex = 0; taskIndex < tasks.length; taskIndex++) {
@@ -1590,7 +1593,7 @@ async function runSummarizeTasks(host, opts) {
       } catch (e) {
         if (isAbortError(e)) {
           aborted = true;
-          host.ui.notify(host.t(k(host, "notifyProgressAborted")), void 0, { level: "info" });
+          host.ui.notify(host.t(tKey(host, "notifyProgressAborted")), void 0, { level: "info" });
           break;
         }
         if (e instanceof Error && e.message === "review_skipped") {
@@ -1602,7 +1605,7 @@ async function runSummarizeTasks(host, opts) {
         }
         if (e instanceof Error && e.message === "review_aborted") {
           aborted = true;
-          host.ui.notify(host.t(k(host, "notifyReviewAborted")), void 0, { level: "info" });
+          host.ui.notify(host.t(tKey(host, "notifyReviewAborted")), void 0, { level: "info" });
           break;
         }
         console.warn("[plot-summary] task failed", task, e);
@@ -1747,7 +1750,7 @@ ${items.join(",\n")}
 ]`;
 }
 function taskLabel(host, task) {
-  if (task.kind === "memory") return host.t(k(host, "manualTaskMemory"));
+  if (task.kind === "memory") return host.t(tKey(host, "manualTaskMemory"));
   return task.sidecar.name;
 }
 function resolveSystemPrompt2(host, settings, task) {
@@ -1759,12 +1762,12 @@ function resolveSystemPrompt2(host, settings, task) {
 function preflightLineFromDryRun(host, preflight) {
   if (!preflight) return "";
   if (preflight.ok) {
-    return host.t(k(host, "promptPreviewPreflightOk"), {
+    return host.t(tKey(host, "promptPreviewPreflightOk"), {
       tokens: preflight.promptTokens,
       budget: preflight.budget
     });
   }
-  return host.t(k(host, "promptPreviewPreflightFail"), {
+  return host.t(tKey(host, "promptPreviewPreflightFail"), {
     tokens: preflight.promptTokens,
     budget: preflight.budget,
     code: preflight.code ?? ""
@@ -1780,14 +1783,14 @@ function summarizeDialogCanPreview(model, settings) {
 async function resolveTargetLorebookIdForPreview(host, settings) {
   const id = asString(settings.targetLorebookId);
   if (!id) {
-    host.ui.notify(host.t(k(host, "notifyTargetLorebookMissingWarn")), void 0, { level: "warning" });
+    host.ui.notify(host.t(tKey(host, "notifyTargetLorebookMissingWarn")), void 0, { level: "warning" });
     return "";
   }
   try {
     await host.lorebook.get(id);
     return id;
   } catch {
-    host.ui.notify(host.t(k(host, "notifyTargetLorebookDeleted")), void 0, { level: "warning" });
+    host.ui.notify(host.t(tKey(host, "notifyTargetLorebookDeleted")), void 0, { level: "warning" });
     return "";
   }
 }
@@ -1795,18 +1798,18 @@ function registerPromptPreviewDialog(host) {
   host.registerFormDialog(
     PLUGIN_ID,
     {
-      titleKey: k(host, "promptPreviewTitle"),
-      bodyKey: k(host, "promptPreviewBody"),
+      titleKey: tKey(host, "promptPreviewTitle"),
+      bodyKey: tKey(host, "promptPreviewBody"),
       fields: [
         {
           key: "previewText",
-          labelKey: k(host, "promptPreviewTextLabel"),
+          labelKey: tKey(host, "promptPreviewTextLabel"),
           type: "textarea",
           readOnly: true
         }
       ],
-      submitKey: k(host, "promptPreviewClose"),
-      cancelKey: k(host, "sessionCancel"),
+      submitKey: tKey(host, "promptPreviewClose"),
+      cancelKey: tKey(host, "sessionCancel"),
       canSubmit: () => true,
       onSubmit: async (h) => {
         const restore = getPromptPreviewRestore();
@@ -1830,22 +1833,22 @@ async function previewManualSummarizePrompt(host, model) {
   if (!auditDebugEnabled(host)) return;
   const settings = await loadMergedSettings(host);
   if (!summarizeDialogCanPreview(model, settings)) {
-    host.ui.notify(host.t(k(host, "notifyInvalidRange")), void 0, { level: "warning" });
+    host.ui.notify(host.t(tKey(host, "notifyInvalidRange")), void 0, { level: "warning" });
     return;
   }
   const fromTurn = asInt(model.startTurn, 0, 5e5);
   const toTurn = asInt(model.endTurn, fromTurn, 5e5);
   if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
-    host.ui.notify(host.t(k(host, "notifyTurnRangeTooLong")), void 0, { level: "warning" });
+    host.ui.notify(host.t(tKey(host, "notifyTurnRangeTooLong")), void 0, { level: "warning" });
     return;
   }
   const tasks = tasksFromSelection(settings, model.selectedTasks);
   if (tasks.length === 0) {
-    host.ui.notify(host.t(k(host, "notifyNoTasksSelected")), void 0, { level: "warning" });
+    host.ui.notify(host.t(tKey(host, "notifyNoTasksSelected")), void 0, { level: "warning" });
     return;
   }
   host.ui.progress({
-    message: host.t(k(host, "promptPreviewLoading")),
+    message: host.t(tKey(host, "promptPreviewLoading")),
     done: 0,
     total: 1,
     indeterminate: true
@@ -1872,11 +1875,11 @@ async function previewManualSummarizePrompt(host, model) {
       toTurn
     );
     if (!prepared.userContent?.trim()) {
-      host.ui.notify(host.t(k(host, "notifyNoTurnsInRange")), void 0, { level: "warning" });
+      host.ui.notify(host.t(tKey(host, "notifyNoTurnsInRange")), void 0, { level: "warning" });
       return;
     }
     const sections = [
-      host.t(k(host, "promptPreviewRange"), { from: fromTurn, to: toTurn }),
+      host.t(tKey(host, "promptPreviewRange"), { from: fromTurn, to: toTurn }),
       ""
     ];
     for (const task of tasks) {
@@ -1911,9 +1914,6 @@ async function previewManualSummarizePrompt(host, model) {
 }
 
 // plugins/plot-summary/src/dialogs.ts
-function isAutoSummarizeEnabled(host) {
-  return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true;
-}
 function refreshAutoSummarizeUi(host) {
   host.refreshSlotButtons();
 }
@@ -1948,10 +1948,10 @@ async function createTargetLorebookFromTemplate(host, settings) {
 }
 async function promptBindCreatedLorebook(host, lorebookId, lorebookName) {
   const ok = await host.ui.confirm({
-    title: host.t(k(host, "bindLorebookConfirmTitle")),
-    body: host.t(k(host, "bindLorebookConfirmBody"), { name: lorebookName }),
-    confirmLabel: host.t(k(host, "bindLorebookConfirm")),
-    cancelLabel: host.t(k(host, "bindLorebookSkip"))
+    title: host.t(tKey(host, "bindLorebookConfirmTitle")),
+    body: host.t(tKey(host, "bindLorebookConfirmBody"), { name: lorebookName }),
+    confirmLabel: host.t(tKey(host, "bindLorebookConfirm")),
+    cancelLabel: host.t(tKey(host, "bindLorebookSkip"))
   });
   if (!ok) return;
   const current = await host.conversation.getLorebookIds();
@@ -1963,7 +1963,7 @@ async function ensureTargetLorebook(host, settings) {
   const existing = asString(settings.targetLorebookId);
   if (existing) {
     if (await isTargetLorebookAvailable(host, existing)) return existing;
-    host.ui.notify(host.t(k(host, "notifyTargetLorebookDeleted")), void 0, { level: "warning" });
+    host.ui.notify(host.t(tKey(host, "notifyTargetLorebookDeleted")), void 0, { level: "warning" });
     try {
       return await promptRecoverLorebook(host, settings);
     } catch {
@@ -1981,7 +1981,7 @@ async function ensureTargetLorebook(host, settings) {
       return "";
     }
   }
-  host.ui.notify(host.t(k(host, "notifyTargetLorebookMissingWarn")), void 0, { level: "warning" });
+  host.ui.notify(host.t(tKey(host, "notifyTargetLorebookMissingWarn")), void 0, { level: "warning" });
   try {
     return await promptPickLorebook(host);
   } catch {
@@ -1992,7 +1992,7 @@ function buildSummarizeTaskOptions(host, settings, opts) {
   const options = [
     {
       value: "memory",
-      label: host.t(k(host, "manualTaskMemory")),
+      label: host.t(tKey(host, "manualTaskMemory")),
       ...opts?.memoryLocked ? { locked: true } : {}
     }
   ];
@@ -2023,17 +2023,17 @@ function registerPickLorebookDialog(host) {
   host.registerFormDialog(
     PLUGIN_ID,
     {
-      titleKey: k(host, "pickLorebookDialogTitle"),
-      bodyKey: k(host, "pickLorebookDialogBody"),
+      titleKey: tKey(host, "pickLorebookDialogTitle"),
+      bodyKey: tKey(host, "pickLorebookDialogBody"),
       fields: [
         {
           key: "targetLorebookId",
-          labelKey: k(host, "sessionTargetLorebookLabel"),
+          labelKey: tKey(host, "sessionTargetLorebookLabel"),
           type: "lorebook"
         }
       ],
-      submitKey: k(host, "pickLorebookConfirm"),
-      cancelKey: k(host, "sessionCancel"),
+      submitKey: tKey(host, "pickLorebookConfirm"),
+      cancelKey: tKey(host, "sessionCancel"),
       canSubmit: (m) => asString(m.targetLorebookId).length > 0,
       onSubmit: async (h, model) => {
         const id = asString(model.targetLorebookId);
@@ -2052,27 +2052,27 @@ function registerRecoverLorebookDialog(host) {
   host.registerFormDialog(
     PLUGIN_ID,
     {
-      titleKey: k(host, "recoverLorebookDialogTitle"),
-      bodyKey: k(host, "recoverLorebookDialogBody"),
+      titleKey: tKey(host, "recoverLorebookDialogTitle"),
+      bodyKey: tKey(host, "recoverLorebookDialogBody"),
       fields: [
         {
           key: "mode",
-          labelKey: k(host, "recoverLorebookModeLabel"),
+          labelKey: tKey(host, "recoverLorebookModeLabel"),
           type: "radio",
           options: [
-            { value: "pick", labelKey: k(host, "recoverLorebookModePick") },
-            { value: "create", labelKey: k(host, "recoverLorebookModeCreate") }
+            { value: "pick", labelKey: tKey(host, "recoverLorebookModePick") },
+            { value: "create", labelKey: tKey(host, "recoverLorebookModeCreate") }
           ]
         },
         {
           key: "targetLorebookId",
-          labelKey: k(host, "sessionTargetLorebookLabel"),
+          labelKey: tKey(host, "sessionTargetLorebookLabel"),
           type: "lorebook",
           visibleWhen: { field: "mode", equals: "pick" }
         }
       ],
-      submitKey: k(host, "recoverLorebookConfirm"),
-      cancelKey: k(host, "sessionCancel"),
+      submitKey: tKey(host, "recoverLorebookConfirm"),
+      cancelKey: tKey(host, "sessionCancel"),
       canSubmit: (m) => {
         const mode = asString(m.mode);
         if (mode === "create") return true;
@@ -2129,57 +2129,57 @@ function registerSessionDialog(host, settings) {
   const fields = [
     {
       key: "targetLorebookId",
-      labelKey: k(host, "sessionTargetLorebookLabel"),
+      labelKey: tKey(host, "sessionTargetLorebookLabel"),
       type: "lorebook",
-      hintKey: k(host, "sessionTargetLorebookHint")
+      hintKey: tKey(host, "sessionTargetLorebookHint")
     },
     {
       key: "blockTurns",
-      labelKey: k(host, "sessionBlockTurnsLabel"),
+      labelKey: tKey(host, "sessionBlockTurnsLabel"),
       type: "integer"
     },
     {
       key: "bufferTurns",
-      labelKey: k(host, "sessionBufferTurnsLabel"),
+      labelKey: tKey(host, "sessionBufferTurnsLabel"),
       type: "integer"
     },
     {
       key: "sidecarEnabled",
-      labelKey: k(host, "sessionSidecarEnabledLabel"),
+      labelKey: tKey(host, "sessionSidecarEnabledLabel"),
       type: "radio",
       options: [
-        { value: "inherit", labelKey: k(host, "sessionSidecarInherit") },
-        { value: "on", labelKey: k(host, "sessionSidecarOn") },
-        { value: "off", labelKey: k(host, "sessionSidecarOff") }
+        { value: "inherit", labelKey: tKey(host, "sessionSidecarInherit") },
+        { value: "on", labelKey: tKey(host, "sessionSidecarOn") },
+        { value: "off", labelKey: tKey(host, "sessionSidecarOff") }
       ]
     },
     {
       key: "entrySortMode",
-      labelKey: k(host, "entrySortModeLabel"),
+      labelKey: tKey(host, "entrySortModeLabel"),
       type: "radio",
       options: [
-        { value: "manual", labelKey: k(host, "entrySortModeManual") },
-        { value: "auto-turn-suffix", labelKey: k(host, "entrySortModeAuto-turn-suffix") }
+        { value: "manual", labelKey: tKey(host, "entrySortModeManual") },
+        { value: "auto-turn-suffix", labelKey: tKey(host, "entrySortModeAuto-turn-suffix") }
       ],
-      hintKey: k(host, "entrySortModeDesc")
+      hintKey: tKey(host, "entrySortModeDesc")
     }
   ];
   if (settings.sidecars.length > 0) {
     fields.push({
       key: "autoSidecarTasks",
-      labelKey: k(host, "sessionAutoSidecarsLabel"),
+      labelKey: tKey(host, "sessionAutoSidecarsLabel"),
       type: "checkboxGroup",
       options: buildAutoSidecarTaskOptions(settings),
-      hintKey: k(host, "sessionAutoSidecarsHint")
+      hintKey: tKey(host, "sessionAutoSidecarsHint")
     });
   }
   host.registerFormDialog(
     PLUGIN_ID,
     {
-      titleKey: k(host, "sessionDialogTitle"),
+      titleKey: tKey(host, "sessionDialogTitle"),
       fields,
-      submitKey: k(host, "sessionSubmit"),
-      cancelKey: k(host, "sessionCancel"),
+      submitKey: tKey(host, "sessionSubmit"),
+      cancelKey: tKey(host, "sessionCancel"),
       canSubmit: () => true,
       onSubmit: async (h, model) => {
         const patch = {
@@ -2212,16 +2212,16 @@ function registerSummarizeDialog(host, settings, mode) {
   const fields = [
     {
       key: "startTurn",
-      labelKey: k(host, "manualStartTurnLabel"),
+      labelKey: tKey(host, "manualStartTurnLabel"),
       type: "integer",
-      hintKey: k(host, "manualTurnRangeHint"),
+      hintKey: tKey(host, "manualTurnRangeHint"),
       ...isEnable ? { readOnly: true } : {}
     },
     {
       key: "endTurn",
-      labelKey: k(host, "manualEndTurnLabel"),
+      labelKey: tKey(host, "manualEndTurnLabel"),
       type: "integer",
-      hintKey: k(host, "manualTurnRangeHint"),
+      hintKey: tKey(host, "manualTurnRangeHint"),
       ...isEnable ? { readOnly: true } : {}
     }
   ];
@@ -2229,31 +2229,31 @@ function registerSummarizeDialog(host, settings, mode) {
     if (settings.sidecars.length > 0) {
       fields.push({
         key: "selectedTasks",
-        labelKey: k(host, "manualTasksLabel"),
+        labelKey: tKey(host, "manualTasksLabel"),
         type: "checkboxGroup",
         options: buildSummarizeTaskOptions(host, settings, { memoryLocked: true }),
-        hintKey: k(host, "enableTasksHint")
+        hintKey: tKey(host, "enableTasksHint")
       });
     }
   } else {
     fields.push({
       key: "selectedTasks",
-      labelKey: k(host, "manualTasksLabel"),
+      labelKey: tKey(host, "manualTasksLabel"),
       type: "checkboxGroup",
       options: buildSummarizeTaskOptions(host, settings, { memoryLocked: false }),
-      hintKey: k(host, "manualTasksHint")
+      hintKey: tKey(host, "manualTasksHint")
     });
   }
   host.registerFormDialog(
     PLUGIN_ID,
     {
-      titleKey: k(host, isEnable ? "enableDialogTitle" : "manualDialogTitle"),
-      bodyKey: k(host, isEnable ? "enableDialogBody" : "manualDialogBody"),
+      titleKey: tKey(host, isEnable ? "enableDialogTitle" : "manualDialogTitle"),
+      bodyKey: tKey(host, isEnable ? "enableDialogBody" : "manualDialogBody"),
       fields,
-      submitKey: k(host, isEnable ? "enableSubmit" : "manualSubmit"),
-      cancelKey: k(host, "sessionCancel"),
+      submitKey: tKey(host, isEnable ? "enableSubmit" : "manualSubmit"),
+      cancelKey: tKey(host, "sessionCancel"),
       ...!isEnable ? {
-        extraActionKey: k(host, "manualPreviewPrompt"),
+        extraActionKey: tKey(host, "manualPreviewPrompt"),
         extraActionVisible: (h, _m) => auditDebugEnabled(h),
         extraActionCanSubmit: (m) => summarizeDialogCanPreview(m, settings),
         onExtraAction: async (h, model) => {
@@ -2272,7 +2272,7 @@ function registerSummarizeDialog(host, settings, mode) {
         const fromTurn = asInt(model.startTurn, 0, 5e5);
         const toTurn = asInt(model.endTurn, fromTurn, 5e5);
         if (isSummarizeTurnSpanTooLarge(fromTurn, toTurn)) {
-          h.ui.notify(h.t(k(h, "notifyTurnRangeTooLong")), void 0, { level: "warning" });
+          h.ui.notify(h.t(tKey(h, "notifyTurnRangeTooLong")), void 0, { level: "warning" });
           return;
         }
         const selectedTasks = isEnable ? [
@@ -2283,7 +2283,7 @@ function registerSummarizeDialog(host, settings, mode) {
         ] : model.selectedTasks;
         const tasks = tasksFromSelection(settings, selectedTasks);
         if (tasks.length === 0) {
-          h.ui.notify(h.t(k(h, "notifyNoTasksSelected")), void 0, { level: "warning" });
+          h.ui.notify(h.t(tKey(h, "notifyNoTasksSelected")), void 0, { level: "warning" });
           return;
         }
         if (isEnable) {
@@ -2318,7 +2318,7 @@ async function reorderTargetLorebookNow(host) {
   const settings = await loadMergedSettings(host);
   const targetId = asString(settings.targetLorebookId);
   if (!targetId) {
-    host.ui.notify(host.t(k(host, "notifyReorderLorebookNoTarget")), void 0, { level: "warning" });
+    host.ui.notify(host.t(tKey(host, "notifyReorderLorebookNoTarget")), void 0, { level: "warning" });
     return;
   }
   try {
@@ -2336,14 +2336,14 @@ async function reorderTargetLorebookNow(host) {
     notifyOutcome(host, "notifyReorderLorebookDone", "success");
   } catch (e) {
     console.warn("[plot-summary] reorder lorebook failed", e);
-    host.ui.notify(host.t(k(host, "notifyTaskSkippedGeneric")), void 0, { level: "warning" });
+    host.ui.notify(host.t(tKey(host, "notifyTaskSkippedGeneric")), void 0, { level: "warning" });
   }
 }
 async function renumberMemoryMemosNow(host) {
   const settings = await loadMergedSettings(host);
   const targetId = asString(settings.targetLorebookId);
   if (!targetId) {
-    host.ui.notify(host.t(k(host, "notifyReorderLorebookNoTarget")), void 0, {
+    host.ui.notify(host.t(tKey(host, "notifyReorderLorebookNoTarget")), void 0, {
       level: "warning"
     });
     return;
@@ -2365,7 +2365,7 @@ async function renumberMemoryMemosNow(host) {
     });
   } catch (e) {
     console.warn("[plot-summary] renumber memory memos failed", e);
-    host.ui.notify(host.t(k(host, "notifyTaskSkippedGeneric")), void 0, { level: "warning" });
+    host.ui.notify(host.t(tKey(host, "notifyTaskSkippedGeneric")), void 0, { level: "warning" });
   }
 }
 function openSessionSettings(host) {
@@ -2409,7 +2409,7 @@ async function openManualSummarize(host, preset) {
     );
   } catch (e) {
     host.ui.notify(
-      host.t(k(host, "slashErrOpenManualFailed")),
+      host.t(tKey(host, "slashErrOpenManualFailed")),
       void 0,
       { level: "warning" }
     );
@@ -2437,7 +2437,7 @@ async function resumeAutoSummarizeEnable(host, settings) {
     nextBlockStart
   });
   refreshAutoSummarizeUi(host);
-  host.ui.notify(host.t(k(host, "notifyAutoSummarizeResumed"), {
+  host.ui.notify(host.t(tKey(host, "notifyAutoSummarizeResumed"), {
     from: range.fromTurn,
     to: range.toTurn,
     turn: trigger
@@ -2452,7 +2452,7 @@ async function applyShortAutoSummarizeEnable(host, settings) {
     autoSidecarIds
   });
   refreshAutoSummarizeUi(host);
-  host.ui.notify(host.t(k(host, "notifyAutoSummarizeScheduled"), { turn: X }), void 0, {
+  host.ui.notify(host.t(tKey(host, "notifyAutoSummarizeScheduled"), { turn: X }), void 0, {
     level: "success"
   });
 }
@@ -2474,7 +2474,7 @@ async function tryEnableAutoSummarize(host) {
 async function toggleAutoSummarize(host) {
   if (isAutoSummarizeEnabled(host)) {
     await host.conversation.patchPluginSettings({ autoSummarizeEnabled: false });
-    host.ui.notify(host.t(k(host, "notifyAutoSummarizeDisabled")), void 0, { level: "info" });
+    host.ui.notify(host.t(tKey(host, "notifyAutoSummarizeDisabled")), void 0, { level: "info" });
     return;
   }
   await tryEnableAutoSummarize(host);
@@ -2641,7 +2641,7 @@ function notifySlashError(host, code, params) {
     entry_ambiguous: "slashErrEntryAmbiguous"
   };
   const msgKey = keyMap[code] ?? "slashErrUnknownType";
-  host.ui.notify(host.t(k(host, msgKey), params), void 0, { level: "warning" });
+  host.ui.notify(host.t(tKey(host, msgKey), params), void 0, { level: "warning" });
 }
 async function handlePlotSlashCommand(host, args) {
   const parsed = parsePlotSlashArgs(args);
@@ -2683,7 +2683,7 @@ function registerPlotSlashCommand(host) {
     (ctx) => handlePlotSlashCommand(host, ctx.args),
     {
       example: "/plot summary 99-150",
-      descriptionKey: k(host, "slashPlotDescription")
+      descriptionKey: tKey(host, "slashPlotDescription")
     }
   );
 }
@@ -2717,11 +2717,11 @@ function onRangeEndClick(host, ctx) {
   const start = getRangeStartTurn();
   if (controlsDisabled(host)) return;
   if (start === null) {
-    host.ui.notify(host.t(k(host, "notifyRangeStartRequired")), void 0, { level: "warning" });
+    host.ui.notify(host.t(tKey(host, "notifyRangeStartRequired")), void 0, { level: "warning" });
     return;
   }
   if (ord === null || ord < start) {
-    host.ui.notify(host.t(k(host, "notifyInvalidRange")), void 0, { level: "warning" });
+    host.ui.notify(host.t(tKey(host, "notifyInvalidRange")), void 0, { level: "warning" });
     return;
   }
   openManualSummarize(host, { startTurn: start, endTurn: ord });
@@ -2743,7 +2743,7 @@ function registerRangePicker(host) {
     tooltipKey: (ctx) => {
       const ord = turnOrdinal(ctx);
       const start = getRangeStartTurn();
-      return k(
+      return tKey(
         host,
         ord !== null && start === ord ? "tooltipRangeStartCancel" : "tooltipRangeStart"
       );
@@ -2761,7 +2761,7 @@ function registerRangePicker(host) {
       if (start === null || ord === null) return "";
       return ord >= start ? "cm-range-end--ready" : "";
     },
-    tooltipKey: k(host, "tooltipRangeEnd"),
+    tooltipKey: tKey(host, "tooltipRangeEnd"),
     when: (ctx) => turnOrdinal(ctx) !== null,
     disabled: (ctx) => {
       if (controlsDisabled(host)) return true;
@@ -2775,9 +2775,6 @@ function registerRangePicker(host) {
 }
 
 // plugins/plot-summary/src/index.ts
-function isAutoSummarizeEnabled2(host) {
-  return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true;
-}
 function register(host) {
   registerReviewDialogs(host);
   registerPromptPreviewDialog(host);
@@ -2791,14 +2788,14 @@ function register(host) {
   host.registerSlotButton("composer-toolbar", {
     id: `${PLUGIN_ID}-menu`,
     icon: "mdi-book-open-page-variant",
-    tooltipKey: k(host, "tooltipPlugin"),
-    filled: () => isAutoSummarizeEnabled2(host),
+    tooltipKey: tKey(host, "tooltipPlugin"),
+    filled: () => isAutoSummarizeEnabled(host),
     menu: [
       {
         id: `${PLUGIN_ID}-auto-summarize`,
-        labelKey: k(host, "tooltipAutoSummarize"),
+        labelKey: tKey(host, "tooltipAutoSummarize"),
         icon: "mdi-book-open-page-variant",
-        filled: () => isAutoSummarizeEnabled2(host),
+        filled: () => isAutoSummarizeEnabled(host),
         disabled: () => summarizeRunning,
         onClick: () => {
           void toggleAutoSummarize(host);
@@ -2806,20 +2803,20 @@ function register(host) {
       },
       {
         id: `${PLUGIN_ID}-manual`,
-        labelKey: k(host, "tooltipManualSummarize"),
+        labelKey: tKey(host, "tooltipManualSummarize"),
         icon: "mdi-book-edit-outline",
         disabled: () => isBusy(host) || summarizeRunning,
         onClick: () => openManualSummarize(host)
       },
       {
         id: `${PLUGIN_ID}-session`,
-        labelKey: k(host, "tooltipSessionSettings"),
+        labelKey: tKey(host, "tooltipSessionSettings"),
         icon: "mdi-tune-variant",
         onClick: () => openSessionSettings(host)
       },
       {
         id: `${PLUGIN_ID}-reorder`,
-        labelKey: k(host, "tooltipReorderLorebook"),
+        labelKey: tKey(host, "tooltipReorderLorebook"),
         icon: "mdi-sort",
         disabled: () => isBusy(host) || summarizeRunning,
         onClick: () => {
@@ -2828,7 +2825,7 @@ function register(host) {
       },
       {
         id: `${PLUGIN_ID}-renumber-memos`,
-        labelKey: k(host, "tooltipRenumberMemory"),
+        labelKey: tKey(host, "tooltipRenumberMemory"),
         icon: "mdi-sort-numeric-ascending",
         disabled: () => isBusy(host) || summarizeRunning,
         onClick: () => {

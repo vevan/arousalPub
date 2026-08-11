@@ -38,6 +38,9 @@ export interface RawConfig {
   allowPublicRegister?: boolean
   corsOrigins?: string[]
   upstreamUrlPolicy?: string
+  enableProxy?: boolean
+  proxyUrl?: string
+  proxyNoProxy?: string[]
   authIdleMinutes?: number | string
   authDefaultRefreshDays?: number | string
   authAccessMinutes?: number | string

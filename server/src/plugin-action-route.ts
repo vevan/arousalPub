@@ -1,5 +1,6 @@
 import { isValidConversationId } from './conversation-id.js'
-import { mergeTurnPluginEntriesAtOrdinal, readConversationIndex } from './chat-storage.js'
+import { readConversationIndex } from './chat-storage.js'
+import { mergeTurnPluginEntriesAtOrdinal } from './chat-group-turn-ops.js'
 import { isAuditDebugWriteEnabled } from './chat-audit-file.js'
 import { createPluginServerHostApi } from './plugin-system/host-api.js'
 import { loadEnabledServerPlugins } from './plugin-system/loader.js'

@@ -66,6 +66,7 @@ export const ApiErrorCodes = {
   embedding_api_base_url_string: 'embedding_api_base_url_string',
   embedding_api_embedding_dimensions_invalid: 'embedding_api_embedding_dimensions_invalid',
   embedding_api_embedding_model_string: 'embedding_api_embedding_model_string',
+  embedding_provider_invalid: 'embedding_provider_invalid',
   embedding_test_failed: 'embedding_test_failed',
   first_turn_already_saved: 'first_turn_already_saved',
   first_turn_persist_maybe_exists: 'first_turn_persist_maybe_exists',

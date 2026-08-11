@@ -1,24 +1,9 @@
-import type { TurnReceive } from '../chat-storage.js'
 import type {
   GroupChatDiceSkipReason,
   GroupChatSettings,
   GroupChatTurnState,
   SpeakerMode,
 } from '../shared/group-chat-settings.js'
-
-export interface AssistantSegmentRecord {
-  id: string
-  speakerCharacterId: string
-  receives: TurnReceive[]
-  activeReceiveIndex: number
-  meta?: {
-    nextSpeakerHint?: string
-    /** 本段落盘时下一段选人 audit（供下一段 segmentPick 展示掷骰表） */
-    resolvedNextSpeakerAudit?: GroupChatSpeakerAudit
-    /** 本段 segmentPick audit（regen 时复用） */
-    segmentPickAudit?: GroupChatSpeakerAudit
-  }
-}
 
 export type GroupChatSpeakerPickMethod =
   | 'queue'

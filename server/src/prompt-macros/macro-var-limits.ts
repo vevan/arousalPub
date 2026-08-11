@@ -1,4 +1,4 @@
-import type { MacroVarMap } from './macro-vars.js'
+import type { MacroVarMap } from './macro-var-types.js'
 
 /** 单会话 / 全局变量 map 最大键数 */
 export const MACRO_VAR_MAX_KEYS = 256

@@ -1,6 +1,6 @@
 import { PLUGIN_ID } from './constants.js'
 import { isBusy, openManualSummarize } from './dialogs.js'
-import { k } from './settings.js'
+import { tKey } from './settings.js'
 import {
   getRangeStartTurn,
   setRangeStartTurn,
@@ -42,11 +42,11 @@ function onRangeEndClick(host: PluginHost, ctx: SlotCtx) {
   const start = getRangeStartTurn()
   if (controlsDisabled(host)) return
   if (start === null) {
-    host.ui.notify(host.t(k(host, 'notifyRangeStartRequired')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(tKey(host, 'notifyRangeStartRequired')), undefined, { level: 'warning' })
     return
   }
   if (ord === null || ord < start) {
-    host.ui.notify(host.t(k(host, 'notifyInvalidRange')), undefined, { level: 'warning' })
+    host.ui.notify(host.t(tKey(host, 'notifyInvalidRange')), undefined, { level: 'warning' })
     return
   }
   openManualSummarize(host, { startTurn: start, endTurn: ord })
@@ -72,7 +72,7 @@ export function registerRangePicker(host: PluginHost) {
     tooltipKey: (ctx: SlotCtx) => {
       const ord = turnOrdinal(ctx)
       const start = getRangeStartTurn()
-      return k(
+      return tKey(
         host,
         ord !== null && start === ord ? 'tooltipRangeStartCancel' : 'tooltipRangeStart',
       )
@@ -91,7 +91,7 @@ export function registerRangePicker(host: PluginHost) {
       if (start === null || ord === null) return ''
       return ord >= start ? 'cm-range-end--ready' : ''
     },
-    tooltipKey: k(host, 'tooltipRangeEnd'),
+    tooltipKey: tKey(host, 'tooltipRangeEnd'),
     when: (ctx: SlotCtx) => turnOrdinal(ctx) !== null,
     disabled: (ctx: SlotCtx) => {
       if (controlsDisabled(host)) return true

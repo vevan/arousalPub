@@ -8,12 +8,12 @@ Prev: none (start here) · Next: [A-02 · First login and account](A-02-first-lo
 
 ## What you need
 
-1. **Node.js 22 or newer** (LTS from [nodejs.org](https://nodejs.org/) is fine).
+1. **Node.js 24.14.0 or newer** (LTS from [nodejs.org](https://nodejs.org/)).
 2. A modern browser (Chrome, Edge, Firefox, etc.).
 3. **Git** (needed to download / update from the repository via CLI; install from [git-scm.com](https://git-scm.com/) if missing).
 4. This project folder (see **Get the code** below).
 
-Run `node -v` in a terminal; the version should be ≥ `v22`. Upgrade first if it is lower. Optionally run `git -v` (or `git --version`) to confirm Git works.
+Run `node -v` in a terminal; the version should be ≥ `v24.14.0`. Upgrade first if it is lower. Optionally run `git -v` (or `git --version`) to confirm Git works.
 
 ---
 

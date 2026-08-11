@@ -12,7 +12,7 @@ import {
   setReviewTitleParams,
   summarizeBatchProgress,
 } from './state.js'
-import { k, nextMemoIndexFromLast, sidecarPromptTemplate } from './settings.js'
+import { tKey, nextMemoIndexFromLast, sidecarPromptTemplate } from './settings.js'
 import { notifyOutcome } from './notify-outcome.js'
 import { keywordsToText, parseKeywordsText, asString } from './shared/utils.js'
 import type { MergedSettings, PluginHost, SidecarConfig } from './types.js'
@@ -33,12 +33,12 @@ function resolveSystemPrompt(
 
 function bumpTaskProgress(host: PluginHost, done: number, total: number) {
   host.ui.progress({
-    message: host.t(k(host, 'progressSummarize')),
+    message: host.t(tKey(host, 'progressSummarize')),
     done,
     total,
     indeterminate: true,
     abortable: true,
-    abortLabel: host.t(k(host, 'progressAbort')),
+    abortLabel: host.t(tKey(host, 'progressAbort')),
   })
 }
 
@@ -195,31 +195,31 @@ function registerReviewDialog(host: PluginHost, opts: ReviewDialogOpts) {
   host.registerFormDialog(
     PLUGIN_ID,
     {
-      titleKey: k(host, 'reviewDialogTitle'),
-      bodyKey: k(host, opts.bodyKey),
+      titleKey: tKey(host, 'reviewDialogTitle'),
+      bodyKey: tKey(host, opts.bodyKey),
       fields: [
         {
           key: 'title',
-          labelKey: k(host, 'reviewTitleLabel'),
+          labelKey: tKey(host, 'reviewTitleLabel'),
           type: 'text',
           ...(opts.lockTitle ? { readOnly: true } : {}),
         },
         {
           key: 'content',
-          labelKey: k(host, 'reviewContentLabel'),
+          labelKey: tKey(host, 'reviewContentLabel'),
           type: 'textarea',
         },
         {
           key: 'keywordsText',
-          labelKey: k(host, 'reviewKeywordsLabel'),
+          labelKey: tKey(host, 'reviewKeywordsLabel'),
           type: 'textarea',
-          hintKey: k(host, 'reviewKeywordsHint'),
+          hintKey: tKey(host, 'reviewKeywordsHint'),
         },
       ],
-      submitKey: k(host, 'reviewConfirm'),
-      skipKey: k(host, 'reviewSkip'),
-      cancelKey: k(host, 'reviewAbort'),
-      extraActionKey: k(host, 'reviewRegenerate'),
+      submitKey: tKey(host, 'reviewConfirm'),
+      skipKey: tKey(host, 'reviewSkip'),
+      cancelKey: tKey(host, 'reviewAbort'),
+      extraActionKey: tKey(host, 'reviewRegenerate'),
       persistent: true,
       canSubmit: (m: Record<string, unknown>) =>
         opts.lockTitle
@@ -281,8 +281,8 @@ function notifyDraftParseOutcome(
         ({ type: 'conversation' as const, conversationId })
       : undefined
     host.ui.notify(
-      host.t(k(host, 'notifyReviewReady'), { task: taskLabel }),
-      host.t(k(host, 'notifyReviewReadyBody')),
+      host.t(tKey(host, 'notifyReviewReady'), { task: taskLabel }),
+      host.t(tKey(host, 'notifyReviewReadyBody')),
       {
         level: 'info',
         dedupeKey: `plot-summary:review-ready:${dedupeSuffix}`,
@@ -291,7 +291,7 @@ function notifyDraftParseOutcome(
           action ?
             [
               {
-                label: host.t(k(host, 'notifyReviewReadyOpen')),
+                label: host.t(tKey(host, 'notifyReviewReadyOpen')),
                 action,
               },
             ]
@@ -301,8 +301,8 @@ function notifyDraftParseOutcome(
     return
   }
   host.ui.notify(
-    host.t(k(host, 'notifyParseFailed'), { task: taskLabel }),
-    host.t(k(host, 'notifyParseFailedBody')),
+    host.t(tKey(host, 'notifyParseFailed'), { task: taskLabel }),
+    host.t(tKey(host, 'notifyParseFailedBody')),
     {
       level: 'error',
       dedupeKey: `plot-summary:parse-failed:${dedupeSuffix}`,

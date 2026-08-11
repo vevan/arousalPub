@@ -2,18 +2,22 @@ import { parseSummaryGroupPlacement } from './shared/summary-group-placement.js'
 import { asBool, asInt, asString } from './shared/utils.js'
 import type { MergedSettings, PluginHost, SidecarConfig, SummarizeTask } from './types.js'
 
-export function k(host: PluginHost, key: string) {
+export function tKey(host: PluginHost, key: string) {
   return host.pluginKey(key)
 }
 
+export function isAutoSummarizeEnabled(host: PluginHost): boolean {
+  return host.conversation.getPluginSettingsSnapshot().autoSummarizeEnabled === true
+}
+
 function resolveDefaultSystemPrompt(host: PluginHost) {
-  const key = k(host, 'systemPromptTemplateDefault')
+  const key = tKey(host, 'systemPromptTemplateDefault')
   const text = host.t(key)
   return text && text !== key ? text : ''
 }
 
 function resolveDefaultSidecarPrompt(host: PluginHost) {
-  const key = k(host, 'sidecarSystemPromptTemplateDefault')
+  const key = tKey(host, 'sidecarSystemPromptTemplateDefault')
   const text = host.t(key)
   return text && text !== key ? text : ''
 }

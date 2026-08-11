@@ -138,7 +138,7 @@ export function getPanelRevision(): number {
   return panelRevision
 }
 
-export function k(host: { pluginKey: (key: string) => string }, key: string): string {
+export function tKey(host: { pluginKey: (key: string) => string }, key: string): string {
   return host.pluginKey(key)
 }
 

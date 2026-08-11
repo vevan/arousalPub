@@ -37,8 +37,9 @@ export {
   segmentSkipQuotaDeduction,
 } from '../shared/group-chat-settings.js'
 
+export type { AssistantSegmentRecord } from '../chat-turn-types.js'
+
 export type {
-  AssistantSegmentRecord,
   GroupChatAuditSnapshot,
   GroupContinueBody,
   GroupContinueValidation,

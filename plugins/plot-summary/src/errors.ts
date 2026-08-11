@@ -1,4 +1,4 @@
-import { k } from './settings.js'
+import { tKey } from './settings.js'
 import { notifyOutcome } from './notify-outcome.js'
 import type { PluginHost } from './types.js'
 
@@ -74,7 +74,7 @@ export function preflightNotify(host: PluginHost, e: unknown, taskLabel?: string
   }
   if (code === 'context_exceeded' || code === 'plugin_complete_context_exceeded') {
     const { used, budget } = contextExceededToastParams(e)
-    host.ui.notify(withTask(host.t(k(host, 'notifyContextExceeded'), {
+    host.ui.notify(withTask(host.t(tKey(host, 'notifyContextExceeded'), {
         used: used ?? '?',
         budget: budget ?? '?',
       })), undefined, { level: 'warning' })
@@ -84,15 +84,15 @@ export function preflightNotify(host: PluginHost, e: unknown, taskLabel?: string
     code === 'context_length_unconfigured' ||
     code === 'plugin_complete_context_length_unconfigured'
   ) {
-    host.ui.notify(withTask(host.t(k(host, 'notifyContextLengthMissing'))), undefined, { level: 'warning' })
+    host.ui.notify(withTask(host.t(tKey(host, 'notifyContextLengthMissing'))), undefined, { level: 'warning' })
     return
   }
   if (isLorebookNotFoundError(e)) {
-    host.ui.notify(withTask(host.t(k(host, 'notifyTargetLorebookDeleted'))), undefined, { level: 'warning' })
+    host.ui.notify(withTask(host.t(tKey(host, 'notifyTargetLorebookDeleted'))), undefined, { level: 'warning' })
     return
   }
   if (isLorebookEntryMissingError(e)) {
-    host.ui.notify(withTask(host.t(k(host, 'notifySidecarEntryMissing'))), undefined, { level: 'warning' })
+    host.ui.notify(withTask(host.t(tKey(host, 'notifySidecarEntryMissing'))), undefined, { level: 'warning' })
     return
   }
   const apiCode = lorebookErrorCode(e)
@@ -100,5 +100,5 @@ export function preflightNotify(host: PluginHost, e: unknown, taskLabel?: string
     notifyOutcome(host, 'notifySummarizeFailed', 'error')
     return
   }
-  host.ui.notify(withTask(host.t(k(host, 'notifySummarizeFailed'))), undefined, { level: 'error' })
+  host.ui.notify(withTask(host.t(tKey(host, 'notifySummarizeFailed'))), undefined, { level: 'error' })
 }

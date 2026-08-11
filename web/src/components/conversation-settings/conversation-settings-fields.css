@@ -1,0 +1,28 @@
+.conv-settings-section {
+  /* marker class for tab roots */
+}
+
+.conv-settings-subsection__title {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(var(--v-theme-on-surface), 0.78);
+}
+
+.conv-settings-field + .conv-settings-field {
+  margin-top: 0.875rem;
+}
+
+.conv-settings-field__hint {
+  margin: 0.375rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: rgba(var(--v-theme-on-surface), 0.58);
+}
+
+.user-macro-tag {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85em;
+  padding: 0 0.15em;
+}

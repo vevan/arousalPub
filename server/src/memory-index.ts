@@ -1,11 +1,14 @@
-import { createEmbedding } from './embedding-client.js'
+import { createEmbeddingWithCredentials } from './embedding-client.js'
+import type { TurnRecord } from './chat-turn-types.js'
 import {
   readConversationIndex,
   resolvedLorebookIds,
   updateConversationMemoryEmbeddingModel,
-  type TurnRecord,
-} from './chat-storage.js'
-import { resolveEmbeddingApiCredentials } from './embedding-credential-resolve.js'
+} from './chat-storage-io.js'
+import {
+  resolveEmbeddingApiCredentials,
+  type ResolvedEmbeddingCredentials,
+} from './embedding-credential-resolve.js'
 import { createKeyedCoalesceScheduler } from './keyed-serial-queue.js'
 import {
   countLorebookVectorEntriesByIds,
@@ -20,7 +23,6 @@ import {
   type TurnMemoryRow,
 } from './memory-store.js'
 import {
-  readGlobalEmbeddingApiSettings,
   readGlobalHybridFtsSettings,
   readGlobalMemorySettings,
 } from './user-preferences-file.js'
@@ -38,6 +40,7 @@ import {
 } from './chunk-chain.js'
 import { mainPathChunkLocation, normalizeBranchPath } from './chunk-path.js'
 import { embedTextsInBatches, isEmbeddingBatchOk } from './embedding-batch.js'
+import { storedEmbeddingProfile } from './embedding-profile.js'
 
 export interface MemoryReindexPlan {
   turns: number
@@ -248,28 +251,39 @@ export function scheduleMemoryIndexDelete(
 
 async function markConversationMemoryEmbeddingModelIfChanged(
   conversationId: string,
+  creds?: ResolvedEmbeddingCredentials,
 ): Promise<string> {
-  const creds = await resolveEmbeddingApiCredentials(conversationId)
+  const provider = creds ?? (await resolveEmbeddingApiCredentials(conversationId))
   const hybridFtsSpec = formatHybridFtsSpec(await readGlobalHybridFtsSettings())
-  if (!creds) {
-    const { embeddingModel } = await readGlobalEmbeddingApiSettings()
-    return embeddingModel
-  }
   const idx = await readConversationIndex(conversationId)
   if (
-    idx?.memoryEmbeddingModel === creds.embeddingModel &&
-    idx?.memoryEmbeddingDimensions === creds.embeddingDimensions &&
+    idx?.memoryEmbeddingModel === provider.embeddingModel &&
+    idx?.memoryEmbeddingDimensions === provider.embeddingDimensions &&
+    storedEmbeddingProfile(
+      idx?.memoryEmbeddingProfile,
+      idx?.memoryEmbeddingModel,
+      idx?.memoryEmbeddingDimensions,
+    ) === provider.embeddingProfile &&
     idx?.memoryHybridFtsProfile === hybridFtsSpec
   ) {
-    return creds.embeddingModel
+    return provider.embeddingModel
   }
   await updateConversationMemoryEmbeddingModel(
     conversationId,
-    creds.embeddingModel,
-    creds.embeddingDimensions,
+    provider.embeddingModel,
+    provider.embeddingDimensions,
     hybridFtsSpec,
+    provider.embeddingProfile,
   )
-  return creds.embeddingModel
+  return provider.embeddingModel
+}
+
+async function embeddingProviderStillActive(
+  conversationId: string,
+  expected: ResolvedEmbeddingCredentials,
+): Promise<boolean> {
+  const current = await resolveEmbeddingApiCredentials(conversationId)
+  return current.embeddingProfile === expected.embeddingProfile
 }
 
 async function indexTurnMemory(
@@ -286,8 +300,20 @@ async function indexTurnMemory(
   const corpusOptions = await resolveMemoryCorpusOptions(effective)
   const corpus = buildMemoryEmbeddingCorpus(turn, corpusOptions)
   if (!corpus.trim()) return
-  const emb = await createEmbedding(corpus, conversationId)
-  if (!emb) return
+  const creds = await resolveEmbeddingApiCredentials(conversationId)
+  if (
+    idx?.memoryEmbeddingModel &&
+    storedEmbeddingProfile(
+      idx.memoryEmbeddingProfile,
+      idx.memoryEmbeddingModel,
+      idx.memoryEmbeddingDimensions,
+    ) !== creds.embeddingProfile
+  ) {
+    return
+  }
+  const emb = await createEmbeddingWithCredentials(creds, corpus)
+  if ('error' in emb) return
+  if (!(await embeddingProviderStillActive(conversationId, creds))) return
   if ((memoryReindexEpoch.get(conversationId) ?? 0) !== epochAtStart) return
 
   const loc = mainPathChunkLocation(chunkFileName)
@@ -314,7 +340,7 @@ async function indexTurnMemory(
     },
   )
   if ((memoryReindexEpoch.get(conversationId) ?? 0) !== epochAtStart) return
-  await markConversationMemoryEmbeddingModelIfChanged(conversationId)
+  await markConversationMemoryEmbeddingModelIfChanged(conversationId, creds)
 }
 
 /** 重建当前会话全部 turn 的远期记忆向量索引，并同步绑定资料库 */
@@ -322,10 +348,7 @@ export async function reindexConversationMemory(
   conversationId: string,
   options?: { onProgress?: (progress: MemoryReindexProgress) => void },
 ): Promise<MemoryReindexResult | MemoryReindexError> {
-  const creds = await resolveEmbeddingApiCredentials()
-  if (!creds) {
-    return { ok: false, error: 'Embeddings API 未配置' }
-  }
+  const creds = await resolveEmbeddingApiCredentials(conversationId)
   bumpMemoryReindexEpoch(conversationId)
   const plan = await planConversationMemoryReindex(conversationId)
   const total = plan.total
@@ -339,8 +362,11 @@ export async function reindexConversationMemory(
   }
   tick('planning', 0, total)
 
-  const { embeddingModel, embeddingDimensions } =
-    await readGlobalEmbeddingApiSettings()
+  const {
+    embeddingModel,
+    embeddingDimensions,
+    embeddingProfile,
+  } = creds
   const idx = await readConversationIndex(conversationId)
   const lorebookIds = lorebookIdsFromIndex(idx)
   const globalMemory = await readGlobalMemorySettings()
@@ -415,6 +441,10 @@ export async function reindexConversationMemory(
     indexed += 1
   }
 
+  if (!(await embeddingProviderStillActive(conversationId, creds))) {
+    return { ok: false, error: 'Embedding Provider 已变更，请重新开始重建' }
+  }
+
   tick('writing_turns', 0, builtRows.length)
   await replaceTurnMemoryIndex(conversationId, builtRows)
   tick('writing_turns', builtRows.length, builtRows.length)
@@ -428,6 +458,9 @@ export async function reindexConversationMemory(
   let lorebooksReindexed = 0
   let lorebookEntriesIndexed = 0
   if (lorebookIds.length > 0) {
+    if (!(await embeddingProviderStillActive(conversationId, creds))) {
+      return { ok: false, error: 'Embedding Provider 已变更，请重新开始重建' }
+    }
     let reportedLoreEntries = 0
     const loreResult = await reindexLorebooksByIds(lorebookIds, creds, {
       onEntryDone: () => {
@@ -454,12 +487,16 @@ export async function reindexConversationMemory(
   }
 
   tick('finalizing', total, total)
+  if (!(await embeddingProviderStillActive(conversationId, creds))) {
+    return { ok: false, error: 'Embedding Provider 已变更，请重新开始重建' }
+  }
   const hybridFtsSpec = formatHybridFtsSpec(await readGlobalHybridFtsSettings())
   await updateConversationMemoryEmbeddingModel(
     conversationId,
     embeddingModel,
     embeddingDimensions,
     hybridFtsSpec,
+    embeddingProfile,
   )
   return {
     ok: true,

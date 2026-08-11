@@ -1,9 +1,6 @@
-import { getTurnUserText, type TurnRecord } from './chat-storage.js'
-import {
-  getActiveSegment,
-  getTurnSegments,
-  type AssistantSegmentRecord,
-} from './group-chat-turn.js'
+import { getTurnUserText } from './chat-turn-accessors.js'
+import type { AssistantSegmentRecord, TurnRecord } from './chat-turn-types.js'
+import { getActiveSegment, getTurnSegments } from './group-chat/segments.js'
 import {
   stripMemoryCorpusText,
   type MemoryCorpusOptions,

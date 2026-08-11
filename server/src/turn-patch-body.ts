@@ -1,26 +1,17 @@
-import type { TurnReceive, TurnRecord } from './chat-storage.js'
-import { getTurnUserText } from './chat-storage.js'
-import { getActiveSegment, getActiveSegmentIndex } from './group-chat-turn.js'
+import type { TurnReceive, TurnRecord } from './chat-turn-types.js'
+import { getTurnUserText } from './chat-turn-accessors.js'
+import { getActiveSegment, getActiveSegmentIndex } from './group-chat/segments.js'
+import type {
+  ParseTurnPatchResult,
+  TurnContentPatchInput,
+} from './turn-patch-types.js'
 
-/** 单次 messages 区间读 / 批量 PATCH 上限 */
-export const CONVERSATION_BATCH_MAX_TURNS = 50
-
-/** UI 打开对话时默认尾部窗口（须 ≤ CONVERSATION_BATCH_MAX_TURNS） */
-export const CONVERSATION_MESSAGES_DEFAULT_TAIL = 30
-
-export interface TurnContentPatchInput {
-  turnOrdinal: number
-  userText: string
-  receives: TurnReceive[]
-  activeReceiveIndex: number
-  /** 多 segment turn：更新指定 segment（regenerate/swipe/编辑） */
-  segmentIndex?: number
-  activeSegmentIndex?: number
-}
-
-export type ParseTurnPatchResult =
-  | { ok: true; patch: TurnContentPatchInput }
-  | { ok: false; error: string }
+export {
+  CONVERSATION_BATCH_MAX_TURNS,
+  CONVERSATION_MESSAGES_DEFAULT_TAIL,
+  type TurnContentPatchInput,
+  type ParseTurnPatchResult,
+} from './turn-patch-types.js'
 
 export function parseTurnPatchBody(body: unknown): ParseTurnPatchResult {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {

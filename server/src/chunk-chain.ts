@@ -1,5 +1,10 @@
 import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
+import type {
+  ChunkFile,
+  ConversationIndex,
+  TurnRecord,
+} from './chat-turn-types.js'
 import {
   conversationDir,
   mutateConversationIndex,
@@ -7,11 +12,7 @@ import {
   readConversationIndex,
   writeBranchConversationIndex,
   writeChunkFile,
-  writeConversationIndex,
-  type ChunkFile,
-  type ConversationIndex,
-  type TurnRecord,
-} from './chat-storage.js'
+} from './chat-storage-io.js'
 import {
   CHUNK_SETTINGS_DEFAULTS,
   normalizeChunkSettings,

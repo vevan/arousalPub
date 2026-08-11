@@ -1,6 +1,10 @@
-/** Embeddings API（与对话 chat API 分离，存 user-preferences.json） */
+/** Embedding Provider（与对话 chat API 分离，存 user-preferences.json） */
+
+export type EmbeddingProvider = 'openai_compatible' | 'builtin'
 
 export interface EmbeddingApiSettings {
+  /** 旧数据缺省为 openai_compatible */
+  provider: EmbeddingProvider
   baseUrl: string
   /** 内联密钥；与 apiKeyId 二选一 */
   apiKey: string
@@ -14,6 +18,7 @@ export interface EmbeddingApiSettings {
 }
 
 export const EMBEDDING_API_SETTINGS_DEFAULTS: EmbeddingApiSettings = {
+  provider: 'openai_compatible',
   baseUrl: 'https://api.openai.com/v1',
   apiKey: '',
   apiKeyId: null,
@@ -34,6 +39,8 @@ export function normalizeEmbeddingDimensions(value: unknown): number | null {
 export function normalizeEmbeddingApiSettings(
   raw?: Partial<EmbeddingApiSettings> | null,
 ): EmbeddingApiSettings {
+  const provider: EmbeddingProvider =
+    raw?.provider === 'builtin' ? 'builtin' : 'openai_compatible'
   const baseUrl =
     typeof raw?.baseUrl === 'string' && raw.baseUrl.trim()
       ? raw.baseUrl.trim()
@@ -53,7 +60,14 @@ export function normalizeEmbeddingApiSettings(
   )
     ? normalizeEmbeddingDimensions(raw?.embeddingDimensions)
     : EMBEDDING_API_SETTINGS_DEFAULTS.embeddingDimensions
-  return { baseUrl, apiKey, apiKeyId, embeddingModel, embeddingDimensions }
+  return {
+    provider,
+    baseUrl,
+    apiKey,
+    apiKeyId,
+    embeddingModel,
+    embeddingDimensions,
+  }
 }
 
 /** PATCH merge：省略 apiKey 时保留 saved 侧原值 */

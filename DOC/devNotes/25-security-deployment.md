@@ -36,6 +36,8 @@ allowPublicRegister: true # 开放公共注册
 
 环境变量（可选覆盖）：`CLIENT_WHITELIST`（逗号分隔）、`ALLOW_PUBLIC_REGISTER=0|1`、`CORS_ORIGINS`（逗号分隔）、`UPSTREAM_URL_POLICY=open|public-only`。
 
+后端出站代理由 `config.yaml` 的 `enableProxy`、`proxyUrl`、`proxyNoProxy` 控制；`enableProxy` 是唯一启停依据，宿主代理环境变量不会自动启用代理。日志不记录可能含凭据的 URL。详见 `DOC/devNotes/49-backend-outbound-proxy.md`。
+
 **loopback 保底**：`clientWhitelist` 非空时，`127.0.0.1` / `::1` / `::ffff:127.0.0.1` **始终允许**（防配错锁死本机）。
 
 ---

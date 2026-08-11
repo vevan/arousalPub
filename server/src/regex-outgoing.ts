@@ -1,7 +1,7 @@
 import type { ChatMessage } from './assemble-prompts.js'
-import type { TurnRecord } from './chat-storage.js'
-import { getTurnUserText } from './chat-storage.js'
-import { getTurnSegments } from './group-chat-turn.js'
+import { getTurnUserText } from './chat-turn-accessors.js'
+import type { TurnRecord } from './chat-turn-types.js'
+import { getTurnSegments } from './group-chat/segments.js'
 import { applyPromptMacroPipeline } from './prompt-macros/index.js'
 import type { PromptMacroContext } from './prompt-macros/index.js'
 import {

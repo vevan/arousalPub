@@ -1,4 +1,8 @@
-import type { TurnRecord } from '../chat-storage.js'
+import type {
+  AssistantSegmentRecord,
+  TurnReceive,
+  TurnRecord,
+} from '../chat-turn-types.js'
 import {
   cloneGroupChatTurnState,
   initGroupChatTurnState,
@@ -7,7 +11,6 @@ import {
   type GroupChatSettings,
   type GroupChatTurnState,
 } from '../shared/group-chat-settings.js'
-import type { AssistantSegmentRecord } from './types.js'
 
 export function getTurnSegments(
   turn: TurnRecord,
@@ -74,7 +77,7 @@ export function getSegmentAtIndex(
 export function findReceiveInTurn(
   turn: TurnRecord,
   receiveId: string,
-): { segmentIndex: number; receiveIndex: number; receive: import('../chat-storage.js').TurnReceive } | null {
+): { segmentIndex: number; receiveIndex: number; receive: TurnReceive } | null {
   const rid = receiveId.trim()
   if (!rid) return null
   for (let si = 0; si < turn.segments.length; si += 1) {

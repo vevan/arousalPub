@@ -9,7 +9,9 @@ export async function sanitizeEmbeddingApiForGet(
   settings: EmbeddingApiSettings,
 ): Promise<EmbeddingApiSettingsPublic> {
   const { apiKey: _omit, ...rest } = settings
-  const key = await resolveApiKeyFromEmbeddingSettings(settings)
+  const key = settings.provider === 'builtin'
+    ? ''
+    : await resolveApiKeyFromEmbeddingSettings(settings)
   return {
     ...rest,
     keyConfigured: key.length > 0,

@@ -3,7 +3,8 @@ import {
   readConversationIndex,
 } from '../chat-storage.js'
 import { sanitizeMacroVarMap } from './macro-var-limits.js'
-import { cloneMacroVarMap, type MacroVarMap } from './macro-vars.js'
+import type { MacroVarMap } from './macro-var-types.js'
+import { cloneMacroVarMap } from './macro-vars.js'
 import {
   readGlobalMacroGlobalVars,
   updateGlobalMacroGlobalVars,

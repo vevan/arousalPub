@@ -23,7 +23,7 @@
 
 ## 环境要求
 
-- **Node.js 22 或更高**（[nodejs.org](https://nodejs.org/) 安装 LTS 即可；与 `vue-i18n` 等依赖要求一致）
+- **Node.js 24.14.0 或更高**（[nodejs.org](https://nodejs.org/) LTS）
 - 现代浏览器（Chrome、Edge、Firefox 等）
 - Windows 可直接双击 `!_start.bat`；macOS / Linux 使用 `start.sh`
 
@@ -147,6 +147,8 @@ docker compose up -d --build
 | `DATA_DIR` | 数据目录，默认 `/data` |
 | `PORT` | 监听端口，默认 `6633` |
 
+Compose 会把 `./config.yaml` 只读挂载到容器的 `/app/config.yaml`；启动前请先从 `config.example.yaml` 创建该文件。后端代理也在该 YAML 文件中配置。
+
 ---
 
 ## 基本使用
@@ -191,6 +193,7 @@ API 密钥保存在本机数据目录，不会写入浏览器公开存储。
 | `dataDir` | 数据目录，默认 `./data` |
 | `serverPort` | 启动后浏览器访问端口（`!_start.bat` 使用） |
 | `startCountdownSeconds` | 启动前倒计时秒数；`0` = 不等待 |
+| `enableProxy`、`proxyUrl`、`proxyNoProxy` | 后端出站代理；默认关闭，修改后重启生效 |
 | `authIdleMinutes` 等 | 登录会话超时（可选） |
 
 完整说明见 `config.example.yaml` 中的注释。

@@ -9,6 +9,11 @@
 
 import { allocateShortId } from './short-id.js'
 import { assertStPresetWithinLimits } from './st-preset-limits.js'
+import type {
+  StPresetJson,
+  StPrompt,
+  StPromptOrderItem,
+} from './st-preset-types.js'
 import {
   ST_ANCHOR_BINDING_SLOT,
   ST_ANCHOR_CONTENT_FROM_PROMPT,
@@ -24,7 +29,9 @@ import type {
   PromptPreset,
   PromptRole,
   PromptTrigger,
-} from './assemble-prompts.js'
+} from './prompt-preset-types.js'
+
+export type { StPresetJson, StPrompt, StPromptOrderItem } from './st-preset-types.js'
 
 const GROUP = {
   pre: 'group-pre',
@@ -39,34 +46,6 @@ const GROUP = {
 const SKIP_MARKERS = new Set<string>()
 
 type ImportSection = 'pre' | 'world' | 'user' | 'character' | 'history' | 'post'
-
-export interface StPromptOrderItem {
-  identifier: string
-  enabled?: boolean
-}
-
-export interface StPrompt {
-  identifier: string
-  name?: string
-  role?: string
-  content?: string
-  marker?: boolean
-  system_prompt?: boolean
-  forbid_overrides?: boolean
-  injection_position?: number
-  injection_depth?: number
-  injection_order?: number
-  injection_trigger?: string[]
-}
-
-export interface StPresetJson {
-  prompts?: StPrompt[]
-  prompt_order?: Array<{
-    character_id?: number
-    order?: StPromptOrderItem[]
-  }>
-  name?: string
-}
 
 export interface ConvertStPresetOptions {
   /** ST prompt_order.character_id，Stabs 完整栈为 100001 */

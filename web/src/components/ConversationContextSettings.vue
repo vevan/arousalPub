@@ -1,128 +1,21 @@
 <script setup lang="ts">
-import { useMemoryRebuild } from '@/composables/useMemoryRebuild'
-import { usePromptsStore } from '@/stores/prompts'
-import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
-import {
-  AUTHORS_NOTE_MAX_DEPTH,
-  normalizeAuthorsNote,
-  normalizeDefaultAuthorsNoteTemplate,
-  type AuthorsNoteRole,
-  type AuthorsNoteSettings,
-  type DefaultAuthorsNoteTemplate,
-} from '@/utils/authors-note-settings'
-import { usePreferencesStore } from '@/stores/preferences'
-import BudgetTrimSettingsPanel from '@/components/settings/BudgetTrimSettingsPanel.vue'
-import ConversationApiSettingsPanel from '@/components/settings/ConversationApiSettingsPanel.vue'
-import ConversationMediaFileField from '@/components/ConversationMediaFileField.vue'
-import ConversationPluginSettingsPanel from '@/components/settings/ConversationPluginSettingsPanel.vue'
-import ConversationRegexApplyPanel from '@/components/settings/ConversationRegexApplyPanel.vue'
+import BindingsTab from '@/components/conversation-settings/BindingsTab.vue'
+import ApiTab from '@/components/conversation-settings/ApiTab.vue'
+import LorebookTab from '@/components/conversation-settings/LorebookTab.vue'
+import HistoryTab from '@/components/conversation-settings/HistoryTab.vue'
+import VectorRecallTab from '@/components/conversation-settings/VectorRecallTab.vue'
+import BudgetTrimTab from '@/components/conversation-settings/BudgetTrimTab.vue'
+import AuthorsNoteTab from '@/components/conversation-settings/AuthorsNoteTab.vue'
+import RegexTab from '@/components/conversation-settings/RegexTab.vue'
+import PluginsTab from '@/components/conversation-settings/PluginsTab.vue'
 import ConversationRecallTestDialog from '@/components/settings/ConversationRecallTestDialog.vue'
-import { fetchPluginsManage } from '@/utils/plugin-settings-api'
 import {
-  readConversationChatBinding,
-  resolveConversationEmbeddingModelSettings,
-  type ConversationChatBinding,
-  type ConversationEmbeddingApiSettingsOverride,
-} from '@/utils/conversation-api-settings'
-import {
-  BUDGET_TRIM_SETTINGS_DEFAULTS,
-  budgetTrimSettingsEqual,
-  cloneBudgetTrimSettings,
-  normalizeBudgetTrimSettings,
-  type BudgetTrimSettings,
-} from '@/utils/budget-trim-settings'
-import {
-  normalizeLorebookSettings,
-  type LorebookSettings,
-} from '@/utils/lorebook-settings'
-import {
-  hybridFtsSpecsMatch,
-  parseHybridFtsSpec,
-} from '@/utils/hybrid-fts-settings'
-import {
-  groupChatWithEnsuredMemberColors,
-  normalizeGroupChatSettings,
-  type GroupChatSettings,
-} from '@/utils/group-chat-settings'
+  useConversationContextSettings,
+  type ConversationContextSettingsProps,
+} from '@/composables/conversation-settings/useConversationContextSettings'
+import { watch, ref } from 'vue'
 
-const props = defineProps<{
-  conversationId: string
-  /**
-   * 自 HomeChat 下传的插件宿主（设置 v-dialog 会 teleport，inject 树断裂）。
-   * 仅用于 settings companion ensurePluginById，无插件语义特化。
-   */
-  pluginHost?: import('@/plugins/injection').PluginHostContext | null
-  /** 对话标题（页脚展示；空则用「新对话」） */
-  conversationTitle?: string | null
-  /** `null` / 未绑定：使用全局激活预设 */
-  initialPromptPresetId?: string | null
-  initialCharacterIds: string[]
-  /** 会话群聊设置（改 characterIds 时若已开启则补成员色） */
-  initialGroupChat?: GroupChatSettings | null
-  initialLorebookIds: string[]
-  /** 未覆盖时继承全局 */
-  initialLorebookSettingsUseGlobal?: boolean
-  globalLoreRecursiveEnabled?: boolean
-  globalLoreMaxRecursionDepth?: number
-  globalLoreKeywordTopK?: number
-  globalLoreVectorEnabled?: boolean
-  globalLoreVectorTopK?: number
-  initialLorebookRecursiveEnabled?: boolean
-  initialLorebookMaxRecursionDepth?: number
-  initialLorebookKeywordTopK?: number
-  initialLorebookVectorEnabled?: boolean
-  initialLorebookVectorTopK?: number
-  /** 对话绑定的知识库 id */
-  initialKnowledgeBaseIds?: string[]
-  /** 未覆盖时继承全局 */
-  initialKnowledgeSettingsUseGlobal?: boolean
-  /** 全局知识库召回 TopK */
-  globalKnowledgeTopK?: number
-  /** 会话有效知识库 TopK（含全局默认） */
-  initialKnowledgeTopK?: number
-  initialHistorySettingsUseGlobal?: boolean
-  globalHistoryLimitEnabled?: boolean
-  globalHistoryMaxTurns?: number
-  initialHistoryLimitEnabled?: boolean
-  initialHistoryMaxTurns?: number
-  initialMemorySettingsUseGlobal?: boolean
-  globalMemoryEnabled?: boolean
-  globalMemoryTopK?: number
-  initialMemoryEnabled?: boolean
-  initialMemoryTopK?: number
-  initialBudgetTrimSettingsUseGlobal?: boolean
-  globalBudgetTrimSettings?: BudgetTrimSettings
-  initialBudgetTrimSettings?: BudgetTrimSettings
-  /** 全局 Embedding 模型（用于提示是否需要重建） */
-  globalEmbeddingModel?: string
-  /** 本会话已索引的 Embedding 模型 */
-  conversationMemoryEmbeddingModel?: string | null
-  /** 本会话已索引的 Embedding 维度 */
-  conversationMemoryEmbeddingDimensions?: number | null
-  /** 是否已有轮次（无轮次不提示重建，与对话页弹窗一致） */
-  hasConversationTurns?: boolean
-  /** 本会话已索引的 Hybrid FTS spec（如 zh-jieba:default） */
-  conversationMemoryHybridFtsSpec?: string | null
-  /** 全局 Hybrid FTS spec */
-  globalHybridFtsSpec?: string
-  /** 会话内 `{{user}}` 展示名；空表示用默认「用户」 */
-  initialUserName?: string | null
-  /** 用户 persona 角色卡 id */
-  initialUserCharacterId?: string | null
-  /** 对话背景图 fileId（image） */
-  initialBackgroundImageFileId?: string | null
-  /** 对话 BGM fileId（audio） */
-  initialBgmFileId?: string | null
-  initialAuthorsNote?: AuthorsNoteSettings
-  /** 会话 index.apiPreset（含 chat 覆盖） */
-  initialApiPreset?: unknown
-  initialChatApiUseGlobal?: boolean
-  initialEmbeddingApiUseGlobal?: boolean
-  initialEmbeddingApiSettings?: ConversationEmbeddingApiSettingsOverride
-  globalEmbeddingDimensions?: number | null
-}>()
+const props = defineProps<ConversationContextSettingsProps>()
 
 const emit = defineEmits<{
   (e: 'patched', index: Record<string, unknown>, conversationId: string): void
@@ -130,1527 +23,131 @@ const emit = defineEmits<{
   (e: 'regexApplied'): void
 }>()
 
-type SettingsSection =
-  | 'bindings'
-  | 'api'
-  | 'lore'
-  | 'context'
-  | 'vectorRecall'
-  | 'budgetTrim'
-  | 'authorsNote'
-  | 'regexApply'
-  | 'plugins'
-
-const { t } = useI18n()
-const promptsStore = usePromptsStore()
-const { presets, loaded: promptsLoaded } = storeToRefs(promptsStore)
-
-const dialogOpen = ref(false)
-const recallTestDialogOpen = ref(false)
-const activeSection = ref<SettingsSection>('bindings')
-
-const INHERIT_VALUE = ''
-
-const presetModel = ref<string>(INHERIT_VALUE)
-const characterModel = ref<string[]>([])
-const userCharacterModel = ref<string | null>(null)
-const backgroundImageFileId = ref<string | null>(null)
-const bgmFileId = ref<string | null>(null)
-
-const savingPreset = ref(false)
-const savingChars = ref(false)
-const savingUserCharacter = ref(false)
-const savingBackgroundImage = ref(false)
-const savingBgm = ref(false)
-const savingLorebooks = ref(false)
-const savingLoreSettings = ref(false)
-const savingKnowledgeBases = ref(false)
-const savingKnowledgeSettings = ref(false)
-const savingHistorySettings = ref(false)
-const savingMemorySettings = ref(false)
-const savingBudgetTrimSettings = ref(false)
-const savingAuthorsNote = ref(false)
-const savingDefaultAuthorsNote = ref(false)
-const savingApiSettings = ref(false)
-const apiChatDraftActive = ref(false)
-const apiEmbeddingDraftActive = ref(false)
-const chatApiUseGlobal = ref(true)
-const embeddingApiUseGlobal = ref(true)
-const errorText = ref('')
-
-const lorebookModel = ref<string[]>([])
-const knowledgeBaseModel = ref<string[]>([])
-const knowledgeUseGlobal = ref(true)
-const knowledgeTopK = ref(4)
-const loreUseGlobal = ref(true)
-const loreRecursiveEnabled = ref(false)
-type LoreRecursionDepth = 0 | 1 | 2 | 3
-const loreMaxRecursionDepth = ref<LoreRecursionDepth>(2)
-const loreKeywordTopK = ref(64)
-const loreVectorEnabled = ref(false)
-const loreVectorTopK = ref(5)
-
-const loreDepthItems: LoreRecursionDepth[] = [0, 1, 2, 3]
-
-/** 提示词宏名；勿写入 i18n（vue-i18n 会将 `{{` 当作占位符） */
-const PROMPT_USER_MACRO = '{{user}}'
-
-const historyUseGlobal = ref(true)
-const historyLimitEnabled = ref(false)
-const historyMaxTurns = ref(20)
-
-const memoryUseGlobal = ref(true)
-const memoryEnabled = ref(false)
-const memoryTopK = ref(4)
-
-const budgetTrimUseGlobal = ref(true)
-const budgetTrimModel = ref<BudgetTrimSettings>(
-  cloneBudgetTrimSettings(BUDGET_TRIM_SETTINGS_DEFAULTS),
-)
-
-const authorsNoteEnabled = ref(false)
-const authorsNoteContent = ref('')
-const authorsNoteDepth = ref(4)
-const authorsNoteRole = ref<AuthorsNoteRole>('system')
-
-const preferencesStore = usePreferencesStore()
-const defaultAuthorsNoteContent = ref('')
-const defaultAuthorsNoteDepth = ref(4)
-const defaultAuthorsNoteRole = ref<AuthorsNoteRole>('system')
-const defaultAuthorsNoteEnabledForNewChats = ref(true)
-
-const authorsNoteContentTrimmed = computed(() => authorsNoteContent.value.trim())
-const canToggleAuthorsNoteEnabled = computed(
-  () => authorsNoteContentTrimmed.value.length > 0,
-)
-
-const displayConversationTitle = computed(() => {
-  const raw = props.conversationTitle?.trim()
-  return raw || t('chat.newConversation')
-})
+const ctx = useConversationContextSettings(props, emit)
 
 const {
-  loading: memoryRebuildLoading,
-  error: memoryRebuildError,
-  done: memoryRebuildDone,
-  total: memoryRebuildTotal,
-  turns: memoryRebuildTurns,
-  loreEntries: memoryRebuildLoreEntries,
-  stageLabel: memoryRebuildStageLabel,
-  percent: memoryRebuildPercent,
-  rebuild: rebuildMemoryIndex,
-} = useMemoryRebuild(() => props.conversationId)
-
-const effectiveMemoryEnabled = computed(() =>
-  memoryUseGlobal.value
-    ? props.globalMemoryEnabled === true
-    : memoryEnabled.value,
-)
-
-const memoryRebuildNeedsAttention = computed(() => {
-  if (!effectiveMemoryEnabled.value) return false
-  if (props.hasConversationTurns === false) return false
-  const globalModel = props.globalEmbeddingModel?.trim() ?? ''
-  if (!globalModel) return false
-  const storedModel = props.conversationMemoryEmbeddingModel?.trim() ?? ''
-  if (!storedModel) return false
-  const globalDims = props.globalEmbeddingDimensions ?? null
-  const effective = resolveConversationEmbeddingModelSettings(
-    { embeddingModel: globalModel, embeddingDimensions: globalDims },
-    embeddingApiUseGlobal.value ? null : propsEmbeddingOverride() ?? null,
-  )
-  const storedDims = props.conversationMemoryEmbeddingDimensions ?? null
-  const embeddingMatches =
-    storedModel === effective.embeddingModel &&
-    (storedDims ?? null) === (effective.embeddingDimensions ?? null)
-  const globalFts = props.globalHybridFtsSpec?.trim() ?? 'zh-ngram'
-  const storedFts = props.conversationMemoryHybridFtsSpec?.trim() ?? null
-  // 与 ChatConversationView：空 FTS 戳记时以 embedding 对齐为准，不因漏戳记误报
-  const ftsMatches = !storedFts
-    ? embeddingMatches
-    : hybridFtsSpecsMatch(storedFts, parseHybridFtsSpec(globalFts))
-  return !(embeddingMatches && ftsMatches)
-})
-
-async function onRebuildMemoryClick() {
-  const model = await rebuildMemoryIndex()
-  if (model) emit('memoryRebuilt', model)
-}
-
-interface CharItem {
-  id: string
-  name: string
-}
-
-interface LorebookItem {
-  id: string
-  name: string
-}
-
-const charItems = ref<CharItem[]>([])
-const charItemsLoading = ref(false)
-const lorebookItems = ref<LorebookItem[]>([])
-const lorebookItemsLoading = ref(false)
-const knowledgeBaseItems = ref<LorebookItem[]>([])
-const knowledgeBaseItemsLoading = ref(false)
-const showPluginsTab = ref(false)
-const savingPluginSettings = ref(false)
-const pluginSettingsPanelRef = ref<InstanceType<
-  typeof ConversationPluginSettingsPanel
-> | null>(null)
-const regexApplyPanelRef = ref<InstanceType<
-  typeof ConversationRegexApplyPanel
-> | null>(null)
-const sectionItems = computed(() => {
-  const items: Array<{
-    id: SettingsSection
-    title: string
-    icon: string
-  }> = [
-    {
-      id: 'bindings',
-      title: t('chat.convSettings.tabBindings'),
-      icon: 'mdi-link-variant',
-    },
-    {
-      id: 'api',
-      title: t('chat.convSettings.tabApi'),
-      icon: 'mdi-api',
-    },
-    {
-      id: 'context',
-      title: t('settings.navHistory'),
-      icon: 'mdi-history',
-    },
-    {
-      id: 'lore',
-      title: t('settings.navLorebook'),
-      icon: 'mdi-book-open-page-variant-outline',
-    },
-    {
-      id: 'vectorRecall',
-      title: t('settings.navVectorRecall'),
-      icon: 'mdi-database-search-outline',
-    },
-    {
-      id: 'budgetTrim',
-      title: t('chat.convSettings.tabBudgetTrim'),
-      icon: 'mdi-scissors-cutting',
-    },
-    {
-      id: 'authorsNote',
-      title: t('chat.convSettings.tabAuthorsNote'),
-      icon: 'mdi-note-text-outline',
-    },
-    {
-      id: 'regexApply',
-      title: t('chat.convSettings.tabRegexApply'),
-      icon: 'mdi-regex',
-    },
-  ]
-  if (showPluginsTab.value) {
-    items.push({
-      id: 'plugins',
-      title: t('chat.convSettings.tabPlugins'),
-      icon: 'mdi-puzzle-outline',
-    })
-  }
-  return items
-})
-
-const activeSectionHeader = computed(() => {
-  const keyBySection: Record<
-    SettingsSection,
-    { titleKey: string; hintKey: string; ns?: 'chat.convSettings' | 'settings' }
-  > = {
-    bindings: {
-      titleKey: 'tabBindings',
-      hintKey: 'tabBindingsHint',
-    },
-    api: { titleKey: 'tabApi', hintKey: 'tabApiHint' },
-    lore: { titleKey: 'tabLore', hintKey: 'tabLoreHint' },
-    context: {
-      titleKey: 'navHistory',
-      hintKey: 'historySectionHint',
-      ns: 'settings',
-    },
-    vectorRecall: {
-      titleKey: 'tabVectorRecall',
-      hintKey: 'tabVectorRecallHint',
-    },
-    budgetTrim: {
-      titleKey: 'tabBudgetTrim',
-      hintKey: 'tabBudgetTrimHint',
-    },
-    authorsNote: {
-      titleKey: 'tabAuthorsNote',
-      hintKey: 'tabAuthorsNoteHint',
-    },
-    regexApply: {
-      titleKey: 'tabRegexApply',
-      hintKey: 'tabRegexApplyHint',
-    },
-    plugins: { titleKey: 'tabPlugins', hintKey: 'tabPluginsHint' },
-  }
-  const keys = keyBySection[activeSection.value]
-  const ns = keys.ns ?? 'chat.convSettings'
-  return {
-    title: t(`${ns}.${keys.titleKey}`),
-    hint: t(`${ns}.${keys.hintKey}`),
-  }
-})
-
-const presetItems = computed(() => {
-  const inherit = {
-    title: t('chat.convSettings.useGlobalPreset'),
-    value: INHERIT_VALUE,
-  }
-  const rest = presets.value.map((p) => ({
-    title: p.name,
-    value: p.id,
-  }))
-  return [inherit, ...rest]
-})
-
-const isSaving = computed(
-  () =>
-    savingPreset.value ||
-    savingChars.value ||
-    savingUserCharacter.value ||
-    savingBackgroundImage.value ||
-    savingBgm.value ||
-    savingLorebooks.value ||
-    savingLoreSettings.value ||
-    savingHistorySettings.value ||
-    savingMemorySettings.value ||
-    savingBudgetTrimSettings.value ||
-    savingAuthorsNote.value ||
-    savingDefaultAuthorsNote.value ||
-    savingApiSettings.value ||
-    savingPluginSettings.value,
-)
-
-function open(section?: SettingsSection): void {
-  syncFromProps()
-  void refreshPluginsTabVisibility()
-  if (section === 'plugins' && !showPluginsTab.value) {
-    activeSection.value = 'bindings'
-  } else {
-    activeSection.value = section ?? 'bindings'
-  }
-  dialogOpen.value = true
-  if (activeSection.value === 'plugins') {
-    void pluginSettingsPanelRef.value?.reload()
-  }
-  if (activeSection.value === 'regexApply') {
-    void regexApplyPanelRef.value?.reload()
-  }
-}
-
-function close(): void {
-  dialogOpen.value = false
-}
-
-watch(activeSection, (section) => {
-  if (section !== 'plugins') {
-    pluginSettingsPanelRef.value?.backToList()
-  }
-  if (section === 'regexApply') {
-    void regexApplyPanelRef.value?.reload()
-  }
-})
-
-watch(dialogOpen, (open) => {
-  if (!open) {
-    apiChatDraftActive.value = false
-    apiEmbeddingDraftActive.value = false
-    syncFromProps()
-  }
-})
-
-function onChatUseGlobalLocalChange(useGlobal: boolean) {
-  chatApiUseGlobal.value = useGlobal
-  apiChatDraftActive.value = !useGlobal
-}
-
-function onEmbeddingUseGlobalLocalChange(useGlobal: boolean) {
-  embeddingApiUseGlobal.value = useGlobal
-  apiEmbeddingDraftActive.value = !useGlobal
-}
+  dialogOpen,
+  recallTestDialogOpen,
+  activeSection,
+  errorText,
+  isSaving,
+  displayConversationTitle,
+  sectionItems,
+  activeSectionHeader,
+  open,
+  close,
+  bindPluginTabApi,
+  bindRegexTabApi,
+  presetModel,
+  characterModel,
+  userCharacterModel,
+  lorebookModel,
+  knowledgeBaseModel,
+  backgroundImageFileId,
+  bgmFileId,
+  presetItems,
+  promptsLoaded,
+  charItems,
+  charItemsLoading,
+  lorebookItems,
+  lorebookItemsLoading,
+  knowledgeBaseItems,
+  knowledgeBaseItemsLoading,
+  savingPreset,
+  savingChars,
+  savingUserCharacter,
+  savingBackgroundImage,
+  savingBgm,
+  savingLorebooks,
+  savingKnowledgeBases,
+  onBackgroundImageFileId,
+  onBgmFileId,
+  chatApiUseGlobal,
+  embeddingApiUseGlobal,
+  apiChatDraftActive,
+  apiEmbeddingDraftActive,
+  savingApiSettings,
+  propsChatBinding,
+  propsEmbeddingOverride,
+  onChatUseGlobalLocalChange,
+  onEmbeddingUseGlobalLocalChange,
+  onSaveChatApi,
+  onSaveEmbeddingApi,
+  loreUseGlobal,
+  loreRecursiveEnabled,
+  loreMaxRecursionDepth,
+  loreDepthItems,
+  savingLoreSettings,
+  historyUseGlobal,
+  historyLimitEnabled,
+  historyMaxTurns,
+  savingHistorySettings,
+  loreKeywordTopK,
+  loreVectorEnabled,
+  loreVectorTopK,
+  knowledgeUseGlobal,
+  knowledgeTopK,
+  savingKnowledgeSettings,
+  memoryUseGlobal,
+  memoryEnabled,
+  memoryTopK,
+  savingMemorySettings,
+  effectiveMemoryEnabled,
+  memoryRebuildNeedsAttention,
+  memoryRebuildLoading,
+  memoryRebuildError,
+  memoryRebuildDone,
+  memoryRebuildTotal,
+  memoryRebuildTurns,
+  memoryRebuildLoreEntries,
+  memoryRebuildStageLabel,
+  memoryRebuildPercent,
+  onRebuildMemoryClick,
+  budgetTrimUseGlobal,
+  budgetTrimModel,
+  savingBudgetTrimSettings,
+  authorsNoteEnabled,
+  authorsNoteContent,
+  authorsNoteDepth,
+  authorsNoteRole,
+  canToggleAuthorsNoteEnabled,
+  savingAuthorsNote,
+  onAuthorsNoteContentBlur,
+  defaultAuthorsNoteContent,
+  defaultAuthorsNoteDepth,
+  defaultAuthorsNoteRole,
+  defaultAuthorsNoteEnabledForNewChats,
+  savingDefaultAuthorsNote,
+  onDefaultAuthorsNoteContentBlur,
+  showPluginsTab,
+  savingPluginSettings,
+  onPluginSettingsError,
+} = ctx
 
 defineExpose({ open })
 
-function currentPresetTarget(): string | null {
-  const v = presetModel.value.trim()
-  if (!v || v === INHERIT_VALUE) return null
-  return v
-}
+const regexTabRef = ref<InstanceType<typeof RegexTab> | null>(null)
+const pluginTabRef = ref<InstanceType<typeof PluginsTab> | null>(null)
 
-function propsPresetTarget(): string | null {
-  const s = props.initialPromptPresetId
-  return typeof s === 'string' && s.trim() ? s.trim() : null
-}
-
-function propsLoreUseGlobal(): boolean {
-  return props.initialLorebookSettingsUseGlobal !== false
-}
-
-function propsGlobalLoreRecursiveEnabled(): boolean {
-  return props.globalLoreRecursiveEnabled === true
-}
-
-function clampLoreDepth(raw: number | undefined | null): LoreRecursionDepth {
-  const d =
-    typeof raw === 'number' && Number.isFinite(raw) ? Math.floor(raw) : 2
-  const v = Math.max(0, Math.min(3, d))
-  return v as LoreRecursionDepth
-}
-
-function propsGlobalLoreMaxRecursionDepth(): LoreRecursionDepth {
-  return clampLoreDepth(props.globalLoreMaxRecursionDepth)
-}
-
-function propsLoreRecursiveEnabled(): boolean {
-  return props.initialLorebookRecursiveEnabled === true
-}
-
-function propsLoreMaxRecursionDepth(): LoreRecursionDepth {
-  return clampLoreDepth(props.initialLorebookMaxRecursionDepth)
-}
-
-function propsGlobalLoreKeywordTopK(): number {
-  return normalizeLorebookSettings({
-    keywordTopK: props.globalLoreKeywordTopK,
-  }).keywordTopK
-}
-
-function propsGlobalLoreVectorEnabled(): boolean {
-  return normalizeLorebookSettings({
-    vectorEnabled: props.globalLoreVectorEnabled,
-  }).vectorEnabled
-}
-
-function propsGlobalLoreVectorTopK(): number {
-  return normalizeLorebookSettings({
-    vectorTopK: props.globalLoreVectorTopK,
-  }).vectorTopK
-}
-
-function propsLoreKeywordTopK(): number {
-  return normalizeLorebookSettings({
-    keywordTopK: props.initialLorebookKeywordTopK,
-  }).keywordTopK
-}
-
-function propsLoreVectorEnabled(): boolean {
-  return normalizeLorebookSettings({
-    vectorEnabled: props.initialLorebookVectorEnabled,
-  }).vectorEnabled
-}
-
-function propsLoreVectorTopK(): number {
-  return normalizeLorebookSettings({
-    vectorTopK: props.initialLorebookVectorTopK,
-  }).vectorTopK
-}
-
-function syncLoreFieldsFromProps(): void {
-  if (loreUseGlobal.value) {
-    loreRecursiveEnabled.value = propsGlobalLoreRecursiveEnabled()
-    loreMaxRecursionDepth.value = propsGlobalLoreMaxRecursionDepth()
-    loreKeywordTopK.value = propsGlobalLoreKeywordTopK()
-    loreVectorEnabled.value = propsGlobalLoreVectorEnabled()
-    loreVectorTopK.value = propsGlobalLoreVectorTopK()
-  } else {
-    loreRecursiveEnabled.value = propsLoreRecursiveEnabled()
-    loreMaxRecursionDepth.value = propsLoreMaxRecursionDepth()
-    loreKeywordTopK.value = propsLoreKeywordTopK()
-    loreVectorEnabled.value = propsLoreVectorEnabled()
-    loreVectorTopK.value = propsLoreVectorTopK()
-  }
-}
-
-function buildLorebookSettingsOverride(): LorebookSettings {
-  return normalizeLorebookSettings({
-    recursiveEnabled: loreRecursiveEnabled.value,
-    maxRecursionDepth: loreMaxRecursionDepth.value,
-    keywordTopK: loreKeywordTopK.value,
-    vectorEnabled: loreVectorEnabled.value,
-    vectorTopK: loreVectorTopK.value,
-  })
-}
-
-function propsHistoryUseGlobal(): boolean {
-  return props.initialHistorySettingsUseGlobal !== false
-}
-
-function propsGlobalHistoryLimitEnabled(): boolean {
-  return props.globalHistoryLimitEnabled === true
-}
-
-function propsGlobalHistoryMaxTurns(): number {
-  const d = props.globalHistoryMaxTurns
-  if (typeof d !== 'number' || !Number.isFinite(d)) return 20
-  return Math.max(1, Math.min(200, Math.floor(d)))
-}
-
-function propsHistoryLimitEnabled(): boolean {
-  return props.initialHistoryLimitEnabled === true
-}
-
-function propsHistoryMaxTurns(): number {
-  const d = props.initialHistoryMaxTurns
-  if (typeof d !== 'number' || !Number.isFinite(d)) return 20
-  return Math.max(1, Math.min(200, Math.floor(d)))
-}
-
-function propsMemoryUseGlobal(): boolean {
-  return props.initialMemorySettingsUseGlobal !== false
-}
-
-function propsGlobalMemoryEnabled(): boolean {
-  return props.globalMemoryEnabled === true
-}
-
-function propsGlobalMemoryTopK(): number {
-  const d = props.globalMemoryTopK
-  if (typeof d !== 'number' || !Number.isFinite(d)) return 4
-  return Math.max(1, Math.min(20, Math.floor(d)))
-}
-
-function propsMemoryEnabled(): boolean {
-  return props.initialMemoryEnabled === true
-}
-
-function propsMemoryTopK(): number {
-  const d = props.initialMemoryTopK
-  if (typeof d !== 'number' || !Number.isFinite(d)) return 4
-  return Math.max(1, Math.min(20, Math.floor(d)))
-}
-
-function propsKnowledgeUseGlobal(): boolean {
-  return props.initialKnowledgeSettingsUseGlobal !== false
-}
-
-function propsGlobalKnowledgeTopK(): number {
-  const d = props.globalKnowledgeTopK
-  if (typeof d !== 'number' || !Number.isFinite(d)) return 4
-  return Math.max(1, Math.min(32, Math.floor(d)))
-}
-
-function propsKnowledgeTopK(): number {
-  const d = props.initialKnowledgeTopK
-  if (typeof d !== 'number' || !Number.isFinite(d)) return 4
-  return Math.max(1, Math.min(32, Math.floor(d)))
-}
-
-function propsBudgetTrimUseGlobal(): boolean {
-  return props.initialBudgetTrimSettingsUseGlobal !== false
-}
-
-function propsGlobalBudgetTrimSettings(): BudgetTrimSettings {
-  return normalizeBudgetTrimSettings(props.globalBudgetTrimSettings)
-}
-
-function propsBudgetTrimSettings(): BudgetTrimSettings {
-  return normalizeBudgetTrimSettings(props.initialBudgetTrimSettings)
-}
-
-function propsUserCharacterId(): string | null {
-  const id = props.initialUserCharacterId
-  return typeof id === 'string' && id.trim() ? id.trim() : null
-}
-
-function propsBackgroundImageFileId(): string | null {
-  const id = props.initialBackgroundImageFileId
-  return typeof id === 'string' && id.trim() ? id.trim().toLowerCase() : null
-}
-
-function propsBgmFileId(): string | null {
-  const id = props.initialBgmFileId
-  return typeof id === 'string' && id.trim() ? id.trim().toLowerCase() : null
-}
-
-function propsAuthorsNote(): AuthorsNoteSettings {
-  return normalizeAuthorsNote(props.initialAuthorsNote)
-}
-
-function propsChatBinding(): ConversationChatBinding | null {
-  return readConversationChatBinding(props.initialApiPreset)
-}
-
-function propsEmbeddingOverride(): ConversationEmbeddingApiSettingsOverride | undefined {
-  return props.initialEmbeddingApiSettings
-}
-
-function syncFromProps() {
-  errorText.value = ''
-  presetModel.value = propsPresetTarget() ?? INHERIT_VALUE
-  characterModel.value = [...props.initialCharacterIds]
-  userCharacterModel.value = propsUserCharacterId()
-  backgroundImageFileId.value = propsBackgroundImageFileId()
-  bgmFileId.value = propsBgmFileId()
-  lorebookModel.value = [...props.initialLorebookIds]
-  knowledgeBaseModel.value = [...(props.initialKnowledgeBaseIds ?? [])]
-  knowledgeUseGlobal.value = propsKnowledgeUseGlobal()
-  knowledgeTopK.value = knowledgeUseGlobal.value
-    ? propsGlobalKnowledgeTopK()
-    : propsKnowledgeTopK()
-  loreUseGlobal.value = propsLoreUseGlobal()
-  syncLoreFieldsFromProps()
-  historyUseGlobal.value = propsHistoryUseGlobal()
-  if (historyUseGlobal.value) {
-    historyLimitEnabled.value = propsGlobalHistoryLimitEnabled()
-    historyMaxTurns.value = propsGlobalHistoryMaxTurns()
-  } else {
-    historyLimitEnabled.value = propsHistoryLimitEnabled()
-    historyMaxTurns.value = propsHistoryMaxTurns()
-  }
-  memoryUseGlobal.value = propsMemoryUseGlobal()
-  if (memoryUseGlobal.value) {
-    memoryEnabled.value = propsGlobalMemoryEnabled()
-    memoryTopK.value = propsGlobalMemoryTopK()
-  } else {
-    memoryEnabled.value = propsMemoryEnabled()
-    memoryTopK.value = propsMemoryTopK()
-  }
-  budgetTrimUseGlobal.value = propsBudgetTrimUseGlobal()
-  if (budgetTrimUseGlobal.value) {
-    budgetTrimModel.value = cloneBudgetTrimSettings(
-      propsGlobalBudgetTrimSettings(),
+watch(
+  [regexTabRef, pluginTabRef],
+  () => {
+    bindRegexTabApi(
+      regexTabRef.value
+        ? { reload: () => void regexTabRef.value?.reload() }
+        : null,
     )
-  } else {
-    budgetTrimModel.value = cloneBudgetTrimSettings(propsBudgetTrimSettings())
-  }
-  const an = propsAuthorsNote()
-  authorsNoteEnabled.value = an.enabled
-  authorsNoteContent.value = an.content
-  authorsNoteDepth.value = an.injectionDepth
-  authorsNoteRole.value = an.role
-  const dan = normalizeDefaultAuthorsNoteTemplate(preferencesStore.defaultAuthorsNote)
-  defaultAuthorsNoteContent.value = dan.content
-  defaultAuthorsNoteDepth.value = dan.injectionDepth
-  defaultAuthorsNoteRole.value = dan.role
-  defaultAuthorsNoteEnabledForNewChats.value = dan.enabledForNewChats
-  if (!apiChatDraftActive.value && !savingApiSettings.value) {
-    chatApiUseGlobal.value = props.initialChatApiUseGlobal !== false
-  }
-  if (!apiEmbeddingDraftActive.value && !savingApiSettings.value) {
-    embeddingApiUseGlobal.value = props.initialEmbeddingApiUseGlobal !== false
-  }
-}
-
-watch(
-  () => [
-    props.conversationId,
-    props.initialPromptPresetId,
-    props.initialCharacterIds,
-    props.initialLorebookIds,
-    props.initialKnowledgeBaseIds,
-    props.initialKnowledgeSettingsUseGlobal,
-    props.globalKnowledgeTopK,
-    props.initialKnowledgeTopK,
-    props.initialLorebookSettingsUseGlobal,
-    props.globalLoreRecursiveEnabled,
-    props.globalLoreMaxRecursionDepth,
-    props.globalLoreKeywordTopK,
-    props.globalLoreVectorEnabled,
-    props.globalLoreVectorTopK,
-    props.initialLorebookRecursiveEnabled,
-    props.initialLorebookMaxRecursionDepth,
-    props.initialLorebookKeywordTopK,
-    props.initialLorebookVectorEnabled,
-    props.initialLorebookVectorTopK,
-    props.initialHistorySettingsUseGlobal,
-    props.globalHistoryLimitEnabled,
-    props.globalHistoryMaxTurns,
-    props.initialHistoryLimitEnabled,
-    props.initialHistoryMaxTurns,
-    props.initialMemorySettingsUseGlobal,
-    props.globalMemoryEnabled,
-    props.globalMemoryTopK,
-    props.initialMemoryEnabled,
-    props.initialMemoryTopK,
-    props.initialBudgetTrimSettingsUseGlobal,
-    props.globalBudgetTrimSettings,
-    props.initialBudgetTrimSettings,
-    props.initialUserName,
-    props.initialUserCharacterId,
-    props.initialBackgroundImageFileId,
-    props.initialBgmFileId,
-    props.initialAuthorsNote,
-    props.initialApiPreset,
-    props.initialChatApiUseGlobal,
-    props.initialEmbeddingApiUseGlobal,
-    props.initialEmbeddingApiSettings,
-  ],
-  () => syncFromProps(),
-  { deep: true },
-)
-
-watch(userCharacterModel, async (id) => {
-  const next =
-    typeof id === 'string' && id.trim() ? id.trim() : null
-  if (next === propsUserCharacterId()) return
-  savingUserCharacter.value = true
-  errorText.value = ''
-  try {
-    const card = next
-      ? charItems.value.find((c) => c.id === next)
-      : undefined
-    const userName =
-      card && card.name.trim() ? card.name.trim() : null
-    await patchConversation({
-      userCharacterId: next,
-      userName,
-    })
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingUserCharacter.value = false
-  }
-})
-
-async function onBackgroundImageFileId(id: string | null) {
-  const next =
-    typeof id === 'string' && id.trim() ? id.trim().toLowerCase() : null
-  if (next === propsBackgroundImageFileId()) return
-  backgroundImageFileId.value = next
-  savingBackgroundImage.value = true
-  errorText.value = ''
-  try {
-    await patchConversation({ backgroundImageFileId: next })
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingBackgroundImage.value = false
-  }
-}
-
-async function onBgmFileId(id: string | null) {
-  const next =
-    typeof id === 'string' && id.trim() ? id.trim().toLowerCase() : null
-  if (next === propsBgmFileId()) return
-  bgmFileId.value = next
-  savingBgm.value = true
-  errorText.value = ''
-  try {
-    await patchConversation({ bgmFileId: next })
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingBgm.value = false
-  }
-}
-
-watch(presetModel, async () => {
-  const target = currentPresetTarget()
-  const cur = propsPresetTarget()
-  if (target === cur) return
-  savingPreset.value = true
-  errorText.value = ''
-  try {
-    await patchConversation({
-      promptPresetId: target,
-    })
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingPreset.value = false
-  }
-})
-
-watch(
-  characterModel,
-  async (ids) => {
-    const a = [...ids].sort().join('\u0000')
-    const b = [...props.initialCharacterIds].sort().join('\u0000')
-    if (a === b) return
-    savingChars.value = true
-    errorText.value = ''
-    try {
-      const body: Record<string, unknown> = { characterIds: [...ids] }
-      const gc = normalizeGroupChatSettings(props.initialGroupChat)
-      if (gc.enabled) {
-        body.groupChat = groupChatWithEnsuredMemberColors(gc, ids)
-      }
-      await patchConversation(body)
-    } catch (e) {
-      errorText.value =
-        e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-      syncFromProps()
-    } finally {
-      savingChars.value = false
-    }
-  },
-  { deep: true },
-)
-
-watch(
-  lorebookModel,
-  async (ids) => {
-    const a = [...ids].sort().join('\u0000')
-    const b = [...props.initialLorebookIds].sort().join('\u0000')
-    if (a === b) return
-    savingLorebooks.value = true
-    errorText.value = ''
-    try {
-      await patchConversation({ lorebookIds: [...ids] })
-    } catch (e) {
-      errorText.value =
-        e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-      syncFromProps()
-    } finally {
-      savingLorebooks.value = false
-    }
-  },
-  { deep: true },
-)
-
-watch(
-  knowledgeBaseModel,
-  async (ids) => {
-    const a = [...ids].sort().join('\u0000')
-    const b = [...(props.initialKnowledgeBaseIds ?? [])].sort().join('\u0000')
-    if (a === b) return
-    savingKnowledgeBases.value = true
-    errorText.value = ''
-    try {
-      await patchConversation({ knowledgeBaseIds: [...ids] })
-    } catch (e) {
-      errorText.value =
-        e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-      syncFromProps()
-    } finally {
-      savingKnowledgeBases.value = false
-    }
-  },
-  { deep: true },
-)
-
-watch(knowledgeUseGlobal, async (useGlobal) => {
-  if (useGlobal === propsKnowledgeUseGlobal()) return
-  savingKnowledgeSettings.value = true
-  errorText.value = ''
-  try {
-    if (useGlobal) {
-      await patchConversation({ knowledgeSettings: null })
-    } else {
-      await patchConversation({
-        knowledgeSettings: { topK: knowledgeTopK.value },
-      })
-    }
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingKnowledgeSettings.value = false
-  }
-})
-
-watch(knowledgeTopK, async (topK) => {
-  const target = knowledgeUseGlobal.value
-    ? propsGlobalKnowledgeTopK()
-    : propsKnowledgeTopK()
-  const next =
-    typeof topK === 'number' && Number.isFinite(topK)
-      ? Math.max(1, Math.min(32, Math.floor(topK)))
-      : target
-  if (next === target) return
-  savingKnowledgeSettings.value = true
-  errorText.value = ''
-  try {
-    await patchConversation({ knowledgeSettings: { topK: next } })
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingKnowledgeSettings.value = false
-  }
-})
-
-watch(loreUseGlobal, async (useGlobal) => {
-  if (useGlobal === propsLoreUseGlobal()) return
-  savingLoreSettings.value = true
-  errorText.value = ''
-  try {
-    if (useGlobal) {
-      await patchConversation({ lorebookSettings: null })
-    } else {
-      await patchConversation({
-        lorebookSettings: buildLorebookSettingsOverride(),
-      })
-    }
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingLoreSettings.value = false
-  }
-})
-
-async function saveLoreOverride() {
-  await patchConversation({
-    lorebookSettings: buildLorebookSettingsOverride(),
-  })
-}
-
-watch(loreRecursiveEnabled, async (enabled) => {
-  const target = loreUseGlobal.value
-    ? propsGlobalLoreRecursiveEnabled()
-    : propsLoreRecursiveEnabled()
-  if (enabled === target) return
-  savingLoreSettings.value = true
-  errorText.value = ''
-  try {
-    await saveLoreOverride()
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingLoreSettings.value = false
-  }
-})
-
-watch(loreMaxRecursionDepth, async (depth) => {
-  const target = loreUseGlobal.value
-    ? propsGlobalLoreMaxRecursionDepth()
-    : propsLoreMaxRecursionDepth()
-  if (depth === target) return
-  savingLoreSettings.value = true
-  errorText.value = ''
-  try {
-    await saveLoreOverride()
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingLoreSettings.value = false
-  }
-})
-
-watch(loreKeywordTopK, async (topK) => {
-  const target = loreUseGlobal.value
-    ? propsGlobalLoreKeywordTopK()
-    : propsLoreKeywordTopK()
-  if (topK === target) return
-  savingLoreSettings.value = true
-  errorText.value = ''
-  try {
-    await saveLoreOverride()
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingLoreSettings.value = false
-  }
-})
-
-watch(loreVectorEnabled, async (enabled) => {
-  const target = loreUseGlobal.value
-    ? propsGlobalLoreVectorEnabled()
-    : propsLoreVectorEnabled()
-  if (enabled === target) return
-  savingLoreSettings.value = true
-  errorText.value = ''
-  try {
-    await saveLoreOverride()
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingLoreSettings.value = false
-  }
-})
-
-watch(loreVectorTopK, async (topK) => {
-  const target = loreUseGlobal.value
-    ? propsGlobalLoreVectorTopK()
-    : propsLoreVectorTopK()
-  if (topK === target) return
-  savingLoreSettings.value = true
-  errorText.value = ''
-  try {
-    await saveLoreOverride()
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingLoreSettings.value = false
-  }
-})
-
-watch(historyUseGlobal, async (useGlobal) => {
-  if (useGlobal === propsHistoryUseGlobal()) return
-  savingHistorySettings.value = true
-  errorText.value = ''
-  try {
-    if (useGlobal) {
-      await patchConversation({ historySettings: null })
-    } else {
-      await patchConversation({
-        historySettings: {
-          limitEnabled: historyLimitEnabled.value,
-          maxTurns: historyMaxTurns.value,
-        },
-      })
-    }
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingHistorySettings.value = false
-  }
-})
-
-async function saveHistoryOverride() {
-  await patchConversation({
-    historySettings: {
-      limitEnabled: historyLimitEnabled.value,
-      maxTurns: historyMaxTurns.value,
-    },
-  })
-}
-
-watch(historyLimitEnabled, async (enabled) => {
-  const target = historyUseGlobal.value
-    ? propsGlobalHistoryLimitEnabled()
-    : propsHistoryLimitEnabled()
-  if (enabled === target) return
-  savingHistorySettings.value = true
-  errorText.value = ''
-  try {
-    await saveHistoryOverride()
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingHistorySettings.value = false
-  }
-})
-
-watch(historyMaxTurns, async (turns) => {
-  const target = historyUseGlobal.value
-    ? propsGlobalHistoryMaxTurns()
-    : propsHistoryMaxTurns()
-  if (turns === target) return
-  savingHistorySettings.value = true
-  errorText.value = ''
-  try {
-    await saveHistoryOverride()
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingHistorySettings.value = false
-  }
-})
-
-watch(memoryUseGlobal, async (useGlobal) => {
-  if (useGlobal === propsMemoryUseGlobal()) return
-  savingMemorySettings.value = true
-  errorText.value = ''
-  try {
-    if (useGlobal) {
-      await patchConversation({ memorySettings: null })
-    } else {
-      await patchConversation({
-        memorySettings: {
-          memoryEnabled: memoryEnabled.value,
-          memoryTopK: memoryTopK.value,
-        },
-      })
-    }
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingMemorySettings.value = false
-  }
-})
-
-async function saveMemoryOverride() {
-  await patchConversation({
-    memorySettings: {
-      memoryEnabled: memoryEnabled.value,
-      memoryTopK: memoryTopK.value,
-    },
-  })
-}
-
-watch(memoryEnabled, async (enabled) => {
-  const target = memoryUseGlobal.value
-    ? propsGlobalMemoryEnabled()
-    : propsMemoryEnabled()
-  if (enabled === target) return
-  savingMemorySettings.value = true
-  errorText.value = ''
-  try {
-    await saveMemoryOverride()
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingMemorySettings.value = false
-  }
-})
-
-watch(memoryTopK, async (k) => {
-  const target = memoryUseGlobal.value
-    ? propsGlobalMemoryTopK()
-    : propsMemoryTopK()
-  if (k === target) return
-  savingMemorySettings.value = true
-  errorText.value = ''
-  try {
-    await saveMemoryOverride()
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingMemorySettings.value = false
-  }
-})
-
-watch(budgetTrimUseGlobal, async (useGlobal) => {
-  if (useGlobal === propsBudgetTrimUseGlobal()) return
-  savingBudgetTrimSettings.value = true
-  errorText.value = ''
-  try {
-    if (useGlobal) {
-      await patchConversation({ budgetTrimSettings: null })
-    } else {
-      await saveBudgetTrimOverride()
-    }
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingBudgetTrimSettings.value = false
-  }
-})
-
-async function saveBudgetTrimOverride() {
-  const n = normalizeBudgetTrimSettings(budgetTrimModel.value)
-  await patchConversation({
-    budgetTrimSettings: {
-      trimOrder: [...n.trimOrder],
-      minRetain: { ...n.minRetain },
-    },
-  })
-}
-
-watch(
-  budgetTrimModel,
-  async (v) => {
-    if (budgetTrimUseGlobal.value) return
-    const target = propsBudgetTrimSettings()
-    const n = normalizeBudgetTrimSettings(v)
-    if (budgetTrimSettingsEqual(n, target)) return
-    savingBudgetTrimSettings.value = true
-    errorText.value = ''
-    try {
-      await saveBudgetTrimOverride()
-    } catch (e) {
-      errorText.value =
-        e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-      syncFromProps()
-    } finally {
-      savingBudgetTrimSettings.value = false
-    }
-  },
-  { deep: true },
-)
-
-function authorsNotePatchFromForm(): AuthorsNoteSettings {
-  return normalizeAuthorsNote({
-    enabled: authorsNoteEnabled.value,
-    content: authorsNoteContent.value,
-    injectionDepth: authorsNoteDepth.value,
-    role: authorsNoteRole.value,
-  })
-}
-
-function authorsNoteMatchesProps(): boolean {
-  const cur = authorsNotePatchFromForm()
-  const stored = propsAuthorsNote()
-  return (
-    cur.enabled === stored.enabled &&
-    cur.content === stored.content &&
-    cur.injectionDepth === stored.injectionDepth &&
-    cur.role === stored.role
-  )
-}
-
-async function saveAuthorsNote(): Promise<void> {
-  const note = authorsNotePatchFromForm()
-  await patchConversation({
-    authorsNote: {
-      enabled: note.enabled,
-      content: note.content,
-      injectionDepth: note.injectionDepth,
-      role: note.role,
-    },
-  })
-}
-
-watch(authorsNoteContent, (content) => {
-  if (!content.trim()) {
-    authorsNoteEnabled.value = false
-  }
-})
-
-async function onAuthorsNoteContentBlur(): Promise<void> {
-  if (authorsNoteMatchesProps()) return
-  savingAuthorsNote.value = true
-  errorText.value = ''
-  try {
-    await saveAuthorsNote()
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingAuthorsNote.value = false
-  }
-}
-
-watch(authorsNoteEnabled, async (enabled) => {
-  if (enabled === propsAuthorsNote().enabled) return
-  if (enabled && !canToggleAuthorsNoteEnabled.value) {
-    authorsNoteEnabled.value = false
-    return
-  }
-  savingAuthorsNote.value = true
-  errorText.value = ''
-  try {
-    await saveAuthorsNote()
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingAuthorsNote.value = false
-  }
-})
-
-watch(authorsNoteDepth, async (depth) => {
-  if (depth === propsAuthorsNote().injectionDepth) return
-  savingAuthorsNote.value = true
-  errorText.value = ''
-  try {
-    await saveAuthorsNote()
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingAuthorsNote.value = false
-  }
-})
-
-watch(authorsNoteRole, async (role) => {
-  if (role === propsAuthorsNote().role) return
-  savingAuthorsNote.value = true
-  errorText.value = ''
-  try {
-    await saveAuthorsNote()
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingAuthorsNote.value = false
-  }
-})
-
-function defaultAuthorsNotePatchFromForm(): DefaultAuthorsNoteTemplate {
-  return normalizeDefaultAuthorsNoteTemplate({
-    content: defaultAuthorsNoteContent.value,
-    injectionDepth: defaultAuthorsNoteDepth.value,
-    role: defaultAuthorsNoteRole.value,
-    enabledForNewChats: defaultAuthorsNoteEnabledForNewChats.value,
-  })
-}
-
-function defaultAuthorsNoteMatchesStore(): boolean {
-  const cur = defaultAuthorsNotePatchFromForm()
-  const stored = normalizeDefaultAuthorsNoteTemplate(
-    preferencesStore.defaultAuthorsNote,
-  )
-  return (
-    cur.content === stored.content &&
-    cur.injectionDepth === stored.injectionDepth &&
-    cur.role === stored.role &&
-    cur.enabledForNewChats === stored.enabledForNewChats
-  )
-}
-
-async function saveDefaultAuthorsNote(): Promise<void> {
-  if (preferencesStore.isDefaultAuthorsNotePatchInFlight()) return
-  const note = defaultAuthorsNotePatchFromForm()
-  await preferencesStore.patchGlobalDefaultAuthorsNoteToServer({
-    content: note.content,
-    injectionDepth: note.injectionDepth,
-    role: note.role,
-    enabledForNewChats: note.enabledForNewChats,
-  })
-}
-
-async function onDefaultAuthorsNoteContentBlur(): Promise<void> {
-  if (preferencesStore.isDefaultAuthorsNotePatchInFlight()) return
-  if (defaultAuthorsNoteMatchesStore()) return
-  savingDefaultAuthorsNote.value = true
-  errorText.value = ''
-  try {
-    await saveDefaultAuthorsNote()
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingDefaultAuthorsNote.value = false
-  }
-}
-
-watch(defaultAuthorsNoteEnabledForNewChats, async (enabled) => {
-  if (preferencesStore.isDefaultAuthorsNotePatchInFlight()) return
-  const stored = normalizeDefaultAuthorsNoteTemplate(
-    preferencesStore.defaultAuthorsNote,
-  )
-  if (enabled === stored.enabledForNewChats) return
-  savingDefaultAuthorsNote.value = true
-  errorText.value = ''
-  try {
-    await saveDefaultAuthorsNote()
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingDefaultAuthorsNote.value = false
-  }
-})
-
-watch(defaultAuthorsNoteDepth, async (depth) => {
-  if (preferencesStore.isDefaultAuthorsNotePatchInFlight()) return
-  const stored = normalizeDefaultAuthorsNoteTemplate(
-    preferencesStore.defaultAuthorsNote,
-  )
-  if (depth === stored.injectionDepth) return
-  savingDefaultAuthorsNote.value = true
-  errorText.value = ''
-  try {
-    await saveDefaultAuthorsNote()
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingDefaultAuthorsNote.value = false
-  }
-})
-
-watch(defaultAuthorsNoteRole, async (role) => {
-  if (preferencesStore.isDefaultAuthorsNotePatchInFlight()) return
-  const stored = normalizeDefaultAuthorsNoteTemplate(
-    preferencesStore.defaultAuthorsNote,
-  )
-  if (role === stored.role) return
-  savingDefaultAuthorsNote.value = true
-  errorText.value = ''
-  try {
-    await saveDefaultAuthorsNote()
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    syncFromProps()
-  } finally {
-    savingDefaultAuthorsNote.value = false
-  }
-})
-
-async function refreshPluginsTabVisibility() {
-  try {
-    const all = await fetchPluginsManage()
-    showPluginsTab.value = all.some(
-      (p) => p.enabled && p.hasConversationSettings,
+    bindPluginTabApi(
+      pluginTabRef.value
+        ? {
+            reload: () => void pluginTabRef.value?.reload(),
+            backToList: () => pluginTabRef.value?.backToList(),
+          }
+        : null,
     )
-    if (activeSection.value === 'plugins' && !showPluginsTab.value) {
-      activeSection.value = 'bindings'
-    }
-  } catch {
-    showPluginsTab.value = false
-  }
-}
-
-function onPluginSettingsError(message: string) {
-  errorText.value = message
-}
-
-onMounted(() => {
-  syncFromProps()
-  void loadCharacters()
-  void loadLorebooks()
-  void loadKnowledgeBases()
-  void refreshPluginsTabVisibility()
-})
-
-async function loadLorebooks() {
-  lorebookItemsLoading.value = true
-  try {
-    const res = await fetch('/api/lorebooks')
-    if (!res.ok) return
-    const raw: unknown = await res.json()
-    if (!raw || typeof raw !== 'object') return
-    const list = (raw as { lorebooks?: { id?: string; name?: string }[] })
-      .lorebooks
-    lorebookItems.value = (list ?? [])
-      .filter((x) => typeof x.id === 'string' && x.id.trim())
-      .map((x) => ({
-        id: x.id as string,
-        name: typeof x.name === 'string' ? x.name : (x.id as string),
-      }))
-  } catch {
-    /* ignore */
-  } finally {
-    lorebookItemsLoading.value = false
-  }
-}
-
-async function loadKnowledgeBases() {
-  knowledgeBaseItemsLoading.value = true
-  try {
-    const res = await fetch('/api/knowledge-bases/summary')
-    if (!res.ok) return
-    const raw: unknown = await res.json()
-    if (!raw || typeof raw !== 'object') return
-    const list = (
-      raw as { knowledgeBases?: { id?: string; name?: string }[] }
-    ).knowledgeBases
-    knowledgeBaseItems.value = (list ?? [])
-      .filter((x) => typeof x.id === 'string' && x.id.trim())
-      .map((x) => ({
-        id: x.id as string,
-        name: typeof x.name === 'string' ? x.name : (x.id as string),
-      }))
-  } catch {
-    /* ignore */
-  } finally {
-    knowledgeBaseItemsLoading.value = false
-  }
-}
-
-async function loadCharacters() {
-  charItemsLoading.value = true
-  try {
-    const res = await fetch('/api/characters?limit=100&offset=0&kind=all')
-    if (!res.ok) return
-    const j = (await res.json()) as {
-      items?: { id?: string; name?: string }[]
-    }
-    const raw = j.items ?? []
-    charItems.value = raw
-      .filter((x) => typeof x.id === 'string' && x.id.trim())
-      .map((x) => ({
-        id: x.id as string,
-        name: typeof x.name === 'string' ? x.name : (x.id as string),
-      }))
-  } catch {
-    /* ignore */
-  } finally {
-    charItemsLoading.value = false
-  }
-}
-
-async function saveChatApiOverride(binding: ConversationChatBinding | null) {
-  await patchConversation({
-    apiPreset: { chat: binding },
-  })
-}
-
-async function saveEmbeddingApiOverride(
-  patch: ConversationEmbeddingApiSettingsOverride | null,
-) {
-  await patchConversation({
-    embeddingApiSettings: patch,
-  })
-}
-
-async function onSaveChatApi(binding: ConversationChatBinding | null) {
-  savingApiSettings.value = true
-  errorText.value = ''
-  try {
-    await saveChatApiOverride(binding)
-    apiChatDraftActive.value = false
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    apiChatDraftActive.value = false
-    syncFromProps()
-  } finally {
-    savingApiSettings.value = false
-  }
-}
-
-async function onSaveEmbeddingApi(
-  patch: ConversationEmbeddingApiSettingsOverride | null,
-) {
-  savingApiSettings.value = true
-  errorText.value = ''
-  try {
-    await saveEmbeddingApiOverride(patch)
-    apiEmbeddingDraftActive.value = false
-  } catch (e) {
-    errorText.value =
-      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
-    apiEmbeddingDraftActive.value = false
-    syncFromProps()
-  } finally {
-    savingApiSettings.value = false
-  }
-}
-
-async function patchConversation(body: Record<string, unknown>) {
-  const cid = props.conversationId
-  const res = await fetch(`/api/chat/conversations/${cid}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    const txt = await res.text()
-    throw new Error(txt.slice(0, 200))
-  }
-  // 切会话后丢弃过期 PATCH，避免旧背景/BGM 写回当前视图
-  if (props.conversationId !== cid) return
-  const j = (await res.json()) as { index?: Record<string, unknown> }
-  if (props.conversationId !== cid) return
-  if (j.index) emit('patched', j.index, cid)
-}
+  },
+  { immediate: true, flush: 'post' },
+)
 </script>
 
 <template>
@@ -1732,733 +229,135 @@ async function patchConversation(body: Record<string, unknown>) {
           </nav>
 
           <div class="conv-settings-panel">
-            <div
+            <BindingsTab
               v-show="activeSection === 'bindings'"
-              class="conv-settings-section"
-            >
-              <div class="conv-settings-field">
-                <v-select
-                  v-model="presetModel"
-                  :items="presetItems"
-                  item-title="title"
-                  item-value="value"
-                  :label="$t('chat.convSettings.promptPreset')"
-                  density="comfortable"
-                  variant="outlined"
-                  hide-details="auto"
-                  :loading="savingPreset || !promptsLoaded"
-                  :disabled="!promptsLoaded"
-                />
-              </div>
+              v-model:preset-model="presetModel"
+              v-model:user-character-model="userCharacterModel"
+              v-model:character-model="characterModel"
+              v-model:lorebook-model="lorebookModel"
+              v-model:knowledge-base-model="knowledgeBaseModel"
+              :preset-items="presetItems"
+              :char-items="charItems"
+              :lorebook-items="lorebookItems"
+              :knowledge-base-items="knowledgeBaseItems"
+              :prompts-loaded="promptsLoaded"
+              :char-items-loading="charItemsLoading"
+              :lorebook-items-loading="lorebookItemsLoading"
+              :knowledge-base-items-loading="knowledgeBaseItemsLoading"
+              :saving-preset="savingPreset"
+              :saving-user-character="savingUserCharacter"
+              :saving-chars="savingChars"
+              :saving-lorebooks="savingLorebooks"
+              :saving-knowledge-bases="savingKnowledgeBases"
+              :saving-background-image="savingBackgroundImage"
+              :saving-bgm="savingBgm"
+              :background-image-file-id="backgroundImageFileId"
+              :bgm-file-id="bgmFileId"
+              :initial-user-name="props.initialUserName"
+              @background-image-file-id="onBackgroundImageFileId"
+              @bgm-file-id="onBgmFileId"
+            />
 
-              <div class="conv-settings-field">
-                <v-select
-                  v-model="userCharacterModel"
-                  :items="charItems"
-                  item-title="name"
-                  item-value="id"
-                  :label="$t('chat.convSettings.userCharacter')"
-                  density="comfortable"
-                  variant="outlined"
-                  hide-details="auto"
-                  clearable
-                  :loading="charItemsLoading || savingUserCharacter"
-                />
-                <p class="conv-settings-field__hint">
-                  {{ $t('chat.convSettings.userCharacterHint') }}
-                </p>
-                <p
-                  v-if="initialUserName"
-                  class="conv-settings-field__hint text-medium-emphasis"
-                >
-                  {{ $t('chat.convSettings.userNameCurrent', { name: initialUserName }) }}
-                  <code class="user-macro-tag">{{ PROMPT_USER_MACRO }}</code>
-                </p>
-              </div>
-
-              <div class="conv-settings-field">
-                <v-select
-                  v-model="characterModel"
-                  :items="charItems"
-                  item-title="name"
-                  item-value="id"
-                  :label="$t('chat.convSettings.characters')"
-                  density="comfortable"
-                  variant="outlined"
-                  multiple
-                  chips
-                  closable-chips
-                  hide-details="auto"
-                  :loading="charItemsLoading || savingChars"
-                />
-                <p class="conv-settings-field__hint">
-                  {{ $t('chat.convSettings.charactersHint') }}
-                </p>
-              </div>
-
-              <div class="conv-settings-field">
-                <v-select
-                  v-model="lorebookModel"
-                  :items="lorebookItems"
-                  item-title="name"
-                  item-value="id"
-                  :label="$t('chat.convSettings.lorebooks')"
-                  density="comfortable"
-                  variant="outlined"
-                  multiple
-                  chips
-                  closable-chips
-                  hide-details="auto"
-                  :loading="lorebookItemsLoading || savingLorebooks"
-                />
-                <p class="conv-settings-field__hint">
-                  {{ $t('chat.convSettings.lorebooksHint') }}
-                </p>
-              </div>
-
-              <div class="conv-settings-field">
-                <v-select
-                  v-model="knowledgeBaseModel"
-                  :items="knowledgeBaseItems"
-                  item-title="name"
-                  item-value="id"
-                  :label="$t('chat.convSettings.knowledgeBases')"
-                  density="comfortable"
-                  variant="outlined"
-                  multiple
-                  chips
-                  closable-chips
-                  hide-details="auto"
-                  :loading="knowledgeBaseItemsLoading || savingKnowledgeBases"
-                />
-                <p class="conv-settings-field__hint">
-                  {{ $t('chat.convSettings.knowledgeBasesHint') }}
-                </p>
-              </div>
-
-              <div class="conv-settings-field">
-                <ConversationMediaFileField
-                  kind="image"
-                  :file-id="backgroundImageFileId"
-                  :label="$t('chat.convSettings.backgroundImage')"
-                  :hint="$t('chat.convSettings.backgroundImageHint')"
-                  :saving="savingBackgroundImage"
-                  @update:file-id="onBackgroundImageFileId"
-                />
-              </div>
-
-              <div class="conv-settings-field">
-                <ConversationMediaFileField
-                  kind="audio"
-                  :file-id="bgmFileId"
-                  :label="$t('chat.convSettings.bgm')"
-                  :hint="$t('chat.convSettings.bgmHint')"
-                  :saving="savingBgm"
-                  @update:file-id="onBgmFileId"
-                />
-              </div>
-            </div>
-
-            <div
+            <ApiTab
               v-show="activeSection === 'api'"
-              class="conv-settings-section"
-            >
-              <ConversationApiSettingsPanel
-                :chat-use-global="chatApiUseGlobal"
-                :chat-binding="propsChatBinding()"
-                :embedding-use-global="embeddingApiUseGlobal"
-                :embedding-override="propsEmbeddingOverride()"
-                :global-embedding-model="props.globalEmbeddingModel ?? ''"
-                :global-embedding-dimensions="props.globalEmbeddingDimensions ?? null"
-                :allow-prop-sync="!apiChatDraftActive && !apiEmbeddingDraftActive && !savingApiSettings"
-                :disabled="savingApiSettings"
-                @update:chat-use-global="onChatUseGlobalLocalChange"
-                @update:embedding-use-global="onEmbeddingUseGlobalLocalChange"
-                @save-chat="onSaveChatApi"
-                @save-embedding="onSaveEmbeddingApi"
-              />
-            </div>
+              :chat-api-use-global="chatApiUseGlobal"
+              :embedding-api-use-global="embeddingApiUseGlobal"
+              :chat-binding="propsChatBinding()"
+              :embedding-override="propsEmbeddingOverride()"
+              :global-embedding-model="props.globalEmbeddingModel ?? ''"
+              :global-embedding-dimensions="props.globalEmbeddingDimensions ?? null"
+              :allow-prop-sync="!apiChatDraftActive && !apiEmbeddingDraftActive && !savingApiSettings"
+              :saving-api-settings="savingApiSettings"
+              @update:chat-api-use-global="onChatUseGlobalLocalChange"
+              @update:embedding-api-use-global="onEmbeddingUseGlobalLocalChange"
+              @save-chat="onSaveChatApi"
+              @save-embedding="onSaveEmbeddingApi"
+            />
 
-            <div
+            <LorebookTab
               v-show="activeSection === 'lore'"
-              class="conv-settings-section"
-            >
-              <div class="conv-settings-field">
-                <v-switch
-                  v-model="loreUseGlobal"
-                  :label="$t('chat.convSettings.loreUseGlobal')"
-                  density="comfortable"
-                  hide-details
-                  color="primary"
-                  :loading="savingLoreSettings"
-                  :disabled="savingLoreSettings"
-                />
-                <p
-                  v-if="loreUseGlobal"
-                  class="conv-settings-field__hint"
-                >
-                  {{ $t('chat.convSettings.loreInheritGlobalHint') }}
-                </p>
-              </div>
+              v-model:lore-use-global="loreUseGlobal"
+              v-model:lore-recursive-enabled="loreRecursiveEnabled"
+              v-model:lore-max-recursion-depth="loreMaxRecursionDepth"
+              :lore-depth-items="loreDepthItems"
+              :saving-lore-settings="savingLoreSettings"
+            />
 
-              <div class="conv-settings-field">
-                <v-switch
-                  v-model="loreRecursiveEnabled"
-                  :label="$t('chat.convSettings.loreRecursiveEnabled')"
-                  density="comfortable"
-                  hide-details
-                  color="primary"
-                  :loading="savingLoreSettings"
-                  :disabled="loreUseGlobal || savingLoreSettings"
-                />
-                <p class="conv-settings-field__hint">
-                  {{ $t('chat.convSettings.loreRecursiveHint') }}
-                </p>
-              </div>
-
-              <div class="conv-settings-field">
-                <v-select
-                  v-model="loreMaxRecursionDepth"
-                  :items="[...loreDepthItems]"
-                  :label="$t('chat.convSettings.loreMaxRecursionDepth')"
-                  density="comfortable"
-                  variant="outlined"
-                  hide-details="auto"
-                  :disabled="loreUseGlobal || !loreRecursiveEnabled || savingLoreSettings"
-                  :loading="savingLoreSettings"
-                />
-                <p
-                  v-if="loreRecursiveEnabled"
-                  class="conv-settings-field__hint"
-                >
-                  {{ $t('chat.convSettings.loreMaxRecursionDepthHint') }}
-                </p>
-              </div>
-            </div>
-
-            <div
+            <HistoryTab
               v-show="activeSection === 'context'"
-              class="conv-settings-section"
-            >
-              <div class="conv-settings-subsection">
-                <h4 class="conv-settings-subsection__title">
-                  {{ $t('chat.convSettings.sectionHistory') }}
-                </h4>
-                <div class="conv-settings-field">
-                  <v-switch
-                    v-model="historyUseGlobal"
-                    :label="$t('chat.convSettings.historyUseGlobal')"
-                    density="comfortable"
-                    hide-details
-                    color="primary"
-                    :loading="savingHistorySettings"
-                    :disabled="savingHistorySettings"
-                  />
-                  <p
-                    v-if="historyUseGlobal"
-                    class="conv-settings-field__hint"
-                  >
-                    {{ $t('chat.convSettings.historyInheritGlobalHint') }}
-                  </p>
-                </div>
-                <div class="conv-settings-field">
-                  <v-switch
-                    v-model="historyLimitEnabled"
-                    :label="$t('chat.convSettings.historyLimitEnabled')"
-                    density="comfortable"
-                    hide-details
-                    color="primary"
-                    :loading="savingHistorySettings"
-                    :disabled="historyUseGlobal || savingHistorySettings"
-                  />
-                  <p class="conv-settings-field__hint">
-                    {{ $t('chat.convSettings.historyLimitHint') }}
-                  </p>
-                </div>
-                <div class="conv-settings-field">
-                  <v-text-field
-                    v-model.number="historyMaxTurns"
-                    type="number"
-                    min="1"
-                    max="200"
-                    step="1"
-                    :label="$t('chat.convSettings.historyMaxTurns')"
-                    density="comfortable"
-                    variant="outlined"
-                    hide-details="auto"
-                    :disabled="historyUseGlobal || !historyLimitEnabled || savingHistorySettings"
-                    :loading="savingHistorySettings"
-                  />
-                  <p
-                    v-if="historyLimitEnabled"
-                    class="conv-settings-field__hint"
-                  >
-                    {{ $t('chat.convSettings.historyMaxTurnsHint') }}
-                  </p>
-                </div>
-              </div>
-            </div>
+              v-model:history-use-global="historyUseGlobal"
+              v-model:history-limit-enabled="historyLimitEnabled"
+              v-model:history-max-turns="historyMaxTurns"
+              :saving-history-settings="savingHistorySettings"
+            />
 
-            <div
+            <VectorRecallTab
               v-show="activeSection === 'vectorRecall'"
-              class="conv-settings-section"
-            >
-              <div class="conv-settings-subsection">
-                <h4 class="conv-settings-subsection__title">
-                  {{ $t('chat.convSettings.sectionLoreVector') }}
-                </h4>
-                <p
-                  v-if="loreUseGlobal"
-                  class="conv-settings-field__hint mb-3"
-                >
-                  {{ $t('chat.convSettings.loreVectorInheritGlobalHint') }}
-                </p>
-                <div class="conv-settings-field">
-                  <v-text-field
-                    v-model.number="loreKeywordTopK"
-                    type="number"
-                    min="1"
-                    max="64"
-                    step="1"
-                    :label="$t('chat.convSettings.loreKeywordTopK')"
-                    density="comfortable"
-                    variant="outlined"
-                    hide-details="auto"
-                    :disabled="loreUseGlobal || savingLoreSettings"
-                    :loading="savingLoreSettings"
-                  />
-                  <p class="conv-settings-field__hint">
-                    {{ $t('chat.convSettings.loreKeywordTopKHint') }}
-                  </p>
-                </div>
-                <div class="conv-settings-field">
-                  <v-switch
-                    v-model="loreVectorEnabled"
-                    :label="$t('chat.convSettings.loreVectorEnabled')"
-                    density="comfortable"
-                    hide-details
-                    color="primary"
-                    :loading="savingLoreSettings"
-                    :disabled="loreUseGlobal || savingLoreSettings"
-                  />
-                </div>
-                <div class="conv-settings-field">
-                  <v-text-field
-                    v-model.number="loreVectorTopK"
-                    type="number"
-                    min="1"
-                    max="20"
-                    step="1"
-                    :label="$t('chat.convSettings.loreVectorTopK')"
-                    density="comfortable"
-                    variant="outlined"
-                    hide-details="auto"
-                    :disabled="loreUseGlobal || !loreVectorEnabled || savingLoreSettings"
-                    :loading="savingLoreSettings"
-                  />
-                  <p
-                    v-if="loreVectorEnabled"
-                    class="conv-settings-field__hint"
-                  >
-                    {{ $t('chat.convSettings.loreVectorTopKHint') }}
-                  </p>
-                </div>
-              </div>
+              v-model:lore-keyword-top-k="loreKeywordTopK"
+              v-model:lore-vector-enabled="loreVectorEnabled"
+              v-model:lore-vector-top-k="loreVectorTopK"
+              v-model:knowledge-use-global="knowledgeUseGlobal"
+              v-model:knowledge-top-k="knowledgeTopK"
+              v-model:memory-use-global="memoryUseGlobal"
+              v-model:memory-enabled="memoryEnabled"
+              v-model:memory-top-k="memoryTopK"
+              :lore-use-global="loreUseGlobal"
+              :saving-lore-settings="savingLoreSettings"
+              :saving-knowledge-settings="savingKnowledgeSettings"
+              :saving-memory-settings="savingMemorySettings"
+              :effective-memory-enabled="effectiveMemoryEnabled"
+              :memory-rebuild-needs-attention="memoryRebuildNeedsAttention"
+              :memory-rebuild-loading="memoryRebuildLoading"
+              :memory-rebuild-error="memoryRebuildError"
+              :memory-rebuild-done="memoryRebuildDone"
+              :memory-rebuild-total="memoryRebuildTotal"
+              :memory-rebuild-turns="memoryRebuildTurns"
+              :memory-rebuild-lore-entries="memoryRebuildLoreEntries"
+              :memory-rebuild-stage-label="memoryRebuildStageLabel"
+              :memory-rebuild-percent="memoryRebuildPercent"
+              @rebuild-memory="onRebuildMemoryClick"
+              @open-recall-test="recallTestDialogOpen = true"
+            />
 
-              <v-divider class="my-4" />
-
-              <div class="conv-settings-subsection">
-                <h4 class="conv-settings-subsection__title">
-                  {{ $t('chat.convSettings.sectionKnowledge') }}
-                </h4>
-                <div class="conv-settings-field">
-                  <v-switch
-                    v-model="knowledgeUseGlobal"
-                    :label="$t('chat.convSettings.knowledgeUseGlobal')"
-                    density="comfortable"
-                    hide-details
-                    color="primary"
-                    :loading="savingKnowledgeSettings"
-                    :disabled="savingKnowledgeSettings"
-                  />
-                  <p
-                    v-if="knowledgeUseGlobal"
-                    class="conv-settings-field__hint"
-                  >
-                    {{ $t('chat.convSettings.knowledgeInheritGlobalHint') }}
-                  </p>
-                </div>
-                <div class="conv-settings-field">
-                  <v-text-field
-                    v-model.number="knowledgeTopK"
-                    type="number"
-                    min="1"
-                    max="32"
-                    step="1"
-                    :label="$t('chat.convSettings.knowledgeTopK')"
-                    density="comfortable"
-                    variant="outlined"
-                    hide-details="auto"
-                    :loading="savingKnowledgeSettings"
-                    :disabled="knowledgeUseGlobal || savingKnowledgeSettings"
-                  />
-                  <p class="conv-settings-field__hint">
-                    {{ $t('chat.convSettings.knowledgeTopKHint') }}
-                  </p>
-                </div>
-              </div>
-
-              <v-divider class="my-4" />
-
-              <div class="conv-settings-subsection">
-                <h4 class="conv-settings-subsection__title">
-                  {{ $t('chat.convSettings.sectionMemory') }}
-                </h4>
-                <div class="conv-settings-field">
-                  <v-switch
-                    v-model="memoryUseGlobal"
-                    :label="$t('chat.convSettings.memoryUseGlobal')"
-                    density="comfortable"
-                    hide-details
-                    color="primary"
-                    :loading="savingMemorySettings"
-                    :disabled="savingMemorySettings"
-                  />
-                  <p
-                    v-if="memoryUseGlobal"
-                    class="conv-settings-field__hint"
-                  >
-                    {{ $t('chat.convSettings.memoryInheritGlobalHint') }}
-                  </p>
-                </div>
-                <div class="conv-settings-field">
-                  <v-switch
-                    v-model="memoryEnabled"
-                    :label="$t('chat.convSettings.memoryEnabled')"
-                    density="comfortable"
-                    hide-details
-                    color="primary"
-                    :loading="savingMemorySettings"
-                    :disabled="memoryUseGlobal || savingMemorySettings"
-                  />
-                  <p class="conv-settings-field__hint">
-                    {{ $t('chat.convSettings.memoryEnabledHint') }}
-                  </p>
-                </div>
-                <div class="conv-settings-field">
-                  <v-text-field
-                    v-model.number="memoryTopK"
-                    type="number"
-                    min="1"
-                    max="20"
-                    step="1"
-                    :label="$t('chat.convSettings.memoryTopK')"
-                    density="comfortable"
-                    variant="outlined"
-                    hide-details="auto"
-                    :disabled="memoryUseGlobal || !memoryEnabled || savingMemorySettings"
-                    :loading="savingMemorySettings"
-                  />
-                  <p
-                    v-if="memoryEnabled"
-                    class="conv-settings-field__hint"
-                  >
-                    {{ $t('chat.convSettings.memoryTopKHint') }}
-                  </p>
-                </div>
-                <div
-                  v-if="effectiveMemoryEnabled"
-                  class="conv-settings-field"
-                >
-                  <v-btn
-                    variant="outlined"
-                    color="primary"
-                    prepend-icon="mdi-database-refresh-outline"
-                    :loading="memoryRebuildLoading"
-                    :disabled="memoryRebuildLoading"
-                    @click="onRebuildMemoryClick"
-                  >
-                    {{ $t('chat.convSettings.memoryRebuildButton') }}
-                  </v-btn>
-                  <p
-                    class="conv-settings-field__hint"
-                    :class="{ 'text-warning': memoryRebuildNeedsAttention }"
-                  >
-                    {{
-                      memoryRebuildNeedsAttention
-                        ? $t('chat.convSettings.memoryRebuildMismatchHint')
-                        : $t('chat.convSettings.memoryRebuildHint')
-                    }}
-                  </p>
-                  <div
-                    v-if="memoryRebuildLoading"
-                    class="mt-2"
-                  >
-                    <p class="text-caption text-medium-emphasis mb-1">
-                      {{ memoryRebuildStageLabel }} ·
-                      {{
-                        $t('chatConversation.memoryRebuildProgress', {
-                          done: memoryRebuildDone,
-                          total: memoryRebuildTotal,
-                        })
-                      }}
-                    </p>
-                    <p
-                      v-if="memoryRebuildTotal > 0"
-                      class="text-caption text-medium-emphasis mb-1"
-                    >
-                      {{
-                        $t('chatConversation.memoryRebuildProgressDetail', {
-                          turns: memoryRebuildTurns,
-                          loreEntries: memoryRebuildLoreEntries,
-                        })
-                      }}
-                    </p>
-                    <v-progress-linear
-                      :model-value="memoryRebuildTotal > 0 ? memoryRebuildPercent : undefined"
-                      :indeterminate="memoryRebuildTotal < 1"
-                      height="6"
-                      rounded
-                      color="primary"
-                    />
-                  </div>
-                  <v-alert
-                    v-if="memoryRebuildError"
-                    type="error"
-                    variant="tonal"
-                    density="compact"
-                    class="mt-2"
-                  >
-                    {{ memoryRebuildError }}
-                  </v-alert>
-                </div>
-              </div>
-
-              <v-divider class="my-4" />
-
-              <div class="conv-settings-subsection">
-                <h4 class="conv-settings-subsection__title">
-                  {{ $t('chat.convSettings.sectionRecallTest') }}
-                </h4>
-                <p class="conv-settings-field__hint mb-3">
-                  {{ $t('chat.convSettings.recallTestButtonHint') }}
-                </p>
-                <v-btn
-                  variant="outlined"
-                  color="primary"
-                  prepend-icon="mdi-magnify-scan"
-                  @click="recallTestDialogOpen = true"
-                >
-                  {{ $t('chat.convSettings.recallTestButton') }}
-                </v-btn>
-              </div>
-            </div>
-
-            <div
+            <BudgetTrimTab
               v-show="activeSection === 'budgetTrim'"
-              class="conv-settings-section"
-            >
-              <div class="conv-settings-field">
-                <v-switch
-                  v-model="budgetTrimUseGlobal"
-                  :label="$t('chat.convSettings.budgetTrimUseGlobal')"
-                  density="comfortable"
-                  hide-details
-                  color="primary"
-                  :loading="savingBudgetTrimSettings"
-                  :disabled="savingBudgetTrimSettings"
-                />
-                <p
-                  v-if="budgetTrimUseGlobal"
-                  class="conv-settings-field__hint"
-                >
-                  {{ $t('chat.convSettings.budgetTrimInheritGlobalHint') }}
-                </p>
-              </div>
-              <BudgetTrimSettingsPanel
-                v-model="budgetTrimModel"
-                :disabled="budgetTrimUseGlobal || savingBudgetTrimSettings"
-              />
-            </div>
+              v-model:budget-trim-use-global="budgetTrimUseGlobal"
+              v-model:budget-trim-model="budgetTrimModel"
+              :saving-budget-trim-settings="savingBudgetTrimSettings"
+            />
 
-            <div
+            <AuthorsNoteTab
               v-show="activeSection === 'authorsNote'"
-              class="conv-settings-section"
-            >
-              <p class="text-subtitle-2 font-weight-medium mb-2">
-                {{ $t('chat.convSettings.authorsNoteSessionHeading') }}
-              </p>
-              <div class="conv-settings-field">
-                <v-textarea
-                  v-model="authorsNoteContent"
-                  :label="$t('chat.convSettings.authorsNoteContent')"
-                  rows="6"
-                  auto-grow
-                  variant="outlined"
-                  density="comfortable"
-                  hide-details="auto"
-                  :loading="savingAuthorsNote"
-                  @blur="onAuthorsNoteContentBlur"
-                />
-                <p class="conv-settings-field__hint">
-                  {{ $t('chat.convSettings.authorsNoteContentHint') }}
-                </p>
-              </div>
+              v-model:authors-note-content="authorsNoteContent"
+              v-model:authors-note-enabled="authorsNoteEnabled"
+              v-model:authors-note-depth="authorsNoteDepth"
+              v-model:authors-note-role="authorsNoteRole"
+              v-model:default-authors-note-content="defaultAuthorsNoteContent"
+              v-model:default-authors-note-enabled-for-new-chats="defaultAuthorsNoteEnabledForNewChats"
+              v-model:default-authors-note-depth="defaultAuthorsNoteDepth"
+              v-model:default-authors-note-role="defaultAuthorsNoteRole"
+              :saving-authors-note="savingAuthorsNote"
+              :saving-default-authors-note="savingDefaultAuthorsNote"
+              :can-toggle-authors-note-enabled="canToggleAuthorsNoteEnabled"
+              @authors-note-content-blur="onAuthorsNoteContentBlur"
+              @default-authors-note-content-blur="onDefaultAuthorsNoteContentBlur"
+            />
 
-              <div class="conv-settings-field">
-                <v-switch
-                  v-model="authorsNoteEnabled"
-                  :label="$t('chat.convSettings.authorsNoteEnabled')"
-                  density="comfortable"
-                  hide-details
-                  color="primary"
-                  :loading="savingAuthorsNote"
-                  :disabled="!canToggleAuthorsNoteEnabled || savingAuthorsNote"
-                />
-                <p class="conv-settings-field__hint">
-                  {{ $t('chat.convSettings.authorsNoteEnabledHint') }}
-                </p>
-              </div>
-
-              <div class="conv-settings-field">
-                <v-text-field
-                  v-model.number="authorsNoteDepth"
-                  type="number"
-                  min="0"
-                  :max="AUTHORS_NOTE_MAX_DEPTH"
-                  step="1"
-                  :label="$t('chat.convSettings.authorsNoteDepth')"
-                  density="comfortable"
-                  variant="outlined"
-                  hide-details="auto"
-                  :loading="savingAuthorsNote"
-                  :disabled="savingAuthorsNote"
-                />
-                <p class="conv-settings-field__hint">
-                  {{ $t('chat.convSettings.authorsNoteDepthHint') }}
-                </p>
-              </div>
-
-              <div class="conv-settings-field">
-                <v-select
-                  v-model="authorsNoteRole"
-                  :items="[
-                    { title: $t('chat.convSettings.authorsNoteRoleSystem'), value: 'system' },
-                    { title: $t('chat.convSettings.authorsNoteRoleUser'), value: 'user' },
-                  ]"
-                  item-title="title"
-                  item-value="value"
-                  :label="$t('chat.convSettings.authorsNoteRole')"
-                  density="comfortable"
-                  variant="outlined"
-                  hide-details="auto"
-                  :loading="savingAuthorsNote"
-                  :disabled="savingAuthorsNote"
-                />
-              </div>
-
-              <v-divider class="my-4" />
-
-              <p class="text-subtitle-2 font-weight-medium mb-1">
-                {{ $t('chat.convSettings.defaultAuthorsNoteHeading') }}
-              </p>
-              <p class="text-caption text-medium-emphasis mb-3">
-                {{ $t('chat.convSettings.defaultAuthorsNoteIntro') }}
-              </p>
-
-              <div class="conv-settings-field">
-                <v-textarea
-                  v-model="defaultAuthorsNoteContent"
-                  :label="$t('chat.convSettings.defaultAuthorsNoteContent')"
-                  rows="5"
-                  auto-grow
-                  variant="outlined"
-                  density="comfortable"
-                  hide-details="auto"
-                  :loading="savingDefaultAuthorsNote"
-                  @blur="onDefaultAuthorsNoteContentBlur"
-                />
-                <p class="conv-settings-field__hint">
-                  {{ $t('chat.convSettings.defaultAuthorsNoteContentHint') }}
-                </p>
-              </div>
-
-              <div class="conv-settings-field">
-                <v-switch
-                  v-model="defaultAuthorsNoteEnabledForNewChats"
-                  :label="$t('chat.convSettings.defaultAuthorsNoteEnabledForNewChats')"
-                  density="comfortable"
-                  hide-details
-                  color="primary"
-                  :loading="savingDefaultAuthorsNote"
-                  :disabled="savingDefaultAuthorsNote"
-                />
-                <p class="conv-settings-field__hint">
-                  {{ $t('chat.convSettings.defaultAuthorsNoteEnabledForNewChatsHint') }}
-                </p>
-              </div>
-
-              <div class="conv-settings-field">
-                <v-text-field
-                  v-model.number="defaultAuthorsNoteDepth"
-                  type="number"
-                  min="0"
-                  :max="AUTHORS_NOTE_MAX_DEPTH"
-                  step="1"
-                  :label="$t('chat.convSettings.authorsNoteDepth')"
-                  density="comfortable"
-                  variant="outlined"
-                  hide-details="auto"
-                  :loading="savingDefaultAuthorsNote"
-                  :disabled="savingDefaultAuthorsNote"
-                />
-                <p class="conv-settings-field__hint">
-                  {{ $t('chat.convSettings.defaultAuthorsNoteDepthHint') }}
-                </p>
-              </div>
-
-              <div class="conv-settings-field">
-                <v-select
-                  v-model="defaultAuthorsNoteRole"
-                  :items="[
-                    { title: $t('chat.convSettings.authorsNoteRoleSystem'), value: 'system' },
-                    { title: $t('chat.convSettings.authorsNoteRoleUser'), value: 'user' },
-                  ]"
-                  item-title="title"
-                  item-value="value"
-                  :label="$t('chat.convSettings.authorsNoteRole')"
-                  density="comfortable"
-                  variant="outlined"
-                  hide-details="auto"
-                  :loading="savingDefaultAuthorsNote"
-                  :disabled="savingDefaultAuthorsNote"
-                />
-              </div>
-            </div>
-
-            <div
+            <RegexTab
               v-show="activeSection === 'regexApply'"
-              class="conv-settings-section"
-            >
-              <ConversationRegexApplyPanel
-                ref="regexApplyPanelRef"
-                :conversation-id="conversationId"
-                @applied="emit('regexApplied')"
-              />
-            </div>
+              ref="regexTabRef"
+              :conversation-id="conversationId"
+              @applied="emit('regexApplied')"
+            />
 
-            <div
-              v-show="activeSection === 'plugins'"
-              class="conv-settings-section"
-            >
-              <ConversationPluginSettingsPanel
-                ref="pluginSettingsPanelRef"
-                :conversation-id="conversationId"
-                :plugin-host="pluginHost"
-                @saving-change="savingPluginSettings = $event"
-                @error="onPluginSettingsError"
-              />
-            </div>
+            <PluginsTab
+              v-show="activeSection === 'plugins' && showPluginsTab"
+              ref="pluginTabRef"
+              :conversation-id="conversationId"
+              :plugin-host="pluginHost"
+              @saving-change="savingPluginSettings = $event"
+              @error="onPluginSettingsError"
+            />
           </div>
         </div>
       </v-card-text>

@@ -1,5 +1,5 @@
-import type { TurnRecord } from './chat-storage.js'
-import { getTurnUserText } from './chat-storage.js'
+import type { TurnRecord } from './chat-turn-types.js'
+import { getTurnUserText } from './chat-turn-accessors.js'
 import { createEmbedding } from './embedding-client.js'
 import type { MemorySettings } from './memory-settings.js'
 import { collectPluginMemoryStripTags } from './memory-plugin-strip-tags.js'

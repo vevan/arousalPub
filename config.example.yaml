@@ -14,6 +14,14 @@ allowPublicRegister: true
 corsOrigins: []
 upstreamUrlPolicy: open # open | public-only
 
+# --- 后端出站代理（修改后需重启）---
+enableProxy: false
+proxyUrl: http://127.0.0.1:15888
+proxyNoProxy:
+  - localhost
+  - 127.0.0.1
+  - ::1
+
 # --- 认证 ---
 authIdleMinutes: 15
 authDefaultRefreshDays: 7

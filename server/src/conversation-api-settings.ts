@@ -240,6 +240,12 @@ export function resolveConversationEmbeddingModelSettings(
   override?: ConversationEmbeddingApiSettingsOverride | null,
 ): Pick<EmbeddingApiSettings, 'embeddingModel' | 'embeddingDimensions'> {
   const g = global
+  if (g.provider === 'builtin') {
+    return {
+      embeddingModel: g.embeddingModel,
+      embeddingDimensions: g.embeddingDimensions,
+    }
+  }
   if (!override || typeof override !== 'object') {
     return {
       embeddingModel: g.embeddingModel,

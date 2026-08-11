@@ -4,19 +4,21 @@ import { readChunkContainingOrdinal, readConversationActiveBranchPath, readTailC
 import { estimateTokens } from './token-count.js'
 import { allocateShortId } from './short-id.js'
 import {
-  appendConversationTurn,
-  appendSegmentToTurn,
   buildReceiveRuntime,
   collectChunkEntityIds,
   getTurnUserText,
   readConversationIndex,
   resolvedCharacterIds,
-  saveFirstTurn,
-  updateTurnContentInTailChunk,
-  updateTurnSegmentInTailChunk,
   type TurnReceive,
   type TurnRecord,
 } from './chat-storage.js'
+import {
+  appendConversationTurn,
+  appendSegmentToTurn,
+  saveFirstTurn,
+  updateTurnContentInTailChunk,
+  updateTurnSegmentInTailChunk,
+} from './chat-group-turn-ops.js'
 import { loadCharacterDisplayNamesForIds } from './character-storage.js'
 import {
   extractNextSpeakerHint,
@@ -43,7 +45,7 @@ import {
   type GroupContinueBody,
   type ResolveNextSpeakerResult,
 } from './group-chat-turn.js'
-import type { ResolvedFeatureAudit } from './feature-binding-resolve.js'
+import type { ResolvedFeatureAudit } from './feature-binding-types.js'
 import {
   mergeTurnPluginEntries,
   resolveTurnPluginEntriesFromAssistant,

@@ -9,13 +9,15 @@ import { generateShortId } from '../short-id.js'
 import { ensureDataSkeletonForUser } from '../config.js'
 import { runRequestUserAsync } from '../user-context.js'
 import {
-  appendConversationTurn,
   conversationDir,
   createConversationStub,
   getTurnUserText,
   readConversationIndex,
-  saveFirstTurn,
 } from '../chat-storage.js'
+import {
+  appendConversationTurn,
+  saveFirstTurn,
+} from '../chat-group-turn-ops.js'
 import {
   collectRegisteredBranchPaths,
   enumerateAllChunkChains,

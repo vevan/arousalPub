@@ -15,7 +15,7 @@
     "@mdi/font": "^7.4.47",
     "crc-32": "^1.2.2",
     "culori": "^4.0.2",
-    "dompurify": "^3.4.10",
+    "dompurify": "^3.4.13",
     "marked": "^18.0.4",
     "marked-smartypants": "^1.1.12",
     "pinia": "^2.3.0",

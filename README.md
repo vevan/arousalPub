@@ -23,7 +23,7 @@ Everyday “how do I…” steps live in the [beginner manual](DOC/manual/EN/00-
 
 ## Requirements
 
-- **Node.js 22+** ([nodejs.org](https://nodejs.org/) LTS is fine; matches dependency requirements such as `vue-i18n`)
+- **Node.js 24.14.0+** ([nodejs.org](https://nodejs.org/) LTS)
 - A modern browser (Chrome, Edge, Firefox, etc.)
 - On Windows, double-click `!_start.bat`; on macOS / Linux, use `start.sh`
 
@@ -147,6 +147,8 @@ Optional environment variables (set under `environment` in `docker-compose.yml`)
 | `DATA_DIR` | Data directory, default `/data` |
 | `PORT` | Listen port, default `6633` |
 
+The Compose setup mounts `./config.yaml` read-only at `/app/config.yaml`. Create it from `config.example.yaml` before starting. Backend proxy settings also live in this YAML file.
+
 ---
 
 ## Basic usage
@@ -191,6 +193,7 @@ Common keys:
 | `dataDir` | Data directory, default `./data` |
 | `serverPort` | Browser port after start (`!_start.bat`) |
 | `startCountdownSeconds` | Countdown seconds before start; `0` = no wait |
+| `enableProxy`, `proxyUrl`, `proxyNoProxy` | Backend outbound proxy; disabled by default and applied after restart |
 | `authIdleMinutes`, etc. | Login session timeout (optional) |
 
 Full comments are in `config.example.yaml`.

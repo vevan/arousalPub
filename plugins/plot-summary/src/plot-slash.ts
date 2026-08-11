@@ -1,6 +1,6 @@
 import { openManualSummarize } from './dialogs.js'
 import { parsePlotSlashArgs } from './parse-plot-slash.js'
-import { k, loadMergedSettings } from './settings.js'
+import { tKey, loadMergedSettings } from './settings.js'
 import type { PluginHost } from './types.js'
 
 function notifySlashError(host: PluginHost, code: string, params?: Record<string, unknown>) {
@@ -15,7 +15,7 @@ function notifySlashError(host: PluginHost, code: string, params?: Record<string
     entry_ambiguous: 'slashErrEntryAmbiguous',
   }
   const msgKey = keyMap[code] ?? 'slashErrUnknownType'
-  host.ui.notify(host.t(k(host, msgKey), params), undefined, { level: 'warning' })
+  host.ui.notify(host.t(tKey(host, msgKey), params), undefined, { level: 'warning' })
 }
 
 /**
@@ -73,7 +73,7 @@ export function registerPlotSlashCommand(host: PluginHost) {
     (ctx) => handlePlotSlashCommand(host, ctx.args),
     {
       example: '/plot summary 99-150',
-      descriptionKey: k(host, 'slashPlotDescription'),
+      descriptionKey: tKey(host, 'slashPlotDescription'),
     },
   )
 }

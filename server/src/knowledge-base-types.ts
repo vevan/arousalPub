@@ -50,6 +50,7 @@ export interface KnowledgeChunksDocument {
   kbId: string
   embeddingModel?: string
   embeddingDimensions?: number | null
+  embeddingProfile?: string | null
   updatedAt: string
   files: KnowledgeFileChunks[]
 }

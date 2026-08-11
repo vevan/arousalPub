@@ -1,10 +1,58 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import type { Table } from '@lancedb/lancedb'
 import { buildAllowedBranchPathsForActive } from '../src/chunk-path.js'
+import { hybridFtsModelHome } from '../src/hybrid-fts-dict.js'
+import { LANCE_LANGUAGE_MODEL_HOME_ENV } from '../src/lance-language-model-context.js'
 import {
   buildMemoryVectorSearchWhereClause,
+  ensureMemoryScalarIndexesForSearch,
   filterMemorySearchRawRows,
 } from '../src/memory-store.js'
+
+describe('ensureMemoryScalarIndexesForSearch', () => {
+  it('runs Lance listIndices inside the selected Jieba model home', async () => {
+    const previous = process.env[LANCE_LANGUAGE_MODEL_HOME_ENV]
+    delete process.env[LANCE_LANGUAGE_MODEL_HOME_ENV]
+    let seenHome: string | undefined
+    const table = {
+      listIndices: async () => {
+        seenHome = process.env[LANCE_LANGUAGE_MODEL_HOME_ENV]
+        return [
+          { name: 'turnId_idx', indexType: 'BTree', columns: ['turnId'] },
+          {
+            name: 'turnOrdinal_idx',
+            indexType: 'BTree',
+            columns: ['turnOrdinal'],
+          },
+          {
+            name: 'branchPath_idx',
+            indexType: 'Bitmap',
+            columns: ['branchPath'],
+          },
+        ]
+      },
+    } as unknown as Table
+
+    try {
+      await ensureMemoryScalarIndexesForSearch(table, 'a1b2c3d4', {
+        profile: 'zh-jieba',
+        dictVariant: 'default',
+      })
+      assert.equal(
+        seenHome,
+        hybridFtsModelHome('a1b2c3d4', 'zh-jieba', 'default'),
+      )
+      assert.equal(process.env[LANCE_LANGUAGE_MODEL_HOME_ENV], previous)
+    } finally {
+      if (previous === undefined) {
+        delete process.env[LANCE_LANGUAGE_MODEL_HOME_ENV]
+      } else {
+        process.env[LANCE_LANGUAGE_MODEL_HOME_ENV] = previous
+      }
+    }
+  })
+})
 
 describe('buildMemoryVectorSearchWhereClause', () => {
   it('branch only', () => {

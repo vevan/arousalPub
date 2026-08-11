@@ -13,6 +13,7 @@ import {
 import { getUserDataDir } from './config.js'
 import { readGlobalHybridFtsSettings } from './user-preferences-file.js'
 import { languageModelHomeForSettings } from './hybrid-fts-dict.js'
+import type { HybridFtsSettings } from './hybrid-fts-settings.js'
 import {
   ensureHybridFtsIndex,
   hybridRelevanceScore,
@@ -71,6 +72,20 @@ async function withMemoryHybridFtsContext<T>(fn: () => Promise<T>): Promise<T> {
   const userId = getCurrentUserId()
   const settings = await readGlobalHybridFtsSettings()
   return withHybridFtsSettingsContext(userId, settings, fn)
+}
+
+/**
+ * 召回前检查标量索引时，Lance 的 listIndices 也会读取同表 FTS 统计；
+ * zh-jieba 必须在对应词典上下文中执行，否则会回退到 AppData 默认目录。
+ */
+export async function ensureMemoryScalarIndexesForSearch(
+  table: Table,
+  userId: string,
+  settings: HybridFtsSettings,
+): Promise<void> {
+  await withHybridFtsSettingsContext(userId, settings, async () => {
+    await ensureScalarIndexes(table, MEMORY_SCALAR_INDEX_SPECS, { soft: true })
+  })
 }
 
 function primaryKeyCacheKey(conversationId: string): string {
@@ -511,14 +526,14 @@ async function searchTurnMemoryVectorsUnsafe(
 
   const table = await openMemoryTable(conversationId)
   if (!table) return []
-  await ensureScalarIndexes(table, MEMORY_SCALAR_INDEX_SPECS, { soft: true })
+  const settings = await readGlobalHybridFtsSettings()
+  const userId = getCurrentUserId()
+  await ensureMemoryScalarIndexesForSearch(table, userId, settings)
 
   const whereClause = buildMemoryVectorSearchWhereClause(
     allowedBranchPaths,
     maxOrdinalExclusive,
   )
-  const settings = await readGlobalHybridFtsSettings()
-  const userId = getCurrentUserId()
   const raw = await runLanceHybridSearch({
     table,
     queryVector,

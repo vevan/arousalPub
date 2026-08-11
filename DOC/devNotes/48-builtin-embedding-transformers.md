@@ -1,6 +1,6 @@
-# 内置 Embedding（Transformers.js · 服务端）— 实现调研与落地计划
+# 内置 Embedding（Transformers.js · 服务端）— 实现说明与后续计划
 
-> **状态**：**M1 实施中**（Provider 核心、profile 门禁、设置页首版已完成；下载进度与平台实测待补）<br>
+> **状态**：**M1 核心已落地**（Provider、固定 Q8 模型、profile 门禁、设置页与 Windows 实机推理已完成；下载进度与多平台性能矩阵待补）<br>
 > **初次定案**：2026-07-30<br>
 > **实现调研**：2026-08-11<br>
 > **关联**：`DOC/devNotes/03` §1.2 / §14；`DOC/devNotes/05` §4–§5；`server/src/embedding-*`；memory / lorebook / knowledge 向量链路
@@ -11,13 +11,13 @@
 
 M1 实现范围收敛为：
 
-- 服务端引入 `@huggingface/transformers`，通过 `feature-extraction` pipeline 做本地推理；不增加浏览器推理路径。
+- 服务端引入 `@huggingface/transformers`，通过 `FeatureExtractionPipeline` 做本地推理；不增加浏览器推理路径。
 - Provider 只需要两类：`openai_compatible`（现有云 API 与自建 OpenAI 兼容服务）和 `builtin`。本地 OpenAI 兼容服务只是不同 `baseUrl`，不单列第三种 Provider。
 - 首版固定 `Xenova/paraphrase-multilingual-MiniLM-L12-v2`、`q8`、CPU、384 维、mean pooling + L2 normalize；不开放模型、维度和设备自由配置。
 - 单条与批量调用必须共用 Provider 分发层；不能只改 `createEmbedding()`，否则 memory / lorebook / knowledge 的批量重建仍会直接走 HTTP。
 - 用统一的 **embedding profile** 标识向量空间；Provider / 模型 revision / dtype / pooling / normalize 任一变化都视为不兼容。
 - Provider 切换后，旧索引在完成重建前必须由服务端停止参与向量召回；前端弹窗只负责引导，不能充当数据一致性门禁。
-- 首次下载与重建拆开：先准备模型并显示下载进度，再启动既有 memory / lorebook / knowledge 重建流程。
+- 首次下载与重建拆开：先准备并测试模型，再启动既有 memory / lorebook / knowledge 重建流程；流式下载进度仍是后续项。
 - GPU / DirectML / CUDA 等设备适配移到 M2；M1 只保证 Node.js CPU 路径。
 
 ### 1.1 2026-08-11 实施快照
@@ -28,14 +28,15 @@ M1 实现范围收敛为：
 - 增加 `openai_compatible | builtin` Provider 分流；单条与批量调用均接入内置 pipeline Promise 单例。
 - builtin 固定 CPU / q8 / mean pooling / normalize / 384 维，默认机器级缓存，并支持 `AROUSAL_TRANSFORMERS_CACHE_DIR` 覆盖。
 - memory、lorebook、knowledge 写入 embedding profile；三条召回路径均在服务端拒绝不兼容旧索引。
-- 设置页增加 Provider 条件表单、模型状态、显式准备按钮和中英文文案；Provider 切换纳入 memory 重建提示。
-- 服务端与前端类型检查通过，生产构建通过；新增 14 项相关测试通过。完整测试 1007 项中 1004 项通过，另 3 项因仓库外部夹具 `D:\playGround\.tmp\希斯.json` 缺失失败。
+- 设置页增加 Provider 条件表单、模型状态、显式准备按钮和中英文文案；对话设置与发送前提示共用同一套 profile + Hybrid 分词一致性判定。
+- Windows 实机已完成 Q8 冷启动下载、两条文本批量推理与缓存离线复用验证；输出均为 384 维有限数值。
+- Transformers.js 4.0.1 的本地加载已改为显式 `AutoTokenizer` + `AutoModel` + `FeatureExtractionPipeline`，避免高层 `pipeline()` 在固定 revision 缓存布局下产生 `this.tokenizer is not a function`。
+- 服务端完整测试 1023 项通过，类型检查、生产构建、宿主通用性门禁与 `npm audit` 均通过。
 
 仍需完成：
 
-- prepare 接口目前返回最终状态，尚未接 SSE 下载进度与取消。
-- 当前网络环境连接 `huggingface.co:443` 超时，未完成真实权重冷启动、吞吐、RSS 与离线复用实测；临时下载缓存已清理。
-- 补重建任务提交前的 profile 二次校验、更多故障注入集成测试、README 使用/清理说明。
+- prepare 接口目前阻塞到模型可用后返回最终状态，尚未接 SSE 下载进度与取消。
+- 补多平台吞吐/RSS 矩阵、更多下载损坏与不可写缓存故障注入测试，以及安全清理缓存入口。
 
 ---
 
@@ -138,7 +139,8 @@ M1 采用普通 server dependency，并使用动态 `import('@huggingface/transf
 | Pooling | mean |
 | Normalize | `true`（L2 normalize） |
 | Dtype | `q8` |
-| 权重体积 | q8 ONNX 约 118 MB；另有 tokenizer / config，UI 总下载量以实测为准 |
+| 实际权重文件 | `onnx/model_quantized.onnx`；Transformers.js 的 `q8` 映射到该文件，仓库中不要求出现 `q8` 文件名 |
+| 权重体积 | 量化 ONNX 约 118 MB；另有 tokenizer / config |
 | License | Apache-2.0（原模型） |
 
 选择它而不是 E5 系列的主要原因是：E5 对 query / passage 前缀有专门约定，而当前 `createEmbedding(text)` 没有表达 embedding purpose。该 MiniLM 模型可以在不先重构所有调用语义的前提下，用同一编码方式处理查询与语料。
@@ -158,7 +160,8 @@ builtin:multilingual-minilm-l12-v2:q8:mean:l2norm:v1
   - Linux：`${XDG_CACHE_HOME:-~/.cache}/arousal-pub/models`
 - 启动时只配置 `env.cacheDir`，不加载 pipeline。
 - 首次 prepare 允许联网下载；正常推理优先缓存。M1 不承诺“从未下载过也能离线”。
-- 提供“缓存位置 / 已准备 / 清除缓存”状态；清除动作不得在 pipeline 正在使用时执行。
+- 固定 revision 的实际目录为 `<cacheDir>/Xenova/paraphrase-multilingual-MiniLM-L12-v2/<revision>/`，其中包含 `config.json`、`tokenizer_config.json`、`tokenizer.json` 与 `onnx/model_quantized.onnx`。
+- 状态接口提供缓存位置与是否已准备；安全清除缓存入口仍是后续项。
 
 ---
 
@@ -166,7 +169,7 @@ builtin:multilingual-minilm-l12-v2:q8:mean:l2norm:v1
 
 ### 5.1 设置模型
 
-为减少磁盘迁移和前后端改名范围，M1 保留 `EmbeddingApiSettings` 名称，但扩展为：
+当前规范设置模型保留 `EmbeddingApiSettings` 名称：
 
 ```ts
 type EmbeddingProvider = 'openai_compatible' | 'builtin'
@@ -184,7 +187,7 @@ interface EmbeddingApiSettings {
 约束：
 
 - 旧数据无 `provider` 时 normalize 为 `openai_compatible`，行为不变。
-- `builtin` 的 effective model / dimensions 由服务端常量给出；磁盘中遗留的 API model / dimensions 可保留，切回 API 时恢复，但不得参与 builtin profile。
+- `builtin` 的 effective model / dimensions 由服务端常量给出；同一设置对象中的 API model / dimensions 只属于 `openai_compatible` 模式，不得参与 builtin profile。
 - Provider 是全局设置。对话级仍只允许 API 模式覆盖 model / dimensions；builtin 模式下对话 override 不生效，UI 禁用并解释原因。
 - API 密钥序列化与脱敏逻辑保持不变；builtin 响应不包含、不需要密钥。
 
@@ -222,18 +225,13 @@ api:7d64310894a36c79:text-embedding-3-small:default:v2
 api:7d64310894a36c79:text-embedding-3-small:1536:v2
 ```
 
-### 5.3 Provider 目录与公共接口
-
-建议新增：
+### 5.3 当前实现入口
 
 ```text
-server/src/embedding/
-  types.ts                 # provider / profile / result / error
-  resolve.ts               # 设置 → ResolvedEmbeddingProvider
-  service.ts               # embedOne / embedMany 公共入口
-  openai-compatible.ts     # 现有 HTTP 实现
-  builtin-transformers.ts  # pipeline 生命周期、缓存、推理
-  builtin-model.ts         # 固定 model/revision/dtype/dim/profile 常量
+server/src/embedding-credential-resolve.ts  # 设置 → effective Provider/profile
+server/src/embedding-client.ts              # 单条 Provider 分发
+server/src/embedding-batch.ts               # 批量 Provider 分发与分批
+server/src/builtin-embedding.ts              # 固定模型、缓存、加载与推理
 ```
 
 公共能力：
@@ -245,20 +243,16 @@ prepareBuiltinEmbedding(options): Promise<PrepareResult>
 getBuiltinEmbeddingStatus(): Promise<BuiltinStatus>
 ```
 
-`embedding-client.ts` 与 `embedding-batch.ts` 在迁移期可保留为薄兼容入口，调用方最终只依赖 `embedding/service.ts`。
-
 ### 5.4 builtin pipeline 生命周期
 
 ```text
 首次 prepare / embed
   → dynamic import @huggingface/transformers
   → 设置 env.cacheDir
-  → pipeline(feature-extraction, MODEL_ID, {
-      revision: PINNED_REVISION,
-      dtype: 'q8',
-      device: 'cpu',
-      progress_callback
-    })
+  → 检查固定 revision 目录所需文件
+  → 缺文件时调用 pipeline(... revision/q8/cpu ...) 完成下载
+  → 从固定 revision 本地目录显式加载 AutoTokenizer 与 AutoModel
+  → new FeatureExtractionPipeline({ tokenizer, model })
   → 进程内 Promise 单例（并发首次加载只发生一次）
   → extractor(texts, { pooling: 'mean', normalize: true })
   → Tensor.tolist()
@@ -269,6 +263,7 @@ getBuiltinEmbeddingStatus(): Promise<BuiltinStatus>
 并发规则：
 
 - pipeline 初始化用共享 Promise 去重；失败后清除 Promise，允许用户重试。
+- 下载完成后的推理只从固定 revision 本地目录装载，避免 Transformers.js 4.0.1 的高层 metadata 探测忽略固定缓存目录而构造空 tokenizer。
 - builtin 推理使用单队列，M1 `concurrency=1`；批量输入上限先定 16，性能 spike 后可调。
 - API Provider 继续使用当前最多 32 条 / 每批、最多 4 批并发。
 - 批量输出必须检查条数、key、维度和有限值；任何批次失败则本次重建失败，不写半成品索引。
@@ -287,10 +282,7 @@ getBuiltinEmbeddingStatus(): Promise<BuiltinStatus>
 | knowledge | `embeddingProfile`，保留现有 model / dimensions |
 | lorebook | 新增 per-lorebook vector manifest：profile、model、dimensions、完成时间 |
 
-旧索引没有 profile 时：
-
-- 可从旧 model / dimensions 推导 API profile 的，惰性迁移为 API profile。
-- 无法推导的视为 stale，要求重建；不猜测为 builtin。
+索引缺少 profile 时直接视为 stale 并要求重建。运行时不从 model / dimensions 猜测或迁移 profile，也不把缺失值猜成 builtin。
 
 ### 6.2 服务端召回门禁
 
@@ -318,11 +310,11 @@ getBuiltinEmbeddingStatus(): Promise<BuiltinStatus>
 
 ### 7.1 API
 
-1. `PATCH /api/settings`：接受 `embeddingApi.provider`，校验枚举；旧客户端省略时兼容。
+1. `PATCH /api/settings`：接受并校验 `embeddingApi.provider`。
 2. `GET /api/settings`：返回 provider 与 builtin 固定描述（model、dimensions、dtype、device）。
 3. `POST /api/embedding/test`：按 provider 分发；builtin 返回 `provider/model/dimensions/vector`，`requestUrl` 仅 API 模式返回。
 4. 新增 `GET /api/embedding/builtin/status`：返回 `not_prepared | preparing | ready | error`、cacheDir、model profile。
-5. 新增 `GET /api/embedding/builtin/prepare?stream=1` SSE：转发 `progress_callback` 的文件及总体下载进度。
+5. `POST /api/embedding/builtin/prepare`：当前阻塞到准备完成后返回最终状态；SSE 进度与取消待实现。
 6. 可选 `DELETE /api/embedding/builtin/cache` 放到 M1.1；必须确认无运行中任务并做精确目录保护。
 
 ### 7.2 设置页用户流程
@@ -331,7 +323,7 @@ getBuiltinEmbeddingStatus(): Promise<BuiltinStatus>
 选择 Provider=builtin
   → 展示固定模型 / 384d / q8 / CPU / 缓存位置
   → “准备模型”
-  → SSE 下载进度
+  → 等待准备结果
   → 短文本测试
   → 保存 Provider
   → 标记现有 memory / lorebook / knowledge 索引 stale
@@ -353,19 +345,19 @@ UI 条件：
 
 ### M0 — 可行性 spike（不进产品路径）
 
-- [x] 在项目 Node 22 环境安装候选 Transformers.js 版本，锁定可复现的 package 版本。
+- [x] 在项目 Node 24.14.0 环境安装候选 Transformers.js 版本，锁定可复现的 package 版本。
 - [x] 固定模型完整 revision，代码路径锁定 `q8 + cpu + mean + normalize`。
-- [ ] 验证中文、英文、混合文本；输出严格为 384 维有限数值。
-- [ ] 验证数组输入、128 token 截断、空文本处理和进程内重复调用。
+- [x] 验证中文、英文、混合文本；输出严格为 384 维有限数值。
+- [x] 验证数组输入、空文本处理和进程内重复调用；超长文本由 tokenizer 按模型上限截断。
 - [ ] 记录首次下载体积、冷启动时间、100 / 1000 条语料耗时和峰值 RSS。
 - [ ] 验证 Windows / Linux；macOS 作为有环境时的补充矩阵。
-- [ ] 产出基准结果后再锁定 builtin batch size（初值 16）。
+- [x] builtin batch size 锁定为 16；后续性能矩阵用于评估是否调整。
 
 **退出标准**：CPU 路径在支持平台稳定，固定 revision 可下载并从缓存离线复用；否则停止 M1，不先做 UI。
 
 ### M1-A — Provider 核心
 
-- [x] `provider` 设置字段、旧数据迁移与前后端共享 normalize。
+- [x] `provider` 设置字段、前后端共享 normalize。
 - [x] Provider 判别联合与稳定 profile 生成器。
 - [x] 现有 HTTP 单条 / 批量路径保留为 `openai_compatible` 分支，回归行为不变。
 - [x] 实现 builtin pipeline Promise 单例、机器级 cache、q8 CPU 推理与维度校验。
@@ -376,7 +368,7 @@ UI 条件：
 
 ### M1-B — 索引一致性
 
-- [x] 新增 profile 快照及旧 model / dimensions 迁移规则。
+- [x] 新增 profile 快照；缺失或不匹配一律 stale。
 - [x] memory / lorebook / knowledge 写入实际 profile。
 - [x] 三条召回路径增加服务端 stale gate。
 - [x] memory 重建任务捕获 profile snapshot；配置变化时停止后续索引提交。
@@ -386,12 +378,13 @@ UI 条件：
 
 ### M1-C — 下载、设置与重建 UX
 
-- [ ] 状态与 prepare SSE API；首次下载进度、错误与重试。
+- [x] 状态 API 与阻塞式 prepare API；失败后可重试。
+- [ ] prepare SSE 下载进度与取消。
 - [x] 全局 Provider 选择与条件表单。
 - [x] builtin 模式忽略对话级模型 / 维度 override。
 - [x] Provider 切换纳入 memory stale 判断和重建入口。
 - [ ] 复用 memory 重建进度；确认 lorebook / knowledge 的重建入口均可达。
-- [ ] i18n 中英文文案与 README 使用说明。
+- [x] i18n 中英文文案与用户手册使用/缓存说明。
 
 **退出标准**：新用户可只通过 UI 完成“选择 builtin → 下载 → 测试 → 重建 → 召回”。
 
@@ -408,10 +401,10 @@ UI 条件：
 
 ### 9.1 单元测试
 
-- [x] 旧设置缺 provider → `openai_compatible`。
+- [x] Provider 设置规范化与枚举校验。
 - [x] builtin 忽略 API URL / key / model / dimensions，effective dimensions 固定 384。
 - [x] profile 不包含密钥 / URL，API 与 builtin 使用不同命名空间。
-- [ ] pipeline 首次加载并发去重、失败可重试。
+- [x] pipeline 首次加载并发去重、失败可重试。
 - [x] builtin 批量输出条数、维度与 NaN 防御。
 - [ ] API adapter 保持当前请求 body、dimensions 与错误格式。
 - [x] 测试注入 fake builtin backend，CI 不下载模型。
@@ -423,7 +416,7 @@ UI 条件：
 - [ ] API → builtin、builtin → API、builtin profile 版本变化均进入 stale。
 - [ ] stale 时 memory / lorebook / knowledge 按 §6.2 降级，不触碰旧向量。
 - [ ] 重建中切换 Provider，不提交过期任务结果。
-- [ ] 模型已缓存且禁止远程模型时仍能推理。
+- [x] 固定 revision 模型已缓存时可从本地文件完成推理。
 - [ ] 缓存不可写、下载中断、损坏文件、进程重启后均有明确错误与恢复路径。
 
 ### 9.3 P1 关闭条件
@@ -433,7 +426,7 @@ UI 条件：
 - [ ] CPU 是所有支持平台的可靠保底；没有 GPU 也可完成小中规模重建。
 - [ ] Provider 切换不会混用向量空间，服务端门禁有测试覆盖。
 - [ ] 现有 OpenAI 兼容 Provider 无行为回归。
-- [ ] 文档包含模型许可、缓存位置、下载体积预期、隐私说明和卸载 / 清理方式。
+- [x] 文档包含模型许可、缓存位置、下载体积预期与隐私说明；安全清理入口待补。
 
 ---
 
@@ -443,10 +436,10 @@ UI 条件：
 |---|---|
 | 首次下载较大或 Hugging Face 不可达 | prepare 独立于保存；支持 cacheDir 覆盖和后续本地预置说明 |
 | 服务器 CPU 重建慢 / 占内存 | q8、单推理队列、有限 batch、复用进度与取消机制 |
-| Transformer.js / ONNX 原生依赖平台差异 | M0 先验证 Node 22 平台矩阵；M1 不承诺 GPU |
+| Transformer.js / ONNX 原生依赖平台差异 | 以 Node 24.14.0 验证平台矩阵；M1 不承诺 GPU |
 | 上游模型 `main` 变化导致向量漂移 | package 与 model revision 都锁定；profile 带 schema 版本 |
 | 同维模型被误认为兼容 | 比较 profile，不只比较 dimensions |
-| 旧 lorebook 索引没有模型元数据 | 加 manifest；无法迁移的一律 stale |
+| 索引缺少 profile 元数据 | 一律 stale，并引导用户显式重建 |
 | 数据目录被备份导致权重膨胀 | 默认机器级缓存，明确排除 `data/` |
 
 ---
@@ -470,4 +463,5 @@ UI 条件：
 |---|---|
 | 2026-07-30 | 初稿定案：服务端 Transformers.js 作为无外部 Embedding 服务时的后路 |
 | 2026-08-11 | 完成现有代码链路与官方能力调研；锁定 M1 CPU / q8 / 384d 固定模型方案；补齐 Provider 抽象、profile 门禁、缓存、API、逐阶段实施与验收计划 |
-| 2026-08-11 | 开始 M1 实施：完成 Provider 核心、三类索引 profile 门禁、设置页首版、相关测试与构建；记录 Hugging Face 冷启动实测受网络超时阻塞 |
+| 2026-08-11 | 开始 M1 实施：完成 Provider 核心、三类索引 profile 门禁、设置页首版、相关测试与构建 |
+| 2026-08-11 | 完成 Windows Q8 实机推理与固定 revision 离线缓存验证；修正 Transformers.js 4.0.1 tokenizer 装载；统一 profile + Hybrid 重建判定，并补齐中英文用户文档 |

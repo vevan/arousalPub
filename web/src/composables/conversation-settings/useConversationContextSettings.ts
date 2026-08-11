@@ -20,7 +20,6 @@ import { usePreferencesStore } from '@/stores/preferences'
 import { fetchPluginsManage } from '@/utils/plugin-settings-api'
 import {
   readConversationChatBinding,
-  resolveConversationEmbeddingModelSettings,
   type ConversationChatBinding,
   type ConversationEmbeddingApiSettingsOverride,
 } from '@/utils/conversation-api-settings'
@@ -36,9 +35,9 @@ import {
   type LorebookSettings,
 } from '@/utils/lorebook-settings'
 import {
-  hybridFtsSpecsMatch,
   parseHybridFtsSpec,
 } from '@/utils/hybrid-fts-settings'
+import { memoryIndexMatchesEffectiveSettings } from '@/utils/memory-index-settings'
 import {
   groupChatWithEnsuredMemberColors,
   normalizeGroupChatSettings,
@@ -84,8 +83,11 @@ export type ConversationContextSettingsProps = {
   globalBudgetTrimSettings?: BudgetTrimSettings
   initialBudgetTrimSettings?: BudgetTrimSettings
   globalEmbeddingModel?: string
+  effectiveEmbeddingModel: string
+  effectiveEmbeddingProfile: string
   conversationMemoryEmbeddingModel?: string | null
   conversationMemoryEmbeddingDimensions?: number | null
+  conversationMemoryEmbeddingProfile?: string | null
   hasConversationTurns?: boolean
   conversationMemoryHybridFtsSpec?: string | null
   globalHybridFtsSpec?: string
@@ -216,26 +218,22 @@ const effectiveMemoryEnabled = computed(() =>
 const memoryRebuildNeedsAttention = computed(() => {
   if (!effectiveMemoryEnabled.value) return false
   if (props.hasConversationTurns === false) return false
-  const globalModel = props.globalEmbeddingModel?.trim() ?? ''
-  if (!globalModel) return false
+  const effectiveModel = props.effectiveEmbeddingModel.trim()
+  if (!effectiveModel) return false
   const storedModel = props.conversationMemoryEmbeddingModel?.trim() ?? ''
   if (!storedModel) return false
-  const globalDims = props.globalEmbeddingDimensions ?? null
-  const effective = resolveConversationEmbeddingModelSettings(
-    { embeddingModel: globalModel, embeddingDimensions: globalDims },
-    embeddingApiUseGlobal.value ? null : propsEmbeddingOverride() ?? null,
-  )
   const storedDims = props.conversationMemoryEmbeddingDimensions ?? null
-  const embeddingMatches =
-    storedModel === effective.embeddingModel &&
-    (storedDims ?? null) === (effective.embeddingDimensions ?? null)
-  const globalFts = props.globalHybridFtsSpec?.trim() ?? 'zh-ngram'
-  const storedFts = props.conversationMemoryHybridFtsSpec?.trim() ?? null
-  // 与 ChatConversationView：空 FTS 戳记时以 embedding 对齐为准，不因漏戳记误报
-  const ftsMatches = !storedFts
-    ? embeddingMatches
-    : hybridFtsSpecsMatch(storedFts, parseHybridFtsSpec(globalFts))
-  return !(embeddingMatches && ftsMatches)
+  const indexMatches = memoryIndexMatchesEffectiveSettings(
+    {
+      embeddingProfile: props.conversationMemoryEmbeddingProfile,
+      embeddingModel: storedModel,
+      embeddingDimensions: storedDims,
+    },
+    { embeddingProfile: props.effectiveEmbeddingProfile },
+    props.conversationMemoryHybridFtsSpec,
+    parseHybridFtsSpec(props.globalHybridFtsSpec?.trim() ?? 'zh-ngram'),
+  )
+  return !indexMatches
 })
 
 async function onRebuildMemoryClick() {

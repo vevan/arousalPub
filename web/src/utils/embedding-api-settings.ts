@@ -115,7 +115,7 @@ export function resolveEmbeddingIdentity(settings: Pick<
 
 export function embeddingIndexMatchesIdentity(
   stored: { embeddingProfile?: string | null; embeddingModel?: string | null; embeddingDimensions?: number | null },
-  active: ReturnType<typeof resolveEmbeddingIdentity>,
+  active: Pick<ReturnType<typeof resolveEmbeddingIdentity>, 'embeddingProfile'>,
 ): boolean {
   if (stored.embeddingProfile?.trim()) {
     return stored.embeddingProfile.trim() === active.embeddingProfile

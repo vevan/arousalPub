@@ -8,7 +8,6 @@
 
 ## P1
 
-- [ ] **内置 Embedding（Transformers.js · 服务端）** — 无本地 LLM / 独立 Embedding 服务条件时的后路；Provider=`builtin`，非请求热备、非浏览器主路径；切换须重建索引。见 [`DOC/devNotes/48`](48-builtin-embedding-transformers.md)
 - [ ] **ST 聊天记录群聊多 bot 导入** — 当前 ST JSONL 导入全部 segment 绑定 `characterIds[0]`；需按 ST `name` 与会话 `characterIds`/`displayNames` 映射各 bot 为 speaker（单 bot 行为不变）。见 `[DOC/devNotes/37](37-st-import-settings-tab.md)`
 - [ ] 角色卡扩展规划：json格式以xml结构插入提示词，宿主提供接口，插件可改申请字段。
 
@@ -36,6 +35,7 @@
 
 ## 文档
 
+- [x] **内置 Embedding M1 核心**（2026-08-11 · `transform`）：固定 Xenova multilingual MiniLM / q8 / CPU / 384d；单条与批量 Provider 分流；memory / lorebook / knowledge profile 门禁；模型准备、测试与重建提示；Windows 本地缓存离线推理实测通过。下载 SSE、取消与平台性能矩阵留在 `DOC/devNotes/48` M1.1 / M2。
 - [x] **Graphify 图谱优化全项**（2026-08-05 · 分支 `Graphify`）：server Import Cycles **20 → 0** / SR1–SR2 / GF1 · web 七巨型 Vue + composable · plugins `tKey` / `isAutoSummarizeEnabled`；`feature-binding-types` 清零残留 type 环 — 见 `[DOC/devNotes/47](47-graphify-optimization-backlog.md)` · 本文 §已归档
 - [x] Historian 摘要起始轮 toggle 取消（2026-06-12）：`range-picker` 再次点击同一 `turn-block-head` 起始按钮清除 `rangeStartTurn`
 - [x] 对话页正则批量 apply UI（2026-06-12）：`ConversationRegexApplyPanel` · 对话设置 Tab「正则批量」· `POST .../regex/apply` dry-run / apply
@@ -121,5 +121,4 @@
 | **群聊浮动头像组**（header 锚点 · Mic 只读 · 一次 `/@` 一人）                                                                               | 2026-07-24             | `[DOC/devNotes/35](35-group-chat.md)` §2.8 · `ChatComposerGroupRoster`                                                                                                                             |
 | **插件设置导出 / 导入**（全局 settings + `enabled` · 专用 API · 标题栏按钮）                                                                  | 2026-07-24             | `[DOC/devNotes/09](09-plugin-system-and-guidance-generate.md)` §4 · `settings-portability.ts` · `PluginSettingsPanel`                                                                              |
 | **Graphify 图谱优化全项**（server Import Cycles 20→0 · `index` 路由拆分 · web 巨型 Vue · plugins `tKey` / autoSummarize）                      | 2026-08-05 · `Graphify` | `[DOC/devNotes/47](47-graphify-optimization-backlog.md)` · `.graphifyignore` · `chat-group-turn-ops` / `feature-binding-types` / `src/routes/*`                                                    |
-
 

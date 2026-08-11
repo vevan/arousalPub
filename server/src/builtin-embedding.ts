@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -33,6 +34,13 @@ let extractorLoaderOverride: FeatureExtractorLoader | null = null
 let state: 'not_prepared' | 'preparing' | 'ready' | 'error' = 'not_prepared'
 let lastError = ''
 
+const BUILTIN_EMBEDDING_REQUIRED_FILES = [
+  'config.json',
+  'tokenizer_config.json',
+  'tokenizer.json',
+  'onnx/model_quantized.onnx',
+] as const
+
 export function resolveBuiltinEmbeddingCacheDir(): string {
   const configured = process.env.AROUSAL_TRANSFORMERS_CACHE_DIR?.trim()
   if (configured) {
@@ -54,22 +62,75 @@ export function resolveBuiltinEmbeddingCacheDir(): string {
   )
 }
 
+function resolveBuiltinEmbeddingModelDir(cacheDir: string): string {
+  return path.join(
+    cacheDir,
+    ...BUILTIN_EMBEDDING_MODEL_ID.split('/'),
+    BUILTIN_EMBEDDING_MODEL_REVISION,
+  )
+}
+
+function missingBuiltinEmbeddingFiles(modelDir: string): string[] {
+  return BUILTIN_EMBEDDING_REQUIRED_FILES.filter(
+    (file) => !fs.existsSync(path.join(modelDir, ...file.split('/'))),
+  )
+}
+
 async function loadFeatureExtractor(options?: {
   onProgress?: (progress: BuiltinEmbeddingProgress) => void
 }): Promise<FeatureExtractor> {
   if (extractorLoaderOverride) return extractorLoaderOverride(options)
   const transformers = await import('@huggingface/transformers')
-  transformers.env.cacheDir = resolveBuiltinEmbeddingCacheDir()
-  const extractor = await transformers.pipeline(
-    'feature-extraction',
-    BUILTIN_EMBEDDING_MODEL_ID,
+  const cacheDir = resolveBuiltinEmbeddingCacheDir()
+  const modelDir = resolveBuiltinEmbeddingModelDir(cacheDir)
+  transformers.env.cacheDir = cacheDir
+
+  // Transformers.js 4.0.1 的 pipeline() 会先独立探测远端 tokenizer
+  // 文件，且探测不沿用这里固定的 revision/cache。探测失败后它仍会创建
+  // tokenizer=null 的 pipeline，直到推理时才报 `this.tokenizer is not a function`。
+  // 首次使用时仍让 pipeline 负责下载；文件齐全后始终从固定 revision 的
+  // 本地目录显式组装，避免后续推理依赖那次不可靠的远端探测。
+  if (missingBuiltinEmbeddingFiles(modelDir).length > 0) {
+    const downloaded = await transformers.pipeline(
+      'feature-extraction',
+      BUILTIN_EMBEDDING_MODEL_ID,
+      {
+        revision: BUILTIN_EMBEDDING_MODEL_REVISION,
+        cache_dir: cacheDir,
+        dtype: BUILTIN_EMBEDDING_DTYPE,
+        device: BUILTIN_EMBEDDING_DEVICE,
+        progress_callback: options?.onProgress,
+      },
+    )
+    await downloaded.dispose()
+  }
+
+  const missingFiles = missingBuiltinEmbeddingFiles(modelDir)
+  if (missingFiles.length > 0) {
+    throw new Error(`内置 Embedding 模型文件不完整：${missingFiles.join(', ')}`)
+  }
+
+  const tokenizer = await transformers.AutoTokenizer.from_pretrained(
+    modelDir,
     {
-      revision: BUILTIN_EMBEDDING_MODEL_REVISION,
+      local_files_only: true,
+      progress_callback: options?.onProgress,
+    },
+  )
+  const model = await transformers.AutoModel.from_pretrained(
+    modelDir,
+    {
+      local_files_only: true,
       dtype: BUILTIN_EMBEDDING_DTYPE,
       device: BUILTIN_EMBEDDING_DEVICE,
       progress_callback: options?.onProgress,
     },
   )
+  const extractor = new transformers.FeatureExtractionPipeline({
+    task: 'feature-extraction',
+    tokenizer,
+    model,
+  })
   return extractor as unknown as FeatureExtractor
 }
 

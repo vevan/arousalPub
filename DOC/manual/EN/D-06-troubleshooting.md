@@ -47,6 +47,8 @@ There is **no** email reset.
 1. **Settings → Vector recall**: does Embeddings **Test Embedding** pass ([B-07](B-07-vector-recall.md))?
 2. **This chat settings → Vector recall → Rebuild memory index**.
 3. After changing Hybrid tokenization: rebuild indexes for affected chats.
+4. With built-in Embedding, run **Prepare model** first; a downloaded model should load offline from the fixed-revision cache directory shown in the UI.
+5. If the warning remains after a successful rebuild, refresh and confirm both frontend and backend are current. The index records the effective embedding profile and Hybrid spec; either mismatch keeps the warning active.
 
 ---
 
@@ -103,7 +105,7 @@ There is **no** email reset.
 ## Still stuck
 
 1. Copy the full error from the start window or `docker compose logs`.
-2. Confirm Node ≥ 22, enough disk space, and `data/` is writable.
+2. Confirm Node ≥ 24.14.0, enough disk space, and `data/` is writable.
 3. Dev questions: [`DOC/devNotes/`](../../devNotes/); product overview: [`README.md`](../../../README.md).
 
 Back to menu: [00-menu.md](00-menu.md).

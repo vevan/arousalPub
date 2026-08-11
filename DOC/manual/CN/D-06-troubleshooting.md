@@ -47,6 +47,8 @@
 1. **设置 → 向量召回**：Embeddings **测试 Embedding** 是否通过（[B-07](B-07-vector-recall.md)）。
 2. **本对话设置 → 向量召回 → 重建记忆索引**。
 3. 刚改过 Hybrid 分词：对各相关会话重建索引。
+4. 使用内置 Embedding 时，先点 **准备模型**；已下载模型应从界面显示的固定 revision 缓存目录离线加载。
+5. 重建成功但提示仍存在：刷新页面确认前后端均为最新版本；索引会记录 effective embedding profile 与 Hybrid 复合规格，二者任一仍不一致都会继续提示。
 
 ---
 
@@ -103,7 +105,7 @@
 ## 仍无法解决
 
 1. 完整复制启动窗口或 `docker compose logs` 中的报错。
-2. 确认 Node ≥ 22、磁盘空间足够、`data/` 可写。
+2. 确认 Node ≥ 24.14.0、磁盘空间足够、`data/` 可写。
 3. 开发向问题查阅 [`DOC/devNotes/`](../../devNotes/)；产品总览见 [`DOC/README.zh.md`](../../README.zh.md)。
 
 返回目录：[00-menu.md](00-menu.md)。

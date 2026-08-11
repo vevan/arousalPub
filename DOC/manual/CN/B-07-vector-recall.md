@@ -1,6 +1,6 @@
 # B-07 · 向量召回
 
-完成本章后：配好 Embeddings API，理解远期记忆 / 资料库向量大致怎么开，并知道何时「重建记忆索引」。
+完成本章后：选择内置或 OpenAI 兼容的 Embedding Provider，理解远期记忆 / 资料库向量大致怎么开，并知道何时「重建记忆索引」。
 
 上一章：[B-06 · 正则替换入门](B-06-regex-rules.md) · 下一章：[C-01 · 数据在哪、怎么备份](C-01-data-and-backup.md) · [目录](00-menu.md) · [English](../EN/B-07-vector-recall.md)
 
@@ -20,21 +20,27 @@
 
 **设置 → 向量召回**。
 
-### 1. 先配 Embeddings API
+### 1. 选择 Embedding Provider
 
-填写：
+有两种模式：
 
-- Base URL
-- Key（可用别名）
-- **Embedding 模型**
-- 输出维度（按模型要求）
+- **内置 Embedding**：固定使用 `Xenova/paraphrase-multilingual-MiniLM-L12-v2`，CPU、Q8、384 维。无需 Base URL 或 Key；先点击 **「准备模型」**，完成后再点 **「测试 Embedding」**。
+- **OpenAI 兼容**：填写 Base URL、Key（可用别名）、Embedding 模型和模型要求的输出维度，再点击 **「测试 Embedding」**。
 
-点击 **「测试 Embedding」**，确认通过。
+内置模型首次准备需要联网下载。Q8 权重在 Hugging Face 仓库中的实际文件名是 `onnx/model_quantized.onnx`，所以文件列表中不一定出现 `q8` 字样。模型固定到确定的 revision，准备完成后可从本地缓存推理。
+
+默认缓存位置：
+
+- Windows：`%LOCALAPPDATA%/ArousalPub/models`
+- macOS：`~/Library/Caches/arousal-pub/models`
+- Linux：`${XDG_CACHE_HOME:-~/.cache}/arousal-pub/models`
+
+可用 `AROUSAL_TRANSFORMERS_CACHE_DIR` 指定其他目录。固定模型文件位于缓存目录下的 `Xenova/paraphrase-multilingual-MiniLM-L12-v2/<revision>/`，可提前把完整 revision 目录放到这里；必须至少包含配置、tokenizer 文件和 `onnx/model_quantized.onnx`。
 
 ### 2. Hybrid 全文检索分词（可选）
 
 **Hybrid 全文检索分词**：中文 ngram（常见默认）/ English / 中文 jieba 等。  
-**改过分词方式后，相关会话通常需要重建记忆索引**，否则检索行为可能与预期不符。
+**改过分词方式后，相关会话需要重建记忆索引**，否则索引不会被视为与当前设置一致。
 
 ### 3. 按需打开能力
 
@@ -53,7 +59,7 @@
 打开一场对话 → **本对话设置 → 向量召回**：
 
 - 可覆盖部分 TopK 等参数
-- **重建记忆索引**：索引损坏、改过分词、或提示需要重建时点这里
+- **重建记忆索引**：索引损坏、Embedding Provider/profile 改变、Hybrid 分词改变、索引元数据缺失，或提示需要重建时点这里
 - **命中测试**：检查当前配置下召回是否合理
 
 ---
@@ -61,6 +67,7 @@
 ## 自检
 
 - [ ] 「测试 Embedding」成功（若你打算用向量功能）。
+- [ ] 使用内置 Provider 时，知道模型缓存位置以及 Q8 权重文件名是 `model_quantized.onnx`。
 - [ ] 知道全局在 **设置 → 向量召回**，本场在 **本对话设置 → 向量召回**。
 - [ ] 知道改分词或索引异常时要 **重建记忆索引**。
 

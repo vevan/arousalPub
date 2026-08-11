@@ -108,6 +108,7 @@ const {
   globalHybridFtsSpec,
   conversationMemoryEmbeddingModel,
   conversationMemoryEmbeddingDimensions,
+  conversationMemoryEmbeddingProfile,
   conversationMemoryHybridFtsSpec,
   memoryRebuildDialogOpen,
   memoryRebuildLoading,
@@ -713,8 +714,11 @@ watch(
         :initial-budget-trim-settings="convBindings.budgetTrim.effective"
         :global-embedding-model="embeddingModel"
         :global-embedding-dimensions="embeddingDimensions"
+        :effective-embedding-model="convBindings.embeddingApi.effective.embeddingModel"
+        :effective-embedding-profile="convBindings.embeddingApi.effective.embeddingProfile"
         :conversation-memory-embedding-model="conversationMemoryEmbeddingModel"
         :conversation-memory-embedding-dimensions="conversationMemoryEmbeddingDimensions"
+        :conversation-memory-embedding-profile="conversationMemoryEmbeddingProfile"
         :has-conversation-turns="hasConversationTurns"
         :conversation-memory-hybrid-fts-spec="conversationMemoryHybridFtsSpec"
         :global-hybrid-fts-spec="globalHybridFtsSpec"

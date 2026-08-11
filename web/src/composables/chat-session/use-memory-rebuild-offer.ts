@@ -1,14 +1,13 @@
 import { useMemoryRebuild } from '@/composables/useMemoryRebuild'
 import {
   formatHybridFtsSpec,
-  hybridFtsSpecsMatch,
   normalizeHybridFtsSettings,
 } from '@/utils/hybrid-fts-settings'
 import { usePreferencesStore } from '@/stores/preferences'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch, type Ref } from 'vue'
 import type { ConvContextBindings } from './conv-bindings-types'
-import { embeddingIndexMatchesIdentity } from '@/utils/embedding-api-settings'
+import { memoryIndexMatchesEffectiveSettings } from '@/utils/memory-index-settings'
 
 export function useMemoryRebuildOffer(opts: {
   getConversationId: () => string
@@ -83,17 +82,17 @@ export function useMemoryRebuildOffer(opts: {
     const storedModel = conversationMemoryEmbeddingModel.value
     const storedDims = conversationMemoryEmbeddingDimensions.value
     if (!storedModel) return false
-    const embeddingMatches = embeddingIndexMatchesIdentity({
-      embeddingProfile: conversationMemoryEmbeddingProfile.value,
-      embeddingModel: storedModel,
-      embeddingDimensions: storedDims,
-    }, effectiveEmbedding)
-    const storedFts = conversationMemoryHybridFtsSpec.value
-    // 增量索引曾漏写 FTS 戳记：embedding 已对齐且戳记为空时不因 FTS 误报重建
-    const ftsMatches = !storedFts?.trim()
-      ? embeddingMatches
-      : hybridFtsSpecsMatch(storedFts, globalHybridFtsSettings.value)
-    if (embeddingMatches && ftsMatches) {
+    const indexMatches = memoryIndexMatchesEffectiveSettings(
+      {
+        embeddingProfile: conversationMemoryEmbeddingProfile.value,
+        embeddingModel: storedModel,
+        embeddingDimensions: storedDims,
+      },
+      effectiveEmbedding,
+      conversationMemoryHybridFtsSpec.value,
+      globalHybridFtsSettings.value,
+    )
+    if (indexMatches) {
       return false
     }
     const token = memoryRebuildDismissToken(

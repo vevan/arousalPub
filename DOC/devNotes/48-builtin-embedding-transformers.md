@@ -33,6 +33,14 @@ M1 实现范围收敛为：
 - Transformers.js 4.0.1 的本地加载已改为显式 `AutoTokenizer` + `AutoModel` + `FeatureExtractionPipeline`，避免高层 `pipeline()` 在固定 revision 缓存布局下产生 `this.tokenizer is not a function`。
 - 服务端完整测试 1023 项通过，类型检查、生产构建、宿主通用性门禁与 `npm audit` 均通过。
 
+#### 1.1.1 2026-08-11 加固（审计闭环）
+
+- **输入上限**：单条 `8000` 字符、批次总 `32000` 字符、批次最多 `16` 条；超限抛 `BuiltinEmbeddingInputError` → API `400` / `builtin_embedding_input_too_large`。
+- **prepare 限流**：按用户 15s 窗口；`ready`/`preparing` 共享同一 Promise；超限 `429` / `embedding_prepare_rate_limited`。限流 Map 过期清理并硬顶条目数。
+- **错误面**：`mapBuiltinEmbeddingError` 脱敏绝对路径（含 UNC、`/data/...`）；`GET/POST` status **不返回** `cacheDir`。
+- **`POST /api/embedding/test`**：成功只回 `vectorPreview`（前 8 维）；失败 HTTP 状态跟随 `result.status`（400/429/502）。前端必须用 `apiFetch`。
+- **单测**：`server/test/builtin-embedding.test.ts` 覆盖上限、限流、脱敏与错误码。
+
 仍需完成：
 
 - prepare 接口目前阻塞到模型可用后返回最终状态，尚未接 SSE 下载进度与取消。
@@ -161,7 +169,7 @@ builtin:multilingual-minilm-l12-v2:q8:mean:l2norm:v1
 - 启动时只配置 `env.cacheDir`，不加载 pipeline。
 - 首次 prepare 允许联网下载；正常推理优先缓存。M1 不承诺“从未下载过也能离线”。
 - 固定 revision 的实际目录为 `<cacheDir>/Xenova/paraphrase-multilingual-MiniLM-L12-v2/<revision>/`，其中包含 `config.json`、`tokenizer_config.json`、`tokenizer.json` 与 `onnx/model_quantized.onnx`。
-- 状态接口提供缓存位置与是否已准备；安全清除缓存入口仍是后续项。
+- 状态接口提供是否已准备与脱敏后的错误摘要；**不向客户端暴露 cacheDir**。安全清除缓存入口仍是后续项。
 
 ---
 
@@ -312,9 +320,9 @@ getBuiltinEmbeddingStatus(): Promise<BuiltinStatus>
 
 1. `PATCH /api/settings`：接受并校验 `embeddingApi.provider`。
 2. `GET /api/settings`：返回 provider 与 builtin 固定描述（model、dimensions、dtype、device）。
-3. `POST /api/embedding/test`：按 provider 分发；builtin 返回 `provider/model/dimensions/vector`，`requestUrl` 仅 API 模式返回。
-4. 新增 `GET /api/embedding/builtin/status`：返回 `not_prepared | preparing | ready | error`、cacheDir、model profile。
-5. `POST /api/embedding/builtin/prepare`：当前阻塞到准备完成后返回最终状态；SSE 进度与取消待实现。
+3. `POST /api/embedding/test`：按 provider 分发；成功返回 `provider/model/dimensions/vectorPreview`（前 8 维，**不回全量 vector**）；`requestUrl` 仅 API 模式返回。失败 HTTP 状态跟随错误码（`400` 输入过大、`429` prepare 限流、其余多为 `502`）。
+4. `GET /api/embedding/builtin/status`：返回 `not_prepared | preparing | ready | error`、model / profile / dimensions / dtype / device；错误信息脱敏。**不返回**本机 `cacheDir`。
+5. `POST /api/embedding/builtin/prepare`：当前阻塞到准备完成后返回最终状态；按用户限流；SSE 进度与取消待实现。
 6. 可选 `DELETE /api/embedding/builtin/cache` 放到 M1.1；必须确认无运行中任务并做精确目录保护。
 
 ### 7.2 设置页用户流程
@@ -334,7 +342,7 @@ getBuiltinEmbeddingStatus(): Promise<BuiltinStatus>
 UI 条件：
 
 - `openai_compatible`：展示 baseUrl、key、model、dimensions 与 request URL。
-- `builtin`：隐藏 baseUrl / key / model / dimensions 输入；展示只读模型信息、下载状态和磁盘位置。
+- `builtin`：隐藏 baseUrl / key / model / dimensions 输入；展示只读模型信息与准备状态（不向 UI 暴露本机 cache 绝对路径）。
 - 切换 Provider 前明确提示“现有向量索引将暂停召回，完成重建后恢复”。
 - 首次下载失败需区分网络失败、缓存不可写、模型文件损坏和 runtime 不支持。
 - 对话级 API 设置在 builtin 下显示“继承内置 Provider”，禁用 model / dimensions override。
@@ -348,7 +356,7 @@ UI 条件：
 - [x] 在项目 Node 24.14.0 环境安装候选 Transformers.js 版本，锁定可复现的 package 版本。
 - [x] 固定模型完整 revision，代码路径锁定 `q8 + cpu + mean + normalize`。
 - [x] 验证中文、英文、混合文本；输出严格为 384 维有限数值。
-- [x] 验证数组输入、空文本处理和进程内重复调用；超长文本由 tokenizer 按模型上限截断。
+- [x] 验证数组输入、空文本处理和进程内重复调用；应用层硬上限（单条 8k / 批次 32k / 16 条）拒绝超限输入。
 - [ ] 记录首次下载体积、冷启动时间、100 / 1000 条语料耗时和峰值 RSS。
 - [ ] 验证 Windows / Linux；macOS 作为有环境时的补充矩阵。
 - [x] builtin batch size 锁定为 16；后续性能矩阵用于评估是否调整。

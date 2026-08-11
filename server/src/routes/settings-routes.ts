@@ -24,6 +24,7 @@ import { getCurrentUserId } from '../user-context.js'
 import {
   getBuiltinEmbeddingStatus,
   prepareBuiltinEmbedding,
+  BuiltinEmbeddingPrepareRateLimitedError,
 } from '../builtin-embedding.js'
 
 interface ModelsListBody {
@@ -43,6 +44,13 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
       await prepareBuiltinEmbedding()
       return { ok: true as const, ...getBuiltinEmbeddingStatus() }
     } catch (e) {
+      if (e instanceof BuiltinEmbeddingPrepareRateLimitedError) {
+        return reply.status(429).send({
+          ok: false as const,
+          error: ApiErrorCodes.embedding_prepare_rate_limited,
+          ...getBuiltinEmbeddingStatus(),
+        })
+      }
       app.log.error(e)
       return reply.status(502).send({
         ok: false as const,
@@ -517,7 +525,15 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
         )
         const result = await createEmbeddingWithCredentials(creds, text)
         if ('error' in result) {
-          return reply.status(502).send({
+          const httpStatus =
+            typeof result.status === 'number' &&
+            result.status >= 400 &&
+            result.status < 600
+              ? result.status
+              : result.error === ApiErrorCodes.builtin_embedding_input_too_large
+                ? 400
+                : 502
+          return reply.status(httpStatus).send({
             ok: false as const,
             error: result.error,
             status: result.status,
@@ -537,7 +553,8 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
           ...(creds.provider === 'openai_compatible'
             ? { requestUrl: buildEmbeddingRequestUrl(creds.baseUrl) }
             : {}),
-          vector: result.vector,
+          // Preview only — avoid returning the full embedding vector to clients.
+          vectorPreview: result.vector.slice(0, 8),
         }
       } catch (e) {
         app.log.error(e)

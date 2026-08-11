@@ -92,12 +92,14 @@ await app.register(multipart, {
 })
 
 app.addHook('onClose', async () => {
+  outboundProxy.restore?.()
   closeAllLanceConnections()
   await shutdownAllPluginWorkers()
 })
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {
+    outboundProxy.restore?.()
     closeAllLanceConnections()
     void shutdownAllPluginWorkers()
   })

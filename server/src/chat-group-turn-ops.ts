@@ -38,7 +38,7 @@ import {
   mutateConversationIndex,
   readConversationIndex,
   resolvedCharacterIds,
-  writeBranchConversationIndex,
+  mutateBranchConversationIndex,
   writeChunkFile,
 } from './chat-storage-io.js'
 import {
@@ -329,7 +329,7 @@ export async function appendConversationTurn(params: {
       : await readConversationActiveBranchPath(conversationId)
   const prepared = await prepareTailChunkForAppend(conversationId, branchPath)
   if (!prepared) return false
-  const { idx, tailFile: chunkName, tail: chunk, sealedChunkFiles } = prepared
+  const { tailFile: chunkName, tail: chunk, sealedChunkFiles } = prepared
   for (const sealed of sealedChunkFiles) {
     void sealChunkMemorySegment(conversationId, sealed, branchPath).catch((e) => {
       // eslint-disable-next-line no-console
@@ -408,12 +408,18 @@ export async function appendConversationTurn(params: {
   await writeChunkFile(conversationId, storagePath, chunk)
   const t = nowIso()
   if (branchPath) {
-    if (prepared.isNewBranchChunk || !idx.headChunkFile) {
-      idx.headChunkFile = chunkName
-    }
-    idx.tailChunkFile = chunkName
-    idx.updatedAt = t
-    await writeBranchConversationIndex(conversationId, branchPath, idx)
+    await mutateBranchConversationIndex(
+      conversationId,
+      branchPath,
+      (fresh) => {
+        if (prepared.isNewBranchChunk || !fresh.headChunkFile) {
+          fresh.headChunkFile = chunkName
+        }
+        fresh.tailChunkFile = chunkName
+        fresh.updatedAt = t
+        return fresh
+      },
+    )
     await mutateConversationIndex(conversationId, (fresh) => {
       fresh.updatedAt = t
       return fresh

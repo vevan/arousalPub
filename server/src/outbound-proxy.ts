@@ -80,14 +80,21 @@ export function configureOutboundProxyFromConfig(
   }
   if (noProxy.length > 0) proxyEnv.no_proxy = noProxy.join(',')
 
-  let restore: () => void
+  let restoreRaw: () => void
   try {
-    restore = applyGlobalProxy(proxyEnv)
+    restoreRaw = applyGlobalProxy(proxyEnv)
   } catch {
     // Native errors can contain the proxy URL. Keep credentials out of logs.
     throw new Error(
       '[proxy] failed to configure outbound proxy; check config.yaml proxy settings',
     )
+  }
+
+  let restored = false
+  const restore = () => {
+    if (restored) return
+    restored = true
+    restoreRaw()
   }
 
   return {

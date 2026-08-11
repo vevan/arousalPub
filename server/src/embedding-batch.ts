@@ -9,6 +9,7 @@ import {
   BUILTIN_EMBEDDING_BATCH_MAX_INPUTS,
   BUILTIN_EMBEDDING_MODEL,
   createBuiltinEmbeddings,
+  mapBuiltinEmbeddingError,
 } from './builtin-embedding.js'
 
 /** 单次 Embeddings API 请求最多条数（OpenAI 兼容 input 数组） */
@@ -75,10 +76,7 @@ async function createEmbeddingsBatchRequest(
       }
       return { ok: true, vectors, model: BUILTIN_EMBEDDING_MODEL }
     } catch (e) {
-      return {
-        error: '内置 Embedding 推理失败',
-        detail: e instanceof Error ? e.message : String(e),
-      }
+      return mapBuiltinEmbeddingError(e)
     }
   }
 

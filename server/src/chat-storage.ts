@@ -86,6 +86,7 @@ import {
   ordinalRangeForNewChunk,
   readChunkContainingOrdinal,
   readChunkFile,
+  readTailChunkAt,
   resolveActivePathConversationStats,
 } from './chunk-chain.js'
 import {
@@ -109,11 +110,12 @@ import type {
 } from './chat-turn-types.js'
 import {
   conversationDir,
+  mutateBranchConversationIndex,
   mutateConversationIndex,
   readBranchConversationIndex,
   readConversationIndex,
+  resolveConversationChunkFilePath,
   resolvedCharacterIds,
-  writeBranchConversationIndex,
   writeChunkFile,
   writeConversationIndex,
 } from './chat-storage-io.js'
@@ -155,11 +157,13 @@ export {
   branchConversationIndexPath,
   conversationDir,
   conversationIndexPath,
+  mutateBranchConversationIndex,
   mutateConversationIndex,
   readBranchConversationIndex,
   readConversationIndex,
   resolvedCharacterIds,
   resolvedLorebookIds,
+  resolveConversationChunkFilePath,
   runConversationIndexTask,
   syncConversationCharacterFields,
   updateConversationMemoryEmbeddingModel,
@@ -391,10 +395,10 @@ export async function batchUpdateConversationTurns(
     }
     for (const branchPath of touchedBranchPaths) {
       if (!branchPath) continue
-      const branchIdx = await readBranchConversationIndex(conversationId, branchPath)
-      if (!branchIdx) continue
-      branchIdx.updatedAt = t
-      await writeBranchConversationIndex(conversationId, branchPath, branchIdx)
+      await mutateBranchConversationIndex(conversationId, branchPath, (fresh) => {
+        fresh.updatedAt = t
+        return fresh
+      })
     }
     if (memoryEmbedActive) {
       for (const { turn, chunkName, branchPath } of memoryUpserts) {
@@ -1729,23 +1733,8 @@ export async function deleteConversation(
 export async function readTailChunk(
   conversationId: string,
 ): Promise<ChunkFile | null> {
-  const idx = await readConversationIndex(conversationId)
-  if (!idx?.tailChunkFile) return null
-  try {
-    const p = path.join(conversationDir(conversationId), idx.tailChunkFile)
-    const raw = await readFile(p, 'utf8')
-    return JSON.parse(raw) as ChunkFile
-  } catch {
-    return null
-  }
-}
-
-function tailChunkPath(
-  conversationId: string,
-  idx: ConversationIndex,
-): string | null {
-  if (!idx.tailChunkFile) return null
-  return path.join(conversationDir(conversationId), idx.tailChunkFile)
+  // Root-index tail with the same path containment as readChunkFile.
+  return readTailChunkAt(conversationId, '')
 }
 
 /** 删除尾块中的整轮；若删空 tail 且存在 previous 则链式回退 tail 指针（active 分支感知） */
@@ -1770,7 +1759,7 @@ export async function removeTurnAtOrdinalInTailChunk(
   let chunk: ChunkFile
   try {
     const raw = await readFile(
-      path.join(conversationDir(conversationId), storagePath),
+      resolveConversationChunkFilePath(conversationId, storagePath),
       'utf8',
     )
     chunk = JSON.parse(raw) as ChunkFile
@@ -1789,24 +1778,34 @@ export async function removeTurnAtOrdinalInTailChunk(
   if (filtered.length === 0) {
     if (!isTailChunk) return false
     const previousFile = chunk.meta.links.previous
-    const chunkAbsPath = path.join(conversationDir(conversationId), storagePath)
-    try {
-      await rm(chunkAbsPath, { force: true })
-    } catch {
-      return false
-    }
+    // Validate + load previous before deleting the empty tail, so a bad
+    // previous link cannot leave a half-deleted chain.
+    let prevStorage: string | null = null
+    let prevChunk: ChunkFile | null = null
     if (previousFile) {
-      const prevStorage = chunkStorageRelativePath(bp, previousFile)
-      let prevChunk: ChunkFile
       try {
+        prevStorage = chunkStorageRelativePath(bp, previousFile)
         const raw = await readFile(
-          path.join(conversationDir(conversationId), prevStorage),
+          resolveConversationChunkFilePath(conversationId, prevStorage),
           'utf8',
         )
         prevChunk = JSON.parse(raw) as ChunkFile
       } catch {
         return false
       }
+    }
+    let chunkAbsPath: string
+    try {
+      chunkAbsPath = resolveConversationChunkFilePath(conversationId, storagePath)
+    } catch {
+      return false
+    }
+    try {
+      await rm(chunkAbsPath, { force: true })
+    } catch {
+      return false
+    }
+    if (previousFile && prevStorage && prevChunk) {
       prevChunk.meta.links.next = null
       await writeChunkFile(conversationId, prevStorage, prevChunk)
       idx.tailChunkFile = previousFile
@@ -1819,7 +1818,19 @@ export async function removeTurnAtOrdinalInTailChunk(
     }
     idx.updatedAt = t
     if (bp) {
-      await writeBranchConversationIndex(conversationId, bp, idx)
+      await mutateBranchConversationIndex(conversationId, bp, (fresh) => {
+        if (previousFile) {
+          fresh.tailChunkFile = previousFile
+          if (fresh.headChunkFile === tailFileName) {
+            fresh.headChunkFile = previousFile
+          }
+        } else {
+          fresh.headChunkFile = null
+          fresh.tailChunkFile = null
+        }
+        fresh.updatedAt = t
+        return fresh
+      })
       await mutateConversationIndex(conversationId, (fresh) => {
         fresh.updatedAt = t
         return fresh
@@ -1861,8 +1872,10 @@ export async function removeTurnAtOrdinalInTailChunk(
 
   await writeChunkFile(conversationId, storagePath, chunk)
   if (bp) {
-    idx.updatedAt = t
-    await writeBranchConversationIndex(conversationId, bp, idx)
+    await mutateBranchConversationIndex(conversationId, bp, (fresh) => {
+      fresh.updatedAt = t
+      return fresh
+    })
     await mutateConversationIndex(conversationId, (fresh) => {
       fresh.updatedAt = t
       return fresh

@@ -1,6 +1,13 @@
 import { coreNotify } from '@/utils/core-notify'
+import { apiFetch } from '@/utils/api-fetch'
 import { readJsonSseStream } from '@/utils/json-sse'
-import { computed, ref } from 'vue'
+import {
+  computed,
+  inject,
+  onScopeDispose,
+  ref,
+  type InjectionKey,
+} from 'vue'
 import { useI18n } from 'vue-i18n'
 
 export type MemoryRebuildStage =
@@ -31,6 +38,15 @@ export type MemoryRebuildSseEvent =
     }
   | { type: 'error'; ok: false; error: string; detail?: string }
 
+function isAbortError(e: unknown): boolean {
+  return (
+    (e instanceof DOMException && e.name === 'AbortError') ||
+    (e instanceof Error && e.name === 'AbortError')
+  )
+}
+
+type CancelKind = 'none' | 'superseded' | 'aborted'
+
 export function useMemoryRebuild(getConversationId: () => string) {
   const { t } = useI18n()
 
@@ -44,6 +60,12 @@ export function useMemoryRebuild(getConversationId: () => string) {
   const stageDone = ref(0)
   const stageTotal = ref(0)
 
+  let abortController: AbortController | null = null
+  /** Bumped on each new rebuild() and on abort(); identifies the active run. */
+  let runId = 0
+  /** Why the previous run lost ownership (supersede vs user abort). */
+  let cancelKind: CancelKind = 'none'
+
   const percent = computed(() => {
     if (total.value < 1) return loading.value ? 0 : 100
     return Math.min(100, Math.round((done.value / total.value) * 100))
@@ -53,12 +75,7 @@ export function useMemoryRebuild(getConversationId: () => string) {
     t(`chatConversation.memoryRebuildStage.${stage.value}`),
   )
 
-  async function rebuild(): Promise<string | null> {
-    const id = getConversationId().trim()
-    if (!id) return null
-
-    loading.value = true
-    error.value = ''
+  function resetProgress(): void {
     done.value = 0
     total.value = 0
     turns.value = 0
@@ -66,25 +83,81 @@ export function useMemoryRebuild(getConversationId: () => string) {
     stage.value = 'planning'
     stageDone.value = 0
     stageTotal.value = 0
+  }
+
+  function abort(): void {
+    const ac = abortController
+    abortController = null
+    cancelKind = 'aborted'
+    runId += 1
+    ac?.abort()
+    loading.value = false
+    error.value = ''
+    resetProgress()
+  }
+
+  function notifySuccess(
+    conversationId: string,
+    snap: { done: number; turns: number; loreEntries: number },
+  ): void {
+    coreNotify(
+      t('notifications.memoryRebuildSuccess'),
+      t('notifications.memoryRebuildSuccessBody', {
+        indexed: snap.done,
+        turns: snap.turns,
+        loreEntries: snap.loreEntries,
+      }),
+      {
+        level: 'success',
+        action: { type: 'conversation', conversationId },
+        dedupeKey: `memory-rebuild:${conversationId}`,
+      },
+    )
+  }
+
+  async function rebuild(): Promise<string | null> {
+    const id = getConversationId().trim()
+    if (!id) return null
+
+    // Supersede prior run (do not wipe UI via abort() — we reset below).
+    abortController?.abort()
+    cancelKind = 'superseded'
+    const myId = (runId += 1)
+    const ac = new AbortController()
+    abortController = ac
+    cancelKind = 'none'
+
+    loading.value = true
+    error.value = ''
+    resetProgress()
+
     let finished = false
     let nextModel: string | null = null
+    let snap = { done: 0, turns: 0, loreEntries: 0 }
+
+    const stillMine = () => runId === myId
 
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/chat/conversations/${id}/memory/rebuild?stream=1`,
-        { method: 'POST' },
+        { method: 'POST', signal: ac.signal },
       )
+      if (!stillMine()) {
+        return preferSuccessIfDone()
+      }
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as {
           error?: string
           detail?: string
         }
+        if (!stillMine()) return preferSuccessIfDone()
         error.value = j.error ?? t('chatConversation.memoryRebuildFailed')
         if (j.detail) error.value += `: ${j.detail}`
         return null
       }
 
       await readJsonSseStream<MemoryRebuildSseEvent>(res.body, (ev) => {
+        if (!stillMine()) return
         if (ev.type === 'start') {
           total.value = ev.total
           turns.value = ev.turns
@@ -116,42 +189,78 @@ export function useMemoryRebuild(getConversationId: () => string) {
             typeof ev.embeddingModel === 'string' && ev.embeddingModel.trim()
               ? ev.embeddingModel.trim()
               : null
+          snap = {
+            done: done.value,
+            turns: turns.value,
+            loreEntries: loreEntries.value,
+          }
         }
       })
 
-      if (!finished && !error.value) {
+      if (!stillMine()) {
+        return preferSuccessIfDone()
+      }
+
+      if (ac.signal.aborted && !(finished && nextModel)) {
+        return null
+      }
+
+      if (finished && !nextModel) {
+        error.value = t('chatConversation.memoryRebuildFailed')
+      } else if (!finished && !error.value) {
         error.value = t('chatConversation.memoryRebuildFailed')
       }
     } catch (e) {
-      error.value =
-        e instanceof Error ? e.message : t('chatConversation.memoryRebuildFailed')
+      if (!stillMine()) {
+        return preferSuccessIfDone()
+      }
+      if (isAbortError(e) || ac.signal.aborted) {
+        if (!(finished && nextModel)) return null
+      } else {
+        error.value =
+          e instanceof Error
+            ? e.message
+            : t('chatConversation.memoryRebuildFailed')
+      }
     } finally {
-      loading.value = false
+      if (stillMine() && abortController === ac) {
+        abortController = null
+        loading.value = false
+      }
+    }
+
+    if (!stillMine()) {
+      return preferSuccessIfDone()
     }
 
     if (finished && nextModel) {
-      coreNotify(
-        t('notifications.memoryRebuildSuccess'),
-        t('notifications.memoryRebuildSuccessBody', {
-          indexed: done.value,
-          turns: turns.value,
-          loreEntries: loreEntries.value,
-        }),
-        {
-          level: 'success',
-          action: { type: 'conversation', conversationId: id },
-          dedupeKey: `memory-rebuild:${id}`,
-        },
-      )
-    } else if (error.value) {
+      notifySuccess(id, snap)
+      // Conversation may have switched; only return model to update local meta
+      // when the view is still on this conversation.
+      if (getConversationId().trim() !== id) return null
+      return nextModel
+    }
+    if (error.value) {
       coreNotify(t('notifications.memoryRebuildFailedTitle'), error.value, {
         level: 'error',
         dedupeKey: `memory-rebuild:${id}:error`,
       })
     }
-
     return nextModel
+
+    function preferSuccessIfDone(): string | null {
+      // User abort after server `done`: toast + return model if still on same conv.
+      // Superseded by a newer rebuild(): stay silent (new run owns UI).
+      if (!(finished && nextModel) || cancelKind !== 'aborted') return null
+      notifySuccess(id, snap)
+      if (getConversationId().trim() !== id) return null
+      return nextModel
+    }
   }
+
+  onScopeDispose(() => {
+    abort()
+  })
 
   return {
     loading,
@@ -166,5 +275,23 @@ export function useMemoryRebuild(getConversationId: () => string) {
     stageLabel,
     percent,
     rebuild,
+    abort,
   }
+}
+
+export type MemoryRebuildApi = ReturnType<typeof useMemoryRebuild>
+
+/** Provided by ChatConversationView so settings + offer share one rebuild session. */
+export const MEMORY_REBUILD_INJECT_KEY: InjectionKey<MemoryRebuildApi> =
+  Symbol('memoryRebuild')
+
+/** Require the shared instance provided by ChatConversationView. */
+export function useInjectedMemoryRebuild(): MemoryRebuildApi {
+  const api = inject(MEMORY_REBUILD_INJECT_KEY, null)
+  if (!api) {
+    throw new Error(
+      'MEMORY_REBUILD_INJECT_KEY missing: provide useMemoryRebuild in ChatConversationView',
+    )
+  }
+  return api
 }

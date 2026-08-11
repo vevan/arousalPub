@@ -24,7 +24,7 @@ You can chat without Embeddings; this chapter is an optional upgrade.
 
 Two modes are available:
 
-- **Built-in Embedding**: fixed to `Xenova/paraphrase-multilingual-MiniLM-L12-v2`, CPU, Q8, and 384 dimensions. No Base URL or key is needed. Click **Prepare model**, then **Test Embedding**.
+- **Built-in Embedding**: fixed to `Xenova/paraphrase-multilingual-MiniLM-L12-v2`, CPU, Q8, and 384 dimensions. No Base URL or key is needed. Click **Prepare model**, then **Test Embedding**. Prepare is rate-limited; avoid rapid repeated clicks.
 - **OpenAI-compatible**: enter the Base URL, key (alias allowed), embedding model, and the model's output dimensions, then click **Test Embedding**.
 
 The first built-in preparation needs network access. The Q8 weight is named `onnx/model_quantized.onnx` in the Hugging Face repository, so the file list does not need to contain `q8`. The model is pinned to a specific revision and can run from the local cache after preparation.

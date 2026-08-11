@@ -314,11 +314,11 @@ const embeddingTestResult = ref<{
   dimensions: number
   requestedDimensions: number | null
   requestUrl: string
-  vector: number[]
+  vectorPreview: number[]
 } | null>(null)
 
 const embeddingTestVectorPreview = computed(() => {
-  const v = embeddingTestResult.value?.vector
+  const v = embeddingTestResult.value?.vectorPreview
   if (!v?.length) return ''
   return JSON.stringify(v, null, 2)
 })
@@ -329,7 +329,7 @@ async function runEmbeddingTest(): Promise<void> {
   embeddingTestDetail.value = null
   embeddingTestResult.value = null
   try {
-    const res = await fetch('/api/embedding/test', {
+    const res = await apiFetch('/api/embedding/test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -350,14 +350,14 @@ async function runEmbeddingTest(): Promise<void> {
       model?: string
       dimensions?: number
       requestUrl?: string
-      vector?: number[]
+      vectorPreview?: number[]
     }
     if (!res.ok || !j.ok) {
       embeddingTestError.value = j.error ?? t('settings.embeddingTestFailed')
       embeddingTestDetail.value = j.detail ?? null
       return
     }
-    if (!Array.isArray(j.vector) || typeof j.dimensions !== 'number') {
+    if (!Array.isArray(j.vectorPreview) || typeof j.dimensions !== 'number') {
       embeddingTestError.value = t('settings.embeddingTestInvalidResponse')
       return
     }
@@ -366,7 +366,7 @@ async function runEmbeddingTest(): Promise<void> {
       dimensions: j.dimensions,
       requestedDimensions: embeddingDimensions.value,
       requestUrl: j.requestUrl ?? '',
-      vector: j.vector,
+      vectorPreview: j.vectorPreview,
     }
   } catch (e) {
     embeddingTestError.value =

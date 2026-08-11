@@ -4,6 +4,7 @@ import { ApiErrorCodes } from './api-error-codes.js'
 import {
   chatListEntryFromIndex,
   conversationDir,
+  mutateBranchConversationIndex,
   mutateConversationIndex,
   readBranchConversationIndex,
   readConversationIndex,
@@ -304,24 +305,22 @@ async function upsertBranchRegistryInParentIndex(
 ): Promise<ConversationIndex | null> {
   const parent = normalizeBranchPath(parentBranchPath)
   if (parent) {
-    const idx = await readParentConversationIndex(conversationId, parent)
-    if (!idx) return null
-    const branches = Array.isArray(idx.branches) ? idx.branches.slice() : []
-    const existingIdx = branches.findIndex((e) =>
-      registryEntryMatchesSegment(e, entry.path),
-    )
-    if (existingIdx >= 0) {
-      branches[existingIdx] = entry
-    } else {
-      branches.push(entry)
-    }
-    const next: ConversationIndex = {
-      ...idx,
-      branches,
-      updatedAt: nowIso(),
-    }
-    await writeBranchConversationIndex(conversationId, parent, next)
-    return next
+    return mutateBranchConversationIndex(conversationId, parent, (idx) => {
+      const branches = Array.isArray(idx.branches) ? idx.branches.slice() : []
+      const existingIdx = branches.findIndex((e) =>
+        registryEntryMatchesSegment(e, entry.path),
+      )
+      if (existingIdx >= 0) {
+        branches[existingIdx] = entry
+      } else {
+        branches.push(entry)
+      }
+      return {
+        ...idx,
+        branches,
+        updatedAt: nowIso(),
+      }
+    })
   }
   return mutateConversationIndex(conversationId, (idx) => {
     const branches = Array.isArray(idx.branches) ? idx.branches.slice() : []
@@ -423,20 +422,18 @@ async function removeBranchRegistryFromParentIndex(
 ): Promise<ConversationIndex | null> {
   const parent = normalizeBranchPath(parentBranchPath)
   if (parent) {
-    const idx = await readParentConversationIndex(conversationId, parent)
-    if (!idx) return null
-    const branches = Array.isArray(idx.branches) ? idx.branches : []
-    const nextBranches = branches.filter(
-      (e) => !registryEntryMatchesSegment(e, segment),
-    )
-    if (nextBranches.length === branches.length) return null
-    const next: ConversationIndex = {
-      ...idx,
-      branches: nextBranches,
-      updatedAt: nowIso(),
-    }
-    await writeBranchConversationIndex(conversationId, parent, next)
-    return next
+    return mutateBranchConversationIndex(conversationId, parent, (idx) => {
+      const branches = Array.isArray(idx.branches) ? idx.branches : []
+      const nextBranches = branches.filter(
+        (e) => !registryEntryMatchesSegment(e, segment),
+      )
+      if (nextBranches.length === branches.length) return null
+      return {
+        ...idx,
+        branches: nextBranches,
+        updatedAt: nowIso(),
+      }
+    })
   }
   return mutateConversationIndex(conversationId, (idx) => {
     const branches = Array.isArray(idx.branches) ? idx.branches : []
@@ -531,25 +528,23 @@ async function updateBranchRegistryInParentIndex(
 ): Promise<ConversationIndex | null> {
   const parent = normalizeBranchPath(parentBranchPath)
   if (parent) {
-    const idx = await readParentConversationIndex(conversationId, parent)
-    if (!idx) return null
-    const branches = Array.isArray(idx.branches) ? idx.branches : []
-    let changed = false
-    const nextBranches = branches.map((e) => {
-      if (!registryEntryMatchesSegment(e, segment)) return e
-      const next = branchRegistryEntryWithLabel(e, label)
-      if (!next) return e
-      changed = true
-      return next
+    return mutateBranchConversationIndex(conversationId, parent, (idx) => {
+      const branches = Array.isArray(idx.branches) ? idx.branches : []
+      let changed = false
+      const nextBranches = branches.map((e) => {
+        if (!registryEntryMatchesSegment(e, segment)) return e
+        const next = branchRegistryEntryWithLabel(e, label)
+        if (!next) return e
+        changed = true
+        return next
+      })
+      if (!changed) return idx
+      return {
+        ...idx,
+        branches: nextBranches,
+        updatedAt: nowIso(),
+      }
     })
-    if (!changed) return idx
-    const next: ConversationIndex = {
-      ...idx,
-      branches: nextBranches,
-      updatedAt: nowIso(),
-    }
-    await writeBranchConversationIndex(conversationId, parent, next)
-    return next
   }
   return mutateConversationIndex(conversationId, (idx) => {
     const branches = Array.isArray(idx.branches) ? idx.branches : []

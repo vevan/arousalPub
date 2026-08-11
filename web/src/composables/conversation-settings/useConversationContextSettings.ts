@@ -1,4 +1,6 @@
-import { useMemoryRebuild } from '@/composables/useMemoryRebuild'
+import {
+  useInjectedMemoryRebuild,
+} from '@/composables/useMemoryRebuild'
 import {
   type CharItem,
   type LorebookItem,
@@ -7,8 +9,9 @@ import {
 } from '@/composables/conversation-settings/types'
 import { usePromptsStore } from '@/stores/prompts'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { apiFetch } from '@/utils/api-fetch'
 import {
   normalizeAuthorsNote,
   normalizeDefaultAuthorsNoteTemplate,
@@ -120,6 +123,8 @@ const { presets, loaded: promptsLoaded } = storeToRefs(promptsStore)
 const dialogOpen = ref(false)
 const recallTestDialogOpen = ref(false)
 const activeSection = ref<SettingsSection>('bindings')
+let catalogFetchGen = 0
+let patchChain: Promise<void> = Promise.resolve()
 
 const INHERIT_VALUE = ''
 
@@ -207,7 +212,7 @@ const {
   stageLabel: memoryRebuildStageLabel,
   percent: memoryRebuildPercent,
   rebuild: rebuildMemoryIndex,
-} = useMemoryRebuild(() => props.conversationId)
+} = useInjectedMemoryRebuild()
 
 const effectiveMemoryEnabled = computed(() =>
   memoryUseGlobal.value
@@ -399,6 +404,10 @@ const isSaving = computed(
 
 function open(section?: SettingsSection): void {
   syncFromProps()
+  catalogFetchGen++
+  void loadCharacters()
+  void loadLorebooks()
+  void loadKnowledgeBases()
   void refreshPluginsTabVisibility()
   if (section === 'plugins' && !showPluginsTab.value) {
     activeSection.value = 'bindings'
@@ -1459,8 +1468,10 @@ watch(defaultAuthorsNoteRole, async (role) => {
 })
 
 async function refreshPluginsTabVisibility() {
+  const gen = catalogFetchGen
   try {
     const all = await fetchPluginsManage()
+    if (gen !== catalogFetchGen) return
     showPluginsTab.value = all.some(
       (p) => p.enabled && p.hasConversationSettings,
     )
@@ -1468,6 +1479,7 @@ async function refreshPluginsTabVisibility() {
       activeSection.value = 'bindings'
     }
   } catch {
+    if (gen !== catalogFetchGen) return
     showPluginsTab.value = false
   }
 }
@@ -1476,20 +1488,15 @@ function onPluginSettingsError(message: string) {
   errorText.value = message
 }
 
-onMounted(() => {
-  syncFromProps()
-  void loadCharacters()
-  void loadLorebooks()
-  void loadKnowledgeBases()
-  void refreshPluginsTabVisibility()
-})
-
 async function loadLorebooks() {
+  const gen = catalogFetchGen
   lorebookItemsLoading.value = true
   try {
-    const res = await fetch('/api/lorebooks')
+    const res = await apiFetch('/api/lorebooks')
+    if (gen !== catalogFetchGen) return
     if (!res.ok) return
     const raw: unknown = await res.json()
+    if (gen !== catalogFetchGen) return
     if (!raw || typeof raw !== 'object') return
     const list = (raw as { lorebooks?: { id?: string; name?: string }[] })
       .lorebooks
@@ -1502,16 +1509,19 @@ async function loadLorebooks() {
   } catch {
     /* ignore */
   } finally {
-    lorebookItemsLoading.value = false
+    if (gen === catalogFetchGen) lorebookItemsLoading.value = false
   }
 }
 
 async function loadKnowledgeBases() {
+  const gen = catalogFetchGen
   knowledgeBaseItemsLoading.value = true
   try {
-    const res = await fetch('/api/knowledge-bases/summary')
+    const res = await apiFetch('/api/knowledge-bases/summary')
+    if (gen !== catalogFetchGen) return
     if (!res.ok) return
     const raw: unknown = await res.json()
+    if (gen !== catalogFetchGen) return
     if (!raw || typeof raw !== 'object') return
     const list = (
       raw as { knowledgeBases?: { id?: string; name?: string }[] }
@@ -1525,18 +1535,21 @@ async function loadKnowledgeBases() {
   } catch {
     /* ignore */
   } finally {
-    knowledgeBaseItemsLoading.value = false
+    if (gen === catalogFetchGen) knowledgeBaseItemsLoading.value = false
   }
 }
 
 async function loadCharacters() {
+  const gen = catalogFetchGen
   charItemsLoading.value = true
   try {
-    const res = await fetch('/api/characters?limit=100&offset=0&kind=all')
+    const res = await apiFetch('/api/characters?limit=100&offset=0&kind=all')
+    if (gen !== catalogFetchGen) return
     if (!res.ok) return
     const j = (await res.json()) as {
       items?: { id?: string; name?: string }[]
     }
+    if (gen !== catalogFetchGen) return
     const raw = j.items ?? []
     charItems.value = raw
       .filter((x) => typeof x.id === 'string' && x.id.trim())
@@ -1547,7 +1560,7 @@ async function loadCharacters() {
   } catch {
     /* ignore */
   } finally {
-    charItemsLoading.value = false
+    if (gen === catalogFetchGen) charItemsLoading.value = false
   }
 }
 
@@ -1601,20 +1614,28 @@ async function onSaveEmbeddingApi(
 
 async function patchConversation(body: Record<string, unknown>) {
   const cid = props.conversationId
-  const res = await fetch(`/api/chat/conversations/${cid}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    const txt = await res.text()
-    throw new Error(txt.slice(0, 200))
+  const run = async () => {
+    const res = await apiFetch(`/api/chat/conversations/${cid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const txt = await res.text()
+      throw new Error(txt.slice(0, 200))
+    }
+    // 切会话后丢弃过期 PATCH，避免旧背景/BGM 写回当前视图
+    if (props.conversationId !== cid) return
+    const j = (await res.json()) as { index?: Record<string, unknown> }
+    if (props.conversationId !== cid) return
+    if (j.index) emit('patched', j.index, cid)
   }
-  // 切会话后丢弃过期 PATCH，避免旧背景/BGM 写回当前视图
-  if (props.conversationId !== cid) return
-  const j = (await res.json()) as { index?: Record<string, unknown> }
-  if (props.conversationId !== cid) return
-  if (j.index) emit('patched', j.index, cid)
+  const next = patchChain.then(run, run)
+  patchChain = next.then(
+    () => undefined,
+    () => undefined,
+  )
+  return next
 }
 
   return {

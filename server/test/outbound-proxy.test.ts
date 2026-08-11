@@ -36,7 +36,7 @@ describe('configureOutboundProxyFromConfig', () => {
 
   it('builds an isolated proxy environment and reports redacted flags', () => {
     let received: NodeJS.ProcessEnv | null = null
-    const restore = () => undefined
+    let restoreCalls = 0
     const status = configureOutboundProxyFromConfig(
       {
         enableProxy: true,
@@ -45,7 +45,9 @@ describe('configureOutboundProxyFromConfig', () => {
       },
       (value) => {
         received = value
-        return restore
+        return () => {
+          restoreCalls++
+        }
       },
     )
 
@@ -54,13 +56,14 @@ describe('configureOutboundProxyFromConfig', () => {
       https_proxy: 'http://user:secret@proxy.example:8080',
       no_proxy: 'localhost,127.0.0.1',
     })
-    assert.deepEqual(status, {
-      enabled: true,
-      http: true,
-      https: true,
-      noProxy: true,
-      restore,
-    })
+    assert.equal(status.enabled, true)
+    assert.equal(status.http, true)
+    assert.equal(status.https, true)
+    assert.equal(status.noProxy, true)
+    assert.equal(typeof status.restore, 'function')
+    status.restore?.()
+    status.restore?.()
+    assert.equal(restoreCalls, 1)
     assert.equal(JSON.stringify(status).includes('secret'), false)
   })
 

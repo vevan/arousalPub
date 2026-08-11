@@ -38,6 +38,7 @@ Docker Compose 会把项目根目录的 `config.yaml` 只读挂载到容器 `/ap
 - 日志只记录 HTTP / HTTPS / NO_PROXY 是否启用，不记录 URL 和凭据。
 - 开关、URL 或直连列表格式无效时后端启动失败，不静默回退到直连。
 - 实现向 Node 传入独立构造的代理环境，不修改 `process.env`，也不受宿主代理变量影响。
+- `configureOutboundProxyFromConfig` 返回的 `restore` **幂等**：`onClose` 与 `SIGINT`/`SIGTERM` 均可调用，不会二次扰动全局代理状态。
 - 上游目标仍由 `UPSTREAM_URL_POLICY` 检查；`public-only` 仍在请求和每次重定向前校验 URL。
 - `public-only` 是 URL 层检查；使用远程代理时 DNS 由代理侧解析，还需依赖代理的网络策略阻止绕回私网。
 - 代理运行时可看到出站元数据；若代理终止 TLS，还可能看到明文内容，应只使用可信代理。

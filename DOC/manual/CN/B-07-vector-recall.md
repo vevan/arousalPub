@@ -24,7 +24,7 @@
 
 有两种模式：
 
-- **内置 Embedding**：固定使用 `Xenova/paraphrase-multilingual-MiniLM-L12-v2`，CPU、Q8、384 维。无需 Base URL 或 Key；先点击 **「准备模型」**，完成后再点 **「测试 Embedding」**。
+- **内置 Embedding**：固定使用 `Xenova/paraphrase-multilingual-MiniLM-L12-v2`，CPU、Q8、384 维。无需 Base URL 或 Key；先点击 **「准备模型」**，完成后再点 **「测试 Embedding」**。准备请求有短时间限流，请勿连续猛点。
 - **OpenAI 兼容**：填写 Base URL、Key（可用别名）、Embedding 模型和模型要求的输出维度，再点击 **「测试 Embedding」**。
 
 内置模型首次准备需要联网下载。Q8 权重在 Hugging Face 仓库中的实际文件名是 `onnx/model_quantized.onnx`，所以文件列表中不一定出现 `q8` 字样。模型固定到确定的 revision，准备完成后可从本地缓存推理。

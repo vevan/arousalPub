@@ -7,10 +7,11 @@ import type {
 } from './chat-turn-types.js'
 import {
   conversationDir,
+  mutateBranchConversationIndex,
   mutateConversationIndex,
   readBranchConversationIndex,
   readConversationIndex,
-  writeBranchConversationIndex,
+  resolveConversationChunkFilePath,
   writeChunkFile,
 } from './chat-storage-io.js'
 import {
@@ -101,15 +102,29 @@ export async function readChunkFile(
   conversationId: string,
   fileName: string,
 ): Promise<ChunkFile | null> {
+  let filePath: string
   try {
-    const raw = await readFile(
-      path.join(conversationDir(conversationId), fileName),
-      'utf8',
-    )
-    return JSON.parse(raw) as ChunkFile
+    filePath = resolveConversationChunkFilePath(conversationId, fileName)
   } catch {
     return null
   }
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const raw = await readFile(filePath, 'utf8')
+      return JSON.parse(raw) as ChunkFile
+    } catch (e) {
+      // Align with index reads: brief retry if a concurrent write left a torn JSON.
+      const isParse =
+        e instanceof SyntaxError ||
+        (e instanceof Error && e.message.includes('JSON'))
+      if (isParse && attempt === 0) {
+        await new Promise((r) => setTimeout(r, 15))
+        continue
+      }
+      return null
+    }
+  }
+  return null
 }
 
 /** 按 branchPath + basename 读取 chunk（memory v2 召回用） */
@@ -887,7 +902,12 @@ async function rotateTailChunk(
   idx.tailChunkFile = newFileName
   invalidateChunkIndexSyncCache(conversationId)
   if (bp) {
-    await writeBranchConversationIndex(conversationId, bp, idx)
+    const next = await mutateBranchConversationIndex(conversationId, bp, (fresh) => {
+      fresh.tailChunkFile = newFileName
+      fresh.updatedAt = new Date().toISOString()
+      return fresh
+    })
+    if (next) idx = next
   } else {
     const next = await mutateConversationIndex(conversationId, (fresh) => {
       fresh.tailChunkFile = newFileName
@@ -988,7 +1008,12 @@ export async function splitOversizedTailChunkIfNeeded(
   if (!idx.headChunkFile) idx.headChunkFile = tailName
   invalidateChunkIndexSyncCache(conversationId)
   if (bp) {
-    await writeBranchConversationIndex(conversationId, bp, idx)
+    await mutateBranchConversationIndex(conversationId, bp, (fresh) => {
+      fresh.tailChunkFile = prevFile
+      if (!fresh.headChunkFile) fresh.headChunkFile = tailName
+      fresh.updatedAt = new Date().toISOString()
+      return fresh
+    })
   } else {
     await mutateConversationIndex(conversationId, (fresh) => {
       fresh.tailChunkFile = prevFile
@@ -1257,22 +1282,33 @@ async function writeChunkIndexHeadTail(
   idx: ConversationIndex,
   headChunkFile: string | null,
   tailChunkFile: string | null,
-): Promise<void> {
+): Promise<boolean> {
   const bp = normalizeBranchPath(branchPath)
   const t = new Date().toISOString()
   if (bp) {
-    idx.headChunkFile = headChunkFile
-    idx.tailChunkFile = tailChunkFile
-    idx.updatedAt = t
-    await writeBranchConversationIndex(conversationId, bp, idx)
-    return
+    const next = await mutateBranchConversationIndex(conversationId, bp, (fresh) => {
+      fresh.headChunkFile = headChunkFile
+      fresh.tailChunkFile = tailChunkFile
+      fresh.updatedAt = t
+      return fresh
+    })
+    if (!next) return false
+    idx.headChunkFile = next.headChunkFile
+    idx.tailChunkFile = next.tailChunkFile
+    idx.updatedAt = next.updatedAt
+    return true
   }
-  await mutateConversationIndex(conversationId, (fresh) => {
+  const next = await mutateConversationIndex(conversationId, (fresh) => {
     fresh.headChunkFile = headChunkFile
     fresh.tailChunkFile = tailChunkFile
     fresh.updatedAt = t
     return fresh
   })
+  if (!next) return false
+  idx.headChunkFile = next.headChunkFile ?? headChunkFile
+  idx.tailChunkFile = next.tailChunkFile ?? tailChunkFile
+  idx.updatedAt = next.updatedAt
+  return true
 }
 
 async function syncChunkIndexScopeIfDrifted(
@@ -1290,8 +1326,7 @@ async function syncChunkIndexScopeIfDrifted(
 
   if (computed.chunkFileCount === 0) {
     if (idx.headChunkFile !== null || idx.tailChunkFile !== null) {
-      await writeChunkIndexHeadTail(conversationId, bp, idx, null, null)
-      return true
+      return writeChunkIndexHeadTail(conversationId, bp, idx, null, null)
     }
     return false
   }
@@ -1303,14 +1338,13 @@ async function syncChunkIndexScopeIfDrifted(
     return false
   }
 
-  await writeChunkIndexHeadTail(
+  return writeChunkIndexHeadTail(
     conversationId,
     bp,
     idx,
     computed.headChunkFile,
     computed.tailChunkFile,
   )
-  return true
 }
 
 async function repairChunkIndexScope(
@@ -1340,24 +1374,32 @@ async function repairChunkIndexScope(
   if (computed.chunkFileCount === 0) {
     const needsClear = idx.headChunkFile !== null || idx.tailChunkFile !== null
     if (needsClear) {
-      await writeChunkIndexHeadTail(conversationId, bp, idx, null, null)
+      const wrote = await writeChunkIndexHeadTail(
+        conversationId,
+        bp,
+        idx,
+        null,
+        null,
+      )
+      return { ok: wrote, ...computed, repaired: wrote }
     }
-    return { ok: true, ...computed, repaired: needsClear }
+    return { ok: true, ...computed, repaired: false }
   }
 
   const needsRepair =
     idx.headChunkFile !== computed.headChunkFile ||
     idx.tailChunkFile !== computed.tailChunkFile
   if (needsRepair) {
-    await writeChunkIndexHeadTail(
+    const wrote = await writeChunkIndexHeadTail(
       conversationId,
       bp,
       idx,
       computed.headChunkFile,
       computed.tailChunkFile,
     )
+    return { ok: wrote, ...computed, repaired: wrote }
   }
-  return { ok: true, ...computed, repaired: needsRepair }
+  return { ok: true, ...computed, repaired: false }
 }
 
 /** 默认 5 分钟内不对同一会话重复全目录扫盘 */
@@ -1420,24 +1462,35 @@ export async function repairConversationChunkIndex(
   const branchPaths = await collectRegisteredBranchPaths(conversationId)
   const scopes = ['', ...branchPaths]
   let mainResult: (ChunkIndexRepairResult & { ok: boolean }) | null = null
+  let firstBroken: (ChunkIndexRepairResult & { ok: boolean }) | null = null
   let branchScopesRepaired = 0
   let anyBroken = false
+  let anyScopeFailed = false
 
   for (const scope of scopes) {
     const result = await repairChunkIndexScope(conversationId, scope)
     if (!scope) mainResult = result
-    if (!result.ok && result.brokenChain) anyBroken = true
+    if (!result.ok) {
+      anyScopeFailed = true
+      if (result.brokenChain) {
+        anyBroken = true
+        if (!firstBroken) firstBroken = result
+      }
+    }
     if (scope && result.repaired) branchScopesRepaired++
   }
 
   if (anyBroken) {
-    return mainResult ?? {
+    return {
+      ...(firstBroken ??
+        mainResult ?? {
+          headChunkFile: null,
+          tailChunkFile: null,
+          repaired: false,
+          chunkFileCount: 0,
+        }),
       ok: false,
-      headChunkFile: null,
-      tailChunkFile: null,
-      repaired: false,
       brokenChain: true,
-      chunkFileCount: 0,
     }
   }
 
@@ -1470,7 +1523,7 @@ export async function repairConversationChunkIndex(
 
   return {
     ...main,
-    ok: true,
+    ok: !anyScopeFailed && branchLabelRepairFailed === 0,
     repaired:
       main.repaired || branchScopesRepaired > 0 || branchLabelsRepaired > 0,
     branchScopesRepaired,

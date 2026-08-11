@@ -99,6 +99,8 @@ export function useCharactersLibrary() {
   const listScrollRef = ref<HTMLElement | null>(null)
   const sentinelRef = ref<HTMLElement | null>(null)
   let io: IntersectionObserver | null = null
+  let listFetchGen = 0
+  let detailFetchGen = 0
 
   const selected = computed(() =>
     items.value.find((x) => x.id === selectedId.value) ?? null,
@@ -198,7 +200,9 @@ export function useCharactersLibrary() {
 
   watch(selectedId, (id) => {
     if (!id) {
+      detailFetchGen++
       detail.value = null
+      detailLoading.value = false
       return
     }
     void loadDetail(id)
@@ -232,13 +236,16 @@ export function useCharactersLibrary() {
       loadingMore.value = true
     }
     errorText.value = ''
+    const gen = ++listFetchGen
     try {
-      const res = await fetch(buildQuery(offset))
+      const res = await apiFetch(buildQuery(offset))
+      if (gen !== listFetchGen) return
       if (!res.ok) {
         errorText.value = t('characters.loadFailed')
         return
       }
       const data = (await res.json()) as ListResponse
+      if (gen !== listFetchGen) return
       total.value = data.total
       if (data.filterCounts) {
         filterCounts.value = data.filterCounts
@@ -256,10 +263,13 @@ export function useCharactersLibrary() {
         selectedId.value = null
       }
     } catch {
+      if (gen !== listFetchGen) return
       errorText.value = t('characters.loadFailed')
     } finally {
-      loading.value = false
-      loadingMore.value = false
+      if (gen === listFetchGen) {
+        loading.value = false
+        loadingMore.value = false
+      }
     }
   }
 
@@ -289,17 +299,20 @@ export function useCharactersLibrary() {
 
   async function loadDetail(id: string) {
     detailLoading.value = true
+    const gen = ++detailFetchGen
     try {
-      const res = await fetch(`/api/characters/${id}`)
+      const res = await apiFetch(`/api/characters/${id}`)
+      if (gen !== detailFetchGen) return
       if (!res.ok) {
         detail.value = null
         return
       }
       detail.value = (await res.json()) as CharacterDoc
     } catch {
+      if (gen !== detailFetchGen) return
       detail.value = null
     } finally {
-      detailLoading.value = false
+      if (gen === detailFetchGen) detailLoading.value = false
     }
   }
 
@@ -554,7 +567,7 @@ export function useCharactersLibrary() {
     if (wasUser === value) return
     previewUserMarkSaving.value = true
     try {
-      const res = await fetch(`/api/characters/${id}`, {
+      const res = await apiFetch(`/api/characters/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isUser: value }),
@@ -627,9 +640,9 @@ export function useCharactersLibrary() {
           const fd = new FormData()
           fd.append('payload', JSON.stringify(payload))
           fd.append('portrait', charPortraitFile.value)
-          res = await fetch('/api/characters', { method: 'POST', body: fd })
+          res = await apiFetch('/api/characters', { method: 'POST', body: fd })
         } else {
-          res = await fetch('/api/characters', {
+          res = await apiFetch('/api/characters', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -648,7 +661,7 @@ export function useCharactersLibrary() {
       } else {
         if (!selectedId.value) return
         const id = selectedId.value
-        const res = await fetch(`/api/characters/${id}`, {
+        const res = await apiFetch(`/api/characters/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ card: cardPayloadFromForm() }),
@@ -662,7 +675,7 @@ export function useCharactersLibrary() {
         if (charPortraitFile.value) {
           const fd = new FormData()
           fd.append('portrait', charPortraitFile.value)
-          const res2 = await fetch(`/api/characters/${id}/portrait`, {
+          const res2 = await apiFetch(`/api/characters/${id}/portrait`, {
             method: 'POST',
             body: fd,
           })
@@ -700,7 +713,7 @@ export function useCharactersLibrary() {
       if (lower.endsWith('.png') || file.type === 'image/png') {
         const fd = new FormData()
         fd.append('file', file)
-        const res = await fetch('/api/characters/import-png', {
+        const res = await apiFetch('/api/characters/import-png', {
           method: 'POST',
           body: fd,
         })
@@ -729,7 +742,7 @@ export function useCharactersLibrary() {
         typeof parsed.card === 'object'
           ? (parsed.card as Record<string, unknown>)
           : parsed
-      const res = await fetch('/api/characters/import', {
+      const res = await apiFetch('/api/characters/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ card: cardPayload }),
@@ -824,7 +837,7 @@ export function useCharactersLibrary() {
   async function confirmDelete() {
     try {
       const ok = await confirmDeleteAction(async (id) => {
-        const res = await fetch(`/api/characters/${id}`, {
+        const res = await apiFetch(`/api/characters/${id}`, {
           method: 'DELETE',
         })
         if (!res.ok) throw new Error(t('characters.deleteFailed'))
@@ -878,6 +891,10 @@ export function useCharactersLibrary() {
     io?.disconnect()
     io = null
     if (searchTimer) clearTimeout(searchTimer)
+    if (charPortraitObjectUrl.value) {
+      URL.revokeObjectURL(charPortraitObjectUrl.value)
+      charPortraitObjectUrl.value = ''
+    }
   })
 
   return {

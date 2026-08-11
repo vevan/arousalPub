@@ -474,6 +474,38 @@ export function useConvBindings() {
     },
   )
 
+  watch(budgetTrimSettings, () => {
+    if (!convBindings.value.budgetTrim.useGlobal) return
+    const global = globalBudgetTrimFromStore()
+    convBindings.value = {
+      ...convBindings.value,
+      budgetTrim: {
+        useGlobal: true,
+        effective: global,
+      },
+    }
+  }, { deep: true })
+
+  watch(
+    [() => conn.activePresetId, () => conn.presets],
+    () => {
+      if (!convBindings.value.chatApi.useGlobal) return
+      const effective = resolveConversationChatDisplay(
+        conn.presets,
+        conn.activePresetId,
+        convBindings.value.chatApi.apiPresetRaw,
+      )
+      convBindings.value = {
+        ...convBindings.value,
+        chatApi: {
+          ...convBindings.value.chatApi,
+          effective,
+        },
+      }
+    },
+    { deep: true },
+  )
+
   return {
     convBindings,
     bindingsFromIndex,

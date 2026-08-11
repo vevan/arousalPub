@@ -68,6 +68,8 @@ export const ApiErrorCodes = {
   embedding_api_embedding_model_string: 'embedding_api_embedding_model_string',
   embedding_provider_invalid: 'embedding_provider_invalid',
   embedding_test_failed: 'embedding_test_failed',
+  embedding_prepare_rate_limited: 'embedding_prepare_rate_limited',
+  builtin_embedding_input_too_large: 'builtin_embedding_input_too_large',
   first_turn_already_saved: 'first_turn_already_saved',
   first_turn_persist_maybe_exists: 'first_turn_persist_maybe_exists',
   first_turn_write_failed: 'first_turn_write_failed',

@@ -1742,6 +1742,8 @@
       "embedding_api_embedding_dimensions_invalid": "embeddingApi.embeddingDimensions 须为数字或 null",
       "embedding_api_embedding_model_string": "embeddingApi.embeddingModel 须为字符串",
       "embedding_test_failed": "Embedding 测试失败",
+      "embedding_prepare_rate_limited": "内置 Embedding 准备请求过于频繁，请稍后再试",
+      "builtin_embedding_input_too_large": "内置 Embedding 输入过长或批次过大",
       "first_turn_already_saved": "首条已落盘",
       "first_turn_persist_maybe_exists": "首条落盘失败（可能已存在）",
       "first_turn_write_failed": "写入对话失败",

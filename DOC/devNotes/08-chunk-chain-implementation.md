@@ -218,7 +218,10 @@ async function splitOversizedTailChunkIfNeeded(conversationId: string): Promise<
 ## 8. 风险与 Syncthing
 
 - **大 JSON 同步**：单块 100 轮仍可能很大；切分后单次同步增量更小。  
-- **半写文件**：写盘继续「整文件 `writeFile`」，避免 Syncthing 读到半截；滚动时先写新块再改旧块 `next`。  
+- **半写文件**：chunk / index 写盘走 **tmp + rename** 原子写（`chat-storage-io.writeJsonFileAtomic`）；读盘对 JSON 撕裂有一次短重试。相对路径经 `resolveConversationChunkFilePath`（`splitChunkStoragePath`）做 containment。  
+- **分支 index 并发**：分支 `index.json` 与根 index 一样走键控串行队列；热路径 RMW 用 `mutateBranchConversationIndex`（锁内重读），仅**新建分支 stub** 可直接 `writeBranchConversationIndex`。  
+- **repair**：`repairConversationChunkIndex` 任一 scope 写失败或链断裂时聚合 `ok: false`（分支断裂不会因主链健康而误报成功）。  
+- **删空 tail**：先校验并加载 `previous`，再 `rm` 空块，避免坏链留下半截状态。  
 - **响应体**：`GET messages` 一次拉全链；数百轮分页与 UI 懒加载见 **`DOC/devNotes/15`**（P0）。  
 
 ---

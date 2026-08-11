@@ -1,7 +1,10 @@
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { getChatsRoot } from './config.js'
-import { normalizeBranchPath } from './chunk-path.js'
+import {
+  normalizeBranchPath,
+  splitChunkStoragePath,
+} from './chunk-path.js'
 import { createKeyedSerialQueue } from './keyed-serial-queue.js'
 import { stripTurnForDisk } from './chat-turn-accessors.js'
 import type { ChunkFile, ConversationIndex } from './chat-turn-types.js'
@@ -93,6 +96,7 @@ async function writeJsonFileAtomic(
 /**
  * Serialize root conversation index.json mutations per conversationId.
  * Queue is not reentrant — use writeConversationIndexUnsafe inside tasks.
+ * Branch indexes use `${conversationId}\0b\0${branchPath}` keys on the same queue.
  */
 const conversationIndexQueue = createKeyedSerialQueue()
 
@@ -101,6 +105,26 @@ export function runConversationIndexTask<T>(
   task: () => Promise<T>,
 ): Promise<T> {
   return conversationIndexQueue.run(conversationId, task)
+}
+
+function branchConversationIndexQueueKey(
+  conversationId: string,
+  branchPath: string,
+): string {
+  return `${conversationId}\0b\0${normalizeBranchPath(branchPath)}`
+}
+
+export function runBranchConversationIndexTask<T>(
+  conversationId: string,
+  branchPath: string,
+  task: () => Promise<T>,
+): Promise<T> {
+  const bp = normalizeBranchPath(branchPath)
+  if (!bp) return runConversationIndexTask(conversationId, task)
+  return conversationIndexQueue.run(
+    branchConversationIndexQueueKey(conversationId, bp),
+    task,
+  )
 }
 
 export async function readConversationIndex(
@@ -173,12 +197,35 @@ export async function readBranchConversationIndex(
 ): Promise<ConversationIndex | null> {
   const bp = normalizeBranchPath(branchPath)
   if (!bp) return readConversationIndex(id)
-  try {
-    const raw = await readFile(branchConversationIndexPath(id, bp), 'utf8')
-    return JSON.parse(raw) as ConversationIndex
-  } catch {
-    return null
+  const filePath = branchConversationIndexPath(id, bp)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const raw = await readFile(filePath, 'utf8')
+      return JSON.parse(raw) as ConversationIndex
+    } catch (e) {
+      const isParse =
+        e instanceof SyntaxError ||
+        (e instanceof Error && e.message.includes('JSON'))
+      if (isParse && attempt === 0) {
+        await new Promise((r) => setTimeout(r, 15))
+        continue
+      }
+      return null
+    }
   }
+  return null
+}
+
+async function writeBranchConversationIndexUnsafe(
+  id: string,
+  branchPath: string,
+  data: ConversationIndex,
+): Promise<void> {
+  const bp = normalizeBranchPath(branchPath)
+  const filePath = branchConversationIndexPath(id, bp)
+  await mkdir(path.dirname(filePath), { recursive: true })
+  const normalized = syncConversationCharacterFields(data)
+  await writeJsonFileAtomic(filePath, normalized)
 }
 
 export async function writeBranchConversationIndex(
@@ -191,10 +238,59 @@ export async function writeBranchConversationIndex(
     await writeConversationIndex(id, data)
     return
   }
-  const filePath = branchConversationIndexPath(id, bp)
-  await mkdir(path.dirname(filePath), { recursive: true })
-  const normalized = syncConversationCharacterFields(data)
-  await writeJsonFileAtomic(filePath, normalized)
+  await runBranchConversationIndexTask(id, bp, () =>
+    writeBranchConversationIndexUnsafe(id, bp, data),
+  )
+}
+
+/**
+ * Read-modify-write under the per-branch index lock (re-read on lock).
+ */
+export async function mutateBranchConversationIndex(
+  conversationId: string,
+  branchPath: string,
+  mutator: (
+    idx: ConversationIndex,
+  ) =>
+    | ConversationIndex
+    | null
+    | Promise<ConversationIndex | null>,
+): Promise<ConversationIndex | null> {
+  const bp = normalizeBranchPath(branchPath)
+  if (!bp) return mutateConversationIndex(conversationId, mutator)
+  return runBranchConversationIndexTask(conversationId, bp, async () => {
+    const idx = await readBranchConversationIndex(conversationId, bp)
+    if (!idx) return null
+    const next = await mutator(idx)
+    if (!next) return null
+    await writeBranchConversationIndexUnsafe(conversationId, bp, next)
+    return next
+  })
+}
+
+function resolveChunkFilePath(
+  conversationId: string,
+  chunkFileName: string,
+): string {
+  // Containment: only allow normalized branchPath + turn-*.json basenames
+  const { branchPath, chunkFileName: base } =
+    splitChunkStoragePath(chunkFileName)
+  const rel = branchPath ? `${branchPath}/${base}` : base
+  const root = path.resolve(conversationDir(conversationId))
+  const filePath = path.resolve(root, rel)
+  const rootPrefix = root + path.sep
+  if (filePath !== root && !filePath.startsWith(rootPrefix)) {
+    throw new Error(`invalid chunk path: ${chunkFileName}`)
+  }
+  return filePath
+}
+
+/** Resolve and validate a chunk relative path under the conversation dir. */
+export function resolveConversationChunkFilePath(
+  conversationId: string,
+  chunkFileName: string,
+): string {
+  return resolveChunkFilePath(conversationId, chunkFileName)
 }
 
 export async function writeChunkFile(
@@ -206,10 +302,8 @@ export async function writeChunkFile(
     ...chunk,
     turns: chunk.turns.map(stripTurnForDisk),
   }
-  const rel = chunkFileName.replace(/\\/g, '/')
-  const filePath = path.join(conversationDir(conversationId), rel)
-  await mkdir(path.dirname(filePath), { recursive: true })
-  await writeFile(filePath, JSON.stringify(clean, null, 2), 'utf8')
+  const filePath = resolveChunkFilePath(conversationId, chunkFileName)
+  await writeJsonFileAtomic(filePath, clean)
 }
 
 /** 记录本会话远期记忆向量索引所用的 embedding 模型与维度 */

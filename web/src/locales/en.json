@@ -1742,6 +1742,8 @@
       "embedding_api_embedding_dimensions_invalid": "embedding api embedding dimensions invalid",
       "embedding_api_embedding_model_string": "embedding api embedding model string",
       "embedding_test_failed": "embedding test failed",
+      "embedding_prepare_rate_limited": "builtin embedding prepare rate limited",
+      "builtin_embedding_input_too_large": "builtin embedding input too large",
       "first_turn_already_saved": "first turn already saved",
       "first_turn_persist_maybe_exists": "first turn persist maybe exists",
       "first_turn_write_failed": "first turn write failed",

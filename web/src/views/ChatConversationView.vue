@@ -15,6 +15,10 @@ import { syncAuditDebugIfNeeded } from '@/composables/chat-session/use-conversat
 import { useConvBindings } from '@/composables/chat-session/use-conv-bindings'
 import { useConversationMedia } from '@/composables/chat-session/use-conversation-media'
 import { useMemoryRebuildOffer } from '@/composables/chat-session/use-memory-rebuild-offer'
+import {
+  MEMORY_REBUILD_INJECT_KEY,
+  useMemoryRebuild,
+} from '@/composables/useMemoryRebuild'
 import { CONVERSATION_BRANCH_KEY } from '@/composables/conversation-branch-context'
 import { useConversationBranches } from '@/composables/useConversationBranches'
 import { bootstrapAppData } from '@/bootstrap/app-data'
@@ -104,6 +108,9 @@ const {
   },
 })
 
+const memoryRebuild = useMemoryRebuild(() => props.conversationId)
+provide(MEMORY_REBUILD_INJECT_KEY, memoryRebuild)
+
 const {
   globalHybridFtsSpec,
   conversationMemoryEmbeddingModel,
@@ -131,6 +138,7 @@ const {
   convBindings,
   hasConversationTurns,
   loading,
+  memoryRebuild,
 })
 
 provide(CHAT_CONVERSATION_ACTIONS_KEY, {

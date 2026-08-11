@@ -3,6 +3,7 @@ import type { ResolvedEmbeddingCredentials } from './embedding-credential-resolv
 import {
   BUILTIN_EMBEDDING_MODEL,
   createBuiltinEmbeddings,
+  mapBuiltinEmbeddingError,
 } from './builtin-embedding.js'
 import {
   assertUpstreamBaseUrlAllowed,
@@ -62,10 +63,7 @@ export async function createEmbeddingWithCredentials(
       if (!vector) return { error: '内置 Embedding 未返回向量' }
       return { vector, model: BUILTIN_EMBEDDING_MODEL }
     } catch (e) {
-      return {
-        error: '内置 Embedding 推理失败',
-        detail: e instanceof Error ? e.message : String(e),
-      }
+      return mapBuiltinEmbeddingError(e)
     }
   }
   const url = buildEmbeddingRequestUrl(creds.baseUrl)

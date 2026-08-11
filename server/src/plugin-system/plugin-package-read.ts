@@ -15,9 +15,10 @@ export async function readPluginPackageFile(
   }
   const clean = relPath.replace(/^\/+/, '').replace(/\.\./g, '')
   if (!clean.startsWith('bundles/')) return null
-  const root = getInstalledPluginDir(id)
-  const full = path.join(root, clean)
-  if (!full.startsWith(root)) return null
+  const root = path.resolve(getInstalledPluginDir(id))
+  const full = path.resolve(root, clean)
+  const rootPrefix = root + path.sep
+  if (full !== root && !full.startsWith(rootPrefix)) return null
   try {
     const body = await readFile(full)
     return { body }

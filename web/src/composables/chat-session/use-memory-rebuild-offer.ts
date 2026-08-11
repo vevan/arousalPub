@@ -1,4 +1,6 @@
-import { useMemoryRebuild } from '@/composables/useMemoryRebuild'
+import {
+  type MemoryRebuildApi,
+} from '@/composables/useMemoryRebuild'
 import {
   formatHybridFtsSpec,
   normalizeHybridFtsSettings,
@@ -14,6 +16,8 @@ export function useMemoryRebuildOffer(opts: {
   convBindings: Ref<ConvContextBindings>
   hasConversationTurns: Ref<boolean>
   loading: Ref<boolean>
+  /** Shared rebuild instance (required — one per chat view). */
+  memoryRebuild: MemoryRebuildApi
 }) {
   const prefStore = usePreferencesStore()
   const {
@@ -40,6 +44,7 @@ export function useMemoryRebuildOffer(opts: {
   const memoryRebuildDialogOpen = ref(false)
   let memoryRebuildDismissKey = ''
 
+  const memoryRebuild = opts.memoryRebuild
   const {
     loading: memoryRebuildLoading,
     error: memoryRebuildError,
@@ -50,7 +55,8 @@ export function useMemoryRebuildOffer(opts: {
     stageLabel: memoryRebuildStageLabel,
     percent: memoryRebuildPercent,
     rebuild: rebuildMemoryIndex,
-  } = useMemoryRebuild(opts.getConversationId)
+    abort: abortMemoryRebuild,
+  } = memoryRebuild
 
   function memoryRebuildDismissToken(
     storedModel: string | null,
@@ -176,6 +182,7 @@ export function useMemoryRebuildOffer(opts: {
       globalHybridFtsSpec.value,
       globalHybridFtsSpec.value,
     )
+    memoryRebuildDialogOpen.value = false
   }
 
   function applyConversationMemoryIndexMeta(index: Record<string, unknown>): void {
@@ -196,8 +203,10 @@ export function useMemoryRebuildOffer(opts: {
   }
 
   function resetMemoryRebuildOffer(): void {
+    abortMemoryRebuild()
     memoryRebuildDismissKey = ''
     memoryRebuildDialogOpen.value = false
+    memoryRebuildError.value = ''
   }
 
   watch(
@@ -223,6 +232,7 @@ export function useMemoryRebuildOffer(opts: {
   )
 
   return {
+    memoryRebuild,
     globalHybridFtsSpec,
     conversationMemoryEmbeddingModel,
     conversationMemoryEmbeddingDimensions,

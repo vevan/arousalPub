@@ -5,7 +5,10 @@ import {
   selectTopAfterVectorKeyBoost,
   vectorRerankCandidateLimit,
 } from './lorebook-vector-key-rerank.js'
-import { createEmbedding } from './embedding-client.js'
+import { createEmbeddingWithCredentials } from './embedding-client.js'
+import { resolveEmbeddingApiCredentials } from './embedding-credential-resolve.js'
+import { embeddingIndexMatchesProvider } from './embedding-profile.js'
+import { readLorebookVectorProfile } from './lorebook-vector-profile.js'
 import { searchLorebookEntryVectors } from './lorebook-vector-store.js'
 import {
   type LorebookSettings,
@@ -214,15 +217,25 @@ async function collectVectorMatches(
   seenEntryKeys: Set<string>,
   conversationId?: string,
 ): Promise<Array<TaggedLoreEntry & { score: number; scoreKind: 'rrf' | 'vector_fallback' }>> {
-  let emb: Awaited<ReturnType<typeof createEmbedding>>
+  const provider = await resolveEmbeddingApiCredentials(conversationId)
+  const compatibleLorebookIds: string[] = []
+  for (const lorebookId of lorebookIds) {
+    const profile = await readLorebookVectorProfile(lorebookId)
+    if (profile && embeddingIndexMatchesProvider(profile, provider)) {
+      compatibleLorebookIds.push(lorebookId)
+    }
+  }
+  if (!compatibleLorebookIds.length) return []
+
+  let emb: Awaited<ReturnType<typeof createEmbeddingWithCredentials>>
   try {
-    emb = await createEmbedding(queryText, conversationId)
+    emb = await createEmbeddingWithCredentials(provider, queryText)
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[lorebook-resolve] createEmbedding failed:', e)
     return []
   }
-  if (!emb) return []
+  if ('error' in emb) return []
 
   type Cand = {
     lorebookId: string
@@ -235,7 +248,7 @@ async function collectVectorMatches(
   const candidateLimit = vectorRerankCandidateLimit(topK)
   const scanLower = queryText.toLowerCase()
 
-  for (const lid of lorebookIds) {
+  for (const lid of compatibleLorebookIds) {
     const lb = byId.get(lid)
     if (!lb) continue
     const excludeEntryIds = new Set<string>()

@@ -13,6 +13,7 @@ import {
   normalizeEmbeddingApiSettings,
   normalizeEmbeddingDimensions,
   type EmbeddingApiSettings,
+  type EmbeddingProvider,
 } from '@/utils/embedding-api-settings'
 import {
   cloneMemorySettings,
@@ -417,6 +418,9 @@ export const usePreferencesStore = defineStore('preferences', () => {
   const budgetTrimSettings = ref<BudgetTrimSettings>(
     cloneBudgetTrimSettings(BUDGET_TRIM_SETTINGS_DEFAULTS),
   )
+  const embeddingProvider = ref<EmbeddingProvider>(
+    EMBEDDING_API_SETTINGS_DEFAULTS.provider,
+  )
   const embeddingBaseUrl = ref(readStoredEmbeddingBaseUrl())
   const embeddingApiKey = ref('')
   const embeddingKeyConfigured = ref(false)
@@ -487,6 +491,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
 
   function buildEmbeddingServerPatch(): Partial<EmbeddingApiSettings> {
     const n = normalizeEmbeddingApiSettings({
+      provider: embeddingProvider.value,
       baseUrl: embeddingBaseUrl.value,
       apiKey: embeddingApiKey.value,
       apiKeyId: embeddingApiKeyId.value,
@@ -494,6 +499,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
       embeddingDimensions: embeddingDimensions.value,
     })
     const patch: Partial<EmbeddingApiSettings> = {
+      provider: n.provider,
       baseUrl: n.baseUrl,
       apiKeyId: embeddingApiKeyId.value,
       embeddingModel: n.embeddingModel,
@@ -508,6 +514,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
   async function flushEmbeddingToServer(): Promise<void> {
     if (!userPreferencesLoaded.value || embeddingPatchInFlight) return
     const n = normalizeEmbeddingApiSettings({
+      provider: embeddingProvider.value,
       baseUrl: embeddingBaseUrl.value,
       apiKey: embeddingApiKey.value,
       apiKeyId: embeddingApiKeyId.value,
@@ -823,6 +830,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
 
   function applyEmbeddingFromServer(raw?: Partial<EmbeddingApiSettings> & { keyConfigured?: boolean }) {
     const n = normalizeEmbeddingApiSettings(raw)
+    embeddingProvider.value = n.provider
     embeddingBaseUrl.value = n.baseUrl
     embeddingApiKey.value = ''
     embeddingApiKeyDirty.value = false
@@ -1317,7 +1325,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
   )
 
   watch(
-    [embeddingApiKeyId, embeddingDimensions],
+    [embeddingProvider, embeddingApiKeyId, embeddingDimensions],
     scheduleEmbeddingPatch,
     { flush: 'post' },
   )
@@ -1631,6 +1639,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     postUserInjectionOrderHostPolicy,
     resetPostUserInjectionOrderHostPolicy,
     patchGlobalPostUserInjectionOrderResetToServer,
+    embeddingProvider,
     embeddingBaseUrl,
     embeddingApiKey,
     embeddingApiKeyId,

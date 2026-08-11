@@ -21,6 +21,10 @@ import { fetchUpstreamModelsList } from '../upstream-models.js'
 import { sanitizeEmbeddingApiForGet } from '../embedding-api-sanitize.js'
 import { verifyPassword } from '../auth-password.js'
 import { getCurrentUserId } from '../user-context.js'
+import {
+  getBuiltinEmbeddingStatus,
+  prepareBuiltinEmbedding,
+} from '../builtin-embedding.js'
 
 interface ModelsListBody {
   baseUrl?: string
@@ -30,6 +34,23 @@ interface ModelsListBody {
 
 
 export function registerSettingsRoutes(app: FastifyInstance): void {
+  app.get('/api/embedding/builtin/status', async () =>
+    getBuiltinEmbeddingStatus(),
+  )
+
+  app.post('/api/embedding/builtin/prepare', async (_request, reply) => {
+    try {
+      await prepareBuiltinEmbedding()
+      return { ok: true as const, ...getBuiltinEmbeddingStatus() }
+    } catch (e) {
+      app.log.error(e)
+      return reply.status(502).send({
+        ok: false as const,
+        ...getBuiltinEmbeddingStatus(),
+      })
+    }
+  })
+
   app.get('/api/user-preferences', async (_request, reply) => {
     try {
       const doc = await readUserPreferencesDocument()
@@ -79,10 +100,12 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
       }
     }
     embeddingApi?: {
+      provider?: 'openai_compatible' | 'builtin'
       baseUrl?: string
       apiKey?: string
       apiKeyId?: string | null
       embeddingModel?: string
+      embeddingDimensions?: number | null
     }
     chunk?: {
       turnsPerFile?: number
@@ -264,6 +287,7 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
         }
         if (hasEmbed) {
           const raw = b.embeddingApi! as {
+            provider?: string
             baseUrl?: string
             apiKey?: string
             apiKeyId?: string | null
@@ -271,12 +295,22 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
             embeddingDimensions?: number | null
           }
           const patch: {
+            provider?: 'openai_compatible' | 'builtin'
             baseUrl?: string
             apiKey?: string
             apiKeyId?: string | null
             embeddingModel?: string
             embeddingDimensions?: number | null
           } = {}
+          if (Object.prototype.hasOwnProperty.call(raw, 'provider')) {
+            if (
+              raw.provider !== 'openai_compatible' &&
+              raw.provider !== 'builtin'
+            ) {
+              return reply.status(400).send({ error: ApiErrorCodes.embedding_provider_invalid })
+            }
+            patch.provider = raw.provider
+          }
           if (Object.prototype.hasOwnProperty.call(raw, 'baseUrl')) {
             if (typeof raw.baseUrl !== 'string') {
               return reply.status(400).send({ error: ApiErrorCodes.embedding_api_base_url_string })
@@ -454,6 +488,7 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
   interface EmbeddingTestBody {
     text?: string
     embeddingApi?: {
+      provider?: 'openai_compatible' | 'builtin'
       baseUrl?: string
       apiKey?: string
       apiKeyId?: string | null
@@ -486,15 +521,21 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
             error: result.error,
             status: result.status,
             detail: result.detail,
-            requestUrl: buildEmbeddingRequestUrl(creds.baseUrl),
+            ...(creds.provider === 'openai_compatible'
+              ? { requestUrl: buildEmbeddingRequestUrl(creds.baseUrl) }
+              : {}),
           })
         }
         return {
           ok: true as const,
+          provider: creds.provider,
           model: result.model,
           dimensions: result.vector.length,
+          profile: creds.embeddingProfile,
           inputText: text,
-          requestUrl: buildEmbeddingRequestUrl(creds.baseUrl),
+          ...(creds.provider === 'openai_compatible'
+            ? { requestUrl: buildEmbeddingRequestUrl(creds.baseUrl) }
+            : {}),
           vector: result.vector,
         }
       } catch (e) {

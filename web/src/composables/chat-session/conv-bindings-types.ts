@@ -9,6 +9,7 @@ import type { HistorySettings } from '@/utils/history-settings'
 import type { KnowledgeSettings } from '@/utils/knowledge-settings'
 import type { LorebookSettings } from '@/utils/lorebook-settings'
 import type { MemorySettings } from '@/utils/memory-settings'
+import type { EmbeddingProvider } from '@/utils/embedding-api-settings'
 
 export interface LorebookContextBinding {
   useGlobal: boolean
@@ -38,7 +39,12 @@ export interface ApiContextBinding {
 
 export interface EmbeddingApiContextBinding {
   useGlobal: boolean
-  effective: { embeddingModel: string; embeddingDimensions: number | null }
+  effective: {
+    provider: EmbeddingProvider
+    embeddingModel: string
+    embeddingDimensions: number | null
+    embeddingProfile: string
+  }
   override?: ConversationEmbeddingApiSettingsOverride
 }
 

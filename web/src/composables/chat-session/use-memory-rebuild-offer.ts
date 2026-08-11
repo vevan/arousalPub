@@ -8,6 +8,7 @@ import { usePreferencesStore } from '@/stores/preferences'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch, type Ref } from 'vue'
 import type { ConvContextBindings } from './conv-bindings-types'
+import { embeddingIndexMatchesIdentity } from '@/utils/embedding-api-settings'
 
 export function useMemoryRebuildOffer(opts: {
   getConversationId: () => string
@@ -35,6 +36,7 @@ export function useMemoryRebuildOffer(opts: {
 
   const conversationMemoryEmbeddingModel = ref<string | null>(null)
   const conversationMemoryEmbeddingDimensions = ref<number | null>(null)
+  const conversationMemoryEmbeddingProfile = ref<string | null>(null)
   const conversationMemoryHybridFtsSpec = ref<string | null>(null)
   const memoryRebuildDialogOpen = ref(false)
   let memoryRebuildDismissKey = ''
@@ -62,10 +64,6 @@ export function useMemoryRebuildOffer(opts: {
     return `${storedModel ?? ''}|${globalModel}|${storedDims ?? ''}|${globalDims ?? ''}|${storedFtsSpec ?? ''}|${globalFtsSpec}`
   }
 
-  function embeddingDimsMatch(a: number | null, b: number | null): boolean {
-    return (a ?? null) === (b ?? null)
-  }
-
   function shouldOfferMemoryRebuild(): boolean {
     if (!opts.hasConversationTurns.value) return false
     if (!opts.convBindings.value.memory.effective.memoryEnabled) return false
@@ -76,9 +74,11 @@ export function useMemoryRebuildOffer(opts: {
     const storedModel = conversationMemoryEmbeddingModel.value
     const storedDims = conversationMemoryEmbeddingDimensions.value
     if (!storedModel) return false
-    const embeddingMatches =
-      storedModel === effectiveEmbedding.embeddingModel &&
-      embeddingDimsMatch(storedDims, effectiveEmbedding.embeddingDimensions)
+    const embeddingMatches = embeddingIndexMatchesIdentity({
+      embeddingProfile: conversationMemoryEmbeddingProfile.value,
+      embeddingModel: storedModel,
+      embeddingDimensions: storedDims,
+    }, effectiveEmbedding)
     const storedFts = conversationMemoryHybridFtsSpec.value
     // 增量索引曾漏写 FTS 戳记：embedding 已对齐且戳记为空时不因 FTS 误报重建
     const ftsMatches = !storedFts?.trim()
@@ -128,6 +128,10 @@ export function useMemoryRebuildOffer(opts: {
     const nextModel = await rebuildMemoryIndex()
     if (!nextModel) return
     conversationMemoryEmbeddingModel.value = nextModel
+    conversationMemoryEmbeddingDimensions.value =
+      opts.convBindings.value.embeddingApi.effective.embeddingDimensions
+    conversationMemoryEmbeddingProfile.value =
+      opts.convBindings.value.embeddingApi.effective.embeddingProfile
     conversationMemoryHybridFtsSpec.value = globalHybridFtsSpec.value
     memoryRebuildDismissKey = memoryRebuildDismissToken(
       nextModel,
@@ -142,7 +146,10 @@ export function useMemoryRebuildOffer(opts: {
 
   function onMemoryRebuiltFromSettings(model: string): void {
     conversationMemoryEmbeddingModel.value = model
-    conversationMemoryEmbeddingDimensions.value = embeddingDimensions.value
+    conversationMemoryEmbeddingDimensions.value =
+      opts.convBindings.value.embeddingApi.effective.embeddingDimensions
+    conversationMemoryEmbeddingProfile.value =
+      opts.convBindings.value.embeddingApi.effective.embeddingProfile
     conversationMemoryHybridFtsSpec.value = globalHybridFtsSpec.value
     memoryRebuildDismissKey = memoryRebuildDismissToken(
       model,
@@ -163,6 +170,9 @@ export function useMemoryRebuildOffer(opts: {
       typeof memDims === 'number' && Number.isFinite(memDims) && memDims > 0
         ? Math.floor(memDims)
         : null
+    const memProfile = index.memoryEmbeddingProfile
+    conversationMemoryEmbeddingProfile.value =
+      typeof memProfile === 'string' && memProfile.trim() ? memProfile.trim() : null
     const memFts = index.memoryHybridFtsProfile
     conversationMemoryHybridFtsSpec.value =
       typeof memFts === 'string' && memFts.trim() ? memFts.trim() : null
@@ -174,7 +184,13 @@ export function useMemoryRebuildOffer(opts: {
   }
 
   watch(
-    [embeddingModel, embeddingDimensions, hybridFtsProfile, hybridFtsDictVariant],
+    [
+      () => opts.convBindings.value.embeddingApi.effective.embeddingProfile,
+      embeddingModel,
+      embeddingDimensions,
+      hybridFtsProfile,
+      hybridFtsDictVariant,
+    ],
     () => {
       if (opts.loading.value) return
       maybePromptMemoryRebuild()
@@ -193,6 +209,7 @@ export function useMemoryRebuildOffer(opts: {
     globalHybridFtsSpec,
     conversationMemoryEmbeddingModel,
     conversationMemoryEmbeddingDimensions,
+    conversationMemoryEmbeddingProfile,
     conversationMemoryHybridFtsSpec,
     memoryRebuildDialogOpen,
     memoryRebuildLoading,

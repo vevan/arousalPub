@@ -1,6 +1,10 @@
 import { resolveUpstreamUrlPolicy } from './config.js'
 import type { ResolvedEmbeddingCredentials } from './embedding-credential-resolve.js'
 import {
+  BUILTIN_EMBEDDING_MODEL,
+  createBuiltinEmbeddings,
+} from './builtin-embedding.js'
+import {
   assertUpstreamBaseUrlAllowed,
   UpstreamUrlBlockedError,
 } from './upstream-url-guard.js'
@@ -51,6 +55,18 @@ export async function createEmbeddingWithCredentials(
   const corpus = text.trim()
   if (!corpus) {
     return { error: '测试文本为空' }
+  }
+  if (creds.provider === 'builtin') {
+    try {
+      const [vector] = await createBuiltinEmbeddings([corpus])
+      if (!vector) return { error: '内置 Embedding 未返回向量' }
+      return { vector, model: BUILTIN_EMBEDDING_MODEL }
+    } catch (e) {
+      return {
+        error: '内置 Embedding 推理失败',
+        detail: e instanceof Error ? e.message : String(e),
+      }
+    }
   }
   const url = buildEmbeddingRequestUrl(creds.baseUrl)
   const headers: Record<string, string> = {

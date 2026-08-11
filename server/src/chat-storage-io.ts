@@ -218,6 +218,7 @@ export async function updateConversationMemoryEmbeddingModel(
   embeddingModel: string,
   embeddingDimensions?: number | null,
   hybridFtsProfile?: string | null,
+  embeddingProfile?: string | null,
 ): Promise<ConversationIndex | null> {
   return mutateConversationIndex(conversationId, (idx) => {
     const model = embeddingModel.trim()
@@ -230,11 +231,16 @@ export async function updateConversationMemoryEmbeddingModel(
       hybridFtsProfile === undefined
         ? idx.memoryHybridFtsProfile ?? null
         : hybridFtsProfile
+    const profile =
+      embeddingProfile === undefined
+        ? idx.memoryEmbeddingProfile ?? null
+        : embeddingProfile
     return {
       ...idx,
       updatedAt: t,
       memoryEmbeddingModel: model || null,
       memoryEmbeddingDimensions: dims,
+      memoryEmbeddingProfile: profile,
       memoryHybridFtsProfile: ftsProfile,
     }
   })

@@ -1,4 +1,4 @@
-import { createEmbedding } from './embedding-client.js'
+import { createEmbeddingWithCredentials } from './embedding-client.js'
 import { readKnowledgeBasesByIds, readKnowledgeChunksDocument } from './knowledge-base-file.js'
 import {
   normalizeKnowledgeSettings,
@@ -7,6 +7,8 @@ import {
 } from './knowledge-settings.js'
 import { readGlobalKnowledgeSettings } from './user-preferences-file.js'
 import { searchKnowledgeChunkVectors } from './knowledge-vector-store.js'
+import { resolveEmbeddingApiCredentials } from './embedding-credential-resolve.js'
+import { embeddingIndexMatchesProvider } from './embedding-profile.js'
 import {
   formatKnowledgeXml,
   knowledgeDocumentDisplayName,
@@ -57,17 +59,29 @@ export async function recallKnowledgeForConversation(params: {
   // 先校验绑定的知识库仍存在，避免为已删除/无效 id 白付一次 embedding
   const kbs = await readKnowledgeBasesByIds(params.knowledgeBaseIds)
   if (!kbs.length) return empty
+  const provider = await resolveEmbeddingApiCredentials(params.conversationId)
+  const compatibleKbs = [] as typeof kbs
+  for (const kb of kbs) {
+    const chunks = await readKnowledgeChunksDocument(kb.id)
+    if (
+      chunks &&
+      embeddingIndexMatchesProvider(chunks, provider)
+    ) {
+      compatibleKbs.push(kb)
+    }
+  }
+  if (!compatibleKbs.length) return empty
 
-  const emb = await createEmbedding(queryText, params.conversationId)
-  if (!emb?.vector.length) return empty
+  const emb = await createEmbeddingWithCredentials(provider, queryText)
+  if ('error' in emb || !emb.vector.length) return empty
 
   const topK =
     typeof params.topK === 'number' && Number.isFinite(params.topK)
       ? Math.max(1, Math.min(64, Math.trunc(params.topK)))
       : settings.topK
 
-  const nameById = new Map(kbs.map((k) => [k.id, k.name]))
-  const aliasByKb = new Map(kbs.map((k) => [k.id, k.fileAliases ?? {}]))
+  const nameById = new Map(compatibleKbs.map((k) => [k.id, k.name]))
+  const aliasByKb = new Map(compatibleKbs.map((k) => [k.id, k.fileAliases ?? {}]))
   const fileNameCache = new Map<string, string>()
 
   async function fileName(kbId: string, fileId: string): Promise<string> {
@@ -85,7 +99,7 @@ export async function recallKnowledgeForConversation(params: {
   }
 
   const merged: KnowledgeHitItem[] = []
-  for (const kb of kbs) {
+  for (const kb of compatibleKbs) {
     const hits = await searchKnowledgeChunkVectors(
       kb.id,
       emb.vector,

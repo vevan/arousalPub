@@ -909,6 +909,17 @@
     },
     "embeddingApiSection": "Embeddings API",
     "embeddingApiSectionHint": "Separate from the chat API; used only for long-term memory indexing and recall.",
+    "embeddingProvider": "Embedding provider",
+    "embeddingProviderOpenAiCompatible": "OpenAI-compatible API",
+    "embeddingProviderBuiltin": "Built-in local model",
+    "embeddingBuiltinDescription": "Uses {model} ({dimensions} dimensions, CPU, q8). The model is downloaded to a local cache on first use; text is not sent to a third party.",
+    "embeddingBuiltinPrepare": "Download and prepare model",
+    "embeddingBuiltinState": {
+      "not_prepared": "Status: not prepared",
+      "preparing": "Status: preparing",
+      "ready": "Status: ready",
+      "error": "Status: preparation failed"
+    },
     "embeddingBaseUrl": "API base URL",
     "embeddingModel": "Embedding model",
     "embeddingModelHint": "e.g. text-embedding-3-small, BAAI/bge-m3 (depends on provider).",

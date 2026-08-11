@@ -1,6 +1,8 @@
-import { createEmbedding } from './embedding-client.js'
 import { embedTextsInBatches, isEmbeddingBatchOk } from './embedding-batch.js'
-import type { ResolvedEmbeddingCredentials } from './embedding-credential-resolve.js'
+import {
+  resolveEmbeddingApiCredentials,
+  type ResolvedEmbeddingCredentials,
+} from './embedding-credential-resolve.js'
 import { createKeyedCoalesceScheduler } from './keyed-serial-queue.js'
 import { readLorebookById } from './lorebook-file.js'
 import type { Lorebook } from './lorebook-types.js'
@@ -13,6 +15,7 @@ import {
   replaceLorebookVectorIndex,
   type LoreEntryVectorRow,
 } from './lorebook-vector-store.js'
+import { writeLorebookVectorProfile } from './lorebook-vector-profile.js'
 
 export interface LorebookVectorReindexStats {
   lorebooksReindexed: number
@@ -133,54 +136,48 @@ async function reindexOneLorebookVector(
     return { indexed: 0 }
   }
   const rows: LoreEntryVectorRow[] = []
-  if (creds) {
-    const items = vectorEntries.map((e) => ({
-      key: e.id,
+  const provider = creds ?? (await resolveEmbeddingApiCredentials())
+  const items = vectorEntries.map((e) => ({
+    key: e.id,
+    text: lorebookEntryEmbeddingCorpus(e),
+  }))
+  let reportedEntries = 0
+  const batch = await embedTextsInBatches(provider, items, {
+    onProgress: (progress) => {
+      const delta = progress.completedItems - reportedEntries
+      reportedEntries = progress.completedItems
+      for (let i = 0; i < delta; i += 1) options?.onEntryDone?.()
+    },
+  })
+  if (!isEmbeddingBatchOk(batch)) {
+    return {
+      error: batch.error,
+      detail: batch.detail,
+      lorebookId: lb.id,
+    }
+  }
+  for (const e of vectorEntries) {
+    const vector = batch.vectors.get(e.id)
+    if (!vector?.length) continue
+    rows.push({
+      entryId: e.id,
+      lorebookId: lb.id,
       text: lorebookEntryEmbeddingCorpus(e),
-    }))
-    let reportedEntries = 0
-    const batch = await embedTextsInBatches(creds, items, {
-      onProgress: (progress) => {
-        const delta = progress.completedItems - reportedEntries
-        reportedEntries = progress.completedItems
-        for (let i = 0; i < delta; i += 1) options?.onEntryDone?.()
-      },
+      vector,
     })
-    if (!isEmbeddingBatchOk(batch)) {
-      return {
-        error: batch.error,
-        detail: batch.detail,
-        lorebookId: lb.id,
-      }
-    }
-    for (const e of vectorEntries) {
-      const vector = batch.vectors.get(e.id)
-      if (!vector?.length) continue
-      rows.push({
-        entryId: e.id,
-        lorebookId: lb.id,
-        text: lorebookEntryEmbeddingCorpus(e),
-        vector,
-      })
-    }
-  } else {
-    for (const e of vectorEntries) {
-      const corpus = lorebookEntryEmbeddingCorpus(e)
-      const emb = await createEmbedding(corpus)
-      if (!emb) continue
-      rows.push({
-        entryId: e.id,
-        lorebookId: lb.id,
-        text: corpus,
-        vector: emb.vector,
-      })
-      options?.onEntryDone?.()
-    }
   }
   if (!rows.length) {
     await deleteLorebookVectorIndex(lb.id)
     return { indexed: 0 }
   }
   await replaceLorebookVectorIndex(lb.id, rows)
+  await writeLorebookVectorProfile({
+    schemaVersion: 1,
+    lorebookId: lb.id,
+    embeddingProfile: provider.embeddingProfile,
+    embeddingModel: batch.model,
+    embeddingDimensions: provider.embeddingDimensions,
+    updatedAt: new Date().toISOString(),
+  })
   return { indexed: rows.length }
 }

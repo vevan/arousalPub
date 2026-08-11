@@ -36,6 +36,8 @@ import {
   type AppThemeMode,
 } from '@/theme/theme-preference'
 import {
+  BUILTIN_EMBEDDING_DIMENSIONS,
+  BUILTIN_EMBEDDING_MODEL,
   normalizeEmbeddingDimensions,
 } from '@/utils/embedding-api-settings'
 import {
@@ -109,6 +111,7 @@ const {
   hybridFtsProfile,
   hybridFtsDictVariant,
   budgetTrimSettings,
+  embeddingProvider,
   embeddingBaseUrl,
   embeddingApiKey,
   embeddingApiKeyId,
@@ -218,6 +221,10 @@ const embeddingApiKeySelectValue = computed<string>({
   },
 })
 const embeddingApiKeyEditable = computed(() => embeddingApiKeyId.value == null)
+const embeddingProviderItems = computed(() => [
+  { value: 'openai_compatible', title: t('settings.embeddingProviderOpenAiCompatible') },
+  { value: 'builtin', title: t('settings.embeddingProviderBuiltin') },
+])
 
 const embeddingDimensionsEditable = computed({
   get: () => embeddingDimensions.value ?? '',
@@ -238,6 +245,31 @@ const embeddingTestText = ref(DEFAULT_EMBEDDING_TEST_TEXT)
 const embeddingTestLoading = ref(false)
 const embeddingTestError = ref<string | null>(null)
 const embeddingTestDetail = ref<string | null>(null)
+type BuiltinEmbeddingStatus = {
+  state: 'not_prepared' | 'preparing' | 'ready' | 'error'
+  model: string
+  dimensions: number
+  dtype: string
+  device: string
+  error?: string
+}
+const builtinEmbeddingStatus = ref<BuiltinEmbeddingStatus | null>(null)
+const builtinEmbeddingPreparing = ref(false)
+
+async function loadBuiltinEmbeddingStatus(): Promise<void> {
+  const res = await apiFetch('/api/embedding/builtin/status')
+  if (res.ok) builtinEmbeddingStatus.value = await res.json() as BuiltinEmbeddingStatus
+}
+
+async function prepareBuiltinModel(): Promise<void> {
+  builtinEmbeddingPreparing.value = true
+  try {
+    const res = await apiFetch('/api/embedding/builtin/prepare', { method: 'POST' })
+    builtinEmbeddingStatus.value = await res.json() as BuiltinEmbeddingStatus
+  } finally {
+    builtinEmbeddingPreparing.value = false
+  }
+}
 
 type BuildInfo = {
   version: string | null
@@ -303,6 +335,7 @@ async function runEmbeddingTest(): Promise<void> {
       body: JSON.stringify({
         text: embeddingTestText.value,
         embeddingApi: {
+          provider: embeddingProvider.value,
           baseUrl: embeddingBaseUrl.value,
           apiKeyId: embeddingApiKeyId.value,
           embeddingModel: embeddingModel.value,
@@ -594,6 +627,7 @@ onMounted(() => {
   if (activeTab.value === 'debug') {
     void loadBuildInfo()
   }
+  void loadBuiltinEmbeddingStatus()
 })
 </script>
 
@@ -1187,7 +1221,19 @@ onMounted(() => {
                   {{ $t('settings.embeddingApiSectionHint') }}
                 </p>
               </header>
-              <v-text-field
+              <v-select
+                v-model="embeddingProvider"
+                :items="embeddingProviderItems"
+                item-title="title"
+                item-value="value"
+                :label="$t('settings.embeddingProvider')"
+                density="comfortable"
+                variant="outlined"
+                hide-details="auto"
+                class="mb-2"
+              />
+              <template v-if="embeddingProvider === 'openai_compatible'">
+                <v-text-field
                 v-model="embeddingBaseUrl"
                 :label="$t('settings.embeddingBaseUrl')"
                 density="comfortable"
@@ -1196,7 +1242,7 @@ onMounted(() => {
                 class="mb-2"
                 @blur="void flushEmbeddingToServer()"
               />
-              <v-select
+                <v-select
                 v-model="embeddingApiKeySelectValue"
                 :items="embeddingApiKeySelectItems"
                 item-title="title"
@@ -1207,7 +1253,7 @@ onMounted(() => {
                 hide-details="auto"
                 class="mb-2"
               />
-              <v-text-field
+                <v-text-field
                 v-model="embeddingApiKey"
                 :label="$t('conn.apiKey')"
                 type="password"
@@ -1222,7 +1268,7 @@ onMounted(() => {
                 @update:model-value="markEmbeddingApiKeyDirty()"
                 @blur="void flushEmbeddingToServer()"
               />
-              <v-text-field
+                <v-text-field
                 v-model="embeddingModel"
                 :label="$t('settings.embeddingModel')"
                 :hint="$t('settings.embeddingModelHint')"
@@ -1233,7 +1279,7 @@ onMounted(() => {
                 class="mb-2"
                 @blur="void flushEmbeddingToServer()"
               />
-              <v-text-field
+                <v-text-field
                 v-model="embeddingDimensionsEditable"
                 type="number"
                 min="1"
@@ -1248,6 +1294,35 @@ onMounted(() => {
                 hide-details="auto"
                 class="mb-2"
               />
+              </template>
+              <v-alert
+                v-else
+                type="info"
+                variant="tonal"
+                density="compact"
+                class="mb-3"
+              >
+                <div>{{ $t('settings.embeddingBuiltinDescription', {
+                  model: BUILTIN_EMBEDDING_MODEL,
+                  dimensions: BUILTIN_EMBEDDING_DIMENSIONS,
+                }) }}</div>
+                <div class="mt-1">
+                  {{ $t(`settings.embeddingBuiltinState.${builtinEmbeddingStatus?.state ?? 'not_prepared'}`) }}
+                </div>
+                <div v-if="builtinEmbeddingStatus?.error" class="mt-1">
+                  {{ builtinEmbeddingStatus.error }}
+                </div>
+                <v-btn
+                  class="mt-2"
+                  size="small"
+                  variant="outlined"
+                  :loading="builtinEmbeddingPreparing"
+                  :disabled="builtinEmbeddingPreparing || builtinEmbeddingStatus?.state === 'ready'"
+                  @click="prepareBuiltinModel"
+                >
+                  {{ $t('settings.embeddingBuiltinPrepare') }}
+                </v-btn>
+              </v-alert>
               <v-text-field
                 v-model="embeddingTestText"
                 :label="$t('settings.embeddingTestText')"
@@ -1299,7 +1374,7 @@ onMounted(() => {
                 <div class="text-body-2 text-medium-emphasis mb-1">
                   {{ $t('settings.embeddingTestDimensions') }}: {{ embeddingTestResult.dimensions }}
                 </div>
-                <div class="text-body-2 text-medium-emphasis mb-2 text-truncate">
+                <div v-if="embeddingTestResult.requestUrl" class="text-body-2 text-medium-emphasis mb-2 text-truncate">
                   {{ $t('settings.embeddingTestRequestUrl') }}: {{ embeddingTestResult.requestUrl }}
                 </div>
                 <div class="text-caption text-medium-emphasis mb-1">

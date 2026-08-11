@@ -63,6 +63,8 @@ export interface ConversationIndex {
   memoryEmbeddingModel?: string | null
   /** 与 memoryEmbeddingModel 一并记录；null 表示索引时未指定 dimensions */
   memoryEmbeddingDimensions?: number | null
+  /** 向量空间完整身份；Provider / revision / dtype / pooling 变化均不兼容。 */
+  memoryEmbeddingProfile?: string | null
   /** 重建记忆索引时使用的 Hybrid FTS 分词 profile */
   memoryHybridFtsProfile?: string | null
   /**

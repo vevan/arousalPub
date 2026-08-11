@@ -46,6 +46,7 @@ import {
 } from '@/utils/memory-settings'
 import { storeToRefs } from 'pinia'
 import { ref, watch } from 'vue'
+import { resolveEmbeddingIdentity } from '@/utils/embedding-api-settings'
 import type {
   ApiContextBinding,
   BudgetTrimContextBinding,
@@ -110,7 +111,11 @@ function emptyConvBindings(): ConvContextBindings {
     },
     embeddingApi: {
       useGlobal: true,
-      effective: { embeddingModel: '', embeddingDimensions: null },
+      effective: resolveEmbeddingIdentity({
+        provider: 'openai_compatible',
+        embeddingModel: '',
+        embeddingDimensions: null,
+      }),
     },
     userName: null,
     userCharacterId: null,
@@ -138,6 +143,7 @@ export function useConvBindings() {
     knowledgeChunkSizeChars,
     knowledgeChunkOverlapChars,
     budgetTrimSettings,
+    embeddingProvider,
     embeddingModel,
     embeddingDimensions,
   } = storeToRefs(prefStore)
@@ -282,10 +288,11 @@ export function useConvBindings() {
   }
 
   function globalEmbeddingFromStore() {
-    return {
+    return resolveEmbeddingIdentity({
+      provider: embeddingProvider.value,
       embeddingModel: embeddingModel.value.trim(),
       embeddingDimensions: embeddingDimensions.value,
-    }
+    })
   }
 
   function chatApiContextFromIndex(idx: Record<string, unknown>): ApiContextBinding {
@@ -305,9 +312,16 @@ export function useConvBindings() {
     const global = globalEmbeddingFromStore()
     const override = readConversationEmbeddingOverride(idx)
     const useGlobal = !hasConversationEmbeddingOverride(override)
+    if (global.provider === 'builtin') {
+      return { useGlobal, effective: global, override }
+    }
+    const resolved = resolveConversationEmbeddingModelSettings(global, override)
     return {
       useGlobal,
-      effective: resolveConversationEmbeddingModelSettings(global, override),
+      effective: resolveEmbeddingIdentity({
+        provider: 'openai_compatible',
+        ...resolved,
+      }),
       override,
     }
   }
@@ -395,6 +409,21 @@ export function useConvBindings() {
         useGlobal: true,
         effective: global,
       },
+    }
+  })
+
+  watch([embeddingProvider, embeddingModel, embeddingDimensions], () => {
+    const current = convBindings.value.embeddingApi
+    const global = globalEmbeddingFromStore()
+    const effective = global.provider === 'builtin'
+      ? global
+      : resolveEmbeddingIdentity({
+          provider: 'openai_compatible',
+          ...resolveConversationEmbeddingModelSettings(global, current.override),
+        })
+    convBindings.value = {
+      ...convBindings.value,
+      embeddingApi: { ...current, effective },
     }
   })
 

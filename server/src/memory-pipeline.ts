@@ -26,6 +26,9 @@ import {
 } from './chunk-chain.js'
 import type { TurnRecord } from './chat-turn-types.js'
 import { buildAllowedBranchPathsForActive } from './chunk-path.js'
+import { readConversationIndex } from './chat-storage.js'
+import { resolveEmbeddingApiCredentials } from './embedding-credential-resolve.js'
+import { embeddingIndexMatchesProvider } from './embedding-profile.js'
 
 export interface MemoryPipelineInput {
   conversationId: string
@@ -176,7 +179,23 @@ export async function runMemoryPipeline(
     recentTurns,
     corpusOptions,
   )
+  let memoryProfileCurrent = false
   if (input.memorySettings.memoryEnabled && userText.length > 0) {
+    const [index, provider] = await Promise.all([
+      readConversationIndex(input.conversationId),
+      resolveEmbeddingApiCredentials(input.conversationId),
+    ])
+    memoryProfileCurrent = Boolean(index && embeddingIndexMatchesProvider({
+      embeddingProfile: index.memoryEmbeddingProfile,
+      embeddingModel: index.memoryEmbeddingModel,
+      embeddingDimensions: index.memoryEmbeddingDimensions,
+    }, provider))
+  }
+  if (
+    input.memorySettings.memoryEnabled &&
+    userText.length > 0 &&
+    memoryProfileCurrent
+  ) {
     const lastAssistant = lastAssistantBeforeExclusive(
       pipelineTurns,
       input.historyBeforeTurnOrdinalExclusive,

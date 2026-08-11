@@ -8,12 +8,12 @@
 
 ## 你需要准备
 
-1. **Node.js 22 或更高**（建议从 [nodejs.org](https://nodejs.org/) 安装 LTS）。
+1. **Node.js 24.14.0 或更高**（建议从 [nodejs.org](https://nodejs.org/) 安装 LTS）。
 2. 现代浏览器（Chrome、Edge、Firefox 等）。
 3. **Git**（用命令行从仓库下载 / 更新时需要；可从 [git-scm.com](https://git-scm.com/) 安装）。
 4. 本项目文件夹（见下方「获取代码」）。
 
-在终端执行 `node -v`，版本号应 ≥ `v22`。若过低，请先升级再继续。可再执行 `git -v`（或 `git --version`）确认 Git 可用。
+在终端执行 `node -v`，版本号应 ≥ `v24.14.0`。若过低，请先升级再继续。可再执行 `git -v`（或 `git --version`）确认 Git 可用。
 
 ---
 

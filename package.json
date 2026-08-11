@@ -6,7 +6,7 @@
     "web"
   ],
   "engines": {
-    "node": ">=22"
+    "node": ">=24.14.0"
   },
   "dependencies": {
     "yaml": "^2.8.0"

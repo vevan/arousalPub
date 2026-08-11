@@ -8,6 +8,7 @@ import {
   resolveCorsOrigins,
   resolveListenHost,
   resolveServerPort,
+  readConfigFile,
 } from './config.js'
 import { isClientIpAllowed } from './client-ip.js'
 import { registerStaticWeb } from './static-web.js'
@@ -31,9 +32,20 @@ import { registerCharactersRoutes } from './routes/characters-routes.js'
 import { registerFilesRoutes } from './routes/files-routes.js'
 import { registerKnowledgeRoutes } from './routes/knowledge-routes.js'
 import { registerPluginsRoutes } from './routes/plugins-routes.js'
+import { configureOutboundProxyFromConfig } from './outbound-proxy.js'
 
 /** 角色卡 PNG 等 multipart 可能超过默认 1MB，需与 @fastify/multipart 的 fileSize 上限一致 */
 const ST_IMPORT_FILE_SIZE_LIMIT = 50 * 1024 * 1024
+
+const outboundProxy = configureOutboundProxyFromConfig(readConfigFile())
+if (outboundProxy.enabled) {
+  // 只记录开关，不记录可能带凭据的代理 URL。
+  // eslint-disable-next-line no-console
+  console.log(
+    `[proxy] enabled (http=${outboundProxy.http}, https=${outboundProxy.https}, noProxy=${outboundProxy.noProxy})`,
+  )
+}
+
 const app = Fastify({
   logger: true,
   bodyLimit: ST_IMPORT_FILE_SIZE_LIMIT,

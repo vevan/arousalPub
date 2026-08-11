@@ -69,7 +69,7 @@ AROUSALPUB_PORT=8080 docker compose up -d --build
 
 镜像内已预编译；升级请重新 `--build` 或换新镜像，容器启动时**不会**替你 `git pull`。
 
-可选环境变量（在 `docker-compose.yml` 的 `environment`）：`JWT_SECRET`、`DATA_DIR`、`PORT` 等。
+可选环境变量（在 `docker-compose.yml` 的 `environment`）：`JWT_SECRET`、`DATA_DIR`、`PORT` 等。Compose 会将项目根目录的 `config.yaml` 只读挂载到容器；后端出站代理由其中的 `enableProxy`、`proxyUrl` 和 `proxyNoProxy` 控制，修改后需重启容器。
 
 ---
 

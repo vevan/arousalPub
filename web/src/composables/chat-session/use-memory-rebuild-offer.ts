@@ -55,22 +55,31 @@ export function useMemoryRebuildOffer(opts: {
 
   function memoryRebuildDismissToken(
     storedModel: string | null,
-    globalModel: string,
+    activeModel: string,
     storedDims: number | null,
-    globalDims: number | null,
+    activeDims: number | null,
+    storedProfile: string | null,
+    activeProfile: string,
     storedFtsSpec: string | null,
     globalFtsSpec: string,
   ): string {
-    return `${storedModel ?? ''}|${globalModel}|${storedDims ?? ''}|${globalDims ?? ''}|${storedFtsSpec ?? ''}|${globalFtsSpec}`
+    return [
+      storedModel ?? '',
+      activeModel,
+      storedDims ?? '',
+      activeDims ?? '',
+      storedProfile ?? '',
+      activeProfile,
+      storedFtsSpec ?? '',
+      globalFtsSpec,
+    ].join('|')
   }
 
   function shouldOfferMemoryRebuild(): boolean {
     if (!opts.hasConversationTurns.value) return false
     if (!opts.convBindings.value.memory.effective.memoryEnabled) return false
-    const globalModel = embeddingModel.value.trim()
-    if (!globalModel) return false
-    const globalDims = embeddingDimensions.value
     const effectiveEmbedding = opts.convBindings.value.embeddingApi.effective
+    if (!effectiveEmbedding.embeddingModel.trim()) return false
     const storedModel = conversationMemoryEmbeddingModel.value
     const storedDims = conversationMemoryEmbeddingDimensions.value
     if (!storedModel) return false
@@ -89,9 +98,11 @@ export function useMemoryRebuildOffer(opts: {
     }
     const token = memoryRebuildDismissToken(
       storedModel,
-      globalModel,
+      effectiveEmbedding.embeddingModel,
       storedDims,
-      globalDims,
+      effectiveEmbedding.embeddingDimensions,
+      conversationMemoryEmbeddingProfile.value,
+      effectiveEmbedding.embeddingProfile,
       conversationMemoryHybridFtsSpec.value,
       globalHybridFtsSpec.value,
     )
@@ -112,11 +123,14 @@ export function useMemoryRebuildOffer(opts: {
   }
 
   function dismissMemoryRebuild(): void {
+    const effectiveEmbedding = opts.convBindings.value.embeddingApi.effective
     memoryRebuildDismissKey = memoryRebuildDismissToken(
       conversationMemoryEmbeddingModel.value,
-      embeddingModel.value.trim(),
+      effectiveEmbedding.embeddingModel,
       conversationMemoryEmbeddingDimensions.value,
-      embeddingDimensions.value,
+      effectiveEmbedding.embeddingDimensions,
+      conversationMemoryEmbeddingProfile.value,
+      effectiveEmbedding.embeddingProfile,
       conversationMemoryHybridFtsSpec.value,
       globalHybridFtsSpec.value,
     )
@@ -135,9 +149,11 @@ export function useMemoryRebuildOffer(opts: {
     conversationMemoryHybridFtsSpec.value = globalHybridFtsSpec.value
     memoryRebuildDismissKey = memoryRebuildDismissToken(
       nextModel,
-      embeddingModel.value.trim(),
-      embeddingDimensions.value,
-      embeddingDimensions.value,
+      opts.convBindings.value.embeddingApi.effective.embeddingModel,
+      opts.convBindings.value.embeddingApi.effective.embeddingDimensions,
+      opts.convBindings.value.embeddingApi.effective.embeddingDimensions,
+      opts.convBindings.value.embeddingApi.effective.embeddingProfile,
+      opts.convBindings.value.embeddingApi.effective.embeddingProfile,
       globalHybridFtsSpec.value,
       globalHybridFtsSpec.value,
     )
@@ -153,9 +169,11 @@ export function useMemoryRebuildOffer(opts: {
     conversationMemoryHybridFtsSpec.value = globalHybridFtsSpec.value
     memoryRebuildDismissKey = memoryRebuildDismissToken(
       model,
-      embeddingModel.value.trim(),
-      embeddingDimensions.value,
-      embeddingDimensions.value,
+      opts.convBindings.value.embeddingApi.effective.embeddingModel,
+      opts.convBindings.value.embeddingApi.effective.embeddingDimensions,
+      opts.convBindings.value.embeddingApi.effective.embeddingDimensions,
+      opts.convBindings.value.embeddingApi.effective.embeddingProfile,
+      opts.convBindings.value.embeddingApi.effective.embeddingProfile,
       globalHybridFtsSpec.value,
       globalHybridFtsSpec.value,
     )

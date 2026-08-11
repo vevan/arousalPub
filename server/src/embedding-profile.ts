@@ -1,7 +1,7 @@
-import { embeddingApiProfile, type ResolvedEmbeddingCredentials } from './embedding-credential-resolve.js'
+import type { ResolvedEmbeddingCredentials } from './embedding-credential-resolve.js'
 
 /**
- * 旧索引仅记录 model/dimensions；只能迁移为 API profile，绝不猜测为 builtin。
+ * 旧索引缺少 API 端点身份，无法证明与当前向量空间兼容。
  */
 export function storedEmbeddingProfile(
   profile: string | null | undefined,
@@ -12,7 +12,7 @@ export function storedEmbeddingProfile(
   if (explicit) return explicit
   const legacyModel = model?.trim()
   if (!legacyModel || legacyModel.startsWith('builtin:')) return null
-  return embeddingApiProfile(legacyModel, dimensions ?? null)
+  return `legacy-api:${legacyModel}:${dimensions ?? 'default'}`
 }
 
 export function embeddingIndexMatchesProvider(

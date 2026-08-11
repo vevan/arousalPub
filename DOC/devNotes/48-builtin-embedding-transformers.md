@@ -213,13 +213,13 @@ type ResolvedEmbeddingProvider =
     }
 ```
 
-`profile` 是索引兼容性的唯一比较键；`model` 和 `dimensions` 继续用于展示及兼容旧字段。
+`profile` 是索引兼容性的唯一比较键；`model` 和 `dimensions` 仅用于展示与诊断。缺少端点指纹 profile 的旧 API 索引无法证明向量空间一致，必须重建，不能只凭同名模型和相同维度继续使用。
 
-API profile 需包含规范化后的 base model 身份、dimensions 和 profile schema 版本，但**绝不能**包含 baseUrl、apiKey 或用户隐私。例如：
+API profile 需包含规范化 API 端点的 64 位不可逆指纹、base model 身份、dimensions 和 profile schema 版本。这样同名模型位于不同服务时不会误用旧索引，同时**绝不**把 baseUrl、apiKey 或用户隐私写入 profile。例如：
 
 ```text
-api:text-embedding-3-small:default:v1
-api:text-embedding-3-small:1536:v1
+api:7d64310894a36c79:text-embedding-3-small:default:v2
+api:7d64310894a36c79:text-embedding-3-small:1536:v2
 ```
 
 ### 5.3 Provider 目录与公共接口

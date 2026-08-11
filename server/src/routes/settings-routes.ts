@@ -493,6 +493,7 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
       apiKey?: string
       apiKeyId?: string | null
       embeddingModel?: string
+      embeddingDimensions?: number | null
     }
   }
 

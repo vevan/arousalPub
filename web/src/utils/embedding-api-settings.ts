@@ -71,9 +71,29 @@ export function normalizeEmbeddingApiSettings(
   }
 }
 
+function embeddingEndpointFingerprint(baseUrl: string): string {
+  let endpoint = baseUrl.trim().replace(/\/+$/, '').replace(/\/embeddings$/i, '')
+  if (!endpoint.endsWith('/v1')) endpoint = `${endpoint}/v1`
+  try {
+    const parsed = new URL(endpoint)
+    parsed.username = ''
+    parsed.password = ''
+    endpoint = parsed.toString()
+  } catch {
+    // Server-side request validation owns invalid URL errors.
+  }
+
+  let hash = 0xcbf29ce484222325n
+  for (const byte of new TextEncoder().encode(endpoint)) {
+    hash ^= BigInt(byte)
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n)
+  }
+  return hash.toString(16).padStart(16, '0')
+}
+
 export function resolveEmbeddingIdentity(settings: Pick<
   EmbeddingApiSettings,
-  'provider' | 'embeddingModel' | 'embeddingDimensions'
+  'provider' | 'baseUrl' | 'embeddingModel' | 'embeddingDimensions'
 >): { provider: EmbeddingProvider; embeddingModel: string; embeddingDimensions: number | null; embeddingProfile: string } {
   if (settings.provider === 'builtin') {
     return {
@@ -89,7 +109,7 @@ export function resolveEmbeddingIdentity(settings: Pick<
     provider: 'openai_compatible',
     embeddingModel: model,
     embeddingDimensions: dimensions,
-    embeddingProfile: `api:${model}:${dimensions ?? 'default'}:v1`,
+    embeddingProfile: `api:${embeddingEndpointFingerprint(settings.baseUrl)}:${model}:${dimensions ?? 'default'}:v2`,
   }
 }
 
@@ -100,7 +120,5 @@ export function embeddingIndexMatchesIdentity(
   if (stored.embeddingProfile?.trim()) {
     return stored.embeddingProfile.trim() === active.embeddingProfile
   }
-  return active.provider === 'openai_compatible' &&
-    stored.embeddingModel === active.embeddingModel &&
-    (stored.embeddingDimensions ?? null) === active.embeddingDimensions
+  return false
 }

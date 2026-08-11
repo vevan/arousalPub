@@ -30,11 +30,26 @@ describe('embedding provider settings', () => {
     assert.equal(settings.provider, EMBEDDING_API_SETTINGS_DEFAULTS.provider)
   })
 
-  it('builds profiles without connection or secret data', () => {
-    assert.equal(
-      embeddingApiProfile('text-embedding-3-small', 1536),
-      'api:text-embedding-3-small:1536:v1',
+  it('separates API vector spaces by endpoint without exposing connection data', () => {
+    const first = embeddingApiProfile(
+      'https://user:secret@one.example/v1',
+      'text-embedding-3-small',
+      1536,
     )
+    const sameEndpoint = embeddingApiProfile(
+      'https://one.example/v1/embeddings',
+      'text-embedding-3-small',
+      1536,
+    )
+    const otherEndpoint = embeddingApiProfile(
+      'https://two.example/v1',
+      'text-embedding-3-small',
+      1536,
+    )
+    assert.equal(first, sameEndpoint)
+    assert.notEqual(first, otherEndpoint)
+    assert.equal(first.includes('one.example'), false)
+    assert.equal(first.includes('secret'), false)
   })
 
   it('resolves builtin to its fixed model contract', async () => {
@@ -63,7 +78,7 @@ describe('embedding provider settings', () => {
     )
   })
 
-  it('migrates legacy model and dimensions only for the matching API profile', async () => {
+  it('requires rebuilding legacy indexes that lack endpoint identity', async () => {
     const api = await resolveEmbeddingApiCredentialsFrom({
       provider: 'openai_compatible',
       embeddingModel: 'legacy-model',
@@ -74,7 +89,7 @@ describe('embedding provider settings', () => {
         embeddingModel: 'legacy-model',
         embeddingDimensions: 768,
       }, api),
-      true,
+      false,
     )
   })
 })

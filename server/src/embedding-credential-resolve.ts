@@ -40,11 +40,33 @@ export type ResolvedEmbeddingCredentials =
   | ResolvedOpenAIEmbeddingCredentials
   | ResolvedBuiltinEmbeddingCredentials
 
+function embeddingEndpointFingerprint(baseUrl: string): string {
+  let endpoint = baseUrl.trim().replace(/\/+$/, '').replace(/\/embeddings$/i, '')
+  if (!endpoint.endsWith('/v1')) endpoint = `${endpoint}/v1`
+  try {
+    const parsed = new URL(endpoint)
+    parsed.username = ''
+    parsed.password = ''
+    endpoint = parsed.toString()
+  } catch {
+    // URL validation happens before requests. Keep profile generation total so
+    // settings can still be normalized and reported to the UI.
+  }
+
+  let hash = 0xcbf29ce484222325n
+  for (const byte of new TextEncoder().encode(endpoint)) {
+    hash ^= BigInt(byte)
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n)
+  }
+  return hash.toString(16).padStart(16, '0')
+}
+
 export function embeddingApiProfile(
+  baseUrl: string,
   model: string,
   dimensions: number | null,
 ): string {
-  return `api:${model.trim()}:${dimensions ?? 'default'}:v1`
+  return `api:${embeddingEndpointFingerprint(baseUrl)}:${model.trim()}:${dimensions ?? 'default'}:v2`
 }
 
 export async function resolveApiKeyFromEmbeddingSettings(
@@ -81,6 +103,7 @@ async function settingsToCredentials(
     embeddingModel: settings.embeddingModel,
     embeddingDimensions: settings.embeddingDimensions,
     embeddingProfile: embeddingApiProfile(
+      settings.baseUrl,
       settings.embeddingModel,
       settings.embeddingDimensions,
     ),

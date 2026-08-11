@@ -113,6 +113,7 @@ function emptyConvBindings(): ConvContextBindings {
       useGlobal: true,
       effective: resolveEmbeddingIdentity({
         provider: 'openai_compatible',
+        baseUrl: '',
         embeddingModel: '',
         embeddingDimensions: null,
       }),
@@ -144,6 +145,7 @@ export function useConvBindings() {
     knowledgeChunkOverlapChars,
     budgetTrimSettings,
     embeddingProvider,
+    embeddingBaseUrl,
     embeddingModel,
     embeddingDimensions,
   } = storeToRefs(prefStore)
@@ -290,6 +292,7 @@ export function useConvBindings() {
   function globalEmbeddingFromStore() {
     return resolveEmbeddingIdentity({
       provider: embeddingProvider.value,
+      baseUrl: embeddingBaseUrl.value,
       embeddingModel: embeddingModel.value.trim(),
       embeddingDimensions: embeddingDimensions.value,
     })
@@ -320,6 +323,7 @@ export function useConvBindings() {
       useGlobal,
       effective: resolveEmbeddingIdentity({
         provider: 'openai_compatible',
+        baseUrl: embeddingBaseUrl.value,
         ...resolved,
       }),
       override,
@@ -412,13 +416,14 @@ export function useConvBindings() {
     }
   })
 
-  watch([embeddingProvider, embeddingModel, embeddingDimensions], () => {
+  watch([embeddingProvider, embeddingBaseUrl, embeddingModel, embeddingDimensions], () => {
     const current = convBindings.value.embeddingApi
     const global = globalEmbeddingFromStore()
     const effective = global.provider === 'builtin'
       ? global
       : resolveEmbeddingIdentity({
           provider: 'openai_compatible',
+          baseUrl: embeddingBaseUrl.value,
           ...resolveConversationEmbeddingModelSettings(global, current.override),
         })
     convBindings.value = {

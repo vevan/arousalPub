@@ -1,4 +1,4 @@
-# Codex 项目规则
+# 项目规则
 
 本文件适用于整个仓库。带路径条件的章节仅在编辑对应文件时适用。用户在当前任务中的明确要求优先。
 
@@ -102,7 +102,7 @@
 
 项目使用 Composition API（`legacy: false`）。宿主文案在 `web/src/locales/zh.json` 和 `en.json`；插件文案合并到 `plugins.{pluginId}`。
 
-Message Format 中 `{` `}` `@` `$` `|` 有特殊含义：
+Message Format 中 `{` `}` `@` `$` `|` 有特殊含义。直接写入本应字面显示的特殊字符，会导致 `Message compilation error`，并可能连带使 `$t()` 组件或弹窗渲染失败。
 
 | 用途 | 界面显示 | JSON 写法 |
 |------|------|------|
@@ -118,8 +118,51 @@ Message Format 中 `{` `}` `@` `$` `|` 有特殊含义：
 - 包含 `<history>`、`{` 等且无插值的插件文案，使用 `readPluginLocaleMessage` / `translatePluginI18nKey`，避免 `$t` 误解析。
 - 服务端群聊说明、提示词预设、角色卡正文不经 i18n，保持真实 `{{user}}` / `[NEXT@]`，不做 locales 转义。
 
-详细对照表见 `cursor.md` 的“易错”章节。修改 locales 后可执行：
+### i18n 文案速查
+
+先分清两类花括号：i18n 插值保留 `{n}` 并通过 `$t('key', { n })` 传参；提示词宏等字面量则必须逐个转义为 `\\{\\{user\\}\\}`。常见写法如下：
+
+| 界面要显示 | 推荐 JSON 写法 | 备注 |
+|------|----------------|------|
+| `{{user}}`、`{{char}}` 等宏 | `\\{\\{user\\}\\}` | 双花括号宏一律如此 |
+| `@` | `{'@'}` 或 `\\@` | 群聊 `/{'@'}`、`[NEXT{'@'}]` 已采用前者 |
+| `/@` 提及语法 | `/{'@'}` | |
+| `[NEXT@]` | `[NEXT{'@'}]` | |
+| `<memory>` 等 XML 标签 | `{'<'}memory{'>'}` | |
+| 反斜杠加字母 `\\n` | `\\n` | 说明“换行符”时使用 |
+| 字面量 `{`、`}` | `\\{`、`\\}` | Vue i18n v11.3+ 转义序列 |
+| 字面量 `\\|` | `\\|` | 管道符 |
+| 字面量 `$`，如 `$1`、`$&` | `{'$'}1` 或经验证的 `\\$` | 新增文案必须验证 |
+
+可混用两种等价手段：JSON 转义序列（`\\{`、`\\}`、`\\@`、`\\|`、`\\\\`），以及 Literal interpolation（`{'@'}`、`{'<'}memory{'>'}`）。本仓库以转义序列写宏、以 Literal interpolation 写 `@`、`<`、`>` 为主。示例：
+
+```json
+"continueAssembleInstructionHint": "支持 \\{\\{user\\}\\} 等宏。",
+"modeNextAt": "LLM [NEXT{'@'}]",
+"atNameUnmatched": "请检查 /{'@'} 后的名字…",
+"memorySectionHint": "…以 {'<'}memory{'>'} 注入。"
+```
+
+Vue 模板中的直接中文不经过 i18n 编译，无需上述转义。完整实现说明见 `DOC/devNotes/03-实现细节.md` §9.5。修改 locales 后可执行：
 
 ```bash
 node --input-type=module -e "import { createI18n } from 'vue-i18n'; import zh from './web/src/locales/zh.json' with { type: 'json' }; createI18n({ legacy: false, locale: 'zh', messages: { zh } }); console.log('zh ok');"
 ```
+
+## 项目概况与文档索引
+
+- 类 SillyTavern 的现代化产品，已脱离 MVP。
+- 技术栈：Vue 3、Pinia、Vuetify；Fastify；宏和组装仅在服务端执行；数据以 `data/{userId}/` 下的 JSON 与 chunk 存储。
+- 核心能力：对话、角色、提示词、资料库、Lance turn memory、SSE 与插件系统。
+
+主文档索引为 `DOC/devNotes/README.md`：
+
+| 常用主题 | 路径 |
+|------|------|
+| 实现细节 | `DOC/devNotes/03-实现细节.md` |
+| 工作交接 | `DOC/devNotes/06-工作交接.md` |
+| 待办 | `DOC/devNotes/04-TODO.md` |
+| 安全与 API Key | `DOC/devNotes/25-security-deployment.md` |
+| 插件设计 | `DOC/devNotes/12-plugin-plot-summary.md` |
+| 数据目录 | `data/README.md`、`data/README.zh.md` |
+| 启动 | 根目录 `README.md` |

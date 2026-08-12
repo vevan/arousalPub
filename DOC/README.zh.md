@@ -241,7 +241,7 @@ API 密钥保存在本机数据目录，不会写入浏览器公开存储。
 
 ## 开发者文档
 
-架构、接口与实现细节见 **`DOC/devNotes/`** 目录；项目索引见 [`cursor.md`](../cursor.md)。新手教程：[中文](manual/CN/00-menu.md) · [English](manual/EN/00-menu.md)。文档总览见 [`DOC/README.md`](README.md)。
+架构、接口与实现细节见 **`DOC/devNotes/`** 目录；项目规则与索引见 [`AGENTS.md`](../AGENTS.md)。新手教程：[中文](manual/CN/00-menu.md) · [English](manual/EN/00-menu.md)。文档总览见 [`DOC/README.md`](README.md)。
 
 开发模式：
 

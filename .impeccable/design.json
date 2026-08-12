@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-12T00:00:00+08:00",
+  "title": "Design System: Arousal Pub",
+  "extensions": {
+    "colorMeta": {
+      "background": { "role": "neutral", "displayName": "Warm Ink", "canonical": "oklch(0.152 0.0083 68)", "tonalRamp": ["oklch(0.15 0.008 68)", "oklch(0.25 0.009 68)", "oklch(0.35 0.01 68)", "oklch(0.45 0.011 68)", "oklch(0.55 0.012 68)", "oklch(0.65 0.012 68)", "oklch(0.78 0.011 68)", "oklch(0.95 0.008 68)"] },
+      "primary": { "role": "primary", "displayName": "Hearth Orange", "canonical": "oklch(0.66 0.16 45)", "tonalRamp": ["oklch(0.15 0.16 45)", "oklch(0.25 0.16 45)", "oklch(0.35 0.16 45)", "oklch(0.45 0.16 45)", "oklch(0.55 0.16 45)", "oklch(0.66 0.16 45)", "oklch(0.78 0.13 45)", "oklch(0.95 0.05 45)"] },
+      "secondary": { "role": "secondary", "displayName": "Aged Brass", "canonical": "oklch(0.65 0.07 75)", "tonalRamp": ["oklch(0.15 0.07 75)", "oklch(0.25 0.07 75)", "oklch(0.35 0.07 75)", "oklch(0.45 0.07 75)", "oklch(0.55 0.07 75)", "oklch(0.65 0.07 75)", "oklch(0.78 0.06 75)", "oklch(0.95 0.02 75)"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Literary Display", "purpose": "Page and library landmarks only." },
+      "body": { "displayName": "Operational Sans", "purpose": "Default controls, navigation, and application copy." },
+      "mono": { "displayName": "Technical Mono", "purpose": "Keyboard hints, code, identifiers, and terse metadata." }
+    },
+    "shadows": [
+      { "name": "floating-window", "value": "0 1rem 2.5rem rgba(0, 0, 0, 0.3)", "purpose": "Independent plugin windows and other transient elevated layers." }
+    ],
+    "motion": [
+      { "name": "compact-state", "value": "0.12s ease", "purpose": "Close feedback for quiet hover and focus changes." }
+    ],
+    "breakpoints": [
+      { "name": "narrow", "value": "40rem" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The clear next action in a compact workspace.",
+      "html": "<button class=\"ds-btn-primary\">Continue</button>",
+      "css": ".ds-btn-primary { border: 0; border-radius: 0.25rem; background: #d9602e; color: #f4ecd8; padding: 0.5rem 0.75rem; font: 600 0.8125rem Inter, system-ui, sans-serif; cursor: pointer; transition: background 0.12s ease; } .ds-btn-primary:hover { background: #ae3e1f; } .ds-btn-primary:focus-visible { outline: 0.125rem solid rgba(217, 96, 46, 0.7); outline-offset: 0.125rem; }"
+    },
+    {
+      "name": "Quiet Field",
+      "kind": "input",
+      "refersTo": "input-surface",
+      "description": "A compact operational text field for search and settings.",
+      "html": "<input class=\"ds-input\" placeholder=\"Search\" />",
+      "css": ".ds-input { width: 100%; border: 0.0625rem solid rgba(244, 236, 216, 0.12); border-radius: 0.25rem; background: #1c1813; color: #f4ecd8; padding: 0.5rem 0.625rem; font: 0.875rem Inter, system-ui, sans-serif; } .ds-input:focus { outline: 0.125rem solid rgba(217, 96, 46, 0.55); outline-offset: 0.125rem; border-color: rgba(217, 96, 46, 0.55); } .ds-input::placeholder { color: rgba(244, 236, 216, 0.45); }"
+    },
+    {
+      "name": "Rail Tab",
+      "kind": "nav",
+      "refersTo": "panel-surface",
+      "description": "An icon-led dock entry with a reserved active state.",
+      "html": "<button class=\"ds-rail-tab\" aria-label=\"Plugin panel\">▣</button>",
+      "css": ".ds-rail-tab { width: 2.25rem; height: 2.25rem; border: 0; border-radius: 0.25rem; background: transparent; color: rgba(244, 236, 216, 0.65); font: 1rem Inter, system-ui, sans-serif; cursor: pointer; } .ds-rail-tab:hover { background: rgba(244, 236, 216, 0.08); color: #f4ecd8; } .ds-rail-tab:focus-visible { outline: 0.125rem solid rgba(217, 96, 46, 0.55); outline-offset: 0.125rem; }"
+    },
+    {
+      "name": "Plugin Floating Window",
+      "kind": "custom",
+      "refersTo": "panel-surface",
+      "description": "A movable, resizable host for plugin content.",
+      "html": "<section class=\"ds-floating\"><header class=\"ds-floating-title\">Plugin panel <button class=\"ds-menu\">•••</button></header><div class=\"ds-floating-content\">Plugin content</div></section>",
+      "css": ".ds-floating { width: 22.5rem; overflow: hidden; border: 0.0625rem solid rgba(244, 236, 216, 0.16); border-radius: 0.25rem; background: #15110d; color: #f4ecd8; box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.3); font: 0.8125rem Inter, system-ui, sans-serif; } .ds-floating-title { display: flex; justify-content: space-between; align-items: center; min-height: 2.5rem; padding-left: 0.75rem; border-bottom: 0.0625rem solid rgba(244, 236, 216, 0.1); background: rgba(36, 31, 24, 0.72); font-weight: 600; } .ds-menu { border: 0; background: transparent; color: #f4ecd8; padding: 0.5rem; cursor: pointer; } .ds-menu:focus-visible { outline: 0.125rem solid rgba(217, 96, 46, 0.55); } .ds-floating-content { min-height: 10rem; padding: 0.75rem; }"
+    },
+    {
+      "name": "Keyboard Hint",
+      "kind": "chip",
+      "refersTo": "input-surface",
+      "description": "Small monospace keycap for shortcut guidance.",
+      "html": "<kbd class=\"ds-kbd\">Ctrl+Enter</kbd>",
+      "css": ".ds-kbd { display: inline-block; border: 0.0625rem solid rgba(244, 236, 216, 0.12); border-radius: 0.1875rem; background: #1c1813; color: rgba(244, 236, 216, 0.7); padding: 0.0625em 0.3125em; font: 500 0.78em Geist Mono, ui-monospace, monospace; line-height: 1; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Fireside Workbench",
+    "overview": "Arousal Pub is a dense creation workspace, not a generic dashboard. The default dark theme combines warm ink-black surfaces, parchment-like text, and a restrained hearth-orange accent. It should feel deliberate and literary at the level of reading, but quick and precise at the level of controls.",
+    "keyCharacteristics": ["Warm, low-chroma tonal layers establish hierarchy before shadows do.", "Serif is reserved for titles and expressive reading landmarks; system-like sans serif carries all operations.", "Orange communicates current selection, primary action, and keyboard focus, never decoration.", "Dense layouts remain predictable across chat, libraries, settings, docks, and floating plugin panels."],
+    "rules": [
+      { "name": "The Ember Rule", "body": "Primary orange appears only where an element is actionable, focused, selected, or actively progressing. A screen without an active task should remain predominantly neutral.", "section": "colors" },
+      { "name": "The Serif Boundary Rule", "body": "Never use the display face for buttons, form controls, settings labels, or dense data. Serif signals a reading landmark, not an interaction target.", "section": "typography" },
+      { "name": "The Quiet Surface Rule", "body": "Resting panels use tonal separation and a 1px translucent border. Do not add cards inside cards, heavy drop shadows, glass blur, or colored side stripes.", "section": "elevation" }
+    ],
+    "dos": ["Do build surfaces from the existing warm Vuetify theme roles and CSS variables.", "Do use the primary color for focus, selection, and the clear next action.", "Do use 40rem as the structural narrow-screen breakpoint for rails, dialogs, and floating surfaces."],
+    "donts": ["Don't introduce cool blue-gray neutrals, pure black, or a second unrelated accent palette. Use the existing warm light-theme roles instead of adding arbitrary white surfaces.", "Don't use gradient text, decorative glassmorphism, or colored side-stripe borders wider than 1px.", "Don't let fixed or floating elements create document-level scrolling; the application shell stays bounded and scroll ownership belongs to the content region."]
+  }
+}

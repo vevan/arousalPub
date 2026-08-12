@@ -5,20 +5,20 @@ import {
   sanitizePluginPanelHtmlInteractive,
 } from '@/plugins/plugin-panel-sanitize'
 
-export type PluginPanelPlacement = 'leftRail' | 'rightRail'
-
-/** vue-router `route.name` values plugins may target */
-export type PluginPanelRouteName = 'home' | 'chat'
+export type PluginPanelPlacement = 'leftRail' | 'rightRail' | 'floating'
+export type PluginPanelRailPlacement = Exclude<PluginPanelPlacement, 'floating'>
+/** Plugins may opt into any named application route. */
+export type PluginPanelRouteName = string
 
 export const DEFAULT_PLUGIN_PANEL_ROUTES: PluginPanelRouteName[] = ['chat']
 
 export interface PluginPanelRegisterOptions {
-  placement: PluginPanelPlacement
+  placement: PluginPanelRailPlacement
   pluginId: string
   tabIcon: string
   tabLabelKey: string
   interactive?: boolean
-  /** Omit → `['chat']` only */
+  /** Omit → `['chat']` only. */
   routes?: PluginPanelRouteName[]
 }
 
@@ -39,7 +39,7 @@ type PanelEventHandlers = {
 }
 
 export interface PluginPanelEntry {
-  placement: PluginPanelPlacement
+  defaultPlacement: PluginPanelRailPlacement
   pluginId: string
   tabIcon: string
   tabLabelKey: string
@@ -49,14 +49,29 @@ export interface PluginPanelEntry {
   revision: number
 }
 
-export const PLUGIN_PANEL_HIDDEN_STORAGE_KEY = 'arousal-plugin-panel-hidden'
+export interface FloatingPanelPosition {
+  x: number
+  y: number
+  z: number
+  width?: number
+  height?: number
+}
 
-const DEFAULT_PLUGIN_PANEL_HIDDEN: Record<PluginPanelPlacement, boolean> = {
+export interface PluginPanelLayout {
+  placement: PluginPanelPlacement
+  hidden: boolean
+  floating?: FloatingPanelPosition
+}
+
+export const PLUGIN_PANEL_HIDDEN_STORAGE_KEY = 'arousal-plugin-panel-hidden'
+export const PLUGIN_PANEL_LAYOUT_STORAGE_KEY = 'arousal-plugin-panel-layouts'
+
+const DEFAULT_PLUGIN_PANEL_HIDDEN: Record<PluginPanelRailPlacement, boolean> = {
   leftRail: true,
   rightRail: true,
 }
 
-function readPersistedPluginPanelHidden(): Record<PluginPanelPlacement, boolean> {
+function readPersistedPluginPanelHidden(): Record<PluginPanelRailPlacement, boolean> {
   try {
     const raw = localStorage.getItem(PLUGIN_PANEL_HIDDEN_STORAGE_KEY)
     if (!raw) return { ...DEFAULT_PLUGIN_PANEL_HIDDEN }
@@ -64,15 +79,15 @@ function readPersistedPluginPanelHidden(): Record<PluginPanelPlacement, boolean>
     if (!parsed || typeof parsed !== 'object') {
       return { ...DEFAULT_PLUGIN_PANEL_HIDDEN }
     }
-    const o = parsed as Record<string, unknown>
+    const value = parsed as Record<string, unknown>
     return {
       leftRail:
-        typeof o.leftRail === 'boolean'
-          ? o.leftRail
+        typeof value.leftRail === 'boolean'
+          ? value.leftRail
           : DEFAULT_PLUGIN_PANEL_HIDDEN.leftRail,
       rightRail:
-        typeof o.rightRail === 'boolean'
-          ? o.rightRail
+        typeof value.rightRail === 'boolean'
+          ? value.rightRail
           : DEFAULT_PLUGIN_PANEL_HIDDEN.rightRail,
     }
   } catch {
@@ -81,7 +96,7 @@ function readPersistedPluginPanelHidden(): Record<PluginPanelPlacement, boolean>
 }
 
 function persistPluginPanelHidden(
-  state: Record<PluginPanelPlacement, boolean>,
+  state: Record<PluginPanelRailPlacement, boolean>,
 ): void {
   try {
     localStorage.setItem(PLUGIN_PANEL_HIDDEN_STORAGE_KEY, JSON.stringify(state))
@@ -90,10 +105,66 @@ function persistPluginPanelHidden(
   }
 }
 
-export const pluginPanelHiddenState = ref<Record<PluginPanelPlacement, boolean>>(
+function isFloatingPosition(value: unknown): value is FloatingPanelPosition {
+  if (!value || typeof value !== 'object') return false
+  const position = value as Record<string, unknown>
+  if (!['x', 'y', 'z'].every((key) =>
+    typeof position[key] === 'number' && Number.isFinite(position[key]),
+  )) return false
+  return ['width', 'height'].every((key) =>
+    position[key] === undefined || (
+      typeof position[key] === 'number' &&
+      Number.isFinite(position[key]) &&
+      position[key] > 0
+    ),
+  )
+}
+
+function isPanelLayout(value: unknown): value is PluginPanelLayout {
+  if (!value || typeof value !== 'object') return false
+  const layout = value as Record<string, unknown>
+  if (
+    layout.placement !== 'leftRail' &&
+    layout.placement !== 'rightRail' &&
+    layout.placement !== 'floating'
+  ) {
+    return false
+  }
+  if (typeof layout.hidden !== 'boolean') return false
+  return layout.floating === undefined || isFloatingPosition(layout.floating)
+}
+
+function readPersistedPanelLayouts(): Record<string, PluginPanelLayout> {
+  try {
+    const raw = localStorage.getItem(PLUGIN_PANEL_LAYOUT_STORAGE_KEY)
+    if (!raw) return {}
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return {}
+    const layouts: Record<string, PluginPanelLayout> = {}
+    for (const [pluginId, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (isPanelLayout(value)) layouts[pluginId] = value
+    }
+    return layouts
+  } catch {
+    return {}
+  }
+}
+
+function persistPanelLayouts(layouts: Record<string, PluginPanelLayout>): void {
+  try {
+    localStorage.setItem(PLUGIN_PANEL_LAYOUT_STORAGE_KEY, JSON.stringify(layouts))
+  } catch {
+    /* private mode / disabled storage */
+  }
+}
+
+export const pluginPanelHiddenState = ref<Record<PluginPanelRailPlacement, boolean>>(
   readPersistedPluginPanelHidden(),
 )
-export const pluginPanelActiveTabState = ref<Record<PluginPanelPlacement, string | null>>({
+export const pluginPanelLayoutState = ref<Record<string, PluginPanelLayout>>(
+  readPersistedPanelLayouts(),
+)
+export const pluginPanelActiveTabState = ref<Record<PluginPanelRailPlacement, string | null>>({
   leftRail: null,
   rightRail: null,
 })
@@ -102,15 +173,55 @@ export const pluginPanelRevision = ref(0)
 const panels = new Map<string, PluginPanelEntry>()
 const eventHandlers = new Map<string, PanelEventHandlers>()
 
-function panelKey(placement: PluginPanelPlacement, pluginId: string): string {
-  return `${placement}::${pluginId}`
-}
-
 function normalizePanelRoutes(
   routes?: PluginPanelRouteName[],
 ): PluginPanelRouteName[] {
   if (!routes?.length) return [...DEFAULT_PLUGIN_PANEL_ROUTES]
-  return routes
+  return routes.filter((route): route is string => typeof route === 'string' && route.trim().length > 0)
+}
+
+function defaultFloatingPosition(): FloatingPanelPosition {
+  const offset = Object.values(pluginPanelLayoutState.value).filter(
+    (layout) => layout.placement === 'floating' && !layout.hidden,
+  ).length
+  return {
+    x: 72 + offset * 28,
+    y: 96 + offset * 28,
+    z: getNextFloatingPanelZ(),
+  }
+}
+
+function getNextFloatingPanelZ(): number {
+  return Math.max(
+    100,
+    ...Object.values(pluginPanelLayoutState.value)
+      .filter((layout) => layout.placement === 'floating')
+      .map((layout) => layout.floating?.z ?? 100),
+  ) + 1
+}
+
+function ensurePanelLayout(entry: PluginPanelEntry): PluginPanelLayout {
+  const existing = pluginPanelLayoutState.value[entry.pluginId]
+  if (existing) return existing
+  const layout: PluginPanelLayout = {
+    placement: entry.defaultPlacement,
+    hidden: false,
+  }
+  pluginPanelLayoutState.value = {
+    ...pluginPanelLayoutState.value,
+    [entry.pluginId]: layout,
+  }
+  persistPanelLayouts(pluginPanelLayoutState.value)
+  return layout
+}
+
+function updatePanelLayout(pluginId: string, layout: PluginPanelLayout): void {
+  pluginPanelLayoutState.value = {
+    ...pluginPanelLayoutState.value,
+    [pluginId]: layout,
+  }
+  persistPanelLayouts(pluginPanelLayoutState.value)
+  pluginPanelRevision.value += 1
 }
 
 export function isPanelVisibleOnRoute(
@@ -118,72 +229,102 @@ export function isPanelVisibleOnRoute(
   routeName: string | null | undefined,
 ): boolean {
   if (!routeName) return false
-  return entry.routes.includes(routeName as PluginPanelRouteName)
+  return entry.routes.includes(routeName)
+}
+
+export function getPluginPanelLayout(pluginId: string): PluginPanelLayout | null {
+  const entry = panels.get(pluginId.trim())
+  if (!entry) return null
+  return ensurePanelLayout(entry)
+}
+
+export function getPluginPanelPlacement(pluginId: string): PluginPanelPlacement | null {
+  return getPluginPanelLayout(pluginId)?.placement ?? null
 }
 
 export function getRegisteredPanels(
-  placement: PluginPanelPlacement,
+  placement?: PluginPanelPlacement,
 ): PluginPanelEntry[] {
-  return [...panels.values()].filter((p) => p.placement === placement)
+  return [...panels.values()].filter((entry) => {
+    if (!placement) return true
+    return ensurePanelLayout(entry).placement === placement
+  })
 }
 
 export function getRoutablePanels(
   placement: PluginPanelPlacement,
   routeName: string | null | undefined,
 ): PluginPanelEntry[] {
-  return getRegisteredPanels(placement).filter((p) =>
-    isPanelVisibleOnRoute(p, routeName),
+  return getRegisteredPanels(placement).filter((entry) =>
+    isPanelVisibleOnRoute(entry, routeName),
   )
+}
+
+export function getFloatingPanels(
+  routeName: string | null | undefined,
+): Array<PluginPanelEntry & { layout: PluginPanelLayout }> {
+  return getFloatingPanelsByHidden(routeName, false)
+}
+
+export function getHiddenFloatingPanels(
+  routeName: string | null | undefined,
+): Array<PluginPanelEntry & { layout: PluginPanelLayout }> {
+  return getFloatingPanelsByHidden(routeName, true)
+}
+
+function getFloatingPanelsByHidden(
+  routeName: string | null | undefined,
+  hidden: boolean,
+): Array<PluginPanelEntry & { layout: PluginPanelLayout }> {
+  return getRoutablePanels('floating', routeName)
+    .map((entry) => ({ entry, layout: ensurePanelLayout(entry) }))
+    .filter(({ layout }) => layout.hidden === hidden)
+    .sort((a, b) => (a.layout.floating?.z ?? 0) - (b.layout.floating?.z ?? 0))
+    .map(({ entry, layout }) => ({ ...entry, layout }))
 }
 
 export function registerPluginPanel(opts: PluginPanelRegisterOptions): void {
   const pluginId = opts.pluginId.trim()
   if (!pluginId) return
-  const key = panelKey(opts.placement, pluginId)
-  const prev = panels.get(key)
-  const routes = normalizePanelRoutes(opts.routes)
-  panels.set(key, {
-    placement: opts.placement,
+  const prev = panels.get(pluginId)
+  const entry: PluginPanelEntry = {
+    defaultPlacement: opts.placement,
     pluginId,
     tabIcon: opts.tabIcon,
     tabLabelKey: opts.tabLabelKey,
     interactive: opts.interactive === true,
-    routes,
+    routes: normalizePanelRoutes(opts.routes),
     html: prev?.html ?? '',
     revision: prev?.revision ?? 0,
-  })
-  if (!pluginPanelActiveTabState.value[opts.placement]) {
+  }
+  panels.set(pluginId, entry)
+  const layout = ensurePanelLayout(entry)
+  if (layout.placement !== 'floating' && !pluginPanelActiveTabState.value[layout.placement]) {
     pluginPanelActiveTabState.value = {
       ...pluginPanelActiveTabState.value,
-      [opts.placement]: pluginId,
+      [layout.placement]: pluginId,
     }
   }
   pluginPanelRevision.value += 1
 }
 
 export function setPluginPanelHtml(
-  placement: PluginPanelPlacement,
+  _placement: PluginPanelPlacement,
   pluginId: string,
   html: string,
   opts?: { revision?: number },
 ): void {
   ensurePluginPanelSanitizeHooks()
-  const key = panelKey(placement, pluginId.trim())
-  const entry = panels.get(key)
+  const entry = panels.get(pluginId.trim())
   if (!entry) return
-  const clean = entry.interactive
+  entry.html = entry.interactive
     ? sanitizePluginPanelHtmlInteractive(html)
     : sanitizePluginPanelHtml(html)
-  entry.html = clean
-  if (typeof opts?.revision === 'number') {
-    entry.revision = opts.revision
-  } else {
-    entry.revision += 1
-  }
+  entry.revision = typeof opts?.revision === 'number' ? opts.revision : entry.revision + 1
   pluginPanelRevision.value += 1
 }
 
-/** Clear stored HTML for panels not visible on the active route (e.g. leaving chat). */
+/** Clear stored HTML for panels not visible on the active route. */
 export function clearPanelHtmlForInactiveRoutes(
   routeName: string | null | undefined,
 ): void {
@@ -199,15 +340,102 @@ export function clearPanelHtmlForInactiveRoutes(
 }
 
 export function onPluginPanelEvent(
-  placement: PluginPanelPlacement,
+  _placement: PluginPanelPlacement,
   pluginId: string,
   handlers: PanelEventHandlers,
 ): void {
-  eventHandlers.set(panelKey(placement, pluginId.trim()), handlers)
+  eventHandlers.set(pluginId.trim(), handlers)
+}
+
+export function movePluginPanel(
+  pluginId: string,
+  placement: PluginPanelPlacement,
+  routeName?: string | null,
+): void {
+  const entry = panels.get(pluginId.trim())
+  if (!entry) return
+  const current = ensurePanelLayout(entry)
+  const next: PluginPanelLayout = {
+    placement,
+    hidden: false,
+    ...(placement === 'floating'
+      ? {
+          floating: {
+            ...(current.floating ?? defaultFloatingPosition()),
+            z: getNextFloatingPanelZ(),
+          },
+        }
+      : {}),
+  }
+  updatePanelLayout(entry.pluginId, next)
+  if (placement !== 'floating') {
+    setPluginPanelHidden(placement, false)
+    focusPluginPanelTab(placement, entry.pluginId, routeName)
+  }
+}
+
+export function setFloatingPanelHidden(pluginId: string, hidden: boolean): void {
+  const entry = panels.get(pluginId.trim())
+  if (!entry) return
+  const current = ensurePanelLayout(entry)
+  if (current.placement !== 'floating') return
+  updatePanelLayout(entry.pluginId, { ...current, hidden })
+}
+
+/** Restore every hidden floating panel visible on the current route. */
+export function restoreHiddenFloatingPanels(
+  routeName: string | null | undefined,
+): void {
+  for (const panel of getHiddenFloatingPanels(routeName)) {
+    setFloatingPanelHidden(panel.pluginId, false)
+    bringFloatingPanelToFront(panel.pluginId)
+  }
+}
+
+export function setFloatingPanelPosition(
+  pluginId: string,
+  position: Pick<FloatingPanelPosition, 'x' | 'y'>,
+): void {
+  const entry = panels.get(pluginId.trim())
+  if (!entry) return
+  const current = ensurePanelLayout(entry)
+  if (current.placement !== 'floating') return
+  updatePanelLayout(entry.pluginId, {
+    ...current,
+    floating: { ...(current.floating ?? defaultFloatingPosition()), ...position },
+  })
+}
+
+export function setFloatingPanelSize(
+  pluginId: string,
+  size: Pick<FloatingPanelPosition, 'width' | 'height'>,
+): void {
+  const entry = panels.get(pluginId.trim())
+  if (!entry) return
+  const current = ensurePanelLayout(entry)
+  if (current.placement !== 'floating') return
+  updatePanelLayout(entry.pluginId, {
+    ...current,
+    floating: { ...(current.floating ?? defaultFloatingPosition()), ...size },
+  })
+}
+
+export function bringFloatingPanelToFront(pluginId: string): void {
+  const entry = panels.get(pluginId.trim())
+  if (!entry) return
+  const current = ensurePanelLayout(entry)
+  if (current.placement !== 'floating') return
+  const currentZ = current.floating?.z ?? 100
+  const maxZ = getNextFloatingPanelZ() - 1
+  if (currentZ >= maxZ) return
+  updatePanelLayout(entry.pluginId, {
+    ...current,
+    floating: { ...(current.floating ?? defaultFloatingPosition()), z: maxZ + 1 },
+  })
 }
 
 export function focusPluginPanelTab(
-  placement: PluginPanelPlacement,
+  placement: PluginPanelRailPlacement,
   pluginId?: string,
   routeName?: string | null,
 ): void {
@@ -216,22 +444,23 @@ export function focusPluginPanelTab(
       ...pluginPanelActiveTabState.value,
       [placement]: pluginId.trim(),
     }
-  } else if (!pluginPanelActiveTabState.value[placement]) {
-    const candidates = routeName
-      ? getRoutablePanels(placement, routeName)
-      : getRegisteredPanels(placement)
-    const first = candidates[0]
-    if (first) {
-      pluginPanelActiveTabState.value = {
-        ...pluginPanelActiveTabState.value,
-        [placement]: first.pluginId,
-      }
+    return
+  }
+  if (pluginPanelActiveTabState.value[placement]) return
+  const candidates = routeName
+    ? getRoutablePanels(placement, routeName)
+    : getRegisteredPanels(placement)
+  const first = candidates[0]
+  if (first) {
+    pluginPanelActiveTabState.value = {
+      ...pluginPanelActiveTabState.value,
+      [placement]: first.pluginId,
     }
   }
 }
 
 export function openPluginPanel(
-  placement: PluginPanelPlacement,
+  placement: PluginPanelRailPlacement,
   pluginId?: string,
   routeName?: string | null,
 ): void {
@@ -239,56 +468,29 @@ export function openPluginPanel(
   focusPluginPanelTab(placement, pluginId, routeName)
 }
 
-export function isPluginPanelHidden(placement: PluginPanelPlacement): boolean {
+export function isPluginPanelHidden(placement: PluginPanelRailPlacement): boolean {
   return pluginPanelHiddenState.value[placement]
 }
 
 export function setPluginPanelHidden(
-  placement: PluginPanelPlacement,
+  placement: PluginPanelRailPlacement,
   hidden: boolean,
 ): void {
-  const next = {
-    ...pluginPanelHiddenState.value,
-    [placement]: hidden,
-  }
+  const next = { ...pluginPanelHiddenState.value, [placement]: hidden }
   pluginPanelHiddenState.value = next
   persistPluginPanelHidden(next)
 }
 
 export function getActivePanelHtml(
-  placement: PluginPanelPlacement,
+  placement: PluginPanelRailPlacement,
   routeName?: string | null,
 ): { pluginId: string; html: string; revision: number; interactive: boolean } | null {
-  let id = pluginPanelActiveTabState.value[placement]
-  if (!id) {
-    const candidates = routeName
-      ? getRoutablePanels(placement, routeName)
-      : getRegisteredPanels(placement)
-    id = candidates[0]?.pluginId ?? null
-  }
-  if (!id) return null
-  const entry = panels.get(panelKey(placement, id))
-  if (!entry) {
-    const candidates = routeName
-      ? getRoutablePanels(placement, routeName)
-      : getRegisteredPanels(placement)
-    const first = candidates[0]
-    if (!first) return null
-    return {
-      pluginId: first.pluginId,
-      html: first.html,
-      revision: first.revision,
-      interactive: first.interactive,
-    }
-  }
-  if (routeName && !isPanelVisibleOnRoute(entry, routeName)) {
-    return {
-      pluginId: entry.pluginId,
-      html: '',
-      revision: entry.revision,
-      interactive: entry.interactive,
-    }
-  }
+  const candidates = routeName
+    ? getRoutablePanels(placement, routeName)
+    : getRegisteredPanels(placement)
+  const selected = pluginPanelActiveTabState.value[placement]
+  const entry = candidates.find((panel) => panel.pluginId === selected) ?? candidates[0]
+  if (!entry) return null
   return {
     pluginId: entry.pluginId,
     html: entry.html,
@@ -297,37 +499,32 @@ export function getActivePanelHtml(
   }
 }
 
+export function getPluginPanelHtml(pluginId: string): PluginPanelEntry | null {
+  return panels.get(pluginId.trim()) ?? null
+}
+
 export function dispatchPluginPanelDomEvent(
   placement: PluginPanelPlacement,
   _root: HTMLElement,
   ev: Event,
+  pluginId?: string,
 ): void {
-  const active = pluginPanelActiveTabState.value[placement]
-  if (!active) return
-  const entry = panels.get(panelKey(placement, active))
-  if (!entry) return
-  const handlers = eventHandlers.get(panelKey(placement, active))
+  const activeId = pluginId?.trim() || (
+    placement === 'floating' ? '' : pluginPanelActiveTabState.value[placement]
+  )
+  if (!activeId) return
+  const handlers = eventHandlers.get(activeId)
   if (!handlers) return
-
   const target = ev.target
   if (!(target instanceof HTMLElement)) return
-
   if (ev.type === 'click') {
     const actionEl = target.closest('[data-tk-action]')
     if (actionEl instanceof HTMLElement) {
-      if (
-        actionEl instanceof HTMLButtonElement &&
-        actionEl.disabled
-      ) {
-        return
-      }
+      if (actionEl instanceof HTMLButtonElement && actionEl.disabled) return
       const action = actionEl.getAttribute('data-tk-action')?.trim()
-      if (action) {
-        handlers.onAction?.({ action, target: actionEl })
-      }
+      if (action) handlers.onAction?.({ action, target: actionEl })
     }
   }
-
   if (ev.type === 'change' || ev.type === 'input') {
     const fieldEl = target.closest('[data-tk-field]')
     if (fieldEl instanceof HTMLInputElement || fieldEl instanceof HTMLTextAreaElement) {

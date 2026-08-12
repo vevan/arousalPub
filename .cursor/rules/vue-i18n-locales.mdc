@@ -35,4 +35,4 @@ alwaysApply: false
 
 服务端群聊说明、提示词预设、角色卡正文保持真实 `{{user}}` / `[NEXT@]`，**不要**按 locales 规则转义。
 
-完整表见根目录 `cursor.md` §易错。
+完整表见根目录 `AGENTS.md` 的“Vue i18n v11”章节。

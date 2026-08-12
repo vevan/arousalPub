@@ -2,13 +2,13 @@
 import ConnectionSettingsCard from '@/components/ConnectionSettingsCard.vue'
 import NotificationBell from '@/components/NotificationBell.vue'
 import NotificationSnackbarQueue from '@/components/NotificationSnackbarQueue.vue'
+import PluginFloatingHost from '@/components/PluginFloatingHost.vue'
+import PluginPanelToggle from '@/components/PluginPanelToggle.vue'
 import PluginRailHost from '@/components/PluginRailHost.vue'
 import PluginUiHost from '@/plugins/PluginUiHost.vue'
 import {
   clearPanelHtmlForInactiveRoutes,
   isPluginPanelHidden,
-  openPluginPanel,
-  setPluginPanelHidden,
 } from '@/plugins/plugin-panel-registry'
 import { htmlLangTag } from '@/i18n/locale'
 import { ensureLocaleMessages } from '@/i18n'
@@ -148,15 +148,6 @@ function onBrowserLanguageChange() {
       document.documentElement.lang = htmlLangTag(next)
     }
   })
-}
-
-function onFooterPluginsToggle(): void {
-  if (isPluginPanelHidden('leftRail')) {
-    setPluginPanelHidden('leftRail', false)
-    openPluginPanel('leftRail', undefined, route.name as string)
-  } else {
-    setPluginPanelHidden('leftRail', true)
-  }
 }
 
 const drawerRight = ref(false)
@@ -776,6 +767,9 @@ onUnmounted(() => {
     </v-app-bar>
 
     <v-main id="mainChat" class="main-chat">
+      <div class="app-plugin-panel-toggle">
+        <PluginPanelToggle hide-when-visible />
+      </div>
       <aside id="leftRail" class="main-chat__rail main-chat__rail--left">
         <section
           id="leftHostPanel"
@@ -801,6 +795,8 @@ onUnmounted(() => {
       </aside>
     </v-main>
 
+    <PluginFloatingHost />
+
     <v-footer
       ref="footerRef"
       app
@@ -808,15 +804,6 @@ onUnmounted(() => {
       class="app-footer pa-0"
     >
       <div class="app-footer__inner">
-        <v-btn
-          icon="mdi-menu"
-          variant="text"
-          size="x-small"
-          density="compact"
-          class="app-footer__plugins-btn"
-          :aria-label="$t('app.plugins')"
-          @click="onFooterPluginsToggle"
-        />
         <span class="app-footer__meta">
           Arousal <em>Pub</em>
         </span>
@@ -1011,6 +998,16 @@ onUnmounted(() => {
   height: 100%;
   overflow: hidden;
   box-sizing: border-box;
+  position: relative;
+}
+
+.app-plugin-panel-toggle {
+  position: fixed;
+  top: calc(var(--header-height, 3.5rem) + 0.25rem);
+  left: 0.5rem;
+  z-index: 1010;
+  display: flex;
+  align-items: center;
 }
 
 .main-chat__rail,
@@ -1326,13 +1323,6 @@ onUnmounted(() => {
   font-size: 0.6563rem;
   letter-spacing: 0.04em;
   color: rgba(var(--v-theme-on-surface), 0.4);
-}
-.app-footer__plugins-btn {
-  flex-shrink: 0;
-  color: rgba(var(--v-theme-on-surface), 0.45);
-}
-.app-footer__plugins-btn:hover {
-  color: rgba(var(--v-theme-on-surface), 0.75);
 }
 .app-footer__meta {
   font-family: var(--font-display);

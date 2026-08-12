@@ -526,7 +526,7 @@ POST /api/chat/conversations/:id/regex/apply
 
 #### Phase 6 · 文档收尾（~0.5d）✅ 2026-06-10
 
-- 更新 §2.8 勾选、`DOC/devNotes/04`、`DOC/devNotes/03` §16、`cursor.md`
+- 更新 §2.8 勾选、`DOC/devNotes/04`、`DOC/devNotes/03` §16、`AGENTS.md`
 
 ### 6.4 依赖顺序
 

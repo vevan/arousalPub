@@ -242,7 +242,7 @@ Path details: [`data/README.md`](data/README.md) ([中文](data/README.zh.md)).
 
 ## Developer docs
 
-Architecture, APIs, and implementation notes: **`DOC/devNotes/`**. Project index: [`cursor.md`](cursor.md). Beginner manual: [EN](DOC/manual/EN/00-menu.md) · [CN](DOC/manual/CN/00-menu.md). Chinese overview: [`DOC/README.zh.md`](DOC/README.zh.md). Docs hub: [`DOC/README.md`](DOC/README.md).
+Architecture, APIs, and implementation notes: **`DOC/devNotes/`**. Project guidance and index: [`AGENTS.md`](AGENTS.md). Beginner manual: [EN](DOC/manual/EN/00-menu.md) · [CN](DOC/manual/CN/00-menu.md). Chinese overview: [`DOC/README.zh.md`](DOC/README.zh.md). Docs hub: [`DOC/README.md`](DOC/README.md).
 
 Dev mode:
 

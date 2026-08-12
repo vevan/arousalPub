@@ -5,11 +5,12 @@ import {
   getRegisteredPanels,
   isPanelVisibleOnRoute,
   isPluginPanelHidden,
+  movePluginPanel,
   notifyPluginPanelMounted,
   openPluginPanel,
   pluginPanelRevision,
   setPluginPanelHidden,
-  type PluginPanelPlacement,
+  type PluginPanelRailPlacement,
 } from '@/plugins/plugin-panel-registry'
 import { translatePluginI18nKey } from '@/utils/plugin-locale-text'
 import { computed, ref, watch } from 'vue'
@@ -17,7 +18,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
 const props = defineProps<{
-  placement: PluginPanelPlacement
+  placement: PluginPanelRailPlacement
 }>()
 
 const { t, te } = useI18n()
@@ -54,6 +55,13 @@ function onTabClick(pluginId: string): void {
   openPluginPanel(props.placement, pluginId, route.name as string)
 }
 
+function onPanelPlacement(
+  pluginId: string,
+  placement: 'leftRail' | 'rightRail' | 'floating',
+): void {
+  movePluginPanel(pluginId, placement, route.name as string)
+}
+
 function onPanelEvent(ev: Event): void {
   const root = contentRef.value
   if (!root) return
@@ -84,23 +92,54 @@ watch(
         >
           <v-icon size="18">mdi-eye-off-outline</v-icon>
         </v-btn>
-        <v-btn
+        <v-menu
           v-for="p in panels"
           :key="p.pluginId"
-          icon
-          size="x-small"
-          variant="text"
-          :disabled="!panelRoutable(p.pluginId)"
-          :color="
-            panelRoutable(p.pluginId) && active?.pluginId === p.pluginId
-              ? 'primary'
-              : undefined
-          "
-          :aria-label="tabLabel(p.tabLabelKey)"
-          @click="onTabClick(p.pluginId)"
+          location="bottom end"
         >
-          <v-icon size="18">{{ p.tabIcon }}</v-icon>
-        </v-btn>
+          <template #activator="{ props: menuProps }">
+            <v-btn
+              icon
+              size="x-small"
+              variant="text"
+              :disabled="!panelRoutable(p.pluginId)"
+              :color="
+                panelRoutable(p.pluginId) && active?.pluginId === p.pluginId
+                  ? 'primary'
+                  : undefined
+              "
+              :aria-label="tabLabel(p.tabLabelKey)"
+              v-bind="menuProps"
+            >
+              <v-icon size="18">{{ p.tabIcon }}</v-icon>
+            </v-btn>
+          </template>
+          <v-list density="compact" min-width="11rem">
+            <v-list-item
+              :title="$t('app.pluginPanelShow')"
+              prepend-icon="mdi-eye-outline"
+              @click="onTabClick(p.pluginId)"
+            />
+            <v-divider />
+            <v-list-item
+              :title="$t('app.pluginPanelDockLeft')"
+              prepend-icon="mdi-dock-left"
+              :active="props.placement === 'leftRail'"
+              @click="onPanelPlacement(p.pluginId, 'leftRail')"
+            />
+            <v-list-item
+              :title="$t('app.pluginPanelDockRight')"
+              prepend-icon="mdi-dock-right"
+              :active="props.placement === 'rightRail'"
+              @click="onPanelPlacement(p.pluginId, 'rightRail')"
+            />
+            <v-list-item
+              :title="$t('app.pluginPanelFloat')"
+              prepend-icon="mdi-open-in-new"
+              @click="onPanelPlacement(p.pluginId, 'floating')"
+            />
+          </v-list>
+        </v-menu>
       </div>
     </div>
 

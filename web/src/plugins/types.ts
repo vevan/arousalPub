@@ -584,7 +584,7 @@ export interface PluginWebHost {
         tabIcon: string
         tabLabelKey: string
         interactive?: boolean
-        routes?: ('home' | 'chat')[]
+        routes?: string[]
       }): void
       setHtml(
         placement: 'leftRail' | 'rightRail',

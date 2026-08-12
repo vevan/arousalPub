@@ -148,7 +148,7 @@ adminConsoleUrl: `http://127.0.0.1:${resolveServerPort()}/admin`
 | S2 | Phase 1 API + 种子用户校验 | `00000000` 本机可列用户；其它用户 403 |
 | S3 | `/admin` 静态页 + 用户 CRUD UI | 本机创建/删除用户、看占用 |
 | S4 | `rotate-data-key` job + 写锁 + UI（`DOC/devNotes/25` §15.2） | 轮换后 chat 仍可用 |
-| S5 | `DOC/devNotes/04`、`cursor.md`、`data/README.md` | — |
+| S5 | `DOC/devNotes/04`、`AGENTS.md`、`data/README.md` | — |
 
 ---
 

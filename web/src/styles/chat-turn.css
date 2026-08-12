@@ -1158,7 +1158,13 @@ summary.reasoning-chain__summary::-webkit-details-marker {
 .composer__tools {
   display        : flex;
   align-items    : center;
-  justify-content: flex-end;
+  justify-content: space-between;
+}
+
+.composer__plugins-toggle {
+  display    : flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .composer__actions {

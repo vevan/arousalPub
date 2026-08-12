@@ -2,6 +2,7 @@
 import type { useChatSession } from '@/composables/useChatSession'
 import ChatComposerInputHistoryMenu from '@/components/chat/ChatComposerInputHistoryMenu.vue'
 import ChatComposerSlashMenu from '@/components/chat/ChatComposerSlashMenu.vue'
+import PluginPanelToggle from '@/components/PluginPanelToggle.vue'
 import PluginSlotMount from '@/plugins/PluginSlotMount.vue'
 import { useComposerSlashMenu } from '@/composables/chat-session/use-composer-slash-menu'
 import { characterNameById } from '@/utils/group-chat-turn'
@@ -244,6 +245,9 @@ function onSlashHover(index: number) {
           class="composer__tools"
           data-plugin-slot="composer-toolbar"
         >
+          <div class="composer__plugins-toggle">
+            <PluginPanelToggle />
+          </div>
           <div class="composer__actions">
             <v-tooltip
               location="top"
@@ -299,4 +303,5 @@ function onSlashHover(index: number) {
 .composer--slash-anchor {
   anchor-name: --composer-slash-anchor;
 }
+
 </style>

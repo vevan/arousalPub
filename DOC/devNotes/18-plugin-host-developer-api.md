@@ -413,6 +413,22 @@ const data = await host.plugin.runAction('my-action', {
 
 服务端 hook 内对称 API：**`api.regex`**（`listRules` / `applyText` / `applyMessages` · `server/src/plugin-system/host-api.ts`）。
 
+### 3.15 `host.assets.importBundle`（规划 · **`DOC/devNotes/09` §8.8**）
+
+> **未实现**（2026-08-12 定案）。Generic zip 导入：宿主解压，插件写索引。
+
+| 方法 | 说明 |
+|------|------|
+| **`importBundle(file)`** | 上传 `.zip` → 解压至 `data/plugins/{pluginId}/{userId}/assets/{bundleId}/`（`bundleId` = zip 文件名去扩展名）→ 调用 server **`onBundleImported`** |
+
+**zip 结构（作者约定）**：zip 内 **每个顶层文件夹 = 一份配置**；文件夹内自含 `catalog/`、`assets/` 等（插件定义，宿主不解析 JSON）。
+
+**插件职责**：在 **`onBundleImported`** 内校验 → 写入 **`catalog-manifest.json`**（或其它插件自有 manifest；路径由插件定，**非**宿主写）。
+
+**REST**：`POST /api/plugins/:pluginId/bundles/import`（multipart `file`）。
+
+**读子路径资源**：规划扩展 `GET …/user-assets/*`；见 **`DOC/devNotes/09` §8.8**。
+
 ---
 
 ## 4. 服务端插件：`dist/server.mjs`
@@ -427,6 +443,7 @@ const data = await host.plugin.runAction('my-action', {
 | `afterAssemblePrompts(ctx, api)` | 同上 | 整表替换（guidance-generate）；**规划**迁描述符后降为 escape hatch |
 | `resolveTurnPluginEntries(plugins, api)` | 落盘前 | 写入 `turn.plugins[]` 条目（body 侧） |
 | `resolveTurnPluginEntriesFromAssistant(plugins, assistantText, api)` | 落盘前 | 从 assistant 解析 → 条目 |
+| **`onBundleImported(ctx, api)`**（**规划**） | **`importBundle` 解压成功后** | 插件校验 bundle 并写 **`catalog-manifest.json`** 等；见 §3.15 |
 | **`runPluginAction(action, body, api)`** | `POST …/actions/:action` | manifest `serverActions` 自定义动作（替代 per-plugin 路由） |
 | `formatPluginContextBlocks(resolved, ctx)` | completeWithContext 步骤 1 后 | 插件 format blocks；`ctx.anchorToTurn` |
 | `parseCompleteDraftContent(ctx, content, api)` | completeWithContext 出站后 | JSON → draft normalize |
@@ -476,6 +493,7 @@ const data = await host.plugin.runAction('my-action', {
 | GET | `/api/plugins/:id/locales/:locale` | 登录即可 |
 | GET | `/api/plugins/:id/assets/:name` | 登录即可 |
 | GET/POST | `/api/plugins/:id/user-assets/...` | 登录即可 |
+| POST | `/api/plugins/:id/bundles/import` | 登录即可（**规划** · zip → `assets/{bundleId}/` · **`DOC/devNotes/09` §8.8**） |
 | GET | `/api/plugins/:id/lorebooks` | `lorebook.read` |
 | GET | `/api/plugins/:id/lorebooks/:lorebookId` | `lorebook.read` |
 | POST | `/api/plugins/:id/lorebooks/:lorebookId/entries` | `lorebook.entry.write` |

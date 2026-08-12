@@ -310,6 +310,7 @@ data/
 - **动作弹框**：`host.registerFormDialog` + `host.openFormDialog`（字段类型见 §3.1；宿主 `PluginFormDialogHost` 支持 `radio` / `integer` / `textarea`）
 - **对话批处理**：`host.conversation.runScope` / `runBatch`、`getMeta`、`host.render.*`、`host.ui.progress` — 见 DOC/devNotes/10
 - **插件间协作（规划）**：`host.capabilities.register` / `get` — 见 §8.7
+- **资源包导入（规划）**：`host.assets.importBundle` — 见 §8.8
 - **Notify / Confirm**：`host.ui.notify` / `host.ui.confirm`
 - **发消息扩展**：`host.chat.send` / `sendWithPlugins` / `regenerateWithPlugins` + server `resolveTurnPluginEntries`
 
@@ -442,6 +443,117 @@ enforce 与版本协商留待实现；v1 以运行时 `register` + `get` 为准�
 - 插件间直接 `import` / 共享闭包
 - 宿主替插件实现业务逻辑
 - 跨浏览器标签 / 跨用户的 RPC
+
+### 8.8 资源包导入：`host.assets.importBundle`（规划）
+
+> **状态**：**未实现**（2026-08-12 定案方向）。  
+> **动机**：插件 catalog / Mod 常含 **多份 JSON + 大量图片**；逐文件 `fileAsset` 不适用。宿主提供 **generic zip 解压 + 落盘 + 回调插件**，业务校验与 **`catalog-manifest.json`** 由 **插件** 写入，宿主零领域特化。
+
+#### 模型
+
+| 角色 | 职责 |
+|------|------|
+| **宿主** | 接收 `.zip` → 安全解压 → 写入 `data/plugins/{pluginId}/{userId}/assets/{bundleId}/` → 调用插件 **`onBundleImported`** |
+| **插件** | 校验解压结果（JSON Schema、路径、图片类型等）→ 更新 **`catalog-manifest.json`**（或其它插件自有索引）→ 返回 `{ ok, … }` |
+
+**`bundleId`**：zip **文件名去扩展名**、经 sanitize（同 `fileAsset`  basename 规则；非法则 400）。
+
+**落盘根**（定案）：
+
+```text
+data/plugins/{pluginId}/{userId}/assets/{bundleId}/
+  <config-a>/          # 一份配置 = zip 内一个顶层文件夹
+    catalog/
+      equipment.json
+      enemies.json
+    assets/
+      …
+  <config-b>/
+    …
+```
+
+- zip 内 **每个顶层目录 = 一份独立配置**（多 Mod / 多主题并存）；
+- 同 `bundleId` **再次导入** → **整目录替换**（实现时二选一写死；默认定案：**替换**）。
+
+#### zip 约定（作者侧 · 非宿主 enforce）
+
+```text
+forest-pack.zip
+  forest-campaign/
+    catalog/equipment.json
+    catalog/enemies.json
+    catalog/skills.json
+    assets/equipment/knife.png
+    assets/enemies/goblin.png
+  ice-campaign/
+    catalog/…
+    assets/…
+```
+
+宿主 **不** 解析 `catalog/*.json` 内容；仅保证解压路径合法。
+
+#### 拟定 API
+
+**Web**（`PluginWebHost` 扩展）：
+
+```ts
+host.assets.importBundle(file: File): Promise<{
+  ok: true
+  bundleId: string
+  root: string              // 相对 user-data，如 assets/forest-pack
+  pluginResult?: unknown    // onBundleImported 返回值
+}>
+```
+
+**REST**：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/plugins/:pluginId/bundles/import` | `multipart/form-data`，字段 `file`（`.zip`） |
+
+**Server 插件**（可选 export）：
+
+```ts
+onBundleImported(ctx: {
+  bundleId: string
+  rootAbs: string           // 绝对路径：…/assets/{bundleId}
+  rootRel: string           // 相对 plugin user-data：assets/{bundleId}
+  configDirs: string[]      // zip 内顶层目录名列表（仅目录）
+}, api: PluginServerApi): Promise<{ ok: boolean; error?: string }>
+```
+
+解压 **成功且落盘完成后** 才调用；`onBundleImported` 抛错或 `{ ok: false }` → 路由返回 422，**保留**已解压目录 vs **回滚**删除 — 实现时定案（建议：**失败则删刚解压目录**）。
+
+#### 安全（宿主 enforce）
+
+- **Zip slip**：拒绝 `../`、绝对路径、盘符路径
+- **扩展名白名单**：默认仅 `.json`、`.png`、`.webp`、`.jpg`、`.jpeg`（manifest 可选 `importBundle.accept` 扩展）
+- **单文件 / 总包 / 条目数** 上限（与 `fileAsset` 5MB 独立配置，建议包级 50MB 量级 — 实现时写死）
+- **仅解压**；不在宿主内跑 catalog 业务逻辑
+
+#### 读资源（配套 · 规划）
+
+现有 `GET …/user-assets/:name` 仅 **扁平单文件名**。bundle 子路径需 **generic** 扩展，例如：
+
+`GET /api/plugins/:pluginId/user-assets/*`（path 相对 `assets/`，防 traversal）
+
+或插件 server action 按需读图；**优先宿主 generic 通配**，避免每个插件自建读文件 action。
+
+#### 与 settings 导入区别
+
+| | settings import | importBundle |
+|--|-----------------|--------------|
+| 内容 | 单 JSON envelope | zip（多 JSON + 二进制） |
+| 落盘 | `settings.json` | `assets/{bundleId}/**` |
+| 后续 | 无 | **`onBundleImported`** → 插件写 manifest |
+
+#### 实现清单
+
+- [ ] `POST …/bundles/import` + `adm-zip`（或等价）解压
+- [ ] `host.assets.importBundle` Web 封装
+- [ ] `onBundleImported` 调度（已启用 server 插件）
+- [ ] `user-assets` 子路径 GET（或等价 generic asset URL）
+- [ ] 设置页 / 插件 UI 可选「导入资源包」按钮（调用 `host.assets.importBundle`）
 
 ---
 

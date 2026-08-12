@@ -16,6 +16,8 @@
 - [ ] **作者注分层** `[DOC/devNotes/28](28-authors-note-layers.md)` — Phase 2 角色 AN + `{{charAuthorsNote}}`（Phase 1 全局 default ✅）
 - [ ] **角色卡内嵌世界书** `[DOC/devNotes/27](27-embedded-character-book.md)` — Phase 1 组装（constant + keyword、`position`、叠加内嵌优先）；Phase 2 角色库查看 / 编辑 UI
 - [ ] **视觉小说模式** — 对话页 VN 式呈现（立绘/场景布局、按句推进等）；待定案与专题文档
+- [ ] **地下城迷宫插件** — 5e 简易战斗、Canvas、**战斗中 composer hold**、**进迷宫读迹录六维 / 战后 LLM 写回 TK**、catalog + HTML 编辑器、**`importBundle` + catalog-manifest**、叙事进主对话。见 `[DOC/devNotes/50](50-plugin-dungeon-maze-vision.md)` §3.4.5 · §3.5.1 · §3.7
+- [ ] **宿主 `host.assets.importBundle`** — zip → `assets/{bundleId}/` + **`onBundleImported`**；配套 `user-assets` 子路径 GET。见 `[DOC/devNotes/09](09-plugin-system-and-guidance-generate.md)` §8.8
 
 > ST 导入 Tab / 世界书 / 聊天记录 / M3 回归已关闭，见下方 **§文档**（2026-06～07 · `[DOC/devNotes/37](37-st-import-settings-tab.md)`）。
 

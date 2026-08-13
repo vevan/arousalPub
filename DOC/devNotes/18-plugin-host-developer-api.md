@@ -164,7 +164,8 @@ export function register(host: PluginWebHost) {
 | `refresh()` | 写盘后刷新消息列表 |
 | `getPluginSettings()` | 读本对话 `pluginSettings[pluginId]` |
 | `patchPluginSettings(partial)` | 写会话级插件设置（合并进 `index.json`） |
-| `setPluginHold(hold)` | 插件长流程占用对话时禁止用户发消息 |
+| `setPluginHold(hold)` | 当前实现：插件长流程占用对话时禁止用户发消息；规划中将由带 owner/token 的 acquire / release **替换**，避免并发插件互相解除占用 |
+| `appendPluginBlock(body)` | 规划：追加通用插件区块到对话流；非 user / assistant，默认不参与 prompt 组装；见 `DOC/devNotes/09` §5.7 |
 
 **`ConversationBatchContext`**（在 `runScope` 内）：
 
@@ -185,6 +186,8 @@ interface ConversationBatchContext {
 **`ConversationTurnDto`**：`turnOrdinal`、`user`、`receives[]`、`activeReceiveIndex`（与 PATCH 对齐）。
 
 **权限**：`conversation.read`（只读 scope）；写 patch 需额外权限（如 `turn.receive.prune`，见 §6）。
+
+**插件区块（规划）**：`appendPluginBlock` 的插件身份由 scoped host 绑定；宿主仅保存、排序和提供通用渲染壳，内容形状 opaque。该区块不触发发送 / 再生管线；要进入模型上下文，插件须走显式 prompt / context-block API。
 
 ### 3.6 `host.lorebook`
 
@@ -419,7 +422,7 @@ const data = await host.plugin.runAction('my-action', {
 
 | 方法 | 说明 |
 |------|------|
-| **`importBundle(file)`** | 上传 `.zip` → 解压至 `data/plugins/{pluginId}/{userId}/assets/{bundleId}/`（`bundleId` = zip 文件名去扩展名）→ 调用 server **`onBundleImported`** |
+| **`importBundle(file)`** | 上传 `.zip` → 解压至同级临时目录 → 调用 server **`onBundleImported`** 校验 → 成功后整体替换 `data/plugins/{pluginId}/{userId}/assets/{bundleId}/`（`bundleId` = zip 文件名去扩展名） |
 
 **zip 结构（作者约定）**：zip 内 **每个顶层文件夹 = 一份配置**；文件夹内自含 `catalog/`、`assets/` 等（插件定义，宿主不解析 JSON）。
 
@@ -609,10 +612,10 @@ class PluginHostApiError {
 
 ### 8.1 长流程 + 预览确认
 
-1. `setPluginHold(true)` + `ui.progress({ abortable: true })`
+1. 获取 owner/token 会话 hold + `ui.progress({ abortable: true })`（当前布尔 API 落地时移除）
 2. `prepareContextBlocks` → `completeWithContext` → `registerFormDialog` 预览
 3. 用户确认后 `createEntry` / `patchEntry`，`patchPluginSettings` 更新指针
-4. `finally`：`clearProgress()`、`setPluginHold(false)`
+4. `finally`：`clearProgress()`、release 会话 hold
 
 参考：`plugins/plot-summary/`。
 

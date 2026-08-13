@@ -15,7 +15,7 @@
 - **地图生成一次即持久化**，同会话再次打开 **不重新随机**；
 - 游戏内容（装备、敌人、技能等）来自 **可读配置文件**，便于扩展与 Mod；
 - **掷骰 / 伤害 / 胜负不由 LLM 决定**；
-- **叙事进主对话**：LLM 只根据插件给出的 **结构化战报** 写描述；支持两种模式（见 §3.5）：
+- **叙事进主对话**：LLM 只根据插件给出的 **结构化战报** 写描述；结果写入对话流中的通用 **插件区块**（不属于 user / assistant）；支持两种模式（见 §3.5）：
   1. **逐回合**：每一战斗步（如「A 攻击 B，B 受到 3 点伤害」）单独 complete 后进聊天；
   2. **整场**：一场战斗本地结算完毕后，对 **整场 CombatReport** 一次 complete 后进聊天。
 
@@ -29,24 +29,24 @@
 |------|------|
 | **规则在插件** | 地图生成、移动、遭遇、掷骰、HP、装备/技能数值 — 插件内实现，可单测 |
 | **LLM 只写戏** | 输入为 **已发生事实**（CombatLogEntry）；禁止改数值、补掷骰、改胜负 |
-| **叙事默认进主对话** | 润色后的文本通过 **`host.chat.send`**（或等价注入）写入 **主聊天线**，而非仅 panel 内展示 |
+| **叙事默认进主对话** | 润色后的文本写入通用 **插件区块**，显示在主聊天线而非仅 panel 内；不伪装为 user / assistant |
 | **宿主零特化** | 不增宿主分支；panel + `plugin.complete` + `pluginSettings` + 可选 `turn.plugins` / `prompt.inject` |
 | **配置驱动** | 敌人/装备/技能等定义在插件 **data 目录 JSON**（或 YAML），非硬编码 |
 | **战斗规则** | **首版偏 D&D 5e 简易子集**（AC、d20 命中、武器伤害骰、豁免）；见 §3.3 |
 | **玩家六维** | **进迷宫从迹录读取**；**战后提交战报给 LLM，由 LLM 写回 TK**（插件不自行改 TK state）；见 §3.7 |
-| **战斗占用 composer** | 战斗进行中 **`setPluginHold(true)`**，禁止 composer 发文本；见 §3.5.1 |
+| **战斗占用 composer** | 战斗进行中获取会话 hold，禁止 composer 发文本；落地时采用 owner/token acquire / release；见 §3.5.1 |
 
 ```text
 模式 A · 逐回合叙事
   插件：本地结算一步 → CombatLogEntry
   → complete(该步 log + 写戏指令)
-  → narrative → host.chat.send → 主对话
+  → narrative → appendPluginBlock → 主对话
   （重复至战斗结束）
 
 模式 B · 整场叙事
   插件：本地跑完战斗 loop → CombatReport
   → complete(整场 log + 写戏指令)
-  → narrative → host.chat.send → 主对话
+  → narrative → appendPluginBlock → 主对话
 ```
 
 ---
@@ -206,7 +206,7 @@ host.conversation.runScope({ writeLock: false }, ctx =>
      })
   → LLM 返回 tkStateAfter（+ 可选 narrative 供主对话）
   → 插件校验 JSON 形 → patch-state 写入迹录（最后一轮 active segment）
-  → 可选：narrative → host.chat.send
+  → 可选：narrative → appendPluginBlock
 ```
 
 | 原则 | 说明 |
@@ -413,7 +413,7 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 共同点：
 
 1. complete 的 user 内容 = **结构化 log（JSON 或固定模板文本）** + system：**不得改变结果，只润色描写**；
-2. 返回 prose 后 **`host.chat.send`** 写入主对话（需 `conversation.write` 或宿主现有 send 权限 — 实现时核对 `18`）；
+2. 返回 prose 后通过规划中的通用 `host.conversation.appendPluginBlock` 写入主对话流；该区块不属于 user / assistant，默认不作为聊天组装消息；
 3. panel 内可同时展示 **原始 log + narrative**，但以 log 为权威。
 
 #### 3.5.1 战斗中禁止 composer 发消息（定案）
@@ -422,8 +422,8 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 
 | 项 | 定案 |
 |----|------|
-| **机制** | **`host.conversation.setPluginHold(true)`**（已有宿主 API · `18` §3.5） |
-| **时机** | 进入战斗 UI / 先攻开始时 `setPluginHold(true)`；战斗结束（或放弃、逃跑失败定案后）`setPluginHold(false)` |
+| **机制** | 现有 `setPluginHold`；落地时随宿主演进为带 owner/token 的 acquire / release，避免并发插件互相解除占用（见 `18` §3.5） |
+| **时机** | 进入战斗 UI / 先攻开始时 acquire；战斗结束（或放弃、逃跑失败定案后）release |
 | **范围** | 仅挡 **composer 发新消息**；panel 内战斗操作、逐回合 **complete 写叙事** 不受影响 |
 | **perStep** | 每步 complete 等待 LLM 期间 **保持 hold**（避免叙事未落盘时用户插话打乱顺序） |
 | **perBattle** | 整场本地结算 + 一次 complete 期间 **全程 hold** |
@@ -438,13 +438,13 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 
 | 数据 | 存放 | 说明 |
 |------|------|------|
-| 已生成地图（格网、墙、门、楼梯、seed） | 会话 **`pluginSettings['dungeon-maze'].dungeonState`** 或专用 blob | **重开 panel 不 regenerate** |
+| 已生成地图（格网、墙、门、楼梯、seed） | 会话 **`pluginSettings['dungeon-maze'].dungeonState`** 或专用 blob | **按 active branch 隔离**；重开 panel 不 regenerate |
 | 敌人实例位置 / 已击败标记 | 同上 | |
 | 玩家坐标、层、背包、装备 | 同上 | |
 | Catalog 默认 | `catalog-manifest.json` + `assets/{bundleId}/…` | 用户 import / 切换 activeConfig |
 | 战报历史 | state 内数组 + 已 send 进 turn 的 narrative | 可选 `turn.plugins[]` 快照 |
 
-**分支**（`23`）：dungeon state 是否按 `branchPath` 隔离 — **待议**（建议与 active 分支绑定）。
+**分支**（`23`）：**定案按 `branchPath` 隔离**。创建分支时继承分叉点的 dungeon state；后续地图、敌人、背包与战报仅写当前 active branch，禁止跨分支共享可变进度。
 
 ---
 
@@ -455,8 +455,8 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 | Canvas 地图 + 战斗 UI | **`registerPluginPanel`**（`interactive: true`）或 floating panel |
 | 叙事模式切换 | **`settingsSchema`**：`narrationMode: 'perStep' \| 'perBattle'` |
 | 出站写戏 | **`plugin.complete`** |
-| **进主对话** | **`host.chat.send`**（权限待核对） |
-| **战斗禁 composer** | **`host.conversation.setPluginHold(true/false)`**（§3.5.1） |
+| **进主对话** | 规划中的通用 **插件区块**（§3.5） |
+| **战斗禁 composer** | 会话 hold acquire / release（§3.5.1） |
 | 进度 / 地图 | 会话 **`pluginSettings`**；体积大时是否 **server plugin action 写盘** 待议 |
 | Catalog 编辑 / 导入 | 设置页 · HTML 编辑器 · **`host.assets.importBundle`**（§3.4.5） |
 
@@ -494,7 +494,7 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 }
 ```
 
-若 `host.chat.send` 映射到 `conversation.write` 以外的权限，以实现为准。可能还需 `turn.plugins.write`（战报快照）。
+`appendPluginBlock` 所需权限以宿主定案为准；可能还需 `turn.plugins.write`（战报快照）。
 
 ---
 
@@ -502,13 +502,13 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 
 | 阶段 | 内容 |
 |------|------|
-| M0 | Catalog **JSON Schema 定案** + 迷宫生成；Canvas + state 持久化；可选 **catalog-editor.html** spike |
+| M0 | Catalog **JSON Schema 定案** + 迷宫生成；Canvas + state 持久化与 **branchPath 隔离**；可选 **catalog-editor.html** spike |
 | M0b | **Catalog 编辑器**（单文件 HTML）：schema 校验 + 导出三类 JSON（可与 M1 并行） |
-| M1 | 本地战斗 loop + CombatLogEntry；panel 内 log；**战斗 `setPluginHold`** |
-| M2 | **perBattle** 模式 + complete + **进主对话** + **TK 战后写回**（与 narrative 同次或紧随） |
+| M1 | 本地战斗 loop + CombatLogEntry；panel 内 log；**战斗 acquire / release 会话 hold** |
+| M2 | **perBattle** 模式 + complete + **插件区块进主对话** + **TK 战后写回**（与 narrative 同次或紧随） |
 | M3 | **perStep** 叙事；**TK 写回仍仅战斗结束一次** |
 | M4 | 多层/Boss、装备/技能 growth、**dungeon-rpg TraceBundle**、i18n、单测 |
-| M5 | **`importBundle`** + `catalog-manifest.json`、分支隔离、探索事件进对话（若需要） |
+| M5 | **`importBundle`** + `catalog-manifest.json`、探索事件进对话（若需要） |
 
 ---
 
@@ -550,3 +550,4 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 | 2026-08-12 | **战斗规则定案：偏 D&D 5e 简易子集**（AC、d20 命中、伤害骰、豁免）；catalog 字段与 §3.3 对齐 |
 | 2026-08-12 | **Catalog 资源包**：宿主 **`importBundle`** → `assets/{zip名}/`；插件 **`onBundleImported`** 写 **`catalog-manifest.json`**（§3.4.5） |
 | 2026-08-12 | **战斗占用 composer**：**`setPluginHold`** 禁止战斗中 composer 发文本（§3.5.1） |
+| 2026-08-13 | 定案：叙事进入主对话时使用通用 **插件区块**，不伪装 user / assistant；dungeon state 按 active branch 隔离；hold 演进为 owner/token acquire / release。 |

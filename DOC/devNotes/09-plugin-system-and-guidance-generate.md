@@ -209,6 +209,15 @@ data/
 
 - manifest 可选 **`conversationSettingsSchema`**（结构与 `settingsSchema` 相同）。
 - `GET /api/plugins/manage` 返回 `conversationSettingsSchema`、`hasConversationSettings`。
+
+### 5.7 对话流插件区块（规划）
+
+> **状态**：未实现（2026-08-13 定案方向）。宿主提供通用的第三类对话流区块，供任意插件落盘和展示插件产出；**不是** user / assistant，也不包含任何特定插件业务字段。
+
+- 规划 API：`host.conversation.appendPluginBlock(...)`；调用插件身份由 scoped host 自动写入，内容形状保持通用 / opaque。
+- 区块在对话流中按时间顺序渲染，允许插件提供展示内容或结构化数据；默认**不参与**聊天 prompt 组装、不触发 user / assistant 的发送与再生语义。
+- 需要纳入模型上下文时，插件应使用既有通用 prompt / context-block 能力显式注入，不能依赖区块被隐式当作 role message。
+- 宿主只负责存储、排序、渲染壳和权限；任何游戏日志、摘要、工作流结果等解释与 UI 属于对应插件。
 - 对话齿轮 **`ConversationContextSettings`** 增加 **插件** Tab：仅 **enabled** 且含会话 schema 的插件；`PluginSchemaForm` 自动保存到 `pluginSettings[pluginId]`。
 - 字段可选 **`conversationInherit`** + **`inheritFromGlobalKey`**：清空表单项 → PATCH 传 `null` 删键，运行时继承全局 `settings.json`。
 - **不得**在其它宿主 Tab（绑定、资料库等）硬编码插件字段。
@@ -313,6 +322,7 @@ data/
 - **资源包导入（规划）**：`host.assets.importBundle` — 见 §8.8
 - **Notify / Confirm**：`host.ui.notify` / `host.ui.confirm`
 - **发消息扩展**：`host.chat.send` / `sendWithPlugins` / `regenerateWithPlugins` + server `resolveTurnPluginEntries`
+- **插件区块（规划）**：`host.conversation.appendPluginBlock` — 插件内容显示在对话流，但不作为 user / assistant 消息；见 §5.7
 
 ### 8.5 加载时机（避免「我的插件没反应」）
 
@@ -473,7 +483,7 @@ data/plugins/{pluginId}/{userId}/assets/{bundleId}/
 ```
 
 - zip 内 **每个顶层目录 = 一份独立配置**（多 Mod / 多主题并存）；
-- 同 `bundleId` **再次导入** → **整目录替换**（实现时二选一写死；默认定案：**替换**）。
+- 同 `bundleId` **再次导入** → **整目录替换**：先完整解压到同级临时目录并通过安全检查 / 插件校验，再整体替换目标目录；任一步失败均保留旧目录。
 
 #### zip 约定（作者侧 · 非宿主 enforce）
 
@@ -522,7 +532,7 @@ onBundleImported(ctx: {
 }, api: PluginServerApi): Promise<{ ok: boolean; error?: string }>
 ```
 
-解压 **成功且落盘完成后** 才调用；`onBundleImported` 抛错或 `{ ok: false }` → 路由返回 422，**保留**已解压目录 vs **回滚**删除 — 实现时定案（建议：**失败则删刚解压目录**）。
+临时目录解压成功后才调用；`onBundleImported` 抛错或 `{ ok: false }` → 路由返回 422 并删除临时目录，**不**替换现有 bundle。只有校验成功后才整体替换目标目录。
 
 #### 安全（宿主 enforce）
 

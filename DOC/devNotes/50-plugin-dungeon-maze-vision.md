@@ -444,7 +444,14 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 | Catalog 默认 | `catalog-manifest.json` + `assets/{bundleId}/…` | 用户 import / 切换 activeConfig |
 | 战报历史 | state 内数组 + 已 send 进 turn 的 narrative | 可选 `turn.plugins[]` 快照 |
 
-**分支**（`23`）：**定案按 `branchPath` 隔离**。创建分支时继承分叉点的 dungeon state；后续地图、敌人、背包与战报仅写当前 active branch，禁止跨分支共享可变进度。
+**分支**（`23`）：**定案按 `branchPath` 隔离**。创建分支时继承分叉点的 dungeon state；后续地图、敌人、背包与战报仅写当前 active branch，禁止跨分支共享可变进度。M0 骨架仍整会话一份 `dungeonState`，**尚未**按 branch 分桶。
+
+### 3.6.1 M0 运行时约定（已落地）
+
+- **落盘**：仅经插件内 `persistState` → `host.conversation.patchPluginSettings`。宿主 PATCH **始终写入当前 `getId()`**，插件必须在读取/生成时捕获会话 id，await 之后若 `getId()` 已变则放弃写入（见 `DOC/devNotes/18` §8.4）。
+- **自动移动**：寻路动画用 generation token；`create` / `reset` 中止进行中的动画，且新迷宫与旧动画共享同一写入队列，避免旧进度覆盖刚生成的地图。`autoMoveInFlight` 在 `try/finally` 中清除。
+- **切会话 / 离页**：`onTurnDataChanged` 时若会话 id 变化则丢弃乐观状态并刷新 panel；离开聊天路由后宿主会清空 panel HTML，回到同一会话时若 canvas 已断开则补一次 `refreshPanel`。
+- **测试**：`plugins/dungeon-maze/test/*.test.ts` 纳入 `server` 的 `npm test`。
 
 ---
 
@@ -552,3 +559,4 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 | 2026-08-12 | **战斗占用 composer**：**`setPluginHold`** 禁止战斗中 composer 发文本（§3.5.1） |
 | 2026-08-13 | 定案：叙事进入主对话时使用通用 **插件区块**，不伪装 user / assistant；dungeon state 按 active branch 隔离；hold 演进为 owner/token acquire / release。 |
 | 2026-08-13 | **M0 验证骨架**：bundled `dungeon-maze`；composer 图标打开 panel；当前会话首次生成或恢复固定 **21×21** seed 迷宫；生成入口、Boss 出口、9 个杂兵（1/50）、较低密度宝箱与陷阱。 |
+| 2026-08-13 | M0 审计修复：自动移动与重置串写、跨会话 `pluginSettings` 误写、离页后 panel 空白；迷宫单测进入 `npm test`。见 §3.6.1。 |

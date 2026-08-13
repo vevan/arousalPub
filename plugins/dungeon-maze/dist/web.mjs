@@ -334,8 +334,22 @@ var canvas = null;
 var elapsedElement = null;
 var canvasResizeObserver = null;
 var pendingState = null;
+var boundConversationId = "";
 var stateWrite = Promise.resolve();
 var ignoredStateSignatures = /* @__PURE__ */ new Set();
+function discardTransientMaze() {
+  autoMoveRun += 1;
+  autoMoveInFlight = false;
+  keyboardMoveInFlight = false;
+  pendingState = null;
+}
+function syncConversation(host) {
+  const conversationId = host.conversation.getId();
+  if (conversationId === boundConversationId) return false;
+  discardTransientMaze();
+  boundConversationId = conversationId;
+  return true;
+}
 function fitCanvasToContainer() {
   if (!canvas) return;
   const container = canvas.parentElement;
@@ -347,20 +361,37 @@ function fitCanvasToContainer() {
 function cancelAutoMove(host) {
   autoMoveRun += 1;
   autoMoveInFlight = false;
-  if (pendingState) void persistState(host, pendingState);
+  if (pendingState && host.conversation.getId() === boundConversationId) {
+    void persistState(host, pendingState, boundConversationId);
+  }
 }
 function stateSignature(state) {
   return `${state.seed}:${state.hero.x}:${state.hero.y}:${state.elapsedMinutes}:${state.restedMinutes}:${state.resolvedEntityIds.join(",")}:${state.activeEvent?.entityId ?? ""}:${state.activeEvent?.minutes ?? ""}:${state.explored.flat().map((value) => value ? "1" : "0").join("")}`;
 }
-function persistState(host, state) {
+function persistState(host, state, conversationId) {
+  if (host.conversation.getId() !== conversationId) return stateWrite;
   pendingState = state;
   const signature = stateSignature(state);
   ignoredStateSignatures.add(signature);
   stateWrite = stateWrite.catch(() => void 0).then(async () => {
+    if (host.conversation.getId() !== conversationId) return;
     await host.conversation.patchPluginSettings({ [STATE_KEY]: state });
-    if (pendingState && stateSignature(pendingState) === signature) pendingState = null;
+    if (host.conversation.getId() === conversationId && pendingState && stateSignature(pendingState) === signature) {
+      pendingState = null;
+    }
   });
   return stateWrite;
+}
+async function mutateState(host, mutate, after) {
+  const conversationId = host.conversation.getId();
+  const state = await readState(host);
+  if (!state || host.conversation.getId() !== conversationId) return;
+  const next = mutate(state);
+  if (!next) return;
+  if (host.conversation.getId() !== conversationId) return;
+  await persistState(host, next, conversationId);
+  if (host.conversation.getId() !== conversationId) return;
+  await after(next);
 }
 function drawMaze(host, state) {
   if (elapsedElement) elapsedElement.textContent = host.t(tKey(host, "elapsed"), { minutes: state.elapsedMinutes });
@@ -397,6 +428,7 @@ function drawMaze(host, state) {
   }
 }
 async function readState(host) {
+  syncConversation(host);
   if (pendingState) return pendingState;
   const settings = await host.conversation.getPluginSettings();
   const state = settings[STATE_KEY];
@@ -407,65 +439,57 @@ async function refreshPanel(host) {
   host.ui.panel.setHtml(PLACEMENT, PLUGIN_ID, renderPanel(host, state), { revision: ++revision });
 }
 async function createMaze(host) {
+  const conversationId = host.conversation.getId();
+  discardTransientMaze();
+  boundConversationId = conversationId;
   const state = createDungeonMaze();
-  await host.conversation.patchPluginSettings({ [STATE_KEY]: state });
+  await persistState(host, state, conversationId);
+  if (host.conversation.getId() !== conversationId) return;
   await refreshPanel(host);
   host.ui.notify(host.t(tKey(host, "created")), void 0, { level: "success" });
 }
 async function moveHero(host, x, y) {
-  const state = await readState(host);
-  if (!state) return;
-  const next = moveDungeonHero(state, { x, y });
-  if (!next) return;
-  await persistState(host, next);
-  if (next.activeEvent) await refreshPanel(host);
-  else drawMaze(host, next);
+  await mutateState(host, (state) => moveDungeonHero(state, { x, y }), async (next) => {
+    if (next.activeEvent) await refreshPanel(host);
+    else drawMaze(host, next);
+  });
 }
 async function resolveActiveEvent(host, resolution) {
-  const state = await readState(host);
-  if (!state) return;
-  const next = resolveDungeonMapEvent(state, resolution);
-  if (!next) return;
-  await persistState(host, next);
-  await refreshPanel(host);
+  await mutateState(host, (state) => resolveDungeonMapEvent(state, resolution), () => refreshPanel(host));
 }
 async function adjustCampRest(host, delta) {
-  const state = await readState(host);
-  if (!state?.activeEvent) return;
-  const next = setDungeonCampRestMinutes(state, state.activeEvent.minutes + delta);
-  if (!next) return;
-  await persistState(host, next);
-  await refreshPanel(host);
+  await mutateState(host, (state) => {
+    if (!state.activeEvent) return null;
+    return setDungeonCampRestMinutes(state, state.activeEvent.minutes + delta);
+  }, () => refreshPanel(host));
 }
 async function moveHeroToExplored(host, x, y) {
+  const conversationId = host.conversation.getId();
   const run = ++autoMoveRun;
   autoMoveInFlight = true;
-  const state = await readState(host);
-  if (!state || run !== autoMoveRun) return;
-  const path = findDungeonPath(state, { x, y });
-  if (!path?.length) {
-    autoMoveInFlight = false;
-    return;
-  }
   try {
+    const state = await readState(host);
+    if (!state || run !== autoMoveRun || host.conversation.getId() !== conversationId) return;
+    const path = findDungeonPath(state, { x, y });
+    if (!path?.length) return;
     let next = state;
     for (const point of path) {
-      if (run !== autoMoveRun) return;
+      if (run !== autoMoveRun || host.conversation.getId() !== conversationId) return;
       const moved = moveDungeonHero(next, point);
       if (!moved) return;
       next = moved;
       pendingState = next;
       drawMaze(host, next);
       if (next.activeEvent) {
-        await persistState(host, next);
-        await refreshPanel(host);
+        await persistState(host, next, conversationId);
+        if (host.conversation.getId() === conversationId) await refreshPanel(host);
         return;
       }
       await new Promise((resolve) => setTimeout(resolve, 140));
     }
-    if (run !== autoMoveRun) return;
-    await persistState(host, next);
-    drawMaze(host, next);
+    if (run !== autoMoveRun || host.conversation.getId() !== conversationId) return;
+    await persistState(host, next, conversationId);
+    if (host.conversation.getId() === conversationId) drawMaze(host, next);
   } finally {
     if (run === autoMoveRun) autoMoveInFlight = false;
   }
@@ -506,8 +530,16 @@ function register(host) {
       void refreshPanel(host);
     }
   });
+  host.lifecycle.onTurnDataChanged(() => {
+    const switched = syncConversation(host);
+    if (switched || !canvas?.isConnected) void refreshPanel(host);
+  });
   host.ui.panel.onEvent(PLACEMENT, PLUGIN_ID, {
     onAction: (event) => {
+      if (syncConversation(host)) {
+        void refreshPanel(host);
+        return;
+      }
       if (event.action === "create" || event.action === "reset") void createMaze(host);
       if (event.action === "event:resolve") void resolveActiveEvent(host, "resolve");
       if (event.action === "event:skip") void resolveActiveEvent(host, "skip");
@@ -517,6 +549,10 @@ function register(host) {
       if (match) void moveHero(host, Number(match[1]), Number(match[2]));
     },
     onKeydown: (event) => {
+      if (syncConversation(host)) {
+        void refreshPanel(host);
+        return true;
+      }
       if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return false;
       if (event.key === "Escape" && autoMoveInFlight) {
         cancelAutoMove(host);
@@ -563,6 +599,10 @@ function register(host) {
     },
     onPointer: (event) => {
       if (event.canvasId !== "maze") return;
+      if (syncConversation(host)) {
+        void refreshPanel(host);
+        return;
+      }
       if (autoMoveInFlight) {
         cancelAutoMove(host);
         return;
@@ -571,6 +611,10 @@ function register(host) {
     }
   });
   host.conversation.onPluginSettingsChanged((settings) => {
+    if (syncConversation(host)) {
+      void refreshPanel(host);
+      return;
+    }
     const state = settings[STATE_KEY];
     if (isDungeonMazeState(state) && ignoredStateSignatures.delete(stateSignature(state))) {
       drawMaze(host, state);

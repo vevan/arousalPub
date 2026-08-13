@@ -4,6 +4,9 @@ import {
   isDungeonMazeState,
   isVisibleToHero,
   moveDungeonHero,
+  resolveDungeonMapEvent,
+  setDungeonCampRestMinutes,
+  type DungeonEventResolution,
   type DungeonMazeState,
   type MazeEntity,
   type MazePoint,
@@ -54,7 +57,7 @@ function escapeHtml(text: string): string {
 }
 
 function entityAt(state: DungeonMazeState, x: number, y: number): MazeEntity | undefined {
-  return state.entities.find((entity) => entity.x === x && entity.y === y)
+  return state.entities.find((entity) => entity.x === x && entity.y === y && !state.resolvedEntityIds.includes(entity.id))
 }
 
 function entityGlyph(entity: MazeEntity | undefined, state: DungeonMazeState, x: number, y: number): string {
@@ -64,6 +67,7 @@ function entityGlyph(entity: MazeEntity | undefined, state: DungeonMazeState, x:
   if (entity.kind === 'boss') return '🐉'
   if (entity.kind === 'minion') return '👹'
   if (entity.kind === 'chest') return '📦'
+  if (entity.kind === 'camp') return '🔥'
   return '🪤'
 }
 
@@ -73,7 +77,25 @@ function renderMap(host: PluginHost, state: DungeonMazeState): string {
 }
 
 function count(state: DungeonMazeState, kind: MazeEntity['kind']): number {
-  return state.entities.filter((entity) => entity.kind === kind).length
+  return state.entities.filter((entity) => entity.kind === kind && !state.resolvedEntityIds.includes(entity.id)).length
+}
+
+function renderActiveEvent(host: PluginHost, state: DungeonMazeState): string {
+  const event = state.activeEvent
+  if (!event) return ''
+  const description = event.kind === 'combat'
+    ? host.t(tKey(host, 'combatEvent'), { rounds: event.rounds ?? 1, minutes: event.minutes })
+    : event.kind === 'check'
+      ? host.t(tKey(host, 'checkEvent'), { minutes: event.minutes })
+      : host.t(tKey(host, 'campEvent'), { minutes: event.minutes })
+  const resolveLabel = host.t(tKey(host, event.kind === 'combat' ? 'fight' : event.kind === 'check' ? 'check' : 'rest'))
+  const skip = event.optional
+    ? `<button type="button" class="dm-secondary" data-plugin-action="event:skip">${escapeHtml(host.t(tKey(host, 'skip')))}</button>`
+    : ''
+  const campControls = event.kind === 'camp'
+    ? `<div class="dm-rest-duration"><button type="button" class="dm-secondary" data-plugin-action="event:camp:-30">−30</button><span>${event.minutes}m</span><button type="button" class="dm-secondary" data-plugin-action="event:camp:+30">+30</button></div>`
+    : ''
+  return `<section class="dm-event"><p>${escapeHtml(description)}</p><div>${campControls}<button type="button" class="dm-primary" data-plugin-action="event:resolve">${escapeHtml(resolveLabel)}</button>${skip}</div></section>`
 }
 
 function renderPanel(host: PluginHost, state: DungeonMazeState | null): string {
@@ -92,9 +114,10 @@ function renderPanel(host: PluginHost, state: DungeonMazeState | null): string {
     `<div class="dm-header-actions"><button type="button" class="dm-icon" data-plugin-action="reset" title="${escapeHtml(host.t(tKey(host, 'reset')))}">↻</button></div>`,
     '</header>',
     renderMap(host, state),
+    renderActiveEvent(host, state),
     `<p class="dm-legend" data-plugin-live-text="elapsed">${escapeHtml(host.t(tKey(host, 'elapsed'), { minutes: state.elapsedMinutes }))}</p>`,
     `<p class="dm-legend">${escapeHtml(host.t(tKey(host, 'moveHint')))}</p>`,
-    `<p class="dm-legend"><b>🧙</b> ${escapeHtml(host.t(tKey(host, 'hero')))} · <b>🐉</b> ${escapeHtml(host.t(tKey(host, 'boss')))} · <b>👹</b> ${count(state, 'minion')} · <b>📦</b> ${count(state, 'chest')} · <b>🪤</b> ${count(state, 'trap')}</p>`,
+    `<p class="dm-legend"><b>🧙</b> ${escapeHtml(host.t(tKey(host, 'hero')))} · <b>🐉</b> ${escapeHtml(host.t(tKey(host, 'boss')))} · <b>👹</b> ${count(state, 'minion')} · <b>📦</b> ${count(state, 'chest')} · <b>🪤</b> ${count(state, 'trap')} · <b>🔥</b> ${count(state, 'camp')}</p>`,
     '</section>',
   ].join('\n')
 }
@@ -103,7 +126,7 @@ const STYLES = `
 .dungeon-maze-panel{padding:10px;display:flex;flex-direction:column;gap:10px;min-width:0}
 .dm-header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.dm-header h3{margin:0;font-size:1rem}.dm-header p,.dm-legend,.dm-empty{margin:3px 0 0;font-size:.75rem;opacity:.7}
 .dm-header-actions{display:flex;gap:4px}.dm-map-wrap{width:100%;min-width:0;overflow:hidden}.dm-map{display:block;box-sizing:border-box;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));background:oklch(.16 .015 55);cursor:pointer;touch-action:manipulation}.dm-map:focus-visible{outline:2px solid rgb(var(--v-theme-primary));outline-offset:2px}
-.dm-primary,.dm-icon{border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:6px;background:rgba(var(--v-theme-primary),.12);color:rgb(var(--v-theme-on-surface));cursor:pointer}.dm-primary{padding:7px 10px;align-self:flex-start}.dm-icon{width:28px;height:28px;font-size:18px}.dm-primary:hover,.dm-icon:hover{background:rgba(var(--v-theme-primary),.22)}
+.dm-event{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:6px;background:rgba(var(--v-theme-primary),.08)}.dm-event p{margin:0;font-size:.8rem}.dm-event>div,.dm-rest-duration{display:flex;align-items:center;gap:6px;flex-shrink:0}.dm-rest-duration span{min-width:36px;text-align:center;font-size:.75rem}.dm-primary,.dm-secondary,.dm-icon{border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:6px;color:rgb(var(--v-theme-on-surface));cursor:pointer}.dm-primary,.dm-icon{background:rgba(var(--v-theme-primary),.12)}.dm-primary,.dm-secondary{padding:7px 10px}.dm-icon{width:28px;height:28px;font-size:18px}.dm-secondary{background:transparent}.dm-primary:hover,.dm-icon:hover{background:rgba(var(--v-theme-primary),.22)}.dm-secondary:hover{background:rgba(var(--v-theme-on-surface),.08)}
 `
 
 let revision = 0
@@ -133,7 +156,7 @@ function cancelAutoMove(host: PluginHost): void {
 }
 
 function stateSignature(state: DungeonMazeState): string {
-  return `${state.seed}:${state.hero.x}:${state.hero.y}:${state.elapsedMinutes}:${state.explored.flat().map((value) => value ? '1' : '0').join('')}`
+  return `${state.seed}:${state.hero.x}:${state.hero.y}:${state.elapsedMinutes}:${state.restedMinutes}:${state.resolvedEntityIds.join(',')}:${state.activeEvent?.entityId ?? ''}:${state.activeEvent?.minutes ?? ''}:${state.explored.flat().map((value) => value ? '1' : '0').join('')}`
 }
 
 function persistState(host: PluginHost, state: DungeonMazeState): Promise<void> {
@@ -207,7 +230,26 @@ async function moveHero(host: PluginHost, x: number, y: number): Promise<void> {
   const next = moveDungeonHero(state, { x, y })
   if (!next) return
   await persistState(host, next)
-  drawMaze(host, next)
+  if (next.activeEvent) await refreshPanel(host)
+  else drawMaze(host, next)
+}
+
+async function resolveActiveEvent(host: PluginHost, resolution: DungeonEventResolution): Promise<void> {
+  const state = await readState(host)
+  if (!state) return
+  const next = resolveDungeonMapEvent(state, resolution)
+  if (!next) return
+  await persistState(host, next)
+  await refreshPanel(host)
+}
+
+async function adjustCampRest(host: PluginHost, delta: number): Promise<void> {
+  const state = await readState(host)
+  if (!state?.activeEvent) return
+  const next = setDungeonCampRestMinutes(state, state.activeEvent.minutes + delta)
+  if (!next) return
+  await persistState(host, next)
+  await refreshPanel(host)
 }
 
 async function moveHeroToExplored(host: PluginHost, x: number, y: number): Promise<void> {
@@ -229,6 +271,11 @@ async function moveHeroToExplored(host: PluginHost, x: number, y: number): Promi
       next = moved
       pendingState = next
       drawMaze(host, next)
+      if (next.activeEvent) {
+        await persistState(host, next)
+        await refreshPanel(host)
+        return
+      }
       await new Promise<void>((resolve) => setTimeout(resolve, 140))
     }
     if (run !== autoMoveRun) return
@@ -279,6 +326,10 @@ export function register(host: PluginHost): void {
   host.ui.panel.onEvent(PLACEMENT, PLUGIN_ID, {
     onAction: (event: { action: string }) => {
       if (event.action === 'create' || event.action === 'reset') void createMaze(host)
+      if (event.action === 'event:resolve') void resolveActiveEvent(host, 'resolve')
+      if (event.action === 'event:skip') void resolveActiveEvent(host, 'skip')
+      const campAdjustment = /^event:camp:([+-]\d+)$/.exec(event.action)
+      if (campAdjustment) void adjustCampRest(host, Number(campAdjustment[1]))
       const match = /^move:(\d+):(\d+)$/.exec(event.action)
       if (match) void moveHero(host, Number(match[1]), Number(match[2]))
     },

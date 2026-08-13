@@ -589,7 +589,7 @@ export function notifyPluginPanelMounted(pluginId?: string, root?: HTMLElement):
   if (!pluginId || !root) return
   const handlers = eventHandlers.get(pluginId.trim())
   if (!handlers) return
-  for (const canvas of root.querySelectorAll('canvas[data-plugin-canvas]')) {
+  for (const canvas of root.querySelectorAll<HTMLCanvasElement>('canvas[data-plugin-canvas]')) {
     handlers.onCanvasMounted?.({
       canvas,
       canvasId: canvas.getAttribute('data-plugin-canvas')?.trim() ?? '',

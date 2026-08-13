@@ -1,23 +1,37 @@
 export const MAZE_SIZE = 21
 
 export type MazePoint = { x: number; y: number }
-export type MazeEntityKind = 'boss' | 'minion' | 'chest' | 'trap'
+export type MazeEntityKind = 'boss' | 'minion' | 'chest' | 'trap' | 'camp'
 export type MazeEntity = MazePoint & { id: string; kind: MazeEntityKind }
+export type DungeonEventKind = 'combat' | 'check' | 'camp'
+export type DungeonEventResolution = 'resolve' | 'skip'
+
+export interface DungeonMapEvent {
+  entityId: string
+  kind: DungeonEventKind
+  optional: boolean
+  minutes: number
+  rounds?: number
+}
 
 export interface MazeGenerationConfig {
   minionDensity: number
   chestDensity: number
   trapDensity: number
+  campDensity: number
 }
 
 export const DEFAULT_GENERATION_CONFIG: MazeGenerationConfig = {
   minionDensity: 50,
   chestDensity: 110,
   trapDensity: 150,
+  campDensity: 150,
 }
 
+const COMBAT_MINUTES_PER_ROUND = 0.5
+
 export interface DungeonMazeState {
-  version: 3
+  version: 5
   width: number
   height: number
   seed: number
@@ -27,6 +41,9 @@ export interface DungeonMazeState {
   exit: MazePoint
   hero: MazePoint
   elapsedMinutes: number
+  restedMinutes: number
+  resolvedEntityIds: string[]
+  activeEvent: DungeonMapEvent | null
   explored: boolean[][]
   entities: MazeEntity[]
 }
@@ -192,6 +209,7 @@ function placeEntities(
   take('minion', generation.minionDensity)
   take('chest', generation.chestDensity)
   take('trap', generation.trapDensity)
+  take('camp', generation.campDensity)
   return entities
 }
 
@@ -203,7 +221,7 @@ export function createDungeonMaze(
   const { entrance, exit } = selectEntranceAndExit(MAZE_SIZE, MAZE_SIZE, random)
   const cells = carveMaze(MAZE_SIZE, MAZE_SIZE, entrance, exit, random)
   return {
-    version: 3,
+    version: 5,
     width: MAZE_SIZE,
     height: MAZE_SIZE,
     seed,
@@ -213,6 +231,9 @@ export function createDungeonMaze(
     exit,
     hero: { ...entrance },
     elapsedMinutes: 0,
+    restedMinutes: 0,
+    resolvedEntityIds: [],
+    activeEvent: null,
     explored: revealAround(
       cells,
       Array.from({ length: MAZE_SIZE }, () => Array<boolean>(MAZE_SIZE).fill(false)),
@@ -233,12 +254,59 @@ export function moveDungeonHero(
 ): DungeonMazeState | null {
   const dx = Math.abs(destination.x - state.hero.x)
   const dy = Math.abs(destination.y - state.hero.y)
-  if (dx + dy !== 1 || state.cells[destination.y]?.[destination.x] !== 1) return null
+  if (state.activeEvent || dx + dy !== 1 || state.cells[destination.y]?.[destination.x] !== 1) return null
+  const entity = state.entities.find((candidate) =>
+    candidate.x === destination.x && candidate.y === destination.y && !state.resolvedEntityIds.includes(candidate.id),
+  )
   return {
     ...state,
     hero: { ...destination },
     elapsedMinutes: state.elapsedMinutes + 1,
+    activeEvent: entity ? createDungeonMapEvent(entity) : null,
     explored: revealAround(state.cells, state.explored, destination),
+  }
+}
+
+export function createDungeonMapEvent(entity: MazeEntity): DungeonMapEvent {
+  if (entity.kind === 'boss' || entity.kind === 'minion') {
+    const rounds = entity.kind === 'boss' ? 10 : 6
+    return {
+      entityId: entity.id,
+      kind: 'combat',
+      optional: false,
+      rounds,
+      minutes: rounds * COMBAT_MINUTES_PER_ROUND,
+    }
+  }
+  if (entity.kind === 'chest') return { entityId: entity.id, kind: 'check', optional: true, minutes: 3 }
+  if (entity.kind === 'trap') return { entityId: entity.id, kind: 'check', optional: false, minutes: 3 }
+  return { entityId: entity.id, kind: 'camp', optional: true, minutes: 30 }
+}
+
+export function setDungeonCampRestMinutes(
+  state: DungeonMazeState,
+  minutes: number,
+): DungeonMazeState | null {
+  const event = state.activeEvent
+  if (!event || event.kind !== 'camp') return null
+  const rounded = Math.max(30, Math.round(minutes / 30) * 30)
+  return { ...state, activeEvent: { ...event, minutes: rounded } }
+}
+
+export function resolveDungeonMapEvent(
+  state: DungeonMazeState,
+  resolution: DungeonEventResolution,
+): DungeonMazeState | null {
+  const event = state.activeEvent
+  if (!event || (resolution === 'skip' && !event.optional)) return null
+  return {
+    ...state,
+    elapsedMinutes: state.elapsedMinutes + (resolution === 'resolve' ? event.minutes : 0),
+    restedMinutes: state.restedMinutes + (resolution === 'resolve' && event.kind === 'camp' ? event.minutes : 0),
+    resolvedEntityIds: resolution === 'resolve' && event.kind !== 'camp'
+      ? [...state.resolvedEntityIds, event.entityId]
+      : state.resolvedEntityIds,
+    activeEvent: null,
   }
 }
 
@@ -279,13 +347,16 @@ export function findDungeonPath(
 export function isDungeonMazeState(value: unknown): value is DungeonMazeState {
   if (!value || typeof value !== 'object') return false
   const state = value as Partial<DungeonMazeState>
-  return state.version === 3 && state.width === MAZE_SIZE && state.height === MAZE_SIZE &&
+  return state.version === 5 && state.width === MAZE_SIZE && state.height === MAZE_SIZE &&
     Array.isArray(state.cells) && state.cells.length === MAZE_SIZE &&
     typeof state.hero?.x === 'number' && typeof state.hero?.y === 'number' &&
     Array.isArray(state.explored) && state.explored.length === MAZE_SIZE &&
     Array.isArray(state.entities) && typeof state.seed === 'number' &&
-    typeof state.elapsedMinutes === 'number' && Number.isInteger(state.elapsedMinutes) && state.elapsedMinutes >= 0 &&
+    typeof state.elapsedMinutes === 'number' && Number.isFinite(state.elapsedMinutes) && state.elapsedMinutes >= 0 &&
+    typeof state.restedMinutes === 'number' && Number.isFinite(state.restedMinutes) && state.restedMinutes >= 0 &&
+    Array.isArray(state.resolvedEntityIds) && (state.activeEvent === null || typeof state.activeEvent === 'object') &&
     typeof state.generation?.minionDensity === 'number' &&
     typeof state.generation?.chestDensity === 'number' &&
-    typeof state.generation?.trapDensity === 'number'
+    typeof state.generation?.trapDensity === 'number' &&
+    typeof state.generation?.campDensity === 'number'
 }

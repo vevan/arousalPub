@@ -1,6 +1,6 @@
 # 50 · 地下城迷宫插件设想（P2 · 待讨论）
 
-> **状态**：**P2 设想** · 已列入 `DOC/devNotes/04-TODO` · **M0 验证骨架已落地**（21×21 生成 / 会话恢复 / panel），其余能力待做
+> **状态**：**P2 设想** · 已列入 `DOC/devNotes/04-TODO` · **M0 验证骨架已落地**（21×21 生成 / 会话恢复 / Canvas panel / 对象事件耗时），其余能力待做
 > **优先级**：**P2**（高于远期备忘 `99`；次于 P0/P1）  
 > **插件 id**：`dungeon-maze`（已注册为 bundled 插件）
 > **关联**：[`04-TODO.md`](04-TODO.md) P2、[`09-plugin-system-and-guidance-generate.md`](09-plugin-system-and-guidance-generate.md)、[`18-plugin-host-developer-api.md`](18-plugin-host-developer-api.md)、[`30-plugin-trace-keeper.md`](30-plugin-trace-keeper.md)（**六维读/写**）、[`41-plugin-host-generic-principles.md`](41-plugin-host-generic-principles.md)

@@ -3,8 +3,10 @@ var MAZE_SIZE = 21;
 var DEFAULT_GENERATION_CONFIG = {
   minionDensity: 50,
   chestDensity: 110,
-  trapDensity: 150
+  trapDensity: 150,
+  campDensity: 150
 };
+var COMBAT_MINUTES_PER_ROUND = 0.5;
 function seededRandom(seed) {
   let value = seed >>> 0;
   return () => {
@@ -138,6 +140,7 @@ function placeEntities(cells, entrance, exit, random, generation) {
   take("minion", generation.minionDensity);
   take("chest", generation.chestDensity);
   take("trap", generation.trapDensity);
+  take("camp", generation.campDensity);
   return entities;
 }
 function createDungeonMaze(seed = Math.floor(Math.random() * 4294967295), generation = DEFAULT_GENERATION_CONFIG) {
@@ -145,7 +148,7 @@ function createDungeonMaze(seed = Math.floor(Math.random() * 4294967295), genera
   const { entrance, exit } = selectEntranceAndExit(MAZE_SIZE, MAZE_SIZE, random);
   const cells = carveMaze(MAZE_SIZE, MAZE_SIZE, entrance, exit, random);
   return {
-    version: 3,
+    version: 5,
     width: MAZE_SIZE,
     height: MAZE_SIZE,
     seed,
@@ -155,6 +158,9 @@ function createDungeonMaze(seed = Math.floor(Math.random() * 4294967295), genera
     exit,
     hero: { ...entrance },
     elapsedMinutes: 0,
+    restedMinutes: 0,
+    resolvedEntityIds: [],
+    activeEvent: null,
     explored: revealAround(
       cells,
       Array.from({ length: MAZE_SIZE }, () => Array(MAZE_SIZE).fill(false)),
@@ -169,12 +175,48 @@ function isVisibleToHero(state, x, y) {
 function moveDungeonHero(state, destination) {
   const dx = Math.abs(destination.x - state.hero.x);
   const dy = Math.abs(destination.y - state.hero.y);
-  if (dx + dy !== 1 || state.cells[destination.y]?.[destination.x] !== 1) return null;
+  if (state.activeEvent || dx + dy !== 1 || state.cells[destination.y]?.[destination.x] !== 1) return null;
+  const entity = state.entities.find(
+    (candidate) => candidate.x === destination.x && candidate.y === destination.y && !state.resolvedEntityIds.includes(candidate.id)
+  );
   return {
     ...state,
     hero: { ...destination },
     elapsedMinutes: state.elapsedMinutes + 1,
+    activeEvent: entity ? createDungeonMapEvent(entity) : null,
     explored: revealAround(state.cells, state.explored, destination)
+  };
+}
+function createDungeonMapEvent(entity) {
+  if (entity.kind === "boss" || entity.kind === "minion") {
+    const rounds = entity.kind === "boss" ? 10 : 6;
+    return {
+      entityId: entity.id,
+      kind: "combat",
+      optional: false,
+      rounds,
+      minutes: rounds * COMBAT_MINUTES_PER_ROUND
+    };
+  }
+  if (entity.kind === "chest") return { entityId: entity.id, kind: "check", optional: true, minutes: 3 };
+  if (entity.kind === "trap") return { entityId: entity.id, kind: "check", optional: false, minutes: 3 };
+  return { entityId: entity.id, kind: "camp", optional: true, minutes: 30 };
+}
+function setDungeonCampRestMinutes(state, minutes) {
+  const event = state.activeEvent;
+  if (!event || event.kind !== "camp") return null;
+  const rounded = Math.max(30, Math.round(minutes / 30) * 30);
+  return { ...state, activeEvent: { ...event, minutes: rounded } };
+}
+function resolveDungeonMapEvent(state, resolution) {
+  const event = state.activeEvent;
+  if (!event || resolution === "skip" && !event.optional) return null;
+  return {
+    ...state,
+    elapsedMinutes: state.elapsedMinutes + (resolution === "resolve" ? event.minutes : 0),
+    restedMinutes: state.restedMinutes + (resolution === "resolve" && event.kind === "camp" ? event.minutes : 0),
+    resolvedEntityIds: resolution === "resolve" && event.kind !== "camp" ? [...state.resolvedEntityIds, event.entityId] : state.resolvedEntityIds,
+    activeEvent: null
   };
 }
 function findDungeonPath(state, destination) {
@@ -213,7 +255,7 @@ function findDungeonPath(state, destination) {
 function isDungeonMazeState(value) {
   if (!value || typeof value !== "object") return false;
   const state = value;
-  return state.version === 3 && state.width === MAZE_SIZE && state.height === MAZE_SIZE && Array.isArray(state.cells) && state.cells.length === MAZE_SIZE && typeof state.hero?.x === "number" && typeof state.hero?.y === "number" && Array.isArray(state.explored) && state.explored.length === MAZE_SIZE && Array.isArray(state.entities) && typeof state.seed === "number" && typeof state.elapsedMinutes === "number" && Number.isInteger(state.elapsedMinutes) && state.elapsedMinutes >= 0 && typeof state.generation?.minionDensity === "number" && typeof state.generation?.chestDensity === "number" && typeof state.generation?.trapDensity === "number";
+  return state.version === 5 && state.width === MAZE_SIZE && state.height === MAZE_SIZE && Array.isArray(state.cells) && state.cells.length === MAZE_SIZE && typeof state.hero?.x === "number" && typeof state.hero?.y === "number" && Array.isArray(state.explored) && state.explored.length === MAZE_SIZE && Array.isArray(state.entities) && typeof state.seed === "number" && typeof state.elapsedMinutes === "number" && Number.isFinite(state.elapsedMinutes) && state.elapsedMinutes >= 0 && typeof state.restedMinutes === "number" && Number.isFinite(state.restedMinutes) && state.restedMinutes >= 0 && Array.isArray(state.resolvedEntityIds) && (state.activeEvent === null || typeof state.activeEvent === "object") && typeof state.generation?.minionDensity === "number" && typeof state.generation?.chestDensity === "number" && typeof state.generation?.trapDensity === "number" && typeof state.generation?.campDensity === "number";
 }
 
 // plugins/dungeon-maze/src/index.ts
@@ -227,7 +269,7 @@ function escapeHtml(text) {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 function entityAt(state, x, y) {
-  return state.entities.find((entity) => entity.x === x && entity.y === y);
+  return state.entities.find((entity) => entity.x === x && entity.y === y && !state.resolvedEntityIds.includes(entity.id));
 }
 function entityGlyph(entity, state, x, y) {
   if (x === state.hero.x && y === state.hero.y) return "\u{1F9D9}";
@@ -236,6 +278,7 @@ function entityGlyph(entity, state, x, y) {
   if (entity.kind === "boss") return "\u{1F409}";
   if (entity.kind === "minion") return "\u{1F479}";
   if (entity.kind === "chest") return "\u{1F4E6}";
+  if (entity.kind === "camp") return "\u{1F525}";
   return "\u{1FAA4}";
 }
 function renderMap(host, state) {
@@ -243,7 +286,16 @@ function renderMap(host, state) {
   return `<div class="dm-map-wrap"><canvas class="dm-map" width="420" height="420" tabindex="0" role="img" aria-label="${label}" data-plugin-canvas="maze" data-plugin-keyboard></canvas></div>`;
 }
 function count(state, kind) {
-  return state.entities.filter((entity) => entity.kind === kind).length;
+  return state.entities.filter((entity) => entity.kind === kind && !state.resolvedEntityIds.includes(entity.id)).length;
+}
+function renderActiveEvent(host, state) {
+  const event = state.activeEvent;
+  if (!event) return "";
+  const description = event.kind === "combat" ? host.t(tKey(host, "combatEvent"), { rounds: event.rounds ?? 1, minutes: event.minutes }) : event.kind === "check" ? host.t(tKey(host, "checkEvent"), { minutes: event.minutes }) : host.t(tKey(host, "campEvent"), { minutes: event.minutes });
+  const resolveLabel = host.t(tKey(host, event.kind === "combat" ? "fight" : event.kind === "check" ? "check" : "rest"));
+  const skip = event.optional ? `<button type="button" class="dm-secondary" data-plugin-action="event:skip">${escapeHtml(host.t(tKey(host, "skip")))}</button>` : "";
+  const campControls = event.kind === "camp" ? `<div class="dm-rest-duration"><button type="button" class="dm-secondary" data-plugin-action="event:camp:-30">\u221230</button><span>${event.minutes}m</span><button type="button" class="dm-secondary" data-plugin-action="event:camp:+30">+30</button></div>` : "";
+  return `<section class="dm-event"><p>${escapeHtml(description)}</p><div>${campControls}<button type="button" class="dm-primary" data-plugin-action="event:resolve">${escapeHtml(resolveLabel)}</button>${skip}</div></section>`;
 }
 function renderPanel(host, state) {
   if (!state) {
@@ -261,9 +313,10 @@ function renderPanel(host, state) {
     `<div class="dm-header-actions"><button type="button" class="dm-icon" data-plugin-action="reset" title="${escapeHtml(host.t(tKey(host, "reset")))}">\u21BB</button></div>`,
     "</header>",
     renderMap(host, state),
+    renderActiveEvent(host, state),
     `<p class="dm-legend" data-plugin-live-text="elapsed">${escapeHtml(host.t(tKey(host, "elapsed"), { minutes: state.elapsedMinutes }))}</p>`,
     `<p class="dm-legend">${escapeHtml(host.t(tKey(host, "moveHint")))}</p>`,
-    `<p class="dm-legend"><b>\u{1F9D9}</b> ${escapeHtml(host.t(tKey(host, "hero")))} \xB7 <b>\u{1F409}</b> ${escapeHtml(host.t(tKey(host, "boss")))} \xB7 <b>\u{1F479}</b> ${count(state, "minion")} \xB7 <b>\u{1F4E6}</b> ${count(state, "chest")} \xB7 <b>\u{1FAA4}</b> ${count(state, "trap")}</p>`,
+    `<p class="dm-legend"><b>\u{1F9D9}</b> ${escapeHtml(host.t(tKey(host, "hero")))} \xB7 <b>\u{1F409}</b> ${escapeHtml(host.t(tKey(host, "boss")))} \xB7 <b>\u{1F479}</b> ${count(state, "minion")} \xB7 <b>\u{1F4E6}</b> ${count(state, "chest")} \xB7 <b>\u{1FAA4}</b> ${count(state, "trap")} \xB7 <b>\u{1F525}</b> ${count(state, "camp")}</p>`,
     "</section>"
   ].join("\n");
 }
@@ -271,7 +324,7 @@ var STYLES = `
 .dungeon-maze-panel{padding:10px;display:flex;flex-direction:column;gap:10px;min-width:0}
 .dm-header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.dm-header h3{margin:0;font-size:1rem}.dm-header p,.dm-legend,.dm-empty{margin:3px 0 0;font-size:.75rem;opacity:.7}
 .dm-header-actions{display:flex;gap:4px}.dm-map-wrap{width:100%;min-width:0;overflow:hidden}.dm-map{display:block;box-sizing:border-box;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));background:oklch(.16 .015 55);cursor:pointer;touch-action:manipulation}.dm-map:focus-visible{outline:2px solid rgb(var(--v-theme-primary));outline-offset:2px}
-.dm-primary,.dm-icon{border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:6px;background:rgba(var(--v-theme-primary),.12);color:rgb(var(--v-theme-on-surface));cursor:pointer}.dm-primary{padding:7px 10px;align-self:flex-start}.dm-icon{width:28px;height:28px;font-size:18px}.dm-primary:hover,.dm-icon:hover{background:rgba(var(--v-theme-primary),.22)}
+.dm-event{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:6px;background:rgba(var(--v-theme-primary),.08)}.dm-event p{margin:0;font-size:.8rem}.dm-event>div,.dm-rest-duration{display:flex;align-items:center;gap:6px;flex-shrink:0}.dm-rest-duration span{min-width:36px;text-align:center;font-size:.75rem}.dm-primary,.dm-secondary,.dm-icon{border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:6px;color:rgb(var(--v-theme-on-surface));cursor:pointer}.dm-primary,.dm-icon{background:rgba(var(--v-theme-primary),.12)}.dm-primary,.dm-secondary{padding:7px 10px}.dm-icon{width:28px;height:28px;font-size:18px}.dm-secondary{background:transparent}.dm-primary:hover,.dm-icon:hover{background:rgba(var(--v-theme-primary),.22)}.dm-secondary:hover{background:rgba(var(--v-theme-on-surface),.08)}
 `;
 var revision = 0;
 var keyboardMoveInFlight = false;
@@ -297,7 +350,7 @@ function cancelAutoMove(host) {
   if (pendingState) void persistState(host, pendingState);
 }
 function stateSignature(state) {
-  return `${state.seed}:${state.hero.x}:${state.hero.y}:${state.elapsedMinutes}:${state.explored.flat().map((value) => value ? "1" : "0").join("")}`;
+  return `${state.seed}:${state.hero.x}:${state.hero.y}:${state.elapsedMinutes}:${state.restedMinutes}:${state.resolvedEntityIds.join(",")}:${state.activeEvent?.entityId ?? ""}:${state.activeEvent?.minutes ?? ""}:${state.explored.flat().map((value) => value ? "1" : "0").join("")}`;
 }
 function persistState(host, state) {
   pendingState = state;
@@ -365,7 +418,24 @@ async function moveHero(host, x, y) {
   const next = moveDungeonHero(state, { x, y });
   if (!next) return;
   await persistState(host, next);
-  drawMaze(host, next);
+  if (next.activeEvent) await refreshPanel(host);
+  else drawMaze(host, next);
+}
+async function resolveActiveEvent(host, resolution) {
+  const state = await readState(host);
+  if (!state) return;
+  const next = resolveDungeonMapEvent(state, resolution);
+  if (!next) return;
+  await persistState(host, next);
+  await refreshPanel(host);
+}
+async function adjustCampRest(host, delta) {
+  const state = await readState(host);
+  if (!state?.activeEvent) return;
+  const next = setDungeonCampRestMinutes(state, state.activeEvent.minutes + delta);
+  if (!next) return;
+  await persistState(host, next);
+  await refreshPanel(host);
 }
 async function moveHeroToExplored(host, x, y) {
   const run = ++autoMoveRun;
@@ -386,6 +456,11 @@ async function moveHeroToExplored(host, x, y) {
       next = moved;
       pendingState = next;
       drawMaze(host, next);
+      if (next.activeEvent) {
+        await persistState(host, next);
+        await refreshPanel(host);
+        return;
+      }
       await new Promise((resolve) => setTimeout(resolve, 140));
     }
     if (run !== autoMoveRun) return;
@@ -434,6 +509,10 @@ function register(host) {
   host.ui.panel.onEvent(PLACEMENT, PLUGIN_ID, {
     onAction: (event) => {
       if (event.action === "create" || event.action === "reset") void createMaze(host);
+      if (event.action === "event:resolve") void resolveActiveEvent(host, "resolve");
+      if (event.action === "event:skip") void resolveActiveEvent(host, "skip");
+      const campAdjustment = /^event:camp:([+-]\d+)$/.exec(event.action);
+      if (campAdjustment) void adjustCampRest(host, Number(campAdjustment[1]));
       const match = /^move:(\d+):(\d+)$/.exec(event.action);
       if (match) void moveHero(host, Number(match[1]), Number(match[2]));
     },

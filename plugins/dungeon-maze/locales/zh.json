@@ -1,0 +1,16 @@
+{
+  "pluginDisplayName": "地下城迷宫",
+  "title": "地下城迷宫",
+  "open": "打开地下城迷宫",
+  "empty": "当前对话尚未生成迷宫。",
+  "create": "生成 21 × 21 迷宫",
+  "created": "已为当前对话生成迷宫。",
+  "reset": "重新生成迷宫",
+  "seed": "种子：{seed}",
+  "elapsed": "已探索：{minutes} 分钟",
+  "mapLabel": "21 × 21 地下城迷宫地图",
+  "moveHint": "点击高亮格子，或聚焦地图后使用 WASD / 方向键移动。",
+  "hero": "主角",
+  "moveTo": "移动至 {x}, {y}",
+  "boss": "Boss 出口"
+}

@@ -1,0 +1,506 @@
+// plugins/dungeon-maze/src/maze.ts
+var MAZE_SIZE = 21;
+var DEFAULT_GENERATION_CONFIG = {
+  minionDensity: 50,
+  chestDensity: 110,
+  trapDensity: 150
+};
+function seededRandom(seed) {
+  let value = seed >>> 0;
+  return () => {
+    value += 1831565813;
+    let result = value;
+    result = Math.imul(result ^ result >>> 15, result | 1);
+    result ^= result + Math.imul(result ^ result >>> 7, result | 61);
+    return ((result ^ result >>> 14) >>> 0) / 4294967296;
+  };
+}
+function randomIndex(random, length) {
+  return Math.floor(random() * length);
+}
+function samePoint(a, b) {
+  return a.x === b.x && a.y === b.y;
+}
+function hasLineOfSight(cells, from, to) {
+  let x = from.x;
+  let y = from.y;
+  const dx = Math.abs(to.x - x);
+  const dy = Math.abs(to.y - y);
+  const stepX = x < to.x ? 1 : -1;
+  const stepY = y < to.y ? 1 : -1;
+  let error = dx - dy;
+  while (x !== to.x || y !== to.y) {
+    const twiceError = error * 2;
+    if (twiceError > -dy) {
+      error -= dy;
+      x += stepX;
+    }
+    if (twiceError < dx) {
+      error += dx;
+      y += stepY;
+    }
+    if (x === to.x && y === to.y) return true;
+    if (cells[y]?.[x] !== 1) return false;
+  }
+  return true;
+}
+function revealAround(cells, explored, point) {
+  const next = explored.map((row) => [...row]);
+  for (let y = point.y - 2; y <= point.y + 2; y += 1) {
+    for (let x = point.x - 2; x <= point.x + 2; x += 1) {
+      if (next[y]?.[x] !== void 0 && hasLineOfSight(cells, point, { x, y })) next[y][x] = true;
+    }
+  }
+  return next;
+}
+function selectEntranceAndExit(width, height, random) {
+  const validCells = [];
+  for (let y = 1; y < height - 1; y += 2) {
+    for (let x = 1; x < width - 1; x += 2) validCells.push({ x, y });
+  }
+  const minimumDistance = Math.max(width, height);
+  while (true) {
+    const entrance = validCells[randomIndex(random, validCells.length)];
+    const exits = validCells.filter(
+      (candidate) => Math.abs(entrance.x - candidate.x) + Math.abs(entrance.y - candidate.y) >= minimumDistance
+    );
+    if (exits.length > 0) {
+      return { entrance, exit: exits[randomIndex(random, exits.length)] };
+    }
+  }
+}
+function carveMaze(width, height, entrance, exit, random) {
+  const cells = Array.from({ length: height }, () => Array(width).fill(0));
+  const visited = Array.from({ length: height }, () => Array(width).fill(false));
+  const stack = [];
+  let current = { ...entrance };
+  cells[current.y][current.x] = 1;
+  visited[current.y][current.x] = true;
+  const directions = [
+    { x: 0, y: -2, wallX: 0, wallY: -1 },
+    { x: 0, y: 2, wallX: 0, wallY: 1 },
+    { x: -2, y: 0, wallX: -1, wallY: 0 },
+    { x: 2, y: 0, wallX: 1, wallY: 0 }
+  ];
+  while (true) {
+    if (samePoint(current, exit)) {
+      if (stack.length === 0) break;
+      current = stack.pop();
+      continue;
+    }
+    const neighbors = directions.flatMap((direction) => {
+      const x = current.x + direction.x;
+      const y = current.y + direction.y;
+      if (x <= 0 || x >= width - 1 || y <= 0 || y >= height - 1 || visited[y][x]) {
+        return [];
+      }
+      return [{ x, y, wallX: current.x + direction.wallX, wallY: current.y + direction.wallY }];
+    });
+    if (neighbors.length === 0) {
+      if (stack.length === 0) break;
+      current = stack.pop();
+      continue;
+    }
+    const next = neighbors[randomIndex(random, neighbors.length)];
+    cells[next.wallY][next.wallX] = 1;
+    cells[next.y][next.x] = 1;
+    visited[next.y][next.x] = true;
+    stack.push(current);
+    current = { x: next.x, y: next.y };
+  }
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      if (cells[y][x] !== 0) continue;
+      const horizontal = cells[y][x - 1] === 1 && cells[y][x + 1] === 1;
+      const vertical = cells[y - 1][x] === 1 && cells[y + 1][x] === 1;
+      if ((horizontal || vertical) && random() < 0.2) cells[y][x] = 1;
+    }
+  }
+  return cells;
+}
+function placeEntities(cells, entrance, exit, random, generation) {
+  const available = [];
+  for (let y = 1; y < cells.length - 1; y += 1) {
+    for (let x = 1; x < cells[y].length - 1; x += 1) {
+      if (cells[y][x] === 1 && !samePoint({ x, y }, entrance) && !samePoint({ x, y }, exit)) {
+        available.push({ x, y });
+      }
+    }
+  }
+  const entities = [{ id: "boss-1", kind: "boss", ...exit }];
+  const take = (kind, density) => {
+    const count2 = Math.min(available.length, Math.round(cells.length * cells[0].length / density));
+    for (let index = 0; index < count2; index += 1) {
+      const point = available.splice(randomIndex(random, available.length), 1)[0];
+      entities.push({ id: `${kind}-${index + 1}`, kind, ...point });
+    }
+  };
+  take("minion", generation.minionDensity);
+  take("chest", generation.chestDensity);
+  take("trap", generation.trapDensity);
+  return entities;
+}
+function createDungeonMaze(seed = Math.floor(Math.random() * 4294967295), generation = DEFAULT_GENERATION_CONFIG) {
+  const random = seededRandom(seed);
+  const { entrance, exit } = selectEntranceAndExit(MAZE_SIZE, MAZE_SIZE, random);
+  const cells = carveMaze(MAZE_SIZE, MAZE_SIZE, entrance, exit, random);
+  return {
+    version: 3,
+    width: MAZE_SIZE,
+    height: MAZE_SIZE,
+    seed,
+    generation: { ...generation },
+    cells,
+    entrance,
+    exit,
+    hero: { ...entrance },
+    elapsedMinutes: 0,
+    explored: revealAround(
+      cells,
+      Array.from({ length: MAZE_SIZE }, () => Array(MAZE_SIZE).fill(false)),
+      entrance
+    ),
+    entities: placeEntities(cells, entrance, exit, random, generation)
+  };
+}
+function isVisibleToHero(state, x, y) {
+  return Math.abs(state.hero.x - x) <= 2 && Math.abs(state.hero.y - y) <= 2 && hasLineOfSight(state.cells, state.hero, { x, y });
+}
+function moveDungeonHero(state, destination) {
+  const dx = Math.abs(destination.x - state.hero.x);
+  const dy = Math.abs(destination.y - state.hero.y);
+  if (dx + dy !== 1 || state.cells[destination.y]?.[destination.x] !== 1) return null;
+  return {
+    ...state,
+    hero: { ...destination },
+    elapsedMinutes: state.elapsedMinutes + 1,
+    explored: revealAround(state.cells, state.explored, destination)
+  };
+}
+function findDungeonPath(state, destination) {
+  if (state.cells[destination.y]?.[destination.x] !== 1 || !state.explored[destination.y]?.[destination.x]) {
+    return null;
+  }
+  const startKey = `${state.hero.x},${state.hero.y}`;
+  const targetKey = `${destination.x},${destination.y}`;
+  const previous = /* @__PURE__ */ new Map([[startKey, null]]);
+  const queue = [{ ...state.hero }];
+  const directions = [
+    { x: 0, y: -1 },
+    { x: 0, y: 1 },
+    { x: -1, y: 0 },
+    { x: 1, y: 0 }
+  ];
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index];
+    if (`${current.x},${current.y}` === targetKey) break;
+    for (const direction of directions) {
+      const next = { x: current.x + direction.x, y: current.y + direction.y };
+      const key = `${next.x},${next.y}`;
+      if (previous.has(key) || state.cells[next.y]?.[next.x] !== 1 || !state.explored[next.y]?.[next.x]) continue;
+      previous.set(key, current);
+      queue.push(next);
+    }
+  }
+  if (!previous.has(targetKey)) return null;
+  const path = [];
+  for (let point = { ...destination }; point && `${point.x},${point.y}` !== startKey; ) {
+    path.unshift(point);
+    point = previous.get(`${point.x},${point.y}`) ?? null;
+  }
+  return path;
+}
+function isDungeonMazeState(value) {
+  if (!value || typeof value !== "object") return false;
+  const state = value;
+  return state.version === 3 && state.width === MAZE_SIZE && state.height === MAZE_SIZE && Array.isArray(state.cells) && state.cells.length === MAZE_SIZE && typeof state.hero?.x === "number" && typeof state.hero?.y === "number" && Array.isArray(state.explored) && state.explored.length === MAZE_SIZE && Array.isArray(state.entities) && typeof state.seed === "number" && typeof state.elapsedMinutes === "number" && Number.isInteger(state.elapsedMinutes) && state.elapsedMinutes >= 0 && typeof state.generation?.minionDensity === "number" && typeof state.generation?.chestDensity === "number" && typeof state.generation?.trapDensity === "number";
+}
+
+// plugins/dungeon-maze/src/index.ts
+var PLUGIN_ID = "dungeon-maze";
+var PLACEMENT = "rightRail";
+var STATE_KEY = "dungeonState";
+function tKey(host, key) {
+  return host.pluginKey(key);
+}
+function escapeHtml(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function entityAt(state, x, y) {
+  return state.entities.find((entity) => entity.x === x && entity.y === y);
+}
+function entityGlyph(entity, state, x, y) {
+  if (x === state.hero.x && y === state.hero.y) return "\u{1F9D9}";
+  if (x === state.entrance.x && y === state.entrance.y) return "\u{1F6AA}";
+  if (!entity) return "";
+  if (entity.kind === "boss") return "\u{1F409}";
+  if (entity.kind === "minion") return "\u{1F479}";
+  if (entity.kind === "chest") return "\u{1F4E6}";
+  return "\u{1FAA4}";
+}
+function renderMap(host, state) {
+  const label = escapeHtml(host.t(tKey(host, "mapLabel")));
+  return `<div class="dm-map-wrap"><canvas class="dm-map" width="420" height="420" tabindex="0" role="img" aria-label="${label}" data-plugin-canvas="maze" data-plugin-keyboard></canvas></div>`;
+}
+function count(state, kind) {
+  return state.entities.filter((entity) => entity.kind === kind).length;
+}
+function renderPanel(host, state) {
+  if (!state) {
+    return [
+      '<section class="dungeon-maze-panel">',
+      `<p class="dm-empty">${escapeHtml(host.t(tKey(host, "empty")))}</p>`,
+      `<button type="button" class="dm-primary" data-plugin-action="create">${escapeHtml(host.t(tKey(host, "create")))}</button>`,
+      "</section>"
+    ].join("\n");
+  }
+  return [
+    '<section class="dungeon-maze-panel">',
+    '<header class="dm-header">',
+    `<div><h3>${escapeHtml(host.t(tKey(host, "title")))}</h3><p>${escapeHtml(host.t(tKey(host, "seed"), { seed: state.seed }))}</p></div>`,
+    `<div class="dm-header-actions"><button type="button" class="dm-icon" data-plugin-action="reset" title="${escapeHtml(host.t(tKey(host, "reset")))}">\u21BB</button></div>`,
+    "</header>",
+    renderMap(host, state),
+    `<p class="dm-legend" data-plugin-live-text="elapsed">${escapeHtml(host.t(tKey(host, "elapsed"), { minutes: state.elapsedMinutes }))}</p>`,
+    `<p class="dm-legend">${escapeHtml(host.t(tKey(host, "moveHint")))}</p>`,
+    `<p class="dm-legend"><b>\u{1F9D9}</b> ${escapeHtml(host.t(tKey(host, "hero")))} \xB7 <b>\u{1F409}</b> ${escapeHtml(host.t(tKey(host, "boss")))} \xB7 <b>\u{1F479}</b> ${count(state, "minion")} \xB7 <b>\u{1F4E6}</b> ${count(state, "chest")} \xB7 <b>\u{1FAA4}</b> ${count(state, "trap")}</p>`,
+    "</section>"
+  ].join("\n");
+}
+var STYLES = `
+.dungeon-maze-panel{padding:10px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.dm-header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.dm-header h3{margin:0;font-size:1rem}.dm-header p,.dm-legend,.dm-empty{margin:3px 0 0;font-size:.75rem;opacity:.7}
+.dm-header-actions{display:flex;gap:4px}.dm-map-wrap{width:100%;min-width:0;overflow:hidden}.dm-map{display:block;box-sizing:border-box;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));background:oklch(.16 .015 55);cursor:pointer;touch-action:manipulation}.dm-map:focus-visible{outline:2px solid rgb(var(--v-theme-primary));outline-offset:2px}
+.dm-primary,.dm-icon{border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:6px;background:rgba(var(--v-theme-primary),.12);color:rgb(var(--v-theme-on-surface));cursor:pointer}.dm-primary{padding:7px 10px;align-self:flex-start}.dm-icon{width:28px;height:28px;font-size:18px}.dm-primary:hover,.dm-icon:hover{background:rgba(var(--v-theme-primary),.22)}
+`;
+var revision = 0;
+var keyboardMoveInFlight = false;
+var autoMoveInFlight = false;
+var autoMoveRun = 0;
+var canvas = null;
+var elapsedElement = null;
+var canvasResizeObserver = null;
+var pendingState = null;
+var stateWrite = Promise.resolve();
+var ignoredStateSignatures = /* @__PURE__ */ new Set();
+function fitCanvasToContainer() {
+  if (!canvas) return;
+  const container = canvas.parentElement;
+  if (!container) return;
+  const size = Math.max(210, container.clientWidth);
+  canvas.style.width = `${size}px`;
+  canvas.style.height = `${size}px`;
+}
+function cancelAutoMove(host) {
+  autoMoveRun += 1;
+  autoMoveInFlight = false;
+  if (pendingState) void persistState(host, pendingState);
+}
+function stateSignature(state) {
+  return `${state.seed}:${state.hero.x}:${state.hero.y}:${state.elapsedMinutes}:${state.explored.flat().map((value) => value ? "1" : "0").join("")}`;
+}
+function persistState(host, state) {
+  pendingState = state;
+  const signature = stateSignature(state);
+  ignoredStateSignatures.add(signature);
+  stateWrite = stateWrite.catch(() => void 0).then(async () => {
+    await host.conversation.patchPluginSettings({ [STATE_KEY]: state });
+    if (pendingState && stateSignature(pendingState) === signature) pendingState = null;
+  });
+  return stateWrite;
+}
+function drawMaze(host, state) {
+  if (elapsedElement) elapsedElement.textContent = host.t(tKey(host, "elapsed"), { minutes: state.elapsedMinutes });
+  if (!canvas) return;
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  const cellSize = canvas.width / state.width;
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.font = '16px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  for (let y = 0; y < state.height; y += 1) {
+    for (let x = 0; x < state.width; x += 1) {
+      const left = x * cellSize;
+      const top = y * cellSize;
+      const explored = state.explored[y][x];
+      const open = state.cells[y][x] === 1;
+      context.fillStyle = !explored ? "oklch(.23 .018 55)" : open ? "oklch(.78 .05 82)" : "oklch(.16 .015 55)";
+      context.fillRect(left, top, cellSize, cellSize);
+      if (isVisibleToHero(state, x, y)) {
+        context.strokeStyle = "oklch(.78 .04 82 / .2)";
+        context.strokeRect(left + 0.5, top + 0.5, cellSize - 1, cellSize - 1);
+      }
+      const movable = open && isVisibleToHero(state, x, y) && Math.abs(state.hero.x - x) + Math.abs(state.hero.y - y) === 1;
+      if (movable) {
+        context.strokeStyle = "oklch(.65 .16 40)";
+        context.lineWidth = 2;
+        context.strokeRect(left + 1, top + 1, cellSize - 2, cellSize - 2);
+      }
+      if (!explored) continue;
+      const glyph = entityGlyph(entityAt(state, x, y), state, x, y);
+      if (glyph) context.fillText(glyph, left + cellSize / 2, top + cellSize / 2 + 1);
+    }
+  }
+}
+async function readState(host) {
+  if (pendingState) return pendingState;
+  const settings = await host.conversation.getPluginSettings();
+  const state = settings[STATE_KEY];
+  return isDungeonMazeState(state) ? state : null;
+}
+async function refreshPanel(host) {
+  const state = await readState(host);
+  host.ui.panel.setHtml(PLACEMENT, PLUGIN_ID, renderPanel(host, state), { revision: ++revision });
+}
+async function createMaze(host) {
+  const state = createDungeonMaze();
+  await host.conversation.patchPluginSettings({ [STATE_KEY]: state });
+  await refreshPanel(host);
+  host.ui.notify(host.t(tKey(host, "created")), void 0, { level: "success" });
+}
+async function moveHero(host, x, y) {
+  const state = await readState(host);
+  if (!state) return;
+  const next = moveDungeonHero(state, { x, y });
+  if (!next) return;
+  await persistState(host, next);
+  drawMaze(host, next);
+}
+async function moveHeroToExplored(host, x, y) {
+  const run = ++autoMoveRun;
+  autoMoveInFlight = true;
+  const state = await readState(host);
+  if (!state || run !== autoMoveRun) return;
+  const path = findDungeonPath(state, { x, y });
+  if (!path?.length) {
+    autoMoveInFlight = false;
+    return;
+  }
+  try {
+    let next = state;
+    for (const point of path) {
+      if (run !== autoMoveRun) return;
+      const moved = moveDungeonHero(next, point);
+      if (!moved) return;
+      next = moved;
+      pendingState = next;
+      drawMaze(host, next);
+      await new Promise((resolve) => setTimeout(resolve, 140));
+    }
+    if (run !== autoMoveRun) return;
+    await persistState(host, next);
+    drawMaze(host, next);
+  } finally {
+    if (run === autoMoveRun) autoMoveInFlight = false;
+  }
+}
+function movementForKey(key) {
+  switch (key.toLowerCase()) {
+    case "w":
+    case "arrowup":
+      return { x: 0, y: -1 };
+    case "s":
+    case "arrowdown":
+      return { x: 0, y: 1 };
+    case "a":
+    case "arrowleft":
+      return { x: -1, y: 0 };
+    case "d":
+    case "arrowright":
+      return { x: 1, y: 0 };
+    default:
+      return null;
+  }
+}
+function register(host) {
+  host.registerStyles(STYLES);
+  host.ui.panel.register({
+    placement: PLACEMENT,
+    pluginId: PLUGIN_ID,
+    tabIcon: "mdi-grid-large",
+    tabLabelKey: tKey(host, "title"),
+    interactive: true
+  });
+  host.registerSlotButton("composer-toolbar", {
+    id: `${PLUGIN_ID}-open`,
+    icon: "mdi-grid-large",
+    tooltipKey: tKey(host, "open"),
+    onClick: () => {
+      host.ui.panel.open(PLACEMENT, PLUGIN_ID);
+      void refreshPanel(host);
+    }
+  });
+  host.ui.panel.onEvent(PLACEMENT, PLUGIN_ID, {
+    onAction: (event) => {
+      if (event.action === "create" || event.action === "reset") void createMaze(host);
+      const match = /^move:(\d+):(\d+)$/.exec(event.action);
+      if (match) void moveHero(host, Number(match[1]), Number(match[2]));
+    },
+    onKeydown: (event) => {
+      if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return false;
+      if (event.key === "Escape" && autoMoveInFlight) {
+        cancelAutoMove(host);
+        return true;
+      }
+      const delta = movementForKey(event.key);
+      if (!delta) return false;
+      if (keyboardMoveInFlight) return true;
+      if (autoMoveInFlight) {
+        cancelAutoMove(host);
+        return true;
+      }
+      keyboardMoveInFlight = true;
+      void (async () => {
+        try {
+          const state = await readState(host);
+          if (state) await moveHero(host, state.hero.x + delta.x, state.hero.y + delta.y);
+        } finally {
+          keyboardMoveInFlight = false;
+        }
+      })();
+      return true;
+    },
+    onCanvasMounted: (event) => {
+      if (event.canvasId !== "maze") return;
+      canvasResizeObserver?.disconnect();
+      canvas = event.canvas;
+      fitCanvasToContainer();
+      const container = canvas.parentElement;
+      if (container && typeof ResizeObserver !== "undefined") {
+        canvasResizeObserver = new ResizeObserver(() => fitCanvasToContainer());
+        canvasResizeObserver.observe(container);
+      }
+      void readState(host).then((state) => {
+        if (state) drawMaze(host, state);
+      });
+    },
+    onLiveTextMounted: (event) => {
+      if (event.textId !== "elapsed") return;
+      elapsedElement = event.element;
+      void readState(host).then((state) => {
+        if (state) drawMaze(host, state);
+      });
+    },
+    onPointer: (event) => {
+      if (event.canvasId !== "maze") return;
+      if (autoMoveInFlight) {
+        cancelAutoMove(host);
+        return;
+      }
+      void moveHeroToExplored(host, Math.floor(event.x / 20), Math.floor(event.y / 20));
+    }
+  });
+  host.conversation.onPluginSettingsChanged((settings) => {
+    const state = settings[STATE_KEY];
+    if (isDungeonMazeState(state) && ignoredStateSignatures.delete(stateSignature(state))) {
+      drawMaze(host, state);
+      return;
+    }
+    void refreshPanel(host);
+  });
+  void refreshPanel(host);
+}
+export {
+  register
+};

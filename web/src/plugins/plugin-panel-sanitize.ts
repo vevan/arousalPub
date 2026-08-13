@@ -26,9 +26,13 @@ const PANEL_BASE: Record<string, unknown> = {
     'aria-selected',
     'aria-controls',
     'title',
-    'data-tk-action',
-    'data-tk-field',
-    'data-tk-panel',
+    'data-plugin-action',
+    'data-plugin-field',
+    'data-plugin-keyboard',
+    'data-plugin-canvas',
+    'data-plugin-live-text',
+    'width',
+    'height',
     'open',
     'hidden',
     'viewBox',
@@ -37,7 +41,7 @@ const PANEL_BASE: Record<string, unknown> = {
     'fill',
     'aria-hidden',
   ],
-  ADD_TAGS: ['details', 'summary', 'dl', 'dt', 'dd', 'h4', 'p'],
+  ADD_TAGS: ['details', 'summary', 'dl', 'dt', 'dd', 'h4', 'p', 'canvas'],
 }
 
 const PANEL_INTERACTIVE: Record<string, unknown> = {

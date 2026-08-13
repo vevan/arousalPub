@@ -1,8 +1,8 @@
 # 50 · 地下城迷宫插件设想（P2 · 待讨论）
 
-> **状态**：**P2 设想** · 已列入 `DOC/devNotes/04-TODO` · **尚无** `plugins/` 实现  
+> **状态**：**P2 设想** · 已列入 `DOC/devNotes/04-TODO` · **M0 验证骨架已落地**（21×21 生成 / 会话恢复 / panel），其余能力待做
 > **优先级**：**P2**（高于远期备忘 `99`；次于 P0/P1）  
-> **暂定插件 id**：`dungeon-maze`（仅文档用，未注册）  
+> **插件 id**：`dungeon-maze`（已注册为 bundled 插件）
 > **关联**：[`04-TODO.md`](04-TODO.md) P2、[`09-plugin-system-and-guidance-generate.md`](09-plugin-system-and-guidance-generate.md)、[`18-plugin-host-developer-api.md`](18-plugin-host-developer-api.md)、[`30-plugin-trace-keeper.md`](30-plugin-trace-keeper.md)（**六维读/写**）、[`41-plugin-host-generic-principles.md`](41-plugin-host-generic-principles.md)
 
 ---
@@ -551,3 +551,4 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 | 2026-08-12 | **Catalog 资源包**：宿主 **`importBundle`** → `assets/{zip名}/`；插件 **`onBundleImported`** 写 **`catalog-manifest.json`**（§3.4.5） |
 | 2026-08-12 | **战斗占用 composer**：**`setPluginHold`** 禁止战斗中 composer 发文本（§3.5.1） |
 | 2026-08-13 | 定案：叙事进入主对话时使用通用 **插件区块**，不伪装 user / assistant；dungeon state 按 active branch 隔离；hold 演进为 owner/token acquire / release。 |
+| 2026-08-13 | **M0 验证骨架**：bundled `dungeon-maze`；composer 图标打开 panel；当前会话首次生成或恢复固定 **21×21** seed 迷宫；生成入口、Boss 出口、9 个杂兵（1/50）、较低密度宝箱与陷阱。 |

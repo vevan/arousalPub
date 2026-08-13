@@ -600,6 +600,10 @@ export interface PluginWebHost {
         handlers: {
           onInput?: (e: { field: string; value: string; type: string }) => void
           onAction?: (e: { action: string; target: HTMLElement }) => void
+          onCanvasMounted?: (e: { canvas: HTMLCanvasElement; canvasId: string }) => void
+          onLiveTextMounted?: (e: { element: HTMLElement; textId: string }) => void
+          onPointer?: (e: { canvasId: string; x: number; y: number }) => void
+          onKeydown?: (e: { key: string; repeat: boolean; altKey: boolean; ctrlKey: boolean; metaKey: boolean }) => boolean | void
         },
       ): void
     }

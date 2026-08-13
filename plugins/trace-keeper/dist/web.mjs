@@ -6628,14 +6628,14 @@ function renderActionBar(host, opts) {
   const regenBusy = opts.regenerating ? ' aria-busy="true"' : "";
   const nav = opts.segmentNav;
   const navHtml = nav && nav.segmentCount > 1 ? [
-    `<button type="button" class="tk-icon-btn" data-tk-action="segment-prev"${nav.segmentIndex <= 0 ? " disabled" : ""} title="prev" aria-label="prev"><i class="mdi mdi-chevron-left" aria-hidden="true"></i></button>`,
-    `<button type="button" class="tk-icon-btn" data-tk-action="segment-next"${nav.segmentIndex >= nav.segmentCount - 1 ? " disabled" : ""} title="next" aria-label="next"><i class="mdi mdi-chevron-right" aria-hidden="true"></i></button>`
+    `<button type="button" class="tk-icon-btn" data-plugin-action="segment-prev"${nav.segmentIndex <= 0 ? " disabled" : ""} title="prev" aria-label="prev"><i class="mdi mdi-chevron-left" aria-hidden="true"></i></button>`,
+    `<button type="button" class="tk-icon-btn" data-plugin-action="segment-next"${nav.segmentIndex >= nav.segmentCount - 1 ? " disabled" : ""} title="next" aria-label="next"><i class="mdi mdi-chevron-right" aria-hidden="true"></i></button>`
   ].join("\n") : "";
   return [
     '<div class="tk-actions">',
     navHtml,
-    `<button type="button" class="tk-icon-btn" data-tk-action="edit-state-json" title="${editTitle}" aria-label="${editTitle}"${editDisabled}><i class="mdi mdi-pencil-outline" aria-hidden="true"></i></button>`,
-    `<button type="button" class="tk-icon-btn" data-tk-action="regenerate-separate" title="${regenTitle}" aria-label="${regenTitle}"${regenDisabled}${regenBusy}><i class="mdi mdi-refresh" aria-hidden="true"></i></button>`,
+    `<button type="button" class="tk-icon-btn" data-plugin-action="edit-state-json" title="${editTitle}" aria-label="${editTitle}"${editDisabled}><i class="mdi mdi-pencil-outline" aria-hidden="true"></i></button>`,
+    `<button type="button" class="tk-icon-btn" data-plugin-action="regenerate-separate" title="${regenTitle}" aria-label="${regenTitle}"${regenDisabled}${regenBusy}><i class="mdi mdi-refresh" aria-hidden="true"></i></button>`,
     "</div>"
   ].join("\n");
 }
@@ -6667,7 +6667,7 @@ function wrapPanelShell(host, innerHtml, opts) {
         const label = escapeHtml(host.t(tKey(host, "panelRegenerateSeparate")));
         const busy = opts.regenerating ? ' disabled aria-busy="true"' : "";
         parts.push(
-          `<button type="button" class="tk-empty-regen-btn" data-tk-action="regenerate-separate"${busy}>${label}</button>`
+          `<button type="button" class="tk-empty-regen-btn" data-plugin-action="regenerate-separate"${busy}>${label}</button>`
         );
         parts.push("</div>");
       }

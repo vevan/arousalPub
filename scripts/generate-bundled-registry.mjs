@@ -23,6 +23,7 @@ const BUNDLED_ENTRIES = [
   { id: 'plot-summary', order: 50, path: 'plot-summary' },
   { id: 'custom-styles', order: 60, path: 'custom-styles' },
   { id: 'trace-keeper', order: 70, path: 'trace-keeper' },
+  { id: 'dungeon-maze', order: 80, path: 'dungeon-maze' },
 ]
 
 async function main() {

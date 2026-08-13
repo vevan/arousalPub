@@ -1,0 +1,16 @@
+{
+  "id": "dungeon-maze",
+  "name": "地下城迷宫",
+  "version": "0.1.0",
+  "permissions": ["conversation.read"],
+  "hooks": [],
+  "ui": {
+    "eagerOnRoutes": ["chat"],
+    "slots": [
+      {
+        "name": "composer-toolbar",
+        "entry": "./dist/web.mjs"
+      }
+    ]
+  }
+}

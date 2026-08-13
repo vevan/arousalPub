@@ -33,9 +33,29 @@ export interface PluginPanelActionEvent {
   target: HTMLElement
 }
 
+export interface PluginPanelCanvasEvent {
+  canvas: HTMLCanvasElement
+  canvasId: string
+}
+
+export interface PluginPanelLiveTextEvent {
+  element: HTMLElement
+  textId: string
+}
+
+export interface PluginPanelPointerEvent {
+  canvasId: string
+  x: number
+  y: number
+}
+
 type PanelEventHandlers = {
   onInput?: (e: PluginPanelInputEvent) => void
   onAction?: (e: PluginPanelActionEvent) => void
+  onCanvasMounted?: (e: PluginPanelCanvasEvent) => void
+  onLiveTextMounted?: (e: PluginPanelLiveTextEvent) => void
+  onPointer?: (e: PluginPanelPointerEvent) => void
+  onKeydown?: (e: { key: string; repeat: boolean; altKey: boolean; ctrlKey: boolean; metaKey: boolean }) => boolean | void
 }
 
 export interface PluginPanelEntry {
@@ -518,17 +538,17 @@ export function dispatchPluginPanelDomEvent(
   const target = ev.target
   if (!(target instanceof HTMLElement)) return
   if (ev.type === 'click') {
-    const actionEl = target.closest('[data-tk-action]')
+    const actionEl = target.closest('[data-plugin-action]')
     if (actionEl instanceof HTMLElement) {
       if (actionEl instanceof HTMLButtonElement && actionEl.disabled) return
-      const action = actionEl.getAttribute('data-tk-action')?.trim()
+      const action = actionEl.getAttribute('data-plugin-action')?.trim()
       if (action) handlers.onAction?.({ action, target: actionEl })
     }
   }
   if (ev.type === 'change' || ev.type === 'input') {
-    const fieldEl = target.closest('[data-tk-field]')
+    const fieldEl = target.closest('[data-plugin-field]')
     if (fieldEl instanceof HTMLInputElement || fieldEl instanceof HTMLTextAreaElement) {
-      const field = fieldEl.getAttribute('data-tk-field')?.trim()
+      const field = fieldEl.getAttribute('data-plugin-field')?.trim()
       if (field) {
         handlers.onInput?.({
           field,
@@ -538,10 +558,47 @@ export function dispatchPluginPanelDomEvent(
       }
     }
   }
+  if (ev.type === 'keydown' && ev instanceof KeyboardEvent && target.closest('[data-plugin-keyboard]')) {
+    const handled = handlers.onKeydown?.({
+      key: ev.key,
+      repeat: ev.repeat,
+      altKey: ev.altKey,
+      ctrlKey: ev.ctrlKey,
+      metaKey: ev.metaKey,
+    })
+    if (handled) ev.preventDefault()
+  }
+  if (ev.type === 'click' && ev instanceof MouseEvent) {
+    const canvas = target.closest('canvas[data-plugin-canvas]')
+    if (!(canvas instanceof HTMLCanvasElement)) return
+    const rect = canvas.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return
+    canvas.focus({ preventScroll: true })
+    handlers.onPointer?.({
+      canvasId: canvas.getAttribute('data-plugin-canvas')?.trim() ?? '',
+      x: (ev.clientX - rect.left) * canvas.width / rect.width,
+      y: (ev.clientY - rect.top) * canvas.height / rect.height,
+    })
+  }
 }
 
 export const pluginPanelMountRevision = shallowRef(0)
 
-export function notifyPluginPanelMounted(): void {
+export function notifyPluginPanelMounted(pluginId?: string, root?: HTMLElement): void {
   pluginPanelMountRevision.value += 1
+  if (!pluginId || !root) return
+  const handlers = eventHandlers.get(pluginId.trim())
+  if (!handlers) return
+  for (const canvas of root.querySelectorAll('canvas[data-plugin-canvas]')) {
+    handlers.onCanvasMounted?.({
+      canvas,
+      canvasId: canvas.getAttribute('data-plugin-canvas')?.trim() ?? '',
+    })
+  }
+  for (const element of root.querySelectorAll<HTMLElement>('[data-plugin-live-text]')) {
+    handlers.onLiveTextMounted?.({
+      element,
+      textId: element.getAttribute('data-plugin-live-text')?.trim() ?? '',
+    })
+  }
 }

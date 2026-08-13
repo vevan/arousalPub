@@ -394,7 +394,7 @@ const data = await host.plugin.runAction('my-action', {
 | `setHtml(placement, pluginId, html, opts?)` | 更新消毒后 HTML；`interactive` 允许表单/按钮 + 事件委托 |
 | `setHidden(placement, hidden)` | 隐藏/显示指定 rail 的宿主内容（列仍占位） |
 | `open(placement, pluginId?)` | 打开（取消 hidden）并可选聚焦 Tab |
-| `onPanelEvent(placement, pluginId, handlers)` | 面板内 `data-*` 交互回调 |
+| `onPanelEvent(placement, pluginId, handlers)` | 面板内受消毒的通用交互回调：`data-plugin-action`、`data-plugin-field`；Canvas 可声明 `data-plugin-canvas`，并接收其 `onCanvasMounted`、`onPointer` 与仅限 `data-plugin-keyboard` 元素的 `onKeydown`。宿主只转发 Canvas 本身的归一化坐标，不解析插件业务。 |
 
 宿主：**`PluginRailHost.vue`**（左/右 rail；顶栏 `rgba(var(--v-theme-primary), 0.1)` 浅底；当前路由不可用的 Tab **disabled**；无可用内容时 **`app.pluginRailUnavailable`**）。
 

@@ -1,0 +1,16 @@
+{
+  "pluginDisplayName": "Dungeon Maze",
+  "title": "Dungeon Maze",
+  "open": "Open dungeon maze",
+  "empty": "No maze has been generated for this conversation.",
+  "create": "Generate 21 × 21 maze",
+  "created": "A maze was generated for this conversation.",
+  "reset": "Generate a new maze",
+  "seed": "Seed: {seed}",
+  "elapsed": "Explored: {minutes} min",
+  "mapLabel": "21 by 21 dungeon maze map",
+  "moveHint": "Click a highlighted cell, or focus the map and use WASD or the arrow keys to move.",
+  "hero": "Hero",
+  "moveTo": "Move to {x}, {y}",
+  "boss": "Boss exit"
+}

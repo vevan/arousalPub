@@ -134,10 +134,12 @@ export function createScopedPluginHost(
       },
       onPluginSettingsChanged(handler) {
         assertPluginConversationRead(id)
-        return useConversationPluginSettingsStore().subscribe(
-          convId(),
+        return useConversationPluginSettingsStore().subscribePlugin(
           id,
-          handler,
+          (conversationId, settings) => {
+            if (conversationId !== convId()) return
+            handler(settings)
+          },
         )
       },
       patchPluginSettings(partial) {
@@ -457,6 +459,9 @@ export function createPluginWebHost(session: ChatSession): {
       },
       releasePluginHold(owner: string, token: string) {
         session.releasePluginHold(owner, token)
+      },
+      hasPluginHold(owner: string, token: string) {
+        return session.hasPluginHold(owner, token)
       },
     },
     lorebook: {

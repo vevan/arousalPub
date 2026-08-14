@@ -19,5 +19,6 @@
   "moveHint": "Click a highlighted cell, or focus the map and use WASD or the arrow keys to move.",
   "hero": "Hero",
   "moveTo": "Move to {x}, {y}",
-  "boss": "Boss exit"
+  "boss": "Boss exit",
+  "branchSnapshotFailed": "Failed to save the maze snapshot for the new branch; the fork-point progress was not frozen."
 }

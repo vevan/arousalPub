@@ -336,11 +336,12 @@ export function completeDungeonCombat(state: DungeonMazeState): DungeonMazeState
   const combat = state.activeCombat
   const event = state.activeEvent
   if (!combat?.outcome || event?.kind !== 'combat') return null
-  if (combat.outcome === 'defeat') return { ...state, activeCombat: null }
   return {
     ...state,
     elapsedMinutes: state.elapsedMinutes + event.minutes,
-    resolvedEntityIds: [...state.resolvedEntityIds, event.entityId],
+    resolvedEntityIds: combat.outcome === 'victory'
+      ? [...state.resolvedEntityIds, event.entityId]
+      : state.resolvedEntityIds,
     activeEvent: null,
     activeCombat: null,
   }
@@ -416,20 +417,42 @@ function isDungeonCombatState(value: unknown): value is DungeonCombatState {
     value.log.every(isCombatLogEntry)
 }
 
+function isMazeGrid(value: unknown, isCell: (cell: unknown) => boolean): boolean {
+  return Array.isArray(value) && value.length === MAZE_SIZE &&
+    value.every((row) => Array.isArray(row) && row.length === MAZE_SIZE && row.every(isCell))
+}
+
+function isPointInBounds(value: unknown): value is MazePoint {
+  if (!isRecord(value)) return false
+  return Number.isInteger(value.x) && Number.isInteger(value.y) &&
+    (value.x as number) >= 0 && (value.x as number) < MAZE_SIZE &&
+    (value.y as number) >= 0 && (value.y as number) < MAZE_SIZE
+}
+
+function isDungeonMapEvent(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  return typeof value.entityId === 'string' &&
+    (value.kind === 'combat' || value.kind === 'check' || value.kind === 'camp') &&
+    typeof value.optional === 'boolean' &&
+    Number.isFinite(value.minutes) && (value.minutes as number) >= 0 &&
+    (value.rounds === undefined || (Number.isFinite(value.rounds) && (value.rounds as number) >= 1))
+}
+
 export function isDungeonMazeState(value: unknown): value is DungeonMazeState {
   if (!value || typeof value !== 'object') return false
   const state = value as Partial<DungeonMazeState>
   return state.version === 7 && state.width === MAZE_SIZE && state.height === MAZE_SIZE &&
-    Array.isArray(state.cells) && state.cells.length === MAZE_SIZE &&
-    typeof state.hero?.x === 'number' && typeof state.hero?.y === 'number' &&
-    Array.isArray(state.explored) && state.explored.length === MAZE_SIZE &&
+    isMazeGrid(state.cells, (cell) => cell === 0 || cell === 1) &&
+    isMazeGrid(state.explored, (cell) => typeof cell === 'boolean') &&
+    isPointInBounds(state.hero) && isPointInBounds(state.entrance) && isPointInBounds(state.exit) &&
     Array.isArray(state.entities) && state.entities.every((entity) =>
-      entity && typeof entity.id === 'string' && typeof entity.kind === 'string' &&
+      isPointInBounds(entity) && typeof entity.id === 'string' && typeof entity.kind === 'string' &&
       (entity.kind !== 'minion' && entity.kind !== 'boss' || typeof entity.catalogId === 'string'),
     ) && typeof state.seed === 'number' &&
     typeof state.elapsedMinutes === 'number' && Number.isFinite(state.elapsedMinutes) && state.elapsedMinutes >= 0 &&
     typeof state.restedMinutes === 'number' && Number.isFinite(state.restedMinutes) && state.restedMinutes >= 0 &&
-    Array.isArray(state.resolvedEntityIds) && (state.activeEvent === null || typeof state.activeEvent === 'object') &&
+    Array.isArray(state.resolvedEntityIds) && state.resolvedEntityIds.every((id) => typeof id === 'string') &&
+    (state.activeEvent === null || isDungeonMapEvent(state.activeEvent)) &&
     (state.activeCombat === null || isDungeonCombatState(state.activeCombat)) &&
     typeof state.generation?.minionDensity === 'number' &&
     typeof state.generation?.chestDensity === 'number' &&

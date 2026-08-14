@@ -166,7 +166,7 @@ export function register(host: PluginWebHost) {
 | `refresh()` | 写盘后刷新消息列表 |
 | `getPluginSettings()` | 读本对话 `pluginSettings[pluginId]` |
 | `patchPluginSettings(partial)` | 写会话级插件设置（合并进 `index.json`）。**目标会话始终是调用当下的 `getId()`**，不能传入其它 id；异步落盘须先捕获 id，见 §8.4 |
-| `acquirePluginHold(owner)` / `releasePluginHold(owner, token)` | 插件长流程占用对话时禁止用户发消息；`acquire` 返回 token，只有同一 owner 携 token 才能释放。多个持有者并存时，最后一个释放前 composer 均保持禁用。 |
+| `acquirePluginHold(owner)` / `releasePluginHold(owner, token)` / `hasPluginHold(owner, token)` | 插件长流程占用对话时禁止用户发消息；`acquire` 返回 token，只有同一 owner 携 token 才能释放；`hasPluginHold` 查询当前 session 是否仍持有该 token（离页重建 session 后旧 token 失效）。多个持有者并存时，最后一个释放前 composer 均保持禁用。**禁止**宿主在切分支等路径强制清空其他插件的 hold。 |
 | `appendPluginBlock(body)` | 规划：追加通用插件区块到对话流；非 user / assistant，默认不参与 prompt 组装；见 `DOC/devNotes/09` §5.7 |
 
 **`ConversationBatchContext`**（在 `runScope` 内）：
@@ -643,7 +643,9 @@ class PluginHostApiError {
 2. 每次 `await` 之后若 `getId() !== conversationId` 则放弃 `patch` 与后续 UI 更新。
 3. 模块级 `pending` / in-flight 标志按会话作废；切会话时丢弃，勿把上一会话的快照写入当前会话。
 
-`onPluginSettingsChanged` 在 `register()` 时按当时的 `getId()` 订阅，**不会**自动改订到新会话；切会话后的刷新应另走 `getPluginSettings()` 或 `lifecycle.onTurnDataChanged`。
+`onPluginSettingsChanged` 在 scoped host 内按 **pluginId** 订阅 store，回调时仅当变更的 `conversationId === getId()` 才转发；旧会话异步落盘**不会**误刷新当前会话 UI。切会话后仍应在 `lifecycle.onTurnDataChanged`（或显式 `getPluginSettings()`）上同步 scope / panel。
+
+`onBranchCreated` 返回取消订阅函数；模块级 `register()` 若可重复进入，须先退订再订阅，避免重复 handler。handler 失败不得拖垮建分支成功 UI（宿主 emit 侧已隔离 reject）。
 
 ---
 
@@ -703,3 +705,4 @@ class PluginHostApiError {
 | 2026-07-23 | companion：设置 dialog teleport → 聊天页 prop 下传 `pluginHost` + `ensurePluginById`；draft 宿主硬校验仅 `content: string` |
 | 2026-07-24 | 全局插件 settings 导出/导入：`GET/POST …/settings/export|import`（`DOC/devNotes/09` §4） |
 | 2026-08-13 | §3.5 / §8.4：`patchPluginSettings` 始终打到当前 `getId()`；异步落盘须捕获会话 id |
+| 2026-08-14 | §3.5：`hasPluginHold`；hold 仅由持有者释放。§8.4：`onPluginSettingsChanged` 按 pluginId 订阅并过滤当前会话；`onBranchCreated` 须可退订 |

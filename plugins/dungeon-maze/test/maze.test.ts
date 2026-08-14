@@ -141,3 +141,36 @@ test('rejects incomplete persisted combat state', () => {
     },
   }), false)
 })
+
+test('rejects malformed grids, coordinates, and map events', () => {
+  const maze = createDungeonMaze(12345)
+  assert.equal(isDungeonMazeState(maze), true)
+  assert.equal(isDungeonMazeState({
+    ...maze,
+    cells: maze.cells.map((row, y) => (y === 0 ? row.slice(1) : row)),
+  }), false)
+  assert.equal(isDungeonMazeState({
+    ...maze,
+    cells: maze.cells.map((row, y) => (y === 0 ? row.map(() => 2) : row)),
+  }), false)
+  assert.equal(isDungeonMazeState({
+    ...maze,
+    explored: maze.explored.map((row, y) => (y === 0 ? row.map(() => 'yes') : row)),
+  }), false)
+  assert.equal(isDungeonMazeState({ ...maze, hero: { x: -1, y: 0 } }), false)
+  assert.equal(isDungeonMazeState({ ...maze, hero: { x: 0.5, y: 0 } }), false)
+  assert.equal(isDungeonMazeState({
+    ...maze,
+    entities: [{ id: 'minion-1', kind: 'minion', catalogId: 'goblin-skirmisher', x: MAZE_SIZE, y: 0 }],
+  }), false)
+  assert.equal(isDungeonMazeState({ ...maze, activeEvent: { entityId: 1 } }), false)
+  assert.equal(isDungeonMazeState({
+    ...maze,
+    activeEvent: { entityId: 'camp-1', kind: 'camp', optional: true, minutes: Number.NaN },
+  }), false)
+  assert.equal(isDungeonMazeState({
+    ...maze,
+    activeEvent: { entityId: 'camp-1', kind: 'camp', optional: true, minutes: 30 },
+  }), true)
+  assert.equal(isDungeonMazeState({ ...maze, resolvedEntityIds: [1] }), false)
+})

@@ -23,3 +23,24 @@ test('creates a catalog-backed combat loop and resolves the map event only after
   assert.equal(complete?.activeCombat, null)
   assert.ok(complete?.resolvedEntityIds.includes(enemy.id))
 })
+
+test('clears the combat encounter on defeat without resolving the enemy', () => {
+  const maze = createDungeonMaze(12345)
+  const enemy = maze.entities.find((entity) => entity.kind === 'minion')!
+  const event = createDungeonMapEvent(enemy)
+  const complete = completeDungeonCombat({
+    ...maze,
+    activeEvent: event,
+    activeCombat: {
+      initiative: [],
+      currentTurn: 0,
+      combatants: [],
+      log: [],
+      outcome: 'defeat',
+    },
+  })
+  assert.equal(complete?.activeEvent, null)
+  assert.equal(complete?.activeCombat, null)
+  assert.equal(complete?.resolvedEntityIds.includes(enemy.id), false)
+  assert.equal(complete?.elapsedMinutes, maze.elapsedMinutes + event.minutes)
+})

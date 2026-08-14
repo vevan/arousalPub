@@ -179,7 +179,7 @@ export function useChatSession(props: ChatSessionProps) {
     finalizePendingTurn,
     finalizePendingSegment,
     persistTurnToServer,
-    loadMessages,
+    loadMessages: fetchTailMessages,
     loadOlderMessages,
     refreshConversation,
     scrollToTurnOrdinal,
@@ -187,6 +187,11 @@ export function useChatSession(props: ChatSessionProps) {
     loadingOlder,
     messagesLoading,
   } = turnList
+
+  async function loadMessages() {
+    await fetchTailMessages()
+    emitTurnDataChanged()
+  }
 
   const completion = createChatCompletionRunner({
     conn,
@@ -469,6 +474,7 @@ export function useChatSession(props: ChatSessionProps) {
       errorText.value = ''
       turnEditDelete.resetState()
       dismissGroupContinue()
+      pluginHoldTokens.value = new Set()
       emitTurnDataChanged()
       void regexDisplay.ensureRulesLoaded()
       void loadMessages()
@@ -550,6 +556,10 @@ export function useChatSession(props: ChatSessionProps) {
       const next = new Set(pluginHoldTokens.value)
       next.delete(token)
       pluginHoldTokens.value = next
+    },
+    hasPluginHold(owner: string, token: string) {
+      if (!token.startsWith(`${owner}:`)) return false
+      return pluginHoldTokens.value.has(token)
     },
     runConversationScope,
     runConversationBatch,

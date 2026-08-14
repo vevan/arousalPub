@@ -472,11 +472,10 @@ function completeDungeonCombat(state) {
   const combat = state.activeCombat;
   const event = state.activeEvent;
   if (!combat?.outcome || event?.kind !== "combat") return null;
-  if (combat.outcome === "defeat") return { ...state, activeCombat: null };
   return {
     ...state,
     elapsedMinutes: state.elapsedMinutes + event.minutes,
-    resolvedEntityIds: [...state.resolvedEntityIds, event.entityId],
+    resolvedEntityIds: combat.outcome === "victory" ? [...state.resolvedEntityIds, event.entityId] : state.resolvedEntityIds,
     activeEvent: null,
     activeCombat: null
   };
@@ -534,12 +533,23 @@ function isDungeonCombatState(value) {
   if (combatantIds.size !== value.combatants.length) return false;
   return value.initiative.every((entry) => isRecord2(entry) && typeof entry.actorId === "string" && combatantIds.has(entry.actorId) && Number.isInteger(entry.roll) && entry.roll >= 1 && entry.roll <= 20 && Number.isFinite(entry.total)) && value.log.every(isCombatLogEntry);
 }
+function isMazeGrid(value, isCell) {
+  return Array.isArray(value) && value.length === MAZE_SIZE && value.every((row) => Array.isArray(row) && row.length === MAZE_SIZE && row.every(isCell));
+}
+function isPointInBounds(value) {
+  if (!isRecord2(value)) return false;
+  return Number.isInteger(value.x) && Number.isInteger(value.y) && value.x >= 0 && value.x < MAZE_SIZE && value.y >= 0 && value.y < MAZE_SIZE;
+}
+function isDungeonMapEvent(value) {
+  if (!isRecord2(value)) return false;
+  return typeof value.entityId === "string" && (value.kind === "combat" || value.kind === "check" || value.kind === "camp") && typeof value.optional === "boolean" && Number.isFinite(value.minutes) && value.minutes >= 0 && (value.rounds === void 0 || Number.isFinite(value.rounds) && value.rounds >= 1);
+}
 function isDungeonMazeState(value) {
   if (!value || typeof value !== "object") return false;
   const state = value;
-  return state.version === 7 && state.width === MAZE_SIZE && state.height === MAZE_SIZE && Array.isArray(state.cells) && state.cells.length === MAZE_SIZE && typeof state.hero?.x === "number" && typeof state.hero?.y === "number" && Array.isArray(state.explored) && state.explored.length === MAZE_SIZE && Array.isArray(state.entities) && state.entities.every(
-    (entity) => entity && typeof entity.id === "string" && typeof entity.kind === "string" && (entity.kind !== "minion" && entity.kind !== "boss" || typeof entity.catalogId === "string")
-  ) && typeof state.seed === "number" && typeof state.elapsedMinutes === "number" && Number.isFinite(state.elapsedMinutes) && state.elapsedMinutes >= 0 && typeof state.restedMinutes === "number" && Number.isFinite(state.restedMinutes) && state.restedMinutes >= 0 && Array.isArray(state.resolvedEntityIds) && (state.activeEvent === null || typeof state.activeEvent === "object") && (state.activeCombat === null || isDungeonCombatState(state.activeCombat)) && typeof state.generation?.minionDensity === "number" && typeof state.generation?.chestDensity === "number" && typeof state.generation?.trapDensity === "number" && typeof state.generation?.campDensity === "number";
+  return state.version === 7 && state.width === MAZE_SIZE && state.height === MAZE_SIZE && isMazeGrid(state.cells, (cell) => cell === 0 || cell === 1) && isMazeGrid(state.explored, (cell) => typeof cell === "boolean") && isPointInBounds(state.hero) && isPointInBounds(state.entrance) && isPointInBounds(state.exit) && Array.isArray(state.entities) && state.entities.every(
+    (entity) => isPointInBounds(entity) && typeof entity.id === "string" && typeof entity.kind === "string" && (entity.kind !== "minion" && entity.kind !== "boss" || typeof entity.catalogId === "string")
+  ) && typeof state.seed === "number" && typeof state.elapsedMinutes === "number" && Number.isFinite(state.elapsedMinutes) && state.elapsedMinutes >= 0 && typeof state.restedMinutes === "number" && Number.isFinite(state.restedMinutes) && state.restedMinutes >= 0 && Array.isArray(state.resolvedEntityIds) && state.resolvedEntityIds.every((id) => typeof id === "string") && (state.activeEvent === null || isDungeonMapEvent(state.activeEvent)) && (state.activeCombat === null || isDungeonCombatState(state.activeCombat)) && typeof state.generation?.minionDensity === "number" && typeof state.generation?.chestDensity === "number" && typeof state.generation?.trapDensity === "number" && typeof state.generation?.campDensity === "number";
 }
 
 // plugins/dungeon-maze/src/index.ts
@@ -638,7 +648,9 @@ var boundConversationId = "";
 var boundBranchPath = "";
 var stateWrite = Promise.resolve();
 var combatHoldToken = null;
+var unsubscribeBranchCreated = null;
 var ignoredStateSignatures = /* @__PURE__ */ new Set();
+var pendingBranchCopies = [];
 function discardTransientMaze() {
   autoMoveRun += 1;
   autoMoveInFlight = false;
@@ -646,7 +658,8 @@ function discardTransientMaze() {
   pendingState = null;
 }
 function acquireCombatHold(host) {
-  if (!combatHoldToken) combatHoldToken = host.conversation.acquirePluginHold(PLUGIN_ID);
+  if (combatHoldToken && host.conversation.hasPluginHold(PLUGIN_ID, combatHoldToken)) return;
+  combatHoldToken = host.conversation.acquirePluginHold(PLUGIN_ID);
 }
 function releaseCombatHold(host) {
   if (!combatHoldToken) return;
@@ -686,6 +699,49 @@ function readStateBuckets(settings) {
     if (isDungeonMazeState(value)) states[branchPath] = value;
   }
   return states;
+}
+function enqueueStateJob(job) {
+  const result = stateWrite.catch(() => void 0).then(job);
+  stateWrite = result.catch(() => void 0);
+  return result;
+}
+async function flushBranchCopies(host) {
+  const conversationId = host.conversation.getId();
+  const due = pendingBranchCopies.filter((event) => event.conversationId === conversationId);
+  if (!due.length) return false;
+  const rest = pendingBranchCopies.filter((event) => event.conversationId !== conversationId);
+  pendingBranchCopies.length = 0;
+  pendingBranchCopies.push(...rest);
+  try {
+    const settings = await host.conversation.getPluginSettings();
+    if (host.conversation.getId() !== conversationId) {
+      pendingBranchCopies.unshift(...due);
+      return false;
+    }
+    const states = readStateBuckets(settings);
+    if (pendingState && pendingState.conversationId === conversationId) {
+      states[pendingState.branchPath] = pendingState.state;
+    }
+    let nextStates = states;
+    for (const event of due) {
+      nextStates = snapshotDungeonMazeBranch(
+        nextStates,
+        event.parentBranchPath,
+        event.branchPath
+      );
+    }
+    if (nextStates === states) {
+      for (const event of due) {
+        if (!states[event.branchPath]) pendingBranchCopies.push(event);
+      }
+      return false;
+    }
+    await host.conversation.patchPluginSettings({ [STATE_KEY]: nextStates });
+    return false;
+  } catch {
+    pendingBranchCopies.unshift(...due);
+    return true;
+  }
 }
 function persistState(host, scoped) {
   if (host.conversation.getId() !== scoped.conversationId) return stateWrite;
@@ -764,6 +820,7 @@ async function readState(host) {
   return state ? { state, conversationId, branchPath } : null;
 }
 async function refreshPanel(host) {
+  await enqueueStateJob(() => flushBranchCopies(host));
   const scoped = await readState(host);
   if (scoped?.state.activeCombat) acquireCombatHold(host);
   host.ui.panel.setHtml(PLACEMENT, PLUGIN_ID, renderPanel(host, scoped?.state ?? null), { revision: ++revision });
@@ -881,20 +938,25 @@ function register(host) {
     }
   });
   host.lifecycle.onTurnDataChanged(() => {
-    void refreshPanel(host);
+    const previousConversationId = boundConversationId;
+    const previousBranchPath = boundBranchPath;
+    void readState(host).then(() => {
+      const scopeChanged = boundConversationId !== previousConversationId || boundBranchPath !== previousBranchPath;
+      if (scopeChanged || !canvas?.isConnected) {
+        void refreshPanel(host);
+      }
+    });
   });
-  host.lifecycle.onBranchCreated(async (event) => {
-    if (event.conversationId !== host.conversation.getId()) return;
-    const settings = await host.conversation.getPluginSettings();
-    if (event.conversationId !== host.conversation.getId()) return;
-    const states = readStateBuckets(settings);
-    const nextStates = snapshotDungeonMazeBranch(
-      states,
-      event.parentBranchPath,
-      event.branchPath
-    );
-    if (nextStates === states) return;
-    await host.conversation.patchPluginSettings({ [STATE_KEY]: nextStates });
+  unsubscribeBranchCreated?.();
+  unsubscribeBranchCreated = host.lifecycle.onBranchCreated(async (event) => {
+    pendingBranchCopies.push(event);
+    let failed = await enqueueStateJob(() => flushBranchCopies(host));
+    if (failed && pendingBranchCopies.includes(event)) {
+      failed = await enqueueStateJob(() => flushBranchCopies(host));
+    }
+    if (failed && pendingBranchCopies.includes(event)) {
+      host.ui.notify(host.t(tKey(host, "branchSnapshotFailed")), void 0, { level: "error" });
+    }
   });
   host.ui.panel.onEvent(PLACEMENT, PLUGIN_ID, {
     onAction: (event) => {

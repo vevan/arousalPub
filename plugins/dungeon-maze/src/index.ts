@@ -39,6 +39,7 @@ type PluginHost = {
     onPluginSettingsChanged(handler: (settings: Record<string, unknown>) => void): () => void
     acquirePluginHold(owner: string): string
     releasePluginHold(owner: string, token: string): void
+    hasPluginHold(owner: string, token: string): boolean
   }
   lifecycle: {
     onTurnDataChanged(handler: () => void): () => void
@@ -185,9 +186,15 @@ type ScopedDungeonState = {
 let pendingState: ScopedDungeonState | null = null
 let boundConversationId = ''
 let boundBranchPath = ''
-let stateWrite = Promise.resolve()
+let stateWrite: Promise<unknown> = Promise.resolve()
 let combatHoldToken: string | null = null
+let unsubscribeBranchCreated: (() => void) | null = null
 const ignoredStateSignatures = new Set<string>()
+const pendingBranchCopies: Array<{
+  conversationId: string
+  parentBranchPath: string
+  branchPath: string
+}> = []
 
 function discardTransientMaze(): void {
   autoMoveRun += 1
@@ -197,7 +204,8 @@ function discardTransientMaze(): void {
 }
 
 function acquireCombatHold(host: PluginHost): void {
-  if (!combatHoldToken) combatHoldToken = host.conversation.acquirePluginHold(PLUGIN_ID)
+  if (combatHoldToken && host.conversation.hasPluginHold(PLUGIN_ID, combatHoldToken)) return
+  combatHoldToken = host.conversation.acquirePluginHold(PLUGIN_ID)
 }
 
 function releaseCombatHold(host: PluginHost): void {
@@ -243,6 +251,52 @@ function readStateBuckets(settings: Record<string, unknown>): DungeonMazeStates 
     if (isDungeonMazeState(value)) states[branchPath] = value
   }
   return states
+}
+
+function enqueueStateJob<T>(job: () => Promise<T>): Promise<T> {
+  const result = stateWrite.catch(() => undefined).then(job)
+  stateWrite = result.catch(() => undefined)
+  return result
+}
+
+/** 返回 true 表示写入出错，事件已重新排队等待重试。 */
+async function flushBranchCopies(host: PluginHost): Promise<boolean> {
+  const conversationId = host.conversation.getId()
+  const due = pendingBranchCopies.filter((event) => event.conversationId === conversationId)
+  if (!due.length) return false
+  const rest = pendingBranchCopies.filter((event) => event.conversationId !== conversationId)
+  pendingBranchCopies.length = 0
+  pendingBranchCopies.push(...rest)
+  try {
+    const settings = await host.conversation.getPluginSettings()
+    if (host.conversation.getId() !== conversationId) {
+      pendingBranchCopies.unshift(...due)
+      return false
+    }
+    const states = readStateBuckets(settings)
+    if (pendingState && pendingState.conversationId === conversationId) {
+      states[pendingState.branchPath] = pendingState.state
+    }
+    let nextStates = states
+    for (const event of due) {
+      nextStates = snapshotDungeonMazeBranch(
+        nextStates,
+        event.parentBranchPath,
+        event.branchPath,
+      )
+    }
+    if (nextStates === states) {
+      for (const event of due) {
+        if (!states[event.branchPath]) pendingBranchCopies.push(event)
+      }
+      return false
+    }
+    await host.conversation.patchPluginSettings({ [STATE_KEY]: nextStates })
+    return false
+  } catch {
+    pendingBranchCopies.unshift(...due)
+    return true
+  }
 }
 
 function persistState(host: PluginHost, scoped: ScopedDungeonState): Promise<void> {
@@ -343,6 +397,7 @@ async function readState(host: PluginHost): Promise<ScopedDungeonState | null> {
 }
 
 async function refreshPanel(host: PluginHost): Promise<void> {
+  await enqueueStateJob(() => flushBranchCopies(host))
   const scoped = await readState(host)
   if (scoped?.state.activeCombat) acquireCombatHold(host)
   host.ui.panel.setHtml(PLACEMENT, PLUGIN_ID, renderPanel(host, scoped?.state ?? null), { revision: ++revision })
@@ -469,20 +524,27 @@ export function register(host: PluginHost): void {
     },
   })
   host.lifecycle.onTurnDataChanged(() => {
-    void refreshPanel(host)
+    const previousConversationId = boundConversationId
+    const previousBranchPath = boundBranchPath
+    void readState(host).then(() => {
+      const scopeChanged =
+        boundConversationId !== previousConversationId ||
+        boundBranchPath !== previousBranchPath
+      if (scopeChanged || !canvas?.isConnected) {
+        void refreshPanel(host)
+      }
+    })
   })
-  host.lifecycle.onBranchCreated(async (event) => {
-    if (event.conversationId !== host.conversation.getId()) return
-    const settings = await host.conversation.getPluginSettings()
-    if (event.conversationId !== host.conversation.getId()) return
-    const states = readStateBuckets(settings)
-    const nextStates = snapshotDungeonMazeBranch(
-      states,
-      event.parentBranchPath,
-      event.branchPath,
-    )
-    if (nextStates === states) return
-    await host.conversation.patchPluginSettings({ [STATE_KEY]: nextStates })
+  unsubscribeBranchCreated?.()
+  unsubscribeBranchCreated = host.lifecycle.onBranchCreated(async (event) => {
+    pendingBranchCopies.push(event)
+    let failed = await enqueueStateJob(() => flushBranchCopies(host))
+    if (failed && pendingBranchCopies.includes(event)) {
+      failed = await enqueueStateJob(() => flushBranchCopies(host))
+    }
+    if (failed && pendingBranchCopies.includes(event)) {
+      host.ui.notify(host.t(tKey(host, 'branchSnapshotFailed')), undefined, { level: 'error' })
+    }
   })
   host.ui.panel.onEvent(PLACEMENT, PLUGIN_ID, {
     onAction: (event: { action: string }) => {

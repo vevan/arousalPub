@@ -76,6 +76,7 @@ watch(
     const pluginId = active.value?.pluginId
     if (root && pluginId) notifyPluginPanelMounted(pluginId, root)
   },
+  { immediate: true },
 )
 </script>
 

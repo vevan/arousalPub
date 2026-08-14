@@ -9,7 +9,15 @@ const branchCreatedListeners = new Set<
 >()
 
 export async function emitConversationBranchCreated(event: ConversationBranchCreatedEvent): Promise<void> {
-  await Promise.all([...branchCreatedListeners].map((listener) => listener(event)))
+  await Promise.all(
+    [...branchCreatedListeners].map(async (listener) => {
+      try {
+        await listener(event)
+      } catch (err) {
+        console.warn('onBranchCreated listener failed', err)
+      }
+    }),
+  )
 }
 
 export function onConversationBranchCreated(

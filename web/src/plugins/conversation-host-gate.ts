@@ -115,5 +115,10 @@ export function wrapConversationHostForPlugin(
       if (owner !== id) throw new Error('plugin_hold_owner_mismatch')
       return conversation.releasePluginHold(owner, token)
     },
+    hasPluginHold(owner: string, token: string) {
+      assertPluginConversationRead(id)
+      if (owner !== id) throw new Error('plugin_hold_owner_mismatch')
+      return conversation.hasPluginHold(owner, token)
+    },
   }
 }

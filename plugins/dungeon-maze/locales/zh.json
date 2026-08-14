@@ -19,5 +19,6 @@
   "moveHint": "点击高亮格子，或聚焦地图后使用 WASD / 方向键移动。",
   "hero": "主角",
   "moveTo": "移动至 {x}, {y}",
-  "boss": "Boss 出口"
+  "boss": "Boss 出口",
+  "branchSnapshotFailed": "新分支的迷宫快照保存失败，分叉点进度未能冻结。"
 }

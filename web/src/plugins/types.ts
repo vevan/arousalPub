@@ -484,6 +484,7 @@ export interface PluginWebHost {
     /** 获取插件流程的对话占用；必须在流程结束时用同一 owner 和 token 释放。 */
     acquirePluginHold(owner: string): string
     releasePluginHold(owner: string, token: string): void
+    hasPluginHold(owner: string, token: string): boolean
   }
   lorebook: {
     list(): Promise<LorebookSummaryDto[]>

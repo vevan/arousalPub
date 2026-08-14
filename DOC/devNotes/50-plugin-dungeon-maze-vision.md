@@ -560,3 +560,4 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 | 2026-08-13 | 定案：叙事进入主对话时使用通用 **插件区块**，不伪装 user / assistant；dungeon state 按 active branch 隔离；hold 演进为 owner/token acquire / release。 |
 | 2026-08-13 | **M0 验证骨架**：bundled `dungeon-maze`；composer 图标打开 panel；当前会话首次生成或恢复固定 **21×21** seed 迷宫；生成入口、Boss 出口、9 个杂兵（1/50）、较低密度宝箱与陷阱。 |
 | 2026-08-13 | M0 审计修复：自动移动与重置串写、跨会话 `pluginSettings` 误写、离页后 panel 空白；迷宫单测进入 `npm test`。见 §3.6.1。 |
+| 2026-08-14 | **M1 落地与审计修复**：确定性战斗规则、bundled catalog、逐行动 panel loop 与 owner/token hold 完成；移动后本插件 state 回写只重绘 Canvas、不重建 panel；战斗 state 与 catalog 数值边界均运行时校验。 |

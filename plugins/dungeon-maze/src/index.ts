@@ -350,6 +350,7 @@ async function refreshPanel(host: PluginHost): Promise<void> {
 
 async function createMaze(host: PluginHost): Promise<void> {
   const conversationId = host.conversation.getId()
+  releaseCombatHold(host)
   discardTransientMaze()
   const branchPath = await host.conversation.getActiveBranchPath()
   if (host.conversation.getId() !== conversationId) return
@@ -552,7 +553,10 @@ export function register(host: PluginHost): void {
   host.conversation.onPluginSettingsChanged((settings) => {
     const rawStates = readStateBuckets(settings)
     const state = rawStates[boundBranchPath]
-    if (state && ignoredStateSignatures.delete(stateSignature(state))) drawMaze(host, state)
+    if (state && ignoredStateSignatures.delete(stateSignature(state))) {
+      drawMaze(host, state)
+      return
+    }
     void refreshPanel(host)
   })
   void refreshPanel(host)

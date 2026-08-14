@@ -5,6 +5,7 @@ import {
   createDungeonMaze,
   findDungeonPath,
   hasLineOfSight,
+  isDungeonMazeState,
   MAZE_SIZE,
   moveDungeonHero,
   resolveDungeonMapEvent,
@@ -124,4 +125,19 @@ test('map objects create persistent combat, check, and camp events with their de
   assert.equal(rested?.elapsedMinutes, 90)
   assert.equal(rested?.restedMinutes, 90)
   assert.deepEqual(rested?.resolvedEntityIds, [])
+})
+
+test('rejects incomplete persisted combat state', () => {
+  const maze = createDungeonMaze(12345)
+  assert.equal(isDungeonMazeState({ ...maze, activeCombat: {} }), false)
+  assert.equal(isDungeonMazeState({
+    ...maze,
+    activeCombat: {
+      initiative: [{ actorId: 'hero', roll: 10, total: 10 }],
+      currentTurn: 0,
+      combatants: [],
+      log: [],
+      outcome: null,
+    },
+  }), false)
 })

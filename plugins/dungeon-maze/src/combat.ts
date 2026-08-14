@@ -99,7 +99,7 @@ export function resolveCombatAttack(
   const attackTotal = attackD20 + actor.attackBonus
   const hit = attackTotal >= target.ac
   const damage = hit ? rollDice(actor.damage, random) : undefined
-  const damageTotal = damage?.total ?? 0
+  const damageTotal = Math.max(0, damage?.total ?? 0)
   const nextHp = Math.max(0, target.hp - damageTotal)
   return {
     target: { ...target, hp: nextHp },

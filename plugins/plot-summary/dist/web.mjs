@@ -1382,11 +1382,6 @@ async function preparePlotSummarySummarizeContext(host, settings, fromTurn, toTu
 }
 
 // plugins/plot-summary/src/pipeline.ts
-function setPluginHold(host, hold) {
-  if (typeof host.conversation.setPluginHold === "function") {
-    host.conversation.setPluginHold(hold);
-  }
-}
 function bumpTaskProgress2(host, done, total) {
   host.ui.progress({
     message: host.t(tKey(host, "progressSummarize")),
@@ -1409,7 +1404,7 @@ async function runSummarizeTasks(host, opts) {
   }
   setSummarizeRunning(true);
   host.refreshSlotButtons();
-  setPluginHold(host, true);
+  const holdToken = host.conversation.acquirePluginHold("plot-summary");
   let completedTasks = 0;
   try {
     const settings = await loadMergedSettings(host);
@@ -1709,7 +1704,7 @@ async function runSummarizeTasks(host, opts) {
     setSummarizeBatchProgress(null);
     setSummarizeRunning(false);
     host.refreshSlotButtons();
-    setPluginHold(host, false);
+    host.conversation.releasePluginHold("plot-summary", holdToken);
     host.ui.clearProgress();
   }
 }

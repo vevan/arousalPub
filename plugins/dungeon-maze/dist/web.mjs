@@ -48,7 +48,7 @@ function requireString(value, path) {
   if (typeof value !== "string" || !value) throw new Error(`invalid_catalog:${path}`);
   return value;
 }
-function requireInteger(value, path, minimum = 0) {
+function requireInteger(value, path, minimum = Number.MIN_SAFE_INTEGER) {
   if (!Number.isSafeInteger(value) || value < minimum) throw new Error(`invalid_catalog:${path}`);
   return value;
 }
@@ -159,7 +159,7 @@ function resolveCombatAttack(actor, target, random = Math.random) {
   const attackTotal = attackD20 + actor.attackBonus;
   const hit = attackTotal >= target.ac;
   const damage = hit ? rollDice(actor.damage, random) : void 0;
-  const damageTotal = damage?.total ?? 0;
+  const damageTotal = Math.max(0, damage?.total ?? 0);
   const nextHp = Math.max(0, target.hp - damageTotal);
   return {
     target: { ...target, hp: nextHp },
@@ -514,12 +514,32 @@ function findDungeonPath(state, destination) {
   }
   return path;
 }
+function isRecord2(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function isCombatant(value) {
+  return isRecord2(value) && typeof value.id === "string" && typeof value.name === "string" && Number.isFinite(value.hp) && value.hp >= 0 && Number.isFinite(value.hpMax) && value.hpMax > 0 && value.hp <= value.hpMax && Number.isFinite(value.ac) && value.ac >= 1 && Number.isFinite(value.initiativeMod) && Number.isFinite(value.attackBonus) && typeof value.damage === "string";
+}
+function isCombatLogEntry(value) {
+  if (!isRecord2(value) || value.action !== "attack" || typeof value.actorId !== "string" || typeof value.targetId !== "string" || !isRecord2(value.rolls) || !Number.isFinite(value.rolls.attackD20) || !Number.isFinite(value.rolls.attackTotal) || !Number.isFinite(value.targetAc) || typeof value.hit !== "boolean" || !Number.isFinite(value.damageTotal) || !Number.isFinite(value.hpAfter) || !Array.isArray(value.effectsApplied) || !value.effectsApplied.every((effect) => typeof effect === "string")) {
+    return false;
+  }
+  const damage = value.rolls.damage;
+  return damage === void 0 || isRecord2(damage) && typeof damage.expression === "string" && Array.isArray(damage.dice) && damage.dice.every(Number.isFinite) && Number.isFinite(damage.modifier) && Number.isFinite(damage.total);
+}
+function isDungeonCombatState(value) {
+  if (!isRecord2(value) || !Array.isArray(value.initiative) || !Array.isArray(value.combatants) || !Array.isArray(value.log) || !Number.isInteger(value.currentTurn) || value.outcome !== null && value.outcome !== "victory" && value.outcome !== "defeat") return false;
+  if (value.combatants.length < 2 || value.initiative.length !== value.combatants.length || value.currentTurn < 0 || value.currentTurn >= value.initiative.length || !value.combatants.every(isCombatant)) return false;
+  const combatantIds = new Set(value.combatants.map((combatant) => combatant.id));
+  if (combatantIds.size !== value.combatants.length) return false;
+  return value.initiative.every((entry) => isRecord2(entry) && typeof entry.actorId === "string" && combatantIds.has(entry.actorId) && Number.isInteger(entry.roll) && entry.roll >= 1 && entry.roll <= 20 && Number.isFinite(entry.total)) && value.log.every(isCombatLogEntry);
+}
 function isDungeonMazeState(value) {
   if (!value || typeof value !== "object") return false;
   const state = value;
   return state.version === 7 && state.width === MAZE_SIZE && state.height === MAZE_SIZE && Array.isArray(state.cells) && state.cells.length === MAZE_SIZE && typeof state.hero?.x === "number" && typeof state.hero?.y === "number" && Array.isArray(state.explored) && state.explored.length === MAZE_SIZE && Array.isArray(state.entities) && state.entities.every(
     (entity) => entity && typeof entity.id === "string" && typeof entity.kind === "string" && (entity.kind !== "minion" && entity.kind !== "boss" || typeof entity.catalogId === "string")
-  ) && typeof state.seed === "number" && typeof state.elapsedMinutes === "number" && Number.isFinite(state.elapsedMinutes) && state.elapsedMinutes >= 0 && typeof state.restedMinutes === "number" && Number.isFinite(state.restedMinutes) && state.restedMinutes >= 0 && Array.isArray(state.resolvedEntityIds) && (state.activeEvent === null || typeof state.activeEvent === "object") && (state.activeCombat === null || typeof state.activeCombat === "object") && typeof state.generation?.minionDensity === "number" && typeof state.generation?.chestDensity === "number" && typeof state.generation?.trapDensity === "number" && typeof state.generation?.campDensity === "number";
+  ) && typeof state.seed === "number" && typeof state.elapsedMinutes === "number" && Number.isFinite(state.elapsedMinutes) && state.elapsedMinutes >= 0 && typeof state.restedMinutes === "number" && Number.isFinite(state.restedMinutes) && state.restedMinutes >= 0 && Array.isArray(state.resolvedEntityIds) && (state.activeEvent === null || typeof state.activeEvent === "object") && (state.activeCombat === null || isDungeonCombatState(state.activeCombat)) && typeof state.generation?.minionDensity === "number" && typeof state.generation?.chestDensity === "number" && typeof state.generation?.trapDensity === "number" && typeof state.generation?.campDensity === "number";
 }
 
 // plugins/dungeon-maze/src/index.ts
@@ -750,6 +770,7 @@ async function refreshPanel(host) {
 }
 async function createMaze(host) {
   const conversationId = host.conversation.getId();
+  releaseCombatHold(host);
   discardTransientMaze();
   const branchPath = await host.conversation.getActiveBranchPath();
   if (host.conversation.getId() !== conversationId) return;
@@ -944,7 +965,10 @@ function register(host) {
   host.conversation.onPluginSettingsChanged((settings) => {
     const rawStates = readStateBuckets(settings);
     const state = rawStates[boundBranchPath];
-    if (state && ignoredStateSignatures.delete(stateSignature(state))) drawMaze(host, state);
+    if (state && ignoredStateSignatures.delete(stateSignature(state))) {
+      drawMaze(host, state);
+      return;
+    }
     void refreshPanel(host);
   });
   void refreshPanel(host);

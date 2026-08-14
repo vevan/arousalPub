@@ -49,7 +49,7 @@ function requireString(value: unknown, path: string): string {
   return value
 }
 
-function requireInteger(value: unknown, path: string, minimum = 0): number {
+function requireInteger(value: unknown, path: string, minimum = Number.MIN_SAFE_INTEGER): number {
   if (!Number.isSafeInteger(value) || (value as number) < minimum) throw new Error(`invalid_catalog:${path}`)
   return value as number
 }

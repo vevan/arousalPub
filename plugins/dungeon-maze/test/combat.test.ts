@@ -80,3 +80,9 @@ test('records a miss without rolling damage', () => {
   assert.equal(result.log.hit, false)
   assert.equal(result.log.damageTotal, 0)
 })
+
+test('never turns a negative dice total into healing', () => {
+  const result = resolveCombatAttack({ ...hero, damage: '1d4-10' }, goblin, randomSequence([0.99, 0]))
+  assert.equal(result.log.damageTotal, 0)
+  assert.equal(result.target.hp, goblin.hp)
+})

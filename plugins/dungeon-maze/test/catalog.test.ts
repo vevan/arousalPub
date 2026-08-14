@@ -22,3 +22,12 @@ test('rejects malformed or duplicate catalog entries before they reach combat', 
   }), /invalid_catalog:enemies\[0\]\.attacks/)
   assert.throws(() => findDungeonEnemy(DEFAULT_DUNGEON_CATALOG, 'missing'), /unknown_dungeon_enemy/)
 })
+
+test('accepts negative combat modifiers from low ability scores', () => {
+  const catalog = parseDungeonCatalog({
+    enemies: { schemaVersion: 1, enemies: [{ id: 'kobold', name: 'Kobold', role: 'minion', hp: 5, ac: 12, initiativeMod: -1, attacks: [{ name: 'Dagger', attackBonus: -1, damage: '1d4-1' }] }] },
+    equipment: { schemaVersion: 1, equipment: [{ id: 'club', name: 'Club', category: 'weapon', damage: '1d4-1', attackBonus: -1 }] },
+  })
+  assert.equal(catalog.enemies[0]?.initiativeMod, -1)
+  assert.equal(catalog.equipment[0]?.attackBonus, -1)
+})

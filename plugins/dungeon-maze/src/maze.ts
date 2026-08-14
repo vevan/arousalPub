@@ -1,3 +1,5 @@
+import type { DungeonCombatState } from './battle.js'
+
 export const MAZE_SIZE = 21
 
 export type MazePoint = { x: number; y: number }
@@ -378,6 +380,42 @@ export function findDungeonPath(
   return path
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isCombatant(value: unknown): boolean {
+  return isRecord(value) && typeof value.id === 'string' && typeof value.name === 'string' &&
+    Number.isFinite(value.hp) && value.hp >= 0 && Number.isFinite(value.hpMax) && value.hpMax > 0 && value.hp <= value.hpMax &&
+    Number.isFinite(value.ac) && value.ac >= 1 && Number.isFinite(value.initiativeMod) && Number.isFinite(value.attackBonus) &&
+    typeof value.damage === 'string'
+}
+
+function isCombatLogEntry(value: unknown): boolean {
+  if (!isRecord(value) || value.action !== 'attack' || typeof value.actorId !== 'string' || typeof value.targetId !== 'string' ||
+    !isRecord(value.rolls) || !Number.isFinite(value.rolls.attackD20) || !Number.isFinite(value.rolls.attackTotal) ||
+    !Number.isFinite(value.targetAc) || typeof value.hit !== 'boolean' || !Number.isFinite(value.damageTotal) ||
+    !Number.isFinite(value.hpAfter) || !Array.isArray(value.effectsApplied) || !value.effectsApplied.every((effect) => typeof effect === 'string')) {
+    return false
+  }
+  const damage = value.rolls.damage
+  return damage === undefined || (isRecord(damage) && typeof damage.expression === 'string' &&
+    Array.isArray(damage.dice) && damage.dice.every(Number.isFinite) && Number.isFinite(damage.modifier) && Number.isFinite(damage.total))
+}
+
+function isDungeonCombatState(value: unknown): value is DungeonCombatState {
+  if (!isRecord(value) || !Array.isArray(value.initiative) || !Array.isArray(value.combatants) ||
+    !Array.isArray(value.log) || !Number.isInteger(value.currentTurn) ||
+    (value.outcome !== null && value.outcome !== 'victory' && value.outcome !== 'defeat')) return false
+  if (value.combatants.length < 2 || value.initiative.length !== value.combatants.length ||
+    value.currentTurn < 0 || value.currentTurn >= value.initiative.length || !value.combatants.every(isCombatant)) return false
+  const combatantIds = new Set(value.combatants.map((combatant) => combatant.id))
+  if (combatantIds.size !== value.combatants.length) return false
+  return value.initiative.every((entry) => isRecord(entry) && typeof entry.actorId === 'string' && combatantIds.has(entry.actorId) &&
+    Number.isInteger(entry.roll) && entry.roll >= 1 && entry.roll <= 20 && Number.isFinite(entry.total)) &&
+    value.log.every(isCombatLogEntry)
+}
+
 export function isDungeonMazeState(value: unknown): value is DungeonMazeState {
   if (!value || typeof value !== 'object') return false
   const state = value as Partial<DungeonMazeState>
@@ -392,10 +430,9 @@ export function isDungeonMazeState(value: unknown): value is DungeonMazeState {
     typeof state.elapsedMinutes === 'number' && Number.isFinite(state.elapsedMinutes) && state.elapsedMinutes >= 0 &&
     typeof state.restedMinutes === 'number' && Number.isFinite(state.restedMinutes) && state.restedMinutes >= 0 &&
     Array.isArray(state.resolvedEntityIds) && (state.activeEvent === null || typeof state.activeEvent === 'object') &&
-    (state.activeCombat === null || typeof state.activeCombat === 'object') &&
+    (state.activeCombat === null || isDungeonCombatState(state.activeCombat)) &&
     typeof state.generation?.minionDensity === 'number' &&
     typeof state.generation?.chestDensity === 'number' &&
     typeof state.generation?.trapDensity === 'number' &&
     typeof state.generation?.campDensity === 'number'
 }
-import type { DungeonCombatState } from './battle.js'

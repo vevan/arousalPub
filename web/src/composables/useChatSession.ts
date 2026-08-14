@@ -86,8 +86,10 @@ export function useChatSession(props: ChatSessionProps) {
   const loading = ref(false)
   const errorText = ref('')
   const regeneratingTurnOrdinal = ref<number | null>(null)
-  /** 插件占用（如摘要预览），禁止发送 */
-  const pluginHoldConversation = ref(false)
+  /** 任一插件长流程持有时，禁止 composer 发送。 */
+  const pluginHoldTokens = ref(new Set<string>())
+  let pluginHoldSequence = 0
+  const pluginHoldConversation = computed(() => pluginHoldTokens.value.size > 0)
 
   const timer = useGenerationTimer()
   const {
@@ -537,8 +539,17 @@ export function useChatSession(props: ChatSessionProps) {
     hasMoreBefore,
     loadingOlder,
     messagesLoading,
-    setPluginHold(hold: boolean) {
-      pluginHoldConversation.value = hold
+    acquirePluginHold(owner: string) {
+      if (!owner) throw new Error('plugin_hold_owner_required')
+      const token = `${owner}:${++pluginHoldSequence}`
+      pluginHoldTokens.value = new Set([...pluginHoldTokens.value, token])
+      return token
+    },
+    releasePluginHold(owner: string, token: string) {
+      if (!token.startsWith(`${owner}:`)) throw new Error('plugin_hold_owner_mismatch')
+      const next = new Set(pluginHoldTokens.value)
+      next.delete(token)
+      pluginHoldTokens.value = next
     },
     runConversationScope,
     runConversationBatch,

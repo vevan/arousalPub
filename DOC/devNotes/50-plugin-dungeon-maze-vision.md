@@ -511,7 +511,7 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 |------|------|
 | M0 | ✅ 迷宫生成、Canvas、state 持久化与 **branchPath 隔离**；Catalog JSON Schema 定案 / `catalog-editor.html` spike 可后续补齐 |
 | M0b | **Catalog 编辑器**（单文件 HTML）：schema 校验 + 导出三类 JSON（可与 M1 并行） |
-| M1 | 本地战斗 loop + CombatLogEntry；panel 内 log；**战斗 acquire / release 会话 hold** |
+| M1 | ✅ 纯战斗规则层、bundled 静态 catalog、逐行动本地 loop、panel 原始日志与 owner/token 战斗会话 hold 已完成 |
 | M2 | **perBattle** 模式 + complete + **插件区块进主对话** + **TK 战后写回**（与 narrative 同次或紧随） |
 | M3 | **perStep** 叙事；**TK 写回仍仅战斗结束一次** |
 | M4 | 多层/Boss、装备/技能 growth、**dungeon-rpg TraceBundle**、i18n、单测 |

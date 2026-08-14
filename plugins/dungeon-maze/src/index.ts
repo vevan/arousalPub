@@ -1,4 +1,11 @@
 import {
+  advanceDungeonCombat,
+  beginDungeonCombat,
+  HERO_COMBATANT_ID,
+} from './battle.js'
+import { DEFAULT_DUNGEON_CATALOG } from './catalog.js'
+import {
+  completeDungeonCombat,
   createDungeonMaze,
   findDungeonPath,
   isDungeonMazeState,
@@ -30,6 +37,8 @@ type PluginHost = {
     getPluginSettings(): Promise<Record<string, unknown>>
     patchPluginSettings(partial: Record<string, unknown>): Promise<Record<string, unknown>>
     onPluginSettingsChanged(handler: (settings: Record<string, unknown>) => void): () => void
+    acquirePluginHold(owner: string): string
+    releasePluginHold(owner: string, token: string): void
   }
   lifecycle: {
     onTurnDataChanged(handler: () => void): () => void
@@ -95,6 +104,7 @@ function count(state: DungeonMazeState, kind: MazeEntity['kind']): number {
 function renderActiveEvent(host: PluginHost, state: DungeonMazeState): string {
   const event = state.activeEvent
   if (!event) return ''
+  if (state.activeCombat) return renderCombat(host, state)
   const description = event.kind === 'combat'
     ? host.t(tKey(host, 'combatEvent'), { rounds: event.rounds ?? 1, minutes: event.minutes })
     : event.kind === 'check'
@@ -108,6 +118,24 @@ function renderActiveEvent(host: PluginHost, state: DungeonMazeState): string {
     ? `<div class="dm-rest-duration"><button type="button" class="dm-secondary" data-plugin-action="event:camp:-30">−30</button><span>${event.minutes}m</span><button type="button" class="dm-secondary" data-plugin-action="event:camp:+30">+30</button></div>`
     : ''
   return `<section class="dm-event"><p>${escapeHtml(description)}</p><div>${campControls}<button type="button" class="dm-primary" data-plugin-action="event:resolve">${escapeHtml(resolveLabel)}</button>${skip}</div></section>`
+}
+
+function renderCombat(host: PluginHost, state: DungeonMazeState): string {
+  const combat = state.activeCombat!
+  const currentId = combat.initiative[combat.currentTurn]?.actorId
+  const current = combat.combatants.find((candidate) => candidate.id === currentId)
+  const rows = combat.combatants.map((combatant) =>
+    `<li>${escapeHtml(combatant.name)}: ${combatant.hp}/${combatant.hpMax} HP</li>`,
+  ).join('')
+  const logs = combat.log.map((entry) =>
+    `<li>${escapeHtml(entry.actorId)} → ${escapeHtml(entry.targetId)}: ${entry.hit ? `命中 ${entry.damageTotal}` : '未命中'}</li>`,
+  ).join('')
+  const finished = combat.outcome !== null
+  const action = finished ? 'combat:complete' : 'combat:advance'
+  const label = finished
+    ? combat.outcome === 'victory' ? '结束战斗' : '结束战斗（败北）'
+    : `${current?.name ?? '未知'} 行动`
+  return `<section class="dm-event dm-combat"><p>战斗${finished ? `：${combat.outcome === 'victory' ? '胜利' : '败北'}` : '进行中'}</p><ul>${rows}</ul><ol class="dm-combat-log">${logs}</ol><button type="button" class="dm-primary" data-plugin-action="${action}">${escapeHtml(label)}</button></section>`
 }
 
 function renderPanel(host: PluginHost, state: DungeonMazeState | null): string {
@@ -158,6 +186,7 @@ let pendingState: ScopedDungeonState | null = null
 let boundConversationId = ''
 let boundBranchPath = ''
 let stateWrite = Promise.resolve()
+let combatHoldToken: string | null = null
 const ignoredStateSignatures = new Set<string>()
 
 function discardTransientMaze(): void {
@@ -165,6 +194,16 @@ function discardTransientMaze(): void {
   autoMoveInFlight = false
   keyboardMoveInFlight = false
   pendingState = null
+}
+
+function acquireCombatHold(host: PluginHost): void {
+  if (!combatHoldToken) combatHoldToken = host.conversation.acquirePluginHold(PLUGIN_ID)
+}
+
+function releaseCombatHold(host: PluginHost): void {
+  if (!combatHoldToken) return
+  host.conversation.releasePluginHold(PLUGIN_ID, combatHoldToken)
+  combatHoldToken = null
 }
 
 function syncScope(conversationId: string, branchPath: string): boolean {
@@ -193,7 +232,7 @@ function cancelAutoMove(host: PluginHost): void {
 }
 
 function stateSignature(state: DungeonMazeState): string {
-  return `${state.seed}:${state.hero.x}:${state.hero.y}:${state.elapsedMinutes}:${state.restedMinutes}:${state.resolvedEntityIds.join(',')}:${state.activeEvent?.entityId ?? ''}:${state.activeEvent?.minutes ?? ''}:${state.explored.flat().map((value) => value ? '1' : '0').join('')}`
+  return `${state.seed}:${state.hero.x}:${state.hero.y}:${state.elapsedMinutes}:${state.restedMinutes}:${state.resolvedEntityIds.join(',')}:${state.activeEvent?.entityId ?? ''}:${state.activeEvent?.minutes ?? ''}:${JSON.stringify(state.activeCombat)}:${state.explored.flat().map((value) => value ? '1' : '0').join('')}`
 }
 
 function readStateBuckets(settings: Record<string, unknown>): DungeonMazeStates {
@@ -291,7 +330,7 @@ async function readState(host: PluginHost): Promise<ScopedDungeonState | null> {
   const conversationId = host.conversation.getId()
   const branchPath = await host.conversation.getActiveBranchPath()
   if (host.conversation.getId() !== conversationId) return null
-  syncScope(conversationId, branchPath)
+  if (syncScope(conversationId, branchPath)) releaseCombatHold(host)
   if (
     pendingState &&
     pendingState.conversationId === conversationId &&
@@ -305,6 +344,7 @@ async function readState(host: PluginHost): Promise<ScopedDungeonState | null> {
 
 async function refreshPanel(host: PluginHost): Promise<void> {
   const scoped = await readState(host)
+  if (scoped?.state.activeCombat) acquireCombatHold(host)
   host.ui.panel.setHtml(PLACEMENT, PLUGIN_ID, renderPanel(host, scoped?.state ?? null), { revision: ++revision })
 }
 
@@ -329,7 +369,26 @@ async function moveHero(host: PluginHost, x: number, y: number): Promise<void> {
 }
 
 async function resolveActiveEvent(host: PluginHost, resolution: DungeonEventResolution): Promise<void> {
-  await mutateState(host, (state) => resolveDungeonMapEvent(state, resolution), () => refreshPanel(host))
+  await mutateState(host, (state) => {
+    if (state.activeEvent?.kind === 'combat' && resolution === 'resolve') {
+      return beginDungeonCombat(state, DEFAULT_DUNGEON_CATALOG)
+    }
+    return resolveDungeonMapEvent(state, resolution)
+  }, (next) => {
+    if (next.activeCombat) acquireCombatHold(host)
+    return refreshPanel(host)
+  })
+}
+
+async function advanceCombat(host: PluginHost): Promise<void> {
+  await mutateState(host, (state) => advanceDungeonCombat(state), () => refreshPanel(host))
+}
+
+async function completeCombat(host: PluginHost): Promise<void> {
+  await mutateState(host, completeDungeonCombat, (next) => {
+    if (!next.activeCombat) releaseCombatHold(host)
+    return refreshPanel(host)
+  })
 }
 
 async function adjustCampRest(host: PluginHost, delta: number): Promise<void> {
@@ -429,6 +488,8 @@ export function register(host: PluginHost): void {
       if (event.action === 'create' || event.action === 'reset') void createMaze(host)
       if (event.action === 'event:resolve') void resolveActiveEvent(host, 'resolve')
       if (event.action === 'event:skip') void resolveActiveEvent(host, 'skip')
+      if (event.action === 'combat:advance') void advanceCombat(host)
+      if (event.action === 'combat:complete') void completeCombat(host)
       const campAdjustment = /^event:camp:([+-]\d+)$/.exec(event.action)
       if (campAdjustment) void adjustCampRest(host, Number(campAdjustment[1]))
       const match = /^move:(\d+):(\d+)$/.exec(event.action)

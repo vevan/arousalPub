@@ -2,7 +2,7 @@ export const MAZE_SIZE = 21
 
 export type MazePoint = { x: number; y: number }
 export type MazeEntityKind = 'boss' | 'minion' | 'chest' | 'trap' | 'camp'
-export type MazeEntity = MazePoint & { id: string; kind: MazeEntityKind }
+export type MazeEntity = MazePoint & { id: string; kind: MazeEntityKind; catalogId?: string }
 export type DungeonEventKind = 'combat' | 'check' | 'camp'
 export type DungeonEventResolution = 'resolve' | 'skip'
 
@@ -31,7 +31,7 @@ export const DEFAULT_GENERATION_CONFIG: MazeGenerationConfig = {
 const COMBAT_MINUTES_PER_ROUND = 0.5
 
 export interface DungeonMazeState {
-  version: 5
+  version: 7
   width: number
   height: number
   seed: number
@@ -44,6 +44,7 @@ export interface DungeonMazeState {
   restedMinutes: number
   resolvedEntityIds: string[]
   activeEvent: DungeonMapEvent | null
+  activeCombat: DungeonCombatState | null
   explored: boolean[][]
   entities: MazeEntity[]
 }
@@ -211,12 +212,17 @@ function placeEntities(
       }
     }
   }
-  const entities: MazeEntity[] = [{ id: 'boss-1', kind: 'boss', ...exit }]
+  const entities: MazeEntity[] = [{ id: 'boss-1', kind: 'boss', catalogId: 'maze-dragon', ...exit }]
   const take = (kind: Exclude<MazeEntityKind, 'boss'>, density: number) => {
     const count = Math.min(available.length, Math.round((cells.length * cells[0]!.length) / density))
     for (let index = 0; index < count; index += 1) {
       const point = available.splice(randomIndex(random, available.length), 1)[0]!
-      entities.push({ id: `${kind}-${index + 1}`, kind, ...point })
+      entities.push({
+        id: `${kind}-${index + 1}`,
+        kind,
+        ...(kind === 'minion' ? { catalogId: 'goblin-skirmisher' } : {}),
+        ...point,
+      })
     }
   }
   take('minion', generation.minionDensity)
@@ -234,7 +240,7 @@ export function createDungeonMaze(
   const { entrance, exit } = selectEntranceAndExit(MAZE_SIZE, MAZE_SIZE, random)
   const cells = carveMaze(MAZE_SIZE, MAZE_SIZE, entrance, exit, random)
   return {
-    version: 5,
+    version: 7,
     width: MAZE_SIZE,
     height: MAZE_SIZE,
     seed,
@@ -247,6 +253,7 @@ export function createDungeonMaze(
     restedMinutes: 0,
     resolvedEntityIds: [],
     activeEvent: null,
+    activeCombat: null,
     explored: revealAround(
       cells,
       Array.from({ length: MAZE_SIZE }, () => Array<boolean>(MAZE_SIZE).fill(false)),
@@ -323,6 +330,20 @@ export function resolveDungeonMapEvent(
   }
 }
 
+export function completeDungeonCombat(state: DungeonMazeState): DungeonMazeState | null {
+  const combat = state.activeCombat
+  const event = state.activeEvent
+  if (!combat?.outcome || event?.kind !== 'combat') return null
+  if (combat.outcome === 'defeat') return { ...state, activeCombat: null }
+  return {
+    ...state,
+    elapsedMinutes: state.elapsedMinutes + event.minutes,
+    resolvedEntityIds: [...state.resolvedEntityIds, event.entityId],
+    activeEvent: null,
+    activeCombat: null,
+  }
+}
+
 export function findDungeonPath(
   state: DungeonMazeState,
   destination: MazePoint,
@@ -360,16 +381,21 @@ export function findDungeonPath(
 export function isDungeonMazeState(value: unknown): value is DungeonMazeState {
   if (!value || typeof value !== 'object') return false
   const state = value as Partial<DungeonMazeState>
-  return state.version === 5 && state.width === MAZE_SIZE && state.height === MAZE_SIZE &&
+  return state.version === 7 && state.width === MAZE_SIZE && state.height === MAZE_SIZE &&
     Array.isArray(state.cells) && state.cells.length === MAZE_SIZE &&
     typeof state.hero?.x === 'number' && typeof state.hero?.y === 'number' &&
     Array.isArray(state.explored) && state.explored.length === MAZE_SIZE &&
-    Array.isArray(state.entities) && typeof state.seed === 'number' &&
+    Array.isArray(state.entities) && state.entities.every((entity) =>
+      entity && typeof entity.id === 'string' && typeof entity.kind === 'string' &&
+      (entity.kind !== 'minion' && entity.kind !== 'boss' || typeof entity.catalogId === 'string'),
+    ) && typeof state.seed === 'number' &&
     typeof state.elapsedMinutes === 'number' && Number.isFinite(state.elapsedMinutes) && state.elapsedMinutes >= 0 &&
     typeof state.restedMinutes === 'number' && Number.isFinite(state.restedMinutes) && state.restedMinutes >= 0 &&
     Array.isArray(state.resolvedEntityIds) && (state.activeEvent === null || typeof state.activeEvent === 'object') &&
+    (state.activeCombat === null || typeof state.activeCombat === 'object') &&
     typeof state.generation?.minionDensity === 'number' &&
     typeof state.generation?.chestDensity === 'number' &&
     typeof state.generation?.trapDensity === 'number' &&
     typeof state.generation?.campDensity === 'number'
 }
+import type { DungeonCombatState } from './battle.js'

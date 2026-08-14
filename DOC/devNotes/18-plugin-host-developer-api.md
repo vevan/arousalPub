@@ -166,7 +166,7 @@ export function register(host: PluginWebHost) {
 | `refresh()` | 写盘后刷新消息列表 |
 | `getPluginSettings()` | 读本对话 `pluginSettings[pluginId]` |
 | `patchPluginSettings(partial)` | 写会话级插件设置（合并进 `index.json`）。**目标会话始终是调用当下的 `getId()`**，不能传入其它 id；异步落盘须先捕获 id，见 §8.4 |
-| `setPluginHold(hold)` | 当前实现：插件长流程占用对话时禁止用户发消息；规划中将由带 owner/token 的 acquire / release **替换**，避免并发插件互相解除占用 |
+| `acquirePluginHold(owner)` / `releasePluginHold(owner, token)` | 插件长流程占用对话时禁止用户发消息；`acquire` 返回 token，只有同一 owner 携 token 才能释放。多个持有者并存时，最后一个释放前 composer 均保持禁用。 |
 | `appendPluginBlock(body)` | 规划：追加通用插件区块到对话流；非 user / assistant，默认不参与 prompt 组装；见 `DOC/devNotes/09` §5.7 |
 
 **`ConversationBatchContext`**（在 `runScope` 内）：

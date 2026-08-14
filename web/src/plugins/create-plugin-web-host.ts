@@ -452,8 +452,11 @@ export function createPluginWebHost(session: ChatSession): {
       patchLorebookIds() {
         throw new Error('plugin_host_requires_scoped_host')
       },
-      setPluginHold(hold: boolean) {
-        session.setPluginHold(hold)
+      acquirePluginHold(owner: string) {
+        return session.acquirePluginHold(owner)
+      },
+      releasePluginHold(owner: string, token: string) {
+        session.releasePluginHold(owner, token)
       },
     },
     lorebook: {

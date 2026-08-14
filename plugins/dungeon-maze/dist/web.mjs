@@ -1,3 +1,241 @@
+// plugins/dungeon-maze/catalog/enemies.json
+var enemies_default = {
+  schemaVersion: 1,
+  enemies: [
+    {
+      id: "goblin-skirmisher",
+      name: "\u54E5\u5E03\u6797\u6563\u5175",
+      role: "minion",
+      hp: 7,
+      ac: 13,
+      initiativeMod: 2,
+      attacks: [{ name: "\u5F2F\u5200", attackBonus: 4, damage: "1d6+2" }]
+    },
+    {
+      id: "maze-dragon",
+      name: "\u8FF7\u5BAB\u5E7C\u9F99",
+      role: "boss",
+      hp: 32,
+      ac: 15,
+      initiativeMod: 1,
+      attacks: [{ name: "\u5229\u722A", attackBonus: 5, damage: "2d6+3" }]
+    }
+  ]
+};
+
+// plugins/dungeon-maze/catalog/equipment.json
+var equipment_default = {
+  schemaVersion: 1,
+  equipment: [
+    {
+      id: "training-sword",
+      name: "\u8BAD\u7EC3\u5251",
+      category: "weapon",
+      damage: "1d8+2",
+      attackBonus: 4
+    }
+  ]
+};
+
+// plugins/dungeon-maze/src/catalog.ts
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function validDiceExpression(value) {
+  return typeof value === "string" && /^\d+d\d+(?:[+-]\d+)?$/i.test(value);
+}
+function requireString(value, path) {
+  if (typeof value !== "string" || !value) throw new Error(`invalid_catalog:${path}`);
+  return value;
+}
+function requireInteger(value, path, minimum = 0) {
+  if (!Number.isSafeInteger(value) || value < minimum) throw new Error(`invalid_catalog:${path}`);
+  return value;
+}
+function requireUniqueIds(entries, path) {
+  if (new Set(entries.map((entry) => entry.id)).size !== entries.length) throw new Error(`invalid_catalog:${path}.id`);
+}
+function parseDungeonCatalog(sources) {
+  if (!isRecord(sources.enemies) || sources.enemies.schemaVersion !== 1 || !Array.isArray(sources.enemies.enemies)) {
+    throw new Error("invalid_catalog:enemies");
+  }
+  if (!isRecord(sources.equipment) || sources.equipment.schemaVersion !== 1 || !Array.isArray(sources.equipment.equipment)) {
+    throw new Error("invalid_catalog:equipment");
+  }
+  const enemies = sources.enemies.enemies.map((value, index) => {
+    if (!isRecord(value) || !Array.isArray(value.attacks)) throw new Error(`invalid_catalog:enemies[${index}]`);
+    const role = value.role;
+    if (role !== "minion" && role !== "elite" && role !== "boss") throw new Error(`invalid_catalog:enemies[${index}].role`);
+    const attacks = value.attacks.map((attack, attackIndex) => {
+      if (!isRecord(attack) || !validDiceExpression(attack.damage)) throw new Error(`invalid_catalog:enemies[${index}].attacks[${attackIndex}]`);
+      return {
+        name: requireString(attack.name, `enemies[${index}].attacks[${attackIndex}].name`),
+        attackBonus: requireInteger(attack.attackBonus, `enemies[${index}].attacks[${attackIndex}].attackBonus`),
+        damage: attack.damage
+      };
+    });
+    if (attacks.length === 0) throw new Error(`invalid_catalog:enemies[${index}].attacks`);
+    return {
+      id: requireString(value.id, `enemies[${index}].id`),
+      name: requireString(value.name, `enemies[${index}].name`),
+      role,
+      hp: requireInteger(value.hp, `enemies[${index}].hp`, 1),
+      ac: requireInteger(value.ac, `enemies[${index}].ac`, 1),
+      initiativeMod: requireInteger(value.initiativeMod, `enemies[${index}].initiativeMod`),
+      attacks
+    };
+  });
+  const equipment = sources.equipment.equipment.map((value, index) => {
+    if (!isRecord(value) || value.category !== "weapon" || !validDiceExpression(value.damage)) {
+      throw new Error(`invalid_catalog:equipment[${index}]`);
+    }
+    return {
+      id: requireString(value.id, `equipment[${index}].id`),
+      name: requireString(value.name, `equipment[${index}].name`),
+      category: "weapon",
+      damage: value.damage,
+      attackBonus: requireInteger(value.attackBonus, `equipment[${index}].attackBonus`)
+    };
+  });
+  requireUniqueIds(enemies, "enemies");
+  requireUniqueIds(equipment, "equipment");
+  return { schemaVersion: 1, enemies, equipment };
+}
+var DEFAULT_DUNGEON_CATALOG = parseDungeonCatalog({
+  enemies: enemies_default,
+  equipment: equipment_default
+});
+function createEnemyCombatant(definition, instanceId) {
+  const attack = definition.attacks[0];
+  return {
+    id: instanceId,
+    name: definition.name,
+    hp: definition.hp,
+    hpMax: definition.hp,
+    ac: definition.ac,
+    initiativeMod: definition.initiativeMod,
+    attackBonus: attack.attackBonus,
+    damage: attack.damage
+  };
+}
+function findDungeonEnemy(catalog, enemyId) {
+  const enemy = catalog.enemies.find((candidate) => candidate.id === enemyId);
+  if (!enemy) throw new Error(`unknown_dungeon_enemy:${enemyId}`);
+  return enemy;
+}
+
+// plugins/dungeon-maze/src/combat.ts
+var DICE_EXPRESSION = /^(\d+)d(\d+)([+-]\d+)?$/i;
+function parseDiceExpression(expression) {
+  const match = DICE_EXPRESSION.exec(expression.trim());
+  if (!match) throw new Error(`invalid_dice_expression:${expression}`);
+  const count2 = Number(match[1]);
+  const sides = Number(match[2]);
+  const modifier = Number(match[3] ?? 0);
+  if (!Number.isSafeInteger(count2) || !Number.isSafeInteger(sides) || count2 < 1 || sides < 2) {
+    throw new Error(`invalid_dice_expression:${expression}`);
+  }
+  return { count: count2, sides, modifier };
+}
+function rollDie(sides, random) {
+  const value = random();
+  if (!Number.isFinite(value) || value < 0 || value >= 1) throw new Error("combat_random_out_of_range");
+  return Math.floor(value * sides) + 1;
+}
+function rollDice(expression, random = Math.random) {
+  const parsed = parseDiceExpression(expression);
+  const dice = Array.from({ length: parsed.count }, () => rollDie(parsed.sides, random));
+  const total = dice.reduce((sum, die) => sum + die, parsed.modifier);
+  return { expression, dice, modifier: parsed.modifier, total };
+}
+function rollInitiative(combatants, random = Math.random) {
+  return combatants.map((combatant) => {
+    const roll = rollDie(20, random);
+    return { actorId: combatant.id, roll, total: roll + combatant.initiativeMod };
+  }).sort((a, b) => b.total - a.total || b.roll - a.roll || a.actorId.localeCompare(b.actorId));
+}
+function resolveCombatAttack(actor, target, random = Math.random) {
+  const attackD20 = rollDie(20, random);
+  const attackTotal = attackD20 + actor.attackBonus;
+  const hit = attackTotal >= target.ac;
+  const damage = hit ? rollDice(actor.damage, random) : void 0;
+  const damageTotal = damage?.total ?? 0;
+  const nextHp = Math.max(0, target.hp - damageTotal);
+  return {
+    target: { ...target, hp: nextHp },
+    log: {
+      actorId: actor.id,
+      targetId: target.id,
+      action: "attack",
+      rolls: { attackD20, attackTotal, ...damage ? { damage } : {} },
+      targetAc: target.ac,
+      hit,
+      damageTotal,
+      hpAfter: nextHp,
+      effectsApplied: []
+    }
+  };
+}
+
+// plugins/dungeon-maze/src/battle.ts
+var HERO_COMBATANT_ID = "hero";
+function createHeroCombatant(catalog) {
+  const weapon = catalog.equipment[0];
+  if (!weapon) throw new Error("missing_dungeon_weapon");
+  return {
+    id: HERO_COMBATANT_ID,
+    name: "\u5192\u9669\u8005",
+    hp: 18,
+    hpMax: 18,
+    ac: 14,
+    initiativeMod: 2,
+    attackBonus: weapon.attackBonus,
+    damage: weapon.damage
+  };
+}
+function combatantById(combat, id) {
+  const combatant = combat.combatants.find((candidate) => candidate.id === id);
+  if (!combatant) throw new Error(`unknown_combatant:${id}`);
+  return combatant;
+}
+function beginDungeonCombat(state, catalog, random = Math.random) {
+  if (state.activeCombat || state.activeEvent?.kind !== "combat") return null;
+  const entity = state.entities.find((candidate) => candidate.id === state.activeEvent?.entityId);
+  if (!entity?.catalogId) throw new Error(`missing_dungeon_enemy:${state.activeEvent.entityId}`);
+  const combatants = [createHeroCombatant(catalog), createEnemyCombatant(findDungeonEnemy(catalog, entity.catalogId), entity.id)];
+  return {
+    ...state,
+    activeCombat: {
+      initiative: rollInitiative(combatants, random),
+      currentTurn: 0,
+      combatants,
+      log: [],
+      outcome: null
+    }
+  };
+}
+function advanceDungeonCombat(state, random = Math.random) {
+  const combat = state.activeCombat;
+  if (!combat || combat.outcome) return null;
+  const actorId = combat.initiative[combat.currentTurn]?.actorId;
+  if (!actorId) throw new Error("invalid_dungeon_initiative");
+  const targetId = actorId === HERO_COMBATANT_ID ? combat.combatants.find((candidate) => candidate.id !== HERO_COMBATANT_ID)?.id : HERO_COMBATANT_ID;
+  if (!targetId) throw new Error("missing_dungeon_combat_target");
+  const result = resolveCombatAttack(combatantById(combat, actorId), combatantById(combat, targetId), random);
+  const combatants = combat.combatants.map((candidate) => candidate.id === targetId ? result.target : candidate);
+  const targetDefeated = result.target.hp === 0;
+  return {
+    ...state,
+    activeCombat: {
+      ...combat,
+      combatants,
+      log: [...combat.log, result.log],
+      currentTurn: targetDefeated ? combat.currentTurn : (combat.currentTurn + 1) % combat.initiative.length,
+      outcome: targetDefeated ? targetId === HERO_COMBATANT_ID ? "defeat" : "victory" : null
+    }
+  };
+}
+
 // plugins/dungeon-maze/src/maze.ts
 var MAZE_SIZE = 21;
 var DEFAULT_GENERATION_CONFIG = {
@@ -134,12 +372,17 @@ function placeEntities(cells, entrance, exit, random, generation) {
       }
     }
   }
-  const entities = [{ id: "boss-1", kind: "boss", ...exit }];
+  const entities = [{ id: "boss-1", kind: "boss", catalogId: "maze-dragon", ...exit }];
   const take = (kind, density) => {
     const count2 = Math.min(available.length, Math.round(cells.length * cells[0].length / density));
     for (let index = 0; index < count2; index += 1) {
       const point = available.splice(randomIndex(random, available.length), 1)[0];
-      entities.push({ id: `${kind}-${index + 1}`, kind, ...point });
+      entities.push({
+        id: `${kind}-${index + 1}`,
+        kind,
+        ...kind === "minion" ? { catalogId: "goblin-skirmisher" } : {},
+        ...point
+      });
     }
   };
   take("minion", generation.minionDensity);
@@ -153,7 +396,7 @@ function createDungeonMaze(seed = Math.floor(Math.random() * 4294967295), genera
   const { entrance, exit } = selectEntranceAndExit(MAZE_SIZE, MAZE_SIZE, random);
   const cells = carveMaze(MAZE_SIZE, MAZE_SIZE, entrance, exit, random);
   return {
-    version: 5,
+    version: 7,
     width: MAZE_SIZE,
     height: MAZE_SIZE,
     seed,
@@ -166,6 +409,7 @@ function createDungeonMaze(seed = Math.floor(Math.random() * 4294967295), genera
     restedMinutes: 0,
     resolvedEntityIds: [],
     activeEvent: null,
+    activeCombat: null,
     explored: revealAround(
       cells,
       Array.from({ length: MAZE_SIZE }, () => Array(MAZE_SIZE).fill(false)),
@@ -224,6 +468,19 @@ function resolveDungeonMapEvent(state, resolution) {
     activeEvent: null
   };
 }
+function completeDungeonCombat(state) {
+  const combat = state.activeCombat;
+  const event = state.activeEvent;
+  if (!combat?.outcome || event?.kind !== "combat") return null;
+  if (combat.outcome === "defeat") return { ...state, activeCombat: null };
+  return {
+    ...state,
+    elapsedMinutes: state.elapsedMinutes + event.minutes,
+    resolvedEntityIds: [...state.resolvedEntityIds, event.entityId],
+    activeEvent: null,
+    activeCombat: null
+  };
+}
 function findDungeonPath(state, destination) {
   if (state.cells[destination.y]?.[destination.x] !== 1 || !state.explored[destination.y]?.[destination.x]) {
     return null;
@@ -260,7 +517,9 @@ function findDungeonPath(state, destination) {
 function isDungeonMazeState(value) {
   if (!value || typeof value !== "object") return false;
   const state = value;
-  return state.version === 5 && state.width === MAZE_SIZE && state.height === MAZE_SIZE && Array.isArray(state.cells) && state.cells.length === MAZE_SIZE && typeof state.hero?.x === "number" && typeof state.hero?.y === "number" && Array.isArray(state.explored) && state.explored.length === MAZE_SIZE && Array.isArray(state.entities) && typeof state.seed === "number" && typeof state.elapsedMinutes === "number" && Number.isFinite(state.elapsedMinutes) && state.elapsedMinutes >= 0 && typeof state.restedMinutes === "number" && Number.isFinite(state.restedMinutes) && state.restedMinutes >= 0 && Array.isArray(state.resolvedEntityIds) && (state.activeEvent === null || typeof state.activeEvent === "object") && typeof state.generation?.minionDensity === "number" && typeof state.generation?.chestDensity === "number" && typeof state.generation?.trapDensity === "number" && typeof state.generation?.campDensity === "number";
+  return state.version === 7 && state.width === MAZE_SIZE && state.height === MAZE_SIZE && Array.isArray(state.cells) && state.cells.length === MAZE_SIZE && typeof state.hero?.x === "number" && typeof state.hero?.y === "number" && Array.isArray(state.explored) && state.explored.length === MAZE_SIZE && Array.isArray(state.entities) && state.entities.every(
+    (entity) => entity && typeof entity.id === "string" && typeof entity.kind === "string" && (entity.kind !== "minion" && entity.kind !== "boss" || typeof entity.catalogId === "string")
+  ) && typeof state.seed === "number" && typeof state.elapsedMinutes === "number" && Number.isFinite(state.elapsedMinutes) && state.elapsedMinutes >= 0 && typeof state.restedMinutes === "number" && Number.isFinite(state.restedMinutes) && state.restedMinutes >= 0 && Array.isArray(state.resolvedEntityIds) && (state.activeEvent === null || typeof state.activeEvent === "object") && (state.activeCombat === null || typeof state.activeCombat === "object") && typeof state.generation?.minionDensity === "number" && typeof state.generation?.chestDensity === "number" && typeof state.generation?.trapDensity === "number" && typeof state.generation?.campDensity === "number";
 }
 
 // plugins/dungeon-maze/src/index.ts
@@ -296,11 +555,27 @@ function count(state, kind) {
 function renderActiveEvent(host, state) {
   const event = state.activeEvent;
   if (!event) return "";
+  if (state.activeCombat) return renderCombat(host, state);
   const description = event.kind === "combat" ? host.t(tKey(host, "combatEvent"), { rounds: event.rounds ?? 1, minutes: event.minutes }) : event.kind === "check" ? host.t(tKey(host, "checkEvent"), { minutes: event.minutes }) : host.t(tKey(host, "campEvent"), { minutes: event.minutes });
   const resolveLabel = host.t(tKey(host, event.kind === "combat" ? "fight" : event.kind === "check" ? "check" : "rest"));
   const skip = event.optional ? `<button type="button" class="dm-secondary" data-plugin-action="event:skip">${escapeHtml(host.t(tKey(host, "skip")))}</button>` : "";
   const campControls = event.kind === "camp" ? `<div class="dm-rest-duration"><button type="button" class="dm-secondary" data-plugin-action="event:camp:-30">\u221230</button><span>${event.minutes}m</span><button type="button" class="dm-secondary" data-plugin-action="event:camp:+30">+30</button></div>` : "";
   return `<section class="dm-event"><p>${escapeHtml(description)}</p><div>${campControls}<button type="button" class="dm-primary" data-plugin-action="event:resolve">${escapeHtml(resolveLabel)}</button>${skip}</div></section>`;
+}
+function renderCombat(host, state) {
+  const combat = state.activeCombat;
+  const currentId = combat.initiative[combat.currentTurn]?.actorId;
+  const current = combat.combatants.find((candidate) => candidate.id === currentId);
+  const rows = combat.combatants.map(
+    (combatant) => `<li>${escapeHtml(combatant.name)}: ${combatant.hp}/${combatant.hpMax} HP</li>`
+  ).join("");
+  const logs = combat.log.map(
+    (entry) => `<li>${escapeHtml(entry.actorId)} \u2192 ${escapeHtml(entry.targetId)}: ${entry.hit ? `\u547D\u4E2D ${entry.damageTotal}` : "\u672A\u547D\u4E2D"}</li>`
+  ).join("");
+  const finished = combat.outcome !== null;
+  const action = finished ? "combat:complete" : "combat:advance";
+  const label = finished ? combat.outcome === "victory" ? "\u7ED3\u675F\u6218\u6597" : "\u7ED3\u675F\u6218\u6597\uFF08\u8D25\u5317\uFF09" : `${current?.name ?? "\u672A\u77E5"} \u884C\u52A8`;
+  return `<section class="dm-event dm-combat"><p>\u6218\u6597${finished ? `\uFF1A${combat.outcome === "victory" ? "\u80DC\u5229" : "\u8D25\u5317"}` : "\u8FDB\u884C\u4E2D"}</p><ul>${rows}</ul><ol class="dm-combat-log">${logs}</ol><button type="button" class="dm-primary" data-plugin-action="${action}">${escapeHtml(label)}</button></section>`;
 }
 function renderPanel(host, state) {
   if (!state) {
@@ -342,12 +617,21 @@ var pendingState = null;
 var boundConversationId = "";
 var boundBranchPath = "";
 var stateWrite = Promise.resolve();
+var combatHoldToken = null;
 var ignoredStateSignatures = /* @__PURE__ */ new Set();
 function discardTransientMaze() {
   autoMoveRun += 1;
   autoMoveInFlight = false;
   keyboardMoveInFlight = false;
   pendingState = null;
+}
+function acquireCombatHold(host) {
+  if (!combatHoldToken) combatHoldToken = host.conversation.acquirePluginHold(PLUGIN_ID);
+}
+function releaseCombatHold(host) {
+  if (!combatHoldToken) return;
+  host.conversation.releasePluginHold(PLUGIN_ID, combatHoldToken);
+  combatHoldToken = null;
 }
 function syncScope(conversationId, branchPath) {
   if (conversationId === boundConversationId && branchPath === boundBranchPath) return false;
@@ -372,7 +656,7 @@ function cancelAutoMove(host) {
   }
 }
 function stateSignature(state) {
-  return `${state.seed}:${state.hero.x}:${state.hero.y}:${state.elapsedMinutes}:${state.restedMinutes}:${state.resolvedEntityIds.join(",")}:${state.activeEvent?.entityId ?? ""}:${state.activeEvent?.minutes ?? ""}:${state.explored.flat().map((value) => value ? "1" : "0").join("")}`;
+  return `${state.seed}:${state.hero.x}:${state.hero.y}:${state.elapsedMinutes}:${state.restedMinutes}:${state.resolvedEntityIds.join(",")}:${state.activeEvent?.entityId ?? ""}:${state.activeEvent?.minutes ?? ""}:${JSON.stringify(state.activeCombat)}:${state.explored.flat().map((value) => value ? "1" : "0").join("")}`;
 }
 function readStateBuckets(settings) {
   const raw = settings[STATE_KEY];
@@ -452,7 +736,7 @@ async function readState(host) {
   const conversationId = host.conversation.getId();
   const branchPath = await host.conversation.getActiveBranchPath();
   if (host.conversation.getId() !== conversationId) return null;
-  syncScope(conversationId, branchPath);
+  if (syncScope(conversationId, branchPath)) releaseCombatHold(host);
   if (pendingState && pendingState.conversationId === conversationId && pendingState.branchPath === branchPath) return pendingState;
   const settings = await host.conversation.getPluginSettings();
   if (host.conversation.getId() !== conversationId) return null;
@@ -461,6 +745,7 @@ async function readState(host) {
 }
 async function refreshPanel(host) {
   const scoped = await readState(host);
+  if (scoped?.state.activeCombat) acquireCombatHold(host);
   host.ui.panel.setHtml(PLACEMENT, PLUGIN_ID, renderPanel(host, scoped?.state ?? null), { revision: ++revision });
 }
 async function createMaze(host) {
@@ -482,7 +767,24 @@ async function moveHero(host, x, y) {
   });
 }
 async function resolveActiveEvent(host, resolution) {
-  await mutateState(host, (state) => resolveDungeonMapEvent(state, resolution), () => refreshPanel(host));
+  await mutateState(host, (state) => {
+    if (state.activeEvent?.kind === "combat" && resolution === "resolve") {
+      return beginDungeonCombat(state, DEFAULT_DUNGEON_CATALOG);
+    }
+    return resolveDungeonMapEvent(state, resolution);
+  }, (next) => {
+    if (next.activeCombat) acquireCombatHold(host);
+    return refreshPanel(host);
+  });
+}
+async function advanceCombat(host) {
+  await mutateState(host, (state) => advanceDungeonCombat(state), () => refreshPanel(host));
+}
+async function completeCombat(host) {
+  await mutateState(host, completeDungeonCombat, (next) => {
+    if (!next.activeCombat) releaseCombatHold(host);
+    return refreshPanel(host);
+  });
 }
 async function adjustCampRest(host, delta) {
   await mutateState(host, (state) => {
@@ -578,6 +880,8 @@ function register(host) {
       if (event.action === "create" || event.action === "reset") void createMaze(host);
       if (event.action === "event:resolve") void resolveActiveEvent(host, "resolve");
       if (event.action === "event:skip") void resolveActiveEvent(host, "skip");
+      if (event.action === "combat:advance") void advanceCombat(host);
+      if (event.action === "combat:complete") void completeCombat(host);
       const campAdjustment = /^event:camp:([+-]\d+)$/.exec(event.action);
       if (campAdjustment) void adjustCampRest(host, Number(campAdjustment[1]));
       const match = /^move:(\d+):(\d+)$/.exec(event.action);

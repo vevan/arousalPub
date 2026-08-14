@@ -481,8 +481,9 @@ export interface PluginWebHost {
     getLorebookIds(): Promise<string[]>
     /** 替换本对话资料库绑定列表；需 manifest `conversation.bindings.write` */
     patchLorebookIds(lorebookIds: string[]): Promise<string[]>
-    /** 摘要预览等插件流程占用对话：禁止发送新消息 */
-    setPluginHold(hold: boolean): void
+    /** 获取插件流程的对话占用；必须在流程结束时用同一 owner 和 token 释放。 */
+    acquirePluginHold(owner: string): string
+    releasePluginHold(owner: string, token: string): void
   }
   lorebook: {
     list(): Promise<LorebookSummaryDto[]>

@@ -446,10 +446,20 @@ export interface PluginWebHost {
     onTurnDataChanged: (handler: () => void) => () => void
     /** `loading` / `regeneratingTurnOrdinal` 变化（发消息、再生开始/结束） */
     onGeneratingChanged: (handler: () => void) => () => void
+    /** 新分支已创建；携带新分支及其直接父路径。 */
+    onBranchCreated: (
+      handler: (event: {
+        conversationId: string
+        parentBranchPath: string
+        branchPath: string
+      }) => void | Promise<void>,
+    ) => () => void
   }
   conversation: {
     getId(): string
     getMeta(): Promise<ConversationMeta>
+    /** 读取当前 active branch；读取失败时 reject，避免误写主路径。 */
+    getActiveBranchPath(): Promise<string>
     runScope(
       opts: ConversationScopeOptions,
       fn: (ctx: ConversationBatchContext) => Promise<void>,

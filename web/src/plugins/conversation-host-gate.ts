@@ -93,6 +93,10 @@ export function wrapConversationHostForPlugin(
       assertPluginConversationRead(id)
       return conversation.getMeta()
     },
+    async getActiveBranchPath() {
+      assertPluginConversationRead(id)
+      return conversation.getActiveBranchPath()
+    },
     runScope: runScoped,
     runBatch(fn) {
       return runScoped({ writeLock: true, requireIdle: true }, fn)

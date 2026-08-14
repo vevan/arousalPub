@@ -9,6 +9,7 @@ import {
   moveDungeonHero,
   resolveDungeonMapEvent,
   setDungeonCampRestMinutes,
+  snapshotDungeonMazeBranch,
 } from '../src/maze.ts'
 
 test('creates a deterministic 21 by 21 maze with required entities', () => {
@@ -59,6 +60,32 @@ test('finds a route only through explored paths', () => {
   assert.ok(moved)
   assert.deepEqual(findDungeonPath(moved, maze.hero), [maze.hero])
   assert.equal(findDungeonPath(moved, { x: 0, y: 0 }), null)
+})
+
+test('freezes a new branch at creation and keeps later parent changes isolated', () => {
+  const root = createDungeonMaze(12345)
+  const rootStates = snapshotDungeonMazeBranch({ '': root }, '', 'branch-1')
+  const branch = rootStates['branch-1']
+  assert.ok(branch)
+  assert.notEqual(branch, root)
+  const destination = [
+    { x: branch.hero.x + 1, y: branch.hero.y },
+    { x: branch.hero.x - 1, y: branch.hero.y },
+    { x: branch.hero.x, y: branch.hero.y + 1 },
+    { x: branch.hero.x, y: branch.hero.y - 1 },
+  ].find((point) => branch.cells[point.y]?.[point.x] === 1)
+  assert.ok(destination)
+  const moved = moveDungeonHero(branch, destination)
+  assert.ok(moved)
+  const parentMoved = moveDungeonHero(root, destination)
+  assert.ok(parentMoved)
+  assert.deepEqual(rootStates['branch-1']?.hero, branch.entrance)
+  const nestedStates = snapshotDungeonMazeBranch(
+    { ...rootStates, 'branch-1': moved },
+    'branch-1',
+    'branch-1/branch-2',
+  )
+  assert.deepEqual(nestedStates['branch-1/branch-2']?.hero, moved.hero)
 })
 
 test('walls block the 5 by 5 field of view but remain visible themselves', () => {

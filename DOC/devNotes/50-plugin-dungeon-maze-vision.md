@@ -438,13 +438,13 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 
 | 数据 | 存放 | 说明 |
 |------|------|------|
-| 已生成地图（格网、墙、门、楼梯、seed） | 会话 **`pluginSettings['dungeon-maze'].dungeonState`** 或专用 blob | **按 active branch 隔离**；重开 panel 不 regenerate |
+| 已生成地图（格网、墙、门、楼梯、seed） | 会话 **`pluginSettings['dungeon-maze'].dungeonStates[branchPath]`** 或专用 blob | **按 active branch 隔离**；重开 panel 不 regenerate |
 | 敌人实例位置 / 已击败标记 | 同上 | |
 | 玩家坐标、层、背包、装备 | 同上 | |
 | Catalog 默认 | `catalog-manifest.json` + `assets/{bundleId}/…` | 用户 import / 切换 activeConfig |
 | 战报历史 | state 内数组 + 已 send 进 turn 的 narrative | 可选 `turn.plugins[]` 快照 |
 
-**分支**（`23`）：**定案按 `branchPath` 隔离**。创建分支时继承分叉点的 dungeon state；后续地图、敌人、背包与战报仅写当前 active branch，禁止跨分支共享可变进度。M0 骨架仍整会话一份 `dungeonState`，**尚未**按 branch 分桶。
+**分支**（`23`）：**按 `branchPath` 隔离**。`dungeonStates` 以路径为键保存状态；**创建分支时**复制直接父分支快照，后续地图、敌人、背包与战报仅写当前 active branch，禁止跨分支共享可变进度。
 
 ### 3.6.1 M0 运行时约定（已落地）
 
@@ -509,7 +509,7 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 
 | 阶段 | 内容 |
 |------|------|
-| M0 | Catalog **JSON Schema 定案** + 迷宫生成；Canvas + state 持久化与 **branchPath 隔离**；可选 **catalog-editor.html** spike |
+| M0 | ✅ 迷宫生成、Canvas、state 持久化与 **branchPath 隔离**；Catalog JSON Schema 定案 / `catalog-editor.html` spike 可后续补齐 |
 | M0b | **Catalog 编辑器**（单文件 HTML）：schema 校验 + 导出三类 JSON（可与 M1 并行） |
 | M1 | 本地战斗 loop + CombatLogEntry；panel 内 log；**战斗 acquire / release 会话 hold** |
 | M2 | **perBattle** 模式 + complete + **插件区块进主对话** + **TK 战后写回**（与 narrative 同次或紧随） |

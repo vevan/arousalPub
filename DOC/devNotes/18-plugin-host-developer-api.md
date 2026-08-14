@@ -148,8 +148,9 @@ export function register(host: PluginWebHost) {
 | `onAssistantReplyComplete(handler)` | 发送/再生流程结束（含 UI 刷新之后） |
 | `onTurnDataChanged(handler)` | swipe / `turn.plugins` 等轮次数据变更 |
 | `onGeneratingChanged(handler)` | `session.loading` 或 `regeneratingTurnOrdinal` 变化（等待回复 UI 等） |
+| `onBranchCreated(handler)` | 新分支已由 UI 创建；事件含 `conversationId`、`parentBranchPath`、`branchPath`。创建流程会等待 handler 完成，适合冻结插件分支状态 |
 
-返回 **取消订阅函数**。持久化类逻辑优先用 `onAssistantReplyPersisted`。
+返回 **取消订阅函数**。持久化类逻辑优先用 `onAssistantReplyPersisted`；`onBranchCreated` handler 可返回 Promise。
 
 **事件字段（persisted）**：`mode`、`traceId?`、`turnOrdinal?`、`receiveId?`、`isFirstTurn?`。
 
@@ -159,6 +160,7 @@ export function register(host: PluginWebHost) {
 |------|------|
 | `getId()` | 当前对话 id |
 | `getMeta()` | `title`、`userDisplayName`、`assistantDisplayName`、`characterIds` 等 |
+| `getActiveBranchPath()` | 当前 `activeBranchPath`；主路径为 `""`。读取失败时抛错，不可当作主路径继续写入 |
 | `runScope(opts, fn)` | 批处理作用域；`fn` 接收 `ConversationBatchContext` |
 | `runBatch(fn)` | `runScope({ writeLock: true, requireIdle: true }, fn)` 别名 |
 | `refresh()` | 写盘后刷新消息列表 |

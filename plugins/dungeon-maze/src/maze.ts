@@ -48,6 +48,19 @@ export interface DungeonMazeState {
   entities: MazeEntity[]
 }
 
+export type DungeonMazeStates = Record<string, DungeonMazeState>
+
+/** 在分支创建时复制父分支状态，冻结该分叉点的迷宫进度。 */
+export function snapshotDungeonMazeBranch(
+  states: DungeonMazeStates,
+  parentPath: string,
+  branchPath: string,
+): DungeonMazeStates {
+  if (states[branchPath]) return states
+  const parent = states[parentPath]
+  return parent ? { ...states, [branchPath]: structuredClone(parent) } : states
+}
+
 type Random = () => number
 
 function seededRandom(seed: number): Random {

@@ -7,6 +7,11 @@ var DEFAULT_GENERATION_CONFIG = {
   campDensity: 150
 };
 var COMBAT_MINUTES_PER_ROUND = 0.5;
+function snapshotDungeonMazeBranch(states, parentPath, branchPath) {
+  if (states[branchPath]) return states;
+  const parent = states[parentPath];
+  return parent ? { ...states, [branchPath]: structuredClone(parent) } : states;
+}
 function seededRandom(seed) {
   let value = seed >>> 0;
   return () => {
@@ -261,7 +266,7 @@ function isDungeonMazeState(value) {
 // plugins/dungeon-maze/src/index.ts
 var PLUGIN_ID = "dungeon-maze";
 var PLACEMENT = "rightRail";
-var STATE_KEY = "dungeonState";
+var STATE_KEY = "dungeonStates";
 function tKey(host, key) {
   return host.pluginKey(key);
 }
@@ -335,6 +340,7 @@ var elapsedElement = null;
 var canvasResizeObserver = null;
 var pendingState = null;
 var boundConversationId = "";
+var boundBranchPath = "";
 var stateWrite = Promise.resolve();
 var ignoredStateSignatures = /* @__PURE__ */ new Set();
 function discardTransientMaze() {
@@ -343,11 +349,11 @@ function discardTransientMaze() {
   keyboardMoveInFlight = false;
   pendingState = null;
 }
-function syncConversation(host) {
-  const conversationId = host.conversation.getId();
-  if (conversationId === boundConversationId) return false;
+function syncScope(conversationId, branchPath) {
+  if (conversationId === boundConversationId && branchPath === boundBranchPath) return false;
   discardTransientMaze();
   boundConversationId = conversationId;
+  boundBranchPath = branchPath;
   return true;
 }
 function fitCanvasToContainer() {
@@ -361,36 +367,51 @@ function fitCanvasToContainer() {
 function cancelAutoMove(host) {
   autoMoveRun += 1;
   autoMoveInFlight = false;
-  if (pendingState && host.conversation.getId() === boundConversationId) {
-    void persistState(host, pendingState, boundConversationId);
+  if (pendingState && host.conversation.getId() === pendingState.conversationId) {
+    void persistState(host, pendingState);
   }
 }
 function stateSignature(state) {
   return `${state.seed}:${state.hero.x}:${state.hero.y}:${state.elapsedMinutes}:${state.restedMinutes}:${state.resolvedEntityIds.join(",")}:${state.activeEvent?.entityId ?? ""}:${state.activeEvent?.minutes ?? ""}:${state.explored.flat().map((value) => value ? "1" : "0").join("")}`;
 }
-function persistState(host, state, conversationId) {
-  if (host.conversation.getId() !== conversationId) return stateWrite;
-  pendingState = state;
-  const signature = stateSignature(state);
+function readStateBuckets(settings) {
+  const raw = settings[STATE_KEY];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const states = {};
+  for (const [branchPath, value] of Object.entries(raw)) {
+    if (isDungeonMazeState(value)) states[branchPath] = value;
+  }
+  return states;
+}
+function persistState(host, scoped) {
+  if (host.conversation.getId() !== scoped.conversationId) return stateWrite;
+  pendingState = scoped;
+  const signature = stateSignature(scoped.state);
   ignoredStateSignatures.add(signature);
   stateWrite = stateWrite.catch(() => void 0).then(async () => {
-    if (host.conversation.getId() !== conversationId) return;
-    await host.conversation.patchPluginSettings({ [STATE_KEY]: state });
-    if (host.conversation.getId() === conversationId && pendingState && stateSignature(pendingState) === signature) {
+    if (host.conversation.getId() !== scoped.conversationId) return;
+    const activeBranchPath = await host.conversation.getActiveBranchPath();
+    if (host.conversation.getId() !== scoped.conversationId || activeBranchPath !== scoped.branchPath) return;
+    const settings = await host.conversation.getPluginSettings();
+    if (host.conversation.getId() !== scoped.conversationId) return;
+    const states = readStateBuckets(settings);
+    await host.conversation.patchPluginSettings({
+      [STATE_KEY]: { ...states, [scoped.branchPath]: scoped.state }
+    });
+    if (host.conversation.getId() === scoped.conversationId && pendingState && pendingState.conversationId === scoped.conversationId && pendingState.branchPath === scoped.branchPath && stateSignature(pendingState.state) === signature) {
       pendingState = null;
     }
   });
   return stateWrite;
 }
 async function mutateState(host, mutate, after) {
-  const conversationId = host.conversation.getId();
-  const state = await readState(host);
-  if (!state || host.conversation.getId() !== conversationId) return;
-  const next = mutate(state);
+  const scoped = await readState(host);
+  if (!scoped || host.conversation.getId() !== scoped.conversationId) return;
+  const next = mutate(scoped.state);
   if (!next) return;
-  if (host.conversation.getId() !== conversationId) return;
-  await persistState(host, next, conversationId);
-  if (host.conversation.getId() !== conversationId) return;
+  if (host.conversation.getId() !== scoped.conversationId) return;
+  await persistState(host, { ...scoped, state: next });
+  if (host.conversation.getId() !== scoped.conversationId) return;
   await after(next);
 }
 function drawMaze(host, state) {
@@ -428,22 +449,28 @@ function drawMaze(host, state) {
   }
 }
 async function readState(host) {
-  syncConversation(host);
-  if (pendingState) return pendingState;
+  const conversationId = host.conversation.getId();
+  const branchPath = await host.conversation.getActiveBranchPath();
+  if (host.conversation.getId() !== conversationId) return null;
+  syncScope(conversationId, branchPath);
+  if (pendingState && pendingState.conversationId === conversationId && pendingState.branchPath === branchPath) return pendingState;
   const settings = await host.conversation.getPluginSettings();
-  const state = settings[STATE_KEY];
-  return isDungeonMazeState(state) ? state : null;
+  if (host.conversation.getId() !== conversationId) return null;
+  const state = readStateBuckets(settings)[branchPath];
+  return state ? { state, conversationId, branchPath } : null;
 }
 async function refreshPanel(host) {
-  const state = await readState(host);
-  host.ui.panel.setHtml(PLACEMENT, PLUGIN_ID, renderPanel(host, state), { revision: ++revision });
+  const scoped = await readState(host);
+  host.ui.panel.setHtml(PLACEMENT, PLUGIN_ID, renderPanel(host, scoped?.state ?? null), { revision: ++revision });
 }
 async function createMaze(host) {
   const conversationId = host.conversation.getId();
   discardTransientMaze();
-  boundConversationId = conversationId;
+  const branchPath = await host.conversation.getActiveBranchPath();
+  if (host.conversation.getId() !== conversationId) return;
+  syncScope(conversationId, branchPath);
   const state = createDungeonMaze();
-  await persistState(host, state, conversationId);
+  await persistState(host, { state, conversationId, branchPath });
   if (host.conversation.getId() !== conversationId) return;
   await refreshPanel(host);
   host.ui.notify(host.t(tKey(host, "created")), void 0, { level: "success" });
@@ -464,31 +491,31 @@ async function adjustCampRest(host, delta) {
   }, () => refreshPanel(host));
 }
 async function moveHeroToExplored(host, x, y) {
-  const conversationId = host.conversation.getId();
   const run = ++autoMoveRun;
   autoMoveInFlight = true;
   try {
-    const state = await readState(host);
-    if (!state || run !== autoMoveRun || host.conversation.getId() !== conversationId) return;
-    const path = findDungeonPath(state, { x, y });
+    const scoped = await readState(host);
+    if (!scoped || run !== autoMoveRun || host.conversation.getId() !== scoped.conversationId) return;
+    const { conversationId, branchPath } = scoped;
+    const path = findDungeonPath(scoped.state, { x, y });
     if (!path?.length) return;
-    let next = state;
+    let next = scoped.state;
     for (const point of path) {
       if (run !== autoMoveRun || host.conversation.getId() !== conversationId) return;
       const moved = moveDungeonHero(next, point);
       if (!moved) return;
       next = moved;
-      pendingState = next;
+      pendingState = { state: next, conversationId, branchPath };
       drawMaze(host, next);
       if (next.activeEvent) {
-        await persistState(host, next, conversationId);
+        await persistState(host, { state: next, conversationId, branchPath });
         if (host.conversation.getId() === conversationId) await refreshPanel(host);
         return;
       }
       await new Promise((resolve) => setTimeout(resolve, 140));
     }
     if (run !== autoMoveRun || host.conversation.getId() !== conversationId) return;
-    await persistState(host, next, conversationId);
+    await persistState(host, { state: next, conversationId, branchPath });
     if (host.conversation.getId() === conversationId) drawMaze(host, next);
   } finally {
     if (run === autoMoveRun) autoMoveInFlight = false;
@@ -531,15 +558,23 @@ function register(host) {
     }
   });
   host.lifecycle.onTurnDataChanged(() => {
-    const switched = syncConversation(host);
-    if (switched || !canvas?.isConnected) void refreshPanel(host);
+    void refreshPanel(host);
+  });
+  host.lifecycle.onBranchCreated(async (event) => {
+    if (event.conversationId !== host.conversation.getId()) return;
+    const settings = await host.conversation.getPluginSettings();
+    if (event.conversationId !== host.conversation.getId()) return;
+    const states = readStateBuckets(settings);
+    const nextStates = snapshotDungeonMazeBranch(
+      states,
+      event.parentBranchPath,
+      event.branchPath
+    );
+    if (nextStates === states) return;
+    await host.conversation.patchPluginSettings({ [STATE_KEY]: nextStates });
   });
   host.ui.panel.onEvent(PLACEMENT, PLUGIN_ID, {
     onAction: (event) => {
-      if (syncConversation(host)) {
-        void refreshPanel(host);
-        return;
-      }
       if (event.action === "create" || event.action === "reset") void createMaze(host);
       if (event.action === "event:resolve") void resolveActiveEvent(host, "resolve");
       if (event.action === "event:skip") void resolveActiveEvent(host, "skip");
@@ -549,10 +584,6 @@ function register(host) {
       if (match) void moveHero(host, Number(match[1]), Number(match[2]));
     },
     onKeydown: (event) => {
-      if (syncConversation(host)) {
-        void refreshPanel(host);
-        return true;
-      }
       if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return false;
       if (event.key === "Escape" && autoMoveInFlight) {
         cancelAutoMove(host);
@@ -568,8 +599,8 @@ function register(host) {
       keyboardMoveInFlight = true;
       void (async () => {
         try {
-          const state = await readState(host);
-          if (state) await moveHero(host, state.hero.x + delta.x, state.hero.y + delta.y);
+          const scoped = await readState(host);
+          if (scoped) await moveHero(host, scoped.state.hero.x + delta.x, scoped.state.hero.y + delta.y);
         } finally {
           keyboardMoveInFlight = false;
         }
@@ -587,22 +618,18 @@ function register(host) {
         canvasResizeObserver.observe(container);
       }
       void readState(host).then((state) => {
-        if (state) drawMaze(host, state);
+        if (state) drawMaze(host, state.state);
       });
     },
     onLiveTextMounted: (event) => {
       if (event.textId !== "elapsed") return;
       elapsedElement = event.element;
       void readState(host).then((state) => {
-        if (state) drawMaze(host, state);
+        if (state) drawMaze(host, state.state);
       });
     },
     onPointer: (event) => {
       if (event.canvasId !== "maze") return;
-      if (syncConversation(host)) {
-        void refreshPanel(host);
-        return;
-      }
       if (autoMoveInFlight) {
         cancelAutoMove(host);
         return;
@@ -611,15 +638,9 @@ function register(host) {
     }
   });
   host.conversation.onPluginSettingsChanged((settings) => {
-    if (syncConversation(host)) {
-      void refreshPanel(host);
-      return;
-    }
-    const state = settings[STATE_KEY];
-    if (isDungeonMazeState(state) && ignoredStateSignatures.delete(stateSignature(state))) {
-      drawMaze(host, state);
-      return;
-    }
+    const rawStates = readStateBuckets(settings);
+    const state = rawStates[boundBranchPath];
+    if (state && ignoredStateSignatures.delete(stateSignature(state))) drawMaze(host, state);
     void refreshPanel(host);
   });
   void refreshPanel(host);

@@ -21,7 +21,9 @@ import { registerComposerSlashCommand as registerComposerSlashCommandInRegistry 
 import { useAuthStore } from '@/stores/auth'
 import {
   fetchConversationMeta,
+  fetchActiveConversationBranchPath,
 } from '@/plugins/conversation-meta'
+import { onConversationBranchCreated } from '@/utils/conversation-branch-events'
 import {
   createLorebookEntriesBatch,
   createLorebookEntry,
@@ -402,6 +404,7 @@ export function createPluginWebHost(session: ChatSession): {
         session.onAssistantReplyPersisted(handler),
       onTurnDataChanged: (handler) => session.onTurnDataChanged(handler),
       onGeneratingChanged: (handler) => session.onGeneratingChanged(handler),
+      onBranchCreated: (handler) => onConversationBranchCreated(handler),
     },
     refreshSlotButtons() {
       slotButtonRevision.value += 1
@@ -418,6 +421,9 @@ export function createPluginWebHost(session: ChatSession): {
           userDisplayName: session.userDisplayName,
           assistantDisplayName: session.assistantRoleName,
         })
+      },
+      getActiveBranchPath() {
+        return fetchActiveConversationBranchPath(session.conversationId)
       },
       runScope(opts, fn) {
         return session.runConversationScope(opts, fn)

@@ -35,3 +35,10 @@ export async function fetchConversationMeta(
     userCharacterId,
   }
 }
+
+export async function fetchActiveConversationBranchPath(conversationId: string): Promise<string> {
+  const res = await apiFetch(`/api/chat/conversations/${conversationId}`)
+  if (!res.ok) throw new Error('conversation_branch_path_read_failed')
+  const idx = (await res.json()) as Record<string, unknown>
+  return typeof idx.activeBranchPath === 'string' ? idx.activeBranchPath.trim() : ''
+}

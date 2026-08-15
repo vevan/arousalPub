@@ -5,7 +5,8 @@ import {
   type ProfileDictStatus,
 } from '@/utils/hybrid-fts-api'
 import {
-  HYBRID_FTS_DICT_VARIANTS,
+  defaultDictVariantForProfile,
+  dictVariantsForProfile,
   normalizeHybridFtsDictVariant,
   profileRequiresDict,
   type HybridFtsDictVariant,
@@ -47,7 +48,8 @@ const requiresDict = computed(() => profileRequiresDict(props.pendingProfile))
 
 const variantItems = computed(() => {
   const variants = dictStatus.value?.variants ?? []
-  return HYBRID_FTS_DICT_VARIANTS.map((id) => {
+  const ids = dictVariantsForProfile(props.pendingProfile)
+  return ids.map((id) => {
     const row = variants.find((v) => v.id === id)
     return {
       id,
@@ -56,6 +58,9 @@ const variantItems = computed(() => {
       modelHome: row?.modelHome ?? '',
       sourcePath: row?.sourcePath ?? '',
       sizeMbApprox: row?.sizeMbApprox ?? 0,
+      artifactKind: row?.artifactKind,
+      languageHint: row?.languageHint,
+      tags: row?.tags ?? [],
     }
   })
 })
@@ -65,6 +70,12 @@ const selectedVariantRow = computed(() =>
 )
 
 const repoUrl = computed(() => dictStatus.value?.repoUrl ?? '')
+
+const manualHintKey = computed(() =>
+  props.pendingProfile === 'lindera'
+    ? 'settings.hybridFtsSwitch.manualHintLindera'
+    : 'settings.hybridFtsSwitch.manualHint',
+)
 
 async function loadDictStatus(): Promise<void> {
   if (!requiresDict.value) {
@@ -78,8 +89,11 @@ async function loadDictStatus(): Promise<void> {
     const preferred =
       props.pendingProfile === props.currentProfile && props.currentDictVariant
         ? props.currentDictVariant
-        : 'default'
-    selectedVariant.value = normalizeHybridFtsDictVariant(preferred)
+        : defaultDictVariantForProfile(props.pendingProfile)
+    selectedVariant.value = normalizeHybridFtsDictVariant(
+      preferred,
+      props.pendingProfile,
+    )
   } catch (e) {
     dictStatusError.value =
       e instanceof Error ? e.message : t('settings.hybridFtsSwitch.loadStatusFailed')
@@ -124,7 +138,10 @@ async function onConfirm(): Promise<void> {
             downloadPercent.value = 0
           }
           if (ev.type === 'progress') {
-            if (ev.totalBytes != null && ev.totalBytes > 0) {
+            if (ev.phase === 'extract') {
+              downloadIndeterminate.value = true
+              downloadPercent.value = undefined
+            } else if (ev.totalBytes != null && ev.totalBytes > 0) {
               downloadIndeterminate.value = false
               downloadPercent.value = Math.min(
                 100,
@@ -213,6 +230,24 @@ async function onConfirm(): Promise<void> {
                     (~{{ item.sizeMbApprox }} MB)
                   </span>
                   <v-chip
+                    v-if="item.languageHint"
+                    size="x-small"
+                    variant="outlined"
+                    class="ml-2"
+                  >
+                    {{ $t(`settings.hybridFtsLang.${item.languageHint}`) }}
+                  </v-chip>
+                  <v-chip
+                    v-for="tag in item.tags"
+                    :key="tag"
+                    size="x-small"
+                    :color="tag === 'recommended' ? 'primary' : tag === 'large' ? 'warning' : undefined"
+                    variant="tonal"
+                    class="ml-1"
+                  >
+                    {{ $t(`settings.hybridFtsTag.${tag}`) }}
+                  </v-chip>
+                  <v-chip
                     v-if="item.downloaded"
                     size="x-small"
                     color="success"
@@ -277,7 +312,7 @@ async function onConfirm(): Promise<void> {
               <code>{{ selectedVariantRow.storagePath }}</code>
             </div>
             <div class="text-medium-emphasis mt-2">
-              {{ $t('settings.hybridFtsSwitch.manualHint') }}
+              {{ $t(manualHintKey) }}
             </div>
           </v-sheet>
         </template>

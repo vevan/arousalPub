@@ -6,6 +6,9 @@ export interface DictVariantCatalogEntry {
   sourcePath: string
   downloadUrl: string
   sizeMbApprox: number
+  artifactKind?: 'file' | 'zip'
+  languageHint?: 'ja' | 'ko' | 'zh'
+  tags?: readonly string[]
 }
 
 export interface TokenizerCatalogEntry {
@@ -24,6 +27,9 @@ export interface DictVariantStatus {
   sourcePath: string
   downloadUrl: string
   sizeMbApprox: number
+  artifactKind?: 'file' | 'zip'
+  languageHint?: 'ja' | 'ko' | 'zh'
+  tags?: readonly string[]
 }
 
 export interface ProfileDictStatus {
@@ -35,7 +41,12 @@ export interface ProfileDictStatus {
 
 export type HybridFtsDictDownloadSseEvent =
   | { type: 'start'; totalBytes: number | null; variant: string }
-  | { type: 'progress'; receivedBytes: number; totalBytes: number | null }
+  | {
+      type: 'progress'
+      receivedBytes: number
+      totalBytes: number | null
+      phase?: 'download' | 'extract'
+    }
   | { type: 'done'; ok: true; variant: string }
   | { type: 'error'; ok: false; error: string; detail?: string }
 

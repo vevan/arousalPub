@@ -69,6 +69,7 @@
 | [`48`](48-builtin-embedding-transformers.md) | ✅ **M1 核心已落地** | **内置 Embedding**：服务端 Transformers.js 固定 q8 / CPU 后路；profile 门禁、缓存加载、设置与重建提示已完成；输入上限 / prepare 限流 / 错误脱敏已加固；下载 SSE / 平台矩阵待续 |
 | [`49`](49-backend-outbound-proxy.md) | ✅ | **后端出站代理**：`enableProxy` / `proxyUrl` / `proxyNoProxy`；Node 24.14+ `setGlobalProxyFromEnv`；restore 幂等 |
 | [`50`](50-plugin-dungeon-maze-vision.md) | **P2 设想** | **地下城迷宫**：**5e 简易战斗**、Canvas、catalog、叙事进主对话；见 `04` P2 |
+| [`51`](51-hybrid-fts-icu-lindera.md) | **定案 / 待实施** | **Hybrid FTS：ICU + Lindera 多词典**：升 LanceDB；`lindera` 可选语言包；`zh-jieba` 暂并存，M6 评估后再定是否废弃；见 `04` P1 |
 | [`99`](99-android-apk-vision.md) | 💡 **极低优先级** | **Android 单机 APK 设想**：领域层迁移动端、SQLite 替 chunk、Portable Bundle 导入导出；无排期 |
 
 ## 已归档（勿再新建同级文档）

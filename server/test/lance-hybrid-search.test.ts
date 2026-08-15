@@ -21,6 +21,16 @@ describe('toLanceFtsConfig', () => {
     assert.equal(cfg.baseTokenizer, 'jieba/default')
   })
 
+  it('maps lindera settings to lindera/{kind}', () => {
+    const cfg = toLanceFtsConfig({ profile: 'lindera', dictVariant: 'ko-dic' })
+    assert.equal(cfg.baseTokenizer, 'lindera/ko-dic')
+  })
+
+  it('defaults lindera dict to ipadic', () => {
+    const cfg = toLanceFtsConfig({ profile: 'lindera' })
+    assert.equal(cfg.baseTokenizer, 'lindera/ipadic')
+  })
+
   it('matches ftsIndexOptionsForProfile for zh-ngram', () => {
     assert.deepEqual(toLanceFtsConfig('zh-ngram'), ftsIndexOptionsForProfile('zh-ngram'))
   })
@@ -38,6 +48,11 @@ describe('ftsIndexOptionsForProfile', () => {
     const opts = ftsIndexOptionsForProfile('zh-jieba')
     assert.equal(opts.baseTokenizer, 'jieba/default')
   })
+
+  it('uses lindera/ipadic by default for lindera', () => {
+    const opts = ftsIndexOptionsForProfile('lindera')
+    assert.equal(opts.baseTokenizer, 'lindera/ipadic')
+  })
 })
 
 describe('chineseFtsIndexOptions', () => {
@@ -51,6 +66,13 @@ describe('formatHybridFtsSpec', () => {
     assert.equal(
       formatHybridFtsSpec({ profile: 'zh-jieba', dictVariant: 'big' }),
       'zh-jieba:big',
+    )
+  })
+
+  it('includes lindera dict kind', () => {
+    assert.equal(
+      formatHybridFtsSpec({ profile: 'lindera', dictVariant: 'unidic' }),
+      'lindera:unidic',
     )
   })
 })

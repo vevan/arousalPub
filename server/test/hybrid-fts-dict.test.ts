@@ -31,6 +31,16 @@ describe('hybridFts paths', () => {
     assert.equal(dict, expected)
   })
 
+  it('lindera model home and config path follow lindera/{kind}', () => {
+    const home = hybridFtsModelHome(userId, 'lindera', 'ipadic')
+    assert.match(home, /a1b2c3d4[\\/]hybrid-fts[\\/]lindera[\\/]ipadic$/)
+    const cfg = hybridFtsDictPath(userId, 'lindera', 'ipadic')
+    assert.equal(
+      cfg,
+      path.join(home, 'lindera', 'ipadic', 'config.yml'),
+    )
+  })
+
   it('hybridFtsRoot is under user data dir', () => {
     assert.match(hybridFtsRoot(userId), /a1b2c3d4[\\/]hybrid-fts$/)
   })
@@ -71,6 +81,15 @@ describe('languageModelHomeForSettings', () => {
     })
     assert.ok(home)
     assert.match(home!, /hybrid-fts[\\/]zh-jieba[\\/]default$/)
+  })
+
+  it('returns lindera kind-scoped model home', () => {
+    const home = languageModelHomeForSettings('a1b2c3d4', {
+      profile: 'lindera',
+      dictVariant: 'ko-dic',
+    })
+    assert.ok(home)
+    assert.match(home!, /hybrid-fts[\\/]lindera[\\/]ko-dic$/)
   })
 })
 

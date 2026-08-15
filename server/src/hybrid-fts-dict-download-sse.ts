@@ -33,6 +33,14 @@ export function startHybridFtsDictDownloadSse(
   void (async () => {
     try {
       const profile = normalizeHybridFtsProfile(body.profile)
+      if (body.profile !== profile) {
+        writeSseLine(stream, {
+          type: 'error',
+          ok: false,
+          error: 'profile_invalid',
+        })
+        return
+      }
       if (!profileRequiresDict(profile)) {
         writeSseLine(stream, {
           type: 'error',
@@ -41,7 +49,15 @@ export function startHybridFtsDictDownloadSse(
         })
         return
       }
-      const variant = normalizeHybridFtsDictVariant(body.variant)
+      const variant = normalizeHybridFtsDictVariant(body.variant, profile)
+      if (body.variant !== variant) {
+        writeSseLine(stream, {
+          type: 'error',
+          ok: false,
+          error: 'dict_variant_invalid',
+        })
+        return
+      }
       writeSseLine(stream, { type: 'start', totalBytes: null, variant })
       await downloadDictVariant(profile, variant, (p) => {
         writeSseLine(stream, { type: 'progress', ...p })

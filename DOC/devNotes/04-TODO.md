@@ -8,6 +8,7 @@
 
 ## P1
 
+- [ ] **Hybrid FTS：ICU + Lindera** — `@lancedb/lancedb` 已升 **0.37.1**；**`lindera` profile + 多语言包 zip 管线已接入**（保留 `zh-jieba`）；**ICU 未做**；M7 已定案：对话 memory / 每本 Lore / 每个 KB 可跟随全局或独立指定分词，只重建自身索引；M6 评估待真实语料。见 `[DOC/devNotes/51](51-hybrid-fts-icu-lindera.md)`
 - [ ] **ST 聊天记录群聊多 bot 导入** — 当前 ST JSONL 导入全部 segment 绑定 `characterIds[0]`；需按 ST `name` 与会话 `characterIds`/`displayNames` 映射各 bot 为 speaker（单 bot 行为不变）。见 `[DOC/devNotes/37](37-st-import-settings-tab.md)`
 - [ ] 角色卡扩展规划：json格式以xml结构插入提示词，宿主提供接口，插件可改申请字段。
 

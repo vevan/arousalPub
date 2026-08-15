@@ -1077,6 +1077,13 @@ onMounted(() => {
                 class="mt-4 mb-2"
                 @update:model-value="onHybridFtsProfilePick"
               />
+              <div
+                v-if="profileRequiresDict(hybridFtsProfile) && hybridFtsDictVariant"
+                class="text-body-2 mb-2"
+              >
+                {{ $t('settings.hybridFtsCurrentDict') }}:
+                <strong>{{ $t(`settings.hybridFtsDictVariant.${hybridFtsDictVariant}`) }}</strong>
+              </div>
               <v-btn
                 v-if="profileRequiresDict(hybridFtsProfile)"
                 variant="outlined"

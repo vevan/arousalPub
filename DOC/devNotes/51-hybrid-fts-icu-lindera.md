@@ -96,7 +96,7 @@ segmenter:
 
 1. `hybrid-fts-catalog.ts`：`profile: 'lindera'`，`dictFamily: 'lindera'`；variants = 上表各 `dictKind`（URL 钉 `v3.0.7` 对应 zip；neologd 标大体积）。
 2. `hybrid-fts-dict.ts` / download SSE：**zip 下载 + 解压到约定子树**（与 jieba 单文件管线并存，不互相替换）。
-3. 就绪检测：目录 + 可加载核心文件 + `config.yml`。
+3. 就绪检测：核心词典文件齐全；`config.yml` 与当前绝对路径不一致时**自动重写**（搬迁数据目录无需重下）。
 4. catalog API 暴露各包语言、体积、推荐标签（日文默认 / 评估用 / 高级）。
 
 ### M2 — 接入 Lindera profile
@@ -200,7 +200,7 @@ M0 升级 LanceDB + 冒烟
 |------|------|
 | Lindera major ≠ Lance 内嵌 | catalog **钉死 v3.0.7**；升级 Lance 后 smoke + 改 URL |
 | zip 布局与 Lance 期望不一致 | 真实 `createIndex` 验收后再定解压映射 |
-| `config.yml` 路径 Windows/POSIX | 优先相对 model home；双平台冒烟 |
+| `config.yml` 路径 Windows/POSIX | 用 `pathToFileURL`；齐全时按当前目录自动重写 |
 | neologd 体积 / 检索劣化 | UI 警告；默认不推荐 |
 | 双轨中文（zh-jieba + lindera/jieba）暂增复杂度 | **有意为之**；以 M6 评估收束，禁止提前删 jieba |
 | Lance 升版 breaking | 全量 hybrid 单测 + 重建指引 |

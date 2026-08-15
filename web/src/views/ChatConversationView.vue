@@ -663,6 +663,8 @@ watch(
         v-model="memoryRebuildDialogOpen"
         :stored-model="conversationMemoryEmbeddingModel"
         :current-model="embeddingModel"
+        :stored-fts-spec="conversationMemoryHybridFtsSpec"
+        :current-fts-spec="globalHybridFtsSpec"
         :embedding-dimensions="embeddingDimensions"
         :loading="memoryRebuildLoading"
         :error-text="memoryRebuildError"

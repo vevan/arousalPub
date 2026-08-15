@@ -96,7 +96,14 @@ describe('lindera zip install', () => {
         path.join(dictDir, 'config.yml'),
         'segmenter:\n  mode: "normal"\n  dictionary: "file:///stale"\n',
       )
-      assert.equal(await isDictVariantDownloaded('lindera', kind, userId), false)
+      assert.equal(await isDictVariantDownloaded('lindera', kind, userId), true)
+      const rewritten = await readFile(path.join(dictDir, 'config.yml'), 'utf8')
+      assert.match(rewritten, /lindera-zip-unit%23percent%25/)
+      assert.doesNotMatch(rewritten, /file:\/\/\/stale/)
+      await rm(path.join(dictDir, 'config.yml'), { force: true })
+      assert.equal(await isDictVariantDownloaded('lindera', kind, userId), true)
+      const regenerated = await readFile(path.join(dictDir, 'config.yml'), 'utf8')
+      assert.match(regenerated, /lindera-zip-unit%23percent%25/)
       const entry = dictVariantEntryForProfile('lindera', kind)
       assert.equal(entry?.artifactKind, 'zip')
     } finally {
@@ -108,7 +115,7 @@ describe('lindera zip install', () => {
     }
   })
 
-  it('rejects zip-slip and keeps previous install', async () => {
+  it('rejects zip-slip and keeps previous dictionary files', async () => {
     const userId = 'lindera-zip-slip'
     const kind = 'ipadic'
     const work = await mkdtemp(path.join(tmpdir(), 'lindera-zip-slip-'))
@@ -149,8 +156,12 @@ describe('lindera zip install', () => {
       }
 
       const dictDir = linderaDictDir(userId, kind)
-      const before = await readFile(path.join(dictDir, 'metadata.json'), 'utf8')
-      assert.equal(before, '{"name":"good"}')
+      const beforeWords = await readFile(path.join(dictDir, 'dict.words'), 'utf8')
+      assert.equal(beforeWords, 'good-dict.words')
+
+      // 删掉一个核心文件以强制重装；config 自动重写不能单独触发下载
+      await rm(path.join(dictDir, 'metadata.json'), { force: true })
+      assert.equal(await isDictVariantDownloaded('lindera', kind, userId), false)
 
       globalThis.fetch = (async () => {
         const buf = await readFile(badZip)
@@ -160,11 +171,6 @@ describe('lindera zip install', () => {
         })
       }) as typeof fetch
       try {
-        // force reinstall path by marking ready=false via stale config
-        await writeFile(
-          path.join(dictDir, 'config.yml'),
-          'segmenter:\n  mode: "normal"\n  dictionary: "file:///stale"\n',
-        )
         await assert.rejects(
           () => downloadDictVariant('lindera', kind, undefined, userId),
           (err: Error) => {
@@ -179,8 +185,9 @@ describe('lindera zip install', () => {
         globalThis.fetch = originalFetch
       }
 
-      const after = await readFile(path.join(dictDir, 'metadata.json'), 'utf8')
-      assert.equal(after, '{"name":"good"}')
+      const afterWords = await readFile(path.join(dictDir, 'dict.words'), 'utf8')
+      assert.equal(afterWords, 'good-dict.words')
+      assert.equal(await isDictVariantDownloaded('lindera', kind, userId), false)
     } finally {
       await rm(work, { recursive: true, force: true })
       await rm(path.dirname(path.dirname(linderaDictDir(userId, kind))), {

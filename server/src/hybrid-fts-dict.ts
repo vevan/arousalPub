@@ -139,6 +139,33 @@ async function hasCompleteLinderaDictionary(dir: string): Promise<boolean> {
   }
 }
 
+/**
+ * 词典文件齐全时，按当前绝对路径重写 config.yml。
+ * 用于数据目录搬迁后免重下。
+ */
+async function ensureLinderaConfigCurrent(
+  userId: string,
+  kind: LinderaDictKind,
+): Promise<boolean> {
+  const dictDir = linderaDictDir(userId, kind)
+  if (!(await hasCompleteLinderaDictionary(dictDir))) return false
+  const expected = linderaConfigYaml(dictDir)
+  const cfg = linderaConfigPath(userId, kind)
+  try {
+    if (existsSync(cfg) && (await readFile(cfg, 'utf8')) === expected) {
+      return true
+    }
+  } catch {
+    /* rewrite below */
+  }
+  try {
+    await writeFile(cfg, expected, 'utf8')
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** 相对 `data/{userId}/` 的路径（API 展示用，统一 `/` 分隔） */
 export function toUserDataRelativePath(userId: string, absolutePath: string): string {
   const rel = path.relative(getUserDataDir(userId), absolutePath)
@@ -172,16 +199,7 @@ export async function isDictVariantDownloaded(
   if (!profileRequiresDict(profile)) return true
   const uid = resolveUserId(userId)
   if (profile === 'lindera' && isLinderaKind(variant)) {
-    const dictDir = linderaDictDir(uid, variant)
-    const cfg = linderaConfigPath(uid, variant)
-    if (!existsSync(cfg) || !(await hasCompleteLinderaDictionary(dictDir))) {
-      return false
-    }
-    try {
-      return (await readFile(cfg, 'utf8')) === linderaConfigYaml(dictDir)
-    } catch {
-      return false
-    }
+    return ensureLinderaConfigCurrent(uid, variant)
   }
   const dictPath = hybridFtsDictPath(uid, profile, variant)
   if (!existsSync(dictPath)) return false

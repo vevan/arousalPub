@@ -6,6 +6,7 @@ import {
 import { lorebookGroupPickerItems } from '@/utils/entry-group-transfer'
 import { rebuildEntriesAfterRemoval, rebuildEntriesAfterSameLibraryMove } from '@/utils/entry-batch-transfer'
 import { allocateShortId } from '@/utils/short-id'
+import type { HybridFtsSettings } from '@/utils/hybrid-fts-settings'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
@@ -49,6 +50,11 @@ export interface Lorebook {
   entries: LorebookEntry[]
   createdAt: string
   updatedAt: string
+  /** 缺省时跟随全局；存在时为该资料库的完整独立设置。 */
+  hybridFts?: HybridFtsSettings
+  /** API 展示字段，不写回 lorebook JSON。 */
+  builtHybridFtsSpec?: string | null
+  hybridFtsStale?: boolean
 }
 
 interface LorebooksServerDocument {
@@ -141,6 +147,8 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   let pendingSave = false
   let loadPromise: Promise<void> | null = null
+  /** Hybrid FTS PATCH（含服务端重建）期间禁止 PUT，避免整包回写旧 hybridFts */
+  const hybridFtsMutating = ref(false)
   /** 与上次成功 PUT 一致的快照，用于跳过无变更保存 */
   let lastPersistedSnapshot = ''
   /** 对齐服务端 LOREBOOKS_BULK_PUT_MIN_INTERVAL_MS（2s） */
@@ -150,7 +158,18 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
   let lastPutCompletedAt = 0
 
   function lorebooksSnapshot(): string {
-    return JSON.stringify(lorebooks.value)
+    return JSON.stringify(lorebooksForPersistence())
+  }
+
+  function lorebooksForPersistence(): Lorebook[] {
+    return lorebooks.value.map((lorebook) => {
+      const {
+        builtHybridFtsSpec: _builtHybridFtsSpec,
+        hybridFtsStale: _hybridFtsStale,
+        ...persisted
+      } = lorebook
+      return persisted
+    })
   }
 
   type SaveTiming = 'immediate' | 'debounced'
@@ -245,6 +264,10 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
 
   async function flushSave(): Promise<void> {
     if (!pendingSave) return
+    if (hybridFtsMutating.value) {
+      scheduleSaveRetry(false)
+      return
+    }
     if (lorebooks.value.length === 0) {
       pendingSave = false
       return
@@ -261,7 +284,7 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
       const res = await fetch('/api/lorebooks', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lorebooks: lorebooks.value }),
+        body: JSON.stringify({ lorebooks: lorebooksForPersistence() }),
       })
       if (!res.ok) {
         const txt = await res.text()
@@ -366,6 +389,71 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     const save = options?.save ?? 'immediate'
     if (save !== false) scheduleSave(save)
     return true
+  }
+
+  /** 仅合并 Hybrid FTS 配置/戳记，避免 GET 全量覆盖未保存条目。 */
+  function applyLorebookHybridFtsStatus(
+    lorebookId: string,
+    patch: {
+      hybridFts?: HybridFtsSettings | null
+      builtHybridFtsSpec?: string | null
+      hybridFtsStale?: boolean
+    },
+  ): void {
+    const i = lorebooks.value.findIndex((x) => x.id === lorebookId)
+    if (i < 0) return
+    const current = lorebooks.value[i]
+    const next: Lorebook = { ...current }
+    if (patch.hybridFts !== undefined) {
+      if (patch.hybridFts == null) delete next.hybridFts
+      else next.hybridFts = patch.hybridFts
+    }
+    if (patch.builtHybridFtsSpec !== undefined) {
+      next.builtHybridFtsSpec = patch.builtHybridFtsSpec
+    }
+    if (patch.hybridFtsStale !== undefined) {
+      next.hybridFtsStale = patch.hybridFtsStale
+    }
+    lorebooks.value[i] = next
+  }
+
+  async function patchLorebookHybridFts(
+    lorebookId: string,
+    hybridFts: HybridFtsSettings | null,
+  ): Promise<Lorebook> {
+    pendingSave = true
+    await flushSave()
+    if (pendingSave) {
+      throw new Error(lastError.value ?? 'lorebooks_save_failed')
+    }
+
+    hybridFtsMutating.value = true
+    try {
+      // 乐观写入，避免重建窗口内并发 PUT 仍带旧 hybridFts
+      applyLorebookHybridFtsStatus(lorebookId, { hybridFts })
+      lastPersistedSnapshot = lorebooksSnapshot()
+
+      const res = await fetch(`/api/lorebooks/${encodeURIComponent(lorebookId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hybridFts }),
+      })
+      if (!res.ok) {
+        const txt = await res.text()
+        throw new Error(`PATCH /api/lorebooks/:id ${res.status}: ${txt.slice(0, 200)}`)
+      }
+      const lorebook = (await res.json()) as Lorebook
+      applyLorebookHybridFtsStatus(lorebookId, {
+        hybridFts: lorebook.hybridFts ?? null,
+        builtHybridFtsSpec: lorebook.builtHybridFtsSpec ?? null,
+        hybridFtsStale: lorebook.hybridFtsStale ?? false,
+      })
+      lastPersistedSnapshot = lorebooksSnapshot()
+      return lorebook
+    } finally {
+      hybridFtsMutating.value = false
+      if (pendingSave) void flushSave()
+    }
   }
 
   /** 插件经 API 写入条目后同步本地缓存（不触发 PUT 回写） */
@@ -1080,6 +1168,9 @@ export const useLorebooksStore = defineStore('lorebooks', () => {
     clearSessionData,
     upsertEntryFromPlugin,
     upsertLorebookFromPlugin,
+    applyLorebookHybridFtsStatus,
+    patchLorebookHybridFts,
+    hybridFtsMutating,
     ensureLoaded,
     applyOpenFocus,
     focusLorebookById,

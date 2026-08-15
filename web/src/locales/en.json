@@ -357,7 +357,12 @@
     "packageImport": "Import lorebook (append one)",
     "packageImportConfirmTitle": "Import lorebook",
     "packageImportConfirmBody": "Append “{name}” from the file to your list (renamed if id or name conflicts) and save to the server. Continue?",
-    "packageImportFailed": "Import failed"
+    "packageImportFailed": "Import failed",
+    "hybridFtsSettings": "Tokenizer search settings",
+    "hybridFtsStaleAlert": "This lorebook's tokenizer search index needs rebuilding. Click to review settings.",
+    "hybridFtsSaveFailed": "Failed to save lorebook tokenizer settings",
+    "hybridFtsRebuildOk": "Current lorebook index rebuilt",
+    "hybridFtsRebuildFailed": "Failed to rebuild current lorebook index"
   },
   "library": {
     "tabsAria": "Switch between asset library and knowledge bases"
@@ -946,8 +951,8 @@
     "embeddingTestDimensions": "Dimensions",
     "embeddingTestRequestUrl": "Request URL",
     "embeddingTestVector": "Returned vector",
-    "hybridFtsProfileLabel": "Hybrid full-text tokenizer",
-    "hybridFtsProfileHint": "BM25 tokenization for long-term memory and lorebook vector search. After changing, rebuild memory indexes per conversation.",
+    "hybridFtsProfileLabel": "Default Hybrid full-text tokenizer",
+    "hybridFtsProfileHint": "Default BM25 tokenization for long-term memory, lorebooks, and knowledge bases that still follow global settings. Independently configured assets are unaffected. Rebuild follower indexes after changing.",
     "hybridFtsProfile": {
       "zh-ngram": "Chinese ngram (default)",
       "en": "English",
@@ -978,7 +983,7 @@
     },
     "hybridFtsSwitch": {
       "title": "Switch Hybrid tokenizer",
-      "rebuildWarning": "After switching, rebuild the memory index manually for each conversation with long-term memory enabled.",
+      "rebuildWarning": "Only indexes that still follow the global tokenizer are prompted or scheduled for rebuild. Conversations, lorebooks, and knowledge bases with independent settings are unaffected. Follower long-term memory conversations still need a manual rebuild.",
       "targetProfile": "Target tokenizer",
       "dictSectionHint": "Choose a dictionary variant. Downloaded variants switch instantly; others will download here.",
       "downloaded": "Downloaded",
@@ -992,6 +997,23 @@
       "confirm": "Confirm switch",
       "downloadFailed": "Dictionary download failed",
       "loadStatusFailed": "Could not load dictionary status"
+    },
+    "hybridFtsAsset": {
+      "title": "Hybrid full-text tokenizer",
+      "hint": "Follow the global default or choose an independent tokenizer for this asset.",
+      "followGlobal": "Follow global",
+      "independent": "Independent settings",
+      "sourceGlobal": "Global",
+      "sourceIndependent": "Independent",
+      "effective": "Effective",
+      "built": "Built index",
+      "notBuilt": "Not built",
+      "stale": "Rebuild required",
+      "current": "Index healthy",
+      "rebuildCurrent": "Rebuild this asset only",
+      "dialogTitle": "Set asset Hybrid tokenizer",
+      "rebuildWarning": "Confirming rebuilds only this asset's index. Other lorebooks, knowledge bases, and conversations are not affected.",
+      "applyAndRebuild": "Apply and rebuild"
     },
     "hybridFtsManageDict": "Change dictionary variant",
     "hybridFtsCurrentDict": "Current dictionary",
@@ -1342,9 +1364,14 @@
       "memoryEnabledHint": "Vector-recall past turns; plugin blocks stripped before indexing; recall vector may fuse last assistant with configurable weight.",
       "memoryTopK": "Recall count (TopK)",
       "memoryTopKHint": "1–20. Excludes turns already in recent history.",
+      "memoryHybridFtsUseGlobal": "Use global Hybrid tokenizer",
+      "memoryHybridFtsHint": "Controls BM25 tokenization for this conversation's long-term memory. An override is saved with the conversation.",
+      "memoryHybridFtsInheritHint": "Using the global Hybrid tokenizer; turn off to customize this conversation.",
+      "memoryHybridFtsDialogTitle": "Set conversation Hybrid tokenizer",
+      "memoryHybridFtsDialogWarning": "After changing this conversation's Hybrid tokenizer, rebuild its memory index.",
       "memoryRebuildButton": "Rebuild memory index",
       "memoryRebuildHint": "Re-embed all turns and bound lorebooks for long-term memory recall.",
-      "memoryRebuildMismatchHint": "Indexed model or Hybrid tokenizer differs from global settings, or no index exists yet — rebuild recommended.",
+      "memoryRebuildMismatchHint": "Indexed model or Hybrid tokenizer differs from the effective settings, or no index exists yet — rebuild recommended.",
       "sectionRecallTest": "Hit test",
       "recallTestButton": "Hit test",
       "recallTestButtonHint": "Try recall against this chat's memory, lorebooks, and knowledge bases without sending a message.",
@@ -2042,6 +2069,8 @@
       "upstream_url_scheme_forbidden": "upstream url scheme forbidden",
       "post_user_injection_order_invalid": "post user injection order invalid",
       "post_user_injection_order_requires_field": "post user injection order requires field",
+      "hybrid_fts_settings_invalid": "invalid tokenizer search settings",
+      "hybrid_fts_dict_not_ready": "the selected tokenizer dictionary is not downloaded",
       "hybrid_fts_profile_invalid": "hybrid fts profile invalid",
       "hybrid_fts_dict_variant_invalid": "hybrid fts dict variant invalid"
     }

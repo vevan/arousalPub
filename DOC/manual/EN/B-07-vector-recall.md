@@ -39,8 +39,8 @@ Set `AROUSAL_TRANSFORMERS_CACHE_DIR` to use another directory. The pinned files 
 
 ### 2. Hybrid full-text tokenization (optional)
 
-**Hybrid full-text tokenization**: Chinese ngram (common default) / English / Chinese jieba, etc.  
-**After changing tokenization, related chats need a rebuilt memory index**, or the index will not match the active settings.
+**Hybrid full-text tokenization**: global default may be Chinese ngram / English / Chinese jieba / Lindera, etc. **Each chat, lorebook, and knowledge base** can follow the global default or set an independent tokenizer.
+**After changing tokenization, rebuild only affected indexes** (assets that still follow global; independent overrides are unaffected). Long-term memory chats usually need a manual “Rebuild memory index”.
 
 ### 3. Enable capabilities as needed
 

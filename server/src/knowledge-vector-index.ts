@@ -12,6 +12,8 @@ import {
 } from './knowledge-text-extract.js'
 import {
   deleteKnowledgeBase,
+  readKnowledgeBaseById,
+  readKnowledgeChunksDocument,
   removeKnowledgeBaseDerivedFiles,
   updateKnowledgeBaseIndexFields,
   writeKnowledgeChunksDocument,
@@ -22,6 +24,7 @@ import type {
 } from './knowledge-base-types.js'
 import {
   deleteKnowledgeVectorIndex,
+  rebuildKnowledgeFtsIndex,
   replaceKnowledgeVectorIndex,
   type DocChunkVectorRow,
 } from './knowledge-vector-store.js'
@@ -36,11 +39,23 @@ import {
 } from './file-library-storage.js'
 import { createReadStream } from 'node:fs'
 import { Readable } from 'node:stream'
+import { resolveAssetHybridFtsSettings } from './asset-hybrid-fts.js'
+import { formatHybridFtsSpec } from './hybrid-fts-settings.js'
 
-const knowledgeIndexScheduler = createKeyedCoalesceScheduler<string>({
-  keyOf: (kbId) => kbId,
-  process: async (kbId) => {
-    await reindexKnowledgeBase(kbId)
+type KnowledgeScheduledReindex = { id: string; ftsOnly: boolean }
+
+const knowledgeIndexScheduler = createKeyedCoalesceScheduler<KnowledgeScheduledReindex>({
+  keyOf: (item) => item.id,
+  merge: (previous, next) => ({
+    id: next.id,
+    ftsOnly: previous.ftsOnly && next.ftsOnly,
+  }),
+  process: async (item) => {
+    if (item.ftsOnly) {
+      await reindexKnowledgeBaseFts(item.id)
+    } else {
+      await reindexKnowledgeBase(item.id)
+    }
   },
   onError: (e) => {
     // eslint-disable-next-line no-console
@@ -49,7 +64,24 @@ const knowledgeIndexScheduler = createKeyedCoalesceScheduler<string>({
 })
 
 export function scheduleKnowledgeBaseReindex(kbId: string): void {
-  knowledgeIndexScheduler.schedule(kbId)
+  knowledgeIndexScheduler.schedule({ id: kbId, ftsOnly: false })
+}
+
+export function scheduleKnowledgeBaseFtsReindex(kbId: string): void {
+  knowledgeIndexScheduler.schedule({ id: kbId, ftsOnly: true })
+}
+
+/** 资产设置 PATCH：等待当前 Knowledge Base 的 FTS-only 重建完成。 */
+export async function reindexKnowledgeBaseFtsExclusive(
+  kbId: string,
+): Promise<boolean> {
+  return knowledgeIndexScheduler.runExclusive(kbId, async (cleared) => {
+    if (cleared && !cleared.ftsOnly) {
+      await reindexKnowledgeBase(kbId)
+      return true
+    }
+    return reindexKnowledgeBaseFts(kbId)
+  })
 }
 
 export function scheduleKnowledgeBasesReindex(kbIds: string[]): void {
@@ -166,6 +198,7 @@ export async function reindexKnowledgeBase(
   tick('planning', 0, total)
 
   try {
+    const hybridFts = await resolveAssetHybridFtsSettings(kb.hybridFts)
     const effSettings =
       settings ??
       normalizeKnowledgeSettings(await readGlobalKnowledgeSettings())
@@ -259,6 +292,7 @@ export async function reindexKnowledgeBase(
       embeddingModel,
       embeddingDimensions,
       embeddingProfile,
+      hybridFtsSpec: formatHybridFtsSpec(hybridFts),
       updatedAt: new Date().toISOString(),
       files: fileChunks,
     }
@@ -267,7 +301,7 @@ export async function reindexKnowledgeBase(
     if (rows.length === 0) {
       await deleteKnowledgeVectorIndex(kbId)
     } else {
-      await replaceKnowledgeVectorIndex(kbId, rows)
+      await replaceKnowledgeVectorIndex(kbId, rows, hybridFts)
     }
 
     const stillExists = await updateKnowledgeBaseIndexFields(kbId, {
@@ -294,4 +328,26 @@ export async function reindexKnowledgeBase(
     })
     throw e
   }
+}
+
+export async function reindexKnowledgeBaseFts(kbId: string): Promise<boolean> {
+  const kb = await readKnowledgeBaseById(kbId)
+  if (!kb) return false
+  const chunks = await readKnowledgeChunksDocument(kbId)
+  if (!chunks) {
+    await reindexKnowledgeBase(kbId)
+    return true
+  }
+  const settings = await resolveAssetHybridFtsSettings(kb.hybridFts)
+  const rebuilt = await rebuildKnowledgeFtsIndex(kbId, settings)
+  if (!rebuilt) {
+    await reindexKnowledgeBase(kbId)
+    return true
+  }
+  await writeKnowledgeChunksDocument({
+    ...chunks,
+    hybridFtsSpec: formatHybridFtsSpec(settings),
+    updatedAt: new Date().toISOString(),
+  })
+  return true
 }

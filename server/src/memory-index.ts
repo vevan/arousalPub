@@ -33,7 +33,12 @@ import {
   resolveMemoryCorpusOptions,
 } from './memory-corpus.js'
 import { resolveMemorySettings } from './memory-settings.js'
-import { formatHybridFtsSpec } from './hybrid-fts-settings.js'
+import {
+  formatHybridFtsSpec,
+  hybridFtsSpecsMatch,
+  resolveEffectiveHybridFtsSettings,
+  type HybridFtsSettings,
+} from './hybrid-fts-settings.js'
 import {
   enumerateAllChunkChains,
   readChunkFileAt,
@@ -52,6 +57,8 @@ export interface MemoryReindexResult {
   ok: true
   indexed: number
   embeddingModel: string
+  embeddingProfile: string
+  hybridFtsSpec: string
   lorebooksReindexed: number
   lorebookEntriesIndexed: number
 }
@@ -145,8 +152,9 @@ export async function planConversationMemoryReindex(
 
 async function optimizeConversationMemoryTable(
   conversationId: string,
+  settings: HybridFtsSettings,
 ): Promise<void> {
-  await optimizeTurnMemoryTable(conversationId, {
+  await optimizeTurnMemoryTable(conversationId, settings, {
     aggressiveCleanup: true,
   }).then(() => undefined)
 }
@@ -157,7 +165,14 @@ export async function sealChunkMemorySegment(
   _chunkFileName: string,
   _branchPath = '',
 ): Promise<void> {
-  await optimizeConversationMemoryTable(conversationId).catch((e) => {
+  const idx = await readConversationIndex(conversationId)
+  const global = await readGlobalHybridFtsSettings()
+  const effective = resolveEffectiveHybridFtsSettings(
+    global,
+    idx?.memoryHybridFts,
+  )
+  if (!hybridFtsSpecsMatch(idx?.memoryHybridFtsProfile, effective)) return
+  await optimizeConversationMemoryTable(conversationId, effective).catch((e) => {
     // eslint-disable-next-line no-console
     console.warn('[memory-index] seal optimize failed:', e)
   })
@@ -192,6 +207,12 @@ function turnMemoryOpKey(op: TurnMemoryScheduleOp): string {
  */
 const turnMemoryScheduler = createKeyedCoalesceScheduler<TurnMemoryScheduleOp>({
   keyOf: turnMemoryOpKey,
+  merge: (previous, next) => {
+    // delete 优先：不得被后续 upsert 覆盖，否则已删 turn 会被向量「复活」
+    if (previous.kind === 'delete') return previous
+    if (next.kind === 'delete') return next
+    return next
+  },
   process: async (op) => {
     if (op.kind === 'delete') {
       await deleteTurnMemoryVector(op.conversationId, op.turnId)
@@ -251,10 +272,11 @@ export function scheduleMemoryIndexDelete(
 
 async function markConversationMemoryEmbeddingModelIfChanged(
   conversationId: string,
+  hybridFts: HybridFtsSettings,
   creds?: ResolvedEmbeddingCredentials,
 ): Promise<string> {
   const provider = creds ?? (await resolveEmbeddingApiCredentials(conversationId))
-  const hybridFtsSpec = formatHybridFtsSpec(await readGlobalHybridFtsSettings())
+  const hybridFtsSpec = formatHybridFtsSpec(hybridFts)
   const idx = await readConversationIndex(conversationId)
   if (
     idx?.memoryEmbeddingModel === provider.embeddingModel &&
@@ -286,6 +308,21 @@ async function embeddingProviderStillActive(
   return current.embeddingProfile === expected.embeddingProfile
 }
 
+async function hybridFtsSettingsStillActive(
+  conversationId: string,
+  expected: HybridFtsSettings,
+): Promise<boolean> {
+  const [index, global] = await Promise.all([
+    readConversationIndex(conversationId),
+    readGlobalHybridFtsSettings(),
+  ])
+  const current = resolveEffectiveHybridFtsSettings(
+    global,
+    index?.memoryHybridFts,
+  )
+  return formatHybridFtsSpec(current) === formatHybridFtsSpec(expected)
+}
+
 async function indexTurnMemory(
   conversationId: string,
   turn: TurnRecord,
@@ -297,6 +334,14 @@ async function indexTurnMemory(
   const global = await readGlobalMemorySettings()
   const effective = resolveMemorySettings(global, idx?.memorySettings)
   if (!effective.memoryEnabled) return
+  const globalHybridFts = await readGlobalHybridFtsSettings()
+  const effectiveHybridFts = resolveEffectiveHybridFtsSettings(
+    globalHybridFts,
+    idx?.memoryHybridFts,
+  )
+  if (!hybridFtsSpecsMatch(idx?.memoryHybridFtsProfile, effectiveHybridFts)) {
+    return
+  }
   const corpusOptions = await resolveMemoryCorpusOptions(effective)
   const corpus = buildMemoryEmbeddingCorpus(turn, corpusOptions)
   if (!corpus.trim()) return
@@ -314,6 +359,7 @@ async function indexTurnMemory(
   const emb = await createEmbeddingWithCredentials(creds, corpus)
   if ('error' in emb) return
   if (!(await embeddingProviderStillActive(conversationId, creds))) return
+  if (!(await hybridFtsSettingsStillActive(conversationId, effectiveHybridFts))) return
   if ((memoryReindexEpoch.get(conversationId) ?? 0) !== epochAtStart) return
 
   const loc = mainPathChunkLocation(chunkFileName)
@@ -334,13 +380,19 @@ async function indexTurnMemory(
         vector: emb.vector,
       },
     ],
+    effectiveHybridFts,
     {
       skipIf: () =>
         (memoryReindexEpoch.get(conversationId) ?? 0) !== epochAtStart,
     },
   )
   if ((memoryReindexEpoch.get(conversationId) ?? 0) !== epochAtStart) return
-  await markConversationMemoryEmbeddingModelIfChanged(conversationId, creds)
+  if (!(await hybridFtsSettingsStillActive(conversationId, effectiveHybridFts))) return
+  await markConversationMemoryEmbeddingModelIfChanged(
+    conversationId,
+    effectiveHybridFts,
+    creds,
+  )
 }
 
 /** 重建当前会话全部 turn 的远期记忆向量索引，并同步绑定资料库 */
@@ -371,6 +423,12 @@ export async function reindexConversationMemory(
   const lorebookIds = lorebookIdsFromIndex(idx)
   const globalMemory = await readGlobalMemorySettings()
   const effectiveMemory = resolveMemorySettings(globalMemory, idx?.memorySettings)
+  const globalHybridFts = await readGlobalHybridFtsSettings()
+  const effectiveHybridFts = resolveEffectiveHybridFtsSettings(
+    globalHybridFts,
+    idx?.memoryHybridFts,
+  )
+  const hybridFtsSpec = formatHybridFtsSpec(effectiveHybridFts)
   const corpusOptions = await resolveMemoryCorpusOptions(effectiveMemory)
 
   type PendingTurn = {
@@ -444,11 +502,14 @@ export async function reindexConversationMemory(
   if (!(await embeddingProviderStillActive(conversationId, creds))) {
     return { ok: false, error: 'Embedding Provider 已变更，请重新开始重建' }
   }
+  if (!(await hybridFtsSettingsStillActive(conversationId, effectiveHybridFts))) {
+    return { ok: false, error: 'Hybrid FTS 设置已变更，请重新开始重建' }
+  }
 
   tick('writing_turns', 0, builtRows.length)
-  await replaceTurnMemoryIndex(conversationId, builtRows)
+  await replaceTurnMemoryIndex(conversationId, builtRows, effectiveHybridFts)
   tick('writing_turns', builtRows.length, builtRows.length)
-  await optimizeConversationMemoryTable(conversationId).catch((e) => {
+  await optimizeConversationMemoryTable(conversationId, effectiveHybridFts).catch((e) => {
     // Optimize is a compaction hint after full replacement; do not fail rebuild
     // if Lance cannot optimize a specific table on this platform/data shape.
     // eslint-disable-next-line no-console
@@ -490,7 +551,9 @@ export async function reindexConversationMemory(
   if (!(await embeddingProviderStillActive(conversationId, creds))) {
     return { ok: false, error: 'Embedding Provider 已变更，请重新开始重建' }
   }
-  const hybridFtsSpec = formatHybridFtsSpec(await readGlobalHybridFtsSettings())
+  if (!(await hybridFtsSettingsStillActive(conversationId, effectiveHybridFts))) {
+    return { ok: false, error: 'Hybrid FTS 设置已变更，请重新开始重建' }
+  }
   await updateConversationMemoryEmbeddingModel(
     conversationId,
     embeddingModel,
@@ -502,6 +565,8 @@ export async function reindexConversationMemory(
     ok: true,
     indexed,
     embeddingModel,
+    embeddingProfile,
+    hybridFtsSpec,
     lorebooksReindexed,
     lorebookEntriesIndexed,
   }

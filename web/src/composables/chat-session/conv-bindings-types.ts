@@ -10,6 +10,7 @@ import type { KnowledgeSettings } from '@/utils/knowledge-settings'
 import type { LorebookSettings } from '@/utils/lorebook-settings'
 import type { MemorySettings } from '@/utils/memory-settings'
 import type { EmbeddingProvider } from '@/utils/embedding-api-settings'
+import type { HybridFtsSettings } from '@/utils/hybrid-fts-settings'
 
 export interface LorebookContextBinding {
   useGlobal: boolean
@@ -48,6 +49,12 @@ export interface EmbeddingApiContextBinding {
   override?: ConversationEmbeddingApiSettingsOverride
 }
 
+export interface MemoryHybridFtsContextBinding {
+  useGlobal: boolean
+  effective: HybridFtsSettings
+  override?: HybridFtsSettings
+}
+
 export interface KnowledgeContextBinding {
   useGlobal: boolean
   effective: KnowledgeSettings
@@ -68,6 +75,7 @@ export interface ConvContextBindings {
   budgetTrim: BudgetTrimContextBinding
   chatApi: ApiContextBinding
   embeddingApi: EmbeddingApiContextBinding
+  memoryHybridFts: MemoryHybridFtsContextBinding
   /** 会话 `{{user}}`；null 表示未设置 */
   userName: string | null
   /** 用户 persona 卡 id；仅用于 UI 回显头像 */

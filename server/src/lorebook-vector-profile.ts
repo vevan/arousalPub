@@ -9,6 +9,7 @@ export interface LorebookVectorProfileDocument {
   embeddingProfile: string
   embeddingModel: string
   embeddingDimensions: number | null
+  hybridFtsSpec: string
   updatedAt: string
 }
 
@@ -32,7 +33,8 @@ export async function readLorebookVectorProfile(
       parsed.schemaVersion !== 1 ||
       parsed.lorebookId !== lorebookId ||
       typeof parsed.embeddingProfile !== 'string' ||
-      typeof parsed.embeddingModel !== 'string'
+      typeof parsed.embeddingModel !== 'string' ||
+      typeof parsed.hybridFtsSpec !== 'string'
     ) {
       return null
     }

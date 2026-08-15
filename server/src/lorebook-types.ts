@@ -1,3 +1,5 @@
+import type { HybridFtsSettings } from './hybrid-fts-settings.js'
+
 /** 世界书 id：字母数字、下划线、连字符，与 prompts 预设 id 规则一致 */
 export const LOREBOOK_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/
 
@@ -56,6 +58,8 @@ export interface Lorebook {
   entries: LorebookEntry[]
   createdAt: string
   updatedAt: string
+  /** 缺省时继承全局；存在时为完整、独立的资产级设置。 */
+  hybridFts?: HybridFtsSettings
 }
 
 export interface LorebookIndexEntry {

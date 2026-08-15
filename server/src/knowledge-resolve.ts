@@ -9,6 +9,8 @@ import { readGlobalKnowledgeSettings } from './user-preferences-file.js'
 import { searchKnowledgeChunkVectors } from './knowledge-vector-store.js'
 import { resolveEmbeddingApiCredentials } from './embedding-credential-resolve.js'
 import { embeddingIndexMatchesProvider } from './embedding-profile.js'
+import { resolveAssetHybridFtsSettings } from './asset-hybrid-fts.js'
+import { formatHybridFtsSpec } from './hybrid-fts-settings.js'
 import {
   formatKnowledgeXml,
   knowledgeDocumentDisplayName,
@@ -60,14 +62,19 @@ export async function recallKnowledgeForConversation(params: {
   const kbs = await readKnowledgeBasesByIds(params.knowledgeBaseIds)
   if (!kbs.length) return empty
   const provider = await resolveEmbeddingApiCredentials(params.conversationId)
-  const compatibleKbs = [] as typeof kbs
+  const compatibleKbs: Array<{
+    kb: (typeof kbs)[number]
+    hybridFts: Awaited<ReturnType<typeof resolveAssetHybridFtsSettings>>
+  }> = []
   for (const kb of kbs) {
     const chunks = await readKnowledgeChunksDocument(kb.id)
+    const hybridFts = await resolveAssetHybridFtsSettings(kb.hybridFts)
     if (
       chunks &&
-      embeddingIndexMatchesProvider(chunks, provider)
+      embeddingIndexMatchesProvider(chunks, provider) &&
+      chunks.hybridFtsSpec === formatHybridFtsSpec(hybridFts)
     ) {
-      compatibleKbs.push(kb)
+      compatibleKbs.push({ kb, hybridFts })
     }
   }
   if (!compatibleKbs.length) return empty
@@ -80,8 +87,10 @@ export async function recallKnowledgeForConversation(params: {
       ? Math.max(1, Math.min(64, Math.trunc(params.topK)))
       : settings.topK
 
-  const nameById = new Map(compatibleKbs.map((k) => [k.id, k.name]))
-  const aliasByKb = new Map(compatibleKbs.map((k) => [k.id, k.fileAliases ?? {}]))
+  const nameById = new Map(compatibleKbs.map(({ kb }) => [kb.id, kb.name]))
+  const aliasByKb = new Map(
+    compatibleKbs.map(({ kb }) => [kb.id, kb.fileAliases ?? {}]),
+  )
   const fileNameCache = new Map<string, string>()
 
   async function fileName(kbId: string, fileId: string): Promise<string> {
@@ -99,12 +108,13 @@ export async function recallKnowledgeForConversation(params: {
   }
 
   const merged: KnowledgeHitItem[] = []
-  for (const kb of compatibleKbs) {
+  for (const { kb, hybridFts } of compatibleKbs) {
     const hits = await searchKnowledgeChunkVectors(
       kb.id,
       emb.vector,
       queryText,
       topK,
+      hybridFts,
     )
     for (const h of hits) {
       merged.push({

@@ -11,7 +11,6 @@ import {
   normalizeBranchPath,
 } from './chunk-path.js'
 import { getUserDataDir } from './config.js'
-import { readGlobalHybridFtsSettings } from './user-preferences-file.js'
 import { languageModelHomeForSettings } from './hybrid-fts-dict.js'
 import type { HybridFtsSettings } from './hybrid-fts-settings.js'
 import {
@@ -53,9 +52,9 @@ function memoryDbUri(conversationId: string): string {
 async function ensureMemoryLanceIndexes(
   conversationId: string,
   table: Table,
+  settings: HybridFtsSettings,
 ): Promise<void> {
   const userId = getCurrentUserId()
-  const settings = await readGlobalHybridFtsSettings()
   await withHybridFtsSettingsContext(userId, settings, async () => {
     await ensureHybridFtsIndex(
       table,
@@ -68,9 +67,11 @@ async function ensureMemoryLanceIndexes(
   })
 }
 
-async function withMemoryHybridFtsContext<T>(fn: () => Promise<T>): Promise<T> {
+async function withMemoryHybridFtsContext<T>(
+  settings: HybridFtsSettings,
+  fn: () => Promise<T>,
+): Promise<T> {
   const userId = getCurrentUserId()
-  const settings = await readGlobalHybridFtsSettings()
   return withHybridFtsSettingsContext(userId, settings, fn)
 }
 
@@ -148,6 +149,7 @@ async function migrateNullableTable(
 async function migrateMissingCorpusColumn(
   conversationId: string,
   table: Table,
+  settings: HybridFtsSettings,
 ): Promise<Table | null> {
   if (await tableHasCorpusColumn(table)) return table
   const rows = await readTurnMemoryRowsFromTable(table)
@@ -155,18 +157,23 @@ async function migrateMissingCorpusColumn(
   if (rows.length === 0) return null
   const withCorpus = rows.map((r) => ({ ...r, corpus: r.corpus || '' }))
   const recreated = await createTurnMemoryTable(conversationId, withCorpus)
-  await ensureMemoryLanceIndexes(conversationId, recreated)
+  await ensureMemoryLanceIndexes(conversationId, recreated, settings)
   return recreated
 }
 
 async function ensureMergeReadyTable(
   conversationId: string,
   table: Table,
+  settings: HybridFtsSettings,
 ): Promise<Table | null> {
   if (await isTurnIdNullable(table)) {
     return migrateNullableTable(conversationId, table)
   }
-  const withCorpus = await migrateMissingCorpusColumn(conversationId, table)
+  const withCorpus = await migrateMissingCorpusColumn(
+    conversationId,
+    table,
+    settings,
+  )
   if (!withCorpus) return null
   await ensureTurnIdPrimaryKey(withCorpus, conversationId)
   return withCorpus
@@ -213,15 +220,17 @@ export interface OptimizeTurnMemoryOptions {
 
 export async function optimizeTurnMemoryTable(
   conversationId: string,
+  settings: HybridFtsSettings,
   options?: OptimizeTurnMemoryOptions,
 ): Promise<OptimizeStats | null> {
   return runConversationMemoryTask(conversationId, () =>
-    optimizeTurnMemoryTableUnsafe(conversationId, options),
+    optimizeTurnMemoryTableUnsafe(conversationId, settings, options),
   )
 }
 
 async function optimizeTurnMemoryTableUnsafe(
   conversationId: string,
+  settings: HybridFtsSettings,
   options?: OptimizeTurnMemoryOptions,
 ): Promise<OptimizeStats | null> {
   const uri = memoryDbUri(conversationId)
@@ -231,7 +240,7 @@ async function optimizeTurnMemoryTableUnsafe(
       : undefined
 
   try {
-    return await withMemoryHybridFtsContext(async () => {
+    return await withMemoryHybridFtsContext(settings, async () => {
       const table = await openMemoryTable(conversationId)
       if (!table) return null
       return table.optimize(optimizeOptions)
@@ -252,16 +261,18 @@ export interface UpsertTurnMemoryRowsBatchOptions {
 export async function upsertTurnMemoryRowsBatch(
   conversationId: string,
   rows: TurnMemoryRow[],
+  settings: HybridFtsSettings,
   options?: UpsertTurnMemoryRowsBatchOptions,
 ): Promise<void> {
   await runConversationMemoryTask(conversationId, () =>
-    upsertTurnMemoryRowsBatchUnsafe(conversationId, rows, options),
+    upsertTurnMemoryRowsBatchUnsafe(conversationId, rows, settings, options),
   )
 }
 
 async function upsertTurnMemoryRowsBatchUnsafe(
   conversationId: string,
   rows: TurnMemoryRow[],
+  settings: HybridFtsSettings,
   options?: UpsertTurnMemoryRowsBatchOptions,
 ): Promise<void> {
   if (options?.skipIf?.()) return
@@ -271,18 +282,18 @@ async function upsertTurnMemoryRowsBatchUnsafe(
 
   let existing = await openMemoryTable(conversationId)
   if (existing) {
-    existing = await ensureMergeReadyTable(conversationId, existing)
+    existing = await ensureMergeReadyTable(conversationId, existing, settings)
   }
   if (!existing) {
     const table = await createTurnMemoryTable(conversationId, valid)
     if (!options?.deferFts) {
-      await ensureMemoryLanceIndexes(conversationId, table)
+      await ensureMemoryLanceIndexes(conversationId, table, settings)
     } else {
       await ensureScalarIndexes(table, MEMORY_SCALAR_INDEX_SPECS)
     }
     return
   }
-  await withMemoryHybridFtsContext(async () => {
+  await withMemoryHybridFtsContext(settings, async () => {
     await existing!
       .mergeInsert('turnId')
       .whenMatchedUpdateAll()
@@ -365,21 +376,23 @@ async function deleteTurnMemoryVectorUnsafe(
 export async function replaceTurnMemoryIndex(
   conversationId: string,
   rows: TurnMemoryRow[],
+  settings: HybridFtsSettings,
 ): Promise<void> {
   await runConversationMemoryTask(conversationId, () =>
-    replaceTurnMemoryIndexUnsafe(conversationId, rows),
+    replaceTurnMemoryIndexUnsafe(conversationId, rows, settings),
   )
 }
 
 async function replaceTurnMemoryIndexUnsafe(
   conversationId: string,
   rows: TurnMemoryRow[],
+  settings: HybridFtsSettings,
 ): Promise<void> {
   await deleteConversationMemoryIndexUnsafe(conversationId)
   const valid = rows.filter((r) => r.vector.length > 0)
   if (!valid.length) return
   const table = await createTurnMemoryTable(conversationId, valid)
-  await ensureMemoryLanceIndexes(conversationId, table)
+  await ensureMemoryLanceIndexes(conversationId, table, settings)
 }
 
 export async function deleteConversationMemoryIndex(
@@ -494,6 +507,7 @@ export async function searchTurnMemoryVectors(
   conversationId: string,
   queryVector: number[],
   queryText: string,
+  settings: HybridFtsSettings,
   topK: number,
   excludeTurnIds: Set<string> = new Set(),
   maxOrdinalExclusive?: number,
@@ -505,6 +519,7 @@ export async function searchTurnMemoryVectors(
       conversationId,
       queryVector,
       queryText,
+      settings,
       topK,
       excludeTurnIds,
       maxOrdinalExclusive,
@@ -517,6 +532,7 @@ async function searchTurnMemoryVectorsUnsafe(
   conversationId: string,
   queryVector: number[],
   queryText: string,
+  settings: HybridFtsSettings,
   topK: number,
   excludeTurnIds: Set<string>,
   maxOrdinalExclusive?: number,
@@ -526,7 +542,6 @@ async function searchTurnMemoryVectorsUnsafe(
 
   const table = await openMemoryTable(conversationId)
   if (!table) return []
-  const settings = await readGlobalHybridFtsSettings()
   const userId = getCurrentUserId()
   await ensureMemoryScalarIndexesForSearch(table, userId, settings)
 

@@ -172,6 +172,8 @@ export const ApiErrorCodes = {
   context_recall_simulate_turn_invalid: 'context_recall_simulate_turn_invalid',
   memory_vector_index_corrupt: 'memory_vector_index_corrupt',
   memory_settings_invalid: 'memory_settings_invalid',
+  hybrid_fts_settings_invalid: 'hybrid_fts_settings_invalid',
+  hybrid_fts_dict_not_ready: 'hybrid_fts_dict_not_ready',
   memory_settings_memory_enabled_boolean: 'memory_settings_memory_enabled_boolean',
   memory_settings_memory_top_k_number: 'memory_settings_memory_top_k_number',
   memory_settings_requires_field: 'memory_settings_requires_field',

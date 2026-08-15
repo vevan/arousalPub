@@ -3,8 +3,10 @@ import { ApiErrorCodes } from '../api-error-codes.js'
 import { readApiSettingsFromFile, writeApiSettingsToFile, type ApiPreset, type ApiSettingsDocument } from '../api-settings-file.js'
 import { parseDefaultAuthorsNotePatch } from '../authors-note-settings.js'
 import { tryAcquireAuthRateLimitSlot } from '../auth-rate-limit.js'
-import { readUserPreferencesDocument, updateGlobalHistorySettings, updateGlobalLorebookSettings, updateGlobalMemorySettings, updateGlobalKnowledgeSettings, updateGlobalBudgetTrimSettings, updateGlobalEmbeddingApiSettings, updateGlobalChunkSettings, updateGlobalDefaultAuthorsNote, updateGlobalHybridFtsSettings, updateGlobalPostUserInjectionOrder } from '../user-preferences-file.js'
+import { readUserPreferencesDocument, readGlobalHybridFtsSettings, updateGlobalHistorySettings, updateGlobalLorebookSettings, updateGlobalMemorySettings, updateGlobalKnowledgeSettings, updateGlobalBudgetTrimSettings, updateGlobalEmbeddingApiSettings, updateGlobalChunkSettings, updateGlobalDefaultAuthorsNote, updateGlobalHybridFtsSettings, updateGlobalPostUserInjectionOrder } from '../user-preferences-file.js'
 import { normalizeHybridFtsProfile, normalizeHybridFtsSettings, type HybridFtsSettings } from '../hybrid-fts-settings.js'
+import { scheduleHybridFtsFollowerRebuilds } from '../hybrid-fts-followers.js'
+import { isHybridFtsDictNotReadyError } from '../hybrid-fts-dict-errors.js'
 import { clampInjectionOrder, normalizePostUserInjectionOrderHostPolicy, POST_USER_INJECTION_ORDER_HOST_KEYS, type PostUserInjectionOrderHostKey, type PostUserInjectionOrderHostPatch } from '../shared/post-user-injection-order.js'
 import { parseBudgetTrimSettingsPatch } from '../budget-trim-settings.js'
 import { parseMemorySettingsPatch } from '../memory-settings.js'
@@ -430,7 +432,20 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
               error: ApiErrorCodes.user_preferences_requires_section,
             })
           }
-          hybridFts = await updateGlobalHybridFtsSettings(patch)
+          const previousHybridFts = await readGlobalHybridFtsSettings()
+          try {
+            hybridFts = await updateGlobalHybridFtsSettings(patch)
+          } catch (e) {
+            const message = e instanceof Error ? e.message : String(e)
+            if (isHybridFtsDictNotReadyError(e)) {
+              return reply.status(409).send({
+                error: ApiErrorCodes.hybrid_fts_dict_not_ready,
+                detail: message,
+              })
+            }
+            throw e
+          }
+          await scheduleHybridFtsFollowerRebuilds(previousHybridFts, hybridFts)
         }
         if (hasPostUserInjectionOrder) {
           if (b.postUserInjectionOrder === null) {

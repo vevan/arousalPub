@@ -26,7 +26,9 @@ import {
   readGlobalHistorySettings,
   readGlobalLorebookSettings,
   readGlobalMemorySettings,
+  readGlobalHybridFtsSettings,
 } from './user-preferences-file.js'
+import { resolveEffectiveHybridFtsSettings } from './hybrid-fts-settings.js'
 
 const PREVIEW_MAX_LEN = 240
 const TOP_K_MIN = 1
@@ -154,6 +156,11 @@ export async function runContextRecallTest(
 
   const globalMemory = await readGlobalMemorySettings()
   const effectiveMemory = resolveMemorySettings(globalMemory, idx.memorySettings)
+  const globalHybridFts = await readGlobalHybridFtsSettings()
+  const effectiveMemoryHybridFts = resolveEffectiveHybridFtsSettings(
+    globalHybridFts,
+    idx.memoryHybridFts,
+  )
   const corpusOptions = await resolveMemoryCorpusOptions(effectiveMemory)
 
   const globalHist = await readGlobalHistorySettings()
@@ -164,6 +171,7 @@ export async function runContextRecallTest(
     conversationId,
     userText: query,
     memorySettings: effectiveMemory,
+    memoryHybridFts: effectiveMemoryHybridFts,
     historySettings: effectiveHist,
     historyBeforeTurnOrdinalExclusive: simulateTurnOrdinal,
     activeBranchPath,
@@ -207,6 +215,7 @@ export async function runContextRecallTest(
       conversationId,
       recall.vector,
       recall.ftsQueryText,
+      effectiveMemoryHybridFts,
       topK,
       recentTurnIds,
       minRecentOrdinal,

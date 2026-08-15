@@ -1,7 +1,13 @@
 <script setup lang="ts">
+import HybridFtsAssetSettings from '@/components/settings/HybridFtsAssetSettings.vue'
+import { usePreferencesStore } from '@/stores/preferences'
 import { apiFetch } from '@/utils/api-fetch'
 import { coreNotify } from '@/utils/core-notify'
+import {
+  type HybridFtsSettings,
+} from '@/utils/hybrid-fts-settings'
 import { readJsonSseStream } from '@/utils/json-sse'
+import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -19,6 +25,8 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const preferencesStore = usePreferencesStore()
+const { hybridFtsProfile, hybridFtsDictVariant } = storeToRefs(preferencesStore)
 
 type IndexStatus = 'idle' | 'indexing' | 'ready' | 'error'
 
@@ -34,6 +42,11 @@ interface KnowledgeBase {
   indexedAt?: string
   chunkCount?: number
   indexError?: string
+  /** 缺省时跟随全局。 */
+  hybridFts?: HybridFtsSettings
+  /** 服务端返回的当前资产索引分词戳记。 */
+  builtHybridFtsSpec?: string | null
+  hybridFtsStale?: boolean
 }
 
 interface DocFileItem {
@@ -104,6 +117,10 @@ const reindexStageLabel = computed(() =>
 const selected = computed(
   () => items.value.find((i) => i.id === selectedId.value) ?? null,
 )
+const globalHybridFts = computed<HybridFtsSettings>(() => ({
+  profile: hybridFtsProfile.value,
+  dictVariant: hybridFtsDictVariant.value,
+}))
 
 const addableDocItems = computed(() => {
   const inKb = new Set(selected.value?.fileIds ?? [])
@@ -308,7 +325,11 @@ async function removeFile(fileId: string) {
 
 async function patchKb(
   id: string,
-  body: { fileIds?: string[]; fileAliases?: Record<string, string> },
+  body: {
+    fileIds?: string[]
+    fileAliases?: Record<string, string>
+    hybridFts?: HybridFtsSettings | null
+  },
 ): Promise<boolean> {
   try {
     const res = await apiFetch(`/api/knowledge-bases/${id}`, {
@@ -333,6 +354,16 @@ async function patchKb(
   } catch {
     coreNotify(t('knowledgeBases.patchFailed'), undefined, { level: 'error' })
     return false
+  }
+}
+
+async function changeHybridFts(value: HybridFtsSettings | null): Promise<void> {
+  if (!selected.value) return
+  patchDoing.value = true
+  try {
+    await patchKb(selected.value.id, { hybridFts: value })
+  } finally {
+    patchDoing.value = false
   }
 }
 
@@ -626,6 +657,17 @@ onMounted(() => {
                 <dd class="text-error">{{ selected.indexError }}</dd>
               </div>
             </dl>
+
+            <HybridFtsAssetSettings
+              :model-value="selected.hybridFts"
+              :global-settings="globalHybridFts"
+              :built-spec="selected.builtHybridFtsSpec"
+              :stale="selected.hybridFtsStale ?? !selected.builtHybridFtsSpec"
+              :saving="patchDoing"
+              :rebuilding="reindexDoing"
+              @change="changeHybridFts"
+              @rebuild="submitReindex"
+            />
 
             <div class="kblib-detail__files">
               <div class="kblib-detail__files-head">

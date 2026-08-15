@@ -41,6 +41,7 @@ import {
 } from '../memory-store.js'
 import { turnEmbeddingCorpus } from '../turn-memory-xml.js'
 import { updateGlobalEmbeddingApiSettings } from '../user-preferences-file.js'
+import { HYBRID_FTS_SETTINGS_DEFAULTS } from '../hybrid-fts-settings.js'
 
 const TEST_USER = process.env.AROUSAL_TEST_USER_ID?.trim() || 'b0000001'
 const TEST_VECTOR_DIM = 8
@@ -93,6 +94,7 @@ async function countMemorySearchHits(conversationId: string): Promise<number> {
     conversationId,
     testVector(0),
     'branch memory integration',
+    HYBRID_FTS_SETTINGS_DEFAULTS,
     100,
     new Set(),
   )
@@ -107,6 +109,7 @@ async function memoryHitsOnBranchPath(
     conversationId,
     testVector(0),
     'branch memory integration',
+    HYBRID_FTS_SETTINGS_DEFAULTS,
     100,
     new Set(),
   )
@@ -214,7 +217,11 @@ async function runMemoryLanceIntegration(): Promise<void> {
   assert.equal(diskRows.length, plan.turns)
   assert.ok(plan.turns >= 4)
 
-  await replaceTurnMemoryIndex(conversationId, diskRows)
+  await replaceTurnMemoryIndex(
+    conversationId,
+    diskRows,
+    HYBRID_FTS_SETTINGS_DEFAULTS,
+  )
   assert.equal(await countMemorySearchHits(conversationId), plan.turns)
   assert.ok((await memoryHitsOnBranchPath(conversationId, 'branch1')) >= 1)
   assert.ok((await memoryHitsOnBranchPath(conversationId, 'branch2')) >= 1)

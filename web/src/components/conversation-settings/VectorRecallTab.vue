@@ -1,5 +1,14 @@
 <script setup lang="ts">
 import '@/components/conversation-settings/conversation-settings-fields.css'
+import HybridFtsSwitchDialog from '@/components/settings/HybridFtsSwitchDialog.vue'
+import {
+  HYBRID_FTS_PROFILES,
+  profileRequiresDict,
+  type HybridFtsDictVariant,
+  type HybridFtsProfile,
+} from '@/utils/hybrid-fts-settings'
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 const loreKeywordTopK = defineModel<number>('loreKeywordTopK', { required: true })
 const loreVectorEnabled = defineModel<boolean>('loreVectorEnabled', { required: true })
@@ -9,6 +18,12 @@ const knowledgeTopK = defineModel<number>('knowledgeTopK', { required: true })
 const memoryUseGlobal = defineModel<boolean>('memoryUseGlobal', { required: true })
 const memoryEnabled = defineModel<boolean>('memoryEnabled', { required: true })
 const memoryTopK = defineModel<number>('memoryTopK', { required: true })
+const memoryHybridFtsUseGlobal = defineModel<boolean>('memoryHybridFtsUseGlobal', {
+  required: true,
+})
+const memoryHybridFtsSwitchOpen = defineModel<boolean>('memoryHybridFtsSwitchOpen', {
+  required: true,
+})
 
 defineProps<{
   loreUseGlobal: boolean
@@ -25,12 +40,31 @@ defineProps<{
   memoryRebuildLoreEntries: number
   memoryRebuildStageLabel: string
   memoryRebuildPercent: number
+  memoryHybridFtsProfile: HybridFtsProfile
+  memoryHybridFtsDictVariant: HybridFtsDictVariant | null
+  pendingMemoryHybridFtsProfile: HybridFtsProfile
+  savingMemoryHybridFts: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'rebuildMemory'): void
   (e: 'openRecallTest'): void
+  (e: 'memoryHybridFtsProfilePick', profile: HybridFtsProfile): void
+  (e: 'openMemoryHybridFtsManage'): void
+  (e: 'memoryHybridFtsConfirm', payload: {
+    profile: HybridFtsProfile
+    dictVariant: HybridFtsDictVariant | null
+  }): void
+  (e: 'memoryHybridFtsCancel'): void
 }>()
+
+const { t } = useI18n()
+const hybridFtsProfileItems = computed(() =>
+  HYBRID_FTS_PROFILES.map((value) => ({
+    value,
+    title: t(`settings.hybridFtsProfile.${value}`),
+  })),
+)
 
 function onRebuildMemoryClick() {
   emit('rebuildMemory')
@@ -202,6 +236,67 @@ function onRebuildMemoryClick() {
                         {{ $t('chat.convSettings.memoryTopKHint') }}
                       </p>
                     </div>
+                    <div class="conv-settings-field">
+                      <v-switch
+                        v-model="memoryHybridFtsUseGlobal"
+                        :label="$t('chat.convSettings.memoryHybridFtsUseGlobal')"
+                        density="comfortable"
+                        hide-details
+                        color="primary"
+                        :loading="savingMemoryHybridFts"
+                        :disabled="savingMemoryHybridFts"
+                      />
+                      <p class="conv-settings-field__hint">
+                        {{ $t('chat.convSettings.memoryHybridFtsHint') }}
+                      </p>
+                    </div>
+                    <div class="conv-settings-field">
+                      <v-select
+                        :model-value="memoryHybridFtsProfile"
+                        :items="hybridFtsProfileItems"
+                        item-title="title"
+                        item-value="value"
+                        :label="$t('settings.hybridFtsProfileLabel')"
+                        density="comfortable"
+                        variant="outlined"
+                        hide-details="auto"
+                        :disabled="memoryHybridFtsUseGlobal || savingMemoryHybridFts"
+                        :loading="savingMemoryHybridFts"
+                        @update:model-value="emit('memoryHybridFtsProfilePick', $event)"
+                      />
+                      <p
+                        v-if="memoryHybridFtsUseGlobal"
+                        class="conv-settings-field__hint"
+                      >
+                        {{ $t('chat.convSettings.memoryHybridFtsInheritHint') }}
+                      </p>
+                    </div>
+                    <div
+                      v-if="profileRequiresDict(memoryHybridFtsProfile)"
+                      class="conv-settings-field"
+                    >
+                      <div
+                        v-if="memoryHybridFtsDictVariant"
+                        class="text-body-2"
+                      >
+                        {{ $t('settings.hybridFtsCurrentDict') }}:
+                        <strong>
+                          {{ $t(`settings.hybridFtsDictVariant.${memoryHybridFtsDictVariant}`) }}
+                        </strong>
+                      </div>
+                      <v-btn
+                        v-if="!memoryHybridFtsUseGlobal"
+                        variant="outlined"
+                        color="primary"
+                        size="small"
+                        class="mt-2"
+                        prepend-icon="mdi-book-open-variant-outline"
+                        :disabled="savingMemoryHybridFts"
+                        @click="emit('openMemoryHybridFtsManage')"
+                      >
+                        {{ $t('settings.hybridFtsManageDict') }}
+                      </v-btn>
+                    </div>
                     <div
                       v-if="effectiveMemoryEnabled"
                       class="conv-settings-field"
@@ -289,4 +384,14 @@ function onRebuildMemoryClick() {
                     </v-btn>
                   </div>
   </div>
+  <HybridFtsSwitchDialog
+    v-model="memoryHybridFtsSwitchOpen"
+    :pending-profile="pendingMemoryHybridFtsProfile"
+    :current-profile="memoryHybridFtsProfile"
+    :current-dict-variant="memoryHybridFtsDictVariant"
+    title-key="chat.convSettings.memoryHybridFtsDialogTitle"
+    warning-key="chat.convSettings.memoryHybridFtsDialogWarning"
+    @confirm="emit('memoryHybridFtsConfirm', $event)"
+    @cancel="emit('memoryHybridFtsCancel')"
+  />
 </template>

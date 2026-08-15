@@ -3,9 +3,12 @@ import { describe, it } from 'node:test'
 import { catalogEntryForProfile } from '../src/hybrid-fts-catalog.js'
 import {
   formatHybridFtsSpec,
+  hybridFtsSpecsMatch,
   normalizeHybridFtsDictVariant,
   normalizeHybridFtsSettings,
+  parseHybridFtsSettingsStrict,
   parseHybridFtsSpec,
+  resolveEffectiveHybridFtsSettings,
 } from '../src/hybrid-fts-settings.js'
 
 describe('hybrid-fts-catalog', () => {
@@ -71,5 +74,80 @@ describe('parseHybridFtsSpec', () => {
       profile: 'lindera',
       dictVariant: 'ipadic',
     })
+  })
+})
+
+describe('resolveEffectiveHybridFtsSettings', () => {
+  const global = { profile: 'lindera', dictVariant: 'unidic' } as const
+
+  it('uses global settings when override is missing or null', () => {
+    assert.deepEqual(resolveEffectiveHybridFtsSettings(global), global)
+    assert.deepEqual(resolveEffectiveHybridFtsSettings(global, null), global)
+  })
+
+  it('uses the complete override without field-level merging', () => {
+    assert.deepEqual(
+      resolveEffectiveHybridFtsSettings(global, {
+        profile: 'zh-jieba',
+        dictVariant: 'big',
+      }),
+      { profile: 'zh-jieba', dictVariant: 'big' },
+    )
+  })
+})
+
+describe('parseHybridFtsSettingsStrict', () => {
+  it('accepts a complete dictionary-backed setting', () => {
+    assert.deepEqual(
+      parseHybridFtsSettingsStrict({
+        profile: 'lindera',
+        dictVariant: 'cc-cedict',
+      }),
+      { profile: 'lindera', dictVariant: 'cc-cedict' },
+    )
+  })
+
+  it('rejects unknown profiles, missing variants, and cross-profile variants', () => {
+    assert.equal(parseHybridFtsSettingsStrict({ profile: 'unknown' }), null)
+    assert.equal(parseHybridFtsSettingsStrict({ profile: 'lindera' }), null)
+    assert.equal(
+      parseHybridFtsSettingsStrict({ profile: 'lindera', dictVariant: 'big' }),
+      null,
+    )
+  })
+
+  it('requires a complete object and rejects unrelated fields', () => {
+    assert.equal(parseHybridFtsSettingsStrict({}), null)
+    assert.equal(
+      parseHybridFtsSettingsStrict({
+        profile: 'en',
+        dictVariant: null,
+        extra: true,
+      }),
+      null,
+    )
+    assert.deepEqual(
+      parseHybridFtsSettingsStrict({ profile: 'en' }),
+      { profile: 'en', dictVariant: null },
+    )
+  })
+})
+
+describe('hybridFtsSpecsMatch', () => {
+  it('detects a conversation override that differs from the index stamp', () => {
+    assert.equal(
+      hybridFtsSpecsMatch('zh-ngram', {
+        profile: 'lindera',
+        dictVariant: 'ipadic',
+      }),
+      false,
+    )
+    assert.equal(
+      hybridFtsSpecsMatch('lindera:ipadic', {
+        profile: 'lindera',
+        dictVariant: 'ipadic',
+      }),
+      true,
+    )
   })
 })

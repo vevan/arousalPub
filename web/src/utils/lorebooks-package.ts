@@ -1,4 +1,5 @@
 import type { Lorebook } from '@/stores/lorebooks'
+import { parseHybridFtsSettingsStrict } from '@/utils/hybrid-fts-settings'
 
 const LOREBOOK_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/
 
@@ -18,6 +19,12 @@ function validateLorebookShape(lb: Lorebook): void {
   }
   if (!Array.isArray(lb.groups)) throw new Error(`资料库 ${lb.id} 缺少 groups`)
   if (!Array.isArray(lb.entries)) throw new Error(`资料库 ${lb.id} 缺少 entries`)
+  if (
+    Object.prototype.hasOwnProperty.call(lb, 'hybridFts') &&
+    parseHybridFtsSettingsStrict(lb.hybridFts) === null
+  ) {
+    throw new Error(`资料库 ${lb.id} hybridFts 无效`)
+  }
 
   const groupIds = new Set<string>()
   for (const g of lb.groups) {
@@ -98,10 +105,15 @@ export function parseLorebookImport(raw: unknown): Lorebook {
 }
 
 export function buildLorebookExportDocument(lorebook: Lorebook): LorebookExportDocument {
+  const {
+    builtHybridFtsSpec: _builtHybridFtsSpec,
+    hybridFtsStale: _hybridFtsStale,
+    ...persisted
+  } = lorebook
   return {
     schemaVersion: 1,
     exportedAt: new Date().toISOString(),
-    lorebook,
+    lorebook: persisted,
   }
 }
 

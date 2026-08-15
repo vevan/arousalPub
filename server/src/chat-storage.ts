@@ -69,6 +69,7 @@ import {
   readGlobalMemorySettings,
   readGlobalChunkSettings,
 } from './user-preferences-file.js'
+import type { HybridFtsSettings } from './hybrid-fts-settings.js'
 import {
   isConversationMemoryEmbedActive,
   isTurnEligibleForMemoryEmbed,
@@ -869,6 +870,29 @@ export async function updateConversationMemorySettings(
     }
     return next
   })
+}
+
+/** 清除会话远期记忆 Hybrid FTS 覆盖（恢复跟随全局） */
+export async function clearConversationMemoryHybridFts(
+  conversationId: string,
+): Promise<ConversationIndex | null> {
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    const next: ConversationIndex = { ...idx, updatedAt: nowIso() }
+    delete next.memoryHybridFts
+    return next
+  })
+}
+
+/** 写入经过严格解析与词典就绪检查的完整会话覆盖 */
+export async function updateConversationMemoryHybridFts(
+  conversationId: string,
+  settings: HybridFtsSettings,
+): Promise<ConversationIndex | null> {
+  return updateConversationIndexAndList(conversationId, (idx) => ({
+    ...idx,
+    updatedAt: nowIso(),
+    memoryHybridFts: { ...settings },
+  }))
 }
 
 /** 清除会话 chat API 覆盖 */

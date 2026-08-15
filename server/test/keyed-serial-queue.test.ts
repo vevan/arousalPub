@@ -221,6 +221,84 @@ describe('createKeyedCoalesceScheduler', () => {
     assert.equal(processed.length, 2)
   })
 
+  it('merge keeps full rebuild when either side is not ftsOnly', async () => {
+    const processed: Array<{ id: string; ftsOnly: boolean }> = []
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    let firstEntered = false
+
+    type Item = { id: string; ftsOnly: boolean }
+    const scheduler = createKeyedCoalesceScheduler<Item>({
+      keyOf: (x) => x.id,
+      merge: (previous, next) => ({
+        id: next.id,
+        ftsOnly: previous.ftsOnly && next.ftsOnly,
+      }),
+      process: async (item) => {
+        processed.push(item)
+        if (!firstEntered) {
+          firstEntered = true
+          await gate
+        }
+      },
+    })
+
+    // 先占住 drain；在飞行中依次 schedule full 与 ftsOnly，合并后应保留 full
+    scheduler.schedule({ id: 'lb', ftsOnly: true })
+    await delay(5)
+    scheduler.schedule({ id: 'lb', ftsOnly: false })
+    scheduler.schedule({ id: 'lb', ftsOnly: true })
+    release()
+    await delay(40)
+
+    assert.deepEqual(processed, [
+      { id: 'lb', ftsOnly: true },
+      { id: 'lb', ftsOnly: false },
+    ])
+  })
+
+  it('merge prefers delete over a later upsert for the same key', async () => {
+    type Op =
+      | { id: string; kind: 'delete' }
+      | { id: string; kind: 'upsert'; tag: string }
+    const processed: Op[] = []
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    let firstEntered = false
+
+    const scheduler = createKeyedCoalesceScheduler<Op>({
+      keyOf: (x) => x.id,
+      merge: (previous, next) => {
+        if (previous.kind === 'delete') return previous
+        if (next.kind === 'delete') return next
+        return next
+      },
+      process: async (item) => {
+        processed.push(item)
+        if (!firstEntered) {
+          firstEntered = true
+          await gate
+        }
+      },
+    })
+
+    scheduler.schedule({ id: 't', kind: 'upsert', tag: 'hold' })
+    await delay(5)
+    scheduler.schedule({ id: 't', kind: 'delete' })
+    scheduler.schedule({ id: 't', kind: 'upsert', tag: 'late' })
+    release()
+    await delay(40)
+
+    assert.deepEqual(processed, [
+      { id: 't', kind: 'upsert', tag: 'hold' },
+      { id: 't', kind: 'delete' },
+    ])
+  })
+
   it('isolates same raw key across users and drains in the scheduling user context', async () => {
     const USER_A = 'aaaa0001'
     const USER_B = 'bbbb0002'

@@ -72,6 +72,7 @@ import {
   readGlobalKnowledgeSettings,
   readGlobalLorebookSettings,
   readGlobalMemorySettings,
+  readGlobalHybridFtsSettings,
   readGlobalPostUserInjectionOrderHostPolicy,
 } from './user-preferences-file.js'
 import { resolveBudgetTrimSettings } from './budget-trim-settings.js'
@@ -81,6 +82,7 @@ import {
   mergePresetWithChatBinding,
   readConversationChatBinding,
 } from './conversation-api-settings.js'
+import { resolveEffectiveHybridFtsSettings } from './hybrid-fts-settings.js'
 import {
   resolveFeatureApi,
   resolveChatApiConfigId,
@@ -422,6 +424,7 @@ export async function buildConversationOutboundMessages(
 
   const globalHistory = await readGlobalHistorySettings()
   const globalMemory = await readGlobalMemorySettings()
+  const globalHybridFts = await readGlobalHybridFtsSettings()
   const globalBudgetTrim = await readGlobalBudgetTrimSettings()
   const hostInjectionOrderPolicy = await readGlobalPostUserInjectionOrderHostPolicy()
   const effectiveHistory = resolveHistorySettings(
@@ -431,6 +434,10 @@ export async function buildConversationOutboundMessages(
   const effectiveMemory = resolveMemorySettings(
     globalMemory,
     idx.memorySettings,
+  )
+  const effectiveMemoryHybridFts = resolveEffectiveHybridFtsSettings(
+    globalHybridFts,
+    idx.memoryHybridFts,
   )
   const effectiveBudgetTrim = resolveBudgetTrimSettings(
     globalBudgetTrim,
@@ -522,6 +529,7 @@ export async function buildConversationOutboundMessages(
         conversationId,
         userText: memoryQueryText,
         memorySettings: effectiveMemory,
+        memoryHybridFts: effectiveMemoryHybridFts,
         historySettings: effectiveHistory,
         historyBeforeTurnOrdinalExclusive: beforeEx,
         historyPartialTurn,

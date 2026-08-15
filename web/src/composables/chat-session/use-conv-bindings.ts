@@ -47,6 +47,12 @@ import {
 import { storeToRefs } from 'pinia'
 import { ref, watch } from 'vue'
 import { resolveEmbeddingIdentity } from '@/utils/embedding-api-settings'
+import {
+  normalizeHybridFtsSettings,
+  parseHybridFtsSettingsStrict,
+  resolveEffectiveHybridFtsSettings,
+  type HybridFtsSettings,
+} from '@/utils/hybrid-fts-settings'
 import type {
   ApiContextBinding,
   BudgetTrimContextBinding,
@@ -56,6 +62,7 @@ import type {
   KnowledgeContextBinding,
   LorebookContextBinding,
   MemoryContextBinding,
+  MemoryHybridFtsContextBinding,
 } from './conv-bindings-types'
 
 export type {
@@ -67,6 +74,7 @@ export type {
   KnowledgeContextBinding,
   LorebookContextBinding,
   MemoryContextBinding,
+  MemoryHybridFtsContextBinding,
 } from './conv-bindings-types'
 
 function emptyConvBindings(): ConvContextBindings {
@@ -118,6 +126,10 @@ function emptyConvBindings(): ConvContextBindings {
         embeddingDimensions: null,
       }),
     },
+    memoryHybridFts: {
+      useGlobal: true,
+      effective: normalizeHybridFtsSettings(),
+    },
     userName: null,
     userCharacterId: null,
     backgroundImageFileId: null,
@@ -148,6 +160,8 @@ export function useConvBindings() {
     embeddingBaseUrl,
     embeddingModel,
     embeddingDimensions,
+    hybridFtsProfile,
+    hybridFtsDictVariant,
   } = storeToRefs(prefStore)
 
   const convBindings = ref<ConvContextBindings>(emptyConvBindings())
@@ -298,6 +312,25 @@ export function useConvBindings() {
     })
   }
 
+  function globalHybridFtsFromStore(): HybridFtsSettings {
+    return normalizeHybridFtsSettings({
+      profile: hybridFtsProfile.value,
+      dictVariant: hybridFtsDictVariant.value,
+    })
+  }
+
+  function memoryHybridFtsContextFromIndex(
+    idx: Record<string, unknown>,
+  ): MemoryHybridFtsContextBinding {
+    const global = globalHybridFtsFromStore()
+    const override = parseHybridFtsSettingsStrict(idx.memoryHybridFts) ?? undefined
+    return {
+      useGlobal: override === undefined,
+      effective: resolveEffectiveHybridFtsSettings(global, override),
+      override,
+    }
+  }
+
   function chatApiContextFromIndex(idx: Record<string, unknown>): ApiContextBinding {
     const apiPresetRaw = idx.apiPreset
     const useGlobal = !hasConversationChatOverride(apiPresetRaw)
@@ -375,6 +408,7 @@ export function useConvBindings() {
       budgetTrim: budgetTrimContextFromIndex(idx),
       chatApi: chatApiContextFromIndex(idx),
       embeddingApi: embeddingApiContextFromIndex(idx),
+      memoryHybridFts: memoryHybridFtsContextFromIndex(idx),
       userName,
       userCharacterId,
       backgroundImageFileId,
@@ -429,6 +463,18 @@ export function useConvBindings() {
     convBindings.value = {
       ...convBindings.value,
       embeddingApi: { ...current, effective },
+    }
+  })
+
+  watch([hybridFtsProfile, hybridFtsDictVariant], () => {
+    const current = convBindings.value.memoryHybridFts
+    if (!current.useGlobal) return
+    convBindings.value = {
+      ...convBindings.value,
+      memoryHybridFts: {
+        useGlobal: true,
+        effective: globalHybridFtsFromStore(),
+      },
     }
   })
 

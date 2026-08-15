@@ -142,7 +142,7 @@ segmenter:
 **通过准则（草案）**：召回不劣于现 `zh-jieba`，且统一管线带来的维护收益明确 → 再开任务删除 `zh-jieba` 与 dict.txt 管线（一次性迁移：重下 + 重建；**无兼容双读**）。  
 **未通过**：保留双轨；文档标明中文推荐仍用 `zh-jieba`，Lindera 中文包仅实验。
 
-### M7 — 对话 / Lore / Knowledge Base 独立分词【定案 · 待实施】
+### M7 — 对话 / Lore / Knowledge Base 独立分词【已实施】
 
 **目标**：中文、日文等内容可在同一用户下并存，不必反复修改全局设置。词典资源仍按用户下载一次；分词配置与 FTS 索引按资产隔离。
 
@@ -166,7 +166,7 @@ segmenter:
 - memory / lore / knowledge 的建索与查询都必须先解析各自 effective settings，再进入 `withLanceLanguageModelHome`。
 - 一个请求命中多个不同词典的 Lore / KB 时，按各资产分库查询后合并结果；不同 model home 会受现有进程级环境变量锁串行化，正确性优先。
 - 不把不同 tokenizer 的资产塞入同一 Lance FTS 表；现有 Lore/KB 按 id 分库的布局保持不变。
-- profile/spec 变更只使对应资产的 `.hybrid-fts-profile.json` 不一致并触发重建提示；不得静默用新 tokenizer 查询旧 FTS。
+- FTS 一致性：Lance 旁 `.hybrid-fts-profile.json` 供建索/查询侧校验；资产侧戳记（Lore `embedding-profile.json.hybridFtsSpec`、KB `chunks.json.hybridFtsSpec`）经 API 暴露为 `builtHybridFtsSpec` / `hybridFtsStale` 供 UI 提示重建。配置变更不得静默用新 tokenizer 查询旧 FTS。
 
 #### M7.3 UI
 
@@ -205,7 +205,7 @@ M0 升级 LanceDB + 冒烟
 | 双轨中文（zh-jieba + lindera/jieba）暂增复杂度 | **有意为之**；以 M6 评估收束，禁止提前删 jieba |
 | Lance 升版 breaking | 全量 hybrid 单测 + 重建指引 |
 
-**非目标（当前已落地批次）**：废弃 `zh-jieba`、把 ICU/Lindera 设为全局默认、用户自定义词典 UI、静默迁移旧 FTS。M7 独立分词已定案但尚未实现。
+**非目标（当前已落地批次）**：废弃 `zh-jieba`、把 ICU/Lindera 设为全局默认、用户自定义词典 UI、静默迁移旧 FTS。M7 独立分词已落地。
 
 ## 6. 关键路径（落地时）
 
@@ -222,5 +222,5 @@ M0 升级 LanceDB + 冒烟
 - [ ] **`zh-jieba` 仍可用**；未做静默替换
 - [ ] 切换 profile / 词典规格触发重建戳记对齐
 - [ ] M6 评估记录落盘（可附本文件或 `.tmp` 报告）；若废弃 jieba 则另开任务
-- [ ] M7 对话 memory / Lorebook / Knowledge Base 均可跟随全局或独立指定分词，并只重建自身索引
-- [ ] `03` §14.4.3 与手册已更新
+- [x] M7 对话 memory / Lorebook / Knowledge Base 均可跟随全局或独立指定分词，并只重建自身索引
+- [x] `03` §14.4.3 与手册已更新

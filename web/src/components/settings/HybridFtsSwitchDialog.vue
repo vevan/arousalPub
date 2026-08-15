@@ -15,12 +15,24 @@ import {
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const props = defineProps<{
-  modelValue: boolean
-  pendingProfile: HybridFtsProfile
-  currentProfile: HybridFtsProfile
-  currentDictVariant: HybridFtsDictVariant | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    pendingProfile: HybridFtsProfile
+    currentProfile: HybridFtsProfile
+    currentDictVariant: HybridFtsDictVariant | null
+    titleKey?: string
+    warningKey?: string
+    confirmKey?: string
+    /** 为 false 时由父级在异步应用完成后再关（资产「应用并重建」） */
+    closeOnConfirm?: boolean
+    confirming?: boolean
+  }>(),
+  {
+    closeOnConfirm: true,
+    confirming: false,
+  },
+)
 
 const emit = defineEmits<{
   (e: 'update:modelValue', v: boolean): void
@@ -115,13 +127,13 @@ watch(
 )
 
 function onCancel(): void {
-  if (downloading.value) return
+  if (downloading.value || props.confirming) return
   open.value = false
   emit('cancel')
 }
 
 async function onConfirm(): Promise<void> {
-  if (downloading.value) return
+  if (downloading.value || props.confirming) return
   downloadError.value = ''
 
   if (requiresDict.value) {
@@ -165,7 +177,7 @@ async function onConfirm(): Promise<void> {
   } else {
     emit('confirm', { profile: props.pendingProfile, dictVariant: null })
   }
-  open.value = false
+  if (props.closeOnConfirm) open.value = false
 }
 </script>
 
@@ -177,7 +189,7 @@ async function onConfirm(): Promise<void> {
   >
     <v-card>
       <v-card-title class="text-h6">
-        {{ $t('settings.hybridFtsSwitch.title') }}
+        {{ $t(titleKey ?? 'settings.hybridFtsSwitch.title') }}
       </v-card-title>
       <v-card-text>
         <v-alert
@@ -186,7 +198,7 @@ async function onConfirm(): Promise<void> {
           density="compact"
           class="mb-4"
         >
-          {{ $t('settings.hybridFtsSwitch.rebuildWarning') }}
+          {{ $t(warningKey ?? 'settings.hybridFtsSwitch.rebuildWarning') }}
         </v-alert>
 
         <div class="text-body-2 mb-2">
@@ -321,7 +333,7 @@ async function onConfirm(): Promise<void> {
         <v-spacer />
         <v-btn
           variant="text"
-          :disabled="downloading"
+          :disabled="downloading || confirming"
           @click="onCancel"
         >
           {{ $t('settings.hybridFtsSwitch.cancel') }}
@@ -329,11 +341,11 @@ async function onConfirm(): Promise<void> {
         <v-btn
           color="primary"
           variant="flat"
-          :loading="downloading"
+          :loading="downloading || confirming"
           :disabled="dictStatusLoading || (requiresDict && !!dictStatusError)"
           @click="onConfirm"
         >
-          {{ $t('settings.hybridFtsSwitch.confirm') }}
+          {{ $t(confirmKey ?? 'settings.hybridFtsSwitch.confirm') }}
         </v-btn>
       </v-card-actions>
     </v-card>

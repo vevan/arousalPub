@@ -2,11 +2,18 @@
 import LorebooksDialogs from '@/components/lorebooks/LorebooksDialogs.vue'
 import LorebooksEntryEditor from '@/components/lorebooks/LorebooksEntryEditor.vue'
 import LorebooksListPanel from '@/components/lorebooks/LorebooksListPanel.vue'
+import HybridFtsAssetSettings from '@/components/settings/HybridFtsAssetSettings.vue'
+import { usePreferencesStore } from '@/stores/preferences'
 import { useLorebooksStore } from '@/stores/lorebooks'
+import { coreNotify } from '@/utils/core-notify'
+import {
+  type HybridFtsSettings,
+} from '@/utils/hybrid-fts-settings'
 import { parseLorebookImport } from '@/utils/lorebooks-package'
 import { useNarrowLayout } from '@/composables/use-narrow-layout'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 const props = withDefaults(
   defineProps<{ embedded?: boolean }>(),
@@ -18,6 +25,9 @@ const emit = defineEmits<{
 }>()
 
 const store = useLorebooksStore()
+const preferencesStore = usePreferencesStore()
+const { t } = useI18n()
+const { hybridFtsProfile, hybridFtsDictVariant } = storeToRefs(preferencesStore)
 
 const {
   lorebooks,
@@ -39,10 +49,85 @@ const dialogsRef = ref<InstanceType<typeof LorebooksDialogs> | null>(null)
 const editorRef = ref<InstanceType<typeof LorebooksEntryEditor> | null>(null)
 
 const lorebookSwitchOpen = ref(false)
+const hybridFtsDialogOpen = ref(false)
+const hybridFtsSaving = ref(false)
+const hybridFtsRebuilding = ref(false)
+const globalHybridFts = computed<HybridFtsSettings>(() => ({
+  profile: hybridFtsProfile.value,
+  dictVariant: hybridFtsDictVariant.value,
+}))
+const hybridFtsStale = computed(
+  () =>
+    activeLorebook.value.hybridFtsStale ??
+    !activeLorebook.value.builtHybridFtsSpec,
+)
 
 function switchLorebook(id: string) {
   store.selectLorebook(id)
   lorebookSwitchOpen.value = false
+}
+
+async function refreshActiveLorebookHybridFts(): Promise<void> {
+  const id = activeLorebookId.value
+  if (!id) return
+  const res = await fetch(`/api/lorebooks/${encodeURIComponent(id)}`)
+  if (!res.ok) return
+  const lorebook = (await res.json()) as {
+    hybridFts?: HybridFtsSettings | null
+    builtHybridFtsSpec?: string | null
+    hybridFtsStale?: boolean
+  }
+  store.applyLorebookHybridFtsStatus(id, {
+    hybridFts: lorebook.hybridFts ?? null,
+    builtHybridFtsSpec: lorebook.builtHybridFtsSpec ?? null,
+    hybridFtsStale: lorebook.hybridFtsStale ?? false,
+  })
+}
+
+async function rebuildActiveLorebook(): Promise<void> {
+  const id = activeLorebookId.value
+  if (!id || hybridFtsRebuilding.value) return
+  hybridFtsRebuilding.value = true
+  try {
+    await store.flushSave()
+    const res = await fetch(
+      `/api/lorebooks/${encodeURIComponent(id)}/reindex`,
+      { method: 'POST' },
+    )
+    if (!res.ok) {
+      const detail = await res.text()
+      throw new Error(detail.slice(0, 300))
+    }
+    await refreshActiveLorebookHybridFts()
+    coreNotify(t('lorebooks.hybridFtsRebuildOk'), undefined, { level: 'success' })
+  } catch (e) {
+    coreNotify(
+      t('lorebooks.hybridFtsRebuildFailed'),
+      e instanceof Error ? e.message : undefined,
+      { level: 'error' },
+    )
+  } finally {
+    hybridFtsRebuilding.value = false
+  }
+}
+
+async function changeActiveHybridFts(
+  value: HybridFtsSettings | null,
+): Promise<void> {
+  const id = activeLorebookId.value
+  if (!id) return
+  hybridFtsSaving.value = true
+  try {
+    await store.patchLorebookHybridFts(id, value)
+  } catch (e) {
+    coreNotify(
+      t('lorebooks.hybridFtsSaveFailed'),
+      e instanceof Error ? e.message : undefined,
+      { level: 'error' },
+    )
+  } finally {
+    hybridFtsSaving.value = false
+  }
 }
 
 /** ============== groups bar ============== */
@@ -198,9 +283,24 @@ async function confirmImportLorebook() {
         type="error"
         density="compact"
         variant="tonal"
-        class="mb-0"
+        class="page-alert mb-0"
       >
         {{ lastError }}
+      </v-alert>
+
+      <v-alert
+        v-if="activeLorebook.id && hybridFtsStale"
+        type="warning"
+        density="compact"
+        variant="tonal"
+        class="page-alert hybrid-fts-alert mb-0"
+        role="button"
+        tabindex="0"
+        @click="hybridFtsDialogOpen = true"
+        @keydown.enter="hybridFtsDialogOpen = true"
+        @keydown.space.prevent="hybridFtsDialogOpen = true"
+      >
+        {{ $t('lorebooks.hybridFtsStaleAlert') }}
       </v-alert>
 
       <div class="preset-bar">
@@ -292,6 +392,16 @@ async function confirmImportLorebook() {
             @click="performExportActiveLorebook"
           >
             <v-icon size="16">mdi-tray-arrow-up</v-icon>
+          </button>
+          <button
+            type="button"
+            class="preset-bar__icon-btn"
+            :title="$t('lorebooks.hybridFtsSettings')"
+            :aria-label="$t('lorebooks.hybridFtsSettings')"
+            :disabled="!activeLorebook.id"
+            @click="hybridFtsDialogOpen = true"
+          >
+            <v-icon size="16">mdi-text-search</v-icon>
           </button>
           <input
             ref="importFileRef"
@@ -395,9 +505,49 @@ async function confirmImportLorebook() {
       :import-doing="importDoing"
       @confirm-import="confirmImportLorebook"
     />
+
+    <v-dialog
+      v-model="hybridFtsDialogOpen"
+      max-width="620"
+      :persistent="hybridFtsSaving || hybridFtsRebuilding"
+    >
+      <v-card>
+        <v-card-title class="d-flex align-center justify-space-between ga-3">
+          <span>{{ $t('lorebooks.hybridFtsSettings') }}</span>
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            size="small"
+            :aria-label="$t('settings.closeModal')"
+            :disabled="hybridFtsSaving || hybridFtsRebuilding"
+            @click="hybridFtsDialogOpen = false"
+          />
+        </v-card-title>
+        <v-card-text>
+          <HybridFtsAssetSettings
+            v-if="activeLorebook.id"
+            :model-value="activeLorebook.hybridFts"
+            :global-settings="globalHybridFts"
+            :built-spec="activeLorebook.builtHybridFtsSpec"
+            :stale="hybridFtsStale"
+            :saving="hybridFtsSaving"
+            :rebuilding="hybridFtsRebuilding"
+            @change="changeActiveHybridFts"
+            @rebuild="rebuildActiveLorebook"
+          />
+        </v-card-text>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
 <style scoped>
 /* Shared layout with PromptsView — see @/styles/prompts-library.css */
+.page-alert {
+  flex: 0 0 auto;
+}
+
+.hybrid-fts-alert {
+  cursor: pointer;
+}
 </style>

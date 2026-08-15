@@ -6,7 +6,7 @@ import { resolveChatFeatureAudit, resolveConversationChatCall, resolvedParamsToC
 import { parseAuthorsNotePatch } from '../authors-note-settings.js'
 import { repairConversationChunkIndex, readChunkContainingOrdinal, isTurnOrdinalOffActivePath, isBranchRegistryBrokenError } from '../chunk-chain.js'
 import { loadConversationMessages } from '../conversation-messages-api.js'
-import { createConversationStub, deleteConversation, readChatList, readConversationIndex, resolvedCharacterIds, removeTurnAtOrdinalInTailChunk, updateConversationAuditDebug, saveOpeningTurn, updateConversationTitle, updateConversationCharacterBindings, updateConversationPromptPresetId, updateConversationLorebookIds, updateConversationLorebookSettings, clearConversationLorebookSettings, updateConversationKnowledgeBaseIds, updateConversationKnowledgeSettings, clearConversationKnowledgeSettings, clearConversationHistorySettings, updateConversationHistorySettings, clearConversationMemorySettings, updateConversationMemorySettings, clearConversationBudgetTrimSettings, updateConversationBudgetTrimSettings, updateConversationUserCharacterId, updateConversationUserName, updateConversationBackgroundImageFileId, updateConversationBgmFileId, updateConversationAuthorsNote, updateConversationGroupChat, clearConversationChatApiSettings, updateConversationChatApiSettings, clearConversationEmbeddingApiSettings, updateConversationEmbeddingApiSettings, updateConversationPluginSettings, parseConversationChatBinding, parseConversationEmbeddingApiOverride, batchUpdateConversationTurns, type TurnReceive } from '../chat-storage.js'
+import { createConversationStub, deleteConversation, readChatList, readConversationIndex, resolvedCharacterIds, removeTurnAtOrdinalInTailChunk, updateConversationAuditDebug, saveOpeningTurn, updateConversationTitle, updateConversationCharacterBindings, updateConversationPromptPresetId, updateConversationLorebookIds, updateConversationLorebookSettings, clearConversationLorebookSettings, updateConversationKnowledgeBaseIds, updateConversationKnowledgeSettings, clearConversationKnowledgeSettings, clearConversationHistorySettings, updateConversationHistorySettings, clearConversationMemorySettings, updateConversationMemorySettings, clearConversationMemoryHybridFts, updateConversationMemoryHybridFts, clearConversationBudgetTrimSettings, updateConversationBudgetTrimSettings, updateConversationUserCharacterId, updateConversationUserName, updateConversationBackgroundImageFileId, updateConversationBgmFileId, updateConversationAuthorsNote, updateConversationGroupChat, clearConversationChatApiSettings, updateConversationChatApiSettings, clearConversationEmbeddingApiSettings, updateConversationEmbeddingApiSettings, updateConversationPluginSettings, parseConversationChatBinding, parseConversationEmbeddingApiOverride, batchUpdateConversationTurns, type TurnReceive } from '../chat-storage.js'
 import { appendConversationTurn, saveFirstTurn, updateTurnContentInTailChunk, updateTurnSegmentInTailChunk } from '../chat-group-turn-ops.js'
 import { parseGroupContinueBody } from '../group-chat-turn.js'
 import { parseConversationMediaFileId } from '../conversation-media-files.js'
@@ -44,6 +44,10 @@ import { buildPerformanceForPersist, isSseContentDelta } from '../chat-audit-per
 import type { PerformanceAudit } from '../chat-audit-types.js'
 import { formatArousalPersistSseLine, formatArousalSpeakerSseLine, formatArousalStreamErrorSseLine, parseSseDataLine } from '../sse-assistant.js'
 import { enrichConversationIndexForClient, readCharacterDocument } from '../character-storage.js'
+import { parseHybridFtsSettingsStrict, type HybridFtsSettings } from '../hybrid-fts-settings.js'
+import { prepareHybridFtsSettings } from '../hybrid-fts-dict.js'
+import { isHybridFtsDictNotReadyError } from '../hybrid-fts-dict-errors.js'
+import { getCurrentUserId } from '../user-context.js'
 
 const DEFAULT_BASE = 'https://api.openai.com/v1'
 
@@ -288,6 +292,8 @@ export function registerChatRoutes(app: FastifyInstance): void {
       memoryEnabled?: boolean
       memoryTopK?: number
     } | null
+    /** 远期记忆 Hybrid FTS 完整覆盖；`null` 清除覆盖 */
+    memoryHybridFts?: HybridFtsSettings | null
     /** §14.4.1 预算裁切：`trimOrder`、`minRetain`；`null` 清除覆盖 */
     budgetTrimSettings?: {
       trimOrder?: ('knowledge' | 'lore' | 'memory' | 'history')[]
@@ -364,6 +370,10 @@ export function registerChatRoutes(app: FastifyInstance): void {
         b,
         'memorySettings',
       )
+      const hasMemoryHybridFts = Object.prototype.hasOwnProperty.call(
+        b,
+        'memoryHybridFts',
+      )
       const hasBudgetTrimSettings = Object.prototype.hasOwnProperty.call(
         b,
         'budgetTrimSettings',
@@ -395,6 +405,7 @@ export function registerChatRoutes(app: FastifyInstance): void {
         !hasKnowledgeSettings &&
         !hasHistorySettings &&
         !hasMemorySettings &&
+        !hasMemoryHybridFts &&
         !hasBudgetTrimSettings &&
         !hasUserCharacterId &&
         !hasUserName &&
@@ -656,6 +667,38 @@ export function registerChatRoutes(app: FastifyInstance): void {
               .send({ error: ApiErrorCodes[code] ?? ApiErrorCodes.memory_settings_invalid })
           }
           const next = await updateConversationMemorySettings(id, parsed.patch)
+          if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+          idx = next
+        }
+      }
+      if (hasMemoryHybridFts) {
+        const raw = b.memoryHybridFts
+        if (raw === null) {
+          const next = await clearConversationMemoryHybridFts(id)
+          if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+          idx = next
+        } else {
+          const parsed = parseHybridFtsSettingsStrict(raw)
+          if (!parsed) {
+            return reply
+              .status(400)
+              .send({ error: ApiErrorCodes.hybrid_fts_settings_invalid })
+          }
+          try {
+            await prepareHybridFtsSettings(parsed, getCurrentUserId())
+          } catch (e) {
+            request.log.warn(e)
+            if (isHybridFtsDictNotReadyError(e)) {
+              return reply.status(409).send({
+                error: ApiErrorCodes.hybrid_fts_dict_not_ready,
+                detail: e instanceof Error ? e.message : String(e),
+              })
+            }
+            return reply
+              .status(400)
+              .send({ error: ApiErrorCodes.hybrid_fts_settings_invalid })
+          }
+          const next = await updateConversationMemoryHybridFts(id, parsed)
           if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
           idx = next
         }

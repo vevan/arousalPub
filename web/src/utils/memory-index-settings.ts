@@ -12,8 +12,8 @@ export function memoryIndexMatchesEffectiveSettings(
   },
   effectiveEmbedding: { embeddingProfile: string },
   storedHybridFtsSpec: string | null | undefined,
-  globalHybridFtsSettings: HybridFtsSettings,
+  effectiveHybridFtsSettings: HybridFtsSettings,
 ): boolean {
   return embeddingIndexMatchesIdentity(storedEmbedding, effectiveEmbedding) &&
-    hybridFtsSpecsMatch(storedHybridFtsSpec, globalHybridFtsSettings)
+    hybridFtsSpecsMatch(storedHybridFtsSpec, effectiveHybridFtsSettings)
 }

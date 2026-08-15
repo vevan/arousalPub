@@ -20,6 +20,8 @@ import type {
   ConstantLoreItem,
   TrimmableLoreEntry,
 } from './prompt-budget-trim.js'
+import { resolveAssetHybridFtsSettings } from './asset-hybrid-fts.js'
+import { formatHybridFtsSpec } from './hybrid-fts-settings.js'
 import {
   worldTextFromTrimState,
   worldTextsFromTrimState,
@@ -46,9 +48,47 @@ export interface LorebookInjectionParts {
 }
 
 type TaggedLoreEntry = { lorebookId: string; entry: LorebookEntry }
+type LoreVectorCandidate = TaggedLoreEntry & {
+  baseScore: number
+  scoreKind: 'rrf' | 'vector_fallback'
+}
 
 export function lorebookSeenEntryKey(lorebookId: string, entryId: string): string {
   return `${lorebookId}:${entryId}`
+}
+
+export function selectLorebookVectorCandidates(
+  candidates: LoreVectorCandidate[],
+  scanLower: string,
+  topK: number,
+): Array<TaggedLoreEntry & { score: number; scoreKind: 'rrf' | 'vector_fallback' }> {
+  const byKey = new Map(
+    candidates.map((candidate) => [
+      lorebookSeenEntryKey(candidate.lorebookId, candidate.entry.id),
+      candidate,
+    ]),
+  )
+  const selected = selectTopAfterVectorKeyBoost(
+    candidates.map((candidate) => ({
+      id: lorebookSeenEntryKey(candidate.lorebookId, candidate.entry.id),
+      keys: candidate.entry.keys ?? [],
+      baseScore: candidate.baseScore,
+      priority: candidate.entry.priority,
+    })),
+    scanLower,
+    topK,
+  )
+  return selected.flatMap((item) => {
+    const candidate = byKey.get(item.id)
+    return candidate
+      ? [{
+          lorebookId: candidate.lorebookId,
+          entry: candidate.entry,
+          score: item.score,
+          scoreKind: candidate.scoreKind,
+        }]
+      : []
+  })
 }
 
 export async function resolveLorebookInjectionText(
@@ -218,14 +258,24 @@ async function collectVectorMatches(
   conversationId?: string,
 ): Promise<Array<TaggedLoreEntry & { score: number; scoreKind: 'rrf' | 'vector_fallback' }>> {
   const provider = await resolveEmbeddingApiCredentials(conversationId)
-  const compatibleLorebookIds: string[] = []
+  const compatibleLorebooks: Array<{
+    id: string
+    hybridFts: Awaited<ReturnType<typeof resolveAssetHybridFtsSettings>>
+  }> = []
   for (const lorebookId of lorebookIds) {
+    const lorebook = byId.get(lorebookId)
+    if (!lorebook) continue
     const profile = await readLorebookVectorProfile(lorebookId)
-    if (profile && embeddingIndexMatchesProvider(profile, provider)) {
-      compatibleLorebookIds.push(lorebookId)
+    const hybridFts = await resolveAssetHybridFtsSettings(lorebook.hybridFts)
+    if (
+      profile &&
+      embeddingIndexMatchesProvider(profile, provider) &&
+      profile.hybridFtsSpec === formatHybridFtsSpec(hybridFts)
+    ) {
+      compatibleLorebooks.push({ id: lorebookId, hybridFts })
     }
   }
-  if (!compatibleLorebookIds.length) return []
+  if (!compatibleLorebooks.length) return []
 
   let emb: Awaited<ReturnType<typeof createEmbeddingWithCredentials>>
   try {
@@ -237,18 +287,12 @@ async function collectVectorMatches(
   }
   if ('error' in emb) return []
 
-  type Cand = {
-    lorebookId: string
-    entry: LorebookEntry
-    baseScore: number
-    scoreKind: 'rrf' | 'vector_fallback'
-  }
-  const candidates: Cand[] = []
+  const candidates: LoreVectorCandidate[] = []
   /** resolve 侧已放大候选；store 按该 limit 取 hybrid，不再二次 ×3 */
   const candidateLimit = vectorRerankCandidateLimit(topK)
   const scanLower = queryText.toLowerCase()
 
-  for (const lid of compatibleLorebookIds) {
+  for (const { id: lid, hybridFts } of compatibleLorebooks) {
     const lb = byId.get(lid)
     if (!lb) continue
     const excludeEntryIds = new Set<string>()
@@ -265,6 +309,7 @@ async function collectVectorMatches(
         emb.vector,
         queryText,
         candidateLimit,
+        hybridFts,
         excludeEntryIds,
       )
     } catch (e) {
@@ -289,32 +334,7 @@ async function collectVectorMatches(
     }
   }
 
-  const byIdCand = new Map(candidates.map((c) => [c.entry.id, c]))
-  const selected = selectTopAfterVectorKeyBoost(
-    candidates.map((c) => ({
-      id: c.entry.id,
-      keys: c.entry.keys ?? [],
-      baseScore: c.baseScore,
-      priority: c.entry.priority,
-    })),
-    scanLower,
-    topK,
-  )
-
-  const out: Array<
-    TaggedLoreEntry & { score: number; scoreKind: 'rrf' | 'vector_fallback' }
-  > = []
-  for (const s of selected) {
-    const c = byIdCand.get(s.id)
-    if (!c) continue
-    out.push({
-      lorebookId: c.lorebookId,
-      entry: c.entry,
-      score: s.score,
-      scoreKind: c.scoreKind,
-    })
-  }
-  return out
+  return selectLorebookVectorCandidates(candidates, scanLower, topK)
 }
 
 /** 本轮 keyword 新命中（不含 constant / vector） */

@@ -13,6 +13,8 @@ import {
 import { getLorebooksDir, getLorebooksIndexPath, getUserDataDir } from './config.js'
 import { createKeyedSerialQueue } from './keyed-serial-queue.js'
 import { getCurrentUserId } from './user-context.js'
+import { parseHybridFtsSettingsStrict } from './hybrid-fts-settings.js'
+import { prepareAssetHybridFtsSettings } from './asset-hybrid-fts.js'
 
 export {
   LOREBOOK_ID_RE,
@@ -208,6 +210,9 @@ export async function readLorebooksByIds(
 export async function writeLorebooksDocument(
   data: LorebooksDocument,
 ): Promise<void> {
+  for (const lorebook of data.lorebooks) {
+    await prepareAssetHybridFtsSettings(lorebook.hybridFts)
+  }
   await runLorebookFileTask(() => writeLorebooksDocumentUnsafe(data))
 }
 
@@ -267,6 +272,12 @@ function validateLorebookShape(lb: Lorebook): void {
   }
   if (!Array.isArray(lb.groups)) throw new Error(`世界书 ${lb.id} 缺少 groups`)
   if (!Array.isArray(lb.entries)) throw new Error(`世界书 ${lb.id} 缺少 entries`)
+  if (
+    lb.hybridFts !== undefined &&
+    parseHybridFtsSettingsStrict(lb.hybridFts) === null
+  ) {
+    throw new Error(`世界书 ${lb.id} hybridFts 无效`)
+  }
 
   const groupIds = new Set<string>()
   for (const g of lb.groups) {
@@ -328,6 +339,7 @@ function validateEntryShape(
 
 /** 写入单本世界书并更新 index.json 中对应条目的 updatedAt */
 export async function writeLorebook(lb: Lorebook): Promise<string> {
+  await prepareAssetHybridFtsSettings(lb.hybridFts)
   return runLorebookFileTask(() => writeLorebookUnsafe(lb))
 }
 

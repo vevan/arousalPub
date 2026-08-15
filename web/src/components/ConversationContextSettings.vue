@@ -19,7 +19,10 @@ const props = defineProps<ConversationContextSettingsProps>()
 
 const emit = defineEmits<{
   (e: 'patched', index: Record<string, unknown>, conversationId: string): void
-  (e: 'memoryRebuilt', embeddingModel: string): void
+  (e: 'memoryRebuilt', result: {
+    embeddingModel: string
+    hybridFtsSpec: string
+  }): void
   (e: 'regexApplied'): void
 }>()
 
@@ -92,6 +95,16 @@ const {
   memoryEnabled,
   memoryTopK,
   savingMemorySettings,
+  memoryHybridFtsUseGlobal,
+  memoryHybridFtsProfile,
+  memoryHybridFtsDictVariant,
+  memoryHybridFtsSwitchOpen,
+  pendingMemoryHybridFtsProfile,
+  savingMemoryHybridFts,
+  onMemoryHybridFtsProfilePick,
+  openMemoryHybridFtsManageDialog,
+  onMemoryHybridFtsSwitchConfirm,
+  onMemoryHybridFtsSwitchCancel,
   effectiveMemoryEnabled,
   memoryRebuildNeedsAttention,
   memoryRebuildLoading,
@@ -301,10 +314,16 @@ watch(
               v-model:memory-use-global="memoryUseGlobal"
               v-model:memory-enabled="memoryEnabled"
               v-model:memory-top-k="memoryTopK"
+              v-model:memory-hybrid-fts-use-global="memoryHybridFtsUseGlobal"
+              v-model:memory-hybrid-fts-switch-open="memoryHybridFtsSwitchOpen"
               :lore-use-global="loreUseGlobal"
               :saving-lore-settings="savingLoreSettings"
               :saving-knowledge-settings="savingKnowledgeSettings"
               :saving-memory-settings="savingMemorySettings"
+              :memory-hybrid-fts-profile="memoryHybridFtsProfile"
+              :memory-hybrid-fts-dict-variant="memoryHybridFtsDictVariant"
+              :pending-memory-hybrid-fts-profile="pendingMemoryHybridFtsProfile"
+              :saving-memory-hybrid-fts="savingMemoryHybridFts"
               :effective-memory-enabled="effectiveMemoryEnabled"
               :memory-rebuild-needs-attention="memoryRebuildNeedsAttention"
               :memory-rebuild-loading="memoryRebuildLoading"
@@ -317,6 +336,10 @@ watch(
               :memory-rebuild-percent="memoryRebuildPercent"
               @rebuild-memory="onRebuildMemoryClick"
               @open-recall-test="recallTestDialogOpen = true"
+              @memory-hybrid-fts-profile-pick="onMemoryHybridFtsProfilePick"
+              @open-memory-hybrid-fts-manage="openMemoryHybridFtsManageDialog"
+              @memory-hybrid-fts-confirm="onMemoryHybridFtsSwitchConfirm"
+              @memory-hybrid-fts-cancel="onMemoryHybridFtsSwitchCancel"
             />
 
             <BudgetTrimTab

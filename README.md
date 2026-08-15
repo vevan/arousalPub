@@ -236,7 +236,7 @@ Path details: [`data/README.md`](data/README.md) ([中文](data/README.zh.md)).
 - End users only need `./start.sh` / `!_start.bat` (or `npm start`). You do **not** need to run `npm audit` or `npm audit fix --force`.
 - Do **not** run `npm audit fix --force` — it can jump major versions and break the install.
 - Current `main` pins patched **`@fastify/static`**, **`sharp`**, and **`vue-tsc`**. After `git pull` + a normal install, `npm audit` should report **0 vulnerabilities**. Older clones may still show stale advisories until you update.
-- The root `package.json` pins approved install scripts for `esbuild@0.28.1`, `onnxruntime-node@1.24.3`, `protobufjs@7.6.5`, and `vue-demi@0.14.10`. A current checkout should not show `allow-scripts` warnings after a normal install. If an older checkout reports pending scripts, review and approve the exact installed versions with `npm approve-scripts esbuild onnxruntime-node protobufjs vue-demi`; these notices are separate from audit CVEs.
+- The root `package.json` pins approved install scripts for `esbuild@0.28.1`, `onnxruntime-node@1.19.2` (via LanceDB nested Transformers), `onnxruntime-node@1.24.3`, `protobufjs@7.6.5`, and `vue-demi@0.14.10`. A current checkout should not show `allow-scripts` warnings after a normal install. If an older checkout reports pending scripts, review and approve the exact installed versions with `npm approve-scripts esbuild onnxruntime-node protobufjs vue-demi`; these notices are separate from audit CVEs.
 
 ---
 

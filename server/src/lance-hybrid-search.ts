@@ -4,7 +4,9 @@ import path from 'node:path'
 import { Index, MatchQuery, rerankers, type Table } from '@lancedb/lancedb'
 import {
   formatHybridFtsSpec,
+  normalizeHybridFtsDictVariant,
   normalizeHybridFtsSettings,
+  type HybridFtsDictVariant,
   type HybridFtsProfile,
   type HybridFtsSettings,
 } from './hybrid-fts-settings.js'
@@ -34,7 +36,10 @@ export function chineseFtsIndexOptions() {
   return ftsIndexOptionsForProfile('zh-ngram')
 }
 
-export function ftsIndexOptionsForProfile(profile: HybridFtsProfile) {
+export function ftsIndexOptionsForProfile(
+  profile: HybridFtsProfile,
+  dictVariant?: HybridFtsDictVariant | null,
+) {
   const withPosition = true
   switch (profile) {
     case 'en':
@@ -51,6 +56,26 @@ export function ftsIndexOptionsForProfile(profile: HybridFtsProfile) {
       return {
         withPosition,
         baseTokenizer: 'jieba/default' as const,
+        stem: false,
+        removeStopWords: false,
+        lowercase: false,
+        asciiFolding: false,
+      }
+    case 'lindera': {
+      const kind = normalizeHybridFtsDictVariant(dictVariant, 'lindera')
+      return {
+        withPosition,
+        baseTokenizer: `lindera/${kind}` as const,
+        stem: false,
+        removeStopWords: false,
+        lowercase: false,
+        asciiFolding: false,
+      }
+    }
+    case 'icu':
+      return {
+        withPosition,
+        baseTokenizer: 'icu' as const,
         stem: false,
         removeStopWords: false,
         lowercase: false,
@@ -73,11 +98,13 @@ export function ftsIndexOptionsForProfile(profile: HybridFtsProfile) {
 
 type LanceFtsConfig = Parameters<typeof Index.fts>[0]
 
-/**
- * Lance 运行时支持 `jieba/default` 等扩展分词器；`@lancedb/lancedb` 类型未完整收录。
- */
-export function toLanceFtsConfig(profile: HybridFtsProfile): LanceFtsConfig {
-  return ftsIndexOptionsForProfile(profile) as LanceFtsConfig
+/** 将用户 Hybrid FTS 设置映射为 Lance `Index.fts` 配置。 */
+export function toLanceFtsConfig(settings: HybridFtsSettings | HybridFtsProfile): LanceFtsConfig {
+  if (typeof settings === 'string') {
+    return ftsIndexOptionsForProfile(settings) as LanceFtsConfig
+  }
+  const n = normalizeHybridFtsSettings(settings)
+  return ftsIndexOptionsForProfile(n.profile, n.dictVariant) as LanceFtsConfig
 }
 
 let rrfRerankerPromise: Promise<rerankers.RRFReranker> | null = null
@@ -160,7 +187,7 @@ export async function ensureHybridFtsIndex(
 
     await prepareHybridFtsSettings(normalized, userId)
     await table.createIndex(column, {
-      config: Index.fts(toLanceFtsConfig(normalized.profile)),
+      config: Index.fts(toLanceFtsConfig(normalized)),
       replace: true,
       waitTimeoutSeconds: 120,
     })

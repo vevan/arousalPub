@@ -50,9 +50,11 @@ import {
 } from '@/utils/chunk-settings'
 import {
   HYBRID_FTS_SETTINGS_DEFAULTS,
+  defaultDictVariantForProfile,
   normalizeHybridFtsProfile,
   normalizeHybridFtsDictVariant,
   normalizeHybridFtsSettings,
+  profileRequiresDict,
   type HybridFtsDictVariant,
   type HybridFtsProfile,
   type HybridFtsSettings,
@@ -296,16 +298,19 @@ function readStoredHybridFtsProfile(): HybridFtsProfile {
   return HYBRID_FTS_SETTINGS_DEFAULTS.profile
 }
 
-function readStoredHybridFtsDictVariant(): HybridFtsDictVariant | null {
+function readStoredHybridFtsDictVariant(
+  profile: HybridFtsProfile,
+): HybridFtsDictVariant | null {
+  if (!profileRequiresDict(profile)) return null
   try {
     const raw = localStorage.getItem(HYBRID_FTS_DICT_VARIANT_STORAGE_KEY)
     if (raw?.trim()) {
-      return normalizeHybridFtsDictVariant(raw.trim())
+      return normalizeHybridFtsDictVariant(raw.trim(), profile)
     }
   } catch {
     /* ignore */
   }
-  return null
+  return defaultDictVariantForProfile(profile)
 }
 
 function readStoredEmbeddingBaseUrl(): string {
@@ -413,7 +418,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
   const knowledgeChunkOverlapChars = ref(readStoredKnowledgeChunkOverlap())
   const hybridFtsProfile = ref<HybridFtsProfile>(readStoredHybridFtsProfile())
   const hybridFtsDictVariant = ref<HybridFtsDictVariant | null>(
-    readStoredHybridFtsDictVariant(),
+    readStoredHybridFtsDictVariant(hybridFtsProfile.value),
   )
   const budgetTrimSettings = ref<BudgetTrimSettings>(
     cloneBudgetTrimSettings(BUDGET_TRIM_SETTINGS_DEFAULTS),

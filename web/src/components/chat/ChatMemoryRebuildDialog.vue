@@ -3,6 +3,8 @@ defineProps<{
   modelValue: boolean
   storedModel: string | null
   currentModel: string
+  storedFtsSpec: string | null
+  currentFtsSpec: string
   embeddingDimensions: number | null
   loading: boolean
   errorText: string
@@ -50,6 +52,23 @@ const emit = defineEmits<{
             <template v-if="embeddingDimensions != null">
               · {{ embeddingDimensions }}d
             </template>
+          </div>
+          <div
+            v-if="storedFtsSpec"
+            class="mt-2"
+          >
+            {{ $t('chatConversation.memoryRebuildStoredFts') }}:
+            <code>{{ storedFtsSpec }}</code>
+          </div>
+          <div
+            v-else
+            class="mt-2"
+          >
+            {{ $t('chatConversation.memoryRebuildStoredFtsUnknown') }}
+          </div>
+          <div class="mt-1">
+            {{ $t('chatConversation.memoryRebuildCurrentFts') }}:
+            <code>{{ currentFtsSpec }}</code>
           </div>
         </div>
         <v-alert

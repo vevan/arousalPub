@@ -81,6 +81,8 @@ export function createKeyedSerialQueue() {
 export function createKeyedCoalesceScheduler<T>(options: {
   keyOf: (item: T) => string
   process: (item: T) => Promise<void>
+  /** 同 key 连续 schedule 时合并；缺省保留最新。 */
+  merge?: (previous: T, next: T) => T
   onError?: (error: unknown) => void
 }) {
   const queue = createKeyedSerialQueue()
@@ -110,7 +112,12 @@ export function createKeyedCoalesceScheduler<T>(options: {
   function schedule(item: T): void {
     const userId = currentUserScope()
     const key = scopedKey(userId, options.keyOf(item))
-    latest.set(key, { item, userId })
+    const previous = latest.get(key)
+    const merged =
+      previous && options.merge
+        ? options.merge(previous.item, item)
+        : item
+    latest.set(key, { item: merged, userId })
     void queue
       .run(key, async () => {
         while (latest.has(key)) {
@@ -124,11 +131,15 @@ export function createKeyedCoalesceScheduler<T>(options: {
       })
   }
 
-  function runExclusive<R>(key: string, task: () => Promise<R>): Promise<R> {
+  function runExclusive<R>(
+    key: string,
+    task: (clearedPending?: T) => Promise<R>,
+  ): Promise<R> {
     const scoped = scopedKey(currentUserScope(), key)
     return queue.run(scoped, async () => {
+      const clearedPending = latest.get(scoped)?.item
       latest.delete(scoped)
-      return task()
+      return task(clearedPending)
     })
   }
 

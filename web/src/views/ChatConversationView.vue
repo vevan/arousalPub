@@ -34,6 +34,9 @@ import {
   memberColorsIncomplete,
   type GroupChatSettings,
 } from '@/utils/group-chat-settings'
+import {
+  normalizeHybridFtsSettings,
+} from '@/utils/hybrid-fts-settings'
 import { onConversationIndexPatched } from '@/utils/conversation-index-sync'
 import { useAuthStore } from '@/stores/auth'
 import { storeToRefs } from 'pinia'
@@ -68,7 +71,16 @@ const {
   budgetTrimSettings,
   embeddingModel,
   embeddingDimensions,
+  hybridFtsProfile,
+  hybridFtsDictVariant,
 } = storeToRefs(prefStore)
+
+const globalHybridFtsSettings = computed(() =>
+  normalizeHybridFtsSettings({
+    profile: hybridFtsProfile.value,
+    dictVariant: hybridFtsDictVariant.value,
+  }),
+)
 
 const loading = ref(true)
 const errorText = ref('')
@@ -112,7 +124,7 @@ const memoryRebuild = useMemoryRebuild(() => props.conversationId)
 provide(MEMORY_REBUILD_INJECT_KEY, memoryRebuild)
 
 const {
-  globalHybridFtsSpec,
+  effectiveHybridFtsSpec,
   conversationMemoryEmbeddingModel,
   conversationMemoryEmbeddingDimensions,
   conversationMemoryEmbeddingProfile,
@@ -662,8 +674,10 @@ watch(
       <ChatMemoryRebuildDialog
         v-model="memoryRebuildDialogOpen"
         :stored-model="conversationMemoryEmbeddingModel"
-        :current-model="embeddingModel"
-        :embedding-dimensions="embeddingDimensions"
+        :current-model="convBindings.embeddingApi.effective.embeddingModel"
+        :stored-fts-spec="conversationMemoryHybridFtsSpec"
+        :current-fts-spec="effectiveHybridFtsSpec"
+        :embedding-dimensions="convBindings.embeddingApi.effective.embeddingDimensions"
         :loading="memoryRebuildLoading"
         :error-text="memoryRebuildError"
         :done="memoryRebuildDone"
@@ -717,6 +731,9 @@ watch(
         :global-memory-top-k="memoryTopK"
         :initial-memory-enabled="convBindings.memory.effective.memoryEnabled"
         :initial-memory-top-k="convBindings.memory.effective.memoryTopK"
+        :global-hybrid-fts-settings="globalHybridFtsSettings"
+        :initial-memory-hybrid-fts-use-global="convBindings.memoryHybridFts.useGlobal"
+        :initial-memory-hybrid-fts-settings="convBindings.memoryHybridFts.effective"
         :initial-budget-trim-settings-use-global="convBindings.budgetTrim.useGlobal"
         :global-budget-trim-settings="budgetTrimSettings"
         :initial-budget-trim-settings="convBindings.budgetTrim.effective"
@@ -729,7 +746,6 @@ watch(
         :conversation-memory-embedding-profile="conversationMemoryEmbeddingProfile"
         :has-conversation-turns="hasConversationTurns"
         :conversation-memory-hybrid-fts-spec="conversationMemoryHybridFtsSpec"
-        :global-hybrid-fts-spec="globalHybridFtsSpec"
         :initial-user-name="convBindings.userName"
         :initial-user-character-id="convBindings.userCharacterId"
         :initial-background-image-file-id="convBindings.backgroundImageFileId"

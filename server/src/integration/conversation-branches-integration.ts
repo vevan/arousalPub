@@ -38,6 +38,7 @@ import {
 } from '../memory-pipeline.js'
 import { HISTORY_SETTINGS_DEFAULTS } from '../history-settings.js'
 import { MEMORY_SETTINGS_DEFAULTS } from '../memory-settings.js'
+import { HYBRID_FTS_SETTINGS_DEFAULTS } from '../hybrid-fts-settings.js'
 import { buildAllowedBranchPathsForActive } from '../chunk-path.js'
 import {
   replaceTurnMemoryIndex,
@@ -100,7 +101,11 @@ async function assertMemoryExcludesSiblingBranches(
   mustInclude?: { turnId: string; branchPath: string },
 ): Promise<void> {
   const memoryRows = await buildMemoryRowsFromDisk(conversationId)
-  await replaceTurnMemoryIndex(conversationId, memoryRows)
+  await replaceTurnMemoryIndex(
+    conversationId,
+    memoryRows,
+    HYBRID_FTS_SETTINGS_DEFAULTS,
+  )
 
   const excludedTurnIds = new Set(
     memoryRows
@@ -116,6 +121,7 @@ async function assertMemoryExcludesSiblingBranches(
     conversationId,
     testQueryVector(),
     'branch recall query',
+    HYBRID_FTS_SETTINGS_DEFAULTS,
     30,
     new Set(),
     undefined,
@@ -187,6 +193,7 @@ async function runRecallIntegration(
     conversationId,
     userText: 'recall query',
     memorySettings: { ...MEMORY_SETTINGS_DEFAULTS, memoryEnabled: false },
+    memoryHybridFts: HYBRID_FTS_SETTINGS_DEFAULTS,
     historySettings: HISTORY_SETTINGS_DEFAULTS,
     activeBranchPath: 'branch1',
   })
@@ -515,6 +522,7 @@ async function runNestedBranchIntegration(): Promise<void> {
     conversationId,
     userText: 'nested recall',
     memorySettings: { ...MEMORY_SETTINGS_DEFAULTS, memoryEnabled: false },
+    memoryHybridFts: HYBRID_FTS_SETTINGS_DEFAULTS,
     historySettings: HISTORY_SETTINGS_DEFAULTS,
     activeBranchPath: 'branch1/branch1',
   })

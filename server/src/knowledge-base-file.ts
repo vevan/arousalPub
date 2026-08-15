@@ -14,6 +14,11 @@ import {
 import { createKeyedSerialQueue } from './keyed-serial-queue.js'
 import { generateShortId } from './short-id.js'
 import { getFileLibraryMeta } from './file-library-storage.js'
+import {
+  parseHybridFtsSettingsStrict,
+  type HybridFtsSettings,
+} from './hybrid-fts-settings.js'
+import { prepareAssetHybridFtsSettings } from './asset-hybrid-fts.js'
 
 export {
   KNOWLEDGE_BASE_ID_RE,
@@ -135,6 +140,11 @@ function normalizeKnowledgeBase(raw: unknown): KnowledgeBase | null {
     kb.chunkCount = Math.max(0, Math.floor(o.chunkCount))
   }
   if (typeof o.indexError === 'string') kb.indexError = o.indexError
+  if (o.hybridFts !== undefined) {
+    const hybridFts = parseHybridFtsSettingsStrict(o.hybridFts)
+    if (!hybridFts) return null
+    kb.hybridFts = hybridFts
+  }
   return kb
 }
 
@@ -289,6 +299,7 @@ export async function createKnowledgeBase(params: {
   description?: string
   fileIds?: string[]
   id?: string
+  hybridFts?: HybridFtsSettings
 }): Promise<KnowledgeBase> {
   const name = params.name.trim()
   if (!name) {
@@ -296,7 +307,14 @@ export async function createKnowledgeBase(params: {
     err.code = 'name_required'
     throw err
   }
+  if (
+    params.hybridFts !== undefined &&
+    parseHybridFtsSettingsStrict(params.hybridFts) === null
+  ) {
+    throw new Error('invalid hybridFts')
+  }
   const fileIds = await assertDocumentFileIds(params.fileIds ?? [])
+  await prepareAssetHybridFtsSettings(params.hybridFts)
   return runKnowledgeBaseFileTask(async () => {
     let id =
       typeof params.id === 'string' && params.id.trim()
@@ -323,6 +341,7 @@ export async function createKnowledgeBase(params: {
       chunkCount: 0,
     }
     if (params.description?.trim()) kb.description = params.description.trim()
+    if (params.hybridFts) kb.hybridFts = params.hybridFts
     await writeJsonFileAtomic(kbFilePath(id), kb)
     await upsertIndexEntryUnsafe(kb)
     return kb
@@ -330,6 +349,13 @@ export async function createKnowledgeBase(params: {
 }
 
 export async function writeKnowledgeBase(kb: KnowledgeBase): Promise<void> {
+  if (
+    kb.hybridFts !== undefined &&
+    parseHybridFtsSettingsStrict(kb.hybridFts) === null
+  ) {
+    throw new Error('invalid hybridFts')
+  }
+  await prepareAssetHybridFtsSettings(kb.hybridFts)
   await runKnowledgeBaseFileTask(async () => {
     await writeJsonFileAtomic(kbFilePath(kb.id), kb)
     await upsertIndexEntryUnsafe(kb)
@@ -379,9 +405,20 @@ export async function patchKnowledgeBase(
     fileIds?: string[]
     /** fileId → 别名；空串/空白视为删除该别名 */
     fileAliases?: Record<string, string>
+    /** null 清除 override，恢复继承全局。 */
+    hybridFts?: HybridFtsSettings | null
   },
 ): Promise<KnowledgeBase | null> {
   if (patch.fileIds) await assertDocumentFileIds(patch.fileIds)
+  if (patch.hybridFts !== undefined) {
+    if (
+      patch.hybridFts !== null &&
+      parseHybridFtsSettingsStrict(patch.hybridFts) === null
+    ) {
+      throw new Error('invalid hybridFts')
+    }
+    await prepareAssetHybridFtsSettings(patch.hybridFts)
+  }
   return runKnowledgeBaseFileTask(async () => {
     const cur = await readKbFile(kbId)
     if (!cur) return null
@@ -423,6 +460,8 @@ export async function patchKnowledgeBase(
       if (Object.keys(merged).length) next.fileAliases = merged
       else delete next.fileAliases
     }
+    if (patch.hybridFts === null) delete next.hybridFts
+    else if (patch.hybridFts !== undefined) next.hybridFts = patch.hybridFts
     await writeJsonFileAtomic(kbFilePath(kbId), next)
     await upsertIndexEntryUnsafe(next)
     return next

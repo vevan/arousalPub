@@ -42,6 +42,22 @@ export function lorebookEntryEmbeddingCorpus(e: LorebookEntry): string {
   return `${base}\n\n${keysPart}`
 }
 
+/** 该条目是否会进入向量 / FTS 索引 */
+export function isLorebookEntryVectorIndexable(e: LorebookEntry): boolean {
+  return (
+    e.enabled &&
+    resolveEntryTriggerMode(e) === 'vector' &&
+    lorebookEntryEmbeddingCorpus(e).trim().length > 0
+  )
+}
+
+/** 无可索引条目时该资料库不存在索引，也就无所谓过期 */
+export function lorebookHasVectorEntries(lb: {
+  entries: LorebookEntry[]
+}): boolean {
+  return lb.entries.some(isLorebookEntryVectorIndexable)
+}
+
 export function entryNeedsKeywordWarning(e: LorebookEntry): boolean {
   return (
     resolveEntryTriggerMode(e) === 'keyword' &&

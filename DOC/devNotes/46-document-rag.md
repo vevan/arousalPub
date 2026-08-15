@@ -49,7 +49,7 @@ data/{userId}/knowledgeBases/{kbId}/chunks.json
 | URI | `{userId}/memory/knowledge/{kbId}/` |
 | 表 | `doc_chunks` |
 | 行 | `chunkId`, `kbId`, `fileId`, `ordinal` (int), `text`, `vector` |
-| FTS | 列 `text`；分词 = 用户 `hybridFts` |
+| FTS | 列 `text`；分词 = 该 KB 的 effective `hybridFts`（缺省跟随全局） |
 | 检索 | `runLanceHybridSearch`（与 lore/memory 同）；知识库侧 `refineFactor: KNOWLEDGE_ANN_REFINE_FACTOR = 2`（无 ANN 时 Lance 忽略） |
 | Scalar | `chunkId` BTREE、`fileId` BITMAP（懒建） |
 | ANN | 行数 ≥ **10_000** 时，重索引写入路径建 **IVF_PQ**（`distanceType: l2`；`numPartitions`/`numSubVectors` 用 Lance 默认；`waitTimeoutSeconds: 600`）；未满 flat；**不**在召回路径懒建。建索在 jieba `LANCE_LANGUAGE_MODEL_HOME` 锁**之外**（ANN 不依赖词典，训练期不得阻塞其他用户 FTS）；**soft 降级**：ANN 失败只告警，索引仍 ready（flat 可搜）。实现：`lance-vector-ann-index.ts`（Lance PQ 训练自身另需 ≥256 行，产品门槛已覆盖） |
@@ -100,11 +100,13 @@ data/{userId}/knowledgeBases/{kbId}/chunks.json
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET/PUT | `/api/knowledge-bases` | 列表摘要 / 整包少用 |
-| POST | `/api/knowledge-bases` | 创建 `{ name, fileIds? }` |
-| GET/PATCH/DELETE | `/api/knowledge-bases/:id` | 读 / 改名·改 fileIds·改 `fileAliases`（fileId → 别名，空串删除）/ 删 |
+| GET | `/api/knowledge-bases` | 列表；每项含 `hybridFts?`、`builtHybridFtsSpec`、`hybridFtsStale` |
+| POST | `/api/knowledge-bases` | 创建 `{ name, fileIds?, description?, id?, hybridFts? }`；可独立指定分词 |
+| GET/PATCH/DELETE | `/api/knowledge-bases/:id` | 读 / 改名·改 fileIds·改 `fileAliases`（fileId → 别名，空串删除）·改 `hybridFts`（`null` 清覆盖）/ 删；PATCH 分词变更后等待 FTS exclusive |
 | POST | `/api/knowledge-bases/:id/reindex` | 重建索引；`?stream=1` 时 SSE 推送进度（extracting → embedding → writing） |
 | PATCH | `/api/chat/conversations/:id` | `knowledgeBaseIds`（须全部存在，否则 400）、`knowledgeSettings` |
+
+索引戳记：`memory/knowledge/{kbId}/chunks.json` → `hybridFtsSpec`；与 effective 不一致时该库不参与 hybrid 召回，UI 标 `hybridFtsStale`。
 
 ## 8. 设置
 

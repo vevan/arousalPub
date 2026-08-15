@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { getUserDataDir } from './config.js'
 import { getCurrentUserId } from './user-context.js'
 
@@ -9,6 +9,7 @@ export interface LorebookVectorProfileDocument {
   embeddingProfile: string
   embeddingModel: string
   embeddingDimensions: number | null
+  hybridFtsSpec: string
   updatedAt: string
 }
 
@@ -32,7 +33,8 @@ export async function readLorebookVectorProfile(
       parsed.schemaVersion !== 1 ||
       parsed.lorebookId !== lorebookId ||
       typeof parsed.embeddingProfile !== 'string' ||
-      typeof parsed.embeddingModel !== 'string'
+      typeof parsed.embeddingModel !== 'string' ||
+      typeof parsed.hybridFtsSpec !== 'string'
     ) {
       return null
     }
@@ -41,6 +43,13 @@ export async function readLorebookVectorProfile(
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
     return null
   }
+}
+
+/** 索引被删除时一并清戳记，避免残留旧 spec 被当成「已建索引且过期」 */
+export async function deleteLorebookVectorProfile(
+  lorebookId: string,
+): Promise<void> {
+  await rm(profilePath(lorebookId), { force: true })
 }
 
 export async function writeLorebookVectorProfile(

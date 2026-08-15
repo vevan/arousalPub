@@ -28,9 +28,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/utils.js
+// node_modules/handlebars/dist/cjs/handlebars/utils.js
 var require_utils = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/utils.js"(exports) {
+  "node_modules/handlebars/dist/cjs/handlebars/utils.js"(exports) {
     "use strict";
     exports.__esModule = true;
     exports.extend = extend;
@@ -127,9 +127,9 @@ var require_utils = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/exception.js
+// node_modules/handlebars/dist/cjs/handlebars/exception.js
 var require_exception = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/exception.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/exception.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     var errorProps = ["description", "fileName", "lineNumber", "endLineNumber", "message", "name", "number", "stack"];
@@ -176,9 +176,9 @@ var require_exception = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/helpers/block-helper-missing.js
+// node_modules/handlebars/dist/cjs/handlebars/helpers/block-helper-missing.js
 var require_block_helper_missing = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/helpers/block-helper-missing.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/helpers/block-helper-missing.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     var _utils = require_utils();
@@ -212,9 +212,9 @@ var require_block_helper_missing = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/helpers/each.js
+// node_modules/handlebars/dist/cjs/handlebars/helpers/each.js
 var require_each = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/helpers/each.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/helpers/each.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     function _interopRequireDefault(obj) {
@@ -296,9 +296,9 @@ var require_each = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/helpers/helper-missing.js
+// node_modules/handlebars/dist/cjs/handlebars/helpers/helper-missing.js
 var require_helper_missing = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/helpers/helper-missing.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/helpers/helper-missing.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     function _interopRequireDefault(obj) {
@@ -319,9 +319,9 @@ var require_helper_missing = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/helpers/if.js
+// node_modules/handlebars/dist/cjs/handlebars/helpers/if.js
 var require_if = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/helpers/if.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/helpers/if.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     function _interopRequireDefault(obj) {
@@ -359,9 +359,9 @@ var require_if = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/helpers/log.js
+// node_modules/handlebars/dist/cjs/handlebars/helpers/log.js
 var require_log = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/helpers/log.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/helpers/log.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     exports["default"] = function(instance) {
@@ -384,9 +384,9 @@ var require_log = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/helpers/lookup.js
+// node_modules/handlebars/dist/cjs/handlebars/helpers/lookup.js
 var require_lookup = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/helpers/lookup.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/helpers/lookup.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     exports["default"] = function(instance) {
@@ -401,9 +401,9 @@ var require_lookup = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/helpers/with.js
+// node_modules/handlebars/dist/cjs/handlebars/helpers/with.js
 var require_with = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/helpers/with.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/helpers/with.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     function _interopRequireDefault(obj) {
@@ -440,9 +440,9 @@ var require_with = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/helpers.js
+// node_modules/handlebars/dist/cjs/handlebars/helpers.js
 var require_helpers = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/helpers.js"(exports) {
+  "node_modules/handlebars/dist/cjs/handlebars/helpers.js"(exports) {
     "use strict";
     exports.__esModule = true;
     exports.registerDefaultHelpers = registerDefaultHelpers;
@@ -484,9 +484,9 @@ var require_helpers = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/decorators/inline.js
+// node_modules/handlebars/dist/cjs/handlebars/decorators/inline.js
 var require_inline = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/decorators/inline.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/decorators/inline.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     var _utils = require_utils();
@@ -511,9 +511,9 @@ var require_inline = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/decorators.js
+// node_modules/handlebars/dist/cjs/handlebars/decorators.js
 var require_decorators = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/decorators.js"(exports) {
+  "node_modules/handlebars/dist/cjs/handlebars/decorators.js"(exports) {
     "use strict";
     exports.__esModule = true;
     exports.registerDefaultDecorators = registerDefaultDecorators;
@@ -528,9 +528,9 @@ var require_decorators = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/logger.js
+// node_modules/handlebars/dist/cjs/handlebars/logger.js
 var require_logger = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/logger.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/logger.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     var _utils = require_utils();
@@ -569,9 +569,9 @@ var require_logger = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/internal/proto-access.js
+// node_modules/handlebars/dist/cjs/handlebars/internal/proto-access.js
 var require_proto_access = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/internal/proto-access.js"(exports) {
+  "node_modules/handlebars/dist/cjs/handlebars/internal/proto-access.js"(exports) {
     "use strict";
     exports.__esModule = true;
     exports.createProtoAccessControl = createProtoAccessControl;
@@ -637,9 +637,9 @@ var require_proto_access = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/base.js
+// node_modules/handlebars/dist/cjs/handlebars/base.js
 var require_base = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/base.js"(exports) {
+  "node_modules/handlebars/dist/cjs/handlebars/base.js"(exports) {
     "use strict";
     exports.__esModule = true;
     exports.HandlebarsEnvironment = HandlebarsEnvironment;
@@ -738,9 +738,9 @@ var require_base = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/safe-string.js
+// node_modules/handlebars/dist/cjs/handlebars/safe-string.js
 var require_safe_string = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/safe-string.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/safe-string.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     function SafeString(string) {
@@ -754,9 +754,9 @@ var require_safe_string = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/internal/wrapHelper.js
+// node_modules/handlebars/dist/cjs/handlebars/internal/wrapHelper.js
 var require_wrapHelper = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/internal/wrapHelper.js"(exports) {
+  "node_modules/handlebars/dist/cjs/handlebars/internal/wrapHelper.js"(exports) {
     "use strict";
     exports.__esModule = true;
     exports.wrapHelper = wrapHelper;
@@ -774,9 +774,9 @@ var require_wrapHelper = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/runtime.js
+// node_modules/handlebars/dist/cjs/handlebars/runtime.js
 var require_runtime = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/runtime.js"(exports) {
+  "node_modules/handlebars/dist/cjs/handlebars/runtime.js"(exports) {
     "use strict";
     exports.__esModule = true;
     exports.checkRevision = checkRevision;
@@ -1089,9 +1089,9 @@ var require_runtime = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/no-conflict.js
+// node_modules/handlebars/dist/cjs/handlebars/no-conflict.js
 var require_no_conflict = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/no-conflict.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/no-conflict.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     exports["default"] = function(Handlebars2) {
@@ -1115,9 +1115,9 @@ var require_no_conflict = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars.runtime.js
+// node_modules/handlebars/dist/cjs/handlebars.runtime.js
 var require_handlebars_runtime = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars.runtime.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars.runtime.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     function _interopRequireDefault(obj) {
@@ -1171,9 +1171,9 @@ var require_handlebars_runtime = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/ast.js
+// node_modules/handlebars/dist/cjs/handlebars/compiler/ast.js
 var require_ast = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/ast.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/compiler/ast.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     var AST = {
@@ -1200,9 +1200,9 @@ var require_ast = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/parser.js
+// node_modules/handlebars/dist/cjs/handlebars/compiler/parser.js
 var require_parser = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/parser.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/compiler/parser.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     var handlebars = (function() {
@@ -1910,9 +1910,9 @@ var require_parser = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/visitor.js
+// node_modules/handlebars/dist/cjs/handlebars/compiler/visitor.js
 var require_visitor = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/visitor.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/compiler/visitor.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     function _interopRequireDefault(obj) {
@@ -2031,9 +2031,9 @@ var require_visitor = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/whitespace-control.js
+// node_modules/handlebars/dist/cjs/handlebars/compiler/whitespace-control.js
 var require_whitespace_control = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/whitespace-control.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/compiler/whitespace-control.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     function _interopRequireDefault(obj) {
@@ -2182,9 +2182,9 @@ var require_whitespace_control = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/helpers.js
+// node_modules/handlebars/dist/cjs/handlebars/compiler/helpers.js
 var require_helpers2 = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/helpers.js"(exports) {
+  "node_modules/handlebars/dist/cjs/handlebars/compiler/helpers.js"(exports) {
     "use strict";
     exports.__esModule = true;
     exports.SourceLocation = SourceLocation;
@@ -2370,9 +2370,9 @@ var require_helpers2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/base.js
+// node_modules/handlebars/dist/cjs/handlebars/compiler/base.js
 var require_base2 = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/base.js"(exports) {
+  "node_modules/handlebars/dist/cjs/handlebars/compiler/base.js"(exports) {
     "use strict";
     exports.__esModule = true;
     exports.parseWithoutProcessing = parseWithoutProcessing;
@@ -2471,9 +2471,9 @@ var require_base2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/compiler.js
+// node_modules/handlebars/dist/cjs/handlebars/compiler/compiler.js
 var require_compiler = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/compiler.js"(exports) {
+  "node_modules/handlebars/dist/cjs/handlebars/compiler/compiler.js"(exports) {
     "use strict";
     exports.__esModule = true;
     exports.Compiler = Compiler;
@@ -2893,9 +2893,9 @@ var require_compiler = __commonJS({
   }
 });
 
-// node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/base64.js
+// node_modules/source-map/lib/base64.js
 var require_base64 = __commonJS({
-  "node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/base64.js"(exports) {
+  "node_modules/source-map/lib/base64.js"(exports) {
     var intToCharMap = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".split("");
     exports.encode = function(number) {
       if (0 <= number && number < intToCharMap.length) {
@@ -2934,9 +2934,9 @@ var require_base64 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/base64-vlq.js
+// node_modules/source-map/lib/base64-vlq.js
 var require_base64_vlq = __commonJS({
-  "node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/base64-vlq.js"(exports) {
+  "node_modules/source-map/lib/base64-vlq.js"(exports) {
     var base64 = require_base64();
     var VLQ_BASE_SHIFT = 5;
     var VLQ_BASE = 1 << VLQ_BASE_SHIFT;
@@ -2988,9 +2988,9 @@ var require_base64_vlq = __commonJS({
   }
 });
 
-// node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/util.js
+// node_modules/source-map/lib/util.js
 var require_util = __commonJS({
-  "node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/util.js"(exports) {
+  "node_modules/source-map/lib/util.js"(exports) {
     function getArg(aArgs, aName, aDefaultValue) {
       if (aName in aArgs) {
         return aArgs[aName];
@@ -3289,9 +3289,9 @@ var require_util = __commonJS({
   }
 });
 
-// node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/array-set.js
+// node_modules/source-map/lib/array-set.js
 var require_array_set = __commonJS({
-  "node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/array-set.js"(exports) {
+  "node_modules/source-map/lib/array-set.js"(exports) {
     var util = require_util();
     var has = Object.prototype.hasOwnProperty;
     var hasNativeMap = typeof Map !== "undefined";
@@ -3359,9 +3359,9 @@ var require_array_set = __commonJS({
   }
 });
 
-// node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/mapping-list.js
+// node_modules/source-map/lib/mapping-list.js
 var require_mapping_list = __commonJS({
-  "node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/mapping-list.js"(exports) {
+  "node_modules/source-map/lib/mapping-list.js"(exports) {
     var util = require_util();
     function generatedPositionAfter(mappingA, mappingB) {
       var lineA = mappingA.generatedLine;
@@ -3398,9 +3398,9 @@ var require_mapping_list = __commonJS({
   }
 });
 
-// node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/source-map-generator.js
+// node_modules/source-map/lib/source-map-generator.js
 var require_source_map_generator = __commonJS({
-  "node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/source-map-generator.js"(exports) {
+  "node_modules/source-map/lib/source-map-generator.js"(exports) {
     var base64VLQ = require_base64_vlq();
     var util = require_util();
     var ArraySet = require_array_set().ArraySet;
@@ -3674,9 +3674,9 @@ var require_source_map_generator = __commonJS({
   }
 });
 
-// node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/binary-search.js
+// node_modules/source-map/lib/binary-search.js
 var require_binary_search = __commonJS({
-  "node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/binary-search.js"(exports) {
+  "node_modules/source-map/lib/binary-search.js"(exports) {
     exports.GREATEST_LOWER_BOUND = 1;
     exports.LEAST_UPPER_BOUND = 2;
     function recursiveSearch(aLow, aHigh, aNeedle, aHaystack, aCompare, aBias) {
@@ -3730,9 +3730,9 @@ var require_binary_search = __commonJS({
   }
 });
 
-// node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/quick-sort.js
+// node_modules/source-map/lib/quick-sort.js
 var require_quick_sort = __commonJS({
-  "node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/quick-sort.js"(exports) {
+  "node_modules/source-map/lib/quick-sort.js"(exports) {
     function swap(ary, x, y) {
       var temp = ary[x];
       ary[x] = ary[y];
@@ -3765,9 +3765,9 @@ var require_quick_sort = __commonJS({
   }
 });
 
-// node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/source-map-consumer.js
+// node_modules/source-map/lib/source-map-consumer.js
 var require_source_map_consumer = __commonJS({
-  "node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/source-map-consumer.js"(exports) {
+  "node_modules/source-map/lib/source-map-consumer.js"(exports) {
     var util = require_util();
     var binarySearch = require_binary_search();
     var ArraySet = require_array_set().ArraySet;
@@ -4366,9 +4366,9 @@ var require_source_map_consumer = __commonJS({
   }
 });
 
-// node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/source-node.js
+// node_modules/source-map/lib/source-node.js
 var require_source_node = __commonJS({
-  "node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/lib/source-node.js"(exports) {
+  "node_modules/source-map/lib/source-node.js"(exports) {
     var SourceMapGenerator = require_source_map_generator().SourceMapGenerator;
     var util = require_util();
     var REGEX_NEWLINE = /(\r?\n)/;
@@ -4631,18 +4631,18 @@ var require_source_node = __commonJS({
   }
 });
 
-// node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/source-map.js
+// node_modules/source-map/source-map.js
 var require_source_map = __commonJS({
-  "node_modules/.pnpm/source-map@0.6.1/node_modules/source-map/source-map.js"(exports) {
+  "node_modules/source-map/source-map.js"(exports) {
     exports.SourceMapGenerator = require_source_map_generator().SourceMapGenerator;
     exports.SourceMapConsumer = require_source_map_consumer().SourceMapConsumer;
     exports.SourceNode = require_source_node().SourceNode;
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/code-gen.js
+// node_modules/handlebars/dist/cjs/handlebars/compiler/code-gen.js
 var require_code_gen = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/code-gen.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/compiler/code-gen.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     var _utils = require_utils();
@@ -4776,9 +4776,9 @@ var require_code_gen = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/javascript-compiler.js
+// node_modules/handlebars/dist/cjs/handlebars/compiler/javascript-compiler.js
 var require_javascript_compiler = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars/compiler/javascript-compiler.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/compiler/javascript-compiler.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     function _interopRequireDefault(obj) {
@@ -5694,9 +5694,9 @@ var require_javascript_compiler = __commonJS({
   }
 });
 
-// node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars.js
+// node_modules/handlebars/dist/cjs/handlebars.js
 var require_handlebars = __commonJS({
-  "node_modules/.pnpm/handlebars@4.7.9/node_modules/handlebars/dist/cjs/handlebars.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars.js"(exports, module) {
     "use strict";
     exports.__esModule = true;
     function _interopRequireDefault(obj) {

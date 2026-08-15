@@ -26,7 +26,15 @@ import {
   readGlobalHistorySettings,
   readGlobalLorebookSettings,
   readGlobalMemorySettings,
+  readGlobalHybridFtsSettings,
 } from './user-preferences-file.js'
+import {
+  hybridFtsSpecsMatch,
+  parseHybridFtsSettingsStrict,
+  resolveEffectiveHybridFtsSettings,
+} from './hybrid-fts-settings.js'
+import { resolveEmbeddingApiCredentials } from './embedding-credential-resolve.js'
+import { embeddingIndexMatchesProvider } from './embedding-profile.js'
 
 const PREVIEW_MAX_LEN = 240
 const TOP_K_MIN = 1
@@ -140,6 +148,29 @@ function previewText(text: string): string {
   return `${t.slice(0, PREVIEW_MAX_LEN)}…`
 }
 
+export function isConversationMemoryIndexReadyForRecall(
+  index: Pick<
+    ConversationIndex,
+    | 'memoryEmbeddingProfile'
+    | 'memoryEmbeddingModel'
+    | 'memoryEmbeddingDimensions'
+    | 'memoryHybridFtsProfile'
+  >,
+  provider: Parameters<typeof embeddingIndexMatchesProvider>[1],
+  effectiveHybridFts: Parameters<typeof hybridFtsSpecsMatch>[1],
+): boolean {
+  return (
+    embeddingIndexMatchesProvider(
+      {
+        embeddingProfile: index.memoryEmbeddingProfile,
+        embeddingModel: index.memoryEmbeddingModel,
+        embeddingDimensions: index.memoryEmbeddingDimensions,
+      },
+      provider,
+    ) && hybridFtsSpecsMatch(index.memoryHybridFtsProfile, effectiveHybridFts)
+  )
+}
+
 export async function runContextRecallTest(
   conversationId: string,
   request: ContextRecallTestRequest,
@@ -154,6 +185,11 @@ export async function runContextRecallTest(
 
   const globalMemory = await readGlobalMemorySettings()
   const effectiveMemory = resolveMemorySettings(globalMemory, idx.memorySettings)
+  const globalHybridFts = await readGlobalHybridFtsSettings()
+  const effectiveMemoryHybridFts = resolveEffectiveHybridFtsSettings(
+    globalHybridFts,
+    parseHybridFtsSettingsStrict(idx.memoryHybridFts),
+  )
   const corpusOptions = await resolveMemoryCorpusOptions(effectiveMemory)
 
   const globalHist = await readGlobalHistorySettings()
@@ -164,6 +200,7 @@ export async function runContextRecallTest(
     conversationId,
     userText: query,
     memorySettings: effectiveMemory,
+    memoryHybridFts: effectiveMemoryHybridFts,
     historySettings: effectiveHist,
     historyBeforeTurnOrdinalExclusive: simulateTurnOrdinal,
     activeBranchPath,
@@ -193,42 +230,59 @@ export async function runContextRecallTest(
   if (!recall) {
     embeddingError = 'embedding_unavailable'
   } else {
-    const recentTurnIds = new Set(
-      simulateTurnOrdinal != null
-        ? memoryPipeline.recentTurns.map((t) => t.turnId)
-        : [],
+    // 与 memory-pipeline 一致：戳记 mismatch 时硬跳过，禁止用新 tokenizer 查旧 FTS / 静默纯向量兜底
+    const provider = await resolveEmbeddingApiCredentials(conversationId)
+    const memoryIndexReady = isConversationMemoryIndexReadyForRecall(
+      idx,
+      provider,
+      effectiveMemoryHybridFts,
     )
-    const minRecentOrdinal =
-      simulateTurnOrdinal != null && memoryPipeline.recentTurns.length > 0
-        ? Math.min(...memoryPipeline.recentTurns.map((t) => t.turnOrdinal))
-        : simulateTurnOrdinal
 
-    const rawHits = await searchTurnMemoryVectors(
-      conversationId,
-      recall.vector,
-      recall.ftsQueryText,
-      topK,
-      recentTurnIds,
-      minRecentOrdinal,
-      buildAllowedBranchPathsForActive(activeBranchPath),
-    )
-    const items = await loadTurnsForMemoryHits(conversationId, rawHits, recentTurnIds)
-    for (const { turn, score } of items) {
-      if (
-        simulateTurnOrdinal != null &&
-        turn.turnOrdinal >= simulateTurnOrdinal
-      ) {
-        continue
+    if (!memoryIndexReady) {
+      embeddingError = 'memory_index_stale'
+    } else {
+      const recentTurnIds = new Set(
+        simulateTurnOrdinal != null
+          ? memoryPipeline.recentTurns.map((t) => t.turnId)
+          : [],
+      )
+      const minRecentOrdinal =
+        simulateTurnOrdinal != null && memoryPipeline.recentTurns.length > 0
+          ? Math.min(...memoryPipeline.recentTurns.map((t) => t.turnOrdinal))
+          : simulateTurnOrdinal
+
+      const rawHits = await searchTurnMemoryVectors(
+        conversationId,
+        recall.vector,
+        recall.ftsQueryText,
+        effectiveMemoryHybridFts,
+        topK,
+        recentTurnIds,
+        minRecentOrdinal,
+        buildAllowedBranchPathsForActive(activeBranchPath),
+      )
+      const items = await loadTurnsForMemoryHits(
+        conversationId,
+        rawHits,
+        recentTurnIds,
+      )
+      for (const { turn, score } of items) {
+        if (
+          simulateTurnOrdinal != null &&
+          turn.turnOrdinal >= simulateTurnOrdinal
+        ) {
+          continue
+        }
+        const content = buildMemoryEmbeddingCorpus(turn, corpusOptions)
+        memoryHits.push({
+          turnId: turn.turnId,
+          turnOrdinal: turn.turnOrdinal,
+          score,
+          preview: previewText(content),
+          content,
+        })
+        if (memoryHits.length >= topK) break
       }
-      const content = buildMemoryEmbeddingCorpus(turn, corpusOptions)
-      memoryHits.push({
-        turnId: turn.turnId,
-        turnOrdinal: turn.turnOrdinal,
-        score,
-        preview: previewText(content),
-        content,
-      })
-      if (memoryHits.length >= topK) break
     }
   }
 

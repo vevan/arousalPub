@@ -29,7 +29,7 @@
   - **根因（分析）**：`.v-application__wrap` 死锁 `100dvh` + Vuetify `app` 顶/底栏相对 **layout viewport**，未跟踪 **visual viewport**；对话页双层底栏（`.chat-footer` + `v-footer.app-footer`）；`index.html` viewport 无 `interactive-widget`；无 `visualViewport` JS；`safe-area` 仅 composer 有、`app-footer` 无
   - **约束**：**不可隐藏** `app-footer`（插件入口依赖页脚）；方案须在保留双层底栏前提下适配
   - **候选方向**：① viewport `interactive-widget=resizes-content` 试验；② `visualViewport` → CSS 变量替换死 `100dvh`；③ 顶栏/页脚/composer 统一 `safe-area-inset`；④ 验收矩阵：iOS Safari × 键盘开/关 × 地址栏显/隐
-- [ ] **远期记忆 Lance 分片写入** — 当前保留重建后 / `sealChunkMemorySegment` 时的 best-effort `optimize`；待官方 TS 版本暴露 `targetRowsPerFragment` / `maxRowsPerGroup` 后接入可控 compaction，避免大量几十 KB 小 fragment 或单个过大 fragment（见 `DOC/devNotes/03` §14.5）
+- [ ] **远期记忆 Lance 分片写入** — 当前保留重建后 / `sealChunkMemorySegment` 时的 best-effort `optimize`。**`@lancedb/lancedb@0.37.1` 仍未在 TS/NAPI 暴露** `targetRowsPerFragment` / `maxRowsPerGroup`（`optimize` 仅 `cleanupOlderThan` / `deleteUnverified`，内部 `CompactionOptions::default()`）；继续等上游后再接入可控 compaction（见 `DOC/devNotes/03` §14.5）
 - [ ] **【待讨论】插件后台任务与对话并发** — 例：Historian（`plot-summary`）自动摘要在落盘 idle 后启动，但 `pluginHold` **会挡住 composer 发新消息**；插件在浏览器内跑、无服务端 job 队列；同会话 chunk **无** per-conversation 读写锁（`prepare-context` 读 turn vs `/api/chat` 落盘）。待议：是否允许摘要与聊天并行、是否弱化/取消 hold、是否引入服务端任务队列或 `runScope({ writeLock: false })` + 会话级锁；见 `DOC/devNotes/09` §5.1 · `DOC/devNotes/10` · `plugins/plot-summary/src/lifecycle.ts`
 - [ ] ST 宏扩展备忘 `[DOC/devNotes/14](14-st-macros-porting.md)`；Embedding MRL / Reranker / Qwen instruct（低优先级）
 - [ ] **沙箱 Phase C（可选）** — 包内自维护 API（`[DOC/devNotes/38](38-plugin-sandbox-and-host-evolution.md)` A3 · 已归档延后项）
@@ -38,6 +38,7 @@
 
 ## 文档
 
+- [x] **Hybrid FTS：ICU + Lindera**（2026-08-16 · **已归档**）：Lance `0.37.1`；`lindera` 多词典 zip + 本地 SHA 导入；`icu` 零词典；M7 资产独立分词；M6 对照后**不废弃** `zh-jieba` — 见 `[DOC/devNotes/51](51-hybrid-fts-icu-lindera.md)` · 本文 §已归档
 - [x] **内置 Embedding M1 核心**（2026-08-11 · `transform`）：固定 Xenova multilingual MiniLM / q8 / CPU / 384d；单条与批量 Provider 分流；memory / lorebook / knowledge profile 门禁；模型准备、测试与重建提示；Windows 本地缓存离线推理实测通过。下载 SSE、取消与平台性能矩阵留在 `DOC/devNotes/48` M1.1 / M2。
 - [x] **Graphify 图谱优化全项**（2026-08-05 · 分支 `Graphify`）：server Import Cycles **20 → 0** / SR1–SR2 / GF1 · web 七巨型 Vue + composable · plugins `tKey` / `isAutoSummarizeEnabled`；`feature-binding-types` 清零残留 type 环 — 见 `[DOC/devNotes/47](47-graphify-optimization-backlog.md)` · 本文 §已归档
 - [x] Historian 摘要起始轮 toggle 取消（2026-06-12）：`range-picker` 再次点击同一 `turn-block-head` 起始按钮清除 `rangeStartTurn`
@@ -92,6 +93,7 @@
 
 | 项                                                                                                                          | 完成                     | 归档去向                                                                                                                                                                                      |
 | -------------------------------------------------------------------------------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Hybrid FTS：ICU + Lindera**（`icu` · `lindera` 多词典 zip · 本地 SHA 导入 · M7 资产独立分词 · M6 对照不废弃 `zh-jieba`）                    | 2026-08-16             | `[DOC/devNotes/51](51-hybrid-fts-icu-lindera.md)` · `[DOC/devNotes/03](03-实现细节.md)` §14.4.3 · 手册 `B-07`                                                                                         |
 | **角色库用户卡标记（**`userCardList`**）**                                                                                           | 2026-07-04             | `[DOC/devNotes/03](03-实现细节.md)` §12.2–§12.5 · `server/test/character-user-card-list.test.ts`                                                                                                       |
 | **群聊 G0–G5**（segment · `speakerMode` · `/@` · Continue · 宏 · audit）                                                        | 2026-07-03             | `[DOC/devNotes/35](35-group-chat.md)` · `[DOC/devNotes/03](03-实现细节.md)` §6.8 · `[DOC/devNotes/24](24-regex-and-session-audit.md)` §3                                                                                 |
 | **对话分支（消息树）** S1–S5 + 验收 + 三轮审计                                                                                            | 2026-06-18             | `[DOC/devNotes/23](23-conversation-branches.md)` 全文 · §9 审计                                                                                                                                        |

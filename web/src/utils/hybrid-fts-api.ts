@@ -1,3 +1,4 @@
+import { useAuthStore } from '@/stores/auth'
 import { readJsonSseStream } from '@/utils/json-sse'
 import type { HybridFtsDictVariant, HybridFtsProfile } from '@/utils/hybrid-fts-settings'
 
@@ -6,6 +7,9 @@ export interface DictVariantCatalogEntry {
   sourcePath: string
   downloadUrl: string
   sizeMbApprox: number
+  artifactKind?: 'file' | 'zip'
+  languageHint?: 'ja' | 'ko' | 'zh'
+  tags?: readonly string[]
 }
 
 export interface TokenizerCatalogEntry {
@@ -24,6 +28,9 @@ export interface DictVariantStatus {
   sourcePath: string
   downloadUrl: string
   sizeMbApprox: number
+  artifactKind?: 'file' | 'zip'
+  languageHint?: 'ja' | 'ko' | 'zh'
+  tags?: readonly string[]
 }
 
 export interface ProfileDictStatus {
@@ -35,7 +42,12 @@ export interface ProfileDictStatus {
 
 export type HybridFtsDictDownloadSseEvent =
   | { type: 'start'; totalBytes: number | null; variant: string }
-  | { type: 'progress'; receivedBytes: number; totalBytes: number | null }
+  | {
+      type: 'progress'
+      receivedBytes: number
+      totalBytes: number | null
+      phase?: 'download' | 'extract'
+    }
   | { type: 'done'; ok: true; variant: string }
   | { type: 'error'; ok: false; error: string; detail?: string }
 
@@ -81,4 +93,61 @@ export async function downloadHybridFtsDict(
   })
   if (errorMessage) throw new Error(errorMessage)
   if (!done) throw new Error('dict_download_incomplete')
+}
+
+export type HybridFtsDictImportResult = {
+  ok: true
+  profile: 'lindera'
+  variant: HybridFtsDictVariant
+  downloaded: boolean
+}
+
+/**
+ * 上传官方 Lindera ZIP；onProgress 的 total 为浏览器 File.size。
+ */
+export function importHybridFtsDictZip(
+  profile: HybridFtsProfile,
+  file: File,
+  onProgress?: (receivedBytes: number, totalBytes: number) => void,
+): Promise<HybridFtsDictImportResult> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    const url =
+      `/api/hybrid-fts/dict-import` +
+      `?profile=${encodeURIComponent(profile)}`
+    xhr.open('POST', url)
+    xhr.responseType = 'json'
+    // XHR 不经过 installAuthenticatedFetch 的补丁，须自带 Bearer；
+    // 否则鉴权 hook 会在读 body 前 401 并断开，大包上传只表现为网络错误
+    const authToken = useAuthStore().token
+    if (authToken) {
+      xhr.setRequestHeader('Authorization', `Bearer ${authToken}`)
+    }
+    xhr.upload.onprogress = (ev) => {
+      if (!ev.lengthComputable) return
+      onProgress?.(ev.loaded, ev.total)
+    }
+    xhr.onload = () => {
+      const body = xhr.response as
+        | HybridFtsDictImportResult
+        | { error?: string; detail?: string }
+        | null
+      if (xhr.status >= 200 && xhr.status < 300 && body && 'ok' in body && body.ok) {
+        resolve(body)
+        return
+      }
+      const err =
+        body && typeof body === 'object' && 'error' in body && typeof body.error === 'string'
+          ? body.detail
+            ? `${body.error}: ${body.detail}`
+            : body.error
+          : `dict_import_failed (${xhr.status})`
+      reject(new Error(err))
+    }
+    xhr.onerror = () => reject(new Error('dict_import_network_error'))
+    xhr.onabort = () => reject(new Error('dict_import_aborted'))
+    const form = new FormData()
+    form.append('file', file, file.name || 'lindera-dictionary.zip')
+    xhr.send(form)
+  })
 }

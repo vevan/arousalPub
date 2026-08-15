@@ -20,6 +20,13 @@ const SYNCED_FILES = [
     ],
   },
   {
+    src: path.join(REPO_ROOT, 'shared', 'hybrid-fts-settings.ts'),
+    dests: [
+      path.join(REPO_ROOT, 'server', 'src', 'shared', 'hybrid-fts-settings.ts'),
+      path.join(REPO_ROOT, 'web', 'src', 'shared', 'hybrid-fts-settings.ts'),
+    ],
+  },
+  {
     src: path.join(REPO_ROOT, 'shared', 'plugin-context-blocks.ts'),
     dests: [
       path.join(REPO_ROOT, 'server', 'src', 'shared', 'plugin-context-blocks.ts'),

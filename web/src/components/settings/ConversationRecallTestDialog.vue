@@ -206,7 +206,11 @@ watch(
             density="compact"
             class="mt-4"
           >
-            {{ $t('chat.convSettings.recallTestEmbeddingUnavailable') }}
+            {{
+              result.memory.embeddingError === 'memory_index_stale'
+                ? $t('chat.convSettings.recallTestMemoryIndexStale')
+                : $t('chat.convSettings.recallTestEmbeddingUnavailable')
+            }}
           </v-alert>
 
           <div class="recall-test-columns mt-5">

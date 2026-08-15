@@ -1,7 +1,15 @@
 <script setup lang="ts">
+import HybridFtsAssetSettings from '@/components/settings/HybridFtsAssetSettings.vue'
+import { usePreferencesStore } from '@/stores/preferences'
 import { apiFetch } from '@/utils/api-fetch'
 import { coreNotify } from '@/utils/core-notify'
+import {
+  formatHybridFtsSpec,
+  resolveEffectiveHybridFtsSettings,
+  type HybridFtsSettings,
+} from '@/utils/hybrid-fts-settings'
 import { readJsonSseStream } from '@/utils/json-sse'
+import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -19,6 +27,8 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const preferencesStore = usePreferencesStore()
+const { hybridFtsProfile, hybridFtsDictVariant } = storeToRefs(preferencesStore)
 
 type IndexStatus = 'idle' | 'indexing' | 'ready' | 'error'
 
@@ -34,6 +44,11 @@ interface KnowledgeBase {
   indexedAt?: string
   chunkCount?: number
   indexError?: string
+  /** 缺省时跟随全局。 */
+  hybridFts?: HybridFtsSettings
+  /** 服务端返回的当前资产索引分词戳记。 */
+  builtHybridFtsSpec?: string | null
+  hybridFtsStale?: boolean
 }
 
 interface DocFileItem {
@@ -104,6 +119,40 @@ const reindexStageLabel = computed(() =>
 const selected = computed(
   () => items.value.find((i) => i.id === selectedId.value) ?? null,
 )
+const globalHybridFts = computed<HybridFtsSettings>(() => ({
+  profile: hybridFtsProfile.value,
+  dictVariant: hybridFtsDictVariant.value,
+}))
+
+function knowledgeEffectiveHybridFts(kb: KnowledgeBase): HybridFtsSettings {
+  return resolveEffectiveHybridFtsSettings(
+    globalHybridFts.value,
+    kb.hybridFts ?? null,
+  )
+}
+
+/** 按 built 戳记与当前生效配置实时比对；勿依赖列表加载时的 hybridFtsStale 快照 */
+function knowledgeIsHybridFtsStale(kb: KnowledgeBase): boolean {
+  const built = kb.builtHybridFtsSpec?.trim() || ''
+  return !built || built !== formatHybridFtsSpec(knowledgeEffectiveHybridFts(kb))
+}
+
+const selectedHybridFtsStale = computed(
+  () =>
+    selected.value != null &&
+    !patchDoing.value &&
+    !reindexDoing.value &&
+    knowledgeIsHybridFtsStale(selected.value),
+)
+
+function knowledgeHybridFtsLabel(kb: KnowledgeBase): string {
+  const follows = kb.hybridFts == null
+  const effective = knowledgeEffectiveHybridFts(kb)
+  const source = follows
+    ? t('settings.hybridFtsAsset.sourceGlobal')
+    : t('settings.hybridFtsAsset.sourceIndependent')
+  return `${source} · ${formatHybridFtsSpec(effective)}`
+}
 
 const addableDocItems = computed(() => {
   const inKb = new Set(selected.value?.fileIds ?? [])
@@ -308,7 +357,11 @@ async function removeFile(fileId: string) {
 
 async function patchKb(
   id: string,
-  body: { fileIds?: string[]; fileAliases?: Record<string, string> },
+  body: {
+    fileIds?: string[]
+    fileAliases?: Record<string, string>
+    hybridFts?: HybridFtsSettings | null
+  },
 ): Promise<boolean> {
   try {
     const res = await apiFetch(`/api/knowledge-bases/${id}`, {
@@ -333,6 +386,16 @@ async function patchKb(
   } catch {
     coreNotify(t('knowledgeBases.patchFailed'), undefined, { level: 'error' })
     return false
+  }
+}
+
+async function changeHybridFts(value: HybridFtsSettings | null): Promise<void> {
+  if (!selected.value) return
+  patchDoing.value = true
+  try {
+    await patchKb(selected.value.id, { hybridFts: value })
+  } finally {
+    patchDoing.value = false
   }
 }
 
@@ -566,6 +629,18 @@ onMounted(() => {
         {{ errorText }}
       </p>
 
+      <v-alert
+        v-if="selected && selectedHybridFtsStale"
+        type="warning"
+        density="compact"
+        variant="tonal"
+        class="mb-2 mx-1"
+        role="button"
+        tabindex="0"
+      >
+        {{ $t('knowledgeBases.hybridFtsStaleAlert') }}
+      </v-alert>
+
       <div class="kblib-body">
         <div class="kblib-list-pane">
           <div v-if="loading && items.length === 0" class="kblib-empty">
@@ -591,6 +666,15 @@ onMounted(() => {
                     chunks: item.chunkCount ?? 0,
                   })
                 }}
+              </span>
+              <span class="kblib-list__fts text-truncate">
+                {{ knowledgeHybridFtsLabel(item) }}
+                <span
+                  v-if="knowledgeIsHybridFtsStale(item)"
+                  class="kblib-list__stale"
+                >
+                  · {{ $t('settings.hybridFtsAsset.stale') }}
+                </span>
               </span>
             </button>
           </div>
@@ -626,6 +710,17 @@ onMounted(() => {
                 <dd class="text-error">{{ selected.indexError }}</dd>
               </div>
             </dl>
+
+            <HybridFtsAssetSettings
+              :model-value="selected.hybridFts"
+              :global-settings="globalHybridFts"
+              :built-spec="selected.builtHybridFtsSpec"
+              :stale="selectedHybridFtsStale"
+              :saving="patchDoing"
+              :rebuilding="reindexDoing"
+              @change="changeHybridFts"
+              @rebuild="submitReindex"
+            />
 
             <div class="kblib-detail__files">
               <div class="kblib-detail__files-head">
@@ -979,6 +1074,15 @@ onMounted(() => {
 .kblib-list__meta {
   font-size: 0.75rem;
   color: rgba(var(--v-theme-on-surface), 0.6);
+}
+.kblib-list__fts {
+  font-size: 0.7rem;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  max-width: 100%;
+}
+.kblib-list__stale {
+  color: rgb(var(--v-theme-warning));
+  font-weight: 600;
 }
 .kblib-detail {
   overflow: auto;

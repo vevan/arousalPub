@@ -38,7 +38,11 @@ import {
   type LorebookSettings,
 } from '@/utils/lorebook-settings'
 import {
-  parseHybridFtsSpec,
+  normalizeHybridFtsSettings,
+  resolveEffectiveHybridFtsSettings,
+  type HybridFtsDictVariant,
+  type HybridFtsProfile,
+  type HybridFtsSettings,
 } from '@/utils/hybrid-fts-settings'
 import { memoryIndexMatchesEffectiveSettings } from '@/utils/memory-index-settings'
 import {
@@ -93,7 +97,9 @@ export type ConversationContextSettingsProps = {
   conversationMemoryEmbeddingProfile?: string | null
   hasConversationTurns?: boolean
   conversationMemoryHybridFtsSpec?: string | null
-  globalHybridFtsSpec?: string
+  globalHybridFtsSettings: HybridFtsSettings
+  initialMemoryHybridFtsUseGlobal?: boolean
+  initialMemoryHybridFtsSettings?: HybridFtsSettings
   initialUserName?: string | null
   initialUserCharacterId?: string | null
   initialBackgroundImageFileId?: string | null
@@ -108,7 +114,10 @@ export type ConversationContextSettingsProps = {
 
 export type ConversationContextSettingsEmit = {
   (e: 'patched', index: Record<string, unknown>, conversationId: string): void
-  (e: 'memoryRebuilt', embeddingModel: string): void
+  (e: 'memoryRebuilt', result: {
+    embeddingModel: string
+    hybridFtsSpec: string
+  }): void
   (e: 'regexApplied'): void
 }
 
@@ -145,6 +154,7 @@ const savingKnowledgeBases = ref(false)
 const savingKnowledgeSettings = ref(false)
 const savingHistorySettings = ref(false)
 const savingMemorySettings = ref(false)
+const savingMemoryHybridFts = ref(false)
 const savingBudgetTrimSettings = ref(false)
 const savingAuthorsNote = ref(false)
 const savingDefaultAuthorsNote = ref(false)
@@ -175,6 +185,11 @@ const historyMaxTurns = ref(20)
 const memoryUseGlobal = ref(true)
 const memoryEnabled = ref(false)
 const memoryTopK = ref(4)
+const memoryHybridFtsUseGlobal = ref(true)
+const memoryHybridFtsProfile = ref<HybridFtsProfile>('zh-ngram')
+const memoryHybridFtsDictVariant = ref<HybridFtsDictVariant | null>(null)
+const memoryHybridFtsSwitchOpen = ref(false)
+const pendingMemoryHybridFtsProfile = ref<HybridFtsProfile>('zh-ngram')
 
 const budgetTrimUseGlobal = ref(true)
 const budgetTrimModel = ref<BudgetTrimSettings>(
@@ -220,6 +235,18 @@ const effectiveMemoryEnabled = computed(() =>
     : memoryEnabled.value,
 )
 
+const effectiveMemoryHybridFts = computed(() =>
+  resolveEffectiveHybridFtsSettings(
+    normalizeHybridFtsSettings(props.globalHybridFtsSettings),
+    memoryHybridFtsUseGlobal.value
+      ? undefined
+      : {
+          profile: memoryHybridFtsProfile.value,
+          dictVariant: memoryHybridFtsDictVariant.value,
+        },
+  ),
+)
+
 const memoryRebuildNeedsAttention = computed(() => {
   if (!effectiveMemoryEnabled.value) return false
   if (props.hasConversationTurns === false) return false
@@ -236,14 +263,14 @@ const memoryRebuildNeedsAttention = computed(() => {
     },
     { embeddingProfile: props.effectiveEmbeddingProfile },
     props.conversationMemoryHybridFtsSpec,
-    parseHybridFtsSpec(props.globalHybridFtsSpec?.trim() ?? 'zh-ngram'),
+    effectiveMemoryHybridFts.value,
   )
   return !indexMatches
 })
 
 async function onRebuildMemoryClick() {
-  const model = await rebuildMemoryIndex()
-  if (model) emit('memoryRebuilt', model)
+  const result = await rebuildMemoryIndex()
+  if (result) emit('memoryRebuilt', result)
 }
 
 const charItems = ref<CharItem[]>([])
@@ -395,6 +422,7 @@ const isSaving = computed(
     savingLoreSettings.value ||
     savingHistorySettings.value ||
     savingMemorySettings.value ||
+    savingMemoryHybridFts.value ||
     savingBudgetTrimSettings.value ||
     savingAuthorsNote.value ||
     savingDefaultAuthorsNote.value ||
@@ -602,6 +630,18 @@ function propsMemoryTopK(): number {
   return Math.max(1, Math.min(20, Math.floor(d)))
 }
 
+function propsMemoryHybridFtsUseGlobal(): boolean {
+  return props.initialMemoryHybridFtsUseGlobal !== false
+}
+
+function propsMemoryHybridFtsSettings(): HybridFtsSettings {
+  return normalizeHybridFtsSettings(
+    propsMemoryHybridFtsUseGlobal()
+      ? props.globalHybridFtsSettings
+      : props.initialMemoryHybridFtsSettings,
+  )
+}
+
 function propsKnowledgeUseGlobal(): boolean {
   return props.initialKnowledgeSettingsUseGlobal !== false
 }
@@ -688,6 +728,13 @@ function syncFromProps() {
     memoryEnabled.value = propsMemoryEnabled()
     memoryTopK.value = propsMemoryTopK()
   }
+  memoryHybridFtsUseGlobal.value = propsMemoryHybridFtsUseGlobal()
+  if (!savingMemoryHybridFts.value && !memoryHybridFtsSwitchOpen.value) {
+    const hybridFts = propsMemoryHybridFtsSettings()
+    memoryHybridFtsProfile.value = hybridFts.profile
+    memoryHybridFtsDictVariant.value = hybridFts.dictVariant ?? null
+    pendingMemoryHybridFtsProfile.value = hybridFts.profile
+  }
   budgetTrimUseGlobal.value = propsBudgetTrimUseGlobal()
   if (budgetTrimUseGlobal.value) {
     budgetTrimModel.value = cloneBudgetTrimSettings(
@@ -745,6 +792,9 @@ watch(
     props.globalMemoryTopK,
     props.initialMemoryEnabled,
     props.initialMemoryTopK,
+    props.globalHybridFtsSettings,
+    props.initialMemoryHybridFtsUseGlobal,
+    props.initialMemoryHybridFtsSettings,
     props.initialBudgetTrimSettingsUseGlobal,
     props.globalBudgetTrimSettings,
     props.initialBudgetTrimSettings,
@@ -1207,6 +1257,85 @@ watch(memoryTopK, async (k) => {
     savingMemorySettings.value = false
   }
 })
+
+async function saveMemoryHybridFtsOverride(
+  settings: HybridFtsSettings,
+): Promise<void> {
+  await patchConversation({
+    memoryHybridFts: normalizeHybridFtsSettings(settings),
+  })
+}
+
+watch(memoryHybridFtsUseGlobal, async (useGlobal) => {
+  if (useGlobal === propsMemoryHybridFtsUseGlobal()) return
+  savingMemoryHybridFts.value = true
+  errorText.value = ''
+  try {
+    if (useGlobal) {
+      await patchConversation({ memoryHybridFts: null })
+    } else {
+      await saveMemoryHybridFtsOverride({
+        profile: memoryHybridFtsProfile.value,
+        dictVariant: memoryHybridFtsDictVariant.value,
+      })
+    }
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingMemoryHybridFts.value = false
+    // saving 期间 syncFromProps 会跳过 hybrid 字段；落回后再对齐展示
+    memoryHybridFtsUseGlobal.value = propsMemoryHybridFtsUseGlobal()
+    const hybridFts = propsMemoryHybridFtsSettings()
+    memoryHybridFtsProfile.value = hybridFts.profile
+    memoryHybridFtsDictVariant.value = hybridFts.dictVariant ?? null
+    pendingMemoryHybridFtsProfile.value = hybridFts.profile
+  }
+})
+
+function onMemoryHybridFtsProfilePick(profile: HybridFtsProfile): void {
+  if (memoryHybridFtsUseGlobal.value || profile === memoryHybridFtsProfile.value) {
+    return
+  }
+  pendingMemoryHybridFtsProfile.value = profile
+  memoryHybridFtsSwitchOpen.value = true
+}
+
+function openMemoryHybridFtsManageDialog(): void {
+  if (memoryHybridFtsUseGlobal.value) return
+  pendingMemoryHybridFtsProfile.value = memoryHybridFtsProfile.value
+  memoryHybridFtsSwitchOpen.value = true
+}
+
+async function onMemoryHybridFtsSwitchConfirm(payload: {
+  profile: HybridFtsProfile
+  dictVariant: HybridFtsDictVariant | null
+}): Promise<void> {
+  savingMemoryHybridFts.value = true
+  errorText.value = ''
+  try {
+    const settings = normalizeHybridFtsSettings(payload)
+    await saveMemoryHybridFtsOverride(settings)
+    memoryHybridFtsProfile.value = settings.profile
+    memoryHybridFtsDictVariant.value = settings.dictVariant ?? null
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    syncFromProps()
+  } finally {
+    savingMemoryHybridFts.value = false
+    memoryHybridFtsUseGlobal.value = propsMemoryHybridFtsUseGlobal()
+    const hybridFts = propsMemoryHybridFtsSettings()
+    memoryHybridFtsProfile.value = hybridFts.profile
+    memoryHybridFtsDictVariant.value = hybridFts.dictVariant ?? null
+    pendingMemoryHybridFtsProfile.value = hybridFts.profile
+  }
+}
+
+function onMemoryHybridFtsSwitchCancel(): void {
+  pendingMemoryHybridFtsProfile.value = memoryHybridFtsProfile.value
+}
 
 watch(budgetTrimUseGlobal, async (useGlobal) => {
   if (useGlobal === propsBudgetTrimUseGlobal()) return
@@ -1710,6 +1839,16 @@ async function patchConversation(body: Record<string, unknown>) {
     memoryEnabled,
     memoryTopK,
     savingMemorySettings,
+    memoryHybridFtsUseGlobal,
+    memoryHybridFtsProfile,
+    memoryHybridFtsDictVariant,
+    memoryHybridFtsSwitchOpen,
+    pendingMemoryHybridFtsProfile,
+    savingMemoryHybridFts,
+    onMemoryHybridFtsProfilePick,
+    openMemoryHybridFtsManageDialog,
+    onMemoryHybridFtsSwitchConfirm,
+    onMemoryHybridFtsSwitchCancel,
     effectiveMemoryEnabled,
     memoryRebuildNeedsAttention,
     memoryRebuildLoading,

@@ -503,18 +503,44 @@ export async function patchCharacterDocument(
   return readCharacterDocumentForApi(id)
 }
 
+/**
+ * 从导入请求体取出扁平 card 字段。
+ * 兼容：
+ * - `{ card: { name, … } }`（本产品表单 / 已扁平）
+ * - `{ card: { spec, data } }` / `{ spec, data }`（SillyTavern Char Card V2/V3 JSON）
+ * - 直接扁平 `{ name, … }`
+ */
 export function normalizeImportCard(body: unknown): Record<string, unknown> {
   if (!body || typeof body !== 'object') {
     throw new Error('请求体须为 JSON 对象')
   }
   const o = body as Record<string, unknown>
-  if (o.card && typeof o.card === 'object' && !Array.isArray(o.card)) {
-    return o.card as Record<string, unknown>
+  const root =
+    o.card && typeof o.card === 'object' && !Array.isArray(o.card)
+      ? (o.card as Record<string, unknown>)
+      : o
+  return unwrapTavernCardEnvelope(root)
+}
+
+/** ST `{ spec, data }` 信封 → 扁平 data；已是扁平则原样返回。 */
+function unwrapTavernCardEnvelope(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const data = raw.data
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { ...raw }
   }
-  if (o.data && typeof o.data === 'object' && !Array.isArray(o.data)) {
-    return { ...(o.data as Record<string, unknown>) }
+  const dataObj = data as Record<string, unknown>
+  const hasSpec = typeof raw.spec === 'string' && raw.spec.trim().length > 0
+  const topName =
+    typeof raw.name === 'string' && raw.name.trim().length > 0
+  const dataName =
+    typeof dataObj.name === 'string' && dataObj.name.trim().length > 0
+  // 标准 ST 信封，或顶层无 name、data 内有 name（避免误吃自定义 data 扩展）
+  if (hasSpec || (!topName && dataName)) {
+    return { ...dataObj }
   }
-  return o
+  return { ...raw }
 }
 
 /** 从表单字段生成最小 Character Card V2 兼容对象（新建角色） */

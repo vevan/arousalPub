@@ -29,11 +29,16 @@ import { buildAllowedBranchPathsForActive } from './chunk-path.js'
 import { readConversationIndex } from './chat-storage.js'
 import { resolveEmbeddingApiCredentials } from './embedding-credential-resolve.js'
 import { embeddingIndexMatchesProvider } from './embedding-profile.js'
+import {
+  hybridFtsSpecsMatch,
+  type HybridFtsSettings,
+} from './hybrid-fts-settings.js'
 
 export interface MemoryPipelineInput {
   conversationId: string
   userText: string
   memorySettings: MemorySettings
+  memoryHybridFts: HybridFtsSettings
   historySettings: HistorySettings
   /** 再生等：不含 turnOrdinal >= 该值的轮次 */
   historyBeforeTurnOrdinalExclusive?: number | null
@@ -189,7 +194,10 @@ export async function runMemoryPipeline(
       embeddingProfile: index.memoryEmbeddingProfile,
       embeddingModel: index.memoryEmbeddingModel,
       embeddingDimensions: index.memoryEmbeddingDimensions,
-    }, provider))
+    }, provider) && hybridFtsSpecsMatch(
+      index.memoryHybridFtsProfile,
+      input.memoryHybridFts,
+    ))
   }
   if (
     input.memorySettings.memoryEnabled &&
@@ -219,6 +227,7 @@ export async function runMemoryPipeline(
         input.conversationId,
         recall.vector,
         recall.ftsQueryText,
+        input.memoryHybridFts,
         input.memorySettings.memoryTopK,
         recentTurnIds,
         minRecentOrdinal,

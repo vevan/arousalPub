@@ -32,8 +32,8 @@ import {
   KNOWLEDGE_ANN_REFINE_FACTOR,
   KNOWLEDGE_ANN_VECTOR_COLUMN,
 } from './lance-vector-ann-index.js'
-import { readGlobalHybridFtsSettings } from './user-preferences-file.js'
 import { languageModelHomeForSettings } from './hybrid-fts-dict.js'
+import type { HybridFtsSettings } from './hybrid-fts-settings.js'
 import { getUserDataDir } from './config.js'
 import { getCurrentUserId } from './user-context.js'
 
@@ -149,6 +149,7 @@ async function connectDb(kbId: string) {
 export async function replaceKnowledgeVectorIndex(
   kbId: string,
   rows: DocChunkVectorRow[],
+  settings: HybridFtsSettings,
 ): Promise<void> {
   const uri = knowledgeDbUri(kbId)
   const qkey = knowledgeQueueKey(kbId)
@@ -165,7 +166,6 @@ export async function replaceKnowledgeVectorIndex(
     if (!rows.length) return
     const db = await connectDb(kbId)
     const table = await db.createTable(TABLE_NAME, rowsToArrowTable(rows))
-    const settings = await readGlobalHybridFtsSettings()
     const userId = getCurrentUserId()
     // FTS 建完后 listIndices / scalar 仍可能读 jieba 统计，须保持 LANCE_LANGUAGE_MODEL_HOME
     await withHybridFtsSettingsContext(userId, settings, async () => {
@@ -212,6 +212,29 @@ export async function replaceKnowledgeVectorIndex(
   }
 }
 
+/** 仅替换 BM25 FTS；保留现有向量与 ANN。索引不存在时不创建空表。 */
+export async function rebuildKnowledgeFtsIndex(
+  kbId: string,
+  settings: HybridFtsSettings,
+): Promise<boolean> {
+  const uri = knowledgeDbUri(kbId)
+  return knowledgeLanceQueue.run(knowledgeQueueKey(kbId), async () => {
+    const db = await connectDb(kbId)
+    const names = await listLanceTableNames(db, uri)
+    if (!names.includes(TABLE_NAME)) return false
+    const table = await openLanceTableWithManifestMigration(db, TABLE_NAME, uri)
+    const userId = getCurrentUserId()
+    await ensureHybridFtsIndex(
+      table,
+      KNOWLEDGE_FTS_COLUMN,
+      settings,
+      uri,
+      userId,
+    )
+    return true
+  })
+}
+
 export async function deleteKnowledgeVectorIndex(kbId: string): Promise<void> {
   const qkey = knowledgeQueueKey(kbId)
   await knowledgeLanceQueue.run(qkey, async () => {
@@ -229,10 +252,11 @@ export async function searchKnowledgeChunkVectors(
   queryVector: number[],
   queryText: string,
   topK: number,
+  settings: HybridFtsSettings,
 ): Promise<DocChunkVectorHit[]> {
   if (!queryVector.length || topK < 1) return []
   return knowledgeLanceQueue.run(knowledgeQueueKey(kbId), () =>
-    searchKnowledgeChunkVectorsUnsafe(kbId, queryVector, queryText, topK),
+    searchKnowledgeChunkVectorsUnsafe(kbId, queryVector, queryText, topK, settings),
   )
 }
 
@@ -241,13 +265,13 @@ async function searchKnowledgeChunkVectorsUnsafe(
   queryVector: number[],
   queryText: string,
   topK: number,
+  settings: HybridFtsSettings,
 ): Promise<DocChunkVectorHit[]> {
   const uri = knowledgeDbUri(kbId)
   const db = await connectDb(kbId)
   const names = await listLanceTableNames(db, uri)
   if (!names.includes(TABLE_NAME)) return []
   const table = await openLanceTableWithManifestMigration(db, TABLE_NAME, uri)
-  const settings = await readGlobalHybridFtsSettings()
   const userId = getCurrentUserId()
   await withHybridFtsSettingsContext(userId, settings, async () => {
     await ensureScalarIndexes(table, KNOWLEDGE_SCALAR_INDEX_SPECS, {

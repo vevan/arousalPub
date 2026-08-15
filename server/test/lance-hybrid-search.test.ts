@@ -21,6 +21,24 @@ describe('toLanceFtsConfig', () => {
     assert.equal(cfg.baseTokenizer, 'jieba/default')
   })
 
+  it('maps lindera settings to lindera/{kind}', () => {
+    const cfg = toLanceFtsConfig({ profile: 'lindera', dictVariant: 'ko-dic' })
+    assert.equal(cfg.baseTokenizer, 'lindera/ko-dic')
+  })
+
+  it('defaults lindera dict to ipadic', () => {
+    const cfg = toLanceFtsConfig({ profile: 'lindera' })
+    assert.equal(cfg.baseTokenizer, 'lindera/ipadic')
+  })
+
+  it('maps ICU to the dictionary-free ICU tokenizer', () => {
+    const cfg = toLanceFtsConfig('icu')
+    assert.equal(cfg.baseTokenizer, 'icu')
+    assert.equal(cfg.withPosition, true)
+    assert.equal(cfg.stem, false)
+    assert.equal(cfg.removeStopWords, false)
+  })
+
   it('matches ftsIndexOptionsForProfile for zh-ngram', () => {
     assert.deepEqual(toLanceFtsConfig('zh-ngram'), ftsIndexOptionsForProfile('zh-ngram'))
   })
@@ -38,6 +56,21 @@ describe('ftsIndexOptionsForProfile', () => {
     const opts = ftsIndexOptionsForProfile('zh-jieba')
     assert.equal(opts.baseTokenizer, 'jieba/default')
   })
+
+  it('uses lindera/ipadic by default for lindera', () => {
+    const opts = ftsIndexOptionsForProfile('lindera')
+    assert.equal(opts.baseTokenizer, 'lindera/ipadic')
+  })
+
+  it('uses ICU without dictionary-dependent options', () => {
+    const opts = ftsIndexOptionsForProfile('icu')
+    assert.equal(opts.baseTokenizer, 'icu')
+    assert.equal(opts.withPosition, true)
+    assert.equal(opts.stem, false)
+    assert.equal(opts.removeStopWords, false)
+    assert.equal(opts.lowercase, false)
+    assert.equal(opts.asciiFolding, false)
+  })
 })
 
 describe('chineseFtsIndexOptions', () => {
@@ -51,6 +84,20 @@ describe('formatHybridFtsSpec', () => {
     assert.equal(
       formatHybridFtsSpec({ profile: 'zh-jieba', dictVariant: 'big' }),
       'zh-jieba:big',
+    )
+  })
+
+  it('includes lindera dict kind', () => {
+    assert.equal(
+      formatHybridFtsSpec({ profile: 'lindera', dictVariant: 'unidic' }),
+      'lindera:unidic',
+    )
+  })
+
+  it('formats ICU as a profile-only spec', () => {
+    assert.equal(
+      formatHybridFtsSpec({ profile: 'icu', dictVariant: null }),
+      'icu',
     )
   })
 })

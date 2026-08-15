@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import type { Lorebook, LorebookEntry } from '../src/lorebook-types.js'
@@ -51,11 +50,17 @@ describe('lorebook resolve integration', () => {
   let prevTestUser: string | undefined
   let lorebookSeenEntryKey: typeof import('../src/lorebook-resolve.js').lorebookSeenEntryKey
   let resolveLorebookInjectionParts: typeof import('../src/lorebook-resolve.js').resolveLorebookInjectionParts
+  let selectLorebookVectorCandidates: typeof import('../src/lorebook-resolve.js').selectLorebookVectorCandidates
   let writeLorebooksDocument: typeof import('../src/lorebook-file.js').writeLorebooksDocument
+  let assertValidLorebooksPayload: typeof import('../src/lorebook-file.js').assertValidLorebooksPayload
+  let createKnowledgeBase: typeof import('../src/knowledge-base-file.js').createKnowledgeBase
+  let patchKnowledgeBase: typeof import('../src/knowledge-base-file.js').patchKnowledgeBase
   let updateGlobalEmbeddingApiSettings: typeof import('../src/user-preferences-file.js').updateGlobalEmbeddingApiSettings
 
   before(async () => {
-    tmp = await mkdtemp(path.join(os.tmpdir(), 'lorebook-resolve-'))
+    const tempRoot = path.resolve('.tmp')
+    await mkdir(tempRoot, { recursive: true })
+    tmp = await mkdtemp(path.join(tempRoot, 'lorebook-resolve-'))
     prevDataDir = process.env.DATA_DIR
     prevTestUser = process.env.AROUSAL_TEST_USER_ID
     process.env.DATA_DIR = tmp
@@ -67,7 +72,12 @@ describe('lorebook resolve integration', () => {
     const prefsMod = await import('../src/user-preferences-file.js')
     lorebookSeenEntryKey = resolveMod.lorebookSeenEntryKey
     resolveLorebookInjectionParts = resolveMod.resolveLorebookInjectionParts
+    selectLorebookVectorCandidates = resolveMod.selectLorebookVectorCandidates
     writeLorebooksDocument = fileMod.writeLorebooksDocument
+    assertValidLorebooksPayload = fileMod.assertValidLorebooksPayload
+    const knowledgeFileMod = await import('../src/knowledge-base-file.js')
+    createKnowledgeBase = knowledgeFileMod.createKnowledgeBase
+    patchKnowledgeBase = knowledgeFileMod.patchKnowledgeBase
     updateGlobalEmbeddingApiSettings = prefsMod.updateGlobalEmbeddingApiSettings
   })
 
@@ -253,5 +263,65 @@ describe('lorebook resolve integration', () => {
       const key2 = lorebookSeenEntryKey('lb-a', 'entry-1')
       assert.equal(key1, key2)
     })
+  })
+
+  it('keeps vector candidates with the same entry id from different books', () => {
+    const selected = selectLorebookVectorCandidates(
+      [
+        {
+          lorebookId: 'lore-a',
+          entry: makeEntry({
+            id: 'entry-shared',
+            content: 'A',
+            triggerMode: 'vector',
+          }),
+          baseScore: 0.9,
+          scoreKind: 'rrf',
+        },
+        {
+          lorebookId: 'lore-b',
+          entry: makeEntry({
+            id: 'entry-shared',
+            content: 'B',
+            triggerMode: 'vector',
+          }),
+          baseScore: 0.8,
+          scoreKind: 'rrf',
+        },
+      ],
+      '',
+      2,
+    )
+    assert.deepEqual(
+      selected.map((item) => `${item.lorebookId}:${item.entry.content}`),
+      ['lore-a:A', 'lore-b:B'],
+    )
+  })
+
+  it('strictly validates lorebook hybridFts overrides', () => {
+    const valid = makeLorebook('lore-hybrid', 'Hybrid', [])
+    valid.hybridFts = { profile: 'en', dictVariant: null }
+    assert.equal(
+      assertValidLorebooksPayload({ lorebooks: [valid] }).lorebooks[0]!.hybridFts
+        ?.profile,
+      'en',
+    )
+    assert.throws(() =>
+      assertValidLorebooksPayload({
+        lorebooks: [{ ...valid, hybridFts: { profile: 'lindera' } }],
+      }),
+    )
+  })
+
+  it('persists and clears a knowledge-base hybridFts override', async () => {
+    const created = await createKnowledgeBase({
+      id: 'kb-hybrid-test',
+      name: 'Hybrid KB',
+      hybridFts: { profile: 'en', dictVariant: null },
+    })
+    assert.deepEqual(created.hybridFts, { profile: 'en', dictVariant: null })
+    const inherited = await patchKnowledgeBase(created.id, { hybridFts: null })
+    assert.ok(inherited)
+    assert.equal(inherited.hybridFts, undefined)
   })
 })

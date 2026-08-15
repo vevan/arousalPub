@@ -530,6 +530,9 @@ export async function updateGlobalHybridFtsSettings(
     ...prev.hybridFts,
     ...patch,
   })
+  if (profileRequiresDict(hybridFts.profile)) {
+    await prepareHybridFtsSettings(hybridFts, getCurrentUserId())
+  }
   await writeUserPreferencesDocument({
     lorebook: prev.lorebook,
     history: prev.history,
@@ -541,9 +544,6 @@ export async function updateGlobalHybridFtsSettings(
     defaultAuthorsNote: prev.defaultAuthorsNote,
     hybridFts,
   })
-  if (profileRequiresDict(hybridFts.profile)) {
-    await prepareHybridFtsSettings(hybridFts, getCurrentUserId())
-  }
   return hybridFts
 }
 

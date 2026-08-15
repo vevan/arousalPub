@@ -33,6 +33,7 @@ export type MemoryRebuildSseEvent =
       ok: true
       indexed: number
       embeddingModel: string
+      hybridFtsSpec: string
       lorebooksReindexed: number
       lorebookEntriesIndexed: number
     }
@@ -115,7 +116,10 @@ export function useMemoryRebuild(getConversationId: () => string) {
     )
   }
 
-  async function rebuild(): Promise<string | null> {
+  async function rebuild(): Promise<{
+    embeddingModel: string
+    hybridFtsSpec: string
+  } | null> {
     const id = getConversationId().trim()
     if (!id) return null
 
@@ -132,7 +136,7 @@ export function useMemoryRebuild(getConversationId: () => string) {
     resetProgress()
 
     let finished = false
-    let nextModel: string | null = null
+    let result: { embeddingModel: string; hybridFtsSpec: string } | null = null
     let snap = { done: 0, turns: 0, loreEntries: 0 }
 
     const stillMine = () => runId === myId
@@ -185,10 +189,13 @@ export function useMemoryRebuild(getConversationId: () => string) {
           stage.value = 'finalizing'
           stageDone.value = total.value
           stageTotal.value = total.value
-          nextModel =
-            typeof ev.embeddingModel === 'string' && ev.embeddingModel.trim()
-              ? ev.embeddingModel.trim()
-              : null
+          const embeddingModel =
+            typeof ev.embeddingModel === 'string' ? ev.embeddingModel.trim() : ''
+          const hybridFtsSpec =
+            typeof ev.hybridFtsSpec === 'string' ? ev.hybridFtsSpec.trim() : ''
+          result = embeddingModel && hybridFtsSpec
+            ? { embeddingModel, hybridFtsSpec }
+            : null
           snap = {
             done: done.value,
             turns: turns.value,
@@ -201,11 +208,11 @@ export function useMemoryRebuild(getConversationId: () => string) {
         return preferSuccessIfDone()
       }
 
-      if (ac.signal.aborted && !(finished && nextModel)) {
+      if (ac.signal.aborted && !(finished && result)) {
         return null
       }
 
-      if (finished && !nextModel) {
+      if (finished && !result) {
         error.value = t('chatConversation.memoryRebuildFailed')
       } else if (!finished && !error.value) {
         error.value = t('chatConversation.memoryRebuildFailed')
@@ -215,7 +222,7 @@ export function useMemoryRebuild(getConversationId: () => string) {
         return preferSuccessIfDone()
       }
       if (isAbortError(e) || ac.signal.aborted) {
-        if (!(finished && nextModel)) return null
+        if (!(finished && result)) return null
       } else {
         error.value =
           e instanceof Error
@@ -233,12 +240,12 @@ export function useMemoryRebuild(getConversationId: () => string) {
       return preferSuccessIfDone()
     }
 
-    if (finished && nextModel) {
+    if (finished && result) {
       notifySuccess(id, snap)
-      // Conversation may have switched; only return model to update local meta
+      // Conversation may have switched; only return authoritative index identity
       // when the view is still on this conversation.
       if (getConversationId().trim() !== id) return null
-      return nextModel
+      return result
     }
     if (error.value) {
       coreNotify(t('notifications.memoryRebuildFailedTitle'), error.value, {
@@ -246,15 +253,18 @@ export function useMemoryRebuild(getConversationId: () => string) {
         dedupeKey: `memory-rebuild:${id}:error`,
       })
     }
-    return nextModel
+    return result
 
-    function preferSuccessIfDone(): string | null {
+    function preferSuccessIfDone(): {
+      embeddingModel: string
+      hybridFtsSpec: string
+    } | null {
       // User abort after server `done`: toast + return model if still on same conv.
       // Superseded by a newer rebuild(): stay silent (new run owns UI).
-      if (!(finished && nextModel) || cancelKind !== 'aborted') return null
+      if (!(finished && result) || cancelKind !== 'aborted') return null
       notifySuccess(id, snap)
       if (getConversationId().trim() !== id) return null
-      return nextModel
+      return result
     }
   }
 

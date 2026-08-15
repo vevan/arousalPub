@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { memoryIndexMatchesEffectiveSettings } from '../../src/utils/memory-index-settings.js'
+import {
+  resolveEffectiveHybridFtsSettings,
+} from '../../src/utils/hybrid-fts-settings.js'
 
 describe('memory index settings identity', () => {
   it('matches a rebuilt builtin index against the resolved effective profile', () => {
@@ -45,6 +48,29 @@ describe('memory index settings identity', () => {
         { profile: 'zh-jieba', dictVariant: 'default' },
       ),
       false,
+    )
+  })
+
+  it('keeps an independent Hybrid override stable when the global setting changes', () => {
+    const override = { profile: 'en' as const, dictVariant: null }
+    const effective = resolveEffectiveHybridFtsSettings(
+      { profile: 'zh-jieba', dictVariant: 'default' },
+      override,
+    )
+    const afterGlobalChange = resolveEffectiveHybridFtsSettings(
+      { profile: 'lindera', dictVariant: 'ipadic' },
+      override,
+    )
+
+    assert.deepEqual(afterGlobalChange, effective)
+    assert.equal(
+      memoryIndexMatchesEffectiveSettings(
+        { embeddingProfile: 'api:model:1536:v2' },
+        { embeddingProfile: 'api:model:1536:v2' },
+        'en',
+        afterGlobalChange,
+      ),
+      true,
     )
   })
 })

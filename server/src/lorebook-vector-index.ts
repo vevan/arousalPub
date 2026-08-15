@@ -7,15 +7,22 @@ import { createKeyedCoalesceScheduler } from './keyed-serial-queue.js'
 import { readLorebookById } from './lorebook-file.js'
 import type { Lorebook } from './lorebook-types.js'
 import {
+  isLorebookEntryVectorIndexable,
   lorebookEntryEmbeddingCorpus,
-  resolveEntryTriggerMode,
 } from './lorebook-entry-utils.js'
 import {
   deleteLorebookVectorIndex,
+  rebuildLorebookFtsIndex,
   replaceLorebookVectorIndex,
   type LoreEntryVectorRow,
 } from './lorebook-vector-store.js'
-import { writeLorebookVectorProfile } from './lorebook-vector-profile.js'
+import {
+  deleteLorebookVectorProfile,
+  readLorebookVectorProfile,
+  writeLorebookVectorProfile,
+} from './lorebook-vector-profile.js'
+import { resolveAssetHybridFtsSettings } from './asset-hybrid-fts.js'
+import { formatHybridFtsSpec } from './hybrid-fts-settings.js'
 
 export interface LorebookVectorReindexStats {
   lorebooksReindexed: number
@@ -28,14 +35,43 @@ export interface LorebookVectorReindexError {
   lorebookId?: string
 }
 
+function throwIfLorebookVectorFailed(
+  result: { indexed: number } | LorebookVectorReindexError,
+): asserts result is { indexed: number } {
+  if ('error' in result) {
+    const err = new Error(
+      result.detail?.trim()
+        ? `${result.error}: ${result.detail}`
+        : result.error,
+    ) as Error & LorebookVectorReindexError
+    err.error = result.error
+    err.detail = result.detail
+    err.lorebookId = result.lorebookId
+    throw err
+  }
+}
+
 /**
  * Same lorebookId: serialize Lance replace; coalesce fire-and-forget schedules
  * so consecutive saves cannot rm/create the same index concurrently.
  */
-const lorebookVectorScheduler = createKeyedCoalesceScheduler<Lorebook>({
-  keyOf: (lb) => lb.id,
-  process: async (lb) => {
-    await reindexOneLorebookVector(lb)
+type LorebookScheduledReindex = { id: string; ftsOnly: boolean }
+
+const lorebookVectorScheduler = createKeyedCoalesceScheduler<LorebookScheduledReindex>({
+  keyOf: (item) => item.id,
+  merge: (previous, next) => ({
+    id: next.id,
+    // full 优先：任一侧需要全量向量重建则最终跑 full
+    ftsOnly: previous.ftsOnly && next.ftsOnly,
+  }),
+  process: async (item) => {
+    const lorebook = await readLorebookById(item.id)
+    if (!lorebook) return
+    if (item.ftsOnly) {
+      await reindexOneLorebookFts(lorebook)
+    } else {
+      throwIfLorebookVectorFailed(await reindexOneLorebookVector(lorebook))
+    }
   },
   onError: (e) => {
     // eslint-disable-next-line no-console
@@ -46,8 +82,29 @@ const lorebookVectorScheduler = createKeyedCoalesceScheduler<Lorebook>({
 /** 保存资料库后异步重建向量索引（仅 vector 触发且启用的条目） */
 export function scheduleLorebookVectorReindex(lorebooks: Lorebook[]): void {
   for (const lb of lorebooks) {
-    lorebookVectorScheduler.schedule(lb)
+    lorebookVectorScheduler.schedule({ id: lb.id, ftsOnly: false })
   }
+}
+
+export function scheduleLorebookFtsReindex(lorebookIds: string[]): void {
+  for (const id of uniqueLorebookIds(lorebookIds)) {
+    lorebookVectorScheduler.schedule({ id, ftsOnly: true })
+  }
+}
+
+/** 资产设置 PATCH：等待当前 Lorebook 的 FTS-only 重建完成。 */
+export async function reindexLorebookFtsExclusive(
+  lorebookId: string,
+): Promise<boolean> {
+  return lorebookVectorScheduler.runExclusive(lorebookId, async (cleared) => {
+    const lorebook = await readLorebookById(lorebookId)
+    if (!lorebook) return false
+    if (cleared && !cleared.ftsOnly) {
+      throwIfLorebookVectorFailed(await reindexOneLorebookVector(lorebook))
+      return true
+    }
+    return reindexOneLorebookFts(lorebook)
+  })
 }
 
 export async function reindexLorebooksVector(
@@ -55,7 +112,10 @@ export async function reindexLorebooksVector(
 ): Promise<void> {
   for (const lb of lorebooks) {
     await lorebookVectorScheduler.runExclusive(lb.id, async () => {
-      await reindexOneLorebookVector(lb)
+      const fresh = await readLorebookById(lb.id)
+      if (fresh) {
+        throwIfLorebookVectorFailed(await reindexOneLorebookVector(fresh))
+      }
     })
   }
 }
@@ -73,12 +133,7 @@ function uniqueLorebookIds(ids: string[]): string[] {
 }
 
 function vectorEntriesOf(lb: Lorebook) {
-  return lb.entries.filter(
-    (e) =>
-      e.enabled &&
-      resolveEntryTriggerMode(e) === 'vector' &&
-      lorebookEntryEmbeddingCorpus(e).trim().length > 0,
-  )
+  return lb.entries.filter(isLorebookEntryVectorIndexable)
 }
 
 export async function countLorebookVectorEntriesByIds(
@@ -112,7 +167,11 @@ export async function reindexLorebooksByIds(
     const lb = await readLorebookById(id)
     if (!lb) continue
     const result = await lorebookVectorScheduler.runExclusive(id, () =>
-      reindexOneLorebookVector(lb, creds, options),
+      readLorebookById(id).then((fresh) =>
+        fresh
+          ? reindexOneLorebookVector(fresh, creds, options)
+          : { indexed: 0 },
+      ),
     )
     if ('error' in result) {
       return { ...result, lorebookId: id }
@@ -130,9 +189,11 @@ async function reindexOneLorebookVector(
   creds?: ResolvedEmbeddingCredentials,
   options?: { onEntryDone?: () => void },
 ): Promise<{ indexed: number } | LorebookVectorReindexError> {
+  const hybridFts = await resolveAssetHybridFtsSettings(lb.hybridFts)
   const vectorEntries = vectorEntriesOf(lb)
   if (!vectorEntries.length) {
     await deleteLorebookVectorIndex(lb.id)
+    await deleteLorebookVectorProfile(lb.id)
     return { indexed: 0 }
   }
   const rows: LoreEntryVectorRow[] = []
@@ -168,16 +229,38 @@ async function reindexOneLorebookVector(
   }
   if (!rows.length) {
     await deleteLorebookVectorIndex(lb.id)
+    await deleteLorebookVectorProfile(lb.id)
     return { indexed: 0 }
   }
-  await replaceLorebookVectorIndex(lb.id, rows)
+  await replaceLorebookVectorIndex(lb.id, rows, hybridFts)
   await writeLorebookVectorProfile({
     schemaVersion: 1,
     lorebookId: lb.id,
     embeddingProfile: provider.embeddingProfile,
     embeddingModel: batch.model,
     embeddingDimensions: provider.embeddingDimensions,
+    hybridFtsSpec: formatHybridFtsSpec(hybridFts),
     updatedAt: new Date().toISOString(),
   })
   return { indexed: rows.length }
+}
+
+async function reindexOneLorebookFts(lb: Lorebook): Promise<boolean> {
+  const profile = await readLorebookVectorProfile(lb.id)
+  if (!profile) {
+    throwIfLorebookVectorFailed(await reindexOneLorebookVector(lb))
+    return true
+  }
+  const settings = await resolveAssetHybridFtsSettings(lb.hybridFts)
+  const rebuilt = await rebuildLorebookFtsIndex(lb.id, settings)
+  if (!rebuilt) {
+    throwIfLorebookVectorFailed(await reindexOneLorebookVector(lb))
+    return true
+  }
+  await writeLorebookVectorProfile({
+    ...profile,
+    hybridFtsSpec: formatHybridFtsSpec(settings),
+    updatedAt: new Date().toISOString(),
+  })
+  return true
 }

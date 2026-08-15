@@ -6,6 +6,7 @@ import type { HistorySettings } from './history-settings.js'
 import type { KnowledgeSettingsOverride } from './knowledge-settings.js'
 import type { LorebookSettings } from './lorebook-settings.js'
 import type { MemorySettings } from './memory-settings.js'
+import type { HybridFtsSettings } from './hybrid-fts-settings.js'
 import type {
   GroupChatSettings,
   GroupChatTurnState,
@@ -46,6 +47,8 @@ export interface ConversationIndex {
   historySettings?: Partial<HistorySettings>
   /** 对话记忆稀疏覆盖（未写字段继承全局 user-preferences） */
   memorySettings?: Partial<MemorySettings>
+  /** 远期记忆 Hybrid FTS 完整覆盖；缺省时跟随全局 */
+  memoryHybridFts?: HybridFtsSettings
   /** 对话绑定的知识库 id 列表（顺序 = 检索合并顺序） */
   knowledgeBaseIds?: string[]
   /** 知识库 RAG 稀疏覆盖（未写字段继承全局 user-preferences） */
@@ -65,7 +68,7 @@ export interface ConversationIndex {
   memoryEmbeddingDimensions?: number | null
   /** 向量空间完整身份；Provider / revision / dtype / pooling 变化均不兼容。 */
   memoryEmbeddingProfile?: string | null
-  /** 重建记忆索引时使用的 Hybrid FTS 分词 profile */
+  /** 已建记忆索引使用的 Hybrid FTS spec 戳记；不是配置 */
   memoryHybridFtsProfile?: string | null
   /**
    * 对话内用户展示名（宏 `{{user}}`）；缺省由服务端用默认「用户」。

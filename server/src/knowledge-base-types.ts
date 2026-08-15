@@ -1,3 +1,5 @@
+import type { HybridFtsSettings } from './hybrid-fts-settings.js'
+
 /** 知识库 id：与世界书预设 id 规则一致 */
 export const KNOWLEDGE_BASE_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/
 
@@ -28,6 +30,8 @@ export interface KnowledgeBase {
   indexedAt?: string
   chunkCount?: number
   indexError?: string
+  /** 缺省时继承全局；存在时为完整、独立的资产级设置。 */
+  hybridFts?: HybridFtsSettings
 }
 
 export interface KnowledgeChunkRecord {
@@ -51,6 +55,7 @@ export interface KnowledgeChunksDocument {
   embeddingModel?: string
   embeddingDimensions?: number | null
   embeddingProfile?: string | null
+  hybridFtsSpec: string
   updatedAt: string
   files: KnowledgeFileChunks[]
 }

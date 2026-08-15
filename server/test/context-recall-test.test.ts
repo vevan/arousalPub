@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { parseContextRecallTestBody } from '../src/context-recall-test.js'
+import {
+  isConversationMemoryIndexReadyForRecall,
+  parseContextRecallTestBody,
+} from '../src/context-recall-test.js'
 
 describe('parseContextRecallTestBody', () => {
   it('requires non-empty query', () => {
@@ -46,6 +49,56 @@ describe('parseContextRecallTestBody', () => {
     assert.deepEqual(
       parseContextRecallTestBody({ query: 'x', simulateTurnOrdinal: -1 }),
       { ok: false, error: 'context_recall_simulate_turn_invalid' },
+    )
+  })
+})
+
+describe('isConversationMemoryIndexReadyForRecall', () => {
+  const provider = {
+    provider: 'openai_compatible' as const,
+    baseUrl: 'https://example.com/v1',
+    apiKey: 'x',
+    embeddingProfile: 'openai:text-embedding-3-small',
+    embeddingModel: 'text-embedding-3-small',
+    embeddingDimensions: 1536,
+  }
+  const indexOk = {
+    memoryEmbeddingProfile: provider.embeddingProfile,
+    memoryEmbeddingModel: provider.embeddingModel,
+    memoryEmbeddingDimensions: provider.embeddingDimensions,
+    memoryHybridFtsProfile: 'zh-jieba:default',
+  }
+  const effective = {
+    profile: 'zh-jieba' as const,
+    dictVariant: 'default' as const,
+  }
+
+  it('returns true when embedding and hybrid FTS stamps match', () => {
+    assert.equal(
+      isConversationMemoryIndexReadyForRecall(indexOk, provider, effective),
+      true,
+    )
+  })
+
+  it('returns false when hybrid FTS stamp mismatches', () => {
+    assert.equal(
+      isConversationMemoryIndexReadyForRecall(
+        { ...indexOk, memoryHybridFtsProfile: 'lindera:ipadic' },
+        provider,
+        effective,
+      ),
+      false,
+    )
+  })
+
+  it('returns false when embedding stamp mismatches', () => {
+    assert.equal(
+      isConversationMemoryIndexReadyForRecall(
+        { ...indexOk, memoryEmbeddingProfile: 'other-profile' },
+        provider,
+        effective,
+      ),
+      false,
     )
   })
 })

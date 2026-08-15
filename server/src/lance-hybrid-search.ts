@@ -72,6 +72,15 @@ export function ftsIndexOptionsForProfile(
         asciiFolding: false,
       }
     }
+    case 'icu':
+      return {
+        withPosition,
+        baseTokenizer: 'icu' as const,
+        stem: false,
+        removeStopWords: false,
+        lowercase: false,
+        asciiFolding: false,
+      }
     case 'zh-ngram':
     default:
       return {

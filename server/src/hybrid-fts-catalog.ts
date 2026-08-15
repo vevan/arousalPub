@@ -26,6 +26,13 @@ export interface DictVariantCatalogEntry {
   downloadUrl: string
   sizeMbApprox: number
   artifactKind: DictArtifactKind
+  /**
+   * 官方产物 SHA-256（小写十六进制）。本地导入按此门禁，
+   * 改名的其他 major 版本或篡改包都无法混入。
+   */
+  sha256?: string
+  /** 精确字节数，用于上传前快速拒绝 */
+  sizeBytes?: number
   /** Lindera：语言提示（ja / ko / zh） */
   languageHint?: 'ja' | 'ko' | 'zh'
   /** UI：大体积 / 评估用等 */
@@ -66,6 +73,10 @@ const JIEBA_VARIANTS: DictVariantCatalogEntry[] = [
 
 type LinderaCatalogMeta = {
   sizeMbApprox: number
+  /** 官方 release 资产字节数 */
+  sizeBytes: number
+  /** 官方 release 资产 SHA-256（与 GitHub 发布摘要核对过） */
+  sha256: string
   languageHint: 'ja' | 'ko' | 'zh'
   tags?: readonly string[]
 }
@@ -73,29 +84,41 @@ type LinderaCatalogMeta = {
 const LINDERA_VARIANT_META: Record<LinderaDictKind, LinderaCatalogMeta> = {
   ipadic: {
     sizeMbApprox: 15.1,
+    sizeBytes: 15_880_290,
+    sha256: 'a40ce8820f1ce61d3257bf8ac14f999ae29abe78d4b81b4488594005ae863ee0',
     languageHint: 'ja',
     tags: ['recommended'],
   },
   'ipadic-neologd': {
     sizeMbApprox: 291,
+    sizeBytes: 305_177_087,
+    sha256: 'dec364a4db04d9a7bf325827c073b584d1f7b81d84f15ad5bb9be727436bd794',
     languageHint: 'ja',
     tags: ['large', 'advanced'],
   },
   unidic: {
     sizeMbApprox: 49.7,
+    sizeBytes: 52_082_459,
+    sha256: 'dde2e3080799ab69e270107c9ea7ce865456c4099a5545bf92d00ebe5c7c3e00',
     languageHint: 'ja',
   },
   'ko-dic': {
     sizeMbApprox: 34.2,
+    sizeBytes: 35_827_424,
+    sha256: 'c11bbde53692662b3941a6b8c24c7b81bac90a518c5994e8418b10843249fbf0',
     languageHint: 'ko',
   },
   'cc-cedict': {
     sizeMbApprox: 10,
+    sizeBytes: 10_522_647,
+    sha256: '2c9a590ab48f200e56363d43c3eea31ceab93b583509896771bec509be108fd3',
     languageHint: 'zh',
     tags: ['eval'],
   },
   jieba: {
     sizeMbApprox: 23.7,
+    sizeBytes: 24_869_842,
+    sha256: '6eab37326949d8dd1773967e3add5573c18b54c25d80e1229fad68dde48bf842',
     languageHint: 'zh',
     tags: ['eval'],
   },
@@ -114,6 +137,8 @@ function linderaVariants(): DictVariantCatalogEntry[] {
       sourcePath: zip,
       downloadUrl: `${LINDERA_RELEASE_BASE}/${zip}`,
       sizeMbApprox: meta.sizeMbApprox,
+      sizeBytes: meta.sizeBytes,
+      sha256: meta.sha256,
       artifactKind: 'zip' as const,
       languageHint: meta.languageHint,
       tags: meta.tags,

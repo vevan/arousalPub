@@ -362,6 +362,7 @@
     "hybridFtsStaleAlert": "This lorebook's tokenizer search index needs rebuilding. Click to review settings.",
     "hybridFtsSaveFailed": "Failed to save lorebook tokenizer settings",
     "hybridFtsRebuildOk": "Current lorebook index rebuilt",
+    "hybridFtsRebuildSkippedNoVector": "This lorebook has no enabled vector-trigger entries, so no index is needed",
     "hybridFtsRebuildFailed": "Failed to rebuild current lorebook index"
   },
   "library": {
@@ -451,6 +452,7 @@
     "createFailed": "Create failed",
     "refresh": "Refresh",
     "listMeta": "{files} docs · {chunks} chunks",
+    "hybridFtsStaleAlert": "This knowledge base's tokenizer search index needs rebuilding. Review Hybrid FTS settings below and rebuild.",
     "fieldId": "ID",
     "fieldName": "Name",
     "fieldDescription": "Description (optional)",
@@ -956,6 +958,7 @@
     "hybridFtsProfile": {
       "zh-ngram": "Chinese ngram (default)",
       "en": "English",
+      "icu": "ICU (multilingual, dictionary-free)",
       "zh-jieba": "Chinese jieba",
       "lindera": "Lindera (multi-language dictionaries)"
     },
@@ -992,7 +995,11 @@
       "modelHome": "Lance model home (LANCE_LANGUAGE_MODEL_HOME)",
       "storagePath": "Dictionary file path",
       "manualHint": "If download fails, fetch the file from the repository, save it as dict.txt under your user data directory at the dictionary file path shown (relative to data/\\{userId\\}/), then retry.",
-      "manualHintLindera": "When Lindera dictionary files are complete, the app rewrites config.yml for the current data directory (no re-download after moving data). If the first download fails, check the network or proxy and retry. The package must match Lance's bundled lindera version, currently v3.0.7.",
+      "manualHintLindera": "When Lindera dictionary files are complete, the app rewrites config.yml for the current data directory (no re-download after moving data). You can also use Import from local to upload an official v3.0.7 prebuilt ZIP. The package must match Lance's bundled lindera version, currently v3.0.7.",
+      "importFromLocal": "Import from local",
+      "importHint": "Only official Lindera v3.0.7 ZIPs are accepted. The matching variant is identified by SHA-256 and selected automatically; then confirm the switch.",
+      "importZipRequired": "Please choose a .zip dictionary package",
+      "importFailed": "Local dictionary import failed",
       "cancel": "Cancel",
       "confirm": "Confirm switch",
       "downloadFailed": "Dictionary download failed",
@@ -1008,11 +1015,16 @@
       "effective": "Effective",
       "built": "Built index",
       "notBuilt": "Not built",
+      "notNeeded": "No index needed (no vector-trigger entries)",
       "stale": "Rebuild required",
       "current": "Index healthy",
       "rebuildCurrent": "Rebuild this asset only",
+      "changeTokenizer": "Change tokenizer",
       "dialogTitle": "Set asset Hybrid tokenizer",
       "rebuildWarning": "Confirming rebuilds only this asset's index. Other lorebooks, knowledge bases, and conversations are not affected.",
+      "followGlobalTitle": "Switch back to follow global",
+      "followGlobalWarning": "Confirming clears this asset's independent tokenizer and rebuilds its index to match the global setting.",
+      "followGlobalTarget": "Will follow",
       "applyAndRebuild": "Apply and rebuild"
     },
     "hybridFtsManageDict": "Change dictionary variant",
@@ -1384,6 +1396,7 @@
       "recallTestSubmit": "Run test",
       "recallTestFailed": "Hit test failed",
       "recallTestEmbeddingUnavailable": "Could not embed query (check Embedding API). Memory / knowledge results may be empty.",
+      "recallTestMemoryIndexStale": "Memory index tokenizer or embedding stamp does not match current settings; vector recall was skipped. Rebuild the index first.",
       "recallTestSectionMemory": "Long-term memory",
       "recallTestSectionLore": "Lorebooks",
       "recallTestSectionKnowledge": "Knowledge bases",
@@ -2071,6 +2084,11 @@
       "post_user_injection_order_requires_field": "post user injection order requires field",
       "hybrid_fts_settings_invalid": "invalid tokenizer search settings",
       "hybrid_fts_dict_not_ready": "the selected tokenizer dictionary is not downloaded",
+      "hybrid_fts_dict_import_not_supported": "local dictionary import is not supported for this tokenizer",
+      "hybrid_fts_dict_package_mismatch": "uploaded package does not match the official checksum for the selected variant",
+      "hybrid_fts_dict_archive_invalid": "dictionary archive is invalid or incomplete",
+      "hybrid_fts_dict_install_conflict": "that dictionary variant is already being installed; try again later",
+      "hybrid_fts_dict_import_failed": "local dictionary import failed",
       "hybrid_fts_profile_invalid": "hybrid fts profile invalid",
       "hybrid_fts_dict_variant_invalid": "hybrid fts dict variant invalid"
     }

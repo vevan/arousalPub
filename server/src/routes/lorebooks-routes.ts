@@ -17,7 +17,7 @@ function lorebookVectorFingerprint(lorebook: Lorebook): string {
 }
 
 async function withLorebookHybridFtsStatus(lorebook: Lorebook) {
-  const status = await lorebookHybridFtsStatus(lorebook.id, lorebook.hybridFts)
+  const status = await lorebookHybridFtsStatus(lorebook)
   return { ...lorebook, ...status }
 }
 

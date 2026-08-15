@@ -7,8 +7,8 @@ import { createKeyedCoalesceScheduler } from './keyed-serial-queue.js'
 import { readLorebookById } from './lorebook-file.js'
 import type { Lorebook } from './lorebook-types.js'
 import {
+  isLorebookEntryVectorIndexable,
   lorebookEntryEmbeddingCorpus,
-  resolveEntryTriggerMode,
 } from './lorebook-entry-utils.js'
 import {
   deleteLorebookVectorIndex,
@@ -17,6 +17,7 @@ import {
   type LoreEntryVectorRow,
 } from './lorebook-vector-store.js'
 import {
+  deleteLorebookVectorProfile,
   readLorebookVectorProfile,
   writeLorebookVectorProfile,
 } from './lorebook-vector-profile.js'
@@ -132,12 +133,7 @@ function uniqueLorebookIds(ids: string[]): string[] {
 }
 
 function vectorEntriesOf(lb: Lorebook) {
-  return lb.entries.filter(
-    (e) =>
-      e.enabled &&
-      resolveEntryTriggerMode(e) === 'vector' &&
-      lorebookEntryEmbeddingCorpus(e).trim().length > 0,
-  )
+  return lb.entries.filter(isLorebookEntryVectorIndexable)
 }
 
 export async function countLorebookVectorEntriesByIds(
@@ -197,6 +193,7 @@ async function reindexOneLorebookVector(
   const vectorEntries = vectorEntriesOf(lb)
   if (!vectorEntries.length) {
     await deleteLorebookVectorIndex(lb.id)
+    await deleteLorebookVectorProfile(lb.id)
     return { indexed: 0 }
   }
   const rows: LoreEntryVectorRow[] = []
@@ -232,6 +229,7 @@ async function reindexOneLorebookVector(
   }
   if (!rows.length) {
     await deleteLorebookVectorIndex(lb.id)
+    await deleteLorebookVectorProfile(lb.id)
     return { indexed: 0 }
   }
   await replaceLorebookVectorIndex(lb.id, rows, hybridFts)

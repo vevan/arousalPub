@@ -82,7 +82,10 @@ import {
   mergePresetWithChatBinding,
   readConversationChatBinding,
 } from './conversation-api-settings.js'
-import { resolveEffectiveHybridFtsSettings } from './hybrid-fts-settings.js'
+import {
+  parseHybridFtsSettingsStrict,
+  resolveEffectiveHybridFtsSettings,
+} from './hybrid-fts-settings.js'
 import {
   resolveFeatureApi,
   resolveChatApiConfigId,
@@ -437,7 +440,7 @@ export async function buildConversationOutboundMessages(
   )
   const effectiveMemoryHybridFts = resolveEffectiveHybridFtsSettings(
     globalHybridFts,
-    idx.memoryHybridFts,
+    parseHybridFtsSettingsStrict(idx.memoryHybridFts),
   )
   const effectiveBudgetTrim = resolveBudgetTrimSettings(
     globalBudgetTrim,

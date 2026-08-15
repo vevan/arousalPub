@@ -69,7 +69,7 @@
 | [`48`](48-builtin-embedding-transformers.md) | ✅ **M1 核心已落地** | **内置 Embedding**：服务端 Transformers.js 固定 q8 / CPU 后路；profile 门禁、缓存加载、设置与重建提示已完成；输入上限 / prepare 限流 / 错误脱敏已加固；下载 SSE / 平台矩阵待续 |
 | [`49`](49-backend-outbound-proxy.md) | ✅ | **后端出站代理**：`enableProxy` / `proxyUrl` / `proxyNoProxy`；Node 24.14+ `setGlobalProxyFromEnv`；restore 幂等 |
 | [`50`](50-plugin-dungeon-maze-vision.md) | **P2 设想** | **地下城迷宫**：**5e 简易战斗**、Canvas、catalog、叙事进主对话；见 `04` P2 |
-| [`51`](51-hybrid-fts-icu-lindera.md) | **定案 / 待实施** | **Hybrid FTS：ICU + Lindera 多词典**：升 LanceDB；`lindera` 可选语言包；`zh-jieba` 暂并存，M6 评估后再定是否废弃；见 `04` P1 |
+| [`51`](51-hybrid-fts-icu-lindera.md) | ✅ **已归档**（2026-08-16） | **Hybrid FTS：ICU + Lindera**：`lindera` / `icu` 已接入；M6 对照后保留 `zh-jieba`；见 [`04`](04-TODO.md) §已归档 |
 | [`99`](99-android-apk-vision.md) | 💡 **极低优先级** | **Android 单机 APK 设想**：领域层迁移动端、SQLite 替 chunk、Portable Bundle 导入导出；无排期 |
 
 ## 已归档（勿再新建同级文档）
@@ -84,6 +84,7 @@
 | `DOC/devNotes/04` P0 落盘 persist 缺 turnId | 2026-06-23 · `15c7900` → [`23`](23-conversation-branches.md) §6.4、[`03`](03-实现细节.md) §6.8 |
 | `DOC/devNotes/04` P0 通知中心 NC0–NC-V | 2026-07-09 → [`40`](40-notification-center.md) · [`45`](45-notification-center-core-migration.md) §6.10 |
 | `DOC/devNotes/04` P0 Composer Slash S0–S4 | 2026-07-20 · `fd80c7f` → [`36`](36-composer-slash.md) |
+| `DOC/devNotes/04` P1 Hybrid FTS ICU + Lindera | 2026-08-16 → [`51`](51-hybrid-fts-icu-lindera.md) · [`03`](03-实现细节.md) §14.4.3 |
 
 ## 运维备忘
 

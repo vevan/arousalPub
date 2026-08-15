@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import HybridFtsSwitchDialog from '@/components/settings/HybridFtsSwitchDialog.vue'
 import {
-  HYBRID_FTS_PROFILES,
   formatHybridFtsSpec,
   profileRequiresDict,
   resolveEffectiveHybridFtsSettings,
@@ -17,6 +16,8 @@ const props = defineProps<{
   globalSettings: HybridFtsSettings
   builtSpec?: string | null
   stale?: boolean
+  /** false：当前资产没有可建索引内容，built 为空属正常 */
+  indexApplicable?: boolean
   saving?: boolean
   rebuilding?: boolean
 }>()
@@ -28,51 +29,79 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const switchOpen = ref(false)
+const followGlobalConfirmOpen = ref(false)
 const pendingProfile = ref<HybridFtsProfile>(props.globalSettings.profile)
 
 const followsGlobal = computed(() => props.modelValue == null)
+const indexApplicable = computed(() => props.indexApplicable !== false)
 const effective = computed(() =>
   resolveEffectiveHybridFtsSettings(props.globalSettings, props.modelValue),
 )
 const effectiveSpec = computed(() => formatHybridFtsSpec(effective.value))
+const globalSpec = computed(() => formatHybridFtsSpec(props.globalSettings))
+const statusChip = computed(() => {
+  if (props.stale) {
+    return {
+      color: 'warning' as const,
+      label: t('settings.hybridFtsAsset.stale'),
+    }
+  }
+  if (!indexApplicable.value && !props.builtSpec?.trim()) {
+    return {
+      color: 'default' as const,
+      label: t('settings.hybridFtsAsset.notNeeded'),
+    }
+  }
+  return {
+    color: 'success' as const,
+    label: t('settings.hybridFtsAsset.current'),
+  }
+})
+const builtLabel = computed(() => {
+  if (props.builtSpec?.trim()) return null
+  return indexApplicable.value
+    ? t('settings.hybridFtsAsset.notBuilt')
+    : t('settings.hybridFtsAsset.notNeeded')
+})
 
 const modeItems = computed(() => [
   { value: 'global', title: t('settings.hybridFtsAsset.followGlobal') },
   { value: 'override', title: t('settings.hybridFtsAsset.independent') },
 ])
-const profileItems = computed(() =>
-  HYBRID_FTS_PROFILES.map((value) => ({
-    value,
-    title: t(`settings.hybridFtsProfile.${value}`),
-  })),
-)
 
 watch(
   () => props.saving,
   (saving, wasSaving) => {
-    if (wasSaving && !saving && switchOpen.value) switchOpen.value = false
+    if (!(wasSaving && !saving)) return
+    if (switchOpen.value) switchOpen.value = false
+    if (followGlobalConfirmOpen.value) followGlobalConfirmOpen.value = false
   },
 )
 
 function setMode(mode: string): void {
   if (mode === 'global') {
-    if (!followsGlobal.value) emit('change', null)
+    if (followsGlobal.value || props.saving || props.rebuilding) return
+    followGlobalConfirmOpen.value = true
     return
   }
   if (mode !== 'override') return
+  openSwitchDialog()
+}
+
+/** 分词器与词典规格统一在弹窗内选择 */
+function openSwitchDialog(): void {
   pendingProfile.value = effective.value.profile
   switchOpen.value = true
 }
 
-function pickProfile(profile: HybridFtsProfile): void {
-  pendingProfile.value = profile
-  switchOpen.value = true
+function confirmFollowGlobal(): void {
+  if (props.saving || props.rebuilding) return
+  emit('change', null)
 }
 
-function openManageDict(): void {
-  if (followsGlobal.value) return
-  pendingProfile.value = effective.value.profile
-  switchOpen.value = true
+function cancelFollowGlobal(): void {
+  if (props.saving) return
+  followGlobalConfirmOpen.value = false
 }
 
 function confirmOverride(payload: {
@@ -99,15 +128,11 @@ function confirmOverride(payload: {
         </div>
       </div>
       <v-chip
-        :color="stale ? 'warning' : 'success'"
+        :color="statusChip.color"
         size="small"
         variant="tonal"
       >
-        {{
-          stale
-            ? $t('settings.hybridFtsAsset.stale')
-            : $t('settings.hybridFtsAsset.current')
-        }}
+        {{ statusChip.label }}
       </v-chip>
     </div>
 
@@ -121,24 +146,12 @@ function confirmOverride(payload: {
       @update:model-value="(value: string) => setMode(value as 'global' | 'override')"
     />
 
-    <v-select
-      v-if="!followsGlobal"
-      class="mt-2"
-      :model-value="effective.profile"
-      :items="profileItems"
-      density="compact"
-      variant="outlined"
-      hide-details
-      :disabled="saving || rebuilding"
-      @update:model-value="pickProfile"
-    />
-
     <div
-      v-if="!followsGlobal && profileRequiresDict(effective.profile)"
+      v-if="!followsGlobal"
       class="mt-2"
     >
       <div
-        v-if="effective.dictVariant"
+        v-if="profileRequiresDict(effective.profile) && effective.dictVariant"
         class="text-body-2"
       >
         {{ $t('settings.hybridFtsCurrentDict') }}:
@@ -151,11 +164,11 @@ function confirmOverride(payload: {
         size="small"
         variant="outlined"
         color="primary"
-        prepend-icon="mdi-book-open-variant-outline"
+        prepend-icon="mdi-tune-variant"
         :disabled="saving || rebuilding"
-        @click="openManageDict"
+        @click="openSwitchDialog"
       >
-        {{ $t('settings.hybridFtsManageDict') }}
+        {{ $t('settings.hybridFtsAsset.changeTokenizer') }}
       </v-btn>
     </div>
 
@@ -178,8 +191,11 @@ function confirmOverride(payload: {
         <dt>{{ $t('settings.hybridFtsAsset.built') }}</dt>
         <dd>
           <code v-if="builtSpec">{{ builtSpec }}</code>
-          <span v-else class="text-medium-emphasis">
-            {{ $t('settings.hybridFtsAsset.notBuilt') }}
+          <span
+            v-else
+            class="text-medium-emphasis"
+          >
+            {{ builtLabel }}
           </span>
         </dd>
       </div>
@@ -206,10 +222,55 @@ function confirmOverride(payload: {
       title-key="settings.hybridFtsAsset.dialogTitle"
       warning-key="settings.hybridFtsAsset.rebuildWarning"
       confirm-key="settings.hybridFtsAsset.applyAndRebuild"
+      profile-selectable
       :close-on-confirm="false"
       :confirming="!!saving"
       @confirm="confirmOverride"
     />
+
+    <v-dialog
+      v-model="followGlobalConfirmOpen"
+      max-width="480"
+      :persistent="!!saving"
+    >
+      <v-card>
+        <v-card-title class="text-h6">
+          {{ $t('settings.hybridFtsAsset.followGlobalTitle') }}
+        </v-card-title>
+        <v-card-text>
+          <v-alert
+            type="warning"
+            variant="tonal"
+            density="compact"
+            class="mb-4"
+          >
+            {{ $t('settings.hybridFtsAsset.followGlobalWarning') }}
+          </v-alert>
+          <div class="text-body-2">
+            {{ $t('settings.hybridFtsAsset.followGlobalTarget') }}:
+            <code>{{ globalSpec }}</code>
+          </div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn
+            variant="text"
+            :disabled="!!saving"
+            @click="cancelFollowGlobal"
+          >
+            {{ $t('settings.hybridFtsSwitch.cancel') }}
+          </v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            :loading="!!saving"
+            @click="confirmFollowGlobal"
+          >
+            {{ $t('settings.hybridFtsAsset.applyAndRebuild') }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-sheet>
 </template>
 

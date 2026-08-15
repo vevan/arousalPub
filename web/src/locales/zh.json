@@ -362,6 +362,7 @@
     "hybridFtsStaleAlert": "当前资料库的分词检索索引需要重建。点击查看设置。",
     "hybridFtsSaveFailed": "保存资料库分词设置失败",
     "hybridFtsRebuildOk": "当前资料库索引已重建",
+    "hybridFtsRebuildSkippedNoVector": "当前资料库没有启用的向量触发条目，无需建立索引",
     "hybridFtsRebuildFailed": "重建当前资料库索引失败"
   },
   "library": {
@@ -451,6 +452,7 @@
     "createFailed": "创建失败",
     "refresh": "刷新",
     "listMeta": "{files} 个文档 · {chunks} 切片",
+    "hybridFtsStaleAlert": "当前知识库的分词检索索引需要重建。请在下方分词设置中查看并重建。",
     "fieldId": "ID",
     "fieldName": "名称",
     "fieldDescription": "描述（可选）",
@@ -956,6 +958,7 @@
     "hybridFtsProfile": {
       "zh-ngram": "中文 ngram（默认）",
       "en": "English",
+      "icu": "ICU（多语言·免词典）",
       "zh-jieba": "中文 jieba",
       "lindera": "Lindera（多语言词典）"
     },
@@ -992,7 +995,11 @@
       "modelHome": "Lance 词典根目录（LANCE_LANGUAGE_MODEL_HOME）",
       "storagePath": "词典文件路径",
       "manualHint": "若自动下载失败，请从仓库下载对应文件，保存为 dict.txt，放到用户数据目录下「词典文件路径」所示位置（相对 data/\\{userId\\}/）后重试。",
-      "manualHintLindera": "Lindera 词典文件齐全时，系统会按当前数据目录自动重写 config.yml（搬迁后无需重下）。若首次下载失败，请检查网络或代理后重试。词典包版本须与 Lance 内嵌 lindera 一致，当前为 v3.0.7。",
+      "manualHintLindera": "Lindera 词典文件齐全时，系统会按当前数据目录自动重写 config.yml（搬迁后无需重下）。也可使用「从本地导入」上传官方 v3.0.7 预构建 ZIP。词典包版本须与 Lance 内嵌 lindera 一致，当前为 v3.0.7。",
+      "importFromLocal": "从本地导入",
+      "importHint": "仅接受官方 Lindera v3.0.7 ZIP。系统会按 SHA-256 自动识别对应规格并选中；导入成功后再确认切换即可。",
+      "importZipRequired": "请选择 .zip 词典包",
+      "importFailed": "本地词典导入失败",
       "cancel": "取消",
       "confirm": "确认切换",
       "downloadFailed": "词典下载失败",
@@ -1008,11 +1015,16 @@
       "effective": "当前生效",
       "built": "已建索引",
       "notBuilt": "尚未建立",
+      "notNeeded": "无需索引（无向量触发条目）",
       "stale": "需要重建",
       "current": "索引正常",
       "rebuildCurrent": "只重建当前资产",
+      "changeTokenizer": "更改分词器",
       "dialogTitle": "设置资产 Hybrid 分词器",
       "rebuildWarning": "确认后只会重建当前资产的索引，不影响其他资料库、知识库或对话。",
+      "followGlobalTitle": "改回跟随全局",
+      "followGlobalWarning": "确认后将清除本资产的独立分词设置，并按全局规格重建当前资产索引。",
+      "followGlobalTarget": "将跟随",
       "applyAndRebuild": "应用并重建"
     },
     "hybridFtsManageDict": "更改词典规格",
@@ -1384,6 +1396,7 @@
       "recallTestSubmit": "测试",
       "recallTestFailed": "命中测试失败",
       "recallTestEmbeddingUnavailable": "无法生成向量（请检查 Embedding API 配置），Memory / 知识库结果可能为空。",
+      "recallTestMemoryIndexStale": "Memory 索引分词或 Embedding 戳记与当前设置不一致，已跳过向量召回；请先重建索引后再测。",
       "recallTestSectionMemory": "远期记忆 (Memory)",
       "recallTestSectionLore": "资料库",
       "recallTestSectionKnowledge": "知识库",
@@ -2071,6 +2084,11 @@
       "post_user_injection_order_requires_field": "post-user 注入顺序缺少必需字段",
       "hybrid_fts_settings_invalid": "分词检索设置无效",
       "hybrid_fts_dict_not_ready": "所选分词词典尚未下载",
+      "hybrid_fts_dict_import_not_supported": "当前分词器不支持本地导入词典包",
+      "hybrid_fts_dict_package_mismatch": "上传的词典包与所选规格的官方校验值不符",
+      "hybrid_fts_dict_archive_invalid": "词典压缩包无效或不完整",
+      "hybrid_fts_dict_install_conflict": "该词典规格正在安装中，请稍后再试",
+      "hybrid_fts_dict_import_failed": "本地词典导入失败",
       "hybrid_fts_profile_invalid": "混合检索分词配置无效",
       "hybrid_fts_dict_variant_invalid": "分词词典变体无效"
     }

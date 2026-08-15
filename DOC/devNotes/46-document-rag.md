@@ -100,11 +100,13 @@ data/{userId}/knowledgeBases/{kbId}/chunks.json
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET/PUT | `/api/knowledge-bases` | 列表摘要 / 整包少用 |
-| POST | `/api/knowledge-bases` | 创建 `{ name, fileIds? }` |
-| GET/PATCH/DELETE | `/api/knowledge-bases/:id` | 读 / 改名·改 fileIds·改 `fileAliases`（fileId → 别名，空串删除）/ 删 |
+| GET | `/api/knowledge-bases` | 列表；每项含 `hybridFts?`、`builtHybridFtsSpec`、`hybridFtsStale` |
+| POST | `/api/knowledge-bases` | 创建 `{ name, fileIds?, description?, id?, hybridFts? }`；可独立指定分词 |
+| GET/PATCH/DELETE | `/api/knowledge-bases/:id` | 读 / 改名·改 fileIds·改 `fileAliases`（fileId → 别名，空串删除）·改 `hybridFts`（`null` 清覆盖）/ 删；PATCH 分词变更后等待 FTS exclusive |
 | POST | `/api/knowledge-bases/:id/reindex` | 重建索引；`?stream=1` 时 SSE 推送进度（extracting → embedding → writing） |
 | PATCH | `/api/chat/conversations/:id` | `knowledgeBaseIds`（须全部存在，否则 400）、`knowledgeSettings` |
+
+索引戳记：`memory/knowledge/{kbId}/chunks.json` → `hybridFtsSpec`；与 effective 不一致时该库不参与 hybrid 召回，UI 标 `hybridFtsStale`。
 
 ## 8. 设置
 

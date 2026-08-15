@@ -33,6 +33,12 @@ describe('hybrid-fts-catalog', () => {
   it('ngram does not require dict', () => {
     assert.equal(catalogEntryForProfile('zh-ngram').requiresDict, false)
   })
+
+  it('ICU does not require dict', () => {
+    const entry = catalogEntryForProfile('icu')
+    assert.equal(entry.requiresDict, false)
+    assert.deepEqual(entry.variants, [])
+  })
 })
 
 describe('normalizeHybridFtsDictVariant', () => {
@@ -94,9 +100,46 @@ describe('resolveEffectiveHybridFtsSettings', () => {
       { profile: 'zh-jieba', dictVariant: 'big' },
     )
   })
+
+  it('keeps an explicit override when values equal global (still not inherit)', () => {
+    const sameAsGlobal = {
+      profile: 'lindera',
+      dictVariant: 'unidic',
+    } as const
+    // 整包覆盖：值可与全局相同，但对象存在即独立 override（跟随者 / useGlobal 语义）
+    assert.deepEqual(
+      resolveEffectiveHybridFtsSettings(global, sameAsGlobal),
+      sameAsGlobal,
+    )
+    assert.deepEqual(parseHybridFtsSettingsStrict(sameAsGlobal), sameAsGlobal)
+  })
+
+  it('inherits global when override fails strict parse (dirty disk)', () => {
+    assert.deepEqual(
+      resolveEffectiveHybridFtsSettings(
+        global,
+        parseHybridFtsSettingsStrict({ profile: 'lindera', dictVariant: 'big' }),
+      ),
+      global,
+    )
+  })
 })
 
 describe('parseHybridFtsSettingsStrict', () => {
+  it('accepts ICU only without a dictionary variant', () => {
+    assert.deepEqual(
+      parseHybridFtsSettingsStrict({ profile: 'icu', dictVariant: null }),
+      { profile: 'icu', dictVariant: null },
+    )
+    assert.equal(
+      parseHybridFtsSettingsStrict({
+        profile: 'icu',
+        dictVariant: 'default',
+      }),
+      null,
+    )
+  })
+
   it('accepts a complete dictionary-backed setting', () => {
     assert.deepEqual(
       parseHybridFtsSettingsStrict({

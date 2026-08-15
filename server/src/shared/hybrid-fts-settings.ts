@@ -1,6 +1,11 @@
 /** Hybrid 检索 BM25 FTS 分词配置（memory / lore / knowledge） */
 
-export type HybridFtsProfile = 'zh-ngram' | 'en' | 'zh-jieba' | 'lindera'
+export type HybridFtsProfile =
+  | 'zh-ngram'
+  | 'en'
+  | 'icu'
+  | 'zh-jieba'
+  | 'lindera'
 
 export type JiebaDictVariant = 'small' | 'default' | 'big'
 
@@ -31,6 +36,7 @@ export type HybridFtsSettingsOverride = HybridFtsSettings | null | undefined
 export const HYBRID_FTS_PROFILES: readonly HybridFtsProfile[] = [
   'zh-ngram',
   'en',
+  'icu',
   'zh-jieba',
   'lindera',
 ]
@@ -58,6 +64,11 @@ export const HYBRID_FTS_SETTINGS_DEFAULTS: HybridFtsSettings = {
 export function isHybridFtsProfile(raw: unknown): raw is HybridFtsProfile {
   return typeof raw === 'string'
     && (HYBRID_FTS_PROFILES as readonly string[]).includes(raw)
+}
+
+export function isLinderaDictKind(raw: unknown): raw is LinderaDictKind {
+  return typeof raw === 'string'
+    && (LINDERA_DICT_KINDS as readonly string[]).includes(raw)
 }
 
 export function normalizeHybridFtsProfile(raw: unknown): HybridFtsProfile {

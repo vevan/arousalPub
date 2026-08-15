@@ -1,28 +1,28 @@
-# Hybrid FTS：接入 ICU 与 Lindera（计划）
+# Hybrid FTS：接入 ICU 与 Lindera（✅ 已归档 · 2026-08-16）
 
-> **状态**：Lindera profile **已接入代码**（2026-08-15）；ICU 仍待做；M6 评估未开始。  
-> **分支约定**：实现在 `main`（或后续 feature 分支）；**勿**与插件实验分支 `codex/maze` 混淆。  
-> **权威**：落地细节以 `DOC/devNotes/03` §14.4.3 为准；本文件保留里程碑与风险备忘。
+> **状态**：**✅ 已完成并归档**（2026-08-16）。Lindera + ICU 已接入；M1.5 本地 ZIP 导入 / M7 资产独立分词已落地；M6 本地语料对照后**明确不废弃** `zh-jieba`（中文主场景仍推荐）。  
+> **待办**：无本专题开放项；若未来再评估废弃独立 jieba，另开任务（须过 §3 M6 通过准则）。  
+> **权威**：落地细节以 `DOC/devNotes/03` §14.4.3 为准；里程碑见 [`DOC/devNotes/04`](04-TODO.md) **§已归档**。
 
 ## 1. 背景与结论摘要
 
-当前产品 Hybrid BM25 分词仅：`zh-ngram` / `en` / `zh-jieba`（`@lancedb/lancedb@0.30.0`）。
+产品 Hybrid BM25 分词现为：`zh-ngram` / `en` / `zh-jieba` / **`lindera`** / **`icu`**（`@lancedb/lancedb@0.37.1`）。
 
-| 能力 | `0.30.0`（现状） | `0.37.1`（最新稳定，2026-08 实测） |
-|------|------------------|-------------------------------------|
-| `icu` / `icu/split` | **不可用**（`unknown base tokenizer`） | **可用**，无需词典 |
-| `jieba/default` | 可用（需词典 + `LANCE_LANGUAGE_MODEL_HOME`） | 同左 |
-| `lindera/ipadic` | 名称已识别；缺词典报路径错 | 同左 |
+| 能力 | `0.30.0`（升级前） | `0.37.1`（当前） |
+|------|------------------|------------------|
+| `icu` / `icu/split` | **不可用**（`unknown base tokenizer`） | **`icu` 已产品化**；`icu/split` 未进主选择器 |
+| `jieba/default` | 可用（需词典 + `LANCE_LANGUAGE_MODEL_HOME`） | 同左（`zh-jieba`） |
+| `lindera/ipadic` 等 | 名称已识别；缺词典报路径错 | **已产品化**（多词典 zip） |
 | JS `BaseTokenizer` 类型 | 仅 `simple/whitespace/raw/ngram` | 含 `icu` / `icu/split` / ``jieba/${string}`` / ``lindera/${string}`` |
 | 内嵌 Lindera crate | `lindera-3.0.7` | **仍为 `lindera-3.0.7`**（勿跟上游 Lindera 最新 major） |
 
-**产品目标**：
+**产品目标（达成情况）**：
 
-- **`icu`**：零词典混排保底（可选再暴露 `icu/split`）
-- **`lindera`**（单一 profile）：用户在 **Lindera 语言包/词典** 中选择（`ipadic` / `unidic` / `ko-dic` / `jieba` / `cc-cedict` 等；neologd 体积大可标为高级）；统一 zip 下载 → `hybrid-fts/lindera/{dict}/` → `LANCE_LANGUAGE_MODEL_HOME`
-- **保留现有 `zh-jieba`**：本轮不废弃；接入后用真实语料对比 `zh-jieba` vs `lindera/jieba`（及可选 `cc-cedict`），再单独立项决定是否下线独立 jieba 流程
+- **`icu`**：零词典混排保底 — **已落地**（未暴露 `icu/split`）
+- **`lindera`**（单一 profile）：多语言包/词典选择 + zip 下载/本地导入 — **已落地**
+- **保留现有 `zh-jieba`**：本轮不废弃；已用真实语料对比 `zh-jieba` vs `lindera/jieba`、以及 `icu` vs `zh-jieba`（见 §3 M6）；**结案：不下线**独立 jieba
 
-**明确不做（本轮）**：静默迁移、双写、用 Lindera 静默替换 `zh-jieba`。
+**明确不做（本轮）**：静默迁移、双写、用 Lindera/ICU 静默替换 `zh-jieba`、把 ICU/Lindera 设为全局默认。
 ## 2. 预构建 Lindera 词典是否可用？
 
 **可用，且应优先采用** [lindera/lindera releases](https://github.com/lindera/lindera/releases) 上的预构建 zip，避免本机 `lindera-cli build`。
@@ -99,48 +99,76 @@ segmenter:
 3. 就绪检测：核心词典文件齐全；`config.yml` 与当前绝对路径不一致时**自动重写**（搬迁数据目录无需重下）。
 4. catalog API 暴露各包语言、体积、推荐标签（日文默认 / 评估用 / 高级）。
 
-### M2 — 接入 Lindera profile
+### M1.5 — 本地上传词典包（已落地）
 
-1. `HybridFtsProfile` 增加 **`lindera`**；`dictVariant`（或专用 `linderaDictKind`）区分 `ipadic` / `unidic` / `ko-dic` / `jieba` / `cc-cedict` /（可选）`ipadic-neologd`。
+**动机**：仅依赖上游 zip URL 时，网络/代理失败或 Releases 下线会导致无法启用 Lindera（及同类需词典的 profile）。
+
+1. API：`POST /api/hybrid-fts/dict-import?profile=lindera` multipart 字段 `file`；服务端按 SHA-256 在 catalog 中自动匹配 6 个官方 v3.0.7 资产并安装对应规格，返回匹配到的 `variant`；**禁止**接受其他 major（如 5.x）或未知包。
+2. 复用现有解压、`config.yml` 重写、就绪检测与 `dict-status`；与在线下载对同一 `(user, profile, variant)` 互斥；上传成功后 UI 与在线下载等价。
+3. 设置 → 向量召回 / `HybridFtsSwitchDialog`：Lindera 规格旁「从本地导入」。
+4. **非目标**：任意自定义分词语料编辑器；jieba 单文件本地导入（仍用仓库/手动放置）。
+
+### M2 — 接入 Lindera profile（已落地）
+
+1. `HybridFtsProfile` 已增加 **`lindera`**；`dictVariant` 区分 `ipadic` / `unidic` / `ko-dic` / `jieba` / `cc-cedict` / `ipadic-neologd`。
 2. `ftsIndexOptionsForProfile`：`baseTokenizer: \`lindera/${dictKind}\``，过滤器同 CJK（关 stem/stopwords 等），`withPosition: true`。
 3. `formatHybridFtsSpec` → `lindera:ipadic` 等；复用戳记与 `withHybridFtsSettingsContext`。
-4. **不**改动现有 `zh-jieba` 代码路径（除共享类型/catalog 扩展）。
+4. **未**静默替换现有 `zh-jieba` 代码路径。
 
-### M3 — 接入 ICU
+### M3 — 接入 ICU（已落地）
 
-1. 新增 profile **`icu`**：`baseTokenizer: 'icu'`，无词典；过滤器同 CJK。
-2. （可选）**`icu-split`**：默认可不进主选择器。
-3. 切换后仍须重建 FTS。
+1. profile **`icu`**：`baseTokenizer: 'icu'`，无词典；过滤器同 CJK（关 stem / stopwords）。
+2. **`icu-split`**：未进主选择器（仍可按需另开）。
+3. 切换后须重建 FTS（与其它 profile 相同）。
 
-### M4 — 界面与流程
+### M4 — 界面与流程（已落地）
 
-1. 设置 → 向量召回：增加 **`lindera`**（二级：语言包/词典选择 + 下载状态）与 **`icu`**；**`zh-jieba` 选项保留**。
-2. Lindera 词典选择器：按语言分组（日 / 韩 / 中·评估）；neologd 显示体积警告。
-3. 会话戳记不一致 → 既有重建提示。
-4. locales + 手册：说明「Lindera 多词典」与「独立 jieba 暂并存、待评估」。
+1. 设置 → 向量召回：已有 **`lindera`**（二级词典 + 下载/本地导入）与 **`icu`**；**`zh-jieba` 保留**。
+2. 资产侧（Lore / KB）：独立设置在弹窗内选分词器；切回跟随全局须确认后重建。
+3. 会话 / 资产戳记不一致 → 重建提示（客户端按 `builtHybridFtsSpec` 与 effective 实时比对）。
+4. locales + 手册：已说明 Lindera / ICU；中文主场景仍推荐 `zh-jieba`。
 
 ### M5 — 测试（功能）
 
 | 层 | 内容 |
 |----|------|
 | 单测 | profile / spec；多 dictKind catalog；zip 就绪；tokenizer 映射 |
-| 集成（`.tmp`） | ICU；各已上架 `lindera/*` + 对应 zip 建索 + 抽样查询 |
+| 集成（`.tmp`） | ICU 冒烟；lindera zip 安装与 SHA 匹配；ICU vs jieba / lindera-jieba vs jieba 语料对照 |
 | 回归 | `zh-ngram` / `en` / `zh-jieba` 不变 |
-| 手工 | 切换 Lindera 包 → 下载 → 重建 → 命中测试 |
+| 手工 | 切换 Lindera 包 → 下载或本地导入 → 重建 → 命中测试 |
 
-### M6 — 评估后再定是否废弃独立 jieba（门禁）
+### M6 — 评估后再定是否废弃独立 jieba（已结案 · 不废弃）
 
-接入稳定后，用**真实用户语料 / 固定中文查询集**对比：
+用**真实用户语料 / 固定中文查询集**对比（只读 DATA_DIR；临时 Lance 库在 `.tmp/`）：
 
-| 对比项 | `zh-jieba`（现） | `lindera/jieba` | （参考）`lindera/cc-cedict` |
-|--------|-----------------|-----------------|----------------------------|
-| 分词样例 | 记录 | 记录 | 记录 |
-| BM25 命中 / 排序 | 基线 | 对比 | 对比 |
-| 词典体积与下载 UX | 1.5–8.2MB 三档 | ~24MB 单包 | ~10MB |
-| 运维复杂度 | 单文件管线 | 与日韩共用 zip | 同左 |
+| 对比项 | `zh-jieba`（现） | `lindera/jieba` | `icu`（参考） |
+|--------|-----------------|-----------------|---------------|
+| 分词样例 | 基线 | 记录 | 记录 |
+| BM25 Top5 重叠 | 基线 | 对比 | 对比 |
+| 词典体积与下载 UX | 1.5–8.2MB 三档 | ~24MB 单包 | **无词典** |
+| 运维复杂度 | 单文件管线 | 与日韩共用 zip | 零配置 |
 
-**通过准则（草案）**：召回不劣于现 `zh-jieba`，且统一管线带来的维护收益明确 → 再开任务删除 `zh-jieba` 与 dict.txt 管线（一次性迁移：重下 + 重建；**无兼容双读**）。  
-**未通过**：保留双轨；文档标明中文推荐仍用 `zh-jieba`，Lindera 中文包仅实验。
+#### 本地对照摘要（2026-08-15～16 · 会话 `86f21073`，尾部 80 turns）
+
+脚本 / 报告：
+
+- `.tmp/compare-lindera-jieba-vs-jieba.mts` → `lindera-jieba-vs-jieba-report-86f21073.md`
+- `.tmp/compare-icu-vs-jieba.mts` → `icu-vs-jieba-report-86f21073.md`
+
+| 指标 | lindera/jieba vs jieba | ICU vs jieba |
+|------|-----------------------:|-------------:|
+| probe 分词 Jaccard | 0.893 | 0.718 |
+| turn 样本分词 Jaccard | 0.665 | 0.444 |
+| FTS Top5 平均 Jaccard | 0.502 | **0.762** |
+
+**解读（门禁结论）**：
+
+- **`lindera/jieba`**：分词比 ICU 更接近原生 jieba，但专名粘连等场景仍会切碎；FTS Top5 与 jieba 重叠中等。**不足以**作为废弃 `zh-jieba` 的依据；中文包仍作评估/实验项。
+- **`icu`**：零词典；专名/粘连短语常切碎或跨界（如「格兰布鲁镇海风」）；但在本查询集上 Top5 与 jieba 重叠反而较高。定位为**多语混排保底**，**不是**中文主场景替代品。
+- **产品建议不变**：中文主场景继续推荐 **`zh-jieba`**；不删除独立 jieba 管线。
+
+**通过准则（仍有效）**：召回不劣于现 `zh-jieba`，且统一管线维护收益明确 → 再开任务删除 `zh-jieba` 与 dict.txt（一次性迁移；**无兼容双读**）。  
+**当前判定**：未通过废弃门禁；保留双轨 + ICU 保底。
 
 ### M7 — 对话 / Lore / Knowledge Base 独立分词【已实施】
 
@@ -198,14 +226,15 @@ M0 升级 LanceDB + 冒烟
 
 | 风险 | 缓解 |
 |------|------|
-| Lindera major ≠ Lance 内嵌 | catalog **钉死 v3.0.7**；升级 Lance 后 smoke + 改 URL |
+| 上游 zip 不可达 / 仓库关闭 | **M1.5 本地上传**（已落地）；catalog 仍钉版本与 SHA |
+| Lindera major ≠ Lance 内嵌 | catalog **钉死 v3.0.7** + SHA；升级 Lance 后 smoke + 改 URL/哈希 |
 | zip 布局与 Lance 期望不一致 | 真实 `createIndex` 验收后再定解压映射 |
 | `config.yml` 路径 Windows/POSIX | 用 `pathToFileURL`；齐全时按当前目录自动重写 |
 | neologd 体积 / 检索劣化 | UI 警告；默认不推荐 |
 | 双轨中文（zh-jieba + lindera/jieba）暂增复杂度 | **有意为之**；以 M6 评估收束，禁止提前删 jieba |
 | Lance 升版 breaking | 全量 hybrid 单测 + 重建指引 |
 
-**非目标（当前已落地批次）**：废弃 `zh-jieba`、把 ICU/Lindera 设为全局默认、用户自定义词典 UI、静默迁移旧 FTS。M7 独立分词已落地。
+**非目标（当前已落地批次）**：废弃 `zh-jieba`、把 ICU/Lindera 设为全局默认、用户自编分词语料 UI、静默迁移旧 FTS。M7 独立分词已落地。**本地导入官方预构建 zip** 见 §M1.5（已落地），与「自编词典」区分。
 
 ## 6. 关键路径（落地时）
 
@@ -216,11 +245,11 @@ M0 升级 LanceDB + 冒烟
 
 ## 7. 验收标准（DoD）
 
-- [ ] `@lancedb/lancedb` ≥ `0.37.1`，`npm audit` 干净
-- [ ] 用户可选 **`icu`**
-- [ ] 用户可选 **`lindera`**，并在 UI 中选择不同语言包/词典（至少 ipadic；jieba/cc-cedict/ko-dic/unidic 可下载启用）
-- [ ] **`zh-jieba` 仍可用**；未做静默替换
-- [ ] 切换 profile / 词典规格触发重建戳记对齐
-- [ ] M6 评估记录落盘（可附本文件或 `.tmp` 报告）；若废弃 jieba 则另开任务
+- [x] `@lancedb/lancedb` ≥ `0.37.1`
+- [x] 用户可选 **`icu`**
+- [x] 用户可选 **`lindera`**，并在 UI 中选择不同语言包/词典（至少 ipadic；jieba/cc-cedict/ko-dic/unidic 可下载启用；本地 ZIP 按 SHA 自动匹配）
+- [x] **`zh-jieba` 仍可用**；未做静默替换
+- [x] 切换 profile / 词典规格触发重建戳记对齐
+- [x] M6 对照报告落盘（`.tmp/*-vs-jieba-report-*.md`）；**废弃 jieba 另开任务，当前不废弃**
 - [x] M7 对话 memory / Lorebook / Knowledge Base 均可跟随全局或独立指定分词，并只重建自身索引
 - [x] `03` §14.4.3 与手册已更新

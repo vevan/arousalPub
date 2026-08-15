@@ -36,6 +36,7 @@ import { resolveMemorySettings } from './memory-settings.js'
 import {
   formatHybridFtsSpec,
   hybridFtsSpecsMatch,
+  parseHybridFtsSettingsStrict,
   resolveEffectiveHybridFtsSettings,
   type HybridFtsSettings,
 } from './hybrid-fts-settings.js'
@@ -169,7 +170,7 @@ export async function sealChunkMemorySegment(
   const global = await readGlobalHybridFtsSettings()
   const effective = resolveEffectiveHybridFtsSettings(
     global,
-    idx?.memoryHybridFts,
+    parseHybridFtsSettingsStrict(idx?.memoryHybridFts),
   )
   if (!hybridFtsSpecsMatch(idx?.memoryHybridFtsProfile, effective)) return
   await optimizeConversationMemoryTable(conversationId, effective).catch((e) => {
@@ -318,7 +319,7 @@ async function hybridFtsSettingsStillActive(
   ])
   const current = resolveEffectiveHybridFtsSettings(
     global,
-    index?.memoryHybridFts,
+    parseHybridFtsSettingsStrict(index?.memoryHybridFts),
   )
   return formatHybridFtsSpec(current) === formatHybridFtsSpec(expected)
 }
@@ -337,7 +338,7 @@ async function indexTurnMemory(
   const globalHybridFts = await readGlobalHybridFtsSettings()
   const effectiveHybridFts = resolveEffectiveHybridFtsSettings(
     globalHybridFts,
-    idx?.memoryHybridFts,
+    parseHybridFtsSettingsStrict(idx?.memoryHybridFts),
   )
   if (!hybridFtsSpecsMatch(idx?.memoryHybridFtsProfile, effectiveHybridFts)) {
     return
@@ -426,7 +427,7 @@ export async function reindexConversationMemory(
   const globalHybridFts = await readGlobalHybridFtsSettings()
   const effectiveHybridFts = resolveEffectiveHybridFtsSettings(
     globalHybridFts,
-    idx?.memoryHybridFts,
+    parseHybridFtsSettingsStrict(idx?.memoryHybridFts),
   )
   const hybridFtsSpec = formatHybridFtsSpec(effectiveHybridFts)
   const corpusOptions = await resolveMemoryCorpusOptions(effectiveMemory)

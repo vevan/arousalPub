@@ -3,7 +3,9 @@ import {
   type HybridFtsSettingsOverride,
 } from './hybrid-fts-settings.js'
 import { resolveAssetHybridFtsSettings } from './asset-hybrid-fts.js'
+import { lorebookHasVectorEntries } from './lorebook-entry-utils.js'
 import { readLorebookVectorProfile } from './lorebook-vector-profile.js'
+import type { Lorebook } from './lorebook-types.js'
 import { readKnowledgeChunksDocument } from './knowledge-base-file.js'
 
 export interface AssetHybridFtsStatusFields {
@@ -12,14 +14,17 @@ export interface AssetHybridFtsStatusFields {
 }
 
 export async function lorebookHybridFtsStatus(
-  lorebookId: string,
-  override?: HybridFtsSettingsOverride,
+  lorebook: Lorebook,
 ): Promise<AssetHybridFtsStatusFields> {
   const [effective, profile] = await Promise.all([
-    resolveAssetHybridFtsSettings(override),
-    readLorebookVectorProfile(lorebookId),
+    resolveAssetHybridFtsSettings(lorebook.hybridFts),
+    readLorebookVectorProfile(lorebook.id),
   ])
   const builtHybridFtsSpec = profile?.hybridFtsSpec?.trim() || null
+  // 无可索引条目：重建只会删索引，永远建不出戳记，不能报过期
+  if (!lorebookHasVectorEntries(lorebook)) {
+    return { builtHybridFtsSpec, hybridFtsStale: false }
+  }
   return {
     builtHybridFtsSpec,
     hybridFtsStale:

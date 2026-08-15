@@ -4,9 +4,12 @@ import LorebooksEntryEditor from '@/components/lorebooks/LorebooksEntryEditor.vu
 import LorebooksListPanel from '@/components/lorebooks/LorebooksListPanel.vue'
 import HybridFtsAssetSettings from '@/components/settings/HybridFtsAssetSettings.vue'
 import { usePreferencesStore } from '@/stores/preferences'
-import { useLorebooksStore } from '@/stores/lorebooks'
+import { useLorebooksStore, type LorebookEntry } from '@/stores/lorebooks'
 import { coreNotify } from '@/utils/core-notify'
+import { resolveEntryTriggerMode } from '@/utils/lorebook-entry'
 import {
+  formatHybridFtsSpec,
+  resolveEffectiveHybridFtsSettings,
   type HybridFtsSettings,
 } from '@/utils/hybrid-fts-settings'
 import { parseLorebookImport } from '@/utils/lorebooks-package'
@@ -56,10 +59,63 @@ const globalHybridFts = computed<HybridFtsSettings>(() => ({
   profile: hybridFtsProfile.value,
   dictVariant: hybridFtsDictVariant.value,
 }))
+
+function lorebookEffectiveHybridFts(lb: {
+  hybridFts?: HybridFtsSettings | null
+}): HybridFtsSettings {
+  return resolveEffectiveHybridFtsSettings(
+    globalHybridFts.value,
+    lb.hybridFts ?? null,
+  )
+}
+
+/** 无向量条目时不存在索引，重建也只会删空，故不算过期 */
+function lorebookHasVectorEntries(lb: { entries?: LorebookEntry[] }): boolean {
+  return (lb.entries ?? []).some(
+    (e) =>
+      e.enabled &&
+      resolveEntryTriggerMode(e) === 'vector' &&
+      (e.title.trim().length > 0 || e.content.trim().length > 0),
+  )
+}
+
+/** 按 built 戳记与当前生效配置实时比对；勿依赖加载时的 hybridFtsStale 快照 */
+function lorebookIsHybridFtsStale(lb: {
+  entries?: LorebookEntry[]
+  hybridFts?: HybridFtsSettings | null
+  builtHybridFtsSpec?: string | null
+}): boolean {
+  if (!lorebookHasVectorEntries(lb)) return false
+  const built = lb.builtHybridFtsSpec?.trim() || ''
+  return !built || built !== formatHybridFtsSpec(lorebookEffectiveHybridFts(lb))
+}
+
+function lorebookShowsHybridFtsStale(lb: {
+  id?: string
+  entries?: LorebookEntry[]
+  hybridFts?: HybridFtsSettings | null
+  builtHybridFtsSpec?: string | null
+}): boolean {
+  // PATCH 乐观清 override 后、重建回写 builtSpec 前，勿闪「需要重建」
+  if (
+    lb.id === activeLorebookId.value &&
+    (hybridFtsSaving.value ||
+      hybridFtsRebuilding.value ||
+      store.hybridFtsMutating)
+  ) {
+    return false
+  }
+  return lorebookIsHybridFtsStale(lb)
+}
+
 const hybridFtsStale = computed(
   () =>
-    activeLorebook.value.hybridFtsStale ??
-    !activeLorebook.value.builtHybridFtsSpec,
+    Boolean(activeLorebook.value.id) &&
+    lorebookShowsHybridFtsStale(activeLorebook.value),
+)
+
+const activeLorebookHasVectorEntries = computed(() =>
+  lorebookHasVectorEntries(activeLorebook.value),
 )
 
 function switchLorebook(id: string) {
@@ -99,7 +155,13 @@ async function rebuildActiveLorebook(): Promise<void> {
       throw new Error(detail.slice(0, 300))
     }
     await refreshActiveLorebookHybridFts()
-    coreNotify(t('lorebooks.hybridFtsRebuildOk'), undefined, { level: 'success' })
+    coreNotify(
+      activeLorebookHasVectorEntries.value
+        ? t('lorebooks.hybridFtsRebuildOk')
+        : t('lorebooks.hybridFtsRebuildSkippedNoVector'),
+      undefined,
+      { level: 'success' },
+    )
   } catch (e) {
     coreNotify(
       t('lorebooks.hybridFtsRebuildFailed'),
@@ -328,14 +390,27 @@ async function confirmImportLorebook() {
                 <v-icon size="14" class="preset-bar__caret">mdi-chevron-down</v-icon>
               </button>
             </template>
-            <v-list density="compact" min-width="200">
+            <v-list density="compact" min-width="240" max-width="360">
               <v-list-item
                 v-for="lb in lorebooks"
                 :key="lb.id"
                 :title="lb.name"
                 :active="lb.id === activeLorebookId"
                 @click="switchLorebook(lb.id)"
-              />
+              >
+                <template
+                  v-if="lorebookShowsHybridFtsStale(lb)"
+                  #append
+                >
+                  <v-chip
+                    size="x-small"
+                    color="warning"
+                    variant="tonal"
+                  >
+                    {{ $t('settings.hybridFtsAsset.stale') }}
+                  </v-chip>
+                </template>
+              </v-list-item>
             </v-list>
           </v-menu>
           <button
@@ -530,6 +605,7 @@ async function confirmImportLorebook() {
             :global-settings="globalHybridFts"
             :built-spec="activeLorebook.builtHybridFtsSpec"
             :stale="hybridFtsStale"
+            :index-applicable="activeLorebookHasVectorEntries"
             :saving="hybridFtsSaving"
             :rebuilding="hybridFtsRebuilding"
             @change="changeActiveHybridFts"

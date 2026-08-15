@@ -39,8 +39,10 @@ Set `AROUSAL_TRANSFORMERS_CACHE_DIR` to use another directory. The pinned files 
 
 ### 2. Hybrid full-text tokenization (optional)
 
-**Hybrid full-text tokenization**: global default may be Chinese ngram / English / Chinese jieba / Lindera, etc. **Each chat, lorebook, and knowledge base** can follow the global default or set an independent tokenizer.
+**Hybrid full-text tokenization**: global default may be Chinese ngram / English / Chinese jieba / Lindera / **ICU**, etc. **Each chat, lorebook, and knowledge base** can follow the global default or set an independent tokenizer.
 **After changing tokenization, rebuild only affected indexes** (assets that still follow global; independent overrides are unaffected). Long-term memory chats usually need a manual “Rebuild memory index”.
+For **Lindera**, download an official v3.0.7 package in Settings, or use **Import from local** with any supported official ZIP. Its variant is identified by SHA-256 and selected automatically; other majors are rejected.
+**ICU** needs no dictionary and suits multilingual fallback; for Chinese-primary use, prefer **jieba**.
 
 ### 3. Enable capabilities as needed
 

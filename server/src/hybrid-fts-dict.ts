@@ -1,5 +1,5 @@
-import { randomBytes } from 'node:crypto'
-import { createWriteStream, existsSync } from 'node:fs'
+import { createHash, randomBytes } from 'node:crypto'
+import { createReadStream, createWriteStream, existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -51,6 +51,34 @@ type DownloadInflight = {
 }
 
 const downloadInflight = new Map<string, DownloadInflight>()
+
+/** 本地导入占用；与在线下载互斥，避免两端同时覆盖同一 variant */
+const importLocks = new Set<string>()
+
+export type DictImportFailureReason =
+  | 'variant_not_importable'
+  | 'dict_variant_invalid'
+  | 'package_mismatch'
+  | 'archive_invalid'
+  | 'install_conflict'
+
+export class DictImportError extends Error {
+  constructor(
+    readonly reason: DictImportFailureReason,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'DictImportError'
+  }
+}
+
+function installKey(
+  userId: string,
+  profile: HybridFtsProfile,
+  variant: HybridFtsDictVariant,
+): string {
+  return `${userId}\0${profile}\0${variant}`
+}
 
 function resolveUserId(userId?: string): string {
   return userId ?? getCurrentUserId()
@@ -376,8 +404,13 @@ async function replaceDirAtomically(
 
 /**
  * 流式解压 zip 到同盘暂存目录；若仅有一层顶层目录则剥掉。
+ * @param expectedMetadataName 若给出，则要求 metadata.json.name 与之完全一致
  */
-async function extractZipToDir(zipPath: string, destDir: string): Promise<void> {
+async function extractZipToDir(
+  zipPath: string,
+  destDir: string,
+  expectedMetadataName?: string,
+): Promise<void> {
   const parent = path.dirname(destDir)
   await mkdir(parent, { recursive: true })
   const staging = await mkdtemp(path.join(parent, '.install-'))
@@ -441,6 +474,9 @@ async function extractZipToDir(zipPath: string, destDir: string): Promise<void> 
     if (!(await hasCompleteLinderaDictionary(sourceRoot))) {
       throw new Error('lindera zip does not contain a complete dictionary')
     }
+    if (expectedMetadataName) {
+      await assertLinderaMetadataName(sourceRoot, expectedMetadataName)
+    }
     await writeFile(
       path.join(sourceRoot, 'config.yml'),
       linderaConfigYaml(destDir),
@@ -449,6 +485,60 @@ async function extractZipToDir(zipPath: string, destDir: string): Promise<void> 
     await replaceDirAtomically(sourceRoot, destDir)
   } finally {
     await rm(staging, { recursive: true, force: true })
+  }
+}
+
+async function assertLinderaMetadataName(
+  dictRoot: string,
+  expectedName: string,
+): Promise<void> {
+  let raw: string
+  try {
+    raw = await readFile(path.join(dictRoot, 'metadata.json'), 'utf8')
+  } catch {
+    throw new Error('lindera zip missing metadata.json')
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    throw new Error('lindera zip metadata.json is not valid JSON')
+  }
+  const name =
+    parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as { name?: unknown }).name
+      : undefined
+  if (name !== expectedName) {
+    throw new Error(
+      `lindera zip metadata name mismatch: expected ${expectedName}, got ${String(name)}`,
+    )
+  }
+}
+
+async function sha256File(filePath: string): Promise<string> {
+  const hash = createHash('sha256')
+  await pipeline(createReadStream(filePath), hash)
+  return hash.digest('hex')
+}
+
+async function assertZipMatchesCatalog(
+  zipPath: string,
+  entry: DictVariantCatalogEntry,
+): Promise<void> {
+  if (!entry.sha256) return
+  const st = await stat(zipPath)
+  if (entry.sizeBytes != null && st.size !== entry.sizeBytes) {
+    throw new DictImportError(
+      'package_mismatch',
+      `zip size mismatch: expected ${entry.sizeBytes}, got ${st.size}`,
+    )
+  }
+  const digest = await sha256File(zipPath)
+  if (digest !== entry.sha256) {
+    throw new DictImportError(
+      'package_mismatch',
+      `zip sha256 mismatch: expected ${entry.sha256}, got ${digest}`,
+    )
   }
 }
 
@@ -503,6 +593,163 @@ async function downloadLinderaZip(
   }
 }
 
+/**
+ * 把已落盘的官方 Lindera ZIP 安装到用户词典目录。
+ * 与在线下载共享互斥；失败时保留旧词典。
+ */
+export async function installLinderaDictZipFromPath(
+  zipPath: string,
+  kind: LinderaDictKind,
+  userId?: string,
+): Promise<void> {
+  const uid = resolveUserId(userId)
+  const entry = dictVariantEntryForProfile('lindera', kind)
+  if (!entry || entry.artifactKind !== 'zip' || !entry.sha256) {
+    throw new DictImportError(
+      'variant_not_importable',
+      `lindera variant is not importable: ${kind}`,
+    )
+  }
+  const key = installKey(uid, 'lindera', kind)
+  if (downloadInflight.has(key) || importLocks.has(key)) {
+    throw new DictImportError(
+      'install_conflict',
+      'another dict install for this variant is already running',
+    )
+  }
+  importLocks.add(key)
+  try {
+    await installLinderaDictZipFromPathUnlocked(zipPath, kind, uid, entry)
+  } finally {
+    importLocks.delete(key)
+  }
+}
+
+async function installLinderaDictZipFromPathUnlocked(
+  zipPath: string,
+  kind: LinderaDictKind,
+  uid: string,
+  entry: DictVariantCatalogEntry,
+): Promise<void> {
+  await assertZipMatchesCatalog(zipPath, entry)
+  const modelHome = hybridFtsModelHome(uid, 'lindera', kind)
+  const dictDir = linderaDictDir(uid, kind)
+  await mkdir(modelHome, { recursive: true })
+  try {
+    await extractZipToDir(zipPath, dictDir, kind)
+  } catch (err) {
+    if (err instanceof DictImportError) throw err
+    const msg = err instanceof Error ? err.message : String(err)
+    if (
+      msg.includes('unsafe path') ||
+      msg.includes('exceeds uncompressed') ||
+      msg.includes('does not contain a complete dictionary') ||
+      msg.includes('metadata')
+    ) {
+      throw new DictImportError('archive_invalid', msg)
+    }
+    throw err
+  }
+}
+
+/**
+ * 流式接收上传体到临时 ZIP，按 catalog SHA-256 自动匹配并安装。
+ * @returns 匹配并安装的 variant
+ */
+export async function importLinderaDictZipStream(
+  input: NodeJS.ReadableStream,
+  opts?: {
+    userId?: string
+    onProgress?: (p: DictDownloadProgress) => void
+  },
+): Promise<LinderaDictKind> {
+  const uid = resolveUserId(opts?.userId)
+  const entries = catalogEntryForProfile('lindera').variants.filter(
+    (entry) =>
+      isLinderaKind(entry.id) &&
+      entry.artifactKind === 'zip' &&
+      typeof entry.sha256 === 'string' &&
+      entry.sizeBytes != null,
+  )
+  if (entries.length === 0) {
+    throw new DictImportError(
+      'variant_not_importable',
+      'no importable lindera variants are configured',
+    )
+  }
+
+  const maxBytes = maxLinderaImportBytes()
+  const work = await mkdtemp(path.join(tmpdir(), 'hybrid-fts-import-'))
+  const zipPath = path.join(work, 'upload.zip')
+  let key: string | null = null
+  try {
+    let receivedBytes = 0
+    const hash = createHash('sha256')
+    const progress = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        receivedBytes += chunk.length
+        if (receivedBytes > maxBytes) {
+          callback(
+            new DictImportError(
+              'package_mismatch',
+              `zip exceeds size limit: ${receivedBytes} > ${maxBytes}`,
+            ),
+          )
+          return
+        }
+        hash.update(chunk)
+        opts?.onProgress?.({
+          receivedBytes,
+          totalBytes: null,
+          phase: 'download',
+        })
+        callback(null, chunk)
+      },
+    })
+    await pipeline(input, progress, createWriteStream(zipPath, { flags: 'wx' }))
+    const digest = hash.digest('hex')
+    const entry = entries.find((candidate) => candidate.sha256 === digest)
+    if (!entry || !isLinderaKind(entry.id)) {
+      throw new DictImportError(
+        'package_mismatch',
+        `zip sha256 does not match any supported lindera package: ${digest}`,
+      )
+    }
+    const kind = entry.id
+    key = installKey(uid, 'lindera', kind)
+    if (downloadInflight.has(key) || importLocks.has(key)) {
+      throw new DictImportError(
+        'install_conflict',
+        'another dict install for the matched variant is already running',
+      )
+    }
+    importLocks.add(key)
+
+    opts?.onProgress?.({
+      receivedBytes,
+      totalBytes: entry.sizeBytes ?? receivedBytes,
+      phase: 'extract',
+    })
+    // 流式路径已校验 size/sha；解压前再走一遍 assert 防 TOCTOU
+    await installLinderaDictZipFromPathUnlocked(zipPath, kind, uid, entry)
+    return kind
+  } finally {
+    if (key) importLocks.delete(key)
+    await rm(work, { recursive: true, force: true })
+  }
+}
+
+/** 上传路由用：覆盖目录中最大 Lindera ZIP，并预留少量 multipart 余量。 */
+export function maxLinderaImportBytes(): number {
+  const largest = catalogEntryForProfile('lindera').variants.reduce(
+    (max, entry) => Math.max(max, entry.sizeBytes ?? 0),
+    0,
+  )
+  if (largest === 0) return 64 * 1024 * 1024
+  // 略留余量；精确匹配仍由 sizeBytes / sha256 门禁
+  return Math.min(largest + 1024 * 1024, MAX_DICT_DOWNLOAD_BYTES)
+}
+
 export async function downloadDictVariant(
   profile: HybridFtsProfile,
   variant: HybridFtsDictVariant,
@@ -518,7 +765,13 @@ export async function downloadDictVariant(
   const uid = resolveUserId(userId)
   if (await isDictVariantDownloaded(profile, normalizedVariant, uid)) return
 
-  const key = `${uid}\0${profile}\0${normalizedVariant}`
+  const key = installKey(uid, profile, normalizedVariant)
+  if (importLocks.has(key)) {
+    throw new DictImportError(
+      'install_conflict',
+      'another dict install for this variant is already running',
+    )
+  }
   let inflight = downloadInflight.get(key)
   if (!inflight) {
     const listeners = new Set<ProgressListener>()

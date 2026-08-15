@@ -2,9 +2,11 @@
 import {
   downloadHybridFtsDict,
   fetchProfileDictStatus,
+  importHybridFtsDictZip,
   type ProfileDictStatus,
 } from '@/utils/hybrid-fts-api'
 import {
+  HYBRID_FTS_PROFILES,
   defaultDictVariantForProfile,
   dictVariantsForProfile,
   normalizeHybridFtsDictVariant,
@@ -27,10 +29,13 @@ const props = withDefaults(
     /** 为 false 时由父级在异步应用完成后再关（资产「应用并重建」） */
     closeOnConfirm?: boolean
     confirming?: boolean
+    /** true 时分词器本身也在弹窗内选择，pendingProfile 仅作初值 */
+    profileSelectable?: boolean
   }>(),
   {
     closeOnConfirm: true,
     confirming: false,
+    profileSelectable: false,
   },
 )
 
@@ -47,20 +52,33 @@ const open = computed({
   set: (v) => emit('update:modelValue', v),
 })
 
+/** 弹窗内实际生效的分词器；profileSelectable 时可在弹窗里改 */
+const activeProfile = ref<HybridFtsProfile>(props.pendingProfile)
 const dictStatus = ref<ProfileDictStatus | null>(null)
 const dictStatusLoading = ref(false)
 const dictStatusError = ref('')
 const selectedVariant = ref<HybridFtsDictVariant>('default')
 const downloading = ref(false)
+const importing = ref(false)
 const downloadError = ref('')
 const downloadPercent = ref<number | undefined>(undefined)
 const downloadIndeterminate = ref(false)
+const importInputRef = ref<HTMLInputElement | null>(null)
 
-const requiresDict = computed(() => profileRequiresDict(props.pendingProfile))
+const requiresDict = computed(() => profileRequiresDict(activeProfile.value))
+const busy = computed(() => downloading.value || importing.value || props.confirming)
+const showLocalImport = computed(() => activeProfile.value === 'lindera')
+
+const profileItems = computed(() =>
+  HYBRID_FTS_PROFILES.map((value) => ({
+    value,
+    title: t(`settings.hybridFtsProfile.${value}`),
+  })),
+)
 
 const variantItems = computed(() => {
   const variants = dictStatus.value?.variants ?? []
-  const ids = dictVariantsForProfile(props.pendingProfile)
+  const ids = dictVariantsForProfile(activeProfile.value)
   return ids.map((id) => {
     const row = variants.find((v) => v.id === id)
     return {
@@ -84,7 +102,7 @@ const selectedVariantRow = computed(() =>
 const repoUrl = computed(() => dictStatus.value?.repoUrl ?? '')
 
 const manualHintKey = computed(() =>
-  props.pendingProfile === 'lindera'
+  activeProfile.value === 'lindera'
     ? 'settings.hybridFtsSwitch.manualHintLindera'
     : 'settings.hybridFtsSwitch.manualHint',
 )
@@ -97,14 +115,14 @@ async function loadDictStatus(): Promise<void> {
   dictStatusLoading.value = true
   dictStatusError.value = ''
   try {
-    dictStatus.value = await fetchProfileDictStatus(props.pendingProfile)
+    dictStatus.value = await fetchProfileDictStatus(activeProfile.value)
     const preferred =
-      props.pendingProfile === props.currentProfile && props.currentDictVariant
+      activeProfile.value === props.currentProfile && props.currentDictVariant
         ? props.currentDictVariant
-        : defaultDictVariantForProfile(props.pendingProfile)
+        : defaultDictVariantForProfile(activeProfile.value)
     selectedVariant.value = normalizeHybridFtsDictVariant(
       preferred,
-      props.pendingProfile,
+      activeProfile.value,
     )
   } catch (e) {
     dictStatusError.value =
@@ -116,6 +134,14 @@ async function loadDictStatus(): Promise<void> {
 
 watch(
   () => [props.modelValue, props.pendingProfile] as const,
+  ([visible, pending]) => {
+    if (!visible) return
+    activeProfile.value = pending
+  },
+)
+
+watch(
+  () => [props.modelValue, activeProfile.value] as const,
   ([visible]) => {
     if (!visible) return
     downloadError.value = ''
@@ -127,13 +153,60 @@ watch(
 )
 
 function onCancel(): void {
-  if (downloading.value || props.confirming) return
+  if (busy.value) return
   open.value = false
   emit('cancel')
 }
 
+function openImportPicker(): void {
+  if (busy.value || !showLocalImport.value) return
+  downloadError.value = ''
+  importInputRef.value?.click()
+}
+
+async function onImportFileChange(ev: Event): Promise<void> {
+  const input = ev.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !showLocalImport.value) return
+  if (!file.name.toLowerCase().endsWith('.zip')) {
+    downloadError.value = t('settings.hybridFtsSwitch.importZipRequired')
+    return
+  }
+
+  importing.value = true
+  downloadIndeterminate.value = false
+  downloadPercent.value = 0
+  downloadError.value = ''
+  try {
+    const result = await importHybridFtsDictZip(
+      activeProfile.value,
+      file,
+      (loaded, total) => {
+        if (total > 0) {
+          downloadIndeterminate.value = false
+          downloadPercent.value = Math.min(100, Math.round((loaded / total) * 100))
+        } else {
+          downloadIndeterminate.value = true
+        }
+      },
+    )
+    selectedVariant.value = result.variant
+    downloadIndeterminate.value = true
+    downloadPercent.value = undefined
+    await loadDictStatus()
+  } catch (e) {
+    downloadError.value =
+      e instanceof Error ? e.message : t('settings.hybridFtsSwitch.importFailed')
+  } finally {
+    importing.value = false
+    downloadIndeterminate.value = false
+    downloadPercent.value = undefined
+  }
+}
+
 async function onConfirm(): Promise<void> {
-  if (downloading.value || props.confirming) return
+  if (busy.value) return
   downloadError.value = ''
 
   if (requiresDict.value) {
@@ -144,7 +217,7 @@ async function onConfirm(): Promise<void> {
       downloadIndeterminate.value = true
       downloadPercent.value = undefined
       try {
-        await downloadHybridFtsDict(props.pendingProfile, variant, (ev) => {
+        await downloadHybridFtsDict(activeProfile.value, variant, (ev) => {
           if (ev.type === 'start') {
             downloadIndeterminate.value = ev.totalBytes == null
             downloadPercent.value = 0
@@ -173,9 +246,9 @@ async function onConfirm(): Promise<void> {
       }
       downloading.value = false
     }
-    emit('confirm', { profile: props.pendingProfile, dictVariant: variant })
+    emit('confirm', { profile: activeProfile.value, dictVariant: variant })
   } else {
-    emit('confirm', { profile: props.pendingProfile, dictVariant: null })
+    emit('confirm', { profile: activeProfile.value, dictVariant: null })
   }
   if (props.closeOnConfirm) open.value = false
 }
@@ -201,9 +274,23 @@ async function onConfirm(): Promise<void> {
           {{ $t(warningKey ?? 'settings.hybridFtsSwitch.rebuildWarning') }}
         </v-alert>
 
-        <div class="text-body-2 mb-2">
+        <v-select
+          v-if="profileSelectable"
+          v-model="activeProfile"
+          :items="profileItems"
+          :label="$t('settings.hybridFtsSwitch.targetProfile')"
+          density="compact"
+          variant="outlined"
+          hide-details
+          class="mb-3"
+          :disabled="busy"
+        />
+        <div
+          v-else
+          class="text-body-2 mb-2"
+        >
           {{ $t('settings.hybridFtsSwitch.targetProfile') }}:
-          <strong>{{ $t(`settings.hybridFtsProfile.${pendingProfile}`) }}</strong>
+          <strong>{{ $t(`settings.hybridFtsProfile.${activeProfile}`) }}</strong>
         </div>
 
         <template v-if="requiresDict">
@@ -228,7 +315,7 @@ async function onConfirm(): Promise<void> {
             v-else
             v-model="selectedVariant"
             hide-details
-            :disabled="downloading"
+            :disabled="busy"
           >
             <v-radio
               v-for="item in variantItems"
@@ -273,8 +360,36 @@ async function onConfirm(): Promise<void> {
             </v-radio>
           </v-radio-group>
 
+          <div
+            v-if="showLocalImport"
+            class="d-flex flex-wrap ga-2 mt-3"
+          >
+            <v-btn
+              variant="tonal"
+              size="small"
+              :disabled="busy || dictStatusLoading || !!dictStatusError"
+              :loading="importing"
+              @click="openImportPicker"
+            >
+              {{ $t('settings.hybridFtsSwitch.importFromLocal') }}
+            </v-btn>
+            <input
+              ref="importInputRef"
+              type="file"
+              accept=".zip,application/zip"
+              class="d-none"
+              @change="onImportFileChange"
+            >
+          </div>
+          <p
+            v-if="showLocalImport"
+            class="text-caption text-medium-emphasis mt-2 mb-0"
+          >
+            {{ $t('settings.hybridFtsSwitch.importHint') }}
+          </p>
+
           <v-progress-linear
-            v-if="downloading"
+            v-if="downloading || importing"
             :model-value="downloadPercent"
             :indeterminate="downloadIndeterminate"
             class="mt-3 mb-2"
@@ -333,7 +448,7 @@ async function onConfirm(): Promise<void> {
         <v-spacer />
         <v-btn
           variant="text"
-          :disabled="downloading || confirming"
+          :disabled="busy"
           @click="onCancel"
         >
           {{ $t('settings.hybridFtsSwitch.cancel') }}
@@ -341,7 +456,7 @@ async function onConfirm(): Promise<void> {
         <v-btn
           color="primary"
           variant="flat"
-          :loading="downloading || confirming"
+          :loading="busy"
           :disabled="dictStatusLoading || (requiresDict && !!dictStatusError)"
           @click="onConfirm"
         >

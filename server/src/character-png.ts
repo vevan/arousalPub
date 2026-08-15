@@ -194,13 +194,26 @@ export function cardFromCharaJson(parsed: unknown): Record<string, unknown> {
     throw new Error('chara 元数据不是 JSON 对象')
   }
   const o = parsed as Record<string, unknown>
+  const data = o.data
+  const hasEnvelopeData =
+    data && typeof data === 'object' && !Array.isArray(data)
+  const spec = typeof o.spec === 'string' ? o.spec.trim() : ''
+  // SillyTavern Char Card V2 / V3：字段在 data 内
   if (
-    o.spec === 'chara_card_v2' &&
-    o.data &&
-    typeof o.data === 'object' &&
-    !Array.isArray(o.data)
+    hasEnvelopeData &&
+    (spec === 'chara_card_v2' ||
+      spec === 'chara_card_v3' ||
+      spec.startsWith('chara_card_'))
   ) {
-    return normalizeTavernCardV2Data(o.data as Record<string, unknown>)
+    return normalizeTavernCardV2Data(data as Record<string, unknown>)
+  }
+  if (
+    hasEnvelopeData &&
+    !(typeof o.name === 'string' && o.name.trim()) &&
+    typeof (data as Record<string, unknown>).name === 'string' &&
+    String((data as Record<string, unknown>).name).trim()
+  ) {
+    return normalizeTavernCardV2Data(data as Record<string, unknown>)
   }
   return normalizeTavernCardV2Data({ ...o })
 }

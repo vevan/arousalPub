@@ -383,15 +383,15 @@ function onRebuildMemoryClick() {
                       {{ $t('chat.convSettings.recallTestButton') }}
                     </v-btn>
                   </div>
+    <HybridFtsSwitchDialog
+      v-model="memoryHybridFtsSwitchOpen"
+      :pending-profile="pendingMemoryHybridFtsProfile"
+      :current-profile="memoryHybridFtsProfile"
+      :current-dict-variant="memoryHybridFtsDictVariant"
+      title-key="chat.convSettings.memoryHybridFtsDialogTitle"
+      warning-key="chat.convSettings.memoryHybridFtsDialogWarning"
+      @confirm="emit('memoryHybridFtsConfirm', $event)"
+      @cancel="emit('memoryHybridFtsCancel')"
+    />
   </div>
-  <HybridFtsSwitchDialog
-    v-model="memoryHybridFtsSwitchOpen"
-    :pending-profile="pendingMemoryHybridFtsProfile"
-    :current-profile="memoryHybridFtsProfile"
-    :current-dict-variant="memoryHybridFtsDictVariant"
-    title-key="chat.convSettings.memoryHybridFtsDialogTitle"
-    warning-key="chat.convSettings.memoryHybridFtsDialogWarning"
-    @confirm="emit('memoryHybridFtsConfirm', $event)"
-    @cancel="emit('memoryHybridFtsCancel')"
-  />
 </template>

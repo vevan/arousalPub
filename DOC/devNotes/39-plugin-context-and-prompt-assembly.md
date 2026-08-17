@@ -1,6 +1,7 @@
 # 插件二次 LLM：上下文块与 Prompt 组装 — 设计定案
 
 > **状态**：**Phase 1–3 已落地**（2026-07）；Historian 与 trace-keeper Separate 已迁单一路径。  
+> **更新（2026-08-17）**：dryRun Prompt 预览在 preflight 超限时仍返回 `messages`（`assembleResultAfterPreflight`）；正式出站仍硬失败。  
 > **关联**：`DOC/devNotes/11` 出站补全 · `DOC/devNotes/12` Historian · `DOC/devNotes/18` §3.8 · `DOC/devNotes/38`（沙箱 / chat 注入为**另一条管线**）
 
 ---
@@ -151,7 +152,7 @@ host.plugin.completeWithContext({
 
 - 宿主顺序：**resolve API** → `formatPluginContextBlocks` hook → assemble（含 preflight）→ complete → `parseCompleteDraftContent` hook（若传 `draft`）。
 - **无 preset**（D5）。
-- **Prompt 预览**（D8）：Historian `prompt-preview.ts` 调 `completeWithContext({ dryRun: true })`；**不进** `chat-audit.json`（定案 · **`DOC/devNotes/43` §1.3**：出站 LLM 插件仅设置内预览，不进轮次 audit）。
+- **Prompt 预览**（D8）：Historian `prompt-preview.ts` 调 `completeWithContext({ dryRun: true })`；**不进** `chat-audit.json`（定案 · **`DOC/devNotes/43` §1.3**：出站 LLM 插件仅设置内预览，不进轮次 audit）。dryRun 下 preflight 超限仍返回 `messages` + `preflight.ok=false`（正式出站仍硬失败），以便对照超限内容。
 
 ---
 
@@ -169,13 +170,13 @@ host.plugin.completeWithContext({
 | # | 主题 | 定案 |
 |---|------|------|
 | D1 | layout 存放 | shared 常量 + 请求体可覆盖 |
-| D2 | 块过大 | 仅提示并中断；宿主不裁切 |
+| D2 | 块过大 | 正式出站：仅提示并中断、宿主不裁切；**dryRun 预览除外**（见 D8） |
 | D3 | 宏锚点 | `anchorToTurn` 无默认 |
 | D4 | regex | `conversation.transcript*` 由宿主统一应用 |
 | D5 | preset | 不要 preset |
 | D6 | API 形态 | `prepareContextBlocks` + `assemblePluginPrompt`；强制两步 RPC |
 | D7 | 沙箱 | `completeWithContext` 单入口 |
-| D8 | 审计 | 插件二次 LLM 不进 chat-audit；dry run 预览 |
+| D8 | 审计 / 预览 | 二次 LLM 不进 chat-audit；dryRun 预览；**超限仍返回 messages + `preflight.ok=false`**（2026-08-17） |
 | D9 | lore 块形态 | `entriesByBlock` 含 title；XML 在插件 shared |
 
 ---

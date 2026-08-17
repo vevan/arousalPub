@@ -1,9 +1,10 @@
 # Graphify 图谱重建与 upsertChatListEntry 热点分析
 
-> **状态**：图谱已重建（2026-08-17）；改进计划已定案 · **[`04-TODO.md`](04-TODO.md) §P2**（**M0–M4 已实现** · 2026-08-17）  
+> **状态**：✅ **已落地**（2026-08-17）——图谱重建 · **M0–M4（CL1–CL9）** · plugins 三环打断 · 旧图清理；见 [`04-TODO.md`](04-TODO.md) §已归档  
 > **来源**：`/graphify` 全量重建三份图谱 + 图谱 BFS 追查 `upsertChatListEntry()` 数据流（对照代码验证）  
 > **前置**：[`47-graphify-optimization-backlog.md`](47-graphify-optimization-backlog.md)（2026-08-05 首轮审计 · 已落地）  
-> **索引**：`DOC/devNotes/README.md` 专题表 · 待办入口见 [`04-TODO.md`](04-TODO.md) §P2  
+> **索引**：`DOC/devNotes/README.md` 专题表 · [`04-TODO.md`](04-TODO.md) §已归档  
+
 > **修订**：2026-08-17 依审计修正调用点计数 / Import Cycles / 社区标签 / 行号等；同日写入 §5 改进计划并登记 P2；§6 计划评估（事实核对 + 决策 D1–D3）；终审后修正 D2 / D1 取值口径并回写 §3/§5 · CL3 reconcile 对齐 §5 · CL2 对齐 skip-write 先例 · 统一 CL4 dirty 优先与「非本主线」/D 表措辞 · CL3 验收去掉「锁内合并」歧义 · 实施后复审计修复（P0：`chat-storage` 值/类型导出分离 `export type`；P2：`turnStats` / `refreshConversationStats` 于 enrich 前写入 + 阶段 3 以新鲜 prev 重算；P3：`conversation-branches` 未用 import 清理）· **同日误截断后按对话定案全文重建**
 
 ---

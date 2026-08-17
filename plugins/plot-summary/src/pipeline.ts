@@ -26,7 +26,7 @@ import {
   ensureTargetLorebook,
   promptRecoverLorebook,
   refreshAutoSummarizeUi,
-} from './dialogs.js'
+} from './lorebook-flow.js'
 import { isLorebookNotFoundError } from './errors.js'
 import { preparePlotSummarySummarizeContext } from './prepare-context.js'
 

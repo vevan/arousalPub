@@ -70,6 +70,7 @@
 | [`49`](49-backend-outbound-proxy.md) | ✅ | **后端出站代理**：`enableProxy` / `proxyUrl` / `proxyNoProxy`；Node 24.14+ `setGlobalProxyFromEnv`；restore 幂等 |
 | [`50`](50-plugin-dungeon-maze-vision.md) | **P2 设想** · **M0 骨架已落地** | **地下城迷宫**：21×21 Canvas / 会话 `dungeonState`；5e 战斗与 catalog 仍待做；见 `04` P2 |
 | [`51`](51-hybrid-fts-icu-lindera.md) | ✅ **已归档**（2026-08-16） | **Hybrid FTS：ICU + Lindera**：`lindera` / `icu` 已接入；M6 对照后保留 `zh-jieba`；见 [`04`](04-TODO.md) §已归档 |
+| [`52`](52-graphify-rebuild-and-chat-list-optimization.md) | 📋 **P2 计划定案** | **图谱重建 2026-08-17** + `upsertChatListEntry` CL1–CL9；改进计划 §5 · 评估与实施决策 D1–D3 §6 · 见 [`04`](04-TODO.md) §P2 |
 | [`99`](99-android-apk-vision.md) | 💡 **极低优先级** | **Android 单机 APK 设想**：领域层迁移动端、SQLite 替 chunk、Portable Bundle 导入导出；无排期 |
 
 ## 已归档（勿再新建同级文档）

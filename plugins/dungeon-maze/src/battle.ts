@@ -12,16 +12,11 @@ import {
   type InitiativeEntry,
 } from './combat.js'
 import type { DungeonMazeState } from './maze.js'
+import type { DungeonCombatState } from './types.js'
+
+export type { DungeonCombatState } from './types.js'
 
 export const HERO_COMBATANT_ID = 'hero'
-
-export interface DungeonCombatState {
-  initiative: InitiativeEntry[]
-  currentTurn: number
-  combatants: Combatant[]
-  log: CombatLogEntry[]
-  outcome: 'victory' | 'defeat' | null
-}
 
 function createHeroCombatant(catalog: DungeonCatalog): Combatant {
   const weapon = catalog.equipment[0]

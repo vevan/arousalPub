@@ -1,4 +1,4 @@
-import type { DungeonCombatState } from './battle.js'
+import type { DungeonCombatState } from './types.js'
 
 export const MAZE_SIZE = 21
 

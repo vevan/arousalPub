@@ -604,15 +604,6 @@ function preflightNotify(host, e, taskLabel2) {
   host.ui.notify(withTask(host.t(tKey(host, "notifySummarizeFailed"))), void 0, { level: "error" });
 }
 
-// plugins/plot-summary/src/shared/summary-prompt-layout.ts
-var PLOT_SUMMARY_COMPLETE_LAYOUT = {
-  messages: [
-    { role: "system", content: "{{blocks.reference}}" },
-    { role: "user", content: "{{blocks.history}}" },
-    { role: "system", content: "{{plugin.systemPromptTemplate}}" }
-  ]
-};
-
 // plugins/plot-summary/src/state.ts
 var summarizeRunning = false;
 var _reviewResolver = null;
@@ -675,6 +666,112 @@ function getPromptPreviewRestore() {
 function clearPromptPreviewRestore() {
   _promptPreviewRestore = null;
 }
+
+// plugins/plot-summary/src/lorebook-flow.ts
+function refreshAutoSummarizeUi(host) {
+  host.refreshSlotButtons();
+}
+async function isTargetLorebookAvailable(host, lorebookId) {
+  try {
+    await host.lorebook.get(lorebookId);
+    return true;
+  } catch (e) {
+    if (isLorebookNotFoundError(e)) return false;
+    throw e;
+  }
+}
+async function applyRecoveredTargetLorebook(host, lorebookId) {
+  await host.conversation.patchPluginSettings({
+    targetLorebookId: lorebookId,
+    sidecarEntryIds: null
+  });
+}
+async function createTargetLorebookFromTemplate(host, settings) {
+  const ensured = await host.lorebook.ensure({
+    nameTemplate: settings.autoLorebookNameTemplate
+  });
+  const id = asString(ensured?.id);
+  if (!id) {
+    notifyOutcome(host, "notifyAutoLorebookFailed", "error");
+    return "";
+  }
+  const name = ensured.name || id;
+  notifyOutcome(host, "notifyAutoLorebookCreated", "success", { name });
+  await promptBindCreatedLorebook(host, id, name);
+  return id;
+}
+async function promptBindCreatedLorebook(host, lorebookId, lorebookName) {
+  const ok = await host.ui.confirm({
+    title: host.t(tKey(host, "bindLorebookConfirmTitle")),
+    body: host.t(tKey(host, "bindLorebookConfirmBody"), { name: lorebookName }),
+    confirmLabel: host.t(tKey(host, "bindLorebookConfirm")),
+    cancelLabel: host.t(tKey(host, "bindLorebookSkip"))
+  });
+  if (!ok) return;
+  const current = await host.conversation.getLorebookIds();
+  if (current.includes(lorebookId)) return;
+  await host.conversation.patchLorebookIds([...current, lorebookId]);
+  notifyOutcome(host, "notifyLorebookBound", "success", { name: lorebookName });
+}
+async function ensureTargetLorebook(host, settings) {
+  const existing = asString(settings.targetLorebookId);
+  if (existing) {
+    if (await isTargetLorebookAvailable(host, existing)) return existing;
+    host.ui.notify(host.t(tKey(host, "notifyTargetLorebookDeleted")), void 0, { level: "warning" });
+    try {
+      return await promptRecoverLorebook(host, settings);
+    } catch {
+      return "";
+    }
+  }
+  if (settings.targetLorebookMode === "auto") {
+    try {
+      const id = await createTargetLorebookFromTemplate(host, settings);
+      if (!id) return "";
+      await host.conversation.patchPluginSettings({ targetLorebookId: id });
+      return id;
+    } catch {
+      notifyOutcome(host, "notifyAutoLorebookFailed", "error");
+      return "";
+    }
+  }
+  host.ui.notify(host.t(tKey(host, "notifyTargetLorebookMissingWarn")), void 0, { level: "warning" });
+  try {
+    return await promptPickLorebook(host);
+  } catch {
+    return "";
+  }
+}
+function promptPickLorebook(host) {
+  return new Promise((resolve, reject) => {
+    host.ui.clearProgress();
+    setLorebookPickResolver({ resolve, reject });
+    host.openFormDialog(PLUGIN_ID, { targetLorebookId: "" }, DIALOG_PICK_LOREBOOK);
+  });
+}
+function promptRecoverLorebook(host, settings) {
+  return new Promise((resolve, reject) => {
+    host.ui.clearProgress();
+    setLorebookPickResolver({ resolve, reject });
+    host.openFormDialog(
+      PLUGIN_ID,
+      {
+        mode: settings.targetLorebookMode === "auto" ? "create" : "pick",
+        targetLorebookId: ""
+      },
+      DIALOG_RECOVER_LOREBOOK
+    );
+  });
+}
+
+// plugins/plot-summary/src/shared/summary-prompt-layout.ts
+var PLOT_SUMMARY_COMPLETE_LAYOUT = {
+  messages: [
+    { role: "system", content: "{{blocks.reference}}" },
+    { role: "user", content: "{{blocks.history}}" },
+    { role: "system", content: "{{plugin.systemPromptTemplate}}" }
+  ]
+};
 
 // plugins/plot-summary/src/review.ts
 function resolveSystemPrompt(host, settings, opts) {
@@ -1909,80 +2006,6 @@ async function previewManualSummarizePrompt(host, model) {
 }
 
 // plugins/plot-summary/src/dialogs.ts
-function refreshAutoSummarizeUi(host) {
-  host.refreshSlotButtons();
-}
-async function isTargetLorebookAvailable(host, lorebookId) {
-  try {
-    await host.lorebook.get(lorebookId);
-    return true;
-  } catch (e) {
-    if (isLorebookNotFoundError(e)) return false;
-    throw e;
-  }
-}
-async function applyRecoveredTargetLorebook(host, lorebookId) {
-  await host.conversation.patchPluginSettings({
-    targetLorebookId: lorebookId,
-    sidecarEntryIds: null
-  });
-}
-async function createTargetLorebookFromTemplate(host, settings) {
-  const ensured = await host.lorebook.ensure({
-    nameTemplate: settings.autoLorebookNameTemplate
-  });
-  const id = asString(ensured?.id);
-  if (!id) {
-    notifyOutcome(host, "notifyAutoLorebookFailed", "error");
-    return "";
-  }
-  const name = ensured.name || id;
-  notifyOutcome(host, "notifyAutoLorebookCreated", "success", { name });
-  await promptBindCreatedLorebook(host, id, name);
-  return id;
-}
-async function promptBindCreatedLorebook(host, lorebookId, lorebookName) {
-  const ok = await host.ui.confirm({
-    title: host.t(tKey(host, "bindLorebookConfirmTitle")),
-    body: host.t(tKey(host, "bindLorebookConfirmBody"), { name: lorebookName }),
-    confirmLabel: host.t(tKey(host, "bindLorebookConfirm")),
-    cancelLabel: host.t(tKey(host, "bindLorebookSkip"))
-  });
-  if (!ok) return;
-  const current = await host.conversation.getLorebookIds();
-  if (current.includes(lorebookId)) return;
-  await host.conversation.patchLorebookIds([...current, lorebookId]);
-  notifyOutcome(host, "notifyLorebookBound", "success", { name: lorebookName });
-}
-async function ensureTargetLorebook(host, settings) {
-  const existing = asString(settings.targetLorebookId);
-  if (existing) {
-    if (await isTargetLorebookAvailable(host, existing)) return existing;
-    host.ui.notify(host.t(tKey(host, "notifyTargetLorebookDeleted")), void 0, { level: "warning" });
-    try {
-      return await promptRecoverLorebook(host, settings);
-    } catch {
-      return "";
-    }
-  }
-  if (settings.targetLorebookMode === "auto") {
-    try {
-      const id = await createTargetLorebookFromTemplate(host, settings);
-      if (!id) return "";
-      await host.conversation.patchPluginSettings({ targetLorebookId: id });
-      return id;
-    } catch {
-      notifyOutcome(host, "notifyAutoLorebookFailed", "error");
-      return "";
-    }
-  }
-  host.ui.notify(host.t(tKey(host, "notifyTargetLorebookMissingWarn")), void 0, { level: "warning" });
-  try {
-    return await promptPickLorebook(host);
-  } catch {
-    return "";
-  }
-}
 function buildSummarizeTaskOptions(host, settings, opts) {
   const options = [
     {
@@ -2098,27 +2121,6 @@ function registerRecoverLorebookDialog(host) {
     },
     DIALOG_RECOVER_LOREBOOK
   );
-}
-function promptPickLorebook(host) {
-  return new Promise((resolve, reject) => {
-    host.ui.clearProgress();
-    setLorebookPickResolver({ resolve, reject });
-    host.openFormDialog(PLUGIN_ID, { targetLorebookId: "" }, DIALOG_PICK_LOREBOOK);
-  });
-}
-function promptRecoverLorebook(host, settings) {
-  return new Promise((resolve, reject) => {
-    host.ui.clearProgress();
-    setLorebookPickResolver({ resolve, reject });
-    host.openFormDialog(
-      PLUGIN_ID,
-      {
-        mode: settings.targetLorebookMode === "auto" ? "create" : "pick",
-        targetLorebookId: ""
-      },
-      DIALOG_RECOVER_LOREBOOK
-    );
-  });
 }
 function registerSessionDialog(host, settings) {
   const fields = [

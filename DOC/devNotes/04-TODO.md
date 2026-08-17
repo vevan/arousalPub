@@ -20,6 +20,9 @@
 - [ ] **地下城迷宫插件** — 5e 简易战斗、Canvas、**branchPath 隔离 state**、**战斗中 composer hold**、**进迷宫读迹录六维 / 战后 LLM 写回 TK**、catalog + HTML 编辑器、**`importBundle` + catalog-manifest**、叙事写入主对话的**插件区块**。见 `[DOC/devNotes/50](50-plugin-dungeon-maze-vision.md)` §3.4.5 · §3.5.1 · §3.7
 - [ ] **宿主 `host.assets.importBundle`** — zip → 临时目录完整解压/校验 → 整体替换 `assets/{bundleId}/` + **`onBundleImported`**；配套 `user-assets` 子路径 GET。见 `[DOC/devNotes/09](09-plugin-system-and-guidance-generate.md)` §8.8
 - [ ] **宿主对话流插件区块** — 通用第三类区块（非 user / assistant）；用于展示插件产出，默认不进 prompt。见 `[DOC/devNotes/09](09-plugin-system-and-guidance-generate.md)` §5.7
+- [x] **chat.index 列表写放大 / 正确性（CL1–CL9）** — **M0–M4 已实现**（2026-08-17 · `chat-list-store.ts` · 单测 `chat-list-file-lock`）；定案见 `[DOC/devNotes/52](52-graphify-rebuild-and-chat-list-optimization.md)` §5–§6
+- [x] **plugins 2-file import cycle（3 组）** — `trace-keeper` `trace-state-resolve`↔`turn-view-segment`、`plot-summary` `dialogs`↔`pipeline`、`dungeon-maze` `battle`↔`maze` 已于 2026-08-17 全部打断（dungeon-maze / trace-keeper 下沉 `types.ts`，plot-summary 拆 `lorebook-flow.ts`）。见 `[DOC/devNotes/52](52-graphify-rebuild-and-chat-list-optimization.md)` §1 · §6.5
+- [x] **清理旧 server 图谱目录** — `server/graphify-out/`（08-05 旧图）已于 2026-08-17 删除；新 server 图在仓库根 `graphify-out/`。见 `[DOC/devNotes/52](52-graphify-rebuild-and-chat-list-optimization.md)` §4
 
 > ST 导入 Tab / 世界书 / 聊天记录 / M3 回归已关闭，见下方 **§文档**（2026-06～07 · `[DOC/devNotes/37](37-st-import-settings-tab.md)`）。
 

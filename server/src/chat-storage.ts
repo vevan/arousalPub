@@ -6,6 +6,12 @@ import {
   type AuthorsNoteSettings,
 } from './authors-note-settings.js'
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  chatListEntryFromIndex,
+  removeChatListEntry,
+  updateConversationIndexAndList,
+  upsertChatListEntry,
+} from './chat-list-store.js'
 import path from 'node:path'
 import { getChatsRoot } from './config.js'
 import { normalizeBranchPath, chunkStorageRelativePath } from './chunk-path.js'
@@ -174,41 +180,24 @@ export {
   writeConversationIndex,
   writeConversationIndexUnsafe,
 } from './chat-storage-io.js'
+export type {
+  ChatListEntry,
+  ChatListFile,
+  ChatListTurnStats,
+} from './chat-list-store.js'
+export {
+  chatListEntryFromIndex,
+  readChatList,
+  reconcileChatListWithDisk,
+  refreshChatListEntriesForCharacter,
+  syncChatListConversationStats,
+  upsertChatListEntry,
+  upsertChatListEntries,
+  updateConversationIndexAndList,
+} from './chat-list-store.js'
 
 
-function chatListFile(): string {
-  return path.join(getChatsRoot(), 'chat.index.json')
-}
 
-export interface ChatListEntry {
-  conversationId: string
-  title: string
-  updatedAt: string
-  /** 用户 persona 卡 id；组装时注入 `<user>` 块，宏仍用 userName 快照 */
-  userCharacterId?: string
-  /** 会话绑定的多张角色卡 id，顺序即主槽 {{char}}、次槽 {{char2}}… */
-  characterIds?: string[]
-  /** 对话级提示词预设 id；缺省则客户端用全局激活预设 */
-  promptPresetId?: string | null
-  /** 世界书 id 列表（占位） */
-  lorebookIds?: string[]
-  activeBranchPath?: string | null
-  /** 宏 {{user}} 快照；来自会话根 index.json */
-  userName?: string
-  /** 与 characterIds 同序；卡已删时为「已删除」 */
-  characterNames?: string[]
-  /** 绑定卡 + user persona 的 tags 去重合并，供列表快查 */
-  searchTags?: string[]
-  /** 当前 active 分支路径上的总轮数（含 fork 前缀） */
-  activeTurnCount?: number
-  /** active 路径末轮 createdAt（最近发消息时刻）；无轮次则无此字段 */
-  lastChatAt?: string
-}
-
-export interface ChatListFile {
-  schemaVersion: 1
-  conversations: ChatListEntry[]
-}
 
 
 export interface BatchTurnUpdateResult {
@@ -388,13 +377,11 @@ async function batchUpdateConversationTurnsUnsafe(
   let memoryEmbedsQueued = 0
   if (ok > 0) {
     const t = nowIso()
-    const idx = await mutateConversationIndex(conversationId, (fresh) => {
+    // CL8 收尾：统一走组合 API（mutate + upsert 一次完成）
+    await updateConversationIndexAndList(conversationId, (fresh) => {
       fresh.updatedAt = t
       return fresh
     })
-    if (idx) {
-      await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
-    }
     for (const branchPath of touchedBranchPaths) {
       if (!branchPath) continue
       await mutateBranchConversationIndex(conversationId, branchPath, (fresh) => {
@@ -433,43 +420,6 @@ export function batchUpdateConversationTurns(
   )
 }
 
-export function chatListEntryFromIndex(idx: ConversationIndex): ChatListEntry {
-  const ids = resolvedCharacterIds(idx)
-  const lb = idx.lorebookIds
-  const lorebookIds = Array.isArray(lb)
-    ? lb.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
-    : []
-  return {
-    conversationId: idx.conversationId,
-    title: idx.title,
-    updatedAt: idx.updatedAt,
-    ...(typeof idx.userCharacterId === 'string' && idx.userCharacterId.trim()
-      ? { userCharacterId: idx.userCharacterId.trim() }
-      : {}),
-    ...(typeof idx.userName === 'string' && idx.userName.trim()
-      ? { userName: idx.userName.trim() }
-      : {}),
-    characterIds: ids.length > 0 ? ids : undefined,
-    ...(typeof idx.promptPresetId === 'string' && idx.promptPresetId.trim()
-      ? { promptPresetId: idx.promptPresetId.trim() }
-      : {}),
-    ...(lorebookIds.length > 0 ? { lorebookIds } : {}),
-    ...(function activeBranchListField():
-      | { activeBranchPath: string }
-      | { activeBranchPath: null }
-      | Record<string, never> {
-      if (idx.activeBranchPath === null) return { activeBranchPath: null }
-      if (typeof idx.activeBranchPath !== 'string' || !idx.activeBranchPath.trim()) {
-        return {}
-      }
-      try {
-        return { activeBranchPath: normalizeBranchPath(idx.activeBranchPath) }
-      } catch {
-        return {}
-      }
-    })(),
-  }
-}
 
 export async function updateConversationUserCharacterId(
   conversationId: string,
@@ -784,7 +734,7 @@ export async function removeKnowledgeBaseIdFromAllConversations(
 ): Promise<number> {
   const id = typeof kbId === 'string' ? kbId.trim() : ''
   if (!id) return 0
-  await ensureChatRoot()
+  await mkdir(getChatsRoot(), { recursive: true })
   let entries
   try {
     entries = await readdir(getChatsRoot(), { withFileTypes: true })
@@ -1103,7 +1053,7 @@ export async function updateConversationAuditDebug(
   const enabled = auditDebug.enabled === true
   const clamped = Math.min(200, Math.max(0, Math.floor(auditDebug.maxStored)))
   const maxStored = enabled && clamped >= 1 ? clamped : clamped
-  const idx = await mutateConversationIndex(conversationId, (cur) => {
+  const idx = await updateConversationIndexAndList(conversationId, (cur) => {
     cur.auditDebug = {
       enabled,
       maxStored: maxStored >= 1 ? maxStored : DEFAULT_AUDIT_DEBUG_MAX,
@@ -1115,244 +1065,9 @@ export async function updateConversationAuditDebug(
   if (enabled && maxStored >= 1) {
     await trimChatAuditEntries(conversationId, maxStored)
   }
-  await upsertChatListEntry(chatListEntryFromIndex(idx), idx)
   return idx
 }
 
-async function ensureChatRoot(): Promise<void> {
-  await mkdir(getChatsRoot(), { recursive: true })
-}
-
-/** 串行化 chat.index.json 读-改-写，避免并发 enrich / upsert 互相覆盖 */
-let chatListFileLock: Promise<void> = Promise.resolve()
-
-function withChatListFileLock<T>(fn: () => Promise<T>): Promise<T> {
-  const run = chatListFileLock.then(fn)
-  chatListFileLock = run.then(
-    () => undefined,
-    () => undefined,
-  )
-  return run
-}
-
-async function readChatListRaw(): Promise<ChatListFile> {
-  try {
-    const raw = await readFile(chatListFile(), 'utf8')
-    const j = JSON.parse(raw) as ChatListFile
-    if (!j || j.schemaVersion !== 1 || !Array.isArray(j.conversations)) {
-      return { schemaVersion: 1, conversations: [] }
-    }
-    return j
-  } catch {
-    return { schemaVersion: 1, conversations: [] }
-  }
-}
-
-async function writeChatListUnsafe(data: ChatListFile): Promise<void> {
-  await ensureChatRoot()
-  await writeFile(chatListFile(), JSON.stringify(data, null, 2), 'utf8')
-}
-
-/**
- * `chats/{id}/index.json` 存在但 `chat.index.json` 缺条目时补写（Syncthing 冲突、历史 bug 等）。
- * 须在 {@link withChatListFileLock} 内调用，或使用导出的包装函数。
- */
-async function reconcileChatListWithDiskUnsafe(): Promise<boolean> {
-  const list = await readChatListRaw()
-  const known = new Set(
-    list.conversations.map((c) => c.conversationId).filter(Boolean),
-  )
-  await ensureChatRoot()
-  let entries
-  try {
-    entries = await readdir(getChatsRoot(), { withFileTypes: true })
-  } catch {
-    return false
-  }
-  const { enrichChatListEntry } = await import('./character-storage.js')
-  let dirty = false
-  for (const ent of entries) {
-    if (!ent.isDirectory()) continue
-    const id = String(ent.name)
-    if (!isValidConversationId(id) || known.has(id)) continue
-    const idx = await readConversationIndex(id)
-    if (!idx) continue
-    list.conversations.push(
-      await enrichChatListEntry(chatListEntryFromIndex(idx), idx),
-    )
-    known.add(id)
-    dirty = true
-  }
-  if (!dirty) return false
-  list.conversations.sort((a, b) =>
-    b.updatedAt.localeCompare(a.updatedAt, 'en'),
-  )
-  await writeChatListUnsafe(list)
-  return true
-}
-
-export async function reconcileChatListWithDisk(): Promise<boolean> {
-  return withChatListFileLock(() => reconcileChatListWithDiskUnsafe())
-}
-
-export async function readChatList(): Promise<ChatListFile> {
-  return withChatListFileLock(async () => {
-    await reconcileChatListWithDiskUnsafe()
-    const list = await readChatListRaw()
-    const {
-      chatListEntryNeedsEnrich,
-      enrichChatListEntry,
-    } = await import('./character-storage.js')
-    const pending: { index: number; entry: ChatListEntry }[] = []
-    for (let i = 0; i < list.conversations.length; i++) {
-      const c = list.conversations[i]!
-      if (chatListEntryNeedsEnrich(c)) pending.push({ index: i, entry: c })
-    }
-    if (pending.length > 0) {
-      const enriched = await Promise.all(
-        pending.map(({ entry }) => enrichChatListEntry(entry)),
-      )
-      for (let j = 0; j < pending.length; j++) {
-        list.conversations[pending[j]!.index] = enriched[j]!
-      }
-      await writeChatListUnsafe(list)
-    }
-    return list
-  })
-}
-
-/** 角色卡元数据变更后，刷新引用该 id 的列表项快查字段 */
-export async function refreshChatListEntriesForCharacter(
-  characterId: string,
-): Promise<void> {
-  const cid = characterId.trim()
-  if (!cid) return
-  await withChatListFileLock(async () => {
-    const { enrichChatListEntry } = await import('./character-storage.js')
-    const list = await readChatListRaw()
-    const pending: { index: number; entry: ChatListEntry }[] = []
-    for (let i = 0; i < list.conversations.length; i++) {
-      const c = list.conversations[i]!
-      const ids = resolvedCharacterIds(c)
-      const userCid =
-        typeof c.userCharacterId === 'string' && c.userCharacterId.trim()
-          ? c.userCharacterId.trim()
-          : ''
-      if (!ids.includes(cid) && userCid !== cid) continue
-      pending.push({ index: i, entry: c })
-    }
-    if (pending.length === 0) return
-    const enriched = await Promise.all(
-      pending.map(async ({ entry }) => {
-        const idx = await readConversationIndex(entry.conversationId)
-        return enrichChatListEntry(entry, idx ?? undefined)
-      }),
-    )
-    for (let j = 0; j < pending.length; j++) {
-      list.conversations[pending[j]!.index] = enriched[j]!
-    }
-    await writeChatListUnsafe(list)
-  })
-}
-
-/** 刷新列表项中的 active 分支轮数与最近对话时刻 */
-export async function syncChatListConversationStats(
-  conversationId: string,
-): Promise<void> {
-  await withChatListFileLock(async () => {
-    const list = await readChatListRaw()
-    const i = list.conversations.findIndex(
-      (c) => c.conversationId === conversationId,
-    )
-    if (i < 0) return
-    const prev = list.conversations[i]!
-    let count = typeof prev.activeTurnCount === 'number' ? prev.activeTurnCount : 0
-    let lastChatAt: string | null = prev.lastChatAt?.trim() || null
-    try {
-      const { listLastChatAtFromStats } = await import('./character-storage.js')
-      const stats = await resolveActivePathConversationStats(conversationId)
-      count = stats.turnCount
-      lastChatAt = listLastChatAtFromStats(stats, prev.updatedAt) ?? null
-    } catch {
-      // 保留 prev 统计，避免 transient 错误覆盖有效值
-    }
-    const nextLast = lastChatAt?.trim() || null
-    if (prev.activeTurnCount === count && (prev.lastChatAt ?? null) === nextLast) {
-      return
-    }
-    const { lastChatAt: _prevLast, ...base } = prev
-    list.conversations[i] = {
-      ...base,
-      activeTurnCount: count,
-      ...(nextLast ? { lastChatAt: nextLast } : {}),
-    }
-    await writeChatListUnsafe(list)
-  })
-}
-
-export async function upsertChatListEntry(
-  entry: ChatListEntry,
-  source?: ConversationIndex,
-  options?: { refreshConversationStats?: boolean },
-): Promise<void> {
-  const { enrichChatListEntry, listLastChatAtFromStats } = await import(
-    './character-storage.js'
-  )
-  await withChatListFileLock(async () => {
-    await reconcileChatListWithDiskUnsafe()
-    const list = await readChatListRaw()
-    const existing = list.conversations.find(
-      (c) => c.conversationId === entry.conversationId,
-    )
-    let merged: ChatListEntry = {
-      ...entry,
-      activeTurnCount: entry.activeTurnCount ?? existing?.activeTurnCount,
-      lastChatAt: entry.lastChatAt ?? existing?.lastChatAt,
-    }
-    if (options?.refreshConversationStats) {
-      try {
-        const stats = await resolveActivePathConversationStats(
-          merged.conversationId,
-        )
-        const { lastChatAt: _drop, ...withoutLast } = merged
-        const resolvedLast = listLastChatAtFromStats(stats, merged.updatedAt)
-        merged = {
-          ...withoutLast,
-          activeTurnCount: stats.turnCount,
-          ...(resolvedLast ? { lastChatAt: resolvedLast } : {}),
-        }
-      } catch {
-        // 保留 merged 已有统计
-      }
-    }
-    const enriched = await enrichChatListEntry(merged, source)
-    const i = list.conversations.findIndex(
-      (c) => c.conversationId === enriched.conversationId,
-    )
-    if (i >= 0) list.conversations[i] = enriched
-    else list.conversations.unshift(enriched)
-    list.conversations.sort((a, b) =>
-      b.updatedAt.localeCompare(a.updatedAt, 'en'),
-    )
-    await writeChatListUnsafe(list)
-  })
-}
-
-async function updateConversationIndexAndList(
-  conversationId: string,
-  mutator: (
-    idx: ConversationIndex,
-  ) =>
-    | ConversationIndex
-    | null
-    | Promise<ConversationIndex | null>,
-  listOpts?: { refreshConversationStats?: boolean },
-): Promise<ConversationIndex | null> {
-  const next = await mutateConversationIndex(conversationId, mutator)
-  if (!next) return null
-  await upsertChatListEntry(chatListEntryFromIndex(next), next, listOpts)
-  return next
-}
 
 /** 仅更新 macroLocalVars（读-改-写单字段，降低并发覆盖其它索引字段的风险） */
 export async function patchConversationMacroLocalVars(
@@ -1459,18 +1174,22 @@ export async function saveOpeningTurn(params: {
   await writeChunkFile(conversationId, firstChunkFile, chunk)
 
   const t = nowIso()
-  const written = await mutateConversationIndex(conversationId, (fresh) => {
-    if (fresh.headChunkFile) return null
-    fresh.headChunkFile = firstChunkFile
-    fresh.tailChunkFile = firstChunkFile
-    fresh.updatedAt = t
-    return fresh
-  })
+  // CL8 收尾：统一走组合 API（含 turnStats 首写统计）
+  const written = await updateConversationIndexAndList(
+    conversationId,
+    (fresh) => {
+      if (fresh.headChunkFile) return null
+      fresh.headChunkFile = firstChunkFile
+      fresh.tailChunkFile = firstChunkFile
+      fresh.updatedAt = t
+      return fresh
+    },
+    {
+      turnStats: { turnCount: 1, lastChatAt: turnCreatedAt },
+    },
+  )
   if (!written) return null
   idx = written
-  await upsertChatListEntry(chatListEntryFromIndex(idx), idx, {
-    refreshConversationStats: true,
-  })
   return { index: idx, chunk }
 }
 
@@ -1581,6 +1300,7 @@ export async function openConversationImportSession(params: {
   const cap = chunkSettings.turnsPerFile
 
   let turnCount = 0
+  let lastTurnCreatedAt: string | null = null
   let buffer: TurnRecord[] = []
   const writtenChunkFiles: string[] = []
   let headChunkFile: string | null = null
@@ -1656,7 +1376,9 @@ export async function openConversationImportSession(params: {
       return turnCount
     },
     async appendTurn(item: ImportedTurnBatchItem): Promise<void> {
-      buffer.push(buildTurnRecordFromImportedItem(item, speaker, used))
+      const record = buildTurnRecordFromImportedItem(item, speaker, used)
+      buffer.push(record)
+      lastTurnCreatedAt = record.createdAt ?? null
       turnCount++
       if (buffer.length >= cap) {
         await flushBuffer()
@@ -1683,27 +1405,27 @@ export async function openConversationImportSession(params: {
         const t = nowIso()
         let writtenIdx: ConversationIndex
         try {
-          const written = await mutateConversationIndex(conversationId, (cur) => {
-            if (cur.headChunkFile) return null
-            cur.headChunkFile = headChunkFile
-            cur.tailChunkFile = tailChunkFile
-            cur.updatedAt = t
-            return cur
-          })
+          // CL8：mutate + list 组合；upsert 失败仍需 restoreEmpty（index 已写入）
+          const written = await updateConversationIndexAndList(
+            conversationId,
+            (cur) => {
+              if (cur.headChunkFile) return null
+              cur.headChunkFile = headChunkFile
+              cur.tailChunkFile = tailChunkFile
+              cur.updatedAt = t
+              return cur
+            },
+            {
+              // CL5：导入已知总轮数与末轮 createdAt（空会话导入，active 路径即主路径）
+              turnStats: { turnCount, lastChatAt: lastTurnCreatedAt },
+            },
+          )
           if (!written) {
             await rollbackWritten()
             throw new Error('conversation no longer empty')
           }
           writtenIdx = written
           invalidateChunkIndexSyncCache(conversationId)
-        } catch (e) {
-          await rollbackWritten()
-          throw e
-        }
-        try {
-          await upsertChatListEntry(chatListEntryFromIndex(writtenIdx), writtenIdx, {
-            refreshConversationStats: true,
-          })
         } catch (e) {
           await restoreEmptyConversationIndex(savedHead, savedTail, savedUpdatedAt)
           await rollbackWritten()
@@ -1758,14 +1480,7 @@ export async function deleteConversation(
     return false
   }
   void wipeConversationMemoryIndex(conversationId).catch(() => {})
-  await withChatListFileLock(async () => {
-    await reconcileChatListWithDiskUnsafe()
-    const list = await readChatListRaw()
-    list.conversations = list.conversations.filter(
-      (c) => c.conversationId !== conversationId,
-    )
-    await writeChatListUnsafe(list)
-  })
+  await removeChatListEntry(conversationId)
   return true
 }
 
@@ -1856,6 +1571,7 @@ export async function removeTurnAtOrdinalInTailChunk(
       idx.tailChunkFile = null
     }
     idx.updatedAt = t
+    const listOpts = { refreshConversationStats: true as const }
     if (bp) {
       await mutateBranchConversationIndex(conversationId, bp, (fresh) => {
         if (previousFile) {
@@ -1870,32 +1586,35 @@ export async function removeTurnAtOrdinalInTailChunk(
         fresh.updatedAt = t
         return fresh
       })
-      await mutateConversationIndex(conversationId, (fresh) => {
-        fresh.updatedAt = t
-        return fresh
-      })
+      // CL8：根 index 触 updatedAt + 列表
+      await updateConversationIndexAndList(
+        conversationId,
+        (fresh) => {
+          fresh.updatedAt = t
+          return fresh
+        },
+        listOpts,
+      )
     } else {
-      await mutateConversationIndex(conversationId, (fresh) => {
-        if (previousFile) {
-          fresh.tailChunkFile = previousFile
-          if (fresh.headChunkFile === tailFileName) {
-            fresh.headChunkFile = previousFile
+      await updateConversationIndexAndList(
+        conversationId,
+        (fresh) => {
+          if (previousFile) {
+            fresh.tailChunkFile = previousFile
+            if (fresh.headChunkFile === tailFileName) {
+              fresh.headChunkFile = previousFile
+            }
+          } else {
+            fresh.headChunkFile = null
+            fresh.tailChunkFile = null
           }
-        } else {
-          fresh.headChunkFile = null
-          fresh.tailChunkFile = null
-        }
-        fresh.updatedAt = t
-        return fresh
-      })
+          fresh.updatedAt = t
+          return fresh
+        },
+        listOpts,
+      )
     }
     invalidateChunkIndexSyncCache(conversationId)
-    const rootIdx = await readConversationIndex(conversationId)
-    if (rootIdx) {
-      await upsertChatListEntry(chatListEntryFromIndex(rootIdx), rootIdx, {
-        refreshConversationStats: true,
-      })
-    }
     if (victimTurnId) {
       void removeChatAuditEntriesByTurnId(conversationId, victimTurnId)
       scheduleMemoryIndexDelete(conversationId, victimTurnId)
@@ -1910,26 +1629,29 @@ export async function removeTurnAtOrdinalInTailChunk(
   }
 
   await writeChunkFile(conversationId, storagePath, chunk)
+  const listOpts = { refreshConversationStats: true as const }
   if (bp) {
     await mutateBranchConversationIndex(conversationId, bp, (fresh) => {
       fresh.updatedAt = t
       return fresh
     })
-    await mutateConversationIndex(conversationId, (fresh) => {
-      fresh.updatedAt = t
-      return fresh
-    })
+    await updateConversationIndexAndList(
+      conversationId,
+      (fresh) => {
+        fresh.updatedAt = t
+        return fresh
+      },
+      listOpts,
+    )
   } else {
-    await mutateConversationIndex(conversationId, (fresh) => {
-      fresh.updatedAt = t
-      return fresh
-    })
-  }
-  const rootIdx = await readConversationIndex(conversationId)
-  if (rootIdx) {
-    await upsertChatListEntry(chatListEntryFromIndex(rootIdx), rootIdx, {
-      refreshConversationStats: true,
-    })
+    await updateConversationIndexAndList(
+      conversationId,
+      (fresh) => {
+        fresh.updatedAt = t
+        return fresh
+      },
+      listOpts,
+    )
   }
   if (victimTurnId) {
     void removeChatAuditEntriesByTurnId(conversationId, victimTurnId)

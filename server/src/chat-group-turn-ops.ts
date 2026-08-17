@@ -35,16 +35,12 @@ import type {
 } from './chat-turn-types.js'
 import {
   conversationDir,
-  mutateConversationIndex,
   readConversationIndex,
   resolvedCharacterIds,
   mutateBranchConversationIndex,
   writeChunkFile,
 } from './chat-storage-io.js'
-import {
-  chatListEntryFromIndex,
-  upsertChatListEntry,
-} from './chat-storage.js'
+import { updateConversationIndexAndList } from './chat-storage.js'
 import {
   initGroupChatTurnState,
   normalizeGroupChatSettings,
@@ -247,18 +243,22 @@ export async function saveFirstTurn(params: {
   await writeChunkFile(conversationId, firstChunkFile, chunk)
 
   const t = nowIso()
-  const written = await mutateConversationIndex(conversationId, (fresh) => {
-    if (fresh.headChunkFile) return null
-    fresh.headChunkFile = firstChunkFile
-    fresh.tailChunkFile = firstChunkFile
-    fresh.updatedAt = t
-    return fresh
-  })
+  // CL8 收尾：统一走组合 API（含 turnStats 首写统计）
+  const written = await updateConversationIndexAndList(
+    conversationId,
+    (fresh) => {
+      if (fresh.headChunkFile) return null
+      fresh.headChunkFile = firstChunkFile
+      fresh.tailChunkFile = firstChunkFile
+      fresh.updatedAt = t
+      return fresh
+    },
+    {
+      turnStats: { turnCount: 1, lastChatAt: turn.createdAt ?? null },
+    },
+  )
   if (!written) return null
   idx = written
-  await upsertChatListEntry(chatListEntryFromIndex(idx), idx, {
-    refreshConversationStats: true,
-  })
 
   /** 对话落盘成功后再写快照；无有效 messages 或索引关闭写入时不落盘 */
   if (auditSnapshot !== undefined) {
@@ -407,6 +407,13 @@ export async function appendConversationTurn(params: {
   const storagePath = chunkStorageRelativePath(branchPath, chunkName)
   await writeChunkFile(conversationId, storagePath, chunk)
   const t = nowIso()
+  // CL5：追加到 active 路径用写事件增量（+1）；否则回退全量扫描
+  const appendingToActive =
+    branchPath ===
+    normalizeBranchPath(rootIdxForSpeaker?.activeBranchPath ?? '')
+  const listOpts = appendingToActive
+    ? { turnStats: { appendedTurnCount: 1, lastChatAt: turnCreatedAt } }
+    : { refreshConversationStats: true }
   if (branchPath) {
     await mutateBranchConversationIndex(
       conversationId,
@@ -420,27 +427,30 @@ export async function appendConversationTurn(params: {
         return fresh
       },
     )
-    await mutateConversationIndex(conversationId, (fresh) => {
-      fresh.updatedAt = t
-      return fresh
-    })
+    // CL8：根 index 仅触 updatedAt + 列表，走组合 API
+    await updateConversationIndexAndList(
+      conversationId,
+      (fresh) => {
+        fresh.updatedAt = t
+        return fresh
+      },
+      listOpts,
+    )
   } else {
-    await mutateConversationIndex(conversationId, (fresh) => {
-      if (prepared.isNewBranchChunk || !fresh.headChunkFile) {
-        fresh.headChunkFile = chunkName
-      }
-      fresh.tailChunkFile = chunkName
-      fresh.updatedAt = t
-      return fresh
-    })
+    await updateConversationIndexAndList(
+      conversationId,
+      (fresh) => {
+        if (prepared.isNewBranchChunk || !fresh.headChunkFile) {
+          fresh.headChunkFile = chunkName
+        }
+        fresh.tailChunkFile = chunkName
+        fresh.updatedAt = t
+        return fresh
+      },
+      listOpts,
+    )
   }
   invalidateChunkIndexSyncCache(conversationId)
-  const rootIdx = await readConversationIndex(conversationId)
-  if (rootIdx) {
-    await upsertChatListEntry(chatListEntryFromIndex(rootIdx), rootIdx, {
-      refreshConversationStats: true,
-    })
-  }
   if (auditSnapshot !== undefined) {
     finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
     const idxForAudit = await readConversationIndex(conversationId)
@@ -591,13 +601,10 @@ export async function appendSegmentToTurn(params: {
   const storagePath = chunkStorageRelativePath(branchPath, chunkName)
   await writeChunkFile(conversationId, storagePath, chunk)
   const t = nowIso()
-  const touched = await mutateConversationIndex(conversationId, (fresh) => {
+  await updateConversationIndexAndList(conversationId, (fresh) => {
     fresh.updatedAt = t
     return fresh
   })
-  if (touched) {
-    await upsertChatListEntry(chatListEntryFromIndex(touched), touched)
-  }
   if (auditSnapshot !== undefined) {
     finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
     const idxForAudit = await readConversationIndex(conversationId)
@@ -655,13 +662,10 @@ export async function mergeTurnPluginEntriesAtOrdinal(
     chunkStorageRelativePath(branchPath, chunkName),
     chunk,
   )
-  const touched = await mutateConversationIndex(conversationId, (fresh) => {
+  await updateConversationIndexAndList(conversationId, (fresh) => {
     fresh.updatedAt = nowIso()
     return fresh
   })
-  if (touched) {
-    await upsertChatListEntry(chatListEntryFromIndex(touched), touched)
-  }
   return 'ok'
 }
 
@@ -708,13 +712,10 @@ export async function updateTurnContentInTailChunk(
   const storagePath = chunkStorageRelativePath(branchPath, chunkName)
   await writeChunkFile(conversationId, storagePath, chunk)
   const t = nowIso()
-  const touched = await mutateConversationIndex(conversationId, (fresh) => {
+  await updateConversationIndexAndList(conversationId, (fresh) => {
     fresh.updatedAt = t
     return fresh
   })
-  if (touched) {
-    await upsertChatListEntry(chatListEntryFromIndex(touched), touched)
-  }
   if (auditSnapshot !== undefined) {
     finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
     const idxForAudit = await readConversationIndex(conversationId)
@@ -833,13 +834,10 @@ export async function updateTurnSegmentInTailChunk(
   const storagePath = chunkStorageRelativePath(branchPath, chunkName)
   await writeChunkFile(conversationId, storagePath, chunk)
   const t = nowIso()
-  const touched = await mutateConversationIndex(conversationId, (fresh) => {
+  await updateConversationIndexAndList(conversationId, (fresh) => {
     fresh.updatedAt = t
     return fresh
   })
-  if (touched) {
-    await upsertChatListEntry(chatListEntryFromIndex(touched), touched)
-  }
   if (auditSnapshot !== undefined) {
     finalizeAuditPersistDiskMs(auditSnapshot, auditStorageStartedAt)
     const idxForAudit = await readConversationIndex(conversationId)

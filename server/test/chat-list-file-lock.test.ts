@@ -216,4 +216,115 @@ describe('chat.index.json write lock', () => {
     }
     assert.ok(doc.conversations.some((c) => c.conversationId === 'ccc33333'))
   })
+
+  it('CL5: missing list baseline uses disk absolute count, not 0+delta', async () => {
+    const {
+      createConversationStub,
+      importTurnsToEmptyConversation,
+      upsertChatListEntry,
+      readChatList,
+    } = await import('../src/chat-storage.js')
+    const convId = 'd15c0001'
+    await createConversationStub(convId, 'baseline-miss')
+    const imported = await importTurnsToEmptyConversation({
+      conversationId: convId,
+      speakerCharacterId: 'char0001',
+      turns: [
+        {
+          turnOrdinal: 0,
+          userText: 'u0',
+          receives: [{ id: '', content: 'a0' }],
+          activeReceiveIndex: 0,
+          createdAt: '2026-01-10T00:00:00.000Z',
+        },
+        {
+          turnOrdinal: 1,
+          userText: 'u1',
+          receives: [{ id: '', content: 'a1' }],
+          activeReceiveIndex: 0,
+          createdAt: '2026-01-10T00:01:00.000Z',
+        },
+        {
+          turnOrdinal: 2,
+          userText: 'u2',
+          receives: [{ id: '', content: 'a2' }],
+          activeReceiveIndex: 0,
+          createdAt: '2026-01-10T00:02:00.000Z',
+        },
+      ],
+    })
+    assert.equal(imported?.turnCount, 3)
+
+    const listPath = path.join(tmp, TEST_USER, 'chats', 'chat.index.json')
+    const raw = JSON.parse(await readFile(listPath, 'utf8')) as {
+      schemaVersion: 1
+      conversations: Array<Record<string, unknown>>
+    }
+    const row = raw.conversations.find((c) => c.conversationId === convId)
+    assert.ok(row)
+    delete row.activeTurnCount
+    delete row.lastChatAt
+    await writeFile(listPath, JSON.stringify(raw, null, 2), 'utf8')
+
+    await upsertChatListEntry(
+      {
+        conversationId: convId,
+        title: 'baseline-miss',
+        updatedAt: '2026-01-10T00:03:00.000Z',
+      },
+      undefined,
+      {
+        turnStats: {
+          appendedTurnCount: 1,
+          lastChatAt: '2026-01-10T00:03:00.000Z',
+        },
+      },
+    )
+    const list = await readChatList()
+    const e = list.conversations.find((c) => c.conversationId === convId)
+    assert.equal(e?.activeTurnCount, 3)
+    assert.equal(e?.lastChatAt, '2026-01-10T00:03:00.000Z')
+  })
+
+  it('CL6: metadata upsert preserves fresher prev turn stats', async () => {
+    const { mergeEnrichedChatListEntry } = await import('../src/chat-storage.js')
+    const enriched = {
+      conversationId: 'c1600001',
+      title: 'renamed',
+      updatedAt: '2026-01-11T01:00:00.000Z',
+      activeTurnCount: 4,
+      lastChatAt: '2026-01-11T00:00:00.000Z',
+    }
+    const prev = {
+      conversationId: 'c1600001',
+      title: 'old',
+      updatedAt: '2026-01-11T00:30:00.000Z',
+      activeTurnCount: 9,
+      lastChatAt: '2026-01-11T00:45:00.000Z',
+    }
+    const merged = mergeEnrichedChatListEntry(enriched, prev, undefined)
+    assert.equal(merged.title, 'renamed')
+    assert.equal(merged.updatedAt, '2026-01-11T01:00:00.000Z')
+    assert.equal(merged.activeTurnCount, 9)
+    assert.equal(merged.lastChatAt, '2026-01-11T00:45:00.000Z')
+  })
+
+  it('CL6: turnStats without prev baseline keeps enriched absolute count', async () => {
+    const { mergeEnrichedChatListEntry } = await import('../src/chat-storage.js')
+    const enriched = {
+      conversationId: 'c1600002',
+      title: 't',
+      updatedAt: '2026-01-11T02:00:00.000Z',
+      activeTurnCount: 12,
+      lastChatAt: '2026-01-11T01:59:00.000Z',
+    }
+    const merged = mergeEnrichedChatListEntry(enriched, undefined, {
+      turnStats: {
+        appendedTurnCount: 1,
+        lastChatAt: '2026-01-11T02:00:00.000Z',
+      },
+    })
+    assert.equal(merged.activeTurnCount, 12)
+    assert.equal(merged.lastChatAt, '2026-01-11T02:00:00.000Z')
+  })
 })

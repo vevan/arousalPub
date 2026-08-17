@@ -5,7 +5,7 @@
 > **前置**：[`47-graphify-optimization-backlog.md`](47-graphify-optimization-backlog.md)（2026-08-05 首轮审计 · 已落地）  
 > **索引**：`DOC/devNotes/README.md` 专题表 · [`04-TODO.md`](04-TODO.md) §已归档  
 
-> **修订**：2026-08-17 依审计修正调用点计数 / Import Cycles / 社区标签 / 行号等；同日写入 §5 改进计划并登记 P2；§6 计划评估（事实核对 + 决策 D1–D3）；终审后修正 D2 / D1 取值口径并回写 §3/§5 · CL3 reconcile 对齐 §5 · CL2 对齐 skip-write 先例 · 统一 CL4 dirty 优先与「非本主线」/D 表措辞 · CL3 验收去掉「锁内合并」歧义 · 实施后复审计修复（P0：`chat-storage` 值/类型导出分离 `export type`；P2：`turnStats` / `refreshConversationStats` 于 enrich 前写入 + 阶段 3 以新鲜 prev 重算；P3：`conversation-branches` 未用 import 清理）· **同日误截断后按对话定案全文重建**
+> **修订**：2026-08-17 依审计修正调用点计数 / Import Cycles / 社区标签 / 行号等；同日写入 §5 改进计划并登记 P2；§6 计划评估（事实核对 + 决策 D1–D3）；终审后修正 D2 / D1 取值口径并回写 §3/§5 · CL3 reconcile 对齐 §5 · CL2 对齐 skip-write 先例 · 统一 CL4 dirty 优先与「非本主线」/D 表措辞 · CL3 验收去掉「锁内合并」歧义 · 实施后复审计修复（P0：`chat-storage` 值/类型导出分离 `export type`；P2：`turnStats` / `refreshConversationStats` 于 enrich 前写入 + 阶段 3 以新鲜 prev 重算；P3：`conversation-branches` 未用 import 清理）· **同日误截断后按对话定案全文重建** · **同日二次审计**：CL5 缺基数回退绝对值、CL6 阶段 3 `mergeEnrichedChatListEntry` 防统计回退（§6.5）
 
 ---
 
@@ -115,7 +115,7 @@ upsertChatListEntry(entry, idx, {refreshConversationStats?})   [src/chat-storage
 > **非本主线（CL1–CL9）**：plugins 三组 import cycle、图谱 dangling、清理 `server/graphify-out/`——已分项登记 [`04-TODO.md`](04-TODO.md) §P2，与本主线并行、互不阻塞。  
 > **约束**：不做兼容双路径；坏 JSON/IO 从「静默变空」改为失败/重试属有意收紧。宿主通用性：改动限于 `server/src` 存储层。
 
-**实施状态（2026-08-17）**：**M0–M4 全部完成（CL1–CL9）** ✅ —— 单测 7/7（`server/test/chat-list-file-lock.test.ts`）；CL7 抽出 `chat-list-store.ts`（无静态环）；CL6 两段锁（enrich 出锁，delta 基数取阶段 3 新鲜 prev）；CL8 迁 7 处直接 mutate+upsert。
+**实施状态（2026-08-17）**：**M0–M4 全部完成（CL1–CL9）** ✅ —— 单测 10/10（`server/test/chat-list-file-lock.test.ts`，含缺基数 / 元数据保统计回归）；CL7 抽出 `chat-list-store.ts`（无静态环）；CL6 两段锁（enrich 出锁，阶段 3 `mergeEnrichedChatListEntry`）；CL8 迁 7 处直接 mutate+upsert。
 
 **定案落地顺序**：
 
@@ -201,7 +201,7 @@ CL1 → CL2+CL4 → CL5 → CL3+CL8 → CL6 → CL7+CL9
 | ID | 决策 | 定案 |
 |----|------|------|
 | **D1** | CL1 失败策略 | upsert 路径 **degrade**（不写列表、记 warn）；read 路径 **throw**（短重试后） |
-| **D2** | CL5 取值口径 | **写事件增量优先**（本次落盘 delta：append +1 / 截断后重算一次），或调用方传入已知 `turnCount`/`lastChatAt`；**禁止**用单文件 tail chunk 冒充 active path（`activeTurnCount` 含 fork 前缀轮数）；全量/修复路径保留 `resolveActivePath*` / `syncChatListConversationStats` |
+| **D2** | CL5 取值口径 | **写事件增量优先**（本次落盘 delta：append +1 / 截断后重算一次），或调用方传入已知 `turnCount`/`lastChatAt`；**禁止**用单文件 tail chunk 冒充 active path（`activeTurnCount` 含 fork 前缀轮数）；全量/修复路径保留 `resolveActivePath*` / `syncChatListConversationStats`；**缺列表基数时**不得按 `0+delta` 冒充——先 `resolveActivePathConversationStats` 取绝对值（盘上无轮次才回退 `0+delta`） |
 | **D3** | M4 范围 | 显式纳入 `readChatList` / `refreshChatListEntriesForCharacter` 的整写（拆 `chat-list-store` 时一并处理），避免漏 |
 
 ### 6.4 可选补充
@@ -213,7 +213,15 @@ CL1 → CL2+CL4 → CL5 → CL3+CL8 → CL6 → CL7+CL9
 
 | 优先级 | 问题 | 处理 |
 |--------|------|------|
-| P0 | `chat-storage.ts` 把 interface 当值 `export { ChatListEntry, … }`，tsx 无法 import | 改为 `export type { … }` + 值导出分离；`chat-list-file-lock` 7/7 通过 |
+| P0 | `chat-storage.ts` 把 interface 当值 `export { ChatListEntry, … }`，tsx 无法 import | 改为 `export type { … }` + 值导出分离；`chat-list-file-lock` 通过 |
 | P2 | `turnStats` 在 enrich 之后才应用，仍可能触发全链扫描 | enrich 前写入；阶段 3 用新鲜 prev 重算 `turnStats` |
 | P3 | `conversation-branches.ts` 未用 import | 已清理 |
 | 备注 | CL8 收尾（2026-08-17）：`batchUpdateConversationTurnsUnsafe` / `updateConversationAuditDebug` / `saveOpeningTurn` / `saveFirstTurn` 已统一走 `updateConversationIndexAndList`（含 turnStats）；同日补齐 **`appendConversationTurn` / `removeTurnAtOrdinalInTailChunk` / 导入 finalize**。**保留原结构**：分支路径仍先 `mutateBranch` 再组合 API（组合 API 只写根 index）；截断双 mutate（branch+root）已收束为 branch mutate + 组合 API。**plugins 三环已断**：dungeon-maze `types.ts`、trace-keeper `types.ts`（TraceTurnRef 显式化）、plot-summary `lorebook-flow.ts` 下沉 | 收尾完成 |
+
+### 6.6 二次审计（2026-08-17 · 拉取后循环审计）
+
+| 优先级 | 问题 | 处理 |
+|--------|------|------|
+| P1 | `appendedTurnCount` 在列表缺 `activeTurnCount` 时按 `0+delta`，多轮会话可被写成 1 | `applyTurnStatsWithBaselineFallback`：缺基数且盘上有轮次 → 绝对值；无轮次才 `0+delta` |
+| P2 | CL6 阶段 3 无 `turnStats` 时整条 `enriched` 覆盖，元数据 upsert 可把并发 append 抬高的统计打回 | `mergeEnrichedChatListEntry`：元数据保留 prev 统计；`refresh` 取较大 count + 较新 `lastChatAt`；缺基数时保留 enrich 前已解析绝对值 |
+| 单测 | 补回归 | `chat-list-file-lock`：缺基数用盘上绝对值、元数据保 prev、阶段 3 缺基数不回退为 `0+delta` |

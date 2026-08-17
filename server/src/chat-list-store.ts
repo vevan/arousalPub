@@ -354,6 +354,120 @@ function applyTurnStatsToEntry(
   }
 }
 
+function laterIsoLastChatAt(
+  a?: string | null,
+  b?: string | null,
+): string | undefined {
+  const at = typeof a === 'string' ? a.trim() : ''
+  const bt = typeof b === 'string' ? b.trim() : ''
+  if (!at) return bt || undefined
+  if (!bt) return at || undefined
+  return at >= bt ? at : bt
+}
+
+/**
+ * appendedTurnCount 缺列表基数时：若盘上已有 active 路径轮次，用绝对值（含刚写入的一轮）；
+ * 否则回退 0+delta（无 chunk 的合成路径 / 单测）。
+ */
+async function applyTurnStatsWithBaselineFallback(
+  entry: ChatListEntry,
+  s: ChatListTurnStats,
+  prevActiveTurnCount: number | undefined,
+  listLastChatAtFromStats: (
+    stats: { turnCount: number; lastChatAt: string | null },
+    updatedAt: string,
+  ) => string | undefined,
+): Promise<ChatListEntry> {
+  if (
+    s.turnCount === undefined &&
+    s.appendedTurnCount !== undefined &&
+    typeof prevActiveTurnCount !== 'number'
+  ) {
+    try {
+      const stats = await resolveActivePathConversationStats(entry.conversationId)
+      if (stats.turnCount > 0) {
+        const resolvedLast =
+          s.lastChatAt?.trim() ||
+          listLastChatAtFromStats(stats, entry.updatedAt) ||
+          null
+        return applyTurnStatsToEntry(
+          entry,
+          { turnCount: stats.turnCount, lastChatAt: resolvedLast },
+          undefined,
+        )
+      }
+    } catch {
+      // 无可用路径 → 下方按 0+delta
+    }
+  }
+  return applyTurnStatsToEntry(entry, s, prevActiveTurnCount)
+}
+
+/**
+ * CL6 阶段 3：把 enrich 结果与锁内新鲜 prev 合并。
+ * - turnStats：增量基数用 prev；缺基数时保留 enrich 前已解析的绝对值
+ * - 仅 refresh：取两边较大 count + 较新 lastChatAt，避免锁外期间被并发 append 抬高后回退
+ * - 元数据-only：不得整条覆盖 prev 上的统计（并发 turnStats 写可能更新过）
+ */
+export function mergeEnrichedChatListEntry(
+  enriched: ChatListEntry,
+  prev: ChatListEntry | undefined,
+  options?: {
+    turnStats?: ChatListTurnStats
+    refreshConversationStats?: boolean
+  },
+): ChatListEntry {
+  if (options?.turnStats) {
+    const s = options.turnStats
+    if (
+      s.turnCount === undefined &&
+      s.appendedTurnCount !== undefined &&
+      typeof prev?.activeTurnCount !== 'number' &&
+      typeof enriched.activeTurnCount === 'number'
+    ) {
+      // 阶段 1/2 已对缺基数做绝对解析；阶段 3 仍无 prev 基数时勿再当成 0+delta
+      return applyTurnStatsToEntry(
+        enriched,
+        { turnCount: enriched.activeTurnCount, lastChatAt: s.lastChatAt },
+        undefined,
+      )
+    }
+    return applyTurnStatsToEntry(enriched, s, prev?.activeTurnCount)
+  }
+
+  if (!prev) return enriched
+
+  if (options?.refreshConversationStats) {
+    const ec =
+      typeof enriched.activeTurnCount === 'number' ? enriched.activeTurnCount : 0
+    const pc =
+      typeof prev.activeTurnCount === 'number' ? prev.activeTurnCount : undefined
+    const count = pc !== undefined ? Math.max(ec, pc) : ec
+    const last = laterIsoLastChatAt(enriched.lastChatAt, prev.lastChatAt)
+    const { lastChatAt: _drop, ...rest } = enriched
+    return {
+      ...rest,
+      activeTurnCount: count,
+      ...(last ? { lastChatAt: last } : {}),
+    }
+  }
+
+  // 元数据 upsert：统计以新鲜 prev 为准
+  const { lastChatAt: _drop, ...rest } = enriched
+  return {
+    ...rest,
+    activeTurnCount:
+      typeof prev.activeTurnCount === 'number'
+        ? prev.activeTurnCount
+        : enriched.activeTurnCount,
+    ...(prev.lastChatAt
+      ? { lastChatAt: prev.lastChatAt }
+      : enriched.lastChatAt
+        ? { lastChatAt: enriched.lastChatAt }
+        : {}),
+  }
+}
+
 export async function upsertChatListEntry(
   entry: ChatListEntry,
   source?: ConversationIndex,
@@ -391,10 +505,11 @@ export async function upsertChatListEntry(
   // CL5：在 enrich 前写入统计，避免 enrich 因缺 count/last 触发全链扫描
   let preEnrich: ChatListEntry = merged
   if (options?.turnStats) {
-    preEnrich = applyTurnStatsToEntry(
+    preEnrich = await applyTurnStatsWithBaselineFallback(
       merged,
       options.turnStats,
       merged.activeTurnCount,
+      listLastChatAtFromStats,
     )
   } else if (options?.refreshConversationStats) {
     try {
@@ -430,16 +545,8 @@ export async function upsertChatListEntry(
       (c) => c.conversationId === enriched.conversationId,
     )
     const prev = i >= 0 ? list.conversations[i]! : undefined
-    let final: ChatListEntry = enriched
-    if (options?.turnStats) {
-      // 增量基数用阶段 3 新鲜 prev，避免锁外期间统计漂移
-      final = applyTurnStatsToEntry(
-        enriched,
-        options.turnStats,
-        prev?.activeTurnCount,
-      )
-    }
-    // refreshConversationStats 已在 enrich 前算完并带入 enriched，此处不再锁内全链扫描
+    // turnStats / refresh / 元数据 均经 merge，避免锁外期间统计被整条覆盖打回
+    const final = mergeEnrichedChatListEntry(enriched, prev, options)
     if (i >= 0) {
       if (chatListEntryEqual(prev!, final)) {
         // CL2：无字段变化跳过整写（对齐 syncChatListConversationStats 先例）

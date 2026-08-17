@@ -187,6 +187,7 @@ export type {
 } from './chat-list-store.js'
 export {
   chatListEntryFromIndex,
+  mergeEnrichedChatListEntry,
   readChatList,
   reconcileChatListWithDisk,
   refreshChatListEntriesForCharacter,

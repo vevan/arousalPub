@@ -15,9 +15,9 @@
 
 | 图谱 | 路径 | 节点 / 边 | 社区 | 对比旧图 |
 |------|------|-----------|------|---------|
-| server | 仓库根 `graphify-out/` | **3043 / 10852** | 119 | 2888 / 10253 ↗ |
-| web | `web/graphify-out/` | **3491 / 4238** | 279 | 3554 / 4547 ↘* |
-| plugins | `plugins/graphify-out/` | **817 / 2002** | 33 | 722 / 1811 ↗；2026-08-17 再抽后 **Import Cycles: None**（三环已断） |
+| server | 仓库根 `graphify-out/` | **3043 / 10847** | 116 | 2888 / 10253 ↗；**2026-08-17 晚再抽**（commit `34d5edc`） |
+| web | `web/graphify-out/` | **3491 / 4238** | 277 | 3554 / 4547 ↘*；同日再抽 |
+| plugins | `plugins/graphify-out/` | **817 / 2002** | 33 | 722 / 1811 ↗；Import Cycles **None** |
 
 *web 节点减少 63 属**合法收缩**（重构后符号减少），被 shrink-guard 拦截后按 skill 指引 `--force` 确认写入。
 

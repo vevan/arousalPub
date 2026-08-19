@@ -272,6 +272,9 @@ export const useConnectionStore = defineStore('connection', () => {
 
   const isPanelDirty = computed(() => {
     if (apiKeyDraftDirty.value) return true
+    // baseline 整体为空说明 loadFromServer 尚未完成，此时视为干净
+    const hasBaseline = Object.keys(lastServerFingerprints.value).length > 0
+    if (!hasBaseline) return false
     for (const p of presets.value) {
       const baseline = lastServerFingerprints.value[p.id]
       if (baseline === undefined) return true
@@ -305,7 +308,13 @@ export const useConnectionStore = defineStore('connection', () => {
     apiKeyDraftDirty.value = false
     apiKey.value = ''
     const restored: ApiPreset[] = Object.values(lastServerPresets.value).map(
-      (p) => clonePresetBaseline(p),
+      (p) => {
+        const live = presets.value.find((x) => x.id === p.id)
+        return clonePresetBaseline({
+          ...p,
+          keyConfigured: live?.keyConfigured ?? p.keyConfigured,
+        })
+      },
     )
     if (restored.length === 0) return
     const keepEditing = editingPresetId.value

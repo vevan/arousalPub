@@ -532,24 +532,25 @@ export function useConvBindings() {
     }
   }, { deep: true })
 
-watch(
-  [() => conn.activePresetId, () => conn.presets],
-  () => {
-    const effective = resolveConversationChatDisplay(
-      conn.presets,
-      conn.activePresetId,
-      convBindings.value.chatApi.apiPresetRaw,
-    )
-    convBindings.value = {
-      ...convBindings.value,
-      chatApi: {
-        ...convBindings.value.chatApi,
-        effective,
-      },
-    }
-  },
-  { deep: true },
-)
+  watch(
+    [() => conn.activePresetId, () => conn.presets],
+    () => {
+      if (!convBindings.value.chatApi.useGlobal) return
+      const effective = resolveConversationChatDisplay(
+        conn.presets,
+        conn.activePresetId,
+        convBindings.value.chatApi.apiPresetRaw,
+      )
+      convBindings.value = {
+        ...convBindings.value,
+        chatApi: {
+          ...convBindings.value.chatApi,
+          effective,
+        },
+      }
+    },
+    { deep: true },
+  )
 
   return {
     convBindings,

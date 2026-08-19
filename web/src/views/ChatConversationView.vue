@@ -640,6 +640,15 @@ watch(
         :conversation-lorebook-ids="convBindings.lorebookIds"
         :conversation-user-name="convBindings.userName"
         :conversation-user-character-id="convBindings.userCharacterId"
+        :effective-chat-api="
+          convBindings.chatApi.effective
+            ? {
+                apiPresetId: convBindings.chatApi.effective.apiPresetId,
+                model: convBindings.chatApi.effective.model,
+                stream: convBindings.chatApi.effective.stream,
+              }
+            : null
+        "
         :authors-note-active="authorsNoteActive"
         @open-authors-note="openAuthorsNoteSettings"
       />

@@ -1,5 +1,12 @@
 import type { GroupChatSettings, GroupChatTurnState } from '@/utils/group-chat-settings'
 
+/** 会话生效的 chat 连接摘要（全局激活或会话绑定合并后） */
+export interface EffectiveChatApiSummary {
+  apiPresetId: string
+  model: string
+  stream: boolean
+}
+
 export interface ChatSessionProps {
   conversationId: string
   conversationPromptPresetId?: string | null
@@ -13,6 +20,11 @@ export interface ChatSessionProps {
   groupChatEnabled?: boolean
   /** 完整群聊设置（权重、衰减、autoContinue 等） */
   groupChatSettings?: GroupChatSettings
+  /**
+   * 会话实际生效的 API（model/stream/presetId）。
+   * 对话请求不再跟设置页编辑表单混搭；缺省时回退全局激活预设。
+   */
+  effectiveChatApi?: EffectiveChatApiSummary | null
 }
 
 export interface ReceiveItem {

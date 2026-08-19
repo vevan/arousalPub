@@ -1,7 +1,6 @@
 import {
   ApiCredentialError,
   resolveChatCredentials,
-  type ResolveChatCredentialsInput,
 } from './api-credential-resolve.js'
 import {
   readApiSettingsFromFile,
@@ -16,27 +15,8 @@ import { readConversationIndex } from './chat-storage.js'
 import {
   mergePresetWithChatBinding,
   readConversationChatBinding,
-  type ConversationChatBinding,
   type ResolvedConversationChatParams,
 } from './conversation-api-settings.js'
-
-type ChatBodyFallback = ResolveChatCredentialsInput & {
-  model?: string
-  contextLength?: number | null
-  maxTokens?: number | null
-  stream?: boolean
-  temperature?: number | null
-  topP?: number | null
-  topK?: number | null
-  dryMultiplier?: number | null
-  dryBase?: number | null
-  dryAllowedLength?: number | null
-  dryPenaltyLastN?: number | null
-  drySequenceBreakers?: string[] | null
-  frequencyPenalty?: number | null
-  presencePenalty?: number | null
-  requestReasoning?: boolean
-}
 
 export interface ResolvedConversationChatCall {
   baseUrl: string
@@ -62,9 +42,12 @@ export async function resolveChatFeatureAudit(
   return meta ? toResolvedFeatureAudit(meta) : undefined
 }
 
+/**
+ * 会话对话凭证与采样参数：仅来自磁盘上的全局 activePresetId + 会话 apiPreset.chat 绑定。
+ * 故意忽略请求体中的 baseUrl / apiKeyId / model / 采样字段，避免设置页「编辑中预设」与激活预设混搭。
+ */
 export async function resolveConversationChatCall(
   conversationId: string,
-  bodyFallback?: ChatBodyFallback,
 ): Promise<ResolvedConversationChatCall> {
   const idx = await readConversationIndex(conversationId)
   const binding = idx ? readConversationChatBinding(idx.apiPreset) : null
@@ -73,35 +56,9 @@ export async function resolveConversationChatCall(
     throw new ApiCredentialError('api_credential_not_configured')
   }
 
-  if (!binding) {
-    const creds = await resolveChatCredentials({
-      apiPresetId: bodyFallback?.apiPresetId,
-      apiKeyId: bodyFallback?.apiKeyId,
-      baseUrl: bodyFallback?.baseUrl,
-    })
-    if (!creds.preset) {
-      throw new ApiCredentialError('api_preset_not_found')
-    }
-    const params = mergePresetWithChatBinding(
-      creds.preset,
-      bodyBindingFromFallback(bodyFallback),
-    )
-    if (bodyFallback?.model?.trim()) {
-      params.model = bodyFallback.model.trim()
-    }
-    return {
-      baseUrl: creds.baseUrl,
-      apiKey: creds.apiKey,
-      preset: creds.preset,
-      presetId: creds.presetId ?? creds.preset.id,
-      params,
-      usedConversationOverride: false,
-    }
-  }
-
   const resolvedChat = resolveChatApiConfigId(settings, idx?.apiPreset)
   const presetId = (
-    binding.apiConfigId?.trim() ||
+    binding?.apiConfigId?.trim() ||
     resolvedChat?.apiConfigId ||
     settings.activePresetId ||
     ''
@@ -113,7 +70,6 @@ export async function resolveConversationChatCall(
 
   const creds = await resolveChatCredentials({
     apiPresetId: presetId,
-    baseUrl: preset.baseUrl,
   })
 
   return {
@@ -122,50 +78,8 @@ export async function resolveConversationChatCall(
     preset,
     presetId: preset.id,
     params: mergePresetWithChatBinding(preset, binding),
-    usedConversationOverride: true,
+    usedConversationOverride: Boolean(binding),
   }
-}
-
-function bodyBindingFromFallback(
-  body?: ChatBodyFallback,
-): ConversationChatBinding | null {
-  if (!body) return null
-  const b: ConversationChatBinding = {}
-  let any = false
-  if (typeof body.model === 'string' && body.model.trim()) {
-    b.model = body.model.trim()
-    any = true
-  }
-  const numericKeys = [
-    'contextLength',
-    'maxTokens',
-    'temperature',
-    'topP',
-    'topK',
-    'dryMultiplier',
-    'dryBase',
-    'dryAllowedLength',
-    'dryPenaltyLastN',
-    'frequencyPenalty',
-    'presencePenalty',
-  ] as const
-  for (const key of numericKeys) {
-    if (Object.prototype.hasOwnProperty.call(body, key)) {
-      ;(b as Record<string, unknown>)[key] = body[key]
-      any = true
-    }
-  }
-  if (typeof body.stream === 'boolean') {
-    b.stream = body.stream
-    any = true
-  }
-  if (Array.isArray(body.drySequenceBreakers)) {
-    b.drySequenceBreakers = body.drySequenceBreakers.filter(
-      (x): x is string => typeof x === 'string',
-    )
-    any = true
-  }
-  return any ? b : null
 }
 
 export function resolvedParamsToChatBodyFields(

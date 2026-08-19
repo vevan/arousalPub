@@ -6,7 +6,6 @@ import { apiFetch } from '@/utils/api-fetch'
 import {
   ChatRequestFailure,
 } from '@/utils/chat-request-failure'
-import { hasAnyDrySamplerField } from '@/utils/dry-sampler'
 
 export {
   ChatRequestFailure,
@@ -42,29 +41,17 @@ export interface ConversationChatRequestParams {
   plugins?: ConversationChatRequestPlugins
 }
 
+/**
+ * 会话对话请求体：不携带连接/采样字段。
+ * baseUrl、apiKey、model、温度等由服务端按全局激活预设 + 会话 apiPreset.chat 绑定解析，
+ * 避免设置页「当前编辑中的预设」与对话实际凭证混搭。
+ */
 export function buildConversationChatRequestBody(
-  conn: ConnectionStore,
+  _conn: ConnectionStore,
   conversationId: string,
   params: ConversationChatRequestParams,
 ) {
-  let customParams: Record<string, unknown> | undefined
-  if (conn.customParamsJson.trim()) {
-    customParams = conn.parseCustomParams()
-  }
-
-  const dryFields = {
-    dryMultiplier: conn.dryMultiplier,
-    dryBase: conn.dryBase,
-    dryAllowedLength: conn.dryAllowedLength,
-    dryPenaltyLastN: conn.dryPenaltyLastN,
-    drySequenceBreakers: conn.drySequenceBreakers,
-  }
-
   return {
-    alias: conn.alias.trim() || undefined,
-    baseUrl: conn.baseUrl.trim() || undefined,
-    apiPresetId: conn.activePresetId ?? undefined,
-    model: conn.model.trim(),
     conversationId,
     userText: params.userText,
     promptTrigger: params.promptTrigger,
@@ -89,28 +76,6 @@ export function buildConversationChatRequestBody(
       : {}),
     ...(params.groupContinue ? { groupContinue: params.groupContinue } : {}),
     ...(params.plugins ? { plugins: params.plugins } : {}),
-    stream: conn.stream,
-    contextLength: conn.contextLength ?? undefined,
-    maxTokens: conn.maxTokens ?? undefined,
-    temperature: conn.temperature ?? undefined,
-    topP: conn.topP ?? undefined,
-    topK: conn.topK ?? undefined,
-    ...(hasAnyDrySamplerField(dryFields)
-      ? {
-          dryMultiplier: dryFields.dryMultiplier ?? undefined,
-          dryBase: dryFields.dryBase ?? undefined,
-          dryAllowedLength: dryFields.dryAllowedLength ?? undefined,
-          dryPenaltyLastN: dryFields.dryPenaltyLastN ?? undefined,
-          drySequenceBreakers:
-            dryFields.drySequenceBreakers.length > 0
-              ? dryFields.drySequenceBreakers
-              : undefined,
-        }
-      : {}),
-    frequencyPenalty: conn.frequencyPenalty ?? undefined,
-    presencePenalty: conn.presencePenalty ?? undefined,
-    customParams,
-    requestReasoning: conn.requestReasoningChain,
   }
 }
 
@@ -245,6 +210,11 @@ export async function runChatRequest(options: {
   params: ConversationChatRequestParams
   requestFailedMessage: (status: string) => string
   noStreamMessage: string
+  /**
+   * 是否按流式消费响应。须与会话生效预设的 stream 一致；
+   * 不要用设置页编辑表单的 conn.stream。
+   */
+  expectStream: boolean
   onStreamDelta?: (d: { text?: string; reasoning?: string }) => void
   /** 流式响应头中的组装 token 估算（与 /api/chat 非流式 JSON 的 estimatedTokens 一致） */
   onPromptEstimatedTokens?: (n: number) => void
@@ -301,7 +271,7 @@ export async function runChatRequest(options: {
   }
 
   const ct = res.headers.get('content-type') ?? ''
-  if (conn.stream && ct.includes('text/event-stream') && res.body) {
+  if (options.expectStream && ct.includes('text/event-stream') && res.body) {
     const generationId = res.headers.get('X-Chat-Generation-Id')?.trim()
     if (generationId) {
       options.onGenerationId?.(generationId)

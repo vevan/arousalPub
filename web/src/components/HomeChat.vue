@@ -23,6 +23,7 @@ const props = withDefaults(defineProps<ChatSessionProps & {
   conversationUserName: null,
   conversationUserCharacterId: null,
   groupChatEnabled: false,
+  effectiveChatApi: null,
   authorsNoteActive: false,
 })
 

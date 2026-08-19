@@ -36,6 +36,12 @@ export interface CompletionResult {
 export interface ChatCompletionDeps {
   conn: ConnectionStore
   getConversationId: () => string
+  /** 会话生效 stream（来自激活/绑定预设，非设置页编辑表单） */
+  getEffectiveStream: () => boolean
+  /** 会话生效 model；用于就绪检查 */
+  getEffectiveModel: () => string
+  /** 会话生效预设是否已配置 Key */
+  isEffectiveApiKeyConfigured: () => boolean
   t: ComposerTranslation
   turns: Ref<ChatTurnItem[]>
   streamingText: Ref<string>
@@ -141,7 +147,8 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
     chatAbortController = ownedController
     const signal = ownedController.signal
     const conversationId = deps.getConversationId()
-    const clientGenerationId = deps.conn.stream
+    const expectStream = deps.getEffectiveStream()
+    const clientGenerationId = expectStream
       ? generateClientChatGenerationId()
       : undefined
     if (clientGenerationId) {
@@ -152,11 +159,12 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
         conn: deps.conn,
         conversationId,
         params,
+        expectStream,
         generationId: clientGenerationId,
         requestFailedMessage: (status) =>
           deps.t('chat.errors.requestFailedStatus', { status }),
         noStreamMessage: deps.t('chat.errors.noStream'),
-        onStreamDelta: deps.conn.stream ? streamDeltaHandler : undefined,
+        onStreamDelta: expectStream ? streamDeltaHandler : undefined,
         onPromptEstimatedTokens: (n) => {
           deps.pendingSendEstimatedTokens.value = n
         },
@@ -206,9 +214,7 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
   }
 
   function parseCustomParamsOrThrow(): void {
-    if (deps.conn.customParamsJson.trim()) {
-      deps.conn.parseCustomParams()
-    }
+    /* 会话对话不再使用编辑表单 customParams；无效 JSON 由服务端读预设时忽略 */
   }
 
   function customParamsErrorMessage(e: unknown): string {
@@ -218,7 +224,10 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
   }
 
   function assertApiReady(): boolean {
-    return deps.conn.isApiKeyConfigured && deps.conn.model.trim().length > 0
+    return (
+      deps.isEffectiveApiKeyConfigured() &&
+      deps.getEffectiveModel().trim().length > 0
+    )
   }
 
   function resolveReceiveId(

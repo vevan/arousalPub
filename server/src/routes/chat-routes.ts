@@ -1813,7 +1813,7 @@ export function registerChatRoutes(app: FastifyInstance): void {
     const resolvedFeature = await resolveChatFeatureAudit(convId || undefined)
     try {
       if (convId) {
-        const resolved = await resolveConversationChatCall(convId, body)
+        const resolved = await resolveConversationChatCall(convId)
         apiKey = resolved.apiKey
         baseUrl = resolved.baseUrl
         const fields = resolvedParamsToChatBodyFields(resolved.params)

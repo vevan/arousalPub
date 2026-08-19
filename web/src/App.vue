@@ -179,16 +179,18 @@ const promptsStore = usePromptsStore()
 const uiContext = useUiContextStore()
 
 const appBarApiLabel = computed(() => {
-  const alias = conn.alias.trim()
-  const model = conn.model.trim()
+  const active = conn.presets.find((p) => p.id === conn.activePresetId)
+  const alias = (active?.alias ?? '').trim()
+  const model = (active?.model ?? '').trim()
   if (alias && model) return `${alias} · ${model}`
   if (alias) return alias
   return model
 })
 
 const appBarApiStatusTitle = computed(() => {
-  const alias = conn.alias.trim()
-  const model = conn.model.trim()
+  const active = conn.presets.find((p) => p.id === conn.activePresetId)
+  const alias = (active?.alias ?? '').trim()
+  const model = (active?.model ?? '').trim()
   const parts: string[] = []
   if (alias) parts.push(`${alias}`)
   if (model) parts.push(model)

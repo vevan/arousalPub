@@ -1,5 +1,6 @@
 import {
   ApiCredentialError,
+  credentialInputFromBody,
   resolveChatCredentials,
   type ResolveChatCredentialsInput,
 } from './api-credential-resolve.js'
@@ -15,12 +16,12 @@ import {
 import { readConversationIndex } from './chat-storage.js'
 import {
   mergePresetWithChatBinding,
-  readConversationChatBinding,
   type ConversationChatBinding,
   type ResolvedConversationChatParams,
 } from './conversation-api-settings.js'
 
 type ChatBodyFallback = ResolveChatCredentialsInput & {
+  alias?: string
   model?: string
   contextLength?: number | null
   maxTokens?: number | null
@@ -36,6 +37,7 @@ type ChatBodyFallback = ResolveChatCredentialsInput & {
   frequencyPenalty?: number | null
   presencePenalty?: number | null
   requestReasoning?: boolean
+  customParams?: Record<string, unknown>
 }
 
 export interface ResolvedConversationChatCall {
@@ -44,6 +46,7 @@ export interface ResolvedConversationChatCall {
   preset: ApiPreset
   presetId: string
   params: ResolvedConversationChatParams
+  /** 会话磁盘绑定仅用于进房灌面板；发请求不再用磁盘采样覆盖 */
   usedConversationOverride: boolean
 }
 
@@ -62,67 +65,114 @@ export async function resolveChatFeatureAudit(
   return meta ? toResolvedFeatureAudit(meta) : undefined
 }
 
+/**
+ * 会话对话凭证与采样：以请求体面板快照为准（同源）。
+ * 不读会话磁盘上的采样覆盖；缺省 apiPresetId 时才回退全局 activePresetId。
+ * 未落盘新预设：允许仅凭 body 草稿 Key + baseUrl + 采样发聊天。
+ */
 export async function resolveConversationChatCall(
-  conversationId: string,
+  _conversationId: string,
   bodyFallback?: ChatBodyFallback,
 ): Promise<ResolvedConversationChatCall> {
-  const idx = await readConversationIndex(conversationId)
-  const binding = idx ? readConversationChatBinding(idx.apiPreset) : null
-  const settings = await readApiSettingsFromFile()
-  if (!settings) {
-    throw new ApiCredentialError('api_credential_not_configured')
-  }
+  const creds = await resolveChatCredentials(
+    bodyFallback ? credentialInputFromBody(bodyFallback) : {},
+  )
 
-  if (!binding) {
-    const creds = await resolveChatCredentials({
-      apiPresetId: bodyFallback?.apiPresetId,
-      apiKeyId: bodyFallback?.apiKeyId,
-      baseUrl: bodyFallback?.baseUrl,
-    })
-    if (!creds.preset) {
-      throw new ApiCredentialError('api_preset_not_found')
-    }
-    const params = mergePresetWithChatBinding(
-      creds.preset,
-      bodyBindingFromFallback(bodyFallback),
-    )
-    if (bodyFallback?.model?.trim()) {
-      params.model = bodyFallback.model.trim()
-    }
-    return {
-      baseUrl: creds.baseUrl,
-      apiKey: creds.apiKey,
-      preset: creds.preset,
-      presetId: creds.presetId ?? creds.preset.id,
-      params,
-      usedConversationOverride: false,
-    }
-  }
-
-  const resolvedChat = resolveChatApiConfigId(settings, idx?.apiPreset)
-  const presetId = (
-    binding.apiConfigId?.trim() ||
-    resolvedChat?.apiConfigId ||
-    settings.activePresetId ||
-    ''
-  ).trim()
-  const preset = settings.presets.find((p) => p.id === presetId) ?? null
+  const preset =
+    creds.preset ??
+    panelSnapshotPresetFromBody(bodyFallback, creds.baseUrl, creds.presetId)
   if (!preset) {
     throw new ApiCredentialError('api_preset_not_found')
   }
 
-  const creds = await resolveChatCredentials({
-    apiPresetId: presetId,
-    baseUrl: preset.baseUrl,
-  })
+  const params = mergePresetWithChatBinding(
+    preset,
+    bodyBindingFromFallback(bodyFallback),
+  )
+  if (bodyFallback?.model?.trim()) {
+    params.model = bodyFallback.model.trim()
+  }
+  if (typeof bodyFallback?.requestReasoning === 'boolean') {
+    params.requestReasoningChain = bodyFallback.requestReasoning
+  }
+  if (
+    bodyFallback?.customParams &&
+    typeof bodyFallback.customParams === 'object' &&
+    !Array.isArray(bodyFallback.customParams)
+  ) {
+    params.customParamsJson = JSON.stringify(bodyFallback.customParams)
+  }
+  if (typeof bodyFallback?.alias === 'string' && bodyFallback.alias.trim()) {
+    params.alias = bodyFallback.alias.trim()
+  }
 
   return {
     baseUrl: creds.baseUrl,
     apiKey: creds.apiKey,
     preset,
     presetId: preset.id,
-    params: mergePresetWithChatBinding(preset, binding),
-    usedConversationOverride: true,
+    params,
+    usedConversationOverride: false,
+  }
+}
+
+/** 连接面板未保存新预设：用请求体拼合成形 ApiPreset */
+function panelSnapshotPresetFromBody(
+  body: ChatBodyFallback | undefined,
+  baseUrl: string,
+  resolvedPresetId: string | null,
+): ApiPreset | null {
+  if (!body) return null
+  const hasDraftCreds = Boolean(
+    body.apiKey?.trim() || body.apiKeyId?.trim(),
+  )
+  if (!hasDraftCreds) return null
+  if (!baseUrl.trim()) return null
+  const id = (
+    body.apiPresetId?.trim() ||
+    resolvedPresetId?.trim() ||
+    ''
+  ).trim()
+  if (!id) return null
+  const breakers = Array.isArray(body.drySequenceBreakers)
+    ? body.drySequenceBreakers.filter((x): x is string => typeof x === 'string')
+    : []
+  return {
+    id,
+    alias: typeof body.alias === 'string' ? body.alias : '',
+    baseUrl,
+    apiKey: '',
+    model: typeof body.model === 'string' ? body.model : '',
+    contextLength:
+      body.contextLength === undefined ? null : body.contextLength,
+    maxTokens: body.maxTokens === undefined ? null : body.maxTokens,
+    stream: typeof body.stream === 'boolean' ? body.stream : false,
+    temperature: body.temperature === undefined ? null : body.temperature,
+    topP: body.topP === undefined ? null : body.topP,
+    topK: body.topK === undefined ? null : body.topK,
+    dryMultiplier:
+      body.dryMultiplier === undefined ? null : body.dryMultiplier,
+    dryBase: body.dryBase === undefined ? null : body.dryBase,
+    dryAllowedLength:
+      body.dryAllowedLength === undefined ? null : body.dryAllowedLength,
+    dryPenaltyLastN:
+      body.dryPenaltyLastN === undefined ? null : body.dryPenaltyLastN,
+    drySequenceBreakers: breakers,
+    frequencyPenalty:
+      body.frequencyPenalty === undefined ? null : body.frequencyPenalty,
+    presencePenalty:
+      body.presencePenalty === undefined ? null : body.presencePenalty,
+    customParamsJson:
+      body.customParams && typeof body.customParams === 'object'
+        ? JSON.stringify(body.customParams)
+        : '',
+    showReasoningChain: true,
+    requestReasoningChain:
+      typeof body.requestReasoning === 'boolean'
+        ? body.requestReasoning
+        : false,
+    linkedPromptPresetId: null,
+    apiKeyId: body.apiKeyId?.trim() || null,
   }
 }
 

@@ -29,6 +29,7 @@ import { usePreferencesStore } from '@/stores/preferences'
 import { usePromptsStore } from '@/stores/prompts'
 import { useUiContextStore } from '@/stores/ui-context'
 import { authorsNoteComposerActive } from '@/utils/authors-note-settings'
+import { readConversationChatBinding } from '@/utils/conversation-api-settings'
 import {
   groupChatWithEnsuredMemberColors,
   memberColorsIncomplete,
@@ -535,6 +536,7 @@ async function saveTitle() {
 watch(
   () => props.conversationId,
   (id) => {
+    loading.value = true
     resetMemoryRebuildOffer()
     branchPanelOpen.value = false
     branchLoadError.value = ''
@@ -542,6 +544,32 @@ watch(
     void ensureConversation(id)
   },
   { immediate: true },
+)
+
+watch(
+  () =>
+    [
+      props.conversationId,
+      loading.value ? '1' : '0',
+      readConversationChatBinding(convBindings.value.chatApi.apiPresetRaw)
+        ?.apiConfigId?.trim() ||
+        convBindings.value.chatApi.effective?.apiPresetId?.trim() ||
+        conn.activePresetId ||
+        '',
+      conn.presets.length > 0 ? '1' : '0',
+    ].join('\0'),
+  () => {
+    if (loading.value) return
+    if (conn.presets.length === 0) return
+    const targetId =
+      readConversationChatBinding(convBindings.value.chatApi.apiPresetRaw)
+        ?.apiConfigId?.trim() ||
+      convBindings.value.chatApi.effective?.apiPresetId?.trim() ||
+      conn.activePresetId ||
+      ''
+    if (!targetId) return
+    conn.hydratePanelForConversation(targetId)
+  },
 )
 
 /** 仅全局 Debug 偏好变更时同步；进页同步见 ensureConversation 延后任务 */

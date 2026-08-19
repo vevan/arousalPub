@@ -17,7 +17,7 @@ import { readApiKeysDocument, writeApiKeysDocument, type ApiKeysDocument } from 
 import { mergeApiKeysPutPayload, parseApiKeysPutPayload, sanitizeApiKeysDocumentForGet } from '../api-keys-sanitize.js'
 import { mergeApiSettingsPut, sanitizeApiSettingsDocumentForGet, type ApiSettingsPutBody } from '../api-settings-sanitize.js'
 import { ApiConfigInUseError, assertRemovedApiKeysNotInUse, deleteApiKeyFromFile, deleteApiPresetFromFile, findApiKeyReferences, findApiPresetReferences } from '../api-config-references.js'
-import { ApiCredentialError, resolveChatCredentials } from '../api-credential-resolve.js'
+import { ApiCredentialError, credentialInputFromBody, resolveChatCredentials } from '../api-credential-resolve.js'
 import { testApiPresetConnectivity } from '../api-preset-test.js'
 import { fetchUpstreamModelsList } from '../upstream-models.js'
 import { sanitizeEmbeddingApiForGet } from '../embedding-api-sanitize.js'
@@ -33,6 +33,8 @@ interface ModelsListBody {
   baseUrl?: string
   apiPresetId?: string
   apiKeyId?: string | null
+  /** 连接面板未保存的草稿 Key（仅当次请求） */
+  apiKey?: string
 }
 
 
@@ -627,7 +629,15 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
     return { ok: true as const, savedAt: doc.savedAt }
   })
 
-  app.post<{ Params: { id: string }; Body: { baseUrl?: string; model?: string } }>(
+  app.post<{
+    Params: { id: string }
+    Body: {
+      baseUrl?: string
+      model?: string
+      apiKeyId?: string | null
+      apiKey?: string
+    }
+  }>(
     '/api/settings/presets/:id/test',
     async (request, reply) => {
       const presetId = request.params.id?.trim() ?? ''
@@ -638,12 +648,30 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
       const baseUrl =
         typeof body.baseUrl === 'string' ? body.baseUrl : undefined
       const model = typeof body.model === 'string' ? body.model : undefined
+      const apiKey =
+        typeof body.apiKey === 'string' ? body.apiKey : undefined
+      const testInput: {
+        apiPresetId: string
+        baseUrl?: string
+        model?: string
+        apiKey?: string
+        apiKeyId?: string | null
+      } = {
+        apiPresetId: presetId,
+        baseUrl,
+        model,
+        apiKey,
+      }
+      if (Object.prototype.hasOwnProperty.call(body, 'apiKeyId')) {
+        testInput.apiKeyId =
+          body.apiKeyId === null
+            ? null
+            : typeof body.apiKeyId === 'string'
+              ? body.apiKeyId
+              : undefined
+      }
       try {
-        const result = await testApiPresetConnectivity({
-          apiPresetId: presetId,
-          baseUrl,
-          model,
-        })
+        const result = await testApiPresetConnectivity(testInput)
         if (!result.ok) {
           const status =
             result.error === 'missing_api_key' ||
@@ -856,11 +884,16 @@ export function registerSettingsRoutes(app: FastifyInstance): void {
     let apiKey: string
     let baseUrl: string
     try {
-      const creds = await resolveChatCredentials({
-        apiPresetId: b.apiPresetId,
-        apiKeyId: b.apiKeyId,
-        baseUrl: b.baseUrl,
-      })
+      const creds = await resolveChatCredentials(
+        credentialInputFromBody({
+          apiPresetId: b.apiPresetId,
+          apiKey: b.apiKey,
+          baseUrl: b.baseUrl,
+          ...(Object.prototype.hasOwnProperty.call(b, 'apiKeyId')
+            ? { apiKeyId: b.apiKeyId }
+            : {}),
+        }),
+      )
       apiKey = creds.apiKey
       baseUrl = creds.baseUrl
     } catch (e) {

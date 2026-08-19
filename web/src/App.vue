@@ -15,6 +15,7 @@ import { ensureLocaleMessages } from '@/i18n'
 import { bootstrapAppData, resetBootstrapAppData } from '@/bootstrap/app-data'
 import { useAuthStore } from '@/stores/auth'
 import { userAvatarUrl } from '@/utils/authenticated-media-url'
+import { coreNotify } from '@/utils/core-notify'
 import { useConnectionStore } from '@/stores/connection'
 import { useLocaleStore } from '@/stores/locale'
 import { useLorebooksStore } from '@/stores/lorebooks'
@@ -24,6 +25,7 @@ import { storeToRefs } from 'pinia'
 import type { ComponentPublicInstance } from 'vue'
 import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { RouteLocationNormalized } from 'vue-router'
 import { useRoute, useRouter } from 'vue-router'
 
 const { locale, t } = useI18n()
@@ -151,6 +153,106 @@ function onBrowserLanguageChange() {
 }
 
 const drawerRight = ref(false)
+const conn = useConnectionStore()
+const connUnsavedDialogOpen = ref(false)
+const connDrawerSaving = ref(false)
+/** drawer：关抽屉；navigate：路由离开 */
+const connUnsavedReason = ref<'drawer' | 'navigate'>('drawer')
+const pendingNavTo = ref<RouteLocationNormalized | null>(null)
+let allowNextConnNav = false
+
+function closeConnectionDrawer(): void {
+  drawerRight.value = false
+  connUnsavedDialogOpen.value = false
+  pendingNavTo.value = null
+}
+
+function onConnectionDrawerUpdate(open: boolean): void {
+  if (open) {
+    drawerRight.value = true
+    return
+  }
+  if (conn.isPanelDirty) {
+    connUnsavedReason.value = 'drawer'
+    pendingNavTo.value = null
+    connUnsavedDialogOpen.value = true
+    return
+  }
+  closeConnectionDrawer()
+}
+
+function toggleConnectionDrawer(): void {
+  onConnectionDrawerUpdate(!drawerRight.value)
+}
+
+async function proceedPendingNavigation(): Promise<void> {
+  const to = pendingNavTo.value
+  pendingNavTo.value = null
+  connUnsavedDialogOpen.value = false
+  if (!to) return
+  allowNextConnNav = true
+  try {
+    await router.push(to)
+  } catch {
+    allowNextConnNav = false
+  }
+}
+
+async function onConnUnsavedSave(): Promise<void> {
+  connDrawerSaving.value = true
+  try {
+    if (conn.customParamsJson.trim()) {
+      conn.parseCustomParams()
+    }
+    await conn.saveToServer()
+    if (connUnsavedReason.value === 'navigate') {
+      drawerRight.value = false
+      await proceedPendingNavigation()
+    } else {
+      closeConnectionDrawer()
+    }
+  } catch (e) {
+    coreNotify(
+      e instanceof Error ? e.message : t('conn.saveFailedJson'),
+      undefined,
+      { level: 'error' },
+    )
+  } finally {
+    connDrawerSaving.value = false
+  }
+}
+
+function onConnUnsavedIgnore(): void {
+  if (connUnsavedReason.value === 'navigate') {
+    conn.discardPanelChangesToBaseline()
+    drawerRight.value = false
+    void proceedPendingNavigation()
+    return
+  }
+  closeConnectionDrawer()
+}
+
+function onConnUnsavedKeepEditing(): void {
+  connUnsavedDialogOpen.value = false
+  pendingNavTo.value = null
+}
+
+const removeConnDirtyNavGuard = router.beforeEach((to, from) => {
+  if (allowNextConnNav) {
+    allowNextConnNav = false
+    return true
+  }
+  if (!conn.isPanelDirty) return true
+  if (to.path === from.path) {
+    const toCid = to.params.conversationId
+    const fromCid = from.params.conversationId
+    if (String(toCid ?? '') === String(fromCid ?? '')) return true
+  }
+  connUnsavedReason.value = 'navigate'
+  pendingNavTo.value = to
+  connUnsavedDialogOpen.value = true
+  return false
+})
 const leftHostHidden = computed(() => isPluginPanelHidden('leftRail'))
 const rightHostHidden = computed(() => isPluginPanelHidden('rightRail'))
 
@@ -173,7 +275,6 @@ const lorebooksDialogOpen = ref(false)
 const libraryDialogOpen = ref(false)
 const libraryTab = ref<'assets' | 'knowledge'>('assets')
 const mobileNavOpen = ref(false)
-const conn = useConnectionStore()
 const lorebooksStore = useLorebooksStore()
 const promptsStore = usePromptsStore()
 const uiContext = useUiContextStore()
@@ -445,6 +546,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  removeConnDirtyNavGuard()
   layoutResizeObserver?.disconnect()
   layoutResizeObserver = null
   if (typeof window === 'undefined') return
@@ -486,11 +588,12 @@ onUnmounted(() => {
 
   <v-app v-else>
     <v-navigation-drawer
-      v-model="drawerRight"
+      :model-value="drawerRight"
       :width="440"
       temporary
       location="end"
       border="start"
+      @update:model-value="onConnectionDrawerUpdate"
     >
       <v-toolbar density="compact" color="surface-variant" flat>
         <v-toolbar-title class="text-subtitle-2">
@@ -502,7 +605,7 @@ onUnmounted(() => {
           variant="text"
           density="comfortable"
           :aria-label="$t('app.closeModal')"
-          @click="drawerRight = false"
+          @click="onConnectionDrawerUpdate(false)"
         />
       </v-toolbar>
       <ConnectionSettingsCard />
@@ -716,7 +819,7 @@ onUnmounted(() => {
           type="button"
           class="app-bar__status-chip d-none d-md-inline-flex"
           :title="appBarApiStatusTitle"
-          @click="drawerRight = !drawerRight"
+          @click="toggleConnectionDrawer"
         >
           <span class="app-bar__status-dot" />
           <span class="app-bar__status-model text-truncate">
@@ -761,7 +864,7 @@ onUnmounted(() => {
           density="comfortable"
           class="app-bar__icon-btn"
           :aria-label="$t('app.apiConnection')"
-          @click="drawerRight = !drawerRight"
+          @click="toggleConnectionDrawer"
         />
       </div>
     </v-app-bar>
@@ -809,6 +912,48 @@ onUnmounted(() => {
         </span>
       </div>
     </v-footer>
+
+    <v-dialog
+      v-model="connUnsavedDialogOpen"
+      max-width="28rem"
+      persistent
+    >
+      <v-card>
+        <v-card-title>{{ $t('conn.unsavedCloseTitle') }}</v-card-title>
+        <v-card-text class="text-body-2">
+          {{
+            connUnsavedReason === 'navigate'
+              ? $t('conn.unsavedNavigateBody')
+              : $t('conn.unsavedCloseBody')
+          }}
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn
+            variant="text"
+            :disabled="connDrawerSaving"
+            @click="onConnUnsavedKeepEditing"
+          >
+            {{ $t('conn.unsavedCloseKeepEditing') }}
+          </v-btn>
+          <v-btn
+            variant="text"
+            :disabled="connDrawerSaving"
+            @click="onConnUnsavedIgnore"
+          >
+            {{ $t('conn.unsavedCloseIgnore') }}
+          </v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            :loading="connDrawerSaving"
+            @click="onConnUnsavedSave"
+          >
+            {{ $t('conn.unsavedCloseSave') }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <v-dialog
       v-model="settingsDialogOpen"

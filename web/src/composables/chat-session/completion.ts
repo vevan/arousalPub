@@ -141,7 +141,8 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
     chatAbortController = ownedController
     const signal = ownedController.signal
     const conversationId = deps.getConversationId()
-    const clientGenerationId = deps.conn.stream
+    const expectStream = deps.conn.stream
+    const clientGenerationId = expectStream
       ? generateClientChatGenerationId()
       : undefined
     if (clientGenerationId) {
@@ -152,11 +153,12 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
         conn: deps.conn,
         conversationId,
         params,
+        expectStream,
         generationId: clientGenerationId,
         requestFailedMessage: (status) =>
           deps.t('chat.errors.requestFailedStatus', { status }),
         noStreamMessage: deps.t('chat.errors.noStream'),
-        onStreamDelta: deps.conn.stream ? streamDeltaHandler : undefined,
+        onStreamDelta: expectStream ? streamDeltaHandler : undefined,
         onPromptEstimatedTokens: (n) => {
           deps.pendingSendEstimatedTokens.value = n
         },

@@ -159,6 +159,172 @@ export const useConnectionStore = defineStore('connection', () => {
   const apiKeyDraftDirty = ref(false)
 
   const lastSavedAt = ref<string | null>(null)
+  /** 上次从服务端加载或保存成功后的预设指纹，用于关闭面板时判断未保存改动 */
+  const lastServerFingerprints = ref<Record<string, string>>({})
+  /** 与指纹对应的预设快照（进房/离房时用于丢弃会话内改动） */
+  const lastServerPresets = ref<Record<string, ApiPreset>>({})
+
+  function clonePresetBaseline(p: ApiPreset): ApiPreset {
+    return {
+      ...p,
+      apiKey: '',
+      drySequenceBreakers: [...p.drySequenceBreakers],
+      linkedPromptPresetId: p.linkedPromptPresetId ?? null,
+      apiKeyId: p.apiKeyId ?? null,
+      keyConfigured: Boolean(p.keyConfigured),
+    }
+  }
+
+  function panelParamFingerprint(input: {
+    id: string
+    alias: string
+    baseUrl: string
+    model: string
+    contextLength: number | null
+    maxTokens: number | null
+    stream: boolean
+    temperature: number | null
+    topP: number | null
+    topK: number | null
+    dryMultiplier: number | null
+    dryBase: number | null
+    dryAllowedLength: number | null
+    dryPenaltyLastN: number | null
+    drySequenceBreakers: string[]
+    frequencyPenalty: number | null
+    presencePenalty: number | null
+    customParamsJson: string
+    showReasoningChain: boolean
+    requestReasoningChain: boolean
+    linkedPromptPresetId: string | null
+    apiKeyId: string | null
+  }): string {
+    return JSON.stringify(input)
+  }
+
+  function fingerprintFromPreset(p: ApiPreset): string {
+    return panelParamFingerprint({
+      id: p.id,
+      alias: p.alias,
+      baseUrl: p.baseUrl,
+      model: p.model,
+      contextLength: p.contextLength,
+      maxTokens: p.maxTokens,
+      stream: p.stream,
+      temperature: p.temperature,
+      topP: p.topP,
+      topK: p.topK,
+      dryMultiplier: p.dryMultiplier,
+      dryBase: p.dryBase,
+      dryAllowedLength: p.dryAllowedLength,
+      dryPenaltyLastN: p.dryPenaltyLastN,
+      drySequenceBreakers: [...p.drySequenceBreakers],
+      frequencyPenalty: p.frequencyPenalty,
+      presencePenalty: p.presencePenalty,
+      customParamsJson: p.customParamsJson,
+      showReasoningChain: p.showReasoningChain,
+      requestReasoningChain: p.requestReasoningChain,
+      linkedPromptPresetId: p.linkedPromptPresetId ?? null,
+      apiKeyId: p.apiKeyId ?? null,
+    })
+  }
+
+  function fingerprintFromForm(): string {
+    const id = editingPresetId.value ?? ''
+    const snap = snapshot()
+    return panelParamFingerprint({
+      id,
+      alias: snap.alias,
+      baseUrl: snap.baseUrl,
+      model: snap.model,
+      contextLength: snap.contextLength,
+      maxTokens: snap.maxTokens,
+      stream: snap.stream,
+      temperature: snap.temperature,
+      topP: snap.topP,
+      topK: snap.topK,
+      dryMultiplier: snap.dryMultiplier,
+      dryBase: snap.dryBase,
+      dryAllowedLength: snap.dryAllowedLength,
+      dryPenaltyLastN: snap.dryPenaltyLastN,
+      drySequenceBreakers: [...snap.drySequenceBreakers],
+      frequencyPenalty: snap.frequencyPenalty,
+      presencePenalty: snap.presencePenalty,
+      customParamsJson: snap.customParamsJson,
+      showReasoningChain: snap.showReasoningChain,
+      requestReasoningChain: snap.requestReasoningChain,
+      linkedPromptPresetId: linkedPromptPresetId.value ?? null,
+      apiKeyId: apiKeyId.value ?? null,
+    })
+  }
+
+  function captureServerPanelBaseline(): void {
+    const fps: Record<string, string> = {}
+    const snaps: Record<string, ApiPreset> = {}
+    for (const p of presets.value) {
+      const clone = clonePresetBaseline(p)
+      fps[p.id] = fingerprintFromPreset(clone)
+      snaps[p.id] = clone
+    }
+    lastServerFingerprints.value = fps
+    lastServerPresets.value = snaps
+  }
+
+  const isPanelDirty = computed(() => {
+    if (apiKeyDraftDirty.value) return true
+    for (const p of presets.value) {
+      const baseline = lastServerFingerprints.value[p.id]
+      if (baseline === undefined) return true
+      if (fingerprintFromPreset(p) !== baseline) return true
+    }
+    const id = editingPresetId.value
+    if (!id) return false
+    const baseline = lastServerFingerprints.value[id]
+    if (baseline === undefined) return true
+    return fingerprintFromForm() !== baseline
+  })
+
+  /**
+   * 进房/绑定变更：丢弃会话内未保存改动，将面板灌到目标预设本体（不 sync 脏表单）。
+   */
+  function hydratePanelForConversation(targetId: string): void {
+    discardPanelChangesToBaseline()
+    const list = presets.value
+    if (list.length === 0) return
+    const tid = list.some((p) => p.id === targetId)
+      ? targetId
+      : (activePresetId.value && list.some((p) => p.id === activePresetId.value)
+          ? activePresetId.value
+          : list[0].id)
+    editingPresetId.value = tid
+    applyActivePresetToForm()
+  }
+
+  /** 丢弃内存中相对 baseline 的改动（含未保存新建预设），表单回到 baseline */
+  function discardPanelChangesToBaseline(): void {
+    apiKeyDraftDirty.value = false
+    apiKey.value = ''
+    const restored: ApiPreset[] = Object.values(lastServerPresets.value).map(
+      (p) => clonePresetBaseline(p),
+    )
+    if (restored.length === 0) return
+    const keepEditing = editingPresetId.value
+    const keepActive = activePresetId.value
+    presets.value = restored
+    if (
+      !keepActive ||
+      !restored.some((p) => p.id === keepActive)
+    ) {
+      activePresetId.value = restored[0]?.id ?? null
+    } else {
+      activePresetId.value = keepActive
+    }
+    const tid = restored.some((p) => p.id === keepEditing)
+      ? keepEditing!
+      : (activePresetId.value ?? restored[0].id)
+    editingPresetId.value = tid
+    applyActivePresetToForm()
+  }
 
   const isApiKeyConfigured = computed(() => {
     if (apiKeyDraftDirty.value && apiKey.value.trim()) return true
@@ -463,6 +629,9 @@ export const useConnectionStore = defineStore('connection', () => {
         body: JSON.stringify({
           baseUrl: baseUrl.value.trim() || undefined,
           model: model.value.trim() || undefined,
+          ...(apiKeyDraftDirty.value && apiKey.value.trim()
+            ? { apiKey: apiKey.value.trim() }
+            : { apiKeyId: apiKeyId.value }),
         }),
       },
     )
@@ -809,6 +978,7 @@ export const useConnectionStore = defineStore('connection', () => {
           : activePresetId.value
       applyActivePresetToForm()
       if (typeof doc.savedAt === 'string') lastSavedAt.value = doc.savedAt
+      captureServerPanelBaseline()
       return true
     })().finally(() => {
       loadSettingsInflight = null
@@ -852,6 +1022,7 @@ export const useConnectionStore = defineStore('connection', () => {
       apiKey.value = ''
       apiKeyDraftDirty.value = false
     }
+    captureServerPanelBaseline()
   }
 
   function clearSessionData(): void {
@@ -860,6 +1031,8 @@ export const useConnectionStore = defineStore('connection', () => {
     activePresetId.value = null
     editingPresetId.value = null
     lastSavedAt.value = null
+    lastServerFingerprints.value = {}
+    lastServerPresets.value = {}
     apiKeyDraftDirty.value = false
     linkedPromptPresetId.value = null
     apiKeyId.value = null
@@ -918,9 +1091,12 @@ export const useConnectionStore = defineStore('connection', () => {
     apiKeyDraftDirty,
     setApiKeyId,
     lastSavedAt,
+    isPanelDirty,
     presetSelectItems,
     snapshot,
     switchPreset,
+    hydratePanelForConversation,
+    discardPanelChangesToBaseline,
     setGlobalActivePreset,
     addPreset,
     removeActivePreset,

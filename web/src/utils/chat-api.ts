@@ -6,7 +6,6 @@ import { apiFetch } from '@/utils/api-fetch'
 import {
   ChatRequestFailure,
 } from '@/utils/chat-request-failure'
-import { hasAnyDrySamplerField } from '@/utils/dry-sampler'
 
 export {
   ChatRequestFailure,
@@ -42,16 +41,15 @@ export interface ConversationChatRequestParams {
   plugins?: ConversationChatRequestPlugins
 }
 
+/**
+ * 会话对话请求体：连接面板当前快照（editingPresetId + 表单）。
+ * 草稿 Key 仅在 dirty 时发送，不落盘。
+ */
 export function buildConversationChatRequestBody(
   conn: ConnectionStore,
   conversationId: string,
   params: ConversationChatRequestParams,
 ) {
-  let customParams: Record<string, unknown> | undefined
-  if (conn.customParamsJson.trim()) {
-    customParams = conn.parseCustomParams()
-  }
-
   const dryFields = {
     dryMultiplier: conn.dryMultiplier,
     dryBase: conn.dryBase,
@@ -60,10 +58,20 @@ export function buildConversationChatRequestBody(
     drySequenceBreakers: conn.drySequenceBreakers,
   }
 
+  const draftKey =
+    conn.apiKeyDraftDirty && conn.apiKey.trim() ? conn.apiKey.trim() : undefined
+
+  let customParams: Record<string, unknown> = {}
+  if (conn.customParamsJson.trim()) {
+    customParams = conn.parseCustomParams() ?? {}
+  }
+
   return {
     alias: conn.alias.trim() || undefined,
     baseUrl: conn.baseUrl.trim() || undefined,
-    apiPresetId: conn.activePresetId ?? undefined,
+    apiPresetId: conn.editingPresetId ?? undefined,
+    apiKeyId: draftKey ? undefined : conn.apiKeyId,
+    ...(draftKey ? { apiKey: draftKey } : {}),
     model: conn.model.trim(),
     conversationId,
     userText: params.userText,
@@ -90,25 +98,18 @@ export function buildConversationChatRequestBody(
     ...(params.groupContinue ? { groupContinue: params.groupContinue } : {}),
     ...(params.plugins ? { plugins: params.plugins } : {}),
     stream: conn.stream,
-    contextLength: conn.contextLength ?? undefined,
-    maxTokens: conn.maxTokens ?? undefined,
-    temperature: conn.temperature ?? undefined,
-    topP: conn.topP ?? undefined,
-    topK: conn.topK ?? undefined,
-    ...(hasAnyDrySamplerField(dryFields)
-      ? {
-          dryMultiplier: dryFields.dryMultiplier ?? undefined,
-          dryBase: dryFields.dryBase ?? undefined,
-          dryAllowedLength: dryFields.dryAllowedLength ?? undefined,
-          dryPenaltyLastN: dryFields.dryPenaltyLastN ?? undefined,
-          drySequenceBreakers:
-            dryFields.drySequenceBreakers.length > 0
-              ? dryFields.drySequenceBreakers
-              : undefined,
-        }
-      : {}),
-    frequencyPenalty: conn.frequencyPenalty ?? undefined,
-    presencePenalty: conn.presencePenalty ?? undefined,
+    contextLength: conn.contextLength,
+    maxTokens: conn.maxTokens,
+    temperature: conn.temperature,
+    topP: conn.topP,
+    topK: conn.topK,
+    dryMultiplier: dryFields.dryMultiplier,
+    dryBase: dryFields.dryBase,
+    dryAllowedLength: dryFields.dryAllowedLength,
+    dryPenaltyLastN: dryFields.dryPenaltyLastN,
+    drySequenceBreakers: dryFields.drySequenceBreakers,
+    frequencyPenalty: conn.frequencyPenalty,
+    presencePenalty: conn.presencePenalty,
     customParams,
     requestReasoning: conn.requestReasoningChain,
   }
@@ -245,6 +246,8 @@ export async function runChatRequest(options: {
   params: ConversationChatRequestParams
   requestFailedMessage: (status: string) => string
   noStreamMessage: string
+  /** 是否按流式消费响应；与连接面板 stream 一致 */
+  expectStream: boolean
   onStreamDelta?: (d: { text?: string; reasoning?: string }) => void
   /** 流式响应头中的组装 token 估算（与 /api/chat 非流式 JSON 的 estimatedTokens 一致） */
   onPromptEstimatedTokens?: (n: number) => void
@@ -301,7 +304,7 @@ export async function runChatRequest(options: {
   }
 
   const ct = res.headers.get('content-type') ?? ''
-  if (conn.stream && ct.includes('text/event-stream') && res.body) {
+  if (options.expectStream && ct.includes('text/event-stream') && res.body) {
     const generationId = res.headers.get('X-Chat-Generation-Id')?.trim()
     if (generationId) {
       options.onGenerationId?.(generationId)

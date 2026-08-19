@@ -64,7 +64,24 @@ export function isApiKeyConfiguredForEntry(entry: ApiKeyEntry): boolean {
 export interface ResolveChatCredentialsInput {
   apiPresetId?: string | null
   apiKeyId?: string | null
+  /** 连接面板未保存的草稿 Key（仅当次请求；优先于 keychain/预设磁盘 Key） */
+  apiKey?: string | null
   baseUrl?: string | null
+}
+
+/** 仅当 source 自身带 apiKeyId（含 null）时写入，避免 { apiKeyId: undefined } 被当成显式清空 */
+export function credentialInputFromBody(
+  source: ResolveChatCredentialsInput,
+): ResolveChatCredentialsInput {
+  const input: ResolveChatCredentialsInput = {
+    apiPresetId: source.apiPresetId,
+    apiKey: source.apiKey,
+    baseUrl: source.baseUrl,
+  }
+  if (Object.prototype.hasOwnProperty.call(source, 'apiKeyId')) {
+    input.apiKeyId = source.apiKeyId
+  }
+  return input
 }
 
 export interface ResolvedChatCredentials {
@@ -93,9 +110,22 @@ export async function resolveChatCredentials(
   const preset = settings.presets.find((p) => p.id === presetId) ?? null
 
   let apiKey = ''
-  const overrideKeyId = input.apiKeyId?.trim()
-  if (overrideKeyId) {
-    apiKey = await resolveKeyFromKeychain(overrideKeyId)
+  const draftKey = input.apiKey?.trim()
+  const hasApiKeyIdOverride = Object.prototype.hasOwnProperty.call(
+    input,
+    'apiKeyId',
+  )
+  const overrideKeyId = hasApiKeyIdOverride
+    ? input.apiKeyId?.trim() || ''
+    : ''
+  if (draftKey) {
+    apiKey = draftKey
+  } else if (hasApiKeyIdOverride) {
+    if (overrideKeyId) {
+      apiKey = await resolveKeyFromKeychain(overrideKeyId)
+    } else if (preset) {
+      apiKey = preset.apiKey?.trim() ?? ''
+    }
   } else if (preset) {
     apiKey = await resolveApiKeyFromPreset(preset)
   }

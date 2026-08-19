@@ -26,7 +26,7 @@ import { validateKnowledgeBaseIds } from '../knowledge-base-file.js'
 import { isValidConversationId } from '../conversation-id.js'
 import { parseContextRecallTestBody, runContextRecallTest } from '../context-recall-test.js'
 import { readPromptsDocument } from '../prompts-file.js'
-import { ApiCredentialError, resolveChatCredentials } from '../api-credential-resolve.js'
+import { ApiCredentialError, credentialInputFromBody, resolveChatCredentials } from '../api-credential-resolve.js'
 import { buildConversationOutboundMessages } from '../chat-assemble.js'
 import { resolveTurnPluginEntriesFromBody } from '../plugin-host.js'
 import { dispatchConversationLifecycle } from '../plugin-lifecycle.js'
@@ -64,6 +64,8 @@ interface ChatBody {
   /** 默认 activePresetId */
   apiPresetId?: string
   apiKeyId?: string | null
+  /** 连接面板草稿 Key（仅当次；勿写入日志） */
+  apiKey?: string
   model: string
   /** 直传 messages；与 conversationId 模式二选一 */
   messages?: ChatMessage[]
@@ -1813,7 +1815,7 @@ export function registerChatRoutes(app: FastifyInstance): void {
     const resolvedFeature = await resolveChatFeatureAudit(convId || undefined)
     try {
       if (convId) {
-        const resolved = await resolveConversationChatCall(convId)
+        const resolved = await resolveConversationChatCall(convId, body)
         apiKey = resolved.apiKey
         baseUrl = resolved.baseUrl
         const fields = resolvedParamsToChatBodyFields(resolved.params)
@@ -1821,15 +1823,19 @@ export function registerChatRoutes(app: FastifyInstance): void {
           ...body,
           ...fields,
           apiPresetId: resolved.presetId,
-          baseUrl: undefined,
-          apiKeyId: undefined,
+          apiKey: undefined,
         }
       } else {
-        const creds = await resolveChatCredentials({
-          apiPresetId: body.apiPresetId,
-          apiKeyId: body.apiKeyId,
-          baseUrl: body.baseUrl,
-        })
+        const creds = await resolveChatCredentials(
+          credentialInputFromBody({
+            apiPresetId: body.apiPresetId,
+            apiKey: body.apiKey,
+            baseUrl: body.baseUrl,
+            ...(Object.prototype.hasOwnProperty.call(body, 'apiKeyId')
+              ? { apiKeyId: body.apiKeyId }
+              : {}),
+          }),
+        )
         apiKey = creds.apiKey
         baseUrl = creds.baseUrl
       }
@@ -1891,6 +1897,7 @@ export function registerChatRoutes(app: FastifyInstance): void {
           : undefined,
         groupContinue: groupContinue ?? undefined,
         contextLength: mergedBody.contextLength,
+        maxResponseTokens: mergedBody.maxTokens,
         tokenModel: model,
         promptsDoc,
         plugins: body.plugins,

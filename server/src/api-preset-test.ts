@@ -1,5 +1,6 @@
 import {
   ApiCredentialError,
+  credentialInputFromBody,
   normalizeChatBaseUrl,
   resolveChatCredentials,
 } from './api-credential-resolve.js'
@@ -30,6 +31,9 @@ export interface ApiPresetTestInput {
   baseUrl?: string | null
   /** 覆盖 preset 磁盘上的 model；缺省用 preset.model */
   model?: string | null
+  apiKeyId?: string | null
+  /** 连接面板未保存的草稿 Key（仅当次请求） */
+  apiKey?: string | null
 }
 
 export interface ApiPresetTestSuccess {
@@ -64,10 +68,16 @@ export async function testApiPresetConnectivity(
 
   let creds
   try {
-    creds = await resolveChatCredentials({
-      apiPresetId: presetId,
-      baseUrl: input.baseUrl,
-    })
+    creds = await resolveChatCredentials(
+      credentialInputFromBody({
+        apiPresetId: presetId,
+        baseUrl: input.baseUrl,
+        apiKey: input.apiKey,
+        ...(Object.prototype.hasOwnProperty.call(input, 'apiKeyId')
+          ? { apiKeyId: input.apiKeyId }
+          : {}),
+      }),
+    )
   } catch (e) {
     if (e instanceof ApiCredentialError) {
       return { ok: false, phase: 'models', error: e.code }

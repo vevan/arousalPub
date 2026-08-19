@@ -79,16 +79,11 @@ import { resolveBudgetTrimSettings } from './budget-trim-settings.js'
 import { normalizePresetForAssemble } from './prompt-preset-normalize.js'
 import { readApiSettingsFromFile } from './api-settings-file.js'
 import {
-  mergePresetWithChatBinding,
-  readConversationChatBinding,
-} from './conversation-api-settings.js'
-import {
   parseHybridFtsSettingsStrict,
   resolveEffectiveHybridFtsSettings,
 } from './hybrid-fts-settings.js'
 import {
   resolveFeatureApi,
-  resolveChatApiConfigId,
   toResolvedFeatureAudit,
   type ResolvedFeatureAudit,
 } from './feature-binding-resolve.js'
@@ -286,25 +281,15 @@ async function loadUserCharacterSlice(
   }
 }
 
-function resolveMaxResponseTokensForConversation(
-  idx: ConversationIndex,
-  apiSettings: NonNullable<Awaited<ReturnType<typeof readApiSettingsFromFile>>>,
+function resolveMaxResponseTokensFromPanel(
+  maxResponseTokens: number | null | undefined,
 ): number | undefined {
-  const binding = readConversationChatBinding(idx.apiPreset)
-  const resolved = resolveChatApiConfigId(apiSettings, idx.apiPreset)
-  const presetId = (
-    binding?.apiConfigId?.trim() ||
-    resolved?.apiConfigId ||
-    apiSettings.activePresetId ||
-    ''
-  ).trim()
-  if (!presetId) return undefined
-  const preset = apiSettings.presets.find((p) => p.id === presetId)
-  if (!preset) return undefined
-  const merged = mergePresetWithChatBinding(preset, binding)
-  const n = merged.maxTokens
-  if (typeof n === 'number' && !Number.isNaN(n) && n > 0) {
-    return Math.floor(n)
+  if (
+    typeof maxResponseTokens === 'number' &&
+    !Number.isNaN(maxResponseTokens) &&
+    maxResponseTokens > 0
+  ) {
+    return Math.floor(maxResponseTokens)
   }
   return undefined
 }
@@ -368,6 +353,8 @@ export interface BuildConversationMessagesParams {
   regenerateSegmentIndex?: number
   regenerateTurnOrdinal?: number | null
   contextLength?: number | null
+  /** 面板快照 maxTokens → {{maxResponseTokens}}；勿再读会话磁盘绑定 */
+  maxResponseTokens?: number | null
   tokenModel?: string | null
   plugins?: ChatPluginsBody | null
 }
@@ -632,9 +619,9 @@ export async function buildConversationOutboundMessages(
     userCharacter,
     model: params.tokenModel ?? undefined,
     contextLength: maxTokens,
-    maxResponseTokens: apiSettings
-      ? resolveMaxResponseTokensForConversation(idx, apiSettings)
-      : undefined,
+    maxResponseTokens: resolveMaxResponseTokensFromPanel(
+      params.maxResponseTokens,
+    ),
     userInput,
     promptTrigger: trigger,
     authorsNote: authorsNoteMacroText(idx.authorsNote),

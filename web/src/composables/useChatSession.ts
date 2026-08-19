@@ -186,37 +186,9 @@ export function useChatSession(props: ChatSessionProps) {
     messagesLoading,
   } = turnList
 
-  function resolveEffectiveChat(): {
-    apiPresetId: string
-    model: string
-    stream: boolean
-  } {
-    const fromProp = props.effectiveChatApi
-    if (fromProp?.apiPresetId) {
-      return {
-        apiPresetId: fromProp.apiPresetId,
-        model: fromProp.model ?? '',
-        stream: fromProp.stream !== false,
-      }
-    }
-    const p = conn.presets.find((x) => x.id === conn.activePresetId)
-    return {
-      apiPresetId: p?.id ?? conn.activePresetId ?? '',
-      model: p?.model ?? '',
-      stream: p?.stream !== false,
-    }
-  }
-
   const completion = createChatCompletionRunner({
     conn,
     getConversationId: () => props.conversationId,
-    getEffectiveStream: () => resolveEffectiveChat().stream,
-    getEffectiveModel: () => resolveEffectiveChat().model,
-    isEffectiveApiKeyConfigured: () => {
-      const { apiPresetId } = resolveEffectiveChat()
-      const preset = conn.presets.find((x) => x.id === apiPresetId)
-      return Boolean(preset?.keyConfigured)
-    },
     t,
     turns,
     streamingText,
@@ -291,7 +263,7 @@ export function useChatSession(props: ChatSessionProps) {
     runRegenerate,
     runGroupContinue,
     abortChatGeneration,
-    getModel: () => resolveEffectiveChat().model,
+    getModel: () => conn.model,
     startGenerationTimer,
     stopGenerationTimer,
     setPersistWarning,
@@ -385,12 +357,7 @@ export function useChatSession(props: ChatSessionProps) {
       boundDisplayNames: boundCharacterNames.getBoundDisplayNames(),
     })
     if (!body.trim()) return true
-    return (
-      Boolean(
-        conn.presets.find((x) => x.id === resolveEffectiveChat().apiPresetId)
-          ?.keyConfigured,
-      ) && resolveEffectiveChat().model.trim().length > 0
-    )
+    return conn.isApiKeyConfigured && conn.model.trim().length > 0
   })
 
   const { onComposerKeydown } = useComposerKeydown({
@@ -404,7 +371,7 @@ export function useChatSession(props: ChatSessionProps) {
     getConversationId: () => props.conversationId,
     userInput,
     getContextLength: () => conn.contextLength,
-    getModel: () => resolveEffectiveChat().model,
+    getModel: () => conn.model,
     t,
   })
 

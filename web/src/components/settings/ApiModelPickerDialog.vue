@@ -20,7 +20,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const conn = useConnectionStore()
-const { presets, activePresetId } = storeToRefs(conn)
+const { presets, activePresetId, editingPresetId } = storeToRefs(conn)
 
 const modelsList = ref<string[]>([])
 const modelsLoading = ref(false)
@@ -36,7 +36,19 @@ const resolvedPreset = computed(() =>
   presets.value.find((p) => p.id === resolvedPresetId.value) ?? null,
 )
 
+/** 与连接面板当前编辑预设一致时，用表单快照（含未保存 baseUrl / 草稿 Key） */
+const usePanelFormCredentials = computed(
+  () =>
+    Boolean(resolvedPresetId.value) &&
+    resolvedPresetId.value === editingPresetId.value,
+)
+
 const canFetchModels = computed(() => {
+  if (usePanelFormCredentials.value) {
+    const base = conn.baseUrl.trim() || resolvedPreset.value?.baseUrl?.trim()
+    if (!base) return false
+    return conn.isApiKeyConfigured
+  }
   const p = resolvedPreset.value
   if (!p?.baseUrl?.trim()) return false
   return Boolean(p.keyConfigured || p.apiKey?.trim())
@@ -71,12 +83,22 @@ async function fetchModels() {
   modelsLoading.value = true
   modelsError.value = ''
   try {
+    const body: Record<string, unknown> = {
+      apiPresetId: resolvedPresetId.value || undefined,
+    }
+    if (usePanelFormCredentials.value) {
+      const formBase = conn.baseUrl.trim()
+      if (formBase) body.baseUrl = formBase
+      if (conn.apiKeyDraftDirty && conn.apiKey.trim()) {
+        body.apiKey = conn.apiKey.trim()
+      } else {
+        body.apiKeyId = conn.apiKeyId
+      }
+    }
     const res = await fetch('/api/models', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        apiPresetId: resolvedPresetId.value || undefined,
-      }),
+      body: JSON.stringify(body),
     })
     const data = (await res.json()) as {
       models?: string[]

@@ -36,12 +36,6 @@ export interface CompletionResult {
 export interface ChatCompletionDeps {
   conn: ConnectionStore
   getConversationId: () => string
-  /** 会话生效 stream（来自激活/绑定预设，非设置页编辑表单） */
-  getEffectiveStream: () => boolean
-  /** 会话生效 model；用于就绪检查 */
-  getEffectiveModel: () => string
-  /** 会话生效预设是否已配置 Key */
-  isEffectiveApiKeyConfigured: () => boolean
   t: ComposerTranslation
   turns: Ref<ChatTurnItem[]>
   streamingText: Ref<string>
@@ -147,7 +141,7 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
     chatAbortController = ownedController
     const signal = ownedController.signal
     const conversationId = deps.getConversationId()
-    const expectStream = deps.getEffectiveStream()
+    const expectStream = deps.conn.stream
     const clientGenerationId = expectStream
       ? generateClientChatGenerationId()
       : undefined
@@ -214,7 +208,9 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
   }
 
   function parseCustomParamsOrThrow(): void {
-    /* 会话对话不再使用编辑表单 customParams；无效 JSON 由服务端读预设时忽略 */
+    if (deps.conn.customParamsJson.trim()) {
+      deps.conn.parseCustomParams()
+    }
   }
 
   function customParamsErrorMessage(e: unknown): string {
@@ -224,10 +220,7 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
   }
 
   function assertApiReady(): boolean {
-    return (
-      deps.isEffectiveApiKeyConfigured() &&
-      deps.getEffectiveModel().trim().length > 0
-    )
+    return deps.conn.isApiKeyConfigured && deps.conn.model.trim().length > 0
   }
 
   function resolveReceiveId(

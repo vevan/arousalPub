@@ -1824,6 +1824,8 @@ export function registerChatRoutes(app: FastifyInstance): void {
           ...fields,
           apiPresetId: resolved.presetId,
           apiKey: undefined,
+          baseUrl: undefined,
+          apiKeyId: undefined,
         }
       } else {
         const creds = await resolveChatCredentials(

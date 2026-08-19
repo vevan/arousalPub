@@ -1,6 +1,7 @@
 import {
   ApiCredentialError,
   credentialInputFromBody,
+  normalizeChatBaseUrl,
   resolveChatCredentials,
   type ResolveChatCredentialsInput,
 } from './api-credential-resolve.js'
@@ -128,6 +129,7 @@ function panelSnapshotPresetFromBody(
   )
   if (!hasDraftCreds) return null
   if (!baseUrl.trim()) return null
+  const safeBaseUrl = normalizeChatBaseUrl(baseUrl)
   const id = (
     body.apiPresetId?.trim() ||
     resolvedPresetId?.trim() ||
@@ -140,7 +142,7 @@ function panelSnapshotPresetFromBody(
   return {
     id,
     alias: typeof body.alias === 'string' ? body.alias : '',
-    baseUrl,
+    baseUrl: safeBaseUrl,
     apiKey: '',
     model: typeof body.model === 'string' ? body.model : '',
     contextLength:

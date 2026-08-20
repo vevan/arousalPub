@@ -78,6 +78,90 @@ describe('requiredPermissionsForTurnPatch', () => {
       'turn.send.write',
     ])
   })
+
+  it('mis-comparing active vs other segment looks like content.write (regression guard)', () => {
+    const activeSegBefore: ConversationTurnDto = {
+      turnOrdinal: 1,
+      user: 'u',
+      segmentIndex: 0,
+      receives: [{ id: 'a1', content: 'active only' }],
+      activeReceiveIndex: 0,
+    }
+    const otherSegPruned: ConversationTurnDto = {
+      turnOrdinal: 1,
+      user: 'u',
+      segmentIndex: 1,
+      receives: [{ id: 'b2', content: 'kept swipe' }],
+      activeReceiveIndex: 0,
+    }
+    assert.deepEqual(
+      requiredPermissionsForTurnPatch(activeSegBefore, otherSegPruned),
+      ['turn.receive.content.write'],
+    )
+  })
+
+  it('same-segment prune only needs turn.receive.prune', () => {
+    const before: ConversationTurnDto = {
+      turnOrdinal: 1,
+      user: 'u',
+      segmentIndex: 1,
+      receives: [
+        { id: 'b1', content: 'swipe0' },
+        { id: 'b2', content: 'swipe1' },
+      ],
+      activeReceiveIndex: 1,
+    }
+    const after: ConversationTurnDto = {
+      ...before,
+      receives: [before.receives[1]!],
+      activeReceiveIndex: 0,
+    }
+    assert.deepEqual(requiredPermissionsForTurnPatch(before, after), [
+      'turn.receive.prune',
+    ])
+    assert.equal(
+      canPerformTurnPatch(
+        ['conversation.read', 'turn.receive.prune'],
+        before,
+        after,
+      ),
+      true,
+    )
+  })
+
+  it('prune with reallocated client ids still only needs turn.receive.prune', () => {
+    const before: ConversationTurnDto = {
+      turnOrdinal: 2,
+      user: 'u',
+      receives: [
+        { id: 'alloc-aaa', content: 'kept', model: 'gpt-4o' },
+        { id: 'alloc-bbb', content: 'discard' },
+      ],
+      activeReceiveIndex: 0,
+    }
+    const after: ConversationTurnDto = {
+      turnOrdinal: 2,
+      user: 'u',
+      receives: [{ id: 'alloc-ZZZ', content: 'kept' }],
+      activeReceiveIndex: 0,
+    }
+    assert.deepEqual(requiredPermissionsForTurnPatch(before, after), [
+      'turn.receive.prune',
+    ])
+  })
+
+  it('prune that also changes kept content still requires content.write', () => {
+    const before = baseTurn()
+    const after = {
+      ...before,
+      receives: [{ id: 'r2', content: 'sneak' }],
+      activeReceiveIndex: 0,
+    }
+    assert.deepEqual(requiredPermissionsForTurnPatch(before, after).sort(), [
+      'turn.receive.content.write',
+      'turn.receive.prune',
+    ].sort())
+  })
 })
 
 describe('assertTurnPatchPermissions', () => {

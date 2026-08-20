@@ -58,8 +58,18 @@ export class ConversationHostError extends Error {
   }
 }
 
-export function turnToConversationDto(turn: ChatTurnItem): ConversationTurnDto {
-  const segIdx = getActiveSegmentIndex(turn)
+/**
+ * 将磁盘/会话 turn 转为插件 DTO。
+ * @param segmentIndex 指定 PATCH 目标 segment；缺省为当前 active segment。
+ */
+export function turnToConversationDto(
+  turn: ChatTurnItem,
+  segmentIndex?: number,
+): ConversationTurnDto {
+  const segIdx =
+    typeof segmentIndex === 'number' && Number.isFinite(segmentIndex)
+      ? Math.max(0, Math.floor(segmentIndex))
+      : getActiveSegmentIndex(turn)
   const receives = getSegmentReceives(turn, segIdx)
   return {
     turnOrdinal: turn.turnOrdinal,
@@ -74,6 +84,7 @@ export function turnToConversationDto(turn: ChatTurnItem): ConversationTurnDto {
       ...(r.model ? { model: r.model } : {}),
     })),
     activeReceiveIndex: getActiveReceiveIndex(turn, segIdx),
+    segmentIndex: segIdx,
   }
 }
 

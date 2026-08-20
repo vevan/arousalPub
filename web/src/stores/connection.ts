@@ -163,6 +163,11 @@ export const useConnectionStore = defineStore('connection', () => {
   const lastServerFingerprints = ref<Record<string, string>>({})
   /** 与指纹对应的预设快照（进房/离房时用于丢弃会话内改动） */
   const lastServerPresets = ref<Record<string, ApiPreset>>({})
+  /**
+   * 已完成至少一次成功 load/save 并写入 baseline（可为空预设）。
+   * 与「指纹表非空」解耦，避免未加载与已加载零预设被混判。
+   */
+  const panelBaselineReady = ref(false)
 
   function clonePresetBaseline(p: ApiPreset): ApiPreset {
     return {
@@ -268,13 +273,39 @@ export const useConnectionStore = defineStore('connection', () => {
     }
     lastServerFingerprints.value = fps
     lastServerPresets.value = snaps
+    panelBaselineReady.value = true
+  }
+
+  function resetFormToDefaultFields(): void {
+    const d = defaultPresetFields()
+    linkedPromptPresetId.value = null
+    apiKeyId.value = null
+    alias.value = d.alias
+    baseUrl.value = d.baseUrl
+    apiKey.value = d.apiKey
+    model.value = d.model
+    contextLength.value = d.contextLength
+    maxTokens.value = d.maxTokens
+    stream.value = d.stream
+    temperature.value = d.temperature
+    topP.value = d.topP
+    topK.value = d.topK
+    dryMultiplier.value = d.dryMultiplier
+    dryBase.value = d.dryBase
+    dryAllowedLength.value = d.dryAllowedLength
+    dryPenaltyLastN.value = d.dryPenaltyLastN
+    drySequenceBreakers.value = [...d.drySequenceBreakers]
+    frequencyPenalty.value = d.frequencyPenalty
+    presencePenalty.value = d.presencePenalty
+    customParamsJson.value = d.customParamsJson
+    showReasoningChain.value = d.showReasoningChain
+    requestReasoningChain.value = d.requestReasoningChain
   }
 
   const isPanelDirty = computed(() => {
     if (apiKeyDraftDirty.value) return true
-    // baseline 整体为空说明 loadFromServer 尚未完成，此时视为干净
-    const hasBaseline = Object.keys(lastServerFingerprints.value).length > 0
-    if (!hasBaseline) return false
+    // loadFromServer 尚未成功写入 baseline 时视为干净，避免导航误拦
+    if (!panelBaselineReady.value) return false
     for (const p of presets.value) {
       const baseline = lastServerFingerprints.value[p.id]
       if (baseline === undefined) return true
@@ -307,6 +338,7 @@ export const useConnectionStore = defineStore('connection', () => {
   function discardPanelChangesToBaseline(): void {
     apiKeyDraftDirty.value = false
     apiKey.value = ''
+    if (!panelBaselineReady.value) return
     const restored: ApiPreset[] = Object.values(lastServerPresets.value).map(
       (p) => {
         const live = presets.value.find((x) => x.id === p.id)
@@ -316,7 +348,13 @@ export const useConnectionStore = defineStore('connection', () => {
         })
       },
     )
-    if (restored.length === 0) return
+    if (restored.length === 0) {
+      presets.value = []
+      activePresetId.value = null
+      editingPresetId.value = null
+      resetFormToDefaultFields()
+      return
+    }
     const keepEditing = editingPresetId.value
     const keepActive = activePresetId.value
     presets.value = restored
@@ -955,6 +993,7 @@ export const useConnectionStore = defineStore('connection', () => {
         presets.value = []
         activePresetId.value = null
         editingPresetId.value = null
+        captureServerPanelBaseline()
         return true
       }
       if (typeof raw !== 'object' || raw === null) return false
@@ -968,6 +1007,7 @@ export const useConnectionStore = defineStore('connection', () => {
         presets.value = []
         activePresetId.value = null
         editingPresetId.value = null
+        captureServerPanelBaseline()
         return true
       }
 
@@ -1042,30 +1082,9 @@ export const useConnectionStore = defineStore('connection', () => {
     lastSavedAt.value = null
     lastServerFingerprints.value = {}
     lastServerPresets.value = {}
+    panelBaselineReady.value = false
     apiKeyDraftDirty.value = false
-    linkedPromptPresetId.value = null
-    apiKeyId.value = null
-    const d = defaultPresetFields()
-    alias.value = d.alias
-    baseUrl.value = d.baseUrl
-    apiKey.value = d.apiKey
-    model.value = d.model
-    contextLength.value = d.contextLength
-    maxTokens.value = d.maxTokens
-    stream.value = d.stream
-    temperature.value = d.temperature
-    topP.value = d.topP
-    topK.value = d.topK
-    dryMultiplier.value = d.dryMultiplier
-    dryBase.value = d.dryBase
-    dryAllowedLength.value = d.dryAllowedLength
-    dryPenaltyLastN.value = d.dryPenaltyLastN
-    drySequenceBreakers.value = [...d.drySequenceBreakers]
-    frequencyPenalty.value = d.frequencyPenalty
-    presencePenalty.value = d.presencePenalty
-    customParamsJson.value = d.customParamsJson
-    showReasoningChain.value = d.showReasoningChain
-    requestReasoningChain.value = d.requestReasoningChain
+    resetFormToDefaultFields()
   }
 
   return {

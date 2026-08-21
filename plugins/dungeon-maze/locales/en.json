@@ -20,5 +20,14 @@
   "hero": "Hero",
   "moveTo": "Move to {x}, {y}",
   "boss": "Boss exit",
-  "branchSnapshotFailed": "Failed to save the maze snapshot for the new branch; the fork-point progress was not frozen."
+  "branchSnapshotFailed": "Failed to save the maze snapshot for the new branch; the fork-point progress was not frozen.",
+  "combatInProgress": "Combat in progress",
+  "combatVictory": "Combat: victory",
+  "combatDefeat": "Combat: defeat",
+  "combatFinish": "End combat",
+  "combatFinishDefeat": "End combat (defeat)",
+  "combatAdvance": "{name}'s turn",
+  "combatUnknownActor": "Unknown",
+  "combatHit": "Hit {damage}",
+  "combatMiss": "Miss"
 }

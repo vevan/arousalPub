@@ -65,6 +65,7 @@ test('finds a route only through explored paths', () => {
 
 test('freezes a new branch at creation and keeps later parent changes isolated', () => {
   const root = createDungeonMaze(12345)
+  assert.deepEqual(snapshotDungeonMazeBranch({}, '', 'branch-1'), {})
   const rootStates = snapshotDungeonMazeBranch({ '': root }, '', 'branch-1')
   const branch = rootStates['branch-1']
   assert.ok(branch)

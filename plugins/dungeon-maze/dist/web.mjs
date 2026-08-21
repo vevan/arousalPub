@@ -599,13 +599,17 @@ function renderCombat(host, state) {
   const rows = combat.combatants.map(
     (combatant) => `<li>${escapeHtml(combatant.name)}: ${combatant.hp}/${combatant.hpMax} HP</li>`
   ).join("");
-  const logs = combat.log.map(
-    (entry) => `<li>${escapeHtml(entry.actorId)} \u2192 ${escapeHtml(entry.targetId)}: ${entry.hit ? `\u547D\u4E2D ${entry.damageTotal}` : "\u672A\u547D\u4E2D"}</li>`
-  ).join("");
+  const logs = combat.log.map((entry) => {
+    const result = entry.hit ? host.t(tKey(host, "combatHit"), { damage: entry.damageTotal }) : host.t(tKey(host, "combatMiss"));
+    return `<li>${escapeHtml(entry.actorId)} \u2192 ${escapeHtml(entry.targetId)}: ${escapeHtml(result)}</li>`;
+  }).join("");
   const finished = combat.outcome !== null;
   const action = finished ? "combat:complete" : "combat:advance";
-  const label = finished ? combat.outcome === "victory" ? "\u7ED3\u675F\u6218\u6597" : "\u7ED3\u675F\u6218\u6597\uFF08\u8D25\u5317\uFF09" : `${current?.name ?? "\u672A\u77E5"} \u884C\u52A8`;
-  return `<section class="dm-event dm-combat"><p>\u6218\u6597${finished ? `\uFF1A${combat.outcome === "victory" ? "\u80DC\u5229" : "\u8D25\u5317"}` : "\u8FDB\u884C\u4E2D"}</p><ul>${rows}</ul><ol class="dm-combat-log">${logs}</ol><button type="button" class="dm-primary" data-plugin-action="${action}">${escapeHtml(label)}</button></section>`;
+  const label = finished ? host.t(tKey(host, combat.outcome === "victory" ? "combatFinish" : "combatFinishDefeat")) : host.t(tKey(host, "combatAdvance"), {
+    name: current?.name ?? host.t(tKey(host, "combatUnknownActor"))
+  });
+  const status = finished ? host.t(tKey(host, combat.outcome === "victory" ? "combatVictory" : "combatDefeat")) : host.t(tKey(host, "combatInProgress"));
+  return `<section class="dm-event dm-combat"><p>${escapeHtml(status)}</p><ul>${rows}</ul><ol class="dm-combat-log">${logs}</ol><button type="button" class="dm-primary" data-plugin-action="${action}">${escapeHtml(label)}</button></section>`;
 }
 function renderPanel(host, state) {
   if (!state) {
@@ -731,9 +735,6 @@ async function flushBranchCopies(host) {
       );
     }
     if (nextStates === states) {
-      for (const event of due) {
-        if (!states[event.branchPath]) pendingBranchCopies.push(event);
-      }
       return false;
     }
     await host.conversation.patchPluginSettings({ [STATE_KEY]: nextStates });
@@ -1021,7 +1022,15 @@ function register(host) {
         cancelAutoMove(host);
         return;
       }
-      void moveHeroToExplored(host, Math.floor(event.x / 20), Math.floor(event.y / 20));
+      void readState(host).then((scoped) => {
+        if (!scoped || !canvas || scoped.state.width <= 0) return;
+        const cellSize = canvas.width / scoped.state.width;
+        void moveHeroToExplored(
+          host,
+          Math.floor(event.x / cellSize),
+          Math.floor(event.y / cellSize)
+        );
+      });
     }
   });
   host.conversation.onPluginSettingsChanged((settings) => {

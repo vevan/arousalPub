@@ -128,15 +128,23 @@ function renderCombat(host: PluginHost, state: DungeonMazeState): string {
   const rows = combat.combatants.map((combatant) =>
     `<li>${escapeHtml(combatant.name)}: ${combatant.hp}/${combatant.hpMax} HP</li>`,
   ).join('')
-  const logs = combat.log.map((entry) =>
-    `<li>${escapeHtml(entry.actorId)} → ${escapeHtml(entry.targetId)}: ${entry.hit ? `命中 ${entry.damageTotal}` : '未命中'}</li>`,
-  ).join('')
+  const logs = combat.log.map((entry) => {
+    const result = entry.hit
+      ? host.t(tKey(host, 'combatHit'), { damage: entry.damageTotal })
+      : host.t(tKey(host, 'combatMiss'))
+    return `<li>${escapeHtml(entry.actorId)} → ${escapeHtml(entry.targetId)}: ${escapeHtml(result)}</li>`
+  }).join('')
   const finished = combat.outcome !== null
   const action = finished ? 'combat:complete' : 'combat:advance'
   const label = finished
-    ? combat.outcome === 'victory' ? '结束战斗' : '结束战斗（败北）'
-    : `${current?.name ?? '未知'} 行动`
-  return `<section class="dm-event dm-combat"><p>战斗${finished ? `：${combat.outcome === 'victory' ? '胜利' : '败北'}` : '进行中'}</p><ul>${rows}</ul><ol class="dm-combat-log">${logs}</ol><button type="button" class="dm-primary" data-plugin-action="${action}">${escapeHtml(label)}</button></section>`
+    ? host.t(tKey(host, combat.outcome === 'victory' ? 'combatFinish' : 'combatFinishDefeat'))
+    : host.t(tKey(host, 'combatAdvance'), {
+      name: current?.name ?? host.t(tKey(host, 'combatUnknownActor')),
+    })
+  const status = finished
+    ? host.t(tKey(host, combat.outcome === 'victory' ? 'combatVictory' : 'combatDefeat'))
+    : host.t(tKey(host, 'combatInProgress'))
+  return `<section class="dm-event dm-combat"><p>${escapeHtml(status)}</p><ul>${rows}</ul><ol class="dm-combat-log">${logs}</ol><button type="button" class="dm-primary" data-plugin-action="${action}">${escapeHtml(label)}</button></section>`
 }
 
 function renderPanel(host: PluginHost, state: DungeonMazeState | null): string {
@@ -286,9 +294,7 @@ async function flushBranchCopies(host: PluginHost): Promise<boolean> {
       )
     }
     if (nextStates === states) {
-      for (const event of due) {
-        if (!states[event.branchPath]) pendingBranchCopies.push(event)
-      }
+      // 子分支已有状态，或父分支尚无迷宫可复制：丢弃，避免无父状态时永久重排队。
       return false
     }
     await host.conversation.patchPluginSettings({ [STATE_KEY]: nextStates })
@@ -609,7 +615,15 @@ export function register(host: PluginHost): void {
         cancelAutoMove(host)
         return
       }
-      void moveHeroToExplored(host, Math.floor(event.x / 20), Math.floor(event.y / 20))
+      void readState(host).then((scoped) => {
+        if (!scoped || !canvas || scoped.state.width <= 0) return
+        const cellSize = canvas.width / scoped.state.width
+        void moveHeroToExplored(
+          host,
+          Math.floor(event.x / cellSize),
+          Math.floor(event.y / cellSize),
+        )
+      })
     },
   })
   host.conversation.onPluginSettingsChanged((settings) => {

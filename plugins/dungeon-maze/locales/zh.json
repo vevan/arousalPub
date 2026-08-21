@@ -20,5 +20,14 @@
   "hero": "主角",
   "moveTo": "移动至 {x}, {y}",
   "boss": "Boss 出口",
-  "branchSnapshotFailed": "新分支的迷宫快照保存失败，分叉点进度未能冻结。"
+  "branchSnapshotFailed": "新分支的迷宫快照保存失败，分叉点进度未能冻结。",
+  "combatInProgress": "战斗进行中",
+  "combatVictory": "战斗：胜利",
+  "combatDefeat": "战斗：败北",
+  "combatFinish": "结束战斗",
+  "combatFinishDefeat": "结束战斗（败北）",
+  "combatAdvance": "{name} 行动",
+  "combatUnknownActor": "未知",
+  "combatHit": "命中 {damage}",
+  "combatMiss": "未命中"
 }

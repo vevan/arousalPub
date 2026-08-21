@@ -64,6 +64,27 @@ export function snapshotDungeonMazeBranch(
   return parent ? { ...states, [branchPath]: structuredClone(parent) } : states
 }
 
+/**
+ * 将画布 bitmap 坐标映射为迷宫格点。宽高各自换算，不假定画布或迷宫为正方形。
+ * 越界或尺寸非法时返回 null。
+ */
+export function mazeCellFromCanvasPoint(
+  point: MazePoint,
+  canvas: { width: number; height: number },
+  maze: { width: number; height: number },
+): MazePoint | null {
+  if (
+    canvas.width <= 0 ||
+    canvas.height <= 0 ||
+    maze.width <= 0 ||
+    maze.height <= 0
+  ) return null
+  const x = Math.floor(point.x / (canvas.width / maze.width))
+  const y = Math.floor(point.y / (canvas.height / maze.height))
+  if (x < 0 || y < 0 || x >= maze.width || y >= maze.height) return null
+  return { x, y }
+}
+
 type Random = () => number
 
 function seededRandom(seed: number): Random {

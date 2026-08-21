@@ -250,6 +250,13 @@ function snapshotDungeonMazeBranch(states, parentPath, branchPath) {
   const parent = states[parentPath];
   return parent ? { ...states, [branchPath]: structuredClone(parent) } : states;
 }
+function mazeCellFromCanvasPoint(point, canvas2, maze) {
+  if (canvas2.width <= 0 || canvas2.height <= 0 || maze.width <= 0 || maze.height <= 0) return null;
+  const x = Math.floor(point.x / (canvas2.width / maze.width));
+  const y = Math.floor(point.y / (canvas2.height / maze.height));
+  if (x < 0 || y < 0 || x >= maze.width || y >= maze.height) return null;
+  return { x, y };
+}
 function seededRandom(seed) {
   let value = seed >>> 0;
   return () => {
@@ -552,10 +559,58 @@ function isDungeonMazeState(value) {
   ) && typeof state.seed === "number" && typeof state.elapsedMinutes === "number" && Number.isFinite(state.elapsedMinutes) && state.elapsedMinutes >= 0 && typeof state.restedMinutes === "number" && Number.isFinite(state.restedMinutes) && state.restedMinutes >= 0 && Array.isArray(state.resolvedEntityIds) && state.resolvedEntityIds.every((id) => typeof id === "string") && (state.activeEvent === null || isDungeonMapEvent(state.activeEvent)) && (state.activeCombat === null || isDungeonCombatState(state.activeCombat)) && typeof state.generation?.minionDensity === "number" && typeof state.generation?.chestDensity === "number" && typeof state.generation?.trapDensity === "number" && typeof state.generation?.campDensity === "number";
 }
 
+// plugins/dungeon-maze/src/branch-copies.ts
+var DUNGEON_STATES_KEY = "dungeonStates";
+function readDungeonStateBuckets(settings, stateKey = DUNGEON_STATES_KEY) {
+  const raw = settings[stateKey];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const states = {};
+  for (const [branchPath, value] of Object.entries(raw)) {
+    if (isDungeonMazeState(value)) states[branchPath] = value;
+  }
+  return states;
+}
+async function flushDungeonMazeBranchCopies(args) {
+  const stateKey = args.stateKey ?? DUNGEON_STATES_KEY;
+  const conversationId = args.getConversationId();
+  const due = args.queue.filter((event) => event.conversationId === conversationId);
+  if (!due.length) return false;
+  const rest = args.queue.filter((event) => event.conversationId !== conversationId);
+  args.queue.length = 0;
+  args.queue.push(...rest);
+  try {
+    const settings = await args.getPluginSettings();
+    if (args.getConversationId() !== conversationId) {
+      args.queue.unshift(...due);
+      return false;
+    }
+    const states = readDungeonStateBuckets(settings, stateKey);
+    if (args.pendingState && args.pendingState.conversationId === conversationId) {
+      states[args.pendingState.branchPath] = args.pendingState.state;
+    }
+    let nextStates = states;
+    for (const event of due) {
+      nextStates = snapshotDungeonMazeBranch(
+        nextStates,
+        event.parentBranchPath,
+        event.branchPath
+      );
+    }
+    if (nextStates === states) {
+      return false;
+    }
+    await args.patchPluginSettings({ [stateKey]: nextStates });
+    return false;
+  } catch {
+    args.queue.unshift(...due);
+    return true;
+  }
+}
+
 // plugins/dungeon-maze/src/index.ts
 var PLUGIN_ID = "dungeon-maze";
 var PLACEMENT = "rightRail";
-var STATE_KEY = "dungeonStates";
+var STATE_KEY = DUNGEON_STATES_KEY;
 function tKey(host, key) {
   return host.pluginKey(key);
 }
@@ -695,54 +750,20 @@ function cancelAutoMove(host) {
 function stateSignature(state) {
   return `${state.seed}:${state.hero.x}:${state.hero.y}:${state.elapsedMinutes}:${state.restedMinutes}:${state.resolvedEntityIds.join(",")}:${state.activeEvent?.entityId ?? ""}:${state.activeEvent?.minutes ?? ""}:${JSON.stringify(state.activeCombat)}:${state.explored.flat().map((value) => value ? "1" : "0").join("")}`;
 }
-function readStateBuckets(settings) {
-  const raw = settings[STATE_KEY];
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const states = {};
-  for (const [branchPath, value] of Object.entries(raw)) {
-    if (isDungeonMazeState(value)) states[branchPath] = value;
-  }
-  return states;
-}
 function enqueueStateJob(job) {
   const result = stateWrite.catch(() => void 0).then(job);
   stateWrite = result.catch(() => void 0);
   return result;
 }
-async function flushBranchCopies(host) {
-  const conversationId = host.conversation.getId();
-  const due = pendingBranchCopies.filter((event) => event.conversationId === conversationId);
-  if (!due.length) return false;
-  const rest = pendingBranchCopies.filter((event) => event.conversationId !== conversationId);
-  pendingBranchCopies.length = 0;
-  pendingBranchCopies.push(...rest);
-  try {
-    const settings = await host.conversation.getPluginSettings();
-    if (host.conversation.getId() !== conversationId) {
-      pendingBranchCopies.unshift(...due);
-      return false;
-    }
-    const states = readStateBuckets(settings);
-    if (pendingState && pendingState.conversationId === conversationId) {
-      states[pendingState.branchPath] = pendingState.state;
-    }
-    let nextStates = states;
-    for (const event of due) {
-      nextStates = snapshotDungeonMazeBranch(
-        nextStates,
-        event.parentBranchPath,
-        event.branchPath
-      );
-    }
-    if (nextStates === states) {
-      return false;
-    }
-    await host.conversation.patchPluginSettings({ [STATE_KEY]: nextStates });
-    return false;
-  } catch {
-    pendingBranchCopies.unshift(...due);
-    return true;
-  }
+function flushBranchCopies(host) {
+  return flushDungeonMazeBranchCopies({
+    queue: pendingBranchCopies,
+    pendingState,
+    getConversationId: () => host.conversation.getId(),
+    getPluginSettings: () => host.conversation.getPluginSettings(),
+    patchPluginSettings: (partial) => host.conversation.patchPluginSettings(partial),
+    stateKey: STATE_KEY
+  });
 }
 function persistState(host, scoped) {
   if (host.conversation.getId() !== scoped.conversationId) return stateWrite;
@@ -755,7 +776,7 @@ function persistState(host, scoped) {
     if (host.conversation.getId() !== scoped.conversationId || activeBranchPath !== scoped.branchPath) return;
     const settings = await host.conversation.getPluginSettings();
     if (host.conversation.getId() !== scoped.conversationId) return;
-    const states = readStateBuckets(settings);
+    const states = readDungeonStateBuckets(settings, STATE_KEY);
     await host.conversation.patchPluginSettings({
       [STATE_KEY]: { ...states, [scoped.branchPath]: scoped.state }
     });
@@ -780,32 +801,33 @@ function drawMaze(host, state) {
   if (!canvas) return;
   const context = canvas.getContext("2d");
   if (!context) return;
-  const cellSize = canvas.width / state.width;
+  const cellWidth = canvas.width / state.width;
+  const cellHeight = canvas.height / state.height;
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.font = '16px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
   context.textAlign = "center";
   context.textBaseline = "middle";
   for (let y = 0; y < state.height; y += 1) {
     for (let x = 0; x < state.width; x += 1) {
-      const left = x * cellSize;
-      const top = y * cellSize;
+      const left = x * cellWidth;
+      const top = y * cellHeight;
       const explored = state.explored[y][x];
       const open = state.cells[y][x] === 1;
       context.fillStyle = !explored ? "oklch(.23 .018 55)" : open ? "oklch(.78 .05 82)" : "oklch(.16 .015 55)";
-      context.fillRect(left, top, cellSize, cellSize);
+      context.fillRect(left, top, cellWidth, cellHeight);
       if (isVisibleToHero(state, x, y)) {
         context.strokeStyle = "oklch(.78 .04 82 / .2)";
-        context.strokeRect(left + 0.5, top + 0.5, cellSize - 1, cellSize - 1);
+        context.strokeRect(left + 0.5, top + 0.5, cellWidth - 1, cellHeight - 1);
       }
       const movable = open && isVisibleToHero(state, x, y) && Math.abs(state.hero.x - x) + Math.abs(state.hero.y - y) === 1;
       if (movable) {
         context.strokeStyle = "oklch(.65 .16 40)";
         context.lineWidth = 2;
-        context.strokeRect(left + 1, top + 1, cellSize - 2, cellSize - 2);
+        context.strokeRect(left + 1, top + 1, cellWidth - 2, cellHeight - 2);
       }
       if (!explored) continue;
       const glyph = entityGlyph(entityAt(state, x, y), state, x, y);
-      if (glyph) context.fillText(glyph, left + cellSize / 2, top + cellSize / 2 + 1);
+      if (glyph) context.fillText(glyph, left + cellWidth / 2, top + cellHeight / 2 + 1);
     }
   }
 }
@@ -817,7 +839,7 @@ async function readState(host) {
   if (pendingState && pendingState.conversationId === conversationId && pendingState.branchPath === branchPath) return pendingState;
   const settings = await host.conversation.getPluginSettings();
   if (host.conversation.getId() !== conversationId) return null;
-  const state = readStateBuckets(settings)[branchPath];
+  const state = readDungeonStateBuckets(settings, STATE_KEY)[branchPath];
   return state ? { state, conversationId, branchPath } : null;
 }
 async function refreshPanel(host) {
@@ -1023,18 +1045,19 @@ function register(host) {
         return;
       }
       void readState(host).then((scoped) => {
-        if (!scoped || !canvas || scoped.state.width <= 0) return;
-        const cellSize = canvas.width / scoped.state.width;
-        void moveHeroToExplored(
-          host,
-          Math.floor(event.x / cellSize),
-          Math.floor(event.y / cellSize)
+        if (!scoped || !canvas) return;
+        const cell = mazeCellFromCanvasPoint(
+          { x: event.x, y: event.y },
+          { width: canvas.width, height: canvas.height },
+          { width: scoped.state.width, height: scoped.state.height }
         );
+        if (!cell) return;
+        void moveHeroToExplored(host, cell.x, cell.y);
       });
     }
   });
   host.conversation.onPluginSettingsChanged((settings) => {
-    const rawStates = readStateBuckets(settings);
+    const rawStates = readDungeonStateBuckets(settings, STATE_KEY);
     const state = rawStates[boundBranchPath];
     if (state && ignoredStateSignatures.delete(stateSignature(state))) {
       drawMaze(host, state);

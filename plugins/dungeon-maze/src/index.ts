@@ -3,27 +3,31 @@ import {
   beginDungeonCombat,
   HERO_COMBATANT_ID,
 } from './battle.js'
+import {
+  DUNGEON_STATES_KEY,
+  flushDungeonMazeBranchCopies,
+  readDungeonStateBuckets,
+  type BranchCopyEvent,
+} from './branch-copies.js'
 import { DEFAULT_DUNGEON_CATALOG } from './catalog.js'
 import {
   completeDungeonCombat,
   createDungeonMaze,
   findDungeonPath,
-  isDungeonMazeState,
   isVisibleToHero,
+  mazeCellFromCanvasPoint,
   moveDungeonHero,
   resolveDungeonMapEvent,
   setDungeonCampRestMinutes,
-  snapshotDungeonMazeBranch,
   type DungeonEventResolution,
   type DungeonMazeState,
-  type DungeonMazeStates,
   type MazeEntity,
   type MazePoint,
 } from './maze.js'
 
 const PLUGIN_ID = 'dungeon-maze'
 const PLACEMENT = 'rightRail'
-const STATE_KEY = 'dungeonStates'
+const STATE_KEY = DUNGEON_STATES_KEY
 
 type PluginHost = {
   pluginKey(key: string): string
@@ -198,11 +202,7 @@ let stateWrite: Promise<unknown> = Promise.resolve()
 let combatHoldToken: string | null = null
 let unsubscribeBranchCreated: (() => void) | null = null
 const ignoredStateSignatures = new Set<string>()
-const pendingBranchCopies: Array<{
-  conversationId: string
-  parentBranchPath: string
-  branchPath: string
-}> = []
+const pendingBranchCopies: BranchCopyEvent[] = []
 
 function discardTransientMaze(): void {
   autoMoveRun += 1
@@ -251,16 +251,6 @@ function stateSignature(state: DungeonMazeState): string {
   return `${state.seed}:${state.hero.x}:${state.hero.y}:${state.elapsedMinutes}:${state.restedMinutes}:${state.resolvedEntityIds.join(',')}:${state.activeEvent?.entityId ?? ''}:${state.activeEvent?.minutes ?? ''}:${JSON.stringify(state.activeCombat)}:${state.explored.flat().map((value) => value ? '1' : '0').join('')}`
 }
 
-function readStateBuckets(settings: Record<string, unknown>): DungeonMazeStates {
-  const raw = settings[STATE_KEY]
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
-  const states: DungeonMazeStates = {}
-  for (const [branchPath, value] of Object.entries(raw)) {
-    if (isDungeonMazeState(value)) states[branchPath] = value
-  }
-  return states
-}
-
 function enqueueStateJob<T>(job: () => Promise<T>): Promise<T> {
   const result = stateWrite.catch(() => undefined).then(job)
   stateWrite = result.catch(() => undefined)
@@ -268,41 +258,15 @@ function enqueueStateJob<T>(job: () => Promise<T>): Promise<T> {
 }
 
 /** 返回 true 表示写入出错，事件已重新排队等待重试。 */
-async function flushBranchCopies(host: PluginHost): Promise<boolean> {
-  const conversationId = host.conversation.getId()
-  const due = pendingBranchCopies.filter((event) => event.conversationId === conversationId)
-  if (!due.length) return false
-  const rest = pendingBranchCopies.filter((event) => event.conversationId !== conversationId)
-  pendingBranchCopies.length = 0
-  pendingBranchCopies.push(...rest)
-  try {
-    const settings = await host.conversation.getPluginSettings()
-    if (host.conversation.getId() !== conversationId) {
-      pendingBranchCopies.unshift(...due)
-      return false
-    }
-    const states = readStateBuckets(settings)
-    if (pendingState && pendingState.conversationId === conversationId) {
-      states[pendingState.branchPath] = pendingState.state
-    }
-    let nextStates = states
-    for (const event of due) {
-      nextStates = snapshotDungeonMazeBranch(
-        nextStates,
-        event.parentBranchPath,
-        event.branchPath,
-      )
-    }
-    if (nextStates === states) {
-      // 子分支已有状态，或父分支尚无迷宫可复制：丢弃，避免无父状态时永久重排队。
-      return false
-    }
-    await host.conversation.patchPluginSettings({ [STATE_KEY]: nextStates })
-    return false
-  } catch {
-    pendingBranchCopies.unshift(...due)
-    return true
-  }
+function flushBranchCopies(host: PluginHost): Promise<boolean> {
+  return flushDungeonMazeBranchCopies({
+    queue: pendingBranchCopies,
+    pendingState,
+    getConversationId: () => host.conversation.getId(),
+    getPluginSettings: () => host.conversation.getPluginSettings(),
+    patchPluginSettings: (partial) => host.conversation.patchPluginSettings(partial),
+    stateKey: STATE_KEY,
+  })
 }
 
 function persistState(host: PluginHost, scoped: ScopedDungeonState): Promise<void> {
@@ -319,7 +283,7 @@ function persistState(host: PluginHost, scoped: ScopedDungeonState): Promise<voi
     ) return
     const settings = await host.conversation.getPluginSettings()
     if (host.conversation.getId() !== scoped.conversationId) return
-    const states = readStateBuckets(settings)
+    const states = readDungeonStateBuckets(settings, STATE_KEY)
     await host.conversation.patchPluginSettings({
       [STATE_KEY]: { ...states, [scoped.branchPath]: scoped.state },
     })
@@ -356,32 +320,33 @@ function drawMaze(host: PluginHost, state: DungeonMazeState): void {
   if (!canvas) return
   const context = canvas.getContext('2d')
   if (!context) return
-  const cellSize = canvas.width / state.width
+  const cellWidth = canvas.width / state.width
+  const cellHeight = canvas.height / state.height
   context.clearRect(0, 0, canvas.width, canvas.height)
   context.font = '16px "Segoe UI Emoji", "Apple Color Emoji", sans-serif'
   context.textAlign = 'center'
   context.textBaseline = 'middle'
   for (let y = 0; y < state.height; y += 1) {
     for (let x = 0; x < state.width; x += 1) {
-      const left = x * cellSize
-      const top = y * cellSize
+      const left = x * cellWidth
+      const top = y * cellHeight
       const explored = state.explored[y]![x]
       const open = state.cells[y]![x] === 1
       context.fillStyle = !explored ? 'oklch(.23 .018 55)' : open ? 'oklch(.78 .05 82)' : 'oklch(.16 .015 55)'
-      context.fillRect(left, top, cellSize, cellSize)
+      context.fillRect(left, top, cellWidth, cellHeight)
       if (isVisibleToHero(state, x, y)) {
         context.strokeStyle = 'oklch(.78 .04 82 / .2)'
-        context.strokeRect(left + .5, top + .5, cellSize - 1, cellSize - 1)
+        context.strokeRect(left + .5, top + .5, cellWidth - 1, cellHeight - 1)
       }
       const movable = open && isVisibleToHero(state, x, y) && Math.abs(state.hero.x - x) + Math.abs(state.hero.y - y) === 1
       if (movable) {
         context.strokeStyle = 'oklch(.65 .16 40)'
         context.lineWidth = 2
-        context.strokeRect(left + 1, top + 1, cellSize - 2, cellSize - 2)
+        context.strokeRect(left + 1, top + 1, cellWidth - 2, cellHeight - 2)
       }
       if (!explored) continue
       const glyph = entityGlyph(entityAt(state, x, y), state, x, y)
-      if (glyph) context.fillText(glyph, left + cellSize / 2, top + cellSize / 2 + 1)
+      if (glyph) context.fillText(glyph, left + cellWidth / 2, top + cellHeight / 2 + 1)
     }
   }
 }
@@ -398,7 +363,7 @@ async function readState(host: PluginHost): Promise<ScopedDungeonState | null> {
   ) return pendingState
   const settings = await host.conversation.getPluginSettings()
   if (host.conversation.getId() !== conversationId) return null
-  const state = readStateBuckets(settings)[branchPath]
+  const state = readDungeonStateBuckets(settings, STATE_KEY)[branchPath]
   return state ? { state, conversationId, branchPath } : null
 }
 
@@ -616,18 +581,19 @@ export function register(host: PluginHost): void {
         return
       }
       void readState(host).then((scoped) => {
-        if (!scoped || !canvas || scoped.state.width <= 0) return
-        const cellSize = canvas.width / scoped.state.width
-        void moveHeroToExplored(
-          host,
-          Math.floor(event.x / cellSize),
-          Math.floor(event.y / cellSize),
+        if (!scoped || !canvas) return
+        const cell = mazeCellFromCanvasPoint(
+          { x: event.x, y: event.y },
+          { width: canvas.width, height: canvas.height },
+          { width: scoped.state.width, height: scoped.state.height },
         )
+        if (!cell) return
+        void moveHeroToExplored(host, cell.x, cell.y)
       })
     },
   })
   host.conversation.onPluginSettingsChanged((settings) => {
-    const rawStates = readStateBuckets(settings)
+    const rawStates = readDungeonStateBuckets(settings, STATE_KEY)
     const state = rawStates[boundBranchPath]
     if (state && ignoredStateSignatures.delete(stateSignature(state))) {
       drawMaze(host, state)

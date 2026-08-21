@@ -10,6 +10,7 @@ import {
   moveDungeonHero,
   resolveDungeonMapEvent,
   setDungeonCampRestMinutes,
+  mazeCellFromCanvasPoint,
   snapshotDungeonMazeBranch,
 } from '../src/maze.ts'
 
@@ -66,6 +67,10 @@ test('finds a route only through explored paths', () => {
 test('freezes a new branch at creation and keeps later parent changes isolated', () => {
   const root = createDungeonMaze(12345)
   assert.deepEqual(snapshotDungeonMazeBranch({}, '', 'branch-1'), {})
+  const existing = { 'branch-1': root }
+  assert.equal(snapshotDungeonMazeBranch(existing, '', 'branch-1'), existing)
+  const missingParent = { 'other': root }
+  assert.equal(snapshotDungeonMazeBranch(missingParent, '', 'branch-1'), missingParent)
   const rootStates = snapshotDungeonMazeBranch({ '': root }, '', 'branch-1')
   const branch = rootStates['branch-1']
   assert.ok(branch)
@@ -88,6 +93,24 @@ test('freezes a new branch at creation and keeps later parent changes isolated',
     'branch-1/branch-2',
   )
   assert.deepEqual(nestedStates['branch-1/branch-2']?.hero, moved.hero)
+})
+
+test('maps canvas bitmap points to maze cells without assuming square proportions', () => {
+  const maze = { width: 10, height: 5 }
+  const canvas = { width: 400, height: 100 }
+  assert.deepEqual(mazeCellFromCanvasPoint({ x: 0, y: 0 }, canvas, maze), { x: 0, y: 0 })
+  assert.deepEqual(mazeCellFromCanvasPoint({ x: 39, y: 19 }, canvas, maze), { x: 0, y: 0 })
+  assert.deepEqual(mazeCellFromCanvasPoint({ x: 40, y: 20 }, canvas, maze), { x: 1, y: 1 })
+  assert.deepEqual(mazeCellFromCanvasPoint({ x: 399, y: 99 }, canvas, maze), { x: 9, y: 4 })
+  assert.equal(mazeCellFromCanvasPoint({ x: 400, y: 0 }, canvas, maze), null)
+  assert.equal(mazeCellFromCanvasPoint({ x: 0, y: 100 }, canvas, maze), null)
+  assert.equal(mazeCellFromCanvasPoint({ x: -1, y: 0 }, canvas, maze), null)
+  assert.equal(mazeCellFromCanvasPoint({ x: 0, y: 0 }, { width: 0, height: 100 }, maze), null)
+  assert.equal(mazeCellFromCanvasPoint({ x: 0, y: 0 }, canvas, { width: 10, height: 0 }), null)
+  assert.deepEqual(
+    mazeCellFromCanvasPoint({ x: 210, y: 210 }, { width: 420, height: 420 }, { width: 21, height: 21 }),
+    { x: 10, y: 10 },
+  )
 })
 
 test('walls block the 5 by 5 field of view but remain visible themselves', () => {

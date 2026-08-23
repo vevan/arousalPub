@@ -58,9 +58,15 @@ export async function flushDungeonMazeBranchCopies(args: {
       args.queue.unshift(...due)
       return false
     }
-    const states = readDungeonStateBuckets(settings, stateKey)
+    const diskStates = readDungeonStateBuckets(settings, stateKey)
+    const states = { ...diskStates }
+    let pendingChangedOnDisk = false
     if (args.pendingState && args.pendingState.conversationId === conversationId) {
-      states[args.pendingState.branchPath] = args.pendingState.state
+      const pendingPath = args.pendingState.branchPath
+      if (diskStates[pendingPath] !== args.pendingState.state) {
+        states[pendingPath] = args.pendingState.state
+        pendingChangedOnDisk = true
+      }
     }
     let nextStates = states
     for (const event of due) {
@@ -70,7 +76,8 @@ export async function flushDungeonMazeBranchCopies(args: {
         event.branchPath,
       )
     }
-    if (nextStates === states) {
+    const snapshotsChanged = nextStates !== states
+    if (!snapshotsChanged && !pendingChangedOnDisk) {
       // 子分支已有状态，或父分支尚无迷宫可复制：丢弃，避免无父状态时永久重排队。
       return false
     }

@@ -188,3 +188,31 @@ test('flush copies one parent and discards a sibling no-op in the same batch', a
   assert.equal(states['branch-new']?.seed, root.seed)
   assert.equal(states['branch-existing']?.seed, existingChild.seed)
 })
+
+test('flush persists pending parent when branch copy events are all no-op', async () => {
+  const pendingRoot = createDungeonMaze(4242)
+  const existingChild = createDungeonMaze(99999)
+  const queue = [event('c1', '', 'branch-1')]
+  let stored: Record<string, unknown> = {
+    [DUNGEON_STATES_KEY]: { 'branch-1': existingChild },
+  }
+  const failed = await flushDungeonMazeBranchCopies({
+    queue,
+    pendingState: {
+      conversationId: 'c1',
+      branchPath: '',
+      state: pendingRoot,
+    },
+    getConversationId: () => 'c1',
+    getPluginSettings: async () => stored,
+    patchPluginSettings: async (partial) => {
+      stored = { ...stored, ...partial }
+      return stored
+    },
+  })
+  assert.equal(failed, false)
+  assert.deepEqual(queue, [])
+  const states = stored[DUNGEON_STATES_KEY] as Record<string, { seed: number }>
+  assert.equal(states['']?.seed, pendingRoot.seed)
+  assert.equal(states['branch-1']?.seed, existingChild.seed)
+})

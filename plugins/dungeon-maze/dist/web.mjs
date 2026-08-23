@@ -584,9 +584,15 @@ async function flushDungeonMazeBranchCopies(args) {
       args.queue.unshift(...due);
       return false;
     }
-    const states = readDungeonStateBuckets(settings, stateKey);
+    const diskStates = readDungeonStateBuckets(settings, stateKey);
+    const states = { ...diskStates };
+    let pendingChangedOnDisk = false;
     if (args.pendingState && args.pendingState.conversationId === conversationId) {
-      states[args.pendingState.branchPath] = args.pendingState.state;
+      const pendingPath = args.pendingState.branchPath;
+      if (diskStates[pendingPath] !== args.pendingState.state) {
+        states[pendingPath] = args.pendingState.state;
+        pendingChangedOnDisk = true;
+      }
     }
     let nextStates = states;
     for (const event of due) {
@@ -596,7 +602,8 @@ async function flushDungeonMazeBranchCopies(args) {
         event.branchPath
       );
     }
-    if (nextStates === states) {
+    const snapshotsChanged = nextStates !== states;
+    if (!snapshotsChanged && !pendingChangedOnDisk) {
       return false;
     }
     await args.patchPluginSettings({ [stateKey]: nextStates });
@@ -736,9 +743,20 @@ function fitCanvasToContainer() {
   if (!canvas) return;
   const container = canvas.parentElement;
   if (!container) return;
-  const size = Math.max(210, container.clientWidth);
-  canvas.style.width = `${size}px`;
-  canvas.style.height = `${size}px`;
+  const cssSize = Math.max(210, container.clientWidth);
+  const dpr = globalThis.devicePixelRatio > 0 ? globalThis.devicePixelRatio : 1;
+  const bitmapSize = Math.max(1, Math.round(cssSize * dpr));
+  canvas.style.width = `${cssSize}px`;
+  canvas.style.height = `${cssSize}px`;
+  if (canvas.width !== bitmapSize || canvas.height !== bitmapSize) {
+    canvas.width = bitmapSize;
+    canvas.height = bitmapSize;
+  }
+}
+function redrawMountedCanvas(host) {
+  void readState(host).then((scoped) => {
+    if (scoped) drawMaze(host, scoped.state);
+  });
 }
 function cancelAutoMove(host) {
   autoMoveRun += 1;
@@ -1024,12 +1042,13 @@ function register(host) {
       fitCanvasToContainer();
       const container = canvas.parentElement;
       if (container && typeof ResizeObserver !== "undefined") {
-        canvasResizeObserver = new ResizeObserver(() => fitCanvasToContainer());
+        canvasResizeObserver = new ResizeObserver(() => {
+          fitCanvasToContainer();
+          redrawMountedCanvas(host);
+        });
         canvasResizeObserver.observe(container);
       }
-      void readState(host).then((state) => {
-        if (state) drawMaze(host, state.state);
-      });
+      redrawMountedCanvas(host);
     },
     onLiveTextMounted: (event) => {
       if (event.textId !== "elapsed") return;

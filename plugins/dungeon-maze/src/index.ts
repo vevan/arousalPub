@@ -234,9 +234,21 @@ function fitCanvasToContainer(): void {
   if (!canvas) return
   const container = canvas.parentElement
   if (!container) return
-  const size = Math.max(210, container.clientWidth)
-  canvas.style.width = `${size}px`
-  canvas.style.height = `${size}px`
+  const cssSize = Math.max(210, container.clientWidth)
+  const dpr = globalThis.devicePixelRatio > 0 ? globalThis.devicePixelRatio : 1
+  const bitmapSize = Math.max(1, Math.round(cssSize * dpr))
+  canvas.style.width = `${cssSize}px`
+  canvas.style.height = `${cssSize}px`
+  if (canvas.width !== bitmapSize || canvas.height !== bitmapSize) {
+    canvas.width = bitmapSize
+    canvas.height = bitmapSize
+  }
+}
+
+function redrawMountedCanvas(host: PluginHost): void {
+  void readState(host).then((scoped) => {
+    if (scoped) drawMaze(host, scoped.state)
+  })
 }
 
 function cancelAutoMove(host: PluginHost): void {
@@ -560,12 +572,13 @@ export function register(host: PluginHost): void {
       fitCanvasToContainer()
       const container = canvas.parentElement
       if (container && typeof ResizeObserver !== 'undefined') {
-        canvasResizeObserver = new ResizeObserver(() => fitCanvasToContainer())
+        canvasResizeObserver = new ResizeObserver(() => {
+          fitCanvasToContainer()
+          redrawMountedCanvas(host)
+        })
         canvasResizeObserver.observe(container)
       }
-      void readState(host).then((state) => {
-        if (state) drawMaze(host, state.state)
-      })
+      redrawMountedCanvas(host)
     },
     onLiveTextMounted: (event) => {
       if (event.textId !== 'elapsed') return

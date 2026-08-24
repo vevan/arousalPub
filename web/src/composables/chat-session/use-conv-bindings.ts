@@ -535,7 +535,6 @@ export function useConvBindings() {
   watch(
     [() => conn.activePresetId, () => conn.presets],
     () => {
-      if (!convBindings.value.chatApi.useGlobal) return
       const effective = resolveConversationChatDisplay(
         conn.presets,
         conn.activePresetId,

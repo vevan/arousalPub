@@ -29,7 +29,7 @@ import { usePreferencesStore } from '@/stores/preferences'
 import { usePromptsStore } from '@/stores/prompts'
 import { useUiContextStore } from '@/stores/ui-context'
 import { authorsNoteComposerActive } from '@/utils/authors-note-settings'
-import { readConversationChatBinding } from '@/utils/conversation-api-settings'
+import { buildConversationChatHydrationWatchKey } from '@/utils/conversation-chat-panel-hydration'
 import {
   groupChatWithEnsuredMemberColors,
   memberColorsIncomplete,
@@ -548,27 +548,23 @@ watch(
 
 watch(
   () =>
-    [
-      props.conversationId,
-      loading.value ? '1' : '0',
-      readConversationChatBinding(convBindings.value.chatApi.apiPresetRaw)
-        ?.apiConfigId?.trim() ||
-        convBindings.value.chatApi.effective?.apiPresetId?.trim() ||
-        conn.activePresetId ||
-        '',
-      conn.presets.length > 0 ? '1' : '0',
-    ].join('\0'),
+    buildConversationChatHydrationWatchKey({
+      conversationId: props.conversationId,
+      loading: loading.value,
+      presetsReady: conn.presets.length > 0,
+      useGlobal: convBindings.value.chatApi.useGlobal,
+      apiPresetRaw: convBindings.value.chatApi.apiPresetRaw,
+      effective: convBindings.value.chatApi.effective,
+      activePresetId: conn.activePresetId,
+    }),
   () => {
     if (loading.value) return
     if (conn.presets.length === 0) return
-    const targetId =
-      readConversationChatBinding(convBindings.value.chatApi.apiPresetRaw)
-        ?.apiConfigId?.trim() ||
-      convBindings.value.chatApi.effective?.apiPresetId?.trim() ||
-      conn.activePresetId ||
-      ''
-    if (!targetId) return
-    conn.hydratePanelForConversation(targetId)
+    conn.hydratePanelForConversation({
+      useGlobal: convBindings.value.chatApi.useGlobal,
+      effective: convBindings.value.chatApi.effective,
+      fallbackPresetId: conn.activePresetId,
+    })
   },
 )
 

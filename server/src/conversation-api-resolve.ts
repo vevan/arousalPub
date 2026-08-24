@@ -16,7 +16,10 @@ import {
 } from './feature-binding-resolve.js'
 import { readConversationIndex } from './chat-storage.js'
 import {
+  isConversationChatBindingEmpty,
+  mergeChatBindings,
   mergePresetWithChatBinding,
+  readConversationChatBinding,
   type ConversationChatBinding,
   type ResolvedConversationChatParams,
 } from './conversation-api-settings.js'
@@ -47,7 +50,7 @@ export interface ResolvedConversationChatCall {
   preset: ApiPreset
   presetId: string
   params: ResolvedConversationChatParams
-  /** 会话磁盘绑定仅用于进房灌面板；发请求不再用磁盘采样覆盖 */
+  /** 会话磁盘存在非空 apiPreset.chat 覆盖（body 仍可压过其字段） */
   usedConversationOverride: boolean
 }
 
@@ -67,17 +70,32 @@ export async function resolveChatFeatureAudit(
 }
 
 /**
- * 会话对话凭证与采样：以请求体面板快照为准（同源）。
- * 不读会话磁盘上的采样覆盖；缺省 apiPresetId 时才回退全局 activePresetId。
+ * 会话对话凭证与采样：merge(globalPreset, chatOverlay_disk, panelLive_body)。
+ * presetId：body.apiPresetId ?? chatOverlay.apiConfigId ?? activePresetId。
+ * 参数：磁盘稀疏覆盖与 body 合并，body 字段优先。
  * 未落盘新预设：允许仅凭 body 草稿 Key + baseUrl + 采样发聊天。
  */
 export async function resolveConversationChatCall(
-  _conversationId: string,
+  conversationId: string,
   bodyFallback?: ChatBodyFallback,
 ): Promise<ResolvedConversationChatCall> {
-  const creds = await resolveChatCredentials(
-    bodyFallback ? credentialInputFromBody(bodyFallback) : {},
-  )
+  const cid = typeof conversationId === 'string' ? conversationId.trim() : ''
+  let diskBinding: ConversationChatBinding | null = null
+  if (cid) {
+    const idx = await readConversationIndex(cid)
+    diskBinding = readConversationChatBinding(idx?.apiPreset)
+  }
+  const usedConversationOverride = !isConversationChatBindingEmpty(diskBinding)
+
+  const bodyCreds = bodyFallback ? credentialInputFromBody(bodyFallback) : {}
+  const bodyPresetId = bodyCreds.apiPresetId?.trim() || ''
+  const diskPresetId = diskBinding?.apiConfigId?.trim() || ''
+  const credInput: ResolveChatCredentialsInput = {
+    ...bodyCreds,
+    apiPresetId: bodyPresetId || diskPresetId || bodyCreds.apiPresetId,
+  }
+
+  const creds = await resolveChatCredentials(credInput)
 
   const preset =
     creds.preset ??
@@ -86,10 +104,13 @@ export async function resolveConversationChatCall(
     throw new ApiCredentialError('api_preset_not_found')
   }
 
-  const params = mergePresetWithChatBinding(
-    preset,
-    bodyBindingFromFallback(bodyFallback),
-  )
+  const bodyBinding = bodyBindingFromFallback(bodyFallback)
+  // body 显式换了 preset 时，丢弃磁盘采样，避免把旧 overlay 的 model/temperature 串到新 preset
+  const mergedBinding =
+    bodyPresetId && diskPresetId && bodyPresetId !== diskPresetId
+      ? bodyBinding
+      : mergeChatBindings(diskBinding, bodyBinding)
+  const params = mergePresetWithChatBinding(preset, mergedBinding)
   if (bodyFallback?.model?.trim()) {
     params.model = bodyFallback.model.trim()
   }
@@ -113,7 +134,7 @@ export async function resolveConversationChatCall(
     preset,
     presetId: preset.id,
     params,
-    usedConversationOverride: false,
+    usedConversationOverride,
   }
 }
 

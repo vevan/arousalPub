@@ -182,9 +182,28 @@ export const useConnectionStore = defineStore('connection', () => {
   const panelBaselineReady = ref(false)
   /** 会话 API 覆盖灌入面板后的表单指纹；匹配时视为干净（非用户未保存改动） */
   const conversationPanelFingerprint = ref<string | null>(null)
+  const afterPanelSavedHandlers = new Set<() => void>()
 
   function clearConversationPanelFingerprint(): void {
     conversationPanelFingerprint.value = null
+  }
+
+  /** 连接面板 Save 成功后回调（用于会话 chatOverlay 与 pill 同步） */
+  function onAfterPanelSaved(handler: () => void): () => void {
+    afterPanelSavedHandlers.add(handler)
+    return () => {
+      afterPanelSavedHandlers.delete(handler)
+    }
+  }
+
+  function notifyAfterPanelSaved(): void {
+    for (const handler of afterPanelSavedHandlers) {
+      try {
+        handler()
+      } catch {
+        /* ignore listener errors */
+      }
+    }
   }
 
   function clonePresetBaseline(p: ApiPreset): ApiPreset {
@@ -1108,6 +1127,7 @@ export const useConnectionStore = defineStore('connection', () => {
     }
     captureServerPanelBaseline()
     clearConversationPanelFingerprint()
+    notifyAfterPanelSaved()
   }
 
   function clearSessionData(): void {
@@ -1162,6 +1182,7 @@ export const useConnectionStore = defineStore('connection', () => {
     switchPreset,
     hydratePanelForConversation,
     discardPanelChangesToBaseline,
+    onAfterPanelSaved,
     setGlobalActivePreset,
     addPreset,
     removeActivePreset,

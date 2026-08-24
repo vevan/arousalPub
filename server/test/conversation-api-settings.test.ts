@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  mergeChatBindings,
   mergePresetWithChatBinding,
   parseConversationChatBinding,
   parseConversationEmbeddingApiOverride,
@@ -61,6 +62,19 @@ describe('conversation-api-settings', () => {
     assert.equal(merged.model, 'gpt-4o-mini')
     assert.equal(merged.temperature, 0.5)
     assert.equal(merged.maxTokens, 512)
+  })
+
+  it('mergeChatBindings lets body panelLive override disk chatOverlay', () => {
+    const merged = mergeChatBindings(
+      { apiConfigId: 'disk', temperature: 0.1, model: 'disk-model' },
+      { temperature: 0.9, stream: true },
+    )
+    assert.deepEqual(merged, {
+      apiConfigId: 'disk',
+      temperature: 0.9,
+      model: 'disk-model',
+      stream: true,
+    })
   })
 
   it('resolves embedding model override only', () => {

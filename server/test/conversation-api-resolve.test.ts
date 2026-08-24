@@ -132,7 +132,7 @@ describe('resolveConversationChatCall (panel snapshot)', () => {
     })
   })
 
-  it('ignores conversation disk apiConfigId and sampling when body selects another preset', async () => {
+  it('body panelLive overrides disk chatOverlay when both set', async () => {
     await runRequestUserAsync(TEST_USER, async () => {
       const conversationId = 'c2222222'
       await createConversationStub(conversationId, 'with binding')
@@ -150,7 +150,63 @@ describe('resolveConversationChatCall (panel snapshot)', () => {
       assert.equal(call.apiKey, 'sk-active-key')
       assert.equal(call.params.model, 'active-model')
       assert.equal(call.params.temperature, 0.7)
-      assert.equal(call.usedConversationOverride, false)
+      assert.equal(call.usedConversationOverride, true)
+    })
+  })
+
+  it('drops disk sampling when body selects a different apiPresetId', async () => {
+    await runRequestUserAsync(TEST_USER, async () => {
+      const conversationId = 'c9999999'
+      await createConversationStub(conversationId, 'cross preset')
+      await updateConversationChatApiSettings(conversationId, {
+        apiConfigId: 'preset-other',
+        temperature: 0.11,
+        model: 'disk-only-model',
+      })
+      const call = await resolveConversationChatCall(conversationId, {
+        apiPresetId: 'preset-active',
+      })
+      assert.equal(call.presetId, 'preset-active')
+      assert.equal(call.params.model, 'active-model')
+      assert.equal(call.params.temperature, 0.7)
+      assert.equal(call.usedConversationOverride, true)
+    })
+  })
+
+  it('applies disk chatOverlay when body omits sampling and apiPresetId', async () => {
+    await runRequestUserAsync(TEST_USER, async () => {
+      const conversationId = 'c7777777'
+      await createConversationStub(conversationId, 'disk only')
+      await updateConversationChatApiSettings(conversationId, {
+        apiConfigId: 'preset-other',
+        temperature: 0.15,
+        model: 'disk-model',
+      })
+      const call = await resolveConversationChatCall(conversationId, {})
+      assert.equal(call.presetId, 'preset-other')
+      assert.equal(call.baseUrl, 'https://other.example/v1')
+      assert.equal(call.apiKey, 'sk-other-key')
+      assert.equal(call.params.model, 'disk-model')
+      assert.equal(call.params.temperature, 0.15)
+      assert.equal(call.usedConversationOverride, true)
+    })
+  })
+
+  it('merges disk temperature when body only sends apiPresetId', async () => {
+    await runRequestUserAsync(TEST_USER, async () => {
+      const conversationId = 'c8888888'
+      await createConversationStub(conversationId, 'partial body')
+      await updateConversationChatApiSettings(conversationId, {
+        apiConfigId: 'preset-other',
+        temperature: 0.11,
+      })
+      const call = await resolveConversationChatCall(conversationId, {
+        apiPresetId: 'preset-other',
+      })
+      assert.equal(call.presetId, 'preset-other')
+      assert.equal(call.params.temperature, 0.11)
+      assert.equal(call.params.model, 'other-model')
+      assert.equal(call.usedConversationOverride, true)
     })
   })
 

@@ -29,7 +29,11 @@ import { usePreferencesStore } from '@/stores/preferences'
 import { usePromptsStore } from '@/stores/prompts'
 import { useUiContextStore } from '@/stores/ui-context'
 import { authorsNoteComposerActive } from '@/utils/authors-note-settings'
-import { readConversationChatBinding } from '@/utils/conversation-api-settings'
+import { buildConversationChatHydrationWatchKey } from '@/utils/conversation-chat-panel-hydration'
+import {
+  buildChatBindingPatch,
+  type ResolvedConversationChatDisplay,
+} from '@/utils/conversation-api-settings'
 import {
   groupChatWithEnsuredMemberColors,
   memberColorsIncomplete,
@@ -236,14 +240,73 @@ function onRegexAppliedFromSettings(): void {
 
 const headerChatLabel = computed(() => {
   if (!conn.isApiKeyConfigured) return ''
+  if (loading.value) return ''
   if (convBindings.value.chatApi.useGlobal) return ''
-  const chat = convBindings.value.chatApi.effective
-  if (chat?.alias.trim()) {
-    const model = chat.model.trim()
-    return model ? `${chat.alias.trim()} · ${model}` : chat.alias.trim()
-  }
-  return ''
+  // 与发送同源：连接面板 panelLive，禁止只读磁盘 effective
+  const alias = conn.alias.trim()
+  const model = conn.model.trim()
+  if (alias) return model ? `${alias} · ${model}` : alias
+  return model || ''
 })
+
+function panelLiveAsChatDisplay(): ResolvedConversationChatDisplay | null {
+  const id = conn.editingPresetId?.trim()
+  if (!id) return null
+  return {
+    apiPresetId: id,
+    alias: conn.alias,
+    model: conn.model,
+    contextLength: conn.contextLength,
+    maxTokens: conn.maxTokens,
+    stream: conn.stream,
+    temperature: conn.temperature,
+    topP: conn.topP,
+    topK: conn.topK,
+    dryMultiplier: conn.dryMultiplier,
+    dryBase: conn.dryBase,
+    dryAllowedLength: conn.dryAllowedLength,
+    dryPenaltyLastN: conn.dryPenaltyLastN,
+    drySequenceBreakers: [...conn.drySequenceBreakers],
+    frequencyPenalty: conn.frequencyPenalty,
+    presencePenalty: conn.presencePenalty,
+    customParamsJson: conn.customParamsJson,
+    showReasoningChain: conn.showReasoningChain,
+    requestReasoningChain: conn.requestReasoningChain,
+  }
+}
+
+async function syncChatOverlayFromPanel(): Promise<void> {
+  if (loading.value) return
+  if (convBindings.value.chatApi.useGlobal) return
+  const id = props.conversationId
+  if (!id) return
+  const presetId = conn.editingPresetId?.trim()
+  const preset = presetId
+    ? conn.presets.find((p) => p.id === presetId)
+    : undefined
+  const effective = panelLiveAsChatDisplay()
+  if (!preset || !effective) return
+  const binding = buildChatBindingPatch(preset, effective, false)
+  if (!binding) return
+  const raw = convBindings.value.chatApi.apiPresetRaw
+  const prevChat =
+    raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? JSON.stringify((raw as { chat?: unknown }).chat ?? null)
+      : 'null'
+  if (prevChat === JSON.stringify(binding)) return
+  try {
+    const res = await fetch(`/api/chat/conversations/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiPreset: { chat: binding } }),
+    })
+    if (!res.ok || props.conversationId !== id) return
+    const index = (await res.json()) as Record<string, unknown>
+    onConvContextPatched(index, id)
+  } catch {
+    /* ignore sync failure; send still uses panel body */
+  }
+}
 
 const boundLorebooks = computed(() =>
   convBindings.value.lorebookIds.map((id) => ({
@@ -416,8 +479,13 @@ const stopIndexPatched = onConversationIndexPatched((cid, index) => {
   onConvContextPatched(index)
 })
 
+const stopAfterPanelSaved = conn.onAfterPanelSaved(() => {
+  void syncChatOverlayFromPanel()
+})
+
 onScopeDispose(() => {
   stopIndexPatched()
+  stopAfterPanelSaved()
   stopBgmAudio()
 })
 
@@ -548,27 +616,23 @@ watch(
 
 watch(
   () =>
-    [
-      props.conversationId,
-      loading.value ? '1' : '0',
-      readConversationChatBinding(convBindings.value.chatApi.apiPresetRaw)
-        ?.apiConfigId?.trim() ||
-        convBindings.value.chatApi.effective?.apiPresetId?.trim() ||
-        conn.activePresetId ||
-        '',
-      conn.presets.length > 0 ? '1' : '0',
-    ].join('\0'),
+    buildConversationChatHydrationWatchKey({
+      conversationId: props.conversationId,
+      loading: loading.value,
+      presetsReady: conn.presets.length > 0,
+      useGlobal: convBindings.value.chatApi.useGlobal,
+      apiPresetRaw: convBindings.value.chatApi.apiPresetRaw,
+      effective: convBindings.value.chatApi.effective,
+      activePresetId: conn.activePresetId,
+    }),
   () => {
     if (loading.value) return
     if (conn.presets.length === 0) return
-    const targetId =
-      readConversationChatBinding(convBindings.value.chatApi.apiPresetRaw)
-        ?.apiConfigId?.trim() ||
-      convBindings.value.chatApi.effective?.apiPresetId?.trim() ||
-      conn.activePresetId ||
-      ''
-    if (!targetId) return
-    conn.hydratePanelForConversation(targetId)
+    conn.hydratePanelForConversation({
+      useGlobal: convBindings.value.chatApi.useGlobal,
+      effective: convBindings.value.chatApi.effective,
+      fallbackPresetId: conn.activePresetId,
+    })
   },
 )
 

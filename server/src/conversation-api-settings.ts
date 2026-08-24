@@ -455,3 +455,25 @@ export function readConversationChatBinding(
   if (!parsed.ok) return null
   return parsed.binding
 }
+
+/**
+ * 合并对话磁盘覆盖与请求体 panelLive：body 字段覆盖 disk（稀疏）。
+ * 二者皆空则返回 null。
+ */
+export function mergeChatBindings(
+  disk?: ConversationChatBinding | null,
+  body?: ConversationChatBinding | null,
+): ConversationChatBinding | null {
+  if (!disk && !body) return null
+  if (!disk) return body ? { ...body } : null
+  if (!body) return { ...disk }
+  const out: ConversationChatBinding = { ...disk }
+  for (const [key, value] of Object.entries(body) as Array<
+    [keyof ConversationChatBinding, ConversationChatBinding[keyof ConversationChatBinding]]
+  >) {
+    if (value !== undefined) {
+      ;(out as Record<string, unknown>)[key as string] = value
+    }
+  }
+  return out
+}

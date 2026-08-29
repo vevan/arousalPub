@@ -11,6 +11,7 @@ import { usePromptsStore } from '@/stores/prompts'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useConversationApiStore } from '@/stores/conversation-api'
 import { apiFetch } from '@/utils/api-fetch'
 import {
   normalizeAuthorsNote,
@@ -126,6 +127,7 @@ export function useConversationContextSettings(
   emit: ConversationContextSettingsEmit,
 ) {
 const { t } = useI18n()
+const conversationApi = useConversationApiStore()
 const promptsStore = usePromptsStore()
 const { presets, loaded: promptsLoaded } = storeToRefs(promptsStore)
 
@@ -312,11 +314,6 @@ const sectionItems = computed(() => {
       icon: 'mdi-link-variant',
     },
     {
-      id: 'api',
-      title: t('chat.convSettings.tabApi'),
-      icon: 'mdi-api',
-    },
-    {
       id: 'context',
       title: t('settings.navHistory'),
       icon: 'mdi-history',
@@ -366,7 +363,6 @@ const activeSectionHeader = computed(() => {
       titleKey: 'tabBindings',
       hintKey: 'tabBindingsHint',
     },
-    api: { titleKey: 'tabApi', hintKey: 'tabApiHint' },
     lore: { titleKey: 'tabLore', hintKey: 'tabLoreHint' },
     context: {
       titleKey: 'navHistory',
@@ -480,6 +476,10 @@ function onChatUseGlobalLocalChange(useGlobal: boolean) {
 function onEmbeddingUseGlobalLocalChange(useGlobal: boolean) {
   embeddingApiUseGlobal.value = useGlobal
   apiEmbeddingDraftActive.value = !useGlobal
+}
+
+function onChatApiDraftDirty(dirty: boolean) {
+  apiChatDraftActive.value = dirty
 }
 
 function currentPresetTarget(): string | null {
@@ -690,7 +690,16 @@ function propsAuthorsNote(): AuthorsNoteSettings {
 }
 
 function propsChatBinding(): ConversationChatBinding | null {
+  const fromStore = conversationApi.bindingFor(props.conversationId)
+  if (fromStore !== undefined) return fromStore
   return readConversationChatBinding(props.initialApiPreset)
+}
+
+function propsChatApiUseGlobal(): boolean {
+  if (conversationApi.conversationId === props.conversationId) {
+    return conversationApi.chatUseGlobal
+  }
+  return props.initialChatApiUseGlobal !== false
 }
 
 function propsEmbeddingOverride(): ConversationEmbeddingApiSettingsOverride | undefined {
@@ -754,7 +763,7 @@ function syncFromProps() {
   defaultAuthorsNoteRole.value = dan.role
   defaultAuthorsNoteEnabledForNewChats.value = dan.enabledForNewChats
   if (!apiChatDraftActive.value && !savingApiSettings.value) {
-    chatApiUseGlobal.value = props.initialChatApiUseGlobal !== false
+    chatApiUseGlobal.value = propsChatApiUseGlobal()
   }
   if (!apiEmbeddingDraftActive.value && !savingApiSettings.value) {
     embeddingApiUseGlobal.value = props.initialEmbeddingApiUseGlobal !== false
@@ -805,6 +814,8 @@ watch(
     props.initialAuthorsNote,
     props.initialApiPreset,
     props.initialChatApiUseGlobal,
+    conversationApi.conversationId,
+    conversationApi.chatBinding,
     props.initialEmbeddingApiUseGlobal,
     props.initialEmbeddingApiSettings,
   ],
@@ -1815,6 +1826,7 @@ async function patchConversation(body: Record<string, unknown>) {
     propsEmbeddingOverride,
     onChatUseGlobalLocalChange,
     onEmbeddingUseGlobalLocalChange,
+    onChatApiDraftDirty,
     onSaveChatApi,
     onSaveEmbeddingApi,
     // lore

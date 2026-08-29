@@ -28,6 +28,8 @@ export interface ConversationChatParamOverrides {
 export interface ConversationChatBinding extends ConversationChatParamOverrides {
   /** 已有 api-settings preset id；省略则继承全局 activePresetId */
   apiConfigId?: string
+  /** 保留对话参数快照，但运行时继承全局参数。 */
+  inheritGlobal?: boolean
 }
 
 export type ConversationEmbeddingApiSettingsOverride = {
@@ -68,7 +70,7 @@ export function isConversationChatBindingEmpty(
   binding: ConversationChatBinding | null | undefined,
 ): boolean {
   if (!binding || typeof binding !== 'object') return true
-  return !binding.apiConfigId?.trim() && !hasConversationChatParamOverrides(binding)
+  return !binding.inheritGlobal && !binding.apiConfigId?.trim() && !hasConversationChatParamOverrides(binding)
 }
 
 export function hasConversationChatBinding(
@@ -107,11 +109,17 @@ export function parseConversationChatBinding(
     if (FORBIDDEN_CHAT_BINDING_KEYS.has(key)) {
       return { ok: false, error: 'conversation_api_preset_forbidden_field' }
     }
-    if (key !== 'apiConfigId' && !CHAT_PARAM_KEYS.has(key)) {
+    if (key !== 'apiConfigId' && key !== 'inheritGlobal' && !CHAT_PARAM_KEYS.has(key)) {
       return { ok: false, error: 'conversation_api_preset_unknown_field' }
     }
   }
   const binding: ConversationChatBinding = {}
+  if (Object.prototype.hasOwnProperty.call(o, 'inheritGlobal')) {
+    if (typeof o.inheritGlobal !== 'boolean') {
+      return { ok: false, error: 'conversation_api_preset_inherit_invalid' }
+    }
+    binding.inheritGlobal = o.inheritGlobal
+  }
   if (Object.prototype.hasOwnProperty.call(o, 'apiConfigId')) {
     if (typeof o.apiConfigId !== 'string' || !o.apiConfigId.trim()) {
       return { ok: false, error: 'conversation_api_preset_id_invalid' }
@@ -417,13 +425,10 @@ export function chatBindingOverrideFromEffective(
 
 /** 显式覆盖时保留快照（与 preset 相同也不删），避免被误判为继承全局 */
 export function conversationChatBindingSnapshot(
-  preset: ApiPreset,
   effective: ResolvedConversationChatParams,
   patch: ConversationChatBinding,
 ): ConversationChatBinding {
-  const configId = patch.apiConfigId?.trim() || preset.id
-  return {
-    apiConfigId: configId,
+  const binding: ConversationChatBinding = {
     model: effective.model,
     contextLength: effective.contextLength,
     maxTokens: effective.maxTokens,
@@ -442,6 +447,8 @@ export function conversationChatBindingSnapshot(
     requestReasoningChain: effective.requestReasoningChain,
     customParamsJson: effective.customParamsJson,
   }
+  if (patch.apiConfigId?.trim()) binding.apiConfigId = patch.apiConfigId.trim()
+  return binding
 }
 
 export function readConversationChatBinding(
@@ -454,26 +461,4 @@ export function readConversationChatBinding(
   const parsed = parseConversationChatBinding(chat)
   if (!parsed.ok) return null
   return parsed.binding
-}
-
-/**
- * 合并对话磁盘覆盖与请求体 panelLive：body 字段覆盖 disk（稀疏）。
- * 二者皆空则返回 null。
- */
-export function mergeChatBindings(
-  disk?: ConversationChatBinding | null,
-  body?: ConversationChatBinding | null,
-): ConversationChatBinding | null {
-  if (!disk && !body) return null
-  if (!disk) return body ? { ...body } : null
-  if (!body) return { ...disk }
-  const out: ConversationChatBinding = { ...disk }
-  for (const [key, value] of Object.entries(body) as Array<
-    [keyof ConversationChatBinding, ConversationChatBinding[keyof ConversationChatBinding]]
-  >) {
-    if (value !== undefined) {
-      ;(out as Record<string, unknown>)[key as string] = value
-    }
-  }
-  return out
 }

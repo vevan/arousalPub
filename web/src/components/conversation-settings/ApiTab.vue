@@ -22,6 +22,7 @@ const emit = defineEmits<{
   (e: 'update:embeddingApiUseGlobal', v: boolean): void
   (e: 'saveChat', binding: ConversationChatBinding | null): void
   (e: 'saveEmbedding', patch: ConversationEmbeddingApiSettingsOverride | null): void
+  (e: 'chatDraftDirty', dirty: boolean): void
 }>()
 
 function onChatUseGlobalLocalChange(useGlobal: boolean) {
@@ -35,6 +36,9 @@ function onSaveChatApi(binding: ConversationChatBinding | null) {
 }
 function onSaveEmbeddingApi(patch: ConversationEmbeddingApiSettingsOverride | null) {
   emit('saveEmbedding', patch)
+}
+function onChatDraftDirty(dirty: boolean) {
+  emit('chatDraftDirty', dirty)
 }
 </script>
 
@@ -53,6 +57,7 @@ function onSaveEmbeddingApi(patch: ConversationEmbeddingApiSettingsOverride | nu
                     @update:embedding-use-global="onEmbeddingUseGlobalLocalChange"
                     @save-chat="onSaveChatApi"
                     @save-embedding="onSaveEmbeddingApi"
+                    @draft-dirty="onChatDraftDirty"
                   />
   </div>
 </template>

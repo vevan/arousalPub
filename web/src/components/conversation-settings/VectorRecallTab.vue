@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import '@/components/conversation-settings/conversation-settings-fields.css'
 import HybridFtsSwitchDialog from '@/components/settings/HybridFtsSwitchDialog.vue'
+import EmbeddingSettingsPanel from '@/components/conversation-settings/EmbeddingSettingsPanel.vue'
+import type { ConversationEmbeddingApiSettingsOverride } from '@/utils/conversation-api-settings'
 import {
   HYBRID_FTS_PROFILES,
   profileRequiresDict,
@@ -44,6 +46,11 @@ defineProps<{
   memoryHybridFtsDictVariant: HybridFtsDictVariant | null
   pendingMemoryHybridFtsProfile: HybridFtsProfile
   savingMemoryHybridFts: boolean
+  embeddingUseGlobal: boolean
+  embeddingOverride?: ConversationEmbeddingApiSettingsOverride
+  globalEmbeddingModel: string
+  globalEmbeddingDimensions: number | null
+  savingEmbeddingSettings: boolean
 }>()
 
 const emit = defineEmits<{
@@ -56,6 +63,8 @@ const emit = defineEmits<{
     dictVariant: HybridFtsDictVariant | null
   }): void
   (e: 'memoryHybridFtsCancel'): void
+  (e: 'update:embeddingUseGlobal', value: boolean): void
+  (e: 'saveEmbedding', value: ConversationEmbeddingApiSettingsOverride | null): void
 }>()
 
 const { t } = useI18n()
@@ -73,6 +82,17 @@ function onRebuildMemoryClick() {
 
 <template>
   <div class="conv-settings-section">
+    <EmbeddingSettingsPanel
+      :use-global="embeddingUseGlobal"
+      :override="embeddingOverride"
+      :global-model="globalEmbeddingModel"
+      :global-dimensions="globalEmbeddingDimensions"
+      :disabled="savingEmbeddingSettings"
+      @update:use-global="emit('update:embeddingUseGlobal', $event)"
+      @save="emit('saveEmbedding', $event)"
+    />
+
+    <v-divider class="my-4" />
     <div class="conv-settings-subsection">
                     <h4 class="conv-settings-subsection__title">
                       {{ $t('chat.convSettings.sectionLoreVector') }}

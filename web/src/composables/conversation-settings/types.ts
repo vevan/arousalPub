@@ -1,6 +1,5 @@
 export type SettingsSection =
   | 'bindings'
-  | 'api'
   | 'lore'
   | 'context'
   | 'vectorRecall'

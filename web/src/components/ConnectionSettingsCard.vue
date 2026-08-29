@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import ApiModelPickerDialog from '@/components/settings/ApiModelPickerDialog.vue'
+import ConversationApiSettingsPanel from '@/components/settings/ConversationApiSettingsPanel.vue'
 import { intlLocaleTag } from '@/i18n/locale'
 import { useApiKeysStore, type ApiKeyEntry } from '@/stores/apiKeys'
 import { useAuthStore } from '@/stores/auth'
 import { useConnectionStore } from '@/stores/connection'
+import { useConversationApiStore } from '@/stores/conversation-api'
 import { useLocaleStore } from '@/stores/locale'
 import { usePromptsStore } from '@/stores/prompts'
 import {
@@ -18,12 +20,194 @@ import {
   parseDryBreakersFromTextarea,
 } from '@/utils/dry-sampler'
 import type { ApiConfigReference } from '@/utils/api-config-references'
+import {
+  emitConversationIndexPatched,
+  onConversationIndexPatched,
+} from '@/utils/conversation-index-sync'
 import { coreNotify } from '@/utils/core-notify'
 import { storeToRefs } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
+
+const props = defineProps<{ conversationId?: string }>()
+const conn = useConnectionStore()
+const conversationApi = useConversationApiStore()
+const chatUseGlobal = ref(true)
+const chatBinding = ref<import('@/utils/conversation-api-settings').ConversationChatBinding | null>(null)
+const storedChatBinding = ref<import('@/utils/conversation-api-settings').ConversationChatBinding | null>(null)
+const parameterScope = ref<'conversation' | 'global'>('conversation')
+const conversationApiLoaded = ref(false)
+const conversationApiSaving = ref(false)
+const conversationDraftDirty = ref(false)
+const conversationApiPanel = ref<InstanceType<typeof ConversationApiSettingsPanel> | null>(null)
+
+async function loadConversationApiSettings(resetScope = false): Promise<void> {
+  const id = props.conversationId?.trim()
+  conversationApiLoaded.value = false
+  if (!id) return
+  if (conn.presets.length === 0) {
+    await conn.loadFromServer()
+    if (props.conversationId?.trim() !== id) return
+  }
+  const res = await fetch(`/api/chat/conversations/${id}`)
+  if (!res.ok) return
+  const idx = (await res.json()) as { apiPreset?: { chat?: unknown } }
+  if (props.conversationId?.trim() !== id) return
+  applyConversationApiSettings(idx, resetScope)
+}
+
+function applyConversationApiSettings(
+  idx: { apiPreset?: { chat?: unknown } },
+  resetScope = false,
+): void {
+  const raw = idx.apiPreset?.chat
+  storedChatBinding.value = raw && typeof raw === 'object' && !Array.isArray(raw)
+    ? raw as import('@/utils/conversation-api-settings').ConversationChatBinding
+    : null
+  const id = props.conversationId?.trim()
+  if (id) conversationApi.syncFromIndex(id, idx)
+  hydrateConversationChatBinding()
+  chatUseGlobal.value = storedChatBinding.value == null || storedChatBinding.value.inheritGlobal === true
+  const selectedPresetId = chatUseGlobal.value
+    ? conn.activePresetId
+    : storedChatBinding.value?.apiConfigId
+  if (selectedPresetId) conn.switchPreset(selectedPresetId)
+  if (resetScope) {
+    conversationDraftDirty.value = false
+    parameterScope.value = chatUseGlobal.value ? 'global' : 'conversation'
+  }
+  conversationApiLoaded.value = true
+  void nextTick(() => {
+    if (!conversationDraftDirty.value) conversationApiPanel.value?.syncFromProps()
+  })
+}
+
+function hydrateConversationChatBinding(): void {
+  const binding = storedChatBinding.value
+  if (!binding) {
+    chatBinding.value = null
+    return
+  }
+  const presetId = binding.apiConfigId?.trim() || conn.activePresetId
+  const preset = conn.presets.find((item) => item.id === presetId)
+  if (!preset) {
+    chatBinding.value = { ...binding }
+    return
+  }
+  chatBinding.value = {
+    apiConfigId: binding.apiConfigId,
+    inheritGlobal: binding.inheritGlobal,
+    model: binding.model?.trim() || preset.model,
+    contextLength: binding.contextLength ?? preset.contextLength,
+    maxTokens: binding.maxTokens ?? preset.maxTokens,
+    stream: binding.stream ?? preset.stream,
+    requestReasoningChain:
+      binding.requestReasoningChain ?? preset.requestReasoningChain,
+    showReasoningChain: binding.showReasoningChain ?? preset.showReasoningChain,
+    temperature: binding.temperature ?? preset.temperature,
+    topP: binding.topP ?? preset.topP,
+    topK: binding.topK ?? preset.topK,
+    dryMultiplier: binding.dryMultiplier ?? preset.dryMultiplier,
+    dryBase: binding.dryBase ?? preset.dryBase,
+    dryAllowedLength: binding.dryAllowedLength ?? preset.dryAllowedLength,
+    dryPenaltyLastN: binding.dryPenaltyLastN ?? preset.dryPenaltyLastN,
+    drySequenceBreakers:
+      binding.drySequenceBreakers ?? [...preset.drySequenceBreakers],
+    frequencyPenalty: binding.frequencyPenalty ?? preset.frequencyPenalty,
+    presencePenalty: binding.presencePenalty ?? preset.presencePenalty,
+    customParamsJson: binding.customParamsJson ?? preset.customParamsJson,
+  }
+}
+
+async function saveConversationApiSettings(
+  binding: import('@/utils/conversation-api-settings').ConversationChatBinding | null,
+  notify = true,
+): Promise<void> {
+  const id = props.conversationId?.trim()
+  if (!id) return
+  conversationApiSaving.value = true
+  try {
+    const res = await fetch(`/api/chat/conversations/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiPreset: { chat: binding } }),
+    })
+    if (!res.ok) throw new Error(t('conn.saveFailedJson'))
+    const body = (await res.json()) as { index?: Record<string, unknown> }
+    if (body.index) {
+      applyConversationApiSettings(body.index)
+      emitConversationIndexPatched(id, body.index)
+    } else {
+      conversationApi.setChatBinding(id, binding)
+      storedChatBinding.value = binding
+      chatBinding.value = binding
+    }
+    conversationDraftDirty.value = false
+    conversationApiPanel.value?.markDraftSaved()
+    if (notify) notifyConn(t('conn.conversationParametersSaved'), 'success')
+  } finally {
+    conversationApiSaving.value = false
+  }
+}
+
+async function saveConversationDraft(notify = true): Promise<void> {
+  const binding = conversationApiPanel.value?.getDraftBinding()
+  if (binding === undefined) return
+  await saveConversationApiSettings(binding, notify)
+}
+
+async function saveBasicSettings(notify = true): Promise<void> {
+  await save('basic', notify)
+}
+
+async function saveActiveParameters(notify = true): Promise<void> {
+  if (parameterScope.value === 'conversation') {
+    await saveConversationDraft(notify)
+  } else {
+    await save('global', notify)
+  }
+}
+
+async function saveAllSettings(): Promise<void> {
+  await saveBasicSettings(false)
+  await saveActiveParameters(false)
+  notifyConn(t('conn.savedNotify', { path: settingsPath.value }), 'success')
+}
+
+defineExpose({
+  isConversationDraftDirty: conversationDraftDirty,
+  saveConversationDraft,
+  saveBasicSettings,
+  saveActiveParameters,
+  saveAllSettings,
+  loadConversationApiSettings,
+})
+
+const stopConversationIndexSync = onConversationIndexPatched((conversationId, index) => {
+  const id = props.conversationId?.trim()
+  if (!id || conversationId !== id) return
+  if (conversationDraftDirty.value || conversationApiSaving.value) return
+  applyConversationApiSettings(index, !conversationApiLoaded.value)
+})
+
+onMounted(() => { void loadConversationApiSettings(true) })
+watch(() => props.conversationId, () => { void loadConversationApiSettings(true) })
+watch(
+  () => [
+    conn.activePresetId,
+    conn.presets.map((preset) => JSON.stringify(preset)).join('|'),
+  ],
+  () => {
+    if (!conversationApiLoaded.value || conversationDraftDirty.value) return
+    hydrateConversationChatBinding()
+  },
+)
+
+onUnmounted(() => {
+  stopConversationIndexSync()
+})
 
 function notifyConn(text: string, level: 'success' | 'error' | 'warning'): void {
   coreNotify(text, undefined, { level })
@@ -86,7 +270,6 @@ function openReferencesDialog(title: string, refs: ApiConfigReference[]) {
   referencesDialogOpen.value = true
 }
 
-const conn = useConnectionStore()
 const prompts = usePromptsStore()
 const apiKeysStore = useApiKeysStore()
 const localeStore = useLocaleStore()
@@ -425,13 +608,20 @@ const dryBreakersText = computed({
   },
 })
 
-async function save() {
+async function save(scope: 'basic' | 'global' = 'global', notify = true) {
   try {
     if (conn.customParamsJson.trim()) {
       conn.parseCustomParams()
     }
     await conn.saveToServer()
-    notifyConn(t('conn.savedNotify', { path: settingsPath.value }), 'success')
+    if (notify) {
+      notifyConn(
+        scope === 'basic'
+          ? t('conn.basicSettingsSaved')
+          : t('conn.globalParametersSaved'),
+        'success',
+      )
+    }
   } catch (e) {
     notifyConn(
       e instanceof Error ? e.message : t('conn.saveFailedJson'),
@@ -441,8 +631,40 @@ async function save() {
 }
 
 function onPresetSelect(v: string | null) {
-  if (v && v !== conn.editingPresetId) {
-    conn.switchPreset(v)
+  const presetId = v?.trim()
+  if (!presetId) return
+  conn.switchPreset(presetId)
+  if (chatUseGlobal.value) return
+  storedChatBinding.value = {
+    ...(storedChatBinding.value ?? {}),
+    apiConfigId: presetId,
+  }
+  hydrateConversationChatBinding()
+  void nextTick(() => conversationApiPanel.value?.syncFromProps())
+}
+
+function onConversationPresetSelected(presetId: string): void {
+  if (presetId) conn.switchPreset(presetId)
+}
+
+function onConversationUseGlobalChanged(useGlobal: boolean): void {
+  chatUseGlobal.value = useGlobal
+  parameterScope.value = useGlobal ? 'global' : 'conversation'
+  const presetId = useGlobal
+    ? conn.activePresetId
+    : storedChatBinding.value?.apiConfigId
+  if (presetId) conn.switchPreset(presetId)
+  if (useGlobal) {
+    const current = storedChatBinding.value
+    const inherited = current
+      ? (() => {
+          const { apiConfigId: _apiConfigId, ...snapshot } = current
+          return { ...snapshot, inheritGlobal: true }
+        })()
+      : { inheritGlobal: true }
+    void saveConversationApiSettings(inherited).catch((error) => {
+      notifyConn(error instanceof Error ? error.message : t('conn.saveFailedJson'), 'error')
+    })
   }
 }
 
@@ -574,6 +796,9 @@ function closeImportDialog() {
     <p class="text-body-2 text-medium-emphasis mb-4">
       {{ $t('conn.storageHint', { path: settingsPath }) }}
     </p>
+
+    <div class="connection-settings-grid">
+      <section class="connection-settings-grid__basic">
 
     <v-select
       :model-value="conn.editingPresetId ?? undefined"
@@ -814,6 +1039,38 @@ function closeImportDialog() {
       </v-btn>
     </div>
 
+      </section>
+      <section class="connection-settings-grid__parameters">
+
+    <v-divider class="mb-3" />
+    <p class="text-caption text-medium-emphasis mb-2">API 参数设定</p>
+    <v-tabs v-if="conversationApiLoaded" v-model="parameterScope" density="compact" class="mb-3">
+      <v-tab value="global" :disabled="!chatUseGlobal">全局</v-tab>
+      <v-tab value="conversation">对话</v-tab>
+    </v-tabs>
+    <template v-if="conversationApiLoaded && parameterScope === 'conversation'">
+      <ConversationApiSettingsPanel
+        ref="conversationApiPanel"
+        :chat-use-global="chatUseGlobal"
+        :chat-binding="chatBinding"
+        :embedding-use-global="true"
+        :embedding-override="undefined"
+        global-embedding-model=""
+        :global-embedding-dimensions="null"
+        :auto-save="false"
+        :show-embedding="false"
+        :show-preset-selector="true"
+        :snapshot-parameters="true"
+        :show-save-button="false"
+        :disabled="conversationApiSaving"
+        @update:chat-use-global="onConversationUseGlobalChanged"
+        @preset-selected="onConversationPresetSelected"
+        @save-chat="saveConversationApiSettings"
+        @draft-dirty="(v) => { conversationDraftDirty = v }"
+      />
+    </template>
+    <template v-else>
+
     <v-text-field
       :model-value="conn.model"
       :label="$t('conn.modelId')"
@@ -1022,10 +1279,12 @@ function closeImportDialog() {
       block
       color="primary"
       variant="flat"
-      @click="save"
+      @click="save('global')"
     >
       {{ $t('conn.saveButton') }}
     </v-btn>
+
+    </template>
 
     <p
       v-if="conn.lastSavedAt"
@@ -1033,6 +1292,8 @@ function closeImportDialog() {
     >
       {{ $t('conn.lastSaved') }}{{ formatSavedAt(conn.lastSavedAt) }}
     </p>
+      </section>
+    </div>
   </div>
 
   <v-dialog
@@ -1433,8 +1694,38 @@ function closeImportDialog() {
 
 <style scoped>
 .settings-scroll {
-  max-height: calc(100vh - 7.5rem);
+  max-height: min(78vh, 900px);
+  overflow: hidden;
+}
+
+.connection-settings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.5rem;
+}
+
+.connection-settings-grid__parameters {
+  min-width: 0;
+  padding-left: 1.5rem;
+  border-left: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+}
+
+.connection-settings-grid__basic,
+.connection-settings-grid__parameters {
+  min-height: 0;
+  max-height: calc(min(78vh, 900px) - 1rem);
   overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 1rem;
+}
+
+.connection-settings-grid__basic {
+  padding-top: 0.75rem;
+}
+
+@media (max-width: 800px) {
+  .connection-settings-grid { grid-template-columns: minmax(0, 1fr); }
+  .connection-settings-grid__parameters { padding-left: 0; border-left: 0; }
 }
 
 .cursor-pointer :deep(.v-field) {

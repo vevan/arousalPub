@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import BindingsTab from '@/components/conversation-settings/BindingsTab.vue'
-import ApiTab from '@/components/conversation-settings/ApiTab.vue'
 import LorebookTab from '@/components/conversation-settings/LorebookTab.vue'
 import HistoryTab from '@/components/conversation-settings/HistoryTab.vue'
 import VectorRecallTab from '@/components/conversation-settings/VectorRecallTab.vue'
@@ -65,16 +64,10 @@ const {
   savingKnowledgeBases,
   onBackgroundImageFileId,
   onBgmFileId,
-  chatApiUseGlobal,
   embeddingApiUseGlobal,
-  apiChatDraftActive,
-  apiEmbeddingDraftActive,
   savingApiSettings,
-  propsChatBinding,
   propsEmbeddingOverride,
-  onChatUseGlobalLocalChange,
   onEmbeddingUseGlobalLocalChange,
-  onSaveChatApi,
   onSaveEmbeddingApi,
   loreUseGlobal,
   loreRecursiveEnabled,
@@ -271,22 +264,6 @@ watch(
               @bgm-file-id="onBgmFileId"
             />
 
-            <ApiTab
-              v-show="activeSection === 'api'"
-              :chat-api-use-global="chatApiUseGlobal"
-              :embedding-api-use-global="embeddingApiUseGlobal"
-              :chat-binding="propsChatBinding()"
-              :embedding-override="propsEmbeddingOverride()"
-              :global-embedding-model="props.globalEmbeddingModel ?? ''"
-              :global-embedding-dimensions="props.globalEmbeddingDimensions ?? null"
-              :allow-prop-sync="!apiChatDraftActive && !apiEmbeddingDraftActive && !savingApiSettings"
-              :saving-api-settings="savingApiSettings"
-              @update:chat-api-use-global="onChatUseGlobalLocalChange"
-              @update:embedding-api-use-global="onEmbeddingUseGlobalLocalChange"
-              @save-chat="onSaveChatApi"
-              @save-embedding="onSaveEmbeddingApi"
-            />
-
             <LorebookTab
               v-show="activeSection === 'lore'"
               v-model:lore-use-global="loreUseGlobal"
@@ -334,12 +311,19 @@ watch(
               :memory-rebuild-lore-entries="memoryRebuildLoreEntries"
               :memory-rebuild-stage-label="memoryRebuildStageLabel"
               :memory-rebuild-percent="memoryRebuildPercent"
+              :embedding-use-global="embeddingApiUseGlobal"
+              :embedding-override="propsEmbeddingOverride()"
+              :global-embedding-model="props.globalEmbeddingModel ?? ''"
+              :global-embedding-dimensions="props.globalEmbeddingDimensions ?? null"
+              :saving-embedding-settings="savingApiSettings"
               @rebuild-memory="onRebuildMemoryClick"
               @open-recall-test="recallTestDialogOpen = true"
               @memory-hybrid-fts-profile-pick="onMemoryHybridFtsProfilePick"
               @open-memory-hybrid-fts-manage="openMemoryHybridFtsManageDialog"
               @memory-hybrid-fts-confirm="onMemoryHybridFtsSwitchConfirm"
               @memory-hybrid-fts-cancel="onMemoryHybridFtsSwitchCancel"
+              @update:embedding-use-global="onEmbeddingUseGlobalLocalChange"
+              @save-embedding="onSaveEmbeddingApi"
             />
 
             <BudgetTrimTab

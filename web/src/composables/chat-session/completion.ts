@@ -129,7 +129,7 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
   }
 
   async function requestChatCompletion(
-    params: Parameters<typeof buildConversationChatRequestBody>[2],
+    params: Parameters<typeof buildConversationChatRequestBody>[1],
     trace?: { traceId?: string; mode: 'send' | 'regenerate' },
   ): Promise<CompletionResult> {
     const mode = trace?.mode ?? 'send'
@@ -141,7 +141,8 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
     chatAbortController = ownedController
     const signal = ownedController.signal
     const conversationId = deps.getConversationId()
-    const expectStream = deps.conn.stream
+    // 服务端按已保存的对话/全局设置决定是否流式；客户端始终能消费 SSE。
+    const expectStream = true
     const clientGenerationId = expectStream
       ? generateClientChatGenerationId()
       : undefined

@@ -4,6 +4,7 @@
 
 ## P0
 
+- [x] **连接面板基础连接 / 参数作用域重整**（2026-08-30）— 基础设定、全局参数、对话参数分开保存；连接入口为双列模态弹窗，两列独立滚动，仅保留页脚统一保存按钮；API Tab 已移除，Embedding 设置归入向量召回；对话 Tab 默认可用，`inheritGlobal` 保留独立参数快照并在继承时由服务端忽略；独立模式禁用全局 Tab；全局/对话预设选择器通过 Pinia 同步。聊天请求已删除 `panel-live` 与面板参数，仅服务端从持久化设置解析；dirty 时只能保存后关闭/离开。计划、数据契约和验收见 [`DOC/devNotes/52`](52-connection-panel-scope.md)。
 - [x] **修复连接面板与会话独立主 API 设置互相回滚（GitHub #2）** — `maze` 当前构建已在真实浏览器稳定复现：① 会话关闭“继承全局主 API”后，在连接面板修改参数并“保存设置”，虽提示保存成功，表单仍立即被会话旧覆盖值灌回；选择“忽略”则新值暂时继续作为 panel-live 生效；② 连接面板存在新值时，打开或修改“本对话设置 → API”，连接面板会回滚到会话旧值。**已确认根因**：`documentPayload()` 先用 `syncFormToActivePreset()` 改写 `conn.presets`；`useConvBindings()` 对 presets 的 deep watch 随即重算会话 effective，触发 `ChatConversationView` hydration；hydration 在 PUT 返回前调用 `discardPanelChangesToBaseline()`，用旧 server baseline 恢复 presets/表单。PUT 虽已把新值写盘，随后 `captureServerPanelBaseline()` 捕获的却是被回滚的旧内存值，形成“磁盘新值、内存旧值”。**完成（2026-08-29）**：保存期间阻止旧会话快照回灌，成功响应后再捕获已提交状态为 baseline；新增真实 store + deep watcher + 延迟 PUT 回归测试并纳入标准 Web 测试。浏览器复测保存 `16000 → 15999` 后界面与磁盘均保持新值，对话覆盖仍仅含 `apiConfigId`，随后已恢复测试值为 `16000`。
 
 ## P1

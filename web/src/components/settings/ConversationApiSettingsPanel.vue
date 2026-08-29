@@ -19,12 +19,10 @@ import { storeToRefs } from 'pinia'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const SAVE_DEBOUNCE_MS = 150
-
 let lastChatBindingJson = ''
 let lastEmbeddingPatchJson = ''
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   chatUseGlobal: boolean
   chatBinding: ConversationChatBinding | null
   embeddingUseGlobal: boolean
@@ -33,13 +31,27 @@ const props = defineProps<{
   globalEmbeddingDimensions: number | null
   allowPropSync?: boolean
   disabled?: boolean
-}>()
+  autoSave?: boolean
+  showEmbedding?: boolean
+  showPresetSelector?: boolean
+  snapshotParameters?: boolean
+  showSaveButton?: boolean
+}>(), {
+  allowPropSync: true,
+  autoSave: true,
+  showEmbedding: true,
+  showPresetSelector: true,
+  snapshotParameters: false,
+  showSaveButton: true,
+})
 
 const emit = defineEmits<{
   (e: 'update:chatUseGlobal', v: boolean): void
   (e: 'update:embeddingUseGlobal', v: boolean): void
   (e: 'saveChat', binding: ConversationChatBinding | null): void
   (e: 'saveEmbedding', patch: ConversationEmbeddingApiSettingsOverride | null): void
+  (e: 'draftDirty', dirty: boolean): void
+  (e: 'presetSelected', presetId: string): void
 }>()
 
 const { t } = useI18n()
@@ -66,12 +78,16 @@ const dryBreakersText = ref('')
 const chatFrequencyPenalty = ref<number | ''>('')
 const chatPresencePenalty = ref<number | ''>('')
 const chatCustomParamsJson = ref('')
+const draftDirty = ref(false)
+
+function markDraftDirty(): void {
+  if (draftDirty.value) return
+  draftDirty.value = true
+  emit('draftDirty', true)
+}
 
 const embeddingModel = ref('')
 const embeddingDimensions = ref<number | ''>('')
-
-let chatSaveTimer: ReturnType<typeof setTimeout> | null = null
-let embeddingSaveTimer: ReturnType<typeof setTimeout> | null = null
 
 const modelPickerOpen = ref(false)
 
@@ -108,7 +124,8 @@ function openModelPicker() {
 
 function onModelPicked(id: string) {
   chatModel.value = id
-  scheduleChatSave()
+  markDraftDirty()
+  if (props.autoSave !== false) flushChatSave()
 }
 
 function bindingFromForm(): ConversationChatBinding {
@@ -146,6 +163,36 @@ function bindingFromForm(): ConversationChatBinding {
   }
   b.customParamsJson = chatCustomParamsJson.value
   return b
+}
+
+function fullParameterSnapshot(): ConversationChatBinding | undefined {
+  const effective = effectiveDisplay.value
+  if (!effective) return undefined
+  const binding: ConversationChatBinding = {
+    model: effective.model,
+    contextLength: effective.contextLength,
+    maxTokens: effective.maxTokens,
+    stream: effective.stream,
+    requestReasoningChain: effective.requestReasoningChain,
+    showReasoningChain: effective.showReasoningChain,
+    temperature: effective.temperature,
+    topP: effective.topP,
+    topK: effective.topK,
+    dryMultiplier: effective.dryMultiplier,
+    dryBase: effective.dryBase,
+    dryAllowedLength: effective.dryAllowedLength,
+    dryPenaltyLastN: effective.dryPenaltyLastN,
+    drySequenceBreakers: effective.drySequenceBreakers,
+    frequencyPenalty: effective.frequencyPenalty,
+    presencePenalty: effective.presencePenalty,
+    customParamsJson: effective.customParamsJson,
+  }
+  if (chatPresetSelect.value && chatPresetSelect.value !== INHERIT) {
+    binding.apiConfigId = chatPresetSelect.value.trim()
+  } else if (props.chatBinding?.apiConfigId?.trim()) {
+    binding.apiConfigId = props.chatBinding.apiConfigId.trim()
+  }
+  return binding
 }
 
 const effectiveDisplay = computed((): ResolvedConversationChatDisplay | null => {
@@ -221,20 +268,26 @@ function syncFromProps() {
   }
   lastChatBindingJson = ''
   lastEmbeddingPatchJson = ''
+  if (draftDirty.value) {
+    draftDirty.value = false
+    emit('draftDirty', false)
+  }
 }
 
 watch(
   () => [
     props.allowPropSync !== false,
     props.chatUseGlobal,
-    props.chatBinding,
+    JSON.stringify(props.chatBinding),
     props.embeddingUseGlobal,
-    props.embeddingOverride,
+    JSON.stringify(props.embeddingOverride),
     props.globalEmbeddingModel,
     props.globalEmbeddingDimensions,
-    presets.value.length,
+    activePresetId.value,
+    presets.value.map((preset) => JSON.stringify(preset)).join('|'),
   ],
   () => {
+    if (props.autoSave === false && draftDirty.value) return
     if (props.allowPropSync !== false) syncFromProps()
   },
   { immediate: true },
@@ -243,11 +296,34 @@ watch(
 function onChatUseGlobalChange(useGlobal: boolean | null) {
   if (useGlobal === null) return
   emit('update:chatUseGlobal', useGlobal)
+  markDraftDirty()
   if (useGlobal) {
-    emit('saveChat', null)
+    if (props.autoSave !== false) emit('saveChat', inheritedBinding())
   } else {
-    prefillChatDraftFromGlobal()
+    const binding = props.chatBinding
+    const presetId = binding?.apiConfigId?.trim()
+    const preset = presetId
+      ? presets.value.find((item) => item.id === presetId)
+      : globalPreset.value
+    if (binding && preset) {
+      chatPresetSelect.value = presetId || INHERIT
+      loadChatFormFromPresetAndBinding(preset, binding)
+    } else {
+      prefillChatDraftFromGlobal()
+    }
   }
+}
+
+function onChatPresetSelected(presetId: string) {
+  chatPresetSelect.value = presetId
+  markDraftDirty()
+  emit('presetSelected', presetId)
+}
+
+function inheritedBinding(): ConversationChatBinding {
+  if (!props.chatBinding) return { inheritGlobal: true }
+  const { apiConfigId: _apiConfigId, ...snapshot } = props.chatBinding
+  return { ...snapshot, inheritGlobal: true }
 }
 
 function onEmbeddingUseGlobalChange(useGlobal: boolean | null) {
@@ -260,15 +336,24 @@ function onEmbeddingUseGlobalChange(useGlobal: boolean | null) {
   }
 }
 
-function flushChatSave() {
-  if (props.chatUseGlobal) return
+function getDraftBinding(): ConversationChatBinding | null | undefined {
+  if (props.chatUseGlobal) {
+    return inheritedBinding()
+  }
+  if (props.snapshotParameters) return fullParameterSnapshot()
   const preset = selectedPreset.value
-  if (!preset || !effectiveDisplay.value) return
+  if (!preset || !effectiveDisplay.value) return undefined
   const binding = buildChatBindingPatch(
     preset,
     effectiveDisplay.value,
     chatPresetSelect.value === INHERIT,
   )
+  return binding
+}
+
+function flushChatSave(force = false) {
+  if (props.autoSave === false && !force) return
+  const binding = getDraftBinding()
   if (binding == null) return
   const snap = JSON.stringify(binding)
   if (snap === lastChatBindingJson) return
@@ -276,13 +361,16 @@ function flushChatSave() {
   emit('saveChat', binding)
 }
 
-function scheduleChatSave() {
-  if (props.chatUseGlobal) return
-  if (chatSaveTimer) clearTimeout(chatSaveTimer)
-  chatSaveTimer = setTimeout(() => {
-    chatSaveTimer = null
-    flushChatSave()
-  }, SAVE_DEBOUNCE_MS)
+function saveDraft(): void {
+  const binding = getDraftBinding()
+  if (binding === undefined) return
+  emit('saveChat', binding)
+}
+
+function markDraftSaved(): void {
+  if (!draftDirty.value) return
+  draftDirty.value = false
+  emit('draftDirty', false)
 }
 
 function flushEmbeddingSave() {
@@ -305,20 +393,17 @@ function flushEmbeddingSave() {
   emit('saveEmbedding', patch)
 }
 
-function scheduleEmbeddingSave() {
-  if (props.embeddingUseGlobal) return
-  if (embeddingSaveTimer) clearTimeout(embeddingSaveTimer)
-  embeddingSaveTimer = setTimeout(() => {
-    embeddingSaveTimer = null
-    flushEmbeddingSave()
-  }, SAVE_DEBOUNCE_MS)
-}
-
 onUnmounted(() => {
-  if (chatSaveTimer) clearTimeout(chatSaveTimer)
-  if (embeddingSaveTimer) clearTimeout(embeddingSaveTimer)
-  flushChatSave()
+  if (props.autoSave !== false) flushChatSave()
   flushEmbeddingSave()
+})
+
+defineExpose({
+  getDraftBinding,
+  saveDraft,
+  markDraftSaved,
+  syncFromProps,
+  isDraftDirty: draftDirty,
 })
 </script>
 
@@ -336,7 +421,7 @@ onUnmounted(() => {
     </div>
 
     <template v-if="!chatUseGlobal">
-      <div class="conv-api-settings__field">
+      <div v-if="showPresetSelector !== false" class="conv-api-settings__field">
         <v-select
           v-model="chatPresetSelect"
           :items="presetItems"
@@ -347,7 +432,7 @@ onUnmounted(() => {
           variant="outlined"
           hide-details="auto"
           :disabled="disabled"
-          @update:model-value="scheduleChatSave"
+          @update:model-value="onChatPresetSelected"
         />
       </div>
 
@@ -394,7 +479,7 @@ onUnmounted(() => {
           min="0"
           step="1"
           :disabled="disabled"
-          @update:model-value="scheduleChatSave"
+          @blur="flushChatSave"
         />
       </div>
 
@@ -409,7 +494,7 @@ onUnmounted(() => {
           min="1"
           step="1"
           :disabled="disabled"
-          @update:model-value="scheduleChatSave"
+          @blur="flushChatSave"
         />
       </div>
 
@@ -420,7 +505,7 @@ onUnmounted(() => {
           color="primary"
           hide-details
           :disabled="disabled"
-          @update:model-value="scheduleChatSave"
+          @blur="flushChatSave"
         />
       </div>
 
@@ -433,7 +518,7 @@ onUnmounted(() => {
           color="primary"
           density="comfortable"
           :disabled="disabled"
-          @update:model-value="scheduleChatSave"
+          @blur="flushChatSave"
         />
       </div>
 
@@ -446,7 +531,7 @@ onUnmounted(() => {
           color="primary"
           density="comfortable"
           :disabled="disabled"
-          @update:model-value="scheduleChatSave"
+          @blur="flushChatSave"
         />
       </div>
 
@@ -462,7 +547,7 @@ onUnmounted(() => {
           variant="outlined"
           hide-details="auto"
           :disabled="disabled"
-          @update:model-value="scheduleChatSave"
+          @blur="flushChatSave"
         />
       </div>
 
@@ -478,7 +563,7 @@ onUnmounted(() => {
           variant="outlined"
           hide-details="auto"
           :disabled="disabled"
-          @update:model-value="scheduleChatSave"
+          @blur="flushChatSave"
         />
       </div>
 
@@ -495,7 +580,7 @@ onUnmounted(() => {
           variant="outlined"
           hide-details="auto"
           :disabled="disabled"
-          @update:model-value="scheduleChatSave"
+          @blur="flushChatSave"
         />
       </div>
 
@@ -521,7 +606,7 @@ onUnmounted(() => {
                 variant="outlined"
                 hide-details="auto"
                 :disabled="disabled"
-                @update:model-value="scheduleChatSave"
+                @blur="flushChatSave"
               />
             </div>
             <div class="conv-api-settings__field">
@@ -534,7 +619,7 @@ onUnmounted(() => {
                 variant="outlined"
                 hide-details="auto"
                 :disabled="disabled"
-                @update:model-value="scheduleChatSave"
+                @blur="flushChatSave"
               />
             </div>
             <div class="conv-api-settings__field">
@@ -548,7 +633,7 @@ onUnmounted(() => {
                 variant="outlined"
                 hide-details="auto"
                 :disabled="disabled"
-                @update:model-value="scheduleChatSave"
+                @blur="flushChatSave"
               />
             </div>
             <div class="conv-api-settings__field">
@@ -564,7 +649,7 @@ onUnmounted(() => {
                 variant="outlined"
                 hide-details="auto"
                 :disabled="disabled"
-                @update:model-value="scheduleChatSave"
+                @blur="flushChatSave"
               />
             </div>
             <div class="conv-api-settings__field">
@@ -597,7 +682,7 @@ onUnmounted(() => {
           variant="outlined"
           hide-details="auto"
           :disabled="disabled"
-          @update:model-value="scheduleChatSave"
+          @blur="flushChatSave"
         />
       </div>
 
@@ -613,7 +698,7 @@ onUnmounted(() => {
           variant="outlined"
           hide-details="auto"
           :disabled="disabled"
-          @update:model-value="scheduleChatSave"
+          @blur="flushChatSave"
         />
       </div>
 
@@ -629,9 +714,32 @@ onUnmounted(() => {
           @blur="flushChatSave"
         />
       </div>
+      <v-btn
+      v-if="autoSave === false && showSaveButton !== false"
+        block
+        color="primary"
+        variant="flat"
+        class="mt-4"
+        :disabled="disabled"
+        @click="saveDraft"
+      >
+        保存对话参数
+      </v-btn>
     </template>
 
-    <div class="conv-api-settings__subsection">
+    <v-btn
+      v-if="autoSave === false && chatUseGlobal && showSaveButton !== false"
+      block
+      color="primary"
+      variant="flat"
+      class="mt-4"
+      :disabled="disabled"
+      @click="saveDraft"
+    >
+      保存对话参数
+    </v-btn>
+
+    <div v-if="showEmbedding !== false" class="conv-api-settings__subsection">
       <h4 class="conv-api-settings__subsection-title">
         {{ $t('chat.convSettings.embeddingApiSection') }}
       </h4>
@@ -668,7 +776,7 @@ onUnmounted(() => {
             :hint="$t('settings.embeddingDimensionsHint')"
             persistent-hint
             :disabled="disabled"
-            @update:model-value="scheduleEmbeddingSave"
+            @blur="flushEmbeddingSave"
           />
         </div>
       </template>

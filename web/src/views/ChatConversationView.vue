@@ -25,15 +25,11 @@ import { bootstrapAppData } from '@/bootstrap/app-data'
 import { coreNotify } from '@/utils/core-notify'
 import { fetchDefaultLorebookIds, fetchLorebookPickerItems } from '@/utils/default-lorebook'
 import { useConnectionStore } from '@/stores/connection'
+import { useConversationApiStore } from '@/stores/conversation-api'
 import { usePreferencesStore } from '@/stores/preferences'
 import { usePromptsStore } from '@/stores/prompts'
 import { useUiContextStore } from '@/stores/ui-context'
 import { authorsNoteComposerActive } from '@/utils/authors-note-settings'
-import { buildConversationChatHydrationWatchKey } from '@/utils/conversation-chat-panel-hydration'
-import {
-  buildChatBindingPatch,
-  type ResolvedConversationChatDisplay,
-} from '@/utils/conversation-api-settings'
 import {
   groupChatWithEnsuredMemberColors,
   memberColorsIncomplete,
@@ -42,7 +38,10 @@ import {
 import {
   normalizeHybridFtsSettings,
 } from '@/utils/hybrid-fts-settings'
-import { onConversationIndexPatched } from '@/utils/conversation-index-sync'
+import {
+  emitConversationIndexPatched,
+  onConversationIndexPatched,
+} from '@/utils/conversation-index-sync'
 import { useAuthStore } from '@/stores/auth'
 import { storeToRefs } from 'pinia'
 import { computed, onScopeDispose, provide, ref, watch } from 'vue'
@@ -57,6 +56,7 @@ const { t } = useI18n()
 const router = useRouter()
 const auth = useAuthStore()
 const conn = useConnectionStore()
+const conversationApi = useConversationApiStore()
 const prefStore = usePreferencesStore()
 const promptsStore = usePromptsStore()
 const uiContext = useUiContextStore()
@@ -239,74 +239,14 @@ function onRegexAppliedFromSettings(): void {
 }
 
 const headerChatLabel = computed(() => {
-  if (!conn.isApiKeyConfigured) return ''
   if (loading.value) return ''
   if (convBindings.value.chatApi.useGlobal) return ''
-  // 与发送同源：连接面板 panelLive，禁止只读磁盘 effective
-  const alias = conn.alias.trim()
-  const model = conn.model.trim()
+  const effective = convBindings.value.chatApi.effective
+  if (!effective) return ''
+  const { alias, model } = effective
   if (alias) return model ? `${alias} · ${model}` : alias
   return model || ''
 })
-
-function panelLiveAsChatDisplay(): ResolvedConversationChatDisplay | null {
-  const id = conn.editingPresetId?.trim()
-  if (!id) return null
-  return {
-    apiPresetId: id,
-    alias: conn.alias,
-    model: conn.model,
-    contextLength: conn.contextLength,
-    maxTokens: conn.maxTokens,
-    stream: conn.stream,
-    temperature: conn.temperature,
-    topP: conn.topP,
-    topK: conn.topK,
-    dryMultiplier: conn.dryMultiplier,
-    dryBase: conn.dryBase,
-    dryAllowedLength: conn.dryAllowedLength,
-    dryPenaltyLastN: conn.dryPenaltyLastN,
-    drySequenceBreakers: [...conn.drySequenceBreakers],
-    frequencyPenalty: conn.frequencyPenalty,
-    presencePenalty: conn.presencePenalty,
-    customParamsJson: conn.customParamsJson,
-    showReasoningChain: conn.showReasoningChain,
-    requestReasoningChain: conn.requestReasoningChain,
-  }
-}
-
-async function syncChatOverlayFromPanel(): Promise<void> {
-  if (loading.value) return
-  if (convBindings.value.chatApi.useGlobal) return
-  const id = props.conversationId
-  if (!id) return
-  const presetId = conn.editingPresetId?.trim()
-  const preset = presetId
-    ? conn.presets.find((p) => p.id === presetId)
-    : undefined
-  const effective = panelLiveAsChatDisplay()
-  if (!preset || !effective) return
-  const binding = buildChatBindingPatch(preset, effective, false)
-  if (!binding) return
-  const raw = convBindings.value.chatApi.apiPresetRaw
-  const prevChat =
-    raw && typeof raw === 'object' && !Array.isArray(raw)
-      ? JSON.stringify((raw as { chat?: unknown }).chat ?? null)
-      : 'null'
-  if (prevChat === JSON.stringify(binding)) return
-  try {
-    const res = await fetch(`/api/chat/conversations/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiPreset: { chat: binding } }),
-    })
-    if (!res.ok || props.conversationId !== id) return
-    const index = (await res.json()) as Record<string, unknown>
-    onConvContextPatched(index, id)
-  } catch {
-    /* ignore sync failure; send still uses panel body */
-  }
-}
 
 const boundLorebooks = computed(() =>
   convBindings.value.lorebookIds.map((id) => ({
@@ -471,6 +411,7 @@ function onConvContextPatched(
   }
   applyConversationMemoryIndexMeta(index)
   convBindings.value = bindingsFromIndex(index)
+  conversationApi.syncFromIndex(props.conversationId, index)
   maybePromptMemoryRebuild()
 }
 
@@ -479,13 +420,8 @@ const stopIndexPatched = onConversationIndexPatched((cid, index) => {
   onConvContextPatched(index)
 })
 
-const stopAfterPanelSaved = conn.onAfterPanelSaved(() => {
-  void syncChatOverlayFromPanel()
-})
-
 onScopeDispose(() => {
   stopIndexPatched()
-  stopAfterPanelSaved()
   stopBgmAudio()
 })
 
@@ -539,9 +475,9 @@ async function ensureConversation(id: string) {
     title.value = typeof idx.title === 'string' ? idx.title : t('chat.newConversation')
     hasConversationTurns.value =
       typeof idx.headChunkFile === 'string' && idx.headChunkFile.length > 0
-    applyConversationMemoryIndexMeta(idx)
-    convBindings.value = bindingsFromIndex(idx)
+    onConvContextPatched(idx, id)
     syncActiveFromIndex(idx)
+    emitConversationIndexPatched(id, idx)
 
     // 先对齐 auditDebug，避免首条消息在开关写入前落盘而跳过审计
     try {
@@ -614,27 +550,6 @@ watch(
   { immediate: true },
 )
 
-watch(
-  () =>
-    buildConversationChatHydrationWatchKey({
-      conversationId: props.conversationId,
-      loading: loading.value,
-      presetsReady: conn.presets.length > 0,
-      useGlobal: convBindings.value.chatApi.useGlobal,
-      apiPresetRaw: convBindings.value.chatApi.apiPresetRaw,
-      effective: convBindings.value.chatApi.effective,
-      activePresetId: conn.activePresetId,
-    }),
-  () => {
-    if (loading.value) return
-    if (conn.presets.length === 0) return
-    conn.hydratePanelForConversation({
-      useGlobal: convBindings.value.chatApi.useGlobal,
-      effective: convBindings.value.chatApi.effective,
-      fallbackPresetId: conn.activePresetId,
-    })
-  },
-)
 
 /** 仅全局 Debug 偏好变更时同步；进页同步见 ensureConversation 延后任务 */
 watch(
@@ -847,7 +762,7 @@ watch(
         :initial-chat-api-use-global="convBindings.chatApi.useGlobal"
         :initial-embedding-api-use-global="convBindings.embeddingApi.useGlobal"
         :initial-embedding-api-settings="convBindings.embeddingApi.override"
-        @patched="(index, cid) => onConvContextPatched(index, cid)"
+        @patched="(index, cid) => { onConvContextPatched(index, cid); emitConversationIndexPatched(cid, index) }"
         @memory-rebuilt="onMemoryRebuiltFromSettings"
         @regex-applied="onRegexAppliedFromSettings"
       />

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  mergeChatBindings,
   mergePresetWithChatBinding,
   parseConversationChatBinding,
   parseConversationEmbeddingApiOverride,
@@ -27,6 +26,18 @@ describe('conversation-api-settings', () => {
       assert.equal(r.binding?.apiConfigId, 'abc12345')
       assert.equal(r.binding?.model, 'gpt-4o-mini')
       assert.equal(r.binding?.temperature, 0.8)
+    }
+  })
+
+  it('parses an inherited binding that retains a parameter snapshot', () => {
+    const r = parseConversationChatBinding({
+      inheritGlobal: true,
+      model: 'saved-for-later',
+    })
+    assert.equal(r.ok, true)
+    if (r.ok) {
+      assert.equal(r.binding?.inheritGlobal, true)
+      assert.equal(r.binding?.model, 'saved-for-later')
     }
   })
 
@@ -62,19 +73,6 @@ describe('conversation-api-settings', () => {
     assert.equal(merged.model, 'gpt-4o-mini')
     assert.equal(merged.temperature, 0.5)
     assert.equal(merged.maxTokens, 512)
-  })
-
-  it('mergeChatBindings lets body panelLive override disk chatOverlay', () => {
-    const merged = mergeChatBindings(
-      { apiConfigId: 'disk', temperature: 0.1, model: 'disk-model' },
-      { temperature: 0.9, stream: true },
-    )
-    assert.deepEqual(merged, {
-      apiConfigId: 'disk',
-      temperature: 0.9,
-      model: 'disk-model',
-      stream: true,
-    })
   })
 
   it('resolves embedding model override only', () => {

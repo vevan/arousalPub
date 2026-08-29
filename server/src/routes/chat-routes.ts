@@ -59,14 +59,12 @@ interface ChatMessage {
 }
 
 interface ChatBody {
-  alias?: string
+  /** 仅直传 messages 的非会话调用可指定连接；会话调用一律忽略这些字段。 */
   baseUrl?: string
-  /** 默认 activePresetId */
   apiPresetId?: string
   apiKeyId?: string | null
-  /** 连接面板草稿 Key（仅当次；勿写入日志） */
   apiKey?: string
-  model: string
+  model?: string
   /** 直传 messages；与 conversationId 模式二选一 */
   messages?: ChatMessage[]
   /**
@@ -1815,7 +1813,7 @@ export function registerChatRoutes(app: FastifyInstance): void {
     const resolvedFeature = await resolveChatFeatureAudit(convId || undefined)
     try {
       if (convId) {
-        const resolved = await resolveConversationChatCall(convId, body)
+        const resolved = await resolveConversationChatCall(convId)
         apiKey = resolved.apiKey
         baseUrl = resolved.baseUrl
         const fields = resolvedParamsToChatBodyFields(resolved.params)
@@ -1823,9 +1821,6 @@ export function registerChatRoutes(app: FastifyInstance): void {
           ...body,
           ...fields,
           apiPresetId: resolved.presetId,
-          apiKey: undefined,
-          baseUrl: undefined,
-          apiKeyId: undefined,
         }
       } else {
         const creds = await resolveChatCredentials(

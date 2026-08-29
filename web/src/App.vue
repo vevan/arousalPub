@@ -153,6 +153,12 @@ function onBrowserLanguageChange() {
 }
 
 const drawerRight = ref(false)
+const connectionSettingsRef = ref<InstanceType<typeof ConnectionSettingsCard> | null>(null)
+const connectionConversationId = computed(() => {
+  const raw = route.params.conversationId
+  const id = Array.isArray(raw) ? raw[0] : raw
+  return typeof id === 'string' ? id : ''
+})
 const conn = useConnectionStore()
 const connUnsavedDialogOpen = ref(false)
 const connDrawerSaving = ref(false)
@@ -172,7 +178,7 @@ function onConnectionDrawerUpdate(open: boolean): void {
     drawerRight.value = true
     return
   }
-  if (conn.isPanelDirty) {
+  if (conn.isPanelDirty || connectionSettingsRef.value?.isConversationDraftDirty) {
     connUnsavedReason.value = 'drawer'
     pendingNavTo.value = null
     connUnsavedDialogOpen.value = true
@@ -201,10 +207,15 @@ async function proceedPendingNavigation(): Promise<void> {
 async function onConnUnsavedSave(): Promise<void> {
   connDrawerSaving.value = true
   try {
-    if (conn.customParamsJson.trim()) {
-      conn.parseCustomParams()
+    if (connectionSettingsRef.value?.isConversationDraftDirty) {
+      await connectionSettingsRef.value.saveConversationDraft()
     }
-    await conn.saveToServer()
+    if (conn.isPanelDirty) {
+      if (conn.customParamsJson.trim()) {
+        conn.parseCustomParams()
+      }
+      await conn.saveToServer()
+    }
     if (connUnsavedReason.value === 'navigate') {
       drawerRight.value = false
       await proceedPendingNavigation()
@@ -222,16 +233,6 @@ async function onConnUnsavedSave(): Promise<void> {
   }
 }
 
-function onConnUnsavedIgnore(): void {
-  if (connUnsavedReason.value === 'navigate') {
-    conn.discardPanelChangesToBaseline()
-    drawerRight.value = false
-    void proceedPendingNavigation()
-    return
-  }
-  closeConnectionDrawer()
-}
-
 function onConnUnsavedKeepEditing(): void {
   connUnsavedDialogOpen.value = false
   pendingNavTo.value = null
@@ -242,7 +243,7 @@ const removeConnDirtyNavGuard = router.beforeEach((to, from) => {
     allowNextConnNav = false
     return true
   }
-  if (!conn.isPanelDirty) return true
+  if (!conn.isPanelDirty && !connectionSettingsRef.value?.isConversationDraftDirty) return true
   if (to.path === from.path) {
     const toCid = to.params.conversationId
     const fromCid = from.params.conversationId
@@ -587,14 +588,11 @@ onUnmounted(() => {
   </v-app>
 
   <v-app v-else>
-    <v-navigation-drawer
+    <v-dialog
       :model-value="drawerRight"
-      :width="440"
-      temporary
-      location="end"
-      border="start"
       @update:model-value="onConnectionDrawerUpdate"
     >
+      <v-card class="connection-settings-dialog" max-width="1180">
       <v-toolbar density="compact" color="surface-variant" flat>
         <v-toolbar-title class="text-subtitle-2">
           {{ $t('app.apiConnection') }}
@@ -608,8 +606,20 @@ onUnmounted(() => {
           @click="onConnectionDrawerUpdate(false)"
         />
       </v-toolbar>
-      <ConnectionSettingsCard />
-    </v-navigation-drawer>
+      <ConnectionSettingsCard
+        ref="connectionSettingsRef"
+        :conversation-id="connectionConversationId"
+      />
+      <v-divider />
+      <v-card-actions class="px-5 py-3">
+        <v-btn variant="text" @click="onConnectionDrawerUpdate(false)">关闭</v-btn>
+        <v-spacer />
+        <v-btn color="primary" variant="flat" @click="connectionSettingsRef?.saveAllSettings()">
+          保存
+        </v-btn>
+      </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <v-app-bar
       ref="appBarRef"
@@ -935,13 +945,6 @@ onUnmounted(() => {
             @click="onConnUnsavedKeepEditing"
           >
             {{ $t('conn.unsavedCloseKeepEditing') }}
-          </v-btn>
-          <v-btn
-            variant="text"
-            :disabled="connDrawerSaving"
-            @click="onConnUnsavedIgnore"
-          >
-            {{ $t('conn.unsavedCloseIgnore') }}
           </v-btn>
           <v-btn
             color="primary"

@@ -13,12 +13,6 @@ import {
   type DrySamplerFields,
   normalizeDrySequenceBreakers,
 } from '@/utils/dry-sampler'
-import type { ResolvedConversationChatDisplay } from '@/utils/conversation-api-settings'
-import {
-  chatDisplayToConnectionSnapshot,
-  isConnectionFormDirty,
-  resolveHydrationPresetId,
-} from '@/utils/conversation-chat-panel-hydration'
 import { allocateShortId } from '@/utils/short-id'
 export interface ApiSettingsSnapshot {
   alias: string
@@ -58,12 +52,6 @@ export interface ApiSettingsDocument {
   savedAt: string
   activePresetId: string
   presets: ApiPreset[]
-}
-
-export type ConversationPanelHydration = {
-  useGlobal: boolean
-  effective: ResolvedConversationChatDisplay | null
-  fallbackPresetId: string | null
 }
 
 function collectUsedApiPresetIds(list: ApiPreset[]): Set<string> {
@@ -180,33 +168,6 @@ export const useConnectionStore = defineStore('connection', () => {
    * 与「指纹表非空」解耦，避免未加载与已加载零预设被混判。
    */
   const panelBaselineReady = ref(false)
-  /** PUT /api/settings 提交与 baseline 捕获期间，禁止会话旧快照回灌面板。 */
-  const panelSaveInFlight = ref(false)
-  /** 会话 API 覆盖灌入面板后的表单指纹；匹配时视为干净（非用户未保存改动） */
-  const conversationPanelFingerprint = ref<string | null>(null)
-  const afterPanelSavedHandlers = new Set<() => void>()
-
-  function clearConversationPanelFingerprint(): void {
-    conversationPanelFingerprint.value = null
-  }
-
-  /** 连接面板 Save 成功后回调（用于会话 chatOverlay 与 pill 同步） */
-  function onAfterPanelSaved(handler: () => void): () => void {
-    afterPanelSavedHandlers.add(handler)
-    return () => {
-      afterPanelSavedHandlers.delete(handler)
-    }
-  }
-
-  function notifyAfterPanelSaved(): void {
-    for (const handler of afterPanelSavedHandlers) {
-      try {
-        handler()
-      } catch {
-        /* ignore listener errors */
-      }
-    }
-  }
 
   function clonePresetBaseline(p: ApiPreset): ApiPreset {
     return {
@@ -355,43 +316,11 @@ export const useConnectionStore = defineStore('connection', () => {
     const baseline = lastServerFingerprints.value[id]
     if (baseline === undefined) return true
     const formFp = fingerprintFromForm()
-    return isConnectionFormDirty({
-      formFingerprint: formFp,
-      serverBaselineFingerprint: baseline,
-      conversationPanelFingerprint: conversationPanelFingerprint.value,
-    })
+    return formFp !== baseline
   })
-
-  /**
-   * 进房/绑定变更：丢弃会话内未保存改动，将面板灌到会话 effective 或全局主预设。
-   */
-  function hydratePanelForConversation(input: ConversationPanelHydration): void {
-    if (panelSaveInFlight.value) return
-    discardPanelChangesToBaseline()
-    const list = presets.value
-    if (list.length === 0) return
-    const presetIds = list.map((p) => p.id)
-    const presetId = input.useGlobal || !input.effective
-      ? resolveHydrationPresetId(presetIds, input.fallbackPresetId, input.fallbackPresetId)
-      : resolveHydrationPresetId(
-          presetIds,
-          input.effective.apiPresetId,
-          input.fallbackPresetId,
-        )
-    if (!presetId) return
-    editingPresetId.value = presetId
-    applyActivePresetToForm()
-    if (!input.useGlobal && input.effective) {
-      applySnapshot(chatDisplayToConnectionSnapshot(input.effective))
-      conversationPanelFingerprint.value = fingerprintFromForm()
-    } else {
-      clearConversationPanelFingerprint()
-    }
-  }
 
   /** 丢弃内存中相对 baseline 的改动（含未保存新建预设），表单回到 baseline */
   function discardPanelChangesToBaseline(): void {
-    clearConversationPanelFingerprint()
     apiKeyDraftDirty.value = false
     apiKey.value = ''
     if (!panelBaselineReady.value) return
@@ -590,7 +519,6 @@ export const useConnectionStore = defineStore('connection', () => {
 
   function switchPreset(newId: string) {
     if (newId === editingPresetId.value) return
-    clearConversationPanelFingerprint()
     syncFormToActivePreset()
     editingPresetId.value = newId
     applyActivePresetToForm()
@@ -1095,8 +1023,6 @@ export const useConnectionStore = defineStore('connection', () => {
   async function saveToServer(opts?: {
     globalPresetId?: string
   }): Promise<void> {
-    panelSaveInFlight.value = true
-    try {
       const body = documentPayload(opts)
       const res = await fetch('/api/settings', {
         method: 'PUT',
@@ -1131,11 +1057,6 @@ export const useConnectionStore = defineStore('connection', () => {
         apiKeyDraftDirty.value = false
       }
       captureServerPanelBaseline()
-      clearConversationPanelFingerprint()
-    } finally {
-      panelSaveInFlight.value = false
-    }
-    notifyAfterPanelSaved()
   }
 
   function clearSessionData(): void {
@@ -1147,8 +1068,6 @@ export const useConnectionStore = defineStore('connection', () => {
     lastServerFingerprints.value = {}
     lastServerPresets.value = {}
     panelBaselineReady.value = false
-    panelSaveInFlight.value = false
-    clearConversationPanelFingerprint()
     apiKeyDraftDirty.value = false
     resetFormToDefaultFields()
   }
@@ -1189,9 +1108,7 @@ export const useConnectionStore = defineStore('connection', () => {
     presetSelectItems,
     snapshot,
     switchPreset,
-    hydratePanelForConversation,
     discardPanelChangesToBaseline,
-    onAfterPanelSaved,
     setGlobalActivePreset,
     addPreset,
     removeActivePreset,

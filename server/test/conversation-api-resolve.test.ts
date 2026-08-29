@@ -6,13 +6,12 @@ import { runRequestUserAsync } from '../src/user-context.js'
 
 const TEST_USER = 'b0000001'
 
-describe('resolveConversationChatCall (panel snapshot)', () => {
+describe('resolveConversationChatCall (persisted settings)', () => {
   let prevDataDir: string | undefined
   let prevDek: string | undefined
   let tmp = ''
   let resolveConversationChatCall: typeof import('../src/conversation-api-resolve.js').resolveConversationChatCall
   let writeApiSettingsToFile: typeof import('../src/api-settings-file.js').writeApiSettingsToFile
-  let writeApiKeysDocument: typeof import('../src/api-keys-file.js').writeApiKeysDocument
   let createConversationStub: typeof import('../src/chat-storage.js').createConversationStub
   let updateConversationChatApiSettings: typeof import('../src/chat-storage.js').updateConversationChatApiSettings
 
@@ -27,7 +26,6 @@ describe('resolveConversationChatCall (panel snapshot)', () => {
     await mkdir(path.join(tmp, TEST_USER, 'chats'), { recursive: true })
 
     ;({ writeApiSettingsToFile } = await import('../src/api-settings-file.js'))
-    ;({ writeApiKeysDocument } = await import('../src/api-keys-file.js'))
     ;({
       createConversationStub,
       updateConversationChatApiSettings,
@@ -103,7 +101,7 @@ describe('resolveConversationChatCall (panel snapshot)', () => {
     await rm(tmp, { recursive: true, force: true })
   })
 
-  it('falls back to active preset when body has no apiPresetId', async () => {
+  it('falls back to the persisted active preset without a conversation override', async () => {
     await runRequestUserAsync(TEST_USER, async () => {
       const conversationId = 'c1111111'
       await createConversationStub(conversationId, 'no binding')
@@ -116,64 +114,7 @@ describe('resolveConversationChatCall (panel snapshot)', () => {
     })
   })
 
-  it('uses body apiPresetId and baseUrl together (homologous panel snapshot)', async () => {
-    await runRequestUserAsync(TEST_USER, async () => {
-      const conversationId = 'c3333333'
-      await createConversationStub(conversationId, 'panel other')
-      const call = await resolveConversationChatCall(conversationId, {
-        apiPresetId: 'preset-other',
-        baseUrl: 'https://panel.example/v1',
-        model: 'panel-model',
-      })
-      assert.equal(call.presetId, 'preset-other')
-      assert.equal(call.baseUrl, 'https://panel.example/v1')
-      assert.equal(call.apiKey, 'sk-other-key')
-      assert.equal(call.params.model, 'panel-model')
-    })
-  })
-
-  it('body panelLive overrides disk chatOverlay when both set', async () => {
-    await runRequestUserAsync(TEST_USER, async () => {
-      const conversationId = 'c2222222'
-      await createConversationStub(conversationId, 'with binding')
-      await updateConversationChatApiSettings(conversationId, {
-        apiConfigId: 'preset-other',
-        temperature: 0.1,
-      })
-      const call = await resolveConversationChatCall(conversationId, {
-        apiPresetId: 'preset-active',
-        model: 'active-model',
-        temperature: 0.7,
-      })
-      assert.equal(call.presetId, 'preset-active')
-      assert.equal(call.baseUrl, 'https://active.example/v1')
-      assert.equal(call.apiKey, 'sk-active-key')
-      assert.equal(call.params.model, 'active-model')
-      assert.equal(call.params.temperature, 0.7)
-      assert.equal(call.usedConversationOverride, true)
-    })
-  })
-
-  it('drops disk sampling when body selects a different apiPresetId', async () => {
-    await runRequestUserAsync(TEST_USER, async () => {
-      const conversationId = 'c9999999'
-      await createConversationStub(conversationId, 'cross preset')
-      await updateConversationChatApiSettings(conversationId, {
-        apiConfigId: 'preset-other',
-        temperature: 0.11,
-        model: 'disk-only-model',
-      })
-      const call = await resolveConversationChatCall(conversationId, {
-        apiPresetId: 'preset-active',
-      })
-      assert.equal(call.presetId, 'preset-active')
-      assert.equal(call.params.model, 'active-model')
-      assert.equal(call.params.temperature, 0.7)
-      assert.equal(call.usedConversationOverride, true)
-    })
-  })
-
-  it('applies disk chatOverlay when body omits sampling and apiPresetId', async () => {
+  it('applies the persisted chat override', async () => {
     await runRequestUserAsync(TEST_USER, async () => {
       const conversationId = 'c7777777'
       await createConversationStub(conversationId, 'disk only')
@@ -182,7 +123,7 @@ describe('resolveConversationChatCall (panel snapshot)', () => {
         temperature: 0.15,
         model: 'disk-model',
       })
-      const call = await resolveConversationChatCall(conversationId, {})
+      const call = await resolveConversationChatCall(conversationId)
       assert.equal(call.presetId, 'preset-other')
       assert.equal(call.baseUrl, 'https://other.example/v1')
       assert.equal(call.apiKey, 'sk-other-key')
@@ -192,7 +133,7 @@ describe('resolveConversationChatCall (panel snapshot)', () => {
     })
   })
 
-  it('merges disk temperature when body only sends apiPresetId', async () => {
+  it('uses the persisted override parameter values', async () => {
     await runRequestUserAsync(TEST_USER, async () => {
       const conversationId = 'c8888888'
       await createConversationStub(conversationId, 'partial body')
@@ -200,9 +141,7 @@ describe('resolveConversationChatCall (panel snapshot)', () => {
         apiConfigId: 'preset-other',
         temperature: 0.11,
       })
-      const call = await resolveConversationChatCall(conversationId, {
-        apiPresetId: 'preset-other',
-      })
+      const call = await resolveConversationChatCall(conversationId)
       assert.equal(call.presetId, 'preset-other')
       assert.equal(call.params.temperature, 0.11)
       assert.equal(call.params.model, 'other-model')
@@ -210,121 +149,53 @@ describe('resolveConversationChatCall (panel snapshot)', () => {
     })
   })
 
-  it('prefers draft apiKey over preset disk key', async () => {
+  it('uses global parameters while retaining an inherited conversation snapshot', async () => {
     await runRequestUserAsync(TEST_USER, async () => {
-      const conversationId = 'c4444444'
-      await createConversationStub(conversationId, 'draft key')
-      const call = await resolveConversationChatCall(conversationId, {
-        apiPresetId: 'preset-active',
-        apiKey: 'sk-draft-key',
+      const conversationId = 'c9999999'
+      await createConversationStub(conversationId, 'inherited snapshot')
+      await updateConversationChatApiSettings(conversationId, {
+        inheritGlobal: true,
+        apiConfigId: 'preset-other',
+        model: 'saved-for-later',
+        temperature: 0.11,
       })
-      assert.equal(call.apiKey, 'sk-draft-key')
+      const call = await resolveConversationChatCall(conversationId)
       assert.equal(call.presetId, 'preset-active')
+      assert.equal(call.params.model, 'active-model')
+      assert.equal(call.params.temperature, 0.7)
+      assert.equal(call.usedConversationOverride, false)
+
+      const { readConversationIndex } = await import('../src/chat-storage.js')
+      const idx = await readConversationIndex(conversationId)
+      const chat = (idx?.apiPreset as { chat?: Record<string, unknown> } | undefined)?.chat
+      assert.equal(chat?.inheritGlobal, true)
+      assert.equal(chat?.apiConfigId, 'preset-other')
+      assert.equal(chat?.model, 'saved-for-later')
     })
   })
 
-  it('allows panel snapshot chat when apiPresetId is not on disk', async () => {
+  it('restores the bound preset when inheritGlobal is turned off', async () => {
     await runRequestUserAsync(TEST_USER, async () => {
-      const conversationId = 'c5555555'
-      await createConversationStub(conversationId, 'unsaved preset')
-      const call = await resolveConversationChatCall(conversationId, {
-        apiPresetId: 'preset-not-saved',
-        baseUrl: 'https://draft.example/v1',
-        apiKey: 'sk-unsaved-draft',
-        model: 'draft-model',
-        temperature: 0.3,
-        alias: 'Draft',
+      const conversationId = 'c9999998'
+      await createConversationStub(conversationId, 'restore binding')
+      await updateConversationChatApiSettings(conversationId, {
+        inheritGlobal: true,
+        apiConfigId: 'preset-other',
+        model: 'saved-for-later',
+        temperature: 0.11,
       })
-      assert.equal(call.presetId, 'preset-not-saved')
-      assert.equal(call.baseUrl, 'https://draft.example/v1')
-      assert.equal(call.apiKey, 'sk-unsaved-draft')
-      assert.equal(call.params.model, 'draft-model')
-      assert.equal(call.params.temperature, 0.3)
-      assert.equal(call.params.alias, 'Draft')
+      await updateConversationChatApiSettings(conversationId, {
+        inheritGlobal: false,
+        apiConfigId: 'preset-other',
+        model: 'saved-for-later',
+        temperature: 0.11,
+      })
+      const call = await resolveConversationChatCall(conversationId)
+      assert.equal(call.presetId, 'preset-other')
+      assert.equal(call.params.model, 'saved-for-later')
+      assert.equal(call.params.temperature, 0.11)
+      assert.equal(call.usedConversationOverride, true)
     })
   })
 
-  it('explicit null apiKeyId does not use disk keychain', async () => {
-    await runRequestUserAsync(TEST_USER, async () => {
-      const conversationId = 'c6666666'
-      await createConversationStub(conversationId, 'clear keychain')
-      await writeApiSettingsToFile({
-        version: 1,
-        savedAt: new Date().toISOString(),
-        activePresetId: 'preset-active',
-        presets: [
-          {
-            id: 'preset-active',
-            alias: 'Active',
-            baseUrl: 'https://active.example/v1',
-            apiKey: 'sk-inline-only',
-            model: 'active-model',
-            contextLength: 8000,
-            maxTokens: 1000,
-            stream: true,
-            temperature: 0.7,
-            topP: null,
-            topK: null,
-            dryMultiplier: null,
-            dryBase: null,
-            dryAllowedLength: null,
-            dryPenaltyLastN: null,
-            drySequenceBreakers: [],
-            frequencyPenalty: null,
-            presencePenalty: null,
-            customParamsJson: '',
-            showReasoningChain: false,
-            requestReasoningChain: false,
-            apiKeyId: 'key-should-not-use',
-          },
-          {
-            id: 'preset-other',
-            alias: 'Other',
-            baseUrl: 'https://other.example/v1',
-            apiKey: 'sk-other-key',
-            model: 'other-model',
-            contextLength: 4000,
-            maxTokens: 500,
-            stream: false,
-            temperature: 0.2,
-            topP: null,
-            topK: null,
-            dryMultiplier: null,
-            dryBase: null,
-            dryAllowedLength: null,
-            dryPenaltyLastN: null,
-            drySequenceBreakers: [],
-            frequencyPenalty: null,
-            presencePenalty: null,
-            customParamsJson: '',
-            showReasoningChain: false,
-            requestReasoningChain: false,
-            apiKeyId: null,
-          },
-        ],
-      })
-      await writeApiKeysDocument({
-        version: 1,
-        savedAt: new Date().toISOString(),
-        keys: [
-          {
-            id: 'key-should-not-use',
-            alias: 'chain',
-            key: 'sk-from-keychain',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        ],
-      })
-      const omitted = await resolveConversationChatCall(conversationId, {
-        apiPresetId: 'preset-active',
-      })
-      assert.equal(omitted.apiKey, 'sk-from-keychain')
-      const cleared = await resolveConversationChatCall(conversationId, {
-        apiPresetId: 'preset-active',
-        apiKeyId: null,
-      })
-      assert.equal(cleared.apiKey, 'sk-inline-only')
-    })
-  })
 })

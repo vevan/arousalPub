@@ -54,6 +54,8 @@ export interface ConversationChatBinding extends ConversationChatParamOverrides 
 
   apiConfigId?: string
 
+  inheritGlobal?: boolean
+
 }
 
 
@@ -140,7 +142,7 @@ export function hasConversationChatOverride(apiPreset: unknown): boolean {
 
   if (!b) return false
 
-  return Boolean(b.apiConfigId?.trim()) || hasChatParamOverrides(b)
+  return !b.inheritGlobal && (Boolean(b.apiConfigId?.trim()) || hasChatParamOverrides(b))
 
 }
 
@@ -392,7 +394,8 @@ export function resolveConversationChatDisplay(
 
 ): ResolvedConversationChatDisplay | null {
 
-  const binding = readConversationChatBinding(apiPreset)
+  const rawBinding = readConversationChatBinding(apiPreset)
+  const binding = rawBinding?.inheritGlobal ? null : rawBinding
 
   const baseId = activePresetId ?? presets[0]?.id ?? ''
 

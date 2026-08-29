@@ -11,8 +11,6 @@ import {
 import { renderRichMessageToHtml } from '@/utils/render-rich-message'
 import PluginSlotMount from '@/plugins/PluginSlotMount.vue'
 import { CONVERSATION_BRANCH_KEY } from '@/composables/conversation-branch-context'
-import { useConnectionStore } from '@/stores/connection'
-import { storeToRefs } from 'pinia'
 import { computed, inject, toRefs } from 'vue'
 
 const props = defineProps<{
@@ -28,9 +26,6 @@ const swipeLockedOnBranchFork = computed(() =>
   branchCtx?.isForkAnchorOnActivePath(props.turn) ?? false,
 )
 
-const conn = useConnectionStore()
-const { model: connModel } = storeToRefs(conn)
-
 const {
   streamingText,
   streamingReasoning,
@@ -39,6 +34,9 @@ const {
   writeChatPromptSnapshot,
   generationTimerTick,
   isGenerating,
+  effectiveChatStream,
+  effectiveShowReasoningChain,
+  effectiveChatModel,
 } = toRefs(props.session)
 
 const {
@@ -93,10 +91,10 @@ const liveAssistantTimerLabel = computed(() => {
 
 const displayModelName = computed(() => {
   if (bubbleLoading()) {
-    return connModel.value.trim()
+    return effectiveChatModel.value.trim()
   }
   const stored = assistantModelName(props.turn, segIdx.value)
-  return stored || connModel.value.trim()
+  return stored || effectiveChatModel.value.trim()
 })
 
 const speakerRoleName = computed(() =>
@@ -170,7 +168,7 @@ const speakerAccentStyle = computed(() => {
         </span>
         <div class="turn-role__indicators" aria-label="Turn status">
           <span
-            v-if="conn.showReasoningChain"
+            v-if="effectiveShowReasoningChain"
             class="turn-role__indicator"
             :class="{
               'is-filled':
@@ -188,7 +186,7 @@ const speakerAccentStyle = computed(() => {
           </span>
           <span
             class="turn-role__indicator"
-            :class="{ 'is-filled': conn.stream }"
+            :class="{ 'is-filled': effectiveChatStream }"
             role="img"
             :data-tt="$t('chat.pluginIndicatorStream')"
             :aria-label="$t('chat.pluginIndicatorStream')"
@@ -204,7 +202,7 @@ const speakerAccentStyle = computed(() => {
 
     <ChatReasoningChain
       v-if="
-        conn.showReasoningChain &&
+        effectiveShowReasoningChain &&
         bubbleLoading() &&
         streamingReasoning &&
         !bubbleEditing()
@@ -218,7 +216,7 @@ const speakerAccentStyle = computed(() => {
 
     <ChatReasoningChain
       v-if="
-        conn.showReasoningChain &&
+        effectiveShowReasoningChain &&
         assistantReasoning(turn, segIdx).length > 0 &&
         !bubbleLoading() &&
         !bubbleEditing()

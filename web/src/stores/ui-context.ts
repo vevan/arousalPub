@@ -27,6 +27,12 @@ export const useUiContextStore = defineStore('uiContext', () => {
   const pendingCharacterFocusId = ref<string | null>(null)
   /** 递增以触发 App 打开角色库对话框 */
   const openCharactersSignal = ref(0)
+  /** 连接设置模态是否打开（打开时禁止发送聊天） */
+  const connectionPanelOpen = ref(false)
+
+  function setConnectionPanelOpen(open: boolean) {
+    connectionPanelOpen.value = open
+  }
 
   function setConversationLorebookIds(ids: string[]) {
     conversationLorebookIds.value = ids.filter(
@@ -117,6 +123,7 @@ export const useUiContextStore = defineStore('uiContext', () => {
     pendingSettingsTab.value = null
     pendingCharacterFocusId.value = null
     openCharactersSignal.value = 0
+    connectionPanelOpen.value = false
   }
 
   return {
@@ -127,6 +134,8 @@ export const useUiContextStore = defineStore('uiContext', () => {
     openPromptsImportSignal,
     openSettingsSignal,
     openCharactersSignal,
+    connectionPanelOpen,
+    setConnectionPanelOpen,
     setConversationLorebookIds,
     setConversationPromptPresetId,
     requestOpenLorebooksDialog,

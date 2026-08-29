@@ -41,38 +41,12 @@ export interface ConversationChatRequestParams {
   plugins?: ConversationChatRequestPlugins
 }
 
-/**
- * 会话对话请求体：连接面板当前快照（editingPresetId + 表单）。
- * 草稿 Key 仅在 dirty 时发送，不落盘。
- */
+/** 会话对话请求体只描述本次对话动作；API 设置一律由服务端从持久化状态解析。 */
 export function buildConversationChatRequestBody(
-  conn: ConnectionStore,
   conversationId: string,
   params: ConversationChatRequestParams,
 ) {
-  const dryFields = {
-    dryMultiplier: conn.dryMultiplier,
-    dryBase: conn.dryBase,
-    dryAllowedLength: conn.dryAllowedLength,
-    dryPenaltyLastN: conn.dryPenaltyLastN,
-    drySequenceBreakers: conn.drySequenceBreakers,
-  }
-
-  const draftKey =
-    conn.apiKeyDraftDirty && conn.apiKey.trim() ? conn.apiKey.trim() : undefined
-
-  let customParams: Record<string, unknown> = {}
-  if (conn.customParamsJson.trim()) {
-    customParams = conn.parseCustomParams() ?? {}
-  }
-
   return {
-    alias: conn.alias.trim() || undefined,
-    baseUrl: conn.baseUrl.trim() || undefined,
-    apiPresetId: conn.editingPresetId ?? undefined,
-    apiKeyId: draftKey ? undefined : conn.apiKeyId,
-    ...(draftKey ? { apiKey: draftKey } : {}),
-    model: conn.model.trim(),
     conversationId,
     userText: params.userText,
     promptTrigger: params.promptTrigger,
@@ -97,21 +71,6 @@ export function buildConversationChatRequestBody(
       : {}),
     ...(params.groupContinue ? { groupContinue: params.groupContinue } : {}),
     ...(params.plugins ? { plugins: params.plugins } : {}),
-    stream: conn.stream,
-    contextLength: conn.contextLength,
-    maxTokens: conn.maxTokens,
-    temperature: conn.temperature,
-    topP: conn.topP,
-    topK: conn.topK,
-    dryMultiplier: dryFields.dryMultiplier,
-    dryBase: dryFields.dryBase,
-    dryAllowedLength: dryFields.dryAllowedLength,
-    dryPenaltyLastN: dryFields.dryPenaltyLastN,
-    drySequenceBreakers: dryFields.drySequenceBreakers,
-    frequencyPenalty: conn.frequencyPenalty,
-    presencePenalty: conn.presencePenalty,
-    customParams,
-    requestReasoning: conn.requestReasoningChain,
   }
 }
 
@@ -271,11 +230,11 @@ export async function runChatRequest(options: {
   completionTokens?: number
   speakerCharacterId?: string
 }> {
-  const { conn, conversationId, params, requestFailedMessage, noStreamMessage } =
+  const { conversationId, params, requestFailedMessage, noStreamMessage } =
     options
   const startedAt = performance.now()
   const body = {
-    ...buildConversationChatRequestBody(conn, conversationId, params),
+    ...buildConversationChatRequestBody(conversationId, params),
     ...(options.generationId ? { generationId: options.generationId } : {}),
   }
   const res = await fetch('/api/chat', {

@@ -17,10 +17,12 @@ import { useAuthStore } from '@/stores/auth'
 import { userAvatarUrl } from '@/utils/authenticated-media-url'
 import { coreNotify } from '@/utils/core-notify'
 import { useConnectionStore } from '@/stores/connection'
+import { useConversationApiStore } from '@/stores/conversation-api'
 import { useLocaleStore } from '@/stores/locale'
 import { useLorebooksStore } from '@/stores/lorebooks'
 import { usePromptsStore } from '@/stores/prompts'
 import { useUiContextStore } from '@/stores/ui-context'
+import { resolveEffectiveConversationChatDisplay } from '@/utils/conversation-chat-effective'
 import { storeToRefs } from 'pinia'
 import type { ComponentPublicInstance } from 'vue'
 import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -153,6 +155,12 @@ function onBrowserLanguageChange() {
 }
 
 const drawerRight = ref(false)
+const connectionSettingsRef = ref<InstanceType<typeof ConnectionSettingsCard> | null>(null)
+const connectionConversationId = computed(() => {
+  const raw = route.params.conversationId
+  const id = Array.isArray(raw) ? raw[0] : raw
+  return typeof id === 'string' ? id : ''
+})
 const conn = useConnectionStore()
 const connUnsavedDialogOpen = ref(false)
 const connDrawerSaving = ref(false)
@@ -172,7 +180,7 @@ function onConnectionDrawerUpdate(open: boolean): void {
     drawerRight.value = true
     return
   }
-  if (conn.isPanelDirty) {
+  if (conn.isPanelDirty || connectionSettingsRef.value?.isConversationDraftDirty) {
     connUnsavedReason.value = 'drawer'
     pendingNavTo.value = null
     connUnsavedDialogOpen.value = true
@@ -201,10 +209,14 @@ async function proceedPendingNavigation(): Promise<void> {
 async function onConnUnsavedSave(): Promise<void> {
   connDrawerSaving.value = true
   try {
-    if (conn.customParamsJson.trim()) {
-      conn.parseCustomParams()
+    const ok = await connectionSettingsRef.value?.saveAllSettings()
+    if (ok === false) return
+    if (conn.isPanelDirty) {
+      if (conn.customParamsJson.trim()) {
+        conn.parseCustomParams()
+      }
+      await conn.saveToServer()
     }
-    await conn.saveToServer()
     if (connUnsavedReason.value === 'navigate') {
       drawerRight.value = false
       await proceedPendingNavigation()
@@ -222,14 +234,9 @@ async function onConnUnsavedSave(): Promise<void> {
   }
 }
 
-function onConnUnsavedIgnore(): void {
-  if (connUnsavedReason.value === 'navigate') {
-    conn.discardPanelChangesToBaseline()
-    drawerRight.value = false
-    void proceedPendingNavigation()
-    return
-  }
-  closeConnectionDrawer()
+async function onConnectionFooterSave(): Promise<void> {
+  const ok = await connectionSettingsRef.value?.saveAllSettings()
+  if (ok) closeConnectionDrawer()
 }
 
 function onConnUnsavedKeepEditing(): void {
@@ -242,7 +249,7 @@ const removeConnDirtyNavGuard = router.beforeEach((to, from) => {
     allowNextConnNav = false
     return true
   }
-  if (!conn.isPanelDirty) return true
+  if (!conn.isPanelDirty && !connectionSettingsRef.value?.isConversationDraftDirty) return true
   if (to.path === from.path) {
     const toCid = to.params.conversationId
     const fromCid = from.params.conversationId
@@ -279,17 +286,35 @@ const lorebooksStore = useLorebooksStore()
 const promptsStore = usePromptsStore()
 const uiContext = useUiContextStore()
 
+const conversationApi = useConversationApiStore()
+
+watch(
+  drawerRight,
+  (open) => {
+    uiContext.setConnectionPanelOpen(open)
+  },
+  { immediate: true },
+)
+
+const appBarEffectiveChat = computed(() => {
+  const id = connectionConversationId.value
+  if (!id) return null
+  return resolveEffectiveConversationChatDisplay(conn, conversationApi, id)
+})
+
 const appBarApiLabel = computed(() => {
-  const alias = conn.alias.trim()
-  const model = conn.model.trim()
+  const effective = appBarEffectiveChat.value
+  const alias = (effective?.alias ?? conn.alias).trim()
+  const model = (effective?.model ?? conn.model).trim()
   if (alias && model) return `${alias} · ${model}`
   if (alias) return alias
   return model
 })
 
 const appBarApiStatusTitle = computed(() => {
-  const alias = conn.alias.trim()
-  const model = conn.model.trim()
+  const effective = appBarEffectiveChat.value
+  const alias = (effective?.alias ?? conn.alias).trim()
+  const model = (effective?.model ?? conn.model).trim()
   const parts: string[] = []
   if (alias) parts.push(`${alias}`)
   if (model) parts.push(model)
@@ -587,15 +612,13 @@ onUnmounted(() => {
   </v-app>
 
   <v-app v-else>
-    <v-navigation-drawer
+    <v-dialog
       :model-value="drawerRight"
-      :width="440"
-      temporary
-      location="end"
-      border="start"
+      content-class="connection-settings-dialog-surface"
       @update:model-value="onConnectionDrawerUpdate"
     >
-      <v-toolbar density="compact" color="surface-variant" flat>
+      <v-card class="connection-settings-dialog">
+      <v-toolbar density="compact" color="surface-variant" flat class="connection-settings-dialog__toolbar">
         <v-toolbar-title class="text-subtitle-2">
           {{ $t('app.apiConnection') }}
         </v-toolbar-title>
@@ -608,8 +631,23 @@ onUnmounted(() => {
           @click="onConnectionDrawerUpdate(false)"
         />
       </v-toolbar>
-      <ConnectionSettingsCard />
-    </v-navigation-drawer>
+      <ConnectionSettingsCard
+        ref="connectionSettingsRef"
+        class="connection-settings-dialog__body"
+        :conversation-id="connectionConversationId"
+      />
+      <v-divider class="connection-settings-dialog__divider" />
+      <v-card-actions class="connection-settings-dialog__footer px-5 py-3">
+        <v-btn variant="text" @click="onConnectionDrawerUpdate(false)">
+          {{ $t('conn.close') }}
+        </v-btn>
+        <v-spacer />
+        <v-btn color="primary" variant="flat" @click="onConnectionFooterSave">
+          {{ $t('conn.unsavedCloseSave') }}
+        </v-btn>
+      </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <v-app-bar
       ref="appBarRef"
@@ -937,13 +975,6 @@ onUnmounted(() => {
             {{ $t('conn.unsavedCloseKeepEditing') }}
           </v-btn>
           <v-btn
-            variant="text"
-            :disabled="connDrawerSaving"
-            @click="onConnUnsavedIgnore"
-          >
-            {{ $t('conn.unsavedCloseIgnore') }}
-          </v-btn>
-          <v-btn
             color="primary"
             variant="flat"
             :loading="connDrawerSaving"
@@ -1080,6 +1111,26 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.connection-settings-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.connection-settings-dialog__toolbar,
+.connection-settings-dialog__divider,
+.connection-settings-dialog__footer {
+  flex-shrink: 0;
+}
+
+.connection-settings-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .library-dialog-card,
 .settings-dialog-card {
   display: flex;

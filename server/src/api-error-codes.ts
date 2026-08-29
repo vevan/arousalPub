@@ -53,6 +53,7 @@ export const ApiErrorCodes = {
   conversation_api_preset_forbidden_field: 'conversation_api_preset_forbidden_field',
   conversation_api_preset_unknown_field: 'conversation_api_preset_unknown_field',
   conversation_api_preset_id_invalid: 'conversation_api_preset_id_invalid',
+  conversation_api_preset_inherit_invalid: 'conversation_api_preset_inherit_invalid',
   conversation_api_preset_model_invalid: 'conversation_api_preset_model_invalid',
   conversation_api_preset_stream_boolean: 'conversation_api_preset_stream_boolean',
   conversation_api_preset_dry_breakers_array: 'conversation_api_preset_dry_breakers_array',

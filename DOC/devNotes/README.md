@@ -16,6 +16,7 @@
 | 全局插件 settings 缓存 | [`32-plugin-user-settings-cache.md`](32-plugin-user-settings-cache.md)（**✅ 已实现** · `a7ca4ea`） |
 | 移动端兼容性 | [`33-mobile-compatibility.md`](33-mobile-compatibility.md)（**Phase 1 布局已落地**） |
 | 待办 | [`04-TODO.md`](04-TODO.md) |
+| 连接面板作用域重整 | [`52-connection-panel-scope.md`](52-connection-panel-scope.md)（**✅ P0 已实现**） |
 | 通知中心 | [`40-notification-center.md`](40-notification-center.md)（**✅ 已完成** · NC0–NC-F1 + NC-F3）· 迁移验收 [`45`](45-notification-center-core-migration.md) §6.10 |
 
 ## 核心（01–08）
@@ -71,6 +72,7 @@
 | [`50`](50-plugin-dungeon-maze-vision.md) | **P2 设想** · **M0 骨架已落地** | **地下城迷宫**：21×21 Canvas / 会话 `dungeonState`；5e 战斗与 catalog 仍待做；见 `04` P2 |
 | [`51`](51-hybrid-fts-icu-lindera.md) | ✅ **已归档**（2026-08-16） | **Hybrid FTS：ICU + Lindera**：`lindera` / `icu` 已接入；M6 对照后保留 `zh-jieba`；见 [`04`](04-TODO.md) §已归档 |
 | [`52`](52-graphify-rebuild-and-chat-list-optimization.md) | ✅ **已落地**（2026-08-17） | **图谱重建** + `chat-list-store` CL1–CL9；plugins 三环打断；旧 `server/graphify-out/` 清理；见 [`04`](04-TODO.md) §已归档 |
+| [`52`](52-connection-panel-scope.md) | ✅ **已实现** | **连接面板作用域**：基础连接仅全局预设；生成参数按对话 / 全局分域；双列模态（窄屏 Tab）；无 panel-live |
 | [`99`](99-android-apk-vision.md) | 💡 **极低优先级** | **Android 单机 APK 设想**：领域层迁移动端、SQLite 替 chunk、Portable Bundle 导入导出；无排期 |
 
 ## 已归档（勿再新建同级文档）

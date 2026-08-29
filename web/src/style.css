@@ -317,3 +317,29 @@ body::before {
     padding-inline: 0.75rem !important;
   }
 }
+
+/* 连接设置弹窗 · 桌面居中；窄屏避开默认 clamp(45rem) 最小宽导致溢出偏位 */
+.v-overlay-container > .v-overlay.v-dialog > .v-overlay__content.connection-settings-dialog-surface,
+.v-overlay.v-dialog > .v-overlay__content.connection-settings-dialog-surface {
+  width: min(73.75rem, calc(100% - 2rem)) !important;
+  max-width: calc(100% - 2rem) !important;
+  height: min(90dvh, 57.5rem) !important;
+  max-height: min(90dvh, 57.5rem) !important;
+  margin: auto !important;
+  padding: 0 !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+@media (max-width: 50rem) {
+  .v-overlay-container > .v-overlay.v-dialog > .v-overlay__content.connection-settings-dialog-surface,
+  .v-overlay.v-dialog > .v-overlay__content.connection-settings-dialog-surface {
+    width: calc(100% - 1.5rem) !important;
+    max-width: calc(100% - 1.5rem) !important;
+    height: min(92dvh, 100%) !important;
+    max-height: 92dvh !important;
+    margin: auto !important;
+  }
+}

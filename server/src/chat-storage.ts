@@ -886,6 +886,9 @@ export async function updateConversationChatApiSettings(
 
     if (patch === null) {
       delete ap.chat
+    } else if (patch.inheritGlobal) {
+      // 保留 apiConfigId 与参数快照，便于关闭继承后恢复原绑定预设
+      ap.chat = { ...patch, inheritGlobal: true }
     } else {
       const presetId = (patch.apiConfigId?.trim() || globalPresetId).trim()
       const preset =
@@ -903,7 +906,7 @@ export async function updateConversationChatApiSettings(
         ap.chat = sparse
       } else {
         // 会话显式覆盖：与 preset 相同也保留快照，避免被误判为「继承全局」
-        ap.chat = conversationChatBindingSnapshot(preset, effective, patch)
+        ap.chat = conversationChatBindingSnapshot(effective, patch)
       }
     }
 

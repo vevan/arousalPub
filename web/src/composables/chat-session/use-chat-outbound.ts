@@ -53,8 +53,8 @@ export function useChatOutbound(opts: {
   /** 断线等待后台落盘；由 session 持有以便 write-lock / canSend 共用 */
   awaitingBackgroundResume: Ref<boolean>
   isConversationWritable: () => boolean
-  parseCustomParamsOrThrow: CompletionRunner['parseCustomParamsOrThrow']
-  customParamsErrorMessage: CompletionRunner['customParamsErrorMessage']
+  /** 连接面板打开时禁止一切出站（发送/再生/继续） */
+  isConnectionPanelOpen?: () => boolean
   assertApiReady: CompletionRunner['assertApiReady']
   runSend: CompletionRunner['runSend']
   runRegenerate: CompletionRunner['runRegenerate']
@@ -600,10 +600,8 @@ export function useChatOutbound(opts: {
   }
 
   function prepareOutboundRequest(): string | undefined {
-    try {
-      opts.parseCustomParamsOrThrow()
-    } catch (e) {
-      opts.errorText.value = opts.customParamsErrorMessage(e)
+    if (opts.isConnectionPanelOpen?.()) {
+      opts.errorText.value = opts.t('conn.panelOpenBlocksChat')
       return opts.errorText.value
     }
     if (!opts.assertApiReady()) {
@@ -893,6 +891,9 @@ export function useChatOutbound(opts: {
     const turn = opts.turns.value[listIndex]
     if (!turn) return opts.t('chat.errors.network')
 
+    const prepErr = prepareOutboundRequest()
+    if (prepErr) return prepErr
+
     const segIdx = params.segmentIndex ?? getActiveSegmentIndex(turn)
     beginRegeneratingUi(turn.turnOrdinal)
     regeneratingSegmentIndex.value = segIdx
@@ -905,16 +906,6 @@ export function useChatOutbound(opts: {
     let deferredAutoContinue: PendingGroupContinue | null = null
 
     try {
-      try {
-        opts.parseCustomParamsOrThrow()
-      } catch (e) {
-        if (epoch === outboundEpoch) {
-          setAwaitingBackgroundResume(false)
-        }
-        opts.errorText.value = opts.customParamsErrorMessage(e)
-        return opts.errorText.value
-      }
-
       const { receive, traceId, persist, shouldReload } = await opts.runRegenerate({
         userText: params.userText,
         turnOrdinal: turn.turnOrdinal,
@@ -1023,9 +1014,6 @@ export function useChatOutbound(opts: {
     }
 
     opts.errorText.value = ''
-    const prepErr = prepareOutboundRequest()
-    if (prepErr) return prepErr
-
     return regenerateAssistantCore(listIndex, {
       userText: trimmed,
       plugins,
@@ -1040,18 +1028,8 @@ export function useChatOutbound(opts: {
     if (!pending) return
     if (isOutboundBusy()) return
     opts.errorText.value = ''
-    try {
-      opts.parseCustomParamsOrThrow()
-    } catch (e) {
-      opts.errorText.value = opts.customParamsErrorMessage(e)
-      return
-    }
-    if (!opts.assertApiReady()) {
-      opts.errorText.value = opts.t('chat.errors.requestFailedStatus', {
-        status: 400,
-      })
-      return
-    }
+    const prepErr = prepareOutboundRequest()
+    if (prepErr) return
 
     const { turnOrdinal, afterSegmentIndex, nextSpeakerCharacterId } = pending
     const segmentIndex = afterSegmentIndex + 1

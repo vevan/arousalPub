@@ -36,6 +36,10 @@ export interface CompletionResult {
 export interface ChatCompletionDeps {
   conn: ConnectionStore
   getConversationId: () => string
+  /** 乐观 receive 与就绪检查用的有效模型 id */
+  getModel?: () => string
+  /** 覆盖默认的连接表单就绪检查（会话应使用持久化有效设置） */
+  assertApiReady?: () => boolean
   t: ComposerTranslation
   turns: Ref<ChatTurnItem[]>
   streamingText: Ref<string>
@@ -129,7 +133,7 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
   }
 
   async function requestChatCompletion(
-    params: Parameters<typeof buildConversationChatRequestBody>[2],
+    params: Parameters<typeof buildConversationChatRequestBody>[1],
     trace?: { traceId?: string; mode: 'send' | 'regenerate' },
   ): Promise<CompletionResult> {
     const mode = trace?.mode ?? 'send'
@@ -141,7 +145,8 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
     chatAbortController = ownedController
     const signal = ownedController.signal
     const conversationId = deps.getConversationId()
-    const expectStream = deps.conn.stream
+    // 服务端按已保存的对话/全局设置决定是否流式；客户端始终能消费 SSE。
+    const expectStream = true
     const clientGenerationId = expectStream
       ? generateClientChatGenerationId()
       : undefined
@@ -220,7 +225,12 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
   }
 
   function assertApiReady(): boolean {
+    if (deps.assertApiReady) return deps.assertApiReady()
     return deps.conn.isApiKeyConfigured && deps.conn.model.trim().length > 0
+  }
+
+  function resolveModelId(): string {
+    return (deps.getModel?.() ?? deps.conn.model).trim()
   }
 
   function resolveReceiveId(
@@ -241,7 +251,7 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
     const elapsed = result.durationMs ?? deps.resolveDurationMs()
     return mergeReceiveRuntimeFromPersist(
       buildReceiveItem(
-        deps.conn.model,
+        resolveModelId(),
         resolveReceiveId(result.persist),
         content,
         {
@@ -266,7 +276,6 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
     persist?: ChatPersistPayload
     shouldReload: boolean
   }> {
-    parseCustomParamsOrThrow()
     const {
       content: assistantOut,
       reasoning: reasoningOut,
@@ -322,7 +331,6 @@ export function createChatCompletionRunner(deps: ChatCompletionDeps) {
     shouldReload: boolean
     assistantOut: string
   }> {
-    parseCustomParamsOrThrow()
     const {
       content: assistantOut,
       reasoning: reasoningOut,

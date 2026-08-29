@@ -1,6 +1,9 @@
 import { useAuthStore } from '@/stores/auth'
+import { useApiKeysStore } from '@/stores/apiKeys'
 import { useConnectionStore } from '@/stores/connection'
+import { useConversationApiStore } from '@/stores/conversation-api'
 import { usePreferencesStore } from '@/stores/preferences'
+import { useUiContextStore } from '@/stores/ui-context'
 import type { ChatPersistPayload, ChatSessionProps, ChatTurnItem } from '@/types/chat-turn'
 import {
   defaultGroupChatSettings,
@@ -16,6 +19,10 @@ import {
   turnLabelN,
 } from '@/utils/chat-turn-display'
 import { fingerprintTurnReceives } from '@/utils/group-chat-turn'
+import {
+  isEffectiveConversationChatReady,
+  resolveEffectiveConversationChatDisplay,
+} from '@/utils/conversation-chat-effective'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -52,6 +59,9 @@ export function useChatSession(props: ChatSessionProps) {
   const { t } = useI18n()
   const auth = useAuthStore()
   const conn = useConnectionStore()
+  const apiKeys = useApiKeysStore()
+  const conversationApi = useConversationApiStore()
+  const uiContext = useUiContextStore()
   const prefs = usePreferencesStore()
   const { writeChatPromptSnapshot } = storeToRefs(prefs)
 
@@ -188,6 +198,35 @@ export function useChatSession(props: ChatSessionProps) {
     messagesLoading,
   } = turnList
 
+  const effectiveChatDisplay = computed(() =>
+    resolveEffectiveConversationChatDisplay(
+      conn,
+      conversationApi,
+      props.conversationId,
+    ),
+  )
+  const effectiveChatStream = computed(
+    () => effectiveChatDisplay.value?.stream ?? conn.stream,
+  )
+  const effectiveShowReasoningChain = computed(
+    () => effectiveChatDisplay.value?.showReasoningChain ?? conn.showReasoningChain,
+  )
+  const effectiveChatModel = computed(
+    () => effectiveChatDisplay.value?.model?.trim() || conn.model,
+  )
+  const effectiveChatContextLength = computed(
+    () => effectiveChatDisplay.value?.contextLength ?? conn.contextLength,
+  )
+
+  function assertConversationApiReady(): boolean {
+    return isEffectiveConversationChatReady(
+      conn,
+      apiKeys,
+      conversationApi,
+      props.conversationId,
+    )
+  }
+
   async function loadMessages() {
     await fetchTailMessages()
     emitTurnDataChanged()
@@ -196,6 +235,8 @@ export function useChatSession(props: ChatSessionProps) {
   const completion = createChatCompletionRunner({
     conn,
     getConversationId: () => props.conversationId,
+    getModel: () => effectiveChatModel.value,
+    assertApiReady: assertConversationApiReady,
     t,
     turns,
     streamingText,
@@ -209,8 +250,6 @@ export function useChatSession(props: ChatSessionProps) {
     resolveDurationMs: stopGenerationTimer,
   })
   const {
-    parseCustomParamsOrThrow,
-    customParamsErrorMessage,
     assertApiReady,
     runSend,
     runRegenerate,
@@ -263,14 +302,13 @@ export function useChatSession(props: ChatSessionProps) {
     streamingReasoning,
     awaitingBackgroundResume,
     isConversationWritable,
-    parseCustomParamsOrThrow,
-    customParamsErrorMessage,
+    isConnectionPanelOpen: () => uiContext.connectionPanelOpen,
     assertApiReady,
     runSend,
     runRegenerate,
     runGroupContinue,
     abortChatGeneration,
-    getModel: () => conn.model,
+    getModel: () => effectiveChatModel.value,
     startGenerationTimer,
     stopGenerationTimer,
     setPersistWarning,
@@ -333,7 +371,7 @@ export function useChatSession(props: ChatSessionProps) {
     regeneratingTurnOrdinal,
     regeneratingSegmentIndex,
     streamingText,
-    streamEnabled: () => conn.stream,
+    streamEnabled: () => effectiveChatStream.value,
     generationElapsedMs,
     editingTurnOrdinal: turnEditDelete.editingTurnOrdinal,
     editingSegmentIndex: turnEditDelete.editingSegmentIndex,
@@ -348,6 +386,7 @@ export function useChatSession(props: ChatSessionProps) {
   )
 
   const canSend = computed(() => {
+    if (uiContext.connectionPanelOpen) return false
     if (
       conversationWriteLocked.value ||
       pluginHoldConversation.value ||
@@ -364,7 +403,7 @@ export function useChatSession(props: ChatSessionProps) {
       boundDisplayNames: boundCharacterNames.getBoundDisplayNames(),
     })
     if (!body.trim()) return true
-    return conn.isApiKeyConfigured && conn.model.trim().length > 0
+    return assertConversationApiReady()
   })
 
   const { onComposerKeydown } = useComposerKeydown({
@@ -377,8 +416,8 @@ export function useChatSession(props: ChatSessionProps) {
   const assemblePreview = useAssemblePreview({
     getConversationId: () => props.conversationId,
     userInput,
-    getContextLength: () => conn.contextLength,
-    getModel: () => conn.model,
+    getContextLength: () => effectiveChatContextLength.value,
+    getModel: () => effectiveChatModel.value,
     t,
   })
 
@@ -393,8 +432,8 @@ export function useChatSession(props: ChatSessionProps) {
     getCharacterIds: () => props.conversationCharacterIds,
     getBoundDisplayNames: () => boundCharacterNames.getBoundDisplayNames(),
     getAuthUserId: () => auth.user?.id ?? auth.defaultUserId,
-    getConnAlias: () => conn.alias,
-    getConnModel: () => conn.model,
+    getConnAlias: () => effectiveChatDisplay.value?.alias ?? conn.alias,
+    getConnModel: () => effectiveChatModel.value,
     isGroupChatEnabled: () => props.groupChatEnabled === true,
     getGroupChatSettings: () =>
       normalizeGroupChatSettings(props.groupChatSettings),
@@ -528,6 +567,9 @@ export function useChatSession(props: ChatSessionProps) {
     ...assemblePreview,
     canSend,
     isGenerating,
+    effectiveChatStream,
+    effectiveShowReasoningChain,
+    effectiveChatModel,
     abortCurrentReply,
     inputHistory,
     inputHistoryLimits,

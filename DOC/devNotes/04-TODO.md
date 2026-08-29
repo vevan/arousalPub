@@ -4,7 +4,7 @@
 
 ## P0
 
-（暂无）
+- [x] **修复连接面板与会话独立主 API 设置互相回滚（GitHub #2）** — `maze` 当前构建已在真实浏览器稳定复现：① 会话关闭“继承全局主 API”后，在连接面板修改参数并“保存设置”，虽提示保存成功，表单仍立即被会话旧覆盖值灌回；选择“忽略”则新值暂时继续作为 panel-live 生效；② 连接面板存在新值时，打开或修改“本对话设置 → API”，连接面板会回滚到会话旧值。**已确认根因**：`documentPayload()` 先用 `syncFormToActivePreset()` 改写 `conn.presets`；`useConvBindings()` 对 presets 的 deep watch 随即重算会话 effective，触发 `ChatConversationView` hydration；hydration 在 PUT 返回前调用 `discardPanelChangesToBaseline()`，用旧 server baseline 恢复 presets/表单。PUT 虽已把新值写盘，随后 `captureServerPanelBaseline()` 捕获的却是被回滚的旧内存值，形成“磁盘新值、内存旧值”。**完成（2026-08-29）**：保存期间阻止旧会话快照回灌，成功响应后再捕获已提交状态为 baseline；新增真实 store + deep watcher + 延迟 PUT 回归测试并纳入标准 Web 测试。浏览器复测保存 `16000 → 15999` 后界面与磁盘均保持新值，对话覆盖仍仅含 `apiConfigId`，随后已恢复测试值为 `16000`。
 
 ## P1
 

@@ -164,6 +164,37 @@ describe('resolveConversationChatCall (persisted settings)', () => {
       assert.equal(call.params.model, 'active-model')
       assert.equal(call.params.temperature, 0.7)
       assert.equal(call.usedConversationOverride, false)
+
+      const { readConversationIndex } = await import('../src/chat-storage.js')
+      const idx = await readConversationIndex(conversationId)
+      const chat = (idx?.apiPreset as { chat?: Record<string, unknown> } | undefined)?.chat
+      assert.equal(chat?.inheritGlobal, true)
+      assert.equal(chat?.apiConfigId, 'preset-other')
+      assert.equal(chat?.model, 'saved-for-later')
+    })
+  })
+
+  it('restores the bound preset when inheritGlobal is turned off', async () => {
+    await runRequestUserAsync(TEST_USER, async () => {
+      const conversationId = 'c9999998'
+      await createConversationStub(conversationId, 'restore binding')
+      await updateConversationChatApiSettings(conversationId, {
+        inheritGlobal: true,
+        apiConfigId: 'preset-other',
+        model: 'saved-for-later',
+        temperature: 0.11,
+      })
+      await updateConversationChatApiSettings(conversationId, {
+        inheritGlobal: false,
+        apiConfigId: 'preset-other',
+        model: 'saved-for-later',
+        temperature: 0.11,
+      })
+      const call = await resolveConversationChatCall(conversationId)
+      assert.equal(call.presetId, 'preset-other')
+      assert.equal(call.params.model, 'saved-for-later')
+      assert.equal(call.params.temperature, 0.11)
+      assert.equal(call.usedConversationOverride, true)
     })
   })
 

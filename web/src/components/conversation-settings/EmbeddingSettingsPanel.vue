@@ -41,10 +41,12 @@ function save(): void {
 
 <template>
   <div class="conv-settings-subsection">
-    <h4 class="conv-settings-subsection__title">Embedding</h4>
+    <h4 class="conv-settings-subsection__title">
+      {{ $t('chat.convSettings.embeddingApiSection') }}
+    </h4>
     <v-switch
       v-model="useGlobalDraft"
-      label="继承全局 Embedding 设置"
+      :label="$t('chat.convSettings.embeddingApiUseGlobal')"
       density="comfortable"
       hide-details
       color="primary"
@@ -53,7 +55,7 @@ function save(): void {
     <template v-if="!useGlobalDraft">
       <v-text-field
         v-model="model"
-        label="Embedding 模型"
+        :label="$t('settings.embeddingModel')"
         density="comfortable"
         variant="outlined"
         hide-details="auto"
@@ -62,7 +64,7 @@ function save(): void {
       <v-text-field
         v-model.number="dimensions"
         type="number"
-        label="Embedding 维度"
+        :label="$t('settings.embeddingDimensions')"
         density="comfortable"
         variant="outlined"
         hide-details="auto"
@@ -70,7 +72,7 @@ function save(): void {
       />
     </template>
     <v-btn block color="primary" variant="flat" class="mt-3" :disabled="disabled" @click="save">
-      保存 Embedding 设置
+      {{ $t('chat.convSettings.saveEmbedding') }}
     </v-btn>
   </div>
 </template>

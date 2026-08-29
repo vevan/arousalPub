@@ -71,7 +71,7 @@
 | [`49`](49-backend-outbound-proxy.md) | ✅ | **后端出站代理**：`enableProxy` / `proxyUrl` / `proxyNoProxy`；Node 24.14+ `setGlobalProxyFromEnv`；restore 幂等 |
 | [`50`](50-plugin-dungeon-maze-vision.md) | **P2 设想** | **地下城迷宫**：**5e 简易战斗**、Canvas、catalog、叙事进主对话；见 `04` P2 |
 | [`51`](51-hybrid-fts-icu-lindera.md) | ✅ **已归档**（2026-08-16） | **Hybrid FTS：ICU + Lindera**：`lindera` / `icu` 已接入；M6 对照后保留 `zh-jieba`；见 [`04`](04-TODO.md) §已归档 |
-| [`52`](52-connection-panel-scope.md) | ✅ **已实现** | **连接面板作用域**：基础连接仅全局预设；生成参数按对话 / 全局分域保存 |
+| [`52`](52-connection-panel-scope.md) | ✅ **已实现** | **连接面板作用域**：基础连接仅全局预设；生成参数按对话 / 全局分域；双列模态（窄屏 Tab）；无 panel-live |
 | [`99`](99-android-apk-vision.md) | 💡 **极低优先级** | **Android 单机 APK 设想**：领域层迁移动端、SQLite 替 chunk、Portable Bundle 导入导出；无排期 |
 
 ## 已归档（勿再新建同级文档）

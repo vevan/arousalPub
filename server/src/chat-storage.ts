@@ -936,8 +936,8 @@ export async function updateConversationChatApiSettings(
     if (patch === null) {
       delete ap.chat
     } else if (patch.inheritGlobal) {
-      const { apiConfigId: _apiConfigId, ...snapshot } = patch
-      ap.chat = { ...snapshot, inheritGlobal: true }
+      // 保留 apiConfigId 与参数快照，便于关闭继承后恢复原绑定预设
+      ap.chat = { ...patch, inheritGlobal: true }
     } else {
       const presetId = (patch.apiConfigId?.trim() || globalPresetId).trim()
       const preset =

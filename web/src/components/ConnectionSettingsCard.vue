@@ -43,6 +43,16 @@ const conversationApiSaving = ref(false)
 const conversationDraftDirty = ref(false)
 const conversationApiPanel = ref<InstanceType<typeof ConversationApiSettingsPanel> | null>(null)
 
+/** 与下方 CSS `@media (max-width: 800px)` 对齐：窄屏用 Tab 切换两列 */
+const MOBILE_COLUMNS_QUERY = '(max-width: 800px)'
+const isMobileColumns = ref(false)
+const mobileColumnTab = ref<'basic' | 'parameters'>('basic')
+let mobileColumnsMq: MediaQueryList | null = null
+
+function syncMobileColumns(): void {
+  isMobileColumns.value = mobileColumnsMq?.matches ?? false
+}
+
 async function loadConversationApiSettings(resetScope = false): Promise<void> {
   const id = props.conversationId?.trim()
   conversationApiLoaded.value = false
@@ -154,7 +164,12 @@ async function saveConversationApiSettings(
 
 async function saveConversationDraft(notify = true): Promise<void> {
   const binding = conversationApiPanel.value?.getDraftBinding()
-  if (binding === undefined) return
+  if (binding === undefined) {
+    if (conversationDraftDirty.value) {
+      throw new Error(t('conn.saveFailedJson'))
+    }
+    return
+  }
   await saveConversationApiSettings(binding, notify)
 }
 
@@ -170,10 +185,26 @@ async function saveActiveParameters(notify = true): Promise<void> {
   }
 }
 
-async function saveAllSettings(): Promise<void> {
-  await saveBasicSettings(false)
-  await saveActiveParameters(false)
-  notifyConn(t('conn.savedNotify', { path: settingsPath.value }), 'success')
+async function saveAllSettings(): Promise<boolean> {
+  const connDirty = conn.isPanelDirty
+  const convDirty = conversationDraftDirty.value
+  if (!connDirty && !convDirty) return true
+  try {
+    if (connDirty) {
+      await save('global', false)
+    }
+    if (convDirty) {
+      await saveConversationDraft(false)
+    }
+    notifyConn(t('conn.savedNotify', { path: settingsPath.value }), 'success')
+    return true
+  } catch (e) {
+    notifyConn(
+      e instanceof Error ? e.message : t('conn.saveFailedJson'),
+      'error',
+    )
+    return false
+  }
 }
 
 defineExpose({
@@ -192,7 +223,14 @@ const stopConversationIndexSync = onConversationIndexPatched((conversationId, in
   applyConversationApiSettings(index, !conversationApiLoaded.value)
 })
 
-onMounted(() => { void loadConversationApiSettings(true) })
+onMounted(() => {
+  if (typeof window !== 'undefined') {
+    mobileColumnsMq = window.matchMedia(MOBILE_COLUMNS_QUERY)
+    syncMobileColumns()
+    mobileColumnsMq.addEventListener('change', syncMobileColumns)
+  }
+  void loadConversationApiSettings(true)
+})
 watch(() => props.conversationId, () => { void loadConversationApiSettings(true) })
 watch(
   () => [
@@ -206,6 +244,8 @@ watch(
 )
 
 onUnmounted(() => {
+  mobileColumnsMq?.removeEventListener('change', syncMobileColumns)
+  mobileColumnsMq = null
   stopConversationIndexSync()
 })
 
@@ -623,10 +663,13 @@ async function save(scope: 'basic' | 'global' = 'global', notify = true) {
       )
     }
   } catch (e) {
-    notifyConn(
-      e instanceof Error ? e.message : t('conn.saveFailedJson'),
-      'error',
-    )
+    if (notify) {
+      notifyConn(
+        e instanceof Error ? e.message : t('conn.saveFailedJson'),
+        'error',
+      )
+    }
+    throw e
   }
 }
 
@@ -647,25 +690,30 @@ function onConversationPresetSelected(presetId: string): void {
   if (presetId) conn.switchPreset(presetId)
 }
 
-function onConversationUseGlobalChanged(useGlobal: boolean): void {
+async function onConversationUseGlobalChanged(
+  useGlobal: boolean,
+  bindingToSave?: import('@/utils/conversation-api-settings').ConversationChatBinding,
+): Promise<void> {
+  if (useGlobal && bindingToSave) {
+    try {
+      await saveConversationApiSettings(bindingToSave)
+      chatUseGlobal.value = true
+      parameterScope.value = 'global'
+      if (conn.activePresetId) conn.switchPreset(conn.activePresetId)
+    } catch (error) {
+      notifyConn(
+        error instanceof Error ? error.message : t('conn.saveFailedJson'),
+        'error',
+      )
+    }
+    return
+  }
   chatUseGlobal.value = useGlobal
   parameterScope.value = useGlobal ? 'global' : 'conversation'
   const presetId = useGlobal
     ? conn.activePresetId
     : storedChatBinding.value?.apiConfigId
   if (presetId) conn.switchPreset(presetId)
-  if (useGlobal) {
-    const current = storedChatBinding.value
-    const inherited = current
-      ? (() => {
-          const { apiConfigId: _apiConfigId, ...snapshot } = current
-          return { ...snapshot, inheritGlobal: true }
-        })()
-      : { inheritGlobal: true }
-    void saveConversationApiSettings(inherited).catch((error) => {
-      notifyConn(error instanceof Error ? error.message : t('conn.saveFailedJson'), 'error')
-    })
-  }
 }
 
 async function onSetGlobalPreset() {
@@ -793,13 +841,35 @@ function closeImportDialog() {
 
 <template>
   <div class="settings-scroll pa-3">
-    <p class="text-body-2 text-medium-emphasis mb-4">
+    <p class="connection-settings-hint text-body-2 text-medium-emphasis mb-4">
       {{ $t('conn.storageHint', { path: settingsPath }) }}
     </p>
 
-    <div class="connection-settings-grid">
-      <section class="connection-settings-grid__basic">
+    <v-tabs
+      v-if="isMobileColumns"
+      v-model="mobileColumnTab"
+      density="compact"
+      class="connection-settings-mobile-tabs mb-3"
+      grow
+    >
+      <v-tab value="basic">{{ $t('conn.apiBasicsSection') }}</v-tab>
+      <v-tab value="parameters">{{ $t('conn.apiParametersSection') }}</v-tab>
+    </v-tabs>
 
+    <div
+      class="connection-settings-grid"
+      :class="{ 'connection-settings-grid--mobile-tabs': isMobileColumns }"
+    >
+      <section
+        v-show="!isMobileColumns || mobileColumnTab === 'basic'"
+        class="connection-settings-grid__basic"
+      >
+    <p
+      v-if="!isMobileColumns"
+      class="connection-settings-section-title text-caption text-medium-emphasis"
+    >
+      {{ $t('conn.apiBasicsSection') }}
+    </p>
     <v-select
       :model-value="conn.editingPresetId ?? undefined"
       :items="conn.presetSelectItems"
@@ -1040,13 +1110,20 @@ function closeImportDialog() {
     </div>
 
       </section>
-      <section class="connection-settings-grid__parameters">
+      <section
+        v-show="!isMobileColumns || mobileColumnTab === 'parameters'"
+        class="connection-settings-grid__parameters"
+      >
 
-    <v-divider class="mb-3" />
-    <p class="text-caption text-medium-emphasis mb-2">API 参数设定</p>
+    <p
+      v-if="!isMobileColumns"
+      class="connection-settings-section-title text-caption text-medium-emphasis"
+    >
+      {{ $t('conn.apiParametersSection') }}
+    </p>
     <v-tabs v-if="conversationApiLoaded" v-model="parameterScope" density="compact" class="mb-3">
-      <v-tab value="global" :disabled="!chatUseGlobal">全局</v-tab>
-      <v-tab value="conversation">对话</v-tab>
+      <v-tab value="global" :disabled="!chatUseGlobal">{{ $t('conn.parameterScopeGlobal') }}</v-tab>
+      <v-tab value="conversation">{{ $t('conn.parameterScopeConversation') }}</v-tab>
     </v-tabs>
     <template v-if="conversationApiLoaded && parameterScope === 'conversation'">
       <ConversationApiSettingsPanel
@@ -1694,14 +1771,26 @@ function closeImportDialog() {
 
 <style scoped>
 .settings-scroll {
-  max-height: min(78vh, 900px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   overflow: hidden;
+}
+
+.connection-settings-hint {
+  flex-shrink: 0;
+}
+
+.connection-settings-mobile-tabs {
+  flex-shrink: 0;
 }
 
 .connection-settings-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 1.5rem;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .connection-settings-grid__parameters {
@@ -1713,19 +1802,41 @@ function closeImportDialog() {
 .connection-settings-grid__basic,
 .connection-settings-grid__parameters {
   min-height: 0;
-  max-height: calc(min(78vh, 900px) - 1rem);
   overflow-y: auto;
   overflow-x: hidden;
   padding-bottom: 1rem;
 }
 
-.connection-settings-grid__basic {
-  padding-top: 0.75rem;
+.connection-settings-section-title {
+  margin: 0 0 1rem;
+  line-height: 1.25;
+}
+
+.connection-settings-grid--mobile-tabs {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.connection-settings-grid--mobile-tabs .connection-settings-grid__parameters {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.connection-settings-grid--mobile-tabs .connection-settings-grid__basic,
+.connection-settings-grid--mobile-tabs .connection-settings-grid__parameters {
+  max-height: none;
+  height: 100%;
 }
 
 @media (max-width: 800px) {
-  .connection-settings-grid { grid-template-columns: minmax(0, 1fr); }
-  .connection-settings-grid__parameters { padding-left: 0; border-left: 0; }
+  .connection-settings-grid:not(.connection-settings-grid--mobile-tabs) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .connection-settings-grid:not(.connection-settings-grid--mobile-tabs)
+    .connection-settings-grid__parameters {
+    padding-left: 0;
+    border-left: 0;
+  }
 }
 
 .cursor-pointer :deep(.v-field) {

@@ -11,7 +11,7 @@
 
 - `App.vue`：`v-main.main-chat` 为纵向 flex，内仅 `<router-view />`。
 - **左侧插件**：`v-navigation-drawer`（`temporary` · 280px）+ `PluginLeftDrawerHost`；`placement: 'leftDrawer'`。
-- **右侧 API**：`v-navigation-drawer`（`temporary` · 440px）+ `ConnectionSettingsCard`。
+- **右侧 API**：曾为 `v-navigation-drawer`（`temporary` · 440px）；**现为模态弹窗**（`ConnectionSettingsCard`，见 [`DOC/devNotes/52`](52-connection-panel-scope.md)），不参与 grid 占位。
 - 插件面板状态：`pluginPanelOpen`、`pluginPanelPinned`（钉住浮层）；页脚按钮 `openPluginPanel('leftDrawer')`。
 
 ### 1.2 定案目标
@@ -21,7 +21,7 @@
 | 主内容区 | `main-chat` 改为 **CSS Grid 三列**：左 rail · 中主内容 · 右 rail |
 | 中间列 | 现有路由视图（`/` 对话列表、`/chat/:id` 对话页等），宽度 `clamp(45rem, 60%, 80rem)` |
 | 左右 rail | **常驻参与布局**（非 `temporary` 浮层），供插件 `host.ui.panel` 使用 |
-| API 连接设置 | **保持**右侧 `v-navigation-drawer` **`temporary` 浮层**，不参与 grid 占位 |
+| API 连接设置 | **模态弹窗**（非右侧 drawer），不参与 grid 占位；见 [`DOC/devNotes/52`](52-connection-panel-scope.md) |
 | 显隐语义 | 废弃 `pluginPanelPinned`；改为按 placement 的 **`hidden` 开关** |
 | 无插件时 | **rail 列仍占位**（grid 列宽不变）；仅 **宿主内容区** 可隐藏（`.hidden`） |
 
@@ -94,21 +94,12 @@
 
 这样超宽屏下中间对话区始终居中，左右对称留白由 `1fr` 承担；将来插件挂上后同一列宽内展示面板，无需再改全局列公式。
 
-### 2.4 API 浮层（不变）
+### 2.4 API 连接设置（模态弹窗）
 
-```html
-<v-navigation-drawer
-  v-model="drawerRight"
-  :width="440"
-  temporary
-  location="end"
->
-  <ConnectionSettingsCard />
-</v-navigation-drawer>
-```
+连接设置已从右侧 `temporary` drawer 改为 **`v-dialog` 模态**（`App.vue` + `ConnectionSettingsCard`）：桌面双列、窄屏 Tab、页脚统一保存；打开时遮罩并禁止聊天出站。布局与作用域契约见 **`DOC/devNotes/52`**。
 
-- 顶栏 / 页脚「API 连接」仍切换 `drawerRight`。
-- 与 `#rightRail` **职责分离**：`rightRail` = 插件；`drawerRight` = 全局 API 预设。
+- 顶栏 / 页脚「API 连接」仍打开该弹窗。
+- 与 `#rightRail` **职责分离**：`rightRail` = 插件；连接弹窗 = 全局 API 预设 + 对话参数作用域。
 
 ---
 

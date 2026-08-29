@@ -17,10 +17,12 @@ import { useAuthStore } from '@/stores/auth'
 import { userAvatarUrl } from '@/utils/authenticated-media-url'
 import { coreNotify } from '@/utils/core-notify'
 import { useConnectionStore } from '@/stores/connection'
+import { useConversationApiStore } from '@/stores/conversation-api'
 import { useLocaleStore } from '@/stores/locale'
 import { useLorebooksStore } from '@/stores/lorebooks'
 import { usePromptsStore } from '@/stores/prompts'
 import { useUiContextStore } from '@/stores/ui-context'
+import { resolveEffectiveConversationChatDisplay } from '@/utils/conversation-chat-effective'
 import { storeToRefs } from 'pinia'
 import type { ComponentPublicInstance } from 'vue'
 import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -207,9 +209,8 @@ async function proceedPendingNavigation(): Promise<void> {
 async function onConnUnsavedSave(): Promise<void> {
   connDrawerSaving.value = true
   try {
-    if (connectionSettingsRef.value?.isConversationDraftDirty) {
-      await connectionSettingsRef.value.saveConversationDraft()
-    }
+    const ok = await connectionSettingsRef.value?.saveAllSettings()
+    if (ok === false) return
     if (conn.isPanelDirty) {
       if (conn.customParamsJson.trim()) {
         conn.parseCustomParams()
@@ -231,6 +232,11 @@ async function onConnUnsavedSave(): Promise<void> {
   } finally {
     connDrawerSaving.value = false
   }
+}
+
+async function onConnectionFooterSave(): Promise<void> {
+  const ok = await connectionSettingsRef.value?.saveAllSettings()
+  if (ok) closeConnectionDrawer()
 }
 
 function onConnUnsavedKeepEditing(): void {
@@ -280,17 +286,35 @@ const lorebooksStore = useLorebooksStore()
 const promptsStore = usePromptsStore()
 const uiContext = useUiContextStore()
 
+const conversationApi = useConversationApiStore()
+
+watch(
+  drawerRight,
+  (open) => {
+    uiContext.setConnectionPanelOpen(open)
+  },
+  { immediate: true },
+)
+
+const appBarEffectiveChat = computed(() => {
+  const id = connectionConversationId.value
+  if (!id) return null
+  return resolveEffectiveConversationChatDisplay(conn, conversationApi, id)
+})
+
 const appBarApiLabel = computed(() => {
-  const alias = conn.alias.trim()
-  const model = conn.model.trim()
+  const effective = appBarEffectiveChat.value
+  const alias = (effective?.alias ?? conn.alias).trim()
+  const model = (effective?.model ?? conn.model).trim()
   if (alias && model) return `${alias} · ${model}`
   if (alias) return alias
   return model
 })
 
 const appBarApiStatusTitle = computed(() => {
-  const alias = conn.alias.trim()
-  const model = conn.model.trim()
+  const effective = appBarEffectiveChat.value
+  const alias = (effective?.alias ?? conn.alias).trim()
+  const model = (effective?.model ?? conn.model).trim()
   const parts: string[] = []
   if (alias) parts.push(`${alias}`)
   if (model) parts.push(model)
@@ -590,10 +614,11 @@ onUnmounted(() => {
   <v-app v-else>
     <v-dialog
       :model-value="drawerRight"
+      content-class="connection-settings-dialog-surface"
       @update:model-value="onConnectionDrawerUpdate"
     >
-      <v-card class="connection-settings-dialog" max-width="1180">
-      <v-toolbar density="compact" color="surface-variant" flat>
+      <v-card class="connection-settings-dialog">
+      <v-toolbar density="compact" color="surface-variant" flat class="connection-settings-dialog__toolbar">
         <v-toolbar-title class="text-subtitle-2">
           {{ $t('app.apiConnection') }}
         </v-toolbar-title>
@@ -608,14 +633,17 @@ onUnmounted(() => {
       </v-toolbar>
       <ConnectionSettingsCard
         ref="connectionSettingsRef"
+        class="connection-settings-dialog__body"
         :conversation-id="connectionConversationId"
       />
-      <v-divider />
-      <v-card-actions class="px-5 py-3">
-        <v-btn variant="text" @click="onConnectionDrawerUpdate(false)">关闭</v-btn>
+      <v-divider class="connection-settings-dialog__divider" />
+      <v-card-actions class="connection-settings-dialog__footer px-5 py-3">
+        <v-btn variant="text" @click="onConnectionDrawerUpdate(false)">
+          {{ $t('conn.close') }}
+        </v-btn>
         <v-spacer />
-        <v-btn color="primary" variant="flat" @click="connectionSettingsRef?.saveAllSettings()">
-          保存
+        <v-btn color="primary" variant="flat" @click="onConnectionFooterSave">
+          {{ $t('conn.unsavedCloseSave') }}
         </v-btn>
       </v-card-actions>
       </v-card>
@@ -1083,6 +1111,26 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.connection-settings-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.connection-settings-dialog__toolbar,
+.connection-settings-dialog__divider,
+.connection-settings-dialog__footer {
+  flex-shrink: 0;
+}
+
+.connection-settings-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .library-dialog-card,
 .settings-dialog-card {
   display: flex;

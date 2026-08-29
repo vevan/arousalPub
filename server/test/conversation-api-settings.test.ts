@@ -32,11 +32,13 @@ describe('conversation-api-settings', () => {
   it('parses an inherited binding that retains a parameter snapshot', () => {
     const r = parseConversationChatBinding({
       inheritGlobal: true,
+      apiConfigId: 'abc12345',
       model: 'saved-for-later',
     })
     assert.equal(r.ok, true)
     if (r.ok) {
       assert.equal(r.binding?.inheritGlobal, true)
+      assert.equal(r.binding?.apiConfigId, 'abc12345')
       assert.equal(r.binding?.model, 'saved-for-later')
     }
   })

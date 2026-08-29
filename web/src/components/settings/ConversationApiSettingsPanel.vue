@@ -46,7 +46,11 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  (e: 'update:chatUseGlobal', v: boolean): void
+  (
+    e: 'update:chatUseGlobal',
+    v: boolean,
+    bindingToSave?: ConversationChatBinding,
+  ): void
   (e: 'update:embeddingUseGlobal', v: boolean): void
   (e: 'saveChat', binding: ConversationChatBinding | null): void
   (e: 'saveEmbedding', patch: ConversationEmbeddingApiSettingsOverride | null): void
@@ -295,6 +299,25 @@ watch(
 
 function onChatUseGlobalChange(useGlobal: boolean | null) {
   if (useGlobal === null) return
+  // 开启继承：先把当前表单快照交给父组件落盘，父组件成功后再切 Tab，避免面板被卸载丢保存
+  if (useGlobal && !props.chatUseGlobal) {
+    const snap = props.snapshotParameters
+      ? fullParameterSnapshot()
+      : (() => {
+          const preset = selectedPreset.value
+          if (!preset || !effectiveDisplay.value) return undefined
+          return buildChatBindingPatch(
+            preset,
+            effectiveDisplay.value,
+            chatPresetSelect.value === INHERIT,
+          )
+        })()
+    const inherited: ConversationChatBinding = snap
+      ? { ...snap, inheritGlobal: true }
+      : inheritedBinding()
+    emit('update:chatUseGlobal', true, inherited)
+    return
+  }
   emit('update:chatUseGlobal', useGlobal)
   markDraftDirty()
   if (useGlobal) {
@@ -322,8 +345,7 @@ function onChatPresetSelected(presetId: string) {
 
 function inheritedBinding(): ConversationChatBinding {
   if (!props.chatBinding) return { inheritGlobal: true }
-  const { apiConfigId: _apiConfigId, ...snapshot } = props.chatBinding
-  return { ...snapshot, inheritGlobal: true }
+  return { ...props.chatBinding, inheritGlobal: true }
 }
 
 function onEmbeddingUseGlobalChange(useGlobal: boolean | null) {
@@ -723,7 +745,7 @@ defineExpose({
         :disabled="disabled"
         @click="saveDraft"
       >
-        保存对话参数
+        {{ $t('conn.saveConversationParameters') }}
       </v-btn>
     </template>
 
@@ -736,7 +758,7 @@ defineExpose({
       :disabled="disabled"
       @click="saveDraft"
     >
-      保存对话参数
+      {{ $t('conn.saveConversationParameters') }}
     </v-btn>
 
     <div v-if="showEmbedding !== false" class="conv-api-settings__subsection">

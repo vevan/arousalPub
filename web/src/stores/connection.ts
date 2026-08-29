@@ -180,6 +180,8 @@ export const useConnectionStore = defineStore('connection', () => {
    * 与「指纹表非空」解耦，避免未加载与已加载零预设被混判。
    */
   const panelBaselineReady = ref(false)
+  /** PUT /api/settings 提交与 baseline 捕获期间，禁止会话旧快照回灌面板。 */
+  const panelSaveInFlight = ref(false)
   /** 会话 API 覆盖灌入面板后的表单指纹；匹配时视为干净（非用户未保存改动） */
   const conversationPanelFingerprint = ref<string | null>(null)
   const afterPanelSavedHandlers = new Set<() => void>()
@@ -364,6 +366,7 @@ export const useConnectionStore = defineStore('connection', () => {
    * 进房/绑定变更：丢弃会话内未保存改动，将面板灌到会话 effective 或全局主预设。
    */
   function hydratePanelForConversation(input: ConversationPanelHydration): void {
+    if (panelSaveInFlight.value) return
     discardPanelChangesToBaseline()
     const list = presets.value
     if (list.length === 0) return
@@ -1092,41 +1095,46 @@ export const useConnectionStore = defineStore('connection', () => {
   async function saveToServer(opts?: {
     globalPresetId?: string
   }): Promise<void> {
-    const body = documentPayload(opts)
-    const res = await fetch('/api/settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    if (!res.ok) {
-      let msg = `Save failed (${res.status})`
-      try {
-        const j = (await res.json()) as { error?: string }
-        if (j.error) msg = translateApiError(j.error)
-      } catch {
-        /*  */
-      }
-      throw new Error(msg)
-    }
-    const j = (await res.json()) as { savedAt?: string }
-    if (typeof j.savedAt === 'string') lastSavedAt.value = j.savedAt
-    if (!activePresetId.value && body.activePresetId) {
-      activePresetId.value = body.activePresetId
-    }
-    if (apiKeyDraftDirty.value) {
-      const eid = editingPresetId.value
-      const idx = presets.value.findIndex((p) => p.id === eid)
-      if (idx >= 0) {
-        presets.value[idx] = {
-          ...presets.value[idx],
-          keyConfigured: apiKey.value.trim().length > 0,
+    panelSaveInFlight.value = true
+    try {
+      const body = documentPayload(opts)
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        let msg = `Save failed (${res.status})`
+        try {
+          const j = (await res.json()) as { error?: string }
+          if (j.error) msg = translateApiError(j.error)
+        } catch {
+          /*  */
         }
+        throw new Error(msg)
       }
-      apiKey.value = ''
-      apiKeyDraftDirty.value = false
+      const j = (await res.json()) as { savedAt?: string }
+      if (typeof j.savedAt === 'string') lastSavedAt.value = j.savedAt
+      if (!activePresetId.value && body.activePresetId) {
+        activePresetId.value = body.activePresetId
+      }
+      if (apiKeyDraftDirty.value) {
+        const eid = editingPresetId.value
+        const idx = presets.value.findIndex((p) => p.id === eid)
+        if (idx >= 0) {
+          presets.value[idx] = {
+            ...presets.value[idx],
+            keyConfigured: apiKey.value.trim().length > 0,
+          }
+        }
+        apiKey.value = ''
+        apiKeyDraftDirty.value = false
+      }
+      captureServerPanelBaseline()
+      clearConversationPanelFingerprint()
+    } finally {
+      panelSaveInFlight.value = false
     }
-    captureServerPanelBaseline()
-    clearConversationPanelFingerprint()
     notifyAfterPanelSaved()
   }
 
@@ -1139,6 +1147,7 @@ export const useConnectionStore = defineStore('connection', () => {
     lastServerFingerprints.value = {}
     lastServerPresets.value = {}
     panelBaselineReady.value = false
+    panelSaveInFlight.value = false
     clearConversationPanelFingerprint()
     apiKeyDraftDirty.value = false
     resetFormToDefaultFields()

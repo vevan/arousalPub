@@ -169,7 +169,7 @@ export interface PluginCompleteDraftMessage {
 export interface PluginDataApi {
   /**
    * 列出插件数据目录下指定 scope 的文件名列表（相对名，不含路径）。
-   * 目录不存在时返回空数组。
+   * 需 manifest 权限 `plugin.data`。目录不存在时返回空数组。
    */
   list(scope: 'global' | 'conversation', conversationId?: string): Promise<string[]>
   /**
@@ -290,7 +290,7 @@ export interface PluginServerHostApi {
       },
     ) => Promise<ChatMessage[]>
   }
-  /** 插件私有数据文件读写（宿主负责路径隔离，插件只提供相对路径） */
+  /** 插件数据文件读写；需 manifest 权限 `plugin.data`。宿主负责路径隔离，插件只提供相对路径。 */
   pluginData: PluginDataApi
 }
 

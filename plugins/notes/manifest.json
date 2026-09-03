@@ -2,12 +2,12 @@
   "id": "notes",
   "name": "笔记",
   "version": "1.0.0",
-  "permissions": [],
+  "permissions": ["plugin.data"],
   "serverActions": [
-    { "name": "list-notes",    "permissions": [] },
-    { "name": "save-note",     "permissions": [] },
-    { "name": "delete-note",   "permissions": [] },
-    { "name": "reorder-notes", "permissions": [] }
+    { "name": "list-notes",    "permissions": ["plugin.data"] },
+    { "name": "save-note",     "permissions": ["plugin.data"] },
+    { "name": "delete-note",   "permissions": ["plugin.data"] },
+    { "name": "reorder-notes", "permissions": ["plugin.data"] }
   ],
   "ui": {
     "eagerOnRoutes": ["chat"],

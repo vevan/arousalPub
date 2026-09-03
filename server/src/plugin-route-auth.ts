@@ -1,11 +1,6 @@
-import { assertPluginPermission } from './plugin-permissions.js'
+import { assertPluginPermission, pluginAuthFailureStatus } from './plugin-permissions.js'
 
-export function pluginAuthFailureStatus(
-  code: 'plugin_not_found' | 'plugin_disabled' | 'plugin_permission_denied',
-): number {
-  if (code === 'plugin_not_found') return 404
-  return 403
-}
+export { pluginAuthFailureStatus }
 
 export async function assertPluginRoutePermission(
   pluginId: string,

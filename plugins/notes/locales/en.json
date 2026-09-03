@@ -1,0 +1,19 @@
+{
+  "pluginDisplayName": "Notes",
+  "tooltipOpen": "Open notes panel",
+  "panelLabel": "Notes",
+  "panelTitle": "Notes",
+  "scopeGlobal": "Global",
+  "scopeConversation": "This conversation",
+  "newNote": "New",
+  "loading": "Loading…",
+  "empty": "No notes yet. Click "New" to create one.",
+  "back": "Back",
+  "edit": "Edit",
+  "delete": "Delete",
+  "cancel": "Cancel",
+  "save": "Save",
+  "saving": "Saving…",
+  "titlePlaceholder": "Title (optional)",
+  "bodyPlaceholder": "Body — supports Markdown; use - [ ] for to-dos"
+}

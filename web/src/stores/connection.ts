@@ -617,7 +617,10 @@ export const useConnectionStore = defineStore('connection', () => {
     return { ok: true }
   }
 
-  async function testActivePresetConnection(): Promise<
+  async function testActivePresetConnection(opts?: {
+    /** 覆盖表单 model（如对话作用域草稿中的模型） */
+    model?: string
+  }): Promise<
     | {
         ok: true
         totalLatencyMs: number
@@ -653,6 +656,9 @@ export const useConnectionStore = defineStore('connection', () => {
     if (!presetId) {
       return { ok: false, error: translateApiError('invalid_id'), phase: 'models' }
     }
+    const modelForTest =
+      (typeof opts?.model === 'string' ? opts.model.trim() : '') ||
+      model.value.trim()
     const res = await fetch(
       `/api/settings/presets/${encodeURIComponent(presetId)}/test`,
       {
@@ -660,7 +666,7 @@ export const useConnectionStore = defineStore('connection', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           baseUrl: baseUrl.value.trim() || undefined,
-          model: model.value.trim() || undefined,
+          model: modelForTest || undefined,
           ...(apiKeyDraftDirty.value && apiKey.value.trim()
             ? { apiKey: apiKey.value.trim() }
             : { apiKeyId: apiKeyId.value }),

@@ -1,0 +1,16 @@
+{
+  "id": "notes",
+  "name": "笔记",
+  "version": "1.0.0",
+  "permissions": [],
+  "serverActions": [
+    { "name": "list-notes",    "permissions": [] },
+    { "name": "save-note",     "permissions": [] },
+    { "name": "delete-note",   "permissions": [] },
+    { "name": "reorder-notes", "permissions": [] }
+  ],
+  "ui": {
+    "eagerOnRoutes": ["chat"],
+    "slots": [{ "name": "composer-toolbar", "entry": "./dist/web.mjs" }]
+  }
+}

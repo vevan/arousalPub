@@ -555,8 +555,22 @@ async function confirmRevealKey() {
   }
 }
 
+/** 连通性测试应对准当前参数面板可见的模型（对话覆盖 ≠ 预设表单 conn.model） */
+function modelForConnectionTest(): string {
+  if (
+    conversationApiLoaded.value &&
+    parameterScope.value === 'conversation' &&
+    !chatUseGlobal.value
+  ) {
+    const draft = conversationApiPanel.value?.getDraftBinding()
+    const fromDraft = draft?.model?.trim()
+    if (fromDraft) return fromDraft
+  }
+  return conn.model.trim()
+}
+
 const canTestConnection = computed(
-  () => canFetchModels.value && Boolean(conn.model.trim()),
+  () => canFetchModels.value && Boolean(modelForConnectionTest()),
 )
 
 async function onTestConnection() {
@@ -564,14 +578,15 @@ async function onTestConnection() {
     notifyConn(t('conn.needBaseAndKey'), 'warning')
     return
   }
-  if (!conn.model.trim()) {
+  const modelToTest = modelForConnectionTest()
+  if (!modelToTest) {
     notifyConn(t('conn.needModelForTest'), 'warning')
     return
   }
   connectionTestLoading.value = true
   try {
     await conn.saveToServer()
-    const result = await conn.testActivePresetConnection()
+    const result = await conn.testActivePresetConnection({ model: modelToTest })
     if (result.ok) {
       openTestResultDialog('success', {
         modelsCount: result.models.modelCount,
@@ -586,7 +601,7 @@ async function onTestConnection() {
       openTestResultDialog('partial', {
         modelsCount: result.models.modelCount,
         modelsMs: result.models.latencyMs,
-        chatModel: result.model ?? conn.model,
+        chatModel: result.model ?? modelToTest,
         error: result.error,
         detail: result.detail,
       })

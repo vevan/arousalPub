@@ -1,3 +1,12 @@
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  mkdirSync,
+  writeFileSync,
+  unlinkSync,
+} from 'node:fs'
+import path from 'node:path'
 import { applyPromptMacroPipeline } from '../prompt-macros/index.js'
 import { resolvePluginCompleteApi } from '../plugin-api-resolve.js'
 import { resolvePluginCaptureDebug } from '../plugin-audit-gate.js'
@@ -20,7 +29,8 @@ import { readConversationPluginSettings } from '../chat-storage.js'
 import { readMergedPluginUserSettings } from './settings.js'
 import { readPluginPackageFile } from './plugin-package-read.js'
 import { getCurrentUserId } from '../user-context.js'
-import type { PluginServerHostApi } from './types.js'
+import { getPluginUserDataDir } from './paths.js'
+import type { PluginDataApi, PluginServerHostApi } from './types.js'
 import type { ChatMessage } from '../assemble-prompts.js'
 import { getActiveSegmentIndex, getTurnSegments } from '../group-chat-turn.js'
 
@@ -69,6 +79,74 @@ export function createPluginServerHostApi(
 ): PluginServerHostApi {
   const pid = pluginId?.trim() ?? ''
   const uid = userId ?? getCurrentUserId()
+
+  /**
+   * 解析 scope 根目录，守卫 conversationId 不能逃出用户数据目录。
+   * 用于 list（不需要 relPath）和 resolvePluginDataPath（需要 relPath）的公共前置步骤。
+   */
+  function resolveScopeDir(
+    scope: 'global' | 'conversation',
+    conversationId?: string,
+  ): string {
+    if (!pid) throw new Error('plugin_id_required')
+    const userDataDir = getPluginUserDataDir(pid, uid)
+    const baseDataDir = path.join(userDataDir, 'data')
+
+    if (scope === 'global') {
+      return path.join(baseDataDir, 'global')
+    }
+
+    const cid = conversationId?.trim()
+    if (!cid) throw new Error('missing_conversation_id')
+
+    const convRoot = path.join(baseDataDir, 'conversations')
+    const scopeDir = path.join(convRoot, cid)
+    // Guard: conversationId must not escape conversations root
+    const resolvedScope = path.resolve(scopeDir)
+    const guard = path.resolve(convRoot) + path.sep
+    if (!resolvedScope.startsWith(guard)) throw new Error('invalid_conversation_id')
+    return resolvedScope
+  }
+
+  /** 解析插件 scope 数据文件完整路径，守卫 relPath 不能逃出 scopeDir */
+  function resolvePluginDataPath(
+    scope: 'global' | 'conversation',
+    relPath: string,
+    conversationId?: string,
+  ): string {
+    if (!relPath.trim()) throw new Error('invalid_plugin_data_path')
+    const scopeDir = resolveScopeDir(scope, conversationId)
+    const resolved = path.resolve(scopeDir, relPath)
+    // Guard: relPath must not escape scopeDir
+    const guard = path.resolve(scopeDir) + path.sep
+    if (!resolved.startsWith(guard)) throw new Error('invalid_plugin_data_path')
+    return resolved
+  }
+
+  const pluginData: PluginDataApi = {
+    async list(scope, conversationId) {
+      const scopeDir = resolveScopeDir(scope, conversationId)
+      if (!existsSync(scopeDir)) return []
+      return readdirSync(scopeDir, { withFileTypes: true })
+        .filter((d) => d.isFile())
+        .map((d) => d.name)
+    },
+    async read(scope, relPath, conversationId) {
+      const filePath = resolvePluginDataPath(scope, relPath, conversationId)
+      if (!existsSync(filePath)) return null
+      return readFileSync(filePath, 'utf8')
+    },
+    async write(scope, relPath, content, conversationId) {
+      const filePath = resolvePluginDataPath(scope, relPath, conversationId)
+      mkdirSync(path.dirname(filePath), { recursive: true })
+      writeFileSync(filePath, content, 'utf8')
+    },
+    async delete(scope, relPath, conversationId) {
+      const filePath = resolvePluginDataPath(scope, relPath, conversationId)
+      if (existsSync(filePath)) unlinkSync(filePath)
+    },
+  }
+
   return {
     applyPromptMacroPipeline,
     getUserPluginSettings(pluginId: string) {
@@ -229,5 +307,6 @@ export function createPluginServerHostApi(
         ) as ChatMessage[]
       },
     },
+    pluginData,
   }
 }

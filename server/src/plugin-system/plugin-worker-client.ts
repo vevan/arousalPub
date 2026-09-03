@@ -200,21 +200,19 @@ async function dispatchHostApiCall(
 ): Promise<unknown> {
   if (pathParts.length === 0) throw new Error('invalid_api_path')
 
-  if (pathParts[0] === 'regex' && pathParts.length === 2) {
-    const method = pathParts[1]!
-    const regexApi = api.regex as Record<
-      string,
-      (...a: unknown[]) => unknown
-    >
-    const fn = regexApi[method]
-    if (typeof fn !== 'function') throw new Error(`unknown_api:${method}`)
-    return fn(...args)
+  // Two-segment nested namespace calls (e.g. regex.listRules, pluginData.read)
+  if (pathParts.length === 2) {
+    const [namespace, method] = pathParts as [string, string]
+    const ns = (api as unknown as Record<string, unknown>)[namespace]
+    if (ns && typeof ns === 'object') {
+      const fn = (ns as Record<string, unknown>)[method]
+      if (typeof fn !== 'function') throw new Error(`unknown_api:${namespace}.${method}`)
+      return (fn as (...a: unknown[]) => unknown).call(ns, ...args)
+    }
   }
 
   const top = pathParts[0]!
-  const fn = (api as unknown as Record<string, (...a: unknown[]) => unknown>)[
-    top
-  ]
+  const fn = (api as unknown as Record<string, (...a: unknown[]) => unknown>)[top]
   if (typeof fn !== 'function') throw new Error(`unknown_api:${top}`)
   return fn(...args)
 }

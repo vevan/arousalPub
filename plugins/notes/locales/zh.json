@@ -1,0 +1,19 @@
+{
+  "pluginDisplayName": "笔记",
+  "tooltipOpen": "打开笔记面板",
+  "panelLabel": "笔记",
+  "panelTitle": "笔记",
+  "scopeGlobal": "全局",
+  "scopeConversation": "本对话",
+  "newNote": "新建",
+  "loading": "加载中…",
+  "empty": "暂无笔记，点击「新建」创建第一条",
+  "back": "返回",
+  "edit": "编辑",
+  "delete": "删除",
+  "cancel": "取消",
+  "save": "保存",
+  "saving": "保存中…",
+  "titlePlaceholder": "标题（可留空）",
+  "bodyPlaceholder": "正文（支持 Markdown，使用 - [ ] 创建待办）"
+}

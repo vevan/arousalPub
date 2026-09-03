@@ -166,6 +166,28 @@ export interface PluginCompleteDraftMessage {
   content: string
 }
 
+export interface PluginDataApi {
+  /**
+   * 列出插件数据目录下指定 scope 的文件名列表（相对名，不含路径）。
+   * 目录不存在时返回空数组。
+   */
+  list(scope: 'global' | 'conversation', conversationId?: string): Promise<string[]>
+  /**
+   * 读取插件数据文件内容。
+   * relPath 为相对于该 scope 根目录的路径（如 `"notes.json"`）。
+   * 文件不存在时返回 null。
+   */
+  read(scope: 'global' | 'conversation', relPath: string, conversationId?: string): Promise<string | null>
+  /**
+   * 写入插件数据文件（目录自动创建，文件不存在时新建）。
+   */
+  write(scope: 'global' | 'conversation', relPath: string, content: string, conversationId?: string): Promise<void>
+  /**
+   * 删除插件数据文件，文件不存在时静默忽略。
+   */
+  delete(scope: 'global' | 'conversation', relPath: string, conversationId?: string): Promise<void>
+}
+
 export interface PluginServerHostApi {
   applyPromptMacroPipeline: (
     text: string,
@@ -268,6 +290,8 @@ export interface PluginServerHostApi {
       },
     ) => Promise<ChatMessage[]>
   }
+  /** 插件私有数据文件读写（宿主负责路径隔离，插件只提供相对路径） */
+  pluginData: PluginDataApi
 }
 
 export interface PluginParseCompleteDraftContext {

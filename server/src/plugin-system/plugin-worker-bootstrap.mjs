@@ -70,6 +70,28 @@ function callHostApi(pathParts, args, userId) {
   })
 }
 
+/** 为多层嵌套命名空间（如 regex、pluginData）生成二级 Proxy */
+function makeNestedNamespaceProxy(namespace, userId) {
+  return new Proxy(
+    {},
+    {
+      get(_t, methodProp) {
+        if (
+          methodProp === 'then' ||
+          methodProp === 'constructor' ||
+          typeof methodProp !== 'string'
+        ) {
+          return undefined
+        }
+        return (...args) => callHostApi([namespace, methodProp], args, userId)
+      },
+    },
+  )
+}
+
+/** 需要二级代理的命名空间集合（顶层属性名 → 嵌套 namespace） */
+const NESTED_NAMESPACES = new Set(['regex', 'pluginData'])
+
 function createApiProxy(userId) {
   const fn = () => {}
   return new Proxy(fn, {
@@ -77,22 +99,8 @@ function createApiProxy(userId) {
       if (prop === 'then' || prop === 'constructor' || prop === Symbol.toStringTag) {
         return undefined
       }
-      if (prop === 'regex') {
-        return new Proxy(
-          {},
-          {
-            get(_t, regexProp) {
-              if (
-                regexProp === 'then' ||
-                regexProp === 'constructor' ||
-                typeof regexProp !== 'string'
-              ) {
-                return undefined
-              }
-              return (...args) => callHostApi(['regex', regexProp], args, userId)
-            },
-          },
-        )
+      if (typeof prop === 'string' && NESTED_NAMESPACES.has(prop)) {
+        return makeNestedNamespaceProxy(prop, userId)
       }
       if (typeof prop !== 'string') return undefined
       return (...args) => callHostApi([prop], args, userId)

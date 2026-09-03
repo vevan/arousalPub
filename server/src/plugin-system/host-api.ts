@@ -30,6 +30,11 @@ import { readMergedPluginUserSettings } from './settings.js'
 import { readPluginPackageFile } from './plugin-package-read.js'
 import { getCurrentUserId } from '../user-context.js'
 import { getPluginUserDataDir } from './paths.js'
+import {
+  assertPluginPermission,
+  pluginAuthFailureStatus,
+  PLUGIN_DATA_PERMISSION,
+} from '../plugin-permissions.js'
 import type { PluginDataApi, PluginServerHostApi } from './types.js'
 import type { ChatMessage } from '../assemble-prompts.js'
 import { getActiveSegmentIndex, getTurnSegments } from '../group-chat-turn.js'
@@ -123,8 +128,19 @@ export function createPluginServerHostApi(
     return resolved
   }
 
+  async function assertPluginDataPermission(): Promise<void> {
+    if (!pid) throw new Error('plugin_id_required')
+    const auth = await assertPluginPermission(pid, PLUGIN_DATA_PERMISSION, uid)
+    if (!auth.ok) {
+      throw Object.assign(new Error(auth.code), {
+        status: pluginAuthFailureStatus(auth.code),
+      })
+    }
+  }
+
   const pluginData: PluginDataApi = {
     async list(scope, conversationId) {
+      await assertPluginDataPermission()
       const scopeDir = resolveScopeDir(scope, conversationId)
       if (!existsSync(scopeDir)) return []
       return readdirSync(scopeDir, { withFileTypes: true })
@@ -132,16 +148,19 @@ export function createPluginServerHostApi(
         .map((d) => d.name)
     },
     async read(scope, relPath, conversationId) {
+      await assertPluginDataPermission()
       const filePath = resolvePluginDataPath(scope, relPath, conversationId)
       if (!existsSync(filePath)) return null
       return readFileSync(filePath, 'utf8')
     },
     async write(scope, relPath, content, conversationId) {
+      await assertPluginDataPermission()
       const filePath = resolvePluginDataPath(scope, relPath, conversationId)
       mkdirSync(path.dirname(filePath), { recursive: true })
       writeFileSync(filePath, content, 'utf8')
     },
     async delete(scope, relPath, conversationId) {
+      await assertPluginDataPermission()
       const filePath = resolvePluginDataPath(scope, relPath, conversationId)
       if (existsSync(filePath)) unlinkSync(filePath)
     },

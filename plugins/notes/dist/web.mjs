@@ -2,18 +2,8 @@
 var PLUGIN_ID = "notes";
 var PANEL_PLACEMENT = "rightRail";
 var NOTE_TITLE_FALLBACK_LEN = 10;
-async function callAction(action, body) {
-  const res = await fetch(
-    `/api/plugins/${encodeURIComponent(PLUGIN_ID)}/actions/${encodeURIComponent(action)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    }
-  );
-  const data = await res.json();
-  if (!data.ok) throw new Error(String(data.code ?? "unknown_error"));
-  return data;
+async function callAction(host, action, body) {
+  return host.plugin.runAction(action, body);
 }
 function makeState(conversationId) {
   return {
@@ -98,13 +88,13 @@ function renderListView(state, k) {
   const hasConv = !!state.conversationId;
   const tabs = `
 <div class="np-tabs">
-  <button class="np-tab${state.scope === "global" ? " active" : ""}" data-tk-action="scope:global">${k("scopeGlobal")}</button>
-  <button class="np-tab${state.scope === "conversation" ? " active" : ""}" ${!hasConv ? "disabled" : ""} data-tk-action="scope:conversation">${k("scopeConversation")}</button>
+  <button class="np-tab${state.scope === "global" ? " active" : ""}" data-plugin-action="scope:global">${k("scopeGlobal")}</button>
+  <button class="np-tab${state.scope === "conversation" ? " active" : ""}" ${!hasConv ? "disabled" : ""} data-plugin-action="scope:conversation">${k("scopeConversation")}</button>
 </div>`;
   const toolbar = `
 <div class="np-toolbar">
   <span class="np-toolbar-title">${k("panelTitle")}</span>
-  <button class="np-btn" data-tk-action="new-note" title="${k("newNote")}">\uFF0B ${k("newNote")}</button>
+  <button class="np-btn" data-plugin-action="new-note" title="${k("newNote")}">\uFF0B ${k("newNote")}</button>
 </div>`;
   let listHtml = "";
   if (state.loading) {
@@ -116,7 +106,7 @@ function renderListView(state, k) {
       const { total, checked } = countCheckboxes(note.body);
       const badge = total > 0 ? `<span class="np-item-badge">${checked}/${total}</span>` : "";
       const active = note.id === state.activeNoteId ? " active" : "";
-      return `<div class="np-item${active}" data-tk-action="open:${escHtml(note.id)}">
+      return `<div class="np-item${active}" data-plugin-action="open:${escHtml(note.id)}">
   <span class="np-item-title">${escHtml(displayTitle(note))}</span>
   ${badge}
 </div>`;
@@ -132,10 +122,10 @@ function renderViewNote(note, renderMd, k) {
   return `
 <div class="np-note">
   <div class="np-note-header">
-    <button class="np-btn np-btn-icon" data-tk-action="back" title="${k("back")}">\u2190</button>
+    <button class="np-btn np-btn-icon" data-plugin-action="back" title="${k("back")}">\u2190</button>
     <span class="np-note-title-view">${escHtml(displayTitle(note))}</span>
-    <button class="np-btn np-btn-icon" data-tk-action="edit" title="${k("edit")}">\u270F</button>
-    <button class="np-btn np-btn-icon np-btn-danger" data-tk-action="delete:${escHtml(note.id)}" title="${k("delete")}">\u{1F5D1}</button>
+    <button class="np-btn np-btn-icon" data-plugin-action="edit" title="${k("edit")}">\u270F</button>
+    <button class="np-btn np-btn-icon np-btn-danger" data-plugin-action="delete:${escHtml(note.id)}" title="${k("delete")}">\u{1F5D1}</button>
   </div>
   <div class="np-note-body">
     <div class="np-note-body-content">${bodyWithCb}</div>
@@ -146,11 +136,11 @@ function renderEditNote(state, k) {
   return `
 <div class="np-edit">
   <div class="np-edit-header">
-    <button class="np-btn np-btn-icon" data-tk-action="cancel-edit" title="${k("cancel")}">\u2190</button>
-    <input class="np-input-title" data-tk-field="edit-title" value="${escHtml(state.editTitle)}" placeholder="${k("titlePlaceholder")}" />
-    <button class="np-btn" data-tk-action="save-note" ${state.saving ? "disabled" : ""}>${state.saving ? k("saving") : k("save")}</button>
+    <button class="np-btn np-btn-icon" data-plugin-action="cancel-edit" title="${k("cancel")}">\u2190</button>
+    <input class="np-input-title" data-plugin-field="edit-title" value="${escHtml(state.editTitle)}" placeholder="${k("titlePlaceholder")}" />
+    <button class="np-btn" data-plugin-action="save-note" ${state.saving ? "disabled" : ""}>${state.saving ? k("saving") : k("save")}</button>
   </div>
-  <textarea class="np-textarea" data-tk-field="edit-body" placeholder="${k("bodyPlaceholder")}">${escHtml(state.editBody)}</textarea>
+  <textarea class="np-textarea" data-plugin-field="edit-body" placeholder="${k("bodyPlaceholder")}">${escHtml(state.editBody)}</textarea>
 </div>`;
 }
 function injectCheckboxLineAttrs(rawBody, renderedHtml) {
@@ -165,7 +155,7 @@ function injectCheckboxLineAttrs(rawBody, renderedHtml) {
     const lineIndex = cbLines[cbIdx++];
     if (lineIndex === void 0) return match;
     const withoutDisabled = match.replace(/\s*disabled(?:="[^"]*")?/gi, "");
-    return withoutDisabled.replace(/(\s*\/?>)$/, ` data-tk-action="toggle-cb:${lineIndex}"$1`);
+    return withoutDisabled.replace(/(\s*\/?>)$/, ` data-plugin-action="toggle-cb:${lineIndex}"$1`);
   });
 }
 function renderPanel(state, renderMd, k) {
@@ -198,7 +188,7 @@ function register(host) {
     state.error = "";
     refresh();
     try {
-      const data = await callAction("list-notes", {
+      const data = await callAction(host, "list-notes", {
         conversationId: state.conversationId || void 0
       });
       state.globalNotes = Array.isArray(data.global) ? data.global : [];
@@ -215,7 +205,7 @@ function register(host) {
     state.saving = true;
     refresh();
     try {
-      const data = await callAction("save-note", {
+      const data = await callAction(host, "save-note", {
         scope: state.scope,
         conversationId: state.conversationId || void 0,
         note: {
@@ -245,7 +235,7 @@ function register(host) {
   }
   async function deleteNote(noteId) {
     try {
-      await callAction("delete-note", {
+      await callAction(host, "delete-note", {
         scope: state.scope,
         conversationId: state.conversationId || void 0,
         noteId
@@ -270,7 +260,7 @@ function register(host) {
     note.body = newBody;
     refresh();
     try {
-      await callAction("save-note", {
+      await callAction(host, "save-note", {
         scope: state.scope,
         conversationId: state.conversationId || void 0,
         note: { id: noteId, title: note.title, body: newBody }

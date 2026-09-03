@@ -28,7 +28,7 @@ const {
 } = props.session
 
 const pinned = computed(() => inputHistory.value.pinned)
-const recent = computed(() => inputHistory.value.recent)
+const recent = computed(() => [...inputHistory.value.recent].reverse())
 const hasItems = computed(
   () => pinned.value.length > 0 || recent.value.length > 0,
 )

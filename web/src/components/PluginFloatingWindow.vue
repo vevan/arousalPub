@@ -11,7 +11,7 @@ import {
   type PluginPanelLayout,
 } from '@/plugins/plugin-panel-registry'
 import { translatePluginI18nKey } from '@/utils/plugin-locale-text'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
@@ -187,7 +187,11 @@ function onPanelEvent(event: Event): void {
 
 watch(
   () => [props.panel.html, props.panel.revision],
-  () => notifyPluginPanelMounted(),
+  async () => {
+    await nextTick()
+    const root = contentRef.value
+    if (root) notifyPluginPanelMounted(props.panel.pluginId, root)
+  },
   { immediate: true },
 )
 
@@ -258,6 +262,7 @@ onBeforeUnmount(() => {
       @click="onPanelEvent"
       @change="onPanelEvent"
       @input="onPanelEvent"
+      @keydown="onPanelEvent"
     />
     <div
       class="plugin-floating-window__resize-handle"

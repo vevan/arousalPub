@@ -96,3 +96,15 @@ export interface PluginHost {
     }
   }
 }
+/** 视图轮次引用（下沉自 trace-state-resolve / turn-view-segment；显式形状，避免循环别名） */
+export type TraceTurnRef = {
+  turnOrdinal: number
+  speakerCharacterId?: string
+  activeSegmentIndex?: number
+  segments?: {
+    activeReceiveIndex?: number
+    receives?: { id?: string; content?: string }[]
+  }[]
+  plugins?: unknown[]
+}
+export type TurnViewRef = TraceTurnRef

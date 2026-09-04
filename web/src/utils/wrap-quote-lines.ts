@@ -1,9 +1,9 @@
 /**
  * 对话引号 → <span class="lines">（仅处理纯文本；跳过代码块与已有 .lines）
- * 支持半角 "…"、弯引号 “…”、以及 smartypants 误配成的 ”…”（闭+闭）。
+ * 支持半角 "…"、弯引号 “…”、日语引号 「…」/『…』，以及 smartypants 误配成的 ”…”（闭+闭）。
  */
 const DIALOGUE_QUOTE_RE =
-  /(?<!=)(?:"[^"\n]+?"|\u201C[^\u201C\u201D\n]+?\u201D|\u201D[^\u201C\u201D\n]+?\u201D|\u2018[^\u2018\u2019\n]+?\u2019|\u2019[^\u2018\u2019\n]+?\u2019)/g
+  /(?<!=)(?:"[^"\n]+?"|\u201C[^\u201C\u201D\n]+?\u201D|\u201D[^\u201C\u201D\n]+?\u201D|\u2018[^\u2018\u2019\n]+?\u2019|\u2019[^\u2018\u2019\n]+?\u2019|\u300C[^\u300C\u300D\n]+?\u300D|\u300E[^\u300E\u300F\n]+?\u300F)/g
 
 const SKIP_SELECTOR =
   'pre, code, kbd, script, style, textarea, .md-embedded-html, .ASST, .lines'
@@ -37,7 +37,7 @@ export function wrapCurlyQuotesInPlainText(text: string): string {
 }
 
 function htmlMightNeedQuoteWrap(html: string): boolean {
-  if (/[\u201C\u201D\u0022\u2018\u2019]/.test(html)) return true
+  if (/[\u201C\u201D\u0022\u2018\u2019\u300C\u300D\u300E\u300F]/.test(html)) return true
   if (/(?<!=)["\u201C\u2018]/.test(html)) return true
   if (HTML_QUOTE_ENTITY_RE.test(html)) return true
   return false

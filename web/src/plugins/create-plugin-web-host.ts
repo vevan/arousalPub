@@ -21,7 +21,9 @@ import { registerComposerSlashCommand as registerComposerSlashCommandInRegistry 
 import { useAuthStore } from '@/stores/auth'
 import {
   fetchConversationMeta,
+  fetchActiveConversationBranchPath,
 } from '@/plugins/conversation-meta'
+import { onConversationBranchCreated } from '@/utils/conversation-branch-events'
 import {
   createLorebookEntriesBatch,
   createLorebookEntry,
@@ -132,10 +134,12 @@ export function createScopedPluginHost(
       },
       onPluginSettingsChanged(handler) {
         assertPluginConversationRead(id)
-        return useConversationPluginSettingsStore().subscribe(
-          convId(),
+        return useConversationPluginSettingsStore().subscribePlugin(
           id,
-          handler,
+          (conversationId, settings) => {
+            if (conversationId !== convId()) return
+            handler(settings)
+          },
         )
       },
       patchPluginSettings(partial) {
@@ -402,6 +406,7 @@ export function createPluginWebHost(session: ChatSession): {
         session.onAssistantReplyPersisted(handler),
       onTurnDataChanged: (handler) => session.onTurnDataChanged(handler),
       onGeneratingChanged: (handler) => session.onGeneratingChanged(handler),
+      onBranchCreated: (handler) => onConversationBranchCreated(handler),
     },
     refreshSlotButtons() {
       slotButtonRevision.value += 1
@@ -418,6 +423,9 @@ export function createPluginWebHost(session: ChatSession): {
           userDisplayName: session.userDisplayName,
           assistantDisplayName: session.assistantRoleName,
         })
+      },
+      getActiveBranchPath() {
+        return fetchActiveConversationBranchPath(session.conversationId)
       },
       runScope(opts, fn) {
         return session.runConversationScope(opts, fn)
@@ -446,8 +454,14 @@ export function createPluginWebHost(session: ChatSession): {
       patchLorebookIds() {
         throw new Error('plugin_host_requires_scoped_host')
       },
-      setPluginHold(hold: boolean) {
-        session.setPluginHold(hold)
+      acquirePluginHold(owner: string) {
+        return session.acquirePluginHold(owner)
+      },
+      releasePluginHold(owner: string, token: string) {
+        session.releasePluginHold(owner, token)
+      },
+      hasPluginHold(owner: string, token: string) {
+        return session.hasPluginHold(owner, token)
       },
     },
     lorebook: {

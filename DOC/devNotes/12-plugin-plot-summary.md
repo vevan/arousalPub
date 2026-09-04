@@ -46,7 +46,7 @@
   - `N-M` 为 **turnOrdinal** 闭区间（与 UI「第 n 回」、`/goto` 一致，0 起）
 - **默认预填**（无 picker / 无 slash 范围）：`end = T - bufferTurns`，`start = max(0, end - (blockTurns - 1))`（T = 当前最大 turnOrdinal；与自动块等长）。
 - 写盘：开关与指针分次 patch；摘要成功后再更新 `lastSummarizedEnd` / `nextBlockStart`。
-- **Prompt 预览**：插件设置对话框内 **`completeWithContext({ dryRun: true })`** 组装预览（**不进** `chat-audit.json`；见 **`DOC/devNotes/43` §1.3**）。预览入口与 debug 审计开关联动（`auditDebugEnabled`）。
+- **Prompt 预览**：插件设置对话框内 **`completeWithContext({ dryRun: true })`** 组装预览（**不进** `chat-audit.json`；见 **`DOC/devNotes/43` §1.3**）。预览入口与 debug 审计开关联动（`auditDebugEnabled`）。**2026-08-17**：preflight 超限时宿主仍返回 `messages`，预览顶部展示 `tokens / budget`（`preflight.ok=false`）；正式摘要出站仍硬失败。预算口径为 `contextLength − maxTokens`（见宿主 `plugin-complete-preflight.ts`）。
 
 ### 4.2 条目标题与排序
 

@@ -1,8 +1,8 @@
 # 50 · 地下城迷宫插件设想（P2 · 待讨论）
 
-> **状态**：**P2 设想** · 已列入 `DOC/devNotes/04-TODO` · **尚无** `plugins/` 实现  
+> **状态**：**P2 设想** · 已列入 `DOC/devNotes/04-TODO` · **M0 验证骨架已落地**（21×21 生成 / 会话恢复 / Canvas panel / 对象事件耗时），其余能力待做
 > **优先级**：**P2**（高于远期备忘 `99`；次于 P0/P1）  
-> **暂定插件 id**：`dungeon-maze`（仅文档用，未注册）  
+> **插件 id**：`dungeon-maze`（已注册为 bundled 插件）
 > **关联**：[`04-TODO.md`](04-TODO.md) P2、[`09-plugin-system-and-guidance-generate.md`](09-plugin-system-and-guidance-generate.md)、[`18-plugin-host-developer-api.md`](18-plugin-host-developer-api.md)、[`30-plugin-trace-keeper.md`](30-plugin-trace-keeper.md)（**六维读/写**）、[`41-plugin-host-generic-principles.md`](41-plugin-host-generic-principles.md)
 
 ---
@@ -422,8 +422,8 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 
 | 项 | 定案 |
 |----|------|
-| **机制** | 现有 `setPluginHold`；落地时随宿主演进为带 owner/token 的 acquire / release，避免并发插件互相解除占用（见 `18` §3.5） |
-| **时机** | 进入战斗 UI / 先攻开始时 acquire；战斗结束（或放弃、逃跑失败定案后）release |
+| **机制** | `acquirePluginHold(owner)` / `releasePluginHold(owner, token)` / `hasPluginHold(owner, token)`（见 `18` §3.5）。session 重建后旧 token 失效时须重新 acquire；**宿主不得**在切分支时强制清空其他插件 hold |
+| **时机** | 进入战斗 UI / 先攻开始时 acquire；战斗结束（或放弃、逃跑失败定案后）release；败北确认后同样清 `activeEvent` 并 release |
 | **范围** | 仅挡 **composer 发新消息**；panel 内战斗操作、逐回合 **complete 写叙事** 不受影响 |
 | **perStep** | 每步 complete 等待 LLM 期间 **保持 hold**（避免叙事未落盘时用户插话打乱顺序） |
 | **perBattle** | 整场本地结算 + 一次 complete 期间 **全程 hold** |
@@ -438,13 +438,22 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 
 | 数据 | 存放 | 说明 |
 |------|------|------|
-| 已生成地图（格网、墙、门、楼梯、seed） | 会话 **`pluginSettings['dungeon-maze'].dungeonState`** 或专用 blob | **按 active branch 隔离**；重开 panel 不 regenerate |
+| 已生成地图（格网、墙、门、楼梯、seed） | 会话 **`pluginSettings['dungeon-maze'].dungeonStates[branchPath]`** 或专用 blob | **按 active branch 隔离**；重开 panel 不 regenerate |
 | 敌人实例位置 / 已击败标记 | 同上 | |
 | 玩家坐标、层、背包、装备 | 同上 | |
 | Catalog 默认 | `catalog-manifest.json` + `assets/{bundleId}/…` | 用户 import / 切换 activeConfig |
 | 战报历史 | state 内数组 + 已 send 进 turn 的 narrative | 可选 `turn.plugins[]` 快照 |
 
-**分支**（`23`）：**定案按 `branchPath` 隔离**。创建分支时继承分叉点的 dungeon state；后续地图、敌人、背包与战报仅写当前 active branch，禁止跨分支共享可变进度。
+**分支**（`23`）：**按 `branchPath` 隔离**。`dungeonStates` 以路径为键保存状态；**创建分支时**复制直接父分支快照，后续地图、敌人、背包与战报仅写当前 active branch，禁止跨分支共享可变进度。
+
+### 3.6.1 M0 / M1 运行时约定（已落地）
+
+- **落盘**：仅经插件内 `persistState` → `host.conversation.patchPluginSettings`。宿主 PATCH **始终写入当前 `getId()`**，插件必须在读取/生成时捕获会话 id，await 之后若 `getId()` 已变则放弃写入（见 `DOC/devNotes/18` §8.4）。
+- **自动移动**：寻路动画用 generation token；`create` / `reset` 中止进行中的动画，且新迷宫与旧动画共享同一写入队列，避免旧进度覆盖刚生成的地图。`autoMoveInFlight` 在 `try/finally` 中清除。
+- **切会话 / 离页**：`onTurnDataChanged` 时若会话 / 分支 scope 变化，或 canvas 已断开，则丢弃乐观状态并 `refreshPanel`；同会话同分支且 canvas 仍连接时不整页重建（避免 swipe 闪烁）。离开聊天路由后宿主会清空 panel HTML。
+- **分支快照**：`onBranchCreated` 事件入队后串入与 `persistState` 同一写入队列；合并进行中的 `pendingState`（含主路径 `branchPath === ""`）；写入失败重试一次，仍失败则 `ui.notify`（`branchSnapshotFailed`）并保留队列。重复 `register()` 须先退订旧监听。
+- **状态校验**：`isDungeonMazeState` 校验 21×21 `cells`/`explored`、界内整数坐标、`activeEvent` 形状与 combat 完整性；畸形导入丢弃。
+- **测试**：`plugins/dungeon-maze/test/*.test.ts` 纳入 `server` 的 `npm test`。
 
 ---
 
@@ -502,9 +511,9 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 
 | 阶段 | 内容 |
 |------|------|
-| M0 | Catalog **JSON Schema 定案** + 迷宫生成；Canvas + state 持久化与 **branchPath 隔离**；可选 **catalog-editor.html** spike |
+| M0 | ✅ 迷宫生成、Canvas、state 持久化与 **branchPath 隔离**；Catalog JSON Schema 定案 / `catalog-editor.html` spike 可后续补齐 |
 | M0b | **Catalog 编辑器**（单文件 HTML）：schema 校验 + 导出三类 JSON（可与 M1 并行） |
-| M1 | 本地战斗 loop + CombatLogEntry；panel 内 log；**战斗 acquire / release 会话 hold** |
+| M1 | ✅ 纯战斗规则层、bundled 静态 catalog、逐行动本地 loop、panel 原始日志与 owner/token 战斗会话 hold 已完成 |
 | M2 | **perBattle** 模式 + complete + **插件区块进主对话** + **TK 战后写回**（与 narrative 同次或紧随） |
 | M3 | **perStep** 叙事；**TK 写回仍仅战斗结束一次** |
 | M4 | 多层/Boss、装备/技能 growth、**dungeon-rpg TraceBundle**、i18n、单测 |
@@ -551,3 +560,7 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 | 2026-08-12 | **Catalog 资源包**：宿主 **`importBundle`** → `assets/{zip名}/`；插件 **`onBundleImported`** 写 **`catalog-manifest.json`**（§3.4.5） |
 | 2026-08-12 | **战斗占用 composer**：**`setPluginHold`** 禁止战斗中 composer 发文本（§3.5.1） |
 | 2026-08-13 | 定案：叙事进入主对话时使用通用 **插件区块**，不伪装 user / assistant；dungeon state 按 active branch 隔离；hold 演进为 owner/token acquire / release。 |
+| 2026-08-13 | **M0 验证骨架**：bundled `dungeon-maze`；composer 图标打开 panel；当前会话首次生成或恢复固定 **21×21** seed 迷宫；生成入口、Boss 出口、9 个杂兵（1/50）、较低密度宝箱与陷阱。 |
+| 2026-08-13 | M0 审计修复：自动移动与重置串写、跨会话 `pluginSettings` 误写、离页后 panel 空白；迷宫单测进入 `npm test`。见 §3.6.1。 |
+| 2026-08-14 | **M1 落地与审计修复**：确定性战斗规则、bundled catalog、逐行动 panel loop 与 owner/token hold 完成；移动后本插件 state 回写只重绘 Canvas、不重建 panel；战斗 state 与 catalog 数值边界均运行时校验。 |
+| 2026-08-14 | 审计跟进：rail `immediate` 挂载；settings 订阅过滤会话；分支快照队列 / 重试 / notify；败北清 encounter；网格与事件校验加强；`hasPluginHold`。见 §3.5.1、§3.6.1。 |

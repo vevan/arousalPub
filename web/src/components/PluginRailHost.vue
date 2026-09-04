@@ -13,7 +13,7 @@ import {
   type PluginPanelRailPlacement,
 } from '@/plugins/plugin-panel-registry'
 import { translatePluginI18nKey } from '@/utils/plugin-locale-text'
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
@@ -70,9 +70,13 @@ function onPanelEvent(ev: Event): void {
 
 watch(
   () => [active.value?.html, active.value?.revision, pluginPanelRevision.value],
-  () => {
-    notifyPluginPanelMounted()
+  async () => {
+    await nextTick()
+    const root = contentRef.value
+    const pluginId = active.value?.pluginId
+    if (root && pluginId) notifyPluginPanelMounted(pluginId, root)
   },
+  { immediate: true },
 )
 </script>
 
@@ -153,6 +157,7 @@ watch(
       @click="onPanelEvent"
       @change="onPanelEvent"
       @input="onPanelEvent"
+      @keydown="onPanelEvent"
     />
     <div
       v-else

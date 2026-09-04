@@ -35,6 +35,7 @@
   },
   "allowScripts": {
     "esbuild@0.28.1": true,
+    "onnxruntime-node@1.19.2": true,
     "onnxruntime-node@1.24.3": true,
     "protobufjs@7.6.5": true,
     "vue-demi@0.14.10": true

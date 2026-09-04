@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "equipment": [
+    {
+      "id": "training-sword",
+      "name": "训练剑",
+      "category": "weapon",
+      "damage": "1d8+2",
+      "attackBonus": 4
+    }
+  ]
+}

@@ -106,7 +106,7 @@
 1. 使用本应用**不必**跑 `npm audit`；按 `./start.sh` / `!_start.bat` 即可。
 2. **不要**执行 `npm audit fix --force`——可能跨大版本乱升依赖并装坏。
 3. 当前 `main` 已修好生产依赖（`@fastify/static`、`sharp`）与前端类型检查工具（`vue-tsc`）；`git pull` 后正常安装，`npm audit` 应干净。
-4. 当前根 `package.json` 已固定批准 `esbuild@0.28.1`、`onnxruntime-node@1.24.3`、`protobufjs@7.6.5` 和 `vue-demi@0.14.10` 的安装脚本，正常安装不应再出现待审批提示。旧检出版本如有提示，应审阅当前版本后执行 `npm approve-scripts esbuild onnxruntime-node protobufjs vue-demi`；这类提示与上面的 CVE 列表不是一类问题。
+4. 当前根 `package.json` 已固定批准 `esbuild@0.28.1`、`onnxruntime-node@1.19.2`（LanceDB 嵌套 Transformers）、`onnxruntime-node@1.24.3`、`protobufjs@7.6.5` 和 `vue-demi@0.14.10` 的安装脚本，正常安装不应再出现待审批提示。旧检出版本如有提示，应审阅当前版本后执行 `npm approve-scripts esbuild onnxruntime-node protobufjs vue-demi`；这类提示与上面的 CVE 列表不是一类问题。
 
 ---
 

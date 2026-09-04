@@ -4,6 +4,10 @@ import { reactive } from 'vue'
 export type ConversationPluginSettingsBag = Record<string, unknown>
 
 type SettingsListener = (settings: ConversationPluginSettingsBag) => void
+type PluginSettingsListener = (
+  conversationId: string,
+  settings: ConversationPluginSettingsBag,
+) => void
 
 function convPluginKey(conversationId: string, pluginId: string): string {
   return `${conversationId}\x1f${pluginId}`
@@ -17,6 +21,7 @@ export const useConversationPluginSettingsStore = defineStore(
     >({})
     const loadedKeys = reactive(new Set<string>())
     const listeners = new Map<string, Set<SettingsListener>>()
+    const pluginListeners = new Map<string, Set<PluginSettingsListener>>()
 
     function isLoaded(conversationId: string, pluginId: string): boolean {
       return loadedKeys.has(convPluginKey(conversationId, pluginId))
@@ -47,10 +52,15 @@ export const useConversationPluginSettingsStore = defineStore(
       pluginId: string,
       settings: ConversationPluginSettingsBag,
     ): void {
-      const set = listeners.get(convPluginKey(conversationId, pluginId))
-      if (!set) return
       const snap = { ...settings }
-      for (const cb of set) cb(snap)
+      const set = listeners.get(convPluginKey(conversationId, pluginId))
+      if (set) {
+        for (const cb of set) cb(snap)
+      }
+      const pluginSet = pluginListeners.get(pluginId)
+      if (pluginSet) {
+        for (const cb of pluginSet) cb(conversationId, snap)
+      }
     }
 
     function setBag(
@@ -82,6 +92,17 @@ export const useConversationPluginSettingsStore = defineStore(
       }
     }
 
+    function subscribePlugin(
+      pluginId: string,
+      listener: PluginSettingsListener,
+    ): () => void {
+      if (!pluginListeners.has(pluginId)) pluginListeners.set(pluginId, new Set())
+      pluginListeners.get(pluginId)!.add(listener)
+      return () => {
+        pluginListeners.get(pluginId)?.delete(listener)
+      }
+    }
+
     function clearConversation(conversationId: string): void {
       delete bags[conversationId]
       for (const key of [...loadedKeys]) {
@@ -95,6 +116,7 @@ export const useConversationPluginSettingsStore = defineStore(
       }
       loadedKeys.clear()
       listeners.clear()
+      pluginListeners.clear()
     }
 
     return {
@@ -104,6 +126,7 @@ export const useConversationPluginSettingsStore = defineStore(
       conversationBags,
       setBag,
       subscribe,
+      subscribePlugin,
       clearConversation,
       clearAll,
     }

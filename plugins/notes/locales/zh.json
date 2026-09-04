@@ -8,8 +8,6 @@
   "newNote": "新建",
   "loading": "加载中…",
   "empty": "暂无笔记，点击「新建」创建第一条",
-  "emptyTitle": "(空笔记)",
-  "dragReorder": "拖曳排序；聚焦后 Alt+↑/↓ 亦可",
   "back": "返回",
   "edit": "编辑",
   "delete": "删除",

@@ -2,18 +2,19 @@ import { access, mkdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { ApiErrorCodes } from './api-error-codes.js'
 import {
+  chatListEntryFromIndex,
   conversationDir,
   mutateBranchConversationIndex,
   mutateConversationIndex,
   readBranchConversationIndex,
   readConversationIndex,
+  upsertChatListEntry,
   writeBranchConversationIndex,
   writeChunkFile,
   writeConversationIndex,
   type ChunkFile,
   type ConversationIndex,
   type TurnRecord,
-  updateConversationIndexAndList,
 } from './chat-storage.js'
 import {
   collectRegisteredBranchPaths,
@@ -151,12 +152,13 @@ async function writeBranchForkTurnIds(
   ids: string[],
 ): Promise<void> {
   const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))]
-  const next = await updateConversationIndexAndList(conversationId, (idx) => ({
+  const next = await mutateConversationIndex(conversationId, (idx) => ({
     ...idx,
     branchForkTurnIds: unique,
     updatedAt: nowIso(),
   }))
   if (!next) return
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
 }
 
 async function addBranchForkTurnIdToIndex(
@@ -937,7 +939,7 @@ export async function createEmptyConversationBranch(params: {
   }
   if (setActive) {
     try {
-      const nextRoot = await updateConversationIndexAndList(conversationId, (currentRoot) => ({
+      const nextRoot = await mutateConversationIndex(conversationId, (currentRoot) => ({
         ...currentRoot,
         activeBranchPath: fullPath,
         updatedAt: nowIso(),
@@ -946,6 +948,7 @@ export async function createEmptyConversationBranch(params: {
         await rollbackCreatedConversationBranch(conversationId, rollbackCtx)
         return { error: ApiErrorCodes.branch_create_failed, status: 500 }
       }
+      await upsertChatListEntry(chatListEntryFromIndex(nextRoot), nextRoot)
       activeBranchPath = fullPath
     } catch {
       await rollbackCreatedConversationBranch(conversationId, rollbackCtx)
@@ -1161,7 +1164,7 @@ export async function updateConversationActiveBranchPath(
     }
   }
 
-  const next = await updateConversationIndexAndList(id, (idx) => {
+  const next = await mutateConversationIndex(id, (idx) => {
     const out: ConversationIndex = { ...idx, updatedAt: nowIso() }
     if (normalized === null) {
       delete out.activeBranchPath
@@ -1173,6 +1176,8 @@ export async function updateConversationActiveBranchPath(
   if (!next) {
     return { error: ApiErrorCodes.conversation_not_found, status: 404 }
   }
+
+  await upsertChatListEntry(chatListEntryFromIndex(next), next)
   const { syncChatListConversationStats } = await import('./chat-storage.js')
   await syncChatListConversationStats(id)
   return next

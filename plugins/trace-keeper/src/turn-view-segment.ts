@@ -1,6 +1,9 @@
-import type { TraceTurnRef, TurnViewRef } from './types.js'
+import type { TraceTurnRef } from './trace-state-resolve.js'
 
-export type { TurnViewRef } from './types.js'
+export type TurnViewRef = TraceTurnRef & {
+  turnOrdinal: number
+  speakerCharacterId?: string
+}
 
 export function resolveViewSegmentIndex(
   turn: TraceTurnRef,

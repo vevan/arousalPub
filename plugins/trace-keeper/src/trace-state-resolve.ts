@@ -1,6 +1,9 @@
 import { PLUGIN_ID, type TraceKeeperPayload } from './constants.js'
-import { activeReceiveFromView, viewSegmentAt } from './turn-view-segment.js'
-import type { TraceTurnRef, TurnViewRef } from './types.js'
+import {
+  activeReceiveFromView,
+  type TurnViewRef,
+  viewSegmentAt,
+} from './turn-view-segment.js'
 
 export type TurnTraceLookup = {
   activeReceiveIndex?: number
@@ -79,7 +82,7 @@ export function findTracePayloadInTurnPlugins(
   return null
 }
 
-export type { TraceTurnRef } from './types.js'
+export type TraceTurnRef = TurnViewRef
 
 function turnLookup(turn: TraceTurnRef, segmentIndex?: number): TurnTraceLookup {
   const seg = viewSegmentAt(turn, segmentIndex)

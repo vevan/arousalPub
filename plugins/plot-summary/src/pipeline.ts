@@ -26,9 +26,15 @@ import {
   ensureTargetLorebook,
   promptRecoverLorebook,
   refreshAutoSummarizeUi,
-} from './lorebook-flow.js'
+} from './dialogs.js'
 import { isLorebookNotFoundError } from './errors.js'
 import { preparePlotSummarySummarizeContext } from './prepare-context.js'
+
+function setPluginHold(host: PluginHost, hold: boolean) {
+  if (typeof host.conversation.setPluginHold === 'function') {
+    host.conversation.setPluginHold(hold)
+  }
+}
 
 function bumpTaskProgress(host: PluginHost, done: number, total: number) {
   host.ui.progress({
@@ -63,7 +69,7 @@ export async function runSummarizeTasks(
 
   setSummarizeRunning(true)
   host.refreshSlotButtons()
-  const holdToken = host.conversation.acquirePluginHold('plot-summary')
+  setPluginHold(host, true)
 
   let completedTasks = 0
 
@@ -391,7 +397,7 @@ export async function runSummarizeTasks(
     setSummarizeBatchProgress(null)
     setSummarizeRunning(false)
     host.refreshSlotButtons()
-    host.conversation.releasePluginHold('plot-summary', holdToken)
+    setPluginHold(host, false)
     host.ui.clearProgress()
   }
 }

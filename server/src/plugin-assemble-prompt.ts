@@ -125,27 +125,17 @@ export async function runAssemblePluginPrompt(
       apiConfigId,
       messages,
     })
-    return assembleResultAfterPreflight(messages, preflight, req.dryRun === true)
-  }
-
-  return { ok: true, messages }
-}
-
-/**
- * preflight 失败时：正式出站硬失败；dryRun（Prompt 预览）仍返回 messages，
- * 由 preflight.ok=false 标明超限，避免预览被预算门禁整段拦死。
- */
-export function assembleResultAfterPreflight(
-  messages: PromptLayoutMessage[],
-  preflight: {
-    ok: boolean
-    promptTokens: number
-    budget: number
-    code?: string
-  },
-  dryRun: boolean,
-): AssemblePluginPromptResult {
-  if (preflight.ok) {
+    if (!preflight.ok) {
+      return {
+        ok: false,
+        code:
+          preflight.code === 'context_exceeded'
+            ? 'context_exceeded'
+            : (preflight.code ?? 'preflight_failed'),
+        promptTokens: preflight.promptTokens,
+        budget: preflight.budget,
+      }
+    }
     return {
       ok: true,
       messages,
@@ -156,27 +146,8 @@ export function assembleResultAfterPreflight(
       },
     }
   }
-  if (dryRun) {
-    return {
-      ok: true,
-      messages,
-      preflight: {
-        ok: false,
-        promptTokens: preflight.promptTokens,
-        budget: preflight.budget,
-        code: preflight.code,
-      },
-    }
-  }
-  return {
-    ok: false,
-    code:
-      preflight.code === 'context_exceeded'
-        ? 'context_exceeded'
-        : (preflight.code ?? 'preflight_failed'),
-    promptTokens: preflight.promptTokens,
-    budget: preflight.budget,
-  }
+
+  return { ok: true, messages }
 }
 
 export function parseAssemblePluginPromptBody(body: unknown): AssemblePluginPromptRequest | null {

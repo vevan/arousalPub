@@ -18,8 +18,7 @@ export interface PluginHost {
     patchPluginSettings: (partial: Record<string, unknown>) => Promise<Record<string, unknown>>
     getLorebookIds: () => Promise<string[]>
     patchLorebookIds: (lorebookIds: string[]) => Promise<string[]>
-    acquirePluginHold: (owner: string) => string
-    releasePluginHold: (owner: string, token: string) => void
+    setPluginHold?: (hold: boolean) => void
   }
   lorebook: {
     get: (id: string) => Promise<{

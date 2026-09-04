@@ -10,7 +10,6 @@
 ## P1
 
 - [ ] **ST 聊天记录群聊多 bot 导入** — 当前 ST JSONL 导入全部 segment 绑定 `characterIds[0]`；需按 ST `name` 与会话 `characterIds`/`displayNames` 映射各 bot 为 speaker（单 bot 行为不变）。见 `[DOC/devNotes/37](37-st-import-settings-tab.md)`
-- [ ] **迹录 LLM JSON 解析失败时 `jsonrepair` 一次修复** — Together 块 / Separate 等从 LLM 收到的 JSON：`JSON.parse` 失败后用 [`jsonrepair`](https://www.npmjs.com/package/jsonrepair) 再试一次，成功则按修复结果落盘；仍失败才报 `json_parse_failed` / `parse_failed`。接入点 `plugins/trace-keeper/src/parse-block.ts`（`parseTraceKeeperJson`）；手动编辑 / sample 校验保持严格。见 `[DOC/devNotes/30](30-plugin-trace-keeper.md)` §3 · §5
 - [ ] 角色卡扩展规划：json格式以xml结构插入提示词，宿主提供接口，插件可改申请字段。
 
 ## P2
@@ -128,5 +127,3 @@
 | **群聊浮动头像组**（header 锚点 · Mic 只读 · 一次 `/@` 一人）                                                                               | 2026-07-24             | `[DOC/devNotes/35](35-group-chat.md)` §2.8 · `ChatComposerGroupRoster`                                                                                                                             |
 | **插件设置导出 / 导入**（全局 settings + `enabled` · 专用 API · 标题栏按钮）                                                                  | 2026-07-24             | `[DOC/devNotes/09](09-plugin-system-and-guidance-generate.md)` §4 · `settings-portability.ts` · `PluginSettingsPanel`                                                                              |
 | **Graphify 图谱优化全项**（server Import Cycles 20→0 · `index` 路由拆分 · web 巨型 Vue · plugins `tKey` / autoSummarize）                      | 2026-08-05 · `Graphify` | `[DOC/devNotes/47](47-graphify-optimization-backlog.md)` · `.graphifyignore` · `chat-group-turn-ops` / `feature-binding-types` / `src/routes/*`                                                    |
-| **Graphify 重建 + chat.index CL1–CL9**（`chat-list-store` · plugins 三环打断 · 旧 `server/graphify-out/` 清理；二次审计：缺基数绝对值 / `mergeEnrichedChatListEntry`） | 2026-08-17 | `[DOC/devNotes/52](52-graphify-rebuild-and-chat-list-optimization.md)` §6.5–§6.6 · `[DOC/devNotes/47](47-graphify-optimization-backlog.md)` 路径表 · `chat-list-file-lock` |
-| **二次 LLM dryRun 超限仍可预览**（`assembleResultAfterPreflight`：dryRun 返回 messages + `preflight.ok=false`） | 2026-08-17 | `[DOC/devNotes/39](39-plugin-context-and-prompt-assembly.md)` §3 D8 · `[DOC/devNotes/12](12-plugin-plot-summary.md)` §4.1 · `plugin-assemble-prompt.ts` |

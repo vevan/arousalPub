@@ -106,28 +106,61 @@ function hydrateConversationChatBinding(): void {
     chatBinding.value = { ...binding }
     return
   }
+  // 用 !== undefined 保留显式 null（清空），勿用 ?? 回填预设
   chatBinding.value = {
     apiConfigId: binding.apiConfigId,
     inheritGlobal: binding.inheritGlobal,
-    model: binding.model?.trim() || preset.model,
-    contextLength: binding.contextLength ?? preset.contextLength,
-    maxTokens: binding.maxTokens ?? preset.maxTokens,
-    stream: binding.stream ?? preset.stream,
+    model: binding.model !== undefined ? binding.model : preset.model,
+    contextLength:
+      binding.contextLength !== undefined
+        ? binding.contextLength
+        : preset.contextLength,
+    maxTokens:
+      binding.maxTokens !== undefined ? binding.maxTokens : preset.maxTokens,
+    stream: binding.stream !== undefined ? binding.stream : preset.stream,
     requestReasoningChain:
-      binding.requestReasoningChain ?? preset.requestReasoningChain,
-    showReasoningChain: binding.showReasoningChain ?? preset.showReasoningChain,
-    temperature: binding.temperature ?? preset.temperature,
-    topP: binding.topP ?? preset.topP,
-    topK: binding.topK ?? preset.topK,
-    dryMultiplier: binding.dryMultiplier ?? preset.dryMultiplier,
-    dryBase: binding.dryBase ?? preset.dryBase,
-    dryAllowedLength: binding.dryAllowedLength ?? preset.dryAllowedLength,
-    dryPenaltyLastN: binding.dryPenaltyLastN ?? preset.dryPenaltyLastN,
+      binding.requestReasoningChain !== undefined
+        ? binding.requestReasoningChain
+        : preset.requestReasoningChain,
+    showReasoningChain:
+      binding.showReasoningChain !== undefined
+        ? binding.showReasoningChain
+        : preset.showReasoningChain,
+    temperature:
+      binding.temperature !== undefined
+        ? binding.temperature
+        : preset.temperature,
+    topP: binding.topP !== undefined ? binding.topP : preset.topP,
+    topK: binding.topK !== undefined ? binding.topK : preset.topK,
+    dryMultiplier:
+      binding.dryMultiplier !== undefined
+        ? binding.dryMultiplier
+        : preset.dryMultiplier,
+    dryBase: binding.dryBase !== undefined ? binding.dryBase : preset.dryBase,
+    dryAllowedLength:
+      binding.dryAllowedLength !== undefined
+        ? binding.dryAllowedLength
+        : preset.dryAllowedLength,
+    dryPenaltyLastN:
+      binding.dryPenaltyLastN !== undefined
+        ? binding.dryPenaltyLastN
+        : preset.dryPenaltyLastN,
     drySequenceBreakers:
-      binding.drySequenceBreakers ?? [...preset.drySequenceBreakers],
-    frequencyPenalty: binding.frequencyPenalty ?? preset.frequencyPenalty,
-    presencePenalty: binding.presencePenalty ?? preset.presencePenalty,
-    customParamsJson: binding.customParamsJson ?? preset.customParamsJson,
+      binding.drySequenceBreakers !== undefined
+        ? binding.drySequenceBreakers
+        : [...preset.drySequenceBreakers],
+    frequencyPenalty:
+      binding.frequencyPenalty !== undefined
+        ? binding.frequencyPenalty
+        : preset.frequencyPenalty,
+    presencePenalty:
+      binding.presencePenalty !== undefined
+        ? binding.presencePenalty
+        : preset.presencePenalty,
+    customParamsJson:
+      binding.customParamsJson !== undefined
+        ? binding.customParamsJson
+        : preset.customParamsJson,
   }
 }
 
@@ -691,6 +724,8 @@ async function save(scope: 'basic' | 'global' = 'global', notify = true) {
 function onPresetSelect(v: string | null) {
   const presetId = v?.trim()
   if (!presetId) return
+  // 对话参数草稿未保存：勿 switchPreset（model-value 绑 editingPresetId，UI 保持原项）
+  if (!chatUseGlobal.value && conversationDraftDirty.value) return
   conn.switchPreset(presetId)
   if (chatUseGlobal.value) return
   storedChatBinding.value = {

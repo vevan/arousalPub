@@ -554,3 +554,129 @@ export function optionalNumToField(v: number | null | undefined): number | '' {
 }
 
 
+
+/** 表单空输入 → null，避免 merge 时被预设回填。 */
+
+export function fieldToOptionalNumber(
+
+  v: number | string | '' | null | undefined,
+
+): number | null {
+
+  if (v === '' || v === null || v === undefined) return null
+
+  const n = typeof v === 'number' ? v : Number(v)
+
+  return Number.isFinite(n) ? n : null
+
+}
+
+
+
+/**
+
+ * 对话 embedding 表单草稿：显式 null / 空串保留，勿用 ?? 回填全局。
+
+ */
+
+export function resolveEmbeddingFormDraft(
+
+  globalModel: string,
+
+  globalDimensions: number | null,
+
+  override?: ConversationEmbeddingApiSettingsOverride | null,
+
+): { model: string; dimensions: number | '' } {
+
+  if (!override) {
+
+    return {
+
+      model: globalModel,
+
+      dimensions: optionalNumToField(globalDimensions),
+
+    }
+
+  }
+
+  const model = Object.prototype.hasOwnProperty.call(override, 'embeddingModel')
+
+    ? typeof override.embeddingModel === 'string'
+
+      ? override.embeddingModel.trim()
+
+      : ''
+
+    : globalModel
+
+  const dimensions = Object.prototype.hasOwnProperty.call(
+
+    override,
+
+    'embeddingDimensions',
+
+  )
+
+    ? optionalNumToField(override.embeddingDimensions)
+
+    : optionalNumToField(globalDimensions)
+
+  return { model, dimensions }
+
+}
+
+
+
+/**
+
+ * 由表单构造 embedding 覆盖：与全局一致时返回 null（需清除）或 undefined（本无覆盖）。
+
+ */
+
+export function buildEmbeddingOverridePatch(
+
+  globalModel: string,
+
+  globalDimensions: number | null,
+
+  modelRaw: string,
+
+  dimensionsRaw: number | string | '' | null | undefined,
+
+  existingOverride?: ConversationEmbeddingApiSettingsOverride | null,
+
+): ConversationEmbeddingApiSettingsOverride | null | undefined {
+
+  const gModel = globalModel.trim()
+
+  const model = modelRaw.trim()
+
+  const dims = fieldToOptionalNumber(dimensionsRaw)
+
+  const normalizedDims =
+
+    dims === null ? null : normalizeEmbeddingDimensions(dims)
+
+  const patch: ConversationEmbeddingApiSettingsOverride = {}
+
+  if (model && model !== gModel) patch.embeddingModel = model
+
+  if (normalizedDims !== globalDimensions) {
+
+    patch.embeddingDimensions = normalizedDims
+
+  }
+
+  if (Object.keys(patch).length === 0) {
+
+    return hasConversationEmbeddingOverride(existingOverride) ? null : undefined
+
+  }
+
+  return patch
+
+}
+
+

@@ -4,55 +4,11 @@ const PLUGIN_ID = 'notes'
 const PANEL_PLACEMENT = 'rightRail' as const
 const NOTE_TITLE_FALLBACK_LEN = 10
 
-const PANEL_STYLES = `
-.np{display:flex;flex-direction:column;height:100%;font-size:14px;font-family:inherit;color:inherit}
-.np-tabs{display:flex;border-bottom:1px solid var(--v-border-color,#e0e0e0);flex-shrink:0}
-.np-tab{flex:1;padding:8px 4px;text-align:center;cursor:pointer;font-size:12px;border:none;background:none;color:inherit;opacity:.7;transition:color .15s,opacity .15s}
-.np-tab.active{color:var(--v-theme-primary,#1976d2);border-bottom:2px solid var(--v-theme-primary,#1976d2);font-weight:600;opacity:1}
-.np-tab:disabled{opacity:.4;cursor:default}
-.np-toolbar{display:flex;align-items:center;justify-content:space-between;padding:8px 10px 4px;flex-shrink:0}
-.np-toolbar-title{font-size:12px;font-weight:600;opacity:.7;text-transform:uppercase;letter-spacing:.04em}
-.np-btn{border:none;background:none;cursor:pointer;border-radius:4px;padding:4px 8px;font-size:12px;color:var(--v-theme-primary,#1976d2);display:inline-flex;align-items:center;gap:4px;transition:background .15s}
-.np-btn:hover{background:rgba(var(--v-theme-primary-rgb,25,118,210),.08)}
-.np-btn-icon{width:28px;height:28px;padding:0;justify-content:center;border-radius:50%}
-.np-btn-danger{color:#d32f2f}
-.np-btn-danger:hover{background:rgba(211,47,47,.08)}
-.np-list{flex:1;overflow-y:auto;padding:4px 0}
-.np-item{display:flex;align-items:center;padding:8px 10px;border-bottom:1px solid var(--v-border-color,rgba(0,0,0,.06));gap:8px;transition:background .12s,opacity .12s;cursor:grab;user-select:none;-webkit-user-select:none}
-.np-item:hover{background:rgba(0,0,0,.04)}
-.np-item:focus{outline:2px solid var(--v-theme-primary,#1976d2);outline-offset:-2px}
-.np-item:focus:not(:focus-visible){outline:none}
-.np-item:focus-visible{outline:2px solid var(--v-theme-primary,#1976d2);outline-offset:-2px}
-.np-item.active{background:rgba(var(--v-theme-primary-rgb,25,118,210),.08)}
-.np-item.np-item-dragging{opacity:.45;cursor:grabbing}
-.np-item.np-item-drag-over{box-shadow:inset 0 2px 0 0 var(--v-theme-primary,#1976d2)}
-.np-item-handle{flex-shrink:0;width:14px;text-align:center;font-size:12px;line-height:1;opacity:.35;letter-spacing:-1px;pointer-events:none}
-.np-item-title{flex:1;font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;cursor:pointer}
-.np-item-badge{font-size:10px;color:inherit;opacity:.55;white-space:nowrap;flex-shrink:0;pointer-events:none}
-.np-empty{padding:24px 16px;text-align:center;font-size:13px;opacity:.5}
-.np-note{flex:1;display:flex;flex-direction:column;overflow:hidden}
-.np-note-header{display:flex;align-items:center;padding:6px 10px;border-bottom:1px solid var(--v-border-color,rgba(0,0,0,.06));gap:4px;flex-shrink:0}
-.np-note-title-view{flex:1;font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.np-note-body{flex:1;overflow-y:auto;padding:12px 14px}
-.np-note-body-content{line-height:1.6}
-.np-note-body-content p:first-child{margin-top:0}
-.np-note-body-content p:last-child{margin-bottom:0}
-.np-note-body-content input[type=checkbox]{cursor:pointer;accent-color:var(--v-theme-primary,#1976d2)}
-.np-edit{flex:1;display:flex;flex-direction:column;overflow:hidden}
-.np-edit-header{display:flex;align-items:center;padding:6px 10px;border-bottom:1px solid var(--v-border-color,rgba(0,0,0,.06));gap:4px;flex-shrink:0}
-.np-input-title{flex:1;border:none;outline:none;background:none;font-size:14px;font-weight:600;color:inherit;padding:2px 4px}
-.np-input-title::placeholder{opacity:.4}
-.np-textarea{flex:1;border:none;outline:none;background:none;resize:none;font-size:13px;line-height:1.6;padding:12px 14px;font-family:inherit;color:inherit;width:100%;box-sizing:border-box}
-.np-loading{display:flex;align-items:center;justify-content:center;padding:32px;opacity:.5;font-size:13px}
-.np-error{padding:8px 12px;background:rgba(211,47,47,.08);color:#d32f2f;font-size:12px;margin:6px 10px;border-radius:4px}
-`
-
 // ─── Host type (minimal subset we need) ──────────────────────────────────────
 
 type Host = {
   t(key: string, params?: Record<string, unknown>): string
   pluginKey(key: string): string
-  registerStyles(css: string): void
   registerSlotButton(slot: string, def: unknown): void
   session: {
     conversationId: string
@@ -73,7 +29,7 @@ type Host = {
         interactive?: boolean
         routes?: string[]
       }): void
-      setHtml(placement: string, pluginId: string, html: string, opts?: { revision?: number }): void
+      setHtml(placement: string, pluginId: string, html: string, opts?: { interactive?: boolean }): void
       open(placement: string, pluginId?: string): void
       setHidden(placement: string, hidden: boolean): void
       onEvent(
@@ -118,10 +74,10 @@ function makeState(conversationId: string): NotesState {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function displayTitle(note: Note, emptyTitle: string): string {
+function displayTitle(note: Note): string {
   if (note.title.trim()) return note.title.trim()
   const text = note.body.trim()
-  if (!text) return emptyTitle
+  if (!text) return '(空笔记)'
   return text.slice(0, NOTE_TITLE_FALLBACK_LEN) + (text.length > NOTE_TITLE_FALLBACK_LEN ? '…' : '')
 }
 
@@ -139,14 +95,7 @@ function escHtml(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
-/** Drop forged panel action attrs (main: data-tk-*; also strip data-plugin-*). */
-function stripDataPluginAttrs(text: string): string {
-  return text.replace(
-    /\s*data-(?:tk|plugin)-[\w-]*(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?/gi,
-    '',
-  )
-}
-
+// Toggle a checkbox line in raw markdown body
 function toggleCheckboxLine(body: string, lineIndex: number): string {
   const lines = body.split('\n')
   if (lineIndex < 0 || lineIndex >= lines.length) return body
@@ -161,21 +110,59 @@ function toggleCheckboxLine(body: string, lineIndex: number): string {
 
 // ─── Render ──────────────────────────────────────────────────────────────────
 
+function renderStyles(): string {
+  return `<style>
+.np{display:flex;flex-direction:column;height:100%;font-size:14px;font-family:inherit;color:inherit}
+.np-tabs{display:flex;border-bottom:1px solid var(--v-border-color,#e0e0e0);flex-shrink:0}
+.np-tab{flex:1;padding:8px 4px;text-align:center;cursor:pointer;font-size:12px;border:none;background:none;color:inherit;opacity:.7;transition:color .15s,opacity .15s}
+.np-tab.active{color:var(--v-theme-primary,#1976d2);border-bottom:2px solid var(--v-theme-primary,#1976d2);font-weight:600;opacity:1}
+.np-tab:disabled{opacity:.4;cursor:default}
+.np-toolbar{display:flex;align-items:center;justify-content:space-between;padding:8px 10px 4px;flex-shrink:0}
+.np-toolbar-title{font-size:12px;font-weight:600;opacity:.7;text-transform:uppercase;letter-spacing:.04em}
+.np-btn{border:none;background:none;cursor:pointer;border-radius:4px;padding:4px 8px;font-size:12px;color:var(--v-theme-primary,#1976d2);display:inline-flex;align-items:center;gap:4px;transition:background .15s}
+.np-btn:hover{background:rgba(var(--v-theme-primary-rgb,25,118,210),.08)}
+.np-btn-icon{width:28px;height:28px;padding:0;justify-content:center;border-radius:50%}
+.np-btn-danger{color:#d32f2f}
+.np-btn-danger:hover{background:rgba(211,47,47,.08)}
+.np-list{flex:1;overflow-y:auto;padding:4px 0}
+.np-item{display:flex;align-items:center;padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--v-border-color,rgba(0,0,0,.06));gap:8px;transition:background .12s}
+.np-item:hover{background:rgba(0,0,0,.04)}
+.np-item.active{background:rgba(var(--v-theme-primary-rgb,25,118,210),.08)}
+.np-item-title{flex:1;font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.np-item-badge{font-size:10px;color:inherit;opacity:.55;white-space:nowrap;flex-shrink:0}
+.np-empty{padding:24px 16px;text-align:center;font-size:13px;opacity:.5}
+.np-note{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.np-note-header{display:flex;align-items:center;padding:6px 10px;border-bottom:1px solid var(--v-border-color,rgba(0,0,0,.06));gap:4px;flex-shrink:0}
+.np-note-title-view{flex:1;font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.np-note-body{flex:1;overflow-y:auto;padding:12px 14px}
+.np-note-body-content{line-height:1.6}
+.np-note-body-content p:first-child{margin-top:0}
+.np-note-body-content p:last-child{margin-bottom:0}
+.np-note-body-content input[type=checkbox]{cursor:pointer;accent-color:var(--v-theme-primary,#1976d2)}
+.np-edit{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.np-edit-header{display:flex;align-items:center;padding:6px 10px;border-bottom:1px solid var(--v-border-color,rgba(0,0,0,.06));gap:4px;flex-shrink:0}
+.np-input-title{flex:1;border:none;outline:none;background:none;font-size:14px;font-weight:600;color:inherit;padding:2px 4px}
+.np-input-title::placeholder{opacity:.4}
+.np-textarea{flex:1;border:none;outline:none;background:none;resize:none;font-size:13px;line-height:1.6;padding:12px 14px;font-family:inherit;color:inherit;width:100%;box-sizing:border-box}
+.np-loading{display:flex;align-items:center;justify-content:center;padding:32px;opacity:.5;font-size:13px}
+.np-error{padding:8px 12px;background:rgba(211,47,47,.08);color:#d32f2f;font-size:12px;margin:6px 10px;border-radius:4px}
+</style>`
+}
+
 function renderListView(state: NotesState, k: (key: string) => string): string {
   const notes = state.scope === 'global' ? state.globalNotes : state.conversationNotes
   const hasConv = !!state.conversationId
-  const emptyTitle = k('emptyTitle')
 
   const tabs = `
 <div class="np-tabs">
-  <button class="np-tab${state.scope === 'global' ? ' active' : ''}" data-tk-action="scope:global">${k('scopeGlobal')}</button>
-  <button class="np-tab${state.scope === 'conversation' ? ' active' : ''}" ${!hasConv ? 'disabled' : ''} data-tk-action="scope:conversation">${k('scopeConversation')}</button>
+  <button class="np-tab${state.scope === 'global' ? ' active' : ''}" data-plugin-action="scope:global">${k('scopeGlobal')}</button>
+  <button class="np-tab${state.scope === 'conversation' ? ' active' : ''}" ${!hasConv ? 'disabled' : ''} data-plugin-action="scope:conversation">${k('scopeConversation')}</button>
 </div>`
 
   const toolbar = `
 <div class="np-toolbar">
   <span class="np-toolbar-title">${k('panelTitle')}</span>
-  <button class="np-btn" data-tk-action="new-note" title="${k('newNote')}">＋ ${k('newNote')}</button>
+  <button class="np-btn" data-plugin-action="new-note" title="${k('newNote')}">＋ ${k('newNote')}</button>
 </div>`
 
   let listHtml = ''
@@ -184,19 +171,15 @@ function renderListView(state: NotesState, k: (key: string) => string): string {
   } else if (notes.length === 0) {
     listHtml = `<div class="np-empty">${k('empty')}</div>`
   } else {
-    listHtml = notes
-      .map((note) => {
-        const { total, checked } = countCheckboxes(note.body)
-        const badge = total > 0 ? `<span class="np-item-badge">${checked}/${total}</span>` : ''
-        const active = note.id === state.activeNoteId ? ' active' : ''
-        const idEsc = escHtml(note.id)
-        return `<div class="np-item${active}" draggable="true" tabindex="0" data-note-id="${idEsc}" title="${escHtml(k('dragReorder'))}">
-  <span class="np-item-handle" aria-hidden="true">⠿</span>
-  <span class="np-item-title" data-tk-action="open:${idEsc}">${escHtml(displayTitle(note, emptyTitle))}</span>
+    listHtml = notes.map((note) => {
+      const { total, checked } = countCheckboxes(note.body)
+      const badge = total > 0 ? `<span class="np-item-badge">${checked}/${total}</span>` : ''
+      const active = note.id === state.activeNoteId ? ' active' : ''
+      return `<div class="np-item${active}" data-plugin-action="open:${escHtml(note.id)}">
+  <span class="np-item-title">${escHtml(displayTitle(note))}</span>
   ${badge}
 </div>`
-      })
-      .join('')
+    }).join('')
     listHtml = `<div class="np-list">${listHtml}</div>`
   }
 
@@ -212,17 +195,18 @@ function renderViewNote(
   renderMd: (text: string) => string,
   k: (key: string) => string,
 ): string {
-  // Strip any forged data-plugin-* from markdown HTML before we inject checkbox actions
-  const renderedBody = stripDataPluginAttrs(renderMd(note.body))
+  // Inject data-cb-line attributes on checkboxes for click → toggle
+  const renderedBody = renderMd(note.body)
+  // Post-process: add data-cb-line to checkboxes
   const bodyWithCb = injectCheckboxLineAttrs(note.body, renderedBody)
 
   return `
 <div class="np-note">
   <div class="np-note-header">
-    <button class="np-btn np-btn-icon" data-tk-action="back" title="${k('back')}">←</button>
-    <span class="np-note-title-view">${escHtml(displayTitle(note, k('emptyTitle')))}</span>
-    <button class="np-btn np-btn-icon" data-tk-action="edit" title="${k('edit')}">✏</button>
-    <button class="np-btn np-btn-icon np-btn-danger" data-tk-action="delete:${escHtml(note.id)}" title="${k('delete')}">🗑</button>
+    <button class="np-btn np-btn-icon" data-plugin-action="back" title="${k('back')}">←</button>
+    <span class="np-note-title-view">${escHtml(displayTitle(note))}</span>
+    <button class="np-btn np-btn-icon" data-plugin-action="edit" title="${k('edit')}">✏</button>
+    <button class="np-btn np-btn-icon np-btn-danger" data-plugin-action="delete:${escHtml(note.id)}" title="${k('delete')}">🗑</button>
   </div>
   <div class="np-note-body">
     <div class="np-note-body-content">${bodyWithCb}</div>
@@ -234,15 +218,17 @@ function renderEditNote(state: NotesState, k: (key: string) => string): string {
   return `
 <div class="np-edit">
   <div class="np-edit-header">
-    <button class="np-btn np-btn-icon" data-tk-action="cancel-edit" title="${k('cancel')}">←</button>
-    <input class="np-input-title" data-tk-field="edit-title" value="${escHtml(state.editTitle)}" placeholder="${k('titlePlaceholder')}" />
-    <button class="np-btn" data-tk-action="save-note" ${state.saving ? 'disabled' : ''}>${state.saving ? k('saving') : k('save')}</button>
+    <button class="np-btn np-btn-icon" data-plugin-action="cancel-edit" title="${k('cancel')}">←</button>
+    <input class="np-input-title" data-plugin-field="edit-title" value="${escHtml(state.editTitle)}" placeholder="${k('titlePlaceholder')}" />
+    <button class="np-btn" data-plugin-action="save-note" ${state.saving ? 'disabled' : ''}>${state.saving ? k('saving') : k('save')}</button>
   </div>
-  <textarea class="np-textarea" data-tk-field="edit-body" placeholder="${k('bodyPlaceholder')}">${escHtml(state.editBody)}</textarea>
+  <textarea class="np-textarea" data-plugin-field="edit-body" placeholder="${k('bodyPlaceholder')}">${escHtml(state.editBody)}</textarea>
 </div>`
 }
 
-/** Inject data-tk-action on each checkbox input in rendered HTML. */
+/** Inject data-plugin-action on each checkbox input in rendered HTML.
+ * Matches the N-th checkbox in rawBody to the N-th <input type="checkbox"> tag in renderedHtml.
+ */
 function injectCheckboxLineAttrs(rawBody: string, renderedHtml: string): string {
   const lines = rawBody.split('\n')
   const cbLines: number[] = []
@@ -252,19 +238,25 @@ function injectCheckboxLineAttrs(rawBody: string, renderedHtml: string): string 
   if (cbLines.length === 0) return renderedHtml
 
   let cbIdx = 0
+  // marked GFM renders task list checkboxes with `disabled` — remove it so they're clickable
   return renderedHtml.replace(/<input\s[^>]*type="checkbox"[^>]*\/?>/gi, (match) => {
     const lineIndex = cbLines[cbIdx++]
     if (lineIndex === undefined) return match
+    // Remove `disabled` attribute and insert data-plugin-action before the closing > or />
     const withoutDisabled = match.replace(/\s*disabled(?:="[^"]*")?/gi, '')
-    return withoutDisabled.replace(/(\s*\/?>)$/, ` data-tk-action="toggle-cb:${lineIndex}"$1`)
+    return withoutDisabled.replace(/(\s*\/?>)$/, ` data-plugin-action="toggle-cb:${lineIndex}"$1`)
   })
 }
+
+// ─── Main panel renderer ─────────────────────────────────────────────────────
 
 function renderPanel(
   state: NotesState,
   renderMd: (text: string) => string,
   k: (key: string) => string,
 ): string {
+  const styles = renderStyles()
+
   let body = ''
   if (state.editingNoteId !== null) {
     body = renderEditNote(state, k)
@@ -280,7 +272,7 @@ function renderPanel(
     body = renderListView(state, k)
   }
 
-  return `<div class="np">${body}</div>`
+  return `<div class="np">${styles}${body}</div>`
 }
 
 // ─── Register ────────────────────────────────────────────────────────────────
@@ -288,33 +280,11 @@ function renderPanel(
 export function register(host: Host): void {
   const k = (key: string) => host.t(host.pluginKey(key))
 
-  host.registerStyles(PANEL_STYLES)
-
   const state: NotesState = makeState(host.session.conversationId)
 
   function refresh(): void {
     const html = renderPanel(state, (text) => host.render.richMessageToHtml(text), k)
-    host.ui.panel.setHtml(PANEL_PLACEMENT, PLUGIN_ID, html)
-    scheduleBindListDrag()
-  }
-
-  function scheduleBindListDrag(): void {
-    // main host has no onLiveTextMounted; bind after v-html remount.
-    window.setTimeout(() => {
-      const list = document.querySelector<HTMLElement>(
-        `[data-plugin-panel="${PLUGIN_ID}"] .np-list`,
-      )
-      if (list) bindNoteListDrag(list)
-    }, 0)
-  }
-
-  function currentNotes(): Note[] {
-    return state.scope === 'global' ? state.globalNotes : state.conversationNotes
-  }
-
-  function setCurrentNotes(notes: Note[]): void {
-    if (state.scope === 'global') state.globalNotes = notes
-    else state.conversationNotes = notes
+    host.ui.panel.setHtml(PANEL_PLACEMENT, PLUGIN_ID, html, { interactive: true })
   }
 
   async function loadNotes(): Promise<void> {
@@ -352,11 +322,15 @@ export function register(host: Host): void {
         },
       })
       const saved = data.note as Note
-      const notes = currentNotes()
-      const idx = notes.findIndex((n) => n.id === saved.id)
-      if (idx >= 0) notes[idx] = saved
-      else notes.push(saved)
-      setCurrentNotes([...notes])
+      if (state.scope === 'global') {
+        const idx = state.globalNotes.findIndex((n) => n.id === saved.id)
+        if (idx >= 0) state.globalNotes[idx] = saved
+        else state.globalNotes.push(saved)
+      } else {
+        const idx = state.conversationNotes.findIndex((n) => n.id === saved.id)
+        if (idx >= 0) state.conversationNotes[idx] = saved
+        else state.conversationNotes.push(saved)
+      }
       state.activeNoteId = saved.id
       state.editingNoteId = null
     } catch (e) {
@@ -374,7 +348,11 @@ export function register(host: Host): void {
         conversationId: state.conversationId || undefined,
         noteId,
       })
-      setCurrentNotes(currentNotes().filter((n) => n.id !== noteId))
+      if (state.scope === 'global') {
+        state.globalNotes = state.globalNotes.filter((n) => n.id !== noteId)
+      } else {
+        state.conversationNotes = state.conversationNotes.filter((n) => n.id !== noteId)
+      }
       state.activeNoteId = null
       state.editingNoteId = null
     } catch (e) {
@@ -384,11 +362,12 @@ export function register(host: Host): void {
   }
 
   async function toggleCheckbox(noteId: string, lineIndex: number): Promise<void> {
-    const notes = currentNotes()
+    const notes = state.scope === 'global' ? state.globalNotes : state.conversationNotes
     const note = notes.find((n) => n.id === noteId)
     if (!note) return
     const newBody = toggleCheckboxLine(note.body, lineIndex)
     note.body = newBody
+    // Optimistic update
     refresh()
     try {
       await callAction(host, 'save-note', {
@@ -402,179 +381,7 @@ export function register(host: Host): void {
     }
   }
 
-  async function persistNoteOrder(notes: Note[]): Promise<void> {
-    setCurrentNotes(notes)
-    refresh()
-    try {
-      await callAction(host, 'reorder-notes', {
-        scope: state.scope,
-        conversationId: state.conversationId || undefined,
-        ids: notes.map((n) => n.id),
-      })
-    } catch (e) {
-      state.error = e instanceof Error ? e.message : String(e)
-      await loadNotes()
-    }
-  }
-
-  /** Insert `fromId` before `toId` (stable after splice). */
-  async function reorderInsertBefore(fromId: string, toId: string): Promise<void> {
-    if (fromId === toId) return
-    const notes = [...currentNotes()]
-    const fromIdx = notes.findIndex((n) => n.id === fromId)
-    if (fromIdx < 0) return
-    const [moved] = notes.splice(fromIdx, 1)
-    if (!moved) return
-    const insertAt = notes.findIndex((n) => n.id === toId)
-    if (insertAt < 0) {
-      notes.splice(fromIdx, 0, moved)
-      return
-    }
-    notes.splice(insertAt, 0, moved)
-    await persistNoteOrder(notes)
-  }
-
-  async function reorderByDelta(noteId: string, delta: -1 | 1): Promise<void> {
-    const notes = [...currentNotes()]
-    const idx = notes.findIndex((n) => n.id === noteId)
-    const target = idx + delta
-    if (idx < 0 || target < 0 || target >= notes.length) return
-    const tmp = notes[idx]!
-    notes[idx] = notes[target]!
-    notes[target] = tmp
-    await persistNoteOrder(notes)
-  }
-
-  function bindNoteListDrag(listEl: HTMLElement): void {
-    if (listEl.dataset.npDnd === '1') return
-    listEl.dataset.npDnd = '1'
-    let dragId: string | null = null
-    let suppressOpenClick = false
-    let suppressTimer: ReturnType<typeof setTimeout> | null = null
-
-    const clearDragOver = () => {
-      for (const el of listEl.querySelectorAll('.np-item-drag-over')) {
-        el.classList.remove('np-item-drag-over')
-      }
-    }
-
-    const clearDragging = () => {
-      for (const el of listEl.querySelectorAll('.np-item-dragging')) {
-        el.classList.remove('np-item-dragging')
-      }
-    }
-
-    const armSuppressOpenClick = () => {
-      suppressOpenClick = true
-      if (suppressTimer != null) clearTimeout(suppressTimer)
-      suppressTimer = setTimeout(() => {
-        suppressOpenClick = false
-        suppressTimer = null
-      }, 400)
-    }
-
-    // After a successful drag, the browser may still emit a click on the title.
-    listEl.addEventListener(
-      'click',
-      (ev) => {
-        if (!suppressOpenClick) return
-        suppressOpenClick = false
-        if (suppressTimer != null) {
-          clearTimeout(suppressTimer)
-          suppressTimer = null
-        }
-        ev.preventDefault()
-        ev.stopPropagation()
-      },
-      true,
-    )
-
-    listEl.addEventListener('dragstart', (ev) => {
-      const item = (ev.target as HTMLElement | null)?.closest?.('[data-note-id]')
-      if (!(item instanceof HTMLElement) || !listEl.contains(item)) return
-      const id = item.getAttribute('data-note-id')
-      if (!id || !currentNotes().some((n) => n.id === id)) return
-      dragId = id
-      item.classList.add('np-item-dragging')
-      // Prefer a private MIME so external text/plain drops are ignored.
-      try {
-        ev.dataTransfer?.setData('application/x-arousal-note-id', id)
-      } catch {
-        /* some browsers only allow text/plain during dragstart */
-      }
-      ev.dataTransfer?.setData('text/plain', id)
-      if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move'
-    })
-
-    listEl.addEventListener('dragend', () => {
-      if (dragId) armSuppressOpenClick()
-      clearDragOver()
-      clearDragging()
-      dragId = null
-    })
-
-    listEl.addEventListener('dragover', (ev) => {
-      // Only accept in-list drags we started (ignore external text/files).
-      if (!dragId) return
-      ev.preventDefault()
-      if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move'
-      const over = (ev.target as HTMLElement | null)?.closest?.('[data-note-id]')
-      clearDragOver()
-      if (
-        over instanceof HTMLElement &&
-        listEl.contains(over) &&
-        over.getAttribute('data-note-id') !== dragId
-      ) {
-        over.classList.add('np-item-drag-over')
-      }
-    })
-
-    listEl.addEventListener('dragleave', (ev) => {
-      const related = ev.relatedTarget
-      if (related instanceof Node && listEl.contains(related)) return
-      clearDragOver()
-    })
-
-    listEl.addEventListener('drop', (ev) => {
-      if (!dragId) return
-      ev.preventDefault()
-      const fromId = dragId
-      const over = (ev.target as HTMLElement | null)?.closest?.('[data-note-id]')
-      const toId =
-        over instanceof HTMLElement && listEl.contains(over)
-          ? over.getAttribute('data-note-id')
-          : null
-      clearDragOver()
-      clearDragging()
-      armSuppressOpenClick()
-      dragId = null
-      if (!toId || !currentNotes().some((n) => n.id === fromId)) return
-      if (!currentNotes().some((n) => n.id === toId)) return
-      void reorderInsertBefore(fromId, toId)
-    })
-
-    // Keyboard: focus a row, then Alt+↑/↓ to reorder.
-    listEl.addEventListener('keydown', (ev) => {
-      if (!ev.altKey || ev.repeat || ev.ctrlKey || ev.metaKey) return
-      if (ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown') return
-      const item = (ev.target as HTMLElement | null)?.closest?.('[data-note-id]')
-      if (!(item instanceof HTMLElement) || !listEl.contains(item)) return
-      const noteId = item.getAttribute('data-note-id')
-      if (!noteId) return
-      ev.preventDefault()
-      ev.stopPropagation()
-      void reorderByDelta(noteId, ev.key === 'ArrowUp' ? -1 : 1).then(() => {
-        window.setTimeout(() => {
-          document
-            .querySelector<HTMLElement>(
-              `[data-plugin-panel="${PLUGIN_ID}"] .np-list [data-note-id="${CSS.escape(noteId)}"]`,
-            )
-            ?.focus()
-        }, 0)
-      })
-    })
-  }
-
+  // Register panel
   host.ui.panel.register({
     placement: PANEL_PLACEMENT,
     tabIcon: 'mdi-note-text-outline',
@@ -583,11 +390,13 @@ export function register(host: Host): void {
     routes: ['chat'],
   })
 
+  // Register toolbar button
   host.registerSlotButton('composer-toolbar', {
     id: `${PLUGIN_ID}-open`,
     icon: 'mdi-note-edit-outline',
     tooltipKey: host.pluginKey('tooltipOpen'),
     onClick: () => {
+      // Update conversationId to current
       state.conversationId = host.session.conversationId
       loadNotes()
         .then(() => {
@@ -601,6 +410,7 @@ export function register(host: Host): void {
     },
   })
 
+  // Panel event handlers
   host.ui.panel.onEvent(PANEL_PLACEMENT, PLUGIN_ID, {
     onAction({ action }) {
       if (action === 'scope:global') {
@@ -627,7 +437,8 @@ export function register(host: Host): void {
         return
       }
       if (action.startsWith('open:')) {
-        state.activeNoteId = action.slice('open:'.length)
+        const noteId = action.slice('open:'.length)
+        state.activeNoteId = noteId
         state.editingNoteId = null
         refresh()
         return
@@ -639,7 +450,8 @@ export function register(host: Host): void {
         return
       }
       if (action === 'edit') {
-        const note = currentNotes().find((n) => n.id === state.activeNoteId)
+        const notes = state.scope === 'global' ? state.globalNotes : state.conversationNotes
+        const note = notes.find((n) => n.id === state.activeNoteId)
         if (!note) return
         state.editingNoteId = note.id
         state.editTitle = note.title
@@ -648,23 +460,30 @@ export function register(host: Host): void {
         return
       }
       if (action === 'cancel-edit') {
-        state.editingNoteId = null
+        if (state.editingNoteId === 'new') {
+          state.editingNoteId = null
+        } else {
+          // back to view
+          state.editingNoteId = null
+        }
         refresh()
         return
       }
       if (action === 'save-note') {
-        void saveCurrentNote()
+        saveCurrentNote()
         return
       }
       if (action.startsWith('delete:')) {
-        void deleteNote(action.slice('delete:'.length))
+        const noteId = action.slice('delete:'.length)
+        deleteNote(noteId)
         return
       }
       if (action.startsWith('toggle-cb:')) {
         const lineIndex = parseInt(action.slice('toggle-cb:'.length), 10)
         if (state.activeNoteId && Number.isFinite(lineIndex)) {
-          void toggleCheckbox(state.activeNoteId, lineIndex)
+          toggleCheckbox(state.activeNoteId, lineIndex)
         }
+        return
       }
     },
     onInput({ field, value }) {
@@ -678,6 +497,11 @@ export function register(host: Host): void {
     },
   })
 
+  // Initial render (empty state)
   refresh()
-  void loadNotes()
+
+  // Load notes when conversation changes
+  // Watch is not available here; we reload on panel open via toolbar button.
+  // Additionally do an initial load.
+  loadNotes()
 }

@@ -29,7 +29,6 @@ const PANEL_BASE: Record<string, unknown> = {
     'data-tk-action',
     'data-tk-field',
     'data-tk-panel',
-    'draggable',
     'open',
     'hidden',
     'viewBox',

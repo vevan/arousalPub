@@ -3,8 +3,11 @@ import ApiModelPickerDialog from '@/components/settings/ApiModelPickerDialog.vue
 import { useConnectionStore } from '@/stores/connection'
 import {
   buildChatBindingPatch,
+  buildEmbeddingOverridePatch,
+  fieldToOptionalNumber,
   mergePresetWithChatBinding,
   optionalNumToField,
+  resolveEmbeddingFormDraft,
   type ConversationChatBinding,
   type ConversationEmbeddingApiSettingsOverride,
   type ResolvedConversationChatDisplay,
@@ -13,14 +16,13 @@ import {
   formatDryBreakersForTextarea,
   parseDryBreakersFromTextarea,
 } from '@/utils/dry-sampler'
-import { normalizeEmbeddingDimensions } from '@/utils/embedding-api-settings'
 import type { ApiPreset } from '@/stores/connection'
 import { storeToRefs } from 'pinia'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-let lastChatBindingJson = ''
-let lastEmbeddingPatchJson = ''
+const lastChatBindingJson = ref('')
+const lastEmbeddingPatchJson = ref('')
 
 const props = withDefaults(defineProps<{
   chatUseGlobal: boolean
@@ -132,39 +134,28 @@ function onModelPicked(id: string) {
   if (props.autoSave !== false) flushChatSave()
 }
 
+/** 空输入记为 null，避免 merge 时回填预设导致「清空又恢复」。 */
 function bindingFromForm(): ConversationChatBinding {
   const b: ConversationChatBinding = {}
   if (chatPresetSelect.value && chatPresetSelect.value !== INHERIT) {
     b.apiConfigId = chatPresetSelect.value
   }
   if (chatModel.value.trim()) b.model = chatModel.value.trim()
-  if (chatContextLength.value !== '') {
-    b.contextLength = Number(chatContextLength.value)
-  }
-  if (chatMaxTokens.value !== '') b.maxTokens = Number(chatMaxTokens.value)
+  b.contextLength = fieldToOptionalNumber(chatContextLength.value)
+  b.maxTokens = fieldToOptionalNumber(chatMaxTokens.value)
   b.stream = chatStream.value
   b.requestReasoningChain = chatRequestReasoning.value
   b.showReasoningChain = chatShowReasoning.value
-  if (chatTemperature.value !== '') b.temperature = Number(chatTemperature.value)
-  if (chatTopP.value !== '') b.topP = Number(chatTopP.value)
-  if (chatTopK.value !== '') b.topK = Number(chatTopK.value)
-  if (chatDryMultiplier.value !== '') {
-    b.dryMultiplier = Number(chatDryMultiplier.value)
-  }
-  if (chatDryBase.value !== '') b.dryBase = Number(chatDryBase.value)
-  if (chatDryAllowedLength.value !== '') {
-    b.dryAllowedLength = Number(chatDryAllowedLength.value)
-  }
-  if (chatDryPenaltyLastN.value !== '') {
-    b.dryPenaltyLastN = Number(chatDryPenaltyLastN.value)
-  }
+  b.temperature = fieldToOptionalNumber(chatTemperature.value)
+  b.topP = fieldToOptionalNumber(chatTopP.value)
+  b.topK = fieldToOptionalNumber(chatTopK.value)
+  b.dryMultiplier = fieldToOptionalNumber(chatDryMultiplier.value)
+  b.dryBase = fieldToOptionalNumber(chatDryBase.value)
+  b.dryAllowedLength = fieldToOptionalNumber(chatDryAllowedLength.value)
+  b.dryPenaltyLastN = fieldToOptionalNumber(chatDryPenaltyLastN.value)
   b.drySequenceBreakers = parseDryBreakersFromTextarea(dryBreakersText.value)
-  if (chatFrequencyPenalty.value !== '') {
-    b.frequencyPenalty = Number(chatFrequencyPenalty.value)
-  }
-  if (chatPresencePenalty.value !== '') {
-    b.presencePenalty = Number(chatPresencePenalty.value)
-  }
+  b.frequencyPenalty = fieldToOptionalNumber(chatFrequencyPenalty.value)
+  b.presencePenalty = fieldToOptionalNumber(chatPresencePenalty.value)
   b.customParamsJson = chatCustomParamsJson.value
   return b
 }
@@ -262,16 +253,16 @@ function syncFromProps() {
   if (props.embeddingUseGlobal) {
     prefillEmbeddingDraftFromGlobal()
   } else {
-    embeddingModel.value =
-      props.embeddingOverride?.embeddingModel?.trim() ||
-      props.globalEmbeddingModel
-    embeddingDimensions.value =
-      props.embeddingOverride?.embeddingDimensions ??
-      props.globalEmbeddingDimensions ??
-      ''
+    const draft = resolveEmbeddingFormDraft(
+      props.globalEmbeddingModel,
+      props.globalEmbeddingDimensions,
+      props.embeddingOverride,
+    )
+    embeddingModel.value = draft.model
+    embeddingDimensions.value = draft.dimensions
   }
-  lastChatBindingJson = ''
-  lastEmbeddingPatchJson = ''
+  lastChatBindingJson.value = ''
+  lastEmbeddingPatchJson.value = ''
   if (draftDirty.value) {
     draftDirty.value = false
     emit('draftDirty', false)
@@ -348,16 +339,6 @@ function inheritedBinding(): ConversationChatBinding {
   return { ...props.chatBinding, inheritGlobal: true }
 }
 
-function onEmbeddingUseGlobalChange(useGlobal: boolean | null) {
-  if (useGlobal === null) return
-  emit('update:embeddingUseGlobal', useGlobal)
-  if (useGlobal) {
-    emit('saveEmbedding', null)
-  } else {
-    prefillEmbeddingDraftFromGlobal()
-  }
-}
-
 function getDraftBinding(): ConversationChatBinding | null | undefined {
   if (props.chatUseGlobal) {
     return inheritedBinding()
@@ -373,20 +354,53 @@ function getDraftBinding(): ConversationChatBinding | null | undefined {
   return binding
 }
 
-function flushChatSave(force = false) {
-  if (props.autoSave === false && !force) return
+function flushChatSave() {
+  if (props.autoSave === false) return
   const binding = getDraftBinding()
   if (binding == null) return
   const snap = JSON.stringify(binding)
-  if (snap === lastChatBindingJson) return
-  lastChatBindingJson = snap
+  if (snap === lastChatBindingJson.value) return
+  lastChatBindingJson.value = snap
   emit('saveChat', binding)
+}
+
+function onChatFieldEdit() {
+  markDraftDirty()
+}
+
+function onChatFieldBlur() {
+  if (props.autoSave !== false) flushChatSave()
+}
+
+function onChatToggleEdit() {
+  markDraftDirty()
+  if (props.autoSave !== false) flushChatSave()
+}
+
+function getDraftEmbedding():
+  | ConversationEmbeddingApiSettingsOverride
+  | null
+  | undefined {
+  if (props.embeddingUseGlobal) return null
+  return buildEmbeddingOverridePatch(
+    props.globalEmbeddingModel,
+    props.globalEmbeddingDimensions,
+    embeddingModel.value,
+    embeddingDimensions.value,
+    props.embeddingOverride,
+  )
+}
+
+function saveEmbeddingDraft(): void {
+  const patch = getDraftEmbedding()
+  if (patch === undefined) return
+  emit('saveEmbedding', patch)
 }
 
 function saveDraft(): void {
   const binding = getDraftBinding()
-  if (binding === undefined) return
-  emit('saveChat', binding)
+  if (binding !== undefined) emit('saveChat', binding)
+  if (props.showEmbedding !== false) saveEmbeddingDraft()
 }
 
 function markDraftSaved(): void {
@@ -396,33 +410,44 @@ function markDraftSaved(): void {
 }
 
 function flushEmbeddingSave() {
-  if (props.embeddingUseGlobal) return
-  const gModel = props.globalEmbeddingModel.trim()
-  const gDims = props.globalEmbeddingDimensions
-  const model = embeddingModel.value.trim()
-  const dimsRaw = embeddingDimensions.value
-  const dims =
-    dimsRaw === '' || dimsRaw === null
-      ? null
-      : normalizeEmbeddingDimensions(Number(dimsRaw))
-  const patch: ConversationEmbeddingApiSettingsOverride = {}
-  if (model && model !== gModel) patch.embeddingModel = model
-  if (dims !== gDims) patch.embeddingDimensions = dims
-  if (Object.keys(patch).length === 0) return
-  const snap = JSON.stringify(patch)
-  if (snap === lastEmbeddingPatchJson) return
-  lastEmbeddingPatchJson = snap
+  if (props.autoSave === false) return
+  const patch = getDraftEmbedding()
+  if (patch === undefined) return
+  const snap = patch === null ? 'null' : JSON.stringify(patch)
+  if (snap === lastEmbeddingPatchJson.value) return
+  lastEmbeddingPatchJson.value = snap
   emit('saveEmbedding', patch)
+}
+
+function onEmbeddingFieldEdit() {
+  markDraftDirty()
+}
+
+function onEmbeddingFieldBlur() {
+  if (props.autoSave !== false) flushEmbeddingSave()
+}
+
+function onEmbeddingUseGlobalChange(useGlobal: boolean | null) {
+  if (useGlobal === null) return
+  emit('update:embeddingUseGlobal', useGlobal)
+  markDraftDirty()
+  if (useGlobal) {
+    if (props.autoSave !== false) emit('saveEmbedding', null)
+  } else {
+    prefillEmbeddingDraftFromGlobal()
+  }
 }
 
 onUnmounted(() => {
   if (props.autoSave !== false) flushChatSave()
-  flushEmbeddingSave()
+  if (props.autoSave !== false) flushEmbeddingSave()
 })
 
 defineExpose({
   getDraftBinding,
+  getDraftEmbedding,
   saveDraft,
+  saveEmbeddingDraft,
   markDraftSaved,
   syncFromProps,
   isDraftDirty: draftDirty,
@@ -501,7 +526,8 @@ defineExpose({
           min="0"
           step="1"
           :disabled="disabled"
-          @blur="flushChatSave"
+          @update:model-value="onChatFieldEdit"
+          @blur="onChatFieldBlur"
         />
       </div>
 
@@ -516,7 +542,8 @@ defineExpose({
           min="1"
           step="1"
           :disabled="disabled"
-          @blur="flushChatSave"
+          @update:model-value="onChatFieldEdit"
+          @blur="onChatFieldBlur"
         />
       </div>
 
@@ -527,7 +554,7 @@ defineExpose({
           color="primary"
           hide-details
           :disabled="disabled"
-          @blur="flushChatSave"
+          @update:model-value="onChatToggleEdit"
         />
       </div>
 
@@ -540,7 +567,7 @@ defineExpose({
           color="primary"
           density="comfortable"
           :disabled="disabled"
-          @blur="flushChatSave"
+          @update:model-value="onChatToggleEdit"
         />
       </div>
 
@@ -553,7 +580,7 @@ defineExpose({
           color="primary"
           density="comfortable"
           :disabled="disabled"
-          @blur="flushChatSave"
+          @update:model-value="onChatToggleEdit"
         />
       </div>
 
@@ -569,7 +596,8 @@ defineExpose({
           variant="outlined"
           hide-details="auto"
           :disabled="disabled"
-          @blur="flushChatSave"
+          @update:model-value="onChatFieldEdit"
+          @blur="onChatFieldBlur"
         />
       </div>
 
@@ -585,7 +613,8 @@ defineExpose({
           variant="outlined"
           hide-details="auto"
           :disabled="disabled"
-          @blur="flushChatSave"
+          @update:model-value="onChatFieldEdit"
+          @blur="onChatFieldBlur"
         />
       </div>
 
@@ -602,7 +631,8 @@ defineExpose({
           variant="outlined"
           hide-details="auto"
           :disabled="disabled"
-          @blur="flushChatSave"
+          @update:model-value="onChatFieldEdit"
+          @blur="onChatFieldBlur"
         />
       </div>
 
@@ -628,7 +658,8 @@ defineExpose({
                 variant="outlined"
                 hide-details="auto"
                 :disabled="disabled"
-                @blur="flushChatSave"
+                @update:model-value="onChatFieldEdit"
+                @blur="onChatFieldBlur"
               />
             </div>
             <div class="conv-api-settings__field">
@@ -641,7 +672,8 @@ defineExpose({
                 variant="outlined"
                 hide-details="auto"
                 :disabled="disabled"
-                @blur="flushChatSave"
+                @update:model-value="onChatFieldEdit"
+                @blur="onChatFieldBlur"
               />
             </div>
             <div class="conv-api-settings__field">
@@ -655,7 +687,8 @@ defineExpose({
                 variant="outlined"
                 hide-details="auto"
                 :disabled="disabled"
-                @blur="flushChatSave"
+                @update:model-value="onChatFieldEdit"
+                @blur="onChatFieldBlur"
               />
             </div>
             <div class="conv-api-settings__field">
@@ -671,7 +704,8 @@ defineExpose({
                 variant="outlined"
                 hide-details="auto"
                 :disabled="disabled"
-                @blur="flushChatSave"
+                @update:model-value="onChatFieldEdit"
+                @blur="onChatFieldBlur"
               />
             </div>
             <div class="conv-api-settings__field">
@@ -685,7 +719,8 @@ defineExpose({
                 auto-grow
                 spellcheck="false"
                 :disabled="disabled"
-                @blur="flushChatSave"
+                @update:model-value="onChatFieldEdit"
+                @blur="onChatFieldBlur"
               />
             </div>
           </v-expansion-panel-text>
@@ -704,7 +739,8 @@ defineExpose({
           variant="outlined"
           hide-details="auto"
           :disabled="disabled"
-          @blur="flushChatSave"
+          @update:model-value="onChatFieldEdit"
+          @blur="onChatFieldBlur"
         />
       </div>
 
@@ -720,7 +756,8 @@ defineExpose({
           variant="outlined"
           hide-details="auto"
           :disabled="disabled"
-          @blur="flushChatSave"
+          @update:model-value="onChatFieldEdit"
+          @blur="onChatFieldBlur"
         />
       </div>
 
@@ -733,7 +770,8 @@ defineExpose({
           auto-grow
           spellcheck="false"
           :disabled="disabled"
-          @blur="flushChatSave"
+          @update:model-value="onChatFieldEdit"
+          @blur="onChatFieldBlur"
         />
       </div>
       <v-btn
@@ -784,7 +822,8 @@ defineExpose({
             variant="outlined"
             hide-details="auto"
             :disabled="disabled"
-            @blur="flushEmbeddingSave"
+            @update:model-value="onEmbeddingFieldEdit"
+            @blur="onEmbeddingFieldBlur"
           />
         </div>
         <div class="conv-api-settings__field">
@@ -798,7 +837,8 @@ defineExpose({
             :hint="$t('settings.embeddingDimensionsHint')"
             persistent-hint
             :disabled="disabled"
-            @blur="flushEmbeddingSave"
+            @update:model-value="onEmbeddingFieldEdit"
+            @blur="onEmbeddingFieldBlur"
           />
         </div>
       </template>

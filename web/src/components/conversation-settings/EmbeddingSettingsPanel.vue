@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import type { ConversationEmbeddingApiSettingsOverride } from '@/utils/conversation-api-settings'
+import {
+  buildEmbeddingOverridePatch,
+  resolveEmbeddingFormDraft,
+  type ConversationEmbeddingApiSettingsOverride,
+} from '@/utils/conversation-api-settings'
 import { ref, watch } from 'vue'
 
 const props = defineProps<{
@@ -17,25 +21,45 @@ const emit = defineEmits<{
 
 const useGlobalDraft = ref(props.useGlobal)
 const model = ref('')
-const dimensions = ref<number | null>(null)
+const dimensions = ref<number | ''>('')
 
 function syncFromProps(): void {
   useGlobalDraft.value = props.useGlobal
-  model.value = props.override?.embeddingModel ?? props.globalModel
-  dimensions.value = props.override?.embeddingDimensions ?? props.globalDimensions
+  const draft = resolveEmbeddingFormDraft(
+    props.globalModel,
+    props.globalDimensions,
+    props.override,
+  )
+  model.value = draft.model
+  dimensions.value = draft.dimensions
 }
 
-watch(() => [props.useGlobal, props.override, props.globalModel, props.globalDimensions], syncFromProps, {
-  deep: true,
-  immediate: true,
-})
+watch(
+  () => [
+    props.useGlobal,
+    JSON.stringify(props.override ?? null),
+    props.globalModel,
+    props.globalDimensions,
+  ],
+  syncFromProps,
+  { immediate: true },
+)
 
 function save(): void {
   emit('update:useGlobal', useGlobalDraft.value)
-  emit('save', useGlobalDraft.value ? null : {
-    embeddingModel: model.value.trim(),
-    embeddingDimensions: dimensions.value,
-  })
+  if (useGlobalDraft.value) {
+    emit('save', null)
+    return
+  }
+  const patch = buildEmbeddingOverridePatch(
+    props.globalModel,
+    props.globalDimensions,
+    model.value,
+    dimensions.value,
+    props.override,
+  )
+  // undefined：与全局一致且本无覆盖 — 仍发 null 语义上「无会话覆盖」
+  emit('save', patch === undefined ? null : patch)
 }
 </script>
 
@@ -62,7 +86,7 @@ function save(): void {
         :disabled="disabled"
       />
       <v-text-field
-        v-model.number="dimensions"
+        v-model="dimensions"
         type="number"
         :label="$t('settings.embeddingDimensions')"
         density="comfortable"

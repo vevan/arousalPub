@@ -168,18 +168,20 @@ export interface PluginCompleteDraftMessage {
 
 export interface PluginDataApi {
   /**
-   * 列出插件数据目录下指定 scope 的文件名列表（相对名，不含路径）。
+   * 列出插件数据目录下指定 scope 的**单层**文件名（相对名，不含路径）。
    * 需 manifest 权限 `plugin.data`。目录不存在时返回空数组。
    */
   list(scope: 'global' | 'conversation', conversationId?: string): Promise<string[]>
   /**
    * 读取插件数据文件内容。
-   * relPath 为相对于该 scope 根目录的路径（如 `"notes.json"`）。
+   * relPath 为 scope 根下的**单层文件名**（如 `"notes.json"`；禁止 `/`、`..`）。
    * 文件不存在时返回 null。
    */
   read(scope: 'global' | 'conversation', relPath: string, conversationId?: string): Promise<string | null>
   /**
    * 写入插件数据文件（目录自动创建，文件不存在时新建）。
+   * 单文件上限 30 MiB（UTF-8）；超限抛 `plugin_data_too_large`（413）。
+   * 同 scope 下 list/read/write/delete 经宿主串行队列；write 为 tmp+rename 原子落盘。
    */
   write(scope: 'global' | 'conversation', relPath: string, content: string, conversationId?: string): Promise<void>
   /**
@@ -290,7 +292,7 @@ export interface PluginServerHostApi {
       },
     ) => Promise<ChatMessage[]>
   }
-  /** 插件数据文件读写；需 manifest 权限 `plugin.data`。宿主负责路径隔离，插件只提供相对路径。 */
+  /** 插件数据文件读写；需 manifest 权限 `plugin.data`。宿主负责路径隔离（单层文件名）、30 MiB 上限、scope 串行与原子写。 */
   pluginData: PluginDataApi
 }
 

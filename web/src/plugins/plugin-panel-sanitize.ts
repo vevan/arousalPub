@@ -31,6 +31,7 @@ const PANEL_BASE: Record<string, unknown> = {
     'data-plugin-keyboard',
     'data-plugin-canvas',
     'data-plugin-live-text',
+    'draggable',
     'width',
     'height',
     'open',

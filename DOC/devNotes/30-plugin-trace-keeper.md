@@ -183,7 +183,7 @@ interface TraceBundle {
 
 - 用户 template 可含 **`input`、`button`、`textarea`、`radio` tab** 等；不限于 `details/summary`。
 - 插件 **不提供**用户自定义 Handlebars helper（防任意 JS）；仅内置 helper（如 `eq`、`json`）。
-- 手改：`data-tk-field` 点路径写回 `state`；宿主 **`interactive: true`** 消毒档 + 事件委托（§7）。
+- 手改：`data-plugin-field` 点路径写回 `state`；宿主 **`interactive: true`** 消毒档 + 事件委托（§7）。
 - 全量 `setHtml` 会丢焦点：轻量编辑宜 **委托更新 viewModel** 或 debounce 后局部更新；切 Tab / 切轮再整页渲染。
 
 ### 5.4 模型提示（v1：仅样例 JSON）

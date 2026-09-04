@@ -1,13 +1,14 @@
 # Graphify 图谱审计 — 可优化与需修复项
 
 > **状态**：已落地（2026-08-05 · 分支 `Graphify`）  
+> **更新（2026-08-17）**：三份图谱已全量重建，热点数据流与优化点见 [`52`](52-graphify-rebuild-and-chat-list-optimization.md)  
 > **来源**：`/graphify` 对 `server` / `web` / `plugins` 分别建图；`server` 已用 **directed + 完整 AST 重抽** 重建  
 > **索引**：[`DOC/devNotes/04`](04-TODO.md) §已归档 · §文档（原 §P0；server / web / plugins 全项）  
 > **图谱产物**（本地，勿当权威业务文档）：
 >
 > | 范围 | 路径 |
 > |------|------|
-> | server | `server/graphify-out/`（`graph.html` · `GRAPH_REPORT.md` · `graph.json`） |
+> | server | 仓库根 `graphify-out/`（`graph.html` · `GRAPH_REPORT.md` · `graph.json`；旧 `server/graphify-out/` 已于 2026-08-17 删除） |
 > | web | `web/graphify-out/` |
 > | plugins | `plugins/graphify-out/` |
 

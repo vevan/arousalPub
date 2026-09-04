@@ -104,6 +104,10 @@ export function wrapConversationHostForPlugin(
       assertPluginConversationRead(id)
       return conversation.getMeta()
     },
+    async getActiveBranchPath() {
+      assertPluginConversationRead(id)
+      return conversation.getActiveBranchPath()
+    },
     runScope: runScoped,
     runBatch(fn) {
       return runScoped({ writeLock: true, requireIdle: true }, fn)
@@ -112,9 +116,20 @@ export function wrapConversationHostForPlugin(
       assertPluginConversationRead(id)
       return conversation.refresh()
     },
-    setPluginHold(hold: boolean) {
+    acquirePluginHold(owner: string) {
       assertPluginConversationRead(id)
-      return conversation.setPluginHold(hold)
+      if (owner !== id) throw new Error('plugin_hold_owner_mismatch')
+      return conversation.acquirePluginHold(owner)
+    },
+    releasePluginHold(owner: string, token: string) {
+      assertPluginConversationRead(id)
+      if (owner !== id) throw new Error('plugin_hold_owner_mismatch')
+      return conversation.releasePluginHold(owner, token)
+    },
+    hasPluginHold(owner: string, token: string) {
+      assertPluginConversationRead(id)
+      if (owner !== id) throw new Error('plugin_hold_owner_mismatch')
+      return conversation.hasPluginHold(owner, token)
     },
   }
 }

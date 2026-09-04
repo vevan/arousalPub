@@ -446,10 +446,20 @@ export interface PluginWebHost {
     onTurnDataChanged: (handler: () => void) => () => void
     /** `loading` / `regeneratingTurnOrdinal` 变化（发消息、再生开始/结束） */
     onGeneratingChanged: (handler: () => void) => () => void
+    /** 新分支已创建；携带新分支及其直接父路径。 */
+    onBranchCreated: (
+      handler: (event: {
+        conversationId: string
+        parentBranchPath: string
+        branchPath: string
+      }) => void | Promise<void>,
+    ) => () => void
   }
   conversation: {
     getId(): string
     getMeta(): Promise<ConversationMeta>
+    /** 读取当前 active branch；读取失败时 reject，避免误写主路径。 */
+    getActiveBranchPath(): Promise<string>
     runScope(
       opts: ConversationScopeOptions,
       fn: (ctx: ConversationBatchContext) => Promise<void>,
@@ -471,8 +481,10 @@ export interface PluginWebHost {
     getLorebookIds(): Promise<string[]>
     /** 替换本对话资料库绑定列表；需 manifest `conversation.bindings.write` */
     patchLorebookIds(lorebookIds: string[]): Promise<string[]>
-    /** 摘要预览等插件流程占用对话：禁止发送新消息 */
-    setPluginHold(hold: boolean): void
+    /** 获取插件流程的对话占用；必须在流程结束时用同一 owner 和 token 释放。 */
+    acquirePluginHold(owner: string): string
+    releasePluginHold(owner: string, token: string): void
+    hasPluginHold(owner: string, token: string): boolean
   }
   lorebook: {
     list(): Promise<LorebookSummaryDto[]>
@@ -600,6 +612,10 @@ export interface PluginWebHost {
         handlers: {
           onInput?: (e: { field: string; value: string; type: string }) => void
           onAction?: (e: { action: string; target: HTMLElement }) => void
+          onCanvasMounted?: (e: { canvas: HTMLCanvasElement; canvasId: string }) => void
+          onLiveTextMounted?: (e: { element: HTMLElement; textId: string }) => void
+          onPointer?: (e: { canvasId: string; x: number; y: number }) => void
+          onKeydown?: (e: { key: string; repeat: boolean; altKey: boolean; ctrlKey: boolean; metaKey: boolean }) => boolean | void
         },
       ): void
     }

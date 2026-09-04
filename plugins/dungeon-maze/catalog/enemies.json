@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "enemies": [
+    {
+      "id": "goblin-skirmisher",
+      "name": "哥布林散兵",
+      "role": "minion",
+      "hp": 7,
+      "ac": 13,
+      "initiativeMod": 2,
+      "attacks": [{ "name": "弯刀", "attackBonus": 4, "damage": "1d6+2" }]
+    },
+    {
+      "id": "maze-dragon",
+      "name": "迷宫幼龙",
+      "role": "boss",
+      "hp": 32,
+      "ac": 15,
+      "initiativeMod": 1,
+      "attacks": [{ "name": "利爪", "attackBonus": 5, "damage": "2d6+3" }]
+    }
+  ]
+}

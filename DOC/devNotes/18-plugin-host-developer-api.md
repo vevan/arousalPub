@@ -148,8 +148,9 @@ export function register(host: PluginWebHost) {
 | `onAssistantReplyComplete(handler)` | 发送/再生流程结束（含 UI 刷新之后） |
 | `onTurnDataChanged(handler)` | swipe / `turn.plugins` 等轮次数据变更 |
 | `onGeneratingChanged(handler)` | `session.loading` 或 `regeneratingTurnOrdinal` 变化（等待回复 UI 等） |
+| `onBranchCreated(handler)` | 新分支已由 UI 创建；事件含 `conversationId`、`parentBranchPath`、`branchPath`。创建流程会等待 handler 完成，适合冻结插件分支状态 |
 
-返回 **取消订阅函数**。持久化类逻辑优先用 `onAssistantReplyPersisted`。
+返回 **取消订阅函数**。持久化类逻辑优先用 `onAssistantReplyPersisted`；`onBranchCreated` handler 可返回 Promise。
 
 **事件字段（persisted）**：`mode`、`traceId?`、`turnOrdinal?`、`receiveId?`、`isFirstTurn?`。
 
@@ -159,12 +160,13 @@ export function register(host: PluginWebHost) {
 |------|------|
 | `getId()` | 当前对话 id |
 | `getMeta()` | `title`、`userDisplayName`、`assistantDisplayName`、`characterIds` 等 |
+| `getActiveBranchPath()` | 当前 `activeBranchPath`；主路径为 `""`。读取失败时抛错，不可当作主路径继续写入 |
 | `runScope(opts, fn)` | 批处理作用域；`fn` 接收 `ConversationBatchContext` |
 | `runBatch(fn)` | `runScope({ writeLock: true, requireIdle: true }, fn)` 别名 |
 | `refresh()` | 写盘后刷新消息列表 |
 | `getPluginSettings()` | 读本对话 `pluginSettings[pluginId]` |
-| `patchPluginSettings(partial)` | 写会话级插件设置（合并进 `index.json`） |
-| `setPluginHold(hold)` | 当前实现：插件长流程占用对话时禁止用户发消息；规划中将由带 owner/token 的 acquire / release **替换**，避免并发插件互相解除占用 |
+| `patchPluginSettings(partial)` | 写会话级插件设置（合并进 `index.json`）。**目标会话始终是调用当下的 `getId()`**，不能传入其它 id；异步落盘须先捕获 id，见 §8.4 |
+| `acquirePluginHold(owner)` / `releasePluginHold(owner, token)` / `hasPluginHold(owner, token)` | 插件长流程占用对话时禁止用户发消息；`acquire` 返回 token，只有同一 owner 携 token 才能释放；`hasPluginHold` 查询当前 session 是否仍持有该 token（离页重建 session 后旧 token 失效）。多个持有者并存时，最后一个释放前 composer 均保持禁用。**禁止**宿主在切分支等路径强制清空其他插件的 hold。 |
 | `appendPluginBlock(body)` | 规划：追加通用插件区块到对话流；非 user / assistant，默认不参与 prompt 组装；见 `DOC/devNotes/09` §5.7 |
 
 **`ConversationBatchContext`**（在 `runScope` 内）：
@@ -394,7 +396,7 @@ const data = await host.plugin.runAction('my-action', {
 | `setHtml(placement, pluginId, html, opts?)` | 更新消毒后 HTML；`interactive` 允许表单/按钮 + 事件委托 |
 | `setHidden(placement, hidden)` | 隐藏/显示指定 rail 的宿主内容（列仍占位） |
 | `open(placement, pluginId?)` | 打开（取消 hidden）并可选聚焦 Tab |
-| `onPanelEvent(placement, pluginId, handlers)` | 面板内 `data-*` 交互回调 |
+| `onPanelEvent(placement, pluginId, handlers)` | 面板内受消毒的通用交互回调：`data-plugin-action`、`data-plugin-field`；Canvas 可声明 `data-plugin-canvas`，并接收其 `onCanvasMounted`、`onPointer` 与仅限 `data-plugin-keyboard` 元素的 `onKeydown`。宿主只转发 Canvas 本身的归一化坐标，不解析插件业务。 |
 
 宿主：**`PluginRailHost.vue`**（左/右 rail；顶栏 `rgba(var(--v-theme-primary), 0.1)` 浅底；当前路由不可用的 Tab **disabled**；无可用内容时 **`app.pluginRailUnavailable`**）。
 
@@ -467,7 +469,7 @@ const data = await host.plugin.runAction('my-action', {
 | **`readConversationTurnAtOrdinal(conversationId, turnOrdinal)`** | 读单轮快照：`segments[]`、`activeSegmentIndex`、`userText`、`plugins`（**无** turn 级 `receives` 镜像，见 **`DOC/devNotes/44`**) |
 | **`readConversationTurnsTail(conversationId, limit?)`** | 尾部多轮，同上 DTO |
 | **`regex.listRules` / `applyText` / `applyMessages`** | 同 Web `host.regex`（读盘 `regex-rules.json` · `server/src/regex-apply.ts`） |
-| **`pluginData.list` / `read` / `write` / `delete`** | 插件数据目录读写（`global` / `conversation` scope）；需 **`plugin.data`**。宿主隔离路径，插件只传相对名 |
+| **`pluginData.list` / `read` / `write` / `delete`** | 插件数据目录读写（`global` / `conversation` scope）；需 **`plugin.data`**。宿主隔离路径；`relPath` 仅允许 scope 根下**单层文件名**（与 `list` 对齐）；单文件上限 **30 MiB**；同 scope 串行；`write` 原子落盘（tmp+rename） |
 
 ### 4.3 `runPluginAction` 与 `turnMerge`
 
@@ -635,6 +637,18 @@ class PluginHostApiError {
 
 参考：`guidance-generate` · `trace-keeper` · **`DOC/devNotes/38`** §3。
 
+### 8.4 异步写 `pluginSettings` 与切会话
+
+`patchPluginSettings` **没有** conversationId 参数，scoped host 在调用时读取当前 `getId()`。插件若在 `await` 之后写入（乐观 UI、动画、队列），必须：
+
+1. 在 `read` / 生成状态时捕获 `conversationId = host.conversation.getId()`。
+2. 每次 `await` 之后若 `getId() !== conversationId` 则放弃 `patch` 与后续 UI 更新。
+3. 模块级 `pending` / in-flight 标志按会话作废；切会话时丢弃，勿把上一会话的快照写入当前会话。
+
+`onPluginSettingsChanged` 在 scoped host 内按 **pluginId** 订阅 store，回调时仅当变更的 `conversationId === getId()` 才转发；旧会话异步落盘**不会**误刷新当前会话 UI。切会话后仍应在 `lifecycle.onTurnDataChanged`（或显式 `getPluginSettings()`）上同步 scope / panel。
+
+`onBranchCreated` 返回取消订阅函数；模块级 `register()` 若可重复进入，须先退订再订阅，避免重复 handler。handler 失败不得拖垮建分支成功 UI（宿主 emit 侧已隔离 reject）。
+
 ---
 
 ## 9. 禁止事项
@@ -692,4 +706,7 @@ class PluginHostApiError {
 | 2026-07-23 | **零字节特化**：`registerSettingsCompanionPanel`；FormDialog `extraAction*` + `titleKeys`/`submitKeys` Record；`completeWithContext` draft opaque；integer `min`/`max` |
 | 2026-07-23 | companion：设置 dialog teleport → 聊天页 prop 下传 `pluginHost` + `ensurePluginById`；draft 宿主硬校验仅 `content: string` |
 | 2026-07-24 | 全局插件 settings 导出/导入：`GET/POST …/settings/export|import`（`DOC/devNotes/09` §4） |
+| 2026-08-13 | §3.5 / §8.4：`patchPluginSettings` 始终打到当前 `getId()`；异步落盘须捕获会话 id |
+| 2026-08-14 | §3.5：`hasPluginHold`；hold 仅由持有者释放。§8.4：`onPluginSettingsChanged` 按 pluginId 订阅并过滤当前会话；`onBranchCreated` 须可退订 |
 | 2026-09-04 | §4.2 / §5.1：`pluginData` 与权限 **`plugin.data`** |
+| 2026-09-04 | §4.2：`pluginData` 单层文件名、30 MiB 上限、同 scope 串行、原子写 |

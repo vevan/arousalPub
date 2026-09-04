@@ -136,7 +136,7 @@ M1 采用普通 server dependency，并使用动态 `import('@huggingface/transf
 
 **安装与构建**：
 
-- `server/package.json` **精确锁定** `@huggingface/transformers@4.0.1`（勿改成 `^`）；传递依赖 `onnxruntime-node@1.24.3` 的 install script 已在根 `package.json` `allowScripts` 批准。
+- `server/package.json` **精确锁定** `@huggingface/transformers@4.0.1`（勿改成 `^`）；传递依赖 `onnxruntime-node@1.24.3` 的 install script 已在根 `package.json` `allowScripts` 批准。另：`@lancedb/lancedb` 可选嵌套的 Transformers 3.x 会带 `onnxruntime-node@1.19.2`，亦已按版本批准，避免 `allow-scripts` 待审警告。
 - `git pull` 后若 lock / `server/package.json` 有变，须经 `./start.sh` / `!_start.bat`（`ensure-deps`）或手动 `npm install` 装入；缺包时 `npm run build -w server` 的 `tsc` 会报 `TS2307: Cannot find module '@huggingface/transformers'`。
 
 ### 4.2 固定模型

@@ -21,6 +21,7 @@ import {
 } from '@/utils/group-chat-turn'
 import { computed, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { emitConversationBranchCreated } from '@/utils/conversation-branch-events'
 
 const SWIPE_PREVIEW_MAX = 80
 
@@ -222,6 +223,11 @@ export function useConversationBranches(params: {
         ...(receiveId ? { forkMessageId: receiveId } : {}),
         ...(trimmed ? { label: trimmed } : {}),
         ...(setActive ? {} : { setActive: false }),
+      })
+      await emitConversationBranchCreated({
+        conversationId: id,
+        parentBranchPath: activeBranchPath.value,
+        branchPath: result.path,
       })
       createBranchDialogOpen.value = false
       pendingCreateTurn.value = null

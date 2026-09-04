@@ -467,7 +467,7 @@ const data = await host.plugin.runAction('my-action', {
 | **`readConversationTurnAtOrdinal(conversationId, turnOrdinal)`** | 读单轮快照：`segments[]`、`activeSegmentIndex`、`userText`、`plugins`（**无** turn 级 `receives` 镜像，见 **`DOC/devNotes/44`**) |
 | **`readConversationTurnsTail(conversationId, limit?)`** | 尾部多轮，同上 DTO |
 | **`regex.listRules` / `applyText` / `applyMessages`** | 同 Web `host.regex`（读盘 `regex-rules.json` · `server/src/regex-apply.ts`） |
-| **`pluginData.list` / `read` / `write` / `delete`** | 插件数据目录读写（`global` / `conversation` scope）；需 **`plugin.data`**。宿主隔离路径，插件只传相对名 |
+| **`pluginData.list` / `read` / `write` / `delete`** | 插件数据目录读写（`global` / `conversation` scope）；需 **`plugin.data`**。宿主隔离路径；`relPath` 仅允许 scope 根下**单层文件名**（与 `list` 对齐）；单文件上限 **30 MiB**；同 scope 串行；`write` 原子落盘（tmp+rename） |
 
 ### 4.3 `runPluginAction` 与 `turnMerge`
 
@@ -693,3 +693,4 @@ class PluginHostApiError {
 | 2026-07-23 | companion：设置 dialog teleport → 聊天页 prop 下传 `pluginHost` + `ensurePluginById`；draft 宿主硬校验仅 `content: string` |
 | 2026-07-24 | 全局插件 settings 导出/导入：`GET/POST …/settings/export|import`（`DOC/devNotes/09` §4） |
 | 2026-09-04 | §4.2 / §5.1：`pluginData` 与权限 **`plugin.data`** |
+| 2026-09-04 | §4.2：`pluginData` 单层文件名、30 MiB 上限、同 scope 串行、原子写 |

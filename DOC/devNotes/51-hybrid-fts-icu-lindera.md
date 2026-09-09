@@ -6,9 +6,9 @@
 
 ## 1. 背景与结论摘要
 
-产品 Hybrid BM25 分词现为：`zh-ngram` / `en` / `zh-jieba` / **`lindera`** / **`icu`**（`@lancedb/lancedb@0.37.1`）。
+产品 Hybrid BM25 分词现为：`zh-ngram` / `en` / `zh-jieba` / **`lindera`** / **`icu`**（`@lancedb/lancedb@0.38.0`）。
 
-| 能力 | `0.30.0`（升级前） | `0.37.1`（当前） |
+| 能力 | `0.30.0`（升级前） | `0.38.0`（当前） |
 |------|------------------|------------------|
 | `icu` / `icu/split` | **不可用**（`unknown base tokenizer`） | **`icu` 已产品化**；`icu/split` 未进主选择器 |
 | `jieba/default` | 可用（需词典 + `LANCE_LANGUAGE_MODEL_HOME`） | 同左（`zh-jieba`） |
@@ -25,11 +25,13 @@
 **明确不做（本轮）**：静默迁移、双写、用 Lindera/ICU 静默替换 `zh-jieba`、把 ICU/Lindera 设为全局默认。
 ## 2. 预构建 Lindera 词典是否可用？
 
+**官方仓库**：[lindera/lindera](https://github.com/lindera/lindera)。后续核对发布版本、词典包与上游兼容性时以此为入口。
+
 **可用，且应优先采用** [lindera/lindera releases](https://github.com/lindera/lindera/releases) 上的预构建 zip，避免本机 `lindera-cli build`。
 
 ### 2.1 Lindera 预构建包对照（v3.0.7）
 
-Lindera 不止日语：同一套形态素引擎可挂不同词典。Lance `0.37.1` 对 `lindera/<name>` **按目录名加载**（缺目录则报 `Invalid directory path`）；官方文档显式举例的是 `ipadic` / `ko-dic` / `unidic`，其余 zip 在引擎侧同样可指向同名子目录，但产品是否上架另议。
+Lindera 不止日语：同一套形态素引擎可挂不同词典。Lance `0.38.0` 对 `lindera/<name>` **按目录名加载**（缺目录则报 `Invalid directory path`）；官方文档显式举例的是 `ipadic` / `ko-dic` / `unidic`，其余 zip 在引擎侧同样可指向同名子目录，但产品是否上架另议。
 
 | Release 资产 | 语言 | Lance `baseTokenizer`（目录名） | 说明 | 产品上架（本轮） |
 |--------------|------|----------------------------------|------|------------------|
@@ -82,7 +84,7 @@ segmenter:
 
 ### M0 — 升级 LanceDB（阻塞项）
 
-1. `server`：`@lancedb/lancedb` `^0.30.0` → **`0.37.1`**（或当时最新稳定；升级后复跑下列冒烟）。
+1. `server`：`@lancedb/lancedb` `^0.30.0` → **`0.37.1`**（当时最新稳定；后续已升级至当前 `0.38.0`，每次升级后复跑下列冒烟）。
 2. 门禁：`npm audit` → **0 vulnerabilities**；全量相关单测（memory / lore / knowledge / scalar / hybrid）。
 3. 回归关注：FTS / mergeInsert / IVF_PQ / `withLanceLanguageModelHome` 锁；Arrow / 平台 native 包。
 4. 冒烟清单（`.tmp/`）：
@@ -245,7 +247,7 @@ M0 升级 LanceDB + 冒烟
 
 ## 7. 验收标准（DoD）
 
-- [x] `@lancedb/lancedb` ≥ `0.37.1`
+- [x] `@lancedb/lancedb` ≥ `0.38.0`
 - [x] 用户可选 **`icu`**
 - [x] 用户可选 **`lindera`**，并在 UI 中选择不同语言包/词典（至少 ipadic；jieba/cc-cedict/ko-dic/unidic 可下载启用；本地 ZIP 按 SHA 自动匹配）
 - [x] **`zh-jieba` 仍可用**；未做静默替换

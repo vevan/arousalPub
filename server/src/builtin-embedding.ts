@@ -111,7 +111,7 @@ async function loadFeatureExtractor(options?: {
   const modelDir = resolveBuiltinEmbeddingModelDir(cacheDir)
   transformers.env.cacheDir = cacheDir
 
-  // Transformers.js 4.0.1 的 pipeline() 会先独立探测远端 tokenizer
+  // Transformers.js 的 pipeline() 会先独立探测远端 tokenizer
   // 文件，且探测不沿用这里固定的 revision/cache。探测失败后它仍会创建
   // tokenizer=null 的 pipeline，直到推理时才报 `this.tokenizer is not a function`。
   // 首次使用时仍让 pipeline 负责下载；文件齐全后始终从固定 revision 的

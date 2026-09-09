@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
-import { createReadStream } from 'node:fs'
+import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { describe, it } from 'node:test'
-import AdmZip from 'adm-zip'
+import { ZipArchive } from 'archiver'
 import {
   DictImportError,
   downloadDictVariant,
@@ -47,12 +47,20 @@ const LEGACY_IPADIC_ZIP = path.join(
   'lindera-ipadic-5.2.0.zip',
 )
 
-function buildLinderaZip(zipPath: string, entries: Array<[string, Buffer]>): void {
-  const zip = new AdmZip()
-  for (const [name, body] of entries) {
-    zip.addFile(name, body)
-  }
-  zip.writeZip(zipPath)
+async function buildLinderaZip(
+  zipPath: string,
+  entries: Array<[string, Buffer]>,
+): Promise<void> {
+  const output = createWriteStream(zipPath)
+  const archive = new ZipArchive({ zlib: { level: 6 } })
+  await new Promise<void>((resolve, reject) => {
+    output.on('close', resolve)
+    output.on('error', reject)
+    archive.on('error', reject)
+    archive.pipe(output)
+    for (const [name, body] of entries) archive.append(body, { name })
+    void archive.finalize()
+  })
 }
 
 describe('lindera zip install', () => {
@@ -62,7 +70,7 @@ describe('lindera zip install', () => {
     const work = await mkdtemp(path.join(tmpdir(), 'lindera-zip-unit-'))
     const zipPath = path.join(work, 'lindera-ipadic-3.0.7.zip')
     try {
-      buildLinderaZip(zipPath, [
+      await buildLinderaZip(zipPath, [
         ...REQUIRED_FILES.map(
           (name) => [`lindera-ipadic/${name}`, Buffer.from(`synthetic-${name}`)] as [string, Buffer],
         ),
@@ -150,13 +158,13 @@ describe('lindera zip install', () => {
     const goodZip = path.join(work, 'good.zip')
     const badZip = path.join(work, 'bad.zip')
     try {
-      buildLinderaZip(goodZip, [
+      await buildLinderaZip(goodZip, [
         ...REQUIRED_FILES.map(
           (name) => [`lindera-ipadic/${name}`, Buffer.from(`good-${name}`)] as [string, Buffer],
         ),
         ['lindera-ipadic/metadata.json', Buffer.from('{"name":"good"}')],
       ])
-      buildLinderaZip(badZip, [
+      await buildLinderaZip(badZip, [
         ['../escape.bin', Buffer.from('pwn')],
         ['C:/Windows/Temp/pwn.txt', Buffer.from('pwn')],
         ...REQUIRED_FILES.map(

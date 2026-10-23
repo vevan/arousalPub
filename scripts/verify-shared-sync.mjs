@@ -55,9 +55,11 @@ const SYNCED_FILES = [
   },
 ]
 
+/** Compare normalized text: the repo stores LF, so a CRLF working copy of the
+ *  source must not read as a content mismatch (see scripts/check-git-eol.mjs). */
 async function fileSha256(filePath) {
-  const buf = await readFile(filePath)
-  return createHash('sha256').update(buf).digest('hex')
+  const text = await readFile(filePath, 'utf8')
+  return createHash('sha256').update(text.replace(/\r\n?/g, '\n'), 'utf8').digest('hex')
 }
 
 async function main() {

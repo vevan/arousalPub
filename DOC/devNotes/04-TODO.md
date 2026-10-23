@@ -18,7 +18,7 @@
 - [ ] **作者注分层** `[DOC/devNotes/28](28-authors-note-layers.md)` — Phase 2 角色 AN + `{{charAuthorsNote}}`（Phase 1 全局 default ✅）
 - [ ] **角色卡内嵌世界书** `[DOC/devNotes/27](27-embedded-character-book.md)` — Phase 1 组装（constant + keyword、`position`、叠加内嵌优先）；Phase 2 角色库查看 / 编辑 UI
 - [ ] **视觉小说模式** — 对话页 VN 式呈现（立绘/场景布局、按句推进等）；待定案与专题文档
-- [ ] **地下城迷宫插件** — 5e 简易战斗、Canvas、**branchPath 隔离 state**、**战斗中 composer hold**、**进迷宫读迹录六维 / 战后 LLM 写回 TK**、catalog + HTML 编辑器、**`importBundle` + catalog-manifest**、叙事写入主对话的**插件区块**。见 `[DOC/devNotes/50](50-plugin-dungeon-maze-vision.md)` §3.4.5 · §3.5.1 · §3.7
+- [ ] **地下城迷宫插件** — M0/M1 已完成；M2 已接入**战后格式化日志填入 composer，用户确认后发送**（§3.5.2）。待做 **进迷宫读迹录六维 / 战后 LLM 写回 TK**、catalog + HTML 编辑器、**`importBundle` + catalog-manifest**、叙事写入主对话的**插件区块**。见 `[DOC/devNotes/50](50-plugin-dungeon-maze-vision.md)` §3.4.5 · §3.5.1 · §3.7
 - [ ] **宿主 `host.assets.importBundle`** — zip → 临时目录完整解压/校验 → 整体替换 `assets/{bundleId}/` + **`onBundleImported`**；配套 `user-assets` 子路径 GET。见 `[DOC/devNotes/09](09-plugin-system-and-guidance-generate.md)` §8.8
 - [ ] **宿主对话流插件区块** — 通用第三类区块（非 user / assistant）；用于展示插件产出，默认不进 prompt。见 `[DOC/devNotes/09](09-plugin-system-and-guidance-generate.md)` §5.7
 

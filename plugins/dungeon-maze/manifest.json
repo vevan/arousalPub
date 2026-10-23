@@ -4,6 +4,27 @@
   "version": "0.1.0",
   "permissions": ["conversation.read"],
   "hooks": [],
+  "settingsSchema": {
+    "version": 1,
+    "fields": [
+      {
+        "key": "combatPromptPosition",
+        "type": "enum",
+        "labelKey": "combatPromptPositionLabel",
+        "enum": ["above", "below"],
+        "default": "below"
+      },
+      {
+        "key": "combatAdditionalPrompt",
+        "type": "text",
+        "widget": "promptTemplate",
+        "labelKey": "combatAdditionalPromptLabel",
+        "descriptionKey": "combatAdditionalPromptDesc",
+        "defaultKey": "combatAdditionalPromptDefault",
+        "maxLength": 4000
+      }
+    ]
+  },
   "ui": {
     "eagerOnRoutes": ["chat"],
     "slots": [

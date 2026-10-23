@@ -90,7 +90,7 @@ export function register(host) {
 | `registerStyles(css)` | 注入 `<style data-plugin-styles="{pluginId}">`；同插件重复调用为**覆盖**更新（仅 scoped host） |
 | `t(key, params?)` | i18n |
 | `pluginKey(key)` | → `plugins.{id}.{key}` |
-| `composer` | 输入区引用（如 `userInput`） |
+| `composer` | `userInput` 为只读 getter；使用 `setUserInput(text)` 更新当前输入框草稿，不自动发送 |
 | `session` | 当前 `useChatSession`（`turns`、`loading`、写锁等） |
 
 **Slot 名称（常用）**：`composer-toolbar`、`turn-block-head`（章回 divider 下）、`assistant-turn-footer`、`user-turn-footer`（以 manifest 声明为准）。

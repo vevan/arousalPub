@@ -3,6 +3,7 @@ export { ConversationHostError } from '@/plugins/conversation-host'
 
 export interface ComposerRef {
   get userInput(): string
+  setUserInput(text: string): void
 }
 
 export interface AssistantReplyCompleteEvent {

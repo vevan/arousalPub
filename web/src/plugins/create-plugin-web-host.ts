@@ -347,6 +347,9 @@ export function createPluginWebHost(session: ChatSession): {
     get userInput() {
       return session.userInput
     },
+    setUserInput(text) {
+      session.userInput = text
+    },
   }
 
   const host: PluginWebHost = {

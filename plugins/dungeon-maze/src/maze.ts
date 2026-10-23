@@ -408,8 +408,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isCombatant(value: unknown): boolean {
   return isRecord(value) && typeof value.id === 'string' && typeof value.name === 'string' &&
-    Number.isFinite(value.hp) && value.hp >= 0 && Number.isFinite(value.hpMax) && value.hpMax > 0 && value.hp <= value.hpMax &&
-    Number.isFinite(value.ac) && value.ac >= 1 && Number.isFinite(value.initiativeMod) && Number.isFinite(value.attackBonus) &&
+    typeof value.hp === 'number' && Number.isFinite(value.hp) && value.hp >= 0 &&
+    typeof value.hpMax === 'number' && Number.isFinite(value.hpMax) && value.hpMax > 0 && value.hp <= value.hpMax &&
+    typeof value.ac === 'number' && Number.isFinite(value.ac) && value.ac >= 1 && Number.isFinite(value.initiativeMod) && Number.isFinite(value.attackBonus) &&
     typeof value.damage === 'string'
 }
 
@@ -427,14 +428,14 @@ function isCombatLogEntry(value: unknown): boolean {
 
 function isDungeonCombatState(value: unknown): value is DungeonCombatState {
   if (!isRecord(value) || !Array.isArray(value.initiative) || !Array.isArray(value.combatants) ||
-    !Array.isArray(value.log) || !Number.isInteger(value.currentTurn) ||
+    !Array.isArray(value.log) || typeof value.currentTurn !== 'number' || !Number.isInteger(value.currentTurn) ||
     (value.outcome !== null && value.outcome !== 'victory' && value.outcome !== 'defeat')) return false
   if (value.combatants.length < 2 || value.initiative.length !== value.combatants.length ||
     value.currentTurn < 0 || value.currentTurn >= value.initiative.length || !value.combatants.every(isCombatant)) return false
   const combatantIds = new Set(value.combatants.map((combatant) => combatant.id))
   if (combatantIds.size !== value.combatants.length) return false
   return value.initiative.every((entry) => isRecord(entry) && typeof entry.actorId === 'string' && combatantIds.has(entry.actorId) &&
-    Number.isInteger(entry.roll) && entry.roll >= 1 && entry.roll <= 20 && Number.isFinite(entry.total)) &&
+    typeof entry.roll === 'number' && Number.isInteger(entry.roll) && entry.roll >= 1 && entry.roll <= 20 && Number.isFinite(entry.total)) &&
     value.log.every(isCombatLogEntry)
 }
 

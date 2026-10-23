@@ -10,6 +10,7 @@ import {
   type BranchCopyEvent,
 } from './branch-copies.js'
 import { DEFAULT_DUNGEON_CATALOG } from './catalog.js'
+import { formatCombatReport } from './narration.js'
 import {
   completeDungeonCombat,
   createDungeonMaze,
@@ -35,6 +36,8 @@ type PluginHost = {
   registerSlotButton(slot: string, def: Record<string, unknown>): void
   registerStyles(css: string): void
   refreshSlotButtons(): void
+  composer: { readonly userInput: string; setUserInput(text: string): void }
+  plugins: { getUserSettings(): Promise<Record<string, unknown>> }
   conversation: {
     getId(): string
     getActiveBranchPath(): Promise<string>
@@ -148,7 +151,10 @@ function renderCombat(host: PluginHost, state: DungeonMazeState): string {
   const status = finished
     ? host.t(tKey(host, combat.outcome === 'victory' ? 'combatVictory' : 'combatDefeat'))
     : host.t(tKey(host, 'combatInProgress'))
-  return `<section class="dm-event dm-combat"><p>${escapeHtml(status)}</p><ul>${rows}</ul><ol class="dm-combat-log">${logs}</ol><button type="button" class="dm-primary" data-plugin-action="${action}">${escapeHtml(label)}</button></section>`
+  const draftButton = finished
+    ? `<button type="button" class="dm-secondary" data-plugin-action="combat:draft">${escapeHtml(host.t(tKey(host, 'combatDraft')))}</button>`
+    : ''
+  return `<section class="dm-event dm-combat"><p>${escapeHtml(status)}</p><ul>${rows}</ul><ol class="dm-combat-log">${logs}</ol>${draftButton}<button type="button" class="dm-primary" data-plugin-action="${action}">${escapeHtml(label)}</button></section>`
 }
 
 function renderPanel(host: PluginHost, state: DungeonMazeState | null): string {
@@ -176,6 +182,7 @@ function renderPanel(host: PluginHost, state: DungeonMazeState | null): string {
 }
 
 const STYLES = `
+.dm-combat{flex-direction:column;align-items:stretch!important}.dm-combat-log{max-height:240px;overflow:auto}
 .dungeon-maze-panel{padding:10px;display:flex;flex-direction:column;gap:10px;min-width:0}
 .dm-header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.dm-header h3{margin:0;font-size:1rem}.dm-header p,.dm-legend,.dm-empty{margin:3px 0 0;font-size:.75rem;opacity:.7}
 .dm-header-actions{display:flex;gap:4px}.dm-map-wrap{width:100%;min-width:0;overflow:hidden}.dm-map{display:block;box-sizing:border-box;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));background:oklch(.16 .015 55);cursor:pointer;touch-action:manipulation}.dm-map:focus-visible{outline:2px solid rgb(var(--v-theme-primary));outline-offset:2px}
@@ -282,7 +289,7 @@ function flushBranchCopies(host: PluginHost): Promise<boolean> {
 }
 
 function persistState(host: PluginHost, scoped: ScopedDungeonState): Promise<void> {
-  if (host.conversation.getId() !== scoped.conversationId) return stateWrite
+  if (host.conversation.getId() !== scoped.conversationId) return stateWrite.then(() => undefined)
   pendingState = scoped
   const signature = stateSignature(scoped.state)
   ignoredStateSignatures.add(signature)
@@ -309,7 +316,7 @@ function persistState(host: PluginHost, scoped: ScopedDungeonState): Promise<voi
       pendingState = null
     }
   })
-  return stateWrite
+  return stateWrite.then(() => undefined)
 }
 
 async function mutateState(
@@ -382,7 +389,8 @@ async function readState(host: PluginHost): Promise<ScopedDungeonState | null> {
 async function refreshPanel(host: PluginHost): Promise<void> {
   await enqueueStateJob(() => flushBranchCopies(host))
   const scoped = await readState(host)
-  if (scoped?.state.activeCombat) acquireCombatHold(host)
+  if (scoped?.state.activeCombat && !scoped.state.activeCombat.outcome) acquireCombatHold(host)
+  else releaseCombatHold(host)
   host.ui.panel.setHtml(PLACEMENT, PLUGIN_ID, renderPanel(host, scoped?.state ?? null), { revision: ++revision })
 }
 
@@ -428,6 +436,29 @@ async function completeCombat(host: PluginHost): Promise<void> {
     if (!next.activeCombat) releaseCombatHold(host)
     return refreshPanel(host)
   })
+}
+
+async function fillCombatDraft(host: PluginHost): Promise<void> {
+  try {
+    const scoped = await readState(host)
+    if (!scoped?.state.activeCombat?.outcome) return
+    const settings = await host.plugins.getUserSettings()
+    const branchPath = await host.conversation.getActiveBranchPath()
+    if (host.conversation.getId() !== scoped.conversationId || branchPath !== scoped.branchPath) return
+    const report = formatCombatReport(scoped.state.activeCombat, (key, params) => host.t(tKey(host, key), params))
+    const additionalPrompt = typeof settings.combatAdditionalPrompt === 'string' && settings.combatAdditionalPrompt.trim()
+      ? settings.combatAdditionalPrompt.trim()
+      : host.t(tKey(host, 'combatAdditionalPromptDefault'))
+    const text = settings.combatPromptPosition === 'above'
+      ? `${additionalPrompt}\n\n${report}`
+      : `${report}\n\n${additionalPrompt}`
+    const draft = host.composer.userInput
+    if (!draft.includes(text)) host.composer.setUserInput(draft ? draft + '\n\n' + text : text)
+    releaseCombatHold(host)
+    host.ui.notify(host.t(tKey(host, 'combatDraftReady')), undefined, { level: 'success' })
+  } catch (error) {
+    host.ui.notify(host.t(tKey(host, 'combatDraftFailed')), error instanceof Error ? error.message : String(error), { level: 'error' })
+  }
 }
 
 async function adjustCampRest(host: PluginHost, delta: number): Promise<void> {
@@ -536,6 +567,7 @@ export function register(host: PluginHost): void {
       if (event.action === 'event:skip') void resolveActiveEvent(host, 'skip')
       if (event.action === 'combat:advance') void advanceCombat(host)
       if (event.action === 'combat:complete') void completeCombat(host)
+      if (event.action === 'combat:draft') void fillCombatDraft(host)
       const campAdjustment = /^event:camp:([+-]\d+)$/.exec(event.action)
       if (campAdjustment) void adjustCampRest(host, Number(campAdjustment[1]))
       const match = /^move:(\d+):(\d+)$/.exec(event.action)

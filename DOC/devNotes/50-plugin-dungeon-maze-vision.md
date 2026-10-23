@@ -1,6 +1,6 @@
 # 50 · 地下城迷宫插件设想（P2 · 待讨论）
 
-> **状态**：**P2 设想** · 已列入 `DOC/devNotes/04-TODO` · **M0 验证骨架已落地**（21×21 生成 / 会话恢复 / Canvas panel / 对象事件耗时），其余能力待做
+> **状态**：**P2 推进中** · 已列入 `DOC/devNotes/04-TODO` · **M0 / M1 已落地**；M2 已接入战后格式化日志填入 composer，由用户确认后发送，插件区块与 TK 集成待做
 > **优先级**：**P2**（高于远期备忘 `99`；次于 P0/P1）  
 > **插件 id**：`dungeon-maze`（已注册为 bundled 插件）
 > **关联**：[`04-TODO.md`](04-TODO.md) P2、[`09-plugin-system-and-guidance-generate.md`](09-plugin-system-and-guidance-generate.md)、[`18-plugin-host-developer-api.md`](18-plugin-host-developer-api.md)、[`30-plugin-trace-keeper.md`](30-plugin-trace-keeper.md)（**六维读/写**）、[`41-plugin-host-generic-principles.md`](41-plugin-host-generic-principles.md)
@@ -434,6 +434,16 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 - 是否允许设置 **第三种：仅 log 不进 LLM**（调试用）；
 - 消息作者身份：系统旁白 vs 假 user vs assistant — 影响 assemble 与 regex。
 
+#### 3.5.2 当前实现：格式化日志填入 composer
+
+- 本地战斗胜负确定后，点击「填入输入框」，读取只读的 `host.composer.userInput`，通过 `host.composer.setUserInput(text)` 追加完整格式化战报，保留已有草稿；同一份完整战报不重复追加。
+- 战报包含胜负、先攻顺序、角色名称与 id、逐行动攻击与伤害骰明细、目标 AC、命中、伤害、剩余 HP、附加效果和战后状态；中英文模板随当前界面语言切换。
+- 不自动调用 LLM、不自动发送消息。用户在 composer 检查、修改后自行发送，走普通聊天流程。
+- 插件设置提供「战报附加提示词」（`combatAdditionalPrompt`），填入 composer 时追加在日志后；留空使用当前界面语言的默认文案，中文为「根据以上战斗日志完整描述整个战斗过程和结果。」。自定义文本原样使用，不经过 i18n 编译。
+- 战斗进行时保持 composer hold，胜负确定后释放本插件 hold，允许手动发送；「结束战斗」仍负责清理当前遭遇。
+- 已移除直接 complete 请求、面板叙事状态及 plugin.complete 权限。TK 集成和主对话插件区块仍待做；上文自动叙事模式为后续规划。
+
+
 ### 3.6 地图与进度持久化
 
 | 数据 | 存放 | 说明 |
@@ -514,7 +524,7 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 | M0 | ✅ 迷宫生成、Canvas、state 持久化与 **branchPath 隔离**；Catalog JSON Schema 定案 / `catalog-editor.html` spike 可后续补齐 |
 | M0b | **Catalog 编辑器**（单文件 HTML）：schema 校验 + 导出三类 JSON（可与 M1 并行） |
 | M1 | ✅ 纯战斗规则层、bundled 静态 catalog、逐行动本地 loop、panel 原始日志与 owner/token 战斗会话 hold 已完成 |
-| M2 | **perBattle** 模式 + complete + **插件区块进主对话** + **TK 战后写回**（与 narrative 同次或紧随） |
+| M2 | 🔄 已完成战后格式化日志填入 composer，由用户手动发送；待做 **插件区块进主对话** + **TK 战后写回**（与 narrative 同次或紧随） |
 | M3 | **perStep** 叙事；**TK 写回仍仅战斗结束一次** |
 | M4 | 多层/Boss、装备/技能 growth、**dungeon-rpg TraceBundle**、i18n、单测 |
 | M5 | **`importBundle`** + `catalog-manifest.json`、探索事件进对话（若需要） |
@@ -552,6 +562,7 @@ forest-pack.zip                    → 落盘 assets/forest-pack/
 
 | 日期 | 说明 |
 |------|------|
+| 2026-09-16 | M2 当前交互调整：格式化整场战斗日志先填入 composer，由用户检查后手动发送；移除直接 LLM 调用。见 §3.5.2。 |
 | 2026-08-12 | 初稿：地下城迷宫 + 本地掷骰 + LLM 仅润色战报 |
 | 2026-08-12 | 序号 **98 → 50**；优先级 **P2**，列入 `04-TODO` |
 | 2026-08-12 | 补充：**Canvas**、地图 **持久化不 reroll**、**catalog 配置**（装备/敌人/技能）、叙事 **默认进主对话**、**perStep / perBattle** 双模式 |

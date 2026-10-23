@@ -524,7 +524,7 @@ function isRecord2(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 function isCombatant(value) {
-  return isRecord2(value) && typeof value.id === "string" && typeof value.name === "string" && Number.isFinite(value.hp) && value.hp >= 0 && Number.isFinite(value.hpMax) && value.hpMax > 0 && value.hp <= value.hpMax && Number.isFinite(value.ac) && value.ac >= 1 && Number.isFinite(value.initiativeMod) && Number.isFinite(value.attackBonus) && typeof value.damage === "string";
+  return isRecord2(value) && typeof value.id === "string" && typeof value.name === "string" && typeof value.hp === "number" && Number.isFinite(value.hp) && value.hp >= 0 && typeof value.hpMax === "number" && Number.isFinite(value.hpMax) && value.hpMax > 0 && value.hp <= value.hpMax && typeof value.ac === "number" && Number.isFinite(value.ac) && value.ac >= 1 && Number.isFinite(value.initiativeMod) && Number.isFinite(value.attackBonus) && typeof value.damage === "string";
 }
 function isCombatLogEntry(value) {
   if (!isRecord2(value) || value.action !== "attack" || typeof value.actorId !== "string" || typeof value.targetId !== "string" || !isRecord2(value.rolls) || !Number.isFinite(value.rolls.attackD20) || !Number.isFinite(value.rolls.attackTotal) || !Number.isFinite(value.targetAc) || typeof value.hit !== "boolean" || !Number.isFinite(value.damageTotal) || !Number.isFinite(value.hpAfter) || !Array.isArray(value.effectsApplied) || !value.effectsApplied.every((effect) => typeof effect === "string")) {
@@ -534,11 +534,11 @@ function isCombatLogEntry(value) {
   return damage === void 0 || isRecord2(damage) && typeof damage.expression === "string" && Array.isArray(damage.dice) && damage.dice.every(Number.isFinite) && Number.isFinite(damage.modifier) && Number.isFinite(damage.total);
 }
 function isDungeonCombatState(value) {
-  if (!isRecord2(value) || !Array.isArray(value.initiative) || !Array.isArray(value.combatants) || !Array.isArray(value.log) || !Number.isInteger(value.currentTurn) || value.outcome !== null && value.outcome !== "victory" && value.outcome !== "defeat") return false;
+  if (!isRecord2(value) || !Array.isArray(value.initiative) || !Array.isArray(value.combatants) || !Array.isArray(value.log) || typeof value.currentTurn !== "number" || !Number.isInteger(value.currentTurn) || value.outcome !== null && value.outcome !== "victory" && value.outcome !== "defeat") return false;
   if (value.combatants.length < 2 || value.initiative.length !== value.combatants.length || value.currentTurn < 0 || value.currentTurn >= value.initiative.length || !value.combatants.every(isCombatant)) return false;
   const combatantIds = new Set(value.combatants.map((combatant) => combatant.id));
   if (combatantIds.size !== value.combatants.length) return false;
-  return value.initiative.every((entry) => isRecord2(entry) && typeof entry.actorId === "string" && combatantIds.has(entry.actorId) && Number.isInteger(entry.roll) && entry.roll >= 1 && entry.roll <= 20 && Number.isFinite(entry.total)) && value.log.every(isCombatLogEntry);
+  return value.initiative.every((entry) => isRecord2(entry) && typeof entry.actorId === "string" && combatantIds.has(entry.actorId) && typeof entry.roll === "number" && Number.isInteger(entry.roll) && entry.roll >= 1 && entry.roll <= 20 && Number.isFinite(entry.total)) && value.log.every(isCombatLogEntry);
 }
 function isMazeGrid(value, isCell) {
   return Array.isArray(value) && value.length === MAZE_SIZE && value.every((row) => Array.isArray(row) && row.length === MAZE_SIZE && row.every(isCell));
@@ -614,6 +614,46 @@ async function flushDungeonMazeBranchCopies(args) {
   }
 }
 
+// plugins/dungeon-maze/src/narration.ts
+function formatCombatReport(combat, t) {
+  if (!combat.outcome) throw new Error("combat_not_finished");
+  const name = (id) => {
+    const actor = combat.combatants.find((candidate) => candidate.id === id);
+    if (!actor) throw new Error(`unknown_combatant:${id}`);
+    return `${JSON.stringify(actor.name)} [${id}]`;
+  };
+  return [
+    `# ${t("reportTitle")}`,
+    t("reportOutcome", { outcome: t(combat.outcome === "victory" ? "reportVictory" : "reportDefeat") }),
+    `## ${t("reportInitiativeTitle")}`,
+    ...combat.initiative.map((entry) => t("reportInitiative", { actor: name(entry.actorId), roll: entry.roll, total: entry.total })),
+    `## ${t("reportActionsTitle")}`,
+    ...combat.log.map((entry, index) => {
+      const damage = entry.rolls.damage;
+      return t("reportAction", {
+        step: index + 1,
+        actor: name(entry.actorId),
+        target: name(entry.targetId),
+        roll: entry.rolls.attackD20,
+        total: entry.rolls.attackTotal,
+        ac: entry.targetAc,
+        hit: t(entry.hit ? "reportHit" : "combatMiss"),
+        dice: damage ? t("reportDamageDice", {
+          expression: damage.expression,
+          dice: damage.dice.join(", "),
+          modifier: damage.modifier,
+          total: damage.total
+        }) : t("reportNotRolled"),
+        damage: entry.damageTotal,
+        hp: entry.hpAfter,
+        effects: JSON.stringify(entry.effectsApplied)
+      });
+    }),
+    `## ${t("reportFinalStateTitle")}`,
+    ...combat.combatants.map((actor) => t("reportFinalState", { actor: name(actor.id), hp: actor.hp, hpMax: actor.hpMax, ac: actor.ac }))
+  ].join("\n");
+}
+
 // plugins/dungeon-maze/src/index.ts
 var PLUGIN_ID = "dungeon-maze";
 var PLACEMENT = "rightRail";
@@ -671,7 +711,8 @@ function renderCombat(host, state) {
     name: current?.name ?? host.t(tKey(host, "combatUnknownActor"))
   });
   const status = finished ? host.t(tKey(host, combat.outcome === "victory" ? "combatVictory" : "combatDefeat")) : host.t(tKey(host, "combatInProgress"));
-  return `<section class="dm-event dm-combat"><p>${escapeHtml(status)}</p><ul>${rows}</ul><ol class="dm-combat-log">${logs}</ol><button type="button" class="dm-primary" data-plugin-action="${action}">${escapeHtml(label)}</button></section>`;
+  const draftButton = finished ? `<button type="button" class="dm-secondary" data-plugin-action="combat:draft">${escapeHtml(host.t(tKey(host, "combatDraft")))}</button>` : "";
+  return `<section class="dm-event dm-combat"><p>${escapeHtml(status)}</p><ul>${rows}</ul><ol class="dm-combat-log">${logs}</ol>${draftButton}<button type="button" class="dm-primary" data-plugin-action="${action}">${escapeHtml(label)}</button></section>`;
 }
 function renderPanel(host, state) {
   if (!state) {
@@ -697,6 +738,7 @@ function renderPanel(host, state) {
   ].join("\n");
 }
 var STYLES = `
+.dm-combat{flex-direction:column;align-items:stretch!important}.dm-combat-log{max-height:240px;overflow:auto}
 .dungeon-maze-panel{padding:10px;display:flex;flex-direction:column;gap:10px;min-width:0}
 .dm-header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.dm-header h3{margin:0;font-size:1rem}.dm-header p,.dm-legend,.dm-empty{margin:3px 0 0;font-size:.75rem;opacity:.7}
 .dm-header-actions{display:flex;gap:4px}.dm-map-wrap{width:100%;min-width:0;overflow:hidden}.dm-map{display:block;box-sizing:border-box;border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));background:oklch(.16 .015 55);cursor:pointer;touch-action:manipulation}.dm-map:focus-visible{outline:2px solid rgb(var(--v-theme-primary));outline-offset:2px}
@@ -784,7 +826,7 @@ function flushBranchCopies(host) {
   });
 }
 function persistState(host, scoped) {
-  if (host.conversation.getId() !== scoped.conversationId) return stateWrite;
+  if (host.conversation.getId() !== scoped.conversationId) return stateWrite.then(() => void 0);
   pendingState = scoped;
   const signature = stateSignature(scoped.state);
   ignoredStateSignatures.add(signature);
@@ -802,7 +844,7 @@ function persistState(host, scoped) {
       pendingState = null;
     }
   });
-  return stateWrite;
+  return stateWrite.then(() => void 0);
 }
 async function mutateState(host, mutate, after) {
   const scoped = await readState(host);
@@ -863,7 +905,8 @@ async function readState(host) {
 async function refreshPanel(host) {
   await enqueueStateJob(() => flushBranchCopies(host));
   const scoped = await readState(host);
-  if (scoped?.state.activeCombat) acquireCombatHold(host);
+  if (scoped?.state.activeCombat && !scoped.state.activeCombat.outcome) acquireCombatHold(host);
+  else releaseCombatHold(host);
   host.ui.panel.setHtml(PLACEMENT, PLUGIN_ID, renderPanel(host, scoped?.state ?? null), { revision: ++revision });
 }
 async function createMaze(host) {
@@ -904,6 +947,28 @@ async function completeCombat(host) {
     if (!next.activeCombat) releaseCombatHold(host);
     return refreshPanel(host);
   });
+}
+async function fillCombatDraft(host) {
+  try {
+    const scoped = await readState(host);
+    if (!scoped?.state.activeCombat?.outcome) return;
+    const settings = await host.plugins.getUserSettings();
+    const branchPath = await host.conversation.getActiveBranchPath();
+    if (host.conversation.getId() !== scoped.conversationId || branchPath !== scoped.branchPath) return;
+    const report = formatCombatReport(scoped.state.activeCombat, (key, params) => host.t(tKey(host, key), params));
+    const additionalPrompt = typeof settings.combatAdditionalPrompt === "string" && settings.combatAdditionalPrompt.trim() ? settings.combatAdditionalPrompt.trim() : host.t(tKey(host, "combatAdditionalPromptDefault"));
+    const text = settings.combatPromptPosition === "above" ? `${additionalPrompt}
+
+${report}` : `${report}
+
+${additionalPrompt}`;
+    const draft = host.composer.userInput;
+    if (!draft.includes(text)) host.composer.setUserInput(draft ? draft + "\n\n" + text : text);
+    releaseCombatHold(host);
+    host.ui.notify(host.t(tKey(host, "combatDraftReady")), void 0, { level: "success" });
+  } catch (error) {
+    host.ui.notify(host.t(tKey(host, "combatDraftFailed")), error instanceof Error ? error.message : String(error), { level: "error" });
+  }
 }
 async function adjustCampRest(host, delta) {
   await mutateState(host, (state) => {
@@ -1006,6 +1071,7 @@ function register(host) {
       if (event.action === "event:skip") void resolveActiveEvent(host, "skip");
       if (event.action === "combat:advance") void advanceCombat(host);
       if (event.action === "combat:complete") void completeCombat(host);
+      if (event.action === "combat:draft") void fillCombatDraft(host);
       const campAdjustment = /^event:camp:([+-]\d+)$/.exec(event.action);
       if (campAdjustment) void adjustCampRest(host, Number(campAdjustment[1]));
       const match = /^move:(\d+):(\d+)$/.exec(event.action);

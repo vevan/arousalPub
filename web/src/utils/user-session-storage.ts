@@ -14,6 +14,8 @@ const PRESERVED_LOCAL_STORAGE_KEYS = new Set([
   'arousal-chat-font-size-rem',
   'arousal-composer-enter-mode',
   'arousal-plugin-panel-hidden',
+  'arousal-plugin-panel-layouts',
+  'arousal-plugin-panel-active-tabs',
   DESKTOP_NOTIFY_ENABLED_KEY,
 ])
 

@@ -16,9 +16,9 @@ import { reindexConversationMemory } from '../memory-index.js'
 import { startConversationMemoryReindexSse } from '../memory-reindex-sse.js'
 import { mergeCustomParamsIntoPayload } from '../custom-params-merge.js'
 import { appendDrySamplerToPayload } from '../dry-sampler.js'
-import { attachBestEffortClientSseSink, mergeChatUpstreamAbortSignals, pipeUpstreamSseBody } from '../chat-upstream-stream.js'
-import { cancelChatGeneration, getChatGeneration, isChatGenerationIdFormat, registerChatGeneration, unregisterChatGeneration } from '../chat-generation-registry.js'
-import { fetchWithTimeout, UPSTREAM_FETCH_TIMEOUT_MS, UPSTREAM_STREAM_FETCH_TIMEOUT_MS } from '../fetch-with-timeout.js'
+import { attachBestEffortClientSseSink, createChatUpstreamIdleAbort, pipeUpstreamSseBody } from '../chat-upstream-stream.js'
+import { cancelChatGeneration, getChatGeneration, isChatGenerationIdFormat, registerChatGeneration, touchChatGeneration, unregisterChatGeneration } from '../chat-generation-registry.js'
+import { fetchWithTimeout, UPSTREAM_FETCH_TIMEOUT_MS, UPSTREAM_STREAM_IDLE_TIMEOUT_MS } from '../fetch-with-timeout.js'
 import { parseBudgetTrimSettingsPatch } from '../budget-trim-settings.js'
 import { parseMemorySettingsPatch } from '../memory-settings.js'
 import { parseKnowledgeSettingsPatch } from '../knowledge-settings.js'
@@ -1988,9 +1988,9 @@ export function registerChatRoutes(app: FastifyInstance): void {
         : undefined
 
     const streamTimeoutMs = wantStream
-      ? UPSTREAM_STREAM_FETCH_TIMEOUT_MS
+      ? UPSTREAM_STREAM_IDLE_TIMEOUT_MS
       : UPSTREAM_FETCH_TIMEOUT_MS
-    /** 仅显式 cancel / timeout 会 abort；客户端断线不绑定 */
+    /** 仅显式 cancel / 空闲超时会 abort；客户端断线不绑定 */
     const generationAbort = wantStream ? new AbortController() : null
     let generationId: string | null = null
     if (wantStream && generationAbort && convId) {
@@ -2023,7 +2023,11 @@ export function registerChatRoutes(app: FastifyInstance): void {
       }
 
       void (async () => {
+        const idleAbort = generationAbort
+          ? createChatUpstreamIdleAbort(generationAbort, UPSTREAM_STREAM_IDLE_TIMEOUT_MS)
+          : null
         const finishGeneration = (): void => {
+          idleAbort?.dispose()
           if (generationId) unregisterChatGeneration(generationId)
         }
         let upstream: Response
@@ -2037,14 +2041,7 @@ export function registerChatRoutes(app: FastifyInstance): void {
                 Authorization: `Bearer ${apiKey}`,
               },
               body: JSON.stringify(payload),
-              ...(generationAbort
-                ? {
-                    signal: mergeChatUpstreamAbortSignals(
-                      generationAbort,
-                      streamTimeoutMs,
-                    ),
-                  }
-                : {}),
+              ...(idleAbort ? { signal: idleAbort.signal } : {}),
             },
             streamTimeoutMs,
           )
@@ -2082,6 +2079,10 @@ export function registerChatRoutes(app: FastifyInstance): void {
           return
         }
 
+        // 已拿到响应头，视为一次活动；后续每字节再 touch
+        idleAbort?.touch()
+        if (generationId) touchChatGeneration(generationId)
+
         const responseHeadersAt = performance.now()
         const trackStreamPerf = Boolean(performanceAuditBase)
 
@@ -2094,6 +2095,8 @@ export function registerChatRoutes(app: FastifyInstance): void {
 
         const tap = new Transform({
           transform(chunk, _enc, cb) {
+            idleAbort?.touch()
+            if (generationId) touchChatGeneration(generationId)
             sseBuffer += chunk.toString('utf8')
             const parts = sseBuffer.split('\n')
             sseBuffer = parts.pop() ?? ''
@@ -2112,6 +2115,8 @@ export function registerChatRoutes(app: FastifyInstance): void {
             cb(null, chunk)
           },
           flush(cb) {
+            // body 已结束：停空闲计时，避免长时间 persist 被 idle abort 打断
+            idleAbort?.dispose()
             if (sseBuffer.trim()) {
               for (const line of sseBuffer.split('\n')) {
                 const d = parseSseDataLine(line)

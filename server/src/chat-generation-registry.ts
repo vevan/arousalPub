@@ -1,12 +1,15 @@
 import { randomBytes } from 'node:crypto'
+import { UPSTREAM_STREAM_IDLE_TIMEOUT_MS } from './fetch-with-timeout.js'
 
-/** 与上游流式 timeout（300s）对齐，略留余量 */
-export const CHAT_GENERATION_TTL_MS = 360_000
+/** 相对流式空闲超时略留余量；按 lastActivityAt 判定，有输出则续命 */
+export const CHAT_GENERATION_IDLE_TTL_MS = UPSTREAM_STREAM_IDLE_TIMEOUT_MS + 60_000
 
 export type ChatGenerationEntry = {
   conversationId: string
   abort: AbortController
   createdAt: number
+  /** 最近上游活动（注册或 touch）；sweep 按此空闲判定 */
+  lastActivityAt: number
   /** 显式 cancel API 或同会话被新 generation 顶替；超时 abort 不为 true */
   userCancelled: boolean
 }
@@ -22,11 +25,11 @@ export function isChatGenerationIdFormat(id: string): boolean {
   return /^[a-f0-9]{16}$/i.test(id.trim())
 }
 
-/** 清理过期条目；过期时 abort 上游（不标 userCancelled，允许部分落盘语义由调用方决定） */
+/** 清理空闲过久条目；过期时 abort 上游（不标 userCancelled，允许部分落盘语义由调用方决定） */
 export function sweepExpiredChatGenerations(now = Date.now()): number {
   let removed = 0
   for (const [gid, entry] of generations) {
-    if (now - entry.createdAt <= CHAT_GENERATION_TTL_MS) continue
+    if (now - entry.lastActivityAt <= CHAT_GENERATION_IDLE_TTL_MS) continue
     if (!entry.abort.signal.aborted) {
       entry.abort.abort()
     }
@@ -56,10 +59,12 @@ export function registerChatGeneration(
     }
   }
 
+  const now = Date.now()
   generations.set(gid, {
     conversationId: cid,
     abort,
-    createdAt: Date.now(),
+    createdAt: now,
+    lastActivityAt: now,
     userCancelled: false,
   })
   return gid
@@ -69,6 +74,16 @@ export function getChatGeneration(
   generationId: string,
 ): ChatGenerationEntry | undefined {
   return generations.get(generationId.trim())
+}
+
+/** 上游有输出时续命，避免长流式被 idle sweep 误杀 */
+export function touchChatGeneration(
+  generationId: string,
+  now = Date.now(),
+): void {
+  const entry = generations.get(generationId.trim())
+  if (!entry) return
+  entry.lastActivityAt = now
 }
 
 /** 显式取消：abort 上游；返回是否命中且属该会话 */

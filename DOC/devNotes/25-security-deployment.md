@@ -173,9 +173,11 @@ UI 文案：仅补充网关扩展参数（如 `stop`），不可改 `messages`/`
 | 用途 | 默认超时 |
 |------|----------|
 | chat 非流式 / models / embedding / plugin complete | 120s |
-| chat SSE 上游连接 | 300s |
+| chat SSE 上游 | **空闲 300s**（距上次收到字节；有输出则续命） |
 
-客户端断开**不保证**立刻终止上游（已知限制）；超时后释放服务端连接。
+**无整段墙钟上限**：慢速但持续吐字的本地推理可长时间占用连接。响应头到达后若 300s 内无任何 body 字节（含无 SSE 注释心跳），仍按空闲切断。body 读完即停空闲计时，避免落盘阶段被误杀。
+
+客户端断开**不保证**立刻终止上游（已知限制）；空闲超时后释放服务端连接。generation 注册表按 `lastActivityAt` 空闲（300s+60s 余量）sweep。
 
 ---
 
@@ -243,6 +245,7 @@ UI 文案：仅补充网关扩展参数（如 `stop`），不可改 `messages`/`
 | 2026-06 | 初版：汇总 Codex 审计定案 + ST 式 clientWhitelist + customParams 黑名单 |
 | 2026-06 | 二轮：`public-only` 重定向逐跳校验、十进制 IP 拒绝、插件路由 `invalid_plugin_id`、JSONC 配置注释 |
 | 2026-06-10 | §15：合并原 `DOC/devNotes/13`/`DOC/devNotes/16` API Key 定案摘要 |
+| 2026-10-28 | §9：chat SSE 由墙钟 300s 改为空闲 300s（有输出续命）；body 结束后停 idle 再 persist |
 
 ---
 

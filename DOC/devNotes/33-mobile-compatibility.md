@@ -83,7 +83,8 @@ flowchart TB
 ### Phase 2（可选）
 
 - [ ] Tablet 双列简化
-- [ ] 持久化 active tab（当前仅 hidden）
+- [x] 持久化 active tab（`arousal-plugin-panel-active-tabs`）
+- [x] 侧栏三键登出保留对齐：`hidden` / `layouts` / `active-tabs`
 
 ---
 
@@ -153,7 +154,7 @@ flowchart TB
 |----|------|
 | 发送后切到其他 App / 锁屏导致 SSE 断开 | **服务端继续**拉上游并落盘；**不**因客户端 close abort |
 | 客户端读流失败且尚未落盘 | **不 rollback** pending；`awaitingBackgroundResume` 禁发、仍可中止；提示可能仍在后台生成 |
-| 回前台 | `visibilitychange` → `loadMessages`；若已有新助手轮则轻提示「回复已在后台完成」；超时（~6min）则 cancel 并同步 |
+| 回前台 | `visibilitychange` → `loadMessages`；若已有新助手轮则轻提示「回复已在后台完成」；绝对超时（24h）则 cancel 并同步；服务端流式为空闲 5min 断流 |
 | 点「中止」 | cancel API（客户端预生成 id，响应头到达前也可）；**不**把半成品写入 UI |
 | 后台保活前提 | **仅流式**（`stream: true`）；非流式不注册 generation |
 | 后台期间逐字流 | **不保证**（连接断了就看不到流） |

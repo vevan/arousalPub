@@ -4,11 +4,12 @@ import {
   __chatGenerationRegistrySizeForTest,
   __resetChatGenerationRegistryForTest,
   cancelChatGeneration,
-  CHAT_GENERATION_TTL_MS,
+  CHAT_GENERATION_IDLE_TTL_MS,
   generateChatGenerationId,
   getChatGeneration,
   registerChatGeneration,
   sweepExpiredChatGenerations,
+  touchChatGeneration,
   unregisterChatGeneration,
 } from '../src/chat-generation-registry.js'
 
@@ -56,15 +57,27 @@ describe('chat-generation-registry', () => {
     assert.equal(getChatGeneration(g2)?.userCancelled, false)
   })
 
-  it('sweepExpired removes stale entries', () => {
+  it('sweepExpired removes idle entries by lastActivityAt', () => {
     const abort = new AbortController()
     const gid = registerChatGeneration('conv-a', abort)
     const entry = getChatGeneration(gid)
     assert.ok(entry)
-    entry.createdAt = Date.now() - CHAT_GENERATION_TTL_MS - 1
+    entry.lastActivityAt = Date.now() - CHAT_GENERATION_IDLE_TTL_MS - 1
     const removed = sweepExpiredChatGenerations()
     assert.equal(removed, 1)
     assert.equal(__chatGenerationRegistrySizeForTest(), 0)
     assert.equal(abort.signal.aborted, true)
+  })
+
+  it('touchChatGeneration renews idle sweep window', () => {
+    const abort = new AbortController()
+    const gid = registerChatGeneration('conv-a', abort)
+    const entry = getChatGeneration(gid)
+    assert.ok(entry)
+    entry.lastActivityAt = Date.now() - CHAT_GENERATION_IDLE_TTL_MS - 1
+    touchChatGeneration(gid)
+    assert.equal(sweepExpiredChatGenerations(), 0)
+    assert.equal(getChatGeneration(gid)?.conversationId, 'conv-a')
+    assert.equal(abort.signal.aborted, false)
   })
 })

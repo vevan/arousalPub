@@ -19,14 +19,65 @@ export function bindChatClientAbort(
   }
 }
 
-export function mergeChatUpstreamAbortSignals(
+export type ChatUpstreamIdleAbortHandle = {
+  signal: AbortSignal
+  /** 收到上游字节时调用，重置空闲计时 */
+  touch: () => void
+  /** 流结束或放弃时清理定时器 */
+  dispose: () => void
+}
+
+/**
+ * 合并显式 cancel 与「空闲超时」：有 touch 则续命，断流超过 idleMs 才 abort。
+ * 创建后立即开始计时（覆盖等首包 / 连接挂起）。
+ */
+export function createChatUpstreamIdleAbort(
   clientAbort: AbortController,
-  timeoutMs: number,
-): AbortSignal {
-  return AbortSignal.any([
-    clientAbort.signal,
-    AbortSignal.timeout(timeoutMs),
-  ])
+  idleMs: number,
+): ChatUpstreamIdleAbortHandle {
+  const idleAbort = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let disposed = false
+
+  const clearTimer = (): void => {
+    if (timer == null) return
+    clearTimeout(timer)
+    timer = null
+  }
+
+  const dispose = (): void => {
+    if (disposed) return
+    disposed = true
+    clearTimer()
+    clientAbort.signal.removeEventListener('abort', onClientAbort)
+  }
+
+  const arm = (): void => {
+    clearTimer()
+    if (disposed || idleAbort.signal.aborted || clientAbort.signal.aborted) return
+    timer = setTimeout(() => {
+      timer = null
+      if (!idleAbort.signal.aborted) idleAbort.abort()
+    }, idleMs)
+  }
+
+  const onClientAbort = (): void => {
+    dispose()
+  }
+  clientAbort.signal.addEventListener('abort', onClientAbort)
+
+  const touch = (): void => {
+    if (disposed || idleAbort.signal.aborted || clientAbort.signal.aborted) return
+    arm()
+  }
+
+  arm()
+
+  return {
+    signal: AbortSignal.any([clientAbort.signal, idleAbort.signal]),
+    touch,
+    dispose,
+  }
 }
 
 /** 防止 Readable 的 error 事件未处理导致进程退出。 */

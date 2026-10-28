@@ -47,6 +47,12 @@ describe('clearUserSessionLocalStorage', () => {
       'draft text',
     )
     localStorage.setItem('arousal-memory-topk', '12')
+    localStorage.setItem('arousal-plugin-panel-hidden', '{"leftRail":false}')
+    localStorage.setItem('arousal-plugin-panel-layouts', '{"fixture-a":{}}')
+    localStorage.setItem(
+      'arousal-plugin-panel-active-tabs',
+      '{"leftRail":"fixture-a","rightRail":null}',
+    )
     localStorage.setItem('other-app-key', 'keep')
 
     clearUserSessionLocalStorage()
@@ -60,6 +66,18 @@ describe('clearUserSessionLocalStorage', () => {
       null,
     )
     assert.equal(localStorage.getItem('arousal-memory-topk'), null)
+    assert.equal(
+      localStorage.getItem('arousal-plugin-panel-hidden'),
+      '{"leftRail":false}',
+    )
+    assert.equal(
+      localStorage.getItem('arousal-plugin-panel-layouts'),
+      '{"fixture-a":{}}',
+    )
+    assert.equal(
+      localStorage.getItem('arousal-plugin-panel-active-tabs'),
+      '{"leftRail":"fixture-a","rightRail":null}',
+    )
     assert.equal(localStorage.getItem('other-app-key'), 'keep')
   })
 })

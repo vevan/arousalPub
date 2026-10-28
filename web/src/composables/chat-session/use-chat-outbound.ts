@@ -124,8 +124,11 @@ export function useChatOutbound(opts: {
   const pendingGroupContinue = ref<PendingGroupContinue | null>(null)
   const regeneratingSegmentIndex = ref<number | null>(null)
   const awaitingBackgroundResume = opts.awaitingBackgroundResume
-  /** 与上游流式 timeout 对齐 */
-  const BACKGROUND_RESUME_TTL_MS = 360_000
+  /**
+   * 回前台对账等待上限。服务端流式已改为空闲 5min 才断，长本地推理可远超 6min；
+   * 此 TTL 仅作绝对保底，避免永久卡在 awaitingBackgroundResume。
+   */
+  const BACKGROUND_RESUME_TTL_MS = 24 * 60 * 60 * 1000
   /** 流式失败或切后台后，回前台再对一次账 */
   let expectBackgroundResume = false
   /** 回前台已从服务端恢复时，忽略随后的本地 Abort finalize */

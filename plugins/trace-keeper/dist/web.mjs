@@ -89,7 +89,7 @@ var require_utils = __commonJS({
     }
     function escapeExpression(string) {
       if (typeof string !== "string") {
-        if (string && string.toHTML) {
+        if (string && typeof string.toHTML === "function") {
           return string.toHTML();
         } else if (string == null) {
           return "";
@@ -135,11 +135,13 @@ var require_exception = __commonJS({
     var errorProps = ["description", "fileName", "lineNumber", "endLineNumber", "message", "name", "number", "stack"];
     function Exception(message, node) {
       var loc = node && node.loc, line = void 0, endLineNumber = void 0, column = void 0, endColumn = void 0;
-      if (loc) {
+      if (loc && loc.start) {
         line = loc.start.line;
-        endLineNumber = loc.end.line;
         column = loc.start.column;
-        endColumn = loc.end.column;
+        if (loc.end) {
+          endLineNumber = loc.end.line;
+          endColumn = loc.end.column;
+        }
         message += " - " + line + ":" + column;
       }
       var tmp = Error.prototype.constructor.call(this, message);
@@ -223,6 +225,15 @@ var require_each = __commonJS({
     var _utils = require_utils();
     var _exception = require_exception();
     var _exception2 = _interopRequireDefault(_exception);
+    function closeIterator(iterator) {
+      try {
+        var _close = iterator["return"];
+        if (_utils.isFunction(_close)) {
+          _close.call(iterator);
+        }
+      } catch (closeError) {
+      }
+    }
     exports["default"] = function(instance) {
       instance.registerHelper("each", function(context, options) {
         if (!options) {
@@ -238,7 +249,7 @@ var require_each = __commonJS({
         if (options.data) {
           data = _utils.createFrame(options.data);
         }
-        function execIteration(field, index, last) {
+        function execIteration(field, index, last, value) {
           if (data) {
             data.key = field;
             data.index = index;
@@ -248,40 +259,46 @@ var require_each = __commonJS({
               data.contextPath = contextPath + field;
             }
           }
-          ret = ret + fn(context[field], {
+          ret = ret + fn(value, {
             data,
-            blockParams: _utils.blockParams([context[field], field], [contextPath + field, null])
+            blockParams: _utils.blockParams([value, field], [contextPath + field, null])
           });
         }
         if (context && typeof context === "object") {
           if (_utils.isArray(context)) {
             for (var j = context.length; i < j; i++) {
               if (i in context) {
-                execIteration(i, i, i === context.length - 1);
+                execIteration(i, i, i === context.length - 1, context[i]);
               }
             }
           } else if (typeof Symbol === "function" && context[Symbol.iterator]) {
-            var newContext = [];
             var iterator = context[Symbol.iterator]();
-            for (var it = iterator.next(); !it.done; it = iterator.next()) {
-              newContext.push(it.value);
-            }
-            context = newContext;
-            for (var j = context.length; i < j; i++) {
-              execIteration(i, i, i === context.length - 1);
+            var current = iterator.next();
+            while (!current.done) {
+              var next = iterator.next();
+              try {
+                execIteration(i, i, next.done, current.value);
+              } catch (e) {
+                if (!next.done) {
+                  closeIterator(iterator);
+                }
+                throw e;
+              }
+              current = next;
+              i++;
             }
           } else {
             (function() {
               var priorKey = void 0;
               Object.keys(context).forEach(function(key) {
                 if (priorKey !== void 0) {
-                  execIteration(priorKey, i - 1);
+                  execIteration(priorKey, i - 1, false, context[priorKey]);
                 }
                 priorKey = key;
                 i++;
               });
               if (priorKey !== void 0) {
-                execIteration(priorKey, i - 1, true);
+                execIteration(priorKey, i - 1, true, context[priorKey]);
               }
             })();
           }
@@ -576,6 +593,7 @@ var require_proto_access = __commonJS({
     exports.__esModule = true;
     exports.createProtoAccessControl = createProtoAccessControl;
     exports.resultIsAllowed = resultIsAllowed;
+    exports.isPrototypeConstructor = isPrototypeConstructor;
     exports.resetLoggedProperties = resetLoggedProperties;
     function _interopRequireDefault(obj) {
       return obj && obj.__esModule ? obj : { "default": obj };
@@ -612,6 +630,9 @@ var require_proto_access = __commonJS({
       } else {
         return checkWhiteList(protoAccessControl.properties, propertyName);
       }
+    }
+    function isPrototypeConstructor(parent, propertyName, result) {
+      return propertyName === "constructor" && typeof result === "function" && parent === result.prototype;
     }
     function checkWhiteList(protoAccessControlForType, propertyName) {
       if (protoAccessControlForType.whitelist[propertyName] !== void 0) {
@@ -654,7 +675,7 @@ var require_base = __commonJS({
     var _logger = require_logger();
     var _logger2 = _interopRequireDefault(_logger);
     var _internalProtoAccess = require_proto_access();
-    var VERSION = "4.7.9";
+    var VERSION = "4.7.10";
     exports.VERSION = VERSION;
     var COMPILER_REVISION = 8;
     exports.COMPILER_REVISION = COMPILER_REVISION;
@@ -843,7 +864,13 @@ var require_runtime = __commonJS({
         options.hooks = this.hooks;
         options.protoAccessControl = this.protoAccessControl;
         var result = env.VM.invokePartial.call(this, partial, context, options);
+        if (result == null && Utils.isFunction(partial)) {
+          throw new _exception2["default"]("The partial " + options.name + " returned no output: partials must return a string");
+        }
         if (result == null && env.compile) {
+          if (typeof partial !== "string") {
+            throw new _exception2["default"]("The partial " + options.name + " could not be compiled: partials must be strings or functions returning strings");
+          }
           options.partials[options.name] = env.compile(partial, templateSpec.compilerOptions, env);
           result = options.partials[options.name](context, options);
         }
@@ -877,7 +904,7 @@ var require_runtime = __commonJS({
           if (result == null) {
             return result;
           }
-          if (Object.prototype.hasOwnProperty.call(parent, propertyName)) {
+          if (Object.prototype.hasOwnProperty.call(parent, propertyName) && !_internalProtoAccess.isPrototypeConstructor(parent, propertyName, result)) {
             return result;
           }
           if (_internalProtoAccess.resultIsAllowed(result, container.protoAccessControl, propertyName)) {
@@ -1012,7 +1039,7 @@ var require_runtime = __commonJS({
         } else {
           partial = lookupOwnProperty(options.partials, options.name);
         }
-      } else if (!partial.call && !options.name) {
+      } else if (typeof partial !== "function" && !options.name) {
         options.name = partial;
         partial = lookupOwnProperty(options.partials, partial);
       }
@@ -1910,6 +1937,16 @@ var require_parser = __commonJS({
   }
 });
 
+// node_modules/handlebars/dist/cjs/handlebars/compiler/node-types.js
+var require_node_types = __commonJS({
+  "node_modules/handlebars/dist/cjs/handlebars/compiler/node-types.js"(exports) {
+    "use strict";
+    exports.__esModule = true;
+    var NODE_TYPES = ["Program", "BlockStatement", "DecoratorBlock", "PartialStatement", "PartialBlockStatement", "Decorator", "MustacheStatement", "ContentStatement", "CommentStatement", "SubExpression", "PathExpression", "StringLiteral", "NumberLiteral", "BooleanLiteral", "UndefinedLiteral", "NullLiteral", "Hash", "HashPair"];
+    exports.NODE_TYPES = NODE_TYPES;
+  }
+});
+
 // node_modules/handlebars/dist/cjs/handlebars/compiler/visitor.js
 var require_visitor = __commonJS({
   "node_modules/handlebars/dist/cjs/handlebars/compiler/visitor.js"(exports, module) {
@@ -1920,8 +1957,13 @@ var require_visitor = __commonJS({
     }
     var _exception = require_exception();
     var _exception2 = _interopRequireDefault(_exception);
+    var _utils = require_utils();
+    var _nodeTypes = require_node_types();
     function Visitor() {
       this.parents = [];
+    }
+    function isDispatchable(visitor, type) {
+      return _utils.indexOf(_nodeTypes.NODE_TYPES, type) !== -1 || !(type in Visitor.prototype) && typeof visitor[type] === "function";
     }
     Visitor.prototype = {
       constructor: Visitor,
@@ -1930,7 +1972,7 @@ var require_visitor = __commonJS({
       acceptKey: function acceptKey(node, name) {
         var value = this.accept(node[name]);
         if (this.mutating) {
-          if (value && !Visitor.prototype[value.type]) {
+          if (value && !isDispatchable(this, value.type)) {
             throw new _exception2["default"]('Unexpected node type "' + value.type + '" found when accepting ' + name + " on " + node.type);
           }
           node[name] = value;
@@ -1960,7 +2002,7 @@ var require_visitor = __commonJS({
         if (!object) {
           return;
         }
-        if (!this[object.type]) {
+        if (!isDispatchable(this, object.type) || !this[object.type]) {
           throw new _exception2["default"]("Unknown type: " + object.type, object);
         }
         if (this.current) {
@@ -2067,7 +2109,7 @@ var require_whitespace_control = __commonJS({
           omitRight(body, i);
           if (omitLeft(body, i)) {
             if (current.type === "PartialStatement") {
-              current.indent = /([ \t]+$)/.exec(body[i - 1].original)[1];
+              current.indent = /(?:^|[^ \t])([ \t]+)$/.exec(body[i - 1].original)[1];
             }
           }
         }
@@ -2143,7 +2185,7 @@ var require_whitespace_control = __commonJS({
         return isRoot;
       }
       if (prev.type === "ContentStatement") {
-        return (sibling || !isRoot ? /\r?\n\s*?$/ : /(^|\r?\n)\s*?$/).test(prev.original);
+        return (sibling || !isRoot ? /(?:^|\S)[^\S\n]*\n\s*$/ : /^\s*$|(?:^|\S)[^\S\n]*\n\s*$/).test(prev.original);
       }
     }
     function isNextWhitespace(body, i, isRoot) {
@@ -2173,7 +2215,7 @@ var require_whitespace_control = __commonJS({
         return;
       }
       var original = current.value;
-      current.value = current.value.replace(multiple ? /\s+$/ : /[ \t]+$/, "");
+      current.value = current.value.replace(multiple ? /(^|\S)\s+$/ : /(^|[^ \t])[ \t]+$/, "$1");
       current.leftStripped = current.value !== original;
       return current.leftStripped;
     }
@@ -2400,15 +2442,12 @@ var require_base2 = __commonJS({
     var _whitespaceControl2 = _interopRequireDefault(_whitespaceControl);
     var _helpers = require_helpers2();
     var Helpers = _interopRequireWildcard(_helpers);
-    var _exception = require_exception();
-    var _exception2 = _interopRequireDefault(_exception);
     var _utils = require_utils();
     exports.parser = _parser2["default"];
     var yy = {};
     _utils.extend(yy, Helpers);
     function parseWithoutProcessing(input, options) {
       if (input.type === "Program") {
-        validateInputAst(input);
         return input;
       }
       _parser2["default"].yy = yy;
@@ -2422,51 +2461,6 @@ var require_base2 = __commonJS({
       var ast = parseWithoutProcessing(input, options);
       var strip = new _whitespaceControl2["default"](options);
       return strip.accept(ast);
-    }
-    function validateInputAst(ast) {
-      validateAstNode(ast);
-    }
-    function validateAstNode(node) {
-      if (node == null) {
-        return;
-      }
-      if (Array.isArray(node)) {
-        node.forEach(validateAstNode);
-        return;
-      }
-      if (typeof node !== "object") {
-        return;
-      }
-      if (node.type === "PathExpression") {
-        if (!isValidDepth(node.depth)) {
-          throw new _exception2["default"]("Invalid AST: PathExpression.depth must be an integer");
-        }
-        if (!Array.isArray(node.parts)) {
-          throw new _exception2["default"]("Invalid AST: PathExpression.parts must be an array");
-        }
-        for (var i = 0; i < node.parts.length; i++) {
-          if (typeof node.parts[i] !== "string") {
-            throw new _exception2["default"]("Invalid AST: PathExpression.parts must only contain strings");
-          }
-        }
-      } else if (node.type === "NumberLiteral") {
-        if (typeof node.value !== "number" || !isFinite(node.value)) {
-          throw new _exception2["default"]("Invalid AST: NumberLiteral.value must be a number");
-        }
-      } else if (node.type === "BooleanLiteral") {
-        if (typeof node.value !== "boolean") {
-          throw new _exception2["default"]("Invalid AST: BooleanLiteral.value must be a boolean");
-        }
-      }
-      Object.keys(node).forEach(function(propertyName) {
-        if (propertyName === "loc") {
-          return;
-        }
-        validateAstNode(node[propertyName]);
-      });
-    }
-    function isValidDepth(depth) {
-      return typeof depth === "number" && isFinite(depth) && Math.floor(depth) === depth && depth >= 0;
     }
   }
 });
@@ -2487,6 +2481,7 @@ var require_compiler = __commonJS({
     var _utils = require_utils();
     var _ast = require_ast();
     var _ast2 = _interopRequireDefault(_ast);
+    var _nodeTypes = require_node_types();
     var slice = [].slice;
     function Compiler() {
     }
@@ -2540,7 +2535,7 @@ var require_compiler = __commonJS({
         return guid;
       },
       accept: function accept(node) {
-        if (!this[node.type]) {
+        if (_utils.indexOf(_nodeTypes.NODE_TYPES, node.type) === -1 || !this[node.type]) {
           throw new _exception2["default"]("Unknown type: " + node.type, node);
         }
         this.sourceNode.unshift(node);
@@ -2549,6 +2544,7 @@ var require_compiler = __commonJS({
         return ret;
       },
       Program: function Program(program) {
+        validateBlockParams(program);
         this.options.blockParams.unshift(program.blockParams);
         var body = program.body, bodyLength = body.length;
         for (var i = 0; i < bodyLength; i++) {
@@ -2632,6 +2628,9 @@ var require_compiler = __commonJS({
         this.DecoratorBlock(decorator);
       },
       ContentStatement: function ContentStatement(content) {
+        if (content.value != null && typeof content.value !== "string") {
+          throw invalidAst(content, "value must be a string");
+        }
         if (content.value) {
           this.opcode("appendContent", content.value);
         }
@@ -2651,7 +2650,7 @@ var require_compiler = __commonJS({
       },
       ambiguousSexpr: function ambiguousSexpr(sexpr, program, inverse) {
         var path = sexpr.path, name = path.parts[0], isBlock = program != null || inverse != null;
-        this.opcode("getContext", path.depth);
+        this.opcode("getContext", validateDepth(path));
         this.opcode("pushProgram", program);
         this.opcode("pushProgram", inverse);
         path.strict = true;
@@ -2678,27 +2677,32 @@ var require_compiler = __commonJS({
         }
       },
       PathExpression: function PathExpression(path) {
-        this.addDepth(path.depth);
-        this.opcode("getContext", path.depth);
-        var name = path.parts[0], scoped = _ast2["default"].helpers.scopedId(path), blockParamId = !path.depth && !scoped && this.blockParamIndex(name);
+        var depth = validateDepth(path);
+        var parts = validateParts(path);
+        this.addDepth(depth);
+        this.opcode("getContext", depth);
+        var name = parts[0], scoped = _ast2["default"].helpers.scopedId(path), blockParamId = !depth && !scoped && this.blockParamIndex(name);
         if (blockParamId) {
-          this.opcode("lookupBlockParam", blockParamId, path.parts);
+          this.opcode("lookupBlockParam", blockParamId, parts);
         } else if (!name) {
           this.opcode("pushContext");
         } else if (path.data) {
           this.options.data = true;
-          this.opcode("lookupData", path.depth, path.parts, path.strict);
+          this.opcode("lookupData", depth, parts, path.strict);
         } else {
-          this.opcode("lookupOnContext", path.parts, path.falsy, path.strict, scoped);
+          this.opcode("lookupOnContext", parts, path.falsy, path.strict, scoped);
         }
       },
       StringLiteral: function StringLiteral(string) {
+        validateLiteral(string);
         this.opcode("pushString", string.value);
       },
       NumberLiteral: function NumberLiteral(number) {
+        validateLiteral(number);
         this.opcode("pushLiteral", number.value);
       },
       BooleanLiteral: function BooleanLiteral(bool) {
+        validateLiteral(bool);
         this.opcode("pushLiteral", bool.value);
       },
       UndefinedLiteral: function UndefinedLiteral() {
@@ -2708,7 +2712,16 @@ var require_compiler = __commonJS({
         this.opcode("pushLiteral", "null");
       },
       Hash: function Hash(hash) {
-        var pairs = hash.pairs, i = 0, l = pairs.length;
+        var pairs = hash.pairs, i = 0, l = void 0;
+        if (!_utils.isArray(pairs)) {
+          throw invalidAst(hash, "pairs must be an array");
+        }
+        l = pairs.length;
+        for (var j = 0; j < l; j++) {
+          if (!pairs[j] || typeof pairs[j].key !== "string") {
+            throw invalidAst(hash, "pair keys must be strings");
+          }
+        }
         this.opcode("pushHash");
         for (; i < l; i++) {
           this.pushParam(pairs[i].value);
@@ -2733,6 +2746,7 @@ var require_compiler = __commonJS({
         this.useDepths = true;
       },
       classifySexpr: function classifySexpr(sexpr) {
+        validateParts(sexpr.path);
         var isSimple = _ast2["default"].helpers.simpleId(sexpr.path);
         var isBlockParam = isSimple && !!this.blockParamIndex(sexpr.path.parts[0]);
         var isHelper = !isBlockParam && _ast2["default"].helpers.helperExpression(sexpr);
@@ -2759,15 +2773,20 @@ var require_compiler = __commonJS({
         }
       },
       pushParam: function pushParam(val) {
+        validateLiteral(val);
         var value = val.value != null ? val.value : val.original || "";
+        var depth = validateDepth(val);
         if (this.stringParams) {
+          if (typeof value !== "number" && typeof value !== "boolean") {
+            value = String(value);
+          }
           if (value.replace) {
             value = value.replace(/^(\.?\.\/)*/g, "").replace(/\//g, ".");
           }
-          if (val.depth) {
-            this.addDepth(val.depth);
+          if (depth) {
+            this.addDepth(depth);
           }
-          this.opcode("getContext", val.depth || 0);
+          this.opcode("getContext", depth);
           this.opcode("pushStringParam", value, val.type);
           if (val.type === "SubExpression") {
             this.accept(val);
@@ -2775,8 +2794,8 @@ var require_compiler = __commonJS({
         } else {
           if (this.trackIds) {
             var blockParamIndex = void 0;
-            if (val.parts && !_ast2["default"].helpers.scopedId(val) && !val.depth) {
-              blockParamIndex = this.blockParamIndex(val.parts[0]);
+            if (val.parts && !_ast2["default"].helpers.scopedId(val) && !depth) {
+              blockParamIndex = this.blockParamIndex(validateParts(val)[0]);
             }
             if (blockParamIndex) {
               var blockParamChild = val.parts.slice(1).join(".");
@@ -2863,6 +2882,48 @@ var require_compiler = __commonJS({
         return compiled._child(i, data, blockParams, depths);
       };
       return ret;
+    }
+    function invalidAst(node, message) {
+      return new _exception2["default"]("Invalid AST: " + node.type + " " + message, node);
+    }
+    function validateDepth(node) {
+      var depth = node.depth;
+      if (depth == null) {
+        return 0;
+      }
+      if (typeof depth !== "number" || !isFinite(depth) || Math.floor(depth) !== depth || depth < 0) {
+        throw invalidAst(node, "depth must be a non-negative integer");
+      }
+      return depth;
+    }
+    function validateLiteral(node) {
+      var value = node.value;
+      if (node.type === "StringLiteral" && typeof value !== "string") {
+        throw invalidAst(node, "value must be a string");
+      } else if (node.type === "NumberLiteral" && typeof value !== "number") {
+        throw invalidAst(node, "value must be a number");
+      } else if (node.type === "BooleanLiteral" && typeof value !== "boolean") {
+        throw invalidAst(node, "value must be a boolean");
+      }
+    }
+    function validateStringArray(node, value, name) {
+      if (!_utils.isArray(value)) {
+        throw invalidAst(node, name + " must be an array");
+      }
+      for (var i = 0; i < value.length; i++) {
+        if (typeof value[i] !== "string") {
+          throw invalidAst(node, name + " must only contain strings");
+        }
+      }
+      return value;
+    }
+    function validateParts(path) {
+      return validateStringArray(path, path.parts, "parts");
+    }
+    function validateBlockParams(program) {
+      if (program.blockParams != null) {
+        validateStringArray(program, program.blockParams, "blockParams");
+      }
     }
     function argEquals(a, b) {
       if (a === b) {
@@ -4642,10 +4703,22 @@ var require_source_map = __commonJS({
 
 // node_modules/handlebars/dist/cjs/handlebars/compiler/code-gen.js
 var require_code_gen = __commonJS({
-  "node_modules/handlebars/dist/cjs/handlebars/compiler/code-gen.js"(exports, module) {
+  "node_modules/handlebars/dist/cjs/handlebars/compiler/code-gen.js"(exports) {
     "use strict";
     exports.__esModule = true;
+    exports.safeJsonLiteral = safeJsonLiteral;
     var _utils = require_utils();
+    var NEEDS_ESCAPING = /[\x00-\x1f\\"\u2028\u2029<\ud800-\udfff]/;
+    var SCRIPT_DELIMITERS = /<(?=!--|\/?script)/gi;
+    function escapeScriptDelimiters(code) {
+      return code.replace(SCRIPT_DELIMITERS, "\\u003C");
+    }
+    function escapeSurrogate(surrogate) {
+      return "\\u" + surrogate.charCodeAt(0).toString(16);
+    }
+    function safeJsonLiteral(value) {
+      return escapeScriptDelimiters(JSON.stringify(value).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029").replace(/[\ud800-\udfff]/g, escapeSurrogate));
+    }
     var SourceNode = void 0;
     try {
       if (typeof define !== "function" || !define.amd) {
@@ -4738,7 +4811,11 @@ var require_code_gen = __commonJS({
         return this.wrap([fn, type ? "." + type + "(" : "(", params, ")"]);
       },
       quotedString: function quotedString(str) {
-        return '"' + (str + "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029") + '"';
+        str = str + "";
+        if (!NEEDS_ESCAPING.test(str)) {
+          return '"' + str + '"';
+        }
+        return safeJsonLiteral(str);
       },
       objectLiteral: function objectLiteral(obj) {
         var _this = this;
@@ -4772,7 +4849,6 @@ var require_code_gen = __commonJS({
       }
     };
     exports["default"] = CodeGen;
-    module.exports = exports["default"];
   }
 });
 
@@ -4802,7 +4878,7 @@ var require_javascript_compiler = __commonJS({
         return this.internalNameLookup(parent, name);
       },
       depthedLookup: function depthedLookup(name) {
-        return [this.aliasable("container.lookup"), "(depths, ", JSON.stringify(name), ")"];
+        return [this.aliasable("container.lookup"), "(depths, ", this.quotedString(name), ")"];
       },
       compilerInfo: function compilerInfo() {
         var revision = _base.COMPILER_REVISION, versions = _base.REVISION_CHANGES[revision];
@@ -4828,7 +4904,7 @@ var require_javascript_compiler = __commonJS({
       // END PUBLIC API
       internalNameLookup: function internalNameLookup(parent, name) {
         this.lookupPropertyFunctionIsUsed = true;
-        return ["lookupProperty(", parent, ",", JSON.stringify(name), ")"];
+        return ["lookupProperty(", parent, ",", this.quotedString(name), ")"];
       },
       lookupPropertyFunctionIsUsed: false,
       compile: function compile(environment, options, context, asObject) {
@@ -5367,7 +5443,7 @@ var require_javascript_compiler = __commonJS({
           delete options.name;
         }
         if (indent) {
-          options.indent = JSON.stringify(indent);
+          options.indent = this.quotedString(indent);
         }
         options.helpers = "helpers";
         options.partials = "partials";
@@ -5413,7 +5489,7 @@ var require_javascript_compiler = __commonJS({
       },
       pushId: function pushId(type, name, child) {
         if (type === "BlockParam") {
-          this.pushStackLiteral("blockParams[" + name[0] + "].path[" + name[1] + "]" + (child ? " + " + JSON.stringify("." + child) : ""));
+          this.pushStackLiteral("blockParams[" + name[0] + "].path[" + name[1] + "]" + (child ? " + " + this.quotedString("." + child) : ""));
         } else if (type === "PathExpression") {
           this.pushString(name);
         } else if (type === "SubExpression") {
@@ -5651,7 +5727,7 @@ var require_javascript_compiler = __commonJS({
       },
       setupHelperArgs: function setupHelperArgs(helper, paramSize, params, useRegister) {
         var options = this.setupParams(helper, paramSize, params);
-        options.loc = JSON.stringify(this.source.currentLocation);
+        options.loc = locationLiteral(this);
         options = this.objectLiteral(options);
         if (useRegister) {
           this.useRegister("options");
@@ -5675,6 +5751,10 @@ var require_javascript_compiler = __commonJS({
     JavaScriptCompiler.isValidJavaScriptVariableName = function(name) {
       return !JavaScriptCompiler.RESERVED_WORDS[name] && /^[a-zA-Z_$][0-9a-zA-Z_$]*$/.test(name);
     };
+    function locationLiteral(compiler) {
+      var loc = compiler.source.currentLocation;
+      return loc ? _codeGen.safeJsonLiteral(loc) : "undefined";
+    }
     function strictLookup(requireTerminal, compiler, parts, startPartIndex, type) {
       var stack = compiler.popStack(), len = parts.length;
       if (requireTerminal) {
@@ -5684,7 +5764,7 @@ var require_javascript_compiler = __commonJS({
         stack = compiler.nameLookup(stack, parts[i], type);
       }
       if (requireTerminal) {
-        return [compiler.aliasable("container.strict"), "(", stack, ", ", compiler.quotedString(parts[len]), ", ", JSON.stringify(compiler.source.currentLocation), " )"];
+        return [compiler.aliasable("container.strict"), "(", stack, ", ", compiler.quotedString(parts[len]), ", ", locationLiteral(compiler), " )"];
       } else {
         return stack;
       }

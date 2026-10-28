@@ -277,7 +277,7 @@ data/
 - **默认音**：`assets/default.mp3`（bundled）。
 - **settings**：`soundSource`（default/custom）、`soundFile`（fileAsset 上传）、`repeatCount`、`repeatGapMs`、`volume`（slider 0–1）。
 - **Composer**：试听按钮（▶），非启用开关。
-- **部署**：运行时加载 `data/plugins/<id>/dist/web.mjs`；改仓库 `plugins/` 后需同步到 `data/plugins/` 并刷新页面。
+- **部署**：运行时加载 `data/plugins/<id>/dist/web.mjs`；仓库 `plugins/*/dist` **不入库**，由 `build.mjs` / `ensurePluginDist` 生成后 sync 到 `data/plugins/`（见 `plugins/README.md`）。
 
 ---
 
@@ -291,9 +291,9 @@ data/
 
 ### 8.1 仓库与注册
 
-1. `plugins/{id}/`：`manifest.json`、`dist/`、`locales/`、`settings.json` 模板。
-2. 加入 `server/src/plugin-system/loader.ts` 的 `BUNDLED_PLUGIN_IDS` / `BUNDLED_PLUGIN_ORDERS` 与 `scripts/sync-bundled-plugins.mjs`。
-3. Server hook（可选）：`dist/server.mjs` export `afterAssemblePrompts` 等；读 `api.getUserPluginSettings`。
+1. `plugins/{id}/`：`manifest.json`、`src/`、`build.mjs`（产出 `dist/`，**不提交**）、`locales/`、`settings.json` 模板。
+2. 写入 `plugins/bundled-registry.json`（或 `npm run generate:bundled-registry`）；`npm run build` / `npm start` / `npm run build:plugins` 会编 dist 并 sync。
+3. Server hook（可选）：`src/server` → `dist/server.mjs` export `afterAssemblePrompts` 等；读 `api.getUserPluginSettings`。
 
 ### 8.2 manifest 与 slot 声明
 
@@ -590,8 +590,8 @@ onBundleImported(ctx: {
 
 ## 10. 插件作者清单（简表）
 
-1. `plugins/{id}/manifest.json` + `dist/` + `locales/`。
-2. 注册 `BUNDLED_PLUGIN_IDS`（见 `plugins/README.md`）。
+1. `plugins/{id}/manifest.json` + `src/` + `build.mjs` + `locales/`（`dist/` 本地生成、不入库）。
+2. 登记 `plugins/bundled-registry.json`（见 `plugins/README.md`）。
 3. Web：`host.pluginKey('…')`；slot / lifecycle / 表单按需注册；**遵守 §8.3 轻量 register**。
 4. Server：export hook；读 `api.getUserPluginSettings`。
 5. 需要上传文件：`fileAsset` + `accept`。

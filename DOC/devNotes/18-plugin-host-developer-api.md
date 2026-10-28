@@ -587,9 +587,10 @@ manifest 可选声明 **`memory.stripBlockTags`**：`string[]`，标签名与助
 
 ### 6.2 打包与部署
 
-- 源码：`plugins/{id}/`；运行：`data/plugins/{id}/`（`npm run build` 会 sync）。
+- 源码：`plugins/{id}/`（`src/` + `build.mjs`）；**`dist/` 不入库**，由构建生成。
+- 运行：`data/plugins/{id}/`。`npm run build`（插件步骤 **`--force`**）会编 dist 并 sync；`npm start` / `npm run dev` 在缺或 stale 时经 **`ensurePluginDist`** 再 seed。
 - Web entry：`export function register(host)`。
-- 可选 TypeScript + esbuild 打出 `dist/web.mjs`、`dist/server.mjs`（参考 `plot-summary`）。
+- TypeScript + esbuild 打出 `dist/web.mjs`、`dist/server.mjs`（参考 `plot-summary` / `plugins/README.md`）。
 
 ---
 

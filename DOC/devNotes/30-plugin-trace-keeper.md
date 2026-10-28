@@ -332,10 +332,10 @@ plugins/trace-keeper/
       index.ts
       complete-context-hooks.ts
       separate-regenerate.ts
-  build.mjs → dist/web.mjs + dist/server.mjs
+  build.mjs → dist/web.mjs + dist/server.mjs（dist 不入库）
 ```
 
-已注册 **`BUNDLED_PLUGIN_IDS`** / **`sync-bundled-plugins.mjs`**。测试：`src/**/*.test.ts` + `server/src/plugin-bundled-dist.test.ts`。
+登记于 **`plugins/bundled-registry.json`**；`npm run build` / sync 见 `plugins/README.md`。测试：`src/**/*.test.ts` + `server/src/plugin-bundled-dist.test.ts`（须先有本地 dist，`check:ci` / `build:plugins` 会生成）。
 
 ---
 

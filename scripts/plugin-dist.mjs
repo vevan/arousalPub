@@ -112,18 +112,21 @@ export async function buildPlugins(opts = {}) {
   return targets
 }
 
-/** dev 启动：仅重建 src 新于 dist 的插件 */
-export async function ensurePluginDistForDev() {
+/**
+ * 缺 dist 或 src 新于 dist 时重建。
+ * dev 与 start（跳过全量 npm run build 时）共用，避免未入库的插件 dist 缺失。
+ */
+export async function ensurePluginDist() {
   const stale = listStalePlugins()
   if (stale.length === 0) {
-    console.log('[dev] plugin dist is up to date')
+    console.log('[plugins] dist is up to date')
     return []
   }
-  console.log(`[dev] stale plugin dist detected, rebuilding: ${stale.join(', ')}`)
+  console.log(`[plugins] stale/missing dist, rebuilding: ${stale.join(', ')}`)
   for (const id of stale) {
     await runPluginBuild(id)
   }
-  console.log('[dev] plugin dist rebuild complete')
+  console.log('[plugins] dist rebuild complete')
   return stale
 }
 

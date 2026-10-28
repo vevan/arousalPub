@@ -12,11 +12,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 ensureDependencies(path.resolve(__dirname, '..'), { label: 'dev' })
 
 const { loadDevConfig } = await import('./dev-config.mjs')
-const { ensurePluginDistForDev } = await import('./plugin-dist.mjs')
+const { ensurePluginDist } = await import('./plugin-dist.mjs')
 
 const { serverPort, webPort, repoRoot: root } = loadDevConfig()
 
-await ensurePluginDistForDev()
+await ensurePluginDist()
 
 function waitForPort(port, { host = '127.0.0.1', timeoutMs = 90_000 } = {}) {
   const start = Date.now()

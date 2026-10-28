@@ -17,6 +17,7 @@ const {
   readBuildMeta,
 } = await import('./build-meta.mjs')
 const { loadDevConfig } = await import('./dev-config.mjs')
+const { ensurePluginDist } = await import('./plugin-dist.mjs')
 const { runBuildCountdownPrompt } = await import('./prompt-build-countdown.mjs')
 const { printTerminalLink } = await import('./terminal-link.mjs')
 
@@ -74,6 +75,9 @@ if (!existsSync(webIndex)) {
   console.error('[start] Build failed: missing web/dist/index.html')
   process.exit(1)
 }
+
+/** 宿主未重建时也须保证插件 dist（已不入库；缺则本地编） */
+await ensurePluginDist()
 
 const url = `http://localhost:${serverPort}/`
 console.log(

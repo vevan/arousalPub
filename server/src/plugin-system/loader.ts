@@ -124,6 +124,15 @@ export async function seedBundledPlugins(): Promise<void> {
         console.warn('[plugin-loader] bundled source missing:', entry.id, src)
         continue
       }
+      const webDist = path.join(src, 'dist', 'web.mjs')
+      if (!existsSync(webDist)) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[plugin-loader] bundled dist missing (run npm start / npm run build:plugins):',
+          entry.id,
+          webDist,
+        )
+      }
       try {
         await copyPluginPackage(src, getInstalledPluginDir(entry.id))
       } catch (e) {

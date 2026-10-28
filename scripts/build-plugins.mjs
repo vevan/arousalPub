@@ -1,6 +1,7 @@
 /**
  * 构建 plugins/{id}/ 下所有带 build.mjs 的插件包。
  * 默认仅重建 src 新于 dist 的插件；传 --force 重建全部。
+ * 生产 `npm run build`（含 start 因 git commit 变化触发）固定带 --force。
  */
 import { buildPlugins } from './plugin-dist.mjs'
 

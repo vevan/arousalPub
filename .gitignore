@@ -3,9 +3,8 @@ node_modules/
 web/node_modules/
 server/node_modules/
 
-# Build output
+# Build output（含 plugins/*/dist；由 build.mjs / ensurePluginDist 生成）
 dist/
-!plugins/*/dist/
 web/dist/
 server/dist/
 

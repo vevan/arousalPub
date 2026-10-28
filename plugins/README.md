@@ -2,6 +2,8 @@
 
 仓库内 `plugins/{pluginId}/` 为**打包源**；首次运行或 seed 时复制到 **`data/plugins/{pluginId}/`**（全局安装，全用户共用代码）。
 
+**`dist/` 不入库**：由各插件 `build.mjs` 生成；`npm run build`（全量 `--force`）、`npm start` / `npm run dev`（缺或 stale 时 `ensurePluginDist`）会先编再同步。
+
 **Build 同步**：`npm run build` 末尾会执行 `scripts/sync-bundled-plugins.mjs`，从仓库 `plugins/{id}/` **全量覆盖** `{dataDir}/plugins/{id}/` 的 manifest、dist、locales、assets（**不**覆盖各用户的 `settings.json`）。服务启动时也会再同步一次，避免漏跑 build。
 
 **plot-summary 共享模块**：`plugins/plot-summary/src/shared/` 为 Historian 排序、prepare-context 块与 layout 之**源码**（不再同步至 `server/src/plot-summary/`）。
@@ -43,9 +45,8 @@ plugins/{pluginId}/
 
 ## 新增 bundled 插件
 
-1. 在本目录新增 `{pluginId}/` 并写好 `manifest.json`、`dist/`。
-2. 在 `server/src/plugin-system/loader.ts` 的 `BUNDLED_PLUGIN_IDS` 与 `BUNDLED_PLUGIN_ORDERS` 中注册。
-3. 在 `scripts/sync-bundled-plugins.mjs` 的 `BUNDLED_PLUGIN_IDS` 中加入 id。
-4. 重启服务 / 跑 sync 后安装到 `data/plugins/`；各用户 registry 会自动补条目。
-5. **`manifest.ui.slots` 列齐所有用到的 slot 名**，否则宿主不会懒加载你的 `web.mjs`。
+1. 在本目录新增 `{pluginId}/`：`manifest.json`、`src/`、`build.mjs`（产出 `dist/`）。
+2. 写入 `plugins/bundled-registry.json`（或跑 `generate:bundled-registry`）。
+3. `npm run build:plugins -- --force` 或 `npm start` / `npm run build` 生成 dist 并 sync 到 `data/plugins/`；各用户 registry 会自动补条目。
+4. **`manifest.ui.slots` 列齐所有用到的 slot 名**，否则宿主不会懒加载你的 `web.mjs`。
 

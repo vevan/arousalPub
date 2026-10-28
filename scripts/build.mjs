@@ -1,5 +1,8 @@
 /**
- * 生产构建：插件 → web + server → 同步 bundled 插件 → 写入 build meta。
+ * 生产构建：插件（全量）→ web + server → 同步 bundled 插件 → 写入 build meta。
+ *
+ * 插件必须 --force：mtime 增量看不到根依赖（如 handlebars）升级；
+ * start 因 git commit 变化触发的重建走本脚本，须重打进 dist 再 sync 到 DATA_DIR。
  */
 import { spawn } from 'node:child_process'
 import path from 'node:path'
@@ -24,10 +27,10 @@ function runNpm(args, { label, env = process.env }) {
   })
 }
 
-function runNodeScript(relPath, { label }) {
+function runNodeScript(relPath, { label, args = [] }) {
   return new Promise((resolve, reject) => {
     const scriptPath = path.join(here, relPath)
-    const child = spawn(process.execPath, [scriptPath], {
+    const child = spawn(process.execPath, [scriptPath, ...args], {
       cwd: REPO_ROOT,
       stdio: 'inherit',
       env: process.env,
@@ -44,8 +47,11 @@ async function main() {
   console.log('[build] sync shared sources')
   await runNodeScript('sync-all-shared.mjs', { label: 'sync-all-shared' })
 
-  console.log('[build] plugins')
-  await runNodeScript('build-plugins.mjs', { label: 'build:plugins' })
+  console.log('[build] plugins (force full rebuild)')
+  await runNodeScript('build-plugins.mjs', {
+    label: 'build:plugins',
+    args: ['--force'],
+  })
 
   console.log('[build] web + server')
   const childBuildEnv = { ...process.env, SKIP_SHARED_SYNC: '1' }

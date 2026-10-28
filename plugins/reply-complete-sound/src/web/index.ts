@@ -4,9 +4,20 @@ const TOKEN_KEY = 'arousal-auth-token'
 const PLAYED_TRACE_MAX = 64
 
 /** 同一轮对话只播一次（persist 主路径，complete 兜底去重） */
-const playedTraceIds = new Set()
+const playedTraceIds = new Set<string>()
 
-function rememberPlayedTrace(traceId) {
+type ReplyLifecycleEvent = {
+  traceId?: string
+}
+
+type ReplyCompleteSoundHost = {
+  lifecycle: {
+    onAssistantReplyPersisted: (cb: (event: ReplyLifecycleEvent) => void) => void
+    onAssistantReplyComplete: (cb: (event: ReplyLifecycleEvent) => void) => void
+  }
+}
+
+function rememberPlayedTrace(traceId: string | undefined): void {
   if (!traceId) return
   playedTraceIds.add(traceId)
   while (playedTraceIds.size > PLAYED_TRACE_MAX) {
@@ -16,11 +27,11 @@ function rememberPlayedTrace(traceId) {
   }
 }
 
-function hasPlayedTrace(traceId) {
+function hasPlayedTrace(traceId: string | undefined): boolean {
   return Boolean(traceId && playedTraceIds.has(traceId))
 }
 
-function readToken() {
+function readToken(): string {
   try {
     return localStorage.getItem(TOKEN_KEY) ?? ''
   } catch {
@@ -28,29 +39,29 @@ function readToken() {
   }
 }
 
-function mediaUrl(kind, name) {
+function mediaUrl(kind: string, name: string): string {
   const base = `/api/plugins/${encodeURIComponent(PLUGIN_ID)}/${kind}/${encodeURIComponent(name)}`
   const token = readToken()
   if (!token) return base
   return `${base}?access_token=${encodeURIComponent(token)}`
 }
 
-function sleep(ms) {
+function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms)
   })
 }
 
-async function fetchSettings() {
+async function fetchSettings(): Promise<Record<string, unknown> | null> {
   const res = await fetch(
     `/api/plugins/${encodeURIComponent(PLUGIN_ID)}/settings`,
   )
   if (!res.ok) return null
-  const data = await res.json()
+  const data = (await res.json()) as { settings?: Record<string, unknown> }
   return data?.settings ?? null
 }
 
-function resolveSoundUrl(settings) {
+function resolveSoundUrl(settings: Record<string, unknown>): string {
   const source = settings?.soundSource === 'custom' ? 'custom' : 'default'
   if (source === 'custom') {
     const file =
@@ -60,7 +71,7 @@ function resolveSoundUrl(settings) {
   return mediaUrl('assets', DEFAULT_ASSET)
 }
 
-function playOnce(url, volume) {
+function playOnce(url: string, volume: number): Promise<void> {
   return new Promise((resolve) => {
     const audio = new Audio(url)
     audio.volume = Math.max(0, Math.min(1, Number(volume) || 1))
@@ -70,10 +81,14 @@ function playOnce(url, volume) {
   })
 }
 
-async function playNotification(settings) {
+async function playNotification(
+  settings: Record<string, unknown>,
+): Promise<void> {
   const url = resolveSoundUrl(settings)
   const volume =
-    typeof settings?.volume === 'number' ? settings.volume : Number(settings?.volume ?? 1)
+    typeof settings?.volume === 'number'
+      ? settings.volume
+      : Number(settings?.volume ?? 1)
   let repeatCount =
     typeof settings?.repeatCount === 'number'
       ? Math.round(settings.repeatCount)
@@ -92,7 +107,7 @@ async function playNotification(settings) {
   }
 }
 
-async function maybePlayForTrace(event) {
+async function maybePlayForTrace(event: ReplyLifecycleEvent): Promise<void> {
   const traceId = event?.traceId
   if (hasPlayedTrace(traceId)) return
   rememberPlayedTrace(traceId)
@@ -102,7 +117,7 @@ async function maybePlayForTrace(event) {
   await playNotification(settings)
 }
 
-export function register(host) {
+export function register(host: ReplyCompleteSoundHost): void {
   host.lifecycle.onAssistantReplyPersisted((event) => {
     void maybePlayForTrace(event)
   })

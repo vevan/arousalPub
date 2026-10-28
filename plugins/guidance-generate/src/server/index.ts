@@ -17,6 +17,9 @@ const CHAT_DEPTH = 0
 
 export type GuidanceMode = 'send' | 'regenerate' | 'revise'
 
+/** 指导正文注入角色（send/regenerate / revise 指导句） */
+export type GuidanceMessageRole = 'system' | 'user' | 'assistant'
+
 export type GuidancePayload = {
   mode: GuidanceMode
   guidanceText: string
@@ -26,6 +29,14 @@ export type GuidancePayload = {
 export type ChatMessage = {
   role: string
   content: string
+}
+
+export function parseGuidanceMessageRole(
+  raw: unknown,
+  fallback: GuidanceMessageRole = 'system',
+): GuidanceMessageRole {
+  if (raw === 'system' || raw === 'user' || raw === 'assistant') return raw
+  return fallback
 }
 
 export function parsePayload(raw: unknown): GuidancePayload | null {
@@ -116,6 +127,10 @@ export async function resolveAfterAssemblePromptsAddition(
         ? settings.reviseSystemPrefix
         : ''
     const prefix = rawPrefix.trim() || DEFAULT_REVISE_SYSTEM_PREFIX
+    const reviseGuidanceRole = parseGuidanceMessageRole(
+      settings?.reviseGuidanceRole,
+      'system',
+    )
     return [
       {
         role: 'assistant',
@@ -131,7 +146,7 @@ export async function resolveAfterAssemblePromptsAddition(
         },
       },
       {
-        role: 'system',
+        role: reviseGuidanceRole,
         content: `${prefix}${guidance}`,
         position: {
           kind: 'chat',
@@ -148,9 +163,10 @@ export async function resolveAfterAssemblePromptsAddition(
   const rawPrefix =
     typeof settings?.systemPrefix === 'string' ? settings.systemPrefix : ''
   const prefix = rawPrefix.trim() || DEFAULT_SYSTEM_PREFIX
+  const guidanceRole = parseGuidanceMessageRole(settings?.guidanceRole, 'system')
   return [
     {
-      role: 'system',
+      role: guidanceRole,
       content: `${prefix}${guidance}`,
       position: {
         kind: 'chat',

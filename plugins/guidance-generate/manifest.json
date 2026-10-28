@@ -28,6 +28,12 @@
     "version": 1,
     "fields": [
       {
+        "key": "sectionSend",
+        "type": "heading",
+        "labelKey": "sectionSendLabel",
+        "descriptionKey": "sectionSendDesc"
+      },
+      {
         "key": "injectionOrderSend",
         "type": "number",
         "labelKey": "injectionOrderSendLabel",
@@ -35,6 +41,28 @@
         "min": 0,
         "max": 9999,
         "default": 0
+      },
+      {
+        "key": "guidanceRole",
+        "type": "enum",
+        "labelKey": "guidanceRoleLabel",
+        "descriptionKey": "guidanceRoleDesc",
+        "enum": ["system", "user", "assistant"],
+        "default": "system"
+      },
+      {
+        "key": "systemPrefix",
+        "type": "text",
+        "labelKey": "systemPrefixLabel",
+        "descriptionKey": "systemPrefixDesc",
+        "default": "Please generate a reply according to this guidance together with the user's message: ",
+        "maxLength": 4000
+      },
+      {
+        "key": "sectionRevise",
+        "type": "heading",
+        "labelKey": "sectionReviseLabel",
+        "descriptionKey": "sectionReviseDesc"
       },
       {
         "key": "injectionOrderReviseAssistant",
@@ -55,12 +83,12 @@
         "default": 1
       },
       {
-        "key": "systemPrefix",
-        "type": "text",
-        "labelKey": "systemPrefixLabel",
-        "descriptionKey": "systemPrefixDesc",
-        "default": "Please generate a reply according to this guidance together with the user's message: ",
-        "maxLength": 4000
+        "key": "reviseGuidanceRole",
+        "type": "enum",
+        "labelKey": "reviseGuidanceRoleLabel",
+        "descriptionKey": "reviseGuidanceRoleDesc",
+        "enum": ["system", "user", "assistant"],
+        "default": "system"
       },
       {
         "key": "reviseSystemPrefix",
@@ -69,6 +97,12 @@
         "descriptionKey": "reviseSystemPrefixDesc",
         "default": "Please revise the assistant reply above according to this guidance while preserving the main meaning: ",
         "maxLength": 4000
+      },
+      {
+        "key": "sectionPolish",
+        "type": "heading",
+        "labelKey": "sectionPolishLabel",
+        "descriptionKey": "sectionPolishDesc"
       },
       {
         "key": "polishSystemPrefix",

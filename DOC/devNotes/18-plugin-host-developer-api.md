@@ -557,6 +557,7 @@ manifest 可选声明 **`memory.stripBlockTags`**：`string[]`，标签名与助
 | type | 设置页控件 |
 |------|------------|
 | `boolean` / `integer` / `number` / `string` / `text` / `enum` | 标准控件 |
+| `heading` | 分区标题（仅展示、不落盘；`labelKey` + 可选 `descriptionKey`） |
 | `fileAsset` | 用户上传至 `data/plugins/{id}/{userId}/assets/` |
 | `apiPreset` | API 预设下拉（存 **id**） |
 | `lorebook` | 资料库下拉 |

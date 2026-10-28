@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   appendAssistantThenGuidanceSystem,
   insertSystemAfterLastUser,
+  parseGuidanceMessageRole,
   parsePayload,
   resolveAfterAssemblePromptsAddition,
 } from '../../src/server/index.js'
@@ -76,6 +77,16 @@ describe('guidance-generate appendAssistantThenGuidanceSystem', () => {
   })
 })
 
+describe('guidance-generate parseGuidanceMessageRole', () => {
+  it('accepts system user assistant and falls back otherwise', () => {
+    assert.equal(parseGuidanceMessageRole('user'), 'user')
+    assert.equal(parseGuidanceMessageRole('assistant'), 'assistant')
+    assert.equal(parseGuidanceMessageRole('system'), 'system')
+    assert.equal(parseGuidanceMessageRole('nope'), 'system')
+    assert.equal(parseGuidanceMessageRole(undefined, 'user'), 'user')
+  })
+})
+
 describe('guidance-generate resolveAfterAssemblePromptsAddition', () => {
   const api = {
     applyPromptMacroPipeline: (text: string) => text,
@@ -85,7 +96,7 @@ describe('guidance-generate resolveAfterAssemblePromptsAddition', () => {
         : null,
   }
 
-  it('returns depth 0 injectionOrder 10 system for send mode', async () => {
+  it('returns depth 0 injectionOrder 0 system for send mode by default', async () => {
     const injections = await resolveAfterAssemblePromptsAddition(
       {
         pluginId: 'guidance-generate',
@@ -107,6 +118,27 @@ describe('guidance-generate resolveAfterAssemblePromptsAddition', () => {
         },
       },
     ])
+  })
+
+  it('send mode respects guidanceRole setting', async () => {
+    const injections = await resolveAfterAssemblePromptsAddition(
+      {
+        pluginId: 'guidance-generate',
+        macroContext: {},
+        plugins: {
+          'guidance-generate': { mode: 'send', guidanceText: 'be kind' },
+        },
+      },
+      {
+        ...api,
+        getUserPluginSettings: async () => ({
+          systemPrefix: 'G: ',
+          guidanceRole: 'user',
+        }),
+      },
+    )
+    assert.equal(injections?.[0]?.role, 'user')
+    assert.equal(injections?.[0]?.content, 'G:be kind')
   })
 
   it('send mode merges after last user via host order semantics', async () => {
@@ -134,7 +166,7 @@ describe('guidance-generate resolveAfterAssemblePromptsAddition', () => {
     )
   })
 
-  it('revise returns assistant 0 + system 1 descriptors', async () => {
+  it('revise returns assistant 0 + system 1 descriptors by default', async () => {
     const injections = await resolveAfterAssemblePromptsAddition(
       {
         pluginId: 'guidance-generate',
@@ -169,6 +201,32 @@ describe('guidance-generate resolveAfterAssemblePromptsAddition', () => {
         },
       },
     ])
+  })
+
+  it('revise respects reviseGuidanceRole setting', async () => {
+    const injections = await resolveAfterAssemblePromptsAddition(
+      {
+        pluginId: 'guidance-generate',
+        macroContext: {},
+        plugins: {
+          'guidance-generate': {
+            mode: 'revise',
+            guidanceText: 'soften',
+            assistantText: 'Rough reply',
+          },
+        },
+      },
+      {
+        ...api,
+        getUserPluginSettings: async () => ({
+          reviseSystemPrefix: 'R: ',
+          reviseGuidanceRole: 'user',
+        }),
+      },
+    )
+    assert.equal(injections?.[0]?.role, 'assistant')
+    assert.equal(injections?.[1]?.role, 'user')
+    assert.equal(injections?.[1]?.content, 'R:soften')
   })
 
   it('revise merges assistant draft then guidance system after last user', async () => {

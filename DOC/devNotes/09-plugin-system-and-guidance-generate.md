@@ -90,6 +90,7 @@ data/
 | `text` | 多行 | `maxLength` |
 | `enum` | 下拉 | `enum`, `default` |
 | `fileAsset` | 用户上传文件 | `accept`, `purpose`, `visibleWhen` |
+| `heading` | 分区标题（仅展示、不落盘） | `labelKey`，可选 `descriptionKey` |
 
 可选：
 
@@ -242,24 +243,29 @@ data/
 
 | 模式 | Slot | 弹框字段 | 宿主 API |
 |------|------|----------|----------|
-| 指导发送 | `composer-toolbar` | **生成** / **润色** 双 Tab：生成=用户文+指导；润色=原文 `userText` + 润色后 `polishedText` | 生成：`sendWithPlugins`；润色：`complete` + **`host.chat.send(polishedText)`** |
+| 指导发送 | `composer-toolbar` | **指导发送** / **指导润色** 双 Tab：发送=用户文+指导；润色=原文 `userText` + 润色后 `polishedText` | 发送：`sendWithPlugins`；润色：`complete` + **`host.chat.send(polishedText)`** |
 | 指导再生 | `user-turn-footer`（最后 user turn） | 用户文 + 指导文 | `host.chat.regenerateWithPlugins` |
-| **指导修改** | `assistant-turn-footer` | 当前助手回复（只读）+ 指导文 | `host.chat.regenerateWithPlugins`（`mode: 'revise'`） |
+| 指导修改 | `assistant-turn-footer` | 当前助手回复（只读）+ 指导文 | `host.chat.regenerateWithPlugins`（`mode: 'revise'`） |
 
-**设置页**（`settingsSchema`）：
+**设置页**（`settingsSchema`，三大块 + `heading` 分区）：
 
-| 键 | 用途 |
-|----|------|
-| `systemPrefix` | send / regenerate：指导 system 前缀 |
-| `reviseSystemPrefix` | revise：加在当前助手回复与指导正文之间的 system 前缀 |
-| `polishSystemPrefix` | 润色 Tab：二次 LLM system 指令（只输出润色后的用户输入） |
-| `polishHistoryTurns` | 润色时 `conversation.transcript.tail` 的 `tailCount`（默认 8，0～40） |
+| 区块 | 键 | 用途 |
+|------|----|------|
+| **指导发送**（含再生） | `injectionOrderSend` | send / regenerate 注入档位 |
+| | `guidanceRole` | 指导正文注入 role（`system` \| `user` \| `assistant`，默认 `system`） |
+| | `systemPrefix` | 指导正文前缀 |
+| **指导修改** | `injectionOrderReviseAssistant` | 助手草稿档位 |
+| | `injectionOrderReviseSystem` | 指导句档位 |
+| | `reviseGuidanceRole` | 指导句 role（默认 `system`；Gemini 末条须 user 时改 `user`） |
+| | `reviseSystemPrefix` | 草稿与指导正文之间的前缀 |
+| **指导润色** | `polishSystemPrefix` | 润色二次 LLM system 指令（只输出润色后的用户输入） |
+| | `polishHistoryTurns` | `conversation.transcript.tail` 的 `tailCount`（默认 8，0～40） |
 
-**润色 Tab（仅指导发送弹框）**：宿主表单 `tabs`（生成 / 润色）。字段：`userText`（原文，不覆盖）+ `polishedText`（润色结果）+ 指纹 `polishSource`。流程：点「润色」（原文非空）→ `prepareContextBlocks` + `complete`（`system` 历史 → `user` 原文 → `system` 润色前缀）写入 `polishedText` 且 `polishSource = userText` → 点「发送」（`polishedText` 非空且原文未改）走 **`host.chat.send(polishedText)`**（无指导注入）。权限：`plugin.complete` + `conversation.read`。
+**指导润色 Tab（仅指导发送弹框）**：宿主表单 `tabs`（指导发送 / 指导润色）。字段：`userText`（原文，不覆盖）+ `polishedText`（润色结果）+ 指纹 `polishSource`。流程：点「指导润色」（原文非空）→ `prepareContextBlocks` + `complete`（`system` 历史 → `user` 原文 → `system` 润色前缀）写入 `polishedText` 且 `polishSource = userText` → 点「发送」（`polishedText` 非空且原文未改）走 **`host.chat.send(polishedText)`**（无指导注入）。权限：`plugin.complete` + `conversation.read`。
 
-**Prompt · send/regenerate**：指导以 hidden system 插在**最后一条 user 消息之后**（非 messages 末尾）；前缀 **`settings.systemPrefix`**。
+**Prompt · send/regenerate**：指导消息插在**最后一条 user 之后**（depth 0）；role 为 **`settings.guidanceRole`**（默认 `system`）；前缀 **`settings.systemPrefix`**。
 
-**Prompt · revise**：在组装结果末尾 append **当前助手回复**（`assistant`）+ 指导 system；前缀 **`settings.reviseSystemPrefix`**。
+**Prompt · revise**：append **当前助手草稿**（固定 `assistant`）+ 指导句（role 为 **`settings.reviseGuidanceRole`**，默认 `system`）；前缀 **`settings.reviseSystemPrefix`**。Gemini 等禁止以 model 收尾时，将 `reviseGuidanceRole` 设为 `user`。
 
 **落盘**：`turn.plugins[].payload` 含 `mode`（`send` | `regenerate` | `revise`）与 `guidanceText`。
 

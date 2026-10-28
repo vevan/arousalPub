@@ -27,6 +27,10 @@ var PLUGIN_ID = "guidance-generate";
 var DEFAULT_SYSTEM_PREFIX = "Please generate a reply according to this guidance together with the user's message: ";
 var DEFAULT_REVISE_SYSTEM_PREFIX = "Please revise the assistant reply above according to this guidance while preserving the main meaning: ";
 var CHAT_DEPTH = 0;
+function parseGuidanceMessageRole(raw, fallback = "system") {
+  if (raw === "system" || raw === "user" || raw === "assistant") return raw;
+  return fallback;
+}
 function parsePayload(raw) {
   if (!raw || typeof raw !== "object") return null;
   const o = raw;
@@ -77,6 +81,10 @@ async function resolveAfterAssemblePromptsAddition(ctx, api) {
     if (!assistantText) return null;
     const rawPrefix2 = typeof settings?.reviseSystemPrefix === "string" ? settings.reviseSystemPrefix : "";
     const prefix2 = rawPrefix2.trim() || DEFAULT_REVISE_SYSTEM_PREFIX;
+    const reviseGuidanceRole = parseGuidanceMessageRole(
+      settings?.reviseGuidanceRole,
+      "system"
+    );
     return [
       {
         role: "assistant",
@@ -92,7 +100,7 @@ async function resolveAfterAssemblePromptsAddition(ctx, api) {
         }
       },
       {
-        role: "system",
+        role: reviseGuidanceRole,
         content: `${prefix2}${guidance}`,
         position: {
           kind: "chat",
@@ -108,9 +116,10 @@ async function resolveAfterAssemblePromptsAddition(ctx, api) {
   }
   const rawPrefix = typeof settings?.systemPrefix === "string" ? settings.systemPrefix : "";
   const prefix = rawPrefix.trim() || DEFAULT_SYSTEM_PREFIX;
+  const guidanceRole = parseGuidanceMessageRole(settings?.guidanceRole, "system");
   return [
     {
-      role: "system",
+      role: guidanceRole,
       content: `${prefix}${guidance}`,
       position: {
         kind: "chat",
@@ -138,6 +147,7 @@ function resolveTurnPluginEntries(plugins) {
 export {
   appendAssistantThenGuidanceSystem,
   insertSystemAfterLastUser,
+  parseGuidanceMessageRole,
   parsePayload,
   resolveAfterAssemblePromptsAddition,
   resolveTurnPluginEntries

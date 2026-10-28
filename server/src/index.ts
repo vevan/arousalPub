@@ -19,6 +19,7 @@ import { resolveDataEncryptionKey } from './data-encryption-key.js'
 import { registerMaintenanceGuard } from './maintenance-guard.js'
 import { scheduleStartupBackupIfNeeded } from './data-backup.js'
 import { ensureUsersRegistry } from './users-index.js'
+import { rewriteStaleLinderaConfigsAtStartup } from './hybrid-fts-dict.js'
 import { bootstrapBundledPluginsAtStartup } from './plugin-system/loader.js'
 import { assertValidPluginId } from './plugin-system/plugin-id.js'
 import { shutdownAllPluginWorkers } from './plugin-system/plugin-worker-client.js'
@@ -120,8 +121,16 @@ app.addHook('preHandler', async (request, reply) => {
 })
 
 await registerAdminConsole(app)
-await ensureUsersRegistry()
+const usersIndex = await ensureUsersRegistry()
 resolveDataEncryptionKey()
+const linderaCfgRewritten = await rewriteStaleLinderaConfigsAtStartup(
+  usersIndex.users.map((u) => u.id),
+)
+if (linderaCfgRewritten > 0) {
+  console.log(
+    `[hybrid-fts] rewrote ${linderaCfgRewritten} lindera config.yml path(s) for current DATA_DIR`,
+  )
+}
 await bootstrapBundledPluginsAtStartup()
 
 registerMiscRoutes(app)

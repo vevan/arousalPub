@@ -145,6 +145,7 @@ function normalizeField(raw: unknown): PluginSettingsFieldSchema | null {
     'enum',
     'fileAsset',
     'bundledAssetPreview',
+    'heading',
     'apiPreset',
     'lorebook',
     'objectList',
@@ -279,13 +280,20 @@ function normalizeField(raw: unknown): PluginSettingsFieldSchema | null {
   return field
 }
 
+/** 仅展示、不落盘的 schema 字段（预览 / 分区标题等） */
+export function isDisplayOnlySettingsField(
+  field: Pick<PluginSettingsFieldSchema, 'type'>,
+): boolean {
+  return field.type === 'bundledAssetPreview' || field.type === 'heading'
+}
+
 export function schemaDefaults(
   schema: PluginSettingsSchema | null | undefined,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { schemaVersion: schema?.version ?? 1 }
   if (!schema) return out
   for (const field of schema.fields) {
-    if (field.type === 'bundledAssetPreview') continue
+    if (isDisplayOnlySettingsField(field)) continue
     if ('default' in field) out[field.key] = field.default
   }
   return out
@@ -304,7 +312,7 @@ export function validatePluginSettings(
     schemaVersion: schema.version,
   }
   for (const field of schema.fields) {
-    if (field.type === 'bundledAssetPreview') continue
+    if (isDisplayOnlySettingsField(field)) continue
     out[field.key] = coerceField(field, input[field.key], base[field.key])
   }
   return out
@@ -317,7 +325,7 @@ export function validatePluginSettingsStrict(
   const doc = validatePluginSettings(schema, raw)
   if (!schema) return doc
   for (const field of schema.fields) {
-    if (field.type === 'bundledAssetPreview') continue
+    if (isDisplayOnlySettingsField(field)) continue
     assertFieldValid(field, doc[field.key])
   }
   return doc
@@ -496,6 +504,7 @@ function coerceField(
       return base
     }
     case 'bundledAssetPreview':
+    case 'heading':
       return undefined
     case 'checkboxGroup':
       return parseStringArrayValue(value, fallback)

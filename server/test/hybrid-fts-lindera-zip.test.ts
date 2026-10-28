@@ -15,6 +15,7 @@ import {
   installLinderaDictZipFromPath,
   isDictVariantDownloaded,
   linderaDictDir,
+  rewriteStaleLinderaConfigsAtStartup,
 } from '../src/hybrid-fts-dict.js'
 import { dictVariantEntryForProfile } from '../src/hybrid-fts-catalog.js'
 
@@ -133,6 +134,15 @@ describe('lindera zip install', () => {
       const rewritten = await readFile(path.join(dictDir, 'config.yml'), 'utf8')
       assert.match(rewritten, /lindera-zip-unit%23percent%25/)
       assert.doesNotMatch(rewritten, /file:\/\/\/stale/)
+      await writeFile(
+        path.join(dictDir, 'config.yml'),
+        'segmenter:\n  mode: "normal"\n  dictionary: "file:///E:/stale-drive"\n',
+      )
+      assert.equal(await rewriteStaleLinderaConfigsAtStartup([userId]), 1)
+      const bootRewritten = await readFile(path.join(dictDir, 'config.yml'), 'utf8')
+      assert.match(bootRewritten, /lindera-zip-unit%23percent%25/)
+      assert.doesNotMatch(bootRewritten, /E:\/stale-drive/)
+      assert.equal(await rewriteStaleLinderaConfigsAtStartup([userId]), 0)
       await rm(path.join(dictDir, 'config.yml'), { force: true })
       assert.equal(await isDictVariantDownloaded('lindera', kind, userId), true)
       const regenerated = await readFile(path.join(dictDir, 'config.yml'), 'utf8')

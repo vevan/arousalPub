@@ -11,6 +11,7 @@ import TextFields from '@/components/settings/plugin-schema/TextFields.vue'
 import ObjectListField from '@/components/settings/plugin-schema/ObjectListField.vue'
 import StringFields from '@/components/settings/plugin-schema/StringFields.vue'
 import BundledAssetPreviewField from '@/components/settings/plugin-schema/BundledAssetPreviewField.vue'
+import HeadingField from '@/components/settings/plugin-schema/HeadingField.vue'
 import FileAssetField from '@/components/settings/plugin-schema/FileAssetField.vue'
 import { provide } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -123,6 +124,11 @@ defineExpose({
 
         <BundledAssetPreviewField
           v-else-if="field.type === 'bundledAssetPreview'"
+          :field="field"
+        />
+
+        <HeadingField
+          v-else-if="field.type === 'heading'"
           :field="field"
         />
 

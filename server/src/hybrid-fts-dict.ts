@@ -13,6 +13,7 @@ import {
   type DictVariantCatalogEntry,
 } from './hybrid-fts-catalog.js'
 import {
+  LINDERA_DICT_KINDS,
   normalizeHybridFtsDictVariant,
   normalizeHybridFtsSettings,
   profileRequiresDict,
@@ -846,4 +847,36 @@ export async function prepareHybridFtsSettings(
     n.dictVariant ?? normalizeHybridFtsDictVariant(null, n.profile),
     userId,
   )
+}
+
+/**
+ * 进程启动时：按当前 DATA 绝对路径重写各用户已下载的 lindera `config.yml`
+ *（换盘符 / 搬迁数据目录后无需重下词典）。返回实际改写的份数。
+ */
+export async function rewriteStaleLinderaConfigsAtStartup(
+  userIds: readonly string[],
+): Promise<number> {
+  let rewritten = 0
+  for (const rawId of userIds) {
+    const userId = rawId.trim()
+    if (!userId) continue
+    for (const kind of LINDERA_DICT_KINDS) {
+      const cfg = linderaConfigPath(userId, kind)
+      let before: string | null = null
+      try {
+        if (existsSync(cfg)) before = await readFile(cfg, 'utf8')
+      } catch {
+        before = null
+      }
+      const ok = await ensureLinderaConfigCurrent(userId, kind)
+      if (!ok) continue
+      try {
+        const after = await readFile(cfg, 'utf8')
+        if (before !== after) rewritten += 1
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return rewritten
 }

@@ -56,4 +56,33 @@ describe('plugin settings text maxLength', () => {
     })
     assert.equal(String(out.body).length, 8000)
   })
+
+  it('heading fields are display-only and omitted from saved settings', () => {
+    const schema = normalizeSettingsSchema({
+      version: 1,
+      fields: [
+        {
+          key: 'sectionSend',
+          type: 'heading',
+          labelKey: 'sectionSendLabel',
+          descriptionKey: 'sectionSendDesc',
+        },
+        {
+          key: 'systemPrefix',
+          type: 'text',
+          labelKey: 'systemPrefixLabel',
+          default: 'G: ',
+        },
+      ],
+    })
+    assert.ok(schema)
+    assert.equal(schema.fields[0]?.type, 'heading')
+    const out = validatePluginSettings(schema, {
+      schemaVersion: 1,
+      sectionSend: 'should-not-persist',
+      systemPrefix: 'X: ',
+    })
+    assert.equal(out.sectionSend, undefined)
+    assert.equal(out.systemPrefix, 'X: ')
+  })
 })

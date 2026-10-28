@@ -295,7 +295,7 @@ export function register(host: GuidanceHost): void {
   host.registerSlotButton('composer-toolbar', {
     id: `${PLUGIN_ID}-composer`,
     icon: 'mdi-lightbulb-on-outline',
-    tooltipKey: tKey(host, 'tooltip'),
+    tooltipKey: tKey(host, 'send'),
     filled: false,
     onClick: () => {
       host.openFormDialog(PLUGIN_ID, {
@@ -314,7 +314,7 @@ export function register(host: GuidanceHost): void {
   host.registerSlotButton('user-turn-footer', {
     id: `${PLUGIN_ID}-regen`,
     icon: 'mdi-lightbulb-on-outline',
-    tooltipKey: tKey(host, 'tooltip'),
+    tooltipKey: tKey(host, 'regenerate'),
     filled: true,
     when: (ctx) =>
       !!ctx.turn &&
@@ -339,7 +339,7 @@ export function register(host: GuidanceHost): void {
   host.registerSlotButton('assistant-turn-footer', {
     id: `${PLUGIN_ID}-revise`,
     icon: 'mdi-lightbulb-on-outline',
-    tooltipKey: tKey(host, 'reviseTooltip'),
+    tooltipKey: tKey(host, 'revise'),
     filled: true,
     when: (ctx) => !!ctx.turn && activeAssistantText(ctx.turn, ctx.segmentIndex).length > 0,
     disabled: (ctx) =>
@@ -361,21 +361,21 @@ export function register(host: GuidanceHost): void {
   })
 
   host.registerFormDialog(PLUGIN_ID, {
-    titleKey: tKey(host, 'dialogTitle'),
+    titleKey: tKey(host, 'send'),
     titleKeys: {
-      send: tKey(host, 'dialogTitle'),
-      regenerate: tKey(host, 'dialogTitle'),
-      revise: tKey(host, 'reviseDialogTitle'),
+      send: tKey(host, 'send'),
+      regenerate: tKey(host, 'regenerate'),
+      revise: tKey(host, 'revise'),
     },
     tabs: [
       {
         id: 'generate',
-        labelKey: tKey(host, 'tabGenerate'),
+        labelKey: tKey(host, 'send'),
         submitKey: tKey(host, 'send'),
       },
       {
         id: 'polish',
-        labelKey: tKey(host, 'tabPolish'),
+        labelKey: tKey(host, 'polish'),
         submitKey: tKey(host, 'polishSend'),
       },
     ],

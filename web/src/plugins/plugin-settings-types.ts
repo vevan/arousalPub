@@ -7,6 +7,7 @@ export type PluginSettingsFieldType =
   | 'enum'
   | 'fileAsset'
   | 'bundledAssetPreview'
+  | 'heading'
   | 'apiPreset'
   | 'lorebook'
   | 'objectList'

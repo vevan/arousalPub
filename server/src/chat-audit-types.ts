@@ -64,12 +64,16 @@ export interface AssemblyAudit {
   }
   budgetTrim?: {
     maxTokens?: number
-    /** 插件预留后的实际裁切预算 */
+    /**
+     * 裁切上限。PromptSlot 管线下等于 `maxTokens`（插件已入槽、不再预留双扣）。
+     * 旧条目可能小于 maxTokens（曾扣插件预留）。
+     */
     trimMaxTokens?: number
-    /** 裁切前全量组装 token */
+    /** 宏+regex 后、裁切前全量 token */
     tokensBeforeTrim?: number
   }
   plugins?: {
+    /** 插件注入合计 token（不可裁；字段名历史遗留，非「预留双扣」） */
     tokenReserve: number
     items: { pluginId: string; tokens: number }[]
   }
@@ -101,14 +105,21 @@ export interface AssemblyTimingMs {
   memory?: number
   characters?: number
   lore?: number
-  /** lore 结束后 → 宏展开完成；约等于 knowledge+pluginReserve+budgetTrim+macros */
+  /**
+   * lore 结束后 → 裁切投影完成。
+   * 子项顺序（PromptSlot）：knowledge → pluginsAfterAssemble → macros → regexOutgoing → budgetTrim；
+   * `pluginReserve` 新管线恒为 0（旧条目可有值）。
+   */
   assembleAndTrim?: number
   knowledge?: number
+  /** 旧管线：estimatePlugins 预留耗时；新管线写 0 */
   pluginReserve?: number
   budgetTrim?: number
+  /** 组装次数（PromptSlot：恒为 1；旧裁切循环可为 2） */
   budgetTrimAssemblePasses?: number
   macros?: number
   regexOutgoing?: number
+  /** 插件入槽（在宏/regex/裁切之前） */
   pluginsAfterAssemble?: number
 }
 

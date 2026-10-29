@@ -9,12 +9,8 @@ import {
   type BudgetTrimSettings,
   type BudgetTrimSlot,
 } from './budget-trim-settings.js'
-import {
-  countChatMessageFrameTokens,
-  countChatMessagesTokens,
-  estimateTokens,
-  type TokenCountOptions,
-} from './token-count.js'
+import { countChatMessagesTokens, type TokenCountOptions } from './token-count.js'
+import { trimAssembledMessagesWithPromptSlots } from './prompt-slots.js'
 import { formatMemoryXml } from './turn-memory-xml.js'
 import {
   formatLoresInjectionXml,
@@ -302,90 +298,10 @@ export function trimOneRoundRobin(
   }
   return null
 }
-function recordDrop(drops: PromptBudgetTrimResult, slot: BudgetTrimSlot): void {
-  switch (slot) {
-    case 'knowledge':
-      drops.droppedKnowledgeCount += 1
-      break
-    case 'lore':
-      drops.droppedLoreCount += 1
-      break
-    case 'memory':
-      drops.droppedMemoryCount += 1
-      break
-    case 'history':
-      break
-  }
-}
-interface TrimTokenSnapshot {
-  worldText: string
-  memoryText: string
-  knowledgeText: string
-  removedHistory?: ChatMessage
-}
-
-/** 估算单次裁切减少的 token（world / memory / knowledge XML 差分 + history 帧） */
-export function estimateTrimTokenDelta(
-  state: PromptBudgetTrimState,
-  slot: BudgetTrimSlot,
-  snapshot: TrimTokenSnapshot,
-  options?: TokenCountOptions,
-): number {
-  const opt = options ?? {}
-  if (slot === 'lore') {
-    const after = worldTextFromTrimState(state)
-    return Math.max(
-      0,
-      estimateTokens(snapshot.worldText, opt) - estimateTokens(after, opt),
-    )
-  }
-  if (slot === 'memory') {
-    const after = memoryTextFromTrimState(state)
-    return Math.max(
-      0,
-      estimateTokens(snapshot.memoryText, opt) - estimateTokens(after, opt),
-    )
-  }
-  if (slot === 'knowledge') {
-    const after = knowledgeTextFromTrimState(state)
-    return Math.max(
-      0,
-      estimateTokens(snapshot.knowledgeText, opt) -
-        estimateTokens(after, opt),
-    )
-  }
-  if (slot === 'history' && snapshot.removedHistory) {
-    return countChatMessageFrameTokens(snapshot.removedHistory, opt)
-  }
-  return 0
-}
-
 /**
- * 账本差分保守系数：state XML 差分常大于真实 messages 节约。
- * 越低越倾向于多删，换取收尾一次校准即达标（目标 2 遍 assemble）。
- */
-export const TRIM_LEDGER_DELTA_CONSERVATIVE = 0.4
-
-/** 首轮账本目标：删到 budget×该比例，留余量给校准漂移 */
-export const TRIM_LEDGER_TARGET_RATIO = 0.92
-
-/** 校准后仍超限时的二次账本系数（极少走到） */
-const TRIM_LEDGER_DELTA_EMERGENCY = 0.25
-
-function snapshotForTrimDelta(state: PromptBudgetTrimState): TrimTokenSnapshot {
-  return {
-    worldText: worldTextFromTrimState(state),
-    memoryText: memoryTextFromTrimState(state),
-    knowledgeText: knowledgeTextFromTrimState(state),
-    removedHistory: state.historyMessages[0],
-  }
-}
-
-/**
- * §14.4 统一预算裁切：
- * 1) 首轮全量 assemble + tiktoken；
- * 2) 按 trimOrder 轮询账本删条（目标 budget×0.92，差分×0.4），循环内不 assemble；
- * 3) 收尾再 assemble 一次（常态共 2 遍）；若仍超限再急删一轮 + 至多第 3 遍 assemble。
+ * §14.4.1：组装一次 → PromptSlot 账本裁切并投影（不再二次 assemble）。
+ * chat-assemble 在插件→宏→regex 之后调 `trimAssembledMessagesWithPromptSlots`；
+ * 本函数保留给单测 / 仅 state 组装的路径。
  */
 export function runPromptBudgetTrimLoop(opts: {
   maxTokens: number
@@ -399,92 +315,43 @@ export function runPromptBudgetTrimLoop(opts: {
   drops: PromptBudgetTrimResult
   /** 裁切前全量组装 token（未裁切时与 estimatedTokens 相同） */
   tokensBeforeTrim: number
-  /** assembleMessages 调用次数（未超限 1；常态裁切 2） */
+  /** assembleMessages 调用次数（未超限或仅组装 1） */
   assemblePasses: number
 } {
-  const drops: PromptBudgetTrimResult = {
-    droppedLoreCount: 0,
-    droppedMemoryCount: 0,
-    droppedKnowledgeCount: 0,
-  }
   const contentTokenCache = new Map<string, number>()
   const tokenOpt: TokenCountOptions = {
     model: opts.tokenModel,
     contentTokenCache,
   }
-  const count = (msgs: ChatMessage[]) =>
-    countChatMessagesTokens(msgs, tokenOpt)
-  let assemblePasses = 0
-  const assemble = () => {
-    assemblePasses += 1
-    return opts.assembleMessages(opts.state)
-  }
-  let messages = assemble()
-  let tokens = count(messages)
-  const tokensBeforeTrim = tokens
+  const messages0 = opts.assembleMessages(opts.state)
+  const tokens0 = countChatMessagesTokens(messages0, tokenOpt)
   const budget = Math.floor(opts.maxTokens)
-  if (!Number.isFinite(budget) || budget <= 0 || tokens <= budget) {
+  if (!Number.isFinite(budget) || budget <= 0 || tokens0 <= budget) {
     return {
-      messages,
-      estimatedTokens: tokens,
-      drops,
-      tokensBeforeTrim,
-      assemblePasses,
+      messages: messages0,
+      estimatedTokens: tokens0,
+      drops: {
+        droppedLoreCount: 0,
+        droppedMemoryCount: 0,
+        droppedKnowledgeCount: 0,
+      },
+      tokensBeforeTrim: tokens0,
+      assemblePasses: 1,
     }
   }
 
-  const MAX_ROUNDS = 512
-  const rrCursor = { index: 0 }
-  const ledgerTarget = Math.max(
-    1,
-    Math.floor(budget * TRIM_LEDGER_TARGET_RATIO),
-  )
-
-  const dropByLedgerUntil = (
-    estTokens: number,
-    target: number,
-    factor: number,
-  ): boolean => {
-    let est = estTokens
-    let dropped = false
-    for (let round = 0; round < MAX_ROUNDS && est > target; round++) {
-      const snap = snapshotForTrimDelta(opts.state)
-      const trimmedSlot = trimOneRoundRobin(
-        opts.state,
-        opts.trimSettings,
-        rrCursor,
-      )
-      if (!trimmedSlot) break
-      const rawDelta = estimateTrimTokenDelta(
-        opts.state,
-        trimmedSlot,
-        snap,
-        tokenOpt,
-      )
-      const delta = Math.max(1, Math.floor(rawDelta * factor))
-      est = Math.max(0, est - delta)
-      recordDrop(drops, trimmedSlot)
-      dropped = true
-    }
-    return dropped
-  }
-
-  dropByLedgerUntil(tokens, ledgerTarget, TRIM_LEDGER_DELTA_CONSERVATIVE)
-
-  messages = assemble()
-  tokens = count(messages)
-  if (tokens > budget) {
-    if (dropByLedgerUntil(tokens, budget, TRIM_LEDGER_DELTA_EMERGENCY)) {
-      messages = assemble()
-      tokens = count(messages)
-    }
-  }
-
+  const trimmed = trimAssembledMessagesWithPromptSlots({
+    messages: messages0,
+    state: opts.state,
+    maxTokens: budget,
+    trimSettings: opts.trimSettings,
+    tokenModel: opts.tokenModel,
+  })
   return {
-    messages,
-    estimatedTokens: tokens,
-    drops,
-    tokensBeforeTrim,
-    assemblePasses,
+    messages: trimmed.messages,
+    estimatedTokens: trimmed.estimatedTokens,
+    drops: trimmed.drops,
+    tokensBeforeTrim: trimmed.tokensBeforeTrim,
+    assemblePasses: 1,
   }
 }

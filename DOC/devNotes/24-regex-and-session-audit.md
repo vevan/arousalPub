@@ -66,19 +66,20 @@ data/{userId}/regex-rules.json
 
 \* `outgoing` 不直接改 UI；落盘后 UI 以 §2.4 为准。
 
-**`outgoing` 管道顺序**（定案 · 2026-06-17 修订）：
+**`outgoing` 管道顺序**（定案 · 2026-10-29 PromptSlot 修订）：
 
 ```text
-assemble（deferMacroExpansion）
-  → outgoing regex（裁切计数口径；首轮 assemble 回调内）
-  → budget trim（轮询删条 + 槽位差分账本；常态首轮 assemble+count → 账本删 → 收尾 assemble+count，见 DOC/devNotes/03 §14.4.1）
+format* 包壳 → messages
+  → 插件入槽（trimmable:false）
   → 宏展开
-  → outgoing regex（终态）
-  → plugin afterAssemblePrompts
+  → outgoing regex（仅一次）
+  → 建 PromptSlot[]（lore 按 <lore> 条；多本 <lorebook> 壳为不可裁 glue）
+  → 计 tokens → budget trim（帧 Δ 扣减；见 DOC/devNotes/03 §14.4.1）
+  → 投影 messages[]（不再 format* / 不再二次 regex）
   → upstream
 ```
 
-裁切上限 `trimMaxTokens` = `contextLength` − 插件 token 预留（见 `DOC/devNotes/03` §14.4.1）。**outgoing regex 在裁切用 assemble 回调内须与最终出站同规则**，使 token 计数与出站一致（例如 history assistant 内插件块在 skip 窗口外会被剥除，不得按未剥除体积裁切）。
+裁切上限 `trimMaxTokens` = `contextLength`（插件已入槽计入总额后，不再单独预留双扣；见 `DOC/devNotes/03` §14.4.1）。**outgoing 必须在记账与裁切之前跑完**，使槽内正文与出站一致（例如 history / `<memory>` 内按 `turnOrdinal` 剥块）。
 
 **无 `turnOrdinal` 的整段 system**（恒定 lore / world 等单条 system 消息）：不受 `skipLastNTurns` 限制；规则含 `system` + `outgoing` 即作用于整条 `content`。
 
@@ -86,7 +87,7 @@ assemble（deferMacroExpansion）
 
 - 注入形态为 **一条** `role: system`，正文为 `<memory>…</memory>`（见 `turn-memory-xml.ts`）。
 - **不得**把整段 memory XML 当作无 ordinal 的 system 处理 `skipLastNTurns`；须在 outgoing 前对块内各 `<turn ordinal="N">` 的 **`<user>` / `<assistant>` 正文**按 `turnOrdinal` 分别应用规则（与 history 中 user/assistant 同语义）。
-- 实现：`regex-outgoing.ts` — `applyOutgoingRegexToMemoryItems` ← `chat-assemble` 在 **裁切循环**与**终态**两次传入当前 `memoryItems`（trim state）→ `formatMemoryXml` → 替换 messages 中 `<memory>` system 消息 → 再走整包 `applyRegexRulesToMessages`（history / 尾部 user 等）。
+- 实现：`regex-outgoing.ts` — 对 memory **parts**（或投影前整段 `<memory>`）按 `turnOrdinal` 应用规则；PromptSlot 管线中 **仅在裁切前** 跑一次（`chat-assemble`：插件 → 宏 → regex → 建槽 → Δ 裁切投影）。切 XML 失败不回退 state 重建。
 - 正文写入 XML 前经 `prepareXmlElementText` 转义；outgoing 正则前对 turn 正文做 `normalizeXmlTextBeforeProcessing`（与 `prompt-xml.ts` 一致，最多 3 轮实体还原），避免磁盘误存 `&lt;tag&gt;` 时 pattern 匹配失败。
 - **审计展示**：memory 段内 tracker 等标签在 `messages` 中常以 `&lt;…&gt;` 显示，为 **合法 XML 转义**；skip 窗口外老轮剥除成功后应无 `ex-tracker`（实体或明文均无）。history 近 N 轮 assistant 在 skip 窗口内可仍保留明文 `<ex-tracker>`。
 
@@ -273,12 +274,12 @@ applyText / applyMessages  // 同语义
         "history": { "turnOrdinals": [8, 9, 10, 11], "droppedCount": 0 },
         "budgetTrim": {
           "maxTokens": 65000,
-          "trimMaxTokens": 61355,
+          "trimMaxTokens": 65000,
           "tokensBeforeTrim": 28763
         },
         "plugins": {
           "tokenReserve": 512,
-          "items": [{ "pluginId": "trace-keeper", "tokens": 384 }]
+          "items": [{ "pluginId": "example-plugin", "tokens": 384 }]
         }
       },
       "calls": [
@@ -293,12 +294,12 @@ applyText / applyMessages  // 同语义
           "lore": 30,
           "assembleAndTrim": 35,
           "knowledge": 2,
-          "pluginReserve": 4,
-          "budgetTrim": 25,
-          "budgetTrimAssemblePasses": 2,
+          "pluginReserve": 0,
+          "pluginsAfterAssemble": 3,
           "macros": 4,
           "regexOutgoing": 2,
-          "pluginsAfterAssemble": 1
+          "budgetTrim": 25,
+          "budgetTrimAssemblePasses": 1
         },
         "preUpstreamMs": 3,
         "upstreamMs": {
@@ -340,11 +341,11 @@ applyText / applyMessages  // 同语义
 
 - **`segmentIndex` / `receiveId`**（2026-07-03）：群聊同一 `turnId` 内多 segment 时，每条 audit 按 **segment 区分**；缺省 `segmentIndex` 视为 `0`（兼容旧条目）。`receiveId` 为本段 active receive，便于精确对照 swipe/regen。
 - **`groupChat`**（2026-07-03 · 群聊 G3/G4）：`segmentPick`（本段选人 audit，含掷骰 roster）、`nextSpeaker`（本段结束后下一段选人）；Web 群聊会话在审计弹窗增加独立 Tab，两区块展示「本段选人 / 下段选人」。chunk segment `meta.segmentPickAudit` / `resolvedNextSpeakerAudit` 供 regen 与 continue carry；写盘时 strip 冗余 `resolvedNextSpeakerAudit`（仅保留 carry 所需段）。regen 非末段时截断后续 segments 并清理对应 audit 条目。
-- **`messages`**：outgoing 最终态（**regex outgoing 之后**、`afterAssemblePrompts` 之后、upstream 之前）；**服务端自写**，不再依赖前端 `debugPrompt`。
+- **`messages`**：outgoing 最终态（插件入槽 → 宏 → **regex outgoing 一次** → PromptSlot 裁切投影之后、upstream 之前）；**服务端自写**，不再依赖前端 `debugPrompt`。
 - **`assembly` / `calls` / `performance`**：仅 **`auditDebug.enabled`** 时计算并写入；**不进** chunk `turn.send` / `receive.runtime`（`runtime` 仍保留轻量 model/duration/tokens）。
-- **`performance`**（schema **v3**）：`assemblyMs` 分段（memory / characters / lore / assembleAndTrim〔子项 knowledge / pluginReserve / budgetTrim + `budgetTrimAssemblePasses` / macros〕/ regexOutgoing / pluginsAfterAssemble）、`preUpstreamMs`、流式 `upstreamMs`（TTFB、首→末 token TPS）、`persistMs`、`stream` 字符/ token 统计；**debug 关闭时零开销**（不跑计时、不落盘该字段）。
-- **`assembly.plugins`**（2026-06）：`afterAssemblePrompts` / `resolveAfterAssemblePromptsAddition` 注入的 **不可 trim** token 预留与各插件分项；`ChatTurnPromptDialog` 组装 Tab 展示。与 audit 顶层预留的 `entries[].plugins[]`（出站元数据）**不同**。
-- **`assembly.budgetTrim`**（2026-06-17）：`maxTokens`（API `contextLength`）、`trimMaxTokens`（`maxTokens` − 插件预留）、`tokensBeforeTrim`（裁切前 outgoing regex 后全量 token，与裁切决策同口径）。
+- **`performance`**（schema **v3**）：`assemblyMs` 分段（memory / characters / lore / assembleAndTrim〔子项 knowledge / pluginReserve[=0] / budgetTrim + `budgetTrimAssemblePasses` / macros / regexOutgoing / pluginsAfterAssemble〕）、`preUpstreamMs`、流式 `upstreamMs`（TTFB、首→末 token TPS）、`persistMs`、`stream` 字符/ token 统计；**debug 关闭时零开销**（不跑计时、不落盘该字段）。顺序与 §2.2 一致：plugins → macros → regex → budgetTrim。
+- **`assembly.plugins`**（2026-06）：`afterAssemblePrompts` / `resolveAfterAssemblePromptsAddition` 注入（**不可裁**，已计入出站总额）；`ChatTurnPromptDialog` 组装 Tab 展示。与 audit 顶层预留的 `entries[].plugins[]`（出站元数据）**不同**。
+- **`assembly.budgetTrim`**（2026-10-29 PromptSlot）：`maxTokens`（API `contextLength`）、`trimMaxTokens`（= `maxTokens`，插件已入槽后不再单独预留双扣）、`tokensBeforeTrim`（宏+regex 后、裁切前全量 token）。
 - **`calls[].plugin.complete` / `entries[].plugins[]`**：schema **预留**（见 §3.6）；Separate 等异步 `plugin.complete` **当前不写入** audit。
 
 ### 3.3 写入时机

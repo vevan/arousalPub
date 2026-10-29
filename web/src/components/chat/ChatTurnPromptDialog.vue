@@ -249,7 +249,12 @@ const historyTurnRanges = computed(() =>
                         <td class="audit-table__label">{{ $t('chat.turnAuditBudgetMax') }}</td>
                         <td>{{ assembly.budgetTrim.maxTokens }}</td>
                       </tr>
-                      <tr v-if="assembly.budgetTrim?.trimMaxTokens">
+                      <tr
+                        v-if="
+                          assembly.budgetTrim?.trimMaxTokens &&
+                          assembly.budgetTrim.trimMaxTokens !== assembly.budgetTrim.maxTokens
+                        "
+                      >
                         <td class="audit-table__label">{{ $t('chat.turnAuditTrimBudget') }}</td>
                         <td>{{ assembly.budgetTrim.trimMaxTokens }}</td>
                       </tr>
@@ -581,9 +586,26 @@ const historyTurnRanges = computed(() =>
                         <td class="audit-table__label">{{ $t('chat.turnAuditPerfKnowledge') }}</td>
                         <td>{{ formatLatency(performance.assemblyMs.knowledge) }}</td>
                       </tr>
-                      <tr v-if="performance.assemblyMs.pluginReserve !== undefined">
+                      <tr
+                        v-if="
+                          performance.assemblyMs.pluginReserve !== undefined &&
+                          performance.assemblyMs.pluginReserve > 0
+                        "
+                      >
                         <td class="audit-table__label">{{ $t('chat.turnAuditPerfPluginReserve') }}</td>
                         <td>{{ formatLatency(performance.assemblyMs.pluginReserve) }}</td>
+                      </tr>
+                      <tr v-if="performance.assemblyMs.pluginsAfterAssemble !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfPlugins') }}</td>
+                        <td>{{ formatLatency(performance.assemblyMs.pluginsAfterAssemble) }}</td>
+                      </tr>
+                      <tr v-if="performance.assemblyMs.macros !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfMacros') }}</td>
+                        <td>{{ formatLatency(performance.assemblyMs.macros) }}</td>
+                      </tr>
+                      <tr v-if="performance.assemblyMs.regexOutgoing !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfRegexOutgoing') }}</td>
+                        <td>{{ formatLatency(performance.assemblyMs.regexOutgoing) }}</td>
                       </tr>
                       <tr v-if="performance.assemblyMs.budgetTrim !== undefined">
                         <td class="audit-table__label">{{ $t('chat.turnAuditPerfBudgetTrim') }}</td>
@@ -600,18 +622,6 @@ const historyTurnRanges = computed(() =>
                             }}
                           </template>
                         </td>
-                      </tr>
-                      <tr v-if="performance.assemblyMs.macros !== undefined">
-                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfMacros') }}</td>
-                        <td>{{ formatLatency(performance.assemblyMs.macros) }}</td>
-                      </tr>
-                      <tr v-if="performance.assemblyMs.regexOutgoing !== undefined">
-                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfRegexOutgoing') }}</td>
-                        <td>{{ formatLatency(performance.assemblyMs.regexOutgoing) }}</td>
-                      </tr>
-                      <tr v-if="performance.assemblyMs.pluginsAfterAssemble !== undefined">
-                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfPlugins') }}</td>
-                        <td>{{ formatLatency(performance.assemblyMs.pluginsAfterAssemble) }}</td>
                       </tr>
                     </tbody>
                   </v-table>

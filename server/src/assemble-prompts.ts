@@ -91,11 +91,11 @@ export interface AssembleContext {
     content: string
     role?: PromptRole
   } | null
-  /** §14.4：为 true 时跳过 assemble 内 history 条级裁切（由 `runPromptBudgetTrimLoop` 统一处理） */
+  /** §14.4：为 true 时跳过 assemble 内 history 条级裁切（由 PromptSlot 预算裁切统一处理） */
   skipInternalBudgetTrim?: boolean
   /** 为 true 时绑定槽一律输出 `<inject slot="…" />`，不注入示例/会话内容（提示词库组装预览） */
   bindingPlaceholderMode?: boolean
-  /** 为 true 时跳过条级宏展开（由 assemble 调用方在 trim 后统一展宏） */
+  /** 为 true 时跳过条级宏展开（由调用方在插件入槽后、regex/裁切前统一展宏） */
   deferMacroExpansion?: boolean
 }
 

@@ -121,27 +121,29 @@ resolveAfterAssemblePromptsAddition(
 
 宿主在 assemble 时将 manifest slots（+ 用户插件 settings 覆盖）经 `ctx.injectionOrderSlots` 传入 hook；归并器读 `postUserInjectionOrder` 覆盖隐式档位。
 
-### 3.3 宿主两阶段（保持）
+### 3.3 宿主组装顺序（PromptSlot · 2026-10）
 
-1. **裁切前** — `estimatePluginsAfterAssembleTokenReserve`：调用各插件 `resolveAfterAssemblePromptsAddition`，只对 `content` 计 token，`trimMaxTokens = contextLength - reserve`。
-2. **regex 之后** — `applyPluginsAfterAssemblePrompts`：收集描述符，在 **post-user 区**按 `compareInjectionEntries` 归并 splice；共用 `additionCache` 避免重复调用。
+1. **`assemblePrompts`**（`deferMacroExpansion`）→  
+2. **`applyPluginsAfterAssemblePrompts`**（描述符归并入槽，`trimmable: false`；`additionCache` 去重）→  
+3. 宏 → outgoing regex（一次）→  
+4. **`trimAssembledMessagesWithPromptSlots`**（`trimMaxTokens = contextLength`；**无**插件预留双扣，已取消 `estimatePluginsAfterAssembleTokenReserve`）。
 
 `afterAssemblePrompts` 保留为 **escape hatch**（删除/重排/非追加编辑）；有描述符时优先走描述符路径。
 
 ### 3.4 post-user 区归并与 assemble 产物
 
-regex 之后、`messages` 中最后一条 user 之后可能已有：
+插件入槽时，`messages` 中最后一条 user 之后可能已有：
 
 - preset **`chat` depth 0** 条目（自带 `injectionOrder`，常见 **100**）
-- **`afterUserInput`**（群聊说明，assemble 专用 pass）
+- **`afterUserInput`**（群聊说明，assemble 专用 pass；宏/regex **尚未**跑，匹配用 assemble 原文）
 
-插件注入**晚于**上述步骤。宿主须：
+宿主须：
 
 1. 锚定 `lastUserIdx`；可选传入 `historySpan`（`historyStart`/`historyEnd`）供 depth > 0 使用（一期仅 depth 0）。
 2. 为 assemble 阶段注入赋予**隐式 `injectionOrder`**（`afterUserInput` → **20**；无元数据的 preset tail → **100**）。
 3. 将插件描述符与 tail 一并 hoist，在 post-user 区按 `compareInjectionEntries`（**`injectionOrder` → role**）归并。
 
-**`afterUserInput` 识别（regex 之后）**：群聊说明在 assemble 阶段注入，宏展与 outgoing regex 可能改写正文；depth 0 作者注在物理序上亦可能位于群聊之前。宿主在 **regex 之后**调用 `resolveAssembledBlockContentAfterRegex`（synthetic 探测）解析 post-regex 正文，再经 `buildPluginAfterUserInputHintFromMessages` 精确匹配 tail；无法命中时不赋予 order **20**，避免误标 preset / authorsNote。
+**`afterUserInput` 识别**：群聊说明与 depth 0 作者注在插件入槽前仍为 assemble 原文；用 `groupChatInstruction` / `authorsNote.content` 作 hint（不再做 post-regex synthetic 探测）。
 
 **一期不实现** preset 级 `relative` 锚点；ST 扩展类插件场景以 **chat depth 0** 为主。
 

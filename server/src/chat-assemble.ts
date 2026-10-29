@@ -13,8 +13,7 @@ import { patchPromptMacroHistoryFields } from './prompt-macros/context.js'
 import { loadCharFileLookupsForIds } from './load-char-file-lookups.js'
 import { buildMacroHistoryFields, type TrimmedHistoryMessage } from './prompt-macros/history-macros.js'
 import { extractMacroCharacterFields } from './prompt-macros/index.js'
-import { applyMacrosToMessages, applyPromptMacroPipeline } from './prompt-macros/index.js'
-import type { PromptMacroContext } from './prompt-macros/types.js'
+import { applyMacrosToMessages } from './prompt-macros/index.js'
 import {
   loadMacroGlobalVarsForContext,
   loadMacroLocalVarsForConversation,
@@ -55,6 +54,7 @@ import { resolveLorebookInjectionParts } from './lorebook-resolve.js'
 import { readLorebooksByIds } from './lorebook-file.js'
 import {
   buildAssemblyAudit,
+  historyTurnOrdinalsFromMessages,
   resolveHistoryTrimAudit,
 } from './build-assembly-audit.js'
 import { isAuditDebugWriteEnabled } from './chat-audit-file.js'
@@ -92,11 +92,8 @@ import {
 } from './feature-binding-resolve.js'
 import {
   applyPluginsAfterAssemblePrompts,
-  estimatePluginsAfterAssembleTokenReserve,
   type PluginAssembleAdditionCache,
-  type AfterAssemblePromptsContext,
 } from './plugin-host.js'
-import { buildPluginAfterUserInputHintFromMessages } from './plugin-prompt-injection-merge.js'
 import type { ChatPluginsBody } from './plugin-types.js'
 import { countChatMessagesTokens } from './token-count.js'
 import { readTurnsInOrdinalRange } from './chunk-chain.js'
@@ -105,58 +102,20 @@ import { readPluginRegistry } from './plugin-system/registry.js'
 import {
   knowledgeTextFromTrimState,
   memoryTextFromTrimState,
-  runPromptBudgetTrimLoop,
   type PromptBudgetTrimState,
   worldTextsFromTrimState,
 } from './prompt-budget-trim.js'
+import { trimAssembledMessagesWithPromptSlots } from './prompt-slots.js'
 import { recallKnowledgeForConversation } from './knowledge-resolve.js'
 import {
   normalizeKnowledgeSettings,
   resolveKnowledgeSettings,
 } from './knowledge-settings.js'
 import {
-  applyRegexOutgoingToMessages,
-  hasEnabledOutgoingRules,
   loadAndApplyRegexOutgoing,
   resolveOutgoingTailOrdinal,
   type OutgoingRegexContext,
 } from './regex-outgoing.js'
-import { readRegexRulesDocument } from './regex-rules-file.js'
-
-function findLastUserMessageIndex(messages: ChatMessage[]): number {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i]!.role === 'user') return i
-  }
-  return -1
-}
-
-/** 在 post-regex messages 中定位 assemble 注入块正文（宏展 + outgoing 合成探测） */
-async function resolveAssembledBlockContentAfterRegex(
-  messages: ChatMessage[],
-  block: { content: string; role: 'system' | 'user' },
-  macroContext: PromptMacroContext,
-  regexCtx: OutgoingRegexContext,
-): Promise<string | undefined> {
-  const expanded = applyPromptMacroPipeline(block.content, macroContext).trim()
-  if (!expanded) return undefined
-
-  const lastUserIdx = findLastUserMessageIndex(messages)
-  if (lastUserIdx < 0) return undefined
-  const tail = messages.slice(lastUserIdx + 1)
-
-  const synthetic = [
-    ...messages.slice(0, lastUserIdx + 1),
-    { role: block.role, content: expanded },
-  ]
-  const afterRegex = await loadAndApplyRegexOutgoing(synthetic, regexCtx)
-  const transformed = afterRegex[lastUserIdx + 1]?.content.trim()
-  if (!transformed) return undefined
-
-  const inTail = tail.find(
-    (m) => m.role === block.role && m.content.trim() === transformed,
-  )
-  return inTail?.content.trim()
-}
 
 async function loadActiveTurnForMacro(
   conversationId: string,
@@ -699,7 +658,11 @@ export async function buildConversationOutboundMessages(
     knowledgeItems: knowledgeRecall.items.slice(),
     historyMessages: memoryPipeline.recentHistoryMessages.map((m) => ({ ...m })),
   }
+  const historyOrdinalsBeforeTrim = historyTurnOrdinalsFromMessages(
+    trimState.historyMessages,
+  )
 
+  /** §14.4.1：包壳组装 → 插件入槽 → 宏 → regex 一次 → PromptSlot 裁切投影 */
   const assembleCtxBase = {
     trigger,
     userInput,
@@ -714,112 +677,52 @@ export async function buildConversationOutboundMessages(
     ...charCtx,
   }
 
-  const assembleFromState = (state: PromptBudgetTrimState): ChatMessage[] => {
-    const { worldBefore, worldAfter } = worldTextsFromTrimState(state)
-    const memoryText = memoryTextFromTrimState(state)
-    const knowledgeText = knowledgeTextFromTrimState(state)
-    return assemblePrompts(preset, {
-      ...assembleCtxBase,
-      history:
-        state.historyMessages.length > 0 ? state.historyMessages : undefined,
-      memoryText: memoryText || undefined,
-      knowledgeText: knowledgeText || undefined,
-      ...(worldBefore.length > 0 ? { worldBefore } : {}),
-      ...(worldAfter.length > 0 ? { worldAfter } : {}),
-    }).messages
-  }
-
-  let messages: ChatMessage[]
-  let estimatedTokens: number
-  let droppedLoreCount = 0
-  let droppedMemoryCount = 0
-  let droppedKnowledgeCount = 0
-  let droppedHistoryCount = 0
-  let tokensBeforeTrim: number | undefined
-  let budgetTrimAssemblePasses = 0
+  const { worldBefore, worldAfter } = worldTextsFromTrimState(trimState)
+  const memoryText = memoryTextFromTrimState(trimState)
+  const knowledgeText = knowledgeTextFromTrimState(trimState)
+  let messages = assemblePrompts(preset, {
+    ...assembleCtxBase,
+    history:
+      trimState.historyMessages.length > 0
+        ? trimState.historyMessages
+        : undefined,
+    memoryText: memoryText || undefined,
+    knowledgeText: knowledgeText || undefined,
+    ...(worldBefore.length > 0 ? { worldBefore } : {}),
+    ...(worldAfter.length > 0 ? { worldAfter } : {}),
+  }).messages
+  const afterBaseAssembleAt = auditEnabled ? performance.now() : 0
+  const budgetTrimAssemblePasses = 1
 
   const pluginCache: PluginAssembleAdditionCache = new Map()
-  const assembleCtx: AfterAssemblePromptsContext = {
+
+  const pluginAfterUserInputForApply = groupChatInstruction
+    ? {
+        content: groupChatInstruction,
+        role: 'system' as const,
+        ...(authorsNote?.injectionDepth === 0 && authorsNote.content.trim()
+          ? { excludeContents: [authorsNote.content.trim()] }
+          : {}),
+      }
+    : undefined
+
+  const trimmedHistoryForPlugins = trimState.historyMessages.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }))
+  const historyForMacros = trimmedHistoryForMacros(trimState.historyMessages)
+
+  messages = await applyPluginsAfterAssemblePrompts({
+    messages,
     macroContext,
     plugins: params.plugins,
     tokenModel,
     additionCache: pluginCache,
+    trimmedHistoryMessages: trimmedHistoryForPlugins,
+    afterUserInput: pluginAfterUserInputForApply,
     hostInjectionOrderPolicy,
-  }
-  const pluginReserveStartedAt = auditEnabled ? performance.now() : 0
-  const pluginTokenReserve =
-    maxTokens != null && maxTokens > 0
-      ? await estimatePluginsAfterAssembleTokenReserve(assembleCtx)
-      : 0
-  const afterPluginReserveAt = auditEnabled ? performance.now() : 0
-  const trimMaxTokens =
-    maxTokens != null && maxTokens > 0
-      ? Math.max(1, maxTokens - pluginTokenReserve)
-      : maxTokens
-  const trimMaxTokensForAudit =
-    typeof trimMaxTokens === 'number' && trimMaxTokens > 0
-      ? trimMaxTokens
-      : undefined
-
-  const tailOrdinal = resolveOutgoingTailOrdinal({
-    sourceHistoryTurnOrdinals: memoryPipeline.recentHistoryTurnOrdinals,
-    historyBeforeTurnOrdinalExclusive: params.historyBeforeTurnOrdinalExclusive,
   })
-  const regexDoc = await readRegexRulesDocument()
-  const outgoingRegexRules =
-    regexDoc && hasEnabledOutgoingRules(regexDoc.rules) ? regexDoc.rules : null
-
-  const buildOutgoingRegexCtx = (
-    state: PromptBudgetTrimState,
-  ): OutgoingRegexContext => ({
-    tailOrdinal,
-    sourceHistoryMessages: memoryPipeline.recentHistoryMessages.map((m) => ({
-      ...m,
-    })),
-    sourceHistoryTurnOrdinals: memoryPipeline.recentHistoryTurnOrdinals,
-    trimmedHistoryMessages: state.historyMessages.map((m) => ({ ...m })),
-    memoryItems: state.memoryItems,
-    userInput,
-  })
-
-  const assembleForTrimBudget = (state: PromptBudgetTrimState): ChatMessage[] => {
-    let msgs = assembleFromState(state)
-    if (outgoingRegexRules) {
-      msgs = applyRegexOutgoingToMessages(
-        msgs,
-        outgoingRegexRules,
-        buildOutgoingRegexCtx(state),
-      )
-    }
-    return msgs
-  }
-
-  if (trimMaxTokens) {
-    const trimmed = runPromptBudgetTrimLoop({
-      maxTokens: trimMaxTokens,
-      tokenModel,
-      trimSettings: effectiveBudgetTrim,
-      state: trimState,
-      assembleMessages: assembleForTrimBudget,
-    })
-    messages = trimmed.messages
-    estimatedTokens = trimmed.estimatedTokens
-    tokensBeforeTrim = trimmed.tokensBeforeTrim
-    budgetTrimAssemblePasses = trimmed.assemblePasses
-    droppedLoreCount = trimmed.drops.droppedLoreCount
-    droppedMemoryCount = trimmed.drops.droppedMemoryCount
-    droppedKnowledgeCount = trimmed.drops.droppedKnowledgeCount
-    droppedHistoryCount = resolveHistoryTrimAudit(
-      memoryPipeline.recentHistoryTurnOrdinals,
-      trimState.historyMessages,
-    ).droppedCount
-  } else {
-    messages = assembleFromState(trimState)
-    estimatedTokens = countChatMessagesTokens(messages, { model: tokenModel })
-    tokensBeforeTrim = estimatedTokens
-    budgetTrimAssemblePasses = 1
-  }
-  const afterBudgetTrimAt = auditEnabled ? performance.now() : 0
+  const afterPluginsAt = auditEnabled ? performance.now() : 0
 
   macroContext = patchPromptMacroHistoryFields(
     macroContext,
@@ -827,7 +730,7 @@ export async function buildConversationOutboundMessages(
       indexingTurns,
       historyTurns: memoryPipeline.recentTurns,
       activeTurn,
-      trimmedHistoryMessages: trimmedHistoryForMacros(trimState.historyMessages),
+      trimmedHistoryMessages: historyForMacros,
       characterNames: charNameList,
       groupChatEnabled: Boolean(groupChat.enabled),
       characterIds: charIds,
@@ -836,85 +739,74 @@ export async function buildConversationOutboundMessages(
     }),
   )
   applyMacrosToMessages(messages, macroContext)
+  const afterMacrosAt = auditEnabled ? performance.now() : 0
 
-  const afterAssembleAt = auditEnabled ? performance.now() : 0
-
+  const tailOrdinal = resolveOutgoingTailOrdinal({
+    sourceHistoryTurnOrdinals: memoryPipeline.recentHistoryTurnOrdinals,
+    historyBeforeTurnOrdinalExclusive: params.historyBeforeTurnOrdinalExclusive,
+  })
   const outgoingRegexCtx: OutgoingRegexContext = {
     tailOrdinal,
     sourceHistoryMessages: memoryPipeline.recentHistoryMessages.map((m) => ({
       ...m,
     })),
     sourceHistoryTurnOrdinals: memoryPipeline.recentHistoryTurnOrdinals,
-    trimmedHistoryMessages: trimmedHistoryForMacros(trimState.historyMessages),
+    trimmedHistoryMessages: historyForMacros,
     memoryItems: trimState.memoryItems,
     userInput,
     macroContext,
   }
-
   messages = await loadAndApplyRegexOutgoing(messages, outgoingRegexCtx)
   const afterRegexAt = auditEnabled ? performance.now() : 0
 
-  let authorsNoteExcludeContent: string | undefined
-  let groupChatContentAfterRegex: string | undefined
-  if (groupChatInstruction) {
-    groupChatContentAfterRegex = await resolveAssembledBlockContentAfterRegex(
-      messages,
-      { content: groupChatInstruction, role: 'system' },
-      macroContext,
-      outgoingRegexCtx,
-    )
-  }
-  if (authorsNote?.injectionDepth === 0) {
-    authorsNoteExcludeContent = await resolveAssembledBlockContentAfterRegex(
-      messages,
-      { content: authorsNote.content, role: authorsNote.role },
-      macroContext,
-      outgoingRegexCtx,
-    )
-  }
+  const trimMaxTokens =
+    maxTokens != null && maxTokens > 0 ? maxTokens : undefined
+  const trimMaxTokensForAudit =
+    typeof trimMaxTokens === 'number' && trimMaxTokens > 0
+      ? trimMaxTokens
+      : undefined
 
-  const pluginAfterUserInputForApply = groupChatContentAfterRegex
-    ? buildPluginAfterUserInputHintFromMessages(messages, {
-        authorsNoteExcludeContent,
-        groupChatContent: groupChatContentAfterRegex,
-      })
-    : undefined
-
-  estimatedTokens = countChatMessagesTokens(messages, { model: tokenModel })
-
-  const trimmedHistoryForPlugins = trimState.historyMessages.map((m) => ({
-    role: m.role,
-    content: m.content,
-  }))
-
-  const messagesAfterPlugins = await applyPluginsAfterAssemblePrompts({
-    messages,
-    macroContext,
-    plugins: params.plugins,
-    tokenModel,
-    additionCache: pluginCache,
-    assembleRuntime: assembleCtx.assembleRuntime,
-    trimmedHistoryMessages: trimmedHistoryForPlugins,
-    afterUserInput: pluginAfterUserInputForApply,
-    hostInjectionOrderPolicy,
+  let droppedLoreCount = 0
+  let droppedMemoryCount = 0
+  let droppedKnowledgeCount = 0
+  let droppedHistoryCount = 0
+  let tokensBeforeTrim = countChatMessagesTokens(messages, {
+    model: tokenModel,
   })
-  if (macroContext) {
-    applyMacrosToMessages(messagesAfterPlugins, macroContext, {
-      onlyIfNeeded: true,
+  let estimatedTokens = tokensBeforeTrim
+
+  if (trimMaxTokens) {
+    const trimmed = trimAssembledMessagesWithPromptSlots({
+      messages,
+      state: trimState,
+      maxTokens: trimMaxTokens,
+      trimSettings: effectiveBudgetTrim,
+      tokenModel,
     })
+    messages = trimmed.messages
+    estimatedTokens = trimmed.estimatedTokens
+    tokensBeforeTrim = trimmed.tokensBeforeTrim
+    droppedLoreCount = trimmed.drops.droppedLoreCount
+    droppedMemoryCount = trimmed.drops.droppedMemoryCount
+    droppedKnowledgeCount = trimmed.drops.droppedKnowledgeCount
+    droppedHistoryCount = resolveHistoryTrimAudit(
+      historyOrdinalsBeforeTrim,
+      trimState.historyMessages,
+    ).droppedCount
+  }
+  const afterBudgetTrimAt = auditEnabled ? performance.now() : 0
+
+  if (macroContext) {
     await persistMacroVarMutations(macroContext)
   }
-  const finalMessages = compactEmptyMessages(messagesAfterPlugins)
+  const finalMessages = compactEmptyMessages(messages)
   const finalEstimatedTokens =
     finalMessages.length === messages.length &&
-    finalMessages.every(
-      (m, i) => m.content === messagesAfterPlugins[i]?.content,
-    )
+    finalMessages.every((m, i) => m.content === messages[i]?.content)
       ? estimatedTokens
       : countChatMessagesTokens(finalMessages, { model: tokenModel })
 
   const finalMemoryText = memoryTextFromTrimState(trimState)
-  const afterPluginsAt = auditEnabled ? performance.now() : 0
 
   let assemblyAudit: AssemblyAudit | undefined
   let assemblyEmbeddingCalls: CallAuditEntry[] | undefined
@@ -938,6 +830,7 @@ export async function buildConversationOutboundMessages(
       initialMatchedLore,
       initialMemoryItems,
       trimState,
+      historyTurnOrdinalsBeforeTrim: historyOrdinalsBeforeTrim,
       droppedLoreCount,
       droppedMemoryCount,
       memoryEnabled: effectiveMemory.memoryEnabled,
@@ -956,23 +849,18 @@ export async function buildConversationOutboundMessages(
 
     const round = (n: number) => Math.round(n)
     const assemblyMs: AssemblyTimingMs = {
-      total: round(afterPluginsAt - assemblyStartedAt),
+      total: round(afterBudgetTrimAt - assemblyStartedAt),
       memory: round(afterMemoryAt - assemblyStartedAt),
       characters: round(afterCharactersAt - afterMemoryAt),
       lore: round(afterLoreAt - afterCharactersAt),
-      assembleAndTrim: round(afterAssembleAt - afterLoreAt),
+      assembleAndTrim: round(afterBudgetTrimAt - afterLoreAt),
       knowledge: round(afterKnowledgeAt - afterLoreAt),
-      // 仅估算调用本身；knowledge→预留之间的 trimState 准备并入 budgetTrim，使子项之和≈assembleAndTrim
-      pluginReserve: round(afterPluginReserveAt - pluginReserveStartedAt),
-      budgetTrim: round(
-        afterBudgetTrimAt -
-          afterKnowledgeAt -
-          (afterPluginReserveAt - pluginReserveStartedAt),
-      ),
+      pluginReserve: 0,
+      budgetTrim: round(afterBudgetTrimAt - afterRegexAt),
       budgetTrimAssemblePasses,
-      macros: round(afterAssembleAt - afterBudgetTrimAt),
-      regexOutgoing: round(afterRegexAt - afterAssembleAt),
-      pluginsAfterAssemble: round(afterPluginsAt - afterRegexAt),
+      macros: round(afterMacrosAt - afterPluginsAt),
+      regexOutgoing: round(afterRegexAt - afterMacrosAt),
+      pluginsAfterAssemble: round(afterPluginsAt - afterBaseAssembleAt),
     }
     performanceAudit = { assemblyMs }
   }

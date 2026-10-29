@@ -86,6 +86,7 @@ describe('buildAssemblyAudit', () => {
         knowledgeItems: [],
         historyMessages: [],
       },
+      historyTurnOrdinalsBeforeTrim: [],
       droppedLoreCount: 1,
       droppedMemoryCount: 1,
       memoryEnabled: true,
@@ -136,6 +137,7 @@ describe('buildAssemblyAudit', () => {
           { role: 'assistant', content: 'a13', turnOrdinal: 13 },
         ],
       },
+      historyTurnOrdinalsBeforeTrim: [10, 11, 12, 13],
       droppedLoreCount: 0,
       droppedMemoryCount: 0,
       memoryEnabled: false,
@@ -143,6 +145,51 @@ describe('buildAssemblyAudit', () => {
 
     assert.deepEqual(audit.history.turnOrdinals, [12, 13])
     assert.equal(audit.history.droppedCount, 2)
+  })
+
+  it('history dropped count ignores window turns that never became messages', () => {
+    const memoryPipeline = {
+      recentTurns: [],
+      recentHistoryMessages: [],
+      recentHistoryTurnOrdinals: [10, 11, 12, 13],
+      recentHistoryScanText: '',
+      memoryItems: [],
+      memoryText: '',
+      memoryScanText: '',
+      memoryTurnIds: [],
+      memoryHits: [],
+    } satisfies MemoryPipelineResult
+
+    const audit = buildAssemblyAudit({
+      estimatedTokens: 50,
+      lorebookIds: [],
+      lorebookNameToId: new Map(),
+      knowledgeBaseIds: [],
+      knowledgeEnabled: false,
+      initialKnowledgeItems: [],
+      droppedKnowledgeCount: 0,
+      memoryPipeline,
+      loreParts: { constantLore: [], matchedLore: [] },
+      initialMatchedLore: [],
+      initialMemoryItems: [],
+      trimState: {
+        constantLore: [],
+        matchedLore: [],
+        memoryItems: [],
+        knowledgeItems: [],
+        historyMessages: [
+          { role: 'user', content: 'u12', turnOrdinal: 12 },
+          { role: 'assistant', content: 'a13', turnOrdinal: 13 },
+        ],
+      },
+      historyTurnOrdinalsBeforeTrim: [12, 13],
+      droppedLoreCount: 0,
+      droppedMemoryCount: 0,
+      memoryEnabled: false,
+    })
+
+    assert.deepEqual(audit.history.turnOrdinals, [12, 13])
+    assert.equal(audit.history.droppedCount, 0)
   })
 
   it('historyTurnOrdinalsFromMessages dedupes in order', () => {
@@ -211,6 +258,7 @@ describe('buildAssemblyAudit', () => {
         knowledgeItems: [],
         historyMessages: [],
       },
+      historyTurnOrdinalsBeforeTrim: [],
       droppedLoreCount: 0,
       droppedMemoryCount: 0,
       memoryEnabled: false,

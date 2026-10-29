@@ -51,7 +51,8 @@ export function wrapTurnRoleLine(
   return `<${role} ${attr}>${escaped}</${role}>`
 }
 
-function turnToXmlInner(
+/** 单轮 → `<turn …>` 块（供 PromptSlot memory parts / formatMemoryXml） */
+export function turnToXmlInner(
   turn: TurnRecord,
   opts?: {
     correlation?: number

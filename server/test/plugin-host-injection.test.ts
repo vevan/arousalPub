@@ -4,7 +4,6 @@ import {
   additionToInjections,
   applyPluginsAfterAssemblePrompts,
   countPluginAssembleAdditionTokens,
-  estimatePluginsAfterAssembleTokenReserve,
   type PluginAssembleAdditionCache,
 } from '../src/plugin-host.js'
 import { normalizePostUserInjectionOrderHostPolicy } from '../src/shared/post-user-injection-order.js'
@@ -310,8 +309,8 @@ describe('applyPluginsAfterAssemblePrompts', () => {
   })
 })
 
-describe('plugin assemble additionCache and token reserve', () => {
-  it('reuses additionCache between estimate and apply', async () => {
+describe('plugin assemble additionCache', () => {
+  it('reuses additionCache across apply calls', async () => {
     let hookCalls = 0
     const cache: PluginAssembleAdditionCache = new Map()
     const runtime = {
@@ -343,7 +342,7 @@ describe('plugin assemble additionCache and token reserve', () => {
       assembleRuntime: runtime,
     }
 
-    await estimatePluginsAfterAssembleTokenReserve(ctx)
+    await applyPluginsAfterAssemblePrompts(ctx)
     assert.equal(hookCalls, 1)
     assert.equal(cache.size, 1)
 
@@ -351,7 +350,7 @@ describe('plugin assemble additionCache and token reserve', () => {
     assert.equal(hookCalls, 1)
   })
 
-  it('counts descriptor additions for token reserve', () => {
+  it('counts descriptor additions for token accounting', () => {
     const descriptorTokens = countPluginAssembleAdditionTokens({
       kind: 'injections',
       injections: [

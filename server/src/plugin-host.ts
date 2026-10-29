@@ -165,24 +165,6 @@ async function resolvePluginAddition(
   return normalized
 }
 
-/** 插件 afterAssemble 追加内容的 token 预留（不参与 budget trim 裁切） */
-export async function estimatePluginsAfterAssembleTokenReserve(
-  ctx: AfterAssemblePromptsContext,
-): Promise<number> {
-  const cache = ctx.additionCache ?? new Map<string, PluginAssembleAdditionResolved | null>()
-  if (!ctx.additionCache) ctx.additionCache = cache
-
-  const { plugins, api } = await ensureAssembleRuntime(ctx)
-  let total = 0
-  for (const p of plugins) {
-    const addition = await resolvePluginAddition(p.id, p.module, ctx, api, cache)
-    if (addition) {
-      total += countPluginAssembleAdditionTokens(addition, ctx.tokenModel)
-    }
-  }
-  return total
-}
-
 export async function applyPluginsAfterAssemblePrompts(
   ctx: AfterAssemblePromptsContext,
 ): Promise<ChatMessage[]> {

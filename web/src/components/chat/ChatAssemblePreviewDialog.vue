@@ -113,7 +113,7 @@ function onJumpMemoryRebuild() {
           v-if="assemblePreviewMeta.droppedHistoryCount > 0"
           class="preview-card__meta preview-card__meta--warn"
         >
-          {{ $t('prompts.previewDropped', { n: assemblePreviewMeta.droppedHistoryCount }) }}
+          {{ $t('prompts.previewDroppedTurns', { n: assemblePreviewMeta.droppedHistoryCount }) }}
         </span>
       </div>
       <v-card-text class="preview-card__body">

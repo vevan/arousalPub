@@ -76,6 +76,8 @@ export interface BuildAssemblyAuditParams {
   initialMatchedLore: LorebookInjectionParts['matchedLore']
   initialMemoryItems: MemoryPipelineResult['memoryItems']
   trimState: PromptBudgetTrimState
+  /** 裁切前、实际进入 history 消息的轮次（不含未产出消息的窗口轮） */
+  historyTurnOrdinalsBeforeTrim: readonly number[]
   droppedLoreCount: number
   droppedMemoryCount: number
   memoryEnabled: boolean
@@ -106,6 +108,7 @@ function buildPluginAssemblyAudit(
 ): AssemblyAudit['plugins'] | undefined {
   if (!cache?.size) return undefined
   const items: { pluginId: string; tokens: number }[] = []
+  // tokenReserve：插件注入合计（展示用）；非裁切预算扣减
   let tokenReserve = 0
   for (const [pluginId, addition] of cache) {
     if (!addition) continue
@@ -203,7 +206,7 @@ export function buildAssemblyAudit(
       droppedCount: params.droppedKnowledgeCount,
     },
     history: resolveHistoryTrimAudit(
-      params.memoryPipeline.recentHistoryTurnOrdinals,
+      params.historyTurnOrdinalsBeforeTrim,
       params.trimState.historyMessages,
     ),
     ...(params.maxTokens || params.trimMaxTokens || params.tokensBeforeTrim

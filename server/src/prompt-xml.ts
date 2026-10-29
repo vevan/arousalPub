@@ -132,7 +132,8 @@ export type LorebookXmlGroup = {
   entries: LoreXmlEntry[]
 }
 
-function formatLoreEntryLines(
+/** 单条或多条 `<lore>` 行（不含 `<lores>` 根；供 PromptSlot lore parts） */
+export function formatLoreEntryLines(
   entries: LoreXmlEntry[],
   indent: string,
 ): string[] {

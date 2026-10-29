@@ -9,6 +9,7 @@
 
 ## P1
 
+- [ ] **检查更新（按需 `v*` tag，不自动更新）** — 本地 build 注入 `commitSha` + 若 HEAD 命中 tag 则 `versionTag`；后端拉取远程最新 `v*` tag（不扫 main 全部提交；无 GitHub Release）；与本地对比给出可更新/已最新/无标记；检查间隔可设 **1 / 3 / 7 天**（实例级缓存节流；手动「立即检查」可强制刷新）；UI 仅提示 + 链到该 tag，**不**自动 pull/升级。远端默认本仓 `main` 上的 `v*` tag，`config` 可覆盖 repo。
 - [ ] **ST 聊天记录群聊多 bot 导入** — 当前 ST JSONL 导入全部 segment 绑定 `characterIds[0]`；需按 ST `name` 与会话 `characterIds`/`displayNames` 映射各 bot 为 speaker（单 bot 行为不变）。见 `[DOC/devNotes/37](37-st-import-settings-tab.md)`
 - [ ] **迹录 LLM JSON 解析失败时 `jsonrepair` 一次修复** — Together 块 / Separate 等从 LLM 收到的 JSON：`JSON.parse` 失败后用 [`jsonrepair`](https://www.npmjs.com/package/jsonrepair) 再试一次，成功则按修复结果落盘；仍失败才报 `json_parse_failed` / `parse_failed`。接入点 `plugins/trace-keeper/src/parse-block.ts`（`parseTraceKeeperJson`）；手动编辑 / sample 校验保持严格。见 `[DOC/devNotes/30](30-plugin-trace-keeper.md)` §3 · §5
 - [ ] 角色卡扩展规划：json格式以xml结构插入提示词，宿主提供接口，插件可改申请字段。

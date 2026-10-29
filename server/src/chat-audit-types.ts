@@ -101,7 +101,13 @@ export interface AssemblyTimingMs {
   memory?: number
   characters?: number
   lore?: number
+  /** lore 结束后 → 宏展开完成；约等于 knowledge+pluginReserve+budgetTrim+macros */
   assembleAndTrim?: number
+  knowledge?: number
+  pluginReserve?: number
+  budgetTrim?: number
+  budgetTrimAssemblePasses?: number
+  macros?: number
   regexOutgoing?: number
   pluginsAfterAssemble?: number
 }

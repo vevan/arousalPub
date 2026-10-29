@@ -53,7 +53,10 @@ import type { PromptsDocument } from './prompts-file.js'
 import { resolveLorebookSettings } from './lorebook-settings.js'
 import { resolveLorebookInjectionParts } from './lorebook-resolve.js'
 import { readLorebooksByIds } from './lorebook-file.js'
-import { buildAssemblyAudit } from './build-assembly-audit.js'
+import {
+  buildAssemblyAudit,
+  resolveHistoryTrimAudit,
+} from './build-assembly-audit.js'
 import { isAuditDebugWriteEnabled } from './chat-audit-file.js'
 import type {
   AssemblyAudit,
@@ -678,6 +681,7 @@ export async function buildConversationOutboundMessages(
         knowledgeSettings: idx.knowledgeSettings,
       })
     : { items: [], knowledgeText: '' }
+  const afterKnowledgeAt = auditEnabled ? performance.now() : 0
 
   const initialMatchedLore = loreParts.matchedLore.slice()
   const initialMemoryItems = memoryPipeline.memoryItems.slice()
@@ -732,6 +736,7 @@ export async function buildConversationOutboundMessages(
   let droppedKnowledgeCount = 0
   let droppedHistoryCount = 0
   let tokensBeforeTrim: number | undefined
+  let budgetTrimAssemblePasses = 0
 
   const pluginCache: PluginAssembleAdditionCache = new Map()
   const assembleCtx: AfterAssemblePromptsContext = {
@@ -741,10 +746,12 @@ export async function buildConversationOutboundMessages(
     additionCache: pluginCache,
     hostInjectionOrderPolicy,
   }
+  const pluginReserveStartedAt = auditEnabled ? performance.now() : 0
   const pluginTokenReserve =
     maxTokens != null && maxTokens > 0
       ? await estimatePluginsAfterAssembleTokenReserve(assembleCtx)
       : 0
+  const afterPluginReserveAt = auditEnabled ? performance.now() : 0
   const trimMaxTokens =
     maxTokens != null && maxTokens > 0
       ? Math.max(1, maxTokens - pluginTokenReserve)
@@ -798,15 +805,21 @@ export async function buildConversationOutboundMessages(
     messages = trimmed.messages
     estimatedTokens = trimmed.estimatedTokens
     tokensBeforeTrim = trimmed.tokensBeforeTrim
+    budgetTrimAssemblePasses = trimmed.assemblePasses
     droppedLoreCount = trimmed.drops.droppedLoreCount
     droppedMemoryCount = trimmed.drops.droppedMemoryCount
     droppedKnowledgeCount = trimmed.drops.droppedKnowledgeCount
-    droppedHistoryCount = trimmed.drops.droppedHistoryCount
+    droppedHistoryCount = resolveHistoryTrimAudit(
+      memoryPipeline.recentHistoryTurnOrdinals,
+      trimState.historyMessages,
+    ).droppedCount
   } else {
     messages = assembleFromState(trimState)
     estimatedTokens = countChatMessagesTokens(messages, { model: tokenModel })
     tokensBeforeTrim = estimatedTokens
+    budgetTrimAssemblePasses = 1
   }
+  const afterBudgetTrimAt = auditEnabled ? performance.now() : 0
 
   macroContext = patchPromptMacroHistoryFields(
     macroContext,
@@ -927,7 +940,6 @@ export async function buildConversationOutboundMessages(
       trimState,
       droppedLoreCount,
       droppedMemoryCount,
-      droppedHistoryCount,
       memoryEnabled: effectiveMemory.memoryEnabled,
       pluginAdditionCache: pluginCache,
     })
@@ -949,6 +961,16 @@ export async function buildConversationOutboundMessages(
       characters: round(afterCharactersAt - afterMemoryAt),
       lore: round(afterLoreAt - afterCharactersAt),
       assembleAndTrim: round(afterAssembleAt - afterLoreAt),
+      knowledge: round(afterKnowledgeAt - afterLoreAt),
+      // 仅估算调用本身；knowledge→预留之间的 trimState 准备并入 budgetTrim，使子项之和≈assembleAndTrim
+      pluginReserve: round(afterPluginReserveAt - pluginReserveStartedAt),
+      budgetTrim: round(
+        afterBudgetTrimAt -
+          afterKnowledgeAt -
+          (afterPluginReserveAt - pluginReserveStartedAt),
+      ),
+      budgetTrimAssemblePasses,
+      macros: round(afterAssembleAt - afterBudgetTrimAt),
       regexOutgoing: round(afterRegexAt - afterAssembleAt),
       pluginsAfterAssemble: round(afterPluginsAt - afterRegexAt),
     }

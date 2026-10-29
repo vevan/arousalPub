@@ -106,6 +106,33 @@ function formatTokenSource(
   if (source === 'estimated') return t('chat.turnAuditPerfTpsSourceEstimated')
   return '—'
 }
+
+/** 将有序 turnOrdinal 折叠为连续区间，如 120-160；有缺口则多段 */
+function collapseOrdinalRanges(ordinals: number[]): string[] {
+  if (!ordinals.length) return []
+  const sorted = [...new Set(ordinals.filter((n) => Number.isFinite(n)))].sort(
+    (a, b) => a - b,
+  )
+  const ranges: string[] = []
+  let start = sorted[0]!
+  let prev = start
+  for (let i = 1; i < sorted.length; i++) {
+    const n = sorted[i]!
+    if (n === prev + 1) {
+      prev = n
+      continue
+    }
+    ranges.push(start === prev ? String(start) : `${start}-${prev}`)
+    start = n
+    prev = n
+  }
+  ranges.push(start === prev ? String(start) : `${start}-${prev}`)
+  return ranges
+}
+
+const historyTurnRanges = computed(() =>
+  collapseOrdinalRanges(assembly.value?.history.turnOrdinals ?? []),
+)
 </script>
 
 <template>
@@ -425,31 +452,19 @@ function formatTokenSource(
                   <h4 class="text-subtitle-2 mb-2">{{ $t('chat.turnAuditSectionHistory') }}</h4>
                   <v-table
                     density="compact"
-                    class="audit-table audit-table--kv mb-2"
+                    class="audit-table audit-table--kv mb-0"
                   >
                     <tbody>
                       <tr v-if="assembly.history.droppedCount > 0">
                         <td class="audit-table__label">{{ $t('chat.turnAuditHistoryDropped') }}</td>
                         <td class="text-error">{{ assembly.history.droppedCount }}</td>
                       </tr>
+                      <tr v-if="historyTurnRanges.length > 0">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditHistoryTurns') }}</td>
+                        <td>{{ historyTurnRanges.join(', ') }}</td>
+                      </tr>
                     </tbody>
                   </v-table>
-                  <div
-                    v-if="assembly.history.turnOrdinals.length > 0"
-                    class="audit-card__chips mb-0"
-                  >
-                    <span class="audit-card__meta-label mr-2">{{ $t('chat.turnAuditHistoryTurns') }}</span>
-                    <v-chip
-                      v-for="ord in assembly.history.turnOrdinals"
-                      :key="ord"
-                      size="x-small"
-                      variant="outlined"
-                      label
-                      class="mr-1 mb-1"
-                    >
-                      {{ ord }}
-                    </v-chip>
-                  </div>
                 </template>
               </div>
             </v-tabs-window-item>
@@ -561,6 +576,34 @@ function formatTokenSource(
                       <tr v-if="performance.assemblyMs.assembleAndTrim !== undefined">
                         <td class="audit-table__label">{{ $t('chat.turnAuditPerfAssemble') }}</td>
                         <td>{{ formatLatency(performance.assemblyMs.assembleAndTrim) }}</td>
+                      </tr>
+                      <tr v-if="performance.assemblyMs.knowledge !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfKnowledge') }}</td>
+                        <td>{{ formatLatency(performance.assemblyMs.knowledge) }}</td>
+                      </tr>
+                      <tr v-if="performance.assemblyMs.pluginReserve !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfPluginReserve') }}</td>
+                        <td>{{ formatLatency(performance.assemblyMs.pluginReserve) }}</td>
+                      </tr>
+                      <tr v-if="performance.assemblyMs.budgetTrim !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfBudgetTrim') }}</td>
+                        <td>
+                          {{ formatLatency(performance.assemblyMs.budgetTrim) }}
+                          <template
+                            v-if="performance.assemblyMs.budgetTrimAssemblePasses !== undefined"
+                          >
+                            ·
+                            {{
+                              $t('chat.turnAuditPerfBudgetTrimPasses', {
+                                n: performance.assemblyMs.budgetTrimAssemblePasses,
+                              })
+                            }}
+                          </template>
+                        </td>
+                      </tr>
+                      <tr v-if="performance.assemblyMs.macros !== undefined">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditPerfMacros') }}</td>
+                        <td>{{ formatLatency(performance.assemblyMs.macros) }}</td>
                       </tr>
                       <tr v-if="performance.assemblyMs.regexOutgoing !== undefined">
                         <td class="audit-table__label">{{ $t('chat.turnAuditPerfRegexOutgoing') }}</td>

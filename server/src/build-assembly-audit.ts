@@ -1,3 +1,4 @@
+import type { ChatMessage } from './assemble-prompts.js'
 import type { LorebookInjectionParts } from './lorebook-resolve.js'
 import type { MemoryPipelineResult } from './memory-pipeline.js'
 import type { AssemblyAudit } from './chat-audit-types.js'
@@ -10,6 +11,53 @@ import {
   countPluginAssembleAdditionTokens,
   type PluginAssembleAdditionCache,
 } from './plugin-host.js'
+
+/** 从 history 消息链提取按出现序去重的 turnOrdinal（纳入轮次） */
+export function historyTurnOrdinalsFromMessages(
+  messages: readonly ChatMessage[],
+): number[] {
+  const out: number[] = []
+  const seen = new Set<number>()
+  for (const m of messages) {
+    const ord = m.turnOrdinal
+    if (typeof ord !== 'number' || !Number.isFinite(ord)) continue
+    if (seen.has(ord)) continue
+    seen.add(ord)
+    out.push(ord)
+  }
+  return out
+}
+
+/** 相对裁切前轮次列表，计算被整轮移出的数量（与「纳入轮次」同口径） */
+export function countDroppedHistoryTurns(
+  initialOrdinals: readonly number[],
+  remainingOrdinals: readonly number[],
+): number {
+  const remaining = new Set(remainingOrdinals)
+  let n = 0
+  for (const ord of initialOrdinals) {
+    if (!remaining.has(ord)) n += 1
+  }
+  return n
+}
+
+/**
+ * 裁切后 history 审计：纳入轮次 + 裁切轮数。
+ * 若仍有消息但均无 turnOrdinal，不谎报「全部裁掉」。
+ */
+export function resolveHistoryTrimAudit(
+  initialOrdinals: readonly number[],
+  remainingMessages: readonly ChatMessage[],
+): { turnOrdinals: number[]; droppedCount: number } {
+  const turnOrdinals = historyTurnOrdinalsFromMessages(remainingMessages)
+  if (remainingMessages.length > 0 && turnOrdinals.length === 0) {
+    return { turnOrdinals: [], droppedCount: 0 }
+  }
+  return {
+    turnOrdinals,
+    droppedCount: countDroppedHistoryTurns(initialOrdinals, turnOrdinals),
+  }
+}
 
 export interface BuildAssemblyAuditParams {
   estimatedTokens: number
@@ -30,7 +78,6 @@ export interface BuildAssemblyAuditParams {
   trimState: PromptBudgetTrimState
   droppedLoreCount: number
   droppedMemoryCount: number
-  droppedHistoryCount: number
   memoryEnabled: boolean
   pluginAdditionCache?: PluginAssembleAdditionCache
 }
@@ -155,10 +202,10 @@ export function buildAssemblyAudit(
       hits: knowledgeHits,
       droppedCount: params.droppedKnowledgeCount,
     },
-    history: {
-      turnOrdinals: params.memoryPipeline.recentHistoryTurnOrdinals,
-      droppedCount: params.droppedHistoryCount,
-    },
+    history: resolveHistoryTrimAudit(
+      params.memoryPipeline.recentHistoryTurnOrdinals,
+      params.trimState.historyMessages,
+    ),
     ...(params.maxTokens || params.trimMaxTokens || params.tokensBeforeTrim
       ? {
           budgetTrim: {

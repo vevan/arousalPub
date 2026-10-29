@@ -70,15 +70,15 @@ data/{userId}/regex-rules.json
 
 ```text
 assemble（deferMacroExpansion）
-  → outgoing regex（裁切计数口径）
-  → budget trim（每删一条：assemble + outgoing regex + tiktoken 全量重算）
+  → outgoing regex（裁切计数口径；首轮 assemble 回调内）
+  → budget trim（轮询删条 + 槽位差分账本；常态首轮 assemble+count → 账本删 → 收尾 assemble+count，见 DOC/devNotes/03 §14.4.1）
   → 宏展开
   → outgoing regex（终态）
   → plugin afterAssemblePrompts
   → upstream
 ```
 
-裁切上限 `trimMaxTokens` = `contextLength` − 插件 token 预留（见 `DOC/devNotes/03` §14.4.1）。**outgoing regex 在裁切前须执行一次**，使 token 计数与最终出站一致（例如 history assistant 内 `<ex-trace-keeper>` 在 skip 窗口外会被剥除，不得按未剥除体积裁切）。
+裁切上限 `trimMaxTokens` = `contextLength` − 插件 token 预留（见 `DOC/devNotes/03` §14.4.1）。**outgoing regex 在裁切用 assemble 回调内须与最终出站同规则**，使 token 计数与出站一致（例如 history assistant 内插件块在 skip 窗口外会被剥除，不得按未剥除体积裁切）。
 
 **无 `turnOrdinal` 的整段 system**（恒定 lore / world 等单条 system 消息）：不受 `skipLastNTurns` 限制；规则含 `system` + `outgoing` 即作用于整条 `content`。
 
@@ -292,6 +292,11 @@ applyText / applyMessages  // 同语义
           "characters": 5,
           "lore": 30,
           "assembleAndTrim": 35,
+          "knowledge": 2,
+          "pluginReserve": 4,
+          "budgetTrim": 25,
+          "budgetTrimAssemblePasses": 2,
+          "macros": 4,
           "regexOutgoing": 2,
           "pluginsAfterAssemble": 1
         },
@@ -337,7 +342,7 @@ applyText / applyMessages  // 同语义
 - **`groupChat`**（2026-07-03 · 群聊 G3/G4）：`segmentPick`（本段选人 audit，含掷骰 roster）、`nextSpeaker`（本段结束后下一段选人）；Web 群聊会话在审计弹窗增加独立 Tab，两区块展示「本段选人 / 下段选人」。chunk segment `meta.segmentPickAudit` / `resolvedNextSpeakerAudit` 供 regen 与 continue carry；写盘时 strip 冗余 `resolvedNextSpeakerAudit`（仅保留 carry 所需段）。regen 非末段时截断后续 segments 并清理对应 audit 条目。
 - **`messages`**：outgoing 最终态（**regex outgoing 之后**、`afterAssemblePrompts` 之后、upstream 之前）；**服务端自写**，不再依赖前端 `debugPrompt`。
 - **`assembly` / `calls` / `performance`**：仅 **`auditDebug.enabled`** 时计算并写入；**不进** chunk `turn.send` / `receive.runtime`（`runtime` 仍保留轻量 model/duration/tokens）。
-- **`performance`**（schema **v3**）：`assemblyMs` 分段（memory / characters / lore / assembleAndTrim / regexOutgoing / pluginsAfterAssemble）、`preUpstreamMs`、流式 `upstreamMs`（TTFB、首→末 token TPS）、`persistMs`、`stream` 字符/ token 统计；**debug 关闭时零开销**（不跑计时、不落盘该字段）。
+- **`performance`**（schema **v3**）：`assemblyMs` 分段（memory / characters / lore / assembleAndTrim〔子项 knowledge / pluginReserve / budgetTrim + `budgetTrimAssemblePasses` / macros〕/ regexOutgoing / pluginsAfterAssemble）、`preUpstreamMs`、流式 `upstreamMs`（TTFB、首→末 token TPS）、`persistMs`、`stream` 字符/ token 统计；**debug 关闭时零开销**（不跑计时、不落盘该字段）。
 - **`assembly.plugins`**（2026-06）：`afterAssemblePrompts` / `resolveAfterAssemblePromptsAddition` 注入的 **不可 trim** token 预留与各插件分项；`ChatTurnPromptDialog` 组装 Tab 展示。与 audit 顶层预留的 `entries[].plugins[]`（出站元数据）**不同**。
 - **`assembly.budgetTrim`**（2026-06-17）：`maxTokens`（API `contextLength`）、`trimMaxTokens`（`maxTokens` − 插件预留）、`tokensBeforeTrim`（裁切前 outgoing regex 后全量 token，与裁切决策同口径）。
 - **`calls[].plugin.complete` / `entries[].plugins[]`**：schema **预留**（见 §3.6）；Separate 等异步 `plugin.complete` **当前不写入** audit。

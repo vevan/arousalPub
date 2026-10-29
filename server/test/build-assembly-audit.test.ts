@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { buildAssemblyAudit } from '../src/build-assembly-audit.js'
+import {
+  buildAssemblyAudit,
+  countDroppedHistoryTurns,
+  historyTurnOrdinalsFromMessages,
+  resolveHistoryTrimAudit,
+} from '../src/build-assembly-audit.js'
 import type { PluginAssembleAdditionCache } from '../src/plugin-host.js'
 import type { MemoryPipelineResult } from '../src/memory-pipeline.js'
 
@@ -83,7 +88,6 @@ describe('buildAssemblyAudit', () => {
       },
       droppedLoreCount: 1,
       droppedMemoryCount: 1,
-      droppedHistoryCount: 0,
       memoryEnabled: true,
     })
 
@@ -93,6 +97,72 @@ describe('buildAssemblyAudit', () => {
     assert.equal(audit.memory.droppedCount, 1)
     assert.equal(audit.lore.droppedCount, 1)
     assert.equal(audit.knowledge?.droppedCount, 1)
+  })
+
+  it('history audit uses trimmed turn ordinals and turn-based droppedCount', () => {
+    const memoryPipeline = {
+      recentTurns: [],
+      recentHistoryMessages: [],
+      recentHistoryTurnOrdinals: [10, 11, 12, 13],
+      recentHistoryScanText: '',
+      memoryItems: [],
+      memoryText: '',
+      memoryScanText: '',
+      memoryTurnIds: [],
+      memoryHits: [],
+    } satisfies MemoryPipelineResult
+
+    const audit = buildAssemblyAudit({
+      estimatedTokens: 50,
+      lorebookIds: [],
+      lorebookNameToId: new Map(),
+      knowledgeBaseIds: [],
+      knowledgeEnabled: false,
+      initialKnowledgeItems: [],
+      droppedKnowledgeCount: 0,
+      memoryPipeline,
+      loreParts: { constantLore: [], matchedLore: [] },
+      initialMatchedLore: [],
+      initialMemoryItems: [],
+      trimState: {
+        constantLore: [],
+        matchedLore: [],
+        memoryItems: [],
+        knowledgeItems: [],
+        historyMessages: [
+          { role: 'user', content: 'u12', turnOrdinal: 12 },
+          { role: 'assistant', content: 'a12', turnOrdinal: 12 },
+          { role: 'user', content: 'u13', turnOrdinal: 13 },
+          { role: 'assistant', content: 'a13', turnOrdinal: 13 },
+        ],
+      },
+      droppedLoreCount: 0,
+      droppedMemoryCount: 0,
+      memoryEnabled: false,
+    })
+
+    assert.deepEqual(audit.history.turnOrdinals, [12, 13])
+    assert.equal(audit.history.droppedCount, 2)
+  })
+
+  it('historyTurnOrdinalsFromMessages dedupes in order', () => {
+    assert.deepEqual(
+      historyTurnOrdinalsFromMessages([
+        { role: 'user', content: 'a', turnOrdinal: 1 },
+        { role: 'assistant', content: 'b', turnOrdinal: 1 },
+        { role: 'user', content: 'c', turnOrdinal: 2 },
+      ]),
+      [1, 2],
+    )
+    assert.equal(countDroppedHistoryTurns([1, 2, 3], [2, 3]), 1)
+  })
+
+  it('resolveHistoryTrimAudit does not claim all dropped when ordinals missing', () => {
+    const audit = resolveHistoryTrimAudit([1, 2, 3], [
+      { role: 'user', content: 'no-ordinal' },
+    ])
+    assert.deepEqual(audit.turnOrdinals, [])
+    assert.equal(audit.droppedCount, 0)
   })
 
   it('includes plugin token reserve from additionCache', () => {
@@ -143,7 +213,6 @@ describe('buildAssemblyAudit', () => {
       },
       droppedLoreCount: 0,
       droppedMemoryCount: 0,
-      droppedHistoryCount: 0,
       memoryEnabled: false,
       pluginAdditionCache: cache,
     })

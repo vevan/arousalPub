@@ -8,10 +8,13 @@ import {
 } from '../src/budget-trim-settings.js'
 import {
   estimateTrimTokenDelta,
+  knowledgeTextFromTrimState,
+  memoryTextFromTrimState,
   runPromptBudgetTrimLoop,
   trimOneHistoryMessage,
   trimOneMatchedLore,
   trimOneMemoryItem,
+  trimOneRoundRobin,
   worldTextsFromTrimState,
   type PromptBudgetTrimState,
 } from '../src/prompt-budget-trim.js'
@@ -84,18 +87,20 @@ function baseState(): PromptBudgetTrimState {
   }
 }
 
+/** 与账本槽位一致：world/memory/knowledge 各成一条，history 按条追加 */
 function messagesFromState(s: PromptBudgetTrimState): ChatMessage[] {
-  const parts: string[] = ['preset-fixed']
-  for (const m of s.matchedLore) {
-    parts.push(m.entry.content)
-  }
-  for (const m of s.memoryItems) {
-    parts.push(m.turn.send.userText)
-  }
+  const { worldBefore, worldAfter } = worldTextsFromTrimState(s)
+  const memory = memoryTextFromTrimState(s)
+  const knowledge = knowledgeTextFromTrimState(s)
+  const msgs: ChatMessage[] = [{ role: 'system', content: 'preset-fixed' }]
+  if (worldBefore) msgs.push({ role: 'system', content: worldBefore })
+  if (worldAfter) msgs.push({ role: 'system', content: worldAfter })
+  if (memory) msgs.push({ role: 'system', content: memory })
+  if (knowledge) msgs.push({ role: 'system', content: knowledge })
   for (const h of s.historyMessages) {
-    parts.push(h.content)
+    msgs.push({ role: h.role, content: h.content })
   }
-  return [{ role: 'system', content: parts.join('\n') }]
+  return msgs
 }
 
 const DEFAULT_TRIM: BudgetTrimSettings = BUDGET_TRIM_SETTINGS_DEFAULTS
@@ -267,7 +272,125 @@ describe('estimateTrimTokenDelta', () => {
   })
 })
 
+describe('trimOneRoundRobin', () => {
+  it('polls lore → memory → history → lore (not drain lore first)', () => {
+    const state = baseState()
+    state.knowledgeItems = []
+    const cursor = { index: 0 }
+    const settings: BudgetTrimSettings = {
+      trimOrder: ['knowledge', 'lore', 'memory', 'history'],
+      minRetain: { knowledge: 0, lore: 0, memory: 0, history: 0 },
+    }
+    assert.equal(trimOneRoundRobin(state, settings, cursor), 'lore')
+    assert.equal(trimOneRoundRobin(state, settings, cursor), 'memory')
+    assert.equal(trimOneRoundRobin(state, settings, cursor), 'history')
+    assert.equal(trimOneRoundRobin(state, settings, cursor), 'lore')
+  })
+
+  it('skips slots at minRetain and continues the round', () => {
+    const state = baseState()
+    state.knowledgeItems = []
+    state.matchedLore = [state.matchedLore[0]!]
+    const cursor = { index: 0 }
+    const settings: BudgetTrimSettings = {
+      trimOrder: ['knowledge', 'lore', 'memory', 'history'],
+      minRetain: { knowledge: 0, lore: 1, memory: 1, history: 1 },
+    }
+    // lore 已触下限 → 跳到 memory
+    assert.equal(trimOneRoundRobin(state, settings, cursor), 'memory')
+    assert.equal(trimOneRoundRobin(state, settings, cursor), 'history')
+  })
+})
+
 describe('runPromptBudgetTrimLoop', () => {
+  it('under budget returns after a single assemble pass', () => {
+    const state = baseState()
+    const result = runPromptBudgetTrimLoop({
+      maxTokens: 100_000,
+      trimSettings: DEFAULT_TRIM,
+      state,
+      assembleMessages: messagesFromState,
+    })
+    assert.equal(result.drops.droppedLoreCount, 0)
+    assert.equal(result.assemblePasses, 1)
+    assert.equal(result.estimatedTokens, result.tokensBeforeTrim)
+  })
+
+  it('over budget uses slot ledger: few assemble passes, still under budget', () => {
+    const state = baseState()
+    state.matchedLore[0]!.entry.content = 'lore-chunk '.repeat(400)
+    state.matchedLore[1]!.entry.content = 'lore-chunk '.repeat(20)
+    state.memoryItems = [
+      { turn: turn('m2', 2, 'small memory'), score: 0.9 },
+    ]
+    const full = countChatMessagesTokens(messagesFromState(state))
+    const afterOneLore = structuredClone(state)
+    trimOneMatchedLore(afterOneLore, 0)
+    const afterOne = countChatMessagesTokens(messagesFromState(afterOneLore))
+    const budget = afterOne + Math.max(1, Math.floor((full - afterOne) / 2))
+
+    const result = runPromptBudgetTrimLoop({
+      maxTokens: budget,
+      trimSettings: DEFAULT_TRIM,
+      state,
+      assembleMessages: messagesFromState,
+    })
+
+    const drops =
+      result.drops.droppedLoreCount +
+      result.drops.droppedMemoryCount +
+      result.drops.droppedKnowledgeCount
+    assert.ok(drops >= 1)
+    // 常态：首轮 + 收尾 = 2；急删至多再 +1
+    assert.ok(
+      result.assemblePasses <= 3,
+      `assemblePasses=${result.assemblePasses}`,
+    )
+    assert.ok(result.assemblePasses >= 2)
+    assert.ok(result.estimatedTokens <= budget)
+    assert.equal(
+      result.estimatedTokens,
+      countChatMessagesTokens(result.messages),
+    )
+  })
+
+  it('many lore drops stay at two assemble passes when ledger suffices', () => {
+    const state = baseState()
+    state.constantLore = []
+    state.memoryItems = []
+    state.historyMessages = []
+    state.matchedLore = []
+    for (let i = 0; i < 8; i++) {
+      state.matchedLore.push({
+        lorebookId: 'lb1',
+        lorebookName: 'World',
+        entry: loreEntry(`l${i}`, i + 1, `lore-${i} `.repeat(80)),
+        mode: 'keyword',
+        score: i + 1,
+      })
+    }
+    const full = countChatMessagesTokens(messagesFromState(state))
+    const onlyTwo = structuredClone(state)
+    while (onlyTwo.matchedLore.length > 2) {
+      trimOneMatchedLore(onlyTwo, 0)
+    }
+    const budget = countChatMessagesTokens(messagesFromState(onlyTwo)) + 5
+
+    const result = runPromptBudgetTrimLoop({
+      maxTokens: budget,
+      trimSettings: {
+        ...DEFAULT_TRIM,
+        minRetain: { lore: 0, memory: 0, history: 0, knowledge: 0 },
+      },
+      state,
+      assembleMessages: messagesFromState,
+    })
+    assert.ok(result.drops.droppedLoreCount >= 2)
+    assert.ok(full > budget)
+    assert.equal(result.assemblePasses, 2)
+    assert.ok(result.estimatedTokens <= budget)
+  })
+
   it('drops matched lore before memory when over budget', () => {
     const state = baseState()
     state.matchedLore[0]!.entry.content = 'lore-chunk '.repeat(400)
@@ -275,9 +398,13 @@ describe('runPromptBudgetTrimLoop', () => {
     state.memoryItems = [
       { turn: turn('m2', 2, 'small memory'), score: 0.9 },
     ]
+    const afterOneLore = structuredClone(state)
+    trimOneMatchedLore(afterOneLore, 0)
+    const budget =
+      countChatMessagesTokens(messagesFromState(afterOneLore)) + 10
 
     const result = runPromptBudgetTrimLoop({
-      maxTokens: 150,
+      maxTokens: budget,
       trimSettings: DEFAULT_TRIM,
       state,
       assembleMessages: messagesFromState,
@@ -287,7 +414,7 @@ describe('runPromptBudgetTrimLoop', () => {
     assert.equal(result.drops.droppedMemoryCount, 0)
     assert.equal(state.matchedLore.length, 1)
     assert.equal(state.matchedLore[0]!.entry.id, 'l2')
-    assert.ok(result.estimatedTokens <= 150)
+    assert.ok(result.estimatedTokens <= budget)
   })
 
   it('skips last memory item and trims history instead', () => {
@@ -311,7 +438,7 @@ describe('runPromptBudgetTrimLoop', () => {
 
     assert.equal(result.drops.droppedMemoryCount, 0)
     assert.equal(state.memoryItems.length, 1)
-    assert.ok(result.drops.droppedHistoryCount >= 1)
+    assert.ok(state.historyMessages.length < 3)
   })
 
   it('drops memory after lore exhausted', () => {

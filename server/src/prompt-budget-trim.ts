@@ -9,7 +9,12 @@ import {
   type BudgetTrimSettings,
   type BudgetTrimSlot,
 } from './budget-trim-settings.js'
-import { countChatMessagesTokens, estimateTokens } from './token-count.js'
+import {
+  countChatMessageFrameTokens,
+  countChatMessagesTokens,
+  estimateTokens,
+  type TokenCountOptions,
+} from './token-count.js'
 import { formatMemoryXml } from './turn-memory-xml.js'
 import {
   formatLoresInjectionXml,
@@ -49,7 +54,6 @@ export interface PromptBudgetTrimResult {
   droppedLoreCount: number
   droppedMemoryCount: number
   droppedKnowledgeCount: number
-  droppedHistoryCount: number
 }
 
 type OrderedLoreXmlRow = {
@@ -275,6 +279,29 @@ function trimOneForSlot(
       return trimOneHistoryMessage(state, settings.minRetain.history)
   }
 }
+
+/**
+ * 同一轮按 trimOrder 轮询：从 cursor 起找第一个可删槽，删一条后 cursor 移到下一槽。
+ * 触 minRetain 的槽跳过。返回删中的槽；无可删时 null（cursor 不变）。
+ */
+export function trimOneRoundRobin(
+  state: PromptBudgetTrimState,
+  settings: BudgetTrimSettings,
+  cursor: { index: number },
+): BudgetTrimSlot | null {
+  const order = settings.trimOrder
+  const n = order.length
+  if (n === 0) return null
+  const start = ((cursor.index % n) + n) % n
+  for (let i = 0; i < n; i++) {
+    const idx = (start + i) % n
+    const slot = order[idx]!
+    if (!trimOneForSlot(state, slot, settings)) continue
+    cursor.index = (idx + 1) % n
+    return slot
+  }
+  return null
+}
 function recordDrop(drops: PromptBudgetTrimResult, slot: BudgetTrimSlot): void {
   switch (slot) {
     case 'knowledge':
@@ -287,26 +314,24 @@ function recordDrop(drops: PromptBudgetTrimResult, slot: BudgetTrimSlot): void {
       drops.droppedMemoryCount += 1
       break
     case 'history':
-      drops.droppedHistoryCount += 1
       break
   }
 }
-/** 每 N 轮裁切用全量 assemble+tiktoken 校准一次（防止增量估算漂移） */
-export const TRIM_TOKEN_REVERIFY_EVERY = 4
 interface TrimTokenSnapshot {
   worldText: string
   memoryText: string
   knowledgeText: string
   removedHistory?: ChatMessage
 }
-/** 估算单次裁切减少的 token（world / memory / knowledge XML 差分 + history 单条） */
+
+/** 估算单次裁切减少的 token（world / memory / knowledge XML 差分 + history 帧） */
 export function estimateTrimTokenDelta(
   state: PromptBudgetTrimState,
   slot: BudgetTrimSlot,
   snapshot: TrimTokenSnapshot,
-  tokenModel?: string,
+  options?: TokenCountOptions,
 ): number {
-  const opt = { model: tokenModel }
+  const opt = options ?? {}
   if (slot === 'lore') {
     const after = worldTextFromTrimState(state)
     return Math.max(
@@ -330,14 +355,37 @@ export function estimateTrimTokenDelta(
     )
   }
   if (slot === 'history' && snapshot.removedHistory) {
-    return countChatMessagesTokens([snapshot.removedHistory], opt)
+    return countChatMessageFrameTokens(snapshot.removedHistory, opt)
   }
   return 0
 }
+
 /**
- * §14.4 统一预算裁切：每删一条全量 assemble + tiktoken 校准；结束时一次 assemble。
- * 顺序与下限由 `BudgetTrimSettings` 决定。
- * 入口 `buildConversationOutboundMessages` 在裁切前对组装结果施加 outgoing regex（与最终出站一致）。
+ * 账本差分保守系数：state XML 差分常大于真实 messages 节约。
+ * 越低越倾向于多删，换取收尾一次校准即达标（目标 2 遍 assemble）。
+ */
+export const TRIM_LEDGER_DELTA_CONSERVATIVE = 0.4
+
+/** 首轮账本目标：删到 budget×该比例，留余量给校准漂移 */
+export const TRIM_LEDGER_TARGET_RATIO = 0.92
+
+/** 校准后仍超限时的二次账本系数（极少走到） */
+const TRIM_LEDGER_DELTA_EMERGENCY = 0.25
+
+function snapshotForTrimDelta(state: PromptBudgetTrimState): TrimTokenSnapshot {
+  return {
+    worldText: worldTextFromTrimState(state),
+    memoryText: memoryTextFromTrimState(state),
+    knowledgeText: knowledgeTextFromTrimState(state),
+    removedHistory: state.historyMessages[0],
+  }
+}
+
+/**
+ * §14.4 统一预算裁切：
+ * 1) 首轮全量 assemble + tiktoken；
+ * 2) 按 trimOrder 轮询账本删条（目标 budget×0.92，差分×0.4），循环内不 assemble；
+ * 3) 收尾再 assemble 一次（常态共 2 遍）；若仍超限再急删一轮 + 至多第 3 遍 assemble。
  */
 export function runPromptBudgetTrimLoop(opts: {
   maxTokens: number
@@ -351,39 +399,92 @@ export function runPromptBudgetTrimLoop(opts: {
   drops: PromptBudgetTrimResult
   /** 裁切前全量组装 token（未裁切时与 estimatedTokens 相同） */
   tokensBeforeTrim: number
+  /** assembleMessages 调用次数（未超限 1；常态裁切 2） */
+  assemblePasses: number
 } {
   const drops: PromptBudgetTrimResult = {
     droppedLoreCount: 0,
     droppedMemoryCount: 0,
     droppedKnowledgeCount: 0,
-    droppedHistoryCount: 0,
+  }
+  const contentTokenCache = new Map<string, number>()
+  const tokenOpt: TokenCountOptions = {
+    model: opts.tokenModel,
+    contentTokenCache,
   }
   const count = (msgs: ChatMessage[]) =>
-    countChatMessagesTokens(msgs, { model: opts.tokenModel })
-  let messages = opts.assembleMessages(opts.state)
+    countChatMessagesTokens(msgs, tokenOpt)
+  let assemblePasses = 0
+  const assemble = () => {
+    assemblePasses += 1
+    return opts.assembleMessages(opts.state)
+  }
+  let messages = assemble()
   let tokens = count(messages)
   const tokensBeforeTrim = tokens
   const budget = Math.floor(opts.maxTokens)
-  if (!Number.isFinite(budget) || budget <= 0) {
-    return { messages, estimatedTokens: tokens, drops, tokensBeforeTrim }
-  }
-  const order = opts.trimSettings.trimOrder
-  const MAX_ROUNDS = 512
-  // §14.4.1：每删一条即全量 assemble + tiktoken 重算，避免增量 XML 差分漂移导致过度裁切
-  for (let round = 0; round < MAX_ROUNDS; round++) {
-    messages = opts.assembleMessages(opts.state)
-    tokens = count(messages)
-    if (tokens <= budget) break
-    let trimmed = false
-    for (const slot of order) {
-      if (!trimOneForSlot(opts.state, slot, opts.trimSettings)) continue
-      recordDrop(drops, slot)
-      trimmed = true
-      break
+  if (!Number.isFinite(budget) || budget <= 0 || tokens <= budget) {
+    return {
+      messages,
+      estimatedTokens: tokens,
+      drops,
+      tokensBeforeTrim,
+      assemblePasses,
     }
-    if (!trimmed) break
   }
-  messages = opts.assembleMessages(opts.state)
+
+  const MAX_ROUNDS = 512
+  const rrCursor = { index: 0 }
+  const ledgerTarget = Math.max(
+    1,
+    Math.floor(budget * TRIM_LEDGER_TARGET_RATIO),
+  )
+
+  const dropByLedgerUntil = (
+    estTokens: number,
+    target: number,
+    factor: number,
+  ): boolean => {
+    let est = estTokens
+    let dropped = false
+    for (let round = 0; round < MAX_ROUNDS && est > target; round++) {
+      const snap = snapshotForTrimDelta(opts.state)
+      const trimmedSlot = trimOneRoundRobin(
+        opts.state,
+        opts.trimSettings,
+        rrCursor,
+      )
+      if (!trimmedSlot) break
+      const rawDelta = estimateTrimTokenDelta(
+        opts.state,
+        trimmedSlot,
+        snap,
+        tokenOpt,
+      )
+      const delta = Math.max(1, Math.floor(rawDelta * factor))
+      est = Math.max(0, est - delta)
+      recordDrop(drops, trimmedSlot)
+      dropped = true
+    }
+    return dropped
+  }
+
+  dropByLedgerUntil(tokens, ledgerTarget, TRIM_LEDGER_DELTA_CONSERVATIVE)
+
+  messages = assemble()
   tokens = count(messages)
-  return { messages, estimatedTokens: tokens, drops, tokensBeforeTrim }
+  if (tokens > budget) {
+    if (dropByLedgerUntil(tokens, budget, TRIM_LEDGER_DELTA_EMERGENCY)) {
+      messages = assemble()
+      tokens = count(messages)
+    }
+  }
+
+  return {
+    messages,
+    estimatedTokens: tokens,
+    drops,
+    tokensBeforeTrim,
+    assemblePasses,
+  }
 }

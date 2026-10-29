@@ -11,6 +11,7 @@ import {
   openPluginPanel,
   pluginPanelActiveTabState,
   pluginPanelRevision,
+  pluginPanelTabHydrating,
   setPluginPanelHidden,
   type PluginPanelRailPlacement,
 } from '@/plugins/plugin-panel-registry'
@@ -38,6 +39,7 @@ const active = computed(() => {
 const activeTabPending = computed(() => {
   void pluginPanelRevision.value
   void pluginPanelActiveTabState.value[props.placement]
+  void pluginPanelTabHydrating.value
   return isPluginPanelActiveTabPending(props.placement)
 })
 const hostHidden = computed(() => isPluginPanelHidden(props.placement))

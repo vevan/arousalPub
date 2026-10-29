@@ -78,7 +78,8 @@ describe('plugin panel active tabs persistence', () => {
     })
     setPluginPanelHtml('rightRail', 'fixture-maze', '<div>maze</div>')
 
-    assert.equal(isPluginPanelActiveTabPending('rightRail'), true)
+    // 非 hydration：未 register 不得显示「正在加载」（如首页无对应插件）
+    assert.equal(isPluginPanelActiveTabPending('rightRail'), false)
     assert.equal(getActivePanelHtml('rightRail', 'chat'), null)
     assert.equal(pluginPanelActiveTabState.value.rightRail, 'fixture-notes')
     assert.equal(
@@ -90,9 +91,9 @@ describe('plugin panel active tabs persistence', () => {
     assert.equal(pluginPanelActiveTabState.value.rightRail, 'fixture-notes')
 
     setPluginPanelTabHydrating(true)
+    assert.equal(isPluginPanelActiveTabPending('rightRail'), true)
     openPluginPanel('rightRail', 'fixture-maze', 'chat')
     assert.equal(pluginPanelActiveTabState.value.rightRail, 'fixture-notes')
-    setPluginPanelTabHydrating(false)
 
     registerPluginPanel({
       placement: 'rightRail',
@@ -107,9 +108,14 @@ describe('plugin panel active tabs persistence', () => {
     const active = getActivePanelHtml('rightRail', 'chat')
     assert.equal(active?.pluginId, 'fixture-notes')
     assert.equal(pluginPanelActiveTabState.value.rightRail, 'fixture-notes')
+    setPluginPanelTabHydrating(false)
 
     unregisterPluginPanel('fixture-notes')
+    // hydration 已结束：不再 pending；ensure 失败回落用 fallback
+    assert.equal(isPluginPanelActiveTabPending('rightRail'), false)
+    setPluginPanelTabHydrating(true)
     assert.equal(isPluginPanelActiveTabPending('rightRail'), true)
+    setPluginPanelTabHydrating(false)
     fallbackActiveTabsIfStillUnregistered('chat')
     assert.equal(pluginPanelActiveTabState.value.rightRail, 'fixture-maze')
 

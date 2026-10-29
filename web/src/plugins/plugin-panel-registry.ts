@@ -513,14 +513,14 @@ export function bringFloatingPanelToFront(pluginId: string): void {
 }
 
 /** 启动恢复 active tab 期间：禁止其它插件 open() 抢走持久化选中 */
-let pluginPanelTabHydrating = false
+export const pluginPanelTabHydrating = ref(false)
 
 export function setPluginPanelTabHydrating(active: boolean): void {
-  pluginPanelTabHydrating = active
+  pluginPanelTabHydrating.value = active
 }
 
 export function isPluginPanelTabHydrating(): boolean {
-  return pluginPanelTabHydrating
+  return pluginPanelTabHydrating.value
 }
 
 export function focusPluginPanelTab(
@@ -556,7 +556,7 @@ export function openPluginPanel(
   routeName?: string | null,
 ): void {
   const id = pluginId?.trim() || ''
-  if (pluginPanelTabHydrating && id) {
+  if (pluginPanelTabHydrating.value && id) {
     const selected = pluginPanelActiveTabState.value[placement]
     if (selected && selected !== id) {
       // 仍允许展开侧栏，但不改写持久化 tab
@@ -629,10 +629,14 @@ export function fallbackActiveTabsIfStillUnregistered(
   }
 }
 
-/** 选中 id 仍在等待 web register（用于轨 empty 文案区分 loading） */
+/**
+ * 选中 id 仍在等待 web register（用于轨 empty 文案区分 loading）。
+ * 仅在 tab hydration 期间为 true；首页等未跑 ensure 的路由不得永久「正在加载」。
+ */
 export function isPluginPanelActiveTabPending(
   placement: PluginPanelRailPlacement,
 ): boolean {
+  if (!pluginPanelTabHydrating.value) return false
   const selected = pluginPanelActiveTabState.value[placement]
   return Boolean(selected && !panels.has(selected))
 }

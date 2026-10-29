@@ -9,6 +9,12 @@ import {
 } from '@/plugins/create-plugin-web-host'
 import { loadPluginWebModule } from '@/plugins/load-plugin-web-module'
 import { mergePluginLocales } from '@/plugins/merge-plugin-locales'
+import {
+  fallbackActiveTabsIfStillUnregistered,
+  listPersistedActiveTabPluginIds,
+  pruneActiveTabsNotInRegistry,
+  setPluginPanelTabHydrating,
+} from '@/plugins/plugin-panel-registry'
 import type {
   OpenPluginFormState,
   PluginRegistryPublicEntry,
@@ -77,6 +83,7 @@ export function usePluginHost(
           : []
         usePluginPermissionsStore().syncFromRegistry(registry.value)
         prunePluginsMissingFromRegistry()
+        pruneActiveTabsNotInRegistry(new Set(registry.value.map((e) => e.id)))
         registryLoaded.value = true
       } catch (e) {
         console.warn('[plugin-host] registry load failed', e)
@@ -86,6 +93,14 @@ export function usePluginHost(
       }
     })()
     return loadRegistryInflight
+  }
+
+  /** 优先加载持久化 active tab，减少同轨其它插件先 register 造成的空窗 */
+  async function ensurePersistedActiveTabPlugins(): Promise<void> {
+    await loadRegistry()
+    if (!registryLoaded.value) return
+    const ids = listPersistedActiveTabPluginIds()
+    await Promise.all(ids.map((id) => ensurePluginById(id)))
   }
 
   /** public registry 不再包含的插件：注销其 slash，允许日后重新 ensure 加载 */
@@ -183,10 +198,17 @@ export function usePluginHost(
 
   onMounted(() => {
     void (async () => {
-      await loadRegistry()
-      await ensureEagerWebPlugins()
-      const keys = routeContext.routeKeys ?? []
-      if (keys.length) await ensureEagerOnRoutes(keys)
+      setPluginPanelTabHydrating(true)
+      try {
+        await loadRegistry()
+        await ensurePersistedActiveTabPlugins()
+        await ensureEagerWebPlugins()
+        const keys = routeContext.routeKeys ?? []
+        if (keys.length) await ensureEagerOnRoutes(keys)
+        fallbackActiveTabsIfStillUnregistered(keys[0] ?? null)
+      } finally {
+        setPluginPanelTabHydrating(false)
+      }
     })()
   })
 

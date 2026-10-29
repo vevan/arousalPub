@@ -4,10 +4,12 @@ import {
   getActivePanelHtml,
   getRegisteredPanels,
   isPanelVisibleOnRoute,
+  isPluginPanelActiveTabPending,
   isPluginPanelHidden,
   movePluginPanel,
   notifyPluginPanelMounted,
   openPluginPanel,
+  pluginPanelActiveTabState,
   pluginPanelRevision,
   setPluginPanelHidden,
   type PluginPanelRailPlacement,
@@ -30,7 +32,13 @@ const panels = computed(() => {
 })
 const active = computed(() => {
   void pluginPanelRevision.value
+  void pluginPanelActiveTabState.value[props.placement]
   return getActivePanelHtml(props.placement, route.name as string)
+})
+const activeTabPending = computed(() => {
+  void pluginPanelRevision.value
+  void pluginPanelActiveTabState.value[props.placement]
+  return isPluginPanelActiveTabPending(props.placement)
 })
 const hostHidden = computed(() => isPluginPanelHidden(props.placement))
 const showPanelContent = computed(() => Boolean(active.value?.html?.trim()))
@@ -163,7 +171,11 @@ watch(
       v-else
       class="plugin-rail-host__empty text-body-2 text-medium-emphasis pa-4"
     >
-      {{ $t('app.pluginRailUnavailable') }}
+      {{
+        activeTabPending
+          ? $t('app.pluginRailLoading')
+          : $t('app.pluginRailUnavailable')
+      }}
     </div>
   </div>
 </template>

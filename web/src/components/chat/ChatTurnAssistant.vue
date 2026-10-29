@@ -11,7 +11,7 @@ import {
 import { renderRichMessageToHtml } from '@/utils/render-rich-message'
 import PluginSlotMount from '@/plugins/PluginSlotMount.vue'
 import { CONVERSATION_BRANCH_KEY } from '@/composables/conversation-branch-context'
-import { computed, inject, toRefs } from 'vue'
+import { computed, inject, nextTick, onUnmounted, ref, toRefs, watch } from 'vue'
 
 const props = defineProps<{
   turn: ChatTurnItem
@@ -50,6 +50,7 @@ const {
   displayStreamingReasoningText,
   showAssistantSwipeFooter,
   slideAssistant,
+  jumpAssistantReceive,
   regenerateAssistant,
   openEditAssistant,
   cancelEdit,
@@ -73,6 +74,105 @@ const swipeActiveIndex = computed(() =>
 const swipeReceiveCount = computed(() =>
   segmentReceiveCount(props.turn, segIdx.value),
 )
+
+const swipeJumpOpen = ref(false)
+const swipeJumpDraft = ref('')
+const swipeJumpInputRef = ref<HTMLInputElement | null>(null)
+const swipeJumpInvalid = ref(false)
+let swipeJumpFocusToken = 0
+const swipeJumpFocusTimers = new Set<number>()
+
+function clearSwipeJumpFocusTimers() {
+  for (const id of swipeJumpFocusTimers) window.clearTimeout(id)
+  swipeJumpFocusTimers.clear()
+}
+
+function tryFocusSwipeJumpInput(): boolean {
+  const el = swipeJumpInputRef.value
+  if (!el) return false
+  el.focus({ preventScroll: true })
+  el.select()
+  return document.activeElement === el
+}
+
+/** v-menu 内容晚于 nextTick 挂载，且 activator 可能抢回焦点，需挂载后重试 */
+function scheduleSwipeJumpFocus() {
+  const token = ++swipeJumpFocusToken
+  clearSwipeJumpFocusTimers()
+  const attempt = (delayMs: number) => {
+    const id = window.setTimeout(() => {
+      swipeJumpFocusTimers.delete(id)
+      if (token !== swipeJumpFocusToken || !swipeJumpOpen.value) return
+      if (tryFocusSwipeJumpInput()) return
+      if (delayMs < 120) attempt(delayMs + 40)
+    }, delayMs)
+    swipeJumpFocusTimers.add(id)
+  }
+  void nextTick(() => {
+    requestAnimationFrame(() => {
+      if (token !== swipeJumpFocusToken || !swipeJumpOpen.value) return
+      if (!tryFocusSwipeJumpInput()) attempt(40)
+    })
+  })
+}
+
+watch(swipeJumpOpen, (open) => {
+  swipeJumpInvalid.value = false
+  if (!open) {
+    swipeJumpFocusToken += 1
+    clearSwipeJumpFocusTimers()
+    return
+  }
+  swipeJumpDraft.value = String(swipeActiveIndex.value + 1)
+  scheduleSwipeJumpFocus()
+})
+
+onUnmounted(() => {
+  swipeJumpFocusToken += 1
+  clearSwipeJumpFocusTimers()
+})
+
+function onSwipeJumpInputMounted() {
+  if (!swipeJumpOpen.value) return
+  scheduleSwipeJumpFocus()
+}
+
+function onSwipeJumpInput(e: Event) {
+  swipeJumpInvalid.value = false
+  const el = e.target as HTMLInputElement
+  // type=number 在部分浏览器仍可暂存非整内容；强制只留数字
+  const digits = el.value.replace(/\D/g, '')
+  swipeJumpDraft.value = digits
+  if (el.value !== digits) el.value = digits
+}
+
+function onSwipeJumpKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    confirmSwipeJump()
+    return
+  }
+  if (
+    e.key.length === 1 &&
+    !/\d/.test(e.key) &&
+    !e.ctrlKey &&
+    !e.metaKey &&
+    !e.altKey
+  ) {
+    e.preventDefault()
+  }
+}
+
+function confirmSwipeJump() {
+  if (isGenerating.value || swipeLockedOnBranchFork.value) return
+  const n = Number.parseInt(swipeJumpDraft.value.trim(), 10)
+  const ok = jumpAssistantReceive(props.listIndex, n, segIdx.value)
+  if (!ok) {
+    swipeJumpInvalid.value = true
+    return
+  }
+  swipeJumpOpen.value = false
+}
 
 function bubbleLoading() {
   return isAssistantBubbleLoading(props.turn, segIdx.value)
@@ -370,9 +470,56 @@ const speakerAccentStyle = computed(() => {
         >
           <v-icon size="16">mdi-chevron-left</v-icon>
         </button>
-        <span class="swipe__count tabular-nums">
-          {{ swipeActiveIndex + 1 }} / {{ swipeReceiveCount }}
-        </span>
+        <v-menu
+          v-model="swipeJumpOpen"
+          :disabled="isGenerating || swipeLockedOnBranchFork"
+          location="top"
+          :close-on-content-click="false"
+          offset="6"
+        >
+          <template #activator="{ props: menuProps }">
+            <button
+              type="button"
+              class="swipe__count tabular-nums"
+              v-bind="menuProps"
+              :disabled="isGenerating || swipeLockedOnBranchFork"
+              :aria-label="$t('chat.swipeJumpOpen', {
+                current: swipeActiveIndex + 1,
+                total: swipeReceiveCount,
+              })"
+              :data-tt="$t('chat.swipeJumpHint')"
+            >
+              {{ swipeActiveIndex + 1 }} / {{ swipeReceiveCount }}
+            </button>
+          </template>
+          <div class="swipe-jump" @keydown.esc.stop="swipeJumpOpen = false">
+            <input
+              ref="swipeJumpInputRef"
+              v-model="swipeJumpDraft"
+              class="swipe-jump__input tabular-nums"
+              type="number"
+              inputmode="numeric"
+              min="1"
+              :max="swipeReceiveCount"
+              step="1"
+              autocomplete="off"
+              autofocus
+              :aria-invalid="swipeJumpInvalid"
+              :aria-label="$t('chat.swipeJumpInputLabel', { total: swipeReceiveCount })"
+              :placeholder="`1–${swipeReceiveCount}`"
+              @vue:mounted="onSwipeJumpInputMounted"
+              @input="onSwipeJumpInput"
+              @keydown="onSwipeJumpKeydown"
+            />
+            <button
+              type="button"
+              class="swipe-jump__go"
+              @click="confirmSwipeJump"
+            >
+              {{ $t('chat.swipeJumpGo') }}
+            </button>
+          </div>
+        </v-menu>
         <button
           type="button"
           class="swipe__btn"

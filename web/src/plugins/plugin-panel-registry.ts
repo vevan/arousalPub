@@ -512,6 +512,17 @@ export function bringFloatingPanelToFront(pluginId: string): void {
   })
 }
 
+/** 启动恢复 active tab 期间：禁止其它插件 open() 抢走持久化选中 */
+let pluginPanelTabHydrating = false
+
+export function setPluginPanelTabHydrating(active: boolean): void {
+  pluginPanelTabHydrating = active
+}
+
+export function isPluginPanelTabHydrating(): boolean {
+  return pluginPanelTabHydrating
+}
+
 export function focusPluginPanelTab(
   placement: PluginPanelRailPlacement,
   pluginId?: string,
@@ -522,11 +533,14 @@ export function focusPluginPanelTab(
     return
   }
   const selected = pluginPanelActiveTabState.value[placement]
-  if (
-    selected &&
-    getRegisteredPanels(placement).some((panel) => panel.pluginId === selected)
-  ) {
-    return
+  if (selected) {
+    if (
+      getRegisteredPanels(placement).some((panel) => panel.pluginId === selected)
+    ) {
+      return
+    }
+    // 持久化选中的插件尚未 register（懒加载中）时不要回落到轨上第一个
+    if (!panels.has(selected)) return
   }
   const candidates = routeName
     ? getRoutablePanels(placement, routeName)
@@ -541,6 +555,15 @@ export function openPluginPanel(
   pluginId?: string,
   routeName?: string | null,
 ): void {
+  const id = pluginId?.trim() || ''
+  if (pluginPanelTabHydrating && id) {
+    const selected = pluginPanelActiveTabState.value[placement]
+    if (selected && selected !== id) {
+      // 仍允许展开侧栏，但不改写持久化 tab
+      setPluginPanelHidden(placement, false)
+      return
+    }
+  }
   setPluginPanelHidden(placement, false)
   focusPluginPanelTab(placement, pluginId, routeName)
 }
@@ -567,12 +590,19 @@ export function getActivePanelHtml(
     : getRegisteredPanels(placement)
   const selected = pluginPanelActiveTabState.value[placement]
   const matched = candidates.find((panel) => panel.pluginId === selected)
+
+  // 持久化 tab 对应插件尚未 register：保留选中、不回写，避免被先加载的同轨插件抢占
+  if (selected && !matched && !panels.has(selected)) {
+    return null
+  }
+
   const entry = matched ?? candidates[0]
   if (!entry) return null
-  // 仅当 selected 已不在该轨时回写；当前路由不可见但仍在轨上则保留（避免跨路由冲掉选中）
+  // 仅当 selected 已 register 但不在该轨时回写；当前路由不可见但仍在轨上则保留
   if (
     selected &&
     !matched &&
+    panels.has(selected) &&
     !getRegisteredPanels(placement).some((panel) => panel.pluginId === selected)
   ) {
     setActiveTab(placement, entry.pluginId)
@@ -583,6 +613,54 @@ export function getActivePanelHtml(
     revision: entry.revision,
     interactive: entry.interactive,
   }
+}
+
+/** 持久化选中的插件已尝试加载但仍未 register → 回落到同轨第一个（或清空） */
+export function fallbackActiveTabsIfStillUnregistered(
+  routeName?: string | null,
+): void {
+  for (const placement of ['leftRail', 'rightRail'] as const) {
+    const selected = pluginPanelActiveTabState.value[placement]
+    if (!selected || panels.has(selected)) continue
+    const candidates = routeName
+      ? getRoutablePanels(placement, routeName)
+      : getRegisteredPanels(placement)
+    setActiveTab(placement, candidates[0]?.pluginId ?? null)
+  }
+}
+
+/** 选中 id 仍在等待 web register（用于轨 empty 文案区分 loading） */
+export function isPluginPanelActiveTabPending(
+  placement: PluginPanelRailPlacement,
+): boolean {
+  const selected = pluginPanelActiveTabState.value[placement]
+  return Boolean(selected && !panels.has(selected))
+}
+
+/** registry 已确认不包含的插件 id：清掉对应轨的持久化选中，避免永久悬空 */
+export function pruneActiveTabsNotInRegistry(
+  enabledPluginIds: ReadonlySet<string>,
+): void {
+  for (const placement of ['leftRail', 'rightRail'] as const) {
+    const selected = pluginPanelActiveTabState.value[placement]
+    if (!selected || enabledPluginIds.has(selected)) continue
+    setActiveTab(placement, null)
+  }
+}
+
+export function listPersistedActiveTabPluginIds(): string[] {
+  const tabs = pluginPanelActiveTabState.value
+  return [tabs.leftRail, tabs.rightRail].filter(
+    (id): id is string => typeof id === 'string' && id.trim().length > 0,
+  )
+}
+
+export function unregisterPluginPanel(pluginId: string): void {
+  const id = pluginId.trim()
+  if (!id) return
+  if (!panels.delete(id)) return
+  eventHandlers.delete(id)
+  pluginPanelRevision.value += 1
 }
 
 export function getPluginPanelHtml(pluginId: string): PluginPanelEntry | null {

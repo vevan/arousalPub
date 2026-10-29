@@ -1,5 +1,11 @@
 import type { PromptTrigger } from '@/stores/prompts'
-import type { ChatPersistPayload, ChatTurnItem, PersistTurnToServerResult, ReceiveItem } from '@/types/chat-turn'
+import type {
+  AssistantSegmentItem,
+  ChatPersistPayload,
+  ChatTurnItem,
+  PersistTurnToServerResult,
+  ReceiveItem,
+} from '@/types/chat-turn'
 import { resolveFinalUserTextAfterPersist, applyRetroPersistToTurns, applyPersistTurnPlugins } from '@/utils/persist-display'
 import { isAbortError } from '@/utils/abort-error'
 import type { ConversationChatRequestPlugins } from '@/utils/chat-api'
@@ -1128,64 +1134,104 @@ export function useChatOutbound(opts: {
     opts.abortChatGeneration()
   }
 
+  function resolveSwipeSegment(
+    listIndex: number,
+    segmentIndex?: number,
+  ): { turn: ChatTurnItem; segIdx: number; seg: AssistantSegmentItem } | null {
+    if (!opts.isConversationWritable()) return null
+    if (isOutboundBusy()) return null
+    const turn = opts.turns.value[listIndex]
+    if (!turn) return null
+    if (branchCtx?.isForkAnchorOnActivePath(turn)) {
+      coreNotify(opts.t('chat.branches.swipeLockedOnBranchFork'))
+      return null
+    }
+    const segIdx = segmentIndex ?? getActiveSegmentIndex(turn)
+    const seg = getTurnSegments(turn)[segIdx]
+    if (!seg || seg.receives.length === 0) return null
+    return { turn, segIdx, seg }
+  }
+
+  function applyVariantSwitch(
+    listIndex: number,
+    turn: ChatTurnItem,
+    segIdx: number,
+    nextSegActive: number,
+  ) {
+    const nextSegments = [...(turn.segments ?? getTurnSegments(turn))]
+    const baseSeg = nextSegments[segIdx]
+    if (!baseSeg) return
+    nextSegments[segIdx] = {
+      ...baseSeg,
+      activeReceiveIndex: nextSegActive,
+    }
+    const next: ChatTurnItem = {
+      ...turn,
+      segments: nextSegments,
+      activeSegmentIndex: segIdx,
+    }
+    void opts.persistTurnToServer(next, { segmentIndex: segIdx }).then((result) => {
+      if (result.ok) {
+        opts.replaceTurnAt(listIndex, result.turn)
+      } else {
+        opts.replaceTurnAt(listIndex, next)
+      }
+      void nextTick().then(() => opts.scrollChatToBottom())
+    })
+  }
+
   function slideAssistant(
     listIndex: number,
     direction: 'left' | 'right',
     segmentIndex?: number,
   ) {
-    if (!opts.isConversationWritable()) return
-    if (isOutboundBusy()) return
-    const turn = opts.turns.value[listIndex]
-    if (!turn) return
-    if (branchCtx?.isForkAnchorOnActivePath(turn)) {
-      coreNotify(opts.t('chat.branches.swipeLockedOnBranchFork'))
-      return
-    }
-    const segIdx = segmentIndex ?? getActiveSegmentIndex(turn)
-    const segments = getTurnSegments(turn)
-    const seg = segments[segIdx]
-    if (!seg || seg.receives.length === 0) return
+    const resolved = resolveSwipeSegment(listIndex, segmentIndex)
+    if (!resolved) return
+    const { turn, segIdx, seg } = resolved
     const len = seg.receives.length
     const a = seg.activeReceiveIndex
 
-    const applyVariantSwitch = (nextSegActive: number) => {
-      const nextSegments = [...(turn.segments ?? getTurnSegments(turn))]
-      const baseSeg = nextSegments[segIdx]
-      if (!baseSeg) return
-      nextSegments[segIdx] = {
-        ...baseSeg,
-        activeReceiveIndex: nextSegActive,
-      }
-      const next: ChatTurnItem = {
-        ...turn,
-        segments: nextSegments,
-        activeSegmentIndex: segIdx,
-      }
-      void opts.persistTurnToServer(next, { segmentIndex: segIdx }).then((result) => {
-        if (result.ok) {
-          opts.replaceTurnAt(listIndex, result.turn)
-        } else {
-          opts.replaceTurnAt(listIndex, next)
-        }
-        void nextTick().then(() => opts.scrollChatToBottom())
-      })
-    }
-
     if (direction === 'left') {
       const nextIdx = a === 0 ? len - 1 : a - 1
-      applyVariantSwitch(nextIdx)
+      applyVariantSwitch(listIndex, turn, segIdx, nextIdx)
       return
     }
 
     if (a === len - 1) {
       if (isOpeningTurn(turn)) {
-        applyVariantSwitch(0)
+        applyVariantSwitch(listIndex, turn, segIdx, 0)
         return
       }
       void regenerateAssistant(listIndex, 'swipe', segIdx)
       return
     }
-    applyVariantSwitch(a + 1)
+    applyVariantSwitch(listIndex, turn, segIdx, a + 1)
+  }
+
+  /**
+   * 1-based 序号跳转到对应助手回复变体。
+   * @returns false 仅表示序号非法；忙碌/锁定等已拦截时返回 true（可关菜单）。
+   */
+  function jumpAssistantReceive(
+    listIndex: number,
+    oneBasedIndex: number,
+    segmentIndex?: number,
+  ): boolean {
+    const resolved = resolveSwipeSegment(listIndex, segmentIndex)
+    if (!resolved) return true
+    const { turn, segIdx, seg } = resolved
+    const len = seg.receives.length
+    if (
+      !Number.isInteger(oneBasedIndex) ||
+      oneBasedIndex < 1 ||
+      oneBasedIndex > len
+    ) {
+      return false
+    }
+    const nextIdx = oneBasedIndex - 1
+    if (nextIdx === seg.activeReceiveIndex) return true
+    applyVariantSwitch(listIndex, turn, segIdx, nextIdx)
+    return true
   }
 
   return {
@@ -1195,6 +1241,7 @@ export function useChatOutbound(opts: {
     regenerateAssistant,
     regenerateWithPlugins,
     slideAssistant,
+    jumpAssistantReceive,
     abortCurrentReply,
     continueGroupChat,
     dismissGroupContinue,

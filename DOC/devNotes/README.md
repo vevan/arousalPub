@@ -17,6 +17,7 @@
 | 移动端兼容性 | [`33-mobile-compatibility.md`](33-mobile-compatibility.md)（**Phase 1 布局已落地**） |
 | 待办 | [`04-TODO.md`](04-TODO.md) |
 | 连接面板作用域重整 | [`52-connection-panel-scope.md`](52-connection-panel-scope.md)（**✅ P0 已实现**） |
+| Agent Runtime / 节点图 | [`53-agent-runtime-and-node-graph.md`](53-agent-runtime-and-node-graph.md)（**计划** · 循环 → tools → DAG） |
 | 通知中心 | [`40-notification-center.md`](40-notification-center.md)（**✅ 已完成** · NC0–NC-F1 + NC-F3）· 迁移验收 [`45`](45-notification-center-core-migration.md) §6.10 |
 
 ## 核心（01–08）
@@ -59,7 +60,7 @@
 | [`23`](23-conversation-branches.md) | ✅ | S1–S5 + 顶栏分支树；persist `turnId` patch；from/to/total 副标题；§9.3 审计已关闭 |
 | [`24`](24-regex-and-session-audit.md) | 主体 ✅ | 正则三阶段、debug 审计 |
 | [`25`](25-security-deployment.md) | ✅ | 部署硬化、**API Key 隔离与磁盘加密** §15 |
-| [`30`](30-plugin-trace-keeper.md) | ✅ v1 + segment | **迹录** `trace-keeper`：Together、Separate、TraceBundle、segment pinned、左栏 HTML 面板（TK0–TK-F 已闭环） |
+| [`30`](30-plugin-trace-keeper.md) | ✅ v1 + segment · **§2.3 工具模式草案** | **迹录** `trace-keeper`：Together、Separate、TraceBundle、segment pinned；Agent 下拟 `trace_read` / `trace_init` / `trace_patch`（读→正文→写） |
 | [`31`](31-main-layout-plugin-rails.md) | ✅ | **主布局三列 Grid**、插件 left/right rail、`routes` 路由门控、`hidden`、统一空态 |
 | [`32`](32-plugin-user-settings-cache.md) | ✅ | 全局 `getUserSettings` 缓存 + 订阅（对齐 `DOC/devNotes/21` 会话 store · `a7ca4ea`） |
 | [`33`](33-mobile-compatibility.md) | **Phase 1** | 40rem rail overlay + hidden 持久化；余 composer/安全区验收 |
@@ -73,6 +74,7 @@
 | [`51`](51-hybrid-fts-icu-lindera.md) | ✅ **已归档**（2026-08-16） | **Hybrid FTS：ICU + Lindera**：`lindera` / `icu` 已接入；M6 对照后保留 `zh-jieba`；见 [`04`](04-TODO.md) §已归档 |
 | [`52`](52-graphify-rebuild-and-chat-list-optimization.md) | ✅ **已落地**（2026-08-17） | **图谱重建** + `chat-list-store` CL1–CL9；plugins 三环打断；旧 `server/graphify-out/` 清理；见 [`04`](04-TODO.md) §已归档 |
 | [`52`](52-connection-panel-scope.md) | ✅ **已实现** | **连接面板作用域**：基础连接仅全局预设；生成参数按对话 / 全局分域；双列模态（窄屏 Tab）；无 panel-live |
+| [`53`](53-agent-runtime-and-node-graph.md) | **定案倾向 · 计划** · **§16.6 已定案** | **Agent Runtime**：多步循环 → 真 tools → 节点图；`proseCommitted` SSE（未提交才 clear；write 后保留正文） |
 | [`99`](99-android-apk-vision.md) | 💡 **极低优先级** | **Android 单机 APK 设想**：领域层迁移动端、SQLite 替 chunk、Portable Bundle 导入导出；无排期 |
 
 ## 已归档（勿再新建同级文档）

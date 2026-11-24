@@ -21,6 +21,9 @@ let pluginModule = null
 /** @type {Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>} */
 const pendingApi = new Map()
 
+/** @type {Map<string, AbortController>} */
+const activeInvokeAborts = new Map()
+
 /** invoke 串行队列 */
 let invokeChain = Promise.resolve()
 
@@ -129,11 +132,33 @@ async function handleInvoke(msg) {
   }
   const userId = typeof msg.userId === 'string' ? msg.userId : undefined
   const args = Array.isArray(msg.args) ? [...msg.args] : []
+  const ac = new AbortController()
+  activeInvokeAborts.set(msg.id, ac)
+  if (
+    hook === 'runTool' &&
+    args[1] &&
+    typeof args[1] === 'object' &&
+    !Array.isArray(args[1])
+  ) {
+    args[1] = { ...args[1], signal: ac.signal }
+  }
   if (HOOKS_WITH_API.has(hook)) {
     args.push(createApiProxy(userId))
   }
-  const result = await fn(...args)
-  postToHost({ type: 'invokeResult', id: msg.id, result })
+  try {
+    if (ac.signal.aborted) {
+      postToHost({ type: 'invokeResult', id: msg.id, error: 'cancelled' })
+      return
+    }
+    const result = await fn(...args)
+    if (ac.signal.aborted) {
+      postToHost({ type: 'invokeResult', id: msg.id, error: 'cancelled' })
+      return
+    }
+    postToHost({ type: 'invokeResult', id: msg.id, result })
+  } finally {
+    activeInvokeAborts.delete(msg.id)
+  }
 }
 
 process.on('message', (msg) => {
@@ -148,7 +173,19 @@ process.on('message', (msg) => {
     return
   }
 
+  if (msg.type === 'cancelInvoke') {
+    const id = typeof msg.id === 'string' ? msg.id : ''
+    if (!id) return
+    const ac = activeInvokeAborts.get(id)
+    if (ac && !ac.signal.aborted) ac.abort()
+    return
+  }
+
   if (msg.type === 'shutdown') {
+    for (const ac of activeInvokeAborts.values()) {
+      if (!ac.signal.aborted) ac.abort()
+    }
+    activeInvokeAborts.clear()
     for (const pending of pendingApi.values()) {
       clearTimeout(pending.timer)
       pending.reject(new Error('plugin_worker_shutdown'))

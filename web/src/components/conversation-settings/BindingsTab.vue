@@ -12,7 +12,7 @@ const characterModel = defineModel<string[]>('characterModel', { required: true 
 const lorebookModel = defineModel<string[]>('lorebookModel', { required: true })
 const knowledgeBaseModel = defineModel<string[]>('knowledgeBaseModel', { required: true })
 
-defineProps<{
+const props = defineProps<{
   presetItems: Array<{ title: string; value: string }>
   charItems: CharItem[]
   lorebookItems: LorebookItem[]
@@ -31,11 +31,14 @@ defineProps<{
   backgroundImageFileId: string | null
   bgmFileId: string | null
   initialUserName?: string | null
+  agentModeOn: boolean
+  savingAgentMode: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'backgroundImageFileId', id: string | null): void
   (e: 'bgmFileId', id: string | null): void
+  (e: 'agentMode', enabled: boolean): void
 }>()
 
 function onBackgroundImageFileId(id: string | null) {
@@ -48,6 +51,20 @@ function onBgmFileId(id: string | null) {
 
 <template>
   <div class="conv-settings-section">
+    <div class="conv-settings-field">
+      <v-switch
+        :model-value="props.agentModeOn"
+        color="primary"
+        density="comfortable"
+        hide-details="auto"
+        :loading="props.savingAgentMode"
+        :label="$t('chat.convSettings.agentMode')"
+        @update:model-value="(v) => emit('agentMode', v === true)"
+      />
+      <p class="conv-settings-field__hint">
+        {{ $t('chat.convSettings.agentModeHint') }}
+      </p>
+    </div>
     <div class="conv-settings-field">
                     <v-select
                       v-model="presetModel"

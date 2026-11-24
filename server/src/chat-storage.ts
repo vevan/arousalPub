@@ -1050,6 +1050,17 @@ export async function updateConversationBudgetTrimSettings(
   })
 }
 
+export async function updateConversationAgentMode(
+  conversationId: string,
+  agentMode: 'off' | 'on',
+): Promise<ConversationIndex | null> {
+  return updateConversationIndexAndList(conversationId, (idx) => {
+    idx.agentMode = agentMode === 'on' ? 'on' : 'off'
+    idx.updatedAt = nowIso()
+    return idx
+  })
+}
+
 export async function updateConversationAuditDebug(
   conversationId: string,
   auditDebug: { enabled: boolean; maxStored: number },

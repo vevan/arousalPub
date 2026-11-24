@@ -111,6 +111,8 @@ export type ConversationContextSettingsProps = {
   initialEmbeddingApiUseGlobal?: boolean
   initialEmbeddingApiSettings?: ConversationEmbeddingApiSettingsOverride
   globalEmbeddingDimensions?: number | null
+  /** Agent 模式：`on` | `off`（DOC/53） */
+  initialAgentMode?: 'off' | 'on' | null
 }
 
 export type ConversationContextSettingsEmit = {
@@ -706,8 +708,36 @@ function propsEmbeddingOverride(): ConversationEmbeddingApiSettingsOverride | un
   return props.initialEmbeddingApiSettings
 }
 
+function propsAgentModeOn(): boolean {
+  return props.initialAgentMode === 'on'
+}
+
+const agentModeOn = ref(false)
+const savingAgentMode = ref(false)
+
+async function onAgentModeToggle(next: boolean | null) {
+  const enabled = next === true
+  if (enabled === (props.initialAgentMode === 'on')) {
+    agentModeOn.value = enabled
+    return
+  }
+  savingAgentMode.value = true
+  errorText.value = ''
+  try {
+    await patchConversation({ agentMode: enabled ? 'on' : 'off' })
+    agentModeOn.value = enabled
+  } catch (e) {
+    errorText.value =
+      e instanceof Error ? e.message : t('chat.convSettings.saveFailed')
+    agentModeOn.value = propsAgentModeOn()
+  } finally {
+    savingAgentMode.value = false
+  }
+}
+
 function syncFromProps() {
   errorText.value = ''
+  agentModeOn.value = propsAgentModeOn()
   presetModel.value = propsPresetTarget() ?? INHERIT_VALUE
   characterModel.value = [...props.initialCharacterIds]
   userCharacterModel.value = propsUserCharacterId()
@@ -1816,6 +1846,9 @@ async function patchConversation(body: Record<string, unknown>) {
     savingKnowledgeBases,
     onBackgroundImageFileId,
     onBgmFileId,
+    agentModeOn,
+    savingAgentMode,
+    onAgentModeToggle,
     // api
     chatApiUseGlobal,
     embeddingApiUseGlobal,

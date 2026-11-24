@@ -85,4 +85,6 @@ export interface ConvContextBindings {
   /** 对话 BGM fileId */
   bgmFileId: string | null
   authorsNote: AuthorsNoteSettings
+  /** Agent 模式（DOC/53）：on 时走工具召回 */
+  agentMode: 'off' | 'on'
 }

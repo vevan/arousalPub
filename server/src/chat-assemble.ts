@@ -319,6 +319,11 @@ export interface BuildConversationMessagesParams {
   maxResponseTokens?: number | null
   tokenModel?: string | null
   plugins?: ChatPluginsBody | null
+  /**
+   * Agent 模式：关闭主路径自动 memory / lore / knowledge 注入（DOC/53 §1.0）。
+   * 历史轮次仍组装；召改由工具完成。
+   */
+  disableAutoRetrieval?: boolean
 }
 
 export interface BuildConversationMessagesResult {
@@ -383,10 +388,14 @@ export async function buildConversationOutboundMessages(
     globalHistory,
     idx.historySettings,
   )
+  const disableAutoRetrieval = params.disableAutoRetrieval === true
   const effectiveMemory = resolveMemorySettings(
     globalMemory,
     idx.memorySettings,
   )
+  if (disableAutoRetrieval) {
+    effectiveMemory.memoryEnabled = false
+  }
   const effectiveMemoryHybridFts = resolveEffectiveHybridFtsSettings(
     globalHybridFts,
     parseHybridFtsSettingsStrict(idx.memoryHybridFts),
@@ -603,7 +612,7 @@ export async function buildConversationOutboundMessages(
   const authorsNote = authorsNoteForInjection(idx.authorsNote)
   const groupChatInstruction = groupChatAssembleInstruction(groupChat)
 
-  const lorebookIds = resolvedLorebookIds(idx)
+  const lorebookIds = disableAutoRetrieval ? [] : resolvedLorebookIds(idx)
   const globalLore = await readGlobalLorebookSettings()
   const effectiveLore = resolveLorebookSettings(globalLore, idx.lorebookSettings)
   const scanCorpus = buildScanText(
@@ -626,7 +635,11 @@ export async function buildConversationOutboundMessages(
       : { constantLore: [], matchedLore: [] }
   const afterLoreAt = auditEnabled ? performance.now() : 0
 
-  const kbIds = Array.isArray(idx.knowledgeBaseIds) ? idx.knowledgeBaseIds : []
+  const kbIds = disableAutoRetrieval
+    ? []
+    : Array.isArray(idx.knowledgeBaseIds)
+      ? idx.knowledgeBaseIds
+      : []
   const globalKnowledge = await readGlobalKnowledgeSettings()
   const effectiveKnowledge = resolveKnowledgeSettings(
     normalizeKnowledgeSettings(globalKnowledge),

@@ -263,12 +263,33 @@ export interface PerformanceAudit {
   stream?: StreamAuditStats
 }
 
+export interface AgentAuditToolTrace {
+  name: string
+  argumentsPreview: string
+  resultPreview: string
+  ok: boolean
+  errorCode?: string
+}
+
+export interface AgentAuditStep {
+  stepIndex: number
+  finishReason?: string
+  tools: AgentAuditToolTrace[]
+}
+
+export interface AgentAudit {
+  stopReason: string
+  toolsOffered?: string[]
+  steps: AgentAuditStep[]
+}
+
 export interface ChatAuditSnapshotEntry extends ChatPromptSnapshotEntry {
   assembly?: AssemblyAudit
   groupChat?: GroupChatAuditSnapshot
   calls?: CallAuditEntry[]
   plugins?: Record<string, unknown>[]
   performance?: PerformanceAudit
+  agent?: AgentAudit
 }
 
 export interface GroupChatDiceBidAuditRow {

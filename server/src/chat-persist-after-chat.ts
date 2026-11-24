@@ -56,6 +56,7 @@ import type { ChatPluginsBody, TurnPluginEntry } from './plugin-types.js'
 import type {
   AssemblyAudit,
   CallAuditEntry,
+  AgentAudit,
   ChatAuditSnapshotInput,
   PerformanceAudit,
   PersistTimingMs,
@@ -151,6 +152,7 @@ function auditSnapshotFromPersist(
   assemblyEmbeddingCalls?: CallAuditEntry[],
   chatCall?: CallAuditEntry,
   performance?: PerformanceAudit,
+  agentAudit?: AgentAudit,
 ): ChatAuditSnapshotInput | undefined {
   if (!isAuditDebugWriteEnabled(idx)) return undefined
   const calls: CallAuditEntry[] = [
@@ -162,6 +164,7 @@ function auditSnapshotFromPersist(
     ...(assemblyAudit ? { assembly: assemblyAudit } : {}),
     ...(calls.length > 0 ? { calls } : {}),
     ...(performance ? { performance } : {}),
+    ...(agentAudit ? { agent: agentAudit } : {}),
   }
 }
 
@@ -563,6 +566,8 @@ export async function persistTurnAfterModelReply(params: {
   turnPluginEntries?: TurnPluginEntry[]
   chatPlugins?: ChatPluginsBody | null
   performanceAudit?: PerformanceAudit
+  /** Agent 模式工具轨迹写入审计 */
+  agentAudit?: AgentAudit
   speakerCharacterId?: string
   speakerQueue?: string[]
   speakerQueueDisplayNames?: string[]
@@ -798,6 +803,7 @@ export async function persistTurnAfterModelReply(params: {
       params.assemblyEmbeddingCalls,
       chatCall,
       perfBase,
+      params.agentAudit,
     )
     const runtime = receiveRuntime(
       model,
@@ -944,6 +950,7 @@ export async function persistTurnAfterModelReply(params: {
       params.assemblyEmbeddingCalls,
       chatCall,
       perfBase,
+      params.agentAudit,
     )
     const runtime = receiveRuntime(
       model,
@@ -1236,6 +1243,7 @@ export async function persistTurnAfterModelReply(params: {
     params.assemblyEmbeddingCalls,
     chatCall,
     perfBase,
+    params.agentAudit,
   )
   const runtime = receiveRuntime(
     model,

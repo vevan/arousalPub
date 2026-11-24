@@ -33,6 +33,12 @@ export interface ConversationIndex {
    */
   auditDebug?: { enabled: boolean; maxStored: number }
   /**
+   * Agent 模式（DOC/devNotes/53 §1.0）：`on` 时主路径走 agent loop / 工具召回；
+   * 缺省或 `off` = 原始单次 completion + 自动 memory/lore/RAG。
+   * 阶段 1：字段与辅助已就绪；chat 接线见后续切片。
+   */
+  agentMode?: 'off' | 'on'
+  /**
    * 对话级提示词预设（`data/{user}/prompts/` 内预设 `id`）。
    * 缺省或未写入：客户端使用全局「当前激活预设」。
    */

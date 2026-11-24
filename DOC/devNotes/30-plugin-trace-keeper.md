@@ -1,8 +1,8 @@
 # 迹录（Trace Keeper）插件 — 设计定案
 
-> **状态**：**已实现（v1 · 2026-06）**；本文档为定案 + 实现对照。  
+> **状态**：**已实现（v1 · 2026-06）**；**工具模式 = 草案（2026-11-24）**，见 §2.3。  
 > **插件 id**：`trace-keeper` · **英文名** Trace Keeper · **中文名** 迹录  
-> **关联**：`DOC/devNotes/09` 插件系统、`DOC/devNotes/11` 出站补全、`DOC/devNotes/18` 宿主 API、`DOC/devNotes/21` 会话插件设置、`DOC/devNotes/24` 正则剥块、`DOC/devNotes/12`（分槽：Historian 写 lore，迹录**不写 lore**）。
+> **关联**：`DOC/devNotes/09` 插件系统、`DOC/devNotes/11` 出站补全、`DOC/devNotes/18` 宿主 API、`DOC/devNotes/21` 会话插件设置、`DOC/devNotes/24` 正则剥块、`DOC/devNotes/12`（分槽：Historian 写 lore，迹录**不写 lore**）、**`DOC/devNotes/53`**（Agent · 读→正文→写相位与流式）。
 
 ### 实现摘要（2026-06）
 
@@ -61,6 +61,173 @@ prepareTraceKeeperSeparateContextBlocks
 ```
 
 侧栏 live 且最后一轮无 snapshot 时显示按钮。
+
+### 2.3 工具模式（草案 · 2026-11-24 · 与 Agent 并存）
+
+> **状态**：**草案**（未实现）。与 §2.1 Together / §2.2 Separate **并列保留**；由会话 **Agent 模式**（见 [`53`](53-agent-runtime-and-node-graph.md) §1.0）或迹录会话设置显式选择，**同一轮禁止 Together 夹带与 tool 回写双写**。
+
+#### 2.3.1 动机
+
+Together 把「扮演正文 + 整表 JSON」绑在同一次 completion：易漂移、难字段级 patch、正文流式与块解析互相干扰。工具模式把迹录拆成 **读 → 正文 → 写**，写操作**必须**依据已产出正文，故 **patch 必然发生在正文之后**（产品因果，非边角）。
+
+#### 2.3.2 模式开关
+
+| 模式 | 何时 | 迹录行为 |
+|------|------|----------|
+| **原始** | Agent off（或迹录强制 Together） | §2.1 / §2.2 不变：注入 + 块解析 / Separate |
+| **工具** | Agent on 且迹录启用 tool 面 | **关闭**本轮 Together 注入与 `resolveTurnPluginEntriesFromAssistant` 块落盘；改走 manifest `tools[]` + `runTool` |
+
+- 侧栏 live/pinned、Handlebars、`patch-state` 人机编辑：**两种模式共用**同一 `turn.plugins[]` 权威源。  
+- Separate：工具模式下可作为「补枪」旁路保留（仍 `completeWithContext`），或改为只调 `trace_patch`；**待实现时二选一定案**，默认倾向 **保留 Separate 作失败兜底**。
+
+#### 2.3.3 工具面（插件内 · OpenAI 安全名）
+
+宿主 **零** 迹录字段特化；下列名称仅出现在 `plugins/trace-keeper/manifest.json` 与插件实现（下划线、无点号）。
+
+| Tool | 相位 | 作用 | 约束 |
+|------|------|------|------|
+| `trace_read` | **正文前** | 读最近 **X** 轮（可配置）迹录 snapshot / pinned 窗口，供模型参考 | 只读；返回 opaque JSON + 可选截断 |
+| `trace_init` | **正文前**（通常首轮） | 无既有 tracker 时初始化 state（常自 `sampleState`） | **仅**「本会话尚无该 epoch 的有效 snapshot」；已有则 `ok:false` / no-op |
+| `trace_patch` | **正文后** | 字段级 **replace / add / remove**（禁止整表盲写） | RFC6902 子集 ops；见 §2.3.7；合并进当前 live 基线后落 `turn.plugins[]` |
+
+- **读在正文前、写在正文后**：与 [`53`](53-agent-runtime-and-node-graph.md) §1.1 C→D 及 §16 相位模型对齐。  
+- 单轮内可多次 `trace_read`；`trace_patch` 可多次，但须在 **正文已提交（见 53 §16.2）之后**。  
+- 不向模型暴露 notes 式人机-only API；人机 `patch-state` 仍走 `serverActions`。
+
+#### 2.3.4 相位因果（迹录视角）
+
+```text
+[可选] trace_init（仅无 tracker）
+  → trace_read（最近 X 轮）
+  → （其它 Agent 检索 tools，与迹录正交）
+  → 助手正文（用户可见气泡 · 流式）
+  → trace_patch（依据正文更新字段）
+  → 落盘 turn.plugins[] · 侧栏刷新
+```
+
+**禁止**：在未见本轮正文的情况下凭空 `trace_patch`（pad / 插件校验可拒绝「空变更」；宿主相位见 53）。  
+**禁止**：同一轮既解析 `<ex-trace-keeper>` 又 `trace_patch` 写同一 epoch。
+
+#### 2.3.5 与现网能力的映射
+
+| 今日 | 工具模式 |
+|------|----------|
+| Together 块整表 JSON | `trace_patch` 字段级；不再要求模型输出标签块 |
+| `resolveAfterAssemblePromptsAddition` sample 注入 | 改为 tool 描述 + `trace_read` 结果；或极短 pad（待定） |
+| `patch-state` 侧栏编辑 | 保留；与 LLM tool 共用合并函数 |
+| `stripBlockTags` / outgoing 剥块 | 工具模式无块则无剥离需求；原始模式不变 |
+
+#### 2.3.6 验收（实现后勾选）
+
+- [ ] Agent+工具模式：无 `<ex-trace-keeper>` 夹带；侧栏仍更新  
+- [ ] `trace_init` 仅空会话成功；有 snapshot 拒绝  
+- [ ] `trace_patch` 字段增删改单测；拒绝整表替换  
+- [ ] 与 Together **禁双写**（开关互斥或运行时断言）  
+- [ ] 正文流式进气泡后仍可 patch（见 53 §16；宿主 `proseCommitted` SSE 已就绪，待本插件 `phase: write` tools）
+
+#### 2.3.7 `trace_patch` 入参样例（草案 · RFC6902 子集）
+
+> **非** 侧栏 `patch-state`（今日为整表替换）。LLM tool 用 **ops 列表**，对齐 JSON Patch（[RFC 6902](https://datatracker.ietf.org/doc/html/rfc6902)）子集：仅 **`replace` / `add` / `remove`**（不做 `move` / `copy` / `test`）。  
+> 路径为 JSON Pointer（`/` 分段；数组下标为数字段；`/-` = 数组尾部 append）。  
+> **禁止**：单次传入整表 `state` 覆盖；单次 ops 过多可截断（实现时定上限，建议 ≤ 32）。  
+> **事务**：建议整批原子——任一条失败则整批不落盘，返回失败 op 下标。
+
+基线（默认套件 `scene-tracker-default` / `sample-state.json`）：
+
+```json
+{
+  "scene": { "location": "未知地点", "time": "未知时间", "weather": "未知" },
+  "mood": "平静",
+  "notes": ""
+}
+```
+
+一次 tool call 的 `arguments` 示例（改 / 增 / 删同批）：
+
+```json
+{
+  "ops": [
+    { "op": "replace", "path": "/mood", "value": "紧张" },
+    { "op": "replace", "path": "/scene/location", "value": "旧码头仓库" },
+    { "op": "replace", "path": "/scene/weather", "value": "小雨" },
+    { "op": "add", "path": "/flags", "value": { "alarmRaised": true } },
+    { "op": "add", "path": "/inventory", "value": ["锈钥匙"] },
+    { "op": "add", "path": "/inventory/-", "value": "油灯" },
+    { "op": "remove", "path": "/notes" }
+  ]
+}
+```
+
+| op | 含义 | 约束（贴近 RFC6902） |
+|----|------|----------------------|
+| `replace` | 覆盖**已存在**的 `path` | 目标不存在 → 失败；须带 `value` |
+| `add` | 新建成员，或数组 `/-` / 指定下标插入 | 对象上 path 已存在 → 失败（勿当 replace 用）；父级须已存在（故上例先 `add /flags` 整对象，再按需细改） |
+| `remove` | 删除 `path` | 不存在 → 失败（整批回滚）；无 `value` |
+
+应用后 state（示意）：
+
+```json
+{
+  "scene": {
+    "location": "旧码头仓库",
+    "time": "未知时间",
+    "weather": "小雨"
+  },
+  "mood": "紧张",
+  "flags": { "alarmRaised": true },
+  "inventory": ["锈钥匙", "油灯"]
+}
+```
+
+（`notes` 已 `remove`；`flags` / `inventory` 由 `add` 新建。）
+
+**tool 返回（示意）**：
+
+```json
+{
+  "ok": true,
+  "applied": 7,
+  "state": { "...": "合并后完整对象（可截断预览）" }
+}
+```
+
+**manifest 片段（示意）**：
+
+```json
+{
+  "name": "trace_patch",
+  "phase": "write",
+  "description": "After the user-visible reply, apply RFC6902-subset ops (replace/add/remove) to the scene tracker. Never replace the whole state object in one shot.",
+  "parameters": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["ops"],
+    "properties": {
+      "ops": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 32,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "path"],
+          "properties": {
+            "op": { "type": "string", "enum": ["replace", "add", "remove"] },
+            "path": {
+              "type": "string",
+              "description": "JSON Pointer, e.g. /scene/location or /inventory/-"
+            },
+            "value": {}
+          }
+        }
+      }
+    }
+  },
+  "permissions": ["conversation.read", "turn.plugins.write"]
+}
+```
+
+与人机 `patch-state`：侧栏仍可整表编辑；LLM 路径只走 ops。两者最终都写入同一 `payload.state`。
 
 ---
 

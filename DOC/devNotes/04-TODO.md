@@ -22,6 +22,7 @@
 - [ ] **地下城迷宫插件** — 5e 简易战斗、Canvas、**branchPath 隔离 state**、**战斗中 composer hold**、**进迷宫读迹录六维 / 战后 LLM 写回 TK**、catalog + HTML 编辑器、**`importBundle` + catalog-manifest**、叙事写入主对话的**插件区块**。见 `[DOC/devNotes/50](50-plugin-dungeon-maze-vision.md)` §3.4.5 · §3.5.1 · §3.7
 - [ ] **宿主 `host.assets.importBundle`** — zip → 临时目录完整解压/校验 → 整体替换 `assets/{bundleId}/` + **`onBundleImported`**；配套 `user-assets` 子路径 GET。见 `[DOC/devNotes/09](09-plugin-system-and-guidance-generate.md)` §8.8
 - [ ] **宿主对话流插件区块** — 通用第三类区块（非 user / assistant）；用于展示插件产出，默认不进 prompt。见 `[DOC/devNotes/09](09-plugin-system-and-guidance-generate.md)` §5.7
+- [ ] **Agent Runtime（循环 → 真 tools → 节点图）** — 宿主 generic：多步 agent loop、`tools`/`tool_calls` 注册表与 dispatch、插件注册 `nodeTypes` 的 DAG 执行器与配置壳；业务节点（召回/大纲/正文/patch/润色等）在插件。见 `[DOC/devNotes/53](53-agent-runtime-and-node-graph.md)`；分支 `agent`
 
 > ST 导入 Tab / 世界书 / 聊天记录 / M3 回归已关闭，见下方 **§文档**（2026-06～07 · `[DOC/devNotes/37](37-st-import-settings-tab.md)`）。
 

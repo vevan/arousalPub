@@ -159,6 +159,18 @@ export interface PluginManifest {
     name: string
     permissions: string[]
   }>
+  /**
+   * LLM 可调用 tools（DOC/53）：与 serverActions 分立。
+   * name 全局唯一；permissions 须 ⊆ manifest.permissions。
+   * phase：读→正文→写（53 §16）；缺省视为 read 侧（未提交 prose 时 tool 可 clear 主泡）。
+   */
+  tools?: Array<{
+    name: string
+    description?: string
+    parameters?: Record<string, unknown>
+    permissions: string[]
+    phase?: 'read' | 'write'
+  }>
   lifecycle?: Partial<Record<'onCharacterPrimaryChanged', boolean>>
 }
 
@@ -397,6 +409,23 @@ export interface PluginServerModule {
     body: Record<string, unknown>,
     api: PluginServerHostApi,
   ) => Promise<PluginServerActionResult>
+  /**
+   * manifest.tools 声明的 LLM 工具（DOC/53 · 与 runPluginAction 分立）。
+   * body.arguments 为 JSON 字符串；conversationId / signal 可选。
+   * 宿主超时或用户取消时会 abort signal；插件应协作停止。
+   */
+  runTool?: (
+    name: string,
+    body: {
+      arguments: string
+      conversationId?: string
+      signal?: AbortSignal
+    },
+    api: PluginServerHostApi,
+  ) => Promise<
+    | { ok: true; content: string }
+    | { ok: false; code: string; detail?: string }
+  >
   /** 落盘响应附加字段（键由插件自定，宿主 opaque 合并） */
   resolveConversationPersistExtras?: (
     ctx: { conversationIndex: import('../chat-storage.js').ConversationIndex },

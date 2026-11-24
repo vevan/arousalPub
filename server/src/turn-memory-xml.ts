@@ -58,9 +58,15 @@ export function turnToXmlInner(
     correlation?: number
     omitTurnId?: boolean
     defaultSpeakerCharacterId?: string
+    /** 可选：按 memory 剥离设置去噪后再写入 XML（Agent tools 用） */
+    corpusOptions?: MemoryCorpusOptions
   },
 ): string {
-  const user = getTurnUserText(turn)
+  const strip = (raw: string): string =>
+    opts?.corpusOptions
+      ? stripMemoryCorpusText(raw, opts.corpusOptions)
+      : raw
+  const user = strip(getTurnUserText(turn))
   const defaultSpeaker = opts?.defaultSpeakerCharacterId?.trim() ?? ''
   const segments = getTurnSegments(turn, defaultSpeaker)
   const attrs: string[] = []
@@ -79,7 +85,7 @@ export function turnToXmlInner(
     lines.push(`    ${wrapTurnRoleLine('user', user)}`)
   }
   for (const seg of segments) {
-    const assistant = assistantTextFromSegment(seg).trim()
+    const assistant = strip(assistantTextFromSegment(seg)).trim()
     if (assistant) {
       lines.push(`    ${wrapTurnRoleLine('assistant', assistant)}`)
     }
@@ -168,10 +174,19 @@ export function turnsToHistoryMessages(
 export function turnsToHistoryScanPlainText(
   turns: TurnRecord[],
   corpusOptions?: MemoryCorpusOptions,
+  opts?: {
+    /** 与 turnsToHistoryMessages.partialTurn 对齐：指定轮只扫 exclusive 之前的 segment */
+    partialTurn?: { turnOrdinal: number; segmentIndexExclusive: number }
+  },
 ): string {
   return turns
     .map((t) => {
-      const raw = turnEmbeddingCorpus(t)
+      const raw =
+        opts?.partialTurn?.turnOrdinal === t.turnOrdinal
+          ? turnEmbeddingCorpus(t, '', {
+              segmentIndexExclusive: opts.partialTurn.segmentIndexExclusive,
+            })
+          : turnEmbeddingCorpus(t)
       return corpusOptions ? stripMemoryCorpusText(raw, corpusOptions) : raw
     })
     .filter((s) => s.length > 0)
@@ -197,6 +212,7 @@ export function memoryItemsToScanPlainText(
 
 export function formatMemoryXml(
   items: { turn: TurnRecord; score?: number }[],
+  opts?: { corpusOptions?: MemoryCorpusOptions },
 ): string {
   if (!items.length) return ''
   const sorted = items
@@ -204,7 +220,13 @@ export function formatMemoryXml(
     .sort((a, b) => a.turn.turnOrdinal - b.turn.turnOrdinal)
   const inner = sorted
     .map(({ turn, score }) =>
-      turnToXmlInner(turn, { correlation: score, omitTurnId: true }),
+      turnToXmlInner(turn, {
+        correlation: score,
+        omitTurnId: true,
+        ...(opts?.corpusOptions
+          ? { corpusOptions: opts.corpusOptions }
+          : {}),
+      }),
     )
     .join('\n')
   return `<memory>\n${inner}\n</memory>`
@@ -214,10 +236,19 @@ export function formatMemoryXml(
 export function turnEmbeddingCorpus(
   turn: TurnRecord,
   defaultSpeakerCharacterId = '',
+  opts?: { segmentIndexExclusive?: number },
 ): string {
   const u = getTurnUserText(turn).trim()
   const segments = getTurnSegments(turn, defaultSpeakerCharacterId.trim())
+  const exclusive =
+    typeof opts?.segmentIndexExclusive === 'number'
+      ? Math.min(
+          Math.max(0, Math.floor(opts.segmentIndexExclusive)),
+          segments.length,
+        )
+      : segments.length
   const assistantParts = segments
+    .slice(0, exclusive)
     .map((seg) => assistantTextFromSegment(seg).trim())
     .filter((x) => x.length > 0)
   const a = assistantParts.join('\n\n')

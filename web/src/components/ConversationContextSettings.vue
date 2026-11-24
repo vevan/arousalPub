@@ -62,6 +62,9 @@ const {
   savingBgm,
   savingLorebooks,
   savingKnowledgeBases,
+  agentModeOn,
+  savingAgentMode,
+  onAgentModeToggle,
   onBackgroundImageFileId,
   onBgmFileId,
   embeddingApiUseGlobal,
@@ -260,8 +263,11 @@ watch(
               :background-image-file-id="backgroundImageFileId"
               :bgm-file-id="bgmFileId"
               :initial-user-name="props.initialUserName"
+              :agent-mode-on="agentModeOn"
+              :saving-agent-mode="savingAgentMode"
               @background-image-file-id="onBackgroundImageFileId"
               @bgm-file-id="onBgmFileId"
+              @agent-mode="onAgentModeToggle"
             />
 
             <LorebookTab

@@ -16,7 +16,9 @@
     "handlebars": "^4.7.10"
   },
   "overrides": {
-    "sharp": "0.35.5"
+    "sharp": "0.35.5",
+    "minimatch": "11.0.9",
+    "readdir-glob": "4.0.0"
   },
   "scripts": {
     "dev": "node scripts/run-dev.mjs",

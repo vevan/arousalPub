@@ -5,6 +5,8 @@ import { normalizeSettingsSchema } from './settings-schema.js'
 import type { PluginManifest } from './types.js'
 
 const ACTION_NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/
+/** OpenAI tools.function.name：^[a-zA-Z0-9_-]{1,64}$（禁止点号） */
+const TOOL_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/
 
 function normalizeServerActions(
   raw: unknown,
@@ -24,6 +26,48 @@ function normalizeServerActions(
       : []
     if (permissions.length === 0) continue
     out.push({ name, permissions })
+  }
+  return out.length ? out : undefined
+}
+
+function normalizeManifestTools(
+  raw: unknown,
+): PluginManifest['tools'] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const out: NonNullable<PluginManifest['tools']> = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const name =
+      typeof (item as { name?: unknown }).name === 'string'
+        ? (item as { name: string }).name.trim()
+        : ''
+    if (!name || !TOOL_NAME_RE.test(name)) continue
+    const permsRaw = (item as { permissions?: unknown }).permissions
+    const permissions = Array.isArray(permsRaw)
+      ? permsRaw.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+      : []
+    if (permissions.length === 0) continue
+    const description =
+      typeof (item as { description?: unknown }).description === 'string'
+        ? (item as { description: string }).description.trim()
+        : undefined
+    const parametersRaw = (item as { parameters?: unknown }).parameters
+    const parameters =
+      parametersRaw &&
+      typeof parametersRaw === 'object' &&
+      !Array.isArray(parametersRaw)
+        ? (parametersRaw as Record<string, unknown>)
+        : undefined
+    const phaseRaw = (item as { phase?: unknown }).phase
+    const phase =
+      phaseRaw === 'read' || phaseRaw === 'write' ? phaseRaw : undefined
+    out.push({
+      name,
+      permissions,
+      ...(description ? { description } : {}),
+      ...(parameters ? { parameters } : {}),
+      ...(phase ? { phase } : {}),
+    })
   }
   return out.length ? out : undefined
 }
@@ -118,6 +162,7 @@ export async function readPluginManifest(
       serverActions: normalizeServerActions(
         (m as { serverActions?: unknown }).serverActions,
       ),
+      tools: normalizeManifestTools((m as { tools?: unknown }).tools),
       lifecycle:
         m.lifecycle && typeof m.lifecycle === 'object'
           ? {

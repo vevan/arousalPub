@@ -6,7 +6,15 @@ import { resolveChatFeatureAudit, resolveConversationChatCall, resolvedParamsToC
 import { parseAuthorsNotePatch } from '../authors-note-settings.js'
 import { repairConversationChunkIndex, readChunkContainingOrdinal, isTurnOrdinalOffActivePath, isBranchRegistryBrokenError } from '../chunk-chain.js'
 import { loadConversationMessages } from '../conversation-messages-api.js'
-import { createConversationStub, deleteConversation, readChatList, readConversationIndex, resolvedCharacterIds, removeTurnAtOrdinalInTailChunk, updateConversationAuditDebug, saveOpeningTurn, updateConversationTitle, updateConversationCharacterBindings, updateConversationPromptPresetId, updateConversationLorebookIds, updateConversationLorebookSettings, clearConversationLorebookSettings, updateConversationKnowledgeBaseIds, updateConversationKnowledgeSettings, clearConversationKnowledgeSettings, clearConversationHistorySettings, updateConversationHistorySettings, clearConversationMemorySettings, updateConversationMemorySettings, clearConversationMemoryHybridFts, updateConversationMemoryHybridFts, clearConversationBudgetTrimSettings, updateConversationBudgetTrimSettings, updateConversationUserCharacterId, updateConversationUserName, updateConversationBackgroundImageFileId, updateConversationBgmFileId, updateConversationAuthorsNote, updateConversationGroupChat, clearConversationChatApiSettings, updateConversationChatApiSettings, clearConversationEmbeddingApiSettings, updateConversationEmbeddingApiSettings, updateConversationPluginSettings, parseConversationChatBinding, parseConversationEmbeddingApiOverride, batchUpdateConversationTurns, type TurnReceive } from '../chat-storage.js'
+import { createConversationStub, deleteConversation, readChatList, readConversationIndex, resolvedCharacterIds, removeTurnAtOrdinalInTailChunk, updateConversationAuditDebug, updateConversationAgentMode, saveOpeningTurn, updateConversationTitle, updateConversationCharacterBindings, updateConversationPromptPresetId, updateConversationLorebookIds, updateConversationLorebookSettings, clearConversationLorebookSettings, updateConversationKnowledgeBaseIds, updateConversationKnowledgeSettings, clearConversationKnowledgeSettings, clearConversationHistorySettings, updateConversationHistorySettings, clearConversationMemorySettings, updateConversationMemorySettings, clearConversationMemoryHybridFts, updateConversationMemoryHybridFts, clearConversationBudgetTrimSettings, updateConversationBudgetTrimSettings, updateConversationUserCharacterId, updateConversationUserName, updateConversationBackgroundImageFileId, updateConversationBgmFileId, updateConversationAuthorsNote, updateConversationGroupChat, clearConversationChatApiSettings, updateConversationChatApiSettings, clearConversationEmbeddingApiSettings, updateConversationEmbeddingApiSettings, updateConversationPluginSettings, parseConversationChatBinding, parseConversationEmbeddingApiOverride, batchUpdateConversationTurns, type TurnReceive } from '../chat-storage.js'
+import {
+  isAgentModeOn,
+  emitAgentProgressAsReasoning,
+  emitUpstreamDeltaToClient,
+  runChatAgentLoop,
+  writeAgentLoopResultToSse,
+} from '../agent/index.js'
+import type { AgentAudit } from '../chat-audit-types.js'
 import { appendConversationTurn, saveFirstTurn, updateTurnContentInTailChunk, updateTurnSegmentInTailChunk } from '../chat-group-turn-ops.js'
 import { parseGroupContinueBody } from '../group-chat-turn.js'
 import { parseConversationMediaFileId } from '../conversation-media-files.js'
@@ -42,7 +50,13 @@ import { extractCompletionTokens, extractPromptTokens } from '../chat-usage.js'
 import { readChatAuditFile } from '../chat-audit-file.js'
 import { buildPerformanceForPersist, isSseContentDelta } from '../chat-audit-performance.js'
 import type { PerformanceAudit } from '../chat-audit-types.js'
-import { formatArousalPersistSseLine, formatArousalSpeakerSseLine, formatArousalStreamErrorSseLine, parseSseDataLine } from '../sse-assistant.js'
+import {
+  formatArousalClearAssistantContentSseLine,
+  formatArousalPersistSseLine,
+  formatArousalSpeakerSseLine,
+  formatArousalStreamErrorSseLine,
+  parseSseDataLine,
+} from '../sse-assistant.js'
 import { enrichConversationIndexForClient, readCharacterDocument } from '../character-storage.js'
 import { parseHybridFtsSettingsStrict, type HybridFtsSettings } from '../hybrid-fts-settings.js'
 import { prepareHybridFtsSettings } from '../hybrid-fts-dict.js'
@@ -332,6 +346,8 @@ export function registerChatRoutes(app: FastifyInstance): void {
     backgroundImageFileId?: string | null
     /** 对话 BGM fileId（audio）；`null` / `""` 清除 */
     bgmFileId?: string | null
+    /** Agent 模式：`on` | `off`（DOC/53）；缺省 off */
+    agentMode?: 'off' | 'on' | null
   }
 
   app.patch<{ Params: { id: string }; Body: PatchConvBody }>(
@@ -394,6 +410,7 @@ export function registerChatRoutes(app: FastifyInstance): void {
         'backgroundImageFileId',
       )
       const hasBgmFileId = Object.prototype.hasOwnProperty.call(b, 'bgmFileId')
+      const hasAgentMode = Object.prototype.hasOwnProperty.call(b, 'agentMode')
       if (
         !hasTitle &&
         !hasAuditDebug &&
@@ -416,7 +433,8 @@ export function registerChatRoutes(app: FastifyInstance): void {
         !hasActiveBranchPath &&
         !hasGroupChat &&
         !hasBackgroundImageFileId &&
-        !hasBgmFileId
+        !hasBgmFileId &&
+        !hasAgentMode
       ) {
         return reply
           .status(400)
@@ -900,6 +918,16 @@ export function registerChatRoutes(app: FastifyInstance): void {
           return reply.status(400).send({ error: ApiErrorCodes[parsed.error] })
         }
         const next = await updateConversationBgmFileId(id, parsed.fileId)
+        if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
+        idx = next
+      }
+      if (hasAgentMode) {
+        const raw = b.agentMode
+        if (raw !== 'on' && raw !== 'off' && raw !== null) {
+          return reply.status(400).send({ error: ApiErrorCodes.agent_mode_invalid })
+        }
+        const mode = raw === 'on' ? 'on' : 'off'
+        const next = await updateConversationAgentMode(id, mode)
         if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
         idx = next
       }
@@ -1861,7 +1889,12 @@ export function registerChatRoutes(app: FastifyInstance): void {
     let performanceAuditBase: PerformanceAudit | undefined
     let buildFinishedAt = 0
     let assembledSpeakerCharacterId = ''
+    let agentModeOn = false
+    let idxForAgent: Awaited<ReturnType<typeof readConversationIndex>> | null =
+      null
     if (convId) {
+      idxForAgent = await readConversationIndex(convId)
+      agentModeOn = isAgentModeOn(idxForAgent?.agentMode)
       const promptsDoc = await readPromptsDocument()
       if (!promptsDoc) {
         return reply.status(500).send({ error: ApiErrorCodes.prompts_unavailable })
@@ -1877,6 +1910,7 @@ export function registerChatRoutes(app: FastifyInstance): void {
       const built = await buildConversationOutboundMessages({
         conversationId: convId,
         userText,
+        disableAutoRetrieval: agentModeOn,
         promptTrigger: body.promptTrigger,
         historyBeforeTurnOrdinalExclusive: body.historyBeforeTurnOrdinalExclusive,
         regenerateTurnOrdinal: body.regenerateTurnOrdinal,
@@ -2001,6 +2035,341 @@ export function registerChatRoutes(app: FastifyInstance): void {
         generationAbort,
         isChatGenerationIdFormat(clientGid) ? clientGid : undefined,
       )
+    }
+
+    /** Agent 模式：loop + 工具；步骤写入思维链 SSE；末轮正文流式 + persist（DOC/53） */
+    if (agentModeOn && convId) {
+      const agentSignal = generationAbort?.signal
+      const {
+        formatProgressReasoningChunk,
+        AGENT_AUDIT_ARGS_PREVIEW,
+        AGENT_AUDIT_RESULT_PREVIEW,
+        previewAgentToolText,
+        collectWriteAgentToolNames,
+        decideToolCallsProseAction,
+      } = await import('../agent/index.js')
+      const writeToolNames = await collectWriteAgentToolNames(getCurrentUserId())
+
+      const groupContinueForSearch = parseGroupContinueBody(body.groupContinue)
+      const agentSearchContext = {
+        historyBeforeTurnOrdinalExclusive:
+          body.historyBeforeTurnOrdinalExclusive ??
+          (groupContinueForSearch
+            ? groupContinueForSearch.turnOrdinal + 1
+            : null),
+        activeBranchPath:
+          typeof idxForAgent?.activeBranchPath === 'string'
+            ? idxForAgent.activeBranchPath
+            : '',
+        ...(groupContinueForSearch
+          ? {
+              historyPartialTurn: {
+                turnOrdinal: groupContinueForSearch.turnOrdinal,
+                segmentIndexExclusive:
+                  groupContinueForSearch.afterSegmentIndex + 1,
+              },
+            }
+          : typeof regenerateTurnOrdinal === 'number' &&
+              typeof body.regenerateSegmentIndex === 'number' &&
+              body.regenerateSegmentIndex > 0
+            ? {
+                historyPartialTurn: {
+                  turnOrdinal: regenerateTurnOrdinal,
+                  segmentIndexExclusive: body.regenerateSegmentIndex,
+                },
+              }
+            : {}),
+      }
+
+      const buildAgentAudit = (
+        result: Awaited<ReturnType<typeof runChatAgentLoop>>,
+      ): AgentAudit => ({
+        stopReason: result.stopReason,
+        toolsOffered: result.toolsOffered,
+        steps: result.steps.map((s) => ({
+          stepIndex: s.stepIndex,
+          finishReason: s.finishReason,
+          tools: (s.tools ?? []).map((t) => ({
+            name: t.name,
+            argumentsPreview: previewAgentToolText(
+              t.arguments || '',
+              AGENT_AUDIT_ARGS_PREVIEW,
+            ),
+            resultPreview: previewAgentToolText(
+              t.result || '',
+              AGENT_AUDIT_RESULT_PREVIEW,
+            ),
+            ok: t.ok !== false,
+            ...(t.errorCode ? { errorCode: t.errorCode } : {}),
+          })),
+        })),
+      })
+
+      const agentStepsPreview = (
+        result: Awaited<ReturnType<typeof runChatAgentLoop>>,
+      ) =>
+        result.steps.map((s) => ({
+          stepIndex: s.stepIndex,
+          finishReason: s.finishReason,
+          toolNames: s.toolNames,
+          tools: (s.tools ?? []).map((t) => ({
+            name: t.name,
+            ok: t.ok !== false,
+            ...(t.errorCode ? { errorCode: t.errorCode } : {}),
+            argumentsPreview: previewAgentToolText(
+              t.arguments || '',
+              AGENT_AUDIT_ARGS_PREVIEW,
+            ),
+            resultPreview: previewAgentToolText(
+              t.result || '',
+              AGENT_AUDIT_RESULT_PREVIEW,
+            ),
+          })),
+        }))
+
+      const mapAgentHttpError = (
+        result: Awaited<ReturnType<typeof runChatAgentLoop>>,
+      ) => {
+        if (result.errorCode === 'max_steps') return ApiErrorCodes.agent_max_steps
+        if (result.errorCode === 'cancelled') {
+          return ApiErrorCodes.persist_cancelled_by_user
+        }
+        if (result.errorCode === 'required_tools_missing') {
+          return ApiErrorCodes.agent_required_tools_missing
+        }
+        if (result.errorCode === 'upstream_error') {
+          return ApiErrorCodes.upstream_api_error
+        }
+        return ApiErrorCodes.agent_loop_failed
+      }
+
+      const runAgentAndPersist = async (opts: {
+        reasoningAcc: { text: string; contentChars: number }
+        streamUpstream?: boolean
+        onProgress?: Parameters<typeof runChatAgentLoop>[0]['onProgress']
+        onUpstreamDelta?: Parameters<typeof runChatAgentLoop>[0]['onUpstreamDelta']
+      }) => {
+        const result = await runChatAgentLoop({
+          messages,
+          basePayload: payload,
+          url,
+          apiKey,
+          conversationId: convId,
+          userId: getCurrentUserId(),
+          signal: agentSignal,
+          generationAbort,
+          streamUpstream: opts.streamUpstream === true,
+          onUpstreamDelta: opts.onUpstreamDelta,
+          onProgress: opts.onProgress,
+          searchContext: agentSearchContext,
+          onActivity: () => {
+            if (generationId) touchChatGeneration(generationId)
+          },
+        })
+        const isUserCancelled = (): boolean =>
+          generationId != null &&
+          Boolean(getChatGeneration(generationId)?.userCancelled)
+
+        if (!opts.streamUpstream) {
+          const modelReasoning = result.reasoning?.trim() || ''
+          if (modelReasoning) {
+            opts.reasoningAcc.text += `\n### Model reasoning\n\n${modelReasoning}\n`
+          }
+        }
+        const reasoningForPersist =
+          opts.reasoningAcc.text.trim() || undefined
+
+        let persist: Awaited<ReturnType<typeof persistTurnAfterModelReply>> | undefined
+        if (
+          result.ok &&
+          persistParams &&
+          result.content.trim() &&
+          !isUserCancelled()
+        ) {
+          const streamEndedAt = performance.now()
+          const agentAudit = buildAgentAudit(result)
+          const performanceAudit = buildPerformanceForPersist(
+            persistParams.performanceAudit,
+            {
+              upstreamStartedAt,
+              responseHeadersAt: streamEndedAt,
+              streamEndedAt,
+              assistantContent: result.content,
+              assistantReasoning: reasoningForPersist,
+              model,
+              preUpstreamMs,
+            },
+          )
+          persist = await persistTurnAfterModelReply({
+            ...persistParams,
+            assistantContent: result.content,
+            assistantReasoning: reasoningForPersist,
+            durationMs: Math.round(streamEndedAt - upstreamStartedAt),
+            estimatedTokens: persistParams.estimatedTokens,
+            performanceAudit,
+            agentAudit,
+            isCancelled: isUserCancelled,
+          })
+        }
+        return { result, persist, reasoningForPersist }
+      }
+
+      if (wantStream) {
+        const out = new PassThrough()
+        reply.header('Content-Type', 'text/event-stream; charset=utf-8')
+        reply.header('Cache-Control', 'no-cache')
+        reply.header('Connection', 'keep-alive')
+        reply.header('X-Accel-Buffering', 'no')
+        reply.header('X-Agent-Mode', 'on')
+        if (generationId) {
+          reply.header('X-Chat-Generation-Id', generationId)
+        }
+        if (typeof estimatedTokens === 'number' && estimatedTokens > 0) {
+          reply.header(
+            'X-Prompt-Estimated-Tokens',
+            String(Math.round(estimatedTokens)),
+          )
+        }
+        if (assembledSpeakerCharacterId) {
+          reply.header('X-Speaker-Character-Id', assembledSpeakerCharacterId)
+          const speakerLine = formatArousalSpeakerSseLine(
+            assembledSpeakerCharacterId,
+          )
+          if (speakerLine) out.write(speakerLine)
+        }
+
+        void (async () => {
+          const reasoningAcc = { text: '', contentChars: 0 }
+          let suppressContent = false
+          let proseCommitted = false
+          const clearLeakedAssistantContent = () => {
+            if (proseCommitted || reasoningAcc.contentChars <= 0 || out.destroyed) {
+              return
+            }
+            reasoningAcc.contentChars = 0
+            out.write(formatArousalClearAssistantContentSseLine())
+          }
+          try {
+            const { result, persist } = await runAgentAndPersist({
+              reasoningAcc,
+              streamUpstream: true,
+              onProgress: (ev) => {
+                if (generationId) touchChatGeneration(generationId)
+                if (ev.type === 'step_start') {
+                  // 已提交后不再向主泡追加正文；未提交则新步可重新流式
+                  suppressContent = proseCommitted
+                  if (!proseCommitted) reasoningAcc.contentChars = 0
+                }
+                if (ev.type === 'tool_calls') {
+                  suppressContent = true
+                  const action = decideToolCallsProseAction({
+                    proseCommitted,
+                    contentChars: reasoningAcc.contentChars,
+                    toolNames: ev.tools.map((t) => t.name),
+                    writeToolNames,
+                  })
+                  if (action === 'commit') proseCommitted = true
+                  else if (action === 'clear') clearLeakedAssistantContent()
+                }
+                if (ev.type === 'final' && reasoningAcc.contentChars > 0) {
+                  proseCommitted = true
+                }
+                emitAgentProgressAsReasoning(out, ev, reasoningAcc)
+              },
+              onUpstreamDelta: (d) => {
+                if (generationId) touchChatGeneration(generationId)
+                // 仅 suppress；clear/commit 等到 tool_calls 进度（已有 name）
+                if (d.toolCallsDelta) suppressContent = true
+                emitUpstreamDeltaToClient(
+                  out,
+                  {
+                    ...(d.reasoning ? { reasoning: d.reasoning } : {}),
+                    ...(!suppressContent && d.text ? { text: d.text } : {}),
+                  },
+                  reasoningAcc,
+                )
+              },
+            })
+            writeAgentLoopResultToSse({
+              out,
+              result,
+              skipContent: proseCommitted || reasoningAcc.contentChars > 0,
+              persist:
+                persist &&
+                !(
+                  generationId != null &&
+                  getChatGeneration(generationId)?.userCancelled
+                )
+                  ? persist
+                  : undefined,
+              logWarn: (obj, msg) => request.log.warn(obj, msg),
+            })
+          } catch (err) {
+            request.log.error(err, 'agent loop stream error')
+            if (!out.destroyed) {
+              out.write(
+                formatArousalStreamErrorSseLine(
+                  ApiErrorCodes.agent_loop_failed,
+                  err instanceof Error ? err.message : String(err),
+                ),
+              )
+            }
+          } finally {
+            if (generationId) unregisterChatGeneration(generationId)
+            if (!out.destroyed) out.end()
+          }
+        })()
+
+        return reply.send(out)
+      }
+
+      try {
+        const reasoningAcc = { text: '', contentChars: 0 }
+        const { result, persist, reasoningForPersist } = await runAgentAndPersist({
+          reasoningAcc,
+          onProgress: (ev) => {
+            const chunk = formatProgressReasoningChunk(ev)
+            if (chunk) reasoningAcc.text += chunk
+          },
+        })
+        if (!result.ok) {
+          const status = result.stopReason === 'cancelled' ? 499 : 502
+          return reply.status(status).send({
+            error: mapAgentHttpError(result),
+            detail: result.errorDetail ?? result.errorCode,
+            agent: {
+              stopReason: result.stopReason,
+              steps: agentStepsPreview(result),
+            },
+          })
+        }
+        return reply.send({
+          message: {
+            role: 'assistant' as const,
+            content: result.content,
+            ...(reasoningForPersist
+              ? { reasoning: reasoningForPersist }
+              : {}),
+          },
+          ...(persist !== undefined ? { persist } : {}),
+          ...(assembledSpeakerCharacterId
+            ? { speakerCharacterId: assembledSpeakerCharacterId }
+            : {}),
+          ...(typeof estimatedTokens === 'number' && estimatedTokens > 0
+            ? { estimatedTokens }
+            : {}),
+          agent: {
+            stopReason: result.stopReason,
+            steps: agentStepsPreview(result),
+          },
+        })
+      } catch (err) {
+        request.log.error(err, 'agent loop error')
+        return reply.status(502).send({
+          error: ApiErrorCodes.agent_loop_failed,
+          detail: err instanceof Error ? err.message : String(err),
+        })
+      }
     }
 
     /** 流式：组装（含掷骰）结束后立刻开 SSE 下发 speaker，再拉上游 */

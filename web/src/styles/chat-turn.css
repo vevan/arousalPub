@@ -1696,6 +1696,20 @@ summary.reasoning-chain__summary::-webkit-details-marker {
   opacity: 0.55;
 }
 
+.agent-audit-tool__pre {
+  margin     : 0;
+  padding    : 0.5rem 0.75rem;
+  max-height : 16rem;
+  overflow   : auto;
+  white-space: pre-wrap;
+  word-break : break-word;
+  font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+  font-size  : 0.75rem;
+  line-height: 1.4;
+  border-radius: 4px;
+  background : rgba(var(--v-theme-on-surface), 0.06);
+}
+
 /* ========== Mobile · 窄屏回合布局 ========== */
 @media (max-width: 40rem) {
   .chat-body {

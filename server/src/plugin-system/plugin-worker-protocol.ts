@@ -13,6 +13,11 @@ export type PluginWorkerHostToWorker =
       userId?: string
     }
   | {
+      /** 取消进行中的 invoke（runTool 等协作 abort） */
+      type: 'cancelInvoke'
+      id: string
+    }
+  | {
       type: 'apiResponse'
       id: string
       result?: unknown

@@ -25,12 +25,25 @@ export function formatArousalStreamErrorSseLine(error: string, detail?: string):
   })}\n\n`
 }
 
+/**
+ * Agent 同轮先 content 后 tool_calls：撤回已推到主泡的正文前缀。
+ * 前端清空 streamingText / 本地 content 累加器。
+ */
+export function formatArousalClearAssistantContentSseLine(): string {
+  return `data: ${JSON.stringify({
+    arousal: { clearAssistantContent: true },
+  })}\n\n`
+}
+
 /** 从 OpenAI 兼容 SSE 行解析 assistant 增量（与前端 readSseStream 对齐） */
 
 export function parseSseDataLine(line: string): {
   text?: string
   reasoning?: string
   completionTokens?: number
+  /** 流式 tool_calls 增量（agent loop 用；旧调用方忽略即可） */
+  toolCallsDelta?: unknown
+  finishReason?: string
 } | null {
   const trimmed = line.trim()
   if (!trimmed.startsWith('data:')) return null
@@ -39,36 +52,53 @@ export function parseSseDataLine(line: string): {
   try {
     const j = JSON.parse(data) as {
       choices?: {
+        finish_reason?: string | null
         delta?: {
           content?: string
           reasoning_content?: string
           reasoning?: string
           thinking?: string
+          tool_calls?: unknown
         }
       }[]
     }
-    const d = j.choices?.[0]?.delta
-    if (!d) return null
-    const out: { text?: string; reasoning?: string; completionTokens?: number } =
-      {}
-    if (typeof d.content === 'string' && d.content.length > 0) {
-      out.text = d.content
+    const choice = j.choices?.[0]
+    const d = choice?.delta
+    const out: {
+      text?: string
+      reasoning?: string
+      completionTokens?: number
+      toolCallsDelta?: unknown
+      finishReason?: string
+    } = {}
+    if (d) {
+      if (typeof d.content === 'string' && d.content.length > 0) {
+        out.text = d.content
+      }
+      const rs =
+        typeof d.reasoning_content === 'string'
+          ? d.reasoning_content
+          : typeof d.reasoning === 'string'
+            ? d.reasoning
+            : typeof d.thinking === 'string'
+              ? d.thinking
+              : ''
+      if (rs.length > 0) out.reasoning = rs
+      if (Array.isArray(d.tool_calls) && d.tool_calls.length > 0) {
+        out.toolCallsDelta = d.tool_calls
+      }
     }
-    const rs =
-      typeof d.reasoning_content === 'string'
-        ? d.reasoning_content
-        : typeof d.reasoning === 'string'
-          ? d.reasoning
-          : typeof d.thinking === 'string'
-            ? d.thinking
-            : ''
-    if (rs.length > 0) out.reasoning = rs
+    if (typeof choice?.finish_reason === 'string' && choice.finish_reason) {
+      out.finishReason = choice.finish_reason
+    }
     const completionTokens = extractCompletionTokens(j)
     if (completionTokens) out.completionTokens = completionTokens
     if (
       out.text !== undefined ||
       out.reasoning !== undefined ||
-      out.completionTokens !== undefined
+      out.completionTokens !== undefined ||
+      out.toolCallsDelta !== undefined ||
+      out.finishReason !== undefined
     ) {
       return out
     }

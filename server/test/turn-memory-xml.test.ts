@@ -6,6 +6,7 @@ import {
   formatHistoryXml,
   formatMemoryXml,
   turnsToHistoryMessages,
+  turnsToHistoryScanPlainText,
 } from '../src/turn-memory-xml.js'
 
 function turn(
@@ -76,5 +77,41 @@ describe('turnsToHistoryMessages partial turn', () => {
         { role: 'assistant', content: 'a1' },
       ],
     )
+  })
+})
+
+describe('turnsToHistoryScanPlainText partial turn', () => {
+  it('omits assistant segments at/after exclusive', () => {
+    const t: TurnRecord = {
+      turnId: 't1',
+      turnOrdinal: 5,
+      send: { userText: 'hello' },
+      receives: [{ id: 'r1', content: 'a1' }],
+      activeReceiveIndex: 0,
+      segments: [
+        {
+          id: 's1',
+          speakerCharacterId: 'alice',
+          receives: [{ id: 'r1', content: 'keep-me' }],
+          activeReceiveIndex: 0,
+        },
+        {
+          id: 's2',
+          speakerCharacterId: 'betty',
+          receives: [{ id: 'r2', content: 'drop-me' }],
+          activeReceiveIndex: 0,
+        },
+      ],
+      activeSegmentIndex: 1,
+      plugins: [],
+    }
+    const full = turnsToHistoryScanPlainText([t])
+    assert.match(full, /keep-me/)
+    assert.match(full, /drop-me/)
+    const partial = turnsToHistoryScanPlainText([t], undefined, {
+      partialTurn: { turnOrdinal: 5, segmentIndexExclusive: 1 },
+    })
+    assert.match(partial, /keep-me/)
+    assert.doesNotMatch(partial, /drop-me/)
   })
 })

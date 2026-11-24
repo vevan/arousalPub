@@ -11,8 +11,8 @@ export async function createSandboxPluginModule(
   const hooks = client.getExportedHooks()
   const uid = () => getCurrentUserId()
 
-  const invoke = (hook: string, args: unknown[]) =>
-    client.invoke(hook, args, uid())
+  const invoke = (hook: string, args: unknown[], signal?: AbortSignal) =>
+    client.invoke(hook, args, uid(), signal)
 
   const mod: PluginServerModule = {}
 
@@ -56,6 +56,12 @@ export async function createSandboxPluginModule(
     mod.runPluginAction = (action, body, _api) =>
       invoke('runPluginAction', [action, body]) as ReturnType<
         NonNullable<PluginServerModule['runPluginAction']>
+      >
+  }
+  if (hooks.has('runTool')) {
+    mod.runTool = (name, body, _api) =>
+      invoke('runTool', [name, body], body.signal) as ReturnType<
+        NonNullable<PluginServerModule['runTool']>
       >
   }
   if (hooks.has('resolveConversationPersistExtras')) {

@@ -156,6 +156,28 @@ export interface PerformanceAudit {
   stream?: StreamAuditStats
 }
 
+/** Agent 模式工具轨迹（审计面板；与思维链预览同源） */
+export interface AgentAuditToolTrace {
+  name: string
+  argumentsPreview: string
+  resultPreview: string
+  ok: boolean
+  errorCode?: string
+}
+
+export interface AgentAuditStep {
+  stepIndex: number
+  finishReason?: string
+  tools: AgentAuditToolTrace[]
+}
+
+export interface AgentAudit {
+  stopReason: string
+  /** 本轮出站提供给模型的 tool 名 */
+  toolsOffered?: string[]
+  steps: AgentAuditStep[]
+}
+
 export interface ChatAuditEntry {
   savedAt: string
   chunkName: string
@@ -171,6 +193,8 @@ export interface ChatAuditEntry {
   calls?: CallAuditEntry[]
   plugins?: PluginAuditEntry[]
   performance?: PerformanceAudit
+  /** Agent 模式：工具调用与结果预览（含 memory/knowledge 召回） */
+  agent?: AgentAudit
 }
 
 export interface ChatAuditFile {
@@ -186,4 +210,5 @@ export interface ChatAuditSnapshotInput {
   plugins?: PluginAuditEntry[]
   performance?: PerformanceAudit
   groupChat?: import('./group-chat-turn.js').GroupChatAuditSnapshot
+  agent?: AgentAudit
 }

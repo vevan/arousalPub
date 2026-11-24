@@ -84,7 +84,7 @@ export function resolveHistoryXmlTurnCount(
   return HISTORY_XML_DEFAULT_TURNS
 }
 
-function selectRecentTurns(
+export function selectRecentTurns(
   all: TurnRecord[],
   count: number,
   beforeExclusive?: number | null,
@@ -183,6 +183,7 @@ export async function runMemoryPipeline(
   const recentHistoryScanText = turnsToHistoryScanPlainText(
     recentTurns,
     corpusOptions,
+    { partialTurn: input.historyPartialTurn },
   )
   let memoryProfileCurrent = false
   if (input.memorySettings.memoryEnabled && userText.length > 0) {

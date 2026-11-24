@@ -3,6 +3,7 @@ import AssembledMessagesPanel from '@/components/prompts/AssembledMessagesPanel.
 import GroupChatAuditPickBlock from '@/components/chat/GroupChatAuditPickBlock.vue'
 import type { useChatSession } from '@/composables/useChatSession'
 import type {
+  AgentAudit,
   AssemblyAudit,
   CallAuditEntry,
   GroupChatAuditSnapshot,
@@ -70,6 +71,22 @@ const messages = computed(() => turnAuditEntry.value?.messages ?? [])
 const performance = computed((): PerformanceAudit | null => {
   const p = turnAuditEntry.value?.performance
   return p && typeof p === 'object' ? p : null
+})
+
+const agentAudit = computed((): AgentAudit | null => {
+  const a = turnAuditEntry.value?.agent
+  return a && typeof a === 'object' ? a : null
+})
+
+const showAgentAuditTab = computed(() => {
+  const a = agentAudit.value
+  return Boolean(a && Array.isArray(a.steps) && a.steps.length > 0)
+})
+
+watch(showAgentAuditTab, (show) => {
+  if (!show && auditTab.value === 'agent') {
+    auditTab.value = 'messages'
+  }
 })
 
 const hasPerformance = computed(() => {
@@ -203,6 +220,12 @@ const historyTurnRanges = computed(() =>
               value="groupChat"
             >
               {{ $t('chat.turnAuditTabGroupChat') }}
+            </v-tab>
+            <v-tab
+              v-if="showAgentAuditTab"
+              value="agent"
+            >
+              {{ $t('chat.turnAuditTabAgent') }}
             </v-tab>
             <v-tab value="calls">
               {{ $t('chat.turnAuditTabCalls') }}
@@ -500,6 +523,91 @@ const historyTurnRanges = computed(() =>
                     :character-names="auditCharacterNames"
                     :fallback-max-segments="auditMaxSegmentsFallback"
                   />
+                </template>
+              </div>
+            </v-tabs-window-item>
+
+            <v-tabs-window-item
+              v-if="showAgentAuditTab"
+              value="agent"
+            >
+              <div class="audit-card__pane">
+                <p
+                  v-if="!agentAudit"
+                  class="text-body-2 text-medium-emphasis mb-0"
+                >
+                  {{ $t('chat.turnAuditNoAgent') }}
+                </p>
+                <template v-else>
+                  <v-table
+                    density="compact"
+                    class="audit-table audit-table--kv mb-4"
+                  >
+                    <tbody>
+                      <tr>
+                        <td class="audit-table__label">{{ $t('chat.turnAuditAgentStopReason') }}</td>
+                        <td class="audit-table__mono">{{ agentAudit.stopReason }}</td>
+                      </tr>
+                      <tr>
+                        <td class="audit-table__label">{{ $t('chat.turnAuditAgentStepCount') }}</td>
+                        <td>{{ agentAudit.steps.length }}</td>
+                      </tr>
+                      <tr v-if="agentAudit.toolsOffered?.length">
+                        <td class="audit-table__label">{{ $t('chat.turnAuditAgentToolsOffered') }}</td>
+                        <td class="audit-table__mono">{{ agentAudit.toolsOffered.join(', ') }}</td>
+                      </tr>
+                    </tbody>
+                  </v-table>
+                  <section
+                    v-for="step in agentAudit.steps"
+                    :key="step.stepIndex"
+                    class="agent-audit-step mb-4"
+                  >
+                    <h4 class="text-subtitle-2 mb-2">
+                      {{ $t('chat.turnAuditAgentStepTitle', { n: step.stepIndex + 1 }) }}
+                      <span
+                        v-if="step.finishReason"
+                        class="text-medium-emphasis text-body-2 font-weight-regular"
+                      >
+                        · {{ step.finishReason }}
+                      </span>
+                    </h4>
+                    <p
+                      v-if="!step.tools?.length"
+                      class="text-body-2 text-medium-emphasis mb-0"
+                    >
+                      {{ $t('chat.turnAuditAgentNoTools') }}
+                    </p>
+                    <div
+                      v-for="(tool, ti) in step.tools"
+                      :key="`${step.stepIndex}-${ti}-${tool.name}`"
+                      class="agent-audit-tool mb-3"
+                    >
+                      <div class="agent-audit-tool__head text-body-2 mb-1">
+                        <strong class="audit-table__mono">{{ tool.name }}</strong>
+                        <span
+                          class="ml-2"
+                          :class="tool.ok ? 'text-success' : 'text-error'"
+                        >
+                          {{ tool.ok ? $t('chat.turnAuditAgentToolOk') : $t('chat.turnAuditAgentToolError') }}
+                        </span>
+                        <span
+                          v-if="tool.errorCode"
+                          class="ml-2 audit-table__mono text-medium-emphasis"
+                        >
+                          {{ tool.errorCode }}
+                        </span>
+                      </div>
+                      <p class="text-caption text-medium-emphasis mb-1">
+                        {{ $t('chat.turnAuditAgentArgs') }}
+                      </p>
+                      <pre class="agent-audit-tool__pre">{{ tool.argumentsPreview || '—' }}</pre>
+                      <p class="text-caption text-medium-emphasis mb-1 mt-2">
+                        {{ $t('chat.turnAuditAgentResult') }}
+                      </p>
+                      <pre class="agent-audit-tool__pre">{{ tool.resultPreview || '—' }}</pre>
+                    </div>
+                  </section>
                 </template>
               </div>
             </v-tabs-window-item>

@@ -121,6 +121,7 @@ export function buildChatAuditEntry(
     ...(snapshot.calls?.length ? { calls: snapshot.calls } : {}),
     ...(snapshot.plugins?.length ? { plugins: snapshot.plugins } : {}),
     ...(snapshot.performance ? { performance: snapshot.performance } : {}),
+    ...(snapshot.agent ? { agent: snapshot.agent } : {}),
   }
 }
 

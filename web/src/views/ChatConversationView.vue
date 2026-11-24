@@ -757,6 +757,7 @@ watch(
         :initial-user-character-id="convBindings.userCharacterId"
         :initial-background-image-file-id="convBindings.backgroundImageFileId"
         :initial-bgm-file-id="convBindings.bgmFileId"
+        :initial-agent-mode="convBindings.agentMode"
         :initial-authors-note="convBindings.authorsNote"
         :initial-api-preset="convBindings.chatApi.apiPresetRaw"
         :initial-chat-api-use-global="convBindings.chatApi.useGlobal"

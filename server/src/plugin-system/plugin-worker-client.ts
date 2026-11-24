@@ -139,32 +139,57 @@ export class PluginWorkerClient {
     hook: string,
     args: unknown[],
     userId?: string,
+    signal?: AbortSignal,
   ): Promise<T> {
     await this.start()
     if (!this.child) throw new Error('plugin_worker_not_running')
+    if (signal?.aborted) {
+      throw Object.assign(new Error('cancelled'), { code: 'cancelled' })
+    }
 
     const id = randomUUID()
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.pendingInvokes.delete(id)
+        cleanup()
+        this.postToChild({ type: 'cancelInvoke', id })
         reject(new Error(`plugin_worker_invoke_timeout:${hook}`))
       }, PLUGIN_WORKER_INVOKE_TIMEOUT_MS)
 
+      const onAbort = () => {
+        cleanup()
+        this.postToChild({ type: 'cancelInvoke', id })
+        reject(Object.assign(new Error('cancelled'), { code: 'cancelled' }))
+      }
+
+      const cleanup = () => {
+        clearTimeout(timer)
+        this.pendingInvokes.delete(id)
+        signal?.removeEventListener('abort', onAbort)
+      }
+
       this.pendingInvokes.set(id, {
-        resolve: resolve as (v: unknown) => void,
-        reject,
+        resolve: (value: unknown) => {
+          cleanup()
+          resolve(value as T)
+        },
+        reject: (err: Error) => {
+          cleanup()
+          reject(err)
+        },
         timer,
       })
+      signal?.addEventListener('abort', onAbort, { once: true })
       this.postToChild({ type: 'invoke', id, hook, args, userId })
     })
   }
 
   private failAllPending(err: Error): void {
-    for (const pending of this.pendingInvokes.values()) {
-      clearTimeout(pending.timer)
-      pending.reject(err)
-    }
+    const pending = [...this.pendingInvokes.entries()]
     this.pendingInvokes.clear()
+    for (const [, p] of pending) {
+      clearTimeout(p.timer)
+      p.reject(err)
+    }
   }
 
   async shutdown(): Promise<void> {

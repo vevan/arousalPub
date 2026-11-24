@@ -93,7 +93,11 @@ function completionTokensFromSsePayload(j: unknown): number | undefined {
 
 export async function readSseStream(
   body: ReadableStream<Uint8Array> | null,
-  onDelta: (d: { text?: string; reasoning?: string }) => void,
+  onDelta: (d: {
+    text?: string
+    reasoning?: string
+    clearText?: boolean
+  }) => void,
   noStreamMessage: string,
   onCompletionTokens?: (n: number) => void,
   onPersist?: (persist: ChatPersistPayload) => void,
@@ -120,6 +124,7 @@ export async function readSseStream(
           speakerCharacterId?: string
           error?: string
           detail?: string
+          clearAssistantContent?: boolean
         }
         choices?: {
           delta?: {
@@ -143,6 +148,10 @@ export async function readSseStream(
           throw new ChatRequestFailure(
             (detail || translateApiError(code)).slice(0, 2000),
           )
+        }
+        if (arousal.clearAssistantContent === true) {
+          onDelta({ clearText: true })
+          return
         }
         const persist = arousal.persist
         if (persist && typeof persist === 'object' && 'ok' in persist) {
@@ -207,7 +216,11 @@ export async function runChatRequest(options: {
   noStreamMessage: string
   /** 是否按流式消费响应；与连接面板 stream 一致 */
   expectStream: boolean
-  onStreamDelta?: (d: { text?: string; reasoning?: string }) => void
+  onStreamDelta?: (d: {
+    text?: string
+    reasoning?: string
+    clearText?: boolean
+  }) => void
   /** 流式响应头中的组装 token 估算（与 /api/chat 非流式 JSON 的 estimatedTokens 一致） */
   onPromptEstimatedTokens?: (n: number) => void
   /** 流式 SSE 末包 usage.completion_tokens */
@@ -290,6 +303,11 @@ export async function runChatRequest(options: {
     await readSseStream(
       res.body,
       (d) => {
+        if (d.clearText) {
+          acc = ''
+          options.onStreamDelta?.(d)
+          return
+        }
         if (d.text) acc += d.text
         if (d.reasoning) accR += d.reasoning
         options.onStreamDelta?.(d)

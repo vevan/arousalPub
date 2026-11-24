@@ -124,7 +124,15 @@ export function abortChatGeneration(): void {
 }
 
 export function createChatCompletionRunner(deps: ChatCompletionDeps) {
-  function streamDeltaHandler(d: { text?: string; reasoning?: string }) {
+  function streamDeltaHandler(d: {
+    text?: string
+    reasoning?: string
+    clearText?: boolean
+  }) {
+    if (d.clearText) {
+      deps.streamingText.value = ''
+      return
+    }
     if (d.text) deps.streamingText.value += d.text
     if (d.reasoning) {
       deps.streamingReasoning.value =

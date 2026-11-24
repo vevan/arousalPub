@@ -135,6 +135,7 @@ function emptyConvBindings(): ConvContextBindings {
     backgroundImageFileId: null,
     bgmFileId: null,
     authorsNote: normalizeAuthorsNote(),
+    agentMode: 'off',
   }
 }
 
@@ -393,6 +394,7 @@ export function useConvBindings() {
       : []
     const groupChat = normalizeGroupChatSettings(idx.groupChat)
     const groupChatEnabled = groupChat.enabled === true
+    const agentMode = idx.agentMode === 'on' ? 'on' : 'off'
     return {
       promptPresetId,
       characterIds: clientResolvedCharacterIds(idx),
@@ -414,6 +416,7 @@ export function useConvBindings() {
       backgroundImageFileId,
       bgmFileId,
       authorsNote: authorsNoteFromIndex(idx),
+      agentMode,
     }
   }
 

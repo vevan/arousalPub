@@ -44,7 +44,10 @@ import { loadCharFileLookupsForIds } from '../load-char-file-lookups.js'
 import { importStChatFromStream, previewStChatImport, streamPreviewStChat } from '../st-chat-import.js'
 import { persistTurnAfterModelReply } from '../chat-persist-after-chat.js'
 import { loadAndApplyRegexPersistToTurnPatch, resolveTurnPatchPersistRegex, resolveConversationTailOrdinal, toTurnPatchPersistPayload } from '../regex-persist-patch.js'
-import { buildSyncedTurnPluginsFromReceives } from '../turn-plugin-sync-from-assistant.js'
+import {
+  buildSyncedTurnPluginsFromReceives,
+  turnReceivesContentUnchanged,
+} from '../turn-plugin-sync-from-assistant.js'
 import { readRegexRulesDocument } from '../regex-rules-file.js'
 import { extractCompletionTokens, extractPromptTokens } from '../chat-usage.js'
 import { readChatAuditFile } from '../chat-audit-file.js'
@@ -1344,11 +1347,28 @@ export function registerChatRoutes(app: FastifyInstance): void {
           return reply.status(404).send({ error: ApiErrorCodes.turn_chunk_not_found })
         }
         const existingTurn = located.chunk.turns.find((t) => t.turnOrdinal === ord)
-        const syncedPlugins = await buildSyncedTurnPluginsFromReceives(
-          existingTurn?.plugins,
+        const segIdx =
+          typeof normalized.segmentIndex === 'number'
+            ? normalized.segmentIndex
+            : typeof existingTurn?.activeSegmentIndex === 'number'
+              ? existingTurn.activeSegmentIndex
+              : 0
+        const existingSegReceives =
+          existingTurn?.segments?.[segIdx]?.receives ?? []
+        // 滑动只改 activeReceiveIndex：正文不变则不得重同步 plugins（工具模式曾用 live 覆盖全部 swipe）
+        const contentUnchanged = turnReceivesContentUnchanged(
+          existingSegReceives,
           normalized.receives,
-          id,
         )
+        const syncedPlugins = contentUnchanged
+          ? Array.isArray(existingTurn?.plugins)
+            ? existingTurn.plugins
+            : []
+          : await buildSyncedTurnPluginsFromReceives(
+              existingTurn?.plugins,
+              normalized.receives,
+              id,
+            )
         const convIdx = await readConversationIndex(id)
         const defaultSpeaker = convIdx ? resolvedCharacterIds(convIdx)[0]?.trim() ?? '' : ''
         let ok: boolean
@@ -1362,7 +1382,11 @@ export function registerChatRoutes(app: FastifyInstance): void {
             normalized.activeReceiveIndex,
             defaultSpeaker,
             undefined,
-            syncedPlugins.length > 0 ? syncedPlugins : undefined,
+            contentUnchanged
+              ? undefined
+              : syncedPlugins.length > 0
+                ? syncedPlugins
+                : undefined,
           )
         } else {
           ok = await updateTurnContentInTailChunk(
@@ -1373,7 +1397,7 @@ export function registerChatRoutes(app: FastifyInstance): void {
             normalized.activeReceiveIndex,
             undefined,
             undefined,
-            syncedPlugins,
+            contentUnchanged ? undefined : syncedPlugins,
           )
         }
         if (!ok) {
@@ -2047,8 +2071,12 @@ export function registerChatRoutes(app: FastifyInstance): void {
         previewAgentToolText,
         collectWriteAgentToolNames,
         decideToolCallsProseAction,
+        resolveRequiredCoreSearchToolNames,
       } = await import('../agent/index.js')
       const writeToolNames = await collectWriteAgentToolNames(getCurrentUserId())
+      const requiredSearchToolNames = await resolveRequiredCoreSearchToolNames(
+        convId,
+      )
 
       const groupContinueForSearch = parseGroupContinueBody(body.groupContinue)
       const agentSearchContext = {
@@ -2134,7 +2162,10 @@ export function registerChatRoutes(app: FastifyInstance): void {
         if (result.errorCode === 'cancelled') {
           return ApiErrorCodes.persist_cancelled_by_user
         }
-        if (result.errorCode === 'required_tools_missing') {
+        if (
+          result.errorCode === 'required_tools_missing' ||
+          result.errorCode === 'required_write_tools_missing'
+        ) {
           return ApiErrorCodes.agent_required_tools_missing
         }
         if (result.errorCode === 'upstream_error') {
@@ -2162,6 +2193,7 @@ export function registerChatRoutes(app: FastifyInstance): void {
           onUpstreamDelta: opts.onUpstreamDelta,
           onProgress: opts.onProgress,
           searchContext: agentSearchContext,
+          regenerateTurnOrdinal,
           onActivity: () => {
             if (generationId) touchChatGeneration(generationId)
           },
@@ -2242,6 +2274,9 @@ export function registerChatRoutes(app: FastifyInstance): void {
           const reasoningAcc = { text: '', contentChars: 0 }
           let suppressContent = false
           let proseCommitted = false
+          const calledSearch = new Set<string>()
+          const preProseReadsDone = () =>
+            requiredSearchToolNames.every((n) => calledSearch.has(n))
           const clearLeakedAssistantContent = () => {
             if (proseCommitted || reasoningAcc.contentChars <= 0 || out.destroyed) {
               return
@@ -2255,10 +2290,24 @@ export function registerChatRoutes(app: FastifyInstance): void {
               streamUpstream: true,
               onProgress: (ev) => {
                 if (generationId) touchChatGeneration(generationId)
+                if (ev.type === 'prose_committed') {
+                  proseCommitted = true
+                  suppressContent = true
+                }
+                if (ev.type === 'tool_result' && ev.tool.ok !== false) {
+                  const n = ev.tool.name?.trim()
+                  if (n && requiredSearchToolNames.includes(n)) {
+                    calledSearch.add(n)
+                  }
+                }
                 if (ev.type === 'step_start') {
-                  // 已提交后不再向主泡追加正文；未提交则新步可重新流式
-                  suppressContent = proseCommitted
-                  if (!proseCommitted) reasoningAcc.contentChars = 0
+                  // 已提交后永久 suppress 主泡正文（含 write 步 meta / 空行）
+                  if (proseCommitted) {
+                    suppressContent = true
+                  } else {
+                    suppressContent = false
+                    reasoningAcc.contentChars = 0
+                  }
                 }
                 if (ev.type === 'tool_calls') {
                   suppressContent = true
@@ -2267,12 +2316,16 @@ export function registerChatRoutes(app: FastifyInstance): void {
                     contentChars: reasoningAcc.contentChars,
                     toolNames: ev.tools.map((t) => t.name),
                     writeToolNames,
+                    preProseReadsDone: preProseReadsDone(),
                   })
-                  if (action === 'commit') proseCommitted = true
-                  else if (action === 'clear') clearLeakedAssistantContent()
+                  if (action === 'commit') {
+                    proseCommitted = true
+                    suppressContent = true
+                  } else if (action === 'clear') clearLeakedAssistantContent()
                 }
                 if (ev.type === 'final' && reasoningAcc.contentChars > 0) {
                   proseCommitted = true
+                  suppressContent = true
                 }
                 emitAgentProgressAsReasoning(out, ev, reasoningAcc)
               },
@@ -2280,11 +2333,16 @@ export function registerChatRoutes(app: FastifyInstance): void {
                 if (generationId) touchChatGeneration(generationId)
                 // 仅 suppress；clear/commit 等到 tool_calls 进度（已有 name）
                 if (d.toolCallsDelta) suppressContent = true
+                // 绑定检索完成前不把正文推到主泡，避免「先写后召回」再 clear
+                const allowContent =
+                  !suppressContent &&
+                  Boolean(d.text) &&
+                  (proseCommitted || preProseReadsDone())
                 emitUpstreamDeltaToClient(
                   out,
                   {
                     ...(d.reasoning ? { reasoning: d.reasoning } : {}),
-                    ...(!suppressContent && d.text ? { text: d.text } : {}),
+                    ...(allowContent && d.text ? { text: d.text } : {}),
                   },
                   reasoningAcc,
                 )

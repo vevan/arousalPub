@@ -71,5 +71,9 @@
   "separateTurnCountLabel": "Separate 对话窗口轮数",
   "separateTurnCountDesc": "1～8。Separate 补生成时送入的对话轮数（含目标轮）；历史 state 由 assistant 正文内 <ex-trace-keeper> 提供（与正则 skipLastNTurns 一致）。",
   "convSeparateTurnCountLabel": "本会话 Separate 窗口",
-  "convSeparateTurnCountDesc": "留空则继承用户默认"
+  "convSeparateTurnCountDesc": "留空则继承用户默认",
+  "toolReadTurnCountLabel": "Agent：trace_read 历史条数",
+  "toolReadTurnCountDesc": "1～40。Agent 工具模式下 trace_read 默认扫描的最近轮数（含有 snapshot 的轮）；模型参数 turns 可临时覆盖。",
+  "convToolReadTurnCountLabel": "本会话 trace_read 条数",
+  "convToolReadTurnCountDesc": "留空则继承用户默认（仅 Agent 工具模式生效）"
 }

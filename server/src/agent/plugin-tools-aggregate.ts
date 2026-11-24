@@ -14,6 +14,7 @@ import {
   raceWithToolTimeout,
 } from './agent-limits.js'
 import { normalizeAgentToolPhase } from './agent-prose-phase.js'
+import { resolveToolMaxCallsPerTurn } from './agent-tool-budget.js'
 import type { AgentToolDefinition } from './types.js'
 import type { AgentSearchContext } from './host-search-tools.js'
 import {
@@ -29,6 +30,7 @@ export type PluginToolDecl = {
   permissions: string[]
   /** DOC/53 §16：write = 正文后可变状态；缺省按 read 侧处理 */
   phase?: 'read' | 'write'
+  maxCallsPerTurn?: number
 }
 
 /** OpenAI function.name：字母数字下划线短横线，无点号 */
@@ -76,16 +78,44 @@ export async function collectPluginToolDecls(
       if (isCoreAgentToolName(name)) continue
       seen.add(name)
       const phase = normalizeAgentToolPhase(t.phase)
+      const maxCallsPerTurn = resolveToolMaxCallsPerTurn({
+        name,
+        phase,
+        manifestMaxCallsPerTurn: t.maxCallsPerTurn,
+      })
       out.push({
         pluginId: p.id,
         name,
         permissions: [...t.permissions],
         definition: asToolDefinition(name, t.description, t.parameters),
         ...(phase ? { phase } : {}),
+        maxCallsPerTurn,
       })
     }
   }
   return out
+}
+
+/** 本轮各工具成功调用上限（含核心检索） */
+export async function collectAgentToolMaxCallsPerTurn(
+  userId?: string,
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>()
+  for (const def of listCoreAgentToolDefinitions()) {
+    const name = def.function.name
+    map.set(
+      name,
+      resolveToolMaxCallsPerTurn({ name, phase: 'read' }),
+    )
+  }
+  for (const d of await collectPluginToolDecls(userId)) {
+    map.set(
+      d.name,
+      d.maxCallsPerTurn ??
+        resolveToolMaxCallsPerTurn({ name: d.name, phase: d.phase }),
+    )
+  }
+  return map
 }
 
 export async function collectAgentToolDefinitions(
@@ -113,6 +143,10 @@ export async function dispatchAgentToolCall(opts: {
   signal?: AbortSignal
   userId?: string
   searchContext?: AgentSearchContext
+  /** 本轮 Agent 运行 id；插件可用其隔离滑动/重试的 staging */
+  agentRunId?: string
+  /** 再生时：live 基线只取 ordinal < 此值的 turn snapshot */
+  baselineTurnOrdinalExclusive?: number
 }): Promise<
   { ok: true; content: string } | { ok: false; code: string; detail?: string }
 > {
@@ -178,6 +212,13 @@ export async function dispatchAgentToolCall(opts: {
           arguments: opts.argsJson,
           conversationId: opts.conversationId,
           signal: toolSignal,
+          ...(opts.agentRunId ? { agentRunId: opts.agentRunId } : {}),
+          ...(typeof opts.baselineTurnOrdinalExclusive === 'number'
+            ? {
+                baselineTurnOrdinalExclusive:
+                  opts.baselineTurnOrdinalExclusive,
+              }
+            : {}),
         },
         api,
       )

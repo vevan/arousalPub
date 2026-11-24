@@ -679,11 +679,26 @@ export async function persistTurnAfterModelReply(params: {
     }
   }
 
+  const agentCalledToolNames = params.agentAudit
+    ? [
+        ...new Set(
+          params.agentAudit.steps.flatMap((s) =>
+            (s.tools ?? [])
+              .filter((t) => t.ok !== false && typeof t.name === 'string')
+              .map((t) => t.name.trim())
+              .filter(Boolean),
+          ),
+        ),
+      ]
+    : undefined
   const assistantPluginEntries = await resolveTurnPluginEntriesFromAssistant(
     assistantBodyForPersist,
     {
       plugins: params.chatPlugins,
       conversationId,
+      ...(agentCalledToolNames !== undefined
+        ? { agentCalledToolNames }
+        : {}),
     },
   )
   const turnPluginEntries = mergeTurnPluginEntries(

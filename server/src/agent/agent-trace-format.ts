@@ -76,6 +76,9 @@ export function formatProgressReasoningChunk(
       ev.usedTools,
     )
   }
+  if (ev.type === 'prose_committed') {
+    return `\n### Agent · step ${ev.stepIndex + 1} · prose committed\n\nuser-facing reply locked (${ev.contentChars} chars); write tools next\n`
+  }
   return null
 }
 

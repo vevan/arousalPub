@@ -41,7 +41,7 @@ async function build() {
   if (process.env.PLUGIN_WATCH === '1') return
 
   const { spawnSync } = await import('node:child_process')
-  const   testFiles = [
+  const testFiles = [
     path.join(here, 'test/panel-empty.test.ts'),
     path.join(here, 'test/separate-turn-settings.test.ts'),
     path.join(here, 'test/separate-dialogue.test.ts'),
@@ -49,6 +49,9 @@ async function build() {
     path.join(here, 'test/trace-state-resolve.test.ts'),
     path.join(here, 'test/trace-keeper-context-blocks.test.ts'),
     path.join(here, 'test/server/injection.test.ts'),
+    path.join(here, 'test/json-patch-ops.test.ts'),
+    path.join(here, 'test/tool-read-turn-settings.test.ts'),
+    path.join(here, 'test/tools-mode.test.ts'),
   ]
   for (const f of testFiles) {
     const r = spawnSync(process.execPath, ['--import', 'tsx', '--test', f], {

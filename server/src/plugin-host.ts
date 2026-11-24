@@ -171,7 +171,7 @@ export async function applyPluginsAfterAssemblePrompts(
   const cache = ctx.additionCache ?? new Map<string, PluginAssembleAdditionResolved | null>()
   if (!ctx.additionCache) ctx.additionCache = cache
 
-  const { plugins, api } = await ensureAssembleRuntime(ctx)
+  const { plugins, api: sharedApi } = await ensureAssembleRuntime(ctx)
   const span = resolveInjectionSpanForApply(ctx)
   const collected: PluginPromptInjection[] = []
   const escapeHatchPlugins: LoadedServerPlugin[] = []
@@ -179,8 +179,24 @@ export async function applyPluginsAfterAssemblePrompts(
   const hostPolicy =
     ctx.hostInjectionOrderPolicy ?? POST_USER_INJECTION_ORDER_HOST_DEFAULTS
 
+  /** 生产请求有用户 ALS → 按插件绑定 pluginId；测试注入 stub 时回退 sharedApi */
+  const apiForPlugin = (pluginId: string) => {
+    try {
+      return createPluginServerHostApi(pluginId)
+    } catch {
+      return sharedApi
+    }
+  }
+
   for (const p of plugins) {
-    const addition = await resolvePluginAddition(p.id, p.module, ctx, api, cache)
+    const pluginApi = apiForPlugin(p.id)
+    const addition = await resolvePluginAddition(
+      p.id,
+      p.module,
+      ctx,
+      pluginApi,
+      cache,
+    )
     if (addition) {
       collected.push(...additionToInjections(addition, hostPolicy))
       continue
@@ -214,6 +230,7 @@ export async function applyPluginsAfterAssemblePrompts(
   }
 
   for (const p of escapeHatchPlugins) {
+    const pluginApi = apiForPlugin(p.id)
     const next = await p.module.afterAssemblePrompts!(
       {
         pluginId: p.id,
@@ -221,7 +238,7 @@ export async function applyPluginsAfterAssemblePrompts(
         macroContext: ctx.macroContext,
         plugins: ctx.plugins,
       },
-      api,
+      pluginApi,
     )
     if (Array.isArray(next)) messages = next
   }
@@ -232,10 +249,11 @@ export async function resolveTurnPluginEntriesFromBody(
   plugins?: ChatPluginsBody | null,
 ): Promise<TurnPluginEntry[]> {
   const loaded = await loadEnabledServerPlugins()
-  const api = createPluginServerHostApi()
   const out: TurnPluginEntry[] = []
   for (const p of loaded) {
     if (typeof p.module.resolveTurnPluginEntries !== 'function') continue
+    // 每插件独立 Host API（pluginData / 权限需要 pluginId）
+    const api = createPluginServerHostApi(p.id)
     const entries = await p.module.resolveTurnPluginEntries(plugins, api)
     if (Array.isArray(entries)) out.push(...entries)
   }
@@ -247,22 +265,42 @@ export async function resolveTurnPluginEntriesFromAssistant(
   opts?: {
     plugins?: ChatPluginsBody | null
     conversationId?: string
+    /** Agent 本轮成功 tool 名；见 ResolveTurnPluginEntriesFromAssistantContext */
+    agentCalledToolNames?: string[]
+    receiveContentSync?: boolean
   },
 ): Promise<TurnPluginEntry[]> {
   const loaded = await loadEnabledServerPlugins()
-  const api = createPluginServerHostApi()
   const out: TurnPluginEntry[] = []
   const ctx = {
     assistantContent,
     plugins: opts?.plugins,
     conversationId: opts?.conversationId,
+    ...(opts?.agentCalledToolNames !== undefined
+      ? { agentCalledToolNames: opts.agentCalledToolNames }
+      : {}),
+    ...(opts?.receiveContentSync === true ? { receiveContentSync: true } : {}),
   }
   for (const p of loaded) {
     if (typeof p.module.resolveTurnPluginEntriesFromAssistant !== 'function') {
       continue
     }
-    const entries = await p.module.resolveTurnPluginEntriesFromAssistant(ctx, api)
-    if (Array.isArray(entries)) out.push(...entries)
+    // 每插件独立 Host API：工具模式读 live-state 依赖 pluginData.assertPermission(pluginId)
+    const api = createPluginServerHostApi(p.id)
+    try {
+      const entries = await p.module.resolveTurnPluginEntriesFromAssistant(
+        ctx,
+        api,
+      )
+      // null = 插件跳过（保留既有）；仅合并数组结果
+      if (Array.isArray(entries)) out.push(...entries)
+    } catch (e) {
+      // 单插件失败不得拖垮整轮落盘
+      console.warn(
+        `[resolveTurnPluginEntriesFromAssistant:${p.id}]`,
+        e instanceof Error ? e.message : e,
+      )
+    }
   }
   return out
 }

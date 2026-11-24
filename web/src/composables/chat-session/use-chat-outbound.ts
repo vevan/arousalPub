@@ -1170,11 +1170,11 @@ export function useChatOutbound(opts: {
       segments: nextSegments,
       activeSegmentIndex: segIdx,
     }
+    // 先本地切换 activeReceive，面板可立刻按 receiveId 解析各自 plugins 快照
+    opts.replaceTurnAt(listIndex, next)
     void opts.persistTurnToServer(next, { segmentIndex: segIdx }).then((result) => {
       if (result.ok) {
         opts.replaceTurnAt(listIndex, result.turn)
-      } else {
-        opts.replaceTurnAt(listIndex, next)
       }
       void nextTick().then(() => opts.scrollChatToBottom())
     })

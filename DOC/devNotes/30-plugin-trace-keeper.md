@@ -1,6 +1,6 @@
 # 迹录（Trace Keeper）插件 — 设计定案
 
-> **状态**：**已实现（v1 · 2026-06）**；**工具模式 = 草案（2026-11-24）**，见 §2.3。  
+> **状态**：**已实现（v1 · 2026-06）**；**工具模式 = 已落地骨架（2026-11-24）**，见 §2.3（`trace_read` / `trace_init` / `trace_patch` + Agent 禁双写）。  
 > **插件 id**：`trace-keeper` · **英文名** Trace Keeper · **中文名** 迹录  
 > **关联**：`DOC/devNotes/09` 插件系统、`DOC/devNotes/11` 出站补全、`DOC/devNotes/18` 宿主 API、`DOC/devNotes/21` 会话插件设置、`DOC/devNotes/24` 正则剥块、`DOC/devNotes/12`（分槽：Historian 写 lore，迹录**不写 lore**）、**`DOC/devNotes/53`**（Agent · 读→正文→写相位与流式）。
 
@@ -62,9 +62,10 @@ prepareTraceKeeperSeparateContextBlocks
 
 侧栏 live 且最后一轮无 snapshot 时显示按钮。
 
-### 2.3 工具模式（草案 · 2026-11-24 · 与 Agent 并存）
+### 2.3 工具模式（2026-11-24 · 与 Agent 并存）
 
-> **状态**：**草案**（未实现）。与 §2.1 Together / §2.2 Separate **并列保留**；由会话 **Agent 模式**（见 [`53`](53-agent-runtime-and-node-graph.md) §1.0）或迹录会话设置显式选择，**同一轮禁止 Together 夹带与 tool 回写双写**。
+> **状态**：**已落地骨架**（read/init/patch + live-state + Agent 开关禁双写；侧栏/Separate 交互待手工验收）。与 §2.1 Together / §2.2 Separate **并列保留**；会话 **Agent 模式 on**（[`53`](53-agent-runtime-and-node-graph.md) §1.0）时走工具路径，**同一轮禁止 Together 夹带与 tool 回写双写**。  
+> **实现要点**：`pluginData` 会话文件 `live-state.json`；`trace_patch` 写 live；persist 时 `resolveTurnPluginEntriesFromAssistant` 在工具模式下读 live 落 `turn.plugins[]`。
 
 #### 2.3.1 动机
 
@@ -86,7 +87,7 @@ Together 把「扮演正文 + 整表 JSON」绑在同一次 completion：易漂�
 
 | Tool | 相位 | 作用 | 约束 |
 |------|------|------|------|
-| `trace_read` | **正文前** | 读最近 **X** 轮（可配置）迹录 snapshot / pinned 窗口，供模型参考 | 只读；返回 opaque JSON + 可选截断 |
+| `trace_read` | **正文前** | 读最近 **X** 轮迹录 snapshot + live；X 默认来自设置 **`toolReadTurnCount`**（用户/会话，1～40，默认 8）；参数 `turns` 可临时覆盖 | 只读；返回 opaque JSON |
 | `trace_init` | **正文前**（通常首轮） | 无既有 tracker 时初始化 state（常自 `sampleState`） | **仅**「本会话尚无该 epoch 的有效 snapshot」；已有则 `ok:false` / no-op |
 | `trace_patch` | **正文后** | 字段级 **replace / add / remove**（禁止整表盲写） | RFC6902 子集 ops；见 §2.3.7；合并进当前 live 基线后落 `turn.plugins[]` |
 
@@ -97,13 +98,15 @@ Together 把「扮演正文 + 整表 JSON」绑在同一次 completion：易漂�
 #### 2.3.4 相位因果（迹录视角）
 
 ```text
-[可选] trace_init（仅无 tracker）
-  → trace_read（最近 X 轮）
-  → （其它 Agent 检索 tools，与迹录正交）
-  → 助手正文（用户可见气泡 · 流式）
-  → trace_patch（依据正文更新字段）
+正文前（顺序可交错，勿漏）：绑定检索 + [可选] trace_init + trace_read
+  → 助手正文（用户可见气泡 · 流式；提交后锁定，write nudge 不得 clear）
+  → trace_patch（单次、全字段 ops）
   → 落盘 turn.plugins[] · 侧栏刷新
 ```
+
+> **落盘**：工具模式下仅当本轮 Agent **成功调用过** `trace_patch` / `trace_init` 时，才把 live-state 写入 `turn.plugins[]`；无写工具则不落盘（避免「未 patch 却像写入了追踪器」）。编辑同步等旁路不传 `agentCalledToolNames`，仍可读 live。  
+> **滑动独立**：每次 Agent 请求带 `agentRunId`；live staging 按 run 重植基线（再生时基线为 `ordinal < regenerateTurnOrdinal` 的 snapshot），同 turn 其它 receive 不串味。  
+> **单次 write**：宿主对 `phase=write` 成功后拒绝再调（`write_already_done`）。
 
 **禁止**：在未见本轮正文的情况下凭空 `trace_patch`（pad / 插件校验可拒绝「空变更」；宿主相位见 53）。  
 **禁止**：同一轮既解析 `<ex-trace-keeper>` 又 `trace_patch` 写同一 epoch。
@@ -119,11 +122,13 @@ Together 把「扮演正文 + 整表 JSON」绑在同一次 completion：易漂�
 
 #### 2.3.6 验收（实现后勾选）
 
-- [ ] Agent+工具模式：无 `<ex-trace-keeper>` 夹带；侧栏仍更新  
-- [ ] `trace_init` 仅空会话成功；有 snapshot 拒绝  
-- [ ] `trace_patch` 字段增删改单测；拒绝整表替换  
-- [ ] 与 Together **禁双写**（开关互斥或运行时断言）  
-- [ ] 正文流式进气泡后仍可 patch（见 53 §16；宿主 `proseCommitted` SSE 已就绪，待本插件 `phase: write` tools）
+- [x] Agent+工具模式：无 Together 注入；落盘走 live-state → `resolveTurnPluginEntriesFromAssistant`（2026-11-24）；仅本轮成功 `trace_patch`/`trace_init` 才落盘（2026-11-24）  
+- [x] `trace_init` 仅空会话成功；有 live / turn snapshot 拒绝  
+- [x] `trace_patch` RFC6902 `replace`/`add`/`remove` 单测；整批原子  
+- [x] 与 Together **禁双写**（Agent on 时跳过注入与块解析）  
+- [x] `phase: write` 已挂 `trace_patch`（宿主 `proseCommitted` 可保留正文后 patch）  
+- [ ] 侧栏在工具模式轮次后刷新的手工验收  
+- [ ] Separate 与工具模式交互定案（仍作兜底）
 
 #### 2.3.7 `trace_patch` 入参样例（草案 · RFC6902 子集）
 

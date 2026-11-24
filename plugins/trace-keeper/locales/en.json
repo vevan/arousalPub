@@ -71,5 +71,9 @@
   "separateTurnCountLabel": "Separate dialogue window (turns)",
   "separateTurnCountDesc": "1–8. Turns sent for Separate regenerate (includes target). Historical state comes from <ex-trace-keeper> blocks in assistant text (aligned with regex skipLastNTurns).",
   "convSeparateTurnCountLabel": "Conversation Separate window",
-  "convSeparateTurnCountDesc": "Leave empty to inherit user default"
+  "convSeparateTurnCountDesc": "Leave empty to inherit user default",
+  "toolReadTurnCountLabel": "Agent: trace_read history depth",
+  "toolReadTurnCountDesc": "1–40. Default number of recent turns scanned by trace_read in Agent tool mode; model may override with turns.",
+  "convToolReadTurnCountLabel": "This chat: trace_read depth",
+  "convToolReadTurnCountDesc": "Leave empty to inherit user default (Agent tool mode only)"
 }

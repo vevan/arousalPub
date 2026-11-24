@@ -170,6 +170,11 @@ export interface PluginManifest {
     parameters?: Record<string, unknown>
     permissions: string[]
     phase?: 'read' | 'write'
+    /**
+     * 本轮成功调用上限（1..32）。
+     * 缺省：read/未标注 = 1；write = 不限。
+     */
+    maxCallsPerTurn?: number
   }>
   lifecycle?: Partial<Record<'onCharacterPrimaryChanged', boolean>>
 }
@@ -245,6 +250,13 @@ export interface PluginServerHostApi {
     conversationId: string,
     pluginId: string,
   ) => Promise<Record<string, unknown>>
+  /**
+   * 会话 Agent 模式（宿主 conversation.index.agentMode）。
+   * 插件可用其切换「原始 Together」vs「工具」路径；非某一插件产品字段。
+   */
+  getConversationAgentMode: (
+    conversationId: string,
+  ) => Promise<'on' | 'off'>
   readConversationTurnsTail: (
     conversationId: string,
     limit?: number,
@@ -350,6 +362,17 @@ export interface ResolveTurnPluginEntriesFromAssistantContext {
   assistantContent: string
   plugins?: ChatPluginsBody | null
   conversationId?: string
+  /**
+   * Agent 本轮实际成功调用的 tool 名（宿主 generic）。
+   * 传入时（含空数组）插件可据此决定是否从 live staging 落盘。
+   */
+  agentCalledToolNames?: string[]
+  /**
+   * PATCH / 编辑：按 receive 正文同步 turn.plugins 时为 true。
+   * 插件可返回 `null` 表示跳过（保留既有 receive 快照）；`[]` 表示清除该 receive 下本插件条目。
+   * 不得在此路径用 live staging 覆盖各 swipe。
+   */
+  receiveContentSync?: boolean
 }
 
 export interface PluginServerActionTurnMerge {
@@ -391,7 +414,10 @@ export interface PluginServerModule {
   resolveTurnPluginEntriesFromAssistant?: (
     ctx: ResolveTurnPluginEntriesFromAssistantContext,
     api: PluginServerHostApi,
-  ) => TurnPluginEntry[] | Promise<TurnPluginEntry[]>
+  ) =>
+    | TurnPluginEntry[]
+    | null
+    | Promise<TurnPluginEntry[] | null>
   /** DOC/devNotes/39 · completeWithContext 步骤 1 后格式化 blocks（插件 hook） */
   formatPluginContextBlocks?: (
     resolved: import('../shared/plugin-context-blocks.js').PluginContextBlocksSuccess,
@@ -420,6 +446,10 @@ export interface PluginServerModule {
       arguments: string
       conversationId?: string
       signal?: AbortSignal
+      /** 本轮 Agent 运行 id（滑动/重试隔离 staging） */
+      agentRunId?: string
+      /** 再生：live 基线只取 ordinal < 此值的 turn */
+      baselineTurnOrdinalExclusive?: number
     },
     api: PluginServerHostApi,
   ) => Promise<

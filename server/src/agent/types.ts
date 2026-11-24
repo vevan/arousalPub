@@ -49,6 +49,7 @@ export type AgentLoopStopReason =
   | 'tool_error'
   | 'complete_error'
   | 'required_tools_missing'
+  | 'required_write_tools_missing'
 
 export interface AgentLoopToolTrace {
   name: string

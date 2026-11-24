@@ -34,15 +34,36 @@ export {
 } from './agent-trace-format.js'
 export {
   buildAgentToolsSystemPad,
+  buildAgentToolsSystemPadFromPolicy,
   prependAgentToolsSystemPad,
+  prependAgentToolsSystemPadFromPolicy,
 } from './agent-system-pad.js'
 export {
+  buildDefaultAgentPipelinePolicy,
+  effectiveMaxCallsForRule,
+  stageRequiredToolNames,
+  type AgentPipelinePolicy,
+  type PipelineStage,
+  type ToolOfferRule,
+} from './agent-pipeline-policy.js'
+export {
+  createAgentPipelineRuntime,
+  type AgentPipelineRuntime,
+} from './agent-pipeline-runtime.js'
+export {
   collectAgentToolDefinitions,
+  collectAgentToolMaxCallsPerTurn,
   collectPluginToolDecls,
   collectWriteAgentToolNames,
   dispatchAgentToolCall,
   isOpenAiSafeToolName,
 } from './plugin-tools-aggregate.js'
+export {
+  clampToolMaxCallsPerTurn,
+  defaultMaxCallsForPhase,
+  isToolCallBudgetExhausted,
+  resolveToolMaxCallsPerTurn,
+} from './agent-tool-budget.js'
 export {
   decideToolCallsProseAction,
   normalizeAgentToolPhase,

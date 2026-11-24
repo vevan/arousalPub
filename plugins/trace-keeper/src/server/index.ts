@@ -15,6 +15,22 @@ import { buildTrackerSystemPrompt } from '../tracker-prompt.js'
 import { regenerateSeparateState } from './separate-regenerate.js'
 import { patchTraceKeeperState } from './patch-state.js'
 import { segmentIndexForAction } from '../host-segment-snapshot.js'
+import { isTraceToolMode } from './agent-mode.js'
+import { LIVE_STATE_FILE } from './live-state.js'
+import {
+  liveStateTurnPluginEntries,
+  runTool as runTraceTool,
+  runTraceInitTool,
+  runTracePatchTool,
+  runTraceReadTool,
+} from './tools.js'
+
+export {
+  LIVE_STATE_FILE,
+  runTraceInitTool,
+  runTracePatchTool,
+  runTraceReadTool,
+}
 
 /** DOC/devNotes/38 §3.2 · manifest `assembleInjection.slots.default` 可覆盖 */
 const TRACE_KEEPER_CHAT_DEPTH = 0
@@ -25,6 +41,36 @@ type ServerApi = {
     conversationId: string,
     pluginId: string,
   ) => Promise<Record<string, unknown>>
+  getConversationAgentMode?: (
+    conversationId: string,
+  ) => Promise<'on' | 'off'>
+  pluginData?: {
+    read(
+      scope: 'global' | 'conversation',
+      relPath: string,
+      conversationId?: string,
+    ): Promise<string | null>
+    write(
+      scope: 'global' | 'conversation',
+      relPath: string,
+      content: string,
+      conversationId?: string,
+    ): Promise<void>
+  }
+  readConversationTurnsTail?: (
+    conversationId: string,
+    limit?: number,
+  ) => Promise<
+    {
+      turnOrdinal: number
+      plugins: unknown[]
+      segments: {
+        receives: { id: string; content: string }[]
+        activeReceiveIndex: number
+      }[]
+      activeSegmentIndex: number
+    }[]
+  >
   runPluginComplete?: (req: {
     conversationId?: string
     messages: { role: 'system' | 'user' | 'assistant'; content: string }[]
@@ -78,6 +124,11 @@ export async function resolveAfterAssemblePromptsAddition(
   ctx: TraceKeeperInjectionContext,
   api: ServerApi,
 ): Promise<PluginPromptInjection[] | null> {
+  const conversationId = ctx.macroContext.conversationId?.trim() ?? ''
+  if (conversationId && (await isTraceToolMode(api, conversationId))) {
+    // Agent / 工具模式：禁止 Together 注入（DOC/30 §2.3 禁双写）
+    return null
+  }
   const injection = await resolveTraceKeeperInjection(ctx, api)
   if (!injection) return null
   return [
@@ -101,14 +152,46 @@ export async function resolveTurnPluginEntriesFromAssistant(
   ctx: {
     assistantContent: string
     conversationId?: string
+    /** 宿主传入时：仅本轮成功调用过 write/init 才从 live 落盘（避免无 patch 却「写入」） */
+    agentCalledToolNames?: string[]
+    /** PATCH 按正文同步：工具模式 state 不在正文，跳过以免 live 覆盖各 swipe */
+    receiveContentSync?: boolean
   },
   api: ServerApi,
 ) {
+  const conversationId = ctx.conversationId?.trim() ?? ''
+  if (
+    conversationId &&
+    (await isTraceToolMode(api, conversationId)) &&
+    api.pluginData &&
+    api.readConversationTurnsTail
+  ) {
+    // 正文同步路径：保留既有 receive 快照，禁止用当前 live 写进每一个 swipe
+    if (ctx.receiveContentSync === true) {
+      return null
+    }
+    // Agent persist：仅本轮成功调用过 write/init 才从 live 落盘
+    if (Array.isArray(ctx.agentCalledToolNames)) {
+      const wrote = ctx.agentCalledToolNames.some(
+        (n) => n === 'trace_patch' || n === 'trace_init',
+      )
+      if (!wrote) return []
+      return liveStateTurnPluginEntries(conversationId, {
+        pluginData: api.pluginData,
+        getUserPluginSettings: api.getUserPluginSettings,
+        getConversationPluginSettings: api.getConversationPluginSettings,
+        getConversationAgentMode: api.getConversationAgentMode,
+        readConversationTurnsTail: api.readConversationTurnsTail,
+      })
+    }
+    // 其它未标注旁路：不从 live 推断（避免无 write 的路径误写入）
+    return null
+  }
+
   const state = extractTraceKeeperState(ctx.assistantContent)
   if (!state) return []
 
   let epoch = 0
-  const conversationId = ctx.conversationId?.trim()
   if (conversationId) {
     const convSettings = await api.getConversationPluginSettings(
       conversationId,
@@ -124,6 +207,29 @@ export async function resolveTurnPluginEntriesFromAssistant(
       payload: { state, epoch },
     },
   ]
+}
+
+export async function runTool(
+  name: string,
+  body: {
+    arguments: string
+    conversationId?: string
+    signal?: AbortSignal
+    agentRunId?: string
+    baselineTurnOrdinalExclusive?: number
+  },
+  api: ServerApi,
+) {
+  if (!api.pluginData || !api.readConversationTurnsTail) {
+    return { ok: false as const, code: 'host_api_incomplete' }
+  }
+  return runTraceTool(name, body, {
+    pluginData: api.pluginData,
+    getUserPluginSettings: api.getUserPluginSettings,
+    getConversationPluginSettings: api.getConversationPluginSettings,
+    getConversationAgentMode: api.getConversationAgentMode,
+    readConversationTurnsTail: api.readConversationTurnsTail,
+  })
 }
 
 export async function resolveConversationPersistExtras(

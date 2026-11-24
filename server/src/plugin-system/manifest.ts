@@ -61,12 +61,20 @@ function normalizeManifestTools(
     const phaseRaw = (item as { phase?: unknown }).phase
     const phase =
       phaseRaw === 'read' || phaseRaw === 'write' ? phaseRaw : undefined
+    const maxRaw = (item as { maxCallsPerTurn?: unknown }).maxCallsPerTurn
+    const maxCallsPerTurn =
+      typeof maxRaw === 'number' &&
+      Number.isFinite(maxRaw) &&
+      Math.round(maxRaw) >= 1
+        ? Math.min(32, Math.round(maxRaw))
+        : undefined
     out.push({
       name,
       permissions,
       ...(description ? { description } : {}),
       ...(parameters ? { parameters } : {}),
       ...(phase ? { phase } : {}),
+      ...(maxCallsPerTurn !== undefined ? { maxCallsPerTurn } : {}),
     })
   }
   return out.length ? out : undefined

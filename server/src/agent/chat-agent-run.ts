@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { ChatMessage } from '../assemble-prompts.js'
 import type { ChatPersistResult } from '../chat-persist-after-chat.js'
 import { createChatUpstreamIdleAbort } from '../chat-upstream-stream.js'
@@ -13,17 +14,29 @@ import { accumulateAssistantTurnFromSse } from './accumulate-assistant-from-sse.
 import type { AssistantSseDelta } from './accumulate-assistant-from-sse.js'
 import { extractAssistantModelTurn } from './extract-assistant-turn.js'
 import type { AgentLoopProgressEvent } from './agent-loop.js'
-import { prependAgentToolsSystemPad } from './agent-system-pad.js'
 import {
   formatAssistantContentDeltaSse,
   formatAssistantReasoningSse,
   formatProgressReasoningChunk,
 } from './agent-trace-format.js'
 import {
+  buildDefaultAgentPipelinePolicy,
+  policyWriteToolNames,
+} from './agent-pipeline-policy.js'
+import { createAgentPipelineRuntime } from './agent-pipeline-runtime.js'
+import { prependAgentToolsSystemPadFromPolicy } from './agent-system-pad.js'
+import {
   collectAgentToolDefinitions,
+  collectAgentToolMaxCallsPerTurn,
+  collectPluginToolDecls,
   dispatchAgentToolCall,
 } from './plugin-tools-aggregate.js'
-import { resolveRequiredCoreSearchToolNames } from './host-search-tools.js'
+import {
+  isCoreAgentToolName,
+  listCoreAgentToolDefinitions,
+  resolveRequiredCoreSearchToolNames,
+} from './host-search-tools.js'
+import { resolveToolMaxCallsPerTurn } from './agent-tool-budget.js'
 import type { AgentMessage, AgentLoopResult, AgentToolDefinition } from './types.js'
 
 export function chatMessagesToAgentMessages(messages: ChatMessage[]): AgentMessage[] {
@@ -72,6 +85,7 @@ export function formatAssistantContentSse(content: string): string {
 export type ChatAgentUpstreamComplete = (input: {
   messages: AgentMessage[]
   tools: AgentToolDefinition[] | undefined
+  toolChoice?: 'auto' | 'required' | 'none'
   signal: AbortSignal | undefined
   stepIndex: number
 }) => Promise<import('./types.js').AssistantModelTurn>
@@ -88,8 +102,6 @@ export function createChatAgentUpstreamComplete(opts: {
   /** true：上游 stream，经 onDelta 实时回调 */
   stream?: boolean
   onDelta?: ChatAgentUpstreamDeltaHandler
-  /** 尚有必调工具未完成时首几轮用 required */
-  shouldRequireTools?: (stepIndex: number) => boolean
   /**
    * 流式每步独立 idle（工具执行间隙不计入）。
    * 与主聊天 createChatUpstreamIdleAbort 对齐。
@@ -100,16 +112,15 @@ export function createChatAgentUpstreamComplete(opts: {
   const timeoutMs = opts.timeoutMs ?? UPSTREAM_FETCH_TIMEOUT_MS
   const useStream = opts.stream === true
   const idleMs = opts.streamIdleMs ?? UPSTREAM_STREAM_IDLE_TIMEOUT_MS
-  return async ({ messages, tools, signal, stepIndex }) => {
+  return async ({ messages, tools, toolChoice, signal }) => {
     const payload: Record<string, unknown> = {
       ...opts.basePayload,
       messages: agentMessagesToUpstream(messages),
       stream: useStream,
     }
-    if (tools && tools.length > 0) {
+    if (tools && tools.length > 0 && toolChoice !== 'none') {
       payload.tools = tools
-      payload.tool_choice =
-        opts.shouldRequireTools?.(stepIndex) === true ? 'required' : 'auto'
+      payload.tool_choice = toolChoice === 'required' ? 'required' : 'auto'
     } else {
       delete payload.tools
       delete payload.tool_choice
@@ -181,6 +192,11 @@ export interface RunChatAgentLoopParams {
   streamUpstream?: boolean
   onUpstreamDelta?: ChatAgentUpstreamDeltaHandler
   searchContext?: import('./host-search-tools.js').AgentSearchContext
+  /**
+   * 再生/滑动目标 turn；插件可用其把 live staging 基线钉在「本 turn 之前」，
+   * 避免同 turn 其它 receive 的 staging 串味。
+   */
+  regenerateTurnOrdinal?: number | null
   onStep?: (info: {
     stepIndex: number
     toolNames: string[]
@@ -202,11 +218,82 @@ export async function runChatAgentLoop(
     params.tools ?? (await collectAgentToolDefinitions(params.userId))
   const toolNames = tools.map((t) => t.function.name)
   const conversationId = params.conversationId?.trim() ?? ''
-  const requiredToolNames = conversationId
+  const requiredSearchToolNames = conversationId
     ? await resolveRequiredCoreSearchToolNames(conversationId)
     : []
-  const calledRequired = new Set<string>()
-  const complete =
+
+  // 注入 tools 的测试路径不加载插件目录（无用户上下文）
+  const maxCallsByTool = params.tools
+    ? new Map(
+        params.tools.map((t) => {
+          const name = t.function.name
+          const phase = isCoreAgentToolName(name) ? ('read' as const) : undefined
+          return [
+            name,
+            resolveToolMaxCallsPerTurn({ name, phase }),
+          ] as const
+        }),
+      )
+    : await collectAgentToolMaxCallsPerTurn(params.userId)
+  const pluginDecls = params.tools
+    ? []
+    : await collectPluginToolDecls(params.userId)
+
+  const pipelineTools = params.tools?.length
+    ? params.tools.map((t) => {
+        const name = t.function.name
+        const phase = isCoreAgentToolName(name)
+          ? ('read' as const)
+          : undefined
+        return {
+          name,
+          phase,
+          maxCallsPerTurn:
+            maxCallsByTool.get(name) ??
+            resolveToolMaxCallsPerTurn({ name, phase }),
+        }
+      })
+    : [
+        ...listCoreAgentToolDefinitions().map((d) => ({
+          name: d.function.name,
+          phase: 'read' as const,
+          maxCallsPerTurn:
+            maxCallsByTool.get(d.function.name) ??
+            resolveToolMaxCallsPerTurn({
+              name: d.function.name,
+              phase: 'read',
+            }),
+        })),
+        ...pluginDecls.map((d) => ({
+          name: d.name,
+          phase: d.phase,
+          maxCallsPerTurn:
+            d.maxCallsPerTurn ??
+            resolveToolMaxCallsPerTurn({ name: d.name, phase: d.phase }),
+        })),
+      ]
+
+  const policy = buildDefaultAgentPipelinePolicy({
+    tools: pipelineTools,
+    requiredSearchToolNames,
+  })
+  const runtime = createAgentPipelineRuntime({
+    policy,
+    toolDefinitions: tools,
+    defaultsByTool: maxCallsByTool,
+  })
+
+  const writeToolNameList = policyWriteToolNames(policy)
+
+  const agentRunId = randomUUID()
+  const regenOrd =
+    typeof params.regenerateTurnOrdinal === 'number' &&
+    Number.isFinite(params.regenerateTurnOrdinal) &&
+    params.regenerateTurnOrdinal >= 0
+      ? Math.round(params.regenerateTurnOrdinal)
+      : undefined
+
+  const upstreamComplete =
     params.complete ??
     createChatAgentUpstreamComplete({
       url: params.url,
@@ -215,26 +302,47 @@ export async function runChatAgentLoop(
       stream: params.streamUpstream === true,
       onDelta: params.onUpstreamDelta,
       generationAbort: params.generationAbort,
-      shouldRequireTools: () =>
-        requiredToolNames.some((n) => !calledRequired.has(n)),
     })
-  const seeded = prependAgentToolsSystemPad(
+
+  const seeded = prependAgentToolsSystemPadFromPolicy(
     chatMessagesToAgentMessages(params.messages),
+    policy,
     toolNames,
   )
+
   const result = await runAgentLoop({
     messages: seeded,
     tools: tools.length > 0 ? tools : undefined,
+    resolveTools: () => runtime.offerToolDefinitions(),
+    resolveToolChoice: () => runtime.toolChoice(),
+    prepareStepMessages: ({ messages }) => {
+      const instruction = runtime.consumeStageEnterInstruction()
+      if (!instruction) return
+      messages.push({
+        role: 'user',
+        content: instruction,
+      })
+    },
     maxSteps: params.maxSteps,
     signal: params.signal,
     onProgress: (ev) => {
+      if (ev.type === 'prose_committed') runtime.onProseCommitted()
       params.onActivity?.()
       params.onProgress?.(ev)
     },
-    requiredToolNames,
+    requiredToolNames: requiredSearchToolNames,
+    requiredWriteToolNames: writeToolNameList,
     executeTool: conversationId
       ? async (name, argsJson, signal) => {
           params.onActivity?.()
+          const gate = runtime.assertCallAllowed(name)
+          if (!gate.ok) {
+            return {
+              ok: false as const,
+              code: gate.code,
+              detail: gate.detail,
+            }
+          }
           const out = await dispatchAgentToolCall({
             name,
             argsJson,
@@ -242,18 +350,31 @@ export async function runChatAgentLoop(
             signal,
             userId: params.userId,
             searchContext: params.searchContext,
+            agentRunId,
+            ...(regenOrd !== undefined
+              ? { baselineTurnOrdinalExclusive: regenOrd }
+              : {}),
           })
-          if (requiredToolNames.includes(name)) calledRequired.add(name)
+          if (out.ok) {
+            runtime.onToolSuccess(name)
+          } else {
+            runtime.onToolFailure(name)
+          }
           params.onActivity?.()
           return out
         }
       : undefined,
     complete: async (input) => {
       params.onActivity?.()
-      const turn = await complete(input)
-      for (const t of turn.toolCalls) {
-        if (requiredToolNames.includes(t.function.name)) {
-          calledRequired.add(t.function.name)
+      const turn = await upstreamComplete(input)
+      if (turn.content.trim()) {
+        const writeSet = new Set(writeToolNameList)
+        const readOnlyTools =
+          turn.toolCalls.length > 0 &&
+          turn.toolCalls.every((t) => !writeSet.has(t.function.name))
+        const searchDone = runtime.missingPreProseRequired().length === 0
+        if (!readOnlyTools || searchDone) {
+          runtime.onProseCommitted()
         }
       }
       params.onStep?.({
@@ -282,7 +403,8 @@ export function emitAgentProgressAsReasoning(
     ev.type === 'tool_calls' ||
     ev.type === 'tool_result' ||
     ev.type === 'step_start' ||
-    ev.type === 'final'
+    ev.type === 'final' ||
+    ev.type === 'prose_committed'
   ) {
     out.write(
       formatArousalAgentSseLine({
@@ -297,10 +419,12 @@ export function emitAgentProgressAsReasoning(
               }
             : ev.type === 'step_start'
               ? { toolsOffered: ev.toolsOffered }
-              : {
-                  finishReason: ev.finishReason,
-                  usedTools: ev.usedTools,
-                }),
+              : ev.type === 'prose_committed'
+                ? { contentChars: ev.contentChars }
+                : {
+                    finishReason: ev.finishReason,
+                    usedTools: ev.usedTools,
+                  }),
       }),
     )
   }
@@ -326,7 +450,8 @@ export function writeAgentLoopResultToSse(opts: {
         ? ApiErrorCodes.persist_cancelled_by_user
         : result.errorCode === 'max_steps'
           ? ApiErrorCodes.agent_max_steps
-          : result.errorCode === 'required_tools_missing'
+          : result.errorCode === 'required_tools_missing' ||
+              result.errorCode === 'required_write_tools_missing'
             ? ApiErrorCodes.agent_required_tools_missing
             : result.errorCode === 'upstream_error'
               ? ApiErrorCodes.upstream_api_error

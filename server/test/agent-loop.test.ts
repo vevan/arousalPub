@@ -207,6 +207,46 @@ describe('runAgentLoop', () => {
     assert.equal(result.steps[0]?.tools?.[0]?.errorCode, 'tool_not_found')
   })
 
+  it('resolveTools can hide tools on later steps', async () => {
+    registerFixtureEchoTool()
+    const toolsLens: Array<number | null> = []
+    let step = 0
+    const result = await runAgentLoop({
+      messages: baseMessages,
+      tools: [fixtureEchoToolDefinition],
+      resolveTools: ({ stepIndex }) =>
+        stepIndex === 0 ? [fixtureEchoToolDefinition] : undefined,
+      maxSteps: 4,
+      complete: async ({ tools }): Promise<AssistantModelTurn> => {
+        toolsLens.push(tools == null ? null : tools.length)
+        step += 1
+        if (step === 1) {
+          return {
+            content: '',
+            toolCalls: [
+              {
+                id: 'call_1',
+                type: 'function',
+                function: {
+                  name: 'fixture_echo',
+                  arguments: '{"text":"a"}',
+                },
+              },
+            ],
+            finishReason: 'tool_calls',
+          }
+        }
+        return {
+          content: 'done',
+          toolCalls: [],
+          finishReason: 'stop',
+        }
+      },
+    })
+    assert.equal(result.ok, true, result.errorDetail ?? result.errorCode)
+    assert.deepEqual(toolsLens, [1, null])
+  })
+
   it('requiredToolNames missing on last step → required_tools_missing', async () => {
     const result = await runAgentLoop({
       messages: baseMessages,
@@ -222,6 +262,61 @@ describe('runAgentLoop', () => {
     assert.equal(result.stopReason, 'required_tools_missing')
     assert.equal(result.errorCode, 'required_tools_missing')
     assert.match(String(result.errorDetail), /fixture_echo/)
+  })
+
+  it('nudges when requiredWriteToolNames missing after prose then finals', async () => {
+    registerFixtureEchoTool()
+    let step = 0
+    const result = await runAgentLoop({
+      messages: baseMessages,
+      tools: [fixtureEchoToolDefinition],
+      requiredWriteToolNames: ['fixture_echo'],
+      complete: async (): Promise<AssistantModelTurn> => {
+        step += 1
+        if (step === 1) {
+          return {
+            content: 'user-facing reply',
+            toolCalls: [],
+            finishReason: 'stop',
+          }
+        }
+        if (step === 2) {
+          return {
+            // 弱模型常在 write 步输出 meta 短句；不得覆盖已锁定正文
+            content: 'The scene has been recorded and the tracker updated.',
+            toolCalls: [
+              {
+                id: 'call_1',
+                type: 'function',
+                function: {
+                  name: 'fixture_echo',
+                  arguments: '{"text":"patch"}',
+                },
+              },
+            ],
+            finishReason: 'tool_calls',
+          }
+        }
+        return {
+          content: 'another meta line',
+          toolCalls: [],
+          finishReason: 'stop',
+        }
+      },
+    })
+    assert.equal(result.ok, true)
+    assert.equal(result.content, 'user-facing reply')
+    assert.ok(step >= 3)
+    assert.ok(
+      result.steps.some((s) => s.toolNames?.includes('fixture_echo')),
+    )
+    const nudge = result.messages.find(
+      (m) =>
+        m.role === 'user' &&
+        typeof m.content === 'string' &&
+        m.content.includes('write/mutate'),
+    )
+    assert.ok(nudge)
   })
 
   it('nudges when requiredToolNames missing then finals', async () => {

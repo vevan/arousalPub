@@ -1,6 +1,6 @@
 # 53 · Agent Runtime / Tools / 节点图 — 实施计划
 
-> **状态**：**阶段 2 可验证（tools + UI）· 等人工验证** · 节点图未做 · **§16.6 已定案 · proseCommitted SSE 已落地**  
+> **状态**：**阶段 2 可验证（tools + UI）· 等人工验证** · 节点图未做 · **§16.6 / §16.8 已定案** · **§16.9 Agent 设置页草案**（双列编排 / 未实现）  
 
 
 > **分支**：`agent`  
@@ -392,11 +392,12 @@ execute(graph, ctx):
 
 | 子阶段 | 内容 |
 |--------|------|
+| **设置页线性编排** | **§16.9 草案**：全局 Agent Tab · 双列可用/激活工具 · 正文固定节点 · 拖曳顺序 · 单步 `maxCalls`/限制（编译为 `AgentPipelinePolicy`） |
 | 3a | JSON 导入/导出 + 只读拓扑列表 + 校验错误展示 |
 | 3b | 简单编辑：加节点、选 type、连边、改 params（非画布） |
 | 3c | 可视化画布（后置；可独立排期） |
 
-编辑壳在宿主；节点「自定义控件」若需要，仅用 **generic schema form**（与插件 settingsSchema 同模式），禁止宿主特化某节点 UI。
+编辑壳在宿主；节点「自定义控件」若需要，仅用 **generic schema form**（与插件 settingsSchema 同模式），禁止宿主特化某节点 UI。线性流水线 UI 优先于 3a–3c（见 §16.9）。
 
 ### 6.6 与现有插件迁移
 
@@ -669,6 +670,9 @@ flowchart LR
 | 2026-11-24 | 核心检索 tools、插件 runTool、notes.list、会话 UI Agent 开关 |
 | 2026-11-24 | §16：读→正文→写相位 + 正文后 tool 的气泡流式设计（草案）；链 [`30`](30-plugin-trace-keeper.md) §2.3 |
 | 2026-11-24 | §16.6 定案；落地 `tools[].phase` + `proseCommitted` SSE（未提交才 clear） |
+| 2026-11-24 | §16.8：`AgentPipelinePolicy` 默认精细逐步（一工具一步 + 进阶 instruction）+ runtime（节点图线性前驱） |
+| 2026-11-24 | §16.9：【Agent 设置页】草案（双列可用/激活工具、正文固定节点、拖曳顺序、单步限制/次数） |
+| 2026-11-24 | §16.9：定案 — 会话覆盖全局、非多预设单文档、模式开关实时切换 |
 
 ---
 
@@ -751,7 +755,8 @@ phase = before_prose
 | manifest `tools[].phase` | 字段名 **`phase`**；枚举 **`read` / `write`**；缺省 = 未标注（清正文时按 read 处理：未提交则 clear） |
 | 同 step「content + call write」 | **同 step 允许**：若已推 `contentChars > 0` 且 tool 含 write → **commit、不清**；`toolCallsDelta` 只 suppress、**不** clear（等 `tool_calls` 进度带齐名字再决） |
 | 无 prose 直接 write | **SSE 层允许**（不 clear 空泡）；业务拒绝由**插件** `runTool` / 日后 required-write 策略负责，宿主本阶段不硬拒 |
-| 弱模型只 stop 不调 write | **本阶段不**做宿主级 write nudge（避免特化）；迹录可后置 required 或 Separate 兜底 |
+| 弱模型只 stop 不调 write | 宿主按 manifest `phase=write` **generic nudge** + 正文后 `tool_choice=required`（至少一次成功 write）；允许多次 patch 补字段；触顶 → `required_write_tools_missing` |
+| 检索完成前泄漏正文 | **不推主泡**（SSE suppress）；tool_calls 仍可 clear 计数。检索完成后正文才流式；其后 read/write 对已有正文 **commit** 不清 |
 | `clearAssistantContent` | **保留**；仅 **`!proseCommitted`** 且判定为非「content→write 提交」时下发 |
 
 实现入口：`server/src/agent/agent-prose-phase.ts` + chat agent SSE；`collectWriteAgentToolNames`。
@@ -763,3 +768,148 @@ phase = before_prose
 | tool_calls ⇒ 正文无效 / 应 clear | **未提交**时才 clear；**已提交**后 write tool 保留气泡 |
 | 终局 = 无 tool 的 stop | 终局 = prose 已提交 ± 后续 write tools 完成 |
 | 迹录 Together 与 Agent 可混 | 工具模式与 Together **禁双写**（30 §2.3） |
+
+### 16.8 默认流水线策略 = 节点图的线性编译（2026-11-24）
+
+> **状态**：已落地骨架（`AgentPipelinePolicy` + runtime）；完整 DAG 执行器仍属阶段 3。
+
+相位机 / 默认精细流水线是 **单 agent loop 对「逐工具 read → prose → 逐工具 write」图的线性近似**。日后会话绑定图时，执行器须 **编译为同一 `AgentPipelinePolicy`**，禁止与另一套相位 if 双跑。
+
+| 层 | 模块 | 职责 |
+|----|------|------|
+| 能力默认 | manifest `tools[].phase` / `maxCallsPerTurn` | 插件声明；宿主不写业务 id |
+| 策略 | `server/src/agent/agent-pipeline-policy.ts` | `stages[]`：逐步 `id` / `step` / `instruction` / `offer` / `toolChoice` / `advanceWhen` |
+| 运行时 | `agent-pipeline-runtime.ts` | 当前步 offer、`tool_choice`、越权拒绝、尝试计数、推进、`consumeStageEnterInstruction` |
+| 接入 | `chat-agent-run.ts` | policy → runtime；`resolveTools` / `resolveToolChoice` / `prepareStepMessages` 注入步进指令 |
+| 垫片 | `agent-system-pad.ts` | **由 policy 逐步列表生成**，与门禁同源 |
+
+**默认精细步骤（无绑定图时；一工具一步）**
+
+1. 每个绑定检索独立一步：`tool:{name}`，`offer=[{required}]`，`toolChoice=required`，`advanceWhen=required_tools_done`  
+2. 每个其余 `phase=read` 独立一步：`toolChoice=required`，`advanceWhen=offer_exhausted`（成功或失败尝试耗尽即过，防 `already_initialized` 死循环）  
+3. `prose`：offer=`[]`，`toolChoice=none` → 逼正文；`advanceWhen=prose_committed`  
+4. 每个 `phase=write` 独立一步：`write:{name}`，`required`，`advanceWhen=required_writes_done`
+
+每步带 `instruction`（如 `[Pipeline step 2/5] Call ONLY "memory_search"…`）。进入新步时 runtime 经 `prepareStepMessages` **注入一条 user 消息**，明确告诉模型本步该做什么；system pad 列出全步骤概览。
+
+**强制顺序手段（generic）**：只暴露当前步 tools；`tool_choice`；`assertCallAllowed`（`pipeline_stage_rejected` / `tool_call_limit`）；步进 instruction。**禁止靠提前正文提交跳过**尚未耗尽的 tool 步。有限 `maxCalls` 对成功与失败尝试计数。
+
+**次数权威**：stage `offer[].maxCalls` > manifest `maxCallsPerTurn` > 相位默认（read=1，write=∞）。
+
+**非目标（本小节）**：图 JSON 存储、画布、并行汇合、子 agent 配额 —— 见 §6。
+
+### 16.9 Agent 设置页（草案 · 2026-11-24）
+
+> **状态**：**草案**（文案定稿待实现 · 未开工 UI）。  
+> **定位**：把今日「对话绑定里的 Agent 开关」升级为可编排的 **简易线性节点图** 配置面；落盘结果编译为 §16.8 `AgentPipelinePolicy`（日后完整 DAG 仍编译为同一形状）。  
+> **约束**：宿主 **generic**（DOC/41）；列表与表单只认 `toolName` / `phase` / schema 字段，**零** bundled 插件 id 或产品话术特化。
+
+#### 16.9.1 信息架构（已定案）
+
+| 入口 | 职责 |
+|------|------|
+| **全局设置页 Tab「Agent」** | 用户级默认：模式开关 + 唯一流水线编排（可用/激活双列） |
+| **会话设置** | **可覆盖全局**：本会话的模式开关 +（可选）流水线稀疏覆盖；未覆盖字段继承全局 |
+| 现状迁移 | 对话绑定 Tab 现有 Agent 开关并入会话 Agent 区；全局与会话各一处开关，**禁止**第三真相源 |
+
+**已定案规则**
+
+1. **会话可覆盖全局**（对齐其它会话稀疏配置习惯）；解析顺序：会话显式字段 → 否则全局。  
+2. **非多预设**：不做 `presets[]` / `activePresetId`；全局 **单文档**（如 `agent-settings.json`），会话侧稀疏覆盖同一形状。  
+3. **开关实时切模式**：拨动即 PATCH 落盘；**下一句发送**即走对应路径（Agent loop vs 原始单次补全），无需「应用/保存编排」才生效模式。编排字段可另防抖保存，但模式开关本身 **即时**。
+
+**页顶（全局 / 会话同构）**
+
+1. **标题**：Agent（会话侧可注「覆盖全局」）  
+2. **Agent 模式开关**（`off` / `on`；文案沿用 `chat.convSettings.agentMode*`，抽到 `settings.agent.*`）  
+3. 短说明：开启后关闭自动 lore/memory/knowledge 注入，改走工具逐步流水线；关闭则恢复原始单次补全。
+
+开关为 **总闸**：关 = 下方编排仍可编辑，出站不走 Agent；开 = 用当前生效流水线（会话覆盖 ∪ 全局）编译 policy。
+#### 16.9.2 布局（双列 · 简易节点图）
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Agent                              [ Agent 模式 ○──● ]     │
+│  说明…                                                      │
+├──────────────────────────┬──────────────────────────────────┤
+│  可用工具（已注册）        │  激活流水线（顺序 = 执行顺序）      │
+│  · 搜索 / 过滤            │  ┌─ 1. lore_search      [⚙] [×] │
+│  ┌────────────────────┐  │  ├─ 2. memory_search    [⚙] [×] │
+│  │ lore_search   [＋] │  │  ├─ 3. trace_read       [⚙] [×] │
+│  │ memory_search [＋] │  │  ├─ ◆ 正文（固定）              │
+│  │ knowledge_…   [＋] │  │  └─ 4. trace_patch      [⚙] [×] │
+│  │ … plugin tools     │  │                                  │
+│  └────────────────────┘  │  拖曳排序 · 点 ⚙ 打开工具设置     │
+└──────────────────────────┴──────────────────────────────────┘
+```
+
+| 列 | 内容 | 交互 |
+|----|------|------|
+| **左 · 可用工具** | 当前用户已注册、可对 Agent 暴露的工具目录（核心检索 + 插件 `manifest.tools[]`；**不含**仅 `serverActions` 的人机动作） | 搜索/按 `phase` 过滤；`＋` 或拖入右侧「激活」；已激活项可灰显或标「已在流水线」 |
+| **右 · 激活流水线** | **有序**步骤列表 = 简易线性节点图（非自由画布） | 拖曳调整顺序；移除；点开单步设置；**必须**含一枚不可删除的 **「正文」** 节点（对应 policy `prose`） |
+
+**正文节点（固定）**
+
+- 显示名：「正文」/ `prose`（i18n）；不可从左侧「添加」，不可删除。  
+- 可拖曳 **在工具步之间** 调整相对位置（默认：全部 read 之后、全部 write 之前；用户可把个别 write 仍限制在正文后 —— 见校验）。  
+- 本步无 tool offer；`toolChoice=none`；进入时 instruction 默认「撰写面向用户的完整回复」。
+
+**顺序与相位校验（保存时）**
+
+- `phase=write` 的工具 **不得** 排在正文节点之前（保存/应用报错并标红）。  
+- `phase=read` 建议在正文前；若用户强行拖到正文后，须二次确认或禁止（草案倾向：**禁止**，与 §16 读→正文→写一致）。  
+- 左侧未激活的工具本回合 **不 offer**（与 runtime 一致）。
+
+#### 16.9.3 单工具设置（右侧 ⚙）
+
+弹出抽屉或对话框（generic 表单，无插件专用控件）：
+
+| 字段 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `enabled` | 隐含 | 在右侧即启用 | 移出右侧 = 未激活 |
+| `required` | boolean | 核心绑定检索 `true`；其余 read `false` | `true` → `advanceWhen=required_tools_done`（须成功）；`false` → 可用 `offer_exhausted` |
+| `maxCalls` | number \| ∞ | read=`1`；write=`∞` | 本步尝试上限（成功+失败均计数）；UI：「每回合最多调用」+「不限制」开关 |
+| `toolChoice` | `required` \| `auto` \| `none` | 有 offer 时默认 `required` | 高级；默认可折叠 |
+| `instruction` | string | 合成器模板（含 step 序号） | 进入本步注入给模型的指令；支持预览 |
+| `advanceWhen` | enum | 随 `required` 推导 | 高级；`required_tools_done` / `offer_exhausted` /（正文）`prose_committed` /（write）`required_writes_done` |
+| `title` | string | 工具显示名 | 可选覆写列表标题 |
+
+正文节点可编辑项仅：`instruction`、（只读）`toolChoice=none`。
+
+#### 16.9.4 与 runtime / 存储的映射
+
+| UI | 编译产物 |
+|----|----------|
+| 右侧有序工具 + 正文 | `AgentPipelinePolicy.stages[]`（§16.8） |
+| 全局（单文档） | `data/{userId}/agent-settings.json`（名可微调）：`agentMode` + 流水线 stages；**禁止** `presets[]`；**新建用户**才 seed，遵从 seed 规则 |
+| 会话覆盖 | 会话 `index` 稀疏：`agentMode?` + 可选流水线覆盖字段；缺省继承全局；与今日 `agentMode` 字段对齐演进 |
+| 生效解析 | `effectiveAgentMode` / `effectivePipeline` = 会话覆盖 ∪ 全局；出站前一次解析 |
+| 出站 | `agentMode=on` → 用生效流水线（无编排则 `buildDefaultAgentPipelinePolicy`）；`off` → 原始单次补全 |
+
+**禁止**：设置页写死某插件工具名；目录来自 `collectAgentToolDefinitions`（或 manage API 等价投影）。  
+**禁止**：多套流水线预设、preset 下拉、双写旧「仅会话开关」与新文档两套模式字段长期并存。
+
+#### 16.9.5 交付切片（建议）
+
+| 切片 | 内容 | 依赖 |
+|------|------|------|
+| **A · 壳** | 全局 Tab + **即时**模式开关 + 只读双列预览 | 工具聚合 API；开关 PATCH 立刻影响后续 send |
+| **B · 编排** | 激活/移除、拖曳排序、正文固定节点、相位校验；单文档写盘 | A |
+| **C · 单步设置** | `maxCalls` / `required` / `instruction` → policy 驱动 runtime | B；§16.8 |
+| **D · 会话覆盖** | 会话设置：即时开关覆盖 + 可选流水线稀疏覆盖 / 「恢复全局」 | C |
+| **E · 画布** | 真 DAG（并边/汇合） | 阶段 3；本草案 **不做** |
+
+#### 16.9.6 非目标（本草案）
+
+- 自由连线画布、并行边、子 agent 配额  
+- **多套 Agent 流水线预设**（`presets[]` / `activePresetId`）  
+- 宿主内嵌某插件专用设置面板（插件仍用现有 `settingsSchema`）  
+- 在设置页跑真实 upstream 调试（可后置「试跑」）
+
+#### 16.9.7 已定案（原待拍板）
+
+| 项 | 定案 |
+|----|------|
+| 作用域 | **全局默认 + 会话可覆盖** |
+| 预设形态 | **非多预设**；全局单文档，会话稀疏覆盖 |
+| 模式开关 | **实时切换**：PATCH 后下一句即新模式，不等待编排另存 |

@@ -308,11 +308,15 @@ export async function runCoreLoreSearchTool(
     win.idx.lorebookSettings,
   )
 
-  // memoryScan：与主路径一致，用于 lore keyword/vector 扫描
+  // memoryScan：与主路径一致；嵌入失败时降级为空扫描，不拖垮整个 lore_search
   let memoryScanText = ''
   if (win.memorySettings.memoryEnabled) {
-    const mem = await recallMemoryItemsForAgent(conversationId, query, win)
-    memoryScanText = memoryItemsToScanPlainText(mem.items, win.corpusOptions)
+    try {
+      const mem = await recallMemoryItemsForAgent(conversationId, query, win)
+      memoryScanText = memoryItemsToScanPlainText(mem.items, win.corpusOptions)
+    } catch {
+      memoryScanText = ''
+    }
   }
   const scanCorpus = buildScanText(
     query,
@@ -385,7 +389,15 @@ export async function runCoreMemorySearchTool(
   if (!win) {
     return JSON.stringify({ ok: false, code: 'conversation_not_found' })
   }
-  const mem = await recallMemoryItemsForAgent(conversationId, query, win)
+  let mem: Awaited<ReturnType<typeof recallMemoryItemsForAgent>>
+  try {
+    mem = await recallMemoryItemsForAgent(conversationId, query, win)
+  } catch (e) {
+    // 抛给 runCoreAgentTool → tool_failed（ok:false），不计入成功预算，可重试
+    throw e instanceof Error
+      ? e
+      : new Error(typeof e === 'string' ? e : 'memory_recall_failed')
+  }
   if (mem.note && mem.items.length === 0) {
     return JSON.stringify({
       ok: true,
@@ -441,8 +453,12 @@ export async function runCoreKnowledgeSearchTool(
   }
   let memoryScanText = ''
   if (win.memorySettings.memoryEnabled) {
-    const mem = await recallMemoryItemsForAgent(conversationId, query, win)
-    memoryScanText = memoryItemsToScanPlainText(mem.items, win.corpusOptions)
+    try {
+      const mem = await recallMemoryItemsForAgent(conversationId, query, win)
+      memoryScanText = memoryItemsToScanPlainText(mem.items, win.corpusOptions)
+    } catch {
+      memoryScanText = ''
+    }
   }
   const scanCorpus = buildScanText(
     query,

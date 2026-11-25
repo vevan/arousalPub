@@ -118,23 +118,15 @@ function calledSuccessfulToolNames(steps: AgentLoopStepTrace[]): Set<string> {
   for (const s of steps) {
     for (const t of s.tools ?? []) {
       const name = t.name?.trim()
-      if (name && t.ok !== false) out.add(name)
+      // 仅 ok===true；未执行（undefined）与失败均不算满足必调
+      if (name && t.ok === true) out.add(name)
     }
   }
   return out
 }
 
+/** 必调检索/门禁：须至少成功一次（失败调用不算满足） */
 function missingRequired(
-  required: string[] | undefined,
-  steps: AgentLoopStepTrace[],
-): string[] {
-  const need = (required ?? []).map((n) => n.trim()).filter(Boolean)
-  if (!need.length) return []
-  const called = calledToolNames(steps)
-  return need.filter((n) => !called.has(n))
-}
-
-function missingRequiredSuccessful(
   required: string[] | undefined,
   steps: AgentLoopStepTrace[],
 ): string[] {
@@ -142,6 +134,13 @@ function missingRequiredSuccessful(
   if (!need.length) return []
   const called = calledSuccessfulToolNames(steps)
   return need.filter((n) => !called.has(n))
+}
+
+function missingRequiredSuccessful(
+  required: string[] | undefined,
+  steps: AgentLoopStepTrace[],
+): string[] {
+  return missingRequired(required, steps)
 }
 
 /**
@@ -258,9 +257,6 @@ export async function runAgentLoop(
     const truncatedCalls = rawCalls.slice(0, maxCallsPerStep)
     const wantsTools =
       turn.finishReason === 'tool_calls' || truncatedCalls.length > 0
-    const stepHasWrite = truncatedCalls.some((t) =>
-      writeNameSet.has(t.function.name.trim()),
-    )
 
     const stepTools: AgentLoopToolTrace[] = truncatedCalls.map((t) => ({
       name: t.function.name,
@@ -279,15 +275,15 @@ export async function runAgentLoop(
     if (turn.content.trim() && !userFacingContentLocked) {
       lastContent = turn.content
     }
-    if (!userFacingContentLocked && lastContent.trim()) {
-      if (stepHasWrite) {
-        userFacingContentLocked = true
-      } else if (!wantsTools) {
-        // 检索已齐的正文收尾 → 立刻锁定，防止下一步 meta 覆盖
-        if (missingRequired(opts.requiredToolNames, steps).length === 0) {
-          userFacingContentLocked = true
-        }
-      }
+    // 不因「tool_calls 里有 write 名」预锁：读步误夹且被 pipeline 拒绝时不得锁死泄漏正文。
+    // write 成功后再锁（见下方工具循环后）；纯正文收尾在此锁定。
+    if (
+      !userFacingContentLocked &&
+      lastContent.trim() &&
+      !wantsTools &&
+      missingRequired(opts.requiredToolNames, steps).length === 0
+    ) {
+      userFacingContentLocked = true
     }
     if (turn.reasoning) lastReasoning = turn.reasoning
 
@@ -456,6 +452,17 @@ export async function runAgentLoop(
         tool_call_id: tc.id,
         content: wrapUntrustedToolContent(executed.content),
       })
+    }
+
+    // 仅当本步 write 工具真正成功时锁定正文（拒绝/失败的 write 名不锁）
+    if (
+      !userFacingContentLocked &&
+      lastContent.trim() &&
+      stepTools.some(
+        (t) => writeNameSet.has(t.name.trim()) && t.ok === true,
+      )
+    ) {
+      userFacingContentLocked = true
     }
   }
 

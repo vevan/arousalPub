@@ -1373,6 +1373,7 @@ export function registerChatRoutes(app: FastifyInstance): void {
         const defaultSpeaker = convIdx ? resolvedCharacterIds(convIdx)[0]?.trim() ?? '' : ''
         let ok: boolean
         if (typeof normalized.segmentIndex === 'number') {
+          // 与单聊一致：全量 replace turn.plugins（含 [] 清空）；勿走 merge 形参
           ok = await updateTurnSegmentInTailChunk(
             id,
             ord,
@@ -1382,11 +1383,8 @@ export function registerChatRoutes(app: FastifyInstance): void {
             normalized.activeReceiveIndex,
             defaultSpeaker,
             undefined,
-            contentUnchanged
-              ? undefined
-              : syncedPlugins.length > 0
-                ? syncedPlugins
-                : undefined,
+            undefined,
+            contentUnchanged ? undefined : syncedPlugins,
           )
         } else {
           ok = await updateTurnContentInTailChunk(

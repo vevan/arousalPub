@@ -109,28 +109,62 @@ describe('createAgentPipelineRuntime', () => {
       toolDefinitions: tools,
     })
     rt.onToolSuccess('lore_search')
+    // 同一步内不推进；下一次 offer 才推进
+    assert.equal(rt.currentStage().id, 'tool:lore_search')
     const offered = rt.offerToolDefinitions()?.map((t) => t.function.name) ?? []
     assert.deepEqual(offered, ['memory_search'])
     assert.equal(rt.currentStage().id, 'tool:memory_search')
     assert.match(String(rt.consumeStageEnterInstruction()), /memory_search/)
   })
 
-  it('optional read uses offer_exhausted; failure advances', () => {
+  it('required failure does not advance and still offers the tool', () => {
+    const rt = createAgentPipelineRuntime({
+      policy,
+      toolDefinitions: tools,
+    })
+    rt.onToolFailure('lore_search')
+    rt.advanceIfReady()
+    assert.equal(rt.currentStage().id, 'tool:lore_search')
+    assert.equal(rt.toolChoice(), 'required')
+    assert.equal(rt.assertCallAllowed('lore_search').ok, true)
+    assert.deepEqual(rt.missingPreProseRequired(), [
+      'lore_search',
+      'memory_search',
+    ])
+  })
+
+  it('same-step multi success does not unlock next-stage tools mid-batch', () => {
+    const rt = createAgentPipelineRuntime({
+      policy,
+      toolDefinitions: tools,
+    })
+    assert.equal(rt.assertCallAllowed('lore_search').ok, true)
+    rt.onToolSuccess('lore_search')
+    // 尚未 offer/advance：仍在 lore 步，memory 仍拒
+    assert.equal(rt.assertCallAllowed('memory_search').ok, false)
+    assert.equal(rt.assertCallAllowed('trace_patch').ok, false)
+    rt.advanceIfReady()
+    assert.equal(rt.assertCallAllowed('memory_search').ok, true)
+  })
+
+  it('optional read uses offer_exhausted; failure advances on next offer', () => {
     const rt = createAgentPipelineRuntime({
       policy,
       toolDefinitions: tools,
     })
     rt.onToolSuccess('lore_search')
     rt.onToolSuccess('memory_search')
+    rt.offerToolDefinitions()
     assert.equal(rt.currentStage().id, 'tool:trace_read')
     assert.equal(rt.toolChoice(), 'required')
     assert.equal(rt.assertCallAllowed('trace_read').ok, true)
     rt.onToolFailure('trace_read')
-    assert.equal(rt.currentStage().id, 'prose')
+    assert.equal(rt.currentStage().id, 'tool:trace_read')
     const again = rt.assertCallAllowed('trace_read')
     assert.equal(again.ok, false)
-    if (!again.ok) assert.equal(again.code, 'pipeline_stage_rejected')
+    if (!again.ok) assert.equal(again.code, 'tool_call_limit')
     assert.equal(rt.offerToolDefinitions(), undefined)
+    assert.equal(rt.currentStage().id, 'prose')
     assert.equal(rt.toolChoice(), 'none')
   })
 
@@ -164,6 +198,26 @@ describe('createAgentPipelineRuntime', () => {
     assert.deepEqual(offered, ['trace_patch'])
     assert.equal(rt.toolChoice(), 'required')
     assert.match(String(rt.consumeStageEnterInstruction()), /trace_patch/)
+  })
+
+  it('infinite write maxCalls stays offerable after one success until advanced', () => {
+    const rt = createAgentPipelineRuntime({
+      policy,
+      toolDefinitions: tools,
+    })
+    rt.onToolSuccess('lore_search')
+    rt.onToolSuccess('memory_search')
+    rt.onToolSuccess('trace_read')
+    rt.offerToolDefinitions()
+    rt.onProseCommitted()
+    assert.equal(rt.currentStage().id, 'write:trace_patch')
+    assert.equal(rt.assertCallAllowed('trace_patch').ok, true)
+    rt.onToolSuccess('trace_patch')
+    // 同阶段未 advance 前仍可再调（∞）
+    assert.equal(rt.assertCallAllowed('trace_patch').ok, true)
+    rt.advanceIfReady()
+    // 末段 required_writes_done 已满足但仍停在最后一阶
+    assert.equal(rt.currentStage().id, 'write:trace_patch')
   })
 
   it('effectiveMaxCallsForRule prefers stage maxCalls', () => {

@@ -367,13 +367,10 @@ export async function runChatAgentLoop(
     complete: async (input) => {
       params.onActivity?.()
       const turn = await upstreamComplete(input)
+      // 仅 prose/write 阶段提交；读步误夹 write 名不得置 proseCommitted
       if (turn.content.trim()) {
-        const writeSet = new Set(writeToolNameList)
-        const readOnlyTools =
-          turn.toolCalls.length > 0 &&
-          turn.toolCalls.every((t) => !writeSet.has(t.function.name))
-        const searchDone = runtime.missingPreProseRequired().length === 0
-        if (!readOnlyTools || searchDone) {
+        const stageKind = runtime.currentStage().kind
+        if (stageKind === 'prose' || stageKind === 'write') {
           runtime.onProseCommitted()
         }
       }

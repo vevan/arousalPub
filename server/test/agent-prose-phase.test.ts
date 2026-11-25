@@ -38,15 +38,29 @@ describe('decideToolCallsProseAction', () => {
     )
   })
 
-  it('commits when write tools follow streamed content', () => {
+  it('commits when write tools follow streamed content after reads done', () => {
     assert.equal(
       decideToolCallsProseAction({
         proseCommitted: false,
         contentChars: 42,
         toolNames: ['fixture_write'],
         writeToolNames,
+        preProseReadsDone: true,
       }),
       'commit',
+    )
+  })
+
+  it('clears write tool names before pre-prose reads done', () => {
+    assert.equal(
+      decideToolCallsProseAction({
+        proseCommitted: false,
+        contentChars: 42,
+        toolNames: ['fixture_write'],
+        writeToolNames,
+        preProseReadsDone: false,
+      }),
+      'clear',
     )
   })
 

@@ -112,9 +112,13 @@ export function createAgentPipelineRuntime(opts: {
 
   const isExhausted = (rule: ToolOfferRule): boolean => {
     const max = maxFor(rule)
-    if (!Number.isFinite(max)) {
-      return successCount(rule.toolName) >= 1
+    // 无限次数：永不因计数耗尽（推进靠 advanceWhen / 成功门禁）
+    if (!Number.isFinite(max)) return false
+    // required：只按成功次数耗尽，失败可重试（避免必调一次失败即假完成）
+    if (rule.required === true) {
+      return isToolCallBudgetExhausted(max, successCount(rule.toolName))
     }
+    // 可选读 / offer_exhausted：成功与失败尝试均计入，防死循环
     return isToolCallBudgetExhausted(max, attemptCount(rule.toolName))
   }
 
@@ -210,10 +214,13 @@ export function createAgentPipelineRuntime(opts: {
       }
     }
     if (isExhausted(rule)) {
+      const max = maxFor(rule)
+      const used =
+        rule.required === true ? successCount(name) : attemptCount(name)
       return {
         ok: false,
         code: 'tool_call_limit',
-        detail: `Tool ${name} already reached max calls this turn (remaining=${toolCallBudgetRemaining(maxFor(rule), attemptCount(name))})`,
+        detail: `Tool ${name} already reached max calls this turn (remaining=${toolCallBudgetRemaining(max, used)})`,
       }
     }
     return { ok: true }
@@ -230,17 +237,15 @@ export function createAgentPipelineRuntime(opts: {
     if (!name) return
     bumpAttempt(name)
     successfulCalls.set(name, successCount(name) + 1)
-    advanceIfReady()
+    // 不在同一步多 tool_call 中途推进；留给下一次 offer/toolChoice/consumeInstruction
   }
 
   const onToolFailure = (toolName: string): void => {
     bumpAttempt(toolName)
-    advanceIfReady()
   }
 
   const onProseCommitted = (): void => {
     proseCommitted = true
-    advanceIfReady()
     advanceIfReady()
   }
 

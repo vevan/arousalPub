@@ -264,6 +264,134 @@ describe('runAgentLoop', () => {
     assert.match(String(result.errorDetail), /fixture_echo/)
   })
 
+  it('rejected write name in read step does not lock leaked prose', async () => {
+    let step = 0
+    const result = await runAgentLoop({
+      messages: baseMessages,
+      maxSteps: 4,
+      requiredToolNames: ['must_search'],
+      requiredWriteToolNames: ['fixture_write'],
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'must_search',
+            description: 'x',
+            parameters: { type: 'object' },
+          },
+        },
+      ],
+      executeTool: async (name) => {
+        if (name === 'must_search') {
+          return { ok: true as const, content: '{"ok":true}' }
+        }
+        return {
+          ok: false as const,
+          code: 'pipeline_stage_rejected',
+          detail: 'not write stage',
+        }
+      },
+      complete: async (): Promise<AssistantModelTurn> => {
+        step += 1
+        if (step === 1) {
+          return {
+            content: 'leaked during search',
+            toolCalls: [
+              {
+                id: 'c1',
+                type: 'function',
+                function: { name: 'must_search', arguments: '{}' },
+              },
+              {
+                id: 'c2',
+                type: 'function',
+                function: {
+                  name: 'fixture_write',
+                  arguments: '{}',
+                },
+              },
+            ],
+            finishReason: 'tool_calls',
+          }
+        }
+        if (step === 2) {
+          return {
+            content: 'real user-facing reply',
+            toolCalls: [],
+            finishReason: 'stop',
+          }
+        }
+        if (step === 3) {
+          return {
+            content: 'meta',
+            toolCalls: [
+              {
+                id: 'c3',
+                type: 'function',
+                function: {
+                  name: 'fixture_write',
+                  arguments: '{}',
+                },
+              },
+            ],
+            finishReason: 'tool_calls',
+          }
+        }
+        return { content: 'done', toolCalls: [], finishReason: 'stop' }
+      },
+    })
+    // write 被拒不得锁泄漏文；正文应为正式 prose
+    assert.equal(result.content, 'real user-facing reply')
+  })
+
+  it('failed required tool call does not count as satisfied', async () => {
+    let step = 0
+    const result = await runAgentLoop({
+      messages: baseMessages,
+      maxSteps: 2,
+      requiredToolNames: ['must_search'],
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'must_search',
+            description: 'x',
+            parameters: { type: 'object' },
+          },
+        },
+      ],
+      executeTool: async () => ({
+        ok: false as const,
+        code: 'tool_failed',
+        detail: 'boom',
+      }),
+      complete: async (): Promise<AssistantModelTurn> => {
+        step += 1
+        if (step === 1) {
+          return {
+            content: '',
+            toolCalls: [
+              {
+                id: 'c1',
+                type: 'function',
+                function: { name: 'must_search', arguments: '{}' },
+              },
+            ],
+            finishReason: 'tool_calls',
+          }
+        }
+        return {
+          content: 'fake done without success',
+          toolCalls: [],
+          finishReason: 'stop',
+        }
+      },
+    })
+    assert.equal(result.ok, false)
+    assert.equal(result.stopReason, 'required_tools_missing')
+    assert.match(String(result.errorDetail), /must_search/)
+  })
+
   it('nudges when requiredWriteToolNames missing after prose then finals', async () => {
     registerFixtureEchoTool()
     let step = 0

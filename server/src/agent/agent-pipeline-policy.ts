@@ -179,7 +179,7 @@ export function buildDefaultAgentPipelinePolicy(
         `[Pipeline step ${step}/${total}] Call ONLY the tool "${name}" now (once). Do not call other tools. Do not write the user-facing reply yet.`,
       offer: [{ toolName: name, required: false, maxCalls }],
       toolChoice: 'required',
-      // 允许失败一次即过（如 already_initialized）
+      // 可选读：失败/耗尽一次即可推进
       advanceWhen: 'offer_exhausted',
     })
   }
@@ -198,15 +198,25 @@ export function buildDefaultAgentPipelinePolicy(
   for (const name of writeNames) {
     const meta = metaByName.get(name)
     const maxCalls = maxCallsOf(name, 'write', meta?.maxCallsPerTurn)
+    // 有限次数（如 maxCalls=1）的 write：可能合法失败/跳过（无数据才 init），勿卡死流水线
+    const finiteOnce = Number.isFinite(maxCalls) && maxCalls <= 1
     drafts.push({
       id: `write:${name}`,
       kind: 'write',
       title: `Write · ${name}`,
       instructionTemplate: (step, total) =>
-        `[Pipeline step ${step}/${total}] The user-facing reply is done. Call ONLY the tool "${name}" now to apply write/mutate updates. Prefer one call with all needed ops.`,
-      offer: [{ toolName: name, required: true, maxCalls }],
+        finiteOnce
+          ? `[Pipeline step ${step}/${total}] Call ONLY the tool "${name}" now if applicable (skip when its precondition is unmet). Do not call other tools.`
+          : `[Pipeline step ${step}/${total}] The user-facing reply is done. Call ONLY the tool "${name}" now to apply write/mutate updates. Prefer one call with all needed ops.`,
+      offer: [
+        {
+          toolName: name,
+          required: !finiteOnce,
+          maxCalls,
+        },
+      ],
       toolChoice: 'required',
-      advanceWhen: 'required_writes_done',
+      advanceWhen: finiteOnce ? 'offer_exhausted' : 'required_writes_done',
     })
   }
 
@@ -250,27 +260,27 @@ export function stageRequiredToolNames(stage: PipelineStage): string[] {
     .filter(Boolean)
 }
 
-/** 正文前所有必调检索名（跨多个 tool 步） */
+/** 正文前所有必调工具名（跨多个 tool/write 步；遇 prose 停止） */
 export function policyPreProseRequiredToolNames(
   policy: AgentPipelinePolicy,
 ): string[] {
   const out: string[] = []
   for (const s of policy.stages) {
-    if (s.kind === 'prose' || s.kind === 'write') break
+    if (s.kind === 'prose') break
     out.push(...stageRequiredToolNames(s))
   }
   return out
 }
 
-/** 正文后 write 工具名 */
+/**
+ * 须成功的 write 工具名（offer.required=true）。
+ * 供 agent-loop 正文后 nudge；可选 write（如仅无数据才调用的 init）不在此列。
+ */
 export function policyWriteToolNames(policy: AgentPipelinePolicy): string[] {
   const out: string[] = []
   for (const s of policy.stages) {
     if (s.kind !== 'write') continue
-    for (const r of s.offer) {
-      const n = r.toolName.trim()
-      if (n) out.push(n)
-    }
+    out.push(...stageRequiredToolNames(s))
   }
   return out
 }

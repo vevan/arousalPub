@@ -166,7 +166,12 @@ export interface PluginManifest {
    */
   tools?: Array<{
     name: string
+    /** 给模型的工具说明（英文技术向）；UI 勿直接展示 */
     description?: string
+    /** 插件 locales 键：设置页/画布人机标题 */
+    uiTitleKey?: string
+    /** 插件 locales 键：设置页人机简介 */
+    uiDescriptionKey?: string
     parameters?: Record<string, unknown>
     permissions: string[]
     phase?: 'read' | 'write'
@@ -175,6 +180,23 @@ export interface PluginManifest {
      * 缺省：read/未标注 = 1；write = 不限。
      */
     maxCallsPerTurn?: number
+  }>
+  /**
+   * 图节点类型（DOC/53 §6.3）：本地 runNode，不对 LLM 暴露为 tools。
+   * type 在启用插件间建议全局唯一（可用 pluginId 前缀）。
+   */
+  nodeTypes?: Array<{
+    type: string
+    version?: number
+    /** 回退标题（无 titleKey 时）；优先 titleKey → 插件 locales */
+    title?: string
+    titleKey?: string
+    /** 回退说明；优先 descriptionKey → 插件 locales（给人看，非模型） */
+    description?: string
+    descriptionKey?: string
+    permissions: string[]
+    inputs?: Array<{ name: string; valueType?: string }>
+    outputs?: Array<{ name: string; valueType?: string }>
   }>
   lifecycle?: Partial<Record<'onCharacterPrimaryChanged', boolean>>
 }
@@ -454,6 +476,25 @@ export interface PluginServerModule {
     api: PluginServerHostApi,
   ) => Promise<
     | { ok: true; content: string }
+    | { ok: false; code: string; detail?: string }
+  >
+  /**
+   * manifest.nodeTypes 本地节点（DOC/53 §6.3 · 非 LLM）。
+   * 约定 outputs.ok?: boolean 供 if/else prev_node_ok 使用。
+   */
+  runNode?: (
+    type: string,
+    body: {
+      inputs?: Record<string, unknown>
+      params?: Record<string, unknown>
+      conversationId?: string
+      signal?: AbortSignal
+      agentRunId?: string
+      baselineTurnOrdinalExclusive?: number
+    },
+    api: PluginServerHostApi,
+  ) => Promise<
+    | { ok: true; outputs: Record<string, unknown> }
     | { ok: false; code: string; detail?: string }
   >
   /** 落盘响应附加字段（键由插件自定，宿主 opaque 合并） */

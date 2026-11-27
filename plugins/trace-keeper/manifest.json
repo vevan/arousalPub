@@ -6,7 +6,8 @@
     "resolveAfterAssemblePromptsAddition",
     "resolveTurnPluginEntriesFromAssistant",
     "formatPluginContextBlocks",
-    "runTool"
+    "runTool",
+    "runNode"
   ],
   "assembleInjection": {
     "slots": {
@@ -36,6 +37,8 @@
       "phase": "read",
       "maxCallsPerTurn": 1,
       "description": "Read recent Trace Keeper snapshots (last N turns) and current live state. Call at most once before writing the user-visible reply.",
+      "uiTitleKey": "agentToolReadTitle",
+      "uiDescriptionKey": "agentToolReadDesc",
       "permissions": ["conversation.read", "plugin.data"],
       "parameters": {
         "type": "object",
@@ -52,10 +55,12 @@
     },
     {
       "name": "trace_init",
-      "phase": "read",
+      "phase": "write",
       "maxCallsPerTurn": 1,
-      "description": "Initialize tracker live state from the active sampleState. Only when this conversation has no snapshot for the current epoch. Call at most once.",
-      "permissions": ["conversation.read", "plugin.data"],
+      "description": "Write tool: initialize tracker live state from sampleState. Call ONLY when this conversation has no live/turn snapshot for the current epoch. Mutually exclusive with trace_patch for the same purpose—if data already exists, use trace_patch instead. At most once per turn.",
+      "uiTitleKey": "agentToolInitTitle",
+      "uiDescriptionKey": "agentToolInitDesc",
+      "permissions": ["conversation.read", "plugin.data", "turn.plugins.write"],
       "parameters": {
         "type": "object",
         "additionalProperties": false,
@@ -65,7 +70,9 @@
     {
       "name": "trace_patch",
       "phase": "write",
-      "description": "After the user-visible reply, apply RFC6902-subset ops (replace/add/remove) to the scene tracker. Never replace the whole state object in one shot.",
+      "description": "Write tool: apply RFC6902-subset ops (replace/add/remove) to the scene tracker when data already exists. Mutually exclusive with trace_init—do not call init if a snapshot/live state exists; call init first only when uninitialized. Never replace the whole state object in one shot.",
+      "uiTitleKey": "agentToolPatchTitle",
+      "uiDescriptionKey": "agentToolPatchDesc",
       "permissions": ["conversation.read", "plugin.data", "turn.plugins.write"],
       "parameters": {
         "type": "object",
@@ -95,6 +102,22 @@
           }
         }
       }
+    }
+  ],
+  "nodeTypes": [
+    {
+      "type": "trace-keeper.exists",
+      "version": 1,
+      "titleKey": "agentNodeExistsTitle",
+      "descriptionKey": "agentNodeExistsDesc",
+      "permissions": ["conversation.read", "plugin.data"],
+      "inputs": [],
+      "outputs": [
+        { "name": "ok", "valueType": "boolean" },
+        { "name": "exists", "valueType": "boolean" },
+        { "name": "source", "valueType": "string" },
+        { "name": "epoch", "valueType": "number" }
+      ]
     }
   ],
   "lifecycle": {

@@ -258,6 +258,21 @@ body::before {
   }
 }
 
+/* Agent 流水线编辑层 · viewport 96% 居中 */
+.v-overlay-container > .v-overlay.v-dialog > .v-overlay__content.agent-graph-dialog-surface,
+.v-overlay.v-dialog > .v-overlay__content.agent-graph-dialog-surface {
+  width: 96vw !important;
+  max-width: 96vw !important;
+  height: 96vh !important;
+  max-height: 96vh !important;
+  margin: auto !important;
+  padding: 0 !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
 /* 全局设置 / 对话设置 · 统一弹窗尺寸 */
 .v-overlay-container > .v-overlay.v-dialog > .v-overlay__content.app-config-dialog-surface,
 .v-overlay.v-dialog > .v-overlay__content.app-config-dialog-surface,

@@ -75,5 +75,13 @@
   "toolReadTurnCountLabel": "Agent：trace_read 历史条数",
   "toolReadTurnCountDesc": "1～40。Agent 工具模式下 trace_read 默认扫描的最近轮数（含有 snapshot 的轮）；模型参数 turns 可临时覆盖。",
   "convToolReadTurnCountLabel": "本会话 trace_read 条数",
-  "convToolReadTurnCountDesc": "留空则继承用户默认（仅 Agent 工具模式生效）"
+  "convToolReadTurnCountDesc": "留空则继承用户默认（仅 Agent 工具模式生效）",
+  "agentToolReadTitle": "读取迹录",
+  "agentToolReadDesc": "读取最近若干轮迹录快照和当前 live 状态，供正文前参考。",
+  "agentToolInitTitle": "初始化迹录",
+  "agentToolInitDesc": "在本会话还没有迹录数据时，用样例状态创建一份 live。已有数据时请用「更新迹录」。",
+  "agentToolPatchTitle": "更新迹录",
+  "agentToolPatchDesc": "在已有迹录上按字段增删改（不要整表覆盖）。需先有数据；没有数据时请先「初始化迹录」。",
+  "agentNodeExistsTitle": "迹录是否已有数据",
+  "agentNodeExistsDesc": "本地判断当前会话是否已有迹录。有 → 宜走更新；无 → 宜走初始化。可接条件分支。"
 }

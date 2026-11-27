@@ -19,10 +19,7 @@ import {
   formatAssistantReasoningSse,
   formatProgressReasoningChunk,
 } from './agent-trace-format.js'
-import {
-  buildDefaultAgentPipelinePolicy,
-  policyWriteToolNames,
-} from './agent-pipeline-policy.js'
+import { policyWriteToolNames } from './agent-pipeline-policy.js'
 import { createAgentPipelineRuntime } from './agent-pipeline-runtime.js'
 import { prependAgentToolsSystemPadFromPolicy } from './agent-system-pad.js'
 import {
@@ -37,6 +34,10 @@ import {
   resolveRequiredCoreSearchToolNames,
 } from './host-search-tools.js'
 import { resolveToolMaxCallsPerTurn } from './agent-tool-budget.js'
+import { readAgentSettingsDocument } from './agent-settings-file.js'
+import { validateAgentGraph } from './agent-graph.js'
+import { buildPolicyFromEffectiveSteps } from './agent-effective.js'
+import { collectAgentToolCatalog, catalogPhaseByTool } from './agent-tools-catalog.js'
 import type { AgentMessage, AgentLoopResult, AgentToolDefinition } from './types.js'
 
 export function chatMessagesToAgentMessages(messages: ChatMessage[]): AgentMessage[] {
@@ -273,10 +274,58 @@ export async function runChatAgentLoop(
         })),
       ]
 
-  const policy = buildDefaultAgentPipelinePolicy({
-    tools: pipelineTools,
-    requiredSearchToolNames,
-  })
+  const agentSettings = await readAgentSettingsDocument(params.userId)
+  const catalog = params.tools
+    ? []
+    : await collectAgentToolCatalog(params.userId)
+  const phaseByTool = catalogPhaseByTool(
+    catalog.length > 0
+      ? catalog
+      : pipelineTools.map((t) => ({
+          name: t.name,
+          description: t.name,
+          phase: (t.phase ?? 'read') as 'read' | 'write',
+          maxCallsPerTurn: t.maxCallsPerTurn,
+          source: 'core' as const,
+        })),
+  )
+  const toolMeta = pipelineTools.map((t) => ({
+    name: t.name,
+    phase: (t.phase ?? 'read') as 'read' | 'write',
+    maxCallsPerTurn: t.maxCallsPerTurn,
+  }))
+  let policy
+  try {
+    if (agentSettings.steps.length === 0) {
+      // 未配置 → 最小种子；坏盘已在 read 时回落为空
+      policy = buildPolicyFromEffectiveSteps([], toolMeta)
+    } else {
+      // 非空非法图：明确失败，禁止静默改成种子
+      validateAgentGraph(
+        agentSettings.steps,
+        agentSettings.edges,
+        phaseByTool,
+      )
+      policy = buildPolicyFromEffectiveSteps(
+        agentSettings.steps,
+        toolMeta,
+        agentSettings.edges,
+      )
+    }
+  } catch (e) {
+    const detail =
+      e instanceof Error ? e.message : 'agent_graph_invalid'
+    return {
+      ok: false,
+      content: '',
+      messages: chatMessagesToAgentMessages(params.messages),
+      steps: [],
+      stopReason: 'graph_invalid',
+      errorCode: 'graph_invalid',
+      errorDetail: detail,
+      toolsOffered: toolNames,
+    }
+  }
   const runtime = createAgentPipelineRuntime({
     policy,
     toolDefinitions: tools,
@@ -367,12 +416,9 @@ export async function runChatAgentLoop(
     complete: async (input) => {
       params.onActivity?.()
       const turn = await upstreamComplete(input)
-      // 仅 prose/write 阶段提交；读步误夹 write 名不得置 proseCommitted
-      if (turn.content.trim()) {
-        const stageKind = runtime.currentStage().kind
-        if (stageKind === 'prose' || stageKind === 'write') {
-          runtime.onProseCommitted()
-        }
+      // 仅 prose 阶段提交；正文前 write（如 init）夹带 content 不得提前锁定
+      if (turn.content.trim() && runtime.currentStage().kind === 'prose') {
+        runtime.onProseCommitted()
       }
       params.onStep?.({
         stepIndex: input.stepIndex,
@@ -452,7 +498,9 @@ export function writeAgentLoopResultToSse(opts: {
             ? ApiErrorCodes.agent_required_tools_missing
             : result.errorCode === 'upstream_error'
               ? ApiErrorCodes.upstream_api_error
-              : ApiErrorCodes.agent_loop_failed
+              : result.errorCode === 'graph_invalid'
+                ? ApiErrorCodes.agent_graph_invalid
+                : ApiErrorCodes.agent_loop_failed
     out.write(
       formatArousalStreamErrorSseLine(
         code,

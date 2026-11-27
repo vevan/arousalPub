@@ -75,5 +75,13 @@
   "toolReadTurnCountLabel": "Agent: trace_read history depth",
   "toolReadTurnCountDesc": "1–40. Default number of recent turns scanned by trace_read in Agent tool mode; model may override with turns.",
   "convToolReadTurnCountLabel": "This chat: trace_read depth",
-  "convToolReadTurnCountDesc": "Leave empty to inherit user default (Agent tool mode only)"
+  "convToolReadTurnCountDesc": "Leave empty to inherit user default (Agent tool mode only)",
+  "agentToolReadTitle": "Read trace",
+  "agentToolReadDesc": "Read recent trace snapshots and live state before writing the reply.",
+  "agentToolInitTitle": "Initialize trace",
+  "agentToolInitDesc": "Create live state from the sample when this chat has no trace data yet. If data already exists, use Update trace.",
+  "agentToolPatchTitle": "Update trace",
+  "agentToolPatchDesc": "Apply field-level changes to existing trace data. Initialize first when there is no data yet.",
+  "agentNodeExistsTitle": "Trace data exists?",
+  "agentNodeExistsDesc": "Local check: whether this chat already has trace data. Yes → update; No → initialize. Wire to a condition branch."
 }

@@ -27,6 +27,7 @@ import { registerAuthRoutes } from './routes/auth-routes.js'
 import { registerMiscRoutes } from './routes/misc-routes.js'
 import { registerChatRoutes } from './routes/chat-routes.js'
 import { registerSettingsRoutes } from './routes/settings-routes.js'
+import { registerAgentSettingsRoutes } from './routes/agent-settings-routes.js'
 import { registerPromptsRoutes } from './routes/prompts-routes.js'
 import { registerLorebooksRoutes } from './routes/lorebooks-routes.js'
 import { registerCharactersRoutes } from './routes/characters-routes.js'
@@ -136,6 +137,7 @@ await bootstrapBundledPluginsAtStartup()
 registerMiscRoutes(app)
 registerChatRoutes(app)
 registerSettingsRoutes(app)
+registerAgentSettingsRoutes(app)
 registerPromptsRoutes(app)
 registerLorebooksRoutes(app)
 registerCharactersRoutes(app)

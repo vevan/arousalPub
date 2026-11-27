@@ -18,6 +18,7 @@ import { seedDefaultPromptsForUser } from './prompts-default-seed.js'
 import { seedDefaultApiSettingsForUser } from './api-settings-default-seed.js'
 import { seedDefaultLorebooksForUser } from './lorebooks-default-seed.js'
 import { seedDefaultRegexRulesForUser } from './regex-rules-default-seed.js'
+import { seedDefaultAgentSettingsForUser } from './agent/agent-settings-file.js'
 import {
   allocateUserId,
   isValidShortId,
@@ -66,6 +67,7 @@ async function seedNewUserDefaultFiles(userId: string): Promise<void> {
   await seedDefaultApiSettingsForUser(userId)
   await seedDefaultLorebooksForUser(userId)
   await seedDefaultRegexRulesForUser(userId)
+  await seedDefaultAgentSettingsForUser(userId)
 }
 
 function emptyIndex(): UsersIndexDocument {

@@ -1,6 +1,6 @@
 # 53 · Agent Runtime / Tools / 节点图 — 实施计划
 
-> **状态**：**阶段 2 可验证** · **§17 节点图为编排真相源（2026-11-27 定案）** · 线性 `AgentPipelinePolicy` / §16.9 双列列表 **放弃为长期中心** · 编辑器选 `@xyflow/vue` · 执行器与 UI 改造进行中  
+> **状态**：**阶段 2 可验证** · **§17 节点图为编排真相源** · **§17.11 / G2d：开始·结束 + 边驱动主路径（零兼容旧线性默认链）** · 线性 `AgentPipelinePolicy` / §16.9 双列列表 **放弃为长期中心** · 编辑器 `@xyflow/vue` · G5 分支求值未做
 
 
 
@@ -602,7 +602,7 @@ execute(graph, ctx):
 
 | 插件 | 与愿景关系 | 建议暴露 | 改造要点 | 优先 |
 |------|------------|----------|----------|------|
-| **trace-keeper** | B 读状态 · D 回写 · （Together 块） | Tools：`trace_read` / `trace_init`（write） / `trace_patch`（见 [`30`](30-plugin-trace-keeper.md) §2.3）；可选 Separate 兜底 | 保留原始 Together/Separate；Agent 下禁双写；init 仅无数据且与 patch 用途互斥；排序不强制；`stripBlockTags` 仅原始模式 | **高** |
+| **trace-keeper** | B 读状态 · D 回写 · （Together 块） | Tools：`trace_read` / `trace_init`（write） / `trace_patch`；Node：`trace-keeper.exists`（见 [`30`](30-plugin-trace-keeper.md) §2.3）；可选 Separate 兜底 | 保留原始 Together/Separate；Agent 下禁双写；exists 为本地 node 非 tool；init 仅无数据且与 patch 用途互斥；排序不强制；`stripBlockTags` 仅原始模式 | **高** |
 | **guidance-generate** | B 写作指导 · 可喂 C | Tool/Node：产出「指导文本」端口；或图前驱节点读用户指导草稿 | 今日 hook 注入 + Web 润色 complete → 图内节点；`sendWithPlugins` 路径与图互斥策略要定 | **高** |
 | **plot-summary**（Historian） | 近 A（纪要召回）· 非主路径摘要 | Tools：`summary.search` / 读目标 lorebook 条目；Node：`summarize.range`（可挂图外触发或 run 末尾） | 自动摘要 lifecycle 可改为「图外定时/阈值节点」或独立旁路图；`completeWithContext` + lorebook 写入保留在插件 | **中高** |
 | **notes** | 可选召回/设定备忘 | Tools：`notes.list` / `notes.get`；可选 Node：注入笔记到上下文 | `serverActions` 已有 CRUD → 包一层 tools 即可 | 中 |
@@ -674,6 +674,8 @@ flowchart LR
 | 2026-11-24 | §16.8：`AgentPipelinePolicy` 默认精细逐步（一工具一步 + 进阶 instruction）+ runtime（节点图线性前驱） |
 | 2026-11-24 | §16.9：【Agent 设置页】草案（双列可用/激活工具、正文固定节点、拖曳顺序、单步限制/次数） |
 | 2026-11-27 | §17：节点图为编排真相源；放弃线性 pipeline 反套；`@xyflow/vue`；子图手编+样例；下钻自研；fork/join |
+| 2026-11-27 | §17.9–17.10：节点调色板三分区；if/else（branch）编辑器试点 |
+| 2026-11-27 | §17.11：开始/结束节点；边驱动主路径；零兼容旧线性流水线；无边孤儿可调试 |
 | 2026-11-24 | §16.9：定案 — 会话覆盖全局、非多预设单文档、模式开关实时切换 |
 
 ---
@@ -703,7 +705,7 @@ flowchart LR
 
 | 角色标签（示例） | 含义 | 示例归属 |
 |------------------|------|----------|
-| `read` / `context` | 只读 | 核心检索、`trace_read` |
+| `read` / `context` | 只读 | 核心检索、`trace_read`；（本地节点 `trace-keeper.exists` 不经 LLM） |
 | `write` / `mutate` | 变更世界状态（**不强制**相对正文前后） | `trace_init`、`trace_patch`、其它插件 patch |
 | （无标签） | 默认按 read 处理 | 兼容未知插件 |
 
@@ -1025,11 +1027,14 @@ GraphDocument
 | 切片 | 内容 |
 |------|------|
 | **G0 · 文档** | 本 §17 定案（本切片） |
-| **G1 · 域 schema + 落盘** | `GraphDocument` 读写；废除 steps 为真相；校验无环 / 单 prose 等 |
+| **G1 · 域 schema + 落盘** | 图语义落盘（过渡期仍 `steps` 袋 + `edges` + `positions`）；**废除** `steps` 下标=执行序；校验见 §17.11 |
 | **G2 · 画布 UI** | 设置页 Vue Flow：调色板 + 主图画布；链式编辑可先用 |
+| **G2b · 调色板三分区** | 「节点」替代「工具」；系统 / 控制 / 插件折叠块（§17.9） |
+| **G2c · if/else 试点** | 控制节点 `branch`（if/else）编辑器 + 落盘；执行器完整语义见 G5（§17.10） |
+| **G2d · 开始/结束 + 边驱动** | 固定 `start`/`end`；最小路径 Start↝Prose↝End；孤儿合法；出站按主路径编译（§17.11） |
 | **G3 · 下钻子图** | 新层编辑 `GraphTemplate`；样例导入 |
-| **G4 · 执行器 v0** | 链式图出站替换 pipeline runtime |
-| **G5 · branch** | 条件边；样例：互斥 write 路径 |
+| **G4 · 执行器 v0** | 主路径图出站替换线性 stages 真相（可暂编译为 loop stages） |
+| **G5 · branch 执行** | 条件边求值；样例：互斥 write 路径 |
 | **G6 · fork/join** | 并行子 agent |
 
 ### 17.8 非目标（本定案不承诺）
@@ -1039,4 +1044,94 @@ GraphDocument
 - steps 与 graph 长期双写  
 - 自由派活主 agent 动态改图（仍后置）  
 - 购买 xyflow Pro 为例程所必需（折叠/布局可自研）
+
+### 17.9 节点调色板 IA（2026-11-27）
+
+> **定案**：编辑层左侧为 **可用节点**（不再称「可用工具」）；**不以 read/write 为分区轴**（phase 可作徽章/高级筛选）。  
+> **视觉**：`v-expansion-panels`（或等价）**折叠块**分区。
+
+| 分区 `group` | 内容 | 来源 |
+|--------------|------|------|
+| **system** | 正文（prose）、核心检索（lore / memory / knowledge 等） | 宿主内置 prose + `source=core` 目录 |
+| **control** | 条件（if/else）、循环、子图/复合、fork/join… | 图原语；与业务插件无关 |
+| **plugin** | 各插件注册节点 | `source=plugin`；可再按 `pluginId` 子折叠（**禁止**宿主写死 bundled id 文案逻辑） |
+
+规则：
+
+1. 宿主分类枚举仅 `system | control | plugin`（+ 可选 plugin 子组 id 作键，无产品语义分支）。  
+2. read/write 仍可写在节点 meta / 徽章，**默认折叠块不按相位分**。  
+3. 未实现的控制节点：块内可列「即将推出」，优于空块。  
+4. 已在图中的节点：调色板项禁用或标已添加（tool 名唯一；控制节点可多实例）。
+
+### 17.10 if/else 条件节点试点（G2c）
+
+> **目标**：验证「控制节点 + 双出边」编辑体验，为 init/patch 互斥等用户手编路径铺路；**完整求值属 G5**。
+
+| 项 | 定案 |
+|----|------|
+| 节点 kind | `branch`（UI 显示名：条件 / If·Else） |
+| 端口 | 1 入；2 出：`then`（真）/ `else`（假） |
+| 谓词（试点） | generic：如「上一工具 `ok`」或「上一工具 `code` 等于某字符串」；**禁止**写死业务 code 列表在宿主 UI 逻辑里（可自由输入） |
+| 落盘 | 节点进图；边带 `sourceHandle: then\|else`；过渡期可挂在 settings 的 steps+edges，最终并入 `GraphDocument` |
+| 出站执行（试点期） | **不求值分支**：编译/出站仍只跑 tool+prose 的可线性化子集，或遇 `branch` 时明确降级策略（文档+日志）；**禁止**用 prompt 假装分支 |
+| 调色板 | 置于 **控制** 折叠块；可多实例 |
+
+```text
+        ┌─ then ─▶ …（如 init）
+  prev ─▶ [if/else] 
+        └─ else ─▶ …（如 patch）
+```
+
+验收（编辑器）：可从控制区拖入/添加 if/else；可从 then/else 连到下游；保存再打开结构仍在。验收（执行）：G5 勾选。
+
+### 17.11 开始 / 结束节点与边驱动主路径（G2d · 2026-11-27）
+
+> **定案**：编排真相 = **节点袋 + 有向边**。执行只跑 **从【开始】经【正文】到【结束】** 的主路径。  
+> **零兼容**：删除「空 `steps` → `buildDefaultAgentPipelinePolicy`」「`steps` 下标当顺序」「无边时按数组序静默编译」。旧线性默认多工具链不再作为运行回退。
+
+#### 固定骨架
+
+| kind | 数量 | 可删 | 图约束 |
+|------|------|------|--------|
+| `start` | 恰好 1 | 否 | 唯一入口；**禁止入边** |
+| `prose` | 恰好 1 | 否 | 必须落在 Start↝End 某条简单路径上 |
+| `end` | 恰好 1 | 否 | 唯一出口；**禁止出边** |
+
+`tool` / `branch` / `node`：0..n，可删。
+
+#### 最小可用
+
+存在有向路径：**开始 → … → 正文 → … → 结束**。满足即可保存与出站。
+
+默认种子（新建 / 「重置为最小图」）：
+
+```text
+start ──▶ prose ──▶ end
+```
+
+（仅三段 + 两条边；**不是**旧的全量 core search + 全 write 默认链。）
+
+#### 孤儿节点
+
+- 允许画布上存在 **度为 0**（无任何边）的非骨架节点，便于调试 / 试拖。
+- 出站编译 **忽略** 孤儿，以及一切未落在 Start↝End 主路径上的节点。
+- 有边但进不了主路径的节点：本阶段同样不执行（不强制用户删除）。
+
+#### 编译（v0）
+
+1. 自 `start` 沿出边走到 `end`，得到主路径序列。  
+2. 路径上的 `tool` + `prose` → 现有 agent loop 的 `stages`（`start`/`end` 不进模型 stages）。  
+3. 本阶段主路径须可唯一线性化；若必须依赖未求值的 `branch` 双开边才能到达 `end` → 校验失败（「分支执行未就绪」），**禁止** prompt 假装分支。完整 then/else 求值属 **G5**。  
+4. **空图**（`steps: []`，含坏盘回落）→ 最小种子；**非空非法图** → 出站明确错误（`agent_graph_invalid`），**禁止**静默改成种子或旧默认流水线。  
+5. 孤儿上的未知工具不拖垮校验；仅主路径 tool 须在 catalog。
+
+#### 落盘过渡
+
+仍可写在 `agent-settings.json` 的 `steps` + `edges` + `positions`：
+
+- `steps` = **节点袋**（数组仅序列化容器，下标无序语义）  
+- `edges` = 顺序与可达性真相  
+- `positions` = 布局  
+
+完整独立 `GraphDocument` 文件形态仍属 G1 后续；本切片先定语义，不为旧 `steps` 序做读盘兼容。
 

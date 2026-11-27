@@ -64,6 +64,12 @@ export async function createSandboxPluginModule(
         NonNullable<PluginServerModule['runTool']>
       >
   }
+  if (hooks.has('runNode')) {
+    mod.runNode = (type, body, _api) =>
+      invoke('runNode', [type, body], body.signal) as ReturnType<
+        NonNullable<PluginServerModule['runNode']>
+      >
+  }
   if (hooks.has('resolveConversationPersistExtras')) {
     mod.resolveConversationPersistExtras = (ctx, _api) =>
       invoke('resolveConversationPersistExtras', [ctx]) as ReturnType<

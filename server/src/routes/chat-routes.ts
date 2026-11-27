@@ -8,12 +8,12 @@ import { repairConversationChunkIndex, readChunkContainingOrdinal, isTurnOrdinal
 import { loadConversationMessages } from '../conversation-messages-api.js'
 import { createConversationStub, deleteConversation, readChatList, readConversationIndex, resolvedCharacterIds, removeTurnAtOrdinalInTailChunk, updateConversationAuditDebug, updateConversationAgentMode, saveOpeningTurn, updateConversationTitle, updateConversationCharacterBindings, updateConversationPromptPresetId, updateConversationLorebookIds, updateConversationLorebookSettings, clearConversationLorebookSettings, updateConversationKnowledgeBaseIds, updateConversationKnowledgeSettings, clearConversationKnowledgeSettings, clearConversationHistorySettings, updateConversationHistorySettings, clearConversationMemorySettings, updateConversationMemorySettings, clearConversationMemoryHybridFts, updateConversationMemoryHybridFts, clearConversationBudgetTrimSettings, updateConversationBudgetTrimSettings, updateConversationUserCharacterId, updateConversationUserName, updateConversationBackgroundImageFileId, updateConversationBgmFileId, updateConversationAuthorsNote, updateConversationGroupChat, clearConversationChatApiSettings, updateConversationChatApiSettings, clearConversationEmbeddingApiSettings, updateConversationEmbeddingApiSettings, updateConversationPluginSettings, parseConversationChatBinding, parseConversationEmbeddingApiOverride, batchUpdateConversationTurns, type TurnReceive } from '../chat-storage.js'
 import {
-  isAgentModeOn,
   emitAgentProgressAsReasoning,
   emitUpstreamDeltaToClient,
   runChatAgentLoop,
   writeAgentLoopResultToSse,
 } from '../agent/index.js'
+import { loadEffectiveAgentMode } from '../agent/agent-effective.js'
 import type { AgentAudit } from '../chat-audit-types.js'
 import { appendConversationTurn, saveFirstTurn, updateTurnContentInTailChunk, updateTurnSegmentInTailChunk } from '../chat-group-turn-ops.js'
 import { parseGroupContinueBody } from '../group-chat-turn.js'
@@ -929,8 +929,11 @@ export function registerChatRoutes(app: FastifyInstance): void {
         if (raw !== 'on' && raw !== 'off' && raw !== null) {
           return reply.status(400).send({ error: ApiErrorCodes.agent_mode_invalid })
         }
-        const mode = raw === 'on' ? 'on' : 'off'
-        const next = await updateConversationAgentMode(id, mode)
+        // null = 清除会话覆盖，继承全局 agent-settings
+        const next = await updateConversationAgentMode(
+          id,
+          raw === null ? null : raw === 'on' ? 'on' : 'off',
+        )
         if (!next) return reply.status(404).send({ error: ApiErrorCodes.conversation_not_found })
         idx = next
       }
@@ -1916,7 +1919,8 @@ export function registerChatRoutes(app: FastifyInstance): void {
       null
     if (convId) {
       idxForAgent = await readConversationIndex(convId)
-      agentModeOn = isAgentModeOn(idxForAgent?.agentMode)
+      const effective = await loadEffectiveAgentMode(idxForAgent)
+      agentModeOn = effective.mode === 'on'
       const promptsDoc = await readPromptsDocument()
       if (!promptsDoc) {
         return reply.status(500).send({ error: ApiErrorCodes.prompts_unavailable })

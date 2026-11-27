@@ -195,6 +195,51 @@ export async function runTraceReadTool(
   })
 }
 
+export type RunNodeResult =
+  | { ok: true; outputs: Record<string, unknown> }
+  | { ok: false; code: string; detail?: string }
+
+/**
+ * 本地节点：当前 epoch 是否已有 trace 数据（live 或 turn snapshot）。
+ * 不对 LLM 暴露；outputs.ok 供 if/else prev_node_ok。
+ */
+export async function runTraceExistsNode(
+  api: ToolApi,
+  conversationId: string,
+  staging: StagingOpts = {},
+): Promise<RunNodeResult> {
+  const gated = await assertToolMode(api, conversationId)
+  if (gated) return gated
+  await prepareStaging(api, conversationId, staging)
+
+  const baseline = await resolveBaselineState(api, conversationId, {
+    maxTurnOrdinalExclusive: staging.baselineTurnOrdinalExclusive,
+  })
+  if (baseline.state) {
+    return {
+      ok: true,
+      outputs: {
+        ok: true,
+        exists: true,
+        source: baseline.source,
+        epoch: baseline.epoch,
+        ...(baseline.turnOrdinal != null
+          ? { turnOrdinal: baseline.turnOrdinal }
+          : {}),
+      },
+    }
+  }
+  return {
+    ok: true,
+    outputs: {
+      ok: false,
+      exists: false,
+      source: 'none',
+      epoch: baseline.epoch,
+    },
+  }
+}
+
 export async function runTraceInitTool(
   api: ToolApi,
   conversationId: string,
@@ -211,7 +256,9 @@ export async function runTraceInitTool(
     return {
       ok: false,
       code: 'already_initialized',
-      detail: 'live state already exists for current epoch',
+      // 与 trace_patch 互斥：已有数据时只应 patch，勿 init
+      detail:
+        'trace data already exists (live); use trace_patch instead of trace_init',
     }
   }
   const hasSnap = await conversationHasTraceSnapshot(api, conversationId, epoch, {
@@ -221,7 +268,8 @@ export async function runTraceInitTool(
     return {
       ok: false,
       code: 'already_initialized',
-      detail: 'turn snapshot already exists for current epoch',
+      detail:
+        'trace data already exists (turn snapshot); use trace_patch instead of trace_init',
     }
   }
 
@@ -328,6 +376,37 @@ export async function runTool(
     return runTracePatchTool(api, conversationId, argsJson, staging)
   }
   return { ok: false, code: 'tool_not_found', detail: name }
+}
+
+export async function runNode(
+  type: string,
+  body: {
+    inputs?: Record<string, unknown>
+    params?: Record<string, unknown>
+    conversationId?: string
+    signal?: AbortSignal
+    agentRunId?: string
+    baselineTurnOrdinalExclusive?: number
+  },
+  api: ToolApi,
+): Promise<RunNodeResult> {
+  if (body.signal?.aborted) {
+    return { ok: false, code: 'cancelled' }
+  }
+  const conversationId = body.conversationId?.trim() ?? ''
+  if (!conversationId) {
+    return { ok: false, code: 'invalid_conversation_id' }
+  }
+  const staging: StagingOpts = {
+    ...(body.agentRunId ? { agentRunId: body.agentRunId } : {}),
+    ...(typeof body.baselineTurnOrdinalExclusive === 'number'
+      ? { baselineTurnOrdinalExclusive: body.baselineTurnOrdinalExclusive }
+      : {}),
+  }
+  if (type === 'trace-keeper.exists') {
+    return runTraceExistsNode(api, conversationId, staging)
+  }
+  return { ok: false, code: 'node_type_not_found', detail: type }
 }
 
 /** 供 resolveTurnPluginEntriesFromAssistant：工具模式从 live 落盘 */

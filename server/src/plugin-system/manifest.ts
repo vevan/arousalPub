@@ -7,6 +7,8 @@ import type { PluginManifest } from './types.js'
 const ACTION_NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/
 /** OpenAI tools.function.name：^[a-zA-Z0-9_-]{1,64}$（禁止点号） */
 const TOOL_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/
+/** DOC/53 §6.3 nodeTypes.type：允许点号前缀 */
+const NODE_TYPE_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/
 
 function normalizeServerActions(
   raw: unknown,
@@ -51,6 +53,15 @@ function normalizeManifestTools(
       typeof (item as { description?: unknown }).description === 'string'
         ? (item as { description: string }).description.trim()
         : undefined
+    const uiTitleKey =
+      typeof (item as { uiTitleKey?: unknown }).uiTitleKey === 'string'
+        ? (item as { uiTitleKey: string }).uiTitleKey.trim()
+        : undefined
+    const uiDescriptionKey =
+      typeof (item as { uiDescriptionKey?: unknown }).uiDescriptionKey ===
+      'string'
+        ? (item as { uiDescriptionKey: string }).uiDescriptionKey.trim()
+        : undefined
     const parametersRaw = (item as { parameters?: unknown }).parameters
     const parameters =
       parametersRaw &&
@@ -72,9 +83,100 @@ function normalizeManifestTools(
       name,
       permissions,
       ...(description ? { description } : {}),
+      ...(uiTitleKey ? { uiTitleKey } : {}),
+      ...(uiDescriptionKey ? { uiDescriptionKey } : {}),
       ...(parameters ? { parameters } : {}),
       ...(phase ? { phase } : {}),
       ...(maxCallsPerTurn !== undefined ? { maxCallsPerTurn } : {}),
+    })
+  }
+  return out.length ? out : undefined
+}
+
+function normalizeManifestNodeTypes(
+  raw: unknown,
+): PluginManifest['nodeTypes'] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const out: NonNullable<PluginManifest['nodeTypes']> = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const type =
+      typeof (item as { type?: unknown }).type === 'string'
+        ? (item as { type: string }).type.trim()
+        : ''
+    if (!type || !NODE_TYPE_RE.test(type)) continue
+    const permsRaw = (item as { permissions?: unknown }).permissions
+    const permissions = Array.isArray(permsRaw)
+      ? permsRaw.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+      : []
+    if (permissions.length === 0) continue
+    const versionRaw = (item as { version?: unknown }).version
+    const version =
+      typeof versionRaw === 'number' &&
+      Number.isFinite(versionRaw) &&
+      Math.round(versionRaw) >= 1
+        ? Math.round(versionRaw)
+        : 1
+    const title =
+      typeof (item as { title?: unknown }).title === 'string'
+        ? (item as { title: string }).title.trim()
+        : undefined
+    const titleKey =
+      typeof (item as { titleKey?: unknown }).titleKey === 'string'
+        ? (item as { titleKey: string }).titleKey.trim()
+        : undefined
+    const description =
+      typeof (item as { description?: unknown }).description === 'string'
+        ? (item as { description: string }).description.trim()
+        : undefined
+    const descriptionKey =
+      typeof (item as { descriptionKey?: unknown }).descriptionKey === 'string'
+        ? (item as { descriptionKey: string }).descriptionKey.trim()
+        : undefined
+    const inputsRaw = (item as { inputs?: unknown }).inputs
+    const inputs = Array.isArray(inputsRaw)
+      ? inputsRaw
+          .filter(
+            (x): x is { name: string; valueType?: string } =>
+              !!x &&
+              typeof x === 'object' &&
+              typeof (x as { name?: unknown }).name === 'string',
+          )
+          .map((x) => ({
+            name: x.name.trim(),
+            ...(typeof x.valueType === 'string'
+              ? { valueType: x.valueType.trim() }
+              : {}),
+          }))
+          .filter((x) => x.name)
+      : undefined
+    const outputsRaw = (item as { outputs?: unknown }).outputs
+    const outputs = Array.isArray(outputsRaw)
+      ? outputsRaw
+          .filter(
+            (x): x is { name: string; valueType?: string } =>
+              !!x &&
+              typeof x === 'object' &&
+              typeof (x as { name?: unknown }).name === 'string',
+          )
+          .map((x) => ({
+            name: x.name.trim(),
+            ...(typeof x.valueType === 'string'
+              ? { valueType: x.valueType.trim() }
+              : {}),
+          }))
+          .filter((x) => x.name)
+      : undefined
+    out.push({
+      type,
+      version,
+      permissions,
+      ...(title ? { title } : {}),
+      ...(titleKey ? { titleKey } : {}),
+      ...(description ? { description } : {}),
+      ...(descriptionKey ? { descriptionKey } : {}),
+      ...(inputs?.length ? { inputs } : {}),
+      ...(outputs?.length ? { outputs } : {}),
     })
   }
   return out.length ? out : undefined
@@ -171,6 +273,9 @@ export async function readPluginManifest(
         (m as { serverActions?: unknown }).serverActions,
       ),
       tools: normalizeManifestTools((m as { tools?: unknown }).tools),
+      nodeTypes: normalizeManifestNodeTypes(
+        (m as { nodeTypes?: unknown }).nodeTypes,
+      ),
       lifecycle:
         m.lifecycle && typeof m.lifecycle === 'object'
           ? {

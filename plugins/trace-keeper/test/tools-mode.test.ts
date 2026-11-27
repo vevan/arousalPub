@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 // 与 injection.test 一样走 dist（src 会 import .hbs，tsx 无法直接加载）
 import {
+  runTraceExistsNode,
   runTraceInitTool,
   runTracePatchTool,
   runTraceReadTool,
@@ -108,6 +109,61 @@ describe('trace tools', () => {
       (body.state.scene as { location?: string })?.location,
       '未知地点',
     )
+  })
+
+  it('trace-keeper.exists node: absent then live after init', async () => {
+    const { api } = createMemoryApi()
+    const empty = await runTraceExistsNode(api, 'abcd1234')
+    assert.equal(empty.ok, true)
+    if (!empty.ok) return
+    assert.equal(empty.outputs.ok, false)
+    assert.equal(empty.outputs.exists, false)
+
+    const init = await runTraceInitTool(api, 'abcd1234', '{}')
+    assert.equal(init.ok, true)
+
+    const has = await runTraceExistsNode(api, 'abcd1234')
+    assert.equal(has.ok, true)
+    if (!has.ok) return
+    assert.equal(has.outputs.ok, true)
+    assert.equal(has.outputs.exists, true)
+    assert.equal(has.outputs.source, 'live')
+    assert.equal(has.outputs.epoch, 0)
+  })
+
+  it('trace-keeper.exists node: true from turn snapshot without live', async () => {
+    const { api } = createMemoryApi({
+      turns: [
+        {
+          turnOrdinal: 3,
+          activeSegmentIndex: 0,
+          segments: [
+            {
+              activeReceiveIndex: 0,
+              receives: [{ id: 'r3', content: 'x' }],
+            },
+          ],
+          plugins: [
+            {
+              pluginId: 'trace-keeper',
+              schemaVersion: 1,
+              payload: {
+                epoch: 0,
+                receiveId: 'r3',
+                state: { mood: 'from-turn' },
+              },
+            },
+          ],
+        },
+      ],
+    })
+    const has = await runTraceExistsNode(api, 'abcd1234')
+    assert.equal(has.ok, true)
+    if (!has.ok) return
+    assert.equal(has.outputs.ok, true)
+    assert.equal(has.outputs.exists, true)
+    assert.equal(has.outputs.source, 'turn')
+    assert.equal(has.outputs.turnOrdinal, 3)
   })
 
 })

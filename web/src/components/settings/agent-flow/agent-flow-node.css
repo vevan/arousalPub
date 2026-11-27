@@ -1,0 +1,115 @@
+/* 主题感知节点外观（暗色下避免白底浅字） */
+.agent-flow-node {
+  min-width: 9.5rem;
+  max-width: 12rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  background: rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-on-surface));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.agent-flow-node--read {
+  border-color: rgba(var(--v-theme-primary), 0.65);
+  border-left-width: 3px;
+}
+
+.agent-flow-node--write {
+  border-color: rgba(var(--v-theme-warning), 0.75);
+  border-left-width: 3px;
+}
+
+.agent-flow-node--prose {
+  border-color: rgba(var(--v-theme-secondary), 0.75);
+  border-left-width: 3px;
+  background: rgba(var(--v-theme-secondary), 0.12);
+}
+
+.agent-flow-node--branch {
+  border-color: rgba(var(--v-theme-info), 0.75);
+  border-left-width: 3px;
+  background: rgba(var(--v-theme-info), 0.1);
+  min-width: 10.5rem;
+}
+
+.agent-flow-node--plugin {
+  border-color: rgba(var(--v-theme-success), 0.7);
+  border-left-width: 3px;
+  background: rgba(var(--v-theme-success), 0.1);
+}
+
+.agent-flow-node--start,
+.agent-flow-node--end {
+  border-color: rgba(var(--v-theme-on-surface), 0.45);
+  border-left-width: 3px;
+  background: rgba(var(--v-theme-on-surface), 0.06);
+  min-width: 7.5rem;
+  text-align: center;
+}
+
+.agent-flow-node__ports {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.45rem;
+  padding: 0 0.35rem;
+  font-size: 0.65rem;
+  color: rgba(var(--v-theme-on-surface), 0.65);
+}
+
+.agent-flow-node__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  margin-bottom: 0.25rem;
+}
+
+.agent-flow-node__phase {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(var(--v-theme-on-surface), 0.72);
+}
+
+.agent-flow-node__actions {
+  display: flex;
+  gap: 0.15rem;
+}
+
+.agent-flow-node__btn {
+  border: none;
+  background: rgba(var(--v-theme-on-surface), 0.08);
+  color: rgb(var(--v-theme-on-surface));
+  cursor: pointer;
+  line-height: 1;
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.25rem;
+  opacity: 0.85;
+}
+
+.agent-flow-node__btn:hover {
+  opacity: 1;
+  background: rgba(var(--v-theme-on-surface), 0.16);
+}
+
+.agent-flow-node__title {
+  font-weight: 600;
+  word-break: break-word;
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.agent-flow-node__meta {
+  margin-top: 0.2rem;
+  font-size: 0.65rem;
+  color: rgba(var(--v-theme-on-surface), 0.65);
+}
+
+.agent-flow-node :deep(.vue-flow__handle) {
+  width: 8px;
+  height: 8px;
+  background: rgb(var(--v-theme-primary));
+  border: 1px solid rgb(var(--v-theme-surface));
+}

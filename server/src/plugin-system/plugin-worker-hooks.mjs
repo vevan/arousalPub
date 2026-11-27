@@ -7,6 +7,7 @@ export const HOOKS_WITH_API = new Set([
   'parseCompleteDraftContent',
   'runPluginAction',
   'runTool',
+  'runNode',
   'resolveConversationPersistExtras',
   'onCharacterPrimaryChanged',
 ])

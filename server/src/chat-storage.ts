@@ -1052,10 +1052,14 @@ export async function updateConversationBudgetTrimSettings(
 
 export async function updateConversationAgentMode(
   conversationId: string,
-  agentMode: 'off' | 'on',
+  agentMode: 'off' | 'on' | null,
 ): Promise<ConversationIndex | null> {
   return updateConversationIndexAndList(conversationId, (idx) => {
-    idx.agentMode = agentMode === 'on' ? 'on' : 'off'
+    if (agentMode === null) {
+      delete idx.agentMode
+    } else {
+      idx.agentMode = agentMode === 'on' ? 'on' : 'off'
+    }
     idx.updatedAt = nowIso()
     return idx
   })

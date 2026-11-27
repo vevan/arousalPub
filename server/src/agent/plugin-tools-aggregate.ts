@@ -31,6 +31,9 @@ export type PluginToolDecl = {
   /** DOC/53 §16：write = 正文后可变状态；缺省按 read 侧处理 */
   phase?: 'read' | 'write'
   maxCallsPerTurn?: number
+  /** 人机标题/简介（插件 locales 键）；与模型 description 分立 */
+  uiTitleKey?: string
+  uiDescriptionKey?: string
 }
 
 /** OpenAI function.name：字母数字下划线短横线，无点号 */
@@ -90,6 +93,8 @@ export async function collectPluginToolDecls(
         definition: asToolDefinition(name, t.description, t.parameters),
         ...(phase ? { phase } : {}),
         maxCallsPerTurn,
+        ...(t.uiTitleKey ? { uiTitleKey: t.uiTitleKey } : {}),
+        ...(t.uiDescriptionKey ? { uiDescriptionKey: t.uiDescriptionKey } : {}),
       })
     }
   }

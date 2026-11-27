@@ -24,7 +24,9 @@
 - [ ] **宿主对话流插件区块** — 通用第三类区块（非 user / assistant）；用于展示插件产出，默认不进 prompt。见 `[DOC/devNotes/09](09-plugin-system-and-guidance-generate.md)` §5.7
 - [ ] **Agent Runtime（循环 → 真 tools → 节点图）** — 宿主 generic：多步 agent loop、`tools`/`tool_calls` 注册表与 dispatch、插件注册 `nodeTypes` 的 DAG 执行器与配置壳；业务节点在插件。见 `[DOC/devNotes/53](53-agent-runtime-and-node-graph.md)` §17；分支 `agent`
   - [x] **§17 定案（2026-11-27）** — 图为编排真相源；放弃线性 `stages[]` 反套；`@xyflow/vue`；子图用户手编 + 系统样例；下钻自研新层；fork/join 并行
-  - [ ] **G1–G4** — Graph 落盘、Vue Flow 设置页、下钻子图、链式执行器替换 pipeline（见 `53` §17.7）
+  - [x] **§17.9 / §17.10** — 节点调色板三分区；if/else 编辑器试点定案
+  - [~] **G2b–G2c** — 调色板三分区 + if/else 编辑落盘已接；执行求值仍见 G5
+  - [ ] **G1 / G3–G4** — Graph 落盘真相、下钻子图、链式执行器（见 `53` §17.7）
   - [~] **§16.9 双列列表** — 已实现但 **不再作为长期中心**；由 G2 画布替换
 
 > ST 导入 Tab / 世界书 / 聊天记录 / M3 回归已关闭，见下方 **§文档**（2026-06～07 · `[DOC/devNotes/37](37-st-import-settings-tab.md)`）。

@@ -15,7 +15,6 @@ import type { RegexApplyContext } from '../regex-rules-types.js'
 import { readChunkContainingOrdinal, readTurnsTail } from '../chunk-chain.js'
 import { getTurnUserText } from '../chat-turn-accessors.js'
 import type { TurnRecord } from '../chat-turn-types.js'
-import { isAgentModeOn } from '../agent/agent-mode.js'
 import { readConversationIndex } from '../chat-storage-io.js'
 import { readConversationPluginSettings } from '../chat-storage.js'
 import { readMergedPluginUserSettings } from './settings.js'
@@ -196,7 +195,9 @@ export function createPluginServerHostApi(
       const cid = conversationId.trim()
       if (!cid) return 'off'
       const idx = await readConversationIndex(cid)
-      return isAgentModeOn(idx?.agentMode) ? 'on' : 'off'
+      const { loadEffectiveAgentMode } = await import('../agent/agent-effective.js')
+      const effective = await loadEffectiveAgentMode(idx)
+      return effective.mode
     },
     async readConversationTurnsTail(conversationId, limit = 80) {
       const cid = conversationId.trim()

@@ -19,7 +19,9 @@ import { isTraceToolMode } from './agent-mode.js'
 import { LIVE_STATE_FILE } from './live-state.js'
 import {
   liveStateTurnPluginEntries,
+  runNode as runTraceNode,
   runTool as runTraceTool,
+  runTraceExistsNode,
   runTraceInitTool,
   runTracePatchTool,
   runTraceReadTool,
@@ -27,6 +29,7 @@ import {
 
 export {
   LIVE_STATE_FILE,
+  runTraceExistsNode,
   runTraceInitTool,
   runTracePatchTool,
   runTraceReadTool,
@@ -224,6 +227,30 @@ export async function runTool(
     return { ok: false as const, code: 'host_api_incomplete' }
   }
   return runTraceTool(name, body, {
+    pluginData: api.pluginData,
+    getUserPluginSettings: api.getUserPluginSettings,
+    getConversationPluginSettings: api.getConversationPluginSettings,
+    getConversationAgentMode: api.getConversationAgentMode,
+    readConversationTurnsTail: api.readConversationTurnsTail,
+  })
+}
+
+export async function runNode(
+  type: string,
+  body: {
+    inputs?: Record<string, unknown>
+    params?: Record<string, unknown>
+    conversationId?: string
+    signal?: AbortSignal
+    agentRunId?: string
+    baselineTurnOrdinalExclusive?: number
+  },
+  api: ServerApi,
+) {
+  if (!api.pluginData || !api.readConversationTurnsTail) {
+    return { ok: false as const, code: 'host_api_incomplete' }
+  }
+  return runTraceNode(type, body, {
     pluginData: api.pluginData,
     getUserPluginSettings: api.getUserPluginSettings,
     getConversationPluginSettings: api.getConversationPluginSettings,

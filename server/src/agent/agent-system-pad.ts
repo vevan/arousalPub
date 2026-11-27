@@ -3,14 +3,21 @@
  */
 
 import type { AgentPipelinePolicy } from './agent-pipeline-policy.js'
-import { buildDefaultAgentPipelinePolicy } from './agent-pipeline-policy.js'
+import { compileAgentPipelinePolicyFromSteps } from './agent-settings-compile.js'
+import type {
+  AgentFlowEdgeConfig,
+  AgentPipelineStepConfig,
+} from './agent-settings-types.js'
 
 export type AgentToolsPadOpts = {
   writeToolNames?: string[]
   requiredSearchToolNames?: string[]
 }
 
-/** 测试/简易路径：从工具名拼默认精细流水线后再生成 pad */
+/**
+ * 测试/简易路径：read 在正文前、write 在正文后串进主路径，再生成 pad。
+ * 不再使用旧 buildDefaultAgentPipelinePolicy 多工具默认链。
+ */
 export function buildAgentToolsSystemPad(
   toolNames: string[],
   opts?: AgentToolsPadOpts,
@@ -19,21 +26,49 @@ export function buildAgentToolsSystemPad(
   const writeSet = new Set(
     (opts?.writeToolNames ?? []).map((n) => n.trim()).filter(Boolean),
   )
-  const requiredSearch = [
-    ...new Set(
-      (opts?.requiredSearchToolNames ?? [])
-        .map((n) => n.trim())
-        .filter(Boolean),
-    ),
+  const reads = names.filter((n) => !writeSet.has(n))
+  const writes = names.filter((n) => writeSet.has(n))
+  const steps: AgentPipelineStepConfig[] = [
+    { kind: 'start' },
+    ...reads.map((name) => ({
+      kind: 'tool' as const,
+      toolName: name,
+      required: true,
+      maxCalls: 1 as const,
+    })),
+    { kind: 'prose' },
+    ...writes.map((name) => ({
+      kind: 'tool' as const,
+      toolName: name,
+      required: true,
+      maxCalls: 'unlimited' as const,
+    })),
+    { kind: 'end' },
   ]
-  const policy = buildDefaultAgentPipelinePolicy({
-    tools: names.map((name) => ({
+  const ids = [
+    'start',
+    ...reads.map((n) => `tool:${n}`),
+    'prose',
+    ...writes.map((n) => `tool:${n}`),
+    'end',
+  ]
+  const edges: AgentFlowEdgeConfig[] = []
+  for (let i = 0; i < ids.length - 1; i++) {
+    edges.push({
+      id: `e-${ids[i]}-${ids[i + 1]}`,
+      source: ids[i]!,
+      target: ids[i + 1]!,
+    })
+  }
+  const policy = compileAgentPipelinePolicyFromSteps(
+    steps,
+    names.map((name) => ({
       name,
       phase: writeSet.has(name) ? ('write' as const) : ('read' as const),
       maxCallsPerTurn: writeSet.has(name) ? Number.POSITIVE_INFINITY : 1,
     })),
-    requiredSearchToolNames: requiredSearch,
-  })
+    edges,
+  )
   return buildAgentToolsSystemPadFromPolicy(policy, names)
 }
 

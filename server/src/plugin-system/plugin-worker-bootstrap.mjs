@@ -135,7 +135,7 @@ async function handleInvoke(msg) {
   const ac = new AbortController()
   activeInvokeAborts.set(msg.id, ac)
   if (
-    hook === 'runTool' &&
+    (hook === 'runTool' || hook === 'runNode') &&
     args[1] &&
     typeof args[1] === 'object' &&
     !Array.isArray(args[1])

@@ -32,6 +32,7 @@ const props = defineProps<{
   bgmFileId: string | null
   initialUserName?: string | null
   agentModeOn: boolean
+  agentModeOverridden: boolean
   savingAgentMode: boolean
 }>()
 
@@ -39,6 +40,7 @@ const emit = defineEmits<{
   (e: 'backgroundImageFileId', id: string | null): void
   (e: 'bgmFileId', id: string | null): void
   (e: 'agentMode', enabled: boolean): void
+  (e: 'agentModeRestoreGlobal'): void
 }>()
 
 function onBackgroundImageFileId(id: string | null) {
@@ -64,6 +66,23 @@ function onBgmFileId(id: string | null) {
       <p class="conv-settings-field__hint">
         {{ $t('chat.convSettings.agentModeHint') }}
       </p>
+      <p class="conv-settings-field__hint">
+        {{
+          props.agentModeOverridden
+            ? $t('chat.convSettings.agentModeOverride')
+            : $t('chat.convSettings.agentModeInherit')
+        }}
+      </p>
+      <v-btn
+        v-if="props.agentModeOverridden"
+        size="small"
+        variant="text"
+        class="mt-1 px-0"
+        :loading="props.savingAgentMode"
+        @click="emit('agentModeRestoreGlobal')"
+      >
+        {{ $t('chat.convSettings.agentModeRestoreGlobal') }}
+      </v-btn>
     </div>
     <div class="conv-settings-field">
                     <v-select

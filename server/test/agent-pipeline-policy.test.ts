@@ -24,6 +24,7 @@ describe('buildDefaultAgentPipelinePolicy', () => {
         { name: 'lore_search', phase: 'read', maxCallsPerTurn: 1 },
         { name: 'memory_search', phase: 'read', maxCallsPerTurn: 1 },
         { name: 'trace_read', phase: 'read', maxCallsPerTurn: 1 },
+        { name: 'trace_init', phase: 'write', maxCallsPerTurn: 1 },
         {
           name: 'trace_patch',
           phase: 'write',
@@ -33,25 +34,59 @@ describe('buildDefaultAgentPipelinePolicy', () => {
       requiredSearchToolNames: ['lore_search', 'memory_search'],
     })
     assert.equal(policy.schemaVersion, 1)
-    assert.equal(policy.stages.length, 5)
+    assert.equal(policy.stages.length, 6)
     assert.equal(policy.stages[0]?.id, 'tool:lore_search')
     assert.equal(policy.stages[0]?.step, 1)
     assert.equal(policy.stages[0]?.advanceWhen, 'required_tools_done')
     assert.equal(policy.stages[0]?.toolChoice, 'required')
-    assert.match(policy.stages[0]!.instruction, /step 1\/5/i)
+    assert.match(policy.stages[0]!.instruction, /step 1\/6/i)
     assert.deepEqual(stageRequiredToolNames(policy.stages[0]!), ['lore_search'])
     assert.equal(policy.stages[1]?.id, 'tool:memory_search')
     assert.equal(policy.stages[2]?.id, 'tool:trace_read')
     assert.equal(policy.stages[2]?.advanceWhen, 'offer_exhausted')
     assert.equal(policy.stages[3]?.id, 'prose')
     assert.equal(policy.stages[3]?.toolChoice, 'none')
-    assert.equal(policy.stages[4]?.id, 'write:trace_patch')
-    assert.equal(policy.stages[4]?.advanceWhen, 'required_writes_done')
+    assert.equal(policy.stages[4]?.id, 'write:trace_init')
+    assert.equal(policy.stages[4]?.advanceWhen, 'offer_exhausted')
+    assert.equal(policy.stages[4]?.offer[0]?.required, false)
+    assert.equal(policy.stages[5]?.id, 'write:trace_patch')
+    assert.equal(policy.stages[5]?.advanceWhen, 'required_writes_done')
     assert.deepEqual(policyPreProseRequiredToolNames(policy), [
       'lore_search',
       'memory_search',
     ])
+    // 仅必调 write；maxCalls=1 的可选 init 不进 nudge 列表
     assert.deepEqual(policyWriteToolNames(policy), ['trace_patch'])
+  })
+
+  it('pre-prose required includes write stages before prose', () => {
+    const policy = buildDefaultAgentPipelinePolicy({
+      tools: [
+        { name: 'lore_search', phase: 'read', maxCallsPerTurn: 1 },
+        {
+          name: 'trace_patch',
+          phase: 'write',
+          maxCallsPerTurn: Number.POSITIVE_INFINITY,
+        },
+      ],
+      requiredSearchToolNames: ['lore_search'],
+    })
+    // 手改：把 write 挪到 prose 前（模拟用户编排）
+    const prose = policy.stages.find((s) => s.kind === 'prose')!
+    const write = policy.stages.find((s) => s.kind === 'write')!
+    const read = policy.stages.find((s) => s.kind === 'tool')!
+    const reordered = {
+      schemaVersion: 1 as const,
+      stages: [
+        { ...write, step: 1 },
+        { ...read, step: 2 },
+        { ...prose, step: 3 },
+      ],
+    }
+    assert.deepEqual(policyPreProseRequiredToolNames(reordered), [
+      'trace_patch',
+      'lore_search',
+    ])
   })
 
   it('without required search still has read step then prose', () => {

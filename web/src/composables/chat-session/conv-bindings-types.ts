@@ -86,5 +86,6 @@ export interface ConvContextBindings {
   bgmFileId: string | null
   authorsNote: AuthorsNoteSettings
   /** Agent 模式（DOC/53）：on 时走工具召回 */
-  agentMode: 'off' | 'on'
+  /** null = 继承全局 Agent 设置 */
+  agentMode: 'off' | 'on' | null
 }

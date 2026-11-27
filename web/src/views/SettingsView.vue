@@ -23,6 +23,7 @@ import BudgetTrimSettingsPanel from '@/components/settings/BudgetTrimSettingsPan
 import InjectionOrderField from '@/components/settings/InjectionOrderField.vue'
 import ImportSettingsPanel from '@/components/settings/ImportSettingsPanel.vue'
 import RegexRulesSettingsPanel from '@/components/settings/RegexRulesSettingsPanel.vue'
+import AgentSettingsPanel from '@/components/settings/AgentSettingsPanel.vue'
 import { useRegexRulesStore } from '@/stores/regex-rules'
 import {
   componentsToOklchCss,
@@ -73,7 +74,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{ logout: [] }>()
 
-type SettingsTab = 'system' | 'display' | 'account' | 'lorebook' | 'vectorRecall' | 'history' | 'budgetTrim' | 'regexRules' | 'plugins' | 'import' | 'debug'
+type SettingsTab = 'system' | 'display' | 'account' | 'lorebook' | 'vectorRecall' | 'history' | 'budgetTrim' | 'regexRules' | 'agent' | 'plugins' | 'import' | 'debug'
 
 const { t } = useI18n()
 
@@ -396,6 +397,7 @@ const navItems = computed(() => [
   { id: 'vectorRecall' as const, title: t('settings.navVectorRecall'), icon: 'mdi-database-search-outline' },
   { id: 'budgetTrim' as const, title: t('settings.navBudgetTrim'), icon: 'mdi-scissors-cutting' },
   { id: 'regexRules' as const, title: t('settings.navRegexRules'), icon: 'mdi-regex' },
+  { id: 'agent' as const, title: t('settings.navAgent'), icon: 'mdi-robot-outline' },
   { id: 'plugins' as const, title: t('settings.navPlugins'), icon: 'mdi-puzzle-outline' },
   { id: 'import' as const, title: t('settings.navImport'), icon: 'mdi-import' },
   { id: 'debug' as const, title: t('settings.navDebug'), icon: 'mdi-bug-outline' },
@@ -1449,6 +1451,13 @@ onMounted(() => {
           </section>
 
           <RegexRulesSettingsPanel v-show="activeTab === 'regexRules'" />
+
+          <section
+            v-if="activeTab === 'agent'"
+            class="settings-section"
+          >
+            <AgentSettingsPanel />
+          </section>
 
           <PluginSettingsPanel v-show="activeTab === 'plugins'" />
 

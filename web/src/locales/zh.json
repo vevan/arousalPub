@@ -715,7 +715,10 @@
       "errGraphCycle": "主路径存在环",
       "errGraphPathBroken": "主路径未从开始连通到结束",
       "errBranchNotReady": "主路径上的多出边条件分支尚未支持执行，请先连成单链",
+      "errBranchTooManyOuts": "条件分支最多两条出边（then / else）",
+      "errNonBranchMultiOut": "非条件节点只能有一条出边",
       "errProseNotOnPath": "正文必须落在开始到结束的主路径上",
+      "errProseNotBeforeEnd": "正文之后须能到达结束节点",
       "errDuplicateTool": "同一工具不能重复出现",
       "errUnknownTool": "未知工具：{name}",
       "errMaxCalls": "调用次数须为 1–32"

@@ -44,7 +44,7 @@ export type AgentPipelineRuntime = {
   missingPostProseRequired: () => string[]
   assertCallAllowed: (toolName: string) => PipelineAssertResult
   onToolSuccess: (toolName: string) => void
-  onToolFailure: (toolName: string) => void
+  onToolFailure: (toolName: string, code?: string) => void
   onProseCommitted: () => void
   advanceIfReady: () => boolean
   successfulCallCount: (toolName: string) => number
@@ -53,6 +53,10 @@ export type AgentPipelineRuntime = {
    * 供 loop 在 complete 前注入 user 消息。
    */
   consumeStageEnterInstruction: () => string | null
+  /**
+   * 推进 start / node / branch 等非模型步（图运行时）；线性 runtime 为空操作。
+   */
+  settlePending: () => Promise<void>
 }
 
 function ruleByName(
@@ -240,7 +244,7 @@ export function createAgentPipelineRuntime(opts: {
     // 不在同一步多 tool_call 中途推进；留给下一次 offer/toolChoice/consumeInstruction
   }
 
-  const onToolFailure = (toolName: string): void => {
+  const onToolFailure = (toolName: string, _code?: string): void => {
     bumpAttempt(toolName)
   }
 
@@ -280,5 +284,6 @@ export function createAgentPipelineRuntime(opts: {
     advanceIfReady,
     successfulCallCount: successCount,
     consumeStageEnterInstruction,
+    settlePending: async () => {},
   }
 }

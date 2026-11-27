@@ -1,6 +1,6 @@
 # 53 · Agent Runtime / Tools / 节点图 — 实施计划
 
-> **状态**：**阶段 2 可验证** · **§17 节点图为编排真相源** · **§17.11 / G2d：开始·结束 + 边驱动主路径（零兼容旧线性默认链）** · 线性 `AgentPipelinePolicy` / §16.9 双列列表 **放弃为长期中心** · 编辑器 `@xyflow/vue` · G5 分支求值未做
+> **状态**：**阶段 2 可验证** · **§17 节点图为编排真相源** · **§17.11 / G2d：开始·结束 + 边驱动主路径（零兼容旧线性默认链）** · **G5：branch then/else + kind:node `runNode` 图游标运行时** · 线性 `AgentPipelinePolicy` / §16.9 双列列表 **放弃为长期中心** · 编辑器 `@xyflow/vue`
 
 
 
@@ -676,6 +676,7 @@ flowchart LR
 | 2026-11-27 | §17：节点图为编排真相源；放弃线性 pipeline 反套；`@xyflow/vue`；子图手编+样例；下钻自研；fork/join |
 | 2026-11-27 | §17.9–17.10：节点调色板三分区；if/else（branch）编辑器试点 |
 | 2026-11-27 | §17.11：开始/结束节点；边驱动主路径；零兼容旧线性流水线；无边孤儿可调试 |
+| 2026-11-27 | G5：保存允许 branch 双出边；图游标运行时（then/else + runNode / prev_node_ok） |
 | 2026-11-24 | §16.9：定案 — 会话覆盖全局、非多预设单文档、模式开关实时切换 |
 
 ---
@@ -1034,7 +1035,7 @@ GraphDocument
 | **G2d · 开始/结束 + 边驱动** | 固定 `start`/`end`；最小路径 Start↝Prose↝End；孤儿合法；出站按主路径编译（§17.11） |
 | **G3 · 下钻子图** | 新层编辑 `GraphTemplate`；样例导入 |
 | **G4 · 执行器 v0** | 主路径图出站替换线性 stages 真相（可暂编译为 loop stages） |
-| **G5 · branch 执行** | 条件边求值；样例：互斥 write 路径 |
+| **G5 · branch 执行** | ✅ 条件边求值 + `runNode`；`createAgentGraphRuntime` / `dispatchAgentNodeCall`；样例互斥 write |
 | **G6 · fork/join** | 并行子 agent |
 
 ### 17.8 非目标（本定案不承诺）
@@ -1073,7 +1074,7 @@ GraphDocument
 | 端口 | 1 入；2 出：`then`（真）/ `else`（假） |
 | 谓词（试点） | generic：如「上一工具 `ok`」或「上一工具 `code` 等于某字符串」；**禁止**写死业务 code 列表在宿主 UI 逻辑里（可自由输入） |
 | 落盘 | 节点进图；边带 `sourceHandle: then\|else`；过渡期可挂在 settings 的 steps+edges，最终并入 `GraphDocument` |
-| 出站执行（试点期） | **不求值分支**：编译/出站仍只跑 tool+prose 的可线性化子集，或遇 `branch` 时明确降级策略（文档+日志）；**禁止**用 prompt 假装分支 |
+| 出站执行 | **G5 已接**：`needsAgentGraphRuntime` 时用图游标（`createAgentGraphRuntime`）求值 then/else，并执行 `kind:node` → `runNode`；线性无 branch/node 仍走 `compile` + `createAgentPipelineRuntime` |
 | 调色板 | 置于 **控制** 折叠块；可多实例 |
 
 ```text
@@ -1121,9 +1122,9 @@ start ──▶ prose ──▶ end
 
 1. 自 `start` 沿出边走到 `end`，得到主路径序列。  
 2. 路径上的 `tool` + `prose` → 现有 agent loop 的 `stages`（`start`/`end` 不进模型 stages）。  
-3. 本阶段主路径须可唯一线性化；若必须依赖未求值的 `branch` 双开边才能到达 `end` → 校验失败（「分支执行未就绪」），**禁止** prompt 假装分支。完整 then/else 求值属 **G5**。  
+3. **保存校验**允许 `branch` 双出边（至多 then/else）；须自 `start` 可达 `prose`，且自 `prose` 可达 `end`。非 branch 多出边仍拒。完整 then/else 求值见 **G5** 图游标。线性无 branch/node 时仍可用 `walkMainPath` 编译。  
 4. **空图**（`steps: []`，含坏盘回落）→ 最小种子；**非空非法图** → 出站明确错误（`agent_graph_invalid`），**禁止**静默改成种子或旧默认流水线。  
-5. 孤儿上的未知工具不拖垮校验；仅主路径 tool 须在 catalog。
+5. 孤儿上的未知工具不拖垮校验；仅自 start 可达的 tool 须在 catalog。
 
 #### 落盘过渡
 

@@ -73,8 +73,9 @@ export interface RunAgentLoopOptions {
   /**
    * 正文已产出后须成功调用的 write 工具名（manifest phase=write）。
    * 仅当本轮已有非空 assistant content 时检查；失败调用不计入。
+   * 可为函数：图游标在 prose 后 settle 到互斥 write 时动态返回当前节点。
    */
-  requiredWriteToolNames?: string[]
+  requiredWriteToolNames?: string[] | (() => string[])
   maxToolCallsPerStep?: number
   /**
    * 每步动态工具列表（预算耗尽 / 相位隐藏后）。
@@ -94,6 +95,10 @@ export interface RunAgentLoopOptions {
     steps: AgentLoopStepTrace[]
     userFacingContentLocked: boolean
   }) => 'auto' | 'required' | 'none'
+  /**
+   * 图游标已到 end（或等价完成）时：tool 回灌后勿再调模型，直接 final。
+   */
+  isPipelineComplete?: () => boolean
   /**
    * 每步 complete 前：可向 messages 追加指令（逐步精细控制）。
    * messages 为可变数组。
@@ -165,8 +170,18 @@ export async function runAgentLoop(
   let lastReasoning: string | undefined
   /** 用户可见正文已锁定后，后续步的 content（meta 话术）不得覆盖落盘正文 */
   let userFacingContentLocked = false
-  const writeNameSet = new Set(
-    (opts.requiredWriteToolNames ?? []).map((n) => n.trim()).filter(Boolean),
+  const resolveRequiredWriteToolNames = (): string[] => {
+    const raw =
+      typeof opts.requiredWriteToolNames === 'function'
+        ? opts.requiredWriteToolNames()
+        : (opts.requiredWriteToolNames ?? [])
+    return raw.map((n) => n.trim()).filter(Boolean)
+  }
+  /** 静态名单（线性流水线）；图模式另见 resolveRequiredWriteToolNames */
+  const staticWriteNameSet = new Set(
+    typeof opts.requiredWriteToolNames === 'function'
+      ? []
+      : (opts.requiredWriteToolNames ?? []).map((n) => n.trim()).filter(Boolean),
   )
 
   for (let stepIndex = 0; stepIndex < maxSteps; stepIndex++) {
@@ -315,7 +330,7 @@ export async function runAgentLoop(
       const proseSoFar = lastContent.trim() || turn.content.trim()
       if (proseSoFar) {
         const missingWrite = missingRequiredSuccessful(
-          opts.requiredWriteToolNames,
+          resolveRequiredWriteToolNames(),
           steps,
         )
         if (missingWrite.length > 0) {
@@ -458,11 +473,36 @@ export async function runAgentLoop(
     if (
       !userFacingContentLocked &&
       lastContent.trim() &&
-      stepTools.some(
-        (t) => writeNameSet.has(t.name.trim()) && t.ok === true,
-      )
+      stepTools.some((t) => {
+        const n = t.name.trim()
+        return (
+          t.ok === true &&
+          (staticWriteNameSet.has(n) ||
+            resolveRequiredWriteToolNames().includes(n))
+        )
+      })
     ) {
       userFacingContentLocked = true
+    }
+
+    // 图游标到 end：勿再让模型对着 tool_result 空转（否则会臆造 init 等下一步）
+    if (opts.isPipelineComplete?.()) {
+      const usedTools = calledToolNames(steps).size > 0
+      opts.onProgress?.({
+        type: 'final',
+        stepIndex,
+        contentChars: lastContent.length,
+        finishReason: 'stop',
+        usedTools,
+      })
+      return {
+        ok: true,
+        content: lastContent,
+        reasoning: lastReasoning,
+        messages,
+        steps,
+        stopReason: 'final',
+      }
     }
   }
 
@@ -481,7 +521,7 @@ export async function runAgentLoop(
   }
   if (lastContent.trim()) {
     const missingWriteAtCap = missingRequiredSuccessful(
-      opts.requiredWriteToolNames,
+      resolveRequiredWriteToolNames(),
       steps,
     )
     if (missingWriteAtCap.length > 0) {

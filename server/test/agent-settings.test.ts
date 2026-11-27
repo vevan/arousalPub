@@ -99,7 +99,84 @@ describe('agent-settings parse/validate', () => {
     )
   })
 
-  it('rejects multi-out branch on main path', () => {
+  it('accepts multi-out branch when prose can still reach end', () => {
+    validateAgentPipelineSteps(
+      [
+        { kind: 'start' },
+        {
+          kind: 'branch',
+          id: 'br1',
+          predicate: { type: 'prev_node_ok', ok: true },
+        },
+        { kind: 'tool', toolName: 'lore_search', required: true },
+        { kind: 'prose' },
+        { kind: 'end' },
+      ],
+      new Map([['lore_search', 'read' as const]]),
+      [
+        { id: 'e1', source: 'start', target: 'branch:br1' },
+        {
+          id: 'e2',
+          source: 'branch:br1',
+          target: 'tool:lore_search',
+          sourceHandle: 'then',
+        },
+        {
+          id: 'e3',
+          source: 'branch:br1',
+          target: 'prose',
+          sourceHandle: 'else',
+        },
+        { id: 'e4', source: 'tool:lore_search', target: 'prose' },
+        { id: 'e5', source: 'prose', target: 'end' },
+      ],
+    )
+  })
+
+  it('compiles branched graph for policy preview without walkMainPath throw', () => {
+    const steps = [
+      { kind: 'start' as const },
+      {
+        kind: 'branch' as const,
+        id: 'br1',
+        predicate: { type: 'prev_node_ok' as const, ok: true },
+      },
+      {
+        kind: 'tool' as const,
+        toolName: 'lore_search',
+        required: true,
+        maxCalls: 1 as const,
+      },
+      { kind: 'prose' as const },
+      { kind: 'end' as const },
+    ]
+    const edges = [
+      { id: 'e1', source: 'start', target: 'branch:br1' },
+      {
+        id: 'e2',
+        source: 'branch:br1',
+        target: 'tool:lore_search',
+        sourceHandle: 'then' as const,
+      },
+      {
+        id: 'e3',
+        source: 'branch:br1',
+        target: 'prose',
+        sourceHandle: 'else' as const,
+      },
+      { id: 'e4', source: 'tool:lore_search', target: 'prose' },
+      { id: 'e5', source: 'prose', target: 'end' },
+    ]
+    const policy = compileAgentPipelinePolicyFromSteps(
+      steps,
+      [{ name: 'lore_search', phase: 'read', maxCallsPerTurn: 1 }],
+      edges,
+    )
+    assert.ok(policy.stages.some((s) => s.id === 'tool:lore_search'))
+    assert.ok(policy.stages.some((s) => s.id === 'prose'))
+  })
+
+  it('rejects branch else that skips prose before end', () => {
     assert.throws(
       () =>
         validateAgentPipelineSteps(
@@ -130,7 +207,7 @@ describe('agent-settings parse/validate', () => {
             },
           ],
         ),
-      /branch_execution_not_ready/,
+      /prose_not_before_end/,
     )
   })
 

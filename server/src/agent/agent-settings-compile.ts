@@ -10,7 +10,12 @@ import type {
 } from './agent-pipeline-policy.js'
 import type { AgentToolPhase } from './agent-prose-phase.js'
 import { resolveToolMaxCallsPerTurn } from './agent-tool-budget.js'
-import { mainPathRunnableSteps, seedMinimalAgentGraph } from './agent-graph.js'
+import {
+  mainPathRunnableSteps,
+  needsAgentGraphRuntime,
+  seedMinimalAgentGraph,
+} from './agent-graph.js'
+import { createAgentGraphRuntime } from './agent-graph-runtime.js'
 import type {
   AgentFlowEdgeConfig,
   AgentPipelineStepConfig,
@@ -71,6 +76,23 @@ export function compileAgentPipelinePolicyFromSteps(
     steps.length === 0
       ? seedMinimalAgentGraph()
       : { steps, edges: edges ?? [] }
+  // 含 branch/node：不能线性 walk；合成可达 tool/prose 预览（执行走图游标）
+  if (needsAgentGraphRuntime(graph.steps, graph.edges)) {
+    return createAgentGraphRuntime({
+      steps: graph.steps,
+      edges: graph.edges,
+      toolDefinitions: toolMeta.map((t) => ({
+        type: 'function' as const,
+        function: {
+          name: t.name,
+          description: t.name,
+          parameters: { type: 'object', properties: {} },
+        },
+      })),
+      toolMeta,
+      runNode: async () => ({ ok: false as const, code: 'compile_preview' }),
+    }).policy
+  }
   const runnable = mainPathRunnableSteps(graph.steps, graph.edges)
   const total = runnable.length
   const proseIdx = runnable.findIndex((s) => s.kind === 'prose')

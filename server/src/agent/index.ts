@@ -34,8 +34,10 @@ export {
 } from './agent-trace-format.js'
 export {
   buildAgentToolsSystemPad,
+  buildAgentToolsSystemPadFromGraph,
   buildAgentToolsSystemPadFromPolicy,
   prependAgentToolsSystemPad,
+  prependAgentToolsSystemPadFromGraph,
   prependAgentToolsSystemPadFromPolicy,
 } from './agent-system-pad.js'
 export {
@@ -55,9 +57,20 @@ export {
   collectAgentToolMaxCallsPerTurn,
   collectPluginToolDecls,
   collectWriteAgentToolNames,
+  dispatchAgentNodeCall,
   dispatchAgentToolCall,
   isOpenAiSafeToolName,
 } from './plugin-tools-aggregate.js'
+export {
+  createAgentGraphRuntime,
+  type GraphRunNodeFn,
+} from './agent-graph-runtime.js'
+export {
+  validateAgentGraph,
+  needsAgentGraphRuntime,
+  seedMinimalAgentGraph,
+  walkMainPath,
+} from './agent-graph.js'
 export {
   clampToolMaxCallsPerTurn,
   defaultMaxCallsForPhase,

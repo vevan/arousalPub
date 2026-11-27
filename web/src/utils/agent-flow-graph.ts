@@ -210,8 +210,8 @@ export function stepsToFlowElements(
 }
 
 /**
- * 校验主路径 Start↝Prose↝End（与服务端 walkMainPath 对齐的轻量版）。
- * 成功时带回路径节点 id，供「仅校验主路径上的未知工具」。
+ * 保存用结构校验（与服务端 validateAgentGraph 对齐）：允许 branch 双出边；
+ * 成功时带回自 start 可达节点 id，供「仅校验可达集上的未知工具」。
  */
 export function validateMainPathLocal(
   steps: AgentPipelineStepConfig[],
@@ -225,36 +225,57 @@ export function validateMainPathLocal(
     return { error: 'errGraphSkeleton' }
   }
   const byId = new Map(steps.map((s) => [stepNodeId(s), s] as const))
-  const outs = new Map<string, string[]>()
+  const outs = new Map<string, AgentFlowEdgeConfig[]>()
   for (const e of edges) {
     if (!byId.has(e.source) || !byId.has(e.target)) {
       return { error: 'errEdgeEndpoint' }
     }
     const list = outs.get(e.source) ?? []
-    list.push(e.target)
+    list.push(e)
     outs.set(e.source, list)
   }
   for (const e of edges) {
     if (e.target === 'start') return { error: 'errStartIncoming' }
     if (e.source === 'end') return { error: 'errEndOutgoing' }
   }
-  const pathIds: string[] = []
-  const seen = new Set<string>()
-  let cur = 'start'
-  let sawProse = false
-  for (;;) {
-    if (seen.has(cur)) return { error: 'errGraphCycle' }
-    seen.add(cur)
-    pathIds.push(cur)
-    if (cur === 'prose') sawProse = true
-    if (cur === 'end') break
-    const next = outs.get(cur) ?? []
-    if (next.length === 0) return { error: 'errGraphPathBroken' }
-    if (next.length > 1) return { error: 'errBranchNotReady' }
-    cur = next[0]!
+  for (const [id, outEdges] of outs) {
+    const step = byId.get(id)
+    if (!step) continue
+    if (step.kind === 'branch') {
+      if (outEdges.length > 2) return { error: 'errBranchTooManyOuts' }
+      continue
+    }
+    if (outEdges.length > 1) return { error: 'errNonBranchMultiOut' }
   }
-  if (!sawProse) return { error: 'errProseNotOnPath' }
-  return { pathIds }
+
+  const reachable = new Set<string>()
+  const queue = ['start']
+  reachable.add('start')
+  while (queue.length) {
+    const cur = queue.shift()!
+    for (const e of outs.get(cur) ?? []) {
+      if (reachable.has(e.target)) continue
+      reachable.add(e.target)
+      queue.push(e.target)
+    }
+  }
+  if (!reachable.has('prose')) return { error: 'errProseNotOnPath' }
+  if (!reachable.has('end')) return { error: 'errGraphPathBroken' }
+
+  const fromProse = new Set<string>()
+  const q2 = ['prose']
+  fromProse.add('prose')
+  while (q2.length) {
+    const cur = q2.shift()!
+    for (const e of outs.get(cur) ?? []) {
+      if (fromProse.has(e.target)) continue
+      fromProse.add(e.target)
+      q2.push(e.target)
+    }
+  }
+  if (!fromProse.has('end')) return { error: 'errProseNotBeforeEnd' }
+
+  return { pathIds: [...reachable] }
 }
 
 /**

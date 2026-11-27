@@ -715,7 +715,10 @@
       "errGraphCycle": "Main path has a cycle",
       "errGraphPathBroken": "Main path does not connect Start to End",
       "errBranchNotReady": "Multi-out branch on the main path is not executable yet; use a single chain",
+      "errBranchTooManyOuts": "A condition node may have at most two outs (then / else)",
+      "errNonBranchMultiOut": "Non-branch nodes may have only one outgoing edge",
       "errProseNotOnPath": "Prose must lie on the Start→End main path",
+      "errProseNotBeforeEnd": "End must be reachable after Prose",
       "errDuplicateTool": "The same tool cannot appear twice",
       "errUnknownTool": "Unknown tool: {name}",
       "errMaxCalls": "Max calls must be 1–32"

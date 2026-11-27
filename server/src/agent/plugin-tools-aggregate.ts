@@ -261,3 +261,124 @@ export async function dispatchAgentToolCall(opts: {
     return { ok: false, code: 'tool_failed', detail: detail.slice(0, 500) }
   }
 }
+
+/**
+ * 图节点 kind:node → 插件 runNode（非 LLM tool · DOC/53 §6.3 / G5）。
+ */
+export async function dispatchAgentNodeCall(opts: {
+  pluginId: string
+  type: string
+  conversationId: string
+  signal?: AbortSignal
+  userId?: string
+  agentRunId?: string
+  baselineTurnOrdinalExclusive?: number
+  inputs?: Record<string, unknown>
+  params?: Record<string, unknown>
+}): Promise<
+  | { ok: true; outputs: Record<string, unknown> }
+  | { ok: false; code: string; detail?: string }
+> {
+  if (opts.signal?.aborted) {
+    return { ok: false, code: 'cancelled' }
+  }
+  const pluginId = opts.pluginId.trim()
+  const type = opts.type.trim()
+  if (!pluginId || !type) {
+    return { ok: false, code: 'node_type_invalid' }
+  }
+
+  try {
+    return await raceWithToolTimeout(async (toolSignal) => {
+      if (toolSignal.aborted) return { ok: false as const, code: 'cancelled' }
+
+      const loaded = await loadEnabledServerPlugins(opts.userId)
+      const plugin = loaded.find((p) => p.id === pluginId)
+      if (!plugin || typeof plugin.module.runNode !== 'function') {
+        return {
+          ok: false as const,
+          code: 'node_not_supported',
+          detail: pluginId,
+        }
+      }
+
+      const manifest = await readPluginManifest(pluginId)
+      const nodeDecl = manifest?.nodeTypes?.find((n) => n.type === type)
+      const permissions = Array.isArray(nodeDecl?.permissions)
+        ? nodeDecl!.permissions.filter(
+            (p): p is string => typeof p === 'string' && p.trim().length > 0,
+          )
+        : []
+      for (const perm of permissions) {
+        const auth = await assertPluginPermission(pluginId, perm, opts.userId)
+        if (!auth.ok) {
+          return {
+            ok: false as const,
+            code: auth.code,
+            detail: `status=${pluginAuthFailureStatus(auth.code)}`,
+          }
+        }
+      }
+
+      const api = createPluginServerHostApi(pluginId)
+      const result = await plugin.module.runNode(
+        type,
+        {
+          inputs: opts.inputs,
+          params: opts.params,
+          conversationId: opts.conversationId,
+          signal: toolSignal,
+          ...(opts.agentRunId ? { agentRunId: opts.agentRunId } : {}),
+          ...(typeof opts.baselineTurnOrdinalExclusive === 'number'
+            ? {
+                baselineTurnOrdinalExclusive:
+                  opts.baselineTurnOrdinalExclusive,
+              }
+            : {}),
+        },
+        api,
+      )
+      if (toolSignal.aborted || opts.signal?.aborted) {
+        return { ok: false as const, code: 'cancelled' }
+      }
+      if (!result || typeof result !== 'object') {
+        return {
+          ok: false as const,
+          code: 'node_failed',
+          detail: 'invalid_result',
+        }
+      }
+      if ((result as { ok?: unknown }).ok === false) {
+        const r = result as { code?: string; detail?: string }
+        return {
+          ok: false as const,
+          code: typeof r.code === 'string' ? r.code : 'node_failed',
+          detail:
+            typeof r.detail === 'string' ? r.detail.slice(0, 500) : undefined,
+        }
+      }
+      const outputs = (result as { outputs?: unknown }).outputs
+      if (!outputs || typeof outputs !== 'object' || Array.isArray(outputs)) {
+        return {
+          ok: false as const,
+          code: 'node_failed',
+          detail: 'outputs_invalid',
+        }
+      }
+      return {
+        ok: true as const,
+        outputs: outputs as Record<string, unknown>,
+      }
+    }, opts.signal)
+  } catch (e) {
+    const code =
+      e && typeof e === 'object' && 'code' in e
+        ? String((e as { code?: unknown }).code ?? '')
+        : ''
+    if (code === 'cancelled' || code === 'tool_timeout') {
+      return { ok: false, code }
+    }
+    const detail = e instanceof Error ? e.message : String(e)
+    return { ok: false, code: 'node_failed', detail: detail.slice(0, 500) }
+  }
+}

@@ -20,12 +20,20 @@ import {
   formatProgressReasoningChunk,
 } from './agent-trace-format.js'
 import { policyWriteToolNames } from './agent-pipeline-policy.js'
-import { createAgentPipelineRuntime } from './agent-pipeline-runtime.js'
-import { prependAgentToolsSystemPadFromPolicy } from './agent-system-pad.js'
+import {
+  createAgentPipelineRuntime,
+  type AgentPipelineRuntime,
+} from './agent-pipeline-runtime.js'
+import { createAgentGraphRuntime } from './agent-graph-runtime.js'
+import {
+  prependAgentToolsSystemPadFromGraph,
+  prependAgentToolsSystemPadFromPolicy,
+} from './agent-system-pad.js'
 import {
   collectAgentToolDefinitions,
   collectAgentToolMaxCallsPerTurn,
   collectPluginToolDecls,
+  dispatchAgentNodeCall,
   dispatchAgentToolCall,
 } from './plugin-tools-aggregate.js'
 import {
@@ -35,7 +43,7 @@ import {
 } from './host-search-tools.js'
 import { resolveToolMaxCallsPerTurn } from './agent-tool-budget.js'
 import { readAgentSettingsDocument } from './agent-settings-file.js'
-import { validateAgentGraph } from './agent-graph.js'
+import { needsAgentGraphRuntime, validateAgentGraph } from './agent-graph.js'
 import { buildPolicyFromEffectiveSteps } from './agent-effective.js'
 import { collectAgentToolCatalog, catalogPhaseByTool } from './agent-tools-catalog.js'
 import type { AgentMessage, AgentLoopResult, AgentToolDefinition } from './types.js'
@@ -295,22 +303,77 @@ export async function runChatAgentLoop(
     maxCallsPerTurn: t.maxCallsPerTurn,
   }))
   let policy
+  let runtime: AgentPipelineRuntime
+  const graphEdges = agentSettings.edges ?? []
+  const useGraphRuntime =
+    agentSettings.steps.length > 0 &&
+    needsAgentGraphRuntime(agentSettings.steps, graphEdges)
+
+  const agentRunId = randomUUID()
+  const regenOrd =
+    typeof params.regenerateTurnOrdinal === 'number' &&
+    Number.isFinite(params.regenerateTurnOrdinal) &&
+    params.regenerateTurnOrdinal >= 0
+      ? Math.round(params.regenerateTurnOrdinal)
+      : undefined
+
   try {
     if (agentSettings.steps.length === 0) {
       // 未配置 → 最小种子；坏盘已在 read 时回落为空
       policy = buildPolicyFromEffectiveSteps([], toolMeta)
+      runtime = createAgentPipelineRuntime({
+        policy,
+        toolDefinitions: tools,
+        defaultsByTool: maxCallsByTool,
+      })
     } else {
       // 非空非法图：明确失败，禁止静默改成种子
-      validateAgentGraph(
-        agentSettings.steps,
-        agentSettings.edges,
-        phaseByTool,
-      )
-      policy = buildPolicyFromEffectiveSteps(
-        agentSettings.steps,
-        toolMeta,
-        agentSettings.edges,
-      )
+      validateAgentGraph(agentSettings.steps, graphEdges, phaseByTool)
+      if (useGraphRuntime) {
+        if (!conversationId) {
+          return {
+            ok: false,
+            content: '',
+            messages: chatMessagesToAgentMessages(params.messages),
+            steps: [],
+            stopReason: 'graph_invalid',
+            errorCode: 'graph_invalid',
+            errorDetail: 'graph_runtime_requires_conversation',
+            toolsOffered: toolNames,
+          }
+        }
+        const convId = conversationId
+        runtime = createAgentGraphRuntime({
+          steps: agentSettings.steps,
+          edges: graphEdges,
+          toolDefinitions: tools,
+          toolMeta,
+          defaultsByTool: maxCallsByTool,
+          runNode: (step) =>
+            dispatchAgentNodeCall({
+              pluginId: step.pluginId,
+              type: step.type,
+              conversationId: convId,
+              userId: params.userId,
+              agentRunId,
+              ...(regenOrd !== undefined
+                ? { baselineTurnOrdinalExclusive: regenOrd }
+                : {}),
+            }),
+        })
+        policy = runtime.policy
+      } else {
+        policy = buildPolicyFromEffectiveSteps(
+          agentSettings.steps,
+          toolMeta,
+          graphEdges,
+        )
+        runtime = createAgentPipelineRuntime({
+          policy,
+          toolDefinitions: tools,
+          defaultsByTool: maxCallsByTool,
+        })
+      }
     }
   } catch (e) {
     const detail =
@@ -326,21 +389,11 @@ export async function runChatAgentLoop(
       toolsOffered: toolNames,
     }
   }
-  const runtime = createAgentPipelineRuntime({
-    policy,
-    toolDefinitions: tools,
-    defaultsByTool: maxCallsByTool,
-  })
 
-  const writeToolNameList = policyWriteToolNames(policy)
-
-  const agentRunId = randomUUID()
-  const regenOrd =
-    typeof params.regenerateTurnOrdinal === 'number' &&
-    Number.isFinite(params.regenerateTurnOrdinal) &&
-    params.regenerateTurnOrdinal >= 0
-      ? Math.round(params.regenerateTurnOrdinal)
-      : undefined
+  // 线性：policy 上全部 write；图：prose 后由游标动态给出当前互斥 write
+  const writeToolNameList = useGraphRuntime
+    ? []
+    : policyWriteToolNames(policy)
 
   const upstreamComplete =
     params.complete ??
@@ -353,17 +406,26 @@ export async function runChatAgentLoop(
       generationAbort: params.generationAbort,
     })
 
-  const seeded = prependAgentToolsSystemPadFromPolicy(
-    chatMessagesToAgentMessages(params.messages),
-    policy,
-    toolNames,
-  )
+  const baseMessages = chatMessagesToAgentMessages(params.messages)
+  const seeded = useGraphRuntime
+    ? prependAgentToolsSystemPadFromGraph(
+        baseMessages,
+        agentSettings.steps,
+        graphEdges,
+        toolNames,
+      )
+    : prependAgentToolsSystemPadFromPolicy(baseMessages, policy, toolNames)
+
+  await runtime.settlePending()
 
   const result = await runAgentLoop({
     messages: seeded,
     tools: tools.length > 0 ? tools : undefined,
     resolveTools: () => runtime.offerToolDefinitions(),
     resolveToolChoice: () => runtime.toolChoice(),
+    isPipelineComplete: useGraphRuntime
+      ? () => runtime.currentStage().id === 'end'
+      : undefined,
     prepareStepMessages: ({ messages }) => {
       const instruction = runtime.consumeStageEnterInstruction()
       if (!instruction) return
@@ -380,7 +442,9 @@ export async function runChatAgentLoop(
       params.onProgress?.(ev)
     },
     requiredToolNames: requiredSearchToolNames,
-    requiredWriteToolNames: writeToolNameList,
+    requiredWriteToolNames: useGraphRuntime
+      ? () => runtime.missingPostProseRequired()
+      : writeToolNameList,
     executeTool: conversationId
       ? async (name, argsJson, signal) => {
           params.onActivity?.()
@@ -407,8 +471,9 @@ export async function runChatAgentLoop(
           if (out.ok) {
             runtime.onToolSuccess(name)
           } else {
-            runtime.onToolFailure(name)
+            runtime.onToolFailure(name, out.code)
           }
+          await runtime.settlePending()
           params.onActivity?.()
           return out
         }
@@ -419,6 +484,7 @@ export async function runChatAgentLoop(
       // 仅 prose 阶段提交；正文前 write（如 init）夹带 content 不得提前锁定
       if (turn.content.trim() && runtime.currentStage().kind === 'prose') {
         runtime.onProseCommitted()
+        await runtime.settlePending()
       }
       params.onStep?.({
         stepIndex: input.stepIndex,

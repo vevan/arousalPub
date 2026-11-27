@@ -74,7 +74,7 @@
 | [`51`](51-hybrid-fts-icu-lindera.md) | ✅ **已归档**（2026-08-16） | **Hybrid FTS：ICU + Lindera**：`lindera` / `icu` 已接入；M6 对照后保留 `zh-jieba`；见 [`04`](04-TODO.md) §已归档 |
 | [`52`](52-graphify-rebuild-and-chat-list-optimization.md) | ✅ **已落地**（2026-08-17） | **图谱重建** + `chat-list-store` CL1–CL9；plugins 三环打断；旧 `server/graphify-out/` 清理；见 [`04`](04-TODO.md) §已归档 |
 | [`52`](52-connection-panel-scope.md) | ✅ **已实现** | **连接面板作用域**：基础连接仅全局预设；生成参数按对话 / 全局分域；双列模态（窄屏 Tab）；无 panel-live |
-| [`53`](53-agent-runtime-and-node-graph.md) | **定案倾向 · 计划** · **§16.6 / §16.8 已定案** · **§16.9 草案** | **Agent Runtime**：多步循环 → 真 tools → 节点图；`proseCommitted`；精细 pipeline；**【Agent 设置页】** 双列编排草案 |
+| [`53`](53-agent-runtime-and-node-graph.md) | **§17 定案** · 图为编排真相源 · `@xyflow/vue` | **Agent Runtime**：tools + loop 已有；**放弃线性 pipeline 为长期 IR**；节点图 + 用户手编子图 + 样例；扇出/扇入并行 |
 | [`99`](99-android-apk-vision.md) | 💡 **极低优先级** | **Android 单机 APK 设想**：领域层迁移动端、SQLite 替 chunk、Portable Bundle 导入导出；无排期 |
 
 ## 已归档（勿再新建同级文档）

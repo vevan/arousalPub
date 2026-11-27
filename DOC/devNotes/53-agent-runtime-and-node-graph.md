@@ -1,6 +1,7 @@
 # 53 · Agent Runtime / Tools / 节点图 — 实施计划
 
-> **状态**：**阶段 2 可验证（tools + UI）· 等人工验证** · 节点图未做 · **§16.6 / §16.8 已定案** · **§16.9 Agent 设置页草案**（双列编排 / 未实现）  
+> **状态**：**阶段 2 可验证** · **§17 节点图为编排真相源（2026-11-27 定案）** · 线性 `AgentPipelinePolicy` / §16.9 双列列表 **放弃为长期中心** · 编辑器选 `@xyflow/vue` · 执行器与 UI 改造进行中  
+
 
 
 > **分支**：`agent`  
@@ -601,7 +602,7 @@ execute(graph, ctx):
 
 | 插件 | 与愿景关系 | 建议暴露 | 改造要点 | 优先 |
 |------|------------|----------|----------|------|
-| **trace-keeper** | B 读状态 · D 回写 · （Together 块） | Tools（草案名）：`trace_read` / `trace_init` / `trace_patch`（见 [`30`](30-plugin-trace-keeper.md) §2.3）；Nodes：读写；可选 Separate 兜底 | 保留原始 Together/Separate；Agent 下工具模式 **读→正文→写**、禁双写；字段级 patch；`stripBlockTags` 仅原始模式 | **高** |
+| **trace-keeper** | B 读状态 · D 回写 · （Together 块） | Tools：`trace_read` / `trace_init`（write） / `trace_patch`（见 [`30`](30-plugin-trace-keeper.md) §2.3）；可选 Separate 兜底 | 保留原始 Together/Separate；Agent 下禁双写；init 仅无数据且与 patch 用途互斥；排序不强制；`stripBlockTags` 仅原始模式 | **高** |
 | **guidance-generate** | B 写作指导 · 可喂 C | Tool/Node：产出「指导文本」端口；或图前驱节点读用户指导草稿 | 今日 hook 注入 + Web 润色 complete → 图内节点；`sendWithPlugins` 路径与图互斥策略要定 | **高** |
 | **plot-summary**（Historian） | 近 A（纪要召回）· 非主路径摘要 | Tools：`summary.search` / 读目标 lorebook 条目；Node：`summarize.range`（可挂图外触发或 run 末尾） | 自动摘要 lifecycle 可改为「图外定时/阈值节点」或独立旁路图；`completeWithContext` + lorebook 写入保留在插件 | **中高** |
 | **notes** | 可选召回/设定备忘 | Tools：`notes.list` / `notes.get`；可选 Node：注入笔记到上下文 | `serverActions` 已有 CRUD → 包一层 tools 即可 | 中 |
@@ -672,6 +673,7 @@ flowchart LR
 | 2026-11-24 | §16.6 定案；落地 `tools[].phase` + `proseCommitted` SSE（未提交才 clear） |
 | 2026-11-24 | §16.8：`AgentPipelinePolicy` 默认精细逐步（一工具一步 + 进阶 instruction）+ runtime（节点图线性前驱） |
 | 2026-11-24 | §16.9：【Agent 设置页】草案（双列可用/激活工具、正文固定节点、拖曳顺序、单步限制/次数） |
+| 2026-11-27 | §17：节点图为编排真相源；放弃线性 pipeline 反套；`@xyflow/vue`；子图手编+样例；下钻自研；fork/join |
 | 2026-11-24 | §16.9：定案 — 会话覆盖全局、非多预设单文档、模式开关实时切换 |
 
 ---
@@ -701,24 +703,22 @@ flowchart LR
 
 | 角色标签（示例） | 含义 | 示例归属 |
 |------------------|------|----------|
-| `read` / `context` | 正文前只读 | 核心检索、`trace_read`、`trace_init` |
-| `write` / `mutate` | 正文后变更世界状态 | `trace_patch`、其它插件 patch |
-| （无标签） | 默认：允许在正文前；若出现在正文后亦保留正文 | 兼容未知插件 |
+| `read` / `context` | 只读 | 核心检索、`trace_read` |
+| `write` / `mutate` | 变更世界状态（**不强制**相对正文前后） | `trace_init`、`trace_patch`、其它插件 patch |
+| （无标签） | 默认按 read 处理 | 兼容未知插件 |
 
 **单轮状态机（概念）**：
 
 ```text
-phase = before_prose
-  on tool(read*)     → 执行，留在 before_prose
-  on content 流式且本步无 write tool → 进入 streaming_prose，推主泡
-  on step 结束且有 content、无 write → prose_committed，phase = after_prose
-  on tool(write*)    → 仅当 phase ≥ prose_committed；执行；不清主泡
+按 AgentPipelinePolicy 逐步推进（用户可把 write 排在正文前）
+  on tool（本步 offer） → 执行；不清已提交主泡
+  on prose 步 content   → prose_committed；锁定主泡
   on 无更多步 / 显式结束 → final（persist）
 ```
 
-- **提交点 `prose_committed`**：本步 upstream 结束且 `finish_reason` 非 tool（或无 write tool），且 `content.length > 0`。提交后主泡内容视为终稿，后续 write tool **不得** clear。  
-- **正文前误推的 content**：仍可在首次 `tool_calls`（且尚未 committed）时 clear。  
-- **同轮 content + write tool**：少见；定案倾向 **先收齐 content 再执行 write**（或拒绝对同 step 混排，强制模型拆成两步——实现时选一，默认 **拆步 nudge** 更清晰）。
+- **提交点 `prose_committed`**：进入 prose 步且产出非空 content（或 write-nudge 锁定）。提交后主泡视为终稿，后续步 **不得** clear。  
+- **正文前 write**：合法（如仅无数据才调用的 init）；误夹 content **不**提前锁定。  
+- **读/写相对正文的前后**：保存时不强制；默认合成器仍可软排「检索 → 正文 → 回写」。
 
 ### 16.4 流式实现要点（相对今日代码）
 
@@ -800,7 +800,8 @@ phase = before_prose
 
 ### 16.9 Agent 设置页（草案 · 2026-11-24）
 
-> **状态**：**草案**（文案定稿待实现 · 未开工 UI）。  
+> **状态**：**切片 A–C + 会话模式覆盖已落地**（全局 Tab + 双列编排 + 单步设置；会话仅覆盖 `agentMode`，流水线会话覆盖未做；出站读全局 `agent-settings.json`）。  
+
 > **定位**：把今日「对话绑定里的 Agent 开关」升级为可编排的 **简易线性节点图** 配置面；落盘结果编译为 §16.8 `AgentPipelinePolicy`（日后完整 DAG 仍编译为同一形状）。  
 > **约束**：宿主 **generic**（DOC/41）；列表与表单只认 `toolName` / `phase` / schema 字段，**零** bundled 插件 id 或产品话术特化。
 
@@ -856,9 +857,9 @@ phase = before_prose
 
 **顺序与相位校验（保存时）**
 
-- `phase=write` 的工具 **不得** 排在正文节点之前（保存/应用报错并标红）。  
-- `phase=read` 建议在正文前；若用户强行拖到正文后，须二次确认或禁止（草案倾向：**禁止**，与 §16 读→正文→写一致）。  
-- 左侧未激活的工具本回合 **不 offer**（与 runtime 一致）。
+- **不强制** read/write 相对正文的前后位置（可把写工具放在正文前，如初始化类工具）。  
+- 默认合成器仍可按「检索 → 正文 → 回写」软排序作预览；用户拖曳为准。  
+- 须恰好一个正文节点；非空自定义流水线至少一个工具；左侧未激活的工具本回合 **不 offer**。
 
 #### 16.9.3 单工具设置（右侧 ⚙）
 
@@ -896,7 +897,7 @@ phase = before_prose
 | **A · 壳** | 全局 Tab + **即时**模式开关 + 只读双列预览 | 工具聚合 API；开关 PATCH 立刻影响后续 send |
 | **B · 编排** | 激活/移除、拖曳排序、正文固定节点、相位校验；单文档写盘 | A |
 | **C · 单步设置** | `maxCalls` / `required` / `instruction` → policy 驱动 runtime | B；§16.8 |
-| **D · 会话覆盖** | 会话设置：即时开关覆盖 + 可选流水线稀疏覆盖 / 「恢复全局」 | C |
+| **D · 会话覆盖** | **已做**：会话即时开关覆盖 + 「恢复全局」。**未做**：流水线 steps 会话稀疏覆盖（出站仍只用全局 steps） | C |
 | **E · 画布** | 真 DAG（并边/汇合） | 阶段 3；本草案 **不做** |
 
 #### 16.9.6 非目标（本草案）
@@ -913,3 +914,129 @@ phase = before_prose
 | 作用域 | **全局默认 + 会话可覆盖** |
 | 预设形态 | **非多预设**；全局单文档，会话稀疏覆盖 |
 | 模式开关 | **实时切换**：PATCH 后下一句即新模式，不等待编排另存 |
+
+> **§16.8 / §16.9 地位修订（2026-11-27）**：双列线性编排与 `stages[]` 曾作为「图的线性近似 / 编译目标」。现定案 **图为唯一编排真相源**（§17）；线性 pipeline **不再**作为长期中心或 DAG 的反套编译目标。§16.8 runtime 可暂作迁移期执行后端或删除，**禁止**在 `stages[]` 上继续堆分支 / 启发式以假装成图。设置页以 Vue Flow 画布替换双列列表（见 §17.5）。
+
+---
+
+## 17. 节点图为编排真相源（2026-11-27 定案）
+
+> **驱动力**：线性流水线无法干净表达互斥路径（如 init **或** patch）、条件边、扇出/扇入并行子 agent。用 `optional` / `offer_exhausted` / prompt「if applicable」反套图语义，结构会持续腐烂。  
+> **原则**：先立 **Graph 模型 + 执行器骨架**（v0 可仅支持链式边），再逐步加条件 / 并行 / 子图；**不要**用现有 `AgentPipelinePolicy` 去反套节点图。
+
+### 17.1 放弃与保留
+
+| 放弃（长期） | 保留 / 迁入 |
+|--------------|-------------|
+| `steps[]` 双列列表作为编排真相 | Agent 模式开关、会话覆盖 `agentMode` |
+| 以 `AgentPipelinePolicy.stages[]` 为唯一 IR | 多步 loop、tools dispatch、`proseCommitted` 流式语义 |
+| 在 stages 上叠加 when/skip 冒充分支 | 工具目录聚合（manifest `tools[]` + 核心检索） |
+| 宿主 soft-default 用业务启发式假装互斥 | DOC/41：零 bundled id；条件谓词用工具结果 `code` 等 generic 材料 |
+
+**迁移**：落盘从 `agent-settings.json` 的 `steps` **一次切到** graph 文档（或等价字段）；**禁止** steps↔graph 双写兼容。过渡期 UI 可只读写 graph；旧 steps 由一次性迁移脚本或「缺图则空/样例」处理，不在运行时永久读旧形。
+
+### 17.2 域模型（与编辑器解耦）
+
+编辑器用哪套库 **不得** 决定运行时 schema。宿主域模型（名称可微调）：
+
+```text
+GraphDocument
+  schemaVersion
+  agentMode?          # 或仍分文档；会话稀疏覆盖另议
+  templates[]         # GraphTemplate：可复用子图定义
+  root: GraphRef      # 主图（nodes + edges）或指向某 template
+
+GraphTemplate
+  id, title?
+  nodes[]             # 原子或 composite 实例
+  edges[]             # 有向；可带条件
+  ports?              # 模板对外 I/O（复合节点用）
+
+Node（discriminated）
+  tool | prose | branch | join | composite | …
+  # composite: { templateId } —— 展开执行子图
+  # branch: 谓词 → 多出边（generic：ok/code/JSONPath 等，无插件 id）
+
+Edge
+  from, to, fromPort?, toPort?, when? 
+```
+
+- **插件**注册原子节点类型 / 工具；**不**在宿主写死 `trace_update`。  
+- **复合节点** = 引用 `GraphTemplate`；执行器展开子图（或等价调度）。
+
+### 17.3 子图（用户手编 · 系统仅样例）
+
+| 项 | 定案 |
+|----|------|
+| 谁编写 | **用户手动**编辑子图流程（条件、init/patch 等） |
+| 系统角色 | 可提供 **样例模板**（文档 / seed / 插件包内 sample）；用户复制后改 |
+| 样例与出站 | 样例 **不**自动成为默认出站图，除非用户选用或复制进自己的 templates |
+| 宿主特化 | **禁止**内置「迹录更新」等产品复合节点；样例可放插件侧，宿主只认 generic `composite` |
+
+示例（说明用，非宿主 id）：用户可将「条件 → init | patch」手编为模板，主图放一个复合节点；系统可附带同结构的 sample 供导入。
+
+### 17.4 扇出 / 扇入（并行子 agent）
+
+并行召回（history / lore / knowledge / trace 等）在图上表达为：
+
+```text
+        ┌─▶ sub: history ──┐
+fork ───┼─▶ sub: lore ─────┼─▶ join ─▶ prose / 下游
+        ├─▶ sub: knowledge ┤
+        └─▶ sub: trace ────┘
+```
+
+- **1→多**：fork（多出边）；并行的是执行，不是「单端口吐数组」。  
+- **多→1**：join（多名入端口或约定合并策略）；默认等全部前驱（optional 边可缺席）。  
+- 与「单 agent loop 内连续调多个 tool」不同：子 agent 并行是多 complete / 多 loop，在图里汇合。
+
+v0 可不实现并行；schema 预留 join/多入边，避免再改真相源。
+
+### 17.5 编辑器：`@xyflow/vue`（Vue Flow 2）
+
+| 项 | 定案 |
+|----|------|
+| 包 | **`@xyflow/vue`**（Vue Flow 2 / xyflow；**不要**新上 `@vue-flow/core` 1.x） |
+| 职责 | 画布壳、自定义节点、连线、视口；**投影**域 `GraphDocument` |
+| Sub Flows（`parentId`） | 仅 **视觉分组**，≠ 模板封装 |
+| 折叠 | **无**一等折叠 API；可用节点/边 `hidden` 自研显隐；官方 expand-collapse 示例为 Pro |
+| 下钻编辑子图 | **库不提供**；产品自研：打开 **新层**（覆盖层 / 抽屉 / 次级画布）再挂一个 `VueFlow` 编辑对应 `GraphTemplate`，保存后回主图 |
+| 主图上的复合节点 | 显示为带端口的单节点；双击 / 「编辑子图」→ 下钻层 |
+
+**不选 Baklava 作默认壳**：其 GraphTemplate/下钻更开箱，但与 Vuetify 设置页、异步 agent 执行模型耦合成本高；域模型仍自研时，xyflow + 自研下钻更可控。
+
+### 17.6 执行器方向
+
+```text
+GraphDocument
+  →（展开 composite）→ 可调度 DAG
+  → 调度：拓扑就绪集；tool/prose 步可复用现有 agent loop 片段
+  → 禁止再维护「线性 stages 与图双跑」
+```
+
+- v0：仅链式（每节点至多一入一出 + 单 prose）即可替换今日出站路径。  
+- v1：`branch` 条件边（支撑 init/patch 互斥）。  
+- v2：fork/join 并行子 agent。  
+
+`proseCommitted`、write 后不清主泡等 **流式相位语义** 仍有效，挂在 prose 节点与其后继边上，而不是线性 phase 机独占。
+
+### 17.7 交付切片（替换原 §16.9 E）
+
+| 切片 | 内容 |
+|------|------|
+| **G0 · 文档** | 本 §17 定案（本切片） |
+| **G1 · 域 schema + 落盘** | `GraphDocument` 读写；废除 steps 为真相；校验无环 / 单 prose 等 |
+| **G2 · 画布 UI** | 设置页 Vue Flow：调色板 + 主图画布；链式编辑可先用 |
+| **G3 · 下钻子图** | 新层编辑 `GraphTemplate`；样例导入 |
+| **G4 · 执行器 v0** | 链式图出站替换 pipeline runtime |
+| **G5 · branch** | 条件边；样例：互斥 write 路径 |
+| **G6 · fork/join** | 并行子 agent |
+
+### 17.8 非目标（本定案不承诺）
+
+- 用 `parentId` 视觉分组冒充可复用子图  
+- 宿主自动生成业务复合节点  
+- steps 与 graph 长期双写  
+- 自由派活主 agent 动态改图（仍后置）  
+- 购买 xyflow Pro 为例程所必需（折叠/布局可自研）
+
